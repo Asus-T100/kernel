@@ -368,8 +368,7 @@ void ospm_power_uninit(void)
     unregister_early_suspend(&gfx_early_suspend_desc);
     mutex_destroy(&g_ospm_mutex);
 #ifdef CONFIG_GFX_RTPM
-    pm_runtime_disable(&gpDrmDevice->pdev->dev);
-    pm_runtime_set_suspended(&gpDrmDevice->pdev->dev);
+	pm_runtime_get_noresume(&gpDrmDevice->pdev->dev);
 #endif
 }
 /*

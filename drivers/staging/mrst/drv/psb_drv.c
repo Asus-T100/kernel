@@ -1740,8 +1740,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 
 #ifdef CONFIG_GFX_RTPM
 	/*enable runtime pm at last*/
-	pm_runtime_enable(&dev->pdev->dev);
-	pm_runtime_set_active(&dev->pdev->dev);
+	pm_runtime_put_noidle(&dev->pdev->dev);
 #endif
 	// GL3
 #ifdef CONFIG_MDFD_GL3
