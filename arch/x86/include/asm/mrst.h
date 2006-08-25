@@ -119,9 +119,9 @@ extern void intel_scu_devices_destroy(void);
 extern void mrst_rtc_init(void);
 
 extern int mrst_pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t state);
-extern int mfld_pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t state);
 
 #ifdef CONFIG_X86_MDFLD
+extern int pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t state);
 extern pci_power_t pmu_pci_choose_state(struct pci_dev *pdev);
 #endif /* !CONFIG_X86_MDFLD */
 

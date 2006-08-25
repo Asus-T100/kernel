@@ -91,6 +91,19 @@ static struct cpuidle_device __percpu *intel_idle_cpuidle_devices;
 static int intel_idle(struct cpuidle_device *dev, struct cpuidle_state *state);
 static int intel_mid_idle(struct cpuidle_device *dev, struct cpuidle_state *state);
 
+#ifdef CONFIG_X86_MDFLD
+#define C4_STATE_IDX	3
+#define C6_STATE_IDX	4
+#define S0I1_STATE_IDX  5
+#define LPMP3_STATE_IDX 6
+#define S0I3_STATE_IDX  7
+static int soc_s0ix_idle(struct cpuidle_device *dev,
+			 struct cpuidle_state *state);
+
+#else
+#define soc_s0ix_idle	intel_idle
+#endif
+
 static struct cpuidle_state *cpuidle_state_table;
 
 /*
@@ -215,6 +228,74 @@ static struct cpuidle_state atom_cstates[MWAIT_MAX_NUM_CSTATES] = {
 };
 
 #ifdef CONFIG_X86_INTEL_MID
+
+#ifdef CONFIG_X86_MDFLD
+static struct cpuidle_state mfld_cstates[MWAIT_MAX_NUM_CSTATES] = {
+	{ /* MWAIT C0 */
+		.power_usage = C0_POWER_USAGE },
+	{ /* MWAIT C1 */
+		.name = "ATM-C1",
+		.desc = "MWAIT 0x00",
+		.driver_data = (void *) 0x00,
+		.flags = CPUIDLE_FLAG_TIME_VALID,
+		.exit_latency = CSTATE_EXIT_LATENCY_C1,
+		.target_residency = 4,
+		.enter = &intel_idle },
+	{ /* MWAIT C2 */
+		.name = "ATM-C2",
+		.desc = "MWAIT 0x10",
+		.driver_data = (void *) 0x10,
+		.flags = CPUIDLE_FLAG_TIME_VALID,
+		.exit_latency = CSTATE_EXIT_LATENCY_C2,
+		.target_residency = 80,
+		.enter = &intel_idle },
+	{ /* MWAIT C3 */ },
+	{ /* MWAIT C4 */
+		.name = "ATM-C4",
+		.desc = "MWAIT 0x30",
+		.driver_data = (void *) C4_HINT,
+		.flags = CPUIDLE_FLAG_TIME_VALID | CPUIDLE_FLAG_TLB_FLUSHED,
+		.exit_latency = CSTATE_EXIT_LATENCY_C4,
+		.target_residency = 400,
+		.enter = &intel_idle },
+	{ /* MWAIT C5 */ },
+	{ /* MWAIT C6 */
+		.name = "ATM-C6",
+		.desc = "MWAIT 0x52",
+		.driver_data = (void *) C6_HINT,
+		.flags = CPUIDLE_FLAG_TIME_VALID | CPUIDLE_FLAG_TLB_FLUSHED,
+		.exit_latency = CSTATE_EXIT_LATENCY_C6,
+		.power_usage  = C6_POWER_USAGE,
+		.target_residency = 560,
+		.enter = &soc_s0ix_idle },
+	{
+		.name = "ATM-S0i1",
+		.desc = "MWAIT 0x52",
+		.driver_data = (void *) MID_S0I1_STATE,
+		.flags = CPUIDLE_FLAG_TIME_VALID,
+		.exit_latency = CSTATE_EXIT_LATENCY_S0i1,
+		.power_usage  = S0I1_POWER_USAGE,
+		.enter = &soc_s0ix_idle },
+	{
+		.name = "ATM-LpAudio",
+		.desc = "MWAIT 0x52",
+		.driver_data = (void *) MID_LPMP3_STATE,
+		.flags = CPUIDLE_FLAG_TIME_VALID,
+		.exit_latency = CSTATE_EXIT_LATENCY_LPMP3,
+		.power_usage  = LPMP3_POWER_USAGE,
+		.prev_state_idx = 6,
+		.enter = &soc_s0ix_idle },
+	{
+		.name = "ATM-S0i3",
+		.desc = "MWAIT 0x52",
+		.driver_data = (void *) MID_S0I3_STATE,
+		.flags = CPUIDLE_FLAG_TIME_VALID,
+		.exit_latency = CSTATE_EXIT_LATENCY_S0i3,
+		.power_usage  = S0I3_POWER_USAGE,
+		.prev_state_idx = 7,
+		.enter = &soc_s0ix_idle }
+};
+#else
 static struct cpuidle_state mrst_cstates[MWAIT_MAX_NUM_CSTATES] = {
 	{ /* MWAIT C0 */ },
 	{ /* MWAIT C1 */
@@ -260,8 +341,103 @@ static struct cpuidle_state mrst_cstates[MWAIT_MAX_NUM_CSTATES] = {
 		.target_residency = 1200, /* XXX */
 		.enter = &intel_mid_idle },
 };
+#endif
+
+#else
+
+#ifdef CONFIG_X86_MDFLD
+#define mfld_cstates atom_cstates
 #else
 #define mrst_cstates atom_cstates
+#endif
+
+#endif
+
+#ifdef CONFIG_X86_MDFLD
+static int soc_s0ix_idle(struct cpuidle_device *dev,
+			struct cpuidle_state *state)
+{
+	unsigned long ecx = 1; /* break on interrupt flag */
+	unsigned long eax = (unsigned long)cpuidle_get_statedata(state);
+	ktime_t kt_before, kt_after;
+	s64 usec_delta;
+	int cpu = smp_processor_id();
+	int s0ix_entered = 0;
+	int s0ix_state   = 0;
+	int gov_s0ix_state, pl_s0ix_state;
+
+	/* check if we need/possible to do s0ix */
+	if (eax != C6_HINT) {
+		gov_s0ix_state = (int)cpuidle_get_statedata(state);
+		pl_s0ix_state = get_target_platform_state();
+
+		if ((pl_s0ix_state == MID_S0IX_STATE) &&
+			(gov_s0ix_state == MID_LPMP3_STATE))
+			s0ix_state = MID_S0I1_STATE;
+		else if ((pl_s0ix_state <= gov_s0ix_state ||
+			(pl_s0ix_state == MID_S0IX_STATE)))
+			s0ix_state = pl_s0ix_state & gov_s0ix_state;
+
+		eax = C6_HINT;
+	}
+
+	local_irq_disable();
+
+	/*
+	 * leave_mm() to avoid costly and often unnecessary wakeups
+	 * for flushing the user TLB's associated with the active mm.
+	 */
+	if (state->flags & CPUIDLE_FLAG_TLB_FLUSHED)
+		leave_mm(cpu);
+
+	clockevents_notify(CLOCK_EVT_NOTIFY_BROADCAST_ENTER, &cpu);
+
+	kt_before = ktime_get_real();
+
+	stop_critical_timings();
+
+	if (!need_resched()) {
+		if (atomic_add_return(1, &nr_cpus_in_c6) ==
+		    num_online_cpus() && s0ix_state) {
+			s0ix_entered = mfld_s0ix_enter(s0ix_state);
+			if (!s0ix_entered)
+				pmu_set_s0ix_complete();
+		}
+
+		__monitor((void *)&current_thread_info()->flags, 0, 0);
+		smp_mb();
+		if (!need_resched())
+			__mwait(eax, ecx);
+
+		atomic_dec(&nr_cpus_in_c6);
+		/* During s0ix exit inform scu that OS
+		 * has exited. In case scu is still waiting
+		 * for ack c6 trigger, it would exit out
+		 * of the ack-c6 timeout loop
+		 */
+		pmu_set_s0ix_complete();
+	}
+
+	start_critical_timings();
+
+	kt_after = ktime_get_real();
+	usec_delta = ktime_to_us(ktime_sub(kt_after, kt_before));
+
+	local_irq_enable();
+
+	clockevents_notify(CLOCK_EVT_NOTIFY_BROADCAST_EXIT, &cpu);
+
+	/* In case of demotion to S0i1/lpmp3 update last_state */
+	if (s0ix_entered) {
+		if (s0ix_state == MID_S0I1_STATE)
+			dev->last_state = &dev->states[S0I1_STATE_IDX];
+		else if (s0ix_state == MID_LPMP3_STATE)
+			dev->last_state = &dev->states[LPMP3_STATE_IDX];
+	} else
+		dev->last_state = &dev->states[C6_STATE_IDX];
+
+	return usec_delta;
+}
 #endif
 
 /**
@@ -319,6 +495,12 @@ static int intel_idle(struct cpuidle_device *dev, struct cpuidle_state *state)
 	return usec_delta;
 }
 
+int intel_mid_idle(struct cpuidle_device *dev, struct cpuidle_state *state)
+{
+	return 0;
+}
+
+#if 0
 /**
  * intel_mid_idle	-	Idle a MID device
  * @dev: cpuidle_device
@@ -358,7 +540,7 @@ int intel_mid_idle(struct cpuidle_device *dev, struct cpuidle_state *state)
 			eax = C6_HINT;
 			if (!atomic_add_unless(&nr_cpus_in_c6, 0,
 						num_online_cpus()-1))
-				s0ix_entered = mfld_s0i3_enter();
+				s0ix_entered = mfld_s0ix_enter();
 		}
 #endif
 		/* Conventional MWAIT */
@@ -371,7 +553,7 @@ int intel_mid_idle(struct cpuidle_device *dev, struct cpuidle_state *state)
 		}
 #ifdef CONFIG_X86_MDFLD
 		if (s0ix_entered)
-			pmu_enable_forward_msi();
+			pmu_set_s0ix_complete();
 #endif
 	}
 
@@ -386,6 +568,7 @@ int intel_mid_idle(struct cpuidle_device *dev, struct cpuidle_state *state)
 
 	return usec_delta;
 }
+#endif
 
 static void __setup_broadcast_timer(void *arg)
 {
@@ -514,7 +697,7 @@ static int intel_idle_probe(void)
 #endif
 	case 0x27:	/* 39 - Penwell Atom Processor */
 	case 0x35:	/* 53 - Cloverview Atom Processor */
-		cpuidle_state_table = mrst_cstates;
+		cpuidle_state_table = mfld_cstates;
 		auto_demotion_disable_flags = ATM_LNC_C6_AUTO_DEMOTE;
 		break;
 
@@ -561,6 +744,54 @@ static void intel_idle_cpuidle_devices_uninit(void)
 	free_percpu(intel_idle_cpuidle_devices);
 	return;
 }
+
+static unsigned int get_target_residency(unsigned int cstate)
+{
+	unsigned int t_sleep = cpuidle_state_table
+						[cstate].target_residency;
+	unsigned int prev_idx = cpuidle_state_table
+						[cstate].prev_state_idx;
+
+	/* if prev_idx not defined assume prev */
+	if (!prev_idx)
+		prev_idx = cstate-1;
+
+	/* calculate target_residency only if not defined already */
+	if (!t_sleep) {
+		unsigned int p_active = cpuidle_state_table[0].power_usage;
+
+		unsigned int prev_state_power = cpuidle_state_table
+							[prev_idx].power_usage;
+		unsigned int curr_state_power = cpuidle_state_table
+							[cstate].power_usage;
+		unsigned int prev_state_lat = cpuidle_state_table
+							[prev_idx].exit_latency;
+		unsigned int curr_state_lat = cpuidle_state_table
+							[cstate].exit_latency;
+
+		if (curr_state_power && prev_state_power && p_active &&
+		    prev_state_lat && curr_state_lat &&
+		    (curr_state_lat > prev_state_lat) &&
+		    (prev_state_power > curr_state_power)) {
+
+			t_sleep =
+			(p_active * (curr_state_lat - prev_state_lat) +
+			(prev_state_lat * prev_state_power) -
+			(curr_state_lat * curr_state_power)) /
+			(prev_state_power - curr_state_power);
+
+			/* round-up target_residency */
+			t_sleep++;
+		}
+	}
+
+	WARN_ON(!t_sleep);
+
+	pr_debug(PREFIX "cpuidle: target_residency[%d]= %d\n", cstate, t_sleep);
+
+	return t_sleep;
+}
+
 /*
  * intel_idle_cpuidle_devices_init()
  * allocate, initialize, register cpuidle_devices
@@ -606,12 +837,33 @@ static int intel_idle_cpuidle_devices_init(void)
 						" contact lenb@kernel.org",
 					boot_cpu_data.x86_model, cstate);
 				continue;
+			} else if (cstate >= 6) {
+				switch (boot_cpu_data.x86_model) {
+				case 0x1C:	/* 28 - Atom Processor */
+				case 0x26:	/* 38 - Lincroft Atom  */
+					if (cstate == 6)
+						cpuidle_state_table[cstate]
+							.enter = intel_idle;
+					else
+						continue;
+				break;
+#ifndef CONFIG_X86_MDFLD
+				case 0x27:	/* 39 - Penwell Atom variant */
+					if (cstate > 6)
+						continue;
+				break;
+#endif
+				}
 			}
 
 			if ((cstate > 2) &&
 				!boot_cpu_has(X86_FEATURE_NONSTOP_TSC))
 				mark_tsc_unstable("TSC halts in idle"
 					" states deeper than C2");
+
+			/* Calculate target_residency if power_usage is given */
+			cpuidle_state_table[cstate].target_residency =
+						get_target_residency(cstate);
 
 			dev->states[dev->state_count] =	/* structure copy */
 				cpuidle_state_table[cstate];
