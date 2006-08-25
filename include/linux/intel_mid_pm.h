@@ -47,6 +47,18 @@
 #define C4_HINT	(0x30)
 #define C6_HINT	(0x52)
 
+#define CSTATE_EXIT_LATENCY_C1	 1
+#define CSTATE_EXIT_LATENCY_C2	 20
+#define CSTATE_EXIT_LATENCY_C4	 100
+#define CSTATE_EXIT_LATENCY_C6	 140
+
+/* Since entry latency is substantial
+ * put exit_latency = entry+exit latency
+ */
+#define CSTATE_EXIT_LATENCY_LPMP3 1040
+#define CSTATE_EXIT_LATENCY_S0i1 1040
+#define CSTATE_EXIT_LATENCY_S0i3 5000
+
 #ifdef CONFIG_X86_MDFLD
 
 #define PMU1_MAX_PENWELL_DEVS   8
@@ -54,12 +66,7 @@
 #define PMU1_MAX_MRST_DEVS   2
 #define PMU2_MAX_MRST_DEVS   15
 #define MAX_DEVICES	(PMU1_MAX_PENWELL_DEVS + PMU2_MAX_PENWELL_DEVS)
-#define WAKE_CAPABLE	0x80000000
 #define PMU_MAX_LSS_SHARE 4
-#define AUTO_CLK_GATE_VALUE	0x555551
-#define SUB_SYS_D0I2_VALUE	0xaaaaaa
-#define WAKE_ENABLE_VALUE	0x4786
-#define SUSPEND_GFX             0xc
 
 /* Error codes for pmu */
 #define	PMU_SUCCESS			0
@@ -72,75 +79,29 @@
 #define	SET_LPAUDIO			4
 #define	SET_AOAC_S0i2			7
 
-struct pci_dev_info {
-	u8 ss_pos;
-	u8 ss_idx;
-	u8 pmu_num;
+#define MID_S0I1_STATE         0x1
+#define MID_LPMP3_STATE        0x3
+#define MID_S0I3_STATE         0x7
+#define MID_S0IX_STATE         0xf
+#define MID_S3_STATE           0x1f
 
-	u32 log_id;
-	u32 cap;
-	struct pci_dev *dev_driver[PMU_MAX_LSS_SHARE];
-	pci_power_t dev_power_state[PMU_MAX_LSS_SHARE];
-};
+/* combinations */
+#define MID_LPI1_STATE         0x1f
+#define MID_LPI3_STATE         0x7f
+#define MID_I1I3_STATE         0xff
 
-struct wk_data {
-	u32 word0;
-	u32 word1;
-};
+#define REMOVE_LP_FROM_LPIX    4
 
-union wake_config {
-	struct wk_data data;
-	u64  long_word;
-};
+/* Power number for MID_POWER */
+#define C0_POWER_USAGE         450
+#define C6_POWER_USAGE         200
+#define LPMP3_POWER_USAGE      130
+#define S0I1_POWER_USAGE       50
+#define S0I3_POWER_USAGE       31
 
-struct pmu_wake_ss_states {
-	unsigned long wake_enable[2];
-	unsigned long pmu1_wake_states;
-	unsigned long pmu2_wake_states[4];
-};
-
-struct pmu_ss_states {
-	unsigned long pmu1_states;
-	unsigned long pmu2_states[4];
-};
-
-struct pmu_suspend_config {
-	struct pmu_ss_states ss_state;
-	struct pmu_wake_ss_states wake_state;
-};
-
-enum pmu_number {
-	PMU_NUM_1,
-	PMU_NUM_2,
-	PMU_MAX_DEVS
-};
-
-enum pmu_ss_state {
-	SS_STATE_D0I0 = 0,
-	SS_STATE_D0I1 = 1,
-	SS_STATE_D0I2 = 2,
-	SS_STATE_D0I3 = 3
-};
-
-/* PMU event */
-#define	PMU_SUBSYS_WAKE		0
-#define PMU_CMD_SUCCESS		1
-#define	PMU_CMD_ERROR		2
-#define PMU_CMD_NO_C6_ERROR	3
-
-#define EVENT_HANDLER_PATH	"/etc/pmu/pmu_event_handler"
-
-#define C7_HINT	(0x200)
-#define C8_HINT	(0x201)
-
-#define MID_S0I1_STATE		1
-#define MID_S0I3_STATE		3
-#define MID_S0IX_STATE		4
-
-extern int mfld_s0i1_enter(void);
-extern int mfld_s0i3_enter(void);
+extern int mfld_s0ix_enter(int);
 extern int get_target_platform_state(void);
-extern void pmu_enable_forward_msi(void);
+extern void pmu_set_s0ix_complete(void);
 extern unsigned long pmu_get_cstate(unsigned long eax);
 extern int pmu_nc_set_power_state
 	(int islands, int state_type, int reg_type);
@@ -148,20 +109,27 @@ extern void mfld_shutdown(void);
 
 #else
 
-#define TEMP_DTS_ID     43
-
 /*
  * If CONFIG_X86_MDFLD is not defined
  * fall back to C6
  */
-#define C7_HINT	C6_HINT
-#define C8_HINT	C6_HINT
+#define MID_S0I1_STATE         C6_HINT
+#define MID_LPMP3_STATE        C6_HINT
+#define MID_S0I3_STATE         C6_HINT
+
+/* Power usage unknown if MID_POWER not defined */
+#define C0_POWER_USAGE         0
+#define C6_POWER_USAGE         0
+#define LPMP3_POWER_USAGE      0
+#define S0I1_POWER_USAGE       0
+#define S0I3_POWER_USAGE       0
+
+#define TEMP_DTS_ID     43
 
 static inline int pmu_nc_set_power_state
 	(int islands, int state_type, int reg_type) { return 0; }
 
-static unsigned long pmu_get_cstate(unsigned long eax) { return eax; }
-
+static inline void pmu_set_s0ix_complete(void) { return; }
 #endif /* #ifdef CONFIG_X86_MDFLD */
 
 #endif /* #ifndef INTEL_MID_PM_H */

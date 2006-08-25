@@ -27,40 +27,115 @@
 #include <linux/io.h>
 #include <linux/pci.h>
 #include <linux/semaphore.h>
+#include <linux/completion.h>
 #include <linux/spinlock.h>
 #include <linux/timer.h>
 #include <linux/jhash.h>
-#include <linux/intel_mid_pm.h>
 #include <linux/suspend.h>
 #include <linux/wakelock.h>
-
+#include <asm/mrst.h>
+#include <linux/intel_mid_pm.h>
 #include "pmu.h"
 
-static	struct pci_dev_index	pci_dev_hash[MID_PCI_INDEX_HASH_SIZE];
+static bool pmu_initialized;
 
+/* mid_pmu context structure */
+static struct mid_pmu_dev *mid_pmu_cxt;
 
-static int dev_init_state;
-static struct intel_mid_base_addr base_addr;
+/* Accessor function for pci_devs start */
+static inline struct pci_dev *get_mid_pci_drv(int lss_index, int i)
+{
+	return mid_pmu_cxt->pci_devs[lss_index].drv[i];
+}
 
-#ifdef CONFIG_HAS_WAKELOCK
-static struct wake_lock pmu_wake_lock;
-#endif
+static inline pci_power_t get_mid_pci_power_state(int lss_index, int i)
+{
+	return mid_pmu_cxt->pci_devs[lss_index].power_state[i];
+}
 
-static u32 apm_base;
-static u32 ospm_base;
-static spinlock_t nc_ready_lock;
+static inline u8 get_mid_pci_ss_idx(int lss_index)
+{
+	return mid_pmu_cxt->pci_devs[lss_index].ss_idx & SS_IDX_MASK;
+}
 
-/* debug counters */
-static u32 pmu_wait_done_calls;
-static u32 pmu_wait_done_udelays;
-static u32 pmu_wait_done_udelays_max;
+static inline u8 get_mid_pci_ss_pos(int lss_index)
+{
+	return mid_pmu_cxt->pci_devs[lss_index].ss_pos & SS_POS_MASK;
+}
+
+static inline u8 get_mid_pci_pmu_num(int lss_index)
+{
+	return mid_pmu_cxt->pci_devs[lss_index].pmu_num;
+}
+
+static inline void set_mid_pci_drv(int lss_index,
+					int i, struct pci_dev *pdev)
+{
+	mid_pmu_cxt->pci_devs[lss_index].drv[i] = pdev;
+}
+
+static inline void set_mid_pci_power_state(int lss_index,
+					int i, pci_power_t state)
+{
+	mid_pmu_cxt->pci_devs[lss_index].power_state[i] = state;
+}
+
+static inline void set_mid_pci_ss_idx(int lss_index, u8 ss_idx)
+{
+	mid_pmu_cxt->pci_devs[lss_index].ss_idx = ss_idx;
+}
+
+static inline void set_mid_pci_ss_pos(int lss_index, u8 ss_pos)
+{
+	mid_pmu_cxt->pci_devs[lss_index].ss_pos = ss_pos;
+}
+
+static inline void set_mid_pci_pmu_num(int lss_index, u8 pmu_num)
+{
+	mid_pmu_cxt->pci_devs[lss_index].pmu_num = pmu_num;
+}
+
+static inline void set_mid_pci_log_id(int lss_index, u32 log_id)
+{
+	mid_pmu_cxt->pci_devs[lss_index].log_id = log_id;
+}
+
+static inline void set_mid_pci_cap(int lss_index, u32 cap)
+{
+	mid_pmu_cxt->pci_devs[lss_index].cap = cap;
+}
+
+static inline u32 get_d0ix_stat(int lss_index, int state)
+{
+	return mid_pmu_cxt->d0ix_stat[lss_index][state];
+}
+
+static inline void inc_d0ix_stat(int lss_index, int state)
+{
+	mid_pmu_cxt->d0ix_stat[lss_index][state]++;
+}
+
+static inline void clear_d0ix_stats(void)
+{
+	memset(mid_pmu_cxt->d0ix_stat, 0, sizeof(mid_pmu_cxt->d0ix_stat));
+}
+/* Accessor functions for pci_devs end */
 
 /*
  * Locking strategy::
  *
- * pmu_pci_set_power_state() is synchronous -- it waits
- * for the SCU to be not-busy before and after commands.
- * Drivers may access devices immediately upon its return.
+ * Two semaphores are used to lock the global variables used in
+ * the code. The entry points in pmu driver are pmu_pci_set_power_state()
+ * and PMU interrupt handler contexts, so here is the flow of how
+ * the semaphores are used.
+ *
+ * In D0ix command case::
+ * set_power_state process context:
+ * set_power_state()->acquire_scu_ready_sem()->issue_interactive_cmd->
+ * wait_for_interactive_complete->release scu_ready sem
+ *
+ * PMU Interrupt context:
+ * pmu_interrupt_handler()->release interactive_complete->return
  *
  * In Idle handler case::
  * Idle context:
@@ -71,118 +146,203 @@ static u32 pmu_wait_done_udelays_max;
  * pmu_Interrupt_handler()->release scu_ready_sem->return
  *
  */
-static struct semaphore scu_ready_sem =
-		__SEMAPHORE_INITIALIZER(scu_ready_sem, 1);
 
-/* handle concurrent SMP invokations of pmu_pci_set_power_state() */
-static spinlock_t mrst_pmu_power_state_lock;
+static struct sram_save_info {
+	u32 start;
+	u32 end;
+	int s0i1_need;
+	void __iomem *ddr_iomap;
+	void *ddr_save;
+} sram_save_info_all[] = {
+	/* Data in these areas of SRAM will lost in S0i1/2/3 */
+#if 0
+	/* DAFCA is for debug purpose, so we dn't save/restore it */
+	{0xfffc0000, 0xfffd03ff, 1, 0, 0},	/* DAFCA */
 
-static int scu_comms_okay = 1;
+	/* Currently, we don't use below Hooks */
+	{0xfffd0400, 0xfffd7fff, 1, 0, 0},	/* OEM/Validation Hooks */
 
-#ifdef ENABLE_SCU_WATCHDOG
-/* scu semaphore watchdog timer */
-static void scu_watchdog_func(unsigned long arg)
-{
-	struct semaphore* sem = (struct semaphore *) arg;
-
-	WARN(1, "SCU watchdog triggered, dead lock occured,"
-					 "diabling SCU comms.\n");
-	scu_comms_okay = 0;
-
-	/* unblock the blocking thread */
-	up(sem);
-}
+	/* We assume below buffers are not used across s0i3 */
+	{0xfffd8000, 0xfffdbfff, 1, 0, 0},	/* IA UMIP update Buf */
+	{0xfffdc000, 0xfffdffff, 1, 0, 0},	/* Security UMIP update Buf */
 #endif
 
-/*
- * Acquire the said semaphore and activating a watchdog timer
- * that triggers after timeout, if we are able to acquire then
- * delete the timer.
- */
-static void down_scu_timed(struct semaphore *sem)
-{
-#ifdef ENABLE_SCU_WATCHDOG
-	struct timer_list *scu_watchdog_timer =
-			kmalloc(sizeof(struct timer_list), GFP_KERNEL);
+	/* Data in these areas of SRAM will lost in S0i2/3 */
+#if 0
+	/*
+	 * Audio driver/LPE engine reinitialize Audio SRAM region
+	 * after exiting from s0i3. We needn't save/restore it.
+	 */
+	{0xfffe1000, 0xffff0fff, 0, 0, 0},	/* Audio Buffer */
+	{0xffff1000, 0xffff2fff, 0, 0, 0},	/* Audio Mailbox */
+#endif
+	{0xffff3000, 0xffff306c, 0, 0, 0},	/* OSHOB */
+	{0xffff3400, 0xffff341f, 0, 0, 0},	/* OSNIBW */
+#if 0
+	/* SCU/Punit handles this, OS should treat this as reserved */
+	{0xffff6000, 0xffff6fff, 0, 0, 0},	/* P-unit/SCU mailbox */
 
-	if (!scu_watchdog_timer) {
-		WARN(1, "Malloc failed.\n");
-		return;
+	/* Debug only. SCU writes this space when feature is enabled */
+	{0xffff7000, 0xffff71ef, 0, 0, 0},	/* LP Residency Counters */
+
+	/* SCU initialize this region when powering on SRAM Bank#1 */
+	{0xffff7fb0, 0xffff7fbf, 0, 0, 0},	/* eMMC Mutex Register */
+#endif
+#if 0
+	/* Don't save/restore OTG as USB OTG driver takes care it */
+	{0xffff8000, 0xffffbfff, 0, 0, 0},	/* USB OTG */
+#endif
+};
+
+static inline void s0ix_sram_save(u32 s0ix)
+{
+	struct sram_save_info *p;
+	u32 len;
+	int i, index;
+
+	for (index = 0; index < ARRAY_SIZE(sram_save_info_all); index++) {
+		p = &sram_save_info_all[index];
+		if (((s0ix == MID_S0I1_STATE) || (s0ix == MID_LPMP3_STATE))
+							&& !p->s0i1_need)
+			continue;
+
+		len = ALIGN(p->end - p->start + 1, 4);
+		for (i = 0; i < len; i += 4)
+			*(unsigned int *)(p->ddr_save + i) =
+				readl(p->ddr_iomap + i);
+	}
+}
+
+static inline void s0ix_sram_restore(u32 s0ix)
+{
+	struct sram_save_info *p;
+	u32 len;
+	int i, index;
+
+	for (index = 0; index < ARRAY_SIZE(sram_save_info_all); index++) {
+		p = &sram_save_info_all[index];
+		if (((s0ix == MID_S0I1_STATE) || (s0ix == MID_LPMP3_STATE))
+							&& !p->s0i1_need)
+			continue;
+
+		len = ALIGN(p->end - p->start + 1, 4);
+		for (i = 0; i < len; i += 4)
+			writel(*(unsigned int *)(p->ddr_save + i),
+					p->ddr_iomap + i);
+	}
+}
+
+static void s0ix_sram_save_cleanup(void)
+{
+	struct sram_save_info *p;
+	int index;
+
+	for (index = 0; index < ARRAY_SIZE(sram_save_info_all); index++) {
+		p = &sram_save_info_all[index];
+		if (p->ddr_iomap) {
+			iounmap(p->ddr_iomap);
+			p->ddr_iomap = 0;
+		}
+
+		kfree(p->ddr_save);
+		p->ddr_save = 0;
+	}
+}
+
+static int s0ix_sram_save_init(void)
+{
+	int index, ret = 0;
+	u32 len;
+	struct sram_save_info *p;
+
+	for (index = 0; index < ARRAY_SIZE(sram_save_info_all); index++) {
+		p = &sram_save_info_all[index];
+		len = ALIGN(p->end - p->start + 1, 4);
+		p->ddr_iomap = ioremap_nocache(p->start, len);
+		if (!p->ddr_iomap) {
+			ret = -ENOMEM;
+			s0ix_sram_save_cleanup();
+			break;
+		}
+
+		p->ddr_save = kmalloc(len, GFP_KERNEL);
+		if (!p->ddr_save) {
+			ret = -ENOMEM;
+			s0ix_sram_save_cleanup();
+			break;
+		}
 	}
 
-	init_timer(scu_watchdog_timer);
-	scu_watchdog_timer->function	= scu_watchdog_func;
-	scu_watchdog_timer->data	= (unsigned long) sem;
-
-	/*10secs timeout*/
-	scu_watchdog_timer->expires	=
-				jiffies + msecs_to_jiffies(10 * 1000);
-	add_timer(scu_watchdog_timer);
-#endif
-
-	down(sem);
-
-#ifdef ENABLE_SCU_WATCHDOG
-	del_timer_sync(scu_watchdog_timer);
-	kfree(scu_watchdog_timer);
-#endif
+	return ret;
 }
 
-/* Device information for all the PCI devices present on SC */
-static struct pci_dev_info intel_mid_pci_devices[MAX_DEVICES];
-static int num_wakes[MAX_DEVICES];
-static int cmd_error_int;
-static u64 pmu_init_time;
-static struct mid_pmu_stats {
-	u64 err_count[3];
-	u64 count;
-	u64 time;
-	u64 last_entry;
-	u64 last_try;
-	u64 first_entry;
-} pmu_stats[SYS_STATE_S5];
-static enum sys_state  pmu_current_state;
+/* To CLEAR C6 offload Bit(LSB) in MSR 120 */
+static inline void clear_c6offload_bit(void)
+{
+	u32 msr_low, msr_high;
+
+	/* Read MSR_C6OFFLOAD_CTL_REG Res */
+	rdmsr(MSR_C6OFFLOAD_CTL_REG, msr_low, msr_high);
+	/* CLEAR LSB Corresponding to C6_OFFLOAD */
+	msr_low = msr_low & ~MSR_C6OFFLOAD_SET_LOW;
+	msr_high = msr_high & ~MSR_C6OFFLOAD_SET_HIGH;
+	wrmsr(MSR_C6OFFLOAD_CTL_REG, msr_low, msr_high);
+}
+
+/* To SET C6 offload Bit(LSB) in MSR 120 */
+static inline void set_c6offload_bit(void)
+{
+	u32 msr_low, msr_high;
+
+	/* Read MSR_C6OFFLOAD_CTL_REG Res */
+	rdmsr(MSR_C6OFFLOAD_CTL_REG, msr_low, msr_high);
+	/* SET LSB Corresponding to C6_OFFLOAD */
+	msr_low = msr_low | MSR_C6OFFLOAD_SET_LOW;
+	msr_high = msr_high | MSR_C6OFFLOAD_SET_HIGH;
+	wrmsr(MSR_C6OFFLOAD_CTL_REG, msr_low, msr_high);
+}
 
 static void pmu_stat_start(enum sys_state type)
 {
-	pmu_current_state = type;
-	pmu_stats[type].last_try = cpu_clock(smp_processor_id());
+	mid_pmu_cxt->pmu_current_state = type;
+	mid_pmu_cxt->pmu_stats[type].last_try = cpu_clock(smp_processor_id());
 }
 
 static void pmu_stat_end(void)
 {
-	enum sys_state type = pmu_current_state;
+	enum sys_state type = mid_pmu_cxt->pmu_current_state;
 
-	if (type > SYS_STATE_S0I0) {
-		pmu_stats[type].last_entry =
-			pmu_stats[type].last_try;
+	if (type > SYS_STATE_S0I0 && type < SYS_STATE_MAX) {
+		mid_pmu_cxt->pmu_stats[type].last_entry =
+			mid_pmu_cxt->pmu_stats[type].last_try;
 
 		/*if it is the first entry save the time*/
-		if (!pmu_stats[type].count)
-			pmu_stats[type].first_entry =
-				pmu_stats[type].last_entry;
+		if (!mid_pmu_cxt->pmu_stats[type].count)
+			mid_pmu_cxt->pmu_stats[type].first_entry =
+				mid_pmu_cxt->pmu_stats[type].last_entry;
 
-		pmu_stats[type].time +=
+		mid_pmu_cxt->pmu_stats[type].time +=
 			cpu_clock(smp_processor_id())
-			- pmu_stats[type].last_entry;
+			- mid_pmu_cxt->pmu_stats[type].last_entry;
 
-		pmu_stats[type].count++;
+		mid_pmu_cxt->pmu_stats[type].count++;
+
 	}
 
-	pmu_current_state = SYS_STATE_S0I0;
+	mid_pmu_cxt->pmu_current_state = SYS_STATE_S0I0;
 }
 
 static void pmu_stat_clear(void)
 {
-	pmu_current_state = SYS_STATE_S0I0;
+	mid_pmu_cxt->pmu_current_state = SYS_STATE_S0I0;
 }
 
 static void pmu_stat_error(u8 err_type)
 {
-	enum sys_state type = pmu_current_state;
+	enum sys_state type = mid_pmu_cxt->pmu_current_state;
 	u8 err_index;
 
-	if (type > SYS_STATE_S0I0) {
+	if (type > SYS_STATE_S0I0 && type < SYS_STATE_MAX) {
 		switch (err_type) {
 		case SUBSYS_POW_ERR_INT:
 			trace_printk("S0ix_POW_ERR_INT\n");
@@ -193,7 +353,7 @@ static void pmu_stat_error(u8 err_type)
 			err_index = 1;
 			break;
 		case NO_ACKC6_INT:
-			trace_printk("S0ix_ACKC6_INT\n");
+			trace_printk("S0ix_NO_ACKC6_INT\n");
 			err_index = 2;
 			break;
 		default:
@@ -202,10 +362,11 @@ static void pmu_stat_error(u8 err_type)
 		}
 
 		if (err_index < 3)
-			pmu_stats[type].err_count[err_index]++;
+			mid_pmu_cxt->pmu_stats[type].err_count[err_index]++;
 	}
 }
 
+#ifdef CONFIG_DEBUG_FS
 static void pmu_stat_seq_printf(struct seq_file *s, int type, char *typestr)
 {
 	unsigned long long t;
@@ -213,12 +374,12 @@ static void pmu_stat_seq_printf(struct seq_file *s, int type, char *typestr)
 	unsigned long time, init_2_now_time;
 
 	seq_printf(s, "%s\t%5llu\t%10llu\t%9llu\t%9llu\t", typestr,
-		 pmu_stats[type].count,
-		 pmu_stats[type].err_count[0],
-		 pmu_stats[type].err_count[1],
-		 pmu_stats[type].err_count[2]);
+		 mid_pmu_cxt->pmu_stats[type].count,
+		 mid_pmu_cxt->pmu_stats[type].err_count[0],
+		 mid_pmu_cxt->pmu_stats[type].err_count[1],
+		 mid_pmu_cxt->pmu_stats[type].err_count[2]);
 
-	t = pmu_stats[type].time;
+	t = mid_pmu_cxt->pmu_stats[type].time;
 	nanosec_rem = do_div(t, 1000000000);
 
 	/* convert time in secs */
@@ -227,18 +388,18 @@ static void pmu_stat_seq_printf(struct seq_file *s, int type, char *typestr)
 	seq_printf(s, "%5lu.%06lu\t",
 	   (unsigned long) t, nanosec_rem / 1000);
 
-	t = pmu_stats[type].last_entry;
+	t = mid_pmu_cxt->pmu_stats[type].last_entry;
 	nanosec_rem = do_div(t, 1000000000);
 	seq_printf(s, "%5lu.%06lu\t",
 	   (unsigned long) t, nanosec_rem / 1000);
 
-	t = pmu_stats[type].first_entry;
+	t = mid_pmu_cxt->pmu_stats[type].first_entry;
 	nanosec_rem = do_div(t, 1000000000);
 	seq_printf(s, "%5lu.%06lu\t",
 	   (unsigned long) t, nanosec_rem / 1000);
 
 	t =  cpu_clock(raw_smp_processor_id());
-	t -= pmu_init_time;
+	t -= mid_pmu_cxt->pmu_init_time;
 	nanosec_rem = do_div(t, 1000000000);
 
 	init_2_now_time =  (unsigned long) t;
@@ -246,6 +407,7 @@ static void pmu_stat_seq_printf(struct seq_file *s, int type, char *typestr)
 	/* for calculating percentage residency */
 	time = time * 100;
 	t = (u64) time;
+
 	/* take care of divide by zero */
 	if (init_2_now_time) {
 		remainder = do_div(t, init_2_now_time);
@@ -261,38 +423,42 @@ static void pmu_stat_seq_printf(struct seq_file *s, int type, char *typestr)
 
 	seq_printf(s, "%5lu.%03lu\n", time, (unsigned long) t);
 }
+#endif
 
 /*Experimentally enabling S0i3 as extended C-States*/
-static char s0ix[5] = "s0i3";
-static int extended_cstate_mode = MID_S0I3_STATE;
+static char s0ix[5] = "s0ix";
+static int extended_cstate_mode = MID_S0IX_STATE;
 static int set_extended_cstate_mode(const char *val, struct kernel_param *kp)
 {
 	char       valcp[5];
+	int cstate_mode;
+
 	strncpy(valcp, val, 5);
 	valcp[4] = '\0';
 
-#ifdef CONFIG_HAS_WAKELOCK
-	/* will also disable s0ix */
-	if (strcmp(valcp, "s3s3") == 0)
-		wake_unlock(&pmu_wake_lock);
-#endif
-
-	/* Acquire the scu_ready_sem */
-	down_scu_timed(&scu_ready_sem);
-
-	if (strcmp(valcp, "s0i3") == 0)
-		extended_cstate_mode = MID_S0I3_STATE;
-	else if (strcmp(valcp, "s0i1") == 0)
-		extended_cstate_mode = MID_S0I1_STATE;
+	if (strcmp(valcp, "s0i1") == 0)
+		cstate_mode = MID_S0I1_STATE;
+	else if (strcmp(valcp, "lmp3") == 0)
+		cstate_mode = MID_LPMP3_STATE;
+	else if (strcmp(valcp, "s0i3") == 0)
+		cstate_mode = MID_S0I3_STATE;
+	else if (strcmp(valcp, "i1i3") == 0)
+		cstate_mode = MID_I1I3_STATE;
+	else if (strcmp(valcp, "lpi1") == 0)
+		cstate_mode = MID_LPI1_STATE;
+	else if (strcmp(valcp, "lpi3") == 0)
+		cstate_mode = MID_LPI3_STATE;
 	else if (strcmp(valcp, "s0ix") == 0)
-		extended_cstate_mode = MID_S0IX_STATE;
+		cstate_mode = MID_S0IX_STATE;
 	else {
-		extended_cstate_mode = -1;
+		cstate_mode = 0;
 		strncpy(valcp, "none", 5);
 	}
 	strncpy(s0ix, valcp, 5);
 
-	up(&scu_ready_sem);
+	down(&mid_pmu_cxt->scu_ready_sem);
+	extended_cstate_mode = cstate_mode;
+	up(&mid_pmu_cxt->scu_ready_sem);
 
 	return 0;
 }
@@ -337,38 +503,10 @@ static int get_extended_cstate_mode(char *buffer, struct kernel_param *kp)
 module_param_call(s0ix, set_extended_cstate_mode,
 		get_extended_cstate_mode, NULL, 0644);
 MODULE_PARM_DESC(s0ix,
-		"setup extended c state s0ix mode [s0i3|s0i1|s0ix|none]");
+	"setup extended c state s0ix mode [s0i3|s0i1|lmp3|"
+				"i1i3|lpi1|lpi3|s0ix|none]");
 
-/* the device object */
-static struct pci_dev *pmu_dev;
-
-/*virtual memory address for PMU base returned by ioremap_nocache().*/
-static struct mid_pmu_dev intel_mid_pmu_base;
-
-#ifdef CONFIG_VIDEO_ATOMISP
-static int camera_off;
-#else
-static int camera_off = 1;
-#endif
-
-#ifdef GFX_ENABLE
-static int display_off;
-#else
-/* If Gfx is disabled
- * assume s0ix is not blocked
- * from gfx side
- */
-static int display_off = 1;
-#endif
-
-static int s0i1_possible;
-static int lpmp3_possible;
-static int s0i3_possible;
-static int c6_demoted;
-static int s0ix_entered;
-static u32 pmu1_max_devs, pmu2_max_devs, ss_per_reg;
-
-static int _pmu_issue_command(struct pmu_ss_states *pm_ssc, int mode,
+static int _pmu_issue_command(struct pmu_ss_states *pm_ssc, int mode, int ioc,
 		       int pmu_num);
 static void pmu_read_sss(struct pmu_ss_states *pm_ssc);
 static int _pmu2_wait_not_busy(void);
@@ -384,12 +522,58 @@ MODULE_DEVICE_TABLE(pci, mid_pm_ids);
 
 int get_target_platform_state(void)
 {
-	if (likely(scu_comms_okay &&
-		(extended_cstate_mode != -1) && display_off\
-		 && camera_off))
-		return extended_cstate_mode;
+	int ret = 0;
+	int possible;
 
-	return 0;
+	if (!pmu_initialized)
+		goto ret;
+
+	/* dont do s0ix if suspend in progress */
+	if (mid_pmu_cxt->suspend_started)
+		goto ret;
+
+	if (!mid_pmu_cxt->display_off || !mid_pmu_cxt->camera_off)
+		goto ret;
+
+	possible = mid_pmu_cxt->s0ix_possible;
+
+	switch (extended_cstate_mode) {
+	case MID_S0I1_STATE:
+	case MID_S0I3_STATE:
+	case MID_I1I3_STATE:
+		/* user asks s0i1/s0i3 then only
+		 * do s0i1/s0i3, dont do lpmp3
+		 */
+		if (possible == MID_S0IX_STATE)
+			ret = extended_cstate_mode & possible;
+		break;
+
+	case MID_LPMP3_STATE:
+		/* user asks lpmp3 then only
+		 * do lpmp3
+		 */
+		if (possible == MID_LPMP3_STATE)
+			ret = MID_LPMP3_STATE;
+		break;
+
+	case MID_LPI1_STATE:
+	case MID_LPI3_STATE:
+		/* user asks lpmp3/i1/i3 then only
+		 * do lpmp3/i1/i3
+		 */
+		if (possible == MID_LPMP3_STATE)
+			ret = MID_LPMP3_STATE;
+		else if (possible == MID_S0IX_STATE)
+			ret = extended_cstate_mode >> REMOVE_LP_FROM_LPIX;
+		break;
+
+	case MID_S0IX_STATE:
+		ret = possible;
+		break;
+	}
+
+ret:
+	return ret;
 }
 EXPORT_SYMBOL(get_target_platform_state);
 
@@ -398,7 +582,7 @@ static int _pmu_read_status(int pmu_num, int type)
 	u32 temp;
 	union pmu_pm_status result;
 
-	temp = readl(&pmu_reg->pm_sts);
+	temp = readl(&mid_pmu_cxt->pmu_reg->pm_sts);
 
 	/* extract the busy bit */
 	result.pmu_status_value = temp;
@@ -430,19 +614,18 @@ static int _pmu2_wait_not_busy(void)
 
 static void pmu_write_subsys_config(struct pmu_ss_states *pm_ssc)
 {
-	pr_debug("pmu_write_subsys_config: 0x%08lX.%08lX.%08lX.%08lX\n",
-		pm_ssc->pmu2_states[3], pm_ssc->pmu2_states[2],
-		pm_ssc->pmu2_states[1], pm_ssc->pmu2_states[0]);
-
 	/* South complex in Penwell has multiple registers for
 	 * PM_SSC, etc.
 	 */
-	writel(pm_ssc->pmu2_states[0], &pmu_reg->pm_ssc[0]);
+	writel(pm_ssc->pmu2_states[0], &mid_pmu_cxt->pmu_reg->pm_ssc[0]);
 
 	if (__mrst_cpu_chip == MRST_CPU_CHIP_PENWELL) {
-		writel(pm_ssc->pmu2_states[1], &pmu_reg->pm_ssc[1]);
-		writel(pm_ssc->pmu2_states[2], &pmu_reg->pm_ssc[2]);
-		writel(pm_ssc->pmu2_states[3], &pmu_reg->pm_ssc[3]);
+		writel(pm_ssc->pmu2_states[1],
+				&mid_pmu_cxt->pmu_reg->pm_ssc[1]);
+		writel(pm_ssc->pmu2_states[2],
+				&mid_pmu_cxt->pmu_reg->pm_ssc[2]);
+		writel(pm_ssc->pmu2_states[3],
+				&mid_pmu_cxt->pmu_reg->pm_ssc[3]);
 	}
 }
 
@@ -552,18 +735,24 @@ static int pmu_set_cfg_mode_params(struct cfg_mode_params
  * configuration commands to Firmware
  */
 static int pmu_send_set_config_command(union pmu_pm_set_cfg_cmd_t
-		     *command, enum sys_state state, int pmu_num)
+		     *command, u8 ioc, enum sys_state state, int pmu_num)
 {
+	/* parameter check */
+	if ((ioc != 1) && (ioc != 0)) {
+		pr_alert("invalid ioc bit\n");
+		return PMU_FAILED;
+	}
+
 	/* construct the command to send SET_CFG to particular PMU */
 	if (pmu_num == PMU_NUM_1) {
 		command->pmu1_params.cmd = SET_CFG_CMD;
-		command->pmu1_params.ioc = 0;
+		command->pmu1_params.ioc = ioc;
 		command->pmu1_params.mode_id = MODE_ID_MAGIC_NUM;
 		command->pmu1_params.rsvd = 0;
 	} else if (pmu_num == PMU_NUM_2) {
 		command->pmu2_params.d_param.cmd =
 		    SET_CFG_CMD;
-		command->pmu2_params.d_param.ioc = 0;
+		command->pmu2_params.d_param.ioc = ioc;
 		command->pmu2_params.d_param.mode_id =
 		    MODE_ID_MAGIC_NUM;
 
@@ -582,7 +771,12 @@ static int pmu_send_set_config_command(union pmu_pm_set_cfg_cmd_t
 		}
 	}
 
-	writel(command->pmu_pm_set_cfg_cmd_value, &pmu_reg->pm_cmd);
+	/* write the value of PM_CMD into particular PMU */
+	dev_dbg(&mid_pmu_cxt->pmu_dev->dev, "command being written %x\n", \
+	command->pmu_pm_set_cfg_cmd_value);
+
+	writel(command->pmu_pm_set_cfg_cmd_value,
+					&mid_pmu_cxt->pmu_reg->pm_cmd);
 
 	return 0;
 }
@@ -593,23 +787,26 @@ static int pmu_get_wake_source(void)
 	u32 wake0, wake1;
 	int i;
 	int source = INVALID_WAKE_SRC;
+	enum sys_state type = mid_pmu_cxt->pmu_current_state;
 
-	wake0 = readl(&pmu_reg->pm_wks[0]);
-	wake1 = readl(&pmu_reg->pm_wks[1]);
+	wake0 = readl(&mid_pmu_cxt->pmu_reg->pm_wks[0]);
+	wake1 = readl(&mid_pmu_cxt->pmu_reg->pm_wks[1]);
 
 	while (wake0) {
 		i = fls(wake0) - 1;
-		source = i + pmu1_max_devs;
-		num_wakes[source]++;
-		trace_printk("wake_from_lss%d\n", source - pmu1_max_devs);
+		source = i + mid_pmu_cxt->pmu1_max_devs;
+		mid_pmu_cxt->num_wakes[source][type]++;
+		trace_printk("wake_from_lss%d\n",
+				source - mid_pmu_cxt->pmu1_max_devs);
 		wake0 &= ~(1<<i);
 	}
 
 	while (wake1) {
 		i = fls(wake1) - 1;
-		source = i + 32 + pmu1_max_devs;
-		trace_printk("wake_from_lss%d\n", source - pmu1_max_devs);
-		num_wakes[source]++;
+		source = i + 32 + mid_pmu_cxt->pmu1_max_devs;
+		mid_pmu_cxt->num_wakes[source][type]++;
+		trace_printk("wake_from_lss%d\n",
+				source - mid_pmu_cxt->pmu1_max_devs);
 		wake1 &= ~(1<<i);
 	}
 
@@ -622,7 +819,7 @@ static int pmu_is_interrupt_pending(int pmu_num)
 	union pmu_pm_ics result;
 
 	/* read the pm interrupt status register */
-	temp = readl(&pmu_reg->pm_ics);
+	temp = readl(&mid_pmu_cxt->pmu_reg->pm_ics);
 	result.pmu_pm_ics_value = temp;
 
 	/* return the pm interrupt status int pending bit info */
@@ -634,10 +831,10 @@ static inline void pmu_clear_interrupt_pending(int pmu_num)
 	u32 temp;
 
 	/* read the pm interrupt status register */
-	temp = readl(&pmu_reg->pm_ics);
+	temp = readl(&mid_pmu_cxt->pmu_reg->pm_ics);
 
 	/* write into the PM_ICS register */
-	writel(temp, &pmu_reg->pm_ics);
+	writel(temp, &mid_pmu_cxt->pmu_reg->pm_ics);
 }
 
 static inline void pmu_enable_interrupt_from_pmu(int pmu_num)
@@ -646,13 +843,13 @@ static inline void pmu_enable_interrupt_from_pmu(int pmu_num)
 	union pmu_pm_ics result;
 
 	/* read the pm interrupt status register */
-	temp = readl(&pmu_reg->pm_ics);
+	temp = readl(&mid_pmu_cxt->pmu_reg->pm_ics);
 	result = (union pmu_pm_ics)temp;
 
 	result.pmu_pm_ics_parts.int_enable = 1;
 
 	/* enable the interrupts */
-	writel(result.pmu_pm_ics_value, &pmu_reg->pm_ics);
+	writel(result.pmu_pm_ics_value, &mid_pmu_cxt->pmu_reg->pm_ics);
 }
 
 static inline int pmu_read_interrupt_status(int pmu_num)
@@ -661,7 +858,7 @@ static inline int pmu_read_interrupt_status(int pmu_num)
 	union pmu_pm_ics result;
 
 	/* read the pm interrupt status register */
-	temp = readl(&pmu_reg->pm_ics);
+	temp = readl(&mid_pmu_cxt->pmu_reg->pm_ics);
 
 	result.pmu_pm_ics_value = temp;
 
@@ -677,143 +874,122 @@ static inline int pmu_read_interrupt_status(int pmu_num)
  * in SCU. We configure the wakeable devices & the
  * wake sub system states on exit from S0ix state
  */
-static inline int _mfld_s0ix_enter(u32 s0ix_value)
+int mfld_s0ix_enter(int s0ix_state)
 {
 	struct pmu_ss_states cur_pmsss;
+	int num_retry = 15000, ret = 0;
+	u32 s0ix_value, ssw_val;
 
-	/* If display status is 0 retry on next c6 */
-	if (unlikely((display_off == 0) || (camera_off == 0))) {
-		up(&scu_ready_sem);
+	/* check if we can acquire scu_ready_sem
+	 * if we are not able to then do a c6 */
+	if (down_trylock(&mid_pmu_cxt->scu_ready_sem))
 		goto ret;
-	}
 
 	/* If PMU is busy, we'll retry on next C6 */
 	if (unlikely(_pmu_read_status(PMU_NUM_2, PMU_BUSY_STATUS))) {
-		up(&scu_ready_sem);
+		up(&mid_pmu_cxt->scu_ready_sem);
 		goto ret;
 	}
 
 	/* setup the wake capable devices */
-	writel(intel_mid_pmu_base.ss_config->wake_state.wake_enable[0],
-			&pmu_reg->pm_wkc[0]);
-	writel(intel_mid_pmu_base.ss_config->wake_state.wake_enable[1],
-			&pmu_reg->pm_wkc[1]);
+	if (s0ix_state == MID_S3_STATE) {
+		writel(~IGNORE_S3_WKC0, &mid_pmu_cxt->pmu_reg->pm_wkc[0]);
+		writel(~IGNORE_S3_WKC1, &mid_pmu_cxt->pmu_reg->pm_wkc[1]);
+	} else {
+		writel(mid_pmu_cxt->ss_config->wake_state.wake_enable[0],
+		       &mid_pmu_cxt->pmu_reg->pm_wkc[0]);
+		writel(mid_pmu_cxt->ss_config->wake_state.wake_enable[1],
+		       &mid_pmu_cxt->pmu_reg->pm_wkc[1]);
+	}
 
 	/* Re-program the sub systems state on wakeup as the current SSS*/
 	pmu_read_sss(&cur_pmsss);
 
-	writel(cur_pmsss.pmu2_states[0], &pmu_reg->pm_wssc[0]);
-	writel(cur_pmsss.pmu2_states[1], &pmu_reg->pm_wssc[1]);
-	writel(cur_pmsss.pmu2_states[2], &pmu_reg->pm_wssc[2]);
-	writel(cur_pmsss.pmu2_states[3], &pmu_reg->pm_wssc[3]);
+	writel(cur_pmsss.pmu2_states[0], &mid_pmu_cxt->pmu_reg->pm_wssc[0]);
+	writel(cur_pmsss.pmu2_states[1], &mid_pmu_cxt->pmu_reg->pm_wssc[1]);
+	writel(cur_pmsss.pmu2_states[2], &mid_pmu_cxt->pmu_reg->pm_wssc[2]);
+	writel(cur_pmsss.pmu2_states[3], &mid_pmu_cxt->pmu_reg->pm_wssc[3]);
 
-	switch (s0ix_value) {
-	case S0I1_VALUE:
-		wrmsr(MSR_C6OFFLOAD_CTL_REG,
-			MSR_C6OFFLOAD_CLEAR_LOW, MSR_C6OFFLOAD_CLEAR_HIGH);
-		writel(S0I1_SSS0, &pmu_reg->pm_ssc[0]);
-		writel(S0I1_SSS1, &pmu_reg->pm_ssc[1]);
-		writel(S0I1_SSS2, &pmu_reg->pm_ssc[2]);
-		writel(S0I1_SSS3, &pmu_reg->pm_ssc[3]);
+	switch (s0ix_state) {
+	case MID_S0I1_STATE:
+		writel(S0I1_SSS0, &mid_pmu_cxt->pmu_reg->pm_ssc[0]);
+		writel(S0I1_SSS1, &mid_pmu_cxt->pmu_reg->pm_ssc[1]);
+		writel(S0I1_SSS2, &mid_pmu_cxt->pmu_reg->pm_ssc[2]);
+		writel(S0I1_SSS3, &mid_pmu_cxt->pmu_reg->pm_ssc[3]);
 		pmu_stat_start(SYS_STATE_S0I1);
+		s0ix_value = S0I1_VALUE;
 		break;
-
-	case LPMP3_VALUE:
-		wrmsr(MSR_C6OFFLOAD_CTL_REG,
-			MSR_C6OFFLOAD_CLEAR_LOW, MSR_C6OFFLOAD_CLEAR_HIGH);
-		writel(LPMP3_SSS0, &pmu_reg->pm_ssc[0]);
-		writel(LPMP3_SSS1, &pmu_reg->pm_ssc[1]);
-		writel(LPMP3_SSS2, &pmu_reg->pm_ssc[2]);
-		writel(LPMP3_SSS3, &pmu_reg->pm_ssc[3]);
+	case MID_LPMP3_STATE:
+		writel(LPMP3_SSS0, &mid_pmu_cxt->pmu_reg->pm_ssc[0]);
+		writel(LPMP3_SSS1, &mid_pmu_cxt->pmu_reg->pm_ssc[1]);
+		writel(LPMP3_SSS2, &mid_pmu_cxt->pmu_reg->pm_ssc[2]);
+		writel(LPMP3_SSS3, &mid_pmu_cxt->pmu_reg->pm_ssc[3]);
 		pmu_stat_start(SYS_STATE_S0I2);
+		s0ix_value = LPMP3_VALUE;
 		break;
-
-	case S0I3_VALUE:
-		writel(S0I3_SSS0, &pmu_reg->pm_ssc[0]);
-		writel(S0I3_SSS1, &pmu_reg->pm_ssc[1]);
-		writel(S0I3_SSS2, &pmu_reg->pm_ssc[2]);
-		writel(S0I3_SSS3, &pmu_reg->pm_ssc[3]);
+	case MID_S0I3_STATE:
+		writel(S0I3_SSS0, &mid_pmu_cxt->pmu_reg->pm_ssc[0]);
+		writel(S0I3_SSS1, &mid_pmu_cxt->pmu_reg->pm_ssc[1]);
+		writel(S0I3_SSS2, &mid_pmu_cxt->pmu_reg->pm_ssc[2]);
+		writel(S0I3_SSS3, &mid_pmu_cxt->pmu_reg->pm_ssc[3]);
 		pmu_stat_start(SYS_STATE_S0I3);
+		s0ix_value = S0I3_VALUE;
 		break;
+	case MID_S3_STATE:
+		writel(S0I3_SSS0, &mid_pmu_cxt->pmu_reg->pm_ssc[0]);
+		writel(S0I3_SSS1, &mid_pmu_cxt->pmu_reg->pm_ssc[1]);
+		writel(S0I3_SSS2, &mid_pmu_cxt->pmu_reg->pm_ssc[2]);
+		writel(S0I3_SSS3, &mid_pmu_cxt->pmu_reg->pm_ssc[3]);
+		pmu_stat_start(SYS_STATE_S3);
+		s0ix_value = S0I3_VALUE;
+		break;
+	default:
+		BUG_ON(1);
+	}
+
+	clear_c6offload_bit();
+
+	s0ix_sram_save(s0ix_state);
+
+	/* no need to proceed if schedule pending */
+	if (unlikely(need_resched())) {
+		pmu_stat_clear();
+		up(&mid_pmu_cxt->scu_ready_sem);
+		goto ret;
 	}
 
 	/* issue a command to SCU */
-	writel(s0ix_value, &pmu_reg->pm_cmd);
-	return 1;
+	writel(s0ix_value, &mid_pmu_cxt->pmu_reg->pm_cmd);
 
-ret:
-	return 0;
-}
+	/* At this point we have committed an S0ix command
+	 * will have to wait for the SCU s0ix complete
+	 * intertupt to proceed further.
+	 */
 
-int mfld_s0i1_enter(void)
-{
-	/* check if we can acquire scu_ready_sem
-	 * if we are not able to then do a c6 */
-	if (down_trylock(&scu_ready_sem))
-		goto ret;
+	mid_pmu_cxt->s0ix_entered = s0ix_state;
 
-	if (!s0i1_possible && !lpmp3_possible) {
-		up(&scu_ready_sem);
-		goto ret;
-	}
-
-	s0ix_entered =
-		_mfld_s0ix_enter(s0i1_possible ? S0I1_VALUE : LPMP3_VALUE);
-
-ret:
-	return s0ix_entered;
-}
-EXPORT_SYMBOL(mfld_s0i1_enter);
-
-int mfld_s0i3_enter(void)
-{
-	u32 ssw_val = 0;
-	int num_retry = 15000;
-	int status = 0;
-
-	/* skip S0i3 if SCU is not okay */
-	if (unlikely(!scu_comms_okay))
-		goto ret;
-
-	/* check if we can acquire scu_ready_sem
-	 * if we are not able to then do a c6 */
-	if (down_trylock(&scu_ready_sem))
-		goto ret;
-
-	if (!s0i3_possible) {
-		up(&scu_ready_sem);
-		goto ret;
-	}
-
-	s0ix_entered = _mfld_s0ix_enter(S0I3_VALUE);
-
-	/* If s0i3 command is issued
-	 * then wait for c6 sram offload
-	 * to complete */
-	if (s0ix_entered) {
+	if (s0ix_value == S0I3_VALUE) {
 		do {
-			ssw_val = readl(base_addr.offload_reg);
-
+			ssw_val = readl(mid_pmu_cxt->base_addr.offload_reg);
 			if ((ssw_val & C6OFFLOAD_BIT_MASK) ==  C6OFFLOAD_BIT)
 				break;
-
 		} while (num_retry--);
 
-		/* enable c6Offload only if write access bit is set
-		 * if not then we will demote c6 to a c4 */
-		if (likely((ssw_val & C6OFFLOAD_BIT_MASK) ==  C6OFFLOAD_BIT)) {
-			wrmsr(MSR_C6OFFLOAD_CTL_REG,
-				MSR_C6OFFLOAD_SET_LOW, MSR_C6OFFLOAD_SET_HIGH);
-			status = 1;
-		} else {
-			pmu_stat_clear();
+		if (likely((ssw_val & C6OFFLOAD_BIT_MASK) ==  C6OFFLOAD_BIT))
+			set_c6offload_bit();
+		else {
 			WARN(1, "mid_pmu: error cpu offload bit not set.\n");
+			pmu_stat_clear();
+
+			goto ret;
 		}
 	}
+	ret = s0ix_state;
+
 ret:
-	return status;
+	return ret;
 }
-EXPORT_SYMBOL(mfld_s0i3_enter);
+EXPORT_SYMBOL(mfld_s0ix_enter);
 
 /**
  * pmu_sc_irq - pmu driver interrupt handler
@@ -837,7 +1013,7 @@ static irqreturn_t pmu_sc_irq(int irq, void *ignored)
 	/* read the interrupt status */
 	status = pmu_read_interrupt_status(PMU_NUM_2);
 	if (unlikely(status == PMU_FAILED))
-		dev_dbg(&pmu_dev->dev, "Invalid interrupt source\n");
+		dev_dbg(&mid_pmu_cxt->pmu_dev->dev, "Invalid interrupt source\n");
 
 	switch (status) {
 	case INVALID_INT:
@@ -848,7 +1024,7 @@ static irqreturn_t pmu_sc_irq(int irq, void *ignored)
 		break;
 
 	case CMD_ERROR_INT:
-		cmd_error_int++;
+		mid_pmu_cxt->cmd_error_int++;
 		break;
 
 	case SUBSYS_POW_ERR_INT:
@@ -859,53 +1035,45 @@ static irqreturn_t pmu_sc_irq(int irq, void *ignored)
 
 	case WAKE_RECEIVED_INT:
 		(void)pmu_get_wake_source();
+		pmu_stat_end();
 		break;
 	}
 
-	if (status == WAKE_RECEIVED_INT)
-		pmu_stat_end();
-	else
-		pmu_stat_clear();
-
-	wrmsr(MSR_C6OFFLOAD_CTL_REG,
-		MSR_C6OFFLOAD_CLEAR_LOW, MSR_C6OFFLOAD_CLEAR_HIGH);
+	pmu_stat_clear();
 
 	/* clear the interrupt pending bit */
 	pmu_clear_interrupt_pending(PMU_NUM_2);
 
-	s0ix_entered = 0;
+	/*
+	 * In case of interactive command
+	 * let the waiting set_power_state()
+	 * release scu_ready_sem
+	 */
+	if (mid_pmu_cxt->interactive_cmd_sent) {
+		mid_pmu_cxt->interactive_cmd_sent = 0;
 
-	/* S0ix case release it */
-	up(&scu_ready_sem);
+		/* unblock set_power_state() */
+		complete(&mid_pmu_cxt->set_mode_complete);
+	} else {
+		s0ix_sram_restore(mid_pmu_cxt->s0ix_entered);
+
+		mid_pmu_cxt->s0ix_entered = 0;
+
+		/* S0ix case release it */
+		up(&mid_pmu_cxt->scu_ready_sem);
+	}
 
 	status = IRQ_HANDLED;
 ret_no_clear:
 	return status;
 }
 
-void pmu_enable_forward_msi(void)
+void pmu_set_s0ix_complete(void)
 {
-	writel(0, &pmu_reg->pm_msic);
+	if (unlikely(mid_pmu_cxt->s0ix_entered))
+		writel(0, &mid_pmu_cxt->pmu_reg->pm_msic);
 }
-EXPORT_SYMBOL(pmu_enable_forward_msi);
-
-unsigned long pmu_get_cstate(unsigned long eax)
-{
-	unsigned long state = eax;
-
-	/* If we get C6 in between s0ix, it should
-	 * be demoted to C4 */
-	if ((s0ix_entered) && (eax == C6_HINT)) {
-		state = C4_HINT;
-		c6_demoted++;
-	} else if ((eax == C7_HINT) || (eax == C8_HINT)) {
-		/* for S0ix choose C6 */
-		state = C6_HINT;
-	}
-
-	return state;
-}
-EXPORT_SYMBOL(pmu_get_cstate);
+EXPORT_SYMBOL(pmu_set_s0ix_complete);
 
 static inline u32 find_index_in_hash(struct pci_dev *pdev, int *found)
 {
@@ -922,14 +1090,14 @@ static inline u32 find_index_in_hash(struct pci_dev *pdev, int *found)
 	*found = 0;
 
 	for (i = 0; i < MID_PCI_INDEX_HASH_SIZE; i++) {
-		if (likely(pci_dev_hash[h_index].pdev == pdev)) {
+		if (likely(mid_pmu_cxt->pci_dev_hash[h_index].pdev == pdev)) {
 			*found = 1;
 			break;
 		}
 
 		/* assume no deletions, hence there shouldn't be any
 		 * gaps ie., NULL's */
-		if (unlikely(pci_dev_hash[h_index].pdev == NULL)) {
+		if (unlikely(mid_pmu_cxt->pci_dev_hash[h_index].pdev == NULL)) {
 			/* found NULL, that means we wont have
 			 * it in hash */
 			break;
@@ -957,7 +1125,7 @@ static int get_pci_to_pmu_index(struct pci_dev *pdev)
 	h_index = find_index_in_hash(pdev, &found);
 
 	if (found)
-		return (int)pci_dev_hash[h_index].index;
+		return (int)mid_pmu_cxt->pci_dev_hash[h_index].index;
 
 	/* if not found, h_index would be where
 	 * we can insert this */
@@ -992,27 +1160,32 @@ static int get_pci_to_pmu_index(struct pci_dev *pdev)
 			(base_class == PCI_BASE_CLASS_MULTIMEDIA) &&
 			(sub_class == ISP_SUB_CLASS))
 				index = MFLD_ISP_POS;
-	else if (type)
-		index = pmu1_max_devs + ss;
+	else if (type) {
+		WARN_ON(ss >= MAX_LSS_POSSIBLE);
+		index = mid_pmu_cxt->pmu1_max_devs + ss;
+	}
 
 	if (index != PMU_FAILED) {
 		/* insert into hash table */
-		pci_dev_hash[h_index].pdev = pdev;
+		mid_pmu_cxt->pci_dev_hash[h_index].pdev = pdev;
 
 		/* assume index never exceeds 0xff */
 		WARN_ON(index > 0xFF);
 
-		pci_dev_hash[h_index].index = (u8)index;
+		mid_pmu_cxt->pci_dev_hash[h_index].index = (u8)index;
 
-		if (index < pmu1_max_devs) {
-			intel_mid_pci_devices[index].ss_idx = 0;
-			intel_mid_pci_devices[index].ss_pos = index;
-			intel_mid_pci_devices[index].pmu_num = PMU_NUM_1;
-		} else if (index >= pmu1_max_devs &&
-			   index < (pmu1_max_devs + pmu2_max_devs)) {
-			intel_mid_pci_devices[index].ss_idx = ss / ss_per_reg;
-			intel_mid_pci_devices[index].ss_pos = ss % ss_per_reg;
-			intel_mid_pci_devices[index].pmu_num = PMU_NUM_2;
+		if (index < mid_pmu_cxt->pmu1_max_devs) {
+			set_mid_pci_ss_idx(index, 0);
+			set_mid_pci_ss_pos(index, (u8)index);
+			set_mid_pci_pmu_num(index, PMU_NUM_1);
+		} else if (index >= mid_pmu_cxt->pmu1_max_devs &&
+			   index < (mid_pmu_cxt->pmu1_max_devs +
+						mid_pmu_cxt->pmu2_max_devs)) {
+			set_mid_pci_ss_idx(index,
+					(u8)(ss / mid_pmu_cxt->ss_per_reg));
+			set_mid_pci_ss_pos(index,
+					(u8)(ss % mid_pmu_cxt->ss_per_reg));
+			set_mid_pci_pmu_num(index, PMU_NUM_2);
 		} else {
 			index = PMU_FAILED;
 		}
@@ -1047,32 +1220,32 @@ static void mid_pci_find_info(struct pci_dev *pdev)
 
 	/* initialize gfx subsystem info */
 	if ((base_class == PCI_BASE_CLASS_DISPLAY) && !sub_class) {
-		intel_mid_pci_devices[index].log_id = index;
-		intel_mid_pci_devices[index].cap = PM_SUPPORT;
+		set_mid_pci_log_id(index, (u32)index);
+		set_mid_pci_cap(index, PM_SUPPORT);
 	} else if ((base_class == PCI_BASE_CLASS_MULTIMEDIA) &&
 		(sub_class == ISP_SUB_CLASS)) {
 		if (__mrst_cpu_chip == MRST_CPU_CHIP_PENWELL) {
-			intel_mid_pci_devices[index].log_id = index;
-			intel_mid_pci_devices[index].cap = PM_SUPPORT;
+			set_mid_pci_log_id(index, (u32)index);
+			set_mid_pci_cap(index, PM_SUPPORT);
 		} else if (ss && cap) {
-			intel_mid_pci_devices[index].log_id = ss & LOG_ID_MASK;
-			intel_mid_pci_devices[index].cap    = cap;
+			set_mid_pci_log_id(index, (u32)(ss & LOG_ID_MASK));
+			set_mid_pci_cap(index, cap);
 		}
 	} else if (ss && cap) {
-		intel_mid_pci_devices[index].log_id = ss & LOG_ID_MASK;
-		intel_mid_pci_devices[index].cap    = cap;
+		set_mid_pci_log_id(index, (u32)(ss & LOG_ID_MASK));
+		set_mid_pci_cap(index, cap);
 	}
 
 	for (i = 0; i < PMU_MAX_LSS_SHARE &&
-		intel_mid_pci_devices[index].dev_driver[i]; i++) {
+		get_mid_pci_drv(index, i); i++) {
 		/* do nothing */
 	}
 
 	WARN_ON(i >= PMU_MAX_LSS_SHARE);
 
 	if (i < PMU_MAX_LSS_SHARE) {
-		intel_mid_pci_devices[index].dev_driver[i] = pdev;
-		intel_mid_pci_devices[index].dev_power_state[i] = PCI_D3hot;
+		set_mid_pci_drv(index, i, pdev);
+		set_mid_pci_power_state(index, i, PCI_D3hot);
 	}
 }
 
@@ -1095,12 +1268,15 @@ static void pmu_enumerate(void)
 
 static void pmu_read_sss(struct pmu_ss_states *pm_ssc)
 {
-	pm_ssc->pmu2_states[0] = readl(&pmu_reg->pm_sss[0]);
+	pm_ssc->pmu2_states[0] = readl(&mid_pmu_cxt->pmu_reg->pm_sss[0]);
 
 	if (__mrst_cpu_chip == MRST_CPU_CHIP_PENWELL) {
-		pm_ssc->pmu2_states[1] = readl(&pmu_reg->pm_sss[1]);
-		pm_ssc->pmu2_states[2] = readl(&pmu_reg->pm_sss[2]);
-		pm_ssc->pmu2_states[3] = readl(&pmu_reg->pm_sss[3]);
+		pm_ssc->pmu2_states[1] =
+				readl(&mid_pmu_cxt->pmu_reg->pm_sss[1]);
+		pm_ssc->pmu2_states[2] =
+				readl(&mid_pmu_cxt->pmu_reg->pm_sss[2]);
+		pm_ssc->pmu2_states[3] =
+				readl(&mid_pmu_cxt->pmu_reg->pm_sss[3]);
 	} else {
 		pm_ssc->pmu2_states[1] = 0;
 		pm_ssc->pmu2_states[2] = 0;
@@ -1111,13 +1287,13 @@ static void pmu_read_sss(struct pmu_ss_states *pm_ssc)
 static bool check_s0ix_possible(struct pmu_ss_states *pmsss)
 {
 	if (((pmsss->pmu2_states[0] & S0IX_TARGET_SSS0_MASK) ==
-			S0IX_TARGET_SSS0) &&
-	    ((pmsss->pmu2_states[1] & S0IX_TARGET_SSS1_MASK) ==
-			S0IX_TARGET_SSS1) &&
-	    ((pmsss->pmu2_states[2] & S0IX_TARGET_SSS2_MASK) ==
-			S0IX_TARGET_SSS2) &&
-	    ((pmsss->pmu2_states[3] & S0IX_TARGET_SSS3_MASK) ==
-			S0IX_TARGET_SSS3))
+					S0IX_TARGET_SSS0) &&
+		((pmsss->pmu2_states[1] & S0IX_TARGET_SSS1_MASK) ==
+					S0IX_TARGET_SSS1) &&
+		((pmsss->pmu2_states[2] & S0IX_TARGET_SSS2_MASK) ==
+					S0IX_TARGET_SSS2) &&
+		((pmsss->pmu2_states[3] & S0IX_TARGET_SSS3_MASK) ==
+					S0IX_TARGET_SSS3))
 		return true;
 
 	return false;
@@ -1126,13 +1302,13 @@ static bool check_s0ix_possible(struct pmu_ss_states *pmsss)
 static bool check_lpmp3_possible(struct pmu_ss_states *pmsss)
 {
 	if (((pmsss->pmu2_states[0] & LPMP3_TARGET_SSS0_MASK) ==
-			LPMP3_TARGET_SSS0) &&
-	    ((pmsss->pmu2_states[1] & LPMP3_TARGET_SSS1_MASK) ==
-			LPMP3_TARGET_SSS1) &&
-	    ((pmsss->pmu2_states[2] & LPMP3_TARGET_SSS2_MASK) ==
-			LPMP3_TARGET_SSS2) &&
-	    ((pmsss->pmu2_states[3] & LPMP3_TARGET_SSS3_MASK) ==
-			LPMP3_TARGET_SSS3))
+					LPMP3_TARGET_SSS0) &&
+		((pmsss->pmu2_states[1] & LPMP3_TARGET_SSS1_MASK) ==
+					LPMP3_TARGET_SSS1) &&
+		((pmsss->pmu2_states[2] & LPMP3_TARGET_SSS2_MASK) ==
+					LPMP3_TARGET_SSS2) &&
+		((pmsss->pmu2_states[3] & LPMP3_TARGET_SSS3_MASK) ==
+					LPMP3_TARGET_SSS3))
 		return true;
 
 	return false;
@@ -1141,7 +1317,7 @@ static bool check_lpmp3_possible(struct pmu_ss_states *pmsss)
 static void pmu_set_s0ix_possible(int state)
 {
 	/* assume S0ix not possible */
-	s0i1_possible = lpmp3_possible = s0i3_possible = 0;
+	mid_pmu_cxt->s0ix_possible = 0;
 
 	if (state != PCI_D0) {
 		struct pmu_ss_states cur_pmsss;
@@ -1149,20 +1325,12 @@ static void pmu_set_s0ix_possible(int state)
 		pmu_read_sss(&cur_pmsss);
 
 		if (likely(check_s0ix_possible(&cur_pmsss)))
-			s0i1_possible = s0i3_possible = 1;
+			mid_pmu_cxt->s0ix_possible = MID_S0IX_STATE;
 		else if (check_lpmp3_possible(&cur_pmsss))
-			lpmp3_possible = 1;
+			mid_pmu_cxt->s0ix_possible = MID_LPMP3_STATE;
 	}
-
-#ifdef CONFIG_HAS_WAKELOCK
-#ifdef S0I3_POSSIBLE_WAKELOCK
-	if (s0i3_possible && wake_lock_active(&pmu_wake_lock))
-		wake_unlock(&pmu_wake_lock);
-	if (!s0i3_possible && !wake_lock_active(&pmu_wake_lock))
-		wake_lock(&pmu_wake_lock);
-#endif
-#endif
 }
+
 /*
  * For all devices in this lss, we check what is the weakest power state
  *
@@ -1176,19 +1344,17 @@ static pci_power_t  pmu_pci_get_weakest_state_for_lss(int lss_index,
 	pci_power_t weakest = state;
 
 	for (i = 0; i < PMU_MAX_LSS_SHARE; i++) {
-		if (intel_mid_pci_devices[lss_index].dev_driver[i] == pdev)
-			intel_mid_pci_devices[lss_index].dev_power_state[i] =
-								state;
+		if (get_mid_pci_drv(lss_index, i) == pdev)
+			set_mid_pci_power_state(lss_index, i, state);
 
-		if (intel_mid_pci_devices[lss_index].dev_driver[i] &&
-			(intel_mid_pci_devices[lss_index].dev_power_state[i]
-			< weakest)) {
+		if (get_mid_pci_drv(lss_index, i) &&
+			(get_mid_pci_power_state(lss_index, i) < weakest)) {
 			dev_warn(&pdev->dev, "%s:%s prevented me to suspend...\n",
-				dev_name(&intel_mid_pci_devices[lss_index].dev_driver[i]->dev),
-				dev_driver_string(&intel_mid_pci_devices[lss_index].dev_driver[i]->dev));
+			    dev_name(&(get_mid_pci_drv(lss_index, i))->dev),
+			    dev_driver_string
+				(&(get_mid_pci_drv(lss_index, i))->dev));
 
-			weakest = intel_mid_pci_devices[lss_index].
-						dev_power_state[i];
+			weakest = get_mid_pci_power_state(lss_index, i);
 		}
 	}
 	return weakest;
@@ -1204,9 +1370,9 @@ static int pmu_pci_to_indexes(struct pci_dev *pdev, int *index,
 		return PMU_FAILED;
 
 	*index		= i;
-	*ss_pos		= intel_mid_pci_devices[i].ss_pos;
-	*ss_idx		= intel_mid_pci_devices[i].ss_idx;
-	*pmu_num	= intel_mid_pci_devices[i].pmu_num;
+	*ss_pos		= get_mid_pci_ss_pos(i);
+	*ss_idx		= get_mid_pci_ss_idx(i);
+	*pmu_num	= get_mid_pci_pmu_num(i);
 
 	return PMU_SUCCESS;
 }
@@ -1220,10 +1386,10 @@ static int wait_for_nc_pmcmd_complete(int verify_mask, int state_type
 
 	switch (reg_type) {
 	case APM_REG_TYPE:
-		addr = apm_base + APM_STS;
+		addr = mid_pmu_cxt->apm_base + APM_STS;
 		break;
 	case OSPM_REG_TYPE:
-		addr = ospm_base + OSPM_PM_SSS;
+		addr = mid_pmu_cxt->ospm_base + OSPM_PM_SSS;
 		break;
 	default:
 		return -EINVAL;
@@ -1271,14 +1437,14 @@ int pmu_nc_set_power_state(int islands, int state_type, int reg_type)
 	int i, lss, mask;
 	int ret = 0;
 
-	spin_lock_irqsave(&nc_ready_lock, flags);
+	spin_lock_irqsave(&mid_pmu_cxt->nc_ready_lock, flags);
 
 	switch (reg_type) {
 	case APM_REG_TYPE:
-		pwr_cnt = inl(apm_base + APM_STS);
+		pwr_cnt = inl(mid_pmu_cxt->apm_base + APM_STS);
 		break;
 	case OSPM_REG_TYPE:
-		pwr_cnt = inl(ospm_base + OSPM_PM_SSS);
+		pwr_cnt = inl(mid_pmu_cxt->ospm_base + OSPM_PM_SSS);
 		break;
 	default:
 		ret = -EINVAL;
@@ -1300,10 +1466,10 @@ int pmu_nc_set_power_state(int islands, int state_type, int reg_type)
 	if (pwr_mask != pwr_cnt) {
 		switch (reg_type) {
 		case APM_REG_TYPE:
-			outl(pwr_mask, apm_base + APM_CMD);
+			outl(pwr_mask, mid_pmu_cxt->apm_base + APM_CMD);
 			break;
 		case OSPM_REG_TYPE:
-			outl(pwr_mask, (ospm_base + OSPM_PM_SSC));
+			outl(pwr_mask, (mid_pmu_cxt->ospm_base + OSPM_PM_SSC));
 			break;
 		}
 
@@ -1312,39 +1478,17 @@ int pmu_nc_set_power_state(int islands, int state_type, int reg_type)
 	}
 
 unlock:
-	spin_unlock_irqrestore(&nc_ready_lock, flags);
+	spin_unlock_irqrestore(&mid_pmu_cxt->nc_ready_lock, flags);
 	return ret;
 }
 EXPORT_SYMBOL(pmu_nc_set_power_state);
 
-/* poll for maximum of 50ms us for busy bit to clear */
-static int pmu_wait_done(void)
-{
-	int udelays;
-
-	pmu_wait_done_calls++;
-
-	for (udelays = 0; udelays < 500; ++udelays) {
-		if (udelays > pmu_wait_done_udelays_max)
-			pmu_wait_done_udelays_max = udelays;
-
-		if (pmu_read_busy_status() == 0)
-			return 0;
-
-		udelay(100);
-		pmu_wait_done_udelays++;
-	}
-
-	WARN_ONCE(1, "SCU not done for 50ms");
-	return -EBUSY;
-}
-
 /**
- * mfld_pmu_pci_set_power_state - Callback function is used by all the PCI devices
+ * pmu_pci_set_power_state - Callback function is used by all the PCI devices
  *			for a platform  specific device power on/shutdown.
  *
  */
-int __ref mfld_pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t state)
+int __ref pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t state)
 {
 	int i;
 	u32 pm_cmd_val;
@@ -1352,27 +1496,20 @@ int __ref mfld_pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t state)
 	int sub_sys_pos, sub_sys_index;
 	int pmu_num;
 	struct pmu_ss_states cur_pmssc;
-	int status = 0;
+	int status;
 
-	/* while booting just ignore this callback from devices */
-	/* If SCU is not okay, nothing to do */
-	if (unlikely((dev_init_state == 0) || !scu_comms_okay))
-		return status;
+	/* Ignore callback from devices until we have initialized */
+	if (unlikely((!pmu_initialized)))
+		return 0;
 
 	/* Try to acquire the scu_ready_sem, if not
 	 * get blocked, until pmu_sc_irq() releases */
-
-if (in_interrupt()) {
-	dev_err(&pmu_dev->dev, "mfld_pmu_pci_set_power_state() called from interrupt context!\n");
-	return -1;
-}
-
-	down_scu_timed(&scu_ready_sem);
-
-	spin_lock(&mrst_pmu_power_state_lock);
+	down(&mid_pmu_cxt->scu_ready_sem);
+	mid_pmu_cxt->interactive_cmd_sent = 1;
 
 	status =
-	pmu_pci_to_indexes(pdev, &i, &pmu_num, &sub_sys_index,  &sub_sys_pos);
+		pmu_pci_to_indexes(pdev, &i, &pmu_num,
+				&sub_sys_index,  &sub_sys_pos);
 
 	if (status)
 		goto unlock;
@@ -1381,11 +1518,11 @@ if (in_interrupt()) {
 
 	/* store the display status */
 	if (i == GFX_LSS_INDEX)
-		display_off = (int)(state != PCI_D0);
+		mid_pmu_cxt->display_off = (int)(state != PCI_D0);
 
 	/*Update the Camera status per ISP Driver Suspended/Resumed */
 	if (i == MFLD_ISP_POS)
-		camera_off = (int)(state != PCI_D0);
+		mid_pmu_cxt->camera_off = (int)(state != PCI_D0);
 
 	if (pmu_num == PMU_NUM_2) {
 
@@ -1409,7 +1546,8 @@ if (in_interrupt()) {
 
 		if (state != PCI_D0) {
 			pm_cmd_val =
-		(pci_2_mfld_state(state) << (sub_sys_pos * BITS_PER_LSS));
+				(pci_2_mfld_state(state) <<
+					(sub_sys_pos * BITS_PER_LSS));
 
 			new_value |= pm_cmd_val;
 		}
@@ -1431,10 +1569,10 @@ if (in_interrupt()) {
 		 * flag is needed to distinguish between
 		 * S0ix vs interactive command in pmu_sc_irq()
 		 */
-		status = _pmu_issue_command(&cur_pmssc, SET_MODE, PMU_NUM_2);
+		status = _pmu_issue_command(&cur_pmssc, SET_MODE, 1, PMU_NUM_2);
 
 		if (unlikely(status != PMU_SUCCESS)) {
-			dev_dbg(&pmu_dev->dev,
+			dev_dbg(&mid_pmu_cxt->pmu_dev->dev,
 				 "Failed to Issue a PM command to PMU2\n");
 			goto unlock;
 		}
@@ -1446,18 +1584,22 @@ if (in_interrupt()) {
 		 * powered on in SCU.
 		 *
 		 */
-		pmu_wait_done();
+		wait_for_completion(&mid_pmu_cxt->set_mode_complete);
 
 		pmu_set_s0ix_possible(state);
+
+		/* update stats */
+		inc_d0ix_stat((i-mid_pmu_cxt->pmu1_max_devs),
+					pci_2_mfld_state(state));
 	}
 
 unlock:
-	spin_unlock(&mrst_pmu_power_state_lock);
-	up(&scu_ready_sem);
+	mid_pmu_cxt->interactive_cmd_sent = 0;
+	up(&mid_pmu_cxt->scu_ready_sem);
 	return status;
 }
 
-static int _pmu_issue_command(struct pmu_ss_states *pm_ssc, int mode,
+static int _pmu_issue_command(struct pmu_ss_states *pm_ssc, int mode, int ioc,
 			 int pmu_num)
 {
 	union pmu_pm_set_cfg_cmd_t command;
@@ -1471,19 +1613,20 @@ static int _pmu_issue_command(struct pmu_ss_states *pm_ssc, int mode,
 		return 0;
 
 	if (_pmu_read_status(PMU_NUM_2, PMU_BUSY_STATUS)) {
-		dev_dbg(&pmu_dev->dev, "PMU2 is busy, Operation not"
+		dev_dbg(&mid_pmu_cxt->pmu_dev->dev, "PMU2 is busy, Operation not"
 		"permitted\n");
 		return PMU_FAILED;
 	}
+
 
 	/* enable interrupts in PMU2 so that interrupts are
 	 * propagated when ioc bit for a particular set
 	 * command is set
 	 */
 	/* Enable the hardware interrupt */
-	tmp = readl(&pmu_reg->pm_ics);
+	tmp = readl(&mid_pmu_cxt->pmu_reg->pm_ics);
 	tmp |= 0x100;/* Enable interrupts */
-	writel(tmp, &pmu_reg->pm_ics);
+	writel(tmp, &mid_pmu_cxt->pmu_reg->pm_ics);
 
 	switch (mode) {
 	case SET_MODE:
@@ -1545,7 +1688,7 @@ static int _pmu_issue_command(struct pmu_ss_states *pm_ssc, int mode,
 	 *  for mode CM_IMMEDIATE & hence with No Trigger
 	 */
 	status =
-	pmu_send_set_config_command(&command, sys_state, PMU_NUM_2);
+	pmu_send_set_config_command(&command, ioc, sys_state, PMU_NUM_2);
 
 ret:
 	return status;
@@ -1559,14 +1702,14 @@ static int pmu_nc_get_power_state(int island, int reg_type)
 	int i, lss;
 	int ret = -EINVAL;
 
-	spin_lock_irqsave(&nc_ready_lock, flags);
+	spin_lock_irqsave(&mid_pmu_cxt->nc_ready_lock, flags);
 
 	switch (reg_type) {
 	case APM_REG_TYPE:
-		pwr_sts = inl(apm_base + APM_STS);
+		pwr_sts = inl(mid_pmu_cxt->apm_base + APM_STS);
 		break;
 	case OSPM_REG_TYPE:
-		pwr_sts = inl(ospm_base + OSPM_PM_SSS);
+		pwr_sts = inl(mid_pmu_cxt->ospm_base + OSPM_PM_SSS);
 		break;
 	default:
 		pr_err("%s: invalid argument 'island': %d.\n",
@@ -1583,7 +1726,7 @@ static int pmu_nc_get_power_state(int island, int reg_type)
 	}
 
 unlock:
-	spin_unlock_irqrestore(&nc_ready_lock, flags);
+	spin_unlock_irqrestore(&mid_pmu_cxt->nc_ready_lock, flags);
 	return ret;
 }
 
@@ -1625,12 +1768,12 @@ static void nc_device_state_show(struct seq_file *s, struct pci_dev *pdev)
 
 	if (PCI_SLOT(pdev->devfn) == DEV_GFX &&
 			PCI_FUNC(pdev->devfn) == FUNC_GFX) {
-		off = display_off;
+		off = mid_pmu_cxt->display_off;
 		islands_num = ISLANDS_GFX;
 		islands = &display_islands[0];
 	} else if (PCI_SLOT(pdev->devfn) == DEV_ISP &&
 			PCI_FUNC(pdev->devfn) == FUNC_ISP) {
-		off = camera_off;
+		off = mid_pmu_cxt->camera_off;
 		islands_num = ISLANDS_ISP;
 		islands = &camera_islands[0];
 	} else {
@@ -1660,12 +1803,10 @@ static int pmu_devices_state_show(struct seq_file *s, void *unused)
 	char *dstates[] = {"D0", "D0i1", "D0i2", "D0i3"};
 
 	/* Acquire the scu_ready_sem */
-	down_scu_timed(&scu_ready_sem);
-
-	if (_pmu2_wait_not_busy())
-		goto unlock;
-
+	down(&mid_pmu_cxt->scu_ready_sem);
+	_pmu2_wait_not_busy();
 	pmu_read_sss(&cur_pmsss);
+	up(&mid_pmu_cxt->scu_ready_sem);
 
 	seq_printf(s, "TARGET_CFG: ");
 	seq_printf(s, "SSS0:%08X ", S0IX_TARGET_SSS0_MASK);
@@ -1676,9 +1817,9 @@ static int pmu_devices_state_show(struct seq_file *s, void *unused)
 	seq_printf(s, "\n");
 	seq_printf(s, "CONDITION FOR S0I3: ");
 	seq_printf(s, "SSS0:%08X ", S0IX_TARGET_SSS0);
-	seq_printf(s, "SSS0:%08X ", S0IX_TARGET_SSS1);
-	seq_printf(s, "SSS0:%08X ", S0IX_TARGET_SSS2);
-	seq_printf(s, "SSS0:%08X ", S0IX_TARGET_SSS3);
+	seq_printf(s, "SSS1:%08X ", S0IX_TARGET_SSS1);
+	seq_printf(s, "SSS2:%08X ", S0IX_TARGET_SSS2);
+	seq_printf(s, "SSS3:%08X ", S0IX_TARGET_SSS3);
 
 	seq_printf(s, "\n");
 	seq_printf(s, "SSS: ");
@@ -1686,19 +1827,18 @@ static int pmu_devices_state_show(struct seq_file *s, void *unused)
 	for (i = 0; i < 4; i++)
 		seq_printf(s, "%08lX ", cur_pmsss.pmu2_states[i]);
 
-	if (!display_off)
+	if (!mid_pmu_cxt->display_off)
 		seq_printf(s, "display not suspended: blocking s0ix\n");
-	else if (!camera_off)
+	else if (!mid_pmu_cxt->camera_off)
 		seq_printf(s, "camera not suspended: blocking s0ix\n");
-	else if (s0i3_possible)
+	else if (mid_pmu_cxt->s0ix_possible & MID_S0IX_STATE)
 		seq_printf(s, "can enter s0i1 or s0i3\n");
-	else if (lpmp3_possible)
+	else if (mid_pmu_cxt->s0ix_possible & MID_LPMP3_STATE)
 		seq_printf(s, "can enter lpmp3\n");
 	else
 		seq_printf(s, "blocking s0ix\n");
 
-	seq_printf(s, "cmd_error_int count: %d\n", cmd_error_int);
-	seq_printf(s, "c6_demotion count: %d\n", c6_demoted);
+	seq_printf(s, "cmd_error_int count: %d\n", mid_pmu_cxt->cmd_error_int);
 
 	seq_printf(s,
 	"\tcount\tsybsys_pow\ts0ix_miss\tno_ack_c6\ttime (secs)\tlast_entry");
@@ -1746,27 +1886,22 @@ static int pmu_devices_state_show(struct seq_file *s, void *unused)
 			target_mask = 0;
 			break;
 		}
-		needed = ((target_mask & mask) != 0);
+		needed	= ((target_mask &  mask) != 0);
 
 		seq_printf(s, "pci %04x %04X %s %20s: lss:%02d reg:%d"
-			"mask:%08X wk:% 8d %s  %s\n",
+			"mask:%08X wk:%02d:%02d:%02d:%03d %s  %s\n",
 			pdev->vendor, pdev->device, dev_name(&pdev->dev),
 			dev_driver_string(&pdev->dev),
-			index-pmu1_max_devs, ss_idx, mask, num_wakes[index],
+			index - mid_pmu_cxt->pmu1_max_devs, ss_idx, mask,
+			mid_pmu_cxt->num_wakes[index][SYS_STATE_S0I1],
+			mid_pmu_cxt->num_wakes[index][SYS_STATE_S0I2],
+			mid_pmu_cxt->num_wakes[index][SYS_STATE_S0I3],
+			mid_pmu_cxt->num_wakes[index][SYS_STATE_S3],
 			dstates[val&3],
 			(needed && !val) ? "blocking s0ix" : "");
 
 	}
-	seq_printf(s, "pmu_wait_done_calls           %8d\n",
-			pmu_wait_done_calls);
-	seq_printf(s, "pmu_wait_done_udelays         %8d\n",
-			pmu_wait_done_udelays);
-	seq_printf(s, "pmu_wait_done_udelays_max     %8d\n",
-			pmu_wait_done_udelays_max);
 
-
-unlock:
-	up(&scu_ready_sem);
 	return 0;
 }
 
@@ -1784,23 +1919,22 @@ static ssize_t devices_state_write(struct file *file,
 	if (copy_from_user(buf, userbuf, buf_size))
 		return -EFAULT;
 
-	/* Acquire the scu_ready_sem */
-	down_scu_timed(&scu_ready_sem);
 
 	buf[buf_size] = 0;
 
 	if (((strlen("clear")+1) == buf_size) &&
 		!strncmp(buf, "clear", strlen("clear"))) {
-		memset(pmu_stats, 0,
-			(sizeof(struct mid_pmu_stats)*SYS_STATE_S5));
-		memset(num_wakes, 0, sizeof(int)*MAX_DEVICES);
-		cmd_error_int = c6_demoted = 0;
-		pmu_current_state = SYS_STATE_S0I0;
-		pmu_init_time =
+		down(&mid_pmu_cxt->scu_ready_sem);
+		memset(mid_pmu_cxt->pmu_stats, 0,
+					sizeof(mid_pmu_cxt->pmu_stats));
+		memset(mid_pmu_cxt->num_wakes, 0,
+					sizeof(mid_pmu_cxt->num_wakes));
+		mid_pmu_cxt->pmu_current_state = SYS_STATE_S0I0;
+		mid_pmu_cxt->pmu_init_time =
 			cpu_clock(raw_smp_processor_id());
+		clear_d0ix_stats();
+		up(&mid_pmu_cxt->scu_ready_sem);
 	}
-
-	up(&scu_ready_sem);
 
 	return buf_size;
 }
@@ -1866,7 +2000,7 @@ static struct lss_definition {
 	{"NA", "MISC", "AON Timers"},
 	{"NA", "PLL", "LFHPLL and Spread Spectrum"},
 	{"NA", "PLL", "USB PLL"},
-	{"Lss48", "Audio", " SSP2 (I2S2)"},
+	{"NA", "NA", "NA"},
 	{"NA", "Audio", "SLIMBUS CTL 1 (note 5)"},
 	{"NA", "Audio", "SLIMBUS CTL 2 (note 5)"},
 	{"Lss51", "Audio", "SSP0"},
@@ -1893,17 +2027,21 @@ static int show_pmu_lss_status(struct seq_file *s, void *unused)
 	unsigned long lss_status[4];
 	struct lss_definition *entry;
 
-	/* Acquire the scu_ready_sem */
-	down_scu_timed(&scu_ready_sem);
+	down(&mid_pmu_cxt->scu_ready_sem);
 
-	lss_status[0] = readl(&pmu_reg->pm_sss[0]);
-	lss_status[1] = readl(&pmu_reg->pm_sss[1]);
-	lss_status[2] = readl(&pmu_reg->pm_sss[2]);
-	lss_status[3] = readl(&pmu_reg->pm_sss[3]);
+	lss_status[0] = readl(&mid_pmu_cxt->pmu_reg->pm_sss[0]);
+	lss_status[1] = readl(&mid_pmu_cxt->pmu_reg->pm_sss[1]);
+	lss_status[2] = readl(&mid_pmu_cxt->pmu_reg->pm_sss[2]);
+	lss_status[3] = readl(&mid_pmu_cxt->pmu_reg->pm_sss[3]);
+
+	up(&mid_pmu_cxt->scu_ready_sem);
+
 	lss = 0;
-	seq_printf(s, "%5s\t%12s %35s %4s\n",
-			"lss", "block", "subsystem", "state");
-	seq_printf(s, "==========================================================\n");
+	seq_printf(s, "%5s\t%12s %35s %5s %4s %4s %4s %4s\n",
+			"lss", "block", "subsystem", "state", "D0i0", "D0i1",
+			"D0i2", "D0i3");
+	seq_printf(s, "====================================================="
+		      "=====================\n");
 	for (sss_reg_index = 0; sss_reg_index < 4; sss_reg_index++) {
 		status = lss_status[sss_reg_index];
 		for (offset = 0; offset < sizeof(unsigned long) * 8 / 2;
@@ -1913,16 +2051,19 @@ static int show_pmu_lss_status(struct seq_file *s, void *unused)
 				entry = &medfield_lsses[medfield_lsses_num - 1];
 			else
 				entry = &medfield_lsses[lss];
-			seq_printf(s, "%5s\t%12s %35s %4s\n",
+			seq_printf(s, "%5s\t%12s %35s %4s %4d %4d %4d %4d\n",
 					entry->lss_name, entry->block,
 					entry->subsystem,
-					lss_device_status[sub_status]);
+					lss_device_status[sub_status],
+					get_d0ix_stat(lss, SS_STATE_D0I0),
+					get_d0ix_stat(lss, SS_STATE_D0I1),
+					get_d0ix_stat(lss, SS_STATE_D0I2),
+					get_d0ix_stat(lss, SS_STATE_D0I3));
+
 			status >>= 2;
 			lss++;
 		}
 	}
-
-	up(&scu_ready_sem);
 
 	return 0;
 }
@@ -1951,17 +2092,15 @@ static void update_all_lss_states(struct pmu_ss_states *pmu_config)
 	u32 PCIALLDEV_CFG[4] = {0, 0, 0, 0};
 
 	for (i = 0; i < MAX_DEVICES; i++) {
-		int pmu_num =
-			intel_mid_pci_devices[i].pmu_num;
-		struct pci_dev *pdev =
-			intel_mid_pci_devices[i].dev_driver[0];
+		int pmu_num = get_mid_pci_pmu_num(i);
+		struct pci_dev *pdev = get_mid_pci_drv(i, 0);
 
 		if ((pmu_num == PMU_NUM_2) && pdev) {
 			int ss_idx, ss_pos;
 			pci_power_t state;
 
-			ss_idx = intel_mid_pci_devices[i].ss_idx;
-			ss_pos = intel_mid_pci_devices[i].ss_pos;
+			ss_idx = get_mid_pci_ss_idx(i);
+			ss_pos = get_mid_pci_ss_pos(i);
 			state = pdev->current_state;
 			/* the case of device not probed yet: Force D0i3 */
 			if (state == PCI_UNKNOWN)
@@ -1985,6 +2124,7 @@ static void update_all_lss_states(struct pmu_ss_states *pmu_config)
 	   not in the pci table, some devices are indeed not advertised in pci
 	   table for certain firmwares. This is the case for HSI firmwares,
 	   SPI3 device is not advertised, and would then prevent s0i3. */
+	/* Also take IGNORE_CFG in account (for e.g. GPIO1)*/
 	pmu_config->pmu2_states[0] |= S0IX_TARGET_SSS0_MASK & ~PCIALLDEV_CFG[0];
 	pmu_config->pmu2_states[0] &= ~IGNORE_SSS0;
 	pmu_config->pmu2_states[1] |= S0IX_TARGET_SSS1_MASK & ~PCIALLDEV_CFG[1];
@@ -2024,8 +2164,11 @@ static int pmu_init(void)
 	struct pmu_ss_states pmu_config;
 	struct pmu_suspend_config *ss_config;
 
-	dev_dbg(&pmu_dev->dev, "PMU Driver loaded\n");
-	spin_lock_init(&nc_ready_lock);
+	dev_dbg(&mid_pmu_cxt->pmu_dev->dev, "PMU Driver loaded\n");
+	spin_lock_init(&mid_pmu_cxt->nc_ready_lock);
+
+	if (s0ix_sram_save_init())
+		pr_err("sram save init fail!\n");
 
 	/* enumerate the PCI configuration space */
 	pmu_enumerate();
@@ -2041,13 +2184,10 @@ static int pmu_init(void)
 #endif
 
 	/* initialize the state variables here */
-	intel_mid_pmu_base.disable_cpu1 = false;
+	ss_config = kzalloc(sizeof(struct pmu_suspend_config), GFP_KERNEL);
 
-	intel_mid_pmu_base.ss_config =
-	kzalloc(sizeof(struct pmu_suspend_config), GFP_KERNEL);
-
-	if (intel_mid_pmu_base.ss_config == NULL) {
-		dev_dbg(&pmu_dev->dev, "Allocation of memory"
+	if (ss_config == NULL) {
+		dev_dbg(&mid_pmu_cxt->pmu_dev->dev, "Allocation of memory"
 		"for ss_config has failed\n");
 		status = PMU_FAILED;
 		goto out_err1;
@@ -2055,26 +2195,24 @@ static int pmu_init(void)
 
 	memset(&pmu_config, 0, sizeof(pmu_config));
 
-	intel_mid_pmu_base.ss_config->ss_state = pmu_config;
+	ss_config->ss_state = pmu_config;
 
 	/* initialize for the autonomous S0i3 */
-	ss_config = intel_mid_pmu_base.ss_config;
+	mid_pmu_cxt->ss_config = ss_config;
 
 	/* setup the wake capable devices */
-	intel_mid_pmu_base.ss_config->wake_state.wake_enable[0] =
-							WAKE_ENABLE_0;
-	intel_mid_pmu_base.ss_config->wake_state.wake_enable[1] =
-							WAKE_ENABLE_1;
+	mid_pmu_cxt->ss_config->wake_state.wake_enable[0] = WAKE_ENABLE_0;
+	mid_pmu_cxt->ss_config->wake_state.wake_enable[1] = WAKE_ENABLE_1;
 
 	/* Acquire the scu_ready_sem */
-	down_scu_timed(&scu_ready_sem);
+	down(&mid_pmu_cxt->scu_ready_sem);
 
 	/* Now we have initialized the driver
 	 * Allow drivers to get blocked in
 	 * pmu_pci_set_power_state(), until we finish
 	 * first interactive command.
 	 */
-	dev_init_state = 1;
+	pmu_initialized = true;
 
 	/* get the current status of each of the driver
 	 * and update it in SCU
@@ -2082,14 +2220,16 @@ static int pmu_init(void)
 	update_all_lss_states(&pmu_config);
 
 	/* send a interactive command to fw */
-	status = _pmu_issue_command(&pmu_config, SET_MODE, PMU_NUM_2);
+	mid_pmu_cxt->interactive_cmd_sent = 1;
+	status = _pmu_issue_command(&pmu_config, SET_MODE, 1, PMU_NUM_2);
 	if (status != PMU_SUCCESS) {
-		dev_dbg(&pmu_dev->dev,\
+		mid_pmu_cxt->interactive_cmd_sent = 0;
+		dev_dbg(&mid_pmu_cxt->pmu_dev->dev,\
 		 "Failure from pmu mode change to interactive."
 		" = %d\n", status);
 		status = PMU_FAILED;
-		up(&scu_ready_sem);
-		goto out_err1;
+		up(&mid_pmu_cxt->scu_ready_sem);
+		goto out_err2;
 	}
 
 	/*
@@ -2099,15 +2239,20 @@ static int pmu_init(void)
 	 * powered on in SCU.
 	 *
 	 */
-	pmu_wait_done();
+	wait_for_completion(&mid_pmu_cxt->set_mode_complete);
 
 	/* In cases were gfx is not enabled
 	 * this will enable s0ix immediately
 	 */
 	pmu_set_s0ix_possible(PCI_D3hot);
 
-	up(&scu_ready_sem);
+	up(&mid_pmu_cxt->scu_ready_sem);
 
+	return PMU_SUCCESS;
+
+out_err2:
+	kfree(ss_config);
+	mid_pmu_cxt->ss_config = NULL;
 out_err1:
 	return status;
 }
@@ -2123,7 +2268,8 @@ static int __devinit mid_pmu_probe(struct pci_dev *dev,
 	struct mrst_pmu_reg __iomem *pmu;
 
 #ifdef CONFIG_HAS_WAKELOCK
-	wake_lock_init(&pmu_wake_lock, WAKE_LOCK_SUSPEND, "mid_pmu");
+	wake_lock_init(&mid_pmu_cxt->pmu_wake_lock,
+					WAKE_LOCK_SUSPEND, "mid_pmu");
 #endif
 
 	/* Init the device */
@@ -2134,7 +2280,7 @@ static int __devinit mid_pmu_probe(struct pci_dev *dev,
 	}
 
 	/* store the dev */
-	pmu_dev = dev;
+	mid_pmu_cxt->pmu_dev = dev;
 
 	ret = pci_request_regions(dev, PMU_DRV_NAME);
 	if (ret < 0) {
@@ -2143,35 +2289,38 @@ static int __devinit mid_pmu_probe(struct pci_dev *dev,
 	}
 
 	if (__mrst_cpu_chip == MRST_CPU_CHIP_PENWELL) {
-		pmu1_max_devs = PMU1_MAX_PENWELL_DEVS;
-		pmu2_max_devs = PMU2_MAX_PENWELL_DEVS;
-		ss_per_reg = 16;
+		mid_pmu_cxt->pmu1_max_devs = PMU1_MAX_PENWELL_DEVS;
+		mid_pmu_cxt->pmu2_max_devs = PMU2_MAX_PENWELL_DEVS;
+		mid_pmu_cxt->ss_per_reg = 16;
 	} else {
-		pmu1_max_devs = PMU1_MAX_MRST_DEVS;
-		pmu2_max_devs = PMU2_MAX_MRST_DEVS;
-		ss_per_reg = 8;
+		mid_pmu_cxt->pmu1_max_devs = PMU1_MAX_MRST_DEVS;
+		mid_pmu_cxt->pmu2_max_devs = PMU2_MAX_MRST_DEVS;
+		mid_pmu_cxt->ss_per_reg = 8;
 	}
 
 	/* Map the NC PM registers */
-	apm_base =  MDFLD_MSG_READ32(OSPM_PUNIT_PORT, OSPM_APMBA) & 0xffff;
-	ospm_base =  MDFLD_MSG_READ32(OSPM_PUNIT_PORT, OSPM_OSPMBA) & 0xffff;
+	mid_pmu_cxt->apm_base =
+		MDFLD_MSG_READ32(OSPM_PUNIT_PORT, OSPM_APMBA) & 0xffff;
+	mid_pmu_cxt->ospm_base =
+		MDFLD_MSG_READ32(OSPM_PUNIT_PORT, OSPM_OSPMBA) & 0xffff;
 
 	/* Map the memory of pmu1 PMU reg base */
 	pmu = pci_iomap(dev, 0, 0);
 	if (pmu == NULL) {
-		dev_dbg(&pmu_dev->dev, "Unable to map the PMU2 address"
-			 "space\n");
+		dev_dbg(&mid_pmu_cxt->pmu_dev->dev,
+				"Unable to map the PMU2 address space\n");
 		ret = PMU_FAILED;
 		goto out_err2;
 	}
 
-	pmu_reg = pmu;
+	mid_pmu_cxt->pmu_reg = pmu;
 
 	if (__mrst_cpu_chip == MRST_CPU_CHIP_PENWELL) {
 		/* Map the memory of offload_reg */
-		base_addr.offload_reg = ioremap_nocache(0xffd01ffc, 4);
-		if (base_addr.offload_reg == NULL) {
-			dev_dbg(&pmu_dev->dev,
+		mid_pmu_cxt->base_addr.offload_reg =
+					ioremap_nocache(0xffd01ffc, 4);
+		if (mid_pmu_cxt->base_addr.offload_reg == NULL) {
+			dev_dbg(&mid_pmu_cxt->pmu_dev->dev,
 			"Unable to map the offload_reg address space\n");
 			ret = PMU_FAILED;
 			goto out_err3;
@@ -2180,7 +2329,7 @@ static int __devinit mid_pmu_probe(struct pci_dev *dev,
 
 	if (request_irq(dev->irq, pmu_sc_irq, IRQF_NO_SUSPEND, PMU_DRV_NAME,
 			NULL)) {
-		dev_dbg(&pmu_dev->dev, "Registering isr has failed\n");
+		dev_dbg(&mid_pmu_cxt->pmu_dev->dev, "Registering isr has failed\n");
 		ret = PMU_FAILED;
 		goto out_err3;
 	}
@@ -2188,13 +2337,11 @@ static int __devinit mid_pmu_probe(struct pci_dev *dev,
 	/* call pmu init() for initialization of pmu interface */
 	ret = pmu_init();
 	if (ret != PMU_SUCCESS) {
-		dev_dbg(&pmu_dev->dev, "PMU initialization has failed\n");
+		dev_dbg(&mid_pmu_cxt->pmu_dev->dev, "PMU initialization has failed\n");
 		goto out_err4;
 	}
 
-	spin_lock_init(&mrst_pmu_power_state_lock);
-
-	pmu_init_time =
+	mid_pmu_cxt->pmu_init_time =
 		cpu_clock(raw_smp_processor_id());
 
 	return 0;
@@ -2202,35 +2349,36 @@ static int __devinit mid_pmu_probe(struct pci_dev *dev,
 out_err4:
 	free_irq(dev->irq, &pmu_sc_irq);
 out_err3:
-	pci_iounmap(dev, base_addr.pmu2_base);
-	base_addr.pmu2_base = NULL;
+	pci_iounmap(dev, mid_pmu_cxt->base_addr.pmu2_base);
+	mid_pmu_cxt->base_addr.pmu2_base = NULL;
 out_err2:
-	base_addr.pmu1_base = NULL;
+	mid_pmu_cxt->base_addr.pmu1_base = NULL;
 out_err1:
 	pci_release_region(dev, 0);
 	pci_disable_device(dev);
 out_err0:
 #ifdef CONFIG_HAS_WAKELOCK
-	wake_unlock(&pmu_wake_lock);
+	wake_unlock(&mid_pmu_cxt->pmu_wake_lock);
 #endif
 	return ret;
 }
 
 static void __devexit mid_pmu_remove(struct pci_dev *dev)
 {
-	dev_dbg(&pmu_dev->dev, "Mid PM mid_pmu_remove called\n");
+	dev_dbg(&mid_pmu_cxt->pmu_dev->dev, "Mid PM mid_pmu_remove called\n");
 
 	/* Freeing up the irq */
 	free_irq(dev->irq, &pmu_sc_irq);
 
 	/* Freeing up memory allocated for PMU1 & PMU2 */
 	if (__mrst_cpu_chip == MRST_CPU_CHIP_PENWELL) {
-		iounmap(base_addr.offload_reg);
-		base_addr.offload_reg = NULL;
+		iounmap(mid_pmu_cxt->base_addr.offload_reg);
+		mid_pmu_cxt->base_addr.offload_reg = NULL;
 	}
-	pci_iounmap(dev, pmu_reg);
-	base_addr.pmu1_base = NULL;
-	base_addr.pmu2_base = NULL;
+
+	pci_iounmap(dev, mid_pmu_cxt->pmu_reg);
+	mid_pmu_cxt->base_addr.pmu1_base = NULL;
+	mid_pmu_cxt->base_addr.pmu2_base = NULL;
 
 	/* disable the current PCI device */
 	pci_release_region(dev, 0);
@@ -2255,7 +2403,7 @@ pci_power_t pmu_pci_choose_state(struct pci_dev *pdev)
 
 	pci_power_t state = PCI_D3hot;
 
-	if (dev_init_state) {
+	if (pmu_initialized) {
 		status =
 		pmu_pci_to_indexes(pdev, &i, &pmu_num,
 					&sub_sys_index,  &sub_sys_pos);
@@ -2263,7 +2411,9 @@ pci_power_t pmu_pci_choose_state(struct pci_dev *pdev)
 		if ((status == PMU_SUCCESS) &&
 			(pmu_num == PMU_NUM_2)) {
 
-			device_lss = (sub_sys_index * ss_per_reg) + sub_sys_pos;
+			device_lss =
+				(sub_sys_index * mid_pmu_cxt->ss_per_reg) +
+								sub_sys_pos;
 
 			state = _pmu_choose_state(device_lss);
 		}
@@ -2271,13 +2421,11 @@ pci_power_t pmu_pci_choose_state(struct pci_dev *pdev)
 
 	return state;
 }
-EXPORT_SYMBOL(pmu_pci_choose_state);
 
 bool pmu_pci_power_manageable(struct pci_dev *dev)
 {
 	return true;
 }
-EXPORT_SYMBOL(pmu_pci_power_manageable);
 
 /* At this point of time we expect all devices to be
  * wake capable will be modified in future
@@ -2286,102 +2434,46 @@ bool pmu_pci_can_wakeup(struct pci_dev *dev)
 {
 	return true;
 }
-EXPORT_SYMBOL(pmu_pci_can_wakeup);
 
 int pmu_pci_sleep_wake(struct pci_dev *dev, bool enable)
 {
 	return 0;
 }
-EXPORT_SYMBOL(pmu_pci_sleep_wake);
 
 static int mfld_s3_enter(void)
 {
-	u32 ssw_val = 0;
-	int num_retry = 15000;
-	int status = 0;
-	struct pmu_ss_states cur_pmsss;
+	u32 temp = 0;
 
-	/* check if we can acquire scu_ready_sem
-	 * if we are not able to then do a c6 */
-	if (down_trylock(&scu_ready_sem)) {
-		status = -EINVAL;
-		goto ret;
-	}
+	if (mfld_s0ix_enter(MID_S3_STATE) != MID_S3_STATE)
+		return -EINVAL;
 
-	/* If PMU is busy, we'll retry on next C6 */
-	if (unlikely(_pmu_read_status(PMU_NUM_2, PMU_BUSY_STATUS))) {
-		up(&scu_ready_sem);
-		status = -EINVAL;
-		goto ret;
-	}
+	__monitor((void *) &temp, 0, 0);
+	smp_mb();
+	__mwait(C6_HINT, 1);
+	pmu_set_s0ix_complete();
+	return 0;
+}
 
-	/* setup the wake capable devices */
-	writel(~IGNORE_S3_WKC0, &pmu_reg->pm_wkc[0]);
-	writel(~IGNORE_S3_WKC1, &pmu_reg->pm_wkc[1]);
-
-	/* Re-program the sub systems state on wakeup as the current SSS*/
-	pmu_read_sss(&cur_pmsss);
-
-	writel(cur_pmsss.pmu2_states[0], &pmu_reg->pm_wssc[0]);
-	writel(cur_pmsss.pmu2_states[1], &pmu_reg->pm_wssc[1]);
-	writel(cur_pmsss.pmu2_states[2], &pmu_reg->pm_wssc[2]);
-	writel(cur_pmsss.pmu2_states[3], &pmu_reg->pm_wssc[3]);
-
-	/* program pm ssc registers */
-	writel(S0I3_SSS0, &pmu_reg->pm_ssc[0]);
-	writel(S0I3_SSS1, &pmu_reg->pm_ssc[1]);
-	writel(S0I3_SSS2, &pmu_reg->pm_ssc[2]);
-	writel(S0I3_SSS3, &pmu_reg->pm_ssc[3]);
-
-	/* issue a command to SCU */
-	writel(S0I3_VALUE, &pmu_reg->pm_cmd);
-
-	/* If s0i3 command is issued
-	 * then wait for c6 sram offload
-	 * to complete */
-	do {
-		ssw_val = readl(base_addr.offload_reg);
-
-		if ((ssw_val & C6OFFLOAD_BIT_MASK) ==  C6OFFLOAD_BIT)
-			break;
-
-	} while (num_retry--);
-
-	if (unlikely((ssw_val & C6OFFLOAD_BIT_MASK) !=  C6OFFLOAD_BIT)) {
-		status = -EINVAL;
-		pmu_stat_clear();
-		WARN(1, "mid_pmu: error cpu offload bit not set.\n");
-	} else {
-		unsigned long ecx = 1; /* break on interrupt flag */
-		unsigned long eax = C6_HINT;
-		u32 temp = 0;
-		pmu_stat_start(SYS_STATE_S3);
-
-		/* issue c6 offload */
-		wrmsr(MSR_C6OFFLOAD_CTL_REG,
-			MSR_C6OFFLOAD_SET_LOW, MSR_C6OFFLOAD_SET_HIGH);
-
-		__monitor((void *) &temp, 0, 0);
-		smp_mb();
-
-		s0ix_entered = 1;
-		__mwait(eax, ecx);
-		pmu_enable_forward_msi();
-	}
-
-ret:
-	return status;
+static int mid_begin(suspend_state_t state)
+{
+	mid_pmu_cxt->suspend_started = true;
+	return 0;
 }
 
 static int mid_valid(suspend_state_t state)
 {
+	int ret = 0;
+
 	switch (state) {
 	case PM_SUSPEND_ON:
 	case PM_SUSPEND_MEM:
-		return 1;
-	default:
-		return 0;
+		/* check if we are ready */
+		if (likely(pmu_initialized))
+			ret = 1;
+	break;
 	}
+
+	return ret;
 }
 
 static int mid_prepare(void)
@@ -2399,26 +2491,37 @@ static int mid_suspend(suspend_state_t state)
 	int ret;
 
 	if (state != PM_SUSPEND_MEM)
-		ret = -EINVAL;
+		return -EINVAL;
+
+#ifdef CONFIG_HAS_WAKELOCK
+	/*
+	 * Check if some driver managed to set wakelock during the suspend path.
+	 * It is better to skip S3 in that case.
+	 */
+	if (has_wake_lock(WAKE_LOCK_SUSPEND))
+		return -EBUSY;
+#endif
 
 	trace_printk("s3_entry\n");
 	ret = mfld_s3_enter();
 	trace_printk("s3_exit %d\n", ret);
 	if (ret != 0)
-		dev_dbg(&pmu_dev->dev, "Failed to enter S3 status: %d\n", ret);
+		dev_dbg(&mid_pmu_cxt->pmu_dev->dev,
+				"Failed to enter S3 status: %d\n", ret);
 
 	return ret;
 }
 
 void mfld_shutdown(void)
 {
-	down(&scu_ready_sem);
+	down(&mid_pmu_cxt->scu_ready_sem);
 	/* wait till SCU is ready */
 	if (_pmu2_wait_not_busy())
-		dev_err(&pmu_dev->dev, "SCU BUSY. Unable to Enter S5\n");
+		dev_err(&mid_pmu_cxt->pmu_dev->dev,
+			"SCU BUSY. Unable to Enter S5\n");
 	else
 		/*send S5 command to SCU*/
-		writel(S5_VALUE, &pmu_reg->pm_cmd);
+		writel(S5_VALUE, &mid_pmu_cxt->pmu_reg->pm_cmd);
 
 	/* no more pm command expected. So not doing sem up */
 
@@ -2432,11 +2535,13 @@ static void mid_end(void)
 	 * this avoids to put wake lock in other things like pwrbutton
 	 */
 	long timeout = HZ;
-	wake_lock_timeout(&pmu_wake_lock, timeout);
+	wake_lock_timeout(&mid_pmu_cxt->pmu_wake_lock, timeout);
 #endif
+	mid_pmu_cxt->suspend_started = false;
 }
 
 static struct platform_suspend_ops mid_suspend_ops = {
+	.begin = mid_begin,
 	.valid = mid_valid,
 	.prepare = mid_prepare,
 	.prepare_late = mid_prepare_late,
@@ -2451,6 +2556,27 @@ static int __init mid_pci_register_init(void)
 {
 	int ret;
 
+	mid_pmu_cxt = kzalloc(sizeof(struct mid_pmu_dev), GFP_KERNEL);
+
+	if (mid_pmu_cxt == NULL)
+		return -ENOMEM;
+
+#ifndef CONFIG_VIDEO_ATOMISP
+	mid_pmu_cxt->camera_off = 1;
+#endif
+
+#ifndef GFX_ENABLE
+	/* If Gfx is disabled
+	 * assume s0ix is not blocked
+	 * from gfx side
+	 */
+	mid_pmu_cxt->display_off = 1;
+#endif
+
+	/* initialize the semaphores */
+	sema_init(&mid_pmu_cxt->scu_ready_sem, 1);
+	init_completion(&mid_pmu_cxt->set_mode_complete);
+
 	/* registering PCI device */
 	ret = pci_register_driver(&driver);
 	suspend_set_ops(&mid_suspend_ops);
@@ -2462,7 +2588,13 @@ fs_initcall(mid_pci_register_init);
 static void __exit mid_pci_cleanup(void)
 {
 	suspend_set_ops(NULL);
+	s0ix_sram_save_cleanup();
 	/* registering PCI device */
 	pci_unregister_driver(&driver);
+
+	if (mid_pmu_cxt)
+		kfree(mid_pmu_cxt->ss_config);
+
+	kfree(mid_pmu_cxt);
 }
 module_exit(mid_pci_cleanup);

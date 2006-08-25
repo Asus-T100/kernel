@@ -19,17 +19,20 @@
 #ifndef _MID_PMU_H_
 #define _MID_PMU_H_
 
-#include <linux/intel_mid_pm.h>
-
 #define PCI_ID_ANY	(~0)
 
-/* P Unit Memory Map */
-
-/* PMU1 Register */
+/* PMU register memory map */
 #define PMU1_PMU_BASE_ADDR			0x940
 #define PMU2_PMU_BASE_ADDR			0xFF11D000
 
-/* PMU register memory map */
+#ifdef CONFIG_DRM_INTEL_MID
+#define GFX_ENABLE
+#endif
+
+#define TELEPHONY_ENABLE_S0IX
+#define WLAN_ENABLE_S0IX
+#define I2C_ENABLE_S0IX
+#define DWSPI_ENABLE_S0IX
 
 /* PMU1/PMU2 PM Status Reg */
 #define PMU_PM_STS_REG				0x00
@@ -159,15 +162,6 @@
 #define WAKE_ENABLE_1		0xffffffff
 #define INVALID_WAKE_SRC	0xFFFF
 
-#ifdef CONFIG_DRM_INTEL_MID
-#define GFX_ENABLE
-#endif
-
-#define TELEPHONY_ENABLE_S0IX
-#define WLAN_ENABLE_S0IX
-#define I2C_ENABLE_S0IX
-#define DWSPI_ENABLE_S0IX
-
 #define LOG_SS_MASK		0x80
 #define MFLD_ISP_POS		7
 #define ISP_SUB_CLASS		0x80
@@ -178,9 +172,11 @@
 #define D0I3_MASK		3
 
 #define BITS_PER_LSS		2
+#define MAX_LSS_POSSIBLE	64
+#define SS_IDX_MASK           0x3
+#define SS_POS_MASK           0xF
 
 #define GFX_LSS_INDEX		1
-
 #define PMU_SDIO0_LSS_00	0
 #define PMU_EMMC0_LSS_01	1
 #define PMU_AONT_LSS_02		2
@@ -229,7 +225,7 @@
 #define PMU_RTC_LSS_45		45
 #define PMU_GPI_LSS_46		46
 #define PMU_HDMI_VREG_LSS_47	47
-#define PMU_AUDIO_SSP2_LSS_48	48
+#define PMU_RESERVED_LSS_48	48
 #define PMU_AUDIO_SLIM1_LSS_49	49
 #define PMU_RESET_LSS_50	50
 #define PMU_AUDIO_SSP0_LSS_51	51
@@ -445,7 +441,6 @@
 	SSMSK(D0I1_MASK, PMU_UART2_LSS_41-32))
 
 #define S0I3_SSS3 ( \
-	SSMSK(D0I3_MASK, PMU_AUDIO_SSP2_LSS_48-48) | \
 	SSMSK(D0I3_MASK, PMU_AUDIO_SLIM1_LSS_49-48) | \
 	SSMSK(D0I3_MASK, PMU_RESET_LSS_50-48) | \
 	SSMSK(D0I3_MASK, PMU_AUDIO_SSP0_LSS_51-48) | \
@@ -528,7 +523,8 @@ enum sys_state {
 	SYS_STATE_S0I2,
 	SYS_STATE_S0I3,
 	SYS_STATE_S3,
-	SYS_STATE_S5
+	SYS_STATE_S5,
+	SYS_STATE_MAX
 };
 
 enum pme_id {
@@ -566,17 +562,44 @@ enum pmu_regs {
 	PM_INVALID
 };
 
-struct mid_pmu_dev {
-	u32 pmu1_sub_systems;
-	u32 pmu2_sub_systems;
-	u32 pmu_wake_cfg;
-	u32 pmu_wake_ss_states;
-	int pmu2_states;
-	int s0ix_retry_enb;
-	int retry_exit;
-	u32 pmode;
-	bool disable_cpu1;
-	struct pmu_suspend_config *ss_config;
+enum pmu_number {
+	PMU_NUM_1,
+	PMU_NUM_2,
+	PMU_MAX_DEVS
+};
+
+enum pmu_ss_state {
+	SS_STATE_D0I0 = 0,
+	SS_STATE_D0I1 = 1,
+	SS_STATE_D0I2 = 2,
+	SS_STATE_D0I3 = 3
+};
+
+struct pci_dev_info {
+	u8 ss_pos;
+	u8 ss_idx;
+	u8 pmu_num;
+
+	u32 log_id;
+	u32 cap;
+	struct pci_dev *drv[PMU_MAX_LSS_SHARE];
+	pci_power_t power_state[PMU_MAX_LSS_SHARE];
+};
+
+struct pmu_wake_ss_states {
+	unsigned long wake_enable[2];
+	unsigned long pmu1_wake_states;
+	unsigned long pmu2_wake_states[4];
+};
+
+struct pmu_ss_states {
+	unsigned long pmu1_states;
+	unsigned long pmu2_states[4];
+};
+
+struct pmu_suspend_config {
+	struct pmu_ss_states ss_state;
+	struct pmu_wake_ss_states wake_state;
 };
 
 struct pci_dev_index {
@@ -585,7 +608,7 @@ struct pci_dev_index {
 };
 
 /* PMU register interface */
-static struct mrst_pmu_reg {
+struct mrst_pmu_reg {
 	u32 pm_sts;             /* 0x00 */
 	u32 pm_cmd;             /* 0x04 */
 	u32 pm_ics;             /* 0x08 */
@@ -598,9 +621,7 @@ static struct mrst_pmu_reg {
 	u32 pm_c3c4;            /* 0x50 */
 	u32 pm_c5c6;            /* 0x54 */
 	u32 pm_msic;            /* 0x58 */
-} *pmu_reg;
-
-static inline u32 pmu_read_sts(void) { return readl(&pmu_reg->pm_sts); }
+};
 
 /* PMU registers for pmu ( PMU2 /  PMU1) PMU2 --> LNG PMU1 --> LNC */
 union pmu_pm_ss_cfg {
@@ -656,15 +677,6 @@ union pmu_pm_status {
 	} pmu_status_parts;
 	u32 pmu_status_value;
 };
-
-static inline int pmu_read_busy_status(void)
-{
-	union pmu_pm_status result;
-
-	result.pmu_status_value = pmu_read_sts();
-
-	return result.pmu_status_parts.pmu_busy;
-}
 
 union pmu_pm_cmd {
 	struct {
@@ -763,6 +775,56 @@ struct intel_mid_base_addr {
 	u32 __iomem *offload_reg;
 };
 
+struct mid_pmu_stats {
+	u64 err_count[3];
+	u64 count;
+	u64 time;
+	u64 last_entry;
+	u64 last_try;
+	u64 first_entry;
+};
+
+struct mid_pmu_dev {
+	bool suspend_started;
+
+	u32 apm_base;
+	u32 ospm_base;
+	u32 pmu1_max_devs;
+	u32 pmu2_max_devs;
+	u32 ss_per_reg;
+	u32 d0ix_stat[MAX_LSS_POSSIBLE][SS_STATE_D0I3+1];
+	u32 num_wakes[MAX_DEVICES][SYS_STATE_MAX];
+
+	u64 pmu_init_time;
+
+	int cmd_error_int;
+	int camera_off;
+	int display_off;
+	int s0ix_possible;
+	int interactive_cmd_sent;
+	int s0ix_entered;
+
+	enum sys_state  pmu_current_state;
+
+	struct pci_dev_info pci_devs[MAX_DEVICES];
+	struct pci_dev_index
+		pci_dev_hash[MID_PCI_INDEX_HASH_SIZE];
+	struct intel_mid_base_addr base_addr;
+	struct mrst_pmu_reg	__iomem *pmu_reg;
+	struct semaphore scu_ready_sem;
+	struct completion set_mode_complete;
+	struct mid_pmu_stats pmu_stats[SYS_STATE_MAX];
+
+#ifdef CONFIG_HAS_WAKELOCK
+	struct wake_lock pmu_wake_lock;
+#endif
+
+	struct pmu_suspend_config *ss_config;
+	struct pci_dev *pmu_dev;
+
+	spinlock_t nc_ready_lock;
+};
+
 /*APIs to get the APM base address */
 static inline u32 MDFLD_MSG_READ32(uint port, uint offset)
 {
@@ -774,6 +836,7 @@ static inline u32 MDFLD_MSG_READ32(uint port, uint offset)
 	pci_dev_put(pci_root);
 	return ret_val;
 }
+
 static inline void MDFLD_MSG_WRITE32(uint port, uint offset, u32 value)
 {
 	int mcr = (0x11<<24) | (port << 16) | (offset << 8) | 0xF0;
