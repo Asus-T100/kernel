@@ -2067,6 +2067,24 @@ static struct {
 	unsigned int apic_thmr;
 } apic_pm_state;
 
+#ifdef CONFIG_X86_MDFLD
+/* On intel_mid, the suspend flow is a bit different, and the lapic
+   hw implementation, and integration is not supporting standard suspension.
+   This implementation is only putting high value to the timer, so that
+   AONT global timer will be updated with this big value at s0i3 entry,
+   and wont produce timer based wake up event.
+*/
+static int lapic_suspend(struct sys_device *dev, pm_message_t state)
+{
+	apic_write(APIC_TMICT, ~0);
+	return 0;
+}
+static int lapic_resume(struct sys_device *dev)
+{
+	apic_write(APIC_TMICT, 10);
+	return 0;
+}
+#else
 static int lapic_suspend(void)
 {
 	unsigned long flags;
@@ -2172,6 +2190,7 @@ static void lapic_resume(void)
 
 	local_irq_restore(flags);
 }
+#endif
 
 /*
  * This device has no shutdown method - fully functioning local APICs
