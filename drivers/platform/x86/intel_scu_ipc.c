@@ -605,7 +605,7 @@ int intel_scu_ipc_mrstfw_update(u8 *buffer, u32 length)
 	* SCU will write a status code into the Mailbox, and then set scu_flag.
 	*/
 
-	ipc_command(IPC_CMD_FW_UPDATE_GO);
+	ipc_command(IPC_CMD_FW_UPDATE_GO_MHUPD);
 
 	/*Driver stalls until scu_flag is set */
 	while (readl(&mailbox->scu_flag) != 1) {
