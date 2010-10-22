@@ -6,6 +6,7 @@
 
 #include <linux/ktime.h>
 #include <linux/tracepoint.h>
+#include <linux/device.h>
 
 DECLARE_EVENT_CLASS(cpu,
 
@@ -234,6 +235,59 @@ DEFINE_EVENT(power_domain, power_domain_target,
 
 	TP_ARGS(name, state, cpu_id)
 );
+#ifdef CONFIG_PM_RUNTIME
+#define rpm_status_name(status) { RPM_##status, #status }
+#define show_rpm_status_name(val)				\
+	__print_symbolic(val,					\
+		rpm_status_name(SUSPENDED),			\
+		rpm_status_name(SUSPENDING),			\
+		rpm_status_name(RESUMING),			\
+		rpm_status_name(ACTIVE)		                \
+		)
+TRACE_EVENT(runtime_pm_status,
+
+	TP_PROTO(struct device *dev, int status),
+
+	TP_ARGS(dev, status),
+
+	TP_STRUCT__entry(
+		__string(devname, dev_name(dev))
+		__string(drivername, dev_driver_string(dev))
+		__field(u32, status)
+	),
+
+	TP_fast_assign(
+		__assign_str(devname, dev_name(dev));
+		__assign_str(drivername, dev_driver_string(dev));
+		__entry->status = status;
+	),
+
+	TP_printk("driver=%s dev=%s status=%s", __get_str(drivername),
+		  __get_str(devname), show_rpm_status_name(__entry->status))
+);
+TRACE_EVENT(runtime_pm_usage,
+
+	TP_PROTO(struct device *dev, int usage),
+
+	TP_ARGS(dev, usage),
+
+	TP_STRUCT__entry(
+		__string(devname, dev_name(dev))
+		__string(drivername, dev_driver_string(dev))
+		__field(u32, usage)
+	),
+
+	TP_fast_assign(
+		__assign_str(devname, dev_name(dev));
+		__assign_str(drivername, dev_driver_string(dev));
+		__entry->usage = (u32)usage;
+	),
+
+	TP_printk("driver=%s dev=%s usage=%d", __get_str(drivername),
+		  __get_str(devname), __entry->usage)
+);
+#endif /* CONFIG_PM_RUNTIME */
+
 #endif /* _TRACE_POWER_H */
 
 /* This part must be outside protection */

@@ -11,6 +11,7 @@
 
 #include <linux/device.h>
 #include <linux/pm.h>
+#include <trace/events/power.h>
 
 #include <linux/jiffies.h>
 
@@ -59,11 +60,13 @@ static inline void pm_suspend_ignore_children(struct device *dev, bool enable)
 static inline void pm_runtime_get_noresume(struct device *dev)
 {
 	atomic_inc(&dev->power.usage_count);
+	trace_runtime_pm_usage(dev, atomic_read(&dev->power.usage_count));
 }
 
 static inline void pm_runtime_put_noidle(struct device *dev)
 {
 	atomic_add_unless(&dev->power.usage_count, -1, 0);
+	trace_runtime_pm_usage(dev, atomic_read(&dev->power.usage_count));
 }
 
 static inline bool device_run_wake(struct device *dev)
