@@ -1825,8 +1825,23 @@ static int __init sfi_parse_oemb(struct sfi_table_header *table)
 		oemb->ifwi_minor_version);
 	return 0;
 }
+
+#ifdef CONFIG_SWITCH_MID
+static struct platform_device switch_device = {
+	.name		= "switch-mid",
+	.id		= -1,
+};
+#endif
+
 static int __init mrst_platform_init(void)
 {
+#ifdef CONFIG_SWITCH_MID
+	int err;
+	err = platform_device_register(&switch_device);
+	if (err < 0)
+		pr_err("Fail to register switch-mid platform device.\n");
+#endif
+
 	/* Get MFD Validation SFI OEMB Layout */
 	sfi_table_parse(SFI_SIG_OEMB, NULL, NULL, sfi_parse_oemb);
 	sfi_table_parse(SFI_SIG_GPIO, NULL, NULL, sfi_parse_gpio);

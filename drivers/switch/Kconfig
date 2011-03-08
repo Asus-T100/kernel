@@ -12,4 +12,9 @@ config SWITCH_GPIO
 	help
 	  Say Y here to enable GPIO based switch support.
 
+config SWITCH_MID
+       tristate "MFLD Switch support"
+       help
+         Say Y here to support MFLD switch.
+
 endif # SWITCH
