@@ -1343,9 +1343,11 @@ int cyttsp_resume(void *handle)
 						sizeof(xydata), &xydata);
 				if (!(retval < 0) &&
 				    (GET_HSTMODE(xydata.hst_mode) ==
-							CY_OPERATE_MODE))
+							CY_OPERATE_MODE)) {
 					ts->platform_data->power_state =
 							CY_ACTIVE_STATE;
+					retval = 0;
+				}
 			}
 		}
 	}
@@ -1380,8 +1382,10 @@ int cyttsp_suspend(void *handle)
 			sleep_mode = CY_DEEP_SLEEP_MODE | CY_LOW_POWER_MODE;
 			retval = ttsp_write_block_data(ts, CY_REG_BASE,
 					sizeof(sleep_mode), &sleep_mode);
-			if (!(retval < 0))
+			if (!(retval < 0)) {
 				ts->platform_data->power_state = CY_SLEEP_STATE;
+				retval = 0;
+			}
 		}
 		dev_dbg(ts->pdev, "Sleep Power state is %s\n",
 			(ts->platform_data->power_state == CY_ACTIVE_STATE) ?
