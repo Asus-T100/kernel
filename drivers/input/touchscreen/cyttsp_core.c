@@ -1321,7 +1321,7 @@ bypass:
 int cyttsp_resume(void *handle)
 {
 	int retval = 0;
-	struct cyttsp *ts = container_of(handle, struct cyttsp, pdev);
+	struct cyttsp *ts = handle;
 	struct cyttsp_xydata xydata;
 
 	dev_dbg(ts->pdev, "%s: enter\n", __func__);
@@ -1364,7 +1364,7 @@ EXPORT_SYMBOL(cyttsp_resume);
 
 int cyttsp_suspend(void *handle)
 {
-	struct cyttsp *ts = container_of(handle, struct cyttsp, pdev);
+	struct cyttsp *ts = handle;
 	u8 sleep_mode = 0;
 	int retval = 0;
 
