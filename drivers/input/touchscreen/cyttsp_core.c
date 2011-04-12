@@ -41,6 +41,7 @@
 #include <linux/bitops.h>
 #include <linux/cyttsp.h>
 #include <linux/ctype.h>
+#include <linux/earlysuspend.h>
 #include "cyttsp_core.h"
 
 /* rely on kernel input.h to define Multi-Touch capability */
@@ -257,6 +258,8 @@ struct cyttsp {
 	struct cyttsp_bus_ops *bus_ops;
 	unsigned fw_loader_mode:1;
 	unsigned suspended:1;
+
+	struct early_suspend early_suspend;
 };
 
 struct cyttsp_track_data {
@@ -1400,6 +1403,22 @@ int cyttsp_suspend(void *handle)
 EXPORT_SYMBOL(cyttsp_suspend);
 #endif
 
+#ifdef CONFIG_HAS_EARLYSUSPEND
+static void cyttsp_early_suspend(struct early_suspend *h)
+{
+	struct cyttsp *ts = container_of(h, struct cyttsp, early_suspend);
+
+	cyttsp_suspend(ts);
+}
+
+static void cyttsp_late_resume(struct early_suspend *h)
+{
+	struct cyttsp *ts = container_of(h, struct cyttsp, early_suspend);
+
+	cyttsp_resume(ts);
+}
+#endif
+
 static ssize_t firmware_write(struct file *file, struct kobject *kobj,
 		struct bin_attribute *bin_attr,
 		char *buf, loff_t pos, size_t size)
@@ -1532,6 +1551,13 @@ int cyttsp_core_init(void *bus_priv, struct cyttsp_bus_ops *bus_ops,
 	ts->platform_data = pdev->platform_data;
 	ts->bus_ops = bus_ops;
 	ts->bus_priv = bus_priv;
+
+#ifdef CONFIG_HAS_EARLYSUSPEND
+	ts->early_suspend.level = EARLY_SUSPEND_LEVEL_BLANK_SCREEN + 1;
+	ts->early_suspend.suspend = cyttsp_early_suspend;
+	ts->early_suspend.resume = cyttsp_late_resume;
+	register_early_suspend(&ts->early_suspend);
+#endif
 
 	if (ts->platform_data->init)
 		retval = ts->platform_data->init(1);
