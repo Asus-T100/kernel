@@ -1371,7 +1371,7 @@ int cyttsp_suspend(void *handle)
 	dev_dbg(ts->pdev, "%s: enter\n", __func__);
 	mutex_lock(&ts->mutex);
 
-	if (!ts->fw_loader_mode) {
+	if (!ts->fw_loader_mode && !ts->suspended) {
 		if (ts->platform_data->use_timer) {
 			del_timer(&ts->timer);
 			cancel_work_sync(&ts->work);
