@@ -272,8 +272,6 @@ static void source_sink_complete(struct usb_ep *ep, struct usb_request *req)
 	case -ESHUTDOWN:		/* disconnect from host */
 		VDBG(cdev, "%s gone (%d), %d/%d\n", ep->name, status,
 				req->actual, req->length);
-		if (ep == ss->out_ep)
-			check_read_data(ss, req);
 		free_ep_req(ep, req);
 		return;
 
