@@ -53,3 +53,4 @@ obj-$(CONFIG_SENSORS_AK8975)	+= akm8975.o
 obj-$(CONFIG_USB_SWITCH_FSA9480) += fsa9480.o
 obj-$(CONFIG_A1026)		+= a1026.o
 obj-$(CONFIG_MID_I2S_DEV)	+= mid_i2s_dev/
+obj-$(CONFIG_EMMC_IPANIC)	+= emmc_ipanic.o
