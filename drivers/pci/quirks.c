@@ -2856,6 +2856,85 @@ static void __devinit disable_igfx_irq(struct pci_dev *dev)
 DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_INTEL, 0x0102, disable_igfx_irq);
 DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_INTEL, 0x010a, disable_igfx_irq);
 
+#ifdef CONFIG_X86_MDFLD
+static void quirk_mfld_d1_support(struct pci_dev *dev)
+{
+	int pm;
+	u16 pmc;
+	u8  cap;
+
+	/* find PCI PM capability in list */
+	pm = pci_find_capability(dev, PCI_CAP_ID_PM);
+	if (!pm)
+		return;
+
+	/* Check device's ability to generate PME# */
+	pci_read_config_word(dev, pm + PCI_PM_PMC, &pmc);
+
+	if ((pmc & PCI_PM_CAP_VER_MASK) > 3) {
+		dev_warn(&dev->dev,
+			"%s: unsupported PM cap regs version.\n", __func__);
+		return;
+	}
+
+	pmc |= PCI_PM_CAP_D1;
+
+	pci_write_config_word(dev, pm + PCI_PM_PMC, pmc);
+
+	/* Update the D0i1 as the deepest state supported */
+	pm = pci_find_capability(dev, PCI_CAP_ID_VNDR);
+	/* set wake capable and D0i1 */
+	cap = 0x41;
+	pci_write_config_byte(dev, pm + 5, cap);
+}
+
+#ifdef CONFIG_USB_PENWELL_OTG
+DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_INTEL, 0x0829, quirk_mfld_d1_support);
+#endif /*CONFIG_USB_PENWELL_OTG*/
+
+#ifdef CONFIG_SERIAL_MFD_HSU
+DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_INTEL, 0x081B, quirk_mfld_d1_support);
+DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_INTEL, 0x081C, quirk_mfld_d1_support);
+DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_INTEL, 0x081D, quirk_mfld_d1_support);
+#endif /*CONFIG_SERIAL_MFD_HSU*/
+
+#ifdef CONFIG_DX_SEP
+static void quirk_mfld_d2_support(struct pci_dev *dev)
+{
+	int pm;
+	u16 pmc;
+	u8  cap;
+
+	/* find PCI PM capability in list */
+	pm = pci_find_capability(dev, PCI_CAP_ID_PM);
+	if (!pm)
+		return;
+
+	/* Check device's ability to generate PME# */
+	pci_read_config_word(dev, pm + PCI_PM_PMC, &pmc);
+
+	if ((pmc & PCI_PM_CAP_VER_MASK) > 3) {
+		dev_warn(&dev->dev,
+			"%s: unsupported PM cap regs version.\n", __func__);
+		return;
+	}
+
+	pmc |= PCI_PM_CAP_D2;
+
+	pci_write_config_word(dev, pm + PCI_PM_PMC, pmc);
+
+	/* Update the D0i2 as the deepest state supported */
+	pm = pci_find_capability(dev, PCI_CAP_ID_VNDR);
+	/* set wake capable and D0i2 */
+	cap = 0x42;
+	pci_write_config_byte(dev, pm + 5, cap);
+}
+
+DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_INTEL, 0x0826, quirk_mfld_d2_support);
+#endif /*CONFIG_DX_SEP*/
+
+#endif /*CONFIG_X86_MDFLD*/
+
 static void pci_do_fixups(struct pci_dev *dev, struct pci_fixup *f,
 			  struct pci_fixup *end)
 {
