@@ -238,7 +238,7 @@ static int emmc_ipanic_proc_read(char *buffer, char **start, off_t offset,
 	if (sector_offset)
 		count -= sector_offset;
 	memcpy(buffer, read_buf_ptr + sector_offset, count);
-	*start = count;
+	*start = (char *)count;
 
 	if ((offset + count) == file_length)
 		*peof = 1;
@@ -273,7 +273,7 @@ static int emmc_ipanic_proc_write(struct file *file, const char __user * buffer,
 	return count;
 }
 
-static void emmc_panic_notify_add()
+static void emmc_panic_notify_add(void)
 {
 	struct emmc_ipanic_data *ctx = &drv_ctx;
 	struct mmc_emergency_info *emmc;
@@ -323,10 +323,11 @@ static void emmc_panic_notify_add()
 	       __func__, emmc->name);
 
 	if (ctx->curr.magic != PANIC_MAGIC) {
-		printk(KERN_ERR "%s: No panic data available\n", __func__);
 		emmc_panic_erase(read_buf_ptr, &sect);
 		goto put_sector;
 	}
+
+	printk(KERN_INFO "%s: Data available in panic partition\n", __func__);
 
 	if (ctx->curr.version != PHDR_VERSION) {
 		printk(KERN_ERR "%s: Version mismatch (%d != %d)\n",
@@ -387,7 +388,7 @@ out_err:
 	ctx->emmc = NULL;
 }
 
-static void emmc_panic_notify_remove()
+static void emmc_panic_notify_remove(void)
 {
 	struct emmc_ipanic_data *ctx = &drv_ctx;
 	if (!ctx)
@@ -402,7 +403,7 @@ static int emmc_ipanic_writeflashpage(struct mmc_emergency_info *emmc,
 	int rc;
 	size_t wlen = SECTOR_SIZE;
 
-	rc = emmc->write(buf, to);
+	rc = emmc->write((char *)buf, (unsigned int)to);
 	if (rc) {
 		printk(KERN_EMERG
 		       "%s: Error writing data to flash (%d)\n", __func__, rc);
@@ -448,8 +449,9 @@ static int emmc_ipanic_write_console(struct mmc_emergency_info *emmc,
 		/* Check if there is spare block available */
 		if (block_shift >= emmc->block_count) {
 			printk(KERN_EMERG
-			       "%s: No spare block for panic log dump (%d/%d)\n",
-			       __func__, block_shift, emmc->block_count);
+			       "%s: No spare block for panic log dump (%llu/%llu)\n",
+			       __func__, (unsigned long long)block_shift,
+			       emmc->block_count);
 			break;
 		}
 
