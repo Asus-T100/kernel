@@ -131,10 +131,17 @@ static inline const char *pci_power_name(pci_power_t state)
 {
 	return pci_power_names[1 + (int) state];
 }
-
+#ifdef CONFIG_INTEL_MID_POWER
+/* On intel mid, the pci delay are already handled by SCU.
+   No need to wait more */
+#define PCI_PM_D2_DELAY	0
+#define PCI_PM_D3_WAIT	0
+#define PCI_PM_BUS_WAIT	0
+#else
 #define PCI_PM_D2_DELAY	200
 #define PCI_PM_D3_WAIT	10
 #define PCI_PM_BUS_WAIT	50
+#endif
 
 /** The pci_channel state describes connectivity between the CPU and
  *  the pci device.  If some PCI bus between here and the pci device
