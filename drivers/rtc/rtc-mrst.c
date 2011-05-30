@@ -438,7 +438,7 @@ static void __devexit rtc_mrst_do_remove(struct device *dev)
 }
 
 #ifdef	CONFIG_PM
-static int mrst_suspend(struct device *dev, pm_message_t mesg)
+static int mrst_suspend(struct device *dev)
 {
 	struct mrst_rtc	*mrst = dev_get_drvdata(dev);
 	unsigned char	tmp;
@@ -477,7 +477,7 @@ static int mrst_suspend(struct device *dev, pm_message_t mesg)
  */
 static inline int mrst_poweroff(struct device *dev)
 {
-	return mrst_suspend(dev, PMSG_HIBERNATE);
+	return mrst_suspend(dev);
 }
 
 static int mrst_resume(struct device *dev)
@@ -548,15 +548,17 @@ static void vrtc_mrst_platform_shutdown(struct platform_device *pdev)
 
 MODULE_ALIAS("platform:vrtc_mrst");
 
+static const struct dev_pm_ops vrtc_mrst_platform_driver_pm_ops = {
+	.suspend	= mrst_suspend,
+	.resume		= mrst_resume,
+};
+
 static struct platform_driver vrtc_mrst_platform_driver = {
 	.probe		= vrtc_mrst_platform_probe,
 	.remove		= __devexit_p(vrtc_mrst_platform_remove),
 	.shutdown	= vrtc_mrst_platform_shutdown,
-	.driver = {
-		.name		= (char *) driver_name,
-		.suspend	= mrst_suspend,
-		.resume		= mrst_resume,
-	}
+	.driver.name		= (char *) driver_name,
+	.driver.pm = &vrtc_mrst_platform_driver_pm_ops,
 };
 
 static int __init vrtc_mrst_init(void)
