@@ -370,7 +370,7 @@ static void alarm_triggered_func(void *p)
 	wake_lock_timeout(&alarm_rtc_wake_lock, 1 * HZ);
 }
 
-static int alarm_suspend(struct platform_device *pdev, pm_message_t state)
+static int alarm_suspend(struct device *dev)
 {
 	int                 err = 0;
 	unsigned long       flags;
@@ -382,8 +382,6 @@ static int alarm_suspend(struct platform_device *pdev, pm_message_t state)
 	struct timespec     wall_time;
 	struct alarm_queue *wakeup_queue = NULL;
 	struct alarm_queue *tmp_queue = NULL;
-
-	pr_alarm(SUSPEND, "alarm_suspend(%p, %d)\n", pdev, state.event);
 
 	spin_lock_irqsave(&alarm_slock, flags);
 	suspended = true;
@@ -442,12 +440,12 @@ static int alarm_suspend(struct platform_device *pdev, pm_message_t state)
 	return err;
 }
 
-static int alarm_resume(struct platform_device *pdev)
+static int alarm_resume(struct device *dev)
 {
 	struct rtc_wkalrm alarm;
 	unsigned long       flags;
 
-	pr_alarm(SUSPEND, "alarm_resume(%p)\n", pdev);
+	pr_alarm(SUSPEND, "alarm_resume(%p)\n", dev);
 
 	memset(&alarm, 0, sizeof(alarm));
 	alarm.enabled = 0;
@@ -519,12 +517,15 @@ static struct class_interface rtc_alarm_interface = {
 	.remove_dev = &rtc_alarm_remove_device,
 };
 
-static struct platform_driver alarm_driver = {
+static const struct dev_pm_ops alarm_pm_ops = {
 	.suspend = alarm_suspend,
 	.resume = alarm_resume,
+};
+static struct platform_driver alarm_driver = {
 	.driver = {
-		.name = "alarm"
-	}
+		.name = "alarm",
+		.pm = &alarm_pm_ops,
+	},
 };
 
 static int __init alarm_late_init(void)
