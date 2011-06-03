@@ -544,7 +544,7 @@ void handle_single_touch(struct cyttsp_xydata *xy, struct cyttsp_track_data *t,
 
 void handle_multi_touch(struct cyttsp_track_data *t, struct cyttsp *ts)
 {
-	u8 id;
+	u8 id, trk_id;
 	u8 num_touch, loc;
 	void (*mt_sync_func)(struct input_dev *) = ts->platform_data->mt_sync;
 	u16 tmp_trk[CY_NUM_MT_TCH_ID];
@@ -553,32 +553,14 @@ void handle_multi_touch(struct cyttsp_track_data *t, struct cyttsp *ts)
 	if (!ts->platform_data->use_trk_id)
 		goto no_track_id;
 
-	/* terminate any previous touch where the track
-	 * is missing from the current event */
-	for (id = 0; id < CY_NUM_TRK_ID; id++) {
-		if ((ts->act_trk[id] == CY_NTCH) || (t->cur_trk[id] != CY_NTCH))
-			continue;
-
-		input_report_abs(ts->input, ABS_MT_TRACKING_ID, id);
-		input_report_abs(ts->input, ABS_MT_TOUCH_MAJOR, CY_NTCH);
-		input_report_abs(ts->input, ABS_MT_WIDTH_MAJOR, t->tool_width);
-		input_report_abs(ts->input, ABS_MT_POSITION_X,
-				ts->prv_mt_pos[id][CY_XPOS]);
-		input_report_abs(ts->input, ABS_MT_POSITION_Y,
-				ts->prv_mt_pos[id][CY_YPOS]);
-		if (mt_sync_func)
-			mt_sync_func(ts->input);
-		ts->act_trk[id] = CY_NTCH;
-		ts->prv_mt_pos[id][CY_XPOS] = 0;
-		ts->prv_mt_pos[id][CY_YPOS] = 0;
-	}
 	/* set Multi-Touch current event signals */
 	for (id = 0; id < CY_NUM_MT_TCH_ID; id++) {
-		if (t->cur_mt_tch[id] >= CY_NUM_TRK_ID)
+		trk_id = t->cur_mt_tch[id];
+
+		if (trk_id >= CY_NUM_TRK_ID)
 			continue;
 
-		input_report_abs(ts->input, ABS_MT_TRACKING_ID,
-				t->cur_mt_tch[id]);
+		input_report_abs(ts->input, ABS_MT_TRACKING_ID, trk_id);
 		input_report_abs(ts->input, ABS_MT_TOUCH_MAJOR,
 				t->cur_mt_z[id]);
 		input_report_abs(ts->input, ABS_MT_WIDTH_MAJOR,
@@ -590,9 +572,12 @@ void handle_multi_touch(struct cyttsp_track_data *t, struct cyttsp *ts)
 		if (mt_sync_func)
 			mt_sync_func(ts->input);
 
-		ts->act_trk[id] = CY_TCH;
-		ts->prv_mt_pos[id][CY_XPOS] = t->cur_mt_pos[id][CY_XPOS];
-		ts->prv_mt_pos[id][CY_YPOS] = t->cur_mt_pos[id][CY_YPOS];
+		ts->act_trk[trk_id] = CY_TCH;
+		ts->prv_mt_pos[trk_id][CY_XPOS] = t->cur_mt_pos[id][CY_XPOS];
+		ts->prv_mt_pos[trk_id][CY_YPOS] = t->cur_mt_pos[id][CY_YPOS];
+		dev_dbg(ts->pdev, "id: %d, tracking: %d X: %d Y: %d\n",
+			id, trk_id, t->cur_mt_pos[id][CY_XPOS],
+			t->cur_mt_pos[id][CY_YPOS]);
 	}
 	return;
 
@@ -854,7 +839,11 @@ void cyttsp_xy_worker(struct cyttsp *ts)
 			xy_data.y4 = INVERT_X(xy_data.y4,
 					      ts->platform_data->maxy);
 
-		id = GET_TOUCH4_ID(xy_data.touch34_id);
+		/*
+		 * Shift the tracking id to 0-based for all touches,
+		 * required by Android for onFling event generation.
+		 */
+		id = GET_TOUCH4_ID(xy_data.touch34_id) - 1;
 		if (ts->platform_data->use_trk_id) {
 			trc.cur_mt_pos[CY_MT_TCH4_IDX][CY_XPOS] = xy_data.x4;
 			trc.cur_mt_pos[CY_MT_TCH4_IDX][CY_YPOS] = xy_data.y4;
@@ -897,7 +886,7 @@ void cyttsp_xy_worker(struct cyttsp *ts)
 			xy_data.y3 = INVERT_X(xy_data.y3,
 					      ts->platform_data->maxy);
 
-		id = GET_TOUCH3_ID(xy_data.touch34_id);
+		id = GET_TOUCH3_ID(xy_data.touch34_id) - 1;
 		if (ts->platform_data->use_trk_id) {
 			trc.cur_mt_pos[CY_MT_TCH3_IDX][CY_XPOS] = xy_data.x3;
 			trc.cur_mt_pos[CY_MT_TCH3_IDX][CY_YPOS] = xy_data.y3;
@@ -939,7 +928,7 @@ void cyttsp_xy_worker(struct cyttsp *ts)
 		if (rev_y)
 			xy_data.y2 = INVERT_X(xy_data.y2,
 					      ts->platform_data->maxy);
-		id = GET_TOUCH2_ID(xy_data.touch12_id);
+		id = GET_TOUCH2_ID(xy_data.touch12_id) - 1;
 		if (ts->platform_data->use_trk_id) {
 			trc.cur_mt_pos[CY_MT_TCH2_IDX][CY_XPOS] = xy_data.x2;
 			trc.cur_mt_pos[CY_MT_TCH2_IDX][CY_YPOS] = xy_data.y2;
@@ -982,7 +971,7 @@ void cyttsp_xy_worker(struct cyttsp *ts)
 			xy_data.y1 = INVERT_X(xy_data.y1,
 					      ts->platform_data->maxy);
 
-		id = GET_TOUCH1_ID(xy_data.touch12_id);
+		id = GET_TOUCH1_ID(xy_data.touch12_id) - 1;
 		if (ts->platform_data->use_trk_id) {
 			trc.cur_mt_pos[CY_MT_TCH1_IDX][CY_XPOS] = xy_data.x1;
 			trc.cur_mt_pos[CY_MT_TCH1_IDX][CY_YPOS] = xy_data.y1;
@@ -1020,8 +1009,12 @@ void cyttsp_xy_worker(struct cyttsp *ts)
 	if (ts->platform_data->use_st)
 		handle_single_touch(&xy_data, &trc, ts);
 
-	if (ts->platform_data->use_mt)
-		handle_multi_touch(&trc, ts);
+	if (ts->platform_data->use_mt) {
+		if (trc.cur_tch)
+			handle_multi_touch(&trc, ts);
+		else
+			ts->platform_data->mt_sync(ts->input);
+	}
 
 	/* handle gestures */
 	if (ts->platform_data->use_gestures && xy_data.gest_id) {
@@ -1032,9 +1025,6 @@ void cyttsp_xy_worker(struct cyttsp *ts)
 
 	/* signal the view motion event */
 	input_sync(ts->input);
-
-	/* update platform data for the current multi-touch information */
-	memcpy(ts->act_trk, trc.cur_trk, CY_NUM_TRK_ID);
 
 exit_xy_worker:
 	dev_dbg(ts->pdev, "%s: finished.\n", __func__);
