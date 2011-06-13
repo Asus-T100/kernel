@@ -106,6 +106,7 @@ static struct mmc_emergency_info emmc_info = {
 static struct emmc_ipanic_data drv_ctx;
 static struct work_struct proc_removal_work;
 static int is_found_panic_par;
+static u32 disable_emmc_ipanic;
 
 static DEFINE_MUTEX(drv_mutex);
 
@@ -491,8 +492,9 @@ static int emmc_ipanic(struct notifier_block *this, unsigned long event,
 		return NOTIFY_DONE;
 	}
 
-	if (in_panic)
+	if (in_panic || disable_emmc_ipanic)
 		return NOTIFY_DONE;
+
 	in_panic = 1;
 
 #ifdef CONFIG_PREEMPT
@@ -689,6 +691,8 @@ int __init emmc_ipanic_init(void)
 	bus_register_notifier(&pci_bus_type, &panic_partition_notifier);
 	atomic_notifier_chain_register(&panic_notifier_list, &panic_blk);
 	debugfs_create_file("emmc_ipanic", 0644, NULL, NULL, &panic_dbg_fops);
+	debugfs_create_u32("disable_emmc_ipanic", 0644, NULL,
+			&disable_emmc_ipanic);
 
 	/*initialization of drv_ctx */
 	memset(&drv_ctx, 0, sizeof(drv_ctx));
@@ -700,4 +704,5 @@ int __init emmc_ipanic_init(void)
 	return 0;
 }
 
+core_param(disable_emmc_ipanic, disable_emmc_ipanic, uint, 0644);
 module_init(emmc_ipanic_init);
