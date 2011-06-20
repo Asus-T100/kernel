@@ -581,6 +581,7 @@ static int mmc_blk_cmd_error(struct request *req, const char *name, int error,
 			pr_err("%s: status not valid, retrying timeout\n", req->rq_disk->disk_name);
 			return ERR_RETRY;
 		}
+
 		/*
 		 * If it was a r/w cmd crc error, or illegal command
 		 * (eg, issued in wrong state) then retry - we should
@@ -845,7 +846,7 @@ static int mmc_blk_issue_rw_rq(struct mmc_queue *mq, struct request *req)
 		(md->flags & MMC_BLK_REL_WR);
 
 	do {
-		u32 readcmd, writecmd, status = 0;
+		u32 readcmd, writecmd;
 
 		memset(&brq, 0, sizeof(struct mmc_blk_request));
 		brq.mrq.cmd = &brq.cmd;
@@ -981,25 +982,6 @@ static int mmc_blk_issue_rw_rq(struct mmc_queue *mq, struct request *req)
 			case ERR_CONTINUE:
 				break;
 			}
-			get_card_status(card, &status, 0);
-		}
-
-		if (brq.sbc.error) {
-			printk(KERN_ERR "%s: error %d sending SET_BLOCK_COUNT "
-			       "command, response %#x, card status %#x\n",
-			       req->rq_disk->disk_name, brq.sbc.error,
-			       brq.sbc.resp[0], status);
-		}
-
-		/*
-		 * Check for errors relating to the execution of the
-		 * initial command - such as address errors.  No data
-		 * has been transferred.
-		 */
-		if (brq.cmd.resp[0] & CMD_ERRORS) {
-			pr_err("%s: r/w command failed, status = %#x\n",
-				req->rq_disk->disk_name, brq.cmd.resp[0]);
-			goto cmd_abort;
 		}
 
 		/*
@@ -1026,7 +1008,7 @@ static int mmc_blk_issue_rw_rq(struct mmc_queue *mq, struct request *req)
 		}
 
 		if (brq.data.error) {
-			pr_err("%s: error %d transferring data, sector %u, nr %u, cmd response %#x, card status %#x\n",
+			pr_err("%s: error %d transferring data, sector %u nr %u, cmd response %#x card status %#x\n",
 				req->rq_disk->disk_name, brq.data.error,
 				(unsigned)blk_rq_pos(req),
 				(unsigned)blk_rq_sectors(req),
