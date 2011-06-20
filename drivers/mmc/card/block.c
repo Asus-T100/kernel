@@ -845,7 +845,7 @@ static int mmc_blk_issue_rw_rq(struct mmc_queue *mq, struct request *req)
 		(md->flags & MMC_BLK_REL_WR);
 
 	do {
-		u32 readcmd, writecmd;
+		u32 readcmd, writecmd, status = 0;
 
 		memset(&brq, 0, sizeof(struct mmc_blk_request));
 		brq.mrq.cmd = &brq.cmd;
@@ -981,6 +981,14 @@ static int mmc_blk_issue_rw_rq(struct mmc_queue *mq, struct request *req)
 			case ERR_CONTINUE:
 				break;
 			}
+			get_card_status(card, &status, 0);
+		}
+
+		if (brq.sbc.error) {
+			printk(KERN_ERR "%s: error %d sending SET_BLOCK_COUNT "
+			       "command, response %#x, card status %#x\n",
+			       req->rq_disk->disk_name, brq.sbc.error,
+			       brq.sbc.resp[0], status);
 		}
 
 		/*
