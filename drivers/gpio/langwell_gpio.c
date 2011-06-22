@@ -231,11 +231,17 @@ static void lnw_irq_mask(struct irq_data *d)
 {
 }
 
+static int lnw_irq_wake(unsigned irq, unsigned on)
+{
+	return 0;
+}
+
 static struct irq_chip lnw_irqchip = {
 	.name		= "LNW-GPIO",
 	.irq_mask	= lnw_irq_mask,
 	.irq_unmask	= lnw_irq_unmask,
 	.irq_set_type	= lnw_irq_type,
+	.irq_set_wake	= lnw_irq_wake,
 };
 
 static DEFINE_PCI_DEVICE_TABLE(lnw_gpio_ids) = {   /* pin number */
