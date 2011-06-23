@@ -1486,15 +1486,16 @@ static ssize_t attr_fwloader_store(struct device *dev,
 	mutex_lock(&ts->mutex);
 	if (val && !ts->fw_loader_mode) {
 		ts->fw_loader_mode = 1;
-		if (ts->suspended) {
+#ifdef CONFIG_PM
+		if (ts->suspended)
 			cyttsp_resume(ts);
-		} else {
-			if (ts->platform_data->use_timer)
-				del_timer(&ts->timer);
-			else
-				disable_irq_nosync(ts->irq);
-			cancel_work_sync(&ts->work);
-		}
+#endif
+		if (ts->platform_data->use_timer)
+			del_timer(&ts->timer);
+		else
+			disable_irq_nosync(ts->irq);
+		cancel_work_sync(&ts->work);
+
 		ts->suspended = 0;
 		if (sysfs_create_bin_file(&dev->kobj, &cyttsp_firmware))
 			dev_err(ts->pdev, "unable to create file\n");
