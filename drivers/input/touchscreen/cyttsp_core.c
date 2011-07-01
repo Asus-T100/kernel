@@ -1093,15 +1093,20 @@ static int cyttsp_exit_bl_mode(struct cyttsp *ts)
 
 	retval = ttsp_write_block_data(ts, CY_REG_BASE, sizeof(bl_cmd),
 			(void *)bl_cmd);
+
+	/* data sheet Table 10-6 for delays during mode switches */
+	msleep(CY_DELAY_SYSINFO);
+
 	if (retval < 0) {
 		dev_err(ts->pdev, "%s: failed writing block data, err:%d\n",
 			__func__, retval);
 		goto fail;
 	}
+
 	do {
-		msleep(500);
 		cyttsp_load_bl_regs(ts);
 	} while (GET_BOOTLOADERMODE(ts->bl_data.bl_status) && tries++ < 10);
+
 	return 0;
 fail:
 	return retval;
@@ -1115,8 +1120,10 @@ static int cyttsp_set_sysinfo_mode(struct cyttsp *ts)
 	dev_dbg(ts->pdev, "%s: enter\n", __func__);
 
 	retval = ttsp_write_block_data(ts, CY_REG_BASE, sizeof(cmd), &cmd);
+
 	/* wait for TTSP Device to complete switch to SysInfo mode */
-	msleep(500);
+	msleep(CY_DELAY_SYSINFO);
+
 	if (retval < 0) {
 		dev_err(ts->pdev, "%s: Failed writing block data, err:%d\n",
 			__func__, retval);
@@ -1167,13 +1174,16 @@ static int cyttsp_set_operational_mode(struct cyttsp *ts)
 	dev_dbg(ts->pdev, "%s: enter\n", __func__);
 
 	retval = ttsp_write_block_data(ts, CY_REG_BASE, sizeof(cmd), &cmd);
+
+	/* data sheet Table 10-6 for delays during mode switches */
+	msleep(CY_DELAY_SYSINFO);
+
 	if (retval < 0) {
 		dev_err(ts->pdev, "%s: Failed writing block data, err:%d\n",
 			__func__, retval);
 		return retval;
 	}
-	/* wait for TTSP Device to complete switch to Operational mode */
-	msleep(500);
+
 	return 0;
 }
 
@@ -1184,17 +1194,24 @@ static int cyttsp_soft_reset(struct cyttsp *ts)
 	u8 cmd = CY_SOFT_RESET_MODE;
 
 	dev_dbg(ts->pdev, "%s: enter\n", __func__);
+
 	/* reset TTSP Device back to bootloader mode */
 	retval = ttsp_write_block_data(ts, CY_REG_BASE, sizeof(cmd), &cmd);
+
 	/* wait for TTSP Device to complete reset back to bootloader */
 	tries = 0;
-	msleep(200);
+
+	/* data sheet Table 10-6 covers the time taken from power on to
+	 * bootloader being ready
+	 */
+	msleep(CY_DELAY_SYSINFO);
+
 	do {
-		msleep(100);
 		cyttsp_load_bl_regs(ts);
 	} while (ts->bl_data.bl_status != 0x10 &&
 		 ts->bl_data.bl_status != 0x11 &&
 		 tries++ < 100);
+
 	if (tries >= 100)
 		dev_err(ts->pdev, "%s: bootlodader not ready, status 0x%02x\n",
 			__func__, ts->bl_data.bl_status);
@@ -1208,13 +1225,14 @@ static int cyttsp_power_on(struct cyttsp *ts)
 	int tries = 0;
 
 	dev_dbg(ts->pdev, "%s: enter\n", __func__);
+
 	/* check if the TTSP device has a bootloader installed */
 	retval = cyttsp_soft_reset(ts);
 	if (retval < 0)
 		goto bypass;
 
+	/* the boot loader is already installed */
 	do {
-		msleep(500);
 		retval = cyttsp_load_bl_regs(ts);
 	} while (!GET_BOOTLOADERMODE(ts->bl_data.bl_status) &&
 		!(GET_HSTMODE(ts->bl_data.bl_file) == CY_OPERATE_MODE) &&
@@ -1271,9 +1289,11 @@ static int cyttsp_power_on(struct cyttsp *ts)
 
 	cmd = CY_OPERATE_MODE;
 	retval = ttsp_write_block_data(ts, CY_REG_BASE, sizeof(cmd), &cmd);
+
 	/* wait for TTSP Device to complete switch to */
 	/* Operational mode */
-	msleep(1000);
+	msleep(CY_DELAY_SYSINFO);
+
 	/* init gesture setup */
 	if (retval < 0)
 		goto bypass;
