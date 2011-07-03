@@ -21,6 +21,7 @@
 #include <linux/slab.h>
 #include <linux/version.h>
 #include <linux/videodev2.h>
+#include <linux/module.h>
 
 #include <media/sh_vou.h>
 #include <media/v4l2-common.h>
