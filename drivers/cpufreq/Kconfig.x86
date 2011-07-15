@@ -32,6 +32,21 @@ config X86_ACPI_CPUFREQ
 
 	  If in doubt, say N.
 
+config X86_SFI_CPUFREQ
+	tristate "SFI Processor P-States driver"
+	select CPU_FREQ_TABLE
+	depends on X86_MRST
+	help
+	  This driver adds a CPUFreq driver which utilizes the SFI
+	  Processor Performance States enumeration.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called sfi-cpufreq.
+
+	  For details, take a look at <file:Documentation/cpu-freq/>.
+
+	  If in doubt, say N.
+
 config ELAN_CPUFREQ
 	tristate "AMD Elan SC400 and SC410"
 	select CPU_FREQ_TABLE
