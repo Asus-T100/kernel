@@ -64,9 +64,10 @@ int mrst_idle(struct cpuidle_device *dev, struct cpuidle_state *state)
 	 * leave_mm() to avoid costly and often unnecessary wakeups
 	 * for flushing the user TLB's associated with the active mm.
 	 */
+#ifdef CPUIDLE_FLAG_TLB_FLUSHED	 
 	if (state->flags & CPUIDLE_FLAG_TLB_FLUSHED)
 		leave_mm(cpu);
-
+#endif /* FIXME */
 	clockevents_notify(CLOCK_EVT_NOTIFY_BROADCAST_ENTER, &cpu);
 
 	kt_before = ktime_get_real();
