@@ -92,8 +92,6 @@ static struct sfi_processor_performance *sfi_perf_data;
 
 static struct cpufreq_driver sfi_cpufreq_driver;
 
-static unsigned int sfi_pstate_strict;
-
 static int parse_freq(struct sfi_table_header *table)
 {
 	struct sfi_table_simple *sb;
@@ -330,21 +328,6 @@ static unsigned int get_cur_freq_on_cpu(unsigned int cpu)
 	return freq;
 }
 
-static unsigned int check_freqs(const struct cpumask *mask, unsigned int freq,
-				struct sfi_cpufreq_data *data)
-{
-	unsigned int cur_freq;
-	unsigned int i;
-
-	for (i = 0; i < 100; i++) {
-		cur_freq = extract_freq(get_cur_val(mask), data);
-		if (cur_freq == freq)
-			return 1;
-		udelay(10);
-	}
-	return 0;
-}
-
 static int sfi_cpufreq_target(struct cpufreq_policy *policy,
 			       unsigned int target_freq, unsigned int relation)
 {
@@ -390,8 +373,6 @@ static int sfi_cpufreq_target(struct cpufreq_policy *policy,
 
 	if (policy->shared_type != CPUFREQ_SHARED_TYPE_ANY)
 		cmd.mask = policy->cpus;
-	else
-		cmd.mask = cpumask_of(policy->cpu);
 
 	freqs.old = perf->states[perf->state].core_frequency * 1000;
 	freqs.new = data->freq_table[next_state].frequency;
@@ -401,14 +382,6 @@ static int sfi_cpufreq_target(struct cpufreq_policy *policy,
 	}
 
 	drv_write(&cmd);
-
-	if (sfi_pstate_strict) {
-		if (!check_freqs(cmd.mask, freqs.new, data)) {
-			pr_debug("sfi_cpufreq_target failed (%d)\n",
-				policy->cpu);
-			return -EAGAIN;
-		}
-	}
 
 	for_each_cpu(i, cmd.mask) {
 		freqs.cpu = i;
@@ -738,12 +711,6 @@ static void __exit sfi_cpufreq_exit(void)
 
 	return;
 }
-
-module_param(sfi_pstate_strict, uint, 0644);
-MODULE_PARM_DESC(sfi_pstate_strict,
-	"value 0 or non-zero. non-zero -> strict sfi checks are "
-	"performed during frequency changes.");
-
 late_initcall(sfi_cpufreq_init);
 module_exit(sfi_cpufreq_exit);
 
