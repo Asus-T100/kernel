@@ -213,7 +213,7 @@ static struct cpuidle_state atom_cstates[MWAIT_MAX_NUM_CSTATES] = {
 		.enter = &intel_idle },
 };
 
-#ifdef CONFIG_X86_MRST
+#ifdef CONFIG_X86_INTEL_MID
 static struct cpuidle_state mrst_cstates[MWAIT_MAX_NUM_CSTATES] = {
 	{ /* MWAIT C0 */ },
 	{ /* MWAIT C1 */
@@ -410,7 +410,7 @@ static int intel_idle_probe(void)
 
 	case 0x26:	/* 38 - Lincroft Atom Processor */
 		cpuidle_state_table = mrst_cstates;
-#ifdef CONFIG_X86_MRST
+#ifdef CONFIG_X86_INTEL_MID
 		cpuidle_device_prepare = mrst_pmu_validate_cstates;
 #endif
 		auto_demotion_disable_flags = ATM_LNC_C6_AUTO_DEMOTE;

@@ -517,8 +517,8 @@ config RTC_DRV_CMOS
 
 config RTC_DRV_VRTC
 	tristate "Virtual RTC for Moorestown platforms"
-	depends on X86_MRST
-	default y if X86_MRST
+	depends on X86_INTEL_MID
+	default y if X86_INTEL_MID
 
 	help
 	Say "yes" here to get direct support for the real time clock
