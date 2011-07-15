@@ -265,3 +265,76 @@ static void __devinit pci_fixed_bar_fixup(struct pci_dev *dev)
 	}
 }
 DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_INTEL, PCI_ANY_ID, pci_fixed_bar_fixup);
+
+static void __devinit mrst_power_off_unused_dev(struct pci_dev *dev)
+{
+	pci_set_power_state(dev, PCI_D3cold);
+}
+DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_INTEL, 0x0801, mrst_power_off_unused_dev);
+DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_INTEL, 0x0809, mrst_power_off_unused_dev);
+DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_INTEL, 0x080C, mrst_power_off_unused_dev);
+DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_INTEL, 0x0812, mrst_power_off_unused_dev);
+DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_INTEL, 0x0815, mrst_power_off_unused_dev);
+
+/*
+ * The Firmware should program the Langwell keypad registers to indicate
+ * system specific configuration.  This quirk can be removed when firmware
+ * actually does this properly.
+ */
+static void __devinit langwell_keypad_fixup(struct pci_dev *dev)
+{
+	void __iomem *base;
+	u32 val;
+
+	base = pci_ioremap_bar(dev, 0);
+
+	if (base == NULL)
+		return;
+
+	val = readl(base);
+
+	/*
+	 * set the KPC register.  Please see the Langwell Docs
+	 * for more detail.
+	 *
+	 * Bit 31: Reserved
+	 * Bit 30: Automatic Scan Bit
+	 * Bit 29: Automatic Scan on Activity bit
+	 * Bit 28:26 : Matrix keypad row number
+	 *		000 == 1, 001 == 2, ... 111 == 8
+	 * Bit 25:23 : Matrix keypad column number
+	 *		000 ==1, 001 == 2, ... 111 == 8
+	 * Bit 22: Matrix Interrupt Bit
+	 * Bit 21: Ignore Multiple Key Press
+	 * Bit 20: Manual Matrix Scan line 7
+	 * Bit 19: Manual Matrix Scan line 6
+	 * Bit 18: Manual Matrix Scan line 5
+	 * Bit 17: Manual Matrix Scan line 4
+	 * Bit 16: Manual Matrix Scan line 3
+	 * Bit 15: Manual Matrix Scan line 2
+	 * Bit 14: Manual Matrix Scan line 1
+	 * Bit 13: Manual Matrix Scan line 0
+	 * Bit 12: Matrix Keypad Enable
+	 * Bit 11: Matrix Interrupt Enable
+	 * Bit 10:9  : Reserved
+	 * Bit 8:6   : Direct Key Number + Roatry encoder sensor input
+	 *		000 == 1, 001 == 2, ... 111 == 8
+	 * Bit 5: Direct Interrupt bit
+	 * Bit 4: Reserved
+	 * Bit 3: Rotary Encoder 1 enable
+	 * Bit 2: Rotary Encoder 0 enable
+	 * Bit 1: Direct Keypad enable
+	 * Bit 0: Direct Keypad Interrupt enable
+	 */
+	if (val == 0)
+		writel(0x3f9ff800, base);
+
+	val = readl(base + 0x24);
+
+	/* set the debounce interval (KPKDI) to 100ms */
+	if (val == 0)
+		writel(100, base + 0x24);
+
+	iounmap(base);
+}
+DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_INTEL, 0x0805, langwell_keypad_fixup);
