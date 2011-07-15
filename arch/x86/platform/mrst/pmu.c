@@ -581,7 +581,7 @@ static const struct file_operations devices_state_operations = {
  */
 static void pmu_scu_firmware_debug(void)
 {
-	struct pci_dev *pdev;
+	struct pci_dev *pdev = NULL;
 
 	for_each_pci_dev(pdev) {
 		struct mrst_device *mrst_dev;
