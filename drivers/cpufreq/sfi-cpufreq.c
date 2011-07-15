@@ -256,38 +256,6 @@ static unsigned extract_freq(u32 msr, struct sfi_cpufreq_data *data)
 }
 
 
-struct msr_addr {
-	u32 reg;
-};
-
-struct drv_cmd {
-	const struct cpumask *mask;
-	struct msr_addr msr;
-	u32 val;
-};
-
-/* Called via smp_call_function_many(), on the target CPUs */
-static void do_drv_write(void *_cmd)
-{
-	struct drv_cmd *cmd = _cmd;
-	u32 lo, hi;
-
-	rdmsr(cmd->msr.reg, lo, hi);
-	lo = (lo & ~INTEL_MSR_RANGE) | (cmd->val & INTEL_MSR_RANGE);
-	wrmsr(cmd->msr.reg, lo, hi);
-}
-
-static void drv_write(struct drv_cmd *cmd)
-{
-	int this_cpu;
-
-	this_cpu = get_cpu();
-	if (cpumask_test_cpu(this_cpu, cmd->mask))
-		do_drv_write(cmd);
-	smp_call_function_many(cmd->mask, do_drv_write, cmd, 1);
-	put_cpu();
-}
-
 static u32 get_cur_val(const struct cpumask *mask)
 {
 	u32 val, dummy;
@@ -334,11 +302,10 @@ static int sfi_cpufreq_target(struct cpufreq_policy *policy,
 	struct sfi_cpufreq_data *data = per_cpu(drv_data, policy->cpu);
 	struct sfi_processor_performance *perf;
 	struct cpufreq_freqs freqs;
-	struct drv_cmd cmd;
 	unsigned int next_state = 0; /* Index into freq_table */
 	unsigned int next_perf_state = 0; /* Index into perf table */
-	unsigned int i;
 	int result = 0;
+	u32 lo, hi;
 
 	pr_debug("sfi_cpufreq_target %d (%d)\n", target_freq, policy->cpu);
 
@@ -368,25 +335,18 @@ static int sfi_cpufreq_target(struct cpufreq_policy *policy,
 		}
 	}
 
-	cmd.msr.reg = MSR_IA32_PERF_CTL;
-	cmd.val = (u32) perf->states[next_perf_state].control;
-
-	if (policy->shared_type != CPUFREQ_SHARED_TYPE_ANY)
-		cmd.mask = policy->cpus;
-
 	freqs.old = perf->states[perf->state].core_frequency * 1000;
 	freqs.new = data->freq_table[next_state].frequency;
-	for_each_cpu(i, cmd.mask) {
-		freqs.cpu = i;
-		cpufreq_notify_transition(&freqs, CPUFREQ_PRECHANGE);
-	}
+	freqs.cpu = policy->cpu;
+	
+	cpufreq_notify_transition(&freqs, CPUFREQ_PRECHANGE);
 
-	drv_write(&cmd);
+	rdmsr_on_cpu(policy->cpu, MSR_IA32_PERF_CTL, &lo, &hi);
+	lo = (lo & ~INTEL_MSR_RANGE) | ((u32) perf->states[next_perf_state].control & INTEL_MSR_RANGE);
+	wrmsr_on_cpu(policy->cpu, MSR_IA32_PERF_CTL, lo, hi);
 
-	for_each_cpu(i, cmd.mask) {
-		freqs.cpu = i;
-		cpufreq_notify_transition(&freqs, CPUFREQ_POSTCHANGE);
-	}
+
+	cpufreq_notify_transition(&freqs, CPUFREQ_POSTCHANGE);
 	perf->state = next_perf_state;
 
 	return result;
@@ -401,61 +361,18 @@ static int sfi_cpufreq_verify(struct cpufreq_policy *policy)
 	return cpufreq_frequency_table_verify(policy, data->freq_table);
 }
 
-static void free_sfi_perf_data(void)
-{
-	unsigned int i;
-
-	/* Freeing a NULL pointer is OK, and alloc_percpu zeroes. */
-	for_each_possible_cpu(i)
-		free_cpumask_var(per_cpu_ptr(sfi_perf_data, i)
-		->shared_cpu_map);
-	free_percpu(sfi_perf_data);
-}
-
 /*
  * sfi_cpufreq_early_init - initialize SFI P-States library
  *
  * Initialize the SFI P-States library (drivers/sfi/processor_perflib.c)
- * in order to determine correct frequency and voltage pairings. We can
- * do _PDC and _PSD and find out the processor dependency for the
- * actual init that will happen later...
+ * in order to cope with the correct frequency and voltage pairings. 
  */
 static int __init sfi_cpufreq_early_init(void)
 {
-	int i, j;
-	struct sfi_processor *pr;
-
 	sfi_perf_data = alloc_percpu(struct sfi_processor_performance);
 	if (!sfi_perf_data) {
 		pr_debug("Memory allocation error for sfi_perf_data.\n");
 		return -ENOMEM;
-	}
-
-	for_each_possible_cpu(i) {
-		if (!zalloc_cpumask_var_node(
-			&per_cpu_ptr(sfi_perf_data, i)->shared_cpu_map,
-			GFP_KERNEL, cpu_to_node(i))) {
-
-			/* Freeing a NULL pointer is OK: alloc_percpu zeroes. */
-			free_sfi_perf_data();
-			return -ENOMEM;
-		}
-	}
-
-	/* _PSD & _PDC is not supported in SFI.Its just a placeholder.
-	 * sfi_processor_preregister_performance(sfi_perf_data);
-	 * TBD: We need to study what we need to do here
-	 */
-	for_each_possible_cpu(i) {
-		pr = per_cpu(sfi_processors, i);
-		if (!pr /*|| !pr->performance*/)
-			continue;
-		for_each_possible_cpu(j) {
-			cpumask_set_cpu(j,
-			per_cpu_ptr(sfi_perf_data, i)->shared_cpu_map);
-		}
-		per_cpu_ptr(sfi_perf_data, i)->shared_type =
-			 CPUFREQ_SHARED_TYPE_ALL;
 	}
 
 	return 0;
@@ -481,8 +398,7 @@ static int sfi_cpufreq_cpu_init(struct cpufreq_policy *policy)
 	data->sfi_data = per_cpu_ptr(sfi_perf_data, cpu);
 	per_cpu(drv_data, cpu) = data;
 
-	if (cpu_has(c, X86_FEATURE_CONSTANT_TSC))
-		sfi_cpufreq_driver.flags |= CPUFREQ_CONST_LOOPS;
+	sfi_cpufreq_driver.flags |= CPUFREQ_CONST_LOOPS;
 
 
 	result = sfi_processor_register_performance(data->sfi_data, cpu);
@@ -490,17 +406,10 @@ static int sfi_cpufreq_cpu_init(struct cpufreq_policy *policy)
 		goto err_free;
 
 	perf = data->sfi_data;
-	policy->shared_type = perf->shared_type;
+	policy->shared_type = CPUFREQ_SHARED_TYPE_HW;
 
-	/*
-	 * Will let policy->cpus know about dependency only when software
-	 * coordination is required.
-	 */
-	if (policy->shared_type == CPUFREQ_SHARED_TYPE_ALL ||
-	    policy->shared_type == CPUFREQ_SHARED_TYPE_ANY) {
-		cpumask_copy(policy->cpus, perf->shared_cpu_map);
-	}
-	cpumask_copy(policy->related_cpus, perf->shared_cpu_map);
+	cpumask_set_cpu(policy->cpu, policy->cpus);
+	cpumask_set_cpu(policy->cpu, policy->related_cpus);
 
 	/* capability check */
 	if (perf->state_count <= 1) {

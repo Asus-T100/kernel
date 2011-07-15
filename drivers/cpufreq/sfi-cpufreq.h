@@ -55,8 +55,6 @@ struct sfi_processor_performance {
 	unsigned int state;
 	unsigned int state_count;
 	struct sfi_processor_px *states;
-	cpumask_var_t shared_cpu_map;
-	unsigned int shared_type;
 };
 
 /* for communication between multiple parts of the processor kernel module */
