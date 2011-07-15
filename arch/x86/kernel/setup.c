@@ -931,9 +931,7 @@ void __init setup_arch(char **cmdline_p)
 	setup_trampolines();
 
 #ifdef CONFIG_X86_MRST
-	if (boot_cpu_data.x86 == 6 &&
-		boot_cpu_data.x86_model == 0x26)
-		mrst_reserve_memory();
+	mrst_reserve_memory();
 #endif
 
 	init_gbpages();
