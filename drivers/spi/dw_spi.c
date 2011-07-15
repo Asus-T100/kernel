@@ -21,6 +21,7 @@
 #include <linux/highmem.h>
 #include <linux/delay.h>
 #include <linux/slab.h>
+#include <linux/pm_runtime.h>
 #include <linux/spi/spi.h>
 
 #include "dw_spi.h"
@@ -436,6 +437,7 @@ static void pump_messages(struct work_struct *work)
 	struct chip_data *controller;
 	int err = 0;
 
+	pm_runtime_get_sync(dws->parent_dev);
 	message = get_message(dws);
 
 	while (message && dws->run != QUEUE_STOPPED) {
@@ -480,6 +482,7 @@ static void pump_messages(struct work_struct *work)
 	}
 	if (dws->run == QUEUE_STOPPED)
 		drain_message_queue(dws);
+	pm_runtime_put_sync(dws->parent_dev);
 }
 
 /* spi_device use this to queue in their spi_msg */

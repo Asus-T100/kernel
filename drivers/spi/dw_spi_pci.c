@@ -20,6 +20,7 @@
 #include <linux/interrupt.h>
 #include <linux/pci.h>
 #include <linux/slab.h>
+#include <linux/pm_runtime.h>
 #include <linux/spi/spi.h>
 
 #include "dw_spi.h"
@@ -91,6 +92,11 @@ static int __devinit spi_pci_probe(struct pci_dev *pdev,
 
 	/* PCI hook and SPI hook use the same drv data */
 	pci_set_drvdata(pdev, dwpci);
+
+	pm_suspend_ignore_children(&pdev->dev, true);
+	pm_runtime_put_noidle(&pdev->dev);
+	pm_runtime_allow(&pdev->dev);
+
 	return 0;
 
 err_unmap:
@@ -110,6 +116,9 @@ static void __devexit spi_pci_remove(struct pci_dev *pdev)
 
 	pci_set_drvdata(pdev, NULL);
 	spi_dw_remove_host(&dwpci->dws);
+	pm_runtime_forbid(&pdev->dev);
+	pm_runtime_get_noresume(&pdev->dev);
+
 	iounmap(dwpci->dws.regs);
 	pci_release_region(pdev, 0);
 	kfree(dwpci);
@@ -143,15 +152,60 @@ static int spi_resume(struct pci_dev *pdev)
 		return ret;
 	return spi_dw_resume_host(&dwpci->dws);
 }
+
+static int spi_dw_pci_runtime_suspend(struct device *dev)
+{
+	struct pci_dev *pdev = to_pci_dev(dev);
+	struct spi_dw_pci *dwpci = pci_get_drvdata(pdev);
+	int ret;
+
+	dev_dbg(dev, "PCI runtime suspend called\n");
+
+	ret = spi_dw_stop_queue(&dwpci->dws);
+	if (ret == 0)
+		spi_dw_enable(&dwpci->dws);
+
+	return ret;
+}
+
+static int spi_dw_pci_runtime_resume(struct device *dev)
+{
+	struct pci_dev *pdev = to_pci_dev(dev);
+	struct spi_dw_pci *dwpci = pci_get_drvdata(pdev);
+
+	dev_dbg(dev, "pci_runtime_resume called\n");
+	return spi_dw_resume_host(&dwpci->dws);
+}
+
+static int spi_dw_pci_runtime_idle(struct device *dev)
+{
+	int err;
+
+	dev_dbg(dev, "pci_runtime_idle called\n");
+
+	err = pm_schedule_suspend(dev, 500);
+	if (err != 0)
+		return 0;
+	return -EBUSY;
+}
+
 #else
 #define spi_suspend	NULL
 #define spi_resume	NULL
+#define spi_dw_pci_runtime_suspend NULL
+#define spi_dw_pci_runtime_resume NULL
+#define spi_dw_pci_runtime_idle NULL
 #endif
 
 static const struct pci_device_id pci_ids[] __devinitdata = {
-	/* Intel MID platform SPI controller 0 */
+	/* Intel Moorestown platform SPI controller 0 */
 	{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x0800) },
 	{},
+};
+static const struct dev_pm_ops dw_spi_pm_ops = {
+	.runtime_suspend = spi_dw_pci_runtime_suspend,
+	.runtime_resume = spi_dw_pci_runtime_resume,
+	.runtime_idle = spi_dw_pci_runtime_idle,
 };
 
 static struct pci_driver spi_dw_driver = {
@@ -161,6 +215,9 @@ static struct pci_driver spi_dw_driver = {
 	.remove =	__devexit_p(spi_pci_remove),
 	.suspend =	spi_suspend,
 	.resume	=	spi_resume,
+	.driver	=	{
+		.pm	= &dw_spi_pm_ops,
+	},
 };
 
 static int __init spi_dw_init(void)
