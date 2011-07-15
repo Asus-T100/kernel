@@ -83,6 +83,7 @@ static unsigned int lapic_timer_reliable_states = (1 << 1);	 /* Default to only 
 
 static struct cpuidle_device __percpu *intel_idle_cpuidle_devices;
 static int intel_idle(struct cpuidle_device *dev, struct cpuidle_state *state);
+static int intel_mid_idle(struct cpuidle_device *dev, struct cpuidle_state *state);
 
 static struct cpuidle_state *cpuidle_state_table;
 static int (*cpuidle_device_prepare)(struct cpuidle_device *dev);
@@ -249,7 +250,7 @@ static struct cpuidle_state mrst_cstates[MWAIT_MAX_NUM_CSTATES] = {
 		.flags = CPUIDLE_FLAG_TIME_VALID | CPUIDLE_FLAG_TLB_FLUSHED,
 		.exit_latency = 140,
 		.target_residency = 560,
-		.enter = &mrst_idle, },
+		.enter = &intel_mid_idle, },
 	{ /* MRST S0i3 */
 		.name = "MRST-S0i3",
 		.desc = "MRST S0i3",
@@ -258,7 +259,7 @@ static struct cpuidle_state mrst_cstates[MWAIT_MAX_NUM_CSTATES] = {
 			CPUIDLE_FLAG_INTEL_FAKE,
 		.exit_latency = 300, /* XXX */
 		.target_residency = 1200, /* XXX */
-		.enter = &mrst_idle },
+		.enter = &intel_mid_idle },
 };
 #warning pri#3 #24 tune mrst_cstates parameters
 #else
@@ -317,6 +318,67 @@ int intel_idle(struct cpuidle_device *dev, struct cpuidle_state *state)
 
 	return usec_delta;
 }
+
+/**
+ * intel_mid_idle	-	Idle a MID device
+ * @dev: cpuidle_device
+ * @state: cpuidle state
+ *
+ * This enters S0i3, C6 or C4 depending on what is currently permitted.
+ * C1-C4 are handled via the normal intel_idle entry.
+ */
+int intel_mid_idle(struct cpuidle_device *dev, struct cpuidle_state *state)
+{
+	unsigned long ecx = 1; /* break on interrupt flag */
+	unsigned long eax = (unsigned long)cpuidle_get_statedata(state);
+	ktime_t kt_before, kt_after;
+	s64 usec_delta;
+	int cpu = smp_processor_id();
+
+	local_irq_disable();
+
+	/*
+	 * leave_mm() to avoid costly and often unnecessary wakeups
+	 * for flushing the user TLB's associated with the active mm.
+	 */
+#ifdef CPUIDLE_FLAG_TLB_FLUSHED	 
+	if (state->flags & CPUIDLE_FLAG_TLB_FLUSHED)
+		leave_mm(cpu);
+#endif /* FIXME */
+	clockevents_notify(CLOCK_EVT_NOTIFY_BROADCAST_ENTER, &cpu);
+
+	kt_before = ktime_get_real();
+
+	stop_critical_timings();
+
+	if (!need_resched()) {
+#ifdef CONFIG_X86_MRST
+		if (eax == -1UL) {
+			do_s0i3();
+		} else
+#endif		
+		{
+			/* Conventional MWAIT */
+
+			__monitor((void *)&current_thread_info()->flags, 0, 0);
+			smp_mb();
+			if (!need_resched())
+				__mwait(eax, ecx);
+		}
+	}
+
+	start_critical_timings();
+
+	kt_after = ktime_get_real();
+	usec_delta = ktime_to_us(ktime_sub(kt_after, kt_before));
+
+	local_irq_enable();
+
+	clockevents_notify(CLOCK_EVT_NOTIFY_BROADCAST_EXIT, &cpu);
+
+	return usec_delta;
+}
+
 
 static void __setup_broadcast_timer(void *arg)
 {
@@ -409,10 +471,11 @@ static int intel_idle_probe(void)
 		break;
 
 	case 0x26:	/* 38 - Lincroft Atom Processor */
-		cpuidle_state_table = mrst_cstates;
-#ifdef CONFIG_X86_INTEL_MID
+#ifdef CONFIG_X86_MRST
 		cpuidle_device_prepare = mrst_pmu_validate_cstates;
 #endif
+	case 0x27:	/* 39 - Penwell Atom Processor */
+		cpuidle_state_table = mrst_cstates;
 		auto_demotion_disable_flags = ATM_LNC_C6_AUTO_DEMOTE;
 		break;
 
