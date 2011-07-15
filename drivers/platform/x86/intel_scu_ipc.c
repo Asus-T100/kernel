@@ -25,21 +25,8 @@
 #include <linux/pm.h>
 #include <linux/pci.h>
 #include <linux/interrupt.h>
-#include <linux/sfi.h>
 #include <asm/mrst.h>
 #include <asm/intel_scu_ipc.h>
-
-/* IPC defines the following message types */
-#define IPCMSG_WATCHDOG_TIMER 0xF8 /* Set Kernel Watchdog Threshold */
-#define IPCMSG_BATTERY        0xEF /* Coulomb Counter Accumulator */
-#define IPCMSG_FW_UPDATE      0xFE /* Firmware update */
-#define IPCMSG_PCNTRL         0xFF /* Power controller unit read/write */
-#define IPCMSG_FW_REVISION    0xF4 /* Get firmware revision */
-
-/* Command id associated with message IPCMSG_PCNTRL */
-#define IPC_CMD_PCNTRL_W      0 /* Register write */
-#define IPC_CMD_PCNTRL_R      1 /* Register read */
-#define IPC_CMD_PCNTRL_M      2 /* Register read-modify-write */
 
 /*
  * IPC register summary
@@ -66,6 +53,11 @@
 #define IPC_I2C_BASE      0xFF12B000	/* I2C control register base address */
 #define IPC_I2C_MAX_ADDR  0x10		/* Maximum I2C regisers */
 
+#define IPC_SPTR_ADDR     0x08          /* IPC source pointer regiser*/
+#define IPC_DPTR_ADDR     0x0c          /* IPC destination pointer regiser*/
+#define IPC_MIP_BASE	   0xFFFD8000   /* sram base address for mip accessing*/
+#define IPC_MIP_MAX_ADDR  0x1000
+
 static int ipc_probe(struct pci_dev *dev, const struct pci_device_id *id);
 static void ipc_remove(struct pci_dev *pdev);
 
@@ -73,6 +65,7 @@ struct intel_scu_ipc_dev {
 	struct pci_dev *pdev;
 	void __iomem *ipc_base;
 	void __iomem *i2c_base;
+	void __iomem *mip_base;
 };
 
 static struct intel_scu_ipc_dev  ipcdev; /* Only one for now */
@@ -147,6 +140,28 @@ static inline int busy_loop(void) /* Wait till scu status is busy */
 		loop_count++;
 		/* break if scu doesn't reset busy bit after huge retry */
 		if (loop_count > 100000) {
+			dev_err(&ipcdev.pdev->dev, "IPC timed out");
+			return -ETIMEDOUT;
+		}
+	}
+	if ((status >> 1) & 1)
+		return -EIO;
+
+	return 0;
+}
+
+static inline int sleep_loop(void) /* Wait till scu status is not busy */
+{
+	u32 status = 0;
+	u32 loop_count = 0;
+
+	status = ipc_read_status();
+	while (status & 1) {
+		msleep(50);
+		status = ipc_read_status();
+		loop_count++;
+		/* break if scu doesn't reset busy bit after huge retry */
+		if (loop_count > 100) {
 			dev_err(&ipcdev.pdev->dev, "IPC timed out");
 			return -ETIMEDOUT;
 		}
@@ -534,15 +549,12 @@ struct fw_update_mailbox {
  *	This function provides an interface to load the firmware into
  *	the SCU. Returns 0 on success or -1 on failure
  */
-int intel_scu_ipc_fw_update(u8 *buffer, u32 length)
+int intel_scu_ipc_mrstfw_update(u8 *buffer, u32 length)
 {
 	void __iomem *fw_update_base;
 	struct fw_update_mailbox __iomem *mailbox = NULL;
 	int retry_cnt = 0;
 	u32 status;
-
-	if (platform != MRST_CPU_CHIP_LINCROFT)
-		return -EINVAL;
 
 	mutex_lock(&ipclock);
 	fw_update_base = ioremap_nocache(IPC_FW_LOAD_ADDR, (128*1024));
@@ -648,7 +660,7 @@ update_end:
 		return 0;
 	return -EIO;
 }
-EXPORT_SYMBOL(intel_scu_ipc_fw_update);
+EXPORT_SYMBOL(intel_scu_ipc_mrstfw_update);
 
 /* Medfield firmware update.
  * The flow and communication between IA and SCU has changed for
@@ -670,9 +682,10 @@ EXPORT_SYMBOL(intel_scu_ipc_fw_update);
 #define MIP_HEADER_OFFSET 0
 #define LOWER_128K_OFFSET (MIP_HEADER_OFFSET+MIP_HEADER_LEN)
 #define UPPER_128K_OFFSET (LOWER_128K_OFFSET+MAX_FW_CHUNK)
+#define SUCP_OFFSET	0x1D8000
 
 #define DNX_HDR_LEN  24
-#define FUPH_HDR_LEN 28
+#define FUPH_HDR_LEN 32
 
 #define DNX_IMAGE        "DXBL"
 #define FUPH_HDR_SIZE    "RUPHS"
@@ -680,7 +693,17 @@ EXPORT_SYMBOL(intel_scu_ipc_fw_update);
 #define MIP              "DMIP"
 #define LOWER_128K       "LOFW"
 #define UPPER_128K       "HIFW"
-#define UPDATE_DONE      "DONE"
+#define UPDATE_DONE      "HLT$"
+#define PSFW1		 "PSFW1"
+#define PSFW2		 "PSFW2"
+#define SSFW		 "SSFW"
+#define SUCP		 "SuCP"
+
+#define MAX_LEN_PSFW     7
+#define MAX_LEN_SSFW     6
+#define MAX_LEN_SUCP     6
+
+#define C0_STEPPING	8 /* PCI Rev for C0 stepping */
 
 /* Modified IA-SCU mailbox for medfield firmware update. */
 struct ia_scu_mailbox {
@@ -706,13 +729,43 @@ struct mfld_fw_update {
 	char mb_status[8];
 };
 
+/* Structure to hold firmware update header */
+struct fuph_hdr {
+	u32 sig;
+	u32 mip_size;
+	u32 ifwi_size;
+	u32 psfw1_size;
+	u32 psfw2_size;
+	u32 ssfw_size;
+	u32 sucp_size;
+	u32 checksum;
+};
+
+enum mailbox_status {
+	MB_DONE,
+	MB_CONTINUE,
+	MB_ERROR
+};
+
+/* Misc. firmware components that are part of integrated firmware */
+struct misc_fw {
+	const char *fw_type;
+	u8 str_len;
+};
+
+static struct misc_fw misc_fw_table[] = {
+	{ .fw_type = "PSFW1", .str_len  = MAX_LEN_PSFW },
+	{ .fw_type = "SSFW", .str_len  = MAX_LEN_SSFW  },
+	{ .fw_type = "PSFW2", .str_len  = MAX_LEN_PSFW  },
+	{ .fw_type = "SuCP", .str_len  = MAX_LEN_SUCP  }
+};
+
 /*
  * IA will wait in busy-state, and poll mailbox, to check
  * if SCU is done processing.
  * If it has to wait for more than a second, it will exit with
  * error code.
  */
-
 static int busy_wait(struct mfld_fw_update *mfld_fw_upd)
 {
 	u32 count = 0;
@@ -721,7 +774,7 @@ static int busy_wait(struct mfld_fw_update *mfld_fw_upd)
 	flag = mfld_fw_upd->wscu;
 
 	while (ioread32(mfld_fw_upd->mailbox + SCU_FLAG_OFFSET) != flag
-		&& count < 120) {
+		&& count < 500) {
 		/* There are synchronization issues between IA and SCU */
 		mb();
 		/* FIXME: we must use mdelay currently */
@@ -730,7 +783,7 @@ static int busy_wait(struct mfld_fw_update *mfld_fw_upd)
 	}
 
 	if (ioread32(mfld_fw_upd->mailbox + SCU_FLAG_OFFSET) != flag) {
-		dev_err(&ipcdev.pdev->dev, "IA-wait >2 secs,quitting\n");
+		dev_err(&ipcdev.pdev->dev, "IA-waited and quitting\n");
 		return -ETIMEDOUT;
 	}
 
@@ -767,36 +820,188 @@ static int process_fw_chunk(u8 *fws, u8 __user *userptr, u32 chunklen,
 }
 
 /*
- * This function will check if mailbox status flag, indicates any errors.
+ * This function will check mailbox status flag, and return state of mailbox.
  */
-static int check_mb_status(char *mb_status, struct mfld_fw_update *mfld_fw_upd)
+static enum mailbox_status check_mb_status(struct mfld_fw_update *mfld_fw_upd)
 {
 
+	enum mailbox_status mb_state;
+
 	/* There are synchronization issues between IA and SCU */
-	smp_mb();
+	mb();
 
 	memcpy_fromio(mfld_fw_upd->mb_status, mfld_fw_upd->mailbox, 8);
 
-	if ((strncmp(mfld_fw_upd->mb_status, "ER", 2) == 0) ||
-		(strncmp(mfld_fw_upd->mb_status, "HLT0", 4) == 0)) {
+	if (!strncmp(mfld_fw_upd->mb_status, "ER", 2) ||
+		!strncmp(mfld_fw_upd->mb_status, "HLT0", 4)) {
 		dev_dbg(&ipcdev.pdev->dev,
 			"mailbox error=%s\n", mfld_fw_upd->mb_status);
-		return -EINVAL;
+		return MB_ERROR;
 	} else {
-		if (strncmp(mfld_fw_upd->mb_status, mb_status,
-				strlen(mfld_fw_upd->mb_status)) != 0) {
-			dev_dbg(&ipcdev.pdev->dev,
-				"unexpected state=%s", mfld_fw_upd->mb_status);
+		mb_state = (!strncmp(mfld_fw_upd->mb_status, UPDATE_DONE,
+				sizeof(UPDATE_DONE))) ? MB_DONE : MB_CONTINUE;
+		dev_dbg(&ipcdev.pdev->dev,
+			"mailbox pass=%s, mb_state=%d\n",
+			mfld_fw_upd->mb_status, mb_state);
+	}
+
+	return mb_state;
+
+}
+
+/* Helper function used to calculate length and offset.  */
+int helper_for_calc_offset_length(struct fw_ud *fw_ud_ptr, char *scu_req,
+				void **offset, u32 *len, struct fuph_hdr *fuph,
+				const char *fw_type)
+{
+
+	unsigned long chunk_no;
+	u32 chunk_rem;
+	u32 max_chunk_cnt;
+	u32 fw_size;
+	u32 fw_offset;
+
+	if (!strncmp(fw_type, PSFW1, strlen(PSFW1))) {
+
+		if (strict_strtoul(scu_req + strlen(PSFW1), 10,
+						&chunk_no) < 0)
 			return -EINVAL;
-		} else {
-			dev_dbg(&ipcdev.pdev->dev,
-				"mailbox pass=%s\n", mfld_fw_upd->mb_status);
+
+		fw_size = fuph->psfw1_size;
+		fw_offset = fuph->mip_size + fuph->ifwi_size;
+	} else if (!strncmp(fw_type, PSFW2, strlen(PSFW2))) {
+
+		if (strict_strtoul(scu_req + strlen(PSFW2), 10,
+						&chunk_no) < 0)
+			return -EINVAL;
+
+		fw_size = fuph->psfw2_size;
+		fw_offset = fuph->mip_size + fuph->ifwi_size +
+				fuph->psfw1_size + fuph->ssfw_size;
+	} else if (!strncmp(fw_type, SSFW, strlen(SSFW))) {
+
+		if (strict_strtoul(scu_req + strlen(SSFW), 10,
+						&chunk_no) < 0)
+			return -EINVAL;
+
+		fw_size = fuph->ssfw_size;
+		fw_offset = fuph->mip_size + fuph->ifwi_size +
+				fuph->psfw1_size;
+	} else if (!strncmp(fw_type, SUCP, strlen(SUCP))) {
+
+		if (strict_strtoul(scu_req + strlen(SUCP), 10,
+						&chunk_no) < 0)
+			return -EINVAL;
+
+		fw_size = fuph->sucp_size;
+		fw_offset = SUCP_OFFSET;
+	} else
+		return -EINVAL;
+
+	chunk_rem = fw_size % MAX_FW_CHUNK;
+	max_chunk_cnt = (fw_size/MAX_FW_CHUNK) + (chunk_rem ? 1 : 0);
+
+	dev_dbg(&ipcdev.pdev->dev,
+		"str=%s,chunk_no=%lx, chunk_rem=%d,max_chunk_cnt=%d\n",
+		fw_type, chunk_no, chunk_rem, max_chunk_cnt);
+
+	if ((chunk_no + 1) > max_chunk_cnt)
+		return -EINVAL;
+
+	/* Note::Logic below will make sure, that we get right length if input
+	 is 128K or multiple. */
+	*len = (chunk_no == (max_chunk_cnt - 1)) ?
+		(chunk_rem ? chunk_rem : MAX_FW_CHUNK) : MAX_FW_CHUNK;
+
+	*offset = fw_ud_ptr->fw_file_data + fw_offset +
+		(fw_size/((max_chunk_cnt - chunk_no)
+		* MAX_FW_CHUNK))*MAX_FW_CHUNK;
+
+	return 0;
+
+}
+
+/*
+ * This api calculates offset and length depending on type of firmware chunk
+ * requested by SCU. Note: Intent is to follow the architecture such that,
+ * SCU controls the flow, and IA simply hands out, what is requested by SCU.
+ * IA will simply follow SCU's commands, unless SCU requests for something
+ * IA cannot give. TODO:That will be a special error case, need to figure out
+ * how to handle that.
+ */
+int calc_offset_and_length(struct fw_ud *fw_ud_ptr, char *scu_req,
+			void **offset, u32 *len, struct fuph_hdr *fuph)
+{
+
+	u8 cnt;
+
+	if (!strncmp(DNX_IMAGE, scu_req, strlen(scu_req))) {
+		*offset = fw_ud_ptr->dnx_file_data;
+		*len = fw_ud_ptr->dnx_size;
+		return 0;
+	} else if (!strncmp(FUPH, scu_req, strlen(scu_req))) {
+		*offset = fw_ud_ptr->fw_file_data + fw_ud_ptr->fsize
+				- FUPH_HDR_LEN;
+		*len = FUPH_HDR_LEN;
+		return 0;
+	} else if (!strncmp(MIP, scu_req, strlen(scu_req))) {
+		*offset = fw_ud_ptr->fw_file_data + MIP_HEADER_OFFSET;
+		*len = fuph->mip_size;
+		return 0;
+	} else if (!strncmp(LOWER_128K, scu_req, strlen(scu_req))) {
+		*offset = fw_ud_ptr->fw_file_data + fuph->mip_size;
+		*len = MAX_FW_CHUNK;
+		return 0;
+	} else if (!strncmp(UPPER_128K, scu_req, strlen(scu_req))) {
+		*offset = fw_ud_ptr->fw_file_data
+				+ fuph->mip_size + MAX_FW_CHUNK;
+		*len = MAX_FW_CHUNK;
+		return 0;
+	} else {
+		for (cnt = 0; cnt < ARRAY_SIZE(misc_fw_table) ; cnt++) {
+
+			if (!strncmp(misc_fw_table[cnt].fw_type, scu_req,
+					strlen(misc_fw_table[cnt].fw_type))) {
+
+				if (strlen(scu_req) ==
+						misc_fw_table[cnt].str_len) {
+
+					if (helper_for_calc_offset_length
+						(fw_ud_ptr, scu_req,
+						offset, len, fuph,
+						misc_fw_table[cnt].fw_type) < 0)
+						goto error_case;
+
+					dev_dbg(&ipcdev.pdev->dev,
+					"\nmisc fw type=%s, len=%d,offset=%d",
+					misc_fw_table[cnt].fw_type, *len,
+					(int)*offset);
+
+					return 0;
+
+				} else
+					goto error_case;
+			}
 		}
 	}
 
-	return 0;
-}
+	dev_dbg(&ipcdev.pdev->dev,
+			"Unexpected mailbox request from scu\n");
 
+error_case:
+	/* TODO::Need to test this error case..and see how SCU reacts
+	* and how IA handles
+	* subsequent error response and whether exit is graceful...
+	*/
+
+	dev_dbg(&ipcdev.pdev->dev, "error case,respond back to SCU..\n");
+	dev_dbg(&ipcdev.pdev->dev, "scu_req=%s\n", scu_req);
+	*len = 0;
+	*offset = 0;
+
+	return -EINVAL;
+
+}
 
 /**
  *	intel_scu_ipc_medfw_upgrade	- Medfield Firmware update utility
@@ -814,8 +1019,11 @@ int intel_scu_ipc_medfw_upgrade(void __user *arg)
 	struct mfld_fw_update	mfld_fw_upd;
 	u8 *fw_file_data = NULL;
 	u8 *fws = NULL;
-	u8 *fuph_ptr = NULL;
 	int ret_val = 0;
+	struct fuph_hdr fuph;
+	u32 length = 0;
+	void *offset;
+	enum mailbox_status mb_state;
 
 	if (platform != MRST_CPU_CHIP_PENWELL)
 		return -EINVAL;
@@ -824,6 +1032,19 @@ int intel_scu_ipc_medfw_upgrade(void __user *arg)
 	if (ipcdev.pdev == NULL) {
 		ret_val = -ENODEV;
 		goto out_unlock;
+	} else {
+		/* Check for silicon stepping */
+		dev_dbg(&ipcdev.pdev->dev,
+			"ipc_medfw_upgrade,silicon stepping=%d\n",
+			ipcdev.pdev->revision);
+		/* Update NOT supported for older silicon stepping */
+		if (ipcdev.pdev->revision < C0_STEPPING) {
+			dev_err(&ipcdev.pdev->dev,
+				"Update NOT supported for stepping=%d\n",
+				ipcdev.pdev->revision);
+			ret_val = -EINVAL;
+			goto out_unlock;
+		}
 	}
 
 	mfld_fw_upd.wscu = 0;
@@ -835,8 +1056,8 @@ int intel_scu_ipc_medfw_upgrade(void __user *arg)
 
 	fw_file_data = fw_ud_param.fw_file_data;
 	if (fw_file_data == NULL || fw_ud_param.fsize == 0 ||
-	    fw_ud_param.dnx_size == 0 || fw_ud_param.dnx_hdr == NULL ||
-	    fw_ud_param.dnx_file_data == NULL) {
+		fw_ud_param.dnx_size == 0 || fw_ud_param.dnx_hdr == NULL ||
+		fw_ud_param.dnx_file_data == NULL) {
 		dev_err(&ipcdev.pdev->dev,
 			"ipc_medfw_upgrade, invalid args!!\n");
 		ret_val = -EINVAL;
@@ -862,12 +1083,35 @@ int intel_scu_ipc_medfw_upgrade(void __user *arg)
 	/*IA initializes both IAFlag and SCUFlag to zero */
 	iowrite32(0, mfld_fw_upd.mailbox + SCU_FLAG_OFFSET);
 	iowrite32(0, mfld_fw_upd.mailbox + IA_FLAG_OFFSET);
+	memset_io(mfld_fw_upd.mailbox, 0, 8);
 
 	fws = kmalloc(MAX_FW_CHUNK, GFP_KERNEL);
 	if (fws == NULL) {
 		ret_val = -ENOMEM;
 		goto unmap_mb;
 	}
+	/* Copy fuph header to kernel space */
+	if (copy_from_user(&fuph,
+				(fw_ud_param.fw_file_data + (fw_ud_param.fsize - 1)
+					- (FUPH_HDR_LEN - 1)),
+				FUPH_HDR_LEN)) {
+		dev_err(&ipcdev.pdev->dev,  "copy from user failed\n");
+		ret_val = -EFAULT;
+		goto term;
+	}
+
+	/* Convert sizes in DWORDS to number of bytes. */
+	fuph.mip_size = fuph.mip_size * 4;
+	fuph.ifwi_size = fuph.ifwi_size * 4;
+	fuph.psfw1_size = fuph.psfw1_size * 4;
+	fuph.psfw2_size = fuph.psfw2_size * 4;
+	fuph.ssfw_size = fuph.ssfw_size * 4;
+	fuph.sucp_size = fuph.sucp_size * 4;
+
+	dev_dbg(&ipcdev.pdev->dev,
+		"mip=%d, ifwi=%d, ps1=%d, ps2=%d, sfw=%d, sucp=%d\n",
+		fuph.mip_size, fuph.ifwi_size, fuph.psfw1_size,
+		fuph.psfw2_size, fuph.ssfw_size, fuph.sucp_size);
 
 	/* TODO_SK::There is just
 	 *  1 write required from IA side for DFU.
@@ -895,106 +1139,69 @@ int intel_scu_ipc_medfw_upgrade(void __user *arg)
 	if (ret_val < 0)
 		goto term;
 
-	ret_val = check_mb_status(DNX_IMAGE, &mfld_fw_upd);
-	if (ret_val < 0)
-		goto term;
-
-	/*2. DNX FILE   */
-	ret_val = process_fw_chunk(fws, fw_ud_param.dnx_file_data,
-				      fw_ud_param.dnx_size, &mfld_fw_upd);
-	if (ret_val < 0) {
-		dev_err(&ipcdev.pdev->dev, "Error fw chunk=%s\n", DNX_IMAGE);
-		goto term;
-	}
-
-	ret_val = check_mb_status(FUPH_HDR_SIZE, &mfld_fw_upd);
-	if (ret_val < 0)
-		goto term;
-
-	iowrite32(FUPH_HDR_LEN, mfld_fw_upd.sram);
-
-	/* There are synchronization issues between IA and SCU */
-	mb();
-	dev_dbg(&ipcdev.pdev->dev,
-		"copied fuph hdr size=%d\n", ioread32(mfld_fw_upd.sram));
-
-	mfld_fw_upd.wia = !(mfld_fw_upd.wia);
-	iowrite32(mfld_fw_upd.wia, mfld_fw_upd.mailbox + IA_FLAG_OFFSET);
-
-	dev_dbg(&ipcdev.pdev->dev, "ia_flag=%d\n",
-		ioread32(mfld_fw_upd.mailbox + IA_FLAG_OFFSET));
-
-	mb();
-
-	mfld_fw_upd.wscu = !mfld_fw_upd.wscu;
-	
-	ret_val = busy_wait(&mfld_fw_upd);
-	if (ret_val < 0)
-		goto term;
-
-	ret_val = check_mb_status(FUPH, &mfld_fw_upd);
-	if (ret_val < 0) {
-		dev_err(&ipcdev.pdev->dev,
-			"error after FUPH hdrsize, IA quitting\n");
-		goto term;
-	}
-
-	/* 3. FUPH HEADER   */
-	fuph_ptr = fw_file_data + (fw_ud_param.fsize - 1) - (FUPH_HDR_LEN - 1);
-	
-	ret_val = process_fw_chunk(fws, fuph_ptr, FUPH_HDR_LEN, &mfld_fw_upd);
-	if (ret_val < 0) {
-		dev_err(&ipcdev.pdev->dev, "Error fw chunk=%s\n", FUPH);
-		goto term;
-	}
-
-	/* TODO: Fix this function, to make it handle more than 1 string
-	 * At this point, if MIP size is 0 in FUPH, then SCU can jump to LOFW.
+	/* TODO:Add a count for iteration, based on sizes of security firmware,
+	 * so that we determine finite number of iterations to loop thro.
+	 * That way at the very least, we can atleast control the number
+	 * of iterations, and prevent infinite looping if there are any bugs.
+	 * The only catch being for B0, SCU will request twice for each firmware
+	 * chunk, since its writing to 2 partitions.
+	 * TODO::Investigate if we need to increase timeout for busy_wait,
+	 * since SCU is now writing to 2 partitions.
 	 */
-	ret_val = check_mb_status(MIP, &mfld_fw_upd);
-	if (ret_val < 0)
-		goto term;
 
-	ret_val = check_mb_status(LOWER_128K, &mfld_fw_upd);
-	if (ret_val < 0)
-		goto term;
+	while ((mb_state = check_mb_status(&mfld_fw_upd)) != MB_DONE) {
 
-	if ((strncmp(mfld_fw_upd.mb_status, MIP,
-					strlen(mfld_fw_upd.mb_status)) == 0)) {
-		/* 4. MIP HEADER */
-		ret_val = process_fw_chunk(fws, 
-				fw_file_data + MIP_HEADER_OFFSET,
-				MIP_HEADER_LEN, &mfld_fw_upd);
-		if (ret_val < 0) {
-			dev_err(&ipcdev.pdev->dev, "Error fw chunk=%s\n", MIP);
+		if (mb_state == MB_ERROR) {
+			dev_dbg(&ipcdev.pdev->dev, "check_mb_status,error\n");
+			ret_val = -1;
 			goto term;
 		}
 
-		ret_val = check_mb_status(LOWER_128K, &mfld_fw_upd);
-		if (ret_val < 0)
+		if (!strncmp(mfld_fw_upd.mb_status, FUPH_HDR_SIZE,
+				strlen(FUPH_HDR_SIZE))) {
+			iowrite32(FUPH_HDR_LEN, mfld_fw_upd.sram);
+			/* There are synchronization issues between IA-SCU */
+			mb();
+			dev_dbg(&ipcdev.pdev->dev,
+				"copied fuph hdr size=%d\n",
+				ioread32(mfld_fw_upd.sram));
+			mfld_fw_upd.wia = !mfld_fw_upd.wia;
+			iowrite32(mfld_fw_upd.wia, mfld_fw_upd.mailbox +
+				IA_FLAG_OFFSET);
+			dev_dbg(&ipcdev.pdev->dev, "ia_flag=%d\n",
+				ioread32(mfld_fw_upd.mailbox + IA_FLAG_OFFSET));
+			mb();
+			mfld_fw_upd.wscu = !mfld_fw_upd.wscu;
+
+			if (busy_wait(&mfld_fw_upd) < 0) {
+				ret_val = -1;
+				goto term;
+			}
+
+			continue;
+		}
+
+		if (calc_offset_and_length(&fw_ud_param, mfld_fw_upd.mb_status,
+						&offset, &length, &fuph) < 0) {
+			dev_dbg(&ipcdev.pdev->dev,
+				"calc_offset_and_length_error,error\n");
+			ret_val = -1;
 			goto term;
+		}
+
+		if ((process_fw_chunk(fws, offset, length,
+						&mfld_fw_upd)) != 0) {
+			dev_dbg(&ipcdev.pdev->dev,
+				"Error processing fw chunk=%s\n",
+				mfld_fw_upd.mb_status);
+			ret_val = -1;
+			goto term;
+		} else
+			dev_dbg(&ipcdev.pdev->dev,
+				"PASS processing fw chunk=%s\n",
+				mfld_fw_upd.mb_status);
 	}
 
-	/* 5. LOWER 128K */
-	ret_val = process_fw_chunk(fws, fw_file_data + LOWER_128K_OFFSET,
-			      MAX_FW_CHUNK, &mfld_fw_upd);
-	if (ret_val < 0) {
-		dev_err(&ipcdev.pdev->dev, "Error fw chunk=%s\n", LOWER_128K);
-		goto term;
-	}
-
-	ret_val = check_mb_status(UPPER_128K, &mfld_fw_upd);
-	if (ret_val < 0)
-		goto term;
-
-	/* 6. UPPER 128K */
-	ret_val = process_fw_chunk(fws, fw_file_data + UPPER_128K_OFFSET,
-					      MAX_FW_CHUNK, &mfld_fw_upd);
-	if (ret_val < 0) {
-		dev_err(&ipcdev.pdev->dev, "Error fw chunk=%s\n", UPPER_128K);
-		goto term;
-	}
-	ret_val = check_mb_status(UPDATE_DONE, &mfld_fw_upd);
 term:
 	kfree(fws);
 unmap_mb:
@@ -1006,6 +1213,167 @@ out_unlock:
 	return ret_val;
 }
 EXPORT_SYMBOL_GPL(intel_scu_ipc_medfw_upgrade);
+
+int intel_scu_ipc_read_mip(u8 *data, int len, int offset, int issigned)
+{
+	int ret;
+	u32 cmdid;
+	u32 data_off;
+
+	if (platform != MRST_CPU_CHIP_PENWELL)
+		return -EINVAL;
+
+	if (offset + len > IPC_MIP_MAX_ADDR)
+		return -EINVAL;
+
+	mutex_lock(&ipclock);
+	if (ipcdev.pdev == NULL || ipcdev.mip_base == NULL) {
+		mutex_unlock(&ipclock);
+		return -ENODEV;
+	}
+
+	writel(offset, ipcdev.ipc_base + IPC_DPTR_ADDR);
+	writel((len + 3) / 4, ipcdev.ipc_base + IPC_SPTR_ADDR);
+
+	cmdid = issigned ? IPC_CMD_SMIP_RD : IPC_CMD_UMIP_RD;
+	ipc_command(4 << 16 | cmdid << 12 | IPCMSG_MIP_ACCESS);
+	ret = sleep_loop();
+	if (!ret) {
+		data_off = ipc_data_readl(0);
+		memcpy(data, ipcdev.mip_base + data_off, len);
+	}
+	mutex_unlock(&ipclock);
+
+	return ret;
+}
+EXPORT_SYMBOL(intel_scu_ipc_read_mip);
+
+int intel_scu_ipc_write_umip(u8 *data, int len, int offset)
+{
+	int ret;
+
+	if (platform != MRST_CPU_CHIP_PENWELL)
+		return -EINVAL;
+
+	if (offset + len > IPC_MIP_MAX_ADDR)
+		return -EINVAL;
+
+	mutex_lock(&ipclock);
+	if (ipcdev.pdev == NULL || ipcdev.mip_base == NULL) {
+		mutex_unlock(&ipclock);
+		return -ENODEV;
+	}
+	writel(offset, ipcdev.ipc_base + IPC_DPTR_ADDR);
+	writel((len + 3) / 4, ipcdev.ipc_base + IPC_SPTR_ADDR);
+	memcpy(ipcdev.mip_base, data, len);
+	ipc_command(IPC_CMD_UMIP_WR << 12 | IPCMSG_MIP_ACCESS);
+	ret = sleep_loop();
+	mutex_unlock(&ipclock);
+
+	return ret;
+}
+EXPORT_SYMBOL(intel_scu_ipc_write_umip);
+
+#define OSHOB_SIZE		60
+#define OSNIB_SIZE		32
+#define IPCMSG_GET_HOBADDR	0xE5
+
+int intel_scu_ipc_read_oshob(u8 *data, int len, int offset)
+{
+	int ret, i;
+	u32 oshob_base;
+	void __iomem *oshob_addr;
+	pr_info("Get osHOB address------->-------------->");
+	ret = intel_scu_ipc_command(IPCMSG_GET_HOBADDR, 0,
+				NULL, 0, &oshob_base, 1);
+	if (ret < 0) {
+		pr_err("ipc_read_osnib failed!!\n");
+		goto exit;
+	}
+	pr_info("OSHOB addr values is %x\n", oshob_base);
+	oshob_addr = ioremap_nocache(oshob_base, OSHOB_SIZE);
+	if (!oshob_addr) {
+		pr_err("ioremap failed!\n");
+		ret = -ENOMEM;
+		goto exit;
+	} else {
+		u8 *ptr = data;
+		for (i = 0; i < len; i = i+1) {
+			*ptr = readb(oshob_addr + offset + i);
+			pr_info("addr=%x, offset=%x, value=%x\n",
+				(u32)(oshob_addr+i), offset+i, *ptr);
+			pr_info("--------------------------------------\n");
+			ptr++;
+		}
+	}
+	iounmap(oshob_addr);
+exit:
+	return 0;
+}
+EXPORT_SYMBOL_GPL(intel_scu_ipc_read_oshob);
+
+#define IPCMSG_WRITE_OSNIB	0xE4
+#define POSNIBW_OFFSET		0x34
+#define IPCREG_IPC_SPTR		0xFF11C008
+
+int intel_scu_ipc_write_osnib(u8 *data, int len, int offset, u32 mask)
+{
+	int ret = 0;
+	int i;
+	u32 posnibw;
+	u32 oshob_base;
+	void __iomem *oshob_addr;
+	void __iomem *osnibw_addr;
+	void __iomem *sptr_addr;
+
+	pr_info("Get osHOB address------->-------------->");
+	ret = intel_scu_ipc_command(IPCMSG_GET_HOBADDR, 0,
+				NULL, 0, &oshob_base, 1);
+	if (ret < 0) {
+		pr_err("ipc_get_hobaddr failed!!\n");
+		goto exit;
+	}
+	pr_info("OSHOB addr values is %x\n", oshob_base);
+	oshob_addr = ioremap_nocache(oshob_base, OSHOB_SIZE);
+	if (!oshob_addr) {
+		pr_err("ioremap failed!\n");
+		ret = -ENOMEM;
+		goto exit;
+	}
+	posnibw = readl(oshob_addr + POSNIBW_OFFSET);
+	if (posnibw == 0) { /* workaround here for BZ 2914 */
+		posnibw = 0xFFFF3400;
+		pr_err("ERR: posnibw from oshob is 0, manually set it here\n");
+	}
+	pr_info("POSNIB: %x\n", posnibw);
+	osnibw_addr = ioremap_nocache(posnibw, OSNIB_SIZE);
+	if (!osnibw_addr) {
+		pr_err("ioremap failed!\n");
+		ret = -ENOMEM;
+		goto unmap_oshob_addr;
+	}
+	for (i = 0; i < len; i++)
+		writeb(*(data + i), (osnibw_addr + offset + i));
+	sptr_addr = ioremap_nocache(IPCREG_IPC_SPTR, sizeof(u32));
+	if (!sptr_addr) {
+		pr_err("ioremap failed\n");
+		ret = -ENOMEM;
+		goto unmap_osnibw_addr;
+	};
+	writel(mask, sptr_addr);
+	ret = intel_scu_ipc_command(IPCMSG_WRITE_OSNIB, 0,
+				NULL, 0 , NULL, 0);
+	if (ret < 0)
+		pr_err("ipc_write_osnib failed!!\n");
+	iounmap(sptr_addr);
+unmap_osnibw_addr:
+	iounmap(osnibw_addr);
+unmap_oshob_addr:
+	iounmap(oshob_addr);
+exit:
+	return ret;
+}
+EXPORT_SYMBOL_GPL(intel_scu_ipc_write_osnib);
 
 /*
  * Interrupt handler gets called when ioc bit of IPC_COMMAND_REG set to 1
@@ -1062,6 +1430,13 @@ static int ipc_probe(struct pci_dev *dev, const struct pci_device_id *id)
 		return -ENOMEM;
 	}
 
+	ipcdev.mip_base = ioremap_nocache(IPC_MIP_BASE, IPC_MIP_MAX_ADDR);
+	if (!ipcdev.mip_base) {
+		iounmap(ipcdev.i2c_base);
+		iounmap(ipcdev.ipc_base);
+		return -ENOMEM;
+	}
+
 	intel_scu_devices_create();
 
 	return 0;
@@ -1084,6 +1459,7 @@ static void ipc_remove(struct pci_dev *pdev)
 	pci_dev_put(ipcdev.pdev);
 	iounmap(ipcdev.ipc_base);
 	iounmap(ipcdev.i2c_base);
+	iounmap(ipcdev.mip_base);
 	ipcdev.pdev = NULL;
 	intel_scu_devices_destroy();
 }

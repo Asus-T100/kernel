@@ -3,6 +3,8 @@
  *
  * (C) Copyright 2008-2010 Intel Corporation
  * Author: Sreedhara DS (sreedhara.ds@intel.com)
+ * (C) Copyright 2010 Intel Corporation
+ * Author: Sudha Krishnakumar (sudha.krishnakumar@intel.com)
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -22,24 +24,38 @@
 #include <linux/uaccess.h>
 #include <linux/slab.h>
 #include <linux/init.h>
+#include <linux/io.h>
 #include <asm/intel_scu_ipc.h>
+#include <asm/mrst.h>
 
 static u32 major;
 
 #define MAX_FW_SIZE 264192
 
 /* ioctl commnds */
-#define	INTE_SCU_IPC_REGISTER_READ	0
-#define INTE_SCU_IPC_REGISTER_WRITE	1
-#define INTE_SCU_IPC_REGISTER_UPDATE	2
-#define INTE_SCU_IPC_FW_UPDATE		0xA2
-#define INTE_SCU_IPC_MEDFIELD_FW_UPDATE	0xA3
+#define INTEL_SCU_IPC_REGISTER_READ	0
+#define INTEL_SCU_IPC_REGISTER_WRITE	1
+#define INTEL_SCU_IPC_REGISTER_UPDATE	2
+#define INTEL_SCU_IPC_FW_UPDATE		0xA2
+#define INTEL_SCU_IPC_MEDFIELD_FW_UPDATE	0xA3
+#define INTEL_SCU_IPC_FW_REVISION_GET	0xB0
+#define INTEL_SCU_IPC_READ_RR_FROM_OSNIB	0xC1
+#define INTEL_SCU_IPC_WRITE_RR_TO_OSNIB	0xC2
+#define INTEL_SCU_IPC_READ_VBATTCRIT	0xC4
+
+#define OSNIB_OFFSET			0x0C
+#define OSNIB_RR_MASK			0xF
 
 struct scu_ipc_data {
 	u32     count;  /* No. of registers */
 	u16     addr[5]; /* Register addresses */
 	u8      data[5]; /* Register data */
 	u8      mask; /* Valid for read-modify-write */
+};
+
+struct scu_ipc_version {
+	u32     count;  /* length of version info */
+	u8      data[16]; /* version data */
 };
 
 /**
@@ -59,11 +75,11 @@ static int scu_reg_access(u32 cmd, struct scu_ipc_data  *data)
 		return -EINVAL;
 
 	switch (cmd) {
-	case INTE_SCU_IPC_REGISTER_READ:
+	case INTEL_SCU_IPC_REGISTER_READ:
 		return intel_scu_ipc_readv(data->addr, data->data, count);
-	case INTE_SCU_IPC_REGISTER_WRITE:
+	case INTEL_SCU_IPC_REGISTER_WRITE:
 		return intel_scu_ipc_writev(data->addr, data->data, count);
-	case INTE_SCU_IPC_REGISTER_UPDATE:
+	case INTEL_SCU_IPC_REGISTER_UPDATE:
 		return intel_scu_ipc_update_register(data->addr[0],
 						    data->data[0], data->mask);
 	default:
@@ -90,7 +106,7 @@ static long scu_ipc_ioctl(struct file *fp, unsigned int cmd,
 		return -EPERM;
 
 	switch (cmd) {
-	case INTE_SCU_IPC_FW_UPDATE:
+	case INTEL_SCU_IPC_FW_UPDATE:
 	{
 		u8 *fwbuf = kmalloc(MAX_FW_SIZE, GFP_KERNEL);
 		if (fwbuf == NULL)
@@ -99,12 +115,66 @@ static long scu_ipc_ioctl(struct file *fp, unsigned int cmd,
 			kfree(fwbuf);
 			return -EFAULT;
 		}
-		ret = intel_scu_ipc_fw_update(fwbuf, MAX_FW_SIZE);
+		ret = intel_scu_ipc_mrstfw_update(fwbuf, MAX_FW_SIZE);
 		kfree(fwbuf);
-		return ret;
+		break;
 	}
-	case INTE_SCU_IPC_MEDFIELD_FW_UPDATE:
+	case INTEL_SCU_IPC_MEDFIELD_FW_UPDATE:
 		return intel_scu_ipc_medfw_upgrade(argp);
+	case INTEL_SCU_IPC_READ_RR_FROM_OSNIB:
+	{
+		u8 reboot_reason;
+
+		ret = intel_scu_ipc_read_oshob(&reboot_reason, 1, OSNIB_OFFSET);
+		if (ret < 0)
+			return ret;
+		ret = copy_to_user(argp, &reboot_reason, 1);
+		break;
+	}
+	case INTEL_SCU_IPC_WRITE_RR_TO_OSNIB:
+	{
+		u8 data;
+
+		ret = copy_from_user(&data, (u8 *)arg, 1);
+		if (ret < 0) {
+			pr_err("copy from user failed!!\n");
+			return ret;
+		}
+		ret = intel_scu_ipc_write_osnib(&data, 1, 0, OSNIB_RR_MASK);
+		break;
+	}
+	case INTEL_SCU_IPC_READ_VBATTCRIT:
+	{
+		u32 value;
+
+		pr_debug("cmd = INTEL_SCU_IPC_READ_VBATTCRIT");
+		ret = intel_scu_ipc_read_mip((u8 *)&value, 4, 0x318, 1);
+		if (ret < 0)
+			return ret;
+		pr_debug("VBATTCRIT VALUE = %x\n", value);
+		ret = copy_to_user(argp, &value, 4);
+		break;
+	}
+	case INTEL_SCU_IPC_FW_REVISION_GET:
+	{
+		struct scu_ipc_version version;
+
+		if (copy_from_user(&version, argp, sizeof(u32)))
+			return -EFAULT;
+
+		if (version.count > 16)
+			return -EINVAL;
+
+		ret = intel_scu_ipc_command(IPCMSG_FW_REVISION, 0,
+					NULL, 0, (u32 *)version.data, 4);
+		if (ret < 0)
+			return ret;
+
+		if (copy_to_user(argp + sizeof(u32),
+					version.data, version.count))
+			ret = -EFAULT;
+		break;
+	}
 	default:
 		if (copy_from_user(&data, argp, sizeof(struct scu_ipc_data)))
 			return -EFAULT;
@@ -115,6 +185,8 @@ static long scu_ipc_ioctl(struct file *fp, unsigned int cmd,
 			return -EFAULT;
 		return 0;
 	}
+
+	return ret;
 }
 
 static const struct file_operations scu_ipc_fops = {
