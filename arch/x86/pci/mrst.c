@@ -266,6 +266,20 @@ static void __devinit pci_fixed_bar_fixup(struct pci_dev *dev)
 }
 DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_INTEL, PCI_ANY_ID, pci_fixed_bar_fixup);
 
+/* Langwell devices are not true pci devices, they are not subject to 10 ms
+ * d3 to d0 delay required by pci spec.
+ */
+static void __devinit pci_d3delay_fixup(struct pci_dev *dev)
+{
+	/* true pci devices in lincroft should allow type 1 access, the rest
+	 * are langwell fake pci devices.
+	 */
+	if (type1_access_ok(dev->bus->number, dev->devfn, PCI_DEVICE_ID))
+		return;
+	dev->d3_delay = 0;
+}
+DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_INTEL, PCI_ANY_ID, pci_d3delay_fixup);
+
 static void __devinit mrst_power_off_unused_dev(struct pci_dev *dev)
 {
 	pci_set_power_state(dev, PCI_D3cold);
