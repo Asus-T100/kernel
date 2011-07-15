@@ -44,4 +44,7 @@ int intel_scu_ipc_i2c_cntrl(u32 addr, u32 *data);
 /* Update FW version */
 int intel_scu_ipc_fw_update(u8 *buffer, u32 length);
 
+/* Upgrade FW version on Medfield */
+int intel_scu_ipc_medfw_upgrade(void __user *arg);
+
 #endif
