@@ -7,8 +7,7 @@
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2 of the License, or (at
- *  your option) any later version.
+ *  the Free Software Foundation; either version 2 of the License.
  *
  *  This program is distributed in the hope that it will be useful, but
  *  WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -35,20 +34,18 @@
 #include <linux/sched.h>
 #include <linux/cpufreq.h>
 #include <linux/compiler.h>
-#include <linux/dmi.h>
-#include <trace/events/power.h>
 #include <linux/slab.h>
-
+#include <linux/delay.h>
+#include <linux/uaccess.h>
 #include <linux/sfi.h>
-#include "sfi-cpufreq.h"
-#include "mperf.h"
-
 #include <linux/io.h>
+
 #include <asm/msr.h>
 #include <asm/processor.h>
 #include <asm/cpufeature.h>
-#include <linux/delay.h>
-#include <linux/uaccess.h>
+
+#include "sfi-cpufreq.h"
+#include "mperf.h"
 
 MODULE_AUTHOR("Vishwesh Rudramuni");
 MODULE_DESCRIPTION("SFI Processor P-States Driver");
