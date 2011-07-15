@@ -55,7 +55,7 @@ enum dw_ssi_type {
 	SSI_NS_MICROWIRE,
 };
 
-struct dw_spi_reg {
+struct spi_dw_reg {
 	u32	ctrl0;
 	u32	ctrl1;
 	u32	ssienr;
@@ -84,14 +84,14 @@ struct dw_spi_reg {
 				though only low 16 bits matters */
 } __packed;
 
-struct dw_spi;
-struct dw_spi_dma_ops {
-	int (*dma_init)(struct dw_spi *dws);
-	void (*dma_exit)(struct dw_spi *dws);
-	int (*dma_transfer)(struct dw_spi *dws, int cs_change);
+struct spi_dw;
+struct spi_dw_dma_ops {
+	int (*dma_init)(struct spi_dw *dws);
+	void (*dma_exit)(struct spi_dw *dws);
+	int (*dma_transfer)(struct spi_dw *dws, int cs_change);
 };
 
-struct dw_spi {
+struct spi_dw {
 	struct spi_master	*master;
 	struct spi_device	*cur_dev;
 	struct device		*parent_dev;
@@ -137,7 +137,7 @@ struct dw_spi {
 	u8			max_bits_per_word;	/* maxim is 16b */
 	u32			dma_width;
 	int			cs_change;
-	irqreturn_t		(*transfer_handler)(struct dw_spi *dws);
+	irqreturn_t		(*transfer_handler)(struct spi_dw *dws);
 	void			(*cs_control)(u32 command);
 
 	/* Dma info */
@@ -149,7 +149,7 @@ struct dw_spi {
 	int			dma_chan_done;
 	struct device		*dma_dev;
 	dma_addr_t		dma_addr; /* phy address of the Data register */
-	struct dw_spi_dma_ops	*dma_ops;
+	struct spi_dw_dma_ops	*dma_ops;
 	void			*dma_priv; /* platform relate info */
 	struct pci_dev		*dmac;
 
@@ -161,25 +161,25 @@ struct dw_spi {
 };
 
 #define dw_readl(dw, name) \
-	__raw_readl(&(((struct dw_spi_reg *)dw->regs)->name))
+	__raw_readl(&(((struct spi_dw_reg *)dw->regs)->name))
 #define dw_writel(dw, name, val) \
-	__raw_writel((val), &(((struct dw_spi_reg *)dw->regs)->name))
+	__raw_writel((val), &(((struct spi_dw_reg *)dw->regs)->name))
 #define dw_readw(dw, name) \
-	__raw_readw(&(((struct dw_spi_reg *)dw->regs)->name))
+	__raw_readw(&(((struct spi_dw_reg *)dw->regs)->name))
 #define dw_writew(dw, name, val) \
-	__raw_writew((val), &(((struct dw_spi_reg *)dw->regs)->name))
+	__raw_writew((val), &(((struct spi_dw_reg *)dw->regs)->name))
 
-static inline void spi_enable_chip(struct dw_spi *dws, int enable)
+static inline void spi_enable_chip(struct spi_dw *dws, int enable)
 {
 	dw_writel(dws, ssienr, (enable ? 1 : 0));
 }
 
-static inline void spi_set_clk(struct dw_spi *dws, u16 div)
+static inline void spi_set_clk(struct spi_dw *dws, u16 div)
 {
 	dw_writel(dws, baudr, div);
 }
 
-static inline void spi_chip_sel(struct dw_spi *dws, u16 cs)
+static inline void spi_chip_sel(struct spi_dw *dws, u16 cs)
 {
 	if (cs > dws->num_cs)
 		return;
@@ -191,7 +191,7 @@ static inline void spi_chip_sel(struct dw_spi *dws, u16 cs)
 }
 
 /* Disable IRQ bits */
-static inline void spi_mask_intr(struct dw_spi *dws, u32 mask)
+static inline void spi_mask_intr(struct spi_dw *dws, u32 mask)
 {
 	u32 new_mask;
 
@@ -200,7 +200,7 @@ static inline void spi_mask_intr(struct dw_spi *dws, u32 mask)
 }
 
 /* Enable IRQ bits */
-static inline void spi_umask_intr(struct dw_spi *dws, u32 mask)
+static inline void spi_umask_intr(struct spi_dw *dws, u32 mask)
 {
 	u32 new_mask;
 
@@ -214,19 +214,19 @@ static inline void spi_umask_intr(struct dw_spi *dws, u32 mask)
  * which can be save in the "controller_data" member of the
  * struct spi_device
  */
-struct dw_spi_chip {
+struct spi_dw_chip {
 	u8 poll_mode;	/* 0 for contoller polling mode */
 	u8 type;	/* SPI/SSP/Micrwire */
 	u8 enable_dma;
 	void (*cs_control)(u32 command);
 };
 
-extern int dw_spi_add_host(struct dw_spi *dws);
-extern void dw_spi_remove_host(struct dw_spi *dws);
-extern int dw_spi_suspend_host(struct dw_spi *dws);
-extern int dw_spi_resume_host(struct dw_spi *dws);
-extern void dw_spi_xfer_done(struct dw_spi *dws);
+extern int spi_dw_add_host(struct spi_dw *dws);
+extern void spi_dw_remove_host(struct spi_dw *dws);
+extern int spi_dw_suspend_host(struct spi_dw *dws);
+extern int spi_dw_resume_host(struct spi_dw *dws);
+extern void spi_dw_xfer_done(struct spi_dw *dws);
 
 /* platform related setup */
-extern int dw_spi_mid_init(struct dw_spi *dws); /* Intel MID platforms */
+extern int spi_dw_mid_init(struct spi_dw *dws); /* Intel MID platforms */
 #endif /* DW_SPI_HEADER_H */

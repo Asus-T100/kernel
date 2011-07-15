@@ -1,5 +1,5 @@
 /*
- * dw_spi_pci.c - PCI interface driver for DW SPI Core
+ * spi-dw-pci.c - PCI interface driver for DW SPI Core
  *
  * Copyright (c) 2009, Intel Corporation.
  *
@@ -24,18 +24,18 @@
 
 #include "dw_spi.h"
 
-#define DRIVER_NAME "dw_spi_pci"
+#define DRIVER_NAME "spi_dw_pci"
 
-struct dw_spi_pci {
+struct spi_dw_pci {
 	struct pci_dev	*pdev;
-	struct dw_spi	dws;
+	struct spi_dw	dws;
 };
 
 static int __devinit spi_pci_probe(struct pci_dev *pdev,
 	const struct pci_device_id *ent)
 {
-	struct dw_spi_pci *dwpci;
-	struct dw_spi *dws;
+	struct spi_dw_pci *dwpci;
+	struct spi_dw *dws;
 	int pci_bar = 0;
 	int ret;
 
@@ -46,7 +46,7 @@ static int __devinit spi_pci_probe(struct pci_dev *pdev,
 	if (ret)
 		return ret;
 
-	dwpci = kzalloc(sizeof(struct dw_spi_pci), GFP_KERNEL);
+	dwpci = kzalloc(sizeof(struct spi_dw_pci), GFP_KERNEL);
 	if (!dwpci) {
 		ret = -ENOMEM;
 		goto err_disable;
@@ -80,12 +80,12 @@ static int __devinit spi_pci_probe(struct pci_dev *pdev,
 	 * clock rate, FIFO depth.
 	 */
 	if (pdev->device == 0x0800) {
-		ret = dw_spi_mid_init(dws);
+		ret = spi_dw_mid_init(dws);
 		if (ret)
 			goto err_unmap;
 	}
 
-	ret = dw_spi_add_host(dws);
+	ret = spi_dw_add_host(dws);
 	if (ret)
 		goto err_unmap;
 
@@ -106,10 +106,10 @@ err_disable:
 
 static void __devexit spi_pci_remove(struct pci_dev *pdev)
 {
-	struct dw_spi_pci *dwpci = pci_get_drvdata(pdev);
+	struct spi_dw_pci *dwpci = pci_get_drvdata(pdev);
 
 	pci_set_drvdata(pdev, NULL);
-	dw_spi_remove_host(&dwpci->dws);
+	spi_dw_remove_host(&dwpci->dws);
 	iounmap(dwpci->dws.regs);
 	pci_release_region(pdev, 0);
 	kfree(dwpci);
@@ -119,10 +119,10 @@ static void __devexit spi_pci_remove(struct pci_dev *pdev)
 #ifdef CONFIG_PM
 static int spi_suspend(struct pci_dev *pdev, pm_message_t state)
 {
-	struct dw_spi_pci *dwpci = pci_get_drvdata(pdev);
+	struct spi_dw_pci *dwpci = pci_get_drvdata(pdev);
 	int ret;
 
-	ret = dw_spi_suspend_host(&dwpci->dws);
+	ret = spi_dw_suspend_host(&dwpci->dws);
 	if (ret)
 		return ret;
 	pci_save_state(pdev);
@@ -133,7 +133,7 @@ static int spi_suspend(struct pci_dev *pdev, pm_message_t state)
 
 static int spi_resume(struct pci_dev *pdev)
 {
-	struct dw_spi_pci *dwpci = pci_get_drvdata(pdev);
+	struct spi_dw_pci *dwpci = pci_get_drvdata(pdev);
 	int ret;
 
 	pci_set_power_state(pdev, PCI_D0);
@@ -141,7 +141,7 @@ static int spi_resume(struct pci_dev *pdev)
 	ret = pci_enable_device(pdev);
 	if (ret)
 		return ret;
-	return dw_spi_resume_host(&dwpci->dws);
+	return spi_dw_resume_host(&dwpci->dws);
 }
 #else
 #define spi_suspend	NULL
@@ -154,7 +154,7 @@ static const struct pci_device_id pci_ids[] __devinitdata = {
 	{},
 };
 
-static struct pci_driver dw_spi_driver = {
+static struct pci_driver spi_dw_driver = {
 	.name =		DRIVER_NAME,
 	.id_table =	pci_ids,
 	.probe =	spi_pci_probe,
@@ -163,18 +163,18 @@ static struct pci_driver dw_spi_driver = {
 	.resume	=	spi_resume,
 };
 
-static int __init mrst_spi_init(void)
+static int __init spi_dw_init(void)
 {
-	return pci_register_driver(&dw_spi_driver);
+	return pci_register_driver(&spi_dw_driver);
 }
 
-static void __exit mrst_spi_exit(void)
+static void __exit spi_dw_exit(void)
 {
-	pci_unregister_driver(&dw_spi_driver);
+	pci_unregister_driver(&spi_dw_driver);
 }
 
-module_init(mrst_spi_init);
-module_exit(mrst_spi_exit);
+module_init(spi_dw_init);
+module_exit(spi_dw_exit);
 
 MODULE_AUTHOR("Feng Tang <feng.tang@intel.com>");
 MODULE_DESCRIPTION("PCI interface driver for DW SPI Core");

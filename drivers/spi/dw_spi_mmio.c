@@ -1,5 +1,5 @@
 /*
- * dw_spi_mmio.c - Memory-mapped interface driver for DW SPI Core
+ * spi-dw-mmio.c - Memory-mapped interface driver for DW SPI Core
  *
  * Copyright (c) 2010, Octasic semiconductor.
  *
@@ -18,21 +18,21 @@
 
 #include "dw_spi.h"
 
-#define DRIVER_NAME "dw_spi_mmio"
+#define DRIVER_NAME "spi_dw_mmio"
 
-struct dw_spi_mmio {
-	struct dw_spi  dws;
+struct spi_dw_mmio {
+	struct spi_dw  dws;
 	struct clk     *clk;
 };
 
-static int __devinit dw_spi_mmio_probe(struct platform_device *pdev)
+static int __devinit spi_dw_mmio_probe(struct platform_device *pdev)
 {
-	struct dw_spi_mmio *dwsmmio;
-	struct dw_spi *dws;
+	struct spi_dw_mmio *dwsmmio;
+	struct spi_dw *dws;
 	struct resource *mem, *ioarea;
 	int ret;
 
-	dwsmmio = kzalloc(sizeof(struct dw_spi_mmio), GFP_KERNEL);
+	dwsmmio = kzalloc(sizeof(struct spi_dw_mmio), GFP_KERNEL);
 	if (!dwsmmio) {
 		ret = -ENOMEM;
 		goto err_end;
@@ -82,7 +82,7 @@ static int __devinit dw_spi_mmio_probe(struct platform_device *pdev)
 	dws->num_cs = 4;
 	dws->max_freq = clk_get_rate(dwsmmio->clk);
 
-	ret = dw_spi_add_host(dws);
+	ret = spi_dw_add_host(dws);
 	if (ret)
 		goto err_clk;
 
@@ -105,9 +105,9 @@ err_end:
 	return ret;
 }
 
-static int __devexit dw_spi_mmio_remove(struct platform_device *pdev)
+static int __devexit spi_dw_mmio_remove(struct platform_device *pdev)
 {
-	struct dw_spi_mmio *dwsmmio = platform_get_drvdata(pdev);
+	struct spi_dw_mmio *dwsmmio = platform_get_drvdata(pdev);
 	struct resource *mem;
 
 	platform_set_drvdata(pdev, NULL);
@@ -117,7 +117,7 @@ static int __devexit dw_spi_mmio_remove(struct platform_device *pdev)
 	dwsmmio->clk = NULL;
 
 	free_irq(dwsmmio->dws.irq, &dwsmmio->dws);
-	dw_spi_remove_host(&dwsmmio->dws);
+	spi_dw_remove_host(&dwsmmio->dws);
 	iounmap(dwsmmio->dws.regs);
 	kfree(dwsmmio);
 
@@ -126,25 +126,25 @@ static int __devexit dw_spi_mmio_remove(struct platform_device *pdev)
 	return 0;
 }
 
-static struct platform_driver dw_spi_mmio_driver = {
-	.remove		= __devexit_p(dw_spi_mmio_remove),
+static struct platform_driver spi_dw_mmio_driver = {
+	.remove		= __devexit_p(spi_dw_mmio_remove),
 	.driver		= {
 		.name	= DRIVER_NAME,
 		.owner	= THIS_MODULE,
 	},
 };
 
-static int __init dw_spi_mmio_init(void)
+static int __init spi_dw_mmio_init(void)
 {
-	return platform_driver_probe(&dw_spi_mmio_driver, dw_spi_mmio_probe);
+	return platform_driver_probe(&spi_dw_mmio_driver, spi_dw_mmio_probe);
 }
-module_init(dw_spi_mmio_init);
+module_init(spi_dw_mmio_init);
 
-static void __exit dw_spi_mmio_exit(void)
+static void __exit spi_dw_mmio_exit(void)
 {
-	platform_driver_unregister(&dw_spi_mmio_driver);
+	platform_driver_unregister(&spi_dw_mmio_driver);
 }
-module_exit(dw_spi_mmio_exit);
+module_exit(spi_dw_mmio_exit);
 
 MODULE_AUTHOR("Jean-Hugues Deschenes <jean-hugues.deschenes@octasic.com>");
 MODULE_DESCRIPTION("Memory-mapped I/O interface driver for DW SPI Core");
