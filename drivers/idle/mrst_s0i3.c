@@ -42,63 +42,6 @@ static u64 *wakeup_ptr;
 static phys_addr_t s0i3_trampoline_phys;
 static void *s0i3_trampoline_base;
 
-/**
- * mrst_idle
- * @dev: cpuidle_device
- * @state: cpuidle state
- *
- * This enters S0i3, C6 or C4 depending on what is currently permitted.
- * C1-C4 are handled via the normal intel_idle entry.
- */
-int mrst_idle(struct cpuidle_device *dev, struct cpuidle_state *state)
-{
-	unsigned long ecx = 1; /* break on interrupt flag */
-	unsigned long eax = (unsigned long)cpuidle_get_statedata(state);
-	ktime_t kt_before, kt_after;
-	s64 usec_delta;
-	int cpu = smp_processor_id();
-
-	local_irq_disable();
-
-	/*
-	 * leave_mm() to avoid costly and often unnecessary wakeups
-	 * for flushing the user TLB's associated with the active mm.
-	 */
-#ifdef CPUIDLE_FLAG_TLB_FLUSHED	 
-	if (state->flags & CPUIDLE_FLAG_TLB_FLUSHED)
-		leave_mm(cpu);
-#endif /* FIXME */
-	clockevents_notify(CLOCK_EVT_NOTIFY_BROADCAST_ENTER, &cpu);
-
-	kt_before = ktime_get_real();
-
-	stop_critical_timings();
-
-	if (!need_resched()) {
-		if (eax == -1UL) {
-			do_s0i3();
-		} else {
-			/* Conventional MWAIT */
-
-			__monitor((void *)&current_thread_info()->flags, 0, 0);
-			smp_mb();
-			if (!need_resched())
-				__mwait(eax, ecx);
-		}
-	}
-
-	start_critical_timings();
-
-	kt_after = ktime_get_real();
-	usec_delta = ktime_to_us(ktime_sub(kt_after, kt_before));
-
-	local_irq_enable();
-
-	clockevents_notify(CLOCK_EVT_NOTIFY_BROADCAST_EXIT, &cpu);
-
-	return usec_delta;
-}
-
 /*
  * List of MSRs to be saved/restored, *other* than what is handled by
  * * save_processor_state/restore_processor_state.  * This is

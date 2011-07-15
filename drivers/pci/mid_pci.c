@@ -44,7 +44,9 @@ static int mid_pci_sleep_wake(struct pci_dev *dev, bool enable)
 
 static struct pci_platform_pm_ops mid_pci_platform_pm = {
 	.is_manageable = mid_pci_power_manageable,
+#ifdef CONFIG_X86_MRST
 	.set_state = pmu_pci_set_power_state,
+#endif	
 	.choose_state = mid_pci_choose_state,
 	.can_wakeup = mid_pci_can_wakeup,
 	.sleep_wake = mid_pci_sleep_wake,
