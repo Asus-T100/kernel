@@ -41,6 +41,7 @@
 
 #include <linux/sfi.h>
 #include "sfi-cpufreq.h"
+#include "mperf.h"
 
 #include <linux/io.h>
 #include <asm/msr.h>
@@ -56,7 +57,7 @@ MODULE_LICENSE("GPL");
 DEFINE_PER_CPU(struct sfi_processor *, sfi_processors);
 
 static DEFINE_MUTEX(performance_mutex);
-int sfi_cpufreq_num;
+static int sfi_cpufreq_num;
 static u32 sfi_cpu_num;
 
 #define		SFI_FREQ_MAX            32
@@ -86,7 +87,6 @@ struct sfi_cpufreq_data {
 };
 
 static DEFINE_PER_CPU(struct sfi_cpufreq_data *, drv_data);
-static DEFINE_PER_CPU(struct aperfmperf, old_perf);
 struct sfi_freq_table_entry sfi_cpufreq_array[SFI_FREQ_MAX];
 static struct sfi_cpu_table_entry sfi_cpu_array[SFI_CPU_MAX];
 
@@ -325,45 +325,6 @@ static u32 get_cur_val(const struct cpumask *mask)
 	pr_debug("get_cur_val = %u\n", cmd.val);
 
 	return cmd.val;
-}
-
-/* Called via smp_call_function_single(), on the target CPU */
-static void read_measured_perf_ctrs(void *_cur)
-{
-	struct aperfmperf *am = _cur;
-
-	get_aperfmperf(am);
-}
-
-/*
- * Return the measured active (C0) frequency on this CPU since last call
- * to this function.
- * Input: cpu number
- * Return: Average CPU frequency in terms of max frequency (zero on error)
- *
- * We use IA32_MPERF and IA32_APERF MSRs to get the measured performance
- * over a period of time, while CPU is in C0 state.
- * IA32_MPERF counts at the rate of max advertised frequency
- * IA32_APERF counts at the rate of actual CPU frequency
- * Only IA32_APERF/IA32_MPERF ratio is architecturally defined and
- * no meaning should be associated with absolute values of these MSRs.
- */
-static unsigned int get_measured_perf(struct cpufreq_policy *policy,
-					unsigned int cpu)
-{
-	struct aperfmperf perf;
-	unsigned long ratio;
-	unsigned int retval;
-
-	if (smp_call_function_single(cpu, read_measured_perf_ctrs, &perf, 1))
-		return 0;
-
-	ratio = calc_aperfmperf_ratio(&per_cpu(old_perf, cpu), &perf);
-	per_cpu(old_perf, cpu) = perf;
-
-	retval = (cpu_khz * ratio) >> APERFMPERF_SHIFT;
-
-	return retval;
 }
 
 static unsigned int get_cur_freq_on_cpu(unsigned int cpu)
@@ -646,13 +607,10 @@ static int sfi_cpufreq_cpu_init(struct cpufreq_policy *policy)
 	sfi_cpufreq_driver.get = get_cur_freq_on_cpu;
 	policy->cur = get_cur_freq_on_cpu(cpu);
 
+
 	/* Check for APERF/MPERF support in hardware */
-	if (c->x86_vendor == X86_VENDOR_INTEL && c->cpuid_level >= 6) {
-		unsigned int ecx;
-		ecx = cpuid_ecx(6);
-		if (ecx & CPUID_6_ECX_APERFMPERF_CAPABILITY)
-			sfi_cpufreq_driver.getavg = get_measured_perf;
-	}
+	if (cpu_has(c, X86_FEATURE_APERFMPERF))
+		sfi_cpufreq_driver.getavg = cpufreq_get_measured_perf;
 
 	pr_debug("CPU%u - SFI performance management activated.\n", cpu);
 	for (i = 0; i < perf->state_count; i++)
