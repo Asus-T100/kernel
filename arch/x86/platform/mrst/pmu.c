@@ -365,7 +365,7 @@ static u16 pmu_min_lss_pci_req(u16 *ids, u16 pci_state)
 
 	for (i = 0; ids[i]; ++i) {
 		existing_request = pci_id_2_mrst_dev(ids[i])->latest_request;
-		if (pci_state < existing_request)
+		if (existing_request < pci_state)
 			pci_state = existing_request;
 	}
 	return pci_state;
