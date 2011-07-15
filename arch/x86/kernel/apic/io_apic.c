@@ -942,7 +942,7 @@ static int pin_2_irq(int idx, int apic, int pin)
 	} else {
 		u32 gsi = gsi_cfg->gsi_base + pin;
 
-		if (gsi >= NR_IRQS_LEGACY)
+		if (gsi >= legacy_pic->nr_legacy_irqs)
 			irq = gsi;
 		else
 			irq = gsi_top + gsi;
@@ -3568,7 +3568,7 @@ static void __init probe_nr_irqs_gsi(void)
 {
 	int nr;
 
-	nr = gsi_top + NR_IRQS_LEGACY;
+	nr = gsi_top + legacy_pic->nr_legacy_irqs;
 	if (nr > nr_irqs_gsi)
 		nr_irqs_gsi = nr;
 
