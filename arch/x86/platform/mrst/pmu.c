@@ -81,6 +81,7 @@ static bool s0i3_pmu_command_pending;
 
 static int graphics_is_off;
 static int lss_s0i3_enabled;
+static u32 sdhc2_sss;
 
 static struct mrst_device *pci_id_2_mrst_dev(u16 pci_dev_num)
 {
@@ -415,6 +416,10 @@ int pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t pci_state)
 
 	mrst_dev->latest_request = pci_state;	/* record latest request */
 
+	if (mrst_dev->lss == LSS_SD_HC2)
+		sdhc2_sss = SSMSK(pci_2_mrst_state(LSS_SD_HC2, pci_state),
+				LSS_SD_HC2);
+
 	/*
 	 * LSS9 and LSS10 contain multiple PCI devices.
 	 * Use the lowest numbered (highest power) state in the LSS
@@ -460,7 +465,7 @@ int pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t pci_state)
 		goto ret;
 
 	lss_s0i3_enabled =
-		((pmu_read_sss() & S0I3_SSS_TARGET) == S0I3_SSS_TARGET);
+	(((pmu_read_sss() | sdhc2_sss) & S0I3_SSS_TARGET) == S0I3_SSS_TARGET);
 ret:
 	return status;
 }
@@ -484,7 +489,7 @@ static int pmu_devices_state_show(struct seq_file *s, void *unused)
 
 	seq_printf(s, "0x%08X D0I1_ACG_SSS_TARGET\n", S0I1_ACG_SSS_TARGET);
 
-	cur_pmsss = pmu_read_sss();
+	cur_pmsss = (pmu_read_sss() | sdhc2_sss);
 
 	seq_printf(s, "0x%08X S0I3_SSS_TARGET\n", S0I3_SSS_TARGET);
 
