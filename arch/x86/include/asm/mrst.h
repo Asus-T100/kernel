@@ -12,6 +12,7 @@
 #define _ASM_X86_MRST_H
 
 #include <linux/sfi.h>
+#include <linux/pci.h>
 
 extern int pci_mrst_init(void);
 extern int __init sfi_parse_mrtc(struct sfi_table_header *table);
@@ -61,5 +62,24 @@ extern void intel_scu_devices_destroy(void);
 /*#define MRST_VRTC_PGOFFSET	(0xc00) */
 
 extern void mrst_rtc_init(void);
+
+extern int pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t state);
+
+#ifdef CONFIG_X86_MRST
+extern int mrst_pmu_s0i3_entry(void);
+extern void mrst_pmu_pending_set(int value);
+extern void mrst_pmu_disable_msi(void);
+extern void mrst_pmu_enable_msi(void);
+extern void mrst_pmu_s0i3_prepare(void);
+extern void mrst_reserve_memory(void);
+#else
+static inline void mrst_reserve_memory(void) { }
+#endif	/* !CONFIG_X86_MRST */
+
+#include <linux/cpuidle.h>
+extern int mrst_idle(struct cpuidle_device *dev, struct cpuidle_state *state);
+extern void mrst_s0i3_resume(void);
+extern int mrst_pmu_validate_cstates(struct cpuidle_device *dev);
+extern const char s0i3_trampoline_data[], s0i3_trampoline_data_end[];
 
 #endif /* _ASM_X86_MRST_H */

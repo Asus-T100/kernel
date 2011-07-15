@@ -63,6 +63,7 @@
 #include <linux/cpu.h>
 #include <asm/mwait.h>
 #include <asm/msr.h>
+#include <asm/mrst.h>
 
 #define INTEL_IDLE_VERSION "0.4"
 #define PREFIX "intel_idle: "
@@ -84,6 +85,12 @@ static struct cpuidle_device __percpu *intel_idle_cpuidle_devices;
 static int intel_idle(struct cpuidle_device *dev, struct cpuidle_state *state);
 
 static struct cpuidle_state *cpuidle_state_table;
+static int (*cpuidle_device_prepare)(struct cpuidle_device *dev);
+
+/*
+ * Indicates that this is not a proper MWAIT state
+ */
+#define CPUIDLE_FLAG_INTEL_FAKE                0x10000
 
 /*
  * Hardware C-state auto-demotion may not always be optimal.
@@ -206,13 +213,65 @@ static struct cpuidle_state atom_cstates[MWAIT_MAX_NUM_CSTATES] = {
 		.enter = &intel_idle },
 };
 
+#ifdef CONFIG_X86_MRST
+static struct cpuidle_state mrst_cstates[MWAIT_MAX_NUM_CSTATES] = {
+	{ /* MWAIT C0 */ },
+	{ /* MWAIT C1 */
+		.name = "ATM-C1",
+		.desc = "MWAIT 0x00",
+		.driver_data = (void *) 0x00,
+		.flags = CPUIDLE_FLAG_TIME_VALID,
+		.exit_latency = 1,
+		.target_residency = 4,
+		.enter = &intel_idle },
+	{ /* MWAIT C2 */
+		.name = "ATM-C2",
+		.desc = "MWAIT 0x10",
+		.driver_data = (void *) 0x10,
+		.flags = CPUIDLE_FLAG_TIME_VALID,
+		.exit_latency = 20,
+		.target_residency = 80,
+		.enter = &intel_idle },
+	{ /* MWAIT C3 */ },
+	{ /* MWAIT C4 */
+		.name = "ATM-C4",
+		.desc = "MWAIT 0x30",
+		.driver_data = (void *) 0x30,
+		.flags = CPUIDLE_FLAG_TIME_VALID | CPUIDLE_FLAG_TLB_FLUSHED,
+		.exit_latency = 100,
+		.target_residency = 400,
+		.enter = &intel_idle },
+	{ /* MWAIT C5 */ },
+	{ /* MWAIT C6 */
+		.name = "ATM-C6",
+		.desc = "MWAIT 0x52",
+		.driver_data = (void *) 0x52,
+		.flags = CPUIDLE_FLAG_TIME_VALID | CPUIDLE_FLAG_TLB_FLUSHED,
+		.exit_latency = 140,
+		.target_residency = 560,
+		.enter = &mrst_idle, },
+	{ /* MRST S0i3 */
+		.name = "MRST-S0i3",
+		.desc = "MRST S0i3",
+		.driver_data = (void *) -1UL, /* Special */
+		.flags = CPUIDLE_FLAG_TIME_VALID | CPUIDLE_FLAG_TLB_FLUSHED |
+			CPUIDLE_FLAG_INTEL_FAKE,
+		.exit_latency = 300, /* XXX */
+		.target_residency = 1200, /* XXX */
+		.enter = &mrst_idle },
+};
+#warning pri#3 #24 tune mrst_cstates parameters
+#else
+#define mrst_cstates atom_cstates
+#endif
+
 /**
  * intel_idle
  * @dev: cpuidle_device
  * @state: cpuidle state
  *
  */
-static int intel_idle(struct cpuidle_device *dev, struct cpuidle_state *state)
+int intel_idle(struct cpuidle_device *dev, struct cpuidle_state *state)
 {
 	unsigned long ecx = 1; /* break on interrupt flag */
 	unsigned long eax = (unsigned long)cpuidle_get_statedata(state);
@@ -350,7 +409,10 @@ static int intel_idle_probe(void)
 		break;
 
 	case 0x26:	/* 38 - Lincroft Atom Processor */
-		cpuidle_state_table = atom_cstates;
+		cpuidle_state_table = mrst_cstates;
+#ifdef CONFIG_X86_MRST
+		cpuidle_device_prepare = mrst_pmu_validate_cstates;
+#endif
 		auto_demotion_disable_flags = ATM_LNC_C6_AUTO_DEMOTE;
 		break;
 
@@ -416,8 +478,6 @@ static int intel_idle_cpuidle_devices_init(void)
 		dev->state_count = 1;
 
 		for (cstate = 1; cstate < MWAIT_MAX_NUM_CSTATES; ++cstate) {
-			int num_substates;
-
 			if (cstate > max_cstate) {
 				printk(PREFIX "max_cstate %d reached\n",
 					max_cstate);
@@ -425,10 +485,16 @@ static int intel_idle_cpuidle_devices_init(void)
 			}
 
 			/* does the state exist in CPUID.MWAIT? */
-			num_substates = (mwait_substates >> ((cstate) * 4))
-						& MWAIT_SUBSTATE_MASK;
-			if (num_substates == 0)
-				continue;
+			if (!(cpuidle_state_table[cstate].flags &
+			      CPUIDLE_FLAG_INTEL_FAKE)) {
+				int num_substates;
+
+				num_substates = (mwait_substates >> (cstate*4))
+					& MWAIT_SUBSTATE_MASK;
+				if (num_substates == 0)
+					continue;
+			}
+
 			/* is the state not enabled? */
 			if (cpuidle_state_table[cstate].enter == NULL) {
 				/* does the driver not know about the state? */
@@ -452,6 +518,7 @@ static int intel_idle_cpuidle_devices_init(void)
 		}
 
 		dev->cpu = i;
+		dev->prepare = cpuidle_device_prepare;
 		if (cpuidle_register_device(dev)) {
 			pr_debug(PREFIX "cpuidle_register_device %d failed!\n",
 				 i);

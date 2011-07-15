@@ -407,6 +407,13 @@ extern struct apic *__apicdrivers[], *__apicdrivers_end[];
 #ifdef CONFIG_SMP
 extern atomic_t init_deasserted;
 extern int wakeup_secondary_cpu_via_nmi(int apicid, unsigned long start_eip);
+struct init_wakeup_delays {
+	unsigned long assert_init;
+	unsigned long icr_accept;
+	unsigned long cpu_accept;
+};
+extern int wakeup_secondary_cpu_via_init_delays(int apicid,
+	unsigned long start_eip, const struct init_wakeup_delays *);
 #endif
 
 #ifdef CONFIG_X86_LOCAL_APIC

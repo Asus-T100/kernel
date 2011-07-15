@@ -516,6 +516,20 @@ wakeup_secondary_cpu_via_nmi(int logical_apicid, unsigned long start_eip)
 static int __cpuinit
 wakeup_secondary_cpu_via_init(int phys_apicid, unsigned long start_eip)
 {
+	static const struct init_wakeup_delays delays = {
+		.assert_init	= 10000,
+		.icr_accept	= 300,
+		.cpu_accept	= 200,
+	};
+
+	return wakeup_secondary_cpu_via_init_delays(phys_apicid, start_eip,
+						    &delays);
+}
+
+int __cpuinit
+wakeup_secondary_cpu_via_init_delays(int phys_apicid,
+	unsigned long start_eip, const struct init_wakeup_delays *delays)
+{
 	unsigned long send_status, accept_status = 0;
 	int maxlvt, num_starts, j;
 
@@ -544,7 +558,7 @@ wakeup_secondary_cpu_via_init(int phys_apicid, unsigned long start_eip)
 	pr_debug("Waiting for send to finish...\n");
 	send_status = safe_apic_wait_icr_idle();
 
-	mdelay(10);
+	udelay(delays->assert_init);
 
 	pr_debug("Deasserting INIT.\n");
 
@@ -601,7 +615,7 @@ wakeup_secondary_cpu_via_init(int phys_apicid, unsigned long start_eip)
 		/*
 		 * Give the other CPU some time to accept the IPI.
 		 */
-		udelay(300);
+		udelay(delays->icr_accept);
 
 		pr_debug("Startup point 1.\n");
 
@@ -611,7 +625,7 @@ wakeup_secondary_cpu_via_init(int phys_apicid, unsigned long start_eip)
 		/*
 		 * Give the other CPU some time to accept the IPI.
 		 */
-		udelay(200);
+		udelay(delays->cpu_accept);
 		if (maxlvt > 3)		/* Due to the Pentium erratum 3AP.  */
 			apic_write(APIC_ESR, 0);
 		accept_status = (apic_read(APIC_ESR) & 0xEF);

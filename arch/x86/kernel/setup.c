@@ -68,6 +68,7 @@
 #include <linux/percpu.h>
 #include <linux/crash_dump.h>
 #include <linux/tboot.h>
+#include <asm/mrst.h>
 
 #include <video/edid.h>
 
@@ -928,6 +929,12 @@ void __init setup_arch(char **cmdline_p)
 			max_pfn_mapped<<PAGE_SHIFT);
 
 	setup_trampolines();
+
+#ifdef CONFIG_X86_MRST
+	if (boot_cpu_data.x86 == 6 &&
+		boot_cpu_data.x86_model == 0x26)
+		mrst_reserve_memory();
+#endif
 
 	init_gbpages();
 
