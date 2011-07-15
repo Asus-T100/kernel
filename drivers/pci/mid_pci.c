@@ -64,7 +64,9 @@ static int __init mid_pci_init(void)
 
 	pr_info("mid_pci_init is called\n");
 
-	pci_set_platform_pm(&mid_pci_platform_pm);
+	/* Set Moorestown PM up on Moorestown, nothing else */
+	if (boot_cpu_data.x86 == 6 && boot_cpu_data.x86_model == 0x26)
+		pci_set_platform_pm(&mid_pci_platform_pm);
 
 	return ret;
 }
