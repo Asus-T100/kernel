@@ -1,7 +1,7 @@
 /*
  * sfi_cpufreq.c - sfi Processor P-States Driver
  *
- *
+ * (C) 2010-2011 Intel Corporation
  *
  * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
  *
@@ -58,8 +58,8 @@ static int sfi_cpufreq_num;
 static u32 sfi_cpu_num;
 
 #define		SFI_FREQ_MAX            32
-#define		INTEL_MSR_RANGE				(0xffff)
-#define		SFI_CPU_MAX        8
+#define		INTEL_MSR_RANGE		(0xffff)
+#define		SFI_CPU_MAX		8
 
 
 struct sfi_cpufreq_data {
@@ -188,38 +188,9 @@ void sfi_processor_unregister_performance(struct sfi_processor_performance
 	return;
 }
 
-static unsigned extract_freq(u32 msr, struct sfi_cpufreq_data *data)
-{
-	int i;
-	struct sfi_processor_performance *perf;
-
-	msr &= INTEL_MSR_RANGE;
-	perf = data->sfi_data;
-
-	for (i = 0; data->freq_table[i].frequency != CPUFREQ_TABLE_END; i++) {
-		if (msr == perf->states[data->freq_table[i].index].control)
-			return data->freq_table[i].frequency;
-	}
-	return data->freq_table[0].frequency;
-}
-
-
-static u32 get_cur_val(const struct cpumask *mask)
-{
-	u32 val, dummy;
-
-	if (unlikely(cpumask_empty(mask)))
-		return 0;
-
-	rdmsr_on_cpu(cpumask_any(mask), MSR_IA32_PERF_STATUS, &val, &dummy);
-
-	return val;
-}
-
 static unsigned int get_cur_freq_on_cpu(unsigned int cpu)
 {
 	struct sfi_cpufreq_data *data = per_cpu(drv_data, cpu);
-	unsigned int freq;
 	unsigned int cached_freq;
 
 	pr_debug("get_cur_freq_on_cpu (%d)\n", cpu);
@@ -230,18 +201,8 @@ static unsigned int get_cur_freq_on_cpu(unsigned int cpu)
 	}
 
 	cached_freq = data->freq_table[data->sfi_data->state].frequency;
-	freq = extract_freq(get_cur_val(cpumask_of(cpu)), data);
-	if (freq != cached_freq) {
-		/*
-		 * The dreaded BIOS frequency change behind our back.
-		 * Force set the frequency on next target call.
-		 */
-		data->resume = 1;
-	}
 
-	pr_debug("cur freq = %u\n", freq);
-
-	return freq;
+	return cached_freq;
 }
 
 static int sfi_cpufreq_target(struct cpufreq_policy *policy,
