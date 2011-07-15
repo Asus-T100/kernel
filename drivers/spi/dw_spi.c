@@ -1,5 +1,4 @@
 /*
- * spi-dw.c - Designware SPI core controller driver (refer pxa2xx_spi.c)
  *
  * Copyright (c) 2009, Intel Corporation.
  *
@@ -30,10 +29,6 @@
 #include <linux/debugfs.h>
 #endif
 
-#define START_STATE	((void *)0)
-#define RUNNING_STATE	((void *)1)
-#define DONE_STATE	((void *)2)
-#define ERROR_STATE	((void *)-1)
 
 #define QUEUE_RUNNING	0
 #define QUEUE_STOPPED	1
@@ -43,20 +38,16 @@
 
 /* Slave spi_dev related */
 struct chip_data {
-	u16 cr0;
-	u8 cs;			/* chip select pin */
-	u8 n_bytes;		/* current is a 1/2/4 byte op */
-	u8 tmode;		/* TR/TO/RO/EEPROM */
-	u8 type;		/* SPI/SSP/MicroWire */
-
-	u8 poll_mode;		/* 1 means use poll mode */
+	struct spi_device *spi_dev;
+	u32 cr0;
+	u32 cs;			/* chip select pin */
+	u32 n_bytes;		/* current is a 1/2/4 byte op */
+	u32 type;		/* SPI/SSP/MicroWire */
 
 	u32 dma_width;
-	u32 rx_threshold;
-	u32 tx_threshold;
-	u8 enable_dma;
-	u8 bits_per_word;
-	u16 clk_div;		/* baud rate divider */
+	u32 enable_dma;
+	u32 bits_per_word;
+	u32 clk_div;		/* baud rate divider */
 	u32 speed_hz;		/* baud rate */
 	void (*cs_control)(u32 command);
 };
@@ -84,7 +75,7 @@ static ssize_t  spi_show_regs(struct file *file, char __user *user_buf,
 		return 0;
 
 	len += snprintf(buf + len, SPI_REGS_BUFSIZE - len,
-			"DW SPI  registers:\n");
+			"DW SPI registers:\n");
 	len += snprintf(buf + len, SPI_REGS_BUFSIZE - len,
 			"=================================\n");
 	len += snprintf(buf + len, SPI_REGS_BUFSIZE - len,
@@ -160,436 +151,335 @@ static inline void spi_dw_debugfs_remove(struct spi_dw *dws)
 }
 #endif /* CONFIG_DEBUG_FS */
 
-/* Return the max entries we can fill into tx fifo */
+static irqreturn_t spi_dw_irq(int irq, void *dev_id)
+{
+	struct spi_dw *dws = dev_id;
+	u16  irq_mask = 0x3f;
+
+	dws->xfer.irq_status = dw_readw(dws, isr) & irq_mask;
+
+	if (!dws->xfer.irq_status)
+		return IRQ_NONE;
+	if (dws->xfer.irq_status &
+			(SPI_INT_TXOI | SPI_INT_RXOI | SPI_INT_RXUI)) {
+		dw_readw(dws, txoicr);
+		dw_readw(dws, rxoicr);
+		dw_readw(dws, rxuicr);
+		dws->xfer.err = -EIO;
+		spi_dw_disable(dws);
+		complete(&dws->xfer.complete);
+		return IRQ_HANDLED;
+	}
+
+	/* disable interrupts */
+	spi_dw_mask_intr(dws, irq_mask);
+	return IRQ_WAKE_THREAD;
+}
+struct spi_message *get_message(struct spi_dw *dws)
+{
+	struct spi_message *message = NULL;
+	unsigned long flags;
+
+	spin_lock_irqsave(&dws->lock, flags);
+	if (!list_empty(&dws->queue)) {
+		message = list_entry(dws->queue.next,
+				struct spi_message, queue);
+		list_del_init(&message->queue);
+	}
+	spin_unlock_irqrestore(&dws->lock, flags);
+	return message;
+}
 static inline u32 tx_max(struct spi_dw *dws)
 {
-	u32 tx_left, tx_room, rxtx_gap;
+	u32 tx_left, tx_room;
 
-	tx_left = (dws->tx_end - dws->tx) / dws->n_bytes;
-	tx_room = dws->fifo_len - dw_readw(dws, txflr);
+	tx_left = (dws->xfer.len - dws->xfer.sent) / dws->xfer.n_bytes;
+	tx_room = (dws->fifo_len - dw_readw(dws, txflr));
 
-	/*
-	 * Another concern is about the tx/rx mismatch, we
-	 * though to use (dws->fifo_len - rxflr - txflr) as
-	 * one maximum value for tx, but it doesn't cover the
-	 * data which is out of tx/rx fifo and inside the
-	 * shift registers. So a control from sw point of
-	 * view is taken.
-	 */
-	rxtx_gap =  ((dws->rx_end - dws->rx) - (dws->tx_end - dws->tx))
-			/ dws->n_bytes;
-
-	return min3(tx_left, tx_room, (u32) (dws->fifo_len - rxtx_gap));
+	return min(tx_left, tx_room);
 }
 
 /* Return the max entries we should read out of rx fifo */
 static inline u32 rx_max(struct spi_dw *dws)
 {
-	u32 rx_left = (dws->rx_end - dws->rx) / dws->n_bytes;
-
+	u32 rx_left = (dws->xfer.len - dws->xfer.rcvd) / dws->xfer.n_bytes;
 	return min(rx_left, (u32)dw_readw(dws, rxflr));
 }
 
-static void dw_writer(struct spi_dw *dws)
+static int transfer_setup(struct spi_dw *dws, struct chip_data *controller,
+			struct spi_transfer *transfer, struct spi_message *msg)
 {
-	u32 max = tx_max(dws);
+	int err = 0;
+	u32 cr0 = controller->cr0;
+	u32 clk_div;
+
+	dws->xfer.tx_buf = transfer->tx_buf;
+	dws->xfer.tx_dma = transfer->tx_dma;
+	dws->xfer.rx_buf = transfer->rx_buf;
+	dws->xfer.rx_dma = transfer->rx_dma;
+
+	dws->xfer.len = transfer->len;
+	dws->xfer.n_bytes = controller->n_bytes;
+	dws->xfer.sent = 0;
+	dws->xfer.rcvd = 0;
+	dws->xfer.msg = msg;
+	dws->xfer.err = 0;
+	dws->xfer.irq_status = 0;
+	INIT_COMPLETION(dws->xfer.complete);
+
+	/* {tx, rx}_threshold should probably be a module param with
+	 *  some reasonable default but these work for now.
+	 */
+	dws->xfer.tx_threshold = 10;
+	dws->xfer.rx_threshold = dws->xfer.tx_threshold - 1;
+
+	/* we need to make the decsion about the type of transfer more
+	 *  inteligently but this works for now
+	 */
+	if (transfer->len > dws->fifo_len)
+		dws->xfer.type = INT_XFER;
+	else
+		dws->xfer.type = PIO_XFER;
+
+	if (msg->is_dma_mapped &&
+		dws->dma_inited &&
+		dws->dma_ops)
+		dws->xfer.type = DMA_XFER;
+
+	/* Setup the controller based on parameters in the transfer
+	 * each transfer can set the bit_per_word and the speed_hz to
+	 * change these values in the controller the controller MUST
+	 * be disabled
+	 */
+	if (unlikely(!controller->clk_div)) {
+		controller->clk_div = dws->max_freq / controller->speed_hz;
+		controller->clk_div = (controller->clk_div + 1) & 0xfffe;
+		spi_dw_set_clk(dws, controller->clk_div);
+		err = 1;
+	}
+
+	if (transfer->speed_hz) {
+		if (transfer->speed_hz != controller->speed_hz) {
+			if (transfer->speed_hz > dws->max_freq) {
+				err = -EIO;
+				goto out;
+			}
+
+			clk_div = dws->max_freq / transfer->speed_hz;
+			clk_div = (clk_div + 1) & 0xfffe;
+			controller->clk_div = clk_div;
+			controller->speed_hz = transfer->speed_hz;
+			err = 1;
+		}
+	}
+
+	if (transfer->bits_per_word) {
+		if (transfer->bits_per_word != 8 &&
+			transfer->bits_per_word != 16) {
+			err = -EIO;
+			goto out;
+		}
+		cr0 &= ~SPI_DFS_MASK;
+		cr0 |= transfer->bits_per_word - 1;
+		err = 1;
+	} else {
+		cr0 &= ~SPI_DFS_MASK;
+		cr0 |= controller->spi_dev->bits_per_word - 1;
+	}
+
+	cr0 &= ~SPI_MODE_MASK;
+	cr0 |= (controller->spi_dev->mode << SPI_MODE_OFFSET);
+	controller->cr0 = cr0;
+
+	if (err || dw_readw(dws, ctrl0) != cr0) {
+		spi_dw_disable(dws);
+		spi_dw_chip_sel(dws, controller->spi_dev->chip_select);
+		dw_writew(dws, ctrl0, cr0);
+		spi_dw_set_clk(dws, controller->clk_div);
+		spi_dw_enable(dws);
+		err = 0;
+	}
+out:
+	return err;
+}
+
+static void tx_fifo_fill(struct spi_dw *dws)
+{
+	int room;
 	u16 txw = 0;
-
-	while (max--) {
-		/* Set the tx word if the transfer's original "tx" is not null */
-		if (dws->tx_end - dws->len) {
-			if (dws->n_bytes == 1)
-				txw = *(u8 *)(dws->tx);
-			else
-				txw = *(u16 *)(dws->tx);
+	if (dws->xfer.sent < dws->xfer.len) {
+		room = tx_max(dws);
+		while (room--) {
+			if (dws->xfer.tx_buf) {
+				if (dws->xfer.n_bytes == 2)
+					txw = *(u16 *)dws->xfer.tx_buf;
+				else
+					txw = *(u8 *)dws->xfer.tx_buf;
+				dws->xfer.tx_buf += dws->xfer.n_bytes;
+			}
+			dw_writew(dws, dr, txw);
+			dws->xfer.sent += dws->xfer.n_bytes;
 		}
-		dw_writew(dws, dr, txw);
-		dws->tx += dws->n_bytes;
 	}
 }
 
-static void dw_reader(struct spi_dw *dws)
-{
-	u32 max = rx_max(dws);
-	u16 rxw;
 
-	while (max--) {
-		rxw = dw_readw(dws, dr);
-		/* Care rx only if the transfer's original "rx" is not null */
-		if (dws->rx_end - dws->len) {
-			if (dws->n_bytes == 1)
-				*(u8 *)(dws->rx) = rxw;
-			else
-				*(u16 *)(dws->rx) = rxw;
+static void rx_fifo_drain(struct spi_dw *dws)
+{
+	u16 rx_val;
+	int avail;
+
+	if (dws->xfer.rcvd < dws->xfer.len) {
+		avail = rx_max(dws);
+		while (avail--) {
+			rx_val = dw_readw(dws, dr);
+			if (dws->xfer.rx_buf) {
+				if (dws->xfer.n_bytes == 2)
+					*(u16 *)(dws->xfer.rx_buf) =
+						(u16)rx_val;
+				else
+					*dws->xfer.rx_buf = (u8)rx_val;
+				dws->xfer.rx_buf += dws->xfer.n_bytes;
+			}
+			dws->xfer.rcvd += dws->xfer.n_bytes;
 		}
-		dws->rx += dws->n_bytes;
 	}
 }
 
-static void *next_transfer(struct spi_dw *dws)
+static inline void do_pio(struct spi_dw *dws)
 {
-	struct spi_message *msg = dws->cur_msg;
-	struct spi_transfer *trans = dws->cur_transfer;
-
-	/* Move to next transfer */
-	if (trans->transfer_list.next != &msg->transfers) {
-		dws->cur_transfer =
-			list_entry(trans->transfer_list.next,
-					struct spi_transfer,
-					transfer_list);
-		return RUNNING_STATE;
-	} else
-		return DONE_STATE;
+	while (dws->xfer.sent < dws->xfer.len ||
+					dws->xfer.rcvd < dws->xfer.len) {
+		tx_fifo_fill(dws);
+		rx_fifo_drain(dws);
+		cpu_relax();
+	}
+	complete(&dws->xfer.complete);
 }
 
-/*
- * Note: first step is the protocol driver prepares
- * a dma-capable memory, and this func just need translate
- * the virt addr to physical
- */
-static int map_dma_buffers(struct spi_dw *dws)
+static irqreturn_t spi_dw_irq_thread_handler(int irq, void *dev_id)
 {
-	if (!dws->cur_msg->is_dma_mapped
-		|| !dws->dma_inited
-		|| !dws->cur_chip->enable_dma
-		|| !dws->dma_ops)
-		return 0;
+	struct spi_dw *dws = dev_id;
 
-	if (dws->cur_transfer->tx_dma)
-		dws->tx_dma = dws->cur_transfer->tx_dma;
-
-	if (dws->cur_transfer->rx_dma)
-		dws->rx_dma = dws->cur_transfer->rx_dma;
-
-	return 1;
-}
-
-/* Caller already set message->status; dma and pio irqs are blocked */
-static void giveback(struct spi_dw *dws)
-{
-	struct spi_transfer *last_transfer;
-	unsigned long flags;
-	struct spi_message *msg;
-
-	spin_lock_irqsave(&dws->lock, flags);
-	msg = dws->cur_msg;
-	dws->cur_msg = NULL;
-	dws->cur_transfer = NULL;
-	dws->prev_chip = dws->cur_chip;
-	dws->cur_chip = NULL;
-	dws->dma_mapped = 0;
-	queue_work(dws->workqueue, &dws->pump_messages);
-	spin_unlock_irqrestore(&dws->lock, flags);
-
-	last_transfer = list_entry(msg->transfers.prev,
-					struct spi_transfer,
-					transfer_list);
-
-	if (!last_transfer->cs_change && dws->cs_control)
-		dws->cs_control(SPI_DW_DEASSERT);
-
-	msg->state = NULL;
-	if (msg->complete)
-		msg->complete(msg->context);
-}
-
-static void int_error_stop(struct spi_dw *dws, const char *msg)
-{
-	/* Stop the hw */
-	spi_enable_chip(dws, 0);
-
-	dev_err(&dws->master->dev, "%s\n", msg);
-	dws->cur_msg->state = ERROR_STATE;
-	tasklet_schedule(&dws->pump_transfers);
-}
-
-void spi_dw_xfer_done(struct spi_dw *dws)
-{
-	/* Update total byte transferred return count actual bytes read */
-	dws->cur_msg->actual_length += dws->len;
-
-	/* Move to next transfer */
-	dws->cur_msg->state = next_transfer(dws);
-
-	/* Handle end of message */
-	if (dws->cur_msg->state == DONE_STATE) {
-		dws->cur_msg->status = 0;
-		giveback(dws);
-	} else
-		tasklet_schedule(&dws->pump_transfers);
-}
-EXPORT_SYMBOL_GPL(spi_dw_xfer_done);
-
-static irqreturn_t interrupt_transfer(struct spi_dw *dws)
-{
-	u16 irq_status = dw_readw(dws, isr);
-
-	/* Error handling */
-	if (irq_status & (SPI_INT_TXOI | SPI_INT_RXOI | SPI_INT_RXUI)) {
-		dw_readw(dws, txoicr);
-		dw_readw(dws, rxoicr);
-		dw_readw(dws, rxuicr);
-		int_error_stop(dws, "interrupt_transfer: fifo overrun/underrun");
-		return IRQ_HANDLED;
+	if (dws->xfer.irq_status & SPI_INT_TXEI) {
+		rx_fifo_drain(dws);
+		tx_fifo_fill(dws);
 	}
 
-	dw_reader(dws);
-	if (dws->rx_end == dws->rx) {
-		spi_mask_intr(dws, SPI_INT_TXEI);
-		spi_dw_xfer_done(dws);
-		return IRQ_HANDLED;
-	}
-	if (irq_status & SPI_INT_TXEI) {
-		spi_mask_intr(dws, SPI_INT_TXEI);
-		dw_writer(dws);
-		/* Enable TX irq always, it will be disabled when RX finished */
-		spi_umask_intr(dws, SPI_INT_TXEI);
+	if (dws->xfer.irq_status & SPI_INT_RXFI) {
+		tx_fifo_fill(dws);
+		rx_fifo_drain(dws);
 	}
 
+	if (dws->xfer.len == dws->xfer.rcvd &&
+		dws->xfer.len == dws->xfer.sent) {
+		complete(&dws->xfer.complete);
+		goto out;
+	}
+
+	spi_dw_umask_intr(dws, SPI_INT_ALL);
+out:
 	return IRQ_HANDLED;
 }
 
-static irqreturn_t spi_dw_irq(int irq, void *dev_id)
+static inline void do_int_xfer(struct spi_dw *dws)
 {
-	struct spi_dw *dws = dev_id;
-	u16 irq_status = dw_readw(dws, isr) & 0x3f;
-
-	if (!irq_status)
-		return IRQ_NONE;
-
-	if (!dws->cur_msg) {
-		spi_mask_intr(dws, SPI_INT_TXEI);
-		return IRQ_HANDLED;
-	}
-
-	return dws->transfer_handler(dws);
+	spi_dw_disable(dws);
+	dw_writew(dws, txfltr, dws->xfer.tx_threshold);
+	dw_writew(dws, rxfltr, dws->xfer.rx_threshold);
+	spi_dw_enable(dws);
+	dw_readw(dws, icr);
+	tx_fifo_fill(dws);
+	dw_writew(dws, imr, SPI_INT_ALL);
 }
 
-/* Must be called inside pump_transfers() */
-static void poll_transfer(struct spi_dw *dws)
+static inline int do_transfer(struct spi_dw *dws)
 {
-	do {
-		dw_writer(dws);
-		dw_reader(dws);
-		cpu_relax();
-	} while (dws->rx_end > dws->rx);
+	switch (dws->xfer.type) {
+	case PIO_XFER:
+		do_pio(dws);
+		break;
+	case INT_XFER:
+		do_int_xfer(dws);
+		break;
+	case DMA_XFER:
+		dws->dma_ops->dma_transfer(dws);
+		break;
+	default:
+		BUG();
+	}
 
-	spi_dw_xfer_done(dws);
+	wait_for_completion(&dws->xfer.complete);
+
+
+	return dws->xfer.err;
 }
 
-static void pump_transfers(unsigned long data)
+static void drain_message_queue(struct spi_dw *dws)
 {
-	struct spi_dw *dws = (struct spi_dw *)data;
-	struct spi_message *message = NULL;
-	struct spi_transfer *transfer = NULL;
-	struct spi_transfer *previous = NULL;
-	struct spi_device *spi = NULL;
-	struct chip_data *chip = NULL;
-	u8 bits = 0;
-	u8 imask = 0;
-	u8 cs_change = 0;
-	u16 txint_level = 0;
-	u16 clk_div = 0;
-	u32 speed = 0;
-	u32 cr0 = 0;
+	struct spi_message *message;
 
-	/* Get current state information */
-	message = dws->cur_msg;
-	transfer = dws->cur_transfer;
-	chip = dws->cur_chip;
-	spi = message->spi;
-
-	if (unlikely(!chip->clk_div))
-		chip->clk_div = dws->max_freq / chip->speed_hz;
-
-	if (message->state == ERROR_STATE) {
-		message->status = -EIO;
-		goto early_exit;
+	message = get_message(dws);
+	while (message) {
+		message->status = -ESHUTDOWN;
+		message->complete(message->context);
+		message = get_message(dws);
 	}
-
-	/* Handle end of message */
-	if (message->state == DONE_STATE) {
-		message->status = 0;
-		goto early_exit;
-	}
-
-	/* Delay if requested at end of transfer*/
-	if (message->state == RUNNING_STATE) {
-		previous = list_entry(transfer->transfer_list.prev,
-					struct spi_transfer,
-					transfer_list);
-		if (previous->delay_usecs)
-			udelay(previous->delay_usecs);
-	}
-
-	dws->n_bytes = chip->n_bytes;
-	dws->dma_width = chip->dma_width;
-	dws->cs_control = chip->cs_control;
-
-	dws->rx_dma = transfer->rx_dma;
-	dws->tx_dma = transfer->tx_dma;
-	dws->tx = (void *)transfer->tx_buf;
-	dws->tx_end = dws->tx + transfer->len;
-	dws->rx = transfer->rx_buf;
-	dws->rx_end = dws->rx + transfer->len;
-	dws->cs_change = transfer->cs_change;
-	dws->len = dws->cur_transfer->len;
-	if (chip != dws->prev_chip)
-		cs_change = 1;
-
-	cr0 = chip->cr0;
-
-	/* Handle per transfer options for bpw and speed */
-	if (transfer->speed_hz) {
-		speed = chip->speed_hz;
-
-		if (transfer->speed_hz != speed) {
-			speed = transfer->speed_hz;
-			if (speed > dws->max_freq) {
-				printk(KERN_ERR "DW SPI0: unsupported"
-					"freq: %dHz\n", speed);
-				message->status = -EIO;
-				goto early_exit;
-			}
-
-			/* clk_div doesn't support odd number */
-			clk_div = dws->max_freq / speed;
-			clk_div = (clk_div + 1) & 0xfffe;
-
-			chip->speed_hz = speed;
-			chip->clk_div = clk_div;
-		}
-	}
-	if (transfer->bits_per_word) {
-		bits = transfer->bits_per_word;
-
-		switch (bits) {
-		case 8:
-		case 16:
-			dws->n_bytes = dws->dma_width = bits >> 3;
-			break;
-		default:
-			printk(KERN_ERR "DW SPI: unsupported bits:"
-				"%db\n", bits);
-			message->status = -EIO;
-			goto early_exit;
-		}
-
-		cr0 = (bits - 1)
-			| (chip->type << SPI_FRF_OFFSET)
-			| (spi->mode << SPI_MODE_OFFSET)
-			| (chip->tmode << SPI_TMOD_OFFSET);
-	}
-	message->state = RUNNING_STATE;
-
-	/*
-	 * Adjust transfer mode if necessary. Requires platform dependent
-	 * chipselect mechanism.
-	 */
-	if (dws->cs_control) {
-		if (dws->rx && dws->tx)
-			chip->tmode = SPI_TMOD_TR;
-		else if (dws->rx)
-			chip->tmode = SPI_TMOD_RO;
-		else
-			chip->tmode = SPI_TMOD_TO;
-
-		cr0 &= ~SPI_TMOD_MASK;
-		cr0 |= (chip->tmode << SPI_TMOD_OFFSET);
-	}
-
-	/* Check if current transfer is a DMA transaction */
-	dws->dma_mapped = map_dma_buffers(dws);
-
-	/*
-	 * Interrupt mode
-	 * we only need set the TXEI IRQ, as TX/RX always happen syncronizely
-	 */
-	if (!dws->dma_mapped && !chip->poll_mode) {
-		int templen = dws->len / dws->n_bytes;
-		txint_level = dws->fifo_len / 2;
-		txint_level = (templen > txint_level) ? txint_level : templen;
-
-		imask |= SPI_INT_TXEI | SPI_INT_TXOI | SPI_INT_RXUI | SPI_INT_RXOI;
-		dws->transfer_handler = interrupt_transfer;
-	}
-
-	/*
-	 * Reprogram registers only if
-	 *	1. chip select changes
-	 *	2. clk_div is changed
-	 *	3. control value changes
-	 */
-	if (dw_readw(dws, ctrl0) != cr0 || cs_change || clk_div || imask) {
-		spi_enable_chip(dws, 0);
-
-		if (dw_readw(dws, ctrl0) != cr0)
-			dw_writew(dws, ctrl0, cr0);
-
-		spi_set_clk(dws, clk_div ? clk_div : chip->clk_div);
-		spi_chip_sel(dws, spi->chip_select);
-
-		/* Set the interrupt mask, for poll mode just disable all int */
-		spi_mask_intr(dws, 0xff);
-		if (imask)
-			spi_umask_intr(dws, imask);
-		if (txint_level)
-			dw_writew(dws, txfltr, txint_level);
-
-		spi_enable_chip(dws, 1);
-		if (cs_change)
-			dws->prev_chip = chip;
-	}
-
-	if (dws->dma_mapped)
-		dws->dma_ops->dma_transfer(dws, cs_change);
-
-	if (chip->poll_mode)
-		poll_transfer(dws);
-
-	return;
-
-early_exit:
-	giveback(dws);
-	return;
 }
 
 static void pump_messages(struct work_struct *work)
 {
 	struct spi_dw *dws =
 		container_of(work, struct spi_dw, pump_messages);
-	unsigned long flags;
+	struct spi_transfer *transfer;
+	struct spi_message *message;
+	struct chip_data *controller;
+	int err = 0;
 
-	/* Lock queue and check for queue work */
-	spin_lock_irqsave(&dws->lock, flags);
-	if (list_empty(&dws->queue) || dws->run == QUEUE_STOPPED) {
-		dws->busy = 0;
-		spin_unlock_irqrestore(&dws->lock, flags);
-		return;
+	message = get_message(dws);
+
+	while (message && dws->run != QUEUE_STOPPED) {
+		controller = spi_get_ctldata(message->spi);
+		list_for_each_entry(transfer, &message->transfers,
+				transfer_list){
+
+			err = transfer_setup(dws, controller,
+						transfer, message);
+			if (err < 0) {
+				dev_err(&dws->master->dev,
+					"transfer_setup failed");
+				dws->xfer.err = -EIO;
+				break;
+			}
+
+			if (controller->cs_control)
+				controller->cs_control(SPI_DW_ASSERT);
+
+			err = do_transfer(dws);
+			if (err < 0) {
+				dev_err(&dws->master->dev,
+					"do_transfer failed");
+				break;
+			}
+			message->actual_length += dws->xfer.len;
+
+			if (transfer->delay_usecs)
+				udelay(transfer->delay_usecs);
+
+			if (transfer->cs_change &&
+				controller->cs_control)
+				controller->cs_control(SPI_DW_DEASSERT);
+		}
+
+		if (controller->cs_control)
+			controller->cs_control(SPI_DW_ASSERT);
+
+		message->status = dws->xfer.err;
+		message->complete(message->context);
+		message =  get_message(dws);
 	}
-
-	/* Make sure we are not already running a message */
-	if (dws->cur_msg) {
-		spin_unlock_irqrestore(&dws->lock, flags);
-		return;
-	}
-
-	/* Extract head of queue */
-	dws->cur_msg = list_entry(dws->queue.next, struct spi_message, queue);
-	list_del_init(&dws->cur_msg->queue);
-
-	/* Initial message state*/
-	dws->cur_msg->state = START_STATE;
-	dws->cur_transfer = list_entry(dws->cur_msg->transfers.next,
-						struct spi_transfer,
-						transfer_list);
-	dws->cur_chip = spi_get_ctldata(dws->cur_msg->spi);
-
-	/* Mark as busy and launch transfers */
-	tasklet_schedule(&dws->pump_transfers);
-
-	dws->busy = 1;
-	spin_unlock_irqrestore(&dws->lock, flags);
+	if (dws->run == QUEUE_STOPPED)
+		drain_message_queue(dws);
 }
 
 /* spi_device use this to queue in their spi_msg */
@@ -598,33 +488,19 @@ static int spi_dw_transfer(struct spi_device *spi, struct spi_message *msg)
 	struct spi_dw *dws = spi_master_get_devdata(spi->master);
 	unsigned long flags;
 
-	spin_lock_irqsave(&dws->lock, flags);
 
-	if (dws->run == QUEUE_STOPPED) {
-		spin_unlock_irqrestore(&dws->lock, flags);
-		return -ESHUTDOWN;
-	}
+	spin_lock_irqsave(&dws->lock, flags);
 
 	msg->actual_length = 0;
 	msg->status = -EINPROGRESS;
-	msg->state = START_STATE;
 
 	list_add_tail(&msg->queue, &dws->queue);
 
-	if (dws->run == QUEUE_RUNNING && !dws->busy) {
-
-		if (dws->cur_transfer || dws->cur_msg)
-			queue_work(dws->workqueue,
-					&dws->pump_messages);
-		else {
-			/* If no other data transaction in air, just go */
-			spin_unlock_irqrestore(&dws->lock, flags);
-			pump_messages(&dws->pump_messages);
-			return 0;
-		}
-	}
+	queue_work(dws->workqueue,
+		&dws->pump_messages);
 
 	spin_unlock_irqrestore(&dws->lock, flags);
+
 	return 0;
 }
 
@@ -637,6 +513,11 @@ static int spi_dw_setup(struct spi_device *spi)
 	if (spi->bits_per_word != 8 && spi->bits_per_word != 16)
 		return -EINVAL;
 
+	if (!spi->max_speed_hz) {
+		dev_err(&spi->dev, "No max speed HZ parameter\n");
+		return -EINVAL;
+	}
+
 	/* Only alloc on first setup */
 	chip = spi_get_ctldata(spi);
 	if (!chip) {
@@ -644,6 +525,7 @@ static int spi_dw_setup(struct spi_device *spi)
 		if (!chip)
 			return -ENOMEM;
 	}
+	chip->spi_dev = spi;
 
 	/*
 	 * Protocol drivers may change the chip settings, so...
@@ -652,44 +534,18 @@ static int spi_dw_setup(struct spi_device *spi)
 	chip_info = spi->controller_data;
 
 	/* chip_info doesn't always exist */
-	if (chip_info) {
-		if (chip_info->cs_control)
-			chip->cs_control = chip_info->cs_control;
+	if (chip_info)
+		chip->cs_control = chip_info->cs_control;
 
-		chip->poll_mode = chip_info->poll_mode;
-		chip->type = chip_info->type;
-
-		chip->rx_threshold = 0;
-		chip->tx_threshold = 0;
-
-		chip->enable_dma = chip_info->enable_dma;
-	}
-
-	if (spi->bits_per_word <= 8) {
-		chip->n_bytes = 1;
-		chip->dma_width = 1;
-	} else if (spi->bits_per_word <= 16) {
-		chip->n_bytes = 2;
-		chip->dma_width = 2;
-	} else {
-		/* Never take >16b case for DW SPIC */
-		dev_err(&spi->dev, "invalid wordsize\n");
-		return -EINVAL;
-	}
 	chip->bits_per_word = spi->bits_per_word;
+	chip->n_bytes = chip->bits_per_word / 8;
+	chip->dma_width = chip->bits_per_word / 8;
 
-	if (!spi->max_speed_hz) {
-		dev_err(&spi->dev, "No max speed HZ parameter\n");
-		return -EINVAL;
-	}
 	chip->speed_hz = spi->max_speed_hz;
 
-	chip->tmode = 0; /* Tx & Rx */
 	/* Default SPI mode is SCPOL = 0, SCPH = 0 */
 	chip->cr0 = (chip->bits_per_word - 1)
-			| (chip->type << SPI_FRF_OFFSET)
-			| (spi->mode  << SPI_MODE_OFFSET)
-			| (chip->tmode << SPI_TMOD_OFFSET);
+		| (spi->mode  << SPI_MODE_OFFSET);
 
 	spi_set_ctldata(spi, chip);
 	return 0;
@@ -707,69 +563,38 @@ static int __devinit init_queue(struct spi_dw *dws)
 	spin_lock_init(&dws->lock);
 
 	dws->run = QUEUE_STOPPED;
-	dws->busy = 0;
-
-	tasklet_init(&dws->pump_transfers,
-			pump_transfers,	(unsigned long)dws);
 
 	INIT_WORK(&dws->pump_messages, pump_messages);
 	dws->workqueue = create_singlethread_workqueue(
 					dev_name(dws->master->dev.parent));
 	if (dws->workqueue == NULL)
 		return -EBUSY;
-
-	return 0;
-}
-
-static int start_queue(struct spi_dw *dws)
-{
-	unsigned long flags;
-
-	spin_lock_irqsave(&dws->lock, flags);
-
-	if (dws->run == QUEUE_RUNNING || dws->busy) {
-		spin_unlock_irqrestore(&dws->lock, flags);
-		return -EBUSY;
-	}
-
 	dws->run = QUEUE_RUNNING;
-	dws->cur_msg = NULL;
-	dws->cur_transfer = NULL;
-	dws->cur_chip = NULL;
-	dws->prev_chip = NULL;
-	spin_unlock_irqrestore(&dws->lock, flags);
-
-	queue_work(dws->workqueue, &dws->pump_messages);
-
 	return 0;
 }
 
-static int stop_queue(struct spi_dw *dws)
+
+int spi_dw_stop_queue(struct spi_dw *dws)
 {
 	unsigned long flags;
-	unsigned limit = 50;
 	int status = 0;
 
 	spin_lock_irqsave(&dws->lock, flags);
 	dws->run = QUEUE_STOPPED;
-	while ((!list_empty(&dws->queue) || dws->busy) && limit--) {
-		spin_unlock_irqrestore(&dws->lock, flags);
-		msleep(10);
-		spin_lock_irqsave(&dws->lock, flags);
-	}
 
-	if (!list_empty(&dws->queue) || dws->busy)
+	if (!list_empty(&dws->queue))
 		status = -EBUSY;
 	spin_unlock_irqrestore(&dws->lock, flags);
 
 	return status;
 }
+EXPORT_SYMBOL_GPL(spi_dw_stop_queue);
 
 static int destroy_queue(struct spi_dw *dws)
 {
 	int status;
 
-	status = stop_queue(dws);
+	status = spi_dw_stop_queue(dws);
 	if (status != 0)
 		return status;
 	destroy_workqueue(dws->workqueue);
@@ -779,24 +604,14 @@ static int destroy_queue(struct spi_dw *dws)
 /* Restart the controller, disable all interrupts, clean rx fifo */
 static void spi_hw_init(struct spi_dw *dws)
 {
-	spi_enable_chip(dws, 0);
-	spi_mask_intr(dws, 0xff);
-	spi_enable_chip(dws, 1);
+	spi_dw_disable(dws);
+	spi_dw_mask_intr(dws, SPI_INT_ALL);
+	dw_readw(dws, icr);
+	spi_dw_enable(dws);
 
-	/*
-	 * Try to detect the FIFO depth if not set by interface driver,
-	 * the depth could be from 2 to 256 from HW spec
-	 */
 	if (!dws->fifo_len) {
-		u32 fifo;
-		for (fifo = 2; fifo <= 257; fifo++) {
-			dw_writew(dws, txfltr, fifo);
-			if (fifo != dw_readw(dws, txfltr))
-				break;
-		}
-
-		dws->fifo_len = (fifo == 257) ? 0 : fifo;
-		dw_writew(dws, txfltr, 0);
+		WARN(!dws->fifo_len, "spi-dw fifo_len not set using default");
+		dws->fifo_len = 16;
 	}
 }
 
@@ -814,13 +629,15 @@ int __devinit spi_dw_add_host(struct spi_dw *dws)
 	}
 
 	dws->master = master;
-	dws->type = SSI_MOTO_SPI;
-	dws->prev_chip = NULL;
+
+	init_completion(&dws->xfer.complete);
 	dws->dma_inited = 0;
+	/* Change to address of FIFO */
 	dws->dma_addr = (dma_addr_t)(dws->paddr + 0x60);
 
-	ret = request_irq(dws->irq, spi_dw_irq, IRQF_SHARED,
-			"spi_dw", dws);
+	ret = request_threaded_irq(dws->irq, spi_dw_irq,
+				spi_dw_irq_thread_handler,
+				IRQF_SHARED, "spi_dw", dws);
 	if (ret < 0) {
 		dev_err(&master->dev, "can not get IRQ\n");
 		goto err_free_master;
@@ -850,11 +667,6 @@ int __devinit spi_dw_add_host(struct spi_dw *dws)
 		dev_err(&master->dev, "problem initializing queue\n");
 		goto err_diable_hw;
 	}
-	ret = start_queue(dws);
-	if (ret) {
-		dev_err(&master->dev, "problem starting queue\n");
-		goto err_diable_hw;
-	}
 
 	spi_master_set_devdata(master, dws);
 	ret = spi_register_master(master);
@@ -871,7 +683,7 @@ err_queue_alloc:
 	if (dws->dma_ops && dws->dma_ops->dma_exit)
 		dws->dma_ops->dma_exit(dws);
 err_diable_hw:
-	spi_enable_chip(dws, 0);
+	spi_dw_disable(dws);
 	free_irq(dws->irq, dws);
 err_free_master:
 	spi_master_put(master);
@@ -896,9 +708,8 @@ void __devexit spi_dw_remove_host(struct spi_dw *dws)
 
 	if (dws->dma_ops && dws->dma_ops->dma_exit)
 		dws->dma_ops->dma_exit(dws);
-	spi_enable_chip(dws, 0);
-	/* Disable clk */
-	spi_set_clk(dws, 0);
+	spi_dw_disable(dws);
+	dw_readw(dws, icr);
 	free_irq(dws->irq, dws);
 
 	/* Disconnect from the SPI framework */
@@ -910,24 +721,19 @@ int spi_dw_suspend_host(struct spi_dw *dws)
 {
 	int ret = 0;
 
-	ret = stop_queue(dws);
+	ret = spi_dw_stop_queue(dws);
 	if (ret)
 		return ret;
-	spi_enable_chip(dws, 0);
-	spi_set_clk(dws, 0);
+	spi_dw_disable(dws);
 	return ret;
 }
 EXPORT_SYMBOL_GPL(spi_dw_suspend_host);
 
 int spi_dw_resume_host(struct spi_dw *dws)
 {
-	int ret;
-
 	spi_hw_init(dws);
-	ret = start_queue(dws);
-	if (ret)
-		dev_err(&dws->master->dev, "fail to start queue (%d)\n", ret);
-	return ret;
+	dws->run = QUEUE_RUNNING;
+	return 0;
 }
 EXPORT_SYMBOL_GPL(spi_dw_resume_host);
 

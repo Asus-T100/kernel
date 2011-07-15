@@ -6,6 +6,7 @@
 
 /* Bit fields in CTRLR0 */
 #define SPI_DFS_OFFSET			0
+#define SPI_DFS_MASK			0xf
 
 #define SPI_FRF_OFFSET			4
 #define SPI_FRF_SPI			0x0
@@ -16,6 +17,7 @@
 #define SPI_MODE_OFFSET			6
 #define SPI_SCPH_OFFSET			6
 #define SPI_SCOL_OFFSET			7
+#define SPI_MODE_MASK			(0x3 << SPI_MODE_OFFSET)
 
 #define SPI_TMOD_OFFSET			8
 #define SPI_TMOD_MASK			(0x3 << SPI_TMOD_OFFSET)
@@ -45,15 +47,7 @@
 #define SPI_INT_RXOI			(1 << 3)
 #define SPI_INT_RXFI			(1 << 4)
 #define SPI_INT_MSTI			(1 << 5)
-
-/* TX RX interrupt level threshold, max can be 256 */
-#define SPI_INT_THRESHOLD		32
-
-enum dw_ssi_type {
-	SSI_MOTO_SPI = 0,
-	SSI_TI_SSP,
-	SSI_NS_MICROWIRE,
-};
+#define SPI_INT_ALL  0x3f
 
 struct spi_dw_reg {
 	u32	ctrl0;
@@ -88,19 +82,41 @@ struct spi_dw;
 struct spi_dw_dma_ops {
 	int (*dma_init)(struct spi_dw *dws);
 	void (*dma_exit)(struct spi_dw *dws);
-	int (*dma_transfer)(struct spi_dw *dws, int cs_change);
+	int (*dma_transfer)(struct spi_dw *dws);
+};
+
+enum xfer_type {
+	PIO_XFER,
+	INT_XFER,
+	DMA_XFER,
+};
+
+struct xfer_state {
+	const u8 *tx_buf;
+	dma_addr_t tx_dma;
+	u8 *rx_buf;
+	dma_addr_t rx_dma;
+	struct spi_message *msg;
+	u32 n_bytes;
+	u32 len;
+	u32 sent;
+	u32 rcvd;
+	u32 err;
+	u32 type;
+	u32  tx_threshold;
+	u32  rx_threshold;
+	u32 irq_status;
+	struct completion complete;
 };
 
 struct spi_dw {
 	struct spi_master	*master;
-	struct spi_device	*cur_dev;
 	struct device		*parent_dev;
-	enum dw_ssi_type	type;
 
 	void __iomem		*regs;
 	unsigned long		paddr;
 	u32			iolen;
-	int			irq;
+	u32			irq;
 	u32			fifo_len;	/* depth of the FIFO buffer */
 	u32			max_freq;	/* max bus freq supported */
 
@@ -112,41 +128,18 @@ struct spi_dw {
 	struct work_struct	pump_messages;
 	spinlock_t		lock;
 	struct list_head	queue;
-	int			busy;
-	int			run;
-
-	/* Message Transfer pump */
-	struct tasklet_struct	pump_transfers;
+	u32			run;
 
 	/* Current message transfer state info */
-	struct spi_message	*cur_msg;
-	struct spi_transfer	*cur_transfer;
-	struct chip_data	*cur_chip;
-	struct chip_data	*prev_chip;
-	size_t			len;
-	void			*tx;
-	void			*tx_end;
-	void			*rx;
-	void			*rx_end;
-	int			dma_mapped;
-	dma_addr_t		rx_dma;
-	dma_addr_t		tx_dma;
-	size_t			rx_map_len;
-	size_t			tx_map_len;
-	u8			n_bytes;	/* current is a 1/2 bytes op */
-	u8			max_bits_per_word;	/* maxim is 16b */
-	u32			dma_width;
-	int			cs_change;
-	irqreturn_t		(*transfer_handler)(struct spi_dw *dws);
-	void			(*cs_control)(u32 command);
+	struct xfer_state       xfer;
 
 	/* Dma info */
-	int			dma_inited;
+	u32			dma_inited;
 	struct dma_chan		*txchan;
 	struct scatterlist	tx_sgl;
 	struct dma_chan		*rxchan;
 	struct scatterlist	rx_sgl;
-	int			dma_chan_done;
+	u32			dma_chan_done;
 	struct device		*dma_dev;
 	dma_addr_t		dma_addr; /* phy address of the Data register */
 	struct spi_dw_dma_ops	*dma_ops;
@@ -168,30 +161,36 @@ struct spi_dw {
 	__raw_readw(&(((struct spi_dw_reg *)dw->regs)->name))
 #define dw_writew(dw, name, val) \
 	__raw_writew((val), &(((struct spi_dw_reg *)dw->regs)->name))
+#define dw_readb(dw, name) \
+	__raw_readb(&(((struct spi_dw_reg *)dw->regs)->name))
+#define dw_writeb(dw, name, val) \
+	__raw_writeb((val), &(((struct spi_dw_reg *)dw->regs)->name))
 
-static inline void spi_enable_chip(struct spi_dw *dws, int enable)
+static inline void spi_dw_disable(struct spi_dw *dws)
 {
-	dw_writel(dws, ssienr, (enable ? 1 : 0));
+	dw_writel(dws, ssienr, 0);
 }
 
-static inline void spi_set_clk(struct spi_dw *dws, u16 div)
+static inline void spi_dw_enable(struct spi_dw *dws)
+{
+	dw_writel(dws, ssienr, 1);
+}
+
+static inline void spi_dw_set_clk(struct spi_dw *dws, u16 div)
 {
 	dw_writel(dws, baudr, div);
 }
 
-static inline void spi_chip_sel(struct spi_dw *dws, u16 cs)
+static inline void spi_dw_chip_sel(struct spi_dw *dws, u16 cs)
 {
-	if (cs > dws->num_cs)
+	if (cs > dws->master->num_chipselect)
 		return;
-
-	if (dws->cs_control)
-		dws->cs_control(1);
 
 	dw_writel(dws, ser, 1 << cs);
 }
 
 /* Disable IRQ bits */
-static inline void spi_mask_intr(struct spi_dw *dws, u32 mask)
+static inline void spi_dw_mask_intr(struct spi_dw *dws, u32 mask)
 {
 	u32 new_mask;
 
@@ -200,7 +199,7 @@ static inline void spi_mask_intr(struct spi_dw *dws, u32 mask)
 }
 
 /* Enable IRQ bits */
-static inline void spi_umask_intr(struct spi_dw *dws, u32 mask)
+static inline void spi_dw_umask_intr(struct spi_dw *dws, u32 mask)
 {
 	u32 new_mask;
 
@@ -215,9 +214,6 @@ static inline void spi_umask_intr(struct spi_dw *dws, u32 mask)
  * struct spi_device
  */
 struct spi_dw_chip {
-	u8 poll_mode;	/* 0 for contoller polling mode */
-	u8 type;	/* SPI/SSP/Micrwire */
-	u8 enable_dma;
 	void (*cs_control)(u32 command);
 };
 
@@ -226,6 +222,7 @@ extern void spi_dw_remove_host(struct spi_dw *dws);
 extern int spi_dw_suspend_host(struct spi_dw *dws);
 extern int spi_dw_resume_host(struct spi_dw *dws);
 extern void spi_dw_xfer_done(struct spi_dw *dws);
+extern int spi_dw_stop_queue(struct spi_dw *dws);
 
 /* platform related setup */
 extern int spi_dw_mid_init(struct spi_dw *dws); /* Intel MID platforms */
