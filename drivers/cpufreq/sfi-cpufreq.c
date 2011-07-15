@@ -58,20 +58,7 @@ static int sfi_cpufreq_num;
 static u32 sfi_cpu_num;
 
 #define		SFI_FREQ_MAX            32
-#define		SYSTEM_INTEL_MSR_CAPABLE		0x1
 #define		INTEL_MSR_RANGE				(0xffff)
-#define		CPUID_6_ECX_APERFMPERF_CAPABILITY	(0x1)
-#define		SFI_PROCESSOR_COMPONENT	0x01000000
-#define		SFI_PROCESSOR_CLASS		"processor"
-#define		SFI_PROCESSOR_FILE_PERFORMANCE	"performance"
-#define		_COMPONENT		SFI_PROCESSOR_COMPONENT
-#define		MSR_IA32_CLOCK_CR_GEYSIII_VCC_3 0xcf
-#define		GRD_RATIO_900   9
-#define		GRD_RATIO_1100  0xb
-#define		CTRL_VAL_900    0x90c
-#define		CTRL_VAL_1100   0xb14
-#define		GRD_VID_MASK           0x3F
-#define		GRD_BUS_RATIO_MASK     0xF
 #define		SFI_CPU_MAX        8
 
 
@@ -147,28 +134,6 @@ static int sfi_processor_get_performance_states(struct sfi_processor *pr)
 	return result;
 }
 
-void set_cpu_to_gfm(void)
-{
-	unsigned int l, h;
-	unsigned int grd_vid, grd_ratio;
-
-	/* program the GFM when the cpu's are initialized */
-	rdmsr(MSR_IA32_CLOCK_CR_GEYSIII_VCC_3, l, h);
-	grd_vid = (l >> 12) & GRD_VID_MASK;
-	grd_ratio = (l >> 7) & GRD_BUS_RATIO_MASK;
-
-	/* program the control values for GFM */
-	if (grd_ratio == GRD_RATIO_900)
-		l = CTRL_VAL_900;
-	else if (grd_ratio == GRD_RATIO_1100)
-		l = CTRL_VAL_1100;
-
-	h = 0;
-
-	/* write the value to change the freq to GFM */
-	wrmsr(MSR_IA32_PERF_CTL, l, h);
-}
-
 static int sfi_processor_register_performance(struct sfi_processor_performance
 				    *performance, unsigned int cpu)
 {
@@ -196,9 +161,6 @@ static int sfi_processor_register_performance(struct sfi_processor_performance
 	sfi_table_parse(SFI_SIG_FREQ, NULL, NULL, parse_freq);
 
 	sfi_processor_get_performance_states(pr);
-
-	/* ensure that the frequency is set to GFM after initialization */
-	set_cpu_to_gfm();
 
 	mutex_unlock(&performance_mutex);
 	return 0;
