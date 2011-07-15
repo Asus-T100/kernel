@@ -80,7 +80,6 @@ struct sfi_cpufreq_data {
 	struct cpufreq_frequency_table *freq_table;
 	unsigned int max_freq;
 	unsigned int resume;
-	unsigned int cpu_feature;
 };
 
 static DEFINE_PER_CPU(struct sfi_cpufreq_data *, drv_data);
@@ -227,17 +226,6 @@ void sfi_processor_unregister_performance(struct sfi_processor_performance
 	mutex_unlock(&performance_mutex);
 
 	return;
-}
-
-static int check_est_cpu(unsigned int cpuid)
-{
-	struct cpuinfo_x86 *cpu = &cpu_data(cpuid);
-
-	if (cpu->x86_vendor != X86_VENDOR_INTEL ||
-	    !cpu_has(cpu, X86_FEATURE_EST))
-		return 0;
-
-	return 1;
 }
 
 static unsigned extract_freq(u32 msr, struct sfi_cpufreq_data *data)
@@ -418,13 +406,6 @@ static int sfi_cpufreq_cpu_init(struct cpufreq_policy *policy)
 		goto err_unreg;
 	}
 
-	pr_debug("HARDWARE addr space\n");
-	if (!check_est_cpu(cpu)) {
-		result = -ENODEV;
-		goto err_unreg;
-	}
-
-	data->cpu_feature = SYSTEM_INTEL_MSR_CAPABLE;
 	data->freq_table = kmalloc(sizeof(struct cpufreq_frequency_table) *
 		    (perf->state_count+1), GFP_KERNEL);
 	if (!data->freq_table) {
