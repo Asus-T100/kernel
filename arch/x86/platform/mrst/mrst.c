@@ -447,6 +447,60 @@ static void __init *max7315_platform_data(void *info)
 	return max7315;
 }
 
+static void *tca6416_platform_data(void *info)
+{
+	static struct pca953x_platform_data tca6416;
+	struct i2c_board_info *i2c_info = info;
+	int gpio_base, intr;
+	char base_pin_name[SFI_NAME_LEN + 1];
+	char intr_pin_name[SFI_NAME_LEN + 1];
+
+	strcpy(i2c_info->type, "tca6416");
+	strcpy(base_pin_name, "tca6416_base");
+	strcpy(intr_pin_name, "tca6416_int");
+
+	gpio_base = get_gpio_by_name(base_pin_name);
+	intr = get_gpio_by_name(intr_pin_name);
+
+	if (gpio_base == -1)
+		return NULL;
+	tca6416.gpio_base = gpio_base;
+	if (intr != -1) {
+		i2c_info->irq = intr + MRST_IRQ_OFFSET;
+		tca6416.irq_base = gpio_base + MRST_IRQ_OFFSET;
+	} else {
+		i2c_info->irq = -1;
+		tca6416.irq_base = -1;
+	}
+	return &tca6416;
+}
+
+static void *mpu3050_platform_data(void *info)
+{
+	struct i2c_board_info *i2c_info = info;
+	int intr = get_gpio_by_name("mpu3050_int");
+
+	if (intr == -1)
+		return NULL;
+
+	i2c_info->irq = intr + MRST_IRQ_OFFSET;
+	return NULL;
+}
+
+static void *ektf2136_spi_platform_data(void *info)
+{
+	static int dummy;
+	struct spi_board_info *spi_info = info;
+	int intr = get_gpio_by_name("ts_int");
+
+	if (intr == -1)
+		return NULL;
+	spi_info->irq = intr + MRST_IRQ_OFFSET;
+
+	/* we return a dummy pdata */
+	return &dummy;
+}
+
 static void __init *emc1403_platform_data(void *info)
 {
 	static short intr2nd_pdata;
@@ -490,10 +544,13 @@ static const struct devs_id __initconst device_ids[] = {
 	{"spi_max3111", SFI_DEV_TYPE_SPI, 0, &max3111_platform_data},
 	{"i2c_max7315", SFI_DEV_TYPE_I2C, 1, &max7315_platform_data},
 	{"i2c_max7315_2", SFI_DEV_TYPE_I2C, 1, &max7315_platform_data},
+	{"tca6416", SFI_DEV_TYPE_I2C, 1, &tca6416_platform_data},
 	{"emc1403", SFI_DEV_TYPE_I2C, 1, &emc1403_platform_data},
 	{"i2c_accel", SFI_DEV_TYPE_I2C, 0, &lis331dl_platform_data},
 	{"pmic_audio", SFI_DEV_TYPE_IPC, 1, &no_platform_data},
 	{"msic_audio", SFI_DEV_TYPE_IPC, 1, &no_platform_data},
+	{"mpu3050", SFI_DEV_TYPE_I2C, 1, &mpu3050_platform_data},
+	{"ektf2136_spi", SFI_DEV_TYPE_SPI, 0, &ektf2136_spi_platform_data},
 	{},
 };
 
