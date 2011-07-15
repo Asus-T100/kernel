@@ -1,7 +1,13 @@
 #ifndef _ASM_X86_INTEL_SCU_IPC_H_
 #define  _ASM_X86_INTEL_SCU_IPC_H_
 
-#define IPCMSG_VRTC	0xFA	 /* Set vRTC device */
+#include <linux/notifier.h>
+
+#define IPCMSG_WARM_RESET	0xF0
+#define IPCMSG_COLD_RESET	0xF1
+#define IPCMSG_SOFT_RESET	0xF2
+#define IPCMSG_COLD_BOOT	0xF3
+#define IPCMSG_VRTC		0xFA	 /* Set vRTC device */
 
 /* Command id associated with message IPCMSG_VRTC */
 #define IPC_CMD_VRTC_SETTIME      1 /* Set time */
@@ -46,5 +52,25 @@ int intel_scu_ipc_fw_update(u8 *buffer, u32 length);
 
 /* Upgrade FW version on Medfield */
 int intel_scu_ipc_medfw_upgrade(void __user *arg);
+
+extern struct blocking_notifier_head intel_scu_notifier;
+
+static inline void intel_scu_notifier_add(struct notifier_block *nb)
+{
+	blocking_notifier_chain_register(&intel_scu_notifier, nb);
+}
+
+static inline void intel_scu_notifier_remove(struct notifier_block *nb)
+{
+	blocking_notifier_chain_unregister(&intel_scu_notifier, nb);
+}
+
+static inline int intel_scu_notifier_post(unsigned long v, void *p)
+{
+	return blocking_notifier_call_chain(&intel_scu_notifier, v, p);
+}
+
+#define		SCU_AVAILABLE		1
+#define		SCU_DOWN		2
 
 #endif
