@@ -529,7 +529,7 @@ static int __init parse_cpus(struct sfi_table_header *table)
 
 	sb = (struct sfi_table_simple *)table;
 
-	sfi_cpu_num = SFI_GET_NUM_ENTRIES(sb, u64);
+	sfi_cpu_num = SFI_GET_NUM_ENTRIES(sb, struct sfi_cpu_table_entry);
 
 	pentry = (struct sfi_cpu_table_entry *) sb->pentry;
 	for (i = 0; i < sfi_cpu_num; i++) {
