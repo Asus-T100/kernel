@@ -136,9 +136,8 @@ static int sfi_processor_get_performance_states(struct sfi_processor *pr)
 			sfi_cpufreq_array[i].latency;
 		pr->performance->states[i].control = \
 			sfi_cpufreq_array[i].ctrl_val;
-		printk(KERN_INFO "State [%d]: core_frequency[%d] \
-			transition_latency[%d] \
-			control[0x%x] status[0x%x]\n", i,
+		printk(KERN_INFO "State [%d]: core_frequency[%d] transition_latency[%d] control[0x%x] status[0x%x]\n",
+			i,
 			(u32) pr->performance->states[i].core_frequency,
 			(u32) pr->performance->states[i].transition_latency,
 			(u32) pr->performance->states[i].control,
@@ -326,11 +325,12 @@ static int sfi_cpufreq_target(struct cpufreq_policy *policy,
 	freqs.old = perf->states[perf->state].core_frequency * 1000;
 	freqs.new = data->freq_table[next_state].frequency;
 	freqs.cpu = policy->cpu;
-	
+
 	cpufreq_notify_transition(&freqs, CPUFREQ_PRECHANGE);
 
 	rdmsr_on_cpu(policy->cpu, MSR_IA32_PERF_CTL, &lo, &hi);
-	lo = (lo & ~INTEL_MSR_RANGE) | ((u32) perf->states[next_perf_state].control & INTEL_MSR_RANGE);
+	lo = (lo & ~INTEL_MSR_RANGE) |
+		((u32) perf->states[next_perf_state].control & INTEL_MSR_RANGE);
 	wrmsr_on_cpu(policy->cpu, MSR_IA32_PERF_CTL, lo, hi);
 
 
@@ -353,7 +353,7 @@ static int sfi_cpufreq_verify(struct cpufreq_policy *policy)
  * sfi_cpufreq_early_init - initialize SFI P-States library
  *
  * Initialize the SFI P-States library (drivers/sfi/processor_perflib.c)
- * in order to cope with the correct frequency and voltage pairings. 
+ * in order to cope with the correct frequency and voltage pairings.
  */
 static int __init sfi_cpufreq_early_init(void)
 {
