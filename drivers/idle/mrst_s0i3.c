@@ -227,6 +227,9 @@ void __init mrst_reserve_memory(void)
 	phys_addr_t mem;
 	size_t size;
 
+	if (boot_cpu_data.x86 != 6 || boot_cpu_data.x86_model != 0x26)
+		return;
+
 	size = s0i3_trampoline_data_end - s0i3_trampoline_data;
 	size = ALIGN(size, PAGE_SIZE);
 
@@ -243,6 +246,9 @@ void __init mrst_reserve_memory(void)
 static int __init s0i3_prepare(void)
 {
 	int err;
+
+	if (boot_cpu_data.x86 != 6 || boot_cpu_data.x86_model != 0x26)
+		return -EOPNOTSUPP;
 
 	wakeup_ptr = NULL;
 	err = sfi_table_parse(SFI_SIG_WAKE, NULL, NULL, s0i3_sfi_parse_wake);
