@@ -473,6 +473,7 @@ static int intel_idle_probe(void)
 		break;
 
 	case 0x26:	/* 38 - Lincroft Atom Processor */
+		cpuidle_state_table = mrst_cstates;
 #ifdef CONFIG_X86_MRST
 		cpuidle_device_prepare = mrst_pmu_validate_cstates;
 #endif
