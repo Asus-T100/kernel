@@ -123,12 +123,11 @@ static int sfi_processor_get_performance_states(struct sfi_processor *pr)
 			sfi_cpufreq_array[i].latency;
 		pr->performance->states[i].control = \
 			sfi_cpufreq_array[i].ctrl_val;
-		printk(KERN_INFO "State [%d]: core_frequency[%d] transition_latency[%d] control[0x%x] status[0x%x]\n",
+		printk(KERN_INFO "State [%d]: core_frequency[%d] transition_latency[%d] control[0x%x]\n",
 			i,
 			(u32) pr->performance->states[i].core_frequency,
 			(u32) pr->performance->states[i].transition_latency,
-			(u32) pr->performance->states[i].control,
-			(u32) pr->performance->states[i].status);
+			(u32) pr->performance->states[i].control);
 	}
 
 	return result;
@@ -368,7 +367,7 @@ static int sfi_cpufreq_cpu_init(struct cpufreq_policy *policy)
 		goto err_unreg;
 	}
 
-	data->freq_table = kmalloc(sizeof(struct cpufreq_frequency_table) *
+	data->freq_table = kzalloc(sizeof(struct cpufreq_frequency_table) *
 		    (perf->state_count+1), GFP_KERNEL);
 	if (!data->freq_table) {
 		result = -ENOMEM;

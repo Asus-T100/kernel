@@ -48,7 +48,6 @@ struct sfi_processor_px {
 	u32 core_frequency;	/* megahertz */
 	u32 transition_latency;	/* microseconds */
 	u32 control;	/* control value */
-	u32 status;	/* success indicator */
 };
 
 struct sfi_processor_performance {
