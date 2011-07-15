@@ -263,20 +263,10 @@ struct msr_addr {
 };
 
 struct drv_cmd {
-	unsigned int type;
 	const struct cpumask *mask;
 	struct msr_addr msr;
 	u32 val;
 };
-
-/* Called via smp_call_function_single(), on the target CPU */
-static void do_drv_read(void *_cmd)
-{
-	struct drv_cmd *cmd = _cmd;
-	u32 h;
-
-	rdmsr(cmd->msr.reg, cmd->val, h);
-}
 
 /* Called via smp_call_function_many(), on the target CPUs */
 static void do_drv_write(void *_cmd)
@@ -287,13 +277,6 @@ static void do_drv_write(void *_cmd)
 	rdmsr(cmd->msr.reg, lo, hi);
 	lo = (lo & ~INTEL_MSR_RANGE) | (cmd->val & INTEL_MSR_RANGE);
 	wrmsr(cmd->msr.reg, lo, hi);
-}
-
-static void drv_read(struct drv_cmd *cmd)
-{
-	cmd->val = 0;
-
-	smp_call_function_single(cpumask_any(cmd->mask), do_drv_read, cmd, 1);
 }
 
 static void drv_write(struct drv_cmd *cmd)
@@ -309,19 +292,14 @@ static void drv_write(struct drv_cmd *cmd)
 
 static u32 get_cur_val(const struct cpumask *mask)
 {
-	struct drv_cmd cmd;
+	u32 val, dummy;
 
 	if (unlikely(cpumask_empty(mask)))
 		return 0;
 
-	cmd.type = SYSTEM_INTEL_MSR_CAPABLE;
-	cmd.msr.reg = MSR_IA32_PERF_STATUS;
-	cmd.mask = mask;
-	drv_read(&cmd);
+	rdmsr_on_cpu(cpumask_any(mask), MSR_IA32_PERF_STATUS, &val, &dummy);
 
-	pr_debug("get_cur_val = %u\n", cmd.val);
-
-	return cmd.val;
+	return val;
 }
 
 static unsigned int get_cur_freq_on_cpu(unsigned int cpu)
@@ -407,7 +385,6 @@ static int sfi_cpufreq_target(struct cpufreq_policy *policy,
 		}
 	}
 
-	cmd.type = SYSTEM_INTEL_MSR_CAPABLE;
 	cmd.msr.reg = MSR_IA32_PERF_CTL;
 	cmd.val = (u32) perf->states[next_perf_state].control;
 
@@ -771,4 +748,3 @@ late_initcall(sfi_cpufreq_init);
 module_exit(sfi_cpufreq_exit);
 
 MODULE_ALIAS("sfi");
-
