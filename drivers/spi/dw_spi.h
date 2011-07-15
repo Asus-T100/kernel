@@ -207,16 +207,6 @@ static inline void spi_dw_umask_intr(struct spi_dw *dws, u32 mask)
 	dw_writel(dws, imr, new_mask);
 }
 
-/*
- * Each SPI slave device to work with dw_api controller should
- * has such a structure claiming its working mode (PIO/DMA etc),
- * which can be save in the "controller_data" member of the
- * struct spi_device
- */
-struct spi_dw_chip {
-	void (*cs_control)(u32 command);
-};
-
 extern int spi_dw_add_host(struct spi_dw *dws);
 extern void spi_dw_remove_host(struct spi_dw *dws);
 extern int spi_dw_suspend_host(struct spi_dw *dws);

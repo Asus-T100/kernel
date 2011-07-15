@@ -23,6 +23,7 @@
 #include <linux/slab.h>
 #include <linux/pm_runtime.h>
 #include <linux/spi/spi.h>
+#include <linux/spi/spi-dw.h>
 
 #include "dw_spi.h"
 
@@ -33,9 +34,6 @@
 
 #define QUEUE_RUNNING	0
 #define QUEUE_STOPPED	1
-
-#define SPI_DW_DEASSERT	0
-#define SPI_DW_ASSERT	1
 
 /* Slave spi_dev related */
 struct chip_data {
