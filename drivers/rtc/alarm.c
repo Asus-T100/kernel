@@ -13,7 +13,9 @@
  *
  */
 
-/*#include <asm/mach/time.h>*/
+#ifndef CONFIG_X86
+#include <asm/mach/time.h>
+#endif
 #include <linux/android_alarm.h>
 #include <linux/device.h>
 #include <linux/miscdevice.h>
