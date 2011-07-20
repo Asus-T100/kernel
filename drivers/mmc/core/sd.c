@@ -213,7 +213,7 @@ static int mmc_decode_scr(struct mmc_card *card)
  */
 static int mmc_read_ssr(struct mmc_card *card)
 {
-	unsigned int au, es, et, eo;
+	unsigned int sc, au, es, et, eo;
 	int err, i;
 	u32 *ssr;
 
@@ -242,6 +242,26 @@ static int mmc_read_ssr(struct mmc_card *card)
 	 * UNSTUFF_BITS only works with four u32s so we have to offset the
 	 * bitfield positions accordingly.
 	 */
+	sc = UNSTUFF_BITS(ssr, 440 - 384, 8);
+	switch (sc) {
+	case 0:
+		card->ssr.speed_class = 0;
+		break;
+	case 1:
+		card->ssr.speed_class = 2;
+		break;
+	case 2:
+		card->ssr.speed_class = 4;
+		break;
+	case 3:
+		card->ssr.speed_class = 6;
+		break;
+	case 4:
+		card->ssr.speed_class = 10;
+		break;
+	default:
+		card->ssr.speed_class = -1;
+	}
 	au = UNSTUFF_BITS(ssr, 428 - 384, 4);
 	if (au > 0 || au <= 9) {
 		card->ssr.au = 1 << (au + 4);
@@ -657,7 +677,7 @@ MMC_DEV_ATTR(manfid, "0x%06x\n", card->cid.manfid);
 MMC_DEV_ATTR(name, "%s\n", card->cid.prod_name);
 MMC_DEV_ATTR(oemid, "0x%04x\n", card->cid.oemid);
 MMC_DEV_ATTR(serial, "0x%08x\n", card->cid.serial);
-
+MMC_DEV_ATTR(speed_class, "%u\n", card->ssr.speed_class);
 
 static struct attribute *sd_std_attrs[] = {
 	&dev_attr_cid.attr,
@@ -672,6 +692,7 @@ static struct attribute *sd_std_attrs[] = {
 	&dev_attr_name.attr,
 	&dev_attr_oemid.attr,
 	&dev_attr_serial.attr,
+	&dev_attr_speed_class.attr,
 	NULL,
 };
 

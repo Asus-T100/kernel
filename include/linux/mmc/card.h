@@ -92,6 +92,7 @@ struct sd_scr {
 };
 
 struct sd_ssr {
+	unsigned short		speed_class;
 	unsigned int		au;			/* In sectors */
 	unsigned int		erase_timeout;		/* In milliseconds */
 	unsigned int		erase_offset;		/* In milliseconds */
