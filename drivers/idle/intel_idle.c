@@ -327,6 +327,8 @@ int intel_idle(struct cpuidle_device *dev, struct cpuidle_state *state)
  * This enters S0i3, C6 or C4 depending on what is currently permitted.
  * C1-C4 are handled via the normal intel_idle entry.
  */
+extern void do_s0i3(void);
+
 int intel_mid_idle(struct cpuidle_device *dev, struct cpuidle_state *state)
 {
 	unsigned long ecx = 1; /* break on interrupt flag */
@@ -354,7 +356,7 @@ int intel_mid_idle(struct cpuidle_device *dev, struct cpuidle_state *state)
 	if (!need_resched()) {
 #ifdef CONFIG_X86_MRST
 		if (eax == -1UL) {
-			do_s0i3();
+			;//do_s0i3();
 		} else
 #endif		
 		{
