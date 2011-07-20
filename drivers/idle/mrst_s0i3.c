@@ -37,7 +37,7 @@
 #include <asm/mwait.h>
 #include <asm/mrst.h>
 
-static void do_s0i3(void);
+void do_s0i3(void);
 static u64 *wakeup_ptr;
 static phys_addr_t s0i3_trampoline_phys;
 static void *s0i3_trampoline_base;
@@ -168,7 +168,7 @@ static inline void s0i3_update_wake_pointer(void)
 	*wakeup_ptr = virt_to_phys(mrst_s0i3_resume);
 }
 
-static noinline void do_s0i3(void)
+noinline void do_s0i3(void)
 {
 	s0i3_update_wake_pointer();
 	mrst_pmu_disable_msi();	/* disable MSIs before save LAPIC */
