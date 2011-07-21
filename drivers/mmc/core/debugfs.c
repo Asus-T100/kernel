@@ -18,6 +18,7 @@
 
 #include "core.h"
 #include "mmc_ops.h"
+#include "sd_ops.h"
 
 /* The debugfs functions are optimized away when CONFIG_DEBUG_FS isn't set. */
 static int mmc_ios_show(struct seq_file *s, void *data)
@@ -277,10 +278,75 @@ static int mmc_ext_csd_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
+#define SSR_STR_LEN 129
+
+static int mmc_ssr_open(struct inode *inode, struct file *filp)
+{
+	struct mmc_card *card = inode->i_private;
+	char *buf;
+	ssize_t n = 0;
+	u32 *ssr;
+	int err, i;
+
+	buf = kmalloc(SSR_STR_LEN + 1, GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+
+	ssr = kmalloc(64, GFP_KERNEL);
+	if (!ssr) {
+		err = -ENOMEM;
+		goto out_free;
+	}
+
+	mmc_claim_host(card->host);
+	err = mmc_app_sd_status(card, ssr);
+	mmc_release_host(card->host);
+	if (err)
+		goto out_free;
+
+	for (i = 0; i <= 15; i++) {
+		ssr[i] = be32_to_cpu(ssr[i]);
+		n += sprintf(buf + n, "%08x", ssr[i]);
+	}
+	n += sprintf(buf + n, "\n");
+	BUG_ON(n != SSR_STR_LEN);
+
+	filp->private_data = buf;
+	kfree(ssr);
+	return 0;
+
+out_free:
+	kfree(buf);
+	kfree(ssr);
+	return err;
+}
+
+static ssize_t mmc_ssr_read(struct file *filp, char __user *ubuf,
+				size_t cnt, loff_t *ppos)
+{
+	char *buf = filp->private_data;
+
+	return simple_read_from_buffer(ubuf, cnt, ppos,
+				       buf, SSR_STR_LEN);
+}
+
+static int mmc_ssr_release(struct inode *inode, struct file *file)
+{
+	kfree(file->private_data);
+	return 0;
+}
+
 static const struct file_operations mmc_dbg_ext_csd_fops = {
 	.open		= mmc_ext_csd_open,
 	.read		= mmc_ext_csd_read,
 	.release	= mmc_ext_csd_release,
+	.llseek		= default_llseek,
+};
+
+static const struct file_operations mmc_dbg_ssr_fops = {
+	.open		= mmc_ssr_open,
+	.read		= mmc_ssr_read,
+	.release	= mmc_ssr_release,
 	.llseek		= default_llseek,
 };
 
@@ -309,6 +375,11 @@ void mmc_add_card_debugfs(struct mmc_card *card)
 	if (mmc_card_mmc(card) || mmc_card_sd(card))
 		if (!debugfs_create_file("status", S_IRUSR, root, card,
 					&mmc_dbg_card_status_fops))
+			goto err;
+
+	if (mmc_card_sd(card))
+		if (!debugfs_create_file("ssr", S_IRUSR, root, card,
+					&mmc_dbg_ssr_fops))
 			goto err;
 
 	if (mmc_card_mmc(card))
