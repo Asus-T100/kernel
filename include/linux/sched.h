@@ -283,6 +283,10 @@ static inline void select_nohz_load_balancer(int stop_tick) { }
  */
 extern void show_state_filter(unsigned long state_filter);
 
+#ifdef CONFIG_EMMC_IPANIC
+extern void emmc_ipanic_stream_emmc(void);
+#endif
+
 static inline void show_state(void)
 {
 	show_state_filter(0);
