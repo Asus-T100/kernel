@@ -1563,13 +1563,6 @@ int cyttsp_core_init(void *bus_priv, struct cyttsp_bus_ops *bus_ops,
 	ts->bus_ops = bus_ops;
 	ts->bus_priv = bus_priv;
 
-#ifdef CONFIG_HAS_EARLYSUSPEND
-	ts->early_suspend.level = EARLY_SUSPEND_LEVEL_BLANK_SCREEN + 1;
-	ts->early_suspend.suspend = cyttsp_early_suspend;
-	ts->early_suspend.resume = cyttsp_late_resume;
-	register_early_suspend(&ts->early_suspend);
-#endif
-
 	if (ts->platform_data->init)
 		retval = ts->platform_data->init(1);
 	if (retval) {
@@ -1683,6 +1676,14 @@ int cyttsp_core_init(void *bus_priv, struct cyttsp_bus_ops *bus_ops,
 		goto device_create_error;
 	}
 	dev_set_drvdata(pdev, ts);
+
+#ifdef CONFIG_HAS_EARLYSUSPEND
+	ts->early_suspend.level = EARLY_SUSPEND_LEVEL_BLANK_SCREEN + 1;
+	ts->early_suspend.suspend = cyttsp_early_suspend;
+	ts->early_suspend.resume = cyttsp_late_resume;
+	register_early_suspend(&ts->early_suspend);
+#endif
+
 	return 0;
 
 device_create_error:
@@ -1717,6 +1718,8 @@ void cyttsp_core_release(void *handle)
 		free_irq(ts->irq, ts);
 	input_unregister_device(ts->input);
 	input_free_device(ts->input);
+	unregister_early_suspend(&ts->early_suspend);
+
 	if (ts->platform_data->init)
 		ts->platform_data->init(0);
 	kfree(ts);
