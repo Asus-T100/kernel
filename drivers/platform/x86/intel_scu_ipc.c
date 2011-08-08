@@ -58,6 +58,8 @@
 #define IPC_MIP_BASE	   0xFFFD8000   /* sram base address for mip accessing*/
 #define IPC_MIP_MAX_ADDR  0x1000
 
+#define IPC_IOC		  0x100
+
 static int ipc_probe(struct pci_dev *dev, const struct pci_device_id *id);
 static void ipc_remove(struct pci_dev *pdev);
 
@@ -66,6 +68,9 @@ struct intel_scu_ipc_dev {
 	void __iomem *ipc_base;
 	void __iomem *i2c_base;
 	void __iomem *mip_base;
+	int ioc;
+	struct completion cmd_complete;
+	int status;
 };
 
 static struct intel_scu_ipc_dev  ipcdev; /* Only one for now */
@@ -92,7 +97,14 @@ static DEFINE_MUTEX(ipclock); /* lock used to prevent multiple call to SCU */
  */
 static inline void ipc_command(u32 cmd) /* Send ipc command */
 {
-	writel(cmd, ipcdev.ipc_base);
+	INIT_COMPLETION(ipcdev.cmd_complete);
+	if (system_state == SYSTEM_RUNNING) {
+		ipcdev.ioc = 1;
+		writel(cmd | IPC_IOC, ipcdev.ipc_base);
+	} else {
+		ipcdev.ioc = 0;
+		writel(cmd, ipcdev.ipc_base);
+	}
 }
 
 /*
@@ -128,46 +140,38 @@ static inline u32 ipc_data_readl(u32 offset) /* Read ipc u32 data */
 	return readl(ipcdev.ipc_base + IPC_READ_BUFFER + offset);
 }
 
-static inline int busy_loop(void) /* Wait till scu status is busy */
+static inline int ipc_wait_interrupt(void)
 {
-	u32 status = 0;
-	u32 loop_count = 0;
-
-	status = ipc_read_status();
-	while (status & 1) {
-		udelay(1); /* scu processing time is in few u secods */
-		status = ipc_read_status();
-		loop_count++;
-		/* break if scu doesn't reset busy bit after huge retry */
-		if (loop_count > 100000) {
-			dev_err(&ipcdev.pdev->dev, "IPC timed out");
+	if (ipcdev.ioc) {
+		if (0 == wait_for_completion_timeout(
+				&ipcdev.cmd_complete, 3 * HZ)) {
+			dev_err(&ipcdev.pdev->dev, "IPC timed out, IPC_STS=0x%x",
+					ipc_read_status());
 			return -ETIMEDOUT;
+		} else {
+			if ((ipcdev.status >> 1) & 1) {
+				dev_err(&ipcdev.pdev->dev, "IPC failed, IPC_STS=0x%x",
+						ipc_read_status());
+				return -EIO;
+			}
 		}
-	}
-	if ((status >> 1) & 1)
-		return -EIO;
+	} else {
+		u32 status = 0;
+		u32 loop_count = 0;
 
-	return 0;
-}
-
-static inline int sleep_loop(void) /* Wait till scu status is not busy */
-{
-	u32 status = 0;
-	u32 loop_count = 0;
-
-	status = ipc_read_status();
-	while (status & 1) {
-		msleep(50);
 		status = ipc_read_status();
-		loop_count++;
-		/* break if scu doesn't reset busy bit after huge retry */
-		if (loop_count > 100) {
-			dev_err(&ipcdev.pdev->dev, "IPC timed out");
-			return -ETIMEDOUT;
+		while (status & 1) {
+			udelay(1);
+			status = ipc_read_status();
+			loop_count++;
+			if (loop_count > 3000000) {
+				dev_err(&ipcdev.pdev->dev, "IPC timed out");
+				return -ETIMEDOUT;
+			}
 		}
+		if ((status >> 1) & 1)
+			return -EIO;
 	}
-	if ((status >> 1) & 1)
-		return -EIO;
 
 	return 0;
 }
@@ -228,7 +232,7 @@ static int pwr_reg_rdwr(u16 *addr, u8 *data, u32 count, u32 op, u32 id)
 		}
 	}
 
-	err = busy_loop();
+	err = ipc_wait_interrupt();
 	if (id == IPC_CMD_PCNTRL_R) { /* Read rbuf */
 		/* Workaround: values are read as 0 without memcpy_fromio */
 		memcpy_fromio(cbuf, ipcdev.ipc_base + 0x90, 16);
@@ -427,8 +431,9 @@ int intel_scu_ipc_simple_command(int cmd, int sub)
 		mutex_unlock(&ipclock);
 		return -ENODEV;
 	}
+
 	ipc_command(sub << 12 | cmd);
-	err = busy_loop();
+	err = ipc_wait_interrupt();
 	mutex_unlock(&ipclock);
 	return err;
 }
@@ -462,7 +467,7 @@ int intel_scu_ipc_command(int cmd, int sub, u32 *in, int inlen,
 		ipc_data_writel(*in++, 4 * i);
 
 	ipc_command((inlen << 16) | (sub << 12) | cmd);
-	err = busy_loop();
+	err = ipc_wait_interrupt();
 
 	for (i = 0; i < outlen; i++)
 		*out++ = ipc_data_readl(4 * i);
@@ -1237,7 +1242,7 @@ int intel_scu_ipc_read_mip(u8 *data, int len, int offset, int issigned)
 
 	cmdid = issigned ? IPC_CMD_SMIP_RD : IPC_CMD_UMIP_RD;
 	ipc_command(4 << 16 | cmdid << 12 | IPCMSG_MIP_ACCESS);
-	ret = sleep_loop();
+	ret = ipc_wait_interrupt();
 	if (!ret) {
 		data_off = ipc_data_readl(0);
 		memcpy(data, ipcdev.mip_base + data_off, len);
@@ -1263,11 +1268,12 @@ int intel_scu_ipc_write_umip(u8 *data, int len, int offset)
 		mutex_unlock(&ipclock);
 		return -ENODEV;
 	}
+
 	writel(offset, ipcdev.ipc_base + IPC_DPTR_ADDR);
 	writel((len + 3) / 4, ipcdev.ipc_base + IPC_SPTR_ADDR);
 	memcpy(ipcdev.mip_base, data, len);
 	ipc_command(IPC_CMD_UMIP_WR << 12 | IPCMSG_MIP_ACCESS);
-	ret = sleep_loop();
+	ret = ipc_wait_interrupt();
 	mutex_unlock(&ipclock);
 
 	return ret;
@@ -1384,6 +1390,8 @@ EXPORT_SYMBOL_GPL(intel_scu_ipc_write_osnib);
  */
 static irqreturn_t ioc(int irq, void *dev_id)
 {
+	ipcdev.status = ipc_read_status();
+	complete(&ipcdev.cmd_complete);
 	return IRQ_HANDLED;
 }
 
@@ -1417,7 +1425,10 @@ static int ipc_probe(struct pci_dev *dev, const struct pci_device_id *id)
 	if (!pci_resource)
 		return -ENOMEM;
 
-	if (request_irq(dev->irq, ioc, 0, "intel_scu_ipc", &ipcdev))
+	init_completion(&ipcdev.cmd_complete);
+
+	if (request_irq(dev->irq, ioc, IRQF_NO_SUSPEND, "intel_scu_ipc",
+		&ipcdev))
 		return -EBUSY;
 
 	ipcdev.ipc_base = ioremap_nocache(IPC_BASE_ADDR, IPC_MAX_ADDR);
