@@ -317,7 +317,6 @@ static	struct pci_dev_index	pci_dev_hash[MID_PCI_INDEX_HASH_SIZE];
 
 static int dev_init_state;
 static struct intel_mid_base_addr base_addr;
-static struct mrst_pmu_reg	__iomem *pmu_reg;
 
 #ifdef CONFIG_HAS_WAKELOCK
 static struct wake_lock pmu_wake_lock;
@@ -327,21 +326,17 @@ static u32 apm_base;
 static u32 ospm_base;
 static spinlock_t nc_ready_lock;
 
+/* debug counters */
+static u32 pmu_wait_done_calls;
+static u32 pmu_wait_done_udelays;
+static u32 pmu_wait_done_udelays_max;
+
 /*
  * Locking strategy::
  *
- * Two semaphores are used to lock the global variables used in
- * the code. The entry points in pmu driver are mfld_pmu_pci_set_power_state()
- * and PMU interrupt handler contexts, so here is the flow of how
- * the semaphores are used.
- *
- * In D0ix command case::
- * set_power_state process context:
- * set_power_state()->acquire_scu_ready_sem()->issue_interactive_cmd->
- * wait_for_interactive_complete_sem->release scu_ready sem
- *
- * PMU Interrupt context:
- * pmu_interrupt_handler()->release interactive_complete_sem->return
+ * pmu_pci_set_power_state() is synchronous -- it waits
+ * for the SCU to be not-busy before and after commands.
+ * Drivers may access devices immediately upon its return.
  *
  * In Idle handler case::
  * Idle context:
@@ -354,8 +349,9 @@ static spinlock_t nc_ready_lock;
  */
 static struct semaphore scu_ready_sem =
 		__SEMAPHORE_INITIALIZER(scu_ready_sem, 1);
-static struct semaphore set_mode_complete_sem =
-		__SEMAPHORE_INITIALIZER(set_mode_complete_sem, 0);
+
+/* handle concurrent SMP invokations of pmu_pci_set_power_state() */
+static spinlock_t mrst_pmu_power_state_lock;
 
 static int scu_comms_okay = 1;
 
@@ -640,7 +636,6 @@ static int s0i1_possible;
 static int lpmp3_possible;
 static int s0i3_possible;
 static int c6_demoted;
-static int interactive_cmd_sent;
 static int s0ix_entered;
 static u32 pmu1_max_devs, pmu2_max_devs, ss_per_reg;
 
@@ -1156,22 +1151,10 @@ static irqreturn_t pmu_sc_irq(int irq, void *ignored)
 	/* clear the interrupt pending bit */
 	pmu_clear_interrupt_pending(PMU_NUM_2);
 
-	/*
-	 * In case of interactive command
-	 * let the waiting set_power_state()
-	 * release scu_ready_sem
-	 */
-	if (interactive_cmd_sent) {
-		interactive_cmd_sent = 0;
+	s0ix_entered = 0;
 
-		/* unblock set_power_state() */
-		up(&set_mode_complete_sem);
-	} else {
-		s0ix_entered = 0;
-
-		/* S0ix case release it */
-		up(&scu_ready_sem);
-	}
+	/* S0ix case release it */
+	up(&scu_ready_sem);
 
 	status = IRQ_HANDLED;
 ret_no_clear:
@@ -1612,6 +1595,28 @@ unlock:
 }
 EXPORT_SYMBOL(pmu_nc_set_power_state);
 
+/* poll for maximum of 50ms us for busy bit to clear */
+static int pmu_wait_done(void)
+{
+	int udelays;
+
+	pmu_wait_done_calls++;
+
+	for (udelays = 0; udelays < 500; ++udelays) {
+		if (udelays > pmu_wait_done_udelays_max)
+			pmu_wait_done_udelays_max = udelays;
+
+		if (pmu_read_busy_status() == 0)
+			return 0;
+
+		udelay(100);
+		pmu_wait_done_udelays++;
+        }
+
+        WARN_ONCE(1, "SCU not done for 50ms");
+        return -EBUSY;
+}
+
 /**
  * mfld_pmu_pci_set_power_state - Callback function is used by all the PCI devices
  *			for a platform  specific device power on/shutdown.
@@ -1641,7 +1646,8 @@ if (in_interrupt()) {
 }
 
 	down_scu_timed(&scu_ready_sem);
-	interactive_cmd_sent = 1;
+
+	spin_lock(&mrst_pmu_power_state_lock);
 
 	status =
 	pmu_pci_to_indexes(pdev, &i, &pmu_num, &sub_sys_index,  &sub_sys_pos);
@@ -1701,7 +1707,7 @@ if (in_interrupt()) {
 		 * flag is needed to distinguish between
 		 * S0ix vs interactive command in pmu_sc_irq()
 		 */
-		status = _pmu_issue_command(&cur_pmssc, SET_MODE, 1, PMU_NUM_2);
+		status = _pmu_issue_command(&cur_pmssc, SET_MODE, 0, PMU_NUM_2);
 
 		if (unlikely(status != PMU_SUCCESS)) {
 			dev_dbg(&pmu_dev->dev,
@@ -1716,13 +1722,13 @@ if (in_interrupt()) {
 		 * powered on in SCU.
 		 *
 		 */
-		down_scu_timed(&set_mode_complete_sem);
+		pmu_wait_done();
 
 		pmu_set_s0ix_possible(state);
 	}
 
 unlock:
-	interactive_cmd_sent = 0;
+	spin_unlock(&mrst_pmu_power_state_lock);
 	up(&scu_ready_sem);
 	return status;
 }
@@ -1901,6 +1907,13 @@ static int pmu_devices_state_show(struct seq_file *s, void *unused)
 			(needed && !val) ? "blocking s0ix" : "");
 
 	}
+	seq_printf(s, "pmu_wait_done_calls           %8d\n",
+			pmu_wait_done_calls);
+	seq_printf(s, "pmu_wait_done_udelays         %8d\n",
+			pmu_wait_done_udelays);
+	seq_printf(s, "pmu_wait_done_udelays_max     %8d\n",
+			pmu_wait_done_udelays_max);
+
 
 unlock:
 	up(&scu_ready_sem);
@@ -2288,10 +2301,8 @@ static int pmu_init(void)
 	update_all_lss_states(&pmu_config);
 
 	/* send a interactive command to fw */
-	interactive_cmd_sent = 1;
-	status = _pmu_issue_command(&pmu_config, SET_MODE, 1, PMU_NUM_2);
+	status = _pmu_issue_command(&pmu_config, SET_MODE, 0, PMU_NUM_2);
 	if (status != PMU_SUCCESS) {
-		interactive_cmd_sent = 0;
 		dev_dbg(&pmu_dev->dev,\
 		 "Failure from pmu mode change to interactive."
 		" = %d\n", status);
@@ -2307,7 +2318,7 @@ static int pmu_init(void)
 	 * powered on in SCU.
 	 *
 	 */
-	down_scu_timed(&set_mode_complete_sem);
+	pmu_wait_done();
 
 	/* In cases were gfx is not enabled
 	 * this will enable s0ix immediately
@@ -2399,6 +2410,8 @@ static int __devinit mid_pmu_probe(struct pci_dev *dev,
 		dev_dbg(&pmu_dev->dev, "PMU initialization has failed\n");
 		goto out_err4;
 	}
+
+	spin_lock_init(&mrst_pmu_power_state_lock);
 
 	pmu_init_time =
 		cpu_clock(raw_smp_processor_id());

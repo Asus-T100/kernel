@@ -340,7 +340,7 @@ struct pci_dev_index {
 };
 
 /* PMU register interface */
-struct mrst_pmu_reg {
+static struct mrst_pmu_reg {
 	u32 pm_sts;             /* 0x00 */
 	u32 pm_cmd;             /* 0x04 */
 	u32 pm_ics;             /* 0x08 */
@@ -353,7 +353,9 @@ struct mrst_pmu_reg {
 	u32 pm_c3c4;            /* 0x50 */
 	u32 pm_c5c6;            /* 0x54 */
 	u32 pm_msic;            /* 0x58 */
-};
+} *pmu_reg;
+
+static inline u32 pmu_read_sts(void) { return readl(&pmu_reg->pm_sts); }
 
 /* PMU registers for pmu ( PMU2 /  PMU1) PMU2 --> LNG PMU1 --> LNC */
 union pmu_pm_ss_cfg {
@@ -409,6 +411,15 @@ union pmu_pm_status {
 	} pmu_status_parts;
 	u32 pmu_status_value;
 };
+
+static inline int pmu_read_busy_status(void)
+{
+	union pmu_pm_status result;
+
+	result.pmu_status_value = pmu_read_sts();
+
+	return result.pmu_status_parts.pmu_busy;
+}
 
 union pmu_pm_cmd {
 	struct {
