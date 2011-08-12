@@ -136,20 +136,29 @@ static u32 lpmp3_target[4];
  * that you need to keep always on here.
  */
 static u8 lss_to_ignore[] = {
+	PMU_SDIO0_LSS_00,
+	PMU_EMMC0_LSS_01,
+	PMU_HSI_LSS_03,
+	PMU_EMMC1_LSS_05,
+	PMU_USB_OTG_LSS_06,
 	PMU_USB_HSIC_LSS_07,
 	PMU_SRAM_LSS_10,
 	PMU_SRAM_LSS_11,
 	PMU_SRAM_LSS_12,
 	PMU_SRAM_LSS_13,
+	PMU_SDIO2_LSS_14,
 	PMU_PTI_DAFCA_LSS_15,
 	PMU_SC_DMA_LSS_16,
 	PMU_SPIO_LSS_17,
+	PMU_SPI1_LSS_18,
+	PMU_SPI2_LSS_19,
 	PMU_MAIN_FABRIC_LSS_22,
 	PMU_SEC_FABRIC_LSS_23,
 	PMU_SC_FABRIC_LSS_24,
 	PMU_SCU_ROM_LSS_26,
 	PMU_SSC_LSS_28,
 	PMU_SECURITY_LSS_29,
+	PMU_SDIO1_LSS_30,
 	PMU_SCU_RAM0_LSS_31,
 	PMU_SCU_RAM1_LSS_32,
 	PMU_GPIO1_LSS_37,
@@ -697,6 +706,10 @@ static int _pmu2_wait_not_busy(void)
 
 static void pmu_write_subsys_config(struct pmu_ss_states *pm_ssc)
 {
+	pr_debug("pmu_write_subsys_config: 0x%08lX.%08lX.%08lX.%08lX\n",
+		pm_ssc->pmu2_states[3], pm_ssc->pmu2_states[2],
+		pm_ssc->pmu2_states[1], pm_ssc->pmu2_states[0]);
+
 	/* South complex in Penwell has multiple registers for
 	 * PM_SSC, etc.
 	 */
@@ -850,10 +863,6 @@ static int pmu_send_set_config_command(union pmu_pm_set_cfg_cmd_t
 			break;
 		}
 	}
-
-	/* write the value of PM_CMD into particular PMU */
-	dev_dbg(&pmu_dev->dev, "command being written %x\n", \
-	command->pmu_pm_set_cfg_cmd_value);
 
 	writel(command->pmu_pm_set_cfg_cmd_value, &pmu_reg->pm_cmd);
 
@@ -1736,7 +1745,6 @@ static int _pmu_issue_command(struct pmu_ss_states *pm_ssc, int mode, int ioc,
 		"permitted\n");
 		return PMU_FAILED;
 	}
-
 
 	/* enable interrupts in PMU2 so that interrupts are
 	 * propagated when ioc bit for a particular set
