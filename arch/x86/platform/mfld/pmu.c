@@ -639,7 +639,7 @@ static int c6_demoted;
 static int s0ix_entered;
 static u32 pmu1_max_devs, pmu2_max_devs, ss_per_reg;
 
-static int _pmu_issue_command(struct pmu_ss_states *pm_ssc, int mode, int ioc,
+static int _pmu_issue_command(struct pmu_ss_states *pm_ssc, int mode,
 		       int pmu_num);
 static void pmu_read_sss(struct pmu_ss_states *pm_ssc);
 static int _pmu2_wait_not_busy(void);
@@ -823,24 +823,18 @@ static int pmu_set_cfg_mode_params(struct cfg_mode_params
  * configuration commands to Firmware
  */
 static int pmu_send_set_config_command(union pmu_pm_set_cfg_cmd_t
-		     *command, u8 ioc, enum sys_state state, int pmu_num)
+		     *command, enum sys_state state, int pmu_num)
 {
-	/* parameter check */
-	if ((ioc != 1) && (ioc != 0)) {
-		pr_alert("invalid ioc bit\n");
-		return PMU_FAILED;
-	}
-
 	/* construct the command to send SET_CFG to particular PMU */
 	if (pmu_num == PMU_NUM_1) {
 		command->pmu1_params.cmd = SET_CFG_CMD;
-		command->pmu1_params.ioc = ioc;
+		command->pmu1_params.ioc = 0;
 		command->pmu1_params.mode_id = MODE_ID_MAGIC_NUM;
 		command->pmu1_params.rsvd = 0;
 	} else if (pmu_num == PMU_NUM_2) {
 		command->pmu2_params.d_param.cmd =
 		    SET_CFG_CMD;
-		command->pmu2_params.d_param.ioc = ioc;
+		command->pmu2_params.d_param.ioc = 0;
 		command->pmu2_params.d_param.mode_id =
 		    MODE_ID_MAGIC_NUM;
 
@@ -1707,7 +1701,7 @@ if (in_interrupt()) {
 		 * flag is needed to distinguish between
 		 * S0ix vs interactive command in pmu_sc_irq()
 		 */
-		status = _pmu_issue_command(&cur_pmssc, SET_MODE, 0, PMU_NUM_2);
+		status = _pmu_issue_command(&cur_pmssc, SET_MODE, PMU_NUM_2);
 
 		if (unlikely(status != PMU_SUCCESS)) {
 			dev_dbg(&pmu_dev->dev,
@@ -1733,7 +1727,7 @@ unlock:
 	return status;
 }
 
-static int _pmu_issue_command(struct pmu_ss_states *pm_ssc, int mode, int ioc,
+static int _pmu_issue_command(struct pmu_ss_states *pm_ssc, int mode,
 			 int pmu_num)
 {
 	union pmu_pm_set_cfg_cmd_t command;
@@ -1821,7 +1815,7 @@ static int _pmu_issue_command(struct pmu_ss_states *pm_ssc, int mode, int ioc,
 	 *  for mode CM_IMMEDIATE & hence with No Trigger
 	 */
 	status =
-	pmu_send_set_config_command(&command, ioc, sys_state, PMU_NUM_2);
+	pmu_send_set_config_command(&command, sys_state, PMU_NUM_2);
 
 ret:
 	return status;
@@ -2301,7 +2295,7 @@ static int pmu_init(void)
 	update_all_lss_states(&pmu_config);
 
 	/* send a interactive command to fw */
-	status = _pmu_issue_command(&pmu_config, SET_MODE, 0, PMU_NUM_2);
+	status = _pmu_issue_command(&pmu_config, SET_MODE, PMU_NUM_2);
 	if (status != PMU_SUCCESS) {
 		dev_dbg(&pmu_dev->dev,\
 		 "Failure from pmu mode change to interactive."
