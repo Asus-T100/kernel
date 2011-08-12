@@ -51,6 +51,8 @@ ENTRY(mrst_s0i3_entry)
 
 	pushl	%gs
 	pushl	%fs
+	pushl	%es
+	pushl	%ds
 
 	movl	%cr3, %eax
 	pushl	%eax
@@ -83,10 +85,9 @@ ENTRY(mrst_s0i3_entry)
 
 	leal	(-__PAGE_OFFSET)(%esp), %eax
 	movl	%eax, mrst_s0i3_resume_stack
-	lock
-	incl	mrst_s0i3_entry_ctr
 
-	wbinvd
+	movl	%esi, (%edi)		/* Set the PM_CMD register for S0i3 */
+	call	mrst_s0i3_wait_for_msi_disabled
 
 	movl	%esp, %eax		/* As good as anything... */
 	xorl	%edx, %edx
@@ -95,14 +96,10 @@ ENTRY(mrst_s0i3_entry)
 
 	movl	$MRST_C6_HINTS_EAX, %eax
 	movl	$MRST_C6_HINTS_ECX, %ecx
-	movl	%esi, (%edi)		/* Set the PM_CMD register for S0i3 */
 	mwait
 
 	/* If MWAIT wakes us up, assume something happened... */
 	movl	%ebp, %esp
-
-	lock
-	incl	mrst_s0i3_fail_ctr
 
 	xorl	%eax, %eax		/* Not really S0i3 */
 	popl	%ebx
@@ -118,9 +115,6 @@ ENDPROC(mrst_s0i3_entry)
 ENTRY(mrst_s0i3_resume)
 	cli
 
-	lock
-	incl	pa(mrst_s0i3_exit_ctr)
-
 	movl	pa(mrst_s0i3_resume_stack), %esp
 	popfl
 	lgdtl	2(%esp)			/* Physical GDT pointer */
@@ -129,7 +123,6 @@ ENTRY(mrst_s0i3_resume)
 	movl	$(__KERNEL_DS), %eax
 	movl	%eax, %ss
 	movl	%eax, %ds
-	movl	%eax, %es
 
 	popl	%eax
 	popl	%edx
@@ -166,6 +159,8 @@ ENTRY(mrst_s0i3_resume)
 	andb	$~0x02, (GDT_ENTRY_TSS*8+5)(%ebx)
 	ltr	%ax			/* Set the TSS */
 
+	popl	%ds
+	popl	%es
 	popl	%fs
 	popl	%gs
 
@@ -195,6 +190,12 @@ ENDPROC(mrst_s0i3_resume)
 ENTRY(s0i3_trampoline_data)
 r_base = .
 	cli
+	movw	%cs, %ax
+	movw	%ax, %ss
+	movw	%ax, %ds
+	movw	%ax, %es
+	movw	%ax, %fs
+	movw	%ax, %gs
 
 	/* Disable autodemote */
 	movl	$MSR_NHM_SNB_PKG_CST_CFG_CTL, %ecx
@@ -227,12 +228,3 @@ ENTRY(s0i3_trampoline_data_end)
 mrst_s0i3_resume_stack:
 	.space	4
 END(mrst_s0i3_resume_stack)
-mrst_s0i3_entry_ctr:
-	.space	4
-END(mrst_s0i3_entry_ctr)
-mrst_s0i3_exit_ctr:
-	.space	4
-END(mrst_s0i3_exit_ctr)
-mrst_s0i3_fail_ctr:
-	.space	4
-END(mrst_s0i3_fail_ctr)

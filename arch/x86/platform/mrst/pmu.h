@@ -27,9 +27,8 @@
 #define	PCI_VENDOR_CAP_LOG_ID_MASK	0x7F
 #define PCI_VENDOR_CAP_LOG_SS_MASK	0x80
 
-#define SUB_SYS_ALL_D0I2	0xAAAAAAAA
-#define SUB_SYS_ALL_D0I1	0x55555555
-#define S0I3_WAKE_SOURCES	0x0000FFFF
+#define SUB_SYS_ALL_D0I1	0x01155555
+#define S0I3_WAKE_SOURCES	0x00001FFF
 
 #define PM_S0I3_COMMAND					\
 	((0 << 31) |	/* Reserved */			\
@@ -42,6 +41,7 @@
 	(0 << 8) |	/* Do not interrupt */		\
 	(1 << 0))	/* Set configuration */
 
+#define	LSS_DMI		0
 #define	LSS_SD_HC0	1
 #define	LSS_SD_HC1	2
 #define	LSS_NAND	3
@@ -50,11 +50,9 @@
 #define	LSS_DISPLAY	6
 #define	LSS_USB_HC	7
 #define	LSS_USB_OTG	8
-
 #define	LSS_AUDIO	9
 #define	LSS_AUDIO_LPE	9
 #define	LSS_AUDIO_SSP	9
-
 #define	LSS_I2C0	10
 #define	LSS_I2C1	10
 #define	LSS_I2C2	10
@@ -63,10 +61,10 @@
 #define	LSS_SPI1	10
 #define	LSS_SPI2	10
 #define	LSS_GPIO	10
-
-#define	LSS_SD_HC2	14
-
-#define MRST_NUM_LSS	16
+#define	LSS_SRAM	11	/* used by SCU, do not touch */
+#define	LSS_SD_HC2	12
+/* LSS hardware bits 15,14,13 are hardwired to 0, thus unusable */
+#define MRST_NUM_LSS	13
 
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
 
@@ -77,18 +75,24 @@
 #define	D0i3	3
 
 #define S0I3_SSS_TARGET	(		\
+	SSMSK(D0i1, LSS_DMI) |		\
 	SSMSK(D0i3, LSS_SD_HC0) |	\
 	SSMSK(D0i3, LSS_SD_HC1) |	\
+	SSMSK(D0i3, LSS_NAND) |		\
 	SSMSK(D0i3, LSS_SD_HC2) |	\
+	SSMSK(D0i3, LSS_IMAGING) |	\
+	SSMSK(D0i3, LSS_SECURITY) |	\
+	SSMSK(D0i3, LSS_DISPLAY) |	\
 	SSMSK(D0i3, LSS_USB_HC) |	\
 	SSMSK(D0i3, LSS_USB_OTG) |	\
-	SSMSK(D0i3, LSS_AUDIO))
+	SSMSK(D0i3, LSS_AUDIO) |	\
+	SSMSK(D0i1, LSS_I2C0))
 
 /*
  * D0i1 on Langwell is Autonomous Clock Gating (ACG).
  * Enable ACG on every LSS except camera and audio
  */
-#define S0I1_ACG_SSS_TARGET	 \
+#define D0I1_ACG_SSS_TARGET	 \
 	(SUB_SYS_ALL_D0I1 & ~SSMSK(D0i1, LSS_IMAGING) & ~SSMSK(D0i1, LSS_AUDIO))
 
 enum cm_mode {
@@ -146,10 +150,12 @@ static inline void pmu_write_cmd(u32 arg) { writel(arg, &pmu_reg->pm_cmd); }
 static inline void pmu_write_ics(u32 arg) { writel(arg, &pmu_reg->pm_ics); }
 static inline void pmu_write_wkc(u32 arg) { writel(arg, &pmu_reg->pm_wkc[0]); }
 static inline void pmu_write_ssc(u32 arg) { writel(arg, &pmu_reg->pm_ssc[0]); }
-static inline void pmu_write_wssc(u32 arg) { writel(arg, &pmu_reg->pm_wssc[0]); }
+static inline void pmu_write_wssc(u32 arg)
+					{ writel(arg, &pmu_reg->pm_wssc[0]); }
 
 static inline void pmu_msi_enable(void) { writel(0, &pmu_reg->pm_msi_disable); }
-static inline void pmu_msi_disable(void) { writel(1, &pmu_reg->pm_msi_disable); }
+static inline u32 pmu_msi_is_disabled(void)
+				{ return readl(&pmu_reg->pm_msi_disable); }
 
 union pmu_pm_ics {
 	struct {
@@ -220,5 +226,9 @@ union pmu_pm_set_cfg_cmd_t {
 	u32 pmu_pm_set_cfg_cmd_value;
 };
 
+#ifdef FUTURE_PATCH
 extern int mrst_s0i3_entry(u32 regval, u32 *regaddr);
+#else
+static inline int mrst_s0i3_entry(u32 regval, u32 *regaddr) { return -1; }
+#endif
 #endif

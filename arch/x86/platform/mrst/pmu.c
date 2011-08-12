@@ -19,13 +19,16 @@
 
 #include <linux/cpuidle.h>
 #include <linux/debugfs.h>
+#include <linux/delay.h>
 #include <linux/interrupt.h>
+#include <linux/module.h>
 #include <linux/pci.h>
 #include <linux/seq_file.h>
-#include <linux/delay.h>
+#include <linux/sfi.h>
+#include <asm/intel_scu_ipc.h>
 #include "pmu.h"
 
-/* next #warning sequence number: #41 */
+#define IPCMSG_FW_REVISION	0xF4
 
 struct mrst_device {
 	u16 pci_dev_num;	/* DEBUG only */
@@ -67,25 +70,34 @@ static struct mrst_device mrst_devs[] = {
 /* 24 */ { 0x4110, 0 },			/* Lincroft */
 };
 
-static u16 mrst_lss9_pci_ids[] = {0x080a, 0x0814, 0x0815, 0};
+/* n.b. We ignore PCI-id 0x815 in LSS9 b/c Linux has no driver for it */
+static u16 mrst_lss9_pci_ids[] = {0x080a, 0x0814, 0};
 static u16 mrst_lss10_pci_ids[] = {0x0800, 0x0801, 0x0802, 0x0803,
 					0x0804, 0x0805, 0x080f, 0};
+
+/* handle concurrent SMP invokations of pmu_pci_set_power_state() */
+static spinlock_t mrst_pmu_power_state_lock;
 
 static unsigned int wake_counters[MRST_NUM_LSS];	/* DEBUG only */
 static unsigned int pmu_irq_stats[INT_INVALID + 1];	/* DEBUG only */
 
-static DECLARE_COMPLETION(s0ix_completion);
-
-#warning pri#2 #3 s0i3_pmu_command_pending needs locking?
-static bool s0i3_pmu_command_pending;
-
 static int graphics_is_off;
 static int lss_s0i3_enabled;
-static u32 sdhc2_sss;
+static bool mrst_pmu_s0i3_enable;
+
+/*  debug counters */
+static u32 pmu_wait_ready_calls;
+static u32 pmu_wait_ready_udelays;
+static u32 pmu_wait_ready_udelays_max;
+static u32 pmu_wait_done_calls;
+static u32 pmu_wait_done_udelays;
+static u32 pmu_wait_done_udelays_max;
+static u32 pmu_set_power_state_entry;
+static u32 pmu_set_power_state_send_cmd;
 
 static struct mrst_device *pci_id_2_mrst_dev(u16 pci_dev_num)
 {
-	int index;
+	int index = 0;
 
 	if ((pci_dev_num >= 0x0800) && (pci_dev_num <= 0x815))
 		index = pci_dev_num - 0x800;
@@ -95,27 +107,13 @@ static struct mrst_device *pci_id_2_mrst_dev(u16 pci_dev_num)
 		index = 23;
 	else if (pci_dev_num == 0x4110)
 		index = 24;
-	else
-		BUG();
 
-	BUG_ON(pci_dev_num != mrst_devs[index].pci_dev_num);
+	if (pci_dev_num != mrst_devs[index].pci_dev_num) {
+		WARN_ONCE(1, FW_BUG "Unknown PCI device 0x%04X\n", pci_dev_num);
+		return 0;
+	}
 
 	return &mrst_devs[index];
-}
-
-/*
- * graphics_is_in_d3() reads PMU1.PM_SSS[0] directly to verify graphics D3.
- *
- * In production, the graphics driver should invoke pci_set_power_state(),
- * we capture that in graphics_is_off, and the graphics driver will put
- * itself into D3 via the Punit.
- *
- * When everybody has a production graphics driver, this extra read
- * of the Punit in the idle path can go away.
- */
-static int graphics_is_in_d3(void)
-{
-	return (0xC == (0xC & inl(0x1130)));	/* DEBUG only */
 }
 
 /**
@@ -131,66 +129,31 @@ static int graphics_is_in_d3(void)
 #define IDLE_STATE4_IS_C6	4
 #define IDLE_STATE5_IS_S0I3	5
 
-int mrst_pmu_validate_cstates(struct cpuidle_device *dev)
+int mrst_pmu_invalid_cstates(void)
 {
 	int cpu = smp_processor_id();
 
-	BUG_ON(dev->state_count != 6);	/* depends on intel_idle.c table */
+	/*
+	 * Demote to C4 if the PMU is busy.
+	 * Since LSS changes leave the busy bit clear...
+	 * busy means either the PMU is waiting for an ACK-C6 that
+	 * isn't coming due to an MWAIT that returned immediately;
+	 * or we returned from S0i3 successfully, and the PMU
+	 * is not done sending us interrupts.
+	 */
+	if (pmu_read_busy_status())
+		return 1 << IDLE_STATE4_IS_C6 | 1 << IDLE_STATE5_IS_S0I3;
 
 	/*
-	 * invalidated S0i3 if: PMU is not initialized, or
-	 * CPU1 is active, or there is a still-unprocessed PMU command, or
-	 * device LSS is insufficient, or the GPU is active,
+	 * Disallow S0i3 if: PMU is not initialized, or CPU1 is active,
+	 * or if device LSS is insufficient, or the GPU is active,
+	 * or if it has been explicitly disabled.
 	 */
 	if (!pmu_reg || !cpumask_equal(cpu_online_mask, cpumask_of(cpu)) ||
-	    s0i3_pmu_command_pending || !lss_s0i3_enabled ||
-	    (!graphics_is_off && !graphics_is_in_d3()))
-
-		dev->states[IDLE_STATE5_IS_S0I3].flags |= CPUIDLE_FLAG_IGNORE;
+	    !lss_s0i3_enabled || !graphics_is_off || !mrst_pmu_s0i3_enable)
+		return 1 << IDLE_STATE5_IS_S0I3;
 	else
-		dev->states[IDLE_STATE5_IS_S0I3].flags &= ~CPUIDLE_FLAG_IGNORE;
-
-	/*
-	 * If there is a pending PMU command, we cannot enter C6.
-	 */
-	if (s0i3_pmu_command_pending)
-		dev->states[IDLE_STATE4_IS_C6].flags |= CPUIDLE_FLAG_IGNORE;
-	else
-		dev->states[IDLE_STATE4_IS_C6].flags &= ~CPUIDLE_FLAG_IGNORE;
-
-	return 0;
-}
-
-/*
- * Send a command to the PMU to shut down the south complex
- */
-
-static void s0i3_wait_for_pmu(void)
-{
-	while (pmu_read_sts() & (1 << 8))
-		cpu_relax();
-}
-
-void mrst_pmu_pending_set(int value)
-{
-	s0i3_pmu_command_pending = value;
-}
-
-void mrst_pmu_s0i3_prepare(void)
-{
-	s0i3_wait_for_pmu();
-
-	/* Clear any possible error conditions */
-	pmu_write_ics(0x300);
-
-	/* set wake control to restore current state */
-	pmu_write_wssc(pmu_read_sss());
-
-	/* Put all Langwell sub-systems into D0i2 */
-	pmu_write_ssc(SUB_SYS_ALL_D0I2);
-
-	/* Avoid entering conventional C6 until the PMU command has cleared */
-	s0i3_pmu_command_pending = true;
+		return 0;
 }
 
 /*
@@ -214,42 +177,77 @@ int mrst_pmu_s0i3_entry(void)
 {
 	int status;
 
+	/* Clear any possible error conditions */
+	pmu_write_ics(0x300);
+
+	/* set wake control to current D-states */
+	pmu_write_wssc(S0I3_SSS_TARGET);
+
 	status = mrst_s0i3_entry(PM_S0I3_COMMAND, &pmu_reg->pm_cmd);
 	pmu_update_wake_counters();
 	return status;
 }
 
-static int pmu_wait_not_busy(void)
+/* poll for maximum of 5ms for busy bit to clear */
+static int pmu_wait_ready(void)
 {
-	int pmu_busy_retry = 500;
+	int udelays;
 
-	while (--pmu_busy_retry) {
+	pmu_wait_ready_calls++;
+
+	for (udelays = 0; udelays < 500; ++udelays) {
+		if (udelays > pmu_wait_ready_udelays_max)
+			pmu_wait_ready_udelays_max = udelays;
+
+		if (pmu_read_busy_status() == 0)
+			return 0;
+
+		udelay(10);
+		pmu_wait_ready_udelays++;
+	}
+
+	/*
+	 * if this fires, observe
+	 * /sys/kernel/debug/mrst_pmu_wait_ready_calls
+	 * /sys/kernel/debug/mrst_pmu_wait_ready_udelays
+	 */
+	WARN_ONCE(1, "SCU not ready for 5ms");
+	return -EBUSY;
+}
+/* poll for maximum of 50ms us for busy bit to clear */
+static int pmu_wait_done(void)
+{
+	int udelays;
+
+	pmu_wait_done_calls++;
+
+	for (udelays = 0; udelays < 500; ++udelays) {
+		if (udelays > pmu_wait_done_udelays_max)
+			pmu_wait_done_udelays_max = udelays;
+
 		if (pmu_read_busy_status() == 0)
 			return 0;
 
 		udelay(100);
+		pmu_wait_done_udelays++;
 	}
 
-	pmu_busy_retry = 450;
-	while (--pmu_busy_retry) {
-		if (pmu_read_busy_status() == 0)
-			return 0;
-
-		mdelay(1);
-	}
-	WARN(1, "pmu2 stays busy! It looks hung.");
+	/*
+	 * if this fires, observe
+	 * /sys/kernel/debug/mrst_pmu_wait_done_calls
+	 * /sys/kernel/debug/mrst_pmu_wait_done_udelays
+	 */
+	WARN_ONCE(1, "SCU not done for 50ms");
 	return -EBUSY;
 }
 
-void mrst_pmu_disable_msi(void)
+u32 mrst_pmu_msi_is_disabled(void)
 {
-	pmu_wait_not_busy();
-	pmu_msi_disable();
+	return pmu_msi_is_disabled();
 }
 
 void mrst_pmu_enable_msi(void)
 {
-	pmu_wait_not_busy();
 	pmu_msi_enable();
 }
 
@@ -280,12 +278,7 @@ static irqreturn_t pmu_irq(int irq, void *dummy)
 		pmu_irq_stats[INT_INVALID]++;
 	}
 
-	s0i3_pmu_command_pending = false;
-
 	pmu_write_ics(pmu_ics.value); /* Clear pending interrupt */
-
-	#warning pri#2 #23 pmu_irq: complete_all(s0ix_completion) always?
-	complete_all(&s0ix_completion);
 
 	return IRQ_HANDLED;
 }
@@ -297,7 +290,7 @@ static int pci_2_mrst_state(int lss, pci_power_t pci_state)
 {
 	switch (pci_state) {
 	case PCI_D0:
-		if (SSMSK(D0i1, lss) & S0I1_ACG_SSS_TARGET)
+		if (SSMSK(D0i1, lss) & D0I1_ACG_SSS_TARGET)
 			return D0i1;
 		else
 			return D0;
@@ -324,7 +317,7 @@ static int pmu_issue_command(u32 pm_ssc)
 	}
 
 	/*
-	 * enable interrupts in PMU2 so that interrupts are
+	 * enable interrupts in PMU so that interrupts are
 	 * propagated when ioc bit for a particular set
 	 * command is set
 	 */
@@ -346,7 +339,7 @@ static int pmu_issue_command(u32 pm_ssc)
 
 	/* construct the command to send SET_CFG to particular PMU */
 	command.pmu2_params.d_param.cmd = SET_CFG_CMD;
-	command.pmu2_params.d_param.ioc = 1;
+	command.pmu2_params.d_param.ioc = 0;
 	command.pmu2_params.d_param.mode_id = 0;
 	command.pmu2_params.d_param.sys_state = SYS_STATE_S0I0;
 
@@ -365,7 +358,13 @@ static u16 pmu_min_lss_pci_req(u16 *ids, u16 pci_state)
 	int i;
 
 	for (i = 0; ids[i]; ++i) {
-		existing_request = pci_id_2_mrst_dev(ids[i])->latest_request;
+		struct mrst_device *mrst_dev;
+
+		mrst_dev = pci_id_2_mrst_dev(ids[i]);
+		if (unlikely(!mrst_dev))
+			continue;
+
+		existing_request = mrst_dev->latest_request;
 		if (existing_request < pci_state)
 			pci_state = existing_request;
 	}
@@ -376,7 +375,6 @@ static u16 pmu_min_lss_pci_req(u16 *ids, u16 pci_state)
  * pmu_pci_set_power_state - Callback function is used by all the PCI devices
  *			for a platform  specific device power on/shutdown.
  */
-#warning pri#2 #37 pdev->d3_delay needs to be cleared, default is 10ms
 
 int pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t pci_state)
 {
@@ -384,10 +382,15 @@ int pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t pci_state)
 	int status = 0;
 	struct mrst_device *mrst_dev;
 
+	pmu_set_power_state_entry++;
+
 	BUG_ON(pdev->vendor != PCI_VENDOR_ID_INTEL);
 	BUG_ON(pci_state < PCI_D0 || pci_state > PCI_D3cold);
 
 	mrst_dev = pci_id_2_mrst_dev(pdev->device);
+	if (unlikely(!mrst_dev))
+		return -ENODEV;
+
 	mrst_dev->pci_state_counts[pci_state]++;	/* count invocations */
 
 	/* PMU driver calls self as part of PCI initialization, ignore */
@@ -396,6 +399,13 @@ int pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t pci_state)
 
 	BUG_ON(!pmu_reg); /* SW bug if called before initialized */
 
+	spin_lock(&mrst_pmu_power_state_lock);
+
+	if (pdev->d3_delay) {
+		dev_dbg(&pdev->dev, "d3_delay %d, should be 0\n",
+			pdev->d3_delay);
+		pdev->d3_delay = 0;
+	}
 	/*
 	 * If Lincroft graphics, simply remember state
 	 */
@@ -405,7 +415,7 @@ int pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t pci_state)
 			graphics_is_off = 0;
 		else
 			graphics_is_off = 1;
-		return 0;
+		goto ret;
 	}
 
 	if (!mrst_dev->lss)
@@ -416,10 +426,6 @@ int pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t pci_state)
 
 	mrst_dev->latest_request = pci_state;	/* record latest request */
 
-	if (mrst_dev->lss == LSS_SD_HC2)
-		sdhc2_sss = SSMSK(pci_2_mrst_state(LSS_SD_HC2, pci_state),
-				LSS_SD_HC2);
-
 	/*
 	 * LSS9 and LSS10 contain multiple PCI devices.
 	 * Use the lowest numbered (highest power) state in the LSS
@@ -429,12 +435,9 @@ int pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t pci_state)
 	else if (mrst_dev->lss == 10)
 		pci_state = pmu_min_lss_pci_req(mrst_lss10_pci_ids, pci_state);
 
-	wait_for_completion(&s0ix_completion);
-
-	#warning pri#2 #17 pmu_wait_not_busy() does not prevent SMP race
-	status = pmu_wait_not_busy();
+	status = pmu_wait_ready();
 	if (status)
-		return status;
+		goto ret;
 
 	old_sss = pmu_read_sss();
 	new_sss = old_sss & ~SSMSK(3, mrst_dev->lss);
@@ -444,29 +447,22 @@ int pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t pci_state)
 	if (new_sss == old_sss)
 		goto ret;	/* nothing to do */
 
-	INIT_COMPLETION(s0ix_completion);
+	pmu_set_power_state_send_cmd++;
 
 	status = pmu_issue_command(new_sss);
 
 	if (unlikely(status != 0)) {
-		dev_err(&pdev->dev, "Failed to Issue a PM\
-		 command to PMU2\n");
-		complete_all(&s0ix_completion);
-		return status;
+		dev_err(&pdev->dev, "Failed to Issue a PM command\n");
+		goto ret;
 	}
 
-	/* lets delay hand over till we confirm
-	 * scu has completed operation */
-
-	#warning pri#2 #18 pmu_pci_set_power_state() magic delay & wait
-	mdelay(1);
-
-	if (pmu_wait_not_busy())
+	if (pmu_wait_done())
 		goto ret;
 
 	lss_s0i3_enabled =
-	(((pmu_read_sss() | sdhc2_sss) & S0I3_SSS_TARGET) == S0I3_SSS_TARGET);
+	((pmu_read_sss() & S0I3_SSS_TARGET) == S0I3_SSS_TARGET);
 ret:
+	spin_unlock(&mrst_pmu_power_state_lock);
 	return status;
 }
 
@@ -478,18 +474,15 @@ static inline const char *d0ix_name(int state)
 	return d0ix_names[(int) state];
 }
 
-static int pmu_devices_state_show(struct seq_file *s, void *unused)
+static int debug_mrst_pmu_show(struct seq_file *s, void *unused)
 {
 	struct pci_dev *pdev = NULL;
 	u32 cur_pmsss;
 	int lss;
 
-	if (pmu_wait_not_busy())
-		goto unlock;
+	seq_printf(s, "0x%08X D0I1_ACG_SSS_TARGET\n", D0I1_ACG_SSS_TARGET);
 
-	seq_printf(s, "0x%08X D0I1_ACG_SSS_TARGET\n", S0I1_ACG_SSS_TARGET);
-
-	cur_pmsss = (pmu_read_sss() | sdhc2_sss);
+	cur_pmsss = pmu_read_sss();
 
 	seq_printf(s, "0x%08X S0I3_SSS_TARGET\n", S0I3_SSS_TARGET);
 
@@ -509,7 +502,6 @@ static int pmu_devices_state_show(struct seq_file *s, void *unused)
 		u16 pmcsr;
 		struct mrst_device *mrst_dev;
 		int i;
-		unsigned int lssmask;
 
 		mrst_dev = pci_id_2_mrst_dev(pdev->device);
 
@@ -518,6 +510,10 @@ static int pmu_devices_state_show(struct seq_file *s, void *unused)
 			pdev->vendor, pdev->device,
 			dev_driver_string(&pdev->dev));
 
+		if (unlikely (!mrst_dev)) {
+			seq_printf(s, " UNKNOWN\n");
+			continue;
+		}
 
 		if (mrst_dev->lss)
 			seq_printf(s, "LSS %2d %-4s ", mrst_dev->lss,
@@ -540,11 +536,16 @@ static int pmu_devices_state_show(struct seq_file *s, void *unused)
 		for (i = 0; i <= PCI_D3cold; ++i)
 			seq_printf(s, "%d ", mrst_dev->pci_state_counts[i]);
 
-		lssmask = SSMSK(D0i3, mrst_dev->lss);
+		if (mrst_dev->lss) {
+			unsigned int lssmask;
 
-		if ((lssmask & S0I3_SSS_TARGET) &&
-		    ((lssmask & cur_pmsss) != lssmask))
-			seq_printf(s , "[BLOCKS s0i3]");
+			lssmask = SSMSK(D0i3, mrst_dev->lss);
+
+			if ((lssmask & S0I3_SSS_TARGET) &&
+				((lssmask & cur_pmsss) !=
+					(lssmask & S0I3_SSS_TARGET)))
+						seq_printf(s , "[BLOCKS s0i3]");
+		}
 
 		seq_printf(s, "\n");
 	}
@@ -562,17 +563,35 @@ static int pmu_devices_state_show(struct seq_file *s, void *unused)
 		pmu_irq_stats[INT_CMD_ERR], pmu_irq_stats[INT_WAKE_RX],
 		pmu_irq_stats[INT_SS_ERROR], pmu_irq_stats[INT_S0IX_MISS],
 		pmu_irq_stats[INT_NO_ACKC6], pmu_irq_stats[INT_INVALID]);
-unlock:
+
+	seq_printf(s, "mrst_pmu_wait_ready_calls          %8d\n",
+			pmu_wait_ready_calls);
+	seq_printf(s, "mrst_pmu_wait_ready_udelays        %8d\n",
+			pmu_wait_ready_udelays);
+	seq_printf(s, "mrst_pmu_wait_ready_udelays_max    %8d\n",
+			pmu_wait_ready_udelays_max);
+	seq_printf(s, "mrst_pmu_wait_done_calls           %8d\n",
+			pmu_wait_done_calls);
+	seq_printf(s, "mrst_pmu_wait_done_udelays         %8d\n",
+			pmu_wait_done_udelays);
+	seq_printf(s, "mrst_pmu_wait_done_udelays_max     %8d\n",
+			pmu_wait_done_udelays_max);
+	seq_printf(s, "mrst_pmu_set_power_state_entry     %8d\n",
+			pmu_set_power_state_entry);
+	seq_printf(s, "mrst_pmu_set_power_state_send_cmd  %8d\n",
+			pmu_set_power_state_send_cmd);
+	seq_printf(s, "SCU busy: %d\n", pmu_read_busy_status());
+
 	return 0;
 }
 
-static int devices_state_open(struct inode *inode, struct file *file)
+static int debug_mrst_pmu_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, pmu_devices_state_show, NULL);
+	return single_open(file, debug_mrst_pmu_show, NULL);
 }
 
 static const struct file_operations devices_state_operations = {
-	.open		= devices_state_open,
+	.open		= debug_mrst_pmu_open,
 	.read		= seq_read,
 	.llseek		= seq_lseek,
 	.release	= single_release,
@@ -594,6 +613,12 @@ static void pmu_scu_firmware_debug(void)
 		int pos;
 
 		mrst_dev = pci_id_2_mrst_dev(pdev->device);
+		if (unlikely(!mrst_dev)) {
+			printk(KERN_ERR FW_BUG "pmu: Unknown "
+				"PCI device 0x%04X\n", pdev->device);
+			continue;
+		}
+
 		if (mrst_dev->lss == 0)
 			continue;	 /* no LSS in our table */
 
@@ -631,9 +656,6 @@ static int __devinit pmu_probe(struct pci_dev *pdev,
 	int ret;
 	struct mrst_pmu_reg *pmu;
 
-	/* our completion shouldn't start armed*/
-	complete_all(&s0ix_completion);
-
 	/* Init the device */
 	ret = pci_enable_device(pdev);
 	if (ret) {
@@ -650,7 +672,7 @@ static int __devinit pmu_probe(struct pci_dev *pdev,
 	/* Map the memory of PMU reg base */
 	pmu = pci_iomap(pdev, 0, 0);
 	if (!pmu) {
-		dev_err(&pdev->dev, "Unable to map the PMU2 address space\n");
+		dev_err(&pdev->dev, "Unable to map the PMU address space\n");
 		ret = -ENOMEM;
 		goto out_err2;
 	}
@@ -672,9 +694,12 @@ static int __devinit pmu_probe(struct pci_dev *pdev,
 
 	pmu_write_wkc(S0I3_WAKE_SOURCES);	/* Enable S0i3 wakeup sources */
 
-	s0i3_wait_for_pmu();
-	pmu_write_ssc(S0I1_ACG_SSS_TARGET);	/* Enable Auto-Clock_Gating */
+	pmu_wait_ready();
+
+	pmu_write_ssc(D0I1_ACG_SSS_TARGET);	/* Enable Auto-Clock_Gating */
 	pmu_write_cmd(0x201);
+
+	spin_lock_init(&mrst_pmu_power_state_lock);
 
 	/* Enable the hardware interrupt */
 	pmu_irq_enable();
@@ -735,4 +760,58 @@ static void __exit mid_pci_cleanup(void)
 {
 	pci_unregister_driver(&driver);
 }
+
+static int ia_major;
+static int ia_minor;
+
+static int pmu_sfi_parse_oem(struct sfi_table_header *table)
+{
+	struct sfi_table_simple *sb;
+
+	sb = (struct sfi_table_simple *)table;
+	ia_major = (sb->pentry[1] >> 0) & 0xFFFF;
+	ia_minor = (sb->pentry[1] >> 16) & 0xFFFF;
+	printk(KERN_INFO "mrst_pmu: IA FW version v%x.%x\n",
+		ia_major, ia_minor);
+
+	return 0;
+}
+
+static int __init scu_fw_check(void)
+{
+	int ret;
+	u32 fw_version;
+
+	if (!pmu_reg)
+		return 0;	/* this driver didn't probe-out */
+
+	sfi_table_parse("OEMB", NULL, NULL, pmu_sfi_parse_oem);
+
+	if (ia_major < 0x6005 || ia_minor < 0x1525) {
+		WARN(1, "mrst_pmu: IA FW version too old\n");
+		return -1;
+	}
+
+	ret = intel_scu_ipc_command(IPCMSG_FW_REVISION, 0, NULL, 0,
+					&fw_version, 1);
+
+	if (ret) {
+		WARN(1, "mrst_pmu: IPC FW version? %d\n", ret);
+	} else {
+		int scu_major = (fw_version >> 8) & 0xFF;
+		int scu_minor = (fw_version >> 0) & 0xFF;
+
+		printk(KERN_INFO "mrst_pmu: firmware v%x\n", fw_version);
+
+		if ((scu_major >= 0xC0) && (scu_minor >= 0x49)) {
+			printk(KERN_INFO "mrst_pmu: enabling S0i3\n");
+			mrst_pmu_s0i3_enable = true;
+		} else {
+			WARN(1, "mrst_pmu: S0i3 disabled, old firmware %X.%X",
+					scu_major, scu_minor);
+		}
+	}
+	return 0;
+}
+late_initcall(scu_fw_check);
 module_exit(mid_pci_cleanup);
