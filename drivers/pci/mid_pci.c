@@ -49,7 +49,6 @@ static int mid_pci_run_wake(struct pci_dev *dev, bool enable)
 
 static struct pci_platform_pm_ops mid_pci_platform_pm = {
 	.is_manageable = mid_pci_power_manageable,
-	.set_state = pmu_pci_set_power_state,
 	.choose_state = mid_pci_choose_state,
 	.can_wakeup = mid_pci_can_wakeup,
 	.sleep_wake = mid_pci_sleep_wake,
@@ -62,12 +61,30 @@ static struct pci_platform_pm_ops mid_pci_platform_pm = {
  */
 static int __init mid_pci_init(void)
 {
-	int ret = 0;
-
 	pr_info("mid_pci_init is called\n");
 
-	pci_set_platform_pm(&mid_pci_platform_pm);
+	if (!boot_cpu_data.x86 == 6)
+		return 0;
 
-	return ret;
+	/*
+ 	 * n.b. this model check does not uniquely identify the platform,
+ 	 * and additional checks are necessary inside the pmu driver
+ 	 */
+	switch(boot_cpu_data.x86_model) {
+#ifdef CONFIG_X86_MRST
+	case 0x26:
+		mid_pci_platform_pm.set_state = mrst_pmu_pci_set_power_state;
+		pci_set_platform_pm(&mid_pci_platform_pm);
+		break;
+#endif
+#ifdef CONFIG_X86_MDFLD
+	case 0x27:
+		mid_pci_platform_pm.set_state = mfld_pmu_pci_set_power_state;
+		pci_set_platform_pm(&mid_pci_platform_pm);
+		break;
+#endif
+	}
+
+	return 0;
 }
 arch_initcall(mid_pci_init);

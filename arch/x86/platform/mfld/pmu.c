@@ -322,7 +322,7 @@ static spinlock_t nc_ready_lock;
  * Locking strategy::
  *
  * Two semaphores are used to lock the global variables used in
- * the code. The entry points in pmu driver are pmu_pci_set_power_state()
+ * the code. The entry points in pmu driver are mfld_pmu_pci_set_power_state()
  * and PMU interrupt handler contexts, so here is the flow of how
  * the semaphores are used.
  *
@@ -1604,11 +1604,11 @@ unlock:
 EXPORT_SYMBOL(pmu_nc_set_power_state);
 
 /**
- * pmu_pci_set_power_state - Callback function is used by all the PCI devices
+ * mfld_pmu_pci_set_power_state - Callback function is used by all the PCI devices
  *			for a platform  specific device power on/shutdown.
  *
  */
-int __ref pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t state)
+int __ref mfld_pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t state)
 {
 	int i;
 	u32 pm_cmd_val;
@@ -1625,6 +1625,12 @@ int __ref pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t state)
 
 	/* Try to acquire the scu_ready_sem, if not
 	 * get blocked, until pmu_sc_irq() releases */
+
+if (in_interrupt()) {
+	dev_err(&pmu_dev->dev, "mfld_pmu_pci_set_power_state() called from interrupt context!\n");
+	return -1;
+}
+
 	down_scu_timed(&scu_ready_sem);
 	interactive_cmd_sent = 1;
 

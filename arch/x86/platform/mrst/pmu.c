@@ -372,11 +372,11 @@ static u16 pmu_min_lss_pci_req(u16 *ids, u16 pci_state)
 }
 
 /**
- * pmu_pci_set_power_state - Callback function is used by all the PCI devices
+ * mrst_pmu_pci_set_power_state - Callback function is used by all the PCI devices
  *			for a platform  specific device power on/shutdown.
  */
 
-int pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t pci_state)
+int mrst_pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t pci_state)
 {
 	u32 old_sss, new_sss;
 	int status = 0;
