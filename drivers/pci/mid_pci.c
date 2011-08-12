@@ -42,18 +42,18 @@ static int mid_pci_sleep_wake(struct pci_dev *dev, bool enable)
 	return 0;
 }
 
+static int mid_pci_run_wake(struct pci_dev *dev, bool enable)
+{
+	return 0;
+}
+
 static struct pci_platform_pm_ops mid_pci_platform_pm = {
 	.is_manageable = mid_pci_power_manageable,
-#ifdef CONFIG_X86_MRST
 	.set_state = pmu_pci_set_power_state,
-#endif	
 	.choose_state = mid_pci_choose_state,
 	.can_wakeup = mid_pci_can_wakeup,
 	.sleep_wake = mid_pci_sleep_wake,
-#warning pri#2 #28 need pci_platform_pm_ops.run_wake()?
-#if 0
-	.run_wake = TBD;
-#endif
+	.run_wake = mid_pci_run_wake,
 };
 
 /**
@@ -66,9 +66,7 @@ static int __init mid_pci_init(void)
 
 	pr_info("mid_pci_init is called\n");
 
-	/* Set Moorestown PM up on Moorestown, nothing else */
-	if (boot_cpu_data.x86 == 6 && boot_cpu_data.x86_model == 0x26)
-		pci_set_platform_pm(&mid_pci_platform_pm);
+	pci_set_platform_pm(&mid_pci_platform_pm);
 
 	return ret;
 }
