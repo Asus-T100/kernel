@@ -613,6 +613,10 @@ static int atomisp_register_entities(struct atomisp_device *isp)
 			"too many atomisp inputs, TPG ignored.\n");
 	}
 
+	ret = v4l2_device_register_subdev_nodes(&isp->v4l2_dev);
+	if (ret < 0)
+		goto link_failed;
+
 	return ret;
 
 link_failed:
