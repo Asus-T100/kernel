@@ -526,7 +526,7 @@ wakeup_secondary_cpu_via_init(int phys_apicid, unsigned long start_eip)
 						    &delays);
 }
 
-int __cpuinit
+int
 wakeup_secondary_cpu_via_init_delays(int phys_apicid,
 	unsigned long start_eip, const struct init_wakeup_delays *delays)
 {
