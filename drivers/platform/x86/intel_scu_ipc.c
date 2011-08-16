@@ -1237,12 +1237,14 @@ int intel_scu_ipc_read_mip(u8 *data, int len, int offset, int issigned)
 		return -ENODEV;
 	}
 
-	writel(offset, ipcdev.ipc_base + IPC_DPTR_ADDR);
-	writel((len + 3) / 4, ipcdev.ipc_base + IPC_SPTR_ADDR);
+	do {
+		writel(offset, ipcdev.ipc_base + IPC_DPTR_ADDR);
+		writel((len + 3) / 4, ipcdev.ipc_base + IPC_SPTR_ADDR);
 
-	cmdid = issigned ? IPC_CMD_SMIP_RD : IPC_CMD_UMIP_RD;
-	ipc_command(4 << 16 | cmdid << 12 | IPCMSG_MIP_ACCESS);
-	ret = ipc_wait_interrupt();
+		cmdid = issigned ? IPC_CMD_SMIP_RD : IPC_CMD_UMIP_RD;
+		ipc_command(4 << 16 | cmdid << 12 | IPCMSG_MIP_ACCESS);
+		ret = ipc_wait_interrupt();
+	} while (ret == -EIO);
 	if (!ret) {
 		data_off = ipc_data_readl(0);
 		memcpy(data, ipcdev.mip_base + data_off, len);
@@ -1268,12 +1270,13 @@ int intel_scu_ipc_write_umip(u8 *data, int len, int offset)
 		mutex_unlock(&ipclock);
 		return -ENODEV;
 	}
-
-	writel(offset, ipcdev.ipc_base + IPC_DPTR_ADDR);
-	writel((len + 3) / 4, ipcdev.ipc_base + IPC_SPTR_ADDR);
-	memcpy(ipcdev.mip_base, data, len);
-	ipc_command(IPC_CMD_UMIP_WR << 12 | IPCMSG_MIP_ACCESS);
-	ret = ipc_wait_interrupt();
+	do {
+		writel(offset, ipcdev.ipc_base + IPC_DPTR_ADDR);
+		writel((len + 3) / 4, ipcdev.ipc_base + IPC_SPTR_ADDR);
+		memcpy(ipcdev.mip_base, data, len);
+		ipc_command(IPC_CMD_UMIP_WR << 12 | IPCMSG_MIP_ACCESS);
+		ret = ipc_wait_interrupt();
+	} while (ret == -EIO);
 	mutex_unlock(&ipclock);
 
 	return ret;
