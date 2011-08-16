@@ -32,6 +32,7 @@
 #include <linux/jhash.h>
 #include <linux/intel_mid_pm.h>
 #include <linux/suspend.h>
+#include <linux/wakelock.h>
 
 #include "pmu.h"
 
