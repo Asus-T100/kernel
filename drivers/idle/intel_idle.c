@@ -385,7 +385,6 @@ static int intel_idle_probe(void)
 
 
 	case 0x26:	/* 38 - Lincroft Atom Processor */
-		cpuidle_state_table = mrst_cstates;
 #ifdef CONFIG_X86_MRST
 		intel_idle_platform_prepare = &mrst_pmu_invalid_cstates;
 #endif
