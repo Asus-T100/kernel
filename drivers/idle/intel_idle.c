@@ -64,6 +64,9 @@
 #include <asm/mwait.h>
 #include <asm/msr.h>
 #include <asm/mrst.h>
+#ifdef CONFIG_X86_MDFLD
+#include <linux/intel_mid_pm.h>
+#endif
 
 #define INTEL_IDLE_VERSION "0.4"
 #define PREFIX "intel_idle: "
@@ -83,6 +86,7 @@ static unsigned int lapic_timer_reliable_states = (1 << 1);	 /* Default to only 
 
 static struct cpuidle_device __percpu *intel_idle_cpuidle_devices;
 static int intel_idle(struct cpuidle_device *dev, struct cpuidle_state *state);
+static int intel_mid_idle(struct cpuidle_device *dev, struct cpuidle_state *state);
 
 static struct cpuidle_state *cpuidle_state_table;
 
@@ -207,6 +211,56 @@ static struct cpuidle_state atom_cstates[MWAIT_MAX_NUM_CSTATES] = {
 		.enter = &intel_idle },
 };
 
+#ifdef CONFIG_X86_INTEL_MID
+static struct cpuidle_state mrst_cstates[MWAIT_MAX_NUM_CSTATES] = {
+	{ /* MWAIT C0 */ },
+	{ /* MWAIT C1 */
+		.name = "ATM-C1",
+		.desc = "MWAIT 0x00",
+		.driver_data = (void *) 0x00,
+		.flags = CPUIDLE_FLAG_TIME_VALID,
+		.exit_latency = 1,
+		.target_residency = 4,
+		.enter = &intel_idle },
+	{ /* MWAIT C2 */
+		.name = "ATM-C2",
+		.desc = "MWAIT 0x10",
+		.driver_data = (void *) 0x10,
+		.flags = CPUIDLE_FLAG_TIME_VALID,
+		.exit_latency = 20,
+		.target_residency = 80,
+		.enter = &intel_idle },
+	{ /* MWAIT C3 */ },
+	{ /* MWAIT C4 */
+		.name = "ATM-C4",
+		.desc = "MWAIT 0x30",
+		.driver_data = (void *) 0x30,
+		.flags = CPUIDLE_FLAG_TIME_VALID | CPUIDLE_FLAG_TLB_FLUSHED,
+		.exit_latency = 100,
+		.target_residency = 400,
+		.enter = &intel_idle },
+	{ /* MWAIT C5 */ },
+	{ /* MWAIT C6 */
+		.name = "ATM-C6",
+		.desc = "MWAIT 0x52",
+		.driver_data = (void *) 0x52,
+		.flags = CPUIDLE_FLAG_TIME_VALID | CPUIDLE_FLAG_TLB_FLUSHED,
+		.exit_latency = 140,
+		.target_residency = 560,
+		.enter = &intel_mid_idle, },
+	{ /* MRST S0i3 */
+		.name = "MRST-S0i3",
+		.desc = "MRST S0i3",
+		.driver_data = (void *) -1UL, /* Special */
+		.flags = CPUIDLE_FLAG_TIME_VALID,
+		.exit_latency = 300, /* XXX */
+		.target_residency = 1200, /* XXX */
+		.enter = &intel_mid_idle },
+};
+#else
+#define mrst_cstates atom_cstates
+#endif
+
 /**
  * intel_idle
  * @dev: cpuidle_device
@@ -259,6 +313,66 @@ static int intel_idle(struct cpuidle_device *dev, struct cpuidle_state *state)
 
 	if (!(lapic_timer_reliable_states & (1 << (cstate))))
 		clockevents_notify(CLOCK_EVT_NOTIFY_BROADCAST_EXIT, &cpu);
+
+	return usec_delta;
+}
+
+/**
+ * intel_mid_idle	-	Idle a MID device
+ * @dev: cpuidle_device
+ * @state: cpuidle state
+ *
+ * This enters S0i3, C6 or C4 depending on what is currently permitted.
+ * C1-C4 are handled via the normal intel_idle entry.
+ */
+int intel_mid_idle(struct cpuidle_device *dev, struct cpuidle_state *state)
+{
+	unsigned long ecx = 1; /* break on interrupt flag */
+	unsigned long eax = (unsigned long)cpuidle_get_statedata(state);
+	ktime_t kt_before, kt_after;
+	s64 usec_delta;
+	int cpu = smp_processor_id();
+
+	local_irq_disable();
+
+	/*
+	 * leave_mm() to avoid costly and often unnecessary wakeups
+	 * for flushing the user TLB's associated with the active mm.
+	 */
+#ifdef CPUIDLE_FLAG_TLB_FLUSHED
+	if (state->flags & CPUIDLE_FLAG_TLB_FLUSHED)
+		leave_mm(cpu);
+#endif /* FIXME */
+	clockevents_notify(CLOCK_EVT_NOTIFY_BROADCAST_ENTER, &cpu);
+
+	kt_before = ktime_get_real();
+
+	stop_critical_timings();
+
+	if (!need_resched()) {
+#ifdef CONFIG_X86_MDFLD
+		if (eax == -1UL) {
+			mfld_s0i3_enter();
+		} else
+#endif
+		{
+			/* Conventional MWAIT */
+
+			__monitor((void *)&current_thread_info()->flags, 0, 0);
+			smp_mb();
+			if (!need_resched())
+				__mwait(eax, ecx);
+		}
+	}
+
+	start_critical_timings();
+
+	kt_after = ktime_get_real();
+	usec_delta = ktime_to_us(ktime_sub(kt_after, kt_before));
+
+	local_irq_enable();
+
+	clockevents_notify(CLOCK_EVT_NOTIFY_BROADCAST_EXIT, &cpu);
 
 	return usec_delta;
 }
@@ -389,7 +503,7 @@ static int intel_idle_probe(void)
 		intel_idle_platform_prepare = &mrst_pmu_invalid_cstates;
 #endif
 	case 0x27:	/* 39 - Penwell Atom Processor */
-		cpuidle_state_table = atom_cstates;
+		cpuidle_state_table = mrst_cstates;
 		auto_demotion_disable_flags = ATM_LNC_C6_AUTO_DEMOTE;
 		break;
 
