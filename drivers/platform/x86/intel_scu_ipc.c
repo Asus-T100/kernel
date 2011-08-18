@@ -1257,26 +1257,53 @@ EXPORT_SYMBOL(intel_scu_ipc_read_mip);
 
 int intel_scu_ipc_write_umip(u8 *data, int len, int offset)
 {
-	int ret;
+	int ret, wlen = 0;
+	u32 data_off;
+	u8 *buf = NULL;
 
 	if (platform != MRST_CPU_CHIP_PENWELL)
 		return -EINVAL;
-
 	if (offset + len > IPC_MIP_MAX_ADDR)
 		return -EINVAL;
 
 	mutex_lock(&ipclock);
 	if (ipcdev.pdev == NULL || ipcdev.mip_base == NULL) {
-		mutex_unlock(&ipclock);
-		return -ENODEV;
+		ret = -ENODEV;
+		goto fail;
+	}
+	wlen = (len + 3) & (~0x3);
+	if (wlen != len) {
+		buf = kzalloc(wlen, GFP_KERNEL);
+		if (!buf) {
+			dev_err(&ipcdev.pdev->dev, "Alloc memory failed\n");
+			ret = -ENOMEM;
+			goto fail;
+		}
+		do {
+			writel(offset+wlen-4, ipcdev.ipc_base + IPC_DPTR_ADDR);
+			writel(1, ipcdev.ipc_base + IPC_SPTR_ADDR);
+			ipc_command(4 << 16
+				| IPC_CMD_UMIP_RD << 12 | IPCMSG_MIP_ACCESS);
+			ret = ipc_wait_interrupt();
+		} while (ret == -EIO);
+		if (ret)
+			goto fail;
+		data_off = ipc_data_readl(0);
+		memcpy(buf+wlen-4, ipcdev.mip_base + data_off, 4);
+		memcpy(buf, data, len);
+	} else {
+		buf = data;
 	}
 	do {
 		writel(offset, ipcdev.ipc_base + IPC_DPTR_ADDR);
-		writel((len + 3) / 4, ipcdev.ipc_base + IPC_SPTR_ADDR);
-		memcpy(ipcdev.mip_base, data, len);
+		writel(wlen / 4, ipcdev.ipc_base + IPC_SPTR_ADDR);
+		memcpy(ipcdev.mip_base, buf, wlen);
 		ipc_command(IPC_CMD_UMIP_WR << 12 | IPCMSG_MIP_ACCESS);
 		ret = ipc_wait_interrupt();
 	} while (ret == -EIO);
+fail:
+	if (buf && wlen != len)
+		kfree(buf);
 	mutex_unlock(&ipclock);
 
 	return ret;
