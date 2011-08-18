@@ -63,7 +63,7 @@ static int __init mid_pci_init(void)
 {
 	pr_info("mid_pci_init is called\n");
 
-	if (!boot_cpu_data.x86 == 6)
+	if (boot_cpu_data.x86 != 6)
 		return 0;
 
 	/*
