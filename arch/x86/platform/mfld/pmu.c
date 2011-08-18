@@ -1,5 +1,5 @@
 /*
- * mid_pmu.c - This driver provides interface to configure the 2 pmu's
+ * pmu.c - This driver provides interface to configure the 2 pmu's
  * Copyright (c) 2010, Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
@@ -35,283 +35,6 @@
 #include <linux/wakelock.h>
 
 #include "pmu.h"
-
-/* These are the set of LSS's that are checked
- * to be D0i3 before entering S0i1/3
- */
-static u8 s0ix_lss[] = {
-	PMU_SDIO0_LSS_00,
-	PMU_EMMC0_LSS_01,
-
-#ifdef CONFIG_HSI_ARASAN
-	PMU_HSI_LSS_03,
-#endif
-
-#ifdef CONFIG_DX_SEP
-	PMU_SECURITY_LSS_04,
-#endif
-	PMU_EMMC1_LSS_05,
-#ifdef CONFIG_USB_PENWELL_OTG
-	PMU_USB_OTG_LSS_06,
-#endif
-
-#ifdef TELEPHONY_ENABLE_S0IX
-	PMU_AUDIO_ENGINE_LSS_08,
-	PMU_AUDIO_DMA_LSS_09,
-	PMU_AUDIO_SSP0_LSS_51,
-	PMU_AUDIO_SSP1_LSS_52,
-	PMU_SPI3_LSS_36,
-#endif
-	PMU_SDIO2_LSS_14,
-#ifdef DWSPI_ENABLE_S0IX
-	PMU_SPI1_LSS_18,
-#endif
-
-#ifdef WLAN_ENABLE_S0IX
-	PMU_SDIO1_LSS_30,
-#endif
-
-#ifdef I2C_ENABLE_S0IX
-	PMU_I2C0_LSS_20,
-	PMU_I2C1_LSS_21,
-	PMU_I2C2_LSS_27,
-	PMU_I2C3_LSS_33,
-	PMU_I2C4_LSS_34,
-	PMU_I2C5_LSS_35,
-#endif
-
-	PMU_UART2_LSS_41,
-
-};
-static u32 TARGET_CFG[4];
-static u32 s0ix_target[4];
-
-/* These are the set of LSS's that are checked
- * to be D0i3 before entering LPMP3 mode.
- */
-static u8 lpmp3_lss[] = {
-	PMU_SDIO0_LSS_00,
-	PMU_EMMC0_LSS_01,
-
-#ifdef CONFIG_HSI_ARASAN
-	PMU_HSI_LSS_03,
-#endif
-
-#ifdef CONFIG_DX_SEP
-	PMU_SECURITY_LSS_04,
-#endif
-	PMU_EMMC1_LSS_05,
-#ifdef CONFIG_USB_PENWELL_OTG
-	PMU_USB_OTG_LSS_06,
-#endif
-	PMU_SDIO2_LSS_14,
-#ifdef TELEPHONY_ENABLE_S0IX
-	PMU_SPI3_LSS_36,
-#endif
-
-#ifdef DWSPI_ENABLE_S0IX
-	PMU_SPI1_LSS_18,
-#endif
-
-#ifdef WLAN_ENABLE_S0IX
-	PMU_SDIO1_LSS_30,
-#endif
-
-#ifdef I2C_ENABLE_S0IX
-	PMU_I2C0_LSS_20,
-	PMU_I2C1_LSS_21,
-	PMU_I2C2_LSS_27,
-	PMU_I2C3_LSS_33,
-	PMU_I2C4_LSS_34,
-	PMU_I2C5_LSS_35,
-#endif
-
-	PMU_UART2_LSS_41,
-
-};
-static u32 LPMP3_CFG[4];
-static u32 lpmp3_target[4];
-
-/* These are the LSS that need to be kept
- * always ON D0i0, you can add any LSS id
- * that you need to keep always on here.
- */
-static u8 lss_to_ignore[] = {
-	PMU_SDIO0_LSS_00,
-	PMU_EMMC0_LSS_01,
-	PMU_HSI_LSS_03,
-	PMU_EMMC1_LSS_05,
-	PMU_USB_OTG_LSS_06,
-	PMU_USB_HSIC_LSS_07,
-	PMU_SRAM_LSS_10,
-	PMU_SRAM_LSS_11,
-	PMU_SRAM_LSS_12,
-	PMU_SRAM_LSS_13,
-	PMU_SDIO2_LSS_14,
-	PMU_PTI_DAFCA_LSS_15,
-	PMU_SC_DMA_LSS_16,
-	PMU_SPIO_LSS_17,
-	PMU_SPI1_LSS_18,
-	PMU_SPI2_LSS_19,
-	PMU_MAIN_FABRIC_LSS_22,
-	PMU_SEC_FABRIC_LSS_23,
-	PMU_SC_FABRIC_LSS_24,
-	PMU_SCU_ROM_LSS_26,
-	PMU_SSC_LSS_28,
-	PMU_SECURITY_LSS_29,
-	PMU_SDIO1_LSS_30,
-	PMU_SCU_RAM0_LSS_31,
-	PMU_SCU_RAM1_LSS_32,
-	PMU_GPIO1_LSS_37,
-	PMU_PWR_BUTTON_LSS_38,
-	PMU_GPIO0_LSS_39,
-	PMU_ADC_LSS_42,
-	PMU_CHARGER_LSS_43,
-	PMU_SEC_TAPC_LSS_44,
-	PMU_RTC_LSS_45,
-	PMU_GPI_LSS_46,
-	PMU_HDMI_VREG_LSS_47,
-	PMU_IOSF_OCP_BRG_LSS_53,
-	PMU_SVID_LSS_55,
-	PMU_SOC_FUSE_LSS_56,
-	PMU_RSVD3_LSS_57,
-	PMU_RSVD4_LSS_58,
-	PMU_RSVD5_LSS_59,
-	PMU_RSVD6_LSS_60,
-	PMU_RSVD7_LSS_61,
-	PMU_RSVD8_LSS_62,
-	PMU_RSVD9_LSS_63
-};
-static u32 IGNORE_CFG[4];
-
-/* These are the LSS that need
- * to be configured in SSS registers
- * before issuing S0i1 command
- */
-static u8 s0i1_sss_lss[] = {
-	PMU_SDIO0_LSS_00,
-	PMU_EMMC0_LSS_01,
-	PMU_AONT_LSS_02,
-	PMU_HSI_LSS_03,
-	PMU_SECURITY_LSS_04,
-	PMU_EMMC1_LSS_05,
-	PMU_USB_OTG_LSS_06,
-	PMU_USB_HSIC_LSS_07,
-	PMU_AUDIO_ENGINE_LSS_08,
-	PMU_AUDIO_DMA_LSS_09,
-	PMU_SRAM_LSS_12,
-	PMU_SRAM_LSS_13,
-	PMU_SDIO2_LSS_14,
-	PMU_SPI1_LSS_18,
-	PMU_SPI2_LSS_19,
-	PMU_I2C0_LSS_20,
-	PMU_I2C1_LSS_21,
-	PMU_AUDIO_RAM_LSS_25,
-	PMU_I2C2_LSS_27,
-	PMU_SDIO1_LSS_30,
-	PMU_I2C3_LSS_33,
-	PMU_I2C4_LSS_34,
-	PMU_I2C5_LSS_35,
-	PMU_SPI3_LSS_36,
-	PMU_GPIO1_LSS_37,
-	PMU_PWR_BUTTON_LSS_38,
-	PMU_KEYBRD_LSS_40,
-	PMU_UART2_LSS_41,
-	PMU_AUDIO_SSP2_LSS_48,
-	PMU_AUDIO_SLIM1_LSS_49,
-	PMU_RESET_LSS_50,
-	PMU_AUDIO_SSP0_LSS_51,
-	PMU_AUDIO_SSP1_LSS_52,
-	PMU_GP_DMA_LSS_54
-};
-static u32 s0i1_sss[4];
-
-/* These are the LSS that need
- * to be configured in SSS registers
- * before issuing S0i3 command
- */
-static u8 s0i3_sss_lss[] = {
-	PMU_SDIO0_LSS_00,
-	PMU_EMMC0_LSS_01,
-	PMU_AONT_LSS_02,
-	PMU_HSI_LSS_03,
-	PMU_SECURITY_LSS_04,
-	PMU_EMMC1_LSS_05,
-	PMU_USB_OTG_LSS_06,
-	PMU_USB_HSIC_LSS_07,
-	PMU_AUDIO_ENGINE_LSS_08,
-	PMU_AUDIO_DMA_LSS_09,
-	PMU_SRAM_LSS_12,
-	PMU_SRAM_LSS_13,
-	PMU_SDIO2_LSS_14,
-	PMU_SPI1_LSS_18,
-	PMU_SPI2_LSS_19,
-	PMU_I2C0_LSS_20,
-	PMU_I2C1_LSS_21,
-	PMU_AUDIO_RAM_LSS_25,
-	PMU_I2C2_LSS_27,
-	PMU_SDIO1_LSS_30,
-	PMU_I2C3_LSS_33,
-	PMU_I2C4_LSS_34,
-	PMU_I2C5_LSS_35,
-	PMU_SPI3_LSS_36,
-	PMU_GPIO1_LSS_37,
-	PMU_PWR_BUTTON_LSS_38,
-	PMU_KEYBRD_LSS_40,
-	PMU_UART2_LSS_41,
-	PMU_AUDIO_SSP2_LSS_48,
-	PMU_AUDIO_SLIM1_LSS_49,
-	PMU_RESET_LSS_50,
-	PMU_AUDIO_SSP0_LSS_51,
-	PMU_AUDIO_SSP1_LSS_52,
-	PMU_GP_DMA_LSS_54
-};
-static u32 s0i3_sss[4];
-
-/* These are the LSS that need
- * to be configured in SSSarch/x86/kernel/mid_pmu.c registers
- * before issuing LPMP3 command
- */
-static u8 lpmp3_sss_lss[] = {
-	PMU_SDIO0_LSS_00,
-	PMU_EMMC0_LSS_01,
-	PMU_AONT_LSS_02,
-	PMU_HSI_LSS_03,
-	PMU_SECURITY_LSS_04,
-	PMU_EMMC1_LSS_05,
-	PMU_USB_OTG_LSS_06,
-	PMU_USB_HSIC_LSS_07,
-	PMU_SDIO2_LSS_14,
-	PMU_SPI1_LSS_18,
-	PMU_SPI2_LSS_19,
-	PMU_I2C0_LSS_20,
-	PMU_I2C1_LSS_21,
-	PMU_I2C2_LSS_27,
-	PMU_SDIO1_LSS_30,
-	PMU_I2C3_LSS_33,
-	PMU_I2C4_LSS_34,
-	PMU_I2C5_LSS_35,
-	PMU_SPI3_LSS_36,
-	PMU_GPIO1_LSS_37,
-	PMU_PWR_BUTTON_LSS_38,
-	PMU_KEYBRD_LSS_40,
-	PMU_UART2_LSS_41,
-	PMU_AUDIO_SLIM1_LSS_49,
-	PMU_RESET_LSS_50,
-	PMU_AUDIO_SSP0_LSS_51,
-	PMU_AUDIO_SSP1_LSS_52,
-	PMU_GP_DMA_LSS_54
-};
-static u32 lpmp3_sss[4];
-
-/* These are the LSS that need to be ignored
- * as wake sources when in S3
- */
-static u8 ignore_lss_in_wkc[] = {
-	PMU_AONT_LSS_02,
-	PMU_ADC_LSS_42
-};
-static u32 IGNORE_WKC_S3_CFG[2];
 
 static	struct pci_dev_index	pci_dev_hash[MID_PCI_INDEX_HASH_SIZE];
 
@@ -983,28 +706,28 @@ static inline int _mfld_s0ix_enter(u32 s0ix_value)
 	case S0I1_VALUE:
 		wrmsr(MSR_C6OFFLOAD_CTL_REG,
 			MSR_C6OFFLOAD_CLEAR_LOW, MSR_C6OFFLOAD_CLEAR_HIGH);
-		writel(s0i1_sss[0], &pmu_reg->pm_ssc[0]);
-		writel(s0i1_sss[1], &pmu_reg->pm_ssc[1]);
-		writel(s0i1_sss[2], &pmu_reg->pm_ssc[2]);
-		writel(s0i1_sss[3], &pmu_reg->pm_ssc[3]);
+		writel(S0I1_SSS0, &pmu_reg->pm_ssc[0]);
+		writel(S0I1_SSS1, &pmu_reg->pm_ssc[1]);
+		writel(S0I1_SSS2, &pmu_reg->pm_ssc[2]);
+		writel(S0I1_SSS3, &pmu_reg->pm_ssc[3]);
 		pmu_stat_start(SYS_STATE_S0I1);
 		break;
 
 	case LPMP3_VALUE:
 		wrmsr(MSR_C6OFFLOAD_CTL_REG,
 			MSR_C6OFFLOAD_CLEAR_LOW, MSR_C6OFFLOAD_CLEAR_HIGH);
-		writel(lpmp3_sss[0], &pmu_reg->pm_ssc[0]);
-		writel(lpmp3_sss[1], &pmu_reg->pm_ssc[1]);
-		writel(lpmp3_sss[2], &pmu_reg->pm_ssc[2]);
-		writel(lpmp3_sss[3], &pmu_reg->pm_ssc[3]);
+		writel(LPMP3_SSS0, &pmu_reg->pm_ssc[0]);
+		writel(LPMP3_SSS1, &pmu_reg->pm_ssc[1]);
+		writel(LPMP3_SSS2, &pmu_reg->pm_ssc[2]);
+		writel(LPMP3_SSS3, &pmu_reg->pm_ssc[3]);
 		pmu_stat_start(SYS_STATE_S0I2);
 		break;
 
 	case S0I3_VALUE:
-		writel(s0i3_sss[0], &pmu_reg->pm_ssc[0]);
-		writel(s0i3_sss[1], &pmu_reg->pm_ssc[1]);
-		writel(s0i3_sss[2], &pmu_reg->pm_ssc[2]);
-		writel(s0i3_sss[3], &pmu_reg->pm_ssc[3]);
+		writel(S0I3_SSS0, &pmu_reg->pm_ssc[0]);
+		writel(S0I3_SSS1, &pmu_reg->pm_ssc[1]);
+		writel(S0I3_SSS2, &pmu_reg->pm_ssc[2]);
+		writel(S0I3_SSS3, &pmu_reg->pm_ssc[3]);
 		pmu_stat_start(SYS_STATE_S0I3);
 		break;
 	}
@@ -1037,24 +760,23 @@ ret:
 }
 EXPORT_SYMBOL(mfld_s0i1_enter);
 
-int mfld_s0i3_enter(void)
+void mfld_s0i3_enter(void)
 {
 	u32 ssw_val = 0;
 	int num_retry = 15000;
-	int status = 0;
 
 	/* skip S0i3 if SCU is not okay */
 	if (unlikely(!scu_comms_okay))
-		goto ret;
+		return;
 
 	/* check if we can acquire scu_ready_sem
 	 * if we are not able to then do a c6 */
 	if (down_trylock(&scu_ready_sem))
-		goto ret;
+		return;
 
 	if (!s0i3_possible) {
 		up(&scu_ready_sem);
-		goto ret;
+		return;
 	}
 
 	s0ix_entered = _mfld_s0ix_enter(S0I3_VALUE);
@@ -1076,15 +798,21 @@ int mfld_s0i3_enter(void)
 		if (likely((ssw_val & C6OFFLOAD_BIT_MASK) ==  C6OFFLOAD_BIT)) {
 			wrmsr(MSR_C6OFFLOAD_CTL_REG,
 				MSR_C6OFFLOAD_SET_LOW, MSR_C6OFFLOAD_SET_HIGH);
-			status = 1;
+			__monitor((void *)&current_thread_info()->flags, 0, 0);
+			smp_mb();
+			if (!need_resched())
+				__mwait(C6_HINT, 1);
+			pmu_enable_forward_msi();
 		} else {
 			pmu_stat_clear();
 			WARN(1, "mid_pmu: error cpu offload bit not set.\n");
 		}
+	} else {
+		__monitor((void *)&current_thread_info()->flags, 0, 0);
+		smp_mb();
+		if (!need_resched())
+			__mwait(C6_HINT, 1);
 	}
-
-ret:
-	return status;
 }
 EXPORT_SYMBOL(mfld_s0i3_enter);
 
@@ -1383,14 +1111,14 @@ static void pmu_read_sss(struct pmu_ss_states *pm_ssc)
 
 static bool check_s0ix_possible(struct pmu_ss_states *pmsss)
 {
-	if (((pmsss->pmu2_states[0] & TARGET_CFG[0]) ==
-						s0ix_target[0]) &&
-		((pmsss->pmu2_states[1] & TARGET_CFG[1]) ==
-						s0ix_target[1]) &&
-		((pmsss->pmu2_states[2] & TARGET_CFG[2]) ==
-						s0ix_target[2]) &&
-		((pmsss->pmu2_states[3] & TARGET_CFG[3]) ==
-						s0ix_target[3]))
+	if (((pmsss->pmu2_states[0] & S0IX_TARGET_SSS0_MASK) ==
+			S0IX_TARGET_SSS0) &&
+	    ((pmsss->pmu2_states[1] & S0IX_TARGET_SSS1_MASK) ==
+			S0IX_TARGET_SSS1) &&
+	    ((pmsss->pmu2_states[2] & S0IX_TARGET_SSS2_MASK) ==
+			S0IX_TARGET_SSS2) &&
+	    ((pmsss->pmu2_states[3] & S0IX_TARGET_SSS3_MASK) ==
+			S0IX_TARGET_SSS3))
 		return true;
 
 	return false;
@@ -1398,14 +1126,14 @@ static bool check_s0ix_possible(struct pmu_ss_states *pmsss)
 
 static bool check_lpmp3_possible(struct pmu_ss_states *pmsss)
 {
-	if (((pmsss->pmu2_states[0] & LPMP3_CFG[0]) ==
-						lpmp3_target[0]) &&
-		((pmsss->pmu2_states[1] & LPMP3_CFG[1]) ==
-						lpmp3_target[1]) &&
-		((pmsss->pmu2_states[2] & LPMP3_CFG[2]) ==
-						lpmp3_target[2]) &&
-		((pmsss->pmu2_states[3] & LPMP3_CFG[3]) ==
-						lpmp3_target[3]))
+	if (((pmsss->pmu2_states[0] & LPMP3_TARGET_SSS0_MASK) ==
+			LPMP3_TARGET_SSS0) &&
+	    ((pmsss->pmu2_states[1] & LPMP3_TARGET_SSS1_MASK) ==
+			LPMP3_TARGET_SSS1) &&
+	    ((pmsss->pmu2_states[2] & LPMP3_TARGET_SSS2_MASK) ==
+			LPMP3_TARGET_SSS2) &&
+	    ((pmsss->pmu2_states[3] & LPMP3_TARGET_SSS3_MASK) ==
+			LPMP3_TARGET_SSS3))
 		return true;
 
 	return false;
@@ -1606,10 +1334,10 @@ static int pmu_wait_done(void)
 
 		udelay(100);
 		pmu_wait_done_udelays++;
-        }
+	}
 
-        WARN_ONCE(1, "SCU not done for 50ms");
-        return -EBUSY;
+	WARN_ONCE(1, "SCU not done for 50ms");
+	return -EBUSY;
 }
 
 /**
@@ -1695,8 +1423,10 @@ if (in_interrupt()) {
 
 		/* set the lss positions that need
 		 * to be ignored to D0i0 */
-		for (i = 0; i < 4; i++)
-			cur_pmssc.pmu2_states[i] &= IGNORE_CFG[i];
+		cur_pmssc.pmu2_states[0] &= ~IGNORE_SSS0;
+		cur_pmssc.pmu2_states[1] &= ~IGNORE_SSS1;
+		cur_pmssc.pmu2_states[2] &= ~IGNORE_SSS2;
+		cur_pmssc.pmu2_states[3] &= ~IGNORE_SSS3;
 
 		/* Issue the pmu command to PMU 2
 		 * flag is needed to distinguish between
@@ -1828,7 +1558,7 @@ static int pmu_devices_state_show(struct seq_file *s, void *unused)
 	struct pci_dev *pdev = NULL;
 	int index, i, pmu_num, ss_idx, ss_pos;
 	unsigned int base_class;
-	u32 mask, val, needed;
+	u32 target_mask, mask, val, needed;
 	struct pmu_ss_states cur_pmsss;
 	char *dstates[] = {"D0", "D0i1", "D0i2", "D0i3"};
 
@@ -1841,8 +1571,17 @@ static int pmu_devices_state_show(struct seq_file *s, void *unused)
 	pmu_read_sss(&cur_pmsss);
 
 	seq_printf(s, "TARGET_CFG: ");
-	for (i = 0; i < 4; i++)
-		seq_printf(s, "%08X ", TARGET_CFG[i]);
+	seq_printf(s, "SSS0:%08X ", S0IX_TARGET_SSS0_MASK);
+	seq_printf(s, "SSS1:%08X ", S0IX_TARGET_SSS1_MASK);
+	seq_printf(s, "SSS2:%08X ", S0IX_TARGET_SSS2_MASK);
+	seq_printf(s, "SSS3:%08X ", S0IX_TARGET_SSS3_MASK);
+
+	seq_printf(s, "\n");
+	seq_printf(s, "CONDITION FOR S0I3: ");
+	seq_printf(s, "SSS0:%08X ", S0IX_TARGET_SSS0);
+	seq_printf(s, "SSS0:%08X ", S0IX_TARGET_SSS1);
+	seq_printf(s, "SSS0:%08X ", S0IX_TARGET_SSS2);
+	seq_printf(s, "SSS0:%08X ", S0IX_TARGET_SSS3);
 
 	seq_printf(s, "\n");
 	seq_printf(s, "SSS: ");
@@ -1891,7 +1630,24 @@ static int pmu_devices_state_show(struct seq_file *s, void *unused)
 		mask	= (D0I3_MASK << (ss_pos * BITS_PER_LSS));
 		val	= (cur_pmsss.pmu2_states[ss_idx] & mask) >>
 						(ss_pos * BITS_PER_LSS);
-		needed	= ((TARGET_CFG[ss_idx] & mask) != 0);
+		switch (ss_idx) {
+		case 0:
+			target_mask = S0IX_TARGET_SSS0_MASK;
+			break;
+		case 1:
+			target_mask = S0IX_TARGET_SSS1_MASK;
+			break;
+		case 2:
+			target_mask = S0IX_TARGET_SSS2_MASK;
+			break;
+		case 3:
+			target_mask = S0IX_TARGET_SSS3_MASK;
+			break;
+		default:
+			target_mask = 0;
+			break;
+		}
+		needed = ((target_mask & mask) != 0);
 
 		seq_printf(s, "pci %04x %04X %s %20s: lss:%02d reg:%d"
 			"mask:%08X wk:% 8d %s  %s\n",
@@ -2138,12 +1894,14 @@ static void update_all_lss_states(struct pmu_ss_states *pmu_config)
 	   not in the pci table, some devices are indeed not advertised in pci
 	   table for certain firmwares. This is the case for HSI firmwares,
 	   SPI3 device is not advertised, and would then prevent s0i3. */
-	for (i = 0; i < 4; i++) {
-		pmu_config->pmu2_states[i] |=
-			TARGET_CFG[i] & (~PCIALLDEV_CFG[i]);
-		/* also take IGNORE_CFG in account (for e.g. GPIO1)*/
-		pmu_config->pmu2_states[i] &= IGNORE_CFG[i];
-	}
+	pmu_config->pmu2_states[0] |= S0IX_TARGET_SSS0_MASK & ~PCIALLDEV_CFG[0];
+	pmu_config->pmu2_states[0] &= ~IGNORE_SSS0;
+	pmu_config->pmu2_states[1] |= S0IX_TARGET_SSS1_MASK & ~PCIALLDEV_CFG[1];
+	pmu_config->pmu2_states[1] &= ~IGNORE_SSS1;
+	pmu_config->pmu2_states[2] |= S0IX_TARGET_SSS2_MASK & ~PCIALLDEV_CFG[2];
+	pmu_config->pmu2_states[2] &= ~IGNORE_SSS2;
+	pmu_config->pmu2_states[3] |= S0IX_TARGET_SSS3_MASK & ~PCIALLDEV_CFG[3];
+	pmu_config->pmu2_states[3] &= ~IGNORE_SSS3;
 }
 
 static pci_power_t _pmu_choose_state(int device_lss)
@@ -2171,75 +1929,12 @@ static pci_power_t _pmu_choose_state(int device_lss)
 
 static int pmu_init(void)
 {
-	int i, status;
+	int status;
 	struct pmu_ss_states pmu_config;
-	pci_power_t state;
 	struct pmu_suspend_config *ss_config;
 
 	dev_dbg(&pmu_dev->dev, "PMU Driver loaded\n");
 	spin_lock_init(&nc_ready_lock);
-
-	/* initialise s0ix lss list */
-	for (i = 0; i < (sizeof(s0ix_lss)/sizeof(u8)); i++) {
-		TARGET_CFG[s0ix_lss[i]/ss_per_reg] |=
-		(D0I3_MASK << (s0ix_lss[i]%ss_per_reg * BITS_PER_LSS));
-
-		state = _pmu_choose_state(s0ix_lss[i]);
-		s0ix_target[s0ix_lss[i]/ss_per_reg] |=
-			(pci_2_mfld_state(state)
-				<< (s0ix_lss[i]%ss_per_reg * BITS_PER_LSS));
-	}
-
-	/* initialise lpmp3 lss list */
-	for (i = 0; i < (sizeof(lpmp3_lss)/sizeof(u8)); i++) {
-		LPMP3_CFG[lpmp3_lss[i]/ss_per_reg] |=
-		(D0I3_MASK << (lpmp3_lss[i]%ss_per_reg * BITS_PER_LSS));
-
-		state = _pmu_choose_state(lpmp3_lss[i]);
-		lpmp3_target[lpmp3_lss[i]/ss_per_reg] |=
-			(pci_2_mfld_state(state)
-				<< (lpmp3_lss[i]%ss_per_reg * BITS_PER_LSS));
-	}
-
-	/* initialise ignore lss list */
-	for (i = 0; i < (sizeof(lss_to_ignore)/sizeof(u8)); i++)
-		IGNORE_CFG[lss_to_ignore[i]/ss_per_reg] |=
-		(D0I3_MASK << (lss_to_ignore[i]%ss_per_reg * BITS_PER_LSS));
-
-	/* All ignored lss should be in D0i0 */
-	for (i = 0; i < 4; i++)
-		IGNORE_CFG[i] = ~IGNORE_CFG[i];
-
-	/* initialise ignore wkc lss list */
-	for (i = 0; i < (sizeof(ignore_lss_in_wkc)/sizeof(u8)); i++)
-		IGNORE_WKC_S3_CFG[ignore_lss_in_wkc[i]/32] |=
-		(1 << (ignore_lss_in_wkc[i]%32));
-
-	/* All ignored lss should be in non wakable state */
-	for (i = 0; i < 2; i++)
-		IGNORE_WKC_S3_CFG[i] = ~IGNORE_WKC_S3_CFG[i];
-
-	/* initialise s0i1 sss list */
-	for (i = 0; i < (sizeof(s0i1_sss_lss)/sizeof(u8)); i++) {
-		state = _pmu_choose_state(s0i1_sss_lss[i]);
-		s0i1_sss[s0i1_sss_lss[i]/ss_per_reg] |= (pci_2_mfld_state(state)
-				<< (s0i1_sss_lss[i]%ss_per_reg * BITS_PER_LSS));
-	}
-
-	/* initialise s0i3 sss list */
-	for (i = 0; i < (sizeof(s0i3_sss_lss)/sizeof(u8)); i++) {
-		state = _pmu_choose_state(s0i3_sss_lss[i]);
-		s0i3_sss[s0i3_sss_lss[i]/ss_per_reg] |= (pci_2_mfld_state(state)
-				<< (s0i3_sss_lss[i]%ss_per_reg * BITS_PER_LSS));
-	}
-
-	/* initialise lpmp3 sss list */
-	for (i = 0; i < (sizeof(lpmp3_sss_lss)/sizeof(u8)); i++) {
-		state = _pmu_choose_state(lpmp3_sss_lss[i]);
-		lpmp3_sss[lpmp3_sss_lss[i]/ss_per_reg] |=
-			(pci_2_mfld_state(state) <<
-			(lpmp3_sss_lss[i]%ss_per_reg * BITS_PER_LSS));
-	}
 
 	/* enumerate the PCI configuration space */
 	pmu_enumerate();
@@ -2530,8 +2225,8 @@ static int mfld_s3_enter(void)
 	}
 
 	/* setup the wake capable devices */
-	writel(IGNORE_WKC_S3_CFG[0], &pmu_reg->pm_wkc[0]);
-	writel(IGNORE_WKC_S3_CFG[1], &pmu_reg->pm_wkc[1]);
+	writel(~IGNORE_S3_WKC0, &pmu_reg->pm_wkc[0]);
+	writel(~IGNORE_S3_WKC1, &pmu_reg->pm_wkc[1]);
 
 	/* Re-program the sub systems state on wakeup as the current SSS*/
 	pmu_read_sss(&cur_pmsss);
@@ -2542,10 +2237,10 @@ static int mfld_s3_enter(void)
 	writel(cur_pmsss.pmu2_states[3], &pmu_reg->pm_wssc[3]);
 
 	/* program pm ssc registers */
-	writel(s0i3_sss[0], &pmu_reg->pm_ssc[0]);
-	writel(s0i3_sss[1], &pmu_reg->pm_ssc[1]);
-	writel(s0i3_sss[2], &pmu_reg->pm_ssc[2]);
-	writel(s0i3_sss[3], &pmu_reg->pm_ssc[3]);
+	writel(S0I3_SSS0, &pmu_reg->pm_ssc[0]);
+	writel(S0I3_SSS1, &pmu_reg->pm_ssc[1]);
+	writel(S0I3_SSS2, &pmu_reg->pm_ssc[2]);
+	writel(S0I3_SSS3, &pmu_reg->pm_ssc[3]);
 
 	/* issue a command to SCU */
 	writel(S0I3_VALUE, &pmu_reg->pm_cmd);
