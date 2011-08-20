@@ -578,10 +578,14 @@ static int intel_idle_cpuidle_devices_init(void)
 			}
 
 			/* does the state exist in CPUID.MWAIT? */
-			num_substates = (mwait_substates >> ((cstate) * 4))
+			if (cstate < 6) {
+				num_substates =
+					(mwait_substates >> ((cstate) * 4))
 						& MWAIT_SUBSTATE_MASK;
-			if (num_substates == 0)
-				continue;
+				if (num_substates == 0)
+					continue;
+			}
+
 			/* is the state not enabled? */
 			if (cpuidle_state_table[cstate].enter == NULL) {
 				/* does the driver not know about the state? */
