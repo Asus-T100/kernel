@@ -44,55 +44,8 @@
 #include <linux/pci.h>
 #include <linux/blkdev.h>
 #include <linux/genhd.h>
-
-#define SECTOR_SIZE_SHIFT (9)
-
-struct mmc_emergency_info {
-
-#define DISK_NAME_LENGTH 20
-	/* Default emmc disk name */
-	char emmc_disk_name[DISK_NAME_LENGTH];
-	/* panic partition number */
-	int part_number;
-	/* emmc_panic_label */
-	char name[DISK_NAME_LENGTH];
-
-	struct block_device *bdev;
-	struct device *disk_device;
-	struct gendisk *disk;
-	struct hd_struct *part;
-
-	/*panic partition start block */
-	sector_t start_block;
-	/*panic partition block count */
-	sector_t block_count;
-
-	int (*init) (void);
-	int (*write) (char *, unsigned int);
-	int (*read) (char *, unsigned int);
-};
-
-struct panic_header {
-	u32 magic;
-#define PANIC_MAGIC 0xdeadf00d
-
-	u32 version;
-#define PHDR_VERSION   0x01
-
-	u32 console_offset;
-	u32 console_length;
-
-	u32 threads_offset;
-	u32 threads_length;
-};
-
-struct emmc_ipanic_data {
-	struct mmc_emergency_info *emmc;
-	struct panic_header curr;
-	void *bounce;
-	struct proc_dir_entry *emmc_ipanic_console;
-	struct proc_dir_entry *emmc_ipanic_threads;
-};
+#include "../staging/android/logger.h"
+#include "emmc_ipanic.h"
 
 static struct mmc_emergency_info emmc_info = {
 	.init = mmc_emergency_init,
@@ -103,20 +56,105 @@ static struct mmc_emergency_info emmc_info = {
 	.disk_device = NULL
 };
 
+static unsigned char *ipanic_proc_entry_name[IPANIC_LOG_PROC_ENTRY] = {
+	"emmc_ipanic_console",
+	"emmc_ipanic_threads"
+};
+
+static unsigned char *logcat_name[LOGCAT_BUFF_COUNT] = {
+	LOGGER_LOG_MAIN,
+	LOGGER_LOG_EVENTS,
+	LOGGER_LOG_RADIO,
+	LOGGER_LOG_SYSTEM
+};
+
+static int in_panic;
 static struct emmc_ipanic_data drv_ctx;
 static struct work_struct proc_removal_work;
 static int is_found_panic_par;
 static u32 disable_emmc_ipanic;
-static int console_offset;
-static int console_len;
-static int threads_offset;
-static int threads_len;
-static int actual_size_console;
-static int actual_size_thread;
+static int log_offset[IPANIC_LOG_MAX];
+static int log_len[IPANIC_LOG_MAX];	/* sector count */
+static int log_size[IPANIC_LOG_MAX];	/* byte count */
+static size_t log_head[IPANIC_LOG_MAX];
+static size_t log_woff[IPANIC_LOG_MAX];
+static unsigned char last_chunk_buf[SECTOR_SIZE];
+static int last_chunk_buf_len;
 static DEFINE_MUTEX(drv_mutex);
 static void (*func_stream_emmc) (void);
 
-static void emmc_panic_erase(unsigned char *buffer, Sector * sect)
+static struct logger_log *get_logcat_log(unsigned char *buf_name)
+{
+	struct logger_log *log = NULL;
+	int i;
+	struct logger_log **log_list = get_log_list();
+
+	/* Find the log thought the buffer name */
+	for (i = 0; i < LOGGER_LIST_SIZE; i++)
+		if (!strcmp(log_list[i]->misc.name, buf_name)) {
+			log = log_list[i];
+			break;
+		}
+	if (!log) {
+		printk(KERN_EMERG "Invalid logcat buffer name: %s\n", buf_name);
+		return NULL;
+	}
+	return log;
+}
+
+static size_t get_logcat_head(struct logger_log *log)
+{
+	if (log)
+		return log->head;
+	return 0;
+}
+
+static size_t get_logcat_woff(struct logger_log *log)
+{
+	if (log)
+		return log->w_off;
+	return 0;
+}
+
+static void *get_logcat_buffer(struct logger_log *log)
+{
+	if (log)
+		return log->buffer;
+	return NULL;
+}
+
+static size_t get_logcat_size(struct logger_log *log)
+{
+	if (log)
+		return log->size;
+	return 0;
+}
+
+static void lock_logcat_mutex(struct logger_log *log)
+{
+	if (log)
+		mutex_lock(&log->mutex);
+}
+
+static void unlock_logcat_mutex(struct logger_log *log)
+{
+	if (log)
+		mutex_unlock(&log->mutex);
+}
+
+static void set_logcat_head(struct logger_log *log, size_t head)
+{
+	if (log)
+		log->head = head;
+}
+
+static void set_logcat_woff(struct logger_log *log, size_t woff)
+{
+	if (log)
+		log->w_off = woff;
+}
+
+static void emmc_panic_erase(unsigned char *buffer, Sector *sect)
 {
 	struct emmc_ipanic_data *ctx = &drv_ctx;
 	struct mmc_emergency_info *emmc = ctx->emmc;
@@ -132,7 +170,7 @@ static void emmc_panic_erase(unsigned char *buffer, Sector * sect)
 			goto out;
 		}
 		/* make sure the block device is open rw */
-		rc = blkdev_get(emmc->bdev, FMODE_READ | FMODE_WRITE);
+		rc = blkdev_get(emmc->bdev, FMODE_READ | FMODE_WRITE, emmc_panic_erase);
 		if (rc < 0) {
 			printk(KERN_ERR "%s: blk_dev_get failed!\n", __func__);
 			goto out;
@@ -174,6 +212,7 @@ static int emmc_ipanic_proc_read(char *buffer, char **start, off_t offset,
 	unsigned int sector_no;
 	off_t sector_offset;
 	int rc;
+	int log;
 
 	if (!ctx) {
 		printk(KERN_ERR "%s:invalid panic handler\n", __func__);
@@ -194,20 +233,15 @@ static int emmc_ipanic_proc_read(char *buffer, char **start, off_t offset,
 
 	mutex_lock(&drv_mutex);
 
-	switch ((int)dat) {
-	case 1:		/* emmc_ipanic_console */
-		file_length = ctx->curr.console_length;
-		file_offset = ctx->curr.console_offset;
-		break;
-	case 2:		/* emmc_ipanic_threads */
-		file_length = ctx->curr.threads_length;
-		file_offset = ctx->curr.threads_offset;
-		break;
-	default:
+	log = (int)dat;
+	if (log < 0 || log >= IPANIC_LOG_MAX) {
 		pr_err("Bad dat (%d)\n", (int)dat);
 		mutex_unlock(&drv_mutex);
 		return -EINVAL;
 	}
+
+	file_length = ctx->curr.log_length[log];
+	file_offset = ctx->curr.log_offset[log];
 
 	if ((offset + count) > file_length) {
 		mutex_unlock(&drv_mutex);
@@ -227,7 +261,7 @@ static int emmc_ipanic_proc_read(char *buffer, char **start, off_t offset,
 	}
 
 	/* make sure the block device is open rw */
-	rc = blkdev_get(emmc->bdev, FMODE_READ | FMODE_WRITE);
+	rc = blkdev_get(emmc->bdev, FMODE_READ | FMODE_WRITE, emmc_ipanic_proc_read);
 	if (rc < 0) {
 		printk(KERN_ERR "%s: blk_dev_get failed!\n", __func__);
 		mutex_unlock(&drv_mutex);
@@ -259,21 +293,22 @@ static int emmc_ipanic_proc_read(char *buffer, char **start, off_t offset,
 static void emmc_ipanic_remove_proc_work(struct work_struct *work)
 {
 	struct emmc_ipanic_data *ctx = &drv_ctx;
+	int log;
 
 	mutex_lock(&drv_mutex);
 	emmc_panic_erase(NULL, NULL);
-	if (ctx->emmc_ipanic_console) {
-		remove_proc_entry("emmc_ipanic_console", NULL);
-		ctx->emmc_ipanic_console = NULL;
-	}
-	if (ctx->emmc_ipanic_threads) {
-		remove_proc_entry("emmc_ipanic_threads", NULL);
-		ctx->emmc_ipanic_threads = NULL;
+
+	for (log = 0; log < IPANIC_LOG_PROC_ENTRY; log++) {
+		if (ctx->ipanic_proc_entry[log]) {
+			remove_proc_entry(ctx->ipanic_proc_entry_name
+					  [log], NULL);
+			ctx->ipanic_proc_entry[log] = NULL;
+		}
 	}
 	mutex_unlock(&drv_mutex);
 }
 
-static int emmc_ipanic_proc_write(struct file *file, const char __user * buffer,
+static int emmc_ipanic_proc_write(struct file *file, const char __user *buffer,
 				  unsigned long count, void *data)
 {
 	schedule_work(&proc_removal_work);
@@ -286,7 +321,7 @@ static void emmc_panic_notify_add(void)
 	struct mmc_emergency_info *emmc;
 	unsigned char *read_buf_ptr;
 	Sector sect;
-	int rc;
+	int rc, log;
 	int proc_entry_created = 0;
 
 	if (!ctx) {
@@ -310,7 +345,7 @@ static void emmc_panic_notify_add(void)
 	}
 
 	/* make sure the block device is open rw */
-	rc = blkdev_get(emmc->bdev, FMODE_READ | FMODE_WRITE);
+	rc = blkdev_get(emmc->bdev, FMODE_READ | FMODE_WRITE, emmc_panic_notify_add);
 	if (rc < 0) {
 		printk(KERN_ERR "%s: blk_dev_get failed!\n", __func__);
 		goto out_err;
@@ -343,46 +378,80 @@ static void emmc_panic_notify_add(void)
 		goto put_sector;
 	}
 
-	printk(KERN_INFO "%s: c(%u, %u) t(%u, %u)\n", __func__,
-	       ctx->curr.console_offset, ctx->curr.console_length,
-	       ctx->curr.threads_offset, ctx->curr.threads_length);
+	for (log = 0; log < IPANIC_LOG_MAX; log++) {
+		unsigned char *ptr;
+		void *logcat, *buf;
+		int size, offset;
+		Sector sect2;
+		printk(KERN_INFO "%s: log file %u(%u, %u)\n", __func__,
+		       log + 1, ctx->curr.log_offset[log],
+		       ctx->curr.log_length[log]);
 
-	if (ctx->curr.console_length) {
-		ctx->emmc_ipanic_console =
-		    create_proc_entry("emmc_ipanic_console", S_IFREG | S_IRUGO,
-				      NULL);
-		if (!ctx->emmc_ipanic_console)
-			printk(KERN_ERR "%s: failed creating procfile\n",
-			       __func__);
-		else {
-			ctx->emmc_ipanic_console->read_proc =
-			    emmc_ipanic_proc_read;
-			ctx->emmc_ipanic_console->write_proc =
-			    emmc_ipanic_proc_write;
-			ctx->emmc_ipanic_console->size =
-			    ctx->curr.console_length;
-			ctx->emmc_ipanic_console->data = (void *)1;
-			proc_entry_created = 1;
-		}
-	}
+		/* Skip empty file. */
+		if (ctx->curr.log_length[log] == 0)
+			continue;
 
-	if (ctx->curr.threads_length) {
-		ctx->emmc_ipanic_threads =
-		    create_proc_entry("emmc_ipanic_threads", S_IFREG | S_IRUGO,
-				      NULL);
-		if (!ctx->emmc_ipanic_threads)
-			printk(KERN_ERR "%s: failed creating procfile\n",
-			       __func__);
-		else {
-			ctx->emmc_ipanic_threads->read_proc =
-			    emmc_ipanic_proc_read;
-			ctx->emmc_ipanic_threads->write_proc =
-			    emmc_ipanic_proc_write;
-			ctx->emmc_ipanic_threads->size =
-			    ctx->curr.threads_length;
-			ctx->emmc_ipanic_threads->data = (void *)2;
-			proc_entry_created = 1;
+		/* Only create proc entry for console and threads log. */
+		if (log < IPANIC_LOG_PROC_ENTRY) {
+			ctx->ipanic_proc_entry[log] =
+			    create_proc_entry(ctx->ipanic_proc_entry_name
+					      [log], S_IFREG | S_IRUGO, NULL);
+
+			if (!ctx->ipanic_proc_entry[log])
+				printk(KERN_ERR
+				       "%s: failed creating proc file\n",
+				       __func__);
+			else {
+				ctx->ipanic_proc_entry[log]->read_proc =
+				    emmc_ipanic_proc_read;
+				ctx->ipanic_proc_entry[log]->write_proc =
+				    emmc_ipanic_proc_write;
+				ctx->ipanic_proc_entry[log]->size =
+				    ctx->curr.log_length[log];
+				ctx->ipanic_proc_entry[log]->data = (void *)log;
+				proc_entry_created = 1;
+			}
+			continue;
 		}
+
+		/* For logcat log, copy back to logcat buffer. */
+		logcat =
+		    get_logcat_log(logcat_name[log - IPANIC_LOG_PROC_ENTRY]);
+		if (!logcat) {
+			printk(KERN_EMERG "Invalid log buffer(%d)\n", log);
+			continue;
+		}
+		buf = get_logcat_buffer(logcat);
+		if (!buf) {
+			printk(KERN_EMERG "Invalid logcat pointer(%u)\n",
+						(unsigned int)logcat);
+			continue;
+		}
+
+		offset = emmc->start_block +
+			(ctx->curr.log_offset[log] >> SECTOR_SIZE_SHIFT);
+		lock_logcat_mutex(logcat);
+		for (size = 0; size < ctx->curr.log_length[log];
+		     size += SECTOR_SIZE) {
+			int write_size = SECTOR_SIZE;
+			int sec_count = size >> SECTOR_SIZE_SHIFT;
+
+			ptr = read_dev_sector(emmc->bdev, offset + sec_count,
+					      &sect2);
+			if (!ptr) {
+				printk(KERN_ERR
+				       "%s: read sector error(%u)!\n",
+				       __func__, offset + sec_count);
+				unlock_logcat_mutex(logcat);
+				goto put_sector;
+			}
+			if (ctx->curr.log_length[log] - size < SECTOR_SIZE)
+				write_size = ctx->curr.log_length[log] - size;
+			memcpy(buf + size, ptr, write_size);
+		}
+		set_logcat_head(logcat, ctx->curr.log_head[log]);
+		set_logcat_woff(logcat, ctx->curr.log_woff[log]);
+		unlock_logcat_mutex(logcat);
 	}
 
 	if (!proc_entry_created)
@@ -402,10 +471,8 @@ static void emmc_panic_notify_remove(void)
 		ctx->emmc = NULL;
 }
 
-static int in_panic;
-
 static int emmc_ipanic_writeflashpage(struct mmc_emergency_info *emmc,
-				      loff_t to, const u_char * buf)
+				      loff_t to, const u_char *buf)
 {
 	int rc;
 	size_t wlen = SECTOR_SIZE;
@@ -419,12 +486,6 @@ static int emmc_ipanic_writeflashpage(struct mmc_emergency_info *emmc,
 
 	return wlen;
 }
-
-extern int log_buf_copy(char *dest, int idx, int len);
-extern void log_buf_clear(void);
-
-static unsigned char last_chunk_buf[SECTOR_SIZE];
-static int last_chunk_buf_len;
 
 /*
  * Writes the contents of the console to the specified offset in flash.
@@ -445,8 +506,7 @@ static int emmc_ipanic_write_console(struct mmc_emergency_info *emmc,
 		oops_in_progress = 1;
 
 		if (last_chunk_buf_len) {
-			strncpy(ctx->bounce, last_chunk_buf,
-				last_chunk_buf_len);
+			memcpy(ctx->bounce, last_chunk_buf, last_chunk_buf_len);
 			rc1 =
 			    log_buf_copy(ctx->bounce + last_chunk_buf_len, idx,
 					 SECTOR_SIZE - last_chunk_buf_len);
@@ -465,20 +525,11 @@ static int emmc_ipanic_write_console(struct mmc_emergency_info *emmc,
 		   last chunk buffer and exit loop. */
 		if (rc != SECTOR_SIZE) {
 			/*Leave the last chunk for next writting */
-			strncpy(last_chunk_buf, ctx->bounce, rc);
+			memcpy(last_chunk_buf, ctx->bounce, rc);
 			last_chunk_buf_len = rc;
 			break;
 		}
 		oops_in_progress = saved_oip;
-
-		/* Check if there is spare block available */
-		if (block_shift >= emmc->block_count) {
-			printk(KERN_EMERG
-			       "%s: No spare block for panic log dump (%llu/%llu)\n",
-			       __func__, (unsigned long long)block_shift,
-			       emmc->block_count);
-			break;
-		}
 
 		rc2 = emmc_ipanic_writeflashpage(emmc, off + block_shift,
 						 ctx->bounce);
@@ -535,18 +586,154 @@ static void emmc_ipanic_write_thread_func(void)
 	int thread_sector_count;
 
 	thread_sector_count =
-	    emmc_ipanic_write_console(emmc, threads_offset + threads_len,
+	    emmc_ipanic_write_console(emmc,
+				      log_offset[IPANIC_LOG_THREADS] +
+				      log_len[IPANIC_LOG_THREADS],
 				      &size_written);
 	if (thread_sector_count < 0) {
 		printk(KERN_EMERG "Error writing threads to panic log! (%d)\n",
-		       threads_len);
+		       log_len[IPANIC_LOG_THREADS]);
 		return;
 	}
-	actual_size_thread += size_written;
-	threads_len += thread_sector_count;
+	log_size[IPANIC_LOG_THREADS] += size_written;
+	log_len[IPANIC_LOG_THREADS] += thread_sector_count;
 
 	/*reset the log buffer */
 	log_buf_clear();
+}
+
+static int emmc_ipanic_write_logcat(struct mmc_emergency_info *emmc,
+				    void *logcat, unsigned int off,
+				    int *actual_size)
+{
+	int rc, block_shift = 0;
+	unsigned char *buf;
+	size_t index = 0, log_size;
+
+	buf = get_logcat_buffer(logcat);
+	if (!buf) {
+		printk(KERN_EMERG "Invalid logcat buffer pointer(%u)\n",
+					(unsigned int)logcat);
+		return 0;
+	}
+
+	log_size = get_logcat_size(logcat);
+	while (index < log_size) {
+		size_t size_copy = log_size - index;
+		if (size_copy < SECTOR_SIZE) {
+			memcpy(last_chunk_buf, buf + index, size_copy);
+			last_chunk_buf_len = size_copy;
+			break;
+		}
+		rc = emmc_ipanic_writeflashpage(emmc, off + block_shift,
+						buf + index);
+		if (rc <= 0) {
+			printk(KERN_EMERG
+			       "%s: Flash write failed (%d)\n", __func__, rc);
+			return 0;
+		}
+		index += rc;
+		block_shift++;
+	}
+	*actual_size = index;
+
+	return block_shift;
+}
+
+static void emmc_ipanic_write_logbuf(struct mmc_emergency_info *emmc, int log)
+{
+	/*
+	 * Write the log data from second, the first block is reserved for
+	 * panic header
+	 */
+	log_offset[log] = emmc->start_block + 1;
+	log_len[log] =
+	    emmc_ipanic_write_console(emmc, log_offset[log], &log_size[log]);
+	if (log_size[log] < 0) {
+		printk(KERN_EMERG
+		       "Error writing console to panic log! (%d)\n",
+		       log_len[log]);
+		log_size[log] = 0;
+		log_len[log] = 0;
+	}
+	/* flush last chunk buffer for console */
+	emmc_ipanic_flush_lastchunk_emmc(log_offset[log] +
+					 log_len[log],
+					 &log_size[log], &log_len[log]);
+}
+
+static void emmc_ipanic_write_calltrace(struct mmc_emergency_info *emmc,
+					int log)
+{
+	log_offset[log] = log_offset[log - 1] + log_len[log - 1];
+	/*
+	 * config func_stream_emmc to emmc_ipanic_write_thread_func to
+	 * stream thread call trace.
+	 */
+	log_buf_clear();
+	func_stream_emmc = emmc_ipanic_write_thread_func;
+	show_state_filter(0);
+
+	/* flush last chunk buffer */
+	emmc_ipanic_flush_lastchunk_emmc(log_offset[log] +
+					 log_len[log],
+					 &log_size[log], &log_len[log]);
+}
+
+static void emmc_ipanic_write_logcatbuf(struct mmc_emergency_info *emmc,
+					int log, unsigned char *logcat_buf_name)
+{
+	void *logcat = get_logcat_log(logcat_buf_name);
+	if (!logcat) {
+			printk(KERN_EMERG "Invalid log buffer name(%s)\n",
+				logcat_buf_name);
+			return;
+	}
+	log_offset[log] = log_offset[log - 1] + log_len[log - 1];
+	log_len[log] = emmc_ipanic_write_logcat(emmc, logcat,
+						log_offset[log],
+						&log_size[log]);
+	if (log_size[log] < 0) {
+		printk(KERN_EMERG
+		       "Error writing console to panic log! (%d)\n",
+		       log_len[log]);
+		log_size[log] = 0;
+		log_len[log] = 0;
+	}
+	/* flush last chunk buffer */
+	emmc_ipanic_flush_lastchunk_emmc(log_offset[log] +
+					 log_len[log],
+					 &log_size[log], &log_len[log]);
+	log_head[log] = get_logcat_head(logcat);
+	log_woff[log] = get_logcat_woff(logcat);
+}
+
+static void emmc_ipanic_write_pageheader(struct mmc_emergency_info *emmc)
+{
+	struct emmc_ipanic_data *ctx = &drv_ctx;
+	struct panic_header *hdr = (struct panic_header *)ctx->bounce;
+	int log = IPANIC_LOG_CONSOLE;
+	int rc;
+
+	memset(ctx->bounce, 0, SECTOR_SIZE);
+	hdr->magic = PANIC_MAGIC;
+	hdr->version = PHDR_VERSION;
+	/*Fill up log offset and size */
+	while (log < IPANIC_LOG_MAX) {
+		/*Configurate log offset and log size */
+		hdr->log_offset[log] = (log_offset[log] - emmc->start_block)
+		    << SECTOR_SIZE_SHIFT;
+		hdr->log_length[log] = log_size[log];
+		hdr->log_head[log] = log_head[log];
+		hdr->log_woff[log] = log_woff[log];
+		log++;
+	}
+	rc = emmc_ipanic_writeflashpage(emmc, emmc->start_block, ctx->bounce);
+	if (rc <= 0) {
+		printk(KERN_EMERG "emmc_ipanic: Header write failed (%d)\n",
+		       rc);
+		return;
+	}
 }
 
 static int emmc_ipanic(struct notifier_block *this, unsigned long event,
@@ -554,15 +741,7 @@ static int emmc_ipanic(struct notifier_block *this, unsigned long event,
 {
 	struct emmc_ipanic_data *ctx = &drv_ctx;
 	struct mmc_emergency_info *emmc;
-	struct panic_header *hdr = (struct panic_header *)ctx->bounce;
-	int rc;
-
-	console_offset = 0;
-	console_len = 0;
-	threads_offset = 0;
-	threads_len = 0;
-	actual_size_console = 0;
-	actual_size_thread = 0;
+	int rc, log;
 
 	if (!is_found_panic_par) {
 		printk(KERN_EMERG "Not found the emergency partition!\n");
@@ -598,68 +777,38 @@ static int emmc_ipanic(struct notifier_block *this, unsigned long event,
 		goto out;
 	}
 
-	/*
-	 * Write the log data from second, the first block is reserved for
-	 * panic header
-	 */
-	console_offset = emmc->start_block + 1;
-	/*
-	 * Write out the console
-	 */
-	console_len = emmc_ipanic_write_console(emmc, console_offset,
-						&actual_size_console);
-	if (actual_size_console < 0) {
-		printk(KERN_EMERG "Error writing console to panic log! (%d)\n",
-		       console_len);
-		actual_size_console = 0;
-		console_len = 0;
+	memset(log_offset, 0, IPANIC_LOG_MAX * sizeof(int));
+	memset(log_len, 0, IPANIC_LOG_MAX * sizeof(int));
+	memset(log_size, 0, IPANIC_LOG_MAX * sizeof(int));
+
+	/*Write all buffer into emmc */
+	log = IPANIC_LOG_CONSOLE;
+	while (log < IPANIC_LOG_MAX) {
+		/* Clear temporary buffer */
+		memset(ctx->bounce, 0, SECTOR_SIZE);
+		/* Log every buffer into emmc */
+		switch (log) {
+		case IPANIC_LOG_CONSOLE:
+			emmc_ipanic_write_logbuf(emmc, log);
+			break;
+		case IPANIC_LOG_THREADS:
+			emmc_ipanic_write_calltrace(emmc, log);
+			break;
+		case IPANIC_LOG_LOGCAT_MAIN:
+		case IPANIC_LOG_LOGCAT_EVENTS:
+		case IPANIC_LOG_LOGCAT_RADIO:
+		case IPANIC_LOG_LOGCAT_SYSTEM:
+			emmc_ipanic_write_logcatbuf(emmc, log,
+				logcat_name[log - IPANIC_LOG_PROC_ENTRY]);
+			break;
+		default:
+			break;
+		}
+		log++;
 	}
-
-	/* flush last chunk buffer */
-	emmc_ipanic_flush_lastchunk_emmc(console_offset +
-					 console_len,
-					 &actual_size_console, &console_len);
-
-	/*
-	 * Write out all threads
-	 */
-	threads_offset = console_offset + console_len;
-	/*
-	 * config func_stream_emmc to emmc_ipanic_write_thread_func to
-	 * stream thread call trace.
-	 */
-	log_buf_clear();
-	func_stream_emmc = emmc_ipanic_write_thread_func;
-	show_state_filter(0);
-
-	/* flush last chunk buffer */
-	emmc_ipanic_flush_lastchunk_emmc(threads_offset +
-					 threads_len,
-					 &actual_size_thread, &threads_len);
-	/*
-	 * Finally write the panic header
-	 */
-	memset(ctx->bounce, 0, SECTOR_SIZE);
-	hdr->magic = PANIC_MAGIC;
-	hdr->version = PHDR_VERSION;
-
-	hdr->console_offset = (console_offset - emmc->start_block)
-	    << SECTOR_SIZE_SHIFT;
-	hdr->console_length = actual_size_console;
-
-	hdr->threads_offset = (threads_offset - emmc->start_block)
-	    << SECTOR_SIZE_SHIFT;
-	hdr->threads_length = actual_size_thread;
-
-	rc = emmc_ipanic_writeflashpage(emmc, emmc->start_block, ctx->bounce);
-	if (rc <= 0) {
-		printk(KERN_EMERG "emmc_ipanic: Header write failed (%d)\n",
-		       rc);
-		goto out;
-	}
-
+	/* Write emmc ipanic partition header */
+	emmc_ipanic_write_pageheader(emmc);
 	printk(KERN_INFO "Panic log data wirttien done!\n");
-
 out:
 #ifdef CONFIG_PREEMPT
 	sub_preempt_count(PREEMPT_ACTIVE);
@@ -672,7 +821,7 @@ static struct notifier_block panic_blk = {
 	.notifier_call = emmc_ipanic,
 };
 
-static int panic_dbg_get(void *data, u64 * val)
+static int panic_dbg_get(void *data, u64 *val)
 {
 	emmc_ipanic(NULL, 0, NULL);
 	return 0;
@@ -775,6 +924,7 @@ void emmc_ipanic_stream_emmc(void)
 	if (func_stream_emmc)
 		(*func_stream_emmc) ();
 }
+
 EXPORT_SYMBOL(emmc_ipanic_stream_emmc);
 
 int __init emmc_ipanic_init(void)
@@ -789,6 +939,7 @@ int __init emmc_ipanic_init(void)
 	/*initialization of drv_ctx */
 	memset(&drv_ctx, 0, sizeof(drv_ctx));
 	drv_ctx.emmc = &emmc_info;
+	drv_ctx.ipanic_proc_entry_name = ipanic_proc_entry_name;
 	drv_ctx.bounce = (void *)__get_free_page(GFP_KERNEL);
 
 	INIT_WORK(&proc_removal_work, emmc_ipanic_remove_proc_work);
