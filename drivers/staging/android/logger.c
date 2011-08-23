@@ -30,41 +30,6 @@
 #include <asm/ioctls.h>
 
 /*
- * struct logger_log - represents a specific log, such as 'main' or 'radio'
- *
- * This structure lives from module insertion until module removal, so it does
- * not need additional reference counting. The structure is protected by the
- * mutex 'mutex'.
- */
-struct logger_log {
-	unsigned char 		*buffer;/* the ring buffer itself */
-	struct miscdevice	misc;	/* misc device representing the log */
-	wait_queue_head_t	wq;	/* wait queue for readers */
-	struct list_head	readers; /* this log's readers */
-	struct mutex		mutex;	/* mutex protecting buffer */
-	size_t			w_off;	/* current write head offset */
-	size_t			head;	/* new readers start here */
-	size_t			size;	/* size of the log */
-};
-
-/*
- * struct logger_reader - a logging device open for reading
- *
- * This object lives from open to release, so we don't need additional
- * reference counting. The structure is protected by log->mutex.
- */
-struct logger_reader {
-	struct logger_log	*log;	/* associated log */
-	struct list_head	list;	/* entry in logger_log's list */
-	size_t			r_off;	/* current read head offset */
-	bool			r_all;	/* reader can read all entries */
-	int			r_ver;	/* reader ABI version */
-};
-
-/* logger_offset - returns index 'n' into the log via (optimized) modulus */
-#define logger_offset(n)	((n) & (log->size - 1))
-
-/*
  * file_get_log - Given a file structure, return the associated log
  *
  * This isn't aesthetic. We have several goals:
@@ -700,17 +665,26 @@ DEFINE_LOGGER_DEVICE(log_events, LOGGER_LOG_EVENTS, 256*1024)
 DEFINE_LOGGER_DEVICE(log_radio, LOGGER_LOG_RADIO, 256*1024)
 DEFINE_LOGGER_DEVICE(log_system, LOGGER_LOG_SYSTEM, 256*1024)
 
-static struct logger_log *get_log_from_minor(int minor)
+static struct logger_log *log_list[] = {	\
+	&log_main,	\
+	&log_events,	\
+	&log_radio,	\
+	&log_system,	\
+};
+
+struct logger_log *get_log_from_minor(int minor)
 {
-	if (log_main.misc.minor == minor)
-		return &log_main;
-	if (log_events.misc.minor == minor)
-		return &log_events;
-	if (log_radio.misc.minor == minor)
-		return &log_radio;
-	if (log_system.misc.minor == minor)
-		return &log_system;
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(log_list); i++)
+		if (log_list[i]->misc.minor == minor)
+			return log_list[i];
 	return NULL;
+}
+
+struct logger_log **get_log_list(void)
+{
+	return log_list;
 }
 
 static int __init init_log(struct logger_log *log)
@@ -732,23 +706,13 @@ static int __init init_log(struct logger_log *log)
 
 static int __init logger_init(void)
 {
-	int ret;
+	int ret, i;
 
-	ret = init_log(&log_main);
-	if (unlikely(ret))
-		goto out;
-
-	ret = init_log(&log_events);
-	if (unlikely(ret))
-		goto out;
-
-	ret = init_log(&log_radio);
-	if (unlikely(ret))
-		goto out;
-
-	ret = init_log(&log_system);
-	if (unlikely(ret))
-		goto out;
+	for (i = 0; i < ARRAY_SIZE(log_list); i++) {
+		ret = init_log(log_list[i]);
+		if (unlikely(ret))
+			goto out;
+	}
 
 out:
 	return ret;

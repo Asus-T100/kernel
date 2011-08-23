@@ -18,6 +18,7 @@
 #define _LINUX_LOGGER_H
 
 #include <linux/types.h>
+#include <linux/miscdevice.h>
 #include <linux/ioctl.h>
 
 /*
@@ -26,14 +27,47 @@
  * an upgrade to a newer ABI version.
  */
 struct user_logger_entry_compat {
-	__u16		len;	/* length of the payload */
-	__u16		__pad;	/* no matter what, we get 2 bytes of padding */
-	__s32		pid;	/* generating process's pid */
-	__s32		tid;	/* generating process's tid */
-	__s32		sec;	/* seconds since Epoch */
-	__s32		nsec;	/* nanoseconds */
-	char		msg[0];	/* the entry's payload */
+        __u16           len;    /* length of the payload */
+        __u16           __pad;  /* no matter what, we get 2 bytes of padding */
+        __s32           pid;    /* generating process's pid */
+        __s32           tid;    /* generating process's tid */
+        __s32           sec;    /* seconds since Epoch */
+        __s32           nsec;   /* nanoseconds */
+        char            msg[0]; /* the entry's payload */
 };
+
+/*
+ * struct logger_log - represents a specific log, such as 'main' or 'radio'
+ *
+ * This structure lives from module insertion until module removal, so it does
+ * not need additional reference counting. The structure is protected by the
+ * mutex 'mutex'.
+ */
+struct logger_log {
+	unsigned char 		*buffer;/* the ring buffer itself */
+	struct miscdevice	misc;	/* misc device representing the log */
+	wait_queue_head_t	wq;	/* wait queue for readers */
+	struct list_head	readers; /* this log's readers */
+	struct mutex		mutex;	/* mutex protecting buffer */
+	size_t			w_off;	/* current write head offset */
+	size_t			head;	/* new readers start here */
+	size_t			size;	/* size of the log */
+};
+
+/*
+ * struct logger_reader - a logging device open for reading
+ *
+ * This object lives from open to release, so we don't need additional
+ * reference counting. The structure is protected by log->mutex.
+ */
+struct logger_reader {
+	struct logger_log	*log;	/* associated log */
+	struct list_head	list;	/* entry in logger_log's list */
+	size_t			r_off;	/* current read head offset */
+	bool			r_all;	/* reader can read all entries */
+	int			r_ver;	/* reader ABI version */
+};
+
 
 /*
  * The structure for version 2 of the logger_entry ABI.
@@ -51,12 +85,21 @@ struct logger_entry {
 	char		msg[0];		/* the entry's payload */
 };
 
+struct logger_log **get_log_list(void);
+
+/* logger_offset - returns index 'n' into the log via (optimized) modulus */
+#define logger_offset(n)	((n) & (log->size - 1))
+
 #define LOGGER_LOG_RADIO	"log_radio"	/* radio-related messages */
 #define LOGGER_LOG_EVENTS	"log_events"	/* system/hardware events */
 #define LOGGER_LOG_SYSTEM	"log_system"	/* system/framework messages */
 #define LOGGER_LOG_MAIN		"log_main"	/* everything else */
 
-#define LOGGER_ENTRY_MAX_PAYLOAD	4076
+#define LOGGER_LIST_SIZE 4
+
+#define LOGGER_ENTRY_MAX_LEN		(4*1024)
+#define LOGGER_ENTRY_MAX_PAYLOAD	\
+	(LOGGER_ENTRY_MAX_LEN - sizeof(struct logger_entry))
 
 #define __LOGGERIO	0xAE
 
