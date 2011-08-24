@@ -760,23 +760,24 @@ ret:
 }
 EXPORT_SYMBOL(mfld_s0i1_enter);
 
-void mfld_s0i3_enter(void)
+int mfld_s0i3_enter(void)
 {
 	u32 ssw_val = 0;
 	int num_retry = 15000;
+	int status = 0;
 
 	/* skip S0i3 if SCU is not okay */
 	if (unlikely(!scu_comms_okay))
-		return;
+		goto ret;
 
 	/* check if we can acquire scu_ready_sem
 	 * if we are not able to then do a c6 */
 	if (down_trylock(&scu_ready_sem))
-		return;
+		goto ret;
 
 	if (!s0i3_possible) {
 		up(&scu_ready_sem);
-		return;
+		goto ret;
 	}
 
 	s0ix_entered = _mfld_s0ix_enter(S0I3_VALUE);
@@ -798,21 +799,14 @@ void mfld_s0i3_enter(void)
 		if (likely((ssw_val & C6OFFLOAD_BIT_MASK) ==  C6OFFLOAD_BIT)) {
 			wrmsr(MSR_C6OFFLOAD_CTL_REG,
 				MSR_C6OFFLOAD_SET_LOW, MSR_C6OFFLOAD_SET_HIGH);
-			__monitor((void *)&current_thread_info()->flags, 0, 0);
-			smp_mb();
-			if (!need_resched())
-				__mwait(C6_HINT, 1);
-			pmu_enable_forward_msi();
+			status = 1;
 		} else {
 			pmu_stat_clear();
 			WARN(1, "mid_pmu: error cpu offload bit not set.\n");
 		}
-	} else {
-		__monitor((void *)&current_thread_info()->flags, 0, 0);
-		smp_mb();
-		if (!need_resched())
-			__mwait(C6_HINT, 1);
 	}
+ret:
+	return status;
 }
 EXPORT_SYMBOL(mfld_s0i3_enter);
 

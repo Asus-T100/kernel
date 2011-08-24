@@ -138,7 +138,7 @@ enum pmu_ss_state {
 #define MID_S0IX_STATE		4
 
 extern int mfld_s0i1_enter(void);
-extern void mfld_s0i3_enter(void);
+extern int mfld_s0i3_enter(void);
 extern int get_target_platform_state(void);
 extern void pmu_enable_forward_msi(void);
 extern unsigned long pmu_get_cstate(unsigned long eax);
