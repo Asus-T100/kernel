@@ -63,6 +63,7 @@
 #include <linux/cpu.h>
 #include <asm/mwait.h>
 #include <asm/msr.h>
+#include <asm/atomic.h>
 #include <asm/mrst.h>
 #ifdef CONFIG_X86_MDFLD
 #include <linux/intel_mid_pm.h>
@@ -70,6 +71,8 @@
 
 #define INTEL_IDLE_VERSION "0.4"
 #define PREFIX "intel_idle: "
+
+static atomic_t nr_cpus_in_c6;
 
 static struct cpuidle_driver intel_idle_driver = {
 	.name = "intel_idle",
@@ -297,7 +300,6 @@ static int intel_idle(struct cpuidle_device *dev, struct cpuidle_state *state)
 	trace_power_start(POWER_CSTATE, (eax >> 4) + 1, cpu);
 #endif
 	if (!need_resched()) {
-
 		__monitor((void *)&current_thread_info()->flags, 0, 0);
 		smp_mb();
 		if (!need_resched())
@@ -332,6 +334,7 @@ int intel_mid_idle(struct cpuidle_device *dev, struct cpuidle_state *state)
 	ktime_t kt_before, kt_after;
 	s64 usec_delta;
 	int cpu = smp_processor_id();
+	int s0ix_entered = 0;
 
 	local_irq_disable();
 
@@ -352,17 +355,24 @@ int intel_mid_idle(struct cpuidle_device *dev, struct cpuidle_state *state)
 	if (!need_resched()) {
 #ifdef CONFIG_X86_MDFLD
 		if (eax == -1UL) {
-			mfld_s0i3_enter();
-		} else
-#endif
-		{
-			/* Conventional MWAIT */
-
-			__monitor((void *)&current_thread_info()->flags, 0, 0);
-			smp_mb();
-			if (!need_resched())
-				__mwait(eax, ecx);
+			eax = C6_HINT;
+			if (!atomic_add_unless(&nr_cpus_in_c6, 0,
+						num_online_cpus()-1))
+				s0ix_entered = mfld_s0i3_enter();
 		}
+#endif
+		/* Conventional MWAIT */
+		__monitor((void *)&current_thread_info()->flags, 0, 0);
+		smp_mb();
+		if (!need_resched()) {
+			atomic_inc(&nr_cpus_in_c6);
+			__mwait(eax, ecx);
+			atomic_dec(&nr_cpus_in_c6);
+		}
+#ifdef CONFIG_X86_MDFLD
+		if (s0ix_entered)
+			pmu_enable_forward_msi();
+#endif
 	}
 
 	start_critical_timings();
