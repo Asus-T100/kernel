@@ -27,6 +27,7 @@
 #include <linux/io.h>
 #include <asm/intel_scu_ipc.h>
 #include <asm/mrst.h>
+#include <linux/pm_runtime.h>
 
 static u32 major;
 
@@ -101,10 +102,13 @@ static long scu_ipc_ioctl(struct file *fp, unsigned int cmd,
 	int ret;
 	struct scu_ipc_data  data;
 	void __user *argp = (void __user *)arg;
+	int platform;
+	struct pci_dev *pdev;
 
 	if (!capable(CAP_SYS_RAWIO))
 		return -EPERM;
 
+	platform = mrst_identify_cpu();
 	switch (cmd) {
 	case INTEL_SCU_IPC_FW_UPDATE:
 	{
@@ -119,8 +123,6 @@ static long scu_ipc_ioctl(struct file *fp, unsigned int cmd,
 		kfree(fwbuf);
 		break;
 	}
-	case INTEL_SCU_IPC_MEDFIELD_FW_UPDATE:
-		return intel_scu_ipc_medfw_upgrade(argp);
 	case INTEL_SCU_IPC_READ_RR_FROM_OSNIB:
 	{
 		u8 reboot_reason;
@@ -154,6 +156,28 @@ static long scu_ipc_ioctl(struct file *fp, unsigned int cmd,
 		pr_debug("VBATTCRIT VALUE = %x\n", value);
 		ret = copy_to_user(argp, &value, 4);
 		break;
+	}
+	case INTEL_SCU_IPC_MEDFIELD_FW_UPDATE:
+	{
+		if (platform == MRST_CPU_CHIP_PENWELL) {
+			pdev = NULL;
+			while ((pdev = pci_get_device(PCI_ANY_ID, PCI_ANY_ID,
+						pdev)) != NULL) {
+				ret = pm_runtime_get_sync(&pdev->dev);
+				if (ret < 0) {
+					pr_debug("pm_runtime_get_sync failed: %s!!\n",
+						pdev->driver->name);
+					return ret;
+				}
+			}
+
+			ret = intel_scu_ipc_medfw_prepare(argp);
+
+			if (ret < 0) {
+				pr_err("ipc_device_medfw_upgrade failed!!\n");
+				return ret;
+			}
+		}
 	}
 	case INTEL_SCU_IPC_FW_REVISION_GET:
 	{

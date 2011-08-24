@@ -71,6 +71,7 @@ struct intel_scu_ipc_dev {
 	int ioc;
 	struct completion cmd_complete;
 	int status;
+	struct fw_ud *fwud_pending;
 };
 
 static struct intel_scu_ipc_dev  ipcdev; /* Only one for now */
@@ -802,11 +803,10 @@ static int busy_wait(struct mfld_fw_update *mfld_fw_upd)
  * 4) And wait for SCU to process that firmware chunk.
  * Returns 0 on success, and < 0 for failure.
  */
-static int process_fw_chunk(u8 *fws, u8 __user *userptr, u32 chunklen,
+static int process_fw_chunk(u8 *fws, u8 *userptr, u32 chunklen,
 					struct mfld_fw_update *mfld_fw_upd)
 {
-	if (copy_from_user(fws, userptr, chunklen))
-		return -EFAULT;
+	memcpy(fws, userptr, chunklen);
 
 	/* IA copy to sram */
 	memcpy_toio(mfld_fw_upd->sram, fws, chunklen);
@@ -1008,6 +1008,93 @@ error_case:
 
 }
 
+int intel_scu_ipc_medfw_prepare(void __user *arg)
+{
+	int ret;
+	struct fw_ud param;
+
+	if (platform != MRST_CPU_CHIP_PENWELL)
+		return -EINVAL;
+
+	ret = copy_from_user(&param, arg, sizeof(struct fw_ud));
+	if (ret)
+		return ret;
+
+	mutex_lock(&ipclock);
+	if (ipcdev.pdev == NULL) {
+		ret = -ENODEV;
+		goto fail;
+	} else {
+		/* Update NOT supported for older silicon stepping */
+		if (ipcdev.pdev->revision != C0_STEPPING) {
+			dev_err(&ipcdev.pdev->dev,
+				"Update NOT supported for stepping=%d\n",
+				ipcdev.pdev->revision);
+			ret = -EINVAL;
+			goto fail;
+		}
+	}
+
+	if (param.fw_file_data == NULL || param.fsize == 0
+		|| param.dnx_size == 0 || param.dnx_hdr == NULL
+		|| param.dnx_file_data == NULL) {
+		dev_err(&ipcdev.pdev->dev,
+			"ipc_medfw_upgrade, invalid args!!\n");
+		ret = -EINVAL;
+		goto fail;
+	}
+
+	ipcdev.fwud_pending = kzalloc(sizeof(struct fw_ud), GFP_KERNEL);
+	if (NULL == ipcdev.fwud_pending) {
+		ret = -ENOMEM;
+		goto fail;
+	}
+	memcpy(ipcdev.fwud_pending, &param, sizeof(struct fw_ud));
+
+	ipcdev.fwud_pending->fw_file_data = kmalloc(param.fsize, GFP_KERNEL);
+	if (NULL == ipcdev.fwud_pending) {
+		ret = -ENOMEM;
+		goto fail;
+	}
+	ret = copy_from_user(ipcdev.fwud_pending->fw_file_data,
+			param.fw_file_data, param.fsize);
+	if (ret)
+		goto fail;
+
+	ipcdev.fwud_pending->dnx_hdr = kmalloc(DNX_HDR_LEN, GFP_KERNEL);
+	if (NULL == ipcdev.fwud_pending->dnx_hdr) {
+		ret = -ENOMEM;
+		goto fail;
+	}
+	ret = copy_from_user(ipcdev.fwud_pending->dnx_hdr,
+			param.dnx_hdr, DNX_HDR_LEN);
+	if (ret)
+		goto fail;
+
+	ipcdev.fwud_pending->dnx_file_data = kmalloc(param.dnx_size,
+			GFP_KERNEL);
+	if (NULL == ipcdev.fwud_pending->dnx_file_data) {
+		ret = -ENOMEM;
+		goto fail;
+	}
+	ret = copy_from_user(ipcdev.fwud_pending->dnx_file_data,
+			param.dnx_file_data, param.dnx_size);
+	if (ret)
+		goto fail;
+
+	mutex_unlock(&ipclock);
+	return 0;
+fail:
+	if (ipcdev.fwud_pending) {
+		kfree(ipcdev.fwud_pending->fw_file_data);
+		kfree(ipcdev.fwud_pending->dnx_hdr);
+		kfree(ipcdev.fwud_pending->dnx_file_data);
+	}
+	kfree(ipcdev.fwud_pending);
+	mutex_unlock(&ipclock);
+	return ret;
+}
+
 /**
  *	intel_scu_ipc_medfw_upgrade	- Medfield Firmware update utility
  *	@arg: firmware buffer in user-space.
@@ -1018,9 +1105,9 @@ error_case:
  *
  * On success returns 0, for failure , returns < 0.
  */
-int intel_scu_ipc_medfw_upgrade(void __user *arg)
+int intel_scu_ipc_medfw_upgrade(void)
 {
-	struct fw_ud fw_ud_param;
+	struct fw_ud *fw_ud_param = ipcdev.fwud_pending;
 	struct mfld_fw_update	mfld_fw_upd;
 	u8 *fw_file_data = NULL;
 	u8 *fws = NULL;
@@ -1030,45 +1117,15 @@ int intel_scu_ipc_medfw_upgrade(void __user *arg)
 	void *offset;
 	enum mailbox_status mb_state;
 
-	if (platform != MRST_CPU_CHIP_PENWELL)
-		return -EINVAL;
+	if (!fw_ud_param)
+		return 0;
 
 	mutex_lock(&ipclock);
-	if (ipcdev.pdev == NULL) {
-		ret_val = -ENODEV;
-		goto out_unlock;
-	} else {
-		/* Check for silicon stepping */
-		dev_dbg(&ipcdev.pdev->dev,
-			"ipc_medfw_upgrade,silicon stepping=%d\n",
-			ipcdev.pdev->revision);
-		/* Update NOT supported for older silicon stepping */
-		if (ipcdev.pdev->revision < C0_STEPPING) {
-			dev_err(&ipcdev.pdev->dev,
-				"Update NOT supported for stepping=%d\n",
-				ipcdev.pdev->revision);
-			ret_val = -EINVAL;
-			goto out_unlock;
-		}
-	}
-
 	mfld_fw_upd.wscu = 0;
 	mfld_fw_upd.wia = 0;
 	memset(mfld_fw_upd.mb_status, 0, sizeof(char) * 8);
 
-	if (copy_from_user(&fw_ud_param, arg, sizeof(fw_ud_param)))
-		return -EFAULT;
-
-	fw_file_data = fw_ud_param.fw_file_data;
-	if (fw_file_data == NULL || fw_ud_param.fsize == 0 ||
-		fw_ud_param.dnx_size == 0 || fw_ud_param.dnx_hdr == NULL ||
-		fw_ud_param.dnx_file_data == NULL) {
-		dev_err(&ipcdev.pdev->dev,
-			"ipc_medfw_upgrade, invalid args!!\n");
-		ret_val = -EINVAL;
-		goto out_unlock;
-	}
-
+	fw_file_data = fw_ud_param->fw_file_data;
 	mfld_fw_upd.sram = ioremap_nocache(SRAM_ADDR, MAX_FW_CHUNK);
 	if (mfld_fw_upd.sram == NULL) {
 		dev_err(&ipcdev.pdev->dev, "unable to map sram\n");
@@ -1096,14 +1153,8 @@ int intel_scu_ipc_medfw_upgrade(void __user *arg)
 		goto unmap_mb;
 	}
 	/* Copy fuph header to kernel space */
-	if (copy_from_user(&fuph,
-				(fw_ud_param.fw_file_data + (fw_ud_param.fsize - 1)
-					- (FUPH_HDR_LEN - 1)),
-				FUPH_HDR_LEN)) {
-		dev_err(&ipcdev.pdev->dev,  "copy from user failed\n");
-		ret_val = -EFAULT;
-		goto term;
-	}
+	memcpy(&fuph, (fw_ud_param->fw_file_data + (fw_ud_param->fsize - 1)
+			 - (FUPH_HDR_LEN - 1)), FUPH_HDR_LEN);
 
 	/* Convert sizes in DWORDS to number of bytes. */
 	fuph.mip_size = fuph.mip_size * 4;
@@ -1124,11 +1175,7 @@ int intel_scu_ipc_medfw_upgrade(void __user *arg)
 	/*ipc_command(IPC_CMD_FW_UPDATE_READY); */
 
 	/*1. DNX SIZE HEADER   */
-	ret_val = copy_from_user(fws, fw_ud_param.dnx_hdr, DNX_HDR_LEN);
-	if (ret_val < 0) {
-		ret_val = -EFAULT;
-		goto term;
-	}
+	memcpy(fws, fw_ud_param->dnx_hdr, DNX_HDR_LEN);
 
 	memcpy_toio(mfld_fw_upd.sram, fws, DNX_HDR_LEN);
 
@@ -1186,19 +1233,19 @@ int intel_scu_ipc_medfw_upgrade(void __user *arg)
 			continue;
 		}
 
-		if (calc_offset_and_length(&fw_ud_param, mfld_fw_upd.mb_status,
-						&offset, &length, &fuph) < 0) {
-			dev_dbg(&ipcdev.pdev->dev,
-				"calc_offset_and_length_error,error\n");
+		if (calc_offset_and_length(fw_ud_param, mfld_fw_upd.mb_status,
+					&offset, &length, &fuph) < 0) {
+			dev_err(&ipcdev.pdev->dev,
+			"calc_offset_and_length_error,error\n");
 			ret_val = -1;
 			goto term;
 		}
 
 		if ((process_fw_chunk(fws, offset, length,
-						&mfld_fw_upd)) != 0) {
-			dev_dbg(&ipcdev.pdev->dev,
-				"Error processing fw chunk=%s\n",
-				mfld_fw_upd.mb_status);
+				      &mfld_fw_upd)) != 0) {
+			dev_err(&ipcdev.pdev->dev,
+			"Error processing fw chunk=%s\n",
+			mfld_fw_upd.mb_status);
 			ret_val = -1;
 			goto term;
 		} else
@@ -1206,6 +1253,7 @@ int intel_scu_ipc_medfw_upgrade(void __user *arg)
 				"PASS processing fw chunk=%s\n",
 				mfld_fw_upd.mb_status);
 	}
+	ret_val = ipc_wait_interrupt();
 
 term:
 	kfree(fws);

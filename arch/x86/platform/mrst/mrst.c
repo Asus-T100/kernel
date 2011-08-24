@@ -85,6 +85,7 @@ static void mrst_power_off(void)
 
 static void mrst_reboot(void)
 {
+	intel_scu_ipc_medfw_upgrade();
 	if (__mrst_cpu_chip == MRST_CPU_CHIP_LINCROFT)
 		intel_scu_ipc_simple_command(IPCMSG_COLD_RESET, 0);
 	else
