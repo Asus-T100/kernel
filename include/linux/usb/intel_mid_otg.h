@@ -143,6 +143,13 @@ struct intel_mid_otg_xceiv {
 	int	(*suspend_peripheral)(struct intel_mid_otg_xceiv *iotg,
 					pm_message_t message);
 	int	(*resume_peripheral)(struct intel_mid_otg_xceiv *iotg);
+
+	/* runtime suspend/resume */
+	int	(*runtime_suspend_host)(struct intel_mid_otg_xceiv *iotg);
+	int	(*runtime_resume_host)(struct intel_mid_otg_xceiv *iotg);
+	int	(*runtime_suspend_peripheral)(struct intel_mid_otg_xceiv *iotg);
+	int	(*runtime_resume_peripheral)(struct intel_mid_otg_xceiv *iotg);
+
 #endif
 
 };
