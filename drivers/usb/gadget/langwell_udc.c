@@ -2968,6 +2968,8 @@ static void gadget_release(struct device *_dev)
 static void sram_init(struct langwell_udc *dev)
 {
 	struct pci_dev		*pdev = dev->pdev;
+	void __iomem		*base = NULL;
+	void __iomem		*addr = NULL;
 
 	dev_dbg(&dev->pdev->dev, "---> %s()\n", __func__);
 
@@ -2975,6 +2977,23 @@ static void sram_init(struct langwell_udc *dev)
 	dev->sram_size = pci_resource_len(pdev, 1);
 	dev_info(&dev->pdev->dev, "Found private SRAM at %x size:%x\n",
 			dev->sram_addr, dev->sram_size);
+
+	/* initialize SRAM to 0 to avoid ECC errors */
+	base = ioremap_nocache(dev->sram_addr, dev->sram_size);
+	if (base == NULL) {
+		dev_err(&dev->pdev->dev, "SRAM init: ioremap failed\n");
+		return;
+	}
+
+	addr = base;
+
+	while (addr < base + dev->sram_size) {
+		writel(0x0, addr);
+		addr = addr + 4;
+	}
+
+	iounmap(base);
+
 	dev->got_sram = 1;
 
 	if (pci_request_region(pdev, 1, kobject_name(&pdev->dev.kobj))) {
