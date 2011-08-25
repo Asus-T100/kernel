@@ -35,6 +35,7 @@
 #include <linux/usb/otg.h>
 #include <linux/notifier.h>
 #include <linux/delay.h>
+#include <linux/pm_runtime.h>
 #include <asm/intel_scu_ipc.h>
 #include "../core/usb.h"
 
@@ -62,27 +63,6 @@ static int penwell_otg_set_peripheral(struct otg_transceiver *otg,
 				struct usb_gadget *gadget);
 static int penwell_otg_start_srp(struct otg_transceiver *otg);
 static int penwell_otg_msic_write(u16 addr, u8 data);
-
-static const struct pci_device_id pci_ids[] = {{
-	.class =        ((PCI_CLASS_SERIAL_USB << 8) | 0x20),
-	.class_mask =   ~0,
-	.vendor =	0x8086,
-	.device =	0x0829,
-	.subvendor =	PCI_ANY_ID,
-	.subdevice =	PCI_ANY_ID,
-}, { /* end: all zeroes */ }
-};
-
-static struct pci_driver otg_pci_driver = {
-	.name =		(char *) driver_name,
-	.id_table =	pci_ids,
-
-	.probe =	penwell_otg_probe,
-	.remove =	penwell_otg_remove,
-
-	.suspend =	penwell_otg_suspend,
-	.resume =	penwell_otg_resume,
-};
 
 static const char *state_string(enum usb_otg_state state)
 {
@@ -1103,6 +1083,9 @@ static irqreturn_t otg_irq(int irq, void *_dev)
 	int_en = (int_sts & OTGSC_INTEN_MASK) >> 8;
 	int_mask = int_sts & int_en;
 
+	if (int_mask == 0)
+		return IRQ_NONE;
+
 	if (int_mask) {
 		dev_dbg(pnw->dev,
 			"OTGSC = 0x%x, mask =0x%x\n", int_sts, int_mask);
@@ -1308,6 +1291,8 @@ static void penwell_otg_work(struct work_struct *work)
 
 	dev_dbg(pnw->dev,
 		"old state = %s\n", state_string(iotg->otg.state));
+
+	pm_runtime_get_sync(pnw->dev);
 
 	switch (iotg->otg.state) {
 	case OTG_STATE_UNDEFINED:
@@ -2139,6 +2124,8 @@ static void penwell_otg_work(struct work_struct *work)
 		;
 	}
 
+	pm_runtime_put_sync(pnw->dev);
+
 	dev_dbg(pnw->dev,
 			"new state = %s\n", state_string(iotg->otg.state));
 }
@@ -2869,6 +2856,153 @@ error:
 	transceiver_suspend(pdev);
 	return ret;
 }
+
+#ifdef CONFIG_PM_RUNTIME
+/* Runtime PM */
+static int penwell_otg_runtime_suspend(struct device *dev)
+{
+	struct penwell_otg	*pnw = the_transceiver;
+	struct pci_dev		*pdev;
+	int			ret = 0;
+
+	dev_dbg(dev, "%s --->\n", __func__);
+
+	pdev = to_pci_dev(dev);
+
+	switch (pnw->iotg.otg.state) {
+	case OTG_STATE_A_IDLE:
+	case OTG_STATE_B_IDLE:
+		/* Transceiver handle it itself */
+		penwell_otg_phy_low_power(1);
+		pci_save_state(pdev);
+		pci_disable_device(pdev);
+		pci_set_power_state(pdev, PCI_D3hot);
+		break;
+	case OTG_STATE_A_WAIT_BCON:
+	case OTG_STATE_A_HOST:
+	case OTG_STATE_A_SUSPEND:
+		if (pnw->iotg.runtime_suspend_host)
+			ret = pnw->iotg.runtime_suspend_host(&pnw->iotg);
+		break;
+	case OTG_STATE_A_PERIPHERAL:
+	case OTG_STATE_B_PERIPHERAL:
+		if (pnw->iotg.runtime_suspend_peripheral)
+			ret = pnw->iotg.runtime_suspend_peripheral(&pnw->iotg);
+		break;
+	default:
+		break;
+	}
+
+	dev_dbg(dev, "%s <---\n", __func__);
+	return ret;
+}
+
+static int penwell_otg_runtime_resume(struct device *dev)
+{
+	struct penwell_otg	*pnw = the_transceiver;
+	struct pci_dev		*pdev;
+	int			ret = 0;
+
+	dev_dbg(dev, "%s --->\n", __func__);
+
+	pdev = to_pci_dev(dev);
+
+	penwell_otg_intr(1);
+	penwell_otg_phy_low_power(0);
+
+	switch (pnw->iotg.otg.state) {
+	case OTG_STATE_A_IDLE:
+	case OTG_STATE_B_IDLE:
+		/* Transceiver handle it itself */
+		pci_set_power_state(pdev, PCI_D0);
+		pci_restore_state(pdev);
+		ret = pci_enable_device(pdev);
+		if (ret)
+			dev_err(&pdev->dev, "device cant be enabled\n");
+		penwell_otg_phy_low_power(0);
+		break;
+	case OTG_STATE_A_WAIT_BCON:
+	case OTG_STATE_A_HOST:
+	case OTG_STATE_A_SUSPEND:
+		if (pnw->iotg.runtime_resume_host)
+			ret = pnw->iotg.runtime_resume_host(&pnw->iotg);
+		break;
+	case OTG_STATE_A_PERIPHERAL:
+	case OTG_STATE_B_PERIPHERAL:
+		if (pnw->iotg.runtime_resume_peripheral)
+			ret = pnw->iotg.runtime_resume_peripheral(&pnw->iotg);
+		break;
+	default:
+		break;
+	}
+
+	dev_dbg(dev, "%s <---\n", __func__);
+	return 0;
+}
+
+static int penwell_otg_runtime_idle(struct device *dev)
+{
+	struct penwell_otg	*pnw = the_transceiver;
+
+	dev_dbg(dev, "%s --->\n", __func__);
+
+	switch (pnw->iotg.otg.state) {
+	case OTG_STATE_A_WAIT_VRISE:
+	case OTG_STATE_A_WAIT_VFALL:
+	case OTG_STATE_A_VBUS_ERR:
+	case OTG_STATE_B_WAIT_ACON:
+	case OTG_STATE_B_HOST:
+		dev_dbg(dev, "Keep in active\n");
+		return -EBUSY;
+	default:
+		break;
+	}
+
+	dev_dbg(dev, "%s <---\n", __func__);
+
+	return 0;
+}
+
+#else
+
+#define penwell_otg_runtime_suspend NULL
+#define penwell_otg_runtime_resume NULL
+#define penwell_otg_runtime_idle NULL
+
+#endif
+
+/*----------------------------------------------------------*/
+
+static const struct pci_device_id pci_ids[] = {{
+	.class =        ((PCI_CLASS_SERIAL_USB << 8) | 0x20),
+	.class_mask =   ~0,
+	.vendor =	0x8086,
+	.device =	0x0829,
+	.subvendor =	PCI_ANY_ID,
+	.subdevice =	PCI_ANY_ID,
+}, { /* end: all zeroes */ }
+};
+
+static const struct dev_pm_ops penwell_otg_pm_ops = {
+	.runtime_suspend = penwell_otg_runtime_suspend,
+	.runtime_resume = penwell_otg_runtime_resume,
+	.runtime_idle = penwell_otg_runtime_idle,
+};
+
+static struct pci_driver otg_pci_driver = {
+	.name =		(char *) driver_name,
+	.id_table =	pci_ids,
+
+	.probe =	penwell_otg_probe,
+	.remove =	penwell_otg_remove,
+
+	.suspend =	penwell_otg_suspend,
+	.resume =	penwell_otg_resume,
+
+	.driver = {
+		.pm =	&penwell_otg_pm_ops
+	},
+};
 
 static int __init penwell_otg_init(void)
 {
