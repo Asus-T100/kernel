@@ -162,6 +162,8 @@ struct intel_mid_otg_xceiv *otg_to_mid_xceiv(struct otg_transceiver *otg)
 #define MID_OTG_NOTIFY_HOSTREMOVE	0x0008
 #define MID_OTG_NOTIFY_CLIENTADD	0x0009
 #define MID_OTG_NOTIFY_CLIENTREMOVE	0x000a
+#define MID_OTG_NOTIFY_CLIENTFS		0x000b
+#define MID_OTG_NOTIFY_CLIENTHS		0x000c
 
 static inline int
 intel_mid_otg_register_notifier(struct intel_mid_otg_xceiv *iotg,
