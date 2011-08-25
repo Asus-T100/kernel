@@ -1,6 +1,6 @@
 /*
- * Intel Langwell USB Device Controller driver
- * Copyright (C) 2008-2009, Intel Corporation.
+ * Intel Langwell/Penwell USB Device Controller driver
+ * Copyright (C) 2008-2010, Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -21,7 +21,7 @@
 /* #undef	DEBUG */
 /* #undef	VERBOSE_DEBUG */
 
-#if defined(CONFIG_USB_LANGWELL_OTG)
+#if defined(CONFIG_USB_LANGWELL_OTG) || defined(CONFIG_USB_PENWELL_OTG)
 #define	OTG_TRANSCEIVER
 #endif
 
@@ -53,8 +53,8 @@
 #include "langwell_udc.h"
 
 
-#define	DRIVER_DESC		"Intel Langwell USB Device Controller driver"
-#define	DRIVER_VERSION		"16 May 2009"
+#define	DRIVER_DESC	"Intel Langwell/Penwell USB Device Controller driver"
+#define	DRIVER_VERSION	"June 3, 2010"
 
 static const char driver_name[] = "langwell_udc";
 static const char driver_desc[] = DRIVER_DESC;
@@ -1557,21 +1557,6 @@ static void stop_activity(struct langwell_udc *dev,
 
 /*-------------------------------------------------------------------------*/
 
-/* device "function" sysfs attribute file */
-static ssize_t show_function(struct device *_dev,
-		struct device_attribute *attr, char *buf)
-{
-	struct langwell_udc	*dev = the_controller;
-
-	if (!dev->driver || !dev->driver->function
-			|| strlen(dev->driver->function) > PAGE_SIZE)
-		return 0;
-
-	return scnprintf(buf, PAGE_SIZE, "%s\n", dev->driver->function);
-}
-static DEVICE_ATTR(function, S_IRUGO, show_function, NULL);
-
-
 /* device "langwell_udc" sysfs attribute file */
 static ssize_t show_langwell_udc(struct device *_dev,
 		struct device_attribute *attr, char *buf)
@@ -1890,10 +1875,6 @@ static int langwell_start(struct usb_gadget_driver *driver,
 		return retval;
 	}
 
-	retval = device_create_file(&dev->pdev->dev, &dev_attr_function);
-	if (retval)
-		goto err_unbind;
-
 	dev->usb_state = USB_STATE_ATTACHED;
 	dev->ep0_state = WAIT_FOR_SETUP;
 	dev->ep0_dir = USB_DIR_OUT;
@@ -1914,14 +1895,6 @@ static int langwell_start(struct usb_gadget_driver *driver,
 			driver->driver.name);
 	dev_dbg(&dev->pdev->dev, "<--- %s()\n", __func__);
 	return 0;
-
-err_unbind:
-	driver->unbind(&dev->gadget);
-	dev->gadget.dev.driver = NULL;
-	dev->driver = NULL;
-
-	dev_dbg(&dev->pdev->dev, "<--- %s()\n", __func__);
-	return retval;
 }
 
 /* unregister gadget driver */
@@ -1935,7 +1908,7 @@ static int langwell_stop(struct usb_gadget_driver *driver)
 
 	dev_dbg(&dev->pdev->dev, "---> %s()\n", __func__);
 
-	if (unlikely(!driver || !driver->unbind))
+	if (unlikely(!driver || !driver->unbind || !driver->disconnect))
 		return -EINVAL;
 
 	/* exit PHY low power suspend */
@@ -1964,8 +1937,6 @@ static int langwell_stop(struct usb_gadget_driver *driver)
 	driver->unbind(&dev->gadget);
 	dev->gadget.dev.driver = NULL;
 	dev->driver = NULL;
-
-	device_remove_file(&dev->pdev->dev, &dev_attr_function);
 
 	dev_info(&dev->pdev->dev, "unregistered driver '%s'\n",
 			driver->driver.name);
@@ -2827,7 +2798,7 @@ static void handle_bus_suspend(struct langwell_udc *dev)
 
 	/* enter PHY low power suspend */
 	if (dev->pdev->device != 0x0829)
-		langwell_phy_low_power(dev, 0);
+		langwell_phy_low_power(dev, 1);
 
 	dev_dbg(&dev->pdev->dev, "<--- %s()\n", __func__);
 }
@@ -3533,6 +3504,13 @@ static const struct pci_device_id pci_ids[] = { {
 	.class_mask =	~0,
 	.vendor =	0x8086,
 	.device =	0x0811,
+	.subvendor =	PCI_ANY_ID,
+	.subdevice =	PCI_ANY_ID,
+}, {
+	.class =	((PCI_CLASS_SERIAL_USB << 8) | 0xfe),
+	.class_mask =	~0,
+	.vendor =	0x8086,
+	.device =	0x0829,
 	.subvendor =	PCI_ANY_ID,
 	.subdevice =	PCI_ANY_ID,
 }, { /* end: all zeroes */ }

@@ -1,5 +1,5 @@
 /*
- * Intel Langwell USB Device Controller driver
+ * Intel Langwell/Penwell USB Device Controller driver
  * Copyright (C) 2008-2009, Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
