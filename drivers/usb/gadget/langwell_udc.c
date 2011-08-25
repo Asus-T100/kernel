@@ -3363,6 +3363,7 @@ error:
 static int langwell_udc_suspend(struct pci_dev *pdev, pm_message_t state)
 {
 	struct langwell_udc	*dev = the_controller;
+	unsigned long		flags;
 
 	dev_dbg(&dev->pdev->dev, "---> %s()\n", __func__);
 
@@ -3374,6 +3375,11 @@ static int langwell_udc_suspend(struct pci_dev *pdev, pm_message_t state)
 	if (dev->got_irq)
 		free_irq(pdev->irq, dev);
 	dev->got_irq = 0;
+
+	spin_lock_irqsave(&dev->lock, flags);
+	/* stop all usb activities */
+	stop_activity(dev, dev->driver);
+	spin_unlock_irqrestore(&dev->lock, flags);
 
 	/* save PCI state */
 	pci_save_state(pdev);
