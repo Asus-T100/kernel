@@ -116,6 +116,22 @@ static const char *state_string(enum usb_otg_state state)
 	}
 }
 
+static const char *charger_string(enum usb_charger_type charger)
+{
+	switch (charger) {
+	case CHRG_SDP:
+		return "Standard Downstream Port";
+	case CHRG_CDP:
+		return "Charging Downstream Port";
+	case CHRG_DCP:
+		return "Dedicated Charging Port";
+	case CHRG_UNKNOWN:
+		return "Unknown";
+	default:
+		return "Undefined";
+	}
+}
+
 static struct penwell_otg *the_transceiver;
 
 void penwell_update_transceiver(void)
@@ -146,11 +162,246 @@ static int penwell_otg_set_peripheral(struct otg_transceiver *otg,
 	return 0;
 }
 
+static void penwell_otg_set_charger(enum usb_charger_type charger)
+{
+	struct penwell_otg	*pnw = the_transceiver;
+
+	dev_dbg(pnw->dev, "%s ---> %s\n", __func__,
+			charger_string(charger));
+
+	switch (charger) {
+	case CHRG_SDP:
+	case CHRG_DCP:
+	case CHRG_CDP:
+	case CHRG_ACA:
+	case CHRG_UNKNOWN:
+		pnw->charging_cap.chrg_type = charger;
+		break;
+	default:
+		dev_warn(pnw->dev, "undefined charger type\n");
+		break;
+	}
+
+	dev_dbg(pnw->dev, "%s <---\n", __func__);
+}
+
+static void _penwell_otg_update_chrg_cap(enum usb_charger_type charger,
+				unsigned mA)
+{
+	struct penwell_otg	*pnw = the_transceiver;
+	int			flag = 0;
+	int			event, retval;
+
+	dev_dbg(pnw->dev, "%s = %s, %d --->\n", __func__,
+			charger_string(charger), mA);
+
+	/* Check charger type information */
+	if (pnw->charging_cap.chrg_type != charger) {
+		if (pnw->charging_cap.chrg_type == CHRG_UNKNOWN ||
+			charger == CHRG_UNKNOWN) {
+			penwell_otg_set_charger(charger);
+		} else
+			return;
+	} else {
+		/* Do nothing if no update for current */
+		if (pnw->charging_cap.mA == mA)
+			return;
+	}
+
+	/* set current */
+	switch (pnw->charging_cap.chrg_type) {
+	case CHRG_SDP:
+		if ((pnw->charging_cap.mA == CHRG_CURR_DISCONN
+			|| pnw->charging_cap.mA == CHRG_CURR_SDP_LOW
+			|| pnw->charging_cap.mA == CHRG_CURR_SDP_HIGH)
+				&& mA == CHRG_CURR_SDP_SUSP) {
+			/* SDP event: enter suspend state */
+			event = USBCHRG_EVENT_SUSPEND;
+			flag = 1;
+		} else if (pnw->charging_cap.mA == CHRG_CURR_DISCONN
+				&& (mA == CHRG_CURR_SDP_LOW
+				|| mA == CHRG_CURR_SDP_HIGH)) {
+			/* SDP event: charger connect */
+			event = USBCHRG_EVENT_CONNECT;
+			flag = 1;
+		} else if (pnw->charging_cap.mA == CHRG_CURR_SDP_SUSP
+				&& (mA == CHRG_CURR_SDP_LOW
+				|| mA == CHRG_CURR_SDP_HIGH)) {
+			/* SDP event: resume from suspend state */
+			event = USBCHRG_EVENT_RESUME;
+			flag = 1;
+		} else if (pnw->charging_cap.mA == CHRG_CURR_SDP_LOW
+				&& mA == CHRG_CURR_SDP_HIGH) {
+			/* SDP event: configuration update */
+			event = USBCHRG_EVENT_UPDATE;
+			flag = 1;
+		} else if (pnw->charging_cap.mA == CHRG_CURR_SDP_HIGH
+				&& mA == CHRG_CURR_SDP_LOW) {
+			/* SDP event: configuration update */
+			event = USBCHRG_EVENT_UPDATE;
+			flag = 1;
+		} else
+			dev_dbg(pnw->dev, "SDP: no need to update EM\n");
+		break;
+	case CHRG_DCP:
+		if (mA == CHRG_CURR_DCP) {
+			/* DCP event: charger connect */
+			event = USBCHRG_EVENT_CONNECT;
+			flag = 1;
+		} else
+			dev_dbg(pnw->dev, "DCP: no need to update EM\n");
+		break;
+	case CHRG_CDP:
+		if (pnw->charging_cap.mA == CHRG_CURR_DISCONN
+				&& mA == CHRG_CURR_CDP) {
+			/* CDP event: charger connect */
+			event = USBCHRG_EVENT_CONNECT;
+			flag = 1;
+		} else if (pnw->charging_cap.mA == CHRG_CURR_CDP
+				&& mA == CHRG_CURR_CDP_HS) {
+			/* CDP event: mode update */
+			event = USBCHRG_EVENT_UPDATE;
+			flag = 1;
+		} else if (pnw->charging_cap.mA == CHRG_CURR_CDP_HS
+				&& mA == CHRG_CURR_CDP) {
+			/* CDP event: mode update */
+			event = USBCHRG_EVENT_UPDATE;
+			flag = 1;
+		} else
+			dev_dbg(pnw->dev, "CDP: no need to update EM\n");
+		break;
+	case CHRG_UNKNOWN:
+		if (mA == CHRG_CURR_DISCONN) {
+			/* event: chargers disconnect */
+			event = USBCHRG_EVENT_DISCONN;
+			flag = 1;
+		} else
+			dev_dbg(pnw->dev, "UNKNOWN: no need to update EM\n");
+		break;
+	default:
+		break;
+	}
+
+	if (flag) {
+		pnw->charging_cap.mA = mA;
+
+		/* Notify EM the charging current update */
+		dev_dbg(pnw->dev, "Notify EM charging capability change\n");
+		dev_dbg(pnw->dev, "%s event = %d mA = %d\n",
+			charger_string(pnw->charging_cap.chrg_type), event, mA);
+
+		if (pnw->bc_callback) {
+			retval = pnw->bc_callback(pnw->bc_arg, event,
+					&pnw->charging_cap);
+			if (retval)
+				dev_dbg(pnw->dev,
+					"bc callback return %d\n", retval);
+		}
+	}
+
+	dev_dbg(pnw->dev, "%s <---\n", __func__);
+}
+
+static void penwell_otg_update_chrg_cap(enum usb_charger_type charger,
+				unsigned mA)
+{
+	struct penwell_otg	*pnw = the_transceiver;
+	unsigned long		flags;
+
+	spin_lock_irqsave(&pnw->charger_lock, flags);
+	_penwell_otg_update_chrg_cap(charger, mA);
+	spin_unlock_irqrestore(&pnw->charger_lock, flags);
+}
+
 static int penwell_otg_set_power(struct otg_transceiver *otg,
 				unsigned mA)
 {
+	struct penwell_otg	*pnw = the_transceiver;
+	unsigned long		flags;
+
+	dev_dbg(pnw->dev, "%s --->\n", __func__);
+
+	spin_lock_irqsave(&pnw->charger_lock, flags);
+
+	if (pnw->charging_cap.chrg_type != CHRG_SDP) {
+		spin_unlock(&pnw->charger_lock);
+		return 0;
+	}
+
+	_penwell_otg_update_chrg_cap(CHRG_SDP, mA);
+
+	spin_unlock_irqrestore(&pnw->charger_lock, flags);
+
+	dev_dbg(pnw->dev, "%s <---\n", __func__);
+
 	return 0;
 }
+
+int penwell_otg_query_charging_cap(struct otg_bc_cap *cap)
+{
+	struct penwell_otg	*pnw = the_transceiver;
+	unsigned long		flags;
+
+	dev_dbg(pnw->dev, "%s --->\n", __func__);
+
+	if (pnw == NULL)
+		return -ENODEV;
+
+	if (cap == NULL)
+		return -EINVAL;
+
+	spin_lock_irqsave(&pnw->charger_lock, flags);
+	cap->chrg_type = pnw->charging_cap.chrg_type;
+	cap->mA = pnw->charging_cap.mA;
+	spin_unlock_irqrestore(&pnw->charger_lock, flags);
+
+	dev_dbg(pnw->dev, "%s <---\n", __func__);
+	return 0;
+}
+EXPORT_SYMBOL_GPL(penwell_otg_query_charging_cap);
+
+/* Register/unregister battery driver callback */
+void *penwell_otg_register_bc_callback(
+	int (*cb)(void *, int, struct otg_bc_cap *), void *arg)
+{
+	struct penwell_otg	*pnw = the_transceiver;
+	unsigned long		flags;
+
+	if (pnw == NULL)
+		return pnw;
+
+	spin_lock_irqsave(&pnw->charger_lock, flags);
+
+	if (pnw->bc_callback != NULL)
+		dev_dbg(pnw->dev, "callback has already registered\n");
+
+	pnw->bc_callback = cb;
+	pnw->bc_arg = arg;
+	spin_unlock_irqrestore(&pnw->charger_lock, flags);
+
+	return pnw;
+}
+EXPORT_SYMBOL_GPL(penwell_otg_register_bc_callback);
+
+int penwell_otg_unregister_bc_callback(void *handler)
+{
+	struct penwell_otg	*pnw = the_transceiver;
+	unsigned long		flags;
+
+	if (pnw == NULL)
+		return -ENODEV;
+
+	if (pnw != handler)
+		return -EINVAL;
+
+	spin_lock_irqsave(&pnw->charger_lock, flags);
+	pnw->bc_callback = NULL;
+	pnw->bc_arg = NULL;
+	spin_unlock_irqrestore(&pnw->charger_lock, flags);
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(penwell_otg_unregister_bc_callback);
 
 /* After probe, it should enable the power of USB PHY */
 static void penwell_otg_phy_enable(int on)
@@ -966,6 +1217,16 @@ static int penwell_otg_iotg_notify(struct notifier_block *nb,
 		dev_dbg(pnw->dev, "PNW OTG Nofity Client Driver remove\n");
 		flag = 1;
 		break;
+	case MID_OTG_NOTIFY_CLIENTFS:
+		dev_dbg(pnw->dev, "PNW OTG Notfiy Client FullSpeed\n");
+		penwell_otg_update_chrg_cap(CHRG_CDP, CHRG_CURR_CDP);
+		flag = 0;
+		break;
+	case MID_OTG_NOTIFY_CLIENTHS:
+		dev_dbg(pnw->dev, "PNW OTG Notfiy Client HighSpeed\n");
+		penwell_otg_update_chrg_cap(CHRG_CDP, CHRG_CURR_CDP_HS);
+		flag = 0;
+		break;
 	default:
 		dev_dbg(pnw->dev, "PNW OTG Nofity unknown notify message\n");
 		return NOTIFY_DONE;
@@ -1080,16 +1341,16 @@ static void penwell_otg_work(struct work_struct *work)
 			/* Check it is caused by ACA attachment */
 			if (hsm->id == ID_ACA_B) {
 				/* in this case, update current limit*/
-				if (iotg->otg.set_power)
-					iotg->otg.set_power(&iotg->otg, 1500);
+				penwell_otg_update_chrg_cap(CHRG_ACA,
+							CHRG_CURR_ACA);
 
 				/* make sure PHY low power state */
 				penwell_otg_phy_low_power(1);
 				break;
 			} else if (hsm->id == ID_ACA_C) {
 				/* in this case, update current limit*/
-				if (iotg->otg.set_power)
-					iotg->otg.set_power(&iotg->otg, 1500);
+				penwell_otg_update_chrg_cap(CHRG_ACA,
+							CHRG_CURR_ACA);
 			}
 
 			/* Clear power_up */
@@ -1121,24 +1382,52 @@ static void penwell_otg_work(struct work_struct *work)
 
 			if (charger_type == CHRG_DCP) {
 				dev_info(pnw->dev, "DCP detected\n");
+
+				/* DCP: set charger type, current, notify EM */
+				penwell_otg_update_chrg_cap(CHRG_DCP,
+							CHRG_CURR_DCP);
 				penwell_otg_phy_low_power(1);
-				iotg->otg.set_power(&iotg->otg, CHRG_CURR_DCP);
 				break;
+
 			} else if (charger_type == CHRG_CDP) {
 				dev_info(pnw->dev, "CDP detected\n");
-				iotg->otg.set_power(&iotg->otg, CHRG_CURR_CDP);
-			} else if (charger_type == CHRG_SDP)
+
+				/* CDP: set charger type, current, notify EM */
+				penwell_otg_update_chrg_cap(CHRG_CDP,
+							CHRG_CURR_CDP);
+
+				if (iotg->start_peripheral) {
+					iotg->start_peripheral(iotg);
+				} else {
+					dev_dbg(pnw->dev,
+						"client driver not support\n");
+					break;
+				}
+			} else if (charger_type == CHRG_SDP) {
 				dev_info(pnw->dev, "SDP detected\n");
-			else if (charger_type == CHRG_UNKNOWN)
+
+				/* SDP: set charger type */
+				penwell_otg_update_chrg_cap(CHRG_SDP,
+							pnw->charging_cap.mA);
+
+				if (iotg->start_peripheral) {
+					iotg->start_peripheral(iotg);
+				} else {
+					dev_dbg(pnw->dev,
+						"client driver not support\n");
+					break;
+				}
+			} else if (charger_type == CHRG_UNKNOWN) {
 				dev_info(pnw->dev, "Unknown Charger Found\n");
 
-			if (iotg->start_peripheral) {
-				iotg->start_peripheral(iotg);
-				iotg->otg.state = OTG_STATE_B_PERIPHERAL;
-			} else {
-				dev_dbg(pnw->dev, "client driver not loaded\n");
-				break;
+				/* Unknown: set charger type */
+				penwell_otg_update_chrg_cap(CHRG_UNKNOWN,
+							pnw->charging_cap.mA);
+				penwell_otg_phy_low_power(1);
 			}
+
+			iotg->otg.state = OTG_STATE_B_PERIPHERAL;
+
 		} else if ((hsm->b_bus_req || hsm->power_up ||
 				hsm->adp_change) && !hsm->b_srp_fail_tmr) {
 			if ((hsm->b_ssend_srp && hsm->b_se0_srp) ||
@@ -1166,9 +1455,9 @@ static void penwell_otg_work(struct work_struct *work)
 					"BUS is active, try SRP later\n");
 			}
 		} else if (!hsm->b_sess_vld && hsm->id == ID_B) {
-			if (iotg->otg.set_power)
-				iotg->otg.set_power(&iotg->otg, 0);
-			penwell_otg_phy_low_power(1);
+			/* Notify EM charger remove event */
+			penwell_otg_update_chrg_cap(CHRG_UNKNOWN,
+						CHRG_CURR_DISCONN);
 		}
 		break;
 
@@ -1193,10 +1482,16 @@ static void penwell_otg_work(struct work_struct *work)
 			iotg->otg.state = OTG_STATE_A_IDLE;
 			penwell_update_transceiver();
 		} else if (!hsm->b_sess_vld || hsm->id == ID_ACA_B) {
-			if (hsm->id == ID_ACA_B && iotg->otg.set_power)
-				iotg->otg.set_power(&iotg->otg, 1500);
-			else if (hsm->id == ID_B && iotg->otg.set_power)
-				iotg->otg.set_power(&iotg->otg, 0);
+			/* Move to B_IDLE state, VBUS off/ACA */
+
+			if (hsm->id == ID_ACA_B)
+				penwell_otg_update_chrg_cap(CHRG_ACA,
+							CHRG_CURR_ACA);
+			else if (hsm->id == ID_B) {
+				/* Notify EM charger remove event */
+				penwell_otg_update_chrg_cap(CHRG_UNKNOWN,
+							CHRG_CURR_DISCONN);
+			}
 
 			hsm->b_hnp_enable = 0;
 
@@ -1234,11 +1529,12 @@ static void penwell_otg_work(struct work_struct *work)
 			penwell_otg_add_timer(TB_ASE0_BRST_TMR);
 		} else if (hsm->id == ID_ACA_C) {
 			/* Make sure current limit updated */
-			if (iotg->otg.set_power)
-				iotg->otg.set_power(&iotg->otg, 1500);
+			penwell_otg_update_chrg_cap(CHRG_ACA, CHRG_CURR_ACA);
+#if 0
 		} else if (hsm->id == ID_B) {
 			if (iotg->otg.set_power)
 				iotg->otg.set_power(&iotg->otg, 100);
+#endif
 		}
 		break;
 
@@ -1268,12 +1564,16 @@ static void penwell_otg_work(struct work_struct *work)
 			iotg->otg.state = OTG_STATE_A_IDLE;
 			penwell_update_transceiver();
 		} else if (!hsm->b_sess_vld || hsm->id == ID_ACA_B) {
-			/* Move to B_IDLE state, VBUS off */
+			/* Move to B_IDLE state, VBUS off/ACA */
 
-			if (hsm->id == ID_ACA_B && iotg->otg.set_power)
-				iotg->otg.set_power(&iotg->otg, 1500);
-			else if (hsm->id == ID_B)
-				iotg->otg.set_power(&iotg->otg, 0);
+			if (hsm->id == ID_ACA_B)
+				penwell_otg_update_chrg_cap(CHRG_ACA,
+							CHRG_CURR_ACA);
+			else if (hsm->id == ID_B) {
+				/* Notify EM charger remove event */
+				penwell_otg_update_chrg_cap(CHRG_UNKNOWN,
+							CHRG_CURR_DISCONN);
+			}
 
 			/* Delete current timer */
 			penwell_otg_del_timer(TB_ASE0_BRST_TMR);
@@ -1330,12 +1630,13 @@ static void penwell_otg_work(struct work_struct *work)
 			iotg->otg.state = OTG_STATE_B_PERIPHERAL;
 		} else if (hsm->id == ID_ACA_C) {
 			/* Make sure current limit updated */
-			if (iotg->otg.set_power)
-				iotg->otg.set_power(&iotg->otg, 1500);
+			penwell_otg_update_chrg_cap(CHRG_ACA, CHRG_CURR_ACA);
 		} else if (hsm->id == ID_B) {
+#if 0
 			/* only set 2mA due to client function stopped */
 			if (iotg->otg.set_power)
 				iotg->otg.set_power(&iotg->otg, 2);
+#endif
 		}
 		break;
 
@@ -1359,10 +1660,16 @@ static void penwell_otg_work(struct work_struct *work)
 			iotg->otg.state = OTG_STATE_A_IDLE;
 			penwell_update_transceiver();
 		} else if (!hsm->b_sess_vld || hsm->id == ID_ACA_B) {
-			if (hsm->id == ID_ACA_B && iotg->otg.set_power)
-				iotg->otg.set_power(&iotg->otg, 1500);
-			else if (hsm->id == ID_B && iotg->otg.set_power)
-				iotg->otg.set_power(&iotg->otg, 0);
+			/* Move to B_IDLE state, VBUS off/ACA */
+
+			if (hsm->id == ID_ACA_B)
+				penwell_otg_update_chrg_cap(CHRG_ACA,
+							CHRG_CURR_ACA);
+			else if (hsm->id == ID_B) {
+				/* Notify EM charger remove event */
+				penwell_otg_update_chrg_cap(CHRG_UNKNOWN,
+							CHRG_CURR_DISCONN);
+			}
 
 			hsm->b_hnp_enable = 0;
 			hsm->b_bus_req = 0;
@@ -1401,11 +1708,7 @@ static void penwell_otg_work(struct work_struct *work)
 			iotg->otg.state = OTG_STATE_B_PERIPHERAL;
 		} else if (hsm->id == ID_ACA_C) {
 			/* Make sure current limit updated */
-			if (iotg->otg.set_power)
-				iotg->otg.set_power(&iotg->otg, 1500);
-		} else if (hsm->id == ID_B) {
-			if (iotg->otg.set_power)
-				iotg->otg.set_power(&iotg->otg, 100);
+			penwell_otg_update_chrg_cap(CHRG_ACA, CHRG_CURR_ACA);
 		}
 		break;
 
@@ -1414,8 +1717,9 @@ static void penwell_otg_work(struct work_struct *work)
 			pnw->iotg.otg.default_a = 0;
 			hsm->b_bus_req = 0;
 
-			if (hsm->id == ID_ACA_B && iotg->otg.set_power)
-				iotg->otg.set_power(&iotg->otg, 1500);
+			if (hsm->id == ID_ACA_B)
+				penwell_otg_update_chrg_cap(CHRG_ACA,
+							CHRG_CURR_ACA);
 
 			set_client_mode();
 			msleep(5);
@@ -1428,8 +1732,7 @@ static void penwell_otg_work(struct work_struct *work)
 			penwell_update_transceiver();
 		} else if (hsm->id == ID_ACA_A) {
 
-			if (iotg->otg.set_power)
-				iotg->otg.set_power(&iotg->otg, 1500);
+			penwell_otg_update_chrg_cap(CHRG_ACA, CHRG_CURR_ACA);
 
 			if (hsm->power_up)
 				hsm->power_up = 0;
@@ -1509,8 +1812,9 @@ static void penwell_otg_work(struct work_struct *work)
 			if (hsm->id == ID_ACA_A) {
 				if (iotg->otg.set_vbus)
 					iotg->otg.set_vbus(&iotg->otg, false);
-				if (iotg->otg.set_power)
-					iotg->otg.set_power(&iotg->otg, 1500);
+
+				penwell_otg_update_chrg_cap(CHRG_ACA,
+							CHRG_CURR_ACA);
 			}
 
 			hsm->b_conn = 0;
@@ -1554,9 +1858,6 @@ static void penwell_otg_work(struct work_struct *work)
 			/* Delete current timer and disable host function */
 			penwell_otg_del_timer(TA_WAIT_BCON_TMR);
 
-			if (iotg->otg.set_power)
-				iotg->otg.set_power(&iotg->otg, 0);
-
 			if (iotg->stop_host)
 				iotg->stop_host(iotg);
 			else
@@ -1580,8 +1881,7 @@ static void penwell_otg_work(struct work_struct *work)
 			if (!hsm->a_bus_req)
 				hsm->a_bus_req = 1;
 		} else if (hsm->id == ID_ACA_A) {
-			if (iotg->otg.set_power)
-				iotg->otg.set_power(&iotg->otg, 1500);
+			penwell_otg_update_chrg_cap(CHRG_ACA, CHRG_CURR_ACA);
 
 			/* Turn off VBUS */
 			if (iotg->otg.set_vbus)
@@ -1592,8 +1892,9 @@ static void penwell_otg_work(struct work_struct *work)
 	case OTG_STATE_A_HOST:
 		if (hsm->id == ID_B || hsm->id == ID_ACA_B || hsm->a_bus_drop) {
 			/* Move to A_WAIT_VFALL state, timeout/user request */
-			if (hsm->id == ID_ACA_B && iotg->otg.set_power)
-				iotg->otg.set_power(&iotg->otg, 1500);
+			if (hsm->id == ID_ACA_B)
+				penwell_otg_update_chrg_cap(CHRG_ACA,
+							CHRG_CURR_ACA);
 
 			if (iotg->stop_host)
 				iotg->stop_host(iotg);
@@ -1609,9 +1910,6 @@ static void penwell_otg_work(struct work_struct *work)
 			iotg->otg.state = OTG_STATE_A_WAIT_VFALL;
 		} else if (!hsm->a_vbus_vld) {
 			/* Move to A_VBUS_ERR state */
-
-			if (iotg->otg.set_power)
-				iotg->otg.set_power(&iotg->otg, 0);
 
 			if (iotg->stop_host)
 				iotg->stop_host(iotg);
@@ -1641,8 +1939,7 @@ static void penwell_otg_work(struct work_struct *work)
 			/* add kernel timer */
 			iotg->otg.state = OTG_STATE_A_WAIT_BCON;
 		} else if (hsm->id == ID_ACA_A) {
-			if (iotg->otg.set_power)
-				iotg->otg.set_power(&iotg->otg, 1500);
+			penwell_otg_update_chrg_cap(CHRG_ACA, CHRG_CURR_ACA);
 
 			/* Turn off VBUS */
 			if (iotg->otg.set_vbus)
@@ -1660,8 +1957,9 @@ static void penwell_otg_work(struct work_struct *work)
 				hsm->a_aidl_bdis_tmout = 0;
 			penwell_otg_del_timer(TA_AIDL_BDIS_TMR);
 
-			if (hsm->id == ID_ACA_B && iotg->otg.set_power)
-				iotg->otg.set_power(&iotg->otg, 1500);
+			if (hsm->id == ID_ACA_B)
+				penwell_otg_update_chrg_cap(CHRG_ACA,
+							CHRG_CURR_ACA);
 
 			if (iotg->stop_host)
 				iotg->stop_host(iotg);
@@ -1680,9 +1978,6 @@ static void penwell_otg_work(struct work_struct *work)
 
 			/* Delete current timer and clear flags */
 			penwell_otg_del_timer(TA_AIDL_BDIS_TMR);
-
-			if (iotg->otg.set_power)
-				iotg->otg.set_power(&iotg->otg, 0);
 
 			if (iotg->stop_host)
 				iotg->stop_host(iotg);
@@ -1735,14 +2030,12 @@ static void penwell_otg_work(struct work_struct *work)
 			penwell_otg_loc_sof(1);
 			iotg->otg.state = OTG_STATE_A_HOST;
 		} else if (hsm->id == ID_ACA_A) {
-			if (hsm->id == ID_ACA_A && iotg->otg.set_power)
-				iotg->otg.set_power(&iotg->otg, 1500);
+			penwell_otg_update_chrg_cap(CHRG_ACA, CHRG_CURR_ACA);
 
 			/* Turn off VBUS */
 			if (iotg->otg.set_vbus)
 				iotg->otg.set_vbus(&iotg->otg, false);
 		}
-
 		break;
 	case OTG_STATE_A_PERIPHERAL:
 		if (hsm->id == ID_B || hsm->a_bus_drop) {
@@ -1769,9 +2062,6 @@ static void penwell_otg_work(struct work_struct *work)
 
 			/* Delete current timer and disable client function */
 			penwell_otg_del_timer(TA_BIDL_ADIS_TMR);
-
-			if (iotg->otg.set_power)
-				iotg->otg.set_power(&iotg->otg, 0);
 
 			if (iotg->stop_peripheral)
 				iotg->stop_peripheral(iotg);
@@ -1815,8 +2105,7 @@ static void penwell_otg_work(struct work_struct *work)
 			if (!timer_pending(&pnw->hsm_timer))
 				penwell_otg_add_timer(TA_BIDL_ADIS_TMR);
 		} else if (hsm->id == ID_ACA_A) {
-			if (hsm->id == ID_ACA_A && iotg->otg.set_power)
-				iotg->otg.set_power(&iotg->otg, 1500);
+			penwell_otg_update_chrg_cap(CHRG_ACA, CHRG_CURR_ACA);
 
 			/* Turn off VBUS */
 			if (iotg->otg.set_vbus)
@@ -1987,6 +2276,38 @@ show_hsm(struct device *_dev, struct device_attribute *attr, char *buf)
 	return PAGE_SIZE - size;
 }
 static DEVICE_ATTR(hsm, S_IRUGO, show_hsm, NULL);
+
+static ssize_t
+show_chargers(struct device *_dev, struct device_attribute *attr, char *buf)
+{
+	struct penwell_otg		*pnw = the_transceiver;
+	char				*next;
+	unsigned			size, t;
+	enum usb_charger_type		type;
+	unsigned int			mA;
+	unsigned long			flags;
+
+	next = buf;
+	size = PAGE_SIZE;
+
+	spin_lock_irqsave(&pnw->charger_lock, flags);
+	type = pnw->charging_cap.chrg_type;
+	mA = pnw->charging_cap.mA;
+	spin_unlock_irqrestore(&pnw->charger_lock, flags);
+
+	t = scnprintf(next, size,
+		"USB Battery Charging Capability\n"
+		"\tUSB Charger Type:  %s\n"
+		"\tMax Charging Current:  %u\n",
+		charger_string(type),
+		mA
+		);
+	size -= t;
+	next += t;
+
+	return PAGE_SIZE - size;
+}
+static DEVICE_ATTR(chargers, S_IRUGO, show_chargers, NULL);
 
 static ssize_t
 get_a_bus_req(struct device *dev, struct device_attribute *attr, char *buf)
@@ -2265,6 +2586,11 @@ static int penwell_otg_probe(struct pci_dev *pdev,
 	init_timer(&pnw->hnp_poll_timer);
 	init_completion(&pnw->adp.adp_comp);
 
+	/* Battery Charging part */
+	spin_lock_init(&pnw->charger_lock);
+	pnw->charging_cap.mA = CHRG_CURR_DISCONN;
+	pnw->charging_cap.chrg_type = CHRG_UNKNOWN;
+
 	ATOMIC_INIT_NOTIFIER_HEAD(&pnw->iotg.iotg_notifier);
 
 	pnw->iotg_notifier.notifier_call = penwell_otg_iotg_notify;
@@ -2306,6 +2632,13 @@ static int penwell_otg_probe(struct pci_dev *pdev,
 	if (retval < 0) {
 		dev_dbg(pnw->dev,
 			"Can't hsm sysfs attribute: %d\n", retval);
+		goto err;
+	}
+
+	retval = device_create_file(&pdev->dev, &dev_attr_chargers);
+	if (retval < 0) {
+		dev_dbg(pnw->dev,
+			"Can't chargers sysfs attribute: %d\n", retval);
 		goto err;
 	}
 
@@ -2353,6 +2686,7 @@ static void penwell_otg_remove(struct pci_dev *pdev)
 	otg_set_transceiver(NULL);
 	pci_disable_device(pdev);
 	sysfs_remove_group(&pdev->dev.kobj, &debug_dev_attr_group);
+	device_remove_file(&pdev->dev, &dev_attr_chargers);
 	device_remove_file(&pdev->dev, &dev_attr_hsm);
 	device_remove_file(&pdev->dev, &dev_attr_registers);
 	kfree(pnw);

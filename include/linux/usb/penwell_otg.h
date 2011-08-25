@@ -304,6 +304,11 @@ struct penwell_otg {
 	struct notifier_block		iotg_notifier;
 
 	struct adp_status		adp;
+
+	spinlock_t			charger_lock;
+	struct otg_bc_cap		charging_cap;
+	int (*bc_callback)(void *arg, int event, struct otg_bc_cap *cap);
+	void				*bc_arg;
 };
 
 static inline
@@ -311,5 +316,10 @@ struct penwell_otg *iotg_to_penwell(struct intel_mid_otg_xceiv *iotg)
 {
 	return container_of(iotg, struct penwell_otg, iotg);
 }
+
+extern int penwell_otg_query_charging_cap(struct otg_bc_cap *cap);
+extern void *penwell_otg_register_bc_callback(
+	int (*cb)(void *, int, struct otg_bc_cap *), void *arg);
+extern int penwell_otg_unregister_bc_callback(void *handler);
 
 #endif /* __PENWELL_OTG_H__ */
