@@ -112,31 +112,33 @@
 #	define SUSBCHPDET		BIT(6)
 #	define SUSBDCDET		BIT(2)
 #	define MSIC_SPWRSRINT1_MASK	(BIT(6) | BIT(2))
-#	define SPWRSRINT1_CHRG_PORT	BIT(6)
-#	define SPWRSRINT1_HOST_PORT	0
-#	define SPWRSRINT1_DEDT_CHRG	(BIT(6) | BIT(2))
+#	define SPWRSRINT1_CDP		BIT(6)
+#	define SPWRSRINT1_SDP		0
+#	define SPWRSRINT1_DCP		BIT(2)
 #define MSIC_IS4SET		0x2c8	/* Intel Specific */
 #	define IS4_CHGDSERXDPINV	BIT(5)
+#define MSIC_OTGCTRL		0x39c
 #define MSIC_OTGCTRLSET		0x340
 #define MSIC_OTGCTRLCLR		0x341
-#	define DMPULLDOWNCLR		BIT(2)
-#	define DPPULLDOWNCLR		BIT(1)
+#	define DMPULLDOWN		BIT(2)
+#	define DPPULLDOWN		BIT(1)
+#define MSIC_PWRCTRL		0x3b5
 #define MSIC_PWRCTRLSET		0x342
-#	define DPWKPUENSET		BIT(4)
-#	define SWCNTRLSET		BIT(0)
 #define MSIC_PWRCTRLCLR		0x343
-#	define DPVSRCENCLR		BIT(6)
-#	define SWCNTRLCLR		BIT(0)
+#	define HWDET			BIT(7)
+#	define DPVSRCEN			BIT(6)
+#	define DPWKPUEN			BIT(4)
+#	define SWCNTRL			BIT(0)
+#define MSIC_FUNCTRL		0x398
 #define MSIC_FUNCTRLSET		0x344
-#	define OPMODESET0		BIT(3)
 #define MSIC_FUNCTRLCLR		0x345
-#	define OPMODECLR1		BIT(4)
+#	define OPMODE1			BIT(4)
+#	define OPMODE0			BIT(3)
+#define MSIC_VS3		0x3b9
 #define MSIC_VS3SET		0x346	/* Vendor Specific */
-#	define SWUSBDETSET		BIT(4)
-#	define DATACONENSET		BIT(3)
 #define MSIC_VS3CLR		0x347
-#	define SWUSBDETCLR		BIT(4)
-#	define DATACONENCLR		BIT(3)
+#	define SWUSBDET			BIT(4)
+#	define DATACONEN		BIT(3)
 #define MSIC_ULPIACCESSMODE	0x348
 #	define SPIMODE			BIT(0)
 
@@ -210,6 +212,10 @@
 
 #define FS_ADPI_MASK	(ADPIS_ADPRAMPI | ADPIS_SNSMISSI | ADPIS_PRBTRGI)
 
+/* define Data connect checking timeout and polling interval */
+#define DATACON_TIMEOUT		1000
+#define DATACON_INTERVAL	50
+
 enum penwell_otg_timer_type {
 	TA_WAIT_VRISE_TMR,
 	TA_WAIT_BCON_TMR,
@@ -242,10 +248,41 @@ enum msic_vendor {
 	MSIC_VD_UNKNOWN
 };
 
+/* charger defined in BC 1.1 */
+enum usb_charger_type {
+	CHRG_UNKNOWN,
+	CHRG_SDP,	/* Standard Downstream Port */
+	CHRG_CDP,	/* Charging Downstream Port */
+	CHRG_DCP,	/* Dedicated Charging Port */
+	CHRG_ACA	/* Accessory Charger Adapter */
+};
+
 struct adp_status {
 	struct completion	adp_comp;
 	u8			t_adp_rise;
 };
+
+/* OTG Battery Charging capability is used in charger capability detection */
+struct otg_bc_cap {
+	enum usb_charger_type	chrg_type;
+	unsigned int		mA;
+#define CHRG_CURR_UNKNOWN	0
+#define CHRG_CURR_DISCONN	0
+#define CHRG_CURR_SDP_SUSP	2
+#define CHRG_CURR_SDP_LOW	100
+#define CHRG_CURR_SDP_HIGH	500
+#define CHRG_CURR_CDP		500
+#define CHRG_CURR_CDP_HS	950
+#define CHRG_CURR_DCP	1500
+#define CHRG_CURR_ACA	1500
+};
+
+/* define event ids to notify battery driver */
+#define USBCHRG_EVENT_CONNECT	1
+#define USBCHRG_EVENT_DISCONN	2
+#define USBCHRG_EVENT_SUSPEND	3
+#define USBCHRG_EVENT_RESUME	4
+#define USBCHRG_EVENT_UPDATE	5
 
 struct penwell_otg {
 	struct intel_mid_otg_xceiv	iotg;
@@ -261,6 +298,7 @@ struct penwell_otg {
 	struct timer_list		hsm_timer;
 	struct timer_list		hnp_poll_timer;
 
+	struct mutex			msic_mutex;
 	enum msic_vendor		msic;
 
 	struct notifier_block		iotg_notifier;

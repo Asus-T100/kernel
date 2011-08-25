@@ -61,6 +61,7 @@ static int penwell_otg_set_host(struct otg_transceiver *otg,
 static int penwell_otg_set_peripheral(struct otg_transceiver *otg,
 				struct usb_gadget *gadget);
 static int penwell_otg_start_srp(struct otg_transceiver *otg);
+static int penwell_otg_msic_write(u16 addr, u8 data);
 
 static const struct pci_device_id pci_ids[] = {{
 	.class =        ((PCI_CLASS_SERIAL_USB << 8) | 0x20),
@@ -155,19 +156,22 @@ static int penwell_otg_set_power(struct otg_transceiver *otg,
 static void penwell_otg_phy_enable(int on)
 {
 	struct penwell_otg	*pnw = the_transceiver;
-	u16			addr;
 	u8			data;
 
 	dev_dbg(pnw->dev, "%s ---> %s\n", __func__, on ? "on" : "off");
 
-	addr = MSIC_VUSB330CNT;
 	data = on ? 0x37 : 0x24;
 
-	if (intel_scu_ipc_iowrite8(addr, data)) {
-		dev_err(pnw->dev, "Fail to access register for"
-			" OTG PHY power - write reg 0x%x failed.\n", addr);
+	mutex_lock(&pnw->msic_mutex);
+
+	if (penwell_otg_msic_write(MSIC_VUSB330CNT, data)) {
+		mutex_unlock(&pnw->msic_mutex);
+		dev_err(pnw->dev, "Fail to enable PHY power\n");
 		return;
 	}
+
+	mutex_unlock(&pnw->msic_mutex);
+
 	dev_dbg(pnw->dev, "%s <---\n", __func__);
 }
 
@@ -175,25 +179,25 @@ static void penwell_otg_phy_enable(int on)
 static int penwell_otg_set_vbus(struct otg_transceiver *otg, bool enabled)
 {
 	struct penwell_otg	*pnw = the_transceiver;
-	u16			addr;
-	u8			data, mask;
+	u8			data;
+	int			retval;
 
 	dev_dbg(pnw->dev, "%s ---> %s\n", __func__, enabled ? "on" : "off");
 
-	addr = MSIC_VOTGCNT;
 	data = enabled ? VOTGEN : 0;
-	mask = VOTGEN;
 
-	if (intel_scu_ipc_update_register(addr, data, mask)) {
-		dev_err(pnw->dev, "Fail to drive power on OTG Port - "
-				"update register 0x%x failed.\n", addr);
-		return -EBUSY;
-	}
+	mutex_lock(&pnw->msic_mutex);
 
-	dev_dbg(pnw->dev, "VOTGCNT val = 0x%x", data);
+	retval = intel_scu_ipc_update_register(MSIC_VOTGCNT, data, VOTGEN);
+
+	if (retval)
+		dev_err(pnw->dev, "Fail to set power on OTG Port\n");
+
+	mutex_unlock(&pnw->msic_mutex);
+
 	dev_dbg(pnw->dev, "%s <---\n", __func__);
 
-	return 0;
+	return retval;
 }
 
 static int penwell_otg_ulpi_run(void)
@@ -414,6 +418,193 @@ static void penwell_otg_HABA(int on)
 	else
 		writel((val & ~OTGSC_INTSTS_MASK) & ~OTGSC_HABA,
 					pnw->iotg.base + CI_OTGSC);
+}
+
+/* write 8bit msic register */
+static int penwell_otg_msic_write(u16 addr, u8 data)
+{
+	struct penwell_otg	*pnw = the_transceiver;
+	int			retval = 0;
+
+	retval = intel_scu_ipc_iowrite8(addr, data);
+	if (retval) {
+		dev_warn(pnw->dev, "Failed to write MSIC register %x\n", addr);
+		return retval;
+	}
+
+	return retval;
+}
+
+/* USB related register in MSIC can be access via SPI address and ulpi address
+ * Access the control register to switch */
+static void penwell_otg_msic_spi_access(bool enabled)
+{
+	struct penwell_otg	*pnw = the_transceiver;
+	u8			data;
+
+	dev_dbg(pnw->dev, "%s --->\n", __func__);
+
+	/* Set ULPI ACCESS MODE */
+	data = enabled ? SPIMODE : 0;
+
+	penwell_otg_msic_write(MSIC_ULPIACCESSMODE, data);
+
+	dev_dbg(pnw->dev, "%s <---\n", __func__);
+}
+
+/* USB Battery Charger detection related functions */
+/* Data contact detection is the first step for charger detection */
+static int penwell_otg_data_contact_detect(void)
+{
+	struct penwell_otg	*pnw = the_transceiver;
+	u8			data;
+	int			count = 10;
+	int			retval = 0;
+
+	dev_dbg(pnw->dev, "%s --->\n", __func__);
+
+	/* Enable SPI access */
+	penwell_otg_msic_spi_access(true);
+
+	/* Set POWER_CTRL_CLR */
+	retval = penwell_otg_msic_write(MSIC_PWRCTRLCLR, DPVSRCEN);
+	if (retval)
+		return retval;
+
+	/* Set FUNC_CTRL_SET */
+	retval = penwell_otg_msic_write(MSIC_FUNCTRLSET, OPMODE0);
+	if (retval)
+		return retval;
+
+	/* Set FUNC_CTRL_CLR */
+	retval = penwell_otg_msic_write(MSIC_FUNCTRLCLR, OPMODE1);
+	if (retval)
+		return retval;
+
+	/* Set OTG_CTRL_CLR */
+	retval = penwell_otg_msic_write(MSIC_OTGCTRLCLR,
+					DMPULLDOWN | DPPULLDOWN);
+	if (retval)
+		return retval;
+
+	/* Set POWER_CTRL_CLR */
+	retval = penwell_otg_msic_write(MSIC_PWRCTRLCLR, SWCNTRL);
+	if (retval)
+		return retval;
+
+	retval = penwell_otg_msic_write(MSIC_VS3SET, DATACONEN | SWUSBDET);
+	if (retval)
+		return retval;
+
+	dev_dbg(pnw->dev, "Start Polling for Data contact detection!\n");
+
+	while (count) {
+		retval = intel_scu_ipc_ioread8(MSIC_PWRCTRL, &data);
+		if (retval) {
+			dev_warn(pnw->dev, "Failed to read MSIC register\n");
+			return retval;
+		}
+
+		if (data & DPVSRCEN) {
+			dev_dbg(pnw->dev, "Data contact detected!\n");
+			return 0;
+		}
+		count--;
+		/* Interval is 50ms */
+		msleep(50);
+	}
+
+	dev_dbg(pnw->dev, "Data contact Timeout\n");
+
+	retval = penwell_otg_msic_write(MSIC_VS3CLR, DATACONEN | SWUSBDET);
+	if (retval)
+		return retval;
+
+	udelay(100);
+
+	retval = penwell_otg_msic_write(MSIC_VS3SET, SWUSBDET);
+	if (retval)
+		return retval;
+
+	dev_dbg(pnw->dev, "%s <---\n", __func__);
+	return 0;
+}
+
+static int penwell_otg_charger_detect(void)
+{
+	struct penwell_otg		*pnw = the_transceiver;
+
+	dev_dbg(pnw->dev, "%s --->\n", __func__);
+
+	msleep(125);
+
+	dev_dbg(pnw->dev, "%s <---\n", __func__);
+
+	return 0;
+}
+
+static int penwell_otg_charger_type_detect(void)
+{
+	struct penwell_otg		*pnw = the_transceiver;
+	enum usb_charger_type		charger;
+	u8				data;
+	int				retval;
+
+	dev_dbg(pnw->dev, "%s --->\n", __func__);
+
+	retval = penwell_otg_msic_write(MSIC_VS3CLR, DATACONEN);
+	if (retval)
+		return retval;
+
+	retval = penwell_otg_msic_write(MSIC_PWRCTRLSET, DPWKPUEN | SWCNTRL);
+	if (retval)
+		return retval;
+
+	retval = penwell_otg_msic_write(MSIC_PWRCTRLCLR, DPVSRCEN);
+	if (retval)
+		return retval;
+
+	retval = penwell_otg_msic_write(MSIC_OTGCTRLCLR,
+					DMPULLDOWN | DPPULLDOWN);
+	if (retval)
+		return retval;
+
+	msleep(55);
+
+	retval = penwell_otg_msic_write(MSIC_PWRCTRLCLR,
+					SWCNTRL | DPWKPUEN | HWDET);
+	if (retval)
+		return retval;
+
+	msleep(1);
+
+	/* Enable ULPI mode */
+	penwell_otg_msic_spi_access(false);
+
+	retval = intel_scu_ipc_ioread8(MSIC_SPWRSRINT1, &data);
+	if (retval) {
+		dev_warn(pnw->dev, "Failed to read MSIC register\n");
+		return retval;
+	}
+
+	switch (data & MSIC_SPWRSRINT1_MASK) {
+	case SPWRSRINT1_SDP:
+		charger = CHRG_SDP;
+		break;
+	case SPWRSRINT1_DCP:
+		charger = CHRG_DCP;
+		break;
+	case SPWRSRINT1_CDP:
+		charger = CHRG_CDP;
+		break;
+	default:
+		charger = CHRG_UNKNOWN;
+		break;
+	}
+
+	dev_dbg(pnw->dev, "%s <---\n", __func__);
+
+	return charger;
 }
 
 void penwell_otg_nsf_msg(unsigned long indicator)
@@ -851,6 +1042,8 @@ static void penwell_otg_work(struct work_struct *work)
 					struct penwell_otg, work);
 	struct intel_mid_otg_xceiv	*iotg = &pnw->iotg;
 	struct otg_hsm			*hsm = &iotg->hsm;
+	enum usb_charger_type		charger_type;
+	int				retval;
 
 	dev_dbg(pnw->dev,
 		"old state = %s\n", state_string(iotg->otg.state));
@@ -911,6 +1104,34 @@ static void penwell_otg_work(struct work_struct *work)
 			hsm->b_sess_end = 0;
 			hsm->a_bus_suspend = 0;
 
+			/* Start USB Battery charger detection flow */
+
+			mutex_lock(&pnw->msic_mutex);
+			/* Enable data contact detection */
+			penwell_otg_data_contact_detect();
+			/* Enable charger detection functionality */
+			penwell_otg_charger_detect();
+			retval = penwell_otg_charger_type_detect();
+			mutex_unlock(&pnw->msic_mutex);
+			if (retval < 0) {
+				dev_warn(pnw->dev, "Charger detect failure\n");
+				break;
+			} else
+				charger_type = retval;
+
+			if (charger_type == CHRG_DCP) {
+				dev_info(pnw->dev, "DCP detected\n");
+				penwell_otg_phy_low_power(1);
+				iotg->otg.set_power(&iotg->otg, CHRG_CURR_DCP);
+				break;
+			} else if (charger_type == CHRG_CDP) {
+				dev_info(pnw->dev, "CDP detected\n");
+				iotg->otg.set_power(&iotg->otg, CHRG_CURR_CDP);
+			} else if (charger_type == CHRG_SDP)
+				dev_info(pnw->dev, "SDP detected\n");
+			else if (charger_type == CHRG_UNKNOWN)
+				dev_info(pnw->dev, "Unknown Charger Found\n");
+
 			if (iotg->start_peripheral) {
 				iotg->start_peripheral(iotg);
 				iotg->otg.state = OTG_STATE_B_PERIPHERAL;
@@ -918,7 +1139,6 @@ static void penwell_otg_work(struct work_struct *work)
 				dev_dbg(pnw->dev, "client driver not loaded\n");
 				break;
 			}
-
 		} else if ((hsm->b_bus_req || hsm->power_up ||
 				hsm->adp_change) && !hsm->b_srp_fail_tmr) {
 			if ((hsm->b_ssend_srp && hsm->b_se0_srp) ||
@@ -2054,6 +2274,7 @@ static int penwell_otg_probe(struct pci_dev *pdev,
 		goto err;
 	}
 
+	mutex_init(&pnw->msic_mutex);
 	pnw->msic = penwell_otg_check_msic();
 
 	penwell_otg_phy_enable(1);
