@@ -1218,8 +1218,7 @@ static int langwell_wakeup(struct usb_gadget *_gadget)
 		dev_info(&dev->pdev->dev, "device remote wakeup\n");
 
 	/* exit PHY low power suspend */
-	if (dev->pdev->device != 0x0829)
-		langwell_phy_low_power(dev, 0);
+	langwell_phy_low_power(dev, 0);
 
 	/* force port resume */
 	portsc1 |= PORTS_FPR;
@@ -1912,8 +1911,7 @@ static int langwell_stop(struct usb_gadget_driver *driver)
 		return -EINVAL;
 
 	/* exit PHY low power suspend */
-	if (dev->pdev->device != 0x0829)
-		langwell_phy_low_power(dev, 0);
+	langwell_phy_low_power(dev, 0);
 
 	/* unbind OTG transceiver */
 	if (dev->transceiver)
@@ -2797,8 +2795,7 @@ static void handle_bus_suspend(struct langwell_udc *dev)
 	}
 
 	/* enter PHY low power suspend */
-	if (dev->pdev->device != 0x0829)
-		langwell_phy_low_power(dev, 1);
+	langwell_phy_low_power(dev, 1);
 
 	dev_dbg(&dev->pdev->dev, "<--- %s()\n", __func__);
 }
@@ -2812,8 +2809,7 @@ static void handle_bus_resume(struct langwell_udc *dev)
 	dev->resume_state = 0;
 
 	/* exit PHY low power suspend */
-	if (dev->pdev->device != 0x0829)
-		langwell_phy_low_power(dev, 0);
+	langwell_phy_low_power(dev, 0);
 
 #ifdef	OTG_TRANSCEIVER
 	atomic_notifier_call_chain(&dev->iotg->iotg_notifier,
@@ -3390,8 +3386,7 @@ static int langwell_udc_suspend(struct pci_dev *pdev, pm_message_t state)
 	pci_set_power_state(pdev, PCI_D3hot);
 
 	/* enter PHY low power suspend */
-	if (dev->pdev->device != 0x0829)
-		langwell_phy_low_power(dev, 1);
+	langwell_phy_low_power(dev, 1);
 
 	dev_dbg(&dev->pdev->dev, "<--- %s()\n", __func__);
 	return 0;
@@ -3407,8 +3402,7 @@ static int langwell_udc_resume(struct pci_dev *pdev)
 	dev_dbg(&dev->pdev->dev, "---> %s()\n", __func__);
 
 	/* exit PHY low power suspend */
-	if (dev->pdev->device != 0x0829)
-		langwell_phy_low_power(dev, 0);
+	langwell_phy_low_power(dev, 0);
 
 	/* set device D0 power state */
 	pci_set_power_state(pdev, PCI_D0);
