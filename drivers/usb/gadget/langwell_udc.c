@@ -672,7 +672,7 @@ static struct langwell_dtd *build_dtd(struct langwell_request *req,
 			(unsigned)DTD_MAX_TRANSFER_LENGTH);
 
 	/* create dTD dma_pool resource */
-	dtd = dma_pool_alloc(dev->dtd_pool, GFP_KERNEL, dma);
+	dtd = dma_pool_alloc(dev->dtd_pool, GFP_ATOMIC, dma);
 	if (dtd == NULL)
 		return dtd;
 	dtd->dtd_dma = *dma;
