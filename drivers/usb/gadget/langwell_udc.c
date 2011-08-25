@@ -3081,6 +3081,7 @@ static int langwell_udc_probe(struct pci_dev *pdev,
 	struct langwell_udc	*dev;
 #ifndef	OTG_TRANSCEIVER
 	unsigned long		resource, len;
+	int			size;
 #endif
 	void			__iomem *base = NULL;
 	int			retval;
