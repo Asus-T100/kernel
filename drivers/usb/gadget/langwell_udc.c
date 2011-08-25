@@ -1898,6 +1898,10 @@ static int langwell_start(struct usb_gadget_driver *driver,
 	dev->ep0_state = WAIT_FOR_SETUP;
 	dev->ep0_dir = USB_DIR_OUT;
 
+	/* bind OTG transceiver */
+	if (dev->transceiver)
+		(void)otg_set_peripheral(dev->transceiver, &dev->gadget);
+
 	/* enable interrupt and set controller to run state */
 	if (dev->got_irq)
 		langwell_udc_start(dev);
@@ -2337,26 +2341,21 @@ static void handle_setup_packet(struct langwell_udc *dev,
 					rc = -EOPNOTSUPP;
 				}
 				break;
+				dev->gadget.b_hnp_enable = 1;
+				dev->dev_status |= (1 << wValue);
+				break;
+			case USB_DEVICE_A_HNP_SUPPORT:
+				dev->gadget.a_hnp_support = 1;
+				dev->dev_status |= (1 << wValue);
+				break;
+			case USB_DEVICE_A_ALT_HNP_SUPPORT:
+				dev->gadget.a_alt_hnp_support = 1;
+				dev->dev_status |= (1 << wValue);
+				break;
 			default:
 				rc = -EOPNOTSUPP;
 				break;
 			}
-
-			if (!gadget_is_otg(&dev->gadget))
-				break;
-			else if (setup->bRequest == USB_DEVICE_B_HNP_ENABLE) {
-				dev->gadget.b_hnp_enable = 1;
-#ifdef	OTG_TRANSCEIVER
-				if (!dev->lotg->otg.default_a)
-					dev->lotg->hsm.b_hnp_enable = 1;
-#endif
-			} else if (setup->bRequest == USB_DEVICE_A_HNP_SUPPORT)
-				dev->gadget.a_hnp_support = 1;
-			else if (setup->bRequest ==
-					USB_DEVICE_A_ALT_HNP_SUPPORT)
-				dev->gadget.a_alt_hnp_support = 1;
-			else
-				break;
 		} else
 			break;
 
@@ -2798,12 +2797,6 @@ static void handle_usb_reset(struct langwell_udc *dev)
 		dev->usb_state = USB_STATE_ATTACHED;
 	}
 
-#ifdef	OTG_TRANSCEIVER
-	/* refer to USB OTG 6.6.2.3 b_hnp_en is cleared */
-	if (!dev->lotg->otg.default_a)
-		dev->lotg->hsm.b_hnp_enable = 0;
-#endif
-
 	dev_vdbg(&dev->pdev->dev, "<--- %s()\n", __func__);
 }
 
@@ -2817,26 +2810,8 @@ static void handle_bus_suspend(struct langwell_udc *dev)
 	dev->usb_state = USB_STATE_SUSPENDED;
 
 #ifdef	OTG_TRANSCEIVER
-	if (dev->lotg->otg.default_a) {
-		if (dev->lotg->hsm.b_bus_suspend_vld == 1) {
-			dev->lotg->hsm.b_bus_suspend = 1;
-			/* notify transceiver the state changes */
-			if (spin_trylock(&dev->lotg->wq_lock)) {
-				langwell_update_transceiver();
-				spin_unlock(&dev->lotg->wq_lock);
-			}
-		}
-		dev->lotg->hsm.b_bus_suspend_vld++;
-	} else {
-		if (!dev->lotg->hsm.a_bus_suspend) {
-			dev->lotg->hsm.a_bus_suspend = 1;
-			/* notify transceiver the state changes */
-			if (spin_trylock(&dev->lotg->wq_lock)) {
-				langwell_update_transceiver();
-				spin_unlock(&dev->lotg->wq_lock);
-			}
-		}
-	}
+	atomic_notifier_call_chain(&dev->iotg->iotg_notifier,
+				MID_OTG_NOTIFY_CSUSPEND, dev->iotg);
 #endif
 
 	/* report suspend to the driver */
@@ -2870,8 +2845,8 @@ static void handle_bus_resume(struct langwell_udc *dev)
 		langwell_phy_low_power(dev, 0);
 
 #ifdef	OTG_TRANSCEIVER
-	if (dev->lotg->otg.default_a == 0)
-		dev->lotg->hsm.a_bus_suspend = 0;
+	atomic_notifier_call_chain(&dev->iotg->iotg_notifier,
+				MID_OTG_NOTIFY_CRESUME, dev->iotg);
 #endif
 
 	/* report resume to the driver */
@@ -3105,7 +3080,7 @@ static void langwell_udc_remove(struct pci_dev *pdev)
 	if (dev->transceiver) {
 		otg_put_transceiver(dev->transceiver);
 		dev->transceiver = NULL;
-		dev->lotg = NULL;
+		dev->iotg = NULL;
 	}
 #endif
 
@@ -3141,7 +3116,6 @@ static int langwell_udc_probe(struct pci_dev *pdev,
 	unsigned long		resource, len;
 #endif
 	void			__iomem *base = NULL;
-	size_t			size;
 	int			retval;
 
 	if (the_controller) {
@@ -3169,8 +3143,10 @@ static int langwell_udc_probe(struct pci_dev *pdev,
 	/* mem region and register base */
 	dev->region = 1;
 	dev->transceiver = otg_get_transceiver();
-	dev->lotg = otg_to_langwell(dev->transceiver);
-	base = dev->lotg->regs;
+
+	dev->iotg = otg_to_mid_xceiv(dev->transceiver);
+
+	base = dev->iotg->base;
 #else
 	pci_set_drvdata(pdev, dev);
 
@@ -3269,6 +3245,7 @@ static int langwell_udc_probe(struct pci_dev *pdev,
 		goto error;
 	}
 
+#ifndef	OTG_TRANSCEIVER
 	/* allocate device dQH memory */
 	size = dev->ep_max * sizeof(struct langwell_dqh);
 	dev_vdbg(&dev->pdev->dev, "orig size = %zd\n", size);
@@ -3287,6 +3264,7 @@ static int langwell_udc_probe(struct pci_dev *pdev,
 	}
 	dev->ep_dqh_size = size;
 	dev_vdbg(&dev->pdev->dev, "ep_dqh_size = %zd\n", dev->ep_dqh_size);
+#endif
 
 	/* initialize ep0 status request structure */
 	dev->status_req = kzalloc(sizeof(struct langwell_request), GFP_KERNEL);
@@ -3338,7 +3316,6 @@ static int langwell_udc_probe(struct pci_dev *pdev,
 #ifndef	OTG_TRANSCEIVER
 	/* reset ep0 dQH and endptctrl */
 	ep0_reset(dev);
-#endif
 
 	/* create dTD dma_pool resource */
 	dev->dtd_pool = dma_pool_create("langwell_dtd",
@@ -3351,6 +3328,7 @@ static int langwell_udc_probe(struct pci_dev *pdev,
 		retval = -ENOMEM;
 		goto error;
 	}
+#endif
 
 	/* done */
 	dev_info(&dev->pdev->dev, "%s\n", driver_desc);
@@ -3577,11 +3555,110 @@ static struct pci_driver langwell_pci_driver = {
 	.shutdown =	langwell_udc_shutdown,
 };
 
+#ifdef	OTG_TRANSCEIVER
+static int intel_mid_start_peripheral(struct intel_mid_otg_xceiv *iotg)
+{
+	struct pci_dev	*pdev;
+	int		retval;
+
+	if (iotg == NULL)
+		return -EINVAL;
+
+	pdev = to_pci_dev(iotg->otg.dev);
+
+	retval = langwell_udc_resume(pdev);
+	if (retval)
+		dev_dbg(&pdev->dev, "Failed to start peripheral driver\n");
+
+	return retval;
+}
+
+static int intel_mid_stop_peripheral(struct intel_mid_otg_xceiv *iotg)
+{
+	struct pci_dev	*pdev;
+	int		retval;
+
+	if (iotg == NULL)
+		return -EINVAL;
+
+	pdev = to_pci_dev(iotg->otg.dev);
+
+	retval = langwell_udc_suspend(pdev, PMSG_FREEZE);
+	if (retval)
+		dev_dbg(&pdev->dev, "Failed to stop peripheral driver\n");
+
+	return retval;
+}
+
+static int intel_mid_register_peripheral(struct pci_driver *peripheral_driver)
+{
+	struct otg_transceiver		*otg;
+	struct intel_mid_otg_xceiv	*iotg;
+	struct pci_dev			*pdev;
+	int				retval;
+
+	otg = otg_get_transceiver();
+	if (otg == NULL)
+		return -ENODEV;
+
+	if (peripheral_driver == NULL || peripheral_driver->probe == NULL)
+		return -EINVAL;
+
+	pdev = to_pci_dev(otg->dev);
+	retval = peripheral_driver->probe(pdev, peripheral_driver->id_table);
+	if (retval) {
+		dev_dbg(&pdev->dev, "client probe function failed\n");
+		return retval;
+	}
+
+	iotg = otg_to_mid_xceiv(otg);
+
+	iotg->start_peripheral = intel_mid_start_peripheral;
+	iotg->stop_peripheral = intel_mid_stop_peripheral;
+
+	atomic_notifier_call_chain(&iotg->iotg_notifier,
+				MID_OTG_NOTIFY_CLIENTADD, iotg);
+
+	otg_put_transceiver(otg);
+
+	return 0;
+}
+
+
+static void intel_mid_unregister_peripheral(struct pci_driver
+		*peripheral_driver)
+{
+	struct otg_transceiver		*otg;
+	struct intel_mid_otg_xceiv	*iotg;
+	struct pci_dev			*pdev;
+
+	otg = otg_get_transceiver();
+	if (otg == NULL)
+		return ;
+
+	if (peripheral_driver ==  NULL || peripheral_driver->remove == NULL)
+		return ;
+
+	pdev = to_pci_dev(otg->dev);
+	peripheral_driver->remove(pdev);
+
+	iotg = otg_to_mid_xceiv(otg);
+
+	iotg->start_peripheral = NULL;
+	iotg->stop_peripheral = NULL;
+
+	atomic_notifier_call_chain(&iotg->iotg_notifier,
+				MID_OTG_NOTIFY_CLIENTREMOVE, iotg);
+
+	otg_put_transceiver(otg);
+}
+#endif
+
 
 static int __init init(void)
 {
 #ifdef	OTG_TRANSCEIVER
-	return langwell_register_peripheral(&langwell_pci_driver);
+	return intel_mid_register_peripheral(&langwell_pci_driver);
 #else
 	return pci_register_driver(&langwell_pci_driver);
 #endif
@@ -3592,7 +3669,7 @@ module_init(init);
 static void __exit cleanup(void)
 {
 #ifdef	OTG_TRANSCEIVER
-	return langwell_unregister_peripheral(&langwell_pci_driver);
+	intel_mid_unregister_peripheral(&langwell_pci_driver);
 #else
 	pci_unregister_driver(&langwell_pci_driver);
 #endif

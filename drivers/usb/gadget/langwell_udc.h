@@ -18,7 +18,7 @@
  */
 
 #include <linux/usb/langwell_udc.h>
-#include <linux/usb/langwell_otg.h>
+#include <linux/usb/intel_mid_otg.h>
 
 /*-------------------------------------------------------------------------*/
 
@@ -202,8 +202,8 @@ struct langwell_udc {
 	/* pci state used to access those endpoints */
 	struct pci_dev		*pdev;
 
-	/* Langwell otg transceiver */
-	struct langwell_otg	*lotg;
+	/* Intel mid otg transceiver */
+	struct intel_mid_otg_xceiv	*iotg;
 
 	/* control registers */
 	struct langwell_cap_regs	__iomem	*cap_regs;
