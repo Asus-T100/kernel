@@ -2629,8 +2629,9 @@ done:
 /* port change detect interrupt handler */
 static void handle_port_change(struct langwell_udc *dev)
 {
-	u32	portsc1, devlc;
-	u32	speed;
+	u32		portsc1, devlc;
+	u32		speed;
+	unsigned long	event = 0;
 
 	dev_vdbg(&dev->pdev->dev, "---> %s()\n", __func__);
 
@@ -2649,12 +2650,15 @@ static void handle_port_change(struct langwell_udc *dev)
 		switch (speed) {
 		case LPM_SPEED_HIGH:
 			dev->gadget.speed = USB_SPEED_HIGH;
+			event = MID_OTG_NOTIFY_CLIENTHS;
 			break;
 		case LPM_SPEED_FULL:
 			dev->gadget.speed = USB_SPEED_FULL;
+			event = MID_OTG_NOTIFY_CLIENTFS;
 			break;
 		case LPM_SPEED_LOW:
 			dev->gadget.speed = USB_SPEED_LOW;
+			event = MID_OTG_NOTIFY_CLIENTFS;
 			break;
 		default:
 			dev->gadget.speed = USB_SPEED_UNKNOWN;
@@ -2663,6 +2667,10 @@ static void handle_port_change(struct langwell_udc *dev)
 		dev_vdbg(&dev->pdev->dev,
 				"speed = %d, dev->gadget.speed = %d\n",
 				speed, dev->gadget.speed);
+
+		if (event && dev->iotg)
+			atomic_notifier_call_chain(&dev->iotg->iotg_notifier,
+							event, dev->iotg);
 	}
 
 	/* LPM L0 to L1 */
@@ -2765,6 +2773,10 @@ static void handle_usb_reset(struct langwell_udc *dev)
 
 		dev->usb_state = USB_STATE_ATTACHED;
 	}
+
+	if (dev->iotg)
+		atomic_notifier_call_chain(&dev->iotg->iotg_notifier,
+				MID_OTG_NOTIFY_CLIENTFS, dev->iotg);
 
 	dev_vdbg(&dev->pdev->dev, "<--- %s()\n", __func__);
 }
