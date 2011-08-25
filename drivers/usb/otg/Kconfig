@@ -149,6 +149,9 @@ config USB_PENWELL_OTG_TEST
 	  To compile this driver as a module, choose M here: the
 	  module will be called pnwotg_test.
 
+	  To compile this driver as a module, choose M here: the
+	  module will be called penwell_otg.
+
 config USB_DWC_OTG_XCEIV
 	tristate "Synopsys DWC OTG 3.0 for USB 3.0"
 	depends on USB && PCI
