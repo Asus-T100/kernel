@@ -2110,6 +2110,9 @@ static int langwell_otg_probe(struct pci_dev *pdev,
 	if (lnw->iotg.otg.state == OTG_STATE_A_IDLE)
 		langwell_update_transceiver();
 
+	pm_runtime_put_noidle(&pdev->dev);
+	pm_runtime_allow(&pdev->dev);
+
 	return 0;
 
 err:
@@ -2122,6 +2125,9 @@ done:
 static void langwell_otg_remove(struct pci_dev *pdev)
 {
 	struct langwell_otg *lnw = the_transceiver;
+
+	pm_runtime_get_noresume(&pdev->dev);
+	pm_runtime_forbid(&pdev->dev);
 
 	if (lnw->qwork) {
 		flush_workqueue(lnw->qwork);
