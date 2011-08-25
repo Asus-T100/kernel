@@ -264,6 +264,7 @@ static void _penwell_otg_update_chrg_cap(enum usb_charger_type charger,
 
 	if (flag) {
 		pnw->charging_cap.mA = mA;
+		pnw->charging_cap.current_event = event;
 
 		/* Notify EM the charging current update */
 		dev_dbg(pnw->dev, "Notify EM charging capability change\n");
@@ -333,6 +334,7 @@ int penwell_otg_query_charging_cap(struct otg_bc_cap *cap)
 	spin_lock_irqsave(&pnw->charger_lock, flags);
 	cap->chrg_type = pnw->charging_cap.chrg_type;
 	cap->mA = pnw->charging_cap.mA;
+	cap->current_event = pnw->charging_cap.current_event;
 	spin_unlock_irqrestore(&pnw->charger_lock, flags);
 
 	dev_dbg(pnw->dev, "%s <---\n", __func__);
@@ -2577,6 +2579,7 @@ static int penwell_otg_probe(struct pci_dev *pdev,
 	spin_lock_init(&pnw->charger_lock);
 	pnw->charging_cap.mA = CHRG_CURR_DISCONN;
 	pnw->charging_cap.chrg_type = CHRG_UNKNOWN;
+	pnw->charging_cap.current_event = USBCHRG_EVENT_DISCONN;
 
 	ATOMIC_INIT_NOTIFIER_HEAD(&pnw->iotg.iotg_notifier);
 

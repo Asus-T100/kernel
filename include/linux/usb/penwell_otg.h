@@ -275,6 +275,7 @@ struct otg_bc_cap {
 #define CHRG_CURR_CDP_HS	950
 #define CHRG_CURR_DCP	1500
 #define CHRG_CURR_ACA	1500
+	unsigned int            current_event;
 };
 
 /* define event ids to notify battery driver */
