@@ -3530,8 +3530,10 @@ static struct pci_driver langwell_pci_driver = {
 #ifdef	OTG_TRANSCEIVER
 static int intel_mid_start_peripheral(struct intel_mid_otg_xceiv *iotg)
 {
-	struct pci_dev	*pdev;
-	int		retval;
+	struct langwell_udc	*dev = the_controller;
+	struct pci_dev		*pdev;
+	unsigned long		flags;
+	int			retval;
 
 	if (iotg == NULL)
 		return -EINVAL;
@@ -3542,13 +3544,21 @@ static int intel_mid_start_peripheral(struct intel_mid_otg_xceiv *iotg)
 	if (retval)
 		dev_dbg(&pdev->dev, "Failed to start peripheral driver\n");
 
+	if (dev) {
+		spin_lock_irqsave(&dev->lock, flags);
+		dev->vbus_active = 1;
+		spin_unlock_irqrestore(&dev->lock, flags);
+	}
+
 	return retval;
 }
 
 static int intel_mid_stop_peripheral(struct intel_mid_otg_xceiv *iotg)
 {
-	struct pci_dev	*pdev;
-	int		retval;
+	struct langwell_udc	*dev = the_controller;
+	struct pci_dev		*pdev;
+	unsigned long		flags;
+	int			retval;
 
 	if (iotg == NULL)
 		return -EINVAL;
@@ -3558,6 +3568,12 @@ static int intel_mid_stop_peripheral(struct intel_mid_otg_xceiv *iotg)
 	retval = langwell_udc_suspend(pdev, PMSG_FREEZE);
 	if (retval)
 		dev_dbg(&pdev->dev, "Failed to stop peripheral driver\n");
+
+	if (dev) {
+		spin_lock_irqsave(&dev->lock, flags);
+		dev->vbus_active = 0;
+		spin_unlock_irqrestore(&dev->lock, flags);
+	}
 
 	return retval;
 }
