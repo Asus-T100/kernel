@@ -1547,6 +1547,104 @@ ret:
 }
 
 #ifdef CONFIG_DEBUG_FS
+static int pmu_nc_get_power_state(int island, int reg_type)
+{
+	u32 pwr_sts;
+	unsigned long flags;
+	int i, lss;
+	int ret = -EINVAL;
+
+	spin_lock_irqsave(&nc_ready_lock, flags);
+
+	switch (reg_type) {
+	case APM_REG_TYPE:
+		pwr_sts = inl(apm_base + APM_STS);
+		break;
+	case OSPM_REG_TYPE:
+		pwr_sts = inl(ospm_base + OSPM_PM_SSS);
+		break;
+	default:
+		pr_err("%s: invalid argument 'island': %d.\n",
+				 __func__, island);
+		goto unlock;
+	}
+
+	for (i = 0; i < OSPM_MAX_POWER_ISLANDS; i++) {
+		lss = island & (0x1 << i);
+		if (lss) {
+			ret = (pwr_sts >> (2 * i)) & 0x3;
+			break;
+		}
+	}
+
+unlock:
+	spin_unlock_irqrestore(&nc_ready_lock, flags);
+	return ret;
+}
+
+#define DEV_GFX		2
+#define FUNC_GFX	0
+#define ISLANDS_GFX	8
+#define DEV_ISP		3
+#define FUNC_ISP	0
+#define ISLANDS_ISP	2
+#define NC_DEVS		2
+
+struct island {
+	int type;
+	int index;
+	char *name;
+};
+
+static struct island display_islands[] = {
+	{APM_REG_TYPE, APM_GRAPHICS_ISLAND, "GFX"},
+	{APM_REG_TYPE, APM_VIDEO_DEC_ISLAND, "Video Decoder"},
+	{APM_REG_TYPE, APM_VIDEO_ENC_ISLAND, "Video Encoder"},
+	{APM_REG_TYPE, APM_GL3_CACHE_ISLAND, "GL3 Cache"},
+	{OSPM_REG_TYPE, OSPM_DISPLAY_A_ISLAND, "Display A"},
+	{OSPM_REG_TYPE, OSPM_DISPLAY_B_ISLAND, "Display B"},
+	{OSPM_REG_TYPE, OSPM_DISPLAY_C_ISLAND, "Display C"},
+	{OSPM_REG_TYPE, OSPM_MIPI_ISLAND, "MIPI-DSI"}
+};
+
+static struct island camera_islands[] = {
+	{APM_REG_TYPE, APM_ISP_ISLAND, "ISP"},
+	{APM_REG_TYPE, APM_IPH_ISLAND, "Iunit PHY"}
+};
+
+static void nc_device_state_show(struct seq_file *s, struct pci_dev *pdev)
+{
+	int off, i, islands_num, state;
+	struct island *islands;
+	char *dstates[] = {"D0", "D0i1", "D0i2", "D0i3"};
+
+	if (PCI_SLOT(pdev->devfn) == DEV_GFX &&
+			PCI_FUNC(pdev->devfn) == FUNC_GFX) {
+		off = display_off;
+		islands_num = ISLANDS_GFX;
+		islands = &display_islands[0];
+	} else if (PCI_SLOT(pdev->devfn) == DEV_ISP &&
+			PCI_FUNC(pdev->devfn) == FUNC_ISP) {
+		off = camera_off;
+		islands_num = ISLANDS_ISP;
+		islands = &camera_islands[0];
+	} else {
+		return;
+	}
+
+	seq_printf(s, "pci %04x %04X %s %20s: %41s %s\n",
+		pdev->vendor, pdev->device, dev_name(&pdev->dev),
+		dev_driver_string(&pdev->dev),
+		"", off ? "" : "blocking s0ix");
+	for (i = 0; i < islands_num; i++) {
+		state = pmu_nc_get_power_state(islands[i].index,
+				islands[i].type);
+		seq_printf(s, "%52s %15s %17s %s\n",
+				 "|------->", islands[i].name, "",
+				(state >= 0) ? dstates[state] : "ERR");
+	}
+}
+
 static int pmu_devices_state_show(struct seq_file *s, void *unused)
 {
 	struct pci_dev *pdev = NULL;
@@ -1618,8 +1716,10 @@ static int pmu_devices_state_show(struct seq_file *s, void *unused)
 								  &ss_pos))
 			continue;
 
-		if (pmu_num == PMU_NUM_1)
+		if (pmu_num == PMU_NUM_1) {
+			nc_device_state_show(s, pdev);
 			continue;
+		}
 
 		mask	= (D0I3_MASK << (ss_pos * BITS_PER_LSS));
 		val	= (cur_pmsss.pmu2_states[ss_idx] & mask) >>
