@@ -732,8 +732,7 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 	struct atomisp_device *isp = NULL;
 	unsigned int start, len;
 	void __iomem *base = NULL;
-	int err;
-	uint32_t ispmmadr;
+	int err = 0;
 
 	if (!dev) {
 		v4l2_err(&atomisp_dev, "atomisp: erorr device ptr\n");
@@ -750,16 +749,6 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 	start = pci_resource_start(dev, 0);
 	len = pci_resource_len(dev, 0);
 
-	/*
-	 * Read ISP memory base address from Iunit register ISPMMADR  message
-	 * bus port 0x08, offset 0x04
-	 */
-	ispmmadr = atomisp_msg_read32(isp, IUNIT_PORT, ISPMMADR);
-	ispmmadr &= 0xFFC00000;
-	if (start != ispmmadr) {
-		start = ispmmadr;
-		len = 0x400000;
-	}
 	v4l2_info(&atomisp_dev,
 		    "ATOM ISP resource start 0x%x, len %d\n",
 		    start, len);
@@ -791,7 +780,7 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 	isp->pdev = dev;
 	isp->dev = &dev->dev;
 	isp->sw_contex.power_state = ATOM_ISP_POWER_UP;
-	isp->hw_contex.pci_dev = pci_get_bus_and_slot(0, 0);
+	isp->hw_contex.pci_root = pci_get_bus_and_slot(0, 0);
 
 	/* Load isp firmware from user space */
 	isp->firmware = load_firmware(&dev->dev);
@@ -823,7 +812,7 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 	}
 	INIT_WORK(&isp->work, atomisp_work);
 
-	isp->hw_contex.ispmmadr = ispmmadr;
+	isp->hw_contex.ispmmadr = start;
 	v4l2_info(&atomisp_dev, "isp memory address = %x\n",
 		    isp->hw_contex.ispmmadr);
 
@@ -896,7 +885,7 @@ static void __devexit atomisp_pci_remove(struct pci_dev *dev)
 	atomisp_msi_irq_uninit(isp, dev);
 	free_irq(dev->irq, isp);
 	pci_disable_msi(dev);
-	pci_dev_put(isp->hw_contex.pci_dev);
+	pci_dev_put(isp->hw_contex.pci_root);
 
 	atomisp_unregister_entities(isp);
 

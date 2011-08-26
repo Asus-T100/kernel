@@ -92,10 +92,15 @@ extern int pad_h;
 #define OR1			0x72
 #define APMBA			0x7a
 
+#define PCI_MSI_CAPID		0x90
 #define PCI_MSI_ADDR		0x94
 #define PCI_MSI_DATA		0x98
-#define PCI_PRI_D0		0xd0
-#define PCI_PRI_D4		0xd4
+#define PCI_INTERRUPT_CTRL	0x9C
+#define PCI_PRI_D0		0xD0
+#define PCI_PMCS		0xD4
+#define PCI_CG_DIS		0xD8
+#define PCI_I_CONTROL		0xFC
+
 #define PCI_MEM_ACCESS		0x100002
 
 struct atomisp_tvnorm {
@@ -148,7 +153,7 @@ static inline u32 atomisp_msg_read32(struct atomisp_device *isp,
 	if (isp == NULL)
 		pci_root = pci_get_bus_and_slot(0, 0);
 	else
-		pci_root = isp->hw_contex.pci_dev;
+		pci_root = isp->hw_contex.pci_root;
 
 	pci_write_config_dword(pci_root, 0xD0, mcr);
 	pci_read_config_dword(pci_root, 0xD4, &ret_val);
@@ -167,7 +172,7 @@ static inline void atomisp_msg_write32(struct atomisp_device *isp,
 	if (isp == NULL)
 		pci_root = pci_get_bus_and_slot(0, 0);
 	else
-		pci_root = isp->hw_contex.pci_dev;
+		pci_root = isp->hw_contex.pci_root;
 	pci_write_config_dword(pci_root, 0xD4, value);
 	pci_write_config_dword(pci_root, 0xD0, mcr);
 	if (isp == NULL)

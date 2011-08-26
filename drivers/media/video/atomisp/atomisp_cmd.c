@@ -150,47 +150,39 @@ static void clear_isp_irq(enum hrt_isp_css_irq irq)
 
 void atomisp_msi_irq_init(struct atomisp_device *isp, struct pci_dev *dev)
 {
-	u32 msg_ret;
-	u32 msi_address;
-	u16 msi_data;
+	u32 msg32;
+	u16 msg16;
 
-	pci_read_config_dword(dev, PCI_MSI_ADDR, &msi_address);
-	pci_read_config_word(dev, PCI_MSI_DATA, &msi_data);
-	msi_data = msi_data & 0xffff;
+	pci_read_config_dword(dev, PCI_MSI_CAPID, &msg32);
+	msg32 |= 1 << MSI_ENABLE_BIT;
+	pci_write_config_dword(dev, PCI_MSI_CAPID, msg32);
 
-	atomisp_msg_write32(isp, IUNIT_PORT, MSI_ADDRESS, msi_address);
+	msg32 = (1 << INTR_IER) | (1 << INTR_IIR);
+	pci_write_config_dword(dev, PCI_INTERRUPT_CTRL, msg32);
 
-	msg_ret = atomisp_msg_read32(isp, IUNIT_PORT, MSI_CAPID);
-	msg_ret |= 1 << MSI_ENABLE_BIT;
-	atomisp_msg_write32(isp, IUNIT_PORT, MSI_CAPID, msg_ret);
-
-	msg_ret = (1 << INTR_IER) | (1 << INTR_IIR);
-	atomisp_msg_write32(isp, IUNIT_PORT, INTR_CTL, msg_ret);
-
-	msg_ret = atomisp_msg_read32(isp, IUNIT_PORT, PCICMDSTS);
-	msg_ret |= (1 << MEMORY_SPACE_ENABLE |
-		    1 << BUS_MASTER_ENABLE |
-		    1 << INTR_DISABLE_BIT);
-	atomisp_msg_write32(isp, IUNIT_PORT, PCICMDSTS, msg_ret);
-
-	atomisp_msg_write32(isp, IUNIT_PORT, MSI_DATA, msi_data);
+	pci_read_config_word(dev, PCI_COMMAND, &msg16);
+	msg16 |= (PCI_COMMAND_MEMORY |
+		  PCI_COMMAND_MASTER |
+		  PCI_COMMAND_INTX_DISABLE);
+	pci_write_config_word(dev, PCI_COMMAND, msg16);
 }
 
 void atomisp_msi_irq_uninit(struct atomisp_device *isp, struct pci_dev *dev)
 {
-	u32 msg_ret;
+	u32 msg32;
+	u16 msg16;
 
-	msg_ret = atomisp_msg_read32(isp, IUNIT_PORT, MSI_CAPID);
-	msg_ret &=  ~(1 << MSI_ENABLE_BIT);
-	atomisp_msg_write32(isp, IUNIT_PORT, MSI_CAPID, msg_ret);
+	pci_read_config_dword(dev, PCI_MSI_CAPID, &msg32);
+	msg32 &=  ~(1 << MSI_ENABLE_BIT);
+	pci_write_config_dword(dev, PCI_MSI_CAPID, msg32);
 
-	msg_ret = 0x0;
-	atomisp_msg_write32(isp, IUNIT_PORT, INTR_CTL, msg_ret);
+	msg32 = 0x0;
+	pci_write_config_dword(dev, PCI_INTERRUPT_CTRL, msg32);
 
-	msg_ret = atomisp_msg_read32(isp, IUNIT_PORT, PCICMDSTS);
-	msg_ret &= ~(1 << INTR_DISABLE_BIT |
-		     1 << BUS_MASTER_ENABLE);
-	atomisp_msg_write32(isp, IUNIT_PORT, PCICMDSTS, msg_ret);
+	pci_read_config_word(dev, PCI_COMMAND, &msg16);
+	msg16 &= ~(PCI_COMMAND_MASTER |
+		   PCI_COMMAND_INTX_DISABLE);
+	pci_write_config_word(dev, PCI_COMMAND, msg16);
 }
 
 static void print_csi_rx_errors(void)
@@ -4075,6 +4067,8 @@ out:
 
 int atomisp_save_iunit_reg(struct atomisp_device *isp)
 {
+	struct pci_dev *dev = isp->pdev;
+
 	/*Clear those register value first*/
 	isp->hw_contex.pcicmdsts = 0;
 	isp->hw_contex.ispmmadr = 0;
@@ -4086,28 +4080,30 @@ int atomisp_save_iunit_reg(struct atomisp_device *isp)
 	isp->hw_contex.pmcs = 0;
 	isp->hw_contex.cg_dis = 0;
 	isp->hw_contex.i_control = 0;
-	isp->hw_contex.pci_cmd = 0;
 	isp->hw_contex.csi_rcomp_config = 0;
 	isp->hw_contex.csi_afe_dly = 0;
 	isp->hw_contex.csi_control = 0;
 
-	isp->hw_contex.pcicmdsts = atomisp_msg_read32(isp, IUNIT_PORT,
-						      PCICMDSTS);
-	isp->hw_contex.ispmmadr = atomisp_msg_read32(isp, IUNIT_PORT,
-						     ISPMMADR);
-	isp->hw_contex.msicap = atomisp_msg_read32(isp, IUNIT_PORT,
-						   MSI_CAPID);
-	isp->hw_contex.msi_addr = atomisp_msg_read32(isp, IUNIT_PORT,
-						     MSI_ADDRESS);
-	isp->hw_contex.msi_data = atomisp_msg_read32(isp, IUNIT_PORT,
-						     MSI_DATA);
-	isp->hw_contex.intr = atomisp_msg_read32(isp, IUNIT_PORT, INTR);
-	isp->hw_contex.interrupt_control = atomisp_msg_read32(isp, IUNIT_PORT,
-							      INTR_CTL);
-	isp->hw_contex.pmcs = atomisp_msg_read32(isp, IUNIT_PORT, PMCS);
-	isp->hw_contex.cg_dis = atomisp_msg_read32(isp, IUNIT_PORT, CG_DIS);
-	isp->hw_contex.i_control = atomisp_msg_read32(isp, IUNIT_PORT,
-						      I_CONTROL);
+	pci_read_config_word(dev, PCI_COMMAND, &isp->hw_contex.pcicmdsts);
+	pci_read_config_dword(dev, PCI_BASE_ADDRESS_0,
+			      &isp->hw_contex.ispmmadr);
+	pci_read_config_dword(dev, PCI_MSI_CAPID,
+			      &isp->hw_contex.msicap);
+	pci_read_config_dword(dev, PCI_MSI_ADDR,
+			      &isp->hw_contex.msi_addr);
+	pci_read_config_word(dev, PCI_MSI_DATA,
+			     &isp->hw_contex.msi_data);
+	pci_read_config_byte(dev, PCI_INTERRUPT_LINE,
+			      &isp->hw_contex.intr);
+	pci_read_config_dword(dev, PCI_INTERRUPT_CTRL,
+			      &isp->hw_contex.interrupt_control);
+	pci_read_config_dword(dev, PCI_PMCS,
+			      &isp->hw_contex.pmcs);
+	pci_read_config_dword(dev, PCI_CG_DIS,
+			      &isp->hw_contex.cg_dis);
+	pci_read_config_dword(dev, PCI_I_CONTROL,
+			      &isp->hw_contex.i_control);
+
 	isp->hw_contex.csi_rcomp_config = atomisp_msg_read32(isp, IUNITPHY_PORT,
 							     CSI_RCOMP);
 	isp->hw_contex.csi_afe_dly = atomisp_msg_read32(isp, IUNITPHY_PORT,
@@ -4115,40 +4111,32 @@ int atomisp_save_iunit_reg(struct atomisp_device *isp)
 	isp->hw_contex.csi_control = atomisp_msg_read32(isp, IUNITPHY_PORT,
 							CSI_CONTROL);
 
-	pci_read_config_word(isp->pdev, PCI_COMMAND, &isp->hw_contex.pci_cmd);
-
-
 	return 0;
 }
 
 int atomisp_restore_iunit_reg(struct atomisp_device *isp)
 {
-	pci_write_config_word(isp->pdev, PCI_COMMAND, isp->hw_contex.pci_cmd);
+	struct pci_dev *dev = isp->pdev;
 
-	atomisp_msg_write32(isp, IUNIT_PORT, PCICMDSTS,
-			    isp->hw_contex.pcicmdsts);
-	atomisp_msg_write32(isp, IUNIT_PORT, ISPMMADR,
-			    isp->hw_contex.ispmmadr);
-	atomisp_msg_write32(isp, IUNIT_PORT, MSI_CAPID,
-			    isp->hw_contex.msicap);
-	atomisp_msg_write32(isp, IUNIT_PORT, MSI_ADDRESS,
-			    isp->hw_contex.msi_addr);
-	atomisp_msg_write32(isp, IUNIT_PORT, MSI_DATA,
-			    isp->hw_contex.msi_data);
-	atomisp_msg_write32(isp, IUNITPHY_PORT, CSI_CONTROL, 0xFF0003);
-	atomisp_msg_write32(isp, IUNIT_PORT, INTR, isp->hw_contex.intr);
-	atomisp_msg_write32(isp, IUNIT_PORT, INTR_CTL,
-				isp->hw_contex.interrupt_control);
-	atomisp_msg_write32(isp, IUNIT_PORT, PMCS, isp->hw_contex.pmcs);
-	atomisp_msg_write32(isp, IUNIT_PORT, CG_DIS, isp->hw_contex.cg_dis);
-	atomisp_msg_write32(isp, IUNIT_PORT, I_CONTROL,
-			    isp->hw_contex.i_control);
+	pci_write_config_word(dev, PCI_COMMAND, isp->hw_contex.pcicmdsts);
+	pci_write_config_dword(dev, PCI_BASE_ADDRESS_0,
+			       isp->hw_contex.ispmmadr);
+	pci_write_config_dword(dev, PCI_MSI_CAPID, isp->hw_contex.msicap);
+	pci_write_config_dword(dev, PCI_MSI_ADDR, isp->hw_contex.msi_addr);
+	pci_write_config_word(dev, PCI_MSI_DATA, isp->hw_contex.msi_data);
+	pci_write_config_byte(dev, PCI_INTERRUPT_LINE, isp->hw_contex.intr);
+	pci_write_config_dword(dev, PCI_INTERRUPT_CTRL,
+			       isp->hw_contex.interrupt_control);
+	pci_write_config_dword(dev, PCI_PMCS, isp->hw_contex.pmcs);
+	pci_write_config_dword(dev, PCI_CG_DIS, isp->hw_contex.cg_dis);
+	pci_write_config_dword(dev, PCI_I_CONTROL, isp->hw_contex.i_control);
+
 	atomisp_msg_write32(isp, IUNITPHY_PORT, CSI_RCOMP,
-				isp->hw_contex.csi_rcomp_config);
+			    isp->hw_contex.csi_rcomp_config);
 	atomisp_msg_write32(isp, IUNITPHY_PORT, CSI_AFE,
 			    isp->hw_contex.csi_afe_dly);
 	atomisp_msg_write32(isp, IUNITPHY_PORT, CSI_CONTROL,
-				isp->hw_contex.csi_control);
+			    isp->hw_contex.csi_control);
 
 	return 0;
 }

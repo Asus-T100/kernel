@@ -100,28 +100,32 @@ struct atomisp_input_subdev {
 };
 
 struct atomisp_hw_contex {
-	/*OSPM related */
-	unsigned int apm_reg;
-	unsigned short apm_base;
-	unsigned int ospm_base;
 
-	unsigned int pcicmdsts;
-	unsigned int ispmmadr;
-	unsigned int msicap;
-	unsigned int msi_addr;
-	unsigned int msi_data;
-	unsigned int intr;
-	unsigned int interrupt_control;
-	unsigned int pmcs;
-	unsigned int cg_dis;
-	unsigned int i_control;
+	/* PCI config space info */
+	u16 pcicmdsts;
+	u32 ispmmadr;
+	u32 msicap;
+	u32 msi_addr;
+	u16 msi_data;
+	u8 intr;
+	u32 interrupt_control;
+	u32 pmcs;
+	u32 cg_dis;
+	u32 i_control;
+
+	/* I-Unit PHY related info */
 	unsigned int csi_rcomp_config;
 	unsigned int csi_afe_dly;
 	unsigned int csi_control;
-	u16 pci_cmd;
-	struct pci_dev *pci_dev;
 
+	/* ISP MMU base address */
 	void *mmu_l1_base;
+
+	/*
+	 * PCI Bus Root
+	 * Used to access internal message bus
+	 */
+	struct pci_dev *pci_root;
 };
 
 struct atomisp_sw_contex {
