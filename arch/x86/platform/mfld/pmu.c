@@ -1959,17 +1959,9 @@ static void update_all_lss_states(struct pmu_ss_states *pmu_config)
 			ss_pos = intel_mid_pci_devices[i].ss_pos;
 			state = pdev->current_state;
 			/* the case of device not probed yet: Force D0i3 */
-			if (state == PCI_UNKNOWN) {
+			if (state == PCI_UNKNOWN)
 				state = pmu_pci_choose_state(pdev);
-				/* for those weird devices that does not do
-				   D0i3, we keep them alive
-				   (or we get F503's
-				   @todo: need to figure out why)
-				*/
-				if (state != PCI_D3hot)
-					state = PCI_D0;
 
-			}
 			/* By default its set to '0' hence
 			 * no need to update PCI_D0 state
 			 */
