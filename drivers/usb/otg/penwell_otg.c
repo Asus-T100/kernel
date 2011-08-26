@@ -965,11 +965,11 @@ void penwell_otg_nsf_msg(unsigned long indicator)
 	case 6:
 	case 7:
 		dev_warn(the_transceiver->dev,
-			"NSF-%lu - deivce not responding\n", indicator);
+			"NSF-%lu - device not responding\n", indicator);
 		break;
 	case 3:
 		dev_warn(the_transceiver->dev,
-			"NSF-%lu - deivce not supported\n", indicator);
+			"NSF-%lu - device not supported\n", indicator);
 		break;
 	default:
 		dev_warn(the_transceiver->dev,
