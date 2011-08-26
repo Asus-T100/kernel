@@ -554,6 +554,96 @@ static void penwell_otg_mon_bus(void)
 	dev_dbg(pnw->dev, "%s <---\n", __func__);
 }
 
+/* HNP polling function */
+/* The timeout callback function which polls the host request flag for HNP */
+static void penwell_otg_hnp_poll_fn(unsigned long indicator)
+{
+	struct penwell_otg	*pnw = the_transceiver;
+
+	queue_work(pnw->qwork, &pnw->hnp_poll_work);
+}
+
+/* Start HNP polling */
+/* Call this function with iotg->hnp_poll_lock held */
+static int penwell_otg_add_hnp_poll_timer(struct intel_mid_otg_xceiv *iotg,
+					unsigned long delay)
+{
+	struct penwell_otg	*pnw = the_transceiver;
+	unsigned long		j = jiffies;
+
+	pnw->hnp_poll_timer.data = 1;
+	pnw->hnp_poll_timer.function = penwell_otg_hnp_poll_fn;
+	pnw->hnp_poll_timer.expires = j + msecs_to_jiffies(delay);
+
+	add_timer(&pnw->hnp_poll_timer);
+
+	return 0;
+}
+
+static int penwell_otg_start_hnp_poll(struct intel_mid_otg_xceiv *iotg)
+{
+	struct penwell_otg	*pnw = the_transceiver;
+	unsigned long		flags;
+
+	spin_lock_irqsave(&pnw->iotg.hnp_poll_lock, flags);
+
+	if (pnw->iotg.hsm.hnp_poll_enable) {
+		spin_unlock_irqrestore(&pnw->iotg.hnp_poll_lock, flags);
+		dev_dbg(pnw->dev, "HNP polling is already enabled\n");
+		return 0;
+	}
+
+	/* mark HNP polling enabled and start HNP polling in 50ms */
+	pnw->iotg.hsm.hnp_poll_enable = 1;
+	penwell_otg_add_hnp_poll_timer(&pnw->iotg, 50);
+
+	spin_unlock_irqrestore(&pnw->iotg.hnp_poll_lock, flags);
+
+	return 0;
+}
+
+static int penwell_otg_continue_hnp_poll(struct intel_mid_otg_xceiv *iotg)
+{
+	struct penwell_otg	*pnw = the_transceiver;
+	unsigned long		flags;
+
+	spin_lock_irqsave(&pnw->iotg.hnp_poll_lock, flags);
+
+	if (!pnw->iotg.hsm.hnp_poll_enable) {
+		spin_unlock_irqrestore(&pnw->iotg.hnp_poll_lock, flags);
+		dev_dbg(pnw->dev, "HNP polling is disabled, stop polling\n");
+		return 0;
+	}
+
+	penwell_otg_add_hnp_poll_timer(&pnw->iotg, THOS_REQ_POL);
+
+	spin_unlock_irqrestore(&pnw->iotg.hnp_poll_lock, flags);
+
+	return 0;
+}
+
+/* Stop HNP polling */
+static int penwell_otg_stop_hnp_poll(struct intel_mid_otg_xceiv *iotg)
+{
+	struct penwell_otg	*pnw = the_transceiver;
+	unsigned long		flags;
+
+	spin_lock_irqsave(&pnw->iotg.hnp_poll_lock, flags);
+
+	if (!pnw->iotg.hsm.hnp_poll_enable) {
+		spin_unlock_irqrestore(&pnw->iotg.hnp_poll_lock, flags);
+		dev_dbg(pnw->dev, "HNP polling is already disabled\n");
+		return 0;
+	}
+
+	pnw->iotg.hsm.hnp_poll_enable = 0;
+	del_timer_sync(&pnw->hnp_poll_timer);
+
+	spin_unlock_irqrestore(&pnw->iotg.hnp_poll_lock, flags);
+
+	return 0;
+}
+
 /* Start SRP function */
 static int penwell_otg_start_srp(struct otg_transceiver *otg)
 {
@@ -575,14 +665,6 @@ static int penwell_otg_start_srp(struct otg_transceiver *otg)
 
 	dev_dbg(pnw->dev, "%s <---\n", __func__);
 	return 0;
-}
-
-/* The timeout callback function to poll the host request flag */
-static void penwell_otg_hnp_poll_fn(unsigned long indicator)
-{
-	struct penwell_otg *pnw = the_transceiver;
-
-	queue_work(pnw->qwork, &pnw->hnp_poll_work);
 }
 
 /* stop SOF via bus_suspend */
@@ -1269,7 +1351,6 @@ static void penwell_otg_hnp_poll_work(struct work_struct *work)
 	struct penwell_otg		*pnw = the_transceiver;
 	struct intel_mid_otg_xceiv	*iotg = &pnw->iotg;
 	struct usb_device		*udev;
-	unsigned long			j = jiffies;
 	int				err = 0;
 	u8				data;
 
@@ -1301,7 +1382,9 @@ static void penwell_otg_hnp_poll_work(struct work_struct *work)
 	}
 
 	if (data & HOST_REQUEST_FLAG) {
-		/* set a_bus_req = 0 */
+		/* start HNP sequence to switch role */
+		dev_dbg(pnw->dev, "host_request_flag = 1\n");
+
 		if (iotg->hsm.id == ID_B) {
 			dev_dbg(pnw->dev,
 				"Device B host - start HNP - b_bus_req = 0\n");
@@ -1313,12 +1396,8 @@ static void penwell_otg_hnp_poll_work(struct work_struct *work)
 		}
 		penwell_update_transceiver();
 	} else {
-		pnw->hnp_poll_timer.data = 1;
-		pnw->hnp_poll_timer.function = penwell_otg_hnp_poll_fn;
-		pnw->hnp_poll_timer.expires = j + THOS_REQ_POL * HZ / 1000;
-		add_timer(&pnw->hnp_poll_timer);
-
-		dev_dbg(pnw->dev, "HNP Polling - continue\n");
+		dev_dbg(pnw->dev, "host_request_flag = 0\n");
+		penwell_otg_continue_hnp_poll(&pnw->iotg);
 	}
 }
 
@@ -1422,6 +1501,10 @@ static void penwell_otg_work(struct work_struct *work)
 				penwell_otg_update_chrg_cap(CHRG_CDP,
 							CHRG_CURR_CDP);
 
+				/* Clear HNP polling flag */
+				if (iotg->otg.gadget)
+					iotg->otg.gadget->host_request_flag = 0;
+
 				if (iotg->start_peripheral) {
 					iotg->start_peripheral(iotg);
 				} else {
@@ -1435,6 +1518,10 @@ static void penwell_otg_work(struct work_struct *work)
 				/* SDP: set charger type */
 				penwell_otg_update_chrg_cap(CHRG_SDP,
 							pnw->charging_cap.mA);
+
+				/* Clear HNP polling flag */
+				if (iotg->otg.gadget)
+					iotg->otg.gadget->host_request_flag = 0;
 
 				if (iotg->start_peripheral) {
 					iotg->start_peripheral(iotg);
@@ -1665,6 +1752,9 @@ static void penwell_otg_work(struct work_struct *work)
 			iotg->otg.default_a = 1;
 			hsm->a_srp_det = 0;
 
+			/* Stop HNP polling */
+			iotg->stop_hnp_poll(iotg);
+
 			if (iotg->stop_host)
 				iotg->stop_host(iotg);
 			else
@@ -1694,6 +1784,9 @@ static void penwell_otg_work(struct work_struct *work)
 			hsm->b_hnp_enable = 0;
 			hsm->b_bus_req = 0;
 
+			/* Stop HNP polling */
+			iotg->stop_hnp_poll(iotg);
+
 			if (iotg->stop_host)
 				iotg->stop_host(iotg);
 			else
@@ -1708,6 +1801,9 @@ static void penwell_otg_work(struct work_struct *work)
 					|| hsm->test_device) {
 			hsm->b_bus_req = 0;
 
+			/* Stop HNP polling */
+			iotg->stop_hnp_poll(iotg);
+
 			if (iotg->stop_host)
 				iotg->stop_host(iotg);
 			else
@@ -1715,6 +1811,10 @@ static void penwell_otg_work(struct work_struct *work)
 					"host driver has been removed.\n");
 
 			hsm->a_bus_suspend = 0;
+
+			/* Clear HNP polling flag */
+			if (iotg->otg.gadget)
+				iotg->otg.gadget->host_request_flag = 0;
 
 			if (iotg->start_peripheral)
 				iotg->start_peripheral(iotg);
@@ -1893,6 +1993,9 @@ static void penwell_otg_work(struct work_struct *work)
 			/* Delete current timer and disable host function */
 			penwell_otg_del_timer(TA_WAIT_BCON_TMR);
 
+			/* Start HNP polling */
+			iotg->start_hnp_poll(iotg);
+
 			iotg->otg.state = OTG_STATE_A_HOST;
 
 			if (!hsm->a_bus_req)
@@ -1928,6 +2031,9 @@ static void penwell_otg_work(struct work_struct *work)
 		} else if (!hsm->a_vbus_vld) {
 			/* Move to A_VBUS_ERR state */
 
+			/* Stop HNP polling */
+			iotg->stop_hnp_poll(iotg);
+
 			if (iotg->stop_host)
 				iotg->stop_host(iotg);
 			else
@@ -1943,6 +2049,9 @@ static void penwell_otg_work(struct work_struct *work)
 		} else if (!hsm->a_bus_req) {
 			/* Move to A_SUSPEND state */
 
+			/* Stop HNP polling */
+			iotg->stop_hnp_poll(iotg);
+
 			penwell_otg_loc_sof(0);
 
 			if (iotg->otg.host->b_hnp_enable) {
@@ -1952,7 +2061,9 @@ static void penwell_otg_work(struct work_struct *work)
 
 			iotg->otg.state = OTG_STATE_A_SUSPEND;
 		} else if (!hsm->b_conn) {
-			hsm->hnp_poll_enable = 0;
+			/* Stop HNP polling */
+			iotg->stop_hnp_poll(iotg);
+
 			/* add kernel timer */
 			iotg->otg.state = OTG_STATE_A_WAIT_BCON;
 		} else if (hsm->id == ID_ACA_A) {
@@ -1977,6 +2088,9 @@ static void penwell_otg_work(struct work_struct *work)
 			if (hsm->id == ID_ACA_B)
 				penwell_otg_update_chrg_cap(CHRG_ACA,
 							CHRG_CURR_ACA);
+
+			/* Stop HNP polling */
+			iotg->stop_hnp_poll(iotg);
 
 			if (iotg->stop_host)
 				iotg->stop_host(iotg);
@@ -2022,6 +2136,9 @@ static void penwell_otg_work(struct work_struct *work)
 			/* Delete current timer and clear flags */
 			penwell_otg_del_timer(TA_AIDL_BDIS_TMR);
 
+			/* Stop HNP polling */
+			iotg->stop_hnp_poll(iotg);
+
 			if (iotg->stop_host)
 				iotg->stop_host(iotg);
 			else
@@ -2029,6 +2146,10 @@ static void penwell_otg_work(struct work_struct *work)
 					"host driver has been removed.\n");
 
 			hsm->b_bus_suspend = 0;
+
+			/* Clear HNP polling flag */
+			if (iotg->otg.gadget)
+				iotg->otg.gadget->host_request_flag = 0;
 
 			if (iotg->start_peripheral)
 				iotg->start_peripheral(iotg);
@@ -2043,6 +2164,9 @@ static void penwell_otg_work(struct work_struct *work)
 
 			/* Delete current timer and clear flags */
 			penwell_otg_del_timer(TA_AIDL_BDIS_TMR);
+
+			/* Start HNP polling */
+			iotg->start_hnp_poll(iotg);
 
 			penwell_otg_loc_sof(1);
 			iotg->otg.state = OTG_STATE_A_HOST;
@@ -2463,10 +2587,17 @@ set_b_bus_req(struct device *dev, struct device_attribute *attr,
 	if (buf[0] == '0') {
 		iotg->hsm.b_bus_req = 0;
 		dev_dbg(pnw->dev, "b_bus_req = 0\n");
+
+		if (iotg->otg.gadget)
+			iotg->otg.gadget->host_request_flag = 0;
 	} else if (buf[0] == '1') {
 		iotg->hsm.b_bus_req = 1;
 		dev_dbg(pnw->dev, "b_bus_req = 1\n");
+
 		if (iotg->otg.state == OTG_STATE_B_PERIPHERAL) {
+			if (iotg->otg.gadget)
+				iotg->otg.gadget->host_request_flag = 1;
+
 			dev_warn(pnw->dev, "Role switch will be "
 				"performed soon, if connected OTG device "
 				"supports role switch request.\n");
@@ -2593,6 +2724,8 @@ static int penwell_otg_probe(struct pci_dev *pdev,
 	pnw->iotg.otg.start_srp = penwell_otg_start_srp;
 	pnw->iotg.set_adp_probe = NULL;
 	pnw->iotg.set_adp_sense = NULL;
+	pnw->iotg.start_hnp_poll = penwell_otg_start_hnp_poll;
+	pnw->iotg.stop_hnp_poll = penwell_otg_stop_hnp_poll;
 	pnw->iotg.otg.state = OTG_STATE_UNDEFINED;
 	if (otg_set_transceiver(&pnw->iotg.otg)) {
 		dev_dbg(pnw->dev, "can't set transceiver\n");
@@ -2602,6 +2735,8 @@ static int penwell_otg_probe(struct pci_dev *pdev,
 
 	pnw->iotg.ulpi_ops.read = penwell_otg_ulpi_read;
 	pnw->iotg.ulpi_ops.write = penwell_otg_ulpi_write;
+
+	spin_lock_init(&pnw->iotg.hnp_poll_lock);
 
 	init_timer(&pnw->hsm_timer);
 	init_timer(&pnw->bus_mon_timer);
@@ -2776,6 +2911,9 @@ static int penwell_otg_suspend(struct pci_dev *pdev, pm_message_t message)
 		transceiver_suspend(pdev);
 		break;
 	case OTG_STATE_A_HOST:
+		/* Stop HNP polling */
+		iotg->stop_hnp_poll(iotg);
+
 		if (pnw->iotg.stop_host)
 			pnw->iotg.stop_host(&pnw->iotg);
 		else
@@ -2818,6 +2956,9 @@ static int penwell_otg_suspend(struct pci_dev *pdev, pm_message_t message)
 		transceiver_suspend(pdev);
 		break;
 	case OTG_STATE_B_HOST:
+		/* Stop HNP polling */
+		iotg->stop_hnp_poll(iotg);
+
 		if (pnw->iotg.stop_host)
 			pnw->iotg.stop_host(&pnw->iotg);
 		else
