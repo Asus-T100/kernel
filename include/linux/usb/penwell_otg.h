@@ -234,9 +234,9 @@ enum penwell_otg_timer_type {
 #define TA_BIDL_ADIS		300
 #define TA_WAIT_VFALL		950
 #define TB_ASE0_BRST		300
-#define TB_SE0_SRP		1800
+#define TB_SE0_SRP		1200
 #define TB_SSEND_SRP		1800
-#	define SRP_MON_INVAL	200
+#	define SRP_MON_INVAL	300	/* TODO: interval needs more tuning */
 #define TB_SRP_FAIL		5500
 #define TB_BUS_SUSPEND		500
 #define THOS_REQ_POL		1500
@@ -278,6 +278,11 @@ struct otg_bc_cap {
 	unsigned int            current_event;
 };
 
+/* Bus monitor action for b_ssend_srp/b_se0_srp */
+#define BUS_MON_STOP		0
+#define BUS_MON_START		1
+#define BUS_MON_CONTINUE	2
+
 /* define event ids to notify battery driver */
 #define USBCHRG_EVENT_CONNECT	1
 #define USBCHRG_EVENT_DISCONN	2
@@ -298,6 +303,10 @@ struct penwell_otg {
 
 	struct timer_list		hsm_timer;
 	struct timer_list		hnp_poll_timer;
+	struct timer_list		bus_mon_timer;
+
+	unsigned long			b_se0_srp_time;
+	unsigned long			b_ssend_srp_time;
 
 	struct mutex			msic_mutex;
 	enum msic_vendor		msic;
