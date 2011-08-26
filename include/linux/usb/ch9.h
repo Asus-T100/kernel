@@ -134,6 +134,12 @@
 #define	TEST_FORCE_EN	5
 
 /*
+ * OTG 2.0
+ * Section 6.2 & 6.3
+ */
+#define	 OTG_STATUS_SELECTOR	0xF000
+
+/*
  * New Feature Selectors as added by USB 3.0
  * See USB 3.0 spec Table 9-6
  */

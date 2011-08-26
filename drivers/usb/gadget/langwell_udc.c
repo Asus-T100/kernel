@@ -2131,14 +2131,23 @@ static void get_status(struct langwell_udc *dev, u8 request_type, u16 value,
 	struct langwell_ep	*ep;
 	u16	status_data = 0;	/* 16 bits cpu view status data */
 	int	status = 0;
+	int	flag = 0;
 
 	dev_vdbg(&dev->pdev->dev, "---> %s()\n", __func__);
 
 	ep = &dev->ep[0];
 
 	if ((request_type & USB_RECIP_MASK) == USB_RECIP_DEVICE) {
-		/* get device status */
-		status_data = dev->dev_status;
+		/* HNP polling for host_request_flag */
+		if (index == OTG_STATUS_SELECTOR) {
+			status_data = dev->gadget.host_request_flag;
+			flag = 1;
+
+			dev_vdbg(&dev->pdev->dev,
+				"request_flag 0x%x\n", status_data);
+
+		} else
+			status_data = dev->dev_status;
 	} else if ((request_type & USB_RECIP_MASK) == USB_RECIP_INTERFACE) {
 		/* get interface status */
 		status_data = 0;
@@ -2163,7 +2172,7 @@ static void get_status(struct langwell_udc *dev, u8 request_type, u16 value,
 	/* fill in the reqest structure */
 	*((u16 *) req->req.buf) = cpu_to_le16(status_data);
 	req->ep = ep;
-	req->req.length = 2;
+	req->req.length = flag ? 1 : 2;
 	req->req.status = -EINPROGRESS;
 	req->req.actual = 0;
 	req->req.complete = NULL;
