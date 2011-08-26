@@ -2903,6 +2903,9 @@ static int penwell_otg_probe(struct pci_dev *pdev,
 	if (pnw->iotg.otg.state == OTG_STATE_A_IDLE)
 		queue_work(pnw->qwork, &pnw->work);
 
+	pm_runtime_put_noidle(&pdev->dev);
+	pm_runtime_allow(&pdev->dev);
+
 	return 0;
 
 err:
@@ -2915,6 +2918,9 @@ done:
 static void penwell_otg_remove(struct pci_dev *pdev)
 {
 	struct penwell_otg *pnw = the_transceiver;
+
+	pm_runtime_get_noresume(&pdev->dev);
+	pm_runtime_forbid(&pdev->dev);
 
 	if (pnw->qwork) {
 		flush_workqueue(pnw->qwork);
