@@ -120,6 +120,9 @@ struct intel_mid_otg_xceiv {
 	/* atomic notifier for interrupt context */
 	struct atomic_notifier_head	iotg_notifier;
 
+	/* hnp poll lock */
+	spinlock_t			hnp_poll_lock;
+
 	/* start/stop USB Host function */
 	int	(*start_host)(struct intel_mid_otg_xceiv *iotg);
 	int	(*stop_host)(struct intel_mid_otg_xceiv *iotg);
@@ -133,6 +136,10 @@ struct intel_mid_otg_xceiv {
 					bool enabled, int dev);
 	int	(*set_adp_sense)(struct intel_mid_otg_xceiv *iotg,
 					bool enabled);
+
+	/* start/stop HNP Polling function */
+	int	(*start_hnp_poll)(struct intel_mid_otg_xceiv *iotg);
+	int	(*stop_hnp_poll)(struct intel_mid_otg_xceiv *iotg);
 
 #ifdef CONFIG_PM
 	/* suspend/resume USB host function */
