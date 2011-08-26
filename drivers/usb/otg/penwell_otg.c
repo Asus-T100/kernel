@@ -998,6 +998,9 @@ static void penwell_otg_add_timer(enum penwell_otg_timer_type timers)
 	unsigned long			j = jiffies;
 	unsigned long			data, time;
 
+	if (timer_pending(&pnw->hsm_timer))
+		return ;
+
 	switch (timers) {
 	case TA_WAIT_VRISE_TMR:
 		iotg->hsm.a_wait_vrise_tmout = 0;
@@ -1055,8 +1058,6 @@ static void penwell_otg_add_timer(enum penwell_otg_timer_type timers)
 			"unkown timer, can not enable such timer\n");
 		return;
 	}
-
-	init_timer(&pnw->hsm_timer);
 
 	pnw->hsm_timer.data = data;
 	pnw->hsm_timer.function = penwell_otg_timer_fn;
@@ -1189,6 +1190,36 @@ static void update_hsm(void)
 	iotg->hsm.a_vbus_vld = !!(val32 & OTGSC_AVV);
 }
 
+static irqreturn_t otg_dummy_irq(int irq, void *_dev)
+{
+	struct penwell_otg	*pnw = the_transceiver;
+	void __iomem		*reg_base = _dev;
+	u32			val;
+	u32			int_mask = 0;
+
+	val = readl(reg_base + CI_USBMODE);
+	if ((val & USBMODE_CM) != USBMODE_DEVICE)
+		return IRQ_NONE;
+
+	val = readl(reg_base + CI_USBSTS);
+	int_mask = val & INTR_DUMMY_MASK;
+
+	if (int_mask == 0)
+		return IRQ_NONE;
+
+	/* clear hsm.b_conn here since host driver can't detect it
+	*  otg_dummy_irq called means B-disconnect happened.
+	*/
+	if (pnw->iotg.hsm.b_conn) {
+		pnw->iotg.hsm.b_conn = 0;
+		penwell_update_transceiver();
+	}
+
+	/* Clear interrupts */
+	writel(int_mask, reg_base + CI_USBSTS);
+	return IRQ_HANDLED;
+}
+
 static irqreturn_t otg_irq(int irq, void *_dev)
 {
 	struct penwell_otg		*pnw = _dev;
@@ -1302,11 +1333,28 @@ static int penwell_otg_iotg_notify(struct notifier_block *nb,
 		break;
 	case MID_OTG_NOTIFY_CSUSPEND:
 		dev_dbg(pnw->dev, "PNW OTG Notify Client Bus suspend Event\n");
-		flag = 0;
+		if (iotg->otg.default_a == 1) {
+			iotg->hsm.b_bus_suspend = 1;
+			flag = 1;
+		} else {
+			if (iotg->hsm.a_bus_suspend == 0) {
+				iotg->hsm.a_bus_suspend = 1;
+				flag = 1;
+			} else
+				flag = 0;
+		}
 		break;
 	case MID_OTG_NOTIFY_CRESUME:
 		dev_dbg(pnw->dev, "PNW OTG Notify Client Bus resume Event\n");
-		flag = 0;
+		if (iotg->otg.default_a == 1) {
+			/* in A_PERIPHERAL state */
+			iotg->hsm.b_bus_suspend = 0;
+			flag = 1;
+		} else {
+			/* in B_PERIPHERAL state */
+			iotg->hsm.a_bus_suspend = 0;
+			flag = 0;
+		}
 		break;
 	case MID_OTG_NOTIFY_HOSTADD:
 		dev_dbg(pnw->dev, "PNW OTG Nofity Host Driver Add\n");
@@ -1409,11 +1457,14 @@ static void penwell_otg_work(struct work_struct *work)
 	struct otg_hsm			*hsm = &iotg->hsm;
 	enum usb_charger_type		charger_type;
 	int				retval;
+	struct pci_dev			*pdev;
 
 	dev_dbg(pnw->dev,
 		"old state = %s\n", state_string(iotg->otg.state));
 
 	pm_runtime_get_sync(pnw->dev);
+
+	pdev = to_pci_dev(pnw->dev);
 
 	switch (iotg->otg.state) {
 	case OTG_STATE_UNDEFINED:
@@ -1605,8 +1656,6 @@ static void penwell_otg_work(struct work_struct *work)
 							CHRG_CURR_DISCONN);
 			}
 
-			hsm->b_hnp_enable = 0;
-
 			if (iotg->stop_peripheral)
 				iotg->stop_peripheral(iotg);
 			else
@@ -1616,8 +1665,12 @@ static void penwell_otg_work(struct work_struct *work)
 			penwell_otg_phy_low_power(1);
 
 			iotg->otg.state = OTG_STATE_B_IDLE;
-		} else if (hsm->b_bus_req && hsm->b_hnp_enable
-				&& hsm->a_bus_suspend) {
+		} else if (hsm->b_bus_req && hsm->a_bus_suspend
+				&& iotg->otg.gadget
+				&& iotg->otg.gadget->b_hnp_enable) {
+
+			penwell_otg_phy_low_power(0);
+			msleep(10);
 
 			if (iotg->stop_peripheral)
 				iotg->stop_peripheral(iotg);
@@ -1625,7 +1678,8 @@ static void penwell_otg_work(struct work_struct *work)
 				dev_dbg(pnw->dev,
 					"client driver has been removed.\n");
 
-			penwell_otg_HAAR(1);
+			penwell_otg_phy_low_power(0);
+
 			hsm->a_conn = 0;
 			hsm->a_bus_resume = 0;
 
@@ -1633,10 +1687,10 @@ static void penwell_otg_work(struct work_struct *work)
 				iotg->start_host(iotg);
 				hsm->test_device = 0;
 				iotg->otg.state = OTG_STATE_B_WAIT_ACON;
+				penwell_otg_add_timer(TB_ASE0_BRST_TMR);
 			} else
 				dev_dbg(pnw->dev, "host driver not loaded.\n");
 
-			penwell_otg_add_timer(TB_ASE0_BRST_TMR);
 		} else if (hsm->id == ID_ACA_C) {
 			/* Make sure current limit updated */
 			penwell_otg_update_chrg_cap(CHRG_ACA, CHRG_CURR_ACA);
@@ -1709,6 +1763,7 @@ static void penwell_otg_work(struct work_struct *work)
 			penwell_otg_del_timer(TB_ASE0_BRST_TMR);
 
 			penwell_otg_HAAR(0);
+
 			iotg->otg.state = OTG_STATE_B_HOST;
 			penwell_update_transceiver();
 		} else if (hsm->a_bus_resume || hsm->b_ase0_brst_tmout) {
@@ -2016,6 +2071,11 @@ static void penwell_otg_work(struct work_struct *work)
 				penwell_otg_update_chrg_cap(CHRG_ACA,
 							CHRG_CURR_ACA);
 
+			/* Stop HNP polling */
+			iotg->stop_hnp_poll(iotg);
+
+			penwell_otg_phy_low_power(0);
+
 			if (iotg->stop_host)
 				iotg->stop_host(iotg);
 			else
@@ -2052,12 +2112,29 @@ static void penwell_otg_work(struct work_struct *work)
 			/* Stop HNP polling */
 			iotg->stop_hnp_poll(iotg);
 
-			penwell_otg_loc_sof(0);
-
 			if (iotg->otg.host->b_hnp_enable) {
 				/* According to Spec 7.1.5 */
 				penwell_otg_add_timer(TA_AIDL_BDIS_TMR);
+
+				/* Set HABA to enable hardware assistance to
+				 * signal A-connect after receiver B-disconnect
+				 * Hardware will then set client mode and
+				 * enable URE, SLE and PCE after the assistance
+				 * otg_dummy_irq is used to clean these ints
+				 * when client driver is not resumed.
+				 */
+				if (request_irq(pdev->irq, otg_dummy_irq,
+						IRQF_SHARED, driver_name,
+							iotg->base) != 0) {
+					dev_dbg(pnw->dev,
+						"request interrupt %d failed\n",
+								pdev->irq);
+				}
+				penwell_otg_HABA(1);
 			}
+
+			penwell_otg_loc_sof(0);
+			penwell_otg_phy_low_power(0);
 
 			iotg->otg.state = OTG_STATE_A_SUSPEND;
 		} else if (!hsm->b_conn) {
@@ -2079,6 +2156,8 @@ static void penwell_otg_work(struct work_struct *work)
 		if (hsm->id == ID_B || hsm->id == ID_ACA_B ||
 				hsm->a_bus_drop || hsm->a_aidl_bdis_tmout) {
 			/* Move to A_WAIT_VFALL state, timeout/user request */
+			penwell_otg_HABA(0);
+			free_irq(pdev->irq, iotg->base);
 
 			/* Delete current timer and clear HW assist */
 			if (hsm->a_aidl_bdis_tmout)
@@ -2106,6 +2185,8 @@ static void penwell_otg_work(struct work_struct *work)
 			iotg->otg.state = OTG_STATE_A_WAIT_VFALL;
 		} else if (!hsm->a_vbus_vld) {
 			/* Move to A_VBUS_ERR state, Over-current */
+			penwell_otg_HABA(0);
+			free_irq(pdev->irq, iotg->base);
 
 			/* Delete current timer and clear flags */
 			penwell_otg_del_timer(TA_AIDL_BDIS_TMR);
@@ -2123,6 +2204,8 @@ static void penwell_otg_work(struct work_struct *work)
 			iotg->otg.state = OTG_STATE_A_VBUS_ERR;
 		} else if (!hsm->b_conn && !pnw->iotg.otg.host->b_hnp_enable) {
 			/* Move to A_WAIT_BCON */
+			penwell_otg_HABA(0);
+			free_irq(pdev->irq, iotg->base);
 
 			/* delete current timer */
 			penwell_otg_del_timer(TA_AIDL_BDIS_TMR);
@@ -2132,12 +2215,12 @@ static void penwell_otg_work(struct work_struct *work)
 			iotg->otg.state = OTG_STATE_A_WAIT_BCON;
 		} else if (!hsm->b_conn && pnw->iotg.otg.host->b_hnp_enable) {
 			/* Move to A_PERIPHERAL state, HNP */
+			penwell_otg_HABA(0);
+			free_irq(pdev->irq, iotg->base);
 
 			/* Delete current timer and clear flags */
 			penwell_otg_del_timer(TA_AIDL_BDIS_TMR);
-
-			/* Stop HNP polling */
-			iotg->stop_hnp_poll(iotg);
+			penwell_otg_phy_low_power(0);
 
 			if (iotg->stop_host)
 				iotg->stop_host(iotg);
@@ -2145,11 +2228,14 @@ static void penwell_otg_work(struct work_struct *work)
 				dev_dbg(pnw->dev,
 					"host driver has been removed.\n");
 
+			penwell_otg_phy_low_power(0);
 			hsm->b_bus_suspend = 0;
 
 			/* Clear HNP polling flag */
 			if (iotg->otg.gadget)
 				iotg->otg.gadget->host_request_flag = 0;
+
+			penwell_otg_phy_low_power(0);
 
 			if (iotg->start_peripheral)
 				iotg->start_peripheral(iotg);
@@ -2161,14 +2247,17 @@ static void penwell_otg_work(struct work_struct *work)
 			iotg->otg.state = OTG_STATE_A_PERIPHERAL;
 		} else if (hsm->a_bus_req) {
 			/* Move to A_HOST state, user request */
+			penwell_otg_HABA(0);
+			free_irq(pdev->irq, iotg->base);
 
 			/* Delete current timer and clear flags */
 			penwell_otg_del_timer(TA_AIDL_BDIS_TMR);
 
+			penwell_otg_loc_sof(1);
+
 			/* Start HNP polling */
 			iotg->start_hnp_poll(iotg);
 
-			penwell_otg_loc_sof(1);
 			iotg->otg.state = OTG_STATE_A_HOST;
 		} else if (hsm->id == ID_ACA_A) {
 			penwell_otg_update_chrg_cap(CHRG_ACA, CHRG_CURR_ACA);
@@ -2220,6 +2309,9 @@ static void penwell_otg_work(struct work_struct *work)
 			/* Move to A_WAIT_BCON state */
 			hsm->a_bidl_adis_tmr = 0;
 
+			msleep(10);
+			penwell_otg_phy_low_power(0);
+
 			/* Disable client function and switch to host mode */
 			if (iotg->stop_peripheral)
 				iotg->stop_peripheral(iotg);
@@ -2230,6 +2322,8 @@ static void penwell_otg_work(struct work_struct *work)
 			hsm->hnp_poll_enable = 0;
 			hsm->b_conn = 0;
 
+			penwell_otg_phy_low_power(0);
+
 			if (iotg->start_host)
 				iotg->start_host(iotg);
 			else
@@ -2238,13 +2332,11 @@ static void penwell_otg_work(struct work_struct *work)
 
 			penwell_otg_add_timer(TA_WAIT_BCON_TMR);
 			iotg->otg.state = OTG_STATE_A_WAIT_BCON;
-		} else if (!hsm->b_bus_suspend && hsm->a_bidl_adis_tmr) {
-			/* Client report suspend state end, delete timer */
-			penwell_otg_del_timer(TA_BIDL_ADIS_TMR);
-		} else if (hsm->b_bus_suspend && !hsm->a_bidl_adis_tmr) {
-			/* Client report suspend state start, start timer */
+		} else if (hsm->id == ID_A && hsm->b_bus_suspend) {
 			if (!timer_pending(&pnw->hsm_timer))
 				penwell_otg_add_timer(TA_BIDL_ADIS_TMR);
+		} else if (hsm->id == ID_A && !hsm->b_bus_suspend) {
+			penwell_otg_del_timer(TA_BIDL_ADIS_TMR);
 		} else if (hsm->id == ID_ACA_A) {
 			penwell_otg_update_chrg_cap(CHRG_ACA, CHRG_CURR_ACA);
 

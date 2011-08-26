@@ -29,6 +29,8 @@
 #	define USBSTS_SLI		BIT(8)
 #	define USBSTS_URI		BIT(6)
 #	define USBSTS_PCI		BIT(2)
+#define CI_USBINTR		0x38
+#	define USBINTR_PCE		BIT(2)
 #define CI_ULPIVP		0x60
 #	define ULPI_WU			BIT(31)
 #	define ULPI_RUN			BIT(30)
@@ -229,7 +231,7 @@ enum penwell_otg_timer_type {
 };
 
 #define TA_WAIT_VRISE		100
-#define TA_WAIT_BCON		30000
+#define TA_WAIT_BCON		15000
 #define TA_AIDL_BDIS		1500
 #define TA_BIDL_ADIS		300
 #define TA_WAIT_VFALL		950
