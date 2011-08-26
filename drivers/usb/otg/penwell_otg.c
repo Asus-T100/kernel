@@ -2593,6 +2593,7 @@ static int penwell_otg_probe(struct pci_dev *pdev,
 	mutex_init(&pnw->msic_mutex);
 	pnw->msic = penwell_otg_check_msic();
 
+	penwell_otg_phy_low_power(0);
 	penwell_otg_phy_enable(1);
 
 	reset_otg();
