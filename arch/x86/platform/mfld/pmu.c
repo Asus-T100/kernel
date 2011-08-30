@@ -246,14 +246,19 @@ static void pmu_stat_seq_printf(struct seq_file *s, int type, char *typestr)
 	/* for calculating percentage residency */
 	time = time * 100;
 	t = (u64) time;
-	remainder = do_div(t, init_2_now_time);
-	time = (unsigned long) t;
+	/* take care of divide by zero */
+	if (init_2_now_time) {
+		remainder = do_div(t, init_2_now_time);
+		time = (unsigned long) t;
 
-	/* for getting 3 digit precision after
-	 * decimal dot */
-	remainder *= 1000;
-	t = (u64) remainder;
-	remainder = do_div(t, init_2_now_time);
+		/* for getting 3 digit precision after
+		 * decimal dot */
+		remainder *= 1000;
+		t = (u64) remainder;
+		remainder = do_div(t, init_2_now_time);
+	} else
+		time = t = 0;
+
 	seq_printf(s, "%5lu.%03lu\n", time, (unsigned long) t);
 }
 
