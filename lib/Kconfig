@@ -378,4 +378,18 @@ config SIGNATURE
 	  Digital signature verification. Currently only RSA is supported.
 	  Implementation is done using GnuPG MPI library
 
+config CORDIC
+	tristate "Cordic function"
+	help
+	  The option provides arithmetic function using cordic algorithm
+	  so its calculations are in fixed point. Modules can select this
+	  when they require this function. Module will be called cordic.
+
+config MPILIB
+	tristate "Multiprecision maths library"
+	help
+	  Multiprecision maths library from GnuPG.
+	  It is used to implement RSA digital signature verification,
+	  which is used by IMA/EVM digital signature extension.
+
 endmenu
