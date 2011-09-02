@@ -27,6 +27,7 @@
 #include <linux/interrupt.h>
 #include <asm/mrst.h>
 #include <asm/intel_scu_ipc.h>
+#include <linux/pm_qos_params.h>
 
 /*
  * IPC register summary
@@ -90,6 +91,9 @@ static int platform;		/* Platform type */
 
 static DEFINE_MUTEX(ipclock); /* lock used to prevent multiple call to SCU */
 
+/* PM Qos struct */
+static struct pm_qos_request_list *qos;
+
 /*
  * Command Register (Write Only):
  * A write to this register results in an interrupt to the SCU core processor
@@ -106,6 +110,9 @@ static inline void ipc_command(u32 cmd) /* Send ipc command */
 		ipcdev.ioc = 0;
 		writel(cmd, ipcdev.ipc_base);
 	}
+
+	/* Prevent C-states beyond C6 */
+	pm_qos_update_request(qos, 150);
 }
 
 /*
@@ -143,17 +150,20 @@ static inline u32 ipc_data_readl(u32 offset) /* Read ipc u32 data */
 
 static inline int ipc_wait_interrupt(void)
 {
+	int ret = 0;
 	if (ipcdev.ioc) {
 		if (0 == wait_for_completion_timeout(
 				&ipcdev.cmd_complete, 3 * HZ)) {
 			dev_err(&ipcdev.pdev->dev, "IPC timed out, IPC_STS=0x%x",
 					ipc_read_status());
-			return -ETIMEDOUT;
+			ret = -ETIMEDOUT;
+			goto leave;
 		} else {
 			if ((ipcdev.status >> 1) & 1) {
 				dev_err(&ipcdev.pdev->dev, "IPC failed, IPC_STS=0x%x",
 						ipc_read_status());
-				return -EIO;
+				ret = -EIO;
+				goto leave;
 			}
 		}
 	} else {
@@ -167,14 +177,17 @@ static inline int ipc_wait_interrupt(void)
 			loop_count++;
 			if (loop_count > 3000000) {
 				dev_err(&ipcdev.pdev->dev, "IPC timed out");
-				return -ETIMEDOUT;
+				ret = -ETIMEDOUT;
+				goto leave;
 			}
 		}
 		if ((status >> 1) & 1)
-			return -EIO;
+			ret = -EIO;
 	}
-
-	return 0;
+leave:
+	/* Re-enable Deeper C-states beyond C6 */
+	pm_qos_update_request(qos, PM_QOS_DEFAULT_VALUE);
+	return ret;
 }
 
 /* Read/Write power control(PMIC in Langwell, MSIC in PenWell) registers */
@@ -1573,11 +1586,18 @@ static int __init intel_scu_ipc_init(void)
 	platform = mrst_identify_cpu();
 	if (platform == 0)
 		return -ENODEV;
+
+	qos = pm_qos_add_request(PM_QOS_CPU_DMA_LATENCY,
+					PM_QOS_DEFAULT_VALUE);
+
 	return  pci_register_driver(&ipc_driver);
+
 }
 
 static void __exit intel_scu_ipc_exit(void)
 {
+	pm_qos_remove_request(qos);
+
 	pci_unregister_driver(&ipc_driver);
 }
 
