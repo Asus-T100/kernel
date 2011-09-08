@@ -19,6 +19,7 @@
 #include <linux/sfi.h>
 #include <linux/intel_pmic_gpio.h>
 #include <linux/spi/spi.h>
+#include <linux/cyttsp.h>
 #include <linux/i2c.h>
 #include <linux/i2c/pca953x.h>
 #include <linux/gpio_keys.h>
@@ -559,6 +560,57 @@ static void __init *lis331dl_platform_data(void *info)
 	return &intr2nd_pdata;
 }
 
+/* MFLD iCDK touchscreen data */
+#define CYTTSP_GPIO_PIN 0x3E
+static int cyttsp_init(int on)
+{
+	int ret;
+
+	if (on) {
+		ret = gpio_request(CYTTSP_GPIO_PIN, "cyttsp_irq");
+		if (ret < 0) {
+			pr_err("%s: gpio request failed\n", __func__);
+			return ret;
+		}
+
+		ret = gpio_direction_input(CYTTSP_GPIO_PIN);
+		if (ret < 0) {
+			pr_err("%s: gpio direction config failed\n", __func__);
+			gpio_free(CYTTSP_GPIO_PIN);
+			return ret;
+		}
+	} else {
+		gpio_free(CYTTSP_GPIO_PIN);
+	}
+	return 0;
+}
+
+static void *cyttsp_platform_data(void *info)
+{
+	static struct cyttsp_platform_data cyttsp_pdata = {
+		.init = cyttsp_init,
+		.mt_sync = input_mt_sync,
+		.maxx = 479,
+		.maxy = 853,
+		.flags = 0,
+		.gen = CY_GEN3,
+		.use_st = 0,
+		.use_mt = 1,
+		.use_trk_id = 0,
+		.use_hndshk = 1,
+		.use_timer = 0,
+		.use_sleep = 1,
+		.use_gestures = 0,
+		.act_intrvl = CY_ACT_INTRVL_DFLT,
+		.tch_tmout = CY_TCH_TMOUT_DFLT,
+		.lp_intrvl = CY_LP_INTRVL_DFLT / 2,
+		.name = CY_I2C_NAME,
+		.irq_gpio = CYTTSP_GPIO_PIN,
+	};
+
+	return &cyttsp_pdata;
+}
+
 static void __init *no_platform_data(void *info)
 {
 	return NULL;
@@ -567,6 +619,7 @@ static void __init *no_platform_data(void *info)
 static const struct devs_id __initconst device_ids[] = {
 	{"pmic_gpio", SFI_DEV_TYPE_SPI, 1, &pmic_gpio_platform_data},
 	{"pmic_gpio", SFI_DEV_TYPE_IPC, 1, &pmic_gpio_platform_data},
+	{"cy8ctma340", SFI_DEV_TYPE_I2C, 1, &cyttsp_platform_data},
 	{"spi_max3111", SFI_DEV_TYPE_SPI, 0, &max3111_platform_data},
 	{"i2c_max7315", SFI_DEV_TYPE_I2C, 1, &max7315_platform_data},
 	{"i2c_max7315_2", SFI_DEV_TYPE_I2C, 1, &max7315_platform_data},

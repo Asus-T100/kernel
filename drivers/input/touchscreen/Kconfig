@@ -732,4 +732,24 @@ config TOUCHSCREEN_TPS6507X
 	  To compile this driver as a module, choose M here: the
 	  module will be called tps6507x_ts.
 
+config TOUCHSCREEN_CYTTSP_I2C
+       default n
+       tristate "Cypress TTSP i2c touchscreen"
+       depends on I2C
+       help
+         Say Y here if you have a Cypress TTSP touchscreen
+         connected to your system's i2c bus.
+
+         If unsure, say N.
+
+         To compile this driver as a module, choose M here: the
+         module will be called cyttsp_i2c.
+
+config TOUCHSCREEN_CYTTSP_CORE
+       default y
+       tristate "Cypress TTSP touchscreen core"
+       depends on TOUCHSCREEN_CYTTSP_I2C
+       help
+         Always activated for Cypress TTSP touchscreen
+
 endif
