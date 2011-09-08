@@ -126,7 +126,7 @@
 #define CY_MAXZ                     255
 #define CY_INIT                     1
 #define CY_DELAY_DFLT               10 /* ms */
-#define CY_DELAY_SYSINFO            20 /* ms */
+#define CY_DELAY_SYSINFO            30 /* ms */
 #define CY_DELAY_BL                 300
 #define CY_DELAY_DNLOAD             100 /* ms */
 #define CY_HNDSHK_BIT               0x80
