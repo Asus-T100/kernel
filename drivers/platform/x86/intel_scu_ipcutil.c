@@ -24,12 +24,11 @@
 #include <linux/uaccess.h>
 #include <linux/slab.h>
 #include <linux/init.h>
+#include <linux/miscdevice.h>
 #include <linux/io.h>
 #include <asm/intel_scu_ipc.h>
 #include <asm/mrst.h>
 #include <linux/pm_runtime.h>
-
-static u32 major;
 
 #define MAX_FW_SIZE 264192
 
@@ -220,14 +219,20 @@ static const struct file_operations scu_ipc_fops = {
 	.unlocked_ioctl = scu_ipc_ioctl,
 };
 
+static struct miscdevice scu_ipcutil = {
+	.minor = MISC_DYNAMIC_MINOR,
+	.name = "mid_ipc",
+	.fops = &scu_ipc_fops,
+};
+
 static int __init ipc_module_init(void)
 {
-	return register_chrdev(0, "intel_mid_scu", &scu_ipc_fops);
+	return misc_register(&scu_ipcutil);
 }
 
 static void __exit ipc_module_exit(void)
 {
-	unregister_chrdev(major, "intel_mid_scu");
+	misc_deregister(&scu_ipcutil);
 }
 
 module_init(ipc_module_init);
