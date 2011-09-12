@@ -112,15 +112,17 @@ static long scu_ipc_ioctl(struct file *fp, unsigned int cmd,
 	switch (cmd) {
 	case INTEL_SCU_IPC_FW_UPDATE:
 	{
-		u8 *fwbuf = kmalloc(MAX_FW_SIZE, GFP_KERNEL);
-		if (fwbuf == NULL)
-			return -ENOMEM;
-		if (copy_from_user(fwbuf, (u8 *)arg, MAX_FW_SIZE)) {
+		if (platform == MRST_CPU_CHIP_LINCROFT) {
+			u8 *fwbuf = kmalloc(MAX_FW_SIZE, GFP_KERNEL);
+			if (fwbuf == NULL)
+				return -ENOMEM;
+			if (copy_from_user(fwbuf, (u8 *)arg, MAX_FW_SIZE)) {
+				kfree(fwbuf);
+				return -EFAULT;
+			}
+			ret = intel_scu_ipc_mrstfw_update(fwbuf, MAX_FW_SIZE);
 			kfree(fwbuf);
-			return -EFAULT;
 		}
-		ret = intel_scu_ipc_mrstfw_update(fwbuf, MAX_FW_SIZE);
-		kfree(fwbuf);
 		break;
 	}
 	case INTEL_SCU_IPC_READ_RR_FROM_OSNIB:
@@ -178,6 +180,7 @@ static long scu_ipc_ioctl(struct file *fp, unsigned int cmd,
 				return ret;
 			}
 		}
+		break;
 	}
 	case INTEL_SCU_IPC_FW_REVISION_GET:
 	{

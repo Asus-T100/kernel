@@ -1587,8 +1587,12 @@ static int __init intel_scu_ipc_init(void)
 	if (platform == 0)
 		return -ENODEV;
 
-	qos = pm_qos_add_request(PM_QOS_CPU_DMA_LATENCY,
-					PM_QOS_DEFAULT_VALUE);
+	qos = kzalloc(sizeof(struct pm_qos_request_list), GFP_KERNEL);
+	if (!qos)
+		return -ENOMEM;
+
+	pm_qos_add_request(qos, PM_QOS_CPU_DMA_LATENCY,
+				PM_QOS_DEFAULT_VALUE);
 
 	return  pci_register_driver(&ipc_driver);
 
