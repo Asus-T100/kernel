@@ -426,7 +426,6 @@ config USB_GOKU
 config USB_LANGWELL
 	boolean "Intel Langwell/Penwell USB Device Controller"
 	depends on PCI
-	depends on !PHYS_ADDR_T_64BIT
 	select USB_GADGET_DUALSPEED
 	help
 	   Intel Langwell/Penwell USB Device Controller is a High-Speed USB
