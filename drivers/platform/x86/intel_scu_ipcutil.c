@@ -98,7 +98,7 @@ static int scu_reg_access(u32 cmd, struct scu_ipc_data  *data)
 static long scu_ipc_ioctl(struct file *fp, unsigned int cmd,
 							unsigned long arg)
 {
-	int ret;
+	int ret = 0;
 	struct scu_ipc_data  data;
 	void __user *argp = (void __user *)arg;
 	int platform;

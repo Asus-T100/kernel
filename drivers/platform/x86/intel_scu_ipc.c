@@ -1609,5 +1609,5 @@ MODULE_AUTHOR("Sreedhara DS <sreedhara.ds@intel.com>");
 MODULE_DESCRIPTION("Intel SCU IPC driver");
 MODULE_LICENSE("GPL");
 
-module_init(intel_scu_ipc_init);
+fs_initcall(intel_scu_ipc_init);
 module_exit(intel_scu_ipc_exit);
