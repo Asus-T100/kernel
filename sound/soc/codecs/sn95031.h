@@ -28,6 +28,8 @@
 #define _SN95031_H
 
 /*register map*/
+#define SN95031_ACCDETMASK		0x1E
+
 #define SN95031_VAUD			0xDB
 #define SN95031_VHSP			0xDC
 #define SN95031_VHSN			0xDD

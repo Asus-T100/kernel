@@ -1081,12 +1081,20 @@ void sn95031_jack_detection(struct mfld_jack_data *jack_data)
 		pr_debug("headset or headphones inserted\n");
 		status = sn95031_get_headset_state(jack_data->mfld_jack);
 	} else if (jack_data->intr_id & 0x8) {
-		pr_debug("headset or headphones removed\n");
+		pr_debug("headset or headphones removed, disabling btn and enabling JACKDET\n");
 		status = 0;
 		sn95031_disable_jack_btn(jack_data->mfld_jack->codec);
+		snd_soc_update_bits(jack_data->mfld_jack->codec,
+						SN95031_ACCDETMASK, BIT(2), 0);
 	} else {
 		pr_err("unidentified interrupt\n");
 		return;
+	}
+
+	if ((status == SND_JACK_HEADSET) | (status == SND_JACK_HEADPHONE)) {
+		pr_debug("detected headset or headphone, disabling JACKDET\n");
+		snd_soc_update_bits(jack_data->mfld_jack->codec,
+					SN95031_ACCDETMASK, BIT(2), BIT(2));
 	}
 
 	snd_soc_jack_report(jack_data->mfld_jack, status, mask);
