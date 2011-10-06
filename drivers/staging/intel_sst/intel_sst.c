@@ -336,7 +336,7 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 
 		/*set lpe start clock and ram size*/
 		csr = sst_shim_read(sst_drv_ctx->shim, SST_CSR);
-		csr |= 0x30060; /*remove the clock ratio after fw fix*/
+		csr |= 0x30000;
 		sst_shim_write(sst_drv_ctx->shim, SST_CSR, csr);
 	}
 	sst_drv_ctx->lpe_stalled = 0;
