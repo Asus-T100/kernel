@@ -823,20 +823,30 @@ static void sst_print_stream_params(struct snd_sst_get_stream_params *get_prm)
  * @msg: post msg pointer
  *
  * This function is called to create ipc msg
+ * For copying the mailbox data the function returns offset in bytes to mailbox
+ * memory where the mailbox data should be copied after msg header
  */
 int sst_create_algo_ipc(struct snd_ppp_params *algo_params,
 					struct ipc_post **msg)
 {
+	u32 header_size = 0;
+	u32 ipc_msg_size = sizeof(u32) + sizeof(*algo_params)
+			 - sizeof(algo_params->params) + algo_params->size;
+	u32 offset = 0;
+
+	if (ipc_msg_size > SST_MAILBOX_SIZE)
+		return -ENOMEM;
 	if (sst_create_large_msg(msg))
 		return -ENOMEM;
 	sst_fill_header(&(*msg)->header,
 			IPC_IA_ALG_PARAMS, 1, algo_params->str_id);
-	(*msg)->header.part.data = sizeof(u32) + sizeof(*algo_params) -
-		sizeof(algo_params->params) + algo_params->size;
+	(*msg)->header.part.data = ipc_msg_size;
 	memcpy((*msg)->mailbox_data, &(*msg)->header, sizeof(u32));
-	memcpy((*msg)->mailbox_data + sizeof(u32), algo_params,
-		sizeof(*algo_params) - sizeof(algo_params->params));
-	return 0;
+	offset = sizeof(u32);
+	header_size = sizeof(*algo_params) - sizeof(algo_params->params);
+	memcpy((*msg)->mailbox_data + offset, algo_params, header_size);
+	offset += header_size;
+	return offset;
 }
 
 /**
@@ -881,18 +891,15 @@ long intel_sst_ioctl_dsp(unsigned int cmd, unsigned long arg)
 		if (copy_from_user(&algo_params, (void __user *)arg,
 							sizeof(algo_params)))
 			return -EFAULT;
-		if (algo_params.size > SST_MAILBOX_SIZE)
-			return -EMSGSIZE;
 
 		pr_debug("Algo ID %d Str id %d Enable %d Size %d\n",
 			algo_params.algo_id, algo_params.str_id,
 			algo_params.enable, algo_params.size);
-		retval = sst_create_algo_ipc(&algo_params, &msg);
-		if (retval)
-			break;
 		algo_params.reserved = 0;
-		if (copy_from_user(msg->mailbox_data + sizeof(algo_params) -
-				sizeof(algo_params.params) + sizeof(u32),
+		retval = sst_create_algo_ipc(&algo_params, &msg);
+		if (retval < 0)
+			break;
+		if (copy_from_user(msg->mailbox_data + retval,
 				algo_params.params, algo_params.size)) {
 			kfree(msg);
 			return -EFAULT;
@@ -912,10 +919,16 @@ long intel_sst_ioctl_dsp(unsigned int cmd, unsigned long arg)
 		pr_debug("Algo ID %d Str id %d Enable %d Size %d\n",
 			algo_params.algo_id, algo_params.str_id,
 			algo_params.enable, algo_params.size);
+		algo_params.reserved = 1;
 		retval = sst_create_algo_ipc(&algo_params, &msg);
-		if (retval)
+		if (retval < 0)
 			break;
 		algo_params.reserved = 1;
+		if (copy_from_user(msg->mailbox_data + retval,
+				algo_params.params, algo_params.size))	{
+			kfree(msg);
+			return -EFAULT;
+		}
 		retval = sst_send_algo_ipc(&msg);
 		if (retval) {
 			pr_debug("Error in sst_get_algo = %d\n", retval);
