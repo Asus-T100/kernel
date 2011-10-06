@@ -72,7 +72,7 @@ static unsigned int sn95031_read_voltage()
 /* enables mic bias voltage */
 static void sn95031_enable_mic_bias(struct snd_soc_codec *codec)
 {
-	snd_soc_write(codec, SN95031_VAUD, BIT(2)|BIT(1)|BIT(0));
+	snd_soc_write(codec, SN95031_VAUD, 0x2D);
 	snd_soc_update_bits(codec, SN95031_MICBIAS, BIT(2), BIT(2));
 }
 
@@ -139,9 +139,8 @@ static int sn95031_set_vaud_bias(struct snd_soc_codec *codec,
 	case SND_SOC_BIAS_STANDBY:
 		if (codec->dapm.bias_level == SND_SOC_BIAS_OFF) {
 			pr_debug("vaud_bias power up rail\n");
-			/* power up the rail */
-			snd_soc_write(codec, SN95031_VAUD,
-					BIT(2)|BIT(1)|BIT(0));
+			/* power up the rail, on in normal and aoac mode */
+			snd_soc_write(codec, SN95031_VAUD, 0x2D);
 			msleep(1);
 		} else if (codec->dapm.bias_level == SND_SOC_BIAS_PREPARE) {
 			/* turn off pcm */
@@ -156,7 +155,11 @@ static int sn95031_set_vaud_bias(struct snd_soc_codec *codec,
 
 	case SND_SOC_BIAS_OFF:
 		pr_debug("vaud_bias _OFF doing rail shutdown\n");
-		snd_soc_write(codec, SN95031_VAUD, BIT(3));
+		/*
+		 * off mode is 100, and we need AOAC as off as well,
+		 * so 100100b ie 24
+		 */
+		snd_soc_write(codec, SN95031_VAUD, 0x24);
 		break;
 	}
 
@@ -170,13 +173,13 @@ static int sn95031_vhs_event(struct snd_soc_dapm_widget *w,
 	if (SND_SOC_DAPM_EVENT_ON(event)) {
 		pr_debug("VHS SND_SOC_DAPM_EVENT_ON doing rail startup now\n");
 		/* power up the rail */
-		snd_soc_write(w->codec, SN95031_VHSP, 0x3D);
-		snd_soc_write(w->codec, SN95031_VHSN, 0x3F);
+		snd_soc_write(w->codec, SN95031_VHSP, 0x2D);
+		snd_soc_write(w->codec, SN95031_VHSN, 0x2D);
 		msleep(1);
 	} else if (SND_SOC_DAPM_EVENT_OFF(event)) {
 		pr_debug("VHS SND_SOC_DAPM_EVENT_OFF doing rail shutdown\n");
-		snd_soc_write(w->codec, SN95031_VHSP, 0xC4);
-		snd_soc_write(w->codec, SN95031_VHSN, 0x04);
+		snd_soc_write(w->codec, SN95031_VHSP, 0x24);
+		snd_soc_write(w->codec, SN95031_VHSN, 0x24);
 	}
 	return 0;
 }
@@ -187,7 +190,7 @@ static int sn95031_vihf_event(struct snd_soc_dapm_widget *w,
 	if (SND_SOC_DAPM_EVENT_ON(event)) {
 		pr_debug("VIHF SND_SOC_DAPM_EVENT_ON doing rail startup now\n");
 		/* power up the rail */
-		snd_soc_write(w->codec, SN95031_VIHF, 0x27);
+		snd_soc_write(w->codec, SN95031_VIHF, 0x2D);
 		msleep(1);
 	} else if (SND_SOC_DAPM_EVENT_OFF(event)) {
 		pr_debug("VIHF SND_SOC_DAPM_EVENT_OFF doing rail shutdown\n");
@@ -1132,6 +1135,12 @@ static int sn95031_codec_probe(struct snd_soc_codec *codec)
 	/* dac mode and lineout workaround */
 	snd_soc_write(codec, SN95031_SSR2, 0x10);
 	snd_soc_write(codec, SN95031_SSR3, 0x40);
+
+	/* turn off all rails, will be enabled when required */
+	snd_soc_write(codec, SN95031_VAUD, 0x24);
+	snd_soc_write(codec, SN95031_VIHF, 0x24);
+	snd_soc_write(codec, SN95031_VHSN, 0x24);
+	snd_soc_write(codec, SN95031_VHSP, 0x24);
 
 	snd_soc_add_controls(codec, sn95031_snd_controls,
 			     ARRAY_SIZE(sn95031_snd_controls));
