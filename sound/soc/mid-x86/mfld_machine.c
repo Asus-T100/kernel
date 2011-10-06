@@ -388,63 +388,44 @@ static irqreturn_t snd_mfld_jack_intr_handler(int irq, void *dev)
 	return IRQ_WAKE_THREAD;
 }
 
-static void jack_int_handler(struct mfld_mc_private *mc_drv_ctx)
-{
-	u8 status;
-
-	spin_lock(&mc_drv_ctx->lock);
-	if (mc_drv_ctx->jack_interrupt_status) {
-		status = mc_drv_ctx->jack_interrupt_status;
-		mc_drv_ctx->jack_interrupt_status = 0;
-		spin_unlock(&mc_drv_ctx->lock);
-		pr_debug("jack_status:%x\n", status);
-		mfld_jack_check(status);
-		return;
-	}
-	spin_unlock(&mc_drv_ctx->lock);
-	return;
-}
-
-static void oc_int_handler(struct mfld_mc_private *mc_drv_ctx)
-{
-	u8 status;
-
-	spin_lock(&mc_drv_ctx->lock);
-	if (mc_drv_ctx->oc_interrupt_status) {
-		status = mc_drv_ctx->oc_interrupt_status;
-		mc_drv_ctx->oc_interrupt_status = 0;
-		spin_unlock(&mc_drv_ctx->lock);
-		pr_debug("oc_current\n");
-		sn95031_oc_handler(mc_drv_ctx->codec, status);
-		return;
-	}
-	spin_unlock(&mc_drv_ctx->lock);
-	return;
-}
-
 static irqreturn_t snd_mfld_codec_intr_detection(int irq, void *data)
 {
 	struct mfld_mc_private *mc_drv_ctx = (struct mfld_mc_private *) data;
+	unsigned long flags;
+	u8 oc_int_value = 0, jack_int_value = 0;
 
 	if (mfld_jack.codec == NULL) {
 		pr_debug("codec NULL returning..");
-		spin_lock(&mc_drv_ctx->lock);
+		spin_lock_irqsave(&mc_drv_ctx->lock, flags);
 		mc_drv_ctx->jack_interrupt_status = 0;
 		mc_drv_ctx->oc_interrupt_status = 0;
-		spin_unlock(&mc_drv_ctx->lock);
-		return IRQ_HANDLED;
+		spin_unlock_irqrestore(&mc_drv_ctx->lock, flags);
+		goto ret;
 	}
-	spin_lock(&mc_drv_ctx->lock);
+	spin_lock_irqsave(&mc_drv_ctx->lock, flags);
 	if (!((mc_drv_ctx->jack_interrupt_status) ||
 			(mc_drv_ctx->oc_interrupt_status))) {
-		spin_unlock(&mc_drv_ctx->lock);
+		spin_unlock_irqrestore(&mc_drv_ctx->lock, flags);
 		pr_err("OC and Jack Intr with status 0, return....\n");
 		goto ret;
 	}
-	spin_unlock(&mc_drv_ctx->lock);
-	mc_drv_ctx->codec = mfld_jack.codec;
-	oc_int_handler(mc_drv_ctx);
-	jack_int_handler(mc_drv_ctx);
+	if (mc_drv_ctx->oc_interrupt_status) {
+		oc_int_value = mc_drv_ctx->oc_interrupt_status;
+		mc_drv_ctx->oc_interrupt_status = 0;
+	}
+	if (mc_drv_ctx->jack_interrupt_status) {
+		jack_int_value = mc_drv_ctx->jack_interrupt_status;
+		mc_drv_ctx->jack_interrupt_status = 0;
+	}
+	spin_unlock_irqrestore(&mc_drv_ctx->lock, flags);
+
+	if (oc_int_value) {
+		mc_drv_ctx->codec = mfld_jack.codec;
+		sn95031_oc_handler(mc_drv_ctx->codec, oc_int_value);
+	}
+	if (jack_int_value)
+		mfld_jack_check(jack_int_value);
+
 ret:
 	return IRQ_HANDLED;
 }
