@@ -75,6 +75,7 @@ static int intel_sst_reset_dsp_medfield(void)
 	pr_debug("Resetting the DSP in medfield\n");
 	csr.full = sst_shim_read(sst_drv_ctx->shim, SST_CSR);
 	csr.full |= 0x382;
+	csr.part.run_stall = 0x1;
 	sst_shim_write(sst_drv_ctx->shim, SST_CSR, csr.full);
 
 	return 0;
