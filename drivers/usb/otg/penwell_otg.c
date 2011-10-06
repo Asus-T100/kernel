@@ -54,8 +54,8 @@ static const char driver_name[] = "penwell_otg";
 static int penwell_otg_probe(struct pci_dev *pdev,
 			const struct pci_device_id *id);
 static void penwell_otg_remove(struct pci_dev *pdev);
-static int penwell_otg_suspend(struct pci_dev *pdev, pm_message_t message);
-static int penwell_otg_resume(struct pci_dev *pdev);
+static int penwell_otg_suspend(struct device *dev);
+static int penwell_otg_resume(struct device *pdev);
 
 static int penwell_otg_set_host(struct otg_transceiver *otg,
 				struct usb_bus *host);
@@ -107,6 +107,8 @@ static const char *charger_string(enum usb_charger_type charger)
 		return "Charging Downstream Port";
 	case CHRG_DCP:
 		return "Dedicated Charging Port";
+	case CHRG_ACA:
+		return "Accessory Charger Adaptor";
 	case CHRG_UNKNOWN:
 		return "Unknown";
 	default:
@@ -307,7 +309,7 @@ static int penwell_otg_set_power(struct otg_transceiver *otg,
 	spin_lock_irqsave(&pnw->charger_lock, flags);
 
 	if (pnw->charging_cap.chrg_type != CHRG_SDP) {
-		spin_unlock(&pnw->charger_lock);
+		spin_unlock_irqrestore(&pnw->charger_lock, flags);
 		return 0;
 	}
 
@@ -465,14 +467,14 @@ penwell_otg_ulpi_read(struct intel_mid_otg_xceiv *iotg, u8 reg, u8 *val)
 	val32 = ULPI_RUN | reg << 16;
 	writel(val32, pnw->iotg.base + CI_ULPIVP);
 
-	/* Polling for write operation to complete*/
-	count = 10;
+	/* Polling at least 1ms for read operation to complete*/
+	count = 200;
 
 	while (count) {
 		val32 = readl(pnw->iotg.base + CI_ULPIVP);
 		if (val32 & ULPI_RUN) {
 			count--;
-			udelay(20);
+			udelay(5);
 		} else {
 			*val = (u8)((val32 & ULPI_DATRD) >> 8);
 			dev_dbg(pnw->dev,
@@ -501,12 +503,12 @@ penwell_otg_ulpi_write(struct intel_mid_otg_xceiv *iotg, u8 reg, u8 val)
 	val32 = ULPI_RUN | ULPI_RW | reg << 16 | val;
 	writel(val32, pnw->iotg.base + CI_ULPIVP);
 
-	/* Polling for write operation to complete*/
-	count = 10;
+	/* Polling at least 1ms for write operation to complete*/
+	count = 200;
 
 	while (count && penwell_otg_ulpi_run()) {
 		count--;
-		udelay(20);
+		udelay(5);
 	}
 
 	dev_dbg(pnw->dev,
@@ -674,7 +676,7 @@ static void penwell_otg_loc_sof(int on)
 	struct usb_hcd		*hcd;
 	int			err;
 
-	dev_dbg(pnw->dev, "%s ---> %s\n", __func__, on ? "suspend" : "resume");
+	dev_dbg(pnw->dev, "%s ---> %s\n", __func__, on ? "resume" : "suspend");
 
 	hcd = bus_to_hcd(pnw->iotg.otg.host);
 	if (on)
@@ -716,6 +718,31 @@ static void penwell_otg_phy_low_power(int on)
 
 	dev_dbg(pnw->dev, "<--- Register CI_HOSTPC1 = %x\n", val);
 	dev_dbg(pnw->dev, "%s <---\n", __func__);
+}
+
+/*
+ * VBUS330 is the power rail to otg transceiver, set it into low power mode
+ * or normal mode according to pm state. Call this function when spi access
+ * to MSIC registers is enabled.
+ */
+static int penwell_otg_vusb330_low_power(int on)
+{
+	struct penwell_otg	*pnw = the_transceiver;
+	u8			data;
+	int			retval;
+
+	dev_dbg(pnw->dev, "%s ---> %s\n", __func__, on ? "on" : "off");
+
+	if (on)
+		data = 0x5; /* Low power mode */
+	else
+		data = 0x7; /* Normal mode */
+
+	retval = penwell_otg_msic_write(MSIC_VUSB330CNT, data);
+
+	dev_dbg(pnw->dev, "%s <---\n", __func__);
+
+	return retval;
 }
 
 /* Enable/Disable OTG interrupt */
@@ -777,10 +804,8 @@ static int penwell_otg_msic_write(u16 addr, u8 data)
 	int			retval = 0;
 
 	retval = intel_scu_ipc_iowrite8(addr, data);
-	if (retval) {
+	if (retval)
 		dev_warn(pnw->dev, "Failed to write MSIC register %x\n", addr);
-		return retval;
-	}
 
 	return retval;
 }
@@ -957,6 +982,196 @@ static int penwell_otg_charger_type_detect(void)
 	return charger;
 }
 
+/* manual charger detection by ULPI access */
+static int penwell_otg_manual_charger_detection(void)
+{
+	struct penwell_otg		*pnw = the_transceiver;
+	struct intel_mid_otg_xceiv	*iotg;
+	int				retval;
+	u8				data, data1, data2;
+	unsigned long			timeout, interval;
+
+	dev_dbg(pnw->dev, "%s --->\n", __func__);
+
+	iotg = &pnw->iotg;
+
+	dev_info(pnw->dev, "USB charger detection start...\n");
+
+	/* config PHY for DCD
+	 * - OPMODE/TERMSEL/XCVRSEL=01/0/01
+	 * - enable DP/DM pulldowns (ensure RX's don't float) */
+
+	/* ulpi_write(0x0b, 0x06) */
+	retval = penwell_otg_ulpi_write(iotg, ULPI_OTGCTRLSET,
+				DMPULLDOWN | DPPULLDOWN);
+	if (retval)
+		return retval;
+
+	/* ulpi_write(0x05, 0x09) */
+	retval = penwell_otg_ulpi_write(iotg, ULPI_FUNCTRLSET,
+				OPMODE0 | XCVRSELECT0);
+	if (retval)
+		return retval;
+
+	/* ulpi_write(0x06, 0x16) */
+	retval = penwell_otg_ulpi_write(iotg, ULPI_FUNCTRLCLR,
+				OPMODE1 | TERMSELECT | XCVRSELECT1);
+	if (retval)
+		return retval;
+
+	/* ulpi_write(0x0c, 0x02) */
+	retval = penwell_otg_ulpi_write(iotg, ULPI_OTGCTRLCLR, DPPULLDOWN);
+	if (retval)
+		return retval;
+
+	/* ulpi_write(0x3e, 0x01) */
+	retval = penwell_otg_ulpi_write(iotg, ULPI_PWRCTRLSET, SWCNTRL);
+	if (retval)
+		return retval;
+
+	/* ulpi_write(0x86, 0x40) */
+	retval = penwell_otg_ulpi_write(iotg, ULPI_VS3SET, CHGD_IDP_SRC);
+	if (retval)
+		return retval;
+
+	dev_info(pnw->dev, "charger detection DCD start...\n");
+
+	/* Check DCD result, use same polling parameter */
+	timeout = jiffies + msecs_to_jiffies(DATACON_TIMEOUT);
+	interval = DATACON_INTERVAL * 1000; /* us */
+
+	while (!time_after(jiffies, timeout)) {
+		retval = penwell_otg_ulpi_read(iotg, ULPI_VS4, &data);
+		if (retval) {
+			dev_warn(pnw->dev, "Failed to read ULPI register\n");
+			return retval;
+		}
+
+		if (data & !CHRG_SERX_DP) {
+			dev_info(pnw->dev, "Data contact detected!\n");
+			break;
+		}
+
+		/* Polling interval */
+		usleep_range(interval, interval + 2000);
+	}
+
+	/* ulpi_write(0x87, 0x40)*/
+	retval = penwell_otg_ulpi_write(iotg, ULPI_VS3CLR, CHGD_IDP_SRC);
+	if (retval)
+		return retval;
+
+	dev_info(pnw->dev, "DCD complete\n");
+	dev_info(pnw->dev, "Primary Detection start...\n");
+
+	/* Primary Dection config */
+	/* ulpi_write(0x0b, 0x06) */
+	retval = penwell_otg_ulpi_write(iotg, ULPI_OTGCTRLSET,
+				DMPULLDOWN | DPPULLDOWN);
+	if (retval)
+		return retval;
+
+	retval = penwell_otg_ulpi_write(iotg, ULPI_PWRCTRLSET, DPVSRCEN);
+	if (retval)
+		return retval;
+
+	msleep(125);
+
+	/* Check result SDP vs CDP/DCP */
+	retval = penwell_otg_ulpi_read(iotg, ULPI_PWRCTRL, &data1);
+	if (retval)
+		return retval;
+
+	data1 = data1 & VDATDET;
+
+	retval = penwell_otg_ulpi_read(iotg, ULPI_VS4, &data2);
+	if (retval)
+		return retval;
+
+	data2 = data2 & CHRG_SERX_DM;
+
+	if (!data1 || data2) {
+		retval = penwell_otg_ulpi_write(iotg, ULPI_PWRCTRLCLR,
+						DPVSRCEN);
+		if (retval)
+			return retval;
+
+		dev_info(pnw->dev, "USB Charger Detection done\n");
+		return CHRG_SDP;
+	}
+
+	/* start detection on CDP vs DCP */
+	retval = penwell_otg_ulpi_write(iotg, ULPI_PWRCTRLCLR, DPVSRCEN);
+	if (retval)
+		return retval;
+
+	/* sleep 1ms between Primary and Secondary detection */
+	usleep_range(1000, 1200);
+
+	retval = penwell_otg_ulpi_write(iotg, ULPI_VS1CLR, DATAPOLARITY);
+	if (retval)
+		return retval;
+
+	retval = penwell_otg_ulpi_write(iotg, ULPI_PWRCTRLSET, DPVSRCEN);
+	if (retval)
+		return retval;
+
+	msleep(85);
+
+	/* read result on CDP vs DCP */
+	retval = penwell_otg_ulpi_read(iotg, ULPI_PWRCTRL, &data);
+	if (retval)
+		return retval;
+
+	data = data & VDATDET;
+
+	retval = penwell_otg_ulpi_write(iotg, ULPI_PWRCTRLCLR, DPVSRCEN);
+	if (retval)
+		return retval;
+
+	retval = penwell_otg_ulpi_write(iotg, ULPI_VS1SET, DATAPOLARITY);
+	if (retval)
+		return retval;
+
+	dev_info(pnw->dev, "USB Charger Detection done\n");
+
+	if (data) {
+		retval = penwell_otg_ulpi_write(iotg, ULPI_PWRCTRLSET,
+							DPVSRCEN);
+		if (retval)
+			return retval;
+
+		return CHRG_DCP;
+	} else
+		return CHRG_CDP;
+
+	dev_dbg(pnw->dev, "%s <---\n", __func__);
+};
+
+void penwell_otg_phy_vbus_wakeup(bool on)
+{
+	struct penwell_otg	*pnw = the_transceiver;
+	u8			flag = 0;
+
+	dev_dbg(pnw->dev, "%s --->\n", __func__);
+
+	penwell_otg_msic_spi_access(true);
+
+	flag = VBUSVLD | SESSVLD | SESSEND;
+
+	if (on) {
+		penwell_otg_msic_write(MSIC_USBINTEN_RISESET, flag);
+		penwell_otg_msic_write(MSIC_USBINTEN_FALLSET, flag);
+	} else {
+		penwell_otg_msic_write(MSIC_USBINTEN_RISECLR, flag);
+		penwell_otg_msic_write(MSIC_USBINTEN_FALLCLR, flag);
+	}
+
+	penwell_otg_msic_spi_access(false);
+
+	dev_dbg(pnw->dev, "%s --->\n", __func__);
+}
+
 void penwell_otg_nsf_msg(unsigned long indicator)
 {
 	switch (indicator) {
@@ -1053,6 +1268,21 @@ static void penwell_otg_add_timer(enum penwell_otg_timer_type timers)
 		dev_dbg(pnw->dev,
 			"Add timer TB_SRP_FAIL = %d\n", TB_SRP_FAIL);
 		break;
+	/* support OTG test mode */
+	case TTST_MAINT_TMR:
+		iotg->hsm.tst_maint_tmout = 0;
+		data = (unsigned long)&iotg->hsm.tst_maint_tmout;
+		time = TTST_MAINT;
+		dev_dbg(pnw->dev,
+			"Add timer TTST_MAINT = %d\n", TTST_MAINT);
+		break;
+	case TTST_NOADP_TMR:
+		iotg->hsm.tst_noadp_tmout = 0;
+		data = (unsigned long)&iotg->hsm.tst_noadp_tmout;
+		time = TTST_NOADP;
+		dev_dbg(pnw->dev,
+			"Add timer TTST_NOADP = %d\n", TTST_NOADP);
+		break;
 	default:
 		dev_dbg(pnw->dev,
 			"unkown timer, can not enable such timer\n");
@@ -1077,6 +1307,15 @@ static inline void penwell_otg_del_timer(enum penwell_otg_timer_type timers)
 		break;
 	case TB_SRP_FAIL_TMR:
 		iotg->hsm.b_srp_fail_tmr = 0;
+		break;
+	case TA_WAIT_BCON_TMR:
+		iotg->hsm.a_wait_bcon_tmout = 0;
+		break;
+	case TTST_MAINT_TMR:
+		iotg->hsm.tst_maint_tmout = 0;
+		break;
+	case TTST_NOADP_TMR:
+		iotg->hsm.tst_noadp_tmout = 0;
 		break;
 	default:
 		break;
@@ -1163,7 +1402,7 @@ static void init_hsm(void)
 	iotg->hsm.a_bus_req = 1;
 	iotg->hsm.a_bus_drop = 0;
 	/* init hsm means power_up case */
-	iotg->hsm.power_up = 1;
+	iotg->hsm.power_up = 0;
 	/* defautly don't request bus as B device */
 	iotg->hsm.b_bus_req = 0;
 	/* no system error */
@@ -1220,10 +1459,9 @@ static irqreturn_t otg_dummy_irq(int irq, void *_dev)
 	return IRQ_HANDLED;
 }
 
-static irqreturn_t otg_irq(int irq, void *_dev)
+static irqreturn_t otg_irq_handle(struct penwell_otg *pnw,
+					struct intel_mid_otg_xceiv *iotg)
 {
-	struct penwell_otg		*pnw = _dev;
-	struct intel_mid_otg_xceiv	*iotg = &pnw->iotg;
 	int				flag = 0;
 	u32				int_sts, int_en, int_mask = 0;
 
@@ -1287,11 +1525,104 @@ static irqreturn_t otg_irq(int irq, void *_dev)
 	return IRQ_HANDLED;
 }
 
+static irqreturn_t otg_irq(int irq, void *_dev)
+{
+	struct penwell_otg		*pnw = _dev;
+	struct intel_mid_otg_xceiv	*iotg = &pnw->iotg;
+
+#ifdef CONFIG_PM_RUNTIME
+	if (pnw->rt_resuming) {
+		pnw->rt_resuming++;
+		return IRQ_HANDLED;
+	} else if (pnw->dev->power.runtime_status == RPM_RESUMING)
+		return IRQ_HANDLED;
+
+	/* If it's not active, resume device first before access regs */
+	if (pnw->dev->power.runtime_status != RPM_ACTIVE) {
+		dev_dbg(pnw->dev, "Wake up? Interrupt detected in suspended\n");
+		pnw->rt_resuming = 1;
+
+		pm_runtime_get(pnw->dev);
+
+		return IRQ_HANDLED;
+	}
+#endif /* CONFIG_PM_RUNTIME */
+
+	return otg_irq_handle(pnw, iotg);
+}
+
+static void penwell_otg_check_wakeup_event(struct penwell_otg *pnw)
+{
+	u32		int_sts, int_en, int_mask = 0;
+	int		flag = 0;
+	int		id, a_vbus_vld, b_sess_end;
+	int		b_sess_vld, a_sess_vld;
+
+	pnw = the_transceiver;
+
+	/* OTGSC needs 1ms debounce time to get synced with MSIC
+	 * after back from clock gated state to D0, sleep 2ms
+	 * will be enough */
+	usleep_range(1800, 2000);
+
+	/* Check VBUS/SRP interrup */
+	int_sts = readl(pnw->iotg.base + CI_OTGSC);
+	int_en = (int_sts & OTGSC_INTEN_MASK) >> 8;
+	int_mask = int_sts & int_en;
+
+	/* won't use OTGSC INTSTS bit, because controller is
+	 * reset during runtime suspend, just check current status */
+
+	/* get current id/a_vbus_vld/b_sess_end/b_sess_vld/a_sess_vld */
+	id = !!(int_sts & OTGSC_ID) ? ID_B : ID_A;
+	b_sess_end = !!(int_sts & OTGSC_BSE);
+	b_sess_vld = !!(int_sts & OTGSC_BSV);
+	a_sess_vld = !!(int_sts & OTGSC_ASV);
+	a_vbus_vld = !!(int_sts & OTGSC_AVV);
+
+	if (id != pnw->iotg.hsm.id) {
+		pnw->iotg.hsm.id = id;
+		dev_dbg(pnw->dev, "ID Wake up id = %d\n", id);
+		flag = 1;
+	}
+
+	if (b_sess_end != pnw->iotg.hsm.b_sess_end) {
+		pnw->iotg.hsm.b_sess_end = b_sess_end;
+		dev_dbg(pnw->dev, "B_sess_end Wake up = %d\n", b_sess_end);
+		flag = 1;
+	}
+
+	if (b_sess_vld != pnw->iotg.hsm.b_sess_vld) {
+		pnw->iotg.hsm.b_sess_vld = b_sess_vld;
+		dev_dbg(pnw->dev, "B_sess_vld Wake up = %d\n", b_sess_vld);
+		flag = 1;
+	}
+
+	if (a_sess_vld != pnw->iotg.hsm.a_sess_vld) {
+		pnw->iotg.hsm.a_sess_vld = a_sess_vld;
+		dev_dbg(pnw->dev, "A_sess_vld Wake up = %d\n", a_sess_vld);
+		flag = 1;
+	}
+
+	if (a_vbus_vld != pnw->iotg.hsm.a_vbus_vld) {
+		pnw->iotg.hsm.a_vbus_vld = a_vbus_vld;
+		dev_dbg(pnw->dev, "A_vbus_vld Wake up = %d\n", a_vbus_vld);
+		flag = 1;
+	}
+
+	if (int_mask)
+		writel((int_sts & ~OTGSC_INTSTS_MASK) | int_mask,
+				pnw->iotg.base + CI_OTGSC);
+	if (flag)
+		penwell_update_transceiver();
+}
+
 static int penwell_otg_iotg_notify(struct notifier_block *nb,
 				unsigned long action, void *data)
 {
 	struct penwell_otg		*pnw = the_transceiver;
 	struct intel_mid_otg_xceiv	*iotg = data;
+	unsigned long			flags;
 	int				flag = 0;
 
 	if (iotg == NULL)
@@ -1319,17 +1650,13 @@ static int penwell_otg_iotg_notify(struct notifier_block *nb,
 		break;
 	case MID_OTG_NOTIFY_HSUSPEND:
 		dev_dbg(pnw->dev, "PNW OTG Notify Host Bus suspend Event\n");
-		if (iotg->otg.default_a == 1)
-			iotg->hsm.a_bus_req = 0;
-		else
-			iotg->hsm.b_bus_req = 0;
-		flag = 1;
 		break;
 	case MID_OTG_NOTIFY_HRESUME:
 		dev_dbg(pnw->dev, "PNW OTG Notify Host Bus resume Event\n");
-		if (iotg->otg.default_a == 1)
+		if (iotg->otg.default_a == 1 && iotg->hsm.a_bus_req == 0) {
 			iotg->hsm.a_bus_req = 1;
-		flag = 1;
+			flag = 1;
+		}
 		break;
 	case MID_OTG_NOTIFY_CSUSPEND:
 		dev_dbg(pnw->dev, "PNW OTG Notify Client Bus suspend Event\n");
@@ -1355,6 +1682,11 @@ static int penwell_otg_iotg_notify(struct notifier_block *nb,
 			iotg->hsm.a_bus_suspend = 0;
 			flag = 0;
 		}
+		break;
+	case MID_OTG_NOTIFY_CRESET:
+		dev_dbg(pnw->dev, "PNW OTG Notify Client Bus reset Event\n");
+		penwell_otg_set_power(&pnw->iotg.otg, CHRG_CURR_SDP_SUSP);
+		flag = 0;
 		break;
 	case MID_OTG_NOTIFY_HOSTADD:
 		dev_dbg(pnw->dev, "PNW OTG Nofity Host Driver Add\n");
@@ -1382,17 +1714,35 @@ static int penwell_otg_iotg_notify(struct notifier_block *nb,
 		penwell_otg_update_chrg_cap(CHRG_CDP, CHRG_CURR_CDP_HS);
 		flag = 0;
 		break;
+	/* Test mode support */
+	case MID_OTG_NOTIFY_TEST_SRP_REQD:
+		dev_dbg(pnw->dev, "PNW OTG Notfiy Client SRP REQD\n");
+		iotg->hsm.otg_srp_reqd = 1;
+		flag = 1;
+		break;
+	case MID_OTG_NOTIFY_TEST:
+		dev_dbg(pnw->dev, "PNW OTG Notfiy Test device detected\n");
+		iotg->hsm.test_device = 1;
+		flag = 0;
+		break;
+	case MID_OTG_NOTIFY_TEST_VBUS_OFF:
+		dev_dbg(pnw->dev, "PNW OTG Notfiy Test device Vbus off mode\n");
+		iotg->hsm.test_device = 1;
+		iotg->hsm.otg_vbus_off = 1;
+		flag = 1;
+		break;
 	default:
 		dev_dbg(pnw->dev, "PNW OTG Nofity unknown notify message\n");
 		return NOTIFY_DONE;
 	}
 
-	if (flag)
+	spin_lock_irqsave(&pnw->notify_lock, flags);
+	if (flag && pnw->queue_stop == 0)
 		penwell_update_transceiver();
+	spin_unlock_irqrestore(&pnw->notify_lock, flags);
 
 	return NOTIFY_OK;
 }
-
 
 static void penwell_otg_hnp_poll_work(struct work_struct *work)
 {
@@ -1458,6 +1808,7 @@ static void penwell_otg_work(struct work_struct *work)
 	enum usb_charger_type		charger_type;
 	int				retval;
 	struct pci_dev			*pdev;
+	unsigned long			flags;
 
 	dev_dbg(pnw->dev,
 		"old state = %s\n", state_string(iotg->otg.state));
@@ -1524,11 +1875,15 @@ static void penwell_otg_work(struct work_struct *work)
 			/* Start USB Battery charger detection flow */
 
 			mutex_lock(&pnw->msic_mutex);
-			/* Enable data contact detection */
-			penwell_otg_data_contact_detect();
-			/* Enable charger detection functionality */
-			penwell_otg_charger_detect();
-			retval = penwell_otg_charger_type_detect();
+			if (pdev->revision >= 0x8) {
+				retval = penwell_otg_manual_charger_detection();
+			} else {
+				/* Enable data contact detection */
+				penwell_otg_data_contact_detect();
+				/* Enable charger detection functionality */
+				penwell_otg_charger_detect();
+				retval = penwell_otg_charger_type_detect();
+			}
 			mutex_unlock(&pnw->msic_mutex);
 			if (retval < 0) {
 				dev_warn(pnw->dev, "Charger detect failure\n");
@@ -1542,6 +1897,7 @@ static void penwell_otg_work(struct work_struct *work)
 				/* DCP: set charger type, current, notify EM */
 				penwell_otg_update_chrg_cap(CHRG_DCP,
 							CHRG_CURR_DCP);
+				set_client_mode();
 				penwell_otg_phy_low_power(1);
 				break;
 
@@ -1574,6 +1930,9 @@ static void penwell_otg_work(struct work_struct *work)
 				if (iotg->otg.gadget)
 					iotg->otg.gadget->host_request_flag = 0;
 
+				penwell_otg_phy_low_power(0);
+				set_client_mode();
+
 				if (iotg->start_peripheral) {
 					iotg->start_peripheral(iotg);
 				} else {
@@ -1592,8 +1951,8 @@ static void penwell_otg_work(struct work_struct *work)
 
 			iotg->otg.state = OTG_STATE_B_PERIPHERAL;
 
-		} else if ((hsm->b_bus_req || hsm->power_up ||
-				hsm->adp_change) && !hsm->b_srp_fail_tmr) {
+		} else if ((hsm->b_bus_req || hsm->power_up || hsm->adp_change
+				|| hsm->otg_srp_reqd) && !hsm->b_srp_fail_tmr) {
 
 			penwell_otg_mon_bus();
 
@@ -1617,10 +1976,27 @@ static void penwell_otg_work(struct work_struct *work)
 				dev_info(pnw->dev,
 					"BUS is active, try SRP later\n");
 			}
+
+			/* clear after SRP attemp */
+			if (hsm->otg_srp_reqd) {
+				dev_dbg(pnw->dev, "Test mode: SRP done\n");
+				hsm->otg_srp_reqd = 0;
+			}
 		} else if (!hsm->b_sess_vld && hsm->id == ID_B) {
-			/* Notify EM charger remove event */
-			penwell_otg_update_chrg_cap(CHRG_UNKNOWN,
+			spin_lock_irqsave(&pnw->charger_lock, flags);
+			charger_type = pnw->charging_cap.chrg_type;
+			spin_unlock_irqrestore(&pnw->charger_lock, flags);
+
+			if (charger_type == CHRG_DCP) {
+				/* Notify EM charger remove event */
+				penwell_otg_update_chrg_cap(CHRG_UNKNOWN,
 						CHRG_CURR_DISCONN);
+
+				retval = penwell_otg_ulpi_write(iotg,
+						ULPI_PWRCTRLCLR, DPVSRCEN);
+				if (retval)
+					dev_warn(pnw->dev, "ulpi failed\n");
+			}
 		}
 		break;
 
@@ -1656,13 +2032,13 @@ static void penwell_otg_work(struct work_struct *work)
 							CHRG_CURR_DISCONN);
 			}
 
+			hsm->b_bus_req = 0;
+
 			if (iotg->stop_peripheral)
 				iotg->stop_peripheral(iotg);
 			else
 				dev_dbg(pnw->dev,
 					"client driver has been removed.\n");
-
-			penwell_otg_phy_low_power(1);
 
 			iotg->otg.state = OTG_STATE_B_IDLE;
 		} else if (hsm->b_bus_req && hsm->a_bus_suspend
@@ -1893,6 +2269,8 @@ static void penwell_otg_work(struct work_struct *work)
 				penwell_otg_update_chrg_cap(CHRG_ACA,
 							CHRG_CURR_ACA);
 
+			hsm->b_bus_req = 0;
+
 			set_client_mode();
 			msleep(5);
 			penwell_otg_phy_low_power(1);
@@ -1932,12 +2310,16 @@ static void penwell_otg_work(struct work_struct *work)
 			if (hsm->adp_change)
 				hsm->adp_change = 0;
 
-			if (hsm->a_srp_det)
+			if (hsm->a_srp_det) {
 				hsm->a_srp_det = 0;
+				/* wait SRP done, then enable VBUS */
+				usleep_range(10000, 11000);
+			}
 
 			if (iotg->otg.set_vbus)
 				iotg->otg.set_vbus(&iotg->otg, true);
 
+			pm_runtime_get(pnw->dev);
 			penwell_otg_add_timer(TA_WAIT_VRISE_TMR);
 			iotg->otg.state = OTG_STATE_A_WAIT_VRISE;
 
@@ -1963,6 +2345,7 @@ static void penwell_otg_work(struct work_struct *work)
 			if (iotg->otg.set_vbus)
 				iotg->otg.set_vbus(&iotg->otg, false);
 
+			pm_runtime_get(pnw->dev);
 			penwell_otg_add_timer(TA_WAIT_VFALL_TMR);
 			iotg->otg.state = OTG_STATE_A_WAIT_VFALL;
 		} else if (hsm->a_vbus_vld || hsm->a_wait_vrise_tmout
@@ -1975,6 +2358,8 @@ static void penwell_otg_work(struct work_struct *work)
 				/* Turn off VBUS */
 				if (iotg->otg.set_vbus)
 					iotg->otg.set_vbus(&iotg->otg, false);
+
+				pm_runtime_get(pnw->dev);
 				penwell_otg_add_timer(TA_WAIT_VFALL_TMR);
 				iotg->otg.state = OTG_STATE_A_WAIT_VFALL;
 				break;
@@ -2000,11 +2385,14 @@ static void penwell_otg_work(struct work_struct *work)
 				break;
 			}
 
+			pm_runtime_put(pnw->dev);
+			penwell_otg_add_timer(TA_WAIT_BCON_TMR);
 			iotg->otg.state = OTG_STATE_A_WAIT_BCON;
 		}
 		break;
 	case OTG_STATE_A_WAIT_BCON:
-		if (hsm->id == ID_B || hsm->id == ID_ACA_B || hsm->a_bus_drop) {
+		if (hsm->id == ID_B || hsm->id == ID_ACA_B || hsm->a_bus_drop ||
+			hsm->a_wait_bcon_tmout) {
 			/* Move to A_WAIT_VFALL state, user request */
 
 			/* Delete current timer and clear flags for B-Device */
@@ -2022,6 +2410,7 @@ static void penwell_otg_work(struct work_struct *work)
 			if (iotg->otg.set_vbus)
 				iotg->otg.set_vbus(&iotg->otg, false);
 
+			pm_runtime_get(pnw->dev);
 			penwell_otg_add_timer(TA_WAIT_VFALL_TMR);
 			iotg->otg.state = OTG_STATE_A_WAIT_VFALL;
 		} else if (!hsm->a_vbus_vld) {
@@ -2051,10 +2440,13 @@ static void penwell_otg_work(struct work_struct *work)
 			/* Start HNP polling */
 			iotg->start_hnp_poll(iotg);
 
-			iotg->otg.state = OTG_STATE_A_HOST;
-
 			if (!hsm->a_bus_req)
 				hsm->a_bus_req = 1;
+
+			if (hsm->test_device)
+				penwell_otg_add_timer(TTST_MAINT_TMR);
+
+			iotg->otg.state = OTG_STATE_A_HOST;
 		} else if (hsm->id == ID_ACA_A) {
 			penwell_otg_update_chrg_cap(CHRG_ACA, CHRG_CURR_ACA);
 
@@ -2067,6 +2459,13 @@ static void penwell_otg_work(struct work_struct *work)
 	case OTG_STATE_A_HOST:
 		if (hsm->id == ID_B || hsm->id == ID_ACA_B || hsm->a_bus_drop) {
 			/* Move to A_WAIT_VFALL state, timeout/user request */
+
+			/* Delete current timer and clear flags */
+			if (hsm->test_device) {
+				hsm->test_device = 0;
+				penwell_otg_del_timer(TTST_MAINT_TMR);
+			}
+
 			if (hsm->id == ID_ACA_B)
 				penwell_otg_update_chrg_cap(CHRG_ACA,
 							CHRG_CURR_ACA);
@@ -2086,10 +2485,40 @@ static void penwell_otg_work(struct work_struct *work)
 			if (iotg->otg.set_vbus)
 				iotg->otg.set_vbus(&iotg->otg, false);
 
+			pm_runtime_get(pnw->dev);
 			penwell_otg_add_timer(TA_WAIT_VFALL_TMR);
 			iotg->otg.state = OTG_STATE_A_WAIT_VFALL;
+		} else if (hsm->test_device && hsm->tst_maint_tmout) {
+
+			hsm->test_device = 0;
+
+			/* Stop HNP polling */
+			iotg->stop_hnp_poll(iotg);
+
+			penwell_otg_phy_low_power(0);
+
+			if (iotg->stop_host)
+				iotg->stop_host(iotg);
+			else
+				dev_dbg(pnw->dev,
+					"host driver has been removed.\n");
+
+			/* Turn off VBUS */
+			if (iotg->otg.set_vbus)
+				iotg->otg.set_vbus(&iotg->otg, false);
+
+			/* Clear states and wait for SRP */
+			hsm->a_srp_det = 0;
+			hsm->a_bus_req = 0;
+			iotg->otg.state = OTG_STATE_A_IDLE;
 		} else if (!hsm->a_vbus_vld) {
 			/* Move to A_VBUS_ERR state */
+
+			/* Delete current timer and clear flags */
+			if (hsm->test_device) {
+				hsm->test_device = 0;
+				penwell_otg_del_timer(TTST_MAINT_TMR);
+			}
 
 			/* Stop HNP polling */
 			iotg->stop_hnp_poll(iotg);
@@ -2106,38 +2535,70 @@ static void penwell_otg_work(struct work_struct *work)
 
 			penwell_otg_phy_low_power(1);
 			iotg->otg.state = OTG_STATE_A_VBUS_ERR;
-		} else if (!hsm->a_bus_req) {
+		} else if (!hsm->a_bus_req && iotg->otg.host->b_hnp_enable) {
 			/* Move to A_SUSPEND state */
 
 			/* Stop HNP polling */
 			iotg->stop_hnp_poll(iotg);
 
-			if (iotg->otg.host->b_hnp_enable) {
-				/* According to Spec 7.1.5 */
-				penwell_otg_add_timer(TA_AIDL_BDIS_TMR);
+			/* According to Spec 7.1.5 */
+			penwell_otg_add_timer(TA_AIDL_BDIS_TMR);
 
-				/* Set HABA to enable hardware assistance to
-				 * signal A-connect after receiver B-disconnect
-				 * Hardware will then set client mode and
-				 * enable URE, SLE and PCE after the assistance
-				 * otg_dummy_irq is used to clean these ints
-				 * when client driver is not resumed.
-				 */
-				if (request_irq(pdev->irq, otg_dummy_irq,
-						IRQF_SHARED, driver_name,
-							iotg->base) != 0) {
+			/* Set HABA to enable hardware assistance to
+			 * signal A-connect after receiver B-disconnect
+			 * Hardware will then set client mode and
+			 * enable URE, SLE and PCE after the assistance
+			 * otg_dummy_irq is used to clean these ints
+			 * when client driver is not resumed.
+			 */
+			if (request_irq(pdev->irq, otg_dummy_irq,
+					IRQF_SHARED, driver_name,
+					iotg->base) != 0) {
 					dev_dbg(pnw->dev,
-						"request interrupt %d failed\n",
-								pdev->irq);
-				}
-				penwell_otg_HABA(1);
+					"request interrupt %d failed\n",
+					pdev->irq);
 			}
+			penwell_otg_HABA(1);
 
 			penwell_otg_loc_sof(0);
 			penwell_otg_phy_low_power(0);
 
 			iotg->otg.state = OTG_STATE_A_SUSPEND;
+		} else if (!hsm->b_conn && hsm->test_device
+						&& hsm->otg_vbus_off) {
+			/* If it is a test device with otg_vbus_off bit set,
+			 * turn off VBUS on disconnect event and stay for
+			 * TTST_NOADP without ADP */
+
+			penwell_otg_del_timer(TTST_MAINT_TMR);
+
+			/* Stop HNP polling */
+			iotg->stop_hnp_poll(iotg);
+
+			penwell_otg_phy_low_power(0);
+
+			if (iotg->stop_host)
+				iotg->stop_host(iotg);
+			else
+				dev_dbg(pnw->dev,
+					"host driver has been removed.\n");
+
+			/* Turn off VBUS */
+			if (iotg->otg.set_vbus)
+				iotg->otg.set_vbus(&iotg->otg, false);
+
+			pm_runtime_get(pnw->dev);
+			penwell_otg_add_timer(TTST_NOADP_TMR);
+			iotg->otg.state = OTG_STATE_A_WAIT_VFALL;
+
 		} else if (!hsm->b_conn) {
+
+			/* Delete current timer and clear flags */
+			if (hsm->test_device) {
+				hsm->test_device = 0;
+				penwell_otg_del_timer(TTST_MAINT_TMR);
+			}
+
 			/* Stop HNP polling */
 			iotg->stop_hnp_poll(iotg);
 
@@ -2181,6 +2642,7 @@ static void penwell_otg_work(struct work_struct *work)
 			if (iotg->otg.set_vbus)
 				iotg->otg.set_vbus(&iotg->otg, false);
 
+			pm_runtime_get(pnw->dev);
 			penwell_otg_add_timer(TA_WAIT_VFALL_TMR);
 			iotg->otg.state = OTG_STATE_A_WAIT_VFALL;
 		} else if (!hsm->a_vbus_vld) {
@@ -2204,8 +2666,6 @@ static void penwell_otg_work(struct work_struct *work)
 			iotg->otg.state = OTG_STATE_A_VBUS_ERR;
 		} else if (!hsm->b_conn && !pnw->iotg.otg.host->b_hnp_enable) {
 			/* Move to A_WAIT_BCON */
-			penwell_otg_HABA(0);
-			free_irq(pdev->irq, iotg->base);
 
 			/* delete current timer */
 			penwell_otg_del_timer(TA_AIDL_BDIS_TMR);
@@ -2285,6 +2745,7 @@ static void penwell_otg_work(struct work_struct *work)
 				iotg->otg.set_vbus(&iotg->otg, false);
 			set_host_mode();
 
+			pm_runtime_get(pnw->dev);
 			penwell_otg_add_timer(TA_WAIT_VFALL_TMR);
 			iotg->otg.state = OTG_STATE_A_WAIT_VFALL;
 		} else if (!hsm->a_vbus_vld) {
@@ -2352,6 +2813,7 @@ static void penwell_otg_work(struct work_struct *work)
 			if (hsm->a_clr_err)
 				hsm->a_clr_err = 0;
 
+			pm_runtime_get(pnw->dev);
 			penwell_otg_add_timer(TA_WAIT_VFALL_TMR);
 			iotg->otg.state = OTG_STATE_A_WAIT_VFALL;
 		}
@@ -2359,6 +2821,7 @@ static void penwell_otg_work(struct work_struct *work)
 	case OTG_STATE_A_WAIT_VFALL:
 		if (hsm->a_wait_vfall_tmout) {
 			hsm->a_srp_det = 0;
+			hsm->a_wait_vfall_tmout = 0;
 
 			/* Move to A_IDLE state, vbus falls */
 			penwell_otg_phy_low_power(1);
@@ -2366,6 +2829,21 @@ static void penwell_otg_work(struct work_struct *work)
 			/* Always set a_bus_req to 1, in case no ADP */
 			hsm->a_bus_req = 1;
 
+			pm_runtime_put(pnw->dev);
+			iotg->otg.state = OTG_STATE_A_IDLE;
+			penwell_update_transceiver();
+		} else if (hsm->test_device && hsm->otg_vbus_off
+					&& hsm->tst_noadp_tmout) {
+			/* After noadp timeout, switch back to normal mode */
+			hsm->test_device = 0;
+			hsm->otg_vbus_off = 0;
+			hsm->tst_noadp_tmout = 0;
+
+			penwell_otg_phy_low_power(1);
+
+			hsm->a_bus_req = 1;
+
+			pm_runtime_put(pnw->dev);
 			iotg->otg.state = OTG_STATE_A_IDLE;
 			penwell_update_transceiver();
 		}
@@ -2391,6 +2869,8 @@ show_registers(struct device *_dev, struct device_attribute *attr, char *buf)
 	next = buf;
 	size = PAGE_SIZE;
 
+	pm_runtime_get_sync(pnw->dev);
+
 	t = scnprintf(next, size,
 		"\n"
 		"USBCMD = 0x%08x\n"
@@ -2410,6 +2890,9 @@ show_registers(struct device *_dev, struct device_attribute *attr, char *buf)
 		readl(pnw->iotg.base + 0xf4),
 		readl(pnw->iotg.base + 0xf8)
 		);
+
+	pm_runtime_put_sync(pnw->dev);
+
 	size -= t;
 	next += t;
 
@@ -2467,6 +2950,8 @@ show_hsm(struct device *_dev, struct device_attribute *attr, char *buf)
 		"b_srp_fail_tmout = \t%d\n"
 		"b_srp_fail_tmr = \t%d\n"
 		"b_adp_sense_tmout = \t%d\n"
+		"tst_maint_tmout = \t%d\n"
+		"tst_noadp_tmout = \t%d\n"
 		"a_bus_drop = \t%d\n"
 		"a_bus_req = \t%d\n"
 		"a_clr_err = \t%d\n"
@@ -2502,6 +2987,8 @@ show_hsm(struct device *_dev, struct device_attribute *attr, char *buf)
 		iotg->hsm.b_srp_fail_tmout,
 		iotg->hsm.b_srp_fail_tmr,
 		iotg->hsm.b_adp_sense_tmout,
+		iotg->hsm.tst_maint_tmout,
+		iotg->hsm.tst_noadp_tmout,
 		iotg->hsm.a_bus_drop,
 		iotg->hsm.a_bus_req,
 		iotg->hsm.a_clr_err,
@@ -2742,6 +3229,31 @@ static struct attribute_group debug_dev_attr_group = {
 	.attrs = inputs_attrs,
 };
 
+static int penwell_otg_aca_enable(void)
+{
+	int			retval = 0;
+	struct penwell_otg	*pnw = the_transceiver;
+
+	penwell_otg_msic_spi_access(true);
+
+	retval = intel_scu_ipc_update_register(SPI_TI_VS4,
+		TI_ACA_DET_EN, TI_ACA_DET_EN);
+	if (retval)
+		goto done;
+
+	retval = intel_scu_ipc_update_register(SPI_TI_VS5,
+		TI_ID_FLOAT_EN | TI_ID_RES_EN,
+		TI_ID_FLOAT_EN | TI_ID_RES_EN);
+
+done:
+	penwell_otg_msic_spi_access(false);
+
+	if (retval)
+		dev_warn(pnw->dev, "Failed to enable ACA device detection\n");
+
+	return retval;
+}
+
 static int penwell_otg_probe(struct pci_dev *pdev,
 		const struct pci_device_id *id)
 {
@@ -2819,6 +3331,8 @@ static int penwell_otg_probe(struct pci_dev *pdev,
 	pnw->iotg.start_hnp_poll = penwell_otg_start_hnp_poll;
 	pnw->iotg.stop_hnp_poll = penwell_otg_stop_hnp_poll;
 	pnw->iotg.otg.state = OTG_STATE_UNDEFINED;
+	pnw->rt_resuming = 0;
+	pnw->queue_stop = 0;
 	if (otg_set_transceiver(&pnw->iotg.otg)) {
 		dev_dbg(pnw->dev, "can't set transceiver\n");
 		retval = -EBUSY;
@@ -2829,6 +3343,7 @@ static int penwell_otg_probe(struct pci_dev *pdev,
 	pnw->iotg.ulpi_ops.write = penwell_otg_ulpi_write;
 
 	spin_lock_init(&pnw->iotg.hnp_poll_lock);
+	spin_lock_init(&pnw->notify_lock);
 
 	init_timer(&pnw->hsm_timer);
 	init_timer(&pnw->bus_mon_timer);
@@ -2854,7 +3369,23 @@ static int penwell_otg_probe(struct pci_dev *pdev,
 	pnw->msic = penwell_otg_check_msic();
 
 	penwell_otg_phy_low_power(0);
+	/* Workaround for ULPI lockup issue, need turn off PHY 4ms */
+	penwell_otg_phy_enable(0);
+	usleep_range(4000, 4500);
 	penwell_otg_phy_enable(1);
+
+	/* Enable ID pullup immediately after reeable PHY */
+	val32 = readl(pnw->iotg.base + CI_OTGSC);
+	writel(val32 | OTGSC_IDPU, pnw->iotg.base + CI_OTGSC);
+
+	/* Wait correct value to be synced */
+	set_host_mode();
+	usleep_range(2000, 3000);
+	penwell_otg_phy_low_power(1);
+	msleep(100);
+
+	/* enable ACA device detection */
+	penwell_otg_aca_enable();
 
 	reset_otg();
 	init_hsm();
@@ -2900,11 +3431,10 @@ static int penwell_otg_probe(struct pci_dev *pdev,
 		goto err;
 	}
 
-	if (pnw->iotg.otg.state == OTG_STATE_A_IDLE)
-		queue_work(pnw->qwork, &pnw->work);
-
 	pm_runtime_put_noidle(&pdev->dev);
 	pm_runtime_allow(&pdev->dev);
+
+	penwell_update_transceiver();
 
 	return 0;
 
@@ -2950,40 +3480,61 @@ static void penwell_otg_remove(struct pci_dev *pdev)
 	pnw = NULL;
 }
 
-static void transceiver_suspend(struct pci_dev *pdev)
+void penwell_otg_shutdown(struct pci_dev *pdev)
 {
-	penwell_otg_phy_low_power(1);
-	pci_save_state(pdev);
-	pci_set_power_state(pdev, PCI_D3hot);
+	struct penwell_otg *pnw = the_transceiver;
+
+	dev_dbg(pnw->dev, "%s --->\n", __func__);
+
+	/* Disable MSIC Interrupt Notifications */
+	penwell_otg_msic_spi_access(true);
+
+	penwell_otg_msic_write(MSIC_INT_EN_RISE_CLR, 0x1F);
+	penwell_otg_msic_write(MSIC_INT_EN_FALL_CLR, 0x1F);
+
+	penwell_otg_msic_spi_access(false);
+
+	dev_dbg(pnw->dev, "%s <---\n", __func__);
 }
 
-static int penwell_otg_suspend(struct pci_dev *pdev, pm_message_t message)
+static int penwell_otg_suspend(struct device *dev)
 {
 	struct penwell_otg		*pnw = the_transceiver;
 	struct intel_mid_otg_xceiv	*iotg = &pnw->iotg;
+	struct pci_dev			*pdev;
+	unsigned long			flags;
 	int				ret = 0;
+
+	pdev = to_pci_dev(dev);
+
+	dev_dbg(pnw->dev, "%s --->\n", __func__);
+
+	if (iotg->otg.state == OTG_STATE_B_PERIPHERAL) {
+		dev_dbg(pnw->dev, "still alive, don't suspend\n");
+		return -EBUSY;
+	}
 
 	/* Disbale OTG interrupts */
 	penwell_otg_intr(0);
 
-	if (pdev->irq)
-		free_irq(pdev->irq, pnw);
+	/* Stop queue work from notifier */
+	spin_lock_irqsave(&pnw->notify_lock, flags);
+	pnw->queue_stop = 1;
+	spin_unlock_irqrestore(&pnw->notify_lock, flags);
 
-	/* Prevent more otg_work */
 	flush_workqueue(pnw->qwork);
-	destroy_workqueue(pnw->qwork);
-	pnw->qwork = NULL;
 
 	/* start actions */
 	switch (iotg->otg.state) {
+	case OTG_STATE_A_VBUS_ERR:
+		set_host_mode();
+		iotg->otg.state = OTG_STATE_A_IDLE;
+		break;
 	case OTG_STATE_A_WAIT_VFALL:
+		penwell_otg_del_timer(TA_WAIT_VFALL_TMR);
 		iotg->otg.state = OTG_STATE_A_IDLE;
 	case OTG_STATE_A_IDLE:
-	case OTG_STATE_A_VBUS_ERR:
-		transceiver_suspend(pdev);
-		break;
 	case OTG_STATE_B_IDLE:
-		transceiver_suspend(pdev);
 		break;
 	case OTG_STATE_A_WAIT_VRISE:
 		penwell_otg_del_timer(TA_WAIT_VRISE_TMR);
@@ -2992,7 +3543,6 @@ static int penwell_otg_suspend(struct pci_dev *pdev, pm_message_t message)
 		/* Turn off VBus */
 		iotg->otg.set_vbus(&iotg->otg, false);
 		iotg->otg.state = OTG_STATE_A_IDLE;
-		transceiver_suspend(pdev);
 		break;
 	case OTG_STATE_A_WAIT_BCON:
 		penwell_otg_del_timer(TA_WAIT_BCON_TMR);
@@ -3003,27 +3553,15 @@ static int penwell_otg_suspend(struct pci_dev *pdev, pm_message_t message)
 
 		iotg->hsm.a_srp_det = 0;
 
+		penwell_otg_phy_vbus_wakeup(false);
+
 		/* Turn off VBus */
 		iotg->otg.set_vbus(&iotg->otg, false);
 		iotg->otg.state = OTG_STATE_A_IDLE;
-		transceiver_suspend(pdev);
 		break;
 	case OTG_STATE_A_HOST:
-		/* Stop HNP polling */
-		iotg->stop_hnp_poll(iotg);
-
-		if (pnw->iotg.stop_host)
-			pnw->iotg.stop_host(&pnw->iotg);
-		else
-			dev_dbg(pnw->dev, "host driver has been stopped.\n");
-
-		iotg->hsm.a_srp_det = 0;
-
-		/* Turn off VBus */
-		iotg->otg.set_vbus(&iotg->otg, false);
-
-		iotg->otg.state = OTG_STATE_A_IDLE;
-		transceiver_suspend(pdev);
+		dev_dbg(pnw->dev, "don't suspend, host still alive\n");
+		ret = -EBUSY;
 		break;
 	case OTG_STATE_A_SUSPEND:
 		penwell_otg_del_timer(TA_AIDL_BDIS_TMR);
@@ -3034,10 +3572,11 @@ static int penwell_otg_suspend(struct pci_dev *pdev, pm_message_t message)
 			dev_dbg(pnw->dev, "host driver has been removed.\n");
 		iotg->hsm.a_srp_det = 0;
 
+		penwell_otg_phy_vbus_wakeup(false);
+
 		/* Turn off VBus */
 		iotg->otg.set_vbus(&iotg->otg, false);
 		iotg->otg.state = OTG_STATE_A_IDLE;
-		transceiver_suspend(pdev);
 		break;
 	case OTG_STATE_A_PERIPHERAL:
 		penwell_otg_del_timer(TA_BIDL_ADIS_TMR);
@@ -3051,7 +3590,6 @@ static int penwell_otg_suspend(struct pci_dev *pdev, pm_message_t message)
 		iotg->otg.set_vbus(&iotg->otg, false);
 		iotg->hsm.a_srp_det = 0;
 		iotg->otg.state = OTG_STATE_A_IDLE;
-		transceiver_suspend(pdev);
 		break;
 	case OTG_STATE_B_HOST:
 		/* Stop HNP polling */
@@ -3063,15 +3601,10 @@ static int penwell_otg_suspend(struct pci_dev *pdev, pm_message_t message)
 			dev_dbg(pnw->dev, "host driver has been stopped.\n");
 		iotg->hsm.b_bus_req = 0;
 		iotg->otg.state = OTG_STATE_B_IDLE;
-		transceiver_suspend(pdev);
 		break;
 	case OTG_STATE_B_PERIPHERAL:
-		if (pnw->iotg.stop_peripheral)
-			pnw->iotg.stop_peripheral(&pnw->iotg);
-		else
-			dev_dbg(pnw->dev, "client driver has been stopped.\n");
-		iotg->otg.state = OTG_STATE_B_IDLE;
-		transceiver_suspend(pdev);
+		dev_dbg(pnw->dev, "don't suspend, client still alive\n");
+		ret = -EBUSY;
 		break;
 	case OTG_STATE_B_WAIT_ACON:
 		penwell_otg_del_timer(TB_ASE0_BRST_TMR);
@@ -3084,49 +3617,62 @@ static int penwell_otg_suspend(struct pci_dev *pdev, pm_message_t message)
 			dev_dbg(pnw->dev, "host driver has been stopped.\n");
 		iotg->hsm.b_bus_req = 0;
 		iotg->otg.state = OTG_STATE_B_IDLE;
-		transceiver_suspend(pdev);
 		break;
 	default:
 		dev_dbg(pnw->dev, "error state before suspend\n");
 		break;
 	}
 
+	if (ret) {
+		/* allow queue work from notifier */
+		spin_lock_irqsave(&pnw->notify_lock, flags);
+		pnw->queue_stop = 0;
+		spin_unlock_irqrestore(&pnw->notify_lock, flags);
+
+		penwell_otg_intr(1);
+
+		penwell_update_transceiver();
+	} else {
+		penwell_otg_phy_low_power(1);
+		penwell_otg_vusb330_low_power(1);
+	}
+
+	dev_dbg(pnw->dev, "%s <---\n", __func__);
 	return ret;
 }
 
-static void transceiver_resume(struct pci_dev *pdev)
-{
-	pci_restore_state(pdev);
-	pci_set_power_state(pdev, PCI_D0);
-}
-
-static int penwell_otg_resume(struct pci_dev *pdev)
+static int penwell_otg_resume(struct device *dev)
 {
 	struct penwell_otg	*pnw = the_transceiver;
+	struct pci_dev		*pdev;
 	int			ret = 0;
+	unsigned long		flags;
 
-	transceiver_resume(pdev);
+	pdev = to_pci_dev(dev);
 
-	pnw->qwork = create_singlethread_workqueue("penwell_otg_queue");
-	if (!pnw->qwork) {
-		dev_dbg(pnw->dev, "cannot create penwell otg workqueue\n");
-		ret = -ENOMEM;
-		goto error;
-	}
+	dev_dbg(pnw->dev, "%s --->\n", __func__);
 
-	if (request_irq(pdev->irq, otg_irq, IRQF_SHARED,
-				driver_name, pnw) != 0) {
-		dev_dbg(pnw->dev, "request irq %d failed\n", pdev->irq);
-		ret = -EBUSY;
-		goto error;
-	}
+	penwell_otg_vusb330_low_power(0);
+
+	/* D3->D0 controller will be reset, so reset work mode and PHY state
+	 * which is cleared by the reset */
 
 	switch (pnw->iotg.otg.state) {
 	case OTG_STATE_B_IDLE:
 		break;
+	case OTG_STATE_A_IDLE:
+		penwell_otg_phy_vbus_wakeup(true);
+		/* Provide power as default */
+		pnw->iotg.hsm.a_bus_req = 1;
+		break;
 	default:
 		break;
 	}
+
+	/* allow queue work from notifier */
+	spin_lock_irqsave(&pnw->notify_lock, flags);
+	pnw->queue_stop = 0;
+	spin_unlock_irqrestore(&pnw->notify_lock, flags);
 
 	/* enable OTG interrupts */
 	penwell_otg_intr(1);
@@ -3135,10 +3681,7 @@ static int penwell_otg_resume(struct pci_dev *pdev)
 
 	penwell_update_transceiver();
 
-	return ret;
-error:
-	penwell_otg_intr(0);
-	transceiver_suspend(pdev);
+	dev_dbg(pnw->dev, "%s <---\n", __func__);
 	return ret;
 }
 
@@ -3149,6 +3692,7 @@ static int penwell_otg_runtime_suspend(struct device *dev)
 	struct penwell_otg	*pnw = the_transceiver;
 	struct pci_dev		*pdev;
 	int			ret = 0;
+	u32			val;
 
 	dev_dbg(dev, "%s --->\n", __func__);
 
@@ -3156,12 +3700,14 @@ static int penwell_otg_runtime_suspend(struct device *dev)
 
 	switch (pnw->iotg.otg.state) {
 	case OTG_STATE_A_IDLE:
+		break;
 	case OTG_STATE_B_IDLE:
-		/* Transceiver handle it itself */
-		penwell_otg_phy_low_power(1);
-		pci_save_state(pdev);
-		pci_disable_device(pdev);
-		pci_set_power_state(pdev, PCI_D3hot);
+		val = readl(pnw->iotg.base + CI_USBMODE);
+		if (!(val & USBMODE_CM)) {
+			/* Controller needs to reset & set mode */
+			dev_dbg(dev, "reset to client mode\n");
+			set_client_mode();
+		}
 		break;
 	case OTG_STATE_A_WAIT_BCON:
 	case OTG_STATE_A_HOST:
@@ -3178,6 +3724,12 @@ static int penwell_otg_runtime_suspend(struct device *dev)
 		break;
 	}
 
+	penwell_otg_phy_low_power(1);
+
+	msleep(2);
+
+	penwell_otg_vusb330_low_power(1);
+
 	dev_dbg(dev, "%s <---\n", __func__);
 	return ret;
 }
@@ -3187,30 +3739,38 @@ static int penwell_otg_runtime_resume(struct device *dev)
 	struct penwell_otg	*pnw = the_transceiver;
 	struct pci_dev		*pdev;
 	int			ret = 0;
+	u32			val;
 
 	dev_dbg(dev, "%s --->\n", __func__);
 
 	pdev = to_pci_dev(dev);
 
+	if (pnw->rt_resuming) {
+		dev_dbg(pnw->dev, "%s  rt_resuming--->\n", __func__);
+		penwell_otg_check_wakeup_event(pnw);
+	}
+
+	penwell_otg_vusb330_low_power(0);
 	penwell_otg_intr(1);
-	penwell_otg_phy_low_power(0);
 
 	switch (pnw->iotg.otg.state) {
 	case OTG_STATE_A_IDLE:
+		break;
 	case OTG_STATE_B_IDLE:
-		/* Transceiver handle it itself */
-		pci_set_power_state(pdev, PCI_D0);
-		pci_restore_state(pdev);
-		ret = pci_enable_device(pdev);
-		if (ret)
-			dev_err(&pdev->dev, "device cant be enabled\n");
-		penwell_otg_phy_low_power(0);
+		val = readl(pnw->iotg.base + CI_USBMODE);
+		if (!(val & USBMODE_CM)) {
+			/* Controller needs to reset & set mode */
+			dev_dbg(dev, "reset to client mode\n");
+			set_client_mode();
+		}
 		break;
 	case OTG_STATE_A_WAIT_BCON:
 	case OTG_STATE_A_HOST:
 	case OTG_STATE_A_SUSPEND:
-		if (pnw->iotg.runtime_resume_host)
+		if (pnw->iotg.runtime_resume_host) {
+			penwell_otg_phy_low_power(0);
 			ret = pnw->iotg.runtime_resume_host(&pnw->iotg);
+		}
 		break;
 	case OTG_STATE_A_PERIPHERAL:
 	case OTG_STATE_B_PERIPHERAL:
@@ -3219,6 +3779,13 @@ static int penwell_otg_runtime_resume(struct device *dev)
 		break;
 	default:
 		break;
+	}
+
+	if (pnw->rt_resuming) {
+		dev_dbg(pnw->dev, "irq num: %d\n", pnw->rt_resuming);
+		pnw->rt_resuming = 0;
+
+		pm_runtime_put(pnw->dev);
 	}
 
 	dev_dbg(dev, "%s <---\n", __func__);
@@ -3243,9 +3810,12 @@ static int penwell_otg_runtime_idle(struct device *dev)
 		break;
 	}
 
+	/* some delay for stability */
+	pm_schedule_suspend(dev, 500);
+
 	dev_dbg(dev, "%s <---\n", __func__);
 
-	return 0;
+	return -EBUSY;
 }
 
 #else
@@ -3272,6 +3842,8 @@ static const struct dev_pm_ops penwell_otg_pm_ops = {
 	.runtime_suspend = penwell_otg_runtime_suspend,
 	.runtime_resume = penwell_otg_runtime_resume,
 	.runtime_idle = penwell_otg_runtime_idle,
+	.suspend = penwell_otg_suspend,
+	.resume = penwell_otg_resume,
 };
 
 static struct pci_driver otg_pci_driver = {
@@ -3280,10 +3852,7 @@ static struct pci_driver otg_pci_driver = {
 
 	.probe =	penwell_otg_probe,
 	.remove =	penwell_otg_remove,
-
-	.suspend =	penwell_otg_suspend,
-	.resume =	penwell_otg_resume,
-
+	.shutdown =	penwell_otg_shutdown,
 	.driver = {
 		.pm =	&penwell_otg_pm_ops
 	},

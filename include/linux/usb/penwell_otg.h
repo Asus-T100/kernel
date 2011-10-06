@@ -122,29 +122,94 @@
 #define MSIC_OTGCTRL		0x39c
 #define MSIC_OTGCTRLSET		0x340
 #define MSIC_OTGCTRLCLR		0x341
+#define	ULPI_OTGCTRL		0x0a
+#define	ULPI_OTGCTRLSET		0x0b
+#define	ULPI_OTGCTRLCLR		0x0c
 #	define DMPULLDOWN		BIT(2)
 #	define DPPULLDOWN		BIT(1)
+#define MSIC_USBINTEN_RISE	0x39d
+#define MSIC_USBINTEN_RISESET	0x39e
+#define MSIC_USBINTEN_RISECLR	0x39f
+#define MSIC_USBINTEN_FALL	0x3a0
+#define MSIC_USBINTEN_FALLSET	0x3a1
+#define MSIC_USBINTEN_FALLCLR	0x3a2
+#	define IDGND			BIT(4)
+#	define SESSEND			BIT(3)
+#	define SESSVLD			BIT(2)
+#	define VBUSVLD			BIT(1)
+#	define HOSTDISCON		BIT(0)
 #define MSIC_PWRCTRL		0x3b5
 #define MSIC_PWRCTRLSET		0x342
 #define MSIC_PWRCTRLCLR		0x343
+#define ULPI_PWRCTRL		0x3d
+#define ULPI_PWRCTRLSET		0x3e
+#define ULPI_PWRCTRLCLR		0x3f
 #	define HWDET			BIT(7)
 #	define DPVSRCEN			BIT(6)
+#	define VDATDET			BIT(5)
 #	define DPWKPUEN			BIT(4)
 #	define SWCNTRL			BIT(0)
 #define MSIC_FUNCTRL		0x398
 #define MSIC_FUNCTRLSET		0x344
 #define MSIC_FUNCTRLCLR		0x345
+#define ULPI_FUNCTRL		0x04
+#define ULPI_FUNCTRLSET		0x05
+#define ULPI_FUNCTRLCLR		0x06
 #	define OPMODE1			BIT(4)
 #	define OPMODE0			BIT(3)
+#	define TERMSELECT		BIT(2)
+#	define XCVRSELECT1		BIT(1)
+#	define XCVRSELECT0		BIT(0)
+#define MSIC_VS1		0x3b6
+#define MSIC_VS1SET		0x3a9
+#define MSIC_VS1CLR		0x3aa
+#define ULPI_VS1		0x80
+#define ULPI_VS1SET		0x81
+#define ULPI_VS1CLR		0x82
+#	define DATAPOLARITY		BIT(6)
 #define MSIC_VS3		0x3b9
 #define MSIC_VS3SET		0x346	/* Vendor Specific */
 #define MSIC_VS3CLR		0x347
 #	define SWUSBDET			BIT(4)
 #	define DATACONEN		BIT(3)
+#define ULPI_VS3		0x85
+#define ULPI_VS3SET		0x86
+#define ULPI_VS3CLR		0x87
+#	define CHGD_IDP_SRC		BIT(6)
+#	define IDPULLUP_WK		BIT(5)
+#	define SWUSBDET			BIT(4)
+#	define DATACONEN		BIT(3)
+#define MSIC_VS4		0x3ba
+#define MSIC_VS4SET		0x3ab
+#define MSIC_VS4CLR		0x3ac
+#define ULPI_VS4		0x88
+#define ULPI_VS4SET		0x89
+#define ULPI_VS4CLR		0x8a
+#	define ACADET			BIT(6)
+#	define RABUSIN			BIT(5)
+#	define R1KERIES			BIT(4)
+#	define CHRG_SERX_DP		BIT(1)
+#	define CHRG_SERX_DM		BIT(0)
 #define MSIC_ULPIACCESSMODE	0x348
 #	define SPIMODE			BIT(0)
+#define MSIC_INT_EN_RISE	0x39D
+#define MSIC_INT_EN_RISE_SET	0x39E
+#define MSIC_INT_EN_RISE_CLR	0x39F
+#define MSIC_INT_EN_FALL	0x3A0
+#define MSIC_INT_EN_FALL_SET	0x3A1
+#define MSIC_INT_EN_FALL_CLR	0x3A2
 
 /* MSIC TI implementation for ADP/ACA */
+#define SPI_TI_VS2		0x3B7
+#define SPI_TI_VS2_LATCH	0x3B8
+#define SPI_TI_VS4		0x3BA
+#define SPI_TI_VS5		0x3BB
+#define ULPI_TI_USB_INT_STS	0x13
+#define ULPI_TI_USB_INT_LAT	0x14
+#	define USB_INT_IDGND		BIT(4)
+#	define USB_INT_SESSEND		BIT(3)
+#	define USB_INT_SESSVLD		BIT(2)
+#	define USB_INT_VBUSVLD		BIT(1)
 #define ULPI_TI_VS2		0x83
 #	define TI_ID_FLOAT_STS		BIT(4)
 #	define TI_ID_RARBRC_STS(d)	(((d)>>2)&3)
@@ -227,7 +292,9 @@ enum penwell_otg_timer_type {
 	TB_ASE0_BRST_TMR,
 	TB_SE0_SRP_TMR,
 	TB_SRP_FAIL_TMR, /* wait for response of SRP */
-	TB_BUS_SUSPEND_TMR
+	TB_BUS_SUSPEND_TMR,
+	TTST_MAINT_TMR,
+	TTST_NOADP_TMR,
 };
 
 #define TA_WAIT_VRISE		100
@@ -242,6 +309,9 @@ enum penwell_otg_timer_type {
 #define TB_SRP_FAIL		5500
 #define TB_BUS_SUSPEND		500
 #define THOS_REQ_POL		1500
+/* Test mode */
+#define	TTST_MAINT		9900
+#define	TTST_NOADP		5000
 
 /* MSIC vendor information */
 enum msic_vendor {
@@ -314,6 +384,8 @@ struct penwell_otg {
 	enum msic_vendor		msic;
 
 	struct notifier_block		iotg_notifier;
+	spinlock_t			notify_lock;
+	int				queue_stop;
 
 	struct adp_status		adp;
 
@@ -321,6 +393,8 @@ struct penwell_otg {
 	struct otg_bc_cap		charging_cap;
 	int (*bc_callback)(void *arg, int event, struct otg_bc_cap *cap);
 	void				*bc_arg;
+
+	unsigned			rt_resuming;
 };
 
 static inline
