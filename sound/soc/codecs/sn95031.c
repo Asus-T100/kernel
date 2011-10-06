@@ -39,9 +39,14 @@
 #include <sound/jack.h>
 #include "sn95031.h"
 
-#define SN95031_RATES (SNDRV_PCM_RATE_48000 | SNDRV_PCM_RATE_44100)
+#define SN95031_RATES (SNDRV_PCM_RATE_8000_96000)
 #define SN95031_FORMATS (SNDRV_PCM_FMTBIT_S24_LE | SNDRV_PCM_FMTBIT_S16_LE)
 
+/* codec private data */
+struct sn95031_priv {
+	uint8_t sysclk;
+	uint8_t pcmclk;
+};
 /* adc helper functions */
 
 /* enables mic bias voltage */
@@ -193,6 +198,9 @@ static inline int sn95031_write(struct snd_soc_codec *codec,
 static int sn95031_set_vaud_bias(struct snd_soc_codec *codec,
 		enum snd_soc_bias_level level)
 {
+	struct sn95031_priv *sn95031_ctx;
+	sn95031_ctx = snd_soc_codec_get_drvdata(codec);
+
 	switch (level) {
 	case SND_SOC_BIAS_ON:
 		break;
@@ -200,11 +208,14 @@ static int sn95031_set_vaud_bias(struct snd_soc_codec *codec,
 	case SND_SOC_BIAS_PREPARE:
 		if (codec->dapm.bias_level == SND_SOC_BIAS_STANDBY) {
 			pr_debug("vaud_bias powering up pll\n");
+			if (sn95031_ctx->sysclk == SN95031_PCM1BCLK) {
+				pr_debug("using PCM1 bit clock\n");
+				snd_soc_write(codec, SN95031_AUDPLLCTRL,
+								BIT(3)|BIT(1));
+			}
 			/* power up the pll */
-			snd_soc_write(codec, SN95031_AUDPLLCTRL, BIT(5));
-			/* enable pcm 2 */
-			snd_soc_update_bits(codec, SN95031_PCM2C2,
-					BIT(0), BIT(0));
+			snd_soc_update_bits(codec, SN95031_AUDPLLCTRL,
+								BIT(5), BIT(5));
 		}
 		break;
 
@@ -218,6 +229,8 @@ static int sn95031_set_vaud_bias(struct snd_soc_codec *codec,
 		} else if (codec->dapm.bias_level == SND_SOC_BIAS_PREPARE) {
 			/* turn off pcm */
 			pr_debug("vaud_bias power dn pcm\n");
+			/* disable PCM1 and PCM2 ports*/
+			snd_soc_update_bits(codec, SN95031_PCM1C3, BIT(0), 0);
 			snd_soc_update_bits(codec, SN95031_PCM2C2, BIT(0), 0);
 			snd_soc_write(codec, SN95031_AUDPLLCTRL, 0);
 		}
@@ -377,6 +390,23 @@ static const struct soc_enum sn95031_dmic34_cfg_enum =
 static const struct soc_enum sn95031_dmic56_cfg_enum =
 	SOC_ENUM_SINGLE(SN95031_DMICMUX, 2, 2, sn95031_dmic_cfg_text);
 
+static const char *sn95031_mode_cfg_text[] = {"Music", "Voice"};
+static const struct soc_enum sn95031_hsdacsrc_cfg_enum =
+	SOC_ENUM_SINGLE(SN95031_HSEPRXCTRL, 6, 2, sn95031_mode_cfg_text);
+static const struct snd_kcontrol_new sn95031_hsdacsrc_mux_control =
+	SOC_DAPM_ENUM("Route", sn95031_hsdacsrc_cfg_enum);
+
+static const struct soc_enum sn95031_ihfsrc_cfg_enum =
+	SOC_ENUM_DOUBLE(SN95031_IHFRXCTRL, 2, 3, 2, sn95031_mode_cfg_text);
+static const struct snd_kcontrol_new sn95031_ihfsrc_mux_control =
+	SOC_DAPM_ENUM("Route", sn95031_ihfsrc_cfg_enum);
+/* TODO: Need to find better way to disable HS while Voice out to IHF */
+static const char *sn95031_hsdrv_cfg_text[] = {"Enable", "Disable"};
+static const struct soc_enum sn95031_hsdrv_cfg_enum =
+	SOC_ENUM_SINGLE(SN95031_DRIVEREN, 7, 2, sn95031_hsdrv_cfg_text);
+static const struct snd_kcontrol_new sn95031_hsdrv_mux_control =
+	SOC_DAPM_ENUM("Route", sn95031_hsdrv_cfg_enum);
+
 static const struct snd_kcontrol_new sn95031_snd_controls[] = {
 	SOC_ENUM("Mic1Mode Capture Route", sn95031_micmode1_enum),
 	SOC_ENUM("Mic2Mode Capture Route", sn95031_micmode2_enum),
@@ -430,9 +460,14 @@ static const struct snd_soc_dapm_widget sn95031_dapm_widgets[] = {
 				sn95031_dmic56_event,
 				SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMD),
 
-	SND_SOC_DAPM_AIF_OUT("PCM_Out", "Capture", 0,
+	SND_SOC_DAPM_AIF_OUT("PCM2_Out", "Capture", 0,
 			SND_SOC_NOPM, 0, 0),
-
+	SND_SOC_DAPM_AIF_IN("PCM2_IN", "Headset", 0,
+			SND_SOC_NOPM, 0, 0),
+	SND_SOC_DAPM_AIF_IN("PCM1_IN", "Voice-Playback", 0,
+			SND_SOC_NOPM, 0, 0),
+	SND_SOC_DAPM_AIF_OUT("PCM1_Out", "Voice-Capture", 0,
+			SND_SOC_NOPM, 0, 0),
 	SND_SOC_DAPM_SUPPLY("Headset Rail", SND_SOC_NOPM, 0, 0,
 			sn95031_vhs_event,
 			SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMD),
@@ -516,7 +551,12 @@ static const struct snd_soc_dapm_widget sn95031_dapm_widgets[] = {
 			SND_SOC_NOPM, 0, 0, &sn95031_input3_mux_control),
 	SND_SOC_DAPM_MUX("Txpath4 Capture Route",
 			SND_SOC_NOPM, 0, 0, &sn95031_input4_mux_control),
-
+	SND_SOC_DAPM_MUX("Mode Playback Route",
+			SND_SOC_NOPM, 0, 0, &sn95031_hsdacsrc_mux_control),
+	SND_SOC_DAPM_MUX("Speaker Mux Playback Route",
+			SND_SOC_NOPM, 0, 0, &sn95031_ihfsrc_mux_control),
+	SND_SOC_DAPM_MUX("Headset Playback Route",
+			SND_SOC_NOPM, 0, 0, &sn95031_hsdrv_mux_control),
 };
 
 static const struct snd_soc_dapm_route sn95031_audio_map[] = {
@@ -526,19 +566,32 @@ static const struct snd_soc_dapm_route sn95031_audio_map[] = {
 	{ "HPOUTL", NULL, "Headset Left Playback" },
 	{ "HPOUTR", NULL, "Headset Right Playback" },
 	{ "EPOUT", NULL, "Earpiece Playback" },
-	{ "Headset Left Playback", NULL, "Headset Left Filter"},
-	{ "Headset Right Playback", NULL, "Headset Right Filter"},
+
+	{ "Headset Left Playback", NULL, "Headset Playback Route"},
+	{ "Headset Right Playback", NULL, "Headset Playback Route"},
+	{ "Headset Playback Route", "Enable", "Headset Left Filter"},
+	{ "Headset Playback Route", "Enable", "Headset Right Filter"},
+
 	{ "Earpiece Playback", NULL, "Headset Left Filter"},
 	{ "Headset Left Filter", NULL, "HSDAC Left"},
 	{ "Headset Right Filter", NULL, "HSDAC Right"},
+	{ "HSDAC Left", NULL, "Mode Playback Route"},
+	{ "HSDAC Right", NULL, "Mode Playback Route"},
+	{ "Mode Playback Route", "Music", "PCM2_IN"},
 
+	/* Voice Playback path*/
+	{ "Mode Playback Route", "Voice", "PCM1_IN"},
 	/* speaker map */
 	{ "IHFOUTL", NULL, "Speaker Rail"},
 	{ "IHFOUTR", NULL, "Speaker Rail"},
 	{ "IHFOUTL", "NULL", "Speaker Left Playback"},
 	{ "IHFOUTR", "NULL", "Speaker Right Playback"},
-	{ "Speaker Left Playback", NULL, "Speaker Left Filter"},
-	{ "Speaker Right Playback", NULL, "Speaker Right Filter"},
+	{ "Speaker Left Playback", "Music", "Speaker Mux Playback Route"},
+	{ "Speaker Right Playback", "Music", "Speaker Mux Playback Route"},
+	{ "Speaker Mux Playback Route", "Music", "Speaker Left Filter"},
+	{ "Speaker Mux Playback Route", "Music", "Speaker Right Filter"},
+	{ "Speaker Mux Playback Route", "Voice", "Headset Left Filter"},
+	{ "Speaker Mux Playback Route", "Voice", "Headset Right Filter"},
 	{ "Speaker Left Filter", NULL, "IHFDAC Left"},
 	{ "Speaker Right Filter", NULL, "IHFDAC Right"},
 
@@ -629,16 +682,20 @@ static const struct snd_soc_dapm_route sn95031_audio_map[] = {
 	{ "Txpath3 Capture Route", "DMIC6", "DMIC6"},
 	{ "Txpath4 Capture Route", "DMIC6", "DMIC6"},
 
-	/* tx path */
+	/* PCM2 Tx path */
 	{ "TX1 Enable", NULL, "Txpath1 Capture Route"},
 	{ "TX2 Enable", NULL, "Txpath2 Capture Route"},
 	{ "TX3 Enable", NULL, "Txpath3 Capture Route"},
 	{ "TX4 Enable", NULL, "Txpath4 Capture Route"},
-	{ "PCM_Out", NULL, "TX1 Enable"},
-	{ "PCM_Out", NULL, "TX2 Enable"},
-	{ "PCM_Out", NULL, "TX3 Enable"},
-	{ "PCM_Out", NULL, "TX4 Enable"},
-
+	{ "PCM2_Out", NULL, "TX1 Enable"},
+	{ "PCM2_Out", NULL, "TX2 Enable"},
+	{ "PCM2_Out", NULL, "TX3 Enable"},
+	{ "PCM2_Out", NULL, "TX4 Enable"},
+	/* PCM1 Tx path */
+	{ "PCM1_Out", NULL, "TX1 Enable"},
+	{ "PCM1_Out", NULL, "TX2 Enable"},
+	{ "PCM1_Out", NULL, "TX3 Enable"},
+	{ "PCM1_Out", NULL, "TX4 Enable"},
 };
 
 /* speaker and headset mutes, for audio pops and clicks */
@@ -657,6 +714,16 @@ static int sn95031_pcm_spkr_mute(struct snd_soc_dai *dai, int mute)
 			SN95031_IHFLVOLCTRL, BIT(7), (!mute << 7));
 	snd_soc_update_bits(dai->codec,
 			SN95031_IHFRVOLCTRL, BIT(7), (!mute << 7));
+	return 0;
+}
+
+static int sn95031_dai_sysclk(struct snd_soc_dai *codec_dai,
+				int clk_id, unsigned int freq, int dir)
+{
+	struct sn95031_priv *sn95031_ctx;
+	pr_debug("updating audio sysclk\n");
+	sn95031_ctx = snd_soc_codec_get_drvdata(codec_dai->codec);
+	sn95031_ctx->sysclk = clk_id;
 	return 0;
 }
 
@@ -695,7 +762,77 @@ int sn95031_pcm_hw_params(struct snd_pcm_substream *substream,
 		return -EINVAL;
 	}
 	snd_soc_update_bits(dai->codec, SN95031_PCM1C1, BIT(7), rate);
+	sn95031_dai_sysclk(dai, SN95031_PLLIN, 0, SND_SOC_CLOCK_IN);
+	/* enable pcm 2 */
+	snd_soc_update_bits(dai->codec, SN95031_PCM2C2, BIT(0), BIT(0));
 
+	return 0;
+}
+int sn95031_voice_hw_params(struct snd_pcm_substream *substream,
+		struct snd_pcm_hw_params *params, struct snd_soc_dai *dai)
+{
+	unsigned int format, pcm1fs, rate = 0;
+
+	switch (params_format(params)) {
+	case SNDRV_PCM_FORMAT_S16_LE:
+		format = BIT(4)|BIT(5);
+		break;
+
+	case SNDRV_PCM_FORMAT_S24_LE:
+		format = 0;
+		break;
+	default:
+		return -EINVAL;
+	}
+	snd_soc_update_bits(dai->codec, SN95031_PCM1C3,
+			BIT(4)|BIT(5), format);
+
+	switch (params_rate(params)) {
+	case 8000:
+		pcm1fs = 0;
+		break;
+	case 12000:
+		pcm1fs = BIT(4);
+		break;
+	case 16000:
+		pcm1fs = BIT(5);
+		break;
+	case 24000:
+		pcm1fs = BIT(5)|BIT(4);
+		break;
+	case 48000:
+		pcm1fs = BIT(6)|BIT(4);
+		break;
+	case 96000:
+		pcm1fs = BIT(6)|BIT(5)|BIT(4);
+		break;
+	case 11025:
+		pcm1fs = BIT(4);
+		rate = BIT(7);
+		break;
+	case 22050:
+		pcm1fs = BIT(5)|BIT(4);
+		rate = BIT(7);
+	case 44100:
+		pcm1fs = BIT(6)|BIT(4);
+		rate = BIT(7);
+		break;
+	case 88200:
+		pcm1fs = BIT(6)|BIT(5)|BIT(4);
+		rate = BIT(7);
+		break;
+	default:
+		pr_err("ERR rate %d\n", params_rate(params));
+		return -EINVAL;
+	}
+	pr_debug("rate=%d\n", params_rate(params));
+	snd_soc_update_bits(dai->codec, SN95031_PCM1C1, BIT(7), rate);
+	snd_soc_update_bits(dai->codec, SN95031_PCM1C1, BIT(6)|BIT(5)|BIT(4),
+						pcm1fs);
+
+	/* enable pcm 1 */
+	snd_soc_update_bits(dai->codec, SN95031_PCM1C3, BIT(0), BIT(0));
+	sn95031_dai_sysclk(dai, SN95031_PCM1BCLK, 0, SND_SOC_CLOCK_IN);
 	return 0;
 }
 
@@ -716,6 +853,12 @@ static struct snd_soc_dai_ops sn95031_vib1_dai_ops = {
 
 static struct snd_soc_dai_ops sn95031_vib2_dai_ops = {
 	.hw_params	= sn95031_pcm_hw_params,
+};
+
+static struct snd_soc_dai_ops sn95031_voice_dai_ops = {
+	.digital_mute	= sn95031_pcm_hs_mute,
+	.hw_params	= sn95031_voice_hw_params,
+	.set_sysclk	= sn95031_dai_sysclk,
 };
 
 struct snd_soc_dai_driver sn95031_dais[] = {
@@ -766,6 +909,24 @@ struct snd_soc_dai_driver sn95031_dais[] = {
 		.formats = SN95031_FORMATS,
 	},
 	.ops = &sn95031_vib2_dai_ops,
+},
+{
+	.name = "SN95031 Voice",
+	.playback = {
+		.stream_name = "Voice-Playback",
+		.channels_min = 1,
+		.channels_max = 2,
+		.rates = SN95031_RATES,
+		.formats = SN95031_FORMATS,
+	},
+	.capture = {
+		.stream_name = "Voice-Capture",
+		.channels_min = 1,
+		.channels_max = 2,
+		.rates = SN95031_RATES,
+		.formats = SN95031_FORMATS,
+	},
+	.ops = &sn95031_voice_dai_ops,
 },
 };
 
@@ -827,10 +988,25 @@ EXPORT_SYMBOL_GPL(sn95031_jack_detection);
 /* codec registration */
 static int sn95031_codec_probe(struct snd_soc_codec *codec)
 {
+	struct sn95031_priv *sn95031_ctx;
 	pr_debug("codec_probe called\n");
 
 	codec->dapm.bias_level = SND_SOC_BIAS_OFF;
 	codec->dapm.idle_bias_off = 1;
+
+	sn95031_ctx = kzalloc(sizeof(struct sn95031_priv), GFP_ATOMIC);
+	if (!sn95031_ctx) {
+		pr_err("codec ctx aloc failed\n");
+		return -ENOMEM;
+	}
+
+	/* PCM1 slot configurations*/
+	snd_soc_write(codec, SN95031_NOISEMUX, 0x0);
+	snd_soc_write(codec, SN95031_PCM1RXSLOT0_3, 0xF9);
+	snd_soc_write(codec, SN95031_PCM1RXSLOT45, 0x0F);
+	snd_soc_write(codec, SN95031_PCM1TXSLOT01, 0x32);
+	snd_soc_write(codec, SN95031_PCM1TXSLOT23, 0x77);
+	snd_soc_write(codec, SN95031_PCM1TXSLOT45, 0x77);
 
 	/* PCM interface config
 	 * This sets the pcm rx slot conguration to max 6 slots
@@ -846,6 +1022,8 @@ static int sn95031_codec_probe(struct snd_soc_codec *codec)
 	 * can support 6slots, sampling rate set per stream in hw-params
 	 */
 	snd_soc_write(codec, SN95031_PCM1C1, 0x00);
+	snd_soc_write(codec, SN95031_PCM1C2, 0x04);
+	snd_soc_write(codec, SN95031_PCM1C3, 0x02);
 	snd_soc_write(codec, SN95031_PCM2C1, 0x01);
 	snd_soc_write(codec, SN95031_PCM2C2, 0x0A);
 	snd_soc_write(codec, SN95031_HSMIXER, BIT(0)|BIT(4));
@@ -859,6 +1037,11 @@ static int sn95031_codec_probe(struct snd_soc_codec *codec)
 	/* configure vibras for pcm port */
 	snd_soc_write(codec, SN95031_VIB1C3, 0x00);
 	snd_soc_write(codec, SN95031_VIB2C3, 0x00);
+
+	snd_soc_write(codec, SN95031_AUDIOMUX12, 0x10);
+	snd_soc_write(codec, SN95031_AUDIOMUX34, 0x32);
+	/* voice related stuff */
+	snd_soc_write(codec, SN95031_VOICETXVOL, 0x89);
 
 	/* soft mute ramp time */
 	snd_soc_write(codec, SN95031_SOFTMUTE, 0x3);
@@ -877,14 +1060,20 @@ static int sn95031_codec_probe(struct snd_soc_codec *codec)
 	snd_soc_add_controls(codec, sn95031_snd_controls,
 			     ARRAY_SIZE(sn95031_snd_controls));
 
+	snd_soc_codec_set_drvdata(codec, sn95031_ctx);
+
 	return 0;
 }
 
 static int sn95031_codec_remove(struct snd_soc_codec *codec)
 {
+	struct sn95031_priv *sn95031_ctx;
+	sn95031_ctx = snd_soc_codec_get_drvdata(codec);
+
 	pr_debug("codec_remove called\n");
 	sn95031_set_vaud_bias(codec, SND_SOC_BIAS_OFF);
 
+	kfree(sn95031_ctx);
 	return 0;
 }
 

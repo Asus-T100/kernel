@@ -1,3 +1,4 @@
+
 /*
  *  sn95031.h - TI sn95031 Codec driver
  *
@@ -49,6 +50,8 @@
 #define SN95031_AUDIOTXEN		0x24F
 #define SN95031_HSEPRXCTRL		0x250
 #define SN95031_IHFRXCTRL		0x251
+#define SN95031_VOICETXVOL		0x252
+#define SN95031_VOICETXCTRL		0x255
 #define SN95031_HSMIXER			0x256
 #define SN95031_DACCONFIG		0x257
 #define SN95031_SOFTMUTE		0x258
@@ -120,6 +123,11 @@
 /* multipier to convert to mV */
 #define SN95031_ADC_ONE_LSB_MULTIPLIER 2346
 
+#define SN95031_PLLIN 0x0
+#define SN95031_MODMCLK 0x1
+#define SN95031_PCM1BCLK 0x2
+#define SN95031_PCM2BCLK 0x3
+#define SN95031_PCM1SYNC 0x04
 
 struct mfld_jack_data {
 	int intr_id;
