@@ -1175,14 +1175,15 @@ static int sn95031_codec_probe(struct snd_soc_codec *codec)
 
 	/* soft mute ramp time */
 	snd_soc_write(codec, SN95031_SOFTMUTE, 0x3);
-	/* fix the initial volume at 1dB,
+	/* fix the initial volume at -2dB,
 	 * default in +9dB,
-	 * 1dB give optimal swing on DAC, amps
+	 * Gain more than -2dB causes clipping when
+	 * VHS is set to  1.2v.
 	 */
-	snd_soc_write(codec, SN95031_HSLVOLCTRL, 0x08);
-	snd_soc_write(codec, SN95031_HSRVOLCTRL, 0x08);
-	snd_soc_write(codec, SN95031_IHFLVOLCTRL, 0x08);
-	snd_soc_write(codec, SN95031_IHFRVOLCTRL, 0x08);
+	snd_soc_write(codec, SN95031_HSLVOLCTRL, 0x0B);
+	snd_soc_write(codec, SN95031_HSRVOLCTRL, 0x0B);
+	snd_soc_write(codec, SN95031_IHFLVOLCTRL, 0x0B);
+	snd_soc_write(codec, SN95031_IHFRVOLCTRL, 0x0B);
 	/* dac mode and lineout workaround */
 	snd_soc_write(codec, SN95031_SSR2, 0x10);
 	snd_soc_write(codec, SN95031_SSR3, 0x40);
