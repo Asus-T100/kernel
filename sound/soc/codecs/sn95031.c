@@ -1190,6 +1190,11 @@ void sn95031_jack_detection(struct mfld_jack_data *jack_data)
 }
 EXPORT_SYMBOL_GPL(sn95031_jack_detection);
 
+void sn95031_ocvol_int_mask(struct snd_soc_codec *codec, int status)
+{
+	snd_soc_update_bits(codec, SN95031_OCAUDIOMASK, BIT(0), status);
+
+}
 void sn95031_restore_ihf_vol(struct snd_soc_codec *codec,
 				unsigned int vol_addr, int crush_volume)
 {
@@ -1205,6 +1210,9 @@ void sn95031_restore_ihf_vol(struct snd_soc_codec *codec,
 
 	snd_soc_update_bits(codec, vol_addr,
 				SN95031_IHF_VOLUME_MASK, ihf_volume);
+
+	ihf_volume = snd_soc_read(codec, vol_addr);
+	pr_debug("IHF Volume: %x : %x\n", vol_addr, ihf_volume);
 }
 
 
@@ -1225,6 +1233,8 @@ void sn95031_oc_workqueue(struct work_struct *work)
 
 	sn95031_restore_ihf_vol(codec, SN95031_IHFLVOLCTRL, crush_volume);
 	sn95031_restore_ihf_vol(codec, SN95031_IHFRVOLCTRL, crush_volume);
+	sn95031_ocvol_int_mask(codec, false);
+
 }
 
 void sn95031_oc_handler(struct snd_soc_codec *codec, int oc_interrupt_value)
@@ -1237,6 +1247,7 @@ void sn95031_oc_handler(struct snd_soc_codec *codec, int oc_interrupt_value)
 		pr_debug("codec value null\n");
 		return;
 	}
+	sn95031_ocvol_int_mask(codec, true);
 	if (oc_interrupt_value & 0x01) {
 		sn95031_ctx = snd_soc_codec_get_drvdata(codec);
 
@@ -1246,8 +1257,10 @@ void sn95031_oc_handler(struct snd_soc_codec *codec, int oc_interrupt_value)
 
 		schedule_delayed_work(&sn95031_ctx->oc_work.work,
 					msecs_to_jiffies(SN95031_BCU_DELAY));
-	} else
+	} else {
 		pr_debug("unhandled interrupt: %x..\n", oc_interrupt_value);
+		sn95031_ocvol_int_mask(codec, false);
+	}
 }
 EXPORT_SYMBOL_GPL(sn95031_oc_handler);
 
