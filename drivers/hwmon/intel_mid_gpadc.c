@@ -234,7 +234,7 @@ static int alloc_channel_addr(struct gpadc_info *mgi, int ch)
 	int last = 0;
 
 	for (i = 0; i < GPADC_CH_MAX; i++)
-		if (!(mgi->addr_mask & (1 << i)))
+		if (mgi->addr_mask & (1 << i))
 			last = i;
 
 	for (i = 0; i < GPADC_CH_MAX; i++) {
@@ -260,7 +260,7 @@ static void free_channel_addr(struct gpadc_info *mgi, int addr)
 
 	mgi->addr_mask &= ~(1 << addr);
 	for (i = 0; i < GPADC_CH_MAX; i++)
-		if (!(mgi->addr_mask & (1 << i)))
+		if (mgi->addr_mask & (1 << i))
 			last = i;
 	if (addr > last)
 		gpadc_set_bits(ADC1ADDR0+last, MSIC_STOPCH);
