@@ -35,6 +35,8 @@
 #include "../../../drivers/staging/intel_sst/intel_sst.h"
 #include "sst_platform.h"
 
+#define VOICE_DAI 4
+
 static struct snd_pcm_hardware sst_platform_pcm_hw = {
 	.info =	(SNDRV_PCM_INFO_INTERLEAVED |
 			SNDRV_PCM_INFO_DOUBLE |
@@ -107,6 +109,22 @@ struct snd_soc_dai_driver sst_platform_dai[] = {
 		.channels_min = SST_MONO,
 		.channels_max = SST_STEREO,
 		.rates = SNDRV_PCM_RATE_44100,
+		.formats = SNDRV_PCM_FMTBIT_S16_LE,
+	},
+},
+{
+	.name = "Voice-cpu-dai",
+	.id = 4,
+	.playback = {
+		.channels_min = SST_MONO,
+		.channels_max = SST_STEREO,
+		.rates = SNDRV_PCM_RATE_48000,
+		.formats = SNDRV_PCM_FMTBIT_S16_LE,
+	},
+	.capture = {
+		.channels_min = SST_MONO,
+		.channels_max = SST_STEREO,
+		.rates = SNDRV_PCM_RATE_48000,
 		.formats = SNDRV_PCM_FMTBIT_S16_LE,
 	},
 },
@@ -233,6 +251,11 @@ static int sst_platform_open(struct snd_pcm_substream *substream)
 	pr_debug("sst_platform_open called\n");
 	runtime = substream->runtime;
 	runtime->hw = sst_platform_pcm_hw;
+	if (substream->pcm->device == VOICE_DAI) {
+		pr_debug("pcm_open for Voice, returning.\n");
+		return snd_pcm_hw_constraint_integer(runtime,
+			 SNDRV_PCM_HW_PARAM_PERIODS);
+	}
 	stream = kzalloc(sizeof(*stream), GFP_KERNEL);
 	if (!stream)
 		return -ENOMEM;
@@ -268,6 +291,10 @@ static int sst_platform_close(struct snd_pcm_substream *substream)
 	int ret_val = 0, str_id;
 
 	pr_debug("sst_platform_close called\n");
+	if (substream->pcm->device == VOICE_DAI) {
+		pr_debug("pcm_close for Voice, returning.\n");
+		return ret_val;
+	}
 	stream = substream->runtime->private_data;
 	str_id = stream->stream_info.str_id;
 	if (str_id)
@@ -284,6 +311,10 @@ static int sst_platform_pcm_prepare(struct snd_pcm_substream *substream)
 	int ret_val = 0, str_id;
 
 	pr_debug("sst_platform_pcm_prepare called\n");
+	if (substream->pcm->device == VOICE_DAI) {
+		pr_debug("pcm_preare for Voice, returning.\n");
+		return ret_val;
+	}
 	stream = substream->runtime->private_data;
 	str_id = stream->stream_info.str_id;
 	if (stream->stream_info.str_id) {
