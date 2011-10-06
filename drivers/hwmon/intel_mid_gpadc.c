@@ -531,7 +531,7 @@ static int __devexit msic_gpadc_remove(struct platform_device *pdev)
 }
 
 #ifdef CONFIG_PM
-static int msic_gpadc_suspend(struct platform_device *pdev, pm_message_t state)
+static int msic_gpadc_suspend_noirq(struct device *dev)
 {
 	struct gpadc_info *mgi = &gpadc_info;
 
@@ -542,7 +542,7 @@ static int msic_gpadc_suspend(struct platform_device *pdev, pm_message_t state)
 		return -EBUSY;
 }
 
-static int msic_gpadc_resume(struct platform_device *pdev)
+static int msic_gpadc_resume_noirq(struct device *dev)
 {
 	struct gpadc_info *mgi = &gpadc_info;
 
@@ -554,15 +554,19 @@ static int msic_gpadc_resume(struct platform_device *pdev)
 #define msic_gpadc_resume_noirq     NULL
 #endif
 
+static const struct dev_pm_ops msic_gpadc_driver_pm_ops = {
+	.suspend_noirq	= msic_gpadc_suspend_noirq,
+	.resume_noirq	= msic_gpadc_resume_noirq,
+};
+
 static struct platform_driver msic_gpadc_driver = {
 	.driver = {
 		   .name = "msic_adc",
 		   .owner = THIS_MODULE,
+		   .pm = &msic_gpadc_driver_pm_ops,
 		   },
 	.probe = msic_gpadc_probe,
 	.remove = __devexit_p(msic_gpadc_remove),
-	.suspend = msic_gpadc_suspend,
-	.resume = msic_gpadc_resume,
 };
 
 static int __init msic_gpadc_module_init(void)
