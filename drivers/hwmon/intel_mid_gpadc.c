@@ -82,6 +82,8 @@
 
 #define PM_QOS_ADC_DRV_VALUE	4999
 
+#define GPADC_POWERON_DELAY	1
+
 struct gpadc_info {
 	int initialized;
 
@@ -150,9 +152,12 @@ static int gpadc_poweron(struct gpadc_info *mgi, int vref)
 {
 	if (gpadc_set_bits(ADC1CNTL1, ADC1CNTL1_ADEN) != 0)
 		return -EIO;
-	if (vref)
+	msleep(GPADC_POWERON_DELAY);
+	if (vref) {
 		if (gpadc_set_bits(ADC1CNTL3, ADC1CNTL3_ADCTHERM) != 0)
 			return -EIO;
+		msleep(GPADC_POWERON_DELAY);
+	}
 	return 0;
 }
 
