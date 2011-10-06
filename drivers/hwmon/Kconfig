@@ -1358,6 +1358,12 @@ config SENSORS_MC13783_ADC
         help
           Support for the A/D converter on MC13783 PMIC.
 
+config MSIC_GPADC
+	tristate "MSIC GPADC driver for Intel Medfield platform"
+        depends on INTEL_SCU_IPC
+        help
+	  Say Y here to enable MSIC GPADC driver on Intel Medfield Platform
+
 if ACPI
 
 comment "ACPI drivers"

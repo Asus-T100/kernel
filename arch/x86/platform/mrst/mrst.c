@@ -42,6 +42,7 @@
 #include <asm/i8259.h>
 #include <asm/intel_scu_ipc.h>
 #include <asm/apb_timer.h>
+#include <asm/intel_mid_gpadc.h>
 #include <asm/reboot.h>
 
 /*
@@ -563,6 +564,13 @@ static void __init *lis331dl_platform_data(void *info)
 	return &intr2nd_pdata;
 }
 
+static void *msic_adc_platform_data(void *info)
+{
+	static struct intel_mid_gpadc_platform_data pdata;
+	pdata.intr = 0xffff7fc0;
+	return &pdata;
+}
+
 /* MFLD iCDK touchscreen data */
 #define CYTTSP_GPIO_PIN 0x3E
 static int cyttsp_init(int on)
@@ -633,6 +641,7 @@ static const struct devs_id __initconst device_ids[] = {
 	{"msic_audio", SFI_DEV_TYPE_IPC, 1, &no_platform_data},
 	{"mpu3050", SFI_DEV_TYPE_I2C, 1, &mpu3050_platform_data},
 	{"ektf2136_spi", SFI_DEV_TYPE_SPI, 0, &ektf2136_spi_platform_data},
+	{"msic_adc", SFI_DEV_TYPE_IPC, 1, &msic_adc_platform_data},
 	{},
 };
 
