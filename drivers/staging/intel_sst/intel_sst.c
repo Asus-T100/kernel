@@ -324,6 +324,7 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
  		}
 	} else if (sst_drv_ctx->pci_id == SST_MFLD_PCI_ID) {
 		u32 csr;
+		u32 clkctl;
 
 		/*allocate mem for fw context save during suspend*/
 		sst_drv_ctx->fw_cntx = kzalloc(FW_CONTEXT_MEM, GFP_KERNEL);
@@ -337,7 +338,15 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 		/*set lpe start clock and ram size*/
 		csr = sst_shim_read(sst_drv_ctx->shim, SST_CSR);
 		csr |= 0x30000;
+		/*make sure clksel set to OSC for SSP0,1 (default)*/
+		csr &= 0xFFFFFFF3;
 		sst_shim_write(sst_drv_ctx->shim, SST_CSR, csr);
+
+		/*set clock output enable for SSP0,1,3*/
+		clkctl = sst_shim_read(sst_drv_ctx->shim, SST_CLKCTL);
+		clkctl |= ((1<<16)|(1<<17));
+		sst_shim_write(sst_drv_ctx->shim, SST_CLKCTL, clkctl);
+
 	}
 	sst_drv_ctx->lpe_stalled = 0;
 	pci_set_drvdata(pci, sst_drv_ctx);

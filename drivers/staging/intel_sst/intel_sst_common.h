@@ -69,6 +69,7 @@ enum sst_states {
 #define SST_IPCD		0x40 /* IPC SST-IA */
 #define SST_ISRD		0x20 /* dummy register for shim workaround */
 #define SST_SHIM_SIZE		0X44
+#define SST_CLKCTL		0x78
 
 #define SPI_MODE_ENABLE_BASE_ADDR 0xffae4000
 #define FW_SIGNATURE_SIZE	4
@@ -98,7 +99,7 @@ union config_status_reg {
 	struct {
 		u32 mfld_strb:1;
 		u32 sst_reset:1;
-		u32 hw_rsvd:3;
+		u32 clk_sel:3;
 		u32 sst_clk:2;
 		u32 bypass:3;
 		u32 run_stall:1;
