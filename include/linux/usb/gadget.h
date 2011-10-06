@@ -703,6 +703,11 @@ static inline int usb_gadget_disconnect(struct usb_gadget *gadget)
 	return gadget->ops->pullup(gadget, 0);
 }
 
+enum gadget_driver_state {
+	REGISTERED,
+	UNREGISTERED,
+	BIND_UNBIND,
+};
 
 /*-------------------------------------------------------------------------*/
 
@@ -774,6 +779,8 @@ static inline int usb_gadget_disconnect(struct usb_gadget *gadget)
 struct usb_gadget_driver {
 	char			*function;
 	enum usb_device_speed	speed;
+	enum gadget_driver_state drv_state;
+	unsigned		ep_max;
 	void			(*unbind)(struct usb_gadget *);
 	int			(*setup)(struct usb_gadget *,
 					const struct usb_ctrlrequest *);

@@ -19,6 +19,7 @@
 
 #include <linux/usb/langwell_udc.h>
 #include <linux/usb/intel_mid_otg.h>
+#include <linux/wakelock.h>
 
 /*-------------------------------------------------------------------------*/
 
@@ -144,6 +145,7 @@ struct langwell_request {
 	struct list_head	queue;
 	unsigned		dtd_count;
 	unsigned		mapped:1;
+	unsigned		test_mode;
 };
 
 
@@ -229,5 +231,7 @@ struct langwell_udc {
 
 	/* device status data for get_status request */
 	u16			dev_status;
+
+	struct	wake_lock	wake_lock;
 };
 

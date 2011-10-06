@@ -134,6 +134,13 @@
 #define	TEST_FORCE_EN	5
 
 /*
+ * USB OTG 2.0 Test Mode
+ * See OTG 2.0 spec Table 6-8
+ */
+#define	TEST_SRP_REQD	6
+#define	TEST_HNP_REQD	7
+
+/*
  * OTG 2.0
  * Section 6.2 & 6.3
  */

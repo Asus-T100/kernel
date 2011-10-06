@@ -178,6 +178,7 @@ struct langwell_op_regs {
 #define	PORTS_WKDS	BIT(21)	/* wake on disconnect enable */
 #define	PORTS_WKCN	BIT(20)	/* wake on connect enable */
 #define	PORTS_PTC(p)	(((p)>>16)&0xf)	/* bits 19:16, port test control */
+#define	PORTS_PTC_MASK	(BIT(16) | BIT(17) | BIT(18) | BIT(19))
 #define	PORTS_PIC	(BIT(15) | BIT(14))	/* port indicator control */
 #define	PORTS_PO	BIT(13)	/* port owner */
 #define	PORTS_PP	BIT(12)	/* port power */
@@ -207,6 +208,7 @@ struct langwell_op_regs {
 #define	LPM_SRT		BIT(24)	/* shorten reset time */
 #define	LPM_PFSC	BIT(23)	/* port force full speed connect */
 #define	LPM_PHCD	BIT(22) /* PHY low power suspend clock disable */
+#define	LPM_ASUS	BIT(17)	/* auto Low Power */
 #define	LPM_STL		BIT(16)	/* STALL reply to LPM token */
 #define	LPM_BA(d)	\
 	(((d)>>1)&0x7ff)	/* bits 11:1, BmAttributes */
