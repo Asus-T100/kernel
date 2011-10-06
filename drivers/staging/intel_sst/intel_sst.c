@@ -525,8 +525,14 @@ static int intel_sst_runtime_resume(struct device *dev)
 		return 0;
 	}
 	csr = sst_shim_read(sst_drv_ctx->shim, SST_CSR);
-	csr |= sst_drv_ctx->csr_value;
-	sst_shim_write(sst_drv_ctx->shim, SST_CSR, csr);
+	/*
+	 * To restore the csr_value after S0ix and S3 states.
+	 * The value 0x30000 is to enable LPE dram high and low addresses.
+	 * Reference:
+	 * Penwell Audio Voice Module HAS 1.61 Section - 13.12.1 -
+	 * CSR - Configuration and Status Register.
+	 */
+	csr |= (sst_drv_ctx->csr_value | 0x30000);
 
 	ipc_wbuf = (u32 *)&cbuf;
 	cbuf[0] = 0; /* OSC_CLK_OUT0 */
