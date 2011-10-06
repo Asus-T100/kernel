@@ -49,6 +49,26 @@ struct sn95031_priv {
 	uint8_t pcmclk;
 };
 void *audio_adc_handle;
+unsigned int sn95031_lp_flag;
+
+/* This Function reads the voltage level from the ADC Driver*/
+static unsigned int sn95031_read_voltage()
+{
+	unsigned int mic_bias;
+
+	/* Reads the mic bias value */
+	if (!sn95031_lp_flag)
+		/* GPADC MIC BIAS takes around a 1000ms to settle down and
+		* get sampled porperly, reading earlier than this causes to
+		* read incorrect values */
+		msleep(1000);
+	intel_mid_gpadc_sample(audio_adc_handle, SN95031_ADC_SAMPLE_COUNT,
+								&mic_bias);
+	mic_bias = (mic_bias * SN95031_ADC_ONE_LSB_MULTIPLIER) / 1000;
+	pr_debug("mic bias = %dmV\n", mic_bias);
+	return mic_bias;
+}
+
 /* enables mic bias voltage */
 static void sn95031_enable_mic_bias(struct snd_soc_codec *codec)
 {
@@ -62,17 +82,11 @@ static unsigned int sn95031_get_mic_bias(struct snd_soc_codec *codec)
 	unsigned int mic_bias;
 
 	sn95031_enable_mic_bias(codec);
-	/*Reads the mic bias value*/
-	msleep(1000);
-	intel_mid_gpadc_sample(audio_adc_handle, SN95031_ADC_SAMPLE_COUNT,
-								&mic_bias);
-
-	mic_bias = (mic_bias * SN95031_ADC_ONE_LSB_MULTIPLIER) / 1000;
-	pr_debug("mic bias = %dmV\n", mic_bias);
+	mic_bias = sn95031_read_voltage();
 	return mic_bias;
 }
 EXPORT_SYMBOL_GPL(sn95031_get_mic_bias);
-/*end - adc helper functions */
+/* end - adc helper functions */
 
 static inline unsigned int sn95031_read(struct snd_soc_codec *codec,
 			unsigned int reg)
@@ -972,16 +986,35 @@ static int sn95031_get_headset_state(struct snd_soc_jack *mfld_jack)
 
 void sn95031_jack_detection(struct mfld_jack_data *jack_data)
 {
-	unsigned int status;
+	unsigned int status, voltage;
 	unsigned int mask = SND_JACK_BTN_0 | SND_JACK_BTN_1 | SND_JACK_HEADSET;
 
 	pr_debug("interrupt id read in sram = 0x%x\n", jack_data->intr_id);
 	if (jack_data->intr_id & 0x1) {
 		pr_debug("short_push detected\n");
-		status = SND_JACK_HEADSET | SND_JACK_BTN_0;
+		if (sn95031_lp_flag) {
+			snd_soc_jack_report(jack_data->mfld_jack,
+						SND_JACK_HEADSET, mask);
+			sn95031_lp_flag = 0;
+			return;
+		} else
+			status = SND_JACK_HEADSET | SND_JACK_BTN_0;
 	} else if (jack_data->intr_id & 0x2) {
 		pr_debug("long_push detected\n");
+		/* we get spurious intterupts if jack key is held down
+		* so we ignore them untill key is released by
+		* checking the voltage level */
+		if (sn95031_lp_flag) {
+			voltage = sn95031_read_voltage();
+			if (voltage > 400) {
+				snd_soc_jack_report(jack_data->mfld_jack,
+							SND_JACK_HEADSET, mask);
+				sn95031_lp_flag = 0; /* button released */
+			}
+			return;
+		}
 		status = SND_JACK_HEADSET | SND_JACK_BTN_1;
+		sn95031_lp_flag = 1;
 	} else if (jack_data->intr_id & 0x4) {
 		pr_debug("headset or headphones inserted\n");
 		status = sn95031_get_headset_state(jack_data->mfld_jack);
@@ -1021,7 +1054,7 @@ void sn95031_jack_detection(struct mfld_jack_data *jack_data)
 	}
 #endif
 	/*button pressed and released so we send explicit button release */
-	if ((status & SND_JACK_BTN_0) | (status & SND_JACK_BTN_1))
+	if (status & SND_JACK_BTN_0)
 		snd_soc_jack_report(jack_data->mfld_jack,
 				SND_JACK_HEADSET, mask);
 }

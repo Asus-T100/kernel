@@ -28,8 +28,8 @@
  *  Common private declarations for SST
  */
 
-#define SST_DRIVER_VERSION "2.0.03"
-#define SST_VERSION_NUM 0x2003
+#define SST_DRIVER_VERSION "2.0.04"
+#define SST_VERSION_NUM 0x2004
 
 /* driver names */
 #define SST_DRV_NAME "intel_sst_driver"
