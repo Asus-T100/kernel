@@ -341,11 +341,13 @@ static int sst_platform_pcm_trigger(struct snd_pcm_substream *substream,
 {
 	int ret_val = 0, str_id;
 	struct sst_runtime_stream *stream;
-	int str_cmd, status;
+	int str_cmd, status, alsa_state;
 
 	pr_debug("sst_platform_pcm_trigger called\n");
 	stream = substream->runtime->private_data;
 	str_id = stream->stream_info.str_id;
+	alsa_state = substream->runtime->status->state;
+
 	switch (cmd) {
 	case SNDRV_PCM_TRIGGER_START:
 		pr_debug("sst: Trigger Start\n");
@@ -376,6 +378,10 @@ static int sst_platform_pcm_trigger(struct snd_pcm_substream *substream,
 	if (!ret_val)
 		sst_set_stream_status(stream, status);
 
+	if (cmd == SNDRV_PCM_TRIGGER_STOP &&
+				alsa_state == SNDRV_PCM_STATE_DRAINING)
+		ret_val = stream->sstdrv_ops->pcm_control->device_control(
+					SST_SND_SUSPEND, &str_id);
 	return ret_val;
 }
 

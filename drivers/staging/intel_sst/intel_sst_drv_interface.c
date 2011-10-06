@@ -75,8 +75,7 @@ void sst_restore_fw_context(void)
 	list_add_tail(&msg->node, &sst_drv_ctx->ipc_dispatch_list);
 	spin_unlock(&sst_drv_ctx->list_spin_lock);
 	sst_post_message(&sst_drv_ctx->ipc_post_msg_wq);
-	retval = sst_wait_interruptible_timeout(sst_drv_ctx,
-			&sst_drv_ctx->alloc_block[0], SST_BLOCK_TIMEOUT);
+	retval = sst_wait_timeout(sst_drv_ctx, &sst_drv_ctx->alloc_block[0]);
 	if (retval)
 		pr_err("sst: sst_restore_fw_context..timeout!\n");
 	return;
@@ -340,7 +339,7 @@ void sst_process_mad_ops(struct work_struct *work)
 		retval = sst_drop_stream(mad_ops->stream_id);
 		break;
 	case SST_SND_START:
-			pr_debug("SST Debug: start stream\n");
+		pr_debug("start stream\n");
 		retval = sst_start_stream(mad_ops->stream_id);
 		break;
 	case SST_SND_STREAM_PROCESS:
@@ -431,7 +430,7 @@ int sst_close_pcm_stream(unsigned int str_id)
 		return -EINVAL;
 	stream = &sst_drv_ctx->streams[str_id];
 	pm_runtime_get_sync(&sst_drv_ctx->pci->dev);
-	if (sst_drv_ctx->sst_state == SST_UN_INIT) {
+	if (sst_drv_ctx->sst_state != SST_FW_RUNNING) {
 		pr_debug("sst: DSP Downloading FW now...\n");
 		retval = sst_download_fw();
 		if (retval) {
@@ -440,6 +439,7 @@ int sst_close_pcm_stream(unsigned int str_id)
 			return retval;
 		}
 	}
+	pr_debug("sst in good shape, so lets free now\n");
 	free_stream_context(str_id);
 	stream->pcm_substream = NULL;
 	stream->status = STREAM_UN_INIT;
