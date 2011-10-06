@@ -219,47 +219,64 @@ static int sn95031_vihf_event(struct snd_soc_dapm_widget *w,
 static int sn95031_dmic12_event(struct snd_soc_dapm_widget *w,
 			struct snd_kcontrol *k, int event)
 {
-	unsigned int ldo = 0, clk_dir = 0, data_dir = 0;
+	unsigned int ldo = 0, clk_dir = 0, data_dir = 0, bias = 0;
 
+	pr_debug("sn95031_dmic12_event\n");
 	if (SND_SOC_DAPM_EVENT_ON(event)) {
+		pr_debug("sn95031_dmic12_eventi ON\n");
 		ldo = BIT(5)|BIT(4);
 		clk_dir = BIT(0);
 		data_dir = BIT(7);
+		bias = BIT(3);
 	}
 	/* program DMIC LDO, clock and set clock */
 	snd_soc_update_bits(w->codec, SN95031_MICBIAS, BIT(5)|BIT(4), ldo);
 	snd_soc_update_bits(w->codec, SN95031_DMICBUF0123, BIT(0), clk_dir);
 	snd_soc_update_bits(w->codec, SN95031_DMICBUF0123, BIT(7), data_dir);
+	snd_soc_update_bits(w->codec, SN95031_DMICMUX, BIT(3), bias);
 	return 0;
 }
 
 static int sn95031_dmic34_event(struct snd_soc_dapm_widget *w,
 			struct snd_kcontrol *k, int event)
 {
-	unsigned int ldo = 0, clk_dir = 0, data_dir = 0;
+	unsigned int ldo = 0, clk_dir = 0, data_dir = 0, bias = 0;
 
+	pr_debug("sn95031_dmic34_event\n");
 	if (SND_SOC_DAPM_EVENT_ON(event)) {
+		pr_debug("sn95031_dmic34_event ON\n");
 		ldo = BIT(5)|BIT(4);
 		clk_dir = BIT(2);
 		data_dir = BIT(1);
+		bias = BIT(4);
 	}
 	/* program DMIC LDO, clock and set clock */
 	snd_soc_update_bits(w->codec, SN95031_MICBIAS, BIT(5)|BIT(4), ldo);
 	snd_soc_update_bits(w->codec, SN95031_DMICBUF0123, BIT(2), clk_dir);
 	snd_soc_update_bits(w->codec, SN95031_DMICBUF45, BIT(1), data_dir);
+	snd_soc_update_bits(w->codec, SN95031_DMICMUX, BIT(4), bias);
 	return 0;
 }
 
 static int sn95031_dmic56_event(struct snd_soc_dapm_widget *w,
 			struct snd_kcontrol *k, int event)
 {
-	unsigned int ldo = 0;
+	unsigned int ldo = 0, clk_dir = 0, data_dir = 0, bias = 0;
 
-	if (SND_SOC_DAPM_EVENT_ON(event))
+	pr_debug("sn95031_dmic56_event\n");
+	if (SND_SOC_DAPM_EVENT_ON(event)) {
+		pr_debug("sn95031_dmic56_event ON\n");
 		ldo = BIT(7)|BIT(6);
+		clk_dir = BIT(4);
+		data_dir = BIT(3);
+		bias = BIT(5);
+	}
 
 	/* program DMIC LDO */
 	snd_soc_update_bits(w->codec, SN95031_MICBIAS, BIT(7)|BIT(6), ldo);
+	snd_soc_update_bits(w->codec, SN95031_DMICBUF0123, BIT(4), clk_dir);
+	snd_soc_update_bits(w->codec, SN95031_DMICBUF45, BIT(3), data_dir);
+	snd_soc_update_bits(w->codec, SN95031_DMICMUX, BIT(5), bias);
 	return 0;
 }
 
