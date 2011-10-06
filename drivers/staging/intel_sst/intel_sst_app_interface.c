@@ -1079,11 +1079,6 @@ long intel_sst_ioctl(struct file *file_ptr, unsigned int cmd, unsigned long arg)
 				sfreq =	str_param.sparams.uc.pcm_params.sfreq;
 				word_size = str_param.sparams.uc.pcm_params.pcm_wd_sz;
 				num_channel = str_param.sparams.uc.pcm_params.num_chan;
-				if (str_param.ops == STREAM_OPS_CAPTURE) {
-					sst_drv_ctx->scard_ops->\
-					set_pcm_audio_params(sfreq,
-						word_size, num_channel);
-				}
 			}
 		}
 		break;

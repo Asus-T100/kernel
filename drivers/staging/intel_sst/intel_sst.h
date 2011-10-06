@@ -92,27 +92,6 @@ struct snd_pmic_ops {
 	int lineout_dev_id, line_out_names_cnt;
 	int prev_lineout_dev_id;
 	bool jack_interrupt_status;
-	int (*set_input_dev) (u8 value);
-	int (*set_output_dev) (u8 value);
-	int (*set_lineout_dev) (u8 value);
-	int (*set_mute) (int dev_id, u8 value);
-	int (*get_mute) (int dev_id, u8 *value);
-
-	int (*set_vol) (int dev_id, int value);
-	int (*get_vol) (int dev_id, int *value);
-
-	int (*init_card) (void);
-	int (*set_pcm_audio_params)
-		(int sfreq, int word_size , int num_channel);
-	int (*set_pcm_voice_params) (void);
-	int (*set_voice_port) (int status);
-	int (*set_audio_port) (int status);
-
-	int (*power_up_pmic_pb) (unsigned int port);
-	int (*power_up_pmic_cp) (unsigned int port);
-	int (*power_down_pmic_pb) (unsigned int device);
-	int (*power_down_pmic_cp) (unsigned int device);
-	int (*power_down_pmic) (void);
 	void (*pmic_irq_cb) (void *cb_data, u8 value);
 	void (*pmic_irq_enable)(void *data);
 	int (*pmic_jack_enable) (void);
@@ -140,10 +119,8 @@ struct intel_sst_pcm_control {
 	int (*close) (unsigned int str_id);
 };
 struct intel_sst_card_ops {
-	char *module_name;
 	unsigned int  vendor_id;
 	struct intel_sst_pcm_control *pcm_control;
-	struct snd_pmic_ops *scard_ops;
 };
 
 /* modified for generic access */

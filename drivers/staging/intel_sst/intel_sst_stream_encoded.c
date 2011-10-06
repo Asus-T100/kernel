@@ -307,20 +307,6 @@ int sst_set_mute(struct snd_sst_mute *set_mute)
 
 int sst_prepare_target(struct snd_sst_slot_info *slot)
 {
-	if (slot->target_device == SND_SST_TARGET_PMIC
-		&& slot->device_instance == 1) {
-			/*music mode*/
-			if (sst_drv_ctx->pmic_port_instance == 0)
-				sst_drv_ctx->scard_ops->set_voice_port(
-					DEACTIVATE);
-	} else if ((slot->target_device == SND_SST_TARGET_PMIC ||
-			slot->target_device == SND_SST_TARGET_MODEM) &&
-			slot->device_instance == 0) {
-				/*voip mode where pcm0 is active*/
-				if (sst_drv_ctx->pmic_port_instance == 1)
-					sst_drv_ctx->scard_ops->set_audio_port(
-						DEACTIVATE);
-	}
 	return 0;
 }
 
@@ -330,24 +316,11 @@ int sst_activate_target(struct snd_sst_slot_info *slot)
 		slot->device_instance == 1) {
 			/*music mode*/
 			sst_drv_ctx->pmic_port_instance = 1;
-			sst_drv_ctx->scard_ops->set_audio_port(ACTIVATE);
-			sst_drv_ctx->scard_ops->set_pcm_audio_params(
-				slot->pcm_params.sfreq,
-				slot->pcm_params.pcm_wd_sz,
-				slot->pcm_params.num_chan);
-			if (sst_drv_ctx->pb_streams)
-				sst_drv_ctx->scard_ops->power_up_pmic_pb(1);
-			if (sst_drv_ctx->cp_streams)
-				sst_drv_ctx->scard_ops->power_up_pmic_cp(1);
 	} else if ((slot->target_device == SND_SST_TARGET_PMIC ||
 			slot->target_device == SND_SST_TARGET_MODEM) &&
 			slot->device_instance == 0) {
 				/*voip mode where pcm0 is active*/
 				sst_drv_ctx->pmic_port_instance = 0;
-				sst_drv_ctx->scard_ops->set_voice_port(
-					ACTIVATE);
-				sst_drv_ctx->scard_ops->power_up_pmic_pb(0);
-				/*sst_drv_ctx->scard_ops->power_up_pmic_cp(0);*/
 	}
 	return 0;
 }
@@ -497,9 +470,6 @@ int sst_target_device_select(struct snd_sst_target_device *target)
 				prepare_count++;
 		}
 	}
-	if (target->devices[0].action == SND_SST_PORT_PREPARE &&
-		prepare_count == 0)
-			sst_drv_ctx->scard_ops->power_down_pmic();
 
 	return retval;
 }
@@ -1071,7 +1041,6 @@ int sst_decode(int str_id, struct snd_sst_dbufs *dbufs)
 	struct snd_sst_decode_info dec_info;
 	unsigned long long input_bytes, output_bytes;
 
-	sst_drv_ctx->scard_ops->power_down_pmic();
 	pr_debug("Powering_down_PMIC...\n");
 
 	retval = sst_validate_strid(str_id);

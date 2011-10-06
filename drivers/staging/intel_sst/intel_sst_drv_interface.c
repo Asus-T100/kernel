@@ -167,25 +167,10 @@ void free_stream_context(unsigned int str_id)
 		if (sst_free_stream(str_id))
 			sst_clean_stream(&sst_drv_ctx->streams[str_id]);
 		if (stream->ops == STREAM_OPS_PLAYBACK ||
-				stream->ops == STREAM_OPS_PLAYBACK_DRM) {
+				stream->ops == STREAM_OPS_PLAYBACK_DRM)
 			sst_drv_ctx->pb_streams--;
-			if (sst_drv_ctx->pci_id == SST_MFLD_PCI_ID)
-				sst_drv_ctx->scard_ops->power_down_pmic_pb(
-						stream->device);
-			else {
-				if (sst_drv_ctx->pb_streams == 0)
-					sst_drv_ctx->scard_ops->
-					power_down_pmic_pb(stream->device);
-			}
-		} else if (stream->ops == STREAM_OPS_CAPTURE) {
+		else if (stream->ops == STREAM_OPS_CAPTURE)
 			sst_drv_ctx->cp_streams--;
-			if (sst_drv_ctx->cp_streams == 0)
-				sst_drv_ctx->scard_ops->power_down_pmic_cp(
-						stream->device);
-		}
-		if (sst_drv_ctx->pb_streams == 0
-				&& sst_drv_ctx->cp_streams == 0)
-			sst_drv_ctx->scard_ops->power_down_pmic();
 	}
 }
 
@@ -324,21 +309,10 @@ int sst_get_stream(struct snd_sst_params *str_param)
 	/* power on the analog, if reqd */
 	if (str_param->ops == STREAM_OPS_PLAYBACK ||
 			str_param->ops == STREAM_OPS_PLAYBACK_DRM) {
-		if (sst_drv_ctx->pci_id == SST_MRST_PCI_ID)
-			sst_drv_ctx->scard_ops->power_up_pmic_pb(
-					sst_drv_ctx->pmic_port_instance);
-		else {
-			sst_drv_ctx->scard_ops->power_up_pmic_pb(
-							str_info->device);
-			sst_drv_ctx->scard_ops->set_pcm_audio_params(
-				str_info->sfreq, sst_get_wdsize(str_param), 2);
-		}
 		/*Only if the playback is MP3 - Send a message*/
 		sst_drv_ctx->pb_streams++;
 	} else if (str_param->ops == STREAM_OPS_CAPTURE) {
 
-		sst_drv_ctx->scard_ops->power_up_pmic_cp(
-				sst_drv_ctx->pmic_port_instance);
 		/*Send a messageif not sent already*/
 		sst_drv_ctx->cp_streams++;
 	}
@@ -588,39 +562,20 @@ struct intel_sst_card_ops sst_pmic_ops = {
  */
 int register_sst_card(struct intel_sst_card_ops *card)
 {
+	pr_debug("sst: driver register card %p\n", sst_drv_ctx);
 	if (!sst_drv_ctx) {
 		pr_err("No SST driver register card reject\n");
 		return -ENODEV;
 	}
 
-	if (!card || !card->module_name) {
+	if (!card) {
 		pr_err("Null Pointer Passed\n");
 		return -EINVAL;
 	}
-	if (sst_drv_ctx->pmic_state == SND_MAD_UN_INIT) {
-		/* register this driver */
-		if ((strncmp(SST_CARD_NAMES, card->module_name,
-				strlen(SST_CARD_NAMES))) == 0) {
-			sst_drv_ctx->pmic_vendor = card->vendor_id;
-			sst_drv_ctx->scard_ops =  card->scard_ops;
-			sst_pmic_ops.module_name = card->module_name;
-			sst_drv_ctx->pmic_state = SND_MAD_INIT_DONE;
-			sst_drv_ctx->rx_time_slot_status = 0; /*default AMIC*/
-			card->pcm_control = sst_pmic_ops.pcm_control;
-			return 0;
-		} else {
-			pr_err("strcmp fail %s\n", card->module_name);
-			return -EINVAL;
-		}
-
-	} else {
-		/* already registered a driver */
-		pr_err("Repeat for registration..denied\n");
-		return -EBADRQC;
-	}
-	/* The ASoC code doesn't set scard_ops */
-	if (sst_drv_ctx->scard_ops)
-		sst_drv_ctx->scard_ops->card_status = SND_CARD_UN_INIT;
+	sst_drv_ctx->pmic_vendor = card->vendor_id;
+	sst_drv_ctx->pmic_state = SND_MAD_INIT_DONE;
+	sst_drv_ctx->rx_time_slot_status = 0; /*default AMIC*/
+	card->pcm_control = sst_pmic_ops.pcm_control;
 	return 0;
 }
 EXPORT_SYMBOL_GPL(register_sst_card);
@@ -636,9 +591,7 @@ void unregister_sst_card(struct intel_sst_card_ops *card)
 {
 	if (sst_pmic_ops.pcm_control == card->pcm_control) {
 		/* unreg */
-		sst_pmic_ops.module_name = "";
 		sst_drv_ctx->pmic_state = SND_MAD_UN_INIT;
-		pr_debug("Unregistered %s\n", card->module_name);
 	}
 	return;
 }
