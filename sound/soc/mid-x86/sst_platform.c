@@ -340,6 +340,8 @@ static int sst_platform_close(struct snd_pcm_substream *substream)
 	kfree(stream->sstdrv_ops);
 	kfree(stream);
 func_exit:
+	if (!sst_cpu_ctx->active_nonvoice_cnt)
+		snd_soc_dai_set_tristate(codec_dai, 1);
 	/*if all CPU dais are inactive, disable PLL*/
 	if (!sst_cpu_ctx->active_voice_cnt && !sst_cpu_ctx->active_nonvoice_cnt)
 		snd_soc_dai_set_pll(codec_dai, 0, 0, 0, 0);
@@ -480,17 +482,18 @@ static int sst_platform_pcm_hw_params(struct snd_pcm_substream *substream,
 	struct snd_soc_dai_link *dai_link = rtd->dai_link;
 	struct snd_soc_dai *codec_dai = rtd->codec_dai;
 
-	/* Force the data width to 24 bit in MSIC. Post Processing algorithms
-	   in DSP enabled with 24 bit precision */
-	ret = snd_soc_codec_set_params(codec, SNDRV_PCM_FORMAT_S24_LE);
-	if (ret < 0) {
-		pr_debug("codec set_params returned error\n");
-		return ret;
-	}
 	if (!strcmp(dai_link->cpu_dai_name, SST_VOICE_DAI))
 		clk_src = SN95031_PCM1BCLK;
-	else
+	else {
 		clk_src = SN95031_PLLIN;
+		/* Force the data width to 24 bit in MSIC. Post Processing
+		algorithms in DSP enabled with 24 bit precision */
+		ret = snd_soc_codec_set_params(codec, SNDRV_PCM_FORMAT_S24_LE);
+		if (ret < 0) {
+			pr_debug("codec set_params returned error\n");
+			return ret;
+		}
+	}
 	/*last two parameters have to non-zero, otherwise pll gets disabled*/
 	snd_soc_dai_set_pll(codec_dai, 0, clk_src, 1, params_rate(params));
 	snd_pcm_lib_malloc_pages(substream, params_buffer_bytes(params));

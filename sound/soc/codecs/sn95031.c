@@ -162,14 +162,13 @@ static int sn95031_set_vaud_bias(struct snd_soc_codec *codec,
 			/* power up the rail, on in normal and aoac mode */
 			snd_soc_write(codec, SN95031_VAUD, 0x2D);
 			msleep(1);
-		} else if (codec->dapm.bias_level == SND_SOC_BIAS_PREPARE) {
-			/* turn off pcm */
-			pr_debug("vaud_bias power dn pcm\n");
-			/* disable PCM1 and PCM2 ports*/
-			snd_soc_update_bits(codec, SN95031_PCM2C2, BIT(0), 0);
+		} else if (codec->dapm.bias_level == SND_SOC_BIAS_PREPARE &&
+				sn95031_ctx->pll_state == PLL_ENABLED) {
+			pr_debug("vaud_bias powering down pll\n");
+			sn95031_configure_pll(codec, DISABLE_PLL);
+			sn95031_ctx->pll_state = PLL_ENABLE_PENDING;
 		}
 		break;
-
 
 	case SND_SOC_BIAS_OFF:
 		pr_debug("vaud_bias _OFF doing rail shutdown\n");
@@ -791,12 +790,27 @@ static int sn95031_set_dai_pll(struct snd_soc_dai *codec_dai, int pll_id,
 	return 0;
 }
 
+static int sn95031_set_pcm2_tristate(struct snd_soc_dai *codec_dai,
+							int tristate)
+{
+	u8 val;
+
+	pr_debug("enter:%s\n", __func__);
+	if (tristate)
+		val = 0;
+	else
+		val = 1;
+
+	return snd_soc_update_bits(codec_dai->codec, SN95031_PCM2C2,
+						BIT(0), val);
+}
+
 static int sn95031_codec_set_params(struct snd_soc_codec *codec,
 						unsigned int param)
 {
 	unsigned int format;
 
-	pr_debug("updating param\n");
+	pr_debug("enter:%s\n", __func__);
 	switch (param) {
 	case SNDRV_PCM_FORMAT_S16_LE:
 		format = BIT(4)|BIT(5);
@@ -922,22 +936,26 @@ static struct snd_soc_dai_ops sn95031_headset_dai_ops = {
 	.digital_mute	= sn95031_pcm_hs_mute,
 	.hw_params	= sn95031_pcm_hw_params,
 	.set_pll	= sn95031_set_dai_pll,
+	.set_tristate	= sn95031_set_pcm2_tristate,
 };
 
 static struct snd_soc_dai_ops sn95031_speaker_dai_ops = {
 	.digital_mute	= sn95031_pcm_spkr_mute,
 	.hw_params	= sn95031_pcm_hw_params,
 	.set_pll	= sn95031_set_dai_pll,
+	.set_tristate	= sn95031_set_pcm2_tristate,
 };
 
 static struct snd_soc_dai_ops sn95031_vib1_dai_ops = {
 	.hw_params	= sn95031_pcm_hw_params,
 	.set_pll	= sn95031_set_dai_pll,
+	.set_tristate	= sn95031_set_pcm2_tristate,
 };
 
 static struct snd_soc_dai_ops sn95031_vib2_dai_ops = {
 	.hw_params	= sn95031_pcm_hw_params,
 	.set_pll	= sn95031_set_dai_pll,
+	.set_tristate	= sn95031_set_pcm2_tristate,
 };
 
 static struct snd_soc_dai_ops sn95031_voice_dai_ops = {
