@@ -201,6 +201,7 @@ static int sst_platform_alloc_stream(struct snd_pcm_substream *substream)
 
 	stream->stream_info.str_id = ret_val;
 	pr_debug("str id :  %d\n", stream->stream_info.str_id);
+
 	return ret_val;
 }
 
@@ -297,8 +298,16 @@ static int sst_platform_close(struct snd_pcm_substream *substream)
 	}
 	stream = substream->runtime->private_data;
 	str_id = stream->stream_info.str_id;
-	if (str_id)
+	if (str_id) {
+		if (stream->stream_status == SST_PLATFORM_SUSPENDED) {
+			pr_debug("device suspended resume for closure\n");
+			ret_val = stream->sstdrv_ops->pcm_control->device_control(
+					SST_SND_DEVICE_RESUME_SYNC, &str_id);
+			if (!ret_val)
+				sst_set_stream_status(stream, SST_PLATFORM_DROPPED);
+		}
 		ret_val = stream->sstdrv_ops->pcm_control->close(str_id);
+	}
 	unregister_sst_card(stream->sstdrv_ops);
 	kfree(stream->sstdrv_ops);
 	kfree(stream);
@@ -333,6 +342,14 @@ static int sst_platform_pcm_prepare(struct snd_pcm_substream *substream)
 	if (ret_val)
 		return ret_val;
 	substream->runtime->hw.info = SNDRV_PCM_INFO_BLOCK_TRANSFER;
+
+	/* we are suspending the sink/source here as we want to have
+	 * device suspended in idle, before handling next request we will send
+	 * an explict RESUME call  */
+	pr_debug("Suspend NOW\n");
+	ret_val = stream->sstdrv_ops->pcm_control->device_control(
+			SST_SND_DEVICE_SUSPEND, &stream->stream_info.str_id);
+	sst_set_stream_status(stream, SST_PLATFORM_SUSPENDED);
 	return ret_val;
 }
 
@@ -347,6 +364,14 @@ static int sst_platform_pcm_trigger(struct snd_pcm_substream *substream,
 	stream = substream->runtime->private_data;
 	str_id = stream->stream_info.str_id;
 	alsa_state = substream->runtime->status->state;
+
+	if (stream->stream_status == SST_PLATFORM_SUSPENDED) {
+		pr_debug("in trigger, device is suspended, so resume it\n");
+		ret_val = stream->sstdrv_ops->pcm_control->device_control(
+					SST_SND_DEVICE_RESUME, &str_id);
+		if (!ret_val)
+			sst_set_stream_status(stream, SST_PLATFORM_DROPPED);
+	}
 
 	switch (cmd) {
 	case SNDRV_PCM_TRIGGER_START:
@@ -379,9 +404,12 @@ static int sst_platform_pcm_trigger(struct snd_pcm_substream *substream,
 		sst_set_stream_status(stream, status);
 
 	if (cmd == SNDRV_PCM_TRIGGER_STOP &&
-				alsa_state == SNDRV_PCM_STATE_DRAINING)
+				alsa_state == SNDRV_PCM_STATE_DRAINING) {
 		ret_val = stream->sstdrv_ops->pcm_control->device_control(
-					SST_SND_SUSPEND, &str_id);
+					SST_SND_DEVICE_SUSPEND, &str_id);
+		if (!ret_val)
+			sst_set_stream_status(stream, SST_PLATFORM_SUSPENDED);
+	}
 	return ret_val;
 }
 

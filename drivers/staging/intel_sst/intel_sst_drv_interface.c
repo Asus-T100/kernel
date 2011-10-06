@@ -320,6 +320,22 @@ err:
 	return retval;
 }
 
+void sst_prepare_fw(void)
+{
+	int retval;
+
+	if (sst_drv_ctx->sst_state == SST_UN_INIT) {
+		/* FW is not downloaded */
+		pr_debug("sst: DSP Downloading FW now...\n");
+		retval = sst_download_fw();
+		if (retval) {
+			pr_err("sst: FW download fail %x\n", retval);
+			pr_debug("sst: doing rtpm_put\n");
+			pm_runtime_put(&sst_drv_ctx->pci->dev);
+		}
+	}
+}
+
 void sst_process_mad_ops(struct work_struct *work)
 {
 
@@ -345,9 +361,15 @@ void sst_process_mad_ops(struct work_struct *work)
 	case SST_SND_STREAM_PROCESS:
 		pr_debug("play/capt frames...\n");
 		break;
+	case SST_SND_DEVICE_RESUME:
+		pr_debug("sst: SST_SND_DEVICE_RESUME\n");
+		pm_runtime_get_sync(&sst_drv_ctx->pci->dev);
+		sst_prepare_fw();
+		break;
 	default:
 		pr_err(" wrong control_ops reported\n");
 	}
+	kfree(mad_ops);
 	return;
 }
 
@@ -372,6 +394,7 @@ int sst_open_pcm_stream(struct snd_sst_params *str_param)
 	struct stream_info *str_info;
 	int retval;
 
+	pr_debug("sst: open_pcm, doing rtpm_get\n");
 	pm_runtime_get_sync(&sst_drv_ctx->pci->dev);
 
 	if (sst_drv_ctx->sst_state == SST_SUSPENDED) {
@@ -379,7 +402,8 @@ int sst_open_pcm_stream(struct snd_sst_params *str_param)
 		pr_debug("Resuming from Suspended state\n");
 		retval = intel_sst_resume(sst_drv_ctx->pci);
 		if (retval) {
-			pr_err("Resume Failed = %#x, abort\n", retval);
+			pr_err("sst err: Resume Failed = %#x, abort\n", retval);
+			pr_debug("sst: open_pcm, doing rtpm_put\n");
 			pm_runtime_put(&sst_drv_ctx->pci->dev);
 			return retval;
 		}
@@ -397,6 +421,7 @@ int sst_open_pcm_stream(struct snd_sst_params *str_param)
 	}
 
 	if (!str_param) {
+		pr_debug("sst: open_pcm, doing rtpm_put\n");
 		pm_runtime_put(&sst_drv_ctx->pci->dev);
 		return -EINVAL;
 	}
@@ -406,8 +431,7 @@ int sst_open_pcm_stream(struct snd_sst_params *str_param)
 		sst_drv_ctx->stream_cnt++;
 		str_info = &sst_drv_ctx->streams[retval];
 		str_info->src = MAD_DRV;
-	} else
-		pm_runtime_put(&sst_drv_ctx->pci->dev);
+	}
 
 	return retval;
 }
@@ -422,24 +446,12 @@ int sst_open_pcm_stream(struct snd_sst_params *str_param)
  */
 int sst_close_pcm_stream(unsigned int str_id)
 {
-	int retval = 0;
 	struct stream_info *stream;
 
 	pr_debug("sst: stream free called\n");
 	if (sst_validate_strid(str_id))
 		return -EINVAL;
 	stream = &sst_drv_ctx->streams[str_id];
-	pm_runtime_get_sync(&sst_drv_ctx->pci->dev);
-	if (sst_drv_ctx->sst_state != SST_FW_RUNNING) {
-		pr_debug("sst: DSP Downloading FW now...\n");
-		retval = sst_download_fw();
-		if (retval) {
-			pr_err("sst: FW download fail %x, abort\n", retval);
-			pm_runtime_put(&sst_drv_ctx->pci->dev);
-			return retval;
-		}
-	}
-	pr_debug("sst in good shape, so lets free now\n");
 	free_stream_context(str_id);
 	stream->pcm_substream = NULL;
 	stream->status = STREAM_UN_INIT;
@@ -469,11 +481,23 @@ int sst_device_control(int cmd, void *arg)
 	case SST_SND_RESUME:
 	case SST_SND_DROP:
 	case SST_SND_START:
-		sst_drv_ctx->mad_ops.control_op = cmd;
-		sst_drv_ctx->mad_ops.stream_id = *(int *)arg;
-		queue_work(sst_drv_ctx->mad_wq, &sst_drv_ctx->mad_ops.wq);
+	case SST_SND_DEVICE_RESUME: {
+		struct mad_ops_wq *work = kzalloc(sizeof(*work), GFP_ATOMIC);
+		INIT_WORK(&work->wq, sst_process_mad_ops);
+		work->control_op = cmd;
+		work->stream_id = *(int *)arg;
+		queue_work(sst_drv_ctx->mad_wq, &work->wq);
 		break;
-
+	}
+	case SST_SND_DEVICE_RESUME_SYNC:
+		pr_debug("sst: SST_SND_DEVICE_RESUME_SYNC\n");
+		pm_runtime_get_sync(&sst_drv_ctx->pci->dev);
+		sst_prepare_fw();
+		break;
+	case SST_SND_DEVICE_SUSPEND:
+		pr_debug("sst: SST_SND_DEVICE_SUSPEND doing rtpm_put\n");
+		pm_runtime_put(&sst_drv_ctx->pci->dev);
+		break;
 	case SST_SND_STREAM_INIT: {
 		struct pcm_stream_info *str_info;
 		struct stream_info *stream;
