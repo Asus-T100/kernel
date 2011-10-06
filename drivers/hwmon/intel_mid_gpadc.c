@@ -32,6 +32,7 @@
 #include <linux/delay.h>
 #include <linux/sched.h>
 #include <linux/platform_device.h>
+#include <linux/pm_qos_params.h>
 #include <asm/intel_scu_ipc.h>
 #include <asm/intel_mid_gpadc.h>
 
@@ -78,6 +79,8 @@
 
 #define GPADC_CH_MAX		15
 
+#define PM_QOS_ADC_DRV_VALUE	4999
+
 struct gpadc_info {
 	int initialized;
 	/* This mutex protects gpadc sample/config from concurrent conflict.
@@ -103,6 +106,8 @@ struct gpadc_info {
 	int rnd_done;
 	int conv_done;
 	int gsmpulse_done;
+
+	struct pm_qos_request_list pm_qos_request;
 };
 
 struct gpadc_request {
@@ -282,6 +287,8 @@ int intel_mid_gpadc_gsmpulse_sample(int *vol, int *cur)
 		return -ENODEV;
 
 	mutex_lock(&mgi->lock);
+	pm_qos_add_request(&mgi->pm_qos_request,
+			   PM_QOS_CPU_DMA_LATENCY, PM_QOS_ADC_DRV_VALUE);
 	gpadc_write(ADC1CNTL2, ADC1CNTL2_DEF);
 	gpadc_set_bits(ADC1CNTL2, ADC1CNTL2_ADCGSMEN);
 
@@ -317,6 +324,7 @@ int intel_mid_gpadc_gsmpulse_sample(int *vol, int *cur)
 	gpadc_clear_bits(ADC1CNTL3, ADC1CNTL3_GSMDATARD);
 fail:
 	gpadc_clear_bits(ADC1CNTL2, ADC1CNTL2_ADCGSMEN);
+	pm_qos_remove_request(&mgi->pm_qos_request);
 	mutex_unlock(&mgi->lock);
 
 	return ret;
@@ -357,6 +365,8 @@ int intel_mid_gpadc_sample(void *handle, int sample_count, ...)
 	va_end(args);
 
 	mutex_lock(&mgi->lock);
+	pm_qos_add_request(&mgi->pm_qos_request,
+			   PM_QOS_CPU_DMA_LATENCY, PM_QOS_ADC_DRV_VALUE);
 	gpadc_poweron(mgi, rq->vref);
 	gpadc_clear_bits(ADC1CNTL1, ADC1CNTL1_AD1OFFSETEN);
 	gpadc_read(ADC1CNTL1, &data);
@@ -394,6 +404,7 @@ int intel_mid_gpadc_sample(void *handle, int sample_count, ...)
 fail:
 	gpadc_clear_bits(ADC1CNTL1, ADC1CNTL1_ADSTRT);
 	gpadc_poweroff(mgi);
+	pm_qos_remove_request(&mgi->pm_qos_request);
 	mutex_unlock(&mgi->lock);
 	return ret;
 }
