@@ -835,11 +835,11 @@ int sst_create_algo_ipc(struct snd_ppp_params *algo_params,
 		return -ENOMEM;
 	sst_fill_header(&(*msg)->header,
 			IPC_IA_ALG_PARAMS, 1, algo_params->str_id);
-	(*msg)->header.part.data = sizeof(u32) +
-			sizeof(*algo_params) + algo_params->size;
+	(*msg)->header.part.data = sizeof(u32) + sizeof(*algo_params) -
+		sizeof(algo_params->params) + algo_params->size;
 	memcpy((*msg)->mailbox_data, &(*msg)->header, sizeof(u32));
-	memcpy((*msg)->mailbox_data + sizeof(u32),
-				algo_params, sizeof(*algo_params));
+	memcpy((*msg)->mailbox_data + sizeof(u32), algo_params,
+		sizeof(*algo_params) - sizeof(algo_params->params));
 	return 0;
 }
 
@@ -895,7 +895,8 @@ long intel_sst_ioctl_dsp(unsigned int cmd, unsigned long arg)
 		if (retval)
 			break;
 		algo_params.reserved = 0;
-		if (copy_from_user(msg->mailbox_data + sizeof(algo_params),
+		if (copy_from_user(msg->mailbox_data + sizeof(algo_params) -
+				sizeof(algo_params.params) + sizeof(u32),
 				algo_params.params, algo_params.size)) {
 			kfree(msg);
 			return -EFAULT;
@@ -943,7 +944,14 @@ long intel_sst_ioctl_dsp(unsigned int cmd, unsigned long arg)
 			tmp = (char __user *)arg + offsetof(
 					struct snd_ppp_params, size);
 			if (copy_to_user(tmp, &algo_params_copied->size,
-						 sizeof(__u32))) {
+						 sizeof(u32))) {
+				retval = -EFAULT;
+				goto free_mem;
+			}
+			tmp = (char __user *)arg + offsetof(
+					struct snd_ppp_params, enable);
+			if (copy_to_user(tmp, &algo_params_copied->enable,
+						 sizeof(u8))) {
 				retval = -EFAULT;
 				goto free_mem;
 			}
