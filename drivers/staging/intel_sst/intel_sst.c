@@ -474,7 +474,7 @@ int intel_sst_set_pll(unsigned int enable, enum intel_sst_pll_mode mode)
 	u32 *ipc_wbuf, ret = 0;
 	u8 cbuf[16] = { '\0' };
 
-	pr_debug("set_pll, for %x\n", enable);
+	pr_debug("set_pll, Enable %x, Mode %x\n", enable, mode);
 	ipc_wbuf = (u32 *)&cbuf;
 	cbuf[0] = 0; /* OSC_CLK_OUT0 */
 	mutex_lock(&sst_drv_ctx->sst_lock);
@@ -493,11 +493,12 @@ int intel_sst_set_pll(unsigned int enable, enum intel_sst_pll_mode mode)
 		 */
 		sst_drv_ctx->pll_mode &= ~mode;
 		pr_debug("set_pll, disabling pll %x\n", sst_drv_ctx->pll_mode);
-		if (!sst_drv_ctx->pll_mode)
+		if (sst_drv_ctx->pll_mode)
 			goto out;
 		cbuf[1] = 0; /* Disable the clock */
 	}
 	/* send ipc command to configure the PNW clock to MSIC PLLIN */
+	pr_debug("configuring clock now\n");
 	ret = intel_scu_ipc_command(0xE6, 0, ipc_wbuf, 2, NULL, 0);
 	if (ret)
 		pr_err("ipc clk disable command failed: %d\n", ret);
