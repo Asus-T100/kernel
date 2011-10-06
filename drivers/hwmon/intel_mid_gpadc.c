@@ -35,6 +35,8 @@
 #include <asm/intel_scu_ipc.h>
 #include <asm/intel_mid_gpadc.h>
 
+#define MCCINT			0x013
+#define IRQLVL1MSK		0x021
 #define ADC1INT			0x003
 #define ADC1ADDR0		0x1C5
 #define ADC1SNS0H		0x1D4
@@ -49,10 +51,17 @@
 #define EEPROMCAL1		0x317
 #define EEPROMCAL2		0x318
 
+#define MCCINT_MCCCAL		(1 << 1)
+#define MCCINT_MOVERFLOW	(1 << 0)
+
+#define IRQLVL1MSK_ADCM		(1 << 1)
+
 #define ADC1CNTL1_AD1OFFSETEN	(1 << 6)
 #define ADC1CNTL1_AD1CALEN	(1 << 5)
 #define ADC1CNTL1_ADEN		(1 << 4)
 #define ADC1CNTL1_ADSTRT	(1 << 3)
+#define ADC1CNTL1_ADSLP		7
+#define ADC1CNTL1_ADSLP_DEF	1
 
 #define ADC1INT_ADC1CAL		(1 << 2)
 #define ADC1INT_GSM		(1 << 1)
@@ -199,17 +208,17 @@ static irqreturn_t msic_gpadc_irq(int irq, void *data)
 
 	if (mgi->irq_status & ADC1INT_GSM) {
 		mgi->gsmpulse_done = 1;
-		gpadc_set_bits(ADC1INT, ADC1INT_GSM);
 		wake_up(&mgi->wait);
 	} else if (mgi->irq_status & ADC1INT_RND) {
-		gpadc_clear_bits(ADC1CNTL1, ADC1CNTL1_ADSTRT);
 		mgi->rnd_done = 1;
-		gpadc_set_bits(ADC1INT, ADC1INT_RND);
+		wake_up(&mgi->wait);
+	} else if (mgi->irq_status & ADC1INT_ADC1CAL) {
+		mgi->conv_done = 1;
 		wake_up(&mgi->wait);
 	} else {
-		dev_err(mgi->dev, "unknown interrupt\n");
+		/* coulomb counter should be handled by firmware. Ignore it */
+		dev_dbg(mgi->dev, "coulomb counter is not support\n");
 	}
-
 	return IRQ_HANDLED;
 }
 
@@ -267,13 +276,20 @@ int intel_mid_gpadc_gsmpulse_sample(int *vol, int *cur)
 	int i;
 	u8 data;
 	int tmp;
+	int ret = 0;
 
 	if (!mgi->initialized)
 		return -ENODEV;
 
+	mutex_lock(&mgi->lock);
+	gpadc_write(ADC1CNTL2, ADC1CNTL2_DEF);
 	gpadc_set_bits(ADC1CNTL2, ADC1CNTL2_ADCGSMEN);
 
-	wait_event(mgi->wait, mgi->gsmpulse_done);
+	if (wait_event_timeout(mgi->wait, mgi->gsmpulse_done, HZ) == 0) {
+		dev_err(mgi->dev, "gsmpulse sample timeout\n");
+		ret = -ETIMEDOUT;
+		goto fail;
+	}
 	gpadc_clear_bits(ADC1CNTL1, ADC1CNTL1_ADEN);
 	gpadc_set_bits(ADC1CNTL3, ADC1CNTL3_GSMDATARD);
 
@@ -297,9 +313,13 @@ int intel_mid_gpadc_gsmpulse_sample(int *vol, int *cur)
 	*vol -= mgi->vzse + mgi->vge * (*vol) / 1023;
 	*cur += mgi->izse + mgi->ige * (*cur) / 1023;
 
+	gpadc_set_bits(ADC1INT, ADC1INT_GSM);
+	gpadc_clear_bits(ADC1CNTL3, ADC1CNTL3_GSMDATARD);
+fail:
 	gpadc_clear_bits(ADC1CNTL2, ADC1CNTL2_ADCGSMEN);
+	mutex_unlock(&mgi->lock);
 
-	return 0;
+	return ret;
 }
 EXPORT_SYMBOL(intel_mid_gpadc_gsmpulse_sample);
 
@@ -338,14 +358,13 @@ int intel_mid_gpadc_sample(void *handle, int sample_count, ...)
 
 	mutex_lock(&mgi->lock);
 	gpadc_poweron(mgi, rq->vref);
+	gpadc_clear_bits(ADC1CNTL1, ADC1CNTL1_AD1OFFSETEN);
+	gpadc_read(ADC1CNTL1, &data);
+	data = (data & ~ADC1CNTL1_ADSLP) + ADC1CNTL1_ADSLP_DEF;
+	gpadc_write(ADC1CNTL1, data);
+	mgi->rnd_done = 0;
+	gpadc_set_bits(ADC1CNTL1, ADC1CNTL1_ADSTRT);
 	for (count = 0; count < sample_count; count++) {
-		mgi->rnd_done = 0;
-		gpadc_clear_bits(ADC1CNTL1, ADC1CNTL1_AD1OFFSETEN);
-		gpadc_read(ADC1CNTL1, &data);
-		data = (data & (~0x7)) + 1; /*set sleep 4.5*/
-		data |= ADC1CNTL1_ADSTRT;
-		gpadc_write(ADC1CNTL1, data);
-
 		if (wait_event_timeout(mgi->wait, mgi->rnd_done, HZ) == 0) {
 			dev_err(mgi->dev, "sample timeout\n");
 			ret = -ETIMEDOUT;
@@ -366,12 +385,14 @@ int intel_mid_gpadc_sample(void *handle, int sample_count, ...)
 				tmp += mgi->izse + mgi->ige * tmp / 1023;
 			*val[i] += tmp;
 		}
+		mgi->rnd_done = 0;
 	}
 
 	for (i = 0; i < rq->count; ++i)
 		*val[i] /= sample_count;
 
 fail:
+	gpadc_clear_bits(ADC1CNTL1, ADC1CNTL1_ADSTRT);
 	gpadc_poweroff(mgi);
 	mutex_unlock(&mgi->lock);
 	return ret;
@@ -457,13 +478,14 @@ static int __devinit msic_gpadc_probe(struct platform_device *pdev)
 	struct intel_mid_gpadc_platform_data *pdata = pdev->dev.platform_data;
 	int err = 0;
 
-	dev_err(&pdev->dev, "intr phy addr: 0x%lx\n", pdata->intr);
 	mutex_init(&mgi->lock);
 	init_waitqueue_head(&mgi->wait);
 
 	mgi->dev = &pdev->dev;
 	mgi->intr = ioremap_nocache(pdata->intr, 4);
 	mgi->irq = platform_get_irq(pdev, 0);
+
+	gpadc_clear_bits(IRQLVL1MSK, IRQLVL1MSK_ADCM);
 	if (request_threaded_irq(mgi->irq, msic_gpadc_isr, msic_gpadc_irq,
 					IRQF_ONESHOT, "msic_adc", mgi)) {
 		dev_err(&pdev->dev, "unable to register irq %d\n", mgi->irq);
