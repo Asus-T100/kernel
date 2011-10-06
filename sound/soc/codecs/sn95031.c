@@ -114,11 +114,11 @@ static int sn95031_set_vaud_bias(struct snd_soc_codec *codec,
 			if (sn95031_ctx->sysclk == SN95031_PCM1BCLK) {
 				pr_debug("using PCM1 bit clock\n");
 				snd_soc_write(codec, SN95031_AUDPLLCTRL,
-								BIT(3)|BIT(1));
+								BIT(3));
 			}
 			/* power up the pll */
 			snd_soc_update_bits(codec, SN95031_AUDPLLCTRL,
-								BIT(5), BIT(5));
+						BIT(5)|BIT(1), BIT(5)|BIT(1));
 		}
 		break;
 
@@ -829,6 +829,7 @@ int sn95031_voice_hw_params(struct snd_pcm_substream *substream,
 	case 22050:
 		pcm1fs = BIT(5)|BIT(4);
 		rate = BIT(7);
+		break;
 	case 44100:
 		pcm1fs = BIT(6)|BIT(4);
 		rate = BIT(7);
