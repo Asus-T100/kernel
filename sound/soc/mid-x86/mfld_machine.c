@@ -243,12 +243,15 @@ static int mfld_init(struct snd_soc_pcm_runtime *runtime)
 	/* we dont use linein in this so set to NC */
 	snd_soc_dapm_disable_pin(dapm, "LINEINL");
 	snd_soc_dapm_disable_pin(dapm, "LINEINR");
-
+	snd_soc_dapm_disable_pin(dapm, "DMIC2");
+	snd_soc_dapm_disable_pin(dapm, "DMIC4");
+	snd_soc_dapm_disable_pin(dapm, "DMIC6");
+	snd_soc_dapm_disable_pin(dapm, "AMIC2");
 
 	snd_soc_dapm_ignore_suspend(dapm, "PCM1_IN");
-	snd_soc_dapm_ignore_suspend(dapm, "PCM1_OUT");
+	snd_soc_dapm_ignore_suspend(dapm, "PCM1_Out");
 	snd_soc_dapm_ignore_suspend(dapm, "PCM2_IN");
-	snd_soc_dapm_ignore_suspend(dapm, "PCM2_OUT");
+	snd_soc_dapm_ignore_suspend(dapm, "PCM2_Out");
 	snd_soc_dapm_ignore_suspend(dapm, "IHFDAC Right");
 	snd_soc_dapm_ignore_suspend(dapm, "IHFDAC Left");
 	snd_soc_dapm_ignore_suspend(dapm, "HSDAC Right");
