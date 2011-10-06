@@ -188,7 +188,7 @@ static int sst_get_sfreq(struct snd_sst_params *str_param)
 {
 	switch (str_param->codec) {
 	case SST_CODEC_TYPE_PCM:
-		return 48000; /*str_param->sparams.uc.pcm_params.sfreq;*/
+		return str_param->sparams.uc.pcm_params.sfreq;
 	case SST_CODEC_TYPE_MP3:
 		return str_param->sparams.uc.mp3_params.sfreq;
 	case SST_CODEC_TYPE_AAC:
@@ -199,6 +199,23 @@ static int sst_get_sfreq(struct snd_sst_params *str_param)
 		return 0;
 	}
 }
+
+static int sst_get_wdsize(struct snd_sst_params *str_param)
+{
+	switch (str_param->codec) {
+	case SST_CODEC_TYPE_PCM:
+		return str_param->sparams.uc.pcm_params.pcm_wd_sz;
+	case SST_CODEC_TYPE_MP3:
+		return str_param->sparams.uc.mp3_params.pcm_wd_sz;
+	case SST_CODEC_TYPE_AAC:
+		return str_param->sparams.uc.aac_params.pcm_wd_sz;
+	case SST_CODEC_TYPE_WMA9:
+		return str_param->sparams.uc.wma_params.pcm_wd_sz;
+	default:
+		return 0;
+	}
+}
+
 
 /*
  * sst_get_stream - this function prepares for stream allocation
@@ -261,9 +278,12 @@ int sst_get_stream(struct snd_sst_params *str_param)
 		if (sst_drv_ctx->pci_id == SST_MRST_PCI_ID)
 			sst_drv_ctx->scard_ops->power_up_pmic_pb(
 					sst_drv_ctx->pmic_port_instance);
-		else
+		else {
 			sst_drv_ctx->scard_ops->power_up_pmic_pb(
 							str_info->device);
+			sst_drv_ctx->scard_ops->set_pcm_audio_params(
+				str_info->sfreq, sst_get_wdsize(str_param), 2);
+		}
 		/*Only if the playback is MP3 - Send a message*/
 		sst_drv_ctx->pb_streams++;
 	} else if (str_param->ops == STREAM_OPS_CAPTURE) {
