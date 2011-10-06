@@ -62,18 +62,6 @@ struct mfld_mc_private {
 
 struct snd_soc_jack mfld_jack;
 
-/*Headset jack detection DAPM pins */
-static struct snd_soc_jack_pin mfld_jack_pins[] = {
-	{
-		.pin = "Headphones",
-		.mask = SND_JACK_HEADPHONE,
-	},
-	{
-		.pin = "AMIC1",
-		.mask = SND_JACK_MICROPHONE,
-	},
-};
-
 /* jack detection voltage zones */
 static struct snd_soc_jack_zone mfld_zones[] = {
 	{MFLD_MV_START, MFLD_MV_AM_HS, SND_JACK_HEADPHONE},
@@ -264,12 +252,6 @@ static int mfld_init(struct snd_soc_pcm_runtime *runtime)
 		return ret_val;
 	}
 
-	ret_val = snd_soc_jack_add_pins(&mfld_jack,
-			ARRAY_SIZE(mfld_jack_pins), mfld_jack_pins);
-	if (ret_val) {
-		pr_err("adding jack pins failed\n");
-		return ret_val;
-	}
 	ret_val = snd_soc_jack_add_zones(&mfld_jack,
 			ARRAY_SIZE(mfld_zones), mfld_zones);
 	if (ret_val) {
