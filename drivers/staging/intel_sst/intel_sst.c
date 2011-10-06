@@ -55,7 +55,6 @@ MODULE_VERSION(SST_DRIVER_VERSION);
 
 struct intel_sst_drv *sst_drv_ctx;
 static struct mutex drv_ctx_lock;
-struct class *sst_class;
 
 /* fops Routines */
 static const struct file_operations intel_sst_fops = {
@@ -437,7 +436,7 @@ static void __devexit intel_sst_remove(struct pci_dev *pci)
 	pci_set_drvdata(pci, NULL);
 }
 
-void sst_save_dsp_context(void)
+static void sst_save_dsp_context(void)
 {
 	struct snd_sst_ctxt_params fw_context;
 	unsigned int pvt_id, i;

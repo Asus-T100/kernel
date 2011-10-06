@@ -54,8 +54,8 @@ struct sn95031_priv {
 	enum sn95031_pll_status  pll_state;
 	struct sn95031_work oc_work;
 };
-void *audio_adc_handle;
-unsigned int sn95031_lp_flag;
+static void *audio_adc_handle;
+static unsigned int sn95031_lp_flag;
 
 /* This Function reads the voltage level from the ADC Driver*/
 static unsigned int sn95031_read_voltage(void)
@@ -874,7 +874,7 @@ static int sn95031_codec_set_params(struct snd_soc_codec *codec,
 	return 0;
 }
 
-int sn95031_pcm_hw_params(struct snd_pcm_substream *substream,
+static int sn95031_pcm_hw_params(struct snd_pcm_substream *substream,
 		struct snd_pcm_hw_params *params, struct snd_soc_dai *dai)
 {
 	unsigned int rate;
@@ -900,7 +900,7 @@ int sn95031_pcm_hw_params(struct snd_pcm_substream *substream,
 	return 0;
 }
 
-int sn95031_voice_hw_params(struct snd_pcm_substream *substream,
+static int sn95031_voice_hw_params(struct snd_pcm_substream *substream,
 		struct snd_pcm_hw_params *params, struct snd_soc_dai *dai)
 {
 	unsigned int format, pcm1fs, rate = 0;
@@ -969,7 +969,7 @@ int sn95031_voice_hw_params(struct snd_pcm_substream *substream,
 	return 0;
 }
 
-int sn95031_voice_hw_free(struct snd_pcm_substream *substream,
+static int sn95031_voice_hw_free(struct snd_pcm_substream *substream,
 					struct snd_soc_dai *dai)
 {
 	pr_debug("inside hw_free");
@@ -1014,7 +1014,7 @@ static struct snd_soc_dai_ops sn95031_voice_dai_ops = {
 	.set_pll	= sn95031_set_dai_pll,
 };
 
-struct snd_soc_dai_driver sn95031_dais[] = {
+static struct snd_soc_dai_driver sn95031_dais[] = {
 {
 	.name = "SN95031 Headset",
 	.playback = {
@@ -1105,7 +1105,8 @@ static int sn95031_get_headset_state(struct snd_soc_jack *mfld_jack)
 		sn95031_enable_jack_btn(mfld_jack->codec);
 	return jack_type;
 }
-void sn95031_jack_report(struct mfld_jack_data *jack_data, unsigned int status)
+static void sn95031_jack_report(struct mfld_jack_data *jack_data,
+		unsigned int status)
 {
 	unsigned int mask = SND_JACK_BTN_0 | SND_JACK_BTN_1 | SND_JACK_HEADSET;
 
@@ -1190,12 +1191,12 @@ void sn95031_jack_detection(struct mfld_jack_data *jack_data)
 }
 EXPORT_SYMBOL_GPL(sn95031_jack_detection);
 
-void sn95031_ocvol_int_mask(struct snd_soc_codec *codec, int status)
+static void sn95031_ocvol_int_mask(struct snd_soc_codec *codec, int status)
 {
 	snd_soc_update_bits(codec, SN95031_OCAUDIOMASK, BIT(0), status);
 
 }
-void sn95031_restore_ihf_vol(struct snd_soc_codec *codec,
+static void sn95031_restore_ihf_vol(struct snd_soc_codec *codec,
 				unsigned int vol_addr, int crush_volume)
 {
 	u8 ihf_volume;
@@ -1216,7 +1217,7 @@ void sn95031_restore_ihf_vol(struct snd_soc_codec *codec,
 }
 
 
-void sn95031_oc_workqueue(struct work_struct *work)
+static void sn95031_oc_workqueue(struct work_struct *work)
 {
 	int crush_volume;
 	struct sn95031_work *oc_wq =
@@ -1381,7 +1382,7 @@ static int sn95031_codec_remove(struct snd_soc_codec *codec)
 	return 0;
 }
 
-struct snd_soc_codec_driver sn95031_codec = {
+static struct snd_soc_codec_driver sn95031_codec = {
 	.probe		= sn95031_codec_probe,
 	.remove		= sn95031_codec_remove,
 	.read		= sn95031_read,

@@ -38,7 +38,7 @@
 #include "intel_sst_fw_ipc.h"
 #include "intel_sst_common.h"
 
-void sst_restore_fw_context(void)
+static void sst_restore_fw_context(void)
 {
 	struct snd_sst_ctxt_params fw_context;
 	struct ipc_post *msg = NULL;
@@ -333,7 +333,7 @@ err:
 	return retval;
 }
 
-void sst_prepare_fw(void)
+static void sst_prepare_fw(void)
 {
 	int retval;
 
@@ -386,7 +386,7 @@ void sst_process_mad_ops(struct work_struct *work)
 	return;
 }
 
-void send_intial_rx_timeslot(void)
+static void send_intial_rx_timeslot(void)
 {
 	if (sst_drv_ctx->pci_id == SST_MRST_PCI_ID &&
 			sst_drv_ctx->rx_time_slot_status != RX_TIMESLOT_UNINIT
@@ -402,7 +402,7 @@ void send_intial_rx_timeslot(void)
  * This function is called by MID sound card driver to open
  * a new pcm interface
  */
-int sst_open_pcm_stream(struct snd_sst_params *str_param)
+static int sst_open_pcm_stream(struct snd_sst_params *str_param)
 {
 	struct stream_info *str_info;
 	int retval;
@@ -446,7 +446,7 @@ int sst_open_pcm_stream(struct snd_sst_params *str_param)
  * This function is called by MID sound card driver to close
  * an existing pcm interface
  */
-int sst_close_pcm_stream(unsigned int str_id)
+static int sst_close_pcm_stream(unsigned int str_id)
 {
 	struct stream_info *stream;
 
@@ -474,7 +474,7 @@ int sst_close_pcm_stream(unsigned int str_id)
  * SST/Sound card controls for an opened stream.
  * This is registered with MID driver
  */
-int sst_device_control(int cmd, void *arg)
+static int sst_device_control(int cmd, void *arg)
 {
 	int retval = 0, str_id = 0;
 
@@ -569,13 +569,13 @@ int sst_device_control(int cmd, void *arg)
 }
 
 
-struct intel_sst_pcm_control pcm_ops = {
+static struct intel_sst_pcm_control pcm_ops = {
 	.open = sst_open_pcm_stream,
 	.device_control = sst_device_control,
 	.close = sst_close_pcm_stream,
 };
 
-struct intel_sst_card_ops sst_pmic_ops = {
+static struct intel_sst_card_ops sst_pmic_ops = {
 	.pcm_control = &pcm_ops,
 };
 

@@ -826,7 +826,7 @@ static void sst_print_stream_params(struct snd_sst_get_stream_params *get_prm)
  * For copying the mailbox data the function returns offset in bytes to mailbox
  * memory where the mailbox data should be copied after msg header
  */
-int sst_create_algo_ipc(struct snd_ppp_params *algo_params,
+static int sst_create_algo_ipc(struct snd_ppp_params *algo_params,
 					struct ipc_post **msg)
 {
 	u32 header_size = 0;
@@ -856,7 +856,7 @@ int sst_create_algo_ipc(struct snd_ppp_params *algo_params,
  *
  * This function is called to send ipc msg
  */
-int sst_send_algo_ipc(struct ipc_post **msg)
+static int sst_send_algo_ipc(struct ipc_post **msg)
 {
 	sst_drv_ctx->ppp_params_blk.condition = false;
 	sst_drv_ctx->ppp_params_blk.ret_code = 0;
@@ -879,7 +879,7 @@ int sst_send_algo_ipc(struct ipc_post **msg)
  * This function is called when a user space component
  * sends a DSP Ioctl to SST driver
  */
-long intel_sst_ioctl_dsp(unsigned int cmd, unsigned long arg)
+static long intel_sst_ioctl_dsp(unsigned int cmd, unsigned long arg)
 {
 	int retval = 0;
 	struct snd_ppp_params algo_params;
@@ -975,7 +975,7 @@ free_mem:
 }
 
 
-int sst_ioctl_tuning_params(unsigned int cmd, unsigned long arg)
+static int sst_ioctl_tuning_params(unsigned int cmd, unsigned long arg)
 {
 	struct snd_sst_tuning_params params;
 	struct ipc_post *msg;

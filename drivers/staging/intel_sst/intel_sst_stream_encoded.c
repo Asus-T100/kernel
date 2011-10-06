@@ -305,12 +305,12 @@ int sst_set_mute(struct snd_sst_mute *set_mute)
 	return retval;
 }
 
-int sst_prepare_target(struct snd_sst_slot_info *slot)
+static int sst_prepare_target(struct snd_sst_slot_info *slot)
 {
 	return 0;
 }
 
-int sst_activate_target(struct snd_sst_slot_info *slot)
+static int sst_activate_target(struct snd_sst_slot_info *slot)
 {
 	if (slot->target_device == SND_SST_TARGET_PMIC &&
 		slot->device_instance == 1) {
@@ -325,7 +325,7 @@ int sst_activate_target(struct snd_sst_slot_info *slot)
 	return 0;
 }
 
-int sst_parse_target(struct snd_sst_slot_info *slot)
+static int sst_parse_target(struct snd_sst_slot_info *slot)
 {
 	int retval = 0;
 
@@ -350,7 +350,7 @@ int sst_parse_target(struct snd_sst_slot_info *slot)
 	return retval;
 }
 
-int sst_send_target(struct snd_sst_target_device *target)
+static int sst_send_target(struct snd_sst_target_device *target)
 {
 	int retval;
 	struct ipc_post *msg;
@@ -381,7 +381,7 @@ int sst_send_target(struct snd_sst_target_device *target)
 
 }
 
-int sst_target_device_validate(struct snd_sst_target_device *target)
+static int sst_target_device_validate(struct snd_sst_target_device *target)
 {
 	int retval = 0;
        int i;

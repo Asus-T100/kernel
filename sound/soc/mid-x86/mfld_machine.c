@@ -62,7 +62,7 @@ struct mfld_mc_private {
 	spinlock_t lock; /* lock for interrupt status and jack debounce */
 };
 
-struct snd_soc_jack mfld_jack;
+static struct snd_soc_jack mfld_jack;
 
 /* jack detection voltage zones */
 static struct snd_soc_jack_zone mfld_zones[] = {
@@ -281,7 +281,7 @@ static int mfld_init(struct snd_soc_pcm_runtime *runtime)
 	return ret_val;
 }
 
-struct snd_soc_dai_link mfld_msic_dailink[] = {
+static struct snd_soc_dai_link mfld_msic_dailink[] = {
 	{
 		.name = "Medfield Headset",
 		.stream_name = "Headset",
@@ -505,7 +505,7 @@ static int __devexit snd_mfld_mc_remove(struct platform_device *pdev)
 	platform_set_drvdata(pdev, NULL);
 	return 0;
 }
-const struct dev_pm_ops snd_mfld_mc_pm_ops = {
+static const struct dev_pm_ops snd_mfld_mc_pm_ops = {
 	.suspend = snd_mfld_mc_suspend,
 	.resume = snd_mfld_mc_resume,
 	.poweroff = snd_mfld_mc_poweroff,

@@ -162,7 +162,7 @@ void sst_clear_interrupt(void)
  * This function processes the FW init msg from FW
  * marks FW state and prints debug info of loaded FW
  */
-int process_fw_init(struct sst_ipc_msg_wq *msg)
+static int process_fw_init(struct sst_ipc_msg_wq *msg)
 {
 	struct ipc_header_fw_init *init =
 		(struct ipc_header_fw_init *)msg->mailbox;
