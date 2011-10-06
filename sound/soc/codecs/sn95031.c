@@ -1150,6 +1150,7 @@ static int sn95031_codec_probe(struct snd_soc_codec *codec)
 				SN95031_AUDIO_DETECT_CODE);
 	if (!audio_adc_handle) {
 		pr_err("invalid ADC handle\n");
+		kfree(sn95031_ctx);
 		return -ENOMEM;
 	}
 

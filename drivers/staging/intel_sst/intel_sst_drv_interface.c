@@ -273,6 +273,10 @@ int sst_get_stream(struct snd_sst_params *str_param)
 			return -EIO;
 		}
 		i = sst_get_block_stream(sst_drv_ctx);
+		if (i < 0) {
+			pr_err("sst: invalid value for number of stream\n ");
+			return -EINVAL;
+		}
 		response = sst_drv_ctx->alloc_block[i].ops_block.data;
 		pr_debug("alloc block allocated = %d\n", i);
 		if (i < 0) {

@@ -896,8 +896,10 @@ long intel_sst_ioctl_dsp(unsigned int cmd, unsigned long arg)
 			break;
 		algo_params.reserved = 0;
 		if (copy_from_user(msg->mailbox_data + sizeof(algo_params),
-				algo_params.params, algo_params.size))
+				algo_params.params, algo_params.size)) {
+			kfree(msg);
 			return -EFAULT;
+		}
 
 		retval = sst_send_algo_ipc(&msg);
 		if (retval) {
