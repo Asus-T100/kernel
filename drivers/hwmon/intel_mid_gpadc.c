@@ -317,8 +317,15 @@ int intel_mid_gpadc_gsmpulse_sample(int *vol, int *cur)
 		if (tmp > *cur)
 			*cur = tmp;
 	}
+
+	/**
+	 * Using the calibration data, we have the voltage and current
+	 * after calibration correction as below:
+	 * V_CAL_CODE = V_RAW_CODE - (VZSE + (VGE)* VRAW_CODE/1023)
+	 * I_CAL_CODE = I_RAW_CODE - (IZSE + (IGE)* IRAW_CODE/1023)
+	*/
 	*vol -= mgi->vzse + mgi->vge * (*vol) / 1023;
-	*cur += mgi->izse + mgi->ige * (*cur) / 1023;
+	*cur -= mgi->izse + mgi->ige * (*cur) / 1023;
 
 	gpadc_set_bits(ADC1INT, ADC1INT_GSM);
 	gpadc_clear_bits(ADC1CNTL3, ADC1CNTL3_GSMDATARD);
@@ -390,10 +397,16 @@ int intel_mid_gpadc_sample(void *handle, int sample_count, ...)
 			tmp += data & 0x3;
 			gpadc_clear_bits(ADC1CNTL3, ADC1CNTL3_RRDATARD);
 
+			/**
+			 * Using the calibration data, we have the voltage and
+			 * current after calibration correction as below:
+			 * V_CAL_CODE = V_RAW_CODE - (VZSE+(VGE)*VRAW_CODE/1023)
+			 * I_CAL_CODE = I_RAW_CODE - (IZSE+(IGE)*IRAW_CODE/1023)
+			 */
 			if (rq->ch[i] & CH_NEED_VCALIB)
 				tmp -= mgi->vzse + mgi->vge * tmp / 1023;
 			if (rq->ch[i] & CH_NEED_ICALIB)
-				tmp += mgi->izse + mgi->ige * tmp / 1023;
+				tmp -= mgi->izse + mgi->ige * tmp / 1023;
 			*val[i] += tmp;
 		}
 		mgi->rnd_done = 0;
