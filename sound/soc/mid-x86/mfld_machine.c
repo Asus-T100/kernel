@@ -58,6 +58,7 @@ struct mfld_mc_private {
 	void __iomem *int_base;
 	struct snd_soc_codec *codec;
 	u8 interrupt_status;
+	spinlock_t lock; /* lock for interrupt status and jack debounce */
 };
 
 struct snd_soc_jack mfld_jack;
@@ -329,20 +330,37 @@ static struct snd_soc_card snd_soc_card_mfld = {
 static irqreturn_t snd_mfld_jack_intr_handler(int irq, void *dev)
 {
 	struct mfld_mc_private *mc_private = (struct mfld_mc_private *) dev;
+	u8 intr_status;
 
-	memcpy_fromio(&mc_private->interrupt_status,
-			((void *)(mc_private->int_base)),
+	memcpy_fromio(&intr_status, ((void *)(mc_private->int_base)),
 			sizeof(u8));
+	/* not overwrite status here */
+	spin_lock(&mc_private->lock);
+	mc_private->interrupt_status |= intr_status;
+	spin_unlock(&mc_private->lock);
 	return IRQ_WAKE_THREAD;
 }
 
 static irqreturn_t snd_mfld_jack_detection(int irq, void *data)
 {
 	struct mfld_mc_private *mc_drv_ctx = (struct mfld_mc_private *) data;
+	u8 status;
 
 	if (mfld_jack.codec == NULL)
 		return IRQ_HANDLED;
-	mfld_jack_check(mc_drv_ctx->interrupt_status);
+	spin_lock(&mc_drv_ctx->lock);
+	if (!mc_drv_ctx->interrupt_status) {
+		pr_err("Intr with status 0, return....\n");
+		spin_unlock(&mc_drv_ctx->lock);
+		return IRQ_HANDLED;
+	}
+	pr_debug("Intr status %d\n", mc_drv_ctx->interrupt_status);
+	/* copy the intr status and clear it here */
+	status = mc_drv_ctx->interrupt_status;
+	mc_drv_ctx->interrupt_status = 0;
+	spin_unlock(&mc_drv_ctx->lock);
+
+	mfld_jack_check(status);
 
 	return IRQ_HANDLED;
 }
@@ -365,6 +383,7 @@ static int __devinit snd_mfld_mc_probe(struct platform_device *pdev)
 		pr_err("allocation failed\n");
 		return -ENOMEM;
 	}
+	spin_lock_init(&mc_drv_ctx->lock);
 
 	irq_mem = platform_get_resource_byname(
 				pdev, IORESOURCE_MEM, "IRQ_BASE");

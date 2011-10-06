@@ -949,13 +949,13 @@ struct snd_soc_dai_driver sn95031_dais[] = {
 
 static inline void sn95031_disable_jack_btn(struct snd_soc_codec *codec)
 {
-	snd_soc_write(codec, SN95031_BTNCTRL2, 0x00);
+	snd_soc_update_bits(codec, SN95031_BTNCTRL2, BIT(0), 0);
 }
 
 static inline void sn95031_enable_jack_btn(struct snd_soc_codec *codec)
 {
 	snd_soc_write(codec, SN95031_BTNCTRL1, 0x77);
-	snd_soc_write(codec, SN95031_BTNCTRL2, 0x01);
+	snd_soc_update_bits(codec, SN95031_BTNCTRL2, BIT(0), BIT(0));
 }
 
 static int sn95031_get_headset_state(struct snd_soc_jack *mfld_jack)
@@ -1000,7 +1000,14 @@ void sn95031_jack_detection(struct mfld_jack_data *jack_data)
 		pr_debug("detected headset or headphone, disabling JACKDET\n");
 		snd_soc_update_bits(jack_data->mfld_jack->codec,
 					SN95031_ACCDETMASK, BIT(2), BIT(2));
-	}
+		/* if we detected valid headset then disable headset ground.
+		 * Otherwise enable it in else condition
+		 * this is required for jack detect to work well */
+		snd_soc_update_bits(jack_data->mfld_jack->codec,
+					SN95031_BTNCTRL2, BIT(1), 0);
+	} else
+		snd_soc_update_bits(jack_data->mfld_jack->codec,
+					SN95031_BTNCTRL2, BIT(1), BIT(1));
 
 	snd_soc_jack_report(jack_data->mfld_jack, status, mask);
 #ifdef CONFIG_SWITCH_MID
