@@ -136,5 +136,8 @@ struct mfld_jack_data {
 };
 
 extern void sn95031_jack_detection(struct mfld_jack_data *jack_data);
+#ifdef CONFIG_SWITCH_MID
+extern void mid_headset_report(int state);
+#endif
 
 #endif

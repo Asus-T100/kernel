@@ -1090,6 +1090,16 @@ void sn95031_jack_detection(struct mfld_jack_data *jack_data)
 	}
 
 	snd_soc_jack_report(jack_data->mfld_jack, status, mask);
+#ifdef CONFIG_SWITCH_MID
+	if (status) {
+		if (status == SND_JACK_HEADPHONE)
+			mid_headset_report((1<<1));
+		else if (status == SND_JACK_HEADSET)
+			mid_headset_report(1);
+	} else {
+			mid_headset_report(0);
+	}
+#endif
 	/*button pressed and released so we send explicit button release */
 	if ((status & SND_JACK_BTN_0) | (status & SND_JACK_BTN_1))
 		snd_soc_jack_report(jack_data->mfld_jack,
