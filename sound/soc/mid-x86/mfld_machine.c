@@ -394,6 +394,7 @@ static int __devinit snd_mfld_mc_probe(struct platform_device *pdev)
 	}
 	/* register the soc card */
 	snd_soc_card_mfld.dev = &pdev->dev;
+	snd_soc_initialize_card_lists(&snd_soc_card_mfld);
 	ret_val = snd_soc_register_card(&snd_soc_card_mfld);
 	if (ret_val) {
 		pr_debug("snd_soc_register_card failed %d\n", ret_val);
