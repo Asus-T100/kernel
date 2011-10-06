@@ -410,7 +410,7 @@ struct snd_sst_tuning_params {
 	__u8 str_id;
 	__u8 size;
 	__u8 rsvd;
-	__aligned_u64 addr;
+	__u64 addr;
 } __attribute__ ((packed));
 /*IOCTL defined here */
 /*SST MMF IOCTLS only */
