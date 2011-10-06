@@ -33,6 +33,7 @@
 #include <linux/sched.h>
 #include <linux/platform_device.h>
 #include <linux/pm_qos_params.h>
+#include <linux/workqueue.h>
 #include <asm/intel_scu_ipc.h>
 #include <asm/intel_mid_gpadc.h>
 
@@ -83,6 +84,12 @@
 
 struct gpadc_info {
 	int initialized;
+
+	struct workqueue_struct *workq;
+	wait_queue_head_t trimming_wait;
+	struct work_struct trimming_work;
+	int trimming_start;
+
 	/* This mutex protects gpadc sample/config from concurrent conflict.
 	   Any function, which does the sample or config, needs to
 	   hold this lock.
@@ -158,11 +165,20 @@ static int gpadc_poweroff(struct gpadc_info *mgi)
 	return 0;
 }
 
-static void gpadc_trimming(struct gpadc_info *mgi)
+static void gpadc_trimming(struct work_struct *work)
 {
 	u8 data;
 	int fse, zse, fse_sign, zse_sign;
+	struct gpadc_info *mgi =
+		container_of(work, struct gpadc_info, trimming_work);
 
+	mutex_lock(&mgi->lock);
+	mgi->trimming_start = 1;
+	wake_up(&mgi->trimming_wait);
+	if (gpadc_poweron(mgi, 1)) {
+		dev_err(mgi->dev, "power on failed\n");
+		goto failed;
+	}
 	/* calibration */
 	gpadc_read(ADC1CNTL1, &data);
 	data &= ~ADC1CNTL1_AD1OFFSETEN;
@@ -197,6 +213,13 @@ static void gpadc_trimming(struct gpadc_info *mgi)
 	zse += data & 0x3;
 	mgi->izse = zse;
 	mgi->ige = fse + zse;
+	if (gpadc_poweroff(mgi)) {
+		dev_err(mgi->dev, "power off failed\n");
+		goto failed;
+	}
+
+failed:
+	mutex_unlock(&mgi->lock);
 }
 
 static irqreturn_t msic_gpadc_isr(int irq, void *data)
@@ -505,6 +528,10 @@ static int __devinit msic_gpadc_probe(struct platform_device *pdev)
 
 	mutex_init(&mgi->lock);
 	init_waitqueue_head(&mgi->wait);
+	init_waitqueue_head(&mgi->trimming_wait);
+	mgi->workq = create_singlethread_workqueue(dev_name(&pdev->dev));
+	if (mgi->workq == NULL)
+		return -ENOMEM;
 
 	mgi->dev = &pdev->dev;
 	mgi->intr = ioremap_nocache(pdata->intr, 4);
@@ -518,14 +545,10 @@ static int __devinit msic_gpadc_probe(struct platform_device *pdev)
 		goto err_exit;
 	}
 
-	err = gpadc_poweron(mgi, 1);
-	if (err)
-		goto err_exit;
 	gpadc_write(ADC1ADDR0, MSIC_STOPCH);
-	gpadc_trimming(mgi);
-	err = gpadc_poweroff(mgi);
-	if (err)
-		goto err_exit;
+	INIT_WORK(&mgi->trimming_work, gpadc_trimming);
+	queue_work(mgi->workq, &mgi->trimming_work);
+	wait_event(mgi->trimming_wait, mgi->trimming_start);
 	mgi->initialized = 1;
 
 	return 0;
@@ -541,6 +564,8 @@ static int __devexit msic_gpadc_remove(struct platform_device *pdev)
 
 	free_irq(mgi->irq, mgi);
 	iounmap(mgi->intr);
+	flush_workqueue(mgi->workq);
+	destroy_workqueue(mgi->workq);
 	return 0;
 }
 
