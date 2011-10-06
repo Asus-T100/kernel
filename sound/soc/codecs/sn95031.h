@@ -123,6 +123,14 @@
 /* multipier to convert to mV */
 #define SN95031_ADC_ONE_LSB_MULTIPLIER 2346
 
+/*BCU related values*/
+#define SN95031_BCU_VOLUME_RECOVERY_3DB 0x3
+#define SN95031_BCU_VOLUME_RECOVERY_6DB 0x6
+#define SN95031_BCU_CRUSH_VOL 0x40
+#define SN95031_IHF_VOLUME_MASK 0x7f
+#define SN95031_BURST_CNTRL 0x107
+#define SN95031_BCU_DELAY 1000
+
 #define SN95031_PLLIN 0x0
 #define SN95031_MODMCLK 0x1
 #define SN95031_PCM1BCLK 0x2
@@ -146,6 +154,9 @@ struct mfld_jack_data {
 };
 
 extern void sn95031_jack_detection(struct mfld_jack_data *jack_data);
+extern void sn95031_oc_handler(struct snd_soc_codec *codec,
+					int oc_interrupt_value);
+
 #ifdef CONFIG_SWITCH_MID
 extern void mid_headset_report(int state);
 #endif

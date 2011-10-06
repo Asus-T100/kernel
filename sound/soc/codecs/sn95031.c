@@ -43,16 +43,21 @@
 #define SN95031_RATES (SNDRV_PCM_RATE_8000_96000)
 #define SN95031_FORMATS (SNDRV_PCM_FMTBIT_S24_LE | SNDRV_PCM_FMTBIT_S16_LE)
 
+struct sn95031_work {
+	struct delayed_work work;
+	struct snd_soc_codec *codec;
+};
 /* codec private data */
 struct sn95031_priv {
 	uint8_t clk_src;
 	enum sn95031_pll_status  pll_state;
+	struct sn95031_work oc_work;
 };
 void *audio_adc_handle;
 unsigned int sn95031_lp_flag;
 
 /* This Function reads the voltage level from the ADC Driver*/
-static unsigned int sn95031_read_voltage()
+static unsigned int sn95031_read_voltage(void)
 {
 	unsigned int mic_bias;
 
@@ -1105,7 +1110,6 @@ void sn95031_jack_report(struct mfld_jack_data *jack_data, unsigned int status)
 	if (status & SND_JACK_BTN_0)
 		snd_soc_jack_report(jack_data->mfld_jack,
 				SND_JACK_HEADSET, mask);
-	return;
 }
 
 void sn95031_jack_detection(struct mfld_jack_data *jack_data)
@@ -1156,9 +1160,69 @@ void sn95031_jack_detection(struct mfld_jack_data *jack_data)
 						SN95031_ACCDETMASK, BIT(2), 0);
 		sn95031_jack_report(jack_data, status);
 	}
-	return;
 }
 EXPORT_SYMBOL_GPL(sn95031_jack_detection);
+
+void sn95031_restore_ihf_vol(struct snd_soc_codec *codec,
+				unsigned int vol_addr, int crush_volume)
+{
+	u8 ihf_volume;
+
+	pr_debug("In %s\n", __func__);
+	ihf_volume = SN95031_IHF_VOLUME_MASK & snd_soc_read(codec, vol_addr);
+
+	if (!crush_volume)
+		ihf_volume -= SN95031_BCU_VOLUME_RECOVERY_3DB;
+	else
+		ihf_volume -= SN95031_BCU_VOLUME_RECOVERY_6DB;
+
+	snd_soc_update_bits(codec, vol_addr,
+				SN95031_IHF_VOLUME_MASK, ihf_volume);
+}
+
+
+void sn95031_oc_workqueue(struct work_struct *work)
+{
+	int crush_volume;
+	struct sn95031_work *oc_wq =
+		container_of(work, struct sn95031_work, work.work);
+	struct snd_soc_codec *codec = oc_wq->codec;
+
+	pr_debug("In %s\n", __func__);
+	if (!codec) {
+		pr_debug("codec value null");
+		return;
+	}
+	crush_volume =
+		SN95031_BCU_CRUSH_VOL & snd_soc_read(codec, SN95031_IHFRXCTRL);
+
+	sn95031_restore_ihf_vol(codec, SN95031_IHFLVOLCTRL, crush_volume);
+	sn95031_restore_ihf_vol(codec, SN95031_IHFRVOLCTRL, crush_volume);
+}
+
+void sn95031_oc_handler(struct snd_soc_codec *codec, int oc_interrupt_value)
+{
+	int value;
+	struct sn95031_priv *sn95031_ctx;
+
+	pr_debug("In %s\n", __func__);
+	if (!codec) {
+		pr_debug("codec value null\n");
+		return;
+	}
+	if (oc_interrupt_value & 0x01) {
+		sn95031_ctx = snd_soc_codec_get_drvdata(codec);
+
+		value = snd_soc_read(codec, SN95031_BURST_CNTRL);
+		if (value & BIT(5))
+			pr_debug("TXPACTEN set to'1'<5 percent BCU setting\n");
+
+		schedule_delayed_work(&sn95031_ctx->oc_work.work,
+					msecs_to_jiffies(SN95031_BCU_DELAY));
+	} else
+		pr_debug("unhandled interrupt: %x..\n", oc_interrupt_value);
+}
+EXPORT_SYMBOL_GPL(sn95031_oc_handler);
 
 /* codec registration */
 static int sn95031_codec_probe(struct snd_soc_codec *codec)
@@ -1177,6 +1241,8 @@ static int sn95031_codec_probe(struct snd_soc_codec *codec)
 	sn95031_ctx->clk_src = SN95031_INVALID;
 	sn95031_ctx->pll_state = PLL_DISABLED;
 
+	INIT_DELAYED_WORK(&sn95031_ctx->oc_work.work, sn95031_oc_workqueue);
+	sn95031_ctx->oc_work.codec = codec;
 
 	/* PCM1 slot configurations*/
 	snd_soc_write(codec, SN95031_NOISEMUX, 0x0);

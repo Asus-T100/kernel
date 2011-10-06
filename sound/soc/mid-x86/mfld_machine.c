@@ -57,7 +57,8 @@ struct mfld_mc_private {
 	struct platform_device *socdev;
 	void __iomem *int_base;
 	struct snd_soc_codec *codec;
-	u8 interrupt_status;
+	u8 jack_interrupt_status;
+	u8 oc_interrupt_status;
 	spinlock_t lock; /* lock for interrupt status and jack debounce */
 };
 
@@ -330,43 +331,78 @@ static struct snd_soc_card snd_soc_card_mfld = {
 static irqreturn_t snd_mfld_jack_intr_handler(int irq, void *dev)
 {
 	struct mfld_mc_private *mc_private = (struct mfld_mc_private *) dev;
-	u8 intr_status;
+	u16 intr_status;
 
 	memcpy_fromio(&intr_status, ((void *)(mc_private->int_base)),
-			sizeof(u8));
+			sizeof(u16));
 	/* not overwrite status here */
 	spin_lock(&mc_private->lock);
-	mc_private->interrupt_status |= intr_status;
+	/*To retrieve the jack_interrupt_status value (MSB)*/
+	mc_private->jack_interrupt_status |= 0x0F & (intr_status >> 8);
+	/*To retrieve the oc_interrupt_status value (LSB)*/
+	mc_private->oc_interrupt_status |= 0x1F & intr_status;
 	spin_unlock(&mc_private->lock);
 	return IRQ_WAKE_THREAD;
 }
 
-static irqreturn_t snd_mfld_jack_detection(int irq, void *data)
+static void jack_int_handler(struct mfld_mc_private *mc_drv_ctx)
 {
-	struct mfld_mc_private *mc_drv_ctx = (struct mfld_mc_private *) data;
 	u8 status;
 
+	spin_lock(&mc_drv_ctx->lock);
+	if (mc_drv_ctx->jack_interrupt_status) {
+		status = mc_drv_ctx->jack_interrupt_status;
+		mc_drv_ctx->jack_interrupt_status = 0;
+		spin_unlock(&mc_drv_ctx->lock);
+		pr_debug("jack_status:%x\n", status);
+		mfld_jack_check(status);
+		return;
+	}
+	spin_unlock(&mc_drv_ctx->lock);
+	return;
+}
+
+static void oc_int_handler(struct mfld_mc_private *mc_drv_ctx)
+{
+	u8 status;
+
+	spin_lock(&mc_drv_ctx->lock);
+	if (mc_drv_ctx->oc_interrupt_status) {
+		status = mc_drv_ctx->oc_interrupt_status;
+		mc_drv_ctx->oc_interrupt_status = 0;
+		spin_unlock(&mc_drv_ctx->lock);
+		pr_debug("oc_current\n");
+		sn95031_oc_handler(mc_drv_ctx->codec, status);
+		return;
+	}
+	spin_unlock(&mc_drv_ctx->lock);
+	return;
+}
+
+static irqreturn_t snd_mfld_codec_intr_detection(int irq, void *data)
+{
+	struct mfld_mc_private *mc_drv_ctx = (struct mfld_mc_private *) data;
+
 	if (mfld_jack.codec == NULL) {
+		pr_debug("codec NULL returning..");
 		spin_lock(&mc_drv_ctx->lock);
-		mc_drv_ctx->interrupt_status = 0;
-		pr_debug("codec Null returning..\n");
+		mc_drv_ctx->jack_interrupt_status = 0;
+		mc_drv_ctx->oc_interrupt_status = 0;
 		spin_unlock(&mc_drv_ctx->lock);
 		return IRQ_HANDLED;
 	}
 	spin_lock(&mc_drv_ctx->lock);
-	if (!mc_drv_ctx->interrupt_status) {
-		pr_err("Intr with status 0, return....\n");
+	if (!((mc_drv_ctx->jack_interrupt_status) ||
+			(mc_drv_ctx->oc_interrupt_status))) {
 		spin_unlock(&mc_drv_ctx->lock);
-		return IRQ_HANDLED;
+		pr_err("OC and Jack Intr with status 0, return....\n");
+		goto ret;
 	}
-	pr_debug("Intr status %d\n", mc_drv_ctx->interrupt_status);
-	/* copy the intr status and clear it here */
-	status = mc_drv_ctx->interrupt_status;
-	mc_drv_ctx->interrupt_status = 0;
 	spin_unlock(&mc_drv_ctx->lock);
-
-	mfld_jack_check(status);
-
+	mc_drv_ctx->codec = mfld_jack.codec;
+	oc_int_handler(mc_drv_ctx);
+	jack_int_handler(mc_drv_ctx);
+ret:
 	return IRQ_HANDLED;
 }
 
@@ -406,7 +442,7 @@ static int __devinit snd_mfld_mc_probe(struct platform_device *pdev)
 	}
 	/* register for interrupt */
 	ret_val = request_threaded_irq(irq, snd_mfld_jack_intr_handler,
-			snd_mfld_jack_detection,
+			snd_mfld_codec_intr_detection,
 			IRQF_SHARED, pdev->dev.driver->name, mc_drv_ctx);
 	if (ret_val) {
 		pr_err("cannot register IRQ\n");
