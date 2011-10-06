@@ -384,7 +384,8 @@ void sst_process_reply(struct work_struct *work)
 		break;
 	}
 
-	case IPC_IA_TUNING_PARAMS: {
+	case IPC_IA_TUNING_PARAMS:
+	case IPC_IA_SET_RUNTIME_PARAMS: {
 		pr_debug("sst:IPC_TUNING_PARAMS resp: %x\n", msg->header.full);
 		pr_debug("data value %x\n", msg->header.part.data);
 		if (msg->header.part.large) {

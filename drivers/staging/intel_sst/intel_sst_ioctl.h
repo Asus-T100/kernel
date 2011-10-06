@@ -334,6 +334,11 @@ enum snd_sst_port_action {
 	SND_SST_PORT_ACTIVATE,
 };
 
+enum stream_param_type {
+	SET_TIME_SLOT = 0,
+	OTHERS = 1, /*reserved for other params that need to be set in future*/
+};
+
 /* Target selection per device structure */
 struct snd_sst_slot_info {
 	__u8 mix_enable;	/* Mixer enable or disable */
@@ -436,5 +441,6 @@ struct snd_sst_tuning_params {
 #define SNDRV_SST_SET_ALGO	_IOW('L', 0x30,  struct snd_ppp_params *)
 #define SNDRV_SST_GET_ALGO	_IOWR('L', 0x31,  struct snd_ppp_params *)
 #define SNDRV_SST_TUNING_PARAMS	_IOW('L', 0x32,  struct snd_sst_tuning_params *)
+#define SNDRV_SST_SET_RUNTIME_PARAMS _IOW('L', 0x40,  struct snd_sst_tuning_params *)
 
 #endif /* __INTEL_SST_IOCTL_H__ */

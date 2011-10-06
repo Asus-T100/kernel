@@ -72,6 +72,7 @@
 
 #define IPC_IA_ALG_PARAMS 0x1A
 #define IPC_IA_TUNING_PARAMS 0x1B
+#define IPC_IA_SET_RUNTIME_PARAMS 0x1C
 
 /* I2L Stream config/control msgs */
 #define IPC_IA_ALLOC_STREAM 0x20 /* Allocate a stream ID */

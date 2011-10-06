@@ -964,7 +964,7 @@ free_mem:
 }
 
 
-int sst_ioctl_tuning_params(unsigned long arg)
+int sst_ioctl_tuning_params(unsigned int cmd, unsigned long arg)
 {
 	struct snd_sst_tuning_params params;
 	struct ipc_post *msg;
@@ -978,11 +978,19 @@ int sst_ioctl_tuning_params(unsigned long arg)
 	if (sst_create_large_msg(&msg))
 		return -ENOMEM;
 
-	sst_fill_header(&msg->header, IPC_IA_TUNING_PARAMS, 1, params.str_id);
+	switch (_IOC_NR(cmd)) {
+	case _IOC_NR(SNDRV_SST_TUNING_PARAMS):
+		sst_fill_header(&msg->header, IPC_IA_TUNING_PARAMS, 1, params.str_id);
+		break;
+	case _IOC_NR(SNDRV_SST_SET_RUNTIME_PARAMS):
+		sst_fill_header(&msg->header, IPC_IA_SET_RUNTIME_PARAMS, 1, params.str_id);
+		break;
+	}
 	msg->header.part.data = sizeof(u32) + sizeof(params) + params.size;
 	memcpy(msg->mailbox_data, &msg->header.full, sizeof(u32));
 	memcpy(msg->mailbox_data + sizeof(u32), &params, sizeof(params));
-	if (copy_from_user(msg->mailbox_data + sizeof(params),
+	/* driver doesn't need to send address, so overwrite addr with data */
+	if (copy_from_user(msg->mailbox_data + sizeof(u32) + sizeof(params) - sizeof(params.addr),
 			(void __user *)(unsigned long)params.addr,
 			params.size)) {
 		kfree(msg->mailbox_data);
@@ -1439,11 +1447,12 @@ free_iobufs:
 		break;
 
 	case _IOC_NR(SNDRV_SST_TUNING_PARAMS):
+	case _IOC_NR(SNDRV_SST_SET_RUNTIME_PARAMS):
 		if (minor != AM_MODULE) {
 			retval = -EBADRQC;
 			break;
 		}
-		retval = sst_ioctl_tuning_params(arg);
+		retval = sst_ioctl_tuning_params(cmd, arg);
 		break;
 
 	default:
