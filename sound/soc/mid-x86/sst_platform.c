@@ -35,7 +35,7 @@
 #include "../../../drivers/staging/intel_sst/intel_sst.h"
 #include "sst_platform.h"
 
-#define VOICE_DAI 4
+#define SST_VOICE_DAI "Voice-cpu-dai"
 
 static struct snd_pcm_hardware sst_platform_pcm_hw = {
 	.info =	(SNDRV_PCM_INFO_INTERLEAVED |
@@ -248,11 +248,13 @@ static int sst_platform_open(struct snd_pcm_substream *substream)
 	struct snd_pcm_runtime *runtime;
 	struct sst_runtime_stream *stream;
 	int ret_val = 0;
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_dai_link *dai_link = rtd->dai_link;
 
 	pr_debug("sst_platform_open called\n");
 	runtime = substream->runtime;
 	runtime->hw = sst_platform_pcm_hw;
-	if (substream->pcm->device == VOICE_DAI) {
+	if (!strcmp(dai_link->cpu_dai_name, SST_VOICE_DAI)) {
 		pr_debug("pcm_open for Voice, returning.\n");
 		return snd_pcm_hw_constraint_integer(runtime,
 			 SNDRV_PCM_HW_PARAM_PERIODS);
@@ -290,9 +292,11 @@ static int sst_platform_close(struct snd_pcm_substream *substream)
 {
 	struct sst_runtime_stream *stream;
 	int ret_val = 0, str_id;
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_dai_link *dai_link = rtd->dai_link;
 
 	pr_debug("sst_platform_close called\n");
-	if (substream->pcm->device == VOICE_DAI) {
+	if (!strcmp(dai_link->cpu_dai_name, SST_VOICE_DAI)) {
 		pr_debug("pcm_close for Voice, returning.\n");
 		return ret_val;
 	}
@@ -318,9 +322,12 @@ static int sst_platform_pcm_prepare(struct snd_pcm_substream *substream)
 {
 	struct sst_runtime_stream *stream;
 	int ret_val = 0, str_id;
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_dai_link *dai_link = rtd->dai_link;
 
 	pr_debug("sst_platform_pcm_prepare called\n");
-	if (substream->pcm->device == VOICE_DAI) {
+
+	if (!strcmp(dai_link->cpu_dai_name, SST_VOICE_DAI)) {
 		pr_debug("pcm_preare for Voice, returning.\n");
 		return ret_val;
 	}
