@@ -64,14 +64,6 @@ static int intel_sst_check_device(void)
 		pr_warn("Sound card not available\n");
 		return -EIO;
 	}
-	if (sst_drv_ctx->sst_state == SST_SUSPENDED) {
-		pr_debug("Resuming from Suspended state\n");
-		retval = intel_sst_resume(sst_drv_ctx->pci);
-		if (retval) {
-			pr_debug("Resume Failed= %#x,abort\n", retval);
-			return retval;
-		}
-	}
 
 	if (sst_drv_ctx->sst_state == SST_UN_INIT) {
 		/* FW is not downloaded */

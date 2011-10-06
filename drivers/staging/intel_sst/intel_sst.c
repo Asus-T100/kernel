@@ -468,23 +468,21 @@ void sst_save_dsp_context(void)
 	return;
 }
 
-/* Power Management */
 /*
-* intel_sst_suspend - PCI suspend function
-*
-* @pci: PCI device structure
-* @state: PM message
-*
-* This function is called by OS when a power event occurs
-*/
-int intel_sst_suspend(struct pci_dev *pci, pm_message_t state)
+ * The runtime_suspend/resume is pretty much similar to the legacy
+ * suspend/resume with the noted exception below: The PCI core takes care of
+ * taking the system through D3hot and restoring it back to D0 and so there is
+ * no need to duplicate that here.
+ */
+static int intel_sst_runtime_suspend(struct device *dev)
 {
+	struct pci_dev *pci_dev = to_pci_dev(dev);
 	union config_status_reg csr;
 	u32 *ipc_wbuf;
 	u8 cbuf[16] = { '\0' };
 	int ret = 0;
 
-	pr_debug("intel_sst_suspend called\n");
+	pr_debug("sst: runtime_suspend called\n");
 
 	if (sst_drv_ctx->stream_cnt) {
 		pr_err("active streams,not able to suspend\n");
@@ -513,21 +511,15 @@ int intel_sst_suspend(struct pci_dev *pci, pm_message_t state)
 	return 0;
 }
 
-/**
-* intel_sst_resume - PCI resume function
-*
-* @pci:	PCI device structure
-*
-* This function is called by OS when a power event occurs
-*/
-int intel_sst_resume(struct pci_dev *pci)
+static int intel_sst_runtime_resume(struct device *dev)
 {
+	struct pci_dev *pci_dev = to_pci_dev(dev);
 	int ret = 0;
 	u32 *ipc_wbuf;
 	u8 cbuf[16] = { '\0' };
 	u32 csr;
 
-	pr_debug("intel_sst_resume called\n");
+	pr_debug("sst: runtime_resume called\n");
 	if (sst_drv_ctx->sst_state != SST_SUSPENDED) {
 		pr_err("SST is not in suspended state\n");
 		return 0;
@@ -549,50 +541,6 @@ int intel_sst_resume(struct pci_dev *pci)
 	return 0;
 }
 
-/* The runtime_suspend/resume is pretty much similar to the legacy suspend/resume with the noted exception below:
- * The PCI core takes care of taking the system through D3hot and restoring it back to D0 and so there is
- * no need to duplicate that here.
- */
-static int intel_sst_runtime_suspend(struct device *dev)
-{
-	union config_status_reg csr;
-
-	pr_debug("intel_sst_runtime_suspend called\n");
-	if (sst_drv_ctx->stream_cnt) {
-		pr_err("active streams,not able to suspend\n");
-		return -EBUSY;
-	}
-	/*save fw context*/
-	sst_save_dsp_context();
-	/*Assert RESET on LPE Processor*/
-	csr.full = sst_shim_read(sst_drv_ctx->shim, SST_CSR);
-	csr.full = csr.full | 0x2;
-	/* Move the SST state to Suspended */
-	mutex_lock(&sst_drv_ctx->sst_lock);
-	sst_drv_ctx->sst_state = SST_SUSPENDED;
-
-	/* Only needed by Medfield */
-	if (sst_drv_ctx->pci_id != SST_MRST_PCI_ID)
-		sst_shim_write(sst_drv_ctx->shim, SST_CSR, csr.full);
-	mutex_unlock(&sst_drv_ctx->sst_lock);
-	return 0;
-}
-
-static int intel_sst_runtime_resume(struct device *dev)
-{
-
-	pr_debug("intel_sst_runtime_resume called\n");
-	if (sst_drv_ctx->sst_state != SST_SUSPENDED) {
-		pr_err("SST is not in suspended state\n");
-		return 0;
-	}
-
-	mutex_lock(&sst_drv_ctx->sst_lock);
-	sst_drv_ctx->sst_state = SST_UN_INIT;
-	mutex_unlock(&sst_drv_ctx->sst_lock);
-	return 0;
-}
-
 static int intel_sst_runtime_idle(struct device *dev)
 {
 	pr_debug("runtime_idle called\n");
@@ -602,6 +550,8 @@ static int intel_sst_runtime_idle(struct device *dev)
 }
 
 static const struct dev_pm_ops intel_sst_pm = {
+	.suspend = intel_sst_runtime_suspend,
+	.resume = intel_sst_runtime_resume,
 	.runtime_suspend = intel_sst_runtime_suspend,
 	.runtime_resume = intel_sst_runtime_resume,
 	.runtime_idle = intel_sst_runtime_idle,
@@ -621,8 +571,6 @@ static struct pci_driver driver = {
 	.probe = intel_sst_probe,
 	.remove = __devexit_p(intel_sst_remove),
 #ifdef CONFIG_PM
-	.suspend = intel_sst_suspend,
-	.resume = intel_sst_resume,
 	.driver = {
 		.pm = &intel_sst_pm,
 	},

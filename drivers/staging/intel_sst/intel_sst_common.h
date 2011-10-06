@@ -28,8 +28,8 @@
  *  Common private declarations for SST
  */
 
-#define SST_DRIVER_VERSION "2.0.02"
-#define SST_VERSION_NUM 0x2002
+#define SST_DRIVER_VERSION "2.0.03"
+#define SST_VERSION_NUM 0x2003
 
 /* driver names */
 #define SST_DRV_NAME "intel_sst_driver"
@@ -511,7 +511,6 @@ int sst_create_short_msg(struct ipc_post **arg);
 void sst_wake_up_alloc_block(struct intel_sst_drv *sst_drv_ctx,
 		u8 sst_id, int status, void *data);
 void sst_clear_interrupt(void);
-int intel_sst_resume(struct pci_dev *pci);
 int sst_download_fw(void);
 void free_stream_context(unsigned int str_id);
 void sst_clean_stream(struct stream_info *stream);
