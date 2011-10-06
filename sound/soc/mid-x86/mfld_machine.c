@@ -321,6 +321,15 @@ struct snd_soc_dai_link mfld_msic_dailink[] = {
 		.platform_name = "sst-platform",
 		.init = NULL,
 	},
+	{
+		.name = "Medfield Voice",
+		.stream_name = "Voice",
+		.cpu_dai_name = "Voice-cpu-dai",
+		.codec_dai_name = "SN95031 Voice",
+		.codec_name = "sn95031",
+		.platform_name = "sst-platform",
+		.init = NULL,
+	},
 };
 
 /* SoC card */
