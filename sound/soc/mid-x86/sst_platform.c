@@ -37,6 +37,8 @@
 
 #define SST_VOICE_DAI "Voice-cpu-dai"
 
+struct sst_platform_ctx *sst_cpu_ctx;
+
 static struct snd_pcm_hardware sst_platform_pcm_hw = {
 	.info =	(SNDRV_PCM_INFO_INTERLEAVED |
 			SNDRV_PCM_INFO_DOUBLE |
@@ -68,7 +70,6 @@ static struct snd_pcm_hardware sst_platform_pcm_hw = {
 struct snd_soc_dai_driver sst_platform_dai[] = {
 {
 	.name = "Headset-cpu-dai",
-	.id = 0,
 	.playback = {
 		.channels_min = SST_STEREO,
 		.channels_max = SST_STEREO,
@@ -84,7 +85,6 @@ struct snd_soc_dai_driver sst_platform_dai[] = {
 },
 {
 	.name = "Speaker-cpu-dai",
-	.id = 1,
 	.playback = {
 		.channels_min = SST_MONO,
 		.channels_max = SST_STEREO,
@@ -94,7 +94,6 @@ struct snd_soc_dai_driver sst_platform_dai[] = {
 },
 {
 	.name = "Vibra1-cpu-dai",
-	.id = 2,
 	.playback = {
 		.channels_min = SST_MONO,
 		.channels_max = SST_MONO,
@@ -104,7 +103,6 @@ struct snd_soc_dai_driver sst_platform_dai[] = {
 },
 {
 	.name = "Vibra2-cpu-dai",
-	.id = 3,
 	.playback = {
 		.channels_min = SST_MONO,
 		.channels_max = SST_STEREO,
@@ -114,7 +112,6 @@ struct snd_soc_dai_driver sst_platform_dai[] = {
 },
 {
 	.name = "Voice-cpu-dai",
-	.id = 4,
 	.playback = {
 		.channels_min = SST_MONO,
 		.channels_max = SST_STEREO,
@@ -252,16 +249,29 @@ static int sst_platform_open(struct snd_pcm_substream *substream)
 	struct snd_soc_dai_link *dai_link = rtd->dai_link;
 
 	pr_debug("sst_platform_open called\n");
+
 	runtime = substream->runtime;
 	runtime->hw = sst_platform_pcm_hw;
 	if (!strcmp(dai_link->cpu_dai_name, SST_VOICE_DAI)) {
+		if (sst_cpu_ctx->active_nonvoice_cnt > 0) {
+			pr_err("music/vibra dai is active, voice is not allowed\n");
+			return -EBUSY;
+		}
+		sst_cpu_ctx->active_voice_cnt++;
 		pr_debug("pcm_open for Voice, returning.\n");
 		return snd_pcm_hw_constraint_integer(runtime,
 			 SNDRV_PCM_HW_PARAM_PERIODS);
 	}
+
+	if (sst_cpu_ctx->active_voice_cnt > 0) {
+		pr_err("Voice dai is active, no other stream allowed\n");
+		return -EBUSY;
+	}
+
 	stream = kzalloc(sizeof(*stream), GFP_KERNEL);
 	if (!stream)
 		return -ENOMEM;
+
 	spin_lock_init(&stream->status_lock);
 	stream->stream_info.str_id = 0;
 	sst_set_stream_status(stream, SST_PLATFORM_INIT);
@@ -271,21 +281,26 @@ static int sst_platform_open(struct snd_pcm_substream *substream)
 							GFP_KERNEL);
 	if (!stream->sstdrv_ops) {
 		pr_err("sst: mem allocation for ops fail\n");
-		kfree(stream);
-		return -ENOMEM;
+		ret_val = -ENOMEM;
+		goto out_ops;
 	}
 	stream->sstdrv_ops->vendor_id = MSIC_VENDOR_ID;
 	/* registering with SST driver to get access to SST APIs to use */
 	ret_val = register_sst_card(stream->sstdrv_ops);
 	if (ret_val) {
 		pr_err("sst: sst card registration failed\n");
-		kfree(stream->sstdrv_ops);
-		kfree(stream);
-		return ret_val;
+		goto out_reg_sst;
 	}
 	runtime->private_data = stream;
+	sst_cpu_ctx->active_nonvoice_cnt++;
 	return snd_pcm_hw_constraint_integer(runtime,
 			 SNDRV_PCM_HW_PARAM_PERIODS);
+
+out_reg_sst:
+	kfree(stream->sstdrv_ops);
+out_ops:
+	kfree(stream);
+	return ret_val;
 }
 
 static int sst_platform_close(struct snd_pcm_substream *substream)
@@ -296,10 +311,13 @@ static int sst_platform_close(struct snd_pcm_substream *substream)
 	struct snd_soc_dai_link *dai_link = rtd->dai_link;
 
 	pr_debug("sst_platform_close called\n");
+
 	if (!strcmp(dai_link->cpu_dai_name, SST_VOICE_DAI)) {
+		sst_cpu_ctx->active_voice_cnt--;
 		pr_debug("pcm_close for Voice, returning.\n");
 		return ret_val;
 	}
+	sst_cpu_ctx->active_nonvoice_cnt--;
 	stream = substream->runtime->private_data;
 	str_id = stream->stream_info.str_id;
 	if (str_id) {
@@ -522,11 +540,19 @@ static int sst_platform_probe(struct platform_device *pdev)
 		return ret;
 	}
 
+	sst_cpu_ctx = kzalloc(sizeof(*sst_cpu_ctx), GFP_KERNEL);
+	if (!sst_cpu_ctx) {
+		pr_err("memory alloc failed for cpu_dais context\n");
+		snd_soc_unregister_platform(&pdev->dev);
+		return -ENOMEM;
+	}
+
 	ret = snd_soc_register_dais(&pdev->dev,
 				sst_platform_dai, ARRAY_SIZE(sst_platform_dai));
 	if (ret) {
 		pr_err("registering cpu dais failed\n");
 		snd_soc_unregister_platform(&pdev->dev);
+		kfree(sst_cpu_ctx);
 	}
 	return ret;
 }
@@ -536,6 +562,7 @@ static int sst_platform_remove(struct platform_device *pdev)
 
 	snd_soc_unregister_dais(&pdev->dev, ARRAY_SIZE(sst_platform_dai));
 	snd_soc_unregister_platform(&pdev->dev);
+	kfree(sst_cpu_ctx);
 	pr_debug("sst_platform_remove success\n");
 	return 0;
 }

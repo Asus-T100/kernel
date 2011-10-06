@@ -61,4 +61,8 @@ enum sst_drv_status {
 	SST_PLATFORM_SUSPENDED,
 };
 
+struct sst_platform_ctx {
+	int active_nonvoice_cnt;
+	int active_voice_cnt;
+};
 #endif
