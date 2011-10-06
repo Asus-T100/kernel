@@ -115,13 +115,11 @@
 #define SN95031_ADC_LOOP_MAX (SN95031_ADC_CHANLS_MAX - 1)
 #define SN95031_ADC_NO_LOOP 0x07
 #define SN95031_AUDIO_GPIO_CTRL 0x070
-
 /* ADC channel code values */
 #define SN95031_AUDIO_DETECT_CODE 0x06
-
-/* ADC base addresses */
-#define SN95031_ADC_CHNL_START_ADDR 0x1C5 /* increments by 1 */
-#define SN95031_ADC_DATA_START_ADDR 0x1D4  /* increments by 2 */
+/*Count of AUD_DETECT ADC Registers*/
+#define SN95031_AUDIO_SENSOR 1
+#define SN95031_ADC_SAMPLE_COUNT 1
 /* multipier to convert to mV */
 #define SN95031_ADC_ONE_LSB_MULTIPLIER 2346
 
