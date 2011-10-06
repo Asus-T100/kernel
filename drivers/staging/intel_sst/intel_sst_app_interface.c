@@ -1152,7 +1152,7 @@ long intel_sst_ioctl(struct file *file_ptr, unsigned int cmd, unsigned long arg)
 			retval = -EFAULT;
 			break;
 		}
-		pr_debug("SNDRV_SST_SET_VOLUME received for %d!\n",
+		pr_debug("SNDRV_SST_SET_MUTE received for %d!\n",
 			set_mute.stream_id);
 		if (minor == STREAM_MODULE && set_mute.stream_id == 0) {
 			retval = -EPERM;
