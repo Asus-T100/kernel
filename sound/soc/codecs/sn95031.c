@@ -125,17 +125,15 @@ static void sn95031_configure_pll(struct snd_soc_codec *codec, int operation)
 
 	if (operation) {
 		pr_debug("enabling PLL\n");
-		snd_soc_write(codec, SN95031_AUDPLLCTRL, 0);
 		/* PLL takes few msec to stabilize
 		Refer sec2.3 MFLD Audio Interface Doc-rev0.7 */
-		msleep(10);
 		snd_soc_write(codec, SN95031_AUDPLLCTRL,
 					(sn95031_ctx->clk_src)<<2);
-		msleep(10);
+		udelay(1000);
 		snd_soc_update_bits(codec, SN95031_AUDPLLCTRL, BIT(1), BIT(1));
-		msleep(10);
+		udelay(1000);
 		snd_soc_update_bits(codec, SN95031_AUDPLLCTRL, BIT(5), BIT(5));
-		msleep(10);
+		udelay(1000);
 		sn95031_ctx->pll_state = PLL_ENABLED;
 	} else {
 		pr_debug("disabling PLL\n");

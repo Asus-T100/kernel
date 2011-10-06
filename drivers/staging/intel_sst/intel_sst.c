@@ -205,6 +205,7 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 	sst_drv_ctx->cp_streams = 0;
 	sst_drv_ctx->unique_id = 0;
 	sst_drv_ctx->pmic_port_instance = SST_DEFAULT_PMIC_PORT;
+	sst_drv_ctx->fw = NULL;
 
 	INIT_LIST_HEAD(&sst_drv_ctx->ipc_dispatch_list);
 	INIT_WORK(&sst_drv_ctx->ipc_post_msg.wq, sst_post_message);
@@ -428,6 +429,10 @@ static void __devexit intel_sst_remove(struct pci_dev *pci)
 	destroy_workqueue(sst_drv_ctx->post_msg_wq);
 	destroy_workqueue(sst_drv_ctx->mad_wq);
 	kfree(pci_get_drvdata(pci));
+	if (sst_drv_ctx->fw) {
+		release_firmware(sst_drv_ctx->fw);
+		sst_drv_ctx->fw = NULL;
+	}
 	sst_drv_ctx = NULL;
 	pci_release_regions(pci);
 	pci_disable_device(pci);
@@ -641,6 +646,10 @@ static void __exit intel_sst_exit(void)
 	pci_unregister_driver(&driver);
 
 	pr_debug("driver unloaded\n");
+	if (sst_drv_ctx->fw) {
+		release_firmware(sst_drv_ctx->fw);
+		sst_drv_ctx->fw = NULL;
+	}
 	sst_drv_ctx = NULL;
 	return;
 }

@@ -425,6 +425,7 @@ struct intel_sst_drv {
 	unsigned int		fw_cntx_size;
 	unsigned int		csr_value;
 	unsigned int		pll_mode;
+	const struct firmware *fw;
 
 	unsigned int		fw_downloaded;
 };

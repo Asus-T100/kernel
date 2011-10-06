@@ -89,7 +89,7 @@ void sst_restore_fw_context(void)
 int sst_download_fw(void)
 {
 	int retval;
-	const struct firmware *fw_sst;
+
 	char name[20];
 
 	if (sst_drv_ctx->sst_state != SST_UN_INIT)
@@ -106,25 +106,33 @@ int sst_download_fw(void)
 					sst_drv_ctx->pci_id, ".bin");
 
 	pr_debug("Downloading %s FW now...\n", name);
-	retval = request_firmware(&fw_sst, name, &sst_drv_ctx->pci->dev);
-	if (retval) {
-		pr_err("request fw failed %d\n", retval);
-		return retval;
+	if (!sst_drv_ctx->fw) {
+		retval = request_firmware(&sst_drv_ctx->fw, name,
+				 &sst_drv_ctx->pci->dev);
+		pr_err("sst: requuest firmware %d\n", retval);
+		if (retval) {
+			pr_err("sst: request fw failed %d\n", retval);
+			return retval;
+		}
 	}
 	sst_drv_ctx->alloc_block[0].sst_id = FW_DWNL_ID;
 	sst_drv_ctx->alloc_block[0].ops_block.condition = false;
-	retval = sst_load_fw(fw_sst, NULL);
-	if (retval)
+	retval = sst_load_fw(sst_drv_ctx->fw, NULL);
+	if (retval) {
+		release_firmware(sst_drv_ctx->fw);
+		sst_drv_ctx->fw = NULL;
 		goto end_restore;
+	}
 
 	retval = sst_wait_timeout(sst_drv_ctx, &sst_drv_ctx->alloc_block[0]);
-	if (retval)
+	if (retval) {
 		pr_err("fw download failed %d\n" , retval);
-	else
+		release_firmware(sst_drv_ctx->fw);
+		sst_drv_ctx->fw = NULL;
+	} else
 		sst_drv_ctx->fw_downloaded = 1;
 
 end_restore:
-	release_firmware(fw_sst);
 	sst_drv_ctx->alloc_block[0].sst_id = BLOCK_UNINIT;
 	if (retval)
 		return retval;
