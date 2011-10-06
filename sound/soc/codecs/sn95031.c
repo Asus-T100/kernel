@@ -38,6 +38,7 @@
 #include <sound/initval.h>
 #include <sound/tlv.h>
 #include <sound/jack.h>
+#include "../../../drivers/staging/intel_sst/intel_sst.h"
 #include "sn95031.h"
 
 #define SN95031_RATES (SNDRV_PCM_RATE_8000_96000)
@@ -285,6 +286,23 @@ static int sn95031_dmic56_event(struct snd_soc_dapm_widget *w,
 	return 0;
 }
 
+static int sn95031_enable_pnw_clk(struct snd_soc_dapm_widget *w,
+			struct snd_kcontrol *k, int event)
+{
+	int clk_id = 0;
+
+	if (!strcmp(w->name, "Vibra1Clock"))
+		clk_id = SST_PLL_VIBRA1;
+	else if (!strcmp(w->name, "Vibra2Clock"))
+		clk_id = SST_PLL_VIBRA2;
+
+	if (SND_SOC_DAPM_EVENT_ON(event))
+		intel_sst_set_pll(true, clk_id);
+	else if (SND_SOC_DAPM_EVENT_OFF(event))
+		intel_sst_set_pll(false, clk_id);
+	return 0;
+}
+
 /* mux controls */
 static const char *sn95031_mic_texts[] = { "AMIC", "LineIn" };
 
@@ -513,7 +531,6 @@ static const struct snd_soc_dapm_widget sn95031_dapm_widgets[] = {
 	SND_SOC_DAPM_SUPPLY("DMIC56supply", SN95031_DMICLK, 2, 0,
 				sn95031_dmic56_event,
 				SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMD),
-
 	SND_SOC_DAPM_AIF_OUT("PCM2_Out", "Capture", 0,
 			SND_SOC_NOPM, 0, 0),
 	SND_SOC_DAPM_AIF_IN("PCM2_IN", "Headset", 0,
@@ -527,6 +544,12 @@ static const struct snd_soc_dapm_widget sn95031_dapm_widgets[] = {
 			SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMD),
 	SND_SOC_DAPM_SUPPLY("Speaker Rail", SND_SOC_NOPM, 0, 0,
 			sn95031_vihf_event,
+			SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMD),
+	SND_SOC_DAPM_SUPPLY("Vibra1Clock", SND_SOC_NOPM, 0, 0,
+			sn95031_enable_pnw_clk,
+			SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMD),
+	SND_SOC_DAPM_SUPPLY("Vibra2Clock", SND_SOC_NOPM, 0, 0,
+			sn95031_enable_pnw_clk,
 			SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMD),
 
 	/* playback path driver enables */
@@ -656,13 +679,15 @@ static const struct snd_soc_dapm_route sn95031_audio_map[] = {
 	/* vibra map */
 	{ "VIB1OUT", NULL, "Vibra1 Playback"},
 	{ "Vibra1 Playback", NULL, "Vibra1 Enable Mux"},
-	{ "Vibra1 Enable Mux", "SPI", "VIB1SPI"},
 	{ "Vibra1 Enable Mux", "PWM", "Vibra1 DAC"},
+	{ "Vibra1 Enable Mux", "SPI", "VIB1SPI"},
+	{ "VIB1SPI", NULL, "Vibra1Clock"},
 
 	{ "VIB2OUT", NULL, "Vibra2 Playback"},
 	{ "Vibra2 Playback", NULL, "Vibra2 Enable Mux"},
-	{ "Vibra2 Enable Mux", "SPI", "VIB2SPI"},
 	{ "Vibra2 Enable Mux", "PWM", "Vibra2 DAC"},
+	{ "Vibra2 Enable Mux", "SPI", "VIB2SPI"},
+	{ "VIB2SPI", NULL, "Vibra2Clock"},
 
 	/* lineout */
 	{ "LINEOUTL", NULL, "Lineout Left Playback"},
