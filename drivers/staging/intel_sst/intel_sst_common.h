@@ -421,6 +421,7 @@ struct intel_sst_drv {
 	unsigned int		max_streams;
 	unsigned int		*fw_cntx;
 	unsigned int		fw_cntx_size;
+	unsigned int		csr_value;
 
 	unsigned int		fw_downloaded;
 };

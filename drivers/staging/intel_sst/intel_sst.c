@@ -485,6 +485,7 @@ int intel_sst_suspend(struct pci_dev *pci, pm_message_t state)
 	sst_save_dsp_context();
 	/*Assert RESET on LPE Processor*/
 	csr.full = sst_shim_read(sst_drv_ctx->shim, SST_CSR);
+	sst_drv_ctx->csr_value = csr.full;
 	csr.full = csr.full | 0x2;
 
 	ipc_wbuf = (u32 *)&cbuf;
@@ -500,10 +501,6 @@ int intel_sst_suspend(struct pci_dev *pci, pm_message_t state)
 	if (ret != 0)
 		pr_err("ipc clk disable command failed\n");
 	mutex_unlock(&sst_drv_ctx->sst_lock);
-	pci_set_drvdata(pci, sst_drv_ctx);
-	pci_save_state(pci);
-	pci_disable_device(pci);
-	pci_set_power_state(pci, PCI_D3hot);
 	return 0;
 }
 
@@ -519,18 +516,16 @@ int intel_sst_resume(struct pci_dev *pci)
 	int ret = 0;
 	u32 *ipc_wbuf;
 	u8 cbuf[16] = { '\0' };
+	u32 csr;
 
 	pr_debug("intel_sst_resume called\n");
 	if (sst_drv_ctx->sst_state != SST_SUSPENDED) {
 		pr_err("SST is not in suspended state\n");
 		return 0;
 	}
-	sst_drv_ctx = pci_get_drvdata(pci);
-	pci_set_power_state(pci, PCI_D0);
-	pci_restore_state(pci);
-	ret = pci_enable_device(pci);
-	if (ret)
-		pr_err("device can't be enabled\n");
+	csr = sst_shim_read(sst_drv_ctx->shim, SST_CSR);
+	csr |= sst_drv_ctx->csr_value;
+	sst_shim_write(sst_drv_ctx->shim, SST_CSR, csr);
 
 	ipc_wbuf = (u32 *)&cbuf;
 	cbuf[0] = 0; /* OSC_CLK_OUT0 */
