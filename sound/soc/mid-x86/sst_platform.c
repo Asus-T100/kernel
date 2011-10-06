@@ -363,11 +363,8 @@ static int sst_platform_pcm_prepare(struct snd_pcm_substream *substream)
 	}
 	stream = substream->runtime->private_data;
 	str_id = stream->stream_info.str_id;
-	if (stream->stream_info.str_id) {
-		ret_val = stream->sstdrv_ops->pcm_control->device_control(
-					SST_SND_DROP, &str_id);
+	if (stream->stream_info.str_id)
 		return ret_val;
-	}
 
 	ret_val = sst_platform_alloc_stream(substream);
 	if (ret_val <= 0)
