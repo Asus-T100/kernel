@@ -38,6 +38,7 @@
 #include <linux/miscdevice.h>
 #include <linux/pm_runtime.h>
 #include <asm/mrst.h>
+#include <asm/intel_scu_ipc.h>
 #include "intel_sst.h"
 #include "intel_sst_ioctl.h"
 #include "intel_sst_fw_ipc.h"
@@ -468,6 +469,44 @@ void sst_save_dsp_context(void)
 	return;
 }
 
+int intel_sst_set_pll(unsigned int enable, enum intel_sst_pll_mode mode)
+{
+	u32 *ipc_wbuf, ret = 0;
+	u8 cbuf[16] = { '\0' };
+
+	pr_debug("set_pll, for %x\n", enable);
+	ipc_wbuf = (u32 *)&cbuf;
+	cbuf[0] = 0; /* OSC_CLK_OUT0 */
+	mutex_lock(&sst_drv_ctx->sst_lock);
+	if (enable == true) {
+		cbuf[1] = 1; /* enable the clock, preserve clk ratio */
+		if (sst_drv_ctx->pll_mode) {
+			/* clock is on, so just update and return */
+			sst_drv_ctx->pll_mode |= mode;
+			goto out;
+		}
+		sst_drv_ctx->pll_mode |= mode;
+		pr_debug("set_pll, enabling pll %x\n", sst_drv_ctx->pll_mode);
+	} else {
+		/* for turning off only, we check device state and turn off only
+		 * when device is supspended
+		 */
+		sst_drv_ctx->pll_mode &= ~mode;
+		pr_debug("set_pll, disabling pll %x\n", sst_drv_ctx->pll_mode);
+		if (!sst_drv_ctx->pll_mode)
+			goto out;
+		cbuf[1] = 0; /* Disable the clock */
+	}
+	/* send ipc command to configure the PNW clock to MSIC PLLIN */
+	ret = intel_scu_ipc_command(0xE6, 0, ipc_wbuf, 2, NULL, 0);
+	if (ret)
+		pr_err("ipc clk disable command failed: %d\n", ret);
+out:
+	mutex_unlock(&sst_drv_ctx->sst_lock);
+	return ret;
+}
+EXPORT_SYMBOL(intel_sst_set_pll);
+
 /*
  * The runtime_suspend/resume is pretty much similar to the legacy
  * suspend/resume with the noted exception below: The PCI core takes care of
@@ -476,11 +515,7 @@ void sst_save_dsp_context(void)
  */
 static int intel_sst_runtime_suspend(struct device *dev)
 {
-	struct pci_dev *pci_dev = to_pci_dev(dev);
 	union config_status_reg csr;
-	u32 *ipc_wbuf;
-	u8 cbuf[16] = { '\0' };
-	int ret = 0;
 
 	pr_debug("sst: runtime_suspend called\n");
 
@@ -495,28 +530,17 @@ static int intel_sst_runtime_suspend(struct device *dev)
 	sst_drv_ctx->csr_value = csr.full;
 	csr.full = csr.full | 0x2;
 
-	ipc_wbuf = (u32 *)&cbuf;
-	cbuf[0] = 0; /* OSC_CLK_OUT0 */
-	cbuf[1] = 0; /* Disable the clock */
-
 	/* Move the SST state to Suspended */
 	mutex_lock(&sst_drv_ctx->sst_lock);
 	sst_drv_ctx->sst_state = SST_SUSPENDED;
 	sst_shim_write(sst_drv_ctx->shim, SST_CSR, csr.full);
-	/* send ipc command to disable the PNW clock to MSIC PLLIN */
-	ret = intel_scu_ipc_command(0xE6, 0, ipc_wbuf, 2, NULL, 0);
-	if (ret != 0)
-		pr_err("ipc clk disable command failed\n");
 	mutex_unlock(&sst_drv_ctx->sst_lock);
+	intel_sst_set_pll(false, SST_PLL_AUDIO);
 	return 0;
 }
 
 static int intel_sst_runtime_resume(struct device *dev)
 {
-	struct pci_dev *pci_dev = to_pci_dev(dev);
-	int ret = 0;
-	u32 *ipc_wbuf;
-	u8 cbuf[16] = { '\0' };
 	u32 csr;
 
 	pr_debug("sst: runtime_resume called\n");
@@ -534,13 +558,7 @@ static int intel_sst_runtime_resume(struct device *dev)
 	 */
 	csr |= (sst_drv_ctx->csr_value | 0x30000);
 
-	ipc_wbuf = (u32 *)&cbuf;
-	cbuf[0] = 0; /* OSC_CLK_OUT0 */
-	cbuf[1] = 1; /* enable the clock, preserve clk ratio */
-	ret = intel_scu_ipc_command(0xE6, 0, ipc_wbuf, 2, NULL, 0);
-	if (ret != 0)
-		pr_err("ipc clk enable command failed\n");
-
+	intel_sst_set_pll(true, SST_PLL_AUDIO);
 	mutex_lock(&sst_drv_ctx->sst_lock);
 	sst_drv_ctx->sst_state = SST_UN_INIT;
 	mutex_unlock(&sst_drv_ctx->sst_lock);

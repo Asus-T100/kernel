@@ -474,7 +474,8 @@ int sst_drop_stream(int str_id)
 		}
 	} else {
 		retval = -EBADRQC;
-		pr_err("SST ERR: BADQRC for stream\n");
+		pr_debug("SST ERR:BADQRC for stream, state %x\n",
+			 str_info->status);
 	}
 	return retval;
 }

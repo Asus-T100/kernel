@@ -139,6 +139,12 @@ enum sc_reg_access_type {
 	PMIC_READ_MODIFY,
 };
 
+enum intel_sst_pll_mode {
+	SST_PLL_VOICE = 0x1,
+	SST_PLL_AUDIO = 0x2,
+};
+
 int register_sst_card(struct intel_sst_card_ops *card);
 void unregister_sst_card(struct intel_sst_card_ops *card);
+int intel_sst_set_pll(unsigned int enable, enum intel_sst_pll_mode mode);
 #endif /* __INTEL_SST_H__ */
