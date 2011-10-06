@@ -70,14 +70,14 @@ struct snd_soc_dai_driver sst_platform_dai[] = {
 	.playback = {
 		.channels_min = SST_STEREO,
 		.channels_max = SST_STEREO,
-		.rates = SNDRV_PCM_RATE_48000,
-		.formats = SNDRV_PCM_FMTBIT_S24_LE,
+		.rates = SNDRV_PCM_RATE_44100,
+		.formats = SNDRV_PCM_FMTBIT_S16_LE,
 	},
 	.capture = {
 		.channels_min = 1,
 		.channels_max = 5,
-		.rates = SNDRV_PCM_RATE_48000,
-		.formats = SNDRV_PCM_FMTBIT_S24_LE,
+		.rates = SNDRV_PCM_RATE_44100,
+		.formats = SNDRV_PCM_FMTBIT_S16_LE,
 	},
 },
 {
@@ -86,8 +86,8 @@ struct snd_soc_dai_driver sst_platform_dai[] = {
 	.playback = {
 		.channels_min = SST_MONO,
 		.channels_max = SST_STEREO,
-		.rates = SNDRV_PCM_RATE_48000,
-		.formats = SNDRV_PCM_FMTBIT_S24_LE,
+		.rates = SNDRV_PCM_RATE_44100,
+		.formats = SNDRV_PCM_FMTBIT_S16_LE,
 	},
 },
 {
@@ -96,8 +96,8 @@ struct snd_soc_dai_driver sst_platform_dai[] = {
 	.playback = {
 		.channels_min = SST_MONO,
 		.channels_max = SST_MONO,
-		.rates = SNDRV_PCM_RATE_48000,
-		.formats = SNDRV_PCM_FMTBIT_S24_LE,
+		.rates = SNDRV_PCM_RATE_44100,
+		.formats = SNDRV_PCM_FMTBIT_S16_LE,
 	},
 },
 {
@@ -106,8 +106,8 @@ struct snd_soc_dai_driver sst_platform_dai[] = {
 	.playback = {
 		.channels_min = SST_MONO,
 		.channels_max = SST_STEREO,
-		.rates = SNDRV_PCM_RATE_48000,
-		.formats = SNDRV_PCM_FMTBIT_S24_LE,
+		.rates = SNDRV_PCM_RATE_44100,
+		.formats = SNDRV_PCM_FMTBIT_S16_LE,
 	},
 },
 };
@@ -367,6 +367,7 @@ static snd_pcm_uframes_t sst_platform_pcm_pointer
 		pr_err("sst: error code = %d\n", ret_val);
 		return ret_val;
 	}
+	substream->runtime->delay = stream->stream_info.pcm_delay;
 	return stream->stream_info.buffer_ptr;
 }
 
