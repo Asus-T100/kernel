@@ -964,7 +964,8 @@ int sn95031_voice_hw_params(struct snd_pcm_substream *substream,
 	snd_soc_update_bits(dai->codec, SN95031_PCM1C1, BIT(7), rate);
 	snd_soc_update_bits(dai->codec, SN95031_PCM1C1, BIT(6)|BIT(5)|BIT(4),
 						pcm1fs);
-
+	/* configure the PCM1 in I2S mode */
+	snd_soc_write(dai->codec, SN95031_PCM1C2, 0x04);
 	/* enable pcm 1 */
 	snd_soc_update_bits(dai->codec, SN95031_PCM1C3, BIT(0), BIT(0));
 	return 0;
@@ -975,6 +976,9 @@ int sn95031_voice_hw_free(struct snd_pcm_substream *substream,
 {
 	pr_debug("inside hw_free");
 	snd_soc_update_bits(dai->codec, SN95031_PCM1C3, BIT(0), 0);
+	/* PCM1 should be in short or long sync mode for Tx line
+		to be in Hi-Z state */
+	snd_soc_write(dai->codec, SN95031_PCM1C2, 0x00);
 	return 0;
 }
 
@@ -1291,7 +1295,8 @@ static int sn95031_codec_probe(struct snd_soc_codec *codec)
 	 * can support 6slots, sampling rate set per stream in hw-params
 	 */
 	snd_soc_write(codec, SN95031_PCM1C1, 0x00);
-	snd_soc_write(codec, SN95031_PCM1C2, 0x04);
+	/* configure pcm1 port in short sync mode */
+	snd_soc_write(codec, SN95031_PCM1C2, 0x00);
 	snd_soc_write(codec, SN95031_PCM1C3, 0x02);
 	snd_soc_write(codec, SN95031_PCM2C1, 0x01);
 	snd_soc_write(codec, SN95031_PCM2C2, 0x0A);
