@@ -32,6 +32,7 @@
 #include <linux/firmware.h>
 #include <linux/sched.h>
 #include <linux/delay.h>
+#include <linux/pm_runtime.h>
 #include "intel_sst_ioctl.h"
 #include "intel_sst.h"
 #include "intel_sst_fw_ipc.h"
@@ -539,7 +540,16 @@ int sst_free_stream(int str_id)
 	struct stream_info *str_info;
 
 	pr_debug("SST DBG:sst_free_stream for %d\n", str_id);
-
+	if (sst_drv_ctx->sst_state == SST_SUSPENDED) {
+		pm_runtime_get_sync(&sst_drv_ctx->pci->dev);
+		pr_debug("sst: DSP Downloading FW now...\n");
+		retval = sst_download_fw();
+		if (retval) {
+			pr_err("sst: FW download fail %x, abort\n", retval);
+			pm_runtime_put(&sst_drv_ctx->pci->dev);
+			return retval;
+		}
+	}
 	retval = sst_validate_strid(str_id);
 	if (retval)
 		return retval;

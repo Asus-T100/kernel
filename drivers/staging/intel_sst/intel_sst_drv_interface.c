@@ -38,6 +38,49 @@
 #include "intel_sst_fw_ipc.h"
 #include "intel_sst_common.h"
 
+void sst_restore_fw_context(void)
+{
+	struct snd_sst_ctxt_params fw_context;
+	struct ipc_post *msg = NULL;
+	int retval = 0;
+
+	pr_debug("sst: restore_fw_context\n");
+	/*check cpu type*/
+	if (sst_drv_ctx->pci_id != SST_MFLD_PCI_ID)
+		return;
+		/*not supported for rest*/
+	if (!sst_drv_ctx->fw_cntx_size)
+		return;
+		/*nothing to restore*/
+	pr_debug("sst: restoring context......\n");
+	/*send msg to fw*/
+	if (sst_create_large_msg(&msg))
+		return;
+	mutex_lock(&sst_drv_ctx->sst_lock);
+	sst_drv_ctx->sst_state = SST_FW_CTXT_RESTORE;
+	mutex_unlock(&sst_drv_ctx->sst_lock);
+	sst_fill_header(&msg->header, IPC_IA_SET_FW_CTXT, 1, 0);
+	sst_drv_ctx->alloc_block[0].sst_id = FW_DWNL_ID;
+	sst_drv_ctx->alloc_block[0].ops_block.condition = false;
+	sst_drv_ctx->alloc_block[0].ops_block.ret_code = 0;
+	sst_drv_ctx->alloc_block[0].ops_block.on = true;
+
+	msg->header.part.data = sizeof(fw_context) + sizeof(u32);
+	fw_context.address = virt_to_phys((void *)sst_drv_ctx->fw_cntx);
+	fw_context.size = sst_drv_ctx->fw_cntx_size;
+	memcpy(msg->mailbox_data, &msg->header, sizeof(u32));
+	memcpy(msg->mailbox_data + sizeof(u32),
+				&fw_context, sizeof(fw_context));
+	spin_lock(&sst_drv_ctx->list_spin_lock);
+	list_add_tail(&msg->node, &sst_drv_ctx->ipc_dispatch_list);
+	spin_unlock(&sst_drv_ctx->list_spin_lock);
+	sst_post_message(&sst_drv_ctx->ipc_post_msg_wq);
+	retval = sst_wait_interruptible_timeout(sst_drv_ctx,
+			&sst_drv_ctx->alloc_block[0], SST_BLOCK_TIMEOUT);
+	if (retval)
+		pr_err("sst: sst_restore_fw_context..timeout!\n");
+	return;
+}
 
 /*
  * sst_download_fw - download the audio firmware to DSP
@@ -84,10 +127,16 @@ int sst_download_fw(void)
 end_restore:
 	release_firmware(fw_sst);
 	sst_drv_ctx->alloc_block[0].sst_id = BLOCK_UNINIT;
+	if (retval)
+		return retval;
+
+	sst_restore_fw_context();
+	mutex_lock(&sst_drv_ctx->sst_lock);
+	sst_drv_ctx->sst_state = SST_FW_RUNNING;
+	mutex_unlock(&sst_drv_ctx->sst_lock);
+
 	return retval;
 }
-
-
 /*
  * sst_stalled - this function checks if the lpe is in stalled state
  */
@@ -313,6 +362,7 @@ void sst_process_mad_ops(struct work_struct *work)
 		retval = sst_resume_stream(mad_ops->stream_id);
 		break;
 	case SST_SND_DROP:
+		pr_debug("SST Debug: in mad_ops drop stream\n");
 		retval = sst_drop_stream(mad_ops->stream_id);
 		break;
 	case SST_SND_START:
@@ -399,12 +449,23 @@ int sst_open_pcm_stream(struct snd_sst_params *str_param)
  */
 int sst_close_pcm_stream(unsigned int str_id)
 {
+	int retval = 0;
 	struct stream_info *stream;
 
 	pr_debug("sst: stream free called\n");
 	if (sst_validate_strid(str_id))
 		return -EINVAL;
 	stream = &sst_drv_ctx->streams[str_id];
+	pm_runtime_get_sync(&sst_drv_ctx->pci->dev);
+	if (sst_drv_ctx->sst_state == SST_UN_INIT) {
+		pr_debug("sst: DSP Downloading FW now...\n");
+		retval = sst_download_fw();
+		if (retval) {
+			pr_err("sst: FW download fail %x, abort\n", retval);
+			pm_runtime_put(&sst_drv_ctx->pci->dev);
+			return retval;
+		}
+	}
 	free_stream_context(str_id);
 	stream->pcm_substream = NULL;
 	stream->status = STREAM_UN_INIT;

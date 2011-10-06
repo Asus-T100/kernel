@@ -154,37 +154,6 @@ void sst_clear_interrupt(void)
 	sst_shim_write(sst_drv_ctx->shim, SST_IMRX, imr.full);
 }
 
-void sst_restore_fw_context(void)
-{
-	struct snd_sst_ctxt_params fw_context;
-	struct ipc_post *msg = NULL;
-
-	pr_debug("restore_fw_context\n");
-	/*check cpu type*/
-	if (sst_drv_ctx->pci_id != SST_MFLD_PCI_ID)
-		return;
-		/*not supported for rest*/
-	if (!sst_drv_ctx->fw_cntx_size)
-		return;
-		/*nothing to restore*/
-	pr_debug("restoring context......\n");
-	/*send msg to fw*/
-	if (sst_create_large_msg(&msg))
-		return;
-
-	sst_fill_header(&msg->header, IPC_IA_SET_FW_CTXT, 1, 0);
-	msg->header.part.data = sizeof(fw_context) + sizeof(u32);
-	fw_context.address = virt_to_phys((void *)sst_drv_ctx->fw_cntx);
-	fw_context.size = sst_drv_ctx->fw_cntx_size;
-	memcpy(msg->mailbox_data, &msg->header, sizeof(u32));
-	memcpy(msg->mailbox_data + sizeof(u32),
-				&fw_context, sizeof(fw_context));
-	spin_lock(&sst_drv_ctx->list_spin_lock);
-	list_add_tail(&msg->node, &sst_drv_ctx->ipc_dispatch_list);
-	spin_unlock(&sst_drv_ctx->list_spin_lock);
-	sst_post_message(&sst_drv_ctx->ipc_post_msg_wq);
-	return;
-}
 /*
  * process_fw_init - process the FW init msg
  *
@@ -212,7 +181,6 @@ int process_fw_init(struct sst_ipc_msg_wq *msg)
 	if (sst_drv_ctx->pci_id == SST_MRST_PCI_ID)
 		sst_send_sound_card_type();
 	mutex_lock(&sst_drv_ctx->sst_lock);
-	sst_drv_ctx->sst_state = SST_FW_RUNNING;
 	sst_drv_ctx->lpe_stalled = 0;
 	mutex_unlock(&sst_drv_ctx->sst_lock);
 	pr_debug("FW Version %02x.%02x.%02x\n", init->fw_version.major,
@@ -221,7 +189,6 @@ int process_fw_init(struct sst_ipc_msg_wq *msg)
 	pr_debug(" Build date %s Time %s\n",
 			init->build_info.date, init->build_info.time);
 	sst_wake_up_alloc_block(sst_drv_ctx, FW_DWNL_ID, retval, NULL);
-	sst_restore_fw_context();
 	return retval;
 }
 /**
@@ -731,7 +698,20 @@ void sst_process_reply(struct work_struct *work)
 						retval, NULL);
 		break;
 	}
+	case IPC_IA_SET_FW_CTXT: {
+		int retval;
 
+		if (!msg->header.part.data) {
+			pr_debug("sst: Msg IPC_IA_SET_FW_CTXT succedded %x\n",
+				 msg->header.part.msg_id);
+		} else {
+			pr_err("sst:  Msg %x reply error %x\n",
+			       msg->header.part.msg_id, msg->header.part.data);
+		}
+		retval = msg->header.part.data;
+		sst_wake_up_alloc_block(sst_drv_ctx, FW_DWNL_ID, retval, NULL);
+		break;
+	}
 	case IPC_IA_GET_FW_VERSION: {
 		struct ipc_header_fw_init *version =
 				(struct ipc_header_fw_init *)msg->mailbox;
