@@ -75,6 +75,7 @@ struct pcm_stream_info {
 	void *mad_substream;
 	void (*period_elapsed) (void *mad_substream);
 	unsigned long long buffer_ptr;
+	unsigned long long pcm_delay;
 	int sfreq;
 };
 

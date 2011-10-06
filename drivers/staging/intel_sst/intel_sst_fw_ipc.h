@@ -282,6 +282,7 @@ struct snd_sst_tstamp {
 	u32 dma_base_address;/* DMA base address */
 	u16	dma_channel_no;/* DMA Channel used for the data transfer*/
 	u16	reserved;/* 32 bit alignment */
+	u64 pcm_delay;
 };
 
 /* Frame info to play or capture */

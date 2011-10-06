@@ -487,6 +487,7 @@ int sst_device_control(int cmd, void *arg)
 			stream_info->buffer_ptr = fw_tstamp.samples_rendered;
 		else
 			stream_info->buffer_ptr = fw_tstamp.samples_processed;
+		stream_info->pcm_delay = fw_tstamp.pcm_delay;
 		pr_debug("Samples rendered = %llu, buffer ptr %llu\n",
 			fw_tstamp.samples_rendered, stream_info->buffer_ptr);
 		break;
