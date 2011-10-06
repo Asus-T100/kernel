@@ -731,6 +731,15 @@ config MFD_TPS65910
 config TPS65911_COMPARATOR
 	tristate
 
+config MFD_INTEL_MSIC
+	bool "Support for Intel MSIC"
+	depends on INTEL_SCU_IPC
+	select MFD_CORE
+	help
+	  Select this option to enable access to Intel MSIC (Avatele
+	  Passage) chip. This chip embeds audio, battery, GPIO, etc.
+	  devices used in Intel Medfield platforms.
+
 endif # MFD_SUPPORT
 
 menu "Multimedia Capabilities Port drivers"
