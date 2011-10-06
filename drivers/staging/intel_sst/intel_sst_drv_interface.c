@@ -205,6 +205,8 @@ int sst_get_stream_allocated(struct snd_sst_params *str_param,
 	pr_debug("Stream allocated %d\n", retval);
 	str_id = retval;
 	str_info = &sst_drv_ctx->streams[str_id];
+	if (str_id == 0)
+		str_id = -SST_IPC_ERR_STREAM_ALLOC_FAILED;
 	/* Block the call for reply */
 	retval = sst_wait_interruptible_timeout(sst_drv_ctx,
 			&str_info->ctrl_blk, SST_BLOCK_TIMEOUT);
