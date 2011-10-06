@@ -390,17 +390,17 @@ static const char *sn95031_vibra_on_text[] = {"0.05", "0.10", "0.15", "0.20",
 					"0.45", "0.50", "0.75", "1.00",
 					"1.25", "1.5", "2.00", "Infinite"};
 static const struct soc_enum sn95031_vibra1_on_enum =
-	SOC_ENUM_SINGLE(SN95031_VIB1C2, 0, 32, sn95031_vibra_on_text);
+	SOC_ENUM_SINGLE(SN95031_VIB1C2, 0, 16, sn95031_vibra_on_text);
 static const struct soc_enum sn95031_vibra2_on_enum =
-	SOC_ENUM_SINGLE(SN95031_VIB2C2, 0, 32, sn95031_vibra_on_text);
+	SOC_ENUM_SINGLE(SN95031_VIB2C2, 0, 16, sn95031_vibra_on_text);
 static const char *sn95031_vibra_off_text[] = {"0.00", "0.05", "0.10", "0.15",
 					"0.20", "0.25", "0.30", "0.35",
-					"0.40", "0.45", "0.50", "0.75"
+					"0.40", "0.45", "0.50", "0.75",
 					"1.00", "1.25", "1.50", "2.00"};
 static const struct soc_enum sn95031_vibra1_off_enum =
-	SOC_ENUM_SINGLE(SN95031_VIB1C2, 4, 32, sn95031_vibra_off_text);
+	SOC_ENUM_SINGLE(SN95031_VIB1C2, 4, 16, sn95031_vibra_off_text);
 static const struct soc_enum sn95031_vibra2_off_enum =
-	SOC_ENUM_SINGLE(SN95031_VIB2C2, 4, 32, sn95031_vibra_off_text);
+	SOC_ENUM_SINGLE(SN95031_VIB2C2, 4, 16, sn95031_vibra_off_text);
 static const char *sn95031_vibra_start_text[] = {"Off", "On"};
 static const struct soc_enum sn95031_vibra1_start_enum =
 	SOC_ENUM_SINGLE(SN95031_VIB1C1, 2, 2, sn95031_vibra_start_text);
