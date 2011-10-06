@@ -243,8 +243,18 @@ static int mfld_init(struct snd_soc_pcm_runtime *runtime)
 	/* we dont use linein in this so set to NC */
 	snd_soc_dapm_disable_pin(dapm, "LINEINL");
 	snd_soc_dapm_disable_pin(dapm, "LINEINR");
-	snd_soc_dapm_sync(dapm);
 
+
+	snd_soc_dapm_ignore_suspend(dapm, "PCM1_IN");
+	snd_soc_dapm_ignore_suspend(dapm, "PCM1_OUT");
+	snd_soc_dapm_ignore_suspend(dapm, "PCM2_IN");
+	snd_soc_dapm_ignore_suspend(dapm, "PCM2_OUT");
+	snd_soc_dapm_ignore_suspend(dapm, "IHFDAC Right");
+	snd_soc_dapm_ignore_suspend(dapm, "IHFDAC Left");
+	snd_soc_dapm_ignore_suspend(dapm, "HSDAC Right");
+	snd_soc_dapm_ignore_suspend(dapm, "HSDAC Left");
+
+	snd_soc_dapm_sync(dapm);
 	/* Headset and button jack detection */
 	ret_val = snd_soc_jack_new(codec, "Intel(R) MID Audio Jack",
 			SND_JACK_HEADSET | SND_JACK_BTN_0 |
@@ -277,6 +287,7 @@ struct snd_soc_dai_link mfld_msic_dailink[] = {
 		.codec_name = "sn95031",
 		.platform_name = "sst-platform",
 		.init = mfld_init,
+		.ignore_suspend = 1,
 	},
 	{
 		.name = "Medfield Speaker",
@@ -286,6 +297,7 @@ struct snd_soc_dai_link mfld_msic_dailink[] = {
 		.codec_name = "sn95031",
 		.platform_name = "sst-platform",
 		.init = NULL,
+		.ignore_suspend = 1,
 	},
 /*
  *	This configurtaion doesnt need Vibra as PCM device
@@ -300,6 +312,7 @@ struct snd_soc_dai_link mfld_msic_dailink[] = {
 		.codec_name = "sn95031",
 		.platform_name = "sst-platform",
 		.init = NULL,
+		.ignore_suspend = 1,
 	},
 	{
 		.name = "Medfield Haptics",
@@ -309,6 +322,7 @@ struct snd_soc_dai_link mfld_msic_dailink[] = {
 		.codec_name = "sn95031",
 		.platform_name = "sst-platform",
 		.init = NULL,
+		.ignore_suspend = 1,
 	},
 */	{
 		.name = "Medfield Voice",
@@ -318,8 +332,37 @@ struct snd_soc_dai_link mfld_msic_dailink[] = {
 		.codec_name = "sn95031",
 		.platform_name = "sst-platform",
 		.init = NULL,
+		.ignore_suspend = 1,
 	},
 };
+
+#ifdef CONFIG_PM
+
+static int snd_mfld_mc_suspend(struct device *dev)
+{
+	pr_debug("In %s device name\n", __func__);
+	snd_soc_suspend(dev);
+	return 0;
+}
+static int snd_mfld_mc_resume(struct device *dev)
+{
+	pr_debug("In %s\n", __func__);
+	snd_soc_resume(dev);
+	return 0;
+}
+
+static int snd_mfld_mc_poweroff(struct device *dev)
+{
+	pr_debug("In %s\n", __func__);
+	snd_soc_poweroff(dev);
+	return 0;
+}
+
+#else
+#define snd_mfld_mc_suspend NULL
+#define snd_mfld_mc_resume NULL
+#define snd_mfld_mc_poweroff NULL
+#endif
 
 /* SoC card */
 static struct snd_soc_card snd_soc_card_mfld = {
@@ -457,6 +500,7 @@ static int __devinit snd_mfld_mc_probe(struct platform_device *pdev)
 		goto freeirq;
 	}
 	platform_set_drvdata(pdev, mc_drv_ctx);
+	dev_set_drvdata(&pdev->dev, &snd_soc_card_mfld);
 	pr_debug("successfully exited probe\n");
 	return ret_val;
 
@@ -470,7 +514,6 @@ unalloc:
 static int __devexit snd_mfld_mc_remove(struct platform_device *pdev)
 {
 	struct mfld_mc_private *mc_drv_ctx = platform_get_drvdata(pdev);
-
 	pr_debug("snd_mfld_mc_remove called\n");
 	free_irq(platform_get_irq(pdev, 0), mc_drv_ctx);
 	snd_soc_unregister_card(&snd_soc_card_mfld);
@@ -478,11 +521,17 @@ static int __devexit snd_mfld_mc_remove(struct platform_device *pdev)
 	platform_set_drvdata(pdev, NULL);
 	return 0;
 }
+const struct dev_pm_ops snd_mfld_mc_pm_ops = {
+	.suspend = snd_mfld_mc_suspend,
+	.resume = snd_mfld_mc_resume,
+	.poweroff = snd_mfld_mc_poweroff,
+};
 
 static struct platform_driver snd_mfld_mc_driver = {
 	.driver = {
 		.owner = THIS_MODULE,
 		.name = "msic_audio",
+		.pm   = &snd_mfld_mc_pm_ops,
 	},
 	.probe = snd_mfld_mc_probe,
 	.remove = __devexit_p(snd_mfld_mc_remove),
