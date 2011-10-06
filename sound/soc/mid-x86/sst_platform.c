@@ -33,6 +33,7 @@
 #include <sound/soc.h>
 #include "../../../drivers/staging/intel_sst/intel_sst_ioctl.h"
 #include "../../../drivers/staging/intel_sst/intel_sst.h"
+#include "../codecs/sn95031.h"
 #include "sst_platform.h"
 
 #define SST_VOICE_DAI "Voice-cpu-dai"
@@ -248,7 +249,7 @@ static int sst_platform_open(struct snd_pcm_substream *substream)
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct snd_soc_dai_link *dai_link = rtd->dai_link;
 
-	pr_debug("sst_platform_open called\n");
+	pr_debug("sst_platform_open called:%s\n", dai_link->cpu_dai_name);
 
 	runtime = substream->runtime;
 	runtime->hw = sst_platform_pcm_hw;
@@ -258,7 +259,6 @@ static int sst_platform_open(struct snd_pcm_substream *substream)
 			return -EBUSY;
 		}
 		sst_cpu_ctx->active_voice_cnt++;
-		pr_debug("pcm_open for Voice, returning.\n");
 		return snd_pcm_hw_constraint_integer(runtime,
 			 SNDRV_PCM_HW_PARAM_PERIODS);
 	}
@@ -310,13 +310,13 @@ static int sst_platform_close(struct snd_pcm_substream *substream)
 	int ret_val = 0, str_id;
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct snd_soc_dai_link *dai_link = rtd->dai_link;
+	struct snd_soc_dai *codec_dai = rtd->codec_dai;
 
-	pr_debug("sst_platform_close called\n");
+	pr_debug("sst_platform_close called:%s\n", dai_link->cpu_dai_name);
 
 	if (!strcmp(dai_link->cpu_dai_name, SST_VOICE_DAI)) {
 		sst_cpu_ctx->active_voice_cnt--;
-		pr_debug("pcm_close for Voice, returning.\n");
-		return ret_val;
+		goto func_exit;
 	}
 	sst_cpu_ctx->active_nonvoice_cnt--;
 	stream = substream->runtime->private_data;
@@ -334,6 +334,10 @@ static int sst_platform_close(struct snd_pcm_substream *substream)
 	unregister_sst_card(stream->sstdrv_ops);
 	kfree(stream->sstdrv_ops);
 	kfree(stream);
+func_exit:
+	/*if all CPU dais are inactive, disable PLL*/
+	if (!sst_cpu_ctx->active_voice_cnt && !sst_cpu_ctx->active_nonvoice_cnt)
+		snd_soc_dai_set_pll(codec_dai, 0, 0, 0, 0);
 	return ret_val;
 }
 
@@ -465,9 +469,11 @@ static snd_pcm_uframes_t sst_platform_pcm_pointer
 static int sst_platform_pcm_hw_params(struct snd_pcm_substream *substream,
 		struct snd_pcm_hw_params *params)
 {
-	int ret;
+	int ret, clk_src;
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct snd_soc_codec *codec = rtd->codec;
+	struct snd_soc_dai_link *dai_link = rtd->dai_link;
+	struct snd_soc_dai *codec_dai = rtd->codec_dai;
 
 	/* Force the data width to 24 bit in MSIC. Post Processing algorithms
 	   in DSP enabled with 24 bit precision */
@@ -476,6 +482,12 @@ static int sst_platform_pcm_hw_params(struct snd_pcm_substream *substream,
 		pr_debug("codec set_params returned error\n");
 		return ret;
 	}
+	if (!strcmp(dai_link->cpu_dai_name, SST_VOICE_DAI))
+		clk_src = SN95031_PCM1BCLK;
+	else
+		clk_src = SN95031_PLLIN;
+	/*last two parameters have to non-zero, otherwise pll gets disabled*/
+	snd_soc_dai_set_pll(codec_dai, 0, clk_src, 1, params_rate(params));
 	snd_pcm_lib_malloc_pages(substream, params_buffer_bytes(params));
 	memset(substream->runtime->dma_area, 0, params_buffer_bytes(params));
 

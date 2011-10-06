@@ -45,8 +45,8 @@
 
 /* codec private data */
 struct sn95031_priv {
-	uint8_t sysclk;
-	uint8_t pcmclk;
+	uint8_t clk_src;
+	enum sn95031_pll_status  pll_state;
 };
 void *audio_adc_handle;
 unsigned int sn95031_lp_flag;
@@ -112,6 +112,33 @@ static inline int sn95031_write(struct snd_soc_codec *codec,
 	return ret;
 }
 
+static void sn95031_configure_pll(struct snd_soc_codec *codec, int operation)
+{
+	struct sn95031_priv *sn95031_ctx;
+	sn95031_ctx = snd_soc_codec_get_drvdata(codec);
+
+	if (operation) {
+		pr_debug("enabling PLL\n");
+		snd_soc_write(codec, SN95031_AUDPLLCTRL, 0);
+		/* PLL takes few msec to stabilize
+		Refer sec2.3 MFLD Audio Interface Doc-rev0.7 */
+		msleep(10);
+		snd_soc_write(codec, SN95031_AUDPLLCTRL,
+					(sn95031_ctx->clk_src)<<2);
+		msleep(10);
+		snd_soc_update_bits(codec, SN95031_AUDPLLCTRL, BIT(1), BIT(1));
+		msleep(10);
+		snd_soc_update_bits(codec, SN95031_AUDPLLCTRL, BIT(5), BIT(5));
+		msleep(10);
+		sn95031_ctx->pll_state = PLL_ENABLED;
+	} else {
+		pr_debug("disabling PLL\n");
+		sn95031_ctx->clk_src = SN95031_INVALID;
+		sn95031_ctx->pll_state = PLL_DISABLED;
+		snd_soc_write(codec, SN95031_AUDPLLCTRL, 0);
+	}
+}
+
 static int sn95031_set_vaud_bias(struct snd_soc_codec *codec,
 		enum snd_soc_bias_level level)
 {
@@ -123,16 +150,9 @@ static int sn95031_set_vaud_bias(struct snd_soc_codec *codec,
 		break;
 
 	case SND_SOC_BIAS_PREPARE:
-		if (codec->dapm.bias_level == SND_SOC_BIAS_STANDBY) {
+		if (sn95031_ctx->pll_state == PLL_ENABLE_PENDING) {
 			pr_debug("vaud_bias powering up pll\n");
-			if (sn95031_ctx->sysclk == SN95031_PCM1BCLK) {
-				pr_debug("using PCM1 bit clock\n");
-				snd_soc_write(codec, SN95031_AUDPLLCTRL,
-								BIT(3));
-			}
-			/* power up the pll */
-			snd_soc_update_bits(codec, SN95031_AUDPLLCTRL,
-						BIT(5)|BIT(1), BIT(5)|BIT(1));
+			sn95031_configure_pll(codec, ENABLE_PLL);
 		}
 		break;
 
@@ -146,9 +166,7 @@ static int sn95031_set_vaud_bias(struct snd_soc_codec *codec,
 			/* turn off pcm */
 			pr_debug("vaud_bias power dn pcm\n");
 			/* disable PCM1 and PCM2 ports*/
-			snd_soc_update_bits(codec, SN95031_PCM1C3, BIT(0), 0);
 			snd_soc_update_bits(codec, SN95031_PCM2C2, BIT(0), 0);
-			snd_soc_write(codec, SN95031_AUDPLLCTRL, 0);
 		}
 		break;
 
@@ -740,13 +758,36 @@ static int sn95031_pcm_spkr_mute(struct snd_soc_dai *dai, int mute)
 	return 0;
 }
 
-static int sn95031_dai_sysclk(struct snd_soc_dai *codec_dai,
-				int clk_id, unsigned int freq, int dir)
+static int sn95031_set_dai_pll(struct snd_soc_dai *codec_dai, int pll_id,
+		int source, unsigned int freq_in, unsigned int freq_out)
 {
+	struct snd_soc_codec *codec = codec_dai->codec;
 	struct sn95031_priv *sn95031_ctx;
-	pr_debug("updating audio sysclk\n");
 	sn95031_ctx = snd_soc_codec_get_drvdata(codec_dai->codec);
-	sn95031_ctx->sysclk = clk_id;
+
+	pr_debug("set_dai_pll\n");
+
+	mutex_lock(&codec->mutex);
+	if (!freq_in || !freq_out) {
+		/* disable PLL  */
+		sn95031_configure_pll(codec, DISABLE_PLL);
+		mutex_unlock(&codec->mutex);
+		return 0;
+	}
+	/* clock source is same, so don't do anything */
+	if (sn95031_ctx->clk_src == source) {
+		pr_debug("clk src is same, no action\n");
+		mutex_unlock(&codec->mutex);
+		return 0;
+	}
+	sn95031_ctx->clk_src = source;
+	if (codec->dapm.bias_level >= SND_SOC_BIAS_PREPARE) {
+		pr_debug("bias_level is active, enabling pll\n");
+		sn95031_configure_pll(codec, ENABLE_PLL);
+	} else
+		sn95031_ctx->pll_state = PLL_ENABLE_PENDING;
+
+	mutex_unlock(&codec->mutex);
 	return 0;
 }
 
@@ -796,7 +837,6 @@ int sn95031_pcm_hw_params(struct snd_pcm_substream *substream,
 		return -EINVAL;
 	}
 	snd_soc_update_bits(dai->codec, SN95031_PCM1C1, BIT(7), rate);
-	sn95031_dai_sysclk(dai, SN95031_PLLIN, 0, SND_SOC_CLOCK_IN);
 
 	return 0;
 }
@@ -866,7 +906,14 @@ int sn95031_voice_hw_params(struct snd_pcm_substream *substream,
 
 	/* enable pcm 1 */
 	snd_soc_update_bits(dai->codec, SN95031_PCM1C3, BIT(0), BIT(0));
-	sn95031_dai_sysclk(dai, SN95031_PCM1BCLK, 0, SND_SOC_CLOCK_IN);
+	return 0;
+}
+
+int sn95031_voice_hw_free(struct snd_pcm_substream *substream,
+					struct snd_soc_dai *dai)
+{
+	pr_debug("inside hw_free");
+	snd_soc_update_bits(dai->codec, SN95031_PCM1C3, BIT(0), 0);
 	return 0;
 }
 
@@ -874,25 +921,30 @@ int sn95031_voice_hw_params(struct snd_pcm_substream *substream,
 static struct snd_soc_dai_ops sn95031_headset_dai_ops = {
 	.digital_mute	= sn95031_pcm_hs_mute,
 	.hw_params	= sn95031_pcm_hw_params,
+	.set_pll	= sn95031_set_dai_pll,
 };
 
 static struct snd_soc_dai_ops sn95031_speaker_dai_ops = {
 	.digital_mute	= sn95031_pcm_spkr_mute,
 	.hw_params	= sn95031_pcm_hw_params,
+	.set_pll	= sn95031_set_dai_pll,
 };
 
 static struct snd_soc_dai_ops sn95031_vib1_dai_ops = {
 	.hw_params	= sn95031_pcm_hw_params,
+	.set_pll	= sn95031_set_dai_pll,
 };
 
 static struct snd_soc_dai_ops sn95031_vib2_dai_ops = {
 	.hw_params	= sn95031_pcm_hw_params,
+	.set_pll	= sn95031_set_dai_pll,
 };
 
 static struct snd_soc_dai_ops sn95031_voice_dai_ops = {
 	.digital_mute	= sn95031_pcm_hs_mute,
 	.hw_params	= sn95031_voice_hw_params,
-	.set_sysclk	= sn95031_dai_sysclk,
+	.hw_free	= sn95031_voice_hw_free,
+	.set_pll	= sn95031_set_dai_pll,
 };
 
 struct snd_soc_dai_driver sn95031_dais[] = {
@@ -1077,6 +1129,9 @@ static int sn95031_codec_probe(struct snd_soc_codec *codec)
 		pr_err("codec ctx aloc failed\n");
 		return -ENOMEM;
 	}
+	sn95031_ctx->clk_src = SN95031_INVALID;
+	sn95031_ctx->pll_state = PLL_DISABLED;
+
 
 	/* PCM1 slot configurations*/
 	snd_soc_write(codec, SN95031_NOISEMUX, 0x0);

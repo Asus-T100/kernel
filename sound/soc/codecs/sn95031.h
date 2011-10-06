@@ -126,8 +126,18 @@
 #define SN95031_PLLIN 0x0
 #define SN95031_MODMCLK 0x1
 #define SN95031_PCM1BCLK 0x2
-#define SN95031_PCM2BCLK 0x3
+#define SN95031_RSVD 0x3
 #define SN95031_PCM1SYNC 0x04
+#define SN95031_INVALID 0x8
+
+#define DISABLE_PLL 0
+#define ENABLE_PLL 1
+
+enum sn95031_pll_status {
+	PLL_DISABLED,
+	PLL_ENABLE_PENDING,
+	PLL_ENABLED
+};
 
 struct mfld_jack_data {
 	int intr_id;
