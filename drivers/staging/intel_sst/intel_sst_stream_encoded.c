@@ -435,7 +435,7 @@ int sst_target_device_select(struct snd_sst_target_device *target)
 
 	pr_debug("Target Device Select\n");
 
-	if (target->device_route < 0 || target->device_route > 2) {
+	if (target->device_route > 2) {
 		pr_err("device route is invalid\n");
 		return -EINVAL;
 	}
