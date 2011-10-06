@@ -142,6 +142,7 @@ enum sc_reg_access_type {
 enum intel_sst_pll_mode {
 	SST_PLL_VOICE = 0x1,
 	SST_PLL_AUDIO = 0x2,
+	SST_PLL_AUDIENCE = 0x4,
 	SST_PLL_VIBRA1 = 0x8,
 	SST_PLL_VIBRA2 = 0x10,
 };

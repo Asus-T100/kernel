@@ -525,6 +525,16 @@ config APANIC_PLABEL
 	 If your platform uses a different flash partition label for storing
  	 crashdumps, enter it here.
 
+config A1026
+	tristate "Audience a1026/eS305 Voice Processor"
+	depends on I2C
+	help
+	  Provides an interface to the Audience voice processing
+	  unit via an I2C bus interface.
+
+	  To compile this driver as a module, choose M here: the module will
+	  be called a1026.
+
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
 source "drivers/misc/cb710/Kconfig"
