@@ -47,7 +47,6 @@ struct sn95031_priv {
 	uint8_t sysclk;
 	uint8_t pcmclk;
 };
-/* adc helper functions */
 
 /* enables mic bias voltage */
 static void sn95031_enable_mic_bias(struct snd_soc_codec *codec)
@@ -409,6 +408,70 @@ static const struct soc_enum sn95031_hsdrv_cfg_enum =
 static const struct snd_kcontrol_new sn95031_hsdrv_mux_control =
 	SOC_DAPM_ENUM("Route", sn95031_hsdrv_cfg_enum);
 
+static const char *sn95031_vibra_src_text[] = {"PWM", "SPI"};
+static const struct soc_enum sn95031_vibra1_src_enum =
+	SOC_ENUM_SINGLE(SN95031_VIB1C5, 0, 2, sn95031_vibra_src_text);
+static const struct snd_kcontrol_new sn95031_vibra1_src_control =
+	SOC_DAPM_ENUM("Route", sn95031_vibra1_src_enum);
+static const struct soc_enum sn95031_vibra2_src_enum =
+	SOC_ENUM_SINGLE(SN95031_VIB2C5, 0, 2, sn95031_vibra_src_text);
+static const struct snd_kcontrol_new sn95031_vibra2_src_control =
+	SOC_DAPM_ENUM("Route", sn95031_vibra2_src_enum);
+
+static const char *sn95031_vibra_dirn_text[] = {"Forward", "Forward & Reverse"};
+static const struct soc_enum sn95031_vibra1_dirn_enum =
+	SOC_ENUM_SINGLE(SN95031_VIB1C1, 0, 2, sn95031_vibra_dirn_text);
+static const struct soc_enum sn95031_vibra2_dirn_enum =
+	SOC_ENUM_SINGLE(SN95031_VIB2C1, 0, 2, sn95031_vibra_dirn_text);
+static const char *sn95031_vibra_boost_text[] = {"0", "1", "2", "4",
+						 "8", "16", "32", "64"};
+static const struct soc_enum sn95031_vibra1_boost_enum =
+	SOC_ENUM_SINGLE(SN95031_VIB1C3, 4, 8, sn95031_vibra_boost_text);
+static const struct soc_enum sn95031_vibra2_boost_enum =
+	SOC_ENUM_SINGLE(SN95031_VIB2C3, 4, 8, sn95031_vibra_boost_text);
+static const char *sn95031_vibra_cycles_text[] = {"Off", "1", "2", "4",
+						 "8", "16", "32", "Infinite"};
+static const struct soc_enum sn95031_vibra1_cycles_enum =
+	SOC_ENUM_SINGLE(SN95031_VIB1C3, 0, 8, sn95031_vibra_cycles_text);
+static const struct soc_enum sn95031_vibra2_cycles_enum =
+	SOC_ENUM_SINGLE(SN95031_VIB2C3, 0, 8, sn95031_vibra_cycles_text);
+static const char *sn95031_vibra_duty_text[] = {"20", "22", "24", "26", "28",
+						"30", "32", "34", "36", "38",
+						"40", "42", "44", "46", "48",
+						"50", "52", "54", "56", "58",
+						"60", "62", "64", "66", "68",
+						"70", "75", "80", "85", "90",
+						"95", "100"};
+static const struct soc_enum sn95031_vibra1_duty_enum =
+	SOC_ENUM_SINGLE(SN95031_VIB1C1, 3, 32, sn95031_vibra_duty_text);
+static const struct soc_enum sn95031_vibra2_duty_enum =
+	SOC_ENUM_SINGLE(SN95031_VIB2C1, 3, 32, sn95031_vibra_duty_text);
+static const char *sn95031_vibra_on_text[] = {"0.05", "0.10", "0.15", "0.20",
+					"0.25", "0.30", "0.35", "0.40",
+					"0.45", "0.50", "0.75", "1.00",
+					"1.25", "1.5", "2.00", "Infinite"};
+static const struct soc_enum sn95031_vibra1_on_enum =
+	SOC_ENUM_SINGLE(SN95031_VIB1C2, 0, 32, sn95031_vibra_on_text);
+static const struct soc_enum sn95031_vibra2_on_enum =
+	SOC_ENUM_SINGLE(SN95031_VIB2C2, 0, 32, sn95031_vibra_on_text);
+static const char *sn95031_vibra_off_text[] = {"0.00", "0.05", "0.10", "0.15",
+					"0.20", "0.25", "0.30", "0.35",
+					"0.40", "0.45", "0.50", "0.75"
+					"1.00", "1.25", "1.50", "2.00"};
+static const struct soc_enum sn95031_vibra1_off_enum =
+	SOC_ENUM_SINGLE(SN95031_VIB1C2, 4, 32, sn95031_vibra_off_text);
+static const struct soc_enum sn95031_vibra2_off_enum =
+	SOC_ENUM_SINGLE(SN95031_VIB2C2, 4, 32, sn95031_vibra_off_text);
+static const char *sn95031_vibra_start_text[] = {"Off", "On"};
+static const struct soc_enum sn95031_vibra1_start_enum =
+	SOC_ENUM_SINGLE(SN95031_VIB1C1, 2, 2, sn95031_vibra_start_text);
+static const struct soc_enum sn95031_vibra2_start_enum =
+	SOC_ENUM_SINGLE(SN95031_VIB2C1, 2, 2, sn95031_vibra_start_text);
+static const struct soc_enum sn95031_vibra1_brake_enum =
+	SOC_ENUM_SINGLE(SN95031_VIB1C1, 1, 2, sn95031_vibra_start_text);
+static const struct soc_enum sn95031_vibra2_brake_enum =
+	SOC_ENUM_SINGLE(SN95031_VIB2C1, 1, 2, sn95031_vibra_start_text);
+
 static const struct snd_kcontrol_new sn95031_snd_controls[] = {
 	SOC_ENUM("Mic1Mode Capture Route", sn95031_micmode1_enum),
 	SOC_ENUM("Mic2Mode Capture Route", sn95031_micmode2_enum),
@@ -429,6 +492,23 @@ static const struct snd_kcontrol_new sn95031_snd_controls[] = {
 				SN95031_IHFRVOLCTRL, 0, 71, 1, out_tlv),
 	SOC_DOUBLE_R("Speaker Playback Switch", SN95031_IHFLVOLCTRL,
 				SN95031_IHFRVOLCTRL, 7, 1, 0),
+
+	SOC_ENUM("Vibra1 Direction", sn95031_vibra1_dirn_enum),
+	SOC_ENUM("Vibra1 Boost Time", sn95031_vibra1_boost_enum),
+	SOC_ENUM("Vibra1 Cycle Count", sn95031_vibra1_cycles_enum),
+	SOC_ENUM("Vibra1 Duty Cycle", sn95031_vibra1_duty_enum),
+	SOC_ENUM("Vibra1 On Time", sn95031_vibra1_on_enum),
+	SOC_ENUM("Vibra1 Off Time", sn95031_vibra1_off_enum),
+	SOC_ENUM("Vibra1 Start", sn95031_vibra1_start_enum),
+	SOC_ENUM("Vibra1 Brake", sn95031_vibra1_brake_enum),
+	SOC_ENUM("Vibra2 Direction", sn95031_vibra2_dirn_enum),
+	SOC_ENUM("Vibra2 Boost Time", sn95031_vibra2_boost_enum),
+	SOC_ENUM("Vibra2 Cycle Count", sn95031_vibra2_cycles_enum),
+	SOC_ENUM("Vibra2 Duty Cycle", sn95031_vibra2_duty_enum),
+	SOC_ENUM("Vibra2 On Time", sn95031_vibra2_on_enum),
+	SOC_ENUM("Vibra2 Off Time", sn95031_vibra2_off_enum),
+	SOC_ENUM("Vibra2 Start", sn95031_vibra2_start_enum),
+	SOC_ENUM("Vibra2 Brake", sn95031_vibra2_brake_enum),
 };
 
 /* DAPM widgets */
@@ -455,6 +535,8 @@ static const struct snd_soc_dapm_widget sn95031_dapm_widgets[] = {
 	SND_SOC_DAPM_INPUT("DMIC6"),
 	SND_SOC_DAPM_INPUT("LINEINL"),
 	SND_SOC_DAPM_INPUT("LINEINR"),
+	SND_SOC_DAPM_INPUT("VIB1SPI"), /* SPI controller as i/p for vibra */
+	SND_SOC_DAPM_INPUT("VIB2SPI"),
 
 	SND_SOC_DAPM_MICBIAS("AMIC1Bias", SN95031_MICBIAS, 2, 0),
 	SND_SOC_DAPM_MICBIAS("AMIC2Bias", SN95031_MICBIAS, 3, 0),
@@ -530,6 +612,10 @@ static const struct snd_soc_dapm_widget sn95031_dapm_widgets[] = {
 			SN95031_VIB1C5, 1, 0),
 	SND_SOC_DAPM_DAC("Vibra2 DAC", "Vibra2",
 			SN95031_VIB2C5, 1, 0),
+	SND_SOC_DAPM_MUX("Vibra1 Enable Mux",
+			SND_SOC_NOPM, 0, 0, &sn95031_vibra1_src_control),
+	SND_SOC_DAPM_MUX("Vibra2 Enable Mux",
+			SND_SOC_NOPM, 0, 0, &sn95031_vibra2_src_control),
 
 	/* capture widgets */
 	SND_SOC_DAPM_PGA("LineIn Enable Left", SN95031_MICAMP1,
@@ -609,10 +695,14 @@ static const struct snd_soc_dapm_route sn95031_audio_map[] = {
 
 	/* vibra map */
 	{ "VIB1OUT", NULL, "Vibra1 Playback"},
-	{ "Vibra1 Playback", NULL, "Vibra1 DAC"},
+	{ "Vibra1 Playback", NULL, "Vibra1 Enable Mux"},
+	{ "Vibra1 Enable Mux", "SPI", "VIB1SPI"},
+	{ "Vibra1 Enable Mux", "PWM", "Vibra1 DAC"},
 
 	{ "VIB2OUT", NULL, "Vibra2 Playback"},
-	{ "Vibra2 Playback", NULL, "Vibra2 DAC"},
+	{ "Vibra2 Playback", NULL, "Vibra2 Enable Mux"},
+	{ "Vibra2 Enable Mux", "SPI", "VIB2SPI"},
+	{ "Vibra2 Enable Mux", "PWM", "Vibra2 DAC"},
 
 	/* lineout */
 	{ "LINEOUTL", NULL, "Lineout Left Playback"},
