@@ -602,8 +602,8 @@ static inline void sst_init_stream(struct stream_info *stream,
 static inline int sst_validate_strid(int str_id)
 {
 	if (str_id <= 0 || str_id > sst_drv_ctx->max_streams) {
-		pr_err("SST ERR: invalid stream id : %d MAX_STREAMS:%d\n",
-					str_id, sst_drv_ctx->max_streams);
+		pr_err("SST ERR: invalid stream id : %d\n",
+					str_id);
 		return -EINVAL;
 	} else
 		return 0;

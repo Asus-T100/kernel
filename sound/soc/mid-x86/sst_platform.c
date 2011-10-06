@@ -196,7 +196,7 @@ static int sst_platform_alloc_stream(struct snd_pcm_substream *substream)
 	}
 	ret_val = stream->sstdrv_ops->pcm_control->open(&str_params);
 	pr_debug("SST_SND_PLAY/CAPTURE ret_val = %x\n", ret_val);
-	if (ret_val < 0)
+	if (ret_val <= 0)
 		return ret_val;
 
 	stream->stream_info.str_id = ret_val;
@@ -340,7 +340,7 @@ static int sst_platform_pcm_prepare(struct snd_pcm_substream *substream)
 	}
 
 	ret_val = sst_platform_alloc_stream(substream);
-	if (ret_val < 0)
+	if (ret_val <= 0)
 		return ret_val;
 	snprintf(substream->pcm->id, sizeof(substream->pcm->id),
 			"%d", stream->stream_info.str_id);
