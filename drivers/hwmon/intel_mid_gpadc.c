@@ -388,14 +388,13 @@ int intel_mid_gpadc_sample(void *handle, int sample_count, ...)
 			ret = -ETIMEDOUT;
 			goto fail;
 		}
+		gpadc_set_bits(ADC1CNTL3, ADC1CNTL3_RRDATARD);
 		for (i = 0; i < rq->count; ++i) {
 			tmp = 0;
-			gpadc_set_bits(ADC1CNTL3, ADC1CNTL3_RRDATARD);
 			gpadc_read(ADC1SNS0H + 2 * rq->addr[i], &data);
 			tmp += data << 2;
 			gpadc_read(ADC1SNS0H + 2 * rq->addr[i] + 1, &data);
 			tmp += data & 0x3;
-			gpadc_clear_bits(ADC1CNTL3, ADC1CNTL3_RRDATARD);
 
 			/**
 			 * Using the calibration data, we have the voltage and
@@ -409,6 +408,7 @@ int intel_mid_gpadc_sample(void *handle, int sample_count, ...)
 				tmp -= mgi->izse + mgi->ige * tmp / 1023;
 			*val[i] += tmp;
 		}
+		gpadc_clear_bits(ADC1CNTL3, ADC1CNTL3_RRDATARD);
 		mgi->rnd_done = 0;
 	}
 
