@@ -70,6 +70,7 @@ enum sst_states {
 #define SST_ISRD		0x20 /* dummy register for shim workaround */
 #define SST_SHIM_SIZE		0X44
 #define SST_CLKCTL		0x78
+#define SST_CSR2		0x80
 
 #define SPI_MODE_ENABLE_BASE_ADDR 0xffae4000
 #define FW_SIGNATURE_SIZE	4

@@ -325,6 +325,7 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
  		}
 	} else if (sst_drv_ctx->pci_id == SST_MFLD_PCI_ID) {
 		u32 csr;
+		u32 csr2;
 		u32 clkctl;
 
 		/*allocate mem for fw context save during suspend*/
@@ -348,6 +349,10 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 		clkctl |= ((1<<16)|(1<<17));
 		sst_shim_write(sst_drv_ctx->shim, SST_CLKCTL, clkctl);
 
+		/* set SSP0 & SSP1 disable DMA Finish*/
+		csr2 = sst_shim_read(sst_drv_ctx->shim, SST_CSR2);
+		csr2 |= BIT(1)|BIT(2);
+		sst_shim_write(sst_drv_ctx->shim, SST_CSR2, csr2);
 	}
 	sst_drv_ctx->lpe_stalled = 0;
 	pci_set_drvdata(pci, sst_drv_ctx);
