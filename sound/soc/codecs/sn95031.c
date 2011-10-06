@@ -1056,51 +1056,9 @@ static int sn95031_get_headset_state(struct snd_soc_jack *mfld_jack)
 		sn95031_enable_jack_btn(mfld_jack->codec);
 	return jack_type;
 }
-
-void sn95031_jack_detection(struct mfld_jack_data *jack_data)
+void sn95031_jack_report(struct mfld_jack_data *jack_data, unsigned int status)
 {
-	unsigned int status, voltage;
 	unsigned int mask = SND_JACK_BTN_0 | SND_JACK_BTN_1 | SND_JACK_HEADSET;
-
-	pr_debug("interrupt id read in sram = 0x%x\n", jack_data->intr_id);
-	if (jack_data->intr_id & 0x1) {
-		pr_debug("short_push detected\n");
-		if (sn95031_lp_flag) {
-			snd_soc_jack_report(jack_data->mfld_jack,
-						SND_JACK_HEADSET, mask);
-			sn95031_lp_flag = 0;
-			return;
-		} else
-			status = SND_JACK_HEADSET | SND_JACK_BTN_0;
-	} else if (jack_data->intr_id & 0x2) {
-		pr_debug("long_push detected\n");
-		/* we get spurious intterupts if jack key is held down
-		* so we ignore them untill key is released by
-		* checking the voltage level */
-		if (sn95031_lp_flag) {
-			voltage = sn95031_read_voltage();
-			if (voltage > 400) {
-				snd_soc_jack_report(jack_data->mfld_jack,
-							SND_JACK_HEADSET, mask);
-				sn95031_lp_flag = 0; /* button released */
-			}
-			return;
-		}
-		status = SND_JACK_HEADSET | SND_JACK_BTN_1;
-		sn95031_lp_flag = 1;
-	} else if (jack_data->intr_id & 0x4) {
-		pr_debug("headset or headphones inserted\n");
-		status = sn95031_get_headset_state(jack_data->mfld_jack);
-	} else if (jack_data->intr_id & 0x8) {
-		pr_debug("headset or headphones removed, disabling btn and enabling JACKDET\n");
-		status = 0;
-		sn95031_disable_jack_btn(jack_data->mfld_jack->codec);
-		snd_soc_update_bits(jack_data->mfld_jack->codec,
-						SN95031_ACCDETMASK, BIT(2), 0);
-	} else {
-		pr_err("unidentified interrupt\n");
-		return;
-	}
 
 	if ((status == SND_JACK_HEADSET) | (status == SND_JACK_HEADPHONE)) {
 		pr_debug("detected headset or headphone, disabling JACKDET\n");
@@ -1130,6 +1088,58 @@ void sn95031_jack_detection(struct mfld_jack_data *jack_data)
 	if (status & SND_JACK_BTN_0)
 		snd_soc_jack_report(jack_data->mfld_jack,
 				SND_JACK_HEADSET, mask);
+	return;
+}
+
+void sn95031_jack_detection(struct mfld_jack_data *jack_data)
+{
+	unsigned int status, voltage;
+	unsigned int mask = SND_JACK_BTN_0 | SND_JACK_BTN_1 | SND_JACK_HEADSET;
+
+	pr_debug("interrupt id read in sram = 0x%x\n", jack_data->intr_id);
+	if (jack_data->intr_id & 0x1) {
+		pr_debug("short_push detected\n");
+		if (sn95031_lp_flag) {
+			snd_soc_jack_report(jack_data->mfld_jack,
+						SND_JACK_HEADSET, mask);
+			sn95031_lp_flag = 0;
+			return;
+		} else
+			status = SND_JACK_HEADSET | SND_JACK_BTN_0;
+		sn95031_jack_report(jack_data, status);
+	}
+	if (jack_data->intr_id & 0x2) {
+		pr_debug("long_push detected\n");
+		/* we get spurious intterupts if jack key is held down
+		* so we ignore them untill key is released by
+		* checking the voltage level */
+		if (sn95031_lp_flag) {
+			voltage = sn95031_read_voltage();
+			if (voltage > 400) {
+				snd_soc_jack_report(jack_data->mfld_jack,
+							SND_JACK_HEADSET, mask);
+				sn95031_lp_flag = 0; /* button released */
+			}
+			return;
+		}
+		status = SND_JACK_HEADSET | SND_JACK_BTN_1;
+		sn95031_lp_flag = 1;
+		sn95031_jack_report(jack_data, status);
+	}
+	if (jack_data->intr_id & 0x4) {
+		pr_debug("headset or headphones inserted\n");
+		status = sn95031_get_headset_state(jack_data->mfld_jack);
+		sn95031_jack_report(jack_data, status);
+	}
+	if (jack_data->intr_id & 0x8) {
+		pr_debug("headset or headphones removed, disabling btn and enabling JACKDET\n");
+		status = 0;
+		sn95031_disable_jack_btn(jack_data->mfld_jack->codec);
+		snd_soc_update_bits(jack_data->mfld_jack->codec,
+						SN95031_ACCDETMASK, BIT(2), 0);
+		sn95031_jack_report(jack_data, status);
+	}
+	return;
 }
 EXPORT_SYMBOL_GPL(sn95031_jack_detection);
 

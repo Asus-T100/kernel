@@ -346,8 +346,13 @@ static irqreturn_t snd_mfld_jack_detection(int irq, void *data)
 	struct mfld_mc_private *mc_drv_ctx = (struct mfld_mc_private *) data;
 	u8 status;
 
-	if (mfld_jack.codec == NULL)
+	if (mfld_jack.codec == NULL) {
+		spin_lock(&mc_drv_ctx->lock);
+		mc_drv_ctx->interrupt_status = 0;
+		pr_debug("codec Null returning..\n");
+		spin_unlock(&mc_drv_ctx->lock);
 		return IRQ_HANDLED;
+	}
 	spin_lock(&mc_drv_ctx->lock);
 	if (!mc_drv_ctx->interrupt_status) {
 		pr_err("Intr with status 0, return....\n");
