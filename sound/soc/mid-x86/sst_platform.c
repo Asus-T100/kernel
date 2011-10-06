@@ -351,7 +351,7 @@ func_exit:
 static int sst_platform_pcm_prepare(struct snd_pcm_substream *substream)
 {
 	struct sst_runtime_stream *stream;
-	int ret_val = 0, str_id;
+	int ret_val = 0;
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct snd_soc_dai_link *dai_link = rtd->dai_link;
 
@@ -362,7 +362,6 @@ static int sst_platform_pcm_prepare(struct snd_pcm_substream *substream)
 		return ret_val;
 	}
 	stream = substream->runtime->private_data;
-	str_id = stream->stream_info.str_id;
 	if (stream->stream_info.str_id)
 		return ret_val;
 

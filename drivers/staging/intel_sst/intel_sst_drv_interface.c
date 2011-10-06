@@ -274,8 +274,6 @@ int sst_get_stream(struct snd_sst_params *str_param)
 	retval = sst_get_stream_allocated(str_param, &lib_dnld);
 	if (retval == -(SST_LIB_ERR_LIB_DNLD_REQUIRED)) {
 		/* codec download is required */
-		struct snd_sst_alloc_response *response;
-
 		pr_debug("Codec is required.... trying that\n");
 		if (lib_dnld == NULL) {
 			pr_err("lib download null!!! abort\n");
@@ -286,7 +284,6 @@ int sst_get_stream(struct snd_sst_params *str_param)
 			pr_err("sst: invalid value for number of stream\n ");
 			return -EINVAL;
 		}
-		response = sst_drv_ctx->alloc_block[i].ops_block.data;
 		pr_debug("alloc block allocated = %d\n", i);
 		if (i < 0) {
 			kfree(lib_dnld);
@@ -383,6 +380,10 @@ void sst_process_mad_ops(struct work_struct *work)
 		pr_err(" wrong control_ops reported\n");
 	}
 	kfree(mad_ops);
+
+	if (retval)
+		pr_err("%s(): op: %d, retval: %d\n",
+				__func__, mad_ops->control_op, retval );
 	return;
 }
 

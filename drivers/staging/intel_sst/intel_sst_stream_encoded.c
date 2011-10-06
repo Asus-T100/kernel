@@ -559,7 +559,7 @@ static int sst_create_sg_list(struct stream_info *stream,
  */
 int sst_play_frame(int str_id)
 {
-	int i = 0, retval = 0;
+	int retval = 0;
 	struct ipc_post *msg = NULL;
 	struct sst_frame_info sg_list = {0};
 	struct sst_stream_bufs *kbufs = NULL, *_kbufs;
@@ -614,7 +614,7 @@ int sst_play_frame(int str_id)
 	}
 
 	/* create list */
-	i = sst_create_sg_list(stream, &sg_list);
+	sst_create_sg_list(stream, &sg_list);
 
 	/* post msg */
 	if (sst_create_large_msg(&msg))
@@ -641,7 +641,7 @@ int sst_play_frame(int str_id)
  */
 int sst_capture_frame(int str_id)
 {
-	int i = 0, retval = 0;
+	int retval = 0;
 	struct ipc_post *msg = NULL;
 	struct sst_frame_info sg_list = {0};
 	struct sst_stream_bufs *kbufs = NULL, *_kbufs;
@@ -681,7 +681,7 @@ int sst_capture_frame(int str_id)
 		return 0;
 	}
 	/* create new sg list */
-	i = sst_create_sg_list(stream, &sg_list);
+	sst_create_sg_list(stream, &sg_list);
 
 	/* post msg */
 	if (sst_create_large_msg(&msg))

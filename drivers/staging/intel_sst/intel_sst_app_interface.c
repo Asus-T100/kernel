@@ -403,8 +403,6 @@ static int snd_sst_fill_kernel_list(struct stream_info *stream,
 	unsigned char __user *bufp;
 	unsigned long size, copied_size;
 	int retval = 0, add_to_list = 0;
-	static int sent_offset;
-	static unsigned long sent_index;
 
 #ifdef CONFIG_MRST_RAR_HANDLER
 	if (stream->ops == STREAM_OPS_PLAYBACK_DRM) {
@@ -443,9 +441,6 @@ static int snd_sst_fill_kernel_list(struct stream_info *stream,
 	bufp = stream->cur_ptr;
 
 	copied_size = 0;
-
-	if (!stream->sg_index)
-		sent_index = sent_offset = 0;
 
 	for (index = stream->sg_index; index < nr_segs; index++) {
 		stream->sg_index = index;
@@ -1092,13 +1087,6 @@ long intel_sst_ioctl(struct file *file_ptr, unsigned int cmd, unsigned long arg)
 			pr_debug("SET_STREAM_PARAMS received!\n");
 			/* allocated set params only */
 			retval = sst_set_stream_param(str_id, &str_param);
-			/* Block the call for reply */
-			if (!retval) {
-				int sfreq = 0, word_size = 0, num_channel = 0;
-				sfreq =	str_param.sparams.uc.pcm_params.sfreq;
-				word_size = str_param.sparams.uc.pcm_params.pcm_wd_sz;
-				num_channel = str_param.sparams.uc.pcm_params.num_chan;
-			}
 		}
 		break;
 	}
@@ -1221,7 +1209,7 @@ long intel_sst_ioctl(struct file *file_ptr, unsigned int cmd, unsigned long arg)
 
 	case _IOC_NR(SNDRV_SST_STREAM_GET_TSTAMP): {
 		struct snd_sst_tstamp tstamp = {0};
-		unsigned long long time, freq, mod;
+		unsigned long long time;
 
 		pr_debug("SNDRV_SST_STREAM_GET_TSTAMP received!\n");
 		if (minor != STREAM_MODULE) {
@@ -1231,10 +1219,7 @@ long intel_sst_ioctl(struct file *file_ptr, unsigned int cmd, unsigned long arg)
 		memcpy_fromio(&tstamp,
 			sst_drv_ctx->mailbox + SST_TIME_STAMP + str_id * sizeof(tstamp),
 			sizeof(tstamp));
-		time = tstamp.samples_rendered;
-		freq = (unsigned long long) tstamp.sampling_frequency;
-		time = time * 1000; /* converting it to ms */
-		mod = do_div(time, freq);
+		time = tstamp.samples_rendered * 1000;
 		if (copy_to_user((void __user *)arg, &time,
 				sizeof(unsigned long long)))
 			retval = -EFAULT;

@@ -222,14 +222,11 @@ void sst_process_message(struct work_struct *work)
 
 	case IPC_SST_GET_PLAY_FRAMES:
 		if (sst_drv_ctx->pci_id == SST_MRST_PCI_ID) {
-			struct stream_info *stream ;
-
 			if (sst_validate_strid(str_id)) {
 				pr_err("strid %d invalid\n", str_id);
 				break;
 			}
 			/* call sst_play_frame */
-			stream = &sst_drv_ctx->streams[str_id];
 			pr_debug("sst_play_frames for %d\n",
 					msg->header.part.str_id);
 			mutex_lock(&sst_drv_ctx->streams[str_id].lock);
