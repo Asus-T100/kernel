@@ -727,12 +727,13 @@ static int sn95031_dai_sysclk(struct snd_soc_dai *codec_dai,
 	return 0;
 }
 
-int sn95031_pcm_hw_params(struct snd_pcm_substream *substream,
-		struct snd_pcm_hw_params *params, struct snd_soc_dai *dai)
+static int sn95031_codec_set_params(struct snd_soc_codec *codec,
+						unsigned int param)
 {
-	unsigned int format, rate;
+	unsigned int format;
 
-	switch (params_format(params)) {
+	pr_debug("updating param\n");
+	switch (param) {
 	case SNDRV_PCM_FORMAT_S16_LE:
 		format = BIT(4)|BIT(5);
 		break;
@@ -743,9 +744,19 @@ int sn95031_pcm_hw_params(struct snd_pcm_substream *substream,
 	default:
 		return -EINVAL;
 	}
-	snd_soc_update_bits(dai->codec, SN95031_PCM2C2,
+	snd_soc_update_bits(codec, SN95031_PCM2C2,
 			BIT(4)|BIT(5), format);
+	/* enable pcm 2 */
+	snd_soc_update_bits(codec, SN95031_PCM2C2, BIT(0), BIT(0));
+	return 0;
+}
 
+int sn95031_pcm_hw_params(struct snd_pcm_substream *substream,
+		struct snd_pcm_hw_params *params, struct snd_soc_dai *dai)
+{
+	unsigned int rate;
+
+	pr_debug("pcm_hw param\n");
 	switch (params_rate(params)) {
 	case 48000:
 		pr_debug("RATE_48000\n");
@@ -763,11 +774,10 @@ int sn95031_pcm_hw_params(struct snd_pcm_substream *substream,
 	}
 	snd_soc_update_bits(dai->codec, SN95031_PCM1C1, BIT(7), rate);
 	sn95031_dai_sysclk(dai, SN95031_PLLIN, 0, SND_SOC_CLOCK_IN);
-	/* enable pcm 2 */
-	snd_soc_update_bits(dai->codec, SN95031_PCM2C2, BIT(0), BIT(0));
 
 	return 0;
 }
+
 int sn95031_voice_hw_params(struct snd_pcm_substream *substream,
 		struct snd_pcm_hw_params *params, struct snd_soc_dai *dai)
 {
@@ -1083,6 +1093,7 @@ struct snd_soc_codec_driver sn95031_codec = {
 	.read		= sn95031_read,
 	.write		= sn95031_write,
 	.set_bias_level	= sn95031_set_vaud_bias,
+	.set_params	= sn95031_codec_set_params,
 	.dapm_widgets	= sn95031_dapm_widgets,
 	.num_dapm_widgets	= ARRAY_SIZE(sn95031_dapm_widgets),
 	.dapm_routes	= sn95031_audio_map,

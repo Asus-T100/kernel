@@ -439,6 +439,17 @@ static snd_pcm_uframes_t sst_platform_pcm_pointer
 static int sst_platform_pcm_hw_params(struct snd_pcm_substream *substream,
 		struct snd_pcm_hw_params *params)
 {
+	int ret;
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_codec *codec = rtd->codec;
+
+	/* Force the data width to 24 bit in MSIC. Post Processing algorithms
+	   in DSP enabled with 24 bit precision */
+	ret = snd_soc_codec_set_params(codec, SNDRV_PCM_FORMAT_S24_LE);
+	if (ret < 0) {
+		pr_debug("codec set_params returned error\n");
+		return ret;
+	}
 	snd_pcm_lib_malloc_pages(substream, params_buffer_bytes(params));
 	memset(substream->runtime->dma_area, 0, params_buffer_bytes(params));
 
