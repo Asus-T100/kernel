@@ -471,6 +471,9 @@ void sst_save_dsp_context(void)
 int intel_sst_suspend(struct pci_dev *pci, pm_message_t state)
 {
 	union config_status_reg csr;
+	u32 *ipc_wbuf;
+	u8 cbuf[16] = { '\0' };
+	int ret = 0;
 
 	pr_debug("intel_sst_suspend called\n");
 
@@ -483,10 +486,19 @@ int intel_sst_suspend(struct pci_dev *pci, pm_message_t state)
 	/*Assert RESET on LPE Processor*/
 	csr.full = sst_shim_read(sst_drv_ctx->shim, SST_CSR);
 	csr.full = csr.full | 0x2;
+
+	ipc_wbuf = (u32 *)&cbuf;
+	cbuf[0] = 0; /* OSC_CLK_OUT0 */
+	cbuf[1] = 0; /* Disable the clock */
+
 	/* Move the SST state to Suspended */
 	mutex_lock(&sst_drv_ctx->sst_lock);
 	sst_drv_ctx->sst_state = SST_SUSPENDED;
 	sst_shim_write(sst_drv_ctx->shim, SST_CSR, csr.full);
+	/* send ipc command to disable the PNW clock to MSIC PLLIN */
+	ret = intel_scu_ipc_command(0xE6, 0, ipc_wbuf, 2, NULL, 0);
+	if (ret != 0)
+		pr_err("ipc clk disable command failed\n");
 	mutex_unlock(&sst_drv_ctx->sst_lock);
 	pci_set_drvdata(pci, sst_drv_ctx);
 	pci_save_state(pci);
@@ -505,6 +517,8 @@ int intel_sst_suspend(struct pci_dev *pci, pm_message_t state)
 int intel_sst_resume(struct pci_dev *pci)
 {
 	int ret = 0;
+	u32 *ipc_wbuf;
+	u8 cbuf[16] = { '\0' };
 
 	pr_debug("intel_sst_resume called\n");
 	if (sst_drv_ctx->sst_state != SST_SUSPENDED) {
@@ -517,6 +531,13 @@ int intel_sst_resume(struct pci_dev *pci)
 	ret = pci_enable_device(pci);
 	if (ret)
 		pr_err("device can't be enabled\n");
+
+	ipc_wbuf = (u32 *)&cbuf;
+	cbuf[0] = 0; /* OSC_CLK_OUT0 */
+	cbuf[1] = 1; /* enable the clock, preserve clk ratio */
+	ret = intel_scu_ipc_command(0xE6, 0, ipc_wbuf, 2, NULL, 0);
+	if (ret != 0)
+		pr_err("ipc clk enable command failed\n");
 
 	mutex_lock(&sst_drv_ctx->sst_lock);
 	sst_drv_ctx->sst_state = SST_UN_INIT;
