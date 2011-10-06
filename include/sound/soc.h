@@ -274,6 +274,7 @@ void snd_soc_unregister_platform(struct device *dev);
 int snd_soc_register_codec(struct device *dev,
 		const struct snd_soc_codec_driver *codec_drv,
 		struct snd_soc_dai_driver *dai_drv, int num_dai);
+int snd_soc_codec_set_params(struct snd_soc_codec *codec, unsigned int param);
 void snd_soc_unregister_codec(struct device *dev);
 int snd_soc_codec_volatile_register(struct snd_soc_codec *codec,
 				    unsigned int reg);
@@ -605,6 +606,8 @@ struct snd_soc_codec_driver {
 	short reg_access_size;
 	const struct snd_soc_reg_access *reg_access_default;
 	enum snd_soc_compress_type compress_type;
+
+	int (*set_params)(struct snd_soc_codec *codec, unsigned int param);
 
 	/* codec bias level */
 	int (*set_bias_level)(struct snd_soc_codec *,
