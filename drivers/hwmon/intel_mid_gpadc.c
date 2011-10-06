@@ -37,7 +37,9 @@
 #include <asm/intel_scu_ipc.h>
 #include <asm/intel_mid_gpadc.h>
 
+#define VAUDACNT		0x0DB
 #define MCCINT			0x013
+#define IRQLVL1			0x002
 #define IRQLVL1MSK		0x021
 #define ADC1INT			0x003
 #define ADC1ADDR0		0x1C5
@@ -146,6 +148,31 @@ static inline int gpadc_write(u16 addr, u8 data)
 static inline int gpadc_read(u16 addr, u8 *data)
 {
 	return intel_scu_ipc_ioread8(addr, data);
+}
+
+static void gpadc_dump(struct gpadc_info *mgi)
+{
+	u8 data;
+	int i;
+
+	gpadc_read(VAUDACNT, &data);
+	dev_err(mgi->dev, "VAUDACNT: 0x%x\n", data);
+	gpadc_read(IRQLVL1MSK, &data);
+	dev_err(mgi->dev, "IRQLVL1MSK: 0x%x\n", data);
+	gpadc_read(IRQLVL1, &data);
+	dev_err(mgi->dev, "IRQLVL1: 0x%x\n", data);
+	gpadc_read(ADC1INT, &data);
+	dev_err(mgi->dev, "ADC1INT: 0x%x\n", data);
+	gpadc_read(ADC1CNTL1, &data);
+	dev_err(mgi->dev, "ADC1CNTL1: 0x%x\n", data);
+	gpadc_read(ADC1CNTL2, &data);
+	dev_err(mgi->dev, "ADC1CNTL2: 0x%x\n", data);
+	gpadc_read(ADC1CNTL3, &data);
+	dev_err(mgi->dev, "ADC1CNTL3: 0x%x\n", data);
+	for (i = 0; i < GPADC_CH_MAX; i++) {
+		gpadc_read(ADC1ADDR0+i, &data);
+		dev_err(mgi->dev, "ADC1ADDR[%d]: 0x%x\n", i, data);
+	}
 }
 
 static int gpadc_poweron(struct gpadc_info *mgi, int vref)
@@ -321,6 +348,7 @@ int intel_mid_gpadc_gsmpulse_sample(int *vol, int *cur)
 	gpadc_set_bits(ADC1CNTL2, ADC1CNTL2_ADCGSMEN);
 
 	if (wait_event_timeout(mgi->wait, mgi->gsmpulse_done, HZ) == 0) {
+		gpadc_dump(mgi);
 		dev_err(mgi->dev, "gsmpulse sample timeout\n");
 		ret = -ETIMEDOUT;
 		goto fail;
@@ -412,6 +440,7 @@ int intel_mid_gpadc_sample(void *handle, int sample_count, ...)
 	gpadc_set_bits(ADC1CNTL1, ADC1CNTL1_ADSTRT);
 	for (count = 0; count < sample_count; count++) {
 		if (wait_event_timeout(mgi->wait, mgi->rnd_done, HZ) == 0) {
+			gpadc_dump(mgi);
 			dev_err(mgi->dev, "sample timeout\n");
 			ret = -ETIMEDOUT;
 			goto fail;
