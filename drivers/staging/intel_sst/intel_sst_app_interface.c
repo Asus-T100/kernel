@@ -60,10 +60,6 @@
 static int intel_sst_check_device(void)
 {
 	int retval = 0;
-	if (sst_drv_ctx->pmic_state != SND_MAD_INIT_DONE) {
-		pr_warn("Sound card not available\n");
-		return -EIO;
-	}
 
 	if (sst_drv_ctx->sst_state == SST_UN_INIT) {
 		/* FW is not downloaded */

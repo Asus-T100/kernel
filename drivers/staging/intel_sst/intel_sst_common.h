@@ -75,12 +75,6 @@ enum sst_states {
 #define SPI_MODE_ENABLE_BASE_ADDR 0xffae4000
 #define FW_SIGNATURE_SIZE	4
 
-/* PMIC and SST hardware states */
-enum sst_mad_states {
-	SND_MAD_UN_INIT = 0,
-	SND_MAD_INIT_DONE,
-};
-
 /* stream states */
 enum sst_stream_states {
 	STREAM_UN_INIT	= 0,	/* Freed/Not used stream */
@@ -326,7 +320,6 @@ struct mad_ops_wq {
 /***
  * struct intel_sst_drv - driver ops
  *
- * @pmic_state : pmic state
  * @pmic_vendor : pmic vendor detected
  * @sst_state : current sst device state
  * @pci_id : PCI device id loaded
@@ -373,7 +366,6 @@ struct mad_ops_wq {
  * @max_streams : max streams allowed
  */
 struct intel_sst_drv {
-	bool			pmic_state;
 	int			pmic_vendor;
 	int			sst_state;
 	unsigned int		pci_id;

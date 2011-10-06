@@ -196,7 +196,6 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 
 	mutex_init(&sst_drv_ctx->stream_lock);
 	mutex_init(&sst_drv_ctx->sst_lock);
-	sst_drv_ctx->pmic_state = SND_MAD_UN_INIT;
 
 	sst_drv_ctx->stream_cnt = 0;
 	sst_drv_ctx->encoded_cnt = 0;
@@ -417,7 +416,6 @@ static void __devexit intel_sst_remove(struct pci_dev *pci)
 	iounmap(sst_drv_ctx->iram);
 	iounmap(sst_drv_ctx->mailbox);
 	iounmap(sst_drv_ctx->shim);
-	sst_drv_ctx->pmic_state = SND_MAD_UN_INIT;
 	if (sst_drv_ctx->pci_id == SST_MRST_PCI_ID) {
 		misc_deregister(&lpe_dev);
 		kfree(sst_drv_ctx->mmap_mem);

@@ -109,7 +109,6 @@ int sst_download_fw(void)
 	if (!sst_drv_ctx->fw) {
 		retval = request_firmware(&sst_drv_ctx->fw, name,
 				 &sst_drv_ctx->pci->dev);
-		pr_err("sst: requuest firmware %d\n", retval);
 		if (retval) {
 			pr_err("sst: request fw failed %d\n", retval);
 			return retval;
@@ -598,7 +597,6 @@ int register_sst_card(struct intel_sst_card_ops *card)
 		return -EINVAL;
 	}
 	sst_drv_ctx->pmic_vendor = card->vendor_id;
-	sst_drv_ctx->pmic_state = SND_MAD_INIT_DONE;
 	sst_drv_ctx->rx_time_slot_status = 0; /*default AMIC*/
 	card->pcm_control = sst_pmic_ops.pcm_control;
 	return 0;
@@ -614,10 +612,6 @@ EXPORT_SYMBOL_GPL(register_sst_card);
  */
 void unregister_sst_card(struct intel_sst_card_ops *card)
 {
-	if (sst_pmic_ops.pcm_control == card->pcm_control) {
-		/* unreg */
-		sst_drv_ctx->pmic_state = SND_MAD_UN_INIT;
-	}
 	return;
 }
 EXPORT_SYMBOL_GPL(unregister_sst_card);
