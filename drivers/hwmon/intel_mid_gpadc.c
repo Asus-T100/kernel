@@ -268,8 +268,8 @@ static void free_channel_addr(struct gpadc_info *mgi, int addr)
 
 /**
  * intel_mid_gpadc_gsmpulse_sample - do gpadc sample during gsm pulse.
- * @val: return the voltage value.
- * @cur: return the current value.
+ * @val: return the voltage value. caller should not access it before return.
+ * @cur: return the current value. caller should not access it before return.
  *
  * Returns 0 on success or an error code.
  *
@@ -336,6 +336,7 @@ EXPORT_SYMBOL(intel_mid_gpadc_gsmpulse_sample);
  * @handle: the gpadc handle
  * @sample_count: do sample serveral times and get the average value.
  * @...: sampling resulting arguments of all channels. refer to sscanf.
+ *       caller should not access it before return.
  *
  * Returns 0 on success or an error code.
  *
@@ -357,6 +358,7 @@ int intel_mid_gpadc_sample(void *handle, int sample_count, ...)
 	if (!mgi->initialized)
 		return -ENODEV;
 
+	mutex_lock(&mgi->lock);
 	va_start(args, sample_count);
 	for (i = 0; i < rq->count; i++) {
 		val[i] = va_arg(args, int*);
@@ -364,7 +366,6 @@ int intel_mid_gpadc_sample(void *handle, int sample_count, ...)
 	}
 	va_end(args);
 
-	mutex_lock(&mgi->lock);
 	pm_qos_add_request(&mgi->pm_qos_request,
 			   PM_QOS_CPU_DMA_LATENCY, PM_QOS_ADC_DRV_VALUE);
 	gpadc_poweron(mgi, rq->vref);
