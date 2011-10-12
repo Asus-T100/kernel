@@ -1109,7 +1109,7 @@ static int mt9m114_s_ctrl(struct v4l2_subdev *sd, struct v4l2_control *ctrl)
 	struct mt9m114_control *octrl = mt9m114_find_control(ctrl->id);
 	int ret;
 
-	if (octrl == NULL)
+	if (!octrl || !octrl->tweak)
 		return -EINVAL;
 
 	ret = octrl->tweak(sd, ctrl->value);
