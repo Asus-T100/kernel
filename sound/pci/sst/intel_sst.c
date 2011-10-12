@@ -307,9 +307,7 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 		goto do_unmap_iram;
 	pr_debug("DRAM Ptr %p\n", sst_drv_ctx->dram);
 
-	mutex_lock(&sst_drv_ctx->sst_lock);
-	sst_drv_ctx->sst_state = SST_UN_INIT;
-	mutex_unlock(&sst_drv_ctx->sst_lock);
+	sst_set_fw_state_locked(sst_drv_ctx, SST_UN_INIT);
 	/* Register the ISR */
 	ret = request_irq(pci->irq, intel_sst_interrupt,
 		IRQF_SHARED, SST_DRV_NAME, sst_drv_ctx);
@@ -414,9 +412,7 @@ static void __devexit intel_sst_remove(struct pci_dev *pci)
 	pm_runtime_get_noresume(&pci->dev);
 	pm_runtime_forbid(&pci->dev);
 	pci_dev_put(sst_drv_ctx->pci);
-	mutex_lock(&sst_drv_ctx->sst_lock);
-	sst_drv_ctx->sst_state = SST_UN_INIT;
-	mutex_unlock(&sst_drv_ctx->sst_lock);
+	sst_set_fw_state_locked(sst_drv_ctx, SST_UN_INIT);
 	misc_deregister(&lpe_ctrl);
 	free_irq(pci->irq, sst_drv_ctx);
 	iounmap(sst_drv_ctx->dram);
@@ -582,9 +578,7 @@ static int intel_sst_runtime_resume(struct device *dev)
 	sst_shim_write(sst_drv_ctx->shim, SST_CSR, csr);
 
 	intel_sst_set_pll(true, SST_PLL_AUDIO);
-	mutex_lock(&sst_drv_ctx->sst_lock);
-	sst_drv_ctx->sst_state = SST_UN_INIT;
-	mutex_unlock(&sst_drv_ctx->sst_lock);
+	sst_set_fw_state_locked(sst_drv_ctx, SST_UN_INIT);
 	return 0;
 }
 

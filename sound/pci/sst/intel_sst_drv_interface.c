@@ -89,8 +89,13 @@ int sst_download_fw(void)
 {
 	int retval;
 
+	char name[20];
+
 	if (sst_drv_ctx->sst_state != SST_START_INIT)
 		return -EAGAIN;
+
+	snprintf(name, sizeof(name), "%s%04x%s", "fw_sst_",
+					sst_drv_ctx->pci_id, ".bin");
 
 	retval = sst_request_fw();
 	if (retval)
@@ -323,8 +328,8 @@ void sst_prepare_fw(void)
 		pr_debug("DSP Downloading FW now...\n");
 		retval = sst_download_fw();
 		if (retval) {
-			pr_err("FW download fail %x\n", retval);
-			pr_debug("doing rtpm_put\n");
+			pr_err("sst: FW download fail %x\n", retval);
+			pr_debug("sst: doing rtpm_put\n");
 			sst_set_fw_state_locked(sst_drv_ctx, SST_UN_INIT);
 			pm_runtime_put(&sst_drv_ctx->pci->dev);
 		}
@@ -406,8 +411,8 @@ static int sst_open_pcm_stream(struct snd_sst_params *str_param)
 		pr_debug("DSP Downloading FW now...\n");
 		retval = sst_download_fw();
 		if (retval) {
-			pr_err("FW download fail %x, abort\n", retval);
-			pr_debug("open_pcm, doing rtpm_put\n");
+			pr_err("sst: FW download fail %x, abort\n", retval);
+			pr_debug("sst: open_pcm, doing rtpm_put\n");
 			sst_set_fw_state_locked(sst_drv_ctx, SST_UN_INIT);
 			pm_runtime_put(&sst_drv_ctx->pci->dev);
 			return retval;

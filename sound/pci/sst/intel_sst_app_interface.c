@@ -61,18 +61,25 @@ static int intel_sst_check_device(void)
 {
 	int retval = 0;
 
+
+	mutex_lock(&sst_drv_ctx->sst_lock);
 	if (sst_drv_ctx->sst_state == SST_UN_INIT) {
 		sst_drv_ctx->sst_state = SST_START_INIT;
+		mutex_unlock(&sst_drv_ctx->sst_lock);
 		/* FW is not downloaded */
 		retval = sst_download_fw();
-		if (retval)
+		if (retval) {
+			sst_set_fw_state_locked(sst_drv_ctx, SST_UN_INIT);
 			return -ENODEV;
+		}
 		if (sst_drv_ctx->pci_id == SST_MRST_PCI_ID) {
 			retval = sst_drv_ctx->rx_time_slot_status;
 			if (retval != RX_TIMESLOT_UNINIT
 					&& sst_drv_ctx->pmic_vendor != SND_NC)
 				sst_enable_rx_timeslot(retval);
 		}
+	} else {
+		mutex_unlock(&sst_drv_ctx->sst_lock);
 	}
 	return 0;
 }

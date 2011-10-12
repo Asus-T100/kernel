@@ -169,8 +169,8 @@ static int process_fw_init(struct sst_ipc_msg_wq *msg)
 	pr_debug("*** FW Init msg came***\n");
 	if (init->result) {
 		sst_set_fw_state_locked(sst_drv_ctx, SST_ERROR);
-		pr_debug("FW Init failed, Error %x\n", init->result);
-		pr_err("FW Init failed, Error %x\n", init->result);
+		pr_debug("sst: FW Init failed, Error %x\n", init->result);
+		pr_err("sst: FW Init failed, Error %x\n", init->result);
 		retval = -init->result;
 		return retval;
 	}
