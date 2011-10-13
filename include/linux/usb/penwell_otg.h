@@ -21,6 +21,7 @@
 #define __PENWELL_OTG_H__
 
 #include <linux/usb/intel_mid_otg.h>
+#include <linux/wakelock.h>
 
 #define CI_USBCMD		0x30
 #	define USBCMD_RST		BIT(1)
@@ -395,6 +396,8 @@ struct penwell_otg {
 	void				*bc_arg;
 
 	unsigned			rt_resuming;
+
+	struct wake_lock		wake_lock;
 };
 
 static inline

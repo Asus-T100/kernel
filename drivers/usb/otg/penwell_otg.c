@@ -36,6 +36,7 @@
 #include <linux/notifier.h>
 #include <linux/delay.h>
 #include <linux/pm_runtime.h>
+#include <linux/wakelock.h>
 #include <asm/intel_scu_ipc.h>
 #include "../core/usb.h"
 
@@ -2332,6 +2333,8 @@ static void penwell_otg_work(struct work_struct *work)
 				iotg->otg.set_vbus(&iotg->otg, true);
 
 			pm_runtime_get(pnw->dev);
+			wake_lock(&pnw->wake_lock);
+
 			penwell_otg_add_timer(TA_WAIT_VRISE_TMR);
 			iotg->otg.state = OTG_STATE_A_WAIT_VRISE;
 
@@ -2357,7 +2360,6 @@ static void penwell_otg_work(struct work_struct *work)
 			if (iotg->otg.set_vbus)
 				iotg->otg.set_vbus(&iotg->otg, false);
 
-			pm_runtime_get(pnw->dev);
 			penwell_otg_add_timer(TA_WAIT_VFALL_TMR);
 			iotg->otg.state = OTG_STATE_A_WAIT_VFALL;
 		} else if (hsm->a_vbus_vld || hsm->a_wait_vrise_tmout
@@ -2371,7 +2373,6 @@ static void penwell_otg_work(struct work_struct *work)
 				if (iotg->otg.set_vbus)
 					iotg->otg.set_vbus(&iotg->otg, false);
 
-				pm_runtime_get(pnw->dev);
 				penwell_otg_add_timer(TA_WAIT_VFALL_TMR);
 				iotg->otg.state = OTG_STATE_A_WAIT_VFALL;
 				break;
@@ -2398,6 +2399,7 @@ static void penwell_otg_work(struct work_struct *work)
 			}
 
 			pm_runtime_put(pnw->dev);
+			wake_unlock(&pnw->wake_lock);
 			penwell_otg_add_timer(TA_WAIT_BCON_TMR);
 			iotg->otg.state = OTG_STATE_A_WAIT_BCON;
 		}
@@ -2423,6 +2425,7 @@ static void penwell_otg_work(struct work_struct *work)
 				iotg->otg.set_vbus(&iotg->otg, false);
 
 			pm_runtime_get(pnw->dev);
+			wake_lock(&pnw->wake_lock);
 			penwell_otg_add_timer(TA_WAIT_VFALL_TMR);
 			iotg->otg.state = OTG_STATE_A_WAIT_VFALL;
 		} else if (!hsm->a_vbus_vld) {
@@ -2498,6 +2501,7 @@ static void penwell_otg_work(struct work_struct *work)
 				iotg->otg.set_vbus(&iotg->otg, false);
 
 			pm_runtime_get(pnw->dev);
+			wake_lock(&pnw->wake_lock);
 			penwell_otg_add_timer(TA_WAIT_VFALL_TMR);
 			iotg->otg.state = OTG_STATE_A_WAIT_VFALL;
 		} else if (hsm->test_device && hsm->tst_maint_tmout) {
@@ -2522,6 +2526,7 @@ static void penwell_otg_work(struct work_struct *work)
 			/* Clear states and wait for SRP */
 			hsm->a_srp_det = 0;
 			hsm->a_bus_req = 0;
+			wake_unlock(&pnw->wake_lock);
 			iotg->otg.state = OTG_STATE_A_IDLE;
 		} else if (!hsm->a_vbus_vld) {
 			/* Move to A_VBUS_ERR state */
@@ -2600,6 +2605,7 @@ static void penwell_otg_work(struct work_struct *work)
 				iotg->otg.set_vbus(&iotg->otg, false);
 
 			pm_runtime_get(pnw->dev);
+			wake_lock(&pnw->wake_lock);
 			penwell_otg_add_timer(TTST_NOADP_TMR);
 			iotg->otg.state = OTG_STATE_A_WAIT_VFALL;
 
@@ -2655,6 +2661,7 @@ static void penwell_otg_work(struct work_struct *work)
 				iotg->otg.set_vbus(&iotg->otg, false);
 
 			pm_runtime_get(pnw->dev);
+			wake_lock(&pnw->wake_lock);
 			penwell_otg_add_timer(TA_WAIT_VFALL_TMR);
 			iotg->otg.state = OTG_STATE_A_WAIT_VFALL;
 		} else if (!hsm->a_vbus_vld) {
@@ -2758,6 +2765,7 @@ static void penwell_otg_work(struct work_struct *work)
 			set_host_mode();
 
 			pm_runtime_get(pnw->dev);
+			wake_lock(&pnw->wake_lock);
 			penwell_otg_add_timer(TA_WAIT_VFALL_TMR);
 			iotg->otg.state = OTG_STATE_A_WAIT_VFALL;
 		} else if (!hsm->a_vbus_vld) {
@@ -2826,6 +2834,7 @@ static void penwell_otg_work(struct work_struct *work)
 				hsm->a_clr_err = 0;
 
 			pm_runtime_get(pnw->dev);
+			wake_lock(&pnw->wake_lock);
 			penwell_otg_add_timer(TA_WAIT_VFALL_TMR);
 			iotg->otg.state = OTG_STATE_A_WAIT_VFALL;
 		}
@@ -2842,6 +2851,7 @@ static void penwell_otg_work(struct work_struct *work)
 			hsm->a_bus_req = 1;
 
 			pm_runtime_put(pnw->dev);
+			wake_unlock(&pnw->wake_lock);
 			iotg->otg.state = OTG_STATE_A_IDLE;
 			penwell_update_transceiver();
 		} else if (hsm->test_device && hsm->otg_vbus_off
@@ -2856,6 +2866,7 @@ static void penwell_otg_work(struct work_struct *work)
 			hsm->a_bus_req = 1;
 
 			pm_runtime_put(pnw->dev);
+			wake_unlock(&pnw->wake_lock);
 			iotg->otg.state = OTG_STATE_A_IDLE;
 			penwell_update_transceiver();
 		}
@@ -3357,6 +3368,8 @@ static int penwell_otg_probe(struct pci_dev *pdev,
 	spin_lock_init(&pnw->iotg.hnp_poll_lock);
 	spin_lock_init(&pnw->notify_lock);
 
+	wake_lock_init(&pnw->wake_lock, WAKE_LOCK_SUSPEND, "pnw_wake_lock");
+
 	init_timer(&pnw->hsm_timer);
 	init_timer(&pnw->bus_mon_timer);
 	init_timer(&pnw->hnp_poll_timer);
@@ -3471,6 +3484,8 @@ static void penwell_otg_remove(struct pci_dev *pdev)
 
 	/* disable OTGSC interrupt as OTGSC doesn't change in reset */
 	writel(0, pnw->iotg.base + CI_OTGSC);
+
+	wake_lock_destroy(&pnw->wake_lock);
 
 	if (pdev->irq)
 		free_irq(pdev->irq, pnw);
