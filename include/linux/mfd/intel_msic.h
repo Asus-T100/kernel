@@ -12,6 +12,8 @@
 #ifndef __LINUX_MFD_INTEL_MSIC_H__
 #define __LINUX_MFD_INTEL_MSIC_H__
 
+#include <asm/intel_mid_gpadc.h>
+
 /* ID */
 #define INTEL_MSIC_ID0			0x000	/* RO */
 #define INTEL_MSIC_ID1			0x001	/* RO */
@@ -429,6 +431,7 @@ struct intel_msic_platform_data {
 	int				irq[INTEL_MSIC_BLOCK_LAST];
 	struct intel_msic_gpio_pdata	*gpio;
 	struct intel_msic_ocd_pdata	*ocd;
+	struct intel_mid_gpadc_platform_data	*gpadc;
 };
 
 struct intel_msic;

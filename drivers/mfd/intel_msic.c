@@ -309,10 +309,11 @@ static int __devinit intel_msic_init_devices(struct intel_msic *msic)
 {
 	struct platform_device *pdev = msic->pdev;
 	struct intel_msic_platform_data *pdata = pdev->dev.platform_data;
+	struct mfd_cell *cell;
 	int ret, i;
 
 	if (pdata->gpio) {
-		struct mfd_cell *cell = &msic_devs[INTEL_MSIC_BLOCK_GPIO];
+		cell = &msic_devs[INTEL_MSIC_BLOCK_GPIO];
 
 		cell->platform_data = pdata->gpio;
 		cell->pdata_size = sizeof(*pdata->gpio);
@@ -336,6 +337,13 @@ static int __devinit intel_msic_init_devices(struct intel_msic *msic)
 
 		/* Update the IRQ number for the OCD */
 		pdata->irq[INTEL_MSIC_BLOCK_OCD] = ret;
+	}
+
+	if (pdata->gpadc) {
+		cell = &msic_devs[INTEL_MSIC_BLOCK_ADC];
+
+		cell->platform_data = pdata->gpadc;
+		cell->pdata_size = sizeof(*pdata->gpadc);
 	}
 
 	for (i = 0; i < ARRAY_SIZE(msic_devs); i++) {
