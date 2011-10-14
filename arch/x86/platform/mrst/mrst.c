@@ -565,13 +565,6 @@ static void __init *lis331dl_platform_data(void *info)
 	return &intr2nd_pdata;
 }
 
-static void *msic_adc_platform_data(void *info)
-{
-	static struct intel_mid_gpadc_platform_data pdata;
-	pdata.intr = 0xffff7fc0;
-	return &pdata;
-}
-
 /* MFLD iCDK touchscreen data */
 #define CYTTSP_GPIO_PIN 0x3E
 static int cyttsp_init(int on)
@@ -697,6 +690,15 @@ static void *msic_generic_platform_data(void *info, enum intel_msic_block block)
 	msic_pdata.irq[block] = entry->irq;
 
 	return no_platform_data(info);
+}
+
+static void *msic_adc_platform_data(void *info)
+{
+	static struct intel_mid_gpadc_platform_data pdata;
+	pdata.intr = 0xffff7fc0;
+	msic_pdata.gpadc = &pdata;
+
+	return msic_generic_platform_data(info, INTEL_MSIC_BLOCK_ADC);
 }
 
 static void *msic_battery_platform_data(void *info)
