@@ -101,19 +101,45 @@ AllocMemory (BM_CONTEXT			*pBMContext,
 		}
 
 		
-		if (!RA_Alloc(pArena,
-					  uSize,
-					  IMG_NULL,
-					  (IMG_VOID*) &pMapping,
-					  uFlags,
-					  uDevVAddrAlignment,
-					  0,
-					  pvPrivData,
-					  ui32PrivDataLength,
-					  (IMG_UINTPTR_T *)&(pBuf->DevVAddr.uiAddr)))
+		if(uFlags & PVRSRV_MEM_NO_GPU_ADDR)
 		{
-			PVR_DPF((PVR_DBG_ERROR, "AllocMemory: RA_Alloc(0x%x) FAILED", uSize));
-			return IMG_FALSE;
+			IMG_SIZE_T uImportSize = uSize;
+			IMG_BOOL result = IMG_TRUE;
+			IMG_UINT32 uQuantum = MAX(HOST_PAGESIZE(), psBMHeap->sDevArena.ui32DataPageSize);
+
+			if (uDevVAddrAlignment > uQuantum)
+			{
+				uImportSize += (uDevVAddrAlignment - 1);
+			}
+
+			uImportSize = ((uImportSize + uQuantum - 1)/uQuantum)*uQuantum;
+
+			result = BM_ImportMemory(psBMHeap, uImportSize, &uImportSize, &pMapping, uFlags,
+						 pvPrivData, ui32PrivDataLength, &pBuf->DevVAddr.uiAddr);
+			if(result == IMG_FALSE)
+			{
+				PVR_DPF((PVR_DBG_ERROR, "AllocMemory: RA_Alloc(0x%x) FAILED", uSize));
+				return IMG_FALSE;
+			}
+			PVR_ASSERT(pBuf->DevVAddr.uiAddr == 0)
+			PVR_ASSERT(pMapping->DevVAddr.uiAddr == 0)
+		}
+		else
+		{
+			if (!RA_Alloc(pArena,
+						  uSize,
+						  IMG_NULL,
+						  (IMG_VOID*) &pMapping,
+						  uFlags,
+						  uDevVAddrAlignment,
+						  0,
+						  pvPrivData,
+						  ui32PrivDataLength,
+						  (IMG_UINTPTR_T *)&(pBuf->DevVAddr.uiAddr)))
+			{
+				PVR_DPF((PVR_DBG_ERROR, "AllocMemory: RA_Alloc(0x%x) FAILED", uSize));
+				return IMG_FALSE;
+			}
 		}
 
 		uOffset = pBuf->DevVAddr.uiAddr - pMapping->DevVAddr.uiAddr;
@@ -595,7 +621,16 @@ FreeBuf (BM_BUF *pBuf, IMG_UINT32 ui32Flags, IMG_BOOL bFromAllocator)
 
 
 				PVR_ASSERT(pBuf->ui32ExportCount == 0)
-				RA_Free (pBuf->pMapping->pArena, pBuf->DevVAddr.uiAddr, IMG_FALSE);
+
+				if(ui32Flags & PVRSRV_MEM_NO_GPU_ADDR)
+				{
+					PVR_ASSERT(pBuf->DevVAddr.uiAddr == 0)
+					BM_FreeMemory(pBuf->pMapping->pBMHeap, pBuf->DevVAddr.uiAddr, pBuf->pMapping);
+				}
+				else
+				{
+					RA_Free (pBuf->pMapping->pArena, pBuf->DevVAddr.uiAddr, IMG_FALSE);
+				}
 			}
 		}
 		else
@@ -2304,18 +2339,21 @@ BM_ImportMemory (IMG_VOID *pH,
 	}
 
 	
-	bResult = DevMemoryAlloc (pBMContext,
-								pMapping,
-								IMG_NULL,
-								uFlags,
-								(IMG_UINT32)uDevVAddrAlignment,
-								&pMapping->DevVAddr);
-	if (!bResult)
+	if(!(uFlags & PVRSRV_MEM_NO_GPU_ADDR))
 	{
-		PVR_DPF((PVR_DBG_ERROR,
-				"BM_ImportMemory: DevMemoryAlloc(0x%x) failed",
-				pMapping->uSize));
-		goto fail_dev_mem_alloc;
+		bResult = DevMemoryAlloc (pBMContext,
+									pMapping,
+									IMG_NULL,
+									uFlags,
+									(IMG_UINT32)uDevVAddrAlignment,
+									&pMapping->DevVAddr);
+		if (!bResult)
+		{
+			PVR_DPF((PVR_DBG_ERROR,
+					"BM_ImportMemory: DevMemoryAlloc(0x%x) failed",
+					pMapping->uSize));
+			goto fail_dev_mem_alloc;
+		}
 	}
 
 	
@@ -2401,7 +2439,10 @@ BM_FreeMemory (IMG_VOID *h, IMG_UINTPTR_T _base, BM_MAPPING *psMapping)
 		return;
 	}
 
-	DevMemoryFree (psMapping);
+	if(!(psMapping->ui32Flags & PVRSRV_MEM_NO_GPU_ADDR))
+	{
+		DevMemoryFree (psMapping);
+	}
 
 	
 	if((psMapping->ui32Flags & PVRSRV_MEM_INTERLEAVED) != 0)

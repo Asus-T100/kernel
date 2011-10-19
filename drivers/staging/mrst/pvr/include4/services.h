@@ -56,6 +56,7 @@ extern "C" {
 #define PVRSRV_MEM_RAM_BACKED_ALLOCATION	(1U<<9)
 #define PVRSRV_MEM_NO_RESMAN				(1U<<10)
 #define PVRSRV_MEM_EXPORTED					(1U<<11)
+#define PVRSRV_MEM_NO_GPU_ADDR				(1U<<20)
 
 
 #define PVRSRV_HAP_CACHED					(1U<<12)
