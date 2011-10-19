@@ -3531,9 +3531,8 @@ int atomisp_acc_set_arg(struct atomisp_device *isp,
 		pgnr = (size + (PAGE_SIZE - 1)) >> PAGE_SHIFT;
 
 		mutex_lock(&isp->isp_lock);
-		hrt_isp_css_mm_set_user_ptr((unsigned int)fw_arg->value, pgnr);
-		frame_ptr = hrt_isp_css_mm_alloc(size);
-		hrt_isp_css_mm_set_user_ptr(0, 0);
+		frame_ptr = hrt_isp_css_mm_alloc_user_ptr(size,
+					(unsigned int)fw_arg->value, pgnr);
 		mutex_unlock(&isp->isp_lock);
 
 		if (IS_ERR_OR_NULL(frame_ptr)) {

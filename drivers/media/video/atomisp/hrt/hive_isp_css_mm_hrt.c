@@ -81,27 +81,39 @@ void hrt_isp_css_mm_set_user_ptr(unsigned int userptr, unsigned int num_pages)
 	my_num_pages = num_pages;
 }
 
-void *hrt_isp_css_mm_alloc(size_t bytes)
+static void *__hrt_isp_css_mm_alloc(size_t bytes, unsigned int userptr,
+				    unsigned int num_pages)
 {
 	if (!init_done)
 		hrt_isp_css_mm_init();
 
-	if (my_userptr == 0)
+	if (userptr == 0)
 		return (void *)hmm_alloc(bytes, HMM_BO_PRIVATE, 0, 0,
 						HMM_UNCACHED);
 	else {
-		if (my_num_pages < ((__page_align(bytes)) >> PAGE_SHIFT))
+		if (num_pages < ((__page_align(bytes)) >> PAGE_SHIFT))
 			v4l2_err(&atomisp_dev,
 					"user space memory size is less"
 					" than the expected size..\n");
-		else if (my_num_pages > ((__page_align(bytes)) >> PAGE_SHIFT))
+		else if (num_pages > ((__page_align(bytes)) >> PAGE_SHIFT))
 			v4l2_err(&atomisp_dev,
 					"user space memory size is"
 					" large than the expected size..\n");
 
 		return (void *)hmm_alloc(bytes, HMM_BO_USER, 0,
-						my_userptr, HMM_UNCACHED);
+						userptr, HMM_UNCACHED);
 	}
+}
+
+void *hrt_isp_css_mm_alloc(size_t bytes)
+{
+	return __hrt_isp_css_mm_alloc(bytes, my_userptr, my_num_pages);
+}
+
+void *hrt_isp_css_mm_alloc_user_ptr(size_t bytes, unsigned int userptr,
+				    unsigned int num_pages)
+{
+	return __hrt_isp_css_mm_alloc(bytes, userptr, num_pages);
 }
 
 void *hrt_isp_css_mm_alloc_cached(size_t bytes)
