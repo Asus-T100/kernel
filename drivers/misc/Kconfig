@@ -529,6 +529,17 @@ config APANIC_PLABEL
 	 If your platform uses a different flash partition label for storing
  	 crashdumps, enter it here.
 
+config MID_I2S_DEV
+	tristate "Test device driver for Intel MID I2S protocol on SSP"
+        depends on SND_INTEL_MID_I2S
+	default m
+	help
+	  This driver provides support for sending/receiving I2S
+	  samples to Bluetooth device WL1271/3.
+
+	  It uses the Intel MID I2S driver ; it creates a device
+	  (/dev/mid_i2s_ssp) that receives ioctls.
+
 config A1026
 	tristate "Audience a1026/eS305 Voice Processor"
 	depends on I2C
