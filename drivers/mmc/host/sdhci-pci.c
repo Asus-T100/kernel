@@ -1032,13 +1032,15 @@ static struct sdhci_ops sdhci_pci_ops = {
 
 #ifdef CONFIG_PM
 
-static int sdhci_pci_suspend(struct pci_dev *pdev, pm_message_t state)
+static int sdhci_pci_suspend(struct device *dev)
 {
+	struct pci_dev *pdev = container_of(dev, struct pci_dev, dev);
 	struct sdhci_pci_chip *chip;
 	struct sdhci_pci_slot *slot;
 	mmc_pm_flag_t slot_pm_flags;
 	mmc_pm_flag_t pm_flags = 0;
 	int i, ret;
+	pm_message_t state = { .event = PM_EVENT_SUSPEND };
 
 	chip = pci_get_drvdata(pdev);
 	if (!chip)
@@ -1089,8 +1091,9 @@ static int sdhci_pci_suspend(struct pci_dev *pdev, pm_message_t state)
 	return 0;
 }
 
-static int sdhci_pci_resume(struct pci_dev *pdev)
+static int sdhci_pci_resume(struct device *dev)
 {
+	struct pci_dev *pdev = container_of(dev, struct pci_dev, dev);
 	struct sdhci_pci_chip *chip;
 	struct sdhci_pci_slot *slot;
 	int i, ret;
@@ -1215,6 +1218,8 @@ static int sdhci_pci_runtime_idle(struct device *dev)
 #endif
 
 static const struct dev_pm_ops sdhci_pci_pm_ops = {
+	.suspend =	sdhci_pci_suspend,
+	.resume	=	sdhci_pci_resume,
 	.runtime_suspend = sdhci_pci_runtime_suspend,
 	.runtime_resume = sdhci_pci_runtime_resume,
 	.runtime_idle = sdhci_pci_runtime_idle,
@@ -1463,8 +1468,6 @@ static struct pci_driver sdhci_driver = {
 	.id_table =	pci_ids,
 	.probe =	sdhci_pci_probe,
 	.remove =	__devexit_p(sdhci_pci_remove),
-	.suspend =	sdhci_pci_suspend,
-	.resume	=	sdhci_pci_resume,
 	.driver =	{
 		.pm =   &sdhci_pci_pm_ops
 	},
