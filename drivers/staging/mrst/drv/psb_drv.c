@@ -1213,6 +1213,7 @@ static int psb_do_init(struct drm_device *dev)
 	tt_pages -= tt_start >> PAGE_SHIFT;
 	dev_priv->sizes.ta_mem_size = 0;
 
+#ifdef CONFIG_MDFD_VIDEO_DECODE
 
 	if (IS_MRST(dev) &&
 	    (dev_priv->ci_region_size != 0) &&
@@ -1249,7 +1250,6 @@ static int psb_do_init(struct drm_device *dev)
 	}
 
 
-#ifdef CONFIG_MDFD_VIDEO_DECODE
 	PSB_DEBUG_INIT("Init MSVDX\n");
 	psb_msvdx_init(dev);
 
@@ -1341,11 +1341,11 @@ static int psb_driver_unload(struct drm_device *dev)
 			ttm_fence_device_release(&dev_priv->fdev);
 			dev_priv->has_fence_device = 0;
 		}
+#endif
 		if (dev_priv->vdc_reg) {
 			iounmap(dev_priv->vdc_reg);
 			dev_priv->vdc_reg = NULL;
 		}
-#endif
 		if (dev_priv->sgx_reg) {
 			iounmap(dev_priv->sgx_reg);
 			dev_priv->sgx_reg = NULL;
@@ -1497,11 +1497,11 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 			goto out_err;
 	}
 
+#endif
 	dev_priv->vdc_reg =
 		ioremap(resource_start + PSB_VDC_OFFSET, PSB_VDC_SIZE);
 	if (!dev_priv->vdc_reg)
 		goto out_err;
-#endif
 	if (IS_MID(dev))
 		dev_priv->sgx_reg =
 			ioremap(resource_start + MRST_SGX_OFFSET,
