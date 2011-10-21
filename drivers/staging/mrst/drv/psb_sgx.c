@@ -35,6 +35,8 @@
 #include "psb_powermgmt.h"
 
 
+#ifdef CONFIG_MDFD_VIDEO_DECODE
+
 static inline int psb_same_page(unsigned long offset,
 				unsigned long offset2)
 {
@@ -1003,3 +1005,6 @@ void psb_gl3_global_invalidation(struct drm_device *dev)
 #endif
 #endif
 }
+
+#endif  // CONFIG_MDFD_VIDEO_DECODE
+

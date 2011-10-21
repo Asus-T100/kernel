@@ -419,9 +419,10 @@ struct drm_psb_private {
 	/*
 	 *TTM Glue.
 	 */
-
+#ifdef CONFIG_MDFD_VIDEO_DECODE
 	struct ttm_global_reference mem_global_ref;
 	struct ttm_bo_global_ref bo_global_ref;
+#endif
 	int has_global;
 
 	struct drm_device *dev;

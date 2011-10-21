@@ -105,6 +105,7 @@ static int ospm_runtime_pm_topaz_suspend(struct drm_device *dev)
 		goto out;
 	}
 
+#ifdef CONFIG_MDFD_VIDEO_DECODE
 	if (IS_MRST(dev)) {
 		if (lnc_check_topaz_idle(dev)) {
 			ret = -2;
@@ -118,7 +119,6 @@ static int ospm_runtime_pm_topaz_suspend(struct drm_device *dev)
 			goto out;
 		}
 	}
-
 	psb_irq_uninstall_islands(gpDrmDevice, OSPM_VIDEO_ENC_ISLAND);
 	if (IS_MRST(dev)) {
 		if (encode_running)
@@ -132,6 +132,7 @@ static int ospm_runtime_pm_topaz_suspend(struct drm_device *dev)
 		PNW_TOPAZ_NEW_PMSTATE(dev, pnw_topaz_priv,
 				PSB_PMSTATE_POWERDOWN);
 	}
+#endif
 	ospm_power_island_down(OSPM_VIDEO_ENC_ISLAND);
 out:
 	return ret;
@@ -145,9 +146,11 @@ static int ospm_runtime_pm_msvdx_resume(struct drm_device *dev)
 
 	/*printk(KERN_ALERT "ospm_runtime_pm_msvdx_resume\n");*/
 
+#ifdef CONFIG_MDFD_VIDEO_DECODE
 	MSVDX_NEW_PMSTATE(dev, msvdx_priv, PSB_PMSTATE_POWERUP);
 
 	psb_msvdx_restore_context(dev);
+#endif
 
 	return 0;
 }
@@ -181,6 +184,7 @@ static int ospm_runtime_pm_topaz_resume(struct drm_device *dev)
 	else
 		PSB_DEBUG_PM("Topaz: no encode running\n");
 
+#ifdef CONFIG_MDFD_VIDEO_DECODE
 	if (IS_MRST(dev)) {
 		if (encode_running) { /* has encode session running */
 			psb_irq_uninstall_islands(gpDrmDevice, OSPM_VIDEO_ENC_ISLAND);
@@ -196,7 +200,7 @@ static int ospm_runtime_pm_topaz_resume(struct drm_device *dev)
 		}
 		PNW_TOPAZ_NEW_PMSTATE(dev, pnw_topaz_priv, PSB_PMSTATE_POWERUP);
 	}
-
+#endif
 	return 0;
 }
 
@@ -253,11 +257,13 @@ void ospm_apm_power_down_msvdx(struct drm_device *dev)
 
 	if (atomic_read(&g_videodec_access_count))
 		goto out;
+#ifdef CONFIG_MDFD_VIDEO_DECODE
 	if (psb_check_msvdx_idle(dev))
 		goto out;
 
 	gbSuspendInProgress = true;
 	psb_msvdx_save_context(dev);
+#endif
 	ospm_power_island_down(OSPM_VIDEO_DEC_ISLAND);
 #ifdef CONFIG_MDFD_GL3
 	/* Power off GL3 */
@@ -282,13 +288,13 @@ void ospm_apm_power_down_topaz(struct drm_device *dev)
 		goto out;
 	if (atomic_read(&g_videoenc_access_count))
 		goto out;
+#ifdef CONFIG_MDFD_VIDEO_DECODE
 	if (IS_MRST(dev))
 		if (lnc_check_topaz_idle(dev))
 			goto out;
 	if (IS_MDFLD(dev))
 		if (pnw_check_topaz_idle(dev))
 			goto out;
-
 	gbSuspendInProgress = true;
 	if (IS_MRST(dev)) {
 		psb_irq_uninstall_islands(dev, OSPM_VIDEO_ENC_ISLAND);
@@ -301,6 +307,7 @@ void ospm_apm_power_down_topaz(struct drm_device *dev)
 		PNW_TOPAZ_NEW_PMSTATE(dev, pnw_topaz_priv, PSB_PMSTATE_POWERDOWN);
 	}
 	ospm_power_island_down(OSPM_VIDEO_ENC_ISLAND);
+#endif
 
 #ifdef CONFIG_MDFD_GL3
 	/* Power off GL3 */

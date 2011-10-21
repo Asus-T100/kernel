@@ -508,6 +508,7 @@ irqreturn_t psb_irq_handler(DRM_IRQ_ARGS)
 		handled = 1;
 	}
 
+#ifdef CONFIG_MDFD_VIDEO_DECODE
 	if (msvdx_int && (IS_MDFLD(dev)
 			  || ospm_power_is_hw_on(OSPM_VIDEO_DEC_ISLAND))) {
 		psb_msvdx_interrupt(dev);
@@ -525,7 +526,7 @@ irqreturn_t psb_irq_handler(DRM_IRQ_ARGS)
 		lnc_topaz_interrupt(dev);
 		handled = 1;
 	}
-
+#endif
 	if (sgx_int) {
 		if (SYSPVRServiceSGXInterrupt(dev) != 0)
 			handled = 1;
@@ -680,6 +681,7 @@ int psb_irq_postinstall_islands(struct drm_device *dev, int hw_islands)
 		}
 	}
 
+#ifdef CONFIG_MDFD_VIDEO_DECODE
 	if (IS_MID(dev) && !dev_priv->topaz_disabled)
 		if (hw_islands & OSPM_VIDEO_ENC_ISLAND)
 			if (ospm_power_is_hw_on(OSPM_VIDEO_ENC_ISLAND)) {
@@ -692,7 +694,7 @@ int psb_irq_postinstall_islands(struct drm_device *dev, int hw_islands)
 	if (hw_islands & OSPM_VIDEO_DEC_ISLAND)
 		if (true/*powermgmt_is_hw_on(dev->pdev, PSB_VIDEO_DEC_ISLAND)*/)
 			psb_msvdx_enableirq(dev);
-
+#endif
 	spin_unlock_irqrestore(&dev_priv->irqmask_lock, irqflags);
 
 	return 0;
@@ -780,6 +782,7 @@ void psb_irq_uninstall_islands(struct drm_device *dev, int hw_islands)
 	/*This register is safe even if display island is off*/
 	PSB_WVDC32(PSB_RVDC32(PSB_INT_IDENTITY_R), PSB_INT_IDENTITY_R);
 
+#ifdef CONFIG_MDFD_VIDEO_DECODE
 	if (IS_MID(dev) && !dev_priv->topaz_disabled)
 		if (hw_islands & OSPM_VIDEO_ENC_ISLAND)
 			if (ospm_power_is_hw_on(OSPM_VIDEO_ENC_ISLAND)) {
@@ -791,7 +794,7 @@ void psb_irq_uninstall_islands(struct drm_device *dev, int hw_islands)
 	if (hw_islands & OSPM_VIDEO_DEC_ISLAND)
 		if (ospm_power_is_hw_on(OSPM_VIDEO_DEC_ISLAND))
 			psb_msvdx_disableirq(dev);
-
+#endif
 	spin_unlock_irqrestore(&dev_priv->irqmask_lock, irqflags);
 }
 

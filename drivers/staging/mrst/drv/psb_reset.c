@@ -26,7 +26,7 @@
 #include "pnw_topaz.h"
 #include <linux/spinlock.h>
 
-
+#ifdef CONFIG_MDFD_VIDEO_DECODE
 void psb_schedule_watchdog(struct drm_psb_private *dev_priv)
 {
 	struct timer_list *wt = &dev_priv->watchdog_timer;
@@ -207,4 +207,6 @@ void psb_lid_timer_takedown(struct drm_psb_private *dev_priv)
 {
 	del_timer_sync(&dev_priv->lid_timer);
 }
+#endif //CONFIG_MDFD_VIDEO_DECODE
+
 

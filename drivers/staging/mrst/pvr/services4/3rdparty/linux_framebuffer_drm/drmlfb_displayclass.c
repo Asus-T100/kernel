@@ -260,9 +260,9 @@ static MRST_ERROR UnblankDisplay(MRSTLFB_DEVINFO *psDevInfo)
 {
 	int res;
 
-	acquire_console_sem();
+	console_trylock();
 	res = fb_blank(psDevInfo->psLINFBInfo, 0);
-	release_console_sem();
+	console_unlock();
 	if (res != 0)
 	{
 		printk(KERN_WARNING DRIVER_PREFIX

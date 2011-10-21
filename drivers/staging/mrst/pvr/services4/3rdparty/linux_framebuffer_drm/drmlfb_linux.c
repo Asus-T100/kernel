@@ -23,11 +23,11 @@
  * Home Park Estate, Kings Langley, Herts, WD4 8LZ, UK 
  *
  ******************************************************************************/
-
+/*
 #ifndef AUTOCONF_INCLUDED
 #include <linux/config.h>
 #endif
-
+*/
 #include <linux/version.h>
 
 #include <linux/pci.h>

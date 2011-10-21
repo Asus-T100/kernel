@@ -514,6 +514,7 @@ static struct drm_ioctl_desc psb_ioctls[] = {
 #if defined(PDUMP)
 	PSB_IOCTL_DEF(PVR_DRM_DBGDRV_IOCTL, SYSPVRDBGDrivIoctl, 0),
 #endif
+#ifdef CONFIG_MDFD_VIDEO_DECODE
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_CMDBUF, psb_cmdbuf_ioctl, DRM_AUTH),
 	/*to be removed later*/
 	/*PSB_IOCTL_DEF(DRM_IOCTL_PSB_SCENE_UNREF, drm_psb_scene_unref_ioctl,
@@ -545,6 +546,7 @@ static struct drm_ioctl_desc psb_ioctls[] = {
 	lnc_video_getparam, DRM_AUTH),
 	PSB_IOCTL_DEF(DRM_IOCTL_BUFFER_CLASS_VIDEO,
 	BC_Video_Bridge, DRM_AUTH),
+#endif
 	PSB_IOCTL_DEF(DRM_IOCRL_PSB_DPU_QUERY, psb_dpu_query_ioctl,
 	DRM_AUTH),
 	PSB_IOCTL_DEF(DRM_IOCRL_PSB_DPU_DSR_ON, psb_dpu_dsr_on_ioctl,
@@ -684,12 +686,14 @@ static void psb_do_takedown(struct drm_device *dev)
 		dev_priv->have_rar = 0;
 	}
 
+#ifdef CONFIG_MDFD_VIDEO_DECODE
 	psb_msvdx_uninit(dev);
 
 	if (IS_MDFLD(dev))
 		pnw_topaz_uninit(dev);
 	else if (!dev_priv->topaz_disabled)
 		lnc_topaz_uninit(dev);
+#endif
 }
 
 static void psb_get_core_freq(struct drm_device *dev)
@@ -1245,6 +1249,7 @@ static int psb_do_init(struct drm_device *dev)
 	}
 
 
+#ifdef CONFIG_MDFD_VIDEO_DECODE
 	PSB_DEBUG_INIT("Init MSVDX\n");
 	psb_msvdx_init(dev);
 
@@ -1258,6 +1263,7 @@ static int psb_do_init(struct drm_device *dev)
 		else
 			ospm_power_island_down(OSPM_VIDEO_ENC_ISLAND);
 	}
+#endif
 
 	return 0;
 out_err:
@@ -1286,14 +1292,17 @@ static int psb_driver_unload(struct drm_device *dev)
 		/* psb_watchdog_takedown(dev_priv); */
 		psb_do_takedown(dev);
 
+#ifdef CONFIG_MDFD_VIDEO_DECODE
 		if (dev_priv->pf_pd) {
 			psb_mmu_free_pagedir(dev_priv->pf_pd);
 			dev_priv->pf_pd = NULL;
 		}
+#endif
 		if (dev_priv->mmu) {
 			struct psb_gtt *pg = dev_priv->pg;
 
 			down_read(&pg->sem);
+#ifdef CONFIG_MDFD_VIDEO_DECODE
 			psb_mmu_remove_pfn_sequence(
 				psb_mmu_get_default_pd
 				(dev_priv->mmu),
@@ -1311,8 +1320,11 @@ static int psb_driver_unload(struct drm_device *dev)
 					(dev_priv->mmu),
 					pg->rar_start,
 					pg->rar_stolen_size >> PAGE_SHIFT);
+#endif
 			up_read(&pg->sem);
+#ifdef CONFIG_MDFD_VIDEO_DECODE
 			psb_mmu_driver_takedown(dev_priv->mmu);
+#endif
 			dev_priv->mmu = NULL;
 		}
 		psb_gtt_takedown(dev_priv->pg, 1);
@@ -1320,6 +1332,7 @@ static int psb_driver_unload(struct drm_device *dev)
 			__free_page(dev_priv->scratch_page);
 			dev_priv->scratch_page = NULL;
 		}
+#ifdef CONFIG_MDFD_VIDEO_DECODE
 		if (dev_priv->has_bo_device) {
 			ttm_bo_device_release(&dev_priv->bdev);
 			dev_priv->has_bo_device = 0;
@@ -1332,6 +1345,7 @@ static int psb_driver_unload(struct drm_device *dev)
 			iounmap(dev_priv->vdc_reg);
 			dev_priv->vdc_reg = NULL;
 		}
+#endif
 		if (dev_priv->sgx_reg) {
 			iounmap(dev_priv->sgx_reg);
 			dev_priv->sgx_reg = NULL;
@@ -1343,6 +1357,7 @@ static int psb_driver_unload(struct drm_device *dev)
 		}
 #endif
 
+#ifdef CONFIG_MDFD_VIDEO_DECODE
 		if (dev_priv->msvdx_reg) {
 			iounmap(dev_priv->msvdx_reg);
 			dev_priv->msvdx_reg = NULL;
@@ -1360,7 +1375,7 @@ static int psb_driver_unload(struct drm_device *dev)
 
 		if (dev_priv->has_global)
 			psb_ttm_global_release(dev_priv);
-
+#endif
 		kfree(dev_priv);
 		dev->dev_private = NULL;
 
@@ -1419,6 +1434,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 
 	hdmi_state = 0;
 
+#ifdef CONFIG_MDFD_VIDEO_DECODER
 	ret = psb_ttm_global_init(dev_priv);
 	if (unlikely(ret != 0))
 		goto out_err;
@@ -1428,6 +1444,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 			 (dev_priv->mem_global_ref.object, PSB_OBJECT_HASH_ORDER);
 	if (unlikely(dev_priv->tdev == NULL))
 		goto out_err;
+#endif
 
 	mutex_init(&dev_priv->temp_mem);
 	mutex_init(&dev_priv->cmdbuf_mutex);
@@ -1445,14 +1462,16 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	dev_priv->chipset = chipset;
 	psb_set_uopt(&dev_priv->uopt);
 
+#ifdef CONFIG_MDFD_VIDEO_DECODE
 	PSB_DEBUG_GENERAL("Init watchdog and scheduler\n");
 	/* psb_watchdog_init(dev_priv); */
 	psb_scheduler_init(dev, &dev_priv->scheduler);
-
+#endif
 
 	PSB_DEBUG_INIT("Mapping MMIO\n");
 	resource_start = pci_resource_start(dev->pdev, PSB_MMIO_RESOURCE);
 
+#ifdef CONFIG_MDFD_VIDEO_DECODE
 	if (IS_MSVDX(dev)) /* Work around for medfield by Li */
 		dev_priv->msvdx_reg =
 			ioremap(resource_start + MRST_MSVDX_OFFSET,
@@ -1482,7 +1501,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 		ioremap(resource_start + PSB_VDC_OFFSET, PSB_VDC_SIZE);
 	if (!dev_priv->vdc_reg)
 		goto out_err;
-
+#endif
 	if (IS_MID(dev))
 		dev_priv->sgx_reg =
 			ioremap(resource_start + MRST_SGX_OFFSET,
@@ -1523,6 +1542,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	/* Init OSPM support */
 	ospm_power_init(dev);
 
+#ifdef CONFIG_MDFD_VIDEO_DECODE
 	ret = psb_ttm_fence_device_init(&dev_priv->fdev);
 	if (unlikely(ret != 0))
 		goto out_err;
@@ -1535,6 +1555,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	}
 
 	dev_priv->has_fence_device = 1;
+
 	ret = ttm_bo_device_init(bdev,
 				 dev_priv->bo_global_ref.ref.object,
 				 &psb_ttm_bo_driver,
@@ -1543,7 +1564,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 		goto out_err;
 	dev_priv->has_bo_device = 1;
 	ttm_lock_init(&dev_priv->ttm_lock);
-
+#endif
 	ret = -ENOMEM;
 
 	dev_priv->scratch_page = alloc_page(GFP_DMA32 | __GFP_ZERO);
@@ -1564,12 +1585,13 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	if (ret)
 		goto out_err;
 
+#ifdef CONFIG_MDFD_VIDEO_DECODE
 	dev_priv->mmu = psb_mmu_driver_init((void *)0,
 					    drm_psb_trap_pagefaults, 0,
 					    dev_priv);
 	if (!dev_priv->mmu)
 		goto out_err;
-
+#endif
 	pg = dev_priv->pg;
 
 	tt_pages = (pg->gatt_pages < PSB_TT_PRIV0_PLIMIT) ?
@@ -1580,6 +1602,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	pg->rar_start = pg->ci_start + pg->ci_stolen_size;
 
 
+#ifdef CONFIG_MDFD_VIDEO_DECODE
 	/*
 	 * Make MSVDX/TOPAZ MMU aware of the CI stolen memory area.
 	 */
@@ -1620,6 +1643,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	spin_lock_init(&dev_priv->sequence_lock);
 
 	PSB_DEBUG_INIT("Begin to init MSVDX/Topaz\n");
+#endif
 
 	ret = psb_do_init(dev);
 	if (ret)
@@ -1812,6 +1836,7 @@ static int psb_vt_leave_ioctl(struct drm_device *dev, void *data,
 	int clean;
 	int ret;
 
+#ifdef CONFIG_MDFD_VIDEO_DECODE
 	ret = ttm_vt_lock(&dev_priv->ttm_lock, 1,
 			  psb_fpriv(file_priv)->tfile);
 	if (unlikely(ret != 0))
@@ -1829,7 +1854,7 @@ static int psb_vt_leave_ioctl(struct drm_device *dev, void *data,
 		DRM_INFO("Warning: GATT was not clean after VT switch.\n");
 
 	ttm_bo_swapout_all(&dev_priv->bdev);
-
+#endif
 	return 0;
 out_unlock:
 	(void) ttm_vt_unlock(&dev_priv->ttm_lock);
@@ -2637,6 +2662,7 @@ static void overlay_wait_vblank(struct drm_device *dev,
 static int validate_overlay_register_buffer(struct drm_file *file_priv,
 				uint32_t *OVADD, uint32_t buffer_handle)
 {
+#ifdef CONFIG_MDFD_VIDEO_DECODE
 	struct ttm_buffer_object *reg_buffer = NULL;
 	struct ttm_object_file *tfile = psb_fpriv(file_priv)->tfile;
 	struct ttm_placement placement;
@@ -2678,6 +2704,9 @@ out_err1:
 	ttm_bo_unref(&reg_buffer);
 out_err0:
 	return ret;
+#else
+	return 0;
+#endif
 }
 
 static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
@@ -3161,9 +3190,9 @@ static long psb_unlocked_ioctl(struct file *filp, unsigned int cmd,
 	 * Not all old drm ioctls are thread-safe.
 	 */
 
-	lock_kernel();
+//	lock_kernel();
 	ret = drm_ioctl(filp, cmd, arg);
-	unlock_kernel();
+//	unlock_kernel();
 	return ret;
 }
 
@@ -3568,10 +3597,8 @@ static struct drm_driver driver = {
 	.lastclose = psb_lastclose,
 	.open = psb_driver_open,
 	.postclose = PVRSRVDrmPostClose,
-	.get_map_ofs = drm_core_get_map_ofs,
-	.get_reg_ofs = drm_core_get_reg_ofs,
-	.proc_init = psb_proc_init,
-	.proc_cleanup = psb_proc_cleanup,
+//	.proc_init = psb_proc_init,
+//	.proc_cleanup = psb_proc_cleanup,
 	.preclose = psb_driver_preclose,
 	.fops = {
 		.owner = THIS_MODULE,
@@ -3583,26 +3610,27 @@ static struct drm_driver driver = {
 		.fasync = drm_fasync,
 		.read = drm_read,
 	},
-	.pci_driver = {
-		.name = DRIVER_NAME,
-		.id_table = pciidlist,
-		.probe = psb_probe,
-		.remove = psb_remove,
-#ifdef CONFIG_PM
-		.driver.pm = &psb_pm_ops,
-#endif
-	},
 	.name = DRIVER_NAME,
 	 .desc = DRIVER_DESC,
 	  .date = PSB_DRM_DRIVER_DATE,
 	   .major = PSB_DRM_DRIVER_MAJOR,
 	    .minor = PSB_DRM_DRIVER_MINOR,
 	     .patchlevel = PSB_DRM_DRIVER_PATCHLEVEL
-		   };
+};
+
+static struct pci_driver psb_pci_driver = {
+	.name = DRIVER_NAME,
+	.id_table = pciidlist,
+	.probe = psb_probe,
+	.remove = psb_remove,
+#ifdef CONFIG_PM
+	.driver.pm = &psb_pm_ops,
+#endif
+};
 
 static int psb_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 {
-	return drm_get_dev(pdev, ent, &driver);
+	return drm_get_pci_dev(pdev, ent, &driver);
 }
 
 #ifndef MODULE
@@ -3661,15 +3689,18 @@ static int __init psb_init(void)
 		return ret;
 	}
 
-	ret = drm_init(&driver);
+	ret = drm_pci_init(&driver, &psb_pci_driver);
 	if (ret != 0) {
 		return ret;
 	}
+
+#ifdef CONFIG_MDFD_VIDEO_DECODE
 	/*init for bc_video*/
 	ret = BC_Video_ModInit();
 	if (ret != 0) {
 		return ret;
 	}
+#endif
 
 #ifdef CONFIG_MDFD_HDMI
 	msic_regsiter_driver();
@@ -3681,16 +3712,19 @@ static int __init psb_init(void)
 static void __exit psb_exit(void)
 {
 	int ret;
+
+#ifdef CONFIG_MDFD_VIDEO_DECODE
 	/*cleanup for bc_video*/
 	ret = BC_Video_ModCleanup();
 	if (ret != 0) {
 		return;
 	}
+#endif
 
 #ifdef CONFIG_MDFD_HDMI
 	msic_unregister_driver();
 #endif
-	drm_exit(&driver);
+	drm_pci_exit(&driver, &psb_pci_driver);
 }
 
 #ifdef CONFIG_SUPPORT_TMD_MIPI_600X1024_DISPLAY

@@ -196,7 +196,9 @@ gfx-y += $(DRMDRVDIR)/psb_bl.o \
 	  $(DRMDRVDIR)/psb_powermgmt.o \
 	  $(DRMDRVDIR)/psb_irq.o
 
-gfx-y += $(IMGVDIR)/lnc_topaz.o \
+gfx-y +=  $(IMGVDIR)/psb_ttm_glue.o 
+
+gfx-$(CONFIG_MDFD_VIDEO_DECODE) += $(IMGVDIR)/lnc_topaz.o \
 	  $(IMGVDIR)/topaz_power.o \
 	  $(IMGVDIR)/lnc_topazinit.o \
 	  $(IMGVDIR)/pnw_topaz.o \
@@ -212,7 +214,7 @@ gfx-y += $(IMGVDIR)/lnc_topaz.o \
 	  $(IMGVDIR)/psb_ttm_fence_user.o \
 	  $(IMGVDIR)/psb_ttm_placement_user.o 
 		
-gfx-y += $(BUFFER_CLASS_DIR)/bufferclass_video.o \
+gfx-$(CONFIG_MDFD_VIDEO_DECODE) += $(BUFFER_CLASS_DIR)/bufferclass_video.o \
 	$(BUFFER_CLASS_DIR)/bufferclass_video_linux.o
 
 gfx-$(CONFIG_MDFLD_DSI_DPU) += $(DRMDRVDIR)/mdfld_dsi_dbi_dpu.o

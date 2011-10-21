@@ -584,9 +584,9 @@ int psbfb_kms_off_ioctl(struct drm_device *dev, void *data,
 
 	if (drm_psb_no_fb)
 		return 0;
-	acquire_console_sem();
+	console_trylock();
 	ret = psbfb_kms_off(dev, 0);
-	release_console_sem();
+	console_unlock();
 
 	return ret;
 }
@@ -630,25 +630,25 @@ int psbfb_kms_on_ioctl(struct drm_device *dev, void *data,
 
 	if (drm_psb_no_fb)
 		return 0;
-	acquire_console_sem();
+	console_trylock();
 	ret = psbfb_kms_on(dev, 0);
-	release_console_sem();
+	console_unlock();
 	drm_helper_disable_unused_functions(dev);
 	return ret;
 }
 
 void psbfb_suspend(struct drm_device *dev)
 {
-	acquire_console_sem();
+	console_trylock();
 	psbfb_kms_off(dev, 1);
-	release_console_sem();
+	console_unlock();
 }
 
 void psbfb_resume(struct drm_device *dev)
 {
-	acquire_console_sem();
+	console_trylock();
 	psbfb_kms_on(dev, 1);
-	release_console_sem();
+	console_unlock();
 	drm_helper_disable_unused_functions(dev);
 }
 

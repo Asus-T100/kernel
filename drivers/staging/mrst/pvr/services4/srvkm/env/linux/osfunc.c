@@ -1800,7 +1800,7 @@ static TIMER_CALLBACK_DATA sTimers[OS_MAX_TIMERS];
 DEFINE_MUTEX(sTimerStructLock);
 #else
  
-static spinlock_t sTimerStructLock = SPIN_LOCK_UNLOCKED;
+static spinlock_t sTimerStructLock = __SPIN_LOCK_UNLOCKED();
 #endif
 
 static void OSTimerCallbackBody(TIMER_CALLBACK_DATA *psTimerCBData)

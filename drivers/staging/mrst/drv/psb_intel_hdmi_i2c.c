@@ -32,7 +32,7 @@
 #include <linux/module.h>
 #include <linux/slab.h>
 #include <linux/i2c.h>
-#include <linux/i2c-id.h>
+//#include <linux/i2c-id.h>
 #include <linux/i2c-algo-bit.h>
 #if 0 /* Not needed for MDFLD & MRST HDMI */
 #include "psb_intel_hdmi_i2c.h"

@@ -117,6 +117,7 @@ int psb_release(struct inode *inode, struct file *filp)
 		memset(&msvdx_priv->frame_info, 0, sizeof(struct drm_psb_msvdx_frame_info) * MAX_DECODE_BUFFERS);
 	}
 
+#ifdef CONFIG_MDFD_VIDEO_DECODE
 	if (psb_fp->bcd_index >= 0 &&
 	    psb_fp->bcd_index < BC_VIDEO_DEVICE_MAX_ID &&
 	    bc_video_id_usage[psb_fp->bcd_index] == 1) {
@@ -125,8 +126,10 @@ int psb_release(struct inode *inode, struct file *filp)
 	}
 
 	ttm_object_file_release(&psb_fp->tfile);
+#endif
 	kfree(psb_fp);
 
+#ifdef CONFIG_MDFD_VIDEO_DECODE
 	/* remove video context */
 	psb_remove_videoctx(dev_priv, filp);
 
@@ -142,12 +145,13 @@ int psb_release(struct inode *inode, struct file *filp)
 
 	if (IS_MRST(dev_priv->dev))
 		schedule_delayed_work(&dev_priv->scheduler.msvdx_suspend_wq, 10);
-
+#endif
 	ret = drm_release(inode, filp);
 
 	return ret;
 }
 
+#ifdef CONFIG_MDFD_VIDEO_DECODE
 int psb_fence_signaled_ioctl(struct drm_device *dev, void *data,
 			     struct drm_file *file_priv)
 {
@@ -251,6 +255,7 @@ static int psb_ttm_fault(struct vm_area_struct *vma,
 	ttm_read_unlock(&dev_priv->ttm_lock);
 	return ret;
 }
+#endif
 
 /**
  * if vm_pgoff < DRM_PSB_FILE_PAGE_OFFSET call directly to
@@ -276,13 +281,16 @@ int psb_mmap(struct file *filp, struct vm_area_struct *vma)
 	if (unlikely(dev_priv->ttm_vm_ops == NULL)) {
 		dev_priv->ttm_vm_ops = (struct vm_operations_struct *)vma->vm_ops;
 		psb_ttm_vm_ops = *vma->vm_ops;
+#ifdef CONFIG_MDFD_VIDEO_DECODE
 		psb_ttm_vm_ops.fault = &psb_ttm_fault;
+#endif
 	}
 
 	vma->vm_ops = &psb_ttm_vm_ops;
 
 	return 0;
 }
+
 /*
 ssize_t psb_ttm_write(struct file *filp, const char __user *buf,
 		      size_t count, loff_t *f_pos)
@@ -315,10 +323,14 @@ int psb_verify_access(struct ttm_buffer_object *bo,
 	if (unlikely(!file_priv->authenticated))
 		return -EPERM;
 	*/
-
+#ifdef CONFIG_MDFD_VIDEO_DECODE
 	return ttm_pl_verify_access(bo, psb_fpriv(file_priv)->tfile);
+#else
+	return 0;
+#endif
 }
 
+#ifdef CONFIG_MDFD_VIDEO_DECODE
 static int psb_ttm_mem_global_init(struct ttm_global_reference *ref)
 {
 	return ttm_mem_global_init(ref->object);
@@ -367,6 +379,7 @@ void psb_ttm_global_release(struct drm_psb_private *dev_priv)
 {
 	ttm_global_item_unref(&dev_priv->mem_global_ref);
 }
+#endif
 
 int psb_getpageaddrs_ioctl(struct drm_device *dev, void *data,
 			   struct drm_file *file_priv)
@@ -379,6 +392,7 @@ int psb_getpageaddrs_ioctl(struct drm_device *dev, void *data,
 	unsigned long *p = arg->page_addrs;
 	int ret = 0;
 
+#ifdef CONFIG_MDFD_VIDEO_DECODE
 	bo = ttm_buffer_object_lookup(psb_fpriv(file_priv)->tfile,
 				      arg->handle);
 	if (unlikely(bo == NULL)) {
@@ -386,7 +400,6 @@ int psb_getpageaddrs_ioctl(struct drm_device *dev, void *data,
 		       "Could not find buffer object for getpageaddrs.\n");
 		return -EINVAL;
 	}
-
 	arg->gtt_offset = bo->offset;
 	ttm = bo->ttm;
 	num_pages = ttm->num_pages;
@@ -396,6 +409,6 @@ int psb_getpageaddrs_ioctl(struct drm_device *dev, void *data,
 		p[i] = (unsigned long)page_to_phys(tt_pages[i]);
 
 	ttm_bo_unref(&bo);
-
+#endif
 	return ret;
 }

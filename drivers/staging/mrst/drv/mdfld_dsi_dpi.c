@@ -287,8 +287,9 @@ void dsi_set_pipe_plane_enable_state(struct drm_device *dev,
 	} else {
 		/*Disable PIPE*/
 		REG_WRITE(pipeconf_reg, 0);
-		mdfld_wait_for_PIPEA_DISABLE(dev, pipe);
-		mdfld_wait_for_DPI_CTRL_FIFO(dev, pipe);
+		/* JB Hack - may need to revisit k 3.0 port */
+		//mdfld_wait_for_PIPEA_DISABLE(dev, pipe);
+		//mdfld_wait_for_DPI_CTRL_FIFO(dev, pipe);
 
 		/*Disable MIPI Port*/
 		/*REG_WRITE(mipi_reg, (REG_READ(mipi_reg) & ~BIT31));*/

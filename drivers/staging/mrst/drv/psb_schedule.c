@@ -23,7 +23,7 @@
 #include "psb_reg.h"
 #include "ttm/ttm_execbuf_util.h"
 
-
+#ifdef CONFIG_MDFD_VIDEO_DECODE
 static void psb_powerdown_topaz(struct work_struct *work)
 {
 	struct psb_scheduler *scheduler =
@@ -67,4 +67,6 @@ int psb_scheduler_init(struct drm_device *dev,
 
 	return 0;
 }
+#endif // CONFIG_MDFD_VIDEO_DECODE
+
 

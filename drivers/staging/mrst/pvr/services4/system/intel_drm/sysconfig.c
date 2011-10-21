@@ -487,6 +487,7 @@ PVRSRV_ERROR SysInitialise(IMG_VOID)
 		return eError;
 	}
 
+#ifdef CONFIG_MDFD_VIDEO_DECODE
 #if defined(PVR_MDFLD_SYS_MSVDX_AND_TOPAZ)
 	
 	eError = PVRSRVRegisterDevice(gpsSysData, MSVDXRegisterDevice,
@@ -512,6 +513,7 @@ PVRSRV_ERROR SysInitialise(IMG_VOID)
 			return eError;
 		}
 	}
+#endif
 #endif
 	
 
