@@ -21,6 +21,8 @@
 *
 */
 
+#include <linux/bitops.h>
+
 #include "sh_css_hrt.h"
 #include "sh_css_internal.h"
 #define HRT_NO_BLOB_sp
@@ -1654,35 +1656,30 @@ sh_css_hrt_irq_get_id(enum hrt_isp_css_irq *irq_id)
 {
 	unsigned int irq_status = sh_css_irq_get_status_reg();
 	unsigned int irq_mask = sh_css_irq_get_mask_reg();
-	unsigned int i;
-	int irq_idx_found = -1;
 	enum hrt_isp_css_irq_status status = hrt_isp_css_irq_status_success;
+	int id1, id2;
 
 	/* find the first irq bit */
-	for (i = 0;
-	     (i < hrt_isp_css_irq_num_irqs) && (irq_idx_found == -1);
-	     i++) {
-		if (irq_status & (1u << i))
-			irq_idx_found = i;
-	}
-	if (irq_idx_found == -1)
+	id1 = ffs(irq_status) - 1;
+
+	if (id1 == -1 || id1 >= hrt_isp_css_irq_num_irqs)
 		return hrt_isp_css_irq_status_error;
 
+	irq_status &= ~(1u << id1);
+
 	/* now check whether there are more bits set */
-	for (i = irq_idx_found + 1; (i < hrt_isp_css_irq_num_irqs)
-	     && (status == hrt_isp_css_irq_status_success); i++) {
-		if (irq_status & (1u << i))
-			status = hrt_isp_css_irq_status_more_irqs;
-	}
+	id2 = ffs(irq_status) - 1;
+	if (id2 > id1 && id2 < hrt_isp_css_irq_num_irqs)
+		status = hrt_isp_css_irq_status_more_irqs;
 
 	/* now we clear the irq status bit, to avoid generating a
 	 * new IRQ, we must set the mask temporarily to zero.
 	 */
 	sh_css_irq_set_mask_reg(0);
-	sh_css_irq_clear_status_reg(1u << irq_idx_found);
+	sh_css_irq_clear_status_reg(1u << id1);
 	sh_css_irq_set_mask_reg(irq_mask);
 	if (irq_id)
-		*irq_id = (enum hrt_isp_css_irq) irq_idx_found;
+		*irq_id = (enum hrt_isp_css_irq) id1;
 	return status;
 }
 
