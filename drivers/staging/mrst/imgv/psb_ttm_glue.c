@@ -107,6 +107,9 @@ int psb_release(struct inode *inode, struct file *filp)
 	file_priv = (struct drm_file *) filp->private_data;
 	psb_fp = psb_fpriv(file_priv);
 	dev_priv = psb_priv(file_priv->minor->dev);
+
+#ifdef CONFIG_MDFD_VIDEO_DECODE
+
 	msvdx_priv = (struct msvdx_private *)dev_priv->msvdx_private;
 
 	/*cleanup for msvdx*/
@@ -117,7 +120,6 @@ int psb_release(struct inode *inode, struct file *filp)
 		memset(&msvdx_priv->frame_info, 0, sizeof(struct drm_psb_msvdx_frame_info) * MAX_DECODE_BUFFERS);
 	}
 
-#ifdef CONFIG_MDFD_VIDEO_DECODE
 	if (psb_fp->bcd_index >= 0 &&
 	    psb_fp->bcd_index < BC_VIDEO_DEVICE_MAX_ID &&
 	    bc_video_id_usage[psb_fp->bcd_index] == 1) {

@@ -1093,11 +1093,19 @@ static int psbfb_create(struct psb_fbdev * fbdev, struct drm_fb_helper_surface_s
 	* is 608x1024(64 bits align), or the information between android
 	* and Linux frame buffer is not consistent.
 	*/
+
+// 	if (get_panel_type(dev, 0) == TMD_6X10_VID)
+// 		mode_cmd.width = sizes->surface_width - 200;
+// 	else
+// 		mode_cmd.width = sizes->surface_width;
+// 	mode_cmd.height = sizes->surface_height;
+
 	if (get_panel_type(dev, 0) == TMD_6X10_VID)
-		mode_cmd.width = sizes->surface_width - 200;
+		mode_cmd.width = sizes->fb_width - 200;
 	else
 		mode_cmd.width = sizes->surface_width;
-	mode_cmd.height = sizes->surface_height;
+	mode_cmd.height = sizes->fb_height;
+
 
 	mode_cmd.bpp = 32;
         //HW requires pitch to be 64 byte aligned
