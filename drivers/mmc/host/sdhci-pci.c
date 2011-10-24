@@ -196,12 +196,27 @@ static int mfd_emmc_gpio_parse(struct sfi_table_header *table)
 
 #ifdef CONFIG_PM_RUNTIME
 
+/*
+ * MFLD SD card insert/remove handler
+ * When removing a SD card, there may be still requests
+ * transferring. But removing a SD card can cause MFLD
+ * host controller reset its power register automatically
+ * which causes host cannot generate interrupts for the
+ * current transferring requests. That will trigger timeout
+ * timer.
+ * So before start to detect a card, finish the current
+ * request first.
+ */
 static irqreturn_t mfd_sd_cd(int irq, void *dev_id)
 {
 	struct sdhci_pci_slot *slot = dev_id;
 	struct sdhci_host *host = slot->host;
 
-	mmc_detect_change(host->mmc, msecs_to_jiffies(200));
+	if (host->card_tasklet.func == NULL)
+		return IRQ_NONE;
+
+	tasklet_schedule(&host->card_tasklet);
+
 	return IRQ_HANDLED;
 }
 
