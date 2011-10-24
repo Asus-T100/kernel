@@ -68,9 +68,11 @@ static int mmc_queue_thread(void *d)
 				set_current_state(TASK_RUNNING);
 				break;
 			}
+			mmc_start_bkops(mq->card);
 			up(&mq->thread_sem);
 			schedule();
 			down(&mq->thread_sem);
+			mmc_stop_bkops(mq->card);
 		}
 
 		/* Current request becomes previous request and vice versa. */
