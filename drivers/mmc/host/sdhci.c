@@ -112,6 +112,34 @@ static void sdhci_dumpregs(struct sdhci_host *host)
 		       readl(host->ioaddr + SDHCI_ADMA_ERROR),
 		       readl(host->ioaddr + SDHCI_ADMA_ADDRESS));
 
+	if (host->cmd)
+		printk(KERN_DEBUG DRIVER_NAME
+				": command pending, Cmdcode: %d\n",
+				host->cmd->opcode);
+	else
+		printk(KERN_DEBUG DRIVER_NAME ": No command pending\n");
+
+	if (host->data)
+		printk(KERN_DEBUG DRIVER_NAME ": data pending\n");
+	else
+		printk(KERN_DEBUG DRIVER_NAME ": No data pending\n");
+
+	printk(KERN_DEBUG DRIVER_NAME ": pwr:     0x%x | clock:	%d\n",
+				host->pwr, host->clock);
+#ifdef CONFIG_PM_RUNTIME
+	printk(KERN_DEBUG DRIVER_NAME ": usage_count %d | Runtime_status %d\n",
+			atomic_read(&host->mmc->parent->power.usage_count),
+			host->mmc->parent->power.runtime_status);
+#endif
+	if (test_bit(TASKLET_STATE_SCHED, &host->finish_tasklet.state))
+		printk(KERN_DEBUG DRIVER_NAME
+				": finish_tasklet pending running, state %ld\n",
+				host->finish_tasklet.state);
+	else
+		printk(KERN_DEBUG DRIVER_NAME
+				": finish_tasklet NOT start, state %ld\n",
+				host->finish_tasklet.state);
+
 	printk(KERN_DEBUG DRIVER_NAME ": ===========================================\n");
 }
 
