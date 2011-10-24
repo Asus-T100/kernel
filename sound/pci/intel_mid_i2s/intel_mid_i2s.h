@@ -22,10 +22,12 @@
 #include <linux/intel_mid_i2s_common.h>
 #include <linux/intel_mid_i2s_if.h>
 
-#define DRIVER_NAME "I2S SSP Driver"
+
 /*
  * Defines
  */
+#define DRIVER_NAME "I2S SSP Driver"
+
 #define MFLD_SSP1_DEVICE_ID 0x0825	/* FOR MFLD */
 #define MRST_SSP0_DEVICE_ID 0x0815	/* FOR MRST */
 #define MFLD_SSP0_DEVICE_ID 0x0832	/* FOR MFLD */
@@ -218,8 +220,8 @@ DEFINE_SSP_REG(I2CDATA, 0x04);
 #define SSSR_BSY_SHIFT  4
 #define SSSR_RNE_MASK   0x1	/* Receive FIFO not empty */
 #define SSSR_RNE_SHIFT  3
-#define SSSR_TFN_MASK   0x1	/* Transmit FIFO not Full */
-#define SSSR_TFN_SHIFT  2
+#define SSSR_TNF_MASK   0x1	/* Transmit FIFO not Full */
+#define SSSR_TNF_SHIFT  2
 
 
 #define SSP_OFF 0
@@ -289,13 +291,18 @@ DEFINE_SSP_REG(I2CDATA, 0x04);
  * bit I2S_PORT_READ_BUSY lock for read requests (serialized)
  * bit I2S_PORT_WRITE_BUSY lock for write requests (serialized)
  * bit I2S_PORT_CLOSING means close on going, waiting for pending callbacks.
+ * bit I2S_PORT_COMPLETE_WRITE means deferred irq process is required
+ *			to complete the Tx request when not using DMA
+ * bit I2S_PORT_COMPLETE_READ means deferred irq process is required
+ *			to complete the Rx request when not using DMA
  */
-
 enum i2s_flags {
 	I2S_PORT_OPENED,
 	I2S_PORT_WRITE_BUSY,
 	I2S_PORT_READ_BUSY,
-	I2S_PORT_CLOSING
+	I2S_PORT_CLOSING,
+	I2S_PORT_COMPLETE_WRITE,
+	I2S_PORT_COMPLETE_READ
 };
 
 /*
@@ -410,22 +417,28 @@ struct intel_mid_i2s_hdl {
 	struct scatterlist *txsgl;
 
 	unsigned int device_instance;
+
 	/* Call back functions */
-	int (*read_callback)(void *param);
-	dma_addr_t read_dst;
-	size_t read_len;     /* read_len > 0 <=> read_dma_running */
-	void *read_param;	 /* context param for callback */
-	int (*write_callback)(void *param);
-	dma_addr_t write_src;
-	size_t write_len;	/* write_len > 0 <=> read_dma_running */
-	void *write_param;	/* context param for callback */
+	int	(*read_callback)(void *param);
+	int	(*write_callback)(void *param);
+	size_t	read_len;	/* read_len > 0 <=> read_dma_running */
+	size_t	write_len;	/* write_len > 0 <=> read_dma_running */
+	void	*read_param;	/* context param for callback */
+	void	*write_param;	/* context param for callback */
+	union {
+		dma_addr_t	dma;
+		u16		*cpu;	/* DO_NOT_USE_DMA mode */
+	} read_ptr;
+	union {
+		dma_addr_t	dma;
+		u16		*cpu;	/* DO_NOT_USE_DMA mode */
+	} write_ptr;
 
 	unsigned long flags;
 	struct mutex mutex;
 	enum intel_mid_i2s_ssp_usage usage;
 
 	struct intel_mid_i2s_settings current_settings;
-
 };
 
 struct intel_mid_ssp_gpio {
@@ -433,13 +446,40 @@ struct intel_mid_ssp_gpio {
 	u8 ssp_fs_mode;
 };
 
+static int wr_req_cpu(struct intel_mid_i2s_hdl *drv_data,
+		      u32			*source,
+		      size_t			len,
+		      void			*param);
+static int wr_req_dma(struct intel_mid_i2s_hdl *drv_data,
+		      u32			*source,
+		      size_t			len,
+		      void			*param);
+static int rd_req_cpu(struct intel_mid_i2s_hdl *drv_data,
+		      u32			*destination,
+		      size_t			len,
+		      void			*param);
+static int rd_req_dma(struct intel_mid_i2s_hdl *drv_data,
+		      u32			*destination,
+		      size_t			len,
+		      void			*param);
+
 static void i2s_read_done(void *arg);
 static void i2s_write_done(void *arg);
 static void i2s_lli_read_done(void *arg);
 static void i2s_lli_write_done(void *arg);
+
 static bool chan_filter(struct dma_chan *chan, void *param);
 static void ssp1_dump_registers(struct intel_mid_i2s_hdl *);
-static irqreturn_t i2s_int(int irq, void *dev_id);
+
+static
+irqreturn_t i2s_irq(int irq, void *dev_id);
+static inline
+irqreturn_t i2s_irq_handle_RFS(struct intel_mid_i2s_hdl *drv_data, u32 sssr);
+static inline
+irqreturn_t i2s_irq_handle_TFS(struct intel_mid_i2s_hdl *drv_data, u32 sssr);
+static
+irqreturn_t i2s_irq_deferred(int irq, void *dev_id);
+
 static int check_device(struct device *device_ptr, void *data);
 static void set_ssp_i2s_hw(struct intel_mid_i2s_hdl *drv_data,
 			const struct intel_mid_i2s_settings *ps_settings);
@@ -624,7 +664,6 @@ enum mrst_ssp_timeslot {
 static u8
   ssp_ssacd[SSP_FRM_FREQ_SIZE][SSP_BIT_PER_SAMPLE_SIZE][SSP_TIMESLOT_SIZE] = {
 
-
 	[SSP_FRM_FREQ_UNDEFINED][SSP_BIT_PER_SAMPLE_8][SSP_TIMESLOT_1] = SSP_SSACD_NOT_AVAILABLE,
 	[SSP_FRM_FREQ_UNDEFINED][SSP_BIT_PER_SAMPLE_8][SSP_TIMESLOT_2] = SSP_SSACD_NOT_AVAILABLE,
 	[SSP_FRM_FREQ_UNDEFINED][SSP_BIT_PER_SAMPLE_8][SSP_TIMESLOT_4] = SSP_SSACD_NOT_AVAILABLE,
@@ -735,7 +774,6 @@ static u8
 	[SSP_FRM_FREQ_8_000][SSP_BIT_PER_SAMPLE_32][SSP_TIMESLOT_2] = SSP_PLL_FREQ_32_842 | SSP_SYSCLK_DIV_16,
 	[SSP_FRM_FREQ_8_000][SSP_BIT_PER_SAMPLE_32][SSP_TIMESLOT_4] = SSP_PLL_FREQ_32_842 | SSP_SYSCLK_DIV_8,
 	[SSP_FRM_FREQ_8_000][SSP_BIT_PER_SAMPLE_32][SSP_TIMESLOT_8] = SSP_PLL_FREQ_32_842 | SSP_SYSCLK_DIV_4,
-
 };
 
 #endif /* MID_I2S_H_*/

@@ -888,11 +888,12 @@ config SND_INTEL_MID_I2S
 	  the low level interface for some upper layer drivers such as
 	  Alsa SoC, char device interfaces... depending of peripheral connected.
 	  PCI Header should have ADID field set to I2S BT_FM or 
-	  I2S MODEM to be used by this driver (so it know connected peripheral).
-	  Note this is a prototype driver and support for continuous
-	  flow is still working-in-progress.
-	  This driver can also be built as a module. If so, the module
-	  will be called intel_mid_i2s.ko
+	  I2S MODEM to be used by this driver (so it knows connected peripheral).
+	  NOTES :
+	  - This is a prototype driver and support for continuous
+	    flow is still working-in-progress.
+	  - This driver can also be built as a module. If so, the module
+	    will be called intel_mid_i2s.ko
 	  If unsure, say N here.
 
 config SND_INTEL_ALSA_SSP

@@ -50,7 +50,6 @@ static unsigned long modem_found_and_i2s_setup_ok;
 static void(*intel_mid_i2s_modem_probe_cb)(void);
 static void(*intel_mid_i2s_modem_remove_cb)(void);
 
-
 /*
  * structures for pci probing
  */
@@ -62,11 +61,13 @@ static const struct dev_pm_ops intel_mid_i2s_pm_ops = {
 	.runtime_resume = intel_mid_i2s_runtime_resume,
 };
 #endif
+
 static DEFINE_PCI_DEVICE_TABLE(pci_ids) = {
 	{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, MFLD_SSP1_DEVICE_ID) },
 	{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, MFLD_SSP0_DEVICE_ID) },
 	{ 0, }, /* terminate list */
 };
+
 static struct pci_driver intel_mid_i2s_driver = {
 #ifdef CONFIG_PM
 	.driver = {
@@ -77,7 +78,6 @@ static struct pci_driver intel_mid_i2s_driver = {
 	.id_table = pci_ids,
 	.probe = intel_mid_i2s_probe,
 	.remove = __devexit_p(intel_mid_i2s_remove),
-
 };
 
 /*
@@ -237,6 +237,7 @@ int intel_mid_i2s_flush(struct intel_mid_i2s_hdl *drv_data)
 {
 	u32 sssr, data;
 	u32 num = 0;
+	u8  rsre;
 	void __iomem *reg;
 
 	WARN(!drv_data, "Driver data=NULL\n");
@@ -245,13 +246,19 @@ int intel_mid_i2s_flush(struct intel_mid_i2s_hdl *drv_data)
 	reg = drv_data->ioaddr;
 	sssr = read_SSSR(reg);
 	dev_warn(&drv_data->pdev->dev, "in flush sssr=0x%08X\n", sssr);
-	/*
-	 * Flush "by hand" was generating spurious DMA SERV REQUEST
-	 * from SSP to DMA => then buggy retrieval of data for next dma_req
-	 * Disable: RX Service Request from RX fifo to DMA
-	 * as we will flush by hand
-	 */
-	clear_SSCR1_reg(reg, RSRE);
+
+	rsre = read_SSCR1(reg) & (SSCR1_RSRE_MASK << SSCR1_RSRE_SHIFT);
+	if (rsre) {
+		/*
+		 * Flush "by hand" was generating spurious DMA SERV REQUEST
+		 * from SSP to DMA => then buggy retrieval
+		 * of data for next dma_req
+		 * Disable: RX Service Request from RX fifo to DMA
+		 * as we will flush by hand
+		 */
+		clear_SSCR1_reg(reg, RSRE);
+	}
+
 	/* i2s_flush is called in between 2 bursts
 	 * => no FMSYNC at that time (i.e. SSP not busy)
 	 * => at most 16 samples in the FIFO */
@@ -260,10 +267,14 @@ int intel_mid_i2s_flush(struct intel_mid_i2s_hdl *drv_data)
 		data = read_SSDR(reg);
 		num++;
 	}
-	/* Enable: RX Service Request from RX fifo to DMA
-	 * as flush by hand is done
-	 */
-	set_SSCR1_reg(reg, RSRE);
+
+	if (rsre) {
+		/* Enable: RX Service Request from RX fifo to DMA
+		 * as flush by hand is done
+		 */
+		set_SSCR1_reg(reg, RSRE);
+	}
+
 	sssr = read_SSSR(reg);
 	dev_dbg(&drv_data->pdev->dev, "out flush sssr=0x%08X\n", sssr);
 	return num;
@@ -315,7 +326,7 @@ int intel_mid_i2s_get_tx_fifo_level(struct intel_mid_i2s_hdl *drv_data)
 	reg = drv_data->ioaddr;
 	sssr = read_SSSR(reg);
 	tfl = GET_SSSR_val(sssr, TFL);
-	tnf = GET_SSSR_val(sssr, TFN);
+	tnf = GET_SSSR_val(sssr, TNF);
 	if (!tnf)
 		return 16;
 	else
@@ -564,68 +575,143 @@ EXPORT_SYMBOL_GPL(intel_mid_i2s_lli_wr_req);
  * Output parameters
  *      error : 0 means no error
  */
-int intel_mid_i2s_rd_req(struct intel_mid_i2s_hdl *drv_data, u32 *destination,
-				size_t len, void *param)
+int intel_mid_i2s_rd_req(struct intel_mid_i2s_hdl	*drv_data,
+			 u32				*destination,
+			 size_t				len,
+			 void				*param)
 {
-	struct dma_async_tx_descriptor *rxdesc = NULL;
-	struct dma_chan *rxchan = drv_data->rxchan;
-	enum dma_ctrl_flags flag;
-	dma_addr_t ssdr_addr;
-	dma_addr_t dst;
+	int result;
+
+	/* Checks */
 	WARN(!drv_data, "Driver data=NULL\n");
 	if (!drv_data)
 		return -EFAULT;
-	if (!rxchan) {
-		dev_WARN(&(drv_data->pdev->dev), "rd_req FAILED no rxchan\n");
-		return -EINVAL;
-	}
 	if (!len) {
 		dev_WARN(&drv_data->pdev->dev, "rd req invalid len=0");
 		return -EINVAL;
 	}
 
-	dev_dbg(&drv_data->pdev->dev, "I2S_READ() dst=%p, len=%d, drv_data=%p",
-					destination, len, drv_data);
-	dst = dma_map_single(NULL, destination, len, DMA_FROM_DEVICE);
-	if (!dst) {
-		dev_WARN(&drv_data->pdev->dev, "can't map DMA address %p",
-					destination);
-		return -ENOMEM;
-	}
-
-	drv_data->read_dst = dst;
-	drv_data->read_len = len;
-	/* get Data Read/Write address */
-	ssdr_addr = (drv_data->paddr + OFFSET_SSDR);
-	set_SSCR1_reg((drv_data->ioaddr), RSRE);
-	change_SSCR0_reg((drv_data->ioaddr), RIM,
-			 ((drv_data->current_settings).rx_fifo_interrupt));
-	flag = DMA_PREP_INTERRUPT | DMA_CTRL_ACK;
-	/* Start the RX dma transfer */
-	rxdesc = rxchan->device->device_prep_dma_memcpy(
-			rxchan,		/* DMA Channel */
-			dst,		/* DAR */
-			ssdr_addr,	/* SAR */
-			len,		/* Data Length */
-			flag);		/* Flag */
-	if (!rxdesc) {
-		dev_WARN(&drv_data->pdev->dev, "can not prep dma memcpy");
-		return -EFAULT;
-	}
-	/* Only 1 READ at a time allowed. do it at end to avoid clear&wakeup*/
+	/* Allow only 1 READ at a time. */
 	if (test_and_set_bit(I2S_PORT_READ_BUSY, &drv_data->flags)) {
-		dma_unmap_single(NULL, dst, len, DMA_FROM_DEVICE);
 		dev_WARN(&drv_data->pdev->dev, "RD reject I2S_PORT READ_BUSY");
 		return -EBUSY;
 	}
-	dev_dbg(&(drv_data->pdev->dev), "RD dma tx submit\n");
-	rxdesc->callback = i2s_read_done;
-	drv_data->read_param = param;
-	rxdesc->callback_param = drv_data;
-	rxdesc->tx_submit(rxdesc);
-	return 0;
+
+	dev_dbg(&drv_data->pdev->dev, "%s() dst=%p, len=%d, drv_data=%p",
+		__func__, destination, len, drv_data);
+
+	if (drv_data->current_settings.ssp_rx_dma == SSP_RX_DMA_ENABLE)
+		result = rd_req_dma(drv_data, destination, len, param);
+	else
+		result = rd_req_cpu(drv_data, destination, len, param);
+
+	/* Error management */
+	if (result)
+		goto return_clr_busy;
+
+	return result;
+
+	/* Error management: free resources */
+return_clr_busy:
+	clear_bit(I2S_PORT_READ_BUSY, &drv_data->flags);
+	return result;
 }
 EXPORT_SYMBOL_GPL(intel_mid_i2s_rd_req);
+
+static int rd_req_cpu(struct intel_mid_i2s_hdl *drv_data,
+		      u32			*destination,
+		      size_t			len,
+		      void			*param)
+{
+	dev_dbg(&drv_data->pdev->dev, "%s() - ENTER", __func__);
+
+	/* Initiate read */
+	drv_data->mask_sr |= ((SSSR_RFS_MASK << SSSR_RFS_SHIFT) |
+			      (SSSR_ROR_MASK << SSSR_ROR_SHIFT));
+
+	clear_bit(I2S_PORT_COMPLETE_READ, &drv_data->flags);
+	set_SSCR1_reg((drv_data->ioaddr), RIE);
+	change_SSCR0_reg((drv_data->ioaddr), RIM,
+			 ((drv_data->current_settings).rx_fifo_interrupt));
+
+	/* Save param */
+	drv_data->read_ptr.cpu	= (u16 *)destination;
+	drv_data->read_len	= len;
+	drv_data->read_param	= param;
+
+	return 0;
+}
+
+static int rd_req_dma(struct intel_mid_i2s_hdl *drv_data,
+		      u32			*destination,
+		      size_t			len,
+		      void			*param)
+{
+	/* Locals declaration */
+	int				result = 0;
+	struct dma_async_tx_descriptor	*rxdesc = NULL;
+	struct dma_chan			*rxchan = drv_data->rxchan;
+	enum dma_ctrl_flags		flag;
+	dma_addr_t			ssdr_addr;
+	dma_addr_t			dst;
+
+	dev_dbg(&drv_data->pdev->dev, "%s() - ENTER", __func__);
+
+	/* Checks */
+	WARN(!drv_data->dmac1, "DMA device=NULL\n");
+	if (!drv_data->dmac1)
+		return -EFAULT;
+
+	if (!rxchan) {
+		dev_WARN(&(drv_data->pdev->dev), "rd_req FAILED no rxchan\n");
+		return -EINVAL;
+	}
+
+	/* Map dma address */
+	dst = dma_map_single(NULL, destination, len, DMA_FROM_DEVICE);
+	if (!dst) {
+		dev_WARN(&drv_data->pdev->dev, "can't map DMA address %p",
+			 destination);
+		return -ENOMEM;
+	}
+
+	/* Prepare RX dma transfer */
+	ssdr_addr = (drv_data->paddr + OFFSET_SSDR);
+	flag = DMA_PREP_INTERRUPT | DMA_CTRL_ACK;
+
+	rxdesc = rxchan->device->device_prep_dma_memcpy(
+					rxchan,		/* DMA Channel */
+					dst,		/* DAR */
+					ssdr_addr,	/* SAR */
+					len,		/* Data Length */
+					flag);		/* Flag */
+	if (!rxdesc) {
+		dev_WARN(&drv_data->pdev->dev, "can not prep dma memcpy");
+		result = -EFAULT;
+		goto return_unmap;
+	}
+
+	set_SSCR1_reg((drv_data->ioaddr), RSRE);
+	change_SSCR0_reg((drv_data->ioaddr), RIM,
+			 ((drv_data->current_settings).rx_fifo_interrupt));
+
+	/* Save param */
+	drv_data->read_ptr.dma	= dst;
+	drv_data->read_len	= len;
+	drv_data->read_param	= param;
+
+	rxdesc->callback	= i2s_read_done;
+	rxdesc->callback_param	= drv_data;
+
+	/* Submit DMA transfer */
+	rxdesc->tx_submit(rxdesc);
+	return result;
+
+	/* Error management: free resources */
+return_unmap:
+	dma_unmap_single(NULL, dst, len, DMA_FROM_DEVICE);
+	return result;
+}
 
 /**
  * intel_mid_i2s_wr_req - request a write to i2s peripheral
@@ -637,70 +723,144 @@ EXPORT_SYMBOL_GPL(intel_mid_i2s_rd_req);
  * Output parameters
  *      error : 0 means no error
  */
-int intel_mid_i2s_wr_req(struct intel_mid_i2s_hdl *drv_data, u32 *source,
-				size_t len, void *param)
+int intel_mid_i2s_wr_req(struct intel_mid_i2s_hdl	*drv_data,
+			 u32				*source,
+			 size_t				len,
+			 void				*param)
 {
-	dma_addr_t ssdr_addr;
-	struct dma_async_tx_descriptor *txdesc = NULL;
-	struct dma_chan *txchan = drv_data->txchan;
-	enum dma_ctrl_flags flag;
-	dma_addr_t src;
+	int result;
+
+	/* Checks */
 	WARN(!drv_data, "Driver data=NULL\n");
 	if (!drv_data)
 		return -EFAULT;
+	if (!len) {
+		dev_WARN(&drv_data->pdev->dev, "invalid wr len 0");
+		return -EINVAL;
+	}
+
+	/* Allow only 1 WRITE at a time */
+	if (test_and_set_bit(I2S_PORT_WRITE_BUSY, &drv_data->flags)) {
+		dev_WARN(&drv_data->pdev->dev, "WR reject I2S_PORT WRITE_BUSY");
+		return -EBUSY;
+	}
+
+	dev_dbg(&drv_data->pdev->dev, "%s() src=%p, len=%d, drv_data=%p",
+		__func__, source, len, drv_data);
+
+	if (drv_data->current_settings.ssp_tx_dma == SSP_TX_DMA_ENABLE)
+		result = wr_req_dma(drv_data, source, len, param);
+	else
+		result = wr_req_cpu(drv_data, source, len, param);
+
+	/* Error management */
+	if (result)
+		goto return_clr_busy;
+
+	return result;
+
+	/* Error management: free resources */
+return_clr_busy:
+	clear_bit(I2S_PORT_READ_BUSY, &drv_data->flags);
+	return result;
+}
+EXPORT_SYMBOL_GPL(intel_mid_i2s_wr_req);
+
+static int wr_req_cpu(struct intel_mid_i2s_hdl *drv_data,
+		      u32			*source,
+		      size_t			len,
+		      void			*param)
+{
+	dev_dbg(&drv_data->pdev->dev, "%s() - ENTER", __func__);
+
+	/* Initiate write */
+	drv_data->mask_sr |= ((SSSR_TFS_MASK << SSSR_TFS_SHIFT) |
+			      (SSSR_TUR_MASK << SSSR_TUR_SHIFT));
+
+	clear_bit(I2S_PORT_COMPLETE_WRITE, &drv_data->flags);
+
+	set_SSCR1_reg((drv_data->ioaddr), TIE);
+	change_SSCR0_reg((drv_data->ioaddr), TIM,
+			 ((drv_data->current_settings).tx_fifo_interrupt));
+
+	/* Save param */
+	drv_data->write_ptr.cpu	= (u16 *)source;
+	drv_data->write_len	= len;
+	drv_data->write_param	= param;
+
+	return 0;
+}
+
+static int wr_req_dma(struct intel_mid_i2s_hdl *drv_data,
+		      u32			*source,
+		      size_t			len,
+		      void			*param)
+{
+	int				result = 0;
+	struct dma_async_tx_descriptor	*txdesc = NULL;
+	struct dma_chan			*txchan = drv_data->txchan;
+	enum dma_ctrl_flags		flag;
+	dma_addr_t			ssdr_addr;
+	dma_addr_t			src;
+
+	dev_dbg(&drv_data->pdev->dev, "%s() - ENTER", __func__);
+
+	WARN(!drv_data->dmac1, "DMA device=NULL\n");
+	if (!drv_data->dmac1)
+		return -EFAULT;
+
 	if (!txchan) {
 		dev_WARN(&(drv_data->pdev->dev), "wr_req but no txchan\n");
 		return -EINVAL;
 	}
-	if (!len) {
-		dev_WARN(&drv_data->pdev->dev, "invalid len 0");
-		return -EINVAL;
-	}
 
-	dev_dbg(&drv_data->pdev->dev, "I2S_WRITE() src=%p, len=%d, drv_data=%p",
-					source, len, drv_data);
-
+	/* Map DMA address */
 	src = dma_map_single(NULL, source, len, DMA_TO_DEVICE);
 	if (!src) {
 		dev_WARN(&drv_data->pdev->dev, "can't map DMA address %p",
 						source);
-		return -EFAULT;
+		return -ENOMEM;
 	}
-	drv_data->write_src = src;
-	drv_data->write_len = len;
-	/* get Data Read/Write address */
+
+	/* Prepare TX dma transfer */
 	ssdr_addr = (dma_addr_t)(u32)(drv_data->paddr + OFFSET_SSDR);
-	set_SSCR1_reg((drv_data->ioaddr), TSRE);
-	change_SSCR0_reg((drv_data->ioaddr), TIM,
-			 ((drv_data->current_settings).tx_fifo_interrupt));
 	flag = DMA_PREP_INTERRUPT | DMA_CTRL_ACK;
+
 	txdesc = txchan->device->device_prep_dma_memcpy(
-			txchan,		/* DMA Channel */
-			ssdr_addr,	/* DAR */
-			src,		/* SAR */
-			len,		/* Data Length */
-			flag);		/* Flag */
+					txchan,		/* DMA Channel */
+					ssdr_addr,	/* DAR */
+					src,		/* SAR */
+					len,		/* Data Length */
+					flag);		/* Flag */
 	if (!txdesc) {
 		dev_WARN(&(drv_data->pdev->dev),
 			"wr_req dma memcpy FAILED(src=%08x,len=%d,txchan=%p)\n",
 			(unsigned int)src, len, txchan);
-		return -1;
+		result = -EFAULT;
+		goto return_unmap;
 	}
-	dev_dbg(&(drv_data->pdev->dev), "WR dma tx summit\n");
-	/* Only 1 WRITE at a time allowed */
-	if (test_and_set_bit(I2S_PORT_WRITE_BUSY, &drv_data->flags)) {
-		dma_unmap_single(NULL, src, len, DMA_TO_DEVICE);
-		dev_WARN(&drv_data->pdev->dev, "WR reject I2S_PORT WRITE_BUSY");
-		return -EBUSY;
-	}
-	txdesc->callback = i2s_write_done;
-	drv_data->write_param = param;
-	txdesc->callback_param = drv_data;
+
+	set_SSCR1_reg((drv_data->ioaddr), TSRE);
+	change_SSCR0_reg((drv_data->ioaddr), TIM,
+			 ((drv_data->current_settings).tx_fifo_interrupt));
+
+	/* Save params */
+	drv_data->write_ptr.dma	= src;
+	drv_data->write_len	= len;
+	drv_data->write_param	= param;
+
+	txdesc->callback	= i2s_write_done;
+	txdesc->callback_param	= drv_data;
+
+	/* Submit DMA transfer */
 	txdesc->tx_submit(txdesc);
-	dev_dbg(&(drv_data->pdev->dev), "wr dma req programmed\n");
-	return 0;
+	return result;
+
+	/* Error management: free resources */
+return_unmap:
+	dma_unmap_single(NULL, src, len, DMA_TO_DEVICE);
+	return result;
 }
-EXPORT_SYMBOL_GPL(intel_mid_i2s_wr_req);
 
 /**
  * intel_mid_i2s_open - reserve and start a SSP depending of it's usage
@@ -739,12 +899,6 @@ struct intel_mid_i2s_hdl *intel_mid_i2s_open(enum intel_mid_i2s_ssp_usage usage)
 	/* pm_runtime */
 	pm_runtime_get_sync(&drv_data->pdev->dev);
 
-	drv_data->mask_sr = ((SSSR_BCE_MASK << SSSR_BCE_SHIFT) |
-			(SSSR_EOC_MASK << SSSR_EOC_SHIFT) |
-			(SSSR_ROR_MASK << SSSR_ROR_SHIFT) |
-			(SSSR_TUR_MASK << SSSR_TUR_SHIFT) |
-			(SSSR_TINT_MASK << SSSR_TINT_SHIFT) |
-			(SSSR_PINT_MASK << SSSR_PINT_SHIFT));
 	if (test_bit(I2S_PORT_CLOSING, &drv_data->flags)) {
 		dev_err(&drv_data->pdev->dev, "Opening a closing I2S!");
 		goto open_error;
@@ -879,8 +1033,6 @@ static void i2s_reset_command_done(struct intel_mid_i2s_hdl *drv_data,
 
 	switch (cmd) {
 	case SSP_CMD_FREE_TX:
-		dma_unmap_single(NULL, drv_data->write_src,
-				 drv_data->write_len, DMA_TO_DEVICE);
 		drv_data->write_len = 0;
 		change_SSCR0_reg(drv_data->ioaddr, TIM,
 				SSP_TX_FIFO_UNDER_INT_DISABLE);
@@ -888,8 +1040,6 @@ static void i2s_reset_command_done(struct intel_mid_i2s_hdl *drv_data,
 		break;
 
 	case SSP_CMD_FREE_RX:
-		dma_unmap_single(NULL, drv_data->read_dst,
-				 drv_data->read_len, DMA_FROM_DEVICE);
 		drv_data->read_len = 0;
 		change_SSCR0_reg(drv_data->ioaddr, RIM,
 				SSP_RX_FIFO_OVER_INT_DISABLE);
@@ -924,7 +1074,7 @@ static void i2s_read_done(void *arg)
 	if (!test_bit(I2S_PORT_READ_BUSY, &drv_data->flags))
 		dev_WARN(&drv_data->pdev->dev, "spurious read dma complete");
 
-	dma_unmap_single(NULL, drv_data->read_dst,
+	dma_unmap_single(NULL, drv_data->read_ptr.dma,
 			 drv_data->read_len, DMA_FROM_DEVICE);
 	drv_data->read_len = 0;
 	reg = drv_data->ioaddr;
@@ -994,23 +1144,27 @@ static void i2s_lli_read_done(void *arg)
  */
 static void i2s_write_done(void *arg)
 {
-	int status = 0;
-	void *param_complete;
-	struct intel_mid_i2s_hdl *drv_data = arg;
-	void __iomem *reg ;
+	struct intel_mid_i2s_hdl	*drv_data	= arg;
+	int				status		= 0;
+	void				*param_complete;
+	void __iomem			*reg ;
 
 	WARN(!drv_data, "Driver data=NULL\n");
 	if (!drv_data)
 		return;
 	if (!test_bit(I2S_PORT_WRITE_BUSY, &drv_data->flags))
 		dev_warn(&drv_data->pdev->dev, "spurious write dma complete");
-	dma_unmap_single(NULL, drv_data->write_src,
+
+	dma_unmap_single(NULL, drv_data->write_ptr.dma,
 			 drv_data->write_len, DMA_TO_DEVICE);
-	drv_data->read_len = 0;
+	drv_data->write_len	= 0;
+	drv_data->write_ptr.cpu	= NULL;
+
 	reg = drv_data->ioaddr;
 	change_SSCR0_reg(reg, TIM, SSP_TX_FIFO_UNDER_INT_DISABLE);
 	dev_dbg(&(drv_data->pdev->dev), "DMA channel disable..\n");
 	param_complete = drv_data->write_param;
+
 	/* Do not change order sequence:
 	 * WRITE_BUSY clear, then test PORT_CLOSING
 	 * wakeup for close() function
@@ -1175,6 +1329,14 @@ int intel_mid_i2s_command(struct intel_mid_i2s_hdl *drv_data,
 	case SSP_CMD_ALLOC_TX:
 		ssp_settings = &(drv_data->current_settings);
 
+		/* Check if DMA channel allocation needed */
+		if (ssp_settings->ssp_tx_dma != SSP_TX_DMA_ENABLE)
+			break;
+
+		WARN(!drv_data->dmac1, "DMA device=NULL\n");
+		if (!drv_data->dmac1)
+			return -EFAULT;
+
 		if (ssp_settings->mode == SSP_INVALID_MODE) {
 			WARN(1, "Trying to alloc TX channel however"
 				"the HW Config is NOT set\n");
@@ -1261,6 +1423,16 @@ int intel_mid_i2s_command(struct intel_mid_i2s_hdl *drv_data,
 	case SSP_CMD_FREE_TX:
 		ssp_settings = &(drv_data->current_settings);
 
+		/* Check if DMA channel allocation needed */
+		if (ssp_settings->ssp_tx_dma != SSP_TX_DMA_ENABLE) {
+			i2s_reset_command_done(drv_data, SSP_CMD_FREE_TX);
+			break;
+		}
+
+		WARN(!drv_data->dmac1, "DMA device=NULL\n");
+		if (!drv_data->dmac1)
+			return -EFAULT;
+
 		channel = drv_data->txchan;
 
 		WARN(!channel, "Trying to free non existant TX channel\n");
@@ -1275,12 +1447,22 @@ int intel_mid_i2s_command(struct intel_mid_i2s_hdl *drv_data,
 		WARN(s, "DMA TERMINATE of TX returns error\n");
 
 		dma_release_channel(channel);
+		dma_unmap_single(NULL, drv_data->write_ptr.dma,
+				 drv_data->write_len, DMA_TO_DEVICE);
 		i2s_reset_command_done(drv_data, SSP_CMD_FREE_TX);
 		drv_data->txchan = NULL;
 		break;
 
 	case SSP_CMD_ALLOC_RX:
 		ssp_settings = &(drv_data->current_settings);
+
+		/* Check if DMA channel allocation needed */
+		if (ssp_settings->ssp_rx_dma != SSP_RX_DMA_ENABLE)
+			break;
+
+		WARN(!drv_data->dmac1, "DMA device=NULL\n");
+		if (!drv_data->dmac1)
+			return -EFAULT;
 
 		if (ssp_settings->mode == SSP_INVALID_MODE) {
 			WARN(1, "Trying to alloc RX channel however"
@@ -1362,13 +1544,20 @@ int intel_mid_i2s_command(struct intel_mid_i2s_hdl *drv_data,
 			retval = -12;
 			goto err_exit;
 		}
-
-
-
 		break;
 
 	case SSP_CMD_FREE_RX:
 		ssp_settings = &(drv_data->current_settings);
+
+		/* Check if DMA channel allocation needed */
+		if (ssp_settings->ssp_rx_dma != SSP_RX_DMA_ENABLE) {
+			i2s_reset_command_done(drv_data, SSP_CMD_FREE_RX);
+			break;
+		}
+
+		WARN(!drv_data->dmac1, "DMA device=NULL\n");
+		if (!drv_data->dmac1)
+			return -EFAULT;
 
 		channel = drv_data->rxchan;
 
@@ -1385,6 +1574,8 @@ int intel_mid_i2s_command(struct intel_mid_i2s_hdl *drv_data,
 		WARN(s, "DMA TERMINATE of RX returns error\n");
 
 		dma_release_channel(channel);
+		dma_unmap_single(NULL, drv_data->read_ptr.dma,
+				 drv_data->read_len, DMA_FROM_DEVICE);
 		i2s_reset_command_done(drv_data, SSP_CMD_FREE_RX);
 		drv_data->rxchan = NULL;
 		break;
@@ -1439,7 +1630,7 @@ static void ssp1_dump_registers(struct intel_mid_i2s_hdl *drv_data)
 }
 
 /**
- * i2s_int(): function that handles the SSP Interrupts (errors)
+ * i2s_irq(): function that handles the SSP Interrupts (errors)
  * @irq : IRQ Number
  * @dev_id : structure that contains driver information
  *
@@ -1450,72 +1641,284 @@ static void ssp1_dump_registers(struct intel_mid_i2s_hdl *drv_data)
  * Output parameters
  *      NA
  */
-static irqreturn_t i2s_int(int irq, void *dev_id)
+static irqreturn_t i2s_irq(int irq, void *dev_id)
 {
-	struct intel_mid_i2s_hdl *drv_data = dev_id;
-	void __iomem *reg;
-	u32 irq_status = 0;
-	u32 mask_status = 0;
-	struct device *ddbg = &(drv_data->pdev->dev);
+	irqreturn_t		 irq_status	= IRQ_NONE;
+	struct intel_mid_i2s_hdl *drv_data	= dev_id;
+	void __iomem		 *reg		= drv_data->ioaddr;
+	struct device		 *ddbg		= &(drv_data->pdev->dev);
+	/* SSSR register content */
+	u32			 sssr		= 0;
+	/* Monitored SSSR bit mask */
+	u32			 sssr_masked	= 0;
+	/* SSSR bits that need to be cleared after event handling */
+	u32			 sssr_clr_mask	= 0;
 
 #ifdef CONFIG_PM_SLEEP
 	if (ddbg->power.is_prepared)
-		return IRQ_NONE;
+		goto i2s_irq_return;
 #endif /* CONFIG_PM_SLEEP */
 
 #ifdef CONFIG_PM_RUNTIME
 	if (ddbg->power.runtime_status != RPM_ACTIVE)
-		return IRQ_NONE;
+		goto i2s_irq_return;
 #endif /* CONFIG_PM_RUNTIME */
 
+	sssr = read_SSSR(reg);
+	sssr_masked = sssr & (drv_data->mask_sr);
 
-	reg = drv_data->ioaddr;
-	irq_status = read_SSSR(reg);
+	/* Any processing needed ? */
+	if (!sssr_masked)
+		goto i2s_irq_return;
 
-	if (!(irq_status & (drv_data->mask_sr))) {
-		return IRQ_NONE;
-	} else {
-		/* may be improved by using a tasklet to send the error
-		 * (underrun,...) to client by using callback
-		 */
-		if (irq_status & (SSSR_ROR_MASK << SSSR_ROR_SHIFT)) {
-			dev_dbg(ddbg,
-				"ssp_int RX FIFO OVER RUN SSSR=0x%08X\n",
-				irq_status);
-			mask_status |= (SSSR_ROR_MASK << SSSR_ROR_SHIFT);
+	/*
+	 * Some processing needs to be done
+	 */
+	irq_status = IRQ_HANDLED;
 
-		}
-		if (irq_status & (SSSR_TUR_MASK << SSSR_TUR_SHIFT)) {
-			dev_dbg(ddbg,
-				"ssp_int TX FIFO UNDER RUN SSSR=0x%08X\n",
-				irq_status);
-			mask_status |= (SSSR_TUR_MASK << SSSR_TUR_SHIFT);
-
-		}
-		if (irq_status & (SSSR_TINT_MASK << SSSR_TINT_SHIFT)) {
-			dev_dbg(ddbg,
-				"ssp_int RX TIME OUT SSSR=0x%08X\n",
-				irq_status);
-			mask_status |= (SSSR_TINT_MASK << SSSR_TINT_SHIFT);
-
-		}
-		if (irq_status & (SSSR_PINT_MASK << SSSR_PINT_SHIFT)) {
-			dev_dbg(ddbg,
-				"ssp_int TRAILING BYTE SSSR=0x%08X\n",
-				irq_status);
-			mask_status |= (SSSR_PINT_MASK << SSSR_PINT_SHIFT);
-		}
-		if (irq_status & (SSSR_EOC_MASK << SSSR_EOC_SHIFT)) {
-			dev_dbg(ddbg,
-				"ssp_int END OF CHAIN SSSR=0x%08X\n",
-				irq_status);
-			mask_status |= (SSSR_EOC_MASK << SSSR_EOC_SHIFT);
-		}
-		/* clear sticky bits */
-		write_SSSR((irq_status & mask_status), reg);
+	/* may be improved by using a tasklet to send the error
+	 * (underrun,...) to client by using callback
+	 */
+	/* Handle Receive Over Run event */
+	if (sssr_masked & (SSSR_ROR_MASK << SSSR_ROR_SHIFT)) {
+		dev_dbg(ddbg, "%s RX FIFO OVER RUN SSSR=0x%08X\n",
+			__func__, sssr);
+		sssr_clr_mask |= (SSSR_ROR_MASK << SSSR_ROR_SHIFT);
 	}
+	/* Handle Transmit Under Run event */
+	if (sssr_masked & (SSSR_TUR_MASK << SSSR_TUR_SHIFT)) {
+		dev_dbg(ddbg, "%s TX FIFO UNDER RUN SSSR=0x%08X\n",
+			__func__, sssr);
+		sssr_clr_mask |= (SSSR_TUR_MASK << SSSR_TUR_SHIFT);
+	}
+	/* Handle Receiver time-out INTerrupt event */
+	if (sssr_masked & (SSSR_TINT_MASK << SSSR_TINT_SHIFT)) {
+		dev_dbg(ddbg, "%s RX TIME OUT SSSR=0x%08X\n",
+			__func__, sssr);
+		sssr_clr_mask |= (SSSR_TINT_MASK << SSSR_TINT_SHIFT);
+	}
+	/* Handle Peripheral trailing byte INTerrupt event */
+	if (sssr_masked & (SSSR_PINT_MASK << SSSR_PINT_SHIFT)) {
+		dev_dbg(ddbg, "%s TRAILING BYTE SSSR=0x%08X\n",
+			__func__, sssr);
+		sssr_clr_mask |= (SSSR_PINT_MASK << SSSR_PINT_SHIFT);
+	}
+	/* Handle End Of Chain event */
+	if (sssr_masked & (SSSR_EOC_MASK << SSSR_EOC_SHIFT)) {
+		dev_dbg(ddbg, "%s END OF CHAIN SSSR=0x%08X\n",
+			__func__, sssr);
+		sssr_clr_mask |= (SSSR_EOC_MASK << SSSR_EOC_SHIFT);
+	}
+
+	/* Handle Receive Fifo Service request event */
+	if (sssr_masked & (SSSR_RFS_MASK << SSSR_RFS_SHIFT))
+		irq_status = i2s_irq_handle_RFS(drv_data, sssr);
+
+	/* Handle Transmit Fifo Service request event */
+	if (sssr_masked & (SSSR_TFS_MASK << SSSR_TFS_SHIFT))
+		irq_status = i2s_irq_handle_TFS(drv_data, sssr);
+
+	/* Clear sticky bits */
+	write_SSSR((sssr & sssr_clr_mask), reg);
+
+i2s_irq_return:
+	return irq_status;
+}
+
+static inline
+irqreturn_t i2s_irq_handle_RFS(struct intel_mid_i2s_hdl *drv_data, u32 sssr)
+{
+	irqreturn_t	irq_status	= IRQ_HANDLED;
+	u16		data_cnt	= 0;
+
+	if (drv_data->current_settings.ssp_rx_dma == SSP_RX_DMA_ENABLE) {
+		dev_WARN(&drv_data->pdev->dev,
+			 "%s: DMA enabled, this function shouldn't be called",
+			 __func__);
+		goto i2s_irq_handle_RFS_return;
+	}
+
+	if ((drv_data->read_ptr.cpu == NULL) || (drv_data->read_len <= 0)) {
+		dev_WARN(&drv_data->pdev->dev,
+			 "%s: Invalid read param: addr=0x%08X, len=%i",
+			 __func__, (int)drv_data->read_ptr.cpu,
+			 drv_data->read_len);
+		goto i2s_irq_handle_RFS_return;
+	}
+
+	/* Get available data count in receive FIFO */
+	if (GET_SSSR_val(sssr, RNE))
+		data_cnt = GET_SSSR_val(sssr, RFL) + 1;
+
+	/* Read data from receive FIFO */
+	while ((data_cnt > 0) && (drv_data->read_len > 0)) {
+		*(drv_data->read_ptr.cpu) = (u16)read_SSDR(drv_data->ioaddr);
+		drv_data->read_ptr.cpu++;
+		drv_data->read_len--;
+		data_cnt--;
+	}
+
+	/* Check for last data */
+	if (drv_data->read_len <= 0) {
+		/* Stop interruption */
+		drv_data->mask_sr &= ~((SSSR_RFS_MASK << SSSR_RFS_SHIFT) |
+				       (SSSR_ROR_MASK << SSSR_ROR_SHIFT));
+		clear_SSCR1_reg((drv_data->ioaddr), RIE);
+		change_SSCR0_reg(drv_data->ioaddr, RIM,
+				 SSP_RX_FIFO_OVER_INT_DISABLE);
+
+		/* Schedule irq thread for final treatment
+		 * in i2s_irq_deferred */
+		set_bit(I2S_PORT_COMPLETE_READ, &drv_data->flags);
+		irq_status = IRQ_WAKE_THREAD;
+	}
+
+i2s_irq_handle_RFS_return:
+	return irq_status;
+}
+
+static inline
+irqreturn_t i2s_irq_handle_TFS(struct intel_mid_i2s_hdl *drv_data, u32 sssr)
+{
+	irqreturn_t	irq_status	= IRQ_HANDLED;
+	u16		data_cnt	= FIFO_SIZE;
+
+	if (drv_data->current_settings.ssp_tx_dma == SSP_TX_DMA_ENABLE) {
+		dev_WARN(&drv_data->pdev->dev,
+			 "%s: DMA enabled, this function shouldn't be called",
+			 __func__);
+		goto i2s_irq_handle_TFS_return;
+	}
+
+	if ((drv_data->write_ptr.cpu == NULL) || (drv_data->write_len <= 0)) {
+		dev_WARN(&drv_data->pdev->dev,
+			 "%s: Invalid write param: addr=0x%08X, len=%i",
+			 __func__, (int)drv_data->write_ptr.cpu,
+			 drv_data->write_len);
+		goto i2s_irq_handle_TFS_return;
+	}
+
+	/* Get available space in transmit FIFO */
+	if (GET_SSSR_val(sssr, TNF))
+		data_cnt -= GET_SSSR_val(sssr, TFL);
+
+	/* Write data to transmit FIFO */
+	while ((data_cnt > 0) && (drv_data->write_len > 0)) {
+		write_SSDR((u32)(*(drv_data->write_ptr.cpu)),
+			   drv_data->ioaddr);
+		drv_data->write_ptr.cpu++;
+		drv_data->write_len--;
+		data_cnt--;
+	}
+
+	/* Check for last data */
+	if (drv_data->write_len <= 0) {
+		/* Stop interruption */
+		drv_data->mask_sr &= ~((SSSR_TFS_MASK << SSSR_TFS_SHIFT) |
+				       (SSSR_TUR_MASK << SSSR_TUR_SHIFT));
+		clear_SSCR1_reg((drv_data->ioaddr), TIE);
+		change_SSCR0_reg(drv_data->ioaddr, TIM,
+				 SSP_TX_FIFO_UNDER_INT_DISABLE);
+
+		/* Schedule irq thread for final treatment
+		 * in i2s_irq_deferred */
+		set_bit(I2S_PORT_COMPLETE_WRITE, &drv_data->flags);
+		irq_status = IRQ_WAKE_THREAD;
+	}
+
+i2s_irq_handle_TFS_return:
+	return irq_status;
+}
+
+static irqreturn_t i2s_irq_deferred(int irq, void *dev_id)
+{
+	/* Locals */
+	struct intel_mid_i2s_hdl *drv_data = dev_id;
+
+	/* Finalize reading without DMA */
+	if ((drv_data->current_settings.ssp_rx_dma != SSP_RX_DMA_ENABLE) &&
+	    test_and_clear_bit(I2S_PORT_COMPLETE_READ, &drv_data->flags)) {
+
+		if (!test_bit(I2S_PORT_READ_BUSY, &drv_data->flags)) {
+			dev_warn(&drv_data->pdev->dev,
+				 "%s: spurious read complete",
+				 __func__);
+		}
+
+		/* Reset read param:
+		 *   must be done before call to the callback
+		 *   where a read can be rearmed */
+		drv_data->read_len	= 0;
+		drv_data->read_ptr.cpu	= NULL;
+
+		dev_dbg(&(drv_data->pdev->dev),
+			 "%s: read complete",
+			 __func__);
+
+		/* Do not change order sequence:
+		 * READ_BUSY clear, then test PORT_CLOSING
+		 * wakeup for close() function
+		 */
+		clear_bit(I2S_PORT_READ_BUSY, &drv_data->flags);
+		if (!test_bit(I2S_PORT_CLOSING, &drv_data->flags)) {
+			if (drv_data->read_callback != NULL)
+				(void)drv_data->read_callback
+						(drv_data->read_param);
+			else
+				dev_warn(&drv_data->pdev->dev,
+					 "%s: no callback set",
+					 __func__);
+		}
+
+	/* Finalize writing without DMA */
+	} else
+	  if ((drv_data->current_settings.ssp_tx_dma != SSP_TX_DMA_ENABLE) &&
+	      test_and_clear_bit(I2S_PORT_COMPLETE_WRITE, &drv_data->flags)) {
+
+		if (!test_bit(I2S_PORT_WRITE_BUSY, &drv_data->flags)) {
+			dev_warn(&drv_data->pdev->dev,
+				 "%s : spurious write complete",
+				 __func__);
+		}
+
+		/* Reset write param:
+		 *   must be done before call to the callback
+		 *   where a write can be rearmed */
+		drv_data->write_len	= 0;
+		drv_data->write_ptr.cpu	= NULL;
+
+		dev_dbg(&(drv_data->pdev->dev),
+			"%s : write complete",
+			__func__);
+
+		/* Do not change order sequence:
+		 * WRITE_BUSY clear, then test PORT_CLOSING
+		 * wakeup for close() function
+		 */
+		clear_bit(I2S_PORT_WRITE_BUSY, &drv_data->flags);
+		if (!test_bit(I2S_PORT_CLOSING, &drv_data->flags)) {
+			if (drv_data->write_callback != NULL)
+				(void)drv_data->write_callback
+						(drv_data->write_param);
+			else
+				dev_warn(&drv_data->pdev->dev,
+					 "i2s_irq_deferred: no callback set");
+		}
+
+	/* Error */
+	} else {
+		dev_warn(&drv_data->pdev->dev,
+			 "%s: Unexpected function call"
+			 "- flags=0x%08lx, rx_dma=%d, tx_dma=%d",
+			 __func__,
+			 drv_data->flags,
+			 drv_data->current_settings.ssp_rx_dma,
+			 drv_data->current_settings.ssp_tx_dma);
+	}
+
 	return IRQ_HANDLED;
 }
+
 
 /**
  * calculate_sspsp_psp - separate function that calculate sspsp register
@@ -1831,12 +2234,12 @@ static void set_ssp_i2s_hw(struct intel_mid_i2s_hdl *drv_data,
 	u32 ssacd = 0;
 	u32 sscr0_scr;
 	u8 frame_rate_divider;
+
 	/* Get the SSP Settings */
 	u16 l_ssp_clk_frm_mode = 0xFF;
 	void __iomem *reg = drv_data->ioaddr;
 	struct device *ddbg = &(drv_data->pdev->dev);
-	dev_dbg(ddbg,
-		"setup SSP I2S PCM1 configuration\n");
+	dev_dbg(ddbg, "setup SSP I2S PCM1 configuration\n");
 
 	/*
 	 * Save the current I2S Configuration
@@ -1847,7 +2250,7 @@ static void set_ssp_i2s_hw(struct intel_mid_i2s_hdl *drv_data,
 	   && (ps_settings->sspslclk_direction == SSPSCLK_MASTER_MODE)) {
 		l_ssp_clk_frm_mode = SSP_IN_MASTER_MODE;
 	} else if ((ps_settings->sspsfrm_direction == SSPSFRM_SLAVE_MODE)
-	   && (ps_settings->sspslclk_direction == SSPSCLK_SLAVE_MODE)) {
+		  && (ps_settings->sspslclk_direction == SSPSCLK_SLAVE_MODE)) {
 		l_ssp_clk_frm_mode = SSP_IN_SLAVE_MODE;
 	} else {
 		dev_err(ddbg, "Unsupported I2S PCM1 configuration\n");
@@ -1862,11 +2265,7 @@ static void set_ssp_i2s_hw(struct intel_mid_i2s_hdl *drv_data,
 			ps_settings->frame_format);
 		goto leave;
 	}
-	if ((ps_settings->ssp_tx_dma != SSP_TX_DMA_ENABLE)
-	|| (ps_settings->ssp_rx_dma != SSP_RX_DMA_ENABLE)) {
-		dev_err(ddbg, "ONLY DMA MODE IS SUPPORTED");
-		goto leave;
-	}
+
 	/*********** DMA Transfer Mode ***********/
 	dev_dbg(ddbg, "FORMAT :%d:\n", ps_settings->frame_format);
 	sscr0 = calculate_sscr0_psp(ps_settings);
@@ -1935,29 +2334,45 @@ static void set_ssp_i2s_hw(struct intel_mid_i2s_hdl *drv_data,
 		goto leave;
 	}
 
+	/* Set SSP status mask */
+	drv_data->mask_sr = ((SSSR_BCE_MASK << SSSR_BCE_SHIFT) |
+			     (SSSR_EOC_MASK << SSSR_EOC_SHIFT) |
+			     (SSSR_TINT_MASK << SSSR_TINT_SHIFT) |
+			     (SSSR_PINT_MASK << SSSR_PINT_SHIFT));
+
+	if (drv_data->current_settings.ssp_rx_dma == SSP_RX_DMA_ENABLE)
+		drv_data->mask_sr |= (SSSR_ROR_MASK << SSSR_ROR_SHIFT);
+	if (drv_data->current_settings.ssp_tx_dma == SSP_TX_DMA_ENABLE)
+		drv_data->mask_sr |= (SSSR_TUR_MASK << SSSR_TUR_SHIFT);
+
 	/* Clear status */
 	sssr = (SSSR_BCE_MASK << SSSR_BCE_SHIFT)
 	     | (SSSR_TUR_MASK << SSSR_TUR_SHIFT)
 	     | (SSSR_TINT_MASK << SSSR_TINT_SHIFT)
 	     | (SSSR_PINT_MASK << SSSR_PINT_SHIFT)
 	     | (SSSR_ROR_MASK << SSSR_ROR_SHIFT);
+
 	/* disable SSP */
 	clear_SSCR0_reg(reg, SSE);
 	dev_dbg(ddbg, "WRITE SSCR0 DISABLE\n");
+
 	/* Clear status */
 	write_SSSR(sssr, reg);
 	dev_dbg(ddbg, "WRITE SSSR: 0x%08X\n", sssr);
 	write_SSCR0(sscr0, reg);
 	dev_dbg(ddbg, "WRITE SSCR0\n");
+
 	/* first set CR1 without interrupt and service enables */
 	write_SSCR1(sscr1, reg);
 	write_SSPSP(sspsp, reg);
 	write_SSTSA(sstsa, reg);
 	write_SSRSA(ssrsa, reg);
 	write_SSACD(ssacd, reg);
+
 	/* set the time out for the reception */
 	write_SSTO(0, reg);
 	ssp1_dump_registers(drv_data);
+
 leave:
 	return;
 }
@@ -1996,9 +2411,15 @@ intel_mid_i2s_find_usage(struct pci_dev *pdev,
 			(adid >> PCI_ADID_SSP_FS_GPIO_MODE_SHIFT) &
 			PCI_ADID_SSP_FS_GPIO_MODE_MASK;
 
-		dev_info(&(pdev->dev), "Detected PCI SSP (ID: %04x:%04x) ssp_fs_gpio_mapping =%x\n", pdev->vendor, pdev->device, ssp_gpio->ssp_fs_gpio_mapping);
-		dev_info(&(pdev->dev), "Detected PCI SSP (ID: %04x:%04x) ssp_fs_mode =%x\n", pdev->vendor, pdev->device, ssp_gpio->ssp_fs_mode);
+		dev_info(&(pdev->dev),
+			 "Detected PCI SSP (ID: %04x:%04x) "
+			 "ssp_fs_gpio_mapping =%x "
+			 "ssp_fs_mode =%x\n",
+			 pdev->vendor, pdev->device,
+			 ssp_gpio->ssp_fs_gpio_mapping,
+			 ssp_gpio->ssp_fs_mode);
 	}
+
 	/* If there is no capability, check with old PCI_ID */
 #ifdef BYPASS_ADID
 	if (*usage == SSP_USAGE_UNASSIGNED) {
@@ -2014,6 +2435,7 @@ intel_mid_i2s_find_usage(struct pci_dev *pdev,
 		}
 	}
 #endif
+
 	if (*usage == SSP_USAGE_UNASSIGNED) {
 		dev_info((&pdev->dev),
 			"No probe for I2S PCI-ID: %04x:%04x, ADID(0x%x)=0x%x\n",
@@ -2027,6 +2449,7 @@ intel_mid_i2s_find_usage(struct pci_dev *pdev,
 	dev_dbg(&(pdev->dev),
 		" found PCI SSP controller(ID: %04x:%04x)\n",
 		pdev->vendor, pdev->device);
+
 	/* Init the driver data structure fields*/
 	switch (pdev->device) {
 	case MFLD_SSP1_DEVICE_ID:
@@ -2042,9 +2465,11 @@ intel_mid_i2s_find_usage(struct pci_dev *pdev,
 		status = -ENODEV;
 		goto err_find_usage;
 	}
+
 	status = pci_enable_device(pdev);
 	if (status)
 		dev_err((&pdev->dev), "Can not enable device.Err=%d\n", status);
+
 err_find_usage:
 	return status;
 }
@@ -2077,6 +2502,7 @@ static int intel_mid_i2s_probe(struct pci_dev *pdev,
 	status = intel_mid_i2s_find_usage(pdev, drv_data, &usage, &ssp_fs_pin);
 	if (status)
 		goto err_i2s_probe0;
+
 	mutex_init(&drv_data->mutex);
 	drv_data->pdev = pdev;
 	drv_data->usage = usage;
@@ -2093,7 +2519,7 @@ static int intel_mid_i2s_probe(struct pci_dev *pdev,
 		drv_data->ioaddr = pci_ioremap_bar(pdev, MRST_SSP_BAR);
 	} else {
 		dev_err(&pdev->dev,
-			"Don't know which BAR to usefor this SSP PCDID=%x\n",
+			"Don't know which BAR to use for this SSP PCDID=%x\n",
 			pdev->device);
 		status = -ENODEV;
 		goto err_i2s_probe1;
@@ -2110,31 +2536,33 @@ static int intel_mid_i2s_probe(struct pci_dev *pdev,
 		goto err_i2s_probe2;
 	}
 	dev_dbg(&(pdev->dev), "ioaddr = : %p\n", drv_data->ioaddr);
-	/* prepare for DMA channel allocation */
-	/* get the pci_dev structure pointer */
+
 	/* Check the SSP, if SSP3, then another DMA is used (GPDMA..) */
-	if ((pdev->device == MFLD_SSP1_DEVICE_ID) ||
-	    (pdev->device == MFLD_SSP0_DEVICE_ID)) {
-		drv_data->dmac1 = pci_get_device(PCI_VENDOR_ID_INTEL,
-						 MFLD_LPE_DMA_DEVICE_ID,
-						 NULL);
-	} else {
+	if ((pdev->device != MFLD_SSP1_DEVICE_ID) &&
+	    (pdev->device != MFLD_SSP0_DEVICE_ID)) {
 		dev_err(&pdev->dev,
-			"Don't know dma device ID for this SSP PCDID=%x\n",
-			pdev->device);
+			 "Don't know dma device ID for this SSP PCDID=%x\n",
+			 pdev->device);
 		goto err_i2s_probe3;
 	}
+
+	/* prepare for DMA channel allocation */
+	/* get the pci_dev structure pointer */
+	drv_data->dmac1 = pci_get_device(PCI_VENDOR_ID_INTEL,
+					 MFLD_LPE_DMA_DEVICE_ID,
+					 NULL);
 	/* in case the stop dma have to wait for end of callbacks   */
 	/* This will be removed when TERMINATE_ALL available in DMA */
 	if (!drv_data->dmac1) {
+		/* CPU data transfer allowed if no DMA available */
 		dev_err(&(drv_data->pdev->dev),
-			"Can't find DMAC1, dma init failed\n");
-		status = -ENODEV;
-		goto err_i2s_probe3;
+			"DMAC1 not found, only CPU data transfer allowed\n");
 	}
+
 	/* increment ref count of pci device structure already done by */
 	/* pci_get_device. will do a pci_dev_put when exiting the module */
 	pci_set_drvdata(pdev, drv_data);
+
 	/* set SSP FrameSync and CLK direction in INPUT mode in order
 	 * to avoid disturbing peripherals
 	 */
@@ -2142,6 +2570,7 @@ static int intel_mid_i2s_probe(struct pci_dev *pdev,
 		  | (SSCR1_SCLKDIR_MASK << SSCR1_SCLKDIR_SHIFT)
 		  | (SSCR1_TTE_MASK << SSCR1_TTE_SHIFT),
 		  drv_data->ioaddr);
+
 	/*
 	 * Switch the SSP_FS pin from GPIO Input Mode
 	 * to functional Mode
@@ -2170,8 +2599,13 @@ static int intel_mid_i2s_probe(struct pci_dev *pdev,
 
 	dev_dbg(&(pdev->dev), "attaching to IRQ: %04x\n", pdev->irq);
 
-	status = request_irq(drv_data->irq, i2s_int, IRQF_SHARED, "i2s ssp",
-				drv_data);
+	status = request_threaded_irq(drv_data->irq,
+				      i2s_irq,
+				      i2s_irq_deferred,
+				      IRQF_SHARED,
+				      "i2s ssp",
+				      drv_data);
+
 	if (status < 0)	{
 		dev_err(&pdev->dev, "can not get IRQ. status err=%d\n", status);
 		goto err_i2s_probe3;
