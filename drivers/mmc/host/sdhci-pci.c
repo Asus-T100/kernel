@@ -24,6 +24,7 @@
 #include <linux/gpio.h>
 #include <linux/sfi.h>
 #include <linux/pm_runtime.h>
+#include <asm/intel_scu_ipc.h>
 
 #include "sdhci.h"
 
@@ -40,6 +41,7 @@
 #define  PCI_SLOT_INFO_FIRST_BAR_MASK	0x07
 
 #define MAX_SLOTS			8
+#define IPC_EMMC_MUTEX_CMD		0xEE
 
 struct sdhci_pci_chip;
 struct sdhci_pci_slot;
@@ -301,6 +303,41 @@ static void mfd_sd_remove_slot(struct sdhci_pci_slot *slot, int dead)
 
 #endif
 
+#define MFD_SDHCI_DEKKER_BASE	0xffff7fb0
+static void mfd_emmc_mutex_register(struct sdhci_pci_slot *slot)
+{
+	u32 mutex_var_addr;
+	int err;
+
+	err = intel_scu_ipc_command(IPC_EMMC_MUTEX_CMD, 0,
+			NULL, 0, &mutex_var_addr, 1);
+	if (err) {
+		dev_err(&slot->chip->pdev->dev, "IPC error: %d\n", err);
+		dev_info(&slot->chip->pdev->dev, "Specify mutex address\n");
+		/*
+		 * Since we failed to get mutex sram address, specify it
+		 */
+		mutex_var_addr = MFD_SDHCI_DEKKER_BASE;
+	}
+
+	/* 3 housekeeping mutex variables, 12 bytes length */
+	slot->host->sram_addr = ioremap_nocache(mutex_var_addr, 12);
+	if (!slot->host->sram_addr)
+		dev_err(&slot->chip->pdev->dev, "ioremap failed!\n");
+	else {
+		dev_info(&slot->chip->pdev->dev, "mapped addr: %p\n",
+			slot->host->sram_addr);
+		dev_info(&slot->chip->pdev->dev, "current eMMC owner:"
+			" %d, IA req: %d, SCU req: %d\n",
+			readl(slot->host->sram_addr +
+				DEKKER_EMMC_OWNER_OFFSET),
+			readl(slot->host->sram_addr +
+				DEKKER_IA_REQ_OFFSET),
+			readl(slot->host->sram_addr +
+				DEKKER_SCU_REQ_OFFSET));
+	}
+}
+
 static int mfd_emmc_probe_slot(struct sdhci_pci_slot *slot)
 {
 	const char *name = NULL;
@@ -310,6 +347,7 @@ static int mfd_emmc_probe_slot(struct sdhci_pci_slot *slot)
 
 	switch (slot->chip->pdev->device) {
 	case PCI_DEVICE_ID_INTEL_MFD_EMMC0:
+		mfd_emmc_mutex_register(slot);
 		gpio = mfd_emmc0_rst_gpio;
 		name = "eMMC0_reset";
 		break;
@@ -335,6 +373,8 @@ static int mfd_emmc_probe_slot(struct sdhci_pci_slot *slot)
 static void mfd_emmc_remove_slot(struct sdhci_pci_slot *slot, int dead)
 {
 	gpio_free(slot->rst_n_gpio);
+	if (slot->host->sram_addr)
+		iounmap(slot->host->sram_addr);
 }
 
 static const struct sdhci_pci_fixes sdhci_intel_mrst_hc0 = {
