@@ -1,7 +1,0 @@
-config SND_INTEL_SST
-	tristate "Intel SST (LPE) Driver"
-	depends on X86 && INTEL_SCU_IPC
-	default n
-	help
-	  Say Y here to include support for the Intel(R) MID SST DSP driver
-	  On other PC platforms if you are unsure answer 'N'

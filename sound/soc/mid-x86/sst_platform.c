@@ -31,8 +31,8 @@
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
 #include <sound/soc.h>
-#include "../../../drivers/staging/intel_sst/intel_sst_ioctl.h"
-#include "../../../drivers/staging/intel_sst/intel_sst.h"
+#include <sound/intel_sst_ioctl.h>
+#include <sound/intel_sst.h>
 #include "../codecs/sn95031.h"
 #include "sst_platform.h"
 
@@ -79,7 +79,7 @@ static struct snd_soc_dai_driver sst_platform_dai[] = {
 	},
 	.capture = {
 		.channels_min = 1,
-		.channels_max = 5,
+		.channels_max = 2,
 		.rates = SNDRV_PCM_RATE_44100,
 		.formats = SNDRV_PCM_FMTBIT_S16_LE,
 	},
@@ -106,7 +106,7 @@ static struct snd_soc_dai_driver sst_platform_dai[] = {
 	.name = "Vibra2-cpu-dai",
 	.playback = {
 		.channels_min = SST_MONO,
-		.channels_max = SST_STEREO,
+		.channels_max = SST_MONO,
 		.rates = SNDRV_PCM_RATE_44100,
 		.formats = SNDRV_PCM_FMTBIT_S16_LE,
 	},
@@ -209,14 +209,20 @@ static void sst_period_elapsed(void *mad_substream)
 	struct sst_runtime_stream *stream;
 	int status;
 
-	if (!substream || !substream->runtime)
+	if (!substream || !substream->runtime) {
+		pr_debug("In %s : Null Substream pointer\n", __func__);
 		return;
+	}
 	stream = substream->runtime->private_data;
-	if (!stream)
+	if (!stream) {
+		pr_debug("In %s : Null Stream pointer\n", __func__);
 		return;
+	}
 	status = sst_get_stream_status(stream);
-	if (status != SST_PLATFORM_RUNNING)
+	if (status != SST_PLATFORM_RUNNING) {
+		pr_debug("In %s : Stream Status=%d\n", __func__, status);
 		return;
+	}
 	snd_pcm_period_elapsed(substream);
 }
 
@@ -298,6 +304,11 @@ static int sst_platform_open(struct snd_pcm_substream *substream)
 	}
 	runtime->private_data = stream;
 	sst_cpu_ctx->active_nonvoice_cnt++;
+
+	/* Make sure, that the period size is always even */
+	snd_pcm_hw_constraint_step(substream->runtime, 0,
+			   SNDRV_PCM_HW_PARAM_PERIODS, 2);
+
 	return snd_pcm_hw_constraint_integer(runtime,
 			 SNDRV_PCM_HW_PARAM_PERIODS);
 
@@ -342,16 +353,13 @@ static int sst_platform_close(struct snd_pcm_substream *substream)
 func_exit:
 	if (!sst_cpu_ctx->active_nonvoice_cnt)
 		snd_soc_dai_set_tristate(codec_dai, 1);
-	/*if all CPU dais are inactive, disable PLL*/
-	if (!sst_cpu_ctx->active_voice_cnt && !sst_cpu_ctx->active_nonvoice_cnt)
-		snd_soc_dai_set_pll(codec_dai, 0, 0, 0, 0);
 	return ret_val;
 }
 
 static int sst_platform_pcm_prepare(struct snd_pcm_substream *substream)
 {
 	struct sst_runtime_stream *stream;
-	int ret_val = 0;
+	int ret_val = 0, str_id;
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct snd_soc_dai_link *dai_link = rtd->dai_link;
 
@@ -362,6 +370,7 @@ static int sst_platform_pcm_prepare(struct snd_pcm_substream *substream)
 		return ret_val;
 	}
 	stream = substream->runtime->private_data;
+	str_id = stream->stream_info.str_id;
 	if (stream->stream_info.str_id)
 		return ret_val;
 
@@ -472,26 +481,21 @@ static snd_pcm_uframes_t sst_platform_pcm_pointer
 static int sst_platform_pcm_hw_params(struct snd_pcm_substream *substream,
 		struct snd_pcm_hw_params *params)
 {
-	int ret, clk_src;
+	int ret;
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct snd_soc_codec *codec = rtd->codec;
-	struct snd_soc_dai_link *dai_link = rtd->dai_link;
 	struct snd_soc_dai *codec_dai = rtd->codec_dai;
 
-	if (!strcmp(dai_link->cpu_dai_name, SST_VOICE_DAI))
-		clk_src = SN95031_PCM1BCLK;
-	else {
-		clk_src = SN95031_PLLIN;
-		/* Force the data width to 24 bit in MSIC. Post Processing
-		algorithms in DSP enabled with 24 bit precision */
-		ret = snd_soc_codec_set_params(codec, SNDRV_PCM_FORMAT_S24_LE);
-		if (ret < 0) {
-			pr_debug("codec set_params returned error\n");
-			return ret;
-		}
+	/* Force the data width to 24 bit in MSIC. Post Processing
+	algorithms in DSP enabled with 24 bit precision */
+	ret = snd_soc_codec_set_params(codec, SNDRV_PCM_FORMAT_S24_LE);
+	if (ret < 0) {
+		pr_debug("codec set_params returned error\n");
+		return ret;
 	}
 	/*last two parameters have to non-zero, otherwise pll gets disabled*/
-	snd_soc_dai_set_pll(codec_dai, 0, clk_src, 1, params_rate(params));
+	snd_soc_dai_set_pll(codec_dai, 0, SST_CLK_UNINIT, 1,
+							params_rate(params));
 	snd_pcm_lib_malloc_pages(substream, params_buffer_bytes(params));
 	memset(substream->runtime->dma_area, 0, params_buffer_bytes(params));
 
@@ -532,7 +536,7 @@ static int sst_pcm_new(struct snd_soc_pcm_runtime *rtd)
 		retval =  snd_pcm_lib_preallocate_pages_for_all(pcm,
 			SNDRV_DMA_TYPE_CONTINUOUS,
 			snd_dma_continuous_data(GFP_KERNEL),
-			SST_MIN_BUFFER, SST_MAX_BUFFER);
+			SST_MAX_BUFFER, SST_MAX_BUFFER);
 		if (retval) {
 			pr_err("dma buffer allocationf fail\n");
 			return retval;

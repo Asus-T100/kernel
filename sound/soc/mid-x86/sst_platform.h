@@ -35,15 +35,15 @@
 #define SST_MAX_RATE		48000
 #define SST_MIN_CHANNEL		1
 #define SST_MAX_CHANNEL		2
-#define SST_MAX_BUFFER		22050 /*500ms*/
-#define SST_MIN_BUFFER		22050
-#define SST_MIN_PERIOD_BYTES	441   /*10ms */
-#define SST_MAX_PERIOD_BYTES	((SST_MAX_BUFFER) / (SST_MIN_PERIODS))
+#define SST_MAX_BUFFER		88200 /*500ms*/
+#define SST_MIN_PERIOD_BYTES	1764  /*10ms@44.1,16bit,2ch*/
+#define SST_MAX_PERIOD_BYTES	44100 /*250ms*/
 #define SST_MIN_PERIODS		2
 #define SST_MAX_PERIODS		50
 #define SST_FIFO_SIZE		0
 #define SST_CARD_NAMES		"intel_mid_card"
 #define MSIC_VENDOR_ID		3
+#define SST_CLK_UNINIT		0x03
 
 struct sst_runtime_stream {
 	int     stream_status;

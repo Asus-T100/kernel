@@ -45,7 +45,7 @@
 #define DISABLE_CHANNEL(chan_num) \
 	(REG_BIT8 << chan_num)
 
-#define DESCS_PER_CHANNEL	16
+#define DESCS_PER_CHANNEL	128
 /*DMA Registers*/
 /*registers associated with channel programming*/
 #define DMA_REG_SIZE		0x400
@@ -294,5 +294,8 @@ static inline struct intel_mid_dma_slave *to_intel_mid_dma_slave
 {
 	return container_of(slave, struct intel_mid_dma_slave, dma_slave);
 }
+
+
+int dma_resume(struct device *dev);
 
 #endif /*__INTEL_MID_DMAC_REGS_H__*/

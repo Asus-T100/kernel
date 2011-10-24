@@ -77,6 +77,7 @@ obj-$(CONFIG_SND) += \
 	pcxhr/ \
 	riptide/ \
 	rme9652/ \
+	sst/ \
 	trident/ \
 	ymfpci/ \
 	vx222/
