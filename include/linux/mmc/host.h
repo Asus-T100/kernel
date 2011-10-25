@@ -77,6 +77,16 @@ struct mmc_ios {
 #define MMC_SET_DRIVER_TYPE_D	3
 };
 
+struct mmc_panic_host;
+
+struct mmc_host_panic_ops {
+	void	(*request)(struct mmc_panic_host *, struct mmc_request *);
+	int	(*prepare)(struct mmc_panic_host *);
+	int	(*setup)(struct mmc_panic_host *);
+	void	(*set_ios)(struct mmc_panic_host *);
+	void	(*dumpregs)(struct mmc_panic_host *);
+};
+
 struct mmc_host_ops {
 	/*
 	 * Hosts that support power saving can use the 'enable' and 'disable'
@@ -164,6 +174,28 @@ struct mmc_async_req {
 	 * Returns 0 if success otherwise non zero.
 	 */
 	int (*err_check) (struct mmc_card *, struct mmc_async_req *);
+};
+
+struct mmc_panic_host {
+	/*
+	 * DMA buffer for the log
+	 */
+	dma_addr_t	dmabuf;
+	void		*logbuf;
+	const struct mmc_host_panic_ops *panic_ops;
+	unsigned int		panic_ready;
+	unsigned int		totalsecs;
+	unsigned int		max_blk_size;
+	unsigned int		max_blk_count;
+	unsigned int		max_req_size;
+	unsigned int		blkaddr;
+	unsigned int		caps;
+	void __iomem		*pmu_cfg;
+	u32			ocr;		/* the current OCR setting */
+	struct mmc_ios		ios;		/* current io bus settings */
+	struct mmc_card		*card;
+	struct mmc_host		*mmc;
+	void			*priv;
 };
 
 struct mmc_host {
@@ -325,8 +357,15 @@ struct mmc_host {
 	} embedded_sdio_data;
 #endif
 
+	struct mmc_panic_host *phost;
 	unsigned long		private[0] ____cacheline_aligned;
 };
+
+#define SECTOR_SIZE	512
+int mmc_emergency_init(void);
+int mmc_emergency_write(char *, unsigned int);
+void mmc_alloc_panic_host(struct mmc_host *, const struct mmc_host_panic_ops *);
+void mmc_emergency_setup(struct mmc_host *host);
 
 extern struct mmc_host *mmc_alloc_host(int extra, struct device *);
 extern int mmc_add_host(struct mmc_host *);
