@@ -374,6 +374,7 @@ static int mfd_emmc_probe_slot(struct sdhci_pci_slot *slot)
 		mfd_emmc_mutex_register(slot);
 		gpio = mfd_emmc0_rst_gpio;
 		name = "eMMC0_reset";
+		sdhci_alloc_panic_host(slot->host);
 		break;
 	case PCI_DEVICE_ID_INTEL_MFD_EMMC1:
 		gpio = mfd_emmc1_rst_gpio;
