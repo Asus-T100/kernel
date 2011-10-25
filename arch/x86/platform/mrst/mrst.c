@@ -18,6 +18,7 @@
 #include <linux/scatterlist.h>
 #include <linux/sfi.h>
 #include <linux/intel_pmic_gpio.h>
+#include <linux/lnw_gpio.h>
 #include <linux/spi/spi.h>
 #include <linux/cyttsp.h>
 #include <linux/i2c.h>
@@ -962,3 +963,126 @@ static int __init pb_keys_init(void)
 	return 0;
 }
 late_initcall(pb_keys_init);
+#define HSU0_CTS (13)
+#define HSU0_RTS (96 + 29)
+#define HSU1_RX (64)
+#define HSU1_TX (65)
+#define HSU1_CTS (68)
+#define HSU1_RTS (66)
+#define HSU1_ALT_RX (96 + 30)
+#define HSU1_ALT_TX (96 + 31)
+#define HSU2_RX (67)
+
+/* on = 1: the port1 is muxed (named as port 3) for debug output
+ * on = 0: the port1 is for modem fw download.
+ */
+void mfld_hsu_port1_switch(int on)
+{
+	static int first = 1;
+
+	if (unlikely(first)) {
+		gpio_request(HSU1_RX, "hsu");
+		gpio_request(HSU1_TX, "hsu");
+		gpio_request(HSU1_CTS, "hsu");
+		gpio_request(HSU1_RTS, "hsu");
+		gpio_request(HSU1_ALT_RX, "hsu");
+		gpio_request(HSU1_ALT_TX, "hsu");
+		first = 0;
+	}
+	if (on) {
+		lnw_gpio_set_alt(HSU1_RX, LNW_GPIO);
+		lnw_gpio_set_alt(HSU1_TX, LNW_GPIO);
+		lnw_gpio_set_alt(HSU1_CTS, LNW_GPIO);
+		lnw_gpio_set_alt(HSU1_RTS, LNW_GPIO);
+		gpio_direction_input(HSU1_RX);
+		gpio_direction_input(HSU1_TX);
+		gpio_direction_input(HSU1_CTS);
+		gpio_direction_input(HSU1_RTS);
+		gpio_direction_input(HSU1_ALT_RX);
+		gpio_direction_output(HSU1_ALT_TX, 0);
+		lnw_gpio_set_alt(HSU1_ALT_RX, LNW_ALT_1);
+		lnw_gpio_set_alt(HSU1_ALT_TX, LNW_ALT_1);
+	} else {
+		lnw_gpio_set_alt(HSU1_ALT_RX, LNW_GPIO);
+		lnw_gpio_set_alt(HSU1_ALT_TX, LNW_GPIO);
+		gpio_direction_input(HSU1_ALT_RX);
+		gpio_direction_input(HSU1_ALT_TX);
+		gpio_direction_input(HSU1_RX);
+		gpio_direction_output(HSU1_TX, 0);
+		gpio_direction_input(HSU1_CTS);
+		gpio_direction_output(HSU1_RTS, 0);
+		lnw_gpio_set_alt(HSU1_RX, LNW_ALT_1);
+		lnw_gpio_set_alt(HSU1_TX, LNW_ALT_1);
+		lnw_gpio_set_alt(HSU1_CTS, LNW_ALT_1);
+		lnw_gpio_set_alt(HSU1_RTS, LNW_ALT_2);
+	}
+}
+EXPORT_SYMBOL_GPL(mfld_hsu_port1_switch);
+
+void mfld_hsu_enable_wakeup(int index, struct device *dev, irq_handler_t wakeup)
+{
+	int ret;
+
+	switch (index) {
+	case 0:
+		lnw_gpio_set_alt(HSU0_CTS, LNW_GPIO);
+		ret = request_irq(gpio_to_irq(HSU0_CTS), wakeup,
+				IRQ_TYPE_EDGE_FALLING | IRQ_TYPE_EDGE_RISING,
+				"hsu0_cts_wakeup", dev);
+		if (ret)
+			dev_err(dev, "hsu0: failed to register wakeup irq\n");
+
+		/* turn off flow control */
+		gpio_set_value(HSU0_RTS, 1);
+		lnw_gpio_set_alt(HSU0_RTS, LNW_GPIO);
+		udelay(100);
+		break;
+	case 1:
+		lnw_gpio_set_alt(HSU1_RX, LNW_GPIO);
+		udelay(100);
+		ret = request_irq(gpio_to_irq(HSU1_RX), wakeup,
+				IRQ_TYPE_EDGE_FALLING | IRQ_TYPE_EDGE_RISING,
+				"hsu1_rx_wakeup", dev);
+		if (ret)
+			dev_err(dev, "hsu1: failed to register wakeup irq\n");
+		break;
+	case 2:
+		break;
+	case 3:
+		lnw_gpio_set_alt(HSU1_ALT_RX, LNW_GPIO);
+		udelay(100);
+		ret = request_irq(gpio_to_irq(HSU1_ALT_RX), wakeup,
+				IRQ_TYPE_EDGE_FALLING | IRQ_TYPE_EDGE_RISING,
+				"hsu1_rx_wakeup", dev);
+		if (ret)
+			dev_err(dev, "hsu1: failed to register wakeup irq\n");
+		break;
+	default:
+		dev_err(dev, "hsu: unknow hsu port\n");
+	}
+}
+EXPORT_SYMBOL_GPL(mfld_hsu_enable_wakeup);
+
+void mfld_hsu_disable_wakeup(int index, struct device *dev)
+{
+	switch (index) {
+	case 0:
+		free_irq(gpio_to_irq(HSU0_CTS), dev);
+		lnw_gpio_set_alt(HSU0_CTS, LNW_ALT_1);
+		lnw_gpio_set_alt(HSU0_RTS, LNW_ALT_1);
+		break;
+	case 1:
+		free_irq(gpio_to_irq(HSU1_RX), dev);
+		lnw_gpio_set_alt(HSU1_RX, LNW_ALT_1);
+		break;
+	case 2:
+		break;
+	case 3:
+		free_irq(gpio_to_irq(HSU1_ALT_RX), dev);
+		lnw_gpio_set_alt(HSU1_ALT_RX, LNW_ALT_1);
+		break;
+	default:
+		dev_err(dev, "hsu: unknow hsu port\n");
+	}
+}
+EXPORT_SYMBOL_GPL(mfld_hsu_disable_wakeup);
