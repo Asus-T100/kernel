@@ -65,6 +65,8 @@ static const struct dev_pm_ops intel_mid_i2s_pm_ops = {
 static DEFINE_PCI_DEVICE_TABLE(pci_ids) = {
 	{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, MFLD_SSP1_DEVICE_ID) },
 	{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, MFLD_SSP0_DEVICE_ID) },
+	{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, CLV_SSP1_DEVICE_ID) },
+	{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, CLV_SSP0_DEVICE_ID) },
 	{ 0, }, /* terminate list */
 };
 
@@ -2427,9 +2429,11 @@ intel_mid_i2s_find_usage(struct pci_dev *pdev,
 			"Vendor capability not present/invalid\n");
 		switch (pdev->device) {
 		case MFLD_SSP1_DEVICE_ID:
+		case CLV_SSP1_DEVICE_ID:
 			*usage	= SSP_USAGE_BLUETOOTH_FM;
 			break;
 		case MFLD_SSP0_DEVICE_ID:
+		case CLV_SSP0_DEVICE_ID:
 			*usage	= SSP_USAGE_MODEM;
 			break;
 		}
@@ -2453,9 +2457,11 @@ intel_mid_i2s_find_usage(struct pci_dev *pdev,
 	/* Init the driver data structure fields*/
 	switch (pdev->device) {
 	case MFLD_SSP1_DEVICE_ID:
+	case CLV_SSP1_DEVICE_ID:
 		drv_data->device_instance = DMA1C_DEVICE_INSTANCE_SSP1;
 		break;
 	case MFLD_SSP0_DEVICE_ID:
+	case CLV_SSP0_DEVICE_ID:
 		drv_data->device_instance = DMA1C_DEVICE_INSTANCE_SSP0;
 		break;
 	default:
@@ -2510,7 +2516,9 @@ static int intel_mid_i2s_probe(struct pci_dev *pdev,
 	 * Get basic io resource and map it for SSP1 [BAR=0]
 	 */
 	if ((pdev->device == MFLD_SSP1_DEVICE_ID) ||
-	    (pdev->device == MFLD_SSP0_DEVICE_ID)) {
+	    (pdev->device == MFLD_SSP0_DEVICE_ID) ||
+	    (pdev->device == CLV_SSP1_DEVICE_ID) ||
+	    (pdev->device == CLV_SSP0_DEVICE_ID)) {
 		drv_data->paddr = pci_resource_start(pdev, MRST_SSP_BAR);
 		drv_data->iolen = pci_resource_len(pdev, MRST_SSP_BAR);
 		status = pci_request_region(pdev, MRST_SSP_BAR,
@@ -2538,19 +2546,27 @@ static int intel_mid_i2s_probe(struct pci_dev *pdev,
 	dev_dbg(&(pdev->dev), "ioaddr = : %p\n", drv_data->ioaddr);
 
 	/* Check the SSP, if SSP3, then another DMA is used (GPDMA..) */
-	if ((pdev->device != MFLD_SSP1_DEVICE_ID) &&
-	    (pdev->device != MFLD_SSP0_DEVICE_ID)) {
+	if ((pdev->device == MFLD_SSP1_DEVICE_ID) ||
+		(pdev->device == MFLD_SSP0_DEVICE_ID)) {
+		/* prepare for DMA channel allocation */
+		/* get the pci_dev structure pointer */
+		drv_data->dmac1 = pci_get_device(PCI_VENDOR_ID_INTEL,
+						MFLD_LPE_DMA_DEVICE_ID,
+						NULL);
+	} else if ((pdev->device == CLV_SSP1_DEVICE_ID) ||
+		(pdev->device == CLV_SSP0_DEVICE_ID)) {
+		/* prepare for DMA channel allocation */
+		/* get the pci_dev structure pointer */
+		drv_data->dmac1 = pci_get_device(PCI_VENDOR_ID_INTEL,
+						CLV_LPE_DMA_DEVICE_ID,
+						NULL);
+	} else {
 		dev_err(&pdev->dev,
 			 "Don't know dma device ID for this SSP PCDID=%x\n",
 			 pdev->device);
 		goto err_i2s_probe3;
 	}
 
-	/* prepare for DMA channel allocation */
-	/* get the pci_dev structure pointer */
-	drv_data->dmac1 = pci_get_device(PCI_VENDOR_ID_INTEL,
-					 MFLD_LPE_DMA_DEVICE_ID,
-					 NULL);
 	/* in case the stop dma have to wait for end of callbacks   */
 	/* This will be removed when TERMINATE_ALL available in DMA */
 	if (!drv_data->dmac1) {

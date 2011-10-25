@@ -28,12 +28,15 @@
  */
 #define DRIVER_NAME "I2S SSP Driver"
 
-#define MFLD_SSP1_DEVICE_ID 0x0825	/* FOR MFLD */
-#define MRST_SSP0_DEVICE_ID 0x0815	/* FOR MRST */
-#define MFLD_SSP0_DEVICE_ID 0x0832	/* FOR MFLD */
+#define MRST_SSP0_DEVICE_ID	0x0815	/* FOR MRST */
+#define MFLD_SSP0_DEVICE_ID	0x0832	/* FOR MFLD */
+#define MFLD_SSP1_DEVICE_ID	0x0825	/* FOR MFLD */
+#define CLV_SSP0_DEVICE_ID	0x08F1	/* For Cloverview support */
+#define CLV_SSP1_DEVICE_ID	0x08E8	/* For Cloverview support */
 
-#define MRST_LPE_DMA_DEVICE_ID 0x0814
-#define MFLD_LPE_DMA_DEVICE_ID 0x0830
+#define MRST_LPE_DMA_DEVICE_ID	0x0814
+#define MFLD_LPE_DMA_DEVICE_ID	0x0830
+#define CLV_LPE_DMA_DEVICE_ID	0x08F0
 
 /* SSP1 PCI device Base Address Register */
 #define MRST_SSP_BAR	0
