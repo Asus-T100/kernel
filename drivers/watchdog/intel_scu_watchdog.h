@@ -31,12 +31,11 @@
 /* minimum time between interrupts */
 #define MIN_TIME_CYCLE 1
 
-/* Time from warning to reboot is 2 seconds */
-#define DEFAULT_SOFT_TO_HARD_MARGIN 2
+#define DEFAULT_SOFT_TO_HARD_MARGIN 15
 
 #define MAX_TIME 170
 
-#define DEFAULT_TIME 5
+#define DEFAULT_TIME 75
 
 #define MAX_SOFT_TO_HARD_MARGIN (MAX_TIME-MIN_TIME_CYCLE)
 
@@ -58,6 +57,7 @@ struct intel_scu_watchdog_dev {
 	struct sfi_timer_table_entry *timer_tbl_ptr;
 	struct notifier_block intel_scu_notifier;
 	struct miscdevice miscdev;
+	struct tasklet_struct interrupt_tasklet;
 };
 
 extern int sfi_mtimer_num;
