@@ -3236,6 +3236,90 @@ int atomisp_set_fmt_file(struct video_device *vdev, struct v4l2_format *f)
 	}
 }
 
+void atomisp_free_all_shading_tables(struct atomisp_device *isp)
+{
+	int i;
+
+	for (i = 0; i < isp->input_cnt; i++) {
+		if (isp->inputs[i].shading_table == NULL)
+			continue;
+		sh_css_shading_table_free(isp->inputs[i].shading_table);
+		isp->inputs[i].shading_table = NULL;
+	}
+}
+
+int atomisp_set_shading_table(struct atomisp_device *isp,
+		struct atomisp_shading_table *user_shading_table)
+{
+	struct sh_css_shading_table *shading_table;
+	struct sh_css_shading_table *free_table;
+	unsigned int len_table;
+	int i;
+	int ret = 0;
+
+	if (!user_shading_table)
+		return -EINVAL;
+
+	if (user_shading_table->flags & ATOMISP_SC_FLAG_QUERY) {
+		user_shading_table->enable = isp->params.sc_en;
+		return 0;
+	}
+
+	if (!user_shading_table->enable) {
+		mutex_lock(&isp->isp_lock);
+		sh_css_set_shading_table(NULL);
+		isp->params.sc_en = 0;
+		mutex_unlock(&isp->isp_lock);
+		return 0;
+	}
+
+	/* If enabling, all tables must be set */
+	for (i = 0; i < ATOMISP_NUM_SC_COLORS; i++) {
+		if (!user_shading_table->data[i])
+			return -EINVAL;
+	}
+
+	/* Shading table size per color */
+	if (user_shading_table->width > SH_CSS_MAX_SCTBL_WIDTH_PER_COLOR ||
+	    user_shading_table->height > SH_CSS_MAX_SCTBL_HEIGHT_PER_COLOR)
+		return -EINVAL;
+
+	shading_table = sh_css_shading_table_alloc(user_shading_table->width,
+						   user_shading_table->height);
+	if (!shading_table)
+		return -ENOMEM;
+
+	len_table = user_shading_table->width * user_shading_table->height *
+		    ATOMISP_SC_TYPE_SIZE;
+	for (i = 0; i < ATOMISP_NUM_SC_COLORS; i++) {
+		ret = copy_from_user(shading_table->data[i],
+				     user_shading_table->data[i], len_table);
+		if (ret) {
+			free_table = shading_table;
+			ret = -EFAULT;
+			goto out;
+		}
+	}
+	shading_table->sensor_width = user_shading_table->sensor_width;
+	shading_table->sensor_height = user_shading_table->sensor_height;
+	shading_table->fraction_bits = user_shading_table->fraction_bits;
+
+	mutex_lock(&isp->isp_lock);
+
+	free_table = isp->inputs[isp->input_curr].shading_table;
+	isp->inputs[isp->input_curr].shading_table = shading_table;
+	sh_css_set_shading_table(shading_table);
+	isp->params.sc_en = 1;
+
+	mutex_unlock(&isp->isp_lock);
+
+out:
+	if (free_table != NULL)
+		sh_css_shading_table_free(free_table);
+
+	return ret;
+}
+
 /*
  * atomisp_acc_get_fw - Search for firmware with given handle
  *

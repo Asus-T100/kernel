@@ -249,6 +249,10 @@ int atomisp_try_fmt(struct video_device *vdev, struct v4l2_format *f,
 int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f);
 int atomisp_set_fmt_file(struct video_device *vdev, struct v4l2_format *f);
 
+void atomisp_free_all_shading_tables(struct atomisp_device *isp);
+int atomisp_set_shading_table(struct atomisp_device *isp,
+			      struct atomisp_shading_table *shading_table);
+
 int atomisp_save_iunit_reg(struct atomisp_device *isp);
 int atomisp_restore_iunit_reg(struct atomisp_device *isp);
 

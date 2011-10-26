@@ -435,6 +435,7 @@ static int atomisp_release(struct file *file)
 
 	atomisp_free_3a_buffers(isp);
 	atomisp_free_dis_buffers(isp);
+	atomisp_free_all_shading_tables(isp);
 	atomisp_free_internal_buffers(isp);
 	sh_css_uninit();
 	hrt_isp_css_mm_clear();

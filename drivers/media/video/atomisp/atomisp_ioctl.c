@@ -153,15 +153,6 @@ static struct v4l2_queryctrl ci_v4l2_controls[] = {
 		.default_value = 0,
 	},
 	{
-		.id = V4L2_CID_ATOMISP_SHADING_CORRECTION,
-		.type = V4L2_CTRL_TYPE_INTEGER,
-		.name = "Lens Shading Correction",
-		.minimum = 0,
-		.maximum = 1,
-		.step = 1,
-		.default_value = 0,
-	},
-	{
 		.id = V4L2_CID_REQUEST_FLASH,
 		.type = V4L2_CTRL_TYPE_INTEGER,
 		.name = "Request flash frames",
@@ -1228,9 +1219,6 @@ static int atomisp_g_ctrl(struct file *file, void *fh,
 	case V4L2_CID_ATOMISP_FALSE_COLOR_CORRECTION:
 		ret = atomisp_false_color(isp, 0, &control->value);
 		break;
-	case V4L2_CID_ATOMISP_SHADING_CORRECTION:
-		ret = atomisp_shading_correction(isp, 0, &control->value);
-		break;
 	case V4L2_CID_ATOMISP_LOW_LIGHT:
 		ret = atomisp_low_light(isp, 0, &control->value);
 		break;
@@ -1293,9 +1281,6 @@ static int atomisp_s_ctrl(struct file *file, void *fh,
 		break;
 	case V4L2_CID_ATOMISP_FALSE_COLOR_CORRECTION:
 		ret = atomisp_false_color(isp, 1, &control->value);
-		break;
-	case V4L2_CID_ATOMISP_SHADING_CORRECTION:
-		ret = atomisp_shading_correction(isp, 1, &control->value);
 		break;
 	case V4L2_CID_REQUEST_FLASH:
 		ret = atomisp_flash_enable(isp, control->value);
@@ -1761,6 +1746,9 @@ static long atomisp_vidioc_default(struct file *file, void *fh,
 		 * errors. */
 		return BC_Camera_Bridge((BC_Video_ioctl_package *)arg,
 					(unsigned long) NULL);
+
+	case ATOMISP_IOC_S_ISP_SHD_TAB:
+		return atomisp_set_shading_table(isp, arg);
 
 	default:
 		return -EINVAL;

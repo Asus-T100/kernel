@@ -229,19 +229,34 @@ struct atomisp_morph_table {
 	unsigned short *coordinates_y[atomisp_morph_table_num_planes];
 };
 
-#define atomisp_num_sc_colors           4
+#define ATOMISP_NUM_SC_COLORS	4
+
+#define ATOMISP_SC_FLAG_QUERY	(1 << 0)
+
 struct atomisp_shading_table {
+	/*
+	 * If flag ATOMISP_SC_FLAG_QUERY is set, IOCTL will only query current
+	 * LSC status and return, otherwise it will set LSC according to
+	 * userspace's input.
+	 */
+	__u8 flags;
+	/*
+	 * If ATOMISP_SC_FLAG_QUERY is set, enable is output parameter,
+	 * otherwise it is an input parameter and will enable/disable LSC
+	 * engine
+	 */
+	__u8 enable;
 	/* native sensor resolution */
-	unsigned int sensor_width;
-	unsigned int sensor_height;
+	__u32 sensor_width;
+	__u32 sensor_height;
 	/* number of data points per line per color (bayer quads) */
-	unsigned int width;
+	__u32 width;
 	/* number of lines of data points per color (bayer quads) */
-	unsigned int height;
+	__u32 height;
 	/* bits of fraction part for shading table values */
-	unsigned int fraction_bits;
+	__u32 fraction_bits;
 	/* one table for each color (use sh_css_sc_color to index) */
-	unsigned short *data[atomisp_num_sc_colors];
+	__u16 __user *data[ATOMISP_NUM_SC_COLORS];
 };
 
 struct atomisp_makernote_info {
@@ -755,6 +770,10 @@ struct v4l2_private_int_data {
 #define ATOMISP_IOC_G_SENSOR_PRIV_INT_DATA \
 	_IOWR('v', BASE_VIDIOC_PRIVATE + 51, struct v4l2_private_int_data)
 
+/* LCS (shading) table write */
+#define ATOMISP_IOC_S_ISP_SHD_TAB \
+	_IOWR('v', BASE_VIDIOC_PRIVATE + 52, struct atomisp_shading_table)
+
 /*  ISP Private control IDs */
 #define V4L2_CID_ATOMISP_BAD_PIXEL_DETECTION \
 	(V4L2_CID_PRIVATE_BASE + 0)
@@ -766,6 +785,8 @@ struct v4l2_private_int_data {
 	(V4L2_CID_PRIVATE_BASE + 3)
 #define V4L2_CID_ATOMISP_FALSE_COLOR_CORRECTION \
 	(V4L2_CID_PRIVATE_BASE + 4)
+
+/* Deprecated. Use ATOMISP_IOC_S_ISP_SHD_TAB instead. */
 #define V4L2_CID_ATOMISP_SHADING_CORRECTION \
 	(V4L2_CID_PRIVATE_BASE + 5)
 #define V4L2_CID_ATOMISP_LOW_LIGHT \

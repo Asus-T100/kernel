@@ -79,6 +79,8 @@
 #define ATOM_ISP_MAX_INPUTS	4
 #define ATOMISP_ACC_FW_MAX	8
 
+#define ATOMISP_SC_TYPE_SIZE	2
+
 int atomisp_video_init(struct atomisp_video_pipe *video, const char *name);
 void atomisp_video_unregister(struct atomisp_video_pipe *video);
 int atomisp_video_register(struct atomisp_video_pipe *video,
