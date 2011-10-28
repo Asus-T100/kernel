@@ -292,6 +292,44 @@ static ssize_t gpio_keys_store_##name(struct device *dev,		\
 ATTR_STORE_FN(disabled_keys, EV_KEY);
 ATTR_STORE_FN(disabled_switches, EV_SW);
 
+static ssize_t gpio_keys_wakeup_enable(struct device *dev,
+		struct device_attribute *attr, const char *buf,
+			size_t size, int enable_wakeup)
+{
+	int i, ret = -EINVAL;
+	long code;
+	struct platform_device *pdev = to_platform_device(dev);
+	struct gpio_keys_platform_data *pdata = pdev->dev.platform_data;
+
+	ret = strict_strtol(buf, 10, &code);
+	if (ret != 0) {
+		dev_err(dev, "Invalid input.\n");
+		return ret;
+	}
+
+	for (i = 0; i < pdata->nbuttons; i++) {
+		struct gpio_keys_button *button = &pdata->buttons[i];
+		if ((int)code == button->code)
+			button->wakeup = enable_wakeup;
+	}
+
+	return size;
+}
+
+
+
+static ssize_t gpio_keys_store_enabled_wakeup(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t size)
+{
+	return gpio_keys_wakeup_enable(dev, attr, buf, size, 1);
+}
+
+static ssize_t gpio_keys_store_disabled_wakeup(struct device *dev,
+	       struct device_attribute *attr, const char *buf, size_t size)
+{
+	return gpio_keys_wakeup_enable(dev, attr, buf, size, 0);
+}
+
 /*
  * ATTRIBUTES:
  *
@@ -304,12 +342,20 @@ static DEVICE_ATTR(disabled_keys, S_IWUSR | S_IRUGO,
 static DEVICE_ATTR(disabled_switches, S_IWUSR | S_IRUGO,
 		   gpio_keys_show_disabled_switches,
 		   gpio_keys_store_disabled_switches);
+static DEVICE_ATTR(enabled_wakeup, S_IWUSR | S_IRUGO,
+		   NULL,
+		   gpio_keys_store_enabled_wakeup);
+static DEVICE_ATTR(disabled_wakeup, S_IWUSR | S_IRUGO,
+		   NULL,
+		   gpio_keys_store_disabled_wakeup);
 
 static struct attribute *gpio_keys_attrs[] = {
 	&dev_attr_keys.attr,
 	&dev_attr_switches.attr,
 	&dev_attr_disabled_keys.attr,
 	&dev_attr_disabled_switches.attr,
+	&dev_attr_enabled_wakeup.attr,
+	&dev_attr_disabled_wakeup.attr,
 	NULL,
 };
 
