@@ -597,11 +597,11 @@ static const struct mt9e013_reg mt9e013_start_streaming[] = {
 
 #define RESET_REGISTER	{MT9E013_16BIT, {0x301A}, 0x4A18}
 
-#define INIT_VCM_CONTROL	{MT9E013_16BIT, {0x30F0}, 0x8000}
+#define INIT_VCM_CONTROL	{MT9E013_16BIT, {0x30F0}, 0x8004}  /* slew_rate[2:0] */
 static const struct mt9e013_reg mt9e013_init_vcm[] = {
 	INIT_VCM_CONTROL,				   /* VCM_CONTROL */
 	{MT9E013_16BIT, {0x30F2}, 0x0000}, /* VCM_NEW_CODE */
-	{MT9E013_16BIT, {0x30F4}, 0x0000}, /* VCM_STEP_TIME */
+	{MT9E013_16BIT, {0x30F4}, 0x0080}, /* VCM_STEP_TIME */
 	{MT9E013_TOK_TERM, {0}, 0}
 };
 static const struct mt9e013_reg mt9e013_reset_register[] = {
