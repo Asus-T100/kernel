@@ -35,6 +35,8 @@
 #define BC_PIX_FMT_UYVY     BC_FOURCC('U', 'Y', 'V', 'Y')    /*YUV 4:2:2 */
 #define BC_PIX_FMT_YUYV     BC_FOURCC('Y', 'U', 'Y', 'V')    /*YUV 4:2:2 */
 #define BC_PIX_FMT_RGB565   BC_FOURCC('R', 'G', 'B', 'P')    /*RGB 5:6:5 */
+#define BC_PIX_FMT_YV12     BC_FOURCC('Y', 'V', '1', '2') 	/*YUV 4:2:0*/
+
 
 int FillBuffer(unsigned int uiBufferIndex);
 

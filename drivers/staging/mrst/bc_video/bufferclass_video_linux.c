@@ -421,7 +421,7 @@ BC_CreateBuffers(int id, bc_buf_params_t * p, IMG_BOOL is_conti_addr)
 
 	if (p->width <= 1 || p->height <= 1)
 		return -EINVAL;
-
+	printk(KERN_ERR "foucc: %x \n", p->fourcc);
 	switch (p->fourcc) {
 	case BC_PIX_FMT_NV12:
 		pixel_fmt = PVRSRV_PIXEL_FORMAT_NV12;
@@ -435,6 +435,9 @@ BC_CreateBuffers(int id, bc_buf_params_t * p, IMG_BOOL is_conti_addr)
 		break;
 	case BC_PIX_FMT_YUYV:
 		pixel_fmt = PVRSRV_PIXEL_FORMAT_FOURCC_ORG_YUYV;
+		break;
+	case BC_PIX_FMT_YV12:
+		pixel_fmt = PVRSRV_PIXEL_FORMAT_YV12;
 		break;
 	default:
 		return -EINVAL;
@@ -461,7 +464,8 @@ BC_CreateBuffers(int id, bc_buf_params_t * p, IMG_BOOL is_conti_addr)
 
 	memset(psDevInfo->psSystemBuffer, 0, sizeof(BC_VIDEO_BUFFER) * p->count);
 	size = p->height * stride;
-	if (pixel_fmt == PVRSRV_PIXEL_FORMAT_NV12)
+	if (pixel_fmt == PVRSRV_PIXEL_FORMAT_NV12 ||
+		pixel_fmt == PVRSRV_PIXEL_FORMAT_YV12)
 		size += (stride >> 1) * (p->height >> 1) << 1;
 
 	for (i = 0; i < p->count; i++) {
@@ -696,9 +700,10 @@ BC_Video_Bridge(struct drm_device *dev, IMG_VOID * arg,
 		}
 
 		bufferInfo = &(devinfo->sBufferInfo);
-		if (bufferInfo->pixelformat != PVRSRV_PIXEL_FORMAT_NV12) {
+		if (bufferInfo->pixelformat != PVRSRV_PIXEL_FORMAT_NV12 &&
+			bufferInfo->pixelformat != PVRSRV_PIXEL_FORMAT_YV12) {
 			printk(KERN_ERR DRVNAME
-			       " : BC_Video_ioctl_alloc_buffer only support NV12 format.\n");
+			       " : BC_Video_ioctl_alloc_buffer only support NV12/YV12 format.\n");
 			return -EINVAL;
 		}
 		ui32Size = bufferInfo->ui32Height * bufferInfo->ui32ByteStride;
