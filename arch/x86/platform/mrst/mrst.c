@@ -32,7 +32,6 @@
 #include <linux/irq.h>
 #include <linux/module.h>
 #include <linux/notifier.h>
-#include <linux/atmel_mxt224.h>
 
 #include <asm/setup.h>
 #include <asm/mpspec_def.h>
@@ -567,69 +566,6 @@ static void __init *lis331dl_platform_data(void *info)
 	return &intr2nd_pdata;
 }
 
-static  int mxt_reset_gpio;
-
-static u8 mxt_valid_interrupt(void)
-{
-	return 1;
-}
-
-static void mxt_init_platform_hw(void)
-{
-	int err;
-
-	err = gpio_request(mxt_reset_gpio, "MaxTouch-reset");
-	if (err < 0)
-		printk(KERN_ERR "Failed to request GPIO%d (MaxTouch-reset) err=%d\n",
-			mxt_reset_gpio, err);
-
-	err = gpio_direction_output(mxt_reset_gpio, 0);
-	if (err)
-		printk(KERN_ERR "Failed to change direction, err=%d\n", err);
-
-	/* maXTouch wants 40mSec minimum after reset to get organized */
-	gpio_set_value(mxt_reset_gpio, 1);
-	msleep(40);
-}
-
-static void mxt_exit_platform_hw(void)
-{
-	printk(KERN_INFO "In %s.", __func__);
-	gpio_set_value(mxt_reset_gpio, 0);
-}
-
-static void *mxt_platform_data(void *info)
-{
-	struct i2c_board_info *i2c_info = (struct i2c_board_info *) info;
-	static struct mxt_platform_data mfld_mxt_platform_data;
-	int intr = 0;
-
-	printk(KERN_INFO "In %s.", __func__);
-
-	memset(&mfld_mxt_platform_data, 0x00,
-		sizeof(struct mxt_platform_data));
-	mfld_mxt_platform_data.numtouch         = 10;
-	mfld_mxt_platform_data.init_platform_hw = &mxt_init_platform_hw;
-	mfld_mxt_platform_data.exit_platform_hw = &mxt_exit_platform_hw;
-	mfld_mxt_platform_data.max_x            = 864;
-	mfld_mxt_platform_data.max_y            = 480;
-	mfld_mxt_platform_data.orientation      = MXT_MSGB_T9_ORIENT_HORZ_FLIP;
-	mfld_mxt_platform_data.valid_interrupt  = &mxt_valid_interrupt;
-
-	intr = get_gpio_by_name("TS0-intr");
-	if (intr == -1) {
-		printk(KERN_ERR "Missing GPIO(s) for MXT.\n");
-		return NULL;
-	}
-
-	/* On nCDK EB2.0, Atmel max touch reset is on
-	GP_CORE_033 = 33 + 96 = 129 */
-	mxt_reset_gpio = 129; /* TODO: Use SFI, when SFI is available */
-
-	i2c_info->irq = intr + MRST_IRQ_OFFSET;
-	return &mfld_mxt_platform_data;
-}
-
 
 /* MFLD iCDK touchscreen data */
 #define CYTTSP_GPIO_PIN 0x3E
@@ -838,7 +774,6 @@ static const struct devs_id __initconst device_ids[] = {
 	{"i2c_accel", SFI_DEV_TYPE_I2C, 0, &lis331dl_platform_data},
 	{"pmic_audio", SFI_DEV_TYPE_IPC, 1, &no_platform_data},
 	{"mpu3050", SFI_DEV_TYPE_I2C, 1, &mpu3050_platform_data},
-	{"mXT224", SFI_DEV_TYPE_I2C, 1, &mxt_platform_data},
 	{"ektf2136_spi", SFI_DEV_TYPE_SPI, 0, &ektf2136_spi_platform_data},
 	{"msic_adc", SFI_DEV_TYPE_IPC, 1, &msic_adc_platform_data},
 
@@ -1118,7 +1053,6 @@ static int __init sfi_parse_devs(struct sfi_table_header *table)
 				i2c_info.irq,
 				i2c_info.addr);
 			if (!strcmp(i2c_info.type, "mxt224")){
-				printk(KERN_INFO "[%s:%d] Breaking mxt224 driver\n",__func__,__LINE__);
 				break;
 			}
 			sfi_handle_i2c_dev(bus, &i2c_info);
