@@ -280,16 +280,17 @@ static int lm3554_g_flash_mode(struct v4l2_subdev *sd, u32 * val)
 static int lm3554_g_flash_status(struct v4l2_subdev *sd, u32 *val)
 {
 	u8 value;
-	struct i2c_client *client = v4l2_get_subdevdata(sd);
 
 	get_reg_field(sd, &flags, &value);
 
+	/*
+	 * do not take TX1/TX2 signal as an error.
+	 * because MSIC will not turn off flash, but turn to
+	 * torch mode according to gsm modem signal by hardware.
+	 */
 	if (value & LM3554_FLAG_TIMEOUT)
 		*val = ATOMISP_FLASH_STATUS_TIMEOUT;
-	else if (value & LM3554_FLAG_TX1_INTERRUPT ||
-			value & LM3554_FLAG_TX2_INTERRUPT) {
-		*val = ATOMISP_FLASH_STATUS_INTERRUPTED;
-	} else if (value & LM3554_FLAG_THERMAL_SHUTDOWN ||
+	else if (value & LM3554_FLAG_THERMAL_SHUTDOWN ||
 			value & LM3554_FLAG_LED_FAULT ||
 			value & LM3554_FLAG_LED_THERMAL_FAULT ||
 			value & LM3554_FLAG_INPUT_VOLTAGE_LOW) {
@@ -297,8 +298,10 @@ static int lm3554_g_flash_status(struct v4l2_subdev *sd, u32 *val)
 	} else
 		*val = ATOMISP_FLASH_STATUS_OK;
 
-	if (*val == ATOMISP_FLASH_STATUS_HW_ERROR)
+	if (*val == ATOMISP_FLASH_STATUS_HW_ERROR) {
+		struct i2c_client *client = v4l2_get_subdevdata(sd);
 		dev_err(&client->dev, "LM3554 flag status: %d\n", value);
+	}
 	return 0;
 }
 
@@ -496,6 +499,10 @@ static int lm3554_detect(struct i2c_client *client)
 	 * ENVM/TX pin desserted, flash set back;
 	 */
 	ret = set_reg_field(sd, &envm_tx2, 1);
+	if (ret < 0)
+		goto fail;
+
+	ret = set_reg_field(sd, &tx2_polarity, 0);
 	if (ret < 0)
 		goto fail;
 
