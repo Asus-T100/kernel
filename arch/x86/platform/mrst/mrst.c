@@ -9,6 +9,7 @@
  * as published by the Free Software Foundation; version 2
  * of the License.
  */
+#define DEBUG
 
 #define pr_fmt(fmt) "mrst: " fmt
 
