@@ -25,7 +25,7 @@ include_dirs := \
 	-Iinclude/drm
 
 ccflags-y += $(include_dirs)
-ccflags-y += -I$(INCDIR)/pvr/services4/system/intel_drm -DANDROID -D_linux_ -D__KERNEL__
+ccflags-y += $(ANDROID_TOOLCHAIN_FLAGS) -I$(INCDIR)/pvr/services4/system/intel_drm -DANDROID -D_linux_ -D__KERNEL__
 
 ifeq ($(CONFIG_DRM_MDFLD),y)
 ccflags-y += -DMEDFIELD
