@@ -523,7 +523,6 @@ static int mt9e013_write_reg_array(struct i2c_client *client,
 	return __mt9e013_flush_reg_array(client, &ctrl);
 }
 
-
 static int mt9e013_t_focus_abs(struct v4l2_subdev *sd, s32 value)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
@@ -535,24 +534,10 @@ static int mt9e013_t_focus_abs(struct v4l2_subdev *sd, s32 value)
 	ret = mt9e013_write_reg(client, MT9E013_16BIT, MT9E013_VCM_CODE,
 				MT9E013_MAX_FOCUS_POS - value);
 	if (ret == 0) {
+		dev->number_of_steps = value - dev->focus;
 		dev->focus = value;
-		do_gettimeofday(&(dev->timestamp_t_focus_abs));
+		getnstimeofday(&(dev->timestamp_t_focus_abs));
 	}
-	return ret;
-}
-
-static int mt9e013_q_focus_abs(struct v4l2_subdev *sd, s32 *value)
-{
-	struct i2c_client *client = v4l2_get_subdevdata(sd);
-	int ret;
-	u16 val;
-
-
-
-	ret = mt9e013_read_reg(client, MT9E013_16BIT,
-			       MT9E013_VCM_CODE, &val);
-	*value = MT9E013_MAX_FOCUS_POS - val;
-
 	return ret;
 }
 
@@ -562,48 +547,49 @@ static int mt9e013_t_focus_rel(struct v4l2_subdev *sd, s32 value)
 	return mt9e013_t_focus_abs(sd, dev->focus + value);
 }
 
-#define WAIT_FOR_VCM_MOTOR	60000
+#define DELAY_PER_STEP_NS	1000000
+#define DELAY_MAX_PER_STEP_NS	(1000000*40)
 static int mt9e013_q_focus_status(struct v4l2_subdev *sd, s32 *value)
 {
 	u32 status = 0;
 	struct mt9e013_device *dev = to_mt9e013_sensor(sd);
-	struct timeval current_time;
-	bool stillmoving = false;
-	struct i2c_client *client = v4l2_get_subdevdata(sd);
+	struct timespec temptime;
+	const struct timespec timedelay = {
+		0,
+		min((u32)abs(dev->number_of_steps)*DELAY_PER_STEP_NS,
+			(u32)DELAY_MAX_PER_STEP_NS),
+	};
 
+	getnstimeofday(&temptime);
 
-	do_gettimeofday(&current_time);
-	if (current_time.tv_sec == (dev->timestamp_t_focus_abs).tv_sec) {
-		if (current_time.tv_usec < ((dev->timestamp_t_focus_abs).tv_usec+WAIT_FOR_VCM_MOTOR)) {
-			stillmoving = true;
-		}
-	} else {
-		if ((current_time.tv_usec+1000000) < ((dev->timestamp_t_focus_abs).tv_usec+WAIT_FOR_VCM_MOTOR)) {
-			/* assuming the delay betwee calls does not take more than a second. */
-			stillmoving = true;
-		}
-	}
+	temptime = timespec_sub(temptime, (dev->timestamp_t_focus_abs));
 
-	if (stillmoving) {
+	if (timespec_compare(&temptime, &timedelay) <= 0) {
 		status |= ATOMISP_FOCUS_STATUS_MOVING;
 		status |= ATOMISP_FOCUS_HP_IN_PROGRESS;
 	} else {
-		status |= ATOMISP_FOCUS_HP_COMPLETE;
 		status |= ATOMISP_FOCUS_STATUS_ACCEPTS_NEW_MOVE;
+		status |= ATOMISP_FOCUS_HP_COMPLETE;
 	}
 	*value = status;
 	return 0;
 }
 
-/*
-static int mt9e013_vcm_enable(struct v4l2_subdev *sd)
+static int mt9e013_q_focus_abs(struct v4l2_subdev *sd, s32 *value)
 {
-	struct i2c_client *client = v4l2_get_subdevdata(sd);
+	struct mt9e013_device *dev = to_mt9e013_sensor(sd);
+	s32 val;
 
-	return mt9e013_rmw_reg(client, MT9E013_16BIT, MT9E013_VCM_SLEW_STEP,
-				MT9E013_VCM_ENABLE, 0x1);
+	mt9e013_q_focus_status(sd, &val);
+
+	if (val & ATOMISP_FOCUS_STATUS_MOVING)
+		*value  = dev->focus - dev->number_of_steps;
+	else
+		*value  = dev->focus ;
+
+	return 0;
 }
-*/
+
 static long mt9e013_set_exposure(struct v4l2_subdev *sd, u16 coarse_itg,
 				 u16 fine_itg, u16 gain)
 
@@ -1564,7 +1550,6 @@ static int mt9e013_s_stream(struct v4l2_subdev *sd, int enable)
 	int ret;
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	struct mt9e013_device *dev = to_mt9e013_sensor(sd);
-	u16 temp;
 
 	if (enable) {
 		if (dev->sensor_revision <= 0x0) {
@@ -1574,7 +1559,7 @@ static int mt9e013_s_stream(struct v4l2_subdev *sd, int enable)
 				{MT9E013_16BIT, {0x30F2}, 0x0000}, /* VCM_NEW_CODE */
 				INIT_VCM_CONTROL,
 				{MT9E013_16BIT, {0x30F2}, 0x0000}, /* VCM_NEW_CODE */
-				{MT9E013_TOK_DELAY, {0}, 100},
+				{MT9E013_TOK_DELAY, {0}, 60},
 				{MT9E013_TOK_TERM, {0}, 0}
 			};
 

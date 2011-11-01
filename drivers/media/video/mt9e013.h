@@ -378,7 +378,8 @@ struct mt9e013_device {
 	u16 lines_per_frame;
 	u8 fps;
 	int run_mode;
-	struct timeval timestamp_t_focus_abs;
+	struct timespec timestamp_t_focus_abs;
+	s16 number_of_steps;
 
 };
 
