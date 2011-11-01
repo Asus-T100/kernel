@@ -1140,6 +1140,7 @@ void process_key_message(u8 *message, struct mxt_data *mxt)
 				 "Report key %d up", mxt->prev_key);
 			mxt->prev_key = 0;
 		}
+		input_sync(mxt->key_input);
 		return;
 	}
 
@@ -1165,6 +1166,7 @@ void process_key_message(u8 *message, struct mxt_data *mxt)
 			"Report SEARCH(%d) key DOWN.", KEY_SEARCH);
 		mxt->prev_key = KEY_SEARCH;
 	}
+	input_sync(mxt->key_input);
 }
 
 static int process_message(u8 *message, u8 object, struct mxt_data *mxt)
