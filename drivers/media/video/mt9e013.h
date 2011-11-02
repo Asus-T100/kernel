@@ -131,6 +131,7 @@
 #define MT9E013_X_OUTPUT_SIZE	0x034C
 #define MT9E013_Y_OUTPUT_SIZE	0x034E
 
+#define MT9E013_BIN_FACTOR_MAX			3
 
 /*
  * focal length bits definition:
@@ -346,6 +347,8 @@ struct mt9e013_resolution {
 	unsigned short pixels_per_line;
 	unsigned short lines_per_frame;
 	const struct mt9e013_reg *regs;
+	u8 bin_factor_x;
+	u8 bin_factor_y;
 };
 
 struct mt9e013_format {

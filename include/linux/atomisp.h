@@ -832,6 +832,10 @@ struct v4l2_private_int_data {
 /* Query Focus Status */
 #define V4L2_CID_FOCUS_STATUS              (V4L2_CID_CAMERA_LASTP1 + 14)
 
+/* Query sensor's binning factor */
+#define V4L2_CID_BIN_FACTOR_HORZ	   (V4L2_CID_CAMERA_LASTP1 + 15)
+#define V4L2_CID_BIN_FACTOR_VERT	   (V4L2_CID_CAMERA_LASTP1 + 16)
+
 #define V4L2_BUF_FLAG_BUFFER_INVALID       0x0400
 #define V4L2_BUF_FLAG_BUFFER_VALID         0x0800
 

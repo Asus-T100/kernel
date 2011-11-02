@@ -34,6 +34,10 @@ static const char *CARD = "ATOM ISP";	/* max size 31 */
 static const char *BUS_INFO = "PCI-3";	/* max size 31 */
 static const u32 VERSION = DRIVER_VERSION;
 
+/*
+ * FIXME: ISP should not know beforehand all CIDs supported by sensor.
+ * Instead, it needs to propagate to sensor unkonwn CIDs.
+ */
 static struct v4l2_queryctrl ci_v4l2_controls[] = {
 	{
 		.id = V4L2_CID_AUTO_WHITE_BALANCE,
@@ -169,7 +173,25 @@ static struct v4l2_queryctrl ci_v4l2_controls[] = {
 		.maximum = 1,
 		.step = 1,
 		.default_value = 1,
-	}
+	},
+	{
+		.id = V4L2_CID_BIN_FACTOR_HORZ,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "Horizontal binning factor",
+		.minimum = 0,
+		.maximum = 10,
+		.step = 1,
+		.default_value = 0,
+	},
+	{
+		.id = V4L2_CID_BIN_FACTOR_VERT,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "Vertical binning factor",
+		.minimum = 0,
+		.maximum = 10,
+		.step = 1,
+		.default_value = 0,
+	},
 };
 static const u32 ctrls_num = ARRAY_SIZE(ci_v4l2_controls);
 
@@ -1344,6 +1366,8 @@ static int atomisp_camera_g_ext_ctrls(struct file *file, void *fh,
 		switch (ctrl.id) {
 		case V4L2_CID_EXPOSURE_ABSOLUTE:
 		case V4L2_CID_IRIS_ABSOLUTE:
+		case V4L2_CID_BIN_FACTOR_HORZ:
+		case V4L2_CID_BIN_FACTOR_VERT:
 			/*
 			 * Exposure related control will be handled by sensor
 			 * driver
