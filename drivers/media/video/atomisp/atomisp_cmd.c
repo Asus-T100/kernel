@@ -205,18 +205,23 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 	bool signal_worker = false;
 	bool signal_statistics = false;
 	bool signal_acceleration = false;
+	unsigned long irqflags;
 
-	spin_lock(&isp->irq_lock);
+	/*
+	 * spin_lock_irqsave() is necessary to avoid racing between multiple
+	 * calls of ISP's ISR
+	 */
+	spin_lock_irqsave(&isp->irq_lock, irqflags);
 	/*got triggered interrupt*/
 	err = sh_css_translate_interrupt(&irq_infos);
 	if (err != sh_css_success) {
 		v4l2_warn(&atomisp_dev, "%s:failed to translate irq (err = %d,"
 			  " infos = %d)\n", __func__, err, irq_infos);
-		spin_unlock(&isp->irq_lock);
+		spin_unlock_irqrestore(&isp->irq_lock, irqflags);
 		return IRQ_NONE;
 	}
 
-	isp->irq_infos = irq_infos;
+	isp->irq_infos |= irq_infos;
 	if (irq_infos & SH_CSS_IRQ_INFO_FRAME_DONE ||
 	    irq_infos & SH_CSS_IRQ_INFO_START_NEXT_STAGE) {
 		/* Wake up sleep thread for next binary */
@@ -258,7 +263,7 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 	msg_ret |=  (1 << INTR_IIR);
 	atomisp_msg_write32(isp, IUNIT_PORT, INTR_CTL, msg_ret);
 
-	spin_unlock(&isp->irq_lock);
+	spin_unlock_irqrestore(&isp->irq_lock, irqflags);
 	return IRQ_HANDLED;
 }
 /*
@@ -625,8 +630,11 @@ void atomisp_work(struct work_struct *work)
 	     flash_in_progress = false,
 	     flash_enabled = false;
 	enum atomisp_frame_status fr_status = ATOMISP_FRAME_STATUS_OK;
+	u32 irq_infos;
 
 	isp->sw_contex.error = false;
+	INIT_COMPLETION(isp->wq_frame_complete);
+
 	for (;;) {
 		timeout_flag = false;
 		ret = atomisp_buffer_dequeue(isp, &vb_capture,
@@ -634,7 +642,6 @@ void atomisp_work(struct work_struct *work)
 		if (ret)
 			goto error;
 
-		INIT_COMPLETION(isp->wq_frame_complete);
 		/* Hold the locker when ISP is running, when dis and digital
 		 * zoom can not be configured
 		 */
@@ -698,12 +705,35 @@ void atomisp_work(struct work_struct *work)
 		/*Check ISP processing pipeline if any binary left*/
 		do {
 			long time_left;
+			unsigned long irqflags;
+
 			/* wait for different binary to be processed */
-			time_left =
-			    wait_for_completion_timeout(&isp->wq_frame_complete,
+			spin_lock_irqsave(&isp->irq_lock, irqflags);
+			if (!isp->irq_infos) {
+				spin_unlock_irqrestore(&isp->irq_lock,
+						       irqflags);
+				time_left =
+					wait_for_completion_timeout(
+						&isp->wq_frame_complete,
 						DEFAULT_ISP_TIMEOUT * HZ);
+				spin_lock_irqsave(&isp->irq_lock, irqflags);
+			} else {
+				/*
+				 * Don't need to sleep because new interrupt was
+				 * triggered during last iteration.
+				 * time_left needs to be > 0 as it's not
+				 * timing out.
+				 */
+				time_left = 1;
+			}
+
+			irq_infos = isp->irq_infos;
+			isp->irq_infos = 0;
+			spin_unlock_irqrestore(&isp->irq_lock, irqflags);
 
 			if (time_left == 0) {
+				WARN(irq_infos, "ATOMISP: ISR out of sync with "
+						"Workqueue.\n");
 				/*
 				 * if the default timeout happens, we see
 				 * whether it is caused by sensor's output fps
@@ -742,7 +772,7 @@ timeout_handle:
 			}
 
 			INIT_COMPLETION(isp->acc_fw_complete);
-			if (isp->irq_infos & SH_CSS_IRQ_INFO_FW_ACC_DONE)
+			if (irq_infos & SH_CSS_IRQ_INFO_FW_ACC_DONE)
 				sh_css_terminate_firmware();
 
 			/*
@@ -779,9 +809,9 @@ timeout_handle:
 
 			/* proc interrupt */
 			INIT_COMPLETION(isp->wq_frame_complete);
-			if (isp->irq_infos & SH_CSS_IRQ_INFO_START_NEXT_STAGE)
+			if (irq_infos & SH_CSS_IRQ_INFO_START_NEXT_STAGE)
 				sh_css_start_next_stage();
-		} while (!(isp->irq_infos & SH_CSS_IRQ_INFO_FRAME_DONE));
+		} while (!(irq_infos & SH_CSS_IRQ_INFO_FRAME_DONE));
 
 		mutex_unlock(&isp->isp_lock);
 
