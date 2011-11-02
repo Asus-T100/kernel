@@ -203,7 +203,7 @@ init_binary_info(struct sh_css_binary_info *info, bool *binary_found)
 		_init_binary_info(info, ISP_VIDEO_DS_);
 		break;
 	default:
-		break;
+		return sh_css_err_invalid_arguments;
 	}
 	info->s3atbl_use_dmem = _S3ATBL_USE_DMEM(info->min_output_width !=
 						 info->max_output_width);
