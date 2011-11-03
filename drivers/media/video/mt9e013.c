@@ -868,16 +868,12 @@ static int mt9e013_init_registers(struct v4l2_subdev *sd)
 static int mt9e013_init(struct v4l2_subdev *sd, u32 val)
 {
 	int ret;
-	struct i2c_client *client = v4l2_get_subdevdata(sd);
 
 	/* set inital registers */
 	ret = mt9e013_init_registers(sd);
 
 	/*set VCM to home position */
 	ret |= mt9e013_t_focus_abs(sd, HOME_POS);
-
-	/* Program shading table into sensor */
-	ret |= mt9e013_write_reg_array(client, mt9e013_lens_shading);
 
 	/* restore settings */
 	mt9e013_res = mt9e013_res_preview;
