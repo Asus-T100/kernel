@@ -323,6 +323,27 @@ static struct sh_css_binary_descr preview_descr,
 				  video_descr,
 				  capture_pp_descr;
 
+static void reset_mode_shading_tables(void)
+{
+	if (my_css.preview_settings.shading_table) {
+		sh_css_shading_table_free(
+				my_css.preview_settings.shading_table);
+		my_css.preview_settings.shading_table = NULL;
+	}
+
+	if (my_css.capture_settings.shading_table) {
+		sh_css_shading_table_free(
+				my_css.capture_settings.shading_table);
+		my_css.capture_settings.shading_table = NULL;
+	}
+
+	if (my_css.video_settings.shading_table) {
+		sh_css_shading_table_free(
+				my_css.video_settings.shading_table);
+		my_css.video_settings.shading_table = NULL;
+	}
+}
+
 static enum sh_css_err
 check_frame_info(struct sh_css_frame_info *info)
 {
@@ -1498,6 +1519,9 @@ sh_css_overlay_set_for_viewfinder(const struct sh_css_overlay *overlay)
 void
 sh_css_set_shading_table(const struct sh_css_shading_table *table)
 {
+	if (table != my_css.shading_table)
+		reset_mode_shading_tables();
+
 	my_css.shading_table = table;
 }
 
@@ -2113,6 +2137,8 @@ sh_css_input_get_format(enum sh_css_input_format *format)
 void
 sh_css_input_set_binning_factor(unsigned int binning_factor)
 {
+	if (binning_factor != my_css.sensor_binning)
+		reset_mode_shading_tables();
 	my_css.sensor_binning = binning_factor;
 }
 
