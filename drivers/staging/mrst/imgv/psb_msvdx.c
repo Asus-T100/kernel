@@ -20,7 +20,6 @@
  **************************************************************************/
 
 #include <drm/drmP.h>
-#include <drm/drm_os_linux.h>
 #include "psb_drm.h"
 #include "psb_drv.h"
 #include "psb_msvdx.h"
@@ -533,10 +532,10 @@ int psb_cmdbuf_video(struct drm_file *priv,
 			  &fence);
 
 	ttm_fence_object_unref(&fence);
-	spin_lock(&cmd_buffer->lock);
+	spin_lock(&cmd_buffer->bdev->fence_lock);
 	if (cmd_buffer->sync_obj != NULL)
 		ttm_fence_sync_obj_unref(&cmd_buffer->sync_obj);
-	spin_unlock(&cmd_buffer->lock);
+	spin_unlock(&cmd_buffer->bdev->fence_lock);
 
 	return 0;
 }

@@ -27,7 +27,6 @@
 /* include headers */
 /* #define DRM_DEBUG_CODE 2 */
 #include <drm/drmP.h>
-#include <drm/drm_os_linux.h>
 
 #include "psb_drv.h"
 #include "psb_drm.h"
@@ -292,10 +291,10 @@ int pnw_cmdbuf_video(struct drm_file *priv,
 	if (fence)
 		ttm_fence_object_unref(&fence);
 
-	spin_lock(&cmd_buffer->lock);
+	spin_lock(&cmd_buffer->bdev->fence_lock);
 	if (cmd_buffer->sync_obj != NULL)
 		ttm_fence_sync_obj_unref(&cmd_buffer->sync_obj);
-	spin_unlock(&cmd_buffer->lock);
+	spin_unlock(&cmd_buffer->bdev->fence_lock);
 
 	PSB_DEBUG_GENERAL("TOPAZ exit %s\n", __func__);
 	return 0;

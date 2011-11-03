@@ -30,6 +30,7 @@
 struct drm_psb_ttm_backend {
 	struct ttm_backend base;
 	struct page **pages;
+	dma_addr_t *dma_addrs;
 	unsigned int desired_tile_stride;
 	unsigned int hw_tile_stride;
 	int mem_type;
@@ -61,6 +62,7 @@ static int psb_init_mem_type(struct ttm_bo_device *bdev, uint32_t type,
 		man->default_caching = TTM_PL_FLAG_CACHED;
 		break;
 	case DRM_PSB_MEM_MMU:
+		man->func = &ttm_bo_manager_func;
 		man->flags = TTM_MEMTYPE_FLAG_MAPPABLE |
 			     TTM_MEMTYPE_FLAG_CMA;
 		man->gpu_offset = PSB_MEM_MMU_START;
@@ -69,6 +71,7 @@ static int psb_init_mem_type(struct ttm_bo_device *bdev, uint32_t type,
 		man->default_caching = TTM_PL_FLAG_WC;
 		break;
 	case TTM_PL_CI:
+		man->func = &ttm_bo_manager_func;
 		man->flags = TTM_MEMTYPE_FLAG_MAPPABLE |
 			     TTM_MEMTYPE_FLAG_FIXED;
 		man->gpu_offset = pg->mmu_gatt_start + (pg->ci_start);
@@ -76,6 +79,7 @@ static int psb_init_mem_type(struct ttm_bo_device *bdev, uint32_t type,
 		man->default_caching = TTM_PL_FLAG_UNCACHED;
 		break;
 	case TTM_PL_RAR:	/* Unmappable RAR memory */
+		man->func = &ttm_bo_manager_func;
 		man->flags = TTM_MEMTYPE_FLAG_MAPPABLE |
 			     TTM_MEMTYPE_FLAG_FIXED;
 		man->available_caching = TTM_PL_FLAG_UNCACHED;
@@ -83,6 +87,7 @@ static int psb_init_mem_type(struct ttm_bo_device *bdev, uint32_t type,
 		man->gpu_offset = pg->mmu_gatt_start + (pg->rar_start);
 		break;
 	case TTM_PL_TT:	/* Mappable GATT memory */
+		man->func = &ttm_bo_manager_func;
 #ifdef PSB_WORKING_HOST_MMU_ACCESS
 		man->flags = TTM_MEMTYPE_FLAG_MAPPABLE;
 #else
@@ -218,12 +223,14 @@ static int psb_move(struct ttm_buffer_object *bo,
 static int drm_psb_tbe_populate(struct ttm_backend *backend,
 				unsigned long num_pages,
 				struct page **pages,
-				struct page *dummy_read_page)
+				struct page *dummy_read_page,
+				dma_addr_t *dma_addrs)
 {
 	struct drm_psb_ttm_backend *psb_be =
 		container_of(backend, struct drm_psb_ttm_backend, base);
 
 	psb_be->pages = pages;
+	psb_be->dma_addrs = dma_addrs; /* Not concretely implemented by TTM yet*/
 	return 0;
 }
 
@@ -272,7 +279,7 @@ static int drm_psb_tbe_bind(struct ttm_backend *backend,
 	psb_be->num_pages = bo_mem->num_pages;
 	psb_be->desired_tile_stride = 0;
 	psb_be->hw_tile_stride = 0;
-	psb_be->offset = (bo_mem->mm_node->start << PAGE_SHIFT) +
+	psb_be->offset = (bo_mem->start << PAGE_SHIFT) +
 			 man->gpu_offset;
 
 	type =
@@ -310,6 +317,7 @@ static void drm_psb_tbe_clear(struct ttm_backend *backend)
 		container_of(backend, struct drm_psb_ttm_backend, base);
 
 	psb_be->pages = NULL;
+	psb_be->dma_addrs = NULL;
 	return;
 }
 
@@ -361,21 +369,21 @@ static int psb_ttm_io_mem_reserve(struct ttm_bo_device *bdev, struct ttm_mem_reg
 		/* system memory */
 		return 0;
 	case TTM_PL_TT:
-		mem->bus.offset = mem->mm_node->start << PAGE_SHIFT;
+		mem->bus.offset = mem->start << PAGE_SHIFT;
 		mem->bus.base = pg->gatt_start;
 		mem->bus.is_iomem = false; /* Don't know whether it is IO_MEM, this flag used in vm_fault handle */
 		break;
 	case DRM_PSB_MEM_MMU:
-		mem->bus.offset = mem->mm_node->start << PAGE_SHIFT;
+		mem->bus.offset = mem->start << PAGE_SHIFT;
 		mem->bus.base = 0x00000000;
 		break;
 	case TTM_PL_CI:
-		mem->bus.offset = mem->mm_node->start << PAGE_SHIFT;
+		mem->bus.offset = mem->start << PAGE_SHIFT;
 		mem->bus.base = dev_priv->ci_region_start;;
 		mem->bus.is_iomem = true;
 		break;
 	case TTM_PL_RAR:
-		mem->bus.offset = mem->mm_node->start << PAGE_SHIFT;
+		mem->bus.offset = mem->start << PAGE_SHIFT;
 		mem->bus.base = dev_priv->rar_region_start;;
 		mem->bus.is_iomem = true;
 		break;

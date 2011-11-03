@@ -320,9 +320,11 @@ int ttm_pl_create_ioctl(struct ttm_object_file *tfile,
 	if (unlikely(ret != 0))
 		goto out_err;
 
-	spin_lock(&bo->lock);
+	ret = ttm_bo_reserve(bo, true, false, false, 0);
+	if (unlikely(ret != 0))
+		goto out_err;
 	ttm_pl_fill_rep(bo, rep);
-	spin_unlock(&bo->lock);
+	ttm_bo_unreserve(bo);
 	ttm_bo_unref(&bo);
 out:
 	return 0;
@@ -398,9 +400,11 @@ int ttm_pl_ub_create_ioctl(struct ttm_object_file *tfile,
 	if (unlikely(ret != 0))
 		goto out_err;
 
-	spin_lock(&bo->lock);
+	ret = ttm_bo_reserve(bo, true, false, false, 0);
+	if (unlikely(ret != 0))
+		goto out_err;
 	ttm_pl_fill_rep(bo, rep);
-	spin_unlock(&bo->lock);
+	ttm_bo_unreserve(bo);
 	ttm_bo_unref(&bo);
 out:
 	return 0;
@@ -433,9 +437,11 @@ int ttm_pl_reference_ioctl(struct ttm_object_file *tfile, void *data)
 		goto out;
 	}
 
-	spin_lock(&bo->lock);
+	ret = ttm_bo_reserve(bo, true, false, false, 0);
+	if (unlikely(ret != 0))
+		goto out;
 	ttm_pl_fill_rep(bo, rep);
-	spin_unlock(&bo->lock);
+	ttm_bo_unreserve(bo);
 
 out:
 	base = &user_bo->base;
@@ -533,7 +539,7 @@ int ttm_pl_setstatus_ioctl(struct ttm_object_file *tfile,
 	placement.num_placement = 2;
 	placement.placement = flags;
 
-	spin_lock(&bo->lock);
+	/* spin_lock(&bo->lock); */ /* Already get reserve lock */
 
 	ret = psb_ttm_bo_check_placement(bo, &placement);
 	if (unlikely(ret != 0))
@@ -548,7 +554,7 @@ int ttm_pl_setstatus_ioctl(struct ttm_object_file *tfile,
 
 	ttm_pl_fill_rep(bo, rep);
 out_err2:
-	spin_unlock(&bo->lock);
+	/* spin_unlock(&bo->lock); */
 	ttm_bo_unreserve(bo);
 out_err1:
 	ttm_read_unlock(lock);
@@ -601,11 +607,11 @@ int ttm_pl_waitidle_ioctl(struct ttm_object_file *tfile, void *data)
 					     arg->mode & TTM_PL_WAITIDLE_MODE_NO_BLOCK);
 	if (unlikely(ret != 0))
 		goto out;
-	spin_lock(&bo->lock);
+	spin_lock(&bo->bdev->fence_lock);
 	ret = ttm_bo_wait(bo,
 			  arg->mode & TTM_PL_WAITIDLE_MODE_LAZY,
 			  true, arg->mode & TTM_PL_WAITIDLE_MODE_NO_BLOCK);
-	spin_unlock(&bo->lock);
+	spin_unlock(&bo->bdev->fence_lock);
 	psb_ttm_bo_unblock_reservation(bo);
 out:
 	ttm_bo_unref(&bo);

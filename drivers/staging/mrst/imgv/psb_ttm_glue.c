@@ -333,29 +333,29 @@ int psb_verify_access(struct ttm_buffer_object *bo,
 }
 
 #ifdef CONFIG_MDFD_VIDEO_DECODE
-static int psb_ttm_mem_global_init(struct ttm_global_reference *ref)
+static int psb_ttm_mem_global_init(struct drm_global_reference *ref)
 {
 	return ttm_mem_global_init(ref->object);
 }
 
-static void psb_ttm_mem_global_release(struct ttm_global_reference *ref)
+static void psb_ttm_mem_global_release(struct drm_global_reference *ref)
 {
 	ttm_mem_global_release(ref->object);
 }
 
 int psb_ttm_global_init(struct drm_psb_private *dev_priv)
 {
-	struct ttm_global_reference *global_ref;
-	struct ttm_global_reference *global;
+	struct drm_global_reference *global_ref;
+	struct drm_global_reference *global;
 	int ret;
 
 	global_ref = &dev_priv->mem_global_ref;
-	global_ref->global_type = TTM_GLOBAL_TTM_MEM;
+	global_ref->global_type = DRM_GLOBAL_TTM_MEM;
 	global_ref->size = sizeof(struct ttm_mem_global);
 	global_ref->init = &psb_ttm_mem_global_init;
 	global_ref->release = &psb_ttm_mem_global_release;
 
-	ret = ttm_global_item_ref(global_ref);
+	ret = drm_global_item_ref(global_ref);
 	if (unlikely(ret != 0)) {
 		DRM_ERROR("Failed referencing a global TTM memory object.\n");
 		return ret;
@@ -363,14 +363,14 @@ int psb_ttm_global_init(struct drm_psb_private *dev_priv)
 
 	dev_priv->bo_global_ref.mem_glob = dev_priv->mem_global_ref.object;
 	global = &dev_priv->bo_global_ref.ref;
-	global->global_type = TTM_GLOBAL_TTM_BO;
+	global->global_type = DRM_GLOBAL_TTM_BO;
 	global->size = sizeof(struct ttm_bo_global);
 	global->init = &ttm_bo_global_init;
 	global->release = &ttm_bo_global_release;
-	ret = ttm_global_item_ref((struct ttm_global_reference *)global);
+	ret = drm_global_item_ref((struct drm_global_reference *)global);
 	if (ret != 0) {
 		DRM_ERROR("Failed setting up TTM BO subsystem.\n");
-		ttm_global_item_unref((struct ttm_global_reference *)global_ref);
+		drm_global_item_unref((struct drm_global_reference *)global_ref);
 		return ret;
 	}
 
@@ -379,7 +379,7 @@ int psb_ttm_global_init(struct drm_psb_private *dev_priv)
 
 void psb_ttm_global_release(struct drm_psb_private *dev_priv)
 {
-	ttm_global_item_unref(&dev_priv->mem_global_ref);
+	drm_global_item_unref(&dev_priv->mem_global_ref);
 }
 #endif
 

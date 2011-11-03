@@ -1434,7 +1434,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 
 	hdmi_state = 0;
 
-#ifdef CONFIG_MDFD_VIDEO_DECODER
+#ifdef CONFIG_MDFD_VIDEO_DECODE
 	ret = psb_ttm_global_init(dev_priv);
 	if (unlikely(ret != 0))
 		goto out_err;
@@ -1848,7 +1848,7 @@ static int psb_vt_leave_ioctl(struct drm_device *dev, void *data,
 
 	man = &bdev->man[TTM_PL_TT];
 	/*spin_lock(&bdev->lru_lock);*///lru_lock is removed from upstream TTM
-	clean = drm_mm_clean(&man->manager);
+	clean = drm_mm_clean((struct drm_mm *)man->priv);
 	/*spin_unlock(&bdev->lru_lock);*/
 	if (unlikely(!clean))
 		DRM_INFO("Warning: GATT was not clean after VT switch.\n");

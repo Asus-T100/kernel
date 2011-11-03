@@ -240,6 +240,7 @@ psb_placement_fence_type(struct ttm_buffer_object *bo,
 	return 0;
 }
 
+#if 0
 int psb_validate_kernel_buffer(struct psb_context *context,
 			       struct ttm_buffer_object *bo,
 			       uint32_t fence_class,
@@ -290,6 +291,7 @@ out_unlock:
 	spin_unlock(&bo->lock);
 	return ret;
 }
+#endif
 
 
 static int psb_validate_buffer_list(struct drm_file *file_priv,
@@ -317,7 +319,7 @@ static int psb_validate_buffer_list(struct drm_file *file_priv,
 		item->ret = 0;
 		req = &item->req;
 
-		spin_lock(&bo->lock);
+		spin_lock(&bo->bdev->fence_lock);
 		ret = psb_placement_fence_type(bo,
 					       req->set_flags,
 					       req->clear_flags,
@@ -334,9 +336,9 @@ static int psb_validate_buffer_list(struct drm_file *file_priv,
 		placement.fpfn = 0;
 		placement.lpfn = 0;
 
-		spin_unlock(&bo->lock);
+		spin_unlock(&bo->bdev->fence_lock);
 		ret = ttm_bo_validate(bo, &placement, 1, 0, 0);
-		spin_lock(&bo->lock);
+		/* spin_lock(&bo->lock); */ /* mem and offset field of bo is protected by ::reserve, this function is called in reserve*/
 		if (unlikely(ret != 0))
 			goto out_err;
 
@@ -346,7 +348,7 @@ static int psb_validate_buffer_list(struct drm_file *file_priv,
 
 		item->offset = bo->offset;
 		item->flags = bo->mem.placement;
-		spin_unlock(&bo->lock);
+		/* spin_unlock(&bo->lock); */
 
 		ret =
 			psb_check_presumed(&item->req, bo, item->user_val_arg,
@@ -364,7 +366,7 @@ static int psb_validate_buffer_list(struct drm_file *file_priv,
 
 	return 0;
 out_err:
-	spin_unlock(&bo->lock);
+	/* spin_unlock(&bo->lock); */
 	item->ret = ret;
 	return ret;
 }
@@ -765,13 +767,18 @@ static int psb_handle_copyback(struct drm_device *dev,
 			arg.ret = vbuf->ret;
 			if (!arg.ret) {
 				struct ttm_buffer_object *bo = entry->bo;
-				spin_lock(&bo->lock);
+				/* spin_lock(&bo->lock); */
+				/* offset and mem field of bo is protected by reserve */
+				ret = ttm_bo_reserve(bo, 1, 0, 0, 0);
+				if (unlikely(ret != 0))
+					arg.ret = -EFAULT;
 				arg.d.rep.gpu_offset = bo->offset;
 				arg.d.rep.placement = bo->mem.placement;
 				arg.d.rep.fence_type_mask =
 					(uint32_t)(unsigned long)
 					entry->new_sync_obj_arg;
-				spin_unlock(&bo->lock);
+				ttm_bo_unreserve(bo);
+				/* spin_unlock(&bo->lock); */
 			}
 
 			if (__copy_to_user(vbuf->user_val_arg,
@@ -850,10 +857,10 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 	if (unlikely(ret != 0))
 		goto out_err1;
 
-	context->val_seq = atomic_add_return(1, &dev_priv->val_seq);
+	/* Not used in K3 */
+	/* context->val_seq = atomic_add_return(1, &dev_priv->val_seq); */
 
-	ret = ttm_eu_reserve_buffers(&context->validate_list,
-				     context->val_seq);
+	ret = ttm_eu_reserve_buffers(&context->validate_list);
 	if (unlikely(ret != 0))
 		goto out_err2;
 
