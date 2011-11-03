@@ -1066,8 +1066,111 @@ static int __init sfi_parse_devs(struct sfi_table_header *table)
 	return 0;
 }
 
+#include <linux/fs.h>
+#include <linux/proc_fs.h>
+#include <linux/seq_file.h>
+static u32 board_id = 0;
+static int board_id_proc_show(struct seq_file *m, void *v)
+{
+	char *bid;
+
+	switch (board_id) {
+	case MFLD_BID_CDK:
+		bid = "cdk";        break;
+	case MFLD_BID_AAVA:
+		bid = "aava";       break;
+	case MFLD_BID_PR2_PROTO:
+	case MFLD_BID_PR2_PNP:
+		bid = "pr2_proto";  break;
+	case MFLD_BID_PR2_VOLUME:
+		bid = "pr2_volume"; break;
+	case MFLD_BID_PR3:
+		bid = "pr3";        break;
+	default:
+		bid = "unknown";    break;
+	}
+	seq_printf(m, "boardid=%s\n", bid);
+
+	return 0;
+}
+
+static int board_id_proc_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, board_id_proc_show, NULL);
+}
+
+static const struct file_operations board_id_proc_fops = {
+	.open		= board_id_proc_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
+u32 mfld_board_id (void)
+{
+	return board_id;
+}
+EXPORT_SYMBOL_GPL(mfld_board_id);
+
+static int __init sfi_parse_oemb(struct sfi_table_header *table)
+{
+	struct sfi_table_oemb *oemb;
+	u8 sig[SFI_SIGNATURE_SIZE + 1] = {'\0'};
+	u8 oem_id[SFI_OEM_ID_SIZE + 1] = {'\0'};
+	u8 oem_table_id[SFI_OEM_TABLE_ID_SIZE + 1] = {'\0'};
+
+	oemb = (struct sfi_table_oemb *) table;
+	if (!oemb) {
+		pr_err("%s: fail to read MFD Validation SFI OEMB Layout\n",
+			__func__);
+		return -ENODEV;
+	}
+
+	board_id = oemb->board_id | (oemb->board_fab << 4);
+	proc_create("boardid", 0, NULL, &board_id_proc_fops);
+
+	snprintf(sig, (SFI_SIGNATURE_SIZE + 1), "%s",
+		oemb->header.sig);
+	snprintf(oem_id, (SFI_OEM_ID_SIZE + 1), "%s",
+		oemb->header.oem_id);
+	snprintf(oem_table_id, (SFI_OEM_TABLE_ID_SIZE + 1), "%s",
+		oemb->header.oem_table_id);
+	pr_info("MFLD Validation SFI OEMB Layout\n");
+	pr_info("\tOEMB signature            : %s\n"
+		"\tOEMB length               : %d\n"
+		"\tOEMB revision             : %d\n"
+		"\tOEMB checksum             : 0x%X\n"
+		"\tOEMB oem_id               : %s\n"
+		"\tOEMB oem_table_id         : %s\n"
+		"\tOEMB board_id             : 0x%02X\n"
+		"\tOEMB iafw version         : %03d.%03d\n"
+		"\tOEMB val_hooks version    : %03d.%03d\n"
+		"\tOEMB ia suppfw version    : %03d.%03d\n"
+		"\tOEMB scu runtime version  : %03d.%03d\n"
+		"\tOEMB ifwi version         : %03d.%03d\n",
+		sig,
+		oemb->header.len,
+		oemb->header.rev,
+		oemb->header.csum,
+		oem_id,
+		oem_table_id,
+		board_id,
+		oemb->iafw_major_version,
+		oemb->iafw_main_version,
+		oemb->val_hooks_major_version,
+		oemb->val_hooks_minor_version,
+		oemb->ia_suppfw_major_version,
+		oemb->ia_suppfw_minor_version,
+		oemb->scu_runtime_major_version,
+		oemb->scu_runtime_minor_version,
+		oemb->ifwi_major_version,
+		oemb->ifwi_minor_version);
+	return 0;
+}
 static int __init mrst_platform_init(void)
 {
+	/* Get MFD Validation SFI OEMB Layout */
+	sfi_table_parse(SFI_SIG_OEMB, NULL, NULL, sfi_parse_oemb);
 	sfi_table_parse(SFI_SIG_GPIO, NULL, NULL, sfi_parse_gpio);
 	sfi_table_parse(SFI_SIG_DEVS, NULL, NULL, sfi_parse_devs);
 	return 0;

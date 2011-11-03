@@ -72,6 +72,7 @@
 #define SFI_SIG_WAKE		"WAKE"
 #define SFI_SIG_DEVS		"DEVS"
 #define SFI_SIG_GPIO		"GPIO"
+#define SFI_SIG_OEMB		"OEMB"
 
 #define SFI_SIGNATURE_SIZE	4
 #define SFI_OEM_ID_SIZE		6
@@ -101,6 +102,23 @@ struct sfi_table_header {
 struct sfi_table_simple {
 	struct sfi_table_header		header;
 	u64				pentry[1];
+} __packed;
+
+/* OEMB table */
+struct sfi_table_oemb {
+	struct sfi_table_header header;
+	u32 board_id;
+	u32 board_fab;
+	u8 iafw_major_version;
+	u8 iafw_main_version;
+	u8 val_hooks_major_version;
+	u8 val_hooks_minor_version;
+	u8 ia_suppfw_major_version;
+	u8 ia_suppfw_minor_version;
+	u8 scu_runtime_major_version;
+	u8 scu_runtime_minor_version;
+	u8 ifwi_major_version;
+	u8 ifwi_minor_version;
 } __packed;
 
 /* Comply with UEFI spec 2.1 */
