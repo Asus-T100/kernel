@@ -1388,6 +1388,14 @@ config SENSORS_MPU3050
 	   please search on
 	   http://www.invensense.com/ for product details.
 
+config SENSORS_MS5607
+	tristate "Measurement MS5607 digital pressure sensor"
+	depends on I2C && SYSFS
+	help
+	  If you say yes here you get support for the Measurement MS5607 digital
+	  pressure sensor.
+
+
 config MSIC_GPADC
 	tristate "MSIC GPADC driver for Intel Medfield platform"
         depends on INTEL_SCU_IPC

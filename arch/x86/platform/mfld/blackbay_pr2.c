@@ -19,6 +19,7 @@
 #include <linux/platform_device.h>
 #include <asm/mrst.h>
 #include <linux/input/lis3dh.h>
+#include <linux/ms5607.h>
 #include <linux/atmel_mxt224.h>
 
 static u8 mxt_valid_interrupt(void)
@@ -75,6 +76,12 @@ static struct lis3dh_acc_platform_data lis3dh_pdata = {
 	.gpio_int1 = 60,
 	.gpio_int2 = 61,
 };
+
+static struct ms5607_platform_data baro_pdata = {
+	.poll_interval = 100,
+	.min_interval  = 0,
+};
+
 #define MPU_GPIO_PIN 56
 
 static struct i2c_board_info pr2_i2c_bus5_devs[] = {
@@ -93,6 +100,12 @@ static struct i2c_board_info pr2_i2c_bus5_devs[] = {
 		.type		= "gyro",
 		.irq		= MPU_GPIO_PIN,
 		.addr		= 0x68,
+	},
+	{
+		.type		= "baro",
+		.irq		= 0xff,
+		.addr		= 0x77,
+		.platform_data	= &baro_pdata,
 	},
 };
 
