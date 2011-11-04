@@ -197,6 +197,7 @@ struct sh_css_video_settings {
 	struct sh_css_pipeline pipeline;
 	struct sh_css_shading_table *shading_table;
 	bool zoom_changed;
+	bool invalid_first_frame;
 };
 
 #define DEFAULT_VIDEO_SETTINGS \
@@ -1893,10 +1894,18 @@ sh_css_translate_interrupt(unsigned int *irq_infos)
 		switch (irq) {
 		case hrt_isp_css_irq_sp:
 			sh_css_hrt_irq_clear_sp();
-			if (sh_css_frame_done())
+			if (sh_css_frame_done()) {
 				infos |= SH_CSS_IRQ_INFO_FRAME_DONE;
-			else
+				if (my_css.mode == sh_css_mode_video &&
+				    my_css.video_settings.invalid_first_frame) {
+					infos |=
+					  SH_CSS_IRQ_INFO_INVALID_FIRST_FRAME;
+					my_css.video_settings.
+						invalid_first_frame = false;
+				}
+			} else {
 				infos |= SH_CSS_IRQ_INFO_START_NEXT_STAGE;
+			}
 			if (sh_css_statistics_ready())
 				infos |= SH_CSS_IRQ_INFO_STATISTICS_READY;
 			if (acceleration_done())
@@ -3042,6 +3051,7 @@ load_video_binaries(void)
 	 */
 	if (my_css.video_settings.video_binary.info)
 		return sh_css_success;
+
 	online = my_css.input_mode != SH_CSS_INPUT_MODE_MEMORY;
 	err = check_input(!online);
 	if (err != sh_css_success)
@@ -3065,6 +3075,9 @@ load_video_binaries(void)
 				 &my_css.video_settings.video_binary);
 	if (err != sh_css_success)
 		return err;
+
+	/* This is where we set the flag for invalid first frame */
+	my_css.video_settings.invalid_first_frame = true;
 
 	/* Viewfinder post-processing */
 	if (online) {

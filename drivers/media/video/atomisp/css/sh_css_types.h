@@ -218,6 +218,8 @@ enum sh_css_interrupt_info {
 	SH_CSS_IRQ_INFO_SW_0 = 1 << 17,
 	SH_CSS_IRQ_INFO_SW_1 = 1 << 18,
 	SH_CSS_IRQ_INFO_SW_2 = 1 << 19,
+	/* Inform the ISR that there is an invalid first frame */
+	SH_CSS_IRQ_INFO_INVALID_FIRST_FRAME = 1 << 20,
 };
 
 enum sh_css_rx_irq_info {
