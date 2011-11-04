@@ -2444,8 +2444,10 @@ static int mfld_s3_enter(void)
 {
 	u32 temp = 0;
 
-	if (mfld_s0ix_enter(MID_S3_STATE) != MID_S3_STATE)
+	if (mfld_s0ix_enter(MID_S3_STATE) != MID_S3_STATE) {
+		pmu_set_s0ix_complete();
 		return -EINVAL;
+	}
 
 	__monitor((void *) &temp, 0, 0);
 	smp_mb();
