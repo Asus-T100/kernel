@@ -82,6 +82,7 @@ static struct ms5607_platform_data baro_pdata = {
 	.min_interval  = 0,
 };
 
+#define LTR502_GPIO 63
 #define MPU_GPIO_PIN 56
 
 static struct i2c_board_info pr2_i2c_bus5_devs[] = {
@@ -106,6 +107,11 @@ static struct i2c_board_info pr2_i2c_bus5_devs[] = {
 		.irq		= 0xff,
 		.addr		= 0x77,
 		.platform_data	= &baro_pdata,
+	},
+	{
+		.type		= "als",
+		.irq		= LTR502_GPIO,
+		.addr		= 0x1d,
 	},
 };
 
