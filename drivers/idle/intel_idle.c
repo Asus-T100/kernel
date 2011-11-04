@@ -400,8 +400,10 @@ static int soc_s0ix_idle(struct cpuidle_device *dev,
 		if (atomic_add_return(1, &nr_cpus_in_c6) ==
 		    num_online_cpus() && s0ix_state) {
 			s0ix_entered = mfld_s0ix_enter(s0ix_state);
-			if (!s0ix_entered)
+			if (!s0ix_entered) {
+				eax = C4_HINT;
 				pmu_set_s0ix_complete();
+			}
 		}
 
 		__monitor((void *)&current_thread_info()->flags, 0, 0);
@@ -433,7 +435,9 @@ static int soc_s0ix_idle(struct cpuidle_device *dev,
 			dev->last_state = &dev->states[S0I1_STATE_IDX];
 		else if (s0ix_state == MID_LPMP3_STATE)
 			dev->last_state = &dev->states[LPMP3_STATE_IDX];
-	} else
+	} else if (eax == C4_HINT)
+		dev->last_state = &dev->states[C4_STATE_IDX];
+	else
 		dev->last_state = &dev->states[C6_STATE_IDX];
 
 	return usec_delta;
