@@ -1601,7 +1601,9 @@ int __ref pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t state)
 		 * powered on in SCU.
 		 *
 		 */
-		wait_for_completion(&mid_pmu_cxt->set_mode_complete);
+		if (!wait_for_completion_timeout(
+			    &mid_pmu_cxt->set_mode_complete, 5 * HZ))
+			BUG();
 
 		pmu_set_s0ix_possible(state);
 
@@ -2256,7 +2258,9 @@ static int pmu_init(void)
 	 * powered on in SCU.
 	 *
 	 */
-	wait_for_completion(&mid_pmu_cxt->set_mode_complete);
+	if (!wait_for_completion_timeout(&mid_pmu_cxt->set_mode_complete,
+					 5 * HZ))
+		BUG();
 
 	/* In cases were gfx is not enabled
 	 * this will enable s0ix immediately
