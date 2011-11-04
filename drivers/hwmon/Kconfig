@@ -1377,6 +1377,17 @@ config SENSORS_HMC5883
 	help
 	  Say Yes here to enable the Honeywell HMC5883 Magnetometer Driver
 
+config SENSORS_MPU3050
+	bool "MPU3050 gyro sensor Driver"
+	depends on I2C && INPUT
+	default y
+	help
+	   Say Yes here to enable MPU3050 gyro sensor Driver
+
+	   Gyroscope sensor MPU3050 from Invensense
+	   please search on
+	   http://www.invensense.com/ for product details.
+
 config MSIC_GPADC
 	tristate "MSIC GPADC driver for Intel Medfield platform"
         depends on INTEL_SCU_IPC

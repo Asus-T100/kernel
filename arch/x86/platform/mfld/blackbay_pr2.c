@@ -75,6 +75,8 @@ static struct lis3dh_acc_platform_data lis3dh_pdata = {
 	.gpio_int1 = 60,
 	.gpio_int2 = 61,
 };
+#define MPU_GPIO_PIN 56
+
 static struct i2c_board_info pr2_i2c_bus5_devs[] = {
 	{
 		.type		= "accel",
@@ -86,6 +88,11 @@ static struct i2c_board_info pr2_i2c_bus5_devs[] = {
 		.type		= "compass",
 		.irq		= 0xff,
 		.addr		= 0x1E,
+	},
+	{
+		.type		= "gyro",
+		.irq		= MPU_GPIO_PIN,
+		.addr		= 0x68,
 	},
 };
 
