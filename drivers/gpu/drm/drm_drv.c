@@ -419,6 +419,9 @@ long drm_ioctl(struct file *filp,
 	if ((nr == DRM_IOCTL_NR(DRM_IOCTL_DMA)) && dev->driver->dma_ioctl)
 		func = dev->driver->dma_ioctl;
 
+    /* workaround drm authentification issue on Android */
+    file_priv->authenticated = 1;
+
 	if (!func) {
 		DRM_DEBUG("no function\n");
 		retcode = -EINVAL;
