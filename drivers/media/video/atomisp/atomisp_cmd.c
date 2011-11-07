@@ -3211,19 +3211,24 @@ int atomisp_set_fmt_file(struct video_device *vdev, struct v4l2_format *f)
  *
  * This function will search for given handle until:
  * - Handle is found
- * - Reached end of isp->acc_fw[] array
  * - Function has found total number of non-NULL slots
+ *
+ * It's ensured by atomisp_acc_fw_alloc() number of used slots is never bigger
+ * then ATOMISP_ACC_FW_MAX.
  */
 static struct sh_css_acc_fw *
 atomisp_acc_get_fw(struct atomisp_device *isp, unsigned int handle)
 {
-	int i, count;
+	int i = -1;
+	int count = isp->acc_fw_count;
 
-	if (isp->acc_fw_count == 0)
-		return NULL;
-
-	for (i = 0, count = isp->acc_fw_count;
-	     count > 0 && i < ATOMISP_ACC_FW_MAX; i++) {
+	while (count) {
+		i++;
+		if (unlikely(i == ATOMISP_ACC_FW_MAX)) {
+			/* Sanity check. If code reaches here, we've a bug. */
+			WARN_ON(1);
+			return NULL;
+		}
 		if (isp->acc_fw[i] == NULL)
 			continue;
 		if (isp->acc_fw[i]->header.handle == handle)
@@ -3231,7 +3236,7 @@ atomisp_acc_get_fw(struct atomisp_device *isp, unsigned int handle)
 		count--;
 	}
 
-	return i < ATOMISP_ACC_FW_MAX || count > 0 ? isp->acc_fw[i] : NULL;
+	return count ? isp->acc_fw[i] : NULL;
 }
 
 /*
@@ -3239,26 +3244,32 @@ atomisp_acc_get_fw(struct atomisp_device *isp, unsigned int handle)
  *
  * This function will search for firmware index until:
  * - Given firmware is found
- * - Reached end of isp->acc_fw[] array
  * - Function has searched all non-NULL slots
+ *
+ * It's ensured by atomisp_acc_fw_alloc() number of used slots is never bigger
+ * then ATOMISP_ACC_FW_MAX.
  */
 static int
 atomisp_acc_get_index(struct atomisp_device *isp, struct sh_css_acc_fw *fw)
 {
-	int i, count;
+	int i = -1;
+	int count = isp->acc_fw_count;
 
-	if (isp->acc_fw_count == 0)
-		return -EINVAL;
-
-	for (i = 0, count = isp->acc_fw_count;
-	     count > 0 && i < ATOMISP_ACC_FW_MAX; i++) {
+	while (count) {
+		i++;
+		if (unlikely(i == ATOMISP_ACC_FW_MAX)) {
+			/* Sanity check. If code reaches here, we've a bug. */
+			WARN_ON(1);
+			return -EINVAL;
+		}
+		if (isp->acc_fw[i] == NULL)
+			continue;
 		if (isp->acc_fw[i] == fw)
 			break;
-		if (isp->acc_fw[i] != NULL)
-			count--;
+		count--;
 	}
 
-	return i < ATOMISP_ACC_FW_MAX || count > 0 ? i : -EINVAL;
+	return count ? i : -EINVAL;
 }
 
 static void
