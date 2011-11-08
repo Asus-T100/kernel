@@ -354,7 +354,7 @@ void sst_process_reply(struct work_struct *work)
 			mailbox_params = (struct snd_ppp_params *)msg->mailbox;
 			get_params = kzalloc(sizeof(*get_params), GFP_KERNEL);
 			if (!get_params) {
-				pr_debug("mem alloc failed\n");
+				pr_err("sst: mem alloc failed\n");
 				break;
 			}
 			memcpy_fromio(get_params, mailbox_params,
@@ -362,9 +362,8 @@ void sst_process_reply(struct work_struct *work)
 			get_params->params = kzalloc(mailbox_params->size,
 							GFP_KERNEL);
 			if (!get_params->params) {
-				pr_debug("mem alloc failed\n");
+				pr_err("sst: mem alloc failed\n");
 				kfree(get_params);
-				pr_err("out of memory for ALG PARAMS block");
 				break;
 			}
 			params = msg->mailbox;
@@ -706,6 +705,7 @@ void sst_process_reply(struct work_struct *work)
 		} else {
 			pr_err("Msg %x reply error %x\n",
 			msg->header.part.msg_id, msg->header.part.data);
+			break;
 		}
 		sst_wake_up_alloc_block(sst_drv_ctx, FW_DWNL_ID, retval, NULL);
 		break;

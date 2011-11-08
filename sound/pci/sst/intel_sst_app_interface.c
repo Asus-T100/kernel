@@ -979,9 +979,7 @@ static int sst_ioctl_tuning_params(unsigned int cmd, unsigned long arg)
 
 	if (copy_from_user(&params, (void __user *)arg, sizeof(params)))
 		return -EFAULT;
-	if (params.size > SST_MAILBOX_SIZE)
-		return -ENOMEM;
-	pr_debug("Parameter %d, Stream %d, Size %d\n", params.type,
+	pr_debug("sst: Parameter %d, Stream %d, Size %d\n", params.type,
 			params.str_id, params.size);
 	if (sst_create_large_msg(&msg))
 		return -ENOMEM;

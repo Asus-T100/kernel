@@ -382,7 +382,6 @@ struct sst_dma {
  * @list_spin_lock : sst driver spin lock block
  * @scard_ops : sst card ops
  * @pci : sst pci device struture
- * @active_streams : sst active streams
  * @sst_lock : sst device lock
  * @stream_lock : sst stream lock
  * @unique_id : sst unique id
@@ -429,7 +428,6 @@ struct intel_sst_drv {
 	spinlock_t	list_spin_lock; /* mutex for IPC list locking */
 	struct snd_pmic_ops	*scard_ops;
 	struct pci_dev		*pci;
-	int active_streams[MAX_NUM_STREAMS];
 	void			*mmap_mem;
 	struct mutex            sst_lock;
 	struct mutex		stream_lock;
@@ -581,7 +579,7 @@ static inline void sst_fill_header(union ipc_header *header,
 static inline unsigned int sst_assign_pvt_id(struct intel_sst_drv *sst_drv_ctx)
 {
 	sst_drv_ctx->unique_id++;
-	if (sst_drv_ctx->unique_id >= MAX_NUM_STREAMS)
+	if (sst_drv_ctx->unique_id > MAX_NUM_STREAMS)
 		sst_drv_ctx->unique_id = 1;
 	return sst_drv_ctx->unique_id;
 }

@@ -142,7 +142,7 @@ static int sst_start_medfield(void)
 static int sst_parse_module(struct fw_module_header *module)
 {
 	struct dma_block_info *block;
-	struct sst_firmware_list *node;
+	struct sst_firmware_list *node = NULL;
 	u32 count, offset;
 	unsigned long ram;
 
@@ -229,6 +229,10 @@ static int sst_alloc_dma_chan(struct sst_dma *dma)
 		return -ENODEV;
 	}
 	dma->ch = dma_request_channel(mask, chan_filter, dma);
+	if (!dma->ch) {
+		pr_err("unable to request dma channel\n");
+		return -EIO;
+	}
 
 	slave->dma_slave.direction = DMA_FROM_DEVICE;
 	slave->hs_mode = 0;
@@ -241,6 +245,7 @@ static int sst_alloc_dma_chan(struct sst_dma *dma)
 	retval = dmaengine_slave_config(dma->ch, &slave->dma_slave);
 	if (retval) {
 		pr_err("unable to set slave config, err %d\n", retval);
+		dma_release_channel(dma->ch);
 		return -EIO;
 	}
 	return retval;
