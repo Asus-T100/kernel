@@ -1055,6 +1055,14 @@ static int __init sfi_parse_devs(struct sfi_table_header *table)
 			if (!strcmp(i2c_info.type, "mxt224")){
 				break;
 			}
+			/* Ignore all sensors info for PR2 and PR3 */
+			if (mfld_board_id() == MFLD_BID_PR2_PROTO ||
+					mfld_board_id() == MFLD_BID_PR2_PNP ||
+					mfld_board_id() == MFLD_BID_PR2_VOLUME ||
+					mfld_board_id() == MFLD_BID_PR3)
+				if (bus == 5 || bus == 0)
+					break;
+
 			sfi_handle_i2c_dev(bus, &i2c_info);
 			break;
 		case SFI_DEV_TYPE_UART:
