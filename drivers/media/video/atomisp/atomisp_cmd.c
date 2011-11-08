@@ -246,6 +246,9 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 		}
 	}
 
+	if (irq_infos & SH_CSS_IRQ_INFO_INVALID_FIRST_FRAME)
+		isp->sw_contex.invalid_frame = true;
+
 	/*
 	 * After every iteration of acceleration there will be an interrupt
 	 * which needs priority.
@@ -636,14 +639,35 @@ void atomisp_work(struct work_struct *work)
 	u32 irq_infos;
 
 	isp->sw_contex.error = false;
+	isp->sw_contex.invalid_frame = false;
 	INIT_COMPLETION(isp->wq_frame_complete);
 
 	for (;;) {
 		timeout_flag = false;
-		ret = atomisp_buffer_dequeue(isp, &vb_capture,
+		/*
+		 * we check whether invalid_frame is set, if so, we do not
+		 * request a new buffer for ISP, just use current buffer, which
+		 * is not returned to the user space.
+		 *
+		 * whether the frame is invalid is only known after ISP
+		 * already runs a time and output a frame. so invalid_frame is
+		 * firstly initialzed to false, which is changed in isr by
+		 * info from ISP firmware if the frame is invalid, after first
+		 * time ISP runs and so on.
+		 *
+		 * There is no need to hold a lock when modify the value of
+		 * invalid_frame, though the other place in isr also modify
+		 * this value. As at this point, ISP is not run and no irq for
+		 * isp would be generated.
+		 */
+		if (!isp->sw_contex.invalid_frame) {
+			ret = atomisp_buffer_dequeue(isp, &vb_capture,
 					     &vb_preview);
-		if (ret)
-			goto error;
+			if (ret)
+				goto error;
+		} else {
+			isp->sw_contex.invalid_frame = false;
+		}
 
 		/* Hold the locker when ISP is running, when dis and digital
 		 * zoom can not be configured
@@ -834,7 +858,11 @@ timeout_handle:
 
 		mutex_unlock(&isp->isp_lock);
 
-		if (!timeout_flag) {
+		/*
+		 * we check whether invalid_frame is set, if so, we do not
+		 * return the buffer to the user-space, but uses it again
+		 */
+		if (!timeout_flag && !isp->sw_contex.invalid_frame) {
 			if (vb_capture) {
 				isp->frame_status[vb_capture->i] = fr_status;
 				do_gettimeofday(&vb_capture->ts);
@@ -861,8 +889,10 @@ timeout_handle:
 
 			vb_preview = NULL;
 			vb_capture = NULL;
-			timeout_cnt = 0;
 		}
+
+		if (!timeout_flag)
+			timeout_cnt = 0;
 	}
 
 error:
