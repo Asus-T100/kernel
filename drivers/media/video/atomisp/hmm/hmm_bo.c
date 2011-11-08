@@ -351,7 +351,7 @@ static int alloc_private_pages(struct hmm_buffer_object *bo, int from_highmem,
 	bo->pages = kzalloc(sizeof(struct page *) * pgnr, GFP_KERNEL);
 	if (unlikely(!bo->pages)) {
 		v4l2_err(&atomisp_dev, "out of memory for bo->pages\n");
-		goto out_of_mem;
+		return -ENOMEM;
 	}
 
 	i = 0;
@@ -371,7 +371,7 @@ retry:
 			if (order == HMM_MIN_ORDER) {
 				v4l2_err(&atomisp_dev,
 					 "out of memory in alloc_pages\n");
-				goto out_of_mem;
+				goto cleanup;
 			}
 			v4l2_warn(&atomisp_dev,
 				  "allocate order=%d pages failed."
@@ -409,21 +409,17 @@ retry:
 					v4l2_err(&atomisp_dev,
 						     "set page uncacheable"
 							"failed.\n");
-					goto set_uc_mem_fail;
+					goto cleanup;
 				}
 			}
 		}
 	}
 
 	return 0;
-set_uc_mem_fail:
-	/* FIX ME: select one better */
-	ret = -ENOMEM;
-	goto cleanup;
 out_of_mem:
-	ret = -ENOMEM;
-	goto cleanup;
+	__free_pages(pages, order);
 cleanup:
+	ret = -ENOMEM;
 	while (!list_empty(&bo->pgblocks)) {
 		pgblk = list_first_entry(&bo->pgblocks,
 					 struct page_block, list);
@@ -438,6 +434,7 @@ cleanup:
 		__free_pages(pgblk->pages, pgblk->order);
 		kfree(pgblk);
 	}
+	kfree(bo->pages);
 
 	return ret;
 }
@@ -594,6 +591,7 @@ static int alloc_user_pages(struct hmm_buffer_object *bo,
 	up_read(&current->mm->mmap_sem);
 	if (vma == NULL) {
 		v4l2_err(&atomisp_dev, "find_vma failed\n");
+		kfree(bo->pages);
 		return -EFAULT;
 	}
 	mutex_lock(&bo->mutex);
@@ -626,7 +624,7 @@ static int alloc_user_pages(struct hmm_buffer_object *bo,
 				"get_user_pages err: bo->pgnr = %d, "
 				"pgnr actually pinned = %d.\n",
 				bo->pgnr, page_nr);
-		return -ENOMEM;
+		goto out_of_mem;
 	}
 
 	pgblk = kzalloc(sizeof(*pgblk) * bo->pgnr, GFP_KERNEL);
@@ -655,6 +653,11 @@ out_of_mem:
 
 		kfree(pgblk);
 	}
+
+	if (bo->mem_type == HMM_BO_MEM_TYPE_USER)
+		for (i = 0; i < page_nr; i++)
+			put_page(bo->pages[i]);
+	kfree(bo->pages);
 
 	return ret;
 }
@@ -866,6 +869,13 @@ int hmm_bo_bind(struct hmm_buffer_object *bo)
 	return 0;
 
 map_err:
+	/* unbind the physical pages with related virtual address space */
+	virt = bo->vm_node->start;
+	for ( ; i > 0; i--) {
+		isp_mmu_unmap(&bdev->mmu, virt, 1);
+		virt += pgnr_to_size(1);
+	}
+
 	mutex_unlock(&bo->mutex);
 	v4l2_err(&atomisp_dev,
 			"setup MMU address mapping failed.\n");

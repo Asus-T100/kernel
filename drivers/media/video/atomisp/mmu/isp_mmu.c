@@ -39,6 +39,9 @@
 #include "mmu/isp_mmu.h"
 #include "atomisp_internal.h"
 
+static void free_mmu_map(struct isp_mmu *mmu, unsigned int start_isp_virt,
+				unsigned int end_isp_virt);
+
 static unsigned int atomisp_get_pte(unsigned int pt, unsigned int idx)
 {
 	unsigned int pt_virt = (unsigned int)phys_to_virt(pt);
@@ -194,9 +197,15 @@ static int mmu_l2_map(struct isp_mmu *mmu, unsigned int l1_pt,
 
 		pte = atomisp_get_pte(l2_pt, idx);
 
-		if (ISP_PTE_VALID(mmu, pte))
+		if (ISP_PTE_VALID(mmu, pte)) {
 			mmu_remap_error(mmu, l1_pt, l1_idx,
 					  l2_pt, idx, ptr, pte, phys);
+
+			/* free all mapped pages */
+			free_mmu_map(mmu, start, ptr);
+
+			return -EINVAL;
+		}
 
 		pte = isp_pgaddr_to_pte_valid(mmu, phys);
 
@@ -237,6 +246,10 @@ static int mmu_l1_map(struct isp_mmu *mmu, unsigned int l1_pt,
 			if (l2_pt == NULL_PAGE) {
 				v4l2_err(&atomisp_dev,
 					     "alloc page table fail.\n");
+
+				/* free all mapped pages */
+				free_mmu_map(mmu, start, ptr);
+
 				return -ENOMEM;
 			}
 
@@ -264,7 +277,11 @@ static int mmu_l1_map(struct isp_mmu *mmu, unsigned int l1_pt,
 		if (ret) {
 			v4l2_err(&atomisp_dev,
 				    "setup mapping in L2PT fail.\n");
-			return ret;
+
+			/* free all mapped pages */
+			free_mmu_map(mmu, start, ptr);
+
+			return -EINVAL;
 		}
 	} while (ptr < end && idx < ISP_L1PT_PTES - 1);
 
@@ -422,6 +439,22 @@ static void mmu_unmap(struct isp_mmu *mmu, unsigned int isp_virt,
 	end = start + (pgnr << ISP_PAGE_OFFSET);
 
 	mmu_l1_unmap(mmu, l1_pt, start, end);
+}
+
+/*
+ * Free page tables according to isp start virtual address and end virtual
+ * address.
+ */
+static void free_mmu_map(struct isp_mmu *mmu, unsigned int start_isp_virt,
+				unsigned int end_isp_virt)
+{
+	unsigned int pgnr;
+	unsigned int start, end;
+
+	start = (start_isp_virt) & ISP_PAGE_MASK;
+	end = (end_isp_virt) & ISP_PAGE_MASK;
+	pgnr = (end - start) >> ISP_PAGE_OFFSET;
+	mmu_unmap(mmu, start, pgnr);
 }
 
 int isp_mmu_map(struct isp_mmu *mmu, unsigned int isp_virt,
