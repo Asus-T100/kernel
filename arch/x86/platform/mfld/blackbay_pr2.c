@@ -82,6 +82,11 @@ static struct i2c_board_info pr2_i2c_bus5_devs[] = {
 		.addr		= 0x18,
 		.platform_data	= &lis3dh_pdata,
 	},
+	{
+		.type		= "compass",
+		.irq		= 0xff,
+		.addr		= 0x1E,
+	},
 };
 
 static struct gpio_keys_button gpio_button[] = {

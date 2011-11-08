@@ -1369,6 +1369,14 @@ config SENSORS_LIS3DH_ACC
 
 	  ST LIS3DH is a 3-axis linear accelerometer with digital output.
 
+config SENSORS_HMC5883
+	bool "Honeywell HMC5883 Magnetometer Driver"
+	depends on I2C
+	select INPUT_POLLDEV
+	default y
+	help
+	  Say Yes here to enable the Honeywell HMC5883 Magnetometer Driver
+
 config MSIC_GPADC
 	tristate "MSIC GPADC driver for Intel Medfield platform"
         depends on INTEL_SCU_IPC
