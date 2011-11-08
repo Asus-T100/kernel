@@ -155,6 +155,7 @@ static int __init platform_bkbpr2_subsys_init(void)
 	case MFLD_BID_PR2_PNP:
 	case MFLD_BID_PR2_VOLUME:
 	case MFLD_BID_PR3:
+	case MFLD_BID_PR3_PNP:
 		register_board_i2c_devs();
 		//bkbpr2_gpio_keys_init();
 		return 0;
