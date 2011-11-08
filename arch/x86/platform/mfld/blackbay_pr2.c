@@ -119,20 +119,17 @@ static void register_board_i2c_devs()
 }
 static int __init platform_bkbpr2_subsys_init(void)
 {
-	register_board_i2c_devs();
-#if 0
 	switch (mfld_board_id()) {
 	case MFLD_BID_PR2_PROTO:
 	case MFLD_BID_PR2_PNP:
 	case MFLD_BID_PR2_VOLUME:
 	case MFLD_BID_PR3:
 		register_board_i2c_devs();
-		bkbpr2_gpio_keys_init();
+		//bkbpr2_gpio_keys_init();
 		return 0;
 	default:
 		return 1;
 	}
-#endif
 }
 device_initcall(platform_bkbpr2_subsys_init);
 
