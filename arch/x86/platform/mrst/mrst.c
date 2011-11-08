@@ -1059,7 +1059,8 @@ static int __init sfi_parse_devs(struct sfi_table_header *table)
 			if (mfld_board_id() == MFLD_BID_PR2_PROTO ||
 					mfld_board_id() == MFLD_BID_PR2_PNP ||
 					mfld_board_id() == MFLD_BID_PR2_VOLUME ||
-					mfld_board_id() == MFLD_BID_PR3)
+					mfld_board_id() == MFLD_BID_PR3 ||
+					mfld_board_id() == MFLD_BID_PR3_PNP)
 				if (bus == 5 || bus == 0)
 					break;
 
@@ -1093,6 +1094,7 @@ static int board_id_proc_show(struct seq_file *m, void *v)
 	case MFLD_BID_PR2_VOLUME:
 		bid = "pr2_volume"; break;
 	case MFLD_BID_PR3:
+	case MFLD_BID_PR3_PNP:
 		bid = "pr3";        break;
 	default:
 		bid = "unknown";    break;

@@ -70,14 +70,14 @@ enum {
 extern int mfld_board_type(void);
 
 /*
-    MSIC Pin, MSIC Pin#, ID,       CDK       Aava    BKB        BKB       PR3
-                                  (Fab-B)  FF-Proto  Pr2Proto  Pr2Volume
-    GPIO0LV0  L13        BID_0       0        0        1         1        1
-    GPIO0LV1  H12        BID_1       1        1        0         0        0
-    GPIO0LV2  K13        BID_2       0        1        1         1        1
-    GPIO0LV3  J11        BID_3       0        0        0         0        0
-    GPIO0LV4  K14        FAB_ID0     1        x        1         0        1
-    GPIO0LV5  J15        BID_ID1     0        0        0         1        1
+    MSIC Pin, Pin#, ID,     CDK     Aava     BKB      BKB      BKB   BKB  BKB
+    --------  ----- ---   (Fab-B) FF-Proto Pr2Proto Pr2Volume PR2PnP PR3 PR3PnP
+    GPIO0LV0  L13   BID_0    0       0        1        1        0     1    0
+    GPIO0LV1  H12   BID_1    1       1        0        0        0     0    0
+    GPIO0LV2  K13   BID_2    0       1        1        1        0     1    0
+    GPIO0LV3  J11   BID_3    0       0        0        0        1     0    1
+    GPIO0LV4  K14   FAB_ID0  1       x        1        0        0     1    1
+    GPIO0LV5  J15   FAB_ID1  0       0        0        1        0     1    0
  */
 enum {
 	MFLD_BID_UNKNOWN = 0,
@@ -87,6 +87,7 @@ enum {
 	MFLD_BID_PR2_PNP     = 0x08,
 	MFLD_BID_PR2_VOLUME  = 0x25,
 	MFLD_BID_PR3         = 0x35,
+	MFLD_BID_PR3_PNP     = 0x18
 };
 extern u32 mfld_board_id (void);
 
