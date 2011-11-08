@@ -1358,6 +1358,17 @@ config SENSORS_MC13783_ADC
         help
           Support for the A/D converter on MC13783 PMIC.
 
+config SENSORS_LIS3DH_ACC
+	bool "ST Accel Sensor Driver"
+	depends on I2C
+	select INPUT_POLLDEV
+	default y
+	help
+	  Say Yes here to enable the ST LIS3DH accelerometer support
+	  conected through I2C.
+
+	  ST LIS3DH is a 3-axis linear accelerometer with digital output.
+
 config MSIC_GPADC
 	tristate "MSIC GPADC driver for Intel Medfield platform"
         depends on INTEL_SCU_IPC

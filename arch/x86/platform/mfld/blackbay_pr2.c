@@ -18,6 +18,7 @@
 #include <linux/gpio.h>
 #include <linux/platform_device.h>
 #include <asm/mrst.h>
+#include <linux/input/lis3dh.h>
 #include <linux/atmel_mxt224.h>
 
 static u8 mxt_valid_interrupt(void)
@@ -63,6 +64,25 @@ static struct i2c_board_info pr2_i2c_bus0_devs[] = {
 	},
 };
 
+static struct lis3dh_acc_platform_data lis3dh_pdata = {
+	.poll_interval = 200,
+	.negate_x = 1,
+	.negate_y = 0,
+	.negate_z = 0,
+	.axis_map_x = 0,
+	.axis_map_y = 1,
+	.axis_map_z = 2,
+	.gpio_int1 = 60,
+	.gpio_int2 = 61,
+};
+static struct i2c_board_info pr2_i2c_bus5_devs[] = {
+	{
+		.type		= "accel",
+		.irq		= 0xff,
+		.addr		= 0x18,
+		.platform_data	= &lis3dh_pdata,
+	},
+};
 
 static struct gpio_keys_button gpio_button[] = {
 	{KEY_VOLUMEUP,		32, 1, "vol_up",	EV_KEY, 0, 20},
@@ -94,6 +114,8 @@ static void register_board_i2c_devs()
 {
 	i2c_register_board_info(0, pr2_i2c_bus0_devs,
 				ARRAY_SIZE(pr2_i2c_bus0_devs));
+	i2c_register_board_info(5, pr2_i2c_bus5_devs,
+				ARRAY_SIZE(pr2_i2c_bus5_devs));
 }
 static int __init platform_bkbpr2_subsys_init(void)
 {
