@@ -855,6 +855,7 @@ int mmc_host_lazy_disable(struct mmc_host *host)
 	if (--host->nesting_cnt)
 		return 0;
 
+	if (!host->enabled)
 		return 0;
 
 	if (host->disable_delay) {
@@ -2136,7 +2137,6 @@ void mmc_rescan(struct work_struct *work)
  out:
 	if (host->caps & MMC_CAP_NEEDS_POLL)
 		mmc_schedule_delayed_work(&host->detect, HZ);
-	}
 }
 
 void mmc_start_host(struct mmc_host *host)
