@@ -41,10 +41,10 @@ struct drm_psb_ttm_backend {
 /*
  * MSVDX/TOPAZ GPU virtual space looks like this
  * (We currently use only one MMU context).
- * PSB_MEM_MMU_START: from 0x00000000~0xe000000, for generic buffers
- * TTM_PL_CI: from 0xe0000000+half GTT space, for camear/video buffer sharing
- * TTM_PL_RAR: from TTM_PL_CI+CI size, for RAR/video buffer sharing
- * TTM_PL_TT: from TTM_PL_RAR+RAR size, for buffers need to mapping into GTT
+ * PSB_MEM_MMU_START: from 0x00000000~0xd000000, for generic buffers
+ * TTM_PL_RAR: from 0xd0000000, for MFLD IMR buffers
+ * TTM_PL_CI: from 0xe0000000+half GTT space, for MRST camear/video buffer sharing
+ * TTM_PL_TT: from TTM_PL_CI+CI size, for buffers need to mapping into GTT
  */
 static int psb_init_mem_type(struct ttm_bo_device *bdev, uint32_t type,
 			     struct ttm_mem_type_manager *man)
@@ -84,7 +84,7 @@ static int psb_init_mem_type(struct ttm_bo_device *bdev, uint32_t type,
 			     TTM_MEMTYPE_FLAG_FIXED;
 		man->available_caching = TTM_PL_FLAG_UNCACHED;
 		man->default_caching = TTM_PL_FLAG_UNCACHED;
-		man->gpu_offset = pg->mmu_gatt_start + (pg->rar_start);
+		man->gpu_offset = PSB_MEM_RAR_START;
 		break;
 	case TTM_PL_TT:	/* Mappable GATT memory */
 		man->func = &ttm_bo_manager_func;
@@ -97,7 +97,7 @@ static int psb_init_mem_type(struct ttm_bo_device *bdev, uint32_t type,
 		man->available_caching = TTM_PL_FLAG_CACHED |
 					 TTM_PL_FLAG_UNCACHED | TTM_PL_FLAG_WC;
 		man->default_caching = TTM_PL_FLAG_WC;
-		man->gpu_offset = pg->mmu_gatt_start + (pg->rar_start + dev_priv->rar_region_size);
+		man->gpu_offset = pg->mmu_gatt_start + pg->ci_start + pg->ci_stolen_size;
 		break;
 	default:
 		DRM_ERROR("Unsupported memory type %u\n", (unsigned) type);

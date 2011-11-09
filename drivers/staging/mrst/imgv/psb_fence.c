@@ -145,7 +145,12 @@ static void psb_fence_lockup(struct ttm_fence_object *fence,
 				  fence->sequence, fence_types, -EBUSY);
 		write_unlock(&fc->lock);
 
-		msvdx_priv->msvdx_needs_reset = 1;
+		if (IS_D0(dev))
+			msvdx_priv->msvdx_needs_reset |= MSVDX_RESET_NEEDS_REUPLOAD_FW |
+				MSVDX_RESET_NEEDS_INIT_FW;
+		else
+			msvdx_priv->msvdx_needs_reset = 1;
+
 	} else
 		DRM_ERROR("Unsupported fence class\n");
 }

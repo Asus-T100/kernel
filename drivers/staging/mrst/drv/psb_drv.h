@@ -135,6 +135,7 @@ enum panel_type {
 #define PSB_NUM_VALIDATE_BUFFERS 2048
 
 #define PSB_MEM_MMU_START       0x00000000
+#define PSB_MEM_RAR_START       0xD0000000
 #define PSB_MEM_TT_START        0xE0000000
 
 #define PSB_GL3_CACHE_CTL	0x2100
@@ -1520,6 +1521,8 @@ do {                                                \
 
 #define IS_MSVDX(dev) (IS_MRST(dev) || IS_MDFLD(dev))
 #define IS_TOPAZ(dev) ((IS_MRST(dev) && (((dev)->pci_device & 0xfffc) != PCI_ID_TOPAZ_DISABLED)) || IS_MDFLD(dev))
+
+#define IS_D0(dev) ((dev)->pdev->revision == 0xc)
 
 extern int drm_psb_ospm;
 extern int drm_psb_cpurelax;

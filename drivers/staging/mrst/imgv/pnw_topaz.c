@@ -516,12 +516,11 @@ pnw_topaz_send(struct drm_device *dev, void *cmd,
 			cur_cmd_size = *p_command;
 
 			if ((drm_topaz_pmpolicy != PSB_PMPOLICY_NOPM) &&
-				PNW_IS_H264_ENC(topaz_priv->topaz_cur_codec)) {
+				(!PNW_IS_JPEG_ENC(topaz_priv->topaz_cur_codec)))
 				pnw_topaz_save_bias_table(topaz_priv,
 						(const void *)command,
 						(cur_cmd_size * 2 + 2) * 4,
 						cur_cmd_header->core);
-			}
 
 			p_command++;
 			PSB_DEBUG_GENERAL("TOPAZ: Start to write"
@@ -718,6 +717,10 @@ int pnw_check_topaz_idle(struct drm_device *dev)
 	if (dev_priv->topaz_ctx == NULL)
 		return 0;
 
+	/*HW is stuck. Need to power off TopazSC to reset HW*/
+	if (topaz_priv->topaz_needs_reset)
+		return 0;
+
 	if (topaz_priv->topaz_busy)
 		return -EBUSY;
 
@@ -779,11 +782,10 @@ static void pnw_topaz_flush_cmd_queue(struct pnw_topaz_private *topaz_priv)
 
 	/* remind to reset topaz */
 	topaz_priv->topaz_needs_reset = 1;
+	topaz_priv->topaz_busy = 0;
 
-	if (list_empty(&topaz_priv->topaz_queue)) {
-		topaz_priv->topaz_busy = 0;
+	if (list_empty(&topaz_priv->topaz_queue))
 		return;
-	}
 
 	/* flush all command in queue */
 	list_for_each_entry_safe(entry, next,
@@ -807,7 +809,13 @@ void pnw_topaz_handle_timeout(struct ttm_fence_device *fdev)
 
 	if (IS_MRST(dev))
 		return  lnc_topaz_handle_timeout(fdev);
+
+	DRM_ERROR("TOPAZ: current codec is %s\n",
+			codec_to_string(topaz_priv->topaz_cur_codec));
 	pnw_topaz_flush_cmd_queue(topaz_priv);
+
+	/*Power down TopazSC to reset HW*/
+	schedule_delayed_work(&dev_priv->scheduler.topaz_suspend_wq, 0);
 }
 
 

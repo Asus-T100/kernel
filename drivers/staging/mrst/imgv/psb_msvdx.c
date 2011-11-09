@@ -388,27 +388,29 @@ int psb_submit_video_cmdbuf(struct drm_device *dev,
 
 	spin_lock_irqsave(&msvdx_priv->msvdx_lock, irq_flags);
 
-	/* expected msvdx_needs_reset is set after previous session exited
-	 * but msvdx_hw_busy is always 1, and caused powerdown not excuted
-	 * so reload the firmware for every new context
-	 */
-	if (IS_MRST(dev) && (dev_priv->last_msvdx_ctx == NULL))
-		msvdx_priv->msvdx_needs_reset = 1; /* re-load firmware */
-
-	if (IS_MRST(dev) && dev_priv->msvdx_ctx && dev_priv->last_msvdx_ctx) {
-		uint32_t from_profile, to_profile;
-
-		from_profile = dev_priv->last_msvdx_ctx->ctx_type >> 8;
-		to_profile = dev_priv->msvdx_ctx->ctx_type >> 8;
-
-		/* not the same profile, and one of them is H264 constrained BP
-		 * which needs Error Concealment firmware
+	if (!IS_D0(dev)) {
+		/* expected msvdx_needs_reset is set after previous session exited
+		 * but msvdx_hw_busy is always 1, and caused powerdown not excuted
+		 * so reload the firmware for every new context
 		 */
-		if ((from_profile != to_profile) &&
-		    ((from_profile == VAProfileH264ConstrainedBaseline) ||
-		     (to_profile == VAProfileH264ConstrainedBaseline))) {
-			PSB_DEBUG_INIT("MSVDX: firmware switching needed\n");
+		if (IS_MRST(dev) && (dev_priv->last_msvdx_ctx == NULL))
 			msvdx_priv->msvdx_needs_reset = 1; /* re-load firmware */
+
+		if (IS_MRST(dev) && dev_priv->msvdx_ctx && dev_priv->last_msvdx_ctx) {
+			uint32_t from_profile, to_profile;
+
+			from_profile = dev_priv->last_msvdx_ctx->ctx_type >> 8;
+			to_profile = dev_priv->msvdx_ctx->ctx_type >> 8;
+
+			/* not the same profile, and one of them is H264 constrained BP
+			 * which needs Error Concealment firmware
+			 */
+			if ((from_profile != to_profile) &&
+			    ((from_profile == VAProfileH264ConstrainedBaseline) ||
+			     (to_profile == VAProfileH264ConstrainedBaseline))) {
+				PSB_DEBUG_INIT("MSVDX: firmware switching needed\n");
+				msvdx_priv->msvdx_needs_reset = 1; /* re-load firmware */
+			}
 		}
 	}
 	dev_priv->last_msvdx_ctx = dev_priv->msvdx_ctx;
@@ -416,10 +418,12 @@ int psb_submit_video_cmdbuf(struct drm_device *dev,
 	if (msvdx_priv->msvdx_needs_reset) {
 		spin_unlock_irqrestore(&msvdx_priv->msvdx_lock, irq_flags);
 		PSB_DEBUG_GENERAL("MSVDX: will reset msvdx\n");
-		if (psb_msvdx_reset(dev_priv)) {
-			ret = -EBUSY;
-			DRM_ERROR("MSVDX: Reset failed\n");
-			return ret;
+		if (!IS_D0(dev)) {
+			if (psb_msvdx_reset(dev_priv)) {
+				ret = -EBUSY;
+				DRM_ERROR("MSVDX: Reset failed\n");
+				return ret;
+			}
 		}
 		msvdx_priv->msvdx_needs_reset = 0;
 		msvdx_priv->msvdx_busy = 0;
@@ -677,8 +681,6 @@ int psb_mtx_send(struct drm_psb_private *dev_priv, const void *msg)
 	/* Make sure clocks are enabled before we kick */
 	PSB_WMSVDX32(clk_enable_all, MSVDX_MAN_CLK_ENABLE);
 
-	PSB_WMSVDX32(clk_enable_all, MSVDX_MAN_CLK_ENABLE);
-
 	/* signal an interrupt to let the mtx know there is a new message */
 	/* PSB_WMSVDX32(1, MSVDX_MTX_KICKI); */
 	PSB_WMSVDX32(1, MSVDX_MTX_KICK);
@@ -800,6 +802,7 @@ static void psb_msvdx_mtx_interrupt(struct drm_device *dev)
 		PSB_WMSVDX32(clk_enable_all, MSVDX_MAN_CLK_ENABLE);
 	}
 
+
 loop: /* just for coding style check */
 	ridx = PSB_RMSVDX32(MSVDX_COMMS_TO_HOST_RD_INDEX);
 	widx = PSB_RMSVDX32(MSVDX_COMMS_TO_HOST_WRT_INDEX);
@@ -890,7 +893,11 @@ loop: /* just for coding style check */
 					  " - resetting and ignoring error\n",
 					  fence);
 
-		msvdx_priv->msvdx_needs_reset = 1;
+		if (IS_D0(dev))
+			msvdx_priv->msvdx_needs_reset |= MSVDX_RESET_NEEDS_REUPLOAD_FW |
+				MSVDX_RESET_NEEDS_INIT_FW;
+		else
+			msvdx_priv->msvdx_needs_reset = 1;
 
 		if (msg_id == VA_MSGID_CMD_HW_PANIC) {
 			diff = msvdx_priv->msvdx_current_sequence
@@ -1134,9 +1141,15 @@ done:
 		PSB_DEBUG_GENERAL("MSVDX Interrupt: there are more message to be read\n");
 		goto loop;
 	}
+
 	/* we get a frame/slice done, try to save some power*/
-	if (drm_msvdx_pmpolicy != PSB_PMPOLICY_NOPM)
-		schedule_delayed_work(&dev_priv->scheduler.msvdx_suspend_wq, 0);
+	if (IS_D0(dev)) {
+		if (drm_msvdx_pmpolicy == PSB_PMPOLICY_POWERDOWN)
+			schedule_delayed_work(&dev_priv->scheduler.msvdx_suspend_wq, 0);
+	} else {
+		if (drm_msvdx_pmpolicy != PSB_PMPOLICY_NOPM)
+			schedule_delayed_work(&dev_priv->scheduler.msvdx_suspend_wq, 0);
+	}
 
 	DRM_MEMORYBARRIER();	/* TBD check this... */
 }
@@ -1171,7 +1184,13 @@ IMG_BOOL psb_msvdx_interrupt(IMG_VOID *pvData)
 
 	msvdx_stat = PSB_RMSVDX32(MSVDX_INTERRUPT_STATUS);
 
-	if (msvdx_stat & MSVDX_INTERRUPT_STATUS_CR_MMU_FAULT_IRQ_MASK) {
+	/* driver only needs to handle mtx irq
+	 * For MMU fault irq, there's always a HW PANIC generated
+	 * if HW/FW is totally hang, the lockup function will handle
+	 * the reseting
+	 */
+	if (!IS_D0(dev) &&
+	    (msvdx_stat & MSVDX_INTERRUPT_STATUS_CR_MMU_FAULT_IRQ_MASK)) {
 		/*Ideally we should we should never get to this */
 		PSB_DEBUG_IRQ("MSVDX:MMU Fault:0x%x\n", msvdx_stat);
 
@@ -1189,10 +1208,15 @@ IMG_BOOL psb_msvdx_interrupt(IMG_VOID *pvData)
 		msvdx_priv->msvdx_needs_reset = 1;
 	} else if (msvdx_stat & MSVDX_INTERRUPT_STATUS_CR_MTX_IRQ_MASK) {
 		PSB_DEBUG_IRQ
-		("MSVDX: msvdx_stat: 0x%x(MTX)\n", msvdx_stat);
+			("MSVDX: msvdx_stat: 0x%x(MTX)\n", msvdx_stat);
 
 		/* Clear all interupt bits */
-		PSB_WMSVDX32(0xffff, MSVDX_INTERRUPT_CLEAR);
+		if (IS_D0(dev))
+			PSB_WMSVDX32(MSVDX_INTERRUPT_STATUS_CR_MTX_IRQ_MASK,
+				     MSVDX_INTERRUPT_CLEAR);
+		else
+			PSB_WMSVDX32(0xffff, MSVDX_INTERRUPT_CLEAR);
+
 		PSB_RMSVDX32(MSVDX_INTERRUPT_CLEAR);
 		DRM_READMEMORYBARRIER();
 
@@ -1253,6 +1277,13 @@ int psb_check_msvdx_idle(struct drm_device *dev)
 		PSB_DEBUG_PM("MSVDX: psb_check_msvdx_idle returns busy\n");
 		return -EBUSY;
 	}
+
+	if (IS_D0(dev)) {
+		PSB_DEBUG_MSVDX("   SIGNITURE is %x\n", PSB_RMSVDX32(MSVDX_COMMS_SIGNATURE));
+
+		if (!(PSB_RMSVDX32(MSVDX_COMMS_FW_STATUS) & MSVDX_FW_STATUS_HW_IDLE))
+			return -EBUSY;
+	}
 	/*
 		if (msvdx_priv->msvdx_hw_busy) {
 			PSB_DEBUG_PM("MSVDX: %s, HW is busy\n", __func__);
@@ -1273,16 +1304,26 @@ int psb_remove_videoctx(struct drm_psb_private *dev_priv, struct file *filp)
 					  " entrypoint %d",
 					  (pos->ctx_type >> 8),
 					  (pos->ctx_type & 0xff));
-			/*Reset fw load status here.*/
-			if (IS_MDFLD(dev_priv->dev) &&
-			    (VAEntrypointEncSlice == (pos->ctx_type & 0xff)
-			     || VAEntrypointEncPicture ==
-			     (pos->ctx_type & 0xff)))
-				pnw_reset_fw_status(dev_priv->dev);
 
 			/* if current ctx points to it, set to NULL */
-			if (dev_priv->topaz_ctx == pos)
+			if (dev_priv->topaz_ctx == pos) {
+				/*Reset fw load status here.*/
+				if (IS_MDFLD(dev_priv->dev) &&
+					(VAEntrypointEncSlice ==
+						(pos->ctx_type & 0xff)
+					|| VAEntrypointEncPicture ==
+						(pos->ctx_type & 0xff)))
+					pnw_reset_fw_status(dev_priv->dev);
+
 				dev_priv->topaz_ctx = NULL;
+			} else if (IS_MDFLD(dev_priv->dev) &&
+					(VAEntrypointEncSlice ==
+						(pos->ctx_type & 0xff)
+					|| VAEntrypointEncPicture ==
+						(pos->ctx_type & 0xff)))
+				PSB_DEBUG_GENERAL("Remove a inactive "\
+						"encoding context.\n");
+
 			if (dev_priv->last_topaz_ctx == pos)
 				dev_priv->last_topaz_ctx = NULL;
 
@@ -1298,6 +1339,32 @@ int psb_remove_videoctx(struct drm_psb_private *dev_priv, struct file *filp)
 	return 0;
 }
 
+static int psb_entrypoint_number(struct drm_psb_private *dev_priv,
+		uint32_t entry_type)
+{
+	struct psb_video_ctx *pos, *n;
+	int count = 0;
+
+	entry_type &= 0xff;
+
+	if (entry_type < VAEntrypointVLD ||
+			entry_type > VAEntrypointEncPicture) {
+		DRM_ERROR("Invalide entrypoint value %d.\n", entry_type);
+		return -EINVAL;
+	}
+
+	list_for_each_entry_safe(pos, n, &dev_priv->video_ctx, head) {
+		if (IS_MDFLD(dev_priv->dev) &&
+				(entry_type == (pos->ctx_type & 0xff)))
+			count++;
+
+	}
+
+	PSB_DEBUG_GENERAL("There are %d active entrypoint %d.\n",
+			count, entry_type);
+	return count;
+}
+
 
 int lnc_video_getparam(struct drm_device *dev, void *data,
 		       struct drm_file *file_priv)
@@ -1308,12 +1375,6 @@ int lnc_video_getparam(struct drm_device *dev, void *data,
 		(struct drm_psb_private *)file_priv->minor->dev->dev_private;
 	drm_psb_msvdx_frame_info_t *current_frame = NULL;
 	uint32_t handle, i;
-
-#if defined(CONFIG_MRST_RAR_HANDLER)
-	struct RAR_buffer rar_buf;
-	size_t rar_status;
-#endif
-	void *rar_handler;
 	uint32_t offset = 0;
 	uint32_t device_info = 0;
 	uint32_t ctx_type = 0;
@@ -1335,39 +1396,6 @@ int lnc_video_getparam(struct drm_device *dev, void *data,
 		ret = copy_to_user((void __user *)((unsigned long)arg->value),
 				   &rar_ci_info[0],
 				   sizeof(rar_ci_info));
-		break;
-	case LNC_VIDEO_GETPARAM_RAR_HANDLER_OFFSET:
-		ret = copy_from_user(&rar_handler,
-				     (void __user *)((unsigned long)arg->arg),
-				     sizeof(rar_handler));
-		if (ret)
-			break;
-
-#if defined(CONFIG_MRST_RAR_HANDLER)
-		rar_buf.info.handle = (__u32)rar_handler;
-		rar_buf.bus_address = (dma_addr_t)dev_priv->rar_region_start;
-		rar_status = 1;
-
-		rar_status = rar_handle_to_bus(&rar_buf, 1);
-		if (rar_status != 1) {
-			DRM_ERROR("MSVDX:rar_handle_to_bus failed\n");
-			ret = -1;
-			break;
-		}
-		rar_status = rar_release(&rar_buf, 1);
-		if (rar_status != 1)
-			DRM_ERROR("MSVDX:rar_release failed\n");
-
-		offset = (uint32_t) rar_buf.bus_address - dev_priv->rar_region_start;
-		PSB_DEBUG_GENERAL("MSVDX:RAR handler %p, bus address=0x%08x,"
-				  "RAR region=0x%08x\n",
-				  rar_handler,
-				  (uint32_t)rar_buf.bus_address,
-				  dev_priv->rar_region_start);
-#endif
-		ret = copy_to_user((void __user *)((unsigned long)arg->value),
-				   &offset,
-				   sizeof(offset));
 		break;
 	case LNC_VIDEO_FRAME_SKIP:
 		if (IS_MRST(dev))
@@ -1395,6 +1423,12 @@ int lnc_video_getparam(struct drm_device *dev, void *data,
 		video_ctx->ctx_type = ctx_type;
 		video_ctx->filp = file_priv->filp;
 		list_add(&video_ctx->head, &dev_priv->video_ctx);
+
+		if (IS_MDFLD(dev_priv->dev) &&
+				(VAEntrypointEncSlice ==
+				 (ctx_type & 0xff)))
+			pnw_reset_fw_status(dev_priv->dev);
+
 		PSB_DEBUG_GENERAL("Video:add context profile %d, entrypoint %d",
 				  (ctx_type >> 8), (ctx_type & 0xff));
 		break;
@@ -1483,6 +1517,20 @@ int lnc_video_getparam(struct drm_device *dev, void *data,
 	case IMG_VIDEO_SET_HDMI_STATE:
 		hdmi_state = (int)arg->value;
 		break;
+	case PNW_VIDEO_QUERY_ENTRY:
+		ret = copy_from_user(&handle,
+				(void __user *)((unsigned long)arg->arg),
+				sizeof(handle));
+		if (ret)
+			break;
+		/*Return the number of active entries*/
+		i = psb_entrypoint_number(dev_priv, handle);
+		if (i >= 0)
+			ret = copy_to_user((void __user *)
+					((unsigned long)arg->value),
+					&i, sizeof(i));
+		break;
+
 	default:
 		ret = -EFAULT;
 		break;
@@ -1507,7 +1555,10 @@ int psb_msvdx_save_context(struct drm_device *dev)
 	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
 	int offset = 0;
 
-	msvdx_priv->msvdx_needs_reset = 1;
+	if (IS_D0(dev))
+		msvdx_priv->msvdx_needs_reset = MSVDX_RESET_NEEDS_INIT_FW;
+	else
+		msvdx_priv->msvdx_needs_reset = 1;
 
 	for (offset = 0; offset < VEC_LOCAL_MEM_BYTE_SIZE / 4; ++offset)
 		msvdx_priv->vec_local_mem_data[offset] =
@@ -1515,10 +1566,65 @@ int psb_msvdx_save_context(struct drm_device *dev)
 
 	msvdx_priv->vec_local_mem_saved = 1;
 
+	if (IS_D0(dev)) {
+		PSB_WMSVDX32(0, MSVDX_MTX_ENABLE);
+		psb_msvdx_reset(dev_priv);
+		PSB_WMSVDX32(0, MSVDX_MAN_CLK_ENABLE);
+	}
+
 	return 0;
 }
 
 int psb_msvdx_restore_context(struct drm_device *dev)
 {
+	return 0;
+}
+
+int psb_msvdx_check_reset_fw(struct drm_device *dev)
+{
+	struct drm_psb_private *dev_priv = dev->dev_private;
+	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
+	unsigned long irq_flags;
+
+	spin_lock_irqsave(&msvdx_priv->msvdx_lock, irq_flags);
+
+	/* reserve these code, once we use a unified firmware upload, we may
+	 * have to support MRST with additional code change
+	 */
+	/* expected msvdx_needs_reset is set after previous session exited
+	 * but msvdx_hw_busy is always 1, and caused powerdown not excuted
+	 * so reload the firmware for every new context
+	 */
+	if (IS_MRST(dev) && (dev_priv->last_msvdx_ctx == NULL))
+		msvdx_priv->msvdx_needs_reset |= MSVDX_RESET_NEEDS_REUPLOAD_FW |
+			MSVDX_RESET_NEEDS_INIT_FW; /* re-load firmware */
+
+	if (IS_MRST(dev) && dev_priv->msvdx_ctx && dev_priv->last_msvdx_ctx) {
+		uint32_t from_profile, to_profile;
+
+		from_profile = dev_priv->last_msvdx_ctx->ctx_type >> 8;
+		to_profile = dev_priv->msvdx_ctx->ctx_type >> 8;
+
+		/* not the same profile, and one of them is H264 constrained BP
+		 * which needs Error Concealment firmware
+		 */
+		if ((from_profile != to_profile) &&
+		    ((from_profile == VAProfileH264ConstrainedBaseline) ||
+		     (to_profile == VAProfileH264ConstrainedBaseline))) {
+			PSB_DEBUG_INIT("MSVDX: firmware switching needed\n");
+			msvdx_priv->msvdx_needs_reset |= MSVDX_RESET_NEEDS_REUPLOAD_FW |
+				MSVDX_RESET_NEEDS_INIT_FW; /* re-load firmware */
+		}
+	}
+
+	/* handling fw upload here if required */
+	/* power off first, then hw_begin will power up/upload FW correctly */
+	if (msvdx_priv->msvdx_needs_reset & MSVDX_RESET_NEEDS_REUPLOAD_FW) {
+		msvdx_priv->msvdx_needs_reset &= ~MSVDX_RESET_NEEDS_REUPLOAD_FW;
+		ospm_power_island_down(OSPM_VIDEO_DEC_ISLAND);
+	}
+
+	spin_unlock_irqrestore(&msvdx_priv->msvdx_lock, irq_flags);
+
 	return 0;
 }

@@ -1440,7 +1440,10 @@ static void pnw_topaz_restore_bias_table(struct drm_psb_private *dev_priv,
 
 	if (core >= MAX_TOPAZ_CORES ||
 			topaz_priv->topaz_bias_table[core] == NULL) {
-		DRM_ERROR("TOPAZ: %s Invalid bias table!\n", __func__);
+		/*
+		 * If VEC D0i3 isn't enabled, the bias table won't be saved
+		 * in initialization. No need to restore.
+		 */
 		return;
 	}
 
@@ -1684,10 +1687,15 @@ int pnw_topaz_restore_mtx_state(struct drm_device *dev)
 
 	}
 
-	if (PNW_IS_H264_ENC(topaz_priv->topaz_cur_codec)) {
+	if (!PNW_IS_JPEG_ENC(topaz_priv->topaz_cur_codec)) {
 		for (core_id = topaz_priv->topaz_num_cores - 1;
-				core_id >= 0; core_id--)
-			pnw_topaz_restore_bias_table(dev_priv, core_id);
+				core_id >= 0; core_id--) {
+		    /*MPEG4/H263 only use core 0*/
+		    if (!PNW_IS_H264_ENC(topaz_priv->topaz_cur_codec)
+			    && core_id > 0)
+			continue;
+		    pnw_topaz_restore_bias_table(dev_priv, core_id);
+		}
 	}
 
 	PSB_DEBUG_GENERAL("TOPAZ: send NULL command to test firmware\n");
@@ -2029,6 +2037,6 @@ void pnw_reset_fw_status(struct drm_device *dev)
 	struct pnw_topaz_private *topaz_priv = dev_priv->topaz_private;
 
 	/*Before end the session, mark firmware MTX data as invalid.*/
-	topaz_priv->topaz_mtx_saved = 0;
-
+	if (topaz_priv)
+		topaz_priv->topaz_mtx_saved = 0;
 }

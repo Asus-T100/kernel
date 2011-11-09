@@ -120,6 +120,7 @@ int psb_release(struct inode *inode, struct file *filp)
 		memset(&msvdx_priv->frame_info, 0, sizeof(struct drm_psb_msvdx_frame_info) * MAX_DECODE_BUFFERS);
 	}
 
+        /*this is used to cleanup bcd if app failed to call vaTerminate*/
 	if (psb_fp->bcd_index >= 0 &&
 	    psb_fp->bcd_index < BC_VIDEO_DEVICE_MAX_ID &&
 	    bc_video_id_usage[psb_fp->bcd_index] == 1) {

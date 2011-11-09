@@ -42,6 +42,16 @@
 #define PNW_IS_JPEG_ENC(codec) \
 	(codec == IMG_CODEC_JPEG)
 
+#define PNW_IS_MPEG4_ENC(codec) \
+	(codec == IMG_CODEC_MPEG4_VBR || \
+	 codec == IMG_CODEC_MPEG4_CBR || \
+	 codec == IMG_CODEC_MPEG4_NO_RC)
+
+#define PNW_IS_H263_ENC(codec) \
+	(codec == IMG_CODEC_H263_VBR || \
+	 codec == IMG_CODEC_H263_CBR || \
+	 codec == IMG_CODEC_H263_NO_RC)
+
 extern int drm_topaz_pmpolicy;
 
 /* XXX: it's a copy of msvdx cmd queue. should have some change? */
