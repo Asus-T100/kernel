@@ -168,96 +168,11 @@
 #define	MT9E013_STATUS_ACTIVE		0x3
 #define	MT9E013_STATUS_VIEWFINDER	0x4
 
-#define	v4l2_format_capture_type_entry(_width, _height, \
-		_pixelformat, _bytesperline, _colorspace) \
-	{\
-		.type = V4L2_BUF_TYPE_VIDEO_CAPTURE,\
-		.fmt.pix.width = (_width),\
-		.fmt.pix.height = (_height),\
-		.fmt.pix.pixelformat = (_pixelformat),\
-		.fmt.pix.bytesperline = (_bytesperline),\
-		.fmt.pix.colorspace = (_colorspace),\
-		.fmt.pix.sizeimage = (_height)*(_bytesperline),\
-	}
-
-#define	s_output_format_entry(_width, _height, _pixelformat, \
-		_bytesperline, _colorspace, _fps) \
-	{\
-		.v4l2_fmt = v4l2_format_capture_type_entry(_width, \
-			_height, _pixelformat, _bytesperline, \
-				_colorspace),\
-		.fps = (_fps),\
-	}
-
-#define	s_output_format_reg_entry(_width, _height, _pixelformat, \
-		_bytesperline, _colorspace, _fps, _reg_setting) \
-	{\
-		.s_fmt = s_output_format_entry(_width, _height,\
-				_pixelformat, _bytesperline, \
-				_colorspace, _fps),\
-		.reg_setting = (_reg_setting),\
-	}
-
 struct s_ctrl_id {
 	struct v4l2_queryctrl qc;
 	int (*s_ctrl)(struct v4l2_subdev *sd, u32 val);
 	int (*g_ctrl)(struct v4l2_subdev *sd, u32 *val);
 };
-
-#define	v4l2_queryctrl_entry_integer(_id, _name,\
-		_minimum, _maximum, _step, \
-		_default_value, _flags)	\
-	{\
-		.id = (_id), \
-		.type = V4L2_CTRL_TYPE_INTEGER, \
-		.name = _name, \
-		.minimum = (_minimum), \
-		.maximum = (_maximum), \
-		.step = (_step), \
-		.default_value = (_default_value),\
-		.flags = (_flags),\
-	}
-#define	v4l2_queryctrl_entry_boolean(_id, _name,\
-		_default_value, _flags)	\
-	{\
-		.id = (_id), \
-		.type = V4L2_CTRL_TYPE_BOOLEAN, \
-		.name = _name, \
-		.minimum = 0, \
-		.maximum = 1, \
-		.step = 1, \
-		.default_value = (_default_value),\
-		.flags = (_flags),\
-	}
-
-#define	s_ctrl_id_entry_integer(_id, _name, \
-		_minimum, _maximum, _step, \
-		_default_value, _flags, \
-		_s_ctrl, _g_ctrl)	\
-	{\
-		.qc = v4l2_queryctrl_entry_integer(_id, _name,\
-				_minimum, _maximum, _step,\
-				_default_value, _flags), \
-		.s_ctrl = _s_ctrl, \
-		.g_ctrl = _g_ctrl, \
-	}
-
-#define	s_ctrl_id_entry_boolean(_id, _name, \
-		_default_value, _flags, \
-		_s_ctrl, _g_ctrl)	\
-	{\
-		.qc = v4l2_queryctrl_entry_boolean(_id, _name,\
-				_default_value, _flags), \
-		.s_ctrl = _s_ctrl, \
-		.g_ctrl = _g_ctrl, \
-	}
-
-
-#define	macro_string_entry(VAL)	\
-	{ \
-		.val = VAL, \
-		.string = #VAL, \
-	}
 
 enum mt9e013_tok_type {
 	MT9E013_8BIT  = 0x0001,

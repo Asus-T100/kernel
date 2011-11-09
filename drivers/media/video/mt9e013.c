@@ -1,5 +1,5 @@
 /*
- * Support for OmniVision mt9e013 1080p HD camera sensor.
+ * Support for Aptina mt9e013 1080p HD camera sensor.
  *
  * Copyright (c) 2011 Intel Corporation. All Rights Reserved.
  *
@@ -68,16 +68,7 @@ struct sensor_mode_data {
 	int vt_pix_clk_freq_mhz;
 };
 
-/*
- * TODO: use debug parameter to actually define when debug messages should
- * be printed.
- */
-static int debug;
-
-module_param(debug, int, 0644);
-MODULE_PARM_DESC(debug, "Enable debug messages");
-
-struct mt9e013_resolution mt9e013_res_preview[] = {
+static struct mt9e013_resolution mt9e013_res_preview[] = {
 	{
 		 .desc =	"PREVIEW_30fps"	,
 		 .width =	820	,
@@ -109,7 +100,7 @@ struct mt9e013_resolution mt9e013_res_preview[] = {
 
 #define N_RES_PREVIEW (ARRAY_SIZE(mt9e013_res_preview))
 
-struct mt9e013_resolution mt9e013_res_still[] = {
+static struct mt9e013_resolution mt9e013_res_still[] = {
 	{
 		 .desc =	"STILL_2M_15fps"	,
 		 .width =	1640	,
@@ -153,7 +144,7 @@ struct mt9e013_resolution mt9e013_res_still[] = {
 
 #define N_RES_STILL (ARRAY_SIZE(mt9e013_res_still))
 
-struct mt9e013_resolution mt9e013_res_video[] = {
+static struct mt9e013_resolution mt9e013_res_video[] = {
 	{
 		 .desc =	"QCIF_strong_dvs_30fps"	,
 		 .width =	216	,
@@ -260,7 +251,7 @@ struct mt9e013_resolution mt9e013_res_video[] = {
 
 #define N_RES_VIDEO (ARRAY_SIZE(mt9e013_res_video))
 
-struct mt9e013_resolution *mt9e013_res = mt9e013_res_preview;
+static struct mt9e013_resolution *mt9e013_res = mt9e013_res_preview;
 static int N_RES = N_RES_PREVIEW;
 
 static int
@@ -457,7 +448,7 @@ static int mt9e013_rmw_reg(struct i2c_client *client, u16 data_length, u16 reg,
 
 
 /*
- * mt9e013_write_reg_array - Initializes a list of MT9M114 registers
+ * mt9e013_write_reg_array - Initializes a list of mt9e013 registers
  * @client: i2c driver client structure
  * @reglist: list of registers to be written
  *
@@ -901,7 +892,7 @@ static int mt9e013_g_priv_int_data(struct v4l2_subdev *sd,
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	struct mt9e013_device *dev = to_mt9e013_sensor(sd);
-	u8 *to = priv->data;
+	u8 __user *to = priv->data;
 	u32 read_size = priv->size;
 	int ret;
 
