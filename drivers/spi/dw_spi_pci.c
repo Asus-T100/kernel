@@ -126,8 +126,9 @@ static void __devexit spi_pci_remove(struct pci_dev *pdev)
 }
 
 #ifdef CONFIG_PM
-static int spi_suspend(struct pci_dev *pdev, pm_message_t state)
+static int spi_suspend(struct device *dev)
 {
+	struct pci_dev *pdev = to_pci_dev(dev);
 	struct spi_dw_pci *dwpci = pci_get_drvdata(pdev);
 	int ret;
 
@@ -136,12 +137,13 @@ static int spi_suspend(struct pci_dev *pdev, pm_message_t state)
 		return ret;
 	pci_save_state(pdev);
 	pci_disable_device(pdev);
-	pci_set_power_state(pdev, pci_choose_state(pdev, state));
+	pci_set_power_state(pdev, PCI_D3hot);
 	return ret;
 }
 
-static int spi_resume(struct pci_dev *pdev)
+static int spi_resume(struct device *dev)
 {
+	struct pci_dev *pdev = to_pci_dev(dev);
 	struct spi_dw_pci *dwpci = pci_get_drvdata(pdev);
 	int ret;
 
@@ -203,6 +205,8 @@ static const struct pci_device_id pci_ids[] __devinitdata = {
 	{},
 };
 static const struct dev_pm_ops dw_spi_pm_ops = {
+	.suspend = spi_suspend,
+	.resume = spi_resume,
 	.runtime_suspend = spi_dw_pci_runtime_suspend,
 	.runtime_resume = spi_dw_pci_runtime_resume,
 	.runtime_idle = spi_dw_pci_runtime_idle,
@@ -213,8 +217,6 @@ static struct pci_driver spi_dw_driver = {
 	.id_table =	pci_ids,
 	.probe =	spi_pci_probe,
 	.remove =	__devexit_p(spi_pci_remove),
-	.suspend =	spi_suspend,
-	.resume	=	spi_resume,
 	.driver	=	{
 		.pm	= &dw_spi_pm_ops,
 	},

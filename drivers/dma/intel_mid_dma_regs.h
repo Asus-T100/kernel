@@ -295,7 +295,4 @@ static inline struct intel_mid_dma_slave *to_intel_mid_dma_slave
 	return container_of(slave, struct intel_mid_dma_slave, dma_slave);
 }
 
-
-int dma_resume(struct pci_dev *pci);
-
 #endif /*__INTEL_MID_DMAC_REGS_H__*/
