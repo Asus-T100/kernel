@@ -29,6 +29,9 @@
 #include "sh_css_hw.h"
 #include "sh_css_debug.h"
 
+#define HBLANK_CYCLES (187)
+#define MARKER_CYCLES (6)
+
 /* The data type is used to send special cases:
  * yuv420: odd lines (1, 3 etc) are twice as wide as even
  *         lines (0, 2, 4 etc).
@@ -60,6 +63,25 @@ static unsigned long *mmu_base_address         = MMU_BASE,
 		     *gp_fifo_base_address     = GP_FIFO_BASE;
 
 static unsigned int curr_ch_id, curr_fmt_type;
+
+
+struct streamining_to_mipi_instance {
+	unsigned int			ch_id;
+	enum sh_css_input_format	input_format;
+	bool				two_ppc;
+	bool				streaming;
+	unsigned int			hblank_cycles;
+	unsigned int			marker_cycles;
+	unsigned int			fmt_type;
+	enum sh_css_mipi_data_type	type;
+};
+
+/*
+ * Maintain a basic streaming to Mipi administration with ch_id as index
+ * ch_id maps on the "Mipi virtual channel ID" and can have value 0..3
+ */
+#define NR_OF_S2M_CHANNELS	(4)
+static struct streamining_to_mipi_instance s2m_inst_admin[NR_OF_S2M_CHANNELS];
 
 void
 sh_css_sp_ctrl_store(unsigned int reg, unsigned int value)
@@ -1748,7 +1770,7 @@ sh_css_streaming_to_mipi_send_empty_token(void)
 }
 
 static inline void
-sh_css_streaming_to_mipi_start_frame(unsigned int ch_id,
+sh_css_hrt_s2m_start_frame(unsigned int ch_id,
 				     unsigned int fmt_type)
 {
 	sh_css_streaming_to_mipi_send_ch_id_and_fmt_type(ch_id, fmt_type);
@@ -1756,7 +1778,7 @@ sh_css_streaming_to_mipi_start_frame(unsigned int ch_id,
 }
 
 static void
-sh_css_streaming_to_mipi_end_frame(unsigned int marker_cycles)
+sh_css_hrt_s2m_end_frame(unsigned int marker_cycles)
 {
 	unsigned int i;
 	for (i = 0; i < marker_cycles; i++)
@@ -1765,7 +1787,7 @@ sh_css_streaming_to_mipi_end_frame(unsigned int marker_cycles)
 }
 
 static void
-sh_css_streaming_to_mipi_send_line(unsigned short *data,
+sh_css_hrt_s2m_send_line(unsigned short *data,
 				   unsigned int width,
 				   unsigned int hblank_cycles,
 				   unsigned int marker_cycles,
@@ -1849,7 +1871,7 @@ sh_css_streaming_to_mipi_send_line(unsigned short *data,
  * documentation for details on the data formats.
  */
 static void
-sh_css_streaming_to_mipi_send_frame(unsigned short *data,
+sh_css_hrt_s2m_send_frame(unsigned short *data,
 				    unsigned int width,
 				    unsigned int height,
 				    unsigned int ch_id,
@@ -1861,24 +1883,51 @@ sh_css_streaming_to_mipi_send_frame(unsigned short *data,
 {
 	unsigned int i;
 
-	sh_css_streaming_to_mipi_start_frame(ch_id, fmt_type);
+	sh_css_hrt_s2m_start_frame(ch_id, fmt_type);
 	for (i = 0; i < height; i++) {
 		if ((type == sh_css_mipi_data_type_yuv420) &&
 		    (i & 1) == 1) {
-			sh_css_streaming_to_mipi_send_line(data, 2 * width,
+			sh_css_hrt_s2m_send_line(data, 2 * width,
 							   hblank_cycles,
 							   marker_cycles,
 							   two_ppc, type);
 			data += 2 * width;
 		} else {
-			sh_css_streaming_to_mipi_send_line(data, width,
+			sh_css_hrt_s2m_send_line(data, width,
 							   hblank_cycles,
 							   marker_cycles,
 							   two_ppc, type);
 			data += width;
 		}
 	}
-	sh_css_streaming_to_mipi_end_frame(marker_cycles);
+	sh_css_hrt_s2m_end_frame(marker_cycles);
+}
+
+static enum sh_css_mipi_data_type
+sh_css_hrt_s2m_determine_type(enum sh_css_input_format input_format)
+{
+	enum sh_css_mipi_data_type type;
+
+	type = sh_css_mipi_data_type_regular;
+	if (input_format == SH_CSS_INPUT_FORMAT_YUV420_8_LEGACY) {
+		type =
+			sh_css_mipi_data_type_yuv420_legacy;
+	} else if (input_format == SH_CSS_INPUT_FORMAT_YUV420_8 ||
+		   input_format == SH_CSS_INPUT_FORMAT_YUV420_10) {
+		type =
+			sh_css_mipi_data_type_yuv420;
+	} else if (input_format >= SH_CSS_INPUT_FORMAT_RGB_444 &&
+		   input_format <= SH_CSS_INPUT_FORMAT_RGB_888) {
+		type =
+			sh_css_mipi_data_type_rgb;
+	}
+	return type;
+}
+
+static struct streamining_to_mipi_instance *
+sh_css_hrt_s2m_get_inst(unsigned int ch_id)
+{
+	return &s2m_inst_admin[ch_id];
 }
 
 void
@@ -1890,27 +1939,75 @@ sh_css_hrt_send_input_frame(unsigned short *data,
 			    bool two_ppc)
 {
 	unsigned int fmt_type, hblank_cycles, marker_cycles;
-	enum sh_css_mipi_data_type str_to_mipi_type;
+	enum sh_css_mipi_data_type type;
 
-	hblank_cycles = 187;
-	marker_cycles = 6;
+	hblank_cycles = HBLANK_CYCLES;
+	marker_cycles = MARKER_CYCLES;
 	sh_css_input_format_type(input_format,
 				 SH_CSS_MIPI_COMPRESSION_NONE,
 				 &fmt_type);
-	str_to_mipi_type = sh_css_mipi_data_type_regular;
-	if (input_format == SH_CSS_INPUT_FORMAT_YUV420_8_LEGACY) {
-		str_to_mipi_type =
-			sh_css_mipi_data_type_yuv420_legacy;
-	} else if (input_format == SH_CSS_INPUT_FORMAT_YUV420_8 ||
-		   input_format == SH_CSS_INPUT_FORMAT_YUV420_10) {
-		str_to_mipi_type =
-			sh_css_mipi_data_type_yuv420;
-	} else if (input_format >= SH_CSS_INPUT_FORMAT_RGB_444 &&
-		   input_format <= SH_CSS_INPUT_FORMAT_RGB_888) {
-		str_to_mipi_type =
-			sh_css_mipi_data_type_rgb;
-	}
-	sh_css_streaming_to_mipi_send_frame(data, width, height,
+
+	type = sh_css_hrt_s2m_determine_type(input_format);
+
+	sh_css_hrt_s2m_send_frame(data, width, height,
 			ch_id, fmt_type, hblank_cycles, marker_cycles,
-			two_ppc, str_to_mipi_type);
+			two_ppc, type);
 }
+
+void
+sh_css_hrt_streaming_to_mipi_start_frame(unsigned int ch_id,
+				enum sh_css_input_format input_format,
+				bool two_ppc)
+{
+	struct streamining_to_mipi_instance *s2mi;
+	s2mi = sh_css_hrt_s2m_get_inst(ch_id);
+
+	s2mi->ch_id = ch_id;
+	sh_css_input_format_type(input_format, SH_CSS_MIPI_COMPRESSION_NONE,
+				&s2mi->fmt_type);
+	s2mi->two_ppc = two_ppc;
+	s2mi->type = sh_css_hrt_s2m_determine_type(input_format);
+	s2mi->hblank_cycles = HBLANK_CYCLES;
+	s2mi->marker_cycles = MARKER_CYCLES;
+	s2mi->streaming = true;
+
+	sh_css_hrt_s2m_start_frame(ch_id, s2mi->fmt_type);
+}
+
+void
+sh_css_hrt_streaming_to_mipi_send_line(unsigned int ch_id,
+				unsigned short *data,
+				unsigned int width)
+{
+	struct streamining_to_mipi_instance *s2mi;
+	s2mi = sh_css_hrt_s2m_get_inst(ch_id);
+
+	/* Set global variables that indicate channel_id and format_type */
+	curr_ch_id = (s2mi->ch_id) & _HIVE_ISP_CH_ID_MASK;
+	curr_fmt_type = (s2mi->fmt_type) & _HIVE_ISP_FMT_TYPE_MASK;
+
+	/* Call existing HRT function */
+	sh_css_hrt_s2m_send_line(data, width,
+					s2mi->hblank_cycles,
+					s2mi->marker_cycles,
+					s2mi->two_ppc,
+					s2mi->type);
+
+}
+
+void
+sh_css_hrt_streaming_to_mipi_end_frame(unsigned int ch_id)
+{
+	struct streamining_to_mipi_instance *s2mi;
+	s2mi = sh_css_hrt_s2m_get_inst(ch_id);
+
+	/* Set global variables that indicate channel_id and format_type */
+	curr_ch_id = (s2mi->ch_id) & _HIVE_ISP_CH_ID_MASK;
+	curr_fmt_type = (s2mi->fmt_type) & _HIVE_ISP_FMT_TYPE_MASK;
+
+	/* Call existing HRT function */
+	sh_css_hrt_s2m_end_frame(s2mi->marker_cycles);
+
+	s2mi->streaming = false;
+}
+

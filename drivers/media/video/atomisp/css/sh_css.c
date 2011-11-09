@@ -2104,19 +2104,33 @@ sh_css_input_set_format(enum sh_css_input_format format)
 }
 
 void
+sh_css_input_get_format(enum sh_css_input_format *format)
+{
+	*format = my_css.input_format;
+}
+
+
+void
 sh_css_input_set_binning_factor(unsigned int binning_factor)
 {
 	my_css.sensor_binning = binning_factor;
 }
 
 void
-sh_css_input_set_two_pixels_per_clock(bool two_ppc)
+sh_css_input_set_two_pixels_per_clock(bool two_pixels_per_clock)
 {
-	if (my_css.two_ppc != two_ppc) {
-		my_css.two_ppc = two_ppc;
+	if (my_css.two_ppc != two_pixels_per_clock) {
+		my_css.two_ppc = two_pixels_per_clock;
 		my_css.reconfigure_css_rx = true;
 	}
 }
+
+void
+sh_css_input_get_two_pixels_per_clock(bool *two_pixels_per_clock)
+{
+	*two_pixels_per_clock = my_css.two_ppc;
+}
+
 
 void
 sh_css_input_set_bayer_order(enum sh_css_bayer_order bayer_order)
@@ -4304,6 +4318,36 @@ sh_css_send_input_frame(unsigned short *data,
 				    my_css.input_format,
 				    my_css.two_ppc);
 }
+
+
+void
+sh_css_streaming_to_mipi_start_frame(unsigned int channel_id,
+				enum sh_css_input_format input_format,
+				bool two_pixels_per_clock)
+{
+	sh_css_hrt_streaming_to_mipi_start_frame(channel_id,
+						input_format,
+						two_pixels_per_clock);
+}
+
+
+void
+sh_css_streaming_to_mipi_send_line(unsigned int channel_id,
+					unsigned short *data,
+					unsigned int width)
+{
+	sh_css_hrt_streaming_to_mipi_send_line(channel_id,
+						data,
+						width);
+}
+
+
+void
+sh_css_streaming_to_mipi_end_frame(unsigned int channel_id)
+{
+	sh_css_hrt_streaming_to_mipi_end_frame(channel_id);
+}
+
 
 static enum sh_css_err
 allocate_frame_data(struct sh_css_frame *frame, unsigned int bytes)

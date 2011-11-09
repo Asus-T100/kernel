@@ -388,4 +388,18 @@ sh_css_hrt_send_input_frame(unsigned short *data,
 			    enum sh_css_input_format input_format,
 			    bool two_ppc);
 
+void
+sh_css_hrt_streaming_to_mipi_start_frame(unsigned int ch_id,
+				enum sh_css_input_format input_format,
+				bool two_ppc);
+
+void
+sh_css_hrt_streaming_to_mipi_send_line(unsigned int ch_id ,
+				unsigned short *data,
+				unsigned int width);
+
+void
+sh_css_hrt_streaming_to_mipi_end_frame(unsigned int ch_id);
+
+
 #endif /* _SH_CSS_HRT_H_ */

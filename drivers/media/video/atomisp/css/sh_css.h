@@ -151,6 +151,12 @@ sh_css_input_set_effective_resolution(unsigned int width, unsigned int height);
 void
 sh_css_input_set_format(enum sh_css_input_format format);
 
+/*
+ * Return the last set format of the input data
+ */
+void
+sh_css_input_get_format(enum sh_css_input_format *format);
+
 void
 sh_css_input_set_binning_factor(unsigned int binning_factor);
 
@@ -168,6 +174,12 @@ sh_css_input_format_type(enum sh_css_input_format input_format,
  */
 void
 sh_css_input_set_two_pixels_per_clock(bool two_pixels_per_clock);
+
+/*
+ * Return the last set "2 pixels per clock" setting
+ */
+void
+sh_css_input_get_two_pixels_per_clock(bool *two_pixels_per_clock);
 
 /* Specify the bayer order of the input. The default is grbg. */
 void
@@ -521,6 +533,55 @@ void
 sh_css_send_input_frame(unsigned short *data,
 			unsigned int width,
 			unsigned int height);
+
+/*
+ * For higher flexibility the sh_css_send_input_frame is replaced by
+ * three seperate functions:
+ * 1) sh_css_streaming_to_mipi_start_frame
+ * 2) sh_css_streaming_to_mipi_send_line
+ * 3) sh_css_streaming_to_mipi_end_frame
+ * In this way it is possible to stream multiple frames on different
+ * channel ID's on a line basis. It will be possible to simulate
+ * line-interleaved Stereo 3D muxed on 1 mipi port.
+ * These 3 functions are for testing purpose only and can be used in
+ * conjunction with sh_css_send_input_frame
+ */
+
+/*
+ * Starts the streaming to mipi frame by sending SoF for channel channel_id.
+ * It will use the input_format and two_pixels_per_clock as provided by
+ * the user.
+ * For the "correct" use-case, input_format and two_pixels_per_clock must match
+ * with the values as set by the user with the regular functions.
+ * To simulate an error, the user can provide "incorrect" values for
+ * input_format and/or two_pixels_per_clock.
+ */
+void
+sh_css_streaming_to_mipi_start_frame(unsigned int channel_id,
+				enum sh_css_input_format input_format,
+				bool two_pixels_per_clock);
+
+
+/*
+ * Sends 1 line of frame data, with length width, to the streaming to mipi FIFO.
+ * SoL and EoL will be appended.
+ * It will use the input_format and two_pixels_per_clock settings as provided
+ * with the sh_css_streaming_to_mipi_start_frame function call.
+ *
+ * This function blocks until the entire line has been written into the
+ * input FIFO.
+ */
+void
+sh_css_streaming_to_mipi_send_line(unsigned int channel_id,
+					unsigned short *data,
+					unsigned int width);
+
+
+/*
+ * Stops the streaming to mipi frame by sending EoF for channel channel_id.
+ */
+void
+sh_css_streaming_to_mipi_end_frame(unsigned int channel_id);
 
 /* Temporary function to poll whether the ISP has been started. Once it has,
  * the sensor can also be started. */

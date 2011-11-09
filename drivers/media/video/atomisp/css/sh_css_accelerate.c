@@ -106,22 +106,16 @@ enum sh_css_err
 sh_css_acc_set_argument(struct sh_css_acc_fw *firmware,
 			unsigned num, void *val, size_t size)
 {
-	if (!firmware->header.sp_args)
-		return sh_css_err_invalid_arguments;
 	if (num >= firmware->header.sp.args_cnt)
+		return sh_css_err_invalid_arguments;
+
+	if (!firmware->header.sp_args)
 		return sh_css_err_invalid_arguments;
 	firmware->header.sp_args[num].type  = sh_css_argument_type(firmware,
 								   num);
 	firmware->header.sp_args[num].value = val;
 	firmware->header.sp_args[num].size  = size;
 	return sh_css_success;
-}
-
-/* Get type for argument <num> */
-enum sh_css_acc_arg_type
-sh_css_argument_type(struct sh_css_acc_fw *firmware, unsigned num)
-{
-	return SH_CSS_ACC_SP_ARGS(firmware)[num];
 }
 
 /* Set host private data for argument <num> */
@@ -146,6 +140,13 @@ sh_css_argument_get_host(struct sh_css_acc_fw *firmware, unsigned num)
 	if (num >= firmware->header.sp.args_cnt)
 		return NULL;
 	return firmware->header.sp_args[num].host;
+}
+
+/* Get type for argument <num> */
+enum sh_css_acc_arg_type
+sh_css_argument_type(struct sh_css_acc_fw *firmware, unsigned num)
+{
+	return SH_CSS_ACC_SP_ARGS(firmware)[num];
 }
 
 static void

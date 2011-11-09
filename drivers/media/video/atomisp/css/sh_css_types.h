@@ -634,6 +634,12 @@ struct sh_css_3a_config {
 	s0_15 af_fir2_coef[7];	/* [factor] AF FIR coefficients of fir2 */
 };
 
+/* Guard this declaration, because this struct is also defined by
+ * Sh3a_Types.h now
+ */
+#ifndef __SH_CSS_3A_OUTPUT__
+#define __SH_CSS_3A_OUTPUT__
+
 /* Workaround: hivecc complains about "tag "sh_css_3a_output" already declared"
    without this extra decl. */
 struct sh_css_3a_output;
@@ -648,6 +654,8 @@ struct sh_css_3a_output {
 	int af_hpf1;
 	int af_hpf2;
 };
+
+#endif /* End of guard */
 
 /* Descriptor of sp firmware blob */
 struct sh_css_sp_fw {
