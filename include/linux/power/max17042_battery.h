@@ -1,5 +1,5 @@
 /*
- * Fuel gauge driver for Maxim 17042 / 8966 / 8997
+ * max17042_battery.h - Fuel gauge driver for Maxim 17042 / 8966 / 8997
  *  Note that Maxim 8966 and 8997 are mfd and this is its subdevice.
  *
  * Copyright (C) 2011 Samsung Electronics
@@ -25,6 +25,16 @@
 
 struct max17042_platform_data {
 	bool enable_current_sense;
+	bool is_init_done;
+	int technology;
+
+	int (*current_sense_enabled)(void);
+	int (*battery_present)(void);
+	int (*battery_health)(void);
+	int (*battery_status)(void);
+	int (*battery_pack_temp)(int *);
+	int (*save_config_data)(const char *name, void *data, int len);
+	int (*restore_config_data)(const char *name, void *data, int len);
 };
 
 #endif /* __MAX17042_BATTERY_H_ */

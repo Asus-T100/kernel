@@ -24,6 +24,9 @@
 #include <linux/cyttsp.h>
 #include <linux/i2c.h>
 #include <linux/i2c/pca953x.h>
+#include <linux/power_supply.h>
+#include <linux/power/max17042_battery.h>
+#include <linux/power/intel_mdf_battery.h>
 #include <linux/gpio.h>
 #include <linux/gpio_keys.h>
 #include <linux/input.h>
@@ -722,6 +725,32 @@ static void *msic_gpio_platform_data(void *info)
 	return msic_generic_platform_data(info, INTEL_MSIC_BLOCK_GPIO);
 }
 
+static void *max17042_platform_data(void *info)
+{
+	static struct max17042_platform_data platform_data;
+	struct i2c_board_info *i2c_info = (struct i2c_board_info *)info;
+	int intr = get_gpio_by_name("max17042");
+
+	i2c_info->irq = intr + MRST_IRQ_OFFSET;
+
+	platform_data.enable_current_sense = 0;
+	platform_data.is_init_done = 0;
+	platform_data.technology = POWER_SUPPLY_TECHNOLOGY_LION;
+
+#ifdef CONFIG_BATTERY_INTEL_MDF
+	platform_data.current_sense_enabled =
+	    intel_msic_is_current_sense_enabled;
+	platform_data.battery_present = intel_msic_check_battery_present;
+	platform_data.battery_health = intel_msic_check_battery_health;
+	platform_data.battery_status = intel_msic_check_battery_status;
+	platform_data.battery_pack_temp = intel_msic_get_battery_pack_temp;
+	platform_data.save_config_data = intel_msic_save_config_data;
+	platform_data.restore_config_data = intel_msic_restore_config_data;
+#endif
+
+	return &platform_data;
+}
+
 static void *msic_audio_platform_data(void *info)
 {
 	struct platform_device *pdev;
@@ -776,6 +805,7 @@ static const struct devs_id __initconst device_ids[] = {
 	{"mpu3050", SFI_DEV_TYPE_I2C, 1, &mpu3050_platform_data},
 	{"ektf2136_spi", SFI_DEV_TYPE_SPI, 0, &ektf2136_spi_platform_data},
 	{"msic_adc", SFI_DEV_TYPE_IPC, 1, &msic_adc_platform_data},
+	{"max17042", SFI_DEV_TYPE_I2C, 1, &max17042_platform_data},
 
 	/* MSIC subdevices */
 	{"msic_battery", SFI_DEV_TYPE_IPC, 1, &msic_battery_platform_data},
