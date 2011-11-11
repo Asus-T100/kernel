@@ -39,6 +39,9 @@ void
 sh_css_sp_store_init_dmem(const struct sh_css_sp_fw *fw);
 
 void
+sh_css_sp_uninit();
+
+void
 sh_css_sp_start_histogram(struct sh_css_histogram *histogram,
 			  const struct sh_css_frame *frame);
 

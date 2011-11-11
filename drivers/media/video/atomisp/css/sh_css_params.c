@@ -1785,12 +1785,11 @@ sh_css_params_reconfigure_gdc_lut(void)
 	sh_css_hrt_gdc_set_lut(zoom_table);
 }
 
-static void
-safe_free(void *ptr)
-{
-	if (ptr)
-		hrt_isp_css_mm_free(ptr);
-}
+#define safe_free(x)	do {                                    \
+				if (x)                          \
+					hrt_isp_css_mm_free(x); \
+				(x) = NULL;                     \
+			} while (0)
 
 void
 sh_css_params_uninit(void)

@@ -67,6 +67,7 @@ sh_css_sp_store_init_dmem(const struct sh_css_sp_fw *fw)
 	/* store data section to DDR */
 	if (init_dmem_ddr)
 		hrt_isp_css_mm_free(init_dmem_ddr);
+
 	init_dmem_ddr = hrt_isp_css_mm_alloc(fw->data_size);
 	hrt_isp_css_mm_store(init_dmem_ddr, fw->data, fw->data_size);
 
@@ -81,6 +82,15 @@ sh_css_sp_store_init_dmem(const struct sh_css_sp_fw *fw)
 	sh_css_sp_dmem_store((unsigned)fw->dmem_init_data, &init_dmem_cfg,
 				sizeof(init_dmem_cfg));
 
+}
+
+void
+sh_css_sp_uninit()
+{
+	if (init_dmem_ddr) {
+		hrt_isp_css_mm_free(init_dmem_ddr);
+		init_dmem_ddr = NULL;
+	}
 }
 
 void

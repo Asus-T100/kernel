@@ -1766,6 +1766,7 @@ sh_css_uninit(void)
 	/* cleanup generic data */
 	sh_css_params_uninit();
 	sh_css_binary_uninit();
+	sh_css_sp_uninit();
 	if (my_css.sp_bin_addr) {
 		hrt_isp_css_mm_free(my_css.sp_bin_addr);
 		my_css.sp_bin_addr = NULL;
