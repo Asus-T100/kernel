@@ -34,6 +34,8 @@
 #include <linux/suspend.h>
 #include <linux/wakelock.h>
 #include <asm/mrst.h>
+#include <asm/apic.h>
+
 #include <linux/intel_mid_pm.h>
 #include "pmu.h"
 
@@ -1057,6 +1059,10 @@ static irqreturn_t pmu_sc_irq(int irq, void *ignored)
 	} else {
 		s0ix_sram_restore(mid_pmu_cxt->s0ix_entered);
 
+		/* Wakeup allother CPU's */
+		if (mid_pmu_cxt->s0ix_entered == MID_S0I3_STATE)
+			apic->send_IPI_allbutself(RESCHEDULE_VECTOR);
+
 		mid_pmu_cxt->s0ix_entered = 0;
 
 		/* S0ix case release it */
@@ -1074,6 +1080,17 @@ void pmu_set_s0ix_complete(void)
 		writel(0, &mid_pmu_cxt->pmu_reg->pm_msic);
 }
 EXPORT_SYMBOL(pmu_set_s0ix_complete);
+
+bool pmu_is_s0i3_in_progress(void)
+{
+	bool state = false;
+
+	if (pmu_initialized && mid_pmu_cxt->s0ix_entered == MID_S0I3_STATE)
+		state = true;
+
+	return state;
+}
+EXPORT_SYMBOL(pmu_is_s0i3_in_progress);
 
 static inline u32 find_index_in_hash(struct pci_dev *pdev, int *found)
 {
