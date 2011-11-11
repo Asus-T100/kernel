@@ -828,7 +828,9 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 	mutex_init(&isp->input_lock);
 	/* isp_lock is to protect race access of css functions */
 	mutex_init(&isp->isp_lock);
+	mutex_init(&isp->isp3a_lock);
 	isp->sw_contex.updating_uptr = false;
+	isp->isp3a_stat_ready = false;
 
 	pci_set_drvdata(dev, isp);
 

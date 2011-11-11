@@ -252,7 +252,9 @@ struct atomisp_device {
 	uint32_t irq_infos;
 	struct mutex input_lock;
 	struct mutex isp_lock;
+	struct mutex isp3a_lock;
 	struct atomisp_tvnorm *tvnorm;
+	bool isp3a_stat_ready;
 
 	struct atomisp_video_pipe_format *main_format;
 	struct atomisp_video_pipe_format *vf_format;

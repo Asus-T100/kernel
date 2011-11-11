@@ -226,10 +226,13 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 	    irq_infos & SH_CSS_IRQ_INFO_START_NEXT_STAGE) {
 		/* Wake up sleep thread for next binary */
 		signal_worker = true;
-		if (irq_infos & SH_CSS_IRQ_INFO_STATISTICS_READY)
+		if (irq_infos & SH_CSS_IRQ_INFO_STATISTICS_READY) {
 			signal_statistics = true;
-		if (irq_infos & SH_CSS_IRQ_INFO_FW_ACC_DONE)
+			isp->isp3a_stat_ready = true;
+		}
+		if (irq_infos & SH_CSS_IRQ_INFO_FW_ACC_DONE) {
 			signal_acceleration = true;
+		}
 	} else if (irq_infos & SH_CSS_IRQ_INFO_CSS_RECEIVER_ERROR) {
 		/* handle mipi receiver error*/
 		u32 rx_infos;
@@ -809,8 +812,24 @@ timeout_handle:
 
 			/* proc interrupt */
 			INIT_COMPLETION(isp->wq_frame_complete);
-			if (irq_infos & SH_CSS_IRQ_INFO_START_NEXT_STAGE)
+			if (irq_infos & SH_CSS_IRQ_INFO_START_NEXT_STAGE) {
 				sh_css_start_next_stage();
+
+				/* Getting 3A statistics if ready */
+				if (isp->isp3a_stat_ready) {
+					mutex_lock(&isp->isp3a_lock);
+					ret = sh_css_get_3a_statistics
+						(isp->params.s3a_output_buf);
+					mutex_unlock(&isp->isp3a_lock);
+
+					isp->isp3a_stat_ready = false;
+					if (ret != sh_css_success)
+						v4l2_err(&atomisp_dev,
+							"get 3a statistics"
+							" failed, not "
+							"enough memory.\n");
+				}
+			}
 		} while (!(irq_infos & SH_CSS_IRQ_INFO_FRAME_DONE));
 
 		mutex_unlock(&isp->isp_lock);
@@ -1939,13 +1958,10 @@ int atomisp_3a_stat(struct atomisp_device *isp, int flag,
 		   sizeof(isp->params.curr_grid_info)) != 0)
 		return -EAGAIN;
 
-	ret = sh_css_get_3a_statistics(isp->params.s3a_output_buf);
-	if (ret) {
-		v4l2_err(&atomisp_dev, "failed to get 3A statistics\n");
-		return -EFAULT;
-	}
+	mutex_lock(&isp->isp3a_lock);
 	ret = copy_to_user(arg->data, isp->params.s3a_output_buf,
 			   isp->params.s3a_output_bytes);
+	mutex_unlock(&isp->isp3a_lock);
 	if (ret) {
 		v4l2_err(&atomisp_dev,
 			    "copy to user failed: copied %lu bytes\n", ret);
