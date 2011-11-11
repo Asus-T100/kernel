@@ -914,7 +914,7 @@ static int sn95031_pcm_spkr_mute(struct snd_soc_dai *dai, int mute)
 static int sn95031_set_dai_pll(struct snd_soc_dai *codec_dai, int pll_id,
 		int source, unsigned int freq_in, unsigned int freq_out)
 {
-	int mode;
+	int mode, target_clk_src;
 	struct snd_soc_codec *codec = codec_dai->codec;
 	struct sn95031_priv *sn95031_ctx;
 	sn95031_ctx = snd_soc_codec_get_drvdata(codec_dai->codec);
@@ -928,20 +928,21 @@ static int sn95031_set_dai_pll(struct snd_soc_dai *codec_dai, int pll_id,
 		mutex_unlock(&codec->mutex);
 		return 0;
 	}
+	mode = snd_soc_read(codec, SN95031_PCM1C3) >> 7;
+	if (!mode && (!strcmp(codec_dai->name, "SN95031 Voice"))) {
+		target_clk_src = SN95031_PCM1BCLK;
+		snd_soc_write(codec, SN95031_PCM1C2, 0x04);
+	} else {
+		target_clk_src = SN95031_PLLIN;
+		snd_soc_write(codec, SN95031_PCM1C2, 0x00);
+	}
 	/* clock source is same, so don't do anything */
-	if (sn95031_ctx->clk_src == source) {
+	if (sn95031_ctx->clk_src == target_clk_src) {
 		pr_debug("clk src is same, no action\n");
 		mutex_unlock(&codec->mutex);
 		return 0;
 	}
-	mode = snd_soc_read(codec, SN95031_PCM1C3) >> 7;
-	if (!mode && (!strcmp(codec_dai->name, "SN95031 Voice"))) {
-		sn95031_ctx->clk_src = SN95031_PCM1BCLK;
-		snd_soc_write(codec, SN95031_PCM1C2, 0x04);
-	} else {
-		sn95031_ctx->clk_src = SN95031_PLLIN;
-		snd_soc_write(codec, SN95031_PCM1C2, 0x00);
-	}
+	sn95031_ctx->clk_src = target_clk_src;
 	if (codec->dapm.bias_level >= SND_SOC_BIAS_PREPARE) {
 		pr_debug("bias_level is active, enabling pll\n");
 		intel_sst_set_pll(true, SST_PLL_MSIC);

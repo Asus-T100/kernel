@@ -488,12 +488,14 @@ static int sst_platform_pcm_hw_params(struct snd_pcm_substream *substream,
 	struct snd_soc_codec *codec = rtd->codec;
 	struct snd_soc_dai *codec_dai = rtd->codec_dai;
 
-	/* Force the data width to 24 bit in MSIC. Post Processing
-	algorithms in DSP enabled with 24 bit precision */
-	ret = snd_soc_codec_set_params(codec, SNDRV_PCM_FORMAT_S24_LE);
-	if (ret < 0) {
-		pr_debug("codec set_params returned error\n");
-		return ret;
+	if (strcmp(rtd->dai_link->cpu_dai_name, SST_VOICE_DAI)) {
+		/* Force the data width to 24 bit in MSIC. Post Processing
+		algorithms in DSP enabled with 24 bit precision */
+		ret = snd_soc_codec_set_params(codec, SNDRV_PCM_FORMAT_S24_LE);
+		if (ret < 0) {
+			pr_debug("codec set_params returned error\n");
+			return ret;
+		}
 	}
 	/*last two parameters have to non-zero, otherwise pll gets disabled*/
 	snd_soc_dai_set_pll(codec_dai, 0, SST_CLK_UNINIT, 1,
