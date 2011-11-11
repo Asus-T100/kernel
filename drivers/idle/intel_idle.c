@@ -381,6 +381,15 @@ static int soc_s0ix_idle(struct cpuidle_device *dev,
 		eax = C6_HINT;
 	}
 
+	/* Check if s0i3 is already in progress,
+	 * This is required to demote C6 while S0ix
+	 * is in progress
+	 */
+	if (unlikely(pmu_is_s0i3_in_progress())) {
+		dev->last_state = &dev->states[C4_STATE_IDX];
+		return intel_idle(dev, &dev->states[C4_STATE_IDX]);
+	}
+
 	local_irq_disable();
 
 	/*
@@ -401,7 +410,10 @@ static int soc_s0ix_idle(struct cpuidle_device *dev,
 		    num_online_cpus() && s0ix_state) {
 			s0ix_entered = mfld_s0ix_enter(s0ix_state);
 			if (!s0ix_entered) {
-				eax = C4_HINT;
+				if (pmu_is_s0i3_in_progress()) {
+					atomic_dec(&nr_cpus_in_c6);
+					eax = C4_HINT;
+				}
 				pmu_set_s0ix_complete();
 			}
 		}
@@ -411,7 +423,9 @@ static int soc_s0ix_idle(struct cpuidle_device *dev,
 		if (!need_resched())
 			__mwait(eax, ecx);
 
-		atomic_dec(&nr_cpus_in_c6);
+		if (likely(eax == C6_HINT))
+			atomic_dec(&nr_cpus_in_c6);
+
 		/* During s0ix exit inform scu that OS
 		 * has exited. In case scu is still waiting
 		 * for ack c6 trigger, it would exit out
