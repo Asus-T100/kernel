@@ -516,7 +516,7 @@ static int langwell_ep_disable(struct usb_ep *_ep)
 	if (!_ep || !ep->desc)
 		return -EINVAL;
 
-	pm_runtime_get_sync(&dev->pdev->dev);
+	pm_runtime_get(&dev->pdev->dev);
 
 	spin_lock_irqsave(&dev->lock, flags);
 
@@ -537,7 +537,7 @@ static int langwell_ep_disable(struct usb_ep *_ep)
 
 	spin_unlock_irqrestore(&dev->lock, flags);
 
-	pm_runtime_put_sync(&dev->pdev->dev);
+	pm_runtime_put(&dev->pdev->dev);
 
 	dev_dbg(&dev->pdev->dev, "disabled %s\n", _ep->name);
 	dev_vdbg(&dev->pdev->dev, "<--- %s()\n", __func__);
@@ -1135,7 +1135,6 @@ static void langwell_phy_low_power(struct langwell_udc *dev, bool flag)
 	u8		devlc_byte2;
 	dev_dbg(&dev->pdev->dev, "---> %s()\n", __func__);
 
-	pm_runtime_get_sync(&dev->pdev->dev);
 	devlc = readl(&dev->op_regs->devlc);
 	dev_vdbg(&dev->pdev->dev, "devlc = 0x%08x\n", devlc);
 
@@ -1152,8 +1151,6 @@ static void langwell_phy_low_power(struct langwell_udc *dev, bool flag)
 	dev_vdbg(&dev->pdev->dev,
 		 "%s PHY low power suspend, devlc = 0x%08x\n",
 		 flag ? "enter" : "exit", devlc);
-
-	pm_runtime_put_sync(&dev->pdev->dev);
 }
 
 
@@ -1179,7 +1176,7 @@ static void langwell_ep_fifo_flush(struct usb_ep *_ep)
 	dev_vdbg(&dev->pdev->dev, "%s-%s fifo flush\n",
 			_ep->name, DIR_STRING(ep));
 
-	pm_runtime_get_sync(&dev->pdev->dev);
+	pm_runtime_get(&dev->pdev->dev);
 
 	langwell_phy_low_power(dev, 0);
 	/* delay 3 millisecond to wait for phy exiting low power mode,
@@ -1213,7 +1210,7 @@ static void langwell_ep_fifo_flush(struct usb_ep *_ep)
 		}
 	} while (readl(&dev->op_regs->endptstat) & flush_bit);
 done:
-	pm_runtime_put_sync(&dev->pdev->dev);
+	pm_runtime_put(&dev->pdev->dev);
 
 	dev_vdbg(&dev->pdev->dev, "<--- %s()\n", __func__);
 }
@@ -1293,11 +1290,14 @@ static int langwell_wakeup(struct usb_gadget *_gadget)
 		return -ENOTSUPP;
 	}
 
+	pm_runtime_get_sync(&dev->pdev->dev);
+
 	spin_lock_irqsave(&dev->lock, flags);
 
 	portsc1 = readl(&dev->op_regs->portsc1);
 	if (!(portsc1 & PORTS_SUSP)) {
 		spin_unlock_irqrestore(&dev->lock, flags);
+		pm_runtime_put(&dev->pdev->dev);
 		return 0;
 	}
 
@@ -1315,6 +1315,7 @@ static int langwell_wakeup(struct usb_gadget *_gadget)
 	writel(portsc1, &dev->op_regs->portsc1);
 
 	spin_unlock_irqrestore(&dev->lock, flags);
+	pm_runtime_put(&dev->pdev->dev);
 
 	dev_vdbg(&dev->pdev->dev, "<--- %s()\n", __func__);
 	return 0;
@@ -1410,7 +1411,7 @@ static int langwell_pullup(struct usb_gadget *_gadget, int is_on)
 	}
 	spin_unlock_irqrestore(&dev->lock, flags);
 
-	pm_runtime_put_sync(&dev->pdev->dev);
+	pm_runtime_put(&dev->pdev->dev);
 
 	dev_vdbg(&dev->pdev->dev, "<--- %s()\n", __func__);
 	return 0;
