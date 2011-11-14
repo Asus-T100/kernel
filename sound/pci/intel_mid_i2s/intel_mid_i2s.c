@@ -37,6 +37,8 @@ MODULE_DESCRIPTION("Intel MID I2S/PCM SSP Driver");
 MODULE_LICENSE("GPL");
 MODULE_VERSION("1.0.3");
 
+#define CLOCK_19200_KHZ			19200000
+
 /*
  * Currently this limit to ONE modem on platform
  */
@@ -1548,49 +1550,58 @@ u32 calculate_sscr0_scr(struct intel_mid_i2s_hdl *drv_data,
 		    const struct intel_mid_i2s_settings *ps_settings,
 		    u8 *frame_rate_divider_new)
 {
-	const u8 frame_rate_divider[SSP_TIMESLOT_SIZE] = {
-		[SSP_TIMESLOT_1] = 1,
-		[SSP_TIMESLOT_2] = 2,
-		[SSP_TIMESLOT_4] = 4,
-		[SSP_TIMESLOT_8] = 8 };
-	u16 calculated_scr;
+
+	long calculated_scr, remainder;
 	u16 l_ssp_data_size = ps_settings->data_size;
-	enum mrst_ssp_timeslot num_timeslot;
-	enum mrst_ssp_bit_per_sample bit_per_sample;
 	enum mrst_ssp_frm_freq freq = ps_settings->master_mode_standard_freq;
 	struct device *ddbg = &(drv_data->pdev->dev);
+	u16 delay = ps_settings->ssp_psp_T2 + ps_settings->ssp_psp_T4;
+	int frame_sync_length, hw_freq, requested_freq;
+
+	dev_dbg(ddbg, "delay=%d\n", delay);
+
+	/*
+	 * A delay will be taken into account only if next frame sync is
+	 * asserted at the end of T4 timing
+	 */
+	if ((ps_settings->ssp_frmsync_timing_bit !=
+			NEXT_FRMS_ASS_AFTER_END_OF_T4) && (delay != 0)) {
+		dev_warn(ddbg, "Review SSP config, clock not accurate\n");
+	}
+
+	if (ps_settings->ssp_psp_T5 != 0)
+		dev_warn(ddbg, "T5 not null -> NOT SUPPORTED\n");
 
 
-
-	/* timeslot */
-	switch (ps_settings->frame_rate_divider_control) {
-	case 1:
-		num_timeslot = SSP_TIMESLOT_1;
+	/* frequency */
+	switch (freq) {
+	case SSP_FRM_FREQ_8_000:
+		requested_freq = 8000;
 		break;
-	case 2:
-		num_timeslot = SSP_TIMESLOT_2;
+	case SSP_FRM_FREQ_11_025:
+		requested_freq = 11025;
 		break;
-	case 4:
-		num_timeslot = SSP_TIMESLOT_4;
+	case SSP_FRM_FREQ_16_000:
+		requested_freq = 16000;
 		break;
-	case 8:
-		num_timeslot = SSP_TIMESLOT_8;
+	case SSP_FRM_FREQ_22_050:
+		requested_freq = 22050;
+		break;
+	case SSP_FRM_FREQ_44_100:
+		requested_freq = 44100;
+		break;
+	case SSP_FRM_FREQ_48_000:
+		requested_freq = 48000;
 		break;
 	default:
-		dev_warn(ddbg, "Master mode timeslot=%d unsupported\n",
-				ps_settings->frame_rate_divider_control);
+		dev_warn(ddbg, "frequency not unsupported\n");
 		return 0xFFFF;
 		break;
 	};
 
 	/* bits per sample */
-	if (l_ssp_data_size == 8)
-		bit_per_sample = SSP_BIT_PER_SAMPLE_8;
-	else if (l_ssp_data_size == 16)
-		bit_per_sample = SSP_BIT_PER_SAMPLE_16;
-	else if (l_ssp_data_size == 32)
-		bit_per_sample = SSP_BIT_PER_SAMPLE_32;
-	else {
+	if ((l_ssp_data_size != 8) && (l_ssp_data_size != 16) &&
+						(l_ssp_data_size != 32)) {
 		dev_warn(ddbg, "Master mode bit per sample=%d unsupported\n",
 							l_ssp_data_size);
 		return 0xFFFF;
@@ -1598,20 +1609,47 @@ u32 calculate_sscr0_scr(struct intel_mid_i2s_hdl *drv_data,
 	/*
 	 * We consider that LPE selected 19.2Mhz CLK
 	 */
-	calculated_scr =
-	   ssp_clk_sscr0_scr_19200_divider[freq][bit_per_sample][num_timeslot];
-	if (calculated_scr == SSP_CLK_SSCR0_SCR_NOT_AVAILABLE) {
-		dev_warn(ddbg, "Master mode unexpected error freq=%d,"
-		"bitPerSamp=%d,calculated timeslot=%d, original timeslot=%d\n",
-		freq, bit_per_sample, num_timeslot,
-		ps_settings->frame_rate_divider_control);
-		return 0xFFFF;
+	frame_sync_length = delay +
+		ps_settings->frame_rate_divider_control * l_ssp_data_size;
+
+	/*
+	 * Calculate the divider, and the remainder of the division
+	 */
+	calculated_scr = CLOCK_19200_KHZ / (requested_freq * frame_sync_length);
+	remainder = CLOCK_19200_KHZ % (requested_freq * frame_sync_length);
+
+	dev_dbg(ddbg, "calculated_scr=%ld remainder=%ld\n",
+						calculated_scr, remainder);
+
+	/*
+	 * If the rest is half the divider, increment the scr
+	 */
+	if (remainder > (frame_sync_length * requested_freq) >> 1) {
+		calculated_scr += 1;
+		dev_dbg(ddbg, "calculated_scr incremented=%ld\n",
+						calculated_scr);
 	}
+
+	/*
+	 * Calculate the real frequency that will be set up on HW
+	 */
+	hw_freq = CLOCK_19200_KHZ / (calculated_scr * frame_sync_length);
+
+	dev_dbg(ddbg, "hw_freq=%dHz High limit=%dHz Low limit=%dHz\n",
+			hw_freq, (1004 * requested_freq / 1000),
+			(996 * requested_freq / 1000));
+
+	/*
+	 * Allow the frequency to be requested frequency +/- 0,4%
+	 */
+	WARN(((hw_freq < (996 * requested_freq / 1000)) ||
+				(hw_freq > (1004 * requested_freq / 1000))),
+				"Master could not generate proper frequency");
 
 	/*
 	 * this do not change the frame_rate_divider, but may be optimized later
 	 */
-	*frame_rate_divider_new = frame_rate_divider[num_timeslot];
+	*frame_rate_divider_new = ps_settings->frame_rate_divider_control;
 
 	return (u32)((calculated_scr-1)<<SSCR0_SCR_SHIFT);
 }
