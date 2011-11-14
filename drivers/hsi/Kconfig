@@ -1,0 +1,16 @@
+#
+# HSI driver configuration
+#
+menuconfig HSI
+	bool "HSI support"
+	---help---
+	  The "High speed synchronous Serial Interface" is
+	  synchronous serial interface used mainly to connect
+	  application engines and cellular modems.
+
+if HSI
+
+source "drivers/hsi/controllers/Kconfig"
+source "drivers/hsi/clients/Kconfig"
+
+endif # HSI

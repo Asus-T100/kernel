@@ -1,0 +1,102 @@
+#
+# HSI clients configuration
+#
+
+comment "HSI clients"
+
+config HSI_CHAR
+	tristate "HSI/SSI character driver"
+	depends on HSI
+	help
+	  If you say Y here, you will enable the HSI/SSI character driver.
+	  This driver provides a simple character device interface for
+	  serial communication with the cellular modem over HSI/SSI bus.
+
+	  If unsure, say N.
+
+config HSI_FFL_TTY
+	tristate "Fixed frame length protocol on HSI"
+	default n
+	depends on HSI
+	help
+	  If you say Y here, you will enable the fixed frame length protocol
+	  driver over an HSI physical link.
+	  This driver implements a TTY interface for transferring data over
+	  HSI between two devices using a fixed frame length protocol.
+
+	  If unsure, say N.
+
+if HSI_FFL_TTY
+
+config HSI_FFL_TTY_NAME
+	string "Base name for the TTY"
+	default "IFX"
+	help
+	  Sets the base name for the TTY associated to this fixed frame length
+	  protocol.
+	  The base name will be appended to the tty interface used by the HSI
+	  fixed frame length protocol.
+
+	  If unsure, use the default value.
+
+
+config HSI_FFL_TTY_FRAME_LENGTH
+	int "Fixed frame length"
+	default "4096"
+	range 4 131072
+	help
+	  Sets the fixed frame length in bytes to be used in this protocol
+	  driver. This frame length must be a multiple of 4 bytes, set between
+	  4 bytes and 128 kiB (131072 bytes).
+
+	  Set to 4096 bytes by default.
+
+config HSI_FFL_TTY_HEADER_LENGTH
+	int "Fixed frame header length"
+	default "4"
+	range 0 4
+	help
+	  Sets the fixed frame header length in bytes to be used in this
+	  protocol driver. This header length must be set to 4 in normal usage
+	  or to 0 in raw protocol debug mode.
+
+	  Set to 4 bytes by default.
+
+config HSI_FFL_ENSURE_LAST_WORD_NULL
+	bool "Ensuring that all TX FFL frames end with zeros"
+	default y
+	help
+	  If you say Y here, the FFL maximal payload will be reduced by 4 bytes
+	  to ensure that the last HSI word is filled with zeros. This feature
+	  is ensuring that both the CADATA and CAFLAG signals are low at the
+	  end of a FFL frame so that no simultaneous DATA and FLAG transitions
+	  can be spotted when the IP is being power-cut.
+
+	  If the attached modem is robust with respect to simultanous DATA and
+	  FLAG transition, say N. Otherwise, it is always safer to say Y.
+
+
+config HSI_FFL_TTY_CHANNEL
+	int "HSI channel"
+	default "0"
+	range 0 15
+	help
+	  Sets the default single channel index to be used for the FFL protocol.
+	  You may need to change this value depending of the implementation of the
+	  fixed length frame (FFL) protocol.
+	  Set to 0 by default.
+	  If unsure, use the default value.
+
+
+config HSI_FFL_TTY_STATS
+	bool "Statistics to assess the performance of the protocol"
+	default n
+	help
+	  If you say Y here, you will instanciate performance related counters
+	  for measuring the number of sent and received frames as well as their
+	  total actual length in bytes.
+
+	  If not fine-tuning the HSI FFL driver, say N.
+
+endif
+
