@@ -37,7 +37,8 @@
 #include <linux/module.h>
 #include <linux/notifier.h>
 #include <linux/intel_mid_pm.h>
-
+#include <linux/hsi/hsi.h>
+#include <linux/hsi/intel_mid_hsi.h>
 #include <asm/setup.h>
 #include <asm/mpspec_def.h>
 #include <asm/hw_irq.h>
@@ -85,6 +86,16 @@ int sfi_mtimer_num;
 struct sfi_rtc_table_entry sfi_mrtc_array[SFI_MRTC_MAX];
 EXPORT_SYMBOL_GPL(sfi_mrtc_array);
 int sfi_mrtc_num;
+
+/* when ITP is needed we must avoid touching the configurations of these pins.*/
+/* see gpio part of this file */
+static int itp_connected;
+static int __init parse_itp(char *arg)
+{
+	itp_connected = 1;
+	return 0;
+}
+early_param("itp", parse_itp);
 
 static void mrst_power_off(void)
 {
@@ -243,7 +254,7 @@ static unsigned long __init mrst_calibrate_tsc(void)
 		fast_calibrate = apbt_quick_calibrate();
 		local_irq_restore(flags);
 	}
-	
+
 	if (fast_calibrate)
 		return fast_calibrate;
 
@@ -413,6 +424,7 @@ struct devs_id {
 	u8 type;
 	u8 delay;
 	void *(*get_platform_data)(void *info);
+	u8 trash_itp;/* true if this driver uses pin muxed with XDB connector */
 };
 
 /* the offset for the mapping of global gpio pin to irq */
@@ -799,6 +811,97 @@ static void *msic_adc_platform_data(void *info)
 	return msic_generic_platform_data(info, INTEL_MSIC_BLOCK_ADC);
 }
 
+
+static void *hsi_modem_platform_data(void *data)
+{
+	int rst_out = get_gpio_by_name("ifx_mdm_rst_out");
+	int pwr_on = get_gpio_by_name("ifx_mdm_pwr_on");
+	int rst_pmu = get_gpio_by_name("ifx_mdm_rst_pmu");
+	int fcdp_rb = get_gpio_by_name("modem-gpio2");
+
+	static const char hsi_char_name[]	= "hsi_char";
+	static const char hsi_ffl_name[]	= "hsi-ffl";
+
+	static struct hsi_board_info hsi_info[2] = {
+		[0] = {
+			.name = hsi_char_name,
+			.hsi_id = 0,
+			.port = 0,
+			.archdata = NULL,
+			.tx_cfg.speed = 200000,	/* tx clock, kHz */
+			.tx_cfg.channels = 8,
+			.tx_cfg.mode = HSI_MODE_FRAME,
+			.tx_cfg.arb_mode = HSI_ARB_RR,
+			.rx_cfg.flow = HSI_FLOW_SYNC,
+			.rx_cfg.mode = HSI_MODE_FRAME,
+			.rx_cfg.channels = 8
+		},
+		[1] = {
+			.name = hsi_ffl_name,
+			.hsi_id = 0,
+			.port = 0,
+			.archdata = NULL,
+			.tx_cfg.speed = 100000,	/* tx clock, kHz */
+			.tx_cfg.channels = 8,
+			.tx_cfg.mode = HSI_MODE_FRAME,
+			.tx_cfg.arb_mode = HSI_ARB_RR,
+			.rx_cfg.flow = HSI_FLOW_SYNC,
+			.rx_cfg.mode = HSI_MODE_FRAME,
+			.rx_cfg.channels = 8
+		}
+	};
+
+	static struct hsi_mid_platform_data mid_info = {
+		.tx_dma_channels[0] = -1,
+		.tx_dma_channels[1] = 5,
+		.tx_dma_channels[2] = -1,
+		.tx_dma_channels[3] = -1,
+		.tx_dma_channels[4] = -1,
+		.tx_dma_channels[5] = -1,
+		.tx_dma_channels[6] = -1,
+		.tx_dma_channels[7] = -1,
+		.tx_fifo_sizes[0] = -1,
+		.tx_fifo_sizes[1] = 1024,
+		.tx_fifo_sizes[2] = -1,
+		.tx_fifo_sizes[3] = -1,
+		.tx_fifo_sizes[4] = -1,
+		.tx_fifo_sizes[5] = -1,
+		.tx_fifo_sizes[6] = -1,
+		.tx_fifo_sizes[7] = -1,
+		.rx_dma_channels[0] = -1,
+		.rx_dma_channels[1] = 1,
+		.rx_dma_channels[2] = -1,
+		.rx_dma_channels[3] = -1,
+		.rx_dma_channels[4] = -1,
+		.rx_dma_channels[5] = -1,
+		.rx_dma_channels[6] = -1,
+		.rx_dma_channels[7] = -1,
+		.rx_fifo_sizes[0] = -1,
+		.rx_fifo_sizes[1] = 1024,
+		.rx_fifo_sizes[2] = -1,
+		.rx_fifo_sizes[3] = -1,
+		.rx_fifo_sizes[4] = -1,
+		.rx_fifo_sizes[5] = -1,
+		.rx_fifo_sizes[6] = -1,
+		.rx_fifo_sizes[7] = -1,
+	};
+
+	printk(KERN_INFO "HSI platform data setup\n");
+
+	printk(KERN_INFO "HSI mdm GPIOs %d, %d, %d, %d\n",
+		rst_out, pwr_on, rst_pmu, fcdp_rb);
+
+	mid_info.gpio_mdm_rst_out = rst_out;
+	mid_info.gpio_mdm_pwr_on = pwr_on;
+	mid_info.gpio_mdm_rst_bbn = rst_pmu;
+	mid_info.gpio_fcdp_rb = fcdp_rb;
+
+	hsi_info[0].platform_data = (void *)&mid_info;
+	hsi_info[1].platform_data = (void *)&mid_info;
+
+	return &hsi_info[0];
+}
+
 static void *msic_battery_platform_data(void *info)
 {
 	return msic_generic_platform_data(info, INTEL_MSIC_BLOCK_BATTERY);
@@ -900,7 +1003,7 @@ static const struct devs_id __initconst device_ids[] = {
 	{"ektf2136_spi", SFI_DEV_TYPE_SPI, 0, &ektf2136_spi_platform_data},
 	{"msic_adc", SFI_DEV_TYPE_IPC, 1, &msic_adc_platform_data},
 	{"max17042", SFI_DEV_TYPE_I2C, 1, &max17042_platform_data},
-
+	{"hsi_ifx_modem", SFI_DEV_TYPE_HSI, 0, &hsi_modem_platform_data},
 	/* MSIC subdevices */
 	{"msic_battery", SFI_DEV_TYPE_IPC, 1, &msic_battery_platform_data},
 	{"msic_gpio", SFI_DEV_TYPE_IPC, 1, &msic_gpio_platform_data},
@@ -926,7 +1029,7 @@ static int i2c_next_dev;
 
 static void __init intel_scu_device_register(struct platform_device *pdev)
 {
-	if(ipc_next_dev == MAX_IPCDEVS)
+	if (ipc_next_dev == MAX_IPCDEVS)
 		pr_err("too many SCU IPC devices");
 	else
 		ipc_devs[ipc_next_dev++] = pdev;
@@ -1101,8 +1204,30 @@ static void __init sfi_handle_i2c_dev(int bus, struct i2c_board_info *i2c_info)
 		intel_scu_i2c_device_register(bus, i2c_info);
 	else
 		i2c_register_board_info(bus, i2c_info, 1);
- }
+}
 
+static void sfi_handle_hsi_dev(struct hsi_board_info *hsi_info)
+{
+	const struct devs_id *dev = device_ids;
+	void *pdata = NULL;
+
+	while (dev->name[0]) {
+		if (dev->type == SFI_DEV_TYPE_HSI &&
+				!strncmp(dev->name, hsi_info->name, 16)) {
+			pdata = dev->get_platform_data(hsi_info);
+			if (itp_connected && dev->trash_itp)
+				return;
+			break;
+		}
+		dev++;
+	}
+
+	if (pdata) {
+		pr_info("SFI register platform data for HSI device %s\n",
+					dev->name);
+		hsi_register_board_info(pdata, 2);
+	}
+}
 
 static int __init sfi_parse_devs(struct sfi_table_header *table)
 {
@@ -1110,6 +1235,7 @@ static int __init sfi_parse_devs(struct sfi_table_header *table)
 	struct sfi_device_table_entry *pentry;
 	struct spi_board_info spi_info;
 	struct i2c_board_info i2c_info;
+	struct hsi_board_info hsi_info;
 	int num, i, bus;
 	int ioapic;
 	struct io_apic_irq_attr irq_attr;
@@ -1176,9 +1302,8 @@ static int __init sfi_parse_devs(struct sfi_table_header *table)
 				i2c_info.type,
 				i2c_info.irq,
 				i2c_info.addr);
-			if (!strcmp(i2c_info.type, "mxt224")){
+			if (!strcmp(i2c_info.type, "mxt224"))
 				break;
-			}
 			/* Ignore all sensors info for PR2 and PR3 */
 			if (mfld_board_id() == MFLD_BID_PR2_PROTO ||
 					mfld_board_id() == MFLD_BID_PR2_PNP ||
@@ -1190,8 +1315,25 @@ static int __init sfi_parse_devs(struct sfi_table_header *table)
 
 			sfi_handle_i2c_dev(bus, &i2c_info);
 			break;
-		case SFI_DEV_TYPE_UART:
 		case SFI_DEV_TYPE_HSI:
+			memset(&hsi_info, 0, sizeof(hsi_info));
+			hsi_info.name =  kzalloc(16, GFP_KERNEL);
+			if (hsi_info.name == NULL) {
+				pr_err("out of memory for HSI device '%s'.\n",
+								pentry->name);
+				continue;
+			}
+			strncpy((char *)hsi_info.name, pentry->name, 16);
+			hsi_info.hsi_id = pentry->host_num;
+			hsi_info.port = pentry->addr;
+			pr_info("info[%2d]: HSI bus = %d, name = %16.16s, "
+				"port = %d\n", i,
+				hsi_info.hsi_id,
+				hsi_info.name,
+				hsi_info.port);
+			sfi_handle_hsi_dev(&hsi_info);
+			break;
+		case SFI_DEV_TYPE_UART:
 		default:
 			;
 		}
@@ -1202,7 +1344,7 @@ static int __init sfi_parse_devs(struct sfi_table_header *table)
 #include <linux/fs.h>
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
-static u32 board_id = 0;
+static u32 board_id;
 static int board_id_proc_show(struct seq_file *m, void *v)
 {
 	char *bid;
