@@ -8,6 +8,9 @@
 #include <linux/pnp.h>
 #include <linux/of.h>
 
+#ifdef CONFIG_X86_INTEL_MID
+#include <asm/intel_scu_ipc.h>
+#endif
 #include <asm/vsyscall.h>
 #include <asm/x86_init.h>
 #include <asm/time.h>
@@ -177,6 +180,11 @@ int update_persistent_clock(struct timespec now)
 	retval = x86_platform.set_wallclock(now.tv_sec);
 	spin_unlock_irqrestore(&rtc_lock, flags);
 
+#ifdef CONFIG_X86_INTEL_MID
+	if (!retval)
+		retval = intel_scu_ipc_simple_command(
+				IPCMSG_VRTC, IPC_CMD_VRTC_SETTIME);
+#endif
 	return retval;
 }
 
