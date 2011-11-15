@@ -489,10 +489,13 @@ static void atomisp_pipe_reset(struct atomisp_device *isp)
 static int atomisp_timeout_handler(struct atomisp_device *isp, int cnt)
 {
 	u32 rx_infos;
+	char debug_context[64];
 
 	v4l2_err(&atomisp_dev, "ISP timeout\n");
-
 	isp->isp_timeout = true;
+
+	snprintf(debug_context, 64, "ISP timeout encountered (%d of 5)", cnt);
+	sh_css_dump_debug_info(debug_context);
 
 	/* Try 5 times for autorecovery */
 	if (cnt < 5) {
@@ -508,7 +511,6 @@ static int atomisp_timeout_handler(struct atomisp_device *isp, int cnt)
 		v4l2_err(&atomisp_dev,
 			 "error: lost interrupt\n");
 
-	sh_css_dump_debug_info();
 	print_csi_rx_errors();
 	sh_css_rx_get_interrupt_info(&rx_infos);
 	sh_css_rx_clear_interrupt_info(rx_infos);

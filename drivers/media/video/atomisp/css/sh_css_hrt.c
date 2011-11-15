@@ -280,27 +280,27 @@ sh_css_hrt_sp_get_state(struct sh_css_cell_state *state,
 	state->is_sleeping = (sc & (1U << SP_SLEEPING_BIT)) != 0;
 	state->is_stalling = (sc & (1U << SP_STALLING_BIT)) != 0;
 	stall_state->fifo0 =
-		sp_ctrl_get_bit(SP_FIFO0_SINK_BIT, SP_FIFO0_SINK_REG);
+		!sp_ctrl_get_bit(SP_FIFO0_SINK_REG, SP_FIFO0_SINK_BIT);
 	stall_state->fifo1 =
-		sp_ctrl_get_bit(SP_FIFO1_SINK_BIT, SP_FIFO1_SINK_REG);
+		!sp_ctrl_get_bit(SP_FIFO1_SINK_REG, SP_FIFO1_SINK_BIT);
 	stall_state->fifo2 =
-		sp_ctrl_get_bit(SP_FIFO2_SINK_BIT, SP_FIFO2_SINK_REG);
+		!sp_ctrl_get_bit(SP_FIFO2_SINK_REG, SP_FIFO2_SINK_BIT);
 	stall_state->fifo3 =
-		sp_ctrl_get_bit(SP_FIFO3_SINK_BIT, SP_FIFO3_SINK_REG);
+		!sp_ctrl_get_bit(SP_FIFO3_SINK_REG, SP_FIFO3_SINK_BIT);
 	stall_state->fifo4 =
-		sp_ctrl_get_bit(SP_FIFO4_SINK_BIT, SP_FIFO4_SINK_REG);
+		!sp_ctrl_get_bit(SP_FIFO4_SINK_REG, SP_FIFO4_SINK_BIT);
 	stall_state->fifo5 =
-		sp_ctrl_get_bit(SP_FIFO5_SINK_BIT, SP_FIFO5_SINK_REG);
+		!sp_ctrl_get_bit(SP_FIFO5_SINK_REG, SP_FIFO5_SINK_BIT);
 	stall_state->fifo6 =
-		sp_ctrl_get_bit(SP_FIFO6_SINK_BIT, SP_FIFO6_SINK_REG);
+		!sp_ctrl_get_bit(SP_FIFO6_SINK_REG, SP_FIFO6_SINK_BIT);
 	stall_state->fifo7 =
-		sp_ctrl_get_bit(SP_FIFO7_SINK_BIT, SP_FIFO7_SINK_REG);
+		!sp_ctrl_get_bit(SP_FIFO7_SINK_REG, SP_FIFO7_SINK_BIT);
 	stall_state->dmem =
-		sp_ctrl_get_bit(SP_DMEM_SINK_BIT, SP_DMEM_SINK_REG);
+		!sp_ctrl_get_bit(SP_DMEM_SINK_REG, SP_DMEM_SINK_BIT);
 	stall_state->control_master =
-		sp_ctrl_get_bit(SP_CTRL_MT_SINK_BIT, SP_CTRL_MT_SINK_REG);
+		!sp_ctrl_get_bit(SP_CTRL_MT_SINK_REG, SP_CTRL_MT_SINK_BIT);
 	stall_state->icache_master =
-		sp_ctrl_get_bit(SP_ICACHE_MT_SINK_BIT, SP_ICACHE_MT_SINK_REG);
+		!sp_ctrl_get_bit(SP_ICACHE_MT_SINK_REG, SP_ICACHE_MT_SINK_BIT);
 }
 
 void
@@ -316,27 +316,27 @@ sh_css_hrt_isp_get_state(struct sh_css_cell_state *state,
 	state->is_sleeping = isp_ctrl_get_bit(ISP_SC_REG, ISP_SLEEPING_BIT);
 	state->is_stalling = isp_ctrl_get_bit(ISP_SC_REG, ISP_STALLING_BIT);
 	stall_state->stat_ctrl =
-		isp_ctrl_get_bit(ISP_CTRL_SINK_BIT, ISP_CTRL_SINK_REG);
+		!isp_ctrl_get_bit(ISP_CTRL_SINK_REG  , ISP_CTRL_SINK_BIT);
 	stall_state->dmem =
-		isp_ctrl_get_bit(ISP_DMEM_SINK_BIT, ISP_DMEM_SINK_REG);
+		!isp_ctrl_get_bit(ISP_DMEM_SINK_REG  , ISP_DMEM_SINK_BIT);
 	stall_state->vmem =
-		isp_ctrl_get_bit(ISP_VMEM_SINK_BIT, ISP_VMEM_SINK_REG);
+		!isp_ctrl_get_bit(ISP_VMEM_SINK_REG  , ISP_VMEM_SINK_BIT);
 	stall_state->fifo0 =
-		isp_ctrl_get_bit(ISP_FIFO0_SINK_BIT, ISP_FIFO0_SINK_REG);
+		!isp_ctrl_get_bit(ISP_FIFO0_SINK_REG , ISP_FIFO0_SINK_BIT);
 	stall_state->fifo1 =
-		isp_ctrl_get_bit(ISP_FIFO1_SINK_BIT, ISP_FIFO1_SINK_REG);
+		!isp_ctrl_get_bit(ISP_FIFO1_SINK_REG , ISP_FIFO1_SINK_BIT);
 	stall_state->fifo2 =
-		isp_ctrl_get_bit(ISP_FIFO2_SINK_BIT, ISP_FIFO2_SINK_REG);
+		!isp_ctrl_get_bit(ISP_FIFO2_SINK_REG , ISP_FIFO2_SINK_BIT);
 	stall_state->fifo3 =
-		isp_ctrl_get_bit(ISP_FIFO3_SINK_BIT, ISP_FIFO3_SINK_REG);
+		!isp_ctrl_get_bit(ISP_FIFO3_SINK_REG , ISP_FIFO3_SINK_BIT);
 	stall_state->fifo4 =
-		isp_ctrl_get_bit(ISP_FIFO4_SINK_BIT, ISP_FIFO4_SINK_REG);
+		!isp_ctrl_get_bit(ISP_FIFO4_SINK_REG , ISP_FIFO4_SINK_BIT);
 	stall_state->fifo5 =
-		isp_ctrl_get_bit(ISP_FIFO5_SINK_BIT, ISP_FIFO5_SINK_REG);
+		!isp_ctrl_get_bit(ISP_FIFO5_SINK_REG , ISP_FIFO5_SINK_BIT);
 	stall_state->vamem1 =
-		isp_ctrl_get_bit(ISP_VAMEM1_SINK_BIT, ISP_VAMEM1_SINK_REG);
+		!isp_ctrl_get_bit(ISP_VAMEM1_SINK_REG, ISP_VAMEM1_SINK_BIT);
 	stall_state->vamem2 =
-		isp_ctrl_get_bit(ISP_VAMEM2_SINK_BIT, ISP_VAMEM2_SINK_REG);
+		!isp_ctrl_get_bit(ISP_VAMEM2_SINK_REG, ISP_VAMEM2_SINK_BIT);
 }
 
 static inline unsigned long
@@ -1478,6 +1478,26 @@ sh_css_hrt_fifo_channel_get_state(enum sh_css_fifo_channel channel,
 					SP_STR_MON_PORT_RCV_DMA);
 		state->sink_accept = sh_css_get_sp_stream_stat_accept(
 					SP_STR_MON_PORT_RCV_DMA);
+		break;
+	case sh_css_hrt_fifo_isp_to_gdc:
+		state->src_valid   = sh_css_get_isp_stream_stat_valid(
+					ISP_STR_MON_PORT_SND_GDC);
+		state->fifo_accept = sh_css_get_isp_stream_stat_accept(
+					ISP_STR_MON_PORT_SND_GDC);
+		state->fifo_valid  = sh_css_get_mod_stream_stat_valid(
+					MOD_STR_MON_PORT_RCV_GDC);
+		state->sink_accept = sh_css_get_mod_stream_stat_accept(
+					MOD_STR_MON_PORT_RCV_GDC);
+		break;
+	case sh_css_hrt_fifo_gdc_to_isp:
+		state->fifo_valid  = sh_css_get_mod_stream_stat_valid(
+					MOD_STR_MON_PORT_SND_GDC);
+		state->sink_accept = sh_css_get_mod_stream_stat_accept(
+					MOD_STR_MON_PORT_SND_GDC);
+		state->src_valid   = sh_css_get_isp_stream_stat_valid(
+					ISP_STR_MON_PORT_RCV_GDC);
+		state->fifo_accept = sh_css_get_isp_stream_stat_accept(
+					ISP_STR_MON_PORT_RCV_GDC);
 		break;
 	}
 }

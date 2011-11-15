@@ -61,7 +61,10 @@ enum sh_css_fifo_channel {
 	sh_css_hrt_fifo_dma_to_isp,
 	/* SP <-> DMA */
 	sh_css_hrt_fifo_sp_to_dma,
-	sh_css_hrt_fifo_dma_to_sp
+	sh_css_hrt_fifo_dma_to_sp,
+	/* ISP <-> GDC */
+	sh_css_hrt_fifo_isp_to_gdc,
+	sh_css_hrt_fifo_gdc_to_isp,
 };
 
 enum sh_css_dma_ctrl_state {
