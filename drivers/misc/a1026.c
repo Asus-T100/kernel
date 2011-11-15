@@ -13,46 +13,42 @@
  *
  */
 
-#include <linux/interrupt.h>
+#include <linux/module.h>
+#include <linux/fs.h>
 #include <linux/i2c.h>
 #include <linux/slab.h>
-#include <linux/irq.h>
 #include <linux/miscdevice.h>
-#include <linux/gpio.h>
 #include <linux/uaccess.h>
 #include <linux/delay.h>
-#include <linux/input.h>
-#include <linux/workqueue.h>
-#include <linux/freezer.h>
-#include <linux/a1026.h>
 #include <linux/firmware.h>
 /* FIXME: once sound moves we can fix this */
+/* #include <sound/intel_sst.h> */
 #include "../staging/intel_sst/intel_sst.h"
+#include <linux/a1026.h>
+#include <linux/i2c.h>
 
 #define DEBUG			(0)
 #define ENABLE_DIAG_IOCTLS	(0)
-
+#define ES305_I2C_CMD_FIFO_SIZE	(128) /* Max cmd length on es305 side is 252 */
 /*
  * This driver is based on the eS305-UG-APIGINTEL-V0 2.pdf spec
  * for the eS305 Voice Processor
  */
 
 struct vp_ctxt {
-	unsigned char *data;
-	unsigned int img_size;
 	struct i2c_client *i2c_dev;
 	struct a1026_platform_data *pdata;
+	unsigned long open;
+	int suspended;
+	struct mutex mutex;
 } *es305;
 
 static int execute_cmdmsg(unsigned int msg, struct vp_ctxt *vp);
 static int suspend(struct vp_ctxt *vp);
-static struct mutex a1026_lock;
-static int es305_opened;
-static int es305_suspended;
 
 enum bool {gpio_l, gpio_h};
 
-static int es305_i2c_read(char *rxData, int length, struct vp_ctxt *the_vp)
+static int es305_i2c_read(u8 *rxData, int length, struct vp_ctxt *the_vp)
 {
 	int rc;
 	struct i2c_client *client = the_vp->i2c_dev;
@@ -82,7 +78,7 @@ static int es305_i2c_read(char *rxData, int length, struct vp_ctxt *the_vp)
 	return 0;
 }
 
-static int es305_i2c_write(char *txData, int length, struct vp_ctxt *the_vp)
+static int es305_i2c_write(const u8 *txData, int length, struct vp_ctxt *the_vp)
 {
 	int rc;
 	struct i2c_client *client = the_vp->i2c_dev;
@@ -103,7 +99,7 @@ static int es305_i2c_write(char *txData, int length, struct vp_ctxt *the_vp)
 
 #if DEBUG
 	{
-		int;
+		int i;
 		for (i = 0; i < length; i++)
 			pr_debug("%s: tx[%d] = %2x\n", __func__, i, txData[i]);
 	}
@@ -115,7 +111,7 @@ static int es305_i2c_write(char *txData, int length, struct vp_ctxt *the_vp)
 static void es305_i2c_sw_reset(unsigned int reset_cmd, struct vp_ctxt *vp)
 {
 	int rc;
-	unsigned char msgbuf[4];
+	u8 msgbuf[4];
 
 	msgbuf[0] = (reset_cmd >> 24) & 0xFF;
 	msgbuf[1] = (reset_cmd >> 16) & 0xFF;
@@ -132,28 +128,17 @@ static void es305_i2c_sw_reset(unsigned int reset_cmd, struct vp_ctxt *vp)
 
 static int es305_open(struct inode *inode, struct file *file)
 {
-	int rc = 0;
-	mutex_lock(&a1026_lock);
-	if (es305_opened) {
-		pr_debug("%s: busy\n", __func__);
-		rc = -EBUSY;
-		goto done;
-	}
-	file->private_data = es305;
-	es305->img_size = 0;
-	es305_opened = 1;
-done:
-	mutex_unlock(&a1026_lock);
-	return rc;
-}
+	/* Check if device is already open */
+	if (test_and_set_bit(0, &es305->open))
+		return -EBUSY;
 
+	file->private_data = es305;
+	return 0;
+}
 
 static int es305_release(struct inode *inode, struct file *file)
 {
-	mutex_lock(&a1026_lock);
-	es305_opened = 0;
-	mutex_unlock(&a1026_lock);
-
+	clear_bit(0, &es305->open);
 	return 0;
 }
 
@@ -168,14 +153,14 @@ static int suspend(struct vp_ctxt *vp)
 		goto set_suspend_err;
 	}
 
-	es305_suspended = 1;
+	vp->suspended = 1;
 	msleep(120); /* 120 defined by fig 2 of eS305 as the time to wait
 			before clock gating */
 	rc = intel_sst_set_pll(false, SST_PLL_AUDIENCE);
 	if (rc)
 		pr_err("ipc clk disable command failed: %d\n", rc);
-set_suspend_err:
 
+set_suspend_err:
 	return rc;
 }
 
@@ -185,11 +170,15 @@ static ssize_t es305_bootup_init(struct vp_ctxt *vp)
 	int remaining;
 	int retry = RETRY_CNT;
 	int i;
-	unsigned char *index;
-	char buf[2];
+	const u8 *index;
+	u8 buf[2];
 	const struct firmware *fw_entry;
+	char *firmware_name = vp->pdata->firmware_name;
 
-	if (request_firmware(&fw_entry, "vpimg.bin", &vp->i2c_dev->dev)) {
+	if (firmware_name == NULL || firmware_name[0] == '\0')
+		firmware_name = "vpimg.bin";
+
+	if (request_firmware(&fw_entry, firmware_name, &vp->i2c_dev->dev)) {
 		dev_err(&vp->i2c_dev->dev, "Firmware not available\n");
 		return -EFAULT;
 	}
@@ -234,7 +223,7 @@ static ssize_t es305_bootup_init(struct vp_ctxt *vp)
 		}
 		pr_debug("%s:ACK =  %d\n",
 				__func__, buf[0]);
-		remaining = fw_entry->size;
+		remaining = fw_entry->size / I2C_SMBUS_BLOCK_MAX;
 		index = fw_entry->data;
 
 		pr_debug("%s: starting to load image (%d passes)...\n",
@@ -242,17 +231,17 @@ static ssize_t es305_bootup_init(struct vp_ctxt *vp)
 				remaining);
 
 		for (i = 0; i < remaining; i++) {
-			rc = es305_i2c_write(index, 1, vp);
-			index++;
+			rc = es305_i2c_write(index, I2C_SMBUS_BLOCK_MAX, vp);
+			index += I2C_SMBUS_BLOCK_MAX;
 			if (rc < 0)
 				break;
 		}
-		pr_debug("%s: starting to load image (%s index)...\n",
-				__func__,
-				index);
+		if (rc >= 0 && fw_entry->size % I2C_SMBUS_BLOCK_MAX)
+			rc = es305_i2c_write(index, fw_entry->size %
+				I2C_SMBUS_BLOCK_MAX, vp);
 
 		if (rc < 0) {
-			pr_debug("%s: fw load error %d (%d retries left)\n",
+			pr_err("%s: fw load error %d (%d retries left)\n",
 					__func__, rc, retry);
 			continue;
 		}
@@ -272,8 +261,7 @@ static ssize_t es305_bootup_init(struct vp_ctxt *vp)
 		pass = 1;
 		break;
 	}
-	rc = suspend(vp);
-	if (pass && !rc)
+	if (pass)
 		pr_debug("%s: initialized!\n", __func__);
 	else
 		pr_err("%s: initialization failed\n", __func__);
@@ -286,7 +274,7 @@ static ssize_t chk_wakeup_es305(struct vp_ctxt *the_vp)
 {
 	int rc = 0, retry = 3;
 
-	if (es305_suspended == 1) {
+	if (the_vp->suspended == 1) {
 		the_vp->pdata->wakeup(gpio_l);
 		msleep(120); /* fig 3 eS305 spec.  BUGBUG should be 30 */
 
@@ -300,8 +288,9 @@ static ssize_t chk_wakeup_es305(struct vp_ctxt *the_vp)
 			goto wakeup_sync_err;
 		}
 
-		es305_suspended = 0;
+		the_vp->suspended = 0;
 	}
+
 wakeup_sync_err:
 	return rc;
 }
@@ -310,8 +299,8 @@ int execute_cmdmsg(unsigned int msg, struct vp_ctxt *vp)
 {
 	int rc;
 	int retries, pass = 0;
-	unsigned char msgbuf[4];
-	unsigned char chkbuf[4];
+	u8 msgbuf[4];
+	u8 chkbuf[4];
 	unsigned int sw_reset;
 
 	sw_reset = ((A100_msg_BootloadInitiate << 16) | RESET_IMMEDIATE);
@@ -382,91 +371,118 @@ int execute_cmdmsg(unsigned int msg, struct vp_ctxt *vp)
 	return rc;
 }
 
-
-static ssize_t es305_write(struct file *file, char __user *buff,
+static ssize_t es305_write(struct file *file, const char __user *buff,
 	size_t count, loff_t *offp)
 {
-	int rc, msg_buf_count, i, num_fourbyte;
+	int rc;
+	unsigned int i, j, sw_reset;
+	unsigned int nb_block, nb_sub_block;
+	unsigned int msg_buf_count, size_cmd_snd, remaining;
 	unsigned char *kbuf;
-	unsigned int sw_reset;
 	struct vp_ctxt *the_vp;
+#if DEBUG
 	unsigned char msgbuf[4];
-	int size_cmd_snd = 4;
+#endif
+
+	sw_reset = ((A100_msg_BootloadInitiate << 16) | RESET_IMMEDIATE);
+
+	mutex_lock(&es305->mutex);
 
 	the_vp = file->private_data;
-	if (!the_vp)
-			return -EINVAL;
-	sw_reset = ((A100_msg_BootloadInitiate << 16) | RESET_IMMEDIATE);
+	if (!the_vp) {
+		rc = -EINVAL;
+		goto out_unlock;
+	}
+
 	rc = chk_wakeup_es305(the_vp);
 	if (rc < 0)
-		return rc;
+		goto out_unlock;
+
 	kbuf = kmalloc(count, GFP_KERNEL);
-	if (!kbuf)
-		return -ENOMEM;
+	if (!kbuf) {
+		rc = -ENOMEM;
+		goto out_unlock;
+	}
 
 	if (copy_from_user(kbuf, buff, count)) {
-		kfree(kbuf);
-		return -EFAULT;
+		rc = -EFAULT;
+		goto out_kfree;
 	}
 #if DEBUG
-	{
-
-		size_cmd_snd = count;
 		for (i = 0; i < count; i++)
 			pr_debug("%s: kbuf %x\n", __func__, kbuf[i]);
-	}
 #endif
+	size_cmd_snd = ES305_I2C_CMD_FIFO_SIZE;
 	msg_buf_count = 0;
-	num_fourbyte = count / size_cmd_snd;
-	for (i = 0; i < num_fourbyte ; i++) {
-		rc = es305_i2c_write(&kbuf[msg_buf_count],
-		size_cmd_snd, the_vp);
+	nb_block = count / size_cmd_snd;
+	nb_sub_block = size_cmd_snd / I2C_SMBUS_BLOCK_MAX;
+	for (i = 0; i < nb_block; i++) {
+		for (j = 0; j < nb_sub_block; j++) {
+			rc = es305_i2c_write(&kbuf[msg_buf_count],
+				I2C_SMBUS_BLOCK_MAX, the_vp);
+			if (rc < 0) {
+				pr_err("ES305 CMD block write error!\n");
+				es305_i2c_sw_reset(sw_reset, the_vp);
+				goto out_kfree;
+			}
+			msg_buf_count += I2C_SMBUS_BLOCK_MAX;
+			pr_debug("write OK block %d sub-block %d\n", i, j);
+		}
+		usleep_range(1*USEC_PER_MSEC, 2*USEC_PER_MSEC);
+	}
+
+	remaining = count - msg_buf_count;
+	if (rc >= 0 && remaining) {
+		nb_sub_block = remaining / I2C_SMBUS_BLOCK_MAX;
+		for (i = 0; i < nb_sub_block; i++) {
+			rc = es305_i2c_write(&kbuf[msg_buf_count],
+				I2C_SMBUS_BLOCK_MAX, the_vp);
+			if (rc < 0) {
+				pr_err("ES305 CMD block write error!\n");
+				es305_i2c_sw_reset(sw_reset, the_vp);
+				goto out_kfree;
+			}
+			msg_buf_count += I2C_SMBUS_BLOCK_MAX;
+			remaining -= I2C_SMBUS_BLOCK_MAX;
+			pr_debug("write OK last block sub-block %d\n", i);
+		}
+	}
+
+	if (rc >= 0 && remaining) {
+		rc = es305_i2c_write(&kbuf[msg_buf_count], remaining, the_vp);
 		if (rc < 0) {
 			pr_err("ES305 CMD block write error!\n");
 			es305_i2c_sw_reset(sw_reset, the_vp);
-			kfree(kbuf);
-			return rc;
+			goto out_kfree;
 		}
-		mdelay(1);
-#if DEBUG
-	{
-		memset(msgbuf, 0, sizeof(msgbuf));
-		rc = es305_i2c_read(msgbuf, 4, the_vp);
-		if (rc < 0) {
-			pr_err("ES305 CMD block read error!\n");
-			es305_i2c_sw_reset(sw_reset, the_vp);
-			return rc;
-		}
-		if (!(kbuf[msg_buf_count] == msgbuf[0] &&
-			kbuf[msg_buf_count + 1] == msgbuf[1] &&
-			kbuf[msg_buf_count + 2] == msgbuf[2] &&
-			kbuf[msg_buf_count + 3] == msgbuf[3])) {
-			pr_err("E305 cmd not ack'ed\n");
-			return -ENXIO;
-		}
-			pr_debug("ES305 WRITE:(0x%.2x%.2x%.2x%.2x)\n",
-			kbuf[msg_buf_count], kbuf[msg_buf_count + 1],
-			kbuf[msg_buf_count + 2], kbuf[msg_buf_count + 3]);
-			pr_debug("ES305 READ:(0x%.2x%.2x%.2x%.2x)\n",
-			msgbuf[0], msgbuf[1], msgbuf[2], msgbuf[3]);
-		}
-#endif
-		msg_buf_count += 4;
+		pr_debug("write OK remaining %d\n", remaining);
 	}
+
+	rc = count;
+out_kfree:
 	kfree(kbuf);
-	return count;
+out_unlock:
+	mutex_unlock(&es305->mutex);
+	return rc;
 }
 
-static ssize_t es305_read(struct file *file, char __user *buff,
-	size_t count, loff_t *offp)
+static ssize_t es305_read(struct file *file, char __user *buff, size_t count,
+		loff_t *offp)
 {
-	unsigned char kbuf[4];
+	u8 kbuf[4];
 	struct vp_ctxt *the_vp;
 
+	mutex_lock(&es305->mutex);
+
 	the_vp = file->private_data;
-	if (!the_vp)
+	if (!the_vp) {
+		mutex_unlock(&es305->mutex);
 		return -EINVAL;
+	}
+
 	es305_i2c_read(kbuf, 4, the_vp);
+
+	mutex_unlock(&es305->mutex);
 #if DEBUG
 	{
 		int i;
@@ -476,18 +492,18 @@ static ssize_t es305_read(struct file *file, char __user *buff,
 #endif
 	if (copy_to_user(buff, kbuf, 4))
 		return -EFAULT;
+
 	return 4;
 }
 
-
-
-static long a1026_ioctl(struct file *file, unsigned int cmd,
-			unsigned long arg)
+static long es305_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	struct vp_ctxt *the_vp;
-	void __user *argp = (void __user *)arg;
 	int rc;
-	pr_debug("%s: ioctl start\n", __func__);
+
+	pr_debug("-> %s\n", __func__);
+
+
 	if (file && file->private_data)
 		the_vp = file->private_data;
 	else
@@ -496,16 +512,22 @@ static long a1026_ioctl(struct file *file, unsigned int cmd,
 
 	switch (cmd) {
 	case A1026_BOOTUP_INIT:
+		mutex_lock(&the_vp->mutex);
 		rc = es305_bootup_init(the_vp);
+		mutex_unlock(&the_vp->mutex);
 		break;
 	case A1026_SUSPEND:
+		mutex_lock(&the_vp->mutex);
 		rc = suspend(the_vp);
+		mutex_unlock(&the_vp->mutex);
 		if (rc < 0)
 			pr_err("suspend error\n");
 		break;
 	case A1026_ENABLE_CLOCK:
 		pr_debug("%s:ipc clk enable command\n", __func__);
+		mutex_lock(&the_vp->mutex);
 		rc = intel_sst_set_pll(true, SST_PLL_AUDIENCE);
+		mutex_unlock(&the_vp->mutex);
 		if (rc) {
 			pr_err("ipc clk enable command failed: %d\n", rc);
 			return rc;
@@ -526,7 +548,8 @@ static const struct file_operations a1026_fops = {
 	.release = es305_release,
 	.write = es305_write,
 	.read = es305_read,
-	.unlocked_ioctl = a1026_ioctl,
+	.unlocked_ioctl = es305_ioctl,
+	.llseek = no_llseek,
 };
 
 static struct miscdevice a1026_device = {
@@ -535,12 +558,13 @@ static struct miscdevice a1026_device = {
 	.fops = &a1026_fops,
 };
 
-static int a1026_probe(
-	struct i2c_client *client, const struct i2c_device_id *id)
+static int a1026_probe(struct i2c_client *client,
+		const struct i2c_device_id *id)
 {
 	int rc;
 	struct vp_ctxt *the_vp;
 	struct a1026_platform_data *pdata;
+
 	dev_dbg(&client->dev, "probe\n");
 
 	the_vp = kzalloc(sizeof(struct vp_ctxt), GFP_KERNEL);
@@ -549,6 +573,7 @@ static int a1026_probe(
 		dev_err(&client->dev, "platform data is out of memory\n");
 		goto err_exit;
 	}
+
 	the_vp->i2c_dev = client;
 	i2c_set_clientdata(client, the_vp);
 
@@ -558,12 +583,14 @@ static int a1026_probe(
 		dev_err(&client->dev, "platform data is invalid\n");
 		goto err_kfree;
 	}
+
 	rc = pdata->request_resources(client);
 	if (rc) {
 		dev_err(&client->dev, "Cannot get ressources\n");
 		goto err_kfree;
 	}
-	mutex_init(&a1026_lock);
+
+	mutex_init(&the_vp->mutex);
 	rc = misc_register(&a1026_device);
 	if (rc) {
 		dev_err(&client->dev, "es305_device register failed\n");
@@ -578,7 +605,7 @@ static int a1026_probe(
 	return 0;
 
 err_misc_register:
-	mutex_destroy(&a1026_lock);
+	mutex_destroy(&the_vp->mutex);
 err_kfree:
 	kfree(the_vp);
 	i2c_set_clientdata(client, NULL);
@@ -589,10 +616,9 @@ err_exit:
 static int a1026_remove(struct i2c_client *client)
 {
 	misc_deregister(&a1026_device);
-	mutex_destroy(&a1026_lock);
+	mutex_destroy(&es305->mutex);
 	kfree(i2c_get_clientdata(client));
 	i2c_set_clientdata(client, NULL);
-
 	return 0;
 }
 

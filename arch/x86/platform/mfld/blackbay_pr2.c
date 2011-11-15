@@ -21,6 +21,7 @@
 #include <linux/input/lis3dh.h>
 #include <linux/ms5607.h>
 #include <linux/atmel_mxt224.h>
+#include <linux/a1026.h>
 
 static u8 mxt_valid_interrupt(void)
 {
@@ -77,6 +78,92 @@ static struct lis3dh_acc_platform_data lis3dh_pdata = {
 	.gpio_int2 = 61,
 };
 
+/* AUDIENCE es305 PLATFORM DATA */
+#define AUDIENCE_WAKEUP_GPIO               "audience-wakeup"
+#define AUDIENCE_RESET_GPIO                 "audience-reset"
+/* FIXME: Although a1026_platform_data has defined gpio number, but don't know
+ * why add reset/wakeup function in the platform_data structure.
+ * Currently set the gpio a fixed number, after changed driver code,
+ * will remove below global define */
+#define A1026_WAKEUP_GPIO	159
+#define A1026_RESET_GPIO	111
+
+static int audience_request_resources(struct i2c_client *client)
+{
+	struct a1026_platform_data *pdata = (struct a1026_platform_data *)
+		client->dev.platform_data;
+	int ret;
+
+	pr_debug("Audience: request ressource audience\n");
+	if (!pdata)
+		return -1;
+	ret = gpio_request(pdata->gpio_a1026_wakeup, AUDIENCE_WAKEUP_GPIO);
+	if (ret) {
+		dev_err(&client->dev, "Request AUDIENCE WAKEUP GPIO %d fails %d\n",
+			pdata->gpio_a1026_wakeup, ret);
+		return -1;
+	}
+	ret = gpio_direction_output(pdata->gpio_a1026_wakeup, 0);
+	if (ret) {
+		dev_err(&client->dev, "Set GPIO Direction fails %d\n", ret);
+		goto err_wake;
+	}
+
+	ret = gpio_request(pdata->gpio_a1026_reset, AUDIENCE_RESET_GPIO);
+	if (ret) {
+		dev_err(&client->dev,
+				"Request for Audience reset GPIO %d fails %d\n",
+					pdata->gpio_a1026_reset, ret);
+		goto err_wake;
+	}
+	ret = gpio_direction_output(pdata->gpio_a1026_reset, 0);
+	if (ret) {
+		dev_err(&client->dev, "Set GPIO Direction fails %d\n", ret);
+		goto err_reset;
+	}
+	if (mfld_board_id() == MFLD_BID_PR3 ||
+			mfld_board_id() == MFLD_BID_PR3_PNP)
+		sprintf(pdata->firmware_name, "%s", "vpimg_es305b.bin");
+	else
+		sprintf(pdata->firmware_name, "%s", "vpimg.bin");
+
+	return 0;
+err_reset:
+	gpio_free(pdata->gpio_a1026_reset);
+err_wake:
+	gpio_free(pdata->gpio_a1026_wakeup);
+	return -1;
+}
+
+static void audience_free_resources(struct i2c_client *client)
+{
+	struct a1026_platform_data *pdata = (struct a1026_platform_data *)
+		&client->dev.platform_data;
+
+	gpio_free(pdata->gpio_a1026_wakeup);
+	gpio_free(pdata->gpio_a1026_reset);
+}
+
+static void audience_wake_up(bool state)
+{
+	gpio_set_value(A1026_WAKEUP_GPIO, state);
+	pr_debug("Audience: WAKE UP %d\n", state);
+}
+
+static void audience_reset(bool state)
+{
+	gpio_set_value(A1026_RESET_GPIO, state);
+	pr_debug("Audience: RESET %d\n", state);
+}
+
+static struct a1026_platform_data mfld_audience_platform_data = {
+	.gpio_a1026_wakeup	= A1026_WAKEUP_GPIO,
+	.gpio_a1026_reset	= A1026_RESET_GPIO,
+	.request_resources	= audience_request_resources,
+	.wakeup			= audience_wake_up,
+	.reset			= audience_reset,
+};
+
 static struct ms5607_platform_data baro_pdata = {
 	.poll_interval = 100,
 	.min_interval  = 0,
@@ -112,6 +199,12 @@ static struct i2c_board_info pr2_i2c_bus5_devs[] = {
 		.type		= "als",
 		.irq		= LTR502_GPIO,
 		.addr		= 0x1d,
+	},
+	{
+		.type		= "audience_es305",
+		.irq		= 0xff,
+		.addr		= 0x3e,
+		.platform_data	= &mfld_audience_platform_data,
 	},
 };
 
