@@ -894,6 +894,10 @@ void mrst_get_fuse_settings(struct drm_device *dev)
 #if  KSEL_CRYSTAL_19_ENABLED
 		dev_priv->ksel = KSEL_CRYSTAL_19;
 #endif /*  KSEL_CRYSTAL_19_ENABLED */
+
+#if  KSEL_CRYSTAL_38_ENABLED
+		dev_priv->ksel = KSEL_CRYSTAL_38;
+#endif /*  KSEL_CRYSTAL_38_ENABLED */
 	}
 
 	return;

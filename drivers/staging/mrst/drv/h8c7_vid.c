@@ -589,11 +589,11 @@ struct drm_display_mode *h8c7_get_config_mode(struct drm_device *dev)
 	} else {
 		mode->hdisplay = 720;
 		mode->vdisplay = 1280;
-		mode->hsync_start = 752;
-		mode->hsync_end = 760;
+		mode->hsync_start = 816;
+		mode->hsync_end = 824;
 		mode->htotal = 920;
 		mode->vsync_start = 1284;
-		mode->vsync_end = 1294;
+		mode->vsync_end = 1286;
 		mode->vtotal = 1300;
 		mode->vrefresh = 60;
 		mode->clock =  mode->vrefresh * mode->vtotal *

@@ -32,14 +32,20 @@
 /* MDFLD MIPI panels only one of them can be set to 1 */
 
 /* MDFLD KSEL only one of them can be set to 1 */ 
+#ifdef CONFIG_DRM_CTP
+#define KSEL_CRYSTAL_19_ENABLED 0
+#define KSEL_CRYSTAL_38_ENABLED 1
+#else
 #define KSEL_CRYSTAL_19_ENABLED 1
-#define KSEL_BYPASS_19_ENABLED 0
+#define KSEL_CRYSTAL_38_ENABLED 0
+#endif
 #define KSEL_BYPASS_25_ENABLED 0
 #define KSEL_BYPASS_83_100_ENABLE 0
 
 #define KSEL_CRYSTAL_19 1
 #define KSEL_BYPASS_19 5
 #define KSEL_BYPASS_25 6
+#define KSEL_CRYSTAL_38 3
 #define KSEL_BYPASS_83_100 7
 /*
  * MOORESTOWN defines

@@ -1282,6 +1282,7 @@ static int __dpi_panel_power_on(struct mdfld_dsi_config *dsi_config,
 			REG_WRITE(regs->dpll_reg, ((ctx->dpll) & ~BIT30));
 
 			/* FIXME WA for CTP PO */
+			#if 0
 			if (IS_CTP(dev)) {
 				REG_WRITE(regs->fp_reg, 0x179);
 				REG_WRITE(regs->dpll_reg, 0x100000);
@@ -1290,6 +1291,7 @@ static int __dpi_panel_power_on(struct mdfld_dsi_config *dsi_config,
 				REG_WRITE(regs->dpll_reg, 0x800000);
 #endif
 			}
+			#endif
 
 			udelay(2);
 			val = REG_READ(regs->dpll_reg);

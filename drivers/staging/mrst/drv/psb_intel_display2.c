@@ -999,12 +999,14 @@ static void mdfld_crtc_dpms(struct drm_crtc *crtc, int mode)
 
 #define MDFLD_LIMT_DPLL_19	    0
 #define MDFLD_LIMT_DPLL_25	    1
-#define MDFLD_LIMT_DPLL_83	    2
-#define MDFLD_LIMT_DPLL_100	    3
-#define MDFLD_LIMT_DSIPLL_19	    4
-#define MDFLD_LIMT_DSIPLL_25	    5
-#define MDFLD_LIMT_DSIPLL_83	    6
-#define MDFLD_LIMT_DSIPLL_100	    7
+#define MDFLD_LIMT_DPLL_38	    2
+#define MDFLD_LIMT_DPLL_83	    3
+#define MDFLD_LIMT_DPLL_100	    4
+#define MDFLD_LIMT_DSIPLL_19	    5
+#define MDFLD_LIMT_DSIPLL_25	    6
+#define MDFLD_LIMT_DSIPLL_38	    7
+#define MDFLD_LIMT_DSIPLL_83	    8
+#define MDFLD_LIMT_DSIPLL_100	    9
 
 #define MDFLD_DOT_MIN		  19750
 #define MDFLD_DOT_MAX		  120000
@@ -1016,6 +1018,10 @@ static void mdfld_crtc_dpms(struct drm_crtc *crtc, int mode)
 #define MDFLD_DPLL_M_MAX_25	    130
 #define MDFLD_DPLL_P1_MIN_25	    2
 #define MDFLD_DPLL_P1_MAX_25	    10
+#define MDFLD_DPLL_M_MIN_38        113
+#define MDFLD_DPLL_M_MAX_38        155
+#define MDFLD_DPLL_P1_MIN_38       2
+#define MDFLD_DPLL_P1_MAX_38       10
 #define MDFLD_DPLL_M_MIN_83	    64
 #define MDFLD_DPLL_M_MAX_83	    64
 #define MDFLD_DPLL_P1_MIN_83	    2
@@ -1032,6 +1038,10 @@ static void mdfld_crtc_dpms(struct drm_crtc *crtc, int mode)
 #define MDFLD_DSIPLL_M_MAX_25	    140
 #define MDFLD_DSIPLL_P1_MIN_25	    3
 #define MDFLD_DSIPLL_P1_MAX_25	    9
+#define MDFLD_DSIPLL_M_MIN_38      66
+#define MDFLD_DSIPLL_M_MAX_38      87
+#define MDFLD_DSIPLL_P1_MIN_38     3
+#define MDFLD_DSIPLL_P1_MAX_38     8
 #define MDFLD_DSIPLL_M_MIN_83	    33
 #define MDFLD_DSIPLL_M_MAX_83	    92
 #define MDFLD_DSIPLL_P1_MIN_83	    2
@@ -1052,6 +1062,11 @@ static const struct mrst_limit_t mdfld_limits[] = {
 	 .m = {.min = MDFLD_DPLL_M_MIN_25, .max = MDFLD_DPLL_M_MAX_25},
 	 .p1 = {.min = MDFLD_DPLL_P1_MIN_25, .max = MDFLD_DPLL_P1_MAX_25},
 	 },
+	{			/* MDFLD_LIMT_DPLL_38 */
+	 .dot = {.min = MDFLD_DOT_MIN, .max = MDFLD_DOT_MAX},
+	 .m = {.min = MDFLD_DPLL_M_MIN_38, .max = MDFLD_DPLL_M_MAX_38},
+	 .p1 = {.min = MDFLD_DPLL_P1_MIN_38, .max = MDFLD_DPLL_P1_MAX_38},
+	 },
 	{			/* MDFLD_LIMT_DPLL_83 */
 	 .dot = {.min = MDFLD_DOT_MIN, .max = MDFLD_DOT_MAX},
 	 .m = {.min = MDFLD_DPLL_M_MIN_83, .max = MDFLD_DPLL_M_MAX_83},
@@ -1071,6 +1086,11 @@ static const struct mrst_limit_t mdfld_limits[] = {
 	 .dot = {.min = MDFLD_DOT_MIN, .max = MDFLD_DOT_MAX},
 	 .m = {.min = MDFLD_DSIPLL_M_MIN_25, .max = MDFLD_DSIPLL_M_MAX_25},
 	 .p1 = {.min = MDFLD_DSIPLL_P1_MIN_25, .max = MDFLD_DSIPLL_P1_MAX_25},
+	 },
+	{			/* MDFLD_LIMT_DSIPLL_38 */
+	 .dot = {.min = MDFLD_DOT_MIN, .max = MDFLD_DOT_MAX},
+	 .m = {.min = MDFLD_DSIPLL_M_MIN_38, .max = MDFLD_DSIPLL_M_MAX_38},
+	 .p1 = {.min = MDFLD_DSIPLL_P1_MIN_38, .max = MDFLD_DSIPLL_P1_MAX_38},
 	 },
 	{			/* MDFLD_LIMT_DSIPLL_83 */
 	 .dot = {.min = MDFLD_DOT_MIN, .max = MDFLD_DOT_MAX},
@@ -1118,6 +1138,8 @@ static const struct mrst_limit_t *mdfld_limit(struct drm_crtc *crtc)
 			limit = &mdfld_limits[MDFLD_LIMT_DSIPLL_19];
 		else if (dev_priv->ksel == KSEL_BYPASS_25)
 			limit = &mdfld_limits[MDFLD_LIMT_DSIPLL_25];
+		else if (dev_priv->ksel == KSEL_CRYSTAL_38)
+			limit = &mdfld_limits[MDFLD_LIMT_DSIPLL_38];
 		else if ((dev_priv->ksel == KSEL_BYPASS_83_100) && (dev_priv->core_freq == 166))
 			limit = &mdfld_limits[MDFLD_LIMT_DSIPLL_83];
 		else if ((dev_priv->ksel == KSEL_BYPASS_83_100) &&
@@ -1128,6 +1150,8 @@ static const struct mrst_limit_t *mdfld_limit(struct drm_crtc *crtc)
 			limit = &mdfld_limits[MDFLD_LIMT_DPLL_19];
 		else if (dev_priv->ksel == KSEL_BYPASS_25)
 			limit = &mdfld_limits[MDFLD_LIMT_DPLL_25];
+		else if (dev_priv->ksel == KSEL_CRYSTAL_38)
+			limit = &mdfld_limits[MDFLD_LIMT_DPLL_38];
 		else if ((dev_priv->ksel == KSEL_BYPASS_83_100) && (dev_priv->core_freq == 166))
 			limit = &mdfld_limits[MDFLD_LIMT_DPLL_83];
 		else if ((dev_priv->ksel == KSEL_BYPASS_83_100) &&
@@ -1205,6 +1229,9 @@ static int mdfld_crtc_dsi_pll_calc(struct drm_crtc *crtc,
 	} else if (dev_priv->ksel == KSEL_BYPASS_25) {
 		refclk = 25000;
 		clk_n = 1, clk_p2 = 8;
+	} else if (dev_priv->ksel == KSEL_CRYSTAL_38) {
+		refclk = 38400;
+		clk_n = 1, clk_p2 = 8;
 	} else if ((dev_priv->ksel == KSEL_BYPASS_83_100) && (dev_priv->core_freq == 166)) {
 		refclk = 83000;
 		clk_n = 4, clk_p2 = 8;
@@ -1253,6 +1280,7 @@ static int mdfld_crtc_dsi_pll_calc(struct drm_crtc *crtc,
 	ctx->dpll = dpll;
 	ctx->fp = fp;
 
+	PSB_DEBUG_ENTRY("dsi dpll = 0x%x  fp = 0x%x\n", dpll, fp);
 	return 0;
 }
 
@@ -1653,6 +1681,14 @@ static int mdfld_crtc_mode_set(struct drm_crtc *crtc,
 			} else if (is_hdmi) {
 				clk_n = 1, clk_p2 = 10;
 			}
+		} else if (dev_priv->ksel == KSEL_CRYSTAL_38) {
+			refclk = 38400;
+
+			if (is_mipi || is_mipi2) {
+				clk_n = 1, clk_p2 = 8;
+			} else if (is_hdmi) {
+				clk_n = 2, clk_p2 = 10;
+			}
 		} else if ((dev_priv->ksel == KSEL_BYPASS_83_100) && (dev_priv->core_freq == 166)) {
 			refclk = 83000;
 
@@ -1746,6 +1782,9 @@ static int mdfld_crtc_mode_set(struct drm_crtc *crtc,
 #if 0 /* 1080p30 & 720p */
         	dpll = 0x00050000;
         	fp = 0x000001be;
+		/* In case clocking issues try value below for CTP.
+		Please keep this one for reference. */
+		fp = 0x000101be;
 #endif
 #if 0 /* 480p */
         	dpll = 0x02010000;
