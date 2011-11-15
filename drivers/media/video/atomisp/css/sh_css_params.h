@@ -131,6 +131,13 @@ sh_css_set_de_config(const struct sh_css_de_config *de_config);
 void
 sh_css_get_de_config(const struct sh_css_de_config **de_config);
 
+/* Color Enhancement */
+void
+sh_css_set_ce_config(const struct sh_css_ce_config *ce_config);
+
+void
+sh_css_get_ce_config(const struct sh_css_ce_config **ce_config);
+
 /* Gamma Correction */
 void
 sh_css_set_gc_config(const struct sh_css_gc_config *gc_config);

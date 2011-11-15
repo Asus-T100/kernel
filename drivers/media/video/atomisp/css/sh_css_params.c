@@ -95,6 +95,7 @@ static const struct sh_css_ee_config     *ee_config;
 static const struct sh_css_de_config     *de_config;
 static const struct sh_css_gc_config     *gc_config;
 static const struct sh_css_anr_config    *anr_config;
+static const struct sh_css_ce_config     *ce_config;
 static bool isp_params_changed,
 	    fpn_table_changed,
 	    dis_coef_table_changed,
@@ -113,7 +114,8 @@ static bool isp_params_changed,
 	    ee_config_changed,
 	    de_config_changed,
 	    gc_config_changed,
-	    anr_config_changed;
+	    anr_config_changed,
+	    ce_config_changed;
 
 static size_t fpn_tbl_size,
 	      sc_tbl_size,
@@ -614,6 +616,11 @@ static const struct sh_css_gc_config disabled_gc_config = {
 
 static const struct sh_css_anr_config default_anr_config = {
 	.threshold   = 5,
+};
+
+static const struct sh_css_ce_config default_ce_config = {
+	.uv_level_min = 0,
+	.uv_level_max = 255
 };
 
 int
@@ -1208,6 +1215,15 @@ sh_css_process_anr(void)
 	anr_config_changed = false;
 }
 
+static void
+sh_css_process_ce(void)
+{
+	isp_parameters.ce_uv_level_min = ce_config->uv_level_min;
+	isp_parameters.ce_uv_level_max = ce_config->uv_level_max;
+	isp_params_changed = true;
+	ce_config_changed = false;
+}
+
 void
 sh_css_set_gamma_table(const struct sh_css_gamma_table *table)
 {
@@ -1542,6 +1558,22 @@ sh_css_get_anr_config(const struct sh_css_anr_config **config)
 	*config = anr_config;
 }
 
+void
+sh_css_set_ce_config(const struct sh_css_ce_config *config)
+{
+	if (config)
+		ce_config = config;
+	else
+		ce_config = &default_ce_config;
+	ce_config_changed = true;
+}
+
+void
+sh_css_get_ce_config(const struct sh_css_ce_config **config)
+{
+	*config = ce_config;
+}
+
 static bool
 alloc(void **ptr, unsigned int bytes)
 {
@@ -1733,6 +1765,7 @@ sh_css_params_init(void)
 	sh_css_set_de_config(&default_de_config);
 	sh_css_set_gc_config(&default_gc_config);
 	sh_css_set_anr_config(&default_anr_config);
+	sh_css_set_ce_config(&default_ce_config);
 	sh_css_set_macc_table(&default_macc_table);
 	sh_css_set_gamma_table(&default_gamma_table);
 	sh_css_set_ctc_table(&default_ctc_table);
@@ -1906,6 +1939,8 @@ sh_css_params_write_to_ddr(const struct sh_css_binary *binary)
 		sh_css_process_gc();
 	if (anr_config && anr_config_changed)
 		sh_css_process_anr();
+	if (ce_config && ce_config_changed)
+		sh_css_process_ce();
 
 	if (isp_params_changed) {
 		if (SH_CSS_PREVENT_UNINIT_READS) {

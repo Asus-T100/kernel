@@ -628,6 +628,11 @@ struct sh_css_anr_config {
 	int threshold;
 };
 
+struct sh_css_ce_config {
+	u0_16 uv_level_min;
+	u0_16 uv_level_max;
+};
+
 struct sh_css_3a_config {
 	u0_16 ae_y_coef_r;	/* [gain] Weight of R for Y */
 	u0_16 ae_y_coef_g;	/* [gain] Weight of G for Y */

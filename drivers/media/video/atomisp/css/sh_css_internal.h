@@ -133,6 +133,10 @@ struct sh_css_isp_params {
 
 	/* ANR (Advance Noise Reduction) */
 	int anr_threshold;
+
+	/* CE (Chroma Enhancement) */
+	int ce_uv_level_min;
+	int ce_uv_level_max;
 };
 
 /* xmem address map allocation */
