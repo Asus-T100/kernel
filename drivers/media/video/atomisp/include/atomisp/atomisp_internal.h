@@ -164,6 +164,7 @@ struct atomisp_css_params {
 	const struct sh_css_ee_config   *default_ee_config;
 	const struct sh_css_ob_config   *default_ob_config;
 	const struct sh_css_de_config   *default_de_config;
+	const struct sh_css_ce_config   *default_ce_config;
 	const struct sh_css_gc_config   *default_gc_config;
 	const struct sh_css_tnr_config  *default_tnr_config;
 	const struct sh_css_3a_config   *default_3a_config;
@@ -179,6 +180,7 @@ struct atomisp_css_params {
 	struct sh_css_ee_config   ee_config;
 	struct sh_css_ob_config   ob_config;
 	struct sh_css_de_config   de_config;
+	struct sh_css_ce_config   ce_config;
 	struct sh_css_gc_config   gc_config;
 	struct sh_css_tnr_config  tnr_config;
 	struct sh_css_3a_config   s3a_config;

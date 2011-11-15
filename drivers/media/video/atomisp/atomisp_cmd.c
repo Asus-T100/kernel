@@ -2029,6 +2029,8 @@ int atomisp_param(struct atomisp_device *isp, int flag,
 		goto INVALID_PARM;
 	if (sizeof(arg->de_config) != sizeof(isp->params.de_config))
 		goto INVALID_PARM;
+	if (sizeof(arg->ce_config) != sizeof(isp->params.ce_config))
+		goto INVALID_PARM;
 	if (sizeof(arg->dp_config) != sizeof(isp->params.dp_config))
 		goto INVALID_PARM;
 	if (sizeof(arg->nr_config) != sizeof(isp->params.nr_config))
@@ -2046,6 +2048,8 @@ int atomisp_param(struct atomisp_device *isp, int flag,
 	       sizeof(struct sh_css_dp_config));
 	memcpy(&isp->params.de_config, &arg->de_config,
 	       sizeof(struct sh_css_de_config));
+	memcpy(&isp->params.ce_config, &arg->ce_config,
+	       sizeof(struct sh_css_ce_config));
 	memcpy(&isp->params.nr_config, &arg->nr_config,
 	       sizeof(struct sh_css_nr_config));
 	memcpy(&isp->params.ee_config, &arg->ee_config,
@@ -2072,6 +2076,7 @@ int atomisp_param(struct atomisp_device *isp, int flag,
 	sh_css_set_wb_config(&isp->params.wb_config);
 	sh_css_set_ob_config(&isp->params.ob_config);
 	sh_css_set_de_config(&isp->params.de_config);
+	sh_css_set_ce_config(&isp->params.ce_config);
 	sh_css_set_dp_config(&isp->params.dp_config);
 	sh_css_set_nr_config(&isp->params.nr_config);
 	sh_css_set_ee_config(&isp->params.ee_config);

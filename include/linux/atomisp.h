@@ -184,6 +184,12 @@ struct atomisp_de_config {
 	unsigned int c2_coring_threshold;
 };
 
+/* Chroma enhancement */
+struct atomisp_ce_config {
+	unsigned int uv_level_min;
+	unsigned int uv_level_max;
+};
+
 /* Defect pixel correction configuration */
 struct atomisp_dp_config {
 	/* [intensity] The threshold of defect Pixel Correction, representing
@@ -204,6 +210,7 @@ struct atomisp_parm {
 	struct atomisp_cc_config cc_config;
 	struct atomisp_ob_config ob_config;
 	struct atomisp_de_config de_config;
+	struct atomisp_ce_config ce_config;
 	struct atomisp_dp_config dp_config;
 	struct atomisp_nr_config nr_config;
 	struct atomisp_ee_config ee_config;
