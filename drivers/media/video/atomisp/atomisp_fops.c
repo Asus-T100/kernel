@@ -26,8 +26,10 @@
 #include "atomisp_fops.h"
 #include "atomisp_common.h"
 #include "hrt/hive_isp_css_mm_hrt.h"
+#include "css/sh_css_debug.h"
 
-#define ISP_LEFT_PAD	128	/* equal to 2*NWAY */
+#define ISP_LEFT_PAD			128	/* equal to 2*NWAY */
+#define CSS_DTRACE_VERBOSITY_LEVEL	5	/* Controls trace verbosity */
 
 /*
  * input image data, and current frame resolution for test
@@ -338,6 +340,12 @@ static int atomisp_open(struct file *file)
 	/* CSS has default zoom factor of 61x61, we want no zoom
 	   because the zoom binary for capture is broken (XNR). */
 	sh_css_set_zoom_factor(64, 64);
+
+	/* Initialize the CSS debug trace verbosity level. To change
+	 * the verbosity level, change the definition of this macro
+	 * up in the file
+	 */
+	sh_css_set_dtrace_level(CSS_DTRACE_VERBOSITY_LEVEL);
 
 	atomisp_init_struct(isp);
 

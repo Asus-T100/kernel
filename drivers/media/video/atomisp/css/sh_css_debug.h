@@ -26,6 +26,36 @@
 
 #include "sh_css_types.h"
 
+/* Global variable which controls the verbosity levels of the debug tracing */
+extern unsigned int sh_css_trace_level;
+
+/* The following macro definition allows us to direct the debug trace messages
+ * to the Linux kernel trace buffer using the ftrace mechanism. The ftrace
+ * mechanism is preferred over the usual prink based messages because it is
+ * not bound to a console and its efficiency is many holds higher than the
+ * printk mechanism. When we are not in the Linux kernel, we depend upon the
+ * CSS print function to dump these traces. We need the __KERNEL__ macro
+ * because the same code is compiled also in the Silicon Hive simulation
+ * environnment
+ */
+#ifdef __KERNEL__
+#include <linux/kernel.h>
+#define sh_css_dtrace(level, format, args...)          \
+	do {                                           \
+		if (sh_css_trace_level >= level)       \
+			trace_printk(format, ## args); \
+	} while (0)
+#else
+#define sh_css_dtrace(level, format, args...)          \
+	do {                                           \
+		if (sh_css_trace_level >= level)       \
+			sh_css_print(format, ## args); \
+	} while (0)
+#endif
+
+/* Function to set the global dtrace verbosity level */
+void sh_css_set_dtrace_level(unsigned int trace_level);
+
 void sh_css_dump_if_state(void);
 void sh_css_dump_isp_state(void);
 void sh_css_dump_sp_state(void);

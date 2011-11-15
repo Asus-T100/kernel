@@ -27,17 +27,25 @@
 #include "sh_css_internal.h"
 #include "sh_css_rx.h"
 
+/* Global variable to store the dtrace verbosity level */
+unsigned int sh_css_trace_level;
+
+void sh_css_set_dtrace_level(unsigned int trace_level)
+{
+	sh_css_trace_level = trace_level;
+}
+
 static void
 print_cell_state(struct sh_css_cell_state *state, const char *cell)
 {
-	sh_css_print("%s state:\n", cell);
-	sh_css_print("\t%-32s: 0x%X\n", "PC", state->pc);
-	sh_css_print("\t%-32s: 0x%X\n", "Status register",
+	sh_css_dtrace(2, "%s state:\n", cell);
+	sh_css_dtrace(2, "\t%-32s: 0x%X\n", "PC", state->pc);
+	sh_css_dtrace(2, "\t%-32s: 0x%X\n", "Status register",
 			state->status_register);
-	sh_css_print("\t%-32s: %d\n", "Is broken", state->is_broken);
-	sh_css_print("\t%-32s: %d\n", "Is idle", state->is_idle);
-	sh_css_print("\t%-32s: %d\n", "Is sleeping", state->is_sleeping);
-	sh_css_print("\t%-32s: %d\n", "Is stalling", state->is_stalling);
+	sh_css_dtrace(2, "\t%-32s: %d\n", "Is broken", state->is_broken);
+	sh_css_dtrace(2, "\t%-32s: %d\n", "Is idle", state->is_idle);
+	sh_css_dtrace(2, "\t%-32s: %d\n", "Is sleeping", state->is_sleeping);
+	sh_css_dtrace(2, "\t%-32s: %d\n", "Is stalling", state->is_stalling);
 }
 
 void
@@ -51,27 +59,27 @@ sh_css_dump_isp_state(void)
 	print_cell_state(&state, "ISP");
 
 	if (state.is_stalling) {
-		sh_css_print("\t%-32s: %d\n", "[0] if_prim_A_FIFO stalled",
+		sh_css_dtrace(2, "\t%-32s: %d\n", "[0] if_prim_A_FIFO stalled",
 				stall_state.fifo0);
-		sh_css_print("\t%-32s: %d\n", "[1] if_prim_b_FIFO stalled",
+		sh_css_dtrace(2, "\t%-32s: %d\n", "[1] if_prim_b_FIFO stalled",
 				stall_state.fifo1);
-		sh_css_print("\t%-32s: %d\n", "[2] dma_FIFO stalled",
+		sh_css_dtrace(2, "\t%-32s: %d\n", "[2] dma_FIFO stalled",
 				stall_state.fifo2);
-		sh_css_print("\t%-32s: %d\n", "[3] gdc_FIFO stalled",
+		sh_css_dtrace(2, "\t%-32s: %d\n", "[3] gdc_FIFO stalled",
 				stall_state.fifo3);
-		sh_css_print("\t%-32s: %d\n", "[4] gpio_FIFO stalled",
+		sh_css_dtrace(2, "\t%-32s: %d\n", "[4] gpio_FIFO stalled",
 				stall_state.fifo4);
-		sh_css_print("\t%-32s: %d\n", "[5] sp_FIFO stalled",
+		sh_css_dtrace(2, "\t%-32s: %d\n", "[5] sp_FIFO stalled",
 				stall_state.fifo5);
-		sh_css_print("\t%-32s: %d\n", "status & control stalled",
+		sh_css_dtrace(2, "\t%-32s: %d\n", "status & control stalled",
 				stall_state.stat_ctrl);
-		sh_css_print("\t%-32s: %d\n", "dmem stalled",
+		sh_css_dtrace(2, "\t%-32s: %d\n", "dmem stalled",
 				stall_state.dmem);
-		sh_css_print("\t%-32s: %d\n", "vmem stalled",
+		sh_css_dtrace(2, "\t%-32s: %d\n", "vmem stalled",
 				stall_state.vmem);
-		sh_css_print("\t%-32s: %d\n", "vamem1 stalled",
+		sh_css_dtrace(2, "\t%-32s: %d\n", "vamem1 stalled",
 				stall_state.vamem1);
-		sh_css_print("\t%-32s: %d\n", "vamem2 stalled",
+		sh_css_dtrace(2, "\t%-32s: %d\n", "vamem2 stalled",
 				stall_state.vamem2);
 	}
 }
@@ -84,27 +92,27 @@ sh_css_dump_sp_state(void)
 	sh_css_hrt_sp_get_state(&state, &stall_state);
 	print_cell_state(&state, "SP");
 	if (state.is_stalling) {
-		sh_css_print("\t%-32s: %d\n", "if_prim_FIFO stalled",
+		sh_css_dtrace(2, "\t%-32s: %d\n", "if_prim_FIFO stalled",
 				stall_state.fifo0);
-		sh_css_print("\t%-32s: %d\n", "if_sec_FIFO stalled",
+		sh_css_dtrace(2, "\t%-32s: %d\n", "if_sec_FIFO stalled",
 				stall_state.fifo1);
-		sh_css_print("\t%-32s: %d\n", "str_to_mem_FIFO stalled",
+		sh_css_dtrace(2, "\t%-32s: %d\n", "str_to_mem_FIFO stalled",
 				stall_state.fifo2);
-		sh_css_print("\t%-32s: %d\n", "dma_FIFO stalled",
+		sh_css_dtrace(2, "\t%-32s: %d\n", "dma_FIFO stalled",
 				stall_state.fifo3);
-		sh_css_print("\t%-32s: %d\n", "gdc_FIFO stalled",
+		sh_css_dtrace(2, "\t%-32s: %d\n", "gdc_FIFO stalled",
 				stall_state.fifo4);
-		sh_css_print("\t%-32s: %d\n", "isp_FIFO stalled",
+		sh_css_dtrace(2, "\t%-32s: %d\n", "isp_FIFO stalled",
 				stall_state.fifo5);
-		sh_css_print("\t%-32s: %d\n", "gp_FIFO stalled",
+		sh_css_dtrace(2, "\t%-32s: %d\n", "gp_FIFO stalled",
 				stall_state.fifo6);
-		sh_css_print("\t%-32s: %d\n", "if_prim_b_FIFO stalled",
+		sh_css_dtrace(2, "\t%-32s: %d\n", "if_prim_b_FIFO stalled",
 				stall_state.fifo7);
-		sh_css_print("\t%-32s: %d\n", "dmem stalled",
+		sh_css_dtrace(2, "\t%-32s: %d\n", "dmem stalled",
 				stall_state.dmem);
-		sh_css_print("\t%-32s: %d\n", "control master stalled",
+		sh_css_dtrace(2, "\t%-32s: %d\n", "control master stalled",
 				stall_state.control_master);
-		sh_css_print("\t%-32s: %d\n", "i-cache master stalled",
+		sh_css_dtrace(2, "\t%-32s: %d\n", "i-cache master stalled",
 				stall_state.icache_master);
 	}
 }
@@ -136,28 +144,44 @@ print_if_state(struct sh_css_if_state *state)
 	int         st_vmincr = state->vmem_increment;
 	int         st_yuv420 = state->yuv420;
 
-	sh_css_print("InputFormatter State:\n");
+	sh_css_dtrace(2, "InputFormatter State:\n");
 
-	sh_css_print("\tConfiguration:\n");
+	sh_css_dtrace(2, "\tConfiguration:\n");
 
-	sh_css_print("\t\t%-32s: %s\n"       , "Software reset"    , st_reset);
-	sh_css_print("\t\t%-32s: %d\n"       , "Start line"        , st_stline);
-	sh_css_print("\t\t%-32s: %d\n"       , "Start column"      , st_stcol);
-	sh_css_print("\t\t%-32s: %d\n"       , "Cropped height"    , st_crpht);
-	sh_css_print("\t\t%-32s: %d\n"       , "Cropped width"     , st_crpwd);
-	sh_css_print("\t\t%-32s: %d\n"       , "Ver decimation"    , st_verdcm);
-	sh_css_print("\t\t%-32s: %d\n"       , "Hor decimation"    , st_hordcm);
-	sh_css_print("\t\t%-32s: %d\n"       , "Deinterleaving"    , st_deintr);
-	sh_css_print("\t\t%-32s: %d\n"       , "Left padding"      , st_leftpd);
-	sh_css_print("\t\t%-32s: %d\n"       , "EOL offset (bytes)", st_eoloff);
-	sh_css_print("\t\t%-32s: 0x%06X\n"   , "VMEM start address", st_vmstad);
-	sh_css_print("\t\t%-32s: 0x%06X\n"   , "VMEM end address"  , st_vmenad);
-	sh_css_print("\t\t%-32s: 0x%06X\n"   , "VMEM increment"    , st_vmincr);
-	sh_css_print("\t\t%-32s: %d\n"       , "YUV 420 format"    , st_yuv420);
-	sh_css_print("\t\t%-32s: Active %s\n", "Vsync"             , st_vsalow);
-	sh_css_print("\t\t%-32s: Active %s\n", "Hsync"             , st_hsalow);
+	sh_css_dtrace(2, "\t\t%-32s: %s\n"       ,
+			"Software reset"         , st_reset);
+	sh_css_dtrace(2, "\t\t%-32s: %d\n"       ,
+			"Start line"             , st_stline);
+	sh_css_dtrace(2, "\t\t%-32s: %d\n"       ,
+			"Start column"           , st_stcol);
+	sh_css_dtrace(2, "\t\t%-32s: %d\n"       ,
+			"Cropped height"         , st_crpht);
+	sh_css_dtrace(2, "\t\t%-32s: %d\n"       ,
+			"Cropped width"          , st_crpwd);
+	sh_css_dtrace(2, "\t\t%-32s: %d\n"       ,
+			"Ver decimation"         , st_verdcm);
+	sh_css_dtrace(2, "\t\t%-32s: %d\n"       ,
+			"Hor decimation"         , st_hordcm);
+	sh_css_dtrace(2, "\t\t%-32s: %d\n"       ,
+			"Deinterleaving"         , st_deintr);
+	sh_css_dtrace(2, "\t\t%-32s: %d\n"       ,
+			"Left padding"           , st_leftpd);
+	sh_css_dtrace(2, "\t\t%-32s: %d\n"       ,
+			"EOL offset (bytes)"     , st_eoloff);
+	sh_css_dtrace(2, "\t\t%-32s: 0x%06X\n"   ,
+			"VMEM start address"     , st_vmstad);
+	sh_css_dtrace(2, "\t\t%-32s: 0x%06X\n"   ,
+			"VMEM end address"       , st_vmenad);
+	sh_css_dtrace(2, "\t\t%-32s: 0x%06X\n"   ,
+			"VMEM increment"         , st_vmincr);
+	sh_css_dtrace(2, "\t\t%-32s: %d\n"       ,
+			"YUV 420 format"         , st_yuv420);
+	sh_css_dtrace(2, "\t\t%-32s: Active %s\n",
+			"Vsync"                  , st_vsalow);
+	sh_css_dtrace(2, "\t\t%-32s: Active %s\n",
+			"Hsync"                  , st_hsalow);
 
-	sh_css_print("\tFSM Status:\n");
+	sh_css_dtrace(2, "\tFSM Status:\n");
 
 	val = state->fsm_sync_status;
 
@@ -184,10 +208,11 @@ print_if_state(struct sh_css_if_state *state)
 		fsm_sync_status_str = "unknown";
 		break;
 	}
-	sh_css_print("\t\t%-32s: (0x%X: %s)\n",
+
+	sh_css_dtrace(2, "\t\t%-32s: (0x%X: %s)\n",
 		     "FSM Synchronization Status", val, fsm_sync_status_str);
 
-	sh_css_print("\t\t%-32s: %d\n",
+	sh_css_dtrace(2, "\t\t%-32s: %d\n",
 		     "FSM Synchronization Counter", state->fsm_sync_counter);
 
 	val = state->fsm_crop_status;
@@ -221,25 +246,25 @@ print_if_state(struct sh_css_if_state *state)
 		fsm_crop_status_str = "unknown";
 		break;
 	}
-	sh_css_print("\t\t%-32s: (0x%X: %s)\n",
+	sh_css_dtrace(2, "\t\t%-32s: (0x%X: %s)\n",
 		     "FSM Crop Status", val, fsm_crop_status_str);
 
-	sh_css_print("\t\t%-32s: %d\n",
+	sh_css_dtrace(2, "\t\t%-32s: %d\n",
 		     "FSM Crop Line Counter",
 		     state->fsm_crop_line_counter);
-	sh_css_print("\t\t%-32s: %d\n",
+	sh_css_dtrace(2, "\t\t%-32s: %d\n",
 		     "FSM Crop Pixel Counter",
 		     state->fsm_crop_pixel_counter);
-	sh_css_print("\t\t%-32s: %d\n",
+	sh_css_dtrace(2, "\t\t%-32s: %d\n",
 		     "FSM Deinterleaving idx buffer",
 		     state->fsm_deinterleaving_index);
-	sh_css_print("\t\t%-32s: %d\n",
+	sh_css_dtrace(2, "\t\t%-32s: %d\n",
 		     "FSM H decimation counter",
 		     state->fsm_dec_h_counter);
-	sh_css_print("\t\t%-32s: %d\n",
+	sh_css_dtrace(2, "\t\t%-32s: %d\n",
 		     "FSM V decimation counter",
 		     state->fsm_dec_v_counter);
-	sh_css_print("\t\t%-32s: %d\n",
+	sh_css_dtrace(2, "\t\t%-32s: %d\n",
 		     "FSM block V decimation counter",
 		     state->fsm_dec_block_v_counter);
 
@@ -269,18 +294,18 @@ print_if_state(struct sh_css_if_state *state)
 		break;
 	}
 
-	sh_css_print("\t\t%-32s: (0x%X: %s)\n", "FSM Padding Status",
+	sh_css_dtrace(2, "\t\t%-32s: (0x%X: %s)\n", "FSM Padding Status",
 		     val, fsm_padding_status_str);
 
-	sh_css_print("\t\t%-32s: %d\n", "FSM Padding element idx counter",
+	sh_css_dtrace(2, "\t\t%-32s: %d\n", "FSM Padding element idx counter",
 		     state->fsm_padding_elem_counter);
-	sh_css_print("\t\t%-32s: %d\n", "FSM Vector support error",
+	sh_css_dtrace(2, "\t\t%-32s: %d\n", "FSM Vector support error",
 		     state->fsm_vector_support_error);
-	sh_css_print("\t\t%-32s: %d\n", "FSM Vector support buf full",
+	sh_css_dtrace(2, "\t\t%-32s: %d\n", "FSM Vector support buf full",
 		     state->fsm_vector_buffer_full);
-	sh_css_print("\t\t%-32s: %d\n", "FSM Vector support",
+	sh_css_dtrace(2, "\t\t%-32s: %d\n", "FSM Vector support",
 		     state->vector_support);
-	sh_css_print("\t\t%-32s: %d\n", "Fifo sensor data lost",
+	sh_css_dtrace(2, "\t\t%-32s: %d\n", "Fifo sensor data lost",
 		     state->sensor_data_lost);
 }
 
@@ -310,17 +335,17 @@ sh_css_dump_dma_state(void)
 
 	sh_css_hrt_dma_get_state(&state);
 	/* Print header for DMA dump status */
-	sh_css_print("DMA dump status:\n");
+	sh_css_dtrace(2, "DMA dump status:\n");
 
 	/* Print FSM command flag state */
 	if (state.fsm_command_idle)
-		sh_css_print("\t%-32s: %s\n", fsm_cmd_st_lbl, "IDLE");
+		sh_css_dtrace(2, "\t%-32s: %s\n", fsm_cmd_st_lbl, "IDLE");
 	if (state.fsm_command_run)
-		sh_css_print("\t%-32s: %s\n", fsm_cmd_st_lbl, "RUN");
+		sh_css_dtrace(2, "\t%-32s: %s\n", fsm_cmd_st_lbl, "RUN");
 	if (state.fsm_command_stalling)
-		sh_css_print("\t%-32s: %s\n", fsm_cmd_st_lbl, "STALL");
+		sh_css_dtrace(2, "\t%-32s: %s\n", fsm_cmd_st_lbl, "STALL");
 	if (state.fsm_command_error)
-		sh_css_print("\t%-32s: %s\n", fsm_cmd_st_lbl, "ERROR");
+		sh_css_dtrace(2, "\t%-32s: %s\n", fsm_cmd_st_lbl, "ERROR");
 
 	/* Print last command along with the channel */
 	ch_id = state.last_command_channel;
@@ -364,16 +389,16 @@ sh_css_dump_dma_state(void)
 		  "DMA SW Reset");
 		break;
 	}
-	sh_css_print("\t%-32s: (0x%X : %s)\n", "last command received",
+	sh_css_dtrace(2, "\t%-32s: (0x%X : %s)\n", "last command received",
 		     state.last_command, last_cmd_str);
 
 	/* Print DMA registers */
-	sh_css_print("\t%-32s\n", "DMA registers, connection group 0");
-	sh_css_print("\t\t%-32s: 0x%X\n", "Cmd Fifo Command",
+	sh_css_dtrace(2, "\t%-32s\n", "DMA registers, connection group 0");
+	sh_css_dtrace(2, "\t\t%-32s: 0x%X\n", "Cmd Fifo Command",
 			state.current_command);
-	sh_css_print("\t\t%-32s: 0x%X\n", "Cmd Fifo Address A",
+	sh_css_dtrace(2, "\t\t%-32s: 0x%X\n", "Cmd Fifo Address A",
 			state.current_addr_a);
-	sh_css_print("\t\t%-32s: 0x%X\n", "Cmd Fifo Address B",
+	sh_css_dtrace(2, "\t\t%-32s: 0x%X\n", "Cmd Fifo Address B",
 			state.current_addr_b);
 
 	if (state.fsm_ctrl_idle)
@@ -405,38 +430,38 @@ sh_css_dump_dma_state(void)
 		break;
 	}
 
-	sh_css_print("\t\t%-32s: %s -> %s\n", fsm_ctl_st_lbl,
+	sh_css_dtrace(2, "\t\t%-32s: %s -> %s\n", fsm_ctl_st_lbl,
 		     fsm_ctl_flag, fsm_ctl_state);
 
-	sh_css_print("\t\t%-32s: %d\n", "FSM Ctrl source dev",
+	sh_css_dtrace(2, "\t\t%-32s: %d\n", "FSM Ctrl source dev",
 			state.fsm_ctrl_source_dev);
-	sh_css_print("\t\t%-32s: 0x%X\n", "FSM Ctrl source addr",
+	sh_css_dtrace(2, "\t\t%-32s: 0x%X\n", "FSM Ctrl source addr",
 			state.fsm_ctrl_source_addr);
-	sh_css_print("\t\t%-32s: 0x%X\n", "FSM Ctrl source stride",
+	sh_css_dtrace(2, "\t\t%-32s: 0x%X\n", "FSM Ctrl source stride",
 			state.fsm_ctrl_source_stride);
-	sh_css_print("\t\t%-32s: %d\n", "FSM Ctrl source width",
+	sh_css_dtrace(2, "\t\t%-32s: %d\n", "FSM Ctrl source width",
 			state.fsm_ctrl_source_width);
-	sh_css_print("\t\t%-32s: %d\n", "FSM Ctrl source height",
+	sh_css_dtrace(2, "\t\t%-32s: %d\n", "FSM Ctrl source height",
 			state.fsm_ctrl_source_height);
-	sh_css_print("\t\t%-32s: %d\n", "FSM Ctrl pack source dev",
+	sh_css_dtrace(2, "\t\t%-32s: %d\n", "FSM Ctrl pack source dev",
 			state.fsm_ctrl_pack_source_dev);
-	sh_css_print("\t\t%-32s: %d\n", "FSM Ctrl pack dest dev",
+	sh_css_dtrace(2, "\t\t%-32s: %d\n", "FSM Ctrl pack dest dev",
 			state.fsm_ctrl_pack_dest_dev);
-	sh_css_print("\t\t%-32s: 0x%X\n", "FSM Ctrl dest addr",
+	sh_css_dtrace(2, "\t\t%-32s: 0x%X\n", "FSM Ctrl dest addr",
 			state.fsm_ctrl_dest_addr);
-	sh_css_print("\t\t%-32s: 0x%X\n", "FSM Ctrl dest stride",
+	sh_css_dtrace(2, "\t\t%-32s: 0x%X\n", "FSM Ctrl dest stride",
 			state.fsm_ctrl_dest_stride);
-	sh_css_print("\t\t%-32s: %d\n", "FSM Ctrl pack source width",
+	sh_css_dtrace(2, "\t\t%-32s: %d\n", "FSM Ctrl pack source width",
 			state.fsm_ctrl_pack_source_width);
-	sh_css_print("\t\t%-32s: %d\n", "FSM Ctrl pack dest height",
+	sh_css_dtrace(2, "\t\t%-32s: %d\n", "FSM Ctrl pack dest height",
 			state.fsm_ctrl_pack_dest_height);
-	sh_css_print("\t\t%-32s: %d\n", "FSM Ctrl pack dest width",
+	sh_css_dtrace(2, "\t\t%-32s: %d\n", "FSM Ctrl pack dest width",
 			state.fsm_ctrl_pack_dest_width);
-	sh_css_print("\t\t%-32s: %d\n", "FSM Ctrl pack source elems",
+	sh_css_dtrace(2, "\t\t%-32s: %d\n", "FSM Ctrl pack source elems",
 			state.fsm_ctrl_pack_source_elems);
-	sh_css_print("\t\t%-32s: %d\n", "FSM Ctrl pack dest elems",
+	sh_css_dtrace(2, "\t\t%-32s: %d\n", "FSM Ctrl pack dest elems",
 			state.fsm_ctrl_pack_dest_elems);
-	sh_css_print("\t\t%-32s: %d\n", "FSM Ctrl pack extension",
+	sh_css_dtrace(2, "\t\t%-32s: %d\n", "FSM Ctrl pack extension",
 			state.fsm_ctrl_pack_extension);
 
 	if (state.pack_idle)
@@ -448,13 +473,13 @@ sh_css_dump_dma_state(void)
 	if (state.pack_error)
 		fsm_pack_st = "ERROR";
 
-	sh_css_print("\t\t%-32s: %s\n", "FSM Pack flag state", fsm_pack_st);
+	sh_css_dtrace(2, "\t\t%-32s: %s\n", "FSM Pack flag state", fsm_pack_st);
 
-	sh_css_print("\t\t%-32s: %d\n", "FSM Pack cnt height",
+	sh_css_dtrace(2, "\t\t%-32s: %d\n", "FSM Pack cnt height",
 			state.pack_cnt_height);
-	sh_css_print("\t\t%-32s: %d\n", "FSM Pack src cnt width",
+	sh_css_dtrace(2, "\t\t%-32s: %d\n", "FSM Pack src cnt width",
 			state.pack_src_cnt_width);
-	sh_css_print("\t\t%-32s: %d\n", "FSM Pack dest cnt width",
+	sh_css_dtrace(2, "\t\t%-32s: %d\n", "FSM Pack dest cnt width",
 			state.pack_dest_cnt_width);
 
 	if (state.read_state == sh_css_dma_rw_state_idle)
@@ -466,11 +491,11 @@ sh_css_dump_dma_state(void)
 	if (state.read_state == sh_css_dma_rw_state_unlock_channel)
 		fsm_read_st = "Unlock channel";
 
-	sh_css_print("\t\t%-32s: %s\n", "FSM Read state", fsm_read_st);
+	sh_css_dtrace(2, "\t\t%-32s: %s\n", "FSM Read state", fsm_read_st);
 
-	sh_css_print("\t\t%-32s: %d\n", "FSM Read cnt height",
+	sh_css_dtrace(2, "\t\t%-32s: %d\n", "FSM Read cnt height",
 			state.read_cnt_height);
-	sh_css_print("\t\t%-32s: %d\n", "FSM Read cnt width",
+	sh_css_dtrace(2, "\t\t%-32s: %d\n", "FSM Read cnt width",
 			state.read_cnt_width);
 
 	if (state.write_state == sh_css_dma_rw_state_idle)
@@ -482,86 +507,86 @@ sh_css_dump_dma_state(void)
 	if (state.write_state == sh_css_dma_rw_state_unlock_channel)
 		fsm_write_st = "Unlock channel";
 
-	sh_css_print("\t\t%-32s: %s\n", "FSM Write state", fsm_write_st);
+	sh_css_dtrace(2, "\t\t%-32s: %s\n", "FSM Write state", fsm_write_st);
 
-	sh_css_print("\t\t%-32s: %d\n", "FSM Write height",
+	sh_css_dtrace(2, "\t\t%-32s: %d\n", "FSM Write height",
 			state.write_height);
-	sh_css_print("\t\t%-32s: %d\n", "FSM Write width",
+	sh_css_dtrace(2, "\t\t%-32s: %d\n", "FSM Write width",
 			state.write_width);
 
 	for (i = 0; i < num_ports; i++) {
-		sh_css_print("\tDMA device interface %d\n", i);
-		sh_css_print("\t\tDMA internal side state\n");
-		sh_css_print("\t\t\tCS: %d - We_n: %d - Run: %d - Ack: %d\n",
+		sh_css_dtrace(2, "\tDMA device interface %d\n", i);
+		sh_css_dtrace(2, "\t\tDMA internal side state\n");
+		sh_css_dtrace(2, "\t\t\tCS:%d - We_n:%d - Run:%d - Ack:%d\n",
 				state.port_states[i].req_cs,
 				state.port_states[i].req_we_n,
 				state.port_states[i].req_run,
 				state.port_states[i].req_ack);
-		sh_css_print("\t\tMaster Output side state\n");
-		sh_css_print("\t\t\tCS: %d - We_n: %d - Run: s%d - Ack: %d\n",
+		sh_css_dtrace(2, "\t\tMaster Output side state\n");
+		sh_css_dtrace(2, "\t\t\tCS:%d - We_n:%d - Run:%d - Ack:%d\n",
 				state.port_states[i].send_cs,
 				state.port_states[i].send_we_n,
 				state.port_states[i].send_run,
 				state.port_states[i].send_ack);
-		sh_css_print("\t\tFifo state\n");
+		sh_css_dtrace(2, "\t\tFifo state\n");
 		if (state.port_states[i].fifo_state ==
 				sh_css_dma_fifo_state_will_be_full) {
-			sh_css_print("\t\t\tFiFo will be full\n");
+			sh_css_dtrace(2, "\t\t\tFiFo will be full\n");
 		} else if (state.port_states[i].fifo_state ==
 				sh_css_dma_fifo_state_full) {
-			sh_css_print("\t\t\tFifo Full\n");
+			sh_css_dtrace(2, "\t\t\tFifo Full\n");
 		} else if (state.port_states[i].fifo_state ==
 				sh_css_dma_fifo_state_empty) {
-			sh_css_print("\t\t\tFifo Empty\n");
+			sh_css_dtrace(2, "\t\t\tFifo Empty\n");
 		} else {
-			sh_css_print("\t\t\tFifo state unknown\n");
+			sh_css_dtrace(2, "\t\t\tFifo state unknown\n");
 		}
-		sh_css_print("\t\tFifo counter %d\n\n",
+		sh_css_dtrace(2, "\t\tFifo counter %d\n\n",
 				state.port_states[i].fifo_counter);
 	}
 
 	for (i = 0; i < num_channels; i++) {
 		struct sh_css_dma_channel_state *ch;
 		ch = &(state.channel_states[i]);
-		sh_css_print("\t%-32s: %d\n", "DMA channel register",
+		sh_css_dtrace(2, "\t%-32s: %d\n", "DMA channel register",
 				i);
-		sh_css_print("\t\t%-32s: %d\n", "Connection",
+		sh_css_dtrace(2, "\t\t%-32s: %d\n", "Connection",
 				ch->connection);
-		sh_css_print("\t\t%-32s: %d\n", "Sign extend",
+		sh_css_dtrace(2, "\t\t%-32s: %d\n", "Sign extend",
 				ch->sign_extend);
-		sh_css_print("\t\t%-32s: %d\n", "Reverse elems",
+		sh_css_dtrace(2, "\t\t%-32s: %d\n", "Reverse elems",
 				ch->reverse_elem_order);
-		sh_css_print("\t\t%-32s: 0x%X\n", "Stride Dev A",
+		sh_css_dtrace(2, "\t\t%-32s: 0x%X\n", "Stride Dev A",
 				ch->stride_a);
-		sh_css_print("\t\t%-32s: %d\n", "Elems Dev A",
+		sh_css_dtrace(2, "\t\t%-32s: %d\n", "Elems Dev A",
 				ch->elems_a);
-		sh_css_print("\t\t%-32s: %d\n", "Cropping Dev A",
+		sh_css_dtrace(2, "\t\t%-32s: %d\n", "Cropping Dev A",
 				ch->cropping_a);
-		sh_css_print("\t\t%-32s: %d\n", "Width Dev A",
+		sh_css_dtrace(2, "\t\t%-32s: %d\n", "Width Dev A",
 				ch->width_a);
-		sh_css_print("\t\t%-32s: 0x%X\n", "Stride Dev B",
+		sh_css_dtrace(2, "\t\t%-32s: 0x%X\n", "Stride Dev B",
 				ch->stride_b);
-		sh_css_print("\t\t%-32s: %d\n", "Elems Dev B",
+		sh_css_dtrace(2, "\t\t%-32s: %d\n", "Elems Dev B",
 				ch->elems_b);
-		sh_css_print("\t\t%-32s: %d\n", "Cropping Dev B",
+		sh_css_dtrace(2, "\t\t%-32s: %d\n", "Cropping Dev B",
 				ch->cropping_b);
-		sh_css_print("\t\t%-32s: %d\n", "Width Dev B",
+		sh_css_dtrace(2, "\t\t%-32s: %d\n", "Width Dev B",
 				ch->width_b);
-		sh_css_print("\t\t%-32s: %d\n", "Height",
+		sh_css_dtrace(2, "\t\t%-32s: %d\n", "Height",
 				ch->height);
 	}
-	sh_css_print("\n");
+	sh_css_dtrace(2, "\n");
 }
 
 static void
 print_fifo_channel_state(struct sh_css_fifo_channel_state *state,
 		const char *descr)
 {
-	sh_css_print("FIFO channel: %s\n", descr);
-	sh_css_print("\t%-32s: %d\n", "source valid", state->src_valid);
-	sh_css_print("\t%-32s: %d\n", "fifo accept" , state->fifo_accept);
-	sh_css_print("\t%-32s: %d\n", "fifo valid"  , state->fifo_valid);
-	sh_css_print("\t%-32s: %d\n", "sink accept" , state->sink_accept);
+	sh_css_dtrace(2, "FIFO channel: %s\n", descr);
+	sh_css_dtrace(2, "\t%-32s: %d\n", "source valid", state->src_valid);
+	sh_css_dtrace(2, "\t%-32s: %d\n", "fifo accept" , state->fifo_accept);
+	sh_css_dtrace(2, "\t%-32s: %d\n", "fifo valid"  , state->fifo_valid);
+	sh_css_dtrace(2, "\t%-32s: %d\n", "sink accept" , state->sink_accept);
 }
 
 void
@@ -632,75 +657,77 @@ sh_css_dump_isp_gdc_fifo_state(void)
 static void
 sh_css_binary_info_print(const struct sh_css_binary_info *info)
 {
-	sh_css_print("id = %d\n", info->id);
-	sh_css_print("mode = %d\n", info->mode);
-	sh_css_print("max_input_width = %d\n", info->max_input_width);
-	sh_css_print("min_output_width = %d\n", info->min_output_width);
-	sh_css_print("max_output_width = %d\n", info->max_output_width);
-	sh_css_print("top_cropping = %d\n", info->top_cropping);
-	sh_css_print("left_cropping = %d\n", info->left_cropping);
-	sh_css_print("xmem_addr = %p\n", info->xmem_addr);
-	sh_css_print("enable_vf_veceven = %d\n", info->enable_vf_veceven);
-	sh_css_print("enable_dis = %d\n", info->enable_dis);
-	sh_css_print("enable_uds = %d\n", info->enable_uds);
-	sh_css_print("enable ds = %d\n", info->enable_ds);
-	sh_css_print("s3atbl_use_dmem = %d\n", info->s3atbl_use_dmem);
+	sh_css_dtrace(2, "id = %d\n", info->id);
+	sh_css_dtrace(2, "mode = %d\n", info->mode);
+	sh_css_dtrace(2, "max_input_width = %d\n", info->max_input_width);
+	sh_css_dtrace(2, "min_output_width = %d\n", info->min_output_width);
+	sh_css_dtrace(2, "max_output_width = %d\n", info->max_output_width);
+	sh_css_dtrace(2, "top_cropping = %d\n", info->top_cropping);
+	sh_css_dtrace(2, "left_cropping = %d\n", info->left_cropping);
+	sh_css_dtrace(2, "xmem_addr = %p\n", info->xmem_addr);
+	sh_css_dtrace(2, "enable_vf_veceven = %d\n", info->enable_vf_veceven);
+	sh_css_dtrace(2, "enable_dis = %d\n", info->enable_dis);
+	sh_css_dtrace(2, "enable_uds = %d\n", info->enable_uds);
+	sh_css_dtrace(2, "enable ds = %d\n", info->enable_ds);
+	sh_css_dtrace(2, "s3atbl_use_dmem = %d\n", info->s3atbl_use_dmem);
 }
 
 void
 sh_css_binary_print(const struct sh_css_binary *bi)
 {
 	sh_css_binary_info_print(bi->info);
-	sh_css_print("input:  %dx%d, format = %d, padded width = %d\n",
+	sh_css_dtrace(2, "input:  %dx%d, format = %d, padded width = %d\n",
 		     bi->in_frame_info.width, bi->in_frame_info.height,
 		     bi->in_frame_info.format, bi->in_frame_info.padded_width);
-	sh_css_print("internal :%dx%d, format = %d, padded width = %d\n",
+	sh_css_dtrace(2, "internal :%dx%d, format = %d, padded width = %d\n",
 		     bi->internal_frame_info.width,
 		     bi->internal_frame_info.height,
 		     bi->internal_frame_info.format,
 		     bi->internal_frame_info.padded_width);
-	sh_css_print("out:    %dx%d, format = %d, padded width = %d\n",
+	sh_css_dtrace(2, "out:    %dx%d, format = %d, padded width = %d\n",
 		     bi->out_frame_info.width, bi->out_frame_info.height,
 		     bi->out_frame_info.format,
 		     bi->out_frame_info.padded_width);
-	sh_css_print("vf out: %dx%d, format = %d, padded width = %d\n",
+	sh_css_dtrace(2, "vf out: %dx%d, format = %d, padded width = %d\n",
 		     bi->vf_frame_info.width, bi->vf_frame_info.height,
 		     bi->vf_frame_info.format, bi->vf_frame_info.padded_width);
-	sh_css_print("online = %d\n", bi->online);
-	sh_css_print("input_buf_vectors = %d\n", bi->input_buf_vectors);
-	sh_css_print("deci_factor_log2 = %d\n", bi->deci_factor_log2);
-	sh_css_print("vf_downscale_log2 = %d\n", bi->vf_downscale_log2);
-	sh_css_print("dis_deci_factor_log2 = %d\n", bi->dis_deci_factor_log2);
-	sh_css_print("dis hor coef num = %d\n", bi->dis_hor_coef_num_isp);
-	sh_css_print("dis ver coef num = %d\n", bi->dis_ver_coef_num_isp);
-	sh_css_print("dis hor proj num = %d\n", bi->dis_ver_proj_num_isp);
-	sh_css_print("sctbl_width_per_color = %d\n", bi->sctbl_width_per_color);
-	sh_css_print("s3atbl_width = %d\n", bi->s3atbl_width);
-	sh_css_print("s3atbl_height = %d\n", bi->s3atbl_height);
+	sh_css_dtrace(2, "online = %d\n", bi->online);
+	sh_css_dtrace(2, "input_buf_vectors = %d\n", bi->input_buf_vectors);
+	sh_css_dtrace(2, "deci_factor_log2 = %d\n", bi->deci_factor_log2);
+	sh_css_dtrace(2, "vf_downscale_log2 = %d\n", bi->vf_downscale_log2);
+	sh_css_dtrace(2, "dis_deci_factor_log2 = %d\n",
+			bi->dis_deci_factor_log2);
+	sh_css_dtrace(2, "dis hor coef num = %d\n", bi->dis_hor_coef_num_isp);
+	sh_css_dtrace(2, "dis ver coef num = %d\n", bi->dis_ver_coef_num_isp);
+	sh_css_dtrace(2, "dis hor proj num = %d\n", bi->dis_ver_proj_num_isp);
+	sh_css_dtrace(2, "sctbl_width_per_color = %d\n",
+			bi->sctbl_width_per_color);
+	sh_css_dtrace(2, "s3atbl_width = %d\n", bi->s3atbl_width);
+	sh_css_dtrace(2, "s3atbl_height = %d\n", bi->s3atbl_height);
 }
 
 void
 sh_css_frame_print(const struct sh_css_frame *frame, const char *descr)
 {
-	sh_css_print("frame %s (%p):\n", descr, frame);
-	sh_css_print("  resolution    = %dx%d\n",
+	sh_css_dtrace(2, "frame %s (%p):\n", descr, frame);
+	sh_css_dtrace(2, "  resolution    = %dx%d\n",
 		     frame->info.width, frame->info.height);
-	sh_css_print("  padded width  = %d\n", frame->info.padded_width);
-	sh_css_print("  format        = %d\n", frame->info.format);
-	sh_css_print("  is contiguous = %s\n",
+	sh_css_dtrace(2, "  padded width  = %d\n", frame->info.padded_width);
+	sh_css_dtrace(2, "  format        = %d\n", frame->info.format);
+	sh_css_dtrace(2, "  is contiguous = %s\n",
 		     frame->contiguous ? "yes" : "no");
 	switch (frame->info.format) {
 	case SH_CSS_FRAME_FORMAT_NV12:
 	case SH_CSS_FRAME_FORMAT_NV16:
 	case SH_CSS_FRAME_FORMAT_NV21:
 	case SH_CSS_FRAME_FORMAT_NV61:
-		sh_css_print("  Y = %p\n", frame->planes.nv.y.data);
-		sh_css_print("  UV = %p\n", frame->planes.nv.uv.data);
+		sh_css_dtrace(2, "  Y = %p\n", frame->planes.nv.y.data);
+		sh_css_dtrace(2, "  UV = %p\n", frame->planes.nv.uv.data);
 		break;
 	case SH_CSS_FRAME_FORMAT_YUYV:
 	case SH_CSS_FRAME_FORMAT_UYVY:
 	case SH_CSS_FRAME_FORMAT_YUV_LINE:
-		sh_css_print("  YUYV = %p\n", frame->planes.yuyv.data);
+		sh_css_dtrace(2, "  YUYV = %p\n", frame->planes.yuyv.data);
 		break;
 	case SH_CSS_FRAME_FORMAT_YUV420:
 	case SH_CSS_FRAME_FORMAT_YUV422:
@@ -709,31 +736,33 @@ sh_css_frame_print(const struct sh_css_frame *frame, const char *descr)
 	case SH_CSS_FRAME_FORMAT_YV16:
 	case SH_CSS_FRAME_FORMAT_YUV420_16:
 	case SH_CSS_FRAME_FORMAT_YUV422_16:
-		sh_css_print("  Y = %p\n", frame->planes.yuv.y.data);
-		sh_css_print("  U = %p\n", frame->planes.yuv.u.data);
-		sh_css_print("  V = %p\n", frame->planes.yuv.v.data);
+		sh_css_dtrace(2, "  Y = %p\n", frame->planes.yuv.y.data);
+		sh_css_dtrace(2, "  U = %p\n", frame->planes.yuv.u.data);
+		sh_css_dtrace(2, "  V = %p\n", frame->planes.yuv.v.data);
 		break;
 	case SH_CSS_FRAME_FORMAT_RAW:
-		sh_css_print("  RAW = %p\n", frame->planes.raw.data);
+		sh_css_dtrace(2, "  RAW = %p\n", frame->planes.raw.data);
 		break;
 	case SH_CSS_FRAME_FORMAT_RGBA888:
 	case SH_CSS_FRAME_FORMAT_RGB565:
-		sh_css_print("  RGB = %p\n", frame->planes.rgb.data);
+		sh_css_dtrace(2, "  RGB = %p\n", frame->planes.rgb.data);
 		break;
 	case SH_CSS_FRAME_FORMAT_QPLANE6:
-		sh_css_print("  R    = %p\n", frame->planes.plane6.r.data);
-		sh_css_print("  RatB = %p\n", frame->planes.plane6.r_at_b.data);
-		sh_css_print("  Gr   = %p\n", frame->planes.plane6.gr.data);
-		sh_css_print("  Gb   = %p\n", frame->planes.plane6.gb.data);
-		sh_css_print("  B    = %p\n", frame->planes.plane6.b.data);
-		sh_css_print("  BatR = %p\n", frame->planes.plane6.b_at_r.data);
+		sh_css_dtrace(2, "  R    = %p\n", frame->planes.plane6.r.data);
+		sh_css_dtrace(2, "  RatB = %p\n",
+				frame->planes.plane6.r_at_b.data);
+		sh_css_dtrace(2, "  Gr   = %p\n", frame->planes.plane6.gr.data);
+		sh_css_dtrace(2, "  Gb   = %p\n", frame->planes.plane6.gb.data);
+		sh_css_dtrace(2, "  B    = %p\n", frame->planes.plane6.b.data);
+		sh_css_dtrace(2, "  BatR = %p\n",
+				frame->planes.plane6.b_at_r.data);
 		break;
 	case SH_CSS_FRAME_FORMAT_BINARY_8:
-		sh_css_print("  Binary data = %p\n",
+		sh_css_dtrace(2, "  Binary data = %p\n",
 				frame->planes.binary.data.data);
 		break;
 	default:
-		sh_css_print("  unknown frame type\n");
+		sh_css_dtrace(2, "  unknown frame type\n");
 		break;
 	}
 }
@@ -743,9 +772,9 @@ sh_css_print_sp_debug_state(const struct sh_css_sp_debug_state *state)
 {
 	int i;
 
-	sh_css_print("sp_error = 0x%x\n", state->error);
+	sh_css_dtrace(2, "sp_error = 0x%x\n", state->error);
 	for (i = 0; i < 16; i++)
-		sh_css_print("sp_debug[%d] = %d\n", i, state->debug[i]);
+		sh_css_dtrace(2, "sp_debug[%d] = %d\n", i, state->debug[i]);
 }
 
 void
@@ -755,32 +784,32 @@ sh_css_dump_rx_state(void)
 	bits = sh_css_rx_get_interrupt_reg();
 	sh_css_rx_get_interrupt_info(&infos);
 
-	sh_css_print("CSI Receiver errors: (irq reg = 0x%X)\n", bits);
+	sh_css_dtrace(2, "CSI Receiver errors: (irq reg = 0x%X)\n", bits);
 
 	if (infos & SH_CSS_RX_IRQ_INFO_BUFFER_OVERRUN)
-		sh_css_print("\tbuffer overrun\n");
+		sh_css_dtrace(2, "\tbuffer overrun\n");
 	if (infos & SH_CSS_RX_IRQ_INFO_ERR_SOT)
-		sh_css_print("\tstart-of-transmission error\n");
+		sh_css_dtrace(2, "\tstart-of-transmission error\n");
 	if (infos & SH_CSS_RX_IRQ_INFO_ERR_SOT_SYNC)
-		sh_css_print("\tstart-of-transmission sync error\n");
+		sh_css_dtrace(2, "\tstart-of-transmission sync error\n");
 	if (infos & SH_CSS_RX_IRQ_INFO_ERR_CONTROL)
-		sh_css_print("\tcontrol error\n");
+		sh_css_dtrace(2, "\tcontrol error\n");
 	if (infos & SH_CSS_RX_IRQ_INFO_ERR_ECC_DOUBLE)
-		sh_css_print("\t2 or more ECC errors\n");
+		sh_css_dtrace(2, "\t2 or more ECC errors\n");
 	if (infos & SH_CSS_RX_IRQ_INFO_ERR_CRC)
-		sh_css_print("\tCRC mismatch\n");
+		sh_css_dtrace(2, "\tCRC mismatch\n");
 	if (infos & SH_CSS_RX_IRQ_INFO_ERR_UNKNOWN_ID)
-		sh_css_print("\tunknown error\n");
+		sh_css_dtrace(2, "\tunknown error\n");
 	if (infos & SH_CSS_RX_IRQ_INFO_ERR_FRAME_SYNC)
-		sh_css_print("\tframe sync error\n");
+		sh_css_dtrace(2, "\tframe sync error\n");
 	if (infos & SH_CSS_RX_IRQ_INFO_ERR_FRAME_DATA)
-		sh_css_print("\tframe data error\n");
+		sh_css_dtrace(2, "\tframe data error\n");
 	if (infos & SH_CSS_RX_IRQ_INFO_ERR_DATA_TIMEOUT)
-		sh_css_print("\tdata timeout\n");
+		sh_css_dtrace(2, "\tdata timeout\n");
 	if (infos & SH_CSS_RX_IRQ_INFO_ERR_UNKNOWN_ESC)
-		sh_css_print("\tunknown escape command entry\n");
+		sh_css_dtrace(2, "\tunknown escape command entry\n");
 	if (infos & SH_CSS_RX_IRQ_INFO_ERR_LINE_SYNC)
-		sh_css_print("\tline sync error\n");
+		sh_css_dtrace(2, "\tline sync error\n");
 }
 
 void
@@ -789,7 +818,7 @@ sh_css_dump_debug_info(const char *context)
 	if (!context)
 		context = "No Context provided";
 
-	sh_css_print("CSS Debug Info dump [Context = %s]\n", context);
+	sh_css_dtrace(2, "CSS Debug Info dump [Context = %s]\n", context);
 	sh_css_dump_rx_state();
 	sh_css_dump_if_state();
 	sh_css_dump_isp_state();
