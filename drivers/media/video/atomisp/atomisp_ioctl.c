@@ -970,17 +970,16 @@ static int atomisp_qbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 
 		hrt_isp_css_mm_set_user_ptr(userptr, pgnr);
 		if (!pipe->is_main)
-			sh_css_frame_allocate_from_info(&handle, &vf_info);
+			ret = sh_css_frame_allocate_from_info(&handle,
+								&vf_info);
 		else
-			sh_css_frame_allocate_from_info(&handle, &out_info);
+			ret = sh_css_frame_allocate_from_info(&handle,
+								&out_info);
 
 		hrt_isp_css_mm_set_user_ptr(0, 0);
-		if (IS_ERR(handle)) {
-			v4l2_err(&atomisp_dev, "Error to allocate"
-				    " frame for userptr capture %ld\n",
-				    PTR_ERR(handle));
-
-			return PTR_ERR(handle);
+		if (ret != sh_css_success) {
+			v4l2_err(&atomisp_dev, "Error to allocate frame\n");
+			return -ENOMEM;
 		}
 
 		if (vm_mem->vaddr) {

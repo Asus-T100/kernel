@@ -422,15 +422,27 @@ static int atomisp_start_binary(struct atomisp_device *isp)
 		}
 		break;
 	case CI_MODE_PREVIEW:
-		sh_css_preview_start(NULL, isp->regular_output_frame);
+		ret = sh_css_preview_start(NULL, isp->regular_output_frame);
+		if (sh_css_success != ret) {
+			v4l2_err(&atomisp_dev,
+				 "start preview error!\n");
+
+			return -EINVAL;
+		}
 		break;
 	case CI_MODE_VIDEO:
 		if (isp->params.video_dis_en) {
 			sh_css_video_set_dis_vector(isp->params.dis_x,
 						    isp->params.dis_y);
 		}
-		sh_css_video_start(NULL, isp->regular_output_frame,
+		ret = sh_css_video_start(NULL, isp->regular_output_frame,
 				   isp->vf_frame);
+		if (sh_css_success != ret) {
+			v4l2_err(&atomisp_dev,
+				 "start video error!\n");
+
+			return -EINVAL;
+		}
 		break;
 	default:
 		return -EINVAL;
