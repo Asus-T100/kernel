@@ -290,6 +290,12 @@ sh_css_params_write_to_ddr(const struct sh_css_binary *binary_info);
 void
 sh_css_params_set_current_binary(const struct sh_css_binary *binary);
 
+/* swap 3a double buffers. This should be called when handling an
+   interrupt that indicates that statistics are ready.
+   This also swaps the DIS buffers. */
+void
+sh_css_params_swap_3a_buffers(void);
+
 enum sh_css_err
 sh_css_params_init(void);
 
