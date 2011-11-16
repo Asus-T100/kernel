@@ -35,6 +35,7 @@
 #include <linux/irq.h>
 #include <linux/module.h>
 #include <linux/notifier.h>
+#include <linux/intel_mid_pm.h>
 
 #include <asm/setup.h>
 #include <asm/mpspec_def.h>
@@ -88,6 +89,10 @@ static void mrst_power_off(void)
 {
 	if (__mrst_cpu_chip == MRST_CPU_CHIP_LINCROFT)
 		intel_scu_ipc_simple_command(IPCMSG_COLD_RESET, 1);
+	else {
+		mfld_shutdown();
+	}
+
 }
 
 static void mrst_reboot(void)
