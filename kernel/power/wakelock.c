@@ -19,6 +19,13 @@
 #include <linux/suspend.h>
 #include <linux/syscalls.h> /* sys_sync */
 #include <linux/wakelock.h>
+
+#ifndef CREATE_TRACE_POINTS
+#define CREATE_TRACE_POINTS
+#include <trace/events/wakelock.h>
+#undef CREATE_TRACE_POINTS
+#endif
+
 #ifdef CONFIG_WAKELOCK_STAT
 #include <linux/proc_fs.h>
 #endif
@@ -490,12 +497,16 @@ static void wake_lock_internal(
 void wake_lock(struct wake_lock *lock)
 {
 	wake_lock_internal(lock, 0, 0);
+
+	trace_wake_lock(lock);
 }
 EXPORT_SYMBOL(wake_lock);
 
 void wake_lock_timeout(struct wake_lock *lock, long timeout)
 {
 	wake_lock_internal(lock, timeout, 1);
+
+	trace_wake_lock(lock);
 }
 EXPORT_SYMBOL(wake_lock_timeout);
 
@@ -503,6 +514,9 @@ void wake_unlock(struct wake_lock *lock)
 {
 	int type;
 	unsigned long irqflags;
+
+	trace_wake_unlock(lock);
+
 	spin_lock_irqsave(&list_lock, irqflags);
 	type = lock->flags & WAKE_LOCK_TYPE_MASK;
 #ifdef CONFIG_WAKELOCK_STAT
