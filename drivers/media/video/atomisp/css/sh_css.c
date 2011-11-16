@@ -2282,6 +2282,8 @@ crop_and_interpolate(unsigned int cropped_width,
 		     sensor_height = my_css.shading_table->sensor_height,
 		     table_width   = my_css.shading_table->width,
 		     table_height  = my_css.shading_table->height,
+		     table_cell_w,
+		     table_cell_h,
 		     out_cell_size,
 		     in_cell_size,
 		     out_start_row,
@@ -2296,6 +2298,8 @@ crop_and_interpolate(unsigned int cropped_width,
 
 	out_start_col = (sensor_width - cropped_width)/2 - left_padding;
 	out_start_row = (sensor_height - cropped_height)/2;
+	table_cell_w = (table_width-1) * in_cell_size;
+	table_cell_h = (table_height-1) * in_cell_size;
 
 	for (i = 0; i < out_table->height; i++) {
 		unsigned int ty, src_y0, src_y1, sy0, sy1, dy0, dy1, divy;
@@ -2303,7 +2307,7 @@ crop_and_interpolate(unsigned int cropped_width,
 		/* calculate target point and make sure it falls within
 		   the table */
 		ty = out_start_row + i * out_cell_size;
-		ty = min(ty, sensor_height);
+		ty = min(min(ty, sensor_height-1), table_cell_h);
 		/* calculate closest source points in shading table and
 		   make sure they fall within the table */
 		src_y0 = ty / in_cell_size;
@@ -2343,7 +2347,8 @@ crop_and_interpolate(unsigned int cropped_width,
 			/* if src points fall in padding, select closest ones.*/
 			src_x0 = clamp(src_x0, 0, (int)table_width-1);
 			src_x1 = clamp(src_x1, 0, (int)table_width-1);
-			tx = clamp(tx, 0, (int)sensor_width-1);
+			tx = min(clamp(tx, 0, (int)sensor_width-1),
+				 table_cell_w);
 			/* calculate closest source points for distance
 			   computation */
 			sx0 = min(src_x0 * in_cell_size, sensor_width-1);
