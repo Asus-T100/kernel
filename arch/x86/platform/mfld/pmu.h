@@ -150,6 +150,7 @@
 /* some random number for initvalue */
 #define	MID_PCI_INDEX_HASH_INITVALUE	0x27041975
 
+#define S5_VALUE	0x309D2601
 #define S0I1_VALUE	0X30992601
 #define LPMP3_VALUE	0X40492601
 #define S0I3_VALUE	0X309B2601

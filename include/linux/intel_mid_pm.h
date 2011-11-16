@@ -144,6 +144,7 @@ extern void pmu_enable_forward_msi(void);
 extern unsigned long pmu_get_cstate(unsigned long eax);
 extern int pmu_nc_set_power_state
 	(int islands, int state_type, int reg_type);
+extern void mfld_shutdown(void);
 
 #else
 

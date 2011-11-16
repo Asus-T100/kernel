@@ -2410,6 +2410,20 @@ static int mid_suspend(suspend_state_t state)
 	return ret;
 }
 
+void mfld_shutdown(void)
+{
+	down(&scu_ready_sem);
+	/* wait till SCU is ready */
+	if (_pmu2_wait_not_busy())
+		dev_err(&pmu_dev->dev, "SCU BUSY. Unable to Enter S5\n");
+	else
+		/*send S5 command to SCU*/
+		writel(S5_VALUE, &pmu_reg->pm_cmd);
+
+	/* no more pm command expected. So not doing sem up */
+
+}
+
 static void mid_end(void)
 {
 #ifdef CONFIG_HAS_WAKELOCK
