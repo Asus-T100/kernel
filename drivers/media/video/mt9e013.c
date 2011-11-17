@@ -41,7 +41,6 @@
 #include <linux/bitops.h>
 #include <media/v4l2-device.h>
 #include <media/v4l2-chip-ident.h>
-#include <media/v4l2-i2c-drv.h>
 
 #include "mt9e013.h"
 
@@ -1801,7 +1800,6 @@ static const struct v4l2_subdev_video_ops mt9e013_video_ops = {
 
 static const struct v4l2_subdev_core_ops mt9e013_core_ops = {
 	.g_chip_ident = mt9e013_g_chip_ident,
-	.s_config = mt9e013_s_config,
 	.queryctrl = mt9e013_queryctrl,
 	.g_ctrl = mt9e013_g_ctrl,
 	.s_ctrl = mt9e013_s_ctrl,
@@ -1825,7 +1823,7 @@ static const struct v4l2_subdev_ops mt9e013_ops = {
 };
 
 static const struct media_entity_operations mt9e013_entity_ops = {
-	.set_power = v4l2_subdev_set_power,
+	.link_setup = NULL,
 };
 
 static int mt9e013_remove(struct i2c_client *client)
@@ -1856,8 +1854,18 @@ static int mt9e013_probe(struct i2c_client *client,
 	dev->fmt_idx = 0;
 	v4l2_i2c_subdev_init(&(dev->sd), client, &mt9e013_ops);
 
+	if (client->dev.platform_data) {
+		ret = mt9e013_s_config(&dev->sd, client->irq,
+				       client->dev.platform_data);
+		if (ret) {
+			v4l2_device_unregister_subdev(&dev->sd);
+			kfree(dev);
+			return ret;
+		}
+	}
+
 	dev->sd.flags |= V4L2_SUBDEV_FL_HAS_DEVNODE;
-	dev->pad.flags = MEDIA_PAD_FLAG_OUTPUT;
+	dev->pad.flags = MEDIA_PAD_FL_SOURCE;
 	dev->sd.entity.ops = &mt9e013_entity_ops;
 	dev->format.code = V4L2_MBUS_FMT_SGRBG10_1X10;
 
@@ -1878,12 +1886,28 @@ static const struct i2c_device_id mt9e013_id[] = {
 
 MODULE_DEVICE_TABLE(i2c, mt9e013_id);
 
-static struct v4l2_i2c_driver_data v4l2_i2c_data = {
-	.name = MT9E013_NAME,
+static struct i2c_driver mt9e013_driver = {
+	.driver = {
+		.owner = THIS_MODULE,
+		.name = MT9E013_NAME,
+	},
 	.probe = mt9e013_probe,
 	.remove = mt9e013_remove,
 	.id_table = mt9e013_id,
 };
+
+static __init int init_mt9e013(void)
+{
+	return i2c_add_driver(&mt9e013_driver);
+}
+
+static __exit void exit_mt9e013(void)
+{
+	i2c_del_driver(&mt9e013_driver);
+}
+
+module_init(init_mt9e013);
+module_exit(exit_mt9e013);
 
 MODULE_DESCRIPTION("A low-level driver for Aptina MT9E013 sensors");
 MODULE_LICENSE("GPL");
