@@ -25,3 +25,22 @@ extern void async_synchronize_cookie(async_cookie_t cookie);
 extern void async_synchronize_cookie_domain(async_cookie_t cookie,
 					    struct list_head *list);
 
+#define __module_init_async(callback, init_level)			\
+	static void   __init __##callback##_async(void *unused,		\
+						  async_cookie_t cookie) \
+	{								\
+		callback();						\
+	}								\
+	static int __init __##callback(void)				\
+	{								\
+		async_schedule(__##callback##_async, NULL);		\
+		return 0;						\
+	}								\
+	init_level(__##callback);
+
+/* use these macro only if your module does not have other module that
+   depends on it. if you have, you will need to use the more complex
+   cookie mechanism */
+#define module_init_async(callback) __module_init_async(callback, module_init)
+#define late_initcall_async(callback) __module_init_async(callback,	\
+							  late_initcall)
