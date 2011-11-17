@@ -3105,8 +3105,11 @@ void atomisp_get_yuv_ds_status(struct atomisp_device *isp,
 	 * yuv downscaling is not enabled in video binary,
 	 * ,raw format output, soc sensor. effective resolution should
 	 * be the same as isp output.
+	 * yuv-ds is enabled only when sensor output width is 10% larger
+	 * than isp output width and sensor output height also is 10%
+	 * larger than isp output height.
 	 */
-	if ((w_tmp < width && h_tmp < height)
+	if ((w_tmp < width || h_tmp < height)
 		|| isp->sw_contex.run_mode == CI_MODE_VIDEO
 		|| isp->sw_contex.bypass
 		|| isp->sw_contex.file_input)
