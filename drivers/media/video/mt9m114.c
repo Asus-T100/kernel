@@ -37,7 +37,6 @@
 #include <linux/gpio.h>
 #include <media/v4l2-device.h>
 #include <media/v4l2-chip-ident.h>
-#include <media/v4l2-i2c-drv.h>
 
 #include "mt9m114.h"
 
@@ -1359,7 +1358,6 @@ static const struct v4l2_subdev_video_ops mt9m114_video_ops = {
 
 static const struct v4l2_subdev_core_ops mt9m114_core_ops = {
 	.g_chip_ident = mt9m114_g_chip_ident,
-	.s_config = mt9m114_s_config,
 	.queryctrl = mt9m114_queryctrl,
 	.g_ctrl = mt9m114_g_ctrl,
 	.s_ctrl = mt9m114_s_ctrl,
@@ -1381,7 +1379,7 @@ static const struct v4l2_subdev_ops mt9m114_ops = {
 };
 
 static const struct media_entity_operations mt9m114_entity_ops = {
-	.set_power = v4l2_subdev_set_power,
+	.link_setup = NULL,
 };
 
 
@@ -1414,10 +1412,19 @@ static int mt9m114_probe(struct i2c_client *client,
 	}
 
 	v4l2_i2c_subdev_init(&dev->sd, client, &mt9m114_ops);
+	if (client->dev.platform_data) {
+		ret = mt9m114_s_config(&dev->sd, client->irq,
+				       client->dev.platform_data);
+		if (ret) {
+			v4l2_device_unregister_subdev(&dev->sd);
+			kfree(dev);
+			return ret;
+		}
+	}
 
 	/*TODO add format code here*/
 	dev->sd.flags |= V4L2_SUBDEV_FL_HAS_DEVNODE;
-	dev->pad.flags = MEDIA_PAD_FLAG_OUTPUT;
+	dev->pad.flags = MEDIA_PAD_FL_SOURCE;
 
 	/* REVISIT: Do we need media controller? */
 	ret = media_entity_init(&dev->sd.entity, 1, &dev->pad, 0);
@@ -1433,12 +1440,29 @@ static int mt9m114_probe(struct i2c_client *client,
 }
 
 MODULE_DEVICE_TABLE(i2c, mt9m114_id);
-static struct v4l2_i2c_driver_data v4l2_i2c_data = {
-	.name = "mt9m114",
+
+static struct i2c_driver mt9m114_driver = {
+	.driver = {
+		.owner = THIS_MODULE,
+		.name = "mt9m114"
+	},
 	.probe = mt9m114_probe,
 	.remove = mt9m114_remove,
 	.id_table = mt9m114_id,
 };
+
+static __init int init_mt9m114(void)
+{
+	return i2c_add_driver(&mt9m114_driver);
+}
+
+static __exit void exit_mt9m114(void)
+{
+	i2c_del_driver(&mt9m114_driver);
+}
+
+module_init(init_mt9m114);
+module_exit(exit_mt9m114);
 
 MODULE_AUTHOR("Shuguang Gong <Shuguang.gong@intel.com>");
 MODULE_LICENSE("GPL");
