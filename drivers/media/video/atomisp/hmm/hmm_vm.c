@@ -1,0 +1,210 @@
+/*
+ * Support for Medifield PNW Camera Imaging ISP subsystem.
+ *
+ * Copyright (c) 2010 Intel Corporation. All Rights Reserved.
+ *
+ * Copyright (c) 2010 Silicon Hive www.siliconhive.com.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version
+ * 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301, USA.
+ *
+ */
+/*
+ * This file contains function for ISP virtual address management in ISP driver
+ */
+#include <linux/kernel.h>
+#include <linux/types.h>
+#include <linux/mm.h>
+#include <linux/slab.h>
+#include <asm/page.h>
+
+#include "mmu/isp_mmu.h"
+#include "hmm/hmm_vm.h"
+#include "hmm/hmm_common.h"
+#include "atomisp_internal.h"
+
+static unsigned int vm_node_end(unsigned int start, unsigned int pgnr)
+{
+	return start + pgnr_to_size(pgnr);
+}
+
+static int addr_in_vm_node(unsigned int addr,
+		struct hmm_vm_node *node)
+{
+	return (addr >= node->start) && (addr < (node->start + node->size));
+}
+
+int hmm_vm_init(struct hmm_vm *vm, unsigned int start,
+		unsigned int size)
+{
+	if (!vm)
+		return -1;
+
+	vm->start = start;
+	vm->pgnr = size_to_pgnr_ceil(size);
+	vm->size = pgnr_to_size(vm->pgnr);
+
+	INIT_LIST_HEAD(&vm->vm_node_list);
+	spin_lock_init(&vm->lock);
+
+	return 0;
+}
+
+void hmm_vm_clean(struct hmm_vm *vm)
+{
+	if (!vm)
+		return;
+
+	while (!list_empty(&vm->vm_node_list))
+		hmm_vm_free_node(hmm_vm_node(vm->vm_node_list.next));
+}
+
+static struct hmm_vm_node *alloc_hmm_vm_node(unsigned int start,
+					       unsigned int pgnr,
+					       struct hmm_vm *vm)
+{
+	struct hmm_vm_node *node;
+
+	node = kzalloc(sizeof(struct hmm_vm_node), GFP_KERNEL);
+	if (!node) {
+		v4l2_err(&atomisp_dev, "out of memory.\n");
+		return NULL;
+	}
+
+	INIT_LIST_HEAD(&node->list);
+	node->start = start;
+	node->pgnr = pgnr;
+	node->size = pgnr_to_size(pgnr);
+	node->vm = vm;
+
+	return node;
+}
+
+struct hmm_vm_node *hmm_vm_alloc_node(struct hmm_vm *vm, unsigned int pgnr)
+{
+	struct list_head *head, *p, *pos;
+	struct hmm_vm_node *node, *cur, *next;
+	unsigned int vm_start, vm_end;
+	unsigned int addr;
+	unsigned int size;
+
+	if (!vm)
+		return NULL;
+
+	vm_start = vm->start;
+	vm_end = vm_node_end(vm->start, vm->pgnr);
+	size = pgnr_to_size(pgnr);
+
+	addr = vm_start;
+	pos = head = &vm->vm_node_list;
+
+	spin_lock(&vm->lock);
+
+	/*
+	 * if list is empty, the loop code will not be executed.
+	 */
+	list_for_each(p, head) {
+		pos = p;
+		cur = hmm_vm_node(pos);
+		addr = vm_node_end(cur->start, cur->pgnr);
+		if (pos->next != head) {
+			next = hmm_vm_node(pos->next);
+			if ((next->start - addr) >= size)
+				goto found;
+		}
+	}
+
+	if (addr + size > vm_end) {
+		v4l2_info(&atomisp_dev,
+			    "no enough virtual address space.\n");
+		goto failed;
+	}
+
+found:
+
+	spin_unlock(&vm->lock);
+	node = alloc_hmm_vm_node(addr, pgnr, vm);
+	if (!node)
+		goto failed;
+
+	spin_lock(&vm->lock);
+	list_add(&node->list, pos);
+
+	spin_unlock(&vm->lock);
+
+	return node;
+failed:
+	v4l2_err(&atomisp_dev, "failed...\n");
+	spin_unlock(&vm->lock);
+
+	return NULL;
+}
+
+void hmm_vm_free_node(struct hmm_vm_node *node)
+{
+	if (node) {
+		struct hmm_vm *vm = node->vm;
+		spin_lock(&vm->lock);
+		list_del(&node->list);
+		spin_unlock(&vm->lock);
+		kfree(node);
+	}
+}
+
+struct hmm_vm_node *hmm_vm_find_node_start(struct hmm_vm *vm, unsigned int addr)
+{
+	struct list_head *pos;
+	struct hmm_vm_node *node;
+
+	if (!vm)
+		return NULL;
+
+	spin_lock(&vm->lock);
+
+	list_for_each(pos, &vm->vm_node_list) {
+		node = hmm_vm_node(pos);
+		if (node->start == addr)
+			goto found;
+	}
+
+	spin_unlock(&vm->lock);
+	return NULL;
+found:
+	spin_unlock(&vm->lock);
+	return node;
+}
+
+struct hmm_vm_node *hmm_vm_find_node_in_range(struct hmm_vm *vm,
+					      unsigned int addr)
+{
+	struct list_head *pos;
+	struct hmm_vm_node *node;
+
+	if (!vm)
+		return NULL;
+
+	spin_lock(&vm->lock);
+
+	list_for_each(pos, &vm->vm_node_list) {
+		node = hmm_vm_node(pos);
+		if (addr_in_vm_node(addr, node))
+			goto found;
+	}
+
+	spin_unlock(&vm->lock);
+	return NULL;
+found:
+	spin_unlock(&vm->lock);
+	return node;
+}

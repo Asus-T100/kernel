@@ -1,0 +1,279 @@
+/*
+ * Support for Medifield PNW Camera Imaging ISP subsystem.
+ *
+ * Copyright (c) 2010 Intel Corporation. All Rights Reserved.
+ *
+ * Copyright (c) 2010 Silicon Hive www.siliconhive.com.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License version
+ * 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
+ * 02110-1301, USA.
+ *
+ */
+#include <linux/kernel.h>
+#include <linux/types.h>
+#include <linux/gfp.h>
+#include <linux/mm.h>		/* for GFP_ATOMIC */
+#include <linux/slab.h>		/* for kmalloc */
+#include <linux/module.h>
+#include <linux/moduleparam.h>
+#include <linux/string.h>
+#include <linux/list.h>
+#include <linux/errno.h>
+
+#include "hmm/hmm_common.h"
+#include "hmm/hmm_bo_dev.h"
+#include "hmm/hmm_bo.h"
+#include "atomisp_internal.h"
+
+/*
+ * hmm_bo_device functions.
+ */
+int hmm_bo_device_init(struct hmm_bo_device *bdev,
+		       struct isp_mmu_driver *mmu_driver,
+		       unsigned int vaddr_start, unsigned int size)
+{
+	int ret;
+
+	check_bodev_null_return(bdev, -EINVAL);
+
+	ret = isp_mmu_init(&bdev->mmu, mmu_driver);
+	if (ret) {
+		v4l2_err(&atomisp_dev, "isp_mmu_init failed.\n");
+		goto isp_mmu_init_err;
+	}
+
+	ret = hmm_vm_init(&bdev->vaddr_space, vaddr_start, size);
+	if (ret) {
+		v4l2_err(&atomisp_dev, "hmm_vm_init falied. "
+			     "vaddr_start = 0x%x, size = %d\n", vaddr_start,
+			     size);
+		goto vm_init_err;
+	}
+
+	INIT_LIST_HEAD(&bdev->free_bo_list);
+	INIT_LIST_HEAD(&bdev->active_bo_list);
+
+	mutex_init(&bdev->fblist_mutex);
+	mutex_init(&bdev->ablist_mutex);
+
+	bdev->flag = HMM_BO_DEVICE_INITED;
+
+	return 0;
+
+vm_init_err:
+	isp_mmu_exit(&bdev->mmu);
+isp_mmu_init_err:
+	return ret;
+}
+
+void hmm_bo_device_exit(struct hmm_bo_device *bdev)
+{
+	check_bodev_null_return(bdev, (void)0);
+
+	/*
+	 * destroy all bos in the bo list, even they are in use.
+	 */
+	if (!list_empty(&bdev->active_bo_list))
+		v4l2_warn(&atomisp_dev,
+			     "there're still activated bo in use. "
+			     "force to free them.\n");
+
+	while (!list_empty(&bdev->active_bo_list))
+		hmm_bo_unref(list_to_hmm_bo(bdev->active_bo_list.next));
+
+	if (!list_empty(&bdev->free_bo_list))
+		v4l2_warn(&atomisp_dev,
+				"there're still bo in free_bo_list. "
+				"force to free them.\n");
+
+	while (!list_empty(&bdev->free_bo_list))
+		hmm_bo_unref(list_to_hmm_bo(bdev->free_bo_list.next));
+
+	isp_mmu_exit(&bdev->mmu);
+	hmm_vm_clean(&bdev->vaddr_space);
+}
+
+int hmm_bo_device_inited(struct hmm_bo_device *bdev)
+{
+	check_bodev_null_return(bdev, -EINVAL);
+
+	return bdev->flag == HMM_BO_DEVICE_INITED;
+}
+
+/*
+ * find the buffer object with virtual address vaddr.
+ * return NULL if no such buffer object found.
+ */
+struct hmm_buffer_object *hmm_bo_device_search_start(struct hmm_bo_device *bdev,
+						     unsigned int vaddr)
+{
+	struct list_head *pos;
+	struct hmm_buffer_object *bo;
+
+	check_bodev_null_return(bdev, NULL);
+
+	mutex_lock(&bdev->ablist_mutex);
+	list_for_each(pos, &bdev->active_bo_list) {
+		bo = list_to_hmm_bo(pos);
+		/* pass bo which has no vm_node allocated */
+		if (!hmm_bo_vm_allocated(bo))
+			continue;
+		if (bo->vm_node->start == vaddr)
+			goto found;
+	}
+	mutex_unlock(&bdev->ablist_mutex);
+	return NULL;
+found:
+	mutex_unlock(&bdev->ablist_mutex);
+	return bo;
+}
+
+static int in_range(unsigned int start, unsigned int size, unsigned int addr)
+{
+	return (start <= addr) && (start + size > addr);
+}
+
+struct hmm_buffer_object *hmm_bo_device_search_in_range(struct hmm_bo_device
+							*bdev,
+							unsigned int vaddr)
+{
+	struct list_head *pos;
+	struct hmm_buffer_object *bo;
+
+	check_bodev_null_return(bdev, NULL);
+
+	mutex_lock(&bdev->fblist_mutex);
+	list_for_each(pos, &bdev->active_bo_list) {
+		bo = list_to_hmm_bo(pos);
+		/* pass bo which has no vm_node allocated */
+		if (!hmm_bo_vm_allocated(bo))
+			continue;
+		if (in_range(bo->vm_node->start, bo->vm_node->size, vaddr))
+			goto found;
+	}
+	mutex_unlock(&bdev->fblist_mutex);
+	return NULL;
+found:
+	mutex_unlock(&bdev->fblist_mutex);
+	return bo;
+}
+
+/*
+ * find a buffer object with pgnr pages from free_bo_list and
+ * activate it (remove from free_bo_list and add to
+ * active_bo_list)
+ *
+ * return NULL if no such buffer object found.
+ */
+struct hmm_buffer_object *hmm_bo_device_get_bo(struct hmm_bo_device *bdev,
+					       unsigned int pgnr)
+{
+	struct list_head *pos;
+	struct hmm_buffer_object *bo;
+
+	check_bodev_null_return(bdev, NULL);
+
+	mutex_lock(&bdev->fblist_mutex);
+	list_for_each(pos, &bdev->free_bo_list) {
+		bo = list_to_hmm_bo(pos);
+		if (bo->pgnr == pgnr)
+			goto found;
+	}
+	mutex_unlock(&bdev->fblist_mutex);
+	return NULL;
+found:
+	list_del(&bo->list);
+	mutex_unlock(&bdev->fblist_mutex);
+
+	mutex_lock(&bdev->ablist_mutex);
+	list_add(&bo->list, &bdev->active_bo_list);
+	mutex_unlock(&bdev->ablist_mutex);
+
+	return bo;
+}
+
+/*
+ * destroy all buffer objects in the free_bo_list.
+ */
+void hmm_bo_device_destroy_free_bo_list(struct hmm_bo_device *bdev)
+{
+	struct hmm_buffer_object *bo;
+
+	check_bodev_null_return(bdev, (void)0);
+
+	mutex_lock(&bdev->fblist_mutex);
+	while (!list_empty(&bdev->free_bo_list)) {
+		bo = list_first_entry(&bdev->free_bo_list,
+				      struct hmm_buffer_object, list);
+
+		list_del(&bo->list);
+		hmm_bo_unref(bo);
+	}
+	mutex_unlock(&bdev->fblist_mutex);
+}
+
+/*
+ * destroy buffer object with start virtual address vaddr.
+ */
+void hmm_bo_device_destroy_free_bo_addr(struct hmm_bo_device *bdev,
+					unsigned int vaddr)
+{
+	struct list_head *pos;
+	struct hmm_buffer_object *bo;
+
+	check_bodev_null_return(bdev, (void)0);
+
+	mutex_lock(&bdev->fblist_mutex);
+	list_for_each(pos, &bdev->free_bo_list) {
+		bo = list_to_hmm_bo(pos);
+		/* pass bo which has no vm_node allocated */
+		if (!hmm_bo_vm_allocated(bo))
+			continue;
+		if (bo->vm_node->start == vaddr)
+			goto found;
+	}
+	mutex_unlock(&bdev->fblist_mutex);
+	return;
+found:
+	list_del(&bo->list);
+	mutex_unlock(&bdev->fblist_mutex);
+	hmm_bo_unref(bo);
+}
+
+/*
+ * destroy all buffer objects with pgnr pages.
+ */
+void hmm_bo_device_destroy_free_bo_size(struct hmm_bo_device *bdev,
+					unsigned int pgnr)
+{
+	struct list_head *pos;
+	struct hmm_buffer_object *bo;
+
+	check_bodev_null_return(bdev, (void)0);
+
+retry:
+	mutex_lock(&bdev->fblist_mutex);
+	list_for_each(pos, &bdev->free_bo_list) {
+		bo = list_to_hmm_bo(pos);
+		if (bo->pgnr == pgnr)
+			goto found;
+	}
+	mutex_unlock(&bdev->fblist_mutex);
+	return;
+found:
+	list_del(&bo->list);
+	mutex_unlock(&bdev->fblist_mutex);
+	hmm_bo_unref(bo);
+	goto retry;
+}
