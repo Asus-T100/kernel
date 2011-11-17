@@ -33,7 +33,6 @@
 #include <linux/videodev2.h>
 #include <media/v4l2-device.h>
 #include <media/v4l2-chip-ident.h>
-#include <media/v4l2-i2c-drv.h>
 
 #include <linux/io.h>
 
@@ -461,7 +460,7 @@ static const struct v4l2_subdev_ops lm3554_ops = {
 };
 
 static const struct media_entity_operations lm3554_entity_ops = {
-	.set_power = v4l2_subdev_set_power,
+/*	.set_power = v4l2_subdev_set_power,	*/
 };
 
 static const struct i2c_device_id lm3554_id[] = {
@@ -578,12 +577,27 @@ fail:
 
 MODULE_DEVICE_TABLE(i2c, lm3554_id);
 
-static struct v4l2_i2c_driver_data v4l2_i2c_data = {
-	.name = LEDFLASH_LM3554_NAME,
+static struct i2c_driver lm3554_driver = {
+	.driver = {
+		.owner = THIS_MODULE,
+		.name = LEDFLASH_LM3554_NAME,
+	},
 	.probe = lm3554_probe,
 	.remove = lm3554_remove,
 	.id_table = lm3554_id,
 };
 
+static __init int init_lm3554(void)
+{
+	return i2c_add_driver(&lm3554_driver);
+}
+
+static __exit void exit_lm3554(void)
+{
+	i2c_del_driver(&lm3554_driver);
+}
+
+module_init(init_lm3554);
+module_exit(exit_lm3554);
 MODULE_AUTHOR("Jing Tao <jing.tao@intel.com>");
 MODULE_LICENSE("GPL");
