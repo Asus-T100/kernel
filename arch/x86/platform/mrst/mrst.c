@@ -27,6 +27,7 @@
 #include <linux/power_supply.h>
 #include <linux/power/max17042_battery.h>
 #include <linux/power/intel_mdf_battery.h>
+#include <linux/nfc/pn544.h>
 #include <linux/gpio.h>
 #include <linux/gpio_keys.h>
 #include <linux/input.h>
@@ -574,6 +575,93 @@ static void __init *lis331dl_platform_data(void *info)
 	return &intr2nd_pdata;
 }
 
+/* MFLD NFC controller (PN544) platform init */
+#define NFC_HOST_INT_GPIO               "NFC-intr"
+#define NFC_ENABLE_GPIO                 "NFC-enable"
+#define NFC_FW_RESET_GPIO               "NFC-reset"
+
+static unsigned int nfc_host_int_gpio, nfc_enable_gpio, nfc_fw_reset_gpio;
+
+static int pn544_nfc_request_resources(struct i2c_client *client)
+{
+	int ret;
+
+	ret = gpio_request(nfc_host_int_gpio, NFC_HOST_INT_GPIO);
+	if (ret) {
+		dev_err(&client->dev, "Request NFC INT GPIO fails %d\n", ret);
+		return -1;
+	}
+
+	ret = gpio_direction_input(nfc_host_int_gpio);
+	if (ret) {
+		dev_err(&client->dev, "Set GPIO Direction fails %d\n", ret);
+		goto err_int;
+	}
+
+	ret = gpio_request(nfc_enable_gpio, NFC_ENABLE_GPIO);
+	if (ret) {
+		dev_err(&client->dev,
+			"Request for NFC Enable GPIO fails %d\n", ret);
+		goto err_int;
+	}
+
+	ret = gpio_direction_output(nfc_enable_gpio, 0);
+	if (ret) {
+		dev_err(&client->dev, "Set GPIO Direction fails %d\n", ret);
+		goto err_enable;
+	}
+
+	ret = gpio_request(nfc_fw_reset_gpio, NFC_FW_RESET_GPIO);
+	if (ret) {
+		dev_err(&client->dev,
+			"Request for NFC FW Reset GPIO fails %d\n", ret);
+		goto err_enable;
+	}
+
+	ret = gpio_direction_output(nfc_fw_reset_gpio, 0);
+	if (ret) {
+		dev_err(&client->dev, "Set GPIO Direction fails %d\n", ret);
+		goto err_fw;
+	}
+
+	return 0;
+err_fw:
+	gpio_free(nfc_fw_reset_gpio);
+err_enable:
+	gpio_free(nfc_enable_gpio);
+err_int:
+	gpio_free(nfc_host_int_gpio);
+	return -1;
+}
+
+void *pn544_platform_data(void *info)
+{
+	struct i2c_board_info *i2c_info = (struct i2c_board_info *) info;
+	static struct pn544_i2c_platform_data mfld_pn544_nfc_platform_data;
+
+	memset(&mfld_pn544_nfc_platform_data, 0x00,
+		sizeof(struct pn544_i2c_platform_data));
+
+	nfc_host_int_gpio = get_gpio_by_name(NFC_HOST_INT_GPIO);
+	if (nfc_host_int_gpio == -1)
+		return NULL;
+	nfc_enable_gpio = get_gpio_by_name(NFC_ENABLE_GPIO);
+	if (nfc_enable_gpio  == -1)
+		return NULL;
+	nfc_fw_reset_gpio = get_gpio_by_name(NFC_FW_RESET_GPIO);
+	if (nfc_fw_reset_gpio == -1)
+		return NULL;
+
+	mfld_pn544_nfc_platform_data.irq_gpio = nfc_host_int_gpio;
+	mfld_pn544_nfc_platform_data.ven_gpio = nfc_enable_gpio;
+	mfld_pn544_nfc_platform_data.firm_gpio = nfc_fw_reset_gpio;
+
+	i2c_info->irq = nfc_host_int_gpio + MRST_IRQ_OFFSET;
+	mfld_pn544_nfc_platform_data.request_resources =
+		pn544_nfc_request_resources;
+
+	return &mfld_pn544_nfc_platform_data;
+}
 
 /* MFLD iCDK touchscreen data */
 #define CYTTSP_GPIO_PIN 0x3E
@@ -807,6 +895,7 @@ static const struct devs_id __initconst device_ids[] = {
 	{"emc1403", SFI_DEV_TYPE_I2C, 1, &emc1403_platform_data},
 	{"i2c_accel", SFI_DEV_TYPE_I2C, 0, &lis331dl_platform_data},
 	{"pmic_audio", SFI_DEV_TYPE_IPC, 1, &no_platform_data},
+	{"pn544", SFI_DEV_TYPE_I2C, 0, &pn544_platform_data},
 	{"mpu3050", SFI_DEV_TYPE_I2C, 1, &mpu3050_platform_data},
 	{"ektf2136_spi", SFI_DEV_TYPE_SPI, 0, &ektf2136_spi_platform_data},
 	{"msic_adc", SFI_DEV_TYPE_IPC, 1, &msic_adc_platform_data},
