@@ -23,88 +23,127 @@
 #include <linux/slab.h>
 #include <linux/platform_device.h>
 #include <linux/input.h>
-
+#include <linux/io.h>
 #include <asm/intel_scu_ipc.h>
 
 #define DRIVER_NAME "msic_power_btn"
 
-#define MSIC_PB_STATUS	0x3f
-#define MSIC_PB_LEVEL	(1 << 3) /* 1 - release, 0 - press */
+/* SRAM address for power button state */
+#define MSIC_PB_STAT	0xffff7fd0
+  #define MSIC_PB_LEVEL (1 << 3) /* 1 - release, 0 - press */
+#define MSIC_PB_LEN	1
+
+/*
+ * MSIC document ti_datasheet defines the 1st bit reg 0x21 is used to mask
+ * power button interrupt
+ */
+#define MSIC_IRQLVL1MSK	0x21
+#define MSIC_PWRBTNM	(1 << 0)
+
+struct mfld_pb_priv {
+	struct input_dev *input;
+	int irq;
+	void __iomem *pb_stat;
+};
 
 static irqreturn_t mfld_pb_isr(int irq, void *dev_id)
 {
-	struct input_dev *input = dev_id;
-	int ret;
+	struct mfld_pb_priv *priv = dev_id;
 	u8 pbstat;
 
-	ret = intel_scu_ipc_ioread8(MSIC_PB_STATUS, &pbstat);
-	if (ret < 0) {
-		dev_err(input->dev.parent, "Read error %d while reading"
-			       " MSIC_PB_STATUS\n", ret);
-	} else {
-		input_event(input, EV_KEY, KEY_POWER,
-			       !(pbstat & MSIC_PB_LEVEL));
-		input_sync(input);
-	}
+	pbstat = readb(priv->pb_stat);
+	dev_dbg(&priv->input->dev, "pbstat: 0x%x\n", pbstat);
+
+	input_event(priv->input, EV_KEY, KEY_POWER, !(pbstat & MSIC_PB_LEVEL));
+	input_sync(priv->input);
 
 	return IRQ_HANDLED;
 }
 
 static int __devinit mfld_pb_probe(struct platform_device *pdev)
 {
+	struct mfld_pb_priv *priv;
 	struct input_dev *input;
-	int irq = platform_get_irq(pdev, 0);
-	int error;
+	int ret;
+	int irq;
+	u8 value;
 
+	irq = platform_get_irq(pdev, 0);
 	if (irq < 0)
 		return -EINVAL;
 
+	priv = kzalloc(sizeof(struct mfld_pb_priv), GFP_KERNEL);
 	input = input_allocate_device();
-	if (!input) {
-		dev_err(&pdev->dev, "Input device allocation error\n");
-		return -ENOMEM;
+	if (!priv || !input) {
+		ret = -ENOMEM;
+		goto fail;
 	}
+
+	priv->input = input;
+	priv->irq = irq;
+	platform_set_drvdata(pdev, priv);
 
 	input->name = pdev->name;
 	input->phys = "power-button/input0";
-	input->id.bustype = BUS_HOST;
 	input->dev.parent = &pdev->dev;
 
 	input_set_capability(input, EV_KEY, KEY_POWER);
 
-	error = request_threaded_irq(irq, NULL, mfld_pb_isr, 0,
-			DRIVER_NAME, input);
-	if (error) {
-		dev_err(&pdev->dev, "Unable to request irq %d for mfld power"
-				"button\n", irq);
-		goto err_free_input;
+	priv->pb_stat = ioremap(MSIC_PB_STAT, MSIC_PB_LEN);
+	if (!priv->pb_stat) {
+		ret = -ENOMEM;
+		goto fail;
 	}
 
-	error = input_register_device(input);
-	if (error) {
-		dev_err(&pdev->dev, "Unable to register input dev, error "
-				"%d\n", error);
-		goto err_free_irq;
+	ret = request_irq(priv->irq, mfld_pb_isr,
+			  IRQF_NO_SUSPEND, DRIVER_NAME, priv);
+	if (ret) {
+		dev_err(&pdev->dev,
+			"unable to request irq %d for power button\n", irq);
+		goto out_iounmap;
 	}
 
-	platform_set_drvdata(pdev, input);
+	ret = input_register_device(input);
+	if (ret) {
+		dev_err(&pdev->dev,
+			"unable to register input dev, error %d\n", ret);
+		goto out_free_irq;
+	}
+
+	/* SCU firmware might send power button interrupts to IA core before
+	 * kernel boots and doesn't get EOI from IA core. The first bit of
+	 * MSIC reg 0x21 is kept masked, and SCU firmware doesn't send new
+	 * power interrupt to Android kernel. Unmask the bit when probing
+	 * power button in kernel.
+	 * There is a very narrow race between irq handler and power button
+	 * initialization. The race happens rarely. So we needn't worry
+	 * about it.
+	 */
+	ret = intel_scu_ipc_ioread8(MSIC_IRQLVL1MSK, &value);
+	value &= ~MSIC_PWRBTNM;
+	ret = intel_scu_ipc_iowrite8(MSIC_IRQLVL1MSK, value);
+
 	return 0;
 
-err_free_irq:
-	free_irq(irq, input);
-err_free_input:
+out_free_irq:
+	free_irq(priv->irq, priv);
+out_iounmap:
+	iounmap(priv->pb_stat);
+fail:
+	platform_set_drvdata(pdev, NULL);
 	input_free_device(input);
-	return error;
+	kfree(priv);
+	return ret;
 }
 
 static int __devexit mfld_pb_remove(struct platform_device *pdev)
 {
-	struct input_dev *input = platform_get_drvdata(pdev);
-	int irq = platform_get_irq(pdev, 0);
+	struct mfld_pb_priv *priv = platform_get_drvdata(pdev);
 
-	free_irq(irq, input);
-	input_unregister_device(input);
-	platform_set_drvdata(pdev, NULL);
+	iounmap(priv->pb_stat);
+	free_irq(priv->irq, priv);
+	input_unregister_device(priv->input);
+	kfree(priv);
 
 	return 0;
 }
@@ -114,23 +153,23 @@ static struct platform_driver mfld_pb_driver = {
 		.name = DRIVER_NAME,
 		.owner = THIS_MODULE,
 	},
-	.probe	= mfld_pb_probe,
-	.remove	= __devexit_p(mfld_pb_remove),
+	.probe  = mfld_pb_probe,
+	.remove = __devexit_p(mfld_pb_remove),
 };
 
 static int __init mfld_pb_init(void)
 {
 	return platform_driver_register(&mfld_pb_driver);
 }
-module_init(mfld_pb_init);
 
 static void __exit mfld_pb_exit(void)
 {
 	platform_driver_unregister(&mfld_pb_driver);
 }
+
+module_init(mfld_pb_init);
 module_exit(mfld_pb_exit);
 
 MODULE_AUTHOR("Hong Liu <hong.liu@intel.com>");
 MODULE_DESCRIPTION("Intel Medfield Power Button Driver");
 MODULE_LICENSE("GPL v2");
-MODULE_ALIAS("platform:" DRIVER_NAME);
