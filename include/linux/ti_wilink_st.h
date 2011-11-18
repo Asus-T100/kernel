@@ -25,6 +25,8 @@
 #ifndef TI_WILINK_ST_H
 #define TI_WILINK_ST_H
 
+#include <linux/wakelock.h>
+
 /**
  * enum proto-type - The protocol on WiLink chips which share a
  *	common physical interface like UART.
@@ -130,6 +132,8 @@ extern long st_unregister(struct st_proto_s *);
  *	from waitq can be moved onto the txq.
  *	Needs locking too.
  * @lock: the lock to protect skbs, queues, and ST states.
+ * @wake_lock: wake lock to implement an inactivity timeout to prevent
+ * going into S3 when incoming data is to be handled.
  * @protos_registered: count of the protocols registered, also when 0 the
  *	chip enable gpio can be toggled, and when it changes to 1 the fw
  *	needs to be downloaded to initialize chip side ST.
@@ -152,6 +156,7 @@ struct st_data_s {
 	unsigned char rx_chnl;
 	struct sk_buff_head txq, tx_waitq;
 	spinlock_t lock;
+	struct wake_lock wake_lock;
 	unsigned char	protos_registered;
 	unsigned long ll_state;
 	void *kim_data;

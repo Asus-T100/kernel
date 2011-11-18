@@ -31,6 +31,19 @@
 #include <linux/ti_wilink_st.h>
 #include <linux/pm_runtime.h>
 
+/*
+ * The main goal of this Inactivity Timeout wake lock is to avoid putting
+ * the system into Sleep while no application are running and some incoming
+ * data has to be processed. For instance, during a BT SDP service discovery
+ * session initiated by a remote with no service level connection opened yet,
+ * it will ensure enough CPU time remains to handle incoming request(s).
+ * Assuming the amount of "no-app-running" traffic is concentrated (mainly
+ * right before service connection level establishment), Power
+ * consumption impact is negligible.
+ */
+#define ST_PM_PROTECT_INACTIVITY_TIMEOUT (1*HZ)
+#define ST_PM_PROTECT_WAKE_LOCK_NAME "st_core"
+
 #ifndef DEBUG
 #ifdef pr_info
 #undef pr_info
@@ -120,6 +133,15 @@ void st_send_frame(unsigned char chnl_id, struct st_data_s *st_gdata)
 		kfree_skb(st_gdata->rx_skb);
 		return;
 	}
+
+	/*
+	 * Refresh inactivity timeout for Power Management protection
+	 * mechanism. It will prevent from S3 sleeping for a while
+	 * in order to handle the incoming data.
+	 */
+	wake_lock_timeout(&st_gdata->wake_lock,
+			ST_PM_PROTECT_INACTIVITY_TIMEOUT);
+
 	/* this cannot fail
 	 * this shouldn't take long
 	 * - should be just skb_queue_tail for the
@@ -690,6 +712,14 @@ long st_write(struct sk_buff *skb)
 	pr_debug("%d to be written", skb->len);
 	len = skb->len;
 
+	/*
+	 * Refresh inactivity timeout for Power Management protection mechanism
+	 * It will prevent from S3 sleeping for a while as it is very likely
+	 * some incoming data will be received soon.
+	 */
+	wake_lock_timeout(&st_gdata->wake_lock,
+			ST_PM_PROTECT_INACTIVITY_TIMEOUT);
+
 	/* st_ll to decide where to enqueue the skb */
 	st_int_enqueue(st_gdata, skb);
 	/* wake up */
@@ -876,9 +906,14 @@ int st_core_init(struct st_data_s **core_data)
 	/* Locking used in st_int_enqueue() to avoid multiple execution */
 	spin_lock_init(&st_gdata->lock);
 
+	/* Power Management protection mechanism w.r.t. RX queue activity */
+	wake_lock_init(&st_gdata->wake_lock, WAKE_LOCK_SUSPEND,
+			ST_PM_PROTECT_WAKE_LOCK_NAME);
+
 	err = st_ll_init(st_gdata);
 	if (err) {
 		pr_err("error during st_ll initialization(%ld)", err);
+		wake_lock_destroy(&st_gdata->wake_lock);
 		kfree(st_gdata);
 		err = tty_unregister_ldisc(N_TI_WL);
 		if (err)
@@ -898,7 +933,9 @@ void st_core_exit(struct st_data_s *st_gdata)
 		pr_err("error during deinit of ST LL %ld", err);
 
 	if (st_gdata != NULL) {
+
 		/* Free ST Tx Qs and skbs */
+		wake_lock_destroy(&st_gdata->wake_lock);
 		skb_queue_purge(&st_gdata->txq);
 		skb_queue_purge(&st_gdata->tx_waitq);
 		kfree_skb(st_gdata->rx_skb);
