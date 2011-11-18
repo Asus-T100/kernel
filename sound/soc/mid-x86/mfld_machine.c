@@ -29,6 +29,7 @@
 #include <linux/slab.h>
 #include <linux/io.h>
 #include <linux/async.h>
+#include <linux/wakelock.h>
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
 #include <sound/soc.h>
@@ -61,6 +62,9 @@ struct mfld_mc_private {
 	u8 jack_interrupt_status;
 	u8 oc_interrupt_status;
 	spinlock_t lock; /* lock for interrupt status and jack debounce */
+#ifdef CONFIG_HAS_WAKELOCK
+	struct wake_lock wake_lock;
+#endif
 };
 
 static struct snd_soc_jack mfld_jack;
@@ -458,6 +462,15 @@ static irqreturn_t snd_mfld_jack_intr_handler(int irq, void *dev)
 	/*To retrieve the oc_interrupt_status value (LSB)*/
 	mc_private->oc_interrupt_status |= 0x1F & intr_status;
 	spin_unlock(&mc_private->lock);
+#ifdef CONFIG_HAS_WAKELOCK
+	/*
+	 * We don't have any call back from the jack detection completed.
+	 * Take wakelock for one second to give time for the detection
+	 * to finish. Jack detection is happening rarely so this doesn't
+	 * have big impact to power consumption.
+	 */
+	wake_lock_timeout(&mc_private->wake_lock, 1*HZ);
+#endif
 	return IRQ_WAKE_THREAD;
 }
 
@@ -518,6 +531,10 @@ static int __devinit snd_mfld_mc_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	}
 	spin_lock_init(&mc_drv_ctx->lock);
+#ifdef CONFIG_HAS_WAKELOCK
+	wake_lock_init(&mc_drv_ctx->wake_lock,
+		       WAKE_LOCK_SUSPEND, "jack_detect");
+#endif
 
 	irq_mem = platform_get_resource_byname(
 				pdev, IORESOURCE_MEM, "IRQ_BASE");
@@ -568,6 +585,11 @@ static int __devexit snd_mfld_mc_remove(struct platform_device *pdev)
 	struct mfld_mc_private *mc_drv_ctx = snd_soc_card_get_drvdata(soc_card);
 	pr_debug("snd_mfld_mc_remove called\n");
 	free_irq(platform_get_irq(pdev, 0), mc_drv_ctx);
+#ifdef CONFIG_HAS_WAKELOCK
+	if (wake_lock_active(&mc_drv_ctx->wake_lock))
+		wake_unlock(&mc_drv_ctx->wake_lock);
+	wake_lock_destroy(&mc_drv_ctx->wake_lock);
+#endif
 	kfree(mc_drv_ctx);
 	snd_soc_card_set_drvdata(soc_card, NULL);
 	snd_soc_unregister_card(soc_card);
