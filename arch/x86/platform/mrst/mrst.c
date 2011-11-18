@@ -39,6 +39,10 @@
 #include <linux/intel_mid_pm.h>
 #include <linux/hsi/hsi.h>
 #include <linux/hsi/intel_mid_hsi.h>
+
+#include <linux/atomisp_platform.h>
+#include <media/v4l2-subdev.h>
+
 #include <asm/setup.h>
 #include <asm/mpspec_def.h>
 #include <asm/hw_irq.h>
@@ -987,6 +991,279 @@ static void *msic_ocd_platform_data(void *info)
 	return msic_generic_platform_data(info, INTEL_MSIC_BLOCK_OCD);
 }
 
+/* MFLD iCDK camera sensor GPIOs */
+
+#define GP_CAMERA_0_POWER_DOWN		"cam0_vcm_2p8"
+#define GP_CAMERA_1_POWER_DOWN		"camera_1_power"
+#define GP_CAMERA_0_RESET		"camera_0_reset"
+#define GP_CAMERA_1_RESET		"camera_1_reset"
+/* Need modify sensor driver's platform data structure to eliminate static */
+static int gp_camera0_reset;
+static int gp_camera0_power_down;
+static int gp_camera1_reset;
+static int gp_camera1_power_down;
+static int camera_vprog1_on;
+
+/*
+ * One-time gpio initialization.
+ * @name: gpio name: coded in SFI table
+ * @gpio: gpio pin number (bypass @name)
+ * @dir: GPIOF_DIR_IN or GPIOF_DIR_OUT
+ * @value: if dir = GPIOF_DIR_OUT, this is the init value for output pin
+ * if dir = GPIOF_DIR_IN, this argument is ignored
+ * return: a positive pin number if succeeds, otherwise a negative value
+ */
+static int camera_sensor_gpio(int gpio, char *name, int dir, int value)
+{
+	int ret, pin;
+
+	if (gpio == -1) {
+		pin = get_gpio_by_name(name);
+		if (pin == -1) {
+			pr_err("%s: failed to get gpio(name: %s)\n",
+						__func__, name);
+			return -EINVAL;
+		}
+	} else {
+		pin = gpio;
+	}
+
+	ret = gpio_request(pin, name);
+	if (ret) {
+		pr_err("%s: failed to request gpio(pin %d)\n", __func__, pin);
+		return -EINVAL;
+	}
+
+	if (dir == GPIOF_DIR_OUT)
+		ret = gpio_direction_output(pin, value);
+	else
+		ret = gpio_direction_input(pin);
+
+	if (ret) {
+		pr_err("%s: failed to set gpio(pin %d) direction\n",
+							__func__, pin);
+		gpio_free(pin);
+	}
+
+	return ret ? ret : pin;
+}
+
+/*
+ * Configure MIPI CSI physical parameters.
+ * @port: ATOMISP_CAMERA_PORT_PRIMARY or ATOMISP_CAMERA_PORT_SECONDARY
+ * @lanes: for ATOMISP_CAMERA_PORT_PRIMARY, there could be 2 or 4 lanes
+ * for ATOMISP_CAMERA_PORT_SECONDARY, there is only one lane.
+ * @format: MIPI CSI pixel format, see include/linux/atomisp_platform.h
+ * @bayer_order: MIPI CSI bayer order, see include/linux/atomisp_platform.h
+ */
+static int camera_sensor_csi(struct v4l2_subdev *sd, u32 port,
+			u32 lanes, u32 format, u32 bayer_order, int flag)
+{
+	struct i2c_client *client = v4l2_get_subdevdata(sd);
+	struct camera_mipi_info *csi = NULL;
+
+	if (flag) {
+		csi = kzalloc(sizeof(*csi), GFP_KERNEL);
+		if (!csi) {
+			dev_err(&client->dev, "out of memory\n");
+			return -ENOMEM;
+		}
+		csi->port = port;
+		csi->num_lanes = lanes;
+		csi->input_format = format;
+		csi->raw_bayer_order = bayer_order;
+		v4l2_set_subdev_hostdata(sd, (void *)csi);
+	} else {
+		csi = v4l2_get_subdev_hostdata(sd);
+		kfree(csi);
+	}
+
+	return 0;
+}
+
+
+/*
+ * MFLD PR2 primary camera sensor - MT9E013 platform data
+ */
+static int mt9e013_gpio_ctrl(struct v4l2_subdev *sd, int flag)
+{
+	int ret;
+
+	if (gp_camera0_reset < 0) {
+		ret = camera_sensor_gpio(-1, GP_CAMERA_0_RESET,
+					 GPIOF_DIR_OUT, 1);
+		if (ret < 0)
+			return ret;
+		gp_camera0_reset = ret;
+	}
+
+	if (flag) {
+		gpio_set_value(gp_camera0_reset, 0);
+		msleep(20);
+		gpio_set_value(gp_camera0_reset, 1);
+	} else {
+		gpio_set_value(gp_camera0_reset, 0);
+	}
+
+	return 0;
+}
+
+static int mt9e013_flisclk_ctrl(struct v4l2_subdev *sd, int flag)
+{
+	return intel_scu_ipc_osc_clk(OSC_CLK_CAM0, flag);
+}
+
+static int mt9e013_power_ctrl(struct v4l2_subdev *sd, int flag)
+{
+	int ret;
+
+	if (gp_camera0_power_down < 0) {
+		ret = camera_sensor_gpio(-1, GP_CAMERA_0_POWER_DOWN,
+					 GPIOF_DIR_OUT, 1);
+		if (ret < 0)
+			return ret;
+		gp_camera0_power_down = ret;
+	}
+
+	if (flag) {
+		gpio_set_value(gp_camera0_power_down, 1);
+		if (!camera_vprog1_on) {
+			camera_vprog1_on = 1;
+			intel_scu_ipc_msic_vprog1(1);
+		}
+	} else {
+		if (camera_vprog1_on) {
+			camera_vprog1_on = 0;
+			intel_scu_ipc_msic_vprog1(0);
+		}
+		gpio_set_value(gp_camera0_power_down, 0);
+	}
+
+	return 0;
+}
+
+static int mt9e013_csi_configure(struct v4l2_subdev *sd, int flag)
+{
+	return camera_sensor_csi(sd, ATOMISP_CAMERA_PORT_PRIMARY, 2,
+		ATOMISP_INPUT_FORMAT_RAW_10, atomisp_bayer_order_grbg, flag);
+}
+
+static struct camera_sensor_platform_data mt9e013_sensor_platform_data = {
+	.gpio_ctrl	= mt9e013_gpio_ctrl,
+	.flisclk_ctrl	= mt9e013_flisclk_ctrl,
+	.power_ctrl	= mt9e013_power_ctrl,
+	.csi_cfg	= mt9e013_csi_configure,
+};
+
+void *mt9e013_platform_data_init(void *info)
+{
+	gp_camera0_reset = -1;
+	gp_camera0_power_down = -1;
+
+	return &mt9e013_sensor_platform_data;
+}
+
+/*
+ * MFLD PR2 secondary camera sensor - MT9M114 platform data
+ */
+static int mt9m114_gpio_ctrl(struct v4l2_subdev *sd, int flag)
+{
+	int ret;
+
+	if (gp_camera1_reset < 0) {
+		ret = camera_sensor_gpio(-1, GP_CAMERA_1_RESET,
+					 GPIOF_DIR_OUT, 1);
+		if (ret < 0)
+			return ret;
+		gp_camera1_reset = ret;
+	}
+
+	if (flag)
+		gpio_set_value(gp_camera1_reset, 1);
+	else
+		gpio_set_value(gp_camera1_reset, 0);
+
+	return 0;
+}
+
+static int mt9m114_flisclk_ctrl(struct v4l2_subdev *sd, int flag)
+{
+	return intel_scu_ipc_osc_clk(OSC_CLK_CAM1, flag);
+}
+
+static int mt9e013_reset;
+static int mt9m114_power_ctrl(struct v4l2_subdev *sd, int flag)
+{
+	int ret;
+
+	/* Note here, there maybe a workaround to avoid I2C SDA issue */
+	if (gp_camera1_power_down < 0) {
+		ret = camera_sensor_gpio(-1, GP_CAMERA_1_POWER_DOWN,
+					GPIOF_DIR_OUT, 1);
+		if (ret < 0)
+			return ret;
+		gp_camera1_power_down = ret;
+	}
+
+	if (gp_camera1_reset < 0) {
+		ret = camera_sensor_gpio(-1, GP_CAMERA_1_RESET,
+					 GPIOF_DIR_OUT, 1);
+		if (ret < 0)
+			return ret;
+		gp_camera1_reset = ret;
+	}
+
+	if (flag) {
+		if (!mt9e013_reset) {
+			mt9e013_power_ctrl(sd, 1);
+			mt9e013_gpio_ctrl(sd, 0);
+			mt9e013_gpio_ctrl(sd, 1);
+			mt9e013_gpio_ctrl(sd, 0);
+			mt9e013_power_ctrl(sd, 0);
+			mt9e013_reset = 1;
+		}
+
+		gpio_set_value(gp_camera1_reset, 0);
+		if (!camera_vprog1_on) {
+			camera_vprog1_on = 1;
+			intel_scu_ipc_msic_vprog1(1);
+		}
+		gpio_set_value(gp_camera1_power_down, 1);
+	} else {
+		if (camera_vprog1_on) {
+			camera_vprog1_on = 0;
+			intel_scu_ipc_msic_vprog1(0);
+		}
+		gpio_set_value(gp_camera1_power_down, 0);
+
+		mt9e013_reset = 0;
+	}
+
+	return 0;
+}
+
+static int mt9m114_csi_configure(struct v4l2_subdev *sd, int flag)
+{
+	/* soc sensor, there is no raw bayer order (set to -1) */
+	return camera_sensor_csi(sd, ATOMISP_CAMERA_PORT_SECONDARY, 1,
+		ATOMISP_INPUT_FORMAT_YUV422_8, -1, flag);
+}
+
+static struct camera_sensor_platform_data mt9m114_sensor_platform_data = {
+	.gpio_ctrl	= mt9m114_gpio_ctrl,
+	.flisclk_ctrl	= mt9m114_flisclk_ctrl,
+	.power_ctrl	= mt9m114_power_ctrl,
+	.csi_cfg	= mt9m114_csi_configure,
+};
+
+void *mt9m114_platform_data_init(void *info)
+{
+	gp_camera1_reset = -1;
+	gp_camera1_power_down = -1;
+
+	return &mt9m114_sensor_platform_data;
+}
+
 static const struct devs_id __initconst device_ids[] = {
 	{"pmic_gpio", SFI_DEV_TYPE_SPI, 1, &pmic_gpio_platform_data},
 	{"pmic_gpio", SFI_DEV_TYPE_IPC, 1, &pmic_gpio_platform_data},
@@ -1011,8 +1288,104 @@ static const struct devs_id __initconst device_ids[] = {
 	{"msic_power_btn", SFI_DEV_TYPE_IPC, 1, &msic_power_btn_platform_data},
 	{"msic_ocd", SFI_DEV_TYPE_IPC, 1, &msic_ocd_platform_data},
 
+	/*
+	 * I2C devices for camera image subsystem which will not be load into
+	 * I2C core while initialize
+	 */
+	{"lm3554", SFI_DEV_TYPE_I2C, 0, &no_platform_data},
+	{"mt9e013", SFI_DEV_TYPE_I2C, 0, &mt9e013_platform_data_init},
+	{"mt9m114", SFI_DEV_TYPE_I2C, 0, &mt9m114_platform_data_init},
+
 	{},
 };
+
+static const struct intel_v4l2_subdev_id v4l2_ids[] = {
+	{"mt9e013", RAW_CAMERA, ATOMISP_CAMERA_PORT_PRIMARY},
+	{"mt9m114", SOC_CAMERA, ATOMISP_CAMERA_PORT_SECONDARY},
+	{"lm3554", LED_FLASH, -1},
+	{},
+};
+
+#define N_SUBDEV (sizeof(v4l2_ids)/sizeof(v4l2_ids[0]))
+
+static struct atomisp_platform_data *v4l2_subdev_table_head;
+
+static void intel_ignore_i2c_device_register(int bus,
+					     struct i2c_board_info *idev)
+{
+	const struct intel_v4l2_subdev_id *vdev = v4l2_ids;
+	struct intel_v4l2_subdev_i2c_board_info *info;
+	static struct intel_v4l2_subdev_table *subdev_table;
+	enum intel_v4l2_subdev_type type = 0;
+	enum atomisp_camera_port port;
+	static int i;
+
+	while (vdev->name[0]) {
+		if (!strncmp(vdev->name, idev->type, 16)) {
+			/* compare name */
+			type = vdev->type;
+			port = vdev->port;
+			break;
+		}
+		vdev++;
+	}
+
+	if (!type) /* not found */
+		return;
+
+	info = kzalloc(sizeof(struct intel_v4l2_subdev_i2c_board_info),
+		       GFP_KERNEL);
+	if (!info) {
+		pr_err("MRST: fail to alloc mem for ignored i2c dev %s\n",
+		       idev->type);
+		return;
+	}
+
+	info->i2c_adapter_id = bus;
+	/* set platform data */
+	memcpy(&info->board_info, idev, sizeof(*idev));
+
+	if (v4l2_subdev_table_head == NULL) {
+		subdev_table = kzalloc(sizeof(struct intel_v4l2_subdev_table)
+			* N_SUBDEV, GFP_KERNEL);
+
+		if (!subdev_table) {
+			pr_err("MRST: fail to alloc mem for v4l2_subdev_table %s\n",
+			       idev->type);
+			kfree(info);
+			return;
+		}
+
+		v4l2_subdev_table_head = kzalloc(
+			sizeof(struct atomisp_platform_data), GFP_KERNEL);
+		if (!v4l2_subdev_table_head) {
+			pr_err("MRST: fail to alloc mem for v4l2_subdev_table %s\n",
+			       idev->type);
+			kfree(info);
+			kfree(subdev_table);
+			return;
+		}
+		v4l2_subdev_table_head->subdevs = subdev_table;
+	}
+
+	memcpy(&subdev_table[i].v4l2_subdev, info, sizeof(*info));
+	subdev_table[i].type = type;
+	subdev_table[i].port = port;
+	i++;
+	kfree(info);
+	return;
+}
+
+const struct atomisp_platform_data *intel_get_v4l2_subdev_table(void)
+{
+	if (v4l2_subdev_table_head)
+		return v4l2_subdev_table_head;
+	else {
+		pr_err("MRST: no camera device in the SFI table\n");
+		return NULL;
+	}
+}
+EXPORT_SYMBOL_GPL(intel_get_v4l2_subdev_table);
 
 #define MAX_IPCDEVS	24
 static struct platform_device *ipc_devs[MAX_IPCDEVS];
@@ -1188,6 +1561,7 @@ static void __init sfi_handle_spi_dev(struct spi_board_info *spi_info)
 static void __init sfi_handle_i2c_dev(int bus, struct i2c_board_info *i2c_info)
 {
 	const struct devs_id *dev = device_ids;
+	const struct intel_v4l2_subdev_id *vdev = v4l2_ids;
 	void *pdata = NULL;
 
 	while (dev->name[0]) {
@@ -1199,6 +1573,14 @@ static void __init sfi_handle_i2c_dev(int bus, struct i2c_board_info *i2c_info)
 		dev++;
 	}
 	i2c_info->platform_data = pdata;
+
+	while (vdev->name[0]) {
+		if (!strncmp(vdev->name, i2c_info->type, 16)) {
+			intel_ignore_i2c_device_register(bus, i2c_info);
+			return;
+		}
+		vdev++;
+	}
 
 	if (dev->delay)
 		intel_scu_i2c_device_register(bus, i2c_info);

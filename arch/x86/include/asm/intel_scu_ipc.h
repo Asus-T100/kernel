@@ -99,4 +99,60 @@ static inline int intel_scu_notifier_post(unsigned long v, void *p)
 #define		SCU_AVAILABLE		1
 #define		SCU_DOWN		2
 
+#define MSIC_VPROG1_CTRL	0xD6
+#define MSIC_VPROG2_CTRL	0xD7
+#define MSIC_VPROG_ON		0xFF
+#define MSIC_VPROG_OFF		0
+
+#define MSIC_REG_PWM0CLKDIV1 0x61
+#define MSIC_REG_PWM0CLKDIV0 0x62
+#define MSIC_REG_PWM0DUTYCYCLE 0x67
+
+/* Helpers to turn on/off msic vprog1 and vprog2 */
+static inline int intel_scu_ipc_msic_vprog1(int on)
+{
+	return intel_scu_ipc_iowrite8(MSIC_VPROG1_CTRL,
+			on ? MSIC_VPROG_ON : MSIC_VPROG_OFF);
+}
+
+static inline int intel_scu_ipc_msic_vprog2(int on)
+{
+	return intel_scu_ipc_iowrite8(MSIC_VPROG2_CTRL,
+			on ? MSIC_VPROG_ON : MSIC_VPROG_OFF);
+}
+
+#define IPCMSG_OSC_CLK	0xE6 /* Turn on/off osc clock */
+
+/*
+ * Penwell has 4 osc clocks:
+ * 0:   AUDIO
+ * 1,2: CAMERA SENSORS
+ * 3:   DISP_BUF_CLK
+ */
+#define OSC_CLK_CAM0	1
+#define OSC_CLK_CAM1	2
+
+/* SCU IPC COMMAND(osc clk on/off) definition:
+ * ipc_wbuf[0] = clock to act on {0, 1, 2, 3}
+ * ipc_wbuf[1] =
+ * bit 0 - 1:on  0:off
+ * bit 1 - if 1, read divider setting from bits 3:2 as follows:
+ * bit [3:2] - 00: clk/1, 01: clk/2, 10: clk/4, 11: reserved
+ */
+static inline int intel_scu_ipc_osc_clk(u8 clk, u8 on)
+{
+	u8 ipc_wbuf[16];
+	int ipc_ret;
+
+	ipc_wbuf[0] = clk & 0x3;
+	ipc_wbuf[1] = on & 1; /* no divider */
+
+	ipc_ret = intel_scu_ipc_command(IPCMSG_OSC_CLK, 0,
+					(u32 *)ipc_wbuf, 2, NULL, 0);
+	if (ipc_ret != 0)
+		pr_err("%s: failed to set osc clk(%d) output\n", __func__, clk);
+
+	return ipc_ret;
+}
+
 #endif

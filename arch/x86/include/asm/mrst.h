@@ -140,4 +140,5 @@ extern void mrst_s0i3_resume(void);
 extern int mrst_pmu_invalid_cstates(void);
 extern const char s0i3_trampoline_data[], s0i3_trampoline_data_end[];
 
+extern const struct atomisp_platform_data *intel_get_v4l2_subdev_table(void);
 #endif /* _ASM_X86_MRST_H */
