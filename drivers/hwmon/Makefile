@@ -124,6 +124,7 @@ obj-$(CONFIG_SENSORS_HMC5883)           += hmc5883.o
 obj-$(CONFIG_SENSORS_MPU3050)		+= mpu3050.o
 obj-$(CONFIG_SENSORS_MS5607)		+= ms5607.o
 obj-$(CONFIG_MSIC_GPADC)	+= intel_mid_gpadc.o
+obj-$(CONFIG_SENSORS_MID_CURRENT)	+= intel_mid_ocd.o
 
 # PMBus drivers
 obj-$(CONFIG_PMBUS)		+= pmbus_core.o

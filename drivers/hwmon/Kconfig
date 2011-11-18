@@ -1409,6 +1409,13 @@ config MSIC_GPADC
         help
 	  Say Y here to enable MSIC GPADC driver on Intel Medfield Platform
 
+config SENSORS_MID_CURRENT
+	tristate "Over Current Detection driver for Intel Medfield platform"
+        depends on INTEL_SCU_IPC
+        help
+	  Say Y here to enable Over Current Detection driver on Intel Medfield
+	  Platform.
+
 if ACPI
 
 comment "ACPI drivers"
