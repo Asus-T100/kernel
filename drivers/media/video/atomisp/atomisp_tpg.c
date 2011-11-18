@@ -188,10 +188,6 @@ static int tpg_enum_frame_ival(struct v4l2_subdev *sd,
 
 static const struct v4l2_subdev_video_ops tpg_video_ops = {
 	.s_stream = tpg_s_stream,
-	.enum_fmt = tpg_enum_fmt,
-	.try_fmt = tpg_try_fmt,
-	.g_fmt = tpg_g_fmt,
-	.s_fmt = tpg_s_fmt,
 	.g_parm = tpg_g_parm,
 	.s_parm = tpg_s_parm,
 	.enum_framesizes = tpg_enum_framesizes,
@@ -205,7 +201,6 @@ static const struct v4l2_subdev_video_ops tpg_video_ops = {
 static const struct v4l2_subdev_core_ops tpg_core_ops = {
 	.g_chip_ident = tpg_g_chip_ident,
 	.log_status = tpg_log_status,
-	.s_config = tpg_s_config,
 	.queryctrl = tpg_queryctrl,
 	.g_ctrl = tpg_g_ctrl,
 	.s_ctrl = tpg_s_ctrl,
@@ -225,7 +220,7 @@ static const struct v4l2_subdev_ops tpg_ops = {
 };
 
 static const struct media_entity_operations tpg_entity_ops = {
-	.set_power = v4l2_subdev_set_power,
+/*	.set_power = v4l2_subdev_set_power,	*/
 };
 
 void atomisp_tpg_unregister_entities(struct atomisp_tpg_device *tpg)
@@ -268,8 +263,8 @@ int atomisp_tpg_init(struct atomisp_device *isp)
 	strcpy(sd->name, "tpg_subdev");
 	v4l2_set_subdevdata(sd, tpg);
 
-	pads[0].flags = MEDIA_PAD_FLAG_INPUT;
-	me->type = MEDIA_ENTITY_TYPE_V4L2_SUBDEV;
+	pads[0].flags = MEDIA_PAD_FL_SINK;
+	me->type = MEDIA_ENT_T_V4L2_SUBDEV;
 
 	ret = media_entity_init(me, 1, pads, 0);
 	if (ret < 0)

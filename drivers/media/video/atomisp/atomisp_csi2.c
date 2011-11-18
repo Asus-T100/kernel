@@ -303,12 +303,12 @@ static int csi2_link_setup(struct media_entity *entity,
 	u32 result = local->index | media_entity_type(remote->entity);
 
 	switch (result) {
-	case CSI2_PAD_SOURCE | MEDIA_ENTITY_TYPE_DEVNODE:
+	case CSI2_PAD_SOURCE | MEDIA_ENT_T_DEVNODE:
 		/* not supported yet */
 		return -EINVAL;
 
-	case CSI2_PAD_SOURCE | MEDIA_ENTITY_TYPE_V4L2_SUBDEV:
-		if (flags & MEDIA_LINK_FLAG_ENABLED) {
+	case CSI2_PAD_SOURCE | MEDIA_ENT_T_V4L2_SUBDEV:
+		if (flags & MEDIA_LNK_FL_ENABLED) {
 			if (csi2->output & ~CSI2_OUTPUT_ISP_SUBDEV)
 				return -EBUSY;
 				csi2->output |= CSI2_OUTPUT_ISP_SUBDEV;
@@ -351,11 +351,11 @@ static int mipi_csi2_init_entities(struct atomisp_mipi_csi2_device *csi2,
 	v4l2_set_subdevdata(sd, csi2);
 	sd->flags |= V4L2_SUBDEV_FL_HAS_DEVNODE;
 
-	pads[CSI2_PAD_SOURCE].flags = MEDIA_PAD_FLAG_OUTPUT;
-	pads[CSI2_PAD_SINK].flags = MEDIA_PAD_FLAG_INPUT;
+	pads[CSI2_PAD_SOURCE].flags = MEDIA_PAD_FL_SOURCE;
+	pads[CSI2_PAD_SINK].flags = MEDIA_PAD_FL_SINK;
 
 	me->ops = &csi2_media_ops;
-	me->type = MEDIA_ENTITY_TYPE_V4L2_SUBDEV;
+	me->type = MEDIA_ENT_T_V4L2_SUBDEV;
 	ret = media_entity_init(me, CSI2_PADS_NUM, pads, 0);
 	if (ret < 0)
 		return ret;

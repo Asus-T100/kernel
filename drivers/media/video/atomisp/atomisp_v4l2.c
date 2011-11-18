@@ -232,13 +232,13 @@ int atomisp_video_init(struct atomisp_video_pipe *video, const char *name)
 	switch (video->type) {
 	case V4L2_BUF_TYPE_VIDEO_CAPTURE:
 		direction = "output";
-		video->pad.flags = MEDIA_PAD_FLAG_INPUT;
+		video->pad.flags = MEDIA_PAD_FL_SINK;
 		video->vdev.fops = &atomisp_fops;
 		video->vdev.ioctl_ops = &atomisp_ioctl_ops;
 		break;
 	case V4L2_BUF_TYPE_VIDEO_OUTPUT:
 		direction = "input";
-		video->pad.flags = MEDIA_PAD_FLAG_OUTPUT;
+		video->pad.flags = MEDIA_PAD_FL_SOURCE;
 		video->vdev.fops = &atomisp_file_fops;
 		video->vdev.ioctl_ops = &atomisp_file_ioctl_ops;
 		break;
@@ -411,7 +411,7 @@ static int atomisp_subdev_probe(struct atomisp_device *isp)
 			 adapter->name, board_info->type);
 
 		subdev = v4l2_i2c_new_subdev_board(&isp->v4l2_dev, adapter,
-				board_info, NULL, 1);
+				board_info, NULL);
 
 		if (subdev == NULL) {
 			v4l2_info(&atomisp_dev,
@@ -844,8 +844,9 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 	atomisp_msi_irq_init(isp, dev);
 
 #ifdef CONFIG_PM
-	pm_runtime_set_active(&dev->dev);
-	pm_runtime_enable(&dev->dev);
+/*	pm_runtime_set_active(&dev->dev);
+	pm_runtime_enable(&dev->dev);	*/
+	pm_runtime_put_noidle(&dev->dev);
 	pm_runtime_put_sync(&dev->dev);
 #endif
 	isp->sw_contex.probed = true;
@@ -948,7 +949,7 @@ static void __exit atomisp_exit(void)
 	pci_unregister_driver(&atomisp_pci_driver);
 }
 
-late_initcall_async(atomisp_init);
+module_init(atomisp_init);
 module_exit(atomisp_exit);
 
 MODULE_AUTHOR("Wen Wang <wen.w.wang@intel.com>");

@@ -182,7 +182,8 @@ static int atomisp_init_pipe(struct atomisp_video_pipe *pipe)
 				    V4L2_BUF_TYPE_VIDEO_CAPTURE,
 				    V4L2_FIELD_NONE,
 				    sizeof(struct atomisp_buffer),
-				    pipe);
+				    pipe,
+				    NULL);	/* ext_lock: NULL */
 
 	videobuf_queue_vmalloc_init(&pipe->outq,
 				    &videobuf_qops_output, NULL,
@@ -190,7 +191,8 @@ static int atomisp_init_pipe(struct atomisp_video_pipe *pipe)
 				    V4L2_BUF_TYPE_VIDEO_OUTPUT,
 				    V4L2_FIELD_NONE,
 				    sizeof(struct atomisp_buffer),
-				    pipe);
+				    pipe,
+				    NULL);	/* ext_lock: NULL */
 
 	/* init locks */
 	spin_lock_init(&pipe->irq_lock);
@@ -542,8 +544,6 @@ int atomisp_videobuf_mmap_mapper(struct videobuf_queue *q,
 		}
 
 		buf->map = map;
-		map->start = vma->vm_start;
-		map->end = vma->vm_end;
 		map->q = q;
 
 		buf->baddr = vma->vm_start;
@@ -551,7 +551,7 @@ int atomisp_videobuf_mmap_mapper(struct videobuf_queue *q,
 		if (buf && buf->memory == V4L2_MEMORY_MMAP &&
 		    buf->boff == offset) {
 			vm_mem = buf->priv;
-			ret = frame_mmap(vm_mem->vmalloc, vma);
+			ret = frame_mmap(vm_mem->vaddr, vma);
 			vma->vm_flags |= VM_DONTEXPAND | VM_RESERVED;
 			break;
 		}

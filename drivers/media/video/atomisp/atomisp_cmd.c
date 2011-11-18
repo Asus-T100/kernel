@@ -377,11 +377,11 @@ static int atomisp_buffer_dequeue(struct atomisp_device *isp,
 			return -EINVAL;
 
 		vmem = (*vb_capture)->priv;
-		if (vmem->vmalloc == NULL)
+		if (vmem->vaddr == NULL)
 			return -EINVAL;
 
-		/*frame structure is stored in videobuf->priv->vmalloc*/
-		isp->regular_output_frame = vmem->vmalloc;
+		/*frame structure is stored in videobuf->priv->vaddr*/
+		isp->regular_output_frame = vmem->vaddr;
 	}
 
 	if (atomisp_is_viewfinder_support(isp) && !(*vb_preview)) {
@@ -391,7 +391,7 @@ static int atomisp_buffer_dequeue(struct atomisp_device *isp,
 			return -EINVAL;
 
 		vmem = (*vb_preview)->priv;
-		isp->vf_frame = vmem->vmalloc;
+		isp->vf_frame = vmem->vaddr;
 	}
 	return 0;
 }
@@ -2452,7 +2452,8 @@ int atomisp_try_fmt(struct video_device *vdev, struct v4l2_format *f,
 		fmt = (struct atomisp_format_bridge *)&atomisp_output_fmts[0];
 	}
 
-
+	/* fixing me! seems tpg does not support mbus interface */
+#if 0
 	/*set TPG format*/
 	if (isp->inputs[isp->input_curr].type == TEST_PATTERN) {
 		ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
@@ -2461,24 +2462,19 @@ int atomisp_try_fmt(struct video_device *vdev, struct v4l2_format *f,
 		in_height = f->fmt.pix.height;
 		goto done;
 	}
-
+#else
+	if (isp->inputs[isp->input_curr].type == TEST_PATTERN)
+		return -EINVAL;
+#endif
 	snr_mbus_fmt.code = fmt->mbus_code;
 	snr_mbus_fmt.height = out_height;
 	snr_mbus_fmt.width = out_width;
 
 	ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
 			video, try_mbus_fmt, &snr_mbus_fmt);
-	if (ret) {
-		/*In case camera sensor driver don't support try_mbus_fmt*/
-		v4l2_err(&atomisp_dev,
-			"failed to try_mbus_fmt for sensor\n");
-		ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
-			video, try_fmt, f);
-		if (ret)
-			return ret;
-		in_width = f->fmt.pix.width;
-		in_height = f->fmt.pix.height;
-	} else {
+	if (ret)
+		return ret;
+	else {
 		in_width = snr_mbus_fmt.width;
 		in_height = snr_mbus_fmt.height;
 		fmt = get_atomisp_format_bridge_from_mbus(snr_mbus_fmt.code);
@@ -2858,49 +2854,22 @@ static int atomisp_set_fmt_to_snr(struct atomisp_device *isp,
 	if (format == NULL)
 		return -EINVAL;
 
-		if (!isp->sw_contex.file_input) {
-			v4l2_fill_mbus_format(&snr_mbus_fmt, &f->fmt.pix,
-						format->mbus_code);
-			snr_mbus_fmt.height += padding_h + dvs_env_h;
-			snr_mbus_fmt.width += padding_w + dvs_env_w;
+	if (!isp->sw_contex.file_input) {
+		v4l2_fill_mbus_format(&snr_mbus_fmt, &f->fmt.pix,
+					format->mbus_code);
+		snr_mbus_fmt.height += padding_h + dvs_env_h;
+		snr_mbus_fmt.width += padding_w + dvs_env_w;
 
-			ret = v4l2_subdev_call(
-					isp->inputs[isp->input_curr].camera,
-					video, s_mbus_fmt, &snr_mbus_fmt);
-			if (ret) {
-				v4l2_err(&atomisp_dev,
-					"call s_mbus_fmt for sensor failed\n");
+		ret = v4l2_subdev_call(
+				isp->inputs[isp->input_curr].camera,
+				video, s_mbus_fmt, &snr_mbus_fmt);
+		if (ret)
+			return ret;
 
-				snr_fmt = *f;
-				snr_fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-				snr_fmt.fmt.pix.height += padding_h + dvs_env_h;
-				snr_fmt.fmt.pix.width += padding_w + dvs_env_w;
-
-				/*
-				 * In case the camera driver
-				 * not support mbus function
-				 */
-				ret = v4l2_subdev_call(
-					isp->inputs[isp->input_curr].camera,
-					video, s_fmt, &snr_fmt);
-				if (ret) {
-					v4l2_err(&atomisp_dev,
-					"call s_fmt for sensor failed\n");
-					return ret;
-				}
-				isp->input_format->out.width =
-							snr_fmt.fmt.pix.width;
-				isp->input_format->out.height =
-							snr_fmt.fmt.pix.height;
-				isp->input_format->out.pixelformat =
-						snr_fmt.fmt.pix.pixelformat;
-		} else {
-			isp->input_format->out.width = snr_mbus_fmt.width;
-			isp->input_format->out.height = snr_mbus_fmt.height;
-			isp->input_format->out.pixelformat =
-			    snr_mbus_fmt.code;
-		}
-
+		isp->input_format->out.width = snr_mbus_fmt.width;
+		isp->input_format->out.height = snr_mbus_fmt.height;
+		isp->input_format->out.pixelformat =
+		    snr_mbus_fmt.code;
 		v4l2_info(&atomisp_dev,
 			  "sensor output resolution %dx%d\n",
 			  isp->input_format->out.width,

@@ -590,9 +590,9 @@ static void atomisp_videobuf_free(struct videobuf_queue *q)
 			continue;
 		vm_mem = q->bufs[i]->priv;
 
-		if (vm_mem && vm_mem->vmalloc) {
-			sh_css_frame_free(vm_mem->vmalloc);
-			vm_mem->vmalloc = NULL;
+		if (vm_mem && vm_mem->vaddr) {
+			sh_css_frame_free(vm_mem->vaddr);
+			vm_mem->vaddr = NULL;
 		}
 		kfree(q->bufs[i]);
 		q->bufs[i] = NULL;
@@ -684,7 +684,7 @@ int atomisp_reqbufs(struct file *file, void *fh,
 			if (sh_css_frame_allocate_from_info(&frame, &vf_info))
 				goto error;
 			vm_mem = pipe->capq.bufs[i]->priv;
-			vm_mem->vmalloc = frame;
+			vm_mem->vaddr = frame;
 		}
 	else
 		/*
@@ -695,7 +695,7 @@ int atomisp_reqbufs(struct file *file, void *fh,
 			if (sh_css_frame_allocate_from_info(&frame, &out_info))
 				goto error;
 			vm_mem = pipe->capq.bufs[i]->priv;
-			vm_mem->vmalloc = frame;
+			vm_mem->vaddr = frame;
 		}
 
 	return ret;
@@ -703,7 +703,7 @@ int atomisp_reqbufs(struct file *file, void *fh,
 error:
 	while (i--) {
 		vm_mem = pipe->capq.bufs[i]->priv;
-		sh_css_frame_free(vm_mem->vmalloc);
+		sh_css_frame_free(vm_mem->vaddr);
 	}
 
 	if (isp->vf_frame)
@@ -813,7 +813,7 @@ static int atomisp_qbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 			return 0;
 		}
 
-		if ((vb->baddr == userptr) && (vm_mem->vmalloc))
+		if ((vb->baddr == userptr) && (vm_mem->vaddr))
 			goto done;
 
 		switch (isp->sw_contex.run_mode) {
@@ -853,15 +853,15 @@ static int atomisp_qbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 			return PTR_ERR(handle);
 		}
 
-		if (vm_mem->vmalloc) {
+		if (vm_mem->vaddr) {
 			mutex_lock(&pipe->capq.vb_lock);
-			sh_css_frame_free(vm_mem->vmalloc);
-			vm_mem->vmalloc = NULL;
+			sh_css_frame_free(vm_mem->vaddr);
+			vm_mem->vaddr = NULL;
 			vb->state = VIDEOBUF_NEEDS_INIT;
 			mutex_unlock(&pipe->capq.vb_lock);
 		}
 
-		vm_mem->vmalloc = handle;
+		vm_mem->vaddr = handle;
 
 		buf->flags &= ~V4L2_BUF_FLAG_MAPPED;
 		buf->flags |= V4L2_BUF_FLAG_QUEUED;
@@ -1472,7 +1472,7 @@ static int atomisp_s_parm_file(struct file *file, void *fh,
 
 /* set default atomisp ioctl value */
 static long atomisp_vidioc_default(struct file *file, void *fh,
-	int cmd, void *arg)
+	bool valid_prio, int cmd, void *arg)
 {
 	struct video_device *vdev = video_devdata(file);
 	struct atomisp_device *isp = video_get_drvdata(vdev);

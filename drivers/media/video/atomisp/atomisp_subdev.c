@@ -480,9 +480,9 @@ static int isp_subdev_link_setup(struct media_entity *entity,
 	struct atomisp_device *isp = isp_sd->isp;
 
 	switch (local->index | media_entity_type(remote->entity)) {
-	case ATOMISP_SUBDEV_PAD_SINK | MEDIA_ENTITY_TYPE_V4L2_SUBDEV:
+	case ATOMISP_SUBDEV_PAD_SINK | MEDIA_ENT_T_V4L2_SUBDEV:
 		/* Read from the sensor CSI2-4p or CSI2-1p. */
-		if (!(flags & MEDIA_LINK_FLAG_ENABLED)) {
+		if (!(flags & MEDIA_LNK_FL_ENABLED)) {
 			isp_sd->input = ATOMISP_SUBDEV_INPUT_NONE;
 			break;
 		}
@@ -499,9 +499,9 @@ static int isp_subdev_link_setup(struct media_entity *entity,
 
 		break;
 
-	case ATOMISP_SUBDEV_PAD_SINK | MEDIA_ENTITY_TYPE_DEVNODE:
+	case ATOMISP_SUBDEV_PAD_SINK | MEDIA_ENT_T_DEVNODE:
 		/* read from memory */
-		if (flags & MEDIA_LINK_FLAG_ENABLED) {
+		if (flags & MEDIA_LNK_FL_ENABLED) {
 			if (isp_sd->input == ATOMISP_SUBDEV_INPUT_CSI2_4P
 			|| isp_sd->input == ATOMISP_SUBDEV_INPUT_CSI2_1P)
 				return -EBUSY;
@@ -512,11 +512,11 @@ static int isp_subdev_link_setup(struct media_entity *entity,
 		}
 		break;
 
-	case ATOMISP_SUBDEV_PAD_SOURCE_VF | MEDIA_ENTITY_TYPE_DEVNODE:
+	case ATOMISP_SUBDEV_PAD_SOURCE_VF | MEDIA_ENT_T_DEVNODE:
 		/* always write to memory */
 		break;
 
-	case ATOMISP_SUBDEV_PAD_SOURCE_MO | MEDIA_ENTITY_TYPE_DEVNODE:
+	case ATOMISP_SUBDEV_PAD_SOURCE_MO | MEDIA_ENT_T_DEVNODE:
 		/* always write to memory */
 		break;
 
@@ -530,7 +530,7 @@ static int isp_subdev_link_setup(struct media_entity *entity,
  /* media operations */
  static const struct media_entity_operations isp_subdev_media_ops = {
 	 .link_setup = isp_subdev_link_setup,
-	 .set_power = v4l2_subdev_set_power,
+/*	 .set_power = v4l2_subdev_set_power,	*/
  };
 
 /*
@@ -554,9 +554,9 @@ static int isp_subdev_init_entities(struct atomisp_sub_device *isp_subdev)
 	sd->flags |= V4L2_SUBDEV_FL_HAS_EVENTS | V4L2_SUBDEV_FL_HAS_DEVNODE;
 	sd->nevents = 16; /* TBD */
 
-	pads[ATOMISP_SUBDEV_PAD_SINK].flags = MEDIA_PAD_FLAG_INPUT;
-	pads[ATOMISP_SUBDEV_PAD_SOURCE_VF].flags = MEDIA_PAD_FLAG_OUTPUT;
-	pads[ATOMISP_SUBDEV_PAD_SOURCE_MO].flags = MEDIA_PAD_FLAG_OUTPUT;
+	pads[ATOMISP_SUBDEV_PAD_SINK].flags = MEDIA_PAD_FL_SINK;
+	pads[ATOMISP_SUBDEV_PAD_SOURCE_VF].flags = MEDIA_PAD_FL_SOURCE;
+	pads[ATOMISP_SUBDEV_PAD_SOURCE_MO].flags = MEDIA_PAD_FL_SOURCE;
 
 	isp_subdev->formats[ATOMISP_SUBDEV_PAD_SINK].code =
 		V4L2_MBUS_FMT_SBGGR10_1X10;
@@ -566,7 +566,7 @@ static int isp_subdev_init_entities(struct atomisp_sub_device *isp_subdev)
 		V4L2_MBUS_FMT_SBGGR10_1X10;
 
 	me->ops = &isp_subdev_media_ops;
-	me->type = MEDIA_ENTITY_TYPE_V4L2_SUBDEV;
+	me->type = MEDIA_ENT_T_V4L2_SUBDEV;
 	ret = media_entity_init(me, ATOMISP_SUBDEV_PADS_NUM, pads, 0);
 	if (ret < 0)
 		return ret;

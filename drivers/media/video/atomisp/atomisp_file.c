@@ -266,10 +266,6 @@ static int file_input_enum_frame_ival(struct v4l2_subdev *sd,
 
 static const struct v4l2_subdev_video_ops file_input_video_ops = {
 	.s_stream = file_input_s_stream,
-	.enum_fmt = file_input_enum_fmt,
-	.try_fmt = file_input_try_fmt,
-	.g_fmt = file_input_g_fmt,
-	.s_fmt = file_input_s_fmt,
 	.g_parm = file_input_g_parm,
 	.s_parm = file_input_s_parm,
 	.enum_framesizes = file_input_enum_framesizes,
@@ -283,7 +279,6 @@ static const struct v4l2_subdev_video_ops file_input_video_ops = {
 static const struct v4l2_subdev_core_ops file_input_core_ops = {
 	.g_chip_ident = file_input_g_chip_ident,
 	.log_status = file_input_log_status,
-	.s_config = file_input_s_config,
 	.queryctrl = file_input_queryctrl,
 	.g_ctrl = file_input_g_ctrl,
 	.s_ctrl = file_input_s_ctrl,
@@ -303,7 +298,7 @@ static const struct v4l2_subdev_ops file_input_ops = {
 };
 
 static const struct media_entity_operations file_input_entity_ops = {
-	.set_power = v4l2_subdev_set_power,
+/*	.set_power = v4l2_subdev_set_power,	*/
 };
 
 void
@@ -351,8 +346,8 @@ int atomisp_file_input_init(struct atomisp_device *isp)
 	file_input_info->raw_bayer_order = sh_css_bayer_order_bggr;
 	v4l2_set_subdev_hostdata(sd, (void *)file_input_info);
 
-	pads[0].flags = MEDIA_PAD_FLAG_INPUT;
-	me->type = MEDIA_ENTITY_TYPE_V4L2_SUBDEV;
+	pads[0].flags = MEDIA_PAD_FL_SINK;
+	me->type = MEDIA_ENT_T_V4L2_SUBDEV;
 
 	ret = media_entity_init(me, 1, pads, 0);
 	if (ret < 0)
