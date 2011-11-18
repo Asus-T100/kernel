@@ -71,6 +71,12 @@ obj-$(CONFIG_VIDEO_SR030PC30)	+= sr030pc30.o
 obj-$(CONFIG_VIDEO_NOON010PC30)	+= noon010pc30.o
 obj-$(CONFIG_VIDEO_M5MOLS)	+= m5mols/
 
+obj-$(CONFIG_VIDEO_LM3555) += lm3555.o
+obj-$(CONFIG_VIDEO_LM3554) += lm3554.o
+
+obj-$(CONFIG_VIDEO_MT9E013)  += mt9e013.o
+obj-$(CONFIG_VIDEO_MT9M114)  += mt9m114.o
+
 obj-$(CONFIG_SOC_CAMERA_IMX074)		+= imx074.o
 obj-$(CONFIG_SOC_CAMERA_MT9M001)	+= mt9m001.o
 obj-$(CONFIG_SOC_CAMERA_MT9M111)	+= mt9m111.o
@@ -183,6 +189,8 @@ obj-$(CONFIG_VIDEO_IR_I2C)  += ir-kbd-i2c.o
 obj-y	+= davinci/
 
 obj-$(CONFIG_ARCH_OMAP)	+= omap/
+
+obj-$(CONFIG_VIDEO_ATOMISP) += atomisp/
 
 EXTRA_CFLAGS += -Idrivers/media/dvb/dvb-core
 EXTRA_CFLAGS += -Idrivers/media/dvb/frontends
