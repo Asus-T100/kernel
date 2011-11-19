@@ -2111,7 +2111,10 @@ sh_css_input_set_resolution(unsigned int width, unsigned int height)
 	err = check_res(width, height);
 	if (err != sh_css_success)
 		return err;
-	my_css.input_width = width;
+	if (my_css.input_width != width || my_css.input_height != height)
+		sh_css_invalidate_morph_table();
+
+	my_css.input_width  = width;
 	my_css.input_height = height;
 	return sh_css_success;
 }

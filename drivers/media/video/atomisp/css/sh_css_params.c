@@ -1357,6 +1357,12 @@ sh_css_params_default_morph_table(struct sh_css_morph_table **table,
 }
 
 void
+sh_css_invalidate_morph_table()
+{
+	morph_table_changed = true;
+}
+
+void
 sh_css_set_morph_table(const struct sh_css_morph_table *table)
 {
 	morph_table = table;
