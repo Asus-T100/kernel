@@ -513,6 +513,7 @@ static int intel_idle_probe(void)
 		intel_idle_platform_prepare = &mrst_pmu_invalid_cstates;
 #endif
 	case 0x27:	/* 39 - Penwell Atom Processor */
+	case 0x35:	/* 53 - Cloverview Atom Processor */
 		cpuidle_state_table = mrst_cstates;
 		auto_demotion_disable_flags = ATM_LNC_C6_AUTO_DEMOTE;
 		break;
