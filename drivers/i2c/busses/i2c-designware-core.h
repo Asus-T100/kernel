@@ -34,6 +34,14 @@
 #define DW_IC_CON_RESTART_EN		0x20
 #define DW_IC_CON_SLAVE_DISABLE		0x40
 
+/*
+ * status codes
+ */
+#define STATUS_POWERON			0x0
+#define STATUS_IDLE			STATUS_POWERON
+#define STATUS_WRITE_IN_PROGRESS	0x1
+#define STATUS_READ_IN_PROGRESS		0x2
+
 
 /**
  * struct dw_i2c_dev - private i2c-designware data
@@ -65,7 +73,7 @@ struct dw_i2c_dev {
 	struct device		*dev;
 	void __iomem		*base;
 	struct completion	cmd_complete;
-	struct mutex		lock;
+	struct semaphore	lock;
 	struct clk		*clk;
 	u32			(*get_clk_rate_khz) (struct dw_i2c_dev *dev);
 	struct dw_pci_controller *controller;
