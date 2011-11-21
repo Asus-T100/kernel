@@ -349,7 +349,7 @@ int sst_pause_stream(int str_id)
 		}
 	} else {
 		retval = -EBADRQC;
-		pr_err("BADQRC for stream\n");
+		pr_debug("SST DBG:BADRQC for stream\n ");
 	}
 
 	return retval;
@@ -436,53 +436,39 @@ int sst_drop_stream(int str_id)
 		return retval;
 	str_info = &sst_drv_ctx->streams[str_id];
 
+	mutex_lock(&str_info->lock);
 	if (str_info->status != STREAM_UN_INIT &&
 		str_info->status != STREAM_DECODE) {
-		if (str_info->ctrl_blk.on == true) {
-			pr_err("SST ERR: control path in use\n");
-			return -EINVAL;
-		}
+		str_info->prev = STREAM_UN_INIT;
+		str_info->status = STREAM_INIT;
+		mutex_unlock(&str_info->lock);
 		if (sst_create_short_msg(&msg)) {
 			pr_err("SST ERR: mem allocation failed\n");
 			return -ENOMEM;
 		}
 		sst_fill_header(&msg->header, IPC_IA_DROP_STREAM, 0, str_id);
-		str_info->ctrl_blk.condition = false;
-		str_info->ctrl_blk.ret_code = 0;
-		str_info->ctrl_blk.on = true;
 		spin_lock(&sst_drv_ctx->list_spin_lock);
 		list_add_tail(&msg->node,
 				&sst_drv_ctx->ipc_dispatch_list);
 		spin_unlock(&sst_drv_ctx->list_spin_lock);
 		sst_post_message(&sst_drv_ctx->ipc_post_msg_wq);
-		retval = sst_wait_interruptible_timeout(sst_drv_ctx,
-				&str_info->ctrl_blk, SST_BLOCK_TIMEOUT);
-		if (!retval) {
-			pr_debug("SST DBG:drop success\n");
-			str_info->prev = STREAM_UN_INIT;
-			str_info->status = STREAM_INIT;
-			if (str_info->src != MAD_DRV) {
-				mutex_lock(&str_info->lock);
-				list_for_each_entry_safe(bufs, _bufs,
-							&str_info->bufs, node) {
-					list_del(&bufs->node);
-					kfree(bufs);
-				}
-				mutex_unlock(&str_info->lock);
+		if (str_info->src != MAD_DRV) {
+			mutex_lock(&str_info->lock);
+			list_for_each_entry_safe(bufs, _bufs,
+						&str_info->bufs, node) {
+				list_del(&bufs->node);
+				kfree(bufs);
 			}
-			str_info->cumm_bytes += str_info->curr_bytes;
-		} else if (retval == -SST_ERR_INVALID_STREAM_ID) {
-			retval = -EINVAL;
-			mutex_lock(&sst_drv_ctx->stream_lock);
-			sst_clean_stream(str_info);
-			mutex_unlock(&sst_drv_ctx->stream_lock);
+			mutex_unlock(&str_info->lock);
 		}
+		str_info->cumm_bytes += str_info->curr_bytes;
 		if (str_info->data_blk.on == true) {
 			str_info->data_blk.condition = true;
 			str_info->data_blk.ret_code = retval;
 			wake_up(&sst_drv_ctx->wait_queue);
 		}
 	} else {
+		mutex_unlock(&str_info->lock);
 		retval = -EBADRQC;
 		pr_debug("BADQRC for stream, state %x\n", str_info->status);
 	}
@@ -555,7 +541,15 @@ int sst_free_stream(int str_id)
 		return retval;
 	str_info = &sst_drv_ctx->streams[str_id];
 
+	mutex_lock(&str_info->lock);
 	if (str_info->status != STREAM_UN_INIT) {
+		str_info->prev =  str_info->status;
+		str_info->status = STREAM_UN_INIT;
+		mutex_unlock(&str_info->lock);
+		if (str_info->ctrl_blk.on == true) {
+			pr_err("SST ERR: control path in use\n");
+			return -EINVAL;
+		}
 		if (sst_create_short_msg(&msg)) {
 			pr_err("SST ERR: mem allocation failed\n");
 			return -ENOMEM;
@@ -564,25 +558,23 @@ int sst_free_stream(int str_id)
 		spin_lock(&sst_drv_ctx->list_spin_lock);
 		list_add_tail(&msg->node, &sst_drv_ctx->ipc_dispatch_list);
 		spin_unlock(&sst_drv_ctx->list_spin_lock);
-		sst_post_message(&sst_drv_ctx->ipc_post_msg_wq);
-		str_info->prev =  str_info->status;
-		str_info->status = STREAM_UN_INIT;
 		if (str_info->data_blk.on == true) {
 			str_info->data_blk.condition = true;
 			str_info->data_blk.ret_code = 0;
 			wake_up(&sst_drv_ctx->wait_queue);
 		}
-		str_info->data_blk.on = true;
-		str_info->data_blk.condition = false;
+		str_info->ctrl_blk.on = true;
+		str_info->ctrl_blk.condition = false;
+		sst_post_message(&sst_drv_ctx->ipc_post_msg_wq);
 		retval = sst_wait_interruptible_timeout(sst_drv_ctx,
 				&str_info->ctrl_blk, SST_BLOCK_TIMEOUT);
-		pr_debug("wait for free returned %d\n", retval);
-		msleep(100);
+		pr_debug("sst: wait for free returned %d\n", retval);
 		mutex_lock(&sst_drv_ctx->stream_lock);
 		sst_clean_stream(str_info);
 		mutex_unlock(&sst_drv_ctx->stream_lock);
 		pr_debug("SST DBG:Stream freed\n");
 	} else {
+		mutex_unlock(&str_info->lock);
 		retval = -EBADRQC;
 		pr_debug("SST DBG:BADQRC for stream\n");
 	}

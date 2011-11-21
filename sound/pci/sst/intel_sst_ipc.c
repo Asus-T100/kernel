@@ -310,9 +310,10 @@ void sst_process_reply(struct work_struct *work)
 {
 	struct sst_ipc_msg_wq *msg =
 			container_of(work, struct sst_ipc_msg_wq, wq);
-
 	int str_id = msg->header.part.str_id;
 	struct stream_info *str_info;
+
+	pr_debug("sst: IPC process reply for %x\n", msg->header.full);
 
 	switch (msg->header.part.msg_id) {
 	case IPC_IA_TARGET_DEV_SELECT:
@@ -574,17 +575,15 @@ void sst_process_reply(struct work_struct *work)
 			pr_debug("Drop ret bytes %x\n", drop_resp->bytes);
 
 			str_info->curr_bytes = drop_resp->bytes;
-			str_info->ctrl_blk.ret_code =  0;
+			if (!drop_resp->result)
+				pr_debug("drop sucess for %d\n", str_id);
+			else
+				pr_err("drop for %d failed with err %d\n",
+						str_id, drop_resp->result);
 		} else {
-			pr_err(" Msg %x reply error %x\n",
-				msg->header.part.msg_id, msg->header.part.data);
-			str_info->ctrl_blk.ret_code = -msg->header.part.data;
+			pr_err("fw sent small IPC for drop response!!\n");
 		}
-		if (str_info->ctrl_blk.on == true) {
-			str_info->ctrl_blk.on = false;
-			str_info->ctrl_blk.condition = true;
-			wake_up(&sst_drv_ctx->wait_queue);
-		}
+
 		break;
 	case IPC_IA_ENABLE_RX_TIME_SLOT:
 		if (!msg->header.part.data) {

@@ -142,7 +142,7 @@ static irqreturn_t intel_sst_interrupt(int irq, void *context)
 			queue_work(sst_drv_ctx->process_reply_wq,
 					&sst_drv_ctx->ipc_process_reply.wq);
 		}
-		/* mask busy inetrrupt */
+		/* mask busy interrupt */
 		imr.full = sst_shim_read(drv->shim, SST_IMRX);
 		imr.part.busy_interrupt = 1;
 		sst_shim_write(sst_drv_ctx->shim, SST_IMRX, imr.full);
@@ -218,7 +218,7 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 	INIT_WORK(&sst_drv_ctx->mad_ops.wq, sst_process_mad_ops);
 	init_waitqueue_head(&sst_drv_ctx->wait_queue);
 
-	sst_drv_ctx->mad_wq = create_workqueue("sst_mad_wq");
+	sst_drv_ctx->mad_wq = create_singlethread_workqueue("sst_mad_wq");
 	if (!sst_drv_ctx->mad_wq)
 		goto do_free_drv_ctx;
 	sst_drv_ctx->post_msg_wq = create_workqueue("sst_post_msg_wq");
@@ -464,6 +464,8 @@ static void sst_save_dsp_context(void)
 		return;
 	pvt_id = sst_assign_pvt_id(sst_drv_ctx);
 	sst_drv_ctx->alloc_block[0].sst_id = pvt_id;
+	sst_drv_ctx->alloc_block[0].ops_block.condition = false;
+	sst_drv_ctx->alloc_block[0].ops_block.on = true;
 	sst_fill_header(&msg->header, IPC_IA_GET_FW_CTXT, 1, pvt_id);
 	msg->header.part.data = sizeof(fw_context) + sizeof(u32);
 	fw_context.address = virt_to_phys((void *)sst_drv_ctx->fw_cntx);
