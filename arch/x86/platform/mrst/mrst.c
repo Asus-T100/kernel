@@ -39,6 +39,9 @@
 #include <linux/intel_mid_pm.h>
 #include <linux/hsi/hsi.h>
 #include <linux/hsi/intel_mid_hsi.h>
+#include <linux/wl12xx.h>
+#include <linux/regulator/machine.h>
+#include <linux/regulator/fixed.h>
 
 #include <linux/atomisp_platform.h>
 #include <media/v4l2-subdev.h>
@@ -1264,6 +1267,163 @@ void *mt9m114_platform_data_init(void *info)
 	return &mt9m114_sensor_platform_data;
 }
 
+#define SD_NAME_SIZE 16
+/**
+ * struct sd_board_info - template for device creation
+ * @name: Initializes sdio_device.name; identifies the driver.
+ * @bus_num: board-specific identifier for a given SDIO controller.
+ * @board_ref_clock: Initializes sd_device.board_ref_clock;
+ * @platform_data: Initializes sd_device.platform_data; the particular
+ *      data stored there is driver-specific.
+ *
+ */
+struct sd_board_info {
+	char		name[SD_NAME_SIZE];
+	int		bus_num;
+	unsigned short	addr;
+	u32		board_ref_clock;
+	void		*platform_data;
+};
+
+#define MAX_DELAYEDDEVS	60
+static void *delayed_devs[MAX_DELAYEDDEVS];
+typedef void (*delayed_callback_t)(void *dev_desc);
+static delayed_callback_t delayed_callbacks[MAX_DELAYEDDEVS];
+static int delayed_next_dev;
+
+static void intel_delayed_device_register(void *dev,
+				void (*delayed_callback)(void *dev_desc))
+{
+	delayed_devs[delayed_next_dev] = dev;
+	delayed_callbacks[delayed_next_dev++] = delayed_callback;
+	BUG_ON(delayed_next_dev == MAX_DELAYEDDEVS);
+}
+
+#ifdef CONFIG_WL12XX_PLATFORM_DATA
+static struct wl12xx_platform_data mid_wifi_control = {
+	.board_ref_clock = 1,
+	.irq = 2,
+	.board_tcxo_clock = 1,
+	.platform_quirks = WL12XX_PLATFORM_QUIRK_EDGE_IRQ,
+};
+
+static struct regulator_consumer_supply wl12xx_vmmc3_supply = {
+	.supply		= "vmmc",
+	.dev_name	= "0000:00:00.0", /*default value*/
+};
+
+static struct regulator_init_data wl12xx_vmmc3 = {
+	.constraints = {
+		.valid_ops_mask	= REGULATOR_CHANGE_STATUS,
+	},
+	.num_consumer_supplies	= 1,
+	.consumer_supplies = &wl12xx_vmmc3_supply,
+};
+
+static struct fixed_voltage_config wl12xx_vwlan = {
+	.supply_name		= "vwl1271",
+	.microvolts		= 1800000,
+	.gpio			= 75,
+	.startup_delay		= 70000,
+	.enable_high		= 1,
+	.enabled_at_boot	= 0,
+	.init_data		= &wl12xx_vmmc3,
+};
+
+static struct platform_device wl12xx_vwlan_device = {
+	.name		= "reg-fixed-voltage",
+	.id		= 1,
+	.dev = {
+		.platform_data	= &wl12xx_vwlan,
+	},
+};
+
+#define WL12XX_SFI_GPIO_IRQ_NAME "WLAN-interrupt"
+#define WL12XX_SFI_GPIO_ENABLE_NAME "WLAN-enable"
+#define ICDK_BOARD_REF_CLK 26000000
+#define NCDK_BOARD_REF_CLK 38400000
+
+void __init wl12xx_platform_data_init_post_scu(void *info)
+{
+	struct sd_board_info *sd_info = info;
+	int wifi_irq_gpio;
+	int err;
+
+	/*Get GPIO numbers from the SFI table*/
+	wifi_irq_gpio = get_gpio_by_name(WL12XX_SFI_GPIO_IRQ_NAME);
+	if (wifi_irq_gpio == -1) {
+		pr_err("%s: Unable to find WLAN-interrupt GPIO in the SFI table\n",
+				__func__);
+		return;
+	}
+	err = gpio_request(wifi_irq_gpio, "wl12xx");
+	if (err < 0) {
+		pr_err("%s: Unable to request GPIO\n", __func__);
+		return;
+	}
+	err = gpio_direction_input(wifi_irq_gpio);
+	if (err < 0) {
+		pr_err("%s: Unable to set GPIO direction\n", __func__);
+		return;
+	}
+	mid_wifi_control.irq = gpio_to_irq(wifi_irq_gpio);
+	if (mid_wifi_control.irq < 0) {
+		pr_err("%s:Error gpio_to_irq:%d->%d\n", __func__, wifi_irq_gpio,
+		       mid_wifi_control.irq);
+		return;
+	}
+	/* Set our board_ref_clock from SFI SD board info */
+	if (sd_info->board_ref_clock == ICDK_BOARD_REF_CLK)
+		/*iCDK board*/
+		/*26Mhz TCXO clock ref*/
+		mid_wifi_control.board_ref_clock = 1;
+	else if (sd_info->board_ref_clock == NCDK_BOARD_REF_CLK)
+		/*nCDK board*/
+		/*38,4Mhz TCXO clock ref*/
+		mid_wifi_control.board_ref_clock = 2;
+
+	err = wl12xx_set_platform_data(&mid_wifi_control);
+	if (err < 0)
+		pr_err("error setting wl12xx data\n");
+
+	/* this is the fake regulator that mmc stack use to power of the
+	   wifi sdio card via runtime_pm apis */
+	wl12xx_vwlan.gpio = get_gpio_by_name(WL12XX_SFI_GPIO_ENABLE_NAME);
+	if (wl12xx_vwlan.gpio == -1) {
+		pr_err("%s: Unable to find WLAN-enable GPIO in the SFI table\n",
+		       __func__);
+		return;
+	}
+	/* format vmmc reg address from sfi table */
+	sprintf((char *)wl12xx_vmmc3_supply.dev_name, "0000:00:%02x.%01x",
+		(sd_info->addr)>>8, sd_info->addr&0xFF);
+
+	err = platform_device_register(&wl12xx_vwlan_device);
+	if (err < 0)
+		pr_err("error platform_device_register\n");
+}
+
+void __init *wl12xx_platform_data_init(void *info)
+{
+	struct sd_board_info *sd_info;
+
+	sd_info = kmemdup(info, sizeof(*sd_info), GFP_KERNEL);
+	if (!sd_info) {
+		pr_err("MRST: fail to alloc mem for delayed wl12xx dev\n");
+		return NULL;
+	}
+	intel_delayed_device_register(sd_info,
+				      wl12xx_platform_data_init_post_scu);
+
+	return &mid_wifi_control;
+}
+#else
+void *wl12xx_platform_data_init(void *info)
+{
+	return NULL;
+}
+#endif
+
 static const struct devs_id __initconst device_ids[] = {
 	{"pmic_gpio", SFI_DEV_TYPE_SPI, 1, &pmic_gpio_platform_data},
 	{"pmic_gpio", SFI_DEV_TYPE_IPC, 1, &pmic_gpio_platform_data},
@@ -1281,6 +1441,7 @@ static const struct devs_id __initconst device_ids[] = {
 	{"msic_adc", SFI_DEV_TYPE_IPC, 1, &msic_adc_platform_data},
 	{"max17042", SFI_DEV_TYPE_I2C, 1, &max17042_platform_data},
 	{"hsi_ifx_modem", SFI_DEV_TYPE_HSI, 0, &hsi_modem_platform_data},
+	{"wl12xx_clk_vmmc", SFI_DEV_TYPE_SD, 0, &wl12xx_platform_data_init},
 	/* MSIC subdevices */
 	{"msic_battery", SFI_DEV_TYPE_IPC, 1, &msic_battery_platform_data},
 	{"msic_gpio", SFI_DEV_TYPE_IPC, 1, &msic_gpio_platform_data},
@@ -1458,6 +1619,9 @@ void intel_scu_devices_create(void)
 {
 	int i;
 
+	for (i = 0; i < delayed_next_dev; i++)
+		delayed_callbacks[i](delayed_devs[i]);
+
 	for (i = 0; i < ipc_next_dev; i++)
 		platform_device_add(ipc_devs[i]);
 
@@ -1611,6 +1775,23 @@ static void sfi_handle_hsi_dev(struct hsi_board_info *hsi_info)
 	}
 }
 
+
+static void __init sfi_handle_sd_dev(struct sd_board_info *sd_info)
+{
+	const struct devs_id *dev = device_ids;
+	void *pdata = NULL;
+
+	while (dev->name[0]) {
+		if (dev->type == SFI_DEV_TYPE_SD &&
+			!strncmp(dev->name, sd_info->name, 16)) {
+			pdata = dev->get_platform_data(sd_info);
+			break;
+		}
+		dev++;
+	}
+	sd_info->platform_data = pdata;
+}
+
 static int __init sfi_parse_devs(struct sfi_table_header *table)
 {
 	struct sfi_table_simple *sb;
@@ -1618,6 +1799,7 @@ static int __init sfi_parse_devs(struct sfi_table_header *table)
 	struct spi_board_info spi_info;
 	struct i2c_board_info i2c_info;
 	struct hsi_board_info hsi_info;
+	struct sd_board_info sd_info;
 	int num, i, bus;
 	int ioapic;
 	struct io_apic_irq_attr irq_attr;
@@ -1696,6 +1878,20 @@ static int __init sfi_parse_devs(struct sfi_table_header *table)
 					break;
 
 			sfi_handle_i2c_dev(bus, &i2c_info);
+			break;
+		case SFI_DEV_TYPE_SD:
+			memset(&sd_info, 0, sizeof(sd_info));
+			strncpy(sd_info.name, pentry->name, 16);
+			sd_info.bus_num = pentry->host_num;
+			sd_info.board_ref_clock = pentry->max_freq;
+			sd_info.addr = pentry->addr;
+			pr_info("info[%2d]: SDIO bus = %d, name = %16.16s, "
+					"ref_clock = %d, addr =0x%x\n", i,
+					sd_info.bus_num,
+					sd_info.name,
+					sd_info.board_ref_clock,
+					sd_info.addr);
+			sfi_handle_sd_dev(&sd_info);
 			break;
 		case SFI_DEV_TYPE_HSI:
 			memset(&hsi_info, 0, sizeof(hsi_info));
