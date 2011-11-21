@@ -2598,9 +2598,6 @@ int sdhci_suspend_host(struct sdhci_host *host, pm_message_t state)
 
 	free_irq(host->irq, host);
 
-	if (host->vmmc)
-		ret = regulator_disable(host->vmmc);
-
 out:
 	sdhci_release_ownership(host->mmc);
 	return ret;
@@ -2613,12 +2610,6 @@ int sdhci_resume_host(struct sdhci_host *host)
 	int ret;
 
 	sdhci_acquire_ownership(host->mmc);
-
-	if (host->vmmc) {
-		int ret = regulator_enable(host->vmmc);
-		if (ret)
-			goto out;
-	}
 
 	if (host->flags & (SDHCI_USE_SDMA | SDHCI_USE_ADMA)) {
 		if (host->ops->enable_dma)
