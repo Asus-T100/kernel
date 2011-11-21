@@ -395,6 +395,10 @@ config X86_INTEL_MID
 
 if X86_INTEL_MID
 
+config HARDIRQS_SW_RESEND
+	bool
+	default y
+
 config X86_MRST
        bool "Moorestown MID platform"
 	depends on PCI
@@ -405,6 +409,7 @@ config X86_MRST
 	select SPI
 	select INTEL_SCU_IPC
 	select X86_PLATFORM_DEVICES
+	select HARDIRQS_SW_RESEND
 	---help---
 	  Moorestown is Intel's Low Power Intel Architecture (LPIA) based Moblin
 	  Internet Device(MID) platform. Moorestown consists of two chips:
