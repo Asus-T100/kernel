@@ -2425,6 +2425,9 @@ static void soc_dapm_stream_event(struct snd_soc_dapm_context *dapm,
 	}
 
 	dapm_power_widgets(dapm, event);
+
+	if (dapm->codec->driver->stream_event)
+		dapm->codec->driver->stream_event(dapm, event);
 }
 
 /**
