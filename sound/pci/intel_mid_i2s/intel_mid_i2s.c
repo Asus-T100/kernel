@@ -29,8 +29,11 @@
 #include <linux/async.h>
 #include <linux/device.h>
 #include <linux/lnw_gpio.h>
+#include <linux/intel_mid_i2s_common.h>
 #include <linux/intel_mid_i2s_if.h>
 #include "intel_mid_i2s.h"
+
+#include <linux/interrupt.h>
 
 MODULE_AUTHOR("Louis LE GALL <louis.le.gall intel.com>");
 MODULE_DESCRIPTION("Intel MID I2S/PCM SSP Driver");
@@ -1524,7 +1527,7 @@ static irqreturn_t i2s_int(int irq, void *dev_id)
  * Output parameters
  *      u32 : calculated SSPSP register
  */
-u32 calculate_sspsp_psp(const struct intel_mid_i2s_settings *ps_settings)
+static u32 calculate_sspsp_psp(const struct intel_mid_i2s_settings *ps_settings)
 {
 	u32 sspsp;
 	sspsp = SSPSP_reg(FSRT,	ps_settings->ssp_frmsync_timing_bit)
@@ -1546,7 +1549,7 @@ u32 calculate_sspsp_psp(const struct intel_mid_i2s_settings *ps_settings)
  * Output parameters
  *      u32 : calculated SCR register, or 0xFFFF if error
  */
-u32 calculate_sscr0_scr(struct intel_mid_i2s_hdl *drv_data,
+static u32 calculate_sscr0_scr(struct intel_mid_i2s_hdl *drv_data,
 		    const struct intel_mid_i2s_settings *ps_settings,
 		    u8 *frame_rate_divider_new)
 {
@@ -1664,7 +1667,7 @@ u32 calculate_sscr0_scr(struct intel_mid_i2s_hdl *drv_data,
  * Output parameters
  *      u32 : calculated SSACD register, or 0xFFFF if error
  */
-u32 calculate_ssacd(struct intel_mid_i2s_hdl *drv_data,
+static u32 calculate_ssacd(struct intel_mid_i2s_hdl *drv_data,
 		    const struct intel_mid_i2s_settings *ps_settings,
 		    u8 *frame_rate_divider_new)
 {

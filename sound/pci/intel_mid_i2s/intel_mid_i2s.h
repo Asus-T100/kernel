@@ -8,7 +8,7 @@
   * version 2, as published by the Free Software Foundation.
   *
   * This program is distributed in the hope it will be useful, but WITHOUT
-  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  * ANY WARRANTY; without evenp the implied warranty of MERCHANTABILITY or
   * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
   * more details.
   *
@@ -16,6 +16,12 @@
   * this program; if not, write to the Free Software Foundation, Inc.,
   * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
   */
+#ifndef MID_I2S_H_
+#define MID_I2S_H_
+
+#include <linux/intel_mid_i2s_common.h>
+#include <linux/intel_mid_i2s_if.h>
+
 #define DRIVER_NAME "I2S SSP Driver"
 /*
  * Defines
@@ -595,6 +601,26 @@ static int intel_mid_i2s_resume(struct device *dev);
 #define SSP_SSACD_NOT_AVAILABLE 0xff
 #define SSP_CLK_SSCR0_SCR_NOT_AVAILABLE 0
 
+
+/*
+ * Following enums are for frequency calculation in master mode...
+ */
+
+enum mrst_ssp_bit_per_sample {
+	SSP_BIT_PER_SAMPLE_8 = 0,
+	SSP_BIT_PER_SAMPLE_16,
+	SSP_BIT_PER_SAMPLE_32,
+	SSP_BIT_PER_SAMPLE_SIZE
+};
+
+enum mrst_ssp_timeslot {
+	SSP_TIMESLOT_1 = 0,
+	SSP_TIMESLOT_2,
+	SSP_TIMESLOT_4,
+	SSP_TIMESLOT_8,
+	SSP_TIMESLOT_SIZE
+};
+
 static u8
   ssp_ssacd[SSP_FRM_FREQ_SIZE][SSP_BIT_PER_SAMPLE_SIZE][SSP_TIMESLOT_SIZE] = {
 
@@ -712,4 +738,4 @@ static u8
 
 };
 
-
+#endif /* MID_I2S_H_*/
