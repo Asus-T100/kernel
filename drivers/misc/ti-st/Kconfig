@@ -13,5 +13,4 @@ config TI_ST
 	  to register themselves with core and send data, the responses
 	  are returned to relevant protocol drivers based on their
 	  packet types.
-
 endmenu

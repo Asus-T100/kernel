@@ -28,6 +28,8 @@
 #include <linux/power/max17042_battery.h>
 #include <linux/power/intel_mdf_battery.h>
 #include <linux/nfc/pn544.h>
+#include <linux/skbuff.h>
+#include <linux/ti_wilink_st.h>
 #include <linux/gpio.h>
 #include <linux/gpio_keys.h>
 #include <linux/input.h>
@@ -2080,6 +2082,97 @@ static struct platform_device pb_device = {
 		.platform_data	= &mrst_gpio_keys,
 	},
 };
+
+#if defined(CONFIG_TI_ST) || defined(CONFIG_TI_ST_MODULE)
+
+/* KIM related */
+static int mrst_kim_suspend(struct platform_device *pdev, pm_message_t state)
+{
+	return 0;
+}
+static int mrst_kim_resume(struct platform_device *pdev)
+{
+	return 0;
+}
+
+static struct ti_st_plat_data kim_pdata = {
+	.nshutdown_gpio	= -1,/* BT, FM, GPS gpios */
+	.flow_cntrl	= 1,		/* flow control flag */
+	.suspend	= mrst_kim_suspend,
+	.resume		= mrst_kim_resume,
+};
+
+static struct platform_device linux_kim_device = {
+	.name           = "kim", /* named after init manager for ST */
+	.id             = -1,
+	.dev.platform_data = &kim_pdata,
+};
+
+/* BT WILINK related */
+static int mrst_bt_enable(struct platform_device *pdev)
+{
+	return 0;
+}
+static int mrst_bt_disable(struct platform_device *pdev)
+{
+	return 0;
+}
+
+static struct ti_st_plat_data bt_pdata = {
+	.chip_enable    = mrst_bt_enable,
+	.chip_disable   = mrst_bt_disable,
+};
+
+static struct platform_device linux_bt_device = {
+	.name           = "btwilink", /* named after init manager for ST */
+	.id             = -1,
+	.dev.platform_data = &bt_pdata,
+};
+static int __init bluetooth_init(void)
+{
+	unsigned int UART_index;
+	long unsigned int UART_baud_rate;
+	int error_reg;
+
+	/* KIM INIT */
+	/* Get the GPIO number from the SFI table
+	   if FM gpio is not provided then BT-reset line is
+	   also used to enable FM
+	*/
+	kim_pdata.nshutdown_gpio = get_gpio_by_name("BT-reset");
+	if (kim_pdata.nshutdown_gpio == -1)
+		return -ENODEV;
+
+	/* Get Share Transport uart settings */
+	/* TODO : add SFI table parsing and one SFI entry for this settings */
+	UART_index = 0;
+	UART_baud_rate = 3500000;
+
+	/* Share Transport uart settings */
+	sprintf((char *)kim_pdata.dev_name, "/dev/ttyMFD%u", UART_index);
+	kim_pdata.baud_rate = UART_baud_rate;
+
+	pr_info("%s: Setting platform_data with UART device name:%s and "
+			"UART baud rate:%lu.\n",
+			__func__, kim_pdata.dev_name, kim_pdata.baud_rate);
+
+	error_reg = platform_device_register(&linux_kim_device);
+	if (error_reg < 0) {
+		pr_err("platform_device_register for kim failed\n");
+		goto exit_on_error;
+	}
+
+	/* BT WILINK INIT */
+	error_reg = platform_device_register(&linux_bt_device);
+	if (error_reg < 0)
+		pr_err("platform_device_register for btwilink failed\n");
+exit_on_error:
+	return error_reg;
+
+}
+device_initcall(bluetooth_init);
+
+#endif
 
 /*
  * Shrink the non-existent buttons, register the gpio button

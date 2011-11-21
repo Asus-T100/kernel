@@ -1,8 +1,7 @@
 /*
  *  Shared Transport driver
  *	HCI-LL module responsible for TI proprietary HCI_LL protocol
- *  Copyright (C) 2009-2010 Texas Instruments
- *  Author: Pavan Savoy <pavan_savoy@ti.com>
+ *  Copyright (C) 2009 Texas Instruments
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License version 2 as
@@ -19,10 +18,20 @@
  *
  */
 
+
 #define pr_fmt(fmt) "(stll) :" fmt
 #include <linux/skbuff.h>
 #include <linux/module.h>
 #include <linux/ti_wilink_st.h>
+
+#include <linux/pm_runtime.h>
+
+#ifndef DEBUG
+#ifdef pr_info
+#undef pr_info
+#define pr_info(fmt, arg...)
+#endif
+#endif
 
 /**********************************************************************/
 /* internal functions */
@@ -39,10 +48,15 @@ static void ll_device_want_to_sleep(struct st_data_s *st_data)
 {
 	pr_debug("%s", __func__);
 	/* sanity check */
-	if (st_data->ll_state != ST_LL_AWAKE)
-		pr_err("ERR hcill: ST_LL_GO_TO_SLEEP_IND"
+	if (st_data->ll_state != ST_LL_AWAKE) {
+		pr_err("ERR hcill: ST_LL_GO_TO_SLEEP_IND "
 			  "in state %ld", st_data->ll_state);
 
+		/* Since Driver is asked to go to sleep but not aware to be
+		* awake Runtime PM is not aware of the state change either
+		* Requesting the device has not been done, so we do it*/
+		pm_runtime_get(st_data->tty_dev);
+	}
 	send_ll_cmd(st_data, LL_SLEEP_ACK);
 	/* update state */
 	st_data->ll_state = ST_LL_ASLEEP;
@@ -62,6 +76,7 @@ static void ll_device_want_to_wakeup(struct st_data_s *st_data)
 	case ST_LL_AWAKE:
 		/* duplicate wake_ind */
 		pr_err("duplicate wake_ind already AWAKE");
+		send_ll_cmd(st_data, LL_WAKE_UP_ACK);	/* send wake_ack */
 		break;
 	case ST_LL_AWAKE_TO_ASLEEP:
 		/* duplicate wake_ind */
@@ -116,16 +131,23 @@ unsigned long st_ll_sleep_state(struct st_data_s *st_data,
 	case LL_SLEEP_IND:	/* sleep ind */
 		pr_debug("sleep indication recvd");
 		ll_device_want_to_sleep(st_data);
+		pm_runtime_put(st_data->tty_dev);
 		break;
 	case LL_SLEEP_ACK:	/* sleep ack */
 		pr_err("sleep ack rcvd: host shouldn't");
 		break;
 	case LL_WAKE_UP_IND:	/* wake ind */
 		pr_debug("wake indication recvd");
+		/* Getting the Device is done to avoid power gating the
+		* Interface (for example UART). This can be done
+		* asynchronously since low level driver is getting the device
+		* when doing a transfert */
+		pm_runtime_get(st_data->tty_dev);
 		ll_device_want_to_wakeup(st_data);
 		break;
 	case LL_WAKE_UP_ACK:	/* wake ack */
 		pr_debug("wake ack rcvd");
+		pm_runtime_get(st_data->tty_dev);
 		st_data->ll_state = ST_LL_AWAKE;
 		break;
 	default:

@@ -29,6 +29,14 @@
 #include <linux/skbuff.h>
 
 #include <linux/ti_wilink_st.h>
+#include <linux/pm_runtime.h>
+
+#ifndef DEBUG
+#ifdef pr_info
+#undef pr_info
+#define pr_info(fmt, arg...)
+#endif
+#endif
 
 /* function pointer pointing to either,
  * st_kim_recv during registration to receive fw download responses
@@ -145,7 +153,7 @@ void st_reg_complete(struct st_data_s *st_gdata, char err)
 	for (i = 0; i < ST_MAX_CHANNELS; i++) {
 		if (likely(st_gdata != NULL &&
 			st_gdata->is_registered[i] == true &&
-				st_gdata->list[i]->reg_complete_cb != NULL)) {
+			   st_gdata->list[i]->reg_complete_cb != NULL)) {
 			st_gdata->list[i]->reg_complete_cb
 				(st_gdata->list[i]->priv_data, err);
 			pr_info("protocol %d's cb sent %d\n", i, err);
@@ -317,8 +325,16 @@ void st_int_recv(void *disc_data,
 			 * and assume chip awake
 			 */
 			spin_unlock_irqrestore(&st_gdata->lock, flags);
-			if (st_ll_getstate(st_gdata) == ST_LL_AWAKE)
+			if (st_ll_getstate(st_gdata) == ST_LL_AWAKE) {
+				/* pm_runtime_get has already been done
+				 * in st_ll_sleep_state. st_wakeup_ack will
+				 * call st_ll_sleep_state again and another
+				 * pm_runtime_get will be done. We need to
+				 * compensate the first one here.
+				 */
+				pm_runtime_put(st_gdata->tty_dev);
 				st_wakeup_ack(st_gdata, LL_WAKE_UP_ACK);
+			}
 			spin_lock_irqsave(&st_gdata->lock, flags);
 
 			ptr++;
@@ -338,11 +354,26 @@ void st_int_recv(void *disc_data,
 			/* Unknow packet? */
 		default:
 			type = *ptr;
+			if (type < ST_MAX_CHANNELS) {
+				if (!st_gdata->list[type]) {
+					pr_err("dropping frame "
+					"starting with 0x%02x\n", type);
+					goto done;
+				}
+			} else {
+				pr_err("Invalid packet type : 0x%02x\n", type);
+				goto done;
+			}
 			st_gdata->rx_skb = alloc_skb(
 					st_gdata->list[type]->max_frame_size,
 					GFP_ATOMIC);
-			skb_reserve(st_gdata->rx_skb,
+			if (st_gdata->rx_skb) {
+				skb_reserve(st_gdata->rx_skb,
 					st_gdata->list[type]->reserve);
+			} else {
+				pr_err("alloc_skb error\n");
+				goto done;
+			}
 			/* next 2 required for BT only */
 			st_gdata->rx_skb->cb[0] = type; /*pkt_type*/
 			st_gdata->rx_skb->cb[1] = 0; /*incoming*/
@@ -354,6 +385,7 @@ void st_int_recv(void *disc_data,
 		ptr++;
 		count--;
 	}
+done:
 	spin_unlock_irqrestore(&st_gdata->lock, flags);
 	pr_debug("done %s", __func__);
 	return;
@@ -478,9 +510,9 @@ void kim_st_list_protocols(struct st_data_s *st_gdata, void *buf)
 {
 	seq_printf(buf, "[%d]\nBT=%c\nFM=%c\nGPS=%c\n",
 			st_gdata->protos_registered,
-			st_gdata->is_registered[0x04] == true ? 'R' : 'U',
-			st_gdata->is_registered[0x08] == true ? 'R' : 'U',
-			st_gdata->is_registered[0x09] == true ? 'R' : 'U');
+			st_gdata->is_registered[ST_BT] == true ? 'R' : 'U',
+			st_gdata->is_registered[ST_FM] == true ? 'R' : 'U',
+			st_gdata->is_registered[ST_GPS] == true ? 'R' : 'U');
 }
 
 /********************************************************************/
@@ -605,7 +637,7 @@ long st_unregister(struct st_proto_s *proto)
 	pr_debug("%s: %d ", __func__, proto->chnl_id);
 
 	st_kim_ref(&st_gdata, 0);
-	if (!st_gdata || proto->chnl_id >= ST_MAX_CHANNELS) {
+	if (proto->chnl_id >= ST_MAX_CHANNELS) {
 		pr_err(" chnl_id %d not supported", proto->chnl_id);
 		return -EPROTONOSUPPORT;
 	}
@@ -655,7 +687,6 @@ long st_write(struct sk_buff *skb)
 		pr_err("data/tty unavailable to perform write");
 		return -EINVAL;
 	}
-
 	pr_debug("%d to be written", skb->len);
 	len = skb->len;
 
@@ -684,6 +715,16 @@ static int st_tty_open(struct tty_struct *tty)
 	st_kim_ref(&st_gdata, 0);
 	st_gdata->tty = tty;
 	tty->disc_data = st_gdata;
+
+	if (tty->dev->parent)
+		st_gdata->tty_dev = tty->dev->parent;
+	else
+		return -EINVAL;
+
+	/* Asynchronous Get is enough here since we just want to avoid
+	 * interface to be released too early
+	 */
+	pm_runtime_get(st_gdata->tty_dev);
 
 	/* don't do an wakeup for now */
 	clear_bit(TTY_DO_WRITE_WAKEUP, &tty->flags);
@@ -717,7 +758,7 @@ static void st_tty_close(struct tty_struct *tty)
 	 */
 	spin_lock_irqsave(&st_gdata->lock, flags);
 	for (i = ST_BT; i < ST_MAX_CHANNELS; i++) {
-		if (st_gdata->list[i] != NULL)
+		if (st_gdata->is_registered[i] == true)
 			pr_err("%d not un-registered", i);
 		st_gdata->list[i] = NULL;
 	}
@@ -743,6 +784,8 @@ static void st_tty_close(struct tty_struct *tty)
 	kfree_skb(st_gdata->rx_skb);
 	st_gdata->rx_skb = NULL;
 	spin_unlock_irqrestore(&st_gdata->lock, flags);
+
+	pm_runtime_put(st_gdata->tty_dev);
 
 	pr_debug("%s: done ", __func__);
 }
@@ -868,5 +911,3 @@ void st_core_exit(struct st_data_s *st_gdata)
 		kfree(st_gdata);
 	}
 }
-
-
