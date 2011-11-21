@@ -1695,6 +1695,7 @@ static int sdhci_check_ro(struct sdhci_host *host)
 {
 	unsigned long flags;
 	int is_readonly;
+	sdhci_runtime_pm_get(host);
 
 	spin_lock_irqsave(&host->lock, flags);
 
@@ -1708,6 +1709,7 @@ static int sdhci_check_ro(struct sdhci_host *host)
 
 	spin_unlock_irqrestore(&host->lock, flags);
 
+	sdhci_runtime_pm_put(host);
 	/* This quirk needs to be replaced by a callback-function later */
 	return host->quirks & SDHCI_QUIRK_INVERTED_WRITE_PROTECT ?
 		!is_readonly : is_readonly;
@@ -1757,6 +1759,7 @@ static int sdhci_get_ro(struct mmc_host *mmc)
 
 static void sdhci_enable_sdio_irq_nolock(struct sdhci_host *host, int enable)
 {
+	sdhci_runtime_pm_get(host);
 	if (host->flags & SDHCI_DEVICE_DEAD)
 		goto out;
 
@@ -1775,6 +1778,7 @@ static void sdhci_enable_sdio_irq_nolock(struct sdhci_host *host, int enable)
 		sdhci_mask_irqs(host, SDHCI_INT_CARD_INT);
 out:
 	mmiowb();
+	sdhci_runtime_pm_put(host);
 }
 
 static void sdhci_enable_sdio_irq(struct mmc_host *mmc, int enable)
@@ -2937,6 +2941,8 @@ int sdhci_add_host(struct sdhci_host *host)
 	mmc->max_discard_to = (1 << 27) / host->timeout_clk;
 
 	mmc->caps |= MMC_CAP_SDIO_IRQ | MMC_CAP_ERASE | MMC_CAP_CMD23;
+
+	mmc->caps |= MMC_CAP_POWER_OFF_CARD;
 
 	if (host->quirks & SDHCI_QUIRK_MULTIBLOCK_READ_ACMD12)
 		host->flags |= SDHCI_AUTO_CMD12;
