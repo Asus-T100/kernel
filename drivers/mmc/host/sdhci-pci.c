@@ -48,6 +48,7 @@ struct sdhci_pci_slot;
 
 struct sdhci_pci_fixes {
 	unsigned int		quirks;
+	unsigned int		quirks2;
 
 	int			(*probe) (struct sdhci_pci_chip *);
 
@@ -73,6 +74,7 @@ struct sdhci_pci_chip {
 	struct pci_dev		*pdev;
 
 	unsigned int		quirks;
+	unsigned int		quirks2;
 	const struct sdhci_pci_fixes *fixes;
 
 	int			num_slots;	/* Slots on controller */
@@ -353,6 +355,13 @@ static void mfd_emmc_mutex_register(struct sdhci_pci_slot *slot)
 	}
 }
 
+static int intel_mfld_sdio_probe_slot(struct sdhci_pci_slot *slot)
+{
+	struct sdhci_host *host = slot->host;
+	host->mmc->caps |= MMC_CAP_NONREMOVABLE;
+	return 0;
+}
+
 static int mfd_emmc_probe_slot(struct sdhci_pci_slot *slot)
 {
 	const char *name = NULL;
@@ -410,6 +419,8 @@ static const struct sdhci_pci_fixes sdhci_intel_mfd_sd = {
 
 static const struct sdhci_pci_fixes sdhci_intel_mfd_sdio = {
 	.quirks		= SDHCI_QUIRK_NO_ENDATTR_IN_NOPDESC,
+	.quirks2	= SDHCI_QUIRK_CANNOT_KEEP_POWERCTL,
+	.probe_slot     = intel_mfld_sdio_probe_slot,
 };
 
 static const struct sdhci_pci_fixes sdhci_intel_mfd_emmc = {
@@ -1310,6 +1321,7 @@ static struct sdhci_pci_slot * __devinit sdhci_pci_probe_slot(
 	host->hw_name = "PCI";
 	host->ops = &sdhci_pci_ops;
 	host->quirks = chip->quirks;
+	host->quirks2 = chip->quirks2;
 
 	host->irq = pdev->irq;
 
@@ -1440,8 +1452,11 @@ static int __devinit sdhci_pci_probe(struct pci_dev *pdev,
 
 	chip->pdev = pdev;
 	chip->fixes = (const struct sdhci_pci_fixes *)ent->driver_data;
-	if (chip->fixes)
+	if (chip->fixes) {
 		chip->quirks = chip->fixes->quirks;
+		chip->quirks2 = chip->fixes->quirks2;
+	}
+
 	chip->num_slots = slots;
 
 	pci_set_drvdata(pdev, chip);

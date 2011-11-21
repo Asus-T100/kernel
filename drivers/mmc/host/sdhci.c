@@ -248,7 +248,7 @@ static void sdhci_set_ios(struct mmc_host *mmc, struct mmc_ios *ios);
 
 static void sdhci_init(struct sdhci_host *host, int soft)
 {
-	if (soft)
+	if (soft && !(host->quirks2 & SDHCI_QUIRK_CANNOT_KEEP_POWERCTL))
 		sdhci_reset(host, SDHCI_RESET_CMD|SDHCI_RESET_DATA);
 	else
 		sdhci_reset(host, SDHCI_RESET_ALL);
@@ -262,6 +262,8 @@ static void sdhci_init(struct sdhci_host *host, int soft)
 	if (soft) {
 		/* force clock reconfiguration */
 		host->clock = 0;
+		if (host->quirks2 & SDHCI_QUIRK_CANNOT_KEEP_POWERCTL)
+			host->pwr = 0; /* force power reprogram */
 		sdhci_set_ios(host->mmc, &host->mmc->ios);
 	}
 }

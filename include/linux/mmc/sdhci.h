@@ -91,6 +91,9 @@ struct sdhci_host {
 	unsigned int quirks2;	/* More deviations from spec. */
 
 #define SDHCI_QUIRK2_OWN_CARD_DETECTION			(1<<0)
+/* Host controller cannot keep power control value after power off */
+#define SDHCI_QUIRK_CANNOT_KEEP_POWERCTL		(1<<1)
+
 
 	int irq;		/* Device IRQ */
 	void __iomem *ioaddr;	/* Mapped address */
