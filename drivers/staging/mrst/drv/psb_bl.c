@@ -244,6 +244,7 @@ int psb_backlight_init(struct drm_device *dev)
 #else
 	struct backlight_properties props;
 	memset(&props, 0, sizeof(struct backlight_properties));
+	props.type = BACKLIGHT_PLATFORM;
 	props.max_brightness = BRIGHTNESS_MAX_LEVEL;
 
 	psb_backlight_device = backlight_device_register("psb-bl", NULL, (void *)dev, &psb_ops, &props);
