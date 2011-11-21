@@ -159,6 +159,20 @@ static void sn95031_configure_pll(struct snd_soc_codec *codec, int operation)
 	}
 }
 
+static int sn95031_codec_stream_event(struct snd_soc_dapm_context *dapm,
+		int event)
+{
+	pr_debug("%s:Event=%d\n", __func__, event);
+
+	if (event == SND_SOC_DAPM_STREAM_STOP) {
+		/* disable the MSIC PLL only if no other active streams */
+		if (dapm->codec->active == 0) {
+			sn95031_configure_pll(dapm->codec, DISABLE_PLL);
+			/* disable PLLIN source clock */
+			intel_sst_set_pll(false, SST_PLL_MSIC);
+		}
+	}
+}
 static int sn95031_set_vaud_bias(struct snd_soc_codec *codec,
 		enum snd_soc_bias_level level)
 {
@@ -172,6 +186,10 @@ static int sn95031_set_vaud_bias(struct snd_soc_codec *codec,
 	case SND_SOC_BIAS_PREPARE:
 		if (sn95031_ctx->pll_state == PLL_ENABLE_PENDING) {
 			pr_debug("vaud_bias powering up pll\n");
+			intel_sst_set_pll(true, SST_PLL_MSIC);
+			/* allow few ms to stabilize the clock before
+				enabling the MSIC PLL */
+			usleep_range(5000, 6000);
 			sn95031_configure_pll(codec, ENABLE_PLL);
 		}
 		break;
@@ -179,15 +197,11 @@ static int sn95031_set_vaud_bias(struct snd_soc_codec *codec,
 	case SND_SOC_BIAS_STANDBY:
 		if (codec->dapm.bias_level == SND_SOC_BIAS_OFF) {
 			pr_debug("vaud_bias power up rail\n");
-			intel_sst_set_pll(true, SST_PLL_MSIC);
 			/* power up the rail, on in normal and aoac mode */
 			snd_soc_write(codec, SN95031_VAUD, 0x2D);
 			msleep(1);
-		} else if (codec->dapm.bias_level == SND_SOC_BIAS_PREPARE &&
-				sn95031_ctx->pll_state == PLL_ENABLED) {
-			pr_debug("vaud_bias powering down pll\n");
-			sn95031_configure_pll(codec, DISABLE_PLL);
-			sn95031_ctx->pll_state = PLL_ENABLE_PENDING;
+		} else if (codec->dapm.bias_level == SND_SOC_BIAS_PREPARE) {
+			pr_debug("vaud_bias standby\n");
 		}
 		break;
 
@@ -198,8 +212,6 @@ static int sn95031_set_vaud_bias(struct snd_soc_codec *codec,
 		 * so 100100b ie 24
 		 */
 		snd_soc_write(codec, SN95031_VAUD, 0x24);
-		sn95031_configure_pll(codec, DISABLE_PLL);
-		intel_sst_set_pll(false, SST_PLL_MSIC);
 		break;
 	}
 
@@ -864,6 +876,10 @@ static int sn95031_set_dai_pll(struct snd_soc_dai *codec_dai, int pll_id,
 	}
 	if (codec->dapm.bias_level >= SND_SOC_BIAS_PREPARE) {
 		pr_debug("bias_level is active, enabling pll\n");
+		intel_sst_set_pll(true, SST_PLL_MSIC);
+		/* allow few ms to stabilize the clock before
+			enabling the MSIC PLL */
+		usleep_range(5000, 6000);
 		sn95031_configure_pll(codec, ENABLE_PLL);
 	} else
 		sn95031_ctx->pll_state = PLL_ENABLE_PENDING;
@@ -1415,6 +1431,7 @@ struct snd_soc_codec_driver sn95031_codec = {
 	.num_dapm_widgets	= ARRAY_SIZE(sn95031_dapm_widgets),
 	.dapm_routes	= sn95031_audio_map,
 	.num_dapm_routes	= ARRAY_SIZE(sn95031_audio_map),
+	.stream_event	= sn95031_codec_stream_event,
 };
 
 static int __devinit sn95031_device_probe(struct platform_device *pdev)
