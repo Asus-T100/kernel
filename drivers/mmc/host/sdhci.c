@@ -1532,6 +1532,14 @@ static void sdhci_do_set_ios(struct sdhci_host *host, struct mmc_ios *ios)
 	unsigned long flags;
 	u8 ctrl;
 
+	if (host->vmmc) {
+		if (ios->power_mode == MMC_POWER_OFF)
+			mmc_regulator_set_ocr(host->mmc, host->vmmc, 0);
+		else
+			mmc_regulator_set_ocr(host->mmc, host->vmmc,
+			host->mmc->ios.vdd);
+	}
+
 	spin_lock_irqsave(&host->lock, flags);
 
 	if (host->flags & SDHCI_DEVICE_DEAD)
