@@ -117,8 +117,8 @@
 #	define SPWRSRINT1_CDP		BIT(6)
 #	define SPWRSRINT1_SDP		0
 #	define SPWRSRINT1_DCP		BIT(2)
-#define MSIC_IS4SET		0x2c8	/* Intel Specific */
-#	define IS4_CHGDSERXDPINV	BIT(5)
+#define MSIC_USB_MISC		0x2c8	/* Intel Specific */
+#	define MISC_CHGDSERXDPINV	BIT(5)
 #define MSIC_OTGCTRL		0x39c
 #define MSIC_OTGCTRLSET		0x340
 #define MSIC_OTGCTRLCLR		0x341

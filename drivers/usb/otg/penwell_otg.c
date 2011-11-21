@@ -833,7 +833,7 @@ static int penwell_otg_data_contact_detect(void)
 {
 	struct penwell_otg	*pnw = the_transceiver;
 	u8			data;
-	int			count = 10;
+	int			count = 50;
 	int			retval = 0;
 
 	dev_dbg(pnw->dev, "%s --->\n", __func__);
@@ -874,19 +874,19 @@ static int penwell_otg_data_contact_detect(void)
 	dev_dbg(pnw->dev, "Start Polling for Data contact detection!\n");
 
 	while (count) {
-		retval = intel_scu_ipc_ioread8(MSIC_PWRCTRL, &data);
+		retval = intel_scu_ipc_ioread8(MSIC_USB_MISC, &data);
 		if (retval) {
 			dev_warn(pnw->dev, "Failed to read MSIC register\n");
 			return retval;
 		}
 
-		if (data & DPVSRCEN) {
+		if (data & MISC_CHGDSERXDPINV) {
 			dev_dbg(pnw->dev, "Data contact detected!\n");
 			return 0;
 		}
 		count--;
-		/* Interval is 50ms */
-		msleep(50);
+		/* Interval is 10 - 11ms */
+		usleep_range(10000, 11000);
 	}
 
 	dev_dbg(pnw->dev, "Data contact Timeout\n");
@@ -1846,6 +1846,18 @@ static void penwell_otg_work(struct work_struct *work)
 
 			penwell_update_transceiver();
 		} else if (hsm->b_sess_vld) {
+			/* Check if DCP is detected */
+			spin_lock_irqsave(&pnw->charger_lock, flags);
+			charger_type = pnw->charging_cap.chrg_type;
+			if (charger_type == CHRG_DCP) {
+				spin_unlock_irqrestore(&pnw->charger_lock,
+						flags);
+				break;
+			}
+			spin_unlock_irqrestore(&pnw->charger_lock, flags);
+
+			penwell_otg_phy_low_power(0);
+
 			/* Check it is caused by ACA attachment */
 			if (hsm->id == ID_ACA_B) {
 				/* in this case, update current limit*/
