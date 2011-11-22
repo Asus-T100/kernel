@@ -1807,12 +1807,14 @@ sh_css_hrt_s2m_end_frame(unsigned int marker_cycles)
 }
 
 static void
-sh_css_hrt_s2m_send_line(unsigned short *data,
-				   unsigned int width,
-				   unsigned int hblank_cycles,
-				   unsigned int marker_cycles,
-				   unsigned int two_ppc,
-				   enum sh_css_mipi_data_type type)
+sh_css_hrt_s2m_send_line2(unsigned short *data,
+				unsigned int width,
+				unsigned short *data2,
+				unsigned int width2,
+				unsigned int hblank_cycles,
+				unsigned int marker_cycles,
+				unsigned int two_ppc,
+				enum sh_css_mipi_data_type type)
 {
 	unsigned int i, is_rgb = 0, is_legacy = 0;
 
@@ -1840,13 +1842,13 @@ sh_css_hrt_s2m_send_line(unsigned short *data,
 				/* for jpg (binary) copy, this can occur
 				 * if the file contains an odd number of bytes.
 				 */
-				sh_css_streaming_to_mipi_send_data(data[0],
-								   0);
+				sh_css_streaming_to_mipi_send_data(
+							data[0], 0);
 			} else {
-				sh_css_streaming_to_mipi_send_data(data[0],
-								   data
-								   [1]);
+				sh_css_streaming_to_mipi_send_data(
+							data[0], data[1]);
 			}
+			/* Additional increment because we send 2 pixels */
 			data++;
 			i++;
 		} else if (two_ppc && is_legacy) {
@@ -1854,13 +1856,54 @@ sh_css_hrt_s2m_send_line(unsigned short *data,
 		} else {
 			sh_css_streaming_to_mipi_send_data_a(data[0]);
 		}
-#if 0 /* Disabled, this is now modeled in the config bus */
-		hrt_sleep();
-#endif
+	}
+
+	for (i = 0; i < width2; i++, data2++) {
+		/* for RGB in two_ppc, we only actually send 2 pixels per
+		 * clock in the even pixels (0, 2 etc). In the other cycles,
+		 * we only send 1 pixel, to data2[0].
+		 */
+		unsigned int send_two_pixels = two_ppc;
+		if ((is_rgb || is_legacy) && (i % 3 == 2))
+			send_two_pixels = 0;
+		if (send_two_pixels) {
+			if (i + 1 == width2) {
+				/* for jpg (binary) copy, this can occur
+				 * if the file contains an odd number of bytes.
+				 */
+				sh_css_streaming_to_mipi_send_data(
+							data2[0], 0);
+			} else {
+				sh_css_streaming_to_mipi_send_data(
+							data2[0], data2[1]);
+			}
+			/* Additional increment because we send 2 pixels */
+			data2++;
+			i++;
+		} else if (two_ppc && is_legacy) {
+			sh_css_streaming_to_mipi_send_data_b(data2[0]);
+		} else {
+			sh_css_streaming_to_mipi_send_data_a(data2[0]);
+		}
 	}
 	for (i = 0; i < hblank_cycles; i++)
 		sh_css_streaming_to_mipi_send_empty_token();
 	sh_css_streaming_to_mipi_send_eol();
+}
+
+static void
+sh_css_hrt_s2m_send_line(unsigned short *data,
+				unsigned int width,
+				unsigned int hblank_cycles,
+				unsigned int marker_cycles,
+				unsigned int two_ppc,
+				enum sh_css_mipi_data_type type)
+{
+	sh_css_hrt_s2m_send_line2(data, width, NULL, 0,
+					hblank_cycles,
+					marker_cycles,
+					two_ppc,
+					type);
 }
 
 /* Send a frame of data into the input network via the GP FIFO.
@@ -1996,8 +2039,11 @@ sh_css_hrt_streaming_to_mipi_start_frame(unsigned int ch_id,
 
 void
 sh_css_hrt_streaming_to_mipi_send_line(unsigned int ch_id,
-				unsigned short *data,
-				unsigned int width)
+						unsigned short *data,
+						unsigned int width,
+						unsigned short *data2,
+						unsigned int width2)
+
 {
 	struct streamining_to_mipi_instance *s2mi;
 	s2mi = sh_css_hrt_s2m_get_inst(ch_id);
@@ -2006,8 +2052,7 @@ sh_css_hrt_streaming_to_mipi_send_line(unsigned int ch_id,
 	curr_ch_id = (s2mi->ch_id) & _HIVE_ISP_CH_ID_MASK;
 	curr_fmt_type = (s2mi->fmt_type) & _HIVE_ISP_FMT_TYPE_MASK;
 
-	/* Call existing HRT function */
-	sh_css_hrt_s2m_send_line(data, width,
+	sh_css_hrt_s2m_send_line2(data, width, data2, width2,
 					s2mi->hblank_cycles,
 					s2mi->marker_cycles,
 					s2mi->two_ppc,

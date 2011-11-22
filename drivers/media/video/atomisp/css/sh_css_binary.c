@@ -530,7 +530,7 @@ sh_css_binary_find(struct sh_css_binary_descr *descr,
 					      &dvs_envelope_height);
 
 		/* Video is the only mode that has a nodz variant. */
-		need_dz = (dx != 64 || dy != 64);
+		need_dz = ((dx != UDS_SCALING_N) || (dy != UDS_SCALING_N));
 		need_dvs = dvs_envelope_width || dvs_envelope_height;
 	}
 

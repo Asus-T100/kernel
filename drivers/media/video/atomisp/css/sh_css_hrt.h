@@ -397,9 +397,11 @@ sh_css_hrt_streaming_to_mipi_start_frame(unsigned int ch_id,
 				bool two_ppc);
 
 void
-sh_css_hrt_streaming_to_mipi_send_line(unsigned int ch_id ,
-				unsigned short *data,
-				unsigned int width);
+sh_css_hrt_streaming_to_mipi_send_line(unsigned int ch_id,
+						unsigned short *data,
+						unsigned int width,
+						unsigned short *data2,
+						unsigned int width2);
 
 void
 sh_css_hrt_streaming_to_mipi_end_frame(unsigned int ch_id);

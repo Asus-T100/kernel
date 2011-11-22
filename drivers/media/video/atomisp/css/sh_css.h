@@ -563,8 +563,8 @@ sh_css_streaming_to_mipi_start_frame(unsigned int channel_id,
 
 
 /*
- * Sends 1 line of frame data, with length width, to the streaming to mipi FIFO.
- * SoL and EoL will be appended.
+ * Sends 1 frame line. Start with SoL followed by width bytes of data, folowed
+ * by width2 bytes of data2 and followed by and EoL
  * It will use the input_format and two_pixels_per_clock settings as provided
  * with the sh_css_streaming_to_mipi_start_frame function call.
  *
@@ -573,8 +573,10 @@ sh_css_streaming_to_mipi_start_frame(unsigned int channel_id,
  */
 void
 sh_css_streaming_to_mipi_send_line(unsigned int channel_id,
-					unsigned short *data,
-					unsigned int width);
+						unsigned short *data,
+						unsigned int width,
+						unsigned short *data2,
+						unsigned int width2);
 
 
 /*

@@ -554,12 +554,12 @@ sh_css_sp_start_isp(struct sh_css_binary *binary,
 		bool zoom = false;
 		if (preview_mode) {
 			sh_css_get_zoom_factor(&dx, &dy);
-			zoom = dx != 64 || dy != 64;
+			zoom = ((dx != UDS_SCALING_N) || (dy != UDS_SCALING_N));
 		} else {
 			/* in non-preview modes, VF_PP does not do
 			   the zooming, capture_pp or video do. */
-			dx = 64;
-			dy = 64;
+			dx = UDS_SCALING_N;
+			dy = UDS_SCALING_N;
 		}
 		sh_css_sp_set_vf_zoom_position(binary, zoom);
 	} else {

@@ -1,3 +1,6 @@
+#ifndef _SH_CSS_DEFS_H_
+#define _SH_CSS_DEFS_H_
+
 /*
 * Support for Medfield PNW Camera Imaging ISP subsystem.
 *
@@ -21,8 +24,35 @@
 *
 */
 
-#ifndef _SH_CSS_DEFS_H_
-#define _SH_CSS_DEFS_H_
+#if defined(SYSTEM_hive_isp_css_2400_system) || defined(__isp2400_mamoiada) || \
+	defined(__scalar_processor_2400)
+#include <isp2400_mamoiada_params.h>         /* ISP_VEC_NELEMS */
+#include "gdc_v2_defs.h"                     /* HRT_GDC_N */
+#elif defined(SYSTEM_hive_isp_css_system) || defined(__isp2300_medfield) || \
+	defined(__scalar_processor)
+#include <isp2300_medfield_params.h>
+#include "gdc_defs.h"
+#elif defined(SYSTEM_hive_isp_css_large_system) || \
+	defined(__isp2300_medfield_large) || defined(__scalar_processor_large)
+#include <isp2300_medfield_large_params.h>
+#include "gdc_defs.h"
+#elif defined(SYSTEM_isp_css_dev_tb) || defined(__isp2300_medfield_demo) || \
+	defined(__scalar_processor_demo)
+#include <isp2300_medfield_demo_params.h>
+#include "gdc_defs.h"
+#else
+/* pipeline generator does not accept -D<var> */
+/*#error "sh_css_defs.h: Unknown system" */
+#endif
+#include <hive_isp_css_defs.h>              /* HIVE_ISP_DDR_WORD_BYTES */
+/* Width of a DDR word in bytes */
+#define HIVE_ISP_DDR_WORD_BYTES           (HIVE_ISP_DDR_WORD_BITS/8)
+
+
+/* Circular dependencies copy the definition in isp_defs.h */
+/*#include <isp_defs.h>*/
+/* System dependent and used inconsistently */
+#define UDS_SCALING_N                 HRT_GDC_N
 
 /* the max macro from the kernel only works within function context. We use
    these macros also as global initializers (for now). for this, we need
@@ -34,9 +64,6 @@
 
 /* Digital Image Stabilization */
 #define SH_CSS_DIS_DECI_FACTOR_LOG2       6
-
-/* Width of a DDR word in bytes */
-#define HIVE_ISP_DDR_WORD_BYTES           (HIVE_ISP_DDR_WORD_BITS/8)
 
 /* UV offset: 1:uv=-128...127, 0:uv=0...255 */
 #define SH_CSS_UV_OFFSET_IS_0             0

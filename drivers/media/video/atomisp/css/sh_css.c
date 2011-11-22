@@ -291,8 +291,8 @@ struct sh_css {
 	.curr_input_mode      = SH_CSS_INPUT_MODE_SENSOR, \
 	.input_mode           = SH_CSS_INPUT_MODE_SENSOR, \
 	.check_system_idle    = true, \
-	.curr_dx              = 64, \
-	.curr_dy              = 64, \
+	.curr_dx              = UDS_SCALING_N, \
+	.curr_dy              = UDS_SCALING_N, \
 	.continuous           = false, \
 	.start_sp_copy        = false, \
 	.disable_vf_pp        = false, \
@@ -3406,8 +3406,9 @@ sh_css_video_next_stage_needs_alloc(void)
 void
 sh_css_set_zoom_factor(unsigned int dx, unsigned int dy)
 {
-	bool is_zoomed = (dx < 64) || (dy < 64);
-	bool was_zoomed = (my_css.curr_dx < 64) || (my_css.curr_dy < 64);
+	bool is_zoomed  = dx < UDS_SCALING_N || dy < UDS_SCALING_N;
+	bool was_zoomed = my_css.curr_dx < UDS_SCALING_N ||
+			  my_css.curr_dy < UDS_SCALING_N;
 
 	if (is_zoomed != was_zoomed) {
 		/* for with/without zoom, we use different binaries */
@@ -3459,7 +3460,8 @@ need_capture_pp(void)
 		return true;
 	if (my_css.capture_settings.xnr)
 		return true;
-	if (my_css.curr_dx < 64 || my_css.curr_dy < 64)
+	if (my_css.curr_dx < UDS_SCALING_N ||
+	    my_css.curr_dy < UDS_SCALING_N)
 		return true;
 	return false;
 }
@@ -4383,11 +4385,13 @@ sh_css_streaming_to_mipi_start_frame(unsigned int channel_id,
 void
 sh_css_streaming_to_mipi_send_line(unsigned int channel_id,
 					unsigned short *data,
-					unsigned int width)
+					unsigned int width,
+						unsigned short *data2,
+						unsigned int width2)
 {
 	sh_css_hrt_streaming_to_mipi_send_line(channel_id,
-						data,
-						width);
+						data, width,
+						data2, width2);
 }
 
 

@@ -1796,6 +1796,7 @@ sh_css_params_init(void)
 		sh_css_uninit();
 		return sh_css_err_cannot_allocate_memory;
 	}
+	hrt_isp_css_mm_store(sp_ddr_ptrs, &ddr_ptrs, sizeof(ddr_ptrs));
 	sh_css_set_3a_config(&default_3a_config);
 	sh_css_set_wb_config(&default_wb_config);
 	sh_css_set_cc_config(&default_cc_config);

@@ -76,24 +76,24 @@ sh_css_rx_enable_all_interrupts(void)
 	       _HRT_CSS_RECEIVER_AHB_IRQ_ERR_CONTROL_BIT |
 	       _HRT_CSS_RECEIVER_AHB_IRQ_ERR_ECC_DOUBLE_BIT |
 	       _HRT_CSS_RECEIVER_AHB_IRQ_ERR_ECC_CORRECTED_BIT |
-	       _HRT_CSS_RECEIVER_AHB_IRQ_ERR_ECC_NO_CORRECTION_BIT |
+/*	       _HRT_CSS_RECEIVER_AHB_IRQ_ERR_ECC_NO_CORRECTION_BIT | */
 	       _HRT_CSS_RECEIVER_AHB_IRQ_ERR_CRC_BIT |
 	       _HRT_CSS_RECEIVER_AHB_IRQ_ERR_ID_BIT |
 	       _HRT_CSS_RECEIVER_AHB_IRQ_ERR_FRAME_SYNC_BIT |
 	       _HRT_CSS_RECEIVER_AHB_IRQ_ERR_FRAME_DATA_BIT |
 	       _HRT_CSS_RECEIVER_AHB_IRQ_DATA_TIMEOUT_BIT |
 	       _HRT_CSS_RECEIVER_AHB_IRQ_ERR_ESCAPE_BIT;
+/*         _HRT_CSS_RECEIVER_AHB_IRQ_ERR_LINE_SYNC_BIT; */
 
 	_sh_css_rx_set_bits(SH_CSS_MIPI_PORT_1LANE,
-			    _HRT_CSS_RECEIVER_AHB_IRQ_ENABLE_REG_IDX,
-			    bits);
+			    _HRT_CSS_RECEIVER_AHB_IRQ_ENABLE_REG_IDX, bits);
 }
 
 unsigned int
 sh_css_rx_get_interrupt_reg(void)
 {
 	return _sh_css_rx_get_register(SH_CSS_MIPI_PORT_1LANE,
-			_HRT_CSS_RECEIVER_AHB_IRQ_STATUS_REG_IDX);
+				_HRT_CSS_RECEIVER_AHB_IRQ_STATUS_REG_IDX);
 }
 
 void
@@ -102,7 +102,7 @@ sh_css_rx_get_interrupt_info(unsigned int *irq_infos)
 	unsigned long bits, infos = 0;
 
 	bits = _sh_css_rx_get_register(SH_CSS_MIPI_PORT_1LANE,
-			_HRT_CSS_RECEIVER_AHB_IRQ_STATUS_REG_IDX);
+				_HRT_CSS_RECEIVER_AHB_IRQ_STATUS_REG_IDX);
 
 	if (bits & (1 << _HRT_CSS_RECEIVER_AHB_IRQ_OVERRUN_BIT))
 		infos |= SH_CSS_RX_IRQ_INFO_BUFFER_OVERRUN;
@@ -175,8 +175,7 @@ sh_css_rx_clear_interrupt_info(unsigned int irq_infos)
 		bits |= 1 << _HRT_CSS_RECEIVER_AHB_IRQ_ERR_LINE_SYNC_BIT;
 
 	_sh_css_rx_set_bits(SH_CSS_MIPI_PORT_1LANE,
-			    _HRT_CSS_RECEIVER_AHB_IRQ_ENABLE_REG_IDX,
-			    bits);
+				_HRT_CSS_RECEIVER_AHB_IRQ_ENABLE_REG_IDX, bits);
 }
 
 enum sh_css_err
