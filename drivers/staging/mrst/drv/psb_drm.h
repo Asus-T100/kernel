@@ -569,20 +569,45 @@ struct drm_psb_stolen_memory_arg {
 #define REGRWBITS_DSPACNTR	(1 << 8)
 #define REGRWBITS_DSPBCNTR	(1 << 9)
 #define REGRWBITS_DSPCCNTR	(1 << 10)
-
+#define REGRWBITS_SPRITE_UPDATE			(1 << 11)
 /*Overlay Register Bits*/
 #define OV_REGRWBITS_OVADD			(1 << 0)
 #define OV_REGRWBITS_OGAM_ALL			(1 << 1)
 
 #define OVC_REGRWBITS_OVADD                  (1 << 2)
 #define OVC_REGRWBITS_OGAM_ALL			(1 << 3)
+/*sprite update fields*/
+#define SPRITE_UPDATE_SURFACE                  (0x00000001UL)
+#define SPRITE_UPDATE_CONTROL                  (0x00000002UL)
+#define SPRITE_UPDATE_POSITION                 (0x00000004UL)
+#define SPRITE_UPDATE_SIZE                     (0x00000008UL)
+#define SPRITE_UPDATE_ALL                      (0x0000000fUL)
+
+struct intel_sprite_context {
+	uint32_t update_mask;
+	/*plane index 0-A, 1-B, 2-C,etc*/
+	uint32_t index;
+
+	uint32_t cntr;
+	uint32_t linoff;
+	uint32_t stride;
+	uint32_t pos;
+	uint32_t size;
+	uint32_t keyminval;
+	uint32_t keymask;
+	uint32_t surf;
+	uint32_t keymaxval;
+	uint32_t tileoff;
+	uint32_t contalpa;
+};
 
 struct drm_psb_register_rw_arg {
 	uint32_t b_force_hw_on;
 
 	uint32_t display_read_mask;
 	uint32_t display_write_mask;
-
+	uint32_t sprite_context_mask;
+	struct intel_sprite_context sprite_context;
 	struct {
 		uint32_t pfit_controls;
 		uint32_t pfit_autoscale_ratios;

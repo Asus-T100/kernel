@@ -279,6 +279,46 @@ int psb_gtt_insert_pages(struct psb_gtt *pg, struct page **pages,
 	return 0;
 }
 
+static int psb_gtt_insert_pfn_list(struct psb_gtt *pg, u32 *pfn_list,
+	unsigned offset_pages, unsigned num_pages,
+	unsigned desired_tile_stride,
+	unsigned hw_tile_stride, int type)
+{
+	unsigned rows = 1;
+	unsigned add;
+	unsigned row_add;
+	unsigned i;
+	unsigned j;
+	uint32_t *cur_page = NULL;
+	uint32_t pte;
+
+	if (!pg || !pfn_list)
+		return -EINVAL;
+
+	if (hw_tile_stride)
+		rows = num_pages / desired_tile_stride;
+	else
+		desired_tile_stride = num_pages;
+
+	add = desired_tile_stride;
+	row_add = hw_tile_stride;
+
+	down_read(&pg->sem);
+	for (i = 0; i < rows; ++i) {
+		cur_page = pg->gtt_map + offset_pages;
+		for (j = 0; j < desired_tile_stride; ++j) {
+			pte = psb_gtt_mask_pte(*pfn_list++, type);
+			iowrite32(pte, cur_page++);
+		}
+		offset_pages += add;
+	}
+	(void) ioread32(cur_page - 1);
+	up_read(&pg->sem);
+
+	return 0;
+}
+
+
 int psb_gtt_insert_phys_addresses(struct psb_gtt *pg, IMG_CPU_PHYADDR *pPhysFrames,
 				  unsigned offset_pages, unsigned num_pages, int type)
 {

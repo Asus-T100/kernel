@@ -578,7 +578,7 @@ static void get_ci_info(struct drm_psb_private *dev_priv)
 	dev_priv->ci_region_start = pci_resource_start(pdev, 1);
 	dev_priv->ci_region_size = pci_resource_len(pdev, 1);
 
-	PSB_DEBUG_ENTRY( "ci_region_start %x ci_region_size %d\n",
+	PSB_DEBUG_ENTRY("ci_region_start %x ci_region_size %d\n",
 	       dev_priv->ci_region_start, dev_priv->ci_region_size);
 
 	pci_dev_put(pdev);
@@ -959,7 +959,7 @@ bool mrst_get_vbt_data(struct drm_psb_private *dev_priv)
 	memcpy(pVBT, pVBT_virtual, sizeof(*pVBT));
 	iounmap(pVBT_virtual); /* Free virtual address space */
 
-	PSB_DEBUG_ENTRY( "GCT Revision is %x\n", pVBT->Revision);
+	PSB_DEBUG_ENTRY("GCT Revision is %x\n", pVBT->Revision);
 
 	switch (pVBT->Revision) {
 	case 0:
@@ -1051,7 +1051,7 @@ bool mrst_get_vbt_data(struct drm_psb_private *dev_priv)
 			(*((u8 *)pGCT + 0x0e)) << 8;
 		break;
 	default:
-		PSB_DEBUG_ENTRY( "Unknown revision of GCT!\n");
+		PSB_DEBUG_ENTRY("Unknown revision of GCT!\n");
 		pVBT->Size = 0;
 		return false;
 	}
@@ -1079,7 +1079,7 @@ bool mrst_get_vbt_data(struct drm_psb_private *dev_priv)
 
 #ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY
 	dev_priv->panel_id = TMD_VID;
-	PSB_DEBUG_ENTRY( "[DISPLAY] %s: TMD_VID Panel\n", __func__);  //DIV5-MM-DISPLAY-NC-LCM_INIT-01
+	PSB_DEBUG_ENTRY("[DISPLAY] %s: TMD_VID Panel\n", __func__);  /*DIV5-MM-DISPLAY-NC-LCM_INIT-01*/
 #endif
 
 #ifdef CONFIG_SUPPORT_TMD_MIPI_600X1024_DISPLAY
@@ -1106,7 +1106,7 @@ void hdmi_do_hotplug_wq(struct work_struct *work)
 	intel_scu_ipc_ioread8(MSIC_HDMI_STATUS, &data);
 
 	if (data & HPD_SIGNAL_STATUS) {
-		PSB_DEBUG_ENTRY( "hdmi_do_hotplug_wq: HDMI plugged in\n");
+		PSB_DEBUG_ENTRY("hdmi_do_hotplug_wq: HDMI plugged in\n");
 		hdmi_state = 1;
 		if (dev_priv->mdfld_had_event_callbacks)
 			(*dev_priv->mdfld_had_event_callbacks)
@@ -1114,7 +1114,7 @@ void hdmi_do_hotplug_wq(struct work_struct *work)
 
 		drm_sysfs_hotplug_event(dev_priv->dev);
 	} else {
-		PSB_DEBUG_ENTRY( "hdmi_do_hotplug_wq: HDMI unplugged\n");
+		PSB_DEBUG_ENTRY("hdmi_do_hotplug_wq: HDMI unplugged\n");
 		hdmi_state = 0;
 		drm_sysfs_hotplug_event(dev_priv->dev);
 
@@ -2258,7 +2258,7 @@ static int psb_init_comm_ioctl(struct drm_device *dev, void *data,
 			/*init dpst kmum comms*/
 			dev_priv->psb_dpst_state = psb_dpst_init(kobj);
 		} else {
-			PSB_DEBUG_ENTRY( "DPST already initialized\n");
+			PSB_DEBUG_ENTRY("DPST already initialized\n");
 		}
 
 		psb_irq_enable_dpst(dev);
@@ -2350,7 +2350,7 @@ static int psb_update_guard_ioctl(struct drm_device *dev, void *data,
 	reg_data.data = PSB_RVDC32(HISTOGRAM_INT_CONTROL);
 	reg_data.guardband = input->guardband;
 	reg_data.guardband_interrupt_delay = input->guardband_interrupt_delay;
-	/* PSB_DEBUG_ENTRY( "guardband = %u\ninterrupt delay = %u\n",
+	/* PSB_DEBUG_ENTRY("guardband = %u\ninterrupt delay = %u\n",
 		reg_data.guardband, reg_data.guardband_interrupt_delay); */
 	PSB_WVDC32(reg_data.data, HISTOGRAM_INT_CONTROL);
 
@@ -2715,9 +2715,42 @@ static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 	struct drm_psb_register_rw_arg *arg = data;
 	unsigned int iep_ble_status;
 	unsigned long iep_timeout;
+	uint32_t reg_offset;
 	UHBUsage usage =
 		arg->b_force_hw_on ? OSPM_UHB_FORCE_POWER_ON : OSPM_UHB_ONLY_IF_ON;
 	uint32_t ovadd;
+	if (arg->sprite_context_mask & REGRWBITS_SPRITE_UPDATE) {
+		if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, usage))
+			return -EAGAIN;
+
+		if (arg->sprite_context.index == 0)
+			reg_offset = 0;
+		else if (arg->sprite_context.index == 1)
+			reg_offset = 0x1000;
+		else if (arg->sprite_context.index == 2)
+			reg_offset = 0x2000;
+		else
+			return -EINVAL;
+
+		if ((arg->sprite_context.update_mask & SPRITE_UPDATE_POSITION))
+			PSB_WVDC32(arg->sprite_context.pos, DSPAPOS + reg_offset);
+
+		if ((arg->sprite_context.update_mask & SPRITE_UPDATE_SIZE)) {
+			PSB_WVDC32(arg->sprite_context.size, DSPASIZE + reg_offset);
+			PSB_WVDC32(arg->sprite_context.stride, DSPASTRIDE + reg_offset);
+		}
+
+		if ((arg->sprite_context.update_mask & SPRITE_UPDATE_SURFACE)) {
+			PSB_WVDC32(arg->sprite_context.linoff, DSPALINOFF + reg_offset);
+			PSB_WVDC32(arg->sprite_context.surf, DSPASURF + reg_offset);
+		}
+
+		if ((arg->sprite_context.update_mask & SPRITE_UPDATE_CONTROL)) {
+			PSB_WVDC32(arg->sprite_context.cntr, DSPACNTR + reg_offset);
+			PSB_WVDC32(PSB_RVDC32(DSPASURF + reg_offset), DSPASURF + reg_offset);
+		}
+		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+	}
 
 	if (arg->display_write_mask != 0) {
 		if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, usage)) {
@@ -3230,7 +3263,7 @@ static const struct file_operations psb_blc_proc_fops = {
 static int psb_rtpm_read(char *buf, char **start, off_t offset, int request,
 			 int *eof, void *data)
 {
-	PSB_DEBUG_ENTRY( "Current Runtime PM delay for GFX: %d (ms) \n", gfxrtdelay);
+	PSB_DEBUG_ENTRY("Current Runtime PM delay for GFX: %d (ms)\n", gfxrtdelay);
 
 	return 0;
 }
@@ -3260,7 +3293,7 @@ static int psb_rtpm_write(struct file *file, const char *buffer,
 			gfxrtdelay = 30 * 1000;
 			break;
 		}
-		PSB_DEBUG_ENTRY( "Runtime PM delay set for GFX: %d (ms) \n", gfxrtdelay);
+		PSB_DEBUG_ENTRY("Runtime PM delay set for GFX: %d (ms)\n", gfxrtdelay);
 	}
 	return count;
 }
@@ -3338,7 +3371,7 @@ static int psb_ospm_write(struct file *file, const char *buffer,
 		if (buf[count-1] != '\n')
 			return -EINVAL;
 		drm_psb_ospm = buf[0] - '0';
-		PSB_DEBUG_ENTRY( " SGX (D0i3) drm_psb_ospm: %d \n",
+		PSB_DEBUG_ENTRY(" SGX (D0i3) drm_psb_ospm: %d\n",
 		       drm_psb_ospm);
 		/*Work around for video encode, it needs sgx always on*/
 		if (!drm_psb_ospm) {
@@ -3352,10 +3385,10 @@ static int psb_ospm_write(struct file *file, const char *buffer,
 static int psb_display_register_read(char *buf, char **start, off_t offset, int request,
 				     int *eof, void *data)
 {
-        struct drm_minor *minor = (struct drm_minor *) data;
-        struct drm_device *dev = minor->dev;
-        struct drm_psb_private *dev_priv =
-                (struct drm_psb_private *) dev->dev_private;
+	struct drm_minor *minor = (struct drm_minor *) data;
+	struct drm_device *dev = minor->dev;
+	struct drm_psb_private *dev_priv =
+		(struct drm_psb_private *) dev->dev_private;
 	/*do nothing*/
 	int len = dev_priv->count;
 	*eof = 1;
@@ -3384,43 +3417,43 @@ static int psb_display_register_write(struct file *file, const char *buffer,
 	memset(buf, '\0', sizeof(buf));
 
 	if (count > sizeof(buf)) {
-		PSB_DEBUG_ENTRY( "The input is too bigger, kernel can not handle.\n");
+		PSB_DEBUG_ENTRY("The input is too bigger, kernel can not handle.\n");
 		return -EINVAL;
 	} else {
 		if (copy_from_user(buf, buffer, count))
 			return -EINVAL;
 		if (buf[count-1] != '\n')
 			return -EINVAL;
-		PSB_DEBUG_ENTRY( "input = %s", buf);
+		PSB_DEBUG_ENTRY("input = %s", buf);
 	}
 
 	sscanf(buf, "%c%x%x", &op, &reg, &val);
 
 	if (op != 'r' && op != 'w' && op != 'a') {
-		PSB_DEBUG_ENTRY( "The input format is not right!\n");
-		PSB_DEBUG_ENTRY( "for exampe: r 70184		(read register 70184.)\n");
-		PSB_DEBUG_ENTRY( "for exampe: w 70184 123	(write register 70184 with value 123.)\n");
-		PSB_DEBUG_ENTRY( "for exmape: a 60000 60010(read all registers start at 60000 and end at 60010.\n)");
+		PSB_DEBUG_ENTRY("The input format is not right!\n");
+		PSB_DEBUG_ENTRY("for exampe: r 70184		(read register 70184.)\n");
+		PSB_DEBUG_ENTRY("for exampe: w 70184 123	(write register 70184 with value 123.)\n");
+		PSB_DEBUG_ENTRY("for exmape: a 60000 60010(read all registers start at 60000 and end at 60010.\n)");
 		return -EINVAL;
 	}
 	if ((reg < 0xa000 || reg >  0x720ff) && (reg < 0x40 || reg >  0x64)) {
-		PSB_DEBUG_ENTRY( "the register is out of display controller registers rang.\n");
+		PSB_DEBUG_ENTRY("the register is out of display controller registers rang.\n");
 		return -EINVAL;
 	}
 
 	if (val < 0) {
-		PSB_DEBUG_ENTRY( "the register value is should be greater than zero.\n");
+		PSB_DEBUG_ENTRY("the register value is should be greater than zero.\n");
 		return -EINVAL;
 		}
 
 	if ((reg % 0x4) != 0) {
-		PSB_DEBUG_ENTRY( "the register address should aligned to 4 byte.please refrence display controller specification.\n");
+		PSB_DEBUG_ENTRY("the register address should aligned to 4 byte.please refrence display controller specification.\n");
 		return -EINVAL;
 	}
 
 	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
 				       OSPM_UHB_FORCE_POWER_ON)) {
-		PSB_DEBUG_ENTRY( "Display controller can not power on.!\n");
+		PSB_DEBUG_ENTRY("Display controller can not power on.!\n");
 		return -EPERM;
 	}
 	if (IS_MDFLD(dev)) {
@@ -3431,94 +3464,93 @@ static int psb_display_register_write(struct file *file, const char *buffer,
 #endif
 	}
 	if (op == 'r') {
-                if (reg >= 0xa000) {
-                        reg_val = REG_READ(reg);
-                        PSB_DEBUG_ENTRY( "Read :reg=0x%08x , val=0x%08x.\n", reg, reg_val);
-                } else {
-                        reg_val = SGX_REG_READ(reg);
-                        PSB_DEBUG_ENTRY( "SGX Read :reg=0x%08x , val=0x%08x.\n", reg, reg_val);
-                }
-                dev_priv->count = sprintf(dev_priv->buf, "%08x %08x \n", reg,
-                                reg_val);
+		if (reg >= 0xa000) {
+			reg_val = REG_READ(reg);
+			PSB_DEBUG_ENTRY("Read :reg=0x%08x , val=0x%08x.\n", reg, reg_val);
+		} else {
+			reg_val = SGX_REG_READ(reg);
+			PSB_DEBUG_ENTRY("SGX Read :reg=0x%08x , val=0x%08x.\n", reg, reg_val);
+		}
+			dev_priv->count = sprintf(dev_priv->buf, "%08x %08x\n", reg, reg_val);
 	}
 	if (op == 'w') {
-                if (reg >= 0xa000) {
-                        reg_val = REG_READ(reg);
-                        PSB_DEBUG_ENTRY( "Before change:reg=0x%08x , val=0x%08x.\n", reg, reg_val);
-                        REG_WRITE(reg, val);
-                        reg_val = REG_READ(reg);
-                        PSB_DEBUG_ENTRY( "After change:reg=0x%08x , val=0x%08x.\n", reg, reg_val);
-                } else {
-                        reg_val = SGX_REG_READ(reg);
-                        PSB_DEBUG_ENTRY( "Before change: sgx reg=0x%08x , val=0x%08x.\n", reg, reg_val);
-                        SGX_REG_WRITE(reg, val);
-                        reg_val = SGX_REG_READ(reg);
-                        PSB_DEBUG_ENTRY( "After change:sgx reg=0x%08x , val=0x%08x.\n", reg, reg_val);
-                }
+		if (reg >= 0xa000) {
+			reg_val = REG_READ(reg);
+			PSB_DEBUG_ENTRY("Before change:reg=0x%08x , val=0x%08x.\n", reg, reg_val);
+			REG_WRITE(reg, val);
+			reg_val = REG_READ(reg);
+			PSB_DEBUG_ENTRY("After change:reg=0x%08x , val=0x%08x.\n", reg, reg_val);
+		} else {
+			reg_val = SGX_REG_READ(reg);
+			PSB_DEBUG_ENTRY("Before change: sgx reg=0x%08x , val=0x%08x.\n", reg, reg_val);
+			SGX_REG_WRITE(reg, val);
+			reg_val = SGX_REG_READ(reg);
+			PSB_DEBUG_ENTRY("After change:sgx reg=0x%08x , val=0x%08x.\n", reg, reg_val);
+		}
 	}
 
 	if (op == 'a') {
 		start = reg;
 		end = val;
-		PSB_DEBUG_ENTRY( "start:0x%08x \n", start);
-		PSB_DEBUG_ENTRY( "end:  0x%08x \n", end);
+		PSB_DEBUG_ENTRY("start:0x%08x\n", start);
+		PSB_DEBUG_ENTRY("end:  0x%08x\n", end);
 		if ((start % 0x4) != 0) {
-			PSB_DEBUG_ENTRY( "The start address should be 4 byte aligned. Please reference the display controller specification.\n");
+			PSB_DEBUG_ENTRY("The start address should be 4 byte aligned. Please reference the display controller specification.\n");
 			return -EINVAL;
 		}
 
 		if ((end % 0x4) != 0) {
-			PSB_DEBUG_ENTRY( "The end address should be 4 byte aligned. Please reference the display controller specification.\n");
+			PSB_DEBUG_ENTRY("The end address should be 4 byte aligned. Please reference the display controller specification.\n");
 			return -EINVAL;
 		}
 
 		len = end - start + 1;
 		if (len <= 0)
-			PSB_DEBUG_ENTRY( "The end address should be greater than the start address.\n");
+			PSB_DEBUG_ENTRY("The end address should be greater than the start address.\n");
 
 		if (end < 0xa000 || end >  0x720ff)
 		{
-			PSB_DEBUG_ENTRY( "The end address is out of the display controller register range.\n");
+			PSB_DEBUG_ENTRY("The end address is out of the display controller register range.\n");
 			return -EINVAL;
 		}
 
 		if (start < 0xa000 || start >  0x720ff)
 		{
-			PSB_DEBUG_ENTRY( "The start address is out of the display controller register range.\n");
+			PSB_DEBUG_ENTRY("The start address is out of the display controller register range.\n");
 			return -EINVAL;
 		}
 		for (Offset = start ; Offset < end; Offset = Offset + 0x10) {
-                       if (reg >= 0xa000) {
-                               PSB_DEBUG_ENTRY( "0x%08x: 0x%08x 0x%08x 0x%08x 0x%08x\n",
-                                      Offset,
-                                      REG_READ(Offset + 0x0),
-                                      REG_READ(Offset + 0x4),
-                                      REG_READ(Offset + 0x8),
-                                      REG_READ(Offset + 0xc));
+			if (reg >= 0xa000) {
+				PSB_DEBUG_ENTRY("0x%08x: 0x%08x 0x%08x 0x%08x 0x%08x\n",
+					Offset,
+					REG_READ(Offset + 0x0),
+					REG_READ(Offset + 0x4),
+					REG_READ(Offset + 0x8),
+					REG_READ(Offset + 0xc));
 
-                               dev_priv->count += sprintf(dev_priv->buf + dev_priv->count,
-                                               "%08x %08x %08x %08x %08x \n",
-                                               Offset,
-                                               REG_READ(Offset + 0x0),
-                                               REG_READ(Offset + 0x4),
-                                               REG_READ(Offset + 0x8),
-                                               REG_READ(Offset + 0xc));
-                       } else {
-                               PSB_DEBUG_ENTRY( "0x%08x: 0x%08x 0x%08x 0x%08x 0x%08x\n",
-                                      Offset,
-                                      SGX_REG_READ(Offset + 0x0),
-                                      SGX_REG_READ(Offset + 0x4),
-                                      SGX_REG_READ(Offset + 0x8),
-                                      SGX_REG_READ(Offset + 0xc));
+				dev_priv->count += sprintf(dev_priv->buf + dev_priv->count,
+					"%08x %08x %08x %08x %08x\n",
+					Offset,
+					REG_READ(Offset + 0x0),
+					REG_READ(Offset + 0x4),
+					REG_READ(Offset + 0x8),
+					REG_READ(Offset + 0xc));
+			} else {
+				PSB_DEBUG_ENTRY("0x%08x: 0x%08x 0x%08x 0x%08x 0x%08x\n",
+					Offset,
+					SGX_REG_READ(Offset + 0x0),
+					SGX_REG_READ(Offset + 0x4),
+					SGX_REG_READ(Offset + 0x8),
+					SGX_REG_READ(Offset + 0xc));
 
-                               dev_priv->count += sprintf(dev_priv->buf + dev_priv->count,
-                                               "%08x %08x %08x %08x %08x \n",
-                                               Offset,
-                                               SGX_REG_READ(Offset + 0x0),
-                                               SGX_REG_READ(Offset + 0x4),
-                                               SGX_REG_READ(Offset + 0x8),
-                                               SGX_REG_READ(Offset + 0xc));
-                       }
+				dev_priv->count += sprintf(dev_priv->buf + dev_priv->count,
+					"%08x %08x %08x %08x %08x\n",
+					Offset,
+					SGX_REG_READ(Offset + 0x0),
+					SGX_REG_READ(Offset + 0x4),
+					SGX_REG_READ(Offset + 0x8),
+					SGX_REG_READ(Offset + 0xc));
+			}
 
 		}
 	}
