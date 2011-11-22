@@ -760,6 +760,12 @@ static int mt9e013_otp_read(struct v4l2_subdev *sd,
 			break;
 	} while (--retry);
 
+	if (!retry) {
+		v4l2_err(client, "%s: OTP memory read timeout.\n", __func__);
+		ret = -ETIMEDOUT;
+		goto out;
+	}
+
 	if (!(ready & MT9E013_OTP_READY_REG_OK)) {
 		v4l2_info(client, "%s: OTP memory was initialized with error\n",
 			  __func__);
