@@ -2768,6 +2768,36 @@ struct sdhci_host *sdhci_alloc_host(struct device *dev,
 
 EXPORT_SYMBOL_GPL(sdhci_alloc_host);
 
+/**
+ *      sdhci_pci_request_regulators - try requesting regulator of
+ *                                     a sdhci device
+ *
+ *      We take care of race conditions here between sdhci_add_host() (probe)
+ *      and platform code that may kick a retry at anytime during boot.
+ */
+int sdhci_try_get_regulator(struct sdhci_host *host)
+{
+	struct regulator *vmmc;
+	unsigned long flags;
+	if (!host->vmmc) {
+		vmmc = regulator_get(mmc_dev(host->mmc), "vmmc");
+		if (!IS_ERR(vmmc)) {
+			spin_lock_irqsave(&host->lock, flags);
+			if (!host->vmmc) {
+				host->vmmc = vmmc;
+				spin_unlock_irqrestore(&host->lock, flags);
+				return 0;
+			} else {
+			  /* race! we got the regulator twice */
+				spin_unlock_irqrestore(&host->lock, flags);
+				regulator_put(vmmc);
+			}
+		}
+	}
+	return -EAGAIN;
+}
+EXPORT_SYMBOL_GPL(sdhci_try_get_regulator);
+
 int sdhci_add_host(struct sdhci_host *host)
 {
 	struct mmc_host *mmc;
@@ -3172,13 +3202,7 @@ int sdhci_add_host(struct sdhci_host *host)
 	if (ret)
 		goto untasklet;
 
-	host->vmmc = regulator_get(mmc_dev(mmc), "vmmc");
-	if (IS_ERR(host->vmmc)) {
-		printk(KERN_INFO "%s: no vmmc regulator found\n", mmc_hostname(mmc));
-		host->vmmc = NULL;
-	} else {
-		regulator_enable(host->vmmc);
-	}
+	sdhci_try_get_regulator(host);
 
 	sdhci_do_acquire_ownership(mmc);
 

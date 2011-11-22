@@ -1343,6 +1343,7 @@ static struct platform_device wl12xx_vwlan_device = {
 #define ICDK_BOARD_REF_CLK 26000000
 #define NCDK_BOARD_REF_CLK 38400000
 
+extern int sdhci_pci_request_regulators(void);
 void __init wl12xx_platform_data_init_post_scu(void *info)
 {
 	struct sd_board_info *sd_info = info;
@@ -1401,6 +1402,8 @@ void __init wl12xx_platform_data_init_post_scu(void *info)
 	err = platform_device_register(&wl12xx_vwlan_device);
 	if (err < 0)
 		pr_err("error platform_device_register\n");
+
+	sdhci_pci_request_regulators();
 }
 
 void __init *wl12xx_platform_data_init(void *info)
