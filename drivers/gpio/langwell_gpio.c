@@ -498,4 +498,4 @@ static int __init lnw_gpio_init(void)
 	return ret;
 }
 
-device_initcall(lnw_gpio_init);
+fs_initcall(lnw_gpio_init);
