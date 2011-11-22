@@ -621,40 +621,46 @@ static long mt9e013_set_exposure(struct v4l2_subdev *sd, u16 coarse_itg,
 	u16 frame_length;
 	struct mt9e013_device *dev = to_mt9e013_sensor(sd);
 
-	if (mt9e013_read_reg(client, MT9E013_16BIT,
-			     MT9E013_FRAME_LENGTH_LINES, &frame_length))
-		return -EINVAL;
+	mutex_lock(&dev->input_lock);
+
+	ret = mt9e013_read_reg(client, MT9E013_16BIT,
+			       MT9E013_FRAME_LENGTH_LINES, &frame_length);
+	if (ret)
+		goto out;
 
 	/* enable group hold */
 	ret = mt9e013_write_reg_array(client, mt9e013_param_hold);
 	if (ret)
-		return ret;
+		goto out;
 
 	/* set coarse integration time */
 	ret = mt9e013_write_reg(client, MT9E013_16BIT,
 			MT9E013_COARSE_INTEGRATION_TIME, coarse_itg);
 	if (ret)
-		goto error;
+		goto out_disable;
 
 	/* set fine integration time */
 	ret = mt9e013_write_reg(client, MT9E013_16BIT,
 			MT9E013_FINE_INTEGRATION_TIME, fine_itg);
 	if (ret)
-		goto error;
+		goto out_disable;
 
 	/* set global gain */
 	ret = mt9e013_write_reg(client, MT9E013_16BIT,
 			MT9E013_GLOBAL_GAIN, gain);
 
 	if (ret)
-		goto error;
+		goto out_disable;
 	dev->gain       = gain;
 	dev->coarse_itg = coarse_itg;
 	dev->fine_itg   = fine_itg;
 
-error:
+out_disable:
 	/* disable group hold */
 	mt9e013_write_reg_array(client, mt9e013_param_update);
+out:
+	mutex_unlock(&dev->input_lock);
+
 	return ret;
 }
 
@@ -728,13 +734,17 @@ static int mt9e013_otp_read(struct v4l2_subdev *sd,
 			    void __user *data, u32 size)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
+	struct mt9e013_device *dev = to_mt9e013_sensor(sd);
 	int ret;
 	int retry = 100;
 	void *buf;
 	u16 ready;
 
+	mutex_lock(&dev->input_lock);
+
 	ret = mt9e013_write_reg_array(client, type);
 	if (ret) {
+		mutex_unlock(&dev->input_lock);
 		v4l2_err(client, "%s: failed to prepare OTP memory\n",
 			 __func__);
 		return ret;
@@ -745,8 +755,10 @@ static int mt9e013_otp_read(struct v4l2_subdev *sd,
 	 * buffer now to optimize time.
 	 */
 	buf = kmalloc(MT9E013_OTP_DATA_SIZE, GFP_KERNEL);
-	if (!buf)
+	if (!buf) {
+		mutex_unlock(&dev->input_lock);
 		return -ENOMEM;
+	}
 
 	do {
 		ret = mt9e013_read_reg(client, MT9E013_16BIT,
@@ -754,7 +766,7 @@ static int mt9e013_otp_read(struct v4l2_subdev *sd,
 		if (ret) {
 			v4l2_err(client, "%s: failed to read OTP memory "
 					 "status\n", __func__);
-			goto out;
+			goto err_unlock;
 		}
 		if (ready & MT9E013_OTP_READY_REG_DONE)
 			break;
@@ -763,36 +775,44 @@ static int mt9e013_otp_read(struct v4l2_subdev *sd,
 	if (!retry) {
 		v4l2_err(client, "%s: OTP memory read timeout.\n", __func__);
 		ret = -ETIMEDOUT;
-		goto out;
+		goto err_unlock;
 	}
 
 	if (!(ready & MT9E013_OTP_READY_REG_OK)) {
 		v4l2_info(client, "%s: OTP memory was initialized with error\n",
 			  __func__);
 		ret = -EIO;
-		goto out;
+		goto err_unlock;
 	}
 	ret = mt9e013_read_reg_array(client, MT9E013_OTP_DATA_SIZE,
 				     MT9E013_OTP_START_ADDR, buf);
+	mutex_unlock(&dev->input_lock);
 	if (ret) {
 		v4l2_err(client, "%s: failed to read OTP data\n", __func__);
-		goto out;
+		goto err;
 	}
+
 	if (MT9E013_OTP_CHECKSUM) {
 		ret = mt9e013_otp_checksum(sd, buf,
 				ARRAY_SIZE(mt9e013_otp_checksum_list),
 				mt9e013_otp_checksum_list);
 		if (ret)
-			goto out;
+			goto err;
 	}
 	ret = copy_to_user(data, buf, size);
 	if (ret) {
 		v4l2_err(client, "%s: failed to copy OTP data to user\n",
 			 __func__);
 		ret = -EFAULT;
+		goto err;
 	}
+	kfree(buf);
 
-out:
+	return 0;
+
+err_unlock:
+	mutex_unlock(&dev->input_lock);
+err:
 	kfree(buf);
 	return ret;
 }
@@ -871,7 +891,7 @@ static int mt9e013_init_registers(struct v4l2_subdev *sd)
 	return ret;
 }
 
-static int mt9e013_init(struct v4l2_subdev *sd, u32 val)
+static int __mt9e013_init(struct v4l2_subdev *sd, u32 val)
 {
 	int ret;
 
@@ -884,6 +904,18 @@ static int mt9e013_init(struct v4l2_subdev *sd, u32 val)
 	/* restore settings */
 	mt9e013_res = mt9e013_res_preview;
 	N_RES = N_RES_PREVIEW;
+
+	return ret;
+}
+
+static int mt9e013_init(struct v4l2_subdev *sd, u32 val)
+{
+	struct mt9e013_device *dev = to_mt9e013_sensor(sd);
+	int ret;
+
+	mutex_lock(&dev->input_lock);
+	ret = __mt9e013_init(sd, val);
+	mutex_unlock(&dev->input_lock);
 
 	return ret;
 }
@@ -968,7 +1000,7 @@ static int mt9e013_s_power(struct v4l2_subdev *sd, int on)
 		if (!ret) {
 			dev->power = 1;
 			/* init motor initial position */
-			return mt9e013_init(sd, 0);
+			return __mt9e013_init(sd, 0);
 		}
 	}
 
@@ -1371,12 +1403,15 @@ static struct mt9e013_control *mt9e013_find_control(u32 id)
 
 static int mt9e013_queryctrl(struct v4l2_subdev *sd, struct v4l2_queryctrl *qc)
 {
+	struct mt9e013_device *dev = to_mt9e013_sensor(sd);
 	struct mt9e013_control *ctrl = mt9e013_find_control(qc->id);
 
 	if (ctrl == NULL)
 		return -EINVAL;
 
+	mutex_lock(&dev->input_lock);
 	*qc = ctrl->qc;
+	mutex_unlock(&dev->input_lock);
 
 	return 0;
 }
@@ -1384,7 +1419,9 @@ static int mt9e013_queryctrl(struct v4l2_subdev *sd, struct v4l2_queryctrl *qc)
 /* mt9e013 control set/get */
 static int mt9e013_g_ctrl(struct v4l2_subdev *sd, struct v4l2_control *ctrl)
 {
+	struct mt9e013_device *dev = to_mt9e013_sensor(sd);
 	struct mt9e013_control *s_ctrl;
+	int ret;
 
 	if (!ctrl)
 		return -EINVAL;
@@ -1393,17 +1430,27 @@ static int mt9e013_g_ctrl(struct v4l2_subdev *sd, struct v4l2_control *ctrl)
 	if ((s_ctrl == NULL) || (s_ctrl->query == NULL))
 		return -EINVAL;
 
-	return s_ctrl->query(sd, &ctrl->value);
+	mutex_lock(&dev->input_lock);
+	ret = s_ctrl->query(sd, &ctrl->value);
+	mutex_unlock(&dev->input_lock);
+
+	return ret;
 }
 
 static int mt9e013_s_ctrl(struct v4l2_subdev *sd, struct v4l2_control *ctrl)
 {
+	struct mt9e013_device *dev = to_mt9e013_sensor(sd);
 	struct mt9e013_control *octrl = mt9e013_find_control(ctrl->id);
+	int ret;
 
 	if ((octrl == NULL) || (octrl->tweak == NULL))
 		return -EINVAL;
 
-	return octrl->tweak(sd, ctrl->value);
+	mutex_lock(&dev->input_lock);
+	ret = octrl->tweak(sd, ctrl->value);
+	mutex_unlock(&dev->input_lock);
+
+	return ret;
 }
 
 struct mt9e013_format mt9e013_formats[] = {
@@ -1527,24 +1574,31 @@ static int mt9e013_s_mbus_fmt(struct v4l2_subdev *sd,
 		v4l2_err(sd, "try fmt fail\n");
 		return ret;
 	}
+
+	mutex_lock(&dev->input_lock);
 	dev->fmt_idx = get_resolution_index(fmt->width, fmt->height);
 
 	/* Sanity check */
 	if (unlikely(dev->fmt_idx == -1)) {
+		mutex_unlock(&dev->input_lock);
 		v4l2_err(sd, "get resolution fail\n");
 		return -EINVAL;
 	}
 
 	mt9e013_def_reg = mt9e013_res[dev->fmt_idx].regs;
+
 	ret = mt9e013_write_reg_array(client, mt9e013_def_reg);
-	if (ret)
+	if (ret) {
+		mutex_unlock(&dev->input_lock);
 		return -EINVAL;
+	}
 
 	dev->fps = mt9e013_res[dev->fmt_idx].fps;
 	dev->pixels_per_line = mt9e013_res[dev->fmt_idx].pixels_per_line;
 	dev->lines_per_frame = mt9e013_res[dev->fmt_idx].lines_per_frame;
 
 	ret = mt9e013_get_intg_factor(client, mt9e013_info, mt9e013_def_reg);
+	mutex_unlock(&dev->input_lock);
 	if (ret) {
 		v4l2_err(sd, "failed to get integration_factor\n");
 		return -EINVAL;
@@ -1619,6 +1673,7 @@ static int mt9e013_s_stream(struct v4l2_subdev *sd, int enable)
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	struct mt9e013_device *dev = to_mt9e013_sensor(sd);
 
+	mutex_lock(&dev->input_lock);
 	if (enable) {
 		if (dev->sensor_revision <= 0x0) {
 			/* begin: vcm hack, needs to be removed when new camera module is availible */
@@ -1642,6 +1697,7 @@ static int mt9e013_s_stream(struct v4l2_subdev *sd, int enable)
 		}
 
 		if (ret != 0) {
+			mutex_unlock(&dev->input_lock);
 			v4l2_err(client, "write_reg_array err\n");
 			return ret;
 		}
@@ -1650,6 +1706,7 @@ static int mt9e013_s_stream(struct v4l2_subdev *sd, int enable)
 
 		ret = mt9e013_write_reg_array(client, mt9e013_soft_standby);
 		if (ret != 0) {
+			mutex_unlock(&dev->input_lock);
 			v4l2_err(client, "write_reg_array err\n");
 			return ret;
 		}
@@ -1659,6 +1716,7 @@ static int mt9e013_s_stream(struct v4l2_subdev *sd, int enable)
 	/* restore settings */
 	mt9e013_res = mt9e013_res_preview;
 	N_RES = N_RES_PREVIEW;
+	mutex_unlock(&dev->input_lock);
 
 	return 0;
 }
@@ -1728,9 +1786,12 @@ static int mt9e013_s_config(struct v4l2_subdev *sd,
 
 	dev->platform_data = pdata;
 
+	mutex_lock(&dev->input_lock);
+
 	ret = mt9e013_s_power(sd, 1);
 	if (ret) {
 		v4l2_err(client, "mt9e013 power-up err.\n");
+		mutex_unlock(&dev->input_lock);
 		return ret;
 	}
 
@@ -1750,6 +1811,7 @@ static int mt9e013_s_config(struct v4l2_subdev *sd,
 
 	/* power off sensor */
 	ret = mt9e013_s_power(sd, 0);
+	mutex_unlock(&dev->input_lock);
 	if (ret) {
 		v4l2_err(client, "mt9e013 power-down err.\n");
 		return ret;
@@ -1761,6 +1823,7 @@ fail_detect:
 	dev->platform_data->csi_cfg(sd, 0);
 fail_csi_cfg:
 	mt9e013_s_power(sd, 0);
+	mutex_unlock(&dev->input_lock);
 	dev_err(&client->dev, "sensor power-gating failed\n");
 	return ret;
 }
@@ -1853,6 +1916,7 @@ mt9e013_s_parm(struct v4l2_subdev *sd, struct v4l2_streamparm *param)
 
 	dev->run_mode = param->parm.capture.capturemode;
 
+	mutex_lock(&dev->input_lock);
 	switch (dev->run_mode) {
 	case CI_MODE_VIDEO:
 		mt9e013_res = mt9e013_res_video;
@@ -1866,6 +1930,7 @@ mt9e013_s_parm(struct v4l2_subdev *sd, struct v4l2_streamparm *param)
 		mt9e013_res = mt9e013_res_preview;
 		N_RES = N_RES_PREVIEW;
 	}
+	mutex_unlock(&dev->input_lock);
 	return 0;
 }
 
@@ -2002,6 +2067,8 @@ static int mt9e013_probe(struct i2c_client *client,
 		mt9e013_remove(client);
 		return ret;
 	}
+
+	mutex_init(&dev->input_lock);
 
 	return 0;
 }
