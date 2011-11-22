@@ -384,6 +384,7 @@ struct mt9e013_device {
 	struct timespec timestamp_t_focus_abs;
 	s16 number_of_steps;
 	struct mutex input_lock; /* serialize sensor's ioctl */
+	void *otp_data;
 };
 
 #define MT9E013_MAX_WRITE_BUF_SIZE	128

@@ -729,35 +729,20 @@ static int mt9e013_otp_checksum(struct v4l2_subdev *sd, u8 *buf, int list_len,
 	return 0;
 }
 
-static int mt9e013_otp_read(struct v4l2_subdev *sd,
-			    const struct mt9e013_reg *type,
-			    void __user *data, u32 size)
+static int
+__mt9e013_otp_read(struct v4l2_subdev *sd, const struct mt9e013_reg *type,
+		   void *buf)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
-	struct mt9e013_device *dev = to_mt9e013_sensor(sd);
 	int ret;
 	int retry = 100;
-	void *buf;
 	u16 ready;
-
-	mutex_lock(&dev->input_lock);
 
 	ret = mt9e013_write_reg_array(client, type);
 	if (ret) {
-		mutex_unlock(&dev->input_lock);
 		v4l2_err(client, "%s: failed to prepare OTP memory\n",
 			 __func__);
 		return ret;
-	}
-
-	/*
-	 * As we need to wait for sensor to prepare OTP memory, let's allocate
-	 * buffer now to optimize time.
-	 */
-	buf = kmalloc(MT9E013_OTP_DATA_SIZE, GFP_KERNEL);
-	if (!buf) {
-		mutex_unlock(&dev->input_lock);
-		return -ENOMEM;
 	}
 
 	do {
@@ -766,7 +751,7 @@ static int mt9e013_otp_read(struct v4l2_subdev *sd,
 		if (ret) {
 			v4l2_err(client, "%s: failed to read OTP memory "
 					 "status\n", __func__);
-			goto err_unlock;
+			return ret;
 		}
 		if (ready & MT9E013_OTP_READY_REG_DONE)
 			break;
@@ -774,22 +759,19 @@ static int mt9e013_otp_read(struct v4l2_subdev *sd,
 
 	if (!retry) {
 		v4l2_err(client, "%s: OTP memory read timeout.\n", __func__);
-		ret = -ETIMEDOUT;
-		goto err_unlock;
+		return -ETIMEDOUT;
 	}
 
 	if (!(ready & MT9E013_OTP_READY_REG_OK)) {
 		v4l2_info(client, "%s: OTP memory was initialized with error\n",
 			  __func__);
-		ret = -EIO;
-		goto err_unlock;
+		return -EIO;
 	}
 	ret = mt9e013_read_reg_array(client, MT9E013_OTP_DATA_SIZE,
 				     MT9E013_OTP_START_ADDR, buf);
-	mutex_unlock(&dev->input_lock);
 	if (ret) {
 		v4l2_err(client, "%s: failed to read OTP data\n", __func__);
-		goto err;
+		return ret;
 	}
 
 	if (MT9E013_OTP_CHECKSUM) {
@@ -797,24 +779,40 @@ static int mt9e013_otp_read(struct v4l2_subdev *sd,
 				ARRAY_SIZE(mt9e013_otp_checksum_list),
 				mt9e013_otp_checksum_list);
 		if (ret)
-			goto err;
+			return ret;
 	}
-	ret = copy_to_user(data, buf, size);
-	if (ret) {
-		v4l2_err(client, "%s: failed to copy OTP data to user\n",
-			 __func__);
-		ret = -EFAULT;
-		goto err;
-	}
-	kfree(buf);
 
 	return 0;
+}
 
-err_unlock:
-	mutex_unlock(&dev->input_lock);
-err:
-	kfree(buf);
-	return ret;
+static void *mt9e013_otp_read(struct v4l2_subdev *sd)
+{
+	struct i2c_client *client = v4l2_get_subdevdata(sd);
+	void *buf;
+	int ret;
+
+	buf = kmalloc(MT9E013_OTP_DATA_SIZE, GFP_KERNEL);
+	if (!buf)
+		return ERR_PTR(-ENOMEM);
+
+	/* Try all banks, one by one, and return after first success */
+	ret = __mt9e013_otp_read(sd, mt9e013_otp_type30, buf);
+	if (!ret)
+		return buf;
+	ret = __mt9e013_otp_read(sd, mt9e013_otp_type31, buf);
+	if (!ret)
+		return buf;
+	ret = __mt9e013_otp_read(sd, mt9e013_otp_type32, buf);
+
+	/* Driver has failed to find valid data */
+	if (ret) {
+		v4l2_info(client, "%s: sensor found no valid OTP data\n",
+			  __func__);
+		kfree(buf);
+		return ERR_PTR(ret);
+	}
+
+	return buf;
 }
 
 static int mt9e013_g_priv_int_data(struct v4l2_subdev *sd,
@@ -825,11 +823,9 @@ static int mt9e013_g_priv_int_data(struct v4l2_subdev *sd,
 	u32 read_size = priv->size;
 	int ret;
 
-	if (!dev->power)
+	/* No OTP data available on sensor */
+	if (!dev->otp_data)
 		return -EIO;
-
-	if (dev->streaming)
-		return -EBUSY;
 
 	if (!priv)
 		return -EINVAL;
@@ -845,20 +841,14 @@ static int mt9e013_g_priv_int_data(struct v4l2_subdev *sd,
 	if (read_size > MT9E013_OTP_DATA_SIZE)
 		read_size = MT9E013_OTP_DATA_SIZE;
 
-	/* Try all banks, one by one, and return after first success */
-	ret = mt9e013_otp_read(sd, mt9e013_otp_type30, priv->data, read_size);
-	if (!ret)
-		return 0;
-	ret = mt9e013_otp_read(sd, mt9e013_otp_type31, priv->data, read_size);
-	if (!ret)
-		return 0;
-	ret = mt9e013_otp_read(sd, mt9e013_otp_type32, priv->data, read_size);
-	if (!ret)
-		return 0;
+	ret = copy_to_user(priv->data, dev->otp_data, read_size);
+	if (ret) {
+		v4l2_err(client, "%s: failed to copy OTP data to user\n",
+			 __func__);
+		return -EFAULT;
+	}
 
-	/* Driver has failed to find valid data */
-	v4l2_info(client, "%s: sensor found no valid OTP data\n", __func__);
-	return ret;
+	return 0;
 }
 
 static long mt9e013_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
@@ -1780,6 +1770,7 @@ static int mt9e013_s_config(struct v4l2_subdev *sd,
 	u8 sensor_revision;
 	u16 sensor_id;
 	int ret;
+	void *otp_data;
 
 	if (pdata == NULL)
 		return -ENODEV;
@@ -1808,6 +1799,11 @@ static int mt9e013_s_config(struct v4l2_subdev *sd,
 
 	dev->sensor_id = sensor_id;
 	dev->sensor_revision = sensor_revision;
+
+	/* Read sensor's OTP data */
+	otp_data = mt9e013_otp_read(sd);
+	if (!IS_ERR(otp_data))
+		dev->otp_data = otp_data;
 
 	/* power off sensor */
 	ret = mt9e013_s_power(sd, 0);
@@ -2025,6 +2021,7 @@ static int mt9e013_remove(struct i2c_client *client)
 
 	dev->platform_data->csi_cfg(sd, 0);
 	v4l2_device_unregister_subdev(sd);
+	kfree(dev->otp_data);
 	kfree(dev);
 
 	return 0;
