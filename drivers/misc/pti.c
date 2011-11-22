@@ -75,8 +75,9 @@ struct pti_dev {
 static DEFINE_MUTEX(alloclock);
 
 static struct pci_device_id pci_ids[] __devinitconst = {
-		{PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x82B)},
-		{0}
+	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x082B)},
+	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x0900)},
+	{0}
 };
 
 static struct tty_driver *pti_tty_driver;
