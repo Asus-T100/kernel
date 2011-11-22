@@ -733,6 +733,7 @@ static int mt9e013_otp_read(struct v4l2_subdev *sd,
 	if (!(ready & MT9E013_OTP_READY_REG_OK)) {
 		v4l2_info(client, "%s: OTP memory was initialized with error\n",
 			  __func__);
+		ret = -EIO;
 		goto out;
 	}
 	ret = mt9e013_read_reg_array(client, MT9E013_OTP_DATA_SIZE,
@@ -749,9 +750,11 @@ static int mt9e013_otp_read(struct v4l2_subdev *sd,
 			goto out;
 	}
 	ret = copy_to_user(data, buf, size);
-	if (ret)
+	if (ret) {
 		v4l2_err(client, "%s: failed to copy OTP data to user\n",
 			 __func__);
+		ret = -EFAULT;
+	}
 
 out:
 	kfree(buf);

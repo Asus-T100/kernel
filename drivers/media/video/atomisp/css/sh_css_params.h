@@ -91,9 +91,6 @@ sh_css_get_tnr_config(const struct sh_css_tnr_config **tnr_config);
 
 /* ANR */
 void
-sh_css_set_anr_threshold(int threshold);
-
-void
 sh_css_set_anr_config(const struct sh_css_anr_config *anr_config);
 
 void

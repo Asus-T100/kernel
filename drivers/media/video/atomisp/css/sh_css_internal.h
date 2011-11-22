@@ -187,6 +187,7 @@ struct sh_css_sp_group {
 	unsigned int			sp_run_copy;
 	void				*xmem_bin_addr;
 	void				*xmem_map_addr;
+	unsigned			anr;
 	struct sh_css_frame		sp_in_frame;
 	struct sh_css_frame		sp_out_frame;
 	struct sh_css_frame		sp_ref_in_frame;

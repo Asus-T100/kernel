@@ -740,16 +740,20 @@ struct sh_css_acc_fw_hdr {
 	struct {
 		unsigned int size;       /* Size of isp blob */
 	} isp;
+	/* To create a sequence of accelerators */
+	struct sh_css_acc_fw *next;
+	/* Firmware handle between user space and kernel */
+	unsigned int handle;
+	/* Hmm pointer of allocated SP code */
+	const unsigned char *sp_code;
+	/* Hmm pointer of allocated ISP code */
+	const unsigned char *isp_code;
 };
 
 /* Firmware. Containing header and actual blobs */
 struct sh_css_acc_fw {
 	/* firmware header */
 	struct sh_css_acc_fw_hdr header;
-	/* To create a sequence of accelerators */
-	struct sh_css_acc_fw *next;
-	/* Firmware handle between user space and kernel */
-	unsigned int handle;
 	/* followed by prog_name, sp arg types, sp blob and isp blob */
 #ifdef __HIVECC
 	unsigned char		 data[1]; /* Not C89 */

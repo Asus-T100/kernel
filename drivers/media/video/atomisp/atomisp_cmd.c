@@ -484,6 +484,8 @@ static int atomisp_timeout_handler(struct atomisp_device *isp, int cnt)
 
 	v4l2_err(&atomisp_dev, "ISP timeout\n");
 
+	isp->isp_timeout = true;
+
 	/* Try 5 times for autorecovery */
 	if (cnt < 5) {
 		atomisp_pipe_reset(isp);
@@ -588,6 +590,9 @@ void atomisp_work(struct work_struct *work)
 		 * zoom can not be configured
 		 */
 		mutex_lock(&isp->isp_lock);
+
+		/* restore isp normal status */
+		isp->isp_timeout = false;
 
 		ret = atomisp_start_binary(isp);
 		if (ret) {
@@ -2801,12 +2806,6 @@ static int atomisp_get_effective_resolution(struct atomisp_device *isp,
 					~(ATOM_ISP_STEP_WIDTH - 1));
 		in_fmt->height = (in_fmt->height &
 					~(ATOM_ISP_STEP_HEIGHT - 1));
-		if (isp->params.gdc_cac_en) {
-			if (in_fmt->width > ISP_POST_GDC_MAX_OUTPUT_WIDTH)
-				in_fmt->width = ISP_POST_GDC_MAX_OUTPUT_WIDTH;
-			if (in_fmt->height > ISP_POST_GDC_MAX_OUTPUT_HEIGHT)
-				in_fmt->height = ISP_POST_GDC_MAX_OUTPUT_HEIGHT;
-		}
 	} else {
 		in_fmt->width = out_width;
 		in_fmt->height = out_height;
@@ -3145,7 +3144,7 @@ atomisp_acc_get_fw(struct atomisp_device *isp, unsigned int handle)
 	     count > 0 && i < ATOMISP_ACC_FW_MAX; i++) {
 		if (isp->acc_fw[i] == NULL)
 			continue;
-		if (isp->acc_fw[i]->handle == handle)
+		if (isp->acc_fw[i]->header.handle == handle)
 			break;
 		count--;
 	}
@@ -3277,7 +3276,7 @@ atomisp_acc_fw_alloc(struct atomisp_device *isp,
 			break;
 	}
 	user_fw->fw_handle = isp->acc_fw_handle;
-	fw->handle = isp->acc_fw_handle;
+	fw->header.handle = isp->acc_fw_handle;
 	isp->acc_fw[i] = fw;
 
 	isp->acc_fw_handle++;
@@ -3663,7 +3662,28 @@ int atomisp_restore_iunit_reg(struct atomisp_device *isp)
 int atomisp_ospm_power_island_down(struct atomisp_device *isp)
 {
 	u32 pwr_cnt = 0;
+	int timeout = 100;
+	bool idle;
 
+	/* if ISP timeout, we can force powerdown */
+	if (isp->isp_timeout) {
+		isp->isp_timeout = false;
+		goto done;
+	}
+
+	idle = sh_css_hrt_system_is_idle();
+	while (!idle && timeout--) {
+		udelay(20);
+		idle = sh_css_hrt_system_is_idle();
+	}
+
+	if (timeout < 0) {
+		v4l2_err(&atomisp_dev,
+			 "Timeout to stop ISP HW\n");
+		return -EINVAL;
+	}
+
+done:
 	/* power down DPHY */
 	pwr_cnt = atomisp_msg_read32(isp, IUNITPHY_PORT, CSI_CONTROL);
 	pwr_cnt |= 0x300;

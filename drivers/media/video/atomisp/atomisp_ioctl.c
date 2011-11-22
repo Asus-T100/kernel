@@ -90,6 +90,15 @@ static struct v4l2_queryctrl ci_v4l2_controls[] = {
 		.default_value = 0,
 	},
 	{
+		.id = V4L2_CID_POWER_LINE_FREQUENCY,
+		.type = V4L2_CTRL_TYPE_MENU,
+		.name = "Light frequency filter",
+		.minimum = 1,
+		.maximum = 2,
+		.step = 1,
+		.default_value = 1,
+	},
+	{
 		.id = V4L2_CID_COLORFX,
 		.type = V4L2_CTRL_TYPE_INTEGER,
 		.name = "Image Color Effect",
@@ -1152,6 +1161,7 @@ static int atomisp_s_ctrl(struct file *file, void *fh,
 	switch (control->id) {
 	case V4L2_CID_HFLIP:
 	case V4L2_CID_VFLIP:
+	case V4L2_CID_POWER_LINE_FREQUENCY:
 		ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
 				       core, s_ctrl, control);
 		break;

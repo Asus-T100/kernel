@@ -445,7 +445,7 @@ static int mt9m114_set_suspend(struct v4l2_subdev *sd)
 	if (ret)
 		return ret;
 
-	ret = mt9m114_wait_state(sd, 100);
+	ret = mt9m114_wait_state(sd, MT9M114_WAIT_STAT_TIMEOUT);
 
 	return ret;
 }
@@ -467,7 +467,7 @@ static int mt9m114_init_common(struct v4l2_subdev *sd)
 	if (ret)
 		return -EINVAL;
 
-	ret = mt9m114_wait_state(sd, 100);
+	ret = mt9m114_wait_state(sd, MT9M114_WAIT_STAT_TIMEOUT);
 
 	return ret;
 }
@@ -660,13 +660,12 @@ static int mt9m114_s_power(struct v4l2_subdev *sd, int power)
 	struct mt9m114_device *dev = to_mt9m114_sensor(sd);
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 
-	/* Disable flip when power on */
-	dev->flip = (dev->flip | (0x0001<<1)) & (~0x0001);
 	if (power == 0)
 		return power_down(sd);
 	else {
 		if (power_up(sd))
 			return -EINVAL;
+
 		return mt9m114_init_common(sd);
 	}
 }
@@ -794,20 +793,27 @@ static int mt9m114_set_mbus_fmt(struct v4l2_subdev *sd,
 	switch (res_index->res) {
 	case MT9M114_RES_QVGA:
 		ret = mt9m114_write_reg_array(c, mt9m114_qvga_init);
-		mt9m114_write_reg(c, MISENSOR_16BIT, 0xC834, dev->flip | 0x0110);
+		/* set sensor read_mode to Skipping */
+		ret += misensor_rmw_reg(c, MISENSOR_16BIT, MISENSOR_READ_MODE,
+				MISENSOR_R_MODE_MASK, MISENSOR_SKIPPING_SET);
 		break;
 	case MT9M114_RES_VGA:
 		ret = mt9m114_write_reg_array(c, mt9m114_vga_init);
-		mt9m114_write_reg(c, MISENSOR_16BIT,
-					0xC834, dev->flip | 0x0330);
+		/* set sensor read_mode to Summing */
+		ret += misensor_rmw_reg(c, MISENSOR_16BIT, MISENSOR_READ_MODE,
+				MISENSOR_R_MODE_MASK, MISENSOR_SUMMING_SET);
 		break;
 	case MT9M114_RES_720P:
 		ret = mt9m114_write_reg_array(c, mt9m114_720p_init);
-		mt9m114_write_reg(c, MISENSOR_16BIT, 0xC834, dev->flip);
+		/* set sensor read_mode to Normal */
+		ret += misensor_rmw_reg(c, MISENSOR_16BIT, MISENSOR_READ_MODE,
+				MISENSOR_R_MODE_MASK, MISENSOR_NORMAL_SET);
 		break;
 	case MT9M114_RES_960P:
 		ret = mt9m114_write_reg_array(c, mt9m114_960P_init);
-		mt9m114_write_reg(c, MISENSOR_16BIT, 0xC834, dev->flip);
+		/* set sensor read_mode to Normal */
+		ret += misensor_rmw_reg(c, MISENSOR_16BIT, MISENSOR_READ_MODE,
+				MISENSOR_R_MODE_MASK, MISENSOR_NORMAL_SET);
 		break;
 	default:
 		v4l2_err(sd, "set resolution: %d failed!\n", res_index->res);
@@ -819,7 +825,7 @@ static int mt9m114_set_mbus_fmt(struct v4l2_subdev *sd,
 
 	if (mt9m114_write_reg_array(c, mt9m114_common))
 		return -EINVAL;
-	if (mt9m114_wait_state(sd, 100))
+	if (mt9m114_wait_state(sd, MT9M114_WAIT_STAT_TIMEOUT))
 		return -EINVAL;
 
 	if (mt9m114_set_suspend(sd))
@@ -891,6 +897,33 @@ static int mt9m114_g_fnumber_range(struct v4l2_subdev *sd, s32 * val)
 	return 0;
 }
 
+static int mt9m114_s_freq(struct v4l2_subdev *sd, s32  val)
+{
+	struct i2c_client *c = v4l2_get_subdevdata(sd);
+	struct mt9m114_device *dev = to_mt9m114_sensor(sd);
+	int ret;
+
+	if (val != MT9M114_FLICKER_MODE_50HZ &&
+			val != MT9M114_FLICKER_MODE_60HZ)
+		return -EINVAL;
+
+	if (val == MT9M114_FLICKER_MODE_50HZ) {
+		ret = mt9m114_write_reg_array(c, mt9m114_antiflicker_50hz);
+		if (ret < 0)
+			return ret;
+	} else {
+		ret = mt9m114_write_reg_array(c, mt9m114_antiflicker_60hz);
+		if (ret < 0)
+			return ret;
+	}
+
+	ret = mt9m114_wait_state(sd, MT9M114_WAIT_STAT_TIMEOUT);
+	if (ret == 0)
+		dev->lightfreq = val;
+
+	return ret;
+}
+
 static struct mt9m114_control mt9m114_controls[] = {
 	{
 		.qc = {
@@ -954,7 +987,20 @@ static struct mt9m114_control mt9m114_controls[] = {
 			.flags = 0,
 		},
 		.query = mt9m114_g_fnumber_range,
-	}
+	},
+	{
+		.qc = {
+			.id = V4L2_CID_POWER_LINE_FREQUENCY,
+			.type = V4L2_CTRL_TYPE_MENU,
+			.name = "Light frequency filter",
+			.minimum = 1,
+			.maximum =  2, /* 1: 50Hz, 2:60Hz */
+			.step = 1,
+			.default_value = 1,
+			.flags = 0,
+		},
+		.tweak = mt9m114_s_freq,
+	},
 
 };
 #define N_CONTROLS (ARRAY_SIZE(mt9m114_controls))
@@ -1082,7 +1128,10 @@ static int mt9m114_t_hflip(struct v4l2_subdev *sd, int value)
 		/* ctx B */
 		err += misensor_rmw_reg(c, MISENSOR_8BIT, 0xC888, 0x01, 0x01);
 		err += misensor_rmw_reg(c, MISENSOR_8BIT, 0xC889, 0x01, 0x01);
-		dev->flip |= 0x0003;
+
+		/* enable vert_flip and horz_mirror */
+		err += misensor_rmw_reg(c, MISENSOR_16BIT, MISENSOR_READ_MODE,
+					MISENSOR_F_M_MASK, MISENSOR_F_M_EN);
 
 		dev->bpat = MT9M114_BPAT_GRGRBGBG;
 	} else {
@@ -1092,7 +1141,10 @@ static int mt9m114_t_hflip(struct v4l2_subdev *sd, int value)
 		/* ctx B */
 		err += misensor_rmw_reg(c, MISENSOR_8BIT, 0xC888, 0x01, 0x00);
 		err += misensor_rmw_reg(c, MISENSOR_8BIT, 0xC889, 0x01, 0x00);
-		dev->flip = (dev->flip | (0x0001<<1)) & (~0x0001);
+
+		/* enable vert_flip and disable horz_mirror */
+		err += misensor_rmw_reg(c, MISENSOR_16BIT, MISENSOR_READ_MODE,
+					MISENSOR_F_M_MASK, MISENSOR_F_EN);
 
 		dev->bpat = MT9M114_BPAT_BGBGGRGR;
 	}
@@ -1135,7 +1187,10 @@ static int mt9m114_t_vflip(struct v4l2_subdev *sd, int value)
 		/* ctx B */
 		err += misensor_rmw_reg(c, MISENSOR_8BIT, 0xC888, 0x02, 0x01);
 		err += misensor_rmw_reg(c, MISENSOR_8BIT, 0xC889, 0x02, 0x01);
-		dev->flip &= (~0x0003);
+
+		/* disable vert_flip and horz_mirror */
+		err += misensor_rmw_reg(c, MISENSOR_16BIT, MISENSOR_READ_MODE,
+					MISENSOR_F_M_MASK, MISENSOR_F_M_DIS);
 	} else {
 		/* disable H flip - ctx A */
 		err += misensor_rmw_reg(c, MISENSOR_8BIT, 0xC850, 0x02, 0x00);
@@ -1143,13 +1198,16 @@ static int mt9m114_t_vflip(struct v4l2_subdev *sd, int value)
 		/* ctx B */
 		err += misensor_rmw_reg(c, MISENSOR_8BIT, 0xC888, 0x02, 0x00);
 		err += misensor_rmw_reg(c, MISENSOR_8BIT, 0xC889, 0x02, 0x00);
-		dev->flip = (dev->flip | (0x0001<<1)) & (~0x0001);
+
+		/* enable vert_flip and disable horz_mirror */
+		err += misensor_rmw_reg(c, MISENSOR_16BIT, MISENSOR_READ_MODE,
+					MISENSOR_F_M_MASK, MISENSOR_F_EN);
 	}
 
 	err += mt9m114_write_reg(c, MISENSOR_8BIT, 0x8404, 0x06);
 	udelay(10);
 
-	return err;
+	return !!err;
 }
 
 static int mt9m114_g_ctrl(struct v4l2_subdev *sd, struct v4l2_control *ctrl)
@@ -1208,6 +1266,13 @@ static int mt9m114_s_stream(struct v4l2_subdev *sd, int enable)
 	struct i2c_client *c = v4l2_get_subdevdata(sd);
 
 	if (enable) {
+		ret = mt9m114_write_reg_array(c, mt9m114_common);
+		if (ret < 0)
+			return ret;
+		ret = mt9m114_wait_state(sd, MT9M114_WAIT_STAT_TIMEOUT);
+		if (ret < 0)
+			return ret;
+
 		ret = mt9m114_set_streaming(sd);
 		/*
 		 * here we wait for sensor's 3A algorithm to be
@@ -1244,9 +1309,21 @@ static int mt9m114_enum_frameintervals(struct v4l2_subdev *sd,
 				       struct v4l2_frmivalenum *fival)
 {
 	unsigned int index = fival->index;
+	int i;
 
 	if (index >= N_RES)
 		return -EINVAL;
+
+	/* find out the first equal or bigger size */
+	for (i = 0; i < N_RES; i++) {
+		if ((mt9m114_res[i].width >= fival->width) &&
+		    (mt9m114_res[i].height >= fival->height))
+			break;
+	}
+	if (i == N_RES)
+		i--;
+
+	index = i;
 
 	fival->type = V4L2_FRMIVAL_TYPE_DISCRETE;
 	fival->discrete.numerator = 1;

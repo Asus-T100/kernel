@@ -269,6 +269,9 @@ struct atomisp_device {
 	__u32 snr_max_width;
 	__u32 snr_max_height;
 	__u32 snr_pixelformat;
+
+	/* isp timeout status flag */
+	bool isp_timeout;
 };
 
 #define v4l2_dev_to_atomisp_device(dev) \

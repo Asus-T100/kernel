@@ -301,6 +301,8 @@ sh_css_sp_configure_dvs(const struct sh_css_binary *binary,
 		motion_y = clamp(motion_y, -half_env_y, half_env_y);
 		uds_xc += motion_x;
 		uds_yc += motion_y;
+		/* uds can be pipelined, remove top lines */
+		crop_y = 2;
 	} else if (binary->info->enable_ds) {
 		env_width  = binary->dvs_envelope_width;
 		env_height = binary->dvs_envelope_height;
@@ -510,7 +512,8 @@ sh_css_sp_set_overlay(const struct sh_css_overlay *overlay)
 enum sh_css_err
 sh_css_sp_start_isp(struct sh_css_binary *binary,
 		    const struct sh_css_binary_args *args,
-		    bool preview_mode)
+		    bool preview_mode,
+		    bool low_light)
 {
 	unsigned int dx, dy;
 	enum sh_css_err err = sh_css_success;
@@ -556,6 +559,7 @@ sh_css_sp_start_isp(struct sh_css_binary *binary,
 	sh_css_sp_group.xmem_bin_addr            = binary->info->xmem_addr;
 	sh_css_sp_group.xmem_map_addr            =
 					sh_css_params_ddr_address_map();
+	sh_css_sp_group.anr			 = low_light;
 
 	store_sp_int(sp_isp_started, 0);
 

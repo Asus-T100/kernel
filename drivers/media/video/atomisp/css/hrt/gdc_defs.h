@@ -108,4 +108,13 @@
 #define HRT_GDC_PACK_CMD(cmd) ((cmd) | (1 << HRT_GDC_CRUN_BIT))
 #endif
 
+#define HRT_GDC_MAX_DX		     1023
+#define HRT_GDC_MAX_DY		     1023
+#define HRT_GDC_MAX_PX		     (128*16)
+#define HRT_GDC_MAX_PY		     (64*16)
+#define HRT_GDC_MAX_WOIX	     2048
+#define HRT_GDC_MAX_WOIY	     16
+#define HRT_GDC_MAX_OXDIM	     4096
+#define HRT_GDC_MAX_OYDIM	     64
+
 #endif /* _GDC_DEFS_H_ */

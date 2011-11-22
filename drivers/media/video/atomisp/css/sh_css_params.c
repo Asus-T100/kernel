@@ -527,8 +527,8 @@ static const struct sh_css_tnr_config default_tnr_config = {
 
 static const struct sh_css_tnr_config disabled_tnr_config = {
 	.gain         = 0,
-	.threshold_y  = 65535,
-	.threshold_uv = 65535,
+	.threshold_y  = 0,
+	.threshold_uv = 0,
 };
 
 static const struct sh_css_ob_config default_ob_config = {
@@ -1535,18 +1535,6 @@ void
 sh_css_get_anr_config(const struct sh_css_anr_config **config)
 {
 	*config = anr_config;
-}
-
-void
-sh_css_set_anr_threshold(int threshold)
-{
-	struct sh_css_anr_config
-	**config = sh_css_malloc(sizeof(struct sh_css_anr_config *));
-	sh_css_get_anr_config((const struct sh_css_anr_config **)config);
-	(*config)->threshold = threshold;
-	sh_css_set_anr_config(*config);
-	if (config)
-		sh_css_free(config);
 }
 
 static bool

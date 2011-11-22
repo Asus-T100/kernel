@@ -229,6 +229,7 @@ int atomisp_init_struct(struct atomisp_device *isp)
 	isp->sw_contex.work_queued = false;
 	isp->sw_contex.error = false;
 	isp->sw_contex.file_input = 0;
+	isp->isp_timeout = false;
 
 	/* Add for channel */
 	if (isp->inputs[0].camera)

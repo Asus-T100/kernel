@@ -52,14 +52,17 @@ sh_css_sp_start(unsigned int start_address)
 }
 
 
-	void *
-sh_css_sp_load_program(const struct sh_css_sp_fw *fw, const char *sp_prog)
+void *
+sh_css_sp_load_program(const struct sh_css_sp_fw *fw, const char *sp_prog,
+		       void *code_addr)
 {
-	void *code_addr;
-
-	/* store code (text section) to DDR */
-	code_addr = hrt_isp_css_mm_alloc(fw->text_size);
-	hrt_isp_css_mm_store(code_addr, fw->text, fw->text_size);
+	if (!code_addr) {
+		/* store code (text section) to DDR */
+		code_addr = hrt_isp_css_mm_alloc(fw->text_size);
+		if (!code_addr)
+			return NULL;
+		hrt_isp_css_mm_store(code_addr, fw->text, fw->text_size);
+	}
 
 	/* Set the correct start address for the SP program */
 	sh_css_sp_activate_program(fw, code_addr, sp_prog);

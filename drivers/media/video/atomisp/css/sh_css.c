@@ -145,12 +145,10 @@ struct sh_css_capture_settings {
 	bool bayer_ds;
 	struct sh_css_binary copy_binary;
 	struct sh_css_binary primary_binary;
-	struct sh_css_binary pre_gdc_binary;
+	struct sh_css_binary pre_isp_binary;
 	struct sh_css_binary gdc_binary;
-	struct sh_css_binary post_gdc_binary;
-	struct sh_css_binary pre_anr_binary;
+	struct sh_css_binary post_isp_binary;
 	struct sh_css_binary anr_binary;
-	struct sh_css_binary post_anr_binary;
 	struct sh_css_binary capture_pp_binary;
 	struct sh_css_binary vf_pp_binary;
 	/* resolution before yuv downscaling */
@@ -164,6 +162,7 @@ struct sh_css_capture_settings {
 	bool need_pp;
 	struct sh_css_shading_table *shading_table;
 	bool zoom_changed;
+	bool anr;
 };
 
 #define DEFAULT_CAPTURE_SETTINGS \
@@ -1095,7 +1094,8 @@ start_binary(struct sh_css_binary *binary,
 					 my_css.two_ppc, false);
 	}
 	my_css.state = sh_css_state_executing_isp;
-	err = sh_css_sp_start_isp(binary, args, preview_mode);
+	err = sh_css_sp_start_isp(binary, args, preview_mode,
+		my_css.capture_settings.mode == SH_CSS_CAPTURE_MODE_LOW_LIGHT);
 	if (err != sh_css_success)
 		return err;
 
@@ -1401,7 +1401,8 @@ sh_css_terminate_firmware(void)
 	sh_css_acceleration_done(firmware);
 	/* reload SP firmmware */
 	my_css.sp_bin_addr = sh_css_sp_load_program(&sh_css_sp_fw,
-						    SP_PROG_NAME);
+						    SP_PROG_NAME,
+						    my_css.sp_bin_addr);
 	/* restore SP state */
 	if (my_css.two_ppc) {
 		sh_css_sp_set_if_configs(&my_css.curr_if_a_config,
@@ -1593,9 +1594,10 @@ invalidate_capture_binaries(void)
 	my_css.capture_settings.pipeline.reload        = true;
 	my_css.capture_settings.copy_binary.info       = NULL;
 	my_css.capture_settings.primary_binary.info    = NULL;
-	my_css.capture_settings.pre_gdc_binary.info    = NULL;
+	my_css.capture_settings.pre_isp_binary.info    = NULL;
 	my_css.capture_settings.gdc_binary.info        = NULL;
-	my_css.capture_settings.post_gdc_binary.info   = NULL;
+	my_css.capture_settings.post_isp_binary.info   = NULL;
+	my_css.capture_settings.anr_binary.info        = NULL;
 	my_css.capture_settings.capture_pp_binary.info = NULL;
 	my_css.capture_settings.vf_pp_binary.info      = NULL;
 	my_css.capture_settings.need_pp = false;
@@ -1653,7 +1655,8 @@ sh_css_init(void *(*malloc_func) (size_t size),
 		return err;
 	sh_css_init_binary_infos();
 	my_css.sp_bin_addr = sh_css_sp_load_program(&sh_css_sp_fw,
-						    SP_PROG_NAME);
+						    SP_PROG_NAME,
+						    my_css.sp_bin_addr);
 	if (!my_css.sp_bin_addr)
 		return sh_css_err_cannot_allocate_memory;
 	sh_css_pipeline_init(&my_css.preview_settings.pipeline);
@@ -2594,7 +2597,7 @@ static const struct sh_css_acc_fw *
 last_output_firmware(const struct sh_css_acc_fw *fw)
 {
 	const struct sh_css_acc_fw *last_fw = NULL;
-	for (; fw; fw = fw->next) {
+	for (; fw; fw = fw->header.next) {
 		if (fw->header.sp.output)
 			last_fw = fw;
 	}
@@ -2615,7 +2618,7 @@ add_firmwares(struct sh_css_pipeline *me,
 {
 	enum sh_css_err err = sh_css_success;
 	struct sh_css_pipeline_stage *extra_stage = NULL;
-	for (; fw; fw = fw->next) {
+	for (; fw; fw = fw->header.next) {
 		struct sh_css_frame *out = NULL;
 		if (fw == last_fw)
 			out = out_frame;
@@ -3425,7 +3428,7 @@ init_pre_gdc_descr(struct sh_css_frame_info *in_info,
 	in_info->raw_bit_depth =
 		sh_css_input_format_bits_per_pixel(my_css.input_format,
 						   my_css.two_ppc);
-	init_offline_descr(&pre_gdc_descr, SH_CSS_BINARY_MODE_PRE_GDC,
+	init_offline_descr(&pre_gdc_descr, SH_CSS_BINARY_MODE_PRE_ISP,
 			   in_info, out_info, NULL);
 }
 
@@ -3446,7 +3449,7 @@ init_post_gdc_descr(struct sh_css_frame_info *in_info,
 {
 	*in_info = *out_info;
 	in_info->format = SH_CSS_FRAME_FORMAT_YUV420_16;
-	init_offline_descr(&post_gdc_descr, SH_CSS_BINARY_MODE_POST_GDC,
+	init_offline_descr(&post_gdc_descr, SH_CSS_BINARY_MODE_POST_ISP,
 			   in_info, out_info, vf_info);
 }
 
@@ -3459,7 +3462,7 @@ init_pre_anr_descr(struct sh_css_frame_info *in_info,
 	in_info->raw_bit_depth =
 		sh_css_input_format_bits_per_pixel(my_css.input_format,
 						   my_css.two_ppc);
-	init_offline_descr(&pre_anr_descr, SH_CSS_BINARY_MODE_PRE_ANR,
+	init_offline_descr(&pre_anr_descr, SH_CSS_BINARY_MODE_PRE_ISP,
 			   in_info, out_info, NULL);
 }
 
@@ -3486,7 +3489,7 @@ init_post_anr_descr(struct sh_css_frame_info *in_info,
 	in_info->raw_bit_depth =
 		sh_css_input_format_bits_per_pixel(my_css.input_format,
 						   my_css.two_ppc);
-	init_offline_descr(&post_anr_descr, SH_CSS_BINARY_MODE_POST_ANR,
+	init_offline_descr(&post_anr_descr, SH_CSS_BINARY_MODE_POST_ISP,
 			   in_info, out_info, vf_info);
 }
 
@@ -3576,7 +3579,7 @@ load_advanced_binaries(void)
 	bool need_pp;
 	enum sh_css_err err = sh_css_success;
 
-	if (my_css.capture_settings.pre_gdc_binary.info)
+	if (my_css.capture_settings.pre_isp_binary.info)
 		return sh_css_success;
 
 	err = check_vf_out_info(&my_css.capture_settings.output_info,
@@ -3605,28 +3608,28 @@ load_advanced_binaries(void)
 	/* Post-gdc */
 	init_post_gdc_descr(&post_in_info, &post_out_info, &vf_info);
 	err = sh_css_binary_find(&post_gdc_descr,
-				 &my_css.capture_settings.post_gdc_binary);
+				 &my_css.capture_settings.post_isp_binary);
 	if (err != sh_css_success)
 		return err;
 
 	/* Gdc */
 	init_gdc_descr(&gdc_in_info,
-		       &my_css.capture_settings.post_gdc_binary.in_frame_info);
+		       &my_css.capture_settings.post_isp_binary.in_frame_info);
 	err = sh_css_binary_find(&gdc_descr,
 				 &my_css.capture_settings.gdc_binary);
 	if (err != sh_css_success)
 		return err;
 	my_css.capture_settings.gdc_binary.left_padding =
-		my_css.capture_settings.post_gdc_binary.left_padding;
+		my_css.capture_settings.post_isp_binary.left_padding;
 
 	/* Pre-gdc */
 	init_pre_gdc_descr(&pre_in_info,
 			   &my_css.capture_settings.gdc_binary.in_frame_info);
 	err = sh_css_binary_find(&pre_gdc_descr,
-				 &my_css.capture_settings.pre_gdc_binary);
+				 &my_css.capture_settings.pre_isp_binary);
 	if (err != sh_css_success)
 		return err;
-	my_css.capture_settings.pre_gdc_binary.left_padding =
+	my_css.capture_settings.pre_isp_binary.left_padding =
 		my_css.capture_settings.gdc_binary.left_padding;
 
 	/* Viewfinder post-processing */
@@ -3635,7 +3638,7 @@ load_advanced_binaries(void)
 		    &my_css.capture_settings.capture_pp_binary.vf_frame_info;
 	} else {
 		vf_pp_in_info =
-		    &my_css.capture_settings.post_gdc_binary.vf_frame_info;
+		    &my_css.capture_settings.post_isp_binary.vf_frame_info;
 	}
 
 	init_vf_pp_descr(vf_pp_in_info, &my_css.capture_settings.vf_info);
@@ -3646,7 +3649,7 @@ load_advanced_binaries(void)
 
 	/* Copy */
 	err = load_copy_binary(&my_css.capture_settings.copy_binary,
-			       &my_css.capture_settings.pre_gdc_binary);
+			       &my_css.capture_settings.pre_isp_binary);
 	if (err != sh_css_success)
 		return err;
 
@@ -3666,7 +3669,7 @@ load_low_light_binaries(void)
 	bool need_pp;
 	enum sh_css_err err = sh_css_success;
 
-	if (my_css.capture_settings.pre_anr_binary.info)
+	if (my_css.capture_settings.pre_isp_binary.info)
 		return sh_css_success;
 
 	err = check_vf_out_info(&my_css.capture_settings.output_info,
@@ -3695,28 +3698,28 @@ load_low_light_binaries(void)
 	/* Post-anr */
 	init_post_anr_descr(&post_in_info, &post_out_info, &vf_info);
 	err = sh_css_binary_find(&post_anr_descr,
-				 &my_css.capture_settings.post_anr_binary);
+				 &my_css.capture_settings.post_isp_binary);
 	if (err != sh_css_success)
 		return err;
 
 	/* Anr */
 	init_anr_descr(&anr_in_info,
-		       &my_css.capture_settings.post_anr_binary.in_frame_info);
+		       &my_css.capture_settings.post_isp_binary.in_frame_info);
 	err = sh_css_binary_find(&anr_descr,
 				 &my_css.capture_settings.anr_binary);
 	if (err != sh_css_success)
 		return err;
 	my_css.capture_settings.anr_binary.left_padding =
-		my_css.capture_settings.post_anr_binary.left_padding;
+		my_css.capture_settings.post_isp_binary.left_padding;
 
 	/* Pre-anr */
 	init_pre_anr_descr(&pre_in_info,
 			   &my_css.capture_settings.anr_binary.in_frame_info);
 	err = sh_css_binary_find(&pre_anr_descr,
-				 &my_css.capture_settings.pre_anr_binary);
+				 &my_css.capture_settings.pre_isp_binary);
 	if (err != sh_css_success)
 		return err;
-	my_css.capture_settings.pre_anr_binary.left_padding =
+	my_css.capture_settings.pre_isp_binary.left_padding =
 		my_css.capture_settings.anr_binary.left_padding;
 
 	/* Viewfinder post-processing */
@@ -3725,7 +3728,7 @@ load_low_light_binaries(void)
 		    &my_css.capture_settings.capture_pp_binary.vf_frame_info;
 	} else {
 		vf_pp_in_info =
-		    &my_css.capture_settings.post_anr_binary.vf_frame_info;
+		    &my_css.capture_settings.post_isp_binary.vf_frame_info;
 	}
 
 	init_vf_pp_descr(vf_pp_in_info, &my_css.capture_settings.vf_info);
@@ -3736,7 +3739,7 @@ load_low_light_binaries(void)
 
 	/* Copy */
 	err = load_copy_binary(&my_css.capture_settings.copy_binary,
-			       &my_css.capture_settings.pre_anr_binary);
+			       &my_css.capture_settings.pre_isp_binary);
 	if (err != sh_css_success)
 		return err;
 
@@ -3803,12 +3806,10 @@ sh_css_capture_start(struct sh_css_frame *raw_out_frame,
 	struct sh_css_binary *copy_binary,
 			     *primary_binary,
 			     *vf_pp_binary,
-			     *pre_gdc_binary,
+			     *pre_isp_binary,
 			     *gdc_binary,
-			     *post_gdc_binary,
-			     *pre_anr_binary,
+			     *post_isp_binary,
 			     *anr_binary,
-			     *post_anr_binary,
 			     *capture_pp_binary,
 			     *sc_binary = NULL;
 	bool need_pp = false;
@@ -3847,12 +3848,10 @@ sh_css_capture_start(struct sh_css_frame *raw_out_frame,
 	copy_binary       = &my_css.capture_settings.copy_binary;
 	primary_binary    = &my_css.capture_settings.primary_binary;
 	vf_pp_binary      = &my_css.capture_settings.vf_pp_binary;
-	pre_gdc_binary    = &my_css.capture_settings.pre_gdc_binary;
+	pre_isp_binary    = &my_css.capture_settings.pre_isp_binary;
 	gdc_binary        = &my_css.capture_settings.gdc_binary;
-	post_gdc_binary   = &my_css.capture_settings.post_gdc_binary;
-	pre_anr_binary    = &my_css.capture_settings.pre_anr_binary;
+	post_isp_binary   = &my_css.capture_settings.post_isp_binary;
 	anr_binary        = &my_css.capture_settings.anr_binary;
-	post_anr_binary   = &my_css.capture_settings.post_anr_binary;
 	capture_pp_binary = &my_css.capture_settings.capture_pp_binary;
 	need_pp = my_css.capture_settings.need_pp || my_css.output_stage;
 
@@ -3887,8 +3886,8 @@ sh_css_capture_start(struct sh_css_frame *raw_out_frame,
 			sc_binary = primary_binary;
 		} else if (my_css.capture_settings.mode ==
 			   SH_CSS_CAPTURE_MODE_ADVANCED) {
-			err = sh_css_pipeline_add_stage(me, pre_gdc_binary,
-					NULL, pre_gdc_binary->info->mode,
+			err = sh_css_pipeline_add_stage(me, pre_isp_binary,
+					NULL, pre_isp_binary->info->mode,
 					NULL, NULL, NULL, NULL, NULL);
 			if (err != sh_css_success)
 				return err;
@@ -3897,18 +3896,18 @@ sh_css_capture_start(struct sh_css_frame *raw_out_frame,
 					NULL, NULL, NULL, NULL, NULL);
 			if (err != sh_css_success)
 				return err;
-			err = sh_css_pipeline_add_stage(me, post_gdc_binary,
-					NULL, post_gdc_binary->info->mode,
+			err = sh_css_pipeline_add_stage(me, post_isp_binary,
+					NULL, post_isp_binary->info->mode,
 					NULL, NULL,
 					need_pp ? NULL : out_frame,
 					NULL, &post_stage);
 			if (err != sh_css_success)
 				return err;
-			sc_binary = pre_gdc_binary;
+			sc_binary = pre_isp_binary;
 		} else if (my_css.capture_settings.mode ==
 			   SH_CSS_CAPTURE_MODE_LOW_LIGHT) {
-			err = sh_css_pipeline_add_stage(me, pre_anr_binary,
-					NULL, pre_anr_binary->info->mode,
+			err = sh_css_pipeline_add_stage(me, pre_isp_binary,
+					NULL, pre_isp_binary->info->mode,
 					NULL, NULL, NULL, NULL, NULL);
 			if (err != sh_css_success)
 				return err;
@@ -3917,14 +3916,14 @@ sh_css_capture_start(struct sh_css_frame *raw_out_frame,
 					NULL, NULL, NULL, NULL, NULL);
 			if (err != sh_css_success)
 				return err;
-			err = sh_css_pipeline_add_stage(me, post_anr_binary,
-					NULL, post_anr_binary->info->mode,
+			err = sh_css_pipeline_add_stage(me, post_isp_binary,
+					NULL, post_isp_binary->info->mode,
 					NULL, NULL,
 					need_pp ? NULL : out_frame,
 					NULL, &post_stage);
 			if (err != sh_css_success)
 				return err;
-			sc_binary = pre_anr_binary;
+			sc_binary = pre_isp_binary;
 		}
 
 		if (need_pp) {
@@ -3997,13 +3996,13 @@ sh_css_capture_start(struct sh_css_frame *raw_out_frame,
 		} else if (my_css.capture_settings.mode ==
 			   SH_CSS_CAPTURE_MODE_LOW_LIGHT) {
 			err = sh_css_pipeline_get_stage(me,
-					post_anr_binary->info->mode,
+					post_isp_binary->info->mode,
 					&out_stage);
 			if (err != sh_css_success)
 				return err;
 		} else {
 			err = sh_css_pipeline_get_stage(me,
-					post_gdc_binary->info->mode,
+					post_isp_binary->info->mode,
 					&out_stage);
 			if (err != sh_css_success)
 				return err;
@@ -4093,7 +4092,7 @@ sh_css_capture_get_grid_info(struct sh_css_grid_info *info)
 				&my_css.capture_settings.primary_binary, info);
 	} else {
 		err = sh_css_binary_grid_info(
-				&my_css.capture_settings.pre_gdc_binary, info);
+				&my_css.capture_settings.pre_isp_binary, info);
 	}
 	return err;
 }
@@ -4625,20 +4624,20 @@ static void
 append_firmware(struct sh_css_acc_fw **l, struct sh_css_acc_fw *firmware)
 {
 	while (*l)
-		l = &(*l)->next;
+		l = &(*l)->header.next;
 	*l = firmware;
-	firmware->next = NULL;
+	firmware->header.next = NULL;
 }
 
 static void
 remove_firmware(struct sh_css_acc_fw **l, struct sh_css_acc_fw *firmware)
 {
 	while (*l && *l != firmware)
-		l = &(*l)->next;
+		l = &(*l)->header.next;
 	if (!*l)
 		return;
-	*l = firmware->next;
-	firmware->next = NULL;
+	*l = firmware->header.next;
+	firmware->header.next = NULL;
 }
 
 /* Load firmware for acceleration */

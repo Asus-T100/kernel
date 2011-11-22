@@ -64,8 +64,7 @@
 #define SH_CSS_MAX_LEFT_CROPPING          8
 #endif
 
-#define	SH_CSS_SP_MAX_WIDTH               2560
-#define SH_CSS_SP_MAX_OVERLAY_WIDTH       640
+#define	SH_CSS_SP_MAX_WIDTH               1280
 
 /* This is the maximum grid we can handle in the ISP binaries.
  * The host code makes sure no bigger grid is ever selected. */
@@ -322,6 +321,12 @@
 		SH_CSS_FRAME_FORMAT_RGB565, \
 		SH_CSS_FRAME_FORMAT_PLANAR_RGB888, \
 		SH_CSS_FRAME_FORMAT_RGBA888 \
+	}
+
+#define SH_CSS_PRE_ISP_OUTPUT_FORMATS \
+	{ \
+		SH_CSS_FRAME_FORMAT_RAW, \
+		SH_CSS_FRAME_FORMAT_QPLANE6 \
 	}
 
 /* Fixed resolution primaries only output this format */

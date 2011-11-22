@@ -87,7 +87,8 @@ sh_css_sp_get_sw_interrupt_value(void);
 enum sh_css_err
 sh_css_sp_start_isp(struct sh_css_binary *binary,
 		    const struct sh_css_binary_args *args,
-		    bool preview_mode);
+		    bool preview_mode,
+		    bool low_light);
 
 void
 sh_css_sp_get_debug_state(struct sh_css_sp_debug_state *state);

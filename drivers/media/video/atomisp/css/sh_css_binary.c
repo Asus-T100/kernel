@@ -135,23 +135,17 @@ init_binary_info(struct sh_css_binary_info *info, bool *binary_found)
 	case SH_CSS_BINARY_ID_CAPTURE_PP:
 		_init_binary_info(info, ISP_CAPTURE_PP_);
 		break;
-	case SH_CSS_BINARY_ID_PRE_GDC:
-		_init_binary_info(info, ISP_PRE_GDC_);
+	case SH_CSS_BINARY_ID_PRE_ISP:
+		_init_binary_info(info, ISP_PRE_ISP_);
 		break;
 	case SH_CSS_BINARY_ID_GDC:
 		_init_binary_info(info, ISP_GDC_);
 		break;
-	case SH_CSS_BINARY_ID_POST_GDC:
-		_init_binary_info(info, ISP_POST_GDC_);
-		break;
-	case SH_CSS_BINARY_ID_PRE_ANR:
-		_init_binary_info(info, ISP_PRE_ANR_);
+	case SH_CSS_BINARY_ID_POST_ISP:
+		_init_binary_info(info, ISP_POST_ISP_);
 		break;
 	case SH_CSS_BINARY_ID_ANR:
 		_init_binary_info(info, ISP_ANR_);
-		break;
-	case SH_CSS_BINARY_ID_POST_ANR:
-		_init_binary_info(info, ISP_POST_ANR_);
 		break;
 	case SH_CSS_BINARY_ID_PREVIEW_DZ:
 		_init_binary_info(info, ISP_PREVIEW_DZ_);

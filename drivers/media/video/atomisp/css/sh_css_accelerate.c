@@ -28,15 +28,23 @@
 #include "sh_css_accelerate.h"
 
 #if !defined(C_RUN) && !defined(HRT_UNSCHED)
-static void
-sh_css_acc_upload_isp_code(const struct sh_css_acc_fw *firmware)
+static const unsigned char *
+sh_css_acc_upload_isp_code(struct sh_css_acc_fw *firmware)
 {
 	const unsigned char *blob = SH_CSS_ACC_ISP_CODE(firmware);
 	unsigned size		  = SH_CSS_ACC_ISP_SIZE(firmware);
-	const unsigned char *binary = sh_css_load_blob(blob, size);
+	const unsigned char *binary = firmware->header.isp_code;
 
+	if (!binary) {
+		binary = sh_css_load_blob(blob, size);
+		firmware->header.isp_code = binary;
+	}
+
+	if (!binary)
+		return NULL;
 	sh_css_sp_dmem_store((unsigned int)firmware->header.sp.isp_code,
 			     &binary, sizeof(binary));
+	return binary;
 }
 #endif
 
@@ -77,8 +85,14 @@ sh_css_acc_unload(const struct sh_css_acc_fw *firmware)
 	struct sh_css_acc_fw_hdr *header
 		= (struct sh_css_acc_fw_hdr *)&firmware->header;
 	sh_css_free(header->sp_args);
-	header->sp_args = NULL;
-	header->loaded = false;
+	if (header->sp_code)
+		hrt_isp_css_mm_free((void *)header->sp_code);
+	if (header->isp_code)
+		hrt_isp_css_mm_free((void *)header->isp_code);
+	header->sp_args  = NULL;
+	header->sp_code  = NULL;
+	header->isp_code = NULL;
+	header->loaded   = false;
 }
 
 /* Set argument <num> of size <size> to value <val> */
@@ -107,7 +121,7 @@ sh_css_argument_type(struct sh_css_acc_fw *firmware, unsigned num)
 /* Set host private data for argument <num> */
 enum sh_css_err
 sh_css_argument_set_host(struct sh_css_acc_fw *firmware,
-			 unsigned num, void *host)
+			unsigned num, void *host)
 {
 	if (!firmware->header.sp_args)
 		return sh_css_err_invalid_arguments;
@@ -179,6 +193,11 @@ sh_css_acc_start(struct sh_css_acc_fw *firmware,
 	bool has_extension_args = (args != NULL);
 	bool is_extension = (header->type != SH_CSS_ACC_STANDALONE);
 	const struct sh_css_sp_fw *sp_fw = &header->sp.fw;
+	const unsigned char *sp_program;
+#if !defined(C_RUN) && !defined(HRT_UNSCHED)
+	const unsigned char *isp_program;
+#endif
+
 	*(const void **)&sp_fw->text = SH_CSS_ACC_SP_CODE(firmware);
 	*(const void **)&sp_fw->data = SH_CSS_ACC_SP_DATA(firmware);
 
@@ -187,10 +206,16 @@ sh_css_acc_start(struct sh_css_acc_fw *firmware,
 	if (has_extension_args != is_extension)
 		return sh_css_err_invalid_arguments;
 
-	if (!sh_css_sp_load_program(sp_fw, SH_CSS_ACC_PROG_NAME(firmware)))
+	sp_program = sh_css_sp_load_program(sp_fw,
+					    SH_CSS_ACC_PROG_NAME(firmware),
+					    (void *)firmware->header.sp_code);
+	if (!sp_program)
 		return sh_css_err_cannot_allocate_memory;
+	firmware->header.sp_code = sp_program;
 #if !defined(C_RUN) && !defined(HRT_UNSCHED)
-	sh_css_acc_upload_isp_code(firmware);
+	isp_program = sh_css_acc_upload_isp_code(firmware);
+	if (!isp_program)
+		return sh_css_err_cannot_allocate_memory;
 #endif
 
 #ifdef C_RUN
@@ -243,3 +268,4 @@ void sh_css_acc_abort(struct sh_css_acc_fw *firmware)
 	unsigned int t = true;
 	upload_int(firmware->header.sp.css_abort, &t);
 }
+

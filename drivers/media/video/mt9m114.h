@@ -57,6 +57,26 @@
 #define MISENSOR_TOK_POLL	0xfc00	/* token indicating poll instruction */
 #define MISENSOR_TOK_RMW	0x0010  /* RMW operation */
 #define MISENSOR_TOK_MASK	0xfff0
+#define MISENSOR_FLIP_EN	(1<<1)	/* enable vert_flip */
+#define MISENSOR_MIRROR_EN	(1<<0)	/* enable horz_mirror */
+
+/* mask to set sensor read_mode via misensor_rmw_reg */
+#define MISENSOR_R_MODE_MASK	0x0330
+/* mask to set sensor vert_flip and horz_mirror */
+#define MISENSOR_F_M_MASK	0x0003
+
+/* bits set to set sensor read_mode via misensor_rmw_reg */
+#define MISENSOR_SKIPPING_SET	0x0011
+#define MISENSOR_SUMMING_SET	0x0033
+#define MISENSOR_NORMAL_SET	0x0000
+
+/* bits set to set sensor vert_flip and horz_mirror */
+#define MISENSOR_F_M_EN	(MISENSOR_FLIP_EN | MISENSOR_MIRROR_EN)
+#define MISENSOR_F_EN		MISENSOR_FLIP_EN
+#define MISENSOR_F_M_DIS	(MISENSOR_FLIP_EN & MISENSOR_MIRROR_EN)
+
+/* sensor register that control sensor read-mode and mirror */
+#define MISENSOR_READ_MODE	0xC834
 
 #define SENSOR_DETECTED		1
 #define SENSOR_NOT_DETECTED	0
@@ -93,7 +113,9 @@
 #define MT9M114_FOCAL_LENGTH_DEM	100
 #define MT9M114_F_NUMBER_DEFAULT_NUM	24
 #define MT9M114_F_NUMBER_DEM	10
-
+#define MT9M114_WAIT_STAT_TIMEOUT	100
+#define MT9M114_FLICKER_MODE_50HZ	1
+#define MT9M114_FLICKER_MODE_60HZ	2
 /*
  * focal length bits definition:
  * bits 31-16: numerator, bits 15-0: denominator
@@ -218,8 +240,7 @@ struct mt9m114_device {
 	unsigned int mipi_lanes;
 	char name[32];
 
-	/* flip information */
-	u32 flip;
+	u8 lightfreq;
 };
 
 struct mt9m114_format_struct {
@@ -404,7 +425,6 @@ static struct misensor_reg const mt9m114_720p_init[] = {
 	{MISENSOR_16BIT,  0xC816, 0x0060},
 	{MISENSOR_16BIT,  0xC818, 0x02D3},
 	{MISENSOR_16BIT,  0xC826, 0x0020},
-	{MISENSOR_16BIT,  0xC834, 0x0000},
 
 
 	{MISENSOR_16BIT,  0xC854, 0x0000},
@@ -455,7 +475,6 @@ static struct misensor_reg const mt9m114_vga_init[] = {
 	{MISENSOR_16BIT,   0xC816, 0x00E0},
 	{MISENSOR_16BIT,   0xC818, 0x01E3},
 	{MISENSOR_16BIT,   0xC826, 0x0020},
-	{MISENSOR_16BIT,   0xC834, 0x0330},
 	{MISENSOR_16BIT,   0xC854, 0x0000},
 	{MISENSOR_16BIT,   0xC856, 0x0000},
 	{MISENSOR_16BIT,   0xC858, 0x0280},
@@ -496,7 +515,6 @@ static struct misensor_reg const mt9m114_960P_init[] = {
 	{MISENSOR_16BIT, 0xC816, 0x0060},
 	{MISENSOR_16BIT, 0xC818, 0x03C3},
 	{MISENSOR_16BIT, 0xC826, 0x0020},
-	{MISENSOR_16BIT, 0xC834, 0x0000},
 	{MISENSOR_16BIT, 0xC854, 0x0000},
 	{MISENSOR_16BIT, 0xC856, 0x0000},
 	{MISENSOR_16BIT, 0xC858, 0x0500},
@@ -533,6 +551,22 @@ static struct misensor_reg const mt9m114_common[] = {
 	 {MISENSOR_16BIT,  0xC990, 0x0006},
 	 {MISENSOR_16BIT,  0xC992, 0x0A0C},
 	 {MISENSOR_16BIT,  0x098E, 0xDC00},
+	 {MISENSOR_8BIT,  0xDC00, 0x28},
+	 {MISENSOR_16BIT,  0x0080, 0x8002},
+	 {MISENSOR_TOK_TERM, 0, 0}
+};
+
+static struct misensor_reg const mt9m114_antiflicker_50hz[] = {
+	 {MISENSOR_16BIT,  0x098E, 0xC88B},
+	 {MISENSOR_8BIT,  0xC88B, 0x32},
+	 {MISENSOR_8BIT,  0xDC00, 0x28},
+	 {MISENSOR_16BIT,  0x0080, 0x8002},
+	 {MISENSOR_TOK_TERM, 0, 0}
+};
+
+static struct misensor_reg const mt9m114_antiflicker_60hz[] = {
+	 {MISENSOR_16BIT,  0x098E, 0xC88B},
+	 {MISENSOR_8BIT,  0xC88B, 0x3C},
 	 {MISENSOR_8BIT,  0xDC00, 0x28},
 	 {MISENSOR_16BIT,  0x0080, 0x8002},
 	 {MISENSOR_TOK_TERM, 0, 0}
