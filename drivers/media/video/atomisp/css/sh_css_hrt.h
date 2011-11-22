@@ -263,9 +263,6 @@ void
 sh_css_hrt_sp_start_si(void);
 
 void
-sh_css_hrt_sp_start_init_dmem(void);
-
-void
 sh_css_hrt_sp_start_histogram(void);
 
 void

@@ -90,7 +90,8 @@ sh_css_load_firmware(const char *fw_data,
 		if (bi->id == 0) {
 			setup_sp(bi, fw_data);
 		} else if (bi->id > 0) {
-			const unsigned char *blob = fw_data + bi->offset;
+			const unsigned char *blob =
+				(const unsigned char *)fw_data + bi->offset;
 			sh_css_blob_info[bi->id-1].blob = blob;
 			sh_css_blob_info[bi->id-1].size = bi->size;
 		}

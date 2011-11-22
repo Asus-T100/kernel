@@ -343,6 +343,8 @@ struct mt9e013_resolution {
 	int height;
 	int fps;
 	bool used;
+	unsigned short pixels_per_line;
+	unsigned short lines_per_frame;
 	const struct mt9e013_reg *regs;
 };
 
@@ -372,6 +374,9 @@ struct mt9e013_device {
 	u16 fine_itg;
 	u16 gain;
 	u32 focus;
+	u16 pixels_per_line;
+	u16 lines_per_frame;
+	u8 fps;
 	int run_mode;
 	struct timeval timestamp_t_focus_abs;
 

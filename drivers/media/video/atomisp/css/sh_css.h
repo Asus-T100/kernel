@@ -344,6 +344,16 @@ sh_css_preview_get_input_resolution(unsigned int *width,
 enum sh_css_err
 sh_css_preview_configure_pp_input(unsigned int width, unsigned int height);
 
+/* Return whether the next preview stage (or first stage of next
+   frame) needs to perform memory allocation or not.
+   This can be used to determine whether the next stage can be
+   started from an atomic context.
+   Since no CSS functionality can ever perform blocking operations,
+   memory allocation is the only thing that would not allow us to
+   start the next stage from an atomic context. */
+bool
+sh_css_preview_next_stage_needs_alloc(void);
+
 /* ===== CAPTURE ===== */
 
 /* Start the ISP in capture mode:
@@ -421,6 +431,11 @@ sh_css_capture_get_grid_info(struct sh_css_grid_info *info);
 enum sh_css_err
 sh_css_capture_get_input_resolution(unsigned int *width,
 				    unsigned int *height);
+
+/* See comments for sh_css_preview_next_stage_needs_alloc() */
+bool
+sh_css_capture_next_stage_needs_alloc(void);
+
 /* ===== VIDEO ===== */
 
 /* Start the video ISP for one frame:
@@ -484,6 +499,10 @@ sh_css_video_get_grid_info(struct sh_css_grid_info *info);
 enum sh_css_err
 sh_css_video_get_input_resolution(unsigned int *width,
 				  unsigned int *height);
+
+/* See comments for sh_css_preview_next_stage_needs_alloc() */
+bool
+sh_css_video_next_stage_needs_alloc(void);
 
 /* Generate a luminance histogram from a frame. The width of the frame
  * cannot exceed 640 pixels and the frame must be a yuv420 frame.

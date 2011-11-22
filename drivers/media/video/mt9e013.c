@@ -83,6 +83,8 @@ struct mt9e013_resolution mt9e013_res_preview[] = {
 		 .height =	616	,
 		 .fps =		30	,
 		 .used =	0	,
+		 .pixels_per_line = 0x20F0, /* consistent with regs arrays */
+		 .lines_per_frame = 0x02F7, /* consistent with regs arrays */
 		 .regs =	mt9e013_PREVIEW_30fps	,
 	},
 	{
@@ -91,6 +93,8 @@ struct mt9e013_resolution mt9e013_res_preview[] = {
 		 .height =	956	,
 		 .fps =		30	,
 		 .used =	0	,
+		 .pixels_per_line = 0x16C2, /* consistent with regs arrays */
+		 .lines_per_frame = 0x044F, /* consistent with regs arrays */
 		 .regs =	mt9e013_WIDE_PREVIEW_30fps	,
 	},
 
@@ -105,6 +109,8 @@ struct mt9e013_resolution mt9e013_res_still[] = {
 		 .height =	1232	,
 		 .fps =		15	,
 		 .used =	0	,
+		 .pixels_per_line = 0x2460, /* consistent with regs arrays */
+		 .lines_per_frame = 0x0563, /* consistent with regs arrays */
 		 .regs =	mt9e013_STILL_2M_15fps	,
 	},
 	{
@@ -113,6 +119,8 @@ struct mt9e013_resolution mt9e013_res_still[] = {
 		 .height =	1848	,
 		 .fps =		15	,
 		 .used =	0	,
+		 .pixels_per_line = 0x191C, /* consistent with regs arrays */
+		 .lines_per_frame = 0x07C7, /* consistent with regs arrays */
 		 .regs =	mt9e013_STILL_6M_15fps	,
 	},
 	{
@@ -121,6 +129,8 @@ struct mt9e013_resolution mt9e013_res_still[] = {
 		 .height =	2464	,
 		 .fps =		12	,
 		 .used =	0	,
+		 .pixels_per_line = 0x17F8, /* consistent with regs arrays */
+		 .lines_per_frame = 0x0A2F, /* consistent with regs arrays */
 		 .regs =	mt9e013_STILL_8M_12fps	,
 	},
 };
@@ -134,6 +144,8 @@ struct mt9e013_resolution mt9e013_res_video[] = {
 		 .height =	292	,
 		 .fps =		30	,
 		 .used =	0	,
+		 .pixels_per_line = 0x3978, /* consistent with regs arrays */
+		 .lines_per_frame = 0x01B3, /* consistent with regs arrays */
 		 .regs =	mt9e013_QCIF_strong_dvs_30fps	,
 	},
 	{
@@ -142,6 +154,8 @@ struct mt9e013_resolution mt9e013_res_video[] = {
 		 .height =	288	,
 		 .fps =		30	,
 		 .used =	0	,
+		 .pixels_per_line = 0x3A00, /* consistent with regs arrays */
+		 .lines_per_frame = 0x01AF, /* consistent with regs arrays */
 		 .regs =	mt9e013_QVGA_strong_dvs_30fps	,
 	},
 	{
@@ -150,6 +164,8 @@ struct mt9e013_resolution mt9e013_res_video[] = {
 		 .height =	616	,
 		 .fps =		30	,
 		 .used =	0	,
+		 .pixels_per_line = 0x20F0, /* consistent with regs arrays */
+		 .lines_per_frame = 0x02F7, /* consistent with regs arrays */
 		 .regs =	mt9e013_VGA_strong_dvs_30fps	,
 	},
 	{
@@ -158,6 +174,8 @@ struct mt9e013_resolution mt9e013_res_video[] = {
 		 .height =	1024	,
 		 .fps =		30	,
 		 .used =	0	,
+		 .pixels_per_line = 0x156C, /* consistent with regs arrays */
+		 .lines_per_frame = 0x048F, /* consistent with regs arrays */
 		 .regs =	mt9e013_WVGA_strong_dvs_30fps	,
 	},
 	{
@@ -166,6 +184,8 @@ struct mt9e013_resolution mt9e013_res_video[] = {
 		 .height =	876	,
 		 .fps =		30	,
 		 .used =	0	,
+		 .pixels_per_line = 0x188C, /* consistent with regs arrays */
+		 .lines_per_frame = 0x03FF, /* consistent with regs arrays */
 		 .regs =	mt9e013_720p_strong_dvs_30fps	,
 	},
 	{
@@ -174,6 +194,8 @@ struct mt9e013_resolution mt9e013_res_video[] = {
 		 .height =	1308,
 		 .fps =		30,
 		 .used =	0,
+		 .pixels_per_line = 0x113A, /* consistent with regs arrays */
+		 .lines_per_frame = 0x05AB, /* consistent with regs arrays */
 		 .regs =	mt9e013_1080p_strong_dvs_30fps,
 	},
 };
@@ -1464,6 +1486,10 @@ static int mt9e013_s_mbus_fmt(struct v4l2_subdev *sd,
 	if (ret)
 		return -EINVAL;
 
+	dev->fps = mt9e013_res[dev->fmt_idx].fps;
+	dev->pixels_per_line = mt9e013_res[dev->fmt_idx].pixels_per_line;
+	dev->lines_per_frame = mt9e013_res[dev->fmt_idx].lines_per_frame;
+
 	ret = mt9e013_get_intg_factor(client, mt9e013_info, mt9e013_def_reg);
 	if (ret) {
 		v4l2_err(sd, "failed to get integration_factor\n");
@@ -1790,6 +1816,50 @@ mt9e013_s_parm(struct v4l2_subdev *sd, struct v4l2_streamparm *param)
 	return 0;
 }
 
+int
+mt9e013_g_frame_interval(struct v4l2_subdev *sd,
+				struct v4l2_subdev_frame_interval *interval)
+{
+	struct mt9e013_device *dev = to_mt9e013_sensor(sd);
+	struct i2c_client *client = v4l2_get_subdevdata(sd);
+	u16 lines_per_frame;
+	u8 fps;
+	/*
+	 * if no specific information to calculate the fps,
+	 * just used the value in sensor settings
+	 */
+	if (!dev->pixels_per_line || !dev->lines_per_frame) {
+		interval->interval.numerator = 1;
+		interval->interval.denominator = dev->fps;
+		return 0;
+	}
+
+	/*
+	 * DS: if coarse_integration_time is set larger than
+	 * lines_per_frame the frame_size will be expanded to
+	 * coarse_integration_time+1
+	 */
+	if (dev->coarse_itg > dev->lines_per_frame) {
+		if (dev->coarse_itg == 0xFFFF) {
+			/*
+			 * we can not add 1 according to ds, as this will
+			 * cause over flow
+			 */
+			v4l2_warn(client, "%s: abnormal coarse_itg:0x%x\n",
+				  __func__, dev->coarse_itg);
+			lines_per_frame = dev->coarse_itg;
+		} else
+			lines_per_frame = dev->coarse_itg + 1;
+	} else
+		lines_per_frame = dev->lines_per_frame;
+
+	interval->interval.numerator = dev->pixels_per_line *
+					lines_per_frame;
+	interval->interval.denominator = MT9E013_MCLK * 1000000;
+
+	return 0;
+}
+
 static const struct v4l2_subdev_video_ops mt9e013_video_ops = {
 	.s_stream = mt9e013_s_stream,
 	.enum_framesizes = mt9e013_enum_framesizes,
@@ -1799,6 +1869,7 @@ static const struct v4l2_subdev_video_ops mt9e013_video_ops = {
 	.g_mbus_fmt = mt9e013_g_mbus_fmt,
 	.s_mbus_fmt = mt9e013_s_mbus_fmt,
 	.s_parm = mt9e013_s_parm,
+	.g_frame_interval = mt9e013_g_frame_interval,
 };
 
 static const struct v4l2_subdev_core_ops mt9e013_core_ops = {

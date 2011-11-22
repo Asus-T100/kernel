@@ -589,10 +589,10 @@ struct sh_css_dp_config {
 
 /* Configuration used by Bayer noise reduction and YCC noise reduction */
 struct sh_css_nr_config {
-	/* [gain] Strength of noise reduction for both Bayer NR & YCC NR (Used
-	 * by Bayer NR and YCC NR).
-	 */
-	u0_16 gain;
+	/* [gain] Strength of noise reduction for Bayer NR (Used by Bayer NR) */
+	u0_16 bnr_gain;
+	/* [gain] Strength of noise reduction for YCC NR (Used by YCC NR) */
+	u0_16 ynr_gain;
 	/* [intensity] Sensitivity of Edge (Used by Bayer NR) */
 	u0_16 direction;
 	/* [intensity] coring threshold for Cb (Used by YCC NR) */
@@ -660,6 +660,7 @@ struct sh_css_sp_fw {
 	unsigned int data_size;		/* Size of text section */
 	unsigned int bss_target;	/* Start position of bss in SP dmem */
 	unsigned int bss_size;		/* Size of bss section */
+	void *dmem_init_data;		/* Addr sp init data */
 };
 
 /* this struct contains all arguments that can be passed to
@@ -778,5 +779,17 @@ struct sh_css_acc_fw {
 #define SH_CSS_ACC_ISP_SIZE(f)     ((f)->header.isp.size)
 #define SH_CSS_ACC_SIZE(f)         ((f)->header.isp_blob_offset + \
 					SH_CSS_ACC_ISP_SIZE(f))
+
+/* Structure to encapsulate required arguments for
+ * initialization of SP DMEM using the SP itself
+ */
+struct sh_css_sp_init_dmem_cfg {
+	unsigned      done;	      /* Init has been done */
+	void         *ddr_data_addr;  /* data segment address in ddr  */
+	void         *dmem_data_addr; /* data segment address in dmem */
+	unsigned int  data_size;      /* data segment size            */
+	void         *dmem_bss_addr;  /* bss segment address in dmem  */
+	unsigned int  bss_size;       /* bss segment size             */
+};
 
 #endif /* _SH_CSS_TYPES_H_ */

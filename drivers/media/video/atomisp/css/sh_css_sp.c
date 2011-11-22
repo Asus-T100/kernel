@@ -38,41 +38,60 @@
  */
 #define EVEN_FLOOR(x)	(x & ~1)
 
-struct sh_css_sp_group sh_css_sp_group;
+struct sh_css_sp_group		sh_css_sp_group;
+static struct sh_css_sp_per_frame_data per_frame_data;
 
+/* This data is stored every frame */
 void
-sh_css_store_sp_group_pointer_to_sp(void)
+sh_css_store_sp_per_frame_data(void)
 {
-	void *sp_group_on_ddr = sh_css_store_sp_group_to_ddr();
+	per_frame_data.sp_group_addr = sh_css_store_sp_group_to_ddr();
+	per_frame_data.read_sp_group_from_ddr = true;
 
-	store_sp_ptr(sp_sp_group_addr, sp_group_on_ddr);
-	/* set flag (should read sp group from DDR) */
-	store_sp_int(sp_read_sp_group_from_ddr, 1);
+	store_sp_var(sp_per_frame_data, &per_frame_data,
+			sizeof(per_frame_data));
+	/* Clear for next frame */
+	memset(&per_frame_data, 0, sizeof(per_frame_data));
 }
+
+static void *init_dmem_ddr;
 
 /* Initialize the entire contents of the DMEM at once -- does not need to
  * do this from the host
  */
 void
-sh_css_sp_start_init_dmem(struct sh_css_sp_init_dmem_cfg *init_dmem_cfg)
+sh_css_sp_store_init_dmem(const struct sh_css_sp_fw *fw)
 {
-	store_sp_ptr(sp_ddr_data_addr , init_dmem_cfg->ddr_data_addr);
-	store_sp_ptr(sp_dmem_data_addr, init_dmem_cfg->dmem_data_addr);
-	store_sp_int(sp_data_size     , init_dmem_cfg->data_size);
-	store_sp_ptr(sp_dmem_bss_addr , init_dmem_cfg->dmem_bss_addr);
-	store_sp_int(sp_bss_size      , init_dmem_cfg->bss_size);
+	struct sh_css_sp_init_dmem_cfg init_dmem_cfg;
 
-	sh_css_hrt_sp_start_init_dmem();
-	sh_css_hrt_sp_wait();
+	/* store data section to DDR */
+	if (init_dmem_ddr)
+		hrt_isp_css_mm_free(init_dmem_ddr);
+	init_dmem_ddr = hrt_isp_css_mm_alloc(fw->data_size);
+	hrt_isp_css_mm_store(init_dmem_ddr, fw->data, fw->data_size);
+
+	/* Configure the data structure to initialize dmem */
+	init_dmem_cfg.done	     = false;
+	init_dmem_cfg.ddr_data_addr  = init_dmem_ddr;
+	init_dmem_cfg.dmem_data_addr = (void *) fw->data_target;
+	init_dmem_cfg.data_size      = fw->data_size;
+	init_dmem_cfg.dmem_bss_addr  = (void *) fw->bss_target;
+	init_dmem_cfg.bss_size       = fw->bss_size;
+
+	sh_css_sp_dmem_store((unsigned)fw->dmem_init_data, &init_dmem_cfg,
+				sizeof(init_dmem_cfg));
+
 }
 
 void
 sh_css_sp_start_histogram(struct sh_css_histogram *histogram,
 			  const struct sh_css_frame *frame)
 {
-	store_sp_ptr(sp_histo_addr, histogram->data);
+	sh_css_sp_group.histo_addr = histogram->data;
 	sh_css_sp_group.sp_in_frame = *frame;
-	sh_css_store_sp_group_pointer_to_sp();
+	sh_css_sp_group.dma_proxy.busy_wait = false;
+
+	sh_css_store_sp_per_frame_data();
 	sh_css_hrt_sp_start_histogram();
 }
 
@@ -91,10 +110,12 @@ void
 sh_css_sp_start_binary_copy(struct sh_css_frame *out_frame,
 			    unsigned two_ppc)
 {
-	store_sp_ptr(sp_bin_copy_out, out_frame->planes.binary.data.data);
-	store_sp_int(sp_bin_copy_bytes_available, out_frame->data_bytes);
+	sh_css_sp_group.bin_copy.out = out_frame->planes.binary.data.data;
+	sh_css_sp_group.bin_copy.bytes_available = out_frame->data_bytes;
 	sh_css_sp_group.isp_2ppc = two_ppc;
-	sh_css_store_sp_group_pointer_to_sp();
+	sh_css_sp_group.dma_proxy.busy_wait = false;
+
+	sh_css_store_sp_per_frame_data();
 	sh_css_hrt_sp_start_copy_binary_data();
 }
 
@@ -104,19 +125,21 @@ sh_css_sp_start_raw_copy(struct sh_css_binary *binary,
 			 unsigned two_ppc,
 			 bool start)
 {
-	store_sp_ptr(sp_raw_copy_out,           out_frame->planes.raw.data);
-	store_sp_ptr(sp_raw_copy_height,        out_frame->info.height);
-	store_sp_ptr(sp_raw_copy_width,         out_frame->info.width);
-	store_sp_ptr(sp_raw_copy_padded_width,  out_frame->info.padded_width);
-	store_sp_ptr(sp_raw_copy_raw_bit_depth, out_frame->info.raw_bit_depth);
-	store_sp_ptr(sp_raw_copy_max_input_width,
-		     binary->info->max_input_width);
-	store_sp_ptr(sp_proxy_busy_wait,        true);
+	sh_css_sp_group.raw_copy.out	= out_frame->planes.raw.data;
+	sh_css_sp_group.raw_copy.height	= out_frame->info.height;
+	sh_css_sp_group.raw_copy.width	= out_frame->info.width;
+	sh_css_sp_group.raw_copy.padded_width  = out_frame->info.padded_width;
+	sh_css_sp_group.raw_copy.raw_bit_depth = out_frame->info.raw_bit_depth;
+	sh_css_sp_group.raw_copy.max_input_width =
+		     binary->info->max_input_width;
+	sh_css_sp_group.dma_proxy.busy_wait	= true;
 	sh_css_sp_group.isp_2ppc = two_ppc;
 	sh_css_sp_group.xmem_bin_addr = binary->info->xmem_addr;
-	sh_css_store_sp_group_pointer_to_sp();
-	if (start)
+
+	if (start) {
+		sh_css_store_sp_per_frame_data();
 		sh_css_hrt_sp_start_copy_raw_data();
+	}
 }
 
 unsigned int
@@ -370,12 +393,12 @@ sh_css_sp_set_if_configs(const struct sh_css_if_config *config_a,
 		block_b = config_b->block_no_reqs;
 	sh_css_hrt_if_reset();
 	sh_css_hrt_if_set_block_fifo_no_reqs(block_a, block_b);
-	store_sp_int(sp_if_a_changed, 1);
-	store_sp_var(sp_if_a, (void *)config_a, sizeof(*config_a));
+	sh_css_sp_group.if_config_a = *config_a;
+	per_frame_data.if_a_changed = true;
 
 	if (config_b) {
-		store_sp_int(sp_if_b_changed, 1);
-		store_sp_var(sp_if_b, (void *)config_b, sizeof(*config_b));
+		sh_css_sp_group.if_config_b = *config_b;
+		per_frame_data.if_b_changed = true;
 	}
 }
 
@@ -384,11 +407,11 @@ sh_css_sp_program_input_circuit(int fmt_type,
 				int ch_id,
 				enum sh_css_input_mode input_mode)
 {
-	store_sp_int(sp_no_side_band, 0);
-	store_sp_int(sp_fmt_type, fmt_type);
-	store_sp_int(sp_ch_id, ch_id);
-	store_sp_int(sp_input_mode, input_mode);
-	store_sp_int(sp_program_input_circuit, 1);
+	sh_css_sp_group.input_circuit.no_side_band = false;
+	sh_css_sp_group.input_circuit.fmt_type     = fmt_type;
+	sh_css_sp_group.input_circuit.ch_id	   = ch_id;
+	sh_css_sp_group.input_circuit.input_mode   = input_mode;
+	per_frame_data.program_input_circuit = true;
 }
 
 void
@@ -396,10 +419,10 @@ sh_css_sp_configure_sync_gen(int width, int height,
 			     int hblank_cycles,
 			     int vblank_cycles)
 {
-	store_sp_int(sp_sync_gen_width, width);
-	store_sp_int(sp_sync_gen_height, height);
-	store_sp_int(sp_sync_gen_hblank_cycles, hblank_cycles);
-	store_sp_int(sp_sync_gen_vblank_cycles, vblank_cycles);
+	sh_css_sp_group.sync_gen.width	       = width;
+	sh_css_sp_group.sync_gen.height	       = height;
+	sh_css_sp_group.sync_gen.hblank_cycles = hblank_cycles;
+	sh_css_sp_group.sync_gen.vblank_cycles = vblank_cycles;
 }
 
 void
@@ -409,17 +432,17 @@ sh_css_sp_configure_tpg(int x_mask,
 			int y_delta,
 			int xy_mask)
 {
-	store_sp_int(sp_tpg_x_mask, x_mask);
-	store_sp_int(sp_tpg_y_mask, y_mask);
-	store_sp_int(sp_tpg_x_delta, x_delta);
-	store_sp_int(sp_tpg_y_delta, y_delta);
-	store_sp_int(sp_tpg_xy_mask, xy_mask);
+	sh_css_sp_group.tpg.x_mask  = x_mask;
+	sh_css_sp_group.tpg.y_mask  = y_mask;
+	sh_css_sp_group.tpg.x_delta = x_delta;
+	sh_css_sp_group.tpg.y_delta = y_delta;
+	sh_css_sp_group.tpg.xy_mask = xy_mask;
 }
 
 void
 sh_css_sp_configure_prbs(int seed)
 {
-	store_sp_int(sp_prbs_seed, seed);
+	sh_css_sp_group.prbs.seed = seed;
 }
 
 static enum sh_css_err
@@ -504,9 +527,7 @@ sh_css_sp_compute_overlay(const struct sh_css_overlay *overlay,
 void
 sh_css_sp_set_overlay(const struct sh_css_overlay *overlay)
 {
-	struct sh_css_sp_overlay sp_overlay;
-	sh_css_sp_compute_overlay(overlay, &sp_overlay);
-	store_sp_var(sp_si, &sp_overlay, sizeof(sp_overlay));
+	sh_css_sp_compute_overlay(overlay, &sh_css_sp_group.overlay);
 }
 
 enum sh_css_err
@@ -560,6 +581,7 @@ sh_css_sp_start_isp(struct sh_css_binary *binary,
 	sh_css_sp_group.xmem_map_addr            =
 					sh_css_params_ddr_address_map();
 	sh_css_sp_group.anr			 = low_light;
+	sh_css_sp_group.dma_proxy.busy_wait	 = start_copy;
 
 	store_sp_int(sp_isp_started, 0);
 
@@ -575,7 +597,7 @@ sh_css_sp_start_isp(struct sh_css_binary *binary,
 	if (err != sh_css_success)
 		return err;
 
-	sh_css_store_sp_group_pointer_to_sp();
+	sh_css_store_sp_per_frame_data();
 
 	sh_css_hrt_sp_start_isp();
 	return err;

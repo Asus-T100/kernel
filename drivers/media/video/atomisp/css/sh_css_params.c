@@ -28,6 +28,7 @@
 #include "sh_css_internal.h"
 #include "sh_css_hrt.h"
 #include "sh_css_defs.h"
+#include "sh_css_sp.h"
 
 #define sISP_REG_BIT              ISP_VEC_ELEMBITS
 #define uISP_REG_BIT              (sISP_REG_BIT-1)
@@ -112,7 +113,7 @@ static bool isp_params_changed,
 	    ee_config_changed,
 	    de_config_changed,
 	    gc_config_changed,
-		anr_config_changed;
+	    anr_config_changed;
 
 static size_t fpn_tbl_size,
 	      sc_tbl_size,
@@ -135,6 +136,14 @@ static size_t fpn_tbl_size,
 	      tetra_batr_y_size,
 	      tetra_ratb_x_size,
 	      tetra_ratb_y_size;
+
+/* Double buffering for 3A */
+static void *s3a_tables[2],
+	    *s3a_tables_hi[2],
+	    *s3a_tables_lo[2],
+	    *dis_hor_projections[2],
+	    *dis_ver_projections[2];
+static unsigned int curr_valid_buffer;
 
 /* local buffers, used to re-order the 3a statistics in vmem-format */
 static unsigned short s3a_tbl_hi_buf[ISP_S3ATBL_HI_LO_STRIDE *
@@ -562,14 +571,16 @@ static const struct sh_css_dp_config disabled_dp_config = {
 };
 
 static const struct sh_css_nr_config default_nr_config = {
-	.gain         = 16384,
+	.bnr_gain     = 16384,
+	.ynr_gain     = 8192,
 	.direction    = 1280,
 	.threshold_cb = 0,
 	.threshold_cr = 0
 };
 
 static const struct sh_css_nr_config disabled_nr_config = {
-	.gain         = 0,
+	.bnr_gain     = 0,
+	.ynr_gain     = 0,
 	.direction    = 0,
 	.threshold_cb = 0,
 	.threshold_cr = 0
@@ -636,8 +647,8 @@ sh_css_get_dis_projections(int *horizontal_projections,
 		     hor_num_3a, ver_num_3a, i;
 	int *hor_ptr_3a  = horizontal_projections,
 	    *ver_ptr_3a  = vertical_projections,
-	    *hor_ptr_isp = ddr_ptrs.sdis_hor_proj,
-	    *ver_ptr_isp = ddr_ptrs.sdis_ver_proj;
+	    *hor_ptr_isp = dis_hor_projections[curr_valid_buffer],
+	    *ver_ptr_isp = dis_ver_projections[curr_valid_buffer];
 
 	if (current_3a_binary == NULL)
 		return;
@@ -668,7 +679,7 @@ get_3a_stats_from_dmem(struct sh_css_3a_output *output)
 			out_height = current_3a_binary->s3atbl_height,
 			i;
 	struct sh_css_3a_output
-			*ddr_ptr = ddr_ptrs.s3a_tbl,
+			*ddr_ptr = s3a_tables[curr_valid_buffer],
 			*out_ptr = output;
 
 	for (i = 0; i < out_height; i++) {
@@ -702,8 +713,8 @@ get_3a_stats_from_vmem(struct sh_css_3a_output *output)
 	chunk = max(chunk, 1);
 	bytes = ISP_S3ATBL_HI_LO_STRIDE_BYTES * out_height;
 
-	hrt_isp_css_mm_load(ddr_ptrs.s3a_tbl_hi, hi, bytes);
-	hrt_isp_css_mm_load(ddr_ptrs.s3a_tbl_lo, lo, bytes);
+	hrt_isp_css_mm_load(s3a_tables_hi[curr_valid_buffer], hi, bytes);
+	hrt_isp_css_mm_load(s3a_tables_lo[curr_valid_buffer], lo, bytes);
 
 	for (y = 0; y < out_height; y++) {
 		elm_start = y * ISP_S3ATBL_HI_LO_STRIDE;
@@ -1029,9 +1040,9 @@ sh_css_process_tnr(void)
 	isp_parameters.tnr_coef =
 	    uDIGIT_FITTING(tnr_config->gain, 16, SH_CSS_TNR_COEF_SHIFT);
 	isp_parameters.tnr_threshold_Y =
-	    uDIGIT_FITTING(tnr_config->threshold_y, 16, SH_CSS_BAYER_BITS);
+	    uDIGIT_FITTING(tnr_config->threshold_y, 16, SH_CSS_ISP_YUV_BITS);
 	isp_parameters.tnr_threshold_C =
-	    uDIGIT_FITTING(tnr_config->threshold_uv, 16, SH_CSS_BAYER_BITS);
+	    uDIGIT_FITTING(tnr_config->threshold_uv, 16, SH_CSS_ISP_YUV_BITS);
 	isp_params_changed = true;
 	tnr_config_changed = false;
 }
@@ -1112,9 +1123,9 @@ sh_css_process_nr_ee(void)
 	isp_parameters.bnr_threshold_width =
 	    1 << isp_parameters.bnr_threshold_width_log2;
 	isp_parameters.bnr_gain_all =
-	    uDIGIT_FITTING(nr_config->gain, 16, SH_CSS_BNR_GAIN_SHIFT);
+	    uDIGIT_FITTING(nr_config->bnr_gain, 16, SH_CSS_BNR_GAIN_SHIFT);
 	isp_parameters.bnr_gain_dir =
-	    uDIGIT_FITTING(nr_config->gain, 16, SH_CSS_BNR_GAIN_SHIFT);
+	    uDIGIT_FITTING(nr_config->bnr_gain, 16, SH_CSS_BNR_GAIN_SHIFT);
 	isp_parameters.bnr_clip = uDIGIT_FITTING(16384, 16, SH_CSS_BAYER_BITS);
 
 	/* YNR (Y Noise Reduction), YEE (Y Edge Enhancement) */
@@ -1123,8 +1134,10 @@ sh_css_process_nr_ee(void)
 	asiWk3 = asiWk1 / 4;
 	isp_parameters.ynr_threshold =
 		uDIGIT_FITTING(8192, 16, SH_CSS_BAYER_BITS);
-	isp_parameters.ynr_gain_dir = isp_parameters.bnr_gain_dir / 2;
-	isp_parameters.ynr_gain_all = isp_parameters.bnr_gain_all / 2;
+	isp_parameters.ynr_gain_all =
+	    uDIGIT_FITTING(nr_config->ynr_gain, 16, SH_CSS_YNR_GAIN_SHIFT);
+	isp_parameters.ynr_gain_dir =
+	    uDIGIT_FITTING(nr_config->ynr_gain, 16, SH_CSS_YNR_GAIN_SHIFT);
 	isp_parameters.ynryee_dirthreshold_s =
 	    min((uDIGIT_FITTING(nr_config->direction, 16, SH_CSS_BAYER_BITS)
 				    << 1),
@@ -1600,21 +1613,37 @@ reallocate_buffers(const struct sh_css_binary *binary)
 					     SCTBL_BYTES(binary), &err);
 	}
 	if (binary->info->enable_s3a && binary->info->s3atbl_use_dmem) {
-		changed |= reallocate_cached_buffer(&ddr_ptrs.s3a_tbl,
+		unsigned int size = s3a_tbl_size;
+		changed |= reallocate_cached_buffer(&s3a_tables[0],
+						    &size,
+						    S3ATBL_BYTES(binary), &err);
+		changed |= reallocate_cached_buffer(&s3a_tables[1],
 						    &s3a_tbl_size,
 						    S3ATBL_BYTES(binary), &err);
 	}
 	if (binary->info->enable_s3a && !binary->info->s3atbl_use_dmem) {
-		changed |= reallocate_cached_buffer(&ddr_ptrs.s3a_tbl_hi,
+		unsigned int hi_size = s3a_tbl_hi_size,
+			     lo_size = s3a_tbl_lo_size;
+		changed |= reallocate_cached_buffer(&s3a_tables_hi[0],
+						    &hi_size,
+						    S3ATBL_HI_LO_BYTES(binary),
+						    &err);
+		changed |= reallocate_cached_buffer(&s3a_tables_hi[1],
 						    &s3a_tbl_hi_size,
 						    S3ATBL_HI_LO_BYTES(binary),
 						    &err);
-		changed |= reallocate_cached_buffer(&ddr_ptrs.s3a_tbl_lo,
+		changed |= reallocate_cached_buffer(&s3a_tables_lo[0],
+						    &lo_size,
+						    S3ATBL_HI_LO_BYTES(binary),
+						    &err);
+		changed |= reallocate_cached_buffer(&s3a_tables_lo[1],
 						    &s3a_tbl_lo_size,
 						    S3ATBL_HI_LO_BYTES(binary),
 						    &err);
 	}
 	if (binary->info->enable_dis) {
+		unsigned int hor_size = sdis_hor_proj_size,
+			     ver_size = sdis_ver_proj_size;
 		changed |= reallocate_buffer(&ddr_ptrs.sdis_hor_coef,
 					     &sdis_hor_coef_size,
 					     SDIS_HOR_COEF_TBL_BYTES(binary),
@@ -1623,11 +1652,19 @@ reallocate_buffers(const struct sh_css_binary *binary)
 					     &sdis_ver_coef_size,
 					     SDIS_VER_COEF_TBL_BYTES(binary),
 					     &err);
-		changed |= reallocate_buffer(&ddr_ptrs.sdis_hor_proj,
+		changed |= reallocate_buffer(&dis_hor_projections[0],
+					     &hor_size,
+					     SDIS_HOR_PROJ_TBL_BYTES(binary),
+					     &err);
+		changed |= reallocate_buffer(&dis_hor_projections[1],
 					     &sdis_hor_proj_size,
 					     SDIS_HOR_PROJ_TBL_BYTES(binary),
 					     &err);
-		changed |= reallocate_buffer(&ddr_ptrs.sdis_ver_proj,
+		changed |= reallocate_buffer(&dis_ver_projections[0],
+					     &ver_size,
+					     SDIS_VER_PROJ_TBL_BYTES(binary),
+					     &err);
+		changed |= reallocate_buffer(&dis_ver_projections[1],
 					     &sdis_ver_proj_size,
 					     SDIS_VER_PROJ_TBL_BYTES(binary),
 					     &err);
@@ -1675,6 +1712,12 @@ reallocate_buffers(const struct sh_css_binary *binary)
 	return err;
 }
 
+void
+sh_css_params_swap_3a_buffers(void)
+{
+	curr_valid_buffer = 1-curr_valid_buffer;
+}
+
 enum sh_css_err
 sh_css_params_init(void)
 {
@@ -1716,7 +1759,6 @@ sh_css_params_init(void)
 		return sh_css_err_cannot_allocate_memory;
 	}
 	/* Copy XMEM address map to XMEM for SP access */
-	hrt_isp_css_mm_store(sp_ddr_ptrs, &ddr_ptrs, sizeof(ddr_ptrs));
 	sh_css_set_3a_config(&default_3a_config);
 	sh_css_set_wb_config(&default_wb_config);
 	sh_css_set_cc_config(&default_cc_config);
@@ -1727,6 +1769,7 @@ sh_css_params_init(void)
 	sh_css_set_ee_config(&default_ee_config);
 	sh_css_set_de_config(&default_de_config);
 	sh_css_set_gc_config(&default_gc_config);
+	sh_css_set_anr_config(&default_anr_config);
 	sh_css_set_macc_table(&default_macc_table);
 	sh_css_set_gamma_table(&default_gamma_table);
 	sh_css_set_ctc_table(&default_ctc_table);
@@ -1737,6 +1780,7 @@ sh_css_params_init(void)
 	morph_table_changed = true;
 	sc_table = NULL;
 	sc_table_changed = false;
+	curr_valid_buffer = 0;
 	return sh_css_success;
 }
 
@@ -1762,13 +1806,18 @@ sh_css_params_uninit(void)
 	safe_free(ddr_ptrs.macc_tbl);
 	safe_free(ddr_ptrs.fpn_tbl);
 	safe_free(ddr_ptrs.sc_tbl);
-	safe_free(ddr_ptrs.s3a_tbl);
-	safe_free(ddr_ptrs.s3a_tbl_hi);
-	safe_free(ddr_ptrs.s3a_tbl_lo);
+	safe_free(s3a_tables[0]);
+	safe_free(s3a_tables[1]);
+	safe_free(s3a_tables_hi[0]);
+	safe_free(s3a_tables_hi[1]);
+	safe_free(s3a_tables_lo[0]);
+	safe_free(s3a_tables_lo[1]);
+	safe_free(dis_hor_projections[0]);
+	safe_free(dis_hor_projections[1]);
+	safe_free(dis_ver_projections[0]);
+	safe_free(dis_ver_projections[1]);
 	safe_free(ddr_ptrs.sdis_hor_coef);
 	safe_free(ddr_ptrs.sdis_ver_coef);
-	safe_free(ddr_ptrs.sdis_hor_proj);
-	safe_free(ddr_ptrs.sdis_ver_proj);
 	safe_free(ddr_ptrs.tetra_r_x);
 	safe_free(ddr_ptrs.tetra_r_y);
 	safe_free(ddr_ptrs.tetra_gr_x);
@@ -1859,10 +1908,20 @@ enum sh_css_err
 sh_css_params_write_to_ddr(const struct sh_css_binary *binary)
 {
 	enum sh_css_err err;
+	unsigned int free_buffer = 1-curr_valid_buffer;
 
 	err = reallocate_buffers(binary);
 	if (err != sh_css_success)
 		return err;
+
+	/* Make sure the SP firmware uses the right (free) buffer */
+	ddr_ptrs.s3a_tbl       = s3a_tables[free_buffer];
+	ddr_ptrs.s3a_tbl_hi    = s3a_tables_hi[free_buffer];
+	ddr_ptrs.s3a_tbl_lo    = s3a_tables_lo[free_buffer];
+	ddr_ptrs.sdis_hor_proj = dis_hor_projections[free_buffer];
+	ddr_ptrs.sdis_ver_proj = dis_ver_projections[free_buffer];
+
+	hrt_isp_css_mm_store(sp_ddr_ptrs, &ddr_ptrs, sizeof(ddr_ptrs));
 
 	if (fpn_table_changed && binary->info->enable_fpnr) {
 		if (isp_parameters.fpn_enabled) {
@@ -2075,8 +2134,8 @@ sh_css_get_isp_dis_projections(int *horizontal_projections,
 	unsigned int hor_num_isp, ver_num_isp, i;
 	int *hor_ptr     = horizontal_projections,
 	    *ver_ptr     = vertical_projections,
-	    *hor_ptr_isp = ddr_ptrs.sdis_hor_proj,
-	    *ver_ptr_isp = ddr_ptrs.sdis_ver_proj;
+	    *hor_ptr_isp = dis_hor_projections[curr_valid_buffer],
+	    *ver_ptr_isp = dis_ver_projections[curr_valid_buffer];
 
 	if (current_3a_binary == NULL)
 		return;
@@ -2101,7 +2160,7 @@ void *
 sh_css_store_sp_group_to_ddr(void)
 {
 	hrt_isp_css_mm_store(xmem_sp_group_ptrs,
-				     &sh_css_sp_group,
-				     sizeof(struct sh_css_sp_group));
+			     &sh_css_sp_group,
+			     sizeof(struct sh_css_sp_group));
 	return xmem_sp_group_ptrs;
 }

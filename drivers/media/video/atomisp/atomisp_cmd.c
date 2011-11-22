@@ -221,13 +221,10 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 	    irq_infos & SH_CSS_IRQ_INFO_START_NEXT_STAGE) {
 		/* Wake up sleep thread for next binary */
 		signal_worker = true;
-		if (irq_infos & SH_CSS_IRQ_INFO_STATISTICS_READY) {
+		if (irq_infos & SH_CSS_IRQ_INFO_STATISTICS_READY)
 			signal_statistics = true;
-			isp->isp3a_stat_ready = true;
-		}
-		if (irq_infos & SH_CSS_IRQ_INFO_FW_ACC_DONE) {
+		if (irq_infos & SH_CSS_IRQ_INFO_FW_ACC_DONE)
 			signal_acceleration = true;
-		}
 	} else if (irq_infos & SH_CSS_IRQ_INFO_CSS_RECEIVER_ERROR) {
 		/* handle mipi receiver error*/
 		u32 rx_infos;
@@ -526,9 +523,19 @@ static int atomisp_stop_flash(struct atomisp_device *isp)
 	ctrl.id = V4L2_CID_FLASH_STROBE;
 	ctrl.value = 0;
 	if (v4l2_subdev_call(isp->flash, core, s_ctrl, &ctrl)) {
-		v4l2_err(&atomisp_dev, "flash failed\n");
+		v4l2_err(&atomisp_dev, "flash strobe off failed\n");
 		return -EINVAL;
 	}
+
+	/* switch flash mode into flash off */
+	ctrl.id = V4L2_CID_FLASH_MODE;
+	ctrl.value = ATOMISP_FLASH_MODE_OFF;
+
+	if (v4l2_subdev_call(isp->flash, core, s_ctrl, &ctrl)) {
+		v4l2_err(&atomisp_dev, "flash mode switch failed\n");
+		return -EINVAL;
+	}
+
 	return 0;
 }
 
@@ -536,21 +543,21 @@ static int atomisp_start_flash(struct atomisp_device *isp)
 {
 	struct v4l2_control ctrl;
 
+	/* make sure the timeout is set before setting flash mode */
+	ctrl.id = V4L2_CID_FLASH_TIMEOUT;
+	ctrl.value = FLASH_TIMEOUT;
+
+	if (v4l2_subdev_call(isp->flash, core, s_ctrl, &ctrl)) {
+		v4l2_err(&atomisp_dev, "flash timeout configure failed\n");
+		return -EINVAL;
+	}
+
 	/* switch flash into flash mode */
 	ctrl.id = V4L2_CID_FLASH_MODE;
 	ctrl.value = ATOMISP_FLASH_MODE_FLASH;
 
 	if (v4l2_subdev_call(isp->flash, core, s_ctrl, &ctrl)) {
-		v4l2_err(&atomisp_dev, "flash failed\n");
-		return -EINVAL;
-	}
-
-	/* make sure the timeout is set */
-	ctrl.id = V4L2_CID_FLASH_TIMEOUT;
-	ctrl.value = FLASH_TIMEOUT;
-
-	if (v4l2_subdev_call(isp->flash, core, s_ctrl, &ctrl)) {
-		v4l2_err(&atomisp_dev, "flash failed\n");
+		v4l2_err(&atomisp_dev, "flash mode switch failed\n");
 		return -EINVAL;
 	}
 
@@ -559,10 +566,52 @@ static int atomisp_start_flash(struct atomisp_device *isp)
 	ctrl.value = 1;
 	/* for now we treat it as on/off */
 	if (v4l2_subdev_call(isp->flash, core, s_ctrl, &ctrl)) {
-		v4l2_err(&atomisp_dev, "flash failed\n");
+		v4l2_err(&atomisp_dev, "flash strobe on failed\n");
 		return -EINVAL;
 	}
 	return 0;
+}
+
+#define DEFAULT_ISP_TIMEOUT	1
+/*
+ * this function calculate isp timeout threshold according to sensor's fps
+ *
+ * this is the algorithm:
+ * 1: if sensor's fps > 2, timeout threshold is 1s
+ * 2: if sensor's  1 < fps <= 2. timeout threshold is 2s
+ * 3: if sensor's fps <= 1, timeout threshold is 1 + 1/fps
+ *
+ * if no fps can be acquired from sensor, just use the default ISP timeout
+ * value
+ */
+static unsigned int atomisp_update_timeout_val(struct atomisp_device *isp)
+{
+	struct v4l2_subdev_frame_interval frame_interval;
+	unsigned short timeout_val, fps;
+
+	/* check sensor's actual fps */
+	if (v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
+		video, g_frame_interval, &frame_interval)) {
+		/*
+		 * senor does not support this interface
+		 * so no change to default timeout value
+		 */
+		timeout_val = 1;
+	} else {
+		fps = frame_interval.interval.denominator /
+		    frame_interval.interval.numerator;
+		if (fps > 2)
+			timeout_val = 1;
+		else if (fps > 1)
+			timeout_val = 2;
+		else { /* frame_rate must be lower than 1 */
+			fps = frame_interval.interval.numerator /
+			    frame_interval.interval.denominator;
+			timeout_val = 1 + fps;
+		}
+	}
+
+	return timeout_val;
 }
 
 void atomisp_work(struct work_struct *work)
@@ -571,7 +620,7 @@ void atomisp_work(struct work_struct *work)
 						  work);
 	struct videobuf_buffer *vb_preview = NULL;
 	struct videobuf_buffer *vb_capture = NULL;
-	int ret, timeout_cnt = 0;
+	int ret, timeout_cnt = 0, fps_time;
 	bool timeout_flag,
 	     flash_in_progress = false,
 	     flash_enabled = false;
@@ -652,17 +701,44 @@ void atomisp_work(struct work_struct *work)
 			/* wait for different binary to be processed */
 			time_left =
 			    wait_for_completion_timeout(&isp->wq_frame_complete,
-							1 * HZ);
+						DEFAULT_ISP_TIMEOUT * HZ);
 
 			if (time_left == 0) {
-				ret = atomisp_timeout_handler(isp,
+				/*
+				 * if the default timeout happens, we see
+				 * whether it is caused by sensor's output fps
+				 * is too low
+				 */
+				fps_time = atomisp_update_timeout_val(isp);
+				if (fps_time > DEFAULT_ISP_TIMEOUT) {
+					/*
+					 * sensor's fps is too low, so it is
+					 * probably not error timeout, we
+					 * need to wait more time
+					 */
+					time_left =
+					wait_for_completion_timeout(
+					&isp->wq_frame_complete,
+					(fps_time - DEFAULT_ISP_TIMEOUT) * HZ);
+
+					if (time_left == 0)
+						/* this is a real timeout now */
+						goto timeout_handle;
+				} else {
+					/*
+					 * sensor's fps is high enough, this
+					 * is a real timeout
+					 */
+timeout_handle:
+					ret = atomisp_timeout_handler(isp,
 							      timeout_cnt++);
-				if (ret) {
-					mutex_unlock(&isp->isp_lock);
-					goto error;
+					if (ret) {
+						mutex_unlock(&isp->isp_lock);
+						goto error;
+					}
+					timeout_flag = true;
+					break;
 				}
-				timeout_flag = true;
-				break;
 			}
 
 			INIT_COMPLETION(isp->acc_fw_complete);
@@ -703,25 +779,8 @@ void atomisp_work(struct work_struct *work)
 
 			/* proc interrupt */
 			INIT_COMPLETION(isp->wq_frame_complete);
-			if (isp->irq_infos &
-				SH_CSS_IRQ_INFO_START_NEXT_STAGE) {
+			if (isp->irq_infos & SH_CSS_IRQ_INFO_START_NEXT_STAGE)
 				sh_css_start_next_stage();
-
-				/* Getting 3A statistics if ready */
-				if (isp->isp3a_stat_ready) {
-					mutex_lock(&isp->isp3a_lock);
-					ret = sh_css_get_3a_statistics
-						(isp->params.s3a_output_buf);
-					mutex_unlock(&isp->isp3a_lock);
-
-					isp->isp3a_stat_ready = false;
-					if (ret != sh_css_success)
-						v4l2_err(&atomisp_dev,
-							"get 3a statistics"
-							" failed, not "
-							"enough memory.\n");
-				}
-			}
 		} while (!(isp->irq_infos & SH_CSS_IRQ_INFO_FRAME_DONE));
 
 		mutex_unlock(&isp->isp_lock);
@@ -947,7 +1006,7 @@ static u32 get_pixel_depth(u32 pixelformat)
 	}
 }
 
-static int is_pixelformat_raw(u32 pixelformat)
+int is_pixelformat_raw(u32 pixelformat)
 {
 	switch (pixelformat) {
 	case V4L2_PIX_FMT_SBGGR16:
@@ -1068,6 +1127,20 @@ bool atomisp_is_viewfinder_support(struct atomisp_device *isp)
  */
 
 /*
+ * Set ISP capture mode based on current settings
+ */
+static void atomisp_update_capture_mode(struct atomisp_device *isp)
+{
+	if (isp->params.low_light) {
+		sh_css_capture_set_mode(SH_CSS_CAPTURE_MODE_LOW_LIGHT);
+	} else if (isp->params.gdc_cac_en || isp->params.macc_en) {
+		sh_css_capture_set_mode(SH_CSS_CAPTURE_MODE_ADVANCED);
+	} else {
+		sh_css_capture_set_mode(SH_CSS_CAPTURE_MODE_PRIMARY);
+	}
+}
+
+/*
  * Function to enable/disable lens geometry distortion correction (GDC) and
  * chromatic aberration correction (CAC)
  */
@@ -1087,13 +1160,25 @@ int atomisp_gdc_cac(struct atomisp_device *isp, int flag, __s32 * value)
 			sh_css_morph_table_free(tab);
 			isp->inputs[isp->input_curr].morph_table = NULL;
 		}
-		sh_css_capture_set_mode(SH_CSS_CAPTURE_MODE_ADVANCED);
 	} else {
 		sh_css_set_morph_table(NULL);
-		if (!isp->params.macc_en)
-			sh_css_capture_set_mode(SH_CSS_CAPTURE_MODE_PRIMARY);
+	}
+	atomisp_update_capture_mode(isp);
+	return 0;
+}
+
+/*
+ * Function to enable/disable low light mode including ANR
+ */
+int atomisp_low_light(struct atomisp_device *isp, int flag, __s32 * value)
+{
+	if (flag == 0) {
+		*value = isp->params.low_light;
+		return 0;
 	}
 
+	isp->params.low_light = (*value != 0);
+	atomisp_update_capture_mode(isp);
 	return 0;
 }
 
@@ -1824,10 +1909,13 @@ int atomisp_3a_stat(struct atomisp_device *isp, int flag,
 		   sizeof(isp->params.curr_grid_info)) != 0)
 		return -EAGAIN;
 
-	mutex_lock(&isp->isp3a_lock);
+	ret = sh_css_get_3a_statistics(isp->params.s3a_output_buf);
+	if (ret) {
+		v4l2_err(&atomisp_dev, "failed to get 3A statistics\n");
+		return -EFAULT;
+	}
 	ret = copy_to_user(arg->data, isp->params.s3a_output_buf,
 			   isp->params.s3a_output_bytes);
-	mutex_unlock(&isp->isp3a_lock);
 	if (ret) {
 		v4l2_err(&atomisp_dev,
 			    "copy to user failed: copied %lu bytes\n", ret);
@@ -1942,8 +2030,6 @@ int atomisp_color_effect(struct atomisp_device *isp, int flag, __s32 *effect)
 		macc_table = isp->params.default_macc_table;
 		ctc_table  = isp->params.default_ctc_table;
 		isp->params.macc_en = false;
-		if (!isp->params.gdc_cac_en)
-			sh_css_capture_set_mode(SH_CSS_CAPTURE_MODE_PRIMARY);
 		break;
 	case V4L2_COLORFX_SEPIA:
 		cc_config = &sepia_cc_config;
@@ -1957,27 +2043,22 @@ int atomisp_color_effect(struct atomisp_device *isp, int flag, __s32 *effect)
 	case V4L2_COLORFX_SKY_BLUE:
 		macc_table = &blue_macc_table;
 		isp->params.macc_en = true;
-		sh_css_capture_set_mode(SH_CSS_CAPTURE_MODE_ADVANCED);
 		break;
 	case V4L2_COLORFX_GRASS_GREEN:
 		macc_table = &green_macc_table;
 		isp->params.macc_en = true;
-		sh_css_capture_set_mode(SH_CSS_CAPTURE_MODE_ADVANCED);
 		break;
 	case V4L2_COLORFX_SKIN_WHITEN_LOW:
 		macc_table = &skin_low_macc_table;
 		isp->params.macc_en = true;
-		sh_css_capture_set_mode(SH_CSS_CAPTURE_MODE_ADVANCED);
 		break;
 	case V4L2_COLORFX_SKIN_WHITEN:
 		macc_table = &skin_medium_macc_table;
 		isp->params.macc_en = true;
-		sh_css_capture_set_mode(SH_CSS_CAPTURE_MODE_ADVANCED);
 		break;
 	case V4L2_COLORFX_SKIN_WHITEN_HIGH:
 		macc_table = &skin_high_macc_table;
 		isp->params.macc_en = true;
-		sh_css_capture_set_mode(SH_CSS_CAPTURE_MODE_ADVANCED);
 		break;
 	case V4L2_COLORFX_VIVID:
 		ctc_table = &vivid_ctc_table;
@@ -1985,6 +2066,7 @@ int atomisp_color_effect(struct atomisp_device *isp, int flag, __s32 *effect)
 	default:
 		return -EINVAL;
 	}
+	atomisp_update_capture_mode(isp);
 
 	if (cc_config)
 		sh_css_set_cc_config(cc_config);

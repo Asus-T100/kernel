@@ -1402,7 +1402,8 @@ sh_css_terminate_firmware(void)
 	/* reload SP firmmware */
 	my_css.sp_bin_addr = sh_css_sp_load_program(&sh_css_sp_fw,
 						    SP_PROG_NAME,
-						    my_css.sp_bin_addr);
+						    my_css.sp_bin_addr, true);
+#if 0
 	/* restore SP state */
 	if (my_css.two_ppc) {
 		sh_css_sp_set_if_configs(&my_css.curr_if_a_config,
@@ -1410,6 +1411,7 @@ sh_css_terminate_firmware(void)
 	} else {
 		sh_css_sp_set_if_configs(&my_css.curr_if_a_config, NULL);
 	}
+#endif
 }
 
 static enum sh_css_err
@@ -1656,7 +1658,7 @@ sh_css_init(void *(*malloc_func) (size_t size),
 	sh_css_init_binary_infos();
 	my_css.sp_bin_addr = sh_css_sp_load_program(&sh_css_sp_fw,
 						    SP_PROG_NAME,
-						    my_css.sp_bin_addr);
+						    my_css.sp_bin_addr, true);
 	if (!my_css.sp_bin_addr)
 		return sh_css_err_cannot_allocate_memory;
 	sh_css_pipeline_init(&my_css.preview_settings.pipeline);
@@ -1871,8 +1873,10 @@ sh_css_translate_interrupt(unsigned int *irq_infos)
 				infos |= SH_CSS_IRQ_INFO_FRAME_DONE;
 			else
 				infos |= SH_CSS_IRQ_INFO_START_NEXT_STAGE;
-			if (sh_css_statistics_ready())
+			if (sh_css_statistics_ready()) {
 				infos |= SH_CSS_IRQ_INFO_STATISTICS_READY;
+				sh_css_params_swap_3a_buffers();
+			}
 			if (acceleration_done())
 				infos |= SH_CSS_IRQ_INFO_FW_ACC_DONE;
 			my_css.state = sh_css_state_idle;
@@ -2967,6 +2971,16 @@ sh_css_preview_get_grid_info(struct sh_css_grid_info *info)
 	return err;
 }
 
+bool
+sh_css_preview_next_stage_needs_alloc(void)
+{
+	return my_css.invalidate ||
+	       my_css.preview_settings.pipeline.reload ||
+	       my_css.preview_settings.zoom_changed ||
+	       my_css.preview_settings.preview_binary.info == NULL ||
+	       my_css.preview_settings.shading_table == NULL;
+}
+
 static void
 init_video_descr(struct sh_css_frame_info *in_info,
 		 struct sh_css_frame_info *vf_info)
@@ -3315,6 +3329,16 @@ sh_css_video_get_dis_envelope(unsigned int *width, unsigned int *height)
 {
 	*width = my_css.video_settings.dvs_envelope_width;
 	*height = my_css.video_settings.dvs_envelope_height;
+}
+
+bool
+sh_css_video_next_stage_needs_alloc(void)
+{
+	return my_css.invalidate ||
+	       my_css.video_settings.pipeline.reload ||
+	       my_css.video_settings.zoom_changed ||
+	       my_css.video_settings.video_binary.info == NULL ||
+	       my_css.video_settings.shading_table == NULL;
 }
 
 void
@@ -4211,6 +4235,24 @@ void
 sh_css_capture_enable_online(bool enable)
 {
 	my_css.capture_settings.online = enable;
+}
+
+bool
+sh_css_capture_next_stage_needs_alloc(void)
+{
+	struct sh_css_binary *main_binary;
+
+	main_binary = &my_css.capture_settings.primary_binary;
+	if (my_css.capture_settings.mode == SH_CSS_CAPTURE_MODE_RAW)
+		main_binary = &my_css.capture_settings.copy_binary;
+	else if (my_css.capture_settings.mode == SH_CSS_CAPTURE_MODE_ADVANCED)
+		main_binary = &my_css.capture_settings.pre_isp_binary;
+
+	return my_css.invalidate ||
+	       my_css.capture_settings.pipeline.reload ||
+	       my_css.capture_settings.zoom_changed ||
+	       main_binary->info == NULL ||
+	       my_css.capture_settings.shading_table == NULL;
 }
 
 enum sh_css_err

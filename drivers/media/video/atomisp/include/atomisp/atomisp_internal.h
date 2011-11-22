@@ -63,6 +63,10 @@
 #define ATOM_ISP_MAX_WIDTH	4352
 #define ATOM_ISP_MAX_HEIGHT	3264
 
+/* sub-QCIF resolution */
+#define ATOM_RESOLUTION_SUBQCIF_WIDTH	128
+#define ATOM_RESOLUTION_SUBQCIF_HEIGHT	96
+
 #define ATOM_ISP_MAX_WIDTH_TMP	1280
 #define ATOM_ISP_MAX_HEIGHT_TMP	720
 
@@ -87,6 +91,7 @@ struct atomisp_input_subdev {
 	struct v4l2_subdev *motor;
 	struct sh_css_morph_table *morph_table;
 	struct sh_css_shading_table *shading_table;
+	struct v4l2_frmsizeenum frame_size;
 };
 
 struct atomisp_hw_contex {
@@ -144,6 +149,7 @@ struct atomisp_css_params {
 	bool sc_en;
 	bool fpn_en;
 	bool xnr_en;
+	bool low_light;
 	int false_color;
 	unsigned int histogram_elenum;
 
@@ -244,9 +250,7 @@ struct atomisp_device {
 	uint32_t irq_infos;
 	struct mutex input_lock;
 	struct mutex isp_lock;
-	struct mutex isp3a_lock;
 	struct atomisp_tvnorm *tvnorm;
-	bool isp3a_stat_ready;
 
 	struct atomisp_video_pipe_format *main_format;
 	struct atomisp_video_pipe_format *vf_format;

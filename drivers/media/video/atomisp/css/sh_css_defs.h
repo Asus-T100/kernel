@@ -46,8 +46,12 @@
 /* Max value of bayer data (unsigned 13bit in ISP) */
 #define SH_CSS_BAYER_MAXVAL               ((1U << SH_CSS_BAYER_BITS) - 1)
 
+/* Bits of yuv in ISP */
+#define SH_CSS_ISP_YUV_BITS               8
+
 #define SH_CSS_DP_GAIN_SHIFT              5
 #define SH_CSS_BNR_GAIN_SHIFT             13
+#define SH_CSS_YNR_GAIN_SHIFT             13
 #define SH_CSS_AE_YCOEF_SHIFT             13
 #define SH_CSS_AF_FIR_SHIFT               13
 #define SH_CSS_YEE_DETAIL_GAIN_SHIFT      8  /* [u5.8] */
@@ -235,19 +239,29 @@
 	((1<<_ISP_LOG_VECTOR_STEP(mode)) * ISP_VEC_NELEMS)
 #define __ISP_CHUNK_STRIDE_DDR(c_subsampling, num_chunks) \
 	((c_subsampling) * (num_chunks) * HIVE_ISP_DDR_WORD_BYTES)
+#if 0
+#define __ISP_RGBA_WIDTH(rgba, num_chunks) \
+	((rgba) ? (num_chunks)*4*2*ISP_VEC_NELEMS : 0)
+#else
+#define __ISP_RGBA_WIDTH(rgba, num_chunks) \
+	(0)
+#endif
 #define __ISP_INTERNAL_WIDTH(out_width, \
 			     dvs_env_width, \
 			     left_crop, \
 			     mode, \
 			     c_subsampling, \
 			     num_chunks, \
-			     pipelining) \
-	CEIL_MUL(CEIL_MUL(MAX(__ISP_PADDED_OUTPUT_WIDTH(out_width, \
-							dvs_env_width, \
-							left_crop), \
-			      __ISP_MIN_INTERNAL_WIDTH(num_chunks, \
-						       pipelining, \
-						       mode) \
+			     pipelining, \
+			     rgba) \
+	CEIL_MUL(CEIL_MUL(MAX(MAX(__ISP_PADDED_OUTPUT_WIDTH(out_width, \
+							    dvs_env_width, \
+							    left_crop), \
+				  __ISP_MIN_INTERNAL_WIDTH(num_chunks, \
+							   pipelining, \
+							   mode) \
+				 ), \
+			      __ISP_RGBA_WIDTH(rgba, num_chunks) \
 			     ), \
 			  __ISP_CHUNK_STRIDE_ISP(mode) \
 			 ), \
@@ -321,6 +335,22 @@
 		SH_CSS_FRAME_FORMAT_RGB565, \
 		SH_CSS_FRAME_FORMAT_PLANAR_RGB888, \
 		SH_CSS_FRAME_FORMAT_RGBA888 \
+	}
+
+#define SH_CSS_YUV422_OUTPUT_FORMATS \
+	{ \
+		SH_CSS_FRAME_FORMAT_NV12, \
+		SH_CSS_FRAME_FORMAT_NV16, \
+		SH_CSS_FRAME_FORMAT_NV21, \
+		SH_CSS_FRAME_FORMAT_NV61, \
+		SH_CSS_FRAME_FORMAT_YV12, \
+		SH_CSS_FRAME_FORMAT_YV16, \
+		SH_CSS_FRAME_FORMAT_YUV420, \
+		SH_CSS_FRAME_FORMAT_YUV420_16, \
+		SH_CSS_FRAME_FORMAT_YUV422, \
+		SH_CSS_FRAME_FORMAT_YUV422_16, \
+		SH_CSS_FRAME_FORMAT_UYVY, \
+		SH_CSS_FRAME_FORMAT_YUYV \
 	}
 
 #define SH_CSS_PRE_ISP_OUTPUT_FORMATS \

@@ -35,6 +35,8 @@ int atomisp_streamoff(struct file *file, void *fh,
 int atomisp_reqbufs(struct file *file, void *fh,
 			struct v4l2_requestbuffers *req);
 
+int is_pixelformat_raw(u32 pixelformat);
+
 extern const struct v4l2_file_operations atomisp_fops;
 
 extern const struct v4l2_file_operations atomisp_file_fops;

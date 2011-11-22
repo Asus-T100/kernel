@@ -57,11 +57,17 @@ upload_frame(struct sh_css_frame *sp_address, struct sh_css_frame *frame)
 }
 
 static void
-upload_int(unsigned *sp_address, unsigned *val)
+upload_var(void *sp_address, void *val, size_t size)
 {
 	if (!sp_address)
 		return;
-	sh_css_sp_dmem_store((unsigned int)sp_address, val, sizeof(*val));
+	sh_css_sp_dmem_store((unsigned int)sp_address, val, size);
+}
+
+static void
+upload_int(unsigned *sp_address, unsigned *val)
+{
+	upload_var(sp_address, val, sizeof(unsigned));
 }
 
 /* Load the firmware into xmem */
@@ -121,7 +127,7 @@ sh_css_argument_type(struct sh_css_acc_fw *firmware, unsigned num)
 /* Set host private data for argument <num> */
 enum sh_css_err
 sh_css_argument_set_host(struct sh_css_acc_fw *firmware,
-			unsigned num, void *host)
+			 unsigned num, void *host)
 {
 	if (!firmware->header.sp_args)
 		return sh_css_err_invalid_arguments;
@@ -172,7 +178,7 @@ copy_sp_arguments(struct sh_css_acc_fw *firmware, bool to_sp)
 			size = sizeof(struct sh_css_frame);
 			break;
 		}
-		if (copy) {
+		if (copy && value) {
 			if (to_sp)
 				sh_css_sp_dmem_store(sp_address, value, size);
 			else
@@ -181,6 +187,26 @@ copy_sp_arguments(struct sh_css_acc_fw *firmware, bool to_sp)
 		sp_address += size;
 	}
 }
+
+#if 0
+static struct sh_css_acc_fw *current_firmware;
+
+static void
+init_dmem(struct sh_css_sp_init_dmem_cfg *init_dmem_cfg)
+{
+#ifdef C_RUN
+	(void) init_dmem_cfg;
+#else
+	struct sh_css_acc_fw_hdr *header
+		= (struct sh_css_acc_fw_hdr *)&current_firmware->header;
+	upload_var(header->sp.fw.dmem_init_data,
+			init_dmem_cfg, sizeof(*init_dmem_cfg));
+
+	_hrt_cell_start(SP, header->sp.dmem_init);
+	sh_css_hrt_sp_wait();
+#endif
+}
+#endif
 
 /* Start the sp, which will start the isp.
 */
@@ -208,7 +234,8 @@ sh_css_acc_start(struct sh_css_acc_fw *firmware,
 
 	sp_program = sh_css_sp_load_program(sp_fw,
 					    SH_CSS_ACC_PROG_NAME(firmware),
-					    (void *)firmware->header.sp_code);
+					    (void *)firmware->header.sp_code,
+					    false);
 	if (!sp_program)
 		return sh_css_err_cannot_allocate_memory;
 	firmware->header.sp_code = sp_program;
@@ -234,6 +261,7 @@ sh_css_acc_start(struct sh_css_acc_fw *firmware,
 
 	/* Start the firmware on the sp, which will start the isp */
 #ifdef C_RUN
+	/* No need to run the dmem_init in crun */
 	sh_css_sp_do_invalidate_mmu();
 	csim_processor_set_crun_func(SP, header->sp.entry);
 	hrt_ctl_run(SP, 1);
@@ -268,4 +296,3 @@ void sh_css_acc_abort(struct sh_css_acc_fw *firmware)
 	unsigned int t = true;
 	upload_int(firmware->header.sp.css_abort, &t);
 }
-

@@ -440,6 +440,12 @@ static int atomisp_subdev_probe(struct atomisp_device *isp)
 			isp->inputs[isp->input_cnt].camera = subdev;
 			isp->inputs[isp->input_cnt].shading_table = NULL;
 			isp->inputs[isp->input_cnt].morph_table = NULL;
+			/*
+			 * initialize the subdev frame size, then next we can
+			 * judge whether frame_size store effective value via
+			 * pixel_format.
+			 */
+			isp->inputs[isp->input_cnt].frame_size.pixel_format = 0;
 			isp->input_cnt++;
 			break;
 		case CAMERA_MOTOR:
@@ -822,9 +828,7 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 	mutex_init(&isp->input_lock);
 	/* isp_lock is to protect race access of css functions */
 	mutex_init(&isp->isp_lock);
-	mutex_init(&isp->isp3a_lock);
 	isp->sw_contex.updating_uptr = false;
-	isp->isp3a_stat_ready = false;
 
 	pci_set_drvdata(dev, isp);
 

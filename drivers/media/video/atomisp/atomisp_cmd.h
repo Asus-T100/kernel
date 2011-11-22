@@ -79,6 +79,11 @@ bool atomisp_is_viewfinder_support(struct atomisp_device *isp);
 int atomisp_gdc_cac(struct atomisp_device *isp, int flag, __s32 * value);
 
 /*
+ * Function to enable/disable low light mode (including ANR)
+ */
+int atomisp_low_light(struct atomisp_device *isp, int flag, __s32 * value);
+
+/*
  * Function to enable/disable extra nosie reduction (XNR) in low light
  * condition
  */

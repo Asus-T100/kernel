@@ -48,7 +48,7 @@ sh_css_argument_type(struct sh_css_acc_fw *firmware, unsigned int num);
 /* Set host private data for argument <num> */
 enum sh_css_err
 sh_css_argument_set_host(struct sh_css_acc_fw *firmware,
-			unsigned num, void *host);
+			 unsigned num, void *host);
 
 /* Get host private data for argument <num> */
 void *

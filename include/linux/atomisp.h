@@ -36,10 +36,10 @@
 
 /* Configuration used by Bayer noise reduction and YCC noise reduction */
 struct atomisp_nr_config {
-	/* [gain] Strength of noise reduction for both Bayer NR & YCC NR (Used
-	 * by Bayer NR and YCC NR).
-	 */
-	unsigned int gain;
+	/* [gain] Strength of noise reduction for Bayer NR (Used by Bayer NR) */
+	unsigned int bnr_gain;
+	/* [gain] Strength of noise reduction for YCC NR (Used by YCC NR) */
+	unsigned int ynr_gain;
 	/* [intensity] Sensitivity of Edge (Used by Bayer NR) */
 	unsigned int direction;
 	/* [intensity] coring threshold for Cb (Used by YCC NR) */
@@ -768,6 +768,8 @@ struct v4l2_private_int_data {
 	(V4L2_CID_PRIVATE_BASE + 4)
 #define V4L2_CID_ATOMISP_SHADING_CORRECTION \
 	(V4L2_CID_PRIVATE_BASE + 5)
+#define V4L2_CID_ATOMISP_LOW_LIGHT \
+	(V4L2_CID_PRIVATE_BASE + 6)
 
 /* Camera class:
  * Exposure, Flash and privacy (indicator) light controls, to be upstreamed */

@@ -25,41 +25,18 @@
 #define _SH_CSS_SP_H_
 
 #include "sh_css_binary.h"
+#include "sh_css_internal.h"
 
-struct sh_css_sp_debug_state {
-	unsigned int error;
-	unsigned int debug[16];
+struct sh_css_sp_frame_data {
+	const char *sp_group_addr;	/* Address of sp_group in ddr */
+	unsigned read_sp_group_from_ddr;
+	const char *bin_copy_out;
+	unsigned bin_copy_bytes_available;
 };
 
-struct sh_css_if_config {
-	unsigned int start_line;
-	unsigned int start_column;
-	unsigned int left_padding;
-	unsigned int cropped_height;
-	unsigned int cropped_width;
-	unsigned int deinterleaving;
-	unsigned int buf_vecs;
-	unsigned int buf_start_index;
-	unsigned int buf_increment;
-	unsigned int buf_eol_offset;
-	unsigned int yuv420;
-	unsigned int block_no_reqs;
-};
-
-/* Structure to encapsulate required arguments for
- * initialization of SP DMEM using the SP itself
- */
-struct sh_css_sp_init_dmem_cfg {
-	void         *ddr_data_addr;  /* data segment address in ddr  */
-	void         *dmem_data_addr; /* data segment address in dmem */
-	unsigned int  data_size;      /* data segment size            */
-	void         *dmem_bss_addr;  /* bss segment address in dmem  */
-	unsigned int  bss_size;       /* bss segment size             */
-};
-
-/* Function to initialize the bss section of the binary */
+/* Function to initialize the data and bss section descr of the binary */
 void
-sh_css_sp_start_init_dmem(struct sh_css_sp_init_dmem_cfg *init_dmem_cfg);
+sh_css_sp_store_init_dmem(const struct sh_css_sp_fw *fw);
 
 void
 sh_css_sp_start_histogram(struct sh_css_histogram *histogram,
@@ -122,7 +99,7 @@ void
 sh_css_sp_configure_prbs(int seed);
 
 void
-sh_css_store_sp_group_pointer_to_sp(void);
+sh_css_store_sp_per_frame_data(void);
 
 extern struct sh_css_sp_group sh_css_sp_group;
 #endif /* _SH_CSS_SP_H_ */

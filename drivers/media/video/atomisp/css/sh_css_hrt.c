@@ -182,12 +182,6 @@ sh_css_hrt_sp_current_msink(void)
 }
 
 void
-sh_css_hrt_sp_start_init_dmem(void)
-{
-	sh_css_sp_start_function(sp_init_dmem);
-}
-
-void
 sh_css_hrt_sp_start_histogram(void)
 {
 	sh_css_sp_start_function(sp_gen_histogram);

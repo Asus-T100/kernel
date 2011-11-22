@@ -75,7 +75,7 @@ sh_css_sp_start(unsigned int start_address);
 
 void *
 sh_css_sp_load_program(const struct sh_css_sp_fw *fw, const char *sp_prog,
-		       void *code_addr);
+		       void *code_addr, bool standard);
 
 void
 sh_css_sp_activate_program(const struct sh_css_sp_fw *fw,

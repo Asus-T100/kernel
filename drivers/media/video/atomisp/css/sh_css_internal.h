@@ -26,7 +26,6 @@
 
 #include "sh_css_types.h"
 #include "sh_css_binary.h"
-#include "sh_css_sp.h"
 
 #define sh_css_print(fmt, s...) \
 	do { \
@@ -165,6 +164,27 @@ struct sh_css_ddr_address_map {
 	void *tetra_batr_y;
 };
 
+struct sh_css_sp_debug_state {
+	unsigned int error;
+	unsigned int debug[16];
+};
+
+/* Input formatter descriptor */
+struct sh_css_if_config {
+	unsigned int start_line;
+	unsigned int start_column;
+	unsigned int left_padding;
+	unsigned int cropped_height;
+	unsigned int cropped_width;
+	unsigned int deinterleaving;
+	unsigned int buf_vecs;
+	unsigned int buf_start_index;
+	unsigned int buf_increment;
+	unsigned int buf_eol_offset;
+	unsigned int yuv420;
+	unsigned int block_no_reqs;
+};
+
 /* Group all host initialized SP variables into this struct. */
 struct sh_css_sp_group {
 	int				sp_isp_binary_id;
@@ -187,6 +207,7 @@ struct sh_css_sp_group {
 	unsigned int			sp_run_copy;
 	void				*xmem_bin_addr;
 	void				*xmem_map_addr;
+	char				*histo_addr;
 	unsigned			anr;
 	struct sh_css_frame		sp_in_frame;
 	struct sh_css_frame		sp_out_frame;
@@ -197,7 +218,58 @@ struct sh_css_sp_group {
 	struct sh_css_frame		sp_ref_out_frame;
 	struct sh_css_frame		sp_tnr_out_frame;
 	struct sh_css_frame_info	sp_internal_frame_info;
-} ;
+	struct {
+		char			*out;
+		unsigned int		bytes_available;
+	} bin_copy;
+	struct {
+		char			*out;
+		unsigned int		height;
+		unsigned int		width;
+		unsigned int		padded_width;
+		unsigned int		max_input_width;
+		unsigned int		raw_bit_depth;
+	} raw_copy;
+	struct {
+		unsigned int		busy_wait;
+	} dma_proxy;
+	struct sh_css_if_config		if_config_a;
+	struct sh_css_if_config		if_config_b;
+	struct {
+		unsigned int		width;
+		unsigned int		height;
+		unsigned int		hblank_cycles;
+		unsigned int		vblank_cycles;
+	} sync_gen;
+	struct {
+		unsigned int		x_mask;
+		unsigned int		y_mask;
+		unsigned int		x_delta;
+		unsigned int		y_delta;
+		unsigned int		xy_mask;
+	} tpg;
+	struct {
+		unsigned int		seed;
+	} prbs;
+	struct {
+		unsigned int		no_side_band;
+		unsigned int		fmt_type;
+		unsigned int		ch_id;
+		enum sh_css_input_mode	input_mode;
+	} input_circuit;
+	struct sh_css_sp_overlay	overlay;
+};
+
+/* Data in SP dmem that is set from the host every frame. */
+
+struct sh_css_sp_per_frame_data {
+	 /* ddr address of sp_group */
+	 struct sh_css_sp_group *sp_group_addr;
+	 unsigned read_sp_group_from_ddr;
+	 unsigned if_a_changed;
+	 unsigned if_b_changed;
+	 unsigned program_input_circuit;
+};
 
 extern struct sh_css_sp_group sp_group;
 extern struct sh_css_frame sp_in_frame;
@@ -213,6 +285,12 @@ sh_css_params_write_to_ddr(const struct sh_css_binary *binary_info);
 
 void
 sh_css_params_set_current_binary(const struct sh_css_binary *binary);
+
+/* swap 3a double buffers. This should be called when handling an
+   interrupt that indicates that statistics are ready.
+   This also swaps the DIS buffers. */
+void
+sh_css_params_swap_3a_buffers(void);
 
 enum sh_css_err
 sh_css_params_init(void);

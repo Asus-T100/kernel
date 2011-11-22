@@ -169,6 +169,15 @@ static struct v4l2_queryctrl ci_v4l2_controls[] = {
 		.maximum = 10,
 		.step = 1,
 		.default_value = 1,
+	},
+	{
+		.id = V4L2_CID_ATOMISP_LOW_LIGHT,
+		.type = V4L2_CTRL_TYPE_BOOLEAN,
+		.name = "Low light mode",
+		.minimum = 0,
+		.maximum = 1,
+		.step = 1,
+		.default_value = 1,
 	}
 };
 static const u32 ctrls_num = ARRAY_SIZE(ci_v4l2_controls);
@@ -509,18 +518,117 @@ static int atomisp_s_fmt_file(struct file *file, void *fh,
  * device supports for the given pixel format.
  * discrete means the applicatons should increase the index until EINVAL is
  * returned.
+ * stepwise means the applications only need to set pixel_format, then
+ * driver will return maximum value and minimum value of frame size supported
+ * and step size.
  */
 static int atomisp_enum_framesizes(struct file *file, void *fh,
 	struct v4l2_frmsizeenum *arg)
 {
 	struct video_device *vdev = video_devdata(file);
 	struct atomisp_device *isp = video_get_drvdata(vdev);
+	struct v4l2_mbus_framefmt snr_mbus_fmt;
+	struct v4l2_streamparm sensor_parm;
+	struct atomisp_input_subdev *input;
+	unsigned int padding_w, padding_h;
+	int max_width, max_height, min_width, min_height;
+	int ret;
+	bool same_type;
+	u32 pixel_format;
+
+	if (arg->index != 0)
+		return -EINVAL;
 
 	if (!atomisp_is_pixelformat_supported(arg->pixel_format))
 		return -EINVAL;
 
-	return v4l2_subdev_call(isp->inputs[isp->input_curr].camera, video,
-				enum_framesizes, arg);
+	input = &isp->inputs[isp->input_curr];
+
+	if (input->type != SOC_CAMERA && input->type != RAW_CAMERA)
+		return -EINVAL;
+
+	pixel_format = input->frame_size.pixel_format;
+	/*
+	 * only judge if the pixel format and previous pixel format are
+	 * the same type
+	 */
+	same_type = is_pixelformat_raw(pixel_format) ==
+					is_pixelformat_raw(arg->pixel_format);
+
+	/*
+	 * when frame size is requested previously, we can get the value
+	 * rapidly from cache.
+	 */
+	if (input->frame_size.pixel_format != 0 &&
+		same_type) {
+		memcpy(arg, &input->frame_size, sizeof(input->frame_size));
+
+		return 0;
+	}
+
+	/* get padding value via subdev type and requested isp pixelformat */
+	if (input->type == SOC_CAMERA || (input->type == RAW_CAMERA &&
+				is_pixelformat_raw(arg->pixel_format))) {
+		padding_h = 0;
+		padding_w = 0;
+	} else {
+		padding_h = pad_h;
+		padding_w = pad_w;
+	}
+
+	/* setting run mode to the sensor */
+	sensor_parm.parm.capture.capturemode = CI_MODE_STILL_CAPTURE;
+	v4l2_subdev_call(input->camera, video, s_parm, &sensor_parm);
+
+	/* get the sensor max resolution supported */
+	snr_mbus_fmt.height = ATOM_ISP_MAX_HEIGHT;
+	snr_mbus_fmt.width = ATOM_ISP_MAX_WIDTH;
+
+	ret = v4l2_subdev_call(input->camera, video, try_mbus_fmt,
+							&snr_mbus_fmt);
+	if (ret < 0)
+		return ret;
+
+	max_width = snr_mbus_fmt.width - padding_w;
+	max_height = snr_mbus_fmt.height - padding_h;
+
+	/* app vs isp */
+	max_width = max_width - max_width % ATOM_ISP_STEP_WIDTH;
+	max_height = max_height - max_height % ATOM_ISP_STEP_HEIGHT;
+
+	max_width = clamp(max_width, (u32)ATOM_ISP_MIN_WIDTH,
+					(u32)ATOM_ISP_MAX_WIDTH);
+	max_height = clamp(max_height, (u32)ATOM_ISP_MIN_HEIGHT,
+					(u32)ATOM_ISP_MAX_HEIGHT);
+
+	/* set the supported minimum resolution to sub-QCIF resolution */
+	min_width = ATOM_RESOLUTION_SUBQCIF_WIDTH;
+	min_height = ATOM_RESOLUTION_SUBQCIF_HEIGHT;
+
+	/* app vs isp */
+	min_width = min_width - min_width % ATOM_ISP_STEP_WIDTH;
+	min_height = min_height - min_height % ATOM_ISP_STEP_HEIGHT;
+
+	min_width = clamp(min_width, (u32)ATOM_ISP_MIN_WIDTH,
+					(u32)ATOM_ISP_MAX_WIDTH);
+	min_height = clamp(min_height, (u32)ATOM_ISP_MIN_HEIGHT,
+					(u32)ATOM_ISP_MAX_HEIGHT);
+
+	arg->stepwise.max_width = max_width;
+	arg->stepwise.max_height = max_height;
+	arg->stepwise.min_width = min_width;
+	arg->stepwise.min_height = min_height;
+	arg->stepwise.step_width = ATOM_ISP_STEP_WIDTH;
+	arg->stepwise.step_height = ATOM_ISP_STEP_HEIGHT;
+	arg->type = V4L2_FRMSIZE_TYPE_STEPWISE;
+
+	/*
+	 * store frame size in particular struct of every subdev,
+	 * when enumerate frame size next,we can get it rapidly.
+	 */
+	memcpy(&input->frame_size, arg, sizeof(*arg));
+
+	return 0;
 }
 
 /*
@@ -1123,6 +1231,9 @@ static int atomisp_g_ctrl(struct file *file, void *fh,
 	case V4L2_CID_ATOMISP_SHADING_CORRECTION:
 		ret = atomisp_shading_correction(isp, 0, &control->value);
 		break;
+	case V4L2_CID_ATOMISP_LOW_LIGHT:
+		ret = atomisp_low_light(isp, 0, &control->value);
+		break;
 	default:
 		ret = -EINVAL;
 		break;
@@ -1188,6 +1299,9 @@ static int atomisp_s_ctrl(struct file *file, void *fh,
 		break;
 	case V4L2_CID_REQUEST_FLASH:
 		ret = atomisp_flash_enable(isp, control->value);
+		break;
+	case V4L2_CID_ATOMISP_LOW_LIGHT:
+		ret = atomisp_low_light(isp, 1, &control->value);
 		break;
 	default:
 		ret = -EINVAL;

@@ -120,6 +120,19 @@ static void init_metrics(struct sh_css_binary_metrics *metrics,
 	binary->output_num_chunks       = prefix ## OUTPUT_NUM_CHUNKS; \
 }
 
+static bool
+supports_output_format(const struct sh_css_binary_info *info,
+		       enum sh_css_frame_format format)
+{
+	int i;
+
+	for (i = 0; i < info->num_output_formats; i++) {
+		if (info->output_formats[i] == format)
+			return true;
+	}
+	return false;
+}
+
 static enum sh_css_err
 init_binary_info(struct sh_css_binary_info *info, bool *binary_found)
 {
@@ -207,7 +220,9 @@ init_binary_info(struct sh_css_binary_info *info, bool *binary_found)
 				     info->mode,
 				     info->c_subsampling,
 				     info->output_num_chunks,
-				     info->pipelining);
+				     info->pipelining,
+				     supports_output_format(info,
+				       SH_CSS_FRAME_FORMAT_RGBA888));
 	info->max_input_width = _ISP_MAX_INPUT_WIDTH(max_internal_width,
 						     info->enable_ds);
 	info->xmem_addr = NULL;
@@ -256,19 +271,6 @@ sh_css_binary_uninit(void)
 		binary_infos[i] = NULL;
 	}
 	return sh_css_success;
-}
-
-static bool
-supports_output_format(const struct sh_css_binary_info *info,
-		       enum sh_css_frame_format format)
-{
-	int i;
-
-	for (i = 0; i < info->num_output_formats; i++) {
-		if (info->output_formats[i] == format)
-			return true;
-	}
-	return false;
 }
 
 static int
@@ -345,7 +347,9 @@ fill_binary_info(const struct sh_css_binary_info *info,
 		__ISP_INTERNAL_WIDTH(isp_output_width, dvs_env_width,
 				     info->left_cropping, info->mode,
 				     info->c_subsampling,
-				     info->output_num_chunks, info->pipelining);
+				     info->output_num_chunks, info->pipelining,
+				     out_info->format ==
+				       SH_CSS_FRAME_FORMAT_RGBA888);
 	isp_internal_height =
 		__ISP_INTERNAL_HEIGHT(isp_output_height, info->top_cropping,
 				      dvs_env_height);

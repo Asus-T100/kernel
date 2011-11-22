@@ -54,7 +54,7 @@ sh_css_sp_start(unsigned int start_address)
 
 void *
 sh_css_sp_load_program(const struct sh_css_sp_fw *fw, const char *sp_prog,
-		       void *code_addr)
+		       void *code_addr, bool standard)
 {
 	if (!code_addr) {
 		/* store code (text section) to DDR */
@@ -63,6 +63,10 @@ sh_css_sp_load_program(const struct sh_css_sp_fw *fw, const char *sp_prog,
 			return NULL;
 		hrt_isp_css_mm_store(code_addr, fw->text, fw->text_size);
 	}
+	if (standard) {
+		struct sh_css_sp_fw *f = (struct sh_css_sp_fw *)fw;
+		f->dmem_init_data = (void *)HIVE_ADDR_sp_init_dmem_data;
+	}
 
 	/* Set the correct start address for the SP program */
 	sh_css_sp_activate_program(fw, code_addr, sp_prog);
@@ -70,13 +74,11 @@ sh_css_sp_load_program(const struct sh_css_sp_fw *fw, const char *sp_prog,
 	return code_addr;
 }
 
-	void
+void
 sh_css_sp_activate_program(const struct sh_css_sp_fw *fw,
 				void *code_addr,
 				const char *sp_prog)
 {
-	struct sh_css_sp_init_dmem_cfg init_dmem_cfg;
-	void *data_addr;
 	(void)sp_prog; /* not used on hardware, only for simulation */
 
 	/* now we program the base address into the icache and
@@ -85,21 +87,8 @@ sh_css_sp_activate_program(const struct sh_css_sp_fw *fw,
 	sh_css_sp_ctrl_store(SP_ICACHE_ADDR_REG, (unsigned long)code_addr);
 	sh_css_sp_ctrl_set_bits(SP_ICACHE_INV_REG, 1UL<<SP_ICACHE_INV_BIT);
 
-	/* store data section to DDR */
-	data_addr = hrt_isp_css_mm_alloc(fw->data_size);
-	hrt_isp_css_mm_store(data_addr, fw->data, fw->data_size);
-
-	/* Configure the data structure to initialize dmem */
-	init_dmem_cfg.ddr_data_addr  = data_addr;
-	init_dmem_cfg.dmem_data_addr = (void *) fw->data_target;
-	init_dmem_cfg.data_size      = fw->data_size;
-	init_dmem_cfg.dmem_bss_addr  = (void *) fw->bss_target;
-	init_dmem_cfg.bss_size       = fw->bss_size;
-
-	/* Start function on the SP to initialize the SP DMEM */
-	sh_css_sp_start_init_dmem(&init_dmem_cfg);
-
-	hrt_isp_css_mm_free(data_addr);
+	/* Set descr in the SP to initialize the SP DMEM */
+	sh_css_sp_store_init_dmem(fw);
 }
 
 
