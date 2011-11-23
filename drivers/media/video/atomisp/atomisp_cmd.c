@@ -3551,6 +3551,9 @@ atomisp_acc_fw_alloc(struct atomisp_device *isp,
 	int ret;
 	int i;
 
+	if ((user_fw->data == NULL) || (user_fw->size == 0))
+		return ERR_PTR(-EINVAL);
+
 	/* REVISIT: does size need to be multiple of page size? */
 	fw = kzalloc(user_fw->size, GFP_KERNEL);
 
