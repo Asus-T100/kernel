@@ -18,9 +18,20 @@
 
 #include "psb_drv.h"
 #include "services_headers.h"
+#include "bufferclass_video.h"
+
+int BCGetBuffer(int devId, int bufferId, BC_VIDEO_BUFFER **bc_buffer);
+int BCGetDeviceBufferCount(int devId);
+int BCGetDeviceStride(int devId);
 
 extern int psb_get_meminfo_by_handle(IMG_HANDLE hKernelMemInfo,
 				PVRSRV_KERNEL_MEM_INFO **ppsKernelMemInfo);
 extern IMG_UINT32 psb_get_tgid(void);
 extern int psb_get_pages_by_mem_handle(IMG_HANDLE hOSMemHandle,
-					struct page ***pages);
+					u32 **pfn_list,
+					int page_count);
+extern int psb_get_bcd_pages(u32 device_id, u32 buffer_id, u32 **pfn_list,
+				int *pages);
+extern int psb_get_vaddr_pages(u32 vaddr, u32 size, u32 **pfn_list, int *pages);
+extern int psb_get_bcd_buffer_count(uint32_t bcd_id);
+extern int psb_get_bcd_buffer_stride(uint32_t bcd_id);

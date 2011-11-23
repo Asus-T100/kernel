@@ -898,3 +898,54 @@ BC_Camera_Bridge(BC_Video_ioctl_package * psBridge, unsigned long pAddr)
 	return 0;
 }
 EXPORT_SYMBOL_GPL(BC_Camera_Bridge);
+
+int BCGetBuffer(int devId, int bufferId, BC_VIDEO_BUFFER **bc_buffer)
+{
+	BC_VIDEO_DEVINFO *devInfo;
+	unsigned long bufferCount;
+	BC_VIDEO_BUFFER *buffer;
+
+	if (devId < 0 || devId > BC_CAMERA_DEVICEID || !bc_buffer)
+		return -EINVAL;
+
+	devInfo = GetAnchorPtr(devId);
+	if (!devInfo)
+		return -ENODEV;
+
+	bufferCount = devInfo->ulNumBuffers;
+	if (bufferId >= bufferCount)
+		return -EINVAL;
+
+	buffer = &devInfo->psSystemBuffer[bufferId];
+	*bc_buffer = buffer;
+	return 0;
+}
+EXPORT_SYMBOL_GPL(BCGetBuffer);
+
+int BCGetDeviceBufferCount(int devId)
+{
+	BC_VIDEO_DEVINFO *devInfo;
+
+	if (devId < 0 || devId > BC_CAMERA_DEVICEID)
+		return -EINVAL;
+
+	devInfo = GetAnchorPtr(devId);
+	if (!devInfo)
+		return -ENODEV;
+	return devInfo->ulNumBuffers;
+}
+EXPORT_SYMBOL_GPL(BCGetDeviceBufferCount);
+
+int BCGetDeviceStride(int devId)
+{
+	BC_VIDEO_DEVINFO *devInfo;
+
+	if (devId < 0 || devId > BC_CAMERA_DEVICEID)
+		return -EINVAL;
+
+	devInfo = GetAnchorPtr(devId);
+	if (!devInfo)
+		return -ENODEV;
+
+	return devInfo->sBufferInfo.ui32ByteStride;
+}

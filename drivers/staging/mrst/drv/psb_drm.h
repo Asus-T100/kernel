@@ -566,15 +566,15 @@ struct drm_psb_stolen_memory_arg {
 #define REGRWBITS_PIPEBSRC			(1 << 4)
 #define REGRWBITS_VTOTAL_A			(1 << 5)
 #define REGRWBITS_VTOTAL_B			(1 << 6)
-#define REGRWBITS_DSPACNTR	(1 << 8)
-#define REGRWBITS_DSPBCNTR	(1 << 9)
-#define REGRWBITS_DSPCCNTR	(1 << 10)
+#define REGRWBITS_DSPACNTR			(1 << 8)
+#define REGRWBITS_DSPBCNTR	                (1 << 9)
+#define REGRWBITS_DSPCCNTR			(1 << 10)
 #define REGRWBITS_SPRITE_UPDATE			(1 << 11)
 /*Overlay Register Bits*/
 #define OV_REGRWBITS_OVADD			(1 << 0)
 #define OV_REGRWBITS_OGAM_ALL			(1 << 1)
 
-#define OVC_REGRWBITS_OVADD                  (1 << 2)
+#define OVC_REGRWBITS_OVADD			(1 << 2)
 #define OVC_REGRWBITS_OGAM_ALL			(1 << 3)
 /*sprite update fields*/
 #define SPRITE_UPDATE_SURFACE                  (0x00000001UL)
@@ -606,8 +606,6 @@ struct drm_psb_register_rw_arg {
 
 	uint32_t display_read_mask;
 	uint32_t display_write_mask;
-	uint32_t sprite_context_mask;
-	struct intel_sprite_context sprite_context;
 	struct {
 		uint32_t pfit_controls;
 		uint32_t pfit_autoscale_ratios;
@@ -619,6 +617,9 @@ struct drm_psb_register_rw_arg {
 		uint32_t dspcntr_a;
 		uint32_t dspcntr_b;
 	} display;
+
+	uint32_t sprite_context_mask;
+	struct intel_sprite_context sprite_context;
 
 	uint32_t overlay_read_mask;
 	uint32_t overlay_write_mask;
@@ -657,10 +658,24 @@ struct drm_psb_register_rw_arg {
 	uint32_t subpicture_disable_mask;
 };
 
+enum {
+	PSB_GTT_MAP_TYPE_MEMINFO = 0,
+	PSB_GTT_MAP_TYPE_BCD,
+	PSB_GTT_MAP_TYPE_BCD_INFO,
+	PSB_GTT_MAP_TYPE_VIRTUAL,
+};
+
 struct psb_gtt_mapping_arg {
+	uint32_t type;
 	void *hKernelMemInfo;
 	uint32_t offset_pages;
 	uint32_t page_align;
+	uint32_t bcd_device_id;
+	uint32_t bcd_buffer_id;
+	uint32_t bcd_buffer_count;
+	uint32_t bcd_buffer_stride;
+	uint32_t vaddr;
+	uint32_t size;
 };
 
 struct drm_psb_getpageaddrs_arg {

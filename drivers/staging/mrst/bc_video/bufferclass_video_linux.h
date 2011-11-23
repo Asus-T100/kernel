@@ -66,4 +66,5 @@ typedef struct bc_buf_ptr {
 
 int BC_Camera_Bridge(BC_Video_ioctl_package *spBridge, unsigned long pAddr);
 int BC_DestroyBuffers(int id);
+
 #endif
