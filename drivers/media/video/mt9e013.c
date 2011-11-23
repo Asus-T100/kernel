@@ -778,8 +778,10 @@ __mt9e013_otp_read(struct v4l2_subdev *sd, const struct mt9e013_reg *type,
 		ret = mt9e013_otp_checksum(sd, buf,
 				ARRAY_SIZE(mt9e013_otp_checksum_list),
 				mt9e013_otp_checksum_list);
-		if (ret)
+		if (ret) {
+			v4l2_err(client, "%s: OTP checksum failed\n", __func__);
 			return ret;
+		}
 	}
 
 	return 0;
