@@ -42,8 +42,6 @@
 #include "linux/sched.h"
 #include "linux/delay.h"
 #include "sh_css_metrics.h"
-
-static int thread_alive;
 #endif
 
 /* Name of the sp program: should not be built-in */
@@ -1009,8 +1007,8 @@ sh_css_config_input_network(struct sh_css_pipeline *pipeline,
 }
 
 #if WITH_PC_MONITORING
-struct task_struct *my_kthread;    /* Handle for the monitoring thread */
-int sh_binary_running;         /* Enable sampling in the thread */
+static struct task_struct *mon_thread;	/* Handle for the monitoring thread */
+static int sh_binary_running;		/* Enable sampling in the thread */
 
 static void print_pc_histo(char *core_name, struct sh_css_pc_histogram *hist)
 {
@@ -1063,6 +1061,9 @@ static int pc_monitoring(void *data)
 	int i = 0;
 
 	while (true) {
+		if (kthread_should_stop())
+			break;
+
 		if (sh_binary_running) {
 			sh_css_metrics_sample_pcs();
 #if MULTIPLE_SAMPLES
@@ -1075,10 +1076,19 @@ static int pc_monitoring(void *data)
 	return 0;
 }
 
-static void spying_thread_create(void)
+static inline struct task_struct *spying_thread_create(void)
 {
+	struct task_struct *my_kthread;
+
 	my_kthread = kthread_run(pc_monitoring, NULL, "sh_pc_monitor");
 	sh_css_metrics_enable_pc_histogram(1);
+	return my_kthread;
+}
+
+static inline int spying_thread_destroy(struct task_struct *my_kthread)
+{
+	sh_css_metrics_enable_pc_histogram(0);
+	return kthread_stop(my_kthread);
 }
 
 static void input_frame_info(struct sh_css_frame_info frame_info)
@@ -1728,11 +1738,10 @@ sh_css_init(void *(*malloc_func) (size_t size),
 	sh_css_pipeline_init(&my_css.capture_settings.pipeline);
 
 #if WITH_PC_MONITORING
-	if (!thread_alive) {
-		thread_alive++;
+	if (!mon_thread) {
 		sh_css_print("PC_MONITORING: %s() -- create thread DISABLED\n",
 			     __func__);
-		spying_thread_create();
+		mon_thread = spying_thread_create();
 	}
 	sh_css_printf = printk;
 #endif
@@ -1804,6 +1813,10 @@ sh_css_uninit(void)
 	int i;
 
 #if WITH_PC_MONITORING
+	if (mon_thread) {
+		spying_thread_destroy(mon_thread);
+		mon_thread = NULL;
+	}
 	sh_css_print("PC_MONITORING: %s() -- started\n", __func__);
 	print_pc_histogram();
 #endif
