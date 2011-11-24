@@ -136,6 +136,12 @@ int atomisp_ctc(struct atomisp_device *isp, int flag,
 			  void *config);
 
 /*
+ * Function to update gamma correction parameters
+ */
+int atomisp_gamma_correction(struct atomisp_device *isp, int flag,
+	struct atomisp_gc_config *config);
+
+/*
  * Function to update Gdc table for gdc
  */
 int atomisp_gdc_cac_table(struct atomisp_device *isp, int flag,

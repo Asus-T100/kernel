@@ -1570,6 +1570,30 @@ int atomisp_ctc(struct atomisp_device *isp, int flag,
 	return 0;
 }
 
+/*
+ * Function to update gamma correction parameters
+ */
+int atomisp_gamma_correction(struct atomisp_device *isp, int flag,
+	struct atomisp_gc_config *config)
+{
+	if (sizeof(*config) != sizeof(isp->params.gc_config)) {
+		v4l2_err(&atomisp_dev,
+			"%s: incompatible param.\n", __func__);
+		return -EINVAL;
+	}
+
+	if (flag == 0) {
+		/* Get gamma correction params from current setup */
+		memcpy(config, &isp->params.gc_config, sizeof(*config));
+	} else {
+		/* Set gamma correction params to isp parameters */
+		memcpy(&isp->params.gc_config, config, sizeof(*config));
+		sh_css_set_gc_config(&isp->params.gc_config);
+	}
+
+	return 0;
+}
+
 void atomisp_free_internal_buffers(struct atomisp_device *isp)
 {
 	struct sh_css_morph_table *tab;

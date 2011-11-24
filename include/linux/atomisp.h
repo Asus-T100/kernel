@@ -130,8 +130,8 @@ struct atomisp_calibration_group {
 };
 
 struct atomisp_gc_config {
-	int gain_k1;
-	int gain_k2;
+	__u16 gain_k1;
+	__u16 gain_k2;
 };
 
 struct atomisp_3a_config {
@@ -780,6 +780,13 @@ struct v4l2_private_int_data {
 /* LCS (shading) table write */
 #define ATOMISP_IOC_S_ISP_SHD_TAB \
 	_IOWR('v', BASE_VIDIOC_PRIVATE + 52, struct atomisp_shading_table)
+
+/* Gamma Correction */
+#define ATOMISP_IOC_G_ISP_GAMMA_CORRECTION \
+	_IOR('v', BASE_VIDIOC_PRIVATE + 53, struct atomisp_gc_config)
+
+#define ATOMISP_IOC_S_ISP_GAMMA_CORRECTION \
+	_IOW('v', BASE_VIDIOC_PRIVATE + 54, struct atomisp_gc_config)
 
 /*  ISP Private control IDs */
 #define V4L2_CID_ATOMISP_BAD_PIXEL_DETECTION \

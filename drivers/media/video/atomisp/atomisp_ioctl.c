@@ -1771,6 +1771,12 @@ static long atomisp_vidioc_default(struct file *file, void *fh,
 	case ATOMISP_IOC_S_ISP_SHD_TAB:
 		return atomisp_set_shading_table(isp, arg);
 
+	case ATOMISP_IOC_G_ISP_GAMMA_CORRECTION:
+		return atomisp_gamma_correction(isp, 0, arg);
+
+	case ATOMISP_IOC_S_ISP_GAMMA_CORRECTION:
+		return atomisp_gamma_correction(isp, 1, arg);
+
 	default:
 		return -EINVAL;
 	}
