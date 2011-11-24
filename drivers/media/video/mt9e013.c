@@ -718,15 +718,22 @@ static int mt9e013_otp_checksum(struct v4l2_subdev *sd, u8 *buf, int list_len,
 	unsigned long sum;
 	u8 checksum;
 	int i;
+	int zero_flag = 1;
 
 	for (i = 0; i < list_len; i++) {
 		sum = mt9e013_otp_sum(sd, buf, list[i].start, list[i].end);
 		checksum = sum % MT9E013_OTP_MOD_CHECKSUM;
 		if (buf[list[i].checksum] != checksum)
 			return -EINVAL;
+		/*
+		 * Checksum must fail if whole data is 0.
+		 * Clear zero_flag if data != 0 is found.
+		 */
+		if (unlikely(zero_flag && (sum > 0)))
+			zero_flag = 0;
 	}
 
-	return 0;
+	return !zero_flag ? 0 : -EINVAL;
 }
 
 static int
