@@ -452,7 +452,7 @@ check_input(bool must_be_raw)
    For the padded width however, we do check equility because this is
    not expected to differ. A difference there would indicate an erroneous
    situation. */
-static bool
+static enum sh_css_err
 check_infos_match(struct sh_css_frame_info *frame_info,
 		  struct sh_css_frame_info *binary_info)
 {
