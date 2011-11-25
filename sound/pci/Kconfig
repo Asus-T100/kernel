@@ -877,4 +877,53 @@ config SND_YMFPCI
 	  To compile this driver as a module, choose M here: the module
 	  will be called snd-ymfpci.
 
+config SND_INTEL_MID_I2S
+	tristate "Intel mid I2S hardware driver"
+	depends on EXPERIMENTAL && PCI && INTEL_MID_DMAC
+	default n
+	help
+	  Say Y here if you want to build low level driver to support
+	  sending/receving I2S audio samples on Intel MID SSP device.
+	  This interface is mostly used on Intel MID platforms and provide
+	  the low level interface for some upper layer drivers such as
+	  Alsa SoC, char device interfaces... depending of peripheral connected.
+	  PCI Header should have ADID field set to I2S BT_FM or 
+	  I2S MODEM to be used by this driver (so it know connected peripheral).
+	  Note this is a prototype driver and support for continuous
+	  flow is still working-in-progress.
+	  This driver can also be built as a module. If so, the module
+	  will be called intel_mid_i2s.ko
+	  If unsure, say N here.
+
+config SND_INTEL_ALSA_SSP
+	tristate "ALSA SSP SND Card Driver"
+        depends on EXPERIMENTAL && SND_INTEL_MID_I2S
+	help
+	  Say Y here to include support for ALSA SSP soundcard.
+	  To compile this driver as a module, choose M here: the module
+	  will be called snd-alsa-ssp.ko
+	  This is a sound card driver for TI LNW1273 BT/FM Board
+	  This ALSA driver offers:
+	  1 BT device with 1 capture and 1 playback substreams
+	  1 FM device with 1 capture substream
+
+config SND_INTEL_ALSA_SSP_MASTER_MODE
+        depends on SND_INTEL_ALSA_SSP && SND_INTEL_MID_I2S
+	bool "Set the ALSA SSP in MASTER instead SLAVE by default"
+	default n
+	help
+	   This an option to select ALSA SSP in MASTER instead of default
+	   SLAVE.
+
+config SND_INTEL_ALSA_IFX
+	tristate "ALSA IFX modem SND Card Driver"
+        depends on EXPERIMENTAL && SND_INTEL_MID_I2S
+	help
+	  Say Y here to include support for ALSA IFX modem soundcard.
+	  To compile this driver as a module, choose M here: the module
+	  will be called snd-alsa-ifx.ko
+	  This is a sound card driver for IFX Modem
+	  This ALSA driver offers:
+	  1 modem device with 1 capture and 1 playback substreams
+
 endif	# SND_PCI

@@ -80,4 +80,5 @@ obj-$(CONFIG_SND) += \
 	sst/ \
 	trident/ \
 	ymfpci/ \
-	vx222/
+	vx222/ \
+	intel_mid_i2s/
