@@ -816,25 +816,6 @@ timeout_handle:
 			if (irq_infos & SH_CSS_IRQ_INFO_FW_ACC_DONE)
 				sh_css_terminate_firmware();
 
-			/*
-			 * If there is any firware marked for deletion, do it
-			 * now. Firware cannot be unloaded in the middle of a
-			 * frame, so it has to be done when a frame done
-			 * interrupt is processed.
-			 * TODO: Check if this is the correct location.
-			 * TODO: Check how to handle multiple firmware cases.
-			 */
-			if (isp->marked_fw_for_unload != NULL) {
-				atomisp_acc_fw_free_args(isp,
-						    isp->marked_fw_for_unload);
-				sh_css_unload_acceleration(
-						isp->marked_fw_for_unload);
-				atomisp_acc_fw_free(isp,
-						    isp->marked_fw_for_unload);
-				isp->marked_fw_for_unload = NULL;
-				complete(&isp->acc_unload_fw_complete);
-			}
-
 			/* regardless of timeout or not, we disable the flash */
 			if (flash_enabled && fr_status ==
 					ATOMISP_FRAME_STATUS_FLASH_EXPOSED) {
@@ -869,6 +850,25 @@ timeout_handle:
 				}
 			}
 		} while (!(irq_infos & SH_CSS_IRQ_INFO_FRAME_DONE));
+
+		/*
+		 * If there is any firware marked for deletion,
+		 * do it now. Firware cannot be unloaded in the
+		 * middle of a frame, so it has to be done when
+		 * a FRAME done interrupt is processed.
+		 * TODO: Check if this is the correct location.
+		 * TODO: Check how to handle multiple firmwares.
+		 */
+		if (isp->marked_fw_for_unload != NULL) {
+			atomisp_acc_fw_free_args(isp,
+				isp->marked_fw_for_unload);
+			sh_css_unload_acceleration(
+				isp->marked_fw_for_unload);
+			atomisp_acc_fw_free(isp,
+				isp->marked_fw_for_unload);
+			isp->marked_fw_for_unload = NULL;
+			complete(&isp->acc_unload_fw_complete);
+		}
 
 		mutex_unlock(&isp->isp_lock);
 
