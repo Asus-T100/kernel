@@ -901,7 +901,7 @@ static void __devexit atomisp_pci_remove(struct pci_dev *dev)
 
 	/* in case user forget to close */
 	release_firmware(isp->firmware);
-	isp->pdev = NULL;
+
 	kfree(isp);
 }
 
