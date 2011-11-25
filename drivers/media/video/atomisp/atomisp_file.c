@@ -304,6 +304,7 @@ static const struct media_entity_operations file_input_entity_ops = {
 void
 atomisp_file_input_unregister_entities(struct atomisp_file_device *file_dev)
 {
+	media_entity_cleanup(&file_dev->sd.entity);
 	v4l2_device_unregister_subdev(&file_dev->sd);
 }
 

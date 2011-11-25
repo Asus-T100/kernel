@@ -225,6 +225,7 @@ static const struct media_entity_operations tpg_entity_ops = {
 
 void atomisp_tpg_unregister_entities(struct atomisp_tpg_device *tpg)
 {
+	media_entity_cleanup(&tpg->sd.entity);
 	v4l2_device_unregister_subdev(&tpg->sd);
 }
 
