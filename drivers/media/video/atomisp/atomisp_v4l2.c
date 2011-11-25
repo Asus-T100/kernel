@@ -254,7 +254,7 @@ int atomisp_video_init(struct atomisp_video_pipe *video, const char *name)
 	snprintf(video->vdev.name, sizeof(video->vdev.name),
 		 "ATOMISP ISP %s %s", name, direction);
 	video->vdev.vfl_type = VFL_TYPE_GRABBER;
-	video->vdev.release = video_device_release;
+	video->vdev.release = video_device_release_empty;
 	video_set_drvdata(&video->vdev, video->isp);
 	video->opened = false;
 
