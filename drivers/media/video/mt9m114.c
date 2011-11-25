@@ -462,12 +462,10 @@ static int mt9m114_init_common(struct v4l2_subdev *sd)
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	int ret;
 
-	ret = mt9m114_write_reg_array(client, mt9m114_iq);
-	ret |= mt9m114_write_reg_array(client, mt9m114_common);
+	ret = mt9m114_write_reg_array(client, mt9m114_common);
 	if (ret)
-		return -EINVAL;
-
-	ret = mt9m114_wait_state(sd, MT9M114_WAIT_STAT_TIMEOUT);
+		return ret;
+	ret = mt9m114_write_reg_array(client, mt9m114_iq);
 
 	return ret;
 }
@@ -726,6 +724,10 @@ static int mt9m114_res2size(unsigned int res, int *h_size, int *v_size)
 	unsigned short vsize;
 
 	switch (res) {
+	case MT9M114_RES_QCIF:
+		hsize = MT9M114_RES_QCIF_SIZE_H;
+		vsize = MT9M114_RES_QCIF_SIZE_V;
+		break;
 	case MT9M114_RES_QVGA:
 		hsize = MT9M114_RES_QVGA_SIZE_H;
 		vsize = MT9M114_RES_QVGA_SIZE_V;
@@ -791,6 +793,9 @@ static int mt9m114_set_mbus_fmt(struct v4l2_subdev *sd,
 	}
 
 	switch (res_index->res) {
+	case MT9M114_RES_QCIF:
+		ret = mt9m114_write_reg_array(c, mt9m114_qcif_init);
+		break;
 	case MT9M114_RES_QVGA:
 		ret = mt9m114_write_reg_array(c, mt9m114_qvga_init);
 		/* set sensor read_mode to Skipping */
@@ -823,8 +828,9 @@ static int mt9m114_set_mbus_fmt(struct v4l2_subdev *sd,
 	if (ret)
 		return -EINVAL;
 
-	if (mt9m114_write_reg_array(c, mt9m114_common))
-		return -EINVAL;
+	ret = mt9m114_write_reg_array(c, mt9m114_chgstat_reg);
+	if (ret < 0)
+		return ret;
 	if (mt9m114_wait_state(sd, MT9M114_WAIT_STAT_TIMEOUT))
 		return -EINVAL;
 
@@ -1266,7 +1272,7 @@ static int mt9m114_s_stream(struct v4l2_subdev *sd, int enable)
 	struct i2c_client *c = v4l2_get_subdevdata(sd);
 
 	if (enable) {
-		ret = mt9m114_write_reg_array(c, mt9m114_common);
+		ret = mt9m114_write_reg_array(c, mt9m114_chgstat_reg);
 		if (ret < 0)
 			return ret;
 		ret = mt9m114_wait_state(sd, MT9M114_WAIT_STAT_TIMEOUT);
