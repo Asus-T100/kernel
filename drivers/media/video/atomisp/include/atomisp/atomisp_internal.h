@@ -265,7 +265,6 @@ struct atomisp_device {
 	uint32_t irq_infos;
 	struct mutex input_lock;
 	struct mutex isp_lock;
-	struct mutex isp3a_lock;
 	struct atomisp_tvnorm *tvnorm;
 	bool isp3a_stat_ready;
 
@@ -295,6 +294,7 @@ struct atomisp_device {
 	bool isp_timeout;
 	int timeout_cnt;
 	enum atomisp_wdt_status wdt_status;
+	enum atomisp_frame_status fr_status;
 
 	struct videobuf_buffer *vb_capture;
 	struct videobuf_buffer *vb_preview;

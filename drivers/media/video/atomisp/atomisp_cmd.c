@@ -56,6 +56,9 @@ atomisp_acc_fw_free_args(struct atomisp_device *isp, struct sh_css_acc_fw *fw);
 static void
 atomisp_acc_fw_free(struct atomisp_device *isp, struct sh_css_acc_fw *fw);
 static int atomisp_wdt_pet_dog(struct atomisp_device *isp);
+static void atomisp_buf_done(struct atomisp_device *isp, int error);
+static int atomisp_start_binary(struct atomisp_device *isp);
+static int atomisp_buffer_dequeue(struct atomisp_device *isp, int wait);
 
 /*
  * get sensor:dis71430/ov2720 related info from v4l2_subdev->priv data field.
@@ -232,14 +235,13 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 		return IRQ_NONE;
 	}
 
-	isp->irq_infos |= irq_infos;
 	if (irq_infos & SH_CSS_IRQ_INFO_FRAME_DONE ||
 	    irq_infos & SH_CSS_IRQ_INFO_START_NEXT_STAGE) {
 		/* Wake up sleep thread for next binary */
-		signal_worker = true;
 		if (irq_infos & SH_CSS_IRQ_INFO_STATISTICS_READY) {
 			signal_statistics = true;
 			isp->isp3a_stat_ready = true;
+			irq_infos &= ~SH_CSS_IRQ_INFO_STATISTICS_READY;
 		}
 		if (irq_infos & SH_CSS_IRQ_INFO_FW_ACC_DONE) {
 			signal_acceleration = true;
@@ -260,6 +262,66 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 
 	if (irq_infos & SH_CSS_IRQ_INFO_INVALID_FIRST_FRAME)
 		isp->sw_contex.invalid_frame = true;
+
+	/*
+	 * Cannot handle frame from ISR when there's events from:
+	 * - Acceleration API
+	 * - Flash
+	 * - CSS needs to do memory (re)allocation
+	 */
+	if (signal_acceleration ||
+	    isp->fr_status != ATOMISP_FRAME_STATUS_OK ||
+	    isp->params.num_flash_frames)
+		goto no_frame_done;
+
+	if (irq_infos & (SH_CSS_IRQ_INFO_START_NEXT_STAGE |
+			 SH_CSS_IRQ_INFO_FRAME_DONE)) {
+		switch (isp->sw_contex.run_mode) {
+		case CI_MODE_PREVIEW:
+			if (sh_css_preview_next_stage_needs_alloc())
+				goto no_frame_done;
+			break;
+		case CI_MODE_VIDEO:
+			if (sh_css_video_next_stage_needs_alloc())
+				goto no_frame_done;
+			break;
+		default:
+			goto no_frame_done;
+		}
+	}
+
+	/* We're fine to proceed in atomic context */
+	if (irq_infos & SH_CSS_IRQ_INFO_START_NEXT_STAGE) {
+		sh_css_start_next_stage();
+		irq_infos &= ~SH_CSS_IRQ_INFO_START_NEXT_STAGE;
+	}
+
+	if (irq_infos & SH_CSS_IRQ_INFO_FRAME_DONE) {
+		int ret;
+
+		atomisp_buf_done(isp, 0);
+
+		if (!isp->sw_contex.invalid_frame) {
+			ret = atomisp_buffer_dequeue(isp, 0);
+			if (ret)
+				/* buffer underrun? */
+				goto no_frame_done;
+		} else {
+			isp->sw_contex.invalid_frame = false;
+		}
+
+		ret = atomisp_start_binary(isp);
+		if (ret)
+			goto no_frame_done;
+
+		irq_infos &= ~SH_CSS_IRQ_INFO_FRAME_DONE;
+	}
+
+no_frame_done:
+	signal_worker = !!(irq_infos & (SH_CSS_IRQ_INFO_START_NEXT_STAGE |
+					SH_CSS_IRQ_INFO_FRAME_DONE));
+
+	isp->irq_infos |= irq_infos;
 
 	/*
 	 * After every iteration of acceleration there will be an interrupt
@@ -711,12 +773,13 @@ void atomisp_work(struct work_struct *work)
 	bool timeout_flag,
 	     flash_in_progress = false,
 	     flash_enabled = false;
-	enum atomisp_frame_status fr_status = ATOMISP_FRAME_STATUS_OK;
 	u32 irq_infos;
 
+	isp->fr_status = ATOMISP_FRAME_STATUS_OK;
 	isp->sw_contex.error = false;
 	isp->sw_contex.invalid_frame = false;
 	INIT_COMPLETION(isp->wq_frame_complete);
+	isp->irq_infos = 0;
 
 	for (;;) {
 		timeout_flag = false;
@@ -772,20 +835,21 @@ void atomisp_work(struct work_struct *work)
 		/* if the previous frame was partially exposed, this one is
 		 * going to be fully exposed. */
 		if (flash_in_progress &&
-		    fr_status == ATOMISP_FRAME_STATUS_FLASH_PARTIAL) {
+		    isp->fr_status == ATOMISP_FRAME_STATUS_FLASH_PARTIAL) {
 			/* If flash is in progress and the previous frame
 			 * was partially exposed, then this frame will be
 			 * correctly exposed. */
-			fr_status = ATOMISP_FRAME_STATUS_FLASH_EXPOSED;
+			isp->fr_status = ATOMISP_FRAME_STATUS_FLASH_EXPOSED;
 		} else if (flash_in_progress &&
-			   fr_status == ATOMISP_FRAME_STATUS_FLASH_EXPOSED) {
+			   isp->fr_status ==
+					ATOMISP_FRAME_STATUS_FLASH_EXPOSED) {
 			/* If the previous frame was flash-exposed, we assume
 			 * that some of the flash leaked into the current frame
 			 * so we tell the app not to use this frame. */
-			fr_status = ATOMISP_FRAME_STATUS_FLASH_PARTIAL;
+			isp->fr_status = ATOMISP_FRAME_STATUS_FLASH_PARTIAL;
 			flash_in_progress = false;
 		} else {
-			fr_status = ATOMISP_FRAME_STATUS_OK;
+			isp->fr_status = ATOMISP_FRAME_STATUS_OK;
 		}
 
 		if (isp->params.num_flash_frames) {
@@ -798,9 +862,11 @@ void atomisp_work(struct work_struct *work)
 			 * for a flash-exposed frame.
 			 */
 			if (ret)
-				fr_status = ATOMISP_FRAME_STATUS_FLASH_FAILED;
+				isp->fr_status =
+					ATOMISP_FRAME_STATUS_FLASH_FAILED;
 			else {
-				fr_status = ATOMISP_FRAME_STATUS_FLASH_PARTIAL;
+				isp->fr_status =
+					ATOMISP_FRAME_STATUS_FLASH_PARTIAL;
 				flash_in_progress = true;
 				flash_enabled = true;
 			}
@@ -817,7 +883,9 @@ void atomisp_work(struct work_struct *work)
 			if (!isp->irq_infos) {
 				spin_unlock_irqrestore(&isp->irq_lock,
 						       irqflags);
+				mutex_unlock(&isp->isp_lock);
 				wait_for_completion(&isp->wq_frame_complete);
+				mutex_lock(&isp->isp_lock);
 				spin_lock_irqsave(&isp->irq_lock, irqflags);
 			}
 
@@ -847,38 +915,23 @@ void atomisp_work(struct work_struct *work)
 				sh_css_terminate_firmware();
 
 			/* regardless of timeout or not, we disable the flash */
-			if (flash_enabled && fr_status ==
+			if (flash_enabled && isp->fr_status ==
 					ATOMISP_FRAME_STATUS_FLASH_EXPOSED) {
 				atomisp_stop_flash(isp);
 				/* always check the result, this clears any
 				 * errors that may have occurred.
 				 */
 				if (atomisp_flash_error(isp))
-					fr_status =
+					isp->fr_status =
 					ATOMISP_FRAME_STATUS_FLASH_FAILED;
 				flash_enabled = false;
 			}
 
 			/* proc interrupt */
 			INIT_COMPLETION(isp->wq_frame_complete);
-			if (irq_infos & SH_CSS_IRQ_INFO_START_NEXT_STAGE) {
+			if (irq_infos & SH_CSS_IRQ_INFO_START_NEXT_STAGE)
 				sh_css_start_next_stage();
 
-				/* Getting 3A statistics if ready */
-				if (isp->isp3a_stat_ready) {
-					mutex_lock(&isp->isp3a_lock);
-					ret = sh_css_get_3a_statistics
-						(isp->params.s3a_output_buf);
-					mutex_unlock(&isp->isp3a_lock);
-
-					isp->isp3a_stat_ready = false;
-					if (ret != sh_css_success)
-						v4l2_err(&atomisp_dev,
-							"get 3a statistics"
-							" failed, not "
-							"enough memory.\n");
-				}
-			}
 		} while (!(irq_infos & SH_CSS_IRQ_INFO_FRAME_DONE));
 
 		/*
@@ -907,7 +960,7 @@ void atomisp_work(struct work_struct *work)
 			/* HACK: do we have a better way/place for it? */
 			if (isp->vb_capture)
 				isp->frame_status[isp->vb_capture->i] =
-								fr_status;
+								isp->fr_status;
 			atomisp_buf_done(isp, 0);
 		}
 	}
@@ -1962,10 +2015,18 @@ int atomisp_3a_stat(struct atomisp_device *isp, int flag,
 		   sizeof(isp->params.curr_grid_info)) != 0)
 		return -EAGAIN;
 
-	mutex_lock(&isp->isp3a_lock);
+	mutex_lock(&isp->isp_lock);
+	/* Getting 3A statistics if ready */
+	ret = sh_css_get_3a_statistics(isp->params.s3a_output_buf);
+	if (ret != sh_css_success) {
+		v4l2_err(&atomisp_dev, "get 3a statistics failed, not "
+				       "enough memory.\n");
+		mutex_unlock(&isp->isp_lock);
+		return -EIO;
+	}
 	ret = copy_to_user(arg->data, isp->params.s3a_output_buf,
 			   isp->params.s3a_output_bytes);
-	mutex_unlock(&isp->isp3a_lock);
+	mutex_unlock(&isp->isp_lock);
 	if (ret) {
 		v4l2_err(&atomisp_dev,
 			    "copy to user failed: copied %lu bytes\n", ret);
