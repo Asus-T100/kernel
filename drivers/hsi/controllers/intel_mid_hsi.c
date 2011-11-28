@@ -66,7 +66,11 @@
 #include "hsi_dwahb_dma.h"
 
 #define HSI_MPU_IRQ_NAME	"HSI_CONTROLLER_IRQ"
-#define HSI_MASTER_DMA_ID	0x834	/* PCI id for DWAHB dma */
+#define HSI_PNW_PCI_DEVICE_ID	0x833   /* PCI id for Penwell HSI */
+#define HSI_PNW_MASTER_DMA_ID	0x834	/* PCI id for Penwell DWAHB dma */
+
+#define HSI_CLV_PCI_DEVICE_ID	0x902   /* PCI id for Cloverview HSI */
+#define HSI_CLV_MASTER_DMA_ID	0x903	/* PCI id for Cloverview DWAHB dma */
 
 #define HSI_RESETDONE_TIMEOUT	10	/* 10 ms */
 #define HSI_RESETDONE_RETRIES	20	/* => max 200 ms waiting for reset */
@@ -2963,8 +2967,13 @@ static int hsi_map_resources(struct intel_controller *intel_hsi,
 	}
 
 	/* Get master DMA info */
-	intel_hsi->dmac = pci_get_device(PCI_VENDOR_ID_INTEL,
-					 HSI_MASTER_DMA_ID, NULL);
+	if (pdev->device == HSI_PNW_PCI_DEVICE_ID)
+		intel_hsi->dmac = pci_get_device(PCI_VENDOR_ID_INTEL,
+						HSI_PNW_MASTER_DMA_ID, NULL);
+	else /* Assuming it's Cloverview */
+		intel_hsi->dmac = pci_get_device(PCI_VENDOR_ID_INTEL,
+						HSI_CLV_MASTER_DMA_ID, NULL);
+
 	if (!intel_hsi->dmac) {
 		err = -EPERM;
 		goto no_dmac_device;
@@ -3408,7 +3417,8 @@ static const struct dev_pm_ops intel_mid_hsi_rtpm = {
  * struct pci_ids - PCI IDs handled by the driver (ID of HSI controller)
  */
 static const struct pci_device_id pci_ids[] __devinitdata = {
-	{ PCI_VDEVICE(INTEL, 0x833) },	/* HSI */
+	{ PCI_VDEVICE(INTEL, HSI_PNW_PCI_DEVICE_ID) },	/* HSI - Penwell */
+	{ PCI_VDEVICE(INTEL, HSI_CLV_PCI_DEVICE_ID) },  /* HSI - Cloverview */
 	{ }
 };
 
