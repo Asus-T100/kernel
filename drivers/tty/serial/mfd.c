@@ -1555,15 +1555,19 @@ static int serial_hsu_probe(struct pci_dev *pdev,
 
 	switch (pdev->device) {
 	case 0x081B:
+	case 0x08FC:
 		index = 0;
 		break;
 	case 0x081C:
+	case 0x08FD:
 		index = 1;
 		break;
 	case 0x081D:
+	case 0x08FE:
 		index = 2;
 		break;
 	case 0x081E:
+	case 0x08FF:
 		/* internal DMA controller */
 		index = 3;
 		break;
@@ -1793,7 +1797,7 @@ static void serial_hsu_remove(struct pci_dev *pdev)
 		return;
 
 	/* For port 0/1/2, priv is the address of uart_hsu_port */
-	if (pdev->device != 0x081E) {
+	if ((pdev->device != 0x081E) && (pdev->device != 0x08FF)) {
 		up = priv;
 		/* Moved cancel_work_sync call after up initialization */
 		cancel_work_sync(&up->qwork);
@@ -1815,10 +1819,17 @@ static void serial_hsu_remove(struct pci_dev *pdev)
 
 /* First 3 are UART ports, and the 4th is the DMA */
 static const struct pci_device_id pci_ids[] __devinitdata = {
+	/* Penwell support */
 	{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x081B) },
 	{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x081C) },
 	{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x081D) },
 	{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x081E) },
+
+	/* Cloverview support */
+	{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x08FC) },
+	{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x08FD) },
+	{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x08FE) },
+	{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x08FF) },
 	{},
 };
 
@@ -1933,7 +1944,7 @@ static int hsu_suspend_noirq(struct device *dev)
 	struct uart_hsu_port *up;
 
 	/* Make sure this is not the internal dma controller */
-	if (priv && (pdev->device != 0x081E)) {
+	if (priv && (pdev->device != 0x081E) && (pdev->device != 0x08FF)) {
 		up = priv;
 		if (!allow_for_suspend(up))
 			return -EBUSY;
@@ -1958,7 +1969,7 @@ static int hsu_suspend(struct device *dev)
 	struct uart_hsu_port *up;
 
 	/* Make sure this is not the internal dma controller */
-	if (priv && (pdev->device != 0x081E)) {
+	if (priv && (pdev->device != 0x081E) && (pdev->device != 0x08FF)) {
 		up = priv;
 
 		if (query_q(up))
@@ -2006,7 +2017,7 @@ static int hsu_resume(struct device *dev)
 	void *priv = pci_get_drvdata(pdev);
 	struct uart_hsu_port *up;
 
-	if (priv && (pdev->device != 0x081E)) {
+	if (priv && (pdev->device != 0x081E) && (pdev->device != 0x08FF)) {
 		up = priv;
 
 		if (up->suspended)
