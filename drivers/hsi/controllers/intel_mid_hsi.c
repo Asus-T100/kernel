@@ -1037,9 +1037,8 @@ static int hsi_ctrl_suspend(struct intel_controller *intel_hsi)
 		hsi_enable_interrupt(ctrl, 0);
 		hsi_enable_error_interrupt(ctrl, 0);
 
-		/* Cut the clock and set the device as being suspended */
+		/* Disable everyting and set the device as being suspended */
 		iowrite32(0, ARASAN_HSI_PROGRAM(ctrl));
-		iowrite32(0, ARASAN_HSI_CLOCK_CONTROL(ctrl));
 		intel_hsi->suspend_state = DEVICE_SUSPENDED;
 
 #ifdef CONFIG_HAS_WAKELOCK
@@ -1262,6 +1261,10 @@ static void hsi_ctrl_clean_reset(struct intel_controller *intel_hsi)
 	/* Disable the interrupt line */
 	disable_irq(intel_hsi->irq);
 
+	/* Disable (and flush) all tasklets */
+	tasklet_disable(&intel_hsi->isr_tasklet);
+	tasklet_disable(&intel_hsi->fwd_tasklet);
+
 	spin_lock_irqsave(&intel_hsi->hw_lock, flags);
 
 	/* Remove the CAWAKE poll timer */
@@ -1283,9 +1286,6 @@ static void hsi_ctrl_clean_reset(struct intel_controller *intel_hsi)
 	/* Kill RX and TX wake sources and disable all channels */
 	iowrite32(0, ARASAN_HSI_PROGRAM(ctrl));
 
-	/* Cut the clock and set the device as being not configured */
-	iowrite32(0, ARASAN_HSI_CLOCK_CONTROL(ctrl));
-
 exit_clean_reset:
 	if (intel_hsi->rx_state == RX_READY)
 		intel_hsi->rx_state = RX_CAN_SLEEP;
@@ -1298,6 +1298,10 @@ exit_clean_reset:
 	while (deassert_acwake(intel_hsi))
 		;
 	(void) has_disabled_acready(intel_hsi);
+
+	/* Re-enable all tasklets */
+	tasklet_enable(&intel_hsi->fwd_tasklet);
+	tasklet_enable(&intel_hsi->isr_tasklet);
 
 	/* Do not forget to re-enable the interrupt */
 	enable_irq(intel_hsi->irq);
@@ -1858,6 +1862,7 @@ static void hsi_rx_error(struct intel_controller *intel_hsi)
 	unsigned long			 flags;
 
 	pr_err("hsi: rx error\n");
+
 	for (i = 0; i < hsi_rx_channel_count(intel_hsi); i++) {
 		queue = &intel_hsi->rx_queue[i];
 		spin_lock_irqsave(&intel_hsi->sw_lock, flags);
@@ -2381,7 +2386,7 @@ static int hsi_mid_flush(struct hsi_client *cl)
 	struct hsi_port *port = hsi_get_port(cl);
 	struct intel_controller *intel_hsi = hsi_port_drvdata(port);
 	void __iomem *ctrl = intel_hsi->ctrl_io;
-	unsigned int i, unforce;
+	unsigned int i, unforce = 0;
 	unsigned long flags;
 
 	/* Prevent any new message in the software queues */
