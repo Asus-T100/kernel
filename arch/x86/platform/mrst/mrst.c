@@ -236,7 +236,8 @@ int __init sfi_parse_mrtc(struct sfi_table_header *table)
 static unsigned long __init mrst_calibrate_tsc(void)
 {
 	unsigned long flags, fast_calibrate;
-	if (__mrst_cpu_chip == MRST_CPU_CHIP_PENWELL) {
+	if ((__mrst_cpu_chip == MRST_CPU_CHIP_PENWELL) ||
+	    (__mrst_cpu_chip == MRST_CPU_CHIP_CLOVERVIEW)) {
 		u32 lo, hi, ratio, fsb;
 
 		rdmsr(MSR_IA32_PERF_STATUS, lo, hi);
@@ -298,14 +299,13 @@ static void __cpuinit mrst_arch_setup(void)
 		__mrst_cpu_chip = MRST_CPU_CHIP_PENWELL;
 	else if (boot_cpu_data.x86 == 6 && boot_cpu_data.x86_model == 0x26)
 		__mrst_cpu_chip = MRST_CPU_CHIP_LINCROFT;
+	else if (boot_cpu_data.x86 == 6 && boot_cpu_data.x86_model == 0x35)
+		__mrst_cpu_chip = MRST_CPU_CHIP_CLOVERVIEW;
 	else {
 		pr_err("Unknown Moorestown CPU (%d:%d), default to Lincroft\n",
 			boot_cpu_data.x86, boot_cpu_data.x86_model);
 		__mrst_cpu_chip = MRST_CPU_CHIP_LINCROFT;
 	}
-	pr_debug("Moorestown CPU %s identified\n",
-		(__mrst_cpu_chip == MRST_CPU_CHIP_LINCROFT) ?
-		"Lincroft" : "Penwell");
 }
 
 /* MID systems don't have i8042 controller */

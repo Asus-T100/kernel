@@ -29,6 +29,7 @@ extern struct sfi_rtc_table_entry sfi_mrtc_array[];
 enum mrst_cpu_type {
 	MRST_CPU_CHIP_LINCROFT = 1,
 	MRST_CPU_CHIP_PENWELL,
+	MRST_CPU_CHIP_CLOVERVIEW,
 };
 
 extern enum mrst_cpu_type __mrst_cpu_chip;

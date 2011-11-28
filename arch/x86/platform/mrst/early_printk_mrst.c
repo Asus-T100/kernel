@@ -32,6 +32,7 @@
 #define MRST_SPI_TIMEOUT		0x200000
 #define MRST_REGBASE_SPI0		0xff128000
 #define MRST_REGBASE_SPI1		0xff128400
+#define CLV_REGBASE_SPI1		0xff135000
 #define MRST_CLK_SPI0_REG		0xff11d86c
 
 /* Bit fields in CTRLR0 */
@@ -157,6 +158,8 @@ void mrst_early_console_init(void)
 
 	if (mrst_identify_cpu() == MRST_CPU_CHIP_PENWELL)
 		mrst_spi_paddr = MRST_REGBASE_SPI1;
+	else if (mrst_identify_cpu() == MRST_CPU_CHIP_CLOVERVIEW)
+		mrst_spi_paddr = CLV_REGBASE_SPI1;
 
 	pspi = (void *)set_fixmap_offset_nocache(FIX_EARLYCON_MEM_BASE,
 						mrst_spi_paddr);
