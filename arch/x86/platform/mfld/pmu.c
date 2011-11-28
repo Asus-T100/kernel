@@ -567,6 +567,59 @@ static int _pmu_issue_command(struct pmu_ss_states *pm_ssc, int mode, int ioc,
 static void pmu_read_sss(struct pmu_ss_states *pm_ssc);
 static int _pmu2_wait_not_busy(void);
 
+/* Experimentally disabling/enabling pmu drivers and setting every
+ * devices state as D0i0 while disabling pmu_driver */
+static char pmu_driver_state[4] = "on";
+static int set_pmu_driver_status(const char *val, struct kernel_param *kp)
+{
+	char valcp[4];
+	int status;
+	struct pmu_ss_states cur_pmssc;
+
+	strncpy(valcp, val, 4);
+	valcp[3] = '\0';
+
+	if (strncmp(valcp, "off", 3) == 0) {	/* disable pmu driver and
+						 * set all devices to D0i0
+						 */
+		/* set all the lss to D0i0 */
+		cur_pmssc.pmu2_states[0] = 0;
+		cur_pmssc.pmu2_states[1] = 0;
+		cur_pmssc.pmu2_states[2] = 0;
+		cur_pmssc.pmu2_states[3] = 0;
+
+		/* Issue pmu command to PMU2 without interrupt to pmu_driver */
+		down(&mid_pmu_cxt->scu_ready_sem);
+		status = _pmu_issue_command(&cur_pmssc, SET_MODE, 1, PMU_NUM_2);
+
+		if (unlikely(status != PMU_SUCCESS)) {
+			dev_dbg(&mid_pmu_cxt->pmu_dev->dev,
+				 "Failed to Issue a PM command to PMU2\n");
+		}
+		up(&mid_pmu_cxt->scu_ready_sem);
+
+		pmu_initialized = false;	/* turn off pmu_initialized */
+		strcpy(pmu_driver_state, "off");
+
+	} else {
+		/* invalid input: do nothing, keep the old state*/
+	}
+
+	return 0;
+}
+
+static int get_pmu_driver_status(char *buffer, struct kernel_param *kp)
+{
+	strcpy(buffer, pmu_driver_state);
+	return strlen(pmu_driver_state);
+}
+
+
+module_param_call(pmu_driver_state, set_pmu_driver_status,
+		get_pmu_driver_status, NULL, 0644);
+MODULE_PARM_DESC(pmu_driver_state, "setup pmu driver's state [on|off]");
+
+
 /* PCI Device Id structure */
 static DEFINE_PCI_DEVICE_TABLE(mid_pm_ids) = {
 	{PCI_VDEVICE(INTEL, MID_PMU_MRST_DRV_DEV_ID), 0},
@@ -2153,7 +2206,9 @@ static const struct file_operations pmu_sss_state_operations = {
 	.release	= single_release,
 };
 
+
 #endif	/* DEBUG_FS */
+
 
 /* Reads the status of each driver and updates the LSS values.
  * To be called with scu_ready_sem mutex held, and pmu_config
