@@ -532,6 +532,9 @@ static void ehci_stop (struct usb_hcd *hcd)
 	spin_unlock_irq (&ehci->lock);
 	ehci_mem_cleanup (ehci);
 
+	if (hcd->has_sram)
+		sram_deinit(hcd);
+
 	if (ehci->amd_pll_fix == 1)
 		usb_amd_dev_put();
 
@@ -1205,6 +1208,10 @@ MODULE_LICENSE ("GPL");
 #ifdef CONFIG_PCI
 #include "ehci-pci.c"
 #define	PCI_DRIVER		ehci_pci_driver
+#if defined(CONFIG_USB_LANGWELL_OTG) || defined(CONFIG_USB_PENWELL_OTG)
+#include "ehci-langwell-pci.c"
+#define INTEL_MID_OTG_HOST_DRIVER	ehci_otg_driver
+#endif
 #endif
 
 #ifdef CONFIG_USB_EHCI_FSL
@@ -1379,7 +1386,18 @@ static int __init ehci_hcd_init(void)
 	if (retval < 0)
 		goto clean4;
 #endif
+
+#ifdef INTEL_MID_OTG_HOST_DRIVER
+	retval = intel_mid_ehci_driver_register(&INTEL_MID_OTG_HOST_DRIVER);
+	if (retval < 0)
+		goto clean5;
+#endif
 	return retval;
+
+#ifdef INTEL_MID_OTG_HOST_DRIVER
+clean5:
+	intel_mid_ehci_driver_unregister(&INTEL_MID_OTG_HOST_DRIVER);
+#endif
 
 #ifdef XILINX_OF_PLATFORM_DRIVER
 	/* platform_driver_unregister(&XILINX_OF_PLATFORM_DRIVER); */
@@ -1427,6 +1445,9 @@ static void __exit ehci_hcd_cleanup(void)
 #endif
 #ifdef PS3_SYSTEM_BUS_DRIVER
 	ps3_ehci_driver_unregister(&PS3_SYSTEM_BUS_DRIVER);
+#endif
+#ifdef INTEL_MID_OTG_HOST_DRIVER
+	intel_mid_ehci_driver_unregister(&INTEL_MID_OTG_HOST_DRIVER);
 #endif
 #ifdef DEBUG
 	debugfs_remove(ehci_debug_root);

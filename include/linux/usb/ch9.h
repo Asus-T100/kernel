@@ -274,6 +274,8 @@ struct usb_device_descriptor {
 
 #define USB_DT_DEVICE_SIZE		18
 
+/* bcdDevice defined in OTG2.0 section 6.4.3.2 */
+#define USB_DT_BCD_VBUSOFF		BIT(0)
 
 /*
  * Device and/or Interface Class codes

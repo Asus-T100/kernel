@@ -207,6 +207,8 @@ static int ehci_bus_suspend (struct usb_hcd *hcd)
 	int			port;
 	int			mask;
 	int			changed;
+	u32 __iomem		*hostpc_reg = NULL;
+	int			rc = 0;
 
 	ehci_dbg(ehci, "suspend root hub\n");
 
@@ -326,13 +328,18 @@ static int ehci_bus_suspend (struct usb_hcd *hcd)
 	ehci_readl(ehci, &ehci->regs->intr_enable);
 
 	ehci->next_statechange = jiffies + msecs_to_jiffies(10);
+
+#ifdef CONFIG_USB_OTG
+	if (ehci->has_otg && ehci->otg_suspend)
+		rc = ehci->otg_suspend(hcd);
+#endif
 	spin_unlock_irq (&ehci->lock);
 
 	/* ehci_work() may have re-enabled the watchdog timer, which we do not
 	 * want, and so we must delete any pending watchdog timer events.
 	 */
 	del_timer_sync(&ehci->watchdog);
-	return 0;
+	return rc;
 }
 
 
@@ -344,6 +351,7 @@ static int ehci_bus_resume (struct usb_hcd *hcd)
 	u32			power_okay;
 	int			i;
 	unsigned long		resume_needed = 0;
+	int			rc = 0;
 
 	if (time_before (jiffies, ehci->next_statechange))
 		msleep(5);
@@ -358,6 +366,23 @@ static int ehci_bus_resume (struct usb_hcd *hcd)
 			ehci->debug = NULL;
 		else
 			dbgp_external_startup();
+	}
+
+	/* clear phy low-power mode before resume */
+	if (ehci->has_hostpc) {
+		i = HCS_N_PORTS(ehci->hcs_params);
+		while (i--) {
+			u32 __iomem	*hostpc_reg;
+
+			hostpc_reg = (u32 __iomem *)((u8 *) ehci->regs
+					+ HOSTPC0 + 4 * i);
+			temp = ehci_readl(ehci, hostpc_reg);
+			ehci_writel(ehci, temp & ~HOSTPC_PHCD,
+					hostpc_reg);
+		}
+		spin_unlock_irq(&ehci->lock);
+		usleep_range(5000, 5000);
+		spin_lock_irq(&ehci->lock);
 	}
 
 	/* Ideally and we've got a real resume here, and no port's power
@@ -388,25 +413,6 @@ static int ehci_bus_resume (struct usb_hcd *hcd)
 	spin_unlock_irq(&ehci->lock);
 	msleep(8);
 	spin_lock_irq(&ehci->lock);
-
-	/* clear phy low-power mode before resume */
-	if (ehci->bus_suspended && ehci->has_hostpc) {
-		i = HCS_N_PORTS(ehci->hcs_params);
-		while (i--) {
-			if (test_bit(i, &ehci->bus_suspended)) {
-				u32 __iomem	*hostpc_reg;
-
-				hostpc_reg = (u32 __iomem *)((u8 *) ehci->regs
-						+ HOSTPC0 + 4 * i);
-				temp = ehci_readl(ehci, hostpc_reg);
-				ehci_writel(ehci, temp & ~HOSTPC_PHCD,
-						hostpc_reg);
-			}
-		}
-		spin_unlock_irq(&ehci->lock);
-		msleep(5);
-		spin_lock_irq(&ehci->lock);
-	}
 
 	/* manually resume the ports we suspended during bus_suspend() */
 	i = HCS_N_PORTS (ehci->hcs_params);
@@ -456,9 +462,13 @@ static int ehci_bus_resume (struct usb_hcd *hcd)
 	/* Now we can safely re-enable irqs */
 	ehci_writel(ehci, INTR_MASK, &ehci->regs->intr_enable);
 
+#ifdef CONFIG_USB_OTG
+	if (ehci->has_otg && ehci->otg_resume)
+		rc = ehci->otg_resume(hcd);
+#endif
 	spin_unlock_irq (&ehci->lock);
 	ehci_handover_companion_ports(ehci);
-	return 0;
+	return rc;
 }
 
 #else

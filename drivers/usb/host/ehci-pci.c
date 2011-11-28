@@ -44,6 +44,122 @@ static int ehci_pci_reinit(struct ehci_hcd *ehci, struct pci_dev *pdev)
 	return 0;
 }
 
+/* enable SRAM if sram detected */
+static void sram_init(struct usb_hcd *hcd)
+{
+	struct ehci_hcd		*ehci = hcd_to_ehci(hcd);
+	struct pci_dev		*pdev = to_pci_dev(hcd->self.controller);
+	void __iomem		*base = NULL;
+	void __iomem		*addr = NULL;
+
+	if (!hcd->has_sram)
+		return;
+	ehci->sram_addr = pci_resource_start(pdev, 1);
+	ehci->sram_size = pci_resource_len(pdev, 1);
+	ehci_info(ehci, "Found HCD SRAM at %x size:%x\n",
+		ehci->sram_addr, ehci->sram_size);
+
+	if (pci_request_region(pdev, 1, kobject_name(&pdev->dev.kobj))) {
+		ehci_warn(ehci, "SRAM request failed\n");
+		hcd->has_sram = 0;
+		return;
+	} else if (!dma_declare_coherent_memory(&pdev->dev, ehci->sram_addr,
+			ehci->sram_addr, ehci->sram_size, DMA_MEMORY_MAP)) {
+		ehci_warn(ehci, "SRAM DMA declare failed\n");
+		pci_release_region(pdev, 1);
+		hcd->has_sram = 0;
+		return;
+	}
+
+	/* initialize SRAM to 0 to avoid ECC errors during entry into D0 */
+	base = ioremap_nocache(ehci->sram_addr, ehci->sram_size);
+	if (base == NULL) {
+		ehci_warn(ehci, "SRAM init: ioremap failed\n");
+		return;
+	}
+
+	addr = base;
+
+	while (addr < base + ehci->sram_size) {
+		writel(0x0, addr);
+		addr = addr + 4;
+	}
+
+	iounmap(base);
+}
+
+static void sram_deinit(struct usb_hcd *hcd)
+{
+	struct ehci_hcd		*ehci = hcd_to_ehci(hcd);
+	struct pci_dev *pdev = to_pci_dev(hcd->self.controller);
+
+	if (!hcd->has_sram)
+		return;
+	dma_release_declared_memory(&pdev->dev);
+	pci_release_region(pdev, 1);
+
+	/* If host is suspended, SRAM backup memory should be freed */
+	if (ehci->sram_swap) {
+		vfree(ehci->sram_swap);
+		ehci->sram_swap = NULL;
+	}
+
+}
+
+static int sram_backup(struct usb_hcd *hcd)
+{
+	struct ehci_hcd		*ehci = hcd_to_ehci(hcd);
+	void __iomem		*base;
+	int			offset;
+
+	ehci->sram_swap = vmalloc(ehci->sram_size);
+	if (!ehci->sram_swap) {
+		ehci_warn(ehci, "SRAM backup memory request failed\n");
+		return -ENOMEM;
+	}
+
+	base = ioremap_nocache(ehci->sram_addr, ehci->sram_size);
+	if (!base) {
+		ehci_warn(ehci, "SRAM backeup ioremap fails\n");
+		vfree(ehci->sram_swap);
+		ehci->sram_swap = NULL;
+		return -EFAULT;
+	}
+
+	for (offset = 0; offset < ehci->sram_size; offset += 4)
+		*(u32 *)(ehci->sram_swap + offset) = readl(base + offset);
+
+	iounmap(base);
+
+	return 0;
+}
+
+static int sram_restore(struct usb_hcd *hcd)
+{
+	struct ehci_hcd		*ehci = hcd_to_ehci(hcd);
+	void __iomem		*base;
+	int			offset;
+
+	if (!ehci->sram_swap)
+		return -EFAULT;
+
+	base = ioremap_nocache(ehci->sram_addr, ehci->sram_size);
+	if (!base) {
+		ehci_warn(ehci, "SRAM_restore ioremap fails\n");
+		return -EFAULT;
+	}
+
+	for (offset = 0; offset < ehci->sram_size; offset += 4)
+		writel(*(u32 *)(ehci->sram_swap + offset), base + offset);
+
+	iounmap(base);
+	vfree(ehci->sram_swap);
+	ehci->sram_swap = NULL;
+
+	return 0;
+}
+
+
 /* called during probe() after chip reset completes */
 static int ehci_pci_setup(struct usb_hcd *hcd)
 {
@@ -53,6 +169,7 @@ static int ehci_pci_setup(struct usb_hcd *hcd)
 	u8			rev;
 	u32			temp;
 	int			retval;
+	int			force_otg_hc_mode = 0;
 
 	switch (pdev->vendor) {
 	case PCI_VENDOR_ID_TOSHIBA_2:
@@ -66,6 +183,35 @@ static int ehci_pci_setup(struct usb_hcd *hcd)
 #endif
 		}
 		break;
+	case PCI_VENDOR_ID_INTEL:
+		if (pdev->device == 0x0811 || pdev->device == 0x0829) {
+			ehci_info(ehci, "Detected Intel MID OTG HC\n");
+			hcd->has_tt = 1;
+			ehci->has_hostpc = 1;
+#ifdef CONFIG_USB_OTG
+			ehci->has_otg = 1;
+#endif
+			force_otg_hc_mode = 1;
+
+			/* For Penwell, Power budget limit is 200mA */
+			if (pdev->device == 0x0829)
+				hcd->power_budget = 200;
+
+			hcd->has_sram = 1;
+			hcd->sram_no_payload = 1;
+			sram_init(hcd);
+		} else if (pdev->device == 0x0806) {
+			ehci_info(ehci, "Detected Langwell MPH\n");
+			hcd->has_tt = 1;
+			ehci->has_hostpc = 1;
+			hcd->has_sram = 1;
+			hcd->sram_no_payload = 1;
+			sram_init(hcd);
+		} else if (pdev->device == 0x0829) {
+			ehci_info(ehci, "Detected Penwell OTG HC\n");
+			hcd->has_tt = 1;
+			ehci->has_hostpc = 1;
+		}
 	}
 
 	ehci->caps = hcd->regs;
@@ -101,6 +247,8 @@ static int ehci_pci_setup(struct usb_hcd *hcd)
 
 	/* cache this readonly data; minimize chip reads */
 	ehci->hcs_params = ehci_readl(ehci, &ehci->caps->hcs_params);
+	if (force_otg_hc_mode)
+		ehci_reset(ehci);
 
 	retval = ehci_halt(ehci);
 	if (retval)
@@ -343,6 +491,12 @@ static int ehci_pci_suspend(struct usb_hcd *hcd, bool do_wakeup)
 	if (time_before(jiffies, ehci->next_statechange))
 		msleep(10);
 
+	/* s0i3 may poweroff SRAM, backup the SRAM */
+	if (hcd->has_sram && sram_backup(hcd)) {
+		ehci_warn(ehci, "sram_backup failed\n");
+		return -EPERM;
+	}
+
 	/* Root hub was already suspended. Disable irq emission and
 	 * mark HW unaccessible.  The PM and USB cores make sure that
 	 * the root hub is either suspended or stopped.
@@ -385,6 +539,12 @@ static int ehci_pci_resume(struct usb_hcd *hcd, bool hibernated)
 {
 	struct ehci_hcd		*ehci = hcd_to_ehci(hcd);
 	struct pci_dev		*pdev = to_pci_dev(hcd->self.controller);
+
+	/* s0i3 may have poweroff the SRAM, restore it here*/
+	if (hcd->has_sram && sram_restore(hcd)) {
+		ehci_warn(ehci, "sram_restore failed, stop resuming.\n");
+		return -EPERM;
+	}
 
 	/* The BIOS on systems with the Intel Panther Point chipset may or may
 	 * not support xHCI natively.  That means that during system resume, it

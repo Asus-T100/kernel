@@ -10,6 +10,7 @@
 #define __LINUX_USB_OTG_H
 
 #include <linux/notifier.h>
+#include <linux/usb.h>
 
 /* OTG defines lots of enumeration states before device reset */
 enum usb_otg_state {
@@ -252,5 +253,20 @@ otg_unregister_notifier(struct otg_transceiver *otg, struct notifier_block *nb)
 
 /* for OTG controller drivers (and maybe other stuff) */
 extern int usb_bus_start_enum(struct usb_bus *bus, unsigned port_num);
+
+#define OTG_TESTDEV_VID 0x1a0a
+#define OTG_TESTDEV_PID 0x0200
+
+/* for OTG Test per Spec */
+static inline int is_otg_testdev(struct usb_device *udev)
+{
+	return udev && le16_to_cpu(udev->descriptor.idVendor) == OTG_TESTDEV_VID
+		&& le16_to_cpu(udev->descriptor.idProduct) == OTG_TESTDEV_PID;
+}
+
+static inline int is_otg_vbusoff_testdev(struct usb_device *udev)
+{
+	return le16_to_cpu(udev->descriptor.bcdDevice) & USB_DT_BCD_VBUSOFF;
+}
 
 #endif /* __LINUX_USB_OTG_H */

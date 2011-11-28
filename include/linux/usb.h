@@ -1585,6 +1585,10 @@ usb_maxpacket(struct usb_device *udev, int pipe, int is_out)
 #define USB_DEVICE_REMOVE	0x0002
 #define USB_BUS_ADD		0x0003
 #define USB_BUS_REMOVE		0x0004
+/* For OTG Test mode */
+#define USB_OTG_TESTDEV		0x0011
+#define USB_OTG_TESTDEV_VBUSOFF	0x0012
+
 extern void usb_register_notify(struct notifier_block *nb);
 extern void usb_unregister_notify(struct notifier_block *nb);
 

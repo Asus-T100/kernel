@@ -130,6 +130,8 @@ struct usb_hcd {
 	unsigned		has_tt:1;	/* Integrated TT in root hub */
 	unsigned		broken_pci_sleep:1;	/* Don't put the
 			controller in PCI-D3 for system sleep */
+	unsigned		has_sram:1;	/* Local SRAM for caching */
+	unsigned		sram_no_payload:1; /* sram not for payload */
 
 	int			irq;		/* irq allocated */
 	void __iomem		*regs;		/* device memory/io */
@@ -176,6 +178,13 @@ struct usb_hcd {
 	 * (ohci 32, uhci 1024, ehci 256/512/1024).
 	 */
 
+#ifdef CONFIG_USB_OTG
+	/* some otg HCDs need this to get USB_DEVICE_ADD and USB_DEVICE_REMOVE
+	 * from root hub, we do not want to use USB notification chain, since
+	 * it would be a over kill to use high level notification.
+	 */
+	void (*otg_notify) (struct usb_device *udev, unsigned action);
+#endif
 	/* The HC driver's private data is stored at the end of
 	 * this structure.
 	 */
