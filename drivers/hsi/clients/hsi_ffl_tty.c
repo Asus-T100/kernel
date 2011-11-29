@@ -881,10 +881,6 @@ static inline __must_check int _ffl_fifo_ctrl_push(struct ffl_xfer_ctx *ctx,
  * FIFO transfer functions
  */
 
-/* Forward declaration for _ffl_from_wait_to_ctrl() */
-static void _ffl_pop_wait_push_ctrl_safe(struct ffl_xfer_ctx *ctx,
-					 unsigned long *flags);
-
 /**
  * _ffl_from_wait_to_ctrl - transfer a TX frame from the wait FIFO to the
  *			    controller FIFO
@@ -893,18 +889,16 @@ static void _ffl_pop_wait_push_ctrl_safe(struct ffl_xfer_ctx *ctx,
  * @flags: a reference to the flag used by the external spinlock, passed in to
  *	   unlock it and end the atomic context temporarily.
  *
- * Note that no error is returned upon controller failure such as -EBUSY, in
- * such cases, the frame is simply returned back to the wait FIFO, as nothing
- * else can be done.
+ * Returns 0 if successful or an error if anything went wrong.
  */
-static void _ffl_from_wait_to_ctrl(struct ffl_xfer_ctx *ctx,
-				   struct hsi_msg *frame, unsigned long *flags)
+static int _ffl_from_wait_to_ctrl(struct ffl_xfer_ctx *ctx,
+				  struct hsi_msg *frame, unsigned long *flags)
 {
 	unsigned int	 actual_len = frame->actual_len;
 	int		 err;
 
 	if (unlikely(_ffl_ctx_has_flag(ctx, TX_TTY_WRITE_FORWARDING_BIT)))
-		return;
+		return -EBUSY;
 
 	_ffl_ctx_set_flag(ctx, TX_TTY_WRITE_FORWARDING_BIT);
 	_ffl_fifo_wait_pop(ctx, frame);
@@ -922,49 +916,33 @@ static void _ffl_from_wait_to_ctrl(struct ffl_xfer_ctx *ctx,
 		ctx->data_sz += actual_len;
 		ctx->frame_cnt++;
 #endif
-		if (ctx->ctrl_len < ctx->ctrl_max)
-			_ffl_pop_wait_push_ctrl_safe(ctx, flags);
 	}
+
+	return err;
 }
 
 /**
- * _ffl_pop_wait_push_ctrl - transfer the first TX frame from the wait FIFO to
- *			     the controller FIFO
+ * _ffl_pop_wait_push_ctrl - transfer as many TX frames as possible from the
+ *			     wait FIFO to the controller FIFO, unless a frame
+ *			     is being updated (marked as not completed)
  * @ctx: a reference to the FFL TX context to consider
  * @flags: a reference to the flag used by the external spinlock, passed in to
  *	   unlock it and end the atomic context temporarily.
- *
- * This wrapper function is simply transferring the first frame of the wait
- * FIFO.
- *
- * BEWARE: calling this with an empty FIFO gives unexpected results!
  */
-static inline void _ffl_pop_wait_push_ctrl(struct ffl_xfer_ctx *ctx,
-					   unsigned long *flags)
-{
-	_ffl_from_wait_to_ctrl(ctx, _ffl_fifo_head(&ctx->wait_frames), flags);
-}
-
-/**
- * _ffl_pop_wait_push_ctrl_safe - transfer the first TX frame from the wait FIFO
- *				  to the controller FIFO, unless this frame is
- *				  being updated (marked as break frame)
- * @ctx: a reference to the FFL TX context to consider
- * @flags: a reference to the flag used by the external spinlock, passed in to
- *	   unlock it and end the atomic context temporarily.
- *
- * BEWARE: calling this with an empty FIFO gives unexpected results!
- */
-static void _ffl_pop_wait_push_ctrl_safe(struct ffl_xfer_ctx *ctx,
-					 unsigned long *flags)
+static void _ffl_pop_wait_push_ctrl(struct ffl_xfer_ctx *ctx,
+				    unsigned long *flags)
 {
 	struct hsi_msg		*frame;
 
-	frame = _ffl_fifo_head(&ctx->wait_frames);
+	while ((ctx->wait_len > 0) && (ctx->ctrl_len < ctx->ctrl_max)) {
 
-	if ((frame->status == HSI_STATUS_COMPLETED) &&
-	    (likely(!_ffl_ctx_has_flag(ctx, TTY_OFF_BIT))))
-		_ffl_from_wait_to_ctrl(ctx, frame, flags);
+		frame = _ffl_fifo_head(&ctx->wait_frames);
+
+		if ((frame->status != HSI_STATUS_COMPLETED) ||
+		    (unlikely(_ffl_ctx_has_flag(ctx, TTY_OFF_BIT))) ||
+		    (_ffl_from_wait_to_ctrl(ctx, frame, flags) != 0))
+			break;
+	}
 }
 
 /*
@@ -1095,6 +1073,16 @@ static __must_check inline int _ffl_ctx_is_empty(struct ffl_xfer_ctx *ctx)
 }
 
 /**
+ * _ffl_tx_ctx_is_empty - checks if a TX context is empty (all FIFO are empty)
+ * @ctx: a reference to the TX FFL context to consider
+ */
+static __must_check inline int _ffl_tx_ctx_is_empty(struct ffl_xfer_ctx *ctx)
+{
+	return _ffl_ctx_is_empty(ctx) &&
+	       (likely(!_ffl_ctx_has_flag(ctx, TX_TTY_WRITE_FORWARDING_BIT)));
+}
+
+/**
  * ffl_tx_full_pipe_is_clean - checks if the TX pipe is clean or about to be
  * @ctx: a reference to the main FFL context to consider
  *
@@ -1109,7 +1097,7 @@ static __must_check int ffl_tx_full_pipe_is_clean(struct ffl_ctx *ctx)
 	unsigned long flags;
 
 	spin_lock_irqsave(&tx_ctx->lock, flags);
-	ret = _ffl_ctx_is_empty(tx_ctx) || (ctx->hangup.cause);
+	ret = _ffl_tx_ctx_is_empty(tx_ctx) || (ctx->hangup.cause);
 	spin_unlock_irqrestore(&tx_ctx->lock, flags);
 
 	return ret;
@@ -1422,7 +1410,7 @@ static void ffl_destruct_frame(struct hsi_msg *frame)
 	} else {
 		if (ctx->ctrl_len <= 0)
 			del_timer(&ctx->main_ctx->hangup.timer);
-		if (_ffl_ctx_is_empty(ctx)) {
+		if (_ffl_tx_ctx_is_empty(ctx)) {
 			wake_up(&ctx->main_ctx->tx_full_pipe_clean_event);
 			mod_timer(&ctx->timer, jiffies + ctx->delay);
 		}
@@ -1588,24 +1576,24 @@ static void ffl_complete_tx(struct hsi_msg *frame)
 	_ffl_free_frame(ctx, frame);
 	_ffl_fifo_ctrl_pop(ctx);
 	if (ctx->ctrl_len > 0)
-		/* we can not del hangup timer, because another TX was queued */
 		mod_timer(&main_ctx->hangup.timer,
 			  jiffies + usecs_to_jiffies(TTY_HANGUP_DELAY));
 	else
 		del_timer(&main_ctx->hangup.timer);
-	if (_ffl_ctx_is_empty(ctx)) {
+	if (_ffl_tx_ctx_is_empty(ctx)) {
 		wake_up(&main_ctx->tx_full_pipe_clean_event);
 		mod_timer(&ctx->timer, jiffies + ctx->delay);
 	} else {
 		del_timer(&ctx->timer);
 	}
-	if (ctx->wait_len > 0)
-		_ffl_pop_wait_push_ctrl_safe(ctx, &flags);
 
-	/* Wake-up the TTY write whenever the TX wait FIFO is half empty, and
-	 * not before, to prevent too many wakeups */
+	/* Start new waiting frames (if any) */
+	_ffl_pop_wait_push_ctrl(ctx, &flags);
+
+	/* Wake-up the TTY write whenever the TX wait FIFO is half empty and
+	 * has been full, or is currently empty to prevent too many wakeups */
 	wakeup = ((_ffl_ctx_has_flag(ctx, TX_TTY_WRITE_PENDING_BIT)) &&
-		  (ctx->wait_len <= ctx->wait_max/2));
+		  (ctx->wait_len <= ctx->wait_max/2)) || (ctx->wait_len == 0);
 	if (wakeup)
 		_ffl_ctx_clear_flag(ctx, TX_TTY_WRITE_PENDING_BIT);
 	spin_unlock_irqrestore(&ctx->lock, flags);
@@ -2142,7 +2130,6 @@ static void ffl_throw_tty_hangup(struct ffl_ctx *ctx, int cause)
 
 	if (do_hangup)
 		queue_work(ffl_hangup_wq, &ctx->hangup.work);
-
 }
 
 /**
@@ -2309,8 +2296,7 @@ static int do_ffl_tty_write(struct ffl_xfer_ctx *ctx, unsigned char *buf,
 		ctx->buffered		+= copied;
 		ctx->room		-= copied;
 		frame->status		 = HSI_STATUS_COMPLETED;
-		if (ctx->ctrl_len < ctx->ctrl_max)
-			_ffl_pop_wait_push_ctrl(ctx, &flags);
+		_ffl_pop_wait_push_ctrl(ctx, &flags);
 	} else {
 		/* ERROR frames have already been popped from the wait FIFO */
 		_ffl_free_frame(ctx, frame);
@@ -2342,9 +2328,12 @@ static int ffl_tty_write(struct tty_struct *tty, const unsigned char *buf,
 	unsigned long		 flags;
 
 	spin_lock_irqsave(&ctx->lock, flags);
-	enough_room =
-		(likely(!_ffl_ctx_has_flag(ctx, TX_TTY_WRITE_ONGOING_BIT))) ?
-		(!!(ctx->room >= len)) : -1;
+	if (likely(!_ffl_ctx_has_flag(ctx, TX_TTY_WRITE_ONGOING_BIT))) {
+		enough_room = (ctx->room >= len);
+	} else {
+		enough_room = -1;
+		_ffl_ctx_set_flag(ctx, TX_TTY_WRITE_PENDING_BIT);
+	}
 	_ffl_ctx_set_flag(ctx, TX_TTY_WRITE_ONGOING_BIT);
 	spin_unlock_irqrestore(&ctx->lock, flags);
 
@@ -2389,8 +2378,12 @@ static int ffl_tty_write_room(struct tty_struct *tty)
 	unsigned long	flags;
 
 	spin_lock_irqsave(&ctx->lock, flags);
-	room = (likely(!_ffl_ctx_has_flag(ctx, TX_TTY_WRITE_ONGOING_BIT))) ?
-								ctx->room : 0;
+	if (likely(!_ffl_ctx_has_flag(ctx, TX_TTY_WRITE_ONGOING_BIT))) {
+		room = ctx->room;
+	} else {
+		room = 0;
+		_ffl_ctx_set_flag(ctx, TX_TTY_WRITE_PENDING_BIT);
+	}
 	spin_unlock_irqrestore(&ctx->lock, flags);
 
 	return room;
@@ -3075,12 +3068,14 @@ static void ffl_recovery_rx_drain(struct work_struct *work)
 	spin_lock_irqsave(&tx_ctx->lock, flags);
 	_ffl_ctx_clear_flag(tx_ctx, ERROR_RECOVERY_ONGOING_BIT |
 				    ERROR_RECOVERY_TX_DRAINED_BIT);
-	if (tx_ctx->wait_len > 0)
-		_ffl_pop_wait_push_ctrl_safe(tx_ctx, &flags);
+	_ffl_pop_wait_push_ctrl(tx_ctx, &flags);
 	spin_unlock_irqrestore(&tx_ctx->lock, flags);
 
 	/* Do a stop_tx() to release ACWAKE forcing */
 	hsi_stop_tx(main_ctx->client);
+
+	/* Wake up the TTY to restart */
+	ffl_tty_wakeup(main_ctx);
 }
 
 /**
