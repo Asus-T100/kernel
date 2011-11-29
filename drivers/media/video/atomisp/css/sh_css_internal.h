@@ -356,6 +356,9 @@ sh_css_get_shading_table(void);
 const struct sh_css_isp_params *
 sh_css_get_isp_params(void);
 
+void
+sh_css_invalidate_morph_table(void);
+
 const struct sh_css_binary *
 sh_css_get_3a_binary(void);
 

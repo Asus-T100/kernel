@@ -2354,7 +2354,7 @@ crop_and_interpolate(unsigned int cropped_width,
 			src_x0 = clamp(src_x0, 0, (int)table_width-1);
 			src_x1 = clamp(src_x1, 0, (int)table_width-1);
 			tx = min(clamp(tx, 0, (int)sensor_width-1),
-				 table_cell_w);
+				 (int)table_cell_w);
 			/* calculate closest source points for distance
 			   computation */
 			sx0 = min(src_x0 * in_cell_size, sensor_width-1);

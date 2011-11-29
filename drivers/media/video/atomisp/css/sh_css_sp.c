@@ -85,7 +85,7 @@ sh_css_sp_store_init_dmem(const struct sh_css_sp_fw *fw)
 }
 
 void
-sh_css_sp_uninit()
+sh_css_sp_uninit(void)
 {
 	if (init_dmem_ddr) {
 		hrt_isp_css_mm_free(init_dmem_ddr);

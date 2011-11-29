@@ -55,10 +55,6 @@ sh_css_get_3a_config(const struct sh_css_3a_config **config);
 enum sh_css_err
 sh_css_set_black_frame(const struct sh_css_frame *raw_black_frame);
 
-/* Morph Table for GDC & CAC */
-void
-sh_css_invalidate_morph_table();
-
 void
 sh_css_set_morph_table(const struct sh_css_morph_table *table);
 

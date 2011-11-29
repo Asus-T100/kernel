@@ -609,10 +609,9 @@ static int atomisp_enum_framesizes(struct file *file, void *fh,
 	max_width = max_width - max_width % ATOM_ISP_STEP_WIDTH;
 	max_height = max_height - max_height % ATOM_ISP_STEP_HEIGHT;
 
-	max_width = clamp(max_width, (u32)ATOM_ISP_MIN_WIDTH,
-					(u32)ATOM_ISP_MAX_WIDTH);
-	max_height = clamp(max_height, (u32)ATOM_ISP_MIN_HEIGHT,
-					(u32)ATOM_ISP_MAX_HEIGHT);
+	max_width = clamp(max_width, ATOM_ISP_MIN_WIDTH, ATOM_ISP_MAX_WIDTH);
+	max_height = clamp(max_height, ATOM_ISP_MIN_HEIGHT,
+			   ATOM_ISP_MAX_HEIGHT);
 
 	/* set the supported minimum resolution to sub-QCIF resolution */
 	min_width = ATOM_RESOLUTION_SUBQCIF_WIDTH;
@@ -622,10 +621,9 @@ static int atomisp_enum_framesizes(struct file *file, void *fh,
 	min_width = min_width - min_width % ATOM_ISP_STEP_WIDTH;
 	min_height = min_height - min_height % ATOM_ISP_STEP_HEIGHT;
 
-	min_width = clamp(min_width, (u32)ATOM_ISP_MIN_WIDTH,
-					(u32)ATOM_ISP_MAX_WIDTH);
-	min_height = clamp(min_height, (u32)ATOM_ISP_MIN_HEIGHT,
-					(u32)ATOM_ISP_MAX_HEIGHT);
+	min_width = clamp(min_width, ATOM_ISP_MIN_WIDTH, ATOM_ISP_MAX_WIDTH);
+	min_height = clamp(min_height, ATOM_ISP_MIN_HEIGHT,
+			   ATOM_ISP_MAX_HEIGHT);
 
 	arg->stepwise.max_width = max_width;
 	arg->stepwise.max_height = max_height;
