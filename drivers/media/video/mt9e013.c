@@ -83,8 +83,8 @@ struct mt9e013_resolution mt9e013_res_preview[] = {
 		 .height =	616	,
 		 .fps =		30	,
 		 .used =	0	,
-		 .pixels_per_line = 0x20F0, /* consistent with regs arrays */
-		 .lines_per_frame = 0x02F7, /* consistent with regs arrays */
+		 .pixels_per_line = 0x1020, /* consistent with regs arrays */
+		 .lines_per_frame = 0x060E, /* consistent with regs arrays */
 		 .regs =	mt9e013_PREVIEW_30fps	,
 		 .bin_factor_x =	2,
 		 .bin_factor_y =	2,
@@ -95,8 +95,8 @@ struct mt9e013_resolution mt9e013_res_preview[] = {
 		 .height =	956	,
 		 .fps =		30	,
 		 .used =	0	,
-		 .pixels_per_line = 0x16C2, /* consistent with regs arrays */
-		 .lines_per_frame = 0x044F, /* consistent with regs arrays */
+		 .pixels_per_line = 0x1020, /* consistent with regs arrays */
+		 .lines_per_frame = 0x060E, /* consistent with regs arrays */
 		 .regs =	mt9e013_WIDE_PREVIEW_30fps	,
 		 .bin_factor_x =	1,
 		 .bin_factor_y =	1,
@@ -113,8 +113,8 @@ struct mt9e013_resolution mt9e013_res_still[] = {
 		 .height =	1232	,
 		 .fps =		15	,
 		 .used =	0	,
-		 .pixels_per_line = 0x2460, /* consistent with regs arrays */
-		 .lines_per_frame = 0x0563, /* consistent with regs arrays */
+		 .pixels_per_line = 0x1020, /* consistent with regs arrays */
+		 .lines_per_frame = 0x0C1C, /* consistent with regs arrays */
 		 .regs =	mt9e013_STILL_2M_15fps	,
 		 .bin_factor_x =	1,
 		 .bin_factor_y =	1,
@@ -132,14 +132,14 @@ struct mt9e013_resolution mt9e013_res_still[] = {
 		 .bin_factor_y =	0,
 	},
 	{
-		 .desc =	"STILL_8M_12fps"	,
+		 .desc =	"STILL_8M_15fps"	,
 		 .width =	3280	,
 		 .height =	2464	,
-		 .fps =		12	,
+		 .fps =		15	,
 		 .used =	0	,
-		 .pixels_per_line = 0x17F8, /* consistent with regs arrays */
+		 .pixels_per_line = 0x132C, /* consistent with regs arrays */
 		 .lines_per_frame = 0x0A2F, /* consistent with regs arrays */
-		 .regs =	mt9e013_STILL_8M_12fps	,
+		 .regs =	mt9e013_STILL_8M_15fps	,
 		 .bin_factor_x =	0,
 		 .bin_factor_y =	0,
 	},
@@ -1469,42 +1469,54 @@ struct mt9e013_format mt9e013_formats[] = {
  * res->width/height smaller than w/h wouldn't be considered.
  * Returns the value of gap or -1 if fail.
  */
-#define LARGEST_ALLOWED_RATIO_MISMATCH 140   /* tune this value so that the DVS resolutions get selected properly, but make sure 16:9 do not match 4:3*/
-static int distance(struct mt9e013_resolution *res, u32 w, u32 h)
+static int distance(struct mt9e013_resolution const *res, const u32 w, const u32 h, const s32 m)
 {
-	unsigned int w_ratio = ((res->width<<13)/w);
-	unsigned int h_ratio = ((res->height<<13)/h);
-	int match   = abs(((w_ratio<<13)/h_ratio) - ((int)8192));
+	u32 w_ratio = ((res->width<<13)/w);
+	u32 h_ratio = ((res->height<<13)/h);
+	s32 match   = abs(((w_ratio<<13)/h_ratio) - ((s32)8192));
 
-	if ((w_ratio < (int)8192) || (h_ratio < (int)8192)  || (match > LARGEST_ALLOWED_RATIO_MISMATCH))
+	if ((w_ratio < (s32)8192) || (h_ratio < (s32)8192)  || (match > m))
 		return -1;
 
 	return w_ratio + h_ratio;
 }
 
-/* Return the nearest higher resolution index */
+
+/*
+ * Returns the nearest higher resolution index.
+ * @w: width
+ * @h: height
+ * matching is done based on enveloping resolution and
+ * aspect ratio. If the aspect ratio cannot be matched
+ * to any index, the search is done again using envelopel
+ * matching only. if no match can be found again, -1 is
+ * returned.
+ */
+#define LARGEST_ALLOWED_RATIO_MISMATCH 140   /* tune this value so that the DVS resolutions get selected properly, but make sure 16:9 does not match 4:3*/
 static int nearest_resolution_index(int w, int h)
 {
-	int i;
+	int i, j;
 	int idx = -1;
 	int dist;
 	int min_dist = INT_MAX;
 	struct mt9e013_resolution *tmp_res = NULL;
+	s32 m = LARGEST_ALLOWED_RATIO_MISMATCH;
 
-	for (i = 0; i < N_RES; i++) {
-		tmp_res = &mt9e013_res[i];
-		dist = distance(tmp_res, w, h);
-		if (dist == -1)
-			continue;
-		if (dist < min_dist) {
-			min_dist = dist;
-			idx = i;
+	for (j = 0; j < 2; ++j) {
+		for (i = 0; i < N_RES; i++) {
+			tmp_res = &mt9e013_res[i];
+			dist = distance(tmp_res, w, h, m);
+			if (dist == -1)
+				continue;
+			if (dist < min_dist) {
+				min_dist = dist;
+				idx = i;
+			}
 		}
+		if (idx != -1)
+			break;
+		m = LONG_MAX;
 	}
-
-	if (idx == -1)
-		return -1;
-
 	return idx;
 }
 

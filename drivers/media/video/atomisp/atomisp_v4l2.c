@@ -35,11 +35,18 @@ int mipicsi_flag;
 module_param(mipicsi_flag, int, 0644);
 MODULE_PARM_DESC(mipicsi_flag, "mipi csi compression predictor algorithm");
 
-int pad_w = 8;
+/*set to 16x16 since this is the amount of lines and pixels the sensor
+exports extra. If these are kept at the 10x8 that they were on, in yuv
+downscaling modes incorrect resolutions where requested to the sensor
+driver with strange outcomes as a result. The proper way tot do this
+would be to have a list of tables the specify the sensor res, mipi rec,
+output res, and isp output res. however since we do not have this yet,
+the chosen solution is the next best thing. */
+int pad_w = 16;
 module_param(pad_w, int, 0644);
 MODULE_PARM_DESC(pad_w, "extra data for ISP processing");
 
-int pad_h = 10;
+int pad_h = 16;
 module_param(pad_h, int, 0644);
 MODULE_PARM_DESC(pad_h, "extra data for ISP processing");
 

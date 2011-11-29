@@ -541,8 +541,8 @@ static const struct mt9e013_reg mt9e013_pll_timing[] = {
 	/*			pixelrate into the isp =	153.600.000 Hz		 */
 	{MT9E013_16BIT, {0x0300},	0x0004	}, /*	vt_pix_clk_div=	4	internal pixel clock freq =	192.000.000 Hz		 */
 	{MT9E013_16BIT, {0x0302},	0x0001	}, /*	vt_sys_clk_div=	1				 */
-	{MT9E013_16BIT, {0x0304},	0x0002	}, /*	pre_pll_clk_div=	2	PLL input clock freq =	9.600.000 Hz		 */
-	{MT9E013_16BIT, {0x0306},	0x0050	}, /*	pll_multiplier=	80	mipi bus speed =	768.000.000 Hz		 */
+	{MT9E013_16BIT, {0x0304},	0x0001	}, /*	pre_pll_clk_div=	1	PLL input clock freq =	19.200.000 Hz		 */
+	{MT9E013_16BIT, {0x0306},	0x0028	}, /*	pll_multiplier=	40	mipi bus speed =	768.000.000 Hz		 */
 	{MT9E013_16BIT, {0x0308},	0x000A	}, /*	op_pix_clk_div=	10	output pixel clock freq =	76.800.000 Hz		 */
 	{MT9E013_16BIT, {0x030A},	0x0001	}, /*	op_sys_clk_div=	1				 */
 	{MT9E013_16BIT, {0x3016},	0x111	}, /*	row_speed=	273				 */
@@ -595,8 +595,6 @@ static const struct mt9e013_reg mt9e013_start_streaming[] = {
 
 #define GROUPED_PARAMETER_HOLD_DISABLE	{MT9E013_8BIT, {0x0104}, 0x0}
 
-#define RESET_REGISTER	{MT9E013_16BIT, {0x301A}, 0x4A18}
-
 #define INIT_VCM_CONTROL	{MT9E013_16BIT, {0x30F0}, 0x8004}  /* slew_rate[2:0] */
 static const struct mt9e013_reg mt9e013_init_vcm[] = {
 	INIT_VCM_CONTROL,				   /* VCM_CONTROL */
@@ -604,8 +602,10 @@ static const struct mt9e013_reg mt9e013_init_vcm[] = {
 	{MT9E013_16BIT, {0x30F4}, 0x0080}, /* VCM_STEP_TIME */
 	{MT9E013_TOK_TERM, {0}, 0}
 };
+
+#define RESET_REGISTER	{MT9E013_16BIT, {0x301A}, 0x4A18}
 static const struct mt9e013_reg mt9e013_reset_register[] = {
-	{MT9E013_16BIT, {0x301A}, 0x10}, /* Lock_Register, transition to standby at frame end */
+	RESET_REGISTER,
 	{MT9E013_TOK_TERM, {0}, 0}
 };
 
@@ -625,7 +625,7 @@ static const struct mt9e013_reg mt9e013_scaler[] = {
 /*****************************************************************************/
 
 /*****************************still15ok*****************************/
-static struct mt9e013_reg const mt9e013_STILL_8M_12fps[] = {
+static struct mt9e013_reg const mt9e013_STILL_8M_15fps[] = {
 	/*	STILL 8M	*/
 	GROUPED_PARAMETER_HOLD_ENABLE,
 	/* Output size */
@@ -637,10 +637,10 @@ static struct mt9e013_reg const mt9e013_STILL_8M_12fps[] = {
 	{MT9E013_16BIT, {0x034E},	0x09A0	},  /*	Y_OUTPUT_SIZE	2464	*/
 	{MT9E013_16BIT, {0x3040},	0x0041	},  /*	READ_MODE	65	*/
 	/* Timing Configuation */
-	{MT9E013_16BIT, {0x0342},	0x17F8	},  /*	line_length_pck	6136	*/
-	{MT9E013_16BIT, {0x0340},	0x0A2F	},  /*	frame_length_lines	2607	*/
-	{MT9E013_16BIT, {0x0202},	0x0A2F	},  /*	COARSE_INTEGRATION_TIME	2607	*/
-	{MT9E013_16BIT, {0x3014},	0x0D77	},  /*	FINE_INTEGRATION_TIME	3348	*/
+	{MT9E013_16BIT, {0x0342},	0x1258	},  /*	line_length_pck	4696	*/
+	{MT9E013_16BIT, {0x0340},	0x0AA4	},  /*	frame_length_lines	2724	*/
+	{MT9E013_16BIT, {0x0202},	0x04CA	},  /*	COARSE_INTEGRATION_TIME	1226	*/
+	{MT9E013_16BIT, {0x3014},	0x03F6	},  /*	FINE_INTEGRATION_TIME	1014	*/
 	{MT9E013_16BIT, {0x3010},	0x0078	},  /*	FINE_CORRECTION	120	*/
 	/* scaler */
 	{MT9E013_16BIT, {0x0400},	0x0	},  /*	SCALE_MODE	0	*/
@@ -675,19 +675,19 @@ static struct mt9e013_reg const mt9e013_STILL_2M_15fps[] = {
 	/*	STILL 2M	*/
 	GROUPED_PARAMETER_HOLD_ENABLE,
 	/* Output size */
-	{MT9E013_16BIT, {0x0344},	0x0000	},  /*	X_ADDR_START	0	*/
-	{MT9E013_16BIT, {0x0348},	0x0CD1	},  /*	X_ADDR_END	3281	*/
-	{MT9E013_16BIT, {0x0346},	0x0000	},  /*	Y_ADDR_START	0	*/
-	{MT9E013_16BIT, {0x034A},	0x09A1	},  /*	Y_ADDR_END	2465	*/
-	{MT9E013_16BIT, {0x034C},	0x0668	},  /*	X_OUTPUT_SIZE	1640	*/
-	{MT9E013_16BIT, {0x034E},	0x04D0	},  /*	Y_OUTPUT_SIZE	1232	*/
-	{MT9E013_16BIT, {0x3040},	0x04C3	},  /*	READ_MODE	1219	*/
-	/* Timing Configuation */
-	{MT9E013_16BIT, {0x0342},	0x2460	},  /*	line_length_pck	9312	*/
-	{MT9E013_16BIT, {0x0340},	0x0563	},  /*	frame_length_lines	1379	*/
-	{MT9E013_16BIT, {0x0202},	0x055F	},  /*	COARSE_INTEGRATION_TIME	1375	*/
-	{MT9E013_16BIT, {0x3014},	0x0846	},  /*	FINE_INTEGRATION_TIME	2118	*/
-	{MT9E013_16BIT, {0x3010},	0x0130	},  /*	FINE_CORRECTION	304	*/
+	{MT9E013_16BIT, {0x0344},	0x0000	}, /* X_ADDR_START	0 */
+	{MT9E013_16BIT, {0x0348},	0x0CD1	}, /* X_ADDR_END	3281 */
+	{MT9E013_16BIT, {0x0346},	0x0000	}, /* Y_ADDR_START	0 */
+	{MT9E013_16BIT, {0x034A},	0x09A1	}, /* Y_ADDR_END	2465 */
+	{MT9E013_16BIT, {0x034C},	0x0668	}, /* X_OUTPUT_SIZE	1640 */
+	{MT9E013_16BIT, {0x034E},	0x04D0	}, /* Y_OUTPUT_SIZE	1232 */
+	{MT9E013_16BIT, {0x3040},	0x04C3	}, /* READ_MODE	1219 */
+	/* Timing Configuration */
+	{MT9E013_16BIT, {0x0342},	0x1020	}, /* line_length_pck	4128 */
+	{MT9E013_16BIT, {0x0340},	0x0C1C	}, /* frame_length_lines	3100 */
+	{MT9E013_16BIT, {0x0202},	0x0573	}, /* COARSE_INTEGRATION_TIME	1395 */
+	{MT9E013_16BIT, {0x3014},	0x0846	}, /* FINE_INTEGRATION_TIME	2118 */
+	{MT9E013_16BIT, {0x3010},	0x0130	}, /* FINE_CORRECTION	304 */
 	/* scaler */
 	{MT9E013_16BIT, {0x0400},	0x0	},  /*	SCALE_MODE	0	*/
 	{MT9E013_16BIT, {0x0404},	0x10	},  /*	SCALE_M	16	*/
@@ -696,48 +696,48 @@ static struct mt9e013_reg const mt9e013_STILL_2M_15fps[] = {
 
 /*****************************preview30ok********************************/
 static struct mt9e013_reg const mt9e013_PREVIEW_30fps[] = {
-	/*	PREVIEW	*/
+	/* PREVIEW */
 	GROUPED_PARAMETER_HOLD_ENABLE,
 	/* Output size */
-	{MT9E013_16BIT, {0x0344},	0x0000	},  /*	X_ADDR_START	0	*/
-	{MT9E013_16BIT, {0x0348},	0x0CC9	},  /*	X_ADDR_END	3273	*/
-	{MT9E013_16BIT, {0x0346},	0x0000	},  /*	Y_ADDR_START	0	*/
-	{MT9E013_16BIT, {0x034A},	0x0999	},  /*	Y_ADDR_END	2457	*/
-	{MT9E013_16BIT, {0x034C},	0x0334	},  /*	X_OUTPUT_SIZE	820	*/
-	{MT9E013_16BIT, {0x034E},	0x0268	},  /*	Y_OUTPUT_SIZE	616	*/
-	{MT9E013_16BIT, {0x3040},	0x05C7	},  /*	READ_MODE	5575	*/
-	/* Timing Configuation */
-	{MT9E013_16BIT, {0x0342},	0x20F0	},  /*	line_length_pck	8432	*/
-	{MT9E013_16BIT, {0x0340},	0x02F7	},  /*	frame_length_lines	759	*/
-	{MT9E013_16BIT, {0x0202},	0x02F7	},  /*	COARSE_INTEGRATION_TIME	759	*/
-	{MT9E013_16BIT, {0x3014},	0x0846	},  /*	FINE_INTEGRATION_TIME	2118	*/
-	{MT9E013_16BIT, {0x3010},	0x0130	},  /*	FINE_CORRECTION	304	*/
+	{MT9E013_16BIT, {0x0344},	0x0000	}, /* X_ADDR_START	0 */
+	{MT9E013_16BIT, {0x0348},	0x0CCF	}, /* X_ADDR_END	3279 */
+	{MT9E013_16BIT, {0x0346},	0x0000	}, /* Y_ADDR_START	0 */
+	{MT9E013_16BIT, {0x034A},	0x099F	}, /* Y_ADDR_END	2463 */
+	{MT9E013_16BIT, {0x034C},	0x0334	}, /* X_OUTPUT_SIZE	820 */
+	{MT9E013_16BIT, {0x034E},	0x0268	}, /* Y_OUTPUT_SIZE	616 */
+	{MT9E013_16BIT, {0x3040},	0x04C3	}, /* READ_MODE	1219 */
+	/* Timing Configuration */
+	{MT9E013_16BIT, {0x0342},	0x1020	}, /* line_length_pck	4128 */
+	{MT9E013_16BIT, {0x0340},	0x060E	}, /* frame_length_lines	1550 */
+	{MT9E013_16BIT, {0x0202},	0x0573	}, /* COARSE_INTEGRATION_TIME	1395 */
+	{MT9E013_16BIT, {0x3014},	0x0846	}, /* FINE_INTEGRATION_TIME	2118 */
+	{MT9E013_16BIT, {0x3010},	0x0130	}, /* FINE_CORRECTION	304 */
 	/* scaler */
-	{MT9E013_16BIT, {0x0400},	0x0	},  /*	SCALE_MODE	0	*/
-	{MT9E013_16BIT, {0x0404},	0x10	},  /*	SCALE_M	16	*/
+	{MT9E013_16BIT, {0x0400},	0x2	}, /* SCALE_MODE	1 */
+	{MT9E013_16BIT, {0x0404},	0x20	}, /* SCALE_M	32 */
 	{MT9E013_TOK_TERM, {0}, 0}
 };
 
 static struct mt9e013_reg const mt9e013_WIDE_PREVIEW_30fps[] = {
-	/*	WIDE PREVIEW	*/
+	/* WIDE PREVIEW */
 	GROUPED_PARAMETER_HOLD_ENABLE,
 	/* Output size */
-	{MT9E013_16BIT, {0x0344},	0x0000	},  /*	X_ADDR_START	0	*/
-	{MT9E013_16BIT, {0x0348},	0x0CD1	},  /*	X_ADDR_END	3281	*/
-	{MT9E013_16BIT, {0x0346},	0x0114	},  /*	Y_ADDR_START	276	*/
-	{MT9E013_16BIT, {0x034A},	0x088D	},  /*	Y_ADDR_END	2189	*/
-	{MT9E013_16BIT, {0x034C},	0x0668	},  /*	X_OUTPUT_SIZE	1640	*/
-	{MT9E013_16BIT, {0x034E},	0x03BC	},  /*	Y_OUTPUT_SIZE	956	*/
-	{MT9E013_16BIT, {0x3040},	0x04C3	},  /*	READ_MODE	1219	*/
-	/* Timing Configuation */
-	{MT9E013_16BIT, {0x0342},	0x16C2	},  /*	line_length_pck	5826	*/
-	{MT9E013_16BIT, {0x0340},	0x044F	},  /*	frame_length_lines	1103	*/
-	{MT9E013_16BIT, {0x0202},	0x044B	},  /*	COARSE_INTEGRATION_TIME	1099	*/
-	{MT9E013_16BIT, {0x3014},	0x0846	},  /*	FINE_INTEGRATION_TIME	2118	*/
-	{MT9E013_16BIT, {0x3010},	0x0130	},  /*	FINE_CORRECTION	304	*/
+	{MT9E013_16BIT, {0x0344},	0x0000	}, /* X_ADDR_START	0 */
+	{MT9E013_16BIT, {0x0348},	0x0CCF	}, /* X_ADDR_END	3279 */
+	{MT9E013_16BIT, {0x0346},	0x0114	}, /* Y_ADDR_START	276 */
+	{MT9E013_16BIT, {0x034A},	0x088D	}, /* Y_ADDR_END	2189 */
+	{MT9E013_16BIT, {0x034C},	0x0668	}, /* X_OUTPUT_SIZE	1640 */
+	{MT9E013_16BIT, {0x034E},	0x03BC	}, /* Y_OUTPUT_SIZE	956 */
+	{MT9E013_16BIT, {0x3040},	0x04C3	}, /* READ_MODE	1219 */
+	/* Timing Configuration */
+	{MT9E013_16BIT, {0x0342},	0x1020	}, /* line_length_pck	4128 */
+	{MT9E013_16BIT, {0x0340},	0x060E	}, /* frame_length_lines	1550 */
+	{MT9E013_16BIT, {0x0202},	0x0573	}, /* COARSE_INTEGRATION_TIME	1395 */
+	{MT9E013_16BIT, {0x3014},	0x0846	}, /* FINE_INTEGRATION_TIME	2118 */
+	{MT9E013_16BIT, {0x3010},	0x0130	}, /* FINE_CORRECTION	304 */
 	/* scaler */
-	{MT9E013_16BIT, {0x0400},	0x0	},  /*	SCALE_MODE	0	*/
-	{MT9E013_16BIT, {0x0404},	0x10	},  /*	SCALE_M	16	*/
+	{MT9E013_16BIT, {0x0400},	0x0	}, /* SCALE_MODE	0 */
+	{MT9E013_16BIT, {0x0404},	0x10	}, /* SCALE_M	16 */
 	{MT9E013_TOK_TERM, {0}, 0}
 };
 
