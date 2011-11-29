@@ -573,8 +573,8 @@ static int get_pfnmap_pages(struct task_struct *tsk, struct mm_struct *mm,
 static int alloc_user_pages(struct hmm_buffer_object *bo,
 			      unsigned int userptr, bool cached)
 {
-	unsigned int page_nr;
-	unsigned int i;
+	int page_nr;
+	int i;
 	struct page_block *pgblk;
 	struct vm_area_struct *vma;
 	int ret;
