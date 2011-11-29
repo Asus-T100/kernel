@@ -77,6 +77,7 @@ obj-$(CONFIG_VIDEO_LM3554) += lm3554.o
 obj-$(CONFIG_VIDEO_MT9E013)  += mt9e013.o
 obj-$(CONFIG_VIDEO_OV8830)   += ov8830.o
 obj-$(CONFIG_VIDEO_MT9M114)  += mt9m114.o
+CFFLAGS_mt9m114.o = -Werror
 
 obj-$(CONFIG_SOC_CAMERA_IMX074)		+= imx074.o
 obj-$(CONFIG_SOC_CAMERA_MT9M001)	+= mt9m001.o

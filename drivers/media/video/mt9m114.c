@@ -58,7 +58,6 @@ mt9m114_read_reg(struct i2c_client *client, u16 data_length, u32 reg, u32 *val)
 	int err;
 	struct i2c_msg msg[2];
 	unsigned char data[4];
-	u16 *wreg;
 
 	if (!client->adapter) {
 		v4l2_err(client, "%s error, no client->adapter\n", __func__);
@@ -400,7 +399,6 @@ static int mt9m114_write_reg_array(struct i2c_client *client,
 static int mt9m114_wait_3a(struct v4l2_subdev *sd)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
-	struct mt9m114_device *dev = to_mt9m114_sensor(sd);
 	int timeout = 100;
 	int status;
 
@@ -420,7 +418,6 @@ static int mt9m114_wait_3a(struct v4l2_subdev *sd)
 static int mt9m114_wait_state(struct v4l2_subdev *sd, int timeout)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
-	struct mt9m114_device *dev = to_mt9m114_sensor(sd);
 	int val, ret;
 
 	while (timeout-- > 0) {
@@ -468,116 +465,6 @@ static int mt9m114_init_common(struct v4l2_subdev *sd)
 	ret = mt9m114_write_reg_array(client, mt9m114_iq);
 
 	return ret;
-}
-
-
-static int mt9m114_standby(struct v4l2_subdev *sd)
-{
-	struct i2c_client *client = v4l2_get_subdevdata(sd);
-	struct mt9m114_device *dev = to_mt9m114_sensor(sd);
-	int timeout, delay, val;
-	int ret;
-
-	ret = mt9m114_write_reg_array(client, mt9m114_standby_reg);
-	if (ret)
-		return ret;
-
-	/* Wait for the FW to complete the command */
-	timeout = 100;
-	delay = 10;
-	while (timeout > 0) {
-		ret = mt9m114_read_reg(client, MISENSOR_16BIT, 0x0080, &val);
-		if (ret)
-			return ret;
-		if ((val & 0x2) == 0)
-			break;
-		msleep(delay);
-		timeout--;
-	}
-	if (timeout == 0)
-		return ret;
-
-	/* Wait for the FW to fully enter standby */
-	timeout = 10;
-	delay = 50;
-	ret = mt9m114_write_reg(client, MISENSOR_16BIT, 0x098E, 0xDC01);
-	if (ret)
-		return ret;
-	while (timeout > 0) {
-		ret = mt9m114_read_reg(client, MISENSOR_8BIT, 0x0990, &val);
-		if (ret)
-			return ret;
-		if (val == 0x52)
-			break;
-		msleep(delay);
-		timeout--;
-	}
-	if (timeout == 0)
-		return ret;
-
-	/* turn EXTCLK off */
-	ret = dev->platform_data->flisclk_ctrl(sd, 0);
-	if (ret)
-		return ret;
-
-	/* FIXME: need to wait for 100 EXTCLK cycles */
-	msleep(20);
-
-	return 0;
-}
-
-static int mt9m114_wakeup(struct v4l2_subdev *sd)
-{
-	struct i2c_client *client = v4l2_get_subdevdata(sd);
-	struct mt9m114_device *dev = to_mt9m114_sensor(sd);
-	int timeout, delay, val;
-	int ret;
-
-	/* turn EXTCLK on */
-	ret = dev->platform_data->flisclk_ctrl(sd, 1);
-	if (ret)
-		return ret;
-
-	/* FIXME: need to wait for 100 EXTCLK cycles */
-	msleep(20);
-
-	ret = mt9m114_write_reg_array(client, mt9m114_wakeup_reg);
-	if (ret)
-		return ret;
-	/* Wait for the FW to complete the command */
-	timeout = 100;
-	delay = 10;
-	while (timeout > 0) {
-		ret = mt9m114_read_reg(client, MISENSOR_16BIT, 0x0080, &val);
-		if (ret)
-			return ret;
-		if ((val & 0x2) == 0)
-			break;
-		msleep(delay);
-		timeout--;
-	}
-	if (timeout == 0)
-		return ret;
-
-	/* Wait for the FW to fully out of standby */
-	timeout = 10;
-	delay = 50;
-	ret = mt9m114_write_reg(client, MISENSOR_16BIT, 0x098E, 0xDC01);
-	if (ret)
-		return ret;
-	while (timeout > 0) {
-		ret = mt9m114_read_reg(client, MISENSOR_8BIT, 0x0990, &val);
-		if (ret)
-			return ret;
-		if (val == 0x31)
-			break;
-		msleep(delay);
-		timeout--;
-	}
-	if (timeout == 0)
-		return ret;
-
-	return 0;
 }
 
 static int power_up(struct v4l2_subdev *sd)
@@ -655,9 +542,6 @@ static int power_down(struct v4l2_subdev *sd)
 
 static int mt9m114_s_power(struct v4l2_subdev *sd, int power)
 {
-	struct mt9m114_device *dev = to_mt9m114_sensor(sd);
-	struct i2c_client *client = v4l2_get_subdevdata(sd);
-
 	if (power == 0)
 		return power_down(sd);
 	else {
@@ -1102,22 +986,6 @@ static int mt9m114_queryctrl(struct v4l2_subdev *sd, struct v4l2_queryctrl *qc)
 	return 0;
 }
 
-/* HFLIP - read context A value and set to true if set */
-static int mt9m114_q_hflip(struct v4l2_subdev *sd, __s32 * value)
-{
-	struct i2c_client *c = v4l2_get_subdevdata(sd);
-	int err;
-	u32 val;
-
-	/* set for direct mode */
-	mt9m114_write_reg(c, MISENSOR_16BIT, 0x098E, 0x4850);
-	err = mt9m114_read_reg(c, MISENSOR_8BIT, 0xC850, &val);
-
-	*value = val & 0x1;
-
-	return err;
-}
-
 /* Horizontal flip the image. */
 static int mt9m114_t_hflip(struct v4l2_subdev *sd, int value)
 {
@@ -1161,27 +1029,10 @@ static int mt9m114_t_hflip(struct v4l2_subdev *sd, int value)
 	return !!err;
 }
 
-/* Determine VFLIP status by reading context A register */
-static int mt9m114_q_vflip(struct v4l2_subdev *sd, __s32 * value)
-{
-	struct i2c_client *c = v4l2_get_subdevdata(sd);
-	int err;
-	u32 val;
-
-	/* set for direct mode */
-	mt9m114_write_reg(c, MISENSOR_16BIT, 0x098E, 0x4850);
-	err = mt9m114_read_reg(c, MISENSOR_8BIT, 0xC850, &val);
-
-	*value = (val & 0x02) == 0x02;
-
-	return err;
-}
-
 /* Vertically flip the image */
 static int mt9m114_t_vflip(struct v4l2_subdev *sd, int value)
 {
 	struct i2c_client *c = v4l2_get_subdevdata(sd);
-	struct mt9m114_device *dev = to_mt9m114_sensor(sd);
 	int err;
 
 	/* set for direct mode */

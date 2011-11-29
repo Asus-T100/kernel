@@ -278,14 +278,6 @@ struct mt9m114_write_ctrl {
 	struct mt9m114_write_buffer buffer;
 };
 
-static struct mt9m114_format_struct  mt9m114_formats[] = {
-	{
-		.desc = "YUYV 4:2:2",
-	},
-};
-
-#define N_MT9M114_FMTS ARRAY_SIZE(mt9m114_formats)
-
 /*
  * Modes supported by the mt9m114 driver.
  * Please, keep them in ascending order.
