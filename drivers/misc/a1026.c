@@ -21,9 +21,7 @@
 #include <linux/uaccess.h>
 #include <linux/delay.h>
 #include <linux/firmware.h>
-/* FIXME: once sound moves we can fix this */
-/* #include <sound/intel_sst.h> */
-#include "../staging/intel_sst/intel_sst.h"
+#include <sound/intel_sst.h> */
 #include <linux/a1026.h>
 #include <linux/i2c.h>
 
