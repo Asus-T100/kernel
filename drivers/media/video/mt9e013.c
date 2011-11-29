@@ -1946,7 +1946,6 @@ mt9e013_g_frame_interval(struct v4l2_subdev *sd,
 	struct mt9e013_device *dev = to_mt9e013_sensor(sd);
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	u16 lines_per_frame;
-	u8 fps;
 	/*
 	 * if no specific information to calculate the fps,
 	 * just used the value in sensor settings
