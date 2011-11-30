@@ -2136,10 +2136,8 @@ static int intel_mid_i2s_probe(struct pci_dev *pdev,
 		goto err_i2s_probe3;
 	}
 
-	pm_runtime_set_active(&(drv_data->pdev->dev));
-	pm_runtime_enable(&(drv_data->pdev->dev));
+	pm_runtime_put_noidle(&(drv_data->pdev->dev));
 	pm_runtime_allow(&(drv_data->pdev->dev));
-	pm_request_idle(&(drv_data->pdev->dev));
 
 	if (usage == SSP_USAGE_MODEM) {
 		WARN(test_and_set_bit(MODEM_FND, &modem_found_and_i2s_setup_ok),
