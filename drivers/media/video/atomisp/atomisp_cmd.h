@@ -84,19 +84,19 @@ int atomisp_gdc_cac(struct atomisp_device *isp, int flag, __s32 * value);
 int atomisp_low_light(struct atomisp_device *isp, int flag, __s32 * value);
 
 /*
- * Function to enable/disable extra nosie reduction (XNR) in low light
+ * Function to enable/disable extra noise reduction (XNR) in low light
  * condition
  */
 int atomisp_xnr(struct atomisp_device *isp, int flag, int *arg);
 
 /*
- * Function to configure bayer nosie reduction
+ * Function to configure noise reduction
  */
-int atomisp_bayer_nr(struct atomisp_device *isp, int flag,
-	void *config);
+int atomisp_nr(struct atomisp_device *isp, int flag,
+	       struct atomisp_nr_config *config);
 
 /*
- * Function to configure temporal nosie reduction (TNR)
+ * Function to configure temporal noise reduction (TNR)
  */
 int atomisp_tnr(struct atomisp_device *isp, int flag,
 	void *config);
@@ -111,12 +111,6 @@ int atomisp_histogram(struct atomisp_device *isp,
  * Function to configure black level compensation
  */
 int atomisp_black_level(struct atomisp_device *isp, int flag, void *config);
-
-/*
- * Function to configure Ycc nosie reduction
- */
-int atomisp_ycc_nr(struct atomisp_device *isp, int flag,
-	void *config);
 
 /*
  * Function to configure edge enhancement
@@ -202,14 +196,14 @@ int atomisp_fixed_pattern(struct atomisp_device *isp, int flag, __s32 * value);
 /*
  * Function to configure fixed pattern noise table
  */
-int atomisp_fixed_pattern_table(struct atomisp_device *isp, int flag,
-				void *config);
+int atomisp_fixed_pattern_table(struct atomisp_device *isp,
+				struct v4l2_framebuffer *config);
 
 /*
  * Function to configure vf overlay image
  */
 int atomisp_vf_overlay(struct atomisp_device *isp, int flag,
-	void *config);
+		       struct atomisp_overlay *overlay);
 
 /*
  * Function to configure false color correction

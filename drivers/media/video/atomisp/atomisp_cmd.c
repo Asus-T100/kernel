@@ -954,7 +954,8 @@ int atomisp_get_frame_pgnr(const struct sh_css_frame *frame, u32 * p_pgnr)
 /*
  * Get internal fmt according to V4L2 fmt
  */
-enum sh_css_frame_format v4l2_fmt_to_sh_fmt(u32 fmt)
+static enum sh_css_frame_format
+v4l2_fmt_to_sh_fmt(u32 fmt)
 {
 	switch (fmt) {
 	case V4L2_PIX_FMT_YUV420:
@@ -1252,7 +1253,7 @@ int atomisp_low_light(struct atomisp_device *isp, int flag, __s32 * value)
 }
 
 /*
- * Function to enable/disable extra nosie reduction (XNR) in low light
+ * Function to enable/disable extra noise reduction (XNR) in low light
  * condition
  */
 int atomisp_xnr(struct atomisp_device *isp, int flag, int *arg)
@@ -1270,13 +1271,11 @@ int atomisp_xnr(struct atomisp_device *isp, int flag, int *arg)
 }
 
 /*
- * Function to configure bayer nosie reduction
+ * Function to configure bayer noise reduction
  */
-int atomisp_bayer_nr(struct atomisp_device *isp, int flag,
-			     void *config)
+int atomisp_nr(struct atomisp_device *isp, int flag,
+	       struct atomisp_nr_config *arg)
 {
-	struct atomisp_nr_config *arg = (struct atomisp_nr_config *)config;
-
 	if (arg == NULL)
 		return -EINVAL;
 
@@ -1286,9 +1285,11 @@ int atomisp_bayer_nr(struct atomisp_device *isp, int flag,
 		return -EINVAL;
 	}
 
-	/* Get nr config from current setup */
 	if (flag == 0) {
-		memcpy(arg, &isp->params.nr_config, sizeof(*arg));
+		/* Get nr config from current setup */
+		const struct sh_css_nr_config *nr_config;
+		sh_css_get_nr_config(&nr_config);
+		memcpy(arg, nr_config, sizeof(*arg));
 	} else {
 		/* Set nr config to isp parameters */
 		memcpy(&isp->params.nr_config, arg,
@@ -1299,7 +1300,7 @@ int atomisp_bayer_nr(struct atomisp_device *isp, int flag,
 }
 
 /*
- * Function to configure temporal nosie reduction (TNR)
+ * Function to configure temporal noise reduction (TNR)
  */
 int atomisp_tnr(struct atomisp_device *isp, int flag,
 			void *config)
@@ -1437,38 +1438,6 @@ int atomisp_black_level(struct atomisp_device *isp, int flag,
 		memcpy(&isp->params.ob_config, arg,
 			sizeof(struct sh_css_ob_config));
 		sh_css_set_ob_config(&isp->params.ob_config);
-	}
-
-	return 0;
-}
-
-/*
- * Function to configure Ycc nosie reduction
- */
-int atomisp_ycc_nr(struct atomisp_device *isp, int flag,
-			   void *config)
-{
-	struct atomisp_nr_config *arg = (struct atomisp_nr_config *)config;
-
-	if (arg == NULL)
-		return -EINVAL;
-
-	if (sizeof(*arg) != sizeof(isp->params.nr_config)) {
-		v4l2_err(&atomisp_dev,
-			"%s: incompatible param.\n", __func__);
-		return -EINVAL;
-	}
-
-	if (flag == 0) {
-		/* Get nr config from current setup */
-		const struct sh_css_nr_config *nr_config;
-		sh_css_get_nr_config(&nr_config);
-		memcpy(arg, nr_config, sizeof(*arg));
-	} else {
-		/* Set nr config to isp parameters */
-		memcpy(&isp->params.nr_config, arg,
-			sizeof(isp->params.nr_config));
-		sh_css_set_nr_config(&isp->params.nr_config);
 	}
 
 	return 0;
@@ -1738,7 +1707,7 @@ err_dis:
 }
 
 static void atomisp_curr_user_grid_info(struct atomisp_device *isp,
-				    struct atomisp_grid_info_user *info)
+				    struct atomisp_grid_info *info)
 {
 	info->s3a_width             = isp->params.curr_grid_info.s3a_width;
 	info->s3a_height            = isp->params.curr_grid_info.s3a_height;
@@ -2250,59 +2219,108 @@ int atomisp_fixed_pattern(struct atomisp_device *isp, int flag, __s32 * value)
 	return 0;
 }
 
+static unsigned int
+atomisp_bytesperline_to_padded_width(unsigned int bytesperline,
+				     enum sh_css_frame_format format)
+{
+	switch (format) {
+	case SH_CSS_FRAME_FORMAT_UYVY:
+	case SH_CSS_FRAME_FORMAT_YUYV:
+	case SH_CSS_FRAME_FORMAT_RAW:
+	case SH_CSS_FRAME_FORMAT_RGB565:
+		return bytesperline/2;
+	case SH_CSS_FRAME_FORMAT_RGBA888:
+		return bytesperline/4;
+	/* The following cases could be removed, but we leave them
+	   in to document the formats that are included. */
+	case SH_CSS_FRAME_FORMAT_NV11:
+	case SH_CSS_FRAME_FORMAT_NV12:
+	case SH_CSS_FRAME_FORMAT_NV16:
+	case SH_CSS_FRAME_FORMAT_NV21:
+	case SH_CSS_FRAME_FORMAT_NV61:
+	case SH_CSS_FRAME_FORMAT_YV12:
+	case SH_CSS_FRAME_FORMAT_YV16:
+	case SH_CSS_FRAME_FORMAT_YUV420:
+	case SH_CSS_FRAME_FORMAT_YUV420_16:
+	case SH_CSS_FRAME_FORMAT_YUV422:
+	case SH_CSS_FRAME_FORMAT_YUV422_16:
+	case SH_CSS_FRAME_FORMAT_YUV444:
+	case SH_CSS_FRAME_FORMAT_YUV_LINE:
+	case SH_CSS_FRAME_FORMAT_PLANAR_RGB888:
+	case SH_CSS_FRAME_FORMAT_QPLANE6:
+	case SH_CSS_FRAME_FORMAT_BINARY_8:
+	default:
+		return bytesperline;
+	}
+}
+
+static int
+atomisp_v4l2_framebuffer_to_sh_css_frame(const struct v4l2_framebuffer *arg,
+					 struct sh_css_frame **result)
+{
+	struct sh_css_frame *res = NULL;
+	unsigned int padded_width;
+	enum sh_css_frame_format sh_format;
+	char *tmp_buf = NULL;
+	int ret = 0;
+
+	sh_format = v4l2_fmt_to_sh_fmt(arg->fmt.pixelformat);
+	padded_width = atomisp_bytesperline_to_padded_width(
+					arg->fmt.bytesperline, sh_format);
+
+	/* Note: the padded width on an sh_css_frame is in elements, not in
+	   bytes. The RAW frame we use here should always be a 16bit RAW
+	   frame. This is why we bytesperline/2 is equal to the padded with */
+	if (sh_css_frame_allocate(&res, arg->fmt.width, arg->fmt.height,
+				  sh_format, padded_width, 0)) {
+		ret = -ENOMEM;
+		goto err;
+	}
+
+	tmp_buf = vmalloc(arg->fmt.sizeimage);
+	if (!tmp_buf) {
+		ret = -ENOMEM;
+		goto err;
+	}
+	if (copy_from_user(tmp_buf, arg->base, arg->fmt.sizeimage)) {
+		ret = -EFAULT;
+		goto err;
+	}
+
+	if (hmm_store(res->data, tmp_buf, arg->fmt.sizeimage)) {
+		ret = -EINVAL;
+		goto err;
+	}
+
+err:
+	if (ret && res)
+		sh_css_frame_free(res);
+	if (tmp_buf)
+		vfree(tmp_buf);
+	if (ret == 0)
+		*result = res;
+	return ret;
+}
+
 /*
  * Function to configure fixed pattern noise table
  */
-int atomisp_fixed_pattern_table(struct atomisp_device *isp, int flag,
-	void *config)
+int atomisp_fixed_pattern_table(struct atomisp_device *isp,
+				struct v4l2_framebuffer *arg)
 {
-	struct atomisp_frame *arg = (struct atomisp_frame *)config;
 	struct sh_css_frame *raw_black_frame = NULL;
-	struct sh_css_frame_info info;
-	char *tmp_buf;
 	int ret = 0;
 
 	if (arg == NULL)
 		return -EINVAL;
 
-	if (sizeof(*arg) != sizeof(*raw_black_frame)) {
-		v4l2_err(&atomisp_dev,
-			"%s: incompatible param.\n", __func__);
-		return -EINVAL;
-	}
+	ret = atomisp_v4l2_framebuffer_to_sh_css_frame(arg, &raw_black_frame);
+	if (ret)
+		return ret;
+	if (sh_css_set_black_frame(raw_black_frame) != sh_css_success)
+		ret = -ENOMEM;
 
-	if (flag == 0)
-		return -EINVAL;
-	else {
-		memcpy(&info, &arg->info, sizeof(struct sh_css_frame_info));
-
-		tmp_buf = vmalloc(arg->data_bytes);
-		if (!tmp_buf)
-			return -ENOMEM;
-
-		if (sh_css_frame_allocate_from_info(&raw_black_frame, &info)) {
-			ret = -ENOMEM;
-			goto failed1;
-		}
-
-		if (copy_from_user(tmp_buf, arg->data, arg->data_bytes)) {
-			ret = -EFAULT;
-			goto failed2;
-		}
-
-		if (hmm_store(raw_black_frame->data, tmp_buf,
-			arg->data_bytes)){
-			ret = -EINVAL;
-			goto failed2;
-		}
-
-		sh_css_set_black_frame(raw_black_frame);
-failed2:
-		sh_css_frame_free(raw_black_frame);
-failed1:
-		vfree(tmp_buf);
-	}
-
+	sh_css_frame_free(raw_black_frame);
 	return ret;
 }
 
@@ -2310,33 +2328,18 @@ failed1:
  * Function to configure vf overlay image
  */
 int atomisp_vf_overlay(struct atomisp_device *isp, int flag,
-	void *config)
+		       struct atomisp_overlay *arg)
 {
-	struct atomisp_overlay *arg = (struct atomisp_overlay *)config;
 	int ret = 0;
-	struct sh_css_frame vf_frame;
-	char *tmp_buf;
 
 	if (arg == NULL)
 		return -EINVAL;
 
-	if (sizeof(*arg) != sizeof(*isp->params.vf_overlay)) {
-		v4l2_err(&atomisp_dev,
-			"%s: incompatible param.\n", __func__);
-		return -EINVAL;
-	}
-
-	if (!arg->frame)
-		/* from siliconhive, passing NULL means disable the feature */
+	/* NULL means disable the feature */
+	if (!arg->frame) {
 		sh_css_overlay_set_for_viewfinder(NULL);
-
-	if (copy_from_user(&vf_frame, arg->frame,
-			     sizeof(struct sh_css_frame)))
-		return -EFAULT;
-
-	tmp_buf = vmalloc(vf_frame.data_bytes);
-	if (!tmp_buf)
-		return -ENOMEM;
+		return 0;
+	}
 
 	if (isp->params.vf_overlay) {
 		if (isp->params.vf_overlay->frame)
@@ -2344,22 +2347,21 @@ int atomisp_vf_overlay(struct atomisp_device *isp, int flag,
 		kfree(isp->params.vf_overlay);
 	}
 
-	isp->params.vf_overlay = kmalloc(sizeof(struct sh_css_overlay),
+	isp->params.vf_overlay = kzalloc(sizeof(struct sh_css_overlay),
 							GFP_KERNEL);
 	if (!isp->params.vf_overlay) {
 		ret =  -ENOMEM;
-		goto fail1;
+		goto err;
 	}
 
-	if (sh_css_frame_allocate_from_info(&isp->params.vf_overlay->frame,
-					   &vf_frame.info)) {
-		ret = -ENOMEM;
-		goto fail2;
-	}
+	ret = atomisp_v4l2_framebuffer_to_sh_css_frame(arg->frame,
+						&isp->params.vf_overlay->frame);
+	if (ret)
+		goto err;
 
-	isp->params.vf_overlay->bg_y = arg->bg_y;
-	isp->params.vf_overlay->bg_u = arg->bg_u;
-	isp->params.vf_overlay->bg_v = arg->bg_v;
+	isp->params.vf_overlay->bg_y               = arg->bg_y;
+	isp->params.vf_overlay->bg_u               = arg->bg_u;
+	isp->params.vf_overlay->bg_v               = arg->bg_v;
 	isp->params.vf_overlay->blend_input_perc_y = arg->blend_input_perc_y;
 	isp->params.vf_overlay->blend_input_perc_u = arg->blend_input_perc_u;
 	isp->params.vf_overlay->blend_input_perc_v = arg->blend_input_perc_v;
@@ -2369,31 +2371,14 @@ int atomisp_vf_overlay(struct atomisp_device *isp, int flag,
 						arg->blend_overlay_perc_u;
 	isp->params.vf_overlay->blend_overlay_perc_v =
 						arg->blend_overlay_perc_v;
-	isp->params.vf_overlay->overlay_start_x = arg->overlay_start_x;
-	isp->params.vf_overlay->overlay_start_y = arg->overlay_start_y;
-
-	/* copy for YUV 420 */
-	if (copy_from_user(tmp_buf, vf_frame.data, vf_frame.data_bytes)) {
-			ret = -EFAULT;
-			goto fail2;
-	}
-
-	if (hmm_store(isp->params.vf_overlay->frame->data, tmp_buf,
-		vf_frame.data_bytes)){
-		ret = -EINVAL;
-		goto fail2;
-	}
+	isp->params.vf_overlay->overlay_start_x    = arg->overlay_start_x;
+	isp->params.vf_overlay->overlay_start_y    = arg->overlay_start_y;
 
 	sh_css_overlay_set_for_viewfinder(isp->params.vf_overlay);
 
-	vfree(tmp_buf);
-
-	return ret;
-
-fail2:
-	kfree(isp->params.vf_overlay);
-fail1:
-	vfree(tmp_buf);
+err:
+	if (ret && isp->params.vf_overlay)
+		kfree(isp->params.vf_overlay);
 	return ret;
 }
 
@@ -3262,7 +3247,7 @@ done:
 	pipe->format->out.bytesperline =
 	    DIV_RND_UP(format_bridge->depth * output_info.padded_width, 8);
 	pipe->format->out.sizeimage =
-	    PAGE_ALIGN(height * pipe->format->out. bytesperline);
+	    PAGE_ALIGN(height * pipe->format->out.bytesperline);
 	if (f->fmt.pix.field == V4L2_FIELD_ANY)
 		f->fmt.pix.field = V4L2_FIELD_NONE;
 	pipe->format->out.field = f->fmt.pix.field;

@@ -143,7 +143,7 @@ struct atomisp_3a_config {
 };
 
 /* structure that describes the 3A and DIS grids shared with 3A lib*/
-struct atomisp_grid_info_user {
+struct atomisp_grid_info {
 	/* 3A statistics grid: */
 	unsigned int s3a_width;
 	unsigned int s3a_height;
@@ -157,8 +157,8 @@ struct atomisp_grid_info_user {
 };
 
 struct atomisp_3a_statistics {
-	struct atomisp_grid_info_user grid_info;
-	struct atomisp_3a_output     *data;
+	struct atomisp_grid_info  grid_info;
+	struct atomisp_3a_output *data;
 };
 
 /* White Balance (Gain Adjust) */
@@ -205,7 +205,7 @@ struct atomisp_dp_config {
 };
 
 struct atomisp_parm {
-	struct atomisp_grid_info_user info;
+	struct atomisp_grid_info info;
 	struct atomisp_wb_config wb_config;
 	struct atomisp_cc_config cc_config;
 	struct atomisp_ob_config ob_config;
@@ -217,27 +217,24 @@ struct atomisp_parm {
 	struct atomisp_tnr_config tnr_config;
 };
 
-#define atomisp_gamma_table_size        1024
-
+#define ATOMISP_GAMMA_TABLE_SIZE        1024
 struct atomisp_gamma_table {
-	unsigned short data[atomisp_gamma_table_size];
+	unsigned short data[ATOMISP_GAMMA_TABLE_SIZE];
 };
-
-#define atomisp_morph_table_num_planes  6
 
 /* Morphing table for advanced ISP.
  * Each line of width elements takes up COORD_TABLE_EXT_WIDTH elements
  * in memory.
  */
+#define ATOMISP_MORPH_TABLE_NUM_PLANES  6
 struct atomisp_morph_table {
 	unsigned int height;
 	unsigned int width;	/* number of valid elements per line */
-	unsigned short *coordinates_x[atomisp_morph_table_num_planes];
-	unsigned short *coordinates_y[atomisp_morph_table_num_planes];
+	unsigned short *coordinates_x[ATOMISP_MORPH_TABLE_NUM_PLANES];
+	unsigned short *coordinates_y[ATOMISP_MORPH_TABLE_NUM_PLANES];
 };
 
 #define ATOMISP_NUM_SC_COLORS	4
-
 #define ATOMISP_SC_FLAG_QUERY	(1 << 0)
 
 struct atomisp_shading_table {
@@ -281,9 +278,9 @@ struct atomisp_makernote_info {
 };
 
 /* parameter for MACC */
-#define atomisp_num_macc_axes           16
+#define ATOMISP_NUM_MACC_AXES           16
 struct atomisp_macc_table {
-	short data[4 * atomisp_num_macc_axes];
+	short data[4 * ATOMISP_NUM_MACC_AXES];
 };
 
 struct atomisp_macc_config {
@@ -292,186 +289,9 @@ struct atomisp_macc_config {
 };
 
 /* Parameter for ctc parameter control */
-#define atomisp_ctc_table_size          1024
+#define ATOMISP_CTC_TABLE_SIZE          1024
 struct atomisp_ctc_table {
-	unsigned short data[atomisp_ctc_table_size];
-};
-
-/* Parameter for fpn table loading */
-enum atomisp_frame_format {
-	ATOMISP_FRAME_FORMAT_NV11,	/* 12 bit YUV 411, Y, UV plane */
-	ATOMISP_FRAME_FORMAT_NV12,	/* 12 bit YUV 420, Y, UV plane */
-	ATOMISP_FRAME_FORMAT_NV16,	/* 16 bit YUV 422, Y, UV plane */
-	ATOMISP_FRAME_FORMAT_YUV420,	/* 12 bit YUV 420, Y, U, V plane */
-	ATOMISP_FRAME_FORMAT_YUV422,	/* 16 bit YUV 422, Y, U, V plane */
-	ATOMISP_FRAME_FORMAT_YUYV,	/* 16 bit YUV 422, YUYV interleaved */
-	ATOMISP_FRAME_FORMAT_UYVY,	/* 16 bit YUV 422, UYVY interleaved */
-	ATOMISP_FRAME_FORMAT_YUV444,	/* 24 bit YUV 444, Y, U, V plane */
-	ATOMISP_FRAME_FORMAT_YUV420_16,	/* Same as yuv420, 16 bits per subpixel
-					 */
-	ATOMISP_FRAME_FORMAT_YUV422_16,	/* Same as yuv422, 16 bits per subpixel
-					 */
-	ATOMISP_FRAME_FORMAT_RAW,	/* RAW, 1 plane */
-	ATOMISP_FRAME_FORMAT_RGBA888,	/* 32 bit RGBA, 1 plane, A=Alpha unused
-					 */
-	ATOMISP_FRAME_FORMAT_RGB565,	/* 16 bit RGB, 1 plane. Each 3 sub
-					   pixels are packed into one 16 bit
-					   value, 5 bits for R, 6 bits for G
-					   and 5 bits for B. */
-	ATOMISP_FRAME_FORMAT_PLANAR_RGB888,	/* 24 bit RGB, 3 planes */
-	ATOMISP_FRAME_FORMAT_QPLANE6,	/* Internal, for advanced ISP */
-	ATOMISP_FRAME_FORMAT_NV21,	/* 12 bit YUV 420, Y, VU plane */
-	ATOMISP_FRAME_FORMAT_NV61,	/* 16 bit YUV 422, Y, VU plane */
-	ATOMISP_FRAME_FORMAT_YV12,	/* 12 bit YUV 420, Y, V, U plane */
-	ATOMISP_FRAME_FORMAT_YV16,	/* 16 bit YUV 422, Y, V, U plane */
-	ATOMISP_FRAME_FORMAT_BINARY_8,	/* byte stream, used for jpeg. For
-					   frames of this type, we set the
-					   height to 1 and the width to the
-					   number of allocated bytes. */
-	ATOMISP_FRAME_FORMAT_YUV_LINE,	/* Internal format, e.g. for VBF frame.
-					   2 y lines followed by a uv
-					   interleaved line */
-};
-
-enum atomisp_input_format {
-	ATOMISP_INPUT_FORMAT_YUV420_8_LEGACY,/* 8 bits per subpixel (legacy) */
-	ATOMISP_INPUT_FORMAT_YUV420_8, /* 8 bits per subpixel */
-	ATOMISP_INPUT_FORMAT_YUV420_10,/* 10 bits per subpixel */
-	ATOMISP_INPUT_FORMAT_YUV422_8, /* UYVY..UVYV, 8 bits per subpixel */
-	ATOMISP_INPUT_FORMAT_YUV422_10,/* UYVY..UVYV, 10 bits per subpixel */
-	ATOMISP_INPUT_FORMAT_RGB_444,  /* BGR..BGR, 4 bits per subpixel */
-	ATOMISP_INPUT_FORMAT_RGB_555,  /* BGR..BGR, 5 bits per subpixel */
-	ATOMISP_INPUT_FORMAT_RGB_565,  /* BGR..BGR, 5 bits B and $, 6 bits G */
-	ATOMISP_INPUT_FORMAT_RGB_666,  /* BGR..BGR, 6 bits per subpixel */
-	ATOMISP_INPUT_FORMAT_RGB_888,  /* BGR..BGR, 8 bits per subpixel */
-	ATOMISP_INPUT_FORMAT_RAW_6,    /* RAW data, 6 bits per pixel */
-	ATOMISP_INPUT_FORMAT_RAW_7,    /* RAW data, 7 bits per pixel */
-	ATOMISP_INPUT_FORMAT_RAW_8,    /* RAW data, 8 bits per pixel */
-	ATOMISP_INPUT_FORMAT_RAW_10,   /* RAW data, 10 bits per pixel */
-	ATOMISP_INPUT_FORMAT_RAW_12,   /* RAW data, 12 bits per pixel */
-	ATOMISP_INPUT_FORMAT_RAW_14,   /* RAW data, 14 bits per pixel */
-	ATOMISP_INPUT_FORMAT_RAW_16,   /* RAW data, 16 bits per pixel */
-	ATOMISP_INPUT_FORMAT_BINARY_8, /* Binary byte stream. */
-};
-
-enum atomisp_bayer_order {
-	atomisp_bayer_order_grbg,
-	atomisp_bayer_order_rggb,
-	atomisp_bayer_order_bggr,
-	atomisp_bayer_order_gbrg
-};
-
-struct atomisp_frame_info {
-	/* width in valid data in pixels (not subpixels) */
-	unsigned int width;
-	/* height in lines of valid image data */
-	unsigned int height;
-	/* width of a line in memory, in pixels */
-	unsigned int padded_width;
-	/* format of the data in this frame */
-	enum atomisp_frame_format format;
-	/* number of valid bits per pixel, only valid for raw frames. */
-	unsigned int raw_bit_depth;
-	/* bayer order of raw data, only valid for raw frames. */
-	enum atomisp_bayer_order raw_bayer_order;
-};
-
-struct atomisp_frame_plane {
-	unsigned int height;	/* height of a plane in lines */
-	unsigned int width;	/* width of a line, in DMA elements, note that
-				   for RGB565 the three subpixels are stored in
-				   one element. For all other formats this is
-				   the number of subpixels per line. */
-	unsigned int stride;	/* stride of a line in bytes */
-	void *data;		/* pointer that points into frame data */
-};
-
-struct atomisp_frame_binary_plane {
-	unsigned int size;
-	struct atomisp_frame_plane data;
-};
-
-struct atomisp_frame_yuv_planes {
-	struct atomisp_frame_plane y;
-	struct atomisp_frame_plane u;
-	struct atomisp_frame_plane v;
-};
-
-struct atomisp_frame_nv_planes {
-	struct atomisp_frame_plane y;
-	struct atomisp_frame_plane uv;
-};
-
-struct atomisp_frame_rgb_planes {
-	struct atomisp_frame_plane r;
-	struct atomisp_frame_plane g;
-	struct atomisp_frame_plane b;
-};
-
-enum atomisp_err {
-	atomisp_success,
-	atomisp_err_internal_error,
-	atomisp_err_conflicting_mipi_settings,
-	atomisp_err_unsupported_configuration,
-	atomisp_err_mode_does_not_have_viewfinder,
-	atomisp_err_input_resolution_not_set,
-	atomisp_err_unsupported_input_mode,
-	atomisp_err_cannot_allocate_memory,
-	atomisp_err_invalid_arguments,
-	atomisp_err_too_may_colors,
-	atomisp_err_overlay_frame_missing,
-	atomisp_err_overlay_frames_too_big,
-	atomisp_err_unsupported_frame_format,
-	atomisp_err_frames_mismatch,
-	atomisp_err_overlay_not_set,
-	atomisp_err_not_implemented,
-	atomisp_err_invalid_frame_format,
-	atomisp_err_unsupported_resolution,
-	atomisp_err_scaling_factor_out_of_range,
-	atomisp_err_cannot_obtain_shading_table,
-	atomisp_err_interrupt_error,
-	atomisp_err_unexpected_interrupt,
-	atomisp_err_interrupts_not_enabled,
-	atomisp_err_system_not_idle,
-	atomisp_err_unsupported_input_format,
-	atomisp_err_not_enough_input_lines,
-	atomisp_err_not_enough_input_columns,
-	atomisp_err_not_initialized,
-	atomisp_err_illegal_resolution,
-	atomisp_err_effective_input_resolution_not_set,
-	atomisp_err_viewfinder_resolution_too_wide,
-	atomisp_err_viewfinder_resolution_exceeds_output,
-	atomisp_err_mode_does_not_have_grid,
-	atomisp_err_mode_does_not_have_raw_output
-};
-
-struct atomisp_frame_plane6_planes {
-	struct atomisp_frame_plane r;
-	struct atomisp_frame_plane r_at_b;
-	struct atomisp_frame_plane gr;
-	struct atomisp_frame_plane gb;
-	struct atomisp_frame_plane b;
-	struct atomisp_frame_plane b_at_r;
-};
-
-struct atomisp_frame {
-	struct atomisp_frame_info info;
-	/* pointer to start of image data in memory */
-	void *data;
-	/* size of data pointer in bytes */
-	unsigned int data_bytes;
-	/* indicate whether memory is allocated physically contiguously */
-	int contiguous;
-	union {
-		struct atomisp_frame_plane raw;
-		struct atomisp_frame_plane rgb;
-		struct atomisp_frame_rgb_planes planar_rgb;
-		struct atomisp_frame_plane yuyv;
-		struct atomisp_frame_yuv_planes yuv;
-		struct atomisp_frame_nv_planes nv;
-		struct atomisp_frame_plane6_planes plane6;
-		struct atomisp_frame_binary_plane binary;
-	} planes;
+	unsigned short data[ATOMISP_CTC_TABLE_SIZE];
 };
 
 /* Parameter for overlay image loading */
@@ -480,7 +300,7 @@ struct atomisp_overlay {
 	 * be the multiples of 2*ISP_VEC_NELEMS. The overlay frame height
 	 * should be the multiples of 2.
 	 */
-	struct atomisp_frame *frame;
+	struct v4l2_framebuffer *frame;
 	/* Y value of overlay background */
 	unsigned char bg_y;
 	/* U value of overlay background */
@@ -579,6 +399,7 @@ enum atomisp_frame_status {
 	ATOMISP_FRAME_STATUS_FLASH_PARTIAL,
 	ATOMISP_FRAME_STATUS_FLASH_FAILED,
 };
+
 enum atomisp_acc_type {
 	ATOMISP_ACC_STANDALONE,	/* Stand-alone acceleration */
 	ATOMISP_ACC_OUTPUT,	/* Accelerator stage on output frame */
@@ -643,9 +464,9 @@ struct v4l2_private_int_data {
 	_IOR('v', BASE_VIDIOC_PRIVATE + 0, int)
 #define ATOMISP_IOC_S_XNR \
 	_IOW('v', BASE_VIDIOC_PRIVATE + 1, int)
-#define ATOMISP_IOC_G_BAYER_NR \
+#define ATOMISP_IOC_G_NR \
 	_IOR('v', BASE_VIDIOC_PRIVATE + 2, struct atomisp_nr_config)
-#define ATOMISP_IOC_S_BAYER_NR \
+#define ATOMISP_IOC_S_NR \
 	_IOW('v', BASE_VIDIOC_PRIVATE + 3, struct atomisp_nr_config)
 #define ATOMISP_IOC_G_TNR \
 	_IOR('v', BASE_VIDIOC_PRIVATE + 4, struct atomisp_tnr_config)
@@ -659,10 +480,6 @@ struct v4l2_private_int_data {
 	_IOR('v', BASE_VIDIOC_PRIVATE + 8, struct atomisp_ob_config)
 #define ATOMISP_IOC_S_BLACK_LEVEL_COMP \
 	_IOW('v', BASE_VIDIOC_PRIVATE + 9, struct atomisp_ob_config)
-#define ATOMISP_IOC_G_YCC_NR \
-	_IOR('v', BASE_VIDIOC_PRIVATE + 10, struct atomisp_nr_config)
-#define ATOMISP_IOC_S_YCC_NR \
-	_IOW('v', BASE_VIDIOC_PRIVATE + 11, struct atomisp_nr_config)
 #define ATOMISP_IOC_G_EE \
 	_IOR('v', BASE_VIDIOC_PRIVATE + 12, struct atomisp_ee_config)
 #define ATOMISP_IOC_S_EE \
@@ -719,10 +536,8 @@ struct v4l2_private_int_data {
 	_IOW('v', BASE_VIDIOC_PRIVATE + 33, struct atomisp_wb_config)
 
 /* fpn table loading */
-#define ATOMISP_IOC_G_ISP_FPN_TABLE \
-	_IOWR('v', BASE_VIDIOC_PRIVATE + 34, struct atomisp_frame)
 #define ATOMISP_IOC_S_ISP_FPN_TABLE \
-	_IOW('v', BASE_VIDIOC_PRIVATE + 35, struct atomisp_frame)
+	_IOW('v', BASE_VIDIOC_PRIVATE + 35, struct v4l2_framebuffer)
 
 /* overlay image loading */
 #define ATOMISP_IOC_G_ISP_OVERLAY \
@@ -799,12 +614,8 @@ struct v4l2_private_int_data {
 	(V4L2_CID_PRIVATE_BASE + 3)
 #define V4L2_CID_ATOMISP_FALSE_COLOR_CORRECTION \
 	(V4L2_CID_PRIVATE_BASE + 4)
-
-/* Deprecated. Use ATOMISP_IOC_S_ISP_SHD_TAB instead. */
-#define V4L2_CID_ATOMISP_SHADING_CORRECTION \
-	(V4L2_CID_PRIVATE_BASE + 5)
 #define V4L2_CID_ATOMISP_LOW_LIGHT \
-	(V4L2_CID_PRIVATE_BASE + 6)
+	(V4L2_CID_PRIVATE_BASE + 5)
 
 /* Camera class:
  * Exposure, Flash and privacy (indicator) light controls, to be upstreamed */

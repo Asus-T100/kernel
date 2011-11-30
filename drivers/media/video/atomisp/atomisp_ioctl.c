@@ -1614,11 +1614,11 @@ static long atomisp_vidioc_default(struct file *file, void *fh,
 	case ATOMISP_IOC_S_XNR:
 		return atomisp_xnr(isp, 1, arg);
 
-	case ATOMISP_IOC_G_BAYER_NR:
-		return atomisp_bayer_nr(isp, 0, arg);
+	case ATOMISP_IOC_G_NR:
+		return atomisp_nr(isp, 0, arg);
 
-	case ATOMISP_IOC_S_BAYER_NR:
-		return atomisp_bayer_nr(isp, 1, arg);
+	case ATOMISP_IOC_S_NR:
+		return atomisp_nr(isp, 1, arg);
 
 	case ATOMISP_IOC_G_TNR:
 		return atomisp_tnr(isp, 0, arg);
@@ -1637,12 +1637,6 @@ static long atomisp_vidioc_default(struct file *file, void *fh,
 
 	case ATOMISP_IOC_S_BLACK_LEVEL_COMP:
 		return atomisp_black_level(isp, 1, arg);
-
-	case ATOMISP_IOC_G_YCC_NR:
-		return atomisp_ycc_nr(isp, 0, arg);
-
-	case ATOMISP_IOC_S_YCC_NR:
-		return atomisp_ycc_nr(isp, 1, arg);
 
 	case ATOMISP_IOC_G_EE:
 		return atomisp_ee(isp, 0, arg);
@@ -1718,11 +1712,8 @@ static long atomisp_vidioc_default(struct file *file, void *fh,
 	case ATOMISP_IOC_S_3A_CONFIG:
 		return atomisp_3a_config_param(isp, 1, arg);
 
-	case ATOMISP_IOC_G_ISP_FPN_TABLE:
-		return atomisp_fixed_pattern_table(isp, 0, arg);
-
 	case ATOMISP_IOC_S_ISP_FPN_TABLE:
-		return atomisp_fixed_pattern_table(isp, 1, arg);
+		return atomisp_fixed_pattern_table(isp, arg);
 
 	case ATOMISP_IOC_G_ISP_OVERLAY:
 		return atomisp_vf_overlay(isp, 0, arg);
