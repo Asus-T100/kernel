@@ -150,24 +150,24 @@ struct mt9e013_resolution mt9e013_res_still[] = {
 struct mt9e013_resolution mt9e013_res_video[] = {
 	{
 		 .desc =	"QCIF_strong_dvs_30fps"	,
-		 .width =	384	,
-		 .height =	292	,
+		 .width =	216	,
+		 .height =	176	,
 		 .fps =		30	,
 		 .used =	0	,
-		 .pixels_per_line = 0x3978, /* consistent with regs arrays */
-		 .lines_per_frame = 0x01B3, /* consistent with regs arrays */
+		 .pixels_per_line = 0x20F0, /* consistent with regs arrays */
+		 .lines_per_frame = 0x02F7, /* consistent with regs arrays */
 		 .regs =	mt9e013_QCIF_strong_dvs_30fps	,
 		 .bin_factor_x =	2,
 		 .bin_factor_y =	2,
 	},
 	{
 		 .desc =	"QVGA_strong_dvs_30fps"	,
-		 .width =	384	,
-		 .height =	288	,
+		 .width =	408	,
+		 .height =	308	,
 		 .fps =		30	,
 		 .used =	0	,
-		 .pixels_per_line = 0x3A00, /* consistent with regs arrays */
-		 .lines_per_frame = 0x01AF, /* consistent with regs arrays */
+		 .pixels_per_line = 0x20F0, /* consistent with regs arrays */
+		 .lines_per_frame = 0x02F7, /* consistent with regs arrays */
 		 .regs =	mt9e013_QVGA_strong_dvs_30fps	,
 		 .bin_factor_x =	2,
 		 .bin_factor_y =	2,
