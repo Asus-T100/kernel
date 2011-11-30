@@ -3027,7 +3027,7 @@ static int gsmtty_tiocmset(struct tty_struct *tty, struct file *filp,
 /*
  * RRG: FIXME: protect ioctls w/ per-dlci exclusion
  */
-static int gsmtty_ioctl(struct tty_struct *tty, struct file *filp,
+static int gsmtty_ioctl(struct tty_struct *tty,
 			unsigned int cmd, unsigned long arg)
 {
 	struct gsm_dlci *dlci = tty->driver_data;
@@ -3050,7 +3050,15 @@ static int gsmtty_ioctl(struct tty_struct *tty, struct file *filp,
 		gsm_destroy_network(dlci);
 		return 0;
 	default:
-		return n_tty_ioctl_helper(tty, filp, cmd, arg);
+		/* While ioctl in the tty_operations struct for kernel 3.0
+		 * requires only 3 parameters we do not have the file pointer
+		 * to pass to the n_tty_ioclt_helper function.
+		 * This function does only pass the parameter to tty_mode_ioctl
+		 * which is doing nothing with it except to check it against
+		 * NULL and BUG_ON if this is the case
+		 * We can bypass this check by using a dummy value in the code.
+		 */
+		return n_tty_ioctl_helper(tty, 0xb4dc0de, cmd, arg);
 	}
 }
 
