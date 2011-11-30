@@ -245,6 +245,7 @@ struct sh_css {
 	void                          *sp_bin_addr;
 	struct sh_css_acc_fw	      *output_stage;	/* extra output stage */
 	struct sh_css_acc_fw	      *vf_stage;	/* extra vf stage */
+	struct sh_css_acc_fw	      *standalone_acc;	/* standalone accel */
 	void                          *page_table_base_address;
 	bool capture_zoom_update;
 	bool preview_zoom_update;
@@ -303,6 +304,9 @@ struct sh_css {
 	.capture_zoom_update = false, \
 	.preview_zoom_update = false, \
 	.video_zoom_update = false, \
+	.output_stage	      = NULL, \
+	.vf_stage	      = NULL, \
+	.standalone_acc	      = NULL, \
 }
 
 int (*sh_css_printf) (const char *fmt, ...) = NULL;
@@ -1869,6 +1873,10 @@ static bool
 acceleration_done(void)
 {
 	struct sh_css_pipeline *pipeline = get_current_pipeline();
+
+	if (my_css.standalone_acc)
+		return true;
+
 	return pipeline &&
 	       pipeline->current_stage &&
 	       pipeline->current_stage->firmware;
@@ -2288,13 +2296,13 @@ crop_and_interpolate(unsigned int cropped_width,
 		     sensor_height = my_css.shading_table->sensor_height,
 		     table_width   = my_css.shading_table->width,
 		     table_height  = my_css.shading_table->height,
-		     table_cell_w,
 		     table_cell_h,
 		     out_cell_size,
 		     in_cell_size,
 		     out_start_row,
 		     padded_width;
-	int out_start_col; /* can be negative to indicate padded space */
+	int out_start_col, /* can be negative to indicate padded space */
+	    table_cell_w;
 	unsigned short *in_ptr = my_css.shading_table->data[color],
 		       *out_ptr = out_table->data[color];
 
@@ -2304,7 +2312,7 @@ crop_and_interpolate(unsigned int cropped_width,
 
 	out_start_col = (sensor_width - cropped_width)/2 - left_padding;
 	out_start_row = (sensor_height - cropped_height)/2;
-	table_cell_w = (table_width-1) * in_cell_size;
+	table_cell_w = (int)((table_width-1) * in_cell_size);
 	table_cell_h = (table_height-1) * in_cell_size;
 
 	for (i = 0; i < out_table->height; i++) {
@@ -4310,7 +4318,7 @@ sh_css_capture_next_stage_needs_alloc(void)
 	if (my_css.capture_settings.mode == SH_CSS_CAPTURE_MODE_RAW)
 		main_binary = &my_css.capture_settings.copy_binary;
 	else if (my_css.capture_settings.mode == SH_CSS_CAPTURE_MODE_ADVANCED ||
-		my_css.capture_settings.mode == SH_CSS_CAPTURE_MODE_LOW_LIGHT)
+		 my_css.capture_settings.mode == SH_CSS_CAPTURE_MODE_LOW_LIGHT)
 		main_binary = &my_css.capture_settings.pre_isp_binary;
 
 	return my_css.invalidate ||
@@ -4800,6 +4808,7 @@ sh_css_unload_acceleration(struct sh_css_acc_fw *firmware)
 		remove_firmware(&my_css.output_stage, firmware);
 	else if (firmware->header.type == SH_CSS_ACC_VIEWFINDER)
 		remove_firmware(&my_css.vf_stage, firmware);
+	my_css.standalone_acc = NULL;
 	sh_css_acc_unload(firmware);
 }
 
@@ -4815,6 +4824,7 @@ sh_css_set_acceleration_argument(struct sh_css_acc_fw *firmware,
 enum sh_css_err
 sh_css_start_acceleration(struct sh_css_acc_fw *firmware)
 {
+	my_css.standalone_acc = firmware;
 	return sh_css_acc_start(firmware, NULL);
 }
 
@@ -4823,6 +4833,7 @@ sh_css_start_acceleration(struct sh_css_acc_fw *firmware)
 void
 sh_css_acceleration_done(struct sh_css_acc_fw *firmware)
 {
+	my_css.standalone_acc = NULL;
 	sh_css_acc_done(firmware);
 }
 

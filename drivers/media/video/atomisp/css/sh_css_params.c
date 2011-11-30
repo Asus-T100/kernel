@@ -31,16 +31,22 @@
 #include "sh_css_sp.h"
 
 #define sISP_REG_BIT              ISP_VEC_ELEMBITS
-#define uISP_REG_BIT              (sISP_REG_BIT-1)
+#define uISP_REG_BIT              ((unsigned)(sISP_REG_BIT-1))
 #define sSHIFT                    (16-sISP_REG_BIT)
-#define uSHIFT                    (16-uISP_REG_BIT)
+#define uSHIFT                    ((unsigned)(16-uISP_REG_BIT))
 #define sFRACTION_BITS_FITTING(a) (a-sSHIFT)
-#define uFRACTION_BITS_FITTING(a) (a-uSHIFT)
+#define uFRACTION_BITS_FITTING(a) ((unsigned)(a-uSHIFT))
+#define sISP_VAL_MIN              (-(1<<uISP_REG_BIT))
+#define sISP_VAL_MAX              ((1<<uISP_REG_BIT)-1)
+#define uISP_VAL_MIN              ((unsigned)0)
+#define uISP_VAL_MAX              ((unsigned)((1<<uISP_REG_BIT)-1))
 /* a:fraction bits for 16bit precision, b:fraction bits for ISP precision */
 #define sDIGIT_FITTING(v, a, b) \
-	(((v)>>sSHIFT) >> (sFRACTION_BITS_FITTING(a)-(b)))
+	min(max((((v)>>sSHIFT) >> (sFRACTION_BITS_FITTING(a)-(b))), \
+	  sISP_VAL_MIN), sISP_VAL_MAX)
 #define uDIGIT_FITTING(v, a, b) \
-	(((v)>>uSHIFT) >> (uFRACTION_BITS_FITTING(a)-(b)))
+	min(max((unsigned)(((v)>>uSHIFT) >> (uFRACTION_BITS_FITTING(a)-(b))), \
+	  uISP_VAL_MIN), uISP_VAL_MAX)
 
 #define FPNTBL_BYTES(binary) \
 	(sizeof(char) * (binary)->in_frame_info.height * \
@@ -613,13 +619,13 @@ static const struct sh_css_de_config disabled_de_config = {
 };
 
 static const struct sh_css_gc_config default_gc_config = {
-	.gain_k1 = 2457,	/* (1<<13) * 0.3 */
-	.gain_k2 = 2457		/* idem */
+	.gain_k1 = 0,
+	.gain_k2 = 0
 };
 
 static const struct sh_css_gc_config disabled_gc_config = {
-	.gain_k1 = 2457,	/* (1<<13) * 0.3 */
-	.gain_k2 = 2457		/* idem */
+	.gain_k1 = 0,
+	.gain_k2 = 0
 };
 
 static const struct sh_css_anr_config default_anr_config = {
@@ -1133,14 +1139,15 @@ sh_css_process_nr_ee(void)
 	    uDIGIT_FITTING(nr_config->bnr_gain, 16, SH_CSS_BNR_GAIN_SHIFT);
 	isp_parameters.bnr_gain_dir =
 	    uDIGIT_FITTING(nr_config->bnr_gain, 16, SH_CSS_BNR_GAIN_SHIFT);
-	isp_parameters.bnr_clip = uDIGIT_FITTING(16384, 16, SH_CSS_BAYER_BITS);
+	isp_parameters.bnr_clip = uDIGIT_FITTING(
+					(unsigned)16384, 16, SH_CSS_BAYER_BITS);
 
 	/* YNR (Y Noise Reduction), YEE (Y Edge Enhancement) */
 	asiWk1 = (int) ee_config->gain;
 	asiWk2 = asiWk1 / 8;
 	asiWk3 = asiWk1 / 4;
 	isp_parameters.ynr_threshold =
-		uDIGIT_FITTING(8192, 16, SH_CSS_BAYER_BITS);
+		uDIGIT_FITTING((unsigned)8192, 16, SH_CSS_BAYER_BITS);
 	isp_parameters.ynr_gain_all =
 	    uDIGIT_FITTING(nr_config->ynr_gain, 16, SH_CSS_YNR_GAIN_SHIFT);
 	isp_parameters.ynr_gain_dir =
@@ -1161,10 +1168,10 @@ sh_css_process_nr_ee(void)
 	    uDIGIT_FITTING(ee_config->detail_gain, 11,
 			   SH_CSS_YEE_DETAIL_GAIN_SHIFT);
 	isp_parameters.yee_coring_s =
-	    (uDIGIT_FITTING(56, 16, SH_CSS_BAYER_BITS) *
+	    (uDIGIT_FITTING((unsigned)56, 16, SH_CSS_BAYER_BITS) *
 	     ee_config->threshold) >> 8;
 	isp_parameters.yee_coring_g =
-	    (uDIGIT_FITTING(224, 16, SH_CSS_BAYER_BITS) *
+	    (uDIGIT_FITTING((unsigned)224, 16, SH_CSS_BAYER_BITS) *
 	     ee_config->threshold) >> 8;
 	/* 8; // *1.125 ->[s4.8] */
 	isp_parameters.yee_scale_plus_s =
@@ -1179,12 +1186,12 @@ sh_css_process_nr_ee(void)
 	isp_parameters.yee_scale_minus_g =
 	    (asiWk3) >> (11 - SH_CSS_YEE_SCALE_SHIFT);
 	isp_parameters.yee_clip_plus_s =
-	    uDIGIT_FITTING(32760, 16, SH_CSS_BAYER_BITS);
+	    uDIGIT_FITTING((unsigned)32760, 16, SH_CSS_BAYER_BITS);
 	isp_parameters.yee_clip_plus_g = 0;
 	isp_parameters.yee_clip_minus_s =
-	    uDIGIT_FITTING(504, 16, SH_CSS_BAYER_BITS);
+	    uDIGIT_FITTING((unsigned)504, 16, SH_CSS_BAYER_BITS);
 	isp_parameters.yee_clip_minus_g =
-	    uDIGIT_FITTING(32256, 16, SH_CSS_BAYER_BITS);
+	    uDIGIT_FITTING((unsigned)32256, 16, SH_CSS_BAYER_BITS);
 	isp_parameters.ynryee_Yclip = SH_CSS_BAYER_MAXVAL;
 	isp_params_changed = true;
 	nr_config_changed = false;
@@ -1209,8 +1216,10 @@ sh_css_process_de(void)
 static void
 sh_css_process_gc(void)
 {
-	isp_parameters.gamma_gain_k1 = gc_config->gain_k1;
-	isp_parameters.gamma_gain_k2 = gc_config->gain_k2;
+	isp_parameters.gamma_gain_k1 =
+	    (int)uDIGIT_FITTING(gc_config->gain_k1, 16, SH_CSS_GAMMA_GAIN_K_SHIFT);
+	isp_parameters.gamma_gain_k2 =
+	    (int)uDIGIT_FITTING(gc_config->gain_k2, 16, SH_CSS_GAMMA_GAIN_K_SHIFT);
 	isp_params_changed = true;
 	gc_config_changed = false;
 }
@@ -1796,7 +1805,6 @@ sh_css_params_init(void)
 		sh_css_uninit();
 		return sh_css_err_cannot_allocate_memory;
 	}
-	hrt_isp_css_mm_store(sp_ddr_ptrs, &ddr_ptrs, sizeof(ddr_ptrs));
 	sh_css_set_3a_config(&default_3a_config);
 	sh_css_set_wb_config(&default_wb_config);
 	sh_css_set_cc_config(&default_cc_config);
@@ -2037,12 +2045,25 @@ sh_css_params_write_to_ddr(const struct sh_css_binary *binary)
 		gamma_table_changed = false;
 	}
 	if (macc_table && macc_table_changed) {
-		unsigned int i;
-		for (i = 0;
-		     i < SH_CSS_MACC_NUM_AXES * SH_CSS_MACC_NUM_COEFS;
-		     i++) {
-			converted_macc_table.data[i] =
-			    sDIGIT_FITTING(macc_table->data[i], 13,
+		unsigned int i, j, idx;
+		unsigned int idx_map[] = {
+			0, 1, 3, 2, 6, 7, 5, 4, 12, 13, 15, 14, 10, 11, 9, 8};
+
+		for (i = 0; i < SH_CSS_MACC_NUM_AXES; i++) {
+			idx = 4*idx_map[i];
+			j   = 4*i;
+
+			converted_macc_table.data[idx] =
+			    sDIGIT_FITTING(macc_table->data[j], 13,
+					   SH_CSS_MACC_COEF_SHIFT);
+			converted_macc_table.data[idx+1] =
+			    sDIGIT_FITTING(macc_table->data[j+1], 13,
+					   SH_CSS_MACC_COEF_SHIFT);
+			converted_macc_table.data[idx+2] =
+			    sDIGIT_FITTING(macc_table->data[j+2], 13,
+					   SH_CSS_MACC_COEF_SHIFT);
+			converted_macc_table.data[idx+3] =
+			    sDIGIT_FITTING(macc_table->data[j+3], 13,
 					   SH_CSS_MACC_COEF_SHIFT);
 		}
 		hrt_isp_css_mm_store(ddr_ptrs.macc_tbl,

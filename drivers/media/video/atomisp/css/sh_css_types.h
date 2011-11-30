@@ -620,8 +620,8 @@ struct sh_css_de_config {
 };
 
 struct sh_css_gc_config {
-	int gain_k1;
-	int gain_k2;
+	unsigned short gain_k1;
+	unsigned short gain_k2;
 };
 
 struct sh_css_anr_config {
