@@ -1,7 +1,7 @@
 /*
  * intel_mid_thermal.c - Intel MID platform thermal driver
  *
- * Copyright (C) 2011 Intel Corporation
+ * Copyright (C) 2010 Intel Corporation
  *
  * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
  *
@@ -11,7 +11,7 @@
  *
  * This program is distributed in the hope that it will be useful, but
  * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.        See the GNU
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.	See the GNU
  * General Public License for more details.
  *
  * You should have received a copy of the GNU General Public License along
@@ -19,10 +19,11 @@
  * 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
  *
  * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
- * Author: Durgadoss R <durgadoss.r@intel.com>
+ * Author: Ananth Krishna <ananth.krishna.r@intel.com>
+ * Author: Durgadoss <durgadoss.r@intel.com>
  */
 
-#define pr_fmt(fmt) "intel_mid_thermal: " fmt
+#define pr_fmt(fmt)  "intel_mid_thermal: " fmt
 
 #include <linux/module.h>
 #include <linux/init.h>
@@ -35,57 +36,36 @@
 #include <linux/thermal.h>
 
 #include <asm/intel_scu_ipc.h>
+#include <asm/intel_mid_gpadc.h>
 
 /* Number of thermal sensors */
 #define MSIC_THERMAL_SENSORS	4
-
-/* ADC1 - thermal registers */
-#define MSIC_THERM_ADC1CNTL1	0x1C0
-#define MSIC_ADC_ENBL		0x10
-#define MSIC_ADC_START		0x08
-
-#define MSIC_THERM_ADC1CNTL3	0x1C2
-#define MSIC_ADCTHERM_ENBL	0x04
-#define MSIC_ADCRRDATA_ENBL	0x05
-#define MSIC_CHANL_MASK_VAL	0x0F
-
-#define MSIC_STOPBIT_MASK	16
-#define MSIC_ADCTHERM_MASK	4
-/* Number of ADC channels */
-#define ADC_CHANLS_MAX		15
-#define ADC_LOOP_MAX		(ADC_CHANLS_MAX - MSIC_THERMAL_SENSORS)
-
-/* ADC channel code values */
-#define SKIN_SENSOR0_CODE	0x08
-#define SKIN_SENSOR1_CODE	0x09
-#define SYS_SENSOR_CODE		0x0A
-#define MSIC_DIE_SENSOR_CODE	0x03
-
-#define SKIN_THERM_SENSOR0	0
-#define SKIN_THERM_SENSOR1	1
-#define SYS_THERM_SENSOR2	2
-#define MSIC_DIE_THERM_SENSOR3	3
-
-/* ADC code range */
-#define ADC_MAX			977
-#define ADC_MIN			162
-#define ADC_VAL0C		887
-#define ADC_VAL20C		720
-#define ADC_VAL40C		508
-#define ADC_VAL60C		315
-
-/* ADC base addresses */
-#define ADC_CHNL_START_ADDR	0x1C5	/* increments by 1 */
-#define ADC_DATA_START_ADDR	0x1D4	/* increments by 2 */
 
 /* MSIC die attributes */
 #define MSIC_DIE_ADC_MIN	488
 #define MSIC_DIE_ADC_MAX	1004
 
-/* This holds the address of the first free ADC channel,
- * among the 15 channels
+/* Convert adc_val to die temperature (in milli degree celsius) */
+#define TO_MSIC_DIE_TEMP(adc_val)	(368 * adc_val - 219560)
+
+#define MSIC_DIE_INDEX		3
+
+#define TABLE_LENGTH 24
+/*
+ * ADC code vs Temperature table
+ * This table will be different for different thermistors
+ * Row 0: ADC code
+ * Row 1: Temperature (in degree celsius)
  */
-static int channel_index;
+static const int adc_code[2][TABLE_LENGTH] = {
+	{977, 961, 941, 917, 887, 853, 813, 769, 720, 669, 615, 561, 508, 456,
+		407, 357, 315, 277, 243, 212, 186, 162, 140, 107},
+	{-20, -15, -10, -5, 0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60,
+		65, 70, 75, 80, 85, 90, 100},
+	};
+
+/* ADC handle used to read sensor temperature values */
+void *therm_adc_handle;
 
 struct platform_info {
 	struct platform_device *pdev;
@@ -93,22 +73,12 @@ struct platform_info {
 };
 
 struct thermal_device_info {
-	unsigned int chnl_addr;
+	/* if 1, ADC code to temperature conversion is direct. i.e. no linear
+	 * approximation is needed */
 	int direct;
-	/* This holds the current temperature in millidegree celsius */
-	long curr_temp;
+	int sensor_index;
 };
 
-/**
- * to_msic_die_temp - converts adc_val to msic_die temperature
- * @adc_val: ADC value to be converted
- *
- * Can sleep
- */
-static int to_msic_die_temp(uint16_t adc_val)
-{
-	return (368 * (adc_val) / 1000) - 220;
-}
 
 /**
  * is_valid_adc - checks whether the adc code is within the defined range
@@ -123,48 +93,99 @@ static int is_valid_adc(uint16_t adc_val, uint16_t min, uint16_t max)
 }
 
 /**
+ * find_adc_code - searches the ADC code using binary search
+ * @val: value to find in the array
+ *
+ * This function does binary search on an array sorted in 'descending' order
+ * Can sleep
+ */
+static int find_adc_code(uint16_t val)
+{
+	int left = 0;
+	int right = TABLE_LENGTH - 1;
+	int mid;
+	while (left <= right) {
+		mid = (left + right)/2;
+		if (val == adc_code[0][mid] ||
+			(mid > 0 &&
+			val > adc_code[0][mid] && val < adc_code[0][mid-1]))
+			return mid;
+		else if (val > adc_code[0][mid])
+			right = mid - 1;
+		else if (val < adc_code[0][mid])
+			left = mid + 1;
+	}
+	return -1;
+}
+
+/**
+ * linear_interpolate - does interpolation to find temperature
+ * Returns the temperature in milli degree celsius
+ * @adc_val: ADC code(x) at which temperature(y) should be found
+ * @indx: index of the minimum(x0) of the two ADC codes
+ *
+ * Can sleep
+ */
+static int linear_interpolate(int indx, uint16_t adc_val)
+{
+	int x = adc_val;
+	int x0 = adc_code[0][indx];
+	int x1 = adc_code[0][indx - 1];
+	int y0 = adc_code[1][indx];
+	int y1 = adc_code[1][indx - 1];
+
+	/*
+	 * Find y:
+	 * Of course, we can avoid these variables, but keep them
+	 * for readability and maintainability.
+	 */
+	int numerator = (x-x0)*y1 + (x1-x)*y0;
+	int denominator = x1-x0;
+
+	/*
+	 * We have to report the temperature in milli degree celsius.
+	 * So, to reduce the loss of precision, do (Nr*1000)/Dr, instead
+	 * of (Nr/Dr)*1000.
+	 */
+	 return (numerator * 1000)/denominator;
+}
+
+/**
  * adc_to_temp - converts the ADC code to temperature in C
  * @direct: true if ths channel is direct index
  * @adc_val: the adc_val that needs to be converted
  * @tp: temperature return value
  *
- * Linear approximation is used to covert the skin adc value into temperature.
- * This technique is used to avoid very long look-up table to get
- * the appropriate temp value from ADC value.
- * The adc code vs sensor temp curve is split into five parts
- * to achieve very close approximate temp value with less than
- * 0.5C error
+ * Can sleep
  */
 static int adc_to_temp(int direct, uint16_t adc_val, unsigned long *tp)
 {
-	int temp;
+	int indx;
 
-	/* Direct conversion for die temperature */
+	/* Direct conversion for msic die temperature */
 	if (direct) {
 		if (is_valid_adc(adc_val, MSIC_DIE_ADC_MIN, MSIC_DIE_ADC_MAX)) {
-			*tp = to_msic_die_temp(adc_val) * 1000;
+			*tp = TO_MSIC_DIE_TEMP(adc_val);
 			return 0;
 		}
 		return -ERANGE;
 	}
 
-	if (!is_valid_adc(adc_val, ADC_MIN, ADC_MAX))
+	indx = find_adc_code(adc_val);
+	if (indx < 0)
 		return -ERANGE;
 
-	/* Linear approximation for skin temperature */
-	if (adc_val > ADC_VAL0C)
-		temp = 177 - (adc_val/5);
-	else if ((adc_val <= ADC_VAL0C) && (adc_val > ADC_VAL20C))
-		temp = 111 - (adc_val/8);
-	else if ((adc_val <= ADC_VAL20C) && (adc_val > ADC_VAL40C))
-		temp = 92 - (adc_val/10);
-	else if ((adc_val <= ADC_VAL40C) && (adc_val > ADC_VAL60C))
-		temp = 91 - (adc_val/10);
-	else
-		temp = 112 - (adc_val/6);
+	if (adc_code[0][indx] == adc_val) {
+		/* Convert temperature in celsius to milli degree celsius */
+		*tp = adc_code[1][indx] * 1000;
+		return 0;
+	}
 
-	/* Convert temperature in celsius to milli degree celsius */
-	*tp = temp * 1000;
+	/*
+	 * The ADC code is in between two values directly defined in the
+	 * table. So, do linear interpolation to calculate the temperature.
+	 */
+	*tp = linear_interpolate(indx, adc_val);
 	return 0;
 }
 
@@ -180,223 +201,26 @@ static int adc_to_temp(int direct, uint16_t adc_val, unsigned long *tp)
 static int mid_read_temp(struct thermal_zone_device *tzd, unsigned long *temp)
 {
 	struct thermal_device_info *td_info = tzd->devdata;
-	uint16_t adc_val, addr;
-	uint8_t data = 0;
 	int ret;
 	unsigned long curr_temp;
+	int sample_count = 1; /* No of times each channel must be sampled */
+	int indx = td_info->sensor_index; /* Required Index */
+	int val[MSIC_THERMAL_SENSORS];
 
-
-	addr = td_info->chnl_addr;
-
-	/* Enable the msic for conversion before reading */
-	ret = intel_scu_ipc_iowrite8(MSIC_THERM_ADC1CNTL3, MSIC_ADCRRDATA_ENBL);
+	ret = intel_mid_gpadc_sample(therm_adc_handle, sample_count,
+					&val[0], &val[1], &val[2], &val[3]);
 	if (ret)
 		return ret;
-
-	/* Re-toggle the RRDATARD bit (temporary workaround) */
-	ret = intel_scu_ipc_iowrite8(MSIC_THERM_ADC1CNTL3, MSIC_ADCTHERM_ENBL);
-	if (ret)
-		return ret;
-
-	/* Read the higher bits of data */
-	ret = intel_scu_ipc_ioread8(addr, &data);
-	if (ret)
-		return ret;
-
-	/* Shift bits to accommodate the lower two data bits */
-	adc_val = (data << 2);
-	addr++;
-
-	ret = intel_scu_ipc_ioread8(addr, &data);/* Read lower bits */
-	if (ret)
-		return ret;
-
-	/* Adding lower two bits to the higher bits */
-	data &= 03;
-	adc_val += data;
 
 	/* Convert ADC value to temperature */
-	ret = adc_to_temp(td_info->direct, adc_val, &curr_temp);
+	ret = adc_to_temp(td_info->direct, val[indx], &curr_temp);
 	if (ret == 0)
-		*temp = td_info->curr_temp = curr_temp;
+		*temp = curr_temp;
 	return ret;
 }
 
 /**
- * configure_adc - enables/disables the ADC for conversion
- * @val: zero: disables the ADC non-zero:enables the ADC
- *
- * Enable/Disable the ADC depending on the argument
- *
- * Can sleep
- */
-static int configure_adc(int val)
-{
-	int ret;
-	uint8_t data;
-
-	ret = intel_scu_ipc_ioread8(MSIC_THERM_ADC1CNTL1, &data);
-	if (ret)
-		return ret;
-
-	if (val) {
-		/* Enable and start the ADC */
-		data |= (MSIC_ADC_ENBL | MSIC_ADC_START);
-	} else {
-		/* Just stop the ADC */
-		data &= (~MSIC_ADC_START);
-	}
-	return intel_scu_ipc_iowrite8(MSIC_THERM_ADC1CNTL1, data);
-}
-
-/**
- * set_up_therm_channel - enable thermal channel for conversion
- * @base_addr: index of free msic ADC channel
- *
- * Enable all the three channels for conversion
- *
- * Can sleep
- */
-static int set_up_therm_channel(u16 base_addr)
-{
-	int ret;
-
-	/* Enable all the sensor channels */
-	ret = intel_scu_ipc_iowrite8(base_addr, SKIN_SENSOR0_CODE);
-	if (ret)
-		return ret;
-
-	ret = intel_scu_ipc_iowrite8(base_addr + 1, SKIN_SENSOR1_CODE);
-	if (ret)
-		return ret;
-
-	ret = intel_scu_ipc_iowrite8(base_addr + 2, SYS_SENSOR_CODE);
-	if (ret)
-		return ret;
-
-	/* Since this is the last channel, set the stop bit
-	 * to 1 by ORing the DIE_SENSOR_CODE with 0x10 */
-	ret = intel_scu_ipc_iowrite8(base_addr + 3,
-			(MSIC_DIE_SENSOR_CODE | 0x10));
-	if (ret)
-		return ret;
-
-	/* Enable ADC and start it */
-	return configure_adc(1);
-}
-
-/**
- * reset_stopbit - sets the stop bit to 0 on the given channel
- * @addr: address of the channel
- *
- * Can sleep
- */
-static int reset_stopbit(uint16_t addr)
-{
-	int ret;
-	uint8_t data;
-	ret = intel_scu_ipc_ioread8(addr, &data);
-	if (ret)
-		return ret;
-	/* Set the stop bit to zero */
-	return intel_scu_ipc_iowrite8(addr, (data & 0xEF));
-}
-
-/**
- * find_free_channel - finds an empty channel for conversion
- *
- * If the ADC is not enabled then start using 0th channel
- * itself. Otherwise find an empty channel by looking for a
- * channel in which the stopbit is set to 1. returns the index
- * of the first free channel if succeeds or an error code.
- *
- * Context: can sleep
- *
- * FIXME: Ultimately the channel allocator will move into the intel_scu_ipc
- * code.
- */
-static int find_free_channel(void)
-{
-	int ret;
-	int i;
-	uint8_t data;
-
-	/* check whether ADC is enabled */
-	ret = intel_scu_ipc_ioread8(MSIC_THERM_ADC1CNTL1, &data);
-	if (ret)
-		return ret;
-
-	if ((data & MSIC_ADC_ENBL) == 0)
-		return 0;
-
-	/* ADC is already enabled; Looking for an empty channel */
-	for (i = 0; i < ADC_CHANLS_MAX; i++) {
-		ret = intel_scu_ipc_ioread8(ADC_CHNL_START_ADDR + i, &data);
-		if (ret)
-			return ret;
-
-		if (data & MSIC_STOPBIT_MASK) {
-			ret = i;
-			break;
-		}
-	}
-	return (ret > ADC_LOOP_MAX) ? (-EINVAL) : ret;
-}
-
-/**
- * mid_initialize_adc - initializing the ADC
- * @dev: our device structure
- *
- * Initialize the ADC for reading thermistor values. Can sleep.
- */
-static int mid_initialize_adc(struct device *dev)
-{
-	u8  data;
-	u16 base_addr;
-	int ret;
-
-	/*
-	 * Ensure that adctherm is disabled before we
-	 * initialize the ADC
-	 */
-	ret = intel_scu_ipc_ioread8(MSIC_THERM_ADC1CNTL3, &data);
-	if (ret)
-		return ret;
-
-	if (data & MSIC_ADCTHERM_MASK)
-		dev_warn(dev, "ADCTHERM already set");
-
-	/* Index of the first channel in which the stop bit is set */
-	channel_index = find_free_channel();
-	if (channel_index < 0) {
-		dev_err(dev, "No free ADC channels");
-		return channel_index;
-	}
-
-	base_addr = ADC_CHNL_START_ADDR + channel_index;
-
-	if (!(channel_index == 0 || channel_index == ADC_LOOP_MAX)) {
-		/* Reset stop bit for channels other than 0 and 12 */
-		ret = reset_stopbit(base_addr);
-		if (ret)
-			return ret;
-
-		/* Index of the first free channel */
-		base_addr++;
-		channel_index++;
-	}
-
-	ret = set_up_therm_channel(base_addr);
-	if (ret) {
-		dev_err(dev, "unable to enable ADC");
-		return ret;
-	}
-	dev_dbg(dev, "ADC initialization successful");
-	return ret;
-}
-
-/**
- * initialize_sensor - sets default temp and timer ranges
+ * initialize_sensor - Initializes ADC information for each sensor.
  * @index: index of the sensor
  *
  * Context: can sleep
@@ -409,40 +233,29 @@ static struct thermal_device_info *initialize_sensor(int index)
 	if (!td_info)
 		return NULL;
 
-	/* Set the base addr of the channel for this sensor */
-	td_info->chnl_addr = ADC_DATA_START_ADDR + 2 * (channel_index + index);
-	/* Sensor 3 is direct conversion */
-	if (index == 3)
+	td_info->sensor_index = index;
+	/* Direct conversion for MSIC_DIE */
+	if (index == MSIC_DIE_INDEX)
 		td_info->direct = 1;
 	return td_info;
 }
 
 /**
  * mid_thermal_resume - resume routine
- * @pdev: platform device structure
- *
- * mid thermal resume: re-initializes the adc. Can sleep.
+ * @dev: device structure
  */
-static int mid_thermal_resume(struct platform_device *pdev)
+static int mid_thermal_resume(struct device *dev)
 {
-	return mid_initialize_adc(&pdev->dev);
+	return 0;
 }
 
 /**
  * mid_thermal_suspend - suspend routine
- * @pdev: platform device structure
- *
- * mid thermal suspend implements the suspend functionality
- * by stopping the ADC. Can sleep.
+ * @dev: device structure
  */
-static int mid_thermal_suspend(struct platform_device *pdev, pm_message_t mesg)
+static int mid_thermal_suspend(struct device *dev)
 {
-	/*
-	 * This just stops the ADC and does not disable it.
-	 * temporary workaround until we have a generic ADC driver.
-	 * If 0 is passed, it disables the ADC.
-	 */
-	return configure_adc(0);
+	return 0;
 }
 
 /**
@@ -453,14 +266,14 @@ static int mid_thermal_suspend(struct platform_device *pdev, pm_message_t mesg)
  */
 static int read_curr_temp(struct thermal_zone_device *tzd, unsigned long *temp)
 {
-	WARN_ON(tzd == NULL);
-	return mid_read_temp(tzd, temp);
+	return (tzd) ? mid_read_temp(tzd, temp) : -EINVAL;
 }
 
 /* Can't be const */
 static struct thermal_zone_device_ops tzd_ops = {
 	.get_temp = read_curr_temp,
 };
+
 
 /**
  * mid_thermal_probe - mfld thermal initialize
@@ -483,18 +296,22 @@ static int mid_thermal_probe(struct platform_device *pdev)
 	if (!pinfo)
 		return -ENOMEM;
 
-	/* Initializing the hardware */
-	ret = mid_initialize_adc(&pdev->dev);
-	if (ret) {
-		dev_err(&pdev->dev, "ADC init failed");
-		kfree(pinfo);
-		return ret;
+	/* Allocate ADC channels for all sensors */
+	therm_adc_handle = intel_mid_gpadc_alloc(MSIC_THERMAL_SENSORS,
+					0x08 | CH_NEED_VREF | CH_NEED_VCALIB,
+					0x09 | CH_NEED_VREF | CH_NEED_VCALIB,
+					0x0A | CH_NEED_VREF | CH_NEED_VCALIB,
+					0x03 | CH_NEED_VCALIB);
+	if (!therm_adc_handle) {
+		ret = -ENOMEM;
+		goto alloc_fail;
 	}
 
 	/* Register each sensor with the generic thermal framework*/
 	for (i = 0; i < MSIC_THERMAL_SENSORS; i++) {
 		pinfo->tzd[i] = thermal_zone_device_register(name[i],
-				0, initialize_sensor(i), &tzd_ops, 0, 0, 0, 0);
+					0, initialize_sensor(i),
+					&tzd_ops, 0, 0, 0, 0);
 		if (IS_ERR(pinfo->tzd[i]))
 			goto reg_fail;
 	}
@@ -507,7 +324,7 @@ reg_fail:
 	ret = PTR_ERR(pinfo->tzd[i]);
 	while (--i >= 0)
 		thermal_zone_device_unregister(pinfo->tzd[i]);
-	configure_adc(0);
+alloc_fail:
 	kfree(pinfo);
 	return ret;
 }
@@ -527,28 +344,35 @@ static int mid_thermal_remove(struct platform_device *pdev)
 	for (i = 0; i < MSIC_THERMAL_SENSORS; i++)
 		thermal_zone_device_unregister(pinfo->tzd[i]);
 
-	kfree(pinfo);
 	platform_set_drvdata(pdev, NULL);
 
-	/* Stop the ADC */
-	return configure_adc(0);
+	/* Free the allocated ADC channels */
+	intel_mid_gpadc_free(therm_adc_handle);
+
+	return 0;
 }
 
-#define DRIVER_NAME "msic_sensor"
+/*********************************************************************
+ *		Driver initialisation and finalization
+ *********************************************************************/
+
+#define DRIVER_NAME "msic_thermal"
 
 static const struct platform_device_id therm_id_table[] = {
 	{ DRIVER_NAME, 1 },
-	{ }
 };
 
+static const struct dev_pm_ops msic_thermal_pm_ops = {
+	.suspend = mid_thermal_suspend,
+	.resume = mid_thermal_resume,
+};
 static struct platform_driver mid_thermal_driver = {
 	.driver = {
 		.name = DRIVER_NAME,
 		.owner = THIS_MODULE,
+		.pm = &msic_thermal_pm_ops,
 	},
 	.probe = mid_thermal_probe,
-	.suspend = mid_thermal_suspend,
-	.resume = mid_thermal_resume,
 	.remove = __devexit_p(mid_thermal_remove),
 	.id_table = therm_id_table,
 };
@@ -563,7 +387,11 @@ static void __exit mid_thermal_module_exit(void)
 	platform_driver_unregister(&mid_thermal_driver);
 }
 
-module_init(mid_thermal_module_init);
+/* Changing _init call to make the thermal driver
+ * load _after_ the GPADC driver
+ * module_init(mid_thermal_module_init);
+ */
+late_initcall(mid_thermal_module_init);
 module_exit(mid_thermal_module_exit);
 
 MODULE_AUTHOR("Durgadoss R <durgadoss.r@intel.com>");
