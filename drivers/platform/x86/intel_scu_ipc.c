@@ -208,7 +208,7 @@ static int pwr_reg_rdwr(u16 *addr, u8 *data, u32 count, u32 op, u32 id)
 		return -ENODEV;
 	}
 
-	if (platform != MRST_CPU_CHIP_PENWELL) {
+	if (platform == MRST_CPU_CHIP_LINCROFT) {
 		bytes = 0;
 		d = 0;
 		for (i = 0; i < count; i++) {
@@ -222,7 +222,7 @@ static int pwr_reg_rdwr(u16 *addr, u8 *data, u32 count, u32 op, u32 id)
 		for (i = 0; i < bytes; i += 4)
 			ipc_data_writel(wbuf[i/4], i);
 		ipc_command(bytes << 16 |  id << 12 | 0 << 8 | op);
-	} else {
+	} else { /* Penwell or Cloverview */
 		for (nc = 0; nc < count; nc++, offset += 2) {
 			cbuf[offset] = addr[nc];
 			cbuf[offset + 1] = addr[nc] >> 8;
@@ -250,7 +250,7 @@ static int pwr_reg_rdwr(u16 *addr, u8 *data, u32 count, u32 op, u32 id)
 	if (id == IPC_CMD_PCNTRL_R) { /* Read rbuf */
 		/* Workaround: values are read as 0 without memcpy_fromio */
 		memcpy_fromio(cbuf, ipcdev.ipc_base + 0x90, 16);
-		if (platform != MRST_CPU_CHIP_PENWELL) {
+		if (platform == MRST_CPU_CHIP_LINCROFT) {
 			for (nc = 0, offset = 2; nc < count; nc++, offset += 3)
 				data[nc] = ipc_data_readb(offset);
 		} else {
@@ -1569,6 +1569,7 @@ static void ipc_remove(struct pci_dev *pdev)
 static const struct pci_device_id pci_ids[] = {
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x080e)},
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x082a)},
+	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x08ea)},
 	{ 0,}
 };
 MODULE_DEVICE_TABLE(pci, pci_ids);
