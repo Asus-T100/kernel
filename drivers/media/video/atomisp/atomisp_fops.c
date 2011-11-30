@@ -270,19 +270,6 @@ int atomisp_init_struct(struct atomisp_device *isp)
 	return 0;
 }
 
-/*Wrap functions to pass into css framework*/
-static void *kernel_malloc(size_t bytes)
-{
-	return kzalloc(bytes, GFP_KERNEL);
-}
-
-/* kfree is declared with const void * argument even though it's
-   clearly not const. We work around this here. */
-static void kernel_free(void *ptr)
-{
-	kfree(ptr);
-}
-
 /*
  * file operation functions
  */
@@ -331,8 +318,8 @@ static int atomisp_open(struct file *file)
 						isp->hw_contex.mmu_l1_base);
 
 	/* Init ISP */
-	if (sh_css_init(kernel_malloc,
-			kernel_free,
+	if (sh_css_init(atomisp_kernel_malloc,
+			atomisp_kernel_free,
 			SH_CSS_INTERRUPT_SETTING_PULSE,
 			isp->firmware->data,
 			isp->firmware->size))

@@ -51,6 +51,35 @@ union host {
 	} ptr;
 };
 
+/*
+ * atomisp_kernel_malloc: chooses whether kmalloc() or vmalloc() is preferable.
+ *
+ * It is also a wrap functions to pass into css framework.
+ */
+void *atomisp_kernel_malloc(size_t bytes)
+{
+	/* vmalloc() is preferable if allocating more than 1 page */
+	if (bytes > PAGE_SIZE) {
+		void *ptr = vmalloc(bytes);
+		if (ptr == NULL)
+			return NULL;
+		memset(ptr, 0, bytes);
+		return ptr;
+	}
+
+	return kzalloc(bytes, GFP_KERNEL);
+}
+
+/* Free buffer allocated with atomisp_kernel_malloc() helper */
+void atomisp_kernel_free(void *ptr)
+{
+	/* Verify if buffer was allocated by vmalloc() or kmalloc() */
+	if (is_vmalloc_addr(ptr))
+		vfree(ptr);
+	else
+		kfree(ptr);
+}
+
 static void
 atomisp_acc_fw_free_args(struct atomisp_device *isp, struct sh_css_acc_fw *fw);
 static void

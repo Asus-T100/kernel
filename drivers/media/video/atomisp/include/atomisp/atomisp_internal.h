@@ -306,7 +306,11 @@ struct atomisp_device {
 extern struct v4l2_device atomisp_dev;
 
 extern void hrt_isp_css_mm_set_user_ptr(unsigned int userptr,
-	unsigned int num_pages);
+					unsigned int num_pages);
+
+extern void *atomisp_kernel_malloc(size_t bytes);
+
+extern void atomisp_kernel_free(void *ptr);
 
 #define FW_PATH	"shisp.bin"
 
