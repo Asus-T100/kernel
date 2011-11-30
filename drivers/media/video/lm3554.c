@@ -506,6 +506,11 @@ static int lm3554_detect(struct i2c_client *client)
 	if (ret < 0)
 		goto fail;
 
+	/* set peak current limit to be 1000mA */
+	ret = set_reg_field(sd, &current_limit, 0);
+	if (ret < 0)
+		goto fail;
+
 	/* clear the flags register */
 	ret = lm3554_g_flash_status(sd, &status);
 	if (ret < 0)
