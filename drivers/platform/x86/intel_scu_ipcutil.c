@@ -44,7 +44,7 @@
 #define INTEL_SCU_IPC_READ_VBATTCRIT	0xC4
 #define INTEL_SCU_IPC_WRITE_ALARM_FLAG_TO_OSNIB 0xC5
 
-#define OSNIB_OFFSET			0x0C
+#define OSNIB_RR_OFFSET			OSNIB_OFFSET
 #define OSNIB_ALARM_OFFSET		(OSNIB_OFFSET + 2)
 #define OSNIB_RR_MASK			0x01
 #define OSNIB_ALARM_MASK		0x04
@@ -134,8 +134,7 @@ static long scu_ipc_ioctl(struct file *fp, unsigned int cmd,
 	case INTEL_SCU_IPC_READ_RR_FROM_OSNIB:
 	{
 		u8 reboot_reason;
-
-		ret = intel_scu_ipc_read_oshob(&reboot_reason, 1, OSNIB_OFFSET);
+		ret = intel_scu_ipc_read_osnib_rr(&reboot_reason);
 		if (ret < 0)
 			return ret;
 		ret = copy_to_user(argp, &reboot_reason, 1);
@@ -150,7 +149,7 @@ static long scu_ipc_ioctl(struct file *fp, unsigned int cmd,
 			pr_err("copy from user failed!!\n");
 			return ret;
 		}
-		ret = intel_scu_ipc_write_osnib(&data, 1, 0, OSNIB_RR_MASK);
+		ret = intel_scu_ipc_write_osnib_rr(data);
 		break;
 	}
 	case INTEL_SCU_IPC_WRITE_ALARM_FLAG_TO_OSNIB:
@@ -228,6 +227,24 @@ static long scu_ipc_ioctl(struct file *fp, unsigned int cmd,
 
 	return ret;
 }
+
+/*
+ * This writes the reboot reason in the OSNIB (factor and avoid any overlap)
+ */
+int intel_scu_ipc_write_osnib_rr(u8 rr)
+{
+	return intel_scu_ipc_write_osnib(&rr, 1, 0, OSNIB_RR_MASK);
+}
+EXPORT_SYMBOL_GPL(intel_scu_ipc_write_osnib_rr);
+
+/*
+ * This reads the reboot reason from the OSNIB (factor)
+ */
+int intel_scu_ipc_read_osnib_rr(u8 *rr)
+{
+	return intel_scu_ipc_read_oshob(rr, 1, OSNIB_RR_OFFSET);
+}
+EXPORT_SYMBOL_GPL(intel_scu_ipc_read_osnib_rr);
 
 static const struct file_operations scu_ipc_fops = {
 	.unlocked_ioctl = scu_ipc_ioctl,

@@ -91,7 +91,10 @@ int intel_scu_ipc_write_umip(u8 *data, int len, int offset);
 /* OSHOB-OS Handoff Buffer read */
 int intel_scu_ipc_read_oshob(u8 *data, int len, int offset);
 /* OSNIB-OS No Init Buffer write */
+#define OSNIB_OFFSET		0x0C
 int intel_scu_ipc_write_osnib(u8 *data, int len, int offset, u32 mask);
+int intel_scu_ipc_write_osnib_rr(u8 rr);
+int intel_scu_ipc_read_osnib_rr(u8 *rr);
 
 /* Penwell has 4 osc clocks */
 #define OSC_CLK_AUDIO	0	/* Audio */
