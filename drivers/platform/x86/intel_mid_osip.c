@@ -189,24 +189,10 @@ bd_put:
    The attribute of OS image is selected for Reboot/boot reason.
 */
 
-#define OSNIB_RR_MASK		0xf
 #define SIGNED_MOS_ATTR		0x0
 #define SIGNED_COS_ATTR		0x0A
 #define SIGNED_POS_ATTR		0x0E
 #define SIGNED_POSCOS_ATTR	0x10
-#define OSNIB_OFFSET		0xC /* offset in OSHOB */
-
-static u8 read_osnib_rr(void)
-{
-	u8 rbt_reason;
-	intel_scu_ipc_read_oshob(&rbt_reason, 1, OSNIB_OFFSET);
-	return rbt_reason;
-}
-
-static void write_osnib_rr(u8 rbt_reason)
-{
-	intel_scu_ipc_write_osnib(&rbt_reason, 1, 0, OSNIB_RR_MASK);
-}
 
 static int osip_invalidate(struct OSIP_header *osip, void *data)
 {
@@ -230,9 +216,10 @@ static int osip_reboot_notifier_call(struct notifier_block *notifier,
 				     unsigned long what, void *data)
 {
 	int ret = NOTIFY_DONE;
+	int ret_ipc;
 	char *cmd = (char *)data;
 	struct otg_bc_cap cap;
-	unsigned char rbt_reason;
+	u8 rbt_reason;
 
 	/* If system power off with charger connected, set the Reboot
 	   Reason to COS */
@@ -246,10 +233,17 @@ static int osip_reboot_notifier_call(struct notifier_block *notifier,
 					"switching to COS because a charger is "
 					"plugged in\n", __func__);
 				pr_info("charger connected ...\n");
-				read_osnib_rr();
-				rbt_reason = SIGNED_COS_ATTR;
-				write_osnib_rr(rbt_reason);
-				read_osnib_rr();
+#ifdef DEBUG
+				intel_scu_ipc_read_osnib_rr(&rbt_reason);
+#endif
+				ret_ipc = intel_scu_ipc_write_osnib_rr(
+							SIGNED_COS_ATTR);
+				if (ret_ipc < 0)
+					pr_err("%s cannot write reboot reason"
+						" in OSNIB\n", __func__);
+#ifdef DEBUG
+				intel_scu_ipc_read_osnib_rr(&rbt_reason);
+#endif
 			} else {
 				pr_warn("[SHTDWN] %s, Shutdown without charger"
 					" plugged in\n", __func__);
@@ -264,9 +258,16 @@ static int osip_reboot_notifier_call(struct notifier_block *notifier,
 	if (0 == strncmp(cmd, "recovery", 9)) {
 		pr_warn("[SHTDWN] %s, invalidating osip and rebooting into "
 			"Recovery\n", __func__);
-		rbt_reason = read_osnib_rr();
-		write_osnib_rr(SIGNED_POS_ATTR);
-		rbt_reason = read_osnib_rr();
+#ifdef DEBUG
+		intel_scu_ipc_read_osnib_rr(&rbt_reason);
+#endif
+		intel_scu_ipc_write_osnib_rr(SIGNED_POS_ATTR);
+		if (ret_ipc < 0)
+			pr_err("%s cannot write reboot reason in OSNIB\n",
+				__func__);
+#ifdef DEBUG
+		intel_scu_ipc_read_osnib_rr(&rbt_reason);
+#endif
 		access_osip_record(osip_invalidate, (void *)0);
 		ret = NOTIFY_OK;
 	} else if (0 == strncmp(cmd, "android", 8)) {
