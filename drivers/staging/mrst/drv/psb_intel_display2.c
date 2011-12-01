@@ -303,7 +303,7 @@ static int mdfld_intel_crtc_cursor_move(struct drm_crtc *crtc, int x, int y)
 }
 
 const struct drm_crtc_funcs mdfld_intel_crtc_funcs = {
-#ifndef CONFIG_X86_MRST
+#ifndef CONFIG_X86_MDFLD
 	.save = psb_intel_crtc_save,
 	.restore = psb_intel_crtc_restore,
 #endif

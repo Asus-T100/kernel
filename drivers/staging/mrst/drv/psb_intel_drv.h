@@ -187,7 +187,7 @@ struct psb_intel_crtc {
 	u32 mode_flags;
 
 /*FIXME: Workaround to avoid MRST block.*/
-#ifndef CONFIG_X86_MRST
+#ifndef CONFIG_X86_MDFLD
 	/* Saved Crtc HW states */
 	struct psb_intel_crtc_state *crtc_state;
 #endif

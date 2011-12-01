@@ -948,7 +948,7 @@ void psb_intel_crtc_load_lut(struct drm_crtc *crtc)
 	}
 }
 
-#ifndef CONFIG_X86_MRST
+#ifndef CONFIG_X86_MDFLD
 /**
  * Save HW states of giving crtc
  */
@@ -1430,7 +1430,7 @@ static void psb_intel_crtc_destroy(struct drm_crtc *crtc)
 {
 	struct psb_intel_crtc *psb_intel_crtc = to_psb_intel_crtc(crtc);
 
-#ifndef CONFIG_X86_MRST
+#ifndef CONFIG_X86_MDFLD
 	kfree(psb_intel_crtc->crtc_state);
 #endif
 	drm_crtc_cleanup(crtc);
@@ -1451,7 +1451,7 @@ static const struct drm_crtc_helper_funcs mdfld_helper_funcs;
 const struct drm_crtc_funcs mdfld_intel_crtc_funcs;
 
 const struct drm_crtc_funcs psb_intel_crtc_funcs = {
-#ifndef CONFIG_X86_MRST
+#ifndef CONFIG_X86_MDFLD
 	.save = psb_intel_crtc_save,
 	.restore = psb_intel_crtc_restore,
 #endif
@@ -1481,7 +1481,7 @@ void psb_intel_crtc_init(struct drm_device *dev, int pipe,
 	if (psb_intel_crtc == NULL)
 		return;
 
-#ifndef CONFIG_X86_MRST
+#ifndef CONFIG_X86_MDFLD
 	psb_intel_crtc->crtc_state =
 		kzalloc(sizeof(struct psb_intel_crtc_state), GFP_KERNEL);
 	if (!psb_intel_crtc->crtc_state) {

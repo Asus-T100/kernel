@@ -938,7 +938,7 @@ mdfld_hdmi_edid_detect(struct drm_connector *connector)
 static enum drm_connector_status mdfld_hdmi_detect(struct drm_connector
 						   *connector)
 {
-#ifdef CONFIG_X86_MRST
+#ifdef CONFIG_X86_MDFLD
 	struct drm_device *dev = connector->dev;
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *)dev->dev_private;

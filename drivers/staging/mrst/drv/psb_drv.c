@@ -1100,7 +1100,7 @@ void hdmi_do_hotplug_wq(struct work_struct *work)
 	atomic_inc(&dev_priv->hotplug_wq_done);
 	/* notify user space of hotplug event via a uevent message */
 
-#ifdef CONFIG_X86_MRST
+#ifdef CONFIG_X86_MDFLD
 	intel_scu_ipc_iowrite8(MSIC_VCC330CNT, VCC330_ON);
 
 	intel_scu_ipc_ioread8(MSIC_HDMI_STATUS, &data);
@@ -1134,7 +1134,7 @@ void hdmi_do_audio_wq(struct work_struct *work)
 					   struct drm_psb_private,
 					   hdmi_audio_wq);
 
-#ifdef CONFIG_X86_MRST
+#ifdef CONFIG_X86_MDFLD
 	intel_scu_ipc_iowrite8(MSIC_VCC330CNT, VCC330_ON);
 	intel_scu_ipc_ioread8(MSIC_HDMI_STATUS, &data);
 	DRM_INFO("hdmi_do_audio_wq: Checking for HDMI connection at boot\n");

@@ -1460,7 +1460,7 @@ void ospm_suspend_display(struct drm_device *dev)
 
 			/* turn off panel power */
 			ret = 0;
-#ifdef CONFIG_X86_MRST
+#ifdef CONFIG_X86_MDFLD
 			ret = intel_scu_ipc_simple_command(IPC_MSG_PANEL_ON_OFF, IPC_CMD_PANEL_OFF);
 			if (ret)
 				printk(KERN_WARNING "IPC 0xE9 failed to turn off pnl pwr. Error is: %x\n", ret);
@@ -1538,7 +1538,7 @@ void ospm_resume_display(struct pci_dev *pdev)
 
 	}else{
 		if (!dev_priv->iLVDS_enable) {
-#ifdef CONFIG_X86_MRST
+#ifdef CONFIG_X86_MDFLD
         	        int ret=0;
 			ret = intel_scu_ipc_simple_command(IPC_MSG_PANEL_ON_OFF, IPC_CMD_PANEL_ON);
                 	if (ret)
