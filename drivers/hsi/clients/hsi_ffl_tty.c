@@ -263,6 +263,9 @@ struct ffl_ctx {
 	struct tty_port		tty_prt;
 	wait_queue_head_t	tx_full_pipe_clean_event;
 	wait_queue_head_t	tx_write_pipe_clean_event;
+#if (ACWAKE_MINIMAL_PULSE_UDELAY > 0)
+	ktime_t			ktime_stop_tx;
+#endif
 	struct ffl_xfer_ctx	tx;
 	struct ffl_xfer_ctx	rx;
 	struct work_struct	do_tty_forward;
@@ -1173,7 +1176,9 @@ static void _ffl_start_tx(struct ffl_xfer_ctx *ctx, unsigned long *flags)
 		_ffl_ctx_set_state(ctx, ACTIVE);
 		spin_unlock_irqrestore(&ctx->lock, *flags);
 #if (ACWAKE_MINIMAL_PULSE_UDELAY > 0)
-		udelay(ACWAKE_MINIMAL_PULSE_UDELAY);
+		while (ktime_us_delta(ktime_get(), main_ctx->ktime_stop_tx) <
+		       ACWAKE_MINIMAL_PULSE_UDELAY)
+			cpu_relax();
 #endif
 		err = hsi_start_tx(main_ctx->client);
 		spin_lock_irqsave(&ctx->lock, *flags);
@@ -1203,6 +1208,9 @@ static void _ffl_stop_tx(struct ffl_xfer_ctx *ctx, unsigned long *flags)
 		main_ctx = container_of(ctx, struct ffl_ctx, tx);
 		spin_unlock_irqrestore(&ctx->lock, *flags);
 		hsi_stop_tx(main_ctx->client);
+#if (ACWAKE_MINIMAL_PULSE_UDELAY > 0)
+		main_ctx->ktime_stop_tx = ktime_get();
+#endif
 		spin_lock_irqsave(&ctx->lock, *flags);
 	}
 }
