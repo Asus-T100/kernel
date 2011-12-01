@@ -2145,11 +2145,13 @@ static void ffl_tty_tx_timeout(unsigned long int param)
 {
 	struct ffl_ctx *ctx = (struct ffl_ctx *)param;
 
+	pr_err(DRVNAME ": TX timeout");
+
 	ffl_throw_tty_hangup(ctx, HU_TIMEOUT);
 }
 
 /**
- * ffl_do_tx_hangup - initiate a hangup due to TX timeout
+ * ffl_do_tx_hangup - initiate a hangup (TX timeout, modem reset or core dump)
  * @work: a reference to work queue element
  *
  * Required since port shutdown calls a mutex that might sleep
