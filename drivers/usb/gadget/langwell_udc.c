@@ -1128,14 +1128,28 @@ static int langwell_ep_set_wedge(struct usb_ep *_ep)
 	return usb_ep_set_halt(_ep);
 }
 
-/* enter or exit PHY low power state */
-static void langwell_phy_low_power(struct langwell_udc *dev, bool flag)
+/*
+ * Enter or exit PHY low power state. If it changed
+ * PHY status, return 1 else return 0.
+ */
+int langwell_phy_low_power(struct langwell_udc *dev, bool flag)
 {
 	u32		devlc;
 	u8		devlc_byte2;
 	dev_dbg(&dev->pdev->dev, "---> %s()\n", __func__);
 
+	/*FIXME: get back to d0 first? */
+
 	devlc = readl(&dev->op_regs->devlc);
+
+	/*
+	 * If PHY already in or out low power state,
+	 * exit func and return 0
+	 */
+	if ((devlc & LPM_PHCD) == (flag ? LPM_PHCD : 0)) {
+		dev_dbg(&dev->pdev->dev, "<--- %s()\n", __func__);
+		return 0;
+	}
 	dev_vdbg(&dev->pdev->dev, "devlc = 0x%08x\n", devlc);
 
 	if (flag)
@@ -1151,6 +1165,17 @@ static void langwell_phy_low_power(struct langwell_udc *dev, bool flag)
 	dev_vdbg(&dev->pdev->dev,
 		 "%s PHY low power suspend, devlc = 0x%08x\n",
 		 flag ? "enter" : "exit", devlc);
+	dev_dbg(&dev->pdev->dev, "<--- %s()\n", __func__);
+	return 1;
+}
+EXPORT_SYMBOL(langwell_phy_low_power);
+
+/*Switch PHY power mode. If it is changed, delay some millisecond*/
+static inline void langwell_phy_low_power_delay(struct langwell_udc *dev,
+						bool flag, unsigned long late)
+{
+	if (langwell_phy_low_power(dev, flag))
+			mdelay(late);
 }
 
 
@@ -1176,9 +1201,8 @@ static void langwell_ep_fifo_flush(struct usb_ep *_ep)
 	dev_vdbg(&dev->pdev->dev, "%s-%s fifo flush\n",
 			_ep->name, DIR_STRING(ep));
 
-	pm_runtime_get(&dev->pdev->dev);
+	/*FIXME: get back to d0 first? */
 
-	langwell_phy_low_power(dev, 0);
 	/* delay 3 millisecond to wait for phy exiting low power mode,
 	   otherwise it easy to cause fabric error. the function can't use
 	   msleep in here, because composite device will call this function with
@@ -1187,7 +1211,7 @@ static void langwell_ep_fifo_flush(struct usb_ep *_ep)
 	   pm_runtime_get_sync prior to this function, so hereby it would
 	   not cause schedule, just count plug one.
 	*/
-	mdelay(3);
+	langwell_phy_low_power_delay(dev, 0, 3);
 
 	/* flush endpoint buffer */
 	if (ep->ep_num == 0)
@@ -1198,19 +1222,18 @@ static void langwell_ep_fifo_flush(struct usb_ep *_ep)
 		flush_bit = 1 << ep->ep_num;		/* RX */
 
 	/* wait until flush complete */
-	timeout = jiffies + FLUSH_TIMEOUT;
+	timeout = 100 * FLUSH_TIMEOUT;
 	do {
 		writel(flush_bit, &dev->op_regs->endptflush);
 		while (readl(&dev->op_regs->endptflush)) {
-			if (time_after(jiffies, timeout)) {
+			if (--timeout == 0) {
 				dev_err(&dev->pdev->dev, "ep flush timeout\n");
 				goto done;
 			}
-			cpu_relax();
+			udelay(10);
 		}
 	} while (readl(&dev->op_regs->endptstat) & flush_bit);
 done:
-	pm_runtime_put(&dev->pdev->dev);
 
 	dev_vdbg(&dev->pdev->dev, "<--- %s()\n", __func__);
 }
@@ -1478,13 +1501,13 @@ static int langwell_udc_reset(struct langwell_udc *dev)
 	writel(usbcmd, &dev->op_regs->usbcmd);
 
 	/* wait for reset to complete */
-	timeout = jiffies + RESET_TIMEOUT;
+	timeout = 100 * RESET_TIMEOUT;
 	while (readl(&dev->op_regs->usbcmd) & CMD_RST) {
-		if (time_after(jiffies, timeout)) {
+		if (--timeout == 0) {
 			dev_err(&dev->pdev->dev, "device reset timeout\n");
 			return -ETIMEDOUT;
 		}
-		cpu_relax();
+		udelay(10);
 	}
 
 	/* set controller to device mode */
@@ -2096,13 +2119,13 @@ static void setup_tripwire(struct langwell_udc *dev)
 	writel(endptsetupstat, &dev->op_regs->endptsetupstat);
 
 	/* wait until endptsetupstat is cleared */
-	timeout = jiffies + SETUPSTAT_TIMEOUT;
+	timeout = 100 * SETUPSTAT_TIMEOUT;
 	while (readl(&dev->op_regs->endptsetupstat)) {
-		if (time_after(jiffies, timeout)) {
+		if (--timeout == 0) {
 			dev_err(&dev->pdev->dev, "setup_tripwire timeout\n");
 			break;
 		}
-		cpu_relax();
+		udelay(10);
 	}
 
 	/* while a hazard exists when setup packet arrives */
@@ -2841,7 +2864,6 @@ static void handle_port_change(struct langwell_udc *dev)
 {
 	u32		portsc1, devlc;
 	u32		speed;
-	unsigned long	event = 0;
 
 	dev_vdbg(&dev->pdev->dev, "---> %s()\n", __func__);
 
@@ -2860,15 +2882,12 @@ static void handle_port_change(struct langwell_udc *dev)
 		switch (speed) {
 		case LPM_SPEED_HIGH:
 			dev->gadget.speed = USB_SPEED_HIGH;
-			event = MID_OTG_NOTIFY_CLIENTHS;
 			break;
 		case LPM_SPEED_FULL:
 			dev->gadget.speed = USB_SPEED_FULL;
-			event = MID_OTG_NOTIFY_CLIENTFS;
 			break;
 		case LPM_SPEED_LOW:
 			dev->gadget.speed = USB_SPEED_LOW;
-			event = MID_OTG_NOTIFY_CLIENTFS;
 			break;
 		default:
 			dev->gadget.speed = USB_SPEED_UNKNOWN;
@@ -2877,10 +2896,6 @@ static void handle_port_change(struct langwell_udc *dev)
 		dev_vdbg(&dev->pdev->dev,
 				"speed = %d, dev->gadget.speed = %d\n",
 				speed, dev->gadget.speed);
-
-		if (event && dev->iotg)
-			atomic_notifier_call_chain(&dev->iotg->iotg_notifier,
-							event, dev->iotg);
 	}
 
 	/* LPM L0 to L1 */
@@ -2950,13 +2965,13 @@ static void handle_usb_reset(struct langwell_udc *dev)
 	writel(endptcomplete, &dev->op_regs->endptcomplete);
 
 	/* wait until all endptprime bits cleared */
-	timeout = jiffies + PRIME_TIMEOUT;
+	timeout = 100 * PRIME_TIMEOUT;
 	while (readl(&dev->op_regs->endptprime)) {
-		if (time_after(jiffies, timeout)) {
+		if (--timeout == 0) {
 			dev_err(&dev->pdev->dev, "USB reset timeout\n");
 			break;
 		}
-		cpu_relax();
+		udelay(10);
 	}
 
 	/* write 1s to endptflush register to clear any primed buffers */
@@ -3014,9 +3029,6 @@ static void handle_bus_suspend(struct langwell_udc *dev)
 					dev->driver->driver.name);
 		}
 	}
-
-	/* enter PHY low power suspend */
-	langwell_phy_low_power(dev, 1);
 
 	dev_dbg(&dev->pdev->dev, "<--- %s()\n", __func__);
 }

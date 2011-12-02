@@ -308,12 +308,83 @@ static struct usb_gadget_strings *rndis_strings[] = {
 
 /*-------------------------------------------------------------------------*/
 
+
+static struct sk_buff
+*rndis_pskb_copy(struct sk_buff *skb, unsigned int headroom, gfp_t gfp_mask)
+{
+	/*
+	*      Allocate the copy buffer
+	*/
+	struct sk_buff *n;
+#ifdef NET_SKBUFF_DATA_USES_OFFSET
+	n = alloc_skb(skb->end, gfp_mask);
+#else
+	n = alloc_skb(skb->end - skb->head, gfp_mask);
+#endif
+	if (!n)
+		goto out;
+
+	/* Set the data pointer */
+	skb_reserve(n, headroom);
+	/* Set the tail pointer and length */
+	skb_put(n, skb_headlen(skb));
+	/* Copy the bytes */
+	skb_copy_from_linear_data(skb, n->data, n->len);
+
+	n->truesize += skb->data_len;
+	n->data_len  = skb->data_len;
+	n->len       = skb->len;
+
+	if (skb_shinfo(skb)->nr_frags) {
+		int i;
+
+		for (i = 0; i < skb_shinfo(skb)->nr_frags; i++) {
+			skb_shinfo(n)->frags[i] = skb_shinfo(skb)->frags[i];
+			get_page(skb_shinfo(n)->frags[i].page);
+		}
+		skb_shinfo(n)->nr_frags = i;
+	}
+
+	if (skb_has_frag_list(skb)) {
+		skb_shinfo(n)->frag_list = skb_shinfo(skb)->frag_list;
+		skb_clone_fraglist(n);
+	}
+
+	copy_skb_header(n, skb);
+out:
+	return n;
+}
+
+/*Alloc headroom for rndis header. This function ensure that the whole rndis
+* package align on 64B after rndis header is added to the package.
+*/
+static struct sk_buff
+*rndis_skb_realloc_headroom(struct sk_buff *skb, unsigned int headroom)
+{
+	struct sk_buff *skb2;
+	int delta = headroom - skb_headroom(skb);
+
+
+	if (delta <= 0) {
+		skb2 = rndis_pskb_copy(skb, headroom, GFP_ATOMIC);
+	} else {
+
+		skb2 = skb_clone(skb, GFP_ATOMIC);
+		if (skb2 && pskb_expand_head(skb2, delta, 0, GFP_ATOMIC)) {
+			kfree_skb(skb2);
+			skb2 = NULL;
+		}
+	}
+	return skb2;
+}
+
 static struct sk_buff *rndis_add_header(struct gether *port,
 					struct sk_buff *skb)
 {
 	struct sk_buff *skb2;
 
-	skb2 = skb_realloc_headroom(skb, sizeof(struct rndis_packet_msg_type));
+	skb2 = rndis_skb_realloc_headroom(skb,
+			sizeof(struct rndis_packet_msg_type));
 	if (skb2)
 		rndis_add_hdr(skb2);
 

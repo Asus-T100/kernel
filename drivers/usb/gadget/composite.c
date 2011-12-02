@@ -315,8 +315,28 @@ static int config_desc(struct usb_composite_dev *cdev, unsigned w_value)
 			if (!c->fullspeed)
 				continue;
 		}
+#if defined(CONFIG_USB_GADGET_LANGWELL) && defined(CONFIG_USB_ANDROID)
+		if (!fastboot) {
+			if (w_value == 0) {
+				c->bMaxPower = 250;
+				c->bConfigurationValue = 1;
+				return config_buf(c, speed,
+				cdev->req->buf, type);
+			} else if (w_value == 1) {
+				c->bMaxPower = 50;
+				c->bConfigurationValue = 2;
+				return config_buf(c, speed,
+				cdev->req->buf, type);
+			}
+		} else {
+			if (w_value == 0)
+				return config_buf(c, speed,
+					cdev->req->buf, type);
+		}
+#else
 		if (w_value == 0)
 			return config_buf(c, speed, cdev->req->buf, type);
+#endif
 		w_value--;
 	}
 	return -EINVAL;
@@ -346,7 +366,14 @@ static int count_configs(struct usb_composite_dev *cdev, unsigned type)
 		}
 		count++;
 	}
+#if defined(CONFIG_USB_GADGET_LANGWELL) && defined(CONFIG_USB_ANDROID)
+	if (!fastboot)
+		return count + 1;
+	else
+		return count;
+#else
 	return count;
+#endif
 }
 
 static void device_qual(struct usb_composite_dev *cdev)
@@ -397,10 +424,31 @@ static int set_config(struct usb_composite_dev *cdev,
 
 	if (number) {
 		list_for_each_entry(c, &cdev->configs, list) {
+#if defined(CONFIG_USB_GADGET_LANGWELL) && defined(CONFIG_USB_ANDROID)
+			if (!fastboot) {
+				if (number == 1) {
+					c->bConfigurationValue = 1;
+					c->bMaxPower = 250;
+					result = 0;
+					break;
+				} else if (number == 2) {
+					c->bConfigurationValue = 2;
+					c->bMaxPower = 50;
+					result = 0;
+					break;
+				}
+			} else {
+				if (c->bConfigurationValue == number) {
+					result = 0;
+					break;
+				}
+			}
+#else
 			if (c->bConfigurationValue == number) {
 				result = 0;
 				break;
 			}
+#endif
 		}
 		if (result < 0)
 			goto done;
@@ -1221,6 +1269,8 @@ composite_suspend(struct usb_gadget *gadget)
 {
 	struct usb_composite_dev	*cdev = get_gadget_data(gadget);
 	struct usb_function		*f;
+	struct usb_configuration	*c;
+	int				power;
 
 	/* REVISIT:  should we have config level
 	 * suspend/resume callbacks?
@@ -1237,7 +1287,17 @@ composite_suspend(struct usb_gadget *gadget)
 
 	cdev->suspended = 1;
 
-	usb_gadget_vbus_draw(gadget, 2);
+	/* set charging current according active config MaxPower*/
+	c = cdev->config;
+
+	if (!c)
+		power = CONFIG_USB_GADGET_SUSPEND_VBUS_DRAW;
+	else if ((c->bMaxPower * 2) > CONFIG_USB_GADGET_SUSPEND_VBUS_DRAW)
+		power = CONFIG_USB_GADGET_SUSPEND_VBUS_DRAW;
+	else
+		power = c->bMaxPower * 2;
+
+	usb_gadget_vbus_draw(gadget, power);
 }
 
 static void

@@ -114,6 +114,10 @@ static struct usb_descriptor_header *hs_adb_descs[] = {
 static void adb_ready_callback(void);
 static void adb_closed_callback(void);
 
+int fastboot;
+module_param(fastboot, int, S_IRUGO);
+MODULE_PARM_DESC(fastboot, "nonzero to use fastboot instead of abd protocol");
+
 /* temporary variable used between adb_open() and adb_gadget_bind() */
 static struct adb_dev *_adb_dev;
 
@@ -469,6 +473,11 @@ adb_function_bind(struct usb_configuration *c, struct usb_function *f)
 	if (id < 0)
 		return id;
 	adb_interface_desc.bInterfaceNumber = id;
+	if (fastboot) {
+		printk(KERN_INFO "fastboot mode\n");
+		adb_interface_desc.bInterfaceProtocol = 3;
+	} else
+		printk(KERN_INFO "adb mode\n");
 
 	/* allocate endpoints */
 	ret = adb_create_bulk_endpoints(dev, &adb_fullspeed_in_desc,

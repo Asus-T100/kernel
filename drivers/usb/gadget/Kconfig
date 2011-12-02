@@ -96,6 +96,23 @@ config USB_GADGET_VBUS_DRAW
 	   This value will be used except for system-specific gadget
 	   drivers that have more specific information.
 
+config USB_GADGET_SUSPEND_VBUS_DRAW
+	int "Maximun VBUS power usage during suspend (2-500 mA)"
+	range 2 500
+	default 2
+	help
+	   Some devices need to draw power from USB when they are
+	   suspended, perhaps to operate circuitry or to recharge
+	   batteries.  This is in addition to any local power supply,
+	   such as an AC adapter or batteries.
+
+	   Enter the maximum power your device draws through USB, in
+	   milliAmperes.  Please notice set this value larger than 2mA,
+	   will break the USB2.0 spec, but for custom confort.
+
+	   Please note, this value will be limited to current MaxPower.
+
+
 #
 # USB Peripheral Controller Support
 #

@@ -138,4 +138,15 @@ config FSL_USB2_OTG
 	help
 	  Enable this to support Freescale USB OTG transceiver.
 
+config USB_PENWELL_OTG_TEST
+	tristate "Intel Penwell USB OTG Test Mode support"
+	depends on USB
+	help
+	  Say Y here if you want to build Intel Penwell USB OTG
+	  test mode driver in kernel. This driver implements test
+	  mode initiated by test device with VID 0x1A0A.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called pnwotg_test.
+
 endif # USB || OTG
