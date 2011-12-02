@@ -43,7 +43,7 @@
 #include <linux/usb/penwell_otg.h>
 
 #define	DRIVER_DESC		"Intel Penwell USB OTG transceiver driver"
-#define	DRIVER_VERSION		"July 4, 2010"
+#define	DRIVER_VERSION		"0.8"
 
 MODULE_DESCRIPTION(DRIVER_DESC);
 MODULE_AUTHOR("Henry Yuan <hang.yuan@intel.com>, Hao Wu <hao.wu@intel.com>");
@@ -52,11 +52,7 @@ MODULE_LICENSE("GPL");
 
 static const char driver_name[] = "penwell_otg";
 
-static int penwell_otg_probe(struct pci_dev *pdev,
-			const struct pci_device_id *id);
 static void penwell_otg_remove(struct pci_dev *pdev);
-static int penwell_otg_suspend(struct device *dev);
-static int penwell_otg_resume(struct device *pdev);
 
 static int penwell_otg_set_host(struct otg_transceiver *otg,
 				struct usb_bus *host);
@@ -125,8 +121,10 @@ void penwell_update_transceiver(void)
 
 	dev_dbg(pnw->dev, "transceiver is updated\n");
 
-	if (!pnw->qwork)
+	if (!pnw->qwork) {
+		dev_warn(pnw->dev, "no workqueue for state machine\n");
 		return ;
+	}
 
 	queue_work(pnw->qwork, &pnw->work);
 }
@@ -196,24 +194,11 @@ static void _penwell_otg_update_chrg_cap(enum usb_charger_type charger,
 	/* set current */
 	switch (pnw->charging_cap.chrg_type) {
 	case CHRG_SDP:
-		if ((pnw->charging_cap.mA == CHRG_CURR_DISCONN
-			|| pnw->charging_cap.mA == CHRG_CURR_SDP_LOW
-			|| pnw->charging_cap.mA == CHRG_CURR_SDP_HIGH)
-				&& mA == CHRG_CURR_SDP_SUSP) {
-			/* SDP event: enter suspend state */
-			event = USBCHRG_EVENT_SUSPEND;
-			flag = 1;
-		} else if (pnw->charging_cap.mA == CHRG_CURR_DISCONN
+		if (pnw->charging_cap.mA == CHRG_CURR_DISCONN
 				&& (mA == CHRG_CURR_SDP_LOW
 				|| mA == CHRG_CURR_SDP_HIGH)) {
 			/* SDP event: charger connect */
 			event = USBCHRG_EVENT_CONNECT;
-			flag = 1;
-		} else if (pnw->charging_cap.mA == CHRG_CURR_SDP_SUSP
-				&& (mA == CHRG_CURR_SDP_LOW
-				|| mA == CHRG_CURR_SDP_HIGH)) {
-			/* SDP event: resume from suspend state */
-			event = USBCHRG_EVENT_RESUME;
 			flag = 1;
 		} else if (pnw->charging_cap.mA == CHRG_CURR_SDP_LOW
 				&& mA == CHRG_CURR_SDP_HIGH) {
@@ -224,6 +209,18 @@ static void _penwell_otg_update_chrg_cap(enum usb_charger_type charger,
 				&& mA == CHRG_CURR_SDP_LOW) {
 			/* SDP event: configuration update */
 			event = USBCHRG_EVENT_UPDATE;
+			flag = 1;
+		} else if (pnw->charging_cap.mA == CHRG_CURR_SDP_SUSP
+				&& (mA == CHRG_CURR_SDP_LOW
+				|| mA == CHRG_CURR_SDP_HIGH)) {
+			/* SDP event: resume from suspend state */
+			event = USBCHRG_EVENT_RESUME;
+			flag = 1;
+		} else if ((pnw->charging_cap.mA == CHRG_CURR_SDP_LOW
+			|| pnw->charging_cap.mA == CHRG_CURR_SDP_HIGH)
+				&& mA == CHRG_CURR_SDP_SUSP) {
+			/* SDP event: enter suspend state */
+			event = USBCHRG_EVENT_SUSPEND;
 			flag = 1;
 		} else
 			dev_dbg(pnw->dev, "SDP: no need to update EM\n");
@@ -241,16 +238,6 @@ static void _penwell_otg_update_chrg_cap(enum usb_charger_type charger,
 				&& mA == CHRG_CURR_CDP) {
 			/* CDP event: charger connect */
 			event = USBCHRG_EVENT_CONNECT;
-			flag = 1;
-		} else if (pnw->charging_cap.mA == CHRG_CURR_CDP
-				&& mA == CHRG_CURR_CDP_HS) {
-			/* CDP event: mode update */
-			event = USBCHRG_EVENT_UPDATE;
-			flag = 1;
-		} else if (pnw->charging_cap.mA == CHRG_CURR_CDP_HS
-				&& mA == CHRG_CURR_CDP) {
-			/* CDP event: mode update */
-			event = USBCHRG_EVENT_UPDATE;
 			flag = 1;
 		} else
 			dev_dbg(pnw->dev, "CDP: no need to update EM\n");
@@ -484,7 +471,7 @@ penwell_otg_ulpi_read(struct intel_mid_otg_xceiv *iotg, u8 reg, u8 *val)
 		}
 	}
 
-	dev_dbg(pnw->dev, "%s - timeout\n", __func__);
+	dev_warn(pnw->dev, "%s - timeout\n", __func__);
 
 	return -ETIMEDOUT;
 
@@ -664,7 +651,7 @@ static int penwell_otg_start_srp(struct otg_transceiver *otg)
 	msleep(8);
 	val = readl(pnw->iotg.base + CI_OTGSC);
 	if (val & (OTGSC_HADP | OTGSC_DP))
-		dev_dbg(pnw->dev, "DataLine SRP Error\n");
+		dev_warn(pnw->dev, "DataLine SRP Error\n");
 
 	dev_dbg(pnw->dev, "%s <---\n", __func__);
 	return 0;
@@ -686,7 +673,7 @@ static void penwell_otg_loc_sof(int on)
 		err = hcd->driver->bus_suspend(hcd);
 
 	if (err)
-		dev_dbg(pnw->dev, "Fail to resume/suspend USB bus - %d\n", err);
+		dev_warn(pnw->dev, "Fail to resume/suspend USB bus -%d\n", err);
 
 	dev_dbg(pnw->dev, "%s <---\n", __func__);
 }
@@ -1409,6 +1396,11 @@ static void init_hsm(void)
 	/* no system error */
 	iotg->hsm.a_clr_err = 0;
 
+	if (iotg->otg.state == OTG_STATE_A_IDLE) {
+		wake_lock(&pnw->wake_lock);
+		pm_runtime_get(pnw->dev);
+	}
+
 	penwell_otg_phy_low_power(1);
 }
 
@@ -1705,16 +1697,6 @@ static int penwell_otg_iotg_notify(struct notifier_block *nb,
 		dev_dbg(pnw->dev, "PNW OTG Nofity Client Driver remove\n");
 		flag = 1;
 		break;
-	case MID_OTG_NOTIFY_CLIENTFS:
-		dev_dbg(pnw->dev, "PNW OTG Notfiy Client FullSpeed\n");
-		penwell_otg_update_chrg_cap(CHRG_CDP, CHRG_CURR_CDP);
-		flag = 0;
-		break;
-	case MID_OTG_NOTIFY_CLIENTHS:
-		dev_dbg(pnw->dev, "PNW OTG Notfiy Client HighSpeed\n");
-		penwell_otg_update_chrg_cap(CHRG_CDP, CHRG_CURR_CDP_HS);
-		flag = 0;
-		break;
 	/* Test mode support */
 	case MID_OTG_NOTIFY_TEST_SRP_REQD:
 		dev_dbg(pnw->dev, "PNW OTG Notfiy Client SRP REQD\n");
@@ -1756,7 +1738,7 @@ static void penwell_otg_hnp_poll_work(struct work_struct *work)
 	if (iotg->otg.host && iotg->otg.host->root_hub) {
 		udev = iotg->otg.host->root_hub->children[0];
 	} else {
-		dev_dbg(pnw->dev, "no host or root_hub registered\n");
+		dev_warn(pnw->dev, "no host or root_hub registered\n");
 		return;
 	}
 
@@ -1765,7 +1747,7 @@ static void penwell_otg_hnp_poll_work(struct work_struct *work)
 		return;
 
 	if (!udev) {
-		dev_dbg(pnw->dev,
+		dev_warn(pnw->dev,
 			"no usb dev connected, stop HNP polling\n");
 		return;
 	}
@@ -1834,6 +1816,10 @@ static void penwell_otg_work(struct work_struct *work)
 
 			/* Always set a_bus_req to 1, in case no ADP */
 			hsm->a_bus_req = 1;
+
+			/* Prevent device enter D0i1 or S3*/
+			wake_lock(&pnw->wake_lock);
+			pm_runtime_get(pnw->dev);
 
 			iotg->otg.state = OTG_STATE_A_IDLE;
 			penwell_update_transceiver();
@@ -2031,6 +2017,10 @@ static void penwell_otg_work(struct work_struct *work)
 			/* Always set a_bus_req to 1, in case no ADP */
 			hsm->a_bus_req = 1;
 
+			/* Prevent device enter D0i1 or S3*/
+			wake_lock(&pnw->wake_lock);
+			pm_runtime_get(pnw->dev);
+
 			iotg->otg.state = OTG_STATE_A_IDLE;
 			penwell_update_transceiver();
 		} else if (!hsm->b_sess_vld || hsm->id == ID_ACA_B) {
@@ -2113,6 +2103,10 @@ static void penwell_otg_work(struct work_struct *work)
 
 			/* Always set a_bus_req to 1, in case no ADP */
 			iotg->hsm.a_bus_req = 1;
+
+			/* Prevent device enter D0i1 or S3*/
+			wake_lock(&pnw->wake_lock);
+			pm_runtime_get(pnw->dev);
 
 			iotg->otg.state = OTG_STATE_A_IDLE;
 			penwell_update_transceiver();
@@ -2211,6 +2205,10 @@ static void penwell_otg_work(struct work_struct *work)
 			/* Always set a_bus_req to 1, in case no ADP */
 			hsm->a_bus_req = 1;
 
+			/* Prevent device enter D0i1 or S3*/
+			wake_lock(&pnw->wake_lock);
+			pm_runtime_get(pnw->dev);
+
 			iotg->otg.state = OTG_STATE_A_IDLE;
 			penwell_update_transceiver();
 		} else if (!hsm->b_sess_vld || hsm->id == ID_ACA_B) {
@@ -2288,6 +2286,10 @@ static void penwell_otg_work(struct work_struct *work)
 			msleep(5);
 			penwell_otg_phy_low_power(1);
 
+			/* Decrement the device usage counter */
+			pm_runtime_put(pnw->dev);
+			wake_unlock(&pnw->wake_lock);
+
 			iotg->otg.state = OTG_STATE_B_IDLE;
 			penwell_update_transceiver();
 		} else if (hsm->id == ID_ACA_A) {
@@ -2312,7 +2314,13 @@ static void penwell_otg_work(struct work_struct *work)
 				dev_dbg(pnw->dev, "host driver not loaded.\n");
 				break;
 			}
+
+			/* Decrement the device usage counter */
+			pm_runtime_put(pnw->dev);
+			wake_unlock(&pnw->wake_lock);
+
 			iotg->otg.state = OTG_STATE_A_WAIT_BCON;
+
 		} else if (!hsm->a_bus_drop && (hsm->power_up || hsm->a_bus_req
 				|| hsm->a_srp_det || hsm->adp_change)) {
 			/* power up / adp changes / srp detection should be
@@ -2332,10 +2340,8 @@ static void penwell_otg_work(struct work_struct *work)
 			if (iotg->otg.set_vbus)
 				iotg->otg.set_vbus(&iotg->otg, true);
 
-			pm_runtime_get(pnw->dev);
-			wake_lock(&pnw->wake_lock);
-
 			penwell_otg_add_timer(TA_WAIT_VRISE_TMR);
+
 			iotg->otg.state = OTG_STATE_A_WAIT_VRISE;
 
 			penwell_update_transceiver();
@@ -2526,7 +2532,11 @@ static void penwell_otg_work(struct work_struct *work)
 			/* Clear states and wait for SRP */
 			hsm->a_srp_det = 0;
 			hsm->a_bus_req = 0;
-			wake_unlock(&pnw->wake_lock);
+
+			/* Prevent device enter D0i1 or S3*/
+			wake_lock(&pnw->wake_lock);
+			pm_runtime_get(pnw->dev);
+
 			iotg->otg.state = OTG_STATE_A_IDLE;
 		} else if (!hsm->a_vbus_vld) {
 			/* Move to A_VBUS_ERR state */
@@ -2850,8 +2860,6 @@ static void penwell_otg_work(struct work_struct *work)
 			/* Always set a_bus_req to 1, in case no ADP */
 			hsm->a_bus_req = 1;
 
-			pm_runtime_put(pnw->dev);
-			wake_unlock(&pnw->wake_lock);
 			iotg->otg.state = OTG_STATE_A_IDLE;
 			penwell_update_transceiver();
 		} else if (hsm->test_device && hsm->otg_vbus_off
@@ -2865,8 +2873,6 @@ static void penwell_otg_work(struct work_struct *work)
 
 			hsm->a_bus_req = 1;
 
-			pm_runtime_put(pnw->dev);
-			wake_unlock(&pnw->wake_lock);
 			iotg->otg.state = OTG_STATE_A_IDLE;
 			penwell_update_transceiver();
 		}
@@ -3289,7 +3295,8 @@ static int penwell_otg_probe(struct pci_dev *pdev,
 
 	retval = 0;
 
-	dev_dbg(&pdev->dev, "\notg controller is detected.\n");
+	dev_info(&pdev->dev, "Intel Penwell USB OTG controller is detected.\n");
+	dev_info(&pdev->dev, "Driver version: " DRIVER_VERSION "\n");
 
 	if (pci_enable_device(pdev) < 0) {
 		retval = -ENODEV;
@@ -3524,12 +3531,11 @@ void penwell_otg_shutdown(struct pci_dev *pdev)
 	dev_dbg(pnw->dev, "%s <---\n", __func__);
 }
 
-static int penwell_otg_suspend(struct device *dev)
+static int penwell_otg_suspend_noirq(struct device *dev)
 {
 	struct penwell_otg		*pnw = the_transceiver;
 	struct intel_mid_otg_xceiv	*iotg = &pnw->iotg;
 	struct pci_dev			*pdev;
-	unsigned long			flags;
 	int				ret = 0;
 
 	pdev = to_pci_dev(dev);
@@ -3541,13 +3547,11 @@ static int penwell_otg_suspend(struct device *dev)
 		return -EBUSY;
 	}
 
-	/* Disbale OTG interrupts */
-	penwell_otg_intr(0);
 
 	/* Stop queue work from notifier */
-	spin_lock_irqsave(&pnw->notify_lock, flags);
+	spin_lock(&pnw->notify_lock);
 	pnw->queue_stop = 1;
-	spin_unlock_irqrestore(&pnw->notify_lock, flags);
+	spin_unlock(&pnw->notify_lock);
 
 	flush_workqueue(pnw->qwork);
 
@@ -3652,11 +3656,9 @@ static int penwell_otg_suspend(struct device *dev)
 
 	if (ret) {
 		/* allow queue work from notifier */
-		spin_lock_irqsave(&pnw->notify_lock, flags);
+		spin_lock(&pnw->notify_lock);
 		pnw->queue_stop = 0;
-		spin_unlock_irqrestore(&pnw->notify_lock, flags);
-
-		penwell_otg_intr(1);
+		spin_unlock(&pnw->notify_lock);
 
 		penwell_update_transceiver();
 	} else {
@@ -3668,12 +3670,11 @@ static int penwell_otg_suspend(struct device *dev)
 	return ret;
 }
 
-static int penwell_otg_resume(struct device *dev)
+static int penwell_otg_resume_noirq(struct device *dev)
 {
 	struct penwell_otg	*pnw = the_transceiver;
 	struct pci_dev		*pdev;
 	int			ret = 0;
-	unsigned long		flags;
 
 	pdev = to_pci_dev(dev);
 
@@ -3697,12 +3698,9 @@ static int penwell_otg_resume(struct device *dev)
 	}
 
 	/* allow queue work from notifier */
-	spin_lock_irqsave(&pnw->notify_lock, flags);
+	spin_lock(&pnw->notify_lock);
 	pnw->queue_stop = 0;
-	spin_unlock_irqrestore(&pnw->notify_lock, flags);
-
-	/* enable OTG interrupts */
-	penwell_otg_intr(1);
+	spin_unlock(&pnw->notify_lock);
 
 	update_hsm();
 
@@ -3832,6 +3830,7 @@ static int penwell_otg_runtime_idle(struct device *dev)
 	case OTG_STATE_B_WAIT_ACON:
 	case OTG_STATE_B_HOST:
 		dev_dbg(dev, "Keep in active\n");
+		dev_dbg(dev, "%s <---\n", __func__);
 		return -EBUSY;
 	default:
 		break;
@@ -3869,8 +3868,8 @@ static const struct dev_pm_ops penwell_otg_pm_ops = {
 	.runtime_suspend = penwell_otg_runtime_suspend,
 	.runtime_resume = penwell_otg_runtime_resume,
 	.runtime_idle = penwell_otg_runtime_idle,
-	.suspend = penwell_otg_suspend,
-	.resume = penwell_otg_resume,
+	.suspend_noirq = penwell_otg_suspend_noirq,
+	.resume_noirq = penwell_otg_resume_noirq,
 };
 
 static struct pci_driver otg_pci_driver = {

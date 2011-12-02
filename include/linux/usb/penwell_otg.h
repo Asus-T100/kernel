@@ -341,11 +341,10 @@ struct otg_bc_cap {
 	unsigned int		mA;
 #define CHRG_CURR_UNKNOWN	0
 #define CHRG_CURR_DISCONN	0
-#define CHRG_CURR_SDP_SUSP	2
+#define CHRG_CURR_SDP_SUSP	CONFIG_USB_GADGET_SUSPEND_VBUS_DRAW
 #define CHRG_CURR_SDP_LOW	100
 #define CHRG_CURR_SDP_HIGH	500
-#define CHRG_CURR_CDP		500
-#define CHRG_CURR_CDP_HS	950
+#define CHRG_CURR_CDP		1500
 #define CHRG_CURR_DCP	1500
 #define CHRG_CURR_ACA	1500
 	unsigned int            current_event;
