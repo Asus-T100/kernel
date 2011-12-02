@@ -837,38 +837,82 @@ static void *mt9e013_otp_read(struct v4l2_subdev *sd)
 	return buf;
 }
 
+static u8 *mt9e013_fuseid_read(struct v4l2_subdev *sd)
+{
+	struct i2c_client *client = v4l2_get_subdevdata(sd);
+	u8 data[MT9E013_FUSEID_SIZE];
+	u8 *fuseid;
+	int ret, i;
+
+	ret = mt9e013_read_reg_array(client, MT9E013_FUSEID_SIZE,
+				     MT9E013_FUSEID_START_ADDR, &data);
+	if (ret < 0) {
+		v4l2_err(client, "%s: error reading FUSEID.\n", __func__);
+		return ERR_PTR(ret);
+	}
+
+	fuseid = kmalloc(sizeof(*fuseid) * MT9E013_FUSEID_SIZE, GFP_KERNEL);
+
+	if (!fuseid) {
+		v4l2_err(client, "%s: no memory available when reading "
+				 "FUSEID.\n", __func__);
+		return ERR_PTR(-ENOMEM);
+	}
+
+	/* FUSEID is in reverse order */
+	for (i = 0; i < MT9E013_FUSEID_SIZE; i++)
+		fuseid[i] = data[MT9E013_FUSEID_SIZE - i - 1];
+
+	return fuseid;
+}
+
 static int mt9e013_g_priv_int_data(struct v4l2_subdev *sd,
 				   struct v4l2_private_int_data *priv)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	struct mt9e013_device *dev = to_mt9e013_sensor(sd);
+	u8 *to = priv->data;
 	u32 read_size = priv->size;
 	int ret;
 
 	/* No OTP data available on sensor */
-	if (!dev->otp_data)
+	if (!dev->otp_data || !dev->fuseid)
 		return -EIO;
-
-	if (!priv)
-		return -EINVAL;
-
-	/* Return correct size */
-	priv->size = MT9E013_OTP_DATA_SIZE;
 
 	/* No need to copy data if size is 0 */
 	if (!read_size)
-		return 0;
+		goto out;
 
 	/* Correct read_size value only if bigger than maximum */
 	if (read_size > MT9E013_OTP_DATA_SIZE)
 		read_size = MT9E013_OTP_DATA_SIZE;
 
-	ret = copy_to_user(priv->data, dev->otp_data, read_size);
+	ret = copy_to_user(to, dev->otp_data, read_size);
 	if (ret) {
 		v4l2_err(client, "%s: failed to copy OTP data to user\n",
 			 __func__);
 		return -EFAULT;
 	}
+
+	/* No room for FUSEID */
+	if (priv->size <= MT9E013_OTP_DATA_SIZE)
+		goto out;
+
+	read_size = priv->size - MT9E013_OTP_DATA_SIZE;
+	if (read_size > MT9E013_FUSEID_SIZE)
+		read_size = MT9E013_FUSEID_SIZE;
+	to += MT9E013_OTP_DATA_SIZE;
+
+	ret = copy_to_user(to, dev->fuseid, read_size);
+	if (ret) {
+		v4l2_err(client, "%s: failed to copy FUSEID to user\n",
+			 __func__);
+		return -EFAULT;
+	}
+
+out:
+	/* Return correct size */
+	priv->size = MT9E013_OTP_DATA_SIZE + MT9E013_FUSEID_SIZE;
 
 	return 0;
 }
@@ -1827,6 +1871,7 @@ static int mt9e013_s_config(struct v4l2_subdev *sd,
 	u16 sensor_id;
 	int ret;
 	void *otp_data;
+	void *fuseid;
 
 	if (pdata == NULL)
 		return -ENODEV;
@@ -1860,6 +1905,10 @@ static int mt9e013_s_config(struct v4l2_subdev *sd,
 	otp_data = mt9e013_otp_read(sd);
 	if (!IS_ERR(otp_data))
 		dev->otp_data = otp_data;
+
+	fuseid = mt9e013_fuseid_read(sd);
+	if (!IS_ERR(fuseid))
+		dev->fuseid = fuseid;
 
 	/* power off sensor */
 	ret = mt9e013_s_power(sd, 0);
@@ -2093,6 +2142,7 @@ static int mt9e013_remove(struct i2c_client *client)
 	dev->platform_data->csi_cfg(sd, 0);
 	v4l2_device_unregister_subdev(sd);
 	kfree(dev->otp_data);
+	kfree(dev->fuseid);
 	kfree(dev);
 
 	return 0;

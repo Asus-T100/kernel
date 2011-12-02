@@ -358,6 +358,8 @@ struct mt9e013_format {
 	struct s_register_setting *regs;
 };
 
+#define MT9E013_FUSEID_SIZE		8
+#define MT9E013_FUSEID_START_ADDR	0x31f4
 
 /* mt9e013 device structure */
 struct mt9e013_device {
@@ -386,6 +388,7 @@ struct mt9e013_device {
 	s16 number_of_steps;
 	struct mutex input_lock; /* serialize sensor's ioctl */
 	void *otp_data;
+	void *fuseid;
 	/* Older VCMs could not maintain the focus position in standby mode. */
 	bool keeps_focus_pos;
 };
@@ -606,7 +609,7 @@ static const struct mt9e013_reg mt9e013_init_vcm[] = {
 	{MT9E013_TOK_TERM, {0}, 0}
 };
 
-#define RESET_REGISTER	{MT9E013_16BIT, {0x301A}, 0x4A18}
+#define RESET_REGISTER	{MT9E013_16BIT, {0x301A}, 0x4A38}
 static const struct mt9e013_reg mt9e013_reset_register[] = {
 	RESET_REGISTER,
 	{MT9E013_TOK_TERM, {0}, 0}
