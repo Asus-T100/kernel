@@ -378,7 +378,7 @@ const struct pci_device_id *id)
 	pm_runtime_put_noidle(&pdev->dev);
 	pm_runtime_allow(&pdev->dev);
 	pm_runtime_use_autosuspend(&pdev->dev);
-	pm_runtime_set_autosuspend_delay(&pdev->dev, 5);
+	pm_runtime_set_autosuspend_delay(&pdev->dev, 50);
 
 	return 0;
 
