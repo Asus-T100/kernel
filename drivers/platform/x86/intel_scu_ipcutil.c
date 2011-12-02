@@ -44,10 +44,23 @@
 #define INTEL_SCU_IPC_READ_VBATTCRIT	0xC4
 #define INTEL_SCU_IPC_WRITE_ALARM_FLAG_TO_OSNIB 0xC5
 
+#define OSHOB_PMIT_OFFSET		0x0000002c
 #define OSNIB_RR_OFFSET			OSNIB_OFFSET
+#define OSNIB_WD_OFFSET			(OSNIB_OFFSET + 1)
 #define OSNIB_ALARM_OFFSET		(OSNIB_OFFSET + 2)
-#define OSNIB_RR_MASK			0x01
-#define OSNIB_ALARM_MASK		0x04
+#define OSNIB_WAKESRC_OFFSET		(OSNIB_OFFSET + 3)
+#define OSNIB_RESETIRQ1_OFFSET		(OSNIB_OFFSET + 4)
+#define OSNIB_RESETIRQ2_OFFSET		(OSNIB_OFFSET + 5)
+#define OSNIB_RR_MASK			0x00000001
+#define OSNIB_WD_MASK			0x00000002
+#define OSNIB_ALARM_MASK		0x00000004
+#define OSNIB_WAKESRC_MASK		0x00000008
+#define OSNIB_RESETIRQ1_MASK		0x00000010
+#define OSNIB_RESETIRQ2_MASK		0x00000020
+#define PMIT_RESETIRQ1_OFFSET		14
+#define PMIT_RESETIRQ2_OFFSET		15
+
+#define DUMP_OSNIB
 
 struct scu_ipc_data {
 	u32     count;  /* No. of registers */
@@ -233,7 +246,8 @@ static long scu_ipc_ioctl(struct file *fp, unsigned int cmd,
  */
 int intel_scu_ipc_write_osnib_rr(u8 rr)
 {
-	return intel_scu_ipc_write_osnib(&rr, 1, 0, OSNIB_RR_MASK);
+	return intel_scu_ipc_write_osnib(&rr, 1, OSNIB_RR_OFFSET-OSNIB_OFFSET,
+						OSNIB_RR_MASK);
 }
 EXPORT_SYMBOL_GPL(intel_scu_ipc_write_osnib_rr);
 
@@ -245,6 +259,36 @@ int intel_scu_ipc_read_osnib_rr(u8 *rr)
 	return intel_scu_ipc_read_oshob(rr, 1, OSNIB_RR_OFFSET);
 }
 EXPORT_SYMBOL_GPL(intel_scu_ipc_read_osnib_rr);
+
+/*
+ * This reads the PMIT from the OSHOB (pointer to interrupt tree)
+ */
+#ifdef DUMP_OSNIB
+static int intel_scu_ipc_read_oshob_it_tree(u32 *ptr)
+{
+	return intel_scu_ipc_read_oshob((u8 *) ptr, 4, OSHOB_PMIT_OFFSET);
+}
+#endif
+
+/*
+ * This reads the RESETIRQ1 from the OSNIB
+ */
+#ifdef DUMP_OSNIB
+static int intel_scu_ipc_read_osnib_resetirq1(u8 *rirq1)
+{
+	return intel_scu_ipc_read_oshob(rirq1, 1, OSNIB_RESETIRQ1_OFFSET);
+}
+#endif
+
+/*
+ * This reads the RESETIRQ2 from the OSNIB
+ */
+#ifdef DUMP_OSNIB
+static int intel_scu_ipc_read_osnib_resetirq2(u8 *rirq2)
+{
+	return intel_scu_ipc_read_oshob(rirq2, 1, OSNIB_RESETIRQ2_OFFSET);
+}
+#endif
 
 static const struct file_operations scu_ipc_fops = {
 	.unlocked_ioctl = scu_ipc_ioctl,
@@ -258,6 +302,34 @@ static struct miscdevice scu_ipcutil = {
 
 static int __init ipc_module_init(void)
 {
+#ifdef DUMP_OSNIB
+	u8 rr, resetirq1, resetirq2, *ptr;
+	u32 pmit;
+#endif
+
+#ifdef DUMP_OSNIB
+	/* Dumping RESETIRQ1 and 2 from the interrupt tree */
+	intel_scu_ipc_read_oshob_it_tree(&pmit);
+	ptr = ioremap_nocache(pmit + PMIT_RESETIRQ1_OFFSET, 2);
+	if (ptr) {
+		resetirq1 = readb(ptr);
+		resetirq2 = readb(ptr+1);
+		pr_warn("[BOOT] RESETIRQ1=0x%02x RESETIRQ2=0x%02x "
+			"(interrupt tree)\n",
+			resetirq1, resetirq2);
+		iounmap(ptr);
+	}
+
+	/* Dumping OSNIB content */
+	intel_scu_ipc_read_osnib_rr(&rr);
+	intel_scu_ipc_read_osnib_resetirq1(&resetirq1);
+	intel_scu_ipc_read_osnib_resetirq2(&resetirq2);
+	pr_warn("[BOOT] RR=0x%02x (osnib)\n", rr);
+	pr_warn("[BOOT] RESETIRQ1=0x%02x RESETIRQ2=0x%02x "
+		"(osnib)\n",
+		resetirq1, resetirq2);
+#endif
+
 	return misc_register(&scu_ipcutil);
 }
 
