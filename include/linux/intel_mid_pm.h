@@ -16,6 +16,8 @@
  * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
  *
  */
+#include <linux/errno.h>
+
 #ifndef INTEL_MID_PM_H
 #define INTEL_MID_PM_H
 
@@ -107,6 +109,9 @@ extern int pmu_nc_set_power_state
 	(int islands, int state_type, int reg_type);
 extern void mfld_shutdown(void);
 
+extern int mfld_msg_read32(u32 cmd, u32 *data);
+extern int mfld_msg_write32(u32 cmd, u32 data);
+
 #else
 
 /*
@@ -132,6 +137,11 @@ static inline int pmu_nc_set_power_state
 static inline void pmu_set_s0ix_complete(void) { return; }
 static inline void mfld_shutdown(void) { return; }
 static inline bool pmu_is_s0ix_in_progress(void) { return false; };
+
+/*returns function not implemented*/
+static inline  int mfld_msg_read32(u32 cmd, u32 *data) { return -ENOSYS; }
+static inline int mfld_msg_write32(u32 cmd, u32 data) { return -ENOSYS; }
+
 #endif /* #ifdef CONFIG_INTEL_MID_POWER */
 
 

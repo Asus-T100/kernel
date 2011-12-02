@@ -499,6 +499,10 @@
 #define APM_CMD                 0x0
 #define APM_STS                 0x04
 
+#define PCI_CMD_REG		0xD0
+#define PCI_DATA_REG		0xD4
+#define MSG_READ_CMD		0x10
+#define MSG_WRITE_CMD		0x11
 
 enum cm_trigger {
 	NO_TRIG,		/* No trigger is required */
@@ -824,27 +828,6 @@ struct mid_pmu_dev {
 
 	spinlock_t nc_ready_lock;
 };
-
-/*APIs to get the APM base address */
-static inline u32 MDFLD_MSG_READ32(uint port, uint offset)
-{
-	int mcr = (0x10<<24) | (port << 16) | (offset << 8);
-	uint32_t ret_val = 0;
-	struct pci_dev *pci_root = pci_get_bus_and_slot(0, 0);
-	pci_write_config_dword(pci_root, 0xD0, mcr);
-	pci_read_config_dword(pci_root, 0xD4, &ret_val);
-	pci_dev_put(pci_root);
-	return ret_val;
-}
-
-static inline void MDFLD_MSG_WRITE32(uint port, uint offset, u32 value)
-{
-	int mcr = (0x11<<24) | (port << 16) | (offset << 8) | 0xF0;
-	struct pci_dev *pci_root = pci_get_bus_and_slot(0, 0);
-	pci_write_config_dword(pci_root, 0xD4, value);
-	pci_write_config_dword(pci_root, 0xD0, mcr);
-	pci_dev_put(pci_root);
-}
 
 /* API used to change the platform mode */
 extern int pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t state);

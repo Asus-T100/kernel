@@ -44,6 +44,8 @@ static bool pmu_initialized;
 /* mid_pmu context structure */
 static struct mid_pmu_dev *mid_pmu_cxt;
 
+static DEFINE_MUTEX(pci_root_lock);
+
 /* Accessor function for pci_devs start */
 static inline struct pci_dev *get_mid_pci_drv(int lss_index, int i)
 {
@@ -122,6 +124,58 @@ static inline void clear_d0ix_stats(void)
 	memset(mid_pmu_cxt->d0ix_stat, 0, sizeof(mid_pmu_cxt->d0ix_stat));
 }
 /* Accessor functions for pci_devs end */
+
+/*
+ * APIs to communicate with pci root,
+ * Returns zero on sucess.
+ */
+int mfld_msg_read32(u32 cmd, u32 *data)
+{
+	struct pci_dev *pci_root;
+	int ret;
+
+	mutex_lock(&pci_root_lock);
+	pci_root = pci_get_bus_and_slot(0, 0);
+
+	ret = pci_write_config_dword(pci_root, PCI_CMD_REG, cmd);
+	if (ret)
+		goto unlock;
+	/*
+	 * since we go to unlock with/without error, not
+	 * checking for it here
+	 */
+	pci_read_config_dword(pci_root, PCI_DATA_REG, data);
+
+unlock:
+	pci_dev_put(pci_root);
+	mutex_unlock(&pci_root_lock);
+
+	return ret;
+}
+EXPORT_SYMBOL(mfld_msg_read32);
+
+/*Returns Zero on sucess*/
+int mfld_msg_write32(u32 cmd, u32 data)
+{
+	struct pci_dev *pci_root;
+	int ret;
+
+	mutex_lock(&pci_root_lock);
+	pci_root = pci_get_bus_and_slot(0, 0);
+
+	ret = pci_write_config_dword(pci_root, PCI_DATA_REG, data);
+	if (ret)
+		goto unlock;
+
+	pci_write_config_dword(pci_root, PCI_CMD_REG, cmd);
+
+unlock:
+	pci_dev_put(pci_root);
+	mutex_unlock(&pci_root_lock);
+
+	return ret;
+}
+EXPORT_SYMBOL(mfld_msg_write32);
 
 /*
  * Locking strategy::
@@ -2287,6 +2341,8 @@ static int __devinit mid_pmu_probe(struct pci_dev *dev,
 {
 	int ret;
 	struct mrst_pmu_reg __iomem *pmu;
+	int cmd;
+	u32 data;
 
 #ifdef CONFIG_HAS_WAKELOCK
 	wake_lock_init(&mid_pmu_cxt->pmu_wake_lock,
@@ -2320,10 +2376,21 @@ static int __devinit mid_pmu_probe(struct pci_dev *dev,
 	}
 
 	/* Map the NC PM registers */
-	mid_pmu_cxt->apm_base =
-		MDFLD_MSG_READ32(OSPM_PUNIT_PORT, OSPM_APMBA) & 0xffff;
-	mid_pmu_cxt->ospm_base =
-		MDFLD_MSG_READ32(OSPM_PUNIT_PORT, OSPM_OSPMBA) & 0xffff;
+	cmd = (MSG_READ_CMD << 24) | (OSPM_PUNIT_PORT << 16) |
+						(OSPM_APMBA << 8);
+	if (mfld_msg_read32(cmd, &data)) {
+		ret = PMU_FAILED;
+		goto out_err1;
+	}
+	mid_pmu_cxt->apm_base = data & 0xffff;
+
+	cmd = (MSG_READ_CMD << 24) | (OSPM_PUNIT_PORT << 16) |
+						 (OSPM_OSPMBA << 8);
+	if (mfld_msg_read32(cmd, &data)) {
+		ret = PMU_FAILED;
+		goto out_err1;
+	}
+	mid_pmu_cxt->ospm_base = data & 0xffff;
 
 	/* Map the memory of pmu1 PMU reg base */
 	pmu = pci_iomap(dev, 0, 0);
