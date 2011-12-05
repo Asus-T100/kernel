@@ -1299,6 +1299,26 @@ mt9m114_set_pad_format(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 	return 0;
 }
 
+static int mt9m114_g_skip_frames(struct v4l2_subdev *sd, u32 *frames)
+{
+	int index;
+	struct mt9m114_device *snr = to_mt9m114_sensor(sd);
+
+	if (frames == NULL)
+		return -EINVAL;
+
+	for (index = 0; index < N_RES; index++) {
+		if (mt9m114_res[index].res == snr->res)
+			break;
+	}
+
+	if (index >= N_RES)
+		return -EINVAL;
+
+	*frames = mt9m114_res[index].skip_frames;
+
+	return 0;
+}
 static const struct v4l2_subdev_video_ops mt9m114_video_ops = {
 	.try_mbus_fmt = mt9m114_try_mbus_fmt,
 	.s_mbus_fmt = mt9m114_set_mbus_fmt,
@@ -1306,6 +1326,10 @@ static const struct v4l2_subdev_video_ops mt9m114_video_ops = {
 	.s_stream = mt9m114_s_stream,
 	.enum_framesizes = mt9m114_enum_framesizes,
 	.enum_frameintervals = mt9m114_enum_frameintervals,
+};
+
+static struct v4l2_subdev_sensor_ops mt9m114_sensor_ops = {
+	.g_skip_frames	= mt9m114_g_skip_frames,
 };
 
 static const struct v4l2_subdev_core_ops mt9m114_core_ops = {
@@ -1328,6 +1352,7 @@ static const struct v4l2_subdev_ops mt9m114_ops = {
 	.core = &mt9m114_core_ops,
 	.video = &mt9m114_video_ops,
 	.pad = &mt9m114_pad_ops,
+	.sensor = &mt9m114_sensor_ops,
 };
 
 static const struct media_entity_operations mt9m114_entity_ops = {

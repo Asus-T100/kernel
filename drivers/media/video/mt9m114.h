@@ -210,7 +210,6 @@ struct mt9m114_device {
 	struct v4l2_mbus_framefmt format;
 
 	struct camera_sensor_platform_data *platform_data;
-	int fmt_idx;
 	int real_model_id;
 	int nctx;
 	int power;
@@ -266,6 +265,7 @@ struct mt9m114_res_struct {
 	int width;
 	int height;
 	int fps;
+	int skip_frames;
 	bool used;
 	struct regval_list *regs;
 };
@@ -300,6 +300,7 @@ static struct mt9m114_res_struct mt9m114_res[] = {
 	.fps	= 30,
 	.used	= 0,
 	.regs	= NULL,
+	.skip_frames = 1,
 	},
 	{
 	.desc	= "QVGA",
@@ -309,6 +310,7 @@ static struct mt9m114_res_struct mt9m114_res[] = {
 	.fps	= 30,
 	.used	= 0,
 	.regs	= NULL,
+	.skip_frames = 1,
 	},
 	{
 	.desc	= "VGA",
@@ -318,6 +320,7 @@ static struct mt9m114_res_struct mt9m114_res[] = {
 	.fps	= 30,
 	.used	= 0,
 	.regs	= NULL,
+	.skip_frames = 1,
 	},
 	{
 	.desc	= "480p",
@@ -327,6 +330,7 @@ static struct mt9m114_res_struct mt9m114_res[] = {
 	.fps	= 30,
 	.used	= 0,
 	.regs	= NULL,
+	.skip_frames = 1,
 	},
 	{
 	.desc	= "720p",
@@ -336,6 +340,7 @@ static struct mt9m114_res_struct mt9m114_res[] = {
 	.fps	= 30,
 	.used	= 0,
 	.regs	= NULL,
+	.skip_frames = 1,
 	},
 	{
 	.desc	= "960P",
@@ -345,6 +350,7 @@ static struct mt9m114_res_struct mt9m114_res[] = {
 	.fps	= 15,
 	.used	= 0,
 	.regs	= NULL,
+	.skip_frames = 1,
 	},
 };
 #define N_RES (ARRAY_SIZE(mt9m114_res))
