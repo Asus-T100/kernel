@@ -1767,7 +1767,7 @@ void mdfld_hdmi_init(struct drm_device *dev,
 	connector->interlace_allowed = false;
 	connector->doublescan_allowed = false;
 
-	drm_connector_attach_property(connector, dev->mode_config.scaling_mode_property, DRM_MODE_SCALE_ASPECT);
+	drm_connector_attach_property(connector, dev->mode_config.scaling_mode_property, DRM_MODE_SCALE_CENTER);
 
 	/* hard-coded the HDMI_I2C_ADAPTER_ID to be 3, Should get from GCT*/
 	psb_intel_output->hdmi_i2c_adapter = i2c_get_adapter(3);

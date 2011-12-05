@@ -1423,9 +1423,6 @@ static int mdfld_crtc_mode_set(struct drm_crtc *crtc,
 	struct drm_encoder *encoder;
 	struct drm_connector * connector;
 	int timeout = 0;
-	int sprite_pos_x = 0, sprite_pos_y = 0;
-	int sprite_width = 0, sprite_height = 0;
-	int src_image_hor = 0, src_image_vert = 0;
 
 	PSB_DEBUG_ENTRY("pipe = 0x%x\n", pipe);
 
