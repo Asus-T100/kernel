@@ -80,6 +80,9 @@ struct hsu_dma_chan {
 #define CMD_TX	3
 #define CMD_RX_STOP	4
 
+/* to record the pin wakeup states */
+#define PM_WAKEUP	1
+
 struct uart_hsu_port {
 	struct uart_port        port;
 	unsigned char           ier;
@@ -835,7 +838,15 @@ static inline void check_modem_status(struct uart_hsu_port *up)
  */
 static irqreturn_t wakeup_irq(int irq, void *dev)
 {
+	struct pci_dev *pdev = container_of(dev, struct pci_dev, dev);
+	struct uart_hsu_port *up = pci_get_drvdata(pdev);
+
 	dev_dbg(dev, "HSU wake up\n");
+	if (up->index == 1) {
+		struct uart_hsu_port *up3 = serial_hsu_ports[3];
+		if (up3->running)
+			set_bit(PM_WAKEUP, &up3->pm_flags);
+	}
 	pm_runtime_get(dev);
 	pm_runtime_put(dev);
 	return IRQ_HANDLED;
@@ -1914,24 +1925,15 @@ static bool allow_for_suspend(struct uart_hsu_port *up)
 #endif
 
 #ifdef CONFIG_PM_RUNTIME
-static inline int hsu_phy_port_is_running(struct uart_hsu_port *up)
-{
-	struct uart_hsu_port *up_pair = NULL;
-
-	if (up->index == 1)
-		up_pair = serial_hsu_ports[3];
-	else if (up->index == 3)
-		up_pair = serial_hsu_ports[1];
-
-	return up->running || (up_pair && up_pair->running);
-}
-
 static int hsu_runtime_idle(struct device *dev)
 {
 	struct pci_dev *pdev = container_of(dev, struct pci_dev, dev);
 	struct uart_hsu_port *up = pci_get_drvdata(pdev);
+	struct uart_hsu_port *up_pair = NULL;
 	unsigned int delay = 0;
 
+	if (up->index == 1)
+		up_pair = serial_hsu_ports[3];
 	if (system_state == SYSTEM_BOOTING) {
 		/* if HSU is set as default console, but earlyprintk is not hsu,
 		 * then it will enter suspend and can not get back since system
@@ -1940,13 +1942,14 @@ static int hsu_runtime_idle(struct device *dev)
 		 * have finished booting
 		 */
 		delay = 30000;
-	} else if (hsu_phy_port_is_running(up)) {
-		if (up->index == 1)
-			/* console timeout need longer, because human input
-			 * slower
-			 */
+	} else if ((up_pair && up_pair->running)) {
+		/* console timeout need longer, because human input slower */
+		if (test_bit(PM_WAKEUP, &up_pair->pm_flags))
 			delay = 2000;
-		else if (up->suspended)
+		else
+			delay = 100;
+	} else if (up->running) {
+		if (up->suspended)
 			/*need to set longer for S3 resuming*/
 			delay = 500;
 		else
@@ -1969,9 +1972,10 @@ static int hsu_runtime_suspend(struct device *dev)
 	disable_irq(up->port.irq);
 	if (up->index == 1) {
 		struct uart_hsu_port *up3 = serial_hsu_ports[3];
-		if (up3->running)
+		if (up3->running) {
 			mfld_hsu_enable_wakeup(up3->index, dev, wakeup_irq);
-
+			clear_bit(PM_WAKEUP, &up3->pm_flags);
+		}
 		memcpy(up3->reg_shadow + 1, up3->port.membase + 1,
 			HSU_PORT_REG_LENGTH - 1);
 	}
@@ -2067,8 +2071,6 @@ static int hsu_suspend(struct device *dev)
 				 * while we need keep it, so we can resume later
 				 */
 				up3->running = 1;
-				mfld_hsu_enable_wakeup(up3->index, dev,
-						wakeup_irq);
 			}
 			up3->suspended = 1;
 		}
@@ -2098,7 +2100,6 @@ static int hsu_resume(struct device *dev)
 			struct uart_hsu_port *up3 = serial_hsu_ports[3];
 			if (up3->suspended && up3->running) {
 				uart_resume_port(&serial_hsu_reg, &up3->port);
-				mfld_hsu_disable_wakeup(up3->index, dev);
 				schedule_work(&up3->qwork);
 			}
 			up3->suspended = 0;
