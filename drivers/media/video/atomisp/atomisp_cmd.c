@@ -2157,9 +2157,9 @@ INVALID_PARM:
  */
 int atomisp_color_effect(struct atomisp_device *isp, int flag, __s32 *effect)
 {
-	const struct sh_css_cc_config *cc_config = NULL;
-	const struct sh_css_macc_table *macc_table = NULL;
-	const struct sh_css_ctc_table *ctc_table = NULL;
+	const struct sh_css_cc_config *cc_config;
+	const struct sh_css_macc_table *macc_table;
+	const struct sh_css_ctc_table *ctc_table;
 
 	if (flag == 0) {
 		*effect = isp->params.color_effect;
@@ -2169,12 +2169,24 @@ int atomisp_color_effect(struct atomisp_device *isp, int flag, __s32 *effect)
 	if (*effect == isp->params.color_effect)
 		return 0;
 
+	/*
+	 * restore the default cc and ctc table config:
+	 * when change from sepia/mono to macc effect, the default
+	 * cc and ctc table should be used.
+	 */
+	cc_config  = isp->params.default_cc_config;
+	ctc_table  = isp->params.default_ctc_table;
+
+	/*
+	 * set macc enable to false by default:
+	 * when change from macc to sepia/mono,
+	 * isp->params.macc_en should be set to false.
+	 */
+	isp->params.macc_en = false;
+	macc_table = isp->params.default_macc_table;
+
 	switch (*effect) {
 	case V4L2_COLORFX_NONE:
-		cc_config  = isp->params.default_cc_config;
-		macc_table = isp->params.default_macc_table;
-		ctc_table  = isp->params.default_ctc_table;
-		isp->params.macc_en = false;
 		break;
 	case V4L2_COLORFX_SEPIA:
 		cc_config = &sepia_cc_config;
