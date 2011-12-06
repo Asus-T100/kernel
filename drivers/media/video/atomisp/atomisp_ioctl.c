@@ -1404,6 +1404,11 @@ static int atomisp_camera_g_ext_ctrls(struct file *file, void *fh,
 		case V4L2_CID_ZOOM_ABSOLUTE:
 			ret = atomisp_digital_zoom(isp, 0, &ctrl.value);
 			break;
+		case V4L2_CID_G_SKIP_FRAMES:
+			ret = v4l2_subdev_call(
+				isp->inputs[isp->input_curr].camera,
+				sensor, g_skip_frames, (u32 *)&ctrl.value);
+			break;
 		default:
 			ret = -EINVAL;
 		}

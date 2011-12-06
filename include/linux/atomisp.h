@@ -676,6 +676,9 @@ struct v4l2_private_int_data {
 #define V4L2_CID_BIN_FACTOR_HORZ	   (V4L2_CID_CAMERA_LASTP1 + 15)
 #define V4L2_CID_BIN_FACTOR_VERT	   (V4L2_CID_CAMERA_LASTP1 + 16)
 
+/* number of frames to skip at stream start */
+#define V4L2_CID_G_SKIP_FRAMES		   (V4L2_CID_CAMERA_LASTP1 + 17)
+
 #define V4L2_BUF_FLAG_BUFFER_INVALID       0x0400
 #define V4L2_BUF_FLAG_BUFFER_VALID         0x0800
 
