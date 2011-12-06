@@ -730,11 +730,11 @@ static struct mt9e013_reg const mt9e013_WIDE_PREVIEW_30fps[] = {
 	{MT9E013_16BIT, {0x034E},	0x03BC	}, /* Y_OUTPUT_SIZE	956 */
 	{MT9E013_16BIT, {0x3040},	0x04C3	}, /* READ_MODE	1219 */
 	/* Timing Configuration */
-	{MT9E013_16BIT, {0x0342},	0x1020	}, /* line_length_pck	4128 */
-	{MT9E013_16BIT, {0x0340},	0x060E	}, /* frame_length_lines	1550 */
-	{MT9E013_16BIT, {0x0202},	0x0573	}, /* COARSE_INTEGRATION_TIME	1395 */
+	{MT9E013_16BIT, {0x0342},	0x16C2	}, /* line_length_pck	5826 */
+	{MT9E013_16BIT, {0x0340},	0x044F	}, /* frame_length_lines	1103 */
+	{MT9E013_16BIT, {0x0202},	0x044B	}, /* COARSE_INTEGRATION_TIME	1099 */
 	{MT9E013_16BIT, {0x3014},	0x0846	}, /* FINE_INTEGRATION_TIME	2118 */
-	{MT9E013_16BIT, {0x3010},	0x0130	}, /* FINE_CORRECTION	304 */
+	{MT9E013_16BIT, {0x3010},	0x0130	}, /* FINE_CORRECTION	304	*/
 	/* scaler */
 	{MT9E013_16BIT, {0x0400},	0x0	}, /* SCALE_MODE	0 */
 	{MT9E013_16BIT, {0x0404},	0x10	}, /* SCALE_M	16 */
