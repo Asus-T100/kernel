@@ -346,6 +346,9 @@ static int __devinit intel_msic_init_devices(struct intel_msic *msic)
 		cell->pdata_size = sizeof(*pdata->gpadc);
 	}
 
+	/* No IRQ for msic_thermal. So assign 0xff */
+	pdata->irq[INTEL_MSIC_BLOCK_THERMAL] = 0xff;
+
 	for (i = 0; i < ARRAY_SIZE(msic_devs); i++) {
 		if (!pdata->irq[i])
 			continue;
