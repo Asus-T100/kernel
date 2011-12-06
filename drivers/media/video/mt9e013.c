@@ -88,6 +88,7 @@ struct mt9e013_resolution mt9e013_res_preview[] = {
 		 .regs =	mt9e013_PREVIEW_30fps	,
 		 .bin_factor_x =	2,
 		 .bin_factor_y =	2,
+		 .skip_frames = 1,
 	},
 	{
 		 .desc =	"WIDE_PREVIEW_30fps"	,
@@ -100,6 +101,7 @@ struct mt9e013_resolution mt9e013_res_preview[] = {
 		 .regs =	mt9e013_WIDE_PREVIEW_30fps	,
 		 .bin_factor_x =	1,
 		 .bin_factor_y =	1,
+		 .skip_frames = 1,
 	},
 
 };
@@ -118,6 +120,7 @@ struct mt9e013_resolution mt9e013_res_still[] = {
 		 .regs =	mt9e013_STILL_2M_15fps	,
 		 .bin_factor_x =	1,
 		 .bin_factor_y =	1,
+		 .skip_frames = 1,
 	},
 	{
 		 .desc =	"STILL_6M_15fps"	,
@@ -130,6 +133,7 @@ struct mt9e013_resolution mt9e013_res_still[] = {
 		 .regs =	mt9e013_STILL_6M_15fps	,
 		 .bin_factor_x =	0,
 		 .bin_factor_y =	0,
+		 .skip_frames = 1,
 	},
 	{
 		 .desc =	"STILL_8M_15fps"	,
@@ -142,6 +146,7 @@ struct mt9e013_resolution mt9e013_res_still[] = {
 		 .regs =	mt9e013_STILL_8M_15fps	,
 		 .bin_factor_x =	0,
 		 .bin_factor_y =	0,
+		 .skip_frames = 1,
 	},
 };
 
@@ -159,6 +164,7 @@ struct mt9e013_resolution mt9e013_res_video[] = {
 		 .regs =	mt9e013_QCIF_strong_dvs_30fps	,
 		 .bin_factor_x =	2,
 		 .bin_factor_y =	2,
+		 .skip_frames = 1,
 	},
 	{
 		 .desc =	"QVGA_strong_dvs_30fps"	,
@@ -171,6 +177,7 @@ struct mt9e013_resolution mt9e013_res_video[] = {
 		 .regs =	mt9e013_QVGA_strong_dvs_30fps	,
 		 .bin_factor_x =	2,
 		 .bin_factor_y =	2,
+		 .skip_frames = 1,
 	},
 	{
 		 .desc =	"VGA_strong_dvs_30fps"	,
@@ -183,6 +190,7 @@ struct mt9e013_resolution mt9e013_res_video[] = {
 		 .regs =	mt9e013_VGA_strong_dvs_30fps	,
 		 .bin_factor_x =	2,
 		 .bin_factor_y =	2,
+		 .skip_frames = 1,
 	},
 	{
 		 .desc =	"WVGA_strong_dvs_30fps"	,
@@ -195,6 +203,7 @@ struct mt9e013_resolution mt9e013_res_video[] = {
 		 .regs =	mt9e013_WVGA_strong_dvs_30fps	,
 		 .bin_factor_x =	1,
 		 .bin_factor_y =	1,
+		 .skip_frames = 1,
 	},
 	{
 		 .desc =	"720p_strong_dvs_30fps"	,
@@ -207,6 +216,7 @@ struct mt9e013_resolution mt9e013_res_video[] = {
 		 .regs =	mt9e013_720p_strong_dvs_30fps	,
 		 .bin_factor_x =	1,
 		 .bin_factor_y =	1,
+		 .skip_frames = 1,
 	},
 	{
 		 .desc =	"1080p_strong_dvs_30fps",
@@ -219,6 +229,7 @@ struct mt9e013_resolution mt9e013_res_video[] = {
 		 .regs =	mt9e013_1080p_strong_dvs_30fps,
 		 .bin_factor_x =	0,
 		 .bin_factor_y =	0,
+		 .skip_frames = 1,
 	},
 };
 
@@ -1998,6 +2009,17 @@ mt9e013_g_frame_interval(struct v4l2_subdev *sd,
 	return 0;
 }
 
+static int mt9e013_g_skip_frames(struct v4l2_subdev *sd, u32 *frames)
+{
+	struct mt9e013_device *dev = to_mt9e013_sensor(sd);
+
+	if (frames == NULL)
+		return -EINVAL;
+
+	*frames = mt9e013_res[dev->fmt_idx].skip_frames;
+
+	return 0;
+}
 static const struct v4l2_subdev_video_ops mt9e013_video_ops = {
 	.s_stream = mt9e013_s_stream,
 	.enum_framesizes = mt9e013_enum_framesizes,
@@ -2008,6 +2030,10 @@ static const struct v4l2_subdev_video_ops mt9e013_video_ops = {
 	.s_mbus_fmt = mt9e013_s_mbus_fmt,
 	.s_parm = mt9e013_s_parm,
 	.g_frame_interval = mt9e013_g_frame_interval,
+};
+
+static struct v4l2_subdev_sensor_ops mt9e013_sensor_ops = {
+	.g_skip_frames	= mt9e013_g_skip_frames,
 };
 
 static const struct v4l2_subdev_core_ops mt9e013_core_ops = {
@@ -2032,6 +2058,7 @@ static const struct v4l2_subdev_ops mt9e013_ops = {
 	.core = &mt9e013_core_ops,
 	.video = &mt9e013_video_ops,
 	.pad = &mt9e013_pad_ops,
+	.sensor = &mt9e013_sensor_ops,
 };
 
 static const struct media_entity_operations mt9e013_entity_ops = {

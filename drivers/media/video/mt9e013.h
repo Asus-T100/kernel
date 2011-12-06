@@ -349,6 +349,7 @@ struct mt9e013_resolution {
 	const struct mt9e013_reg *regs;
 	u8 bin_factor_x;
 	u8 bin_factor_y;
+	unsigned short skip_frames;
 };
 
 struct mt9e013_format {
