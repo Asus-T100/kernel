@@ -895,6 +895,7 @@ static int _ffl_from_wait_to_ctrl(struct ffl_xfer_ctx *ctx,
 				  struct hsi_msg *frame, unsigned long *flags)
 {
 	unsigned int	 actual_len = frame->actual_len;
+	struct ffl_ctx	*main_ctx;
 	int		 err;
 
 	if (unlikely(_ffl_ctx_has_flag(ctx, TX_TTY_WRITE_FORWARDING_BIT)))
@@ -909,9 +910,12 @@ static int _ffl_from_wait_to_ctrl(struct ffl_xfer_ctx *ctx,
 		/* Keep the data for the future */
 		_ffl_fifo_wait_push_back(ctx, frame);
 	} else {
-		if (ctx->ctrl_len > 0)
-			mod_timer(&ctx->main_ctx->hangup.timer,
+		if (ctx->ctrl_len > 0) {
+			main_ctx = container_of(ctx, struct ffl_ctx, tx);
+			mod_timer(&main_ctx->hangup.timer,
 				  jiffies + usecs_to_jiffies(TTY_HANGUP_DELAY));
+			del_timer(&ctx->timer);
+		}
 #ifdef CONFIG_HSI_FFL_TTY_STATS
 		ctx->data_sz += actual_len;
 		ctx->frame_cnt++;
@@ -919,6 +923,24 @@ static int _ffl_from_wait_to_ctrl(struct ffl_xfer_ctx *ctx,
 	}
 
 	return err;
+}
+
+/**
+ * _ffl_update_state_tx - update the tx state and timers
+ * @ctx: a reference to the FFL TX context to consider
+ */
+static void _ffl_update_state_tx(struct ffl_xfer_ctx *ctx)
+{
+	struct ffl_ctx	*main_ctx = container_of(ctx, struct ffl_ctx, tx);
+
+	if ((ctx->ctrl_len <= 0) &&
+	    (likely(!_ffl_ctx_has_flag(ctx, TX_TTY_WRITE_FORWARDING_BIT)))) {
+		del_timer(&main_ctx->hangup.timer);
+		if (ctx->wait_len == 0) {
+			wake_up(&main_ctx->tx_full_pipe_clean_event);
+			mod_timer(&ctx->timer, jiffies + ctx->delay);
+		}
+	}
 }
 
 /**
@@ -943,6 +965,8 @@ static void _ffl_pop_wait_push_ctrl(struct ffl_xfer_ctx *ctx,
 		    (_ffl_from_wait_to_ctrl(ctx, frame, flags) != 0))
 			break;
 	}
+
+	_ffl_update_state_tx(ctx);
 }
 
 /*
@@ -1073,16 +1097,6 @@ static __must_check inline int _ffl_ctx_is_empty(struct ffl_xfer_ctx *ctx)
 }
 
 /**
- * _ffl_tx_ctx_is_empty - checks if a TX context is empty (all FIFO are empty)
- * @ctx: a reference to the TX FFL context to consider
- */
-static __must_check inline int _ffl_tx_ctx_is_empty(struct ffl_xfer_ctx *ctx)
-{
-	return _ffl_ctx_is_empty(ctx) &&
-	       (likely(!_ffl_ctx_has_flag(ctx, TX_TTY_WRITE_FORWARDING_BIT)));
-}
-
-/**
  * ffl_tx_full_pipe_is_clean - checks if the TX pipe is clean or about to be
  * @ctx: a reference to the main FFL context to consider
  *
@@ -1097,7 +1111,10 @@ static __must_check int ffl_tx_full_pipe_is_clean(struct ffl_ctx *ctx)
 	unsigned long flags;
 
 	spin_lock_irqsave(&tx_ctx->lock, flags);
-	ret = _ffl_tx_ctx_is_empty(tx_ctx) || (ctx->hangup.cause);
+	ret = (_ffl_ctx_is_empty(tx_ctx) &&
+	       (likely(!_ffl_ctx_has_flag(tx_ctx,
+					  TX_TTY_WRITE_FORWARDING_BIT)))) ||
+	      (ctx->hangup.cause);
 	spin_unlock_irqrestore(&tx_ctx->lock, flags);
 
 	return ret;
@@ -1405,16 +1422,10 @@ static void ffl_destruct_frame(struct hsi_msg *frame)
 	spin_lock_irqsave(&ctx->lock, flags);
 	_ffl_fifo_ctrl_pop(ctx);
 	_ffl_free_frame(ctx, frame);
-	if (xfer_ctx_is_rx_ctx(ctx)) {
+	if (xfer_ctx_is_rx_ctx(ctx))
 		_ffl_update_state_rx(ctx);
-	} else {
-		if (ctx->ctrl_len <= 0)
-			del_timer(&ctx->main_ctx->hangup.timer);
-		if (_ffl_tx_ctx_is_empty(ctx)) {
-			wake_up(&ctx->main_ctx->tx_full_pipe_clean_event);
-			mod_timer(&ctx->timer, jiffies + ctx->delay);
-		}
-	}
+	else
+		_ffl_update_state_tx(ctx);
 	spin_unlock_irqrestore(&ctx->lock, flags);
 }
 
@@ -1573,19 +1584,8 @@ static void ffl_complete_tx(struct hsi_msg *frame)
 	main_ctx->reset.ongoing = 0;
 
 	spin_lock_irqsave(&ctx->lock, flags);
-	_ffl_free_frame(ctx, frame);
 	_ffl_fifo_ctrl_pop(ctx);
-	if (ctx->ctrl_len > 0)
-		mod_timer(&main_ctx->hangup.timer,
-			  jiffies + usecs_to_jiffies(TTY_HANGUP_DELAY));
-	else
-		del_timer(&main_ctx->hangup.timer);
-	if (_ffl_tx_ctx_is_empty(ctx)) {
-		wake_up(&main_ctx->tx_full_pipe_clean_event);
-		mod_timer(&ctx->timer, jiffies + ctx->delay);
-	} else {
-		del_timer(&ctx->timer);
-	}
+	_ffl_free_frame(ctx, frame);
 
 	/* Start new waiting frames (if any) */
 	_ffl_pop_wait_push_ctrl(ctx, &flags);
@@ -1879,7 +1879,7 @@ static void ffl_rx_forward_resume(struct tty_struct *tty)
 
 /**
  * from_usecs - translating usecs to jiffies
- * @delay: the dealy in usecs
+ * @delay: the delay in usecs
  *
  * Returns the delay rounded up to the next jiffy and prevent it to be set
  * to zero, as all delayed function calls shall occur to the next jiffy (at
@@ -2111,38 +2111,29 @@ static void ffl_flush_tx_buffer(struct tty_struct *tty)
 }
 
 /**
- * ffl_throw_tty_hangup - throwing a work for TTY hangup request
- * @ctx: a reference to the main FFL context
- * @cause: the cause for the TTY hangup request
- */
-static void ffl_throw_tty_hangup(struct ffl_ctx *ctx, int cause)
-{
-	struct ffl_xfer_ctx *tx_ctx = &ctx->tx;
-	unsigned long flags;
-	int do_hangup;
-
-	spin_lock_irqsave(&tx_ctx->lock, flags);
-	do_hangup = ((!_ffl_ctx_has_flag(tx_ctx, TTY_OFF_BIT)) &&
-		     (!ctx->hangup.cause));
-	ctx->hangup.cause |= cause;
-	wake_up(&ctx->tx_full_pipe_clean_event);
-	spin_unlock_irqrestore(&tx_ctx->lock, flags);
-
-	if (do_hangup)
-		queue_work(ffl_hangup_wq, &ctx->hangup.work);
-}
-
-/**
  * ffl_tty_tx_timeout - timer function for tx timeout hangup request
  * @param: a hidden reference to the main FFL context
  */
 static void ffl_tty_tx_timeout(unsigned long int param)
 {
 	struct ffl_ctx *ctx = (struct ffl_ctx *)param;
+	struct ffl_xfer_ctx *tx_ctx = &ctx->tx;
+	unsigned long flags;
+	int do_hangup = 0;
 
-	pr_err(DRVNAME ": TX timeout");
+	spin_lock_irqsave(&tx_ctx->lock, flags);
+	if (likely(tx_ctx->ctrl_len > 0)) {
+		do_hangup = ((!_ffl_ctx_has_flag(tx_ctx, TTY_OFF_BIT)) &&
+			     (!ctx->hangup.cause));
+		ctx->hangup.cause |= HU_TIMEOUT;
+		wake_up(&ctx->tx_full_pipe_clean_event);
+	}
+	spin_unlock_irqrestore(&tx_ctx->lock, flags);
 
-	ffl_throw_tty_hangup(ctx, HU_TIMEOUT);
+	if (do_hangup) {
+		pr_err(DRVNAME ": TX timeout");
+		queue_work(ffl_hangup_wq, &ctx->hangup.work);
+	}
 }
 
 /**
@@ -2855,7 +2846,7 @@ static irqreturn_t ffl_reset_isr(int irq, void *dev)
 	struct ffl_xfer_ctx *tx_ctx;
 	struct hsi_client *client;
 	struct hsi_mid_platform_data *pd = NULL;
-	int status, cause = 0;
+	int do_hangup, status, cause = 0;
 
 	ctx = (struct ffl_ctx *)dev;
 	tx_ctx = &ctx->tx;
@@ -2867,21 +2858,32 @@ static irqreturn_t ffl_reset_isr(int irq, void *dev)
 
 	if (irq == ctx->reset.irq) {
 		status = gpio_get_value(pd->gpio_mdm_rst_out);
-		dev_dbg(&client->device, "GPIO RESET_OUT %x", status);
 		/* Prevent issuing hang-up for the usual reset toggling whilst
 		 * the modem is resetting */
 		cause = (ctx->reset.ongoing) ? 0 : HU_RESET;
+		dev_dbg(&client->device, "GPIO RESET_OUT %x (%d)", status,
+			cause);
 	} else if (irq == ctx->reset.cd_irq) {
 		status = gpio_get_value(pd->gpio_fcdp_rb);
-		dev_dbg(&client->device, "GPIO CORE_DUMP %x", status);
 		/* Skip fake core dump sequences */
 		cause = (ctx->reset.ongoing) ? 0 : HU_COREDUMP;
+		dev_dbg(&client->device, "GPIO CORE_DUMP %x (%d)", status,
+			cause);
 	}
 
 	if (cause) {
 		if (cause == HU_RESET)
 			ctx->reset.ongoing = 1;
-		ffl_throw_tty_hangup(ctx, cause);
+
+		spin_lock(&tx_ctx->lock);
+		do_hangup = ((!_ffl_ctx_has_flag(tx_ctx, TTY_OFF_BIT)) &&
+			     (!ctx->hangup.cause));
+		ctx->hangup.cause |= cause;
+		wake_up(&ctx->tx_full_pipe_clean_event);
+		spin_unlock(&tx_ctx->lock);
+
+		if (do_hangup)
+			queue_work(ffl_hangup_wq, &ctx->hangup.work);
 	}
 
 	return IRQ_HANDLED;
