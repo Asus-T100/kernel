@@ -976,6 +976,19 @@ static void *msic_audio_platform_data(void *info)
 		return NULL;
 	}
 
+	pdev = platform_device_alloc("hdmi-audio", -1);
+	if (!pdev) {
+		pr_err("failed to allocate hdmi-audio platform device\n");
+		return NULL;
+	}
+
+	ret = platform_device_add(pdev);
+	if (ret) {
+		pr_err("failed to add hdmi-audio platform device\n");
+		platform_device_put(pdev);
+		return NULL;
+	}
+
 	return msic_generic_platform_data(info, INTEL_MSIC_BLOCK_AUDIO);
 }
 
