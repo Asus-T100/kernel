@@ -55,6 +55,7 @@ static void
 atomisp_acc_fw_free_args(struct atomisp_device *isp, struct sh_css_acc_fw *fw);
 static void
 atomisp_acc_fw_free(struct atomisp_device *isp, struct sh_css_acc_fw *fw);
+static int atomisp_wdt_pet_dog(struct atomisp_device *isp);
 
 /*
  * get sensor:dis71430/ov2720 related info from v4l2_subdev->priv data field.
@@ -212,6 +213,16 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 	 * calls of ISP's ISR
 	 */
 	spin_lock_irqsave(&isp->irq_lock, irqflags);
+
+	if (isp->sw_contex.isp_streaming && atomisp_wdt_pet_dog(isp) < 0) {
+		/*
+		 * BUG! Despite ISP is running, watchdog was woken up.
+		 * ISP reset may come soon.
+		 */
+		WARN(1, "%s: watchdog wrongly woken up.\n", __func__);
+		goto out;
+	}
+
 	/*got triggered interrupt*/
 	err = sh_css_translate_interrupt(&irq_infos);
 	if (err != sh_css_success) {
@@ -269,6 +280,7 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 	msg_ret |=  (1 << INTR_IIR);
 	atomisp_msg_write32(isp, IUNIT_PORT, INTR_CTL, msg_ret);
 
+out:
 	spin_unlock_irqrestore(&isp->irq_lock, irqflags);
 	return IRQ_HANDLED;
 }
@@ -498,22 +510,25 @@ static void atomisp_pipe_reset(struct atomisp_device *isp)
 	sh_css_resume();
 }
 
-static int atomisp_timeout_handler(struct atomisp_device *isp, int cnt)
+static void atomisp_timeout_handler(struct atomisp_device *isp)
 {
-	u32 rx_infos;
 	char debug_context[64];
 
 	v4l2_err(&atomisp_dev, "ISP timeout\n");
 	isp->isp_timeout = true;
 
-	snprintf(debug_context, 64, "ISP timeout encountered (%d of 5)", cnt);
+	snprintf(debug_context, 64, "ISP timeout encountered (%d of 5)",
+		 isp->timeout_cnt);
 	sh_css_dump_debug_info(debug_context);
 
-	/* Try 5 times for autorecovery */
-	if (cnt < 5) {
-		atomisp_pipe_reset(isp);
-		return 0;
-	}
+	atomisp_pipe_reset(isp);
+}
+
+static void atomisp_fatal_timeout_handler(struct atomisp_device *isp)
+{
+	u32 rx_infos;
+
+	WARN(1, "%s: Fatal ISP timeout\n", __func__);
 
 	/* Can't recover from isp timeout, error will be reported*/
 	if (!sh_css_hrt_sp_is_idle())
@@ -526,7 +541,6 @@ static int atomisp_timeout_handler(struct atomisp_device *isp, int cnt)
 	print_csi_rx_errors();
 	sh_css_rx_get_interrupt_info(&rx_infos);
 	sh_css_rx_clear_interrupt_info(rx_infos);
-	return -ETIMEDOUT;
 }
 
 static bool atomisp_flash_error(struct atomisp_device *isp)
@@ -597,46 +611,51 @@ static int atomisp_start_flash(struct atomisp_device *isp)
 	return 0;
 }
 
-#define DEFAULT_ISP_TIMEOUT	1
-/*
- * this function calculate isp timeout threshold according to sensor's fps
- *
- * this is the algorithm:
- * 1: if sensor's fps > 2, timeout threshold is 1s
- * 2: if sensor's  1 < fps <= 2. timeout threshold is 2s
- * 3: if sensor's fps <= 1, timeout threshold is 1 + 1/fps
- *
- * if no fps can be acquired from sensor, just use the default ISP timeout
- * value
- */
-static unsigned int atomisp_update_timeout_val(struct atomisp_device *isp)
+void atomisp_wdt_wakeup_dog(unsigned long handle)
 {
-	struct v4l2_subdev_frame_interval frame_interval;
-	unsigned short timeout_val, fps;
+	struct atomisp_device *isp = (struct atomisp_device *)handle;
 
-	/* check sensor's actual fps */
-	if (v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
-		video, g_frame_interval, &frame_interval)) {
-		/*
-		 * senor does not support this interface
-		 * so no change to default timeout value
-		 */
-		timeout_val = 1;
-	} else {
-		fps = frame_interval.interval.denominator /
-		    frame_interval.interval.numerator;
-		if (fps > 2)
-			timeout_val = 1;
-		else if (fps > 1)
-			timeout_val = 2;
-		else { /* frame_rate must be lower than 1 */
-			fps = frame_interval.interval.numerator /
-			    frame_interval.interval.denominator;
-			timeout_val = 1 + fps;
-		}
-	}
+	isp->wdt_status = isp->timeout_cnt++ < ATOMISP_WDT_MAX_TIMEOUTS ?
+					ATOMISP_WDT_STATUS_ERROR_TRYAGAIN :
+					ATOMISP_WDT_STATUS_ERROR_FATAL;
 
-	return timeout_val;
+	/* wake up WQ */
+	complete(&isp->wq_frame_complete);
+}
+
+/*
+ * atomisp_wdt_pet_dog - pet watchdog to notice it we're alive.
+ *
+ * Returns 0 if watchdog received no previous error or -1 otherwise.
+ */
+static int atomisp_wdt_pet_dog(struct atomisp_device *isp)
+{
+	const unsigned long timeout = jiffies +
+				      msecs_to_jiffies(ATOMISP_WDT_TIMEOUT);
+	isp->timeout_cnt = 0;
+
+	/*
+	 * mod_timer_pending() returns 0 for unitialized timer or 1 for
+	 * initialized.
+	 * If 0, watchdog has woken up, which means we want to return -1 for
+	 * error.
+	 * If 1, watchdog is being nice and we want to return 0 for no error.
+	 */
+	return mod_timer_pending(&isp->wdt, timeout) - 1;
+}
+
+static void atomisp_wdt_init(struct atomisp_device *isp)
+{
+	const unsigned long timeout = jiffies +
+				      msecs_to_jiffies(ATOMISP_WDT_TIMEOUT);
+
+	isp->wdt_status = ATOMISP_WDT_STATUS_OK;
+	mod_timer(&isp->wdt, timeout);
+}
+
+void atomisp_wdt_lock_dog(struct atomisp_device *isp)
+{
+	del_timer_sync(&isp->wdt);
 }
 
 void atomisp_work(struct work_struct *work)
@@ -645,7 +664,7 @@ void atomisp_work(struct work_struct *work)
 						  work);
 	struct videobuf_buffer *vb_preview = NULL;
 	struct videobuf_buffer *vb_capture = NULL;
-	int ret, timeout_cnt = 0, fps_time;
+	int ret;
 	bool timeout_flag,
 	     flash_in_progress = false,
 	     flash_enabled = false;
@@ -697,6 +716,9 @@ void atomisp_work(struct work_struct *work)
 			goto error;
 		}
 
+		/* (re)start watchdog */
+		atomisp_wdt_init(isp);
+
 		ret = atomisp_streamon_input(isp);
 		if (ret) {
 			mutex_unlock(&isp->isp_lock);
@@ -745,7 +767,7 @@ void atomisp_work(struct work_struct *work)
 
 		/*Check ISP processing pipeline if any binary left*/
 		do {
-			long time_left;
+			enum atomisp_wdt_status wdt_status;
 			unsigned long irqflags;
 
 			/* wait for different binary to be processed */
@@ -753,63 +775,29 @@ void atomisp_work(struct work_struct *work)
 			if (!isp->irq_infos) {
 				spin_unlock_irqrestore(&isp->irq_lock,
 						       irqflags);
-				time_left =
-					wait_for_completion_timeout(
-						&isp->wq_frame_complete,
-						DEFAULT_ISP_TIMEOUT * HZ);
+				wait_for_completion(&isp->wq_frame_complete);
 				spin_lock_irqsave(&isp->irq_lock, irqflags);
-			} else {
-				/*
-				 * Don't need to sleep because new interrupt was
-				 * triggered during last iteration.
-				 * time_left needs to be > 0 as it's not
-				 * timing out.
-				 */
-				time_left = 1;
 			}
 
 			irq_infos = isp->irq_infos;
 			isp->irq_infos = 0;
+			wdt_status = isp->wdt_status;
+			isp->wdt_status = ATOMISP_WDT_STATUS_OK;
 			spin_unlock_irqrestore(&isp->irq_lock, irqflags);
 
-			if (time_left == 0) {
-				WARN(irq_infos, "ATOMISP: ISR out of sync with "
-						"Workqueue.\n");
-				/*
-				 * if the default timeout happens, we see
-				 * whether it is caused by sensor's output fps
-				 * is too low
-				 */
-				fps_time = atomisp_update_timeout_val(isp);
-				if (fps_time > DEFAULT_ISP_TIMEOUT) {
-					/*
-					 * sensor's fps is too low, so it is
-					 * probably not error timeout, we
-					 * need to wait more time
-					 */
-					time_left =
-					wait_for_completion_timeout(
-					&isp->wq_frame_complete,
-					(fps_time - DEFAULT_ISP_TIMEOUT) * HZ);
+			if (wdt_status == ATOMISP_WDT_STATUS_ERROR_TRYAGAIN) {
+				atomisp_timeout_handler(isp);
+				timeout_flag = true;
 
-					if (time_left == 0)
-						/* this is a real timeout now */
-						goto timeout_handle;
-				} else {
-					/*
-					 * sensor's fps is high enough, this
-					 * is a real timeout
-					 */
-timeout_handle:
-					ret = atomisp_timeout_handler(isp,
-							      timeout_cnt++);
-					if (ret) {
-						mutex_unlock(&isp->isp_lock);
-						goto error;
-					}
-					timeout_flag = true;
-					break;
-				}
+				/* try new frame */
+				break;
+			}
+
+			if (wdt_status == ATOMISP_WDT_STATUS_ERROR_FATAL) {
+				atomisp_fatal_timeout_handler(isp);
+
+				/* stop streaming on error state */
+				goto error;
 			}
 
 			INIT_COMPLETION(isp->acc_fw_complete);
@@ -904,9 +892,6 @@ timeout_handle:
 			vb_preview = NULL;
 			vb_capture = NULL;
 		}
-
-		if (!timeout_flag)
-			timeout_cnt = 0;
 	}
 
 error:
@@ -914,7 +899,6 @@ error:
 		isp->vf_frame = NULL;
 
 	isp->sw_contex.error = true;
-	timeout_cnt = 0;
 
 	if (vb_preview)
 		vb_preview->state = VIDEOBUF_ERROR;

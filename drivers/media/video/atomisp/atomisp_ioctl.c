@@ -1129,6 +1129,7 @@ int atomisp_streamoff(struct file *file, void *fh,
 	struct atomisp_video_pipe *vf_pipe = NULL;
 	struct atomisp_video_pipe *mo_pipe = NULL;
 	int ret;
+	unsigned long flags;
 #ifdef PUNIT_CAMERA_BUSY
 	u32 msg_ret;
 #endif
@@ -1139,7 +1140,11 @@ int atomisp_streamoff(struct file *file, void *fh,
 		return -EINVAL;
 	}
 
+	spin_lock_irqsave(&isp->irq_lock, flags);
 	isp->sw_contex.isp_streaming = false;
+	spin_unlock_irqrestore(&isp->irq_lock, flags);
+
+	atomisp_wdt_lock_dog(isp);
 
 	/* cancel work queue*/
 	if (isp->sw_contex.work_queued) {

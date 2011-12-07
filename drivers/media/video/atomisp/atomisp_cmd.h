@@ -284,4 +284,8 @@ int atomisp_acc_wait(struct atomisp_device *isp,
 
 int atomisp_acc_abort(struct atomisp_device *isp,
 		      struct atomisp_acc_fw_abort *abort);
+
+void atomisp_wdt_wakeup_dog(unsigned long handle);
+void atomisp_wdt_lock_dog(struct atomisp_device *isp);
+
 #endif

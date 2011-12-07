@@ -856,6 +856,8 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 	}
 	atomisp_msi_irq_init(isp, dev);
 
+	setup_timer(&isp->wdt, atomisp_wdt_wakeup_dog, (unsigned long)isp);
+
 #ifdef CONFIG_PM
 /*	pm_runtime_set_active(&dev->dev);
 	pm_runtime_enable(&dev->dev);	*/
