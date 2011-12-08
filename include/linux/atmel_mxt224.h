@@ -335,7 +335,7 @@ struct mxt_platform_data {
 
 void	mxt_hw_reset(void);
 
-#define TOUCH_DEVICE_NAME				"atmel_mxt224"
+#define TOUCH_DEVICE_NAME				"mxt224"
 #define FALSE                           0
 #define TRUE                            1
 #define TS_MAX_X						1023

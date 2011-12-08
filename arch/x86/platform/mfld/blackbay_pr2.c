@@ -20,51 +20,8 @@
 #include <asm/mrst.h>
 #include <linux/input/lis3dh.h>
 #include <linux/ms5607.h>
-#include <linux/atmel_mxt224.h>
 #include <linux/a1026.h>
 
-static u8 mxt_valid_interrupt(void)
-{
-	return 1;
-}
-
-static void mxt_init_platform_hw(void)
-{
-	/* maXTouch wants 40mSec minimum after reset to get organized */
-	/*
-	gpio_set_value(mxt_reset_gpio, 1);
-	msleep(40);
-	*/
-}
-
-static void mxt_exit_platform_hw(void)
-{
-	/*
-	printk(KERN_INFO "In %s.", __func__);
-	gpio_set_value(mxt_reset_gpio, 0);
-	gpio_set_value(mxt_intr_gpio, 0);
-	*/
-}
-
-static struct mxt_platform_data mxt_pdata = {
-	.numtouch       = 2,
-	.init_platform_hw = &mxt_init_platform_hw,
-	.exit_platform_hw = &mxt_exit_platform_hw,
-	.max_x          = 1023,
-	.max_y          = 975,
-	.orientation    = MXT_MSGB_T9_ORIENT_HORZ_FLIP,
-	.valid_interrupt = &mxt_valid_interrupt,
-	.reset          = 129,
-	.irq            = 62,
-};
-
-static struct i2c_board_info pr2_i2c_bus0_devs[] = {
-	{
-		.type       = "atmel_mxt224",
-		.addr       = 0x4A,
-		.platform_data = &mxt_pdata,
-	},
-};
 
 static struct lis3dh_acc_platform_data lis3dh_pdata = {
 	.poll_interval = 200,
@@ -236,8 +193,6 @@ static void bkbpr2_gpio_keys_init()
 
 static void register_board_i2c_devs()
 {
-	i2c_register_board_info(0, pr2_i2c_bus0_devs,
-				ARRAY_SIZE(pr2_i2c_bus0_devs));
 	i2c_register_board_info(5, pr2_i2c_bus5_devs,
 				ARRAY_SIZE(pr2_i2c_bus5_devs));
 }
