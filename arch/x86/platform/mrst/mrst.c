@@ -44,6 +44,7 @@
 #include <linux/wl12xx.h>
 #include <linux/regulator/machine.h>
 #include <linux/regulator/fixed.h>
+#include <linux/atmel_mxt224.h>
 
 #include <linux/atomisp_platform.h>
 #include <media/v4l2-subdev.h>
@@ -1428,6 +1429,45 @@ void *wl12xx_platform_data_init(void *info)
 	return NULL;
 }
 #endif
+static u8 mxt_valid_interrupt(void)
+{
+	return 1;
+}
+
+static void mxt_init_platform_hw(void)
+{
+	/* maXTouch wants 40mSec minimum after reset to get organized */
+	/*
+	gpio_set_value(mxt_reset_gpio, 1);
+	msleep(40);
+	*/
+}
+
+static void mxt_exit_platform_hw(void)
+{
+	/*
+	printk(KERN_INFO "In %s.", __func__);
+	gpio_set_value(mxt_reset_gpio, 0);
+	gpio_set_value(mxt_intr_gpio, 0);
+	*/
+}
+
+void *atmel_mxt224_platform_data_init(void *info)
+{
+	static struct mxt_platform_data mxt_pdata;
+
+	mxt_pdata.numtouch       = 2;
+	mxt_pdata.init_platform_hw = mxt_init_platform_hw;
+	mxt_pdata.exit_platform_hw = mxt_exit_platform_hw;
+	mxt_pdata.max_x          = 1023;
+	mxt_pdata.max_y          = 975;
+	mxt_pdata.orientation    = MXT_MSGB_T9_ORIENT_HORZ_FLIP;
+	mxt_pdata.valid_interrupt = mxt_valid_interrupt;
+	mxt_pdata.reset          = get_gpio_by_name("ts_rst");
+	mxt_pdata.irq            = get_gpio_by_name("ts_int");
+
+	return &mxt_pdata;
+}
 
 static const struct devs_id __initconst device_ids[] = {
 	{"pmic_gpio", SFI_DEV_TYPE_SPI, 1, &pmic_gpio_platform_data},
@@ -1461,6 +1501,7 @@ static const struct devs_id __initconst device_ids[] = {
 	{"lm3554", SFI_DEV_TYPE_I2C, 0, &no_platform_data},
 	{"mt9e013", SFI_DEV_TYPE_I2C, 0, &mt9e013_platform_data_init},
 	{"mt9m114", SFI_DEV_TYPE_I2C, 0, &mt9m114_platform_data_init},
+	{"mxt224", SFI_DEV_TYPE_I2C, 0, &atmel_mxt224_platform_data_init},
 
 	{},
 };
@@ -1871,16 +1912,16 @@ static int __init sfi_parse_devs(struct sfi_table_header *table)
 				i2c_info.type,
 				i2c_info.irq,
 				i2c_info.addr);
-			if (!strcmp(i2c_info.type, "mxt224"))
-				break;
+
 			/* Ignore all sensors info for PR2 and PR3 */
 			if (mfld_board_id() == MFLD_BID_PR2_PROTO ||
 					mfld_board_id() == MFLD_BID_PR2_PNP ||
 					mfld_board_id() == MFLD_BID_PR2_VOLUME ||
 					mfld_board_id() == MFLD_BID_PR3 ||
 					mfld_board_id() == MFLD_BID_PR3_PNP)
-				if (bus == 5 || bus == 0)
+				if (bus == 5)
 					break;
+
 
 			sfi_handle_i2c_dev(bus, &i2c_info);
 			break;
