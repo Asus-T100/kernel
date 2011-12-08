@@ -45,9 +45,6 @@ struct hmm_vm_node {
 	struct hmm_vm *vm;
 };
 
-#define	hmm_vm_node(list_ptr)	\
-	list_entry((list_ptr), struct hmm_vm_node, list)
-
 int hmm_vm_init(struct hmm_vm *vm, unsigned int start,
 		unsigned int size);
 

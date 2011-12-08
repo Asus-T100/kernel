@@ -63,11 +63,20 @@ int hmm_vm_init(struct hmm_vm *vm, unsigned int start,
 
 void hmm_vm_clean(struct hmm_vm *vm)
 {
+	struct hmm_vm_node *node, *tmp;
+	struct list_head new_head;
+
 	if (!vm)
 		return;
 
-	while (!list_empty(&vm->vm_node_list))
-		hmm_vm_free_node(hmm_vm_node(vm->vm_node_list.next));
+	spin_lock(&vm->lock);
+	list_replace_init(&vm->vm_node_list, &new_head);
+	spin_unlock(&vm->lock);
+
+	list_for_each_entry_safe(node, tmp, &new_head, list) {
+		list_del(&node->list);
+		kfree(node);
+	}
 }
 
 static struct hmm_vm_node *alloc_hmm_vm_node(unsigned int start,
@@ -93,7 +102,7 @@ static struct hmm_vm_node *alloc_hmm_vm_node(unsigned int start,
 
 struct hmm_vm_node *hmm_vm_alloc_node(struct hmm_vm *vm, unsigned int pgnr)
 {
-	struct list_head *head, *p, *pos;
+	struct list_head *head;
 	struct hmm_vm_node *node, *cur, *next;
 	unsigned int vm_start, vm_end;
 	unsigned int addr;
@@ -107,25 +116,24 @@ struct hmm_vm_node *hmm_vm_alloc_node(struct hmm_vm *vm, unsigned int pgnr)
 	size = pgnr_to_size(pgnr);
 
 	addr = vm_start;
-	pos = head = &vm->vm_node_list;
+	head = &vm->vm_node_list;
 
 	spin_lock(&vm->lock);
 
 	/*
 	 * if list is empty, the loop code will not be executed.
 	 */
-	list_for_each(p, head) {
-		pos = p;
-		cur = hmm_vm_node(pos);
-		addr = vm_node_end(cur->start, cur->pgnr);
-		if (pos->next != head) {
-			next = hmm_vm_node(pos->next);
-			if ((next->start - addr) >= size)
-				goto found;
-		}
+	list_for_each_entry(cur, head, list) {
+		addr = PAGE_ALIGN(vm_node_end(cur->start, cur->pgnr));
+		if (list_is_last(&cur->list, head))
+			break;
+		next = list_entry(cur->list.next, struct hmm_vm_node, list);
+		if ((next->start - addr) >= size)
+			goto found;
 	}
 
 	if (addr + size > vm_end) {
+		spin_unlock(&vm->lock);
 		v4l2_info(&atomisp_dev,
 			    "no enough virtual address space.\n");
 		goto failed;
@@ -139,32 +147,34 @@ found:
 		goto failed;
 
 	spin_lock(&vm->lock);
-	list_add(&node->list, pos);
-
+	list_add(&node->list, &cur->list);
 	spin_unlock(&vm->lock);
 
 	return node;
 failed:
-	v4l2_err(&atomisp_dev, "failed...\n");
-	spin_unlock(&vm->lock);
+	v4l2_err(&atomisp_dev, "%s: failed...\n", __func__);
 
 	return NULL;
 }
 
 void hmm_vm_free_node(struct hmm_vm_node *node)
 {
-	if (node) {
-		struct hmm_vm *vm = node->vm;
-		spin_lock(&vm->lock);
-		list_del(&node->list);
-		spin_unlock(&vm->lock);
-		kfree(node);
-	}
+	struct hmm_vm *vm;
+
+	if (!node)
+		return;
+
+	vm = node->vm;
+
+	spin_lock(&vm->lock);
+	list_del(&node->list);
+	spin_unlock(&vm->lock);
+
+	kfree(node);
 }
 
 struct hmm_vm_node *hmm_vm_find_node_start(struct hmm_vm *vm, unsigned int addr)
 {
-	struct list_head *pos;
 	struct hmm_vm_node *node;
 
 	if (!vm)
@@ -172,23 +182,20 @@ struct hmm_vm_node *hmm_vm_find_node_start(struct hmm_vm *vm, unsigned int addr)
 
 	spin_lock(&vm->lock);
 
-	list_for_each(pos, &vm->vm_node_list) {
-		node = hmm_vm_node(pos);
-		if (node->start == addr)
-			goto found;
+	list_for_each_entry(node, &vm->vm_node_list, list) {
+		if (node->start == addr) {
+			spin_unlock(&vm->lock);
+			return node;
+		}
 	}
 
 	spin_unlock(&vm->lock);
 	return NULL;
-found:
-	spin_unlock(&vm->lock);
-	return node;
 }
 
 struct hmm_vm_node *hmm_vm_find_node_in_range(struct hmm_vm *vm,
 					      unsigned int addr)
 {
-	struct list_head *pos;
 	struct hmm_vm_node *node;
 
 	if (!vm)
@@ -196,15 +203,13 @@ struct hmm_vm_node *hmm_vm_find_node_in_range(struct hmm_vm *vm,
 
 	spin_lock(&vm->lock);
 
-	list_for_each(pos, &vm->vm_node_list) {
-		node = hmm_vm_node(pos);
-		if (addr_in_vm_node(addr, node))
-			goto found;
+	list_for_each_entry(node, &vm->vm_node_list, list) {
+		if (addr_in_vm_node(addr, node)) {
+			spin_unlock(&vm->lock);
+			return node;
+		}
 	}
 
 	spin_unlock(&vm->lock);
 	return NULL;
-found:
-	spin_unlock(&vm->lock);
-	return node;
 }
