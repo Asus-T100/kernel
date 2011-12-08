@@ -1486,14 +1486,6 @@ static void sdhci_request(struct mmc_host *mmc, struct mmc_request *mrq)
 	else
 		present = sdhci_readl(host, SDHCI_PRESENT_STATE) &
 				SDHCI_CARD_PRESENT;
-	/*
-	 * If user insert/remove card too quickly, host may send
-	 * command before host power up. That is bad, which can
-	 * lead host generate no interrupts.
-	 * So before sending command, check power control register
-	 */
-	if (!(sdhci_readb(host, SDHCI_POWER_CONTROL) & SDHCI_POWER_ON))
-		present = false;
 
 	if (!present || host->flags & SDHCI_DEVICE_DEAD) {
 		host->mrq->cmd->error = -ENOMEDIUM;
