@@ -187,6 +187,8 @@ struct mmc_card {
 #define MMC_CARD_SDXC		(1<<6)		/* card is SDXC */
 #define MMC_STATE_NEED_BKOPS	(1<<7)		/* card need to do BKOPS */
 #define MMC_STATE_DOING_BKOPS	(1<<8)		/* card is doing BKOPS */
+#define MMC_CARD_REMOVED	(1<<9)		/* card has been removed */
+
 	unsigned int		quirks; 	/* card quirks */
 #define MMC_QUIRK_LENIENT_FN0	(1<<0)		/* allow SDIO FN0 writes outside of the VS CCCR range */
 #define MMC_QUIRK_BLKSZ_FOR_BYTE_MODE (1<<1)	/* use func->cur_blksize */
@@ -324,6 +326,8 @@ static inline void __maybe_unused remove_quirk(struct mmc_card *card, int data)
 #define mmc_card_ddr_mode(c)	((c)->state & MMC_STATE_HIGHSPEED_DDR)
 #define mmc_sd_card_uhs(c) ((c)->state & MMC_STATE_ULTRAHIGHSPEED)
 #define mmc_card_ext_capacity(c) ((c)->state & MMC_CARD_SDXC)
+#define mmc_card_removed(c)	((c) && ((c)->state & MMC_CARD_REMOVED))
+
 #define mmc_card_need_bkops(c)	((c)->state & MMC_STATE_NEED_BKOPS)
 #define mmc_card_doing_bkops(c)	((c)->state & MMC_STATE_DOING_BKOPS)
 
@@ -334,6 +338,8 @@ static inline void __maybe_unused remove_quirk(struct mmc_card *card, int data)
 #define mmc_card_set_ddr_mode(c) ((c)->state |= MMC_STATE_HIGHSPEED_DDR)
 #define mmc_sd_card_set_uhs(c) ((c)->state |= MMC_STATE_ULTRAHIGHSPEED)
 #define mmc_card_set_ext_capacity(c) ((c)->state |= MMC_CARD_SDXC)
+#define mmc_card_set_removed(c) ((c)->state |= MMC_CARD_REMOVED)
+
 #define mmc_card_set_need_bkops(c)	((c)->state |= MMC_STATE_NEED_BKOPS)
 #define mmc_card_set_doing_bkops(c)	((c)->state |= MMC_STATE_DOING_BKOPS)
 
