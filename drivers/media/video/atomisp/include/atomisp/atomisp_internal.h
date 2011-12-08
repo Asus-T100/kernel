@@ -295,6 +295,9 @@ struct atomisp_device {
 	bool isp_timeout;
 	int timeout_cnt;
 	enum atomisp_wdt_status wdt_status;
+
+	struct videobuf_buffer *vb_capture;
+	struct videobuf_buffer *vb_preview;
 };
 
 #define v4l2_dev_to_atomisp_device(dev) \

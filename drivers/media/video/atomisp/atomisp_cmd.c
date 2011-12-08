@@ -255,6 +255,7 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 			signal_statistics = true;
 			signal_acceleration = true;
 		}
+
 	}
 
 	if (irq_infos & SH_CSS_IRQ_INFO_INVALID_FIRST_FRAME)
@@ -284,13 +285,14 @@ out:
 	spin_unlock_irqrestore(&isp->irq_lock, irqflags);
 	return IRQ_HANDLED;
 }
+
 /*
  * dequeue a buffer from video buffer list
  * if no buffer queued, wait for queue_buf is called
  * will return 1 when streaming off.
  */
 static int atomisp_buf_pre_dequeue(struct atomisp_video_pipe *pipe,
-			      struct videobuf_buffer **vb)
+				   struct videobuf_buffer **vb, int wait)
 {
 	unsigned long flags;
 	struct atomisp_device *isp = pipe->isp;
@@ -298,6 +300,8 @@ static int atomisp_buf_pre_dequeue(struct atomisp_video_pipe *pipe,
 	spin_lock_irqsave(&pipe->irq_lock, flags);
 	if (list_empty(&pipe->activeq)) {
 		spin_unlock_irqrestore(&pipe->irq_lock, flags);
+		if (!wait)
+			return -EBUSY;
 		if (wait_event_interruptible(pipe->capq.wait,
 					     (!list_empty(&pipe->activeq) &&
 					      !isp->sw_contex.updating_uptr) ||
@@ -381,22 +385,20 @@ static void set_term_en_count(struct atomisp_device *isp, int b0)
 	atomisp_msg_write32(isp, IUNITPHY_PORT, CSI_CONTROL, val);
 }
 
-static int atomisp_buffer_dequeue(struct atomisp_device *isp,
-			    struct videobuf_buffer **vb_capture,
-			    struct videobuf_buffer **vb_preview)
+static int atomisp_buffer_dequeue(struct atomisp_device *isp, int wait)
 {
 	struct videobuf_vmalloc_memory *vmem;
 	struct atomisp_video_pipe *vf_pipe = NULL;
 	struct atomisp_video_pipe *mo_pipe = NULL;
 	int ret;
 
-	if (!(*vb_capture)) {
+	if (!(isp->vb_capture)) {
 		mo_pipe = &isp->isp_subdev.video_out_mo;
-		ret = atomisp_buf_pre_dequeue(mo_pipe, vb_capture);
+		ret = atomisp_buf_pre_dequeue(mo_pipe, &isp->vb_capture, wait);
 		if (ret)
 			return -EINVAL;
 
-		vmem = (*vb_capture)->priv;
+		vmem = isp->vb_capture->priv;
 		if (vmem->vaddr == NULL)
 			return -EINVAL;
 
@@ -404,13 +406,13 @@ static int atomisp_buffer_dequeue(struct atomisp_device *isp,
 		isp->regular_output_frame = vmem->vaddr;
 	}
 
-	if (atomisp_is_viewfinder_support(isp) && !(*vb_preview)) {
+	if (atomisp_is_viewfinder_support(isp) && !(isp->vb_preview)) {
 		vf_pipe = &isp->isp_subdev.video_out_vf;
-		ret = atomisp_buf_pre_dequeue(vf_pipe, vb_preview);
+		ret = atomisp_buf_pre_dequeue(vf_pipe, &isp->vb_preview, wait);
 		if (ret)
 			return -EINVAL;
 
-		vmem = (*vb_preview)->priv;
+		vmem = isp->vb_preview->priv;
 		isp->vf_frame = vmem->vaddr;
 	}
 	return 0;
@@ -658,12 +660,53 @@ void atomisp_wdt_lock_dog(struct atomisp_device *isp)
 	del_timer_sync(&isp->wdt);
 }
 
+static void atomisp_buf_done(struct atomisp_device *isp, int error)
+{
+	struct videobuf_buffer *vb_capture;
+	struct videobuf_buffer *vb_preview;
+	struct atomisp_video_pipe *mo_pipe = &isp->isp_subdev.video_out_mo;
+	struct atomisp_video_pipe *vf_pipe = &isp->isp_subdev.video_out_vf;
+
+	unsigned long flags;
+
+	spin_lock_irqsave(&mo_pipe->irq_lock, flags);
+	vb_capture = isp->vb_capture;
+	isp->vb_capture = NULL;
+	spin_unlock_irqrestore(&mo_pipe->irq_lock, flags);
+
+	spin_lock_irqsave(&vf_pipe->irq_lock, flags);
+	vb_preview = isp->vb_preview;
+	isp->vb_preview = NULL;
+	spin_unlock_irqrestore(&vf_pipe->irq_lock, flags);
+
+	if (vb_capture) {
+		do_gettimeofday(&vb_capture->ts);
+		vb_capture->field_count++;
+		/*mark videobuffer done for dequeue*/
+		vb_capture->state = !error ? VIDEOBUF_DONE : VIDEOBUF_ERROR;
+	}
+
+	if (vb_preview) {
+		do_gettimeofday(&vb_preview->ts);
+		vb_preview->field_count++;
+		/*mark videobuffer done for dequeue*/
+		vb_preview->state = !error ? VIDEOBUF_DONE : VIDEOBUF_ERROR;
+	}
+
+	/*
+	 * Frame capture done, wake up any process block on
+	 * current active buffer
+	 */
+	if (vb_preview)
+		wake_up(&vb_preview->done);
+	if (vb_capture)
+		wake_up(&vb_capture->done);
+}
+
 void atomisp_work(struct work_struct *work)
 {
 	struct atomisp_device *isp = container_of(work, struct atomisp_device,
 						  work);
-	struct videobuf_buffer *vb_preview = NULL;
-	struct videobuf_buffer *vb_capture = NULL;
 	int ret;
 	bool timeout_flag,
 	     flash_in_progress = false,
@@ -694,8 +737,7 @@ void atomisp_work(struct work_struct *work)
 		 * isp would be generated.
 		 */
 		if (!isp->sw_contex.invalid_frame) {
-			ret = atomisp_buffer_dequeue(isp, &vb_capture,
-					     &vb_preview);
+			ret = atomisp_buffer_dequeue(isp, 1);
 			if (ret)
 				goto error;
 		} else {
@@ -860,37 +902,13 @@ void atomisp_work(struct work_struct *work)
 
 		mutex_unlock(&isp->isp_lock);
 
-		/*
-		 * we check whether invalid_frame is set, if so, we do not
-		 * return the buffer to the user-space, but uses it again
-		 */
+		/* Frame done */
 		if (!timeout_flag && !isp->sw_contex.invalid_frame) {
-			if (vb_capture) {
-				isp->frame_status[vb_capture->i] = fr_status;
-				do_gettimeofday(&vb_capture->ts);
-				vb_capture->field_count++;
-				/*mark videobuffer done for dequeue*/
-				vb_capture->state = VIDEOBUF_DONE;
-			}
-
-			if (vb_preview) {
-				do_gettimeofday(&vb_preview->ts);
-				vb_preview->field_count++;
-				/*mark videobuffer done for dequeue*/
-				vb_preview->state = VIDEOBUF_DONE;
-			}
-
-			/*
-			 * Frame capture done, wake up any process block on
-			 * current active buffer
-			 */
-			if (vb_preview)
-				wake_up(&vb_preview->done);
-			if (vb_capture)
-				wake_up(&vb_capture->done);
-
-			vb_preview = NULL;
-			vb_capture = NULL;
+			/* HACK: do we have a better way/place for it? */
+			if (isp->vb_capture)
+				isp->frame_status[isp->vb_capture->i] =
+								fr_status;
+			atomisp_buf_done(isp, 0);
 		}
 	}
 
@@ -900,19 +918,8 @@ error:
 
 	isp->sw_contex.error = true;
 
-	if (vb_preview)
-		vb_preview->state = VIDEOBUF_ERROR;
-	if (vb_capture)
-		vb_capture->state = VIDEOBUF_ERROR;
+	atomisp_buf_done(isp, 1);
 
-	/*
-	 * Frame capture error, wake up any process block on current
-	 * active buffer
-	 */
-	if (vb_preview)
-		wake_up(&vb_preview->done);
-	if (vb_capture)
-		wake_up(&vb_capture->done);
 	return;
 }
 
