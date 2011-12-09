@@ -1297,6 +1297,16 @@ void *mt9e013_platform_data_init(void *info)
  * CLV PR0 primary camera sensor - OV8830 platform data
  */
 
+#define OV8830_I2C_ADDR	(0x6C >> 1)	/* i2c address, 0x20 or 0x6C */
+#define OV8830_BUS	4		/* i2c bus number */
+
+static struct i2c_board_info ov8830_info = {
+	.type = "ov8830",
+	.flags = 0,
+	.addr = OV8830_I2C_ADDR,
+	.irq = 255,
+};
+
 static int ov8830_gpio_ctrl(struct v4l2_subdev *sd, int flag)
 {
 	int ret;
@@ -2370,6 +2380,13 @@ static int __init mrst_platform_init(void)
 	}
 	sfi_table_parse(SFI_SIG_GPIO, NULL, NULL, sfi_parse_gpio);
 	sfi_table_parse(SFI_SIG_DEVS, NULL, NULL, sfi_parse_devs);
+
+	if (mrst_identify_cpu() == MRST_CPU_CHIP_CLOVERVIEW) {
+		/* Add ov8830 driver for detection
+		 * -- FIXME: remove as soon as ov8830 is defined in SFI table */
+		sfi_handle_i2c_dev(OV8830_BUS, &ov8830_info);
+	}
+
 	return 0;
 }
 arch_initcall(mrst_platform_init);
