@@ -8,6 +8,7 @@ config VIDEO_ATOMISP
 	select VIDEO_LM3554
 	select VIDEO_MT9E013
 	select VIDEO_MT9M114
+	select VIDEO_OV8830
 
 	default m
 
