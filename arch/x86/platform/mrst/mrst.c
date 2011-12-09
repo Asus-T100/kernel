@@ -1294,6 +1294,77 @@ void *mt9e013_platform_data_init(void *info)
 }
 
 /*
+ * CLV PR0 primary camera sensor - OV8830 platform data
+ */
+
+static int ov8830_gpio_ctrl(struct v4l2_subdev *sd, int flag)
+{
+	int ret;
+
+	if (gp_camera0_reset < 0) {
+		ret = camera_sensor_gpio(-1, GP_CAMERA_0_RESET,
+					GPIOF_DIR_OUT, 1);
+		if (ret < 0)
+			return ret;
+		gp_camera0_reset = ret;
+	}
+
+	if (flag) {
+		gpio_set_value(gp_camera0_reset, 0);
+		msleep(20);
+		gpio_set_value(gp_camera0_reset, 1);
+	} else {
+		gpio_set_value(gp_camera0_reset, 0);
+	}
+
+	return 0;
+}
+
+static int ov8830_flisclk_ctrl(struct v4l2_subdev *sd, int flag)
+{
+	return intel_scu_ipc_osc_clk(OSC_CLK_CAM0, flag);
+}
+
+static int ov8830_power_ctrl(struct v4l2_subdev *sd, int flag)
+{
+	if (flag) {
+		if (!camera_vprog1_on) {
+			camera_vprog1_on = 1;
+			intel_scu_ipc_msic_vprog1(1);
+		}
+	} else {
+		if (camera_vprog1_on) {
+			camera_vprog1_on = 0;
+			intel_scu_ipc_msic_vprog1(0);
+		}
+	}
+
+	return 0;
+}
+
+static int ov8830_csi_configure(struct v4l2_subdev *sd, int flag)
+{
+	static const int LANES = 4;
+	return camera_sensor_csi(sd, ATOMISP_CAMERA_PORT_PRIMARY, LANES,
+		ATOMISP_INPUT_FORMAT_RAW_10, atomisp_bayer_order_grbg, flag);
+}
+
+static struct camera_sensor_platform_data ov8830_sensor_platform_data = {
+	.gpio_ctrl      = ov8830_gpio_ctrl,
+	.flisclk_ctrl   = ov8830_flisclk_ctrl,
+	.power_ctrl     = ov8830_power_ctrl,
+	.csi_cfg        = ov8830_csi_configure,
+};
+
+void *ov8830_platform_data_init(void *info)
+{
+	gp_camera0_reset = -1;
+	gp_camera0_power_down = -1;
+
+	return &ov8830_sensor_platform_data;
+}
+
+/*
  * MFLD PR2 secondary camera sensor - MT9M114 platform data
  */
 static int mt9m114_gpio_ctrl(struct v4l2_subdev *sd, int flag)
@@ -1678,9 +1749,17 @@ static const struct devs_id __initconst device_ids[] = {
 	 */
 	{"lm3554", SFI_DEV_TYPE_I2C, 0, &no_platform_data},
 	{"mt9e013", SFI_DEV_TYPE_I2C, 0, &mt9e013_platform_data_init},
+	{"ov8830", SFI_DEV_TYPE_I2C, 0, &ov8830_platform_data_init},
 	{"mt9m114", SFI_DEV_TYPE_I2C, 0, &mt9m114_platform_data_init},
 	{"mxt224", SFI_DEV_TYPE_I2C, 0, &atmel_mxt224_platform_data_init},
 	{"synaptics_3202", SFI_DEV_TYPE_I2C, 0, &s3202_platform_data_init},
+	{},
+};
+
+static const struct intel_v4l2_subdev_id v4l2_ids_clv[] = {
+	{"ov8830", RAW_CAMERA, ATOMISP_CAMERA_PORT_PRIMARY},
+	{"mt9m114", SOC_CAMERA, ATOMISP_CAMERA_PORT_SECONDARY},
+	{"lm3554", LED_FLASH, -1},
 	{},
 };
 
@@ -1693,9 +1772,15 @@ static const struct intel_v4l2_subdev_id v4l2_ids_mfld[] = {
 
 static const struct intel_v4l2_subdev_id *get_v4l2_ids(int *n_subdev)
 {
-	if (n_subdev)
-		*n_subdev = ARRAY_SIZE(v4l2_ids_mfld);
-	return v4l2_ids_mfld;
+	if (mrst_identify_cpu() == MRST_CPU_CHIP_CLOVERVIEW) {
+		if (n_subdev)
+			*n_subdev = ARRAY_SIZE(v4l2_ids_clv);
+		return v4l2_ids_clv;
+	} else {
+		if (n_subdev)
+			*n_subdev = ARRAY_SIZE(v4l2_ids_mfld);
+		return v4l2_ids_mfld;
+	}
 }
 
 static struct atomisp_platform_data *v4l2_subdev_table_head;

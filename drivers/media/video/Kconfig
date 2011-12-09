@@ -332,6 +332,15 @@ config VIDEO_MT9E013
 
 	  It currently only works with the atomisp driver.
 
+config VIDEO_OV8830
+	tristate "Omnivision ov8830 sensor support"
+	depends on I2C && VIDEO_V4L2 && VIDEO_ATOMISP
+	---help---
+	  This is a Video4Linux2 sensor-level driver for the Omnivision
+	  ov8830 8MP RAW sensor.
+
+	  It currently only works with the atomisp driver.
+
 config VIDEO_MT9M114
 	tristate "Aptina mt9m114 sensor support"
 	depends on I2C && VIDEO_V4L2
