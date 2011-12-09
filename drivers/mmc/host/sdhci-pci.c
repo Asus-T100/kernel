@@ -256,6 +256,9 @@ static int mfd_sd_probe_slot(struct sdhci_pci_slot *slot)
 {
 	int err, irq, gpio = MFLD_SD_CD_PIN;
 
+	if (slot->chip->pdev->device != PCI_DEVICE_ID_INTEL_MFD_SD)
+		return 0;
+
 	slot->cd_gpio = -EINVAL;
 	slot->cd_irq = -EINVAL;
 
@@ -308,6 +311,9 @@ out:
 
 static void mfd_sd_remove_slot(struct sdhci_pci_slot *slot, int dead)
 {
+	if (slot->chip->pdev->device != PCI_DEVICE_ID_INTEL_MFD_SD)
+		return;
+
 	if (slot->cd_irq >= 0)
 		free_irq(slot->cd_irq, slot);
 	gpio_free(slot->cd_gpio);
