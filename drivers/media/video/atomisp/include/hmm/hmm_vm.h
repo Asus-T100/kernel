@@ -35,6 +35,7 @@ struct hmm_vm {
 	unsigned int size;
 	struct list_head vm_node_list;
 	spinlock_t lock;
+	struct kmem_cache *cache;
 };
 
 struct hmm_vm_node {

@@ -57,8 +57,10 @@ int hmm_vm_init(struct hmm_vm *vm, unsigned int start,
 
 	INIT_LIST_HEAD(&vm->vm_node_list);
 	spin_lock_init(&vm->lock);
+	vm->cache = kmem_cache_create("atomisp_vm", sizeof(struct hmm_vm_node),
+				      0, 0, NULL);
 
-	return 0;
+	return vm->cache != NULL ? 0 : -ENOMEM;
 }
 
 void hmm_vm_clean(struct hmm_vm *vm)
@@ -75,8 +77,10 @@ void hmm_vm_clean(struct hmm_vm *vm)
 
 	list_for_each_entry_safe(node, tmp, &new_head, list) {
 		list_del(&node->list);
-		kfree(node);
+		kmem_cache_free(vm->cache, node);
 	}
+
+	kmem_cache_destroy(vm->cache);
 }
 
 static struct hmm_vm_node *alloc_hmm_vm_node(unsigned int start,
@@ -85,7 +89,7 @@ static struct hmm_vm_node *alloc_hmm_vm_node(unsigned int start,
 {
 	struct hmm_vm_node *node;
 
-	node = kzalloc(sizeof(struct hmm_vm_node), GFP_KERNEL);
+	node = kmem_cache_alloc(vm->cache, GFP_KERNEL);
 	if (!node) {
 		v4l2_err(&atomisp_dev, "out of memory.\n");
 		return NULL;
@@ -170,7 +174,7 @@ void hmm_vm_free_node(struct hmm_vm_node *node)
 	list_del(&node->list);
 	spin_unlock(&vm->lock);
 
-	kfree(node);
+	kmem_cache_free(vm->cache, node);
 }
 
 struct hmm_vm_node *hmm_vm_find_node_start(struct hmm_vm *vm, unsigned int addr)
