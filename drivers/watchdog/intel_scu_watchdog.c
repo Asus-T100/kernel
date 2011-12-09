@@ -72,6 +72,7 @@ static DECLARE_WAIT_QUEUE_HEAD(read_wq);
 /* When warning_flag is set intel_scu_read wakes up the user level */
 /* process, which is responsible for refreshing the watchdog timer */
 static int warning_flag;
+static unsigned char osnib_reset = OSNIB_WRITE_VALUE;
 
 static bool disable_kernel_watchdog;
 
@@ -80,9 +81,9 @@ static bool disable_kernel_watchdog;
  * beattime : jeffies at the sample time of heartbeats.
  * SOFT_LOCK_TIME : some time out in sec after warning interrupt.
  * dump_softloc_debug : called on SOFT_LOCK_TIME time out after scu
- * 			interrupt to log data to logbuffer and emmc-panic code,
- * 			SOFT_LOCK_TIME needs to be < SCU warn to reset time
- * 			which is currently thats 15 sec.
+ *	interrupt to log data to logbuffer and emmc-panic code,
+ *	SOFT_LOCK_TIME needs to be < SCU warn to reset time
+ *	which is currently thats 15 sec.
  *
  * The soft lock works be taking a snapshot of kstat_cpu(i).cpustat.system at
  * the time of the warning interrupt for each cpu.  Then at SOFT_LOCK_TIME the
@@ -91,11 +92,13 @@ static bool disable_kernel_watchdog;
  * calls panic.
  *
  */
+#ifdef DEBUG
 static cputime64_t heartbeats[NR_CPUS];
 static cputime64_t beattime;
 #define SOFT_LOCK_TIME 10
 static void dump_softlock_debug(unsigned long data);
 DEFINE_TIMER(softlock_timer, dump_softlock_debug, 0, 0);
+#endif /* DEBUG */
 
 /**
  * Please note that we are using a config CONFIG_DISABLE_SCU_WATCHDOG
@@ -192,6 +195,7 @@ static void smp_dumpstack(void *info)
 
 static void dump_softlock_debug(unsigned long data)
 {
+#ifdef DEBUG
 	int i, reboot;
 	cputime64_t system[NR_CPUS], num_jifs;
 
@@ -216,6 +220,9 @@ static void dump_softlock_debug(unsigned long data)
 		panic_timeout = 10;
 		panic("Soft lock on CPUs\n");
 	}
+#else /* DEBUG */
+	return;
+#endif /* DEBUG */
 
 }
 
@@ -288,20 +295,24 @@ static void watchdog_interrupt_tasklet_body(unsigned long data)
 
 	pr_debug("Watchdog: interrupt tasklet body start\n");
 
-	if (!disable_kernel_watchdog) {
-		pr_debug("Watchdog: interrupt tasklet body disable clear\n");
-		if (!test_bit(0, &watchdog_device.driver_open)) {
-			/* if not yet open; keep alive here in kernel */
-			int_status = intel_scu_keepalive();
-			if (int_status) {
-				pr_debug("Watchdog timer: set do keepalive"
-					" from interrupt\n");
-			}
-		return;
-		}
-	} else {
+	if (disable_kernel_watchdog) {
 		pr_debug("Watchdog: interrupt tasklet body disable set\n");
 		/* disable the timer */
+		/* Set all thresholds to 0 to disable timeouts */
+		watchdog_device.soft_threshold = 0;
+		watchdog_device.threshold = 0;
+
+		/* send the threshold and soft_threshold via IPC */
+		int_status = watchdog_set_ipc(watchdog_device.soft_threshold,
+				   watchdog_device.threshold);
+
+		if (int_status != 0) {
+			/* Make sure the watchdog timer is stopped */
+			pr_warn("can't set ipc to disable at start\n");
+			intel_scu_stop();
+			return;
+		}
+
 		iowrite32(0x00000002, watchdog_device.timer_control_addr);
 		intel_scu_stop();
 		return;
@@ -310,12 +321,14 @@ static void watchdog_interrupt_tasklet_body(unsigned long data)
 	/* wake up read to send data to user (reminder for keep alive */
 	warning_flag = 1;
 
+#ifdef DEBUG
 	/*start timer for softlock detection */
 	beattime = jiffies;
 	for_each_possible_cpu(i) {
 		heartbeats[i] = kstat_cpu(i).cpustat.system;
 	}
 	mod_timer(&softlock_timer, jiffies + SOFT_LOCK_TIME * HZ);
+#endif /* DEBUG */
 
 	/* Wake up the daemon */
 	wake_up_interruptible(&read_wq);
@@ -399,6 +412,7 @@ static int intel_scu_set_heartbeat(u32 t)
 
 static int intel_scu_open(struct inode *inode, struct file *file)
 {
+	int result;
 
 	/* Set flag to indicate that watchdog device is open */
 	if (test_and_set_bit(0, &watchdog_device.driver_open))
@@ -407,6 +421,18 @@ static int intel_scu_open(struct inode *inode, struct file *file)
 	/* Check for reopen of driver. Reopens are not allowed */
 	if (watchdog_device.driver_closed)
 		return -EPERM;
+
+	/* Let shared OSNIB (sram) know we are open */
+	result = intel_scu_ipc_write_osnib(
+		&osnib_reset,
+		OSNIB_WRITE_SIZE,
+		OSNIB_WDOG_OFFSET,
+		OSNIB_WRITE_MASK);
+
+	if (result != 0) {
+		pr_warn("cant write OSNIB\n");
+		return -EINVAL;
+	}
 
 	return nonseekable_open(inode, file);
 }
@@ -566,9 +592,11 @@ static int intel_scu_notify_sys(struct notifier_block *this,
 			       unsigned long code,
 			       void *another_unused)
 {
-	if (code == SYS_DOWN || code == SYS_HALT)
-		/* Turn off the watchdog timer. */
-		intel_scu_stop();
+	if (code == SYS_DOWN || code == SYS_HALT) {
+		/* Don't do instant reset on close */
+		pr_debug("Watchdog timer - HALT or RESET notification\n");
+		force_reset = false;
+	}
 	return NOTIFY_DONE;
 }
 
@@ -686,20 +714,35 @@ static int __init intel_scu_watchdog_init(void)
 	tasklet_init(&watchdog_device.interrupt_tasklet,
 		watchdog_interrupt_tasklet_body, (unsigned long)0);
 
-	/* set and start timer */
-	if (!disable_kernel_watchdog) {
-		ret = intel_scu_set_heartbeat(timer_set);
-
-		if (ret)
-			pr_debug("cannot set watchdog during init\n");
-
-	} else {
-		iowrite32(0x00000002, watchdog_device.timer_control_addr);
-		intel_scu_stop();
-	}
-
+#ifdef DEBUG
 	init_timer(&softlock_timer);
+#endif /* DEBUG */
 
+	if (disable_kernel_watchdog) {
+		pr_debug("disabling the timer\n");
+
+		/* temporarily disable the timer */
+		iowrite32(0x00000002, watchdog_device.timer_control_addr);
+
+		/* Set all thresholds to 0 to disable timeouts */
+		watchdog_device.soft_threshold = 0;
+		watchdog_device.threshold = 0;
+
+		/* send the threshold and soft_threshold via IPC */
+		ret = watchdog_set_ipc(watchdog_device.soft_threshold,
+				   watchdog_device.threshold);
+
+		if (ret != 0) {
+			/* Make sure the watchdog timer is stopped */
+			pr_warn("can't set ipc to disable at start\n");
+			intel_scu_stop();
+			return ret;
+		}
+
+		/* Make sure timer is stopped */
+		intel_scu_stop();
+
+	}
 	return 0;
 
 /* error cleanup */
@@ -724,7 +767,9 @@ register_reboot_error:
 
 static void __exit intel_scu_watchdog_exit(void)
 {
+#ifdef DEBUG
 	del_timer_sync(&softlock_timer);
+#endif /* DEBUG */
 
 	misc_deregister(&watchdog_device.miscdev);
 	unregister_reboot_notifier(&watchdog_device.intel_scu_notifier);

@@ -39,6 +39,24 @@
 
 #define MAX_SOFT_TO_HARD_MARGIN (MAX_TIME-MIN_TIME_CYCLE)
 
+/**
+ * Offset in OSNIB for letting firmware know that are are up and running
+ * This is byte 7, which is offset 6
+ */
+#define OSNIB_WDOG_OFFSET 1
+
+/**
+ * The value to put into OSNOB to let the firmware know we are
+ * up and running
+ */
+#define OSNIB_WRITE_VALUE 0
+
+/* The number of bytes to write to OSNOB */
+#define OSNIB_WRITE_SIZE 1
+
+/* The mask for OSNOB */
+#define OSNIB_WRITE_MASK 0x02
+
 /* Ajustment to clock tick frequency to make timing come out right */
 #define FREQ_ADJUSTMENT 8
 
