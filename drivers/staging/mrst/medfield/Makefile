@@ -27,6 +27,9 @@ include_dirs := \
 ccflags-y += $(include_dirs)
 ccflags-y += $(ANDROID_TOOLCHAIN_FLAGS) -I$(INCDIR)/pvr/services4/system/intel_drm -DANDROID -D_linux_ -D__KERNEL__
 
+ifeq ($(pvrdbg),1)
+ccflags-y += -DPVRDEBUG
+endif
 ifeq ($(CONFIG_DRM_MDFLD),y)
 ccflags-y += -DMEDFIELD
 IS_SGX540=y
