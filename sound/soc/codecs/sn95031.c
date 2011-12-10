@@ -1025,8 +1025,9 @@ static int sn95031_voice_hw_free(struct snd_pcm_substream *substream,
 {
 	pr_debug("inside hw_free");
 	snd_soc_update_bits(dai->codec, SN95031_PCM1C3, BIT(0), 0);
-	/* PCM1 should be in short or long sync mode for Tx line
-		to be in Hi-Z state */
+	/* PCM1 should be in slave, short or long sync mode for
+		Tx line to be in Hi-Z state */
+	snd_soc_update_bits(dai->codec, SN95031_PCM1C3, BIT(7), 0);
 	snd_soc_write(dai->codec, SN95031_PCM1C2, 0x00);
 	return 0;
 }
