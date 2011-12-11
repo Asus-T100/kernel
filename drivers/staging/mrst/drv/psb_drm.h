@@ -234,14 +234,8 @@ struct psb_ttm_fence_rep {
 typedef struct drm_psb_cmdbuf_arg {
 	uint64_t buffer_list;	/* List of buffers to validate */
 	uint64_t clip_rects;	/* See i915 counterpart */
-	uint64_t scene_arg;
 	uint64_t fence_arg;
 
-	uint32_t ta_flags;
-
-	uint32_t ta_handle;	/* TA reg-value pairs */
-	uint32_t ta_offset;
-	uint32_t ta_size;
 
 	uint32_t oom_handle;
 	uint32_t oom_offset;
@@ -255,20 +249,10 @@ typedef struct drm_psb_cmdbuf_arg {
 	uint32_t reloc_offset;
 	uint32_t num_relocs;
 
-	int32_t damage;		/* Damage front buffer with cliprects */
 	/* Not implemented yet */
 	uint32_t fence_flags;
 	uint32_t engine;
 
-	/*
-	 * Feedback;
-	 */
-
-	uint32_t feedback_ops;
-	uint32_t feedback_handle;
-	uint32_t feedback_offset;
-	uint32_t feedback_breakpoints;
-	uint32_t feedback_size;
 } drm_psb_cmdbuf_arg_t;
 
 typedef struct drm_psb_pageflip_arg {
@@ -779,8 +763,9 @@ struct drm_psb_get_pipe_from_crtc_id_arg {
 #define DRM_PSB_DISP_INIT_HDMI_FLIP_CHAIN 1
 #define DRM_PSB_DISP_QUEUE_BUFFER 2
 #define DRM_PSB_DISP_DEQUEUE_BUFFER 3
-#define DRM_PSB_DISP_HDMI_FLIP_STOP 4
-#define DRM_PSB_DISP_HDMI_FLIP_START 5
+#define DRM_PSB_DISP_PLANEB_DISABLE  4
+#define DRM_PSB_DISP_PLANEB_ENABLE  5
+#define DRM_PSB_HDMI_OSPM_ISLAND_DOWN 6
 
 struct drm_psb_buffer_data {
 	void* h_buffer;

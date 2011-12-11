@@ -34,6 +34,7 @@
 
 #define SRAM_MSIC_VRINT_ADDR 0xFFFF7FCB
 static u8 *sram_vreg_addr = 0;
+unsigned char vrint_dat;
 /*
  *
  */
@@ -107,26 +108,26 @@ irqreturn_t msic_vreg_handler(int irq, void *dev_id)
 {
 	struct drm_device *dev = hdmi_priv ? hdmi_priv->dev : NULL;
 	struct drm_psb_private *dev_priv = NULL;
-	u8 data = 0;
+	vrint_dat = 0;
 
 	/* Need to add lock later.*/
 
 	/* Read VREG interrupt status register */
 	if (sram_vreg_addr)
-		data = readb(sram_vreg_addr);
+		vrint_dat = readb(sram_vreg_addr);
 	else
 		DRM_ERROR("%s: sram_vreg_addr = 0x%x.\n",
 				__func__, (u32) sram_vreg_addr);
 
 	if (dev)
 	{
-		PSB_DEBUG_ENTRY("data = 0x%x.\n", data);
+		PSB_DEBUG_ENTRY("vrint data = 0x%x.\n", vrint_dat);
 		dev_priv = psb_priv(dev);
 
 		/* handle HDMI HPD interrupts. */
-		if (data & HDMI_HPD_STATUS)
+		if (vrint_dat & (HDMI_HPD_STATUS | HDMI_OCP_STATUS))
 		{
-			DRM_INFO("%s: HPD interrupt. data = 0x%x.\n", __func__, data);
+			DRM_INFO("%s: HPD interrupt.vrint data = 0x%x.\n", __func__, vrint_dat);
 
 			if (dev_priv->um_start)
 				hpd_notify_um();

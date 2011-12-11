@@ -84,7 +84,7 @@
 #define DSI_DEVICE_READY				(0x1)
 #define DSI_POWER_STATE_ULPS_ENTER			(0x2 << 1)
 #define DSI_POWER_STATE_ULPS_EXIT			(0x1 << 1)
-#define DSI_POWER_STATE_ULPS_OFFSET			(0x1)
+#define DSI_POWER_STATE_ULPS_MASK			(0x3 << 1)
 
 
 #define DSI_ONE_DATA_LANE				(0x1)
@@ -395,7 +395,7 @@ struct mdfld_dsi_config {
 	struct mdfld_dsi_hw_registers regs;
 
 	/*DSI hw context*/
-	spinlock_t context_lock;
+	struct mutex context_lock;
 	struct mdfld_dsi_hw_context dsi_hw_context;
 
 	int pipe;

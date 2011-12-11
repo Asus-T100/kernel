@@ -208,7 +208,7 @@ static int mdfld_dsi_pr2_detect(struct mdfld_dsi_config *dsi_config,
 	if (pipe == 0) {
 		/*reconfig lane configuration*/
 		dsi_config->lane_count = 3;
-		dsi_config->lane_config = MDFLD_DSI_DATA_LANE_4_0;
+		dsi_config->lane_config = MDFLD_DSI_DATA_LANE_3_1;
 		dsi_config->dsi_hw_context.pll_bypass_mode = 1;
 		/* This is for 400 mhz.  Set it to 0 for 800mhz */
 		dsi_config->dsi_hw_context.cck_div = 1;
@@ -261,7 +261,6 @@ static int mdfld_dsi_pr2_power_on(struct mdfld_dsi_config *dsi_config)
 {
 	struct mdfld_dsi_pkg_sender *sender =
 		mdfld_dsi_get_pkg_sender(dsi_config);
-	unsigned long wait_timeout;
 	int err;
 
 	PSB_DEBUG_ENTRY("Turn on video mode TMD panel...\n");
@@ -272,11 +271,10 @@ static int mdfld_dsi_pr2_power_on(struct mdfld_dsi_config *dsi_config)
 	}
 	mdfld_dsi_send_gen_long_hs(sender, pr2_mcs_protect_off, 1, 0);
 
-	/*FIXME: change power state*/
+	/*change power state*/
 	mdfld_dsi_send_mcs_long_hs(sender, pr2_exit_sleep_mode, 1, 0);
-	wait_timeout = jiffies + (120 * HZ / 1000);
-	while (time_before_eq(jiffies, wait_timeout))
-		cpu_relax();
+
+	msleep(120);
 
 	/*enable PWMON*/
 	pr2_backlight_control_2[0] |= BIT8;
@@ -285,15 +283,14 @@ static int mdfld_dsi_pr2_power_on(struct mdfld_dsi_config *dsi_config)
 	/*set display on*/
 	mdfld_dsi_send_mcs_long_hs(sender, pr2_set_display_on, 1, 0);
 
-	wait_timeout = jiffies + (21 * HZ / 1000);
-	while (time_before_eq(jiffies, wait_timeout))
-		cpu_relax();
+	msleep(21);
 
 	/*Enable BLON , CABC*/
-	pr2_backlight_control_1[0] |= BIT8;
-	mdfld_dsi_send_gen_long_hs(sender, pr2_backlight_control_1, 6, 0);
-	PSB_DEBUG_ENTRY("enable pr2 cabc\n");
-	drm_psb_enable_pr2_cabc = 1;
+	if (drm_psb_enable_pr2_cabc) {
+		pr2_backlight_control_1[0] |= BIT8;
+		mdfld_dsi_send_gen_long_hs(sender, pr2_backlight_control_1, 6, 0);
+		printk(KERN_ALERT "enable pr2 cabc\n");
+	}
 
 	/*send TURN_ON packet*/
 	err = mdfld_dsi_send_dpi_spk_pkg_hs(sender,
@@ -310,7 +307,6 @@ static int mdfld_dsi_pr2_power_off(struct mdfld_dsi_config *dsi_config)
 {
 	struct mdfld_dsi_pkg_sender *sender =
 		mdfld_dsi_get_pkg_sender(dsi_config);
-	unsigned long wait_timeout;
 	int err;
 
 	PSB_DEBUG_ENTRY("Turn off video mode TMD panel...\n");
@@ -330,27 +326,22 @@ static int mdfld_dsi_pr2_power_off(struct mdfld_dsi_config *dsi_config)
 
 	mdfld_dsi_send_gen_long_hs(sender, pr2_mcs_protect_off, 1, 0);
 
-	/*FIXME: change power state here*/
+	/*change power state here*/
 	mdfld_dsi_send_mcs_long_hs(sender, pr2_set_display_off, 1, 0);
 
 	/*disable BLCON, disable CABC*/
 	pr2_backlight_control_1[0] &= (~BIT8);
 	mdfld_dsi_send_gen_long_hs(sender, pr2_backlight_control_1, 6, 0);
-	PSB_DEBUG_ENTRY("disable pr2 cabc\n");
-	drm_psb_enable_pr2_cabc = 0;
+	printk(KERN_ALERT "disable pr2 cabc\n");
 
-	wait_timeout = jiffies + (21 * HZ / 1000);
-	while (time_before_eq(jiffies, wait_timeout))
-		cpu_relax();
+	msleep(21);
 
 	mdfld_dsi_send_mcs_long_hs(sender, pr2_enter_sleep_mode, 1, 0);
 	/*disable PWMON*/
 	pr2_backlight_control_2[0] &= (~BIT8);
 	mdfld_dsi_send_gen_long_hs(sender, pr2_backlight_control_2, 2, 0);
 
-	wait_timeout = jiffies + (120 * HZ / 1000);
-	while (time_before_eq(jiffies, wait_timeout))
-		cpu_relax();
+	msleep(120);
 
 	/*put panel into deep standby mode*/
 	mdfld_dsi_send_gen_long_hs(sender, pr2_enter_low_power_mode, 1, 0);
@@ -365,7 +356,6 @@ static int mdfld_dsi_pr2_set_brightness(struct mdfld_dsi_config *dsi_config,
 	struct mdfld_dsi_pkg_sender *sender =
 		mdfld_dsi_get_pkg_sender(dsi_config);
 	int duty_val = 0;
-	static int cabc_enable = 1;
 
 	PSB_DEBUG_ENTRY("Set brightness level %d...\n", level);
 
@@ -382,20 +372,6 @@ static int mdfld_dsi_pr2_set_brightness(struct mdfld_dsi_config *dsi_config,
 	pr2_backlight_control_2[0] =  (0x0000001b9 | (duty_val << 16));
 
 	mdfld_dsi_send_gen_long_hs(sender, pr2_backlight_control_2, 2, 0);
-
-	if (drm_psb_enable_pr2_cabc != cabc_enable) {
-
-		if (drm_psb_enable_pr2_cabc == 1) {
-			pr2_backlight_control_1[0]  = 0x0f0f01b8;
-			PSB_DEBUG_ENTRY("Enable pr2 cabc.\n");
-		} else if (drm_psb_enable_pr2_cabc == 0) {
-			pr2_backlight_control_1[0]  = 0x0f0f00b8;
-			PSB_DEBUG_ENTRY("Disable pr2 cabc.\n");
-		}
-		mdfld_dsi_send_gen_long_hs(sender,
-					pr2_backlight_control_1, 6, 0);
-		cabc_enable = drm_psb_enable_pr2_cabc;
-	}
 
 	mdfld_dsi_send_gen_long_hs(sender, pr2_mcs_protect_on, 1, 0);
 
@@ -521,7 +497,9 @@ struct drm_display_mode *pr2_vid_get_config_mode(struct drm_device *dev)
 		mode->vsync_start = 1031;
 		mode->vsync_end = 1033;
 		mode->vtotal = 1035;
-		mode->clock = 16500;
+		mode->vrefresh = 60;
+		mode->clock = mode->vrefresh * (mode->vtotal + 1) *
+				(mode->htotal + 1) / 1000;
 	}
 
 	drm_mode_set_name(mode);

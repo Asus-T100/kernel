@@ -97,6 +97,7 @@ int drm_psb_te_timer_delay = (DRM_HZ / 40);
 static int PanelID = GCT_DETECT;
 char HDMI_EDID[HDMI_MONITOR_NAME_LENGTH];
 int hdmi_state;
+extern u32 DISP_PLANEB_STATUS;
 
 static int psb_probe(struct pci_dev *pdev, const struct pci_device_id *ent);
 
@@ -1103,19 +1104,32 @@ void hdmi_do_hotplug_wq(struct work_struct *work)
 #ifdef CONFIG_X86_MDFLD
 	intel_scu_ipc_iowrite8(MSIC_VCC330CNT, VCC330_ON);
 
+	if (vrint_dat & HDMI_OCP_STATUS) {
+		/* when there occurs overcurrent in msic hdmi hdp,
+		need to reset VHDMIEN by clearing to 0 then set to 1*/
+		intel_scu_ipc_iowrite8(MSIC_VHDMICNT, VHDMI_OFF);
+
+		/* MSIC documentation requires that there be a 500us delay
+		after enabling VCC330 before you can enable VHDMI */
+		usleep_range(500, 1000);
+		intel_scu_ipc_iowrite8(MSIC_VHDMICNT, VHDMI_ON | VHDMI_DB_30MS);
+	}
+
 	intel_scu_ipc_ioread8(MSIC_HDMI_STATUS, &data);
 
 	if (data & HPD_SIGNAL_STATUS) {
-		PSB_DEBUG_ENTRY("hdmi_do_hotplug_wq: HDMI plugged in\n");
-		hdmi_state = 1;
+		PSB_DEBUG_ENTRY( "hdmi_do_hotplug_wq: HDMI plugged in\n");
+		dev_priv->bhdmiconnected = true;
 		if (dev_priv->mdfld_had_event_callbacks)
 			(*dev_priv->mdfld_had_event_callbacks)
 				(HAD_EVENT_HOT_PLUG, dev_priv->had_pvt_data);
 
 		drm_sysfs_hotplug_event(dev_priv->dev);
 	} else {
-		PSB_DEBUG_ENTRY("hdmi_do_hotplug_wq: HDMI unplugged\n");
+		PSB_DEBUG_ENTRY( "hdmi_do_hotplug_wq: HDMI unplugged\n");
+		dev_priv->bhdmiconnected = false;
 		hdmi_state = 0;
+
 		drm_sysfs_hotplug_event(dev_priv->dev);
 
 		if (dev_priv->mdfld_had_event_callbacks)
@@ -1433,6 +1447,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	bdev = &dev_priv->bdev;
 
 	hdmi_state = 0;
+	dev_priv->bhdmiconnected = false;
 
 #ifdef CONFIG_MDFD_VIDEO_DECODE
 	ret = psb_ttm_global_init(dev_priv);
@@ -1904,8 +1919,10 @@ static int psb_flip_hdmi(struct drm_device *dev, uint32_t pipe)
 	unsigned long irqflags;
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *) dev->dev_private;
-	if (!dev_priv->flip_start || dev_priv->head_fliped)
+	if (dev_priv->head_fliped) {
+		printk(KERN_INFO "HDMI flipped already!");
 		return 0;
+	}
 	if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, false)) {
 		switch (pipe){
 		case 1:
@@ -1938,6 +1955,9 @@ static int psb_disp_ioctl(struct drm_device *dev, void *data,
 	unsigned long irqflags;
 	int ret = 0;
 	unsigned int i = 0;
+	int dspcntr_reg = DSPBCNTR;
+	int dspbase_reg = MRST_DSPBBASE;
+	u32 temp;
 	/*DRM_COPY_FROM_USER(&dp_ctrl, data, sizeof(struct drm_psb_disp_ctrl));*/
 	/*DRM_INFO("disp cmd:%d \n",dp_ctrl->cmd);*/
 	if (dp_ctrl->cmd == DRM_PSB_DISP_INIT_HDMI_FLIP_CHAIN) {
@@ -1958,27 +1978,49 @@ static int psb_disp_ioctl(struct drm_device *dev, void *data,
 		}
 		dev_priv->flip_valid_size = flip_data->size;
 		dev_priv->flip_inited = 1;
-	}
-	else if (dp_ctrl->cmd == DRM_PSB_DISP_QUEUE_BUFFER) {
+	} else if (dp_ctrl->cmd == DRM_PSB_DISP_QUEUE_BUFFER) {
 		spin_lock_irqsave(&dev_priv->flip_lock, irqflags);
 		dev_priv->flip_head = (unsigned int)dp_ctrl->u.buf_data.h_buffer;
 		dev_priv->head_fliped = 0;
-        /*DRM_INFO("head:%d \n",dev_priv->flip_head);*/
 		spin_unlock_irqrestore(&dev_priv->flip_lock, irqflags);
-        psb_flip_hdmi(dev, 1);
-	}
-	else if (dp_ctrl->cmd == DRM_PSB_DISP_DEQUEUE_BUFFER) {
+		psb_flip_hdmi(dev, 1);
+	} else if (dp_ctrl->cmd == DRM_PSB_DISP_DEQUEUE_BUFFER) {
 		i = (dev_priv->flip_tail + 1) % dev_priv->flip_valid_size;
 		if (i != dev_priv->flip_head)
 			dev_priv->flip_tail = i;
 		dp_ctrl->u.buf_data.h_buffer = (void *)dev_priv->flip_tail;
-        /*DRM_INFO("tail:%d \n",dev_priv->flip_tail);*/
-	}
-	else if (dp_ctrl->cmd == DRM_PSB_DISP_HDMI_FLIP_STOP) {
-		dev_priv->flip_start = 0;
-	}
-	else if (dp_ctrl->cmd == DRM_PSB_DISP_HDMI_FLIP_START) {
-		dev_priv->flip_start = 1;
+	} else if (dp_ctrl->cmd == DRM_PSB_DISP_PLANEB_DISABLE) {
+                if (DISP_PLANEB_STATUS == DISPLAY_PLANE_DISABLE)
+                        ret = -1;
+                else {
+                        /*Use Disable pipeB plane to turn off HDMI screen*/
+                        temp = REG_READ(dspcntr_reg);
+                        if ((temp & DISPLAY_PLANE_ENABLE) != 0) {
+                                REG_WRITE(dspcntr_reg,
+                                                temp & ~DISPLAY_PLANE_ENABLE);
+				/* Flush the plane changes */
+				REG_WRITE(dspbase_reg, REG_READ(dspbase_reg));
+                        }
+                }
+	} else if (dp_ctrl->cmd == DRM_PSB_DISP_PLANEB_ENABLE) {
+                if (DISP_PLANEB_STATUS == DISPLAY_PLANE_DISABLE)
+                        ret = -1;
+                else {
+                        /*Restore pipe B plane to turn on HDMI screen*/
+                        temp = REG_READ(dspcntr_reg);
+                        if ((temp & DISPLAY_PLANE_ENABLE) == 0) {
+                                REG_WRITE(dspcntr_reg,
+                                                temp | DISPLAY_PLANE_ENABLE);
+				/* Flush the plane changes */
+				REG_WRITE(dspbase_reg, REG_READ(dspbase_reg));
+                        }
+                }
+	} else if (dp_ctrl->cmd == DRM_PSB_HDMI_OSPM_ISLAND_DOWN) {
+		/*Set power  state  island down when hdmi disconnected */
+		 if (pmu_nc_set_power_state(OSPM_DISPLAY_B_ISLAND,
+				OSPM_ISLAND_DOWN, OSPM_REG_TYPE))
+				BUG();
+		 dev_priv->panel_desc &= ~DISPLAY_B;
 	}
 exit:
 	return ret;

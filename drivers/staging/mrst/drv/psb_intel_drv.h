@@ -186,6 +186,9 @@ struct psb_intel_crtc {
 	/*crtc mode setting flags*/
 	u32 mode_flags;
 
+	/* crtc scaling type */
+	u32 scaling_type;
+
 /*FIXME: Workaround to avoid MRST block.*/
 #ifndef CONFIG_X86_MDFLD
 	/* Saved Crtc HW states */

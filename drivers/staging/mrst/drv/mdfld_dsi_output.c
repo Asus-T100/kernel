@@ -345,7 +345,7 @@ void mdfld_dsi_brightness_control (struct drm_device *dev, int pipe, int level)
 					OSPM_UHB_ONLY_IF_ON))
 		return;
 
-	spin_lock(&dsi_config->context_lock);
+	mutex_lock(&dsi_config->context_lock);
 
 	if (!dsi_config->dsi_hw_context.panel_on)
 		goto set_brightness_out;
@@ -354,7 +354,7 @@ void mdfld_dsi_brightness_control (struct drm_device *dev, int pipe, int level)
 		DRM_ERROR("Failed to set panel brightness\n");
 
 set_brightness_out:
-	spin_unlock(&dsi_config->context_lock);
+	mutex_unlock(&dsi_config->context_lock);
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 #endif
 }
@@ -1037,7 +1037,7 @@ int mdfld_dsi_output_init(struct drm_device *dev,
 	mdfld_dsi_regs_init(dsi_config, pipe);
 
 	/*init DSI HW context lock*/
-	spin_lock_init(&dsi_config->context_lock);
+	mutex_init(&dsi_config->context_lock);
 	
 	dsi_connector->private = dsi_config;
 	

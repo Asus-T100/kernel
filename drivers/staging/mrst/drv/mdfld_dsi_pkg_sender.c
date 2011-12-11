@@ -1441,6 +1441,11 @@ int mdfld_dsi_send_dpi_spk_pkg_lp(struct mdfld_dsi_pkg_sender *sender,
 				MDFLD_DSI_LP_TRANSMISSION);
 }
 
+int mdfld_dsi_wait_for_fifos_empty(struct mdfld_dsi_pkg_sender *sender)
+{
+	return wait_for_all_fifos_empty(sender);
+}
+
 int mdfld_dsi_pkg_sender_init(struct mdfld_dsi_connector * dsi_connector, int pipe)
 {
 	int ret;

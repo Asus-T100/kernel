@@ -30,6 +30,7 @@
 #include <drm/drm_edid.h>
 #include "psb_intel_drv.h"
 #include "psb_drv.h"
+#include "psb_irq.h"
 #include "psb_intel_reg.h"
 #include "psb_intel_hdmi_reg.h"
 #include "psb_intel_hdmi_edid.h"
@@ -42,6 +43,8 @@
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,34))
 #include <asm/intel_scu_ipc.h>
 #endif
+
+u32 DISP_PLANEB_STATUS = ~DISPLAY_PLANE_ENABLE;
 
 /* FIXME_MDFLD HDMI EDID supports */
 char EDID_Samsung[EDID_LENGTH + HDMI_CEA_EDID_BLOCK_SIZE] =
@@ -148,6 +151,7 @@ char EDID_Toshiba_Regza[EDID_LENGTH + HDMI_CEA_EDID_BLOCK_SIZE] =
 	0x43, 0x00, 0x13, 0x8e, 0x21, 0x00, 0x00, 0x98, 0x01, 0x1d, 0x80, 0x18, 0x71, 0x1c, 0x16, 0x20,
 	0x58, 0x2c, 0x25, 0x00, 0xc4, 0x8e, 0x21, 0x00, 0x00, 0x9e, 0x00, 0x00, 0x00, 0x00, 0x00, 0xb3
 };
+
 static struct hdmi_edid_info mdfld_hdmi_edid[] = {
 	{ HDMI_EDID_INFO("SAMSUNG", EDID_Samsung) },
 	{ HDMI_EDID_INFO("SAMSUNG_2493HM", EDID_Samsung_2493HM) },
@@ -156,116 +160,317 @@ static struct hdmi_edid_info mdfld_hdmi_edid[] = {
 	{ HDMI_EDID_INFO("TOSHIBA_32RV525RZ", EDID_Toshiba_32RV525RZ) },
 	{ HDMI_EDID_INFO("TOSHIBA_REGZA", EDID_Toshiba_Regza) },
 };
-/*video code according CEA-861-E.pdf*/
-static struct hdmi_video_code mdfld_hdmi_video_code[] = {
-	/*640*480p@60hz*/
-	{1, 640, 480, 60, 0},
-	/*720*480p@60hz*/
-	{2, 720, 480, 60, 0},
-	/*1280*720p@60hz*/
-	{4, 1280, 720, 60, 0},
-	/*1920*1080i@60*/
-	{5, 1920, 1080, 60, 1},
-	/*1920*1080p@60hz*/
-	{16, 1920, 1080, 60, 0},
-	/*1920*1080p@30hz*/
-	{34, 1920, 1080, 30, 0},
-	/*1920*1080i@50hz*/
-	{20, 1920, 1080, 50, 1},
+/*
+*VIC for AVI InfoFrame Data Byte 4 and CEA Short Descriptors
+*/
+struct hdmi_video_format_timing mdfld_hdmi_video_format_timing[] = {
+	/*NULL*/
+	{0, 0, 0, 60, 0, 1, 1, 0},
+	/*640*480p@60hz 4:3*/
+	{1, 640, 480, 60, 0, 0, 0, HDMI_AVI_PAR_4_3},
+	/*720*480p@60hz 4:3*/
+	{2, 720, 480, 60, 0, 0, 0, HDMI_AVI_PAR_4_3},
+	/*720*480p@60hz 16:9*/
+	{3, 720, 480, 60, 0, 0, 0, HDMI_AVI_PAR_16_9},
+	/*1280*720p@60hz 16:9*/
+	{4, 1280, 720, 60, 0, 1, 1, HDMI_AVI_PAR_16_9},
+	/*1920*1080i@60hz 16:9*/
+	{5, 1920, 1080, 60, 1, 1, 1, HDMI_AVI_PAR_16_9},
+	/*720*480i@60hz 4:3*/
+	{6, 720, 480, 60, 1, 0, 0, HDMI_AVI_PAR_4_3},
+	/*720*480i@60hz 16:9*/
+	{7, 720, 480, 60, 1, 0, 0, HDMI_AVI_PAR_16_9},
+	/*720*240p@60hz 4:3*/
+	{8, 720, 240, 60, 0, 0, 0, HDMI_AVI_PAR_4_3},
+	/*720*240p@60hz 16:9*/
+	{9, 720, 240, 60, 0, 0, 0, HDMI_AVI_PAR_16_9},
+	/*2880*480i@60hz 4:3*/
+	{10, 2880, 480, 60, 1, 0, 0, HDMI_AVI_PAR_4_3},
+	/*2880*480i@60hz 16:9*/
+	{11, 2880, 480, 60, 1, 0, 0, HDMI_AVI_PAR_16_9},
+	/*2880*240p@60hz 4:3*/
+	{12, 2880, 240, 60, 0, 0, 0, HDMI_AVI_PAR_4_3},
+	/*2880*240p@60hz 16:9*/
+	{13, 2880, 240, 60, 0, 0, 0, HDMI_AVI_PAR_16_9},
+	/*1440*480p@60hz 4:3*/
+	{14, 1440, 480, 60, 0, 0, 0, HDMI_AVI_PAR_4_3},
+	/*1440*480p@60hz 16:9*/
+	{15, 1440, 480, 60, 0, 0, 0, HDMI_AVI_PAR_16_9},
+	/*1920*1080p@60hz 16:9*/
+	{16, 1920, 1080, 60, 0, 1, 1, HDMI_AVI_PAR_16_9},
+	/*720*5760p@50hz 4:3*/
+	{17, 720, 576, 50, 0, 0, 0, HDMI_AVI_PAR_4_3},
+	/*720*5760p@50hz 16:9*/
+	{18, 720, 576, 50, 0, 0, 0, HDMI_AVI_PAR_16_9},
+	/*1280*720p@50hz 16:9*/
+	{19, 1280, 720, 50, 0, 1, 1, HDMI_AVI_PAR_16_9},
+	/*1920*1080i@50hz 16:9*/
+	{20, 1920, 1080, 50, 1, 1, 1, HDMI_AVI_PAR_16_9},
+	/*720*576i@50hz 4:3*/
+	{21, 720, 576, 50, 1, 0, 0, HDMI_AVI_PAR_4_3},
+	/*720*576i@50hz 16:9*/
+	{22, 720, 576, 50, 1, 0, 0, HDMI_AVI_PAR_16_9},
+	/*720*288p@50hz 4:3*/
+	{23, 720, 288, 50, 0, 0, 0, HDMI_AVI_PAR_4_3},
+	/*720*288p@50hz 16:9*/
+	{24, 720, 288, 50, 0, 0, 0, HDMI_AVI_PAR_16_9},
+	/*2880*576i@50hz 4:3*/
+	{25, 2880, 576, 50, 1, 0, 0, HDMI_AVI_PAR_4_3},
+	/*2880*576i@50hz 16:9*/
+	{26, 2880, 576, 50, 1, 0, 0, HDMI_AVI_PAR_16_9},
+	/*2880*288p@50hz 4:3*/
+	{27, 2880, 288, 50, 0, 0, 0, HDMI_AVI_PAR_4_3},
+	/*2880*288p@50hz 16:9*/
+	{28, 2880, 288, 50, 0, 0, 0, HDMI_AVI_PAR_16_9},
+	/*1440*576p@50hz 4:3*/
+	{29, 1440, 576, 50, 0, 0, 0, HDMI_AVI_PAR_4_3},
+	/*1440*576p@50hz 16:9*/
+	{30, 1440, 576, 50, 0, 0, 0, HDMI_AVI_PAR_16_9},
+	/*1920*1080p@50hz 16:9 */
+	{31, 1920, 1080, 50, 0, 1, 1, HDMI_AVI_PAR_16_9},
+	/*1920*1080p@24hz 16:9 */
+	{32, 1920, 1080, 24, 0, 1, 1, HDMI_AVI_PAR_16_9},
+	/*1920*1080p@25hz 16:9 */
+	{33, 1920, 1080, 25, 0, 1, 1, HDMI_AVI_PAR_16_9},
+	/*1920*1080p@30hz 16:9 */
+	{34, 1920, 1080, 30, 0, 1, 1, HDMI_AVI_PAR_16_9},
 };
-static int _get_hdmi_video_code(struct drm_display_mode *mode)
+
+static int mdfld_hdmi_get_cached_edid_block(struct drm_connector *connector,
+		uint32_t num_block, uint8_t *edid_block, uint32_t size);
+
+static int mdfld_hdmi_timing_get_vic(struct drm_display_mode *mode)
 {
-	/*default set to 1920*1080p@60hz*/
-	int video_code = 16;
 	int i = 0;
-	u32 video_code_count =
-		sizeof(mdfld_hdmi_video_code)/sizeof(struct hdmi_video_code);
-	bool bInterlace = false;
-	struct hdmi_video_code video_code_info =  {0};
+	int vic = 0;
+	u32 video_code_count = sizeof(mdfld_hdmi_video_format_timing) /
+		sizeof(struct hdmi_video_format_timing);
+	struct hdmi_video_format_timing vft_table_entry = {0};
 
 	PSB_DEBUG_ENTRY("%s\n", __func__);
 
-	bInterlace = mode->flags & DRM_MODE_FLAG_INTERLACE;
 	/*find video code for this mode*/
 	for (i = 0; i < video_code_count; i++) {
-		video_code_info = mdfld_hdmi_video_code[i];
-		if (mode->hdisplay == video_code_info.hdisplay &&
-		    mode->vdisplay == video_code_info.vdisplay &&
-			mode->vrefresh == video_code_info.refresh &&
-			bInterlace == video_code_info.bInterlace){
-			video_code = video_code_info.video_code;
+		vft_table_entry = mdfld_hdmi_video_format_timing[i];
+
+		if (mode->hdisplay == vft_table_entry.hdisplay &&
+				mode->vdisplay == vft_table_entry.vdisplay &&
+				mode->vrefresh == vft_table_entry.refresh &&
+				((mode->flags & DRM_MODE_FLAG_INTERLACE) >> 4)
+				== vft_table_entry.bInterlace) {
+			vic = vft_table_entry.video_code;
 			PSB_DEBUG_ENTRY(
-				"find hdmi mode video code %d\n", video_code);
+			"find hdmi mode video code= %d hpolar=%d vpolar= %d\n",
+					vft_table_entry.video_code,
+					vft_table_entry.hpolarity,
+					vft_table_entry.vpolarity);
 			break;
 		}
 	}
-	if (i == video_code_count)
+
+	if (i == video_code_count) {
 		PSB_DEBUG_ENTRY(
-		"no find !please add this mode into video code array\n.");
-	return video_code;
+		"Not supported HDMI mode: width= %d height = %d, vrefresh %d\n.",
+			mode->hdisplay, mode->vdisplay, mode->vrefresh);
+	}
+
+	return vic;
 }
-int mdfld_hdmi_set_avi_information(struct drm_device *dev,
-					struct drm_display_mode *mode)
+
+static int mdfld_hdmi_get_aspect_ratio(int h_active, int v_active)
 {
-	struct _if_header avi_if_header;
-	u8  checksum = 0;
+	unsigned char aspect_ratio = 0xFF;
+	if (!v_active)
+		return aspect_ratio;
+
+	if ((h_active * 10) / v_active == 16 * 10 / 10)
+		/* 16:10 aspect ratio for EDID 1.3 */
+		aspect_ratio = EDID_STD_ASPECT_RATIO_16_10;
+	else if ((h_active * 10) / v_active == 4 * 10 / 3)
+		/* 4:3 aspect ratio */
+		aspect_ratio = EDID_STD_ASPECT_RATIO_4_3;
+	else if ((h_active * 10) / v_active ==  5 * 10 / 4)
+		/* 5:4 aspect ratio*/
+		aspect_ratio = EDID_STD_ASPECT_RATIO_5_4;
+	else if ((h_active * 10) / v_active == 16 * 10 / 9)
+		/* 16:9 aspect ratio*/
+		aspect_ratio = EDID_STD_ASPECT_RATIO_16_9;
+	else if (v_active == h_active)
+		/*1:1 aspect ratio for EDID prior to EDID 1.3*/
+		aspect_ratio = EDID_STD_ASPECT_RATIO_16_10;
+
+	PSB_DEBUG_ENTRY("%s fb_width= %d fb_height= %d aspect_ratio %d\n",
+			 __func__, h_active, v_active, aspect_ratio);
+
+	return aspect_ratio;
+}
+
+static uint8_t mdfld_hdmi_calc_hbuf_csum(uint8_t *data, uint8_t size)
+{
+	uint8_t csum = 0;
+	int i;
+
+	for (i = 0; i < size; i++)
+		csum += data[i];
+
+	return 0x100 - csum;
+}
+
+static int mdfld_hdmi_set_avi_infoframe(struct drm_device *dev,
+	struct drm_connector *connector, struct drm_display_mode *mode)
+{
 	u32 buf_size = 0;
 	u32 viddipctl_val = 0;
 	int i = 0;
+	int picture_aspect_ratio = 0xFF, active_aspect_ratio = 0xFF;
+	char *edid_block = connector->edid_blob_ptr->data;
+	baseedid_1_4_t *base_edid_block = NULL;
+	ce_edid_t *cea_edid_block = NULL;
+	int vic = 0;
 	/*initialization avi_infoframe*/
+	avi_if_t avi_if = {0};
+	/*
 	union _avi_if avi_if = { {
-					0x82, 0x02, 0x0d, 0x00, 0x10, 0x18,
-					0x00, 0x04, 0x00, 0x00, 0x00, 0x00,
-					0x00, 0x00, 0x00, 0x00, 0x00
-						} };
+			0x82, 0x02, 0x0d, 0x00, 0x00, 0x10, 0x18,
+			0x00, 0x04, 0x00, 0x00, 0x00, 0x00,
+			0x00, 0x00, 0x00, 0x00, 0x00
+	} };
+	*/
 	u32 *p_vsif = (u32 *)&avi_if;
 
 	PSB_DEBUG_ENTRY("%s\n", __func__);
+	/*get edid infomation*/
+	cea_edid_block = (ce_edid_t *)(edid_block + EDID_BLOCK_SIZE);
+	base_edid_block = (baseedid_1_4_t *)edid_block;
 
-	avi_if_header.type = HDMI_AVI_TYPE;
-	avi_if_header.version = HDMI_AVI_VERSION2;
-	avi_if_header.length = HDMI_AVI_LENGTH;
-	avi_if_header.chksum = 0;
+	/*set header information*/
+	avi_if.avi_info.avi_if_header.type = HDMI_AVI_TYPE;
+	avi_if.avi_info.avi_if_header.version = HDMI_AVI_VERSION2;
+	avi_if.avi_info.avi_if_header.length =
+			 HDMI_AVI_LENGTH - HDMI_AVI_RESERVED_LENGTH - 1;
+	avi_if.avi_info.avi_if_header.ecc = 0;
+	avi_if.avi_info.chksum = 0;
 
+	/* Data Byte 1 */
 	avi_if.avi_info.byte1_bits.scan_info = HDMI_AVI_SCAN_NODATA;
 	avi_if.avi_info.byte1_bits.bar_info = HDMI_AVI_BAR_INVALID;
 	avi_if.avi_info.byte1_bits.format = HDMI_AVI_AFI_VALID;
 	avi_if.avi_info.byte1_bits.enc_mode = HDMI_AVI_RGB_MODE;
-	avi_if.avi_info.byte2_bits.afar = HDMI_AVI_AFAR_SAME;
-	avi_if.avi_info.byte2_bits.par =  HDMI_AVI_PAR_NODATA;
-	avi_if.avi_info.byte2_bits.colorimetry = HDMI_AVI_COLOR_NODATA;
+	if (cea_edid_block) {
+		if (cea_edid_block->ucCapabilty & BIT7)
+			avi_if.avi_info.byte1_bits.scan_info =
+				 HDMI_AVI_SCAN_UNDERSCAN;
+		/* if set YCbCr, should prepare YUV buffer
+		if (cea_edid_block->ucCapabilty & BIT5)
+			avi_if.avi_info.byte1_bits.enc_mode =
+				 HDMI_AVI_YCRCB444_MODE;
+		else if (cea_edid_block->ucCapabilty & BIT4)
+			avi_if.avi_info.byte1_bits.enc_mode =
+				 HDMI_AVI_YCRCB422_MODE;
+		*/
+	}
+	avi_if.avi_info.byte1_bits.b1rsvd = 0;
 
+	/* Data Byte 2
+	* Set aspect ratio
+	*/
+	avi_if.avi_info.byte2_bits.afar = HDMI_AVI_AFAR_SAME;
+	avi_if.avi_info.byte2_bits.par = HDMI_AVI_PAR_NODATA;
+
+	if (mode->width_mm && mode->height_mm) {
+		picture_aspect_ratio = mdfld_hdmi_get_aspect_ratio(
+			mode->width_mm,	mode->height_mm);
+		PSB_DEBUG_ENTRY("PAR caculate by width_mm.\n");
+	} else if (base_edid_block->ucMaxHIS &&
+			 base_edid_block->ucMaxVIS) {
+		picture_aspect_ratio = mdfld_hdmi_get_aspect_ratio(
+			base_edid_block->ucMaxHIS,
+			base_edid_block->ucMaxVIS);
+		PSB_DEBUG_ENTRY("PAR caculate by ucMaxHIS.\n");
+	} else {
+		picture_aspect_ratio = mdfld_hdmi_get_aspect_ratio(
+			mode->hdisplay, mode->vdisplay);
+		PSB_DEBUG_ENTRY("PAR caculate by hdisplay.\n");
+	}
+	if (picture_aspect_ratio != 0xFF) {
+		switch (picture_aspect_ratio) {
+		case EDID_STD_ASPECT_RATIO_4_3:
+			avi_if.avi_info.byte2_bits.par =
+				HDMI_AVI_PAR_4_3;
+			PSB_DEBUG_ENTRY("picture aspect ratio 4:3\n");
+			break;
+		case EDID_STD_ASPECT_RATIO_16_9:
+			avi_if.avi_info.byte2_bits.par =
+				HDMI_AVI_PAR_16_9;
+			PSB_DEBUG_ENTRY("picture aspect ratio 16:9\n");
+			break;
+		default:
+			avi_if.avi_info.byte2_bits.par =
+				HDMI_AVI_PAR_NODATA;
+			PSB_DEBUG_ENTRY("picture aspect ratio no data\n");
+			break;
+		}
+	} else
+		PSB_DEBUG_ENTRY("picture aspect ratio no data\n");
+
+	avi_if.avi_info.byte2_bits.colorimetry = HDMI_AVI_COLOR_NODATA;
+	if (avi_if.avi_info.byte1_bits.enc_mode != HDMI_AVI_RGB_MODE) {
+		if (mode->hdisplay <= 720)
+			avi_if.avi_info.byte2_bits.colorimetry =
+				HDMI_AVI_COLOR_ITU601;
+		else
+			avi_if.avi_info.byte2_bits.colorimetry =
+				HDMI_AVI_COLOR_ITU709;
+	}
+
+	/* Data Byte 3 */
 	avi_if.avi_info.byte3_bits.scaling_info = HDMI_AVI_SCALING_NODATA;
 	avi_if.avi_info.byte3_bits.rgbquant_range = HDMI_AVI_RGBQUANT_DEFAULT;
 	avi_if.avi_info.byte3_bits.ext_colorimetry = HDMI_COLORIMETRY_RGB256;
 	avi_if.avi_info.byte3_bits.it_content = HDMI_AVI_ITC_NODATA;
-	/*get hdmi mode video code*/
-	avi_if.avi_info.byte4_bits.vic = _get_hdmi_video_code(mode) ;
 
+	/* Data Byte 4 */
+	/*get hdmi mode video code*/
+	vic =  mdfld_hdmi_timing_get_vic(mode);
+	if (mode->hdisplay == 720 && vic &&
+		avi_if.avi_info.byte2_bits.par == HDMI_AVI_PAR_16_9)
+		vic += 1;
+
+	avi_if.avi_info.byte4_bits.vic = vic;
+	if (avi_if.avi_info.byte4_bits.vic) {
+		/*sync the par here with the vic*/
+		avi_if.avi_info.byte2_bits.par =
+			mdfld_hdmi_video_format_timing[vic].par;
+	}
+	PSB_DEBUG_ENTRY("set HDMI avi info.vic= %d\n", vic);
+	/* Data Byte 5 */
 	avi_if.avi_info.byte5_bits.pr = HDMI_PR_ONE;
 
+	/* Other Data Bytes */
 	avi_if.avi_info.byte6 = 0x00;
 	avi_if.avi_info.byte7 = 0x00;
-
 	avi_if.avi_info.byte8 = 0x00;
 	avi_if.avi_info.byte9 = 0x00;
-
 	avi_if.avi_info.byte10 = 0x00;
 	avi_if.avi_info.byte11 = 0x00;
-
 	avi_if.avi_info.byte12 = 0x00;
 	avi_if.avi_info.byte13 = 0x00;
 
-	for (i = 0; i < HDMI_AVI_TOTAL_LENGTH; i++)
-		checksum += avi_if.avi_buf[i];
-	checksum = 0xff - checksum + 1;
-	avi_if_header.chksum = checksum;
+	/* clear PB14-PB27 reserved data to zero*/
+	for (i = 0; i < HDMI_AVI_RESERVED_LENGTH; i++)
+		avi_if.avi_info.byte_reserved[i] = 0x00;
 
-	avi_if.avi_info.avi_if_header = avi_if_header;
+	avi_if.avi_info.chksum =
+		mdfld_hdmi_calc_hbuf_csum(
+			(uint8_t *)avi_if.avi_buf, HDMI_AVI_TOTAL_LENGTH);
 
 	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
-		OSPM_UHB_FORCE_POWER_ON))
-			return 0;
+				OSPM_UHB_FORCE_POWER_ON))
+		return 0;
+
+	/*clear DIP buffer firstly*/
+	for (i = 0; i <= DIP_RAM_ADDR_INDEX_MAX; i++)
+		REG_WRITE(VIDEO_DIP_DATA, 0x0);
 
 	/* Wait for 2 VSyncs. */
 	mdelay(20); /* msleep(20); */
@@ -275,8 +480,8 @@ int mdfld_hdmi_set_avi_information(struct drm_device *dev,
 	/* Disable the DIP type . */
 	viddipctl_val = REG_READ(VIDEO_DIP_CTL);
 	viddipctl_val &= ~(DIP_TYPE_MASK | DIP_BUFF_INDX_MASK |
-				DIP_RAM_ADDR_MASK | DIP_TX_FREQ_MASK);
-	viddipctl_val |= DIP_BUFF_INDX_VS | EN_DIP;
+			DIP_RAM_ADDR_MASK | DIP_TX_FREQ_MASK);
+	viddipctl_val |= DIP_BUFF_INDX_AVI | PORT_B_SELECT;
 	REG_WRITE(VIDEO_DIP_CTL, viddipctl_val);
 
 	/* Get the buffer size in DWORD. */
@@ -286,14 +491,22 @@ int mdfld_hdmi_set_avi_information(struct drm_device *dev,
 	for (i = 0; i < buf_size; i++)
 		REG_WRITE(VIDEO_DIP_DATA, *(p_vsif++));
 
+	/*Write default DIF data so that Index pointer come back*/
+	for (i = buf_size; i <= DIP_RAM_ADDR_INDEX_MAX; i++)
+		REG_WRITE(VIDEO_DIP_DATA, 0x00);
+
 	/* Enable the DIP type and transmission frequency. */
-	viddipctl_val |= DIP_TYPE_AVI | DIP_TX_FREQ_2VSNC;
-	      REG_WRITE(VIDEO_DIP_CTL, viddipctl_val);
+	viddipctl_val |= DIP_TYPE_AVI | DIP_TX_FREQ_1VSNC;
+	REG_WRITE(VIDEO_DIP_CTL, viddipctl_val);
+
+	viddipctl_val |= EN_DIP;
+	REG_WRITE(VIDEO_DIP_CTL, viddipctl_val);
 
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 	return 0;
-
 }
+
+
 static void mdfld_hdmi_mode_set(struct drm_encoder *encoder,
 				struct drm_display_mode *mode,
 				struct drm_display_mode *adjusted_mode)
@@ -302,25 +515,84 @@ static void mdfld_hdmi_mode_set(struct drm_encoder *encoder,
 	struct psb_intel_output *output = enc_to_psb_intel_output(encoder);
 	struct mid_intel_hdmi_priv *hdmi_priv = output->dev_priv;
 	u32 hdmib, hdmi_phy_misc;
-#ifdef CONFIG_SND_INTELMID_HDMI_AUDIO
+	int vic = 0;
+	u32 hpolarity = 0, vpolarity = 0;
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *) dev->dev_private;
+#ifdef CONFIG_SND_INTELMID_HDMI_AUDIO
 	void *had_pvt_data = dev_priv->had_pvt_data;
 	enum had_event_type event_type = HAD_EVENT_MODE_CHANGING;
 #endif
 
 	PSB_DEBUG_ENTRY("\n");
 
-	hdmib = REG_READ(hdmi_priv->hdmib_reg) | HDMIB_PORT_EN | HDMIB_PIPE_B_SELECT | HDMIB_NULL_PACKET;
 	hdmi_phy_misc = REG_READ(HDMIPHYMISCCTL) & ~HDMI_PHY_POWER_DOWN;
-
 	REG_WRITE(HDMIPHYMISCCTL, hdmi_phy_misc);
+
+	hdmib = REG_READ(hdmi_priv->hdmib_reg) | HDMIB_PORT_EN |
+		HDMIB_PIPE_B_SELECT;
+
+	if (dev_priv->bDVIport) {
+		hdmib &= ~(HDMIB_NULL_PACKET | HDMI_AUDIO_ENABLE) ;
+		REG_WRITE(VIDEO_DIP_CTL, 0x0);
+		REG_WRITE(AUDIO_DIP_CTL, 0x0);
+	} else {
+		hdmib |= (HDMIB_NULL_PACKET | HDMI_AUDIO_ENABLE);
+		mdfld_hdmi_set_avi_infoframe(dev, &output->base, adjusted_mode);
+	}
+
+	vic = mdfld_hdmi_timing_get_vic(adjusted_mode);
+
+	/*Get mode hpolarity vpolarity*/
+	if (adjusted_mode->flags & (DRM_MODE_FLAG_PHSYNC |
+			DRM_MODE_FLAG_PVSYNC)) {
+		hpolarity = 1;
+		vpolarity = 1;
+		PSB_DEBUG_ENTRY("polarity get from flag P\n");
+	} else if (adjusted_mode->flags & (DRM_MODE_FLAG_NHSYNC |
+			DRM_MODE_FLAG_NVSYNC)) {
+		hpolarity = 0;
+		vpolarity = 0;
+		PSB_DEBUG_ENTRY("polarity get from flag N\n");
+	} else if (vic) {
+		hpolarity = mdfld_hdmi_video_format_timing[vic].hpolarity;
+		vpolarity = mdfld_hdmi_video_format_timing[vic].vpolarity;
+		PSB_DEBUG_ENTRY("polarity get from table\n");
+	} else {
+		if (adjusted_mode->vdisplay <= 576) {
+			hpolarity = 0;
+			vpolarity = 0;
+		} else {
+			hpolarity = 1;
+			vpolarity = 1;
+		}
+	}
+
+	/* Update hpolarity */
+	if (hpolarity == 1)
+		hdmib |= BIT3;
+	else
+		hdmib &= ~BIT3;
+
+	/* Update vpolarity */
+	if (vpolarity == 1)
+		hdmib |= BIT4;
+	else
+		hdmib &= ~BIT4;
+
 	REG_WRITE(hdmi_priv->hdmib_reg, hdmib);
 	REG_READ(hdmi_priv->hdmib_reg);
 
+	/*save current set mode*/
+	if (hdmi_priv->current_mode)
+		drm_mode_destroy(dev,
+				hdmi_priv->current_mode);
+	hdmi_priv->current_mode =
+		drm_mode_duplicate(dev, adjusted_mode);
+
 #ifdef CONFIG_SND_INTELMID_HDMI_AUDIO
 	/* Send MODE_CHANGE event to Audio driver */
-	if (dev_priv->mdfld_had_event_callbacks)
+	if (dev_priv->mdfld_had_event_callbacks && !dev_priv->bDVIport)
 		(*dev_priv->mdfld_had_event_callbacks)(event_type,
 				had_pvt_data);
 #endif
@@ -335,7 +607,11 @@ static bool mdfld_hdmi_mode_fixup(struct drm_encoder *encoder,
 	struct psb_intel_crtc *psb_intel_crtc =
 		to_psb_intel_crtc(encoder->crtc);
 	struct psb_intel_output *output = enc_to_psb_intel_output(encoder);
+	struct drm_connector *connector = &output->base;
 	struct mid_intel_hdmi_priv *hdmi_priv = output->dev_priv;
+	uint32_t adjusted_mode_id = 0;
+	struct drm_display_mode *temp_mode = NULL, *t = NULL;
+
 	PSB_DEBUG_ENTRY("hdisplay = %d, vdisplay = %d. a_hdisplay = %d,"
 			"a_vdisplay = %d.\n", mode->hdisplay, mode->vdisplay,
 			adjusted_mode->hdisplay, adjusted_mode->vdisplay);
@@ -346,33 +622,14 @@ static bool mdfld_hdmi_mode_fixup(struct drm_encoder *encoder,
 				"Only support HDMI on pipe B on MID\n");
 	}
 
-	/* FIXME: To make HDMI display with 1920x1080,
-	 * in 864x480 (TPO), 480x864 (PYR) or 480x854 (TMD) fixed mode. */
-	if ((hdmi_priv->mimic_mode != NULL) &&
-			(hdmi_priv->edid_preferred_mode != NULL)) {
-		if (drm_mode_equal(mode, hdmi_priv->mimic_mode)) {
-			adjusted_mode->hdisplay =
-				hdmi_priv->edid_preferred_mode->hdisplay;
-			adjusted_mode->htotal =
-				hdmi_priv->edid_preferred_mode->htotal;
-			adjusted_mode->hsync_start =
-				hdmi_priv->edid_preferred_mode->hsync_start;
-			adjusted_mode->hsync_end =
-				hdmi_priv->edid_preferred_mode->hsync_end;
-			adjusted_mode->hskew =
-				hdmi_priv->edid_preferred_mode->hskew;
-			adjusted_mode->vdisplay =
-				hdmi_priv->edid_preferred_mode->vdisplay;
-			adjusted_mode->vtotal =
-				hdmi_priv->edid_preferred_mode->vtotal;
-			adjusted_mode->vsync_start =
-				hdmi_priv->edid_preferred_mode->vsync_start;
-			adjusted_mode->vsync_end =
-				hdmi_priv->edid_preferred_mode->vsync_end;
-			adjusted_mode->vscan =
-				hdmi_priv->edid_preferred_mode->vscan;
-			adjusted_mode->clock =
-				hdmi_priv->edid_preferred_mode->clock;
+	list_for_each_entry_safe(temp_mode, t, &connector->modes, head) {
+		if (drm_mode_equal(temp_mode, mode)) {
+			/*update adjusted mode with kernel mode info,
+			such as width_mm height_mm*/
+			PSB_DEBUG_ENTRY("fix up enter.\n");
+			adjusted_mode_id = adjusted_mode->base.id;
+			*adjusted_mode = *temp_mode;
+			adjusted_mode->base.id = adjusted_mode_id;
 
 			/* Apply the adjusted mode to CRTC mode setting
 			 * parameters.*/
@@ -445,36 +702,47 @@ static void mdfld_hdmi_dpms(struct drm_encoder *encoder, int mode)
 		(struct drm_psb_private *)dev->dev_private;
 	struct psb_intel_output *output = enc_to_psb_intel_output(encoder);
 	struct mid_intel_hdmi_priv *hdmi_priv = output->dev_priv;
-	u32 hdmib, hdmi_phy_misc, pipebstat;
+	u32 hdmib, hdmi_phy_misc;
 
-	PSB_DEBUG_ENTRY("%s \n", mode == DRM_MODE_DPMS_ON ? "on" : "off");
+	PSB_DEBUG_ENTRY("%s\n", mode == DRM_MODE_DPMS_ON ?
+		"on" : "off");
 
-	hdmib = REG_READ(hdmi_priv->hdmib_reg) | HDMIB_PIPE_B_SELECT | HDMIB_NULL_PACKET;
-	pipebstat = REG_READ(PIPEBSTAT);
+	hdmib = REG_READ(hdmi_priv->hdmib_reg) | HDMIB_PIPE_B_SELECT;
+
+	if (dev_priv->bDVIport) {
+		hdmib &= ~(HDMIB_NULL_PACKET | HDMI_AUDIO_ENABLE);
+		REG_WRITE(VIDEO_DIP_CTL, 0x0);
+		REG_WRITE(AUDIO_DIP_CTL, 0x0);
+	} else
+		hdmib |= (HDMIB_NULL_PACKET | HDMI_AUDIO_ENABLE);
+
 	hdmi_phy_misc = REG_READ(HDMIPHYMISCCTL);
 
 	if (mode != DRM_MODE_DPMS_ON) {
-		if (dev_priv->mdfld_had_event_callbacks)
+		if (dev_priv->mdfld_had_event_callbacks
+			&& !dev_priv->bDVIport)
 			(*dev_priv->mdfld_had_event_callbacks)
 				(HAD_EVENT_HOT_UNPLUG, dev_priv->had_pvt_data);
 
 		REG_WRITE(hdmi_priv->hdmib_reg,
 				hdmib & ~HDMIB_PORT_EN & ~HDMI_AUDIO_ENABLE);
-		REG_WRITE(PIPEBSTAT, pipebstat & ~PIPE_VBLANK_INTERRUPT_ENABLE);
+		psb_disable_pipestat(dev_priv, 1, PIPE_VBLANK_INTERRUPT_ENABLE);
 		REG_WRITE(HDMIPHYMISCCTL, hdmi_phy_misc | HDMI_PHY_POWER_DOWN);
+		REG_WRITE(VIDEO_DIP_CTL, 0x0);
+		REG_WRITE(AUDIO_DIP_CTL, 0x0);
 	} else {
 		REG_WRITE(HDMIPHYMISCCTL, hdmi_phy_misc & ~HDMI_PHY_POWER_DOWN);
-		REG_WRITE(PIPEBSTAT, pipebstat | PIPE_VBLANK_INTERRUPT_ENABLE);
+	        psb_enable_pipestat(dev_priv, 1, PIPE_VBLANK_INTERRUPT_ENABLE);
 		REG_WRITE(hdmi_priv->hdmib_reg,
-				hdmib | HDMIB_PORT_EN | HDMI_AUDIO_ENABLE);
+				hdmib | HDMIB_PORT_EN);
 
-		if (dev_priv->mdfld_had_event_callbacks)
+		if (dev_priv->mdfld_had_event_callbacks
+			&& !dev_priv->bDVIport)
 			(*dev_priv->mdfld_had_event_callbacks)
 				(HAD_EVENT_HOT_PLUG, dev_priv->had_pvt_data);
 	}
 	REG_READ(hdmi_priv->hdmib_reg);
 }
-int lastpipebbase;
 
 static void mdfld_hdmi_encoder_save(struct drm_encoder *encoder)
 {
@@ -491,9 +759,7 @@ static void mdfld_hdmi_encoder_save(struct drm_encoder *encoder)
 		REG_WRITE(dspcntr_reg,
 				temp & ~DISPLAY_PLANE_ENABLE);
 		/* Flush the plane changes */
-		lastpipebbase = REG_READ(dspbase_reg);
 		REG_WRITE(dspbase_reg, REG_READ(dspbase_reg));
-		REG_READ(dspbase_reg);
 	}
 }
 
@@ -502,6 +768,10 @@ static void mdfld_hdmi_encoder_restore(struct drm_encoder *encoder)
 	int dspcntr_reg = DSPBCNTR;
 	int dspbase_reg = MRST_DSPBBASE;
 	struct drm_device *dev = encoder->dev;
+	struct drm_psb_private *dev_priv =
+		(struct drm_psb_private *)dev->dev_private;
+	struct psb_intel_output *output = enc_to_psb_intel_output(encoder);
+	struct mid_intel_hdmi_priv *hdmi_priv = output->dev_priv;
 	u32 temp;
 	PSB_DEBUG_ENTRY("\n");
 
@@ -512,8 +782,15 @@ static void mdfld_hdmi_encoder_restore(struct drm_encoder *encoder)
 		REG_WRITE(dspcntr_reg,
 				temp | DISPLAY_PLANE_ENABLE);
 		/* Flush the plane changes */
-		REG_WRITE(dspbase_reg, lastpipebbase);
-		REG_READ(dspbase_reg);
+		REG_WRITE(dspbase_reg, REG_READ(dspbase_reg));
+	}
+	/*restore avi infomation*/
+	if (!dev_priv->bDVIport)
+		mdfld_hdmi_set_avi_infoframe(dev,
+			 &output->base, hdmi_priv->current_mode);
+	else {
+		REG_WRITE(VIDEO_DIP_CTL, 0x0);
+		REG_WRITE(AUDIO_DIP_CTL, 0x0);
 	}
 }
 
@@ -548,6 +825,7 @@ static int mdfld_hdmi_get_cached_edid_block(struct drm_connector *connector, uin
 	DRM_ERROR("mdfld_hdmi_get_cached_edid_block() - Invalid EDID block\n");
         return 0;
     }
+
     edid_block = &displayinfo->raw_edid[EDID_BLOCK_SIZE*num_block];
     return 1;
 }
@@ -857,7 +1135,40 @@ static int mdfld_hdmi_create_eeld_packet(struct drm_connector *connector)
     pCurrentSADBlocks = NULL;
     return 1;
 }
+bool isHDMI(struct drm_connector *connector)
+{
+	int i = 0, n = 0;
+	bool ret = false;
+	baseedid_1_4_t *base_edid_block = NULL;
+	char *edid_block = NULL;
 
+	base_edid_block = (baseedid_1_4_t *)connector->edid_blob_ptr->data;
+	edid_block = (char *)connector->edid_blob_ptr->data;
+	if (!base_edid_block) {
+		PSB_DEBUG_ENTRY("base_edid_block = NULL\n");
+		return false;
+	}
+
+	if (base_edid_block->ucNumExtBlocks == 0) {
+		PSB_DEBUG_ENTRY("ucNumExtBlocks = 0\n");
+		/*print_hex_dump_bytes(KERN_ERR, DUMP_PREFIX_NONE,
+				 edid_block, EDID_LENGTH);*/
+		return false;
+	}
+
+	/*search VSDB in extend  edid */
+	for (i = 0; i <= EDID_BLOCK_SIZE - 3; i++) {
+		n = EDID_BLOCK_SIZE + i;
+		if (edid_block[n] == 0x03 &&
+		   edid_block[n+1] == 0x0c &&
+		   edid_block[n+2] == 0x00)
+			ret = true;
+	}
+	/*print_hex_dump_bytes(KERN_ERR, DUMP_PREFIX_NONE,
+		  edid_block, 2*EDID_LENGTH);*/
+
+	return ret;
+}
 static enum drm_connector_status
 mdfld_hdmi_edid_detect(struct drm_connector *connector)
 {
@@ -897,11 +1208,10 @@ mdfld_hdmi_edid_detect(struct drm_connector *connector)
 			hdmi_priv->has_hdmi_sink = drm_detect_hdmi_monitor(edid);
 			mdfld_hdmi_create_eeld_packet(connector);
 		}
-
 		drm_mode_connector_update_edid_property(connector, edid);
-		output->base.display_info.raw_edid = NULL;
 		kfree(edid);
 		dev_priv->hdmi_done_reading_edid = true;
+		hdmi_priv->is_hardcode_edid = false;
 	} else {
 		/* Failed to read a valid EDID, so we're using a hardcoded one */
 		if ((HDMI_EDID == NULL) || (strlen(HDMI_EDID) > HDMI_MONITOR_NAME_LENGTH))
@@ -917,9 +1227,21 @@ mdfld_hdmi_edid_detect(struct drm_connector *connector)
 			}
 		}
 
-		if (i == monitor_number)
-			/* Use Toshiba Regza HDMI EDID as default data. */
-			edid = (struct edid *)mdfld_hdmi_edid[i - 1].edid_info;
+		if (i == monitor_number) {
+			if (dev_priv->platform_rev_id > MDFLD_PNW_C0) {
+				PSB_DEBUG_ENTRY(
+					"hard code fix to DVI!\n");
+				/*EDID_Samsung_2493HM*/
+				edid =
+				 (struct edid *)mdfld_hdmi_edid[1].edid_info;
+			} else {
+				PSB_DEBUG_ENTRY(
+					"hard code fix to HDMI!\n");
+				/*Use Toshiba Regza HDMI EDID as default data.*/
+				edid =
+				(struct edid *)mdfld_hdmi_edid[i - 1].edid_info;
+			}
+		}
 
 		hdmi_priv->has_hdmi_sink = false;
 		if (edid) {
@@ -930,9 +1252,33 @@ mdfld_hdmi_edid_detect(struct drm_connector *connector)
 		}
 
 		dev_priv->hdmi_done_reading_edid = true;
+		hdmi_priv->is_hardcode_edid = true;
 	}
+       /* Check whether it's DVI port or HDMI. */
+	if (isHDMI(connector))
+		dev_priv->bDVIport = false;
+	else
+		dev_priv->bDVIport = true;
 
+	PSB_DEBUG_ENTRY("is DVI port ? %s", dev_priv->bDVIport ? "yes" : "no");
 	return status;
+}
+void hdmi_unplug_prepare(struct drm_psb_private *dev_priv)
+{
+	int wait_count = 0;
+
+	if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, false)) {
+		/*wait for overlay switch back to pipeA*/
+		while ((PSB_RVDC32(OV_OVADD) & 0xc0) && wait_count < 5) {
+			PSB_DEBUG_ENTRY(
+			"wait for overlay switch to mipi 0x%x.\n",
+					PSB_RVDC32(OV_OVADD));
+			msleep(20);
+			wait_count++;
+		};
+		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+	} else
+		PSB_DEBUG_ENTRY("display controller is power off.\n");
 }
 
 static enum drm_connector_status mdfld_hdmi_detect(struct drm_connector
@@ -947,6 +1293,10 @@ static enum drm_connector_status mdfld_hdmi_detect(struct drm_connector
 	struct mid_intel_hdmi_priv *hdmi_priv = psb_intel_output->dev_priv;
 	struct mdfld_dsi_config *dsi_config = dev_priv->dsi_configs[0];
 	u8 data = 0;
+	enum drm_connector_status connect_status =
+			 connector_status_disconnected;
+	static bool first_time_boot_detect = true;
+
 
 	/* Check if monitor is attached to HDMI connector. */
 	intel_scu_ipc_ioread8(MSIC_HDMI_STATUS, &data);
@@ -954,20 +1304,13 @@ static enum drm_connector_status mdfld_hdmi_detect(struct drm_connector
 	if (data & HPD_SIGNAL_STATUS) {
 		DRM_DEBUG("%s: HPD connected data = 0x%x.\n", __func__, data);
 
-		if (dsi_config) {
-			hdmi_priv->mimic_mode =
-				drm_mode_duplicate(dev, dsi_config->fixed_mode);
-			drm_mode_set_name(hdmi_priv->mimic_mode);
-		}
-
 		if (connector->status == connector_status_connected) {
 			/*
 			 * Don't un-gate Display B if HDMI is connected and in
 			 * D0i3 state.
 			 */
-			if (hdmi_state == 0)
-				hdmi_state = 1;
-			return connector_status_connected;
+			connect_status =  connector_status_connected;
+			goto fun_exit;
 		}
 		dev_priv->panel_desc |= DISPLAY_B;
 		/*
@@ -987,36 +1330,46 @@ static enum drm_connector_status mdfld_hdmi_detect(struct drm_connector
 		if (dev_priv->hdmi_done_reading_edid ||
 				(mdfld_hdmi_edid_detect(connector) ==
 						connector_status_connected)) {
-			if (hdmi_state == 0)
-				hdmi_state = 1;
-			return connector_status_connected;
+			connect_status = connector_status_connected;
 		}
 		else {
-			hdmi_state = 0;
-			return connector_status_disconnected;
+			connect_status = connector_status_disconnected;
 		}
 
 	} else {
 		DRM_DEBUG("%s: HPD disconnected data = 0x%x.\n", __func__,
 				data);
 
-		/*
-		 * Clean up the HDMI connector attached encoder, to make
-		 * drm_crtc_helper_set_config() do mode setting each time,
-		 * especially when plug out HDMI from a sink device and plug it
-		 * in to another one with different EDID.
-		 */
-		drm_helper_disable_unused_functions(dev);
+		if (dev_priv->panel_desc & DISPLAY_B) {
+			hdmi_unplug_prepare(dev_priv);
+			/*
+			 * Clean up the HDMI connector attached encoder, to make
+			 * drm_crtc_helper_set_config() do mode setting
+			 *each time, especially when plug out HDMI from
+			 *a sink device and plug it
+			 * in to another one with different EDID.
+			 */
+			drm_helper_disable_unused_functions(dev);
+		}
+		connect_status = connector_status_disconnected;
 
-		/* FIXME: Need to power gate Display B sub-system.
-		 * Currently HDMI sometimes couldn't display after plugging
-		 * in cable. */
-		hdmi_state = 0;
-		return connector_status_disconnected;
 	}
 #else
-	return mdfld_hdmi_edid_detect(connector);
+	connect_status =  mdfld_hdmi_edid_detect(connector);
 #endif
+
+fun_exit:
+	if (first_time_boot_detect) {
+		if (connect_status == connector_status_connected) {
+			hdmi_state = 1;
+			dev_priv->bhdmiconnected = true;
+		}
+		first_time_boot_detect = false;
+		PSB_DEBUG_ENTRY("first time boot detect state 0x%d.\n",
+				connect_status);
+	}
+
+	return connect_status;
 }
 
 static int mdfld_hdmi_set_property(struct drm_connector *connector,
@@ -1036,6 +1389,7 @@ static int mdfld_hdmi_set_property(struct drm_connector *connector,
 	if (!strcmp(property->name, "scaling mode") && pEncoder) {
 		struct psb_intel_crtc *pPsbCrtc = to_psb_intel_crtc(pEncoder->crtc);
 		bool bTransitionFromToCentered;
+		bool bTransitionFromToAspect;
 		uint64_t curValue;
 
 		if (!pPsbCrtc)
@@ -1065,10 +1419,12 @@ static int mdfld_hdmi_set_property(struct drm_connector *connector,
 
 		bTransitionFromToCentered = (curValue == DRM_MODE_SCALE_NO_SCALE) ||
 			(value == DRM_MODE_SCALE_NO_SCALE) || (curValue == DRM_MODE_SCALE_CENTER) || (value == DRM_MODE_SCALE_CENTER);
+		bTransitionFromToCentered = (curValue == DRM_MODE_SCALE_ASPECT) ||
+			(value == DRM_MODE_SCALE_ASPECT);
 
 		if (pPsbCrtc->saved_mode.hdisplay != 0 &&
 		    pPsbCrtc->saved_mode.vdisplay != 0) {
-			if (bTransitionFromToCentered) {
+			if (bTransitionFromToCentered || bTransitionFromToAspect) {
 				if (!drm_crtc_helper_set_mode(pEncoder->crtc, &pPsbCrtc->saved_mode,
 					    pEncoder->crtc->x, pEncoder->crtc->y, pEncoder->crtc->fb))
 					goto set_prop_error;
@@ -1133,25 +1489,6 @@ static int mdfld_hdmi_get_modes(struct drm_connector *connector)
 
 	PSB_DEBUG_ENTRY("\n");
 
-	if (dsi_config) {
-		/*
-		 * In case that the HDMI mimic mode's status is reset to
-		 * MODE_UNVERIFIED when getting the complete set of display
-		 * modes.
-		 */
-		if ((hdmi_priv->mimic_mode) &&
-				(hdmi_priv->mimic_mode->status !=
-				 dsi_config->fixed_mode->status))
-			hdmi_priv->mimic_mode->status =
-				dsi_config->fixed_mode->status;
-	}
-
-	/*
-	 * Insert MIPI's mode into HDMI connector's mode list as the mimic mode.
-	 */
-	if (hdmi_priv->mimic_mode)
-		drm_mode_probed_add(connector, hdmi_priv->mimic_mode);
-
 	/*
 	 * Probe more modes from EDID data.
 	 */
@@ -1210,38 +1547,50 @@ static int mdfld_hdmi_get_modes(struct drm_connector *connector)
 		return ret;
 	}
 
-	if ((!hdmi_priv->mimic_mode) || ((hdmi_priv->mimic_mode) &&
-				(!(hdmi_priv->mimic_mode->type &
-				 DRM_MODE_TYPE_PREFERRED))))
-		return ret;
-
-	list_for_each_entry_safe(mode, t, &connector->probed_modes, head) {
-		/*
-		 * Don't set the mode (from EDID) such as 1920x1200 as
-		 * preferred, to avoid creating the frame buffer which doesn't
-		 * match MIPI panel's resolution. Otherwise MIPI couldn't
-		 * display the whole UI region.
-		 */
-		if ((!drm_mode_equal(mode, hdmi_priv->mimic_mode)) &&
-				(mode->type & DRM_MODE_TYPE_PREFERRED)) {
-			mode->type &= ~DRM_MODE_TYPE_PREFERRED;
-
-			if ((!hdmi_priv->edid_preferred_mode) ||
-				/*
-				 * In case that the HDMI EDID data has
-				 * changed due to connecting to another
-				 * HDMI device.
-				 */
-				((hdmi_priv->edid_preferred_mode) &&
-				 (!drm_mode_equal(mode,
-					hdmi_priv->edid_preferred_mode)))) {
-				if (hdmi_priv->edid_preferred_mode)
-					drm_mode_destroy(dev,
+	/*reset preferred mode if NULL EDID got when detect*/
+	if (hdmi_priv->is_hardcode_edid) {
+		if (dev_priv->platform_rev_id > MDFLD_PNW_C0) {
+			/*from C1, driver can get edid right
+			  if not right,set prefer mode to 640*480p
+			  it is required by HDMI compliance test.*/
+			PSB_DEBUG_ENTRY(
+					" set hardcode edid prefer to 640*480p\n");
+			list_for_each_entry_safe(mode, t,
+					&connector->probed_modes, head) {
+				if (mode->hdisplay == 640
+						&& mode->vdisplay == 480)
+					mode->type
+						|= DRM_MODE_TYPE_PREFERRED;
+				else if (mode->type & DRM_MODE_TYPE_PREFERRED)
+					mode->type
+						&= ~DRM_MODE_TYPE_PREFERRED;
+			}
+		}
+	}
+	/*record the preferred mode*/
+	list_for_each_entry_safe(mode, t,
+			&connector->probed_modes, head) {
+		if ((mode->type & DRM_MODE_TYPE_PREFERRED)) {
+			drm_mode_debug_printmodeline(mode);
+			if (hdmi_priv->edid_preferred_mode)
+				drm_mode_destroy(dev,
 						hdmi_priv->edid_preferred_mode);
 
-				hdmi_priv->edid_preferred_mode =
-					drm_mode_duplicate(dev, mode);
-			}
+			hdmi_priv->edid_preferred_mode =
+				drm_mode_duplicate(dev, mode);
+		}
+	}
+	/*clear the mode ,which the same as preferred mode
+	  otherwise the preferred mode will be updated by
+	  the same mode in DRM */
+	list_for_each_entry_safe(mode, t, &connector->probed_modes, head) {
+		if ((!(mode->type & DRM_MODE_TYPE_PREFERRED)) &&
+				drm_mode_equal(mode,
+					hdmi_priv->edid_preferred_mode)) {
+			PSB_DEBUG_ENTRY(
+					"clear the same mode as preferred.\n");
+			list_del(&mode->head);
+			drm_mode_destroy(dev, mode);
 		}
 	}
 
@@ -1257,19 +1606,6 @@ static int mdfld_hdmi_mode_valid(struct drm_connector *connector,
 
 	PSB_DEBUG_ENTRY("display info. hdisplay = %d, vdisplay = %d.\n",
 			mode->hdisplay, mode->vdisplay);
-
-	/*
-	 * Skip the mimic mode (such as 480 x 854) valid checking with pixel
-	 * clock.
-	 */
-	if ((hdmi_priv->mimic_mode == NULL) ||
-			((hdmi_priv->mimic_mode != NULL) &&
-			(!drm_mode_equal(mode, hdmi_priv->mimic_mode)))) {
-		if (mode->clock > 165000)
-			return MODE_CLOCK_HIGH;
-		if (mode->clock < 20000)
-			return MODE_CLOCK_HIGH;
-	}
 
 	if (mode->type == DRM_MODE_TYPE_USERDEF)
 		return MODE_OK;
@@ -1287,14 +1623,49 @@ static int mdfld_hdmi_mode_valid(struct drm_connector *connector,
 
 static void mdfld_hdmi_connector_dpms(struct drm_connector *connector, int mode)
 {
-#ifdef CONFIG_PM_RUNTIME
 	struct drm_device * dev = connector->dev;
 	struct drm_psb_private * dev_priv = dev->dev_private;
+	int hdmi_audio_busy = 0;
+	pm_event_t hdmi_audio_event;
+	u32 dspcntr_val;
+#ifdef CONFIG_PM_RUNTIME
 	bool panel_on, panel_on2;
 #endif
 	/*first, execute dpms*/
+	/* using suspend to judge whether hdmi audio is playing */
+	if (dev_priv->had_interface && dev_priv->had_pvt_data)
+		hdmi_audio_busy =
+			dev_priv->had_interface->suspend(dev_priv->had_pvt_data,
+						hdmi_audio_event);
 
-	drm_helper_connector_dpms(connector, mode);
+	PSB_DEBUG_ENTRY("[DPMS] audio busy: 0x%x\n", hdmi_audio_busy);
+
+	/* if hdmi audio is busy, just turn off hdmi display plane */
+	if (hdmi_audio_busy) {
+		dspcntr_val = PSB_RVDC32(DSPBCNTR);
+		connector->dpms = mode;
+
+		if (mode != DRM_MODE_DPMS_ON) {
+			PSB_WVDC32(dspcntr_val & ~DISPLAY_PLANE_ENABLE, DSPBCNTR);
+                        DISP_PLANEB_STATUS = DISPLAY_PLANE_DISABLE;
+                }
+		else {
+			PSB_WVDC32(dspcntr_val | DISPLAY_PLANE_ENABLE, DSPBCNTR);
+                        DISP_PLANEB_STATUS = DISPLAY_PLANE_ENABLE;
+                }
+	} else {
+		/* Resume audio if audio is suspended */
+		if (dev_priv->had_interface && dev_priv->had_pvt_data)
+			dev_priv->had_interface->resume(dev_priv->had_pvt_data);
+
+		drm_helper_connector_dpms(connector, mode);
+
+                if (mode != DRM_MODE_DPMS_ON)
+                        DISP_PLANEB_STATUS = DISPLAY_PLANE_DISABLE;
+                else
+                        DISP_PLANEB_STATUS = DISPLAY_PLANE_ENABLE;
+
+	}
 
 #ifdef CONFIG_PM_RUNTIME
 	if(is_panel_vid_or_cmd(dev)) {
@@ -1396,7 +1767,7 @@ void mdfld_hdmi_init(struct drm_device *dev,
 	connector->interlace_allowed = false;
 	connector->doublescan_allowed = false;
 
-	drm_connector_attach_property(connector, dev->mode_config.scaling_mode_property, DRM_MODE_SCALE_CENTER);
+	drm_connector_attach_property(connector, dev->mode_config.scaling_mode_property, DRM_MODE_SCALE_ASPECT);
 
 	/* hard-coded the HDMI_I2C_ADAPTER_ID to be 3, Should get from GCT*/
 	psb_intel_output->hdmi_i2c_adapter = i2c_get_adapter(3);
@@ -1411,7 +1782,6 @@ void mdfld_hdmi_init(struct drm_device *dev,
 	hdmi_priv->is_hdcp_supported = true;
 	hdmi_priv->hdmi_i2c_adapter = psb_intel_output->hdmi_i2c_adapter;
 	hdmi_priv->dev = dev;
-	hdmi_priv->mimic_mode = NULL;
 	hdmi_priv->edid_preferred_mode = NULL;
 	mdfld_hdcp_init(hdmi_priv);
 	mdfld_hdmi_audio_init(hdmi_priv);

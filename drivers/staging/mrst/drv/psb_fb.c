@@ -949,7 +949,6 @@ static struct drm_framebuffer *psb_user_framebuffer_create
 
 	fbdev->psb_fb_helper.fb = fb;
 	fbdev->psb_fb_helper.fbdev = info;
-	MRSTLFBHandleChangeFB(dev, psbfb);
 #endif
 
 	return fb;
@@ -1088,24 +1087,24 @@ static int psbfb_create(struct psb_fbdev * fbdev, struct drm_fb_helper_surface_s
 	struct device * device = &dev->pdev->dev;
 	int size, aligned_size;
 	int ret;
+	struct mdfld_dsi_encoder *dsi_encoder =
+		 MDFLD_DSI_ENCODER(dev_priv->encoder0);
+	struct mdfld_dsi_config *dsi_config =
+		mdfld_dsi_encoder_get_config(dsi_encoder);
+	struct drm_display_mode *fixed_mode = dsi_config->fixed_mode;
+
 	/* PR2 panel must have 200 pixel dummy clocks,
 	* So the display timing should be 800x1024, and surface
 	* is 608x1024(64 bits align), or the information between android
 	* and Linux frame buffer is not consistent.
 	*/
-
-// 	if (get_panel_type(dev, 0) == TMD_6X10_VID)
-// 		mode_cmd.width = sizes->surface_width - 200;
-// 	else
-// 		mode_cmd.width = sizes->surface_width;
-// 	mode_cmd.height = sizes->surface_height;
-
-	if (get_panel_type(dev, 0) == TMD_6X10_VID)
-		mode_cmd.width = sizes->fb_width - 200;
-	else
-		mode_cmd.width = sizes->surface_width;
-	mode_cmd.height = sizes->fb_height;
-
+	if (get_panel_type(dev, 0) == TMD_6X10_VID) {
+		mode_cmd.width  = fixed_mode->hdisplay - 200;
+		mode_cmd.height = fixed_mode->vdisplay;
+	} else {
+		mode_cmd.width = fixed_mode->hdisplay;
+		mode_cmd.height = fixed_mode->vdisplay;
+	}
 
 	mode_cmd.bpp = 32;
         //HW requires pitch to be 64 byte aligned
@@ -1573,7 +1572,6 @@ int psbfb_remove(struct drm_device *dev, struct drm_framebuffer *fb)
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,35))
 	info = psbfb->fbdev;
 	psbfb->pvrBO = NULL;
-	MRSTLFBHandleChangeFB(dev, psbfb);
 #else
 	info = fb->fbdev;
 #endif

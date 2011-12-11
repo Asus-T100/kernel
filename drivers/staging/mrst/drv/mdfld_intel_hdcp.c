@@ -78,7 +78,7 @@ int hdcp_is_valid_bksv(uint8_t *buffer, uint32_t size)
  * Checks if HDCP is supported
  *
  */
-int hdcp_query()
+int hdcp_query(void)
 {
 	return hdmi_priv->is_hdcp_supported;
 }
@@ -102,7 +102,7 @@ int hdcp_is_enabled(void)
 	return ret;
 }
 
-#define HDCP_PRIMARY_I2C_ADDR 0x74
+#define HDCP_PRIMARY_I2C_ADDR 0x3A	// w/o read/write bit
 /*
  *
  * Read HDCP device data from i2c link 
@@ -213,7 +213,7 @@ static int write_hdcp_port(uint8_t offset, uint8_t *buffer, int size)
 			.buf	= &offset,
 		}, {
 			.addr	= HDCP_PRIMARY_I2C_ADDR,
-			.flags	= 0,
+			.flags	= I2C_M_NOSTART,
 			.len	= size,
 			.buf	= buffer,
 		}
@@ -255,7 +255,7 @@ int hdcp_enable(int enable)
     mdfld_hdcp_rep_t hdcp_repeater;
     uint32_t max_retry = 0;
     sqword_t hw_an;
-    sqword_t hw_aksv;
+    static sqword_t hw_aksv = {{0}};	//read-once only after reset, subsequent read will return zero
     sqword_t hw_bksv;
     uint8_t bcaps=0;
     uint32_t rx_ri = 0;
@@ -305,7 +305,7 @@ int hdcp_enable(int enable)
         }
 
         // Check for cipher time out
-        if(max_retry == 0)
+        if(max_retry == -1)
         {
             ret = 0; 
 	    return 0;
@@ -351,18 +351,17 @@ int hdcp_enable(int enable)
             }
         }
             
-        config.hdcp_config = HDCP_Off;
-        REG_WRITE(MDFLD_HDCP_CONFIG_REG, config.value);
-
-        if(max_retry == 0)
+        if(max_retry == -1)
             return 0;//Cipher timeout, was not able to generate An :(
 
         //Read An
         hw_an.u.low_part = REG_READ(MDFLD_HDCP_AN_LOW_REG);
         hw_an.u.high_part = REG_READ(MDFLD_HDCP_AN_HI_REG);
                 
-	hw_aksv.u.low_part = REG_READ(MDFLD_HDCP_AKSV_LOW_REG);
-	hw_aksv.u.high_part = REG_READ(MDFLD_HDCP_AKSV_HI_REG);
+	if(hw_aksv.quad_part == 0){
+		hw_aksv.u.low_part = REG_READ(MDFLD_HDCP_AKSV_LOW_REG);
+		hw_aksv.u.high_part = REG_READ(MDFLD_HDCP_AKSV_HI_REG);
+	}
         //stHdcpParams.hwAksv.MajorPart_Low = 0x0361f714;//test data
         //stHdcpParams.hwAksv.MajorPart_High = 0xb7;
 
@@ -375,6 +374,7 @@ int hdcp_enable(int enable)
         ret = write_hdcp_port(RX_AKSV_0, hw_aksv.byte, 5);
         if(!ret)
             return 0;
+
         
         //Read the Bksv from receiver
         ret =read_hdcp_port(RX_TYPE_BKSV_DATA, &hw_bksv.byte[0], 5);
@@ -414,6 +414,10 @@ int hdcp_enable(int enable)
 
         //At this point of time the Km is created
         
+        //TBD:Have some delay before reading the Ri'
+        //Right now using 100 ms, as per the HDCP spec(Refer HDCP SAS for details)
+        mdelay(HDCP_100MS_DELAY);
+
         //Wait for Ri ready
         max_retry = HDCP_MAX_RETRY_STATUS;//TBD: Not yet finalized
         while(max_retry--)
@@ -423,7 +427,7 @@ int hdcp_enable(int enable)
                 break;
         }
 
-        if(max_retry == 0)
+        if(max_retry == -1)
             return 0;//Cipher timeout, was not able to generate An :(
 
         //Compare the R0 and Ri
@@ -431,10 +435,6 @@ int hdcp_enable(int enable)
         ret = read_hdcp_port(RX_TYPE_RI_DATA, (uint8_t*)&rx_ri, 2);
         if(!ret)
             return 0;
-
-        //TBD:Have some delay before reading the Ri'
-        //Right now using 100 ms, as per the HDCP spec(Refer HDCP SAS for details)
-        mdelay(HDCP_100MS_DELAY);
 
         //update the HDCP_Ri' register and read the status reg for confrmation
         receivers_ri.value = REG_READ(MDFLD_HDCP_RECEIVER_RI_REG);
@@ -446,6 +446,7 @@ int hdcp_enable(int enable)
         //SoftbiosDebugMessage(DBG_CRITICAL,"R Prime       = %x\n",dwRxRi);
         //SoftbiosDebugMessage(DBG_CRITICAL,"HDCP_STATUS = %x\n",stStatus.value);
         ret = status.cipher_ri_match_status;
+	printk("%s: cipher ri %s\n",__func__,(ret==1)?"MATCH":"UNMATCH!");
        /*if(GEN4INTHDCPCONTROLLER_HasInterruptOccured(pThis,ePort) == TRUE)
        {
 	        bRet = 0;

@@ -57,6 +57,7 @@ static atomic_t g_display_access_count;
 static atomic_t g_graphics_access_count;
 static atomic_t g_videoenc_access_count;
 static atomic_t g_videodec_access_count;
+extern u32 DISP_PLANEB_STATUS;
 
 static bool gbSuspended = false;
 bool gbgfxsuspended = false;
@@ -1116,7 +1117,7 @@ static int mdfld_restore_display_registers(struct drm_device *dev, int pipe)
 		dspsize_val = dev_priv->saveDSPBSIZE;
 		dsppos_val = dev_priv->saveDSPBPOS;
 		dspsurf_val = dev_priv->saveDSPBSURF;
-		dspcntr_val = dev_priv->saveDSPBCNTR;
+		dspcntr_val = dev_priv->saveDSPBCNTR & ~DISPLAY_PLANE_ENABLE;
 		dspstatus_val = dev_priv->saveDSPBSTATUS;
 		palette_val = dev_priv->save_palette_b;
 		break;
@@ -1482,6 +1483,9 @@ void ospm_resume_display(struct pci_dev *pdev)
 	struct drm_device *dev = pci_get_drvdata(pdev);
 	struct drm_psb_private *dev_priv = dev->dev_private;
 	struct psb_gtt *pg = dev_priv->pg;
+#ifdef CONFIG_SND_INTELMID_HDMI_AUDIO
+	char *uevent_string = NULL;
+#endif
 
 #ifdef OSPM_GFX_DPK
 	printk(KERN_ALERT "%s\n", __func__);
@@ -1493,15 +1497,18 @@ void ospm_resume_display(struct pci_dev *pdev)
 		return;
 	}
 
+	if (IS_MDFLD(dev)) {
+		/*restore performance mode*/
+		PSB_WVDC32(dev_priv->savePERF_MODE, MRST_PERF_MODE);
+		PSB_WVDC32(dev_priv->saveVED_CG_DIS, PSB_MSVDX_CLOCKGATING);
+#ifdef CONFIG_MDFD_GL3
+		PSB_WVDC32(dev_priv->saveGL3_CTL, MDFLD_GL3_CONTROL);
+		PSB_WVDC32(dev_priv->saveGL3_USE_WRT_INVAL, MDFLD_GL3_USE_WRT_INVAL);
+#endif
+    }
+
 	/* turn on the display power island */
 	ospm_power_island_up(OSPM_DISPLAY_ISLAND);
-	/*
-	Workaround to handle MIPI display not
-	resuming back correctly. This should be
-	removed once driver MIPI init sequence is
-	addressed.
-	*/
-	mdelay(50);
 
 	PSB_WVDC32(pg->pge_ctl | _PSB_PGETBL_ENABLED, PSB_PGETBL_CTL);
 	pci_write_config_word(pdev, PSB_GMCH_CTRL,
@@ -1524,17 +1531,18 @@ void ospm_resume_display(struct pci_dev *pdev)
 		 * isn't turned on before suspending.
 		 */
 		if ((dev_priv->panel_desc & DISPLAY_B) &&
-				(dev_priv->saveHDMIB_CONTROL & HDMIB_PORT_EN))
+				(dev_priv->saveHDMIB_CONTROL & HDMIB_PORT_EN)) {
 			mdfld_restore_display_registers(dev, 1);
-		mdfld_restore_cursor_overlay_registers(dev);
-
-		/*restore performance mode*/
-		PSB_WVDC32(dev_priv->savePERF_MODE, MRST_PERF_MODE);
-		PSB_WVDC32(dev_priv->saveVED_CG_DIS, PSB_MSVDX_CLOCKGATING);
-#ifdef CONFIG_MDFD_GL3
-		PSB_WVDC32(dev_priv->saveGL3_CTL, MDFLD_GL3_CONTROL);
-		PSB_WVDC32(dev_priv->saveGL3_USE_WRT_INVAL, MDFLD_GL3_USE_WRT_INVAL);
+#ifdef CONFIG_SND_INTELMID_HDMI_AUDIO
+			if (dev_priv->had_pvt_data && hdmi_state) {
+				if (!dev_priv->had_interface->resume(dev_priv->had_pvt_data)) {
+					uevent_string = "HDMI_AUDIO_PM_RESUMED=1";
+					psb_sysfs_uevent(dev_priv->dev, uevent_string);
+				}
+			}
 #endif
+		}
+		mdfld_restore_cursor_overlay_registers(dev);
 
 	}else{
 		if (!dev_priv->iLVDS_enable) {
@@ -1725,6 +1733,7 @@ static void gfx_late_resume(struct early_suspend *h)
 	struct drm_device *dev = dev_priv->dev;
 	struct drm_encoder *encoder;
 	struct drm_encoder_helper_funcs *enc_funcs;
+	u32 dspcntr_val;
 #ifdef OSPM_GFX_DPK
 	printk(KERN_ALERT "\ngfx_late_resume\n");
 #endif
@@ -1777,6 +1786,14 @@ static void gfx_late_resume(struct early_suspend *h)
 			}
 		}
 
+		if (dev_priv->panel_desc & DISPLAY_B) {
+			dspcntr_val = PSB_RVDC32(DSPBCNTR);
+			/* comply the status with HDMI DPMS */
+			if (DISP_PLANEB_STATUS == DISPLAY_PLANE_DISABLE)
+				PSB_WVDC32(dspcntr_val & ~DISPLAY_PLANE_ENABLE, DSPBCNTR);
+			else
+				PSB_WVDC32(dspcntr_val | DISPLAY_PLANE_ENABLE, DSPBCNTR);
+		}
 
 		gbdispstatus = true;
 
@@ -2379,12 +2396,6 @@ int psb_runtime_suspend(struct device *dev)
 int psb_runtime_resume(struct device *dev)
 {
 	/* Notify HDMI Audio sub-system about the resume. */
-#ifdef CONFIG_SND_INTELMID_HDMI_AUDIO
-	struct drm_psb_private* dev_priv = gpDrmDevice->dev_private;
-
-       if(dev_priv->had_pvt_data)
-               dev_priv->had_interface->resume(dev_priv->had_pvt_data);
-#endif
 
 #ifdef OSPM_GFX_DPK
 	printk(KERN_ALERT "%s\n", __func__);
@@ -2397,15 +2408,21 @@ int psb_runtime_idle(struct device *dev)
 {
 #ifdef CONFIG_SND_INTELMID_HDMI_AUDIO
 	struct drm_psb_private* dev_priv = gpDrmDevice->dev_private;
+	struct snd_intel_had_interface *had_interface = dev_priv->had_interface;
 	int hdmi_audio_busy = 0;
 	pm_event_t hdmi_audio_event;
-#endif
+	char *uevent_string = NULL;
 
-#ifdef CONFIG_SND_INTELMID_HDMI_AUDIO
-       if(dev_priv->had_pvt_data){
-               hdmi_audio_event.event = 0;
-               hdmi_audio_busy = dev_priv->had_interface->suspend(dev_priv->had_pvt_data, hdmi_audio_event);
-       }
+	if (dev_priv->had_pvt_data && hdmi_state) {
+		hdmi_audio_event.event = 0;
+		hdmi_audio_busy =
+			had_interface->suspend(dev_priv->had_pvt_data,
+					hdmi_audio_event);
+		if (!hdmi_audio_busy) {
+			uevent_string = "HDMI_AUDIO_PM_SUSPENDED=1";
+			psb_sysfs_uevent(dev_priv->dev, uevent_string);
+		}
+	}
 #endif
 	if (atomic_read(&g_graphics_access_count) || atomic_read(&g_videoenc_access_count)
 		|| atomic_read(&g_videodec_access_count) || atomic_read(&g_display_access_count)

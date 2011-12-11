@@ -29,3 +29,4 @@
 int msic_regsiter_driver(void);
 int msic_unregister_driver(void);
 extern void hpd_notify_um (void);
+extern unsigned char vrint_dat;

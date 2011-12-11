@@ -723,9 +723,9 @@ struct dpst_guardband {
 # define HDMIB_NULL_PACKET		(1 << 9)
 #define HDMIB_HDCP_PORT (1 << 5)
 
-
 #define VIDEO_DIP_CTL          0x61170
-#define EN_DIP                                (1 << 31)
+#define EN_DIP                        (1 << 31)
+#define PORT_B_SELECT                 (1 << 29)
 #define DIP_TYPE_MASK                 (0xf << 21)
 #define DIP_TYPE_AVI                  (1 << 21)
 #define DIP_TYPE_VS                   (2 << 21)
@@ -739,7 +739,11 @@ struct dpst_guardband {
 #define DIP_TX_FREQ_1VSNC             (1 << 16)
 #define DIP_TX_FREQ_2VSNC             (2 << 16)
 #define DIP_RAM_ADDR_MASK             0xf
+#define DIP_RAM_ADDR_INDEX_MAX	      0xf
 #define VIDEO_DIP_DATA         0x61178
+
+#define AUDIO_DIP_CTL   0x69060
+
 /* MEDFIELD HDMI audio unit registers */
 #define AUD_CONFIG		0x69000
 #define AUD_CONF_AUDIO_ENABLE	(1 << 0)

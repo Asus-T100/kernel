@@ -1045,8 +1045,14 @@ struct drm_psb_private {
 	unsigned int flip_tail;
 	unsigned int flip_inited;
 	unsigned int head_fliped;
-	unsigned int flip_start;
 	spinlock_t flip_lock;
+	/*whether is DVI port*/
+	bool bDVIport;
+	unsigned int drm_psb_widi;
+
+	/*hdmi connected status */
+	bool bhdmiconnected;
+
 };
 
 struct psb_fpriv {

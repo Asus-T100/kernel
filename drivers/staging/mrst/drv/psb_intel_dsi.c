@@ -2047,6 +2047,9 @@ static bool mrstDSI_clockInit(DRM_DRIVER_PRIVATE_T *dev_priv)
 	case 200:
 		p_mipi_2xclk = sku_100_mipi_2xclk;
 		break;
+	default:
+		PSB_DEBUG_ENTRY("mrstDSI_clockInit, core_freq = %d\n", dev_priv->core_freq);
+		return false;
 	}
 
 	for (; i < MIPI_2XCLK_COUNT; i++) {

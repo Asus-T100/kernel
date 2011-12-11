@@ -43,6 +43,8 @@
 
 #define HDMI_MONITOR_NAME_LENGTH 20
 
+#define HDMI_VSDB_FLG "030c00"
+
 // BaseLineDataLength.
 // Total size is in multiple of 4 bytes. i.e, 80/4 = 20
 #define HDMI_EELD_BASELINE_DATA_LENGTH 0x14
@@ -55,9 +57,6 @@ struct mid_intel_hdmi_priv;
 extern void mdfld_hdcp_init(struct mid_intel_hdmi_priv *p_hdmi_priv);
 extern void mdfld_hdmi_audio_init(struct mid_intel_hdmi_priv *p_hdmi_priv);
 extern void mdfld_msic_init(struct mid_intel_hdmi_priv *p_hdmi_priv);
-extern  int mdfld_hdmi_set_avi_information(struct drm_device *dev,
-				struct drm_display_mode *mode);
-
 //
 // HDMI command types
 //
@@ -128,13 +127,14 @@ typedef enum {
 // InfoFrame Payload Length in bytes
 //
 typedef enum {
-    HDMI_VS_MAX_LENGTH     = 27,   // Vendor-Specific InfoFrame Payload Length, including IEEE reg ID
-    HDMI_AVI_LENGTH        = 13,  // AVI InfoFrame Payload Length
-    HDMI_SPD_LENGTH        = 25,  // SPD InfoFrame Payload Length
-    HDMI_AUDIO_LENGTH      = 10,  // Audio InfoFrame Payload Length
-    HDMI_MS_LENGTH         = 10,  // MPEG Source InfoFrame Payload Length
-    HDMI_PR_PE_LENGTH      = 4,   // Length of PR_PE_TYPE
-    HDMI_AUDIO_CAPS_LENGTH = 4    // Length of AUDIO_CAPS_TYPE
+    HDMI_VS_MAX_LENGTH     	= 27,   // Vendor-Specific InfoFrame Payload Length, including IEEE reg ID
+    HDMI_AVI_LENGTH    		= 28,  // AVI InfoFrame Payload Length
+    HDMI_AVI_RESERVED_LENGTH    = 14,  // AVI InfoFrame Reserved Length
+    HDMI_SPD_LENGTH        	= 25,  // SPD InfoFrame Payload Length
+    HDMI_AUDIO_LENGTH      	= 10,  // Audio InfoFrame Payload Length
+    HDMI_MS_LENGTH         	= 10,  // MPEG Source InfoFrame Payload Length
+    HDMI_PR_PE_LENGTH      	= 4,   // Length of PR_PE_TYPE
+    HDMI_AUDIO_CAPS_LENGTH 	= 4    // Length of AUDIO_CAPS_TYPE
 } infoframe_length_t;
 
 //
@@ -142,7 +142,7 @@ typedef enum {
 //
 typedef enum {
     HDMI_VS_MAX_TOTAL_LENGTH     = HDMI_VS_MAX_LENGTH + 4,   // Max Total size of Vendor-Specific InfoFrame
-    HDMI_AVI_TOTAL_LENGTH        = HDMI_AVI_LENGTH + 4,  // Total size of AVI InfoFrame
+    HDMI_AVI_TOTAL_LENGTH        = HDMI_AVI_LENGTH +  4,   //Total size of AVI InfoFrame
     HDMI_SPD_TOTAL_LENGTH        = HDMI_SPD_LENGTH + 4,  // Total size of SPD InfoFrame
     HDMI_AUDIO_TOTAL_LENGTH      = HDMI_AUDIO_LENGTH + 4,  // Total size of Audio InfoFrame
     HDMI_MS_TOTAL_LENGTH         = HDMI_MS_LENGTH + 4,  // Total size of MPEG Source InfoFrame
@@ -302,7 +302,7 @@ typedef struct _if_header {
     uint8_t type;       // InfoFrame Type
     uint8_t version;    // InfoFrame Version
     uint8_t length;     // InfoFrame Length
-    uint8_t chksum;     // Checksum of the InfoFrame
+	uint8_t ecc;
 } if_header_t;
 
 //
@@ -314,6 +314,7 @@ typedef union _avi_if {
     struct
     {
         if_header_t avi_if_header;            // AVI header data
+	uint8_t chksum;                    //check sum
         union
         {
             uint8_t byte1;
@@ -373,9 +374,24 @@ typedef union _avi_if {
         uint8_t byte11;                 // end of left bar(upper), set to "00"
         uint8_t byte12;                 // start of right bar(lower), set to "00"
         uint8_t byte13;                 // start of right bar(upper), set to "00"
+	uint8_t byte_reserved[HDMI_AVI_RESERVED_LENGTH];      // reserved 14-27
 	} avi_info;
     #pragma pack()
 } avi_if_t;
+
+/*
+* HDMI Video Timing
+*/
+struct hdmi_video_format_timing {
+	u32 video_code;
+	u32 hdisplay;
+	u32 vdisplay;
+	u32 refresh;
+	bool bInterlace;
+	u32 hpolarity;
+	u32 vpolarity;
+	avi_par_info_t par;
+};
 
 //
 // SPD InfoFrame structure
@@ -885,16 +901,11 @@ struct mid_intel_hdmi_priv {
 	bool is_hdcp_supported;
 	struct i2c_adapter *hdmi_i2c_adapter;	/* for control functions */
 	struct drm_device *dev;
-	struct drm_display_mode *mimic_mode;
 	struct drm_display_mode *edid_preferred_mode;
+	bool is_hardcode_edid;
+	struct drm_display_mode *current_mode;
 };
-struct hdmi_video_code {
-	u32 video_code;
-	u32 hdisplay;
-	u32 vdisplay;
-	u32 refresh;
-	bool bInterlace;
-};
+
 struct hdmi_edid_info {
 	char monitor_name[HDMI_MONITOR_NAME_LENGTH];
 	char *edid_info;

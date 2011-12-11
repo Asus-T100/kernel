@@ -35,7 +35,7 @@
 #include <linux/pm_runtime.h>
 
 #include "psb_intel_display.h"
-#include "psb_intel_hdmi.h"
+
 #ifdef MIN
 #undef MIN
 #endif
@@ -335,6 +335,170 @@ void mdfld__intel_plane_set_alpha(int enable)
 	REG_WRITE(dspcntr_reg, dspcntr);
 }
 
+static int mdfld_intel_set_scaling_property(struct drm_crtc *crtc, int x, int y, int pipe)
+{
+	struct drm_device *dev = crtc->dev;
+	struct psb_intel_crtc *psb_intel_crtc = to_psb_intel_crtc(crtc);
+	struct drm_framebuffer *fb = crtc->fb;
+	struct drm_display_mode *adjusted_mode = & psb_intel_crtc->saved_adjusted_mode;
+	uint64_t scalingType = psb_intel_crtc->scaling_type;
+	int pipesrc_reg = PIPEASRC;
+	int dspsize_reg = DSPASIZE;
+	int dsppos_reg = DSPAPOS;
+	int sprite_pos_x = 0, sprite_pos_y = 0;
+	int sprite_width = 0, sprite_height = 0;
+	int src_image_hor = 0, src_image_vert = 0;
+
+	switch (pipe) {
+        case 0:
+                break;
+        case 1:
+		pipesrc_reg = PIPEBSRC;
+		dspsize_reg = DSPBSIZE;
+		dsppos_reg = DSPBPOS;
+                break;
+        case 2:
+		pipesrc_reg = PIPECSRC;
+		dspsize_reg = DSPCSIZE;
+		dsppos_reg = DSPCPOS;
+                break;
+        default:
+                DRM_ERROR("Illegal Pipe Number. \n");
+                return -EINVAL;
+        }
+
+	PSB_DEBUG_ENTRY("scalingType %llu\n", scalingType);
+	/* pipesrc and dspsize control the size that is scaled from,
+	 * which should always be the user's requested size.
+	 */
+	if (pipe == 1) {
+		/*
+		 * Frame buffer size may beyond active region in case of
+		 * panning mode.
+		 */
+		sprite_width = MIN(fb->width, adjusted_mode->hdisplay);
+		sprite_height = MIN(fb->height, adjusted_mode->vdisplay);
+
+		switch (scalingType) {
+		case DRM_MODE_SCALE_NONE:
+		case DRM_MODE_SCALE_CENTER:
+			/* This mode is used to support centering the screen by setting reg
+			 * in DISPLAY controller */
+			src_image_hor = adjusted_mode->hdisplay;
+			src_image_vert = adjusted_mode->vdisplay;
+			sprite_pos_x = (src_image_hor - sprite_width) / 2;
+			sprite_pos_y = (src_image_vert - sprite_height) / 2;
+
+			REG_WRITE(PFIT_CONTROL,
+				REG_READ(PFIT_CONTROL) & ~PFIT_ENABLE);
+
+			break;
+
+		case DRM_MODE_SCALE_FULLSCREEN:
+			src_image_hor = sprite_width;
+			src_image_vert = sprite_height;
+			sprite_pos_x = 0;
+			sprite_pos_y = 0;
+
+			if ((adjusted_mode->hdisplay > sprite_width) ||
+					(adjusted_mode->vdisplay > sprite_height))
+				REG_WRITE(PFIT_CONTROL,
+						PFIT_ENABLE |
+						PFIT_PIPE_SELECT_B |
+						PFIT_SCALING_MODE_AUTO);
+			break;
+
+		case DRM_MODE_SCALE_ASPECT:
+			if ((adjusted_mode->hdisplay - sprite_width) >=
+				(adjusted_mode->vdisplay -sprite_height)) {
+				src_image_hor = adjusted_mode->hdisplay *
+					sprite_height /adjusted_mode->vdisplay;
+				src_image_vert = sprite_height;
+				sprite_pos_x =
+					(adjusted_mode->hdisplay - sprite_width) *
+					sprite_height /adjusted_mode->vdisplay /2;
+				sprite_pos_y = 0;
+			} else {
+				src_image_hor = sprite_width;
+				src_image_vert = adjusted_mode->vdisplay *
+					sprite_width /
+					adjusted_mode->hdisplay;
+				sprite_pos_x = 0;
+				sprite_pos_y =
+					(adjusted_mode->vdisplay - sprite_height) *
+					sprite_width /adjusted_mode->hdisplay /2;
+			}
+
+			/* In case of rotation to landscape mode or hdmi timing
+			*  setting is less than framebuffer size, it scales to
+			*  hdmi display timing size automatically.
+			*/
+			if ((fb->width > fb->height) ||
+				(fb->width > adjusted_mode->hdisplay) ||
+				(fb->height > adjusted_mode->vdisplay)) {
+				sprite_pos_x = 0;
+				sprite_pos_y = 0;
+				sprite_height = fb->height;
+				sprite_width = fb->width;
+				src_image_hor = fb->width;
+				src_image_vert = fb->height;
+			}
+
+			if ((adjusted_mode->hdisplay != fb->width) ||
+					(adjusted_mode->vdisplay !=
+					 fb->height))
+				REG_WRITE(PFIT_CONTROL,
+						PFIT_ENABLE |
+						PFIT_PIPE_SELECT_B |
+						PFIT_SCALING_MODE_AUTO);
+			break;
+
+		default:
+			/* Android will not change mode, however ,we have tools
+			to change HDMI timing so there is some cases frame
+			buffer no change ,but timing changed mode setting, in
+			this case. mode information for source size is not
+			right, so here use fb information for source/sprite
+			size*/
+
+			/* The defined sprite rectangle must always be
+			completely contained within the displayable area of the
+			screen image (frame buffer). */
+			sprite_pos_x = 0;
+			sprite_pos_y = 0;
+			sprite_height = fb->height;
+			sprite_width = fb->width;
+			src_image_hor = fb->width;
+			src_image_vert = fb->height;
+			if ((adjusted_mode->hdisplay != fb->width) ||
+					(adjusted_mode->vdisplay != fb->height))
+				REG_WRITE(PFIT_CONTROL, PFIT_ENABLE |
+						PFIT_PIPE_SELECT_B);
+
+			break;
+		}
+
+		PSB_DEBUG_ENTRY("Sprite position: (%d, %d)\n", sprite_pos_x,
+				sprite_pos_y);
+		PSB_DEBUG_ENTRY("Sprite size: %d x %d\n", sprite_width,
+				sprite_height);
+		PSB_DEBUG_ENTRY("Pipe source image size: %d x %d\n",
+				src_image_hor, src_image_vert);
+
+		REG_WRITE(dsppos_reg, (sprite_pos_y << 16) | sprite_pos_x);
+		REG_WRITE(dspsize_reg, ((sprite_height - 1) << 16) |
+				(sprite_width - 1));
+		REG_WRITE(pipesrc_reg, ((src_image_hor - 1) << 16) |
+				(src_image_vert - 1));
+	} else {
+		REG_WRITE(dspsize_reg, ((adjusted_mode->vdisplay - 1) << 16) | (adjusted_mode->hdisplay - 1));
+		REG_WRITE(pipesrc_reg, ((adjusted_mode->hdisplay - 1) << 16) | (adjusted_mode->vdisplay - 1));
+		REG_WRITE(dsppos_reg, 0);
+	}
+
+	return 0;
+}
+
 int mdfld__intel_pipe_set_base(struct drm_crtc *crtc, int x, int y, struct drm_framebuffer *old_fb)
 {
 	struct drm_device *dev = crtc->dev;
@@ -387,6 +551,8 @@ int mdfld__intel_pipe_set_base(struct drm_crtc *crtc, int x, int y, struct drm_f
 	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
 				       OSPM_UHB_FORCE_POWER_ON))
 		return 0;
+
+	mdfld_intel_set_scaling_property(crtc, x, y, pipe);
 
 	Start = mode_dev->bo_offset(dev, psbfb);
 	Size = mode_dev->bo_size(dev, psbfb);
@@ -1017,6 +1183,7 @@ mdfldFindBestPLL(struct drm_crtc *crtc, int target, int refclk,
 }
 
 static int mdfld_crtc_dsi_pll_calc(struct drm_crtc *crtc,
+				struct mdfld_dsi_config *dsi_config,
 				struct drm_device *dev,
 				struct mdfld_dsi_hw_context *ctx,
 				struct drm_display_mode *adjusted_mode)
@@ -1049,7 +1216,11 @@ static int mdfld_crtc_dsi_pll_calc(struct drm_crtc *crtc,
 
 	dev_priv->bpp = 24;
 	clk_byte = dev_priv->bpp / 8;
-	clk = adjusted_mode->clock;
+
+	if (dsi_config->lane_count)
+		clk = adjusted_mode->clock / dsi_config->lane_count;
+	else
+		clk = adjusted_mode->clock;
 
 	clk_tmp = clk * clk_n * clk_p2 * clk_byte;
 
@@ -1119,12 +1290,12 @@ static int mdfld_crtc_dsi_mode_set(struct drm_crtc *crtc,
 	fb_depth = crtc->fb->depth;
 	dev = crtc->dev;
 
-	spin_lock(&dsi_config->context_lock);
+	mutex_lock(&dsi_config->context_lock);
 
 	ctx->vgacntr = 0x80000000;
 
 	/*setup pll*/
-	mdfld_crtc_dsi_pll_calc(crtc, dev, ctx, adjusted_mode);
+	mdfld_crtc_dsi_pll_calc(crtc, dsi_config, dev, ctx, adjusted_mode);
 
 	/*set up pipe timings*/
 	ctx->htotal = (mode->crtc_hdisplay - 1) |
@@ -1178,7 +1349,7 @@ static int mdfld_crtc_dsi_mode_set(struct drm_crtc *crtc,
 		break;
 	default:
 		DRM_ERROR("Unknown color depth\n");
-		spin_unlock(&dsi_config->context_lock);
+		mutex_unlock(&dsi_config->context_lock);
 		return -EINVAL;
 	}
 
@@ -1208,9 +1379,10 @@ static int mdfld_crtc_dsi_mode_set(struct drm_crtc *crtc,
 
 	ctx->pipeconf |= ((hdelay-1) << 27);
 
-	spin_unlock(&dsi_config->context_lock);
+	mutex_unlock(&dsi_config->context_lock);
 	return 0;
 }
+
 static int mdfld_crtc_mode_set(struct drm_crtc *crtc,
 				struct drm_display_mode *mode,
 				struct drm_display_mode *adjusted_mode,
@@ -1339,12 +1511,12 @@ static int mdfld_crtc_mode_set(struct drm_crtc *crtc,
 		 adjusted_mode->vtotal);
 	PSB_DEBUG_ENTRY("adjusted_clock = %d\n",
 		 adjusted_mode->clock);
+	PSB_DEBUG_ENTRY("adjusted_refresh = %d\n",
+		 adjusted_mode->vrefresh);
 	PSB_DEBUG_ENTRY("hdisplay = %d\n",
 		 mode->hdisplay);
 	PSB_DEBUG_ENTRY("vdisplay = %d\n",
 		 mode->vdisplay);
-	PSB_DEBUG_ENTRY("vrefresh = %d\n",
-		mode->vrefresh);
 
 	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, OSPM_UHB_FORCE_POWER_ON))
 		return 0;
@@ -1401,122 +1573,7 @@ static int mdfld_crtc_mode_set(struct drm_crtc *crtc,
 		drm_connector_property_get_value(&psb_intel_output->base,
 			dev->mode_config.scaling_mode_property, &scalingType);
 
-	PSB_DEBUG_ENTRY("scalingType %llu\n", scalingType);
-	/* pipesrc and dspsize control the size that is scaled from,
-	 * which should always be the user's requested size.
-	 */
-	if (pipe == 1) {
-		/*
-		 * Frame buffer size may beyond active region in case of
-		 * panning mode.
-		 */
-		sprite_width = MIN(fb->width, adjusted_mode->crtc_hdisplay);
-		sprite_height = MIN(fb->height, adjusted_mode->crtc_vdisplay);
-
-		switch (scalingType) {
-		case DRM_MODE_SCALE_NONE:
-		case DRM_MODE_SCALE_CENTER:
-			/* This mode is used to support centering the screen by setting reg
-			 * in DISPLAY controller */
-			src_image_hor = adjusted_mode->crtc_hdisplay;
-			src_image_vert = adjusted_mode->crtc_vdisplay;
-			sprite_pos_x = (src_image_hor - sprite_width) / 2;
-			sprite_pos_y = (src_image_vert - sprite_height) / 2;
-
-			REG_WRITE(PFIT_CONTROL,
-					REG_READ(PFIT_CONTROL) & ~PFIT_ENABLE);
-
-			break;
-
-		case DRM_MODE_SCALE_FULLSCREEN:
-			src_image_hor = sprite_width;
-			src_image_vert = sprite_height;
-			sprite_pos_x = 0;
-			sprite_pos_y = 0;
-
-			if ((adjusted_mode->hdisplay > sprite_width) ||
-					(adjusted_mode->vdisplay >
-					 sprite_height))
-				REG_WRITE(PFIT_CONTROL,
-						PFIT_ENABLE |
-						PFIT_PIPE_SELECT_B |
-						PFIT_SCALING_MODE_AUTO);
-			break;
-
-		case DRM_MODE_SCALE_ASPECT:
-			if ((adjusted_mode->crtc_hdisplay - sprite_width) >=
-					(adjusted_mode->crtc_vdisplay -
-					 sprite_height)) {
-				src_image_hor = adjusted_mode->crtc_hdisplay *
-					sprite_height /
-					adjusted_mode->crtc_vdisplay;
-				src_image_vert = sprite_height;
-				sprite_pos_x =
-					(src_image_hor - sprite_width) / 2;
-				sprite_pos_y = 0;
-			} else {
-				src_image_hor = sprite_width;
-				src_image_vert = adjusted_mode->crtc_vdisplay *
-					sprite_width /
-					adjusted_mode->crtc_hdisplay;
-				sprite_pos_x = 0;
-				sprite_pos_y =
-					(src_image_vert - sprite_height) / 2;
-			}
-
-			if ((adjusted_mode->hdisplay > sprite_width) ||
-					(adjusted_mode->vdisplay >
-					 sprite_height))
-				REG_WRITE(PFIT_CONTROL,
-						PFIT_ENABLE |
-						PFIT_PIPE_SELECT_B |
-						PFIT_SCALING_MODE_AUTO);
-			break;
-
-		default:
-			/* Android will not change mode, however ,we have tools
-			to change HDMI timing so there is some cases frame
-			buffer no change ,but timing changed mode setting, in
-			this case. mode information for source size is not
-			right, so here use fb information for source/sprite
-			size*/
-
-			/* The defined sprite rectangle must always be
-			completely contained within the displayable area of the
-			screen image (frame buffer). */
-			REG_WRITE(dspsize_reg,
-					((fb->height - 1) << 16) |
-					(fb->width - 1));
-			/* Set the CRTC with encoder mode. */
-			REG_WRITE(pipesrc_reg,
-					((fb->width - 1) << 16) |
-					(fb->height - 1));
-			if ((adjusted_mode->hdisplay != fb->width) ||
-					(adjusted_mode->vdisplay != fb->height))
-				REG_WRITE(PFIT_CONTROL, PFIT_ENABLE |
-						PFIT_PIPE_SELECT_B);
-
-			REG_WRITE(dsppos_reg, 0);
-			break;
-		}
-
-		PSB_DEBUG_ENTRY("Sprite position: (%d, %d)\n", sprite_pos_x,
-				sprite_pos_y);
-		PSB_DEBUG_ENTRY("Sprite size: %d x %d\n", sprite_width,
-				sprite_height);
-		PSB_DEBUG_ENTRY("Pipe source image size: %d x %d\n",
-				src_image_hor, src_image_vert);
-
-		REG_WRITE(dsppos_reg, (sprite_pos_y << 16) | sprite_pos_x);
-		REG_WRITE(dspsize_reg, ((sprite_height - 1) << 16) |
-				(sprite_width - 1));
-		REG_WRITE(pipesrc_reg, ((src_image_hor - 1) << 16) |
-				(src_image_vert - 1));
-	} else {
-		REG_WRITE(dspsize_reg, ((mode->crtc_vdisplay - 1) << 16) | (mode->crtc_hdisplay - 1));
-		REG_WRITE(pipesrc_reg, ((mode->crtc_hdisplay - 1) << 16) | (mode->crtc_vdisplay - 1));
-		REG_WRITE(dsppos_reg, 0);
-	}
+	psb_intel_crtc->scaling_type = scalingType;
 
 	if (scalingType == DRM_MODE_SCALE_NO_SCALE) {
 		/*Moorestown doesn't have register support for centering so we need to
@@ -1728,8 +1785,7 @@ static int mdfld_crtc_mode_set(struct drm_crtc *crtc,
 
 	REG_WRITE(dspcntr_reg, *dspcntr);
 	psb_intel_wait_for_vblank(dev);
-	/*set hdmi avi information*/
-	mdfld_hdmi_set_avi_information(dev, adjusted_mode);
+
 mrst_crtc_mode_set_exit:
 
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);

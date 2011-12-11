@@ -1179,6 +1179,54 @@ void mdfld_dsi_dpi_turn_on(struct mdfld_dsi_dpi_output * output, int pipe)
 	/* 	dev_priv->dpi_panel_on = true; */
 }
 
+static int __dpi_enter_ulps_locked(struct mdfld_dsi_config *dsi_config)
+{
+	struct mdfld_dsi_hw_registers *regs = &dsi_config->regs;
+	struct mdfld_dsi_hw_context *ctx = &dsi_config->dsi_hw_context;
+	struct drm_device *dev = dsi_config->dev;
+	struct mdfld_dsi_pkg_sender *sender
+			= mdfld_dsi_get_pkg_sender(dsi_config);
+
+	ctx->device_ready = REG_READ(regs->device_ready_reg);
+
+	if (ctx->device_ready & DSI_POWER_STATE_ULPS_MASK) {
+		DRM_ERROR("Broken ULPS states\n");
+		return -EINVAL;
+	}
+
+	/*wait for all FIFOs empty*/
+	mdfld_dsi_wait_for_fifos_empty(sender);
+
+	/*inform DSI host is to be put on ULPS*/
+	ctx->device_ready |= DSI_POWER_STATE_ULPS_ENTER;
+	REG_WRITE(regs->device_ready_reg, ctx->device_ready);
+
+	DRM_INFO("%s: entered ULPS state\n", __func__);
+	return 0;
+}
+
+static int __dpi_exit_ulps_locked(struct mdfld_dsi_config *dsi_config)
+{
+	struct mdfld_dsi_hw_registers *regs = &dsi_config->regs;
+	struct mdfld_dsi_hw_context *ctx = &dsi_config->dsi_hw_context;
+	struct drm_device *dev = dsi_config->dev;
+
+	ctx->device_ready = REG_READ(regs->device_ready_reg);
+
+	/*enter ULPS EXIT state*/
+	ctx->device_ready &= ~DSI_POWER_STATE_ULPS_MASK;
+	ctx->device_ready |= DSI_POWER_STATE_ULPS_EXIT;
+	REG_WRITE(regs->device_ready_reg, ctx->device_ready);
+
+	/*wait for 1ms as spec suggests*/
+	mdelay(1);
+
+	/*clear ULPS state*/
+	ctx->device_ready &= ~DSI_POWER_STATE_ULPS_MASK;
+	REG_WRITE(regs->device_ready_reg, ctx->device_ready);
+	return 0;
+}
+
 /**
  * Power on sequence for video mode MIPI panel.
  * NOTE: do NOT modify this function
@@ -1296,8 +1344,12 @@ static int __dpi_panel_power_on(struct mdfld_dsi_config *dsi_config,
 	REG_WRITE(regs->dsplinoff_reg, ctx->dsplinoff);
 	REG_WRITE(regs->vgacntr_reg, ctx->vgacntr);
 
+	/*exit ULPS state*/
+	__dpi_exit_ulps_locked(dsi_config);
+
 	/*Enable DSI Controller*/
 	REG_WRITE(regs->device_ready_reg, ctx->device_ready | BIT0);
+
 	/*set low power output hold*/
 	REG_WRITE(regs->mipi_reg, (ctx->mipi | BIT16));
 
@@ -1346,7 +1398,6 @@ static int __dpi_panel_power_on(struct mdfld_dsi_config *dsi_config,
 
 	if (p_funcs->set_brightness(dsi_config, ctx->lastbrightnesslevel))
 		DRM_ERROR("Failed to set panel brightness\n");
-
 
 power_on_err:
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
@@ -1427,10 +1478,15 @@ static int __dpi_panel_power_off(struct mdfld_dsi_config *dsi_config,
 
 	/*Disable MIPI port*/
 	REG_WRITE(regs->mipi_reg, (REG_READ(regs->mipi_reg) & ~BIT31));
+
 	/*clear Low power output hold*/
 	REG_WRITE(regs->mipi_reg, (REG_READ(regs->mipi_reg) & ~BIT16));
+
 	/*Disable DSI controller*/
 	REG_WRITE(regs->device_ready_reg, (ctx->device_ready & ~BIT0));
+
+	/*enter ULPS*/
+	__dpi_enter_ulps_locked(dsi_config);
 
 	/*Disable DSI PLL*/
 	pipe0_enabled = (REG_READ(PIPEACONF) & BIT31) ? 1 : 0;
@@ -1483,7 +1539,7 @@ static int __mdfld_dsi_dpi_set_power(struct drm_encoder *encoder, bool on)
 	if (dsi_connector->status != connector_status_connected)
 		return 0;
 
-	spin_lock(&dsi_config->context_lock);
+	mutex_lock(&dsi_config->context_lock);
 
 	if (on && !dsi_config->dsi_hw_context.panel_on) {
 		if (__dpi_panel_power_on(dsi_config, p_funcs)) {
@@ -1495,12 +1551,6 @@ static int __mdfld_dsi_dpi_set_power(struct drm_encoder *encoder, bool on)
 			let panel in full color*/
 		mdfld_dsi_dpi_set_color_mode(dsi_config, false);
 	} else if (!on && dsi_config->dsi_hw_context.panel_on) {
-		if (dpi_output->first_boot) {
-			PSB_DEBUG_ENTRY(
-				" Skip turn off, if first time boot and panel have enabled\n");
-			dpi_output->first_boot = 0;
-			goto fun_exit;
-		}
 		if (__dpi_panel_power_off(dsi_config, p_funcs)) {
 			DRM_ERROR("Failed to power off\n");
 			goto set_power_err;
@@ -1508,11 +1558,11 @@ static int __mdfld_dsi_dpi_set_power(struct drm_encoder *encoder, bool on)
 		dsi_config->dsi_hw_context.panel_on = 0;
 	}
 fun_exit:
-	spin_unlock(&dsi_config->context_lock);
+	mutex_unlock(&dsi_config->context_lock);
 	PSB_DEBUG_ENTRY("successfully\n");
 	return 0;
 set_power_err:
-	spin_unlock(&dsi_config->context_lock);
+	mutex_unlock(&dsi_config->context_lock);
 	PSB_DEBUG_ENTRY("unsuccessfully!!!!\n");
 	return -EAGAIN;
 }
@@ -1540,12 +1590,12 @@ void mdfld_dsi_dpi_set_power(struct drm_encoder *encoder, bool on)
 		pipeconf_reg = PIPECCONF;
 	}
 
-#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY
 	/*start up display island if it was shutdown*/
 	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
 					OSPM_UHB_FORCE_POWER_ON))
 		return;
 
+#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY
 	if(on) {
 		if (get_panel_type(dev, pipe) == TMD_VID){
 			if(dsi_device_ready) {
@@ -1597,7 +1647,6 @@ void mdfld_dsi_dpi_set_power(struct drm_encoder *encoder, bool on)
 
 	}
 
-	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 #else
 	/**
 	 * if TMD panel call new power on/off sequences instead.
@@ -1606,6 +1655,7 @@ void mdfld_dsi_dpi_set_power(struct drm_encoder *encoder, bool on)
 	__mdfld_dsi_dpi_set_power(encoder, on);
 
 #endif
+	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 }
 
 void mdfld_dsi_dpi_dpms(struct drm_encoder *encoder, int mode)
@@ -1775,7 +1825,7 @@ static void __mdfld_dsi_dpi_set_timing(struct mdfld_dsi_config *config,
 	mode = adjusted_mode;
 	ctx = &config->dsi_hw_context;
 
-	spin_lock(&config->context_lock);
+	mutex_lock(&config->context_lock);
 
 	/*dpi resolution*/
 	ctx->dpi_resolution = (mode->vdisplay << 16 | mode->hdisplay);
@@ -1798,7 +1848,7 @@ static void __mdfld_dsi_dpi_set_timing(struct mdfld_dsi_config *config,
 	if (config->pipe == 0)
 		ctx->mipi = PASS_FROM_SPHY_TO_AFE | config->lane_config;
 
-	spin_unlock(&config->context_lock);
+	mutex_unlock(&config->context_lock);
 }
 
 void mdfld_dsi_dpi_mode_set(struct drm_encoder *encoder,

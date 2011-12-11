@@ -108,7 +108,9 @@ tmd_vid_get_config_mode(struct drm_device* dev)
 		mode->vsync_start = 861;
 		mode->vsync_end = 865;
 		mode->vtotal = 873;
-		mode->clock = 13080;  /* 60(refresh rate) * (873 + 1) * (499+1) / 1000 / 2 */
+		mode->vrefresh = 60;
+		mode->clock = mode->vrefresh * (mode->vtotal + 1) *
+				(mode->htotal + 1) / 1000;
 	}
 #endif
 	drm_mode_set_name(mode);

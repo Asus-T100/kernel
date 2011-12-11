@@ -2363,7 +2363,9 @@ PVRSRV_ERROR PVRSRVOpenBCDeviceKM (PVRSRV_PER_PROCESS_DATA	*psPerProc,
 
 ErrorExit:
 
-	
+	if(psBCInfo->ui32RefCount)
+		psBCInfo->ui32RefCount--;
+
 	for(i=0; i<psBCInfo->ui32BufferCount; i++)
 	{
 		if(psBCInfo->psBuffer[i].sDeviceClassBuffer.psKernelSyncInfo)

@@ -38,6 +38,9 @@ void gl3_enable(void)
 		if (!ospm_power_using_hw_begin(OSPM_GL3_CACHE_ISLAND, true))
 			return;
 		MDFLD_GL3_WRITE(MDFLD_GL3_ENABLE_CACHE, MDFLD_GL3_CONTROL);
+		/* set gl3 attributes */
+		MDFLD_GL3_WRITE(GCL_CR_CTL2_ATTRIBUTES, MDFLD_GCL_CR_CTL2);
+		MDFLD_GL3_WRITE(MDFLD_GCL_CR_ECO_EVICT_INVAL, MDFLD_GCL_CR_ECO);
 		PSB_DEBUG_GENERAL("gl3 cache enabled with mask %x\n", MDFLD_GL3_ENABLE_CACHE);
 		ospm_power_using_hw_end(OSPM_GL3_CACHE_ISLAND);
 	}

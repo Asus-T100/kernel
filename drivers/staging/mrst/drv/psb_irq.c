@@ -160,7 +160,7 @@ static int mipi_hdmi_vsync_check(struct drm_device *dev, uint32_t pipe)
 		(struct drm_psb_private *) dev->dev_private;
 	struct mdfld_dsi_config *dsi_config = dev_priv->dsi_configs[0];
 	static int pipe_surf[2];
-	int pipea_stat, pipeb_stat;
+	int pipea_stat, pipeb_stat, pipeb_ctl, pipeb_cntr;
 	unsigned long irqflags;
 
 	spin_lock_irqsave(&dev_priv->irqmask_lock, irqflags);
@@ -168,18 +168,23 @@ static int mipi_hdmi_vsync_check(struct drm_device *dev, uint32_t pipe)
 		if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, OSPM_UHB_ONLY_IF_ON)) {
 			pipea_stat = REG_READ(psb_pipestat(0));
 			pipeb_stat = REG_READ(psb_pipestat(1));
+			pipeb_ctl = REG_READ(HDMIB_CONTROL);
+			pipeb_cntr = REG_READ(DSPBCNTR);
 			pipe_surf[pipe] = REG_READ(DSPASURF);
 			ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 		}
 		/* PSB_DEBUG_ENTRY("[vsync irq] pipe : 0x%x, regsurf: 0x%x !\n", pipe, pipe_surf[pipe]); */
 
 		if ((pipea_stat & PIPE_VBLANK_INTERRUPT_ENABLE)
+				&& (pipeb_ctl & HDMIB_PORT_EN)
+				&& (pipeb_cntr & DISPLAY_PLANE_ENABLE)
 				&& (pipeb_stat & PIPE_VBLANK_INTERRUPT_ENABLE)) {
 			if (pipe_surf[0] == pipe_surf[1]) {
 				pipe_surf[0] = MAX_NUM;
 				pipe_surf[1] = MAX_NUM;
 			} else {
 				spin_unlock_irqrestore(&dev_priv->irqmask_lock, irqflags);
+		/*PSB_DEBUG_ENTRY("Probable Display Buffer LOCK!\n");*/
 				return 0;
 			}
 		}
@@ -218,7 +223,6 @@ static void mid_check_vblank(struct drm_device *dev, uint32_t pipe)
 		dev_priv->dsr_idle_count++;
 	spin_unlock_irqrestore(&dev_priv->irqmask_lock, irqflags);
 }
-
 
 /**
  * Display controller interrupt handler for vsync/vblank.

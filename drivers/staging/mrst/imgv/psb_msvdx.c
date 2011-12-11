@@ -1515,7 +1515,19 @@ int lnc_video_getparam(struct drm_device *dev, void *data,
 		}
 		break;
 	case IMG_VIDEO_SET_HDMI_STATE:
-		hdmi_state = (int)arg->value;
+		if (!hdmi_state) {
+			PSB_DEBUG_ENTRY(
+				"wait 100ms for kernel hdmi pipe ready.\n");
+			msleep(100);
+		}
+		if (dev_priv->bhdmiconnected)
+			hdmi_state = (int)arg->value;
+		else
+			PSB_DEBUG_ENTRY(
+				"skip hdmi_state setting, for unplugged.\n");
+
+		PSB_DEBUG_ENTRY("%s, set hdmi_state = %d\n",
+				 __func__, hdmi_state);
 		break;
 	case PNW_VIDEO_QUERY_ENTRY:
 		ret = copy_from_user(&handle,

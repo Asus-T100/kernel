@@ -191,7 +191,7 @@ typedef struct _aksv_get {
 
 int hdcp_init(void **data, int drmFD, int output_id);
 int hdcp_uninit(void * data);
-int hdcp_query();
+int hdcp_query(void);
 int hdcp_is_valid_bksv(uint8_t *buffer, uint32_t size);
 int hdcp_is_enabled(void);
 int hdcp_enable(int enable);

@@ -50,16 +50,21 @@ void mdfld_hdmi_audio_init(struct mid_intel_hdmi_priv *p_hdmi_priv)
  */
 static int mdfld_hdmi_audio_write (uint32_t reg, uint32_t val)
 {
-    struct drm_device *dev = hdmi_priv->dev;
-    int ret = 0;
+	struct drm_device *dev = hdmi_priv->dev;
+	int ret = 0;
+	struct drm_psb_private *dev_priv =
+		(struct drm_psb_private *) dev->dev_private;
 
-    if (IS_HDMI_AUDIO_REG(reg)) {
-	REG_WRITE(reg, val);
-    } else {
-        ret = -EINVAL;
-    }
+	if (dev_priv->bDVIport) {
+		return 0;
+	}
 
-    return ret;
+	if (IS_HDMI_AUDIO_REG(reg))
+		REG_WRITE(reg, val);
+	else
+		ret = -EINVAL;
+
+	return ret;
 }
 
 /**
@@ -69,16 +74,21 @@ static int mdfld_hdmi_audio_write (uint32_t reg, uint32_t val)
  */
 static int mdfld_hdmi_audio_read (uint32_t reg, uint32_t *val)
 {
-    struct drm_device *dev = hdmi_priv->dev;
-    int ret = 0;
+	struct drm_device *dev = hdmi_priv->dev;
+	struct drm_psb_private *dev_priv =
+		(struct drm_psb_private *) dev->dev_private;
+	int ret = 0;
 
-    if (IS_HDMI_AUDIO_REG(reg)) {
-	*val = REG_READ(reg);
-    } else {
-        ret = -EINVAL;
-    }
+	if (dev_priv->bDVIport) {
+		return 0;
+	}
 
-    return ret;
+	if (IS_HDMI_AUDIO_REG(reg))
+		*val = REG_READ(reg);
+	else
+		ret = -EINVAL;
+
+	return ret;
 }
 
 /**
