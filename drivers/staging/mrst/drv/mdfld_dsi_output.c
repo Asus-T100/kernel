@@ -342,7 +342,7 @@ void mdfld_dsi_brightness_control (struct drm_device *dev, int pipe, int level)
 	}
 
 	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
-					OSPM_UHB_ONLY_IF_ON))
+					OSPM_UHB_FORCE_POWER_ON))
 		return;
 
 	mutex_lock(&dsi_config->context_lock);

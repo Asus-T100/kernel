@@ -33,7 +33,6 @@
 	list_entry((ptr)->next, type, member)
 #endif
 
-
 static int psb_msvdx_send(struct drm_device *dev, void *cmd,
 			  unsigned long cmd_size);
 
@@ -1504,6 +1503,10 @@ int lnc_video_getparam(struct drm_device *dev, void *data,
 			DRM_ERROR("IMG_VIDEO_GET_DISPLAYING_FRAME error.\n");
 			return -EFAULT;
 		}
+		break;
+	case IMG_DISPLAY_SET_WIDI_EXT_STATE:
+		dev_priv->drm_psb_widi = (int)arg->value;
+		DRM_INFO("psb_drm_widi: %d.\n", dev_priv->drm_psb_widi);
 		break;
 	case IMG_VIDEO_GET_HDMI_STATE:
 		ret = copy_to_user((void __user *)((unsigned long)arg->value),

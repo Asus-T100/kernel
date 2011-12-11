@@ -338,6 +338,7 @@ void ospm_power_init(struct drm_device *dev)
 	mutex_init(&g_ospm_mutex);
 	spin_lock_init(&dev_priv->ospm_lock);
 
+	dev_priv->drm_psb_widi = 0;
 	spin_lock_irqsave(&dev_priv->ospm_lock, flags);
 	g_hw_power_status_mask = OSPM_ALL_ISLANDS;
 	spin_unlock_irqrestore(&dev_priv->ospm_lock, flags);
@@ -1679,6 +1680,9 @@ static void gfx_early_suspend(struct early_suspend *h)
 	printk(KERN_ALERT "\n   gfx_early_suspend\n");
 #endif
 
+	if( dev_priv->drm_psb_widi )
+		dev_priv->drm_psb_widi = 0;
+
 	/*Display off*/
 	if (IS_MDFLD(gpDrmDevice)) {
 		if ((dev_priv->panel_id == TMD_VID) ||
@@ -1737,6 +1741,9 @@ static void gfx_late_resume(struct early_suspend *h)
 #ifdef OSPM_GFX_DPK
 	printk(KERN_ALERT "\ngfx_late_resume\n");
 #endif
+
+	if( dev_priv->drm_psb_widi )
+		dev_priv->drm_psb_widi = 0;
 
 	if(IS_MDFLD(gpDrmDevice)){
 
@@ -1815,7 +1822,6 @@ int ospm_power_suspend(struct pci_dev *pdev, pm_message_t state)
         int videoenc_access_count;
         int videodec_access_count;
         int display_access_count;
-        bool suspend_pci = true;
 
 	if(gbSuspendInProgress || gbResumeInProgress)
         {
@@ -1855,13 +1861,11 @@ int ospm_power_suspend(struct pci_dev *pdev, pm_message_t state)
                         }
 
 #endif
-                        if (ospm_runtime_pm_topaz_suspend(gpDrmDevice) != 0) {
-				suspend_pci = false;
-                        }
+                        if (ospm_runtime_pm_topaz_suspend(gpDrmDevice) != 0)
+				ret = -EBUSY;
 
-                        if (suspend_pci == true) {
+			if (!ret)
 				ospm_suspend_pci(pdev);
-                        }
                         gbSuspendInProgress = false;
                 } else {
                         printk(KERN_ALERT "ospm_power_suspend: device busy: graphics %d videoenc %d videodec %d display %d\n", graphics_access_count, videoenc_access_count, videodec_access_count, display_access_count);

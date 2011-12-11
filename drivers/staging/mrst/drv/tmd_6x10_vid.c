@@ -32,6 +32,9 @@
 #include "mdfld_dsi_pkg_sender.h"
 #include <linux/gpio.h>
 #include <linux/sfi.h>
+#include "psb_drv.h"
+
+#define GPIO_MIPI_PANEL_RESET 128
 
 /* ************************************************************************* *\
  * FUNCTION: mdfld_dsi_tmd_6X10_ic_init
@@ -263,6 +266,8 @@ static int mdfld_dsi_pr2_power_on(struct mdfld_dsi_config *dsi_config)
 {
 	struct mdfld_dsi_pkg_sender *sender =
 		mdfld_dsi_get_pkg_sender(dsi_config);
+	struct drm_psb_private *dev_priv =
+		(struct drm_psb_private *) gpDrmDevice->dev_private;
 	int err;
 
 	PSB_DEBUG_ENTRY("Turn on video mode TMD panel...\n");
@@ -271,29 +276,34 @@ static int mdfld_dsi_pr2_power_on(struct mdfld_dsi_config *dsi_config)
 		DRM_ERROR("Failed to get DSI packet sender\n");
 		return -EINVAL;
 	}
-	mdfld_dsi_send_gen_long_hs(sender, pr2_mcs_protect_off, 1, 0);
 
-	/*change power state*/
-	mdfld_dsi_send_mcs_long_hs(sender, pr2_exit_sleep_mode, 1, 0);
+	/*Just turn on panel for WiDi Extended Mode.*/
+	if (!dev_priv->drm_psb_widi) {
+		mdfld_dsi_send_gen_long_hs(sender, pr2_mcs_protect_off, 1, 0);
+		/*change power state*/
+		mdfld_dsi_send_mcs_long_hs(sender, pr2_exit_sleep_mode, 1, 0);
 
-	msleep(120);
+		msleep(120);
 
-	/*enable PWMON*/
-	pr2_backlight_control_2[0] |= BIT8;
-	mdfld_dsi_send_mcs_long_hs(sender, pr2_backlight_control_2, 2, 0);
+		/*enable PWMON*/
+		pr2_backlight_control_2[0] |= BIT8;
+		mdfld_dsi_send_mcs_long_hs(sender,
+			pr2_backlight_control_2, 2, 0);
 
-	/*set display on*/
-	mdfld_dsi_send_mcs_long_hs(sender, pr2_set_display_on, 1, 0);
+		/*set display on*/
+		mdfld_dsi_send_mcs_long_hs(sender, pr2_set_display_on, 1, 0);
 
-	msleep(21);
+		msleep(21);
 
-	/*Enable BLON , CABC*/
-	if (drm_psb_enable_pr2_cabc) {
-		pr2_backlight_control_1[0] |= BIT8;
-		mdfld_dsi_send_gen_long_hs(sender, pr2_backlight_control_1, 6, 0);
-		printk(KERN_ALERT "enable pr2 cabc\n");
+		/*Enable BLON , CABC*/
+		if (drm_psb_enable_pr2_cabc) {
+			pr2_backlight_control_1[0] |= BIT8;
+			mdfld_dsi_send_gen_long_hs(sender,
+				pr2_backlight_control_1, 6, 0);
+			printk(KERN_ALERT "enable pr2 cabc\n");
+		}
+
 	}
-
 	/*send TURN_ON packet*/
 	err = mdfld_dsi_send_dpi_spk_pkg_hs(sender,
 				MDFLD_DSI_DPI_SPK_TURN_ON);
@@ -301,7 +311,6 @@ static int mdfld_dsi_pr2_power_on(struct mdfld_dsi_config *dsi_config)
 		DRM_ERROR("Failed to send turn on packet\n");
 		return err;
 	}
-
 	return 0;
 }
 
@@ -309,6 +318,8 @@ static int mdfld_dsi_pr2_power_off(struct mdfld_dsi_config *dsi_config)
 {
 	struct mdfld_dsi_pkg_sender *sender =
 		mdfld_dsi_get_pkg_sender(dsi_config);
+	struct drm_psb_private *dev_priv =
+		(struct drm_psb_private *) gpDrmDevice->dev_private;
 	int err;
 
 	PSB_DEBUG_ENTRY("Turn off video mode TMD panel...\n");
@@ -326,29 +337,30 @@ static int mdfld_dsi_pr2_power_off(struct mdfld_dsi_config *dsi_config)
 		return err;
 	}
 
-	mdfld_dsi_send_gen_long_hs(sender, pr2_mcs_protect_off, 1, 0);
+	/*Just turn off panel for WiDi Extended Mode.*/
+	if (!dev_priv->drm_psb_widi) {
+		mdfld_dsi_send_gen_long_hs(sender, pr2_mcs_protect_off, 1, 0);
+		/*change power state here*/
+		mdfld_dsi_send_mcs_long_hs(sender, pr2_set_display_off, 1, 0);
 
-	/*change power state here*/
-	mdfld_dsi_send_mcs_long_hs(sender, pr2_set_display_off, 1, 0);
+		/*disable BLCON, disable CABC*/
+		pr2_backlight_control_1[0] &= (~BIT8);
+		mdfld_dsi_send_gen_long_hs(sender,
+			pr2_backlight_control_1, 6, 0);
+		printk(KERN_ALERT "disable pr2 cabc\n");
 
-	/*disable BLCON, disable CABC*/
-	pr2_backlight_control_1[0] &= (~BIT8);
-	mdfld_dsi_send_gen_long_hs(sender, pr2_backlight_control_1, 6, 0);
-	printk(KERN_ALERT "disable pr2 cabc\n");
+		msleep(21);
 
-	msleep(21);
+		mdfld_dsi_send_mcs_long_hs(sender, pr2_enter_sleep_mode, 1, 0);
 
-	mdfld_dsi_send_mcs_long_hs(sender, pr2_enter_sleep_mode, 1, 0);
-	/*disable PWMON*/
-	pr2_backlight_control_2[0] &= (~BIT8);
-	mdfld_dsi_send_gen_long_hs(sender, pr2_backlight_control_2, 2, 0);
+		msleep(120);
 
-	msleep(120);
+		/*put panel into deep standby mode*/
+		mdfld_dsi_send_gen_long_hs(sender,
+			pr2_enter_low_power_mode, 1, 0);
 
-	/*put panel into deep standby mode*/
-	mdfld_dsi_send_gen_long_hs(sender, pr2_enter_low_power_mode, 1, 0);
-
-	mdfld_dsi_send_gen_long_hs(sender, pr2_mcs_protect_on, 1, 0);
+		mdfld_dsi_send_gen_long_hs(sender, pr2_mcs_protect_on, 1, 0);
+	}
 	return 0;
 }
 

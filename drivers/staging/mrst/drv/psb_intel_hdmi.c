@@ -1188,8 +1188,8 @@ mdfld_hdmi_edid_detect(struct drm_connector *connector)
 	if (!output->hdmi_i2c_adapter) {
 		DRM_INFO("Enter mdfld_hdmi_get_modes, i2c_adapter is NULL.\n");
 
-		/* hard-coded the HDMI_I2C_ADAPTER_ID to be 3, Should get from GCT*/
-		output->hdmi_i2c_adapter = i2c_get_adapter(3);
+		/* hard-coded the HDMI_I2C_ADAPTER_ID to be 8, Should get from GCT*/
+		output->hdmi_i2c_adapter = i2c_get_adapter(8);
 	}
 
 	if (!output->hdmi_i2c_adapter) {
@@ -1495,8 +1495,8 @@ static int mdfld_hdmi_get_modes(struct drm_connector *connector)
 	if (!psb_intel_output->hdmi_i2c_adapter) {
 		DRM_INFO("Enter mdfld_hdmi_get_modes, i2c_adapter is NULL.\n");
 
-		/* hard-coded the HDMI_I2C_ADAPTER_ID to be 3, Should get from GCT*/
-		psb_intel_output->hdmi_i2c_adapter = i2c_get_adapter(3);
+		/* hard-coded the HDMI_I2C_ADAPTER_ID to be 8, Should get from GCT*/
+		psb_intel_output->hdmi_i2c_adapter = i2c_get_adapter(8);
 	}
 
 	if (!psb_intel_output->hdmi_i2c_adapter) {
@@ -1769,8 +1769,8 @@ void mdfld_hdmi_init(struct drm_device *dev,
 
 	drm_connector_attach_property(connector, dev->mode_config.scaling_mode_property, DRM_MODE_SCALE_CENTER);
 
-	/* hard-coded the HDMI_I2C_ADAPTER_ID to be 3, Should get from GCT*/
-	psb_intel_output->hdmi_i2c_adapter = i2c_get_adapter(3);
+	/* hard-coded the HDMI_I2C_ADAPTER_ID to be 8, Should get from GCT*/
+	psb_intel_output->hdmi_i2c_adapter = i2c_get_adapter(8);
 
 	if (psb_intel_output->hdmi_i2c_adapter) {
 		DRM_INFO("Enter mdfld_hdmi_init, i2c_adapter is availabe.\n");

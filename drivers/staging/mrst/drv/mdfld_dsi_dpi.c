@@ -30,6 +30,7 @@
 #include "mdfld_dsi_pkg_sender.h"
 #include "psb_drv.h"
 
+extern struct drm_device *gpDrmDevice;
 
 #ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY
 
@@ -1527,6 +1528,7 @@ static int __mdfld_dsi_dpi_set_power(struct drm_encoder *encoder, bool on)
 	struct panel_funcs *p_funcs;
 	int pipe;
 	struct drm_device *dev;
+	struct drm_psb_private *dev_priv;
 
 	PSB_DEBUG_ENTRY("%s: mode %s\n", __func__, (on ? "on" : "off"));
 
@@ -1542,6 +1544,7 @@ static int __mdfld_dsi_dpi_set_power(struct drm_encoder *encoder, bool on)
 	pipe = mdfld_dsi_encoder_get_pipe(dsi_encoder);
 	dsi_connector = mdfld_dsi_encoder_get_connector(dsi_encoder);
 	dev = dsi_config->dev;
+	dev_priv = dev->dev_private;
 
 	if (dsi_connector->status != connector_status_connected)
 		return 0;
@@ -1549,18 +1552,39 @@ static int __mdfld_dsi_dpi_set_power(struct drm_encoder *encoder, bool on)
 	mutex_lock(&dsi_config->context_lock);
 
 	if (on && !dsi_config->dsi_hw_context.panel_on) {
-		if (__dpi_panel_power_on(dsi_config, p_funcs)) {
-			DRM_ERROR("Failed to power on\n");
-			goto set_power_err;
+		/*Just turn on panel for WiDi Extended Mode.*/
+		if (!dev_priv->drm_psb_widi) {
+			if (__dpi_panel_power_on(dsi_config, p_funcs)) {
+				DRM_ERROR("Failed to power on\n");
+				goto set_power_err;
+			}
+		} else {
+			if (p_funcs && p_funcs->power_on) {
+				if (p_funcs->power_on(dsi_config)) {
+					DRM_ERROR("Failed to power on panel\n");
+					goto set_power_err;
+				}
+			}
 		}
 		dsi_config->dsi_hw_context.panel_on = 1;
 		/*if power on , then default turn off color mode,
 			let panel in full color*/
 		mdfld_dsi_dpi_set_color_mode(dsi_config, false);
 	} else if (!on && dsi_config->dsi_hw_context.panel_on) {
-		if (__dpi_panel_power_off(dsi_config, p_funcs)) {
-			DRM_ERROR("Failed to power off\n");
-			goto set_power_err;
+		/*Just turn off panel for WiDi Extended Mode.*/
+		if (!dev_priv->drm_psb_widi) {
+			if (__dpi_panel_power_off(dsi_config, p_funcs)) {
+				DRM_ERROR("Failed to power off\n");
+				goto set_power_err;
+			}
+		} else {
+			if (p_funcs && p_funcs->power_off) {
+				if (p_funcs->power_off(dsi_config)) {
+					DRM_ERROR(
+					"Failed to power off panel\n");
+					goto set_power_err;
+				}
+			}
 		}
 		dsi_config->dsi_hw_context.panel_on = 0;
 	}
