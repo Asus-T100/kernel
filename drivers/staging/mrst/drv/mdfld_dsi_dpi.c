@@ -1138,7 +1138,7 @@ void mdfld_dsi_dpi_set_color_mode(struct mdfld_dsi_config *dsi_config , bool on)
 	}
 	PSB_DEBUG_ENTRY("Turn  color mode %s successful.\n",
 			(on ? "on" : "off"));
-	return 0;
+	return;
 }
 
 void mdfld_dsi_dpi_turn_on(struct mdfld_dsi_dpi_output * output, int pipe)
@@ -1278,6 +1278,13 @@ static int __dpi_panel_power_on(struct mdfld_dsi_config *dsi_config,
 			REG_WRITE(regs->fp_reg, 0x0);
 			REG_WRITE(regs->fp_reg, ctx->fp);
 			REG_WRITE(regs->dpll_reg, ((ctx->dpll) & ~BIT30));
+
+			/* FIXME WA for CTP PO */
+			if (IS_CTP(dev)) {
+				REG_WRITE(regs->fp_reg, 0x179);
+				REG_WRITE(regs->dpll_reg, 0x100000 );
+			}
+
 			udelay(2);
 			val = REG_READ(regs->dpll_reg);
 			REG_WRITE(regs->dpll_reg, (val | BIT31));

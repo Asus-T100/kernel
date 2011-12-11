@@ -1250,12 +1250,7 @@ int psb_fbdev_init(struct drm_device * dev)
 	dev_priv->fbdev = fbdev;
 	fbdev->psb_fb_helper.funcs = &psb_fb_helper_funcs;
 
-	/*FIXME: how many crtc will MDFL support?*/
-	if(IS_MRST(dev)) {
-		num_crtc = 1;
-	} else {
-		num_crtc = 3;
-	}	
+	num_crtc = dev_priv->num_pipe;
 
 	drm_fb_helper_init(dev, &fbdev->psb_fb_helper, num_crtc, INTELFB_CONN_LIMIT);
 

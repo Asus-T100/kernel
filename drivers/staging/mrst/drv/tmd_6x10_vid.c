@@ -30,8 +30,8 @@
 #include "displays/tmd_6x10_vid.h"
 #include "mdfld_dsi_dpi.h"
 #include "mdfld_dsi_pkg_sender.h"
-
-#define GPIO_MIPI_PANEL_RESET 128
+#include <linux/gpio.h>
+#include <linux/sfi.h>
 
 /* ************************************************************************* *\
  * FUNCTION: mdfld_dsi_tmd_6X10_ic_init
@@ -202,6 +202,7 @@ static int mdfld_dsi_pr2_detect(struct mdfld_dsi_config *dsi_config,
 				int pipe)
 {
 	int status;
+	struct drm_device *dev = dsi_config->dev;
 
 	printk(KERN_ALERT"%s\n", __func__);
 
@@ -212,6 +213,9 @@ static int mdfld_dsi_pr2_detect(struct mdfld_dsi_config *dsi_config,
 		dsi_config->dsi_hw_context.pll_bypass_mode = 1;
 		/* This is for 400 mhz.  Set it to 0 for 800mhz */
 		dsi_config->dsi_hw_context.cck_div = 1;
+	
+		if (IS_CTP(dev))
+			dsi_config->dsi_hw_context.pll_bypass_mode = 0;
 
 		status = MDFLD_DSI_PANEL_CONNECTED;
 	} else {
@@ -230,8 +234,6 @@ mdfld_dsi_pr2_get_power_state(struct mdfld_dsi_config *dsi_config,
 	struct mdfld_dsi_hw_context *ctx;
 	struct drm_device *dev;
 	int	powerstatus = 0;
-	int  ret = 0;
-	u32 data = 0;
 
 	PSB_DEBUG_ENTRY("Getting power state...");
 
@@ -378,6 +380,26 @@ static int mdfld_dsi_pr2_set_brightness(struct mdfld_dsi_config *dsi_config,
 	return 0;
 }
 
+/* MIPI display panel reset GPIO */
+static int mdfld_mipi_panel_gpio_reset = -EINVAL;
+
+static int mdfld_mipi_panel_gpio_parse(struct sfi_table_header *table)
+{
+	struct sfi_table_simple *sb = (struct sfi_table_simple *)table;
+	struct sfi_gpio_table_entry *entry;
+	int i, num;
+
+	num = SFI_GET_NUM_ENTRIES(sb, struct sfi_gpio_table_entry);
+	entry = (struct sfi_gpio_table_entry *)sb->pentry;
+
+	for (i = 0; i < num; i++, entry++) {
+		if (!strncmp(entry->pin_name, "mipi-reset", SFI_NAME_LEN))
+			mdfld_mipi_panel_gpio_reset = entry->pin_no;
+	}
+
+	return 0;
+}
+
 static int mdfld_dsi_pr2_panel_reset(struct mdfld_dsi_config *dsi_config,
 		int reset_from)
 {
@@ -386,10 +408,16 @@ static int mdfld_dsi_pr2_panel_reset(struct mdfld_dsi_config *dsi_config,
 	struct drm_device *dev;
 	int ret = 0;
 	static bool b_gpio_required[PSB_NUM_PIPE] = {0};
+	unsigned gpio_mipi_panel_reset = 128;
 
 	regs = &dsi_config->regs;
 	ctx = &dsi_config->dsi_hw_context;
 	dev = dsi_config->dev;
+
+	if (IS_CTP(dev)) {
+		sfi_table_parse(SFI_SIG_GPIO, NULL, NULL, mdfld_mipi_panel_gpio_parse);
+		gpio_mipi_panel_reset = mdfld_mipi_panel_gpio_reset;
+	}
 
 	if (reset_from == RESET_FROM_BOOT_UP) {
 		b_gpio_required[dsi_config->pipe] = false;
@@ -398,10 +426,10 @@ static int mdfld_dsi_pr2_panel_reset(struct mdfld_dsi_config *dsi_config,
 				"PR2 GPIO reset for MIPIC is skipped!\n");
 			goto fun_exit;
 		}
-		ret = gpio_request(GPIO_MIPI_PANEL_RESET, "gfx");
+		ret = gpio_request(gpio_mipi_panel_reset, "gfx");
 		if (ret) {
 			DRM_ERROR(
-			"Failed to request gpio %d\n", GPIO_MIPI_PANEL_RESET);
+			"Failed to request gpio %d\n", gpio_mipi_panel_reset);
 			goto err;
 		}
 		b_gpio_required[dsi_config->pipe] = true;
@@ -419,14 +447,14 @@ static int mdfld_dsi_pr2_panel_reset(struct mdfld_dsi_config *dsi_config,
 		}
 	}
 	if (b_gpio_required[dsi_config->pipe]) {
-		gpio_direction_output(GPIO_MIPI_PANEL_RESET, 0);
-		gpio_set_value_cansleep(GPIO_MIPI_PANEL_RESET, 0);
+		gpio_direction_output(gpio_mipi_panel_reset, 0);
+		gpio_set_value_cansleep(gpio_mipi_panel_reset, 0);
 
 		/*reset low level width 11ms*/
 		mdelay(10);
 
-		gpio_direction_output(GPIO_MIPI_PANEL_RESET, 1);
-		gpio_set_value_cansleep(GPIO_MIPI_PANEL_RESET, 1);
+		gpio_direction_output(gpio_mipi_panel_reset, 1);
+		gpio_set_value_cansleep(gpio_mipi_panel_reset, 1);
 
 		/*reset time 5ms*/
 		mdelay(5);
@@ -438,7 +466,7 @@ fun_exit:
 		PSB_DEBUG_ENTRY("pr2 panel reset successfull.");
 	return 0;
 err:
-	gpio_free(GPIO_MIPI_PANEL_RESET);
+	gpio_free(gpio_mipi_panel_reset);
 	PSB_DEBUG_ENTRY("pr2 panel reset fail.!");
 	return 0;
 }

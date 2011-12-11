@@ -1521,8 +1521,9 @@ do {                                                \
 /* Will revisit it after CLOVER TRAIL PO. */
 /* pciid: CLV A0 = 0X8C7, CLV B0 = 0X8C8-0X8CB, CLV+ A0/B0 0X8CC-0X8CF.*/
 #define IS_MDFLD_OLD(dev) (((dev)->pci_device & 0xfff8) == 0x0130)
-#define IS_CLTR(dev) (((dev)->pci_device & 0xffff) == 0x08c7)
-#define IS_MDFLD(dev) (IS_CLTR(dev) || IS_MDFLD_OLD(dev))
+#define IS_CTP(dev) (((dev->pci_device & 0xffff) == 0x08c0) ||	\
+		     ((dev->pci_device & 0xffff) == 0x08c7))
+#define IS_MDFLD(dev) (IS_CTP(dev) || IS_MDFLD_OLD(dev))
 #define IS_MID(dev) (IS_MRST(dev) || IS_MDFLD(dev))
 
 #define IS_MSVDX(dev) (IS_MRST(dev) || IS_MDFLD(dev))

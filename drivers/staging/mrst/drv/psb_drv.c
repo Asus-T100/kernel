@@ -195,7 +195,8 @@ static struct pci_device_id pciidlist[] = {
 	{0x8086, 0x0135, PCI_ANY_ID, PCI_ANY_ID, 0, 0, CHIP_MDFLD_0130},
 	{0x8086, 0x0136, PCI_ANY_ID, PCI_ANY_ID, 0, 0, CHIP_MDFLD_0130},
 	{0x8086, 0x0137, PCI_ANY_ID, PCI_ANY_ID, 0, 0, CHIP_MDFLD_0130},
-	{0x8086, 0x08c7, PCI_ANY_ID, PCI_ANY_ID, 0, 0, CHIP_MDFLD_0130},
+	{0x8086, 0x08c0, PCI_ANY_ID, PCI_ANY_ID, PCI_CLASS_DISPLAY_VGA << 8, 0xFFFF00, CHIP_MDFLD_0130},
+	{0x8086, 0x08c7, PCI_ANY_ID, PCI_ANY_ID, PCI_CLASS_DISPLAY_VGA << 8, 0xFFFF00, CHIP_MDFLD_0130},
 #endif
 	{0, 0, 0}
 };
@@ -1427,7 +1428,9 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	if (dev_priv == NULL)
 		return -ENOMEM;
 	INIT_LIST_HEAD(&dev_priv->video_ctx);
-	if (IS_MDFLD(dev)) {
+	if (IS_CTP(dev)) {
+		dev_priv->num_pipe = 2;
+	} else if (IS_MDFLD(dev)) {
 		dev_priv->num_pipe = 3;
 	} else if (IS_MRST(dev))
 		dev_priv->num_pipe = 1;

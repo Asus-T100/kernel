@@ -120,21 +120,21 @@ config SUPPORT_TOSHIBA_MIPI_DISPLAY
 
 config SUPPORT_TMD_MIPI_600X1024_DISPLAY
        bool "Support Toshiba 600x1024 MIPI interface Panel"
-       depends on DRM_MDFLD
+       depends on DRM_MDFLD || DRM_CTP
        default n
        help
          xxxxxx
 
 config MDFD_VIDEO_DECODE
 	bool "Support for Medfield Video Decode"
-	depends on DRM_MDFLD
+	depends on DRM_MDFLD || DRM_CTP
 	default n
 	help 
 	  xxxxxx
 
 config MDFD_VIDEO_ENCODE
 	bool "Support for Medfield Video Encode"
-	depends on DRM_MDFLD
+	depends on DRM_MDFLD || DRM_CTP
 	default n
 	help
 	  xxxxxx
