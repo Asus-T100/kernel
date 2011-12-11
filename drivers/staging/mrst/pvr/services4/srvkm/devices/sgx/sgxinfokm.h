@@ -94,6 +94,7 @@ typedef struct _PVRSRV_SGXDEV_INFO_
 	
 	IMG_UINT32				ui32CoreClockSpeed;
 	IMG_UINT32				ui32uKernelTimerClock;
+	IMG_BOOL				bSGXIdle;
 
 	PVRSRV_STUB_PBDESC		*psStubPBDescListKM;
 
@@ -101,6 +102,7 @@ typedef struct _PVRSRV_SGXDEV_INFO_
 	
 	IMG_DEV_PHYADDR			sKernelPDDevPAddr;
 
+	IMG_UINT32				ui32HeapCount;
 	IMG_VOID				*pvDeviceMemoryHeap;
 	PPVRSRV_KERNEL_MEM_INFO	psKernelCCBMemInfo;			
 	PVRSRV_SGX_KERNEL_CCB	*psKernelCCB;			
@@ -127,8 +129,12 @@ typedef struct _PVRSRV_SGXDEV_INFO_
 	PPVRSRV_KERNEL_MEM_INFO	psKernelDummyTermStreamMemInfo; 
 #endif
 #if defined(SGX_FEATURE_VDM_CONTEXT_SWITCH) && defined(FIX_HW_BRN_31425)
-	PPVRSRV_KERNEL_MEM_INFO	psKernelVDMSnapShotBufferMemInfo; 
-	PPVRSRV_KERNEL_MEM_INFO	psKernelVDMCtrlStreamBufferMemInfo; 
+	PPVRSRV_KERNEL_MEM_INFO	psKernelVDMSnapShotBufferMemInfo;
+	PPVRSRV_KERNEL_MEM_INFO	psKernelVDMCtrlStreamBufferMemInfo;
+#endif
+#if defined(SGX_FEATURE_VDM_CONTEXT_SWITCH) && \
+	defined(FIX_HW_BRN_33657) && defined(SUPPORT_SECURE_33657_FIX)
+	PPVRSRV_KERNEL_MEM_INFO	psKernelVDMStateUpdateBufferMemInfo;
 #endif
 #if defined(PVRSRV_USSE_EDM_STATUS_DEBUG)
 	PPVRSRV_KERNEL_MEM_INFO	psKernelEDMStatusBufferMemInfo; 
@@ -136,10 +142,6 @@ typedef struct _PVRSRV_SGXDEV_INFO_
 #if defined(SGX_FEATURE_OVERLAPPED_SPM)
 	PPVRSRV_KERNEL_MEM_INFO	psKernelTmpRgnHeaderMemInfo; 
 #endif
-#if defined(SGX_FEATURE_SPM_MODE_0)
-	PPVRSRV_KERNEL_MEM_INFO	psKernelTmpDPMStateMemInfo; 
-#endif
-
 	
 	IMG_UINT32				ui32ClientRefCount;
 
@@ -210,6 +212,10 @@ typedef struct _PVRSRV_SGXDEV_INFO_
 
 	
 	PVRSRV_KERNEL_MEM_INFO			*psKernelSGXTA3DCtlMemInfo;
+
+#if defined(FIX_HW_BRN_31272) || defined(FIX_HW_BRN_31780) || defined(FIX_HW_BRN_33920)
+	PVRSRV_KERNEL_MEM_INFO			*psKernelSGXPTLAWriteBackMemInfo;
+#endif
 
 	IMG_UINT32				ui32Flags;
 
@@ -337,6 +343,9 @@ typedef struct _SGX_BRIDGE_INIT_INFO_KM_
 	IMG_HANDLE	hKernelCCBEventKickerMemInfo;
 	IMG_HANDLE	hKernelSGXHostCtlMemInfo;
 	IMG_HANDLE	hKernelSGXTA3DCtlMemInfo;
+#if defined(FIX_HW_BRN_31272) || defined(FIX_HW_BRN_31780) || defined(FIX_HW_BRN_33920)
+	IMG_HANDLE	hKernelSGXPTLAWriteBackMemInfo;
+#endif
 	IMG_HANDLE	hKernelSGXMiscMemInfo;
 
 	IMG_UINT32	aui32HostKickAddr[SGXMKIF_CMD_MAX];
@@ -366,9 +375,6 @@ typedef struct _SGX_BRIDGE_INIT_INFO_KM_
 #endif
 #if defined(SGX_FEATURE_OVERLAPPED_SPM)
 	IMG_HANDLE hKernelTmpRgnHeaderMemInfo;
-#endif
-#if defined(SGX_FEATURE_SPM_MODE_0)
-	IMG_HANDLE hKernelTmpDPMStateMemInfo;
 #endif
 
 	IMG_UINT32 ui32EDMTaskReg0;
@@ -538,6 +544,9 @@ PVRSRV_ERROR SGXPostClockSpeedChange(IMG_HANDLE				hDevHandle,
 									 PVRSRV_DEV_POWER_STATE	eCurrentPowerState);
 
 IMG_VOID SGXPanic(PVRSRV_SGXDEV_INFO	*psDevInfo);
+
+IMG_VOID SGXDumpDebugInfo (PVRSRV_SGXDEV_INFO	*psDevInfo,
+						   IMG_BOOL				bDumpSGXRegs);
 
 PVRSRV_ERROR SGXDevInitCompatCheck(PVRSRV_DEVICE_NODE *psDeviceNode);
 

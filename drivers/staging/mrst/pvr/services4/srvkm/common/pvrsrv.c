@@ -35,6 +35,7 @@
 #if defined(TTRACE)
 #include "ttrace.h"
 #endif
+#include "perfkm.h"
 
 #include "pvrversion.h"
 
@@ -263,6 +264,7 @@ PVRSRV_ERROR IMG_CALLCONV PVRSRVInit(PSYS_DATA psSysData)
 	PDUMPINIT();
 	g_ui32InitFlags |= INIT_DATA_ENABLE_PDUMPINIT;
 
+	PERFINIT();
 	return eError;
 
 Error:
@@ -283,6 +285,9 @@ IMG_VOID IMG_CALLCONV PVRSRVDeInit(PSYS_DATA psSysData)
 		PVR_DPF((PVR_DBG_ERROR,"PVRSRVDeInit: PVRSRVHandleDeInit failed - invalid param"));
 		return;
 	}
+
+	PERFDEINIT();
+
 #if defined(TTRACE)
 	
 	if ((g_ui32InitFlags & INIT_DATA_ENABLE_TTARCE) > 0)
@@ -642,6 +647,31 @@ PVRSRV_ERROR IMG_CALLCONV PollForValueKM (volatile IMG_UINT32*	pui32LinMemAddr,
 										  IMG_UINT32			ui32PollPeriodus,
 										  IMG_BOOL				bAllowPreemption)
 {
+#if defined (EMULATOR)
+	{
+		PVR_UNREFERENCED_PARAMETER(bAllowPreemption);
+		#if !defined(__linux__)
+		PVR_UNREFERENCED_PARAMETER(ui32PollPeriodus);
+		#endif
+
+
+
+		do
+		{
+			if((*pui32LinMemAddr & ui32Mask) == ui32Value)
+			{
+				return PVRSRV_OK;
+			}
+
+			#if defined(__linux__)
+			OSWaitus(ui32PollPeriodus);
+			#else
+			OSReleaseThreadQuanta();
+			#endif
+
+		} while (ui32Timeoutus);
+	}
+#else
 	{
 		IMG_UINT32	ui32ActualValue = 0xFFFFFFFFU; 
 
@@ -672,6 +702,7 @@ PVRSRV_ERROR IMG_CALLCONV PollForValueKM (volatile IMG_UINT32*	pui32LinMemAddr,
 		PVR_DPF((PVR_DBG_ERROR,"PollForValueKM: Timeout. Expected 0x%x but found 0x%x (mask 0x%x).",
 				ui32Value, ui32ActualValue, ui32Mask));
 	}
+#endif
 
 	return PVRSRV_ERROR_TIMEOUT;
 }
@@ -808,7 +839,8 @@ PVRSRV_ERROR IMG_CALLCONV PVRSRVGetMiscInfoKM(PVRSRV_MISC_INFO *psMiscInfo)
 										|PVRSRV_MISC_INFO_DDKVERSION_PRESENT
 										|PVRSRV_MISC_INFO_CPUCACHEOP_PRESENT
 										|PVRSRV_MISC_INFO_RESET_PRESENT
-										|PVRSRV_MISC_INFO_FREEMEM_PRESENT))
+										|PVRSRV_MISC_INFO_FREEMEM_PRESENT
+										|PVRSRV_MISC_INFO_GET_REF_COUNT_PRESENT))
 	{
 		PVR_DPF((PVR_DBG_ERROR,"PVRSRVGetMiscInfoKM: invalid state request flags"));
 		return PVRSRV_ERROR_INVALID_PARAMS;
@@ -930,8 +962,8 @@ PVRSRV_ERROR IMG_CALLCONV PVRSRVGetMiscInfoKM(PVRSRV_MISC_INFO *psMiscInfo)
 		
 		psMiscInfo->aui32DDKVersion[0] = PVRVERSION_MAJ;
 		psMiscInfo->aui32DDKVersion[1] = PVRVERSION_MIN;
-		psMiscInfo->aui32DDKVersion[2] = PVRVERSION_BRANCH;
-		psMiscInfo->aui32DDKVersion[3] = PVRVERSION_BUILD;
+		psMiscInfo->aui32DDKVersion[2] = PVRVERSION_BUILD_HI;
+		psMiscInfo->aui32DDKVersion[3] = PVRVERSION_BUILD_LO;
 
 		pszStr = psMiscInfo->pszMemoryStr;
 		ui32StrLen = psMiscInfo->ui32MemoryStrLen;
@@ -990,7 +1022,7 @@ PVRSRV_ERROR IMG_CALLCONV PVRSRVGetMiscInfoKM(PVRSRV_MISC_INFO *psMiscInfo)
 #if defined (SUPPORT_SID_INTERFACE)
 			PVR_DBG_BREAK
 #else
-			
+
 			psPerProc = PVRSRVFindPerProcessData();
 
 			if(PVRSRVLookupHandle(psPerProc->psHandleBase,
@@ -1023,6 +1055,35 @@ PVRSRV_ERROR IMG_CALLCONV PVRSRVGetMiscInfoKM(PVRSRV_MISC_INFO *psMiscInfo)
 				}
 			}
 		}
+	}
+
+	if((psMiscInfo->ui32StateRequest & PVRSRV_MISC_INFO_GET_REF_COUNT_PRESENT) != 0UL)
+	{
+#if !defined (SUPPORT_SID_INTERFACE)
+		PVRSRV_KERNEL_MEM_INFO *psKernelMemInfo;
+		PVRSRV_PER_PROCESS_DATA *psPerProc;
+#endif
+
+		psMiscInfo->ui32StatePresent |= PVRSRV_MISC_INFO_GET_REF_COUNT_PRESENT;
+
+#if defined (SUPPORT_SID_INTERFACE)
+		PVR_DBG_BREAK
+#else
+
+		psPerProc = PVRSRVFindPerProcessData();
+
+		if(PVRSRVLookupHandle(psPerProc->psHandleBase,
+							  (IMG_PVOID *)&psKernelMemInfo,
+							  psMiscInfo->sGetRefCountCtl.u.psKernelMemInfo,
+							  PVRSRV_HANDLE_TYPE_MEM_INFO) != PVRSRV_OK)
+		{
+			PVR_DPF((PVR_DBG_ERROR, "PVRSRVGetMiscInfoKM: "
+									"Can't find kernel meminfo"));
+			return PVRSRV_ERROR_INVALID_PARAMS;
+		}
+
+		psMiscInfo->sGetRefCountCtl.ui32RefCount = psKernelMemInfo->ui32RefCount;
+#endif
 	}
 
 #if defined(PVRSRV_RESET_ON_HWTIMEOUT)

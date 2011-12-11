@@ -32,7 +32,7 @@
 #endif
 #endif
 
-#if defined(SUPPORT_DRI_DRM)
+#if defined(SUPPORT_DRI_DRM) && !defined(SUPPORT_DRI_DRM_PLUGIN)
 #define	PVR_MOD_STATIC
 #else
 	
@@ -103,7 +103,9 @@
 #if defined(SUPPORT_DRI_DRM)
 #include "pvr_drm.h"
 #endif
-#define DRVNAME		PVRSRV_MODNAME
+#if defined(PVR_LDM_MODULE)
+#define	DRVNAME		PVR_LDM_DRIVER_REGISTRATION_NAME
+#endif
 #define DEVNAME		PVRSRV_MODNAME
 
 #if defined(SUPPORT_DRI_DRM)
@@ -121,11 +123,19 @@ module_param(gPVRDebugLevel, uint, 0644);
 MODULE_PARM_DESC(gPVRDebugLevel, "Sets the level of debug output (default 0x7)");
 #endif 
 
+#if defined(CONFIG_ION_OMAP)
+#include <linux/ion.h>
+#include <linux/omap_ion.h>
+extern struct ion_device *omap_ion_device;
+struct ion_client *gpsIONClient;
+EXPORT_SYMBOL(gpsIONClient);
+#endif
+
  
 EXPORT_SYMBOL(PVRGetDisplayClassJTable);
 EXPORT_SYMBOL(PVRGetBufferClassJTable);
 
-#if defined(PVR_LDM_MODULE)
+#if defined(PVR_LDM_MODULE) && !defined(SUPPORT_DRI_DRM)
 static struct class *psPvrClass;
 #endif
 
@@ -256,15 +266,26 @@ static int __devinit PVRSRVDriverProbe(LDM_DEV *pDevice, const struct pci_device
 #endif	
 	
 	psSysData = SysAcquireDataNoCheck();
-	if ( psSysData == IMG_NULL)
+	if (psSysData == IMG_NULL)
 	{
 		gpsPVRLDMDev = pDevice;
-
 		if (SysInitialise() != PVRSRV_OK)
 		{
 			return -ENODEV;
 		}
 	}
+
+#if defined(CONFIG_ION_OMAP)
+	gpsIONClient = ion_client_create(omap_ion_device,
+									 1 << ION_HEAP_TYPE_CARVEOUT |
+									 1 << OMAP_ION_HEAP_TYPE_TILER,
+									 "pvr");
+	if (IS_ERR_OR_NULL(gpsIONClient))
+	{
+		PVR_DPF((PVR_DBG_ERROR, "PVRSRVDriverProbe: Couldn't create ion client"));
+		return PTR_ERR(gpsIONClient);
+	}
+#endif
 
 	return 0;
 }
@@ -280,6 +301,11 @@ static void __devexit PVRSRVDriverRemove(LDM_DEV *pDevice)
 	SYS_DATA *psSysData;
 
 	PVR_TRACE(("PVRSRVDriverRemove(pDevice=%p)", pDevice));
+
+#if defined(CONFIG_ION_OMAP)
+	ion_client_destroy(gpsIONClient);
+	gpsIONClient = IMG_NULL;
+#endif
 
 	SysAcquireData(&psSysData);
 	
@@ -314,7 +340,12 @@ static void __devexit PVRSRVDriverRemove(LDM_DEV *pDevice)
 
 
 #if defined(PVR_LDM_MODULE) || defined(PVR_DRI_DRM_PLATFORM_DEV)
+#if defined(SUPPORT_DRI_DRM) && !defined(PVR_DRI_DRM_PLATFORM_DEV) && \
+	!defined(SUPPORT_DRI_DRM_PLUGIN)
+void PVRSRVDriverShutdown(struct drm_device *pDevice)
+#else
 PVR_MOD_STATIC void PVRSRVDriverShutdown(LDM_DEV *pDevice)
+#endif
 {
 	PVR_TRACE(("PVRSRVDriverShutdown(pDevice=%p)", pDevice));
 
@@ -325,7 +356,8 @@ PVR_MOD_STATIC void PVRSRVDriverShutdown(LDM_DEV *pDevice)
 
 
 #if defined(PVR_LDM_MODULE) || defined(SUPPORT_DRI_DRM)
-#if defined(SUPPORT_DRI_DRM) && !defined(PVR_DRI_DRM_PLATFORM_DEV)
+#if defined(SUPPORT_DRI_DRM) && !defined(PVR_DRI_DRM_PLATFORM_DEV) && \
+	!defined(SUPPORT_DRI_DRM_PLUGIN)
 int PVRSRVDriverSuspend(struct drm_device *pDevice, pm_message_t state)
 #else
 PVR_MOD_STATIC int PVRSRVDriverSuspend(LDM_DEV *pDevice, pm_message_t state)
@@ -343,7 +375,8 @@ PVR_MOD_STATIC int PVRSRVDriverSuspend(LDM_DEV *pDevice, pm_message_t state)
 }
 
 
-#if defined(SUPPORT_DRI_DRM) && !defined(PVR_DRI_DRM_PLATFORM_DEV)
+#if defined(SUPPORT_DRI_DRM) && !defined(PVR_DRI_DRM_PLATFORM_DEV) && \
+	!defined(SUPPORT_DRI_DRM_PLUGIN)
 int PVRSRVDriverResume(struct drm_device *pDevice)
 #else
 PVR_MOD_STATIC int PVRSRVDriverResume(LDM_DEV *pDevice)
@@ -476,6 +509,7 @@ static int PVRSRVRelease(struct inode unref__ * pInode, struct file *pFile)
 #endif
 {
 	PVRSRV_FILE_PRIVATE_DATA *psPrivateData;
+	int err = 0;
 
 	LinuxLockMutex(&gPVRSRVLock);
 
@@ -489,6 +523,31 @@ static int PVRSRVRelease(struct inode unref__ * pInode, struct file *pFile)
 #if defined(SUPPORT_DRI_DRM) && defined(PVR_SECURE_DRM_AUTH_EXPORT)
 		list_del(&psPrivateData->sDRMAuthListItem);
 #endif
+
+		if(psPrivateData->hKernelMemInfo)
+		{
+			PVRSRV_KERNEL_MEM_INFO *psKernelMemInfo;
+
+
+			if(PVRSRVLookupHandle(KERNEL_HANDLE_BASE,
+								  (IMG_PVOID *)&psKernelMemInfo,
+								  psPrivateData->hKernelMemInfo,
+								  PVRSRV_HANDLE_TYPE_MEM_INFO) != PVRSRV_OK)
+			{
+				PVR_DPF((PVR_DBG_ERROR, "%s: Failed to look up export handle", __FUNCTION__));
+				err = -EFAULT;
+				goto err_unlock;
+			}
+
+
+			if(FreeMemCallBackCommon(psKernelMemInfo, 0,
+									 PVRSRV_FREE_CALLBACK_ORIGIN_EXTERNAL) != PVRSRV_OK)
+			{
+				PVR_DPF((PVR_DBG_ERROR, "%s: FreeMemCallBackCommon failed", __FUNCTION__));
+				err = -EFAULT;
+				goto err_unlock;
+			}
+		}
 
 		
 		gui32ReleasePID = psPrivateData->ui32OpenPID;
@@ -504,10 +563,12 @@ static int PVRSRVRelease(struct inode unref__ * pInode, struct file *pFile)
 #endif
 	}
 
+err_unlock:
 	LinuxUnLockMutex(&gPVRSRVLock);
-
-#if !defined(SUPPORT_DRI_DRM)
-	return 0;
+#if defined(SUPPORT_DRI_DRM)
+	return;
+#else
+	return err;
 #endif
 }
 
@@ -522,7 +583,9 @@ static int __init PVRCore_Init(void)
 #if !defined(PVR_LDM_MODULE)
 	PVRSRV_ERROR eError;
 #else
+#if !defined(SUPPORT_DRI_DRM)
 	struct device *psDev;
+#endif
 #endif
 
 #if !defined(SUPPORT_DRI_DRM)
@@ -559,7 +622,7 @@ static int __init PVRCore_Init(void)
 
 #if defined(PVR_LDM_MODULE)
 
-#if defined(PVR_LDM_PLATFORM_MODULE)
+#if defined(PVR_LDM_PLATFORM_MODULE) || defined(SUPPORT_DRI_DRM_PLUGIN)
 	if ((error = platform_driver_register(&powervr_driver)) != 0)
 	{
 		PVR_DPF((PVR_DBG_ERROR, "PVRCore_Init: unable to register platform driver (%d)", error));
@@ -577,7 +640,7 @@ static int __init PVRCore_Init(void)
 		goto init_failed;
 	}
 #endif
-#endif 
+#endif
 
 #if defined(PVR_LDM_PCI_MODULE)
 	if ((error = pci_register_driver(&powervr_driver)) != 0)
@@ -586,9 +649,10 @@ static int __init PVRCore_Init(void)
 
 		goto init_failed;
 	}
-#endif 
+#endif
+#endif
 
-#else 
+#if !defined(PVR_LDM_MODULE)
 	
 	if ((eError = SysInitialise()) != PVRSRV_OK)
 	{
@@ -616,7 +680,6 @@ static int __init PVRCore_Init(void)
 	}
 
 	PVR_TRACE(("PVRCore_Init: major device %d", AssignedMajorNumber));
-#endif 
 
 #if defined(PVR_LDM_MODULE)
 	
@@ -640,17 +703,18 @@ static int __init PVRCore_Init(void)
 		error = -EBUSY;
 		goto destroy_class;
 	}
-#endif 
+#endif
+#endif
 
 	return 0;
 
+#if !defined(SUPPORT_DRI_DRM)
 #if defined(PVR_LDM_MODULE)
 destroy_class:
 	class_destroy(psPvrClass);
 unregister_device:
-	unregister_chrdev((IMG_UINT)AssignedMajorNumber, DRVNAME);
+	unregister_chrdev((IMG_UINT)AssignedMajorNumber, DEVNAME);
 #endif
-#if !defined(SUPPORT_DRI_DRM)
 sys_deinit:
 #endif
 #if defined(PVR_LDM_MODULE)
@@ -704,16 +768,17 @@ static void __exit PVRCore_Cleanup(void)
 	SysAcquireData(&psSysData);
 #endif
 
+#if !defined(SUPPORT_DRI_DRM)
+
 #if defined(PVR_LDM_MODULE)
 	device_destroy(psPvrClass, MKDEV(AssignedMajorNumber, 0));
 	class_destroy(psPvrClass);
 #endif
 
-#if !defined(SUPPORT_DRI_DRM)
 #if (LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,22))
 	if (
 #endif	
-		unregister_chrdev((IMG_UINT)AssignedMajorNumber, DRVNAME)
+		unregister_chrdev((IMG_UINT)AssignedMajorNumber, DEVNAME)
 #if !(LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,22))
 								;
 #else	

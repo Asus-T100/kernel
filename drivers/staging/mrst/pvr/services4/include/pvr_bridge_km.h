@@ -103,17 +103,19 @@ PVRSRV_ERROR IMG_CALLCONV _PVRSRVAllocDeviceMemKM(IMG_HANDLE					hDevCookie,
 												 IMG_UINT32					ui32Flags,
 												 IMG_SIZE_T					ui32Size,
 												 IMG_SIZE_T					ui32Alignment,
+												 IMG_PVOID					pvPrivData,
+												 IMG_UINT32					ui32PrivDataLength,
 												 PVRSRV_KERNEL_MEM_INFO		**ppsMemInfo);
 
 
 #if defined(PVRSRV_LOG_MEMORY_ALLOCS)
-	#define PVRSRVAllocDeviceMemKM(devCookie, perProc, devMemHeap, flags, size, alignment, memInfo, logStr) \
+	#define PVRSRVAllocDeviceMemKM(devCookie, perProc, devMemHeap, flags, size, alignment, privdata, privdatalength, memInfo, logStr) \
 		(PVR_TRACE(("PVRSRVAllocDeviceMemKM(" #devCookie ", " #perProc ", " #devMemHeap ", " #flags ", " #size \
 			", " #alignment "," #memInfo "): " logStr " (size = 0x%x)", size)),\
-			_PVRSRVAllocDeviceMemKM(devCookie, perProc, devMemHeap, flags, size, alignment, memInfo))
+			_PVRSRVAllocDeviceMemKM(devCookie, perProc, devMemHeap, flags, size, alignment, privdata, privdatalength, memInfo))
 #else
-	#define PVRSRVAllocDeviceMemKM(devCookie, perProc, devMemHeap, flags, size, alignment, memInfo, logStr) \
-			_PVRSRVAllocDeviceMemKM(devCookie, perProc, devMemHeap, flags, size, alignment, memInfo)
+	#define PVRSRVAllocDeviceMemKM(devCookie, perProc, devMemHeap, flags, size, alignment, privdata, privdatalength, memInfo, logStr) \
+			_PVRSRVAllocDeviceMemKM(devCookie, perProc, devMemHeap, flags, size, alignment, privdata, privdatalength, memInfo)
 #endif
 
 
@@ -223,7 +225,8 @@ IMG_IMPORT
 PVRSRV_ERROR PVRSRVGetDCBuffersKM(IMG_HANDLE	hDeviceKM,
 								  IMG_HANDLE	hSwapChain,
 								  IMG_UINT32	*pui32BufferCount,
-								  IMG_HANDLE	*phBuffer);
+								  IMG_HANDLE	*phBuffer,
+								  IMG_SYS_PHYADDR *psPhyAddr);
 IMG_IMPORT
 PVRSRV_ERROR PVRSRVSwapToDCBufferKM(IMG_HANDLE	hDeviceKM,
 									IMG_HANDLE	hBuffer,
@@ -232,12 +235,22 @@ PVRSRV_ERROR PVRSRVSwapToDCBufferKM(IMG_HANDLE	hDeviceKM,
 									IMG_UINT32	ui32ClipRectCount,
 									IMG_RECT	*psClipRect);
 IMG_IMPORT
+PVRSRV_ERROR PVRSRVSwapToDCBuffer2KM(IMG_HANDLE	hDeviceKM,
+									 IMG_HANDLE	hBuffer,
+									 IMG_UINT32	ui32SwapInterval,
+									 PVRSRV_KERNEL_MEM_INFO **ppsMemInfos,
+									 PVRSRV_KERNEL_SYNC_INFO **ppsSyncInfos,
+									 IMG_UINT32	ui32NumMemSyncInfos,
+									 IMG_PVOID	pvPrivData,
+									 IMG_UINT32	ui32PrivDataLength);
+IMG_IMPORT
 PVRSRV_ERROR PVRSRVSwapToDCSystemKM(IMG_HANDLE	hDeviceKM,
 									IMG_HANDLE	hSwapChain);
 IMG_EXPORT
-PVRSRV_ERROR PVRSRVGetDCFrontBufferKM(IMG_HANDLE	hDeviceKM,
+PVRSRV_ERROR PVRSRVGetDCFrontBufferKM(IMG_HANDLE hDeviceKM,
 									IMG_UINT32		*pui32BufferIndex,
 									IMG_UINT32		*pui32FlipChainID);
+
 
 IMG_IMPORT
 PVRSRV_ERROR PVRSRVOpenBCDeviceKM(PVRSRV_PER_PROCESS_DATA	*psPerProc,

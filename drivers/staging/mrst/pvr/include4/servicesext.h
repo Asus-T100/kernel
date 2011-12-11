@@ -638,6 +638,10 @@ typedef struct _PVRSRV_SYNC_DATA_
 	volatile IMG_UINT32			ui32ReadOpsComplete;
 
 	
+	IMG_UINT32					ui32ReadOps2Pending;
+	volatile IMG_UINT32			ui32ReadOps2Complete;
+
+
 	IMG_UINT32					ui32LastOpDumpVal;
 	IMG_UINT32					ui32LastReadOpDumpVal;
 
@@ -651,13 +655,16 @@ typedef struct _PVRSRV_CLIENT_SYNC_INFO_
 	
 
 
-	
+
 	IMG_DEV_VIRTADDR		sWriteOpsCompleteDevVAddr;
 
 	
 	IMG_DEV_VIRTADDR		sReadOpsCompleteDevVAddr;
 
 	
+	IMG_DEV_VIRTADDR		sReadOps2CompleteDevVAddr;
+
+
 #if defined (SUPPORT_SID_INTERFACE)
 	IMG_SID					hMappingInfo;
 

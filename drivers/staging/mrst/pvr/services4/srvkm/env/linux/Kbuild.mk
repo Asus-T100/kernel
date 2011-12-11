@@ -57,6 +57,9 @@ pvrsrvkm-y += \
 	services4/srvkm/common/mem_debug.o \
 	services4/srvkm/common/osfunc_common.o
 
+pvrsrvkm-$(CONFIG_ION_OMAP) += \
+	services4/srvkm/env/linux/ion.o
+
 ifneq ($(W),1)
 CFLAGS_osfunc.o := -Werror
 CFLAGS_mutils.o := -Werror

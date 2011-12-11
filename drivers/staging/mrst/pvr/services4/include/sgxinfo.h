@@ -75,6 +75,9 @@ typedef struct _SGX_BRIDGE_INIT_INFO_
 	IMG_SID		hKernelCCBEventKickerMemInfo;
 	IMG_SID		hKernelSGXHostCtlMemInfo;
 	IMG_SID		hKernelSGXTA3DCtlMemInfo;
+#if defined(FIX_HW_BRN_31272) || defined(FIX_HW_BRN_31780) || defined(FIX_HW_BRN_33920)
+	IMG_SID		hKernelSGXPTLAWriteBackMemInfo;
+#endif
 	IMG_SID		hKernelSGXMiscMemInfo;
 #else
 	IMG_HANDLE	hKernelCCBMemInfo;
@@ -82,6 +85,9 @@ typedef struct _SGX_BRIDGE_INIT_INFO_
 	IMG_HANDLE	hKernelCCBEventKickerMemInfo;
 	IMG_HANDLE	hKernelSGXHostCtlMemInfo;
 	IMG_HANDLE	hKernelSGXTA3DCtlMemInfo;
+#if defined(FIX_HW_BRN_31272) || defined(FIX_HW_BRN_31780) || defined(FIX_HW_BRN_33920)
+	IMG_HANDLE	hKernelSGXPTLAWriteBackMemInfo;
+#endif
 	IMG_HANDLE	hKernelSGXMiscMemInfo;
 #endif
 
@@ -155,6 +161,10 @@ typedef struct _SGX_BRIDGE_INIT_INFO_
 	IMG_HANDLE	hKernelVDMSnapShotBufferMemInfo;
 	IMG_HANDLE	hKernelVDMCtrlStreamBufferMemInfo;
 #endif
+#if defined(SGX_FEATURE_VDM_CONTEXT_SWITCH) && \
+	defined(FIX_HW_BRN_33657) && defined(SUPPORT_SECURE_33657_FIX)
+	IMG_HANDLE	hKernelVDMStateUpdateBufferMemInfo;
+#endif
 #if defined(PVRSRV_USSE_EDM_STATUS_DEBUG)
 #if defined (SUPPORT_SID_INTERFACE)
 	IMG_SID		hKernelEDMStatusBufferMemInfo;
@@ -167,13 +177,6 @@ typedef struct _SGX_BRIDGE_INIT_INFO_
 	IMG_SID		hKernelTmpRgnHeaderMemInfo;
 #else
 	IMG_HANDLE hKernelTmpRgnHeaderMemInfo;
-#endif
-#endif
-#if defined(SGX_FEATURE_SPM_MODE_0)
-#if defined (SUPPORT_SID_INTERFACE)
-	IMG_SID		hKernelTmpDPMStateMemInfo;
-#else
-	IMG_HANDLE hKernelTmpDPMStateMemInfo;
 #endif
 #endif
 

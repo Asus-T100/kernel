@@ -22,30 +22,15 @@
  * Imagination Technologies Ltd. <gpl-support@imgtec.com>
  * Home Park Estate, Kings Langley, Herts, WD4 8LZ, UK 
  *
-*/ /**************************************************************************/
+ ******************************************************************************/
 
-#ifndef _PVRVERSION_H_
-#define _PVRVERSION_H_
+#ifndef _PERFKM_H_
+#define _PERFKM_H_
 
-#define PVR_STR(X) #X
-#define PVR_STR2(X) PVR_STR(X)
+#include "img_types.h"
 
-#define PVRVERSION_MAJ               1
-#define PVRVERSION_MIN               8
-#define PVRVERSION_BRANCH            18
+#define PERFINIT()
+#define PERFDEINIT()
 
-#define PVRVERSION_FAMILY           "sgxddk"
-#define PVRVERSION_BRANCHNAME       "1.8"
-#define PVRVERSION_BUILD             778983
-#define PVRVERSION_BSCONTROL        "blaze_android_sgx_ogles1_ogles2_GPL"
+#endif 
 
-#define PVRVERSION_STRING           "blaze_android_sgx_ogles1_ogles2_GPL sgxddk 18 1.8@" PVR_STR2(PVRVERSION_BUILD)
-#define PVRVERSION_STRING_SHORT     "1.8@" PVR_STR2(PVRVERSION_BUILD)
-
-#define COPYRIGHT_TXT               "Copyright (c) Imagination Technologies Ltd. All Rights Reserved."
-
-#define PVRVERSION_BUILD_HI          77
-#define PVRVERSION_BUILD_LO          8983
-#define PVRVERSION_STRING_NUMERIC    PVR_STR2(PVRVERSION_MAJ) "." PVR_STR2(PVRVERSION_MIN) "." PVR_STR2(PVRVERSION_BUILD_HI) "." PVR_STR2(PVRVERSION_BUILD_LO)
-
-#endif /* _PVRVERSION_H_ */

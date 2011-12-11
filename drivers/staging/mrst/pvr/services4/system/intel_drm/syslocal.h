@@ -71,9 +71,11 @@ typedef struct _SYS_SPECIFIC_DATA_TAG_
 #if defined(SUPPORT_DRI_DRM)
 	struct drm_device *psDRMDev;
 #endif
+	IMG_UINT32 ui32SGXFreqListSize;
+	IMG_UINT32 *pui32SGXFreqList;
+	IMG_UINT32 ui32SGXFreqListIndex;
 } SYS_SPECIFIC_DATA;
 
- 
 #endif	
 
 

@@ -141,6 +141,10 @@ static PVRSRV_ERROR InitDevInfo(PVRSRV_PER_PROCESS_DATA *psPerProc,
 
 	psDevInfo->psKernelSGXTA3DCtlMemInfo = (PVRSRV_KERNEL_MEM_INFO *)psInitInfo->hKernelSGXTA3DCtlMemInfo;
 
+#if defined(FIX_HW_BRN_31272) || defined(FIX_HW_BRN_31780) || defined(FIX_HW_BRN_33920)
+	psDevInfo->psKernelSGXPTLAWriteBackMemInfo = (PVRSRV_KERNEL_MEM_INFO *)psInitInfo->hKernelSGXPTLAWriteBackMemInfo;
+#endif
+
 	psDevInfo->psKernelSGXMiscMemInfo = (PVRSRV_KERNEL_MEM_INFO *)psInitInfo->hKernelSGXMiscMemInfo;
 
 #if defined(SGX_SUPPORT_HWPROFILING)
@@ -161,14 +165,15 @@ static PVRSRV_ERROR InitDevInfo(PVRSRV_PER_PROCESS_DATA *psPerProc,
 	psDevInfo->psKernelVDMSnapShotBufferMemInfo = (PVRSRV_KERNEL_MEM_INFO *)psInitInfo->hKernelVDMSnapShotBufferMemInfo;
 	psDevInfo->psKernelVDMCtrlStreamBufferMemInfo = (PVRSRV_KERNEL_MEM_INFO *)psInitInfo->hKernelVDMCtrlStreamBufferMemInfo;
 #endif
+#if defined(SGX_FEATURE_VDM_CONTEXT_SWITCH) && \
+	defined(FIX_HW_BRN_33657) && defined(SUPPORT_SECURE_33657_FIX)
+	psDevInfo->psKernelVDMStateUpdateBufferMemInfo = (PVRSRV_KERNEL_MEM_INFO *)psInitInfo->hKernelVDMStateUpdateBufferMemInfo;
+#endif
 #if defined(PVRSRV_USSE_EDM_STATUS_DEBUG)
 	psDevInfo->psKernelEDMStatusBufferMemInfo = (PVRSRV_KERNEL_MEM_INFO *)psInitInfo->hKernelEDMStatusBufferMemInfo;
 #endif
 #if defined(SGX_FEATURE_OVERLAPPED_SPM)
 	psDevInfo->psKernelTmpRgnHeaderMemInfo = (PVRSRV_KERNEL_MEM_INFO *)psInitInfo->hKernelTmpRgnHeaderMemInfo;
-#endif
-#if defined(SGX_FEATURE_SPM_MODE_0)
-	psDevInfo->psKernelTmpDPMStateMemInfo = (PVRSRV_KERNEL_MEM_INFO *)psInitInfo->hKernelTmpDPMStateMemInfo;
 #endif
 	
 	psDevInfo->ui32ClientBuildOptions = psInitInfo->ui32ClientBuildOptions;
@@ -278,6 +283,75 @@ static PVRSRV_ERROR SGXRunScript(PVRSRV_SGXDEV_INFO *psDevInfo, SGX_INIT_COMMAND
 	return PVRSRV_ERROR_UNKNOWN_SCRIPT_OPERATION;
 }
 
+#if defined(SUPPORT_MEMORY_TILING)
+static PVRSRV_ERROR SGX_AllocMemTilingRangeInt(PVRSRV_SGXDEV_INFO *psDevInfo,
+											   IMG_UINT32 ui32Start,
+											   IMG_UINT32 ui32End,
+										IMG_UINT32 ui32TilingStride,
+										IMG_UINT32 *pui32RangeIndex)
+{
+	IMG_UINT32 i;
+	IMG_UINT32 ui32Offset;
+	IMG_UINT32 ui32Val;
+
+
+	for(i=0; i < SGX_BIF_NUM_TILING_RANGES; i++)
+	{
+		if((psDevInfo->ui32MemTilingUsage & (1U << i)) == 0)
+		{
+
+			psDevInfo->ui32MemTilingUsage |= 1U << i;
+
+			if(pui32RangeIndex != IMG_NULL)
+			{
+				*pui32RangeIndex = i;
+			}
+			goto RangeAllocated;
+		}
+	}
+
+	PVR_DPF((PVR_DBG_ERROR,"SGX_AllocMemTilingRange: all tiling ranges in use"));
+	return PVRSRV_ERROR_EXCEEDED_HW_LIMITS;
+
+RangeAllocated:
+
+
+	if(ui32Start & ~SGX_BIF_TILING_ADDR_MASK)
+	{
+		PVR_DPF((PVR_DBG_WARNING,"SGX_AllocMemTilingRangeInt: Tiling range start (0x%08X) fails"
+						"alignment test", ui32Start));
+	}
+	if((ui32End + 0x00001000) & ~SGX_BIF_TILING_ADDR_MASK)
+	{
+		PVR_DPF((PVR_DBG_WARNING,"SGX_AllocMemTilingRangeInt: Tiling range end (0x%08X) fails"
+						"alignment test", ui32End));
+	}
+
+	ui32Offset = EUR_CR_BIF_TILE0 + (i<<2);
+
+	ui32Val = ((ui32TilingStride << EUR_CR_BIF_TILE0_CFG_SHIFT) & EUR_CR_BIF_TILE0_CFG_MASK)
+			| (((ui32End>>SGX_BIF_TILING_ADDR_LSB) << EUR_CR_BIF_TILE0_MAX_ADDRESS_SHIFT) & EUR_CR_BIF_TILE0_MAX_ADDRESS_MASK)
+			| (((ui32Start>>SGX_BIF_TILING_ADDR_LSB) << EUR_CR_BIF_TILE0_MIN_ADDRESS_SHIFT) & EUR_CR_BIF_TILE0_MIN_ADDRESS_MASK)
+			| (EUR_CR_BIF_TILE0_ENABLE << EUR_CR_BIF_TILE0_CFG_SHIFT);
+
+	OSWriteHWReg(psDevInfo->pvRegsBaseKM, ui32Offset, ui32Val);
+	PDUMPREG(SGX_PDUMPREG_NAME, ui32Offset, ui32Val);
+
+#if defined(SGX_FEATURE_BIF_WIDE_TILING_AND_4K_ADDRESS)
+	ui32Offset = EUR_CR_BIF_TILE0_ADDR_EXT + (i<<2);
+
+	ui32Val = (((ui32End>>SGX_BIF_TILING_EXT_ADDR_LSB) << EUR_CR_BIF_TILE0_ADDR_EXT_MAX_SHIFT) & EUR_CR_BIF_TILE0_ADDR_EXT_MAX_MASK)
+			| (((ui32Start>>SGX_BIF_TILING_EXT_ADDR_LSB) << EUR_CR_BIF_TILE0_ADDR_EXT_MIN_SHIFT) & EUR_CR_BIF_TILE0_ADDR_EXT_MIN_MASK);
+
+	OSWriteHWReg(psDevInfo->pvRegsBaseKM, ui32Offset, ui32Val);
+	PDUMPREG(SGX_PDUMPREG_NAME, ui32Offset, ui32Val);
+#endif
+
+	return PVRSRV_OK;
+}
+
+#endif
+
 PVRSRV_ERROR SGXInitialise(PVRSRV_SGXDEV_INFO	*psDevInfo,
 						   IMG_BOOL				bHardwareRecovery)
 {
@@ -338,6 +412,37 @@ PVRSRV_ERROR SGXInitialise(PVRSRV_SGXDEV_INFO	*psDevInfo,
 				 MAKEUNIQUETAG(psDevInfo->psKernelCCBEventKickerMemInfo));
 	}
 #endif 
+
+#if defined(SUPPORT_MEMORY_TILING)
+	{
+
+		DEVICE_MEMORY_HEAP_INFO *psDeviceMemoryHeap = psDevInfo->pvDeviceMemoryHeap;
+		IMG_UINT32 i;
+
+		psDevInfo->ui32MemTilingUsage = 0;
+
+		for(i=0; i<psDevInfo->ui32HeapCount; i++)
+		{
+			if(psDeviceMemoryHeap[i].ui32XTileStride > 0)
+			{
+
+				eError = SGX_AllocMemTilingRangeInt(
+						psDevInfo,
+						psDeviceMemoryHeap[i].sDevVAddrBase.uiAddr,
+						psDeviceMemoryHeap[i].sDevVAddrBase.uiAddr
+							+ psDeviceMemoryHeap[i].ui32HeapSize,
+						psDeviceMemoryHeap[i].ui32XTileStride,
+						NULL);
+				if(eError != PVRSRV_OK)
+				{
+					PVR_DPF((PVR_DBG_ERROR, "Unable to allocate SGX BIF tiling range for heap: %s",
+											psDeviceMemoryHeap[i].pszName));
+					break;
+				}
+			}
+		}
+	}
+#endif
 
 	
 
@@ -414,6 +519,7 @@ PVRSRV_ERROR SGXInitialise(PVRSRV_SGXDEV_INFO	*psDevInfo,
 	{
 		PVR_DPF((PVR_DBG_ERROR, "SGXInitialise: Wait for uKernel initialisation failed"));
 		#if !defined(FIX_HW_BRN_23281)
+		SGXDumpDebugInfo(psDevInfo, IMG_FALSE);
 		PVR_DBG_BREAK;
 		#endif 
 		return PVRSRV_ERROR_RETRY;
@@ -525,6 +631,7 @@ static PVRSRV_ERROR DevInitSGXPart1 (IMG_VOID *pvDeviceNode)
 	psDeviceNode->pvDevice = (IMG_PVOID)psDevInfo;
 
 	
+	psDevInfo->ui32HeapCount = psDeviceNode->sDevMemoryInfo.ui32HeapCount;
 	psDevInfo->pvDeviceMemoryHeap = (IMG_VOID*)psDeviceMemoryHeap;
 
 	
@@ -906,8 +1013,8 @@ static IMG_VOID SGXDumpDebugReg (PVRSRV_SGXDEV_INFO	*psDevInfo,
 	PVR_LOG(("(P%u) %s%08X", ui32CoreNum, pszName, ui32RegVal));
 }
 
-static IMG_VOID SGXDumpDebugInfo (PVRSRV_SGXDEV_INFO	*psDevInfo,
-								  IMG_BOOL				bDumpSGXRegs)
+IMG_VOID SGXDumpDebugInfo (PVRSRV_SGXDEV_INFO	*psDevInfo,
+						   IMG_BOOL				bDumpSGXRegs)
 {
 	IMG_UINT32	ui32CoreNum;
 
@@ -1183,7 +1290,7 @@ IMG_VOID SGXOSTimer(IMG_VOID *pvData)
 					
 		#if defined(FIX_HW_BRN_29997)
 					IMG_UINT32	ui32BIFCtrl;
-					
+
 					ui32BIFCtrl = OSReadHWReg(psDevInfo->pvRegsBaseKM, EUR_CR_BIF_CTRL);
 					OSWriteHWReg(psDevInfo->pvRegsBaseKM, EUR_CR_BIF_CTRL, ui32BIFCtrl | EUR_CR_BIF_CTRL_PAUSE_MASK);
 					
@@ -1204,7 +1311,7 @@ IMG_VOID SGXOSTimer(IMG_VOID *pvData)
 				else
 	#endif
 				{
-				PVR_DPF((PVR_DBG_ERROR, "SGXOSTimer() detected SGX lockup (0x%x tasks)", ui32EDMTasks));
+					PVR_DPF((PVR_DBG_ERROR, "SGXOSTimer() detected SGX lockup (0x%x tasks)", ui32EDMTasks));
 
 					bLockup = IMG_TRUE;
 					(psDevInfo->psSGXHostCtl)->ui32OpenCLDelayCount = 0;
@@ -1231,10 +1338,11 @@ SGX_NoUKernel_LockUp:
 		psSGXHostCtl->ui32HostDetectedLockups ++;
 
 		
-		HWRecoveryResetSGX(psDeviceNode, 0, KERNEL_ID);
+		HWRecoveryResetSGX(psDeviceNode, 0, ISR_ID);
 	}
 }
 #endif 
+
 
 
 #if defined(SYS_USING_INTERRUPTS)
@@ -1338,78 +1446,25 @@ static IMG_VOID SGX_MISRHandler (IMG_VOID *pvData)
 }
 #endif 
 
-
-
 #if defined(SUPPORT_MEMORY_TILING)
+
+IMG_INTERNAL
 PVRSRV_ERROR SGX_AllocMemTilingRange(PVRSRV_DEVICE_NODE *psDeviceNode,
-										PVRSRV_KERNEL_MEM_INFO	*psMemInfo,
-										IMG_UINT32 ui32TilingStride,
-										IMG_UINT32 *pui32RangeIndex)
+									 PVRSRV_KERNEL_MEM_INFO	*psMemInfo,
+									 IMG_UINT32 ui32XTileStride,
+									 IMG_UINT32 *pui32RangeIndex)
 {
-#if defined(SGX_FEATURE_BIF_WIDE_TILING_AND_4K_ADDRESS)
-	PVRSRV_SGXDEV_INFO *psDevInfo = psDeviceNode->pvDevice;
-	IMG_UINT32 i;
-	IMG_UINT32 ui32Start;
-	IMG_UINT32 ui32End;
-	IMG_UINT32 ui32Offset;
-	IMG_UINT32 ui32Val;
-
-	
-	for(i=0; i<10; i++)
-	{
-		if((psDevInfo->ui32MemTilingUsage & (1U << i)) == 0)
-		{
-			
-			psDevInfo->ui32MemTilingUsage |= 1U << i;
-			
-			*pui32RangeIndex = i;
-			goto RangeAllocated;
-		}
-	}
-
-	PVR_DPF((PVR_DBG_ERROR,"SGX_AllocMemTilingRange: all tiling ranges in use"));
-	return PVRSRV_ERROR_EXCEEDED_HW_LIMITS;
-
-RangeAllocated:
-	ui32Offset = EUR_CR_BIF_TILE0 + (i<<2);
-
-	ui32Start = psMemInfo->sDevVAddr.uiAddr;
-	ui32End = ui32Start + psMemInfo->uAllocSize + SGX_MMU_PAGE_SIZE - 1;
-
-	ui32Val = ((ui32TilingStride << EUR_CR_BIF_TILE0_CFG_SHIFT) & EUR_CR_BIF_TILE0_CFG_MASK)
-			| (((ui32End>>20) << EUR_CR_BIF_TILE0_MAX_ADDRESS_SHIFT) & EUR_CR_BIF_TILE0_MAX_ADDRESS_MASK)
-			| (((ui32Start>>20) << EUR_CR_BIF_TILE0_MIN_ADDRESS_SHIFT) & EUR_CR_BIF_TILE0_MIN_ADDRESS_MASK)
-			| (0x8 << EUR_CR_BIF_TILE0_CFG_SHIFT);
-
-	
-	OSWriteHWReg(psDevInfo->pvRegsBaseKM, ui32Offset, ui32Val);
-	PDUMPREG(SGX_PDUMPREG_NAME, ui32Offset, ui32Val);
-
-	ui32Offset = EUR_CR_BIF_TILE0_ADDR_EXT + (i<<2);
-
-	ui32Val = (((ui32End>>12) << EUR_CR_BIF_TILE0_ADDR_EXT_MAX_SHIFT) & EUR_CR_BIF_TILE0_ADDR_EXT_MAX_MASK)
-			| (((ui32Start>>12) << EUR_CR_BIF_TILE0_ADDR_EXT_MIN_SHIFT) & EUR_CR_BIF_TILE0_ADDR_EXT_MIN_MASK);
-
-	
-	OSWriteHWReg(psDevInfo->pvRegsBaseKM, ui32Offset, ui32Val);
-	PDUMPREG(SGX_PDUMPREG_NAME, ui32Offset, ui32Val);
-
-	return PVRSRV_OK;
-#else
-	PVR_UNREFERENCED_PARAMETER(psDeviceNode);
-	PVR_UNREFERENCED_PARAMETER(psMemInfo);
-	PVR_UNREFERENCED_PARAMETER(ui32TilingStride);
-	PVR_UNREFERENCED_PARAMETER(pui32RangeIndex);
-
-	PVR_DPF((PVR_DBG_ERROR,"SGX_AllocMemTilingRange: device does not support memory tiling"));
-	return PVRSRV_ERROR_NOT_SUPPORTED;
-#endif
+	return SGX_AllocMemTilingRangeInt(psDeviceNode->pvDevice,
+		psMemInfo->sDevVAddr.uiAddr,
+		psMemInfo->sDevVAddr.uiAddr + ((IMG_UINT32) psMemInfo->uAllocSize) + SGX_MMU_PAGE_SIZE - 1,
+		ui32XTileStride,
+		pui32RangeIndex);
 }
 
+IMG_INTERNAL
 PVRSRV_ERROR SGX_FreeMemTilingRange(PVRSRV_DEVICE_NODE *psDeviceNode,
 										IMG_UINT32 ui32RangeIndex)
 {
-#if defined(SGX_FEATURE_BIF_WIDE_TILING_AND_4K_ADDRESS)
 	PVRSRV_SGXDEV_INFO *psDevInfo = psDeviceNode->pvDevice;
 	IMG_UINT32 ui32Offset;
 	IMG_UINT32 ui32Val;
@@ -1432,15 +1487,10 @@ PVRSRV_ERROR SGX_FreeMemTilingRange(PVRSRV_DEVICE_NODE *psDeviceNode,
 	PDUMPREG(SGX_PDUMPREG_NAME, ui32Offset, ui32Val);
 
 	return PVRSRV_OK;
-#else
-	PVR_UNREFERENCED_PARAMETER(psDeviceNode);
-	PVR_UNREFERENCED_PARAMETER(ui32RangeIndex);
-
-	PVR_DPF((PVR_DBG_ERROR,"SGX_FreeMemTilingRange: device does not support memory tiling"));
-	return PVRSRV_ERROR_NOT_SUPPORTED;
-#endif
 }
+
 #endif
+
 
 static IMG_VOID SGXCacheInvalidate(PVRSRV_DEVICE_NODE *psDeviceNode)
 {
@@ -1551,7 +1601,7 @@ PVRSRV_ERROR SGXRegisterDevice (PVRSRV_DEVICE_NODE *psDeviceNode)
 	
 
 
-	
+
 	psDeviceMemoryHeap->ui32HeapID = HEAP_ID( PVRSRV_DEVICE_TYPE_SGX, SGX_GENERAL_HEAP_ID);
 	psDeviceMemoryHeap->sDevVAddrBase.uiAddr = SGX_GENERAL_HEAP_BASE;
 	psDeviceMemoryHeap->ui32HeapSize = SGX_GENERAL_HEAP_SIZE;
@@ -1561,7 +1611,7 @@ PVRSRV_ERROR SGXRegisterDevice (PVRSRV_DEVICE_NODE *psDeviceNode)
 	psDeviceMemoryHeap->pszName = "General";
 	psDeviceMemoryHeap->pszBSName = "General BS";
 	psDeviceMemoryHeap->DevMemHeapType = DEVICE_MEMORY_HEAP_PERCONTEXT;
-	
+
 	psDeviceMemoryHeap->ui32DataPageSize = SGX_MMU_PAGE_SIZE;
 #if !defined(SUPPORT_SGX_GENERAL_MAPPING_HEAP)
 	
@@ -1569,6 +1619,23 @@ PVRSRV_ERROR SGXRegisterDevice (PVRSRV_DEVICE_NODE *psDeviceNode)
 #endif
 	psDeviceMemoryHeap++;
 
+#if defined(SUPPORT_MEMORY_TILING)
+
+	psDeviceMemoryHeap->ui32HeapID = HEAP_ID( PVRSRV_DEVICE_TYPE_SGX, SGX_VPB_TILED_HEAP_ID);
+	psDeviceMemoryHeap->sDevVAddrBase.uiAddr = SGX_VPB_TILED_HEAP_BASE;
+	psDeviceMemoryHeap->ui32HeapSize = SGX_VPB_TILED_HEAP_SIZE;
+	psDeviceMemoryHeap->ui32Attribs = PVRSRV_HAP_WRITECOMBINE
+														| PVRSRV_MEM_RAM_BACKED_ALLOCATION
+														| PVRSRV_HAP_SINGLE_PROCESS;
+	psDeviceMemoryHeap->pszName = "VPB Tiled";
+	psDeviceMemoryHeap->pszBSName = "VPB Tiled BS";
+	psDeviceMemoryHeap->DevMemHeapType = DEVICE_MEMORY_HEAP_PERCONTEXT;
+
+	psDeviceMemoryHeap->ui32DataPageSize = SGX_MMU_PAGE_SIZE;
+	psDeviceMemoryHeap->ui32XTileStride = SGX_VPB_TILED_HEAP_STRIDE;
+	PVR_DPF((PVR_DBG_WARNING, "VPB tiling heap tiling stride = 0x%x", psDeviceMemoryHeap->ui32XTileStride));
+	psDeviceMemoryHeap++;
+#endif
 
 	
 	psDeviceMemoryHeap->ui32HeapID = HEAP_ID( PVRSRV_DEVICE_TYPE_SGX, SGX_TADATA_HEAP_ID);
@@ -1932,7 +1999,6 @@ PVRSRV_ERROR SGXDevInitCompatCheck(PVRSRV_DEVICE_NODE *psDeviceNode)
 		PVR_LOG(("(FAIL) SGXInit: Incompatible driver DDK revision (%d)/device DDK revision (%d).",
 				PVRVERSION_BUILD, psSGXFeatures->ui32DDKBuild));
 		eError = PVRSRV_ERROR_DDK_VERSION_MISMATCH;
-		PVR_DBG_BREAK;
 		goto chk_exit;
 	}
 	else
@@ -2667,6 +2733,8 @@ PVRSRV_ERROR SGXGetMiscInfoKM(PVRSRV_SGXDEV_INFO	*psDevInfo,
 			return PVRSRV_OK;
 		}
 
+#if defined(DEBUG)
+
 		case SGX_MISC_INFO_PANIC:
 		{
 			PVR_LOG(("User requested SGX panic"));
@@ -2675,6 +2743,7 @@ PVRSRV_ERROR SGXGetMiscInfoKM(PVRSRV_SGXDEV_INFO	*psDevInfo,
 
 			return PVRSRV_OK;
 		}
+#endif
 
 		default:
 		{

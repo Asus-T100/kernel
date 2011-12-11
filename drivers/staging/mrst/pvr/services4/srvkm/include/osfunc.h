@@ -83,7 +83,7 @@ IMG_BOOL OSUnMapPhysToLin(IMG_VOID *pvLinAddr, IMG_SIZE_T ui32Bytes, IMG_UINT32 
 PVRSRV_ERROR OSReservePhys(IMG_CPU_PHYADDR BasePAddr, IMG_SIZE_T ui32Bytes, IMG_UINT32 ui32Flags, IMG_VOID **ppvCpuVAddr, IMG_HANDLE *phOSMemHandle);
 PVRSRV_ERROR OSUnReservePhys(IMG_VOID *pvCpuVAddr, IMG_SIZE_T ui32Bytes, IMG_UINT32 ui32Flags, IMG_HANDLE hOSMemHandle);
 
-#if defined(__linux__) && defined(__KERNEL__)
+#if (defined(__linux__) && defined(__KERNEL__)) || (UNDER_CE >= 600)
 
 IMG_VOID OSFlushCPUCacheKM(IMG_VOID);
 
@@ -304,7 +304,8 @@ IMG_UINT32 OSGetCurrentProcessIDKM(IMG_VOID);
 IMG_UINTPTR_T OSGetCurrentThreadID( IMG_VOID );
 IMG_VOID OSMemSet(IMG_VOID *pvDest, IMG_UINT8 ui8Value, IMG_SIZE_T ui32Size);
 
-PVRSRV_ERROR OSAllocPages_Impl(IMG_UINT32 ui32Flags, IMG_SIZE_T ui32Size, IMG_UINT32 ui32PageSize, IMG_PVOID *ppvLinAddr, IMG_HANDLE *phPageAlloc);
+PVRSRV_ERROR OSAllocPages_Impl(IMG_UINT32 ui32Flags, IMG_SIZE_T ui32Size, IMG_UINT32 ui32PageSize,
+							   IMG_PVOID pvPrivData, IMG_UINT32 ui32PrivDataLength, IMG_PVOID *ppvLinAddr, IMG_HANDLE *phPageAlloc);
 PVRSRV_ERROR OSFreePages(IMG_UINT32 ui32Flags, IMG_SIZE_T ui32Size, IMG_PVOID pvLinAddr, IMG_HANDLE hPageAlloc);
 
 
@@ -313,9 +314,9 @@ PVRSRV_ERROR OSFreePages(IMG_UINT32 ui32Flags, IMG_SIZE_T ui32Size, IMG_PVOID pv
 		(PVR_TRACE(("OSAllocMem(" #flags ", " #size ", " #linAddr ", " #blockAlloc "): " logStr " (size = 0x%lx)", size)), \
 			OSAllocMem_Debug_Wrapper(flags, size, linAddr, blockAlloc, __FILE__, __LINE__))
 
-	#define OSAllocPages(flags, size, pageSize, linAddr, pageAlloc) \
+	#define OSAllocPages(flags, size, pageSize, privdata, privdatalength, linAddr, pageAlloc) \
 		(PVR_TRACE(("OSAllocPages(" #flags ", " #size ", " #pageSize ", " #linAddr ", " #pageAlloc "): (size = 0x%lx)", size)), \
-			OSAllocPages_Impl(flags, size, pageSize, linAddr, pageAlloc))
+			OSAllocPages_Impl(flags, size, pageSize, linAddr, privdata, privdatalength, pageAlloc))
 		
 	#define OSFreeMem(flags, size, linAddr, blockAlloc) \
 		(PVR_TRACE(("OSFreeMem(" #flags ", " #size ", " #linAddr ", " #blockAlloc "): (pointer = 0x%X)", linAddr)), \
@@ -400,6 +401,19 @@ static INLINE IMG_CPU_PHYADDR OSMemHandleToCpuPAddr(IMG_HANDLE hOSMemHandle, IMG
 	return sCpuPAddr;
 }
 #endif
+
+#if defined(__linux__)
+IMG_BOOL OSMemHandleIsPhysContig(IMG_VOID *hOSMemHandle);
+#else
+#ifdef INLINE_IS_PRAGMA
+#pragma inline(OSMemHandleIsPhysContig)
+#endif
+static INLINE IMG_BOOL OSMemHandleIsPhysContig(IMG_HANDLE hOSMemHandle)
+{
+	return IMG_FALSE;
+}
+#endif
+
 PVRSRV_ERROR OSInitEnvData(IMG_PVOID *ppvEnvSpecificData);
 PVRSRV_ERROR OSDeInitEnvData(IMG_PVOID pvEnvSpecificData);
 IMG_CHAR* OSStringCopy(IMG_CHAR *pszDest, const IMG_CHAR *pszSrc);
@@ -461,7 +475,7 @@ IMG_VOID OSBreakResourceLock(PVRSRV_RESOURCE *psResource, IMG_UINT32 ui32ID);
 #define OSPowerLockWrap SysPowerLockWrap
 #define OSPowerLockUnwrap SysPowerLockUnwrap
 #else
-PVRSRV_ERROR OSPowerLockWrap(IMG_VOID);
+PVRSRV_ERROR OSPowerLockWrap(IMG_BOOL bTryLock);
 
 IMG_VOID OSPowerLockUnwrap(IMG_VOID);
 #endif 

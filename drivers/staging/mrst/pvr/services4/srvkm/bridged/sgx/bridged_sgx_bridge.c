@@ -1205,6 +1205,16 @@ SGXDevInitPart2BW(IMG_UINT32 ui32BridgeID,
 		bLookupFailed = IMG_TRUE;
 	}
 
+#if defined(FIX_HW_BRN_31272) || defined(FIX_HW_BRN_31780) || defined(FIX_HW_BRN_33920)
+	eError = PVRSRVLookupHandle(psPerProc->psHandleBase,
+						   &hDummy,
+						   psSGXDevInitPart2IN->sInitInfo.hKernelSGXPTLAWriteBackMemInfo,
+						   PVRSRV_HANDLE_TYPE_MEM_INFO);
+	if (eError != PVRSRV_OK)
+	{
+		bLookupFailed = IMG_TRUE;
+	}
+#endif
 
 	eError = PVRSRVLookupHandle(psPerProc->psHandleBase,
 						   &hDummy,
@@ -1365,11 +1375,11 @@ SGXDevInitPart2BW(IMG_UINT32 ui32BridgeID,
 		bLookupFailed = IMG_TRUE;
 	}
 #endif
-
-#if defined(PVRSRV_USSE_EDM_STATUS_DEBUG)
+#if defined(SGX_FEATURE_VDM_CONTEXT_SWITCH) && \
+	defined(FIX_HW_BRN_33657) && defined(SUPPORT_SECURE_33657_FIX)
 	eError = PVRSRVLookupHandle(psPerProc->psHandleBase,
 						   &hDummy,
-						   psSGXDevInitPart2IN->sInitInfo.hKernelEDMStatusBufferMemInfo,
+						   psSGXDevInitPart2IN->sInitInfo.hKernelVDMStateUpdateBufferMemInfo,
 						   PVRSRV_HANDLE_TYPE_MEM_INFO);
 	if (eError != PVRSRV_OK)
 	{
@@ -1377,10 +1387,10 @@ SGXDevInitPart2BW(IMG_UINT32 ui32BridgeID,
 	}
 #endif
 
-#if defined(SGX_FEATURE_SPM_MODE_0)
+#if defined(PVRSRV_USSE_EDM_STATUS_DEBUG)
 	eError = PVRSRVLookupHandle(psPerProc->psHandleBase,
 						   &hDummy,
-						   psSGXDevInitPart2IN->sInitInfo.hKernelTmpDPMStateMemInfo,
+						   psSGXDevInitPart2IN->sInitInfo.hKernelEDMStatusBufferMemInfo,
 						   PVRSRV_HANDLE_TYPE_MEM_INFO);
 	if (eError != PVRSRV_OK)
 	{
@@ -1488,6 +1498,21 @@ SGXDevInitPart2BW(IMG_UINT32 ui32BridgeID,
 	{
 		bReleaseFailed = IMG_TRUE;
 	}
+
+#if defined(FIX_HW_BRN_31272) || defined(FIX_HW_BRN_31780) || defined(FIX_HW_BRN_33920)
+	eError = PVRSRVLookupAndReleaseHandle(psPerProc->psHandleBase,
+#if defined (SUPPORT_SID_INTERFACE)
+						   &asInitInfoKM.hKernelSGXPTLAWriteBackMemInfo,
+#else
+						   &psSGXDevInitPart2IN->sInitInfo.hKernelSGXPTLAWriteBackMemInfo,
+#endif
+						   psSGXDevInitPart2IN->sInitInfo.hKernelSGXPTLAWriteBackMemInfo,
+						   PVRSRV_HANDLE_TYPE_MEM_INFO);
+	if (eError != PVRSRV_OK)
+	{
+		bReleaseFailed = IMG_TRUE;
+	}
+#endif
 
 	eError = PVRSRVLookupAndReleaseHandle(psPerProc->psHandleBase,
 #if defined (SUPPORT_SID_INTERFACE)
@@ -1707,6 +1732,17 @@ SGXDevInitPart2BW(IMG_UINT32 ui32BridgeID,
 		bReleaseFailed = IMG_TRUE;
 	}
 #endif
+#if defined(SGX_FEATURE_VDM_CONTEXT_SWITCH) && \
+	defined(FIX_HW_BRN_33657) && defined(SUPPORT_SECURE_33657_FIX)
+	eError = PVRSRVLookupAndReleaseHandle(psPerProc->psHandleBase,
+						   &psSGXDevInitPart2IN->sInitInfo.hKernelVDMStateUpdateBufferMemInfo,
+						   psSGXDevInitPart2IN->sInitInfo.hKernelVDMStateUpdateBufferMemInfo,
+						   PVRSRV_HANDLE_TYPE_MEM_INFO);
+	if (eError != PVRSRV_OK)
+	{
+		bReleaseFailed = IMG_TRUE;
+	}
+#endif
 
 #if defined(PVRSRV_USSE_EDM_STATUS_DEBUG)
 	eError = PVRSRVLookupAndReleaseHandle(psPerProc->psHandleBase,
@@ -1722,22 +1758,6 @@ SGXDevInitPart2BW(IMG_UINT32 ui32BridgeID,
 		bReleaseFailed = IMG_TRUE;
 	}
 #endif
-
-#if defined(SGX_FEATURE_SPM_MODE_0)
-	eError = PVRSRVLookupAndReleaseHandle(psPerProc->psHandleBase,
-#if defined (SUPPORT_SID_INTERFACE)
-						   &asInitInfoKM.hKernelTmpDPMStateMemInfo,
-#else
-						   &psSGXDevInitPart2IN->sInitInfo.hKernelTmpDPMStateMemInfo,
-#endif
-						   psSGXDevInitPart2IN->sInitInfo.hKernelTmpDPMStateMemInfo,
-						   PVRSRV_HANDLE_TYPE_MEM_INFO);
-	if (eError != PVRSRV_OK)
-	{
-		bReleaseFailed = IMG_TRUE;
-	}
-#endif
-
 
 	for (i = 0; i < SGX_MAX_INIT_MEM_HANDLES; i++)
 	{
@@ -1827,6 +1847,18 @@ SGXDevInitPart2BW(IMG_UINT32 ui32BridgeID,
 	{
 		bDissociateFailed = IMG_TRUE;
 	}
+
+#if defined(FIX_HW_BRN_31272) || defined(FIX_HW_BRN_31780) || defined(FIX_HW_BRN_33920)
+#if defined (SUPPORT_SID_INTERFACE)
+	eError = PVRSRVDissociateDeviceMemKM(hDevCookieInt, asInitInfoKM.hKernelSGXPTLAWriteBackMemInfo);
+#else
+	eError = PVRSRVDissociateDeviceMemKM(hDevCookieInt, psSGXDevInitPart2IN->sInitInfo.hKernelSGXPTLAWriteBackMemInfo);
+#endif
+	if (eError != PVRSRV_OK)
+	{
+		bDissociateFailed = IMG_TRUE;
+	}
+#endif
 
 	
 #if defined (SUPPORT_SID_INTERFACE)
@@ -2001,6 +2033,11 @@ SGXDevInitPart2BW(IMG_UINT32 ui32BridgeID,
 	eError = PVRSRVDissociateDeviceMemKM(hDevCookieInt, psSGXDevInitPart2IN->sInitInfo.hKernelVDMCtrlStreamBufferMemInfo);
 	bDissociateFailed |= (IMG_BOOL)(eError != PVRSRV_OK);
 #endif
+#if defined(SGX_FEATURE_VDM_CONTEXT_SWITCH) && \
+	defined(FIX_HW_BRN_33657) && defined(SUPPORT_SECURE_33657_FIX)
+	eError = PVRSRVDissociateDeviceMemKM(hDevCookieInt, psSGXDevInitPart2IN->sInitInfo.hKernelVDMStateUpdateBufferMemInfo);
+	bDissociateFailed |= (IMG_BOOL)(eError != PVRSRV_OK);
+#endif
 
 #if defined(PVRSRV_USSE_EDM_STATUS_DEBUG)
 #if defined (SUPPORT_SID_INTERFACE)
@@ -2013,18 +2050,6 @@ SGXDevInitPart2BW(IMG_UINT32 ui32BridgeID,
 	eError = PVRSRVDissociateDeviceMemKM(hDevCookieInt, psSGXDevInitPart2IN->sInitInfo.hKernelEDMStatusBufferMemInfo);
 	bDissociateFailed |= (IMG_BOOL)(eError != PVRSRV_OK);
 #endif
-#endif
-
-#if defined(SGX_FEATURE_SPM_MODE_0)
-#if defined (SUPPORT_SID_INTERFACE)
-	eError = PVRSRVDissociateDeviceMemKM(hDevCookieInt, asInitInfoKM.hKernelTmpDPMStateMemInfo);
-#else
-	eError = PVRSRVDissociateDeviceMemKM(hDevCookieInt, psSGXDevInitPart2IN->sInitInfo.hKernelTmpDPMStateMemInfo);
-#endif
-	if (eError != PVRSRV_OK)
-	{
-		bDissociateFailed = IMG_TRUE;
-	}
 #endif
 
 	for (i = 0; i < SGX_MAX_INIT_MEM_HANDLES; i++)
@@ -2053,12 +2078,18 @@ SGXDevInitPart2BW(IMG_UINT32 ui32BridgeID,
 		PVRSRVFreeDeviceMemKM(hDevCookieInt, asInitInfoKM.hKernelCCBCtlMemInfo);
 		PVRSRVFreeDeviceMemKM(hDevCookieInt, asInitInfoKM.hKernelSGXHostCtlMemInfo);
 		PVRSRVFreeDeviceMemKM(hDevCookieInt, asInitInfoKM.hKernelSGXTA3DCtlMemInfo);
+#if defined(FIX_HW_BRN_31272) || defined(FIX_HW_BRN_31780) || defined(FIX_HW_BRN_33920)
+		PVRSRVFreeDeviceMemKM(hDevCookieInt, asInitInfoKM.hKernelSGXPTLAWriteBackMemInfo);
+#endif
 		PVRSRVFreeDeviceMemKM(hDevCookieInt, asInitInfoKM.hKernelSGXMiscMemInfo);
 #else
 		PVRSRVFreeDeviceMemKM(hDevCookieInt, psSGXDevInitPart2IN->sInitInfo.hKernelCCBMemInfo);
 		PVRSRVFreeDeviceMemKM(hDevCookieInt, psSGXDevInitPart2IN->sInitInfo.hKernelCCBCtlMemInfo);
 		PVRSRVFreeDeviceMemKM(hDevCookieInt, psSGXDevInitPart2IN->sInitInfo.hKernelSGXHostCtlMemInfo);
 		PVRSRVFreeDeviceMemKM(hDevCookieInt, psSGXDevInitPart2IN->sInitInfo.hKernelSGXTA3DCtlMemInfo);
+#if defined(FIX_HW_BRN_31272) || defined(FIX_HW_BRN_31780) || defined(FIX_HW_BRN_33920)
+		PVRSRVFreeDeviceMemKM(hDevCookieInt, psSGXDevInitPart2IN->sInitInfo.hKernelSGXPTLAWriteBackMemInfo);
+#endif
 		PVRSRVFreeDeviceMemKM(hDevCookieInt, psSGXDevInitPart2IN->sInitInfo.hKernelSGXMiscMemInfo);
 #endif
 

@@ -474,8 +474,6 @@ PVRSRV_ERROR SysInitialise(IMG_VOID)
 		return eError;
 	}
 
-	
-
 
 	eError = PVRSRVRegisterDevice(gpsSysData, SGXRegisterDevice,
 								  DEVICE_SGX_INTERRUPT, &gui32SGXDeviceID);
@@ -705,6 +703,8 @@ PVRSRV_ERROR SysDeinitialise (SYS_DATA *psSysData)
 {
 	PVRSRV_ERROR eError;
 
+	PVR_UNREFERENCED_PARAMETER(psSysData);
+
 	SYS_SPECIFIC_DATA *psSysSpecData = (SYS_SPECIFIC_DATA *) psSysData->pvSysSpecificData;
 
 #if (defined(SYS_USING_INTERRUPTS) && !defined(SUPPORT_DRI_DRM_EXT))
@@ -717,7 +717,7 @@ PVRSRV_ERROR SysDeinitialise (SYS_DATA *psSysData)
 #if defined(SYS_USING_INTERRUPTS) && !defined(SUPPORT_DRI_DRM_EXT)
 	if (SYS_SPECIFIC_DATA_TEST(psSysSpecData, SYS_SPECIFIC_DATA_LISR_INSTALLED))
 	{
-		eError = OSUninstallSystemLISR(psSysData);
+		eError = OSUninstallSystemLISR(gpsSysData);
 		if (eError != PVRSRV_OK)
 		{
 			PVR_DPF((PVR_DBG_ERROR,"SysDeinitialise: OSUninstallSystemLISR failed"));
@@ -728,7 +728,7 @@ PVRSRV_ERROR SysDeinitialise (SYS_DATA *psSysData)
 
 	if (SYS_SPECIFIC_DATA_TEST(psSysSpecData, SYS_SPECIFIC_DATA_MISR_INSTALLED))
 	{
-		eError = OSUninstallMISR(psSysData);
+		eError = OSUninstallMISR(gpsSysData);
 		if (eError != PVRSRV_OK)
 		{
 			PVR_DPF((PVR_DBG_ERROR,"SysDeinitialise: OSUninstallMISR failed"));
@@ -1396,6 +1396,15 @@ PVRSRV_ERROR SysDevicePostPowerState(IMG_UINT32			ui32DeviceIndex,
 
 	return PVRSRV_OK;
 }
+
+#if defined(SYS_SUPPORTS_SGX_IDLE_CALLBACK)
+
+IMG_VOID SysSGXIdleTransition(IMG_BOOL bSGXIdle)
+{
+	PVR_DPF((PVR_DBG_MESSAGE, "SysSGXIdleTransition switch to %u", bSGXIdle));
+}
+
+#endif
 
 #if defined(SUPPORT_DRI_DRM_EXT)
 int SYSPVRServiceSGXInterrupt(struct drm_device *dev)
