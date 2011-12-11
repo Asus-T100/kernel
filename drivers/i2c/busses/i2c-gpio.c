@@ -14,6 +14,7 @@
 #include <linux/module.h>
 #include <linux/slab.h>
 #include <linux/platform_device.h>
+#include <linux/lnw_gpio.h>
 
 #include <asm/gpio.h>
 
@@ -103,6 +104,9 @@ static int __devinit i2c_gpio_probe(struct platform_device *pdev)
 	ret = gpio_request(pdata->scl_pin, "scl");
 	if (ret)
 		goto err_request_scl;
+
+	lnw_gpio_set_alt(pdata->sda_pin, LNW_GPIO);
+	lnw_gpio_set_alt(pdata->scl_pin, LNW_GPIO);
 
 	if (pdata->sda_is_open_drain) {
 		gpio_direction_output(pdata->sda_pin, 1);
@@ -204,14 +208,46 @@ static struct platform_driver i2c_gpio_driver = {
 static int __init i2c_gpio_init(void)
 {
 	int ret;
+	struct platform_device *pdev;
+	struct i2c_gpio_platform_data *pdata;
+
+	/*
+	 * Hard code a gpio controller platform device to take over
+	 * the two gpio pins used to be controlled by i2c bus 3.
+	 * This is to support HDMI EDID extension block read, which
+	 * is not supported by the current i2c controller, so we use
+	 * GPIO pin the simulate an i2c bus.
+	 */
+	pdev = platform_device_alloc("i2c-gpio", 8);
+	if (!pdev) {
+		pr_err("i2c-gpio: failed to alloc platform device\n");
+		ret = -ENOMEM;
+		goto out;
+	}
+
+	pdata = kzalloc(sizeof(struct i2c_gpio_platform_data), GFP_KERNEL);
+	if (!pdata) {
+		pr_err("i2c-gpio: failed to alloc platform data\n");
+		kfree(pdev);
+		ret = -ENOMEM;
+		goto out;
+	}
+	pdata->scl_pin = 35 + 96;
+	pdata->sda_pin = 36 + 96;
+	pdata->sda_is_open_drain = 1;
+	pdata->scl_is_open_drain = 1;
+	pdev->dev.platform_data = pdata;
+
+	platform_device_add(pdev);
 
 	ret = platform_driver_register(&i2c_gpio_driver);
 	if (ret)
 		printk(KERN_ERR "i2c-gpio: probe failed: %d\n", ret);
 
+out:
 	return ret;
 }
-device_initcall(i2c_gpio_init);
+late_initcall(i2c_gpio_init);
 
 static void __exit i2c_gpio_exit(void)
 {
