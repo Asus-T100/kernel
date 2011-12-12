@@ -150,6 +150,10 @@ x86_backtrace(struct pt_regs * const regs, unsigned int depth)
 
 	if (!user_mode_vm(regs)) {
 		unsigned long stack = kernel_stack_pointer(regs);
+
+		if (!((unsigned long)stack & (THREAD_SIZE - 1)))
+			stack = 0;
+
 		if (depth)
 			dump_trace(NULL, regs, (unsigned long *)stack, 0,
 				   &backtrace_ops, &depth);
