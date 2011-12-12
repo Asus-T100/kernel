@@ -562,11 +562,12 @@ struct drm_psb_stolen_memory_arg {
 #define OVC_REGRWBITS_OVADD			(1 << 2)
 #define OVC_REGRWBITS_OGAM_ALL			(1 << 3)
 /*sprite update fields*/
-#define SPRITE_UPDATE_SURFACE                  (0x00000001UL)
-#define SPRITE_UPDATE_CONTROL                  (0x00000002UL)
-#define SPRITE_UPDATE_POSITION                 (0x00000004UL)
-#define SPRITE_UPDATE_SIZE                     (0x00000008UL)
-#define SPRITE_UPDATE_ALL                      (0x0000000fUL)
+#define SPRITE_UPDATE_SURFACE			(0x00000001UL)
+#define SPRITE_UPDATE_CONTROL			(0x00000002UL)
+#define SPRITE_UPDATE_POSITION			(0x00000004UL)
+#define SPRITE_UPDATE_SIZE			(0x00000008UL)
+#define SPRITE_UPDATE_WAIT_VBLANK		(0X00000010UL)
+#define SPRITE_UPDATE_ALL			(0x0000001fUL)
 
 struct intel_sprite_context {
 	uint32_t update_mask;

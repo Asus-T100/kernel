@@ -2798,6 +2798,7 @@ static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 	UHBUsage usage =
 		arg->b_force_hw_on ? OSPM_UHB_FORCE_POWER_ON : OSPM_UHB_ONLY_IF_ON;
 	uint32_t ovadd;
+	int retry;
 
 	if (arg->sprite_context_mask & REGRWBITS_SPRITE_UPDATE) {
 		if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, usage))
@@ -2812,6 +2813,20 @@ static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 		else
 			return -EINVAL;
 
+		if ((arg->sprite_context.update_mask &
+			SPRITE_UPDATE_WAIT_VBLANK)) {
+			/**
+			 * wait for vblank upto 30ms,the period of vblank is 22ms.
+			 */
+			retry = 3000;
+			while (--retry) {
+				if ((PSB_RVDC32(PIPEASTAT + reg_offset) &
+					PIPE_VBLANK_STATUS))
+					break;
+				udelay(10);
+			}
+		}
+
 		if ((arg->sprite_context.update_mask & SPRITE_UPDATE_POSITION))
 			PSB_WVDC32(arg->sprite_context.pos,
 				DSPAPOS + reg_offset);
@@ -2823,6 +2838,11 @@ static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 				DSPASTRIDE + reg_offset);
 		}
 
+		if ((arg->sprite_context.update_mask & SPRITE_UPDATE_CONTROL)) {
+			PSB_WVDC32(arg->sprite_context.cntr,
+				DSPACNTR + reg_offset);
+		}
+
 		if ((arg->sprite_context.update_mask & SPRITE_UPDATE_SURFACE)) {
 			PSB_WVDC32(arg->sprite_context.linoff,
 				DSPALINOFF + reg_offset);
@@ -2830,12 +2850,6 @@ static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 				DSPASURF + reg_offset);
 		}
 
-		if ((arg->sprite_context.update_mask & SPRITE_UPDATE_CONTROL)) {
-			PSB_WVDC32(arg->sprite_context.cntr,
-				DSPACNTR + reg_offset);
-			PSB_WVDC32(PSB_RVDC32(DSPASURF + reg_offset),
-				DSPASURF + reg_offset);
-		}
 		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 	}
 
