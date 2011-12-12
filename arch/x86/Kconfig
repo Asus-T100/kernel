@@ -1879,6 +1879,14 @@ source "drivers/cpuidle/Kconfig"
 
 source "drivers/idle/Kconfig"
 
+config INTEL_MID_MDFLD_POWER
+        bool "Power Management driver for Intel MDLFD Mid platform"
+        depends on X86_MDFLD && PCI && CPU_IDLE && PM_RUNTIME
+        select PM_SLEEP
+        ---help---
+        Power management enhancement driver on Intel MDFLD Mid Platform.
+        If you don't know what to do here, say N.
+
 endmenu
 
 

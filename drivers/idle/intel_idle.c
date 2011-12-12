@@ -91,7 +91,7 @@ static struct cpuidle_device __percpu *intel_idle_cpuidle_devices;
 static int intel_idle(struct cpuidle_device *dev, struct cpuidle_state *state);
 static int intel_mid_idle(struct cpuidle_device *dev, struct cpuidle_state *state);
 
-#ifdef CONFIG_X86_MDFLD
+#ifdef CONFIG_INTEL_MID_MDFLD_POWER
 #define C4_STATE_IDX	3
 #define C6_STATE_IDX	4
 #define S0I1_STATE_IDX  5
@@ -353,7 +353,7 @@ static struct cpuidle_state mrst_cstates[MWAIT_MAX_NUM_CSTATES] = {
 
 #endif
 
-#ifdef CONFIG_X86_MDFLD
+#ifdef CONFIG_INTEL_MID_MDFLD_POWER
 static int soc_s0ix_idle(struct cpuidle_device *dev,
 			struct cpuidle_state *state)
 {
