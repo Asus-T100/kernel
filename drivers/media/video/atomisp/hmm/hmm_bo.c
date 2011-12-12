@@ -116,6 +116,8 @@ int hmm_bo_init(struct hmm_bo_device *bdev,
 		struct hmm_buffer_object *bo,
 		unsigned int pgnr, void (*release) (struct hmm_buffer_object *))
 {
+	unsigned long flags;
+
 	if (bdev == NULL) {
 		v4l2_warn(&atomisp_dev,
 			    "NULL hmm_bo_device.\n");
@@ -155,10 +157,10 @@ int hmm_bo_init(struct hmm_bo_device *bdev,
 	/*
 	 * add to active_bo_list
 	 */
-	mutex_lock(&bdev->ablist_mutex);
+	spin_lock_irqsave(&bdev->ablist_lock, flags);
 	list_add_tail(&bo->list, &bdev->active_bo_list);
 	bo->status |= HMM_BO_ACTIVE;
-	mutex_unlock(&bdev->ablist_mutex);
+	spin_unlock_irqrestore(&bdev->ablist_lock, flags);
 
 	return 0;
 }
@@ -166,6 +168,7 @@ int hmm_bo_init(struct hmm_bo_device *bdev,
 static void hmm_bo_release(struct hmm_buffer_object *bo)
 {
 	struct hmm_bo_device *bdev;
+	unsigned long flags;
 
 	check_bo_null_return(bo, (void)0);
 
@@ -207,13 +210,13 @@ static void hmm_bo_release(struct hmm_buffer_object *bo)
 	 * remove it from buffer device's buffer object list.
 	 */
 	if (hmm_bo_activated(bo)) {
-		mutex_lock(&bdev->ablist_mutex);
+		spin_lock_irqsave(&bdev->ablist_lock, flags);
 		list_del(&bo->list);
-		mutex_unlock(&bdev->ablist_mutex);
+		spin_unlock_irqrestore(&bdev->ablist_lock, flags);
 	} else {
-		mutex_lock(&bdev->fblist_mutex);
+		spin_lock_irqsave(&bdev->fblist_lock, flags);
 		list_del(&bo->list);
-		mutex_unlock(&bdev->fblist_mutex);
+		spin_unlock_irqrestore(&bdev->fblist_lock, flags);
 	}
 
 	if (bo->release)
@@ -232,6 +235,7 @@ int hmm_bo_activated(struct hmm_buffer_object *bo)
 void hmm_bo_unactivate(struct hmm_buffer_object *bo)
 {
 	struct hmm_bo_device *bdev;
+	unsigned long flags;
 
 	check_bo_null_return(bo, (void)0);
 
@@ -239,14 +243,14 @@ void hmm_bo_unactivate(struct hmm_buffer_object *bo)
 
 	bdev = bo->bdev;
 
-	mutex_lock(&bdev->ablist_mutex);
+	spin_lock_irqsave(&bdev->ablist_lock, flags);
 	list_del(&bo->list);
-	mutex_unlock(&bdev->ablist_mutex);
+	spin_unlock_irqrestore(&bdev->ablist_lock, flags);
 
-	mutex_lock(&bdev->fblist_mutex);
+	spin_lock_irqsave(&bdev->fblist_lock, flags);
 	list_add_tail(&bo->list, &bdev->free_bo_list);
 	bo->status &= (~HMM_BO_ACTIVE);
-	mutex_unlock(&bdev->fblist_mutex);
+	spin_unlock_irqrestore(&bdev->fblist_lock, flags);
 
 	return;
 

@@ -49,9 +49,9 @@ struct hmm_bo_device {
 	struct hmm_vm		vaddr_space;
 
 	struct list_head	free_bo_list;
-	struct mutex		fblist_mutex;
+	struct spinlock		fblist_lock;
 	struct list_head	active_bo_list;
-	struct mutex		ablist_mutex;
+	struct spinlock		ablist_lock;
 
 	int			flag;
 };

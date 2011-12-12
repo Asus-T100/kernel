@@ -64,8 +64,8 @@ int hmm_bo_device_init(struct hmm_bo_device *bdev,
 	INIT_LIST_HEAD(&bdev->free_bo_list);
 	INIT_LIST_HEAD(&bdev->active_bo_list);
 
-	mutex_init(&bdev->fblist_mutex);
-	mutex_init(&bdev->ablist_mutex);
+	spin_lock_init(&bdev->fblist_lock);
+	spin_lock_init(&bdev->ablist_lock);
 
 	bdev->flag = HMM_BO_DEVICE_INITED;
 
@@ -120,10 +120,11 @@ struct hmm_buffer_object *hmm_bo_device_search_start(struct hmm_bo_device *bdev,
 {
 	struct list_head *pos;
 	struct hmm_buffer_object *bo;
+	unsigned long flags;
 
 	check_bodev_null_return(bdev, NULL);
 
-	mutex_lock(&bdev->ablist_mutex);
+	spin_lock_irqsave(&bdev->ablist_lock, flags);
 	list_for_each(pos, &bdev->active_bo_list) {
 		bo = list_to_hmm_bo(pos);
 		/* pass bo which has no vm_node allocated */
@@ -132,10 +133,10 @@ struct hmm_buffer_object *hmm_bo_device_search_start(struct hmm_bo_device *bdev,
 		if (bo->vm_node->start == vaddr)
 			goto found;
 	}
-	mutex_unlock(&bdev->ablist_mutex);
+	spin_unlock_irqrestore(&bdev->ablist_lock, flags);
 	return NULL;
 found:
-	mutex_unlock(&bdev->ablist_mutex);
+	spin_unlock_irqrestore(&bdev->ablist_lock, flags);
 	return bo;
 }
 
@@ -150,10 +151,11 @@ struct hmm_buffer_object *hmm_bo_device_search_in_range(struct hmm_bo_device
 {
 	struct list_head *pos;
 	struct hmm_buffer_object *bo;
+	unsigned long flags;
 
 	check_bodev_null_return(bdev, NULL);
 
-	mutex_lock(&bdev->fblist_mutex);
+	spin_lock_irqsave(&bdev->fblist_lock, flags);
 	list_for_each(pos, &bdev->active_bo_list) {
 		bo = list_to_hmm_bo(pos);
 		/* pass bo which has no vm_node allocated */
@@ -162,10 +164,10 @@ struct hmm_buffer_object *hmm_bo_device_search_in_range(struct hmm_bo_device
 		if (in_range(bo->vm_node->start, bo->vm_node->size, vaddr))
 			goto found;
 	}
-	mutex_unlock(&bdev->fblist_mutex);
+	spin_unlock_irqrestore(&bdev->fblist_lock, flags);
 	return NULL;
 found:
-	mutex_unlock(&bdev->fblist_mutex);
+	spin_unlock_irqrestore(&bdev->fblist_lock, flags);
 	return bo;
 }
 
@@ -181,24 +183,25 @@ struct hmm_buffer_object *hmm_bo_device_get_bo(struct hmm_bo_device *bdev,
 {
 	struct list_head *pos;
 	struct hmm_buffer_object *bo;
+	unsigned long flags;
 
 	check_bodev_null_return(bdev, NULL);
 
-	mutex_lock(&bdev->fblist_mutex);
+	spin_lock_irqsave(&bdev->fblist_lock, flags);
 	list_for_each(pos, &bdev->free_bo_list) {
 		bo = list_to_hmm_bo(pos);
 		if (bo->pgnr == pgnr)
 			goto found;
 	}
-	mutex_unlock(&bdev->fblist_mutex);
+	spin_unlock_irqrestore(&bdev->fblist_lock, flags);
 	return NULL;
 found:
 	list_del(&bo->list);
-	mutex_unlock(&bdev->fblist_mutex);
+	spin_unlock_irqrestore(&bdev->fblist_lock, flags);
 
-	mutex_lock(&bdev->ablist_mutex);
+	spin_lock_irqsave(&bdev->ablist_lock, flags);
 	list_add(&bo->list, &bdev->active_bo_list);
-	mutex_unlock(&bdev->ablist_mutex);
+	spin_unlock_irqrestore(&bdev->ablist_lock, flags);
 
 	return bo;
 }
@@ -209,10 +212,11 @@ found:
 void hmm_bo_device_destroy_free_bo_list(struct hmm_bo_device *bdev)
 {
 	struct hmm_buffer_object *bo;
+	unsigned long flags;
 
 	check_bodev_null_return(bdev, (void)0);
 
-	mutex_lock(&bdev->fblist_mutex);
+	spin_lock_irqsave(&bdev->fblist_lock, flags);
 	while (!list_empty(&bdev->free_bo_list)) {
 		bo = list_first_entry(&bdev->free_bo_list,
 				      struct hmm_buffer_object, list);
@@ -220,7 +224,7 @@ void hmm_bo_device_destroy_free_bo_list(struct hmm_bo_device *bdev)
 		list_del(&bo->list);
 		hmm_bo_unref(bo);
 	}
-	mutex_unlock(&bdev->fblist_mutex);
+	spin_unlock_irqrestore(&bdev->fblist_lock, flags);
 }
 
 /*
@@ -231,10 +235,11 @@ void hmm_bo_device_destroy_free_bo_addr(struct hmm_bo_device *bdev,
 {
 	struct list_head *pos;
 	struct hmm_buffer_object *bo;
+	unsigned long flags;
 
 	check_bodev_null_return(bdev, (void)0);
 
-	mutex_lock(&bdev->fblist_mutex);
+	spin_lock_irqsave(&bdev->fblist_lock, flags);
 	list_for_each(pos, &bdev->free_bo_list) {
 		bo = list_to_hmm_bo(pos);
 		/* pass bo which has no vm_node allocated */
@@ -243,11 +248,11 @@ void hmm_bo_device_destroy_free_bo_addr(struct hmm_bo_device *bdev,
 		if (bo->vm_node->start == vaddr)
 			goto found;
 	}
-	mutex_unlock(&bdev->fblist_mutex);
+	spin_unlock_irqrestore(&bdev->fblist_lock, flags);
 	return;
 found:
 	list_del(&bo->list);
-	mutex_unlock(&bdev->fblist_mutex);
+	spin_unlock_irqrestore(&bdev->fblist_lock, flags);
 	hmm_bo_unref(bo);
 }
 
@@ -259,21 +264,22 @@ void hmm_bo_device_destroy_free_bo_size(struct hmm_bo_device *bdev,
 {
 	struct list_head *pos;
 	struct hmm_buffer_object *bo;
+	unsigned long flags;
 
 	check_bodev_null_return(bdev, (void)0);
 
 retry:
-	mutex_lock(&bdev->fblist_mutex);
+	spin_lock_irqsave(&bdev->fblist_lock, flags);
 	list_for_each(pos, &bdev->free_bo_list) {
 		bo = list_to_hmm_bo(pos);
 		if (bo->pgnr == pgnr)
 			goto found;
 	}
-	mutex_unlock(&bdev->fblist_mutex);
+	spin_unlock_irqrestore(&bdev->fblist_lock, flags);
 	return;
 found:
 	list_del(&bo->list);
-	mutex_unlock(&bdev->fblist_mutex);
+	spin_unlock_irqrestore(&bdev->fblist_lock, flags);
 	hmm_bo_unref(bo);
 	goto retry;
 }
