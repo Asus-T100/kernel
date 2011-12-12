@@ -10,10 +10,11 @@
  */
 
 /*
- * This file implements two early consoles named mrst and hsu.
+ * This file implements three early consoles named mrst, hsu and pti.
  * mrst is based on Maxim3110 spi-uart device, it exists in both
  * Moorestown and Medfield platforms, while hsu is based on a High
- * Speed UART device which only exists in the Medfield platform
+ * Speed UART device and pti is based on a Parallel Trace Interface
+ * The last two consoles only exist in the Medfield platform
  */
 
 #include <linux/serial_reg.h>
@@ -24,6 +25,9 @@
 #include <linux/delay.h>
 #include <linux/init.h>
 #include <linux/io.h>
+#include <linux/sched.h>
+#include <linux/hardirq.h>
+#include <linux/pti.h>
 
 #include <asm/fixmap.h>
 #include <asm/pgtable.h>
@@ -66,6 +70,9 @@
 #define SR_RF_FULL			(1 << 4)
 #define SR_TX_ERR			(1 << 5)
 #define SR_DCOL				(1 << 6)
+
+static unsigned int early_pti_console_channel;
+static unsigned int early_pti_control_channel;
 
 struct dw_spi_reg {
 	u32	ctrl0;
@@ -320,3 +327,135 @@ struct console early_hsu_console = {
 	.flags =	CON_PRINTBUFFER,
 	.index =	-1,
 };
+void hsu_early_printk(const char *fmt, ...)
+{
+	char buf[512];
+	int n;
+	va_list ap;
+
+	va_start(ap, fmt);
+	n = vscnprintf(buf, 512, fmt, ap);
+	va_end(ap);
+
+	early_hsu_console.write(&early_mrst_console, buf, n);
+}
+
+#define PTI_ADDRESS		0xfd800000
+#define CONTROL_FRAME_LEN 32    /* PTI control frame maximum size */
+
+static void early_pti_write_to_aperture(struct pti_masterchannel *mc,
+					 u8 *buf, int len)
+{
+	int dwordcnt, final, i;
+	u32 ptiword;
+	u8 *p ;
+	u32 pti_phys_address ;
+	u32 __iomem *aperture;
+
+	p = buf;
+
+	/*
+	   calculate the aperture offset from the base using the master and
+	   channel id's.
+	*/
+	pti_phys_address = PTI_ADDRESS +
+				(mc->master << 15) + (mc->channel << 8);
+
+	set_fixmap_nocache(FIX_EARLYCON_MEM_BASE, pti_phys_address);
+	aperture = (void *)(__fix_to_virt(FIX_EARLYCON_MEM_BASE) +
+				(pti_phys_address & (PAGE_SIZE - 1)));
+
+	dwordcnt = len >> 2;
+	final = len - (dwordcnt << 2);		/* final = trailing bytes */
+	if (final == 0 && dwordcnt != 0) {	/* always have a final dword */
+		final += 4;
+		dwordcnt--;
+	}
+
+	for (i = 0; i < dwordcnt; i++) {
+		ptiword = be32_to_cpu(*(u32 *)p);
+		p += 4;
+		iowrite32(ptiword, aperture);
+	}
+
+	aperture += PTI_LASTDWORD_DTS;	/* adding DTS signals that is EOM */
+	ptiword = 0;
+
+	for (i = 0; i < final; i++)
+		ptiword |= *p++ << (24-(8*i));
+
+	iowrite32(ptiword, aperture);
+
+	return;
+}
+
+static int pti_early_console_init(void)
+{
+	early_pti_console_channel = 0;
+	early_pti_control_channel = 0;
+	return 0;
+}
+
+static void early_pti_write(struct console *con,
+			const char *str, unsigned n)
+{
+	static struct pti_masterchannel mccontrol = {.master = 72,
+						     .channel = 0};
+	static struct pti_masterchannel mcconsole = {.master = 73,
+						     .channel = 0};
+	const char *control_format = "%3d %3d %s";
+
+	/*
+	 * Since we access the comm member in current's task_struct,
+	 * we only need to be as large as what 'comm' in that
+	 * structure is.
+	 */
+	char comm[TASK_COMM_LEN];
+	u8 control_frame[CONTROL_FRAME_LEN];
+
+	/* task information */
+	if (in_irq())
+		strncpy(comm, "hardirq", sizeof(comm));
+	else if (in_softirq())
+		strncpy(comm, "softirq", sizeof(comm));
+	else
+		strncpy(comm, current->comm, sizeof(comm));
+
+	/* Absolutely ensure our buffer is zero terminated */
+	comm[TASK_COMM_LEN-1] = 0;
+
+	mccontrol.channel = early_pti_control_channel;
+	early_pti_control_channel = (early_pti_control_channel + 1) & 0x7f;
+
+	mcconsole.channel = early_pti_console_channel;
+	early_pti_console_channel = (early_pti_console_channel + 1) & 0x7f;
+
+	snprintf(control_frame, CONTROL_FRAME_LEN, control_format,
+		mcconsole.master, mcconsole.channel, comm);
+
+	early_pti_write_to_aperture(&mccontrol, control_frame,
+					strlen(control_frame));
+	early_pti_write_to_aperture(&mcconsole, (u8 *)str, n);
+
+}
+
+struct console early_pti_console = {
+	.name =		"earlypti",
+	.early_setup =  pti_early_console_init,
+	.write =	early_pti_write,
+	.flags =	CON_PRINTBUFFER,
+	.index =	-1,
+};
+
+void pti_early_printk(const char *fmt, ...)
+{
+	char buf[512];
+	int n;
+	va_list ap;
+
+	va_start(ap, fmt);
+	n = vscnprintf(buf, sizeof(buf), fmt, ap);
+	va_end(ap);
+
+	early_pti_console.write(&early_mrst_console, buf, n);
+}

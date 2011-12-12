@@ -173,10 +173,13 @@ static void pti_control_frame_built_and_sent(struct pti_masterchannel *mc)
 	 */
 	char comm[TASK_COMM_LEN];
 
-	if (!in_interrupt())
-		get_task_comm(comm, current);
+	/* task information */
+	if (in_irq())
+		strncpy(comm, "hardirq", sizeof(comm));
+	else if (in_softirq())
+		strncpy(comm, "softirq", sizeof(comm));
 	else
-		strncpy(comm, "Interrupt", TASK_COMM_LEN);
+		strncpy(comm, current->comm, sizeof(comm));
 
 	/* Absolutely ensure our buffer is zero terminated. */
 	comm[TASK_COMM_LEN-1] = 0;
