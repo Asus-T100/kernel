@@ -59,7 +59,7 @@
 #define CSTATE_EXIT_LATENCY_S0i1 1040
 #define CSTATE_EXIT_LATENCY_S0i3 5000
 
-#ifdef CONFIG_X86_MDFLD
+#ifdef CONFIG_INTEL_MID_MDFLD_POWER
 
 #define PMU1_MAX_PENWELL_DEVS   8
 #define PMU2_MAX_PENWELL_DEVS   55
@@ -130,6 +130,7 @@ static inline int pmu_nc_set_power_state
 	(int islands, int state_type, int reg_type) { return 0; }
 
 static inline void pmu_set_s0ix_complete(void) { return; }
+static inline void mfld_shutdown(void) { return; }
 #endif /* #ifdef CONFIG_X86_MDFLD */
 
 #endif /* #ifndef INTEL_MID_PM_H */

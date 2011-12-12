@@ -77,7 +77,7 @@ static int __init mid_pci_init(void)
 		pci_set_platform_pm(&mid_pci_platform_pm);
 		break;
 #endif
-#ifdef CONFIG_X86_MDFLD
+#ifdef CONFIG_INTEL_MID_MDFLD_POWER
 	case 0x27:
 		mid_pci_platform_pm.set_state = pmu_pci_set_power_state;
 		mid_pci_platform_pm.choose_state = pmu_pci_choose_state;
