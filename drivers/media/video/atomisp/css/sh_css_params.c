@@ -1699,19 +1699,19 @@ reallocate_buffers(const struct sh_css_binary *binary)
 					     &sdis_ver_coef_size,
 					     SDIS_VER_COEF_TBL_BYTES(binary),
 					     &err);
-		changed |= reallocate_buffer(&dis_hor_projections[0],
+		changed |= reallocate_cached_buffer(&dis_hor_projections[0],
 					     &hor_size,
 					     SDIS_HOR_PROJ_TBL_BYTES(binary),
 					     &err);
-		changed |= reallocate_buffer(&dis_hor_projections[1],
+		changed |= reallocate_cached_buffer(&dis_hor_projections[1],
 					     &sdis_hor_proj_size,
 					     SDIS_HOR_PROJ_TBL_BYTES(binary),
 					     &err);
-		changed |= reallocate_buffer(&dis_ver_projections[0],
+		changed |= reallocate_cached_buffer(&dis_ver_projections[0],
 					     &ver_size,
 					     SDIS_VER_PROJ_TBL_BYTES(binary),
 					     &err);
-		changed |= reallocate_buffer(&dis_ver_projections[1],
+		changed |= reallocate_cached_buffer(&dis_ver_projections[1],
 					     &sdis_ver_proj_size,
 					     SDIS_VER_PROJ_TBL_BYTES(binary),
 					     &err);
