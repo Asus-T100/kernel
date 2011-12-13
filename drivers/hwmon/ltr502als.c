@@ -1,3 +1,17 @@
+/*
+ * Copyright (C) 2009 LITE-ON Technology Corp.
+ *
+ * This software is licensed under the terms of the GNU General Public
+ * License version 2, as published by the Free Software Foundation, and
+ * may be copied, distributed, and modified under those terms.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ */
+
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/kernel.h>
@@ -70,7 +84,7 @@
 #define PRX_COUNT8		(2 << PRX_ACCURACY)
 #define PRX_COUNT9		(3 << PRX_ACCURACY)
 #define PRX_COUNT_MASK		0XC0
-#define PRX_THRESH_CTL		0
+#define PRX_THRESH_CTL		0x1F
 #define PRX_THRESH_MASK		0X1F
 
 #define DATAREG			0x05
@@ -126,6 +140,11 @@ struct alsps_device {
 
 static struct alsps_device *alsps_dev; /* for miscdevice operations */
 
+static const int lux_map[] = {	0,      40,     100,    170,    330,    700,
+				1600,   3000,   5000,   9000,   20000,  50000};
+static const int adc_map[] = {	0,      3,      5,      10,     15,     20,
+				25,     30,     35,     40,     45,     50};
+
 #define ALSPS_PROXIMITY_DATA_READY      0
 #define ALSPS_AMBIENT_DATA_READY        1
 #define ALSPS_PROXIMITY_FIRST_POLL      2
@@ -157,19 +176,23 @@ static int alsps_write(struct alsps_device *alsps, u8 reg, u8 val)
 static int ambient_get_lum(int adc)
 {
 	int i = 0;
-	int convert_lux[] = {	0,	40,	100,	170,	330,	700,
-				1600,   3000,   5000,   9000,   20000,	50000};
-	int convert_adc[] = {	0,	3,      5,      10,     15,     20,
-				25,     30,     35,     40,     45,	50};
+	int lux;
 
 	do {
-		if (adc <= convert_adc[i])
+		if (adc <= adc_map[i])
 			break;
 		i++;
-	} while (i < ARRAY_SIZE(convert_adc) - 1);
+	} while (i < ARRAY_SIZE(adc_map) - 1);
 
-	pr_debug("adc = %d , lux = %d", adc, convert_lux[i]);
-	return convert_lux[i];
+	if (i == 0 || i == ARRAY_SIZE(adc_map) - 1)
+		lux = lux_map[i];
+	else
+		lux = lux_map[i - 1] +
+			(lux_map[i] - lux_map[i - 1]) * (adc - adc_map[i - 1]) /
+			(adc_map[i] - adc_map[i - 1]);
+
+	pr_debug("adc = %d , lux = %d", adc, lux);
+	return lux;
 }
 
 static ssize_t proximity_read(struct file *filep,
@@ -290,7 +313,7 @@ static ssize_t ambient_read(struct file *filep,
 	client = filep->private_data;
 	mutex_lock(&alsps_dev->lock);
 	if (alsps_dev->alsps_switch & AMBIENT_ENABLE) {
-		lumen = ambient_get_lum(ambient_sta->now);
+		lumen = ambient_get_lum(ambient_sta->once);
 		ret = sizeof(lumen);
 
 		clear_bit(ALSPS_AMBIENT_DATA_READY, &client->status);
@@ -382,9 +405,12 @@ static int ltr502als_initchip(struct alsps_device *alsps)
 	alsps_write(alsps, TCREG,
 		    PRX_INT_CYCLE1 | INTEGRATE_100MS | ALPS_INT_CYCLE4);
 
-	/* change proximity threshold to 18 */
+	/* change proximity threshold PRX_THRESH_CTL to 31 to decrease the distance
+	 * that triggers proximity interrupt*/
 	alsps_read(alsps, DPSCTROL, &val);
-	alsps_write(alsps, DPSCTROL, (val & PRX_COUNT_MASK) | 0x12);
+	alsps_write(alsps, DPSCTROL, (val & PRX_COUNT_MASK) | PRX_THRESH_CTL);
+
+	alsps_write(alsps, CONFIGREG, POWER_DOWN);
 
 	return 0;
 }
@@ -451,6 +477,7 @@ static void ltr502_mode(struct alsps_client *client, int mode)
 			break;
 		alsps_dev->ambient_count++;
 		alsps_dev->alsps_switch |= AMBIENT_ENABLE;
+		alsps_dev->als_state.once = 0;
 		break;
 	default:
 		break;
