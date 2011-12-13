@@ -2750,6 +2750,7 @@ static void gsm_destroy_network(struct gsm_dlci *dlci)
 
 	pr_debug("destroy network interface");
 	if (dlci->net) {
+		netif_tx_disable(dlci->net);
 		mux_net = (struct gsm_mux_net *)netdev_priv(dlci->net);
 		kref_put(&mux_net->ref, net_free);
 	}
