@@ -2001,6 +2001,10 @@ static int psb_disp_ioctl(struct drm_device *dev, void *data,
 		spin_unlock_irqrestore(&dev_priv->flip_lock, irqflags);
 		psb_flip_hdmi(dev, 1);
 	} else if (dp_ctrl->cmd == DRM_PSB_DISP_DEQUEUE_BUFFER) {
+		if (!dev_priv->flip_inited) {
+			ret = -EINVAL;
+			goto exit;
+		}
 		i = (dev_priv->flip_tail + 1) % dev_priv->flip_valid_size;
 		if (i != dev_priv->flip_head)
 			dev_priv->flip_tail = i;
