@@ -33,7 +33,9 @@
 #include <linux/sched.h>
 #include <linux/platform_device.h>
 #include <linux/pm_qos_params.h>
+#include <linux/intel_mid_pm.h>
 #include <linux/workqueue.h>
+#include <linux/fs.h>
 #include <asm/intel_scu_ipc.h>
 #include <asm/intel_mid_gpadc.h>
 
@@ -82,16 +84,24 @@
 
 #define GPADC_CH_MAX		15
 
-#define PM_QOS_ADC_DRV_VALUE	4999
-
 #define GPADC_POWERON_DELAY	1
+
+#define SAMPLE_CH_MAX		2
+
+static void *adc_handle[GPADC_CH_MAX] = {};
+static int sample_result[GPADC_CH_MAX][SAMPLE_CH_MAX];
+static struct completion gsmadc_complete;
+static int vol_val;
+static int cur_val;
 
 struct gpadc_info {
 	int initialized;
+	int depth;
 
 	struct workqueue_struct *workq;
 	wait_queue_head_t trimming_wait;
 	struct work_struct trimming_work;
+	struct work_struct gsmpulse_work;
 	int trimming_start;
 
 	/* This mutex protects gpadc sample/config from concurrent conflict.
@@ -119,6 +129,7 @@ struct gpadc_info {
 	int gsmpulse_done;
 
 	struct pm_qos_request_list pm_qos_request;
+	void (*gsmadc_notify)(int vol, int cur);
 };
 
 struct gpadc_request {
@@ -177,9 +188,11 @@ static void gpadc_dump(struct gpadc_info *mgi)
 
 static int gpadc_poweron(struct gpadc_info *mgi, int vref)
 {
-	if (gpadc_set_bits(ADC1CNTL1, ADC1CNTL1_ADEN) != 0)
-		return -EIO;
-	msleep(GPADC_POWERON_DELAY);
+	if (!mgi->depth++) {
+		if (gpadc_set_bits(ADC1CNTL1, ADC1CNTL1_ADEN) != 0)
+			return -EIO;
+		msleep(GPADC_POWERON_DELAY);
+	}
 	if (vref) {
 		if (gpadc_set_bits(ADC1CNTL3, ADC1CNTL3_ADCTHERM) != 0)
 			return -EIO;
@@ -190,10 +203,12 @@ static int gpadc_poweron(struct gpadc_info *mgi, int vref)
 
 static int gpadc_poweroff(struct gpadc_info *mgi)
 {
-	if (gpadc_clear_bits(ADC1CNTL1, ADC1CNTL1_ADEN) != 0)
-		return -EIO;
-	if (gpadc_clear_bits(ADC1CNTL3, ADC1CNTL3_ADCTHERM) != 0)
-		return -EIO;
+	if (!--mgi->depth) {
+		if (gpadc_clear_bits(ADC1CNTL1, ADC1CNTL1_ADEN) != 0)
+			return -EIO;
+		if (gpadc_clear_bits(ADC1CNTL3, ADC1CNTL3_ADCTHERM) != 0)
+			return -EIO;
+	}
 	return 0;
 }
 
@@ -268,7 +283,7 @@ static irqreturn_t msic_gpadc_irq(int irq, void *data)
 
 	if (mgi->irq_status & ADC1INT_GSM) {
 		mgi->gsmpulse_done = 1;
-		wake_up(&mgi->wait);
+		queue_work(mgi->workq, &mgi->gsmpulse_work);
 	} else if (mgi->irq_status & ADC1INT_RND) {
 		mgi->rnd_done = 1;
 		wake_up(&mgi->wait);
@@ -321,57 +336,34 @@ static void free_channel_addr(struct gpadc_info *mgi, int addr)
 		gpadc_set_bits(ADC1ADDR0+last, MSIC_STOPCH);
 }
 
-/**
- * intel_mid_gpadc_gsmpulse_sample - do gpadc sample during gsm pulse.
- * @val: return the voltage value. caller should not access it before return.
- * @cur: return the current value. caller should not access it before return.
- *
- * Returns 0 on success or an error code.
- *
- * This function may sleep.
- */
-int intel_mid_gpadc_gsmpulse_sample(int *vol, int *cur)
+static void gpadc_gsmpulse_work(struct work_struct *work)
 {
-	struct gpadc_info *mgi = &gpadc_info;
 	int i;
 	u8 data;
 	int tmp;
-	int ret = 0;
-
-	if (!mgi->initialized)
-		return -ENODEV;
+	int vol, cur;
+	struct gpadc_info *mgi =
+		container_of(work, struct gpadc_info, gsmpulse_work);
 
 	mutex_lock(&mgi->lock);
-	pm_qos_add_request(&mgi->pm_qos_request,
-			   PM_QOS_CPU_DMA_LATENCY, PM_QOS_ADC_DRV_VALUE);
-	gpadc_write(ADC1CNTL2, ADC1CNTL2_DEF);
-	gpadc_set_bits(ADC1CNTL2, ADC1CNTL2_ADCGSMEN);
-
-	if (wait_event_timeout(mgi->wait, mgi->gsmpulse_done, HZ) == 0) {
-		gpadc_dump(mgi);
-		dev_err(mgi->dev, "gsmpulse sample timeout\n");
-		ret = -ETIMEDOUT;
-		goto fail;
-	}
-	gpadc_clear_bits(ADC1CNTL1, ADC1CNTL1_ADEN);
 	gpadc_set_bits(ADC1CNTL3, ADC1CNTL3_GSMDATARD);
 
-	*vol = 0;
-	*cur = 0;
+	vol = 0;
+	cur = 0;
 	for (i = 0; i < 4; i++) {
 		gpadc_read(ADC1BV0H + i * 2, &data);
 		tmp = data << 2;
 		gpadc_read(ADC1BV0H + i * 2 + 1, &data);
 		tmp += data & 0x3;
-		if (tmp > *vol)
-			*vol = tmp;
+		if (tmp > vol)
+			vol = tmp;
 
 		gpadc_read(ADC1BI0H + i * 2, &data);
 		tmp = data << 2;
 		gpadc_read(ADC1BI0H + i * 2 + 1, &data);
 		tmp += data & 0x3;
-		if (tmp > *cur)
-			*cur = tmp;
+		if (tmp > cur)
+			cur = tmp;
 	}
 
 	/**
@@ -380,19 +372,69 @@ int intel_mid_gpadc_gsmpulse_sample(int *vol, int *cur)
 	 * V_CAL_CODE = V_RAW_CODE - (VZSE + (VGE)* VRAW_CODE/1023)
 	 * I_CAL_CODE = I_RAW_CODE - (IZSE + (IGE)* IRAW_CODE/1023)
 	*/
-	*vol -= mgi->vzse + mgi->vge * (*vol) / 1023;
-	*cur -= mgi->izse + mgi->ige * (*cur) / 1023;
+	vol -= mgi->vzse + mgi->vge * (vol) / 1023;
+	cur -= mgi->izse + mgi->ige * (cur) / 1023;
 
 	gpadc_set_bits(ADC1INT, ADC1INT_GSM);
 	gpadc_clear_bits(ADC1CNTL3, ADC1CNTL3_GSMDATARD);
-fail:
-	gpadc_clear_bits(ADC1CNTL2, ADC1CNTL2_ADCGSMEN);
-	pm_qos_remove_request(&mgi->pm_qos_request);
+	if (mgi->gsmadc_notify)
+		mgi->gsmadc_notify(vol, cur);
 	mutex_unlock(&mgi->lock);
+}
 
+/**
+ * intel_mid_gpadc_gsmpulse_register - power on gsm adc and register a callback
+ * @fn: callback function after gsm adc conversion is completed
+ *
+ * Returns 0 on success or an error code.
+ *
+ * This function may sleep.
+ */
+int intel_mid_gpadc_gsmpulse_register(void(*fn)(int vol, int cur))
+{
+	int ret = 0;
+	struct gpadc_info *mgi = &gpadc_info;
+
+	if (!mgi->initialized)
+		return -ENODEV;
+	mutex_lock(&mgi->lock);
+	if (!mgi->gsmadc_notify) {
+		gpadc_write(ADC1CNTL2, ADC1CNTL2_DEF);
+		gpadc_set_bits(ADC1CNTL2, ADC1CNTL2_ADCGSMEN);
+		mgi->gsmadc_notify = fn;
+	} else {
+		ret = -EBUSY;
+	}
+	mutex_unlock(&mgi->lock);
 	return ret;
 }
-EXPORT_SYMBOL(intel_mid_gpadc_gsmpulse_sample);
+EXPORT_SYMBOL(intel_mid_gpadc_gsmpulse_register);
+
+/**
+ * intel_mid_gpadc_gsmpulse_unregister - power off gsm adc and unregister
+ *					the callback
+ * @fn: callback function after gsm adc conversion is completed
+ *
+ * Returns 0 on success or an error code.
+ *
+ * This function may sleep.
+ */
+int intel_mid_gpadc_gsmpulse_unregister(void(*fn)(int vol, int cur))
+{
+	int ret = 0;
+	struct gpadc_info *mgi = &gpadc_info;
+
+	if (!mgi->initialized)
+		return -ENODEV;
+	mutex_lock(&mgi->lock);
+	if (mgi->gsmadc_notify == fn) {
+		mgi->gsmadc_notify = NULL;
+		gpadc_clear_bits(ADC1CNTL2, ADC1CNTL2_ADCGSMEN);
+	}
+	mutex_unlock(&mgi->lock);
+	return ret;
+}
+EXPORT_SYMBOL(intel_mid_gpadc_gsmpulse_unregister);
 
 /**
  * intel_mid_gpadc_sample - do gpadc sample.
@@ -428,9 +470,8 @@ int intel_mid_gpadc_sample(void *handle, int sample_count, ...)
 		*val[i] = 0;
 	}
 	va_end(args);
-
 	pm_qos_add_request(&mgi->pm_qos_request,
-			   PM_QOS_CPU_DMA_LATENCY, PM_QOS_ADC_DRV_VALUE);
+			PM_QOS_CPU_DMA_LATENCY,	CSTATE_EXIT_LATENCY_S0i1-1);
 	gpadc_poweron(mgi, rq->vref);
 	gpadc_clear_bits(ADC1CNTL1, ADC1CNTL1_AD1OFFSETEN);
 	gpadc_read(ADC1CNTL1, &data);
@@ -554,6 +595,174 @@ void *intel_mid_gpadc_alloc(int count, ...)
 }
 EXPORT_SYMBOL(intel_mid_gpadc_alloc);
 
+static ssize_t intel_mid_gpadc_store_alloc_channel(struct device *dev,
+					struct device_attribute *attr,
+					const char *buf, size_t size)
+{
+	int val, hdn;
+	int ch[SAMPLE_CH_MAX];
+
+	val = sscanf(buf, "%d %x %x", &hdn, &ch[0], &ch[1]);
+
+	if (val < 2 || val > 3) {
+		dev_err(dev, "invalid number of arguments");
+		return -EINVAL;
+	}
+
+	if (hdn < 1 || hdn > GPADC_CH_MAX) {
+		dev_err(dev, "invalid handle value");
+		return -EINVAL;
+	}
+
+	if (adc_handle[hdn - 1]) {
+		dev_err(dev, "adc handle %d has been occupied", hdn);
+		return -EBUSY;
+	}
+	if (val == 2)
+		adc_handle[hdn - 1] = intel_mid_gpadc_alloc(1, ch[0]);
+	else
+		adc_handle[hdn - 1] = intel_mid_gpadc_alloc(2, ch[0], ch[1]);
+
+	if (!adc_handle[hdn - 1]) {
+		dev_err(dev, "allocating adc handle %d failed", hdn);
+		return -ENOMEM;
+	}
+
+	return size;
+}
+
+static ssize_t intel_mid_gpadc_store_free_channel(struct device *dev,
+					struct device_attribute *attr,
+					const char *buf, size_t size)
+{
+	int hdn;
+
+	if (sscanf(buf, "%d", &hdn) != 1) {
+		dev_err(dev, "invalid number of argument");
+		return -EINVAL;
+	}
+
+	if (hdn < 1 || hdn > GPADC_CH_MAX) {
+		dev_err(dev, "invalid handle value");
+		return -EINVAL;
+	}
+
+	if (adc_handle[hdn - 1]) {
+		intel_mid_gpadc_free(adc_handle[hdn - 1]);
+		adc_handle[hdn - 1] = NULL;
+	}
+
+	return size;
+}
+
+static ssize_t intel_mid_gpadc_store_sample(struct device *dev,
+					struct device_attribute *attr,
+					const char *buf, size_t size)
+{
+	int hdn, spc;
+	int ret;
+	struct gpadc_request *rq;
+
+	if (sscanf(buf, "%d %d", &hdn, &spc) != 2) {
+		dev_err(dev, "invalid number of arguments");
+		return -EINVAL;
+	}
+
+	if (hdn < 1 || hdn > GPADC_CH_MAX) {
+		dev_err(dev, "invalid handle value");
+		return -EINVAL;
+	}
+
+	rq = adc_handle[hdn - 1];
+	if (!rq) {
+		dev_err(dev, "null handle");
+		return -EINVAL;
+	}
+
+	if (rq->count == 1)
+		ret = intel_mid_gpadc_sample(adc_handle[hdn-1],
+			spc, &sample_result[hdn - 1][0]);
+	else
+		ret = intel_mid_gpadc_sample(adc_handle[hdn - 1],
+			spc, &sample_result[hdn - 1][0],
+			&sample_result[hdn - 1][1]);
+
+	if (ret) {
+		dev_err(dev, "sampling failed. adc handle: %d", hdn);
+		return -EINVAL;
+	}
+
+	return size;
+}
+
+static ssize_t intel_mid_gpadc_show_sample(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	int hdc;
+	int used = 0;
+	struct gpadc_request *rq;
+
+	for (hdc = 0; hdc < GPADC_CH_MAX; hdc++) {
+		if (adc_handle[hdc]) {
+			rq = adc_handle[hdc];
+			if (rq->count == 1)
+				used += sprintf(buf + used, "%d ",
+					sample_result[hdc][0]);
+			else
+				used += sprintf(buf + used, "%d %d ",
+					sample_result[hdc][0],
+					sample_result[hdc][1]);
+		}
+	}
+
+	return used;
+}
+
+
+static void gsmpulse_sysfs_callback(int vol, int cur)
+{
+	vol_val = vol;
+	cur_val = cur;
+	complete(&gsmadc_complete);
+}
+
+static ssize_t intel_mid_gpadc_show_gsmpulse_sample(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	int ret;
+
+	INIT_COMPLETION(gsmadc_complete);
+	intel_mid_gpadc_gsmpulse_register(gsmpulse_sysfs_callback);
+	ret = wait_for_completion_interruptible(&gsmadc_complete);
+	intel_mid_gpadc_gsmpulse_unregister(gsmpulse_sysfs_callback);
+	if (ret)
+		return 0;
+	else
+		return sprintf(buf, "%d %d", vol_val, cur_val);
+}
+
+static DEVICE_ATTR(alloc_channel, S_IWUSR, NULL,
+		intel_mid_gpadc_store_alloc_channel);
+static DEVICE_ATTR(free_channel, S_IWUSR, NULL,
+		intel_mid_gpadc_store_free_channel);
+static DEVICE_ATTR(sample, S_IRUGO | S_IWUSR,
+		intel_mid_gpadc_show_sample, intel_mid_gpadc_store_sample);
+static DEVICE_ATTR(gsmpulse_sample, S_IRUGO,
+		intel_mid_gpadc_show_gsmpulse_sample, NULL);
+
+static struct attribute *intel_mid_gpadc_attrs[] = {
+	&dev_attr_alloc_channel.attr,
+	&dev_attr_free_channel.attr,
+	&dev_attr_sample.attr,
+	&dev_attr_gsmpulse_sample.attr,
+	NULL,
+};
+
+static struct attribute_group intel_mid_gpadc_attr_group = {
+	.name = "mid_gpadc",
+	.attrs = intel_mid_gpadc_attrs,
+};
+
 static int __devinit msic_gpadc_probe(struct platform_device *pdev)
 {
 	struct gpadc_info *mgi = &gpadc_info;
@@ -581,11 +790,24 @@ static int __devinit msic_gpadc_probe(struct platform_device *pdev)
 
 	gpadc_write(ADC1ADDR0, MSIC_STOPCH);
 	INIT_WORK(&mgi->trimming_work, gpadc_trimming);
+	INIT_WORK(&mgi->gsmpulse_work, gpadc_gsmpulse_work);
 	queue_work(mgi->workq, &mgi->trimming_work);
 	wait_event(mgi->trimming_wait, mgi->trimming_start);
 	mgi->initialized = 1;
 
+	init_completion(&gsmadc_complete);
+
+	err = sysfs_create_group(&pdev->dev.kobj, &intel_mid_gpadc_attr_group);
+	if (err) {
+		dev_err(&pdev->dev, "Unable to export sysfs interface, error: %d\n",
+			err);
+		goto err_release_irq;
+	}
+
 	return 0;
+
+err_release_irq:
+	free_irq(mgi->irq, mgi);
 err_exit:
 	if (mgi->intr)
 		iounmap(mgi->intr);
@@ -596,6 +818,7 @@ static int __devexit msic_gpadc_remove(struct platform_device *pdev)
 {
 	struct gpadc_info *mgi = &gpadc_info;
 
+	sysfs_remove_group(&pdev->dev.kobj, &intel_mid_gpadc_attr_group);
 	free_irq(mgi->irq, mgi);
 	iounmap(mgi->intr);
 	flush_workqueue(mgi->workq);
