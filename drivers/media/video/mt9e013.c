@@ -1502,6 +1502,10 @@ static int nearest_resolution_index(int w, int h)
 	struct mt9e013_resolution *tmp_res = NULL;
 	s32 m = LARGEST_ALLOWED_RATIO_MISMATCH;
 
+	/* Quick-and-dirty hack related 720p FOV bug. */
+	if (w == 1552 && h == 880)
+		return 4; /* 720p_strong_dvs_30fps */
+
 	for (j = 0; j < 2; ++j) {
 		for (i = 0; i < N_RES; i++) {
 			tmp_res = &mt9e013_res[i];
