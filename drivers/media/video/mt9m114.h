@@ -59,6 +59,8 @@
 #define MISENSOR_TOK_MASK	0xfff0
 #define MISENSOR_FLIP_EN	(1<<1)	/* enable vert_flip */
 #define MISENSOR_MIRROR_EN	(1<<0)	/* enable horz_mirror */
+#define MISENSOR_AWB_STEADY	(1<<0)	/* awb steady */
+#define MISENSOR_AE_READY	(1<<3)	/* ae status ready */
 
 /* mask to set sensor read_mode via misensor_rmw_reg */
 #define MISENSOR_R_MODE_MASK	0x0330
@@ -77,6 +79,10 @@
 
 /* sensor register that control sensor read-mode and mirror */
 #define MISENSOR_READ_MODE	0xC834
+/* sensor ae-track status register */
+#define MISENSOR_AE_TRACK_STATUS	0xA800
+/* sensor awb status register */
+#define MISENSOR_AWB_STATUS	0xAC00
 
 #define SENSOR_DETECTED		1
 #define SENSOR_NOT_DETECTED	0

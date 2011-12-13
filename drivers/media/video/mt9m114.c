@@ -400,13 +400,24 @@ static int mt9m114_wait_3a(struct v4l2_subdev *sd)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	int timeout = 100;
-	int status;
+	int status_exp, status_wb, ret;
 
 	while (timeout--) {
-		mt9m114_read_reg(client, MISENSOR_16BIT, 0xA800, &status);
-		if (status & 0x8) {
-			v4l2_info(client, "3a stablize time:%dms.\n",
-				  (100-timeout)*20);
+		ret = mt9m114_read_reg(client, MISENSOR_16BIT,
+			MISENSOR_AE_TRACK_STATUS, &status_exp);
+		if (ret)
+			return ret;
+		if (!(status_exp & MISENSOR_AE_READY)) {
+			msleep(20);
+			continue;
+		}
+		ret = mt9m114_read_reg(client,
+			MISENSOR_16BIT, MISENSOR_AWB_STATUS, &status_wb);
+		if (ret)
+			return ret;
+		if (status_wb & MISENSOR_AWB_STEADY) {
+			v4l2_info(client, "ae/awb stablize retry count  %d.\n",
+				  (100-timeout));
 			return 0;
 		}
 		msleep(20);
