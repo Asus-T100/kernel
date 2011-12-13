@@ -1377,6 +1377,17 @@ void *ov8830_platform_data_init(void *info)
 /*
  * MFLD PR2 secondary camera sensor - MT9M114 platform data
  */
+
+#define MT9M114_I2C_ADDR (0x90 >> 1)	/* i2c address, 0x90 or 0xBA */
+#define MT9M114_BUS      4		/* i2c bus number */
+
+static struct i2c_board_info mt9m114_info = {
+	.type = "mt9m114",
+	.flags = 0,
+	.addr = MT9M114_I2C_ADDR,
+	.irq = 255,
+};
+
 static int mt9m114_gpio_ctrl(struct v4l2_subdev *sd, int flag)
 {
 	int ret;
@@ -2385,6 +2396,10 @@ static int __init mrst_platform_init(void)
 		/* Add ov8830 driver for detection
 		 * -- FIXME: remove as soon as ov8830 is defined in SFI table */
 		sfi_handle_i2c_dev(OV8830_BUS, &ov8830_info);
+
+		/* Add mt9m114 driver for detection
+		 * -- FIXME: remove when the sensor is defined in SFI table */
+		sfi_handle_i2c_dev(MT9M114_BUS, &mt9m114_info);
 	}
 
 	return 0;
