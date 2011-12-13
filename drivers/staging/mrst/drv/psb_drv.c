@@ -312,6 +312,8 @@ MODULE_DEVICE_TABLE(pci, pciidlist);
 		DRM_IO(DRM_PSB_ENABLE_HDCP + DRM_COMMAND_BASE)
 #define DRM_IOCTL_PSB_DISABLE_HDCP \
 		DRM_IO(DRM_PSB_DISABLE_HDCP + DRM_COMMAND_BASE)
+#define DRM_IOCTL_PSB_GET_HDCP_LINK_STATUS \
+		DRM_IOR(DRM_PSB_GET_HDCP_LINK_STATUS + DRM_COMMAND_BASE, uint32_t)
 
 /* CSC IOCTLS */
 #define DRM_IOCTL_PSB_SET_CSC \
@@ -323,7 +325,7 @@ MODULE_DEVICE_TABLE(pci, pciidlist);
 #if defined(PDUMP)
 #define DRM_PSB_CMDBUF		  (PVR_DRM_DBGDRV_CMD + 1)
 #else
-#define DRM_PSB_CMDBUF		  (DRM_PSB_DISABLE_HDCP + 1)
+#define DRM_PSB_CMDBUF		  (DRM_PSB_GET_HDCP_LINK_STATUS + 1)
 /* #define DRM_PSB_CMDBUF		  (DRM_PSB_DPST_BL + 1) */
 #endif
 
@@ -466,6 +468,8 @@ static int psb_disable_hdcp_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv);
 static int psb_set_csc_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv);
+static int psb_get_hdcp_link_status_ioctl(struct drm_device *dev, void *data,
+				 struct drm_file *file_priv);
 
 
 #define PSB_IOCTL_DEF(ioctl, func, flags) \
@@ -568,7 +572,8 @@ static struct drm_ioctl_desc psb_ioctls[] = {
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_GET_HDCP_STATUS, psb_get_hdcp_status_ioctl, DRM_AUTH),
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_ENABLE_HDCP, psb_enable_hdcp_ioctl, DRM_AUTH),
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_DISABLE_HDCP, psb_disable_hdcp_ioctl, DRM_AUTH),
-	PSB_IOCTL_DEF(DRM_IOCTL_PSB_SET_CSC, psb_set_csc_ioctl, DRM_AUTH)
+	PSB_IOCTL_DEF(DRM_IOCTL_PSB_SET_CSC, psb_set_csc_ioctl, DRM_AUTH),
+	PSB_IOCTL_DEF(DRM_IOCTL_PSB_GET_HDCP_LINK_STATUS, psb_get_hdcp_link_status_ioctl, DRM_AUTH)
 };
 
 static void get_ci_info(struct drm_psb_private *dev_priv)
@@ -2120,6 +2125,14 @@ static int psb_set_csc_ioctl(struct drm_device *dev, void *data,
     return 0;
 }
 
+static int psb_get_hdcp_link_status_ioctl(struct drm_device *dev, void *data,
+				 struct drm_file *file_priv)
+{
+	uint32_t *arg = data;
+	*arg = hdcp_get_link_status();
+
+	return 0;
+}
 
 static int psb_dc_state_ioctl(struct drm_device *dev, void * data,
 			      struct drm_file *file_priv)

@@ -1100,7 +1100,7 @@ static int hdcp_is_repeater(int *is_repeater)
 }
 
 /* Get's the current link status */
-static int hdcp_get_link_status(void)
+int hdcp_get_link_status(void)
 {
     struct drm_device *dev = hdmi_priv->dev;
     int ret = 0;

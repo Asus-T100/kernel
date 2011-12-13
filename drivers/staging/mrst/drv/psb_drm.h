@@ -731,6 +731,7 @@ typedef struct drm_psb_msvdx_decode_status {
 #define DRM_PSB_GET_HDCP_STATUS		0x26
 #define DRM_PSB_ENABLE_HDCP		0x27
 #define DRM_PSB_DISABLE_HDCP		0x28
+#define DRM_PSB_GET_HDCP_LINK_STATUS	0x29
 
 /* CSC IOCTLS */
 #define DRM_PSB_SET_CSC     0x29
