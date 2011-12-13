@@ -184,7 +184,10 @@ static int sn95031_set_vaud_bias(struct snd_soc_codec *codec,
 		break;
 
 	case SND_SOC_BIAS_PREPARE:
-		if (sn95031_ctx->pll_state == PLL_ENABLE_PENDING) {
+		pr_debug("bias_prepare\n");
+		/* enable msic pll only when any codec dai is active,
+			not other use cases like static vibra etc */
+		if (codec->active) {
 			pr_debug("vaud_bias powering up pll\n");
 			intel_sst_set_pll(true, SST_PLL_MSIC);
 			/* allow few ms to stabilize the clock before
