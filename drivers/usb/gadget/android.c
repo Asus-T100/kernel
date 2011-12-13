@@ -26,6 +26,8 @@
 #include <linux/kernel.h>
 #include <linux/utsname.h>
 #include <linux/platform_device.h>
+#include <linux/mmc/card.h>
+#include <linux/jhash.h>
 
 #include <linux/usb/ch9.h>
 #include <linux/usb/composite.h>
@@ -1143,6 +1145,33 @@ static void android_unbind_config(struct usb_configuration *c)
 	android_unbind_enabled_functions(dev, c);
 }
 
+static int mmcblk0_match(struct device *dev, void *data)
+{
+	if (strcmp(dev_name(dev), "mmcblk0") == 0)
+		return 1;
+	return 0;
+}
+
+static int get_serial_string_from_emmc(void)
+{
+	struct device *emmc_disk;
+	/*
+	 * Automation people are needing proper serial number for ADB
+	 * lets derivate from the serial number of the emmc card.
+	 */
+	emmc_disk = class_find_device(&block_class, NULL, NULL, mmcblk0_match);
+	if (emmc_disk) {
+		struct gendisk *disk = dev_to_disk(emmc_disk);
+		struct mmc_card *card = mmc_dev_to_card(disk->driverfs_dev);
+		if (card) {
+			snprintf(serial_string, 17, "Medfield%08X",
+				 jhash(&card->cid, sizeof(card->cid), 0));
+			return 0;
+		}
+	}
+	return -1;
+}
+
 static int android_bind(struct usb_composite_dev *cdev)
 {
 	struct android_dev *dev = _android_dev;
@@ -1173,7 +1202,14 @@ static int android_bind(struct usb_composite_dev *cdev)
 	/* Default strings - should be updated by userspace */
 	strncpy(manufacturer_string, "Android", sizeof(manufacturer_string) - 1);
 	strncpy(product_string, "Android", sizeof(product_string) - 1);
-	strncpy(serial_string, "0123456789ABCDEF", sizeof(serial_string) - 1);
+
+	if (get_serial_string_from_emmc()) {
+		pr_err("%s: geting serial number from emmc card cid failed\n",
+				__func__);
+		/* Set default serial strings */
+		strncpy(serial_string, "0123456789ABCDEF",
+				sizeof(serial_string) - 1);
+	}
 
 	id = usb_string_id(cdev);
 	if (id < 0)
@@ -1340,7 +1376,7 @@ static int __init init(void)
 
 	return usb_composite_probe(&android_usb_driver, android_bind);
 }
-module_init(init);
+late_initcall(init);
 
 static void __exit cleanup(void)
 {
