@@ -30,6 +30,7 @@
  */
 #define MSIC_IRQ_STATUS(x)	(INTEL_MSIC_IRQ_PHYS_BASE + ((x) - 2))
 #define MSIC_IRQ_STATUS_ACCDET	MSIC_IRQ_STATUS(INTEL_MSIC_ACCDET)
+#define MSIC_IRQ_STATUS_OCAUDIO	MSIC_IRQ_STATUS(INTEL_MSIC_OCAUDIO)
 
 /*
  * The SCU hardware has limitation of 16 bytes per read/write buffer on
@@ -87,7 +88,7 @@ static struct resource msic_audio_resources[] = {
 	{
 		.name		= "IRQ_BASE",
 		.flags		= IORESOURCE_MEM,
-		.start		= MSIC_IRQ_STATUS_ACCDET,
+		.start		= MSIC_IRQ_STATUS_OCAUDIO,
 		.end		= MSIC_IRQ_STATUS_ACCDET,
 	},
 };
