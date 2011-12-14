@@ -2,6 +2,7 @@
 #define  _ASM_X86_INTEL_SCU_IPC_H_
 
 #include <linux/notifier.h>
+#include <asm/mrst.h>
 
 /* IPC defines the following message types */
 #define IPCMSG_BATTERY          0xEF /* Coulomb Counter Accumulator */
@@ -15,6 +16,7 @@
 #define IPCMSG_VRTC		0xFA	 /* Set vRTC device */
 #define IPCMSG_FW_UPDATE        0xFE /* Firmware update */
 #define IPCMSG_PCNTRL           0xFF /* Power controller unit read/write */
+#define IPCMSG_OSC_CLK		0xE6 /* Turn on/off osc clock */
 
 #define IPC_CMD_UMIP_RD     0
 #define IPC_CMD_UMIP_WR     1
@@ -91,6 +93,14 @@ int intel_scu_ipc_read_oshob(u8 *data, int len, int offset);
 /* OSNIB-OS No Init Buffer write */
 int intel_scu_ipc_write_osnib(u8 *data, int len, int offset, u32 mask);
 
+/* Penwell has 4 osc clocks */
+#define OSC_CLK_AUDIO	0	/* Audio */
+#define OSC_CLK_CAM0	1	/* Primary camera */
+#define OSC_CLK_CAM1	2	/* Secondary camera */
+#define OSC_CLK_DISP	3	/* Display buffer */
+
+int intel_scu_ipc_osc_clk(u8 clk, unsigned int khz);
+
 extern struct blocking_notifier_head intel_scu_notifier;
 
 static inline void intel_scu_notifier_add(struct notifier_block *nb)
@@ -127,40 +137,6 @@ static inline int intel_scu_ipc_msic_vprog2(int on)
 {
 	return intel_scu_ipc_iowrite8(MSIC_VPROG2_CTRL,
 			on ? MSIC_VPROG_ON : MSIC_VPROG_OFF);
-}
-
-#define IPCMSG_OSC_CLK	0xE6 /* Turn on/off osc clock */
-
-/*
- * Penwell has 4 osc clocks:
- * 0:   AUDIO
- * 1,2: CAMERA SENSORS
- * 3:   DISP_BUF_CLK
- */
-#define OSC_CLK_CAM0	1
-#define OSC_CLK_CAM1	2
-
-/* SCU IPC COMMAND(osc clk on/off) definition:
- * ipc_wbuf[0] = clock to act on {0, 1, 2, 3}
- * ipc_wbuf[1] =
- * bit 0 - 1:on  0:off
- * bit 1 - if 1, read divider setting from bits 3:2 as follows:
- * bit [3:2] - 00: clk/1, 01: clk/2, 10: clk/4, 11: reserved
- */
-static inline int intel_scu_ipc_osc_clk(u8 clk, u8 on)
-{
-	u8 ipc_wbuf[16];
-	int ipc_ret;
-
-	ipc_wbuf[0] = clk & 0x3;
-	ipc_wbuf[1] = on & 1; /* no divider */
-
-	ipc_ret = intel_scu_ipc_command(IPCMSG_OSC_CLK, 0,
-					(u32 *)ipc_wbuf, 2, NULL, 0);
-	if (ipc_ret != 0)
-		pr_err("%s: failed to set osc clk(%d) output\n", __func__, clk);
-
-	return ipc_ret;
 }
 
 #endif

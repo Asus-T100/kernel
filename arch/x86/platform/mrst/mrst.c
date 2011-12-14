@@ -1232,7 +1232,8 @@ static int mt9e013_gpio_ctrl(struct v4l2_subdev *sd, int flag)
 
 static int mt9e013_flisclk_ctrl(struct v4l2_subdev *sd, int flag)
 {
-	return intel_scu_ipc_osc_clk(OSC_CLK_CAM0, flag);
+	static const unsigned int clock_khz = 19200;
+	return intel_scu_ipc_osc_clk(OSC_CLK_CAM0, flag ? clock_khz : 0);
 }
 
 static int mt9e013_power_ctrl(struct v4l2_subdev *sd, int flag)
@@ -1332,7 +1333,8 @@ static int ov8830_gpio_ctrl(struct v4l2_subdev *sd, int flag)
 
 static int ov8830_flisclk_ctrl(struct v4l2_subdev *sd, int flag)
 {
-	return intel_scu_ipc_osc_clk(OSC_CLK_CAM0, flag);
+	static const unsigned int clock_khz = 19200;
+	return intel_scu_ipc_osc_clk(OSC_CLK_CAM0, flag ? clock_khz : 0);
 }
 
 static int ov8830_power_ctrl(struct v4l2_subdev *sd, int flag)
@@ -1410,7 +1412,8 @@ static int mt9m114_gpio_ctrl(struct v4l2_subdev *sd, int flag)
 
 static int mt9m114_flisclk_ctrl(struct v4l2_subdev *sd, int flag)
 {
-	return intel_scu_ipc_osc_clk(OSC_CLK_CAM1, flag);
+	static const unsigned int clock_khz = 19200;
+	return intel_scu_ipc_osc_clk(OSC_CLK_CAM1, flag ? clock_khz : 0);
 }
 
 static int mt9e013_reset;
