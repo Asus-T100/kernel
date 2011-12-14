@@ -69,18 +69,6 @@ struct mfld_mc_private {
 
 static struct snd_soc_jack mfld_jack;
 
-/*Headset jack detection DAPM pins */
-static struct snd_soc_jack_pin mfld_jack_pins[] = {
-	{
-		.pin = "Headphones",
-		.mask = SND_JACK_HEADPHONE,
-	},
-	{
-		.pin = "AMIC1",
-		.mask = SND_JACK_MICROPHONE,
-	},
-};
-
 /* jack detection voltage zones */
 static struct snd_soc_jack_zone mfld_zones[] = {
 	{MFLD_MV_START, MFLD_MV_AM_HS, SND_JACK_HEADPHONE},
@@ -255,7 +243,7 @@ static const struct snd_soc_dapm_widget mfld_widgets[] = {
 static const struct snd_soc_dapm_route mfld_map[] = {
 	{"Headphones", NULL, "HPOUTR"},
 	{"Headphones", NULL, "HPOUTL"},
-	{"Mic", NULL, "AMIC1"},
+	{"AMIC1", NULL, "Mic"},
 };
 
 static void mfld_jack_check(unsigned int intr_status)
@@ -311,6 +299,7 @@ static int mfld_init(struct snd_soc_pcm_runtime *runtime)
 	snd_soc_dapm_disable_pin(dapm, "LINEINL");
 	snd_soc_dapm_disable_pin(dapm, "LINEINR");
 	snd_soc_dapm_disable_pin(dapm, "DMIC2");
+	snd_soc_dapm_disable_pin(dapm, "DMIC3");
 	snd_soc_dapm_disable_pin(dapm, "DMIC4");
 	snd_soc_dapm_disable_pin(dapm, "DMIC6");
 	snd_soc_dapm_disable_pin(dapm, "AMIC2");
@@ -320,14 +309,12 @@ static int mfld_init(struct snd_soc_pcm_runtime *runtime)
 	snd_soc_dapm_ignore_suspend(dapm, "PCM1_IN");
 	snd_soc_dapm_ignore_suspend(dapm, "PCM1_Out");
 	snd_soc_dapm_ignore_suspend(dapm, "EPOUT");
-	snd_soc_dapm_ignore_suspend(dapm, "HPOUTL");
-	snd_soc_dapm_ignore_suspend(dapm, "HPOUTR");
 	snd_soc_dapm_ignore_suspend(dapm, "IHFOUTL");
 	snd_soc_dapm_ignore_suspend(dapm, "IHFOUTR");
 	snd_soc_dapm_ignore_suspend(dapm, "DMIC1");
-	snd_soc_dapm_ignore_suspend(dapm, "DMIC3");
 	snd_soc_dapm_ignore_suspend(dapm, "DMIC5");
-	snd_soc_dapm_ignore_suspend(dapm, "AMIC1");
+	snd_soc_dapm_ignore_suspend(dapm, "Headphones");
+	snd_soc_dapm_ignore_suspend(dapm, "Mic");
 	snd_soc_dapm_sync(dapm);
 	/* Headset and button jack detection */
 	ret_val = snd_soc_jack_new(codec, "Intel(R) MID Audio Jack",
