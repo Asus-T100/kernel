@@ -629,7 +629,7 @@ static const struct sh_css_gc_config disabled_gc_config = {
 };
 
 static const struct sh_css_anr_config default_anr_config = {
-	.threshold   = 5,
+	.threshold   = 20,
 };
 
 static const struct sh_css_ce_config default_ce_config = {
