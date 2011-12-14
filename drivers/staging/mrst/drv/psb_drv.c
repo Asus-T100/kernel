@@ -70,6 +70,7 @@
 #include "bufferclass_video_linux.h"
 
 #include "mdfld_hdcp.h"
+#include "mdfld_csc.h"
 
 int drm_psb_debug;
 int drm_psb_enable_pr2_cabc = 1;
@@ -312,6 +313,10 @@ MODULE_DEVICE_TABLE(pci, pciidlist);
 #define DRM_IOCTL_PSB_DISABLE_HDCP \
 		DRM_IO(DRM_PSB_DISABLE_HDCP + DRM_COMMAND_BASE)
 
+/* CSC IOCTLS */
+#define DRM_IOCTL_PSB_SET_CSC \
+        DRM_IOW(DRM_PSB_SET_CSC + DRM_COMMAND_BASE, struct drm_psb_csc_matrix)
+
 /*
  * TTM execbuf extension.
  */
@@ -459,6 +464,8 @@ static int psb_enable_hdcp_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv);
 static int psb_disable_hdcp_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv);
+static int psb_set_csc_ioctl(struct drm_device *dev, void *data,
+				 struct drm_file *file_priv);
 
 
 #define PSB_IOCTL_DEF(ioctl, func, flags) \
@@ -560,7 +567,8 @@ static struct drm_ioctl_desc psb_ioctls[] = {
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_VALIDATE_HDCP_KSV, psb_validate_hdcp_ksv_ioctl, DRM_AUTH),
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_GET_HDCP_STATUS, psb_get_hdcp_status_ioctl, DRM_AUTH),
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_ENABLE_HDCP, psb_enable_hdcp_ioctl, DRM_AUTH),
-	PSB_IOCTL_DEF(DRM_IOCTL_PSB_DISABLE_HDCP, psb_disable_hdcp_ioctl, DRM_AUTH)
+	PSB_IOCTL_DEF(DRM_IOCTL_PSB_DISABLE_HDCP, psb_disable_hdcp_ioctl, DRM_AUTH),
+	PSB_IOCTL_DEF(DRM_IOCTL_PSB_SET_CSC, psb_set_csc_ioctl, DRM_AUTH)
 };
 
 static void get_ci_info(struct drm_psb_private *dev_priv)
@@ -2103,6 +2111,15 @@ static int psb_disable_hdcp_ioctl(struct drm_device *dev, void *data,
 
 	return ret;
 }
+
+static int psb_set_csc_ioctl(struct drm_device *dev, void *data,
+				 struct drm_file *file_priv)
+{
+    struct drm_psb_csc_matrix *csc_matrix = data;
+    csc_program_DC(dev, csc_matrix->matrix, csc_matrix->pipe);
+    return 0;
+}
+
 
 static int psb_dc_state_ioctl(struct drm_device *dev, void * data,
 			      struct drm_file *file_priv)

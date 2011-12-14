@@ -732,8 +732,16 @@ typedef struct drm_psb_msvdx_decode_status {
 #define DRM_PSB_ENABLE_HDCP		0x27
 #define DRM_PSB_DISABLE_HDCP		0x28
 
+/* CSC IOCTLS */
+#define DRM_PSB_SET_CSC     0x29
+
 #define DRM_PSB_DSR_ENABLE	0xfffffffe
 #define DRM_PSB_DSR_DISABLE	0xffffffff
+
+struct drm_psb_csc_matrix {
+    int pipe;
+    int64_t matrix[9];
+};
 
 struct psb_drm_dpu_rect {
 	int x, y;

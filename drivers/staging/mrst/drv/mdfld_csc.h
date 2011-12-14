@@ -33,5 +33,6 @@
 /* int chrom2[8] = {7347, 2653, 1152, 8264, 1566, 177, 3457, 3585}; */
 
 void csc (struct drm_device* dev, int *chrom1, int *chrom2, int pipe);
+void csc_program_DC (struct drm_device* dev, int64_t *csc, int pipe);
 
 #endif

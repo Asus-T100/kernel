@@ -487,7 +487,7 @@ static void csc_to_12bit_register_value (int64_t csc, u16 *reg_val)
  *  = V7, M22 = V8.
  *
  */
-static void csc_program_DC (struct drm_device* dev, int64_t *csc, int pipe)
+void csc_program_DC (struct drm_device* dev, int64_t *csc, int pipe)
 {
 	u16 reg_val1 = 0, reg_val2 = 0;
 	u32 reg_val = 0;
