@@ -37,11 +37,11 @@
 
 #include "psb_drv.h"
 
-#define TPO_PANEL_WIDTH 	84
+#define TPO_PANEL_WIDTH		84
 #define TPO_PANEL_HEIGHT	46
-#define TMD_PANEL_WIDTH 	39
-#define TMD_PANEL_HEIGHT	71
-#define PYR_PANEL_WIDTH 	53
+#define TMD_PANEL_WIDTH		53 /* PR3 */
+#define TMD_PANEL_HEIGHT	89 /* PR3 */
+#define PYR_PANEL_WIDTH		53
 #define PYR_PANEL_HEIGHT	95
 
 struct mdfld_dsi_config;
