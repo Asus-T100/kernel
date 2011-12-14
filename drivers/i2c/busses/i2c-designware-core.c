@@ -307,28 +307,28 @@ int i2c_dw_init(struct dw_i2c_dev *dev)
 
 	/* Standard-mode */
 	hcnt = i2c_dw_scl_hcnt(input_clock_khz,
-				40,	/* tHD;STA = tHIGH = 4.0 us */
+				227,	/* tHD;STA = tHIGH = 22.7 us */
 				3,	/* tf = 0.3 us */
 				0,	/* 0: DW default, 1: Ideal */
-				0);	/* No offset */
+				23);	/* offset = 23 */
 	lcnt = i2c_dw_scl_lcnt(input_clock_khz,
-				47,	/* tLOW = 4.7 us */
+				227,	/* tLOW = 22.7 us */
 				3,	/* tf = 0.3 us */
-				0);	/* No offset */
+				28);	/* offset = 28 */
 	dw_writel(dev, hcnt, DW_IC_SS_SCL_HCNT);
 	dw_writel(dev, lcnt, DW_IC_SS_SCL_LCNT);
 	dev_dbg(dev->dev, "Standard-mode HCNT:LCNT = %d:%d\n", hcnt, lcnt);
 
 	/* Fast-mode */
 	hcnt = i2c_dw_scl_hcnt(input_clock_khz,
-				6,	/* tHD;STA = tHIGH = 0.6 us */
+				52,	/* tHD;STA = tHIGH = 5.2 us */
 				3,	/* tf = 0.3 us */
 				0,	/* 0: DW default, 1: Ideal */
-				0);	/* No offset */
+				11);	/* offset = 11 */
 	lcnt = i2c_dw_scl_lcnt(input_clock_khz,
-				13,	/* tLOW = 1.3 us */
+				72,	/* tLOW = 7.2 us */
 				3,	/* tf = 0.3 us */
-				0);	/* No offset */
+				12);	/* offset = 12 */
 	dw_writel(dev, hcnt, DW_IC_FS_SCL_HCNT);
 	dw_writel(dev, lcnt, DW_IC_FS_SCL_LCNT);
 	dev_dbg(dev->dev, "Fast-mode HCNT:LCNT = %d:%d\n", hcnt, lcnt);
