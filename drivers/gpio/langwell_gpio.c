@@ -236,12 +236,17 @@ static int lnw_irq_wake(unsigned irq, unsigned on)
 	return 0;
 }
 
+static void lnw_irq_ack(struct irq_data *d)
+{
+}
+
 static struct irq_chip lnw_irqchip = {
 	.name		= "LNW-GPIO",
 	.irq_mask	= lnw_irq_mask,
 	.irq_unmask	= lnw_irq_unmask,
 	.irq_set_type	= lnw_irq_type,
 	.irq_set_wake	= lnw_irq_wake,
+	.irq_ack	= lnw_irq_ack,
 };
 
 static DEFINE_PCI_DEVICE_TABLE(lnw_gpio_ids) = {   /* pin number */
@@ -383,7 +388,7 @@ static int __devinit lnw_gpio_probe(struct pci_dev *pdev,
 	irq_set_chained_handler(pdev->irq, lnw_irq_handler);
 	for (i = 0; i < lnw->chip.ngpio; i++) {
 		irq_set_chip_and_handler_name(i + lnw->irq_base, &lnw_irqchip,
-					      handle_simple_irq, "demux");
+					      handle_edge_irq, "demux");
 		irq_set_chip_data(i + lnw->irq_base, lnw);
 	}
 
