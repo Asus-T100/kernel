@@ -714,15 +714,18 @@ enum sh_css_acc_arg_type {
 	SH_CSS_ACC_ARG_PTR_IN,	     /* Pointer input argument */
 	SH_CSS_ACC_ARG_PTR_OUT,	     /* Pointer output argument */
 	SH_CSS_ACC_ARG_PTR_IO,	     /* Pointer in/output argument */
+	SH_CSS_ACC_ARG_PTR_NOFLUSH,  /* Pointer argument will not be flushed */
+	SH_CSS_ACC_ARG_PTR_STABLE,   /* Pointer input argument that is stable */
 	SH_CSS_ACC_ARG_FRAME	     /* Frame argument */
 };
 
 /* Descriptor for an SP argument */
 struct sh_css_sp_arg {
-	enum sh_css_acc_arg_type type;	/* Type  of SP argument */
-	void			*value;	/* Value of SP argument */
-	unsigned int		 size;	/* Size  of SP argument */
-	void			*host;	/* Private data used by host */
+	enum sh_css_acc_arg_type type;	 /* Type  of SP argument */
+	void			*value;	 /* Value of SP argument */
+	bool			 stable; /* Pointer is stable */
+	unsigned int		 size;	 /* Size  of SP argument */
+	void			*host;	 /* Private data used by host */
 };
 
 struct sh_css_acc_fw;

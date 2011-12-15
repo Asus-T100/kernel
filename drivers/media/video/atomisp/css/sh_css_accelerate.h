@@ -54,6 +54,22 @@ sh_css_argument_set_host(struct sh_css_acc_fw *firmware,
 void *
 sh_css_argument_get_host(struct sh_css_acc_fw *firmware, unsigned num);
 
+/* Get size for argument <num> */
+size_t
+sh_css_argument_get_size(struct sh_css_acc_fw *firmware, unsigned num);
+
+/* Get the number of accelerator arguments */
+unsigned
+sh_css_num_accelerator_args(struct sh_css_acc_fw *firmware);
+
+/* Destabilize argument <num>, i.e. flush it from the cache */
+void
+sh_css_acc_stabilize(struct sh_css_acc_fw *firmware, unsigned num, bool stable);
+
+/* Check stability of argument <num> */
+bool
+sh_css_acc_is_stable(struct sh_css_acc_fw *firmware, unsigned num);
+
 /* Start the sp, which will start the isp.
    Load the firmware if not yet loaded.
 */

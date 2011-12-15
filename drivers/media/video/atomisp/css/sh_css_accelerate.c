@@ -149,6 +149,30 @@ sh_css_argument_type(struct sh_css_acc_fw *firmware, unsigned num)
 	return SH_CSS_ACC_SP_ARGS(firmware)[num];
 }
 
+size_t
+sh_css_argument_get_size(struct sh_css_acc_fw *firmware, unsigned num)
+{
+	return firmware->header.sp_args[num].size;
+}
+
+unsigned
+sh_css_num_accelerator_args(struct sh_css_acc_fw *firmware)
+{
+	return firmware->header.sp.args_cnt;
+}
+
+void
+sh_css_acc_stabilize(struct sh_css_acc_fw *firmware, unsigned num, bool stable)
+{
+	firmware->header.sp_args[num].stable = stable;
+}
+
+bool
+sh_css_acc_is_stable(struct sh_css_acc_fw *firmware, unsigned num)
+{
+	return firmware->header.sp_args[num].stable;
+}
+
 static void
 copy_sp_arguments(struct sh_css_acc_fw *firmware, bool to_sp)
 {
@@ -172,6 +196,8 @@ copy_sp_arguments(struct sh_css_acc_fw *firmware, bool to_sp)
 		case SH_CSS_ACC_ARG_PTR_IN:
 		case SH_CSS_ACC_ARG_PTR_OUT:
 		case SH_CSS_ACC_ARG_PTR_IO:
+		case SH_CSS_ACC_ARG_PTR_NOFLUSH:
+		case SH_CSS_ACC_ARG_PTR_STABLE:
 			value = &firmware->header.sp_args[i].value;
 			size = sizeof(void *);
 			break;
