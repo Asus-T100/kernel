@@ -54,10 +54,14 @@ void mxt_late_resume(struct early_suspend *h);
 #endif
 
 #define DRIVER_VERSION "0.9a"
-#define MXT_CONFIG_VERSION 5
+#define MXT_CONFIG_VERSION 7
 
 #define MXT_BACKNVM_DELAY 25 /* ms */
 #define MXT_RESET_DELAY   65 /* ms */
+
+#define MXT_RECALIB_NEED 0
+#define MXT_RECALIB_NG	 1
+#define MXT_RECALIB_DONE 2
 
 static int debug = DEBUG_TRACE;
 module_param(debug, int, 0644);
@@ -192,6 +196,11 @@ struct mxt_data {
 
 	int                  mxt_intr_gpio;
 	int                  mxt_reset_gpio;
+
+	int		    recalib_flag;
+	int		    finger_pressed;
+	int		    finger_count;
+	struct	point_info  pre_data[MXT_MAX_NUM_TOUCHES];
 };
 
 /*
@@ -251,22 +260,22 @@ void mxt_config_init(struct mxt_data *mxt)
 	 * Please refer to "mXT224 Firmware 2.x Protocol Guide" for
 	 * the meaning of the config data for each object.
 	 */
-	u8 v20_T7[]  = { 32, 255, 50 };
-	u8 v20_T8[]  = { 10, 0, 5, 5, 0, 0, 5, 50, 5, 192 };
-	u8 v20_T9[]  = { 143, 0, 0, 18, 11, 1, 32, 80, 3, 1, 0, 5, 5,
-			 0, 2, 10, 10, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-			 0, 64, 0, 10, 10 };
-	u8 v20_T15[] = { 131, 0, 11, 11, 1, 1, 32, 80, 3, 0, 0 };
+	u8 v20_T7[]  = { 25, 10, 50 };
+	u8 v20_T8[]  = { 6, 0, 5, 5, 0, 0, 5, 50, 5, 192 };
+	u8 v20_T9[]  = { 143, 0, 0, 18, 11, 1, 32, 65, 2, 1, 0, 3, 5,
+			 0, 2, 10, 35, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+			 0, 64, 0, 20, 8 };
+	u8 v20_T15[] = { 131, 0, 11, 11, 1, 1, 48, 80, 3, 0, 0 };
 	u8 v20_T18[] = { 0, 0 };
 	u8 v20_T19[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 	u8 v20_T20[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-	u8 v20_T22[] = { 7, 0, 0, 0, 0, 0, 0, 0, 65, 0, 1, 12, 17, 22, 255,
+	u8 v20_T22[] = { 5, 0, 0, 0, 0, 0, 0, 0, 30, 0, 1, 12, 17, 22, 255,
 			 255, 0 };
 	u8 v20_T23[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 	u8 v20_T24[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 			 0, 0, 0 };
 	u8 v20_T25[] = { 0, 0, 0, 0, 0, 0, 0, 0 };
-	u8 v20_T28[] = { 0, 0, 2, 16, 16, 30 };
+	u8 v20_T28[] = { 0, 0, 2, 16, 32, 30 };
 
 	u8 i= 0, max_objs= 0;
 	u16 addr;
@@ -905,6 +914,16 @@ static void mxt_gpio_reset(struct mxt_data *mxt)
 	msleep(40);
 }
 
+static void mxt_calibrate(struct mxt_data *mxt)
+{
+	u16 addr;
+
+	addr = get_object_address(MXT_GEN_COMMANDPROCESSOR_T6,
+			0, mxt->object_table,
+			mxt->device_info.num_objs) + MXT_ADR_T6_CALIBRATE;
+	mxt_write_byte(mxt->client, addr, 0x55);
+}
+
 /*
  * Reads a block of bytes from given address from mXT chip. If we are
  * reading from message window, and previous read was from message window,
@@ -1060,6 +1079,49 @@ static void report_mt(struct mxt_data *mxt)
 	input_sync(mxt->touch_input);
 }
 
+static void mxt_enable_autocalib(struct mxt_data *mxt)
+{
+	u16 addr;
+	u8 antitouch_ext[] = { 5, 50, 5, 192 };
+
+	mxt->finger_pressed = 0;
+	mxt->finger_count = 0;
+	mxt->recalib_flag = MXT_RECALIB_NEED;
+
+	addr = get_object_address(MXT_GEN_ACQUIRECONFIG_T8, 0,
+				 mxt->object_table,
+				 mxt->device_info.num_objs) + T8_CFG_ATCHCALST;
+	mxt_write_block(mxt->client, addr,
+			sizeof(antitouch_ext), antitouch_ext);
+}
+
+static void mxt_disable_autocalib(struct mxt_data *mxt)
+{
+	u16 addr;
+	u8 antitouch_ext[] = { 255, 1, 0, 0 };
+
+
+	addr = get_object_address(MXT_GEN_ACQUIRECONFIG_T8, 0,
+				 mxt->object_table,
+				 mxt->device_info.num_objs) + T8_CFG_ATCHCALST;
+	mxt_write_block(mxt->client, addr,
+			sizeof(antitouch_ext), antitouch_ext);
+	mxt->recalib_flag = MXT_RECALIB_DONE;
+	dev_info(&mxt->client->dev, "auto-calibration disabled\n");
+}
+
+static bool mxt_confirm_autocalib(struct mxt_data *mxt, int touch_num)
+{
+	if (mxt->finger_count == 0 &&
+	    mxt->recalib_flag == MXT_RECALIB_NEED &&
+	    touch_num == 0 &&
+	    (abs(stored_y[touch_num] - mxt->pre_data[touch_num].y) > 200 ||
+	     abs(stored_x[touch_num] - mxt->pre_data[touch_num].x) > 200))
+		return true;
+	else
+		return false;
+}
+
 static void process_T9_message(u8 *message, struct mxt_data *mxt)
 {
 	struct input_dev *input;
@@ -1116,11 +1178,46 @@ static void process_T9_message(u8 *message, struct mxt_data *mxt)
 				((status & MXT_MSGB_T9_MOVE) ? " MOVE" : ""),
 				((status & MXT_MSGB_T9_AMP) ? " AMP" : ""),
 				((status & MXT_MSGB_T9_VECTOR) ? " VECT" : ""));
+
+			if (mxt->recalib_flag != MXT_RECALIB_DONE &&
+			    (status & MXT_MSGB_T9_PRESS) &&
+			    !(mxt->finger_pressed & BIT(touch_number))) {
+				if (mxt->finger_count < mxt->numtouch)
+					mxt->finger_count++;
+				mxt->finger_pressed |= BIT(touch_number);
+
+				mxt->pre_data[touch_number].x = xpos;
+				mxt->pre_data[touch_number].y = ypos;
+
+				if (mxt->finger_count == mxt->numtouch)
+					mxt_calibrate(mxt);
+				else if (mxt->finger_count > 1 &&
+					 mxt->recalib_flag == MXT_RECALIB_NEED)
+					mxt->recalib_flag = MXT_RECALIB_NG;
+			}
 		} else if (status & MXT_MSGB_T9_RELEASE) {
 			dev_dbg(dev, "RELEASE");
 
 			/* The previously reported touch has been removed.*/
 			stored_size[touch_number] = 0;
+
+			if (mxt->recalib_flag != MXT_RECALIB_DONE &&
+			    mxt->finger_pressed & BIT(touch_number)) {
+				if (!mxt->finger_count)
+					dev_err(dev, "finger count is 0\n");
+				else
+					mxt->finger_count--;
+
+				mxt->finger_pressed &= ~BIT(touch_number);
+
+				if (mxt_confirm_autocalib(mxt, touch_number))
+					mxt_disable_autocalib(mxt);
+
+				if (mxt->finger_count)
+					mxt_calibrate(mxt);
+				else if (mxt->recalib_flag == MXT_RECALIB_NG)
+					mxt->recalib_flag = MXT_RECALIB_NEED;
+			}
 		}
 
 		dev_dbg(dev, "X=%d, Y=%d, touch number=%d, TOUCHSIZE=%d",
@@ -1268,7 +1365,6 @@ static int process_message(u8 *message, u8 object, struct mxt_data *mxt)
 			 * processing.
 			 */
 			dev_err(&client->dev, "maXTouch cycle overflow\n");
-			mxt_gpio_reset(mxt);
 		}
 		if (status & MXT_MSGB_T6_RESET) {
 			/* Chip has reseted, no need to react. */
@@ -2397,6 +2493,8 @@ void mxt_early_suspend(struct early_suspend *h)
 	disable_irq(mxt_es->irq);
 
 	mutex_lock(&mxt_es->dev_mutex);
+
+	mxt_enable_autocalib(mxt_es);
 
 	addr = get_object_address(MXT_GEN_POWERCONFIG_T7,
 				0,

@@ -137,6 +137,7 @@
 
 /* MXT_GEN_POWERCONFIG_T7 NO Message address definitions		*/
 /* MXT_GEN_ACQUIRECONFIG_T8 Message address definitions			*/
+#define T8_CFG_ATCHCALST                        6
 /* MXT_TOUCH_MULTITOUCHSCREEN_T9 Message address definitions		*/
 
 #define	MXT_MSG_T9_STATUS				0x01
