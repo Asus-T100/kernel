@@ -26,6 +26,9 @@
 /* Set the following to use the IPC error recovery mechanism */
 #undef USE_IPC_ERROR_RECOVERY
 
+/* Set the following to use the WAKE post boot handshake */
+#define USE_WAKE_POST_BOOT_HANDSHAKE
+
 #include <linux/log2.h>
 #include <linux/slab.h>
 #include <linux/sched.h>
@@ -70,6 +73,9 @@
 /* Initial minimal buffering size (in bytes) */
 #define FFL_MIN_TX_BUFFERING	65536
 #define FFL_MIN_RX_BUFFERING	65536
+
+/* Modem post book wake handshake timeout value (10 seconds) */
+#define POST_BOOT_HANDSHAKE_TIMEOUT_JIFFIES	(msecs_to_jiffies(10000))
 
 /* Error recovery related timings */
 #define RECOVERY_TO_NORMAL_DELAY_JIFFIES	(usecs_to_jiffies(100000))
@@ -205,11 +211,15 @@ struct ffl_hangup_ctx {
  * @cd_irq: the modem core dump interrupt line
  * @irq: the modem reset interrupt line
  * @ongoing: a flag stating that a reset is ongoing
+ * @modem_awake_event: modem WAKE post boot handshake event
  */
 struct ffl_reset_ctx {
 	int			cd_irq;
 	int			irq;
 	int			ongoing;
+#ifdef USE_WAKE_POST_BOOT_HANDSHAKE
+	wait_queue_head_t	modem_awake_event;
+#endif
 };
 
 #ifdef USE_IPC_ERROR_RECOVERY
@@ -1119,6 +1129,26 @@ static __must_check int ffl_tx_write_pipe_is_clean(struct ffl_xfer_ctx *ctx)
 	return ret;
 }
 
+#ifdef USE_WAKE_POST_BOOT_HANDSHAKE
+/**
+ * ffl_modem_is_awake - checks if the RX side is active or not
+ * @ctx: a reference to the RX context to consider
+ *
+ * This helper function is returning a non-zero value if the RX state is active.
+ */
+static __must_check int ffl_modem_is_awake(struct ffl_xfer_ctx *ctx)
+{
+	int ret;
+	unsigned long flags;
+
+	spin_lock_irqsave(&ctx->lock, flags);
+	ret = _ffl_ctx_is_state(ctx, ACTIVE);
+	spin_unlock_irqrestore(&ctx->lock, flags);
+
+	return ret;
+}
+#endif
+
 /*
  * State machines
  */
@@ -1208,6 +1238,9 @@ static void ffl_start_rx(struct hsi_client *cl)
 
 	spin_lock_irqsave(&ctx->lock, flags);
 	_ffl_ctx_set_state(ctx, ACTIVE);
+#ifdef USE_WAKE_POST_BOOT_HANDSHAKE
+	wake_up(&main_ctx->reset.modem_awake_event);
+#endif
 	spin_unlock_irqrestore(&ctx->lock, flags);
 }
 
@@ -1956,6 +1989,21 @@ static int ffl_tty_port_activate(struct tty_port *port, struct tty_struct *tty)
 	ctx->hangup.cause = 0;
 	_ffl_ctx_clear_flag(tx_ctx, TTY_OFF_BIT|ERROR_RECOVERY_TX_DRAINED_BIT);
 	spin_unlock_irqrestore(&tx_ctx->lock, flags);
+
+#ifdef USE_WAKE_POST_BOOT_HANDSHAKE
+	/* Wait for the modem post boot WAKE handshake before continuing */
+	hsi_start_tx(ctx->client);
+	wait_event_interruptible_timeout(ctx->reset.modem_awake_event,
+					 ffl_modem_is_awake(rx_ctx),
+					 POST_BOOT_HANDSHAKE_TIMEOUT_JIFFIES);
+	err = !ffl_modem_is_awake(rx_ctx);
+	hsi_stop_tx(ctx->client);
+	if (unlikely(err)) {
+		pr_err(DRVNAME ": Modem wakeup failed (-EXDEV)");
+		hsi_release_port(ctx->client);
+		return -EXDEV;
+	}
+#endif
 
 	return 0;
 }
@@ -3217,6 +3265,10 @@ static int ffl_reset_ctx_init(struct ffl_reset_ctx *ctx_reset,
 	ffl_request_irq(irq, IRQF_TRIGGER_RISING|IRQF_TRIGGER_FALLING,
 			mdm_rst_out, "RST_OUT");
 	ffl_request_irq(cd_irq, IRQF_TRIGGER_RISING, fcdp_rb, "CORE DUMP");
+
+#ifdef USE_WAKE_POST_BOOT_HANDSHAKE
+	init_waitqueue_head(&ctx_reset->modem_awake_event);
+#endif
 
 	modem_power(ctx);
 
