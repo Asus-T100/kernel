@@ -194,10 +194,6 @@ struct atomisp_css_params {
 	/* Current grid info */
 	struct sh_css_grid_info curr_grid_info;
 
-	/* DIS coefficients, must remain alive during execution */
-	int dis_x;
-	int dis_y;
-
 	/* Intermediate buffers used to communicate data between
 	   CSS and user space. These are needed to perform the
 	   copy_to_user. */

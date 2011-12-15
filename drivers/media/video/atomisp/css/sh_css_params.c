@@ -652,6 +652,35 @@ sh_css_set_dis_coefficients(const short *horizontal_coefficients,
 	dis_coef_table_changed = true;
 }
 
+#if 0
+/* This is the optimized code that uses the aligned_width and aligned_height
+ * for the projections. This should be enabled in the same patch set that
+ * adds the correct handling of these strides to the DIS IA code.
+ */
+void
+sh_css_get_dis_projections(int *horizontal_projections,
+			   int *vertical_projections)
+{
+	unsigned int hor_num_isp, ver_num_isp,
+		     hor_bytes, ver_bytes;
+	int *hor_ptr_isp = dis_hor_projections[curr_valid_buffer],
+	    *ver_ptr_isp = dis_ver_projections[curr_valid_buffer];
+
+	if (current_3a_binary == NULL)
+		return;
+
+	hor_num_isp = current_3a_binary->dis_hor_proj_num_isp;
+	ver_num_isp = current_3a_binary->dis_ver_proj_num_isp;
+
+	hor_bytes = hor_num_isp * sizeof(*horizontal_projections) *
+		    SH_CSS_DIS_NUM_COEF_TYPES;
+	ver_bytes = ver_num_isp * sizeof(*vertical_projections) *
+		    SH_CSS_DIS_NUM_COEF_TYPES;
+
+	hrt_isp_css_mm_load(hor_ptr_isp, horizontal_projections, hor_bytes);
+	hrt_isp_css_mm_load(ver_ptr_isp, vertical_projections, ver_bytes);
+}
+#else
 void
 sh_css_get_dis_projections(int *horizontal_projections,
 			   int *vertical_projections)
@@ -673,7 +702,7 @@ sh_css_get_dis_projections(int *horizontal_projections,
 
 	for (i = 0; i < SH_CSS_DIS_NUM_COEF_TYPES; i++) {
 		hrt_isp_css_mm_load(hor_ptr_isp, hor_ptr_3a,
-				    hor_num_3a * sizeof(int));
+				hor_num_3a * sizeof(int));
 		hor_ptr_isp += hor_num_isp;
 		hor_ptr_3a  += hor_num_3a;
 
@@ -683,6 +712,7 @@ sh_css_get_dis_projections(int *horizontal_projections,
 		ver_ptr_3a  += ver_num_3a;
 	}
 }
+#endif
 
 static void
 get_3a_stats_from_dmem(struct sh_css_3a_output *output)

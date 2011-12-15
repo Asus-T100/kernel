@@ -37,12 +37,10 @@ enum sh_css_err
 sh_css_binary_grid_info(struct sh_css_binary *binary,
 			struct sh_css_grid_info *info)
 {
-	/* for DIS, we use a division instead of a ceil_div. If this is smaller
-	 * than the 3a grid size, it indicates that the outer values are not
-	 * valid for DIS.
-	 */
 	info->dis_width             = binary->dis_ver_proj_num_3a;
+	info->dis_aligned_width     = binary->dis_ver_proj_num_isp;
 	info->dis_height            = binary->dis_hor_proj_num_3a;
+	info->dis_aligned_height    = binary->dis_hor_proj_num_isp;
 	info->dis_bqs_per_grid_cell = 1 << binary->dis_deci_factor_log2;
 	info->dis_hor_coef_num      = binary->dis_hor_coef_num_3a;
 	info->dis_ver_coef_num      = binary->dis_ver_coef_num_3a;

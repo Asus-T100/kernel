@@ -470,7 +470,9 @@ struct sh_css_grid_info {
 	unsigned int s3a_bqs_per_grid_cell;
 	/* DIS grid: */
 	unsigned int dis_width;  /* also used for vertical projections */
+	unsigned int dis_aligned_width;
 	unsigned int dis_height; /* also used for horizontal projections */
+	unsigned int dis_aligned_height;
 	unsigned int dis_bqs_per_grid_cell;
 	unsigned int dis_hor_coef_num;
 	unsigned int dis_ver_coef_num;

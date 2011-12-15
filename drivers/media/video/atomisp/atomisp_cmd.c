@@ -338,7 +338,6 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 		} else {
 			isp->sw_contex.invalid_frame = false;
 		}
-
 		ret = atomisp_start_binary(isp);
 		if (ret)
 			goto no_frame_done;
@@ -536,10 +535,6 @@ static int atomisp_start_binary(struct atomisp_device *isp)
 		}
 		break;
 	case CI_MODE_VIDEO:
-		if (isp->params.video_dis_en) {
-			sh_css_video_set_dis_vector(isp->params.dis_x,
-						    isp->params.dis_y);
-		}
 		ret = sh_css_video_start(NULL, isp->regular_output_frame,
 				   isp->vf_frame);
 		if (sh_css_success != ret) {
@@ -1746,12 +1741,12 @@ static void atomisp_update_grid_info(struct atomisp_device *isp)
 
 		/* DIS projections. */
 		isp->params.dis_hor_proj_bytes =
-				isp->params.curr_grid_info.dis_height *
+				isp->params.curr_grid_info.dis_aligned_height *
 				SH_CSS_DIS_NUM_COEF_TYPES *
 				sizeof(*isp->params.dis_hor_proj_buf);
 
 		isp->params.dis_ver_proj_bytes =
-				isp->params.curr_grid_info.dis_width *
+				isp->params.curr_grid_info.dis_aligned_width *
 				SH_CSS_DIS_NUM_COEF_TYPES *
 				sizeof(*isp->params.dis_ver_proj_buf);
 
@@ -1786,14 +1781,18 @@ static void atomisp_curr_user_grid_info(struct atomisp_device *isp,
 	info->s3a_height            = isp->params.curr_grid_info.s3a_height;
 	info->s3a_bqs_per_grid_cell =
 	    isp->params.curr_grid_info.s3a_bqs_per_grid_cell;
-	info->dis_width             = isp->params.curr_grid_info.dis_width;
-	info->dis_height            = isp->params.curr_grid_info.dis_height;
+
+	info->dis_width          = isp->params.curr_grid_info.dis_width;
+	info->dis_aligned_width  = isp->params.curr_grid_info.dis_aligned_width;
+	info->dis_height         = isp->params.curr_grid_info.dis_height;
+	info->dis_aligned_height =
+		isp->params.curr_grid_info.dis_aligned_height;
 	info->dis_bqs_per_grid_cell =
-	    isp->params.curr_grid_info.dis_bqs_per_grid_cell;
+		isp->params.curr_grid_info.dis_bqs_per_grid_cell;
 	info->dis_hor_coef_num      =
-	    isp->params.curr_grid_info.dis_hor_coef_num;
+		isp->params.curr_grid_info.dis_hor_coef_num;
 	info->dis_ver_coef_num      =
-	    isp->params.curr_grid_info.dis_ver_coef_num;
+		isp->params.curr_grid_info.dis_ver_coef_num;
 }
 
 /*
@@ -1927,93 +1926,91 @@ int atomisp_macc_table(struct atomisp_device *isp, int flag,
 	return 0;
 }
 
-int atomisp_dis_vector(struct atomisp_device *isp,
-		       void *config)
+int atomisp_set_dis_vector(struct atomisp_device *isp,
+			   struct atomisp_dis_vector *vector)
 {
-	struct atomisp_dis_config *arg = (struct atomisp_dis_config *)config;
+	unsigned long irqflags;
 
-	/* The dis parameter is initialized at start_video_capture
-	 * in atomisp_work
-	 */
-	mutex_lock(&isp->isp_lock);
-	isp->params.dis_x = arg->dis_x;
-	isp->params.dis_y = arg->dis_y;
-	mutex_unlock(&isp->isp_lock);
+	/* Avoid race conditions with ISR */
+	spin_lock_irqsave(&isp->irq_lock, irqflags);
+	sh_css_video_set_dis_vector(vector->x, vector->y);
+	spin_unlock_irqrestore(&isp->irq_lock, irqflags);
+
 	return 0;
 }
 
 /*
  * Function to set/get image stablization statistics
  */
-int atomisp_dis_stat(struct atomisp_device *isp, int flag,
-		     void *config)
+int atomisp_get_dis_stat(struct atomisp_device *isp,
+			 struct atomisp_dis_statistics *stats)
 {
 	int error;
-	struct atomisp_dis_config *arg = (struct atomisp_dis_config *)config;
+	long left;
 
-	if (flag == 0) {
-		long time_left;
+	if (stats->vertical_projections   == NULL ||
+	    stats->horizontal_projections == NULL ||
+	    isp->params.dis_hor_proj_buf  == NULL ||
+	    isp->params.dis_ver_proj_buf  == NULL)
+		return -EINVAL;
 
-		if (arg->w_sdis_vertproj_tbl == NULL ||
-		    arg->w_sdis_horiproj_tbl == NULL ||
-		    isp->params.dis_hor_proj_buf    == NULL ||
-		    isp->params.dis_ver_proj_buf    == NULL)
-			return -EINVAL;
+	/* isp needs to be streaming to get DIS statistics */
+	if (!isp->sw_contex.isp_streaming)
+		return -EINVAL;
+	if (!isp->params.video_dis_en)
+		return -EINVAL;
 
-		/* isp need to be streaming to get DIS statistics */
-		if (!isp->sw_contex.isp_streaming)
-			return -EINVAL;
-		if (!isp->params.video_dis_en)
-			return -EINVAL;
+	INIT_COMPLETION(isp->dis_state_complete);
 
-		INIT_COMPLETION(isp->dis_state_complete);
+	left = wait_for_completion_timeout(&isp->dis_state_complete, 1 * HZ);
 
-		time_left =
-		    wait_for_completion_timeout(&isp->dis_state_complete,
-						1 * HZ);
-
-		/* Timeout to get the statistics */
-		if (time_left == 0) {
-			v4l2_err(&atomisp_dev,
-				 "Failed to wait frame DIS state\n");
-			return -EINVAL;
-		}
-
-
-		sh_css_get_dis_projections(isp->params.dis_hor_proj_buf,
-					   isp->params.dis_ver_proj_buf);
-
-		error = copy_to_user(arg->w_sdis_vertproj_tbl,
-				     isp->params.dis_ver_proj_buf,
-				     isp->params.dis_ver_proj_bytes);
-		if (error)
-			return -EFAULT;
-
-		error = copy_to_user(arg->w_sdis_horiproj_tbl,
-				     isp->params.dis_hor_proj_buf,
-				     isp->params.dis_hor_proj_bytes);
-		if (error)
-			return -EFAULT;
-	} else {
-		if (arg->sdis_vertcoef_tbl == NULL ||
-		    arg->sdis_horicoef_tbl == NULL ||
-		    isp->params.dis_hor_coef_buf  == NULL ||
-		    isp->params.dis_ver_coef_buf  == NULL)
-			return -EINVAL;
-
-		error = copy_from_user(isp->params.dis_hor_coef_buf,
-				       (void __user *)arg->sdis_horicoef_tbl,
-				       isp->params.dis_hor_coef_bytes);
-		if (error)
-			return -EFAULT;
-		error = copy_from_user(isp->params.dis_ver_coef_buf,
-				       (void __user *)arg->sdis_vertcoef_tbl,
-				       isp->params.dis_ver_coef_bytes);
-		if (error)
-			return -EFAULT;
-		sh_css_set_dis_coefficients(isp->params.dis_hor_coef_buf,
-					    isp->params.dis_ver_coef_buf);
+	/* Timeout to get the statistics */
+	if (left == 0) {
+		v4l2_err(&atomisp_dev, "Failed to wait frame DIS state\n");
+		return -EINVAL;
 	}
+
+	sh_css_get_dis_projections(isp->params.dis_hor_proj_buf,
+				   isp->params.dis_ver_proj_buf);
+
+	error = copy_to_user(stats->vertical_projections,
+			     isp->params.dis_ver_proj_buf,
+			     isp->params.dis_ver_proj_bytes);
+	if (error)
+		return -EFAULT;
+
+	error = copy_to_user(stats->horizontal_projections,
+			     isp->params.dis_hor_proj_buf,
+			     isp->params.dis_hor_proj_bytes);
+	if (error)
+		return -EFAULT;
+
+	return 0;
+}
+
+int atomisp_set_dis_coefs(struct atomisp_device *isp,
+			  struct atomisp_dis_coefficients *coefs)
+{
+	int error;
+
+	if (coefs->horizontal_coefficients == NULL ||
+	    coefs->vertical_coefficients   == NULL ||
+	    isp->params.dis_hor_coef_buf   == NULL ||
+	    isp->params.dis_ver_coef_buf   == NULL)
+		return -EINVAL;
+
+	error = copy_from_user(isp->params.dis_hor_coef_buf,
+			       (void __user *)coefs->horizontal_coefficients,
+			       isp->params.dis_hor_coef_bytes);
+	if (error)
+		return -EFAULT;
+	error = copy_from_user(isp->params.dis_ver_coef_buf,
+			       (void __user *)coefs->vertical_coefficients,
+			       isp->params.dis_ver_coef_bytes);
+	if (error)
+		return -EFAULT;
+	sh_css_set_dis_coefficients(isp->params.dis_hor_coef_buf,
+				    isp->params.dis_ver_coef_buf);
 	return 0;
 }
 

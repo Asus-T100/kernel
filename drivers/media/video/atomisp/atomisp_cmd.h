@@ -150,10 +150,22 @@ int atomisp_gdc_cac_table(struct atomisp_device *isp, int flag,
 int atomisp_macc_table(struct atomisp_device *isp, int flag,
 	void *config);
 /*
- * Function to set/get image stablization statistics
+ * Function to get DIS statistics.
  */
-int atomisp_dis_stat(struct atomisp_device *isp, int flag,
-	void *config);
+int atomisp_get_dis_stat(struct atomisp_device *isp,
+			 struct atomisp_dis_statistics *stats);
+
+/*
+ * Function to set the DIS coefficients.
+ */
+int atomisp_set_dis_coefs(struct atomisp_device *isp,
+			  struct atomisp_dis_coefficients *coefs);
+
+/*
+ * Function to set the DIS motion vector.
+ */
+int atomisp_set_dis_vector(struct atomisp_device *isp,
+			   struct atomisp_dis_vector *vector);
 
 /*
  * Function to set/get 3A stat from isp
@@ -182,9 +194,6 @@ int atomisp_bad_pixel(struct atomisp_device *isp, int flag, __s32 *value);
  */
 int atomisp_bad_pixel_param(struct atomisp_device *isp, int flag,
 	void *config);
-
-int atomisp_dis_vector(struct atomisp_device *isp,
-		       void *arg);
 
 /*
  * Function to enable/disable video image stablization

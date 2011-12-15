@@ -1650,13 +1650,16 @@ static long atomisp_vidioc_default(struct file *file, void *fh,
 		return atomisp_ee(isp, 1, arg);
 
 	case ATOMISP_IOC_G_DIS_STAT:
-		return atomisp_dis_stat(isp, 0, arg);
+		return atomisp_get_dis_stat(isp,
+				(struct atomisp_dis_statistics *)arg);
 
-	case ATOMISP_IOC_S_DIS_STAT:
-		return atomisp_dis_stat(isp, 1, arg);
+	case ATOMISP_IOC_S_DIS_COEFS:
+		return atomisp_set_dis_coefs(isp,
+				(struct atomisp_dis_coefficients *)arg);
 
 	case ATOMISP_IOC_S_DIS_VECTOR:
-		return atomisp_dis_vector(isp, arg);
+		return atomisp_set_dis_vector(isp,
+				(struct atomisp_dis_vector*) arg);
 
 	case ATOMISP_IOC_G_ISP_PARM:
 		return atomisp_param(isp, 0, arg);
