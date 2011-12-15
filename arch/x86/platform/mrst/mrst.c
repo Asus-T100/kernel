@@ -1344,7 +1344,7 @@ static int ov8830_power_ctrl(struct v4l2_subdev *sd, int flag)
 
 static int ov8830_csi_configure(struct v4l2_subdev *sd, int flag)
 {
-	static const int LANES = 2;
+	static const int LANES = 4;
 	return camera_sensor_csi(sd, ATOMISP_CAMERA_PORT_PRIMARY, LANES,
 		ATOMISP_INPUT_FORMAT_RAW_10, atomisp_bayer_order_bggr, flag);
 }
