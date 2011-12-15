@@ -3837,6 +3837,13 @@ static const struct pci_device_id pci_ids[] = { {
 	.device =	0x0829,
 	.subvendor =	PCI_ANY_ID,
 	.subdevice =	PCI_ANY_ID,
+}, {
+	.class =	((PCI_CLASS_SERIAL_USB << 8) | 0xfe),
+	.class_mask =	~0,
+	.vendor =	0x8086,
+	.device =	0xE006,
+	.subvendor =	PCI_ANY_ID,
+	.subdevice =	PCI_ANY_ID,
 }, { /* end: all zeroes */ }
 };
 
