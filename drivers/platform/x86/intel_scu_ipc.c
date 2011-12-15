@@ -25,9 +25,12 @@
 #include <linux/pm.h>
 #include <linux/pci.h>
 #include <linux/interrupt.h>
+#include <linux/debugfs.h>
+#include <linux/fs.h>
 #include <asm/mrst.h>
 #include <asm/intel_scu_ipc.h>
 #include <linux/pm_qos_params.h>
+#include <linux/intel_mid_pm.h>
 
 /*
  * IPC register summary
@@ -60,6 +63,7 @@
 #define IPC_MIP_MAX_ADDR  0x1000
 
 #define IPC_IOC		  0x100
+#define DATA_STRING_LEN   20
 
 static int ipc_probe(struct pci_dev *dev, const struct pci_device_id *id);
 static void ipc_remove(struct pci_dev *pdev);
@@ -71,13 +75,30 @@ struct intel_scu_ipc_dev {
 	void __iomem *mip_base;
 	int ioc;
 	struct completion cmd_complete;
-	int status;
+	int cmd;
 	struct fw_ud *fwud_pending;
 };
 
 static struct intel_scu_ipc_dev  ipcdev; /* Only one for now */
 
 static int platform;		/* Platform type */
+
+static char *ipc_err_sources[] = {
+	[IPC_ERR_NONE] =
+		"no error",
+	[IPC_ERR_CMD_NOT_SUPPORTED] =
+		"command not supported",
+	[IPC_ERR_CMD_NOT_SERVICED] =
+		"command not serviced",
+	[IPC_ERR_UNABLE_TO_SERVICE] =
+		"unable to service",
+	[IPC_ERR_CMD_INVALID] =
+		"command invalid",
+	[IPC_ERR_CMD_FAILED] =
+		"command failed",
+	[IPC_ERR_EMSECURITY] =
+		"unsigned kernel",
+};
 
 /*
  * IPC Read Buffer (Read Only):
@@ -102,6 +123,7 @@ static struct pm_qos_request_list *qos;
  */
 static inline void ipc_command(u32 cmd) /* Send ipc command */
 {
+	ipcdev.cmd = cmd;
 	INIT_COMPLETION(ipcdev.cmd_complete);
 	if (system_state == SYSTEM_RUNNING) {
 		ipcdev.ioc = 1;
@@ -112,7 +134,7 @@ static inline void ipc_command(u32 cmd) /* Send ipc command */
 	}
 
 	/* Prevent C-states beyond C6 */
-	pm_qos_update_request(qos, 150);
+	pm_qos_update_request(qos, CSTATE_EXIT_LATENCY_S0i1 - 1);
 }
 
 /*
@@ -133,7 +155,7 @@ static inline void ipc_data_writel(u32 data, u32 offset) /* Write ipc data */
  * |rfu3(8)|error code(8)|initiator id(8)|cmd id(4)|rfu1(2)|error(1)|busy(1)|
  */
 
-static inline u8 ipc_read_status(void)
+static inline u32 ipc_read_status(void)
 {
 	return __raw_readl(ipcdev.ipc_base + 0x04);
 }
@@ -151,42 +173,41 @@ static inline u32 ipc_data_readl(u32 offset) /* Read ipc u32 data */
 static inline int ipc_wait_interrupt(void)
 {
 	int ret = 0;
+	int status;
+	int loop_count = 3000000;
+	int i;
+
 	if (ipcdev.ioc) {
 		if (0 == wait_for_completion_timeout(
-				&ipcdev.cmd_complete, 3 * HZ)) {
-			dev_err(&ipcdev.pdev->dev, "IPC timed out, IPC_STS=0x%x",
-					ipc_read_status());
+				&ipcdev.cmd_complete, 3 * HZ))
 			ret = -ETIMEDOUT;
-			goto leave;
-		} else {
-			if ((ipcdev.status >> 1) & 1) {
-				dev_err(&ipcdev.pdev->dev, "IPC failed, IPC_STS=0x%x",
-						ipc_read_status());
-				ret = -EIO;
-				goto leave;
-			}
-		}
 	} else {
-		u32 status = 0;
-		u32 loop_count = 0;
-
-		status = ipc_read_status();
-		while (status & 1) {
+		while ((ipc_read_status() & 1) && --loop_count)
 			udelay(1);
-			status = ipc_read_status();
-			loop_count++;
-			if (loop_count > 3000000) {
-				dev_err(&ipcdev.pdev->dev, "IPC timed out");
-				ret = -ETIMEDOUT;
-				goto leave;
-			}
-		}
-		if ((status >> 1) & 1)
-			ret = -EIO;
+		if (loop_count == 0)
+			ret = -ETIMEDOUT;
 	}
-leave:
+
+	status = ipc_read_status();
+	if (ret == -ETIMEDOUT)
+		dev_err(&ipcdev.pdev->dev, "IPC timed out, IPC_STS=0x%x, IPC_CMD=0x%x",
+			status, ipcdev.cmd);
+	if (status & 0x2) {
+		ret = -EIO;
+		i = (status >> 16) & 0xFF;
+		if (i < ARRAY_SIZE(ipc_err_sources))
+			dev_err(&ipcdev.pdev->dev,
+				"IPC failed: %s, IPC_STS=0x%x, IPC_CMD=0x%x",
+				ipc_err_sources[i], status, ipcdev.cmd);
+		else
+			dev_err(&ipcdev.pdev->dev,
+				"IPC failed: unknown error, IPC_STS=0x%x, IPC_CMD=0x%x",
+				status, ipcdev.cmd);
+	}
+
 	/* Re-enable Deeper C-states beyond C6 */
 	pm_qos_update_request(qos, PM_QOS_DEFAULT_VALUE);
+
 	return ret;
 }
 
@@ -675,6 +696,9 @@ update_end:
 	iounmap(mailbox);
 	mutex_unlock(&ipclock);
 
+	/* Re-enable Deeper C-states beyond C6 */
+	pm_qos_update_request(qos, PM_QOS_DEFAULT_VALUE);
+
 	if (status == IPC_FW_UPDATE_SUCCESS)
 		return 0;
 	return -EIO;
@@ -702,9 +726,10 @@ EXPORT_SYMBOL(intel_scu_ipc_mrstfw_update);
 #define LOWER_128K_OFFSET (MIP_HEADER_OFFSET+MIP_HEADER_LEN)
 #define UPPER_128K_OFFSET (LOWER_128K_OFFSET+MAX_FW_CHUNK)
 #define SUCP_OFFSET	0x1D8000
+#define VEDFW_OFFSET    0x1A6000
 
 #define DNX_HDR_LEN  24
-#define FUPH_HDR_LEN 32
+#define MIN_FUPH_HDR_LEN 32
 
 #define DNX_IMAGE        "DXBL"
 #define FUPH_HDR_SIZE    "RUPHS"
@@ -717,12 +742,22 @@ EXPORT_SYMBOL(intel_scu_ipc_mrstfw_update);
 #define PSFW2		 "PSFW2"
 #define SSFW		 "SSFW"
 #define SUCP		 "SuCP"
+#define VEDFW		 "VEDFW"
 
 #define MAX_LEN_PSFW     7
 #define MAX_LEN_SSFW     6
 #define MAX_LEN_SUCP     6
+#define MAX_LEN_VEDFW    7
 
 #define C0_STEPPING	8 /* PCI Rev for C0 stepping */
+
+#define FUPH_MIP_OFFSET         4
+#define FUPH_IFWI_OFFSET        8
+#define FUPH_PSFW1_OFFSET       12
+#define FUPH_PSFW2_OFFSET       16
+#define FUPH_SSFW_OFFSET        20
+#define FUPH_SUCP_OFFSET        24
+#define FUPH_VEDFW_OFFSET       28
 
 /* Modified IA-SCU mailbox for medfield firmware update. */
 struct ia_scu_mailbox {
@@ -738,6 +773,7 @@ struct fw_ud {
 	u8 *dnx_hdr;
 	u8 *dnx_file_data;
 	u32 dnx_size;
+	u32 fuph_hdr_len;
 };
 
 struct mfld_fw_update {
@@ -748,16 +784,15 @@ struct mfld_fw_update {
 	char mb_status[8];
 };
 
-/* Structure to hold firmware update header */
-struct fuph_hdr {
-	u32 sig;
+/* Holds size parameters read from fuph header */
+struct fuph_hdr_attrs {
 	u32 mip_size;
 	u32 ifwi_size;
 	u32 psfw1_size;
 	u32 psfw2_size;
 	u32 ssfw_size;
 	u32 sucp_size;
-	u32 checksum;
+	u32 vedfw_size;
 };
 
 enum mailbox_status {
@@ -776,7 +811,8 @@ static struct misc_fw misc_fw_table[] = {
 	{ .fw_type = "PSFW1", .str_len  = MAX_LEN_PSFW },
 	{ .fw_type = "SSFW", .str_len  = MAX_LEN_SSFW  },
 	{ .fw_type = "PSFW2", .str_len  = MAX_LEN_PSFW  },
-	{ .fw_type = "SuCP", .str_len  = MAX_LEN_SUCP  }
+	{ .fw_type = "SuCP", .str_len  = MAX_LEN_SUCP  },
+	{ .fw_type = "VEDFW", .str_len  = MAX_LEN_VEDFW  }
 };
 
 /*
@@ -869,8 +905,8 @@ static enum mailbox_status check_mb_status(struct mfld_fw_update *mfld_fw_upd)
 
 /* Helper function used to calculate length and offset.  */
 int helper_for_calc_offset_length(struct fw_ud *fw_ud_ptr, char *scu_req,
-				void **offset, u32 *len, struct fuph_hdr *fuph,
-				const char *fw_type)
+			void **offset, u32 *len, struct fuph_hdr_attrs *fuph,
+			const char *fw_type)
 {
 
 	unsigned long chunk_no;
@@ -913,6 +949,14 @@ int helper_for_calc_offset_length(struct fw_ud *fw_ud_ptr, char *scu_req,
 
 		fw_size = fuph->sucp_size;
 		fw_offset = SUCP_OFFSET;
+	} else if (!strncmp(fw_type, VEDFW, strlen(VEDFW))) {
+
+		if (strict_strtoul(scu_req + strlen(VEDFW), 10,
+				&chunk_no) < 0)
+			return -EINVAL;
+
+		fw_size = fuph->vedfw_size;
+		fw_offset = VEDFW_OFFSET;
 	} else
 		return -EINVAL;
 
@@ -948,7 +992,7 @@ int helper_for_calc_offset_length(struct fw_ud *fw_ud_ptr, char *scu_req,
  * how to handle that.
  */
 int calc_offset_and_length(struct fw_ud *fw_ud_ptr, char *scu_req,
-			void **offset, u32 *len, struct fuph_hdr *fuph)
+			void **offset, u32 *len, struct fuph_hdr_attrs *fuph)
 {
 
 	u8 cnt;
@@ -959,8 +1003,8 @@ int calc_offset_and_length(struct fw_ud *fw_ud_ptr, char *scu_req,
 		return 0;
 	} else if (!strncmp(FUPH, scu_req, strlen(scu_req))) {
 		*offset = fw_ud_ptr->fw_file_data + fw_ud_ptr->fsize
-				- FUPH_HDR_LEN;
-		*len = FUPH_HDR_LEN;
+				- fw_ud_ptr->fuph_hdr_len;
+		*len = fw_ud_ptr->fuph_hdr_len;
 		return 0;
 	} else if (!strncmp(MIP, scu_req, strlen(scu_req))) {
 		*offset = fw_ud_ptr->fw_file_data + MIP_HEADER_OFFSET;
@@ -1001,6 +1045,7 @@ int calc_offset_and_length(struct fw_ud *fw_ud_ptr, char *scu_req,
 					goto error_case;
 			}
 		}
+
 	}
 
 	dev_dbg(&ipcdev.pdev->dev,
@@ -1050,7 +1095,8 @@ int intel_scu_ipc_medfw_prepare(void __user *arg)
 
 	if (param.fw_file_data == NULL || param.fsize == 0
 		|| param.dnx_size == 0 || param.dnx_hdr == NULL
-		|| param.dnx_file_data == NULL) {
+		|| param.dnx_file_data == NULL
+		|| (param.fuph_hdr_len < MIN_FUPH_HDR_LEN)) {
 		dev_err(&ipcdev.pdev->dev,
 			"ipc_medfw_upgrade, invalid args!!\n");
 		ret = -EINVAL;
@@ -1065,7 +1111,7 @@ int intel_scu_ipc_medfw_prepare(void __user *arg)
 	memcpy(ipcdev.fwud_pending, &param, sizeof(struct fw_ud));
 
 	ipcdev.fwud_pending->fw_file_data = kmalloc(param.fsize, GFP_KERNEL);
-	if (NULL == ipcdev.fwud_pending) {
+	if (NULL == ipcdev.fwud_pending->fw_file_data) {
 		ret = -ENOMEM;
 		goto fail;
 	}
@@ -1102,8 +1148,9 @@ fail:
 		kfree(ipcdev.fwud_pending->fw_file_data);
 		kfree(ipcdev.fwud_pending->dnx_hdr);
 		kfree(ipcdev.fwud_pending->dnx_file_data);
+		kfree(ipcdev.fwud_pending);
+		ipcdev.fwud_pending = NULL;
 	}
-	kfree(ipcdev.fwud_pending);
 	mutex_unlock(&ipclock);
 	return ret;
 }
@@ -1124,8 +1171,10 @@ int intel_scu_ipc_medfw_upgrade(void)
 	struct mfld_fw_update	mfld_fw_upd;
 	u8 *fw_file_data = NULL;
 	u8 *fws = NULL;
+	u8 *fuph_start = NULL;
 	int ret_val = 0;
-	struct fuph_hdr fuph;
+
+	struct fuph_hdr_attrs fuph;
 	u32 length = 0;
 	void *offset;
 	enum mailbox_status mb_state;
@@ -1165,22 +1214,30 @@ int intel_scu_ipc_medfw_upgrade(void)
 		ret_val = -ENOMEM;
 		goto unmap_mb;
 	}
-	/* Copy fuph header to kernel space */
-	memcpy(&fuph, (fw_ud_param->fw_file_data + (fw_ud_param->fsize - 1)
-			 - (FUPH_HDR_LEN - 1)), FUPH_HDR_LEN);
+
+	/* fuph header start */
+	fuph_start = fw_ud_param->fw_file_data + (fw_ud_param->fsize - 1)
+					- (fw_ud_param->fuph_hdr_len - 1);
 
 	/* Convert sizes in DWORDS to number of bytes. */
-	fuph.mip_size = fuph.mip_size * 4;
-	fuph.ifwi_size = fuph.ifwi_size * 4;
-	fuph.psfw1_size = fuph.psfw1_size * 4;
-	fuph.psfw2_size = fuph.psfw2_size * 4;
-	fuph.ssfw_size = fuph.ssfw_size * 4;
-	fuph.sucp_size = fuph.sucp_size * 4;
+	fuph.mip_size = (*((u32 *)(fuph_start + FUPH_MIP_OFFSET)))*4;
+	fuph.ifwi_size = (*((u32 *)(fuph_start + FUPH_IFWI_OFFSET)))*4;
+	fuph.psfw1_size = (*((u32 *)(fuph_start + FUPH_PSFW1_OFFSET)))*4;
+	fuph.psfw2_size = (*((u32 *)(fuph_start + FUPH_PSFW2_OFFSET)))*4;
+	fuph.ssfw_size = (*((u32 *)(fuph_start + FUPH_SSFW_OFFSET)))*4;
+	fuph.sucp_size = (*((u32 *)(fuph_start + FUPH_SUCP_OFFSET)))*4;
+
+	if (fw_ud_param->fuph_hdr_len == (MIN_FUPH_HDR_LEN + 4)) {
+		fuph.vedfw_size =
+				(*((u32 *)(fuph_start + FUPH_VEDFW_OFFSET)))*4;
+	} else
+		fuph.vedfw_size = 0;
 
 	dev_dbg(&ipcdev.pdev->dev,
-		"mip=%d, ifwi=%d, ps1=%d, ps2=%d, sfw=%d, sucp=%d\n",
-		fuph.mip_size, fuph.ifwi_size, fuph.psfw1_size,
-		fuph.psfw2_size, fuph.ssfw_size, fuph.sucp_size);
+		"ln=%d, mi=%d, if=%d, ps1=%d, ps2=%d, sfw=%d, sucp=%d, vd=%d\n",
+		fw_ud_param->fuph_hdr_len, fuph.mip_size, fuph.ifwi_size,
+		fuph.psfw1_size, fuph.psfw2_size, fuph.ssfw_size, fuph.sucp_size,
+		fuph.vedfw_size);
 
 	/* TODO_SK::There is just
 	 *  1 write required from IA side for DFU.
@@ -1224,7 +1281,7 @@ int intel_scu_ipc_medfw_upgrade(void)
 
 		if (!strncmp(mfld_fw_upd.mb_status, FUPH_HDR_SIZE,
 				strlen(FUPH_HDR_SIZE))) {
-			iowrite32(FUPH_HDR_LEN, mfld_fw_upd.sram);
+			iowrite32(fw_ud_param->fuph_hdr_len, mfld_fw_upd.sram);
 			/* There are synchronization issues between IA-SCU */
 			mb();
 			dev_dbg(&ipcdev.pdev->dev,
@@ -1275,12 +1332,19 @@ unmap_mb:
 unmap_sram:
 	iounmap(mfld_fw_upd.sram);
 out_unlock:
+	if (ipcdev.fwud_pending) {
+		kfree(ipcdev.fwud_pending->fw_file_data);
+		kfree(ipcdev.fwud_pending->dnx_hdr);
+		kfree(ipcdev.fwud_pending->dnx_file_data);
+		kfree(ipcdev.fwud_pending);
+		ipcdev.fwud_pending = NULL;
+	}
 	mutex_unlock(&ipclock);
 	return ret_val;
 }
 EXPORT_SYMBOL_GPL(intel_scu_ipc_medfw_upgrade);
 
-int intel_scu_ipc_read_mip(u8 *data, int len, int offset, int issigned)
+static int read_mip(u8 *data, int len, int offset, int issigned)
 {
 	int ret;
 	u32 cmdid;
@@ -1292,11 +1356,8 @@ int intel_scu_ipc_read_mip(u8 *data, int len, int offset, int issigned)
 	if (offset + len > IPC_MIP_MAX_ADDR)
 		return -EINVAL;
 
-	mutex_lock(&ipclock);
-	if (ipcdev.pdev == NULL || ipcdev.mip_base == NULL) {
-		mutex_unlock(&ipclock);
+	if (ipcdev.mip_base == NULL)
 		return -ENODEV;
-	}
 
 	do {
 		writel(offset, ipcdev.ipc_base + IPC_DPTR_ADDR);
@@ -1310,6 +1371,20 @@ int intel_scu_ipc_read_mip(u8 *data, int len, int offset, int issigned)
 		data_off = ipc_data_readl(0);
 		memcpy(data, ipcdev.mip_base + data_off, len);
 	}
+
+	return ret;
+}
+
+int intel_scu_ipc_read_mip(u8 *data, int len, int offset, int issigned)
+{
+	int ret;
+
+	mutex_lock(&ipclock);
+	if (ipcdev.pdev == NULL) {
+		mutex_unlock(&ipclock);
+		return -ENODEV;
+	}
+	ret = read_mip(data, len, offset, issigned);
 	mutex_unlock(&ipclock);
 
 	return ret;
@@ -1318,9 +1393,9 @@ EXPORT_SYMBOL(intel_scu_ipc_read_mip);
 
 int intel_scu_ipc_write_umip(u8 *data, int len, int offset)
 {
-	int ret, wlen = 0;
-	u32 data_off;
+	int ret;
 	u8 *buf = NULL;
+	int offset_align, len_align = 0;
 
 	if (platform != MRST_CPU_CHIP_PENWELL)
 		return -EINVAL;
@@ -1332,44 +1407,653 @@ int intel_scu_ipc_write_umip(u8 *data, int len, int offset)
 		ret = -ENODEV;
 		goto fail;
 	}
-	wlen = (len + 3) & (~0x3);
-	if (wlen != len) {
-		buf = kzalloc(wlen, GFP_KERNEL);
+	offset_align = offset & (~0x3);
+	len_align = (len + (offset - offset_align) + 3) & (~0x3);
+	if (len != len_align) {
+		buf = kzalloc(len_align, GFP_KERNEL);
 		if (!buf) {
 			dev_err(&ipcdev.pdev->dev, "Alloc memory failed\n");
 			ret = -ENOMEM;
 			goto fail;
 		}
-		do {
-			writel(offset+wlen-4, ipcdev.ipc_base + IPC_DPTR_ADDR);
-			writel(1, ipcdev.ipc_base + IPC_SPTR_ADDR);
-			ipc_command(4 << 16
-				| IPC_CMD_UMIP_RD << 12 | IPCMSG_MIP_ACCESS);
-			ret = ipc_wait_interrupt();
-		} while (ret == -EIO);
+		ret = read_mip(buf, len_align, offset_align, 0);
 		if (ret)
 			goto fail;
-		data_off = ipc_data_readl(0);
-		memcpy(buf+wlen-4, ipcdev.mip_base + data_off, 4);
-		memcpy(buf, data, len);
+		memcpy(buf + offset - offset_align, data, len);
 	} else {
 		buf = data;
 	}
 	do {
-		writel(offset, ipcdev.ipc_base + IPC_DPTR_ADDR);
-		writel(wlen / 4, ipcdev.ipc_base + IPC_SPTR_ADDR);
-		memcpy(ipcdev.mip_base, buf, wlen);
+		writel(offset_align, ipcdev.ipc_base + IPC_DPTR_ADDR);
+		writel(len_align / 4, ipcdev.ipc_base + IPC_SPTR_ADDR);
+		memcpy(ipcdev.mip_base, buf, len_align);
 		ipc_command(IPC_CMD_UMIP_WR << 12 | IPCMSG_MIP_ACCESS);
 		ret = ipc_wait_interrupt();
 	} while (ret == -EIO);
 fail:
-	if (buf && wlen != len)
+	if (buf && len_align != len)
 		kfree(buf);
 	mutex_unlock(&ipclock);
 
 	return ret;
 }
 EXPORT_SYMBOL(intel_scu_ipc_write_umip);
+
+#define MAX_BIN_BUF_SIZE (4*1024*1024)
+#define DNX_SIZE_OFFSET 0
+#define GP_FLAG_OFFSET 4
+#define XOR_CHK_OFFSET 20
+
+#define DNX_SIZE (128*1024)
+#define IFWI_SIZE (1024*1024*3)
+
+#define GPF_BIT32 1
+#define FUPH_STR "UPH$"
+#define FUPH_STR_LEN 4
+#define FUPH_MAX_LEN 36
+#define SKIP_BYTES 8
+
+#define IPCMSG_FW_REVISION 0xF4
+
+static u16 msic_sysfs_reg_addr;
+static char err_buf[50];
+
+static void cur_err(const char *err_str)
+{
+	if (err_str) {
+		memset(err_buf, 0, sizeof(err_buf));
+		strncpy(err_buf, err_str, strlen(err_str));
+	}
+}
+
+static ssize_t write_dnx(struct file *file, struct kobject *kobj,
+	struct bin_attribute *attr, char *buf, loff_t off, size_t count)
+{
+	int ret;
+
+	mutex_lock(&ipclock);
+
+	if (!ipcdev.fwud_pending) {
+		ipcdev.fwud_pending = kzalloc(sizeof(struct fw_ud), GFP_KERNEL);
+		if (NULL == ipcdev.fwud_pending) {
+			ret = -ENOMEM;
+			cur_err("alloc fwud_pending memory failed");
+			goto end;
+		}
+	}
+
+	if (!ipcdev.fwud_pending->dnx_file_data) {
+		ipcdev.fwud_pending->dnx_file_data =
+					kmalloc(DNX_SIZE, GFP_KERNEL);
+		if (NULL == ipcdev.fwud_pending->dnx_file_data) {
+			ret = -ENOMEM;
+			cur_err("alloc dnx_file_data memory failed.");
+			goto fail;
+		}
+	}
+
+	if (off + count > MAX_BIN_BUF_SIZE) {
+		cur_err("too large dnx binary stream!");
+		ret =  -EINVAL;
+		goto fail;
+	}
+
+	memcpy(ipcdev.fwud_pending->dnx_file_data + off, buf, count);
+
+	if (!off)
+		ipcdev.fwud_pending->dnx_size = count;
+	else
+		ipcdev.fwud_pending->dnx_size += count;
+
+	mutex_unlock(&ipclock);
+	return count;
+fail:
+	if (ipcdev.fwud_pending) {
+		kfree(ipcdev.fwud_pending->fw_file_data);
+		kfree(ipcdev.fwud_pending->dnx_hdr);
+		kfree(ipcdev.fwud_pending->dnx_file_data);
+		kfree(ipcdev.fwud_pending);
+		ipcdev.fwud_pending = NULL;
+	}
+end:
+	mutex_unlock(&ipclock);
+	return ret;
+}
+
+static ssize_t read_dnx(struct file *file, struct kobject *kobj,
+		struct bin_attribute *attr, char *buf,
+			loff_t off, size_t count)
+{
+	if (ipcdev.fwud_pending) {
+		const size_t size = ipcdev.fwud_pending->dnx_size;
+
+		if (off >= size)
+			return 0;
+
+		if (off + count > size)
+			count = size - off;
+
+		memcpy(buf, ipcdev.fwud_pending->dnx_file_data + off, count);
+	}
+
+	return count;
+}
+
+/* Parses from the end of IFWI, and looks for UPH$,
+ * to determine length of FUPH header
+ */
+static int find_fuph_header_len(unsigned int *len,
+		unsigned char *file_data, unsigned int file_size)
+{
+	int ret = -EINVAL;
+	unsigned char *temp;
+	unsigned int cnt = 0;
+
+	if (!len || !file_data || !file_size) {
+		dev_err(&ipcdev.pdev->dev,
+			"find_fuph_header_len: Invalid inputs\n");
+		return ret;
+	}
+
+	/* Skipping the checksum at the end, and moving to the
+	 * start of the last add-on firmware size in fuph.
+	 */
+	temp = file_data + file_size - SKIP_BYTES;
+
+	while (cnt <= FUPH_MAX_LEN) {
+		if (!strncmp(temp, FUPH_STR, FUPH_STR_LEN)) {
+			pr_warn("Fuph_hdr_len=%d\n", cnt + SKIP_BYTES);
+			*len = cnt + SKIP_BYTES;
+			ret = 0;
+			break;
+		}
+		temp -= 4;
+		cnt += 4;
+	}
+
+	return ret;
+}
+
+static ssize_t write_ifwi(struct file *file, struct kobject *kobj,
+	struct bin_attribute *attr, char *buf, loff_t off, size_t count)
+{
+	int ret;
+
+	mutex_lock(&ipclock);
+
+	if (!ipcdev.fwud_pending) {
+		ipcdev.fwud_pending = kzalloc(sizeof(struct fw_ud), GFP_KERNEL);
+		if (NULL == ipcdev.fwud_pending) {
+			ret = -ENOMEM;
+			cur_err("alloc fwud_pending memory failed");
+			goto end;
+		}
+	}
+
+	if (!ipcdev.fwud_pending->fw_file_data) {
+		ipcdev.fwud_pending->fw_file_data =
+					kmalloc(IFWI_SIZE, GFP_KERNEL);
+		if (NULL == ipcdev.fwud_pending->fw_file_data) {
+			ret = -ENOMEM;
+			cur_err("alloc fw_file_data memory failed.");
+			goto fail;
+		}
+	}
+
+	if (off + count > MAX_BIN_BUF_SIZE) {
+		cur_err("too large ifwi binary stream!\n");
+		ret = -EINVAL;
+		goto fail;
+	}
+
+	memcpy(ipcdev.fwud_pending->fw_file_data + off, buf, count);
+
+	if (!off)
+		ipcdev.fwud_pending->fsize = count;
+	else
+		ipcdev.fwud_pending->fsize += count;
+
+	mutex_unlock(&ipclock);
+	return count;
+
+fail:
+	if (ipcdev.fwud_pending) {
+		kfree(ipcdev.fwud_pending->fw_file_data);
+		kfree(ipcdev.fwud_pending->dnx_hdr);
+		kfree(ipcdev.fwud_pending->dnx_file_data);
+		kfree(ipcdev.fwud_pending);
+		ipcdev.fwud_pending = NULL;
+	}
+end:
+	mutex_unlock(&ipclock);
+	return ret;
+}
+
+static ssize_t read_ifwi(struct file *file, struct kobject *kobj,
+		struct bin_attribute *attr, char *buf,
+			loff_t off, size_t count)
+{
+	if (ipcdev.fwud_pending) {
+		const size_t size = ipcdev.fwud_pending->fsize;
+
+		if (off >= size)
+			return 0;
+
+		if (off + count > size)
+			count = size - off;
+
+		memcpy(buf, ipcdev.fwud_pending->fw_file_data + off, count);
+	}
+	return count;
+}
+
+static ssize_t read_dnx_hdr(struct file *file, struct kobject *kobj,
+		struct bin_attribute *attr, char *buf,
+			loff_t off, size_t count)
+{
+	if (ipcdev.fwud_pending) {
+		const size_t size = DNX_HDR_LEN;
+
+		if (off >= size)
+			return 0;
+
+		if (off + count > size)
+			count = size - off;
+
+		memcpy(buf, ipcdev.fwud_pending->dnx_hdr + off, count);
+	}
+	return count;
+}
+static ssize_t intel_scu_ipc_show_medfw_prepare(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	unsigned int size;
+	unsigned int gpFlags = 0;
+	unsigned int xorcs;
+	unsigned char dnxSH[DNX_HDR_LEN] = { 0 };
+
+	if (!ipcdev.fwud_pending) {
+		cur_err("fwud_pending not initialized.\n");
+		return -EINVAL;
+	}
+
+	size = ipcdev.fwud_pending->dnx_size;
+
+	if (!ipcdev.fwud_pending->dnx_hdr) {
+		ipcdev.fwud_pending->dnx_hdr = kmalloc(DNX_HDR_LEN, GFP_KERNEL);
+		if (NULL == ipcdev.fwud_pending->dnx_hdr) {
+			cur_err("alloc dnx_hdr memory failed.");
+			goto end;
+		}
+
+		/* Set GPFlags parameter */
+		gpFlags = gpFlags | (GPF_BIT32 << 31);
+		xorcs = (size ^ gpFlags);
+
+		memcpy((dnxSH + DNX_SIZE_OFFSET), (unsigned char *)(&size), 4);
+		memcpy((dnxSH + GP_FLAG_OFFSET),
+					(unsigned char *)(&gpFlags), 4);
+		memcpy((dnxSH + XOR_CHK_OFFSET), (unsigned char *)(&xorcs), 4);
+
+		/* directly memcpy to dnx_hdr */
+		memcpy(ipcdev.fwud_pending->dnx_hdr, dnxSH, DNX_HDR_LEN);
+	}
+
+	if (find_fuph_header_len(&(ipcdev.fwud_pending->fuph_hdr_len),
+			ipcdev.fwud_pending->fw_file_data,
+			ipcdev.fwud_pending->fsize) < 0) {
+		cur_err("Error, with FUPH header\n");
+		goto fail;
+	}
+
+	return sprintf(buf, "fupd_hdr_len=%d, fsize=%d, dnx_size=%d",
+			ipcdev.fwud_pending->fuph_hdr_len,
+			ipcdev.fwud_pending->fsize,
+			ipcdev.fwud_pending->dnx_size);
+
+fail:
+	kfree(ipcdev.fwud_pending->dnx_hdr);
+end:
+	return sprintf(buf, "%s", "Error in fwud prepare");
+}
+
+
+static ssize_t intel_scu_ipc_show_addr(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	if (msic_sysfs_reg_addr < MIN_MSIC_REG ||
+			msic_sysfs_reg_addr > MAX_MSIC_REG)
+		return sprintf(buf, "%s", "invalid reg addr");
+	else
+		return sprintf(buf, "0x%x", msic_sysfs_reg_addr);
+}
+
+
+static ssize_t intel_scu_ipc_store_addr(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t size)
+{
+	u32 reg_addr;
+	if (sscanf(buf, "%x", &reg_addr) == 1) {
+		if (reg_addr < MIN_MSIC_REG || reg_addr > MAX_MSIC_REG) {
+			cur_err("MSIC reg addr out of range");
+			return -EINVAL;
+		}
+		msic_sysfs_reg_addr = (u16)reg_addr;
+		dev_info(&ipcdev.pdev->dev,
+			"Set MSIC reg addr = 0x%x\n", msic_sysfs_reg_addr);
+	}
+
+	return size;
+}
+
+static ssize_t intel_scu_ipc_show_value(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	uint8_t data;
+	int ret;
+
+	ret = intel_scu_ipc_ioread8(msic_sysfs_reg_addr, &data);
+	if (ret) {
+		cur_err("Error read msic register");
+		return -EFAULT;
+	}
+
+	return sprintf(buf, "msic[%3.3x]=0x%x\n", msic_sysfs_reg_addr, data);
+}
+
+static ssize_t intel_scu_ipc_store_value(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t size)
+{
+	u32 val;
+	u8 data;
+	int ret;
+
+	if (sscanf(buf, "%x", &val) == 1) {
+		if (val > 0xFF) {
+			cur_err("Write data out of range");
+			return -EINVAL;
+		}
+		data = (u8)val;
+		dev_info(&ipcdev.pdev->dev,
+			"Write 0x%x to MSIC reg addr = 0x%x\n",
+			data, msic_sysfs_reg_addr);
+
+		ret = intel_scu_ipc_iowrite8(msic_sysfs_reg_addr, data);
+		if (ret) {
+			cur_err("Error write msic register");
+			return -EFAULT;
+		}
+	}
+
+	return size;
+}
+
+static ssize_t intel_scu_ipc_show_fw_version(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	u8 data[16];
+	int ret;
+	int i;
+	int used = 0;
+
+	ret = intel_scu_ipc_command(IPCMSG_FW_REVISION, 0,
+			NULL, 0, (u32 *)data, 4);
+	if (ret < 0) {
+		cur_err("Error get fw version");
+		return -EINVAL;
+	}
+
+	for (i = 0; i < 16; i++)
+		used += sprintf(buf + used, "%x ", data[i]);
+
+	return used;
+}
+
+static ssize_t intel_scu_ipc_show_last_error(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%s", err_buf);
+}
+
+static struct bin_attribute bin_attr_dnx = {
+	.attr = { .name = "DnX", .mode = S_IWUSR | S_IRUGO},
+	.size = MAX_BIN_BUF_SIZE,
+	.read = read_dnx,
+	.write = write_dnx,
+};
+
+static struct bin_attribute bin_attr_ifwi = {
+	.attr = { .name = "ifwi", .mode = S_IWUSR | S_IRUGO },
+	.size = MAX_BIN_BUF_SIZE,
+	.read = read_ifwi,
+	.write = write_ifwi,
+};
+
+static struct bin_attribute bin_attr_dnx_hdr = {
+	.attr = { .name = "dnx_hdr", .mode = S_IRUGO },
+	.size = MAX_BIN_BUF_SIZE,
+	.read = read_dnx_hdr,
+};
+
+static DEVICE_ATTR(addr, S_IRUGO | S_IWUSR,
+		intel_scu_ipc_show_addr, intel_scu_ipc_store_addr);
+static DEVICE_ATTR(value, S_IRUGO | S_IWUSR,
+		intel_scu_ipc_show_value, intel_scu_ipc_store_value);
+static DEVICE_ATTR(fw_version, S_IRUGO, intel_scu_ipc_show_fw_version, NULL);
+static DEVICE_ATTR(last_error, S_IRUGO, intel_scu_ipc_show_last_error, NULL);
+static DEVICE_ATTR(medfw_prepare, S_IRUGO,
+		intel_scu_ipc_show_medfw_prepare, NULL);
+
+static struct attribute *intel_scu_ipc_attrs[] = {
+	&dev_attr_addr.attr,
+	&dev_attr_value.attr,
+	&dev_attr_fw_version.attr,
+	&dev_attr_last_error.attr,
+	&dev_attr_medfw_prepare.attr,
+	NULL,
+};
+
+static struct attribute_group intel_scu_ipc_attr_group = {
+	.name = "scu_ipc",
+	.attrs = intel_scu_ipc_attrs,
+};
+
+static void intel_scu_sysfs_create(struct pci_dev *dev)
+{
+	int err;
+
+	err = sysfs_create_group(&dev->dev.kobj, &intel_scu_ipc_attr_group);
+	if (err) {
+		dev_err(&dev->dev, "Unable to export sysfs interface, error: %d\n",
+			err);
+		return;
+	}
+
+	err = sysfs_create_bin_file(&dev->dev.kobj, &bin_attr_dnx);
+	if (err) {
+		dev_err(&dev->dev, "Unable to create bin file\n");
+		goto err1;
+	}
+
+	err = sysfs_create_bin_file(&dev->dev.kobj, &bin_attr_ifwi);
+	if (err) {
+		dev_err(&dev->dev, "Unable to create bin file\n");
+		goto err2;
+	}
+
+	err = sysfs_create_bin_file(&dev->dev.kobj, &bin_attr_dnx_hdr);
+	if (err) {
+		dev_err(&dev->dev, "Unable to create bin file\n");
+		goto err3;
+	}
+
+	return;
+err3:
+	sysfs_remove_bin_file(&dev->dev.kobj, &bin_attr_ifwi);
+err2:
+	sysfs_remove_bin_file(&dev->dev.kobj, &bin_attr_dnx);
+err1:
+	sysfs_remove_group(&dev->dev.kobj, &intel_scu_ipc_attr_group);
+}
+
+static void intel_scu_sysfs_remove(struct pci_dev *dev)
+{
+	sysfs_remove_bin_file(&dev->dev.kobj, &bin_attr_dnx_hdr);
+	sysfs_remove_bin_file(&dev->dev.kobj, &bin_attr_ifwi);
+	sysfs_remove_bin_file(&dev->dev.kobj, &bin_attr_dnx);
+	sysfs_remove_group(&dev->dev.kobj, &intel_scu_ipc_attr_group);
+}
+
+static struct dentry *msic_debug_file;
+static struct dentry *msic_all_debug_file;
+static u16 msic_debug_reg_addr;
+static char *msic_all_buf;
+static int kbuf_offset;
+
+/* MSIC read register with DEBUGFS */
+/* Usage : */
+/*    echo "-0x188" > msic && cat msic */
+/*    => read value of register 0x188 */
+static ssize_t msic_debug_read(struct file *filp, char __user *buffer,
+				size_t length, loff_t *off)
+{
+	uint8_t data;
+	char buf[DATA_STRING_LEN];
+	int len;
+	int ret;
+
+	if (*off)
+		return 0;
+
+	ret = intel_scu_ipc_ioread8(msic_debug_reg_addr, &data);
+	if (ret) {
+		dev_err(&ipcdev.pdev->dev,
+			"Error read msic register[%3.3x],ret=%d\n",
+			msic_debug_reg_addr, ret);
+		return -EFAULT;
+	}
+	len = sprintf(buf, "msic[%3.3x]=0x%x\n", msic_debug_reg_addr, data);
+	if (copy_to_user(buffer, buf, len))
+		return -EFAULT;
+	*off = len;
+	return len;
+}
+
+static ssize_t msic_debug_write(struct file *filp,
+		const char __user *buffer, size_t len, loff_t *off)
+{
+	u32 reg_addr;
+	char buf[DATA_STRING_LEN];
+	int ret;
+
+	ret = copy_from_user(buf, buffer, min(sizeof(buf), len));
+	if (ret)
+		return -EFAULT;
+
+	if (buf[0] == '-') {
+		if (sscanf(buf+1, "%x", &reg_addr) == 1) {
+			if (reg_addr < MIN_MSIC_REG
+				|| reg_addr > MAX_MSIC_REG) {
+				dev_err(&ipcdev.pdev->dev,
+					"msic reg addr out of range\n");
+				return -EINVAL;
+			}
+			msic_debug_reg_addr = (u16)reg_addr;
+			dev_err(&ipcdev.pdev->dev,
+				"Set MSIC reg addr=%x\n", msic_debug_reg_addr);
+		}
+	}
+	return len;
+}
+/* Basic function for dumping all MSIC registers */
+/* Called by msic_all_debug_read */
+static void msic_all_debug_dump(void)
+{
+	int i, j;
+	int ret;
+	uint8_t reg_value[4];
+
+	kbuf_offset = 0;
+	for (i = MIN_MSIC_REG ; i <= MAX_MSIC_REG ; i += 4) {
+		ret = intel_scu_ipc_ioread32(i, (u32 *) reg_value);
+		if (ret) {
+			dev_err(&ipcdev.pdev->dev,
+			"Error read msic reg[%x .. %x],ret=%d\n", i, i+3, ret);
+		} else {
+			for (j = 0 ; j < 4 ; j++)
+				kbuf_offset += sprintf(
+						msic_all_buf+kbuf_offset,
+						"[%3.3x]=0x%2.2x\n",
+						i+j,
+						reg_value[j]);
+		}
+	}
+}
+
+/* MSIC dump all registers with DEBUGFS */
+/* Usage : */
+/*    cat msic_all */
+/*    => dump all registers */
+static ssize_t msic_all_debug_read(struct file *filp,
+		char *buffer, size_t length, loff_t *offset)
+{
+	int buf_count;
+
+	if (*offset == 0)
+		/* Dump MSIC registers */
+		msic_all_debug_dump();
+
+	if (*offset >= kbuf_offset) {
+		buf_count = 0;
+		goto end_of_read;
+	} else
+		buf_count = min(length,
+			(unsigned int)(kbuf_offset-(int)*offset));
+
+	if (copy_to_user(buffer, msic_all_buf + *offset, buf_count)) {
+		buf_count = -EFAULT;
+		goto end_of_read;
+	}
+	*offset += buf_count;
+end_of_read:
+	return buf_count;
+}
+
+static const struct file_operations msic_debug_ops = {
+	.write = msic_debug_write,
+	.read = msic_debug_read
+};
+
+static const struct file_operations msic_all_debug_ops = {
+	.read = msic_all_debug_read
+};
+
+static void create_msic_debug_entries(void)
+{
+	msic_debug_file = debugfs_create_file(MSIC_DEBUG_FILE,
+					0644, NULL, NULL, &msic_debug_ops);
+	/* if DEBUGFS is not activated NULL pointer is returned */
+	if (msic_debug_file) {
+		msic_all_debug_file = debugfs_create_file(MSIC_ALL_DEBUG_FILE,
+					0444, NULL, NULL, &msic_all_debug_ops);
+		msic_all_buf = kmalloc((MAX_MSIC_REG - MIN_MSIC_REG + 1)*40,
+						GFP_KERNEL);
+		if (!msic_all_buf) {
+			dev_err(&ipcdev.pdev->dev, "Error allocate memory\n");
+			return;
+		}
+		msic_debug_reg_addr = MIN_MSIC_REG;
+	} else {
+		/* DEBUGFS not activated, nothing to be done */
+	}
+}
+
+static void remove_msic_debug_entries(void)
+{
+	kfree(msic_all_buf);
+	debugfs_remove(msic_debug_file);
+	debugfs_remove(msic_all_debug_file);
+}
 
 #define OSHOB_SIZE		60
 #define OSNIB_SIZE		32
@@ -1380,11 +2064,10 @@ int intel_scu_ipc_read_oshob(u8 *data, int len, int offset)
 	int ret, i;
 	u32 oshob_base;
 	void __iomem *oshob_addr;
-	pr_info("Get osHOB address------->-------------->");
 	ret = intel_scu_ipc_command(IPCMSG_GET_HOBADDR, 0,
 				NULL, 0, &oshob_base, 1);
 	if (ret < 0) {
-		pr_err("ipc_read_osnib failed!!\n");
+		pr_err("ipc_read_oshob failed!!\n");
 		goto exit;
 	}
 	pr_info("OSHOB addr values is %x\n", oshob_base);
@@ -1397,9 +2080,8 @@ int intel_scu_ipc_read_oshob(u8 *data, int len, int offset)
 		u8 *ptr = data;
 		for (i = 0; i < len; i = i+1) {
 			*ptr = readb(oshob_addr + offset + i);
-			pr_info("addr=%x, offset=%x, value=%x\n",
+			pr_info("addr=%8x, offset=%2x, value=%2x\n",
 				(u32)(oshob_addr+i), offset+i, *ptr);
-			pr_info("--------------------------------------\n");
 			ptr++;
 		}
 	}
@@ -1411,7 +2093,6 @@ EXPORT_SYMBOL_GPL(intel_scu_ipc_read_oshob);
 
 #define IPCMSG_WRITE_OSNIB	0xE4
 #define POSNIBW_OFFSET		0x34
-#define IPCREG_IPC_SPTR		0xFF11C008
 
 int intel_scu_ipc_write_osnib(u8 *data, int len, int offset, u32 mask)
 {
@@ -1421,9 +2102,7 @@ int intel_scu_ipc_write_osnib(u8 *data, int len, int offset, u32 mask)
 	u32 oshob_base;
 	void __iomem *oshob_addr;
 	void __iomem *osnibw_addr;
-	void __iomem *sptr_addr;
 
-	pr_info("Get osHOB address------->-------------->");
 	ret = intel_scu_ipc_command(IPCMSG_GET_HOBADDR, 0,
 				NULL, 0, &oshob_base, 1);
 	if (ret < 0) {
@@ -1431,6 +2110,9 @@ int intel_scu_ipc_write_osnib(u8 *data, int len, int offset, u32 mask)
 		goto exit;
 	}
 	pr_info("OSHOB addr values is %x\n", oshob_base);
+
+	mutex_lock(&ipclock);
+
 	oshob_addr = ioremap_nocache(oshob_base, OSHOB_SIZE);
 	if (!oshob_addr) {
 		pr_err("ioremap failed!\n");
@@ -1451,23 +2133,18 @@ int intel_scu_ipc_write_osnib(u8 *data, int len, int offset, u32 mask)
 	}
 	for (i = 0; i < len; i++)
 		writeb(*(data + i), (osnibw_addr + offset + i));
-	sptr_addr = ioremap_nocache(IPCREG_IPC_SPTR, sizeof(u32));
-	if (!sptr_addr) {
-		pr_err("ioremap failed\n");
-		ret = -ENOMEM;
-		goto unmap_osnibw_addr;
-	};
-	writel(mask, sptr_addr);
-	ret = intel_scu_ipc_command(IPCMSG_WRITE_OSNIB, 0,
-				NULL, 0 , NULL, 0);
+
+	writel(mask, ipcdev.ipc_base + IPC_SPTR_ADDR);
+
+	ipc_command(IPCMSG_WRITE_OSNIB);
+	ret = ipc_wait_interrupt();
 	if (ret < 0)
 		pr_err("ipc_write_osnib failed!!\n");
-	iounmap(sptr_addr);
-unmap_osnibw_addr:
-	iounmap(osnibw_addr);
+
 unmap_oshob_addr:
 	iounmap(oshob_addr);
 exit:
+	mutex_unlock(&ipclock);
 	return ret;
 }
 EXPORT_SYMBOL_GPL(intel_scu_ipc_write_osnib);
@@ -1481,7 +2158,6 @@ EXPORT_SYMBOL_GPL(intel_scu_ipc_write_osnib);
  */
 static irqreturn_t ioc(int irq, void *dev_id)
 {
-	ipcdev.status = ipc_read_status();
 	complete(&ipcdev.cmd_complete);
 	return IRQ_HANDLED;
 }
@@ -1541,6 +2217,10 @@ static int ipc_probe(struct pci_dev *dev, const struct pci_device_id *id)
 
 	intel_scu_devices_create();
 
+	create_msic_debug_entries();
+
+	intel_scu_sysfs_create(dev);
+
 	return 0;
 }
 
@@ -1556,6 +2236,8 @@ static int ipc_probe(struct pci_dev *dev, const struct pci_device_id *id)
  */
 static void ipc_remove(struct pci_dev *pdev)
 {
+	intel_scu_sysfs_remove(pdev);
+	remove_msic_debug_entries();
 	free_irq(pdev->irq, &ipcdev);
 	pci_release_regions(pdev);
 	pci_dev_put(ipcdev.pdev);

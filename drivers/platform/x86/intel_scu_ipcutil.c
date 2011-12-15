@@ -42,9 +42,12 @@
 #define INTEL_SCU_IPC_READ_RR_FROM_OSNIB	0xC1
 #define INTEL_SCU_IPC_WRITE_RR_TO_OSNIB	0xC2
 #define INTEL_SCU_IPC_READ_VBATTCRIT	0xC4
+#define INTEL_SCU_IPC_WRITE_ALARM_FLAG_TO_OSNIB 0xC5
 
 #define OSNIB_OFFSET			0x0C
+#define OSNIB_ALARM_OFFSET		(OSNIB_OFFSET + 2)
 #define OSNIB_RR_MASK			0xF
+#define OSNIB_ALARM_MASK		0x04
 
 struct scu_ipc_data {
 	u32     count;  /* No. of registers */
@@ -69,22 +72,27 @@ struct scu_ipc_version {
 
 static int scu_reg_access(u32 cmd, struct scu_ipc_data  *data)
 {
-	int count = data->count;
+	int ret;
 
-	if (count == 0 || count == 3 || count > 4)
+	if (data->count == 0 || data->count > 5)
 		return -EINVAL;
 
 	switch (cmd) {
 	case INTEL_SCU_IPC_REGISTER_READ:
-		return intel_scu_ipc_readv(data->addr, data->data, count);
+		ret = intel_scu_ipc_readv(data->addr, data->data, data->count);
+		break;
 	case INTEL_SCU_IPC_REGISTER_WRITE:
-		return intel_scu_ipc_writev(data->addr, data->data, count);
+		ret = intel_scu_ipc_writev(data->addr, data->data, data->count);
+		break;
 	case INTEL_SCU_IPC_REGISTER_UPDATE:
-		return intel_scu_ipc_update_register(data->addr[0],
-						    data->data[0], data->mask);
+		ret = intel_scu_ipc_update_register(data->addr[0],
+							data->data[0],
+							data->mask);
+		break;
 	default:
 		return -ENOTTY;
 	}
+	return ret;
 }
 
 /**
@@ -98,11 +106,10 @@ static int scu_reg_access(u32 cmd, struct scu_ipc_data  *data)
 static long scu_ipc_ioctl(struct file *fp, unsigned int cmd,
 							unsigned long arg)
 {
-	int ret = 0;
+	int ret = -EINVAL;
 	struct scu_ipc_data  data;
 	void __user *argp = (void __user *)arg;
 	int platform;
-	struct pci_dev *pdev;
 
 	if (!capable(CAP_SYS_RAWIO))
 		return -EPERM;
@@ -146,6 +153,24 @@ static long scu_ipc_ioctl(struct file *fp, unsigned int cmd,
 		ret = intel_scu_ipc_write_osnib(&data, 1, 0, OSNIB_RR_MASK);
 		break;
 	}
+	case INTEL_SCU_IPC_WRITE_ALARM_FLAG_TO_OSNIB:
+	{
+		u8 flag, data;
+		ret = copy_from_user(&flag, (u8 *)arg, 1);
+		if (ret < 0) {
+			pr_err("copy from user failed!!\n");
+			return ret;
+		}
+		ret = intel_scu_ipc_read_oshob(&data, 1, OSNIB_ALARM_OFFSET);
+		if (ret < 0)
+			return ret;
+		if (flag)
+			data = data | 0x1; /* set alarm flag */
+		else
+			data = data & 0xFE; /* clear alarm flag */
+		ret = intel_scu_ipc_write_osnib(&data, 1, 2, OSNIB_ALARM_MASK);
+		break;
+	}
 	case INTEL_SCU_IPC_READ_VBATTCRIT:
 	{
 		u32 value;
@@ -161,17 +186,6 @@ static long scu_ipc_ioctl(struct file *fp, unsigned int cmd,
 	case INTEL_SCU_IPC_MEDFIELD_FW_UPDATE:
 	{
 		if (platform == MRST_CPU_CHIP_PENWELL) {
-			pdev = NULL;
-			while ((pdev = pci_get_device(PCI_ANY_ID, PCI_ANY_ID,
-						pdev)) != NULL) {
-				ret = pm_runtime_get_sync(&pdev->dev);
-				if (ret < 0) {
-					pr_debug("pm_runtime_get_sync failed: %s!!\n",
-						pdev->driver->name);
-					return ret;
-				}
-			}
-
 			ret = intel_scu_ipc_medfw_prepare(argp);
 
 			if (ret < 0) {

@@ -25,6 +25,18 @@
 #define IPC_CMD_PCNTRL_R      1 /* Register read */
 #define IPC_CMD_PCNTRL_M      2 /* Register read-modify-write */
 
+#define IPC_ERR_NONE			0
+#define IPC_ERR_CMD_NOT_SUPPORTED	1
+#define IPC_ERR_CMD_NOT_SERVICED	2
+#define IPC_ERR_UNABLE_TO_SERVICE	3
+#define IPC_ERR_CMD_INVALID		4
+#define IPC_ERR_CMD_FAILED		5
+#define IPC_ERR_EMSECURITY		6
+
+#define MSIC_DEBUG_FILE "msic"
+#define MSIC_ALL_DEBUG_FILE "msic_all"
+#define MAX_MSIC_REG   0x3FF
+#define MIN_MSIC_REG   0x0
 
 
 
