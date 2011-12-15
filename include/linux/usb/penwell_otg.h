@@ -126,6 +126,7 @@
 #define	ULPI_OTGCTRL		0x0a
 #define	ULPI_OTGCTRLSET		0x0b
 #define	ULPI_OTGCTRLCLR		0x0c
+#	define DRVVBUS			BIT(5)
 #	define DMPULLDOWN		BIT(2)
 #	define DPPULLDOWN		BIT(1)
 #define MSIC_USBINTEN_RISE	0x39d
@@ -134,6 +135,19 @@
 #define MSIC_USBINTEN_FALL	0x3a0
 #define MSIC_USBINTEN_FALLSET	0x3a1
 #define MSIC_USBINTEN_FALLCLR	0x3a2
+
+/*
+ * For Clovertrail, due to change of USB PHY from MSIC to external standalone
+ * chip, USB Interrupt Enable Rising/Falling registers can be accessed only
+ * from ULPI interface.
+ */
+#define ULPI_USBINTEN_RISING		0xd
+#define ULPI_USBINTEN_RISINGSET		0xe
+#define ULPI_USBINTEN_RISINGCLR		0xf
+#define ULPI_USBINTEN_FALLING		0xa
+#define ULPI_USBINTEN_FALLINGSET	0xb
+#define ULPI_USBINTEN_FALLINGCLR	0xc
+
 #	define IDGND			BIT(4)
 #	define SESSEND			BIT(3)
 #	define SESSVLD			BIT(2)
@@ -362,6 +376,11 @@ struct otg_bc_cap {
 #define USBCHRG_EVENT_RESUME	4
 #define USBCHRG_EVENT_UPDATE	5
 
+struct cloverview_usb_otg_pdata {
+	int gpio_cs;
+	int gpio_reset;
+};
+
 struct penwell_otg {
 	struct intel_mid_otg_xceiv	iotg;
 	struct device			*dev;
@@ -395,6 +414,8 @@ struct penwell_otg {
 	void				*bc_arg;
 
 	unsigned			rt_resuming;
+
+	struct cloverview_usb_otg_pdata *otg_pdata;
 
 	struct wake_lock		wake_lock;
 };

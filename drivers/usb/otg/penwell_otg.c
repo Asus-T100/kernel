@@ -28,6 +28,7 @@
 #include <linux/kernel.h>
 #include <linux/device.h>
 #include <linux/moduleparam.h>
+#include <linux/gpio.h>
 #include <linux/usb/ch9.h>
 #include <linux/usb/gadget.h>
 #include <linux/usb.h>
@@ -38,6 +39,7 @@
 #include <linux/pm_runtime.h>
 #include <linux/wakelock.h>
 #include <asm/intel_scu_ipc.h>
+#include <asm/mrst.h>
 #include "../core/usb.h"
 
 #include <linux/usb/penwell_otg.h>
@@ -62,6 +64,17 @@ static int penwell_otg_start_srp(struct otg_transceiver *otg);
 static void penwell_otg_mon_bus(void);
 
 static int penwell_otg_msic_write(u16 addr, u8 data);
+
+static void penwell_otg_phy_low_power(int on);
+static int penwell_otg_ulpi_read(struct intel_mid_otg_xceiv *iotg,
+				u8 reg, u8 *val);
+static int penwell_otg_ulpi_write(struct intel_mid_otg_xceiv *iotg,
+				u8 reg, u8 val);
+
+static inline int is_clovertrail(struct pci_dev *pdev)
+{
+	return (pdev->vendor == 0x8086 && pdev->device == 0xE006);
+}
 
 static const char *state_string(enum usb_otg_state state)
 {
@@ -409,6 +422,22 @@ static int penwell_otg_set_vbus(struct otg_transceiver *otg, bool enabled)
 
 	dev_dbg(pnw->dev, "%s ---> %s\n", __func__, enabled ? "on" : "off");
 
+	/*
+	 * For Clovertrail, VBUS is driven by TPS2052 power switch chip.
+	 * But TPS2052 is controlled by ULPI PHY.
+	 */
+	if (is_clovertrail(to_pci_dev(pnw->dev))) {
+		penwell_otg_phy_low_power(0);
+		if (enabled)
+			penwell_otg_ulpi_write(&pnw->iotg,
+					ULPI_OTGCTRLSET, DRVVBUS);
+		else
+			penwell_otg_ulpi_write(&pnw->iotg,
+					ULPI_OTGCTRLCLR, DRVVBUS);
+		retval = 0;
+		goto done;
+	}
+
 	data = enabled ? VOTGEN : 0;
 
 	mutex_lock(&pnw->msic_mutex);
@@ -420,6 +449,7 @@ static int penwell_otg_set_vbus(struct otg_transceiver *otg, bool enabled)
 
 	mutex_unlock(&pnw->msic_mutex);
 
+done:
 	dev_dbg(pnw->dev, "%s <---\n", __func__);
 
 	return retval;
@@ -709,9 +739,12 @@ static void penwell_otg_phy_low_power(int on)
 }
 
 /*
- * VBUS330 is the power rail to otg transceiver, set it into low power mode
- * or normal mode according to pm state. Call this function when spi access
- * to MSIC registers is enabled.
+ * For Penwell, VBUS330 is the power rail to otg PHY inside MSIC, set it
+ * into low power mode or normal mode according to pm state.
+ * Call this function when spi access to MSIC registers is enabled.
+ *
+ * For Clovertrail, otg PHY is a standalone chip(tusb1211) which can be
+ * enabled/disabled by controlling the CS or CS_N pin.
  */
 static int penwell_otg_vusb330_low_power(int on)
 {
@@ -721,12 +754,19 @@ static int penwell_otg_vusb330_low_power(int on)
 
 	dev_dbg(pnw->dev, "%s ---> %s\n", __func__, on ? "on" : "off");
 
-	if (on)
-		data = 0x5; /* Low power mode */
-	else
-		data = 0x7; /* Normal mode */
-
-	retval = penwell_otg_msic_write(MSIC_VUSB330CNT, data);
+	if (is_clovertrail(to_pci_dev(pnw->dev))) {
+		if (on)
+			gpio_set_value(pnw->otg_pdata->gpio_cs, 1);
+		else
+			gpio_set_value(pnw->otg_pdata->gpio_cs, 0);
+		retval = 0;
+	} else {
+		if (on)
+			data = 0x5; /* Low power mode */
+		else
+			data = 0x7; /* Normal mode */
+		retval = penwell_otg_msic_write(MSIC_VUSB330CNT, data);
+	}
 
 	dev_dbg(pnw->dev, "%s <---\n", __func__);
 
@@ -1139,6 +1179,7 @@ static int penwell_otg_manual_charger_detection(void)
 void penwell_otg_phy_vbus_wakeup(bool on)
 {
 	struct penwell_otg	*pnw = the_transceiver;
+	struct intel_mid_otg_xceiv  *iotg = &pnw->iotg;
 	u8			flag = 0;
 
 	dev_dbg(pnw->dev, "%s --->\n", __func__);
@@ -1147,12 +1188,26 @@ void penwell_otg_phy_vbus_wakeup(bool on)
 
 	flag = VBUSVLD | SESSVLD | SESSEND;
 
-	if (on) {
-		penwell_otg_msic_write(MSIC_USBINTEN_RISESET, flag);
-		penwell_otg_msic_write(MSIC_USBINTEN_FALLSET, flag);
+	if (is_clovertrail(to_pci_dev(pnw->dev))) {
+		if (on) {
+			penwell_otg_ulpi_write(iotg, ULPI_USBINTEN_RISINGSET,
+						flag);
+			penwell_otg_ulpi_write(iotg, ULPI_USBINTEN_FALLINGSET,
+						flag);
+		} else {
+			penwell_otg_ulpi_write(iotg, ULPI_USBINTEN_RISINGCLR,
+						flag);
+			penwell_otg_ulpi_write(iotg, ULPI_USBINTEN_FALLINGCLR,
+						flag);
+		}
 	} else {
-		penwell_otg_msic_write(MSIC_USBINTEN_RISECLR, flag);
-		penwell_otg_msic_write(MSIC_USBINTEN_FALLCLR, flag);
+		if (on) {
+			penwell_otg_msic_write(MSIC_USBINTEN_RISESET, flag);
+			penwell_otg_msic_write(MSIC_USBINTEN_FALLSET, flag);
+		} else {
+			penwell_otg_msic_write(MSIC_USBINTEN_RISECLR, flag);
+			penwell_otg_msic_write(MSIC_USBINTEN_FALLCLR, flag);
+		}
 	}
 
 	penwell_otg_msic_spi_access(false);
@@ -1873,22 +1928,37 @@ static void penwell_otg_work(struct work_struct *work)
 
 			/* Start USB Battery charger detection flow */
 
-			mutex_lock(&pnw->msic_mutex);
-			if (pdev->revision >= 0x8) {
-				retval = penwell_otg_manual_charger_detection();
+			/* We need new charger detection flow for Clovertrail.
+			 * But for now(power-on), we just skip it.
+			 * Later on we'll figure it out.
+			 */
+			if (!is_clovertrail(pdev)) {
+				mutex_lock(&pnw->msic_mutex);
+				if (pdev->revision >= 0x8) {
+					retval =
+					penwell_otg_manual_charger_detection();
+				} else {
+					/* Enable data contact detection */
+					penwell_otg_data_contact_detect();
+					/* Enable charger detection */
+					penwell_otg_charger_detect();
+					retval =
+					penwell_otg_charger_type_detect();
+				}
+				mutex_unlock(&pnw->msic_mutex);
+				if (retval < 0) {
+					dev_warn(pnw->dev, "Charger detect failure\n");
+					break;
+				} else {
+					charger_type = retval;
+				}
 			} else {
-				/* Enable data contact detection */
-				penwell_otg_data_contact_detect();
-				/* Enable charger detection functionality */
-				penwell_otg_charger_detect();
-				retval = penwell_otg_charger_type_detect();
+				/*
+				 * Force CHRG_SDP for Clovertrail,
+				 * need fix later.
+				 */
+				charger_type = CHRG_SDP;
 			}
-			mutex_unlock(&pnw->msic_mutex);
-			if (retval < 0) {
-				dev_warn(pnw->dev, "Charger detect failure\n");
-				break;
-			} else
-				charger_type = retval;
 
 			if (charger_type == CHRG_DCP) {
 				dev_info(pnw->dev, "DCP detected\n");
@@ -3289,6 +3359,7 @@ static int penwell_otg_probe(struct pci_dev *pdev,
 	unsigned long		resource, len;
 	void __iomem		*base = NULL;
 	int			retval;
+	int			ret;
 	u32			val32;
 	struct penwell_otg	*pnw;
 	char			qname[] = "penwell_otg_queue";
@@ -3397,14 +3468,51 @@ static int penwell_otg_probe(struct pci_dev *pdev,
 		goto err;
 	}
 
+	/* Set up gpio for Clovertrail */
+	if (is_clovertrail(pdev)) {
+		pnw->otg_pdata = (struct cloverview_usb_otg_pdata *)
+				cloverview_usb_otg_get_pdata();
+		if (pnw->otg_pdata == NULL) {
+			dev_err(pnw->dev, "Failed to get OTG platform data.\n");
+			retval = -ENODEV;
+			goto err;
+		}
+		ret = gpio_request(pnw->otg_pdata->gpio_reset,
+					"usb_otg_phy_reset");
+		if (ret < 0) {
+			dev_err(pnw->dev, "request gpio(%d) for usb otg phy reset "
+				"failed\n", pnw->otg_pdata->gpio_reset);
+			retval = -ENODEV;
+			goto err;
+		}
+		ret = gpio_request(pnw->otg_pdata->gpio_cs, "usb_otg_phy_cs");
+		if (ret < 0) {
+			dev_err(pnw->dev, "request gpio(%d) for usb otg phy cs "
+				"failed\n", pnw->otg_pdata->gpio_cs);
+			gpio_free(pnw->otg_pdata->gpio_reset);
+			retval = -ENODEV;
+			goto err;
+		}
+		/* Drive CS pin to high */
+		gpio_direction_output(pnw->otg_pdata->gpio_cs, 1);
+
+		/* Reset the PHY (minimal reset width: 100us) */
+		gpio_direction_output(pnw->otg_pdata->gpio_reset, 0);
+		usleep_range(200, 500);
+		gpio_set_value(pnw->otg_pdata->gpio_reset, 1);
+	}
+
 	mutex_init(&pnw->msic_mutex);
 	pnw->msic = penwell_otg_check_msic();
 
 	penwell_otg_phy_low_power(0);
-	/* Workaround for ULPI lockup issue, need turn off PHY 4ms */
-	penwell_otg_phy_enable(0);
-	usleep_range(4000, 4500);
-	penwell_otg_phy_enable(1);
+
+	if (!is_clovertrail(pdev)) {
+		/* Workaround for ULPI lockup issue, need turn off PHY 4ms */
+		penwell_otg_phy_enable(0);
+		usleep_range(4000, 4500);
+		penwell_otg_phy_enable(1);
+	}
 
 	/* Enable ID pullup immediately after reeable PHY */
 	val32 = readl(pnw->iotg.base + CI_OTGSC);
@@ -3416,11 +3524,17 @@ static int penwell_otg_probe(struct pci_dev *pdev,
 	penwell_otg_phy_low_power(1);
 	msleep(100);
 
-	/* enable ACA device detection */
-	penwell_otg_aca_enable();
+	/* ACA is automatically enabled inside tusb1211 */
+	if (!is_clovertrail(pdev)) {
+		/* enable ACA device detection */
+		penwell_otg_aca_enable();
+	}
 
 	reset_otg();
 	init_hsm();
+
+	/* we need to set active early or the first irqs will be ignored */
+	pm_runtime_set_active(&pdev->dev);
 
 	if (request_irq(pdev->irq, otg_irq, IRQF_SHARED,
 				driver_name, pnw) != 0) {
@@ -3469,7 +3583,6 @@ static int penwell_otg_probe(struct pci_dev *pdev,
 	penwell_update_transceiver();
 
 	return 0;
-
 err:
 	if (the_transceiver)
 		penwell_otg_remove(pdev);
@@ -3503,6 +3616,8 @@ static void penwell_otg_remove(struct pci_dev *pdev)
 	if (pnw->region)
 		release_mem_region(pci_resource_start(pdev, 0),
 				pci_resource_len(pdev, 0));
+	if (is_clovertrail(pdev) && pnw->otg_pdata != NULL)
+		kfree(pnw->otg_pdata);
 
 	otg_set_transceiver(NULL);
 	pci_disable_device(pdev);
@@ -3520,13 +3635,15 @@ void penwell_otg_shutdown(struct pci_dev *pdev)
 
 	dev_dbg(pnw->dev, "%s --->\n", __func__);
 
-	/* Disable MSIC Interrupt Notifications */
-	penwell_otg_msic_spi_access(true);
+	if (!is_clovertrail(pdev)) {
+		/* Disable MSIC Interrupt Notifications */
+		penwell_otg_msic_spi_access(true);
 
-	penwell_otg_msic_write(MSIC_INT_EN_RISE_CLR, 0x1F);
-	penwell_otg_msic_write(MSIC_INT_EN_FALL_CLR, 0x1F);
+		penwell_otg_msic_write(MSIC_INT_EN_RISE_CLR, 0x1F);
+		penwell_otg_msic_write(MSIC_INT_EN_FALL_CLR, 0x1F);
 
-	penwell_otg_msic_spi_access(false);
+		penwell_otg_msic_spi_access(false);
+	}
 
 	dev_dbg(pnw->dev, "%s <---\n", __func__);
 }
@@ -3861,7 +3978,16 @@ static const struct pci_device_id pci_ids[] = {{
 	.device =	0x0829,
 	.subvendor =	PCI_ANY_ID,
 	.subdevice =	PCI_ANY_ID,
-}, { /* end: all zeroes */ }
+	},
+	{ /* Cloverview */
+		.class =        ((PCI_CLASS_SERIAL_USB << 8) | 0x20),
+		.class_mask =   ~0,
+		.vendor =	0x8086,
+		.device =	0xE006,
+		.subvendor =	PCI_ANY_ID,
+		.subdevice =	PCI_ANY_ID,
+	},
+	{ /* end: all zeroes */ }
 };
 
 static const struct dev_pm_ops penwell_otg_pm_ops = {
