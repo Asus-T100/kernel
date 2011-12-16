@@ -2043,6 +2043,8 @@ static int mt9e013_probe(struct i2c_client *client,
 		return -ENOMEM;
 	}
 
+	mutex_init(&dev->input_lock);
+
 	dev->fmt_idx = 0;
 	v4l2_i2c_subdev_init(&(dev->sd), client, &mt9e013_ops);
 
@@ -2067,8 +2069,6 @@ static int mt9e013_probe(struct i2c_client *client,
 		mt9e013_remove(client);
 		return ret;
 	}
-
-	mutex_init(&dev->input_lock);
 
 	return 0;
 }
