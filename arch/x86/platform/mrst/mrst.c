@@ -1846,6 +1846,7 @@ static int __init sfi_parse_devs(struct sfi_table_header *table)
 	struct i2c_board_info i2c_info;
 	struct hsi_board_info hsi_info;
 	struct sd_board_info sd_info;
+	struct platform_device *pdev;
 	int num, i, bus;
 	int ioapic;
 	struct io_apic_irq_attr irq_attr;
@@ -1962,6 +1963,19 @@ static int __init sfi_parse_devs(struct sfi_table_header *table)
 			;
 		}
 	}
+
+#ifdef CONFIG_LEDS_INTEL_KPD
+	pdev = platform_device_alloc("intel_kpd_led", 0);
+	if (!pdev)
+		pr_err("out of memory for SFI platform dev 'intel_kpd_led'.\n");
+	else {
+		install_irq_resource(pdev, 0xff);
+		pr_info("info[%2d]: IPC bus, name = %16.16s, "
+			"irq = 0x%2x\n", i, "intel_kpd_led", pentry->irq);
+		intel_scu_device_register(pdev);
+	}
+#endif
+
 	return 0;
 }
 

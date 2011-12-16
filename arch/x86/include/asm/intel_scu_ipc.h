@@ -116,10 +116,6 @@ static inline int intel_scu_notifier_post(unsigned long v, void *p)
 #define MSIC_VPROG_ON		0xFF
 #define MSIC_VPROG_OFF		0
 
-#define MSIC_REG_PWM0CLKDIV1 0x61
-#define MSIC_REG_PWM0CLKDIV0 0x62
-#define MSIC_REG_PWM0DUTYCYCLE 0x67
-
 /* Helpers to turn on/off msic vprog1 and vprog2 */
 static inline int intel_scu_ipc_msic_vprog1(int on)
 {
