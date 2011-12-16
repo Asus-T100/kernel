@@ -3416,6 +3416,13 @@ static int langwell_udc_probe(struct pci_dev *pdev,
 	}
 
 	dev->has_sram = 1;
+
+	/* FIXME: SRAM doesn't work stably with Cloverview */
+	if (pdev->vendor == 0x8086 && pdev->device == 0xE006) {
+		dev_info(&pdev->dev, "Disable SRAM for Cloverview.\n");
+		dev->has_sram = 0;
+	}
+
 	dev->got_sram = 0;
 	dev_vdbg(&dev->pdev->dev, "dev->has_sram: %d\n", dev->has_sram);
 
