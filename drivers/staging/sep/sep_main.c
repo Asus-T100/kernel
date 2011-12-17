@@ -3506,7 +3506,6 @@ static int __devinit sep_probe(struct pci_dev *pdev,
 
 	dev_dbg(&sep->pdev->dev, "sep probe: PCI obtained, "
 		"device being prepared\n");
-	dev_dbg(&sep->pdev->dev, "revision is %d\n", sep->pdev->revision);
 
 	/* Set up our register area */
 	sep->reg_physical_addr = pci_resource_start(sep->pdev, 0);
@@ -3569,11 +3568,9 @@ static int __devinit sep_probe(struct pci_dev *pdev,
 		goto end_function_deallocate_sep_shared_area;
 
 	/* The new chip requires a shared area reconfigure */
-	if (sep->pdev->revision != 0) { /* Only for new chip */
-		error = sep_reconfig_shared_area(sep);
-		if (error)
-			goto end_function_free_irq;
-	}
+	error = sep_reconfig_shared_area(sep);
+	if (error)
+		goto end_function_free_irq;
 
 	/* Finally magic up the device nodes */
 	/* Register driver with the fs */
@@ -3652,7 +3649,8 @@ static void sep_remove(struct pci_dev *pdev)
 
 /* Initialize struct pci_device_id for our driver */
 static DEFINE_PCI_DEVICE_TABLE(sep_pci_id_tbl) = {
-	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, MFLD_PCI_DEVICE_ID)},
+	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x0826)},
+	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x08e9)},
 	{0}
 };
 
