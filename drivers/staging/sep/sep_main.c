@@ -186,9 +186,9 @@ static int sep_allocate_dmatables_region(struct sep_device *sep,
 					 struct sep_dma_context *dma_ctx,
 					 const u32 table_count)
 {
-	const size_t new_len =  table_count *
-				sizeof(struct sep_lli_entry) *
-				SEP_DRIVER_ENTRIES_PER_TABLE_IN_SEP;
+	const size_t new_len =
+		SYNCHRONIC_DMA_TABLES_AREA_SIZE_BYTES - 1;
+
 	void *tmp_region = NULL;
 
 	dev_dbg(&sep->pdev->dev, "[PID%d] dma_ctx = 0x%p\n",
