@@ -42,6 +42,31 @@ static int ehci_hub_control(
 	u16		wLength
 );
 
+/* ehci_sync_sof - Wait for the next SOF start time before
+*  writing PORT_RESUME bit, this is to prevent
+*  SOF from appearing too ealy after the resume
+*  and causing some disconnection.
+*/
+static void ehci_sync_sof(struct ehci_hcd *ehci)
+{
+	int i = 0;
+
+	/* Clear SRI Bit first */
+	ehci_writel(ehci,
+		ehci_readl(ehci, &ehci->regs->status)|BIT(7),
+			&ehci->regs->status);
+	/* Busy wait SRI bit to 1 again, timeout after 250 us */
+	while (!(ehci_readl(ehci, &ehci->regs->status) & BIT(7))
+			&& i < 50){
+		udelay(5);
+		i++;
+	}
+	if (i == 50)
+		ehci_warn(ehci, "SRI busy wait, TIMEOUT, but try to continue\n");
+	/* Delay 10 us after SRI bit is 1 */
+	udelay(10);
+}
+
 /* After a power loss, ports that were owned by the companion must be
  * reset so that the companion can still own them.
  */
@@ -423,6 +448,7 @@ static int ehci_bus_resume (struct usb_hcd *hcd)
 				(temp & PORT_SUSPEND)) {
 			temp |= PORT_RESUME;
 			set_bit(i, &resume_needed);
+			ehci_sync_sof(ehci);
 		}
 		ehci_writel(ehci, temp, &ehci->regs->port_status [i]);
 	}
@@ -834,6 +860,9 @@ static int ehci_hub_control (
 			}
 			/* resume signaling for 20 msec */
 			temp &= ~(PORT_RWC_BITS | PORT_WAKE_BITS);
+
+			ehci_sync_sof(ehci);
+
 			ehci_writel(ehci, temp | PORT_RESUME, status_reg);
 			ehci->reset_done[wIndex] = jiffies
 					+ msecs_to_jiffies(20);
