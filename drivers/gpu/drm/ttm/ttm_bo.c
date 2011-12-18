@@ -378,6 +378,7 @@ static int ttm_bo_handle_move_mem(struct ttm_buffer_object *bo,
 	struct ttm_mem_type_manager *old_man = &bdev->man[bo->mem.mem_type];
 	struct ttm_mem_type_manager *new_man = &bdev->man[mem->mem_type];
 	int ret = 0;
+	int i;
 
 	if (old_is_pci || new_is_pci ||
 	    ((mem->placement & bo->mem.placement & TTM_PL_MASK_CACHING) == 0)) {
