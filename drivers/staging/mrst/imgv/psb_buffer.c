@@ -226,6 +226,7 @@ static int drm_psb_tbe_populate(struct ttm_backend *backend,
 				struct page *dummy_read_page,
 				dma_addr_t *dma_addrs)
 {
+	int i;
 	struct drm_psb_ttm_backend *psb_be =
 		container_of(backend, struct drm_psb_ttm_backend, base);
 
