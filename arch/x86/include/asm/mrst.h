@@ -103,6 +103,8 @@ extern u32 mfld_board_id (void);
 #define SFI_MTMR_MAX_NUM 8
 #define SFI_MRTC_MAX	8
 
+extern unsigned char hsu_dma_enable;
+
 extern struct console early_mrst_console;
 extern void mrst_early_console_init(void);
 

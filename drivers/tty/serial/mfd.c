@@ -58,11 +58,6 @@
 
 #define HSU_DMA_TIMEOUT_CHECK_FREQ	(HZ/10)
 
-static int hsu_dma_enable = 0x03;
-module_param(hsu_dma_enable, int, 0);
-MODULE_PARM_DESC(hsu_dma_enable,
-		 "It is a bitmap to set working mode, if bit[x] is 1, then port[x] will work in DMA mode, otherwise in PIO mode.");
-
 struct hsu_dma_buffer {
 	u8		*buf;
 	dma_addr_t	dma_addr;
@@ -203,7 +198,16 @@ static inline int dmarx_need_timer(void)
 	return (boot_cpu_data.x86_mask == 0);
 }
 
-static inline unsigned int serial_in(struct uart_hsu_port *up, int offset)
+static inline unsigned int serial_in_irq(struct uart_hsu_port *up, int offset)
+{
+	if (offset > UART_MSR) {
+		offset <<= 2;
+		return readl(up->port.membase + offset);
+	} else
+		return (unsigned int)readb(up->port.membase + offset);
+}
+
+static unsigned int serial_in(struct uart_hsu_port *up, int offset)
 {
 	unsigned long flags;
 	unsigned int val;
@@ -226,7 +230,18 @@ static inline unsigned int serial_in(struct uart_hsu_port *up, int offset)
 	return val;
 }
 
-static inline void serial_out(struct uart_hsu_port *up, int offset, int value)
+static inline void serial_out_irq(struct uart_hsu_port *up,
+		int offset, int value)
+{
+	if (offset > UART_MSR) {
+		offset <<= 2;
+		writel(value, up->port.membase + offset);
+	} else
+		writeb((unsigned char)(value & 0xff),
+				up->port.membase + offset);
+}
+
+static void serial_out(struct uart_hsu_port *up, int offset, int value)
 {
 	unsigned long flags;
 	int qflag = 0;
@@ -685,15 +700,13 @@ static inline void receive_chars(struct uart_hsu_port *up, int *status)
 		return;
 
 	do {
-		ch = serial_in(up, UART_RX);
+		ch = serial_in_irq(up, UART_RX);
 		flag = TTY_NORMAL;
 		up->port.icount.rx++;
 
 		if (unlikely(*status & (UART_LSR_BI | UART_LSR_PE |
 				       UART_LSR_FE | UART_LSR_OE))) {
 
-			dev_warn(up->dev, "We really rush into ERR/BI case"
-				"status = 0x%02x", *status);
 			/* For statistics only */
 			if (*status & UART_LSR_BI) {
 				*status &= ~(UART_LSR_FE | UART_LSR_PE);
@@ -737,7 +750,7 @@ static inline void receive_chars(struct uart_hsu_port *up, int *status)
 
 		uart_insert_char(&up->port, *status, UART_LSR_OE, ch, flag);
 	ignore_char:
-		*status = serial_in(up, UART_LSR);
+		*status = serial_in_irq(up, UART_LSR);
 	} while ((*status & UART_LSR_DR) && max_count--);
 	tty_flip_buffer_push(tty);
 }
@@ -748,7 +761,7 @@ static void transmit_chars(struct uart_hsu_port *up)
 	int count;
 
 	if (up->port.x_char) {
-		serial_out(up, UART_TX, up->port.x_char);
+		serial_out_irq(up, UART_TX, up->port.x_char);
 		up->port.icount.tx++;
 		up->port.x_char = 0;
 		return;
@@ -769,7 +782,7 @@ static void transmit_chars(struct uart_hsu_port *up)
 	count = up->port.fifosize - 4;
 #endif
 	do {
-		serial_out(up, UART_TX, xmit->buf[xmit->tail]);
+		serial_out_irq(up, UART_TX, xmit->buf[xmit->tail]);
 		xmit->tail = (xmit->tail + 1) & (UART_XMIT_SIZE - 1);
 
 		up->port.icount.tx++;
@@ -788,7 +801,7 @@ static inline void check_modem_status(struct uart_hsu_port *up)
 {
 	int status;
 
-	status = serial_in(up, UART_MSR);
+	status = serial_in_irq(up, UART_MSR);
 
 	if ((status & UART_MSR_ANY_DELTA) == 0)
 		return;
@@ -825,7 +838,6 @@ static irqreturn_t port_irq(int irq, void *dev_id)
 {
 	struct uart_hsu_port *up = dev_id;
 	unsigned int iir, lsr;
-	unsigned long flags;
 
 	if (up->index == 1 && !up->running)
 		up = serial_hsu_ports[3];
@@ -833,11 +845,12 @@ static irqreturn_t port_irq(int irq, void *dev_id)
 	if (unlikely(!up->running))
 		return IRQ_NONE;
 
-	spin_lock_irqsave(&up->port.lock, flags);
+	pm_runtime_get(up->dev);
+	spin_lock_irq(&up->port.lock);
 	if (up->use_dma) {
-		lsr = serial_in(up, UART_LSR);
+		lsr = serial_in_irq(up, UART_LSR);
 		check_modem_status(up);
-		spin_unlock_irqrestore(&up->port.lock, flags);
+		spin_unlock_irq(&up->port.lock);
 
 		if (unlikely(lsr & (UART_LSR_BI | UART_LSR_PE |
 					UART_LSR_FE | UART_LSR_OE)))
@@ -845,16 +858,18 @@ static irqreturn_t port_irq(int irq, void *dev_id)
 				"Got lsr irq while using DMA, lsr = 0x%2x\n",
 				lsr);
 
+		pm_runtime_put(up->dev);
 		return IRQ_HANDLED;
 	}
 
-	iir = serial_in(up, UART_IIR);
+	iir = serial_in_irq(up, UART_IIR);
 	if (iir & UART_IIR_NO_INT) {
-		spin_unlock_irqrestore(&up->port.lock, flags);
+		spin_unlock_irq(&up->port.lock);
+		pm_runtime_put(up->dev);
 		return IRQ_NONE;
 	}
 
-	lsr = serial_in(up, UART_LSR);
+	lsr = serial_in_irq(up, UART_LSR);
 	if (lsr & UART_LSR_DR)
 		receive_chars(up, &lsr);
 	check_modem_status(up);
@@ -863,7 +878,8 @@ static irqreturn_t port_irq(int irq, void *dev_id)
 	if (lsr & UART_LSR_THRE)
 		transmit_chars(up);
 
-	spin_unlock_irqrestore(&up->port.lock, flags);
+	spin_unlock_irq(&up->port.lock);
+	pm_runtime_put(up->dev);
 	return IRQ_HANDLED;
 }
 
@@ -879,14 +895,14 @@ static inline void dma_chan_irq(struct hsu_dma_chan *chan)
 	pm_runtime_get(up->dev);
 	spin_lock_irqsave(&up->port.lock, flags);
 
-	if (!up->use_dma || !up->running)
-		goto exit;
-
 	/*
 	 * No matter what situation, need read clear the IRQ status
 	 * There is a bug, see Errata 5, HSD 2900918
 	 */
 	int_sts = chan_readl(chan, HSU_CH_SR);
+
+	if (!up->use_dma || !up->running)
+		goto exit;
 
 	/* Rx channel */
 	if (chan->dirt == DMA_FROM_DEVICE)
@@ -1412,7 +1428,6 @@ serial_hsu_console_write(struct console *co, const char *s, unsigned int count)
 {
 	struct uart_hsu_port *up = serial_hsu_ports[co->index];
 	unsigned long flags;
-	unsigned int ier;
 	int locked = 1;
 
 	/* if this console write was due to console dev resuming/suspending
@@ -1432,8 +1447,6 @@ serial_hsu_console_write(struct console *co, const char *s, unsigned int count)
 	} else
 		spin_lock(&up->port.lock);
 
-	/* First save the IER then disable the interrupts */
-	ier = serial_in(up, UART_IER);
 	serial_out(up, UART_IER, 0);
 
 	uart_console_write(&up->port, s, count, serial_hsu_console_putchar);
@@ -1443,7 +1456,7 @@ serial_hsu_console_write(struct console *co, const char *s, unsigned int count)
 	 * and restore the IER
 	 */
 	wait_for_xmitr(up);
-	serial_out(up, UART_IER, ier);
+	serial_out(up, UART_IER, up->ier);
 
 	if (locked)
 		spin_unlock(&up->port.lock);
@@ -1485,7 +1498,7 @@ static struct console serial_hsu_console = {
 	.device		= uart_console_device,
 	.setup		= serial_hsu_console_setup,
 	.flags		= CON_PRINTBUFFER,
-	.index		= 3,
+	.index		= CONFIG_SERIAL_MFD_HSU_CONSOLE_PORT,
 	.data		= &serial_hsu_reg,
 };
 #endif
@@ -1602,6 +1615,7 @@ static int serial_hsu_probe(struct pci_dev *pdev,
 					dev_err(&pdev->dev, "can not get IRQ\n");
 					goto err_disable;
 				}
+
 				pci_set_drvdata(pdev, uport);
 				pm_runtime_put_noidle(&pdev->dev);
 				pm_runtime_allow(&pdev->dev);
@@ -1610,7 +1624,7 @@ static int serial_hsu_probe(struct pci_dev *pdev,
 			uart_add_one_port(&serial_hsu_reg, &uport->port);
 
 #ifdef CONFIG_SERIAL_MFD_HSU_CONSOLE
-			if (index == 3) {
+			if (index == CONFIG_SERIAL_MFD_HSU_CONSOLE_PORT) {
 				register_console(&serial_hsu_console);
 				uport->port.cons = &serial_hsu_console;
 			}
@@ -1739,8 +1753,8 @@ static void hsu_global_init(void)
 		uport->port.uartclk = 115200 * 24 * 16;
 
 		uport->running = 0;
-		uport->txc = &hsu->chans[i * 2];
-		uport->rxc = &hsu->chans[i * 2 + 1];
+		uport->txc = &hsu->chans[offset * 2];
+		uport->rxc = &hsu->chans[offset * 2 + 1];
 
 		serial_hsu_ports[i] = uport;
 		uport->index = i;
@@ -1868,27 +1882,46 @@ static bool allow_for_suspend(struct uart_hsu_port *up)
 #endif
 
 #ifdef CONFIG_PM_RUNTIME
+static inline int hsu_phy_port_is_running(struct uart_hsu_port *up)
+{
+	struct uart_hsu_port *up_pair = NULL;
+
+	if (up->index == 1)
+		up_pair = serial_hsu_ports[3];
+	else if (up->index == 3)
+		up_pair = serial_hsu_ports[1];
+
+	return up->running || (up_pair && up_pair->running);
+}
+
 static int hsu_runtime_idle(struct device *dev)
 {
 	struct pci_dev *pdev = container_of(dev, struct pci_dev, dev);
 	struct uart_hsu_port *up = pci_get_drvdata(pdev);
+	unsigned int delay = 0;
 
-	/* if HSU is set as default console, but earlyprintk is not hsu,
-	 * then it will enter suspend and can not get back since system
-	 * is on boot up, no contex switch to let it resume, here just
-	 * postpone the suspend retry 30 seconds, then system should have
-	 * finished booting */
-	if (system_state == SYSTEM_BOOTING)
-		pm_schedule_suspend(dev, 30000);
-	/* console timeout need longer, because human input slower */
-	else if (up->index == 1)
-		pm_schedule_suspend(dev, 2000);
-	else if (up->suspended)
-		/*need to set longer for S3 resuming*/
-		pm_schedule_suspend(dev, 500);
-	else
-		pm_schedule_suspend(dev, 100);
+	if (system_state == SYSTEM_BOOTING) {
+		/* if HSU is set as default console, but earlyprintk is not hsu,
+		 * then it will enter suspend and can not get back since system
+		 * is on boot up, no contex switch to let it resume, here just
+		 * postpone the suspend retry 30 seconds, then system should
+		 * have finished booting
+		 */
+		delay = 30000;
+	} else if (hsu_phy_port_is_running(up)) {
+		if (up->index == 1)
+			/* console timeout need longer, because human input
+			 * slower
+			 */
+			delay = 2000;
+		else if (up->suspended)
+			/*need to set longer for S3 resuming*/
+			delay = 500;
+		else
+			delay = 100;
+	}
 
+	pm_schedule_suspend(dev, delay);
 	return -EBUSY;
 }
 

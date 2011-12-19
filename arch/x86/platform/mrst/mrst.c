@@ -2138,6 +2138,23 @@ static struct platform_device pb_device = {
 	},
 };
 
+/* a 3 bits bit-map, from 0 to 7, default 0 */
+unsigned char hsu_dma_enable;
+EXPORT_SYMBOL_GPL(hsu_dma_enable);
+
+static int __init setup_hsu_dma_enable_flag(char *p)
+{
+	if (!p)
+		return -EINVAL;
+
+	hsu_dma_enable = (unsigned char)memparse(p, &p);
+	if (hsu_dma_enable & (~0x7))
+		return -EINVAL;
+
+	return 0;
+}
+early_param("hsu_dma", setup_hsu_dma_enable_flag);
+
 #if defined(CONFIG_TI_ST) || defined(CONFIG_TI_ST_MODULE)
 
 /* KIM related */
