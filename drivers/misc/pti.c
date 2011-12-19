@@ -159,7 +159,8 @@ static void pti_write_to_aperture(struct pti_masterchannel *mc,
  *  in 32 byte chunks.
  */
 
-static void pti_control_frame_built_and_sent(struct pti_masterchannel *mc)
+static void pti_control_frame_built_and_sent(struct pti_masterchannel *mc,
+					const char *thread_name)
 {
 	struct pti_masterchannel mccontrol = {.master = CONTROL_ID,
 					      .channel = 0};
@@ -171,10 +172,12 @@ static void pti_control_frame_built_and_sent(struct pti_masterchannel *mc)
 	 * we only need to be as large as what 'comm' in that
 	 * structure is.
 	 */
-	char comm[TASK_COMM_LEN];
 
+	char comm[TASK_COMM_LEN];
 	/* task information */
-	if (in_irq())
+	if (thread_name)
+		strncpy(comm, thread_name, sizeof(comm));
+	else if (in_irq())
 		strncpy(comm, "hardirq", sizeof(comm));
 	else if (in_softirq())
 		strncpy(comm, "softirq", sizeof(comm));
@@ -210,7 +213,7 @@ static void pti_write_full_frame_to_aperture(struct pti_masterchannel *mc,
 						const unsigned char *buf,
 						int len)
 {
-	pti_control_frame_built_and_sent(mc);
+	pti_control_frame_built_and_sent(mc, NULL);
 	pti_write_to_aperture(mc, (u8 *)buf, len);
 }
 
@@ -231,7 +234,8 @@ static void pti_write_full_frame_to_aperture(struct pti_masterchannel *mc,
  * channel id. The bit is one if the id is taken and 0 if free. For
  * every master there are 128 channel id's.
  */
-static struct pti_masterchannel *get_id(u8 *id_array, int max_ids, int base_id)
+static struct pti_masterchannel *get_id(u8 *id_array, int max_ids,
+					int base_id, const char *thread_name)
 {
 	struct pti_masterchannel *mc;
 	int i, j, mask;
@@ -261,13 +265,13 @@ static struct pti_masterchannel *get_id(u8 *id_array, int max_ids, int base_id)
 	mc->master  = base_id;
 	mc->channel = ((i & 0xf)<<3) + j;
 	/* write new master Id / channel Id allocation to channel control */
-	pti_control_frame_built_and_sent(mc);
+	pti_control_frame_built_and_sent(mc, thread_name);
 	return mc;
 }
 
 /*
  * The following three functions:
- * pti_request_mastercahannel(), mipi_release_masterchannel()
+ * pti_request_masterchannel(), mipi_release_masterchannel()
  * and pti_writedata() are an API for other kernel drivers to
  * access PTI.
  */
@@ -288,7 +292,7 @@ static struct pti_masterchannel *get_id(u8 *id_array, int max_ids, int base_id)
  *	pti_masterchannel struct
  *	0 for error
  */
-struct pti_masterchannel *pti_request_masterchannel(u8 type)
+struct pti_masterchannel *pti_request_masterchannel(u8 type, const char *name)
 {
 	struct pti_masterchannel *mc;
 
@@ -297,15 +301,16 @@ struct pti_masterchannel *pti_request_masterchannel(u8 type)
 	switch (type) {
 
 	case 0:
-		mc = get_id(drv_data->ia_app, MAX_APP_IDS, APP_BASE_ID);
+		mc = get_id(drv_data->ia_app, MAX_APP_IDS, APP_BASE_ID, name);
 		break;
 
 	case 1:
-		mc = get_id(drv_data->ia_os, MAX_OS_IDS, OS_BASE_ID);
+		mc = get_id(drv_data->ia_os, MAX_OS_IDS, OS_BASE_ID, name);
 		break;
 
 	case 2:
-		mc = get_id(drv_data->ia_modem, MAX_MODEM_IDS, MODEM_BASE_ID);
+		mc = get_id(drv_data->ia_modem, MAX_MODEM_IDS,
+						MODEM_BASE_ID, name);
 		break;
 	default:
 		mc = NULL;
@@ -476,9 +481,9 @@ static int pti_tty_install(struct tty_driver *driver, struct tty_struct *tty)
 			return -ENOMEM;
 
 		if (idx == PTITTY_MINOR_START)
-			pti_tty_data->mc = pti_request_masterchannel(0);
+			pti_tty_data->mc = pti_request_masterchannel(0, NULL);
 		else
-			pti_tty_data->mc = pti_request_masterchannel(2);
+			pti_tty_data->mc = pti_request_masterchannel(2, NULL);
 
 		if (pti_tty_data->mc == NULL) {
 			kfree(pti_tty_data);
@@ -567,7 +572,7 @@ static int pti_char_open(struct inode *inode, struct file *filp)
 	 * before assigning the value to filp->private_data.
 	 * Slightly easier to debug if this driver needs debugging.
 	 */
-	mc = pti_request_masterchannel(0);
+	mc = pti_request_masterchannel(0, NULL);
 	if (mc == NULL)
 		return -ENOMEM;
 	filp->private_data = mc;

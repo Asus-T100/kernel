@@ -52,6 +52,10 @@ struct logger_log {
 	size_t			w_off;	/* current write head offset */
 	size_t			head;	/* new readers start here */
 	size_t			size;	/* size of the log */
+#ifdef CONFIG_ANDROID_LOGGER_PTI
+	bool			ptienable;
+	struct pti_reader	*pti_reader;
+#endif
 };
 
 /*
@@ -85,6 +89,12 @@ struct logger_entry {
 	char		msg[0];		/* the entry's payload */
 };
 
+void do_read_log(struct logger_log *log,
+			struct logger_reader *reader,
+			char *buf,
+			size_t count);
+__u32 get_entry_len(struct logger_log *log, size_t off);
+struct logger_log *get_log_from_minor(int minor);
 struct logger_log **get_log_list(void);
 
 /* logger_offset - returns index 'n' into the log via (optimized) modulus */
@@ -93,9 +103,11 @@ struct logger_log **get_log_list(void);
 #define LOGGER_LOG_RADIO	"log_radio"	/* radio-related messages */
 #define LOGGER_LOG_EVENTS	"log_events"	/* system/hardware events */
 #define LOGGER_LOG_SYSTEM	"log_system"	/* system/framework messages */
+#define LOGGER_LOG_KERNEL	"log_kernel"	/* kernel */
+#define LOGGER_LOG_KERNEL_BOT	"log_kernel_bottom" /* kernel bottom */
 #define LOGGER_LOG_MAIN		"log_main"	/* everything else */
 
-#define LOGGER_LIST_SIZE 4
+#define LOGGER_LIST_SIZE 5
 
 #define LOGGER_ENTRY_MAX_LEN		(4*1024)
 #define LOGGER_ENTRY_MAX_PAYLOAD	\
