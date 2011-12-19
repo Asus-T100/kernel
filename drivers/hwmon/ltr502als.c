@@ -601,6 +601,7 @@ static struct miscdevice ambient_dev = {
 #ifdef CONFIG_HAS_EARLYSUSPEND
 static void alsps_early_suspend(struct early_suspend *h)
 {
+	u8 data;
 	struct alsps_device *alsps = container_of(h, struct alsps_device, es);
 
 	dev_dbg(&alsps->client->dev, "enter %s\n", __func__);
@@ -608,6 +609,14 @@ static void alsps_early_suspend(struct early_suspend *h)
 	mutex_lock(&alsps_dev->lock);
 	/* Only proximity is kept actice over the suspend period */
 	ltr502_switch(alsps->alsps_switch & PROXIMITY_ENABLE);
+
+	/* If proximity status is changed during mode switch, there may be no
+	 * interrupt occurred, so we need to check the data register after mode
+	 * switching here */
+	/* Sleep 1 intergration cycle(100 ms) to ensure ADC sample */
+	msleep(100);
+	alsps_read(alsps, DATAREG, &data);
+	proximity_handle_irq(alsps, data);
 	mutex_unlock(&alsps_dev->lock);
 }
 
