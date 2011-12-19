@@ -250,6 +250,8 @@ struct max17042_chip {
 	int technology;
 	int charge_full_des;
 	struct delayed_work init_worker;
+
+	bool plat_rebooting;
 };
 
 #ifdef CONFIG_DEBUG_FS
@@ -291,6 +293,16 @@ static enum power_supply_property max17042_battery_props[] = {
 static int max17042_write_reg(struct i2c_client *client, u8 reg, u16 value)
 {
 	int ret, i;
+	struct max17042_chip *chip = i2c_get_clientdata(client);
+
+	/* if the shutdown or reboot sequence started
+	 * then block the access to maxim registers as chip
+	 * cannot be recovered from broken i2c transactions
+	 */
+	if (chip->plat_rebooting) {
+		dev_warn(&client->dev, "rebooting is in progress\n");
+		return -EINVAL;
+	}
 
 	for (i = 0; i < NR_RETRY_CNT; i++) {
 		ret = i2c_smbus_write_word_data(client, reg, value);
@@ -309,6 +321,16 @@ static int max17042_write_reg(struct i2c_client *client, u8 reg, u16 value)
 static int max17042_read_reg(struct i2c_client *client, u8 reg)
 {
 	int ret, i;
+	struct max17042_chip *chip = i2c_get_clientdata(client);
+
+	/* if the shutdown or reboot sequence started
+	 * then block the access to maxim registers as chip
+	 * cannot be recovered from broken i2c transactions
+	 */
+	if (chip->plat_rebooting) {
+		dev_warn(&client->dev, "rebooting is in progress\n");
+		return -EINVAL;
+	}
 
 	for (i = 0; i < NR_RETRY_CNT; i++) {
 		ret = i2c_smbus_read_word_data(client, reg);
@@ -338,8 +360,12 @@ static int max17042_write_verify_reg(struct i2c_client *client,
 	for (i = 0; i < NR_RETRY_CNT; i++) {
 		/* Write the value to register */
 		ret = max17042_write_reg(client, reg, value);
+		if (ret < 0)
+			continue;
 		/* Read the value from register */
 		ret = max17042_read_reg(client, reg);
+		if (ret < 0)
+			continue;
 		/* compare the both the values */
 		if (value != ret)
 			dev_err(&client->dev,
@@ -354,17 +380,18 @@ static int max17042_write_verify_reg(struct i2c_client *client,
 static int max17042_reg_read_modify(struct i2c_client *client, u8 reg,
 							u16 val, int bit_set)
 {
-	u16 data;
 	int ret;
 
-	data = max17042_read_reg(client, reg);
+	ret = max17042_read_reg(client, reg);
+	if (ret < 0)
+		return ret;
 
 	if (bit_set)
-		data |= val;
+		ret |= val;
 	else
-		data &= (~val);
+		ret &= (~val);
 
-	ret = max17042_write_reg(client, reg, data);
+	ret = max17042_write_reg(client, reg, ret);
 	return ret;
 }
 
@@ -956,17 +983,6 @@ static void restore_runtime_params(struct max17042_chip *chip)
 						fg_conf_data->cycles);
 }
 
-static int max17042_reboot_callback(struct notifier_block *nfb,
-					unsigned long event, void *data)
-{
-	struct max17042_chip *chip = i2c_get_clientdata(max17042_client);
-
-	if (chip->pdata->enable_current_sense)
-		save_runtime_params(chip);
-
-	return NOTIFY_OK;
-}
-
 static int init_max17042_chip(struct max17042_chip *chip)
 {
 	int ret = 0, val;
@@ -1547,6 +1563,25 @@ static struct i2c_driver max17042_i2c_driver = {
 	.remove		= __devexit_p(max17042_remove),
 	.id_table	= max17042_id,
 };
+
+static int max17042_reboot_callback(struct notifier_block *nfb,
+					unsigned long event, void *data)
+{
+	struct max17042_chip *chip = i2c_get_clientdata(max17042_client);
+
+	if (chip->pdata->enable_current_sense)
+		save_runtime_params(chip);
+
+	/* if the shutdown or reboot sequence started
+	 * then block the access to maxim registers as chip
+	 * cannot be recovered from broken i2c transactions
+	 */
+	mutex_lock(&chip->batt_lock);
+	chip->plat_rebooting = true;
+	mutex_unlock(&chip->batt_lock);
+
+	return NOTIFY_OK;
+}
 
 static int __init max17042_init(void)
 {
