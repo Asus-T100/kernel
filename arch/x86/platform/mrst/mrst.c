@@ -1127,13 +1127,20 @@ static int mt9e013_power_ctrl(struct v4l2_subdev *sd, int flag)
 	if (gp_camera0_power_down < 0) {
 		ret = camera_sensor_gpio(-1, GP_CAMERA_0_POWER_DOWN,
 					 GPIOF_DIR_OUT, 1);
+		/*
+		 * on some HW, this pin is not a connected pin,
+		 * while on others, this indeed is avaiable.
+		 * so just operate it when available and continue
+		 * if it is failed.
+		 */
 		if (ret < 0)
-			return ret;
+			pr_debug("%s not available.", GP_CAMERA_0_POWER_DOWN);
 		gp_camera0_power_down = ret;
 	}
 
 	if (flag) {
-		gpio_set_value(gp_camera0_power_down, 1);
+		if (gp_camera0_power_down >= 0)
+			gpio_set_value(gp_camera0_power_down, 1);
 		if (!camera_vprog1_on) {
 			camera_vprog1_on = 1;
 			intel_scu_ipc_msic_vprog1(1);
@@ -1143,7 +1150,8 @@ static int mt9e013_power_ctrl(struct v4l2_subdev *sd, int flag)
 			camera_vprog1_on = 0;
 			intel_scu_ipc_msic_vprog1(0);
 		}
-		gpio_set_value(gp_camera0_power_down, 0);
+		if (gp_camera0_power_down >= 0)
+			gpio_set_value(gp_camera0_power_down, 0);
 	}
 
 	return 0;
