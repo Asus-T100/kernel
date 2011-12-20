@@ -292,9 +292,9 @@ void hmm_bo_free_vm(struct hmm_buffer_object *bo)
 
 	bdev = bo->bdev;
 
+	bo->status &= (~HMM_BO_VM_ALLOCED);
 	hmm_vm_free_node(bo->vm_node);
 	bo->vm_node = NULL;
-	bo->status &= (~HMM_BO_VM_ALLOCED);
 	mutex_unlock(&bo->mutex);
 
 	return;
@@ -311,11 +311,7 @@ int hmm_bo_vm_allocated(struct hmm_buffer_object *bo)
 
 	check_bo_null_return(bo, 0);
 
-	mutex_lock(&bo->mutex);
-
 	ret = (bo->status & HMM_BO_VM_ALLOCED);
-
-	mutex_unlock(&bo->mutex);
 
 	return ret;
 }
@@ -757,15 +753,15 @@ void hmm_bo_free_pages(struct hmm_buffer_object *bo)
 
 	check_bo_status_yes_goto(bo, HMM_BO_PAGE_ALLOCED, status_err2);
 
+	/* clear the flag anyway. */
+	bo->status &= (~HMM_BO_PAGE_ALLOCED);
+
 	if (bo->type == HMM_BO_PRIVATE)
 		free_private_pages(bo);
 	else if (bo->type == HMM_BO_USER)
 		free_user_pages(bo);
 	else
 		v4l2_err(&atomisp_dev, "invalid buffer type.\n");
-	/* clear the flag anyway. */
-	bo->status &= (~HMM_BO_PAGE_ALLOCED);
-
 	mutex_unlock(&bo->mutex);
 
 	return;
@@ -783,11 +779,7 @@ int hmm_bo_page_allocated(struct hmm_buffer_object *bo)
 
 	check_bo_null_return(bo, 0);
 
-	mutex_lock(&bo->mutex);
-
 	ret = bo->status & HMM_BO_PAGE_ALLOCED;
-
-	mutex_unlock(&bo->mutex);
 
 	return ret;
 }

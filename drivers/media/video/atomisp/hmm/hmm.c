@@ -253,7 +253,11 @@ int hmm_store(void *virt, const void *data, unsigned int bytes)
 		idx = (ptr - bo->vm_node->start) >> PAGE_SHIFT;
 		offset = (ptr - bo->vm_node->start) - (idx << PAGE_SHIFT);
 
-		des = (char *)kmap(bo->pages[idx]);
+		if (in_atomic())
+			des = (char *)kmap_atomic(bo->pages[idx]);
+		else
+			des = (char *)kmap(bo->pages[idx]);
+
 		if (!des) {
 			v4l2_err(&atomisp_dev,
 				    "kmap buffer object page failed: "
@@ -280,7 +284,14 @@ int hmm_store(void *virt, const void *data, unsigned int bytes)
 #endif
 		src += len;
 
-		kunmap(bo->pages[idx]);
+		if (in_atomic())
+			/*
+			 * Note: kunmap_atomic requires return addr from
+			 * kmap_atomic, not the page. See linux/highmem.h
+			 */
+			kunmap_atomic(des - offset);
+		else
+			kunmap(bo->pages[idx]);
 	}
 
 	return 0;
