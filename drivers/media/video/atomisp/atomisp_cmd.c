@@ -297,10 +297,12 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 	 * - Acceleration API
 	 * - Flash
 	 * - CSS needs to do memory (re)allocation
+	 * - File injection
 	 */
 	if (signal_acceleration ||
 	    isp->fr_status != ATOMISP_FRAME_STATUS_OK ||
-	    isp->params.num_flash_frames)
+	    isp->params.num_flash_frames ||
+	    isp->sw_contex.file_input)
 		goto no_frame_done;
 
 	if (irq_infos & (SH_CSS_IRQ_INFO_START_NEXT_STAGE |
