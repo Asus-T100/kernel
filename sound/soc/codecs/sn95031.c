@@ -386,8 +386,14 @@ static const struct snd_kcontrol_new sn95031_input4_mux_control =
 
 static const char *sn95031_micmode_text[] = {"Single Ended", "Differential"};
 
-/* 0dB to 30dB in 10dB steps */
-static const DECLARE_TLV_DB_SCALE(mic_tlv, 0, 10, 0);
+/* {0, 9, 21, 30} db */
+static unsigned int mic_tlv[] = {
+	TLV_DB_RANGE_HEAD(4),
+	0, 0, TLV_DB_SCALE_ITEM(0, 0, 0),
+	1, 1, TLV_DB_SCALE_ITEM(900, 0, 0),
+	2, 2, TLV_DB_SCALE_ITEM(2100, 0, 0),
+	3, 3, TLV_DB_SCALE_ITEM(3000, 0, 0),
+};
 /* -62db to 9 db in 1db steps*/
 static const DECLARE_TLV_DB_SCALE(out_tlv, -6200, 100, 0);
 
@@ -500,9 +506,9 @@ static const struct snd_kcontrol_new sn95031_snd_controls[] = {
 	SOC_ENUM("DMIC34 Capture Route", sn95031_dmic34_cfg_enum),
 	SOC_ENUM("DMIC56 Capture Route", sn95031_dmic56_cfg_enum),
 	SOC_SINGLE_TLV("Mic1 Capture Volume", SN95031_MICAMP1,
-			2, 4, 0, mic_tlv),
+			2, 3, 0, mic_tlv),
 	SOC_SINGLE_TLV("Mic2 Capture Volume", SN95031_MICAMP2,
-			2, 4, 0, mic_tlv),
+			2, 3, 0, mic_tlv),
 	/* Add digital volume and mute controls for Headphone/Headset*/
 	SOC_DOUBLE_R_TLV("Headphone Playback Volume", SN95031_HSLVOLCTRL,
 				SN95031_HSRVOLCTRL, 0, 71, 1, out_tlv),
