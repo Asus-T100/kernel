@@ -16,9 +16,6 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  *
  */
-
-#define DEBUG
-
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/fs.h>
@@ -37,18 +34,21 @@
 #include <linux/miscdevice.h>
 #include <linux/spinlock.h>
 #include <linux/nfc/pn544.h>
+#include <linux/suspend.h>
+#include <linux/wakelock.h>
 
 #define MAX_BUFFER_SIZE	512
 
 struct pn544_dev	{
 	wait_queue_head_t	read_wq;
-	struct mutex		read_mutex;
 	struct i2c_client	*client;
 	struct miscdevice	pn544_device;
+	struct wake_lock	read_wake;
 	unsigned int		ven_gpio;
 	unsigned int		firm_gpio;
 	unsigned int		irq_gpio;
 	unsigned int		nfc_enable;
+	int			busy;
 };
 
 static int pn544_platform_init(struct pn544_dev *pn544_dev)
@@ -106,6 +106,8 @@ static irqreturn_t pn544_dev_irq_handler(int irq, void *dev_id)
 
 	pr_debug("%s : IRQ ENTER\n", __func__);
 
+	wake_lock_timeout(&pn544_dev->read_wake, 1*HZ);
+
 	/* Wake up waiting readers */
 	wake_up(&pn544_dev->read_wq);
 
@@ -123,8 +125,6 @@ static ssize_t pn544_dev_read(struct file *filp, char __user *buf,
 		count = MAX_BUFFER_SIZE;
 
 	/*pr_debug("%s : reading %zu bytes.\n", __func__, count);*/
-
-	mutex_lock(&pn544_dev->read_mutex);
 
 	if (!gpio_get_value(pn544_dev->irq_gpio)) {
 		if (filp->f_flags & O_NONBLOCK) {
@@ -144,7 +144,6 @@ static ssize_t pn544_dev_read(struct file *filp, char __user *buf,
 
 	/* Read data */
 	ret = i2c_master_recv(pn544_dev->client, tmp, count);
-	mutex_unlock(&pn544_dev->read_mutex);
 
 	if (ret < 0) {
 		pr_err("%s: i2c_master_recv returned %d\n", __func__, ret);
@@ -160,12 +159,43 @@ static ssize_t pn544_dev_read(struct file *filp, char __user *buf,
 		return -EFAULT;
 	}
 
+	/* Handle the corner case where read is cycle is broken */
+	if (ret == 1 && pn544_dev->busy) {
+		pn544_dev->busy = 0;
+		wake_unlock(&pn544_dev->read_wake);
+		return ret;
+	}
+
+	/*
+	 * PN544 read cycle consists of reading 1 byte containing the size of
+	 * the data to be transferred then reading the requested data. During
+	 * a read cycle, the platform shall not enter in s2ram, otherwise,
+	 * the pn544 will wait forever for the data to be read and no interrupt
+	 * is generated to the host even when a new field is detected. To avoid
+	 * such situation, read_lock shall be held during a read_cycle and if
+	 * the suspend happens during this period, then abort the suspend.
+	 */
+	if (ret == 1) {
+		wake_lock(&pn544_dev->read_wake);
+		pn544_dev->busy = 1;
+	} else {
+		wake_unlock(&pn544_dev->read_wake);
+		pn544_dev->busy = 0;
+
+		/* Prevent the suspend after each read cycle for 1 sec
+		 * to allow propagation of the event to upper layers of NFC
+		 * stack
+		 */
+		wake_lock_timeout(&pn544_dev->read_wake, 1*HZ);
+	}
+
+	/* Return the number of bytes read */
 	pr_debug("%s : Bytes read = %d: ", __func__, ret);
 	return ret;
 
 fail:
-	mutex_unlock(&pn544_dev->read_mutex);
-	pr_err("%s : Error in function read\n", __func__);
+	pr_debug("%s : wait_event is interrupted by a signal\n",
+		__func__);
 	return ret;
 }
 
@@ -206,6 +236,18 @@ static int pn544_dev_open(struct inode *inode, struct file *filp)
 	filp->private_data = pn544_dev;
 
 	pr_debug("%s : %d,%d\n", __func__, imajor(inode), iminor(inode));
+
+	return 0;
+}
+
+static int pn544_dev_release(struct inode *inode, struct file *filp)
+{
+	struct pn544_dev *pn544_dev = filp->private_data;
+
+	filp->private_data = NULL;
+
+	if (wake_lock_active(&pn544_dev->read_wake))
+		wake_unlock(&pn544_dev->read_wake);
 
 	return 0;
 }
@@ -270,6 +312,7 @@ static const struct file_operations pn544_dev_fops = {
 	.read		= pn544_dev_read,
 	.write		= pn544_dev_write,
 	.open		= pn544_dev_open,
+	.release	= pn544_dev_release,
 #ifdef HAVE_UNLOCKED_IOCTL
 	.unlocked_ioctl	= pn544_dev_ioctl,
 #endif
@@ -311,14 +354,15 @@ static int pn544_probe(struct i2c_client *client,
 	pn544_dev->ven_gpio  = platform_data->ven_gpio;
 	pn544_dev->firm_gpio  = platform_data->firm_gpio;
 	pn544_dev->client   = client;
+	pn544_dev->busy = 0;
 
 	ret = pn544_platform_init(pn544_dev);
 	if (ret)
 		goto err_exit;
 
-	/* init mutex and queues */
+	/* init wakelock and queues */
 	init_waitqueue_head(&pn544_dev->read_wq);
-	mutex_init(&pn544_dev->read_mutex);
+	wake_lock_init(&pn544_dev->read_wake, WAKE_LOCK_SUSPEND, "pn544_nfc");
 
 	pn544_dev->pn544_device.minor = MISC_DYNAMIC_MINOR;
 	pn544_dev->pn544_device.name = "pn544";
@@ -340,7 +384,7 @@ static int pn544_probe(struct i2c_client *client,
 		dev_err(&client->dev, "request_irq failed\n");
 		goto err_request_irq_failed;
 	}
-
+	enable_irq_wake(client->irq);
 	i2c_set_clientdata(client, pn544_dev);
 
 	return 0;
@@ -348,7 +392,7 @@ static int pn544_probe(struct i2c_client *client,
 err_request_irq_failed:
 	misc_deregister(&pn544_dev->pn544_device);
 err_misc_register:
-	mutex_destroy(&pn544_dev->read_mutex);
+	wake_lock_destroy(&pn544_dev->read_wake);
 	kfree(pn544_dev);
 err_exit:
 	gpio_free(platform_data->firm_gpio);
@@ -362,9 +406,12 @@ static int pn544_remove(struct i2c_client *client)
 	struct pn544_dev *pn544_dev;
 
 	pn544_dev = i2c_get_clientdata(client);
+	if (wake_lock_active(&pn544_dev->read_wake))
+		wake_unlock(&pn544_dev->read_wake);
+
 	free_irq(client->irq, pn544_dev);
+	wake_lock_destroy(&pn544_dev->read_wake);
 	misc_deregister(&pn544_dev->pn544_device);
-	mutex_destroy(&pn544_dev->read_mutex);
 	gpio_free(pn544_dev->irq_gpio);
 	gpio_free(pn544_dev->ven_gpio);
 	gpio_free(pn544_dev->firm_gpio);
@@ -372,6 +419,40 @@ static int pn544_remove(struct i2c_client *client)
 
 	return 0;
 }
+
+#ifdef CONFIG_SUSPEND
+
+static int pn544_suspend(struct device *dev)
+{
+	struct i2c_client *client = to_i2c_client(dev);
+	struct pn544_dev *pn544_dev = i2c_get_clientdata(client);
+
+#ifdef CONFIG_HAS_WAKELOCK
+	WARN_ON(pn544_dev->busy);
+#endif
+
+	if (pn544_dev->busy)
+		return -EBUSY;
+
+	disable_irq(client->irq);
+
+	return 0;
+}
+
+static int pn544_resume(struct device *dev)
+{
+	struct i2c_client *client = to_i2c_client(dev);
+
+	enable_irq(client->irq);
+
+	return 0;
+}
+
+static const struct dev_pm_ops pn544_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(pn544_suspend,
+				pn544_resume)
+};
+#endif
 
 static const struct i2c_device_id pn544_id[] = {
 	{ "pn544", 0 },
@@ -385,6 +466,9 @@ static struct i2c_driver pn544_driver = {
 	.driver		= {
 		.owner	= THIS_MODULE,
 		.name	= "pn544",
+#ifdef CONFIG_SUSPEND
+		.pm = &pn544_pm_ops,
+#endif
 	},
 };
 
