@@ -43,7 +43,7 @@
  * c - Hotfix Release
  * xxxx - Graphics internal build #
  */
-#define PSB_PACKAGE_VERSION "5.4.0.1016"
+#define PSB_PACKAGE_VERSION "5.6.0.1152"
 
 #define DRM_PSB_SAREA_MAJOR 0
 #define DRM_PSB_SAREA_MINOR 2
