@@ -1075,7 +1075,7 @@ static int penwell_otg_manual_charger_detection(void)
 			return retval;
 		}
 
-		if (data & !CHRG_SERX_DP) {
+		if (!(data & CHRG_SERX_DP)) {
 			dev_info(pnw->dev, "Data contact detected!\n");
 			break;
 		}
@@ -1475,6 +1475,20 @@ static void update_hsm(void)
 	iotg->hsm.b_sess_vld = !!(val32 & OTGSC_BSV);
 	iotg->hsm.a_sess_vld = !!(val32 & OTGSC_ASV);
 	iotg->hsm.a_vbus_vld = !!(val32 & OTGSC_AVV);
+}
+
+static void penwell_otg_eye_diagram_optimize(void)
+{
+	struct penwell_otg		*pnw = the_transceiver;
+	struct intel_mid_otg_xceiv	*iotg = &pnw->iotg;
+	int				retval;
+
+	/* Set 0x77 for better quality in eye diagram
+	 * It means ZHSDRV = 0b11 and IHSTX = 0b0111 */
+
+	retval = penwell_otg_ulpi_write(iotg, ULPI_VS1SET, 0x77);
+	if (retval)
+		dev_warn(pnw->dev, "eye diagram optimize failed with ulpi failure\n");
 }
 
 static irqreturn_t otg_dummy_irq(int irq, void *_dev)
@@ -2018,6 +2032,8 @@ static void penwell_otg_work(struct work_struct *work)
 				penwell_otg_phy_low_power(1);
 			}
 
+			penwell_otg_eye_diagram_optimize();
+
 			iotg->otg.state = OTG_STATE_B_PERIPHERAL;
 
 		} else if ((hsm->b_bus_req || hsm->power_up || hsm->adp_change
@@ -2465,6 +2481,8 @@ static void penwell_otg_work(struct work_struct *work)
 			hsm->a_bus_req = 1;
 			hsm->b_conn = 0;
 			hsm->hnp_poll_enable = 0;
+
+			penwell_otg_eye_diagram_optimize();
 
 			if (iotg->start_host) {
 				dev_dbg(pnw->dev, "host_ops registered!\n");
