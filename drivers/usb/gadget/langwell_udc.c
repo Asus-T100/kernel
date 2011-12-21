@@ -434,6 +434,15 @@ static void done(struct langwell_ep *ep, struct langwell_request *req,
 	else
 		status = req->req.status;
 
+	/* WORKAROUND: This is for a HW IP issue found
+	* Controller reads "Next Link Pointer" from dTD even after dTD
+	* is retired. Thus, software can't free the dTD too early.
+	* Currently add 500 nanoseconds delay before freeing the dTD.
+	* The exact delay may change if HW team finds out the more
+	* appropriate/safe number.
+	*/
+	ndelay(500);
+
 	/* free dTD for the request */
 	if (dev->dtd_pool) {
 		next_dtd = req->head;
@@ -2987,11 +2996,15 @@ static void handle_usb_reset(struct langwell_udc *dev)
 		dev->usb_state = USB_STATE_DEFAULT;
 	} else {
 		dev_vdbg(&dev->pdev->dev, "device controller reset\n");
-		/* controller reset */
-		langwell_udc_reset(dev);
+
+		/* add some delay between endpoint flush and controller reset */
+		udelay(200);
 
 		/* reset all the queues, stop all USB activities */
 		stop_activity(dev, dev->driver);
+
+		/* controller reset */
+		langwell_udc_reset(dev);
 
 		/* reset ep0 dQH and endptctrl */
 		ep0_reset(dev);
