@@ -51,7 +51,7 @@ static struct mmc_emergency_info emmc_info = {
 	.init = mmc_emergency_init,
 	.write = mmc_emergency_write,
 	.emmc_disk_name = "mmcblk0",
-	.part_number = 9,
+	.part_number = EMMC_PANIC_PART_NUM,
 	.name = "emmc_ipanic",
 	.disk_device = NULL
 };

@@ -30,6 +30,8 @@
 extern int log_buf_copy(char *dest, int idx, int len);
 extern void log_buf_clear(void);
 
+#define EMMC_PANIC_PART_NUM 6
+
 #define SECTOR_SIZE_SHIFT (9)
 #define LOGCAT_BUFF_COUNT (4)
 
