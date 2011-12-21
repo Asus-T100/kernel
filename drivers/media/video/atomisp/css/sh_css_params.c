@@ -45,7 +45,7 @@
 	min(max((((v)>>sSHIFT) >> (sFRACTION_BITS_FITTING(a)-(b))), \
 	  sISP_VAL_MIN), sISP_VAL_MAX)
 #define uDIGIT_FITTING(v, a, b) \
-	min(max((unsigned)(((v)>>uSHIFT) >> (uFRACTION_BITS_FITTING(a)-(b))), \
+	min(max((((v)>>uSHIFT) >> (uFRACTION_BITS_FITTING(a)-(b))), \
 	  uISP_VAL_MIN), uISP_VAL_MAX)
 
 #define FPNTBL_BYTES(binary) \
@@ -702,7 +702,7 @@ sh_css_get_dis_projections(int *horizontal_projections,
 
 	for (i = 0; i < SH_CSS_DIS_NUM_COEF_TYPES; i++) {
 		hrt_isp_css_mm_load(hor_ptr_isp, hor_ptr_3a,
-				hor_num_3a * sizeof(int));
+				    hor_num_3a * sizeof(int));
 		hor_ptr_isp += hor_num_isp;
 		hor_ptr_3a  += hor_num_3a;
 
@@ -1247,9 +1247,9 @@ static void
 sh_css_process_gc(void)
 {
 	isp_parameters.gamma_gain_k1 =
-	    (int)uDIGIT_FITTING(gc_config->gain_k1, 16, SH_CSS_GAMMA_GAIN_K_SHIFT);
+	    sDIGIT_FITTING(gc_config->gain_k1, 16, SH_CSS_GAMMA_GAIN_K_SHIFT);
 	isp_parameters.gamma_gain_k2 =
-	    (int)uDIGIT_FITTING(gc_config->gain_k2, 16, SH_CSS_GAMMA_GAIN_K_SHIFT);
+	    sDIGIT_FITTING(gc_config->gain_k2, 16, SH_CSS_GAMMA_GAIN_K_SHIFT);
 	isp_params_changed = true;
 	gc_config_changed = false;
 }

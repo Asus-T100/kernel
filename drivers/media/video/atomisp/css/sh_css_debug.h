@@ -61,6 +61,7 @@ void sh_css_dump_isp_state(void);
 void sh_css_dump_sp_state(void);
 void sh_css_dump_dma_state(void);
 void sh_css_dump_debug_info(const char *context);
+void sh_css_dump_isp_gdc_fifo_state(void);
 void sh_css_dump_dma_isp_fifo_state(void);
 void sh_css_dump_dma_sp_fifo_state(void);
 void sh_css_dump_pif_isp_fifo_state(void);
