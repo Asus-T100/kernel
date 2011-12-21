@@ -2960,7 +2960,6 @@ static void handle_usb_reset(struct langwell_udc *dev)
 
 	/* remote wakeup reset to 0 when the device is reset */
 	dev->remote_wakeup = 0;
-	dev->dev_status = 1 << USB_DEVICE_SELF_POWERED;
 	dev->gadget.b_hnp_enable = 0;
 	dev->gadget.a_hnp_support = 0;
 	dev->gadget.a_alt_hnp_support = 0;
@@ -3533,7 +3532,6 @@ static int langwell_udc_probe(struct pci_dev *pdev,
 
 	/* remote wakeup reset to 0 when the device is reset */
 	dev->remote_wakeup = 0;
-	dev->dev_status = 1 << USB_DEVICE_SELF_POWERED;
 
 #ifndef	OTG_TRANSCEIVER
 	/* reset device controller */
