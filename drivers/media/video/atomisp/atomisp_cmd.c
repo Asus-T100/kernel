@@ -935,6 +935,7 @@ void atomisp_work(struct work_struct *work)
 
 			if (wdt_status == ATOMISP_WDT_STATUS_ERROR_FATAL) {
 				atomisp_fatal_timeout_handler(isp);
+				mutex_unlock(&isp->isp_lock);
 
 				/* stop streaming on error state */
 				goto error;
