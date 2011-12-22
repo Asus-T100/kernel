@@ -558,6 +558,18 @@ config EMMC_IPANIC
 	 Driver which handles kernel panics and attempts to write
 	 critical debugging data to EMMC.
 
+config SCU_LOGGING
+	tristate "Intel SCU fabric debug driver"
+	default n
+	---help---
+	 Driver that enable for debugging Intel SCU firmware fabric related error.
+
+config UUID
+	tristate "get uuid"
+	default n
+	---help---
+	 Driver for get UUID.
+
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
 source "drivers/misc/cb710/Kconfig"
