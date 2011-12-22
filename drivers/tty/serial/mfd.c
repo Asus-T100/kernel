@@ -191,11 +191,11 @@ module_param(hsu_low_latency, uint, S_IRUGO);
 
 /*
  * The runtime check is used to check whether the current chip
- * stepping is A0, if yes, enable the DMA RX timeout timer
+ * stepping is Penwell A0, if yes, enable the DMA RX timeout timer
  */
 static inline int dmarx_need_timer(void)
 {
-	return (boot_cpu_data.x86_mask == 0);
+	return (boot_cpu_data.x86_model == 0x27 && boot_cpu_data.x86_mask == 0);
 }
 
 static inline unsigned int serial_in_irq(struct uart_hsu_port *up, int offset)
