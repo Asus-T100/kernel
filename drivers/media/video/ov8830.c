@@ -69,17 +69,18 @@ static const struct ov8830_reg ov8830_mode1[] = {
 	{ OV8830_8BIT, { 0x3081 }, 0x02 },
 	{ OV8830_8BIT, { 0x3083 }, 0x01 },
 	{ OV8830_8BIT, { 0x3090 }, 0x02 },	/* PLL2_prediv: 2 */
-	{ OV8830_8BIT, { 0x3091 }, 0x12 },	/* PLL2_multiplier: 18 */
-	{ OV8830_8BIT, { 0x3092 }, 0x00 },	/* PLL2_divs: 0+1 */
+	{ OV8830_8BIT, { 0x3091 }, 22 },	/* PLL2_multiplier */
+	{ OV8830_8BIT, { 0x3092 }, 0 },		/* PLL2_divs: 0+1: 1 ok */
 	{ OV8830_8BIT, { 0x3093 }, 0x00 },	/* PLL2_seld5: 0 */
 	{ OV8830_8BIT, { 0x3098 }, 0x03 },	/* PLL3_prediv: 3 */
-	{ OV8830_8BIT, { 0x3099 }, 0x1e },	/* PLL3_mult2: 30 */
+	{ OV8830_8BIT, { 0x3099 }, 19 },	/* PLL3_mult2: 30 */
 	{ OV8830_8BIT, { 0x309a }, 0x00 },	/* PLL3_divs: 0 */
 	{ OV8830_8BIT, { 0x309b }, 0x00 },	/* PLL3_div: 0 */
+	{ OV8830_8BIT, { 0x309c }, 0x01 },	/* PLL3_mult1: 0 (default) */
 	{ OV8830_8BIT, { 0x30a2 }, 0x01 },
 	{ OV8830_8BIT, { 0x30b0 }, 0x05 },
 	{ OV8830_8BIT, { 0x30b2 }, 0x00 },
-	{ OV8830_8BIT, { 0x30b3 }, 0x4b },	/* PLL1_multiplier: 75 */
+	{ OV8830_8BIT, { 0x30b3 }, 94 },	/* PLL1_multiplier */
 	{ OV8830_8BIT, { 0x30b4 }, 0x03 },	/* PLL1_prediv: 3 */
 	{ OV8830_8BIT, { 0x30b5 }, 0x04 },	/* PLL1_op_pix_div: 4 *2  */
 	{ OV8830_8BIT, { 0x30b6 }, 0x01 },	/* PLL1_op_sys_div: 1 */
