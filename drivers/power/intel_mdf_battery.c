@@ -215,6 +215,45 @@ static int fg_chip_get_property(enum power_supply_property psp)
 }
 
 /* Exported Functions to use with Fuel Gauge driver */
+bool intel_msic_is_capacity_shutdown_en(void)
+{
+	if (batt_thrshlds &&
+		(batt_thrshlds->fpo1 & FPO1_CAPACITY_SHUTDOWN))
+		return true;
+	else
+		return false;
+}
+EXPORT_SYMBOL(intel_msic_is_capacity_shutdown_en);
+
+bool intel_msic_is_volt_shutdown_en(void)
+{
+	if (batt_thrshlds &&
+		(batt_thrshlds->fpo1 & FPO1_VOLTAGE_SHUTDOWN))
+		return true;
+	else
+		return false;
+}
+EXPORT_SYMBOL(intel_msic_is_volt_shutdown_en);
+
+bool intel_msic_is_lowbatt_shutdown_en(void)
+{
+	if (batt_thrshlds &&
+		(batt_thrshlds->fpo1 & FPO1_LOWBATTINT_SHUTDOWN))
+		return true;
+	else
+		return false;
+}
+EXPORT_SYMBOL(intel_msic_is_lowbatt_shutdown_en);
+
+int intel_msic_get_vsys_min(void)
+{
+	/* Power Supply subsystem expects voltage in micro volts */
+	if (batt_thrshlds && batt_thrshlds->vbatt_sh_min)
+		return batt_thrshlds->vbatt_sh_min * 1000;
+	else
+		return MSIC_BATT_VMIN_THRESHOLD * 1000;
+}
+EXPORT_SYMBOL(intel_msic_get_vsys_min);
 
 int intel_msic_is_current_sense_enabled(void)
 {
@@ -370,7 +409,9 @@ static int get_batt_fg_curve_index(const char *name)
 	/* check if we support the device in our supplied to list */
 	num_supplicants = ARRAY_SIZE(msic_power_supplied_to);
 	for (i = 0; i < num_supplicants; i++) {
-		if (!strncmp(name, msic_power_supplied_to[i], 16))
+		/* check for string length match and compare the strings */
+		if ((strlen(name) == strlen(msic_power_supplied_to[i])) &&
+		 (!strcmp(name, msic_power_supplied_to[i])))
 			break;
 	}
 
@@ -639,25 +680,66 @@ int intel_msic_get_battery_pack_temp(int *temp)
 }
 EXPORT_SYMBOL(intel_msic_get_battery_pack_temp);
 
-static void dump_registers(void)
+static void dump_registers(int dump_mask)
 {
 	int i, retval = 0;
 	uint8_t reg_val;
 	uint16_t chk_reg_addr;
-	uint16_t reg_addr[] = {MSIC_BATT_CHR_CHRCTRL_ADDR,
-		CHR_STATUS_FAULT_REG, MSIC_BATT_CHR_PWRSRCLMT_ADDR,
-		MSIC_BATT_CHR_CHRCVOLTAGE_ADDR, MSIC_BATT_CHR_CHRCCURRENT_ADDR};
-	char *reg_str[] = {"Chrctrl_reg", "Fault_reg", "Pwrsrclmt_reg",
-		"Chrvolt_reg", "Chrcur_reg"};
+	uint16_t reg_addr_boot[] = {MSIC_BATT_RESETIRQ1_ADDR,
+		MSIC_BATT_RESETIRQ2_ADDR, MSIC_BATT_CHR_LOWBATTDET_ADDR,
+		MSIC_BATT_CHR_SPCHARGER_ADDR, MSIC_BATT_CHR_CHRTTIME_ADDR,
+		MSIC_BATT_CHR_CHRCTRL1_ADDR, MSIC_BATT_CHR_CHRSTWDT_ADDR,
+		MSIC_BATT_CHR_CHRSAFELMT_ADDR};
+	char *reg_str_boot[] = {"rirq1", "rirq2", "lowdet",
+				"spchr", "chrtime", "chrctrl1",
+				"chrgwdt", "safelmt"};
+	uint16_t reg_addr_int[] = {MSIC_BATT_CHR_PWRSRCINT_ADDR,
+		MSIC_BATT_CHR_PWRSRCINT1_ADDR, MSIC_BATT_CHR_CHRINT_ADDR,
+		MSIC_BATT_CHR_CHRINT1_ADDR, MSIC_BATT_CHR_PWRSRCLMT_ADDR};
+	char *reg_str_int[] = {"pwrint", "pwrint1", "chrint",
+				"chrint1", "pwrsrclmt"};
+	uint16_t reg_addr_evt[] = {MSIC_BATT_CHR_CHRCTRL_ADDR,
+		MSIC_BATT_CHR_CHRCVOLTAGE_ADDR, MSIC_BATT_CHR_CHRCCURRENT_ADDR,
+		MSIC_BATT_CHR_SPWRSRCINT_ADDR, MSIC_BATT_CHR_SPWRSRCINT1_ADDR,
+		CHR_STATUS_FAULT_REG};
+	char *reg_str_evt[] = {"chrctrl", "chrcv", "chrcc",
+				"spwrsrcint", "sprwsrcint1", "chrflt"};
 
-	for (i = 0; i < 5; i++) {
-		retval = intel_scu_ipc_ioread8(reg_addr[i], &reg_val);
-		if (retval) {
-			chk_reg_addr = reg_addr[i];
-			goto ipcread_err;
+	if (dump_mask & MSIC_CHRG_REG_DUMP_BOOT) {
+		for (i = 0; i < ARRAY_SIZE(reg_addr_boot); i++) {
+			retval = intel_scu_ipc_ioread8(reg_addr_boot[i],
+								&reg_val);
+			if (retval) {
+				chk_reg_addr = reg_addr_boot[i];
+				goto ipcread_err;
+			}
+			dev_info(msic_dev, "%s val: %x\n", reg_str_boot[i],
+								reg_val);
 		}
-
-		dev_info(msic_dev, "%s val: %x\n", reg_str[i], reg_val);
+	}
+	if (dump_mask & MSIC_CHRG_REG_DUMP_INT) {
+		for (i = 0; i < ARRAY_SIZE(reg_addr_int); i++) {
+			retval = intel_scu_ipc_ioread8(reg_addr_int[i],
+								&reg_val);
+			if (retval) {
+				chk_reg_addr = reg_addr_int[i];
+				goto ipcread_err;
+			}
+			dev_info(msic_dev, "%s val: %x\n", reg_str_int[i],
+								reg_val);
+		}
+	}
+	if (dump_mask & MSIC_CHRG_REG_DUMP_EVENT) {
+		for (i = 0; i < ARRAY_SIZE(reg_addr_evt); i++) {
+			retval = intel_scu_ipc_ioread8(reg_addr_evt[i],
+								&reg_val);
+			if (retval) {
+				chk_reg_addr = reg_addr_evt[i];
+				goto ipcread_err;
+			}
+			dev_info(msic_dev, "%s val: %x\n", reg_str_evt[i],
+								reg_val);
+		}
 	}
 
 	return;
@@ -668,12 +750,25 @@ ipcread_err:
 
 static int is_charger_fault(void)
 {
-	uint8_t fault_reg, chrctrl_reg, stat;
+	uint8_t fault_reg, chrctrl_reg, stat, spwrsrcint_reg;
 	int retval = 0;
 	int adc_temp, adc_usb_volt, batt_volt;
 	struct platform_device *pdev = container_of(msic_dev,
 					struct platform_device, dev);
 	struct msic_power_module_info *mbi = platform_get_drvdata(pdev);
+
+	/* if charger is disconnected then report false */
+
+	retval = intel_scu_ipc_ioread8(MSIC_BATT_CHR_SPWRSRCINT_ADDR,
+		&spwrsrcint_reg);
+	if (retval) {
+		retval = handle_ipc_rw_status(retval,
+			MSIC_BATT_CHR_SPWRSRCINT_ADDR, MSIC_IPC_READ);
+		if (retval)
+			return retval;
+	}
+	if (!(spwrsrcint_reg & MSIC_BATT_CHR_USBDET_MASK))
+		return false;
 
 	retval = intel_scu_ipc_ioread8(MSIC_BATT_CHR_CHRCTRL_ADDR,
 			&chrctrl_reg);
@@ -718,7 +813,7 @@ static int is_charger_fault(void)
 						adc_temp, adc_usb_volt);
 		}
 
-		dump_registers();
+		dump_registers(MSIC_CHRG_REG_DUMP_EVENT);
 
 		return true;
 	}
@@ -919,9 +1014,11 @@ static void msic_handle_exception(struct msic_power_module_info *mbi,
 }
 
 /**
- *	msic_write_multi	-	multi-write helper
+ *	msic_chr_write_multi	-	multi-write helper
  *	@mbi: msic power module
- *	@address: addresses of IPC writes
+ *	@address: addresses of IPC writes.
+		  should only be given in pairs, WDTWRITE address followed
+		  by other charger register address
  *	@data: data for IPC writes
  *	@n: size of write table
  *
@@ -929,21 +1026,59 @@ static void msic_handle_exception(struct msic_power_module_info *mbi,
  *	across the entire sequence. Handle any error reporting and pass back
  *	error codes on failure
  */
-static int msic_write_multi(struct msic_power_module_info *mbi,
+static int msic_chr_write_multi(struct msic_power_module_info *mbi,
 			    const u16 *address, const u8 *data, int n)
 {
 	int retval = 0, i;
+	int rep_count = 0;
+	u8 read_data;
+
+	/* All writes to charger-registers should accompany WDTWRITE address */
+	if (n%2) {
+		dev_warn(msic_dev, "Invalid no of register-arguments to %s\n",
+				__func__);
+
+		return -EINVAL;
+	}
+
 	mutex_lock(&mbi->ipc_rw_lock);
-	for (i = 0; i < n; i++) {
-		retval = intel_scu_ipc_iowrite8(*address++, *data++);
-		if (retval) {
-			retval = handle_ipc_rw_status(retval,
-					*(address-1), MSIC_IPC_WRITE);
-			if (retval)
+	/* Two writes are issued at once, first one to unlock WDTWRITE
+	   and second one with given charger-register value */
+	for (i = 0; i < n; i += 2) {
+		/* Once written, the register is read back to check,
+		   and re-written if required. This is repeated 3 times */
+		for (rep_count = 0; rep_count < CHR_WRITE_RETRY_CNT;
+				rep_count++) {
+			retval = intel_scu_ipc_writev(address+i, data+i, 2);
+			if (retval) {
+				handle_ipc_rw_status(retval,
+						*(address+i+1),
+						MSIC_IPC_WRITE);
 				break;
+			} else {
+				retval = intel_scu_ipc_ioread8(*(address+i+1),
+						&read_data);
+				if (retval) {
+					handle_ipc_rw_status(retval,
+							*(address+i+1),
+							MSIC_IPC_READ);
+					break;
+				}
+
+				if (read_data == *(data+i+1))
+					break;
+				else {
+					dev_warn(msic_dev, "MSIC-Register RW "
+							"mismatch on try %d\n",
+							rep_count+1);
+					if (rep_count == CHR_WRITE_RETRY_CNT-1)
+						dev_err(msic_dev, "Error in MSIC-Register RW\n");
+				}
+			}
 		}
 	}
 	mutex_unlock(&mbi->ipc_rw_lock);
+
 	return retval;
 }
 
@@ -989,7 +1124,7 @@ static int ipc_read_modify_chr_param_reg(struct msic_power_module_info *mbi,
 	else
 		data[1] &= (~val);
 
-	return msic_write_multi(mbi, address, data, 2);
+	return msic_chr_write_multi(mbi, address, data, 2);
 }
 
 /**
@@ -1120,9 +1255,9 @@ static int msic_batt_stop_charging(struct msic_power_module_info *mbi)
 	 * Charger connect handler delayed work also modifies the
 	 * MSIC charger parameter registers.To avoid concurrent
 	 * read writes to same set of registers  locking applied by
-	 * msic_write_multi
+	 * msic_chr_write_multi
 	 */
-	return msic_write_multi(mbi, address, data, 4);
+	return msic_chr_write_multi(mbi, address, data, 4);
 }
 
 /**
@@ -1139,6 +1274,7 @@ static int msic_batt_do_charging(struct msic_power_module_info *mbi,
 				 int is_maint_mode)
 {
 	int retval;
+	u8 val;
 	static u8 data[] = {
 		WDTWRITE_UNLOCK_VALUE, 0,
 		WDTWRITE_UNLOCK_VALUE, 0,
@@ -1164,16 +1300,28 @@ static int msic_batt_do_charging(struct msic_power_module_info *mbi,
 	 * MSIC charger parameter registers.To avoid concurrent
 	 * read writes to same set of registers  locking applied
 	 */
-	retval = msic_write_multi(mbi, address, data, 10);
+	retval = msic_chr_write_multi(mbi, address, data, 10);
 	if (retval < 0) {
 		dev_warn(msic_dev, "ipc multi write failed:%s\n", __func__);
 		return retval;
 	}
 
-	dev_dbg(msic_dev, "Charger Enabled\n");
 	/* prevent system from entering s3 while charger is connected */
 	if (!wake_lock_active(&mbi->wakelock))
 		wake_lock(&mbi->wakelock);
+
+	retval = intel_scu_ipc_ioread8(MSIC_BATT_CHR_CHRCTRL_ADDR, &val);
+	if (retval) {
+		handle_ipc_rw_status(retval, MSIC_BATT_CHR_CHRCTRL_ADDR,
+								MSIC_IPC_READ);
+		return retval;
+	}
+
+	/* Check if charging enabled or not */
+	if (val & CHRCNTL_CHRG_DISABLE) {
+		dev_warn(msic_dev, "Charging not Enabled by MSIC!!!\n");
+		return -EIO;
+	}
 
 	mutex_lock(&mbi->batt_lock);
 	if (is_maint_mode)
@@ -1200,7 +1348,7 @@ static void reset_wdt_timer(struct msic_power_module_info *mbi)
 	 * MSIC charger parameter registers.To avoid concurrent
 	 * read writes to same set of registers  locking applied
 	 */
-	msic_write_multi(mbi, address, data, 2);
+	msic_chr_write_multi(mbi, address, data, 2);
 }
 
 /**
@@ -1275,8 +1423,14 @@ static int check_charge_full(struct msic_power_module_info *mbi,
 static unsigned int sfi_temp_range_lookup(int adc_temp)
 {
 	int i;
+	int max_range;
 
-	for (i = 0; i < sfi_table->temp_mon_ranges; i++) {
+	if (sfi_table->temp_mon_ranges < SFI_TEMP_NR_RNG)
+		max_range = sfi_table->temp_mon_ranges;
+	else
+		max_range = SFI_TEMP_NR_RNG;
+
+	for (i = 0; i < max_range; i++) {
 		if (adc_temp <= sfi_table->temp_mon_range[i].temp_up_lim &&
 		    adc_temp > sfi_table->temp_mon_range[i].temp_low_lim) {
 			dev_dbg(msic_dev, "Temp Range %d\n", i);
@@ -1332,7 +1486,10 @@ static void msic_batt_temp_charging(struct work_struct *work)
 	/* find the temperature range */
 	i = sfi_temp_range_lookup(adc_temp);
 
-	if (i >= sfi_table->temp_mon_ranges || is_charger_fault()) {
+	/* change to fix buffer overflow issue */
+	if (i >= ((sfi_table->temp_mon_ranges < SFI_TEMP_NR_RNG) ?
+			sfi_table->temp_mon_ranges : SFI_TEMP_NR_RNG) ||
+						is_charger_fault()) {
 		if ((adc_temp > batt_thrshlds->temp_high) ||
 			(adc_temp < batt_thrshlds->temp_low)) {
 			dev_warn(msic_dev,
@@ -1349,6 +1506,7 @@ static void msic_batt_temp_charging(struct work_struct *work)
 					POWER_SUPPLY_STATUS_NOT_CHARGING;
 			mutex_unlock(&mbi->batt_lock);
 		}
+		dump_registers(MSIC_CHRG_REG_DUMP_EVENT);
 		/*
 		 * If we are in middle of charge cycle is safer to Reset WDT
 		 * Timer Register.Because battery temperature and charge
@@ -1466,7 +1624,6 @@ static void msic_batt_temp_charging(struct work_struct *work)
 				"maint_cur:%d\n", temp_mon->maint_chrg_vol_ll,
 				temp_mon->maint_chrg_vol_ul,
 				temp_mon->maint_chrg_cur);
-		dump_registers();
 	}
 
 	iprev = i;
@@ -1504,7 +1661,9 @@ static void msic_batt_temp_charging(struct work_struct *work)
 		charge_param.weakvin |= CHR_SPCHRGER_LOWCHR_ENABLE;
 
 	/* enable charging here */
+	dev_info(msic_dev, "Enable Charging\n");
 	ret = msic_batt_do_charging(mbi, &charge_param, is_maint_chrg);
+	dump_registers(MSIC_CHRG_REG_DUMP_EVENT);
 	if (ret) {
 		dev_warn(msic_dev, "msic_batt_do_charging failed\n");
 		goto lbl_sched_work;
@@ -1531,6 +1690,7 @@ static void update_charger_health(struct msic_power_module_info *mbi)
 				" voltage:%s\n", __func__);
 		return;
 	}
+	dev_info(msic_dev, "vbus_volt:%d\n", vbus_volt);
 
 	/* Compute Charger health */
 	mutex_lock(&mbi->usb_chrg_lock);
@@ -1575,18 +1735,18 @@ static void update_battery_health(struct msic_power_module_info *mbi)
 	  temperature and report health as good if recovered from error state */
 
 	volt = fg_chip_get_property(POWER_SUPPLY_PROP_VOLTAGE_NOW);
-
 	if (volt == -ENODEV || volt == -EINVAL) {
 		dev_warn(msic_dev, "Can't read voltage from FG\n");
 		return;
 	}
 
 	temp = fg_chip_get_property(POWER_SUPPLY_PROP_TEMP);
-
 	if (temp == -ENODEV || temp == -EINVAL) {
 		dev_warn(msic_dev, "Can't read temp from FG\n");
 		return;
 	}
+
+	dev_info(msic_dev, "vbatt:%d temp:%d\n", volt, temp);
 
 	/* convert to milli volts */
 	volt /= 1000;
@@ -1635,7 +1795,6 @@ static void update_battery_health(struct msic_power_module_info *mbi)
 
 			mbi->batt_props.health = POWER_SUPPLY_HEALTH_GOOD;
 			dev_dbg(msic_dev, "Setting battery-health, power-supply good");
-			dump_registers();
 		} else if (mbi->batt_props.health ==
 				POWER_SUPPLY_HEALTH_UNSPEC_FAILURE){
 
@@ -1677,7 +1836,7 @@ static void msic_batt_disconn(struct work_struct *work)
 	dev_dbg(msic_dev, "Stopping charging due to charger event: %s\n",
 			(event == USBCHRG_EVENT_SUSPEND) ? "SUSPEND" :
 			"DISCONNECT");
-	dump_registers();
+	dump_registers(MSIC_CHRG_REG_DUMP_EVENT);
 	ret = msic_batt_stop_charging(mbi);
 	if (ret) {
 		dev_warn(msic_dev, "%s: failed\n", __func__);
@@ -1759,7 +1918,7 @@ static int msic_event_handler(void *arg, int event, struct otg_bc_cap *cap)
 	case USBCHRG_EVENT_DISCONN:
 		pm_runtime_put_sync(&mbi->pdev->dev);
 	case USBCHRG_EVENT_SUSPEND:
-		dev_dbg(msic_dev, "USB DISCONN or SUSPEND\n");
+		dev_info(msic_dev, "USB DISCONN or SUSPEND\n");
 		cancel_delayed_work_sync(&mbi->connect_handler);
 		schedule_delayed_work(&mbi->disconn_handler, 0);
 
@@ -1858,6 +2017,7 @@ static void msic_status_monitor(struct work_struct *work)
 
 	mutex_unlock(&mbi->batt_lock);
 
+	dump_registers(MSIC_CHRG_REG_DUMP_EVENT);
 	power_supply_changed(&mbi->usb);
 	schedule_delayed_work(&mbi->chr_status_monitor, delay);
 
@@ -1947,6 +2107,8 @@ static irqreturn_t msic_battery_thread_handler(int id, void *dev)
 	tmp = mbi->charging_mode;
 	mutex_unlock(&mbi->event_lock);
 
+	dump_registers(MSIC_CHRG_REG_DUMP_INT | MSIC_CHRG_REG_DUMP_EVENT);
+
 	/* Check if charge complete */
 	if (data[1] & MSIC_BATT_CHR_CHRCMPLT_MASK)
 		dev_dbg(msic_dev, "CHRG COMPLT\n");
@@ -1981,8 +2143,26 @@ static irqreturn_t msic_battery_thread_handler(int id, void *dev)
 	if (data[0] || (data[1] & ~(MSIC_BATT_CHR_CHRCMPLT_MASK)))
 		msic_handle_exception(mbi, data[0], data[1]);
 
+	/*
+	 * Mask LOWBATT INT once after recieving the first
+	 * LOWBATT INT because the platfrom will shutdown
+	 * on LOWBATT INT, So no need to service LOWBATT INT
+	 * afterwards and increase the load on CPU.
+	 */
+	if (data[0] & MSIC_BATT_CHR_LOWBATT_MASK) {
+		dev_warn(msic_dev, "Masking LOWBATTINT\n");
+		mbi->chrint_mask |= MSIC_BATT_CHR_LOWBATT_MASK;
+		ret = intel_scu_ipc_iowrite8(MSIC_BATT_CHR_MCHRINT_ADDR,
+						mbi->chrint_mask);
+		if (ret)
+			handle_ipc_rw_status(ret,
+				MSIC_BATT_CHR_MCHRINT_ADDR, MSIC_IPC_WRITE);
+	}
+
 	/* Check charger Status bits */
-	if (is_charger_fault()) {
+	if ((data[0] & ~(MSIC_BATT_CHR_TIMEEXP_MASK)) ||
+		(data[1] & ~(MSIC_BATT_CHR_CHRCMPLT_MASK))
+			&& is_charger_fault()) {
 		mutex_lock(&mbi->batt_lock);
 		mbi->batt_props.status = POWER_SUPPLY_STATUS_NOT_CHARGING;
 		mutex_unlock(&mbi->batt_lock);
@@ -2181,6 +2361,9 @@ static int __init sfi_table_populate(struct sfi_table_header *table)
 		totlen = totentrs * sizeof(*pentry);
 		memcpy(sfi_table, pentry, totlen);
 		mbi->is_batt_valid = true;
+		if (sfi_table->temp_mon_ranges != SFI_TEMP_NR_RNG)
+			dev_warn(msic_dev, "SFI: temperature monitoring range"
+				"doesn't match with its Array elements size\n");
 	} else {
 		dev_warn(msic_dev, "Invalid battery detected\n");
 		sfi_table_invalid_batt(sfi_table);
@@ -2252,7 +2435,7 @@ static void init_batt_thresholds(struct msic_power_module_info *mbi)
 {
 	int ret;
 
-	batt_thrshlds->vbatt_sh_min = BATT_DEAD_CUTOFF_VOLT;
+	batt_thrshlds->vbatt_sh_min = MSIC_BATT_VMIN_THRESHOLD;
 	batt_thrshlds->vbatt_crit = BATT_CRIT_CUTOFF_VOLT;
 	batt_thrshlds->temp_high = MSIC_BATT_TEMP_MAX;
 	batt_thrshlds->temp_low = MSIC_BATT_TEMP_MIN;
@@ -2304,8 +2487,7 @@ static int init_msic_regs(struct msic_power_module_info *mbi)
 		MSIC_BATT_CHR_WDTWRITE_ADDR, MSIC_BATT_CHR_CHRTTIME_ADDR,
 		MSIC_BATT_CHR_WDTWRITE_ADDR, MSIC_BATT_CHR_SPCHARGER_ADDR,
 		MSIC_BATT_CHR_WDTWRITE_ADDR, MSIC_BATT_CHR_CHRSTWDT_ADDR,
-		MSIC_BATT_CHR_WDTWRITE_ADDR, MSIC_BATT_CHR_CHRCTRL1_ADDR,
-		MSIC_BATT_CHR_WDTWRITE_ADDR, MSIC_BATT_CHR_LOWBATTDET_ADDR
+		MSIC_BATT_CHR_WDTWRITE_ADDR, MSIC_BATT_CHR_CHRCTRL1_ADDR
 	};
 	static u8 data[] = {
 		WDTWRITE_UNLOCK_VALUE, CHR_PWRSRCLMT_SET_RANGE,
@@ -2315,11 +2497,12 @@ static int init_msic_regs(struct msic_power_module_info *mbi)
 		WDTWRITE_UNLOCK_VALUE,
 		(~CHR_SPCHRGER_LOWCHR_ENABLE & CHR_SPCHRGER_WEAKVIN_LVL1),
 		WDTWRITE_UNLOCK_VALUE, CHR_WDT_DISABLE,
-		WDTWRITE_UNLOCK_VALUE, MSIC_CHRG_EXTCHRDIS,
-		WDTWRITE_UNLOCK_VALUE, MSIC_BATT_CHR_SET_LOWBATTREG
+		WDTWRITE_UNLOCK_VALUE, MSIC_CHRG_EXTCHRDIS
 	};
 
-	return msic_write_multi(mbi, address, data, 14);
+	dump_registers(MSIC_CHRG_REG_DUMP_BOOT | MSIC_CHRG_REG_DUMP_EVENT);
+
+	return msic_chr_write_multi(mbi, address, data, 12);
 }
 
 /**

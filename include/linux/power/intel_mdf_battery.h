@@ -34,4 +34,10 @@ extern int intel_msic_get_battery_pack_temp(int *val);
 extern int intel_msic_save_config_data(const char *name, void *data, int len);
 extern int intel_msic_restore_config_data(const char *name, void *data,
 					  int len);
+
+extern bool intel_msic_is_capacity_shutdown_en(void);
+extern bool intel_msic_is_volt_shutdown_en(void);
+extern bool intel_msic_is_lowbatt_shutdown_en(void);
+extern int intel_msic_get_vsys_min(void);
+
 #endif /* __INTEL_MDF_BATTERY_H_ */

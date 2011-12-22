@@ -65,6 +65,9 @@
 #define MSIC_BATT_CHR_CHRCMPLT_MASK	(1 << 7)
 #define MSIC_BATT_CHRINT1_EXCP_MASK	0x68
 
+#define MSIC_BATT_RESETIRQ1_ADDR	0x010
+#define MSIC_BATT_RESETIRQ2_ADDR	0x011
+
 /* Interrupts need to be masked */
 #define CHRINT1_MASK MSIC_BATT_CHR_WKVINDET_MASK
 #define CHRINT_MASK (MSIC_BATT_CHR_BATTOTP_MASK |\
@@ -218,6 +221,9 @@
 #define MSIC_IPC_READ	0
 #define MSIC_IPC_WRITE	1
 #define MAX_IPC_ERROR_COUNT 20
+
+#define CHR_WRITE_RETRY_CNT 3
+
 /*
  * Each LSB of Charger LED PWM register
  * contributes to 0.39% of duty cycle
@@ -245,10 +251,9 @@
  */
 #define CONV_VOL_DEC_MSICREG(a)	(((a - 3500) / 20) << 2)
 
-#define BATT_LOWBATT_CUTOFF_VOLT	3750	/* 3750 mV */
+#define MSIC_BATT_VMIN_THRESHOLD	3600	/* 3600mV */
 #define BATT_OVERVOLTAGE_CUTOFF_VOLT	5040	/* 1.2 times of Max voltage */
 #define BATT_CRIT_CUTOFF_VOLT		3700	/* 3700 mV */
-#define BATT_DEAD_CUTOFF_VOLT		3400	/* 3400 mV */
 #define DEFAULT_MAX_CAPACITY		1500
 
 #define COLMB_TO_MAHRS_CONV_FCTR	3600
@@ -298,6 +303,19 @@
 
 /* Convert ADC value to VBUS voltage */
 #define MSIC_ADC_TO_VBUS_VOL(adc_val)	((6843 * (adc_val)) / 1000)
+
+#define MSIC_CHRG_REG_DUMP_INT		(1 << 0)
+#define MSIC_CHRG_REG_DUMP_BOOT		(1 << 1)
+#define MSIC_CHRG_REG_DUMP_EVENT	(1 << 2)
+
+/* SMIP FPO1 options field provides different
+ * shutdowns methods which should be enabled
+ * by the platfrom.
+ */
+#define FPO1_CAPACITY_SHUTDOWN		(1 << 0)
+#define FPO1_VOLTAGE_SHUTDOWN		(1 << 1)
+#define FPO1_LOWBATTINT_SHUTDOWN	(1 << 2)
+
 /* Valid msic exception events */
 enum msic_event {
 	MSIC_EVENT_BATTOCP_EXCPT,
