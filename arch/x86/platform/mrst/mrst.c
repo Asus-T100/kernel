@@ -50,6 +50,10 @@
 #include <linux/atomisp_platform.h>
 #include <media/v4l2-subdev.h>
 
+#include <linux/mmc/core.h>
+#include <linux/mmc/card.h>
+#include <linux/blkdev.h>
+
 #include <asm/setup.h>
 #include <asm/mpspec_def.h>
 #include <asm/hw_irq.h>
@@ -2480,3 +2484,27 @@ void mfld_hsu_disable_wakeup(int index, struct device *dev)
 }
 EXPORT_SYMBOL_GPL(mfld_hsu_disable_wakeup);
 
+#define EMMC_BLK_NAME	"mmcblk0"
+static int emmc_match(struct device *dev, void *data)
+{
+	if (strcmp(dev_name(dev), "mmcblk0") == 0)
+		return 1;
+	return 0;
+}
+int mmc_blk_rpmb_req_handle(struct mmc_rpmb_req *req)
+{
+	struct device *emmc = NULL;
+
+	if (!req)
+		return -EINVAL;
+
+	emmc = class_find_device(&block_class, NULL, EMMC_BLK_NAME, emmc_match);
+	if (!emmc) {
+		pr_err("%s: eMMC card is not registered yet. Try it later\n",
+				__func__);
+		return -ENODEV;
+	}
+
+	return mmc_rpmb_req_handle(emmc, req);
+}
+EXPORT_SYMBOL_GPL(mmc_blk_rpmb_req_handle);

@@ -99,6 +99,7 @@ struct mmc_blk_data {
 #define MMC_BLK_WRITE		BIT(1)
 #define MMC_BLK_DISCARD		BIT(2)
 #define MMC_BLK_SECDISCARD	BIT(3)
+#define MMC_BLK_RPMB		BIT(4)
 
 	/*
 	 * Only set in main mmc_blk_data associated
@@ -425,6 +426,7 @@ static int mmc_blk_ioctl(struct block_device *bdev, fmode_t mode,
 	int ret = -EINVAL;
 	if (cmd == MMC_IOC_CMD)
 		ret = mmc_blk_ioctl_cmd(bdev, (struct mmc_ioc_cmd __user *)arg);
+
 	return ret;
 }
 
@@ -753,6 +755,111 @@ static inline void mmc_blk_reset_success(struct mmc_blk_data *md, int type)
 {
 	md->reset_done &= ~type;
 }
+
+int mmc_rpmb_req_handle(struct device *emmc, struct mmc_rpmb_req *req)
+{
+	int ret = 0;
+	struct gendisk *disk	= NULL;
+	struct mmc_card *card	= NULL;
+	struct mmc_blk_data *md = NULL;
+	unsigned int		part_curr;
+
+	if (!emmc)
+		return -ENODEV;
+
+	if (!req)
+		return -EINVAL;
+
+	disk = dev_to_disk(emmc);
+	if (!disk) {
+		pr_err("%s: NO eMMC disk found. Try it later\n",
+				__func__);
+		return -ENODEV;
+	}
+
+	md = mmc_blk_get(disk);
+	if (!md) {
+		pr_err("%s: NO eMMC block data. Try it later\n",
+				__func__);
+		return -ENODEV;
+	}
+	if (!(md->flags & MMC_BLK_CMD23)) {
+		pr_err("%s: CMD23 is not supported by host or device\n",
+				mmc_hostname(card->host));
+		ret = -EOPNOTSUPP;
+		goto err;
+	}
+
+	card = mmc_dev_to_card(disk->driverfs_dev);
+	if (IS_ERR(card)) {
+		ret = PTR_ERR(card);
+		pr_err("%s: encounter error when getting eMMC card\n",
+				__func__);
+		ret = -ENODEV;
+		goto err;
+	}
+
+	if (!mmc_card_mmc(card) || !card->ext_csd.rpmb_size) {
+		ret = -ENODEV;
+		goto err;
+	}
+
+	/* check request */
+	ret = mmc_rpmb_pre_frame(req, card);
+	if (ret) {
+		pr_err("%s: prepare frame failed\n", mmc_hostname(card->host));
+		goto err;
+	}
+
+	mmc_claim_host(card->host);
+
+	/* * before start, let's change to RPMB partition first
+	 */
+	part_curr = md->part_type;
+	md->part_type = EXT_CSD_PART_CONFIG_RPMB;
+	ret = mmc_blk_part_switch(card, md);
+	if (ret) {
+		pr_err("%s: Invalid RPMB partition switch (%d)!\n",
+				mmc_hostname(card->host), ret);
+		/*
+		 * In case partition is not in user data area, make
+		 * a force partition switch
+		 */
+		goto out;
+	}
+
+	ret = mmc_rpmb_partition_ops(req, card);
+	if (ret)
+		pr_err("%s: failed (%d) to handle RPMB request type (%d)!\n",
+				mmc_hostname(card->host), ret, req->type);
+out:
+	/*
+	 * switch back
+	 */
+	md->part_type = part_curr;
+	if (mmc_blk_part_switch(card, md)) {
+		int err;
+		/*
+		 * we need reset eMMC card at here
+		 */
+		err = mmc_blk_reset(md, card->host, MMC_BLK_RPMB);
+		if (!err)
+			mmc_blk_reset_success(md, MMC_BLK_RPMB);
+		else {
+			pr_err("%s: eMMC card reset failed (%d)\n",
+					mmc_hostname(card->host), err);
+			if (!ret)
+				ret = err;
+		}
+	}
+	mmc_release_host(card->host);
+	mmc_rpmb_post_frame(req);
+err:
+	mmc_blk_put(md);
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(mmc_rpmb_req_handle);
 
 static int mmc_blk_issue_discard_rq(struct mmc_queue *mq, struct request *req)
 {

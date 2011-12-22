@@ -131,6 +131,40 @@ struct mmc_request {
 	void			(*done)(struct mmc_request *);/* completion function */
 };
 
+/*
+ * RPMB frame structure
+ */
+struct mmc_rpmb_req {
+	__u16 type;			/* RPMB request type */
+	__u16 *result;			/* response or request result */
+	__u16 blk_cnt;			/* Number of blocks(half sector 256B) */
+	__u16 addr;			/* data address */
+	__u32 *wc;			/* write counter */
+	__u8 *nonce;			/* Ramdom number */
+	__u8 *data;			/* Buffer of the user data */
+	__u8 *mac;			/* Message Authentication Code */
+	__u8 *frame;
+	bool ready;
+};
+
+#define RPMB_PROGRAM_KEY	1	/* Program RPMB Authentication Key */
+#define RPMB_GET_WRITE_COUNTER	2	/* Read RPMB write counter */
+#define RPMB_WRITE_DATA		3	/* Write data to RPMB partition */
+#define RPMB_READ_DATA		4	/* Read data from RPMB partition */
+#define RPMB_RESULT_READ	5	/* Read result request */
+#define RPMB_REQ		1	/* RPMB request mark */
+#define RPMB_RESP		(1 << 1)/* RPMB response mark */
+#define RPMB_AVALIABLE_SECTORS	8	/* 4K page size */
+
+#define RPMB_TYPE_BEG		510
+#define RPMB_RES_BEG		508
+#define RPMB_BLKS_BEG		506
+#define RPMB_ADDR_BEG		504
+#define RPMB_WCOUNTER_BEG	500
+#define RPMB_NONCE_END		499
+#define RPMB_DATA_END		483
+#define RPMB_MAC_END		227
+
 struct mmc_host;
 struct mmc_card;
 struct mmc_async_req;
@@ -143,6 +177,11 @@ extern int mmc_app_cmd(struct mmc_host *, struct mmc_card *);
 extern int mmc_wait_for_app_cmd(struct mmc_host *, struct mmc_card *,
 	struct mmc_command *, int);
 extern int mmc_switch(struct mmc_card *, u8, u8, u8, unsigned int);
+
+extern int mmc_rpmb_partition_ops(struct mmc_rpmb_req *,
+		struct mmc_card *);
+extern int mmc_rpmb_pre_frame(struct mmc_rpmb_req *, struct mmc_card *);
+extern void mmc_rpmb_post_frame(struct mmc_rpmb_req *);
 
 #define MMC_ERASE_ARG		0x00000000
 #define MMC_SECURE_ERASE_ARG	0x80000000

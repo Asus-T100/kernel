@@ -70,6 +70,7 @@ struct mmc_ext_csd {
 	unsigned int		hpi_cmd;		/* cmd used as HPI */
 	bool			bkops; 			/* BKOPS support bit */
 	bool			bkops_en;		/* BKOPS enable bit */
+	unsigned int		rpmb_size;		/* Units: half sector */
 	u8			raw_partition_support;	/* 160 */
 	u8			raw_erased_mem_count;	/* 181 */
 	u8			raw_ext_csd_structure;	/* 194 */
@@ -228,6 +229,8 @@ struct mmc_card {
 	unsigned int		sd_bus_speed;	/* Bus Speed Mode set for the card */
 
 	struct dentry		*debugfs_root;
+
+	unsigned int		rpmb_max_req;
 };
 
 /*
@@ -425,5 +428,7 @@ extern void mmc_unregister_driver(struct mmc_driver *);
 
 extern void mmc_fixup_device(struct mmc_card *card,
 			     const struct mmc_fixup *table);
+
+extern int mmc_rpmb_req_handle(struct device *emmc, struct mmc_rpmb_req *req);
 
 #endif /* LINUX_MMC_CARD_H */
