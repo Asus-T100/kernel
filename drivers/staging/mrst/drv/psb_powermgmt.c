@@ -827,7 +827,8 @@ static int mdfld_save_display_registers (struct drm_device *dev, int pipe)
 	 */
 #ifndef CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY
 	if (pipe != 1 && ((get_panel_type(dev, pipe) == TMD_VID) ||
-		(get_panel_type(dev, pipe) == TMD_6X10_VID)))
+		(get_panel_type(dev, pipe) == TMD_6X10_VID) ||
+		(get_panel_type(dev, pipe) == H8C7_VID)))
 		return 0;
 #endif
 
@@ -1070,7 +1071,8 @@ static int mdfld_restore_display_registers(struct drm_device *dev, int pipe)
 	 */
 #ifndef CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY
 	if (pipe != 1 && ((get_panel_type(dev, pipe) == TMD_VID) ||
-		(get_panel_type(dev, pipe) == TMD_6X10_VID)))
+		(get_panel_type(dev, pipe) == TMD_6X10_VID) ||
+		(get_panel_type(dev, pipe) == H8C7_VID)))
 		return 0;
 #endif
 
@@ -1685,6 +1687,7 @@ static void gfx_early_suspend(struct early_suspend *h)
 	/*Display off*/
 	if (IS_MDFLD(gpDrmDevice)) {
 		if ((dev_priv->panel_id == TMD_VID) ||
+			(dev_priv->panel_id == H8C7_VID) ||
 			(dev_priv->panel_id == TMD_6X10_VID)) {
 #ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY
 			if (dev_priv->encoder0 &&
@@ -1756,6 +1759,7 @@ static void gfx_late_resume(struct early_suspend *h)
 #endif
 		if (IS_MDFLD(gpDrmDevice)) {
 			if ((dev_priv->panel_id == TMD_VID) ||
+				(dev_priv->panel_id == H8C7_VID) ||
 				(dev_priv->panel_id == TMD_6X10_VID)) {
 #ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY
 				if (dev_priv->encoder0 &&

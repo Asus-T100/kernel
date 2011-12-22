@@ -38,6 +38,7 @@
 #include "displays/pyr_cmd.h"
 #include "displays/pyr_vid.h"
 #include "displays/tmd_6x10_vid.h"
+#include "displays/h8c7_vid.h"
 #include "displays/hdmi.h"
 #include "psb_drv.h"
 
@@ -58,6 +59,7 @@ int is_panel_vid_or_cmd(struct drm_device *dev)
 	switch(dev_priv->panel_id) {
 	case TMD_VID:
 	case TMD_6X10_VID:
+	case H8C7_VID:
 	case TPO_VID:
 	case PYR_VID:
 		ret =  MDFLD_DSI_ENCODER_DPI;
@@ -122,6 +124,15 @@ void init_panel(struct drm_device* dev, int mipi_pipe, enum panel_type p_type)
 		kfree(p_cmd_funcs);
 		p_cmd_funcs = NULL;
 		tmd_6x10_vid_init(dev, p_vid_funcs);
+		ret = mdfld_dsi_output_init(dev, mipi_pipe,
+					NULL,
+					NULL,
+					p_vid_funcs);
+		break;
+	case H8C7_VID:
+		kfree(p_cmd_funcs);
+		p_cmd_funcs = NULL;
+		h8c7_vid_init(dev, p_vid_funcs);
 		ret = mdfld_dsi_output_init(dev, mipi_pipe,
 					NULL,
 					NULL,

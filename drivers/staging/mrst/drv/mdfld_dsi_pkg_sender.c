@@ -369,7 +369,6 @@ static int __send_long_pkg(struct mdfld_dsi_pkg_sender * sender,
 
 			REG_WRITE(lp_gen_data_reg, *(dp + i));
 		}
-
 		REG_WRITE(lp_gen_ctrl_reg, gen_ctrl_val);
 	} else {
 		DRM_ERROR("Unknown transmission type %d\n", pkg->transmission_type);

@@ -1068,13 +1068,8 @@ int mdfld_dsi_output_init(struct drm_device *dev,
 	}
 	
 	if(pipe && dev_priv->dsi_configs[0]) {
-		dsi_config->dvr_ic_inited = 0;
 		dev_priv->dsi_configs[1] = dsi_config;
 	} else if(pipe == 0) {
-		if (get_panel_type(dev, pipe) == TMD_6X10_VID)
-			dsi_config->dvr_ic_inited = 0;
-		else
-			dsi_config->dvr_ic_inited = 1;
 		dev_priv->dsi_configs[0] = dsi_config;
 	} else {
 		DRM_ERROR("Trying to init MIPI1 before MIPI0\n");

@@ -132,6 +132,13 @@ config MDFD_VIDEO_DECODE
 	help 
 	  xxxxxx
 
+config SUPPORT_MIPI_H8C7_DISPLAY
+       bool "Support CMI h8c7 720x1280 MIPI interface Panel"
+       depends on DRM_MDFLD || DRM_CTP
+       default n
+       help
+         xxxxxx
+
 config MDFD_VIDEO_ENCODE
 	bool "Support for Medfield Video Encode"
 	depends on DRM_MDFLD || DRM_CTP

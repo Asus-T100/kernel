@@ -43,6 +43,8 @@
 #define TMD_PANEL_HEIGHT	89 /* PR3 */
 #define PYR_PANEL_WIDTH		53
 #define PYR_PANEL_HEIGHT	95
+#define PANEL_4DOT3_WIDTH	53
+#define PANEL_4DOT3_HEIGHT	95
 
 struct mdfld_dsi_config;
 

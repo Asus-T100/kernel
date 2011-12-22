@@ -401,8 +401,6 @@ struct mdfld_dsi_config {
 	int pipe;
 	int changed;
 
-	int dvr_ic_inited;
-
 	int bpp;
 	mdfld_dsi_encoder_t type;
 	int lane_count;

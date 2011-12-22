@@ -959,6 +959,7 @@ int mdfld_dsi_dpi_timing_calculation(struct drm_display_mode *mode,
 	dpi_timing->vbp_count = mdfld_dsi_dpi_to_byte_clock_count(pclk_vbp, num_lane, bpp);
 	dpi_timing->vfp_count = mdfld_dsi_dpi_to_byte_clock_count(pclk_vfp, num_lane, bpp);
 #endif
+
 	PSB_DEBUG_ENTRY("DPI timings: %d, %d, %d, %d, %d, %d, %d\n", 
 			dpi_timing->hsync_count, dpi_timing->hbp_count,
 			dpi_timing->hfp_count, dpi_timing->hactive_count,
@@ -1283,7 +1284,11 @@ static int __dpi_panel_power_on(struct mdfld_dsi_config *dsi_config,
 			/* FIXME WA for CTP PO */
 			if (IS_CTP(dev)) {
 				REG_WRITE(regs->fp_reg, 0x179);
-				REG_WRITE(regs->dpll_reg, 0x100000 );
+				REG_WRITE(regs->dpll_reg, 0x100000);
+#ifdef CONFIG_SUPPORT_MIPI_H8C7_DISPLAY
+				REG_WRITE(regs->fp_reg, 0x100C1);
+				REG_WRITE(regs->dpll_reg, 0x800000);
+#endif
 			}
 
 			udelay(2);
@@ -2342,7 +2347,9 @@ static int mipi_dsi_dev_ioctl(struct inode *inode, struct file *file,
 {
 	void __user *argp = (void __user*)arg;
 #if defined(CONFIG_SUPPORT_TMD_MIPI_600X1024_DISPLAY) \
-	|| defined(CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY)
+	|| defined(CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY) \
+	|| defined(CONFIG_SUPPORT_MIPI_H8C7_DISPLAY)
+
 	struct drm_encoder *encoder = gencoder;
 #endif
 
@@ -2350,7 +2357,9 @@ static int mipi_dsi_dev_ioctl(struct inode *inode, struct file *file,
 
 	switch (cmd) {
 #if defined(CONFIG_SUPPORT_TMD_MIPI_600X1024_DISPLAY) \
-	|| defined(CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY)
+	|| defined(CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY) \
+	|| defined(CONFIG_SUPPORT_MIPI_H8C7_DISPLAY)
+
 		case IOCTL_LCM_POWER_ON:
 			mdfld_dsi_dpi_set_power(encoder, 1);
 			break;

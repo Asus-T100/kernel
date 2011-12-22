@@ -1075,6 +1075,12 @@ bool mrst_get_vbt_data(struct drm_psb_private *dev_priv)
 		printk(KERN_ALERT"%s: TMD_6X10_VID Panel\n", __func__);
 #endif
 
+#ifdef CONFIG_SUPPORT_MIPI_H8C7_DISPLAY
+		dev_priv->panel_id = H8C7_VID;
+		PanelID = H8C7_VID;
+		printk(KERN_ALERT"%s: H8C7_VID Panel\n", __func__);
+#endif
+
 	return true;
 }
 
@@ -3743,6 +3749,8 @@ static __init int parse_panelid(char *arg)
 		PanelID = TPO_VID;
 	else if (!strcasecmp(arg, "PYR_VID"))
 		PanelID = PYR_VID;
+	else if (!strcasecmp(arg, "H8C7_VID"))
+		PanelID = H8C7_VID;
 	else
 		PanelID = GCT_DETECT;
 
@@ -3817,7 +3825,9 @@ static void __exit psb_exit(void)
 	drm_pci_exit(&driver, &psb_pci_driver);
 }
 
-#ifdef CONFIG_SUPPORT_TMD_MIPI_600X1024_DISPLAY
+#if defined(CONFIG_SUPPORT_TMD_MIPI_600X1024_DISPLAY) \
+	|| defined(CONFIG_SUPPORT_MIPI_H8C7_DISPLAY)
+
 module_init(psb_init);
 #else
 late_initcall(psb_init);

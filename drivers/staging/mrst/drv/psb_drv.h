@@ -69,6 +69,7 @@ enum panel_type {
 	TMD_CMD,
 	TMD_VID,
 	TMD_6X10_VID,
+	H8C7_VID,
 	PYR_CMD,
 	PYR_VID,
 	TPO,
