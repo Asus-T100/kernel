@@ -99,6 +99,8 @@ EXPORT_SYMBOL_GPL(__mrst_cpu_chip);
 
 int sfi_mtimer_num;
 
+static bool is_valid_batt;
+
 struct sfi_rtc_table_entry sfi_mrtc_array[SFI_MRTC_MAX];
 EXPORT_SYMBOL_GPL(sfi_mrtc_array);
 int sfi_mrtc_num;
@@ -1005,6 +1007,20 @@ void max17042_i2c_reset_workaround(void)
 }
 EXPORT_SYMBOL(max17042_i2c_reset_workaround);
 
+static int __init msic_battery_check(struct sfi_table_header *table)
+{
+
+       if (!table) {
+	pr_info("invalid battery detected\n");
+	is_valid_batt = false;
+	return -ENODEV;
+       } else {
+	pr_info("valid battery detected\n");
+	is_valid_batt = true;
+	return 0;
+      }
+}
+
 static void *max17042_platform_data(void *info)
 {
 	static struct max17042_platform_data platform_data;
@@ -1012,10 +1028,14 @@ static void *max17042_platform_data(void *info)
 	int intr = get_gpio_by_name("max17042");
 
 	i2c_info->irq = intr + MRST_IRQ_OFFSET;
-
-	platform_data.enable_current_sense = 0;
+	if (is_valid_batt) {
+		platform_data.enable_current_sense = true;
+		platform_data.technology = POWER_SUPPLY_TECHNOLOGY_LION;
+	} else {
+		platform_data.enable_current_sense = false;
+		platform_data.technology = POWER_SUPPLY_TECHNOLOGY_UNKNOWN;
+	}
 	platform_data.is_init_done = 0;
-	platform_data.technology = POWER_SUPPLY_TECHNOLOGY_LION;
 
 	platform_data.reset_i2c_lines = max17042_i2c_reset_workaround;
 
@@ -2252,6 +2272,11 @@ static int __init mrst_platform_init(void)
 
 	/* Get MFD Validation SFI OEMB Layout */
 	sfi_table_parse(SFI_SIG_OEMB, NULL, NULL, sfi_parse_oemb);
+	/* Battery Check */
+	if (sfi_table_parse("OEM0", NULL, NULL, msic_battery_check)) {
+	pr_err("Invalid Battery: SFI OEM0 table not found\n");
+	is_valid_batt = false;
+	}
 	sfi_table_parse(SFI_SIG_GPIO, NULL, NULL, sfi_parse_gpio);
 	sfi_table_parse(SFI_SIG_DEVS, NULL, NULL, sfi_parse_devs);
 	return 0;
