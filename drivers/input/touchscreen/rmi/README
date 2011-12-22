@@ -1,0 +1,6 @@
+This is the Synaptics S3200 Touch Controller driver for Intel Clovertrail platform.
+Here are two tips to use the driver:
+1. Since touch screen is on different i2c bus for EV and VV platform, please change
+the I2C_BUS_NUM macro in rmi_i2c.c accordingly when using this driver on these two
+platforms.
+2. Set the COMM_DEBUG macro in rmi_i2c.c to dump more debug information.

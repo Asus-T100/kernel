@@ -1,0 +1,33 @@
+#
+# Touchscreen driver configuration
+#
+
+config TOUCHSCREEN_SYNAPTICS_RMI4_I2C
+    tristate "Synaptics RMI4 I2C touchscreens"
+    depends on I2C
+    default n
+    help
+        Say Y here if you have a Synaptics RMI4 I2C touchscreen connected to
+        your system. This enables support for Synaptics RMI4 over I2C based
+        touchscreens.
+        If unsure, say N.
+        To compile this driver as a set of modules, choose M here: the
+        modules will be called rmi_core, rmi_app_touchpad, rmi_phys_i2c.
+
+config SYNA_MULTI_TOUCH
+	bool "add multi touch support to RMI4 driver"
+	default y
+	depends on TOUCHSCREEN_SYNAPTICS_RMI4_I2C
+	help
+	 This option enables multi-touch capabilities in the input device.
+	 Driver will report ABS_MT_* event sequence required by kernel
+	 multi-touch protocol.
+
+	 If only need single-touch capability, say N.
+
+
+config SYNA_RMI_DEV
+	bool "rmi_dev"
+	depends on TOUCHSCREEN_SYNAPTICS_RMI4_I2C
+	help
+	 Enable mutli-touch capabilities in the input device
