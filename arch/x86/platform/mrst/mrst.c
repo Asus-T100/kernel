@@ -1997,13 +1997,7 @@ static int __init sfi_parse_devs(struct sfi_table_header *table)
 			break;
 		case SFI_DEV_TYPE_HSI:
 			memset(&hsi_info, 0, sizeof(hsi_info));
-			hsi_info.name =  kzalloc(16, GFP_KERNEL);
-			if (hsi_info.name == NULL) {
-				pr_err("out of memory for HSI device '%s'.\n",
-								pentry->name);
-				continue;
-			}
-			strncpy((char *)hsi_info.name, pentry->name, 16);
+			hsi_info.name = pentry->name;
 			hsi_info.hsi_id = pentry->host_num;
 			hsi_info.port = pentry->addr;
 			pr_info("info[%2d]: HSI bus = %d, name = %16.16s, "
