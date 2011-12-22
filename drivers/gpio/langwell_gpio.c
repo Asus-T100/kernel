@@ -231,7 +231,7 @@ static void lnw_irq_mask(struct irq_data *d)
 {
 }
 
-static int lnw_irq_wake(unsigned irq, unsigned on)
+static int lnw_irq_wake(struct irq_data *d, unsigned on)
 {
 	return 0;
 }
@@ -240,6 +240,23 @@ static void lnw_irq_ack(struct irq_data *d)
 {
 }
 
+static void lnw_irq_shutdown(struct irq_data *d)
+{
+	struct lnw_gpio *lnw = irq_data_get_irq_chip_data(d);
+	u32 gpio = d->irq - lnw->irq_base;
+	unsigned long flags;
+	u32 value;
+	void __iomem *grer = gpio_reg(&lnw->chip, gpio, GRER);
+	void __iomem *gfer = gpio_reg(&lnw->chip, gpio, GFER);
+
+	spin_lock_irqsave(&lnw->lock, flags);
+	value = readl(grer) & (~BIT(gpio % 32));
+	writel(value, grer);
+	value = readl(gfer) & (~BIT(gpio % 32));
+	writel(value, gfer);
+	spin_unlock_irqrestore(&lnw->lock, flags);
+};
+
 static struct irq_chip lnw_irqchip = {
 	.name		= "LNW-GPIO",
 	.irq_mask	= lnw_irq_mask,
@@ -247,6 +264,7 @@ static struct irq_chip lnw_irqchip = {
 	.irq_set_type	= lnw_irq_type,
 	.irq_set_wake	= lnw_irq_wake,
 	.irq_ack	= lnw_irq_ack,
+	.irq_shutdown	= lnw_irq_shutdown,
 };
 
 static DEFINE_PCI_DEVICE_TABLE(lnw_gpio_ids) = {   /* pin number */
