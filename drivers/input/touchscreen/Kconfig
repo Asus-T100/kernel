@@ -752,4 +752,6 @@ config TOUCHSCREEN_CYTTSP_CORE
        help
          Always activated for Cypress TTSP touchscreen
 
+source "drivers/input/touchscreen/rmi/Kconfig"
+          
 endif

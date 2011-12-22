@@ -46,6 +46,7 @@
 #include <linux/regulator/machine.h>
 #include <linux/regulator/fixed.h>
 #include <linux/atmel_mxt224.h>
+#include <linux/rmi_i2c.h>
 
 #include <linux/atomisp_platform.h>
 #include <media/v4l2-subdev.h>
@@ -1000,7 +1001,7 @@ void max17042_i2c_reset_workaround(void)
 	gpio_set_value(I2C_1_GPIO_PIN, 0);
 	udelay(10);
 	lnw_gpio_set_alt(I2C_1_GPIO_PIN, LNW_ALT_1);
-#undef I2C_1_GPIO_PIN 27
+#undef I2C_1_GPIO_PIN
 }
 EXPORT_SYMBOL(max17042_i2c_reset_workaround);
 
@@ -1572,6 +1573,60 @@ void *atmel_mxt224_platform_data_init(void *info)
 	return &mxt_pdata;
 }
 
+static struct rmi_f11_functiondata synaptics_f11_data = {
+	.swap_axes = true,
+};
+
+static unsigned char synaptic_keys[31] = {1, 2, 3, 4,};
+			/* {KEY_BACK,KEY_MENU,KEY_HOME,KEY_SEARCH,} */
+
+static struct rmi_button_map synaptics_button_map = {
+	.nbuttons = 31,
+	.map = synaptic_keys,
+};
+static struct rmi_f19_functiondata  synaptics_f19_data = {
+	.button_map = &synaptics_button_map,
+};
+
+#define RMI_F11_INDEX 0x11
+#define RMI_F19_INDEX 0x19
+
+static struct rmi_functiondata synaptics_functiondata[] = {
+	{
+		.function_index = RMI_F11_INDEX,
+		.data = &synaptics_f11_data,
+	},
+	{
+		.function_index = RMI_F19_INDEX,
+		.data = &synaptics_f19_data,
+	},
+};
+
+static struct rmi_functiondata_list synaptics_perfunctiondata = {
+	.count = ARRAY_SIZE(synaptics_functiondata),
+	.functiondata = synaptics_functiondata,
+};
+
+
+static struct rmi_sensordata s3202_sensordata = {
+	.perfunctiondata = &synaptics_perfunctiondata,
+};
+
+void *s3202_platform_data_init(void *info)
+{
+	struct i2c_board_info *i2c_info = info;
+	static struct rmi_i2c_platformdata s3202_platform_data = {
+		.delay_ms = 50,
+		.sensordata = &s3202_sensordata,
+	};
+
+	s3202_platform_data.i2c_address = i2c_info->addr;
+	s3202_sensordata.attn_gpio_number = get_gpio_by_name("ts_int");
+	s3202_sensordata.rst_gpio_number  = get_gpio_by_name("ts_rst");
+
+	return &s3202_platform_data;
+}
+
 static const struct devs_id __initconst device_ids[] = {
 	{"pmic_gpio", SFI_DEV_TYPE_SPI, 1, &pmic_gpio_platform_data},
 	{"pmic_gpio", SFI_DEV_TYPE_IPC, 1, &pmic_gpio_platform_data},
@@ -1605,7 +1660,7 @@ static const struct devs_id __initconst device_ids[] = {
 	{"mt9e013", SFI_DEV_TYPE_I2C, 0, &mt9e013_platform_data_init},
 	{"mt9m114", SFI_DEV_TYPE_I2C, 0, &mt9m114_platform_data_init},
 	{"mxt224", SFI_DEV_TYPE_I2C, 0, &atmel_mxt224_platform_data_init},
-
+	{"synaptics_3202", SFI_DEV_TYPE_I2C, 0, &s3202_platform_data_init},
 	{},
 };
 
