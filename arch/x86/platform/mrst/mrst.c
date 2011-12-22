@@ -932,6 +932,23 @@ static void *msic_gpio_platform_data(void *info)
 	return msic_generic_platform_data(info, INTEL_MSIC_BLOCK_GPIO);
 }
 
+void max17042_i2c_reset_workaround(void)
+{
+/* toggle clock pin of I2C-1 to recover devices from abnormal status.
+ * currently, only max17042 on I2C-1 needs such workaround */
+#define I2C_1_GPIO_PIN 27
+	int i;
+	lnw_gpio_set_alt(I2C_1_GPIO_PIN, LNW_GPIO);
+	gpio_direction_output(I2C_1_GPIO_PIN, 0);
+	gpio_set_value(I2C_1_GPIO_PIN, 1);
+	udelay(10);
+	gpio_set_value(I2C_1_GPIO_PIN, 0);
+	udelay(10);
+	lnw_gpio_set_alt(I2C_1_GPIO_PIN, LNW_ALT_1);
+#undef I2C_1_GPIO_PIN 27
+}
+EXPORT_SYMBOL(max17042_i2c_reset_workaround);
+
 static void *max17042_platform_data(void *info)
 {
 	static struct max17042_platform_data platform_data;
@@ -944,6 +961,8 @@ static void *max17042_platform_data(void *info)
 	platform_data.is_init_done = 0;
 	platform_data.technology = POWER_SUPPLY_TECHNOLOGY_LION;
 
+	platform_data.reset_i2c_lines = max17042_i2c_reset_workaround;
+
 #ifdef CONFIG_BATTERY_INTEL_MDF
 	platform_data.current_sense_enabled =
 	    intel_msic_is_current_sense_enabled;
@@ -953,6 +972,13 @@ static void *max17042_platform_data(void *info)
 	platform_data.battery_pack_temp = intel_msic_get_battery_pack_temp;
 	platform_data.save_config_data = intel_msic_save_config_data;
 	platform_data.restore_config_data = intel_msic_restore_config_data;
+
+	platform_data.is_cap_shutdown_enabled =
+					intel_msic_is_capacity_shutdown_en;
+	platform_data.is_volt_shutdown_enabled = intel_msic_is_volt_shutdown_en;
+	platform_data.is_lowbatt_shutdown_enabled =
+					intel_msic_is_lowbatt_shutdown_en;
+	platform_data.get_vmin_threshold = intel_msic_get_vsys_min;
 #endif
 
 	return &platform_data;
