@@ -91,6 +91,7 @@
 #define MAX17042_MODEL_DIV_FACTOR(a)	((a * 7) / 10)
 #define CONSTANT_TEMP_IN_POWER_SUPPLY	350
 #define POWER_SUPPLY_VOLT_MIN_THRESHOLD	3500000
+#define BATTERY_VOLT_MIN_THRESHOLD	3600000
 
 #define CYCLES_ROLLOVER_CUTOFF		0x0100
 #define MAX17042_DEF_RO_LRNCFG		0x0076
@@ -189,6 +190,9 @@ enum max17042_register {
 
 /* No of times we should retry on -EAGAIN error */
 #define NR_RETRY_CNT	3
+
+/* No of times we should reset I2C lines */
+#define NR_I2C_RESET_CNT	8
 
 /* No of cell characterization words to be written to max17042 */
 #define CELL_CHAR_TBL_SAMPLES	48
@@ -320,21 +324,29 @@ static int max17042_read_reg(struct i2c_client *client, u8 reg)
 	return ret;
 }
 
+/*
+ * max17042 chip has few registers which could get modified by the
+ * chip as well during its fuel gauge learning process. So we need
+ * to do a write verify on those registers and if the write fails
+ * then we have to retry.
+ */
 static int max17042_write_verify_reg(struct i2c_client *client,
 						u8 reg, u16 value)
 {
-	int ret;
+	int ret, i;
 
-	/* Write the value to register */
-	ret = max17042_write_reg(client, reg, value);
-
-	/* Read the value from register */
-	ret = max17042_read_reg(client, reg);
-
-	/* compare the both the values */
-	if (value != ret)
-		dev_err(&client->dev,
-			"write verify failed on Register:0x%x\n", reg);
+	for (i = 0; i < NR_RETRY_CNT; i++) {
+		/* Write the value to register */
+		ret = max17042_write_reg(client, reg, value);
+		/* Read the value from register */
+		ret = max17042_read_reg(client, reg);
+		/* compare the both the values */
+		if (value != ret)
+			dev_err(&client->dev,
+				"write verify failed on Register:0x%x\n", reg);
+		else
+			break;
+	}
 
 	return ret;
 }
@@ -424,7 +436,8 @@ static int read_batt_pack_temp(struct max17042_chip *chip, int *temp)
 		val = (0xff & (char)*temp) << 8;
 		ret = max17042_write_reg(chip->client, MAX17042_TEMP, val);
 		if (ret < 0)
-			goto temp_read_err;
+			dev_err(&chip->client->dev,
+					"Temp write fail to maxim:%d", ret);
 	} else {
 		ret = max17042_read_reg(chip->client, MAX17042_TEMP);
 		if (ret < 0)
@@ -451,7 +464,7 @@ static int max17042_get_property(struct power_supply *psy,
 	struct max17042_chip *chip = container_of(psy,
 				struct max17042_chip, battery);
 	short int cur;
-	int volt_ocv, ret, batt_temp;
+	int volt_ocv, ret, batt_temp, batt_vmin;
 
 	mutex_lock(&chip->batt_lock);
 	switch (psp) {
@@ -542,24 +555,40 @@ static int max17042_get_property(struct power_supply *psy,
 		val->intval = (ret >> 7) * 10000; /* Units of LSB = 10mV */
 		break;
 	case POWER_SUPPLY_PROP_CAPACITY:
-		/* FIXME: WA to avoid modem crash, should be removed once
-		 * everybody starts using the PR2 POR batteries */
-		ret = max17042_read_reg(chip->client, MAX17042_OCVInternal);
-		if (ret < 0)
-			goto ps_prop_read_err;
-		volt_ocv = (ret >> 3) * MAX17042_VOLT_CONV_FCTR;
-		/* Check if the OCV is less than
-		 * IA_APPS_RUN(3.6V) Threshold */
-		if ((chip->pdata->enable_current_sense && volt_ocv <= 3600000)
-				|| (chip->health == POWER_SUPPLY_HEALTH_DEAD)) {
-			val->intval = 0;
-			break;
-		}
-		if (!chip->pdata->enable_current_sense &&
+		/* Voltage Based shutdown method to avoid modem crash */
+		if (chip->pdata->is_volt_shutdown) {
+			ret = max17042_read_reg(chip->client,
+						MAX17042_OCVInternal);
+			if (ret < 0)
+				goto ps_prop_read_err;
+			volt_ocv = (ret >> 3) * MAX17042_VOLT_CONV_FCTR;
+
+			/* Get the minimum voltage thereshold */
+			if (chip->pdata->get_vmin_threshold)
+				batt_vmin = chip->pdata->get_vmin_threshold();
+			else
+				batt_vmin = BATTERY_VOLT_MIN_THRESHOLD;
+
+			if (chip->pdata->enable_current_sense &&
+					(volt_ocv <= batt_vmin)) {
+				val->intval = 0;
+				break;
+			}
+
+			if (!chip->pdata->enable_current_sense &&
 				volt_ocv <= POWER_SUPPLY_VOLT_MIN_THRESHOLD) {
+				val->intval = 0;
+				break;
+			}
+		}
+
+		/* Check for LOW Battery Shutdown mechanism is enabled */
+		if (chip->pdata->is_lowbatt_shutdown &&
+			(chip->health == POWER_SUPPLY_HEALTH_DEAD)) {
 			val->intval = 0;
 			break;
 		}
+
 		/* If current sensing is not enabled then read the
 		 * voltage based fuel gauge register for SOC */
 		if (chip->pdata->enable_current_sense)
@@ -742,12 +771,11 @@ static void configure_learncfg(struct max17042_chip *chip)
 
 	cycles = max17042_read_reg(chip->client, MAX17042_Cycles);
 	if (cycles > CYCLES_ROLLOVER_CUTOFF)
-		max17042_write_reg(chip->client, MAX17042_LearnCFG,
+		max17042_write_verify_reg(chip->client, MAX17042_LearnCFG,
 						MAX17042_DEF_RO_LRNCFG);
 	else
 		max17042_write_reg(chip->client, MAX17042_LearnCFG,
 						fg_conf_data->learn_cfg);
-
 }
 
 static void write_config_regs(struct max17042_chip *chip)
@@ -933,7 +961,9 @@ static int max17042_reboot_callback(struct notifier_block *nfb,
 {
 	struct max17042_chip *chip = i2c_get_clientdata(max17042_client);
 
-	save_runtime_params(chip);
+	if (chip->pdata->enable_current_sense)
+		save_runtime_params(chip);
+
 	return NOTIFY_OK;
 }
 
@@ -1059,6 +1089,9 @@ static void max17042_restore_conf_data(struct max17042_chip *chip)
 					reset_max17042(chip);
 					chip->pdata->save_config_data = NULL;
 				}
+				/* enable Alerts for SOCRep */
+				max17042_write_reg(chip->client,
+						MAX17042_MiscCFG, 0x0000);
 			}
 			chip->pdata->is_init_done = 1;
 
@@ -1076,7 +1109,6 @@ static void max17042_restore_conf_data(struct max17042_chip *chip)
 		}
 	}
 
-	/* Check if current sensing is enabled */
 	if (chip->pdata->is_init_done && (retval == 0)) {
 		if (chip->pdata->current_sense_enabled)
 			chip->pdata->enable_current_sense =
@@ -1096,6 +1128,10 @@ static void max17042_restore_conf_data(struct max17042_chip *chip)
 		chip->technology = chip->pdata->technology;
 	} else {
 		dev_info(&chip->client->dev, "current sensing NOT enabled\n");
+		if (chip->pdata->is_init_done && (retval == 0))
+			max17042_write_reg(chip->client,
+					MAX17042_CGAIN, 0x0000);
+
 		/* Enable voltage based Fuel Gauging */
 		max17042_write_reg(chip->client, MAX17042_LearnCFG, 0x0007);
 		/* configure interrupts for SOCvf */
@@ -1103,6 +1139,11 @@ static void max17042_restore_conf_data(struct max17042_chip *chip)
 
 		chip->technology = POWER_SUPPLY_TECHNOLOGY_UNKNOWN;
 	}
+
+	/* Temporary WA to avoid platform wake issues due
+	 * to FG interrupt by disabling the ALERT pin */
+	max17042_reg_read_modify(chip->client, MAX17042_CONFIG,
+						CONFIG_ALRT_BIT_ENBL, 0);
 
 	mutex_unlock(&chip->init_lock);
 }
@@ -1167,8 +1208,17 @@ static void max17042_external_power_changed(struct power_supply *psy)
 	mutex_unlock(&chip->batt_lock);
 
 	/* Init maxim chip if it is not already initialized */
-	if (!chip->pdata->is_init_done)
+	if (!chip->pdata->is_init_done) {
+		if (chip->pdata->is_volt_shutdown_enabled)
+			chip->pdata->is_volt_shutdown =
+				chip->pdata->is_volt_shutdown_enabled();
+
+		if (chip->pdata->is_lowbatt_shutdown_enabled)
+			chip->pdata->is_lowbatt_shutdown =
+				chip->pdata->is_lowbatt_shutdown_enabled();
+
 		schedule_delayed_work(&chip->init_worker, 0);
+	}
 
 	power_supply_changed(&chip->battery);
 	pm_runtime_put_sync(&chip->client->dev);
@@ -1274,7 +1324,8 @@ static int __devinit max17042_probe(struct i2c_client *client,
 {
 	struct i2c_adapter *adapter = to_i2c_adapter(client->dev.parent);
 	struct max17042_chip *chip;
-	int ret;
+	int ret, i;
+
 	if (!client->dev.platform_data) {
 		dev_err(&client->dev, "Platform Data is NULL");
 		return -EFAULT;
@@ -1305,6 +1356,19 @@ static int __devinit max17042_probe(struct i2c_client *client,
 	max17042_client = client;
 
 	ret = max17042_read_reg(chip->client, MAX17042_DevName);
+	if (ret < 0 && chip->pdata->reset_i2c_lines) {
+		dev_warn(&client->dev, "reset i2c device:%d\n", ret);
+		for (i = 0; i < NR_I2C_RESET_CNT; i++) {
+			chip->pdata->reset_i2c_lines();
+			ret = max17042_read_reg(chip->client, MAX17042_DevName);
+			if (ret < 0)
+				dev_warn(&client->dev,
+						"reset i2c device:%d\n", ret);
+			else
+				break;
+		}
+	}
+
 	if (ret != MAX17042_IC_VERSION) {
 		dev_err(&client->dev, "device version mismatch: %x\n", ret);
 		kfree(chip);
@@ -1318,7 +1382,6 @@ static int __devinit max17042_probe(struct i2c_client *client,
 	mutex_init(&chip->batt_lock);
 	mutex_init(&chip->init_lock);
 
-	/* Initialize the chip with battery config data */
 	max17042_restore_conf_data(chip);
 
 	chip->battery.name		= "max17042_battery";
@@ -1346,14 +1409,18 @@ static int __devinit max17042_probe(struct i2c_client *client,
 	ret = request_threaded_irq(client->irq, max17042_intr_handler,
 						max17042_thread_handler,
 						0, DRV_NAME, chip);
-	if (ret)
-		dev_warn(&client->dev, "%s(): cannot get IRQ\n", __func__);
-	else
+	if (ret) {
+		dev_warn(&client->dev, "cannot get IRQ:%d\n", client->irq);
+		client->irq = -1;
+	} else {
 		dev_info(&client->dev, "IRQ No:%d\n", client->irq);
+	}
 
-	/* Enable Interrupts */
+	/* Temporary WA to avoid platform wake issues due
+	 * to FG interrupt by disabling the ALERT pin */
 	max17042_reg_read_modify(client, MAX17042_CONFIG,
-						CONFIG_ALRT_BIT_ENBL, 1);
+						CONFIG_ALRT_BIT_ENBL, 0);
+
 	/* set the Interrupt threshold registers */
 	set_intr_thresholds(chip);
 
@@ -1372,7 +1439,8 @@ static int __devexit max17042_remove(struct i2c_client *client)
 
 	unregister_reboot_notifier(&max17042_reboot_notifier_block);
 	max17042_remove_debugfs(chip);
-	free_irq(client->irq, chip);
+	if (client->irq > 0)
+		free_irq(client->irq, chip);
 	power_supply_unregister(&chip->battery);
 	pm_runtime_get_noresume(&chip->client->dev);
 	i2c_set_clientdata(client, NULL);
@@ -1386,6 +1454,19 @@ static int max17042_suspend(struct device *dev)
 {
 	struct max17042_chip *chip = dev_get_drvdata(dev);
 
+	/*
+	 * disable irq here doesn't mean max17042 interrupt
+	 * can't wake up system. max17042 interrupt is triggered
+	 * by GPIO pin, which is always active.
+	 * When resume callback calls enable_irq, kernel
+	 * would deliver the buffered interrupt (if it has) to
+	 * driver.
+	 */
+	if (chip->client->irq > 0) {
+		disable_irq(chip->client->irq);
+		enable_irq_wake(chip->client->irq);
+	}
+
 	/* max17042 IC automatically goes into shutdown mode
 	 * if the SCL and SDA were held low for more than
 	 * timeout of SHDNTIMER register value
@@ -1398,6 +1479,11 @@ static int max17042_suspend(struct device *dev)
 static int max17042_resume(struct device *dev)
 {
 	struct max17042_chip *chip = dev_get_drvdata(dev);
+
+	if (chip->client->irq > 0) {
+		enable_irq(chip->client->irq);
+		disable_irq_wake(chip->client->irq);
+	}
 
 	/* max17042 IC automatically wakes up if any edge
 	 * on SDCl or SDA if we set I2CSH of CONFG reg
