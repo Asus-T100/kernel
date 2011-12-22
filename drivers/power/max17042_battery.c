@@ -96,6 +96,10 @@
 #define CYCLES_ROLLOVER_CUTOFF		0x0100
 #define MAX17042_DEF_RO_LRNCFG		0x0076
 
+#define MAX17042_CGAIN_DISABLE		0x0000
+#define MAX17042_EN_VOLT_FG		0x0007
+#define MAX17042_CFG_INTR_SOCVF		0x0003
+
 #define MAX17042_SIGN_INDICATOR		0x8000
 
 #define BYTE_VALUE			1
@@ -1125,37 +1129,6 @@ static void max17042_restore_conf_data(struct max17042_chip *chip)
 		}
 	}
 
-	if (chip->pdata->is_init_done && (retval == 0)) {
-		if (chip->pdata->current_sense_enabled)
-			chip->pdata->enable_current_sense =
-				chip->pdata->current_sense_enabled();
-		else
-			chip->pdata->enable_current_sense = 1;
-	}
-
-	if (chip->pdata->enable_current_sense) {
-		dev_info(&chip->client->dev, "current sensing enabled\n");
-		/* enable coulomb counter based fuel gauging */
-		configure_learncfg(chip);
-
-		/* enable Alerts for SOCRep */
-		max17042_write_reg(chip->client, MAX17042_MiscCFG, 0x0000);
-
-		chip->technology = chip->pdata->technology;
-	} else {
-		dev_info(&chip->client->dev, "current sensing NOT enabled\n");
-		if (chip->pdata->is_init_done && (retval == 0))
-			max17042_write_reg(chip->client,
-					MAX17042_CGAIN, 0x0000);
-
-		/* Enable voltage based Fuel Gauging */
-		max17042_write_reg(chip->client, MAX17042_LearnCFG, 0x0007);
-		/* configure interrupts for SOCvf */
-		max17042_write_reg(chip->client, MAX17042_MiscCFG, 0x0003);
-
-		chip->technology = POWER_SUPPLY_TECHNOLOGY_UNKNOWN;
-	}
-
 	/* Temporary WA to avoid platform wake issues due
 	 * to FG interrupt by disabling the ALERT pin */
 	max17042_reg_read_modify(chip->client, MAX17042_CONFIG,
@@ -1398,7 +1371,26 @@ static int __devinit max17042_probe(struct i2c_client *client,
 	mutex_init(&chip->batt_lock);
 	mutex_init(&chip->init_lock);
 
-	max17042_restore_conf_data(chip);
+	if (chip->pdata->enable_current_sense) {
+		dev_info(&chip->client->dev, "current sensing enabled\n");
+		/* Initialize the chip with battery config data */
+		max17042_restore_conf_data(chip);
+	} else {
+
+		dev_info(&chip->client->dev, "current sensing NOT enabled\n");
+		/* incase of invalid battery no need to init the FG chip */
+		chip->pdata->is_init_done = 1;
+		/* disable coulomb counter based fuel gauging */
+		max17042_write_reg(chip->client, MAX17042_CGAIN,
+						MAX17042_CGAIN_DISABLE);
+		/* Enable voltage based Fuel Gauging */
+		max17042_write_reg(chip->client, MAX17042_LearnCFG,
+						MAX17042_EN_VOLT_FG);
+		/* configure interrupts for SOCvf */
+		max17042_write_reg(chip->client, MAX17042_MiscCFG,
+						MAX17042_CFG_INTR_SOCVF);
+	}
+	chip->technology = chip->pdata->technology;
 
 	chip->battery.name		= "max17042_battery";
 	chip->battery.type		= POWER_SUPPLY_TYPE_BATTERY;
