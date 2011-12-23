@@ -169,7 +169,7 @@ static struct i2c_board_info pr2_i2c_bus5_devs[] = {
 static struct gpio_keys_button gpio_button[] = {
 	{KEY_VOLUMEUP,		32, 1, "vol_up",	EV_KEY, 0, 20},
 	{KEY_VOLUMEDOWN,	31, 1, "vol_down",	EV_KEY, 0, 20},
-	{KEY_CAMERA,		43, 1, "cam_capture",	EV_KEY, 0, 20, 0, 0, 0, 1},
+	{KEY_CAMERA,		43, 1, "cam_capture",	EV_KEY, 0, 20},
 	{KEY_CAMERA_FOCUS,	36, 1, "cam_focus",	EV_KEY, 0, 20},
 };
 
@@ -206,7 +206,7 @@ static int __init platform_bkbpr2_subsys_init(void)
 	case MFLD_BID_PR3:
 	case MFLD_BID_PR3_PNP:
 		register_board_i2c_devs();
-		//bkbpr2_gpio_keys_init();
+		bkbpr2_gpio_keys_init();
 		return 0;
 	default:
 		return 1;
