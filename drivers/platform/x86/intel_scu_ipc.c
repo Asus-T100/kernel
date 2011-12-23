@@ -125,6 +125,8 @@ static inline void ipc_command(u32 cmd) /* Send ipc command */
 {
 	ipcdev.cmd = cmd;
 	INIT_COMPLETION(ipcdev.cmd_complete);
+	acquire_scu_ready_sem();
+
 	if (system_state == SYSTEM_RUNNING) {
 		ipcdev.ioc = 1;
 		writel(cmd | IPC_IOC, ipcdev.ipc_base);
@@ -207,7 +209,7 @@ static inline int ipc_wait_interrupt(void)
 
 	/* Re-enable Deeper C-states beyond C6 */
 	pm_qos_update_request(qos, PM_QOS_DEFAULT_VALUE);
-
+	release_scu_ready_sem();
 	return ret;
 }
 
@@ -620,6 +622,12 @@ int intel_scu_ipc_mrstfw_update(u8 *buffer, u32 length)
 	/* Driver copies the 2KB MIP header to SRAM at 0xFFFC0000*/
 	memcpy_toio(fw_update_base, buffer, 0x800);
 
+	/* ipc_command will hold scu_ready_sem
+	 * but there is no call to wait for
+	 * interrupt completioin hence doing here
+	 */
+	release_scu_ready_sem();
+
 	/* Driver sends "FW Update" IPC command (CMD_ID 0xFE; MSG_ID 0x02).
 	* Upon receiving this command, SCU will write the 2K MIP header
 	* from 0xFFFC0000 into NAND.
@@ -633,6 +641,12 @@ int intel_scu_ipc_mrstfw_update(u8 *buffer, u32 length)
 		rmb();
 		mdelay(1);
 	}
+
+	/* ipc_command will hold scu_ready_sem
+	 * but there is no call to wait for
+	 * interrupt completioin hence doing here
+	 */
+	release_scu_ready_sem();
 
 	/* Driver checks Mailbox status.
 	 * If the status is 'BADN', then abort (bad NAND).
