@@ -1271,9 +1271,11 @@ int intel_scu_ipc_medfw_upgrade(void)
 
 	mfld_fw_upd.wscu = !mfld_fw_upd.wscu;
 
-	ret_val = busy_wait(&mfld_fw_upd);
-	if (ret_val < 0)
+	if (busy_wait(&mfld_fw_upd) < 0) {
+		ret_val = -1;
+		release_scu_ready_sem();
 		goto term;
+	}
 
 	/* TODO:Add a count for iteration, based on sizes of security firmware,
 	 * so that we determine finite number of iterations to loop thro.
@@ -1290,6 +1292,7 @@ int intel_scu_ipc_medfw_upgrade(void)
 		if (mb_state == MB_ERROR) {
 			dev_dbg(&ipcdev.pdev->dev, "check_mb_status,error\n");
 			ret_val = -1;
+			release_scu_ready_sem();
 			goto term;
 		}
 
@@ -1311,6 +1314,7 @@ int intel_scu_ipc_medfw_upgrade(void)
 
 			if (busy_wait(&mfld_fw_upd) < 0) {
 				ret_val = -1;
+				release_scu_ready_sem();
 				goto term;
 			}
 
@@ -1322,6 +1326,7 @@ int intel_scu_ipc_medfw_upgrade(void)
 			dev_err(&ipcdev.pdev->dev,
 			"calc_offset_and_length_error,error\n");
 			ret_val = -1;
+			release_scu_ready_sem();
 			goto term;
 		}
 
@@ -1331,6 +1336,7 @@ int intel_scu_ipc_medfw_upgrade(void)
 			"Error processing fw chunk=%s\n",
 			mfld_fw_upd.mb_status);
 			ret_val = -1;
+			release_scu_ready_sem();
 			goto term;
 		} else
 			dev_dbg(&ipcdev.pdev->dev,
