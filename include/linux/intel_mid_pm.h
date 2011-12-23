@@ -109,6 +109,8 @@ extern int pmu_nc_set_power_state
 	(int islands, int state_type, int reg_type);
 extern void mfld_shutdown(void);
 extern void mfld_power_off(void);
+extern void acquire_scu_ready_sem(void);
+extern void release_scu_ready_sem(void);
 
 extern int mfld_msg_read32(u32 cmd, u32 *data);
 extern int mfld_msg_write32(u32 cmd, u32 data);
@@ -143,6 +145,9 @@ static inline bool pmu_is_s0ix_in_progress(void) { return false; };
 /*returns function not implemented*/
 static inline  int mfld_msg_read32(u32 cmd, u32 *data) { return -ENOSYS; }
 static inline int mfld_msg_write32(u32 cmd, u32 data) { return -ENOSYS; }
+
+static inline void acquire_scu_ready_sem(void) { return; };
+static inline void release_scu_ready_sem(void) { return; };
 
 #endif /* #ifdef CONFIG_INTEL_MID_POWER */
 

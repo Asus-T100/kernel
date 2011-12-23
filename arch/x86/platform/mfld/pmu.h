@@ -792,6 +792,7 @@ struct mid_pmu_stats {
 
 struct mid_pmu_dev {
 	bool suspend_started;
+	bool shutdown_started;
 
 	u32 apm_base;
 	u32 ospm_base;

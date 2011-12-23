@@ -641,6 +641,10 @@ int get_target_platform_state(void)
 	if (mid_pmu_cxt->suspend_started)
 		goto ret;
 
+	/* dont do s0ix if shutdown in progress */
+	if (unlikely(mid_pmu_cxt->shutdown_started))
+		goto ret;
+
 	if (!mid_pmu_cxt->display_off || !mid_pmu_cxt->camera_off)
 		goto ret;
 
@@ -977,6 +981,20 @@ static inline int pmu_read_interrupt_status(int pmu_num)
 	/* return the pm interrupt status int pending bit info */
 	return result.pmu_pm_ics_parts.int_status;
 }
+
+void acquire_scu_ready_sem(void)
+{
+	if (likely(pmu_initialized))
+		down(&mid_pmu_cxt->scu_ready_sem);
+}
+EXPORT_SYMBOL(acquire_scu_ready_sem);
+
+void release_scu_ready_sem(void)
+{
+	if (likely(pmu_initialized))
+		up(&mid_pmu_cxt->scu_ready_sem);
+}
+EXPORT_SYMBOL(release_scu_ready_sem);
 
 /**
  * This is a helper function used to program pm registers
@@ -1620,7 +1638,7 @@ int __ref pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t state)
 	int sub_sys_pos, sub_sys_index;
 	int pmu_num;
 	struct pmu_ss_states cur_pmssc;
-	int status;
+	int status = 0;
 
 	/* Ignore callback from devices until we have initialized */
 	if (unlikely((!pmu_initialized)))
@@ -1629,6 +1647,11 @@ int __ref pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t state)
 	/* Try to acquire the scu_ready_sem, if not
 	 * get blocked, until pmu_sc_irq() releases */
 	down(&mid_pmu_cxt->scu_ready_sem);
+
+	/* dont proceed if shutdown in progress */
+	if (unlikely(mid_pmu_cxt->shutdown_started))
+		goto unlock;
+
 	mid_pmu_cxt->interactive_cmd_sent = 1;
 
 	status =
@@ -2659,10 +2682,15 @@ static int mid_suspend(suspend_state_t state)
 
 /* This function is here just to have a hook to execute code before
  * generic x86 shutdown is executed. saved_shutdown contains pointer
- * to original generic x86 shutdown function */
+ * to original generic x86 shutdown function
+ * No need to hold scu_ready_sem, since the IPC will hold the sem now.
+ */
 void mfld_shutdown(void)
 {
 	down(&mid_pmu_cxt->scu_ready_sem);
+	if (mid_pmu_cxt)
+		mid_pmu_cxt->shutdown_started = true;
+	up(&mid_pmu_cxt->scu_ready_sem);
 
 	if (saved_shutdown)
 		saved_shutdown();
