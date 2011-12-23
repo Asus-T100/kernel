@@ -108,12 +108,15 @@ static int __init parse_itp(char *arg)
 }
 early_param("itp", parse_itp);
 
+void (*saved_shutdown)(void);
+EXPORT_SYMBOL(saved_shutdown);
+
 static void mrst_power_off(void)
 {
 	if (__mrst_cpu_chip == MRST_CPU_CHIP_LINCROFT)
 		intel_scu_ipc_simple_command(IPCMSG_COLD_RESET, 1);
 	else {
-		mfld_shutdown();
+		mfld_power_off();
 	}
 
 }
@@ -344,6 +347,10 @@ void __init x86_mrst_early_setup(void)
 
 	/* Moorestown specific power_off/restart method */
 	pm_power_off = mrst_power_off;
+	if (mfld_shutdown) {
+		saved_shutdown = machine_ops.shutdown;
+		machine_ops.shutdown = mfld_shutdown;
+	}
 	machine_ops.emergency_restart  = mrst_reboot;
 
 	/* Avoid searching for BIOS MP tables */
