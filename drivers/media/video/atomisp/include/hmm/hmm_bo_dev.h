@@ -49,9 +49,10 @@ struct hmm_bo_device {
 	struct hmm_vm		vaddr_space;
 
 	struct list_head	free_bo_list;
-	struct spinlock		fblist_lock;
 	struct list_head	active_bo_list;
-	struct spinlock		ablist_lock;
+
+	/* list lock is used to protect both of the buffer object lists */
+	struct spinlock		list_lock;
 
 	int			flag;
 };

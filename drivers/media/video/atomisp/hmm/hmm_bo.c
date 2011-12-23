@@ -142,10 +142,10 @@ int hmm_bo_init(struct hmm_bo_device *bdev,
 	/*
 	 * add to active_bo_list
 	 */
-	spin_lock_irqsave(&bdev->ablist_lock, flags);
+	spin_lock_irqsave(&bdev->list_lock, flags);
 	list_add_tail(&bo->list, &bdev->active_bo_list);
 	bo->status |= HMM_BO_ACTIVE;
-	spin_unlock_irqrestore(&bdev->ablist_lock, flags);
+	spin_unlock_irqrestore(&bdev->list_lock, flags);
 
 	return 0;
 }
@@ -194,15 +194,9 @@ static void hmm_bo_release(struct hmm_buffer_object *bo)
 	/*
 	 * remove it from buffer device's buffer object list.
 	 */
-	if (hmm_bo_activated(bo)) {
-		spin_lock_irqsave(&bdev->ablist_lock, flags);
-		list_del(&bo->list);
-		spin_unlock_irqrestore(&bdev->ablist_lock, flags);
-	} else {
-		spin_lock_irqsave(&bdev->fblist_lock, flags);
-		list_del(&bo->list);
-		spin_unlock_irqrestore(&bdev->fblist_lock, flags);
-	}
+	spin_lock_irqsave(&bdev->list_lock, flags);
+	list_del(&bo->list);
+	spin_unlock_irqrestore(&bdev->list_lock, flags);
 
 	if (bo->release)
 		bo->release(bo);
@@ -228,14 +222,11 @@ void hmm_bo_unactivate(struct hmm_buffer_object *bo)
 
 	bdev = bo->bdev;
 
-	spin_lock_irqsave(&bdev->ablist_lock, flags);
+	spin_lock_irqsave(&bdev->list_lock, flags);
 	list_del(&bo->list);
-	spin_unlock_irqrestore(&bdev->ablist_lock, flags);
-
-	spin_lock_irqsave(&bdev->fblist_lock, flags);
 	list_add_tail(&bo->list, &bdev->free_bo_list);
 	bo->status &= (~HMM_BO_ACTIVE);
-	spin_unlock_irqrestore(&bdev->fblist_lock, flags);
+	spin_unlock_irqrestore(&bdev->list_lock, flags);
 
 	return;
 
