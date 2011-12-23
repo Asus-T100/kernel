@@ -146,6 +146,8 @@ extern void mrst_s0i3_resume(void);
 extern int mrst_pmu_invalid_cstates(void);
 extern const char s0i3_trampoline_data[], s0i3_trampoline_data_end[];
 
+extern int get_force_shutdown_occured(void);
+
 extern const struct atomisp_platform_data *intel_get_v4l2_subdev_table(void);
 
 extern void (*saved_shutdown)(void);

@@ -114,12 +114,53 @@ early_param("itp", parse_itp);
 
 void (*saved_shutdown)(void);
 EXPORT_SYMBOL(saved_shutdown);
+#define MSIC_POWER_SRC_STAT 0x192
+  #define MSIC_POWER_BATT (1 << 0)
+  #define MSIC_POWER_USB  (1 << 1)
+
+static bool check_charger_conn(void)
+{
+	int ret;
+	struct otg_bc_cap cap;
+	u8 data;
+
+	ret = intel_scu_ipc_ioread8(MSIC_POWER_SRC_STAT, &data);
+	if (ret)
+		return false;
+
+	if (!((data & MSIC_POWER_BATT) && (data & MSIC_POWER_USB)))
+		return false;
+
+	ret = penwell_otg_query_charging_cap(&cap);
+	if (ret)
+		return false;
+
+	if (cap.chrg_type == CHRG_UNKNOWN)
+		return false;
+
+	return true;
+}
 
 static void mrst_power_off(void)
 {
 	if (__mrst_cpu_chip == MRST_CPU_CHIP_LINCROFT)
 		intel_scu_ipc_simple_command(IPCMSG_COLD_RESET, 1);
 	else {
+#ifdef CONFIG_INTEL_MID_OSIP
+		bool charger_conn = check_charger_conn();
+
+		if (!get_force_shutdown_occured() && charger_conn) {
+			/*
+			 * Do a cold reset to let bootloader bring up the
+			 * platform into acting dead mode to continue
+			 * battery charging.
+			 * If some special condition occured and wants to
+			 * make a force shutdown, even if the charger is
+			 * connected, dont boot(up to COS).
+			 */
+			intel_scu_ipc_simple_command(IPCMSG_COLD_RESET, 0);
+		} else
+#endif
 		mfld_power_off();
 	}
 
