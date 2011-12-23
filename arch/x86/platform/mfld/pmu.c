@@ -2657,9 +2657,19 @@ static int mid_suspend(suspend_state_t state)
 	return ret;
 }
 
+/* This function is here just to have a hook to execute code before
+ * generic x86 shutdown is executed. saved_shutdown contains pointer
+ * to original generic x86 shutdown function */
 void mfld_shutdown(void)
 {
 	down(&mid_pmu_cxt->scu_ready_sem);
+
+	if (saved_shutdown)
+		saved_shutdown();
+}
+
+void mfld_power_off(void)
+{
 	/* wait till SCU is ready */
 	if (_pmu2_wait_not_busy())
 		dev_err(&mid_pmu_cxt->pmu_dev->dev,
