@@ -1349,11 +1349,16 @@ static struct gsm_control *gsm_control_send(struct gsm_mux *gsm,
 	if (ctrl == NULL)
 		return NULL;
 retry:
-	wait_event(gsm->event, gsm->pending_cmd == NULL);
+	wait_event(gsm->event, gsm->pending_cmd == NULL || gsm->dead);
 	spin_lock_irqsave(&gsm->control_lock, flags);
-	if (gsm->pending_cmd != NULL) {
+	if ((gsm->pending_cmd != NULL) && !gsm->dead) {
 		spin_unlock_irqrestore(&gsm->control_lock, flags);
 		goto retry;
+	}
+	if (gsm->dead) {
+		spin_unlock_irqrestore(&gsm->control_lock, flags);
+		kfree(ctrl);
+		return NULL;
 	}
 	ctrl->cmd = command;
 	ctrl->data = data;
@@ -1378,8 +1383,18 @@ retry:
 
 static int gsm_control_wait(struct gsm_mux *gsm, struct gsm_control *control)
 {
+	unsigned long flags;
 	int err;
-	wait_event(gsm->event, control->done == 1);
+	wait_event(gsm->event, control->done == 1 || gsm->dead);
+	if (gsm->dead) {
+		spin_lock_irqsave(&gsm->control_lock, flags);
+		if (control == gsm->pending_cmd) {
+			del_timer(&gsm->t2_timer);
+			gsm->pending_cmd = NULL;
+		}
+		control->error = -ETIMEDOUT;
+		spin_unlock_irqrestore(&gsm->control_lock, flags);
+	}
 	err = control->error;
 	kfree(control);
 	return err;
