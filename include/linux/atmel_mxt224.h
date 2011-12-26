@@ -102,12 +102,14 @@
 #define	MXT_CMD_T6_DELTAS_MODE      0x10
 #define	MXT_CMD_T6_REFERENCES_MODE  0x11
 #define	MXT_CMD_T6_CTE_MODE         0x31
+#define	MXT_CMD_T6_TCH_DIAG	    0xF3
 
 /* T6 Backup Command */
 #define MXT_CMD_T6_BACKUP           0x55
 
 /* SPT_DEBUG_DIAGNOSTIC_T37 Register offsets from T37 base address */
 #define MXT_ADR_T37_PAGE                                0x01
+#define T37_PAGE_NUM0					0x00
 #define	MXT_ADR_T37_DATA				0x02
 
 

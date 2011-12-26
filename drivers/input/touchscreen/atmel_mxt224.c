@@ -197,10 +197,8 @@ struct mxt_data {
 	int                  mxt_intr_gpio;
 	int                  mxt_reset_gpio;
 
-	int		    recalib_flag;
-	int		    finger_pressed;
-	int		    finger_count;
-	struct	point_info  pre_data[MXT_MAX_NUM_TOUCHES];
+	unsigned long	    timestamp;
+	int		    calibration_confirm;
 };
 
 /*
@@ -914,16 +912,6 @@ static void mxt_gpio_reset(struct mxt_data *mxt)
 	msleep(40);
 }
 
-static void mxt_calibrate(struct mxt_data *mxt)
-{
-	u16 addr;
-
-	addr = get_object_address(MXT_GEN_COMMANDPROCESSOR_T6,
-			0, mxt->object_table,
-			mxt->device_info.num_objs) + MXT_ADR_T6_CALIBRATE;
-	mxt_write_byte(mxt->client, addr, 0x55);
-}
-
 /*
  * Reads a block of bytes from given address from mXT chip. If we are
  * reading from message window, and previous read was from message window,
@@ -1084,10 +1072,6 @@ static void mxt_enable_autocalib(struct mxt_data *mxt)
 	u16 addr;
 	u8 antitouch_ext[] = { 5, 50, 5, 192 };
 
-	mxt->finger_pressed = 0;
-	mxt->finger_count = 0;
-	mxt->recalib_flag = MXT_RECALIB_NEED;
-
 	addr = get_object_address(MXT_GEN_ACQUIRECONFIG_T8, 0,
 				 mxt->object_table,
 				 mxt->device_info.num_objs) + T8_CFG_ATCHCALST;
@@ -1106,20 +1090,7 @@ static void mxt_disable_autocalib(struct mxt_data *mxt)
 				 mxt->device_info.num_objs) + T8_CFG_ATCHCALST;
 	mxt_write_block(mxt->client, addr,
 			sizeof(antitouch_ext), antitouch_ext);
-	mxt->recalib_flag = MXT_RECALIB_DONE;
 	dev_info(&mxt->client->dev, "auto-calibration disabled\n");
-}
-
-static bool mxt_confirm_autocalib(struct mxt_data *mxt, int touch_num)
-{
-	if (mxt->finger_count == 0 &&
-	    mxt->recalib_flag == MXT_RECALIB_NEED &&
-	    touch_num == 0 &&
-	    (abs(stored_y[touch_num] - mxt->pre_data[touch_num].y) > 200 ||
-	     abs(stored_x[touch_num] - mxt->pre_data[touch_num].x) > 200))
-		return true;
-	else
-		return false;
 }
 
 static void process_T9_message(u8 *message, struct mxt_data *mxt)
@@ -1178,46 +1149,11 @@ static void process_T9_message(u8 *message, struct mxt_data *mxt)
 				((status & MXT_MSGB_T9_MOVE) ? " MOVE" : ""),
 				((status & MXT_MSGB_T9_AMP) ? " AMP" : ""),
 				((status & MXT_MSGB_T9_VECTOR) ? " VECT" : ""));
-
-			if (mxt->recalib_flag != MXT_RECALIB_DONE &&
-			    (status & MXT_MSGB_T9_PRESS) &&
-			    !(mxt->finger_pressed & BIT(touch_number))) {
-				if (mxt->finger_count < mxt->numtouch)
-					mxt->finger_count++;
-				mxt->finger_pressed |= BIT(touch_number);
-
-				mxt->pre_data[touch_number].x = xpos;
-				mxt->pre_data[touch_number].y = ypos;
-
-				if (mxt->finger_count == mxt->numtouch)
-					mxt_calibrate(mxt);
-				else if (mxt->finger_count > 1 &&
-					 mxt->recalib_flag == MXT_RECALIB_NEED)
-					mxt->recalib_flag = MXT_RECALIB_NG;
-			}
 		} else if (status & MXT_MSGB_T9_RELEASE) {
 			dev_dbg(dev, "RELEASE");
 
 			/* The previously reported touch has been removed.*/
 			stored_size[touch_number] = 0;
-
-			if (mxt->recalib_flag != MXT_RECALIB_DONE &&
-			    mxt->finger_pressed & BIT(touch_number)) {
-				if (!mxt->finger_count)
-					dev_err(dev, "finger count is 0\n");
-				else
-					mxt->finger_count--;
-
-				mxt->finger_pressed &= ~BIT(touch_number);
-
-				if (mxt_confirm_autocalib(mxt, touch_number))
-					mxt_disable_autocalib(mxt);
-
-				if (mxt->finger_count)
-					mxt_calibrate(mxt);
-				else if (mxt->recalib_flag == MXT_RECALIB_NG)
-					mxt->recalib_flag = MXT_RECALIB_NEED;
-			}
 		}
 
 		dev_dbg(dev, "X=%d, Y=%d, touch number=%d, TOUCHSIZE=%d",
@@ -1264,6 +1200,78 @@ void process_key_message(u8 *message, struct mxt_data *mxt)
 		mxt->prev_key = KEY_SEARCH;
 	}
 	input_sync(mxt->key_input);
+}
+
+#define T37_TCH_DIAG_SZ 82
+#define MXT_XSIZE	18
+
+static void mxt_check_calibration(struct mxt_data *mxt)
+{
+	u8 data[T37_TCH_DIAG_SZ];
+	u16 t6addr, t37addr;
+	int i;
+	int xlimit = 0;
+	int touch_ch = 0, antitouch_ch = 0;
+	struct device *dev = &mxt->client->dev;
+	int ret;
+
+	memset(data, 0xff, sizeof(data));
+
+	t6addr = get_object_address(MXT_GEN_COMMANDPROCESSOR_T6,
+			0, mxt->object_table, mxt->device_info.num_objs);
+	ret = mxt_write_byte(mxt->client, t6addr + MXT_ADR_T6_DIAGNOSTIC,
+			     MXT_CMD_T6_TCH_DIAG);
+	if (ret < 0) {
+		dev_err(dev, "fail to set touch diagnostic command\n");
+		return;
+	}
+
+	t37addr = get_object_address(MXT_DEBUG_DIAGNOSTIC_T37,
+			0, mxt->object_table, mxt->device_info.num_objs);
+	for (i = 0; i < 10; i++) {
+		if (data[0] == MXT_CMD_T6_TCH_DIAG && data[1] == T37_PAGE_NUM0)
+			break;
+		/*
+		 * Suggested by Atmel application note QTAN0070
+		 * "Recovering from Palm Touches During Calibration"
+		 */
+		usleep_range(5000, 6000);
+		mxt_read_block(mxt->client, t37addr, 2, data);
+	}
+	if (i == 10)
+		dev_err(dev, "fail to get calib diagnostic data\n");
+
+	mxt_read_block(mxt->client, t37addr, sizeof(data), data);
+	if (data[0] == MXT_CMD_T6_TCH_DIAG && data[1] == T37_PAGE_NUM0) {
+		xlimit = MXT_XSIZE << 1;
+		for (i = 0; i < xlimit; i += 2) {
+			touch_ch += __sw_hweight16(*(u16 *)&data[2 + i]);
+			antitouch_ch += __sw_hweight16(*(u16 *)&data[42 + i]);
+		}
+	}
+	mxt_write_byte(mxt->client,
+		t6addr + MXT_ADR_T6_DIAGNOSTIC, MXT_CMD_T6_PAGE_UP);
+
+	dev_dbg(dev, "touch channel:%d, anti-touch channel:%d\n",
+		 touch_ch, antitouch_ch);
+
+	if (touch_ch && antitouch_ch == 0) {
+		if (mxt->calibration_confirm == 1 &&
+		    time_after(jiffies, mxt->timestamp + HZ / 2)) {
+			mxt->calibration_confirm = 2;
+			dev_info(dev, "calibration confirmed\n");
+			mxt_disable_autocalib(mxt);
+		}
+		if (mxt->calibration_confirm < 2)
+			mxt->calibration_confirm = 1;
+		mxt->timestamp = jiffies;
+	} else if ((touch_ch - 25) <= antitouch_ch &&
+		   (touch_ch || antitouch_ch)) {
+		mxt->calibration_confirm = 0;
+		/* since we enable auto calibration in firmware, so
+		 * don't need to manually start calibration here
+		 */
+	}
 }
 
 static int process_message(u8 *message, u8 object, struct mxt_data *mxt)
@@ -1387,6 +1395,8 @@ static int process_message(u8 *message, u8 object, struct mxt_data *mxt)
 		break;
 
 	case MXT_TOUCH_MULTITOUCHSCREEN_T9:
+		if (mxt->calibration_confirm < 2)
+			mxt_check_calibration(mxt);
 		process_T9_message(message, mxt);
 		report_mt(mxt);
 		break;
@@ -2521,6 +2531,7 @@ void mxt_late_resume(struct early_suspend *h)
 	enable_irq(mxt_es->irq);
 
 	mutex_lock(&mxt_es->dev_mutex);
+	mxt_es->calibration_confirm = 0;
 	mxt_reset(mxt_es);
 
 	gpio_intr = gpio_get_value(mxt_es->mxt_intr_gpio);
