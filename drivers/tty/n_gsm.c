@@ -2719,7 +2719,15 @@ static void gsm_mux_rx_netchar(struct gsm_dlci *dlci,
 	memcpy(skb_put(skb, size), in_buf, size);
 
 	skb->dev = net;
-	skb->protocol = __constant_htons(ETH_P_IP);
+	/* IP version bit 4 to 7 */
+	switch ((*in_buf) >> 4) {
+	case 4:
+		skb->protocol = htons(ETH_P_IP);
+		break;
+	case 6:
+		skb->protocol = htons(ETH_P_IPV6);
+		break;
+	}
 
 	/* Ship it off to the kernel */
 	netif_rx(skb);
@@ -2796,8 +2804,11 @@ static int gsm_create_network(struct gsm_dlci *dlci, struct gsm_netconfig *nc)
 	if (dlci->adaption > 2)
 		return -EBUSY;
 
-	if (nc->protocol != htons(ETH_P_IP))
+	if (nc->protocol != htons(ETH_P_IP)
+	  && nc->protocol != htons(ETH_P_IPV6)) {
+		pr_err("only IPV4/V6 protocol supported");
 		return -EPROTONOSUPPORT;
+	}
 
 	if (nc->adaption != 3 && nc->adaption != 4)
 		return -EPROTONOSUPPORT;
