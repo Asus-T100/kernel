@@ -105,6 +105,10 @@
 #define PS_MODE_DISABLE		2
 #define PS_MODE_ENABLE		3
 
+/* it takes about 650ms to generate the first interrupt when ALS is enabled*/
+#define ALS_FIRST_INT_DELAY	650
+#define ALS_INIT_DATA		0xffff
+
 struct alsps_client {
 	struct list_head list;
 	unsigned long status;
@@ -129,6 +133,7 @@ struct alsps_device {
 				       * variables, lists and registers
 				       */
 
+	struct delayed_work 	als_first_work;
 	struct list_head	proximity_list;
 	struct list_head	ambient_list;
 
@@ -145,12 +150,12 @@ static const int lux_map[] = {	0,      40,     100,    170,    330,    700,
 static const int adc_map[] = {	0,      3,      5,      10,     15,     20,
 				25,     30,     35,     40,     45,     50};
 
-#define ALSPS_PROXIMITY_DATA_READY      0
-#define ALSPS_AMBIENT_DATA_READY        1
-#define ALSPS_PROXIMITY_FIRST_POLL      2
-#define ALSPS_AMBIENT_FIRST_POLL        3
-#define ALSPS_PROXIMITY_IOCTL_ENABLE    4
-#define ALSPS_AMBIENT_IOCTL_ENABLE      5
+#define PS_DATA_READY      0
+#define ALS_DATA_READY     1
+#define PS_FIRST_POLL      2
+#define ALS_FIRST_POLL     3
+#define PS_IOCTL_ENABLE    4
+#define ALS_IOCTL_ENABLE   5
 
 static int alsps_read(struct alsps_device *alsps, u8 reg, u8 *pval)
 {
@@ -206,7 +211,7 @@ static ssize_t proximity_read(struct file *filep,
 	mutex_lock(&alsps_dev->lock);
 	if (alsps_dev->alsps_switch & PROXIMITY_ENABLE) {
 		ret = sizeof(ps_state->once);
-		clear_bit(ALSPS_PROXIMITY_DATA_READY, &client->status);
+		clear_bit(PS_DATA_READY, &client->status);
 		if (copy_to_user(buffer, &ps_state->once,
 				 sizeof(ps_state->once))) {
 			ret = -EFAULT;
@@ -225,12 +230,12 @@ proximity_poll(struct file *filep, struct poll_table_struct *wait)
 
 	poll_wait(filep, &alsps_dev->proximity_workq_head, wait);
 
-	if (test_bit(ALSPS_PROXIMITY_FIRST_POLL, &client->status)) {
+	if (test_bit(PS_FIRST_POLL, &client->status)) {
 		mask |= (POLLIN | POLLRDNORM);
-		clear_bit(ALSPS_PROXIMITY_FIRST_POLL, &client->status);
+		clear_bit(PS_FIRST_POLL, &client->status);
 	}
 
-	if (test_bit(ALSPS_PROXIMITY_DATA_READY, &client->status))
+	if (test_bit(PS_DATA_READY, &client->status))
 		mask |= (POLLIN | POLLRDNORM);
 
 	return mask;
@@ -273,7 +278,7 @@ static void proximity_handle_irq(struct alsps_device *alsps, u8 reg_data)
 		alsps->ps_state.once = alsps->ps_state.now;
 
 		list_for_each_entry(client, &alsps->proximity_list, list)
-			set_bit(ALSPS_PROXIMITY_DATA_READY, &client->status);
+			set_bit(PS_DATA_READY, &client->status);
 
 		wake_up(&alsps->proximity_workq_head);
 	}
@@ -297,7 +302,7 @@ static void ambient_handle_irq(struct alsps_device *alsps, u8 reg_data)
 		alsps->als_state.once = alsps->als_state.now;
 
 		list_for_each_entry(client, &alsps->ambient_list, list)
-			set_bit(ALSPS_AMBIENT_DATA_READY, &client->status);
+			set_bit(ALS_DATA_READY, &client->status);
 
 		wake_up(&alsps->ambient_workq_head);
 	}
@@ -316,7 +321,7 @@ static ssize_t ambient_read(struct file *filep,
 		lumen = ambient_get_lum(ambient_sta->once);
 		ret = sizeof(lumen);
 
-		clear_bit(ALSPS_AMBIENT_DATA_READY, &client->status);
+		clear_bit(ALS_DATA_READY, &client->status);
 		if (copy_to_user(buffer, &lumen, sizeof(lumen)))
 			ret = -EFAULT;
 	}
@@ -333,12 +338,12 @@ ambient_poll(struct file *filep, struct poll_table_struct *wait)
 
 	poll_wait(filep, &alsps_dev->ambient_workq_head, wait);
 
-	if (test_bit(ALSPS_AMBIENT_FIRST_POLL, &client->status)) {
+	if (test_bit(ALS_FIRST_POLL, &client->status)) {
 		mask |= (POLLIN | POLLRDNORM);
-		clear_bit(ALSPS_AMBIENT_FIRST_POLL, &client->status);
+		clear_bit(ALS_FIRST_POLL, &client->status);
 	}
 
-	if (test_bit(ALSPS_AMBIENT_DATA_READY, &client->status))
+	if (test_bit(ALS_DATA_READY, &client->status))
 		mask |= (POLLIN | POLLRDNORM);
 
 	return mask;
@@ -402,8 +407,9 @@ static int ltr502als_initchip(struct alsps_device *alsps)
 	u8 val;
 
 	alsps_write(alsps, CONFIGREG, POWER_UP | IDLE);
+	alsps_write(alsps, DLSCTROL, ADC_64LEVEL);
 	alsps_write(alsps, TCREG,
-		    PRX_INT_CYCLE1 | INTEGRATE_100MS | ALPS_INT_CYCLE4);
+		    PRX_INT_CYCLE1 | INTEGRATE_100MS | ALPS_INT_CYCLE1);
 
 	/* change proximity threshold PRX_THRESH_CTL to 31 to decrease the distance
 	 * that triggers proximity interrupt*/
@@ -435,6 +441,13 @@ static void ltr502_switch(int mode)
 		break;
 	}
 	alsps_write(alsps_dev, CONFIGREG, data);
+
+	if (mode & AMBIENT_ENABLE) {
+		alsps_dev->als_state.once = ALS_INIT_DATA;
+		schedule_delayed_work(&alsps_dev->als_first_work,
+				msecs_to_jiffies(ALS_FIRST_INT_DELAY));
+	} else if (alsps_dev->alsps_switch & AMBIENT_ENABLE)
+		cancel_delayed_work(&alsps_dev->als_first_work);
 }
 
 /* lock must be held when calling this function */
@@ -444,7 +457,11 @@ static void ltr502_mode(struct alsps_client *client, int mode)
 
 	switch (mode) {
 	case PS_MODE_DISABLE:
-		clear_bit(ALSPS_PROXIMITY_IOCTL_ENABLE, &client->status);
+		if (!test_and_clear_bit(PS_IOCTL_ENABLE, &client->status)) {
+			dev_dbg(&alsps_dev->client->dev,
+				"PS is not enabled for this client\n");
+				return;
+		}
 		if (--alsps_dev->proximity_count <= 0) {
 			alsps_dev->proximity_count = 0;
 			alsps_dev->alsps_switch &= ~PROXIMITY_ENABLE;
@@ -452,32 +469,33 @@ static void ltr502_mode(struct alsps_client *client, int mode)
 		break;
 	case PS_MODE_ENABLE:
 		list_for_each_entry(list_tmp, &alsps_dev->proximity_list, list)
-			set_bit(ALSPS_PROXIMITY_FIRST_POLL, &list_tmp->status);
+			set_bit(PS_FIRST_POLL, &list_tmp->status);
 
-		if (test_and_set_bit(ALSPS_PROXIMITY_IOCTL_ENABLE,
-					&client->status))
-			break;
+		if (test_and_set_bit(PS_IOCTL_ENABLE, &client->status))
+			return;
 		alsps_dev->proximity_count++;
 		alsps_dev->alsps_switch |= PROXIMITY_ENABLE;
 		alsps_dev->ps_state.once = 0;
 		break;
 	case ALS_MODE_DISABLE:
-		clear_bit(ALSPS_AMBIENT_IOCTL_ENABLE, &client->status);
+		if (!test_and_clear_bit(ALS_IOCTL_ENABLE, &client->status)) {
+			dev_dbg(&alsps_dev->client->dev,
+				"ALS is not enabled for this client\n");
+				return;
+		}
 		if (--alsps_dev->ambient_count <= 0) {
 			alsps_dev->ambient_count = 0;
 			alsps_dev->alsps_switch &= ~AMBIENT_ENABLE;
 		}
 		break;
 	case ALS_MODE_ENABLE:
-		list_for_each_entry(list_tmp, &alsps_dev->ambient_list, list)
-			set_bit(ALSPS_AMBIENT_FIRST_POLL, &list_tmp->status);
-
-		if (test_and_set_bit(ALSPS_AMBIENT_IOCTL_ENABLE,
-					&client->status))
-			break;
-		alsps_dev->ambient_count++;
+		if (test_and_set_bit(ALS_IOCTL_ENABLE, &client->status) ||
+				alsps_dev->ambient_count++ > 0) {
+			if (alsps_dev->als_state.once != ALS_INIT_DATA)
+				set_bit(ALS_FIRST_POLL, &client->status);
+			return;
+		}
 		alsps_dev->alsps_switch |= AMBIENT_ENABLE;
-		alsps_dev->als_state.once = 0;
 		break;
 	default:
 		break;
@@ -542,7 +560,7 @@ static int ambient_close(struct inode *inode, struct file *filep)
 	mutex_lock(&alsps_dev->lock);
 	list_del(&client->list);
 
-	if (test_bit(ALSPS_AMBIENT_IOCTL_ENABLE, &client->status))
+	if (test_bit(ALS_IOCTL_ENABLE, &client->status))
 		ltr502_mode(client, ALS_MODE_DISABLE);
 	mutex_unlock(&alsps_dev->lock);
 	kfree(client);
@@ -558,7 +576,7 @@ static int proximity_close(struct inode *inode, struct file *filep)
 	mutex_lock(&alsps_dev->lock);
 	list_del(&client->list);
 
-	if (test_bit(ALSPS_PROXIMITY_IOCTL_ENABLE, &client->status))
+	if (test_bit(PS_IOCTL_ENABLE, &client->status))
 		ltr502_mode(client, PS_MODE_DISABLE);
 	mutex_unlock(&alsps_dev->lock);
 	kfree(client);
@@ -643,7 +661,7 @@ static int ltr502als_suspend(struct device *dev)
 		goto fail;
 
 	list_for_each_entry(client, &alsps_dev->proximity_list, list)
-		if (test_bit(ALSPS_PROXIMITY_DATA_READY, &client->status))
+		if (test_bit(PS_DATA_READY, &client->status))
 			goto fail_unlock;
 
 	mutex_unlock(&alsps_dev->lock);
@@ -665,6 +683,23 @@ static int ltr502als_resume(struct device *dev)
 	return 0;
 }
 
+static void als_avoid_slience(struct work_struct *work)
+{
+	u8 data;
+	struct alsps_device *alsps = container_of((struct delayed_work *)work,
+			struct alsps_device, als_first_work);
+
+	mutex_lock(&alsps->lock);
+	if (alsps->als_state.once == ALS_INIT_DATA) {
+		dev_dbg(&alsps->client->dev, "%s: als_state.once=%d\n",
+				__func__, alsps->als_state.once);
+		alsps_read(alsps, DATAREG, &data);
+		ambient_handle_irq(alsps, data);
+	}
+	mutex_unlock(&alsps->lock);
+}
+
+
 static struct alsps_device *ltr502als_alloc_dev(void)
 {
 	struct alsps_device *alsps;
@@ -678,6 +713,8 @@ static struct alsps_device *ltr502als_alloc_dev(void)
 
 	INIT_LIST_HEAD(&alsps->ambient_list);
 	INIT_LIST_HEAD(&alsps->proximity_list);
+
+	INIT_DELAYED_WORK(&alsps->als_first_work, als_avoid_slience);
 	mutex_init(&alsps->lock);
 
 	return alsps;
