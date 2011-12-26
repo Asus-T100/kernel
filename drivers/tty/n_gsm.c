@@ -124,6 +124,7 @@ struct gsm_dlci {
 #define DLCI_OPENING		1	/* Sending SABM not seen UA */
 #define DLCI_OPEN		2	/* SABM/UA complete */
 #define DLCI_CLOSING		3	/* Sending DISC not seen UA/DM */
+#define DLCI_HANGUP		4	/*HANGUP received  */
 	struct kref ref;		/* freed from port or mux close */
 
 	/* Link layer */
@@ -1511,7 +1512,8 @@ static void gsm_dlci_begin_open(struct gsm_dlci *dlci)
 static void gsm_dlci_begin_close(struct gsm_dlci *dlci)
 {
 	struct gsm_mux *gsm = dlci->gsm;
-	if (dlci->state == DLCI_CLOSED || dlci->state == DLCI_CLOSING)
+	if (dlci->state == DLCI_CLOSED || dlci->state == DLCI_CLOSING ||
+	    dlci->state == DLCI_HANGUP)
 		return;
 	dlci->retries = gsm->n2;
 	dlci->state = DLCI_CLOSING;
@@ -2042,12 +2044,15 @@ void gsm_cleanup_mux(struct gsm_mux *gsm)
 			else {
 				dlci->dead = 1;
 				gsm_dlci_begin_close(dlci);
+				if (dlci->state == DLCI_HANGUP)
+					goto close_this_dlci;
 				t = wait_event_timeout(gsm->event,
 					   dlci->state == DLCI_CLOSED,
 					   gsm->t2 * HZ / 100);
 				if (!t) {
 					pr_info("%s: timeout dlci0 close",
 						__func__);
+close_this_dlci:
 					gsm_dlci_close(dlci);
 				}
 			}
@@ -2332,6 +2337,26 @@ static ssize_t gsmld_chars_in_buffer(struct tty_struct *tty)
 
 static void gsmld_flush_buffer(struct tty_struct *tty)
 {
+}
+
+/**
+ *	gsmld_hangup		-	hangup the ldisc for this tty
+ *	@tty: device
+ */
+
+static int gsmld_hangup(struct tty_struct *tty)
+{
+	struct gsm_mux *gsm = tty->disc_data;
+	int i;
+	struct gsm_dlci *dlci;
+
+	for (i = NUM_DLCI-1; i >= 0; i--) {
+		dlci = gsm->dlci[i];
+		if (dlci)
+			dlci->state = DLCI_HANGUP;
+	}
+
+	return 0;
 }
 
 /**
@@ -2819,6 +2844,7 @@ struct tty_ldisc_ops tty_ldisc_packet = {
 	.name            = "n_gsm",
 	.open            = gsmld_open,
 	.close           = gsmld_close,
+	.hangup          = gsmld_hangup,
 	.flush_buffer    = gsmld_flush_buffer,
 	.chars_in_buffer = gsmld_chars_in_buffer,
 	.read            = gsmld_read,
