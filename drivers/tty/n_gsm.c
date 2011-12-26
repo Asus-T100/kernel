@@ -79,7 +79,7 @@ module_param(debug, int, 0600);
 #define	GSM_NET_TX_TIMEOUT (HZ*10)
 
 /* Workarounds */
-#define  WA_VHANGUP_CLOCK
+#undef  WA_VHANGUP_CLOCK
 
 /**
  *	struct gsm_mux_net	-	network interface
