@@ -652,7 +652,7 @@ sh_css_set_dis_coefficients(const short *horizontal_coefficients,
 	dis_coef_table_changed = true;
 }
 
-#if 0
+#if 1
 /* This is the optimized code that uses the aligned_width and aligned_height
  * for the projections. This should be enabled in the same patch set that
  * adds the correct handling of these strides to the DIS IA code.
