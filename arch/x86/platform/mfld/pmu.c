@@ -489,7 +489,7 @@ static int set_extended_cstate_mode(const char *val, struct kernel_param *kp)
 	char       valcp[5];
 	int cstate_mode;
 
-	strncpy(valcp, val, 5);
+	strncpy(valcp, val, sizeof(valcp) - 1);
 	valcp[4] = '\0';
 
 	if (strcmp(valcp, "s0i1") == 0)
@@ -576,7 +576,7 @@ static int set_pmu_driver_status(const char *val, struct kernel_param *kp)
 	int status;
 	struct pmu_ss_states cur_pmssc;
 
-	strncpy(valcp, val, 4);
+	strncpy(valcp, val, sizeof(valcp) - 1);
 	valcp[3] = '\0';
 
 	if (strncmp(valcp, "off", 3) == 0) {	/* disable pmu driver and
