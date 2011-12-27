@@ -28,8 +28,10 @@
 #include <linux/platform_device.h>
 #include <linux/delay.h>
 #include <linux/slab.h>
+#include <linux/gpio.h>
 #include <asm/intel_scu_ipc.h>
 #include <asm/intel_mid_gpadc.h>
+#include <asm/mrst.h>
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
 #include <sound/soc.h>
@@ -43,11 +45,7 @@
 #define SN95031_RATES (SNDRV_PCM_RATE_8000_96000)
 #define SN95031_FORMATS (SNDRV_PCM_FMTBIT_S24_LE | SNDRV_PCM_FMTBIT_S16_LE)
 #define SN95031_SW_DBNC 250
-
-struct sn95031_work {
-	struct delayed_work work;
-	struct snd_soc_codec *codec;
-};
+#define HEADSET_DET_PIN 77
 
 struct sn95031_jack_work {
 	unsigned int intr_id;
@@ -1216,14 +1214,23 @@ static inline void sn95031_enable_jack_btn(struct snd_soc_codec *codec)
 
 static int sn95031_get_headset_state(struct snd_soc_jack *mfld_jack)
 {
-	int micbias, jack_type;
+	int micbias, jack_type, hs_gpio = 1;
 
 	sn95031_enable_mic_bias(mfld_jack->codec);
 	micbias = sn95031_get_mic_bias(mfld_jack->codec);
 
 	jack_type = snd_soc_jack_get_type(mfld_jack, micbias);
-
 	pr_debug("jack type detected = %d, micbias = %d\n", jack_type, micbias);
+
+	if (mfld_board_id() == MFLD_BID_PR3) {
+		if ((jack_type != SND_JACK_HEADSET) &&
+		    (jack_type != SND_JACK_HEADPHONE))
+			hs_gpio = gpio_get_value(HEADSET_DET_PIN);
+		if (!hs_gpio) {
+			jack_type = SND_JACK_HEADPHONE;
+			pr_debug("GPIO says there is a headphone, reporting it\n");
+		}
+	}
 	if (jack_type == SND_JACK_HEADSET)
 		sn95031_enable_jack_btn(mfld_jack->codec);
 	else
@@ -1235,19 +1242,16 @@ static void sn95031_jack_report(struct snd_soc_jack *jack, unsigned int status)
 {
 	unsigned int mask = SND_JACK_BTN_0 | SND_JACK_BTN_1 | SND_JACK_HEADSET;
 
-	pr_debug("jack reported of type: %d\n", status);
-	if ((status == SND_JACK_HEADSET) | (status == SND_JACK_HEADPHONE)) {
-		pr_debug("detected headset or headphone, disabling JACKDET\n");
-		snd_soc_update_bits(jack->codec, SN95031_ACCDETMASK,
-								BIT(2), BIT(2));
-
+	pr_debug("jack reported of type: 0x%x\n", status);
+	if ((status == SND_JACK_HEADSET) || (status == SND_JACK_HEADPHONE)) {
 		/* if we detected valid headset then disable headset ground.
 		 * Otherwise enable it in else condition
 		 * this is required for jack detect to work well */
 		snd_soc_update_bits(jack->codec, SN95031_BTNCTRL2, BIT(1), 0);
-	} else
+	} else if (status == 0) {
 		snd_soc_update_bits(jack->codec,
 					SN95031_BTNCTRL2, BIT(1), BIT(1));
+	}
 	snd_soc_jack_report(jack, status, mask);
 #ifdef CONFIG_SWITCH_MID
 	if (status) {
@@ -1273,41 +1277,61 @@ void sn95031_jack_wq(struct work_struct *work)
 	struct snd_soc_jack *jack = jack_wq->jack;
 	unsigned int voltage, status = 0;
 
-	pr_debug("jack status in wq:%d\n", jack_wq->intr_id);
+	pr_debug("jack status in wq: 0x%x\n", jack_wq->intr_id);
 	if (jack_wq->intr_id & SN95031_JACK_INSERTED) {
 		status = sn95031_get_headset_state(jack);
 		jack_wq->intr_id &= ~SN95031_JACK_INSERTED;
+		/* unmask button press interrupts */
+		if (status == SND_JACK_HEADSET)
+			snd_soc_update_bits(jack->codec, SN95031_ACCDETMASK,
+							BIT(1)|BIT(0), 0);
+		cancel_delayed_work(&sn95031_ctx->jack_work.work);
 	} else if (jack_wq->intr_id & SN95031_JACK_REMOVED) {
+		if (mfld_board_id() == MFLD_BID_PR3) {
+			if (!gpio_get_value(HEADSET_DET_PIN)) {
+				pr_debug("remove interrupt, but GPIO says inserted\n");
+				return;
+			}
+		}
 		pr_debug("reporting jack as removed\n");
 		sn95031_disable_jack_btn(jack->codec);
 		snd_soc_update_bits(jack->codec, SN95031_ACCDETMASK, BIT(2), 0);
 		sn95031_disable_mic_bias(jack->codec);
-		jack_wq->intr_id &= ~SN95031_JACK_REMOVED;
+		jack_wq->intr_id = 0;
+		cancel_delayed_work(&sn95031_ctx->jack_work.work);
 	} else if (jack_wq->intr_id & SN95031_JACK_BTN0) {
+		jack_wq->intr_id &= ~SN95031_JACK_BTN0;
 		if (sn95031_lp_flag) {
 			snd_soc_jack_report(jack, SND_JACK_HEADSET, mask);
 			sn95031_lp_flag = 0;
+			/* clear up BTN1 intr_id if it was not cleared */
+			jack_wq->intr_id &= ~SN95031_JACK_BTN1;
+			pr_debug("short press on releasing long press, "
+				   "report button release\n");
 			return;
 		} else {
 			status = SND_JACK_HEADSET | SND_JACK_BTN_0;
+			pr_debug("short press detected\n");
 		}
-		jack_wq->intr_id &= ~SN95031_JACK_BTN0;
 	} else if (jack_wq->intr_id & SN95031_JACK_BTN1) {
-		/* we get spurious intterupts if jack key is held down
-		* so we ignore them untill key is released by
-		* checking the voltage level */
+		/* we get spurious interrupts if jack key is held down
+		* so we ignore them until key is released by checking the
+		* voltage level */
 		if (sn95031_lp_flag) {
 			voltage = sn95031_read_voltage();
 			if (voltage > 400) {
 				snd_soc_jack_report(jack,
-							SND_JACK_HEADSET, mask);
-				sn95031_lp_flag = 0; /* button released */
+						SND_JACK_HEADSET, mask);
+				sn95031_lp_flag = 0;
+				jack_wq->intr_id &= ~SN95031_JACK_BTN1;
+				pr_debug("button released after long press\n");
 			}
 			return;
 		}
 		status = SND_JACK_HEADSET | SND_JACK_BTN_1;
 		sn95031_lp_flag = 1;
 		jack_wq->intr_id &= ~SN95031_JACK_BTN1;
+		pr_debug("long press detected\n");
 	}
 	sn95031_jack_report(jack, status);
 }
@@ -1342,20 +1366,23 @@ void sn95031_jack_detection(struct mfld_jack_data *jack_data)
 		} else {
 			sn95031->jack_work.intr_id |= jack_data->intr_id;
 		}
+		/* mask button press interrupts until jack is reported*/
+		snd_soc_update_bits(jack_data->mfld_jack->codec,
+		     SN95031_ACCDETMASK, BIT(1)|BIT(0), BIT(1)|BIT(0));
 		return;
 	}
 
 	if (jack_data->intr_id & SN95031_JACK_BTN0 ||
 				jack_data->intr_id & SN95031_JACK_BTN1) {
-		if (jack_data->mfld_jack->status == SND_JACK_HEADSET) {
+		if ((jack_data->mfld_jack->status & SND_JACK_HEADSET) != 0) {
 			retval = sn95031_schedule_jack_wq(jack_data);
 			if (!retval) {
-				pr_debug("spurious button press detected\n");
+				pr_debug("spurious btn press, lp_flag:%d\n",
+							sn95031_lp_flag);
 				sn95031->jack_work.intr_id = jack_data->intr_id;
 				return;
-			} else {
-				sn95031->jack_work.intr_id |= jack_data->intr_id;
 			}
+			sn95031->jack_work.intr_id |= jack_data->intr_id;
 			pr_debug("BTN_Press detected\n");
 		} else {
 			pr_debug("BTN_press received, but jack is removed\n");
@@ -1428,7 +1455,7 @@ static int sn95031_codec_probe(struct snd_soc_codec *codec)
 	/* voice related stuff */
 	snd_soc_write(codec, SN95031_VOICETXVOL, 0x89);
 	/* debounce time and long press duration */
-	snd_soc_write(codec, SN95031_BTNCTRL1, 0xA7);
+	snd_soc_write(codec, SN95031_BTNCTRL1, 0x57);
 
 	/* soft mute ramp time */
 	snd_soc_write(codec, SN95031_SOFTMUTE, 0x3);

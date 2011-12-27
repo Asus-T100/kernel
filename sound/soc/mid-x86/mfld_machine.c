@@ -30,6 +30,8 @@
 #include <linux/io.h>
 #include <linux/async.h>
 #include <linux/wakelock.h>
+#include <linux/gpio.h>
+#include <asm/mrst.h>
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
 #include <sound/soc.h>
@@ -40,6 +42,7 @@
 #define MID_STEREO 2
 #define MID_MAX_CAP 5
 #define MFLD_JACK_INSERT 0x04
+#define HEADSET_DET_PIN 77
 
 enum soc_mic_bias_zones {
 	MFLD_MV_START = 0,
@@ -530,6 +533,22 @@ static int __devinit snd_mfld_mc_probe(struct platform_device *pdev)
 		ret_val = -ENODEV;
 		goto unalloc;
 	}
+
+	if (mfld_board_id() == MFLD_BID_PR3) {
+		ret_val = gpio_request(HEADSET_DET_PIN, "headset_detect_pin");
+		if (ret_val) {
+			pr_err("HEADSET GPIO allocation failed: %d\n", ret_val);
+			kfree(mc_drv_ctx);
+			return ret_val;
+		}
+		ret_val = gpio_direction_input(HEADSET_DET_PIN);
+		if (ret_val) {
+			pr_err("HEADSET GPIO direction wrong: %d\n", ret_val);
+			kfree(mc_drv_ctx);
+			return ret_val;
+		}
+	}
+
 	mc_drv_ctx->int_base = ioremap_nocache(irq_mem->start,
 					resource_size(irq_mem));
 	if (!mc_drv_ctx->int_base) {
@@ -578,6 +597,8 @@ static int __devexit snd_mfld_mc_remove(struct platform_device *pdev)
 	wake_lock_destroy(&mc_drv_ctx->wake_lock);
 #endif
 	kfree(mc_drv_ctx);
+	if (mfld_board_id() == MFLD_BID_PR3)
+		gpio_free(HEADSET_DET_PIN);
 	snd_soc_card_set_drvdata(soc_card, NULL);
 	snd_soc_unregister_card(soc_card);
 	platform_set_drvdata(pdev, NULL);
