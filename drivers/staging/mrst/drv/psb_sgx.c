@@ -817,6 +817,8 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 		return ret;
 
 	if (arg->engine == PSB_ENGINE_VIDEO) {
+		if (IS_D0(dev))
+			psb_msvdx_check_reset_fw(dev);
 		if (!ospm_power_using_hw_begin(OSPM_VIDEO_DEC_ISLAND,
 					       OSPM_UHB_FORCE_POWER_ON))
 			return -EBUSY;

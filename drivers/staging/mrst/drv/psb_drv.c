@@ -40,10 +40,6 @@
 #ifdef CONFIG_GFX_RTPM
 #include <linux/pm_runtime.h>
 #endif
-#if defined(CONFIG_RAR_REGISTER)
-#include "../../rar_register/rar_register.h"
-#include "../../memrar/memrar.h"
-#endif
 
 #include <asm/intel_scu_ipc.h>
 
@@ -601,31 +597,6 @@ static void get_ci_info(struct drm_psb_private *dev_priv)
 	return;
 }
 
-static void get_rar_info(struct drm_psb_private *dev_priv)
-{
-#if defined(CONFIG_RAR_REGISTER)
-	int ret;
-	dma_addr_t start_addr, end_addr;
-
-	dev_priv->rar_region_start = 0;
-	dev_priv->rar_region_size = 0;
-	end_addr = 0;
-	ret = 0;
-
-	ret = rar_get_address(RAR_TYPE_VIDEO, &start_addr,
-			      &end_addr);
-	if (ret) {
-		printk(KERN_ERR "failed to get rar region info\n");
-		return;
-	}
-	dev_priv->rar_region_start = (uint32_t) start_addr;
-	if ((!ret) && (start_addr != 0) && (end_addr != 0))
-		dev_priv->rar_region_size =
-			end_addr - dev_priv->rar_region_start + 1;
-
-#endif
-	return;
-}
 
 
 static void get_imr_info(struct drm_psb_private *dev_priv)
@@ -633,22 +604,23 @@ static void get_imr_info(struct drm_psb_private *dev_priv)
 	u32 high, low, start, end;
 	int size = 0;
 
-	low = MDFLD_MSG_READ32(PNW_IMR_MSG_PORT, PNW_IMR3L_MSG_REGADDR);
-	high = MDFLD_MSG_READ32(PNW_IMR_MSG_PORT, PNW_IMR3H_MSG_REGADDR);
+	low = MDFLD_MSG_READ32(PNW_IMR_MSG_PORT, PNW_IMR4L_MSG_REGADDR);
+	high = MDFLD_MSG_READ32(PNW_IMR_MSG_PORT, PNW_IMR4H_MSG_REGADDR);
 	start = (low & PNW_IMR_ADDRESS_MASK) << PNW_IMR_ADDRESS_SHIFT;
 	end = (high & PNW_IMR_ADDRESS_MASK) << PNW_IMR_ADDRESS_SHIFT;
 	if (end > start)
 		size = end - start + 1;
 	if (size > 0) {
 		dev_priv->rar_region_start = start;
-		dev_priv->rar_region_size = size;
+		dev_priv->rar_region_size = size & PAGE_MASK;
 	} else {
 		dev_priv->rar_region_start = 0;
 		dev_priv->rar_region_size = 0;
 	}
-	DRM_INFO("IMR3 start=0x%08x, size=%dB\n",
+	DRM_INFO("IMR4 start=0x%08x, size=%dB (%d pages)\n",
 		dev_priv->rar_region_start,
-		dev_priv->rar_region_size);
+		dev_priv->rar_region_size,
+		dev_priv->rar_region_size >> PAGE_SHIFT);
 	return;
 }
 
@@ -1185,6 +1157,7 @@ static int psb_do_init(struct drm_device *dev)
 	struct ttm_bo_device *bdev = &dev_priv->bdev;
 	struct psb_gtt *pg = dev_priv->pg;
 
+	uint32_t tmp;
 	uint32_t stolen_gtt;
 	uint32_t tt_start;
 	uint32_t tt_pages;
@@ -1241,42 +1214,30 @@ static int psb_do_init(struct drm_device *dev)
 	tt_pages -= tt_start >> PAGE_SHIFT;
 	dev_priv->sizes.ta_mem_size = 0;
 
-#ifdef CONFIG_MDFD_VIDEO_DECODE
-
+	/* CI region managed by TTM */
+	tmp = dev_priv->ci_region_size >> PAGE_SHIFT; /* CI region size */
 	if (IS_MRST(dev) &&
 	    (dev_priv->ci_region_size != 0) &&
-	    !ttm_bo_init_mm(bdev, TTM_PL_CI,
-			    dev_priv->ci_region_size >> PAGE_SHIFT)) {
+	    !ttm_bo_init_mm(bdev, TTM_PL_CI, tmp))
 		dev_priv->have_camera = 1;
-	}
 
-	/* since there is always rar region for video, it is ok */
+	/* RAR region managed by TTM */
+	tmp = dev_priv->rar_region_size >> PAGE_SHIFT; /* RAR region size */
 	if ((dev_priv->rar_region_size != 0) &&
-	    !ttm_bo_init_mm(bdev, TTM_PL_RAR,
-			    dev_priv->rar_region_size >> PAGE_SHIFT)) {
+	    !ttm_bo_init_mm(bdev, TTM_PL_RAR, tmp))
 		dev_priv->have_rar = 1;
-	}
 
 	/* TT region managed by TTM. */
-	if (!ttm_bo_init_mm(bdev, TTM_PL_TT,
-			    pg->gatt_pages -
-			    (pg->ci_start >> PAGE_SHIFT) -
-			    ((dev_priv->ci_region_size + dev_priv->rar_region_size)
-			     >> PAGE_SHIFT))) {
-
+	tmp = pg->gatt_pages -
+		(pg->ci_start >> PAGE_SHIFT) -
+		(dev_priv->ci_region_size >> PAGE_SHIFT); /* TT region size */
+	if (!ttm_bo_init_mm(bdev, TTM_PL_TT, tmp))
 		dev_priv->have_tt = 1;
-		dev_priv->sizes.tt_size =
-			(tt_pages << PAGE_SHIFT) / (1024 * 1024) / 2;
-	}
 
-	if (!ttm_bo_init_mm(bdev,
-			    DRM_PSB_MEM_MMU,
-			    PSB_MEM_TT_START >> PAGE_SHIFT)) {
+	/* MMU region managed by TTM */
+	tmp = PSB_MEM_RAR_START >> PAGE_SHIFT; /* MMU region size:MMU->RAR */
+	if (!ttm_bo_init_mm(bdev, DRM_PSB_MEM_MMU, tmp))
 		dev_priv->have_mem_mmu = 1;
-		dev_priv->sizes.mmu_size =
-			PSB_MEM_TT_START / (1024 * 1024);
-	}
-
 
 	PSB_DEBUG_INIT("Init MSVDX\n");
 	psb_msvdx_init(dev);
@@ -1291,7 +1252,6 @@ static int psb_do_init(struct drm_device *dev)
 		else
 			ospm_power_island_down(OSPM_VIDEO_ENC_ISLAND);
 	}
-#endif
 
 	return 0;
 out_err:
@@ -1563,10 +1523,8 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 
 	PSB_DEBUG_INIT("Init TTM fence and BO driver\n");
 
-	if (IS_MRST(dev)) {
+	if (IS_MRST(dev))
 		get_ci_info(dev_priv);
-		get_rar_info(dev_priv);
-	}
         if (IS_MDFLD(dev))
 		get_imr_info(dev_priv);
 
@@ -1657,7 +1615,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 		ret = psb_mmu_insert_pfn_sequence(
 			      psb_mmu_get_default_pd(dev_priv->mmu),
 			      dev_priv->rar_region_start >> PAGE_SHIFT,
-			      pg->mmu_gatt_start + pg->rar_start,
+			      PSB_MEM_RAR_START,
 			      pg->rar_stolen_size >> PAGE_SHIFT, 0);
 		up_read(&pg->sem);
 		if (ret)

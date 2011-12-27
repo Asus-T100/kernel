@@ -205,21 +205,6 @@ int psb_gtt_init(struct psb_gtt *pg, int resume)
 		pte = psb_gtt_mask_pte(pfn_base + i, 0);
 		iowrite32(pte, ttm_gtt_map + i);
 	}
-
-	/*
-	 * insert RAR stolen pages
-	 */
-	if (rar_stolen_size != 0) {
-		pfn_base = dev_priv->rar_region_start >> PAGE_SHIFT;
-		num_pages = rar_stolen_size >> PAGE_SHIFT;
-		printk(KERN_INFO"Set up %d RAR stolen pages starting at 0x%08x, GTT offset %dK\n",
-		       num_pages, pfn_base,
-		       (ttm_gtt_map - pg->gtt_map + i) * 4);
-		for (; i < num_pages + ci_pages; ++i) {
-			pte = psb_gtt_mask_pte(pfn_base + i - ci_pages, 0);
-			iowrite32(pte, ttm_gtt_map + i);
-		}
-	}
 	/*
 	 * Init rest of gtt managed by TTM.
 	 */

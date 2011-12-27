@@ -507,37 +507,41 @@ irqreturn_t psb_irq_handler(DRM_IRQ_ARGS)
 	vdc_stat &= dev_priv->vdc_irq_mask;
 	spin_unlock_irqrestore(&dev_priv->irqmask_lock, irq_flags);
 
+	/*
+		Ignore interrupt if sub-system is already
+		powered gated; nothing needs to be done,
+		when HW is already power-gated
+		- saftey check to avoid illegal HW access.
+	*/
 	if (dsp_int && ospm_power_is_hw_on(OSPM_DISPLAY_ISLAND)) {
 		psb_vdc_interrupt(dev, vdc_stat);
 		handled = 1;
 	}
 
 #ifdef CONFIG_MDFD_VIDEO_DECODE
-	if (msvdx_int && (IS_MDFLD(dev)
-			  || ospm_power_is_hw_on(OSPM_VIDEO_DEC_ISLAND))) {
+	if (msvdx_int && IS_MDFLD(dev)
+			  && ospm_power_is_hw_on(OSPM_VIDEO_DEC_ISLAND)) {
 		psb_msvdx_interrupt(dev);
 		handled = 1;
 	}
 
-	if ((IS_MDFLD(dev) && topaz_int)) {
+	if ((IS_MDFLD(dev) && topaz_int
+			&& ospm_power_is_hw_on(OSPM_VIDEO_ENC_ISLAND))) {
 		pnw_topaz_interrupt(dev);
 		handled = 1;
 	} else if (IS_MRST(dev) && topaz_int &&
 		   ospm_power_is_hw_on(OSPM_VIDEO_ENC_ISLAND)) {
-		/* sometimes, even topaz power down, IIR
-		 * may still have topaz bit set
-		 */
 		lnc_topaz_interrupt(dev);
 		handled = 1;
 	}
 #endif
-	if (sgx_int) {
+	if (sgx_int && ospm_power_is_hw_on(OSPM_GRAPHICS_ISLAND)) {
 		if (SYSPVRServiceSGXInterrupt(dev) != 0)
 			handled = 1;
 	}
 
 #ifdef CONFIG_MDFD_GL3
-	if (gl3_int) {
+	if (gl3_int && ospm_power_is_hw_on(OSPM_GL3_CACHE_ISLAND)) {
 		mdfld_gl3_interrupt(dev, vdc_stat);
 		handled = 1;
 	}

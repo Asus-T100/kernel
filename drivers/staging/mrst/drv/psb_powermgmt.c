@@ -1922,9 +1922,12 @@ void ospm_power_island_up(int hw_islands)
 		If pmu_nc_set_power_state fails then accessing HW
 		reg would result in a crash - IERR/Fabric error.
 		*/
+		spin_lock_irqsave(&dev_priv->ospm_lock, flags);
 		if (pmu_nc_set_power_state(dc_islands,
 			OSPM_ISLAND_UP, OSPM_REG_TYPE))
 			BUG();
+		g_hw_power_status_mask |= OSPM_DISPLAY_ISLAND;
+		spin_unlock_irqrestore(&dev_priv->ospm_lock, flags);
 
 		/* handle other islands */
 		gfx_islands = hw_islands & ~OSPM_DISPLAY_ISLAND;
@@ -1939,14 +1942,25 @@ void ospm_power_island_up(int hw_islands)
 		If pmu_nc_set_power_state fails then accessing HW
 		reg would result in a crash - IERR/Fabric error.
 		*/
-		if (pmu_nc_set_power_state(gfx_islands,
-				OSPM_ISLAND_UP, APM_REG_TYPE))
-			BUG();
-	}
 
-	spin_lock_irqsave(&dev_priv->ospm_lock, flags);
-	g_hw_power_status_mask |= hw_islands;
-	spin_unlock_irqrestore(&dev_priv->ospm_lock, flags);
+		if (IS_D0(gpDrmDevice)) {
+			/*
+			 * GL3 power island needs to be on for MSVDX working.
+			 * We found this during enabling new MSVDX firmware
+			 * uploading mechanism(by PUNIT) for Penwell D0.
+			 */
+			if ((gfx_islands & OSPM_VIDEO_DEC_ISLAND) &&
+					!ospm_power_is_hw_on(OSPM_GL3_CACHE_ISLAND))
+				gfx_islands |= OSPM_GL3_CACHE_ISLAND;
+		}
+
+		spin_lock_irqsave(&dev_priv->ospm_lock, flags);
+		if (pmu_nc_set_power_state(gfx_islands,
+					   OSPM_ISLAND_UP, APM_REG_TYPE))
+			BUG();
+		g_hw_power_status_mask |= gfx_islands;
+		spin_unlock_irqrestore(&dev_priv->ospm_lock, flags);
+	}
 }
 /*
  * ospm_power_resume
@@ -1997,10 +2011,6 @@ void ospm_power_island_down(int hw_islands)
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *) gpDrmDevice->dev_private;
 
-	spin_lock_irqsave(&dev_priv->ospm_lock, flags);
-	g_hw_power_status_mask &= ~hw_islands;
-	spin_unlock_irqrestore(&dev_priv->ospm_lock, flags);
-
 #ifdef OSPM_GFX_DPK
 	printk(KERN_ALERT "%s hw_islands: %x\n",
 		__func__, hw_islands);
@@ -2017,9 +2027,13 @@ void ospm_power_island_down(int hw_islands)
 		If pmu_nc_set_power_state fails then accessing HW
 		reg would result in a crash - IERR/Fabric error.
 		*/
+		spin_lock_irqsave(&dev_priv->ospm_lock, flags);
+		g_hw_power_status_mask &= ~OSPM_DISPLAY_ISLAND;
 		if (pmu_nc_set_power_state(dc_islands,
-			OSPM_ISLAND_DOWN, OSPM_REG_TYPE))
+					   OSPM_ISLAND_DOWN, OSPM_REG_TYPE))
 			BUG();
+		spin_unlock_irqrestore(&dev_priv->ospm_lock, flags);
+
 #ifdef CONFIG_MDFD_HDMI
 		/* Turn off MSIC VCC330 and VHDMI if HDMI is disconnected. */
 		if (!hdmi_state) {
@@ -2037,38 +2051,39 @@ void ospm_power_island_down(int hw_islands)
 		printk(KERN_ALERT "%s other hw_islands: %x\n",
 			 __func__, gfx_islands);
 #endif
+		spin_lock_irqsave(&dev_priv->ospm_lock, flags);
 		if (gfx_islands & OSPM_GL3_CACHE_ISLAND) {
 			/*
 			Make sure both GFX & Video aren't
 			using GL3
 			*/
 			if (atomic_read(&g_graphics_access_count) ||
-				ospm_power_is_hw_on(OSPM_VIDEO_DEC_ISLAND) ||
-				ospm_power_is_hw_on(OSPM_VIDEO_ENC_ISLAND) ||
-				(drm_psb_gl3_enable == 0)) {
+					(g_hw_power_status_mask &
+					(OSPM_VIDEO_DEC_ISLAND |
+					OSPM_VIDEO_ENC_ISLAND |
+					OSPM_GRAPHICS_ISLAND)) ||
+					(drm_psb_gl3_enable == 0)) {
 #ifdef OSPM_GFX_DPK
 				printk(KERN_ALERT
 				"%s GL3 in use - can't turn OFF\n",
 				__func__);
 #endif
-
 				gfx_islands &=  ~OSPM_GL3_CACHE_ISLAND;
-				/*restore the mask back*/
-				spin_lock_irqsave(&dev_priv->ospm_lock, flags);
-				g_hw_power_status_mask |= OSPM_GL3_CACHE_ISLAND;
-				spin_unlock_irqrestore(
-					&dev_priv->ospm_lock, flags);
 				if (!gfx_islands)
-					return;
+					goto out;
 			}
 		}
+
 		/*
 		If pmu_nc_set_power_state fails then accessing HW
 		reg would result in a crash - IERR/Fabric error.
 		*/
+		g_hw_power_status_mask &= ~gfx_islands;
 		if (pmu_nc_set_power_state(gfx_islands,
 			OSPM_ISLAND_DOWN, APM_REG_TYPE))
 			BUG();
+out:
+		spin_unlock_irqrestore(&dev_priv->ospm_lock, flags);
 	}
 }
 
@@ -2194,8 +2209,18 @@ bool ospm_power_using_hw_begin(int hw_island, UHBUsage usage)
 					/* printk(KERN_ALERT "%s power on video decode\n", __func__); */
 					deviceID = gui32MRSTMSVDXDeviceID;
 #ifdef CONFIG_MDFD_GL3
-					ospm_power_island_up(OSPM_VIDEO_DEC_ISLAND);
-					ospm_power_island_up(OSPM_GL3_CACHE_ISLAND);
+					ospm_power_island_up(OSPM_GL3_CACHE_ISLAND | OSPM_VIDEO_DEC_ISLAND);
+					if (IS_D0(gpDrmDevice)) {
+						struct drm_psb_private *dev_priv =
+							(struct drm_psb_private *) gpDrmDevice->dev_private;
+						int ret;
+
+						ret = psb_wait_for_register(dev_priv, MSVDX_COMMS_SIGNATURE,
+									    MSVDX_COMMS_SIGNATURE_VALUE,
+									    0xffffffff);
+						if (ret)
+							DRM_ERROR("MSVDX: firmware fails to initialize.\n");
+					}
 #else
 					ospm_power_island_up(OSPM_VIDEO_DEC_ISLAND);
 #endif
@@ -2209,15 +2234,13 @@ bool ospm_power_using_hw_begin(int hw_island, UHBUsage usage)
 
 				break;
 			case OSPM_VIDEO_ENC_ISLAND:
-				if(!ospm_power_is_hw_on(OSPM_DISPLAY_ISLAND)) {
-					/* printk(KERN_ALERT "%s power on display for video encode\n", __func__); */
+				if (IS_MRST(gpDrmDevice) &&
+						(!ospm_power_is_hw_on(
+							OSPM_DISPLAY_ISLAND))) {
 					deviceID = gui32MRSTDisplayDeviceID;
 					ospm_resume_display(pdev);
 					psb_irq_preinstall_islands(gpDrmDevice, OSPM_DISPLAY_ISLAND);
 					psb_irq_postinstall_islands(gpDrmDevice, OSPM_DISPLAY_ISLAND);
-				}
-				else{
-					/* printk(KERN_ALERT "%s display is already on for video encode use\n", __func__); */
 				}
 
 				if(!ospm_power_is_hw_on(OSPM_VIDEO_ENC_ISLAND)) {

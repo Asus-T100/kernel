@@ -96,7 +96,11 @@ static void psb_msvdx_reset_wq(struct work_struct *work)
 	unsigned long irq_flags;
 
 	mutex_lock(&msvdx_priv->msvdx_mutex);
-	msvdx_priv->msvdx_needs_reset = 1;
+	if (IS_D0(dev_priv->dev))
+		msvdx_priv->msvdx_needs_reset |= MSVDX_RESET_NEEDS_REUPLOAD_FW |
+			MSVDX_RESET_NEEDS_INIT_FW;
+	else
+		msvdx_priv->msvdx_needs_reset = 1;
 	msvdx_priv->msvdx_current_sequence++;
 	PSB_DEBUG_GENERAL
 	("MSVDXFENCE: incremented msvdx_current_sequence to :%d\n",

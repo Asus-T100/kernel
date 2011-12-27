@@ -1530,7 +1530,7 @@ do {                                                \
 #define IS_MSVDX(dev) (IS_MRST(dev) || IS_MDFLD(dev))
 #define IS_TOPAZ(dev) ((IS_MRST(dev) && (((dev)->pci_device & 0xfffc) != PCI_ID_TOPAZ_DISABLED)) || IS_MDFLD(dev))
 
-#define IS_D0(dev) ((dev)->pdev->revision == 0xc)
+#define IS_D0(dev) ((dev)->pdev->revision >= 0xc)
 
 extern int drm_psb_ospm;
 extern int drm_psb_cpurelax;
