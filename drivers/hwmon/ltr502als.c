@@ -409,7 +409,7 @@ static int ltr502als_initchip(struct alsps_device *alsps)
 	alsps_write(alsps, CONFIGREG, POWER_UP | IDLE);
 	alsps_write(alsps, DLSCTROL, ADC_64LEVEL);
 	alsps_write(alsps, TCREG,
-		    PRX_INT_CYCLE1 | INTEGRATE_100MS | ALPS_INT_CYCLE1);
+		    PRX_INT_CYCLE4 | INTEGRATE_100MS | ALPS_INT_CYCLE1);
 
 	/* change proximity threshold PRX_THRESH_CTL to 31 to decrease the distance
 	 * that triggers proximity interrupt*/
