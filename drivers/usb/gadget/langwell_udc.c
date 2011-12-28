@@ -2449,17 +2449,9 @@ static void handle_setup_packet(struct langwell_udc *dev,
 			setup->bRequestType, setup->bRequest,
 			wValue, wIndex, wLength);
 
-	/* RNDIS gadget delegate */
-	if ((setup->bRequestType == 0x21) && (setup->bRequest == 0x00)) {
-		/* USB_CDC_SEND_ENCAPSULATED_COMMAND */
+	/* Delegate non-standard requests to composite driver */
+	if ((setup->bRequestType & USB_TYPE_MASK) != USB_TYPE_STANDARD)
 		goto delegate;
-	}
-
-	/* USB_CDC_GET_ENCAPSULATED_RESPONSE */
-	if ((setup->bRequestType == 0xa1) && (setup->bRequest == 0x01)) {
-		/* USB_CDC_GET_ENCAPSULATED_RESPONSE */
-		goto delegate;
-	}
 
 	/* We process some stardard setup requests here */
 	switch (setup->bRequest) {

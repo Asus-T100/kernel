@@ -114,9 +114,9 @@ static struct usb_interface_descriptor mtp_interface_desc = {
 	.bDescriptorType        = USB_DT_INTERFACE,
 	.bInterfaceNumber       = 0,
 	.bNumEndpoints          = 3,
-	.bInterfaceClass        = USB_CLASS_STILL_IMAGE,
-	.bInterfaceSubClass     = 1,
-	.bInterfaceProtocol     = 1,
+	.bInterfaceClass        = USB_CLASS_VENDOR_SPEC,
+	.bInterfaceSubClass     = USB_SUBCLASS_VENDOR_SPEC,
+	.bInterfaceProtocol     = 0,
 };
 
 static struct usb_interface_descriptor ptp_interface_desc = {
@@ -1072,6 +1072,12 @@ static int mtp_ctrlrequest(struct usb_composite_dev *cdev,
 }
 
 static int
+mtp_handle_setup(struct usb_function *f, const struct usb_ctrlrequest *ctrl)
+{
+	return mtp_ctrlrequest(f->config->cdev, ctrl);
+}
+
+static int
 mtp_function_bind(struct usb_configuration *c, struct usb_function *f)
 {
 	struct usb_composite_dev *cdev = c->cdev;
@@ -1206,6 +1212,7 @@ static int mtp_bind_config(struct usb_configuration *c, bool ptp_config)
 	dev->function.unbind = mtp_function_unbind;
 	dev->function.set_alt = mtp_function_set_alt;
 	dev->function.disable = mtp_function_disable;
+	dev->function.setup = mtp_handle_setup;
 
 	return usb_add_function(c, &dev->function);
 }
