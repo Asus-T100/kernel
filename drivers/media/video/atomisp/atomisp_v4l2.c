@@ -853,9 +853,10 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 			    "Failed to request irq\n");
 		goto request_irq_fail;
 	}
-	atomisp_msi_irq_init(isp, dev);
 
 	setup_timer(&isp->wdt, atomisp_wdt_wakeup_dog, (unsigned long)isp);
+
+	atomisp_msi_irq_init(isp, dev);
 
 #ifdef CONFIG_PM
 /*	pm_runtime_set_active(&dev->dev);

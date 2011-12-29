@@ -179,6 +179,10 @@ static int atomisp_init_pipe(struct atomisp_video_pipe *pipe)
 		return -ENOMEM;
 	}
 
+	/* init locks */
+	spin_lock_init(&pipe->irq_lock);
+	mutex_init(&pipe->mutex);
+
 	videobuf_queue_vmalloc_init(&pipe->capq, &videobuf_qops, NULL,
 				    &pipe->irq_lock,
 				    V4L2_BUF_TYPE_VIDEO_CAPTURE,
@@ -196,9 +200,6 @@ static int atomisp_init_pipe(struct atomisp_video_pipe *pipe)
 				    pipe,
 				    NULL);	/* ext_lock: NULL */
 
-	/* init locks */
-	spin_lock_init(&pipe->irq_lock);
-	mutex_init(&pipe->mutex);
 	INIT_LIST_HEAD(&pipe->activeq);
 	INIT_LIST_HEAD(&pipe->activeq_out);
 	pipe->opened = true;
