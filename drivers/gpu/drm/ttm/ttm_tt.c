@@ -409,7 +409,7 @@ static int __get_pfnmap_pages(struct task_struct *tsk, struct mm_struct *mm,
 				return i ? i : PTR_ERR(page);
 			if (pages) {
 				pages[i] = page;
-
+				get_page(page);
 				flush_anon_page(vma, page, start);
 				flush_dcache_page(page);
 			}
