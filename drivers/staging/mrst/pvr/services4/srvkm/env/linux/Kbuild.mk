@@ -40,22 +40,23 @@ pvrsrvkm-y += \
 	services4/srvkm/common/deviceclass.o \
 	services4/srvkm/common/handle.o \
 	services4/srvkm/common/hash.o \
+	services4/srvkm/common/lists.o \
+	services4/srvkm/common/mem.o \
+	services4/srvkm/common/mem_debug.o \
 	services4/srvkm/common/metrics.o \
+	services4/srvkm/common/osfunc_common.o \
+	services4/srvkm/common/pdump_common.o \
+	services4/srvkm/common/perproc.o \
+	services4/srvkm/common/power.o \
 	services4/srvkm/common/pvrsrv.o \
 	services4/srvkm/common/queue.o \
 	services4/srvkm/common/ra.o \
+	services4/srvkm/common/refcount.o \
 	services4/srvkm/common/resman.o \
-	services4/srvkm/common/power.o \
-	services4/srvkm/common/mem.o \
-	services4/srvkm/common/pdump_common.o \
 	services4/srvkm/bridged/bridged_support.o \
 	services4/srvkm/bridged/bridged_pvr_bridge.o \
-	services4/srvkm/common/perproc.o \
 	services4/system/$(PVR_SYSTEM)/sysconfig.o \
-	services4/system/$(PVR_SYSTEM)/sysutils.o \
-	services4/srvkm/common/lists.o \
-	services4/srvkm/common/mem_debug.o \
-	services4/srvkm/common/osfunc_common.o
+	services4/system/$(PVR_SYSTEM)/sysutils.o
 
 pvrsrvkm-$(CONFIG_ION_OMAP) += \
 	services4/srvkm/env/linux/ion.o
@@ -92,6 +93,7 @@ CFLAGS_perproc.o := -Werror
 CFLAGS_lists.o := -Werror
 CFLAGS_mem_debug.o := -Werror
 CFLAGS_osfunc_common.o := -Werror
+CFLAGS_refcount.o := -Werror
 endif
 
 # SUPPORT_SGX==1 only

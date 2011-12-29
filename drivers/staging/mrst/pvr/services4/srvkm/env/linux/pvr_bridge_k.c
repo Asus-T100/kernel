@@ -35,6 +35,7 @@
 #include "private_data.h"
 #include "linkage.h"
 #include "pvr_bridge_km.h"
+#include "refcount.h"
 
 #if defined(SUPPORT_DRI_DRM)
 #include <drm/drmP.h>
@@ -394,7 +395,7 @@ PVRSRV_BridgeDispatchKM(struct file *pFile, unsigned int unref__ ioctlCmd, unsig
 			}
 
 
-			psKernelMemInfo->ui32RefCount++;
+			PVRSRVKernelMemInfoIncRef(psKernelMemInfo);
 
 			psPrivateData->hKernelMemInfo = psExportDeviceMemOUT->hMemInfo;
 #if defined(SUPPORT_MEMINFO_IDS)

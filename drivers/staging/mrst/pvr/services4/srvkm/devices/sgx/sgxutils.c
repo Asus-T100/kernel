@@ -365,7 +365,9 @@ PVRSRV_ERROR SGXScheduleCCBCommand(PVRSRV_DEVICE_NODE	*psDeviceNode,
 		goto Exit;
 	}
 
-	if ((eCmdType == SGXMKIF_CMD_TA) && bLastInScene)
+	if (eCmdType == SGXMKIF_CMD_2D ||
+			eCmdType == SGXMKIF_CMD_TRANSFER ||
+			((eCmdType == SGXMKIF_CMD_TA) && bLastInScene))
 	{
 		SYS_DATA *psSysData;
 
@@ -561,11 +563,15 @@ PVRSRV_ERROR SGXScheduleCCBCommandKM(PVRSRV_DEVICE_NODE		*psDeviceNode,
 		{
 			if (ui32CallerID == ISR_ID)
 			{
-				
+				SYS_DATA *psSysData;
+
 
 
 				psDeviceNode->bReProcessDeviceCommandComplete = IMG_TRUE;
 				eError = PVRSRV_OK;
+
+				SysAcquireData(&psSysData);
+				OSScheduleMISR(psSysData);
 			}
 			else
 			{

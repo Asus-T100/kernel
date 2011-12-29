@@ -126,18 +126,19 @@ gfx-y += $(COMMONDIR)/buffer_manager.o \
 	  $(COMMONDIR)/deviceclass.o \
 	  $(COMMONDIR)/handle.o \
 	  $(COMMONDIR)/hash.o \
+	  $(COMMONDIR)/lists.o \
+	  $(COMMONDIR)/mem.o \
+	  $(COMMONDIR)/mem_debug.o \
 	  $(COMMONDIR)/metrics.o \
+	  $(COMMONDIR)/osfunc_common.o \
+	  $(COMMONDIR)/pdump_common.o \
+	  $(COMMONDIR)/perproc.o \
+	  $(COMMONDIR)/power.o \
 	  $(COMMONDIR)/pvrsrv.o \
 	  $(COMMONDIR)/queue.o \
 	  $(COMMONDIR)/ra.o \
-	  $(COMMONDIR)/resman.o \
-	  $(COMMONDIR)/power.o \
-	  $(COMMONDIR)/mem.o \
-	  $(COMMONDIR)/pdump_common.o \
-	  $(COMMONDIR)/perproc.o \
-	  $(COMMONDIR)/lists.o \
-	  $(COMMONDIR)/mem_debug.o \
-	  $(COMMONDIR)/osfunc_common.o
+	  $(COMMONDIR)/refcount.o \
+	  $(COMMONDIR)/resman.o
 
 gfx-y += $(BRIDGEDDIR)/bridged_support.o \
 	  $(BRIDGEDDIR)/bridged_pvr_bridge.o \
