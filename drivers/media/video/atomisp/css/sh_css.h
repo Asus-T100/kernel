@@ -85,6 +85,9 @@ sh_css_rx_clear_interrupt_info(unsigned int irq_infos);
 void
 sh_css_terminate_firmware(void);
 
+bool
+sh_css_next_stage_is_acc(void);
+
 enum sh_css_err
 sh_css_start_next_stage(void);
 

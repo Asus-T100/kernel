@@ -321,7 +321,9 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 
 	/* We're fine to proceed in atomic context */
 	if (irq_infos & SH_CSS_IRQ_INFO_START_NEXT_STAGE) {
-		sh_css_start_next_stage();
+		if (sh_css_next_stage_is_acc() ||
+		    sh_css_start_next_stage())
+			goto no_frame_done;
 		irq_infos &= ~SH_CSS_IRQ_INFO_START_NEXT_STAGE;
 	}
 

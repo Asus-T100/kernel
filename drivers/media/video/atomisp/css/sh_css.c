@@ -1440,6 +1440,27 @@ sh_css_terminate_firmware(void)
 #endif
 }
 
+bool
+sh_css_next_stage_is_acc(void)
+{
+	struct sh_css_pipeline_stage *stage;
+	struct sh_css_pipeline *pipeline;
+
+	if (my_css.mode == sh_css_mode_preview)
+		pipeline = &my_css.preview_settings.pipeline;
+	else if (my_css.mode == sh_css_mode_video)
+		pipeline = &my_css.video_settings.pipeline;
+	else
+		pipeline = &my_css.capture_settings.pipeline;
+
+	if (pipeline->current_stage)
+		stage = pipeline->current_stage->next;
+	else
+		stage = pipeline->stages;
+
+	return stage != NULL ? !!stage->firmware : false;
+}
+
 static enum sh_css_err
 sh_css_pipeline_start_next_stage(struct sh_css_pipeline *me)
 {
