@@ -185,7 +185,7 @@ int sst_get_stream_allocated(struct snd_sst_params *str_param,
 	retval = sst_wait_interruptible_timeout(sst_drv_ctx,
 			&str_info->ctrl_blk, SST_BLOCK_TIMEOUT);
 	if ((retval != 0) || (str_info->ctrl_blk.ret_code != 0)) {
-		pr_debug("FW alloc failed retval %d, ret_code %d\n",
+		pr_err("sst: FW alloc failed retval %d, ret_code %d\n",
 				retval, str_info->ctrl_blk.ret_code);
 		str_id = -str_info->ctrl_blk.ret_code; /*return error*/
 		if (str_id == 0)
@@ -418,10 +418,16 @@ static int sst_open_pcm_stream(struct snd_sst_params *str_param)
 	}
 
 	if (!str_param) {
-		pr_debug("open_pcm, doing rtpm_put\n");
-		pm_runtime_put(&sst_drv_ctx->pci->dev);
+		pr_debug("sst: open_pcm, doing rtpm_put\n");
 		return -EINVAL;
 	}
+
+	mutex_lock(&sst_drv_ctx->sst_lock);
+	if (sst_drv_ctx->sst_state != SST_FW_RUNNING) {
+		mutex_unlock(&sst_drv_ctx->sst_lock);
+		return -EAGAIN;
+	}
+	mutex_unlock(&sst_drv_ctx->sst_lock);
 
 	retval = sst_get_stream(str_param);
 	if (retval > 0) {
