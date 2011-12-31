@@ -376,7 +376,7 @@ static int sst_platform_pcm_prepare(struct snd_pcm_substream *substream)
 
 	ret_val = sst_platform_alloc_stream(substream);
 	if (ret_val <= 0)
-		return ret_val;
+		goto out;
 	snprintf(substream->pcm->id, sizeof(substream->pcm->id),
 			"%d", stream->stream_info.str_id);
 
@@ -385,11 +385,13 @@ static int sst_platform_pcm_prepare(struct snd_pcm_substream *substream)
 		return ret_val;
 	substream->runtime->hw.info = SNDRV_PCM_INFO_BLOCK_TRANSFER;
 
+
+out:
 	/* we are suspending the sink/source here as we want to have
 	 * device suspended in idle, before handling next request we will send
 	 * an explict RESUME call  */
 	pr_debug("Suspend NOW\n");
-	ret_val = stream->sstdrv_ops->pcm_control->device_control(
+	stream->sstdrv_ops->pcm_control->device_control(
 			SST_SND_DEVICE_SUSPEND, &stream->stream_info.str_id);
 	sst_set_stream_status(stream, SST_PLATFORM_SUSPENDED);
 	return ret_val;
