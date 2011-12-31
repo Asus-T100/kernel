@@ -3230,6 +3230,28 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 
 	sh_format = format_bridge->sh_fmt;
 	if (!pipe->is_main) {
+		/*
+		 * Check whether VF resolution configured larger
+		 * than Main Resolution. If so, Force VF resolution
+		 * to be the same as Main resolution
+		 */
+		if (isp->isp_subdev.video_out_mo.format &&
+		    isp->isp_subdev.video_out_mo.format->out.width &&
+		    isp->isp_subdev.video_out_mo.format->out.height) {
+			if (isp->isp_subdev.video_out_mo.format->out.width <
+			    width ||
+			    isp->isp_subdev.video_out_mo.format->out.height <
+			    height) {
+				v4l2_warn(&atomisp_dev, "VF Resolution config "
+					  "larger then Main Resolution. Force "
+					  "to be equal with Main Resolution.");
+				width = isp->isp_subdev.video_out_mo.format
+				    ->out.width;
+				height = isp->isp_subdev.video_out_mo.format
+				    ->out.height;
+			}
+		}
+
 		switch (isp->sw_contex.run_mode) {
 		case CI_MODE_VIDEO:
 			sh_css_video_configure_viewfinder(
@@ -3243,6 +3265,27 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 			break;
 		}
 		goto done;
+	}
+	/*
+	 * Check whether Main resolution configured smaller
+	 * than Vf Resolution. If so, Force Main resolution
+	 * to be the same as Main resolution
+	 */
+	if (isp->isp_subdev.video_out_vf.format &&
+	    isp->isp_subdev.video_out_vf.format->out.width &&
+	    isp->isp_subdev.video_out_vf.format->out.height) {
+		if (isp->isp_subdev.video_out_vf.format->out.width >
+		    width ||
+		    isp->isp_subdev.video_out_vf.format->out.height >
+		    height) {
+			v4l2_warn(&atomisp_dev, "Main Resolution config "
+				  "smaller then Vf Resolution. Force "
+				  "to be equal with Vf Resolution.");
+			width = isp->isp_subdev.video_out_vf.format
+			    ->out.width;
+			height = isp->isp_subdev.video_out_vf .format
+			    ->out.height;
+		}
 	}
 
 	/* V4L2_BUF_TYPE_PRIVATE will set offline processing */
