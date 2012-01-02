@@ -1626,6 +1626,78 @@ unlock:
 EXPORT_SYMBOL(pmu_nc_set_power_state);
 
 /**
+ * pmu_set_lss01_to_d0i0_atomic -
+ *	This function is mainly meant for panic case to bring up storage
+ *	device so panic reports can be logged, this is NOT meant for
+ *	general purpose use!.
+ *
+ */
+int pmu_set_lss01_to_d0i0_atomic(void)
+{
+	u32 pm_cmd_val;
+	u32 new_value;
+	int sub_sys_pos, sub_sys_index;
+	struct pmu_ss_states cur_pmssc;
+	int status = 0;
+
+	if (unlikely((!pmu_initialized)))
+		return 0;
+
+	/* LSS 01 is index = 0, pos = 1 */
+	sub_sys_index	= PMU_EMMC0_LSS_01 / mid_pmu_cxt->ss_per_reg;
+	sub_sys_pos	= PMU_EMMC0_LSS_01 % mid_pmu_cxt->ss_per_reg;
+
+	memset(&cur_pmssc, 0, sizeof(cur_pmssc));
+
+	status = _pmu2_wait_not_busy();
+
+	if (status)
+		goto err;
+
+	pmu_read_sss(&cur_pmssc);
+
+	/* set D0i0 the LSS bits */
+	pm_cmd_val =
+		(D0I3_MASK << (sub_sys_pos * BITS_PER_LSS));
+	new_value = cur_pmssc.pmu2_states[sub_sys_index] &
+						(~pm_cmd_val);
+
+	if (new_value == cur_pmssc.pmu2_states[sub_sys_index])
+		goto err;
+
+	cur_pmssc.pmu2_states[sub_sys_index] = new_value;
+
+	/* set the lss positions that need
+	 * to be ignored to D0i0 */
+	cur_pmssc.pmu2_states[0] &= ~IGNORE_SSS0;
+	cur_pmssc.pmu2_states[1] &= ~IGNORE_SSS1;
+	cur_pmssc.pmu2_states[2] &= ~IGNORE_SSS2;
+	cur_pmssc.pmu2_states[3] &= ~IGNORE_SSS3;
+
+	status = _pmu_issue_command(&cur_pmssc, SET_MODE, 0, PMU_NUM_2);
+
+	if (unlikely(status != PMU_SUCCESS)) {
+		dev_dbg(&mid_pmu_cxt->pmu_dev->dev,
+			 "Failed to Issue a PM command to PMU2\n");
+		goto err;
+	}
+
+	/*
+	 * Wait for interactive command to complete.
+	 * If we dont wait, there is a possibility that
+	 * the driver may access the device before its
+	 * powered on in SCU.
+	 *
+	 */
+	if (_pmu2_wait_not_busy())
+		BUG();
+
+err:
+	return status;
+}
+EXPORT_SYMBOL(pmu_set_lss01_to_d0i0_atomic);
+
+/**
  * pmu_pci_set_power_state - Callback function is used by all the PCI devices
  *			for a platform  specific device power on/shutdown.
  *

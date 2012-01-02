@@ -115,6 +115,8 @@ extern void release_scu_ready_sem(void);
 extern int mfld_msg_read32(u32 cmd, u32 *data);
 extern int mfld_msg_write32(u32 cmd, u32 data);
 
+extern int pmu_set_lss01_to_d0i0_atomic(void);
+
 #else
 
 /*
@@ -148,6 +150,8 @@ static inline int mfld_msg_write32(u32 cmd, u32 data) { return -ENOSYS; }
 
 static inline void acquire_scu_ready_sem(void) { return; };
 static inline void release_scu_ready_sem(void) { return; };
+
+static inline int pmu_set_lss01_to_d0i0_atomic(void) { return -ENOSYS; }
 
 #endif /* #ifdef CONFIG_INTEL_MID_POWER */
 
