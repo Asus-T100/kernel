@@ -123,42 +123,43 @@ struct hmm_vm_node *hmm_vm_alloc_node(struct hmm_vm *vm, unsigned int pgnr)
 	head = &vm->vm_node_list;
 
 	spin_lock(&vm->lock);
-
 	/*
 	 * if list is empty, the loop code will not be executed.
 	 */
 	list_for_each_entry(cur, head, list) {
-		addr = PAGE_ALIGN(vm_node_end(cur->start, cur->pgnr));
-		if (list_is_last(&cur->list, head))
+		/* Add gap between vm areas as helper to not hide overflow */
+		addr = PAGE_ALIGN(vm_node_end(cur->start, cur->pgnr) + 1);
+
+		if (list_is_last(&cur->list, head)) {
+			if (addr + size > vm_end) {
+				/* vm area does not have space anymore */
+				spin_unlock(&vm->lock);
+				v4l2_info(&atomisp_dev,
+					  "no enough virtual address space.\n");
+				return NULL;
+			}
+
+			/* We still have vm space to add new node to tail */
 			break;
+		}
+
 		next = list_entry(cur->list.next, struct hmm_vm_node, list);
-		if ((next->start - addr) >= size)
-			goto found;
+		if ((next->start - addr) > size)
+			break;
 	}
-
-	if (addr + size > vm_end) {
-		spin_unlock(&vm->lock);
-		v4l2_info(&atomisp_dev,
-			    "no enough virtual address space.\n");
-		goto failed;
-	}
-
-found:
-
 	spin_unlock(&vm->lock);
+
 	node = alloc_hmm_vm_node(addr, pgnr, vm);
-	if (!node)
-		goto failed;
+	if (!node) {
+		v4l2_info(&atomisp_dev, "no memory to allocate hmm vm node.\n");
+		return NULL;
+	}
 
 	spin_lock(&vm->lock);
 	list_add(&node->list, &cur->list);
 	spin_unlock(&vm->lock);
 
 	return node;
-failed:
-	v4l2_err(&atomisp_dev, "%s: failed...\n", __func__);
-
-	return NULL;
 }
 
 void hmm_vm_free_node(struct hmm_vm_node *node)
