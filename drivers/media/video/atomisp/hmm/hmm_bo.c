@@ -160,6 +160,13 @@ static void hmm_bo_release(struct hmm_buffer_object *bo)
 	bdev = bo->bdev;
 
 	/*
+	 * remove it from buffer device's buffer object list.
+	 */
+	spin_lock_irqsave(&bdev->list_lock, flags);
+	list_del(&bo->list);
+	spin_unlock_irqrestore(&bdev->list_lock, flags);
+
+	/*
 	 * FIX ME:
 	 *
 	 * how to destroy the bo when it is stilled MMAPED?
@@ -190,13 +197,6 @@ static void hmm_bo_release(struct hmm_buffer_object *bo)
 			     "the vm is still not freed, free vm first...\n");
 		hmm_bo_free_vm(bo);
 	}
-
-	/*
-	 * remove it from buffer device's buffer object list.
-	 */
-	spin_lock_irqsave(&bdev->list_lock, flags);
-	list_del(&bo->list);
-	spin_unlock_irqrestore(&bdev->list_lock, flags);
 
 	if (bo->release)
 		bo->release(bo);
