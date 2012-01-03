@@ -204,6 +204,7 @@ struct sh_css_video_settings {
 { \
 	.output_info         = DEFAULT_FRAME_INFO, \
 	.vf_info             = DEFAULT_FRAME_INFO, \
+	.invalid_first_frame = true,               \
 }
 
 struct sh_css {

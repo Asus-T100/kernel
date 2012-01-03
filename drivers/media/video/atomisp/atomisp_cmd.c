@@ -330,9 +330,11 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 	if (irq_infos & SH_CSS_IRQ_INFO_FRAME_DONE) {
 		int ret;
 
-		atomisp_buf_done(isp, 0);
-
 		if (!isp->sw_contex.invalid_frame) {
+			/* Signal the upper layers that a frame
+			 * is done, only when it is a valid frame
+			 */
+			atomisp_buf_done(isp, 0);
 			ret = atomisp_buffer_dequeue(isp, 0);
 			if (ret)
 				/* buffer underrun? */
