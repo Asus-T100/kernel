@@ -3635,10 +3635,12 @@ atomisp_acc_fw_free_args(struct atomisp_device *isp, struct sh_css_acc_fw *fw)
 		case SH_CSS_ACC_ARG_SCALAR_IN:
 			kfree(host->scalar.kernel_ptr);
 			break;
-		case ATOMISP_ACC_ARG_FRAME:
+		case SH_CSS_ACC_ARG_FRAME:
 		case SH_CSS_ACC_ARG_PTR_IN:
 		case SH_CSS_ACC_ARG_PTR_OUT:
 		case SH_CSS_ACC_ARG_PTR_IO:
+		case SH_CSS_ACC_ARG_PTR_NOFLUSH:
+		case SH_CSS_ACC_ARG_PTR_STABLE:
 			hrt_isp_css_mm_free(host->ptr.hmm_ptr);
 			break;
 		default:
@@ -3873,17 +3875,20 @@ int atomisp_acc_set_arg(struct atomisp_device *isp,
 		ret = sh_css_set_acceleration_argument(fw, index,
 					host->scalar.kernel_ptr, size);
 		break;
-	case ATOMISP_ACC_ARG_FRAME:
+	case SH_CSS_ACC_ARG_FRAME:
 	case SH_CSS_ACC_ARG_PTR_IN:
 	case SH_CSS_ACC_ARG_PTR_OUT:
 	case SH_CSS_ACC_ARG_PTR_IO:
+	case SH_CSS_ACC_ARG_PTR_NOFLUSH:
+	case SH_CSS_ACC_ARG_PTR_STABLE:
 		/* Free old argument data if one already exists */
 		hrt_isp_css_mm_free(host->ptr.hmm_ptr);
 		pgnr = (size + (PAGE_SIZE - 1)) >> PAGE_SHIFT;
 
 		mutex_lock(&isp->isp_lock);
 		frame_ptr = hrt_isp_css_mm_alloc_user_ptr(size,
-					(unsigned int)fw_arg->value, pgnr);
+					(unsigned int)fw_arg->value, pgnr,
+					type != SH_CSS_ACC_ARG_PTR_NOFLUSH);
 		mutex_unlock(&isp->isp_lock);
 
 		if (IS_ERR_OR_NULL(frame_ptr)) {
@@ -3910,6 +3915,63 @@ out:
 	return ret;
 }
 
+/* Flush all flushable pointer arguments of <fw>, this function is private to this layer, yet used in atomisp_fops.c */
+void flush_acc_api_arguments(struct sh_css_acc_fw *fw)
+{
+	unsigned i;
+
+	for (i = 0; i < sh_css_num_accelerator_args(fw); i++) {
+		enum atomisp_acc_arg_type type = sh_css_argument_type(fw, i);
+		union host *host;
+		size_t size;
+		switch (type) {
+		case SH_CSS_ACC_ARG_PTR_STABLE:
+			if (sh_css_acc_is_stable(fw, i)) break;
+			/* Fall through */
+		case SH_CSS_ACC_ARG_FRAME:
+		case SH_CSS_ACC_ARG_PTR_IN:
+		case SH_CSS_ACC_ARG_PTR_OUT:
+		case SH_CSS_ACC_ARG_PTR_IO:
+			host = (union host *)sh_css_argument_get_host(fw, i);
+			size = sh_css_argument_get_size(fw, i);
+			hmm_flush(host->ptr.hmm_ptr, size);
+			sh_css_acc_stabilize(fw, i, true);
+			break;
+		case SH_CSS_ACC_ARG_PTR_NOFLUSH:
+			/* Do not flush */
+			break;
+		default:
+			break;
+		}
+
+	}
+}
+
+int atomisp_acc_destabilize(struct atomisp_device *isp,
+			    struct atomisp_acc_fw_arg *fw_arg)
+{
+	struct sh_css_acc_fw *fw;
+	unsigned int ret = 0;
+	unsigned int handle = fw_arg->fw_handle;
+	unsigned int index = fw_arg->index;
+
+	mutex_lock(&isp->input_lock);
+	mutex_lock(&isp->isp_lock);
+	fw = atomisp_acc_get_fw(isp, handle);
+	if (fw == NULL) {
+		v4l2_err(&atomisp_dev, "%s: Invalid firmware handle\n",
+			 __func__);
+		ret = -EINVAL;
+	}
+
+	if (!ret)
+		sh_css_acc_stabilize(fw, index, false);
+
+	mutex_unlock(&isp->isp_lock);
+	mutex_unlock(&isp->input_lock);
+	return ret;
+}
+
 int atomisp_acc_start(struct atomisp_device *isp, unsigned int *handle)
 {
 	struct sh_css_acc_fw *fw;
@@ -3925,6 +3987,8 @@ int atomisp_acc_start(struct atomisp_device *isp, unsigned int *handle)
 		ret = -EINVAL;
 		goto out;
 	}
+
+	flush_acc_api_arguments(fw);
 
 	ret = sh_css_start_acceleration(fw);
 	mutex_unlock(&isp->isp_lock);

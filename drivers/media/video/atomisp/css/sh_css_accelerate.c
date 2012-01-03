@@ -259,6 +259,12 @@ sh_css_acc_start(struct sh_css_acc_fw *firmware,
 	if (has_extension_args != is_extension)
 		return sh_css_err_invalid_arguments;
 
+	/* NOTE: standalone accelerators have their (shared buffer pointer)
+	 * arguments flushed in "atomisp_acc_start()"
+	 */
+	if (is_extension)
+		sh_css_flush(firmware);
+
 	sp_program = sh_css_sp_load_program(sp_fw,
 					    SH_CSS_ACC_PROG_NAME(firmware),
 					    (void *)firmware->header.sp_code,

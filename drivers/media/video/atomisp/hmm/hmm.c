@@ -116,7 +116,6 @@ void *hmm_alloc(size_t bytes, enum hmm_bo_type type,
 		v4l2_err(&atomisp_dev, "hmm_bo_bind failed.\n");
 		goto bind_err;
 	}
-
 	return (void *)bo->vm_node->start;
 
 bind_err:
@@ -177,7 +176,7 @@ static inline int hmm_check_bo(struct hmm_buffer_object *bo, unsigned int ptr)
 }
 
 /*Read function in ISP memory management*/
-int hmm_load(void *virt, void *data, unsigned int bytes)
+static int load_and_flush(void *virt, void *data, unsigned int bytes)
 {
 	unsigned int ptr;
 	struct hmm_buffer_object *bo;
@@ -217,19 +216,39 @@ int hmm_load(void *virt, void *data, unsigned int bytes)
 
 		ptr += len;	/* update ptr for next loop */
 
-#ifdef USE_SSSE3
-		_ssse3_memcpy(des, src, len);
-#else
-		memcpy(des, src, len);
-#endif
+		if (des) {
 
-		des += len;
+#ifdef USE_SSSE3
+			_ssse3_memcpy(des, src, len);
+#else
+			memcpy(des, src, len);
+#endif
+			des += len;
+		}
+
 		clflush_cache_range(src, len);
 
 		kunmap(bo->pages[idx]);
 	}
 
 	return 0;
+}
+
+/*Read function in ISP memory management*/
+int hmm_load(void *virt, void *data, unsigned int bytes)
+{
+	if (!data) {
+		v4l2_err(&atomisp_dev,
+			 "hmm_load NULL argument\n");
+		return -EINVAL;
+	}
+	return load_and_flush (virt, data, bytes);
+}
+
+/*Flush hmm data from the data cache*/
+int hmm_flush(void *virt, unsigned int bytes)
+{
+	return load_and_flush (virt, NULL, bytes);
 }
 
 /*Write function in ISP memory management*/

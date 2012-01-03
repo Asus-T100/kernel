@@ -1764,6 +1764,9 @@ static long atomisp_vidioc_default(struct file *file, void *fh,
 	case ATOMISP_IOC_ACC_ABORT:
 		return atomisp_acc_abort(isp, arg);
 
+	case ATOMISP_IOC_ACC_DESTAB:
+		return atomisp_acc_destabilize(isp, arg);
+
 	case ATOMISP_IOC_CAMERA_BRIDGE:
 		/* here we convert the atomisp struct to a BC_Video struct.
 		 * We do this to avoid exporting the BC_Video struct in

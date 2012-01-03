@@ -35,7 +35,8 @@ int hrt_isp_css_mm_set(void *virt_addr, int c, size_t bytes);
 /* Allocate memory, returns a virtual address */
 void *hrt_isp_css_mm_alloc(size_t bytes);
 void *hrt_isp_css_mm_alloc_user_ptr(size_t bytes, unsigned int userptr,
-				    unsigned int num_pages);
+				    unsigned int num_pages,
+				    bool cached);
 void *hrt_isp_css_mm_alloc_cached(size_t bytes);
 
 /* allocate memory and initialize with zeros,

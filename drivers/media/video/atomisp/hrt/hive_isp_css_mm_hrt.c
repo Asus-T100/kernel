@@ -82,14 +82,15 @@ void hrt_isp_css_mm_set_user_ptr(unsigned int userptr, unsigned int num_pages)
 }
 
 static void *__hrt_isp_css_mm_alloc(size_t bytes, unsigned int userptr,
-				    unsigned int num_pages)
+				    unsigned int num_pages,
+				    bool cached)
 {
 	if (!init_done)
 		hrt_isp_css_mm_init();
 
 	if (userptr == 0)
 		return (void *)hmm_alloc(bytes, HMM_BO_PRIVATE, 0, 0,
-						HMM_UNCACHED);
+						cached);
 	else {
 		if (num_pages < ((__page_align(bytes)) >> PAGE_SHIFT))
 			v4l2_err(&atomisp_dev,
@@ -101,19 +102,20 @@ static void *__hrt_isp_css_mm_alloc(size_t bytes, unsigned int userptr,
 					" large than the expected size..\n");
 
 		return (void *)hmm_alloc(bytes, HMM_BO_USER, 0,
-						userptr, HMM_UNCACHED);
+						userptr, cached);
 	}
 }
 
 void *hrt_isp_css_mm_alloc(size_t bytes)
 {
-	return __hrt_isp_css_mm_alloc(bytes, my_userptr, my_num_pages);
+	return __hrt_isp_css_mm_alloc(bytes, my_userptr, my_num_pages, false);
 }
 
 void *hrt_isp_css_mm_alloc_user_ptr(size_t bytes, unsigned int userptr,
-				    unsigned int num_pages)
+				    unsigned int num_pages,
+				    bool cached)
 {
-	return __hrt_isp_css_mm_alloc(bytes, userptr, num_pages);
+	return __hrt_isp_css_mm_alloc(bytes, userptr, num_pages, cached);
 }
 
 void *hrt_isp_css_mm_alloc_cached(size_t bytes)

@@ -311,6 +311,9 @@ sh_css_malloc(size_t size);
 void
 sh_css_free(void *ptr);
 
+void
+sh_css_flush(struct sh_css_acc_fw *fw);
+
 /* Check two frames for equality (format, resolution, bits per element) */
 bool
 sh_css_frame_equal_types(const struct sh_css_frame *frame_a,

@@ -220,8 +220,10 @@ struct sh_css {
 	struct sh_css_mipi_config      mipi_config;
 	bool                           reconfigure_css_rx;
 	bool                           invalidate;
+	/* Register functions that are only provided by the OS */
 	void *(*malloc) (size_t size);
 	void (*free) (void *ptr);
+	void (*flush) (struct sh_css_acc_fw *fw);
 	enum sh_css_state              state;
 	bool                           two_ppc;
 	enum sh_css_bayer_order        bayer_order;
@@ -280,6 +282,7 @@ struct sh_css {
 	.invalidate           = false, \
 	.malloc               = NULL, \
 	.free                 = NULL, \
+	.flush                = NULL, \
 	.state                = sh_css_state_idle, \
 	.two_ppc              = false, \
 	.bayer_order          = sh_css_bayer_order_grbg, \
@@ -1677,6 +1680,7 @@ enable_interrupts(void)
 enum sh_css_err
 sh_css_init(void *(*malloc_func) (size_t size),
 	    void (*free_func) (void *ptr),
+	    void (*flush_func) (struct sh_css_acc_fw *fw),
 	    enum sh_css_interrupt_setting irq_setting,
 	    const char *fw_data,
 	    unsigned int fw_size)
@@ -1684,13 +1688,17 @@ sh_css_init(void *(*malloc_func) (size_t size),
 	static struct sh_css default_css = DEFAULT_CSS;
 	enum sh_css_err err;
 
-	if (malloc_func == NULL || free_func == NULL)
+	/* "flush()" for cache control of accelrator API
+	 * (shared buffer pointer) arguments
+	 */
+	if (malloc_func == NULL || free_func == NULL || flush_func == NULL)
 		return sh_css_err_invalid_arguments;
 
 	memcpy(&my_css, &default_css, sizeof(my_css));
 
 	my_css.malloc = malloc_func;
 	my_css.free = free_func;
+	my_css.flush = flush_func;
 	my_css.irq_edge = (irq_setting == SH_CSS_INTERRUPT_SETTING_EDGE);
 
 	/* In case this has been programmed already, update internal
@@ -1774,6 +1782,14 @@ sh_css_free(void *ptr)
 {
 	if (ptr && my_css.free)
 		my_css.free(ptr);
+}
+
+/* For Acceleration API: Flush FW (shared buffer pointer) arguments */
+void
+sh_css_flush(struct sh_css_acc_fw *fw)
+{
+	if (fw && my_css.flush)
+		my_css.flush(fw);
 }
 
 void

@@ -43,6 +43,7 @@ void hmm_free(void *ptr);
 int hmm_load(void *virt, void *data, unsigned int bytes);
 int hmm_store(void *virt, const void *data, unsigned int bytes);
 int hmm_set(void *virt, int c, unsigned int bytes);
+int hmm_flush(void *virt, unsigned int bytes);
 
 /*
  * get kernel memory physical address from ISP virtual address.

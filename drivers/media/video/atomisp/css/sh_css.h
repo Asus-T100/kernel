@@ -39,6 +39,7 @@
 enum sh_css_err
 sh_css_init(void *(*malloc_func) (size_t size),
 	    void (*free_func) (void *ptr),
+	    void (*flush_func) (struct sh_css_acc_fw *fw),
 	    enum sh_css_interrupt_setting irq_setting,
 	    const char *fw_data,
 	    unsigned int fw_size);

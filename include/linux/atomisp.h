@@ -423,6 +423,8 @@ enum atomisp_acc_arg_type {
 	ATOMISP_ACC_ARG_PTR_IN,	     /* Pointer input argument */
 	ATOMISP_ACC_ARG_PTR_OUT,	     /* Pointer output argument */
 	ATOMISP_ACC_ARG_PTR_IO,	     /* Pointer in/output argument */
+	ATOMISP_ARG_PTR_NOFLUSH,  /* Pointer argument will not be flushed */
+	ATOMISP_ARG_PTR_STABLE,   /* Pointer input argument that is stable */
 	ATOMISP_ACC_ARG_FRAME	     /* Frame argument */
 };
 
@@ -617,6 +619,9 @@ struct v4l2_private_int_data {
 
 #define ATOMISP_IOC_S_ISP_GAMMA_CORRECTION \
 	_IOW('v', BASE_VIDIOC_PRIVATE + 53, struct atomisp_gc_config)
+
+#define ATOMISP_IOC_ACC_DESTAB \
+	_IOW('v', BASE_VIDIOC_PRIVATE + 54, struct atomisp_acc_fw_arg)
 
 /*  ISP Private control IDs */
 #define V4L2_CID_ATOMISP_BAD_PIXEL_DETECTION \
