@@ -235,7 +235,7 @@ ipc_fail:
 	return ret;
 }
 
-static int enable_sysburst(int on)
+static int disable_sysburst(void)
 {
 	int ret;
 	uint8_t out_data, act_data;
@@ -250,22 +250,60 @@ static int enable_sysburst(int on)
 	if (ret)
 		goto ipc_fail;
 
-	/*
-	 * Zero disables the SYSBURST Action/Interrupt and one enables it.
-	 * SYSOUTEN is automatically disabled by disabling SYSACTEN.
-	 * So, there is no need to disable SYSOUTEN seperately.
-	 */
-	if (on) {
-		ret = intel_scu_ipc_iowrite8(BRSTCONFIGACTIONS,
-						act_data | SYSACTEN);
-		if (ret)
-			goto ipc_fail;
-		ret = intel_scu_ipc_iowrite8(BRSTCONFIGOUTPUTS,
-						out_data | SYSOUTEN);
-	} else {
-		ret = intel_scu_ipc_iowrite8(BRSTCONFIGACTIONS,
-						act_data & (~SYSACTEN));
+	ret = intel_scu_ipc_iowrite8(BRSTCONFIGACTIONS, act_data & (~SYSACTEN));
+	if (ret)
+		goto ipc_fail;
+
+	ret = intel_scu_ipc_iowrite8(BRSTCONFIGOUTPUTS, out_data & (~SYSOUTEN));
+
+ipc_fail:
+	mutex_unlock(&ocd_update_lock);
+	return ret;
+}
+
+static int restore_sysburst(struct device *dev)
+{
+	int ret;
+	uint8_t out_data, act_data;
+	struct ocd_smip_data *smip_data;
+	struct ocd_info *cinfo = dev_get_drvdata(dev);
+
+	if (!cinfo) {
+		dev_err(dev, "cinfo is NULL in restore_sysburst\n");
+		return -ENODEV;
 	}
+
+	/* Alright, we can avoid this pointer. But keep it for readability. */
+	smip_data = &ocd_smip_data[cinfo->curr_batt_level];
+
+	/*
+	 * For the current battery level, if SYSACT and SYSOUT are not
+	 * enabled in the SMIP settings, then just return. Not an Error.
+	 */
+	if (!((smip_data->bcu_actions & SYSACTEN) &&
+		(smip_data->bcu_outputs & SYSOUTEN)))
+		return 0;
+
+	/*
+	 * SMIP settings for the current battery level enable _both_
+	 * SYSACT and SYSOUT. But, we disabled these during suspend.
+	 * Now, enable both of them.
+	 */
+	mutex_lock(&ocd_update_lock);
+
+	ret = intel_scu_ipc_ioread8(BRSTCONFIGACTIONS, &act_data);
+	if (ret)
+		goto ipc_fail;
+
+	ret = intel_scu_ipc_ioread8(BRSTCONFIGOUTPUTS, &out_data);
+	if (ret)
+		goto ipc_fail;
+
+	ret = intel_scu_ipc_iowrite8(BRSTCONFIGACTIONS, act_data | SYSACTEN);
+	if (ret)
+		goto ipc_fail;
+
+	ret = intel_scu_ipc_iowrite8(BRSTCONFIGOUTPUTS, out_data | SYSOUTEN);
 
 ipc_fail:
 	mutex_unlock(&ocd_update_lock);
@@ -802,12 +840,13 @@ ocd_error1:
 
 static int mid_ocd_resume(struct device *dev)
 {
-	return enable_sysburst(1);
+	return restore_sysburst(dev);
 }
 
 static int mid_ocd_suspend(struct device *dev)
 {
-	return enable_sysburst(0);
+    /* Disable the sysburst interrupt when we suspend */
+	return disable_sysburst();
 }
 
 static int mid_ocd_remove(struct platform_device *pdev)
