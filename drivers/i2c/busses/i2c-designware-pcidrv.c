@@ -167,7 +167,7 @@ static struct  dw_pci_controller  dw_pci_controllers[] = {
 		.bus_cfg   = INTEL_MID_STD_CFG | DW_IC_CON_SPEED_STD,
 		.tx_fifo_depth = 32,
 		.rx_fifo_depth = 32,
-		.clk_khz      = 17000,
+		.clk_khz      = 20500,
 	},
 	[cloverview_4] = {
 		.bus_num     = 4,
