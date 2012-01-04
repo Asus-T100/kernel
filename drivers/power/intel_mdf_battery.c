@@ -748,7 +748,7 @@ ipcread_err:
 	handle_ipc_rw_status(retval, chk_reg_addr, MSIC_IPC_READ);
 }
 
-static int is_charger_fault(void)
+static bool is_charger_fault(void)
 {
 	uint8_t fault_reg, chrctrl_reg, stat, spwrsrcint_reg;
 	int retval = 0;
@@ -757,15 +757,19 @@ static int is_charger_fault(void)
 					struct platform_device, dev);
 	struct msic_power_module_info *mbi = platform_get_drvdata(pdev);
 
-	/* if charger is disconnected then report false */
+	/* We report charger fault as false in case of IPC errors.
+	 * The handle_ipc_rw_status will take care of the IPC errors
+	 * In all other cases we go by status of SPWRSRCINT,CHRCTRL
+	 * and SSR1 register */
 
+	/* if charger is disconnected then report false */
 	retval = intel_scu_ipc_ioread8(MSIC_BATT_CHR_SPWRSRCINT_ADDR,
 		&spwrsrcint_reg);
 	if (retval) {
 		retval = handle_ipc_rw_status(retval,
 			MSIC_BATT_CHR_SPWRSRCINT_ADDR, MSIC_IPC_READ);
 		if (retval)
-			return retval;
+			return false;
 	}
 	if (!(spwrsrcint_reg & MSIC_BATT_CHR_USBDET_MASK))
 		return false;
@@ -776,7 +780,7 @@ static int is_charger_fault(void)
 		retval = handle_ipc_rw_status(retval,
 				MSIC_BATT_CHR_CHRCTRL_ADDR, MSIC_IPC_READ);
 		if (retval)
-			return retval;
+			return false;
 	}
 	/* if charger is disabled report false*/
 	if (chrctrl_reg & CHRCNTL_CHRG_DISABLE)
@@ -787,7 +791,7 @@ static int is_charger_fault(void)
 		retval = handle_ipc_rw_status(retval, CHR_STATUS_FAULT_REG,
 				MSIC_IPC_READ);
 		if (retval)
-			return retval;
+			return false;
 	}
 
 	/*If charger is enabled and STAT(0:1) shows charging progress or
