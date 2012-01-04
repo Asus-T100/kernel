@@ -576,8 +576,6 @@ static int psb_msvdx_send(struct drm_device *dev, void *cmd,
 			cmd += sizeof(struct HOST_BE_OPP_PARAMS);
 			cmd_size -= sizeof(struct HOST_BE_OPP_PARAMS);
 		}
-		if (cmd_size && IS_MDFLD(dev))
-			PSB_UDELAY(250);/* derive from reference driver */
 	}
 
 out:
