@@ -126,7 +126,7 @@
 #define HIVE_MEM_histogram_args  scalar_processor_dmem
 #define HIVE_ADDR_histogram_args 0x29C4
 #define HIVE_SIZE_histogram_args 4
-#define HIVE_ADDR_capture_pp_dynamic_entry 0x2A5E
+#define HIVE_ADDR_capture_pp_dynamic_entry 0x2A59
 #define HIVE_MEM_isp_sdis_horiproj_num  scalar_processor_dmem
 #define HIVE_ADDR_isp_sdis_horiproj_num 0x1580
 #define HIVE_SIZE_isp_sdis_horiproj_num 4

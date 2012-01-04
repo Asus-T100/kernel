@@ -58,6 +58,8 @@
 #define GP_FIFO_BASE   ((void *)0x10200304)
 #define CSS_RX_BASE    ((void *)0x10260000)
 
+#define SP_DMEM_SIZE        (0x4000)
+
 /* SP Registers */
 #define SP_PC_REG        0x9
 #define SP_SC_REG        0x0

@@ -1703,6 +1703,9 @@ sh_css_init(void *(*malloc_func) (size_t size),
 	err = sh_css_params_init();
 	if (err != sh_css_success)
 		return err;
+	err = sh_css_sp_init();
+	if (err != sh_css_success)
+		return err;
 	err = sh_css_load_firmware(fw_data, fw_size);
 	if (err != sh_css_success)
 		return err;

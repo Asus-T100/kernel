@@ -38,6 +38,9 @@ struct sh_css_sp_frame_data {
 void
 sh_css_sp_store_init_dmem(const struct sh_css_sp_fw *fw);
 
+enum sh_css_err
+sh_css_sp_init(void);
+
 void
 sh_css_sp_uninit(void);
 

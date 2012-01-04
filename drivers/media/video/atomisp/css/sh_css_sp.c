@@ -28,6 +28,7 @@
 #include "sh_css_hrt.h"
 #include "sh_css_defs.h"
 #include "sh_css_internal.h"
+#include "sh_css_hw.h"
 #define HRT_NO_BLOB_sp
 #include "sp.map.h"
 
@@ -64,11 +65,6 @@ sh_css_sp_store_init_dmem(const struct sh_css_sp_fw *fw)
 {
 	struct sh_css_sp_init_dmem_cfg init_dmem_cfg;
 
-	/* store data section to DDR */
-	if (init_dmem_ddr)
-		hrt_isp_css_mm_free(init_dmem_ddr);
-
-	init_dmem_ddr = hrt_isp_css_mm_alloc(fw->data_size);
 	hrt_isp_css_mm_store(init_dmem_ddr, fw->data, fw->data_size);
 
 	/* Configure the data structure to initialize dmem */
@@ -82,6 +78,16 @@ sh_css_sp_store_init_dmem(const struct sh_css_sp_fw *fw)
 	sh_css_sp_dmem_store((unsigned)fw->dmem_init_data, &init_dmem_cfg,
 				sizeof(init_dmem_cfg));
 
+}
+
+enum sh_css_err
+sh_css_sp_init(void)
+{
+	init_dmem_ddr = hrt_isp_css_mm_alloc(SP_DMEM_SIZE);
+	if (!init_dmem_ddr)
+		return sh_css_err_cannot_allocate_memory;
+
+	return sh_css_success;
 }
 
 void
