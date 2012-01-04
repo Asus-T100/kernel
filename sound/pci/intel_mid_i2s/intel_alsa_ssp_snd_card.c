@@ -183,6 +183,9 @@ int snd_i2s_alsa_close(struct snd_pcm_substream *substream)
 			p_alsa_ssp_snd_card->playback_cnt,
 			p_alsa_ssp_snd_card->capture_cnt);
 
+	/* Cancel pending work */
+	cancel_work_sync(&str_info->ssp_ws);
+
 	kfree(substream->runtime->private_data);
 
 	return ret_val;
