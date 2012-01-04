@@ -1790,6 +1790,7 @@ static void update_battery_health(struct msic_power_module_info *mbi)
 		/* check for battery overvoltage,overheat and dead  health*/
 		if ((mbi->batt_props.health !=
 				      POWER_SUPPLY_HEALTH_UNSPEC_FAILURE) &&
+			(mbi->batt_props.health != POWER_SUPPLY_HEALTH_DEAD) &&
 			(temp <= (batt_thrshlds->temp_high -
 				 MSIC_TEMP_HYST_ERR)) &&
 			(temp >= (batt_thrshlds->temp_low
