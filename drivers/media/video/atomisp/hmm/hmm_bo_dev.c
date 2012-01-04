@@ -207,20 +207,20 @@ found:
  */
 void hmm_bo_device_destroy_free_bo_list(struct hmm_bo_device *bdev)
 {
-	struct hmm_buffer_object *bo;
+	struct hmm_buffer_object *bo, *tmp;
 	unsigned long flags;
+	struct list_head new_head;
 
 	check_bodev_null_return(bdev, (void)0);
 
 	spin_lock_irqsave(&bdev->list_lock, flags);
-	while (!list_empty(&bdev->free_bo_list)) {
-		bo = list_first_entry(&bdev->free_bo_list,
-				      struct hmm_buffer_object, list);
+	list_replace_init(&bdev->free_bo_list, &new_head);
+	spin_unlock_irqrestore(&bdev->list_lock, flags);
 
+	list_for_each_entry_safe(bo, tmp, &new_head, list) {
 		list_del(&bo->list);
 		hmm_bo_unref(bo);
 	}
-	spin_unlock_irqrestore(&bdev->list_lock, flags);
 }
 
 /*
