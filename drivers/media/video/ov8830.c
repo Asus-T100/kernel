@@ -41,7 +41,6 @@
 #include <linux/bitops.h>
 #include <media/v4l2-device.h>
 #include <media/v4l2-chip-ident.h>
-#include <media/v4l2-i2c-drv.h>
 
 #include "ov8830.h"
 
@@ -1785,7 +1784,6 @@ static const struct v4l2_subdev_video_ops ov8830_video_ops = {
 
 static const struct v4l2_subdev_core_ops ov8830_core_ops = {
 	.g_chip_ident = ov8830_g_chip_ident,
-	.s_config = ov8830_s_config,
 	.queryctrl = ov8830_queryctrl,
 	.g_ctrl = ov8830_g_ctrl,
 	.s_ctrl = ov8830_s_ctrl,
@@ -1809,7 +1807,7 @@ static const struct v4l2_subdev_ops ov8830_ops = {
 };
 
 static const struct media_entity_operations ov8830_entity_ops = {
-	.set_power = v4l2_subdev_set_power,
+	.link_setup = NULL,
 };
 
 static int ov8830_remove(struct i2c_client *client)
@@ -1840,8 +1838,18 @@ static int ov8830_probe(struct i2c_client *client,
 	dev->fmt_idx = 0;
 	v4l2_i2c_subdev_init(&(dev->sd), client, &ov8830_ops);
 
+	if (client->dev.platform_data) {
+		ret = ov8830_s_config(&dev->sd, client->irq,
+				      client->dev.platform_data);
+		if (ret) {
+			v4l2_device_unregister_subdev(&dev->sd);
+			kfree(dev);
+			return ret;
+		}
+	}
+
 	dev->sd.flags |= V4L2_SUBDEV_FL_HAS_DEVNODE;
-	dev->pad.flags = MEDIA_PAD_FLAG_OUTPUT;
+	dev->pad.flags = MEDIA_PAD_FL_SOURCE;
 	dev->sd.entity.ops = &ov8830_entity_ops;
 	dev->format.code = V4L2_MBUS_FMT_SGRBG10_1X10;
 
@@ -1862,12 +1870,28 @@ static const struct i2c_device_id ov8830_id[] = {
 
 MODULE_DEVICE_TABLE(i2c, ov8830_id);
 
-static struct v4l2_i2c_driver_data v4l2_i2c_data = {
-	.name = OV8830_NAME,
+static struct i2c_driver ov8830_driver = {
+	.driver = {
+		.owner = THIS_MODULE,
+		.name = OV8830_NAME,
+	},
 	.probe = ov8830_probe,
 	.remove = ov8830_remove,
 	.id_table = ov8830_id,
 };
+
+static __init int ov8830_init_mod(void)
+{
+	return i2c_add_driver(&ov8830_driver);
+}
+
+static __exit void ov8830_exit_mod(void)
+{
+	i2c_del_driver(&ov8830_driver);
+}
+
+module_init(ov8830_init_mod);
+module_exit(ov8830_exit_mod);
 
 MODULE_DESCRIPTION("A low-level driver for Omnivision OV8830 sensors");
 MODULE_LICENSE("GPL");
