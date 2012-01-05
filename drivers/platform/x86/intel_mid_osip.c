@@ -192,6 +192,7 @@ bd_put:
 #define SIGNED_MOS_ATTR		0x0
 #define SIGNED_COS_ATTR		0x0A
 #define SIGNED_POS_ATTR		0x0E
+#define SIGNED_RECOVERY_ATTR	0x0C
 #define SIGNED_POSCOS_ATTR	0x10
 
 static int osip_invalidate(struct OSIP_header *osip, void *data)
@@ -261,18 +262,27 @@ static int osip_reboot_notifier_call(struct notifier_block *notifier,
 #ifdef DEBUG
 		intel_scu_ipc_read_osnib_rr(&rbt_reason);
 #endif
-		intel_scu_ipc_write_osnib_rr(SIGNED_POS_ATTR);
+		ret_ipc = intel_scu_ipc_write_osnib_rr(SIGNED_RECOVERY_ATTR);
 		if (ret_ipc < 0)
 			pr_err("%s cannot write reboot reason in OSNIB\n",
 				__func__);
-#ifdef DEBUG
-		intel_scu_ipc_read_osnib_rr(&rbt_reason);
-#endif
 		access_osip_record(osip_invalidate, (void *)0);
+		ret = NOTIFY_OK;
+	} else if (0 == strncmp(cmd, "bootloader", 11)) {
+		pr_warn("[SHTDWN] %s, invalidating osip and rebooting into "
+			"Fastboot\n", __func__);
+		ret_ipc = intel_scu_ipc_write_osnib_rr(SIGNED_POS_ATTR);
+		if (ret_ipc < 0)
+			pr_err("%s cannot write reboot reason in OSNIB\n",
+				__func__);
 		ret = NOTIFY_OK;
 	} else if (0 == strncmp(cmd, "android", 8)) {
 		pr_warn("[SHTDWN] %s, restoring OSIP and rebooting into "
 			"Android\n", __func__);
+		ret_ipc = intel_scu_ipc_write_osnib_rr(SIGNED_MOS_ATTR);
+		if (ret_ipc < 0)
+			pr_err("%s cannot write reboot reason in OSNIB\n",
+				 __func__);
 		access_osip_record(osip_restore, (void *)0);
 		ret = NOTIFY_OK;
 	} else {
