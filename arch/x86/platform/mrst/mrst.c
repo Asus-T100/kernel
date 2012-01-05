@@ -2148,6 +2148,18 @@ static int __init sfi_parse_devs(struct sfi_table_header *table)
 	for (i = 0; i < num; i++, pentry++) {
 		int irq = pentry->irq;
 
+		if (mrst_identify_cpu() == MRST_CPU_CHIP_CLOVERVIEW &&
+		    (strcmp(pentry->name, "dis71430m") == 0 ||
+		     strcmp(pentry->name, "ov2720") == 0)) {
+			/* Skip legacy camera entries which do not exist on this
+			 * hardware. FIXME: remove as soon as SFI table is
+			 * fixed.
+			 */
+			printk(KERN_ERR "ignoring SFI entry %16.16s\n",
+				pentry->name);
+			continue;
+		}
+
 		if (irq != (u8)0xff) { /* native RTE case */
 			/* these SPI2 devices are not exposed to system as PCI
 			 * devices, but they have separate RTE entry in IOAPIC
