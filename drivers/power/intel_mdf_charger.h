@@ -481,5 +481,6 @@ struct msic_power_module_info {
 	/* interrupt masks*/
 	uint8_t chrint_mask, chrint1_mask;
 
+	int in_cur_lmt;	/* input current limit level */
 };
 #endif

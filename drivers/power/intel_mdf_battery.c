@@ -1010,12 +1010,19 @@ static void msic_handle_exception(struct msic_power_module_info *mbi,
 		exception = MSIC_EVENT_WEAKVIN_EXCPT;
 		msic_log_exception_event(exception);
 	}
+	mutex_unlock(&mbi->usb_chrg_lock);
+
+	mutex_lock(&mbi->event_lock);
 	if (CHRINT1_reg_value & MSIC_BATT_CHR_VINREGMINT_MASK) {
-		mbi->usb_chrg_props.charger_health = POWER_SUPPLY_HEALTH_DEAD;
+		/* change input current limit to 500mA
+		 * to recover from VINREG condition
+		 */
+		mbi->in_cur_lmt = CHRCNTL_VINLMT_500;
+		mbi->refresh_charger = 1;
 		exception = MSIC_EVENT_USB_VINREG_EXCPT;
 		msic_log_exception_event(exception);
 	}
-	mutex_unlock(&mbi->usb_chrg_lock);
+	mutex_unlock(&mbi->event_lock);
 }
 
 /**
@@ -1547,6 +1554,12 @@ static void msic_batt_temp_charging(struct work_struct *work)
 		else
 			vinlimit = CHRCNTL_VINLMT_100;
 	}
+
+	/* input current limit can be changed
+	 * due to VINREG or weakVIN conditions
+	 */
+	if (mbi->in_cur_lmt < vinlimit)
+		vinlimit = mbi->in_cur_lmt;
 	/*
 	 * Check for Charge full condition and set the battery
 	 * properties accordingly. Also check for charging mode
@@ -1904,6 +1917,7 @@ static int msic_event_handler(void *arg, int event, struct otg_bc_cap *cap)
 		 */
 		cancel_delayed_work_sync(&mbi->connect_handler);
 		mbi->ch_params.vinilmt = cap->mA;
+		mbi->in_cur_lmt = CHRCNTL_VINLMT_NOLMT;
 		mbi->ch_params.chrg_type = cap->chrg_type;
 		dev_dbg(msic_dev, "CHRG TYPE:%d %d\n", cap->chrg_type, cap->mA);
 		mutex_lock(&mbi->event_lock);
@@ -2395,6 +2409,7 @@ static void init_batt_props(struct msic_power_module_info *mbi)
 	mbi->batt_event = USBCHRG_EVENT_DISCONN;
 	mbi->charging_mode = BATT_CHARGING_MODE_NONE;
 	mbi->usr_chrg_enbl = USER_SET_CHRG_NOLMT;
+	mbi->in_cur_lmt = CHRCNTL_VINLMT_NOLMT;
 
 	mbi->batt_props.status = POWER_SUPPLY_STATUS_DISCHARGING;
 	mbi->batt_props.health = POWER_SUPPLY_HEALTH_GOOD;
