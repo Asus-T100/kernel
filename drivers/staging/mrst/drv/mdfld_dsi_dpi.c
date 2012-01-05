@@ -30,6 +30,23 @@
 #include "mdfld_dsi_pkg_sender.h"
 #include "psb_drv.h"
 
+#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
+#include "mdfld_dsi_lvds_bridge.h"
+static void dsi_debug_MIPI_reg(struct drm_device *dev);
+static void mipi_set_properties(struct mdfld_dsi_config *dsi_config, int pipe);
+static void mdfld_mipi_set_video_timing(struct mdfld_dsi_config *dsi_config,
+								int pipe);
+static void mdfld_mipi_config(struct mdfld_dsi_config *dsi_config, int pipe);
+static void mdfld_set_pipe_timing(struct mdfld_dsi_config *dsi_config,
+								int pipe);
+static u32 mode_hdisplay;
+static u32 mode_vdisplay;
+#endif
+
+/* Local functions */
+static void mdfld_dsi_dpi_shut_down(struct mdfld_dsi_dpi_output *output, int pipe);
+bool dsi_device_ready = true;
+struct drm_encoder *gencoder;
 extern struct drm_device *gpDrmDevice;
 
 #ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY
@@ -153,6 +170,47 @@ static void mdfld_wait_for_HS_CTRL_FIFO(struct drm_device *dev, u32 pipe)
 		DRM_INFO("MIPI: HS CMD FIFO was never cleared!\n");
 }
 
+static void mdfld_wait_for_PIPEA_DISABLE(struct drm_device *dev, u32 pipe)
+{
+	u32 pipeconf_reg = PIPEACONF;
+	int timeout = 0;
+
+	if (pipe == 2)
+		pipeconf_reg = PIPECCONF;
+
+	udelay(500);
+
+	/* This will time out after approximately 2+ seconds */
+	while ((timeout < 20000) && (REG_READ(pipeconf_reg) & 0x40000000)) {
+		udelay(100);
+		timeout++;
+	}
+
+	if (timeout == 20000)
+		DRM_INFO("MIPI: PIPE was not disabled!\n");
+}
+
+static void mdfld_wait_for_DPI_CTRL_FIFO(struct drm_device *dev, u32 pipe)
+{
+	u32 gen_fifo_stat_reg = MIPIA_GEN_FIFO_STAT_REG;
+	int timeout = 0;
+
+	if (pipe == 2)
+		gen_fifo_stat_reg += MIPIC_REG_OFFSET;
+
+	udelay(500);
+
+	/* This will time out after approximately 2+ seconds */
+	while ((timeout < 20000) && ((REG_READ(gen_fifo_stat_reg) & DPI_FIFO_EMPTY)
+		!= DPI_FIFO_EMPTY)) {
+		udelay(100);
+		timeout++;
+	}
+
+	if (timeout == 20000)
+		DRM_INFO("MIPI: DPI FIFO was never cleared!\n");
+}
+
 static void mdfld_wait_for_SPL_PKG_SENT(struct drm_device *dev, u32 pipe)
 {
 	u32 intr_stat_reg = MIPIA_INTR_STAT_REG;
@@ -194,7 +252,8 @@ void dsi_set_bridge_reset_state(int state)
 		mdelay(40);
 	}
 }
-
+#endif
+#if defined(CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY) || defined(CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE)
 void dsi_set_device_ready_state(struct drm_device *dev, int state, int pipe)
 {
 	u32 reg_offset = pipe ? MIPIC_REG_OFFSET : 0;
@@ -244,7 +303,9 @@ void dsi_set_ptarget_state(struct drm_device *dev, int state)
 		} while (pp_sts_reg & PP_ON);
 	}
 }
+#endif
 
+#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY
 void dsi_set_pipe_plane_enable_state(struct drm_device *dev,
 				int state,
 				int pipe)
@@ -626,6 +687,63 @@ void mdfld_deinit_TOSHIBA_MIPI(struct drm_device *dev)
 
 	disp_init = 0;
 }
+#endif /*-- CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY --// */
+/*DIV5-MM-DISPLAY-NC-LCM_INIT-00-]- */
+
+
+#if defined(CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY) || defined(CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE)
+
+void dsi_set_pipe_plane_enable_state(struct drm_device *dev, int state, int pipe)
+{
+	struct drm_psb_private *dev_priv = dev->dev_private;
+	u32 pipeconf_reg = PIPEACONF;
+	u32 dspcntr_reg = DSPACNTR;
+	u32 mipi_reg = MIPI;
+	u32 reg_offset = 0;
+
+	u32 pipeconf = dev_priv->pipeconf;
+	u32 dspcntr = dev_priv->dspcntr;
+	u32 mipi = MIPI_PORT_EN | PASS_FROM_SPHY_TO_AFE | SEL_FLOPPED_HSTX;
+
+	printk(KERN_ALERT "[DISPLAY TRK] %s: state = %d, pipe = %d\n", __func__, state, pipe);
+
+	if (pipe) {
+		pipeconf_reg = PIPECCONF;
+		dspcntr_reg = DSPCCNTR;
+		mipi_reg = MIPI_C;
+		reg_offset = MIPIC_REG_OFFSET;
+	} else {
+#ifdef	CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
+		mipi &= (~0x03);
+#else
+		mipi |= 2;
+#endif
+	}
+
+	if (state) {
+		int retry;
+		/*Set up pipe */
+		REG_WRITE(pipeconf_reg, pipeconf);
+
+		/*Wait for pipe enabling*/
+		retry = 10000;
+		while (--retry && !(REG_READ(pipeconf_reg) & BIT30))
+			udelay(3);
+
+		if (!retry)
+			printk(KERN_ALERT "Fatal Error: Failed to enable pipe\n");
+
+
+		/*Set up display plane */
+		REG_WRITE(dspcntr_reg, dspcntr);
+	} else {
+		/*Disable PIPE */
+		REG_WRITE(pipeconf_reg, 0);
+		mdfld_wait_for_PIPEA_DISABLE(dev, pipe);
+		mdfld_wait_for_DPI_CTRL_FIFO(dev, pipe);
+
+	}
+}
 
 static void mdfld_dsi_configure_down(struct mdfld_dsi_encoder * dsi_encoder, int pipe)
 {
@@ -640,17 +758,22 @@ static void mdfld_dsi_configure_down(struct mdfld_dsi_encoder * dsi_encoder, int
 		PSB_DEBUG_ENTRY("[DISPLAY] %s: DPI Panel is Already Off\n", __func__);
 		return;
 	}
+#ifdef	CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
+	dsi_lvds_toshiba_bridge_panel_off();
+	udelay(100);
+	dsi_lvds_deinit_lvds_bridge(dev);
+	/* dsi_lvds_suspend_lvds_bridge(dev); */
+#else
+	mdfld_deinit_TOSHIBA_MIPI(dev);  /* De-init MIPI bridge and Panel */
+	dsi_set_bridge_reset_state(1);  /* Pull Low Reset */
+#endif
+	dsi_set_pipe_plane_enable_state(dev, 0, pipe);  /* Disable pipe and plane */
 
-	mdfld_deinit_TOSHIBA_MIPI(dev);  //De-init MIPI bridge and Panel
-	dsi_set_bridge_reset_state(1);  //Pull Low Reset
+	/* dsi_set_ptarget_state(dev, 0); */ /* Disable PTARGET */
 
-	dsi_set_pipe_plane_enable_state(dev, 0, pipe);  //Disable pipe and plane
+	mdfld_dsi_dpi_shut_down(dpi_output, pipe);  /* Send shut down command */
 
-//	dsi_set_ptarget_state(dev, 0);  //Disable PTARGET
-
-	mdfld_dsi_dpi_shut_down(dpi_output, pipe);  //Send shut down command
-
-	dsi_set_device_ready_state(dev, 0, pipe);  //Clear device ready state
+	dsi_set_device_ready_state(dev, 0, pipe);  /* Clear device ready state */
 
 	dev_priv->dpi_panel_on = false;
 }
@@ -671,17 +794,25 @@ static void mdfld_dsi_configure_up(struct mdfld_dsi_encoder * dsi_encoder, int p
 	}
 
 	/* For resume path sequence */
-//	dsi_set_pipe_plane_enable_state(dev, 0, pipe);
-//	dsi_set_ptarget_state(dev, 0);
+	/* dsi_set_pipe_plane_enable_state(dev, 0, pipe); */
+	/* dsi_set_ptarget_state(dev, 0); */
 	mdfld_dsi_dpi_shut_down(dpi_output, pipe);
 	dsi_set_device_ready_state(dev, 0, pipe);  //Clear Device Ready Bit
 
 	dsi_set_device_ready_state(dev, 1, pipe);  //Set device ready state
-	dsi_set_bridge_reset_state(0);  //Pull High Reset
-	mdfld_init_TOSHIBA_MIPI(dev);  //Init MIPI Bridge and Panel
-	mdfld_dsi_dpi_turn_on(dpi_output, pipe);  //Send turn on command
-//	dsi_set_ptarget_state(dev, 1);  //Enable PTARGET
-	dsi_set_pipe_plane_enable_state(dev, 1, pipe);  //Enable plane and pipe
+#ifdef	CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
+	dsi_lvds_toshiba_bridge_panel_on();
+	udelay(100);
+	/* dsi_lvds_set_bridge_reset_state(0); */
+	dsi_lvds_configure_lvds_bridge(dev);
+#else
+	dsi_set_bridge_reset_state(0);  /* Pull High Reset */
+	mdfld_init_TOSHIBA_MIPI(dev);  /* Init MIPI Bridge and Panel */
+#endif
+
+	mdfld_dsi_dpi_turn_on(dpi_output, pipe);  /* Send turn on command */
+	/* dsi_set_ptarget_state(dev, 1); */ /* Enable PTARGET */
+	dsi_set_pipe_plane_enable_state(dev, 1, pipe);  /* Enable plane and pipe */
 
 	dev_priv->dpi_panel_on = true;
 }
@@ -955,11 +1086,16 @@ int mdfld_dsi_dpi_timing_calculation(struct drm_display_mode *mode,
 	dpi_timing->hbp_count = mdfld_dsi_dpi_to_byte_clock_count(pclk_hbp, num_lane, bpp);
 	dpi_timing->hfp_count = mdfld_dsi_dpi_to_byte_clock_count(pclk_hfp, num_lane, bpp);
 	dpi_timing->hactive_count = mdfld_dsi_dpi_to_byte_clock_count(pclk_hactive, num_lane, bpp);
+#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
+	dpi_timing->vsync_count = pclk_vsync;
+	dpi_timing->vbp_count = pclk_vbp;
+	dpi_timing->vfp_count = pclk_vfp;
+#else
 	dpi_timing->vsync_count = mdfld_dsi_dpi_to_byte_clock_count(pclk_vsync, num_lane, bpp);
 	dpi_timing->vbp_count = mdfld_dsi_dpi_to_byte_clock_count(pclk_vbp, num_lane, bpp);
 	dpi_timing->vfp_count = mdfld_dsi_dpi_to_byte_clock_count(pclk_vfp, num_lane, bpp);
 #endif
-
+#endif
 	PSB_DEBUG_ENTRY("DPI timings: %d, %d, %d, %d, %d, %d, %d\n", 
 			dpi_timing->hsync_count, dpi_timing->hbp_count,
 			dpi_timing->hfp_count, dpi_timing->hactive_count,
@@ -1107,10 +1243,14 @@ void mdfld_dsi_dpi_controller_init(struct mdfld_dsi_config * dsi_config, int pip
 	REG_WRITE((MIPIA_LP_BYTECLK_REG + reg_offset), 0x00000004);
 	
 	/*TODO: figure out how to setup these registers*/
+#ifdef	CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
+	REG_WRITE((MIPIA_DPHY_PARAM_REG + reg_offset), 0x2A0c6008);
+#else
 	REG_WRITE((MIPIA_DPHY_PARAM_REG + reg_offset), 0x150c3408);
-	
+#endif
 	REG_WRITE((MIPIA_CLK_LANE_SWITCH_TIME_CNT_REG + reg_offset), (0xa << 16) | 0x14);
 #endif
+
 	/*set device ready*/
 	REG_WRITE((MIPIA_DEVICE_READY_REG + reg_offset), 0x00000001);
 }
@@ -1227,6 +1367,47 @@ static int __dpi_exit_ulps_locked(struct mdfld_dsi_config *dsi_config)
 	ctx->device_ready &= ~DSI_POWER_STATE_ULPS_MASK;
 	REG_WRITE(regs->device_ready_reg, ctx->device_ready);
 	return 0;
+}
+static void mdfld_dsi_dpi_shut_down(struct mdfld_dsi_dpi_output *output, int pipe)
+{
+	struct drm_device *dev = output->dev;
+	/* struct drm_psb_private * dev_priv = dev->dev_private; */
+	u32 reg_offset = 0;
+
+	PSB_DEBUG_ENTRY("pipe %d panel state %d\n", pipe, output->panel_on);
+
+	/*if output is on, or mode setting didn't happen, ignore this*/
+	if ((!output->panel_on) || output->first_boot) {
+		output->first_boot = 0;
+		return;
+	}
+
+	if (pipe)
+		reg_offset = MIPIC_REG_OFFSET;
+
+	/* Wait for dpi fifo to empty */
+	mdfld_wait_for_DPI_CTRL_FIFO(dev, pipe);
+
+	/* Clear the special packet interrupt bit if set */
+	if (REG_READ(MIPIA_INTR_STAT_REG + reg_offset) & DSI_INTR_STATE_SPL_PKG_SENT)
+		REG_WRITE((MIPIA_INTR_STAT_REG + reg_offset), DSI_INTR_STATE_SPL_PKG_SENT);
+
+	if (REG_READ(MIPIA_DPI_CONTROL_REG + reg_offset) == DSI_DPI_CTRL_HS_SHUTDOWN) {
+		PSB_DEBUG_ENTRY("try to send the same package again, abort!");
+		goto shutdown_out;
+	}
+
+	REG_WRITE((MIPIA_DPI_CONTROL_REG + reg_offset), DSI_DPI_CTRL_HS_SHUTDOWN);
+
+shutdown_out:
+	output->panel_on = 0;
+	output->first_boot = 0;
+
+	/* FIXME the following is disabled to WA the X slow start issue for TMD panel */
+	/* if(pipe == 2) */
+	/*	dev_priv->dpi_panel_on2 = false; */
+	/* else if (pipe == 0) */
+	/*	dev_priv->dpi_panel_on = false;	 */
 }
 
 /**
@@ -1611,6 +1792,8 @@ set_power_err:
 void mdfld_dsi_dpi_set_power(struct drm_encoder *encoder, bool on)
 {
 	struct mdfld_dsi_encoder *dsi_encoder = MDFLD_DSI_ENCODER(encoder);
+	struct mdfld_dsi_dpi_output *dpi_output =
+		MDFLD_DSI_DPI_OUTPUT(dsi_encoder);
 	struct mdfld_dsi_config *dsi_config =
 		mdfld_dsi_encoder_get_config(dsi_encoder);
 	int pipe = mdfld_dsi_encoder_get_pipe(dsi_encoder);
@@ -1636,10 +1819,10 @@ void mdfld_dsi_dpi_set_power(struct drm_encoder *encoder, bool on)
 					OSPM_UHB_FORCE_POWER_ON))
 		return;
 
-#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY
-	if(on) {
+#if defined(CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY) || defined(CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE)
+	if (on) {
 		if (get_panel_type(dev, pipe) == TMD_VID){
-			if(dsi_device_ready) {
+			if (dsi_device_ready) {
 				ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 				return;
 			}
@@ -1655,16 +1838,15 @@ void mdfld_dsi_dpi_set_power(struct drm_encoder *encoder, bool on)
 			mdfld_dsi_tpo_ic_init(dsi_config, pipe);
 		}
 
-		if(pipe == 2) {
+		if (pipe == 2) {
 			dev_priv->dpi_panel_on2 = true;
-		}
-		else {
+		} else {
 			dev_priv->dpi_panel_on  = true;
 		}
 
 	} else {
  		if (get_panel_type(dev, pipe) == TMD_VID) {
-			if(!dsi_device_ready) {
+			if (!dsi_device_ready) {
 				ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 				return;
 			}
@@ -1679,13 +1861,10 @@ void mdfld_dsi_dpi_set_power(struct drm_encoder *encoder, bool on)
 			REG_READ(mipi_reg);
 		}
 
-		if(pipe == 2) {
+		if (pipe == 2)
 			dev_priv->dpi_panel_on2 = false;
-		}
-		else {
+		else
 			dev_priv->dpi_panel_on  = false;
-		}
-
 	}
 
 #else
@@ -1779,8 +1958,10 @@ void mdfld_dsi_dpi_commit(struct drm_encoder *encoder)
 	dsi_encoder = MDFLD_DSI_ENCODER(encoder);
 	dpi_output = MDFLD_DSI_DPI_OUTPUT(dsi_encoder);
 
-#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY
+#if  defined(CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY)
 	mdfld_dsi_dpi_set_power(encoder, false);
+#elif defined(CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE)
+	mdfld_dsi_dpi_set_power(encoder, true);
 #else
 	/*Everything is ready, commit DSI hw context to HW*/
 	__mdfld_dsi_dpi_set_power(encoder, true);
@@ -1860,6 +2041,110 @@ void dsi_debug_MIPI_reg(struct drm_device *dev)
 	PSB_DEBUG_ENTRY("[DISPLAY] DSPACNTR = %x\n", temp_val);
 */
 }
+#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
+/* This functionality was implemented in FW in iCDK */
+/* But removed in DV0 and later. So need to add here. */
+static void mipi_set_properties(struct mdfld_dsi_config *dsi_config, int pipe)
+{
+	struct drm_device *dev = dsi_config->dev;
+	u32 reg_offset = pipe ? MIPIC_REG_OFFSET : 0;
+
+	printk(KERN_ALERT "[DISPLAY] Enter %s\n", __func__);
+
+	REG_WRITE((MIPIA_CONTROL_REG + reg_offset), 0x00000018);  /*0xB104 */
+	REG_WRITE((MIPIA_INTR_EN_REG + reg_offset), 0xffffffff);  /*0xB008 */
+	REG_WRITE((MIPIA_HS_TX_TIMEOUT_REG + reg_offset), 0xffffff);  /*0xB010 */
+	REG_WRITE((MIPIA_LP_RX_TIMEOUT_REG + reg_offset), 0xffffff);  /*0xB014 */
+	REG_WRITE((MIPIA_TURN_AROUND_TIMEOUT_REG + reg_offset), 0x14);  /*0xB018 */
+	REG_WRITE((MIPIA_DEVICE_RESET_TIMER_REG + reg_offset), 0xff);  /*0xB01C */
+	REG_WRITE((MIPIA_HIGH_LOW_SWITCH_COUNT_REG + reg_offset), 0x25);  /*0xB044 */
+	REG_WRITE((MIPIA_INIT_COUNT_REG + reg_offset), 0xf0);  /*0xB050 */
+	REG_WRITE((MIPIA_EOT_DISABLE_REG + reg_offset), 0x00000000);  /*0xB05C */
+	REG_WRITE((MIPIA_LP_BYTECLK_REG + reg_offset), 0x00000004);  /*0xB060 */
+	REG_WRITE((MIPIA_DBI_BW_CTRL_REG + reg_offset), 0x00000820);  /*0xB084 */
+	REG_WRITE((MIPIA_CLK_LANE_SWITCH_TIME_CNT_REG + reg_offset), (0xa << 16) | 0x14);  /*B088 */
+}
+
+static void mdfld_mipi_set_video_timing(struct mdfld_dsi_config *dsi_config,
+								int pipe)
+{
+	struct drm_device *dev = dsi_config->dev;
+	u32 reg_offset = pipe ? MIPIC_REG_OFFSET : 0;
+	struct mdfld_dsi_dpi_timing dpi_timing;
+	struct drm_display_mode *mode = dsi_config->mode;
+
+	printk(KERN_ALERT "[DISPLAY] Enter %s\n", __func__);
+
+	mdfld_dsi_dpi_timing_calculation(mode, &dpi_timing, dsi_config->lane_count, dsi_config->bpp);
+
+	REG_WRITE((MIPIA_DPI_RESOLUTION_REG + reg_offset), mode->vdisplay << 16 | mode->hdisplay);  /*0xB020 */
+	REG_WRITE((MIPIA_HSYNC_COUNT_REG + reg_offset), dpi_timing.hsync_count & DSI_DPI_TIMING_MASK);  /*0xB028 */
+	REG_WRITE((MIPIA_HBP_COUNT_REG + reg_offset), dpi_timing.hbp_count & DSI_DPI_TIMING_MASK);  /*0xB02C */
+	REG_WRITE((MIPIA_HFP_COUNT_REG + reg_offset), dpi_timing.hfp_count & DSI_DPI_TIMING_MASK);  /*0xB030 */
+	REG_WRITE((MIPIA_HACTIVE_COUNT_REG + reg_offset), dpi_timing.hactive_count & DSI_DPI_TIMING_MASK);  /*0xB034 */
+	REG_WRITE((MIPIA_VSYNC_COUNT_REG + reg_offset),
+		dpi_timing.vsync_count & DSI_DPI_TIMING_MASK);  /*0xB038 */
+	REG_WRITE((MIPIA_VBP_COUNT_REG + reg_offset),
+		dpi_timing.vbp_count & DSI_DPI_TIMING_MASK);  /*0xB03C */
+	REG_WRITE((MIPIA_VFP_COUNT_REG + reg_offset),
+		dpi_timing.vfp_count & DSI_DPI_TIMING_MASK);  /*0xB040 */
+}
+
+static void mdfld_mipi_config(struct mdfld_dsi_config *dsi_config, int pipe)
+{
+	struct drm_device *dev = dsi_config->dev;
+	u32 reg_offset = pipe ? MIPIC_REG_OFFSET : 0;
+	int lane_count = dsi_config->lane_count;
+
+	printk(KERN_ALERT "[DISPLAY] Enter %s\n", __func__);
+
+	if (pipe) {
+		REG_WRITE(MIPI, 0x00000002);  /*0x61190 */
+		REG_WRITE(MIPI_C, 0x80000000);  /*0x62190 */
+	} else {
+		REG_WRITE(MIPI_C, 0x00);  /*0x62190 */
+		REG_WRITE(MIPI, 0x80010000);  /*0x61190 */
+	}
+	REG_WRITE((MIPIA_DPHY_PARAM_REG + reg_offset),
+				0x150A600F);  /*0xB080 */
+
+
+	REG_WRITE((MIPIA_VIDEO_MODE_FORMAT_REG + reg_offset),
+				0x0000000F);  /*0xB058 */
+
+	/*lane_count = 3 */
+	REG_WRITE((MIPIA_DSI_FUNC_PRG_REG + reg_offset), (0x00000200 | lane_count)); /*0xB00C */
+
+	mdfld_mipi_set_video_timing(dsi_config, pipe);
+}
+
+static void mdfld_set_pipe_timing(struct mdfld_dsi_config *dsi_config,
+					int pipe)
+{
+	struct drm_device *dev = dsi_config->dev;
+	struct drm_display_mode *mode = dsi_config->mode;
+
+	printk(KERN_ALERT "[DISPLAY] Enter %s\n", __func__);
+	 /*0x60000 */
+	REG_WRITE(HTOTAL_A, ((mode->htotal - 1) << 16) | (mode->hdisplay - 1));
+	 /*0x60004 */
+	REG_WRITE(HBLANK_A, ((mode->htotal - 1) << 16) | (mode->hdisplay - 1));
+	/*0x60008 */
+	REG_WRITE(HSYNC_A, ((mode->hsync_end - 1) << 16) |
+						(mode->hsync_start - 1));
+	/*0x6000C */
+	REG_WRITE(VTOTAL_A, ((mode->vtotal - 1) << 16) | (mode->vdisplay - 1));
+	/*0x60010 */
+	REG_WRITE(VBLANK_A, ((mode->vtotal - 1) << 16) | (mode->vdisplay - 1));
+	/*0x60014 */
+	REG_WRITE(VSYNC_A, ((mode->vsync_end - 1) << 16) |
+						(mode->vsync_start - 1));
+	/*0x6001C */
+	REG_WRITE(PIPEASRC, ((mode->hdisplay - 1) << 16) |
+						(mode->vdisplay - 1));
+}
+
+#endif
 
 /**
  * Setup DPI timing for video mode MIPI panel.
@@ -1911,18 +2196,20 @@ void mdfld_dsi_dpi_mode_set(struct drm_encoder *encoder,
 				   struct drm_display_mode *adjusted_mode)
 {
 	struct mdfld_dsi_encoder *dsi_encoder = MDFLD_DSI_ENCODER(encoder);
+	struct mdfld_dsi_dpi_output *dpi_output =
+			MDFLD_DSI_DPI_OUTPUT(dsi_encoder);
 	struct mdfld_dsi_config *dsi_config =
 	mdfld_dsi_encoder_get_config(dsi_encoder);
-#ifdef MIPI_DEBUG_LOG
 	struct drm_device *dev = dsi_config->dev;
-#endif
+	struct drm_psb_private *dev_priv = dev->dev_private;
 	int pipe = mdfld_dsi_encoder_get_pipe(dsi_encoder);
 
 	u32 pipeconf_reg = PIPEACONF;
 	u32 dspcntr_reg = DSPACNTR;
 	u32 mipi_reg = MIPI;
 	u32 reg_offset = 0;
-
+	u32 pipeconf = dev_priv->pipeconf;
+	u32 dspcntr = dev_priv->dspcntr;
 	u32 mipi = MIPI_PORT_EN | PASS_FROM_SPHY_TO_AFE | SEL_FLOPPED_HSTX;
 
 	PSB_DEBUG_ENTRY("set mode %dx%d on pipe %d",
@@ -1936,14 +2223,64 @@ void mdfld_dsi_dpi_mode_set(struct drm_encoder *encoder,
 		mipi_reg = MIPI_C;
 		reg_offset = MIPIC_REG_OFFSET;
 	} else {
+#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
+		mipi &= (~0x03); /* Use all four lanes */
+#else
 		mipi |= 2;
+#endif
 	}
 
-#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY
+#if defined(CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY) || defined(CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE)
 	/*start up display island if it was shutdown*/
 	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
 					OSPM_UHB_FORCE_POWER_ON))
 		return;
+
+#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
+	/* The following logic is required to do reset the bridge and configure. */
+	/* This also start DSI clock at 200MHz */
+	{
+	    int timeout = 0;
+
+	    dsi_lvds_set_bridge_reset_state(0);  /*Pull High Reset */
+	    dsi_lvds_toshiba_bridge_panel_on();
+	    udelay(100);
+	    /* Now start the DSI clock */
+	    REG_WRITE(MRST_DPLL_A, 0x00);  /*0xF014 */
+	    REG_WRITE(MRST_FPA0, 0xC1);  /*0xF040 */
+	    REG_WRITE(MRST_DPLL_A, 0x00800000);  /*0xF014 */
+	    udelay(500);
+	    REG_WRITE(MRST_DPLL_A, 0x80800000);  /*0xF014 */
+	    /*Wait for DSI PLL to lock */
+	    while ((timeout < 20000) && !(REG_READ(pipeconf_reg) & PIPECONF_DSIPLL_LOCK)) {
+		udelay(150);
+		timeout++;
+	    }
+	    if (timeout == 20000)
+		printk(KERN_ALERT "[DISPLAY] DSI PLL Locked timeout\n");
+	    REG_WRITE((MIPIA_DPHY_PARAM_REG + reg_offset), 0x2A0c6008);  /*0xB080 */
+
+	    mipi_set_properties(dsi_config, pipe);
+	    mdfld_mipi_config(dsi_config, pipe);
+	    mdfld_set_pipe_timing(dsi_config, pipe);
+
+	    REG_WRITE(DSPABASE, 0x00);  /*0x70184 */
+
+	    REG_WRITE(DSPASTRIDE, (mode->hdisplay * 4));  /*0x70188 */
+
+	    REG_WRITE(DSPASIZE, ((mode->vdisplay - 1) << 16) | (mode->hdisplay - 1));  /*0x70190 */
+
+	    REG_WRITE(DSPACNTR, 0x98000000);  /*0x70180 */
+
+	    REG_WRITE(DSPASURF, 0x00);  /*0x7019C */
+
+	    REG_WRITE(VGACNTRL, 0x80000000);  /*0x71400 */
+
+	    REG_WRITE(DEVICE_READY_REG, 0x00000001);  /*0xB000 */
+
+	    REG_WRITE(mipi_reg, 0x80810000); /*0x61190 */
+	}
+#endif
 
 	/*set up mipi port FIXME: do at init time */
 	REG_WRITE(mipi_reg, mipi);
@@ -1953,11 +2290,17 @@ void mdfld_dsi_dpi_mode_set(struct drm_encoder *encoder,
 	mdfld_dsi_dpi_controller_init(dsi_config, pipe);
 
 	if (get_panel_type(dev, pipe) == TMD_VID) {
+#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
+		dsi_lvds_configure_lvds_bridge(dev);  /*Configure MIPI Bridge and Panel */
+		dsi_device_ready = true;
+		dev_priv->dpi_panel_on = true;
+#else
 		/*Pull High Reset*/
 		dsi_set_bridge_reset_state(0);
 		/*Init MIPI Bridge and Panel*/
 		mdfld_init_TOSHIBA_MIPI(dev);
 		dsi_device_ready = true;
+#endif
 	} else {
 		/*turn on DPI interface*/
 		mdfld_dsi_dpi_turn_on(dpi_output, pipe);
@@ -1978,7 +2321,10 @@ void mdfld_dsi_dpi_mode_set(struct drm_encoder *encoder,
 			dpi_output->panel_on);
 
 	if (get_panel_type(dev, pipe) == TMD_VID) {
-		/*mdfld_dsi_dpi_turn_on(dpi_output, pipe);*/
+#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
+		mdfld_dsi_dpi_turn_on(dpi_output, pipe);
+#endif
+		/* mdfld_dsi_dpi_turn_on(dpi_output, pipe); */
 	} else {
 		/* init driver ic */
 		mdfld_dsi_tpo_ic_init(dsi_config, pipe);
@@ -2086,6 +2432,7 @@ struct mdfld_dsi_encoder *mdfld_dsi_dpi_init(struct drm_device *dev,
 	pipe = dsi_connector->pipe;
 
 #ifndef CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY
+#ifndef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
 	/*panel hard-reset*/
 	if (p_funcs->reset) {
 		ret = p_funcs->reset(dsi_config, RESET_FROM_BOOT_UP);
@@ -2123,6 +2470,9 @@ struct mdfld_dsi_encoder *mdfld_dsi_dpi_init(struct drm_device *dev,
 	if (p_funcs->dsi_controller_init)
 		p_funcs->dsi_controller_init(dsi_config, pipe, 0);
 #else
+	dsi_connector->status = connector_status_connected;
+#endif
+#else
 	/* Enable MIPI panel  by default for PR1
 	 * platform where panel detection code
 	 * doesn't ready.
@@ -2147,7 +2497,7 @@ struct mdfld_dsi_encoder *mdfld_dsi_dpi_init(struct drm_device *dev,
 		return NULL;
 	}
 
-#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY
+#if defined(CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY) || defined(CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE)
 	if (dsi_connector->pipe)
 		dpi_output->panel_on = 0;
 #endif
@@ -2160,6 +2510,7 @@ struct mdfld_dsi_encoder *mdfld_dsi_dpi_init(struct drm_device *dev,
 	fixed_mode = dsi_config->fixed_mode;
 
 #ifndef CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY
+#ifndef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
 	/*detect power status of the connected panel*/
 	if (p_funcs->get_panel_power_state) {
 		ret = p_funcs->get_panel_power_state(dsi_config, pipe);
@@ -2174,6 +2525,7 @@ struct mdfld_dsi_encoder *mdfld_dsi_dpi_init(struct drm_device *dev,
 		else
 			dsi_config->dsi_hw_context.panel_on = 0;
 	}
+#endif
 #endif
 	/*create drm encoder object*/
 	connector = &dsi_connector->base.base;
@@ -2211,6 +2563,14 @@ struct mdfld_dsi_encoder *mdfld_dsi_dpi_init(struct drm_device *dev,
 
 	gpio_request(GPIO_MIPI_BRIDGE_RESET, "display");
 	gpio_request(GPIO_MIPI_PANEL_RESET , "display");
+#endif
+#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
+	{
+		struct drm_psb_private *dev_priv = dev->dev_private;
+		dev_priv->dpi_panel_on = false;
+		gencoder = encoder;
+		dsi_lvds_init_lvds_bridge(dev);
+	}
 #endif
 
 	PSB_DEBUG_ENTRY("successfully\n");
@@ -2363,8 +2723,8 @@ static int mipi_dsi_dev_ioctl(struct inode *inode, struct file *file,
 	void __user *argp = (void __user*)arg;
 #if defined(CONFIG_SUPPORT_TMD_MIPI_600X1024_DISPLAY) \
 	|| defined(CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY) \
-	|| defined(CONFIG_SUPPORT_MIPI_H8C7_DISPLAY)
-
+	|| defined(CONFIG_SUPPORT_MIPI_H8C7_DISPLAY) \
+	|| defined(CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE)
 	struct drm_encoder *encoder = gencoder;
 #endif
 
@@ -2373,8 +2733,8 @@ static int mipi_dsi_dev_ioctl(struct inode *inode, struct file *file,
 	switch (cmd) {
 #if defined(CONFIG_SUPPORT_TMD_MIPI_600X1024_DISPLAY) \
 	|| defined(CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY) \
-	|| defined(CONFIG_SUPPORT_MIPI_H8C7_DISPLAY)
-
+	|| defined(CONFIG_SUPPORT_MIPI_H8C7_DISPLAY) \
+	|| defined(CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE)
 		case IOCTL_LCM_POWER_ON:
 			mdfld_dsi_dpi_set_power(encoder, 1);
 			break;

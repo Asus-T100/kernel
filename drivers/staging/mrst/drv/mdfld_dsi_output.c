@@ -203,7 +203,7 @@ void mdfld_dsi_gen_fifo_ready (struct drm_device *dev, u32 gen_fifo_stat_reg, u3
  */
 void mdfld_dsi_brightness_init(struct mdfld_dsi_config *dsi_config, int pipe)
 {
-#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY
+#if defined(CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY) || defined(CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE)
 	int ret = 0;
 
 	PSB_DEBUG_ENTRY("[DISPLAY] %s\n", __func__);
@@ -277,7 +277,7 @@ void mdfld_dsi_brightness_init(struct mdfld_dsi_config *dsi_config, int pipe)
  */
 void mdfld_dsi_brightness_control (struct drm_device *dev, int pipe, int level)
 {
-#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY
+#if defined(CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY) || defined(CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE)
 	int duty_val = 0;
 	int ret = 0;
 
@@ -440,10 +440,14 @@ static enum drm_connector_status mdfld_dsi_connector_detect
 	struct mdfld_dsi_connector *dsi_connector
 		= MDFLD_DSI_CONNECTOR(psb_output);
 
-#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY
+
+	PSB_DEBUG_ENTRY("\n");
+
+
+#if defined(CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY) || defined(CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE)
+
 	dsi_connector->status = connector_status_connected;
 #else
-	PSB_DEBUG_ENTRY("\n");
 	return dsi_connector->status;
 #endif
 }
@@ -706,9 +710,11 @@ static int mdfld_dsi_get_default_config(struct drm_device *dev,
 	config->bpp = 24;
 	config->type = is_panel_vid_or_cmd(dev);
 
-#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY
+#if defined(CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY)
 	/* Gideon: changing lane count to 1 lane for toshiba panel*/
 	config->lane_count = 1;
+#elif defined(CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE)
+	config->lane_count = 4;
 #else
 	config->lane_count = 2;
 	config->lane_config = MDFLD_DSI_DATA_LANE_2_2;
@@ -717,7 +723,11 @@ static int mdfld_dsi_get_default_config(struct drm_device *dev,
 	config->channel_num = 0;
 	/*NOTE: video mode is ignored when type is MDFLD_DSI_ENCODER_DBI*/
 	if (get_panel_type(dev, pipe) == TMD_VID) {
+#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
+		config->video_mode = MDFLD_DSI_VIDEO_NON_BURST_MODE_SYNC_EVENTS;
+#else
 		config->video_mode = MDFLD_DSI_VIDEO_NON_BURST_MODE_SYNC_PULSE;
+#endif
 	} else {
 		config->video_mode = MDFLD_DSI_VIDEO_BURST_MODE;
 	}

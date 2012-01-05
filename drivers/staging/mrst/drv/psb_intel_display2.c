@@ -656,6 +656,7 @@ void mdfld_disable_crtc (struct drm_device *dev, int pipe)
 	PSB_DEBUG_ENTRY("pipe = %d\n", pipe);
 
 #ifndef CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY
+#ifndef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
 	/**
 	 * NOTE: this path only works for TMD panel now. update it to
 	 * support all MIPI panels later.
@@ -665,6 +666,7 @@ void mdfld_disable_crtc (struct drm_device *dev, int pipe)
 		(get_panel_type(dev, pipe) == H8C7_VID)))
 
 		return;
+#endif
 #endif
 
 	switch (pipe) {
@@ -763,6 +765,7 @@ static void mdfld_crtc_dpms(struct drm_crtc *crtc, int mode)
 	PSB_DEBUG_ENTRY("mode = %d, pipe = %d\n", mode, pipe);
 
 #ifndef CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY
+#ifndef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
 	/**
 	 * MIPI dpms
 	 * NOTE: this path only works for TMD panel now. update it to
@@ -773,6 +776,7 @@ static void mdfld_crtc_dpms(struct drm_crtc *crtc, int mode)
 		(get_panel_type(dev, pipe) == H8C7_VID))) {
 			return;
 	}
+#endif
 #endif
 
 	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
@@ -1486,6 +1490,7 @@ static int mdfld_crtc_mode_set(struct drm_crtc *crtc,
 	PSB_DEBUG_ENTRY("pipe = 0x%x\n", pipe);
 
 #ifndef CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY
+#ifndef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
 	/**
 	 * MIPI panel mode setting
 	 * NOTE: this path only works for TMD panel now. update it to
@@ -1503,6 +1508,7 @@ static int mdfld_crtc_mode_set(struct drm_crtc *crtc,
 		return mdfld_crtc_dsi_mode_set(crtc, dsi_config, mode,
 				adjusted_mode, x, y, old_fb);
 	 }
+#endif
 #endif
 
 	switch (pipe) {

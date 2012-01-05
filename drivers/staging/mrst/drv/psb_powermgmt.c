@@ -835,10 +835,12 @@ static int mdfld_save_display_registers (struct drm_device *dev, int pipe)
 	 * panels later
 	 */
 #ifndef CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY
+#ifndef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
 	if (pipe != 1 && ((get_panel_type(dev, pipe) == TMD_VID) ||
 		(get_panel_type(dev, pipe) == TMD_6X10_VID) ||
 		(get_panel_type(dev, pipe) == H8C7_VID)))
 		return 0;
+#endif
 #endif
 
 	switch (pipe) {
@@ -1079,10 +1081,12 @@ static int mdfld_restore_display_registers(struct drm_device *dev, int pipe)
 	 * panels later
 	 */
 #ifndef CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY
+#ifndef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
 	if (pipe != 1 && ((get_panel_type(dev, pipe) == TMD_VID) ||
 		(get_panel_type(dev, pipe) == TMD_6X10_VID) ||
 		(get_panel_type(dev, pipe) == H8C7_VID)))
 		return 0;
+#endif
 #endif
 
 	switch (pipe) {
@@ -1725,7 +1729,7 @@ static void gfx_early_suspend(struct early_suspend *h)
 		if ((dev_priv->panel_id == TMD_VID) ||
 			(dev_priv->panel_id == H8C7_VID) ||
 			(dev_priv->panel_id == TMD_6X10_VID)) {
-#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY
+#if defined(CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY) || defined(CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE)
 			if (dev_priv->encoder0 &&
 				(dev_priv->panel_desc & DISPLAY_A))
 				mdfld_dsi_dpi_set_power(
@@ -1796,7 +1800,7 @@ static void gfx_late_resume(struct early_suspend *h)
 			if ((dev_priv->panel_id == TMD_VID) ||
 				(dev_priv->panel_id == H8C7_VID) ||
 				(dev_priv->panel_id == TMD_6X10_VID)) {
-#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY
+#if	defined(CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY) || defined(CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE)
 				if (dev_priv->encoder0 &&
 					(dev_priv->panel_desc & DISPLAY_A))
 					mdfld_dsi_dpi_set_power(

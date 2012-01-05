@@ -125,6 +125,13 @@ config SUPPORT_TMD_MIPI_600X1024_DISPLAY
        help
          xxxxxx
 
+config SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
+       bool "Support Toshiba LVDS MIPI Bridge interface Panel"
+       depends on DRM_MDFLD || DRM_CTP
+       default n
+       help
+         xxxxxx
+
 config MDFD_VIDEO_DECODE
 	bool "Support for Medfield Video Decode"
 	depends on DRM_MDFLD || DRM_CTP

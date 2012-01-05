@@ -228,3 +228,4 @@ gfx-$(CONFIG_MDFD_GL3) += $(DRMDRVDIR)/mdfld_gl3.o
 
 obj-$(CONFIG_DRM_MDFLD) += gfx.o
 obj-$(CONFIG_DRM_CTP) += gfx.o
+obj-$(CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE) += $(DRMDRVDIR)/mdfld_dsi_lvds_bridge.o

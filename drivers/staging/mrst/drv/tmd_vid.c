@@ -32,6 +32,10 @@
 #include "psb_intel_reg.h"
 #include "mdfld_dsi_pkg_sender.h"
 
+#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
+#include "mdfld_dsi_lvds_bridge.h"
+#endif
+
 struct drm_display_mode*
 tmd_vid_get_config_mode(struct drm_device* dev)
 {
@@ -66,6 +70,9 @@ tmd_vid_get_config_mode(struct drm_device* dev)
 	PSB_DEBUG_ENTRY( "[DISPLAY]: VSE is %d\n", mode->vsync_end);
 	PSB_DEBUG_ENTRY( "[DISPLAY]: vtotal is %d\n", mode->vtotal);
 	PSB_DEBUG_ENTRY( "[DISPLAY]: clock is %d\n", mode->clock);
+#else
+#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
+	dsi_lvds_bridge_get_display_params(mode);
 #else
 	if (use_gct) {
 		PSB_DEBUG_ENTRY("gct find MIPI panel.\n");
@@ -112,6 +119,8 @@ tmd_vid_get_config_mode(struct drm_device* dev)
 		mode->clock = mode->vrefresh * (mode->vtotal + 1) *
 				(mode->htotal + 1) / 1000;
 	}
+
+#endif
 #endif
 	drm_mode_set_name(mode);
 	drm_mode_set_crtcinfo(mode, 0);
@@ -382,10 +391,13 @@ static int mdfld_dsi_tmd_detect(struct mdfld_dsi_config *dsi_config,
 
 	/*init drvIC*/
 	mdfld_dsi_tmd_drv_ic_init(dsi_config, pipe);
-
+#ifndef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
 	ret = mdfld_dsi_get_power_mode(dsi_config,
 				 &data,
 				 MDFLD_DSI_LP_TRANSMISSION);
+#else
+	ret = 0;
+#endif
 	if (ret)
 		status = MDFLD_DSI_PANEL_DISCONNECTED;
 	else

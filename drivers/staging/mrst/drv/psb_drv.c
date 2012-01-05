@@ -1103,6 +1103,11 @@ bool mrst_get_vbt_data(struct drm_psb_private *dev_priv)
 		#endif
 	}
 
+#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
+		dev_priv->panel_id = TMD_VID;
+		printk(KERN_ALERT
+		"[DISPLAY] %s:SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE Panel\n", __func__);
+#endif
 	return true;
 }
 
@@ -1120,7 +1125,20 @@ void hdmi_do_hotplug_wq(struct work_struct *work)
 	atomic_inc(&dev_priv->hotplug_wq_done);
 	/* notify user space of hotplug event via a uevent message */
 
-#ifdef CONFIG_X86_MDFLD
+#if defined(CONFIG_X86_MDFLD) && defined(CONFIG_MDFD_HDMI)
+	/* As in the hdmi_do_audio_wq() function below
+	* it seems we should not be running this section of
+	* code if we don't also have CONFIG_MDFD_HDMI set,
+	* some devices might not want/need support for HDMI
+	* early in the platform bring up and by having this
+	* available to run might produce unexpected results
+	* if HDMI connector is plugged in.
+	* Also, the vrint_dat variable is not defined if
+	* CONFIG_MDFD_HDMI is not set so this causes build issue, see
+	* ifdef above in this file that blocks including
+	* the header file "mdfld_msic.h" where this is defined.
+	*/
+
 	intel_scu_ipc_iowrite8(MSIC_VCC330CNT, VCC330_ON);
 
 	if (vrint_dat & HDMI_OCP_STATUS) {
@@ -1166,7 +1184,16 @@ void hdmi_do_audio_wq(struct work_struct *work)
 					   struct drm_psb_private,
 					   hdmi_audio_wq);
 
-#ifdef CONFIG_X86_MDFLD
+#if defined(CONFIG_X86_MDFLD) && defined(CONFIG_MDFD_HDMI)
+	/* As in the hdmi_do_hotplug_wq() function above
+	* it seems we should not be running this section of
+	* code if we don't also have CONFIG_MDFD_HDMI set,
+	* some devices might not want/need support for HDMI
+	* early in the platform bring up and by having this
+	* available to run might produce unexpected results
+	* if HDMI connector is plugged in.
+	*/
+
 	intel_scu_ipc_iowrite8(MSIC_VCC330CNT, VCC330_ON);
 	intel_scu_ipc_ioread8(MSIC_HDMI_STATUS, &data);
 	DRM_INFO("hdmi_do_audio_wq: Checking for HDMI connection at boot\n");
