@@ -435,6 +435,13 @@ config X86_MDFLD
 	  nor standard legacy replacement devices/features. e.g. Medfield does
 	  not contain i8259, i8254, HPET, legacy BIOS, most of the io ports.
 
+config BOARD_REDRIDGE
+   bool "Medfield redridge board type"
+   depends on X86_MDFLD
+   default n
+   ---help---
+     This option adds support for the Medfield RedRidge board type.
+
 endif
 
 config X86_RDC321X

@@ -68,7 +68,7 @@
 #include <asm/apb_timer.h>
 #include <asm/intel_mid_gpadc.h>
 #include <asm/reboot.h>
-
+#include <linux/i2c/tc35876x.h>
 /*
  * the clockevent devices on Moorestown/Medfield can be APBT or LAPIC clock,
  * cmdline option x86_mrst_timer can be used to override the configuration
@@ -481,6 +481,15 @@ static int get_gpio_by_name(const char *name)
 			return pentry->pin_no;
 	}
 	return -1;
+}
+/*tc35876x DSI_LVDS bridge chip and panel platform data*/
+static void *tc35876x_platform_data(void *data)
+{
+	static struct tc35876x_platform_data pdata;
+	pdata.gpio_bridge_reset = get_gpio_by_name("LCMB_RXEN");
+	pdata.gpio_panel_bl_en = get_gpio_by_name("6S6P_BL_EN");
+	pdata.gpio_panel_vadd = get_gpio_by_name("EN_VREG_LCD_V3P3");
+	return &pdata;
 }
 
 /*
@@ -1753,6 +1762,7 @@ static const struct devs_id __initconst device_ids[] = {
 	{"mt9m114", SFI_DEV_TYPE_I2C, 0, &mt9m114_platform_data_init},
 	{"mxt224", SFI_DEV_TYPE_I2C, 0, &atmel_mxt224_platform_data_init},
 	{"synaptics_3202", SFI_DEV_TYPE_I2C, 0, &s3202_platform_data_init},
+	{"i2c_disp_brig", SFI_DEV_TYPE_I2C, 0, &tc35876x_platform_data},
 	{},
 };
 
@@ -2238,7 +2248,6 @@ static int __init sfi_parse_devs(struct sfi_table_header *table)
 			;
 		}
 	}
-
 #ifdef CONFIG_LEDS_INTEL_KPD
 	pdev = platform_device_alloc("intel_kpd_led", 0);
 	if (!pdev)
@@ -2250,7 +2259,6 @@ static int __init sfi_parse_devs(struct sfi_table_header *table)
 		intel_scu_device_register(pdev);
 	}
 #endif
-
 	return 0;
 }
 
