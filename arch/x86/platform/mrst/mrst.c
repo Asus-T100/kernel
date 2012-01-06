@@ -1649,40 +1649,15 @@ void *wl12xx_platform_data_init(void *info)
 	return NULL;
 }
 #endif
-static u8 mxt_valid_interrupt(void)
-{
-	return 1;
-}
-
-static void mxt_init_platform_hw(void)
-{
-	/* maXTouch wants 40mSec minimum after reset to get organized */
-	/*
-	gpio_set_value(mxt_reset_gpio, 1);
-	msleep(40);
-	*/
-}
-
-static void mxt_exit_platform_hw(void)
-{
-	/*
-	printk(KERN_INFO "In %s.", __func__);
-	gpio_set_value(mxt_reset_gpio, 0);
-	gpio_set_value(mxt_intr_gpio, 0);
-	*/
-}
 
 void *atmel_mxt224_platform_data_init(void *info)
 {
 	static struct mxt_platform_data mxt_pdata;
 
 	mxt_pdata.numtouch       = 2;
-	mxt_pdata.init_platform_hw = mxt_init_platform_hw;
-	mxt_pdata.exit_platform_hw = mxt_exit_platform_hw;
 	mxt_pdata.max_x          = 1023;
 	mxt_pdata.max_y          = 975;
 	mxt_pdata.orientation    = MXT_MSGB_T9_ORIENT_HORZ_FLIP;
-	mxt_pdata.valid_interrupt = mxt_valid_interrupt;
 	mxt_pdata.reset          = get_gpio_by_name("ts_rst");
 	mxt_pdata.irq            = get_gpio_by_name("ts_int");
 
