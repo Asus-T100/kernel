@@ -25,60 +25,41 @@
 #ifndef __INTEL_SCU_WATCHDOG_H
 #define __INTEL_SCU_WATCHDOG_H
 
-#define PFX "Intel_SCU: "
+#define PFX "intel_scu_watchdog: "
 #define WDT_VER "0.3"
+
+#define DEFAULT_PRETIMEOUT 15
+#define DEFAULT_TIMEOUT 75
+#define DEFAULT_SCHEDULE_MARGIN 10
+#define DEFAULT_TIMER_DURATION (DEFAULT_TIMEOUT - \
+				DEFAULT_PRETIMEOUT - DEFAULT_SCHEDULE_MARGIN)
 
 /* minimum time between interrupts */
 #define MIN_TIME_CYCLE 1
-
-#define DEFAULT_SOFT_TO_HARD_MARGIN 15
-
 #define MAX_TIME 170
-
-#define DEFAULT_TIME 75
-
 #define MAX_SOFT_TO_HARD_MARGIN (MAX_TIME-MIN_TIME_CYCLE)
 
-/**
- * Offset in OSNIB for letting firmware know that are are up and running
- * This is byte 7, which is offset 6
- */
+/* Offset of the reset counter in  OSNIB */
 #define OSNIB_WDOG_OFFSET 1
 
-/**
- * The value to put into OSNOB to let the firmware know we are
- * up and running
- */
+/* Value 0 to reset the reset counter */
 #define OSNIB_WRITE_VALUE 0
 
-/* The number of bytes to write to OSNOB */
+/* The number of bytes to write the value 0 to OSNIB */
 #define OSNIB_WRITE_SIZE 1
 
-/* The mask for OSNOB */
+/* The mask for OSNIB */
 #define OSNIB_WRITE_MASK 0x02
-
-/* Ajustment to clock tick frequency to make timing come out right */
-#define FREQ_ADJUSTMENT 8
 
 struct intel_scu_watchdog_dev {
 	ulong driver_open;
 	ulong driver_closed;
-	u32 timer_started;
-	u32 timer_set;
-	u32 threshold;
-	u32 soft_threshold;
-	u32 __iomem *timer_load_count_addr;
-	u32 __iomem *timer_current_value_addr;
-	u32 __iomem *timer_control_addr;
-	u32 __iomem *timer_clear_interrupt_addr;
-	u32 __iomem *timer_interrupt_status_addr;
-	struct sfi_timer_table_entry *timer_tbl_ptr;
-	struct notifier_block intel_scu_notifier;
+	bool started;
+	struct sfi_timer_table_entry *timer7_tbl_ptr;
+	struct sfi_timer_table_entry *timer6_tbl_ptr;
+	struct notifier_block reboot_notifier;
 	struct miscdevice miscdev;
 	struct tasklet_struct interrupt_tasklet;
 };
 
-extern int sfi_mtimer_num;
-
-/* extern struct sfi_timer_table_entry *sfi_get_mtmr(int hint); */
 #endif /* __INTEL_SCU_WATCHDOG_H */
