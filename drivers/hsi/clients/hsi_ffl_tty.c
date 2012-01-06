@@ -122,9 +122,6 @@ enum {
 #define FFL_GLOBAL_STATE_SZ		2
 #define FFL_GLOBAL_STATE_MASK		((1<<FFL_GLOBAL_STATE_SZ)-1)
 
-#define RX_TTY_FORWARDING_BIT		(1<<FFL_GLOBAL_STATE_SZ)
-#define RX_TTY_REFORWARD_BIT		(2<<FFL_GLOBAL_STATE_SZ)
-
 #define TX_TTY_WRITE_ONGOING_BIT	(1<<FFL_GLOBAL_STATE_SZ)
 #define TX_TTY_WRITE_PENDING_BIT	(2<<FFL_GLOBAL_STATE_SZ)
 #define TX_TTY_WRITE_FORWARDING_BIT	(4<<FFL_GLOBAL_STATE_SZ)
@@ -254,8 +251,9 @@ struct ffl_recovery_ctx {
  *			       pipeline is clean (no more write can occur)
  * @tx: current TX context
  * @rx: current RX context
- * @reset: modem reset context
+ * @do_tty_forward: dedicated TTY forwarding work structure
  * @hangup: hangup context
+ * @reset: modem reset context
  * @recovery: error recovery context
  */
 struct ffl_ctx {
@@ -267,6 +265,7 @@ struct ffl_ctx {
 	wait_queue_head_t	tx_write_pipe_clean_event;
 	struct ffl_xfer_ctx	tx;
 	struct ffl_xfer_ctx	rx;
+	struct work_struct	do_tty_forward;
 	struct ffl_hangup_ctx	hangup;
 	struct ffl_reset_ctx	reset;
 #ifdef USE_IPC_ERROR_RECOVERY
@@ -304,6 +303,9 @@ static struct workqueue_struct *ffl_tx_drain_wq;
 /* Workqueue for submitting RX draining upon recovery background tasks */
 static struct workqueue_struct *ffl_rx_drain_wq;
 #endif
+
+/* Workqueue for tty buffer flush */
+static struct workqueue_struct *ffl_forwarding_wq;
 
 /*
  * Modem power / reset managers
@@ -1472,8 +1474,6 @@ static void _ffl_rx_fifo_wait_recycle(struct ffl_xfer_ctx *ctx)
 {
 	struct hsi_msg *frame;
 
-	_ffl_ctx_clear_flag(ctx, RX_TTY_FORWARDING_BIT|RX_TTY_REFORWARD_BIT);
-
 	while ((frame = _ffl_fifo_head_safe(&ctx->wait_frames))) {
 		_ffl_fifo_wait_pop(ctx, frame);
 		ffl_rx_frame_reset(ctx, frame);
@@ -1689,22 +1689,14 @@ static void _ffl_forward_tty(struct tty_struct		*tty,
 	int			 err;
 	char			 tty_flag;
 
-	if (_ffl_ctx_has_flag(ctx, RX_TTY_FORWARDING_BIT)) {
-		_ffl_ctx_set_flag(ctx, RX_TTY_REFORWARD_BIT);
-		return;
-	}
-
 	/* Initialised to 1 to prevent unexpected TTY forwarding resume
 	 * function when there is no TTY or when it is throttled */
 	copied	= 1;
 	do_push	= 0;
 	err	= 0;
 
-	_ffl_ctx_set_flag(ctx, RX_TTY_FORWARDING_BIT);
-
 	del_timer(&ctx->timer);
 
-shoot_again_now:
 	while (ctx->wait_len > 0) {
 		frame = _ffl_fifo_head(&ctx->wait_frames);
 		if (likely(frame->status == HSI_STATUS_COMPLETED))
@@ -1756,18 +1748,13 @@ free_frame:
 	}
 
 no_more_tty_insert:
-	/* Schedule a flip since called from complete_rx() in an interrupt
-	 * context instead of tty_flip_buffer_push() */
-	if (do_push)
-		tty_schedule_flip(tty);
-
-	/* If some reforwarding request occur in the meantime, do this now */
-	if (_ffl_ctx_has_flag(ctx, RX_TTY_REFORWARD_BIT)) {
-		_ffl_ctx_clear_flag(ctx, RX_TTY_REFORWARD_BIT);
-		goto shoot_again_now;
+	if (do_push) {
+		/* Using tty_flip_buffer_push() with a low latency flag to
+		 * bypass the shared system work queue */
+		spin_unlock_irqrestore(&ctx->lock, *flags);
+		tty_flip_buffer_push(tty);
+		spin_lock_irqsave(&ctx->lock, *flags);
 	}
-
-	_ffl_ctx_clear_flag(ctx, RX_TTY_FORWARDING_BIT);
 
 	if (unlikely(ctx->ctrl_len < ctx->ctrl_max))
 		err = _ffl_rx_push_controller(ctx, flags);
@@ -1776,6 +1763,27 @@ no_more_tty_insert:
 	 * the RX controller FIFO is not ready yet */
 	if ((!copied) || (unlikely(err == -EAGAIN)))
 		mod_timer(&ctx->timer, jiffies + ctx->delay);
+}
+
+/**
+ * ffl_do_tty_forward - forwarding data to the above line discipline
+ * @work: a reference to work queue element
+ */
+static void ffl_do_tty_forward(struct work_struct *work)
+{
+	struct ffl_ctx		*ctx;
+	struct tty_struct	*tty;
+	unsigned long		 flags;
+
+	ctx = container_of(work, struct ffl_ctx, do_tty_forward);
+	tty = tty_port_tty_get(&ctx->tty_prt);
+
+	if (tty) {
+		spin_lock_irqsave(&ctx->rx.lock, flags);
+		_ffl_forward_tty(tty, &ctx->rx, &flags);
+		spin_unlock_irqrestore(&ctx->rx.lock, flags);
+		tty_kref_put(tty);
+	}
 }
 
 #ifdef USE_IPC_ERROR_RECOVERY
@@ -1796,7 +1804,6 @@ static void ffl_complete_rx(struct hsi_msg *frame)
 	struct ffl_xfer_ctx	*ctx = frame->context;
 	struct ffl_ctx		*main_ctx = container_of(ctx,
 							 struct ffl_ctx, rx);
-	struct tty_struct	*tty;
 	unsigned long		flags;
 
 #ifdef DEBUG
@@ -1804,8 +1811,6 @@ static void ffl_complete_rx(struct hsi_msg *frame)
 		pr_err(DRVNAME ": [%08x] Invalid FFL frame length %d bytes\n",
 		       (u32) frame, frame->actual_len);
 #endif
-
-	tty = tty_port_tty_get(&main_ctx->tty_prt);
 
 	ffl_rx_frame_init(frame);
 
@@ -1834,11 +1839,8 @@ static void ffl_complete_rx(struct hsi_msg *frame)
 		ctx->overflow_cnt++;
 #endif
 	_ffl_fifo_wait_push(ctx, frame);
-	_ffl_forward_tty(tty, ctx, &flags);
 	spin_unlock_irqrestore(&ctx->lock, flags);
-
-	if (tty)
-		tty_kref_put(tty);
+	queue_work(ffl_forwarding_wq, &main_ctx->do_tty_forward);
 }
 
 /**
@@ -1853,17 +1855,8 @@ static void ffl_rx_forward_retry(unsigned long param)
 	struct ffl_xfer_ctx	*ctx = (struct ffl_xfer_ctx *) param;
 	struct ffl_ctx		*main_ctx = container_of(ctx,
 							 struct ffl_ctx, rx);
-	struct tty_struct	*tty;
-	unsigned long		 flags;
 
-	tty = tty_port_tty_get(&main_ctx->tty_prt);
-
-	spin_lock_irqsave(&ctx->lock, flags);
-	_ffl_forward_tty(tty, ctx, &flags);
-	spin_unlock_irqrestore(&ctx->lock, flags);
-
-	if (tty)
-		tty_kref_put(tty);
+	queue_work(ffl_forwarding_wq, &main_ctx->do_tty_forward);
 }
 
 /**
@@ -1876,20 +1869,12 @@ static void ffl_rx_forward_retry(unsigned long param)
 static void ffl_rx_forward_resume(struct tty_struct *tty)
 {
 	struct ffl_ctx		*main_ctx;
-	struct ffl_xfer_ctx	*ctx;
-	unsigned long		 flags;
 
 	/* Get the context reference from the driver data if already opened */
 	main_ctx = (struct ffl_ctx *) tty->driver_data;
 
-	if (!main_ctx)
-		return;
-
-	ctx = &main_ctx->rx;
-
-	spin_lock_irqsave(&ctx->lock, flags);
-	_ffl_forward_tty(tty, ctx, &flags);
-	spin_unlock_irqrestore(&ctx->lock, flags);
+	if (main_ctx)
+		queue_work(ffl_forwarding_wq, &main_ctx->do_tty_forward);
 }
 
 /*
@@ -2004,6 +1989,9 @@ static int ffl_tty_port_activate(struct tty_port *port, struct tty_struct *tty)
 		return -EXDEV;
 	}
 #endif
+
+	/* Set the TTY with low latency to bypass the system work queue */
+	tty->low_latency = 1;
 
 	return 0;
 }
@@ -3529,6 +3517,7 @@ static int __init ffl_driver_probe(struct device *dev)
 	ffl_xfer_ctx_init(&ctx->rx, ctx, CONFIG_HSI_FFL_TTY_CHANNEL,
 			  FFL_RX_DELAY, FFL_RX_WAIT_FIFO, FFL_RX_CTRL_FIFO,
 			  &client->rx_cfg);
+	INIT_WORK(&ctx->do_tty_forward, ffl_do_tty_forward);
 
 	ctx->tx.timer.function = ffl_stop_tx;
 	ctx->rx.timer.function = ffl_rx_forward_retry;
@@ -3618,6 +3607,8 @@ static int __exit ffl_driver_remove(struct device *dev)
 	client->hsi_stop_rx	= NULL;
 	hsi_client_set_drvdata(client, NULL);
 
+	flush_work(&ctx->do_tty_forward);
+
 	ffl_xfer_ctx_clear(&ctx->tx);
 	ffl_xfer_ctx_clear(&ctx->rx);
 
@@ -3692,6 +3683,14 @@ static int __init ffl_driver_init(void)
 	}
 #endif
 
+	/* Create the workqueue for TTY line discipline buffer flush */
+	ffl_forwarding_wq = create_singlethread_workqueue(DRVNAME "-fw");
+	if (unlikely(!ffl_forwarding_wq)) {
+		pr_err(DRVNAME ": unable to create TTY forwarding workqueue");
+		err = -EFAULT;
+		goto no_ffl_forwarding_wq;
+	}
+
 	/* Allocate the TTY interface */
 	tty_drv = alloc_tty_driver(FFL_TTY_MAX_LINES);
 	if (unlikely(!tty_drv)) {
@@ -3743,6 +3742,8 @@ no_tty_driver_registration:
 	put_tty_driver(ffl_drv.tty_drv);
 	ffl_drv.tty_drv = NULL;
 no_tty_driver_allocation:
+	destroy_workqueue(ffl_forwarding_wq);
+no_ffl_forwarding_wq:
 #ifdef USE_IPC_ERROR_RECOVERY
 	destroy_workqueue(ffl_rx_drain_wq);
 no_rx_drain_wq:
@@ -3768,6 +3769,7 @@ static void __exit ffl_driver_exit(void)
 	put_tty_driver(ffl_drv.tty_drv);
 	ffl_drv.tty_drv = NULL;
 
+	destroy_workqueue(ffl_forwarding_wq);
 #ifdef USE_IPC_ERROR_RECOVERY
 	destroy_workqueue(ffl_rx_drain_wq);
 	destroy_workqueue(ffl_tx_drain_wq);
