@@ -82,7 +82,7 @@ int drm_idle_check_interval = 5;
 int drm_msvdx_pmpolicy = PSB_PMPOLICY_POWERDOWN;
 int drm_psb_cpurelax = 0;
 int drm_psb_udelaydivider = 1;
-int drm_topaz_pmpolicy = PSB_PMPOLICY_NOPM;
+int drm_topaz_pmpolicy = PSB_PMPOLICY_POWERDOWN;
 int drm_topaz_sbuswa;
 int drm_psb_ospm = 1;
 int drm_psb_gl3_enable = 1;

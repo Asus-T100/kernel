@@ -312,9 +312,8 @@ void ospm_apm_power_down_topaz(struct drm_device *dev)
 
 #ifdef CONFIG_MDFD_GL3
 	/* Power off GL3 */
-	/* WR for BZ7203 */
-	/*if (IS_MDFLD(dev))
-		ospm_power_island_down(OSPM_GL3_CACHE_ISLAND);*/
+	if (IS_MDFLD(dev))
+		ospm_power_island_down(OSPM_GL3_CACHE_ISLAND);
 #endif
 
 	gbSuspendInProgress = false;
