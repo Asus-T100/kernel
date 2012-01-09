@@ -956,12 +956,14 @@ static int langwell_ep_dequeue(struct usb_ep *_ep, struct usb_request *_req)
 	ep_num = ep->ep_num;
 
 	/* disable endpoint control register */
-	endptctrl = readl(&dev->op_regs->endptctrl[ep_num]);
-	if (is_in(ep))
-		endptctrl &= ~EPCTRL_TXE;
-	else
-		endptctrl &= ~EPCTRL_RXE;
-	writel(endptctrl, &dev->op_regs->endptctrl[ep_num]);
+	if (ep->desc) {
+		endptctrl = readl(&dev->op_regs->endptctrl[ep_num]);
+		if (is_in(ep))
+			endptctrl &= ~EPCTRL_TXE;
+		else
+			endptctrl &= ~EPCTRL_RXE;
+		writel(endptctrl, &dev->op_regs->endptctrl[ep_num]);
+	}
 
 	/* make sure it's still queued on this endpoint */
 	list_for_each_entry(req, &ep->queue, queue) {
@@ -1005,12 +1007,14 @@ static int langwell_ep_dequeue(struct usb_ep *_ep, struct usb_request *_req)
 
 done:
 	/* enable endpoint again */
-	endptctrl = readl(&dev->op_regs->endptctrl[ep_num]);
-	if (is_in(ep))
-		endptctrl |= EPCTRL_TXE;
-	else
-		endptctrl |= EPCTRL_RXE;
-	writel(endptctrl, &dev->op_regs->endptctrl[ep_num]);
+	if (ep->desc) {
+		endptctrl = readl(&dev->op_regs->endptctrl[ep_num]);
+		if (is_in(ep))
+			endptctrl |= EPCTRL_TXE;
+		else
+			endptctrl |= EPCTRL_RXE;
+		writel(endptctrl, &dev->op_regs->endptctrl[ep_num]);
+	}
 
 	ep->stopped = stopped;
 	spin_unlock_irqrestore(&dev->lock, flags);
