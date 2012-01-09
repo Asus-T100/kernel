@@ -323,10 +323,18 @@ static int mdfld_hdmi_set_avi_infoframe(struct drm_device *dev,
 	u32 viddipctl_val = 0;
 	int i = 0;
 	int picture_aspect_ratio = 0xFF, active_aspect_ratio = 0xFF;
-	char *edid_block = connector->edid_blob_ptr->data;
+	char *edid_block = NULL;
 	baseedid_1_4_t *base_edid_block = NULL;
 	ce_edid_t *cea_edid_block = NULL;
 	int vic = 0;
+
+	if (!connector->edid_blob_ptr)
+		return -1;
+
+	if (!connector->edid_blob_ptr->data)
+		return -1;
+
+	edid_block = connector->edid_blob_ptr->data;
 	/*initialization avi_infoframe*/
 	avi_if_t avi_if = {0};
 	/*
@@ -1142,6 +1150,12 @@ bool isHDMI(struct drm_connector *connector)
 	baseedid_1_4_t *base_edid_block = NULL;
 	char *edid_block = NULL;
 
+	if (!connector->edid_blob_ptr)
+		return ret;
+
+	if (!connector->edid_blob_ptr->data)
+		return ret;
+
 	base_edid_block = (baseedid_1_4_t *)connector->edid_blob_ptr->data;
 	edid_block = (char *)connector->edid_blob_ptr->data;
 	if (!base_edid_block) {
@@ -1198,11 +1212,13 @@ mdfld_hdmi_edid_detect(struct drm_connector *connector)
 	}
 
 	/* MSIC HW issue would be fixed after C0. */
-	if (dev_priv->platform_rev_id >= MDFLD_PNW_C0)
+	if (!((IS_MDFLD_OLD(dev)) &&
+		(dev_priv->platform_rev_id < MDFLD_PNW_C0)))
 		edid = drm_get_edid(&output->base, output->hdmi_i2c_adapter);
 
 	hdmi_priv->has_hdmi_sink = false;
 	if (edid) {
+		PSB_DEBUG_ENTRY("edid read successful .\n");
 		if (edid->input & DRM_EDID_INPUT_DIGITAL) {
 			status = connector_status_connected;
 			hdmi_priv->has_hdmi_sink = drm_detect_hdmi_monitor(edid);
@@ -1228,7 +1244,8 @@ mdfld_hdmi_edid_detect(struct drm_connector *connector)
 		}
 
 		if (i == monitor_number) {
-			if (dev_priv->platform_rev_id > MDFLD_PNW_C0) {
+			if (!((IS_MDFLD_OLD(dev)) &&
+				(dev_priv->platform_rev_id < MDFLD_PNW_C0))) {
 				PSB_DEBUG_ENTRY(
 					"hard code fix to DVI!\n");
 				/*EDID_Samsung_2493HM*/
@@ -1296,10 +1313,20 @@ static enum drm_connector_status mdfld_hdmi_detect(struct drm_connector
 	enum drm_connector_status connect_status =
 			 connector_status_disconnected;
 	static bool first_time_boot_detect = true;
+	if (IS_CTP(dev)) {
+		/* to be fixed :: HPD enabling is work in progress
+		this is not through MSIC for CTP
+		always return connected for now.
+		*/
+		return connector_status_connected;
+	}
+
 
 
 	/* Check if monitor is attached to HDMI connector. */
-	intel_scu_ipc_ioread8(MSIC_HDMI_STATUS, &data);
+	if (IS_MDFLD_OLD(dev)) {
+
+		intel_scu_ipc_ioread8(MSIC_HDMI_STATUS, &data);
 
 	if (data & HPD_SIGNAL_STATUS) {
 		DRM_DEBUG("%s: HPD connected data = 0x%x.\n", __func__, data);
@@ -1354,6 +1381,7 @@ static enum drm_connector_status mdfld_hdmi_detect(struct drm_connector
 		connect_status = connector_status_disconnected;
 
 	}
+	} /* IS_MDFLD_OLD(dev) code */
 #else
 	connect_status =  mdfld_hdmi_edid_detect(connector);
 #endif
@@ -1505,11 +1533,34 @@ static int mdfld_hdmi_get_modes(struct drm_connector *connector)
 	}
 
 	/* MSIC HW issue would be fixed after C0. */
-	if (dev_priv->platform_rev_id >= MDFLD_PNW_C0)
-		edid = connector->edid_blob_ptr->data;
+	if (!((IS_MDFLD_OLD(dev)) &&
+		(dev_priv->platform_rev_id < MDFLD_PNW_C0))) {
+		if (connector->edid_blob_ptr)
+			edid = connector->edid_blob_ptr->data;
+	}
 
 	if (edid) {
 		ret = drm_add_edid_modes(&psb_intel_output->base, edid);
+	} else if (IS_CTP(dev)) {
+		/* try one more time to get edid here */
+		edid = drm_get_edid(&psb_intel_output->base,
+			psb_intel_output->hdmi_i2c_adapter);
+		hdmi_priv->has_hdmi_sink = false;
+		if (edid) {
+			PSB_DEBUG_ENTRY("edid read successful .\n");
+			if (edid->input & DRM_EDID_INPUT_DIGITAL) {
+				hdmi_priv->has_hdmi_sink =
+					drm_detect_hdmi_monitor(edid);
+				mdfld_hdmi_create_eeld_packet(connector);
+			}
+			drm_mode_connector_update_edid_property(connector,
+								edid);
+			dev_priv->hdmi_done_reading_edid = true;
+			ret = drm_add_edid_modes(&psb_intel_output->base, edid);
+			kfree(edid);
+		} else{
+			ret = mdfld_hdmi_get_hardcoded_edid_modes(connector);
+		}
 	} else {
 		ret = mdfld_hdmi_get_hardcoded_edid_modes(connector);
 	}
@@ -1549,7 +1600,8 @@ static int mdfld_hdmi_get_modes(struct drm_connector *connector)
 
 	/*reset preferred mode if NULL EDID got when detect*/
 	if (hdmi_priv->is_hardcode_edid) {
-		if (dev_priv->platform_rev_id > MDFLD_PNW_C0) {
+		if (!((IS_MDFLD_OLD(dev)) &&
+			(dev_priv->platform_rev_id < MDFLD_PNW_C0))) {
 			/*from C1, driver can get edid right
 			  if not right,set prefer mode to 640*480p
 			  it is required by HDMI compliance test.*/
@@ -1787,18 +1839,24 @@ void mdfld_hdmi_init(struct drm_device *dev,
 	mdfld_hdmi_audio_init(hdmi_priv);
 	mdfld_msic_init(hdmi_priv);
 
-	/* turn on HDMI power rails. These will be on in all non-S0iX
-	states so that HPD and connection status will work. VCC330 will
-	have ~1.7mW usage during idle states when the display is active.*/
-	intel_scu_ipc_iowrite8(MSIC_VCC330CNT, VCC330_ON);
+	/* CTP has separate companion chip for HDMI. This is not required.
+	   To be fixed : enable HPD for CTP.
+	 */
+	if (IS_MDFLD_OLD(dev)) {
+		/* turn on HDMI power rails. These will be on in all non-S0iX
+		states so that HPD and connection status will work. VCC330 will
+		have ~1.7mW usage during idle states when the display is
+		active.*/
+		intel_scu_ipc_iowrite8(MSIC_VCC330CNT, VCC330_ON);
 
-	/* MSIC documentation requires that there be a 500us delay
-	after enabling VCC330 before you can enable VHDMI */
-	usleep_range(500, 1000);
+		/* MSIC documentation requires that there be a 500us delay
+		after enabling VCC330 before you can enable VHDMI */
+		usleep_range(500, 1000);
 
-	/* Extend VHDMI switch de-bounce time, to avoid redundant MSIC
-	 * VREG/HDMI interrupt during HDMI cable plugged in/out. */
-	intel_scu_ipc_iowrite8(MSIC_VHDMICNT, VHDMI_ON | VHDMI_DB_30MS);
+		/* Extend VHDMI switch de-bounce time, to avoid redundant MSIC
+		 * VREG/HDMI interrupt during HDMI cable plugged in/out. */
+		intel_scu_ipc_iowrite8(MSIC_VHDMICNT, VHDMI_ON | VHDMI_DB_30MS);
+	}
 
 	drm_sysfs_connector_add(connector);
 	return;
