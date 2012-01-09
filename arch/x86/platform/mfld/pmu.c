@@ -567,59 +567,6 @@ static int _pmu_issue_command(struct pmu_ss_states *pm_ssc, int mode, int ioc,
 static void pmu_read_sss(struct pmu_ss_states *pm_ssc);
 static int _pmu2_wait_not_busy(void);
 
-/* Experimentally disabling/enabling pmu drivers and setting every
- * devices state as D0i0 while disabling pmu_driver */
-static char pmu_driver_state[4] = "on";
-static int set_pmu_driver_status(const char *val, struct kernel_param *kp)
-{
-	char valcp[4];
-	int status;
-	struct pmu_ss_states cur_pmssc;
-
-	strncpy(valcp, val, sizeof(valcp) - 1);
-	valcp[3] = '\0';
-
-	if (strncmp(valcp, "off", 3) == 0) {	/* disable pmu driver and
-						 * set all devices to D0i0
-						 */
-		/* set all the lss to D0i0 */
-		cur_pmssc.pmu2_states[0] = 0;
-		cur_pmssc.pmu2_states[1] = 0;
-		cur_pmssc.pmu2_states[2] = 0;
-		cur_pmssc.pmu2_states[3] = 0;
-
-		/* Issue pmu command to PMU2 without interrupt to pmu_driver */
-		down(&mid_pmu_cxt->scu_ready_sem);
-		status = _pmu_issue_command(&cur_pmssc, SET_MODE, 1, PMU_NUM_2);
-
-		if (unlikely(status != PMU_SUCCESS)) {
-			dev_dbg(&mid_pmu_cxt->pmu_dev->dev,
-				 "Failed to Issue a PM command to PMU2\n");
-		}
-		up(&mid_pmu_cxt->scu_ready_sem);
-
-		pmu_initialized = false;	/* turn off pmu_initialized */
-		strcpy(pmu_driver_state, "off");
-
-	} else {
-		/* invalid input: do nothing, keep the old state*/
-	}
-
-	return 0;
-}
-
-static int get_pmu_driver_status(char *buffer, struct kernel_param *kp)
-{
-	strcpy(buffer, pmu_driver_state);
-	return strlen(pmu_driver_state);
-}
-
-
-module_param_call(pmu_driver_state, set_pmu_driver_status,
-		get_pmu_driver_status, NULL, 0644);
-MODULE_PARM_DESC(pmu_driver_state, "setup pmu driver's state [on|off]");
-
-
 /* PCI Device Id structure */
 static DEFINE_PCI_DEVICE_TABLE(mid_pm_ids) = {
 	{PCI_VDEVICE(INTEL, MID_PMU_MRST_DRV_DEV_ID), 0},
@@ -689,6 +636,54 @@ ret:
 	return ret;
 }
 EXPORT_SYMBOL(get_target_platform_state);
+
+/**
+ * This function set all devices in d0i0 and deactivates pmu driver.
+ * The function is used before IFWI update as it needs devices to be
+ * in d0i0 during IFWI update. Reboot is needed to work pmu
+ * driver properly again. After calling this function and IFWI
+ * update, system is always rebooted as IFWI update function,
+ * intel_scu_ipc_medfw_upgrade() is called from mrst_emergency_reboot().
+ */
+int pmu_set_devices_in_d0i0(void)
+{
+	int status;
+	struct pmu_ss_states cur_pmssc;
+
+	/* Ignore request until we have initialized */
+	if (unlikely((!pmu_initialized)))
+		return 0;
+
+	cur_pmssc.pmu2_states[0] = D0I0_MASK;
+	cur_pmssc.pmu2_states[1] = D0I0_MASK;
+	cur_pmssc.pmu2_states[2] = D0I0_MASK;
+	cur_pmssc.pmu2_states[3] = D0I0_MASK;
+
+	down(&mid_pmu_cxt->scu_ready_sem);
+
+	mid_pmu_cxt->shutdown_started = true;
+
+	/* Issue the pmu command to PMU 2
+	 * flag is needed to distinguish between
+	 * S0ix vs interactive command in pmu_sc_irq()
+	 */
+	status = _pmu_issue_command(&cur_pmssc, SET_MODE, 0, PMU_NUM_2);
+
+	if (unlikely(status != PMU_SUCCESS)) {	/* pmu command failed */
+		dev_dbg(&mid_pmu_cxt->pmu_dev->dev,
+			 "Failed to Issue a PM command to PMU2\n");
+		mid_pmu_cxt->shutdown_started = false;
+		goto unlock;
+	}
+
+	if (_pmu2_wait_not_busy())
+		BUG();
+
+unlock:
+	up(&mid_pmu_cxt->scu_ready_sem);
+	return status;
+}
+EXPORT_SYMBOL(pmu_set_devices_in_d0i0);
 
 static int _pmu_read_status(int pmu_num, int type)
 {
@@ -2755,14 +2750,14 @@ static int mid_suspend(suspend_state_t state)
 /* This function is here just to have a hook to execute code before
  * generic x86 shutdown is executed. saved_shutdown contains pointer
  * to original generic x86 shutdown function
- * No need to hold scu_ready_sem, since the IPC will hold the sem now.
  */
 void mfld_shutdown(void)
 {
-	down(&mid_pmu_cxt->scu_ready_sem);
-	if (mid_pmu_cxt)
+	if (mid_pmu_cxt) {
+		down(&mid_pmu_cxt->scu_ready_sem);
 		mid_pmu_cxt->shutdown_started = true;
-	up(&mid_pmu_cxt->scu_ready_sem);
+		up(&mid_pmu_cxt->scu_ready_sem);
+	}
 
 	if (saved_shutdown)
 		saved_shutdown();

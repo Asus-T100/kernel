@@ -103,6 +103,7 @@
 
 extern int mfld_s0ix_enter(int);
 extern int get_target_platform_state(void);
+extern int pmu_set_devices_in_d0i0(void);
 extern void pmu_set_s0ix_complete(void);
 extern bool pmu_is_s0i3_in_progress(void);
 extern int pmu_nc_set_power_state
@@ -142,6 +143,8 @@ static inline int pmu_nc_set_power_state
 static inline void pmu_set_s0ix_complete(void) { return; }
 static inline void mfld_power_off(void) { return; }
 static inline bool pmu_is_s0ix_in_progress(void) { return false; };
+static inline int pmu_set_devices_in_d0i0(void) { return 0; }
+
 #define mfld_shutdown NULL
 
 /*returns function not implemented*/
