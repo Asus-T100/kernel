@@ -31,6 +31,7 @@
 #include <asm/intel_scu_ipc.h>
 #include <linux/pm_qos_params.h>
 #include <linux/intel_mid_pm.h>
+#include <linux/kernel.h>
 
 /*
  * IPC register summary
@@ -1227,6 +1228,12 @@ int intel_scu_ipc_medfw_upgrade(void)
 	if (fws == NULL) {
 		ret_val = -ENOMEM;
 		goto unmap_mb;
+	}
+
+	/* set all devices in d0i0 before IFWI upgrade */
+	if (unlikely(pmu_set_devices_in_d0i0())) {
+		pr_debug("pmu: failed to set all devices in d0i0...\n");
+		BUG();
 	}
 
 	/* fuph header start */

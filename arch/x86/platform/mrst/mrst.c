@@ -166,9 +166,12 @@ static void mrst_power_off(void)
 
 }
 
-static void mrst_reboot(void)
+static void mrst_emergency_reboot(void)
 {
-	intel_scu_ipc_medfw_upgrade();
+	if (intel_scu_ipc_medfw_upgrade()) {
+		pr_debug("intel_scu_ipc: IFWI upgrade failed...\n");
+		BUG();
+	}
 	if (__mrst_cpu_chip == MRST_CPU_CHIP_LINCROFT)
 		intel_scu_ipc_simple_command(IPCMSG_COLD_RESET, 0);
 	else
@@ -396,7 +399,7 @@ void __init x86_mrst_early_setup(void)
 		saved_shutdown = machine_ops.shutdown;
 		machine_ops.shutdown = mfld_shutdown;
 	}
-	machine_ops.emergency_restart  = mrst_reboot;
+	machine_ops.emergency_restart  = mrst_emergency_reboot;
 
 	/* Avoid searching for BIOS MP tables */
 	x86_init.mpparse.find_smp_config = x86_init_noop;
