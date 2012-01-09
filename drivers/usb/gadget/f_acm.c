@@ -634,6 +634,10 @@ acm_bind(struct usb_configuration *c, struct usb_function *f)
 	if (c->bConfigurationValue == 4) {
 		/* Descriptors with association descriptor */
 		fs_function = acm_fs_function;
+	} else if (c->bConfigurationValue == 1) {
+		/* If define ACM for Android,
+		 * descriptors with association descriptor */
+		fs_function = acm_fs_function;
 	} else {
 		/* Descriptors without association descriptor */
 		fs_function = &acm_fs_function[1];
@@ -665,6 +669,10 @@ acm_bind(struct usb_configuration *c, struct usb_function *f)
 		/* copy descriptors, and track endpoint copies */
 		if (c->bConfigurationValue == 4) {
 			/* Descriptors with association descriptor */
+			hs_function = acm_hs_function;
+		} else if (c->bConfigurationValue == 1) {
+			/* If define ACM for Android,
+			 * descriptors with association descriptor */
 			hs_function = acm_hs_function;
 		} else {
 			/* Descriptors without association descriptor */
