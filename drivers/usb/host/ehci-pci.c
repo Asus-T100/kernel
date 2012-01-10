@@ -184,7 +184,8 @@ static int ehci_pci_setup(struct usb_hcd *hcd)
 		}
 		break;
 	case PCI_VENDOR_ID_INTEL:
-		if (pdev->device == 0x0811 || pdev->device == 0x0829) {
+		if (pdev->device == 0x0811 || pdev->device == 0x0829 ||
+				pdev->device == 0xE006) {
 			ehci_info(ehci, "Detected Intel MID OTG HC\n");
 			hcd->has_tt = 1;
 			ehci->has_hostpc = 1;
@@ -194,10 +195,19 @@ static int ehci_pci_setup(struct usb_hcd *hcd)
 			force_otg_hc_mode = 1;
 
 			/* For Penwell, Power budget limit is 200mA */
-			if (pdev->device == 0x0829)
+			if (pdev->device == 0x0829 || pdev->device == 0xE006)
 				hcd->power_budget = 200;
 
 			hcd->has_sram = 1;
+			/*
+			 * Enabling SRAM usage in USB OTG driver for Cloverview
+			 * would make USB OTG unstable during large file
+			 * transfer. For now, let's disable SRAM for Cloverview
+			 * until this issue is fully root caused and resolved.
+			 */
+			if (pdev->device == 0xE006)
+				hcd->has_sram = 0;
+
 			hcd->sram_no_payload = 1;
 			sram_init(hcd);
 		} else if (pdev->device == 0x0806) {
@@ -284,7 +294,7 @@ static int ehci_pci_setup(struct usb_hcd *hcd)
 			ehci_info(ehci, "using broken periodic workaround\n");
 		}
 		if (pdev->device == 0x0806 || pdev->device == 0x0811
-				|| pdev->device == 0x0829) {
+			|| pdev->device == 0x0829 || pdev->device == 0xE006) {
 			ehci_info(ehci, "disable lpm for langwell/penwell\n");
 			ehci->has_lpm = 0;
 		}
