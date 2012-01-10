@@ -339,6 +339,59 @@ static int sn95031_enable_pnw_clk(struct snd_soc_dapm_widget *w,
 	return 0;
 }
 
+/* Callback to set volume for *VOLCTRL regs. Needs to be implemented separately
+ * since clock and VAUDA need to be on before value can be written to the regs
+ */
+static int sn95031_set_vol_2r(struct snd_kcontrol *kcontrol,
+		struct snd_ctl_elem_value *ucontrol)
+{
+	struct soc_mixer_control *mc =
+		(struct soc_mixer_control *)kcontrol->private_value;
+	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
+	unsigned int reg = mc->reg;
+	unsigned int reg2 = mc->rreg;
+	unsigned int shift = mc->shift;
+	int max = mc->max;
+	unsigned int mask = (1 << fls(max)) - 1;
+	unsigned int invert = mc->invert;
+	int err;
+	unsigned int val, val2, val_mask;
+	int sst_pll_mode_saved;
+
+	val_mask = mask << shift;
+	val = (ucontrol->value.integer.value[0] & mask);
+	val2 = (ucontrol->value.integer.value[1] & mask);
+
+	if (invert) {
+		val = max - val;
+		val2 = max - val2;
+	}
+
+	val = val << shift;
+	val2 = val2 << shift;
+
+	pr_debug("enabling PLL and VAUDA to change volume\n");
+	mutex_lock(&codec->mutex);
+	sst_pll_mode_saved = intel_sst_get_pll();
+	intel_sst_set_pll(true, SST_PLL_MSIC);
+	udelay(SST_PLL_DELAY);
+	snd_soc_dapm_force_enable_pin(&codec->dapm, "VirtBias");
+	snd_soc_dapm_sync(&codec->dapm);
+
+	err = snd_soc_update_bits(codec, reg, val_mask, val);
+	if (err < 0)
+		goto restore_state;
+
+	err = snd_soc_update_bits(codec, reg2, val_mask, val2);
+restore_state:
+	snd_soc_dapm_disable_pin(&codec->dapm, "VirtBias");
+	snd_soc_dapm_sync(&codec->dapm);
+	if ((sst_pll_mode_saved & SST_PLL_MSIC) == 0)
+		intel_sst_set_pll(false, SST_PLL_MSIC);
+	mutex_unlock(&codec->mutex);
+	return err;
+}
+
 /* mux controls */
 static const char *sn95031_mic_texts[] = { "AMIC", "LineIn" };
 
@@ -510,13 +563,17 @@ static const struct snd_kcontrol_new sn95031_snd_controls[] = {
 	SOC_SINGLE_TLV("Mic2 Capture Volume", SN95031_MICAMP2,
 			2, 3, 0, mic_tlv),
 	/* Add digital volume and mute controls for Headphone/Headset*/
-	SOC_DOUBLE_R_TLV("Headphone Playback Volume", SN95031_HSLVOLCTRL,
-				SN95031_HSRVOLCTRL, 0, 71, 1, out_tlv),
+	SOC_DOUBLE_R_EXT_TLV("Headphone Playback Volume", SN95031_HSLVOLCTRL,
+				SN95031_HSRVOLCTRL, 0, 71, 1,
+				snd_soc_get_volsw_2r, sn95031_set_vol_2r,
+				out_tlv),
 	SOC_DOUBLE_R("Headphone Playback Switch", SN95031_HSLVOLCTRL,
 				SN95031_HSRVOLCTRL, 7, 1, 0),
 	/* Add digital volume and mute controls for Speaker*/
-	SOC_DOUBLE_R_TLV("Speaker Playback Volume", SN95031_IHFLVOLCTRL,
-				SN95031_IHFRVOLCTRL, 0, 71, 1, out_tlv),
+	SOC_DOUBLE_R_EXT_TLV("Speaker Playback Volume", SN95031_IHFLVOLCTRL,
+				SN95031_IHFRVOLCTRL, 0, 71, 1,
+				snd_soc_get_volsw_2r, sn95031_set_vol_2r,
+				out_tlv),
 	SOC_DOUBLE_R("Speaker Playback Switch", SN95031_IHFLVOLCTRL,
 				SN95031_IHFRVOLCTRL, 7, 1, 0),
 
@@ -571,6 +628,8 @@ static const struct snd_soc_dapm_widget sn95031_dapm_widgets[] = {
 	SND_SOC_DAPM_MICBIAS("DMIC12Bias", SN95031_DMICMUX, 3, 0),
 	SND_SOC_DAPM_MICBIAS("DMIC34Bias", SN95031_DMICMUX, 4, 0),
 	SND_SOC_DAPM_MICBIAS("DMIC56Bias", SN95031_DMICMUX, 5, 0),
+	/* Dummy widget to trigger VAUDA on/off */
+	SND_SOC_DAPM_MICBIAS("VirtBias", SND_SOC_NOPM, 0, 0),
 
 	SND_SOC_DAPM_SUPPLY("DMIC12supply", SN95031_DMICLK, 0, 0,
 				sn95031_dmic12_event,
