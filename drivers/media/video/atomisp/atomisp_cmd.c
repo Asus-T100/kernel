@@ -1277,7 +1277,7 @@ static void atomisp_update_capture_mode(struct atomisp_device *isp)
 {
 	if (isp->params.low_light) {
 		sh_css_capture_set_mode(SH_CSS_CAPTURE_MODE_LOW_LIGHT);
-	} else if (isp->params.gdc_cac_en || isp->params.macc_en) {
+	} else if (isp->params.gdc_cac_en ) {
 		sh_css_capture_set_mode(SH_CSS_CAPTURE_MODE_ADVANCED);
 	} else {
 		sh_css_capture_set_mode(SH_CSS_CAPTURE_MODE_PRIMARY);
