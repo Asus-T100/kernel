@@ -430,10 +430,10 @@ static int penwell_otg_set_vbus(struct otg_transceiver *otg, bool enabled)
 		penwell_otg_phy_low_power(0);
 		if (enabled)
 			penwell_otg_ulpi_write(&pnw->iotg,
-					ULPI_OTGCTRLSET, DRVVBUS);
+				ULPI_OTGCTRLSET, DRVVBUS | DRVVBUS_EXTERNAL);
 		else
 			penwell_otg_ulpi_write(&pnw->iotg,
-					ULPI_OTGCTRLCLR, DRVVBUS);
+				ULPI_OTGCTRLCLR, DRVVBUS | DRVVBUS_EXTERNAL);
 		retval = 0;
 		goto done;
 	}
@@ -743,8 +743,8 @@ static void penwell_otg_phy_low_power(int on)
  * into low power mode or normal mode according to pm state.
  * Call this function when spi access to MSIC registers is enabled.
  *
- * For Clovertrail, otg PHY is a standalone chip(tusb1211) which can be
- * enabled/disabled by controlling the CS or CS_N pin.
+ * For Clovertrail, we don't have a controllable power rail to the PHY -
+ * it's always on.
  */
 static int penwell_otg_vusb330_low_power(int on)
 {
@@ -754,13 +754,7 @@ static int penwell_otg_vusb330_low_power(int on)
 
 	dev_dbg(pnw->dev, "%s ---> %s\n", __func__, on ? "on" : "off");
 
-	if (is_clovertrail(to_pci_dev(pnw->dev))) {
-		if (on)
-			gpio_set_value(pnw->otg_pdata->gpio_cs, 1);
-		else
-			gpio_set_value(pnw->otg_pdata->gpio_cs, 0);
-		retval = 0;
-	} else {
+	if (!is_clovertrail(to_pci_dev(pnw->dev))) {
 		if (on)
 			data = 0x5; /* Low power mode */
 		else
@@ -3377,7 +3371,6 @@ static int penwell_otg_probe(struct pci_dev *pdev,
 	unsigned long		resource, len;
 	void __iomem		*base = NULL;
 	int			retval;
-	int			ret;
 	u32			val32;
 	struct penwell_otg	*pnw;
 	char			qname[] = "penwell_otg_queue";
@@ -3495,16 +3488,17 @@ static int penwell_otg_probe(struct pci_dev *pdev,
 			retval = -ENODEV;
 			goto err;
 		}
-		ret = gpio_request(pnw->otg_pdata->gpio_reset,
+		retval = gpio_request(pnw->otg_pdata->gpio_reset,
 					"usb_otg_phy_reset");
-		if (ret < 0) {
+		if (retval < 0) {
 			dev_err(pnw->dev, "request gpio(%d) for usb otg phy reset "
 				"failed\n", pnw->otg_pdata->gpio_reset);
 			retval = -ENODEV;
 			goto err;
 		}
-		ret = gpio_request(pnw->otg_pdata->gpio_cs, "usb_otg_phy_cs");
-		if (ret < 0) {
+		retval = gpio_request(pnw->otg_pdata->gpio_cs,
+					"usb_otg_phy_cs");
+		if (retval < 0) {
 			dev_err(pnw->dev, "request gpio(%d) for usb otg phy cs "
 				"failed\n", pnw->otg_pdata->gpio_cs);
 			gpio_free(pnw->otg_pdata->gpio_reset);

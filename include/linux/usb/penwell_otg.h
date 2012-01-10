@@ -126,6 +126,7 @@
 #define	ULPI_OTGCTRL		0x0a
 #define	ULPI_OTGCTRLSET		0x0b
 #define	ULPI_OTGCTRLCLR		0x0c
+#	define DRVVBUS_EXTERNAL		BIT(6)
 #	define DRVVBUS			BIT(5)
 #	define DMPULLDOWN		BIT(2)
 #	define DPPULLDOWN		BIT(1)
