@@ -530,6 +530,12 @@ EXPORT_SYMBOL(intel_sst_set_pll);
  * taking the system through D3hot and restoring it back to D0 and so there is
  * no need to duplicate that here.
  */
+int intel_sst_get_pll(void)
+{
+	return sst_drv_ctx->pll_mode;
+}
+EXPORT_SYMBOL(intel_sst_get_pll);
+
 static int intel_sst_runtime_suspend(struct device *dev)
 {
 	union config_status_reg csr;

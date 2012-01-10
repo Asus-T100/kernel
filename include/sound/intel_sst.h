@@ -33,6 +33,7 @@
 #include <sound/jack.h>
 
 #define SST_CARD_NAMES "intel_mid_card"
+#define SST_PLL_DELAY 2000
 
 #define MFLD_MAX_HW_CH 4
 /* control list Pmic & Lpe */
@@ -148,4 +149,5 @@ enum intel_sst_pll_mode {
 int register_sst_card(struct intel_sst_card_ops *card);
 void unregister_sst_card(struct intel_sst_card_ops *card);
 int intel_sst_set_pll(unsigned int enable, enum intel_sst_pll_mode mode);
+int intel_sst_get_pll(void);
 #endif /* __INTEL_SST_H__ */
