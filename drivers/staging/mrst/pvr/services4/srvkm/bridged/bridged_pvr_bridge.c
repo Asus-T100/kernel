@@ -863,14 +863,9 @@ PVRSRVMapDeviceMemoryBW(IMG_UINT32 ui32BridgeID,
 	{
 		PVR_DPF((PVR_DBG_MESSAGE, "using the mem wrap workaround."));
 
+		psSrcKernelMemInfo->sShareMemWorkaround.ui32OrigReqAttribs |=
+			psMapDevMemIN->ui32BridgeFlags;
 		
-
-
-
-
-
-
-
 		psMapDevMemOUT->eError = BM_XProcWorkaroundSetShareIndex(psSrcKernelMemInfo->sShareMemWorkaround.ui32ShareIndex);
 		if(psMapDevMemOUT->eError != PVRSRV_OK)
 		{
