@@ -44,6 +44,7 @@
 #include <linux/interrupt.h>
 #include <linux/irq.h>
 #include <linux/delay.h>
+#include <linux/version.h>
 
 #define DRVNAME				"hsi-ffl"
 #define TTYNAME				"tty"CONFIG_HSI_FFL_TTY_NAME
@@ -315,12 +316,12 @@ static struct workqueue_struct *ffl_forwarding_wq;
  */
 
 /**
- * modem_power - activity required to bring up modem
+ * do_modem_power - activity required to bring up modem
  * @hsi: HSI controller
  *
  * Toggle gpios required to bring up modem power and start modem.
  */
-static void modem_power(struct ffl_ctx *ctx)
+static void do_modem_power(struct ffl_ctx *ctx)
 {
 	struct hsi_client *cl = ctx->client;
 	struct hsi_mid_platform_data *pd = cl->device.platform_data;
@@ -334,12 +335,12 @@ static void modem_power(struct ffl_ctx *ctx)
 }
 
 /**
- * modem_reset - activity required to reset modem
+ * do_modem_reset - activity required to reset modem
  * @hsi: HSI controller
  *
  * Toggle gpios required to reset modem.
  */
-static void modem_reset(struct ffl_ctx *ctx)
+static void do_modem_reset(struct ffl_ctx *ctx)
 {
 	struct hsi_client *cl = ctx->client;
 	struct hsi_mid_platform_data *pd = cl->device.platform_data;
@@ -2805,7 +2806,8 @@ static int ffl_tty_ioctl(struct tty_struct *tty,
 		pr_debug("IO ctrl: %s(%d) reset modem\n",
 			 current->comm, current->pid);
 		pr_debug("reset modem\n");
-		modem_reset(ctx);
+		do_modem_reset(ctx);
+		do_modem_power(ctx);
 		break;
 
 	case FFL_TTY_MODEM_STATE:
@@ -2829,6 +2831,156 @@ static int ffl_tty_ioctl(struct tty_struct *tty,
 		(void) queue_work(ffl_recycle_wq, increase_pool);
 
 	return 0;
+}
+
+/**
+ * reset_modem - modem reset command function
+ * @val: a reference to the string where the modem reset query is given
+ * @kp: an unused reference to the kernel parameter
+ *
+ * This call back function is resetting each and every one of the modem having
+ * a bit set in the /sys/module/hsi_ffl_tty/parameters/reset_modem sysFS file.
+ *
+ * The query value is actually a bit field of 1 bit per modem stating if the
+ * modem shall be reset or not. For instance, a query value of 0x1 means that
+ * the modem of ttyIFX0 will be reset.
+ */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 36)
+static int reset_modem(const char *val, struct kernel_param *kp)
+#else
+static int reset_modem(const char *val, const struct kernel_param *kp)
+#endif
+{
+	unsigned long reset_request;
+	struct ffl_ctx *ctx;
+	int i;
+
+	if (strict_strtoul(val, 16, &reset_request) < 0)
+		return -EINVAL;
+
+	for (i = 0; i < FFL_TTY_MAX_LINES; i++) {
+		ctx = ffl_drv.ctx[i];
+		if ((ctx != NULL) && (reset_request & (1<<i))) {
+			do_modem_reset(ctx);
+			do_modem_power(ctx);
+		}
+	}
+
+	return 0;
+}
+
+/**
+ * is_modem_reset - modem reset status module parameter callback function
+ * @val: a reference to the string where the modem reset status is returned
+ * @kp: an unused reference to the kernel parameter
+ *
+ * This call back function is exporting the current status of all connected
+ * modems when reading /sys/module/hsi_ffl_tty/parameters/reset_modem.
+ *
+ * The returned value is actually a bit field of 1 bit per modem stating if the
+ * modem is actually resetting or not. For instance, a returned value of 0x1 is
+ * meaning that the modem of ttyIFX0 is resetting.
+ */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 36)
+static int is_modem_reset(char *val, struct kernel_param *kp)
+#else
+static int is_modem_reset(char *val, const struct kernel_param *kp)
+#endif
+{
+	unsigned long reset_ongoing = 0;
+	struct ffl_ctx *ctx;
+	int i;
+
+	for (i = 0; i < FFL_TTY_MAX_LINES; i++) {
+		ctx = ffl_drv.ctx[i];
+		if (ctx)
+			reset_ongoing |= (ctx->reset.ongoing << i);
+	}
+
+	return sprintf(val, "%d", reset_ongoing);
+}
+
+/**
+ * clear_hangup_reasons - clearing all hangup reasons
+ * @val: a reference to the string where the hangup reasons clear query is given
+ * @kp: an unused reference to the kernel parameter
+ *
+ * This call back function is clearing each and every one of the hangup reasons
+ * having a nibble set in the /sys/module/hsi_ffl_tty/parameters/hangup_reasons
+ * sysFS file.
+ *
+ * The query value is actually a nibble field of 1 bit per modem interface
+ * stating what the modem hangup reasons shall be reset or not. For instance, a
+ * query value of 0x5 means that the TX timeout and modem core dump hangup
+ * reasons of ttyIFX0 shall be reset.
+ *
+ * It is then advised to write down the same value as the one read on the
+ * /sys/module/hsi_ffl_tty/parameters/hangup_reasons sysFS file to only clear
+ * the hangup reasons that have been detected. Otherwise, to clear each and
+ * every reason inconditionnaly a nibble of 0xF per TTY interface shall be used.
+ */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 36)
+static int clear_hangup_reasons(const char *val, struct kernel_param *kp)
+#else
+static int clear_hangup_reasons(const char *val, const struct kernel_param *kp)
+#endif
+{
+	unsigned long hangup_reasons, flags;
+	struct ffl_ctx *ctx;
+	int i, mask;
+
+	if (strict_strtoul(val, 16, &hangup_reasons) < 0)
+		return -EINVAL;
+
+	for (i = 0; i < FFL_TTY_MAX_LINES; i++) {
+		ctx = ffl_drv.ctx[i];
+		mask = (hangup_reasons >> (4*i)) & 0xF;
+		if ((ctx != NULL) && (mask)) {
+			spin_lock_irqsave(&ctx->tx.lock, flags);
+			ctx->hangup.last_cause &= ~mask;
+			ctx->hangup.cause &= ~mask;
+			spin_unlock_irqrestore(&ctx->tx.lock, flags);
+		}
+	}
+
+	return 0;
+}
+
+/**
+ * hangup_reasons - modem hangup reasons module parameter callback function
+ * @val: a reference to the string where the hangup reasons are returned
+ * @kp: an unused reference to the kernel parameter
+ *
+ * This call back function is exporting all hangup reasons of each and every
+ * TTY interface when reading /sys/module/hsi_ffl_tty/parameters/hangup_reasons.
+ *
+ * The returned value is actually a nibble field of 4-bit per modem stating if
+ * the TTY interface has hang up and why it has hangup. For instance, a
+ * returned value of 5 is meaning that ttyIFX0 interface hang up because of
+ * both a TX timeout and a modem core dump.
+ */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 36)
+static int hangup_reasons(char *val, struct kernel_param *kp)
+#else
+static int hangup_reasons(char *val, const struct kernel_param *kp)
+#endif
+{
+	unsigned long flags, hangup_reasons = 0;
+	struct ffl_ctx *ctx;
+	int i;
+
+	for (i = 0; i < FFL_TTY_MAX_LINES; i++) {
+		ctx = ffl_drv.ctx[i];
+		if (ctx) {
+			spin_lock_irqsave(&ctx->tx.lock, flags);
+			hangup_reasons |=
+				(ctx->hangup.last_cause << (i*4)) |
+				(ctx->hangup.cause << (i*4));
+			spin_unlock_irqrestore(&ctx->tx.lock, flags);
+		}
+	}
+
+	return sprintf(val, "%d", hangup_reasons);
 }
 
 /*
@@ -3265,7 +3417,7 @@ static int ffl_reset_ctx_init(struct ffl_reset_ctx *ctx_reset,
 	init_waitqueue_head(&ctx_reset->modem_awake_event);
 #endif
 
-	modem_power(ctx);
+	do_modem_power(ctx);
 
 	return 0;
 
@@ -3787,6 +3939,32 @@ static void __exit ffl_driver_exit(void)
 	pr_debug(DRVNAME ": driver removed");
 }
 module_exit(ffl_driver_exit);
+
+/*
+ * Module parameters to manage the modem status through sysfs
+ */
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 36)
+
+module_param_call(reset_modem, reset_modem, is_modem_reset, NULL, 0644);
+module_param_call(hangup_reasons, clear_hangup_reasons, hangup_reasons,
+		  NULL, 0644);
+
+#else
+
+static struct kernel_param_ops reset_modem_ops = {
+	.set = reset_modem,
+	.get = is_modem_reset,
+};
+module_param_cb(reset_modem, &reset_modem_ops, NULL, 0644);
+
+static struct kernel_param_ops hangup_reasons_ops = {
+	.set = clear_hangup_reasons,
+	.get = hangup_reasons,
+};
+module_param_cb(hangup_reasons, &hangup_reasons_ops, NULL, 0644);
+
+#endif
 
 /*
  * Module information
