@@ -73,7 +73,6 @@ struct sensor_mode_data {
  * be printed.
  */
 static int debug;
-static u16 real_model_id;
 
 module_param(debug, int, 0644);
 MODULE_PARM_DESC(debug, "Enable debug messages");
@@ -1745,36 +1744,33 @@ static int mt9e013_g_mbus_fmt(struct v4l2_subdev *sd,
 static int mt9e013_detect(struct i2c_client *client, u16 *id, u8 *revision)
 {
 	struct i2c_adapter *adapter = client->adapter;
-	u16 high, low;
+	u16 reg;
 
 	/* i2c check */
 	if (!i2c_check_functionality(adapter, I2C_FUNC_I2C))
 		return -ENODEV;
 
-	/* check sensor chip ID	 */
-	if (mt9e013_read_reg(client, MT9E013_8BIT, MT9E013_SC_CMMN_CHIP_ID_H,
-			     &high)) {
-		v4l2_err(client, "sensor_id_high = 0x%x\n", high);
+	/* check sensor chip model and revision IDs */
+	if (mt9e013_read_reg(client, MT9E013_16BIT, MT9E013_SC_CMMN_CHIP_ID,
+				id)) {
+		v4l2_err(client, "sensor_id = 0x%x\n", *id);
 		return -ENODEV;
 	}
-	if (mt9e013_read_reg(client, MT9E013_8BIT, MT9E013_SC_CMMN_CHIP_ID_L,
-			     &low)) {
-		v4l2_err(client, "sensor_id_low = 0x%x\n", high);
-		return -ENODEV;
-	}
-	*id = (((u8) high) << 8) | (u8) low;
 	v4l2_info(client, "sensor_id = 0x%x\n", *id);
-	real_model_id = *id;
 
 	if (*id != MT9E013_ID) {
 		v4l2_err(client, "sensor ID error\n");
 		return -ENODEV;
 	}
-
 	v4l2_info(client, "detect mt9e013 success\n");
 
-	/* REVISIT: HACK: Driver is currently forcing revision to 0 */
-	*revision = 0;
+	if (mt9e013_read_reg(client, MT9E013_8BIT, MT9E013_SC_CMMN_REV_ID,
+				&reg)) {
+		v4l2_err(client, "sensor_rev_id = 0x%2x\n", (u8)reg);
+		return -ENODEV;
+	}
+	*revision = (u8)reg;
+	v4l2_info(client, "sensor_rev_id = 0x%2x\n", *revision);
 
 	return 0;
 }

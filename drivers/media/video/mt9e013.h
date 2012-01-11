@@ -64,8 +64,8 @@
 /*
  * mt9e013 System control registers
  */
-#define MT9E013_SC_CMMN_CHIP_ID_H		0x0000
-#define MT9E013_SC_CMMN_CHIP_ID_L		0x0001
+#define MT9E013_SC_CMMN_CHIP_ID                 0x0000
+#define MT9E013_SC_CMMN_REV_ID		        0x0002
 
 #define GROUPED_PARAMETER_UPDATE		0x0000
 #define GROUPED_PARAMETER_HOLD			0x0100
