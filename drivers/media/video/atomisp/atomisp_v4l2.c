@@ -858,12 +858,9 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 
 	atomisp_msi_irq_init(isp, dev);
 
-#ifdef CONFIG_PM
-/*	pm_runtime_set_active(&dev->dev);
-	pm_runtime_enable(&dev->dev);	*/
 	pm_runtime_put_noidle(&dev->dev);
-	pm_runtime_put_sync(&dev->dev);
-#endif
+	pm_runtime_allow(&dev->dev);
+
 	isp->sw_contex.probed = true;
 
 	return 0;
@@ -892,6 +889,9 @@ static void __devexit atomisp_pci_remove(struct pci_dev *dev)
 {
 	struct atomisp_device *isp = (struct atomisp_device *)
 		pci_get_drvdata(dev);
+
+	pm_runtime_forbid(&dev->dev);
+	pm_runtime_get_noresume(&dev->dev);
 
 	atomisp_msi_irq_uninit(isp, dev);
 	free_irq(dev->irq, isp);
