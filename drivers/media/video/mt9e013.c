@@ -267,9 +267,24 @@ static int N_RES = N_RES_PREVIEW;
 static int
 mt9e013_read_reg(struct i2c_client *client, u16 len, u16 reg, u16 *val)
 {
-	struct i2c_msg msg[2];
 	u16 data[MT9E013_SHORT_MAX];
 	int err, i;
+
+	struct i2c_msg msg[2] = {
+		{
+			.addr = client->addr,
+			.flags = 0,
+			.len = I2C_MSG_LENGTH,
+			.buf = (unsigned char *)&reg,
+		}, {
+			.addr = client->addr,
+			.len = len,
+			.flags = I2C_M_RD,
+			.buf = (u8 *)data,
+		}
+	};
+
+	reg = cpu_to_be16(reg);
 
 	if (!client->adapter) {
 		v4l2_err(client, "%s error, no client->adapter\n", __func__);
@@ -281,20 +296,6 @@ mt9e013_read_reg(struct i2c_client *client, u16 len, u16 reg, u16 *val)
 		v4l2_err(client, "%s error, invalid data length\n", __func__);
 		return -EINVAL;
 	}
-
-	memset(msg, 0 , sizeof(msg));
-
-	msg[0].addr = client->addr;
-	msg[0].flags = 0;
-	msg[0].len = I2C_MSG_LENGTH;
-	msg[0].buf = (u8 *)data;
-	/* high byte goes first */
-	data[0] = cpu_to_be16(reg);
-
-	msg[1].addr = client->addr;
-	msg[1].len = len;
-	msg[1].flags = I2C_M_RD;
-	msg[1].buf = (u8 *)data;
 
 	err = i2c_transfer(client->adapter, msg, 2);
 	if (err != 2) {
@@ -361,7 +362,6 @@ mt9e013_write_reg(struct i2c_client *client, u16 data_length, u16 reg, u16 val)
 {
 	int ret;
 	unsigned char data[4] = {0};
-	u16 *wreg;
 	const u16 len = data_length + sizeof(u16); /* 16-bit address + data */
 
 	if (!client->adapter) {
@@ -373,17 +373,18 @@ mt9e013_write_reg(struct i2c_client *client, u16 data_length, u16 reg, u16 val)
 		v4l2_err(client, "%s error, invalid data_length\n", __func__);
 		return -EINVAL;
 	}
-
 	/* high byte goes out first */
-	wreg = (u16 *)data;
-	*wreg = cpu_to_be16(reg);
-
-	if (data_length == MT9E013_8BIT) {
-		data[2] = (u8)(val);
-	} else {
-		/* MT9E013_16BIT */
-		u16 *wdata = (u16 *)&data[2];
-		*wdata = be16_to_cpu(val);
+	*(u16 *)data = cpu_to_be16(reg);
+	switch (data_length) {
+	case MT9E013_8BIT:
+		data[2] = (u8)val;
+		break;
+	case MT9E013_16BIT:
+		*(u16 *)&data[2] = cpu_to_be16(val);
+		break;
+	default:
+		dev_err(&client->dev,
+			"write error: invalid length type %d\n", data_length);
 	}
 
 	ret = mt9e013_i2c_write(client, len, data);
@@ -391,6 +392,9 @@ mt9e013_write_reg(struct i2c_client *client, u16 data_length, u16 reg, u16 val)
 		dev_err(&client->dev,
 			"write error: wrote 0x%x to offset 0x%x error %d",
 			val, reg, ret);
+	dev_dbg(&client->dev,
+		"wrote 0x%x to offset 0x%x error %d",
+		val, reg, ret);
 
 	return ret;
 }
