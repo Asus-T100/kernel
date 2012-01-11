@@ -1674,9 +1674,20 @@ int __ref pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t state)
 	if (i == GFX_LSS_INDEX)
 		mid_pmu_cxt->display_off = (int)(state != PCI_D0);
 
-	/*Update the Camera status per ISP Driver Suspended/Resumed */
-	if (i == MFLD_ISP_POS)
+	/* Update the Camera status per ISP Driver Suspended/Resumed
+	 * ISP power islands are also updated accordingly, otherwise Dx state
+	 * in PMCSR refuses to change.
+	 */
+	if (i == MFLD_ISP_POS) {
+		status = pmu_nc_set_power_state(APM_ISP_ISLAND | APM_IPH_ISLAND,
+				(state != PCI_D0) ?
+					OSPM_ISLAND_DOWN : OSPM_ISLAND_UP,
+				APM_REG_TYPE);
+		if (status)
+			goto unlock;
+
 		mid_pmu_cxt->camera_off = (int)(state != PCI_D0);
+	}
 
 	if (pmu_num == PMU_NUM_2) {
 

@@ -4191,8 +4191,8 @@ int atomisp_restore_iunit_reg(struct atomisp_device *isp)
 	return 0;
 }
 
-/*Turn off ISP power island*/
-int atomisp_ospm_power_island_down(struct atomisp_device *isp)
+/*Turn off ISP dphy */
+int atomisp_ospm_dphy_down(struct atomisp_device *isp)
 {
 	u32 pwr_cnt = 0;
 	int timeout = 100;
@@ -4221,25 +4221,15 @@ done:
 	pwr_cnt = atomisp_msg_read32(isp, IUNITPHY_PORT, CSI_CONTROL);
 	pwr_cnt |= 0x300;
 	atomisp_msg_write32(isp, IUNITPHY_PORT, CSI_CONTROL, pwr_cnt);
-
-	/* Power down IPH/ISP */
-	if (pmu_nc_set_power_state(APM_ISP_ISLAND | APM_IPH_ISLAND,
-			       OSPM_ISLAND_DOWN, APM_REG_TYPE))
-		return -EINVAL;
-
 	isp->sw_contex.power_state = ATOM_ISP_POWER_DOWN;
+
 	return 0;
 }
 
-/*Turn on ISP power island*/
-int atomisp_ospm_power_island_up(struct atomisp_device *isp)
+/*Turn on ISP dphy */
+int atomisp_ospm_dphy_up(struct atomisp_device *isp)
 {
 	u32 pwr_cnt = 0;
-
-	/* Power up IPH/ISP */
-	if (pmu_nc_set_power_state(APM_ISP_ISLAND | APM_IPH_ISLAND,
-			       OSPM_ISLAND_UP, APM_REG_TYPE))
-		return -EINVAL;
 
 	/* power on DPHY */
 	pwr_cnt = atomisp_msg_read32(isp, IUNITPHY_PORT, CSI_CONTROL);
@@ -4247,6 +4237,7 @@ int atomisp_ospm_power_island_up(struct atomisp_device *isp)
 	atomisp_msg_write32(isp, IUNITPHY_PORT, CSI_CONTROL, pwr_cnt);
 
 	isp->sw_contex.power_state = ATOM_ISP_POWER_UP;
+
 	return 0;
 }
 

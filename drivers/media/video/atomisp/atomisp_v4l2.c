@@ -301,8 +301,8 @@ static int atomisp_runtime_suspend(struct device *dev)
 	/* save IUnit context */
 	atomisp_save_iunit_reg(isp);
 
-	/*Turn off the ISP power island*/
-	ret = atomisp_ospm_power_island_down(isp);
+	/*Turn off the ISP d-phy*/
+	ret = atomisp_ospm_dphy_down(isp);
 
 	return ret;
 }
@@ -314,8 +314,8 @@ static int atomisp_runtime_resume(struct device *dev)
 	int ret;
 
 	if (isp->sw_contex.power_state == ATOM_ISP_POWER_DOWN) {
-		/*Turn on ISP power island*/
-		ret = atomisp_ospm_power_island_up(isp);
+		/*Turn on ISP d-phy */
+		ret = atomisp_ospm_dphy_up(isp);
 		if (ret) {
 			v4l2_err(&atomisp_dev,
 				    "Failed to power up ISP!.\n");
@@ -353,8 +353,8 @@ static int atomisp_suspend(struct device *dev)
 	/* save IUnit context */
 	atomisp_save_iunit_reg(isp);
 
-	/*Turn off the ISP power island*/
-	ret = atomisp_ospm_power_island_down(isp);
+	/*Turn off the ISP d-phy */
+	ret = atomisp_ospm_dphy_down(isp);
 	if (ret)
 		v4l2_err(&atomisp_dev,
 			    "fail to power off ISP\n");
@@ -368,8 +368,8 @@ static int atomisp_resume(struct device *dev)
 		dev_get_drvdata(dev);
 	int ret;
 
-	/*Turn on ISP power island*/
-	ret = atomisp_ospm_power_island_up(isp);
+	/*Turn on ISP d-phy */
+	ret = atomisp_ospm_dphy_up(isp);
 	if (ret) {
 		v4l2_err(&atomisp_dev,
 			    "Failed to power up ISP!.\n");
