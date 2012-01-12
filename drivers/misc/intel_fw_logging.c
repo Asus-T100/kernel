@@ -58,6 +58,7 @@
 #define MAX_FID_REG_LEN			32
 #define MAX_NUM_LOGDWORDS		12
 #define FABERR_INDICATOR		0x15
+#define FWERR_INDICATOR			0x7
 #define FLAG_HILOW_MASK			8
 #define FAB_ID_MASK			7
 #define MAX_AGENT_IDX			15
@@ -280,6 +281,7 @@ static int create_fwerr_log(char *output_buf, void __iomem *oshob_ptr)
 	u32 id, faberr_dwords[MAX_NUM_LOGDWORDS] = {0};
 	int count, num_flag_status, num_err_logs;
 	int prev_id = FAB_ID_UNKNOWN, offset = 0;
+	char temp[100];
 
 	void __iomem *fabric_err_dump_offset = oshob_ptr + OSFAB_ERR_OFFSET;
 
@@ -291,9 +293,20 @@ static int create_fwerr_log(char *output_buf, void __iomem *oshob_ptr)
 	err_status_dw0.data = faberr_dwords[0];
 	err_log_dw10.data = faberr_dwords[10];
 
-	/* No fabric error if tenth DW signature field is not 10101 */
+	/* No SCU/fabric error if tenth DW signature field is not 10101 */
 	if (err_log_dw10.fields.signature != FABERR_INDICATOR)
 		return 0;
+
+	/* FW error if tenth DW reserved field is 111 */
+	if (err_log_dw10.fields.reserved1 == FWERR_INDICATOR) {
+		sprintf(output_buf, "SCU error summary:\n");
+		strcat(output_buf, "===================\n");
+		for (count = 0; count < MAX_NUM_LOGDWORDS; count++) {
+			sprintf(temp, "DW%d:%x\n", count, faberr_dwords[count]);
+			strcat(output_buf, temp);
+		}
+		return strlen(output_buf);
+	}
 
 	num_flag_status = err_status_dw0.fields.flag_status_cnt;
 	/* num_err_logs indicates num of error_log/addr pairs */
