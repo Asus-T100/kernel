@@ -130,7 +130,7 @@
 #define LM3554_PERCENT_TO_VALUE(p, step)     ((((p)-1) * 100) / (step))
 
 /* Flash brightness, input is percentage, output is [0..15] */
-#define LM3554_FLASH_STEP                    625
+#define LM3554_FLASH_STEP                    909
 #define LM3554_FLASH_DEFAULT_BRIGHTNESS \
 	LM3554_VALUE_TO_PERCENT(13, LM3554_FLASH_STEP)
 
