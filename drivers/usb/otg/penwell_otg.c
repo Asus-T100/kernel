@@ -235,6 +235,9 @@ static void _penwell_otg_update_chrg_cap(enum usb_charger_type charger,
 			/* SDP event: enter suspend state */
 			event = USBCHRG_EVENT_SUSPEND;
 			flag = 1;
+		} else if (mA == 0) {
+			event = USBCHRG_EVENT_DISCONN;
+			flag = 1;
 		} else
 			dev_dbg(pnw->dev, "SDP: no need to update EM\n");
 		break;
@@ -1005,7 +1008,7 @@ static int penwell_otg_charger_type_detect(void)
 }
 
 /* manual charger detection by ULPI access */
-static int penwell_otg_manual_charger_detection(void)
+static int penwell_otg_manual_chrg_det(void)
 {
 	struct penwell_otg		*pnw = the_transceiver;
 	struct intel_mid_otg_xceiv	*iotg;
@@ -1943,8 +1946,18 @@ static void penwell_otg_work(struct work_struct *work)
 			if (!is_clovertrail(pdev)) {
 				mutex_lock(&pnw->msic_mutex);
 				if (pdev->revision >= 0x8) {
-					retval =
-					penwell_otg_manual_charger_detection();
+					retval = penwell_otg_manual_chrg_det();
+					if (retval < 0) {
+						/* if failed, reset controller
+						 * and try charger detection
+						 * flow again */
+						dev_warn(pnw->dev,
+								"detection failed, retry");
+						set_client_mode();
+						msleep(100);
+						penwell_otg_phy_low_power(0);
+					retval = penwell_otg_manual_chrg_det();
+					}
 				} else {
 					/* Enable data contact detection */
 					penwell_otg_data_contact_detect();
@@ -3110,7 +3123,7 @@ show_hsm(struct device *_dev, struct device_attribute *attr, char *buf)
 
 	return PAGE_SIZE - size;
 }
-static DEVICE_ATTR(hsm, S_IRUGO, show_hsm, NULL);
+static DEVICE_ATTR(hsm, S_IRUGO | S_IWUSR | S_IWGRP, show_hsm, NULL);
 
 static ssize_t
 show_chargers(struct device *_dev, struct device_attribute *attr, char *buf)
@@ -3195,7 +3208,8 @@ set_a_bus_req(struct device *dev, struct device_attribute *attr,
 
 	return count;
 }
-static DEVICE_ATTR(a_bus_req, S_IRUGO | S_IWUGO, get_a_bus_req, set_a_bus_req);
+static DEVICE_ATTR(a_bus_req, S_IRUGO | S_IWUSR | S_IWGRP,
+				   get_a_bus_req, set_a_bus_req);
 
 static ssize_t
 get_a_bus_drop(struct device *dev, struct device_attribute *attr, char *buf)
@@ -3240,7 +3254,7 @@ set_a_bus_drop(struct device *dev, struct device_attribute *attr,
 
 	return count;
 }
-static DEVICE_ATTR(a_bus_drop, S_IRUGO | S_IWUGO,
+static DEVICE_ATTR(a_bus_drop, S_IRUGO | S_IWUSR | S_IWGRP,
 	get_a_bus_drop, set_a_bus_drop);
 
 static ssize_t
@@ -3300,7 +3314,8 @@ set_b_bus_req(struct device *dev, struct device_attribute *attr,
 
 	return count;
 }
-static DEVICE_ATTR(b_bus_req, S_IRUGO | S_IWUGO, get_b_bus_req, set_b_bus_req);
+static DEVICE_ATTR(b_bus_req, S_IRUGO | S_IWUSR | S_IWGRP,
+				   get_b_bus_req, set_b_bus_req);
 
 static ssize_t
 set_a_clr_err(struct device *dev, struct device_attribute *attr,
@@ -3325,7 +3340,7 @@ set_a_clr_err(struct device *dev, struct device_attribute *attr,
 
 	return count;
 }
-static DEVICE_ATTR(a_clr_err, S_IWUGO, NULL, set_a_clr_err);
+static DEVICE_ATTR(a_clr_err, S_IRUGO | S_IWUSR | S_IWGRP, NULL, set_a_clr_err);
 
 static struct attribute *inputs_attrs[] = {
 	&dev_attr_a_bus_req.attr,
