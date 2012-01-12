@@ -181,6 +181,8 @@ static void android_work(struct work_struct *data)
 		uevent_envp = configured;
 	else if (dev->connected != dev->sw_connected)
 		uevent_envp = dev->connected ? connected : disconnected;
+	else if (!cdev->config && dev->connected)
+		uevent_envp = connected;
 	dev->sw_connected = dev->connected;
 	spin_unlock_irqrestore(&cdev->lock, flags);
 
@@ -1029,6 +1031,14 @@ static ssize_t enable_store(struct device *pdev, struct device_attribute *attr,
 			if (f->disable)
 				f->disable(f);
 		}
+//mgross======
+//		usb_gadget_disconnect(cdev->gadget);
+//		usb_remove_config(cdev, &android_config_driver);
+//
+//		/* notify uplevel to correct status */
+//		schedule_work(&dev->work);
+//
+//>>>>>>> usb/android gadget: notify uplevel when function disabled via sysfs interface
 		dev->enabled = false;
 	} else if (!enabled && !dev->enabled) {
 		usb_gadget_disconnect(cdev->gadget);
