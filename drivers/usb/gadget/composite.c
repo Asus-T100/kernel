@@ -632,6 +632,10 @@ static int unbind_config(struct usb_composite_dev *cdev,
 		config->unbind(config);
 			/* may free memory for "c" */
 	}
+
+	/* reset cdev->next_string_id */
+	cdev->next_string_id = 0;
+
 	return 0;
 }
 
