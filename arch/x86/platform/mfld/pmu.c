@@ -1715,9 +1715,18 @@ int __ref pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t state)
 	 * get blocked, until pmu_sc_irq() releases */
 	down(&mid_pmu_cxt->scu_ready_sem);
 
-	/* dont proceed if shutdown in progress */
-	if (unlikely(mid_pmu_cxt->shutdown_started))
-		goto unlock;
+	/* There could be some drivers that don't handle
+	 * shutdown properly, that is even thou
+	 * device shtudown is called we still could
+	 * recieve set_power_state from buggy drivers
+	 */
+	if (unlikely(mid_pmu_cxt->shutdown_started)) {
+		printk(KERN_CRIT "%s: received after device shutdown from"
+		       " %04x %04X %s %20s:\n",
+		__func__, pdev->vendor, pdev->device, dev_name(&pdev->dev),
+			dev_driver_string(&pdev->dev));
+		BUG();
+	}
 
 	mid_pmu_cxt->interactive_cmd_sent = 1;
 
@@ -2772,9 +2781,6 @@ void mfld_power_off(void)
 	else
 		/*send S5 command to SCU*/
 		writel(S5_VALUE, &mid_pmu_cxt->pmu_reg->pm_cmd);
-
-	/* no more pm command expected. So not doing sem up */
-
 }
 
 static void mid_end(void)
