@@ -813,4 +813,13 @@ config INTEL_OAKTRAIL
 	  enable/disable the Camera, WiFi, BT etc. devices. If in doubt, say Y
 	  here; it will only load on supported platforms.
 
+config INTEL_MID_UMIP
+        tristate "umip driver config"
+        depends on INTEL_SCU_IPC
+        default y
+        help
+          This driver builds the UMIP Sysfs Iterface. We could read write the USB HOst enable timeout
+          values using these interfaces.
+
+
 endif # X86_PLATFORM_DEVICES
