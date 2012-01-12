@@ -386,6 +386,8 @@ struct mt9e013_device {
 	s16 number_of_steps;
 	struct mutex input_lock; /* serialize sensor's ioctl */
 	void *otp_data;
+	/* Older VCMs could not maintain the focus position in standby mode. */
+	bool keeps_focus_pos;
 };
 
 #define MT9E013_MAX_WRITE_BUF_SIZE	32
@@ -596,7 +598,7 @@ static const struct mt9e013_reg mt9e013_start_streaming[] = {
 
 #define GROUPED_PARAMETER_HOLD_DISABLE	{MT9E013_8BIT, {0x0104}, 0x0}
 
-#define INIT_VCM_CONTROL	{MT9E013_16BIT, {0x30F0}, 0x8004}  /* slew_rate[2:0] */
+#define INIT_VCM_CONTROL {MT9E013_16BIT, {0x30F0}, 0x800C} /* slew_rate[2:0] */
 static const struct mt9e013_reg mt9e013_init_vcm[] = {
 	INIT_VCM_CONTROL,				   /* VCM_CONTROL */
 	{MT9E013_16BIT, {0x30F2}, 0x0000}, /* VCM_NEW_CODE */

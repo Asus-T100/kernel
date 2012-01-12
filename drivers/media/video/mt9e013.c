@@ -41,13 +41,15 @@
 #include <linux/bitops.h>
 #include <media/v4l2-device.h>
 #include <media/v4l2-chip-ident.h>
+#include <asm/intel_scu_ipc.h>
 
 #include "mt9e013.h"
 
 #define to_mt9e013_sensor(sd) container_of(sd, struct mt9e013_device, sd)
 
 #define HOME_POS 255
-
+#define PR3_2_FW 0x0400
+#define PR3_3_FW 0x0500
 
 /* divides a by b using half up rounding and div/0 prevention
  * (result is 0 if b == 0) */
@@ -904,6 +906,8 @@ static int mt9e013_init_registers(struct v4l2_subdev *sd)
 static int __mt9e013_init(struct v4l2_subdev *sd, u32 val)
 {
 	int ret;
+	struct mt9e013_device *dev = to_mt9e013_sensor(sd);
+	u8 fw_rev[16];
 
 	/* set inital registers */
 	ret = mt9e013_init_registers(sd);
@@ -914,6 +918,25 @@ static int __mt9e013_init(struct v4l2_subdev *sd, u32 val)
 	/* restore settings */
 	mt9e013_res = mt9e013_res_preview;
 	N_RES = N_RES_PREVIEW;
+
+	/* The only way to detect whether this VCM maintains focus after putting
+	 * the sensor into standby mode is by looking at the SCU FW version.
+	 * PR3.3 or higher runs on FW version 05.00 or higher.
+	 * We cannot distinguish between PR3.2 and PR3.25, so we need to be
+	 * conservative. PR3.25 owners can change the comparison to compare
+	 * to PR3_2_FW instead of PR3_3_FW for testing purposes.
+	 */
+	dev->keeps_focus_pos = false;
+	ret |= intel_scu_ipc_command(IPCMSG_FW_REVISION, 0, NULL, 0,
+				       (u32 *)fw_rev, 4);
+	if (ret == 0) {
+		u16 fw_version = (fw_rev[15] << 8) | fw_rev[14];
+		dev->keeps_focus_pos = fw_version >= PR3_3_FW;
+	}
+	if (!dev->keeps_focus_pos) {
+		v4l2_warn(sd, "VCM does not maintain focus position in standby"
+			      "mode, using software workaround\n");
+	}
 
 	return ret;
 }
@@ -1701,8 +1724,7 @@ static int mt9e013_s_stream(struct v4l2_subdev *sd, int enable)
 
 	mutex_lock(&dev->input_lock);
 	if (enable) {
-		if (dev->sensor_revision <= 0x0) {
-			/* begin: vcm hack, needs to be removed when new camera module is availible */
+		if (!dev->keeps_focus_pos) {
 			struct mt9e013_reg mt9e013_stream_enable[] = {
 				mt9e013_streaming[0],
 				{MT9E013_16BIT, {0x30F2}, 0x0000}, /* VCM_NEW_CODE */
@@ -1716,8 +1738,6 @@ static int mt9e013_s_stream(struct v4l2_subdev *sd, int enable)
 			mt9e013_stream_enable[3].val = (MT9E013_MAX_FOCUS_POS - dev->focus);
 
 			ret = mt9e013_write_reg_array(client, mt9e013_stream_enable);
-
-			/* end: vcm hack, needs to be removed when new camera module is availible */
 		} else {
 			ret = mt9e013_write_reg_array(client, mt9e013_streaming);
 		}
