@@ -983,7 +983,7 @@ static int langwell_ep_dequeue(struct usb_ep *_ep, struct usb_request *_req)
 		langwell_ep_fifo_flush(&ep->ep);
 
 		/* not the last request in endpoint queue */
-		if (likely(ep->queue.next == &req->queue)) {
+		if (ep->queue.prev != &req->queue) {
 			struct langwell_dqh	*dqh;
 			struct langwell_request	*next_req;
 
@@ -992,7 +992,6 @@ static int langwell_ep_dequeue(struct usb_ep *_ep, struct usb_request *_req)
 					struct langwell_request, queue);
 
 			/* point the dQH to the first dTD of next request */
-			writel((u32) next_req->head, &dqh->dqh_current);
 		}
 	} else {
 		struct langwell_request	*prev_req;
@@ -1492,6 +1491,7 @@ static int langwell_udc_reset(struct langwell_udc *dev)
 	u32		usbcmd, usbmode, devlc, endpointlistaddr;
 	u8		devlc_byte0, devlc_byte2;
 	unsigned long	timeout;
+	unsigned long	sbuscfg_addr;
 
 	if (!dev)
 		return -EINVAL;
@@ -1536,6 +1536,10 @@ static int langwell_udc_reset(struct langwell_udc *dev)
 
 	/* Write-Clear setup status */
 	writel(0, &dev->op_regs->usbsts);
+
+	/* FIXME: workaround for bug9000364367 */
+	sbuscfg_addr = (unsigned long)dev->cap_regs + SBUSCFG_REG_OFFSET;
+	writel(0x7, sbuscfg_addr);
 
 	/* if support USB LPM, ACK all LPM token */
 	if (dev->lpm) {
@@ -1693,17 +1697,17 @@ static void stop_activity(struct langwell_udc *dev,
 	struct langwell_ep	*ep;
 	dev_dbg(&dev->pdev->dev, "---> %s()\n", __func__);
 
-	nuke(&dev->ep[0], -ESHUTDOWN);
-
-	list_for_each_entry(ep, &dev->gadget.ep_list, ep.ep_list) {
-		nuke(ep, -ESHUTDOWN);
-	}
-
 	/* report disconnect; the driver is already quiesced */
 	if (driver) {
 		spin_unlock(&dev->lock);
 		driver->disconnect(&dev->gadget);
 		spin_lock(&dev->lock);
+	}
+
+	nuke(&dev->ep[0], -ESHUTDOWN);
+
+	list_for_each_entry(ep, &dev->gadget.ep_list, ep.ep_list) {
+		nuke(ep, -ESHUTDOWN);
 	}
 
 	dev_dbg(&dev->pdev->dev, "<--- %s()\n", __func__);
@@ -2231,6 +2235,7 @@ static void test_mode_complete(struct usb_ep *ep, struct usb_request *_req)
 	case TEST_J:
 	case TEST_K:
 	case TEST_SE0_NAK:
+		langwell_vbus_draw(&dev->gadget, 0);
 	case TEST_PACKET:
 	case TEST_FORCE_EN:
 		portsc1 = readl(&dev->op_regs->portsc1);
@@ -2981,34 +2986,15 @@ static void handle_usb_reset(struct langwell_udc *dev)
 	/* write 1s to endptflush register to clear any primed buffers */
 	writel((u32) ~0, &dev->op_regs->endptflush);
 
-	if (readl(&dev->op_regs->portsc1) & PORTS_PR) {
-		dev_vdbg(&dev->pdev->dev, "USB bus reset\n");
-		/* bus is reseting */
-		dev->bus_reset = 1;
+	if (!(readl(&dev->op_regs->portsc1) & PORTS_PR))
+		dev_dbg(&dev->pdev->dev, "Intented to reset device controller?\n");
 
-		/* reset all the queues, stop all USB activities */
-		stop_activity(dev, dev->driver);
-		dev->usb_state = USB_STATE_DEFAULT;
-	} else {
-		dev_vdbg(&dev->pdev->dev, "device controller reset\n");
+	/* bus is reseting */
+	dev->bus_reset = 1;
 
-		/* add some delay between endpoint flush and controller reset */
-		udelay(200);
-
-		/* reset all the queues, stop all USB activities */
-		stop_activity(dev, dev->driver);
-
-		/* controller reset */
-		langwell_udc_reset(dev);
-
-		/* reset ep0 dQH and endptctrl */
-		ep0_reset(dev);
-
-		/* enable interrupt and set controller to run state */
-		langwell_udc_start(dev);
-
-		dev->usb_state = USB_STATE_ATTACHED;
-	}
+	/* reset all the queues, stop all USB activities */
+	stop_activity(dev, dev->driver);
+	dev->usb_state = USB_STATE_DEFAULT;
 
 	dev_vdbg(&dev->pdev->dev, "<--- %s()\n", __func__);
 }
@@ -3271,8 +3257,10 @@ static void langwell_udc_remove(struct pci_dev *pdev)
 	pm_runtime_get_noresume(&pdev->dev);
 
 	/* free dTD dma_pool and dQH */
-	if (dev->dtd_pool)
+	if (dev->dtd_pool) {
 		dma_pool_destroy(dev->dtd_pool);
+		dev->dtd_pool = NULL;
+	}
 
 	if (dev->ep_dqh)
 		dma_free_coherent(&pdev->dev, dev->ep_dqh_size,
@@ -3655,8 +3643,10 @@ static int langwell_udc_suspend(struct pci_dev *pdev, pm_message_t state)
 	pci_save_state(pdev);
 
 	/* free dTD dma_pool and dQH */
-	if (dev->dtd_pool)
+	if (dev->dtd_pool) {
 		dma_pool_destroy(dev->dtd_pool);
+		dev->dtd_pool = NULL;
+	}
 
 	if (dev->ep_dqh)
 		dma_free_coherent(&pdev->dev, dev->ep_dqh_size,

@@ -2442,6 +2442,18 @@ static int fsg_set_alt(struct usb_function *f, unsigned intf, unsigned alt)
 static void fsg_disable(struct usb_function *f)
 {
 	struct fsg_dev *fsg = fsg_from_func(f);
+	int    i;
+	struct fsg_buffhd *bh;
+
+	/* free all of pending request */
+	for (i = 0; i < FSG_NUM_BUFFERS; ++i) {
+		bh = &fsg->common->buffhds[i];
+		if (bh->inreq_busy)
+			usb_ep_dequeue(fsg->bulk_in, bh->inreq);
+		if (bh->outreq_busy)
+			usb_ep_dequeue(fsg->bulk_out, bh->outreq);
+	}
+
 	fsg->common->new_fsg = NULL;
 	raise_exception(fsg->common, FSG_STATE_CONFIG_CHANGE);
 }

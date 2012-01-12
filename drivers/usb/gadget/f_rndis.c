@@ -823,6 +823,7 @@ rndis_unbind(struct usb_configuration *c, struct usb_function *f)
 {
 	struct f_rndis		*rndis = func_to_rndis(f);
 
+	rndis_string_defs[0].id = 0;
 	rndis_deregister(rndis->config);
 	rndis_exit();
 

@@ -25,6 +25,8 @@
 #define	CAP_REG_OFFSET		0x0
 #define	OP_REG_OFFSET		0x28
 
+#define SBUSCFG_REG_OFFSET	0x290
+
 #define	DMA_ADDR_INVALID	(~(dma_addr_t)0)
 
 #define	DQH_ALIGNMENT		2048
