@@ -59,7 +59,6 @@ struct ms5607_data {
 
 	int enabled;
 	bool powered;
-	bool report_coeff;
 	int delay_ms;
 
 	unsigned int C[MS5607_COEFF_DATA_LEN]; /* calibration coefficients */
@@ -192,19 +191,6 @@ static void ms5607_report_values(struct ms5607_data *ms5607,
 	input_report_rel(ms5607->input_dev, REL_X, data[0]);
 	input_report_rel(ms5607->input_dev, REL_Y, data[1]);
 
-	if (ms5607->report_coeff) {
-		input_report_abs(ms5607->input_dev, ABS_HAT0X, ms5607->C[0]);
-		input_report_abs(ms5607->input_dev, ABS_HAT0Y, ms5607->C[1]);
-		input_report_abs(ms5607->input_dev, ABS_HAT1X, ms5607->C[2]);
-		input_report_abs(ms5607->input_dev, ABS_HAT1Y, ms5607->C[3]);
-		input_report_abs(ms5607->input_dev, ABS_HAT2X, ms5607->C[4]);
-		input_report_abs(ms5607->input_dev, ABS_HAT2Y, ms5607->C[5]);
-		input_report_abs(ms5607->input_dev, ABS_HAT3X, ms5607->C[6]);
-		input_report_abs(ms5607->input_dev, ABS_HAT3Y, ms5607->C[7]);
-
-		ms5607->report_coeff = false;
-	}
-
 	input_sync(ms5607->input_dev);
 }
 
@@ -261,18 +247,9 @@ static int ms5607_input_init(struct ms5607_data *ms5607)
 
 	set_bit(EV_ABS, ms5607->input_dev->evbit);
 	set_bit(EV_REL, ms5607->input_dev->evbit);
-	set_bit(ABS_MISC, ms5607->input_dev->absbit);
 
 	set_bit(REL_X, ms5607->input_dev->relbit);
 	set_bit(REL_Y, ms5607->input_dev->relbit);
-	input_set_abs_params(ms5607->input_dev, ABS_HAT0X, 0, 65535, 0, 0);
-	input_set_abs_params(ms5607->input_dev, ABS_HAT0Y, 0, 65535, 0, 0);
-	input_set_abs_params(ms5607->input_dev, ABS_HAT1X, 0, 65535, 0, 0);
-	input_set_abs_params(ms5607->input_dev, ABS_HAT1Y, 0, 65535, 0, 0);
-	input_set_abs_params(ms5607->input_dev, ABS_HAT2X, 0, 65535, 0, 0);
-	input_set_abs_params(ms5607->input_dev, ABS_HAT2Y, 0, 65535, 0, 0);
-	input_set_abs_params(ms5607->input_dev, ABS_HAT3X, 0, 65535, 0, 0);
-	input_set_abs_params(ms5607->input_dev, ABS_HAT3Y, 0, 65535, 0, 0);
 
 	err = input_register_device(ms5607->input_dev);
 	if (err) {
@@ -345,12 +322,7 @@ static ssize_t ms5607_enable_store(struct device *dev,
 		ms5607_disable(ms5607);
 
 	ms5607->enabled = val;
-	/*
-	 * We don't know if user space application has e.g. restarted. So
-	 * better to report coeff data again.
-	 */
 
-	ms5607->report_coeff = val;
 	mutex_unlock(&ms5607->lock);
 
 	return count;
@@ -362,9 +334,9 @@ static ssize_t ms5607_coeff_show(struct device *dev,
 	struct i2c_client *client = to_i2c_client(dev);
 	struct ms5607_data *ms5607 = i2c_get_clientdata(client);
 
-	return sprintf(buf, "C0: %d\nC1: %d\nC2: %d\nC3: %d\nC4: %d\nC5: %d\n"\
-			"C6: %d\nC7: %d\n", ms5607->C[0], ms5607->C[0],
-			ms5607->C[1], ms5607->C[2], ms5607->C[3], ms5607->C[4],
+	return sprintf(buf, "C0: %u\nC1: %u\nC2: %u\nC3: %u\nC4: %u\nC5: %u\n"
+			"C6: %u\nC7: %u\n", ms5607->C[0], ms5607->C[1],
+			ms5607->C[2], ms5607->C[3], ms5607->C[4],
 			ms5607->C[5], ms5607->C[6], ms5607->C[7]);
 }
 
