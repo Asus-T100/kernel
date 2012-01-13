@@ -2683,7 +2683,7 @@ static int msic_battery_probe(struct platform_device *pdev)
 	/* register interrupt */
 	retval = request_threaded_irq(mbi->irq, msic_battery_interrupt_handler,
 				      msic_battery_thread_handler,
-				      0, DRIVER_NAME, mbi);
+				      IRQF_NO_SUSPEND, DRIVER_NAME, mbi);
 	if (retval) {
 		dev_err(&pdev->dev, "%s(): cannot get IRQ\n", __func__);
 		goto requestirq_failed;
