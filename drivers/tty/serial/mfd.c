@@ -846,11 +846,11 @@ static irqreturn_t port_irq(int irq, void *dev_id)
 		return IRQ_NONE;
 
 	pm_runtime_get(up->dev);
-	spin_lock_irq(&up->port.lock);
+	spin_lock(&up->port.lock);
 	if (up->use_dma) {
 		lsr = serial_in_irq(up, UART_LSR);
 		check_modem_status(up);
-		spin_unlock_irq(&up->port.lock);
+		spin_unlock(&up->port.lock);
 
 		if (unlikely(lsr & (UART_LSR_BI | UART_LSR_PE |
 					UART_LSR_FE | UART_LSR_OE)))
@@ -864,7 +864,7 @@ static irqreturn_t port_irq(int irq, void *dev_id)
 
 	iir = serial_in_irq(up, UART_IIR);
 	if (iir & UART_IIR_NO_INT) {
-		spin_unlock_irq(&up->port.lock);
+		spin_unlock(&up->port.lock);
 		pm_runtime_put(up->dev);
 		return IRQ_NONE;
 	}
@@ -878,7 +878,7 @@ static irqreturn_t port_irq(int irq, void *dev_id)
 	if (lsr & UART_LSR_THRE)
 		transmit_chars(up);
 
-	spin_unlock_irq(&up->port.lock);
+	spin_unlock(&up->port.lock);
 	pm_runtime_put(up->dev);
 	return IRQ_HANDLED;
 }
