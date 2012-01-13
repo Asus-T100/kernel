@@ -2438,6 +2438,8 @@ static struct gpio_keys_button gpio_button[] = {
 	{KEY_CAMERA_FOCUS,	-1, 1, "camera_half",	EV_KEY, 0, 20},
 	{SW_KEYPAD_SLIDE,	-1, 1, "MagSw1",	EV_SW,  0, 20},
 	{SW_KEYPAD_SLIDE,	-1, 1, "MagSw2",	EV_SW,  0, 20},
+	{KEY_CAMERA,		-1, 1, "cam_capture",	EV_KEY, 0, 20},
+	{KEY_CAMERA_FOCUS,	-1, 1, "cam_focus",	EV_KEY, 0, 20},
 };
 
 static struct gpio_keys_platform_data mrst_gpio_keys = {
