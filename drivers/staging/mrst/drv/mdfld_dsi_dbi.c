@@ -79,7 +79,7 @@ int mdfld_dsi_dbi_update_area(struct mdfld_dsi_dbi_output * dbi_output,
 		DRM_ERROR("Cannot get PKG sender\n");
 		return -EINVAL;
 	}
-
+#if 1
 	/*set column*/
 	cmd = set_column_address;
 	param[0] = x1 >> 8;
@@ -92,7 +92,7 @@ int mdfld_dsi_dbi_update_area(struct mdfld_dsi_dbi_output * dbi_output,
 				 param,
 				 4,
 				 CMD_DATA_SRC_SYSTEM_MEM,
-				 MDFLD_DSI_QUEUE_PACKAGE);
+				 MDFLD_DSI_SEND_PACKAGE);
 	if(err) {
 		DRM_ERROR("DCS 0x%x sent failed\n", cmd);
 		goto err_out;
@@ -110,20 +110,58 @@ int mdfld_dsi_dbi_update_area(struct mdfld_dsi_dbi_output * dbi_output,
 				 param,
 				 4,
 				 CMD_DATA_SRC_SYSTEM_MEM,
-				 MDFLD_DSI_QUEUE_PACKAGE);
+				 MDFLD_DSI_SEND_PACKAGE);
 	if(err) {
 		DRM_ERROR("DCS 0x%x sent failed\n", cmd);
 		goto err_out;
 	}
+#else
+	u32 sc1_set_column_address[] = {0x0200002a, 0x0000001b};
+	mdfld_dsi_send_mcs_long_hs(sender, sc1_set_column_address, 2, 0);
 
+
+	u32 sc1_set_page_address[] = {0x0300002b, 0x000000bf};
+	mdfld_dsi_send_mcs_long_hs(sender, sc1_set_page_address, 2, 0);
+#endif
+
+	/* mdelay(100); */
+
+	/*err = mdfld_dsi_dbi_send_dcs(dbi_output, set_column_address, param,
+		4, CMD_DATA_SRC_SYSTEM_MEM);
+	if (err) {
+		DRM_ERROR("%s - sent write_mem_start faild\n", __func__);
+		goto err_out;
+	}
+	err = mdfld_dsi_dbi_cb_ready(dbi_output);
+
+	if (err)
+	{
+		printk(KERN_ALERT "[DISPLAY] Enter %s, Timeout waiting for"
+			"Command complete on pipe\n", __func__);
+		goto err_out;
+	}
+
+	err = mdfld_dsi_dbi_send_dcs(dbi_output, set_page_addr, param,
+		4, CMD_DATA_SRC_SYSTEM_MEM);
+	if(err) {
+		DRM_ERROR("%s - sent write_mem_start faild\n", __func__);
+		goto err_out;
+	}*/
+	/*err = mdfld_dsi_dbi_cb_ready(dbi_output);
+	if(err)
+	{
+		printk(KERN_ALERT "[DISPLAY] Enter %s, Timeout waiting for"
+			"Command complete on pipe\n", __func__);
+		goto err_out;
+	}*/
 	/*update screen*/
 	err = mdfld_dsi_send_dcs(sender,
 				 write_mem_start,
 				 NULL,
 				 0,
 				 CMD_DATA_SRC_PIPE,
-				 MDFLD_DSI_QUEUE_PACKAGE);
-	if(err) {
+				 MDFLD_DSI_SEND_PACKAGE);
+	if (err) {
 		DRM_ERROR("DCS 0x%x sent failed\n", cmd);
 		goto err_out;
         }
@@ -169,48 +207,113 @@ int mdfld_dsi_dbi_update_power(struct mdfld_dsi_dbi_output * dbi_output, int mod
 					 NULL,
 					 0,
 					 CMD_DATA_SRC_SYSTEM_MEM,
-					 MDFLD_DSI_QUEUE_PACKAGE);
+					 MDFLD_DSI_SEND_PACKAGE);
 		if(err) {
 			DRM_ERROR("DCS 0x%x sent failed\n", exit_sleep_mode);
 			goto power_err;
 		}
-
-		/*set display on*/
+		mdelay(120);
+		/*err = mdfld_dsi_dbi_send_dcs(dbi_output, exit_sleep_mode,
+			NULL, 0, CMD_DATA_SRC_SYSTEM_MEM);
+		if (err) {
+			DRM_ERROR("sent exit_sleep_mode faild\n");
+			goto power_err;
+		}
+		if (err)
+		{
+			printk(KERN_ALERT "[DISPLAY] Enter %s, Timeout waiting"
+				"for Command complete on pipe\n", __func__);
+			goto power_err;
+		}*/
+		/*set brightness max*/
+		param = 0xff;
 		err = mdfld_dsi_send_dcs(sender,
-					 set_display_on,
-					 NULL,
-					 0,
-					 CMD_DATA_SRC_SYSTEM_MEM,
-					 MDFLD_DSI_QUEUE_PACKAGE);
-		if(err) {
+				write_display_brightness,
+				&param,
+				1,
+				CMD_DATA_SRC_SYSTEM_MEM,
+				MDFLD_DSI_SEND_PACKAGE);
+		if (err) {
 			DRM_ERROR("DCS 0x%x sent failed\n", set_display_on);
 			goto power_err;
 		}
-
+		/*err = mdfld_dsi_dbi_cb_ready(dbi_output);
+		if (err)
+		{
+			printk(KERN_ALERT "[DISPLAY] Enter %s, Timeout waiting"
+				"for Command complete on pipe\n", __func__);
+			goto power_err;
+		}*/
+		/*set CABC mode*/
+		param = 0x03;
+		err = mdfld_dsi_send_dcs(sender,
+				write_ctrl_cabc,
+				&param,
+				1,
+				CMD_DATA_SRC_SYSTEM_MEM,
+				MDFLD_DSI_SEND_PACKAGE);
+		if (err) {
+			DRM_ERROR("%s - sent set_tear_on faild\n", __func__);
+			goto power_err;
+		}
+		/*err = mdfld_dsi_dbi_cb_ready(dbi_output);
+		if (err)
+		{
+			printk(KERN_ALERT "[DISPLAY] Enter %s, Timeout waiting"
+				"for Command complete on pipe\n", __func__);
+			goto power_err;
+		}*/
+		/*enable CABC, disable bl*/
+		param = 0x2c;
+		err = mdfld_dsi_send_dcs(sender,
+				write_ctrl_display,
+				&param,
+				1,
+				CMD_DATA_SRC_SYSTEM_MEM,
+				MDFLD_DSI_SEND_PACKAGE);
+		if (err) {
+			DRM_ERROR("%s - sent set_tear_on faild\n", __func__);
+			goto power_err;
+		}
+		/*err = mdfld_dsi_dbi_cb_ready(dbi_output);
+		if (err)
+		{
+			printk(KERN_ALERT "[DISPLAY] Enter %s, Timeout waiting"
+				"for Command complete on pipe\n", __func__);
+			goto power_err;
+		}*/
 		if (dev_priv->platform_rev_id != MDFLD_PNW_A0) {
 			/* set tear effect on */
+			param = 0x00;
 			err = mdfld_dsi_send_dcs(sender,
 						 set_tear_on,
 						 &param,
 						 1,
 						 CMD_DATA_SRC_SYSTEM_MEM,
-						 MDFLD_DSI_QUEUE_PACKAGE);
-			if(err) {
-				DRM_ERROR("DCS 0x%x sent failed\n", set_tear_on);
+						 MDFLD_DSI_SEND_PACKAGE);
+			if (err) {
+				DRM_ERROR("DCS 0x%x sent failed\n",
+						set_tear_on);
 				goto power_err;
 			}
 		}
 
+		/*set 2a*/
+		err = mdfld_dsi_dbi_update_area(dbi_output, 0, 0, 539, 959);
+		if (err) {
+			DRM_ERROR("update area failed\n");
+			goto power_err;
+		}
 		/**
 		 * FIXME: remove this later
 		 */
 		err = mdfld_dsi_send_dcs(sender,
-					 write_mem_start,
-					 NULL,
-					 0,
-					 CMD_DATA_SRC_PIPE,
-					 MDFLD_DSI_QUEUE_PACKAGE);
-		if(err) {
+				set_display_on,
+				NULL,
+				0,
+				CMD_DATA_SRC_SYSTEM_MEM,
+				MDFLD_DSI_SEND_PACKAGE);
+		if (err) {
 			DRM_ERROR("DCS 0x%x sent failed\n", set_display_on);
 			goto power_err;
 		}
@@ -218,37 +321,48 @@ int mdfld_dsi_dbi_update_power(struct mdfld_dsi_dbi_output * dbi_output, int mod
 		if (dev_priv->platform_rev_id != MDFLD_PNW_A0) {
 			/*set tear effect off */
 			err = mdfld_dsi_send_dcs(sender,
-						 set_tear_off,
-						 NULL,
-						 0,
-						 CMD_DATA_SRC_SYSTEM_MEM,
-						 MDFLD_DSI_QUEUE_PACKAGE);
-			if(err) {
+					set_tear_off,
+					NULL,
+					0,
+					CMD_DATA_SRC_SYSTEM_MEM,
+					MDFLD_DSI_SEND_PACKAGE);
+			if (err) {
 				DRM_ERROR("DCS 0x%x sent failed\n", set_tear_off);
 				goto power_err;
 			}
 		}
+		mdelay(100);
+		/*enable CABC, disable bl*/
+		param = 0x28;
+		err = mdfld_dsi_send_dcs(sender,
+				write_ctrl_display,
+				&param,
+				1,
+				CMD_DATA_SRC_SYSTEM_MEM,
+				MDFLD_DSI_SEND_PACKAGE);
 
 		/*set display off*/
 		err = mdfld_dsi_send_dcs(sender,
-					 set_display_off,
-					 NULL,
-					 0,
-					 CMD_DATA_SRC_SYSTEM_MEM,
-					 MDFLD_DSI_QUEUE_PACKAGE);
-		if(err) {
+				enter_sleep_mode,
+				NULL,
+				0,
+				CMD_DATA_SRC_SYSTEM_MEM,
+				MDFLD_DSI_QUEUE_PACKAGE);
+		if (err) {
 			DRM_ERROR("DCS 0x%x sent failed\n", set_display_off);
 			goto power_err;
 		}
 
-		/*enter sleep mode*/
+		mdelay(120);
+
+		/*set display off*/
 		err = mdfld_dsi_send_dcs(sender,
-					 enter_sleep_mode,
-					 NULL,
-					 0,
-					 CMD_DATA_SRC_SYSTEM_MEM,
-					 MDFLD_DSI_QUEUE_PACKAGE);
-		if(err) {
+				set_display_off,
+				NULL,
+				0,
+				CMD_DATA_SRC_SYSTEM_MEM,
+				MDFLD_DSI_SEND_PACKAGE);
+		if (err) {
 			DRM_ERROR("DCS 0x%x sent failed\n", enter_sleep_mode);
 			goto power_err;
 		}
@@ -283,7 +397,7 @@ int mdfld_dsi_dbi_send_dcs(struct mdfld_dsi_dbi_output * dbi_output,
 				 param,
 				 num,
 				 data_src,
-				 MDFLD_DSI_SEND_PACKAGE);
+				 MDFLD_DSI_QUEUE_PACKAGE);
 
 	return ret;
 }
@@ -549,29 +663,28 @@ void mdfld_dbi_update_panel (struct drm_device *dev, int pipe)
 		if (dev_priv->b_dsr_enable && dbi_output->dsr_fb_update_done)
 			dev_priv->dsr_fb_update &= ~damage_mask;
 
-		/*clean IN_DSR flag*/
-		dbi_output->mode_flags &= ~MODE_SETTING_IN_DSR;
-
 		dbi_output->dsr_idle_count = 0;
 	} else {
 		dbi_output->dsr_idle_count++;
 	}
 
 	/*try to enter DSR*/
-	if (dbi_outputs[0]->dsr_idle_count > 1
-	    && dbi_outputs[1]->dsr_idle_count > 1) {
+	if (dbi_outputs[0]->dsr_idle_count > 1) {
+		/* && dbi_outputs[1]->dsr_idle_count > 1) { */
 		for(i=0; i<dsr_info->dbi_output_num; i++) {
 			if (!mdfld_dbi_is_in_dsr(dev) && dbi_outputs[i] &&
-			   !(dbi_outputs[i]->mode_flags & MODE_SETTING_ON_GOING)) {
+					!(dbi_outputs[i]->mode_flags &
+						MODE_SETTING_ON_GOING)) {
 				mdfld_dsi_dbi_enter_dsr(dbi_outputs[i],
-					dbi_outputs[i]->channel_num ? 2 : 0);
+						dbi_outputs[i]->channel_num ?
+						2 : 0);
 			}
 		}
 	/*schedule rpm suspend after gfxrtdelay*/
 #ifdef CONFIG_GFX_RTPM
 		if(!dev_priv->rpm_enabled
 			|| !enter_dsr
-	//		|| (REG_READ(HDMIB_CONTROL) & HDMIB_PORT_EN)
+			/*|| (REG_READ(HDMIB_CONTROL) & HDMIB_PORT_EN) */
 			|| pm_schedule_suspend(&dev->pdev->dev, gfxrtdelay))
 			PSB_DEBUG_ENTRY("Runtime PM schedule suspend failed, rpm %d\n", dev_priv->rpm_enabled);
 #endif
@@ -684,17 +797,36 @@ void mdfld_dbi_dsr_exit(struct drm_device * dev)
 void mdfld_dsi_controller_dbi_init(struct mdfld_dsi_config * dsi_config, int pipe)
 {
 	struct drm_device * dev = dsi_config->dev;
-	u32 reg_offset = pipe ? MIPIC_REG_OFFSET : 0;
-	int lane_count = dsi_config->lane_count;
-	u32 val = 0;
+
+	struct mdfld_dsi_hw_registers *regs;
+	struct mdfld_dsi_hw_context *ctx;
+	uint32_t dpll = 0;
 
 	PSB_DEBUG_ENTRY("Init DBI interface on pipe %d...\n", pipe);
 
+	ctx = &dsi_config->dsi_hw_context;
+	regs = &dsi_config->regs;
+
+	REG_WRITE(regs->dpll_reg, dpll);
+	if (ctx->cck_div)
+		dpll = dpll | BIT11;
+	REG_WRITE(regs->dpll_reg, dpll);
+	udelay(2);
+	dpll = dpll | BIT12;
+	REG_WRITE(regs->dpll_reg, dpll);
+	udelay(2);
+	dpll = dpll | BIT13;
+	REG_WRITE(regs->dpll_reg, dpll);
+	dpll = dpll | BIT31;
+	REG_WRITE(regs->dpll_reg, dpll);
+	mdelay(20);
+
+	REG_WRITE(regs->fp_reg, 0x0);
+#if 0
 	/*un-ready device*/
 	REG_WRITE((MIPIA_DEVICE_READY_REG + reg_offset), 0x00000000);
 	
-	/*init dsi adapter before kicking off*/
-	REG_WRITE((MIPIA_CONTROL_REG + reg_offset), 0x00000018);
+	REG_WRITE(0x61190, 0x80810006);
 	
 	/*TODO: figure out how to setup these registers*/
 	REG_WRITE((MIPIA_DPHY_PARAM_REG + reg_offset), 0x150c3408);
@@ -728,6 +860,7 @@ void mdfld_dsi_controller_dbi_init(struct mdfld_dsi_config * dsi_config, int pip
 	REG_WRITE((MIPIA_EOT_DISABLE_REG + reg_offset), 0x00000000);
 	REG_WRITE((MIPIA_LP_BYTECLK_REG + reg_offset), 0x00000004);
 	REG_WRITE((MIPIA_DEVICE_READY_REG + reg_offset), 0x00000001);
+#endif
 }
 
 /*
@@ -770,7 +903,8 @@ struct mdfld_dsi_encoder *mdfld_dsi_dbi_init(struct drm_device *dev,
 
 	/*panel hard-reset*/
 	if (p_funcs->reset) {
-		ret = p_funcs->reset(dsi_config, pipe);
+		/* ret = p_funcs->reset(dsi_config, pipe); */
+		ret = p_funcs->reset(dsi_config, RESET_FROM_BOOT_UP);
 		if (ret) {
 			DRM_ERROR("Panel %d hard-reset failed\n", pipe);
 			return NULL;
@@ -805,15 +939,19 @@ struct mdfld_dsi_encoder *mdfld_dsi_dbi_init(struct drm_device *dev,
 				connector_status_disconnected;
 	}
 
+	/*init DSI controller*/
+	if (p_funcs->dsi_controller_init)
+		p_funcs->dsi_controller_init(dsi_config, pipe, 0);
+
 	if (dsi_connector->status == connector_status_connected) {
-		printk(KERN_ALERT "%s panel detected\n", __func__);
 		if (pipe == 0)
 			dev_priv->panel_desc |= DISPLAY_A;
 		if (pipe == 2)
 			dev_priv->panel_desc |= DISPLAY_C;
 	}
-	/*TODO: get panel info from DDB*/
+	/* mdfld_dsi_controller_dbi_init(dsi_config, pipe); */
 
+	/* TODO: get panel info from DDB */
 	dbi_output = kzalloc(sizeof(struct mdfld_dsi_dbi_output), GFP_KERNEL);
 	if(!dbi_output) {
 		DRM_ERROR("No memory\n");
@@ -862,10 +1000,10 @@ struct mdfld_dsi_encoder *mdfld_dsi_dbi_init(struct drm_device *dev,
 	}
 
 	dev_priv->dsr_fb_update = 0;
-	dev_priv->b_dsr_enable = false;
+	dev_priv->b_dsr_enable = true;
 	dev_priv->exit_idle = mdfld_dsi_dbi_exit_dsr;
 #if defined(CONFIG_MDFLD_DSI_DPU) || defined(CONFIG_MDFLD_DSI_DSR)
-	dev_priv->b_dsr_enable_config = false;
+	dev_priv->b_dsr_enable_config = true;
 #endif /*CONFIG_MDFLD_DSI_DSR*/
 
 	dbi_output->first_boot = true;

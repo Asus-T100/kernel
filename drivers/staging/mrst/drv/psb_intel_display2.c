@@ -663,8 +663,9 @@ void mdfld_disable_crtc (struct drm_device *dev, int pipe)
 	 */
 	if (pipe != 1 && ((get_panel_type(dev, pipe) == TMD_VID) ||
 		(get_panel_type(dev, pipe) == TMD_6X10_VID) ||
-		(get_panel_type(dev, pipe) == H8C7_VID)))
-
+		(get_panel_type(dev, pipe) == H8C7_VID) ||
+		/* SC1 setting */
+		(get_panel_type(dev, pipe) == AUO_SC1_VID)))
 		return;
 #endif
 #endif
@@ -773,7 +774,9 @@ static void mdfld_crtc_dpms(struct drm_crtc *crtc, int mode)
 	 */
 	if (pipe != 1 && ((get_panel_type(dev, pipe) == TMD_VID) ||
 		(get_panel_type(dev, pipe) == TMD_6X10_VID) ||
-		(get_panel_type(dev, pipe) == H8C7_VID))) {
+		(get_panel_type(dev, pipe) == H8C7_VID) ||
+		/* SC1 setting */
+		(get_panel_type(dev, pipe) == AUO_SC1_VID))) {
 			return;
 	}
 #endif
@@ -1498,7 +1501,9 @@ static int mdfld_crtc_mode_set(struct drm_crtc *crtc,
 	 */
 	if (pipe != 1 && ((get_panel_type(dev, pipe) == TMD_VID) ||
 		(get_panel_type(dev, pipe) == TMD_6X10_VID) ||
-		(get_panel_type(dev, pipe) == H8C7_VID))) {
+		(get_panel_type(dev, pipe) == H8C7_VID) ||
+		/* SC1 setting */
+		(get_panel_type(dev, pipe) == AUO_SC1_VID))) {
 		if (pipe == 0)
 			dsi_config = dev_priv->dsi_configs[0];
 		else if (pipe == 2)

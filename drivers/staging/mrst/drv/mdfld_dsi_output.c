@@ -985,7 +985,6 @@ int mdfld_dsi_panel_reset(struct mdfld_dsi_config *dsi_config, int reset_from)
 		PSB_DEBUG_ENTRY("try to reset panel before gpio required.!!!");
 	}
 
-fun_exit:
 	if (b_gpio_required[pipe])
 		PSB_DEBUG_ENTRY("panel reset successfull.");
 	return ret;

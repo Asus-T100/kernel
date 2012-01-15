@@ -70,6 +70,7 @@
 
 int drm_psb_debug;
 int drm_psb_enable_pr2_cabc = 1;
+int drm_psb_enable_sc1_cabc = 1;  /* [SC1] change paremeter name */
 /*EXPORT_SYMBOL(drm_psb_debug); */
 static int drm_psb_trap_pagefaults;
 
@@ -121,6 +122,8 @@ MODULE_PARM_DESC(udelay_divider, "divide the usec value of video udelay");
 
 module_param_named(debug, drm_psb_debug, int, 0600);
 module_param_named(psb_enable_pr2_cabc, drm_psb_enable_pr2_cabc, int, 0600);
+/* [SC1] change parameter name */
+module_param_named(psb_enable_sc1_cabc, drm_psb_enable_sc1_cabc, int, 0600);
 module_param_named(no_fb, drm_psb_no_fb, int, 0600);
 module_param_named(trap_pagefaults, drm_psb_trap_pagefaults, int, 0600);
 module_param_named(force_pipeb, drm_psb_force_pipeb, int, 0600);
@@ -1108,6 +1111,24 @@ bool mrst_get_vbt_data(struct drm_psb_private *dev_priv)
 		printk(KERN_ALERT
 		"[DISPLAY] %s:SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE Panel\n", __func__);
 #endif
+
+#ifdef CONFIG_SUPPORT_AUO_MIPI_SC1_DISPLAY
+		dev_priv->panel_id = AUO_SC1_VID;
+		PanelID = AUO_SC1_VID;
+		printk(KERN_ALERT"%s: AUO_SC1_VID Panel\n", __func__);
+#endif
+
+#ifdef CONFIG_SUPPORT_AUO_MIPI_SC1_COMMAND_MODE_DISPLAY
+		/*
+		   dev_priv->panel_id = TPO_CMD;
+		   PanelID = TPO_CMD;
+		   printk(KERN_ALERT"%s: 3TPO_CMD Panel\n", __func__);
+		 */
+		dev_priv->panel_id = AUO_SC1_CMD;
+		PanelID = AUO_SC1_CMD;
+		printk(KERN_ALERT"%s: 3AUO_SC1_CMD Panel\n", __func__);
+#endif
+
 	return true;
 }
 
@@ -3905,8 +3926,9 @@ static void __exit psb_exit(void)
 }
 
 #if defined(CONFIG_SUPPORT_TMD_MIPI_600X1024_DISPLAY) \
-	|| defined(CONFIG_SUPPORT_MIPI_H8C7_DISPLAY)
-
+	|| defined(CONFIG_SUPPORT_MIPI_H8C7_DISPLAY) \
+	|| defined(CONFIG_SUPPORT_AUO_MIPI_SC1_DISPLAY) \
+	|| defined(CONFIG_SUPPORT_AUO_MIPI_SC1_COMMAND_MODE_DISPLAY)
 module_init(psb_init);
 #else
 late_initcall(psb_init);

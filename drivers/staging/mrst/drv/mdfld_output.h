@@ -45,6 +45,8 @@
 #define PYR_PANEL_HEIGHT	95
 #define PANEL_4DOT3_WIDTH	53
 #define PANEL_4DOT3_HEIGHT	95
+#define AUO_PANEL_WIDTH		54
+#define AUO_PANEL_HEIGHT	96
 
 struct mdfld_dsi_config;
 

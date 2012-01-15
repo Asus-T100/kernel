@@ -838,7 +838,9 @@ static int mdfld_save_display_registers (struct drm_device *dev, int pipe)
 #ifndef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
 	if (pipe != 1 && ((get_panel_type(dev, pipe) == TMD_VID) ||
 		(get_panel_type(dev, pipe) == TMD_6X10_VID) ||
-		(get_panel_type(dev, pipe) == H8C7_VID)))
+		(get_panel_type(dev, pipe) == H8C7_VID) ||
+		/* SC1 setting */
+		(get_panel_type(dev, pipe) == AUO_SC1_VID)))
 		return 0;
 #endif
 #endif
@@ -1084,7 +1086,9 @@ static int mdfld_restore_display_registers(struct drm_device *dev, int pipe)
 #ifndef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
 	if (pipe != 1 && ((get_panel_type(dev, pipe) == TMD_VID) ||
 		(get_panel_type(dev, pipe) == TMD_6X10_VID) ||
-		(get_panel_type(dev, pipe) == H8C7_VID)))
+		(get_panel_type(dev, pipe) == H8C7_VID) ||
+		/* SC1 setting */
+		(get_panel_type(dev, pipe) == AUO_SC1_VID)))
 		return 0;
 #endif
 #endif
@@ -1526,6 +1530,8 @@ void ospm_resume_display(struct pci_dev *pdev)
 #ifdef OSPM_GFX_DPK
 		printk(KERN_ALERT "%s - IGNORING!!!!\n", __func__);
 #endif
+		printk(KERN_ALERT "[DISPLAY] Exit %s because hw on\n",
+				__func__);
 		return;
 	}
 
@@ -1728,7 +1734,10 @@ static void gfx_early_suspend(struct early_suspend *h)
 	if (IS_MDFLD(gpDrmDevice)) {
 		if ((dev_priv->panel_id == TMD_VID) ||
 			(dev_priv->panel_id == H8C7_VID) ||
-			(dev_priv->panel_id == TMD_6X10_VID)) {
+			(dev_priv->panel_id == TMD_6X10_VID) ||
+			(dev_priv->panel_id == AUO_SC1_VID) ||
+			/* SC1 setting */
+			(dev_priv->panel_id == AUO_SC1_CMD)) {
 #if defined(CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY) || defined(CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE)
 			if (dev_priv->encoder0 &&
 				(dev_priv->panel_desc & DISPLAY_A))
@@ -1799,7 +1808,10 @@ static void gfx_late_resume(struct early_suspend *h)
 		if (IS_MDFLD(gpDrmDevice)) {
 			if ((dev_priv->panel_id == TMD_VID) ||
 				(dev_priv->panel_id == H8C7_VID) ||
-				(dev_priv->panel_id == TMD_6X10_VID)) {
+				(dev_priv->panel_id == TMD_6X10_VID) ||
+				(dev_priv->panel_id == AUO_SC1_VID) ||
+				/* SC1 setting */
+				(dev_priv->panel_id == AUO_SC1_CMD)) {
 #if	defined(CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY) || defined(CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE)
 				if (dev_priv->encoder0 &&
 					(dev_priv->panel_desc & DISPLAY_A))
@@ -1878,7 +1890,6 @@ int ospm_power_suspend(struct pci_dev *pdev, pm_message_t state)
 #endif
 
         mutex_lock(&g_ospm_mutex);
-
         if (!gbSuspended) {
                 graphics_access_count = atomic_read(&g_graphics_access_count);
                 videoenc_access_count = atomic_read(&g_videoenc_access_count);
@@ -1890,7 +1901,6 @@ int ospm_power_suspend(struct pci_dev *pdev, pm_message_t state)
 			videodec_access_count ||
 			display_access_count)
                         ret = -EBUSY;
-
                 if (!ret) {
                         gbSuspendInProgress = true;
 

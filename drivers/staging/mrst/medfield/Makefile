@@ -193,6 +193,8 @@ gfx-y += $(DRMDRVDIR)/psb_bl.o \
 	  $(DRMDRVDIR)/mdfld_output.o \
 	  $(DRMDRVDIR)/tpo_cmd.o \
 	  $(DRMDRVDIR)/tpo_vid.o \
+          $(DRMDRVDIR)/auo_sc1_vid.o \
+          $(DRMDRVDIR)/auo_sc1_cmd.o \
 	  $(DRMDRVDIR)/tmd_vid.o \
 	  $(DRMDRVDIR)/tmd_6x10_vid.o \
 	  $(DRMDRVDIR)/h8c7_vid.o \

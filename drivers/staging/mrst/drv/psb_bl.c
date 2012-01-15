@@ -67,7 +67,6 @@ int psb_set_brightness(struct backlight_device *bd)
 		level = bd->props.brightness;
 	else
 		level = lastFailedBrightness;
-
     DRM_DEBUG_DRIVER("backlight level set to %d\n", level);
 	PSB_DEBUG_ENTRY( "[DISPLAY] %s: level is %d\n", __func__, level);  //DIV5-MM-DISPLAY-NC-LCM_INIT-00
 

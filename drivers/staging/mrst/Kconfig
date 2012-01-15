@@ -114,7 +114,7 @@ config GFX_RTPM
 config SUPPORT_TOSHIBA_MIPI_DISPLAY
 	bool "Support Toshiba TC358762 MIPI Bridge and Toshiba JBT6K84 Panel"
 	depends on DRM_MDFLD
-	default y
+	default n
 	help
 	  xxxxxx
 
@@ -153,4 +153,24 @@ config MDFD_VIDEO_ENCODE
 	help
 	  xxxxxx
 
+config SUPPORT_AUO_MIPI_SC1_DISPLAY
+	tristate "Support Enzo 540 x 960 MIPI interface Panel in video mode"
+	depends on DRM_MDFLD
+	default y
+	help
+	  Choose this option if
+	  you have a SC1 video
+	  mode MIPI panel, with
+	  540 x 960 resolution
+	  in portrait mode.
 
+config SUPPORT_AUO_MIPI_SC1_COMMAND_MODE_DISPLAY
+	tristate "Support Enzo 540 x 960 MIPI interface Panel in command mode"
+	depends on DRM_MDFLD
+	default n
+	help
+	  Choose this option if
+	  you have a SC1 command
+	  mode MIPI panel, with
+	  540 x 960 resolution
+	  in portrait mode.

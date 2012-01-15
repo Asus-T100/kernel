@@ -51,6 +51,7 @@ extern struct drm_device *gpDrmDevice;
 extern bool gbdispstatus;
 extern int drm_psb_debug;
 extern int drm_psb_enable_pr2_cabc ;
+extern int drm_psb_enable_sc1_cabc; /* SC1 setting */
 extern int gfxrtdelay;
 extern int drm_psb_te_timer_delay;
 
@@ -70,6 +71,8 @@ enum panel_type {
 	TMD_VID,
 	TMD_6X10_VID,
 	H8C7_VID,
+	AUO_SC1_VID,
+	AUO_SC1_CMD,
 	PYR_CMD,
 	PYR_VID,
 	TPO,

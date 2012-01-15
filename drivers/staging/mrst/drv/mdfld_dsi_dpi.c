@@ -1951,9 +1951,10 @@ void mdfld_dsi_dpi_prepare(struct drm_encoder *encoder)
 
 void mdfld_dsi_dpi_commit(struct drm_encoder *encoder)
 {
-	PSB_DEBUG_ENTRY("\n");
 	struct mdfld_dsi_encoder *dsi_encoder;
 	struct mdfld_dsi_dpi_output *dpi_output;
+
+	PSB_DEBUG_ENTRY("\n");
 
 	dsi_encoder = MDFLD_DSI_ENCODER(encoder);
 	dpi_output = MDFLD_DSI_DPI_OUTPUT(dsi_encoder);
