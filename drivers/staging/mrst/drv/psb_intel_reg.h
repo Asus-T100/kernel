@@ -714,6 +714,7 @@ struct dpst_guardband {
 #define MDFLD_PLL_LATCHEN	(1 << 28)
 #define MDFLD_PWR_GATE_EN	(1 << 30)
 #define MDFLD_P1_MASK		(0x1FF << 17)
+#define MDFLD_P1_SHIFT		(17)
 #define MRST_FPA0		0x0f040
 #define MRST_FPA1		0x0f044
 #define MDFLD_DPLL_DIV0		0x0f048

@@ -760,8 +760,11 @@ static void mdfld_crtc_dpms(struct drm_crtc *crtc, int mode)
 	u32 dspcntr = dev_priv->dspcntr;
 	u32 mipi_enable_reg = MIPIA_DEVICE_READY_REG;
 	u32 temp;
+	u32 mipi_port_ctrl = 0, mipi_dev_ready = 0;
 	bool enabled;
 	int timeout = 0;
+	struct mdfld_dsi_config *dsi_config = NULL;
+	struct mdfld_dsi_hw_registers *regs = NULL;
 
 	PSB_DEBUG_ENTRY("mode = %d, pipe = %d\n", mode, pipe);
 
@@ -973,7 +976,30 @@ static void mdfld_crtc_dpms(struct drm_crtc *crtc, int mode)
 		if (temp & DPLL_VCO_ENABLE) {
 			if (((pipe != 1) && !((REG_READ(PIPEACONF) | REG_READ(PIPECCONF)) & PIPEACONF_ENABLE))
 					|| (pipe == 1)){
+				/*
+				 * FIXME: better to move it into the MIPI
+				 * encoder DPMS off process.
+				 */
+				if (get_panel_type(dev, pipe) == AUO_SC1_CMD) {
+					dsi_config =
+						dev_priv->dsi_configs[pipe];
+					regs = &dsi_config->regs;
+					mipi_dev_ready =
+						REG_READ(regs->device_ready_reg)
+						& ~DSI_DEVICE_READY;
+					mipi_port_ctrl =
+						REG_READ(regs->mipi_reg)
+						& ~MIPI_PORT_EN;
+					REG_WRITE(regs->device_ready_reg,
+							mipi_dev_ready);
+					REG_WRITE(regs->mipi_reg,
+							mipi_port_ctrl);
+				}
+
 				temp &= ~(DPLL_VCO_ENABLE);
+				if (get_panel_type(dev, pipe) == AUO_SC1_CMD)
+					temp |= MDFLD_PWR_GATE_EN;
+
 				REG_WRITE(dpll_reg, temp);
 				REG_READ(dpll_reg);
 				/* Wait for the clocks to turn off. */
@@ -1457,7 +1483,6 @@ static int mdfld_crtc_mode_set(struct drm_crtc *crtc,
 {
 	struct drm_device *dev = crtc->dev;
 	struct psb_intel_crtc *psb_intel_crtc = to_psb_intel_crtc(crtc);
-	struct drm_framebuffer *fb = crtc->fb;
 	DRM_DRIVER_PRIVATE_T *dev_priv = dev->dev_private;
 	int pipe = psb_intel_crtc->pipe;
 	int fp_reg = MRST_FPA0;
@@ -1480,6 +1505,13 @@ static int mdfld_crtc_mode_set(struct drm_crtc *crtc,
 	struct mrst_clock_t clock;
 	bool ok;
 	u32 dpll = 0, fp = 0;
+	/* 400MHz DSI 2x Clock w/ 19.2MHz reference: M1 = 167, N1 = 1, P1 = 8 */
+	/* seed = 193 = 167 decimal multipler */
+	u32 fp_m1 = 0xc1;
+	/* Encoding for N1 = 1 */
+	u32 fp_n1 = 0x0;
+	/* One hot encoding for P1 = 8 */
+	u32 p1_post = 0x40;
 	bool is_crt = false, is_lvds = false, is_tv = false;
 	bool is_mipi = false, is_mipi2 = false, is_hdmi = false;
 	struct drm_mode_config *mode_config = &dev->mode_config;
@@ -1837,16 +1869,24 @@ static int mdfld_crtc_mode_set(struct drm_crtc *crtc,
 
 		dpll = 0x00800000;
 		fp = 0x000000c1;
-}
+	}
 
-	REG_WRITE(fp_reg, fp);
-	REG_WRITE(dpll_reg, dpll);
-	/* FIXME_MDFLD PO - change 500 to 1 after PO */
-	udelay(500);
+	if (get_panel_type(dev, pipe) == AUO_SC1_CMD) {
+		REG_WRITE(dpll_reg, 0x0);
+		REG_WRITE(fp_reg, fp_m1 | (fp_n1 << FP_N_DIV_SHIFT));
+		REG_WRITE(dpll_reg, p1_post << MDFLD_P1_SHIFT);
 
-	dpll |= DPLL_VCO_ENABLE;
-	REG_WRITE(dpll_reg, dpll);
-	REG_READ(dpll_reg);
+		REG_WRITE(dpll_reg, REG_READ(dpll_reg) | DPLL_VCO_ENABLE);
+	} else {
+		REG_WRITE(fp_reg, fp);
+		REG_WRITE(dpll_reg, dpll);
+		/* FIXME_MDFLD PO - change 500 to 1 after PO */
+		udelay(500);
+
+		dpll |= DPLL_VCO_ENABLE;
+		REG_WRITE(dpll_reg, dpll);
+		REG_READ(dpll_reg);
+	}
 
 	/* wait for DSI PLL to lock */
 	while ((timeout < 20000) && !(REG_READ(pipeconf_reg) & PIPECONF_DSIPLL_LOCK)) {

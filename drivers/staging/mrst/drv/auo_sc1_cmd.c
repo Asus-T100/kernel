@@ -42,28 +42,59 @@ mdfld_auo_dsi_controller_init(struct mdfld_dsi_config *dsi_config,
 {
 	struct mdfld_dsi_hw_context *hw_ctx =
 		&dsi_config->dsi_hw_context;
+	struct drm_device *dev = dsi_config->dev;
+	struct mdfld_dsi_hw_registers *regs = &dsi_config->regs;
 	int lane_count = dsi_config->lane_count;
 
 	PSB_DEBUG_ENTRY("%s: initializing dsi controller on pipe %d\n",
 			__func__, pipe);
 
-	hw_ctx->mipi_control = 0x18;
+	hw_ctx->mipi_control = 0x0;
 	hw_ctx->intr_en = 0xffffffff;
-	hw_ctx->hs_tx_timeout = 0x3ffff;
-	hw_ctx->lp_rx_timeout = 0xffff;
-	hw_ctx->turn_around_timeout = 0x10;
-	hw_ctx->device_reset_timer = 0xff;
+	hw_ctx->hs_tx_timeout = 0xffffff;
+	hw_ctx->lp_rx_timeout = 0xffffff;
+	hw_ctx->turn_around_timeout = 0x14;
+	hw_ctx->device_reset_timer = 0xffff;
 	hw_ctx->high_low_switch_count = 0x15;
 	hw_ctx->init_count = 0xf0;
 	hw_ctx->eot_disable = 0x2;
-	hw_ctx->lp_byteclk = 0x4;
+	hw_ctx->lp_byteclk = 0x0;
 	hw_ctx->clk_lane_switch_time_cnt = 0xa0014;
-	hw_ctx->dphy_param = 0x150a600f;
-	hw_ctx->dbi_bw_ctrl = 0x400;
-	hw_ctx->mipi = 0x10002;
+	hw_ctx->dphy_param = 0x150c3408;
+	hw_ctx->dbi_bw_ctrl = 0x820;
+	hw_ctx->mipi = 0x810000;
 
 	/*set up func_prg*/
 	hw_ctx->dsi_func_prg = (0xa000 | lane_count);
+
+	if (update) {
+		REG_WRITE(regs->mipi_reg, hw_ctx->mipi);
+
+		/* D-PHY parameter */
+		REG_WRITE(regs->dphy_param_reg, hw_ctx->dphy_param);
+
+		/* Configure DSI controller */
+		REG_WRITE(regs->mipi_control_reg, hw_ctx->mipi_control);
+		REG_WRITE(regs->intr_en_reg, hw_ctx->intr_en);
+		REG_WRITE(regs->hs_tx_timeout_reg, hw_ctx->hs_tx_timeout);
+		REG_WRITE(regs->lp_rx_timeout_reg, hw_ctx->lp_rx_timeout);
+		REG_WRITE(regs->turn_around_timeout_reg,
+				hw_ctx->turn_around_timeout);
+		REG_WRITE(regs->device_reset_timer_reg,
+				hw_ctx->device_reset_timer);
+		REG_WRITE(regs->high_low_switch_count_reg,
+				hw_ctx->high_low_switch_count);
+		REG_WRITE(regs->init_count_reg, hw_ctx->init_count);
+		REG_WRITE(regs->eot_disable_reg, hw_ctx->eot_disable);
+		REG_WRITE(regs->lp_byteclk_reg, hw_ctx->lp_byteclk);
+		REG_WRITE(regs->dbi_bw_ctrl_reg, hw_ctx->dbi_bw_ctrl);
+		REG_WRITE(regs->clk_lane_switch_time_cnt_reg,
+				hw_ctx->clk_lane_switch_time_cnt);
+		REG_WRITE(regs->dsi_func_prg_reg, hw_ctx->dsi_func_prg);
+
+		/* Enable DSI Controller */
+		REG_WRITE(regs->device_ready_reg, BIT0);
+	}
 }
 
 static struct drm_display_mode *auo_cmd_get_config_mode(struct drm_device* dev)
@@ -164,19 +195,9 @@ static int __mdfld_auo_dsi_power_on(struct mdfld_dsi_config *dsi_config)
 {
 	struct mdfld_dsi_pkg_sender *sender =
 		mdfld_dsi_get_pkg_sender(dsi_config);
-	u8 param[4];
-#if 0
-	u32 sc1_set_brightness_max[] = {0x0000ff51};
-	u32 sc1_select_CABC_mode[] = {0x00000355};
-	u32 sc1_enable_CABC_bl_on[] = {0x00002C53};
-	u32 sc1_enable_CABC_bl_off[] = {0x00002853};
-	u32 sc1_set_display_on[] = {0x00000029};
-	u32 sc1_set_display_off[] = {0x00000028};
-	u32 sc1_mcs_protect_on[] = {0x000003b0};
-	u32 sc1_mcs_protect_off[] = {0x000004b0};
-	u32 sc1_exit_sleep_mode[] = {0x00000011};
-	u32 sc1_set_te_on[] = {0x00000035};
-#endif
+	u8 cmd = 0;
+	u8 param = 0;
+	u8 param_set[4];
 	int err = 0;
 
 	PSB_DEBUG_ENTRY("Turn on video mode TMD panel...\n");
@@ -186,181 +207,154 @@ static int __mdfld_auo_dsi_power_on(struct mdfld_dsi_config *dsi_config)
 		return -EINVAL;
 	}
 
-	/* mdfld_dsi_send_gen_long_hs(sender, sc1_mcs_protect_off, 1, 0); */
-#if 1
-	param[0] = 0x00;
-	param[1] = 0x00;
-	param[2] = 0x00;
+	/* Send DCS commands. */
+	cmd = write_mem_start;
 	err = mdfld_dsi_send_dcs(sender,
-				 exit_sleep_mode,
-				 param,
-				 3,
-				 CMD_DATA_SRC_SYSTEM_MEM,
-				 MDFLD_DSI_SEND_PACKAGE);
-
+			cmd,
+			NULL,
+			0,
+			CMD_DATA_SRC_PIPE,
+			MDFLD_DSI_SEND_PACKAGE);
 	if (err) {
-		DRM_ERROR("DCS 0x%x sent failed\n", exit_sleep_mode);
-		goto power_err;
-	}
-
-	msleep(120);
-	/*param[0] = 0xff;
-	param[1] = 0x00;
-	param[2] = 0x00;
-	err = mdfld_dsi_send_dcs(sender,
-						 write_display_brightness,
-						 &param,
-						 3,
-						 CMD_DATA_SRC_SYSTEM_MEM,
-						 MDFLD_DSI_SEND_PACKAGE);
-	if (err) {
-		DRM_ERROR("%s - sent set_tear_on faild\n", __func__);
-		goto power_err;
-	}*/
-
-	param[0] = 0x03;
-	param[1] = 0x00;
-	param[2] = 0x00;
-	err = mdfld_dsi_send_dcs(sender,
-		 write_ctrl_cabc,
-		 param,
-		 3,
-		 CMD_DATA_SRC_SYSTEM_MEM,
-		 MDFLD_DSI_SEND_PACKAGE);
-	if (err) {
-		DRM_ERROR("%s - sent set_tear_on faild\n", __func__);
-		goto power_err;
-	}
-
-	param[0] = 0x28;
-	param[1] = 0x00;
-	param[2] = 0x00;
-	err = mdfld_dsi_send_dcs(sender,
-		 write_ctrl_display,
-		 param,
-		 3,
-		 CMD_DATA_SRC_SYSTEM_MEM,
-		 MDFLD_DSI_SEND_PACKAGE);
-	if (err) {
-		DRM_ERROR("%s - sent set_tear_on faild\n", __func__);
-		goto power_err;
-	}
-
-	param[0] = 0x00;
-	param[1] = 0x00;
-	param[2] = 0x00;
-	err = mdfld_dsi_send_dcs(sender,
-		 set_tear_on,
-		 param,
-		 3,
-		 CMD_DATA_SRC_SYSTEM_MEM,
-		 MDFLD_DSI_SEND_PACKAGE);
-	if (err) {
-		DRM_ERROR("DCS 0x%x sent failed\n", set_tear_on);
-		goto power_err;
-	}
-
-	/*
-	err = mdfld_dsi_dbi_update_area(dbi_output, 0, 0, 539, 959);
-	if(err) {
-		printk("update area failed\n");
-	}
-
-	err = mdfld_dsi_send_dcs(sender,
-				   write_mem_start,
-				   NULL,
-				   0,
-				   CMD_DATA_SRC_PIPE,
-				   MDFLD_DSI_SEND_PACKAGE);
-	if (err) {
-		DRM_ERROR("%s - sent write_mem_start faild\n", __func__);
-		goto power_err;
-	}
-	*/
-
-	param[0] = 0x00;
-	param[1] = 0x00;
-	param[2] = 0x00;
-	err = mdfld_dsi_send_dcs(sender,
-		 set_display_on,
-		 param,
-		 3,
-		 CMD_DATA_SRC_SYSTEM_MEM,
-		 MDFLD_DSI_SEND_PACKAGE);
-	if (err) {
-		DRM_ERROR("%s - sent set_display_on faild\n", __func__);
-		goto power_err;
-	}
-	msleep(21);
-
-	param[0] = 0x2c;
-	param[1] = 0x00;
-	param[2] = 0x00;
-	err = mdfld_dsi_send_dcs(sender,
-		 write_ctrl_display,
-		 param,
-		 3,
-		 CMD_DATA_SRC_SYSTEM_MEM,
-		 MDFLD_DSI_SEND_PACKAGE);
-	if (err) {
-		DRM_ERROR("%s - sent set_tear_on faild\n", __func__);
-		goto power_err;
-	}
-
-	/*err = mdfld_dsi_send_dcs(sender,
-				   write_mem_start,
-				   NULL,
-				   0,
-				   CMD_DATA_SRC_PIPE,
-				   MDFLD_DSI_SEND_PACKAGE);
-	if (err) {
-		DRM_ERROR("%s - sent write_mem_start faild\n", __func__);
-		goto power_err;
-	}*/
-power_err:
-	return err;
-#else
-
-	/* change power state */
-	mdfld_dsi_send_mcs_long_hs(sender, sc1_exit_sleep_mode, 1, 0);
-
-	msleep(120);
-
-	/* enable CABC with backlight off */
-	mdfld_dsi_send_mcs_long_hs(sender, sc1_set_brightness_max, 1, 0);
-	mdfld_dsi_send_mcs_long_hs(sender, sc1_select_CABC_mode, 1, 0);
-	mdfld_dsi_send_mcs_long_hs(sender, sc1_enable_CABC_bl_off, 1, 0);
-	mdfld_dsi_send_mcs_long_hs(sender, sc1_set_te_on, 1, 0);
-
-	err = mdfld_dsi_dbi_update_area(dbi_output, 0, 0, 539, 959);
-	if (err)
-		DRM_ERROR("update area failed\n");
-
-	/* set display on */
-	mdfld_dsi_send_mcs_long_hs(sender, sc1_set_display_on, 1, 0);
-
-	msleep(21);
-
-	/* enable BLON, CABC*/
-	mdfld_dsi_send_mcs_long_hs(sender, sc1_enable_CABC_bl_on, 1, 0);
-	/* mdfld_dsi_send_gen_long_hs(sender, sc1_mcs_protect_on, 1, 0); */
-
-	/* send TURN_ON packet */
-	/*err = mdfld_dsi_send_dpi_spk_pkg_hs(sender,
-				MDFLD_DSI_DPI_SPK_TURN_ON);
-	if (err) {
-		DRM_ERROR("Failed to send turn on packet\n");
+		DRM_ERROR("DCS 0x%x sent failed\n", cmd);
 		return err;
-	}*/
+	}
+
+	cmd = exit_sleep_mode;
+	err = mdfld_dsi_send_dcs(sender,
+			cmd,
+			NULL,
+			0,
+			CMD_DATA_SRC_SYSTEM_MEM,
+			MDFLD_DSI_SEND_PACKAGE);
+	if (err) {
+		DRM_ERROR("DCS 0x%x sent failed\n", cmd);
+		return err;
+	}
+
+	msleep(120);
+
+	cmd = write_display_brightness;
+	err = mdfld_dsi_send_mcs_short_hs(sender,
+			cmd,
+			(u8)0xff,
+			1,
+			MDFLD_DSI_SEND_PACKAGE);
+	if (err) {
+		DRM_ERROR("DCS 0x%x sent failed\n", cmd);
+		return err;
+	}
+
+	cmd = write_ctrl_cabc;
+	err = mdfld_dsi_send_mcs_short_hs(sender,
+			cmd,
+			MOVING_IMAGE,
+			1,
+			MDFLD_DSI_SEND_PACKAGE);
+	if (err) {
+		DRM_ERROR("DCS 0x%x sent failed\n", cmd);
+		return err;
+	}
+
+	cmd = write_ctrl_display;
+	err = mdfld_dsi_send_mcs_short_hs(sender,
+			cmd,
+			BRIGHT_CNTL_BLOCK_ON | DISPLAY_DIMMING_ON,
+			1,
+			MDFLD_DSI_SEND_PACKAGE);
+	if (err) {
+		DRM_ERROR("DCS 0x%x sent failed\n", cmd);
+		return err;
+	}
+
+	cmd = set_tear_on;
+	err = mdfld_dsi_send_dcs(sender,
+			cmd,
+			&param,
+			1,
+			CMD_DATA_SRC_SYSTEM_MEM,
+			MDFLD_DSI_SEND_PACKAGE);
+	if (err) {
+		DRM_ERROR("DCS 0x%x sent failed\n", cmd);
+		return err;
+	}
+
+	cmd = set_column_address;
+	param_set[0] = 0 >> 8;
+	param_set[1] = 0;
+	param_set[2] = 539 >> 8;
+	param_set[3] = (u8)539;
+	err = mdfld_dsi_send_dcs(sender,
+			cmd,
+			param_set,
+			4,
+			CMD_DATA_SRC_SYSTEM_MEM,
+			MDFLD_DSI_SEND_PACKAGE);
+	if (err) {
+		DRM_ERROR("DCS 0x%x sent failed\n", cmd);
+		return err;
+	}
+
+	cmd = set_page_addr;
+	param_set[0] = 0 >> 8;
+	param_set[1] = 0;
+	param_set[2] = 959 >> 8;
+	param_set[3] = (u8)959;
+	err = mdfld_dsi_send_dcs(sender,
+			cmd,
+			param_set,
+			4,
+			CMD_DATA_SRC_SYSTEM_MEM,
+			MDFLD_DSI_SEND_PACKAGE);
+	if (err) {
+		DRM_ERROR("DCS 0x%x sent failed\n", cmd);
+		return err;
+	}
+
+	cmd = write_mem_start;
+	err = mdfld_dsi_send_dcs(sender,
+			cmd,
+			NULL,
+			0,
+			CMD_DATA_SRC_PIPE,
+			MDFLD_DSI_SEND_PACKAGE);
+	if (err) {
+		DRM_ERROR("DCS 0x%x sent failed\n", cmd);
+		return err;
+	}
+
+	cmd = set_display_on;
+	err = mdfld_dsi_send_dcs(sender,
+			cmd,
+			NULL,
+			0,
+			CMD_DATA_SRC_SYSTEM_MEM,
+			MDFLD_DSI_SEND_PACKAGE);
+	if (err) {
+		DRM_ERROR("DCS 0x%x sent failed\n", cmd);
+		return err;
+	}
+
+	cmd = write_ctrl_display;
+	err = mdfld_dsi_send_mcs_short_hs(sender,
+			cmd,
+			BRIGHT_CNTL_BLOCK_ON | DISPLAY_DIMMING_ON |
+			BACKLIGHT_ON,
+			1,
+			MDFLD_DSI_SEND_PACKAGE);
+	if (err) {
+		DRM_ERROR("DCS 0x%x sent failed\n", cmd);
+		return err;
+	}
+
 	return err;
-#endif
 }
 
 static int __mdfld_auo_dsi_power_off(struct mdfld_dsi_config *dsi_config)
 {
 	struct mdfld_dsi_pkg_sender *sender =
 		mdfld_dsi_get_pkg_sender(dsi_config);
-	u8 param[4];
+	u8 cmd = 0;
 	int err = 0;
 
 	PSB_DEBUG_ENTRY("Turn off video mode TMD panel...\n");
@@ -370,55 +364,34 @@ static int __mdfld_auo_dsi_power_off(struct mdfld_dsi_config *dsi_config)
 		return -EINVAL;
 	}
 
-	/* turn off display */
-	param[0] = 0x00;
-	param[1] = 0x00;
-	param[2] = 0x00;
+	/*enter sleep mode*/
+	cmd = enter_sleep_mode;
 	err = mdfld_dsi_send_dcs(sender,
-		 set_display_off,
-		 param,
-		 3,
-		 CMD_DATA_SRC_SYSTEM_MEM,
-		 MDFLD_DSI_SEND_PACKAGE);
+			cmd,
+			NULL,
+			0,
+			CMD_DATA_SRC_SYSTEM_MEM,
+			MDFLD_DSI_SEND_PACKAGE);
 	if (err) {
-		DRM_ERROR("%s - sent set_display_off faild\n", __func__);
-		goto power_err;
-	}
-	mdelay(70);
-
-	/* disable BLCON, disable CABC */
-	param[0] = 0x28;
-	param[1] = 0x00;
-	param[2] = 0x00;
-	err = mdfld_dsi_send_dcs(sender,
-		 write_ctrl_display,
-		 param,
-		 3,
-		 CMD_DATA_SRC_SYSTEM_MEM,
-		 MDFLD_DSI_SEND_PACKAGE);
-	if (err) {
-		DRM_ERROR("%s - sent write_ctrl_display faild\n", __func__);
-		goto power_err;
+		DRM_ERROR("DCS 0x%x sent failed\n", cmd);
+		return err;
 	}
 
-	/* Enter sleep mode */
-	param[0] = 0x00;
-	param[1] = 0x00;
-	param[2] = 0x00;
-	err = mdfld_dsi_send_dcs(sender,
-				 enter_sleep_mode,
-				 param,
-				 3,
-				 CMD_DATA_SRC_SYSTEM_MEM,
-				 MDFLD_DSI_SEND_PACKAGE);
-
-	if (err) {
-		DRM_ERROR("DCS 0x%x sent failed\n", enter_sleep_mode);
-		goto power_err;
-	}
 	msleep(120);
 
-power_err:
+	/*set display off*/
+	cmd = set_display_off;
+	err = mdfld_dsi_send_dcs(sender,
+			cmd,
+			NULL,
+			0,
+			CMD_DATA_SRC_SYSTEM_MEM,
+			MDFLD_DSI_SEND_PACKAGE);
+	if (err) {
+		DRM_ERROR("DCS 0x%x sent failed\n", cmd);
+		return err;
+	}
+
 	return err;
 }
 
@@ -432,7 +405,6 @@ static int mdfld_auo_dsi_dbi_power_on(struct drm_encoder *encoder)
 	struct panel_funcs *p_funcs = dbi_output->p_funcs;
 	struct mdfld_dsi_hw_registers *regs = NULL;
 	struct mdfld_dsi_hw_context *ctx = NULL;
-	struct drm_device *dev = encoder->dev;
 	int err = 0;
 
 	if (!dsi_config)
@@ -445,40 +417,15 @@ static int mdfld_auo_dsi_dbi_power_on(struct drm_encoder *encoder)
 					OSPM_UHB_FORCE_POWER_ON))
 		return -EAGAIN;
 
-	/* HW-Reset */
-	if (p_funcs && p_funcs->reset)
-		p_funcs->reset(dsi_config, RESET_FROM_OSPM_RESUME);
-
-	/* D-PHY parameter */
-	REG_WRITE(regs->dphy_param_reg, ctx->dphy_param);
-
-	/* Configure DSI controller */
-	REG_WRITE(regs->mipi_control_reg, ctx->mipi);
-	REG_WRITE(regs->intr_en_reg, ctx->intr_en);
-	REG_WRITE(regs->hs_tx_timeout_reg, ctx->hs_tx_timeout);
-	REG_WRITE(regs->lp_rx_timeout_reg, ctx->lp_rx_timeout);
-	REG_WRITE(regs->turn_around_timeout_reg, ctx->turn_around_timeout);
-	REG_WRITE(regs->device_reset_timer_reg, ctx->device_reset_timer);
-	REG_WRITE(regs->high_low_switch_count_reg, ctx->high_low_switch_count);
-	REG_WRITE(regs->init_count_reg, ctx->init_count);
-	REG_WRITE(regs->eot_disable_reg, ctx->eot_disable);
-	REG_WRITE(regs->lp_byteclk_reg, ctx->lp_byteclk);
-	REG_WRITE(regs->clk_lane_switch_time_cnt_reg,
-			ctx->clk_lane_switch_time_cnt);
-	REG_WRITE(regs->dsi_func_prg_reg, ctx->dsi_func_prg);
-	REG_WRITE(regs->dbi_bw_ctrl_reg, ctx->dbi_bw_ctrl);
-
-	/* Enable DSI Controller */
-	REG_WRITE(regs->device_ready_reg, BIT0);
-
-	/* set low power output hold */
-	REG_WRITE(regs->mipi_reg, ctx->mipi);
 
 	/*
 	 * Different panel may have different ways to have
 	 * panel turned on. Support it!
 	 */
 	if (p_funcs && p_funcs->power_on) {
+		p_funcs->dsi_controller_init(dsi_config,
+				dsi_config->pipe, true);
+
 		if (p_funcs->power_on(dsi_config)) {
 			DRM_ERROR("Failed to power on panel\n");
 			err = -EAGAIN;
@@ -503,25 +450,19 @@ static int mdfld_auo_dsi_dbi_power_off(struct drm_encoder *encoder)
 	struct mdfld_dsi_config *dsi_config =
 		mdfld_dsi_encoder_get_config(dsi_encoder);
 	struct panel_funcs *p_funcs = dbi_output->p_funcs;
-	struct mdfld_dsi_hw_registers *regs;
 	struct mdfld_dsi_hw_context *ctx;
-	struct drm_device *dev;
 	int err = 0;
 
 	if (!dsi_config)
 		return -EINVAL;
 
-	regs = &dsi_config->regs;
 	ctx = &dsi_config->dsi_hw_context;
-	dev = dsi_config->dev;
 
 	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
 					OSPM_UHB_FORCE_POWER_ON))
 		return -EAGAIN;
 
 	ctx->lastbrightnesslevel = psb_brightness;
-	if (p_funcs->set_brightness(dsi_config, 0))
-		DRM_ERROR("Failed to set panel brightness\n");
 
 	/*
 	 * Different panel may have different ways to have
@@ -641,101 +582,20 @@ static void mdfld_auo_dsi_dbi_mode_set(struct drm_encoder *encoder,
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *)dev->dev_private;
 	struct mdfld_dsi_encoder *dsi_encoder = MDFLD_DSI_ENCODER(encoder);
-	struct mdfld_dsi_dbi_output *dsi_output =
-		MDFLD_DSI_DBI_OUTPUT(dsi_encoder);
 	struct mdfld_dsi_config *dsi_config =
 		mdfld_dsi_encoder_get_config(dsi_encoder);
 	struct mdfld_dsi_connector *dsi_connector = dsi_config->connector;
 	int pipe = dsi_connector->pipe;
-	struct mdfld_dsi_pkg_sender *sender =
-		mdfld_dsi_get_pkg_sender(dsi_config);
-	u8 param[8];
 	int err = 0;
-
-	/* values */
-	u32 h_active_area = mode->hdisplay;
-	u32 v_active_area = mode->vdisplay;
 
 	PSB_DEBUG_ENTRY("type %s\n", (pipe == 2) ? "MIPI2" : "MIPI");
 	PSB_DEBUG_ENTRY("h %d v %d\n", mode->hdisplay, mode->vdisplay);
-
-	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
-				OSPM_UHB_FORCE_POWER_ON)) {
-		DRM_ERROR("hw begin failed\n");
-		return;
-	}
-
-	/* 20ms delay before sending exit_sleep_mode */
-	msleep(20);
-
-	/*send exit_sleep_mode DCS*/
-	/*ret = mdfld_dsi_dbi_send_dcs(dsi_output, exit_sleep_mode, NULL, 0,
-		CMD_DATA_SRC_SYSTEM_MEM);
-	if(ret) {
-		DRM_ERROR("sent exit_sleep_mode faild\n");
-		goto out_err;
-	}
-
-	mdelay(120);*/
-	param[0] = 0x00;
-	param[1] = 0x00;
-	param[2] = 0x00;
-	err = mdfld_dsi_send_dcs(sender,
-				 exit_sleep_mode,
-				 param,
-				 3,
-				 CMD_DATA_SRC_SYSTEM_MEM,
-				 MDFLD_DSI_SEND_PACKAGE);
-
-	if (err) {
-		DRM_ERROR("DCS 0x%x sent failed\n", exit_sleep_mode);
-		goto out_err;
-	}
-	msleep(120);
-
-	param[0] = 0x00;
-	param[1] = 0x00;
-	param[2] = 0x00;
-	err = mdfld_dsi_send_dcs(sender,
-		 set_tear_on,
-		 param,
-		 3,
-		 CMD_DATA_SRC_SYSTEM_MEM,
-		 MDFLD_DSI_SEND_PACKAGE);
-	if (err) {
-		DRM_ERROR("DCS 0x%x sent failed\n", set_tear_on);
-		goto out_err;
-	}
-
-	/*
-	if (dev_priv->platform_rev_id != MDFLD_PNW_A0) {
-		send set_tear_on DCS*/
-		/*param = 0;
-		ret = mdfld_dsi_dbi_send_dcs(dsi_output, set_tear_on, &param, 1,
-			CMD_DATA_SRC_SYSTEM_MEM);
-
-		if(ret) {
-			DRM_ERROR("%s - sent set_tear_on faild\n", __func__);
-			goto out_err;
-		}
-	}
-	*/
 
 	/* TODO: this looks ugly, try to move it to CRTC mode setting */
 	if (pipe == 2)
 		dev_priv->pipeconf2 |= PIPEACONF_DSR;
 	else
 		dev_priv->pipeconf |= PIPEACONF_DSR;
-
-	err = mdfld_dsi_dbi_update_area(dsi_output, 0, 0, h_active_area - 1,
-			v_active_area - 1);
-	if (err) {
-		DRM_ERROR("update area failed\n");
-		goto out_err;
-	}
-
-out_err:
-	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 
 	if (err)
 		DRM_ERROR("mode set failed\n");
@@ -756,8 +616,7 @@ static void mdfld_auo_dsi_dbi_prepare(struct drm_encoder *encoder)
 	dbi_output->mode_flags |= MODE_SETTING_IN_ENCODER;
 	dbi_output->mode_flags &= ~MODE_SETTING_ENCODER_DONE;
 
-	/* mdfld_dsi_dbi_set_power(encoder, false); */
-	gbdispstatus = false;
+	mdfld_auo_dsi_dbi_set_power(encoder, false);
 }
 
 static void mdfld_auo_dsi_dbi_commit(struct drm_encoder *encoder)
@@ -775,14 +634,7 @@ static void mdfld_auo_dsi_dbi_commit(struct drm_encoder *encoder)
 
 	PSB_DEBUG_ENTRY("\n");
 
-	/* mdfld_dsi_dbi_exit_dsr (dev, MDFLD_DSR_2D_3D, 0, 0); [SC1] */
-
 	mdfld_auo_dsi_dbi_set_power(encoder, true);
-	/* [SC1] */
-	if (gbgfxsuspended)
-		gbgfxsuspended = false;
-
-	gbdispstatus = true;
 
 	dbi_output->mode_flags &= ~MODE_SETTING_IN_ENCODER;
 
@@ -865,8 +717,16 @@ void mdfld_auo_dsi_dbi_save(struct drm_encoder *encoder)
 
 void mdfld_auo_dsi_dbi_restore(struct drm_encoder *encoder)
 {
+	struct mdfld_dsi_encoder *dsi_encoder = NULL;
+	struct mdfld_dsi_config *dsi_config = NULL;
+
 	if (!encoder)
 		return;
+
+	dsi_encoder = MDFLD_DSI_ENCODER(encoder);
+	dsi_config = mdfld_dsi_encoder_get_config(dsi_encoder);
+
+	mdfld_auo_dsi_controller_init(dsi_config, dsi_config->pipe, true);
 
 	/*turn on*/
 	mdfld_auo_dsi_dbi_set_power(encoder, true);
@@ -930,9 +790,6 @@ static void auo_dsi_dbi_update_fb(struct mdfld_dsi_dbi_output *dbi_output,
 			   CMD_DATA_SRC_PIPE,
 			   MDFLD_DSI_SEND_PACKAGE);
 
-	mdfld_dsi_gen_fifo_ready(dev, GEN_FIFO_STAT_REG,
-			HS_CTRL_FIFO_EMPTY | HS_DATA_FIFO_EMPTY);
-	REG_WRITE(HS_GEN_CTRL_REG, (1 << WORD_COUNTS_POS) | GEN_READ_0);
 	dbi_output->dsr_fb_update_done = true;
 
 update_fb_out0:
@@ -954,12 +811,6 @@ static int auo_cmd_get_panel_info(struct drm_device *dev,
 static int mdfld_auo_dsi_cmd_detect(struct mdfld_dsi_config *dsi_config,
 		int pipe)
 {
-#ifndef CONFIG_DRM_DPMS
-	struct mdfld_dsi_hw_context *ctx = &dsi_config->dsi_hw_context;
-	struct drm_device *dev = dsi_config->dev;
-	struct mdfld_dsi_hw_registers *regs = &dsi_config->regs;
-	uint32_t dpll = 0;
-#endif
 	int status;
 
 	PSB_DEBUG_ENTRY("Detecting panel %d connection status....\n", pipe);
@@ -976,28 +827,6 @@ static int mdfld_auo_dsi_cmd_detect(struct mdfld_dsi_config *dsi_config,
 		dsi_config->dsi_hw_context.cck_div = 1;
 
 		status = MDFLD_DSI_PANEL_CONNECTED;
-#ifndef CONFIG_DRM_DPMS
-		if (ctx->pll_bypass_mode) {
-			REG_WRITE(regs->dpll_reg, dpll);
-			if (ctx->cck_div)
-				dpll = dpll | BIT11;
-
-			REG_WRITE(regs->dpll_reg, dpll);
-			udelay(2);
-
-			dpll = dpll | BIT12;
-			REG_WRITE(regs->dpll_reg, dpll);
-			udelay(2);
-
-			dpll = dpll | BIT13;
-			REG_WRITE(regs->dpll_reg, dpll);
-
-			dpll = dpll | BIT31;
-			REG_WRITE(regs->dpll_reg, dpll);
-
-			REG_WRITE(MRST_FPA0, 0);
-		}
-#endif
 	} else {
 		PSB_DEBUG_ENTRY("Only support single panel\n");
 		status = MDFLD_DSI_PANEL_DISCONNECTED;
@@ -1024,24 +853,6 @@ static int mdfld_auo_dsi_cmd_set_brightness(struct mdfld_dsi_config *dsi_config,
 
 	backlight_value = ((level * 0xff) / 100) & 0xff;
 
-	/*mdfld_dsi_send_mcs_short_hs(sender,
-				write_display_brightness,
-				(u8)backlight_value,
-				1,
-				MDFLD_DSI_SEND_PACKAGE);
-
-
-	if (level == 0)
-		backlight_value = 0;
-	else
-		backlight_value = dev_priv->mipi_ctrl_display;
-
-		mdfld_dsi_send_mcs_short_hs(sender,
-					write_ctrl_display,
-					(u8)backlight_value,
-					1,
-					MDFLD_DSI_SEND_PACKAGE);*/
-
 	param[0] = backlight_value;
 	param[1] = 0x00;
 	param[2] = 0x00;
@@ -1061,8 +872,6 @@ static int mdfld_auo_dsi_cmd_set_brightness(struct mdfld_dsi_config *dsi_config,
 static int mdfld_auo_dsi_panel_reset(struct mdfld_dsi_config *dsi_config,
 		int reset_from)
 {
-	struct mdfld_dsi_hw_registers *regs = &dsi_config->regs;
-	struct drm_device *dev = dsi_config->dev;
 	static bool b_gpio_required[PSB_NUM_PIPE] = {0};
 	int ret = 0;
 
@@ -1082,34 +891,20 @@ static int mdfld_auo_dsi_panel_reset(struct mdfld_dsi_config *dsi_config,
 		}
 
 		b_gpio_required[dsi_config->pipe] = true;
-
-		/*
-		 * for get date from panel side is not easy, so here use
-		 * display side setting to judge wheather panel have enabled or
-		 * not by FW
-		 */
-		if ((REG_READ(regs->dpll_reg) & BIT31) &&
-				(REG_READ(regs->pipeconf_reg) & BIT30) &&
-				(REG_READ(regs->mipi_reg) & BIT31)) {
-			PSB_DEBUG_ENTRY("FW has initialized the panel, skip"
-					"reset during boot up\n.");
-			psb_enable_vblank(dev, dsi_config->pipe);
-			goto fun_exit;
-		}
 	}
 
 	if (b_gpio_required[dsi_config->pipe]) {
 		gpio_direction_output(GPIO_MIPI_PANEL_RESET, 0);
 		gpio_set_value_cansleep(GPIO_MIPI_PANEL_RESET, 0);
 
-		/* reset low level width 11ms */
-		mdelay(11);
+		/* reset low level width 20ms */
+		msleep(20);
 
 		gpio_direction_output(GPIO_MIPI_PANEL_RESET, 1);
 		gpio_set_value_cansleep(GPIO_MIPI_PANEL_RESET, 1);
 
 		/* reset time 20ms */
-		mdelay(20);
+		msleep(20);
 	} else {
 		PSB_DEBUG_ENTRY("pr2 panel reset fail.!");
 	}
