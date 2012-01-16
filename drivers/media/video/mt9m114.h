@@ -276,7 +276,7 @@ struct mt9m114_control {
 	int (*tweak)(struct v4l2_subdev *sd, int value);
 };
 
-#define MT9M114_MAX_WRITE_BUF_SIZE	128
+#define MT9M114_MAX_WRITE_BUF_SIZE	32
 struct mt9m114_write_buffer {
 	u16 addr;
 	u8 data[MT9M114_MAX_WRITE_BUF_SIZE];

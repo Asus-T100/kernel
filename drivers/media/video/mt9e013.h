@@ -388,7 +388,7 @@ struct mt9e013_device {
 	void *otp_data;
 };
 
-#define MT9E013_MAX_WRITE_BUF_SIZE	128
+#define MT9E013_MAX_WRITE_BUF_SIZE	32
 struct mt9e013_write_buffer {
 	u16 addr;
 	u8 data[MT9E013_MAX_WRITE_BUF_SIZE];
