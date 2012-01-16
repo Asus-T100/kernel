@@ -902,3 +902,24 @@ static void __devinit quirk_usb_early_handoff(struct pci_dev *pdev)
 	pci_disable_device(pdev);
 }
 DECLARE_PCI_FIXUP_FINAL(PCI_ANY_ID, PCI_ANY_ID, quirk_usb_early_handoff);
+
+/**
+ * This quirk is a hardware workaround. On Intel Medfield platform,
+ * EHCI hardware update FRINDEX register before update completed
+ * QH's active flag. This behavior cause EHCI driver can't find the
+ * completed QH which need to handle.
+ *
+ * Let EHCI driver to roll back 160 uframes to check the completed QH.
+ */
+void quirk_usb_periodic_hw_bug_workaround(int *next_uframe, int periodic_size)
+{
+#ifdef CONFIG_USB_PENWELL_OTG
+#define ROLLBACK_UFRAME 160
+	if (*next_uframe < ROLLBACK_UFRAME)
+		*next_uframe = (periodic_size << 3)
+			- (ROLLBACK_UFRAME - *next_uframe);
+	else
+		*next_uframe -= ROLLBACK_UFRAME;
+#endif
+}
+EXPORT_SYMBOL_GPL(quirk_usb_periodic_hw_bug_workaround);
