@@ -751,16 +751,15 @@ ipcread_err:
 static bool is_charger_fault(void)
 {
 	uint8_t fault_reg, chrctrl_reg, stat, spwrsrcint_reg;
-	int retval = 0;
+	int chr_mode, retval = 0;
 	int adc_temp, adc_usb_volt, batt_volt;
 	struct platform_device *pdev = container_of(msic_dev,
 					struct platform_device, dev);
 	struct msic_power_module_info *mbi = platform_get_drvdata(pdev);
 
-	/* We report charger fault as false in case of IPC errors.
-	 * The handle_ipc_rw_status will take care of the IPC errors
-	 * In all other cases we go by status of SPWRSRCINT,CHRCTRL
-	 * and SSR1 register */
+	mutex_lock(&mbi->event_lock);
+	chr_mode = mbi->charging_mode;
+	mutex_unlock(&mbi->event_lock);
 
 	/* if charger is disconnected then report false */
 	retval = intel_scu_ipc_ioread8(MSIC_BATT_CHR_SPWRSRCINT_ADDR,
@@ -771,8 +770,15 @@ static bool is_charger_fault(void)
 		if (retval)
 			return false;
 	}
-	if (!(spwrsrcint_reg & MSIC_BATT_CHR_USBDET_MASK))
-		return false;
+
+	if (!(spwrsrcint_reg & MSIC_BATT_CHR_USBDET_MASK)) {
+		if (chr_mode != BATT_CHARGING_MODE_NONE) {
+			dev_err(msic_dev, "USBDET bit not set\n");
+			goto fault_detected;
+		} else {
+			return false;
+		}
+	}
 
 	retval = intel_scu_ipc_ioread8(MSIC_BATT_CHR_CHRCTRL_ADDR,
 			&chrctrl_reg);
@@ -782,7 +788,7 @@ static bool is_charger_fault(void)
 		if (retval)
 			return false;
 	}
-	/* if charger is disabled report false*/
+	/* if charger is disabled report false */
 	if (chrctrl_reg & CHRCNTL_CHRG_DISABLE)
 		return false;
 
@@ -800,27 +806,22 @@ static bool is_charger_fault(void)
 	if (stat == CHR_STATUS_BIT_PROGRESS ||
 		stat == CHR_STATUS_BIT_CYCLE_DONE)
 		return false;
-	else {
-		dev_info(msic_dev, "Charger fault occured\n");
-		if (!mdf_read_adc_regs(MSIC_ADC_USB_VOL_IDX,
-					&adc_usb_volt, mbi) &&
-				!mdf_read_adc_regs(MSIC_ADC_TEMP_IDX,
-					&adc_temp, mbi)) {
-			batt_volt = fg_chip_get_property(
-					POWER_SUPPLY_PROP_VOLTAGE_NOW);
-			if (batt_volt != -ENODEV && batt_volt != -EINVAL) {
-				dev_info(msic_dev, "Temp: %d, char_volt: %d, "
-						"batt_volt: %d\n", adc_temp,
-						adc_usb_volt, batt_volt/1000);
-			} else
-				dev_info(msic_dev, "Temp: %d, char_volt: %d\n",
-						adc_temp, adc_usb_volt);
-		}
 
-		dump_registers(MSIC_CHRG_REG_DUMP_EVENT);
+fault_detected:
+	dev_info(msic_dev, "Charger fault occured\n");
+	retval = mdf_read_adc_regs(MSIC_ADC_TEMP_IDX, &adc_temp, mbi);
+	if (retval >= 0)
+		dev_info(msic_dev, "[CHRG FLT] Temp:%d", adc_temp);
 
-		return true;
-	}
+	retval = mdf_read_adc_regs(MSIC_ADC_USB_VOL_IDX, &adc_usb_volt, mbi);
+	if (retval >= 0)
+		dev_info(msic_dev, "[CHRG FLT] char_volt:%d", adc_usb_volt);
+
+	batt_volt = fg_chip_get_property(POWER_SUPPLY_PROP_VOLTAGE_NOW);
+	if (batt_volt > 0)
+		dev_info(msic_dev, "[CHRG FLT] batt_volt:%d", batt_volt/1000);
+
+	return true;
 }
 
 /**
@@ -2492,7 +2493,8 @@ static int init_msic_regs(struct msic_power_module_info *mbi)
 		MSIC_BATT_CHR_WDTWRITE_ADDR, MSIC_BATT_CHR_CHRTTIME_ADDR,
 		MSIC_BATT_CHR_WDTWRITE_ADDR, MSIC_BATT_CHR_SPCHARGER_ADDR,
 		MSIC_BATT_CHR_WDTWRITE_ADDR, MSIC_BATT_CHR_CHRSTWDT_ADDR,
-		MSIC_BATT_CHR_WDTWRITE_ADDR, MSIC_BATT_CHR_CHRCTRL1_ADDR
+		MSIC_BATT_CHR_WDTWRITE_ADDR, MSIC_BATT_CHR_CHRCTRL1_ADDR,
+		MSIC_BATT_CHR_WDTWRITE_ADDR, MSIC_BATT_CHR_VBUSDET_ADDR,
 	};
 	static u8 data[] = {
 		WDTWRITE_UNLOCK_VALUE, CHR_PWRSRCLMT_SET_RANGE,
@@ -2502,12 +2504,13 @@ static int init_msic_regs(struct msic_power_module_info *mbi)
 		WDTWRITE_UNLOCK_VALUE,
 		(~CHR_SPCHRGER_LOWCHR_ENABLE & CHR_SPCHRGER_WEAKVIN_LVL1),
 		WDTWRITE_UNLOCK_VALUE, CHR_WDT_DISABLE,
-		WDTWRITE_UNLOCK_VALUE, MSIC_CHRG_EXTCHRDIS
+		WDTWRITE_UNLOCK_VALUE, MSIC_CHRG_EXTCHRDIS,
+		WDTWRITE_UNLOCK_VALUE, MSIC_BATT_CHR_VBUSDET_SET_MIN,
 	};
 
 	dump_registers(MSIC_CHRG_REG_DUMP_BOOT | MSIC_CHRG_REG_DUMP_EVENT);
 
-	return msic_chr_write_multi(mbi, address, data, 12);
+	return msic_chr_write_multi(mbi, address, data, 14);
 }
 
 /**
