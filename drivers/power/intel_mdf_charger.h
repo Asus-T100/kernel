@@ -475,7 +475,6 @@ struct msic_power_module_info {
 	struct wake_lock wakelock;
 	/* Handle for gpadc requests */
 	void *adc_handle;
-	int current_sense_enabled;
 	/* Lock for ADC reading */
 	struct mutex adc_val_lock;
 	/* interrupt masks*/

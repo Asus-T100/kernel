@@ -260,13 +260,8 @@ int intel_msic_is_current_sense_enabled(void)
 	struct platform_device *pdev = container_of(msic_dev,
 					struct platform_device, dev);
 	struct msic_power_module_info *mbi = platform_get_drvdata(pdev);
-	int val;
 
-	mutex_lock(&mbi->batt_lock);
-	val = mbi->current_sense_enabled;
-	mutex_unlock(&mbi->batt_lock);
-
-	return val;
+	return mbi->is_batt_valid;
 }
 EXPORT_SYMBOL(intel_msic_is_current_sense_enabled);
 
@@ -673,7 +668,7 @@ int intel_msic_get_battery_pack_temp(int *temp)
 	if (!power_supply_get_by_name(CHARGER_PS_NAME))
 		return -EAGAIN;
 
-	if (!mbi->current_sense_enabled)
+	if (!mbi->is_batt_valid)
 		return -ENODEV;
 
 	return mdf_read_adc_regs(MSIC_ADC_TEMP_IDX, temp, mbi);
@@ -2372,6 +2367,7 @@ static int __init sfi_table_populate(struct sfi_table_header *table)
 	sb = (struct sfi_table_simple *)table;
 	if (!sb) {
 		dev_warn(msic_dev, "SFI: Unable to map BATT signature\n");
+		mbi->is_batt_valid = false;
 		return -ENODEV;
 	}
 
@@ -2538,8 +2534,7 @@ static int init_msic_regs(struct msic_power_module_info *mbi)
  */
 static int msic_battery_probe(struct platform_device *pdev)
 {
-	int retval;
-	int read_temp, batt_id_res;
+	int retval, read_temp;
 	uint8_t data;
 	struct msic_power_module_info *mbi = NULL;
 
@@ -2602,26 +2597,8 @@ static int msic_battery_probe(struct platform_device *pdev)
 	if (mbi->adc_handle == NULL)
 		dev_err(&pdev->dev, "ADC allocation failed\n");
 
-	mdf_multi_read_adc_regs(mbi, HYSTR_SAMPLE_MAX, 2, MSIC_ADC_BATTID_IDX,
-				&batt_id_res, MSIC_ADC_TEMP_IDX, &read_temp);
-
-	/* When no battery is present and the board is operated from
-	 * a lab power supply, the battery thermistor is absent or
-	 * the BATTID is less than 24kOhm */
-	if ((read_temp == -ERANGE) || (batt_id_res <= ADC_BATTID_24KOHM)) {
-		if (read_temp == -ERANGE)
-			dev_warn(msic_dev, "Power Supply detected on PR2B\n");
-		else
-			dev_warn(msic_dev,
-				 "Power Supply detected on iCDKa/iCDKb\n");
-		mbi->current_sense_enabled = 0;
-	} else
-		mbi->current_sense_enabled = 1;
-
-	/* Invalid battery is reported when Populate
-	 *  data from SFI Table is failed*/
-	if (sfi_table_parse(SFI_SIG_OEM0, NULL, NULL, sfi_table_populate)
-	    || (!mbi->current_sense_enabled)) {
+	/* check for valid SFI table entry for OEM0 table */
+	if (sfi_table_parse(SFI_SIG_OEM0, NULL, NULL, sfi_table_populate)) {
 		sfi_table_invalid_batt(sfi_table);
 		mbi->is_batt_valid = false;
 	}
@@ -2718,6 +2695,8 @@ static int msic_battery_probe(struct platform_device *pdev)
 	 * mask the undesired MSIC interrupt in this case
 	 *
 	 */
+	mdf_multi_read_adc_regs(mbi, HYSTR_SAMPLE_MAX, 1,
+				MSIC_ADC_TEMP_IDX, &read_temp);
 
 	if (read_temp == -ERANGE) {
 		dev_warn(msic_dev,
