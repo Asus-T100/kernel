@@ -331,6 +331,7 @@ drm_do_get_edid(struct drm_connector *connector, struct i2c_adapter *adapter)
 	if (i == 4)
 		goto carp;
 
+	print_hex_dump_bytes(KERN_ERR, DUMP_PREFIX_NONE, block, EDID_LENGTH);
 	/* if there's no extensions, we're done */
 	if (block[0x7e] == 0)
 		return block;
@@ -346,6 +347,7 @@ drm_do_get_edid(struct drm_connector *connector, struct i2c_adapter *adapter)
 				  block + (valid_extensions + 1) * EDID_LENGTH,
 				  j, EDID_LENGTH))
 				goto out;
+			print_hex_dump_bytes(KERN_ERR, DUMP_PREFIX_NONE, block+j*EDID_LENGTH, EDID_LENGTH);
 			if (j < 2) {
 				if (drm_edid_block_valid(block + (valid_extensions + 1) * EDID_LENGTH)) {
 					valid_extensions++;
