@@ -625,6 +625,9 @@ static void mdfld_dsi_connector_dpms(struct drm_connector *connector, int mode)
 		panel_on2 = dev_priv->dbi_panel_on2;
 	}
 
+	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
+				OSPM_UHB_ONLY_IF_ON))
+		return ;
 	/*then check all display panels + monitors status*/
 	if(!panel_on && !panel_on2 && !(REG_READ(HDMIB_CONTROL) & HDMIB_PORT_EN)) {
 		/*request rpm idle*/
@@ -643,6 +646,7 @@ static void mdfld_dsi_connector_dpms(struct drm_connector *connector, int mode)
 	if(!dev_priv->rpm_enabled && !is_panel_vid_or_cmd(dev))
 		ospm_runtime_pm_allow(dev);
 #endif
+	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 #endif
 }
 

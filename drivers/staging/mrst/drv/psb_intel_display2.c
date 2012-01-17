@@ -335,6 +335,25 @@ void mdfld__intel_plane_set_alpha(int enable)
 	REG_WRITE(dspcntr_reg, dspcntr);
 }
 
+static void pfit_landscape(struct drm_device *dev,
+				int hsrc_sz, int vsrc_sz,
+				int hdst_sz, int vdst_sz)
+{
+	int hscale = 0, vscale = 0;
+
+	REG_WRITE(PFIT_CONTROL, PFIT_ENABLE | PFIT_PIPE_SELECT_B |
+					PFIT_SCALING_MODE_PROGRAM);
+
+        hscale = PFIT_FRACTIONAL_VALUE * (hsrc_sz + 1) / (hdst_sz + 1);
+        vscale = PFIT_FRACTIONAL_VALUE * (vsrc_sz + 1) / (vdst_sz + 1);
+
+        PSB_DEBUG_ENTRY("hscale = 0x%X, vscale = 0X%X\n", hscale, vscale);
+
+        REG_WRITE(PFIT_PGM_RATIOS,
+                hscale << PFIT_HORIZ_SCALE_SHIFT |
+                vscale << PFIT_VERT_SCALE_SHIFT);
+}
+
 static int mdfld_intel_set_scaling_property(struct drm_crtc *crtc, int x, int y, int pipe)
 {
 	struct drm_device *dev = crtc->dev;
@@ -409,48 +428,57 @@ static int mdfld_intel_set_scaling_property(struct drm_crtc *crtc, int x, int y,
 			break;
 
 		case DRM_MODE_SCALE_ASPECT:
-			if ((adjusted_mode->hdisplay - sprite_width) >=
-				(adjusted_mode->vdisplay -sprite_height)) {
-				src_image_hor = adjusted_mode->hdisplay *
-					sprite_height /adjusted_mode->vdisplay;
-				src_image_vert = sprite_height;
-				sprite_pos_x =
-					(adjusted_mode->hdisplay - sprite_width) *
-					sprite_height /adjusted_mode->vdisplay /2;
-				sprite_pos_y = 0;
-			} else {
-				src_image_hor = sprite_width;
-				src_image_vert = adjusted_mode->vdisplay *
-					sprite_width /
-					adjusted_mode->hdisplay;
-				sprite_pos_x = 0;
-				sprite_pos_y =
-					(adjusted_mode->vdisplay - sprite_height) *
-					sprite_width /adjusted_mode->hdisplay /2;
-			}
+			sprite_pos_x = 0;
+			sprite_pos_y = 0;
+			sprite_height = fb->height;
+			sprite_width = fb->width;
+			src_image_hor = fb->width;
+			src_image_vert = fb->height;
 
-			/* In case of rotation to landscape mode or hdmi timing
-			*  setting is less than framebuffer size, it scales to
-			*  hdmi display timing size automatically.
-			*/
-			if ((fb->width > fb->height) ||
-				(fb->width > adjusted_mode->hdisplay) ||
-				(fb->height > adjusted_mode->vdisplay)) {
-				sprite_pos_x = 0;
-				sprite_pos_y = 0;
-				sprite_height = fb->height;
-				sprite_width = fb->width;
-				src_image_hor = fb->width;
-				src_image_vert = fb->height;
-			}
-
+			/* Use panel fitting when the display does not match
+			 * with the framebuffer size */
 			if ((adjusted_mode->hdisplay != fb->width) ||
-					(adjusted_mode->vdisplay !=
-					 fb->height))
-				REG_WRITE(PFIT_CONTROL,
-						PFIT_ENABLE |
-						PFIT_PIPE_SELECT_B |
-						PFIT_SCALING_MODE_AUTO);
+			    (adjusted_mode->vdisplay != fb->height)) {
+				if (fb->width > fb->height) {
+					pr_debug("[hdmi]: Landscape mode...\n");
+					/* Landscape mode: program ratios is
+					 * used because 480p does not work with
+					 * auto */
+                                        if (adjusted_mode->vdisplay == 480)
+                                                pfit_landscape(dev,
+                                                        sprite_width,
+                                                        sprite_height,
+                                                        adjusted_mode->hdisplay,
+                                                        adjusted_mode->vdisplay);
+                                        else
+						REG_WRITE(PFIT_CONTROL,
+							PFIT_ENABLE |
+							PFIT_PIPE_SELECT_B |
+							PFIT_SCALING_MODE_AUTO);
+				} else {
+					/* Portrait mode */
+					pr_debug("[hdmi]: Portrait mode...\n");
+					if (adjusted_mode->vdisplay == 768 &&
+						adjusted_mode->hdisplay == 1024) {
+							src_image_hor = adjusted_mode->hdisplay *
+								fb->height /
+								adjusted_mode->vdisplay;
+							src_image_vert = fb->height;
+							sprite_pos_x = (src_image_hor - fb->width) / 2;
+							REG_WRITE(PFIT_CONTROL,
+								PFIT_ENABLE |
+								PFIT_PIPE_SELECT_B |
+								PFIT_SCALING_MODE_AUTO);
+					} else
+						REG_WRITE(PFIT_CONTROL,
+							PFIT_ENABLE |
+							PFIT_PIPE_SELECT_B |
+							PFIT_SCALING_MODE_PILLARBOX);
+				}
+			} else {
+				/* Disable panel fitting */
+				REG_WRITE(PFIT_CONTROL, 0);
+			}
 			break;
 
 		default:

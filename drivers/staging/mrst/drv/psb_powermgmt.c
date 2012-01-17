@@ -62,6 +62,15 @@ extern u32 DISP_PLANEB_STATUS;
 static bool gbSuspended = false;
 bool gbgfxsuspended = false;
 
+void acquire_ospm_lock(void)
+{
+	mutex_lock(&g_ospm_mutex);
+}
+
+void release_ospm_lock(void)
+{
+	mutex_unlock(&g_ospm_mutex);
+}
 /*
  * gfx_early_suspend
  *
@@ -70,7 +79,7 @@ static void gfx_early_suspend(struct early_suspend *h);
 static void gfx_late_resume(struct early_suspend *h);
 
 static struct early_suspend gfx_early_suspend_desc = {
-        .level = EARLY_SUSPEND_LEVEL_STOP_DRAWING,
+        .level = EARLY_SUSPEND_LEVEL_DISABLE_FB,
         .suspend = gfx_early_suspend,
         .resume = gfx_late_resume,
 };
@@ -1475,6 +1484,23 @@ void ospm_suspend_display(struct drm_device *dev)
 }
 
 /*
+ * is_hdmi_plugged_out
+ *
+ * Description: to check whether hdmi is plugged out in S3 suspend
+ *
+ */
+static bool is_hdmi_plugged_out(void)
+{
+	u8 data = 0;
+	intel_scu_ipc_ioread8(MSIC_HDMI_STATUS, &data);
+
+	if ((data & HPD_SIGNAL_STATUS)) {
+		return false;
+	} else {
+		return true;
+	}
+}
+/*
  * ospm_resume_display
  *
  * Description: Resume the display hardware restoring state and enabling
@@ -1532,15 +1558,24 @@ void ospm_resume_display(struct pci_dev *pdev)
 		 * Don't restore Display B registers during resuming, if HDMI
 		 * isn't turned on before suspending.
 		 */
-		if ((dev_priv->panel_desc & DISPLAY_B) &&
-				(dev_priv->saveHDMIB_CONTROL & HDMIB_PORT_EN)) {
+		if (dev_priv->panel_desc & DISPLAY_B) {
 			mdfld_restore_display_registers(dev, 1);
+			/*devices connect status will be changed
+			 when system suspend,re-detect once here*/
 #ifdef CONFIG_SND_INTELMID_HDMI_AUDIO
-			if (dev_priv->had_pvt_data && hdmi_state) {
-				if (!dev_priv->had_interface->resume(dev_priv->had_pvt_data)) {
-					uevent_string = "HDMI_AUDIO_PM_RESUMED=1";
-					psb_sysfs_uevent(dev_priv->dev, uevent_string);
+			if (!is_hdmi_plugged_out()) {
+				PSB_DEBUG_ENTRY("resume hdmi_state %d", hdmi_state);
+				if (dev_priv->had_pvt_data && hdmi_state) {
+					if (!dev_priv->had_interface->resume(dev_priv->had_pvt_data)) {
+						uevent_string = "HDMI_AUDIO_PM_RESUMED=1";
+						psb_sysfs_uevent(dev_priv->dev, uevent_string);
+					}
 				}
+			} else {
+				PSB_DEBUG_ENTRY("hdmi is unplugged: %d!\n", hdmi_state);
+				if (hdmi_state)
+					schedule_work(&dev_priv->hdmi_hotplug_wq);
+				msleep(100);
 			}
 #endif
 		}
@@ -1683,7 +1718,8 @@ static void gfx_early_suspend(struct early_suspend *h)
 
 	if( dev_priv->drm_psb_widi )
 		dev_priv->drm_psb_widi = 0;
-
+    if (dev_priv->pvr_screen_event_handler)
+        dev_priv->pvr_screen_event_handler(dev, 0);
 	/*Display off*/
 	if (IS_MDFLD(gpDrmDevice)) {
 		if ((dev_priv->panel_id == TMD_VID) ||
@@ -1755,7 +1791,6 @@ static void gfx_late_resume(struct early_suspend *h)
 		ospm_resume_display(gpDrmDevice->pdev);
 		psb_irq_preinstall_islands(gpDrmDevice, OSPM_DISPLAY_ISLAND);
 		psb_irq_postinstall_islands(gpDrmDevice, OSPM_DISPLAY_ISLAND);
-
 #endif
 		if (IS_MDFLD(gpDrmDevice)) {
 			if ((dev_priv->panel_id == TMD_VID) ||
@@ -1804,7 +1839,8 @@ static void gfx_late_resume(struct early_suspend *h)
 			else
 				PSB_WVDC32(dspcntr_val | DISPLAY_PLANE_ENABLE, DSPBCNTR);
 		}
-
+        if (dev_priv->pvr_screen_event_handler)
+            dev_priv->pvr_screen_event_handler(dev, 1);
 		gbdispstatus = true;
 
 		if (lastFailedBrightness > 0)
@@ -1945,7 +1981,7 @@ void ospm_power_island_up(int hw_islands)
 		If pmu_nc_set_power_state fails then accessing HW
 		reg would result in a crash - IERR/Fabric error.
 		*/
-
+#ifdef CONFIG_MDFD_GL3
 		if (IS_D0(gpDrmDevice)) {
 			/*
 			 * GL3 power island needs to be on for MSVDX working.
@@ -1956,7 +1992,7 @@ void ospm_power_island_up(int hw_islands)
 					!ospm_power_is_hw_on(OSPM_GL3_CACHE_ISLAND))
 				gfx_islands |= OSPM_GL3_CACHE_ISLAND;
 		}
-
+#endif
 		spin_lock_irqsave(&dev_priv->ospm_lock, flags);
 		if (pmu_nc_set_power_state(gfx_islands,
 					   OSPM_ISLAND_UP, APM_REG_TYPE))
@@ -2056,6 +2092,7 @@ void ospm_power_island_down(int hw_islands)
 #endif
 		spin_lock_irqsave(&dev_priv->ospm_lock, flags);
 		if (gfx_islands & OSPM_GL3_CACHE_ISLAND) {
+#ifdef CONFIG_MDFD_GL3
 			/*
 			Make sure both GFX & Video aren't
 			using GL3
@@ -2075,6 +2112,7 @@ void ospm_power_island_down(int hw_islands)
 				if (!gfx_islands)
 					goto out;
 			}
+#endif
 		}
 
 		/*
@@ -2158,7 +2196,6 @@ bool ospm_power_using_hw_begin(int hw_island, UHBUsage usage)
 			goto increase_count;
 		}
 	}
-
 	if (!b_atomic)
 		mutex_lock(&g_ospm_mutex);
 

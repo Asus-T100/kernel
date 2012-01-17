@@ -134,6 +134,12 @@
 
 #define PFIT_AUTO_RATIOS	0x61238
 
+#define PFIT_FRACTIONAL_VALUE                   (1<<12)
+#define PFIT_VERT_MSB_SHIFT                     28
+#define PFIT_HORIZ_MSB_SHIFT                    12
+#define PFIT_VERT_SCALE_SHIFT                   16
+#define PFIT_HORIZ_SCALE_SHIFT                  0
+
 
 #define DPLL_A		0x06014
 #define DPLL_B		0x06018

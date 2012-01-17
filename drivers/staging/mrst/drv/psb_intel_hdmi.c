@@ -28,6 +28,7 @@
 #include <drm/drm.h>
 #include <drm/drm_crtc.h>
 #include <drm/drm_edid.h>
+#include <drm/drm_mode.h>
 #include "psb_intel_drv.h"
 #include "psb_drv.h"
 #include "psb_irq.h"
@@ -142,7 +143,7 @@ char EDID_Toshiba_Regza[EDID_LENGTH + HDMI_CEA_EDID_BLOCK_SIZE] =
 	0x10, 0x3e, 0x96, 0x00, 0xc4, 0x8e, 0x21, 0x00, 0x00, 0x18, 0x00, 0x00, 0x00, 0xfc, 0x00, 0x54,
 	0x53, 0x42, 0x2d, 0x54, 0x56, 0x0a, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x00, 0x00, 0x00, 0xfd,
 	0x00, 0x17, 0x3d, 0x0f, 0x44, 0x0f, 0x00, 0x0a, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x01, 0x03,
-	0x02, 0x03, 0x20, 0x77, 0x4a, 0x90, 0x05, 0x04, 0x03, 0x07, 0x02, 0x06, 0x01, 0x20, 0x22, 0x23,
+	0x02, 0x03, 0x20, 0x77, 0x4a, 0x90, 0x05, 0x04, 0x03, 0x07, 0x02, 0x06, 0x01, 0x16, 0x15, 0x23,
 	0x09, 0x07, 0x07, 0x6c, 0x03, 0x0c, 0x00, 0x30, 0x00, 0x00, 0x1e, 0xc0, 0x2b, 0x2b, 0x33, 0x33,
 	0x01, 0x1d, 0x00, 0x72, 0x51, 0xd0, 0x1e, 0x20, 0x6e, 0x28, 0x55, 0x00, 0xc4, 0x8e, 0x21, 0x00,
 	0x00, 0x1e, 0x8c, 0x0a, 0xa0, 0x14, 0x51, 0xf0, 0x16, 0x00, 0x26, 0x7c, 0x43, 0x00, 0xc4, 0x8e,
@@ -160,6 +161,53 @@ static struct hdmi_edid_info mdfld_hdmi_edid[] = {
 	{ HDMI_EDID_INFO("TOSHIBA_32RV525RZ", EDID_Toshiba_32RV525RZ) },
 	{ HDMI_EDID_INFO("TOSHIBA_REGZA", EDID_Toshiba_Regza) },
 };
+
+mdfld_hdmi_timing_t mdfld_hdmi_video_mode_table[] = {
+	{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+	{2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+	{3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+	{4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+	{5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+	{6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+	{7, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+	{8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+	{9, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+	{10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+	{11, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+	{12, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+	{13, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+	{14, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+	{15, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+	/* 16 */
+	{16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+	{17, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+	{18, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+	{19, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+	{20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+	{21, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+	{22, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+	{23, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+	{24, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+	{25, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+	{26, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+	{27, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+	{28, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+	{29, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+	{30, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+	{31, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+	/* 1080p/24 */
+	{1920, 1080, 24, 74250, 2750, 1920, 2750, 2558, 2602, 1125, 1080, 1125, 1084, 1089},
+	/* 1080p/25 */
+	{1920, 1080, 25, 74250, 2640, 1920, 2640, 2448, 2492, 1125, 1080, 1125, 1084, 1089},
+	/* 1080p/30 */
+	{1920, 1080, 30, 74250, 2200, 1920, 2200, 2008, 2052, 1125, 1080, 1125, 1084, 1089},
+	{35, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+	{36, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+	{37, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+	{38, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+	{39, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+};
+
 /*
 *VIC for AVI InfoFrame Data Byte 4 and CEA Short Descriptors
 */
@@ -347,9 +395,13 @@ static int mdfld_hdmi_set_avi_infoframe(struct drm_device *dev,
 	u32 *p_vsif = (u32 *)&avi_if;
 
 	PSB_DEBUG_ENTRY("%s\n", __func__);
+
 	/*get edid infomation*/
-	cea_edid_block = (ce_edid_t *)(edid_block + EDID_BLOCK_SIZE);
-	base_edid_block = (baseedid_1_4_t *)edid_block;
+	if (connector && connector->edid_blob_ptr) {
+		edid_block = connector->edid_blob_ptr->data;
+		cea_edid_block = (ce_edid_t *)(edid_block + EDID_BLOCK_SIZE);
+		base_edid_block = (baseedid_1_4_t *)edid_block;
+	}
 
 	/*set header information*/
 	avi_if.avi_info.avi_if_header.type = HDMI_AVI_TYPE;
@@ -389,7 +441,8 @@ static int mdfld_hdmi_set_avi_infoframe(struct drm_device *dev,
 		picture_aspect_ratio = mdfld_hdmi_get_aspect_ratio(
 			mode->width_mm,	mode->height_mm);
 		PSB_DEBUG_ENTRY("PAR caculate by width_mm.\n");
-	} else if (base_edid_block->ucMaxHIS &&
+	} else if (base_edid_block &&
+			 base_edid_block->ucMaxHIS &&
 			 base_edid_block->ucMaxVIS) {
 		picture_aspect_ratio = mdfld_hdmi_get_aspect_ratio(
 			base_edid_block->ucMaxHIS,
@@ -534,6 +587,10 @@ static void mdfld_hdmi_mode_set(struct drm_encoder *encoder,
 
 	PSB_DEBUG_ENTRY("\n");
 
+	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
+				OSPM_UHB_FORCE_POWER_ON))
+		return ;
+
 	hdmi_phy_misc = REG_READ(HDMIPHYMISCCTL) & ~HDMI_PHY_POWER_DOWN;
 	REG_WRITE(HDMIPHYMISCCTL, hdmi_phy_misc);
 
@@ -604,6 +661,8 @@ static void mdfld_hdmi_mode_set(struct drm_encoder *encoder,
 		(*dev_priv->mdfld_had_event_callbacks)(event_type,
 				had_pvt_data);
 #endif
+	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+
 	return;
 }
 
@@ -715,6 +774,10 @@ static void mdfld_hdmi_dpms(struct drm_encoder *encoder, int mode)
 	PSB_DEBUG_ENTRY("%s\n", mode == DRM_MODE_DPMS_ON ?
 		"on" : "off");
 
+	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
+				OSPM_UHB_FORCE_POWER_ON))
+		return ;
+
 	hdmib = REG_READ(hdmi_priv->hdmib_reg) | HDMIB_PIPE_B_SELECT;
 
 	if (dev_priv->bDVIport) {
@@ -750,6 +813,8 @@ static void mdfld_hdmi_dpms(struct drm_encoder *encoder, int mode)
 				(HAD_EVENT_HOT_PLUG, dev_priv->had_pvt_data);
 	}
 	REG_READ(hdmi_priv->hdmib_reg);
+
+	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 }
 
 static void mdfld_hdmi_encoder_save(struct drm_encoder *encoder)
@@ -760,6 +825,10 @@ static void mdfld_hdmi_encoder_save(struct drm_encoder *encoder)
 	u32 temp;
 	PSB_DEBUG_ENTRY("\n");
 
+	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
+				OSPM_UHB_FORCE_POWER_ON))
+		return ;
+
 	/*Use Disable pipeB plane to turn off HDMI screen
 	 in early_suspend  */
 	temp = REG_READ(dspcntr_reg);
@@ -769,6 +838,8 @@ static void mdfld_hdmi_encoder_save(struct drm_encoder *encoder)
 		/* Flush the plane changes */
 		REG_WRITE(dspbase_reg, REG_READ(dspbase_reg));
 	}
+
+	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 }
 
 static void mdfld_hdmi_encoder_restore(struct drm_encoder *encoder)
@@ -782,6 +853,10 @@ static void mdfld_hdmi_encoder_restore(struct drm_encoder *encoder)
 	struct mid_intel_hdmi_priv *hdmi_priv = output->dev_priv;
 	u32 temp;
 	PSB_DEBUG_ENTRY("\n");
+
+	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
+				OSPM_UHB_FORCE_POWER_ON))
+		return ;
 
 	/*Restore pipe B plane to turn on HDMI screen
 	in late_resume*/
@@ -800,6 +875,8 @@ static void mdfld_hdmi_encoder_restore(struct drm_encoder *encoder)
 		REG_WRITE(VIDEO_DIP_CTL, 0x0);
 		REG_WRITE(AUDIO_DIP_CTL, 0x0);
 	}
+
+	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 }
 
 
@@ -810,7 +887,13 @@ static void mdfld_hdmi_connector_save(struct drm_connector *connector)
 	struct mid_intel_hdmi_priv *hdmi_priv = output->dev_priv;
 
 	PSB_DEBUG_ENTRY("\n");
+	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
+				OSPM_UHB_FORCE_POWER_ON))
+		return ;
+
 	hdmi_priv->save_HDMIB = REG_READ(hdmi_priv->hdmib_reg);
+
+	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 }
 
 static void mdfld_hdmi_connector_restore(struct drm_connector *connector)
@@ -820,8 +903,15 @@ static void mdfld_hdmi_connector_restore(struct drm_connector *connector)
 	struct mid_intel_hdmi_priv *hdmi_priv = output->dev_priv;
 
 	PSB_DEBUG_ENTRY("\n");
+
+	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
+				OSPM_UHB_FORCE_POWER_ON))
+		return ;
+
 	REG_WRITE(hdmi_priv->hdmib_reg, hdmi_priv->save_HDMIB);
 	REG_READ(hdmi_priv->hdmib_reg);
+
+	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 }
 
 /* HDMI DIP related stuff */
@@ -1244,6 +1334,7 @@ mdfld_hdmi_edid_detect(struct drm_connector *connector)
 		}
 
 		if (i == monitor_number) {
+#if HDMI_COMPLIANCE_TEST
 			if (!((IS_MDFLD_OLD(dev)) &&
 				(dev_priv->platform_rev_id < MDFLD_PNW_C0))) {
 				PSB_DEBUG_ENTRY(
@@ -1251,7 +1342,9 @@ mdfld_hdmi_edid_detect(struct drm_connector *connector)
 				/*EDID_Samsung_2493HM*/
 				edid =
 				 (struct edid *)mdfld_hdmi_edid[1].edid_info;
-			} else {
+			} else
+#endif
+			{
 				PSB_DEBUG_ENTRY(
 					"hard code fix to HDMI!\n");
 				/*Use Toshiba Regza HDMI EDID as default data.*/
@@ -1364,8 +1457,9 @@ static enum drm_connector_status mdfld_hdmi_detect(struct drm_connector
 		}
 
 	} else {
-		DRM_DEBUG("%s: HPD disconnected data = 0x%x.\n", __func__,
+		PSB_DEBUG_ENTRY("%s: HPD disconnected data = 0x%x.\n", __func__,
 				data);
+		connect_status = connector_status_disconnected;
 
 		if (dev_priv->panel_desc & DISPLAY_B) {
 			hdmi_unplug_prepare(dev_priv);
@@ -1378,7 +1472,6 @@ static enum drm_connector_status mdfld_hdmi_detect(struct drm_connector
 			 */
 			drm_helper_disable_unused_functions(dev);
 		}
-		connect_status = connector_status_disconnected;
 
 	}
 	} /* IS_MDFLD_OLD(dev) code */
@@ -1416,8 +1509,8 @@ static int mdfld_hdmi_set_property(struct drm_connector *connector,
 
 	if (!strcmp(property->name, "scaling mode") && pEncoder) {
 		struct psb_intel_crtc *pPsbCrtc = to_psb_intel_crtc(pEncoder->crtc);
-		bool bTransitionFromToCentered;
-		bool bTransitionFromToAspect;
+		bool bTransitionFromToCentered = false;
+		bool bTransitionFromToAspect = false;
 		uint64_t curValue;
 
 		if (!pPsbCrtc)
@@ -1447,7 +1540,7 @@ static int mdfld_hdmi_set_property(struct drm_connector *connector,
 
 		bTransitionFromToCentered = (curValue == DRM_MODE_SCALE_NO_SCALE) ||
 			(value == DRM_MODE_SCALE_NO_SCALE) || (curValue == DRM_MODE_SCALE_CENTER) || (value == DRM_MODE_SCALE_CENTER);
-		bTransitionFromToCentered = (curValue == DRM_MODE_SCALE_ASPECT) ||
+		bTransitionFromToAspect = (curValue == DRM_MODE_SCALE_ASPECT) ||
 			(value == DRM_MODE_SCALE_ASPECT);
 
 		if (pPsbCrtc->saved_mode.hdisplay != 0 &&
@@ -1503,6 +1596,116 @@ static int mdfld_hdmi_get_hardcoded_edid_modes(struct drm_connector *connector)
 	return ret;
 }
 
+int mdfld_add_eedid_video_block_modes(struct drm_connector *connector, struct edid *edid)
+{
+    struct drm_device *dev = connector->dev;
+    int i, j, modes = 0;
+    char *edid_ext = NULL;
+    u32 quirks = 0;
+    struct detailed_timing *timing;
+    extention_block_cea_t eb;
+    unsigned char *c = eb.data;
+    int vic;
+    mdfld_hdmi_timing_t *p_video_mode;
+    struct detailed_timing * vblock_timings;
+    struct drm_display_mode *mode;
+    int block_type, payload_size;
+    int start_offset, end_offset;
+
+    if (edid->version == 1 && edid->revision < 3)
+        return 0;
+    if (!edid->extensions)
+        return 0;
+
+    /* Find CEA extension */
+    for (i = 0; i < edid->extensions; i++) {
+        edid_ext = (char *)edid + EDID_LENGTH * (i + 1);
+
+        /* Extended EDID BLOCK */
+        if (edid_ext[0] == 0x02) {
+            memset(&eb, 0, sizeof(extention_block_cea_t));
+
+            if (edid_ext != NULL)
+                memcpy(&eb, edid_ext, sizeof(extention_block_cea_t));
+
+            printk("CEA tag = %X, revision = %X, content_offset = %X, flags = %X\n", eb.tag, eb.revision, eb.content_offset, eb.flags);
+
+            /*
+             * Short descriptors section exists when:
+             * - offset is not 4
+             * - CEA extension version is 3
+             */
+            if ((eb.content_offset != 4) && (eb.revision >= 3)) {
+
+                c = eb.data;
+                /* All area before detailed descriptors should be filled
+                 * TODO: Shall we change this to safer check?
+                 */
+                while (c < ((unsigned char *)&eb + eb.content_offset)) {
+                    block_type = (*c & 0xE0) >> 5;
+                    payload_size = *c & 0x1F;
+
+                    printk("block_type: %d, payload_size: %d\n", block_type, payload_size);
+                    /* Simple block types */
+                    switch (block_type) {
+                        case 0:
+                            break;
+                        case 1:
+                            break;
+                        case 2:
+                            for (j = 1; j < payload_size+1; j++) {
+                                vic = *(c + j) & 0x7F;
+
+                                printk("vic: %d\n", vic);
+                                if (vic == 34 || vic == 32 || vic == 33) {
+                                    p_video_mode = &mdfld_hdmi_video_mode_table[vic - 1];
+
+                                    mode = drm_mode_create(dev);
+                                    if (!mode)
+                                        return NULL;
+
+                                    mode->type = DRM_MODE_TYPE_DRIVER;
+
+                                    mode->vrefresh = p_video_mode->refresh;
+                                    mode->clock = p_video_mode->dclk;
+
+                                    mode->hdisplay = p_video_mode->width;
+                                    mode->hsync_start = p_video_mode->hsync_start;
+                                    mode->hsync_end = p_video_mode->hsync_end;
+                                    mode->htotal = p_video_mode->htotal;
+
+                                    mode->vdisplay = p_video_mode->height;
+                                    mode->vsync_start = p_video_mode->vsync_start;
+                                    mode->vsync_end = p_video_mode->vsync_end;
+                                    mode->vtotal = p_video_mode->vtotal;
+
+                                    mode->flags = 0;
+
+                                    drm_mode_set_name(mode);
+
+                                    mode->width_mm = 1600;
+                                    mode->height_mm = 900;
+
+                                    printk("VIDEO TIMING. hdisplay = %d, vdisplay = %d.\n",
+                                            mode->hdisplay, mode->vdisplay);
+
+                                    drm_mode_probed_add(connector, mode);
+                                    modes++;
+                                }
+                            }
+                            break;
+                        default:
+                            break;
+                    }
+                    c += (*c & 0x1F) + 1;
+                } /* end of while */
+            }
+        }
+    } /* end of for loop */
+
+    return modes;
+}
+
 static int mdfld_hdmi_get_modes(struct drm_connector *connector)
 {
 	struct psb_intel_output *psb_intel_output = to_psb_intel_output(connector);
@@ -1541,6 +1744,7 @@ static int mdfld_hdmi_get_modes(struct drm_connector *connector)
 
 	if (edid) {
 		ret = drm_add_edid_modes(&psb_intel_output->base, edid);
+		ret += mdfld_add_eedid_video_block_modes(&psb_intel_output->base, edid);
 	} else if (IS_CTP(dev)) {
 		/* try one more time to get edid here */
 		edid = drm_get_edid(&psb_intel_output->base,
@@ -1609,8 +1813,13 @@ static int mdfld_hdmi_get_modes(struct drm_connector *connector)
 					" set hardcode edid prefer to 640*480p\n");
 			list_for_each_entry_safe(mode, t,
 					&connector->probed_modes, head) {
+#if HDMI_COMPLIANCE_TEST
 				if (mode->hdisplay == 640
 						&& mode->vdisplay == 480)
+#else
+				if (mode->hdisplay == 1280
+						&& mode->vdisplay == 720)
+#endif
 					mode->type
 						|= DRM_MODE_TYPE_PREFERRED;
 				else if (mode->type & DRM_MODE_TYPE_PREFERRED)
@@ -1635,16 +1844,18 @@ static int mdfld_hdmi_get_modes(struct drm_connector *connector)
 	/*clear the mode ,which the same as preferred mode
 	  otherwise the preferred mode will be updated by
 	  the same mode in DRM */
-	list_for_each_entry_safe(mode, t, &connector->probed_modes, head) {
-		if ((!(mode->type & DRM_MODE_TYPE_PREFERRED)) &&
-				drm_mode_equal(mode,
-					hdmi_priv->edid_preferred_mode)) {
-			PSB_DEBUG_ENTRY(
-					"clear the same mode as preferred.\n");
-			list_del(&mode->head);
-			drm_mode_destroy(dev, mode);
-		}
-	}
+    if (hdmi_priv->edid_preferred_mode != NULL) {
+        list_for_each_entry_safe(mode, t, &connector->probed_modes, head) {
+            if ((!(mode->type & DRM_MODE_TYPE_PREFERRED)) &&
+                    drm_mode_equal(mode,
+                        hdmi_priv->edid_preferred_mode)) {
+                PSB_DEBUG_ENTRY(
+                        "clear the same mode as preferred.\n");
+                list_del(&mode->head);
+                drm_mode_destroy(dev, mode);
+            }
+        }
+    }
 
 	return ret;
 }
@@ -1652,12 +1863,15 @@ static int mdfld_hdmi_get_modes(struct drm_connector *connector)
 static int mdfld_hdmi_mode_valid(struct drm_connector *connector,
 				 struct drm_display_mode *mode)
 {
-	struct psb_intel_output *psb_intel_output =
-		to_psb_intel_output(connector);
-	struct mid_intel_hdmi_priv *hdmi_priv = psb_intel_output->dev_priv;
+	PSB_DEBUG_ENTRY("display info. hdisplay = %d, vdisplay = %d, vrefresh = %d.\n",
+			mode->hdisplay, mode->vdisplay, mode->vrefresh);
 
-	PSB_DEBUG_ENTRY("display info. hdisplay = %d, vdisplay = %d.\n",
-			mode->hdisplay, mode->vdisplay);
+	/* change the maximum clock to be 74.25mhz per DC spec */
+        if (mode->clock > 74250)
+                return MODE_CLOCK_HIGH;
+
+	if (mode->clock < 20000)
+		return MODE_CLOCK_LOW;
 
 	if (mode->type == DRM_MODE_TYPE_USERDEF)
 		return MODE_OK;
@@ -1683,8 +1897,14 @@ static void mdfld_hdmi_connector_dpms(struct drm_connector *connector, int mode)
 #ifdef CONFIG_PM_RUNTIME
 	bool panel_on, panel_on2;
 #endif
+
+	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
+				OSPM_UHB_FORCE_POWER_ON))
+		return ;
+
 	/*first, execute dpms*/
 	/* using suspend to judge whether hdmi audio is playing */
+	hdmi_audio_event.event = 0;
 	if (dev_priv->had_interface && dev_priv->had_pvt_data)
 		hdmi_audio_busy =
 			dev_priv->had_interface->suspend(dev_priv->had_pvt_data,
@@ -1719,6 +1939,7 @@ static void mdfld_hdmi_connector_dpms(struct drm_connector *connector, int mode)
 
 	}
 
+
 #ifdef CONFIG_PM_RUNTIME
 	if(is_panel_vid_or_cmd(dev)) {
 		/*DPI panel*/
@@ -1749,6 +1970,7 @@ static void mdfld_hdmi_connector_dpms(struct drm_connector *connector, int mode)
 		ospm_runtime_pm_allow(dev);
 #endif
 #endif
+	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 }
 
 static const struct drm_encoder_helper_funcs mdfld_hdmi_helper_funcs = {

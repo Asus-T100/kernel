@@ -101,6 +101,8 @@ psb_enable_pipestat(struct drm_psb_private *dev_priv, int pipe, u32 mask)
 		/* Enable the interrupt, clear any pending status */
 		if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, OSPM_UHB_ONLY_IF_ON)) {
 			u32 writeVal = PSB_RVDC32(reg);
+			/* Don't clear other interrupts */
+			writeVal &= PIPE_EVENT_MASK;
 			writeVal |= (mask | (mask >> 16));
 			PSB_WVDC32(writeVal, reg);
 			(void) PSB_RVDC32(reg);
@@ -117,6 +119,8 @@ psb_disable_pipestat(struct drm_psb_private *dev_priv, int pipe, u32 mask)
 		dev_priv->pipestat[pipe] &= ~mask;
 		if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, OSPM_UHB_ONLY_IF_ON)) {
 			u32 writeVal = PSB_RVDC32(reg);
+			/* Don't clear other interrupts */
+			writeVal &= PIPE_EVENT_MASK;
 			writeVal &= ~mask;
 			PSB_WVDC32(writeVal, reg);
 			(void) PSB_RVDC32(reg);
@@ -311,34 +315,42 @@ static void mid_pipe_event_handler(struct drm_device *dev, uint32_t pipe)
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *) dev->dev_private;
 
-	uint32_t pipe_stat_val = 0;
+	uint32_t pipe_stat_val;
+	uint32_t pipe_stat_val_raw;
 	uint32_t pipe_stat_reg = psb_pipestat(pipe);
-	uint32_t pipe_enable = dev_priv->pipestat[pipe];
-	uint32_t pipe_status = dev_priv->pipestat[pipe] >> 16;
+	uint32_t pipe_enable;
+	uint32_t pipe_status;
 	uint32_t i = 0;
 	unsigned long irq_flags;
 
 	spin_lock_irqsave(&dev_priv->irqmask_lock, irq_flags);
 
+	pipe_enable = dev_priv->pipestat[pipe];
+	pipe_status = dev_priv->pipestat[pipe] >> 16;
+
 	pipe_stat_val = PSB_RVDC32(pipe_stat_reg);
+	pipe_stat_val_raw = pipe_stat_val;
 	pipe_stat_val &= pipe_enable | pipe_status;
 	pipe_stat_val &= pipe_stat_val >> 16;
 
-	spin_unlock_irqrestore(&dev_priv->irqmask_lock, irq_flags);
-
-	/* clear the 2nd level interrupt status bits */
+	/* clear the 2nd level interrupt status bits.
+	 * We must keep spinlock to protect disable / enable status
+	 * safe in the same register (assuming that other do that also)
+	 * Clear only bits that we are going to serve this time.
+	 */
 	/**
 	* FIXME: shouldn't use while loop here. However, the interrupt
 	* status 'sticky' bits cannot be cleared by setting '1' to that
 	* bit once...
 	*/
 	for (i = 0; i < WAIT_STATUS_CLEAR_LOOP_COUNT; i ++) {
-		PSB_WVDC32(PSB_RVDC32(pipe_stat_reg), pipe_stat_reg);
+		PSB_WVDC32(pipe_stat_val_raw, pipe_stat_reg);
 		(void) PSB_RVDC32(pipe_stat_reg);
 
-		if ((PSB_RVDC32(pipe_stat_reg) & pipe_status) == 0)
+		if ((PSB_RVDC32(pipe_stat_reg) & pipe_stat_val) == 0)
 			break;
 	}
+	spin_unlock_irqrestore(&dev_priv->irqmask_lock, irq_flags);
 
 	if (i == WAIT_STATUS_CLEAR_LOOP_COUNT)
 		DRM_ERROR("%s, can't clear the status bits in pipe_stat_reg, its value = 0x%x. \n",

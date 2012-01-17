@@ -278,7 +278,7 @@ static int mdfld_dsi_pr2_power_on(struct mdfld_dsi_config *dsi_config)
 	}
 
 	/*Just turn on panel for WiDi Extended Mode.*/
-	if (!dev_priv->drm_psb_widi) {
+	if (!dev_priv->drm_psb_widi && !dev_priv->dpms_on_off) {
 		mdfld_dsi_send_gen_long_hs(sender, pr2_mcs_protect_off, 1, 0);
 		/*change power state*/
 		mdfld_dsi_send_mcs_long_hs(sender, pr2_exit_sleep_mode, 1, 0);
@@ -338,7 +338,7 @@ static int mdfld_dsi_pr2_power_off(struct mdfld_dsi_config *dsi_config)
 	}
 
 	/*Just turn off panel for WiDi Extended Mode.*/
-	if (!dev_priv->drm_psb_widi) {
+	if (!dev_priv->drm_psb_widi && !dev_priv->dpms_on_off) {
 		mdfld_dsi_send_gen_long_hs(sender, pr2_mcs_protect_off, 1, 0);
 		/*change power state here*/
 		mdfld_dsi_send_mcs_long_hs(sender, pr2_set_display_off, 1, 0);

@@ -174,10 +174,8 @@ static int mdfld_hdmi_audio_set_caps (enum had_caps_list set_element, void *capa
         if (*((u32*)capabilties) & HDMI_AUDIO_BUFFER_DONE)
             int_masks |= PIPE_HDMI_AUDIO_BUFFER_DONE;
 
-        if (dev_priv->hdmi_audio_interrupt_mask != int_masks) {
-            dev_priv->hdmi_audio_interrupt_mask |= int_masks;
-            mdfld_irq_enable_hdmi_audio(dev);
-        }
+	dev_priv->hdmi_audio_interrupt_mask |= int_masks;
+	mdfld_irq_enable_hdmi_audio(dev);
 
         break;
     case HAD_SET_DISABLE_AUDIO_INT:
@@ -187,14 +185,12 @@ static int mdfld_hdmi_audio_set_caps (enum had_caps_list set_element, void *capa
         if (*((u32*)capabilties) & HDMI_AUDIO_BUFFER_DONE)
             int_masks |= PIPE_HDMI_AUDIO_BUFFER_DONE;
 
-        if (dev_priv->hdmi_audio_interrupt_mask & int_masks) {
-            dev_priv->hdmi_audio_interrupt_mask &= ~int_masks;
-       
-            if (dev_priv->hdmi_audio_interrupt_mask)
-                mdfld_irq_enable_hdmi_audio(dev);
-            else
-                mdfld_irq_disable_hdmi_audio(dev);
-        }
+	dev_priv->hdmi_audio_interrupt_mask &= ~int_masks;
+
+	if (dev_priv->hdmi_audio_interrupt_mask)
+		mdfld_irq_enable_hdmi_audio(dev);
+	else
+		mdfld_irq_disable_hdmi_audio(dev);
 
         break;
     default:

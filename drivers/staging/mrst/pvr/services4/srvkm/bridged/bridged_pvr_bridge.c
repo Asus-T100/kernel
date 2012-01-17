@@ -4882,7 +4882,6 @@ IMG_INT BridgedDispatchKM(PVRSRV_PER_PROCESS_DATA * psPerProc,
 			goto return_fault;
 		}
 
-
 		if(psBridgePackageKM->ui32InBufferSize > 0)
 		{
 			if(!OSAccessOK(PVR_VERIFY_READ,

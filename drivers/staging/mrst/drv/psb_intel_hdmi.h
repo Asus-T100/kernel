@@ -393,6 +393,28 @@ struct hdmi_video_format_timing {
 	avi_par_info_t par;
 };
 
+/**
+ * Display timing information
+ */
+typedef struct {
+    unsigned short width;       /* width                            */
+    unsigned short height;      /* height                           */
+    unsigned short refresh; /* refresh rate                     */
+    unsigned long dclk;     /* refresh rate dot clock in kHz    */
+    unsigned short htotal;      /* horizontal total                 */
+    unsigned short hblank_start;    /* horizontal blank start           */
+    unsigned short hblank_end;  /* horizontal blank end             */
+    unsigned short hsync_start; /* horizontal sync start            */
+    unsigned short hsync_end;   /* horizontal sync end              */
+    unsigned short vtotal;      /* vertical total                   */
+    unsigned short vblank_start;    /* vertical blank start             */
+    unsigned short vblank_end;  /* vertical blank end               */
+    unsigned short vsync_start; /* vertical sync start              */
+    unsigned short vsync_end;   /* vertical sync end                */
+} mdfld_hdmi_timing_t;
+
+
+
 //
 // SPD InfoFrame structure
 //
@@ -910,6 +932,18 @@ struct hdmi_edid_info {
 	char monitor_name[HDMI_MONITOR_NAME_LENGTH];
 	char *edid_info;
 };
+
+/*
+ * Structure representing EDID CEA extention block
+ * See Table 56, Table 26 and section A.2.13 of CEA-861-C for details
+ */
+typedef struct {
+    unsigned char tag;
+    unsigned char revision;
+    unsigned char content_offset;
+    unsigned char flags;
+    unsigned char data[124];
+} extention_block_cea_t;
 
 #define HDMI_EDID_INFO(nm, info) \
 	.monitor_name = nm, .edid_info = info

@@ -1559,8 +1559,7 @@ static int __mdfld_dsi_dpi_set_power(struct drm_encoder *encoder, bool on)
 	mutex_lock(&dsi_config->context_lock);
 
 	if (on && !dsi_config->dsi_hw_context.panel_on) {
-		/*Just turn on panel for WiDi Extended Mode.*/
-		if (!dev_priv->drm_psb_widi) {
+		if (!dev_priv->drm_psb_widi && !dev_priv->dpms_on_off) {
 			if (__dpi_panel_power_on(dsi_config, p_funcs)) {
 				DRM_ERROR("Failed to power on\n");
 				goto set_power_err;
@@ -1583,7 +1582,7 @@ static int __mdfld_dsi_dpi_set_power(struct drm_encoder *encoder, bool on)
 			goto set_power_err;
 		}
 		/*Just turn off panel for WiDi Extended Mode.*/
-		if (!dev_priv->drm_psb_widi) {
+		if (!dev_priv->drm_psb_widi && !dev_priv->dpms_on_off) {
 			if (__dpi_panel_power_off(dsi_config, p_funcs)) {
 				DRM_ERROR("Failed to power off\n");
 				goto set_power_err;
@@ -1702,18 +1701,32 @@ void mdfld_dsi_dpi_set_power(struct drm_encoder *encoder, bool on)
 
 void mdfld_dsi_dpi_dpms(struct drm_encoder *encoder, int mode)
 {
+	struct mdfld_dsi_encoder *dsi_encoder;
+	struct mdfld_dsi_config *dsi_config;
+	struct drm_device *dev;
+	struct drm_psb_private *dev_priv;
+
+	dsi_encoder = MDFLD_DSI_ENCODER(encoder);
+	dsi_config = mdfld_dsi_encoder_get_config(dsi_encoder);
+	dev = dsi_config->dev;
+	dev_priv = dev->dev_private;
+
 	PSB_DEBUG_ENTRY(
-		"%s\n", (mode == DRM_MODE_DPMS_ON ? "on" : "off"));
+			"%s\n", (mode == DRM_MODE_DPMS_ON ? "on" : "off"));
 	if (!gbdispstatus) {
 		PSB_DEBUG_ENTRY(
 		"panel in suspend status, skip turn on/off from DMPS");
 		return ;
 	}
 
+	mutex_lock(&dev_priv->dpms_mutex);
+	dev_priv->dpms_on_off = true;
 	if (mode == DRM_MODE_DPMS_ON)
 		mdfld_dsi_dpi_set_power(encoder, true);
 	else
 		mdfld_dsi_dpi_set_power(encoder, false);
+	dev_priv->dpms_on_off = false;
+	mutex_unlock(&dev_priv->dpms_mutex);
 }
 
 bool mdfld_dsi_dpi_mode_fixup(struct drm_encoder *encoder,

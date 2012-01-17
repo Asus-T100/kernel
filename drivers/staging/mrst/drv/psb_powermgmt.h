@@ -124,6 +124,8 @@ int psb_runtime_resume(struct device *dev);
 int psb_runtime_idle(struct device *dev);
 int ospm_runtime_pm_allow(struct drm_device * dev);
 void ospm_runtime_pm_forbid(struct drm_device * dev);
+void acquire_ospm_lock(void);
+void release_ospm_lock(void);
 
 
 #endif /*_PSB_POWERMGMT_H_*/

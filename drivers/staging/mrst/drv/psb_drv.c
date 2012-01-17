@@ -1094,6 +1094,11 @@ void hdmi_do_hotplug_wq(struct work_struct *work)
 	struct drm_psb_private *dev_priv = container_of(work,
 					   struct drm_psb_private,
 					   hdmi_hotplug_wq);
+
+	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
+				       OSPM_UHB_FORCE_POWER_ON))
+		return;
+
 	atomic_inc(&dev_priv->hotplug_wq_done);
 	/* notify user space of hotplug event via a uevent message */
 
@@ -1125,16 +1130,15 @@ void hdmi_do_hotplug_wq(struct work_struct *work)
 		PSB_DEBUG_ENTRY( "hdmi_do_hotplug_wq: HDMI unplugged\n");
 		dev_priv->bhdmiconnected = false;
 		hdmi_state = 0;
-
-		drm_sysfs_hotplug_event(dev_priv->dev);
-
 		if (dev_priv->mdfld_had_event_callbacks)
 			(*dev_priv->mdfld_had_event_callbacks)
 				(HAD_EVENT_HOT_UNPLUG, dev_priv->had_pvt_data);
+		drm_sysfs_hotplug_event(dev_priv->dev);
 	}
 #endif
 
 	atomic_dec(&dev_priv->hotplug_wq_done);
+	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 }
 
 void hdmi_do_audio_wq(struct work_struct *work)
@@ -1434,6 +1438,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 
 	hdmi_state = 0;
 	dev_priv->bhdmiconnected = false;
+	dev_priv->dpms_on_off = false;
 
 #ifdef CONFIG_MDFD_VIDEO_DECODE
 	ret = psb_ttm_global_init(dev_priv);
@@ -1450,6 +1455,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	mutex_init(&dev_priv->temp_mem);
 	mutex_init(&dev_priv->cmdbuf_mutex);
 	mutex_init(&dev_priv->reset_mutex);
+	mutex_init(&dev_priv->dpms_mutex);
 	INIT_LIST_HEAD(&dev_priv->context.validate_list);
 	INIT_LIST_HEAD(&dev_priv->context.kern_validate_list);
 
@@ -1981,6 +1987,9 @@ static int psb_disp_ioctl(struct drm_device *dev, void *data,
                 if (DISP_PLANEB_STATUS == DISPLAY_PLANE_DISABLE)
                         ret = -1;
                 else {
+			if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, OSPM_UHB_ONLY_IF_ON)) {
+				return -1;
+			}
                         /*Use Disable pipeB plane to turn off HDMI screen*/
                         temp = REG_READ(dspcntr_reg);
                         if ((temp & DISPLAY_PLANE_ENABLE) != 0) {
@@ -1989,11 +1998,16 @@ static int psb_disp_ioctl(struct drm_device *dev, void *data,
 				/* Flush the plane changes */
 				REG_WRITE(dspbase_reg, REG_READ(dspbase_reg));
                         }
+
+			ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
                 }
 	} else if (dp_ctrl->cmd == DRM_PSB_DISP_PLANEB_ENABLE) {
                 if (DISP_PLANEB_STATUS == DISPLAY_PLANE_DISABLE)
                         ret = -1;
                 else {
+			if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, OSPM_UHB_ONLY_IF_ON)) {
+				return -1;
+			}
                         /*Restore pipe B plane to turn on HDMI screen*/
                         temp = REG_READ(dspcntr_reg);
                         if ((temp & DISPLAY_PLANE_ENABLE) == 0) {
@@ -2002,13 +2016,18 @@ static int psb_disp_ioctl(struct drm_device *dev, void *data,
 				/* Flush the plane changes */
 				REG_WRITE(dspbase_reg, REG_READ(dspbase_reg));
                         }
+
+			ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
                 }
 	} else if (dp_ctrl->cmd == DRM_PSB_HDMI_OSPM_ISLAND_DOWN) {
 		/*Set power  state  island down when hdmi disconnected */
+		 acquire_ospm_lock();
 		 if (pmu_nc_set_power_state(OSPM_DISPLAY_B_ISLAND,
 				OSPM_ISLAND_DOWN, OSPM_REG_TYPE))
 				BUG();
 		 dev_priv->panel_desc &= ~DISPLAY_B;
+		 DISP_PLANEB_STATUS = ~DISPLAY_PLANE_ENABLE;
+		 release_ospm_lock();
 	}
 exit:
 	return ret;
@@ -2202,6 +2221,7 @@ static int psb_hist_enable_ioctl(struct drm_device *dev, void *data,
 	struct dpst_guardband guardband_reg;
 	struct dpst_ie_histogram_control ie_hist_cont_reg;
 	uint32_t *enable = data;
+	unsigned long irq_flags;
 
 	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, OSPM_UHB_ONLY_IF_ON)) {
 		return 0;
@@ -2219,8 +2239,10 @@ static int psb_hist_enable_ioctl(struct drm_device *dev, void *data,
 		guardband_reg.interrupt_status = 1;
 		PSB_WVDC32(guardband_reg.data, HISTOGRAM_INT_CONTROL);
 
+		spin_lock_irqsave(&dev_priv->irqmask_lock, irq_flags);
 		irqCtrl = PSB_RVDC32(PIPEASTAT);
 		PSB_WVDC32(irqCtrl | PIPE_DPST_EVENT_ENABLE, PIPEASTAT);
+		spin_unlock_irqrestore(&dev_priv->irqmask_lock, irq_flags);
 		/* Wait for two vblanks */
 	} else {
 		guardband_reg.data = PSB_RVDC32(HISTOGRAM_INT_CONTROL);
@@ -2232,9 +2254,11 @@ static int psb_hist_enable_ioctl(struct drm_device *dev, void *data,
 		ie_hist_cont_reg.ie_histogram_enable = 0;
 		PSB_WVDC32(ie_hist_cont_reg.data, HISTOGRAM_LOGIC_CONTROL);
 
+		spin_lock_irqsave(&dev_priv->irqmask_lock, irq_flags);
 		irqCtrl = PSB_RVDC32(PIPEASTAT);
 		irqCtrl &= ~PIPE_DPST_EVENT_ENABLE;
 		PSB_WVDC32(irqCtrl, PIPEASTAT);
+		spin_unlock_irqrestore(&dev_priv->irqmask_lock, irq_flags);
 	}
 
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
@@ -3675,6 +3699,8 @@ static const struct dev_pm_ops psb_pm_ops = {
 	.runtime_suspend = psb_runtime_suspend,
 	.runtime_resume = psb_runtime_resume,
 	.runtime_idle = psb_runtime_idle,
+	.suspend = psb_runtime_suspend,
+	.resume = psb_runtime_resume,
 };
 
 static struct drm_driver driver = {

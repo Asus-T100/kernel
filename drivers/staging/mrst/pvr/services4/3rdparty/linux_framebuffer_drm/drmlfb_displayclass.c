@@ -1460,6 +1460,33 @@ static int DRMLFBEnterVTHandler(struct drm_device *dev)
 	return 0;
 }
 #endif
+static
+int MRSTLFBScreenEventHandler(struct drm_device* psDrmDevice, int state)
+{
+    MRSTLFB_DEVINFO *psDevInfo;
+    MRST_BOOL bScreenOFF;
+
+    psDevInfo = GetAnchorPtr();
+
+    bScreenOFF = (state == 0) ? MRST_TRUE: MRST_FALSE;
+
+    if (bScreenOFF != psDevInfo->bScreenState)
+    {
+        DRM_INFO("Screen event:%d\n", bScreenOFF);
+        psDevInfo->bScreenState = bScreenOFF;
+        SetFlushState(psDevInfo, bScreenOFF);
+    }
+
+    return 0;
+}
+
+static MRST_ERROR MRSTLFBInstallScreenEvents(MRSTLFB_DEVINFO *psDevInfo, MRSTLFB_SCREEN_EVENT_PFN pScreenEventHandler)
+{
+	struct drm_psb_private *dev_priv =
+	    (struct drm_psb_private *) psDevInfo->psDrmDevice->dev_private;
+	dev_priv->pvr_screen_event_handler = pScreenEventHandler;
+	return (MRST_OK);
+}
 
 static MRST_ERROR InitDev(MRSTLFB_DEVINFO *psDevInfo)
 {
@@ -1705,7 +1732,7 @@ MRST_ERROR MRSTLFBInit(struct drm_device * dev)
 	psDrmPriv->psb_leave_vt_handler = DRMLFBLeaveVTHandler;
 	psDrmPriv->psb_enter_vt_handler = DRMLFBEnterVTHandler;
 #endif
-
+    MRSTLFBInstallScreenEvents(psDevInfo, MRSTLFBScreenEventHandler);
 	
 	psDevInfo->ulRefCount++;
 

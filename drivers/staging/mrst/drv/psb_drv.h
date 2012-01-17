@@ -396,6 +396,7 @@ struct psb_video_ctx {
 };
 
 typedef int (*pfn_vsync_handler)(struct drm_device* dev, int pipe);
+typedef int(* pfn_screen_event_handler)(struct drm_device* psDrmDevice, int state);
 
 
 #define MODE_SETTING_IN_CRTC 	0x1
@@ -1054,7 +1055,10 @@ struct drm_psb_private {
 
 	/*hdmi connected status */
 	bool bhdmiconnected;
-
+	bool dpms_on_off;
+	struct workqueue_struct *hpd_detect;
+	pfn_screen_event_handler pvr_screen_event_handler;
+	struct mutex dpms_mutex;
 };
 
 struct psb_fpriv {

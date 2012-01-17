@@ -59,6 +59,7 @@ typedef enum tag_mrst_bool
 } MRST_BOOL, *MRST_PBOOL;
 
 typedef int(* MRSTLFB_VSYNC_ISR_PFN)(struct drm_device* psDrmDevice, int iPipe);
+typedef int(* MRSTLFB_SCREEN_EVENT_PFN)(struct drm_device* psDrmDevice, int state);
 
 
 typedef struct MRSTLFB_BUFFER_TAG
@@ -222,6 +223,7 @@ typedef struct MRSTLFB_DEVINFO_TAG
 
 	
 	MRST_BOOL bLastFlipAddrValid;
+    MRST_BOOL bScreenState;
 }  MRSTLFB_DEVINFO;
 
 #if 0
