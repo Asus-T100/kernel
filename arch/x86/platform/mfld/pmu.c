@@ -999,7 +999,7 @@ EXPORT_SYMBOL(release_scu_ready_sem);
 int mfld_s0ix_enter(int s0ix_state)
 {
 	struct pmu_ss_states cur_pmsss;
-	int num_retry = 15000, ret = 0;
+	int num_retry = 500, ret = 0;
 	u32 s0ix_value, ssw_val;
 
 	/* check if we can acquire scu_ready_sem
@@ -1083,6 +1083,18 @@ int mfld_s0ix_enter(int s0ix_state)
 	/* issue a command to SCU */
 	writel(s0ix_value, &mid_pmu_cxt->pmu_reg->pm_cmd);
 
+	do {
+		if (readl(&mid_pmu_cxt->pmu_reg->pm_msic))
+			break;
+
+		cpu_relax();
+	} while (num_retry--);
+
+	if (!num_retry && !readl(&mid_pmu_cxt->pmu_reg->pm_msic))
+		WARN(1, "%s: pm_msic not set.\n", __func__);
+
+	num_retry = 500;
+
 	/* At this point we have committed an S0ix command
 	 * will have to wait for the SCU s0ix complete
 	 * intertupt to proceed further.
@@ -1095,6 +1107,8 @@ int mfld_s0ix_enter(int s0ix_state)
 			ssw_val = readl(mid_pmu_cxt->base_addr.offload_reg);
 			if ((ssw_val & C6OFFLOAD_BIT_MASK) ==  C6OFFLOAD_BIT)
 				break;
+
+			udelay(1);
 		} while (num_retry--);
 
 		if (likely((ssw_val & C6OFFLOAD_BIT_MASK) ==  C6OFFLOAD_BIT))
@@ -1184,6 +1198,8 @@ static irqreturn_t pmu_sc_irq(int irq, void *ignored)
 			apic->send_IPI_allbutself(RESCHEDULE_VECTOR);
 
 		mid_pmu_cxt->s0ix_entered = 0;
+
+		clear_c6offload_bit();
 
 		/* S0ix case release it */
 		up(&mid_pmu_cxt->scu_ready_sem);
