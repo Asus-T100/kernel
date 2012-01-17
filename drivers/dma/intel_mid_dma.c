@@ -1028,15 +1028,15 @@ static void dma_tasklet(unsigned long data)
 		/*err interrupt*/
 		i = get_ch_index(&status, mid->chan_base);
 		if (i < 0) {
-			pr_err("ERR_MDMA:Invalid ch index %x\n", i);
+			pr_err("ERR_MDMA:Invalid ch index %x (raw err)\n", i);
 			return;
 		}
 		midc = &mid->ch[i];
 		if (midc == NULL) {
-			pr_err("ERR_MDMA:Null param midc\n");
+			pr_err("ERR_MDMA:Null param midc (raw err)\n");
 			return;
 		}
-		pr_debug("MDMA:Tx complete interrupt %x, Ch No %d Index %d\n",
+		pr_debug("MDMA:raw err interrupt %x, Ch No %d Index %d\n",
 				status, midc->ch_id, i);
 
 		iowrite32((1 << midc->ch_id), mid->dma_base + CLEAR_ERR);
@@ -1101,7 +1101,9 @@ static irqreturn_t intel_mid_dma_interrupt(int irq, void *data)
 	}
 	err_status &= mid->intr_mask;
 	if (err_status) {
-		iowrite32(MASK_INTR_REG(err_status), mid->dma_base + MASK_ERR);
+		/* mask error interrupts for all channels in error */
+		iowrite32((err_status << INT_MASK_WE),
+						mid->dma_base + MASK_ERR);
 		call_tasklet = 1;
 	}
 	if (call_tasklet)
