@@ -78,9 +78,6 @@ module_param(debug, int, 0600);
 #define MAX_MTU 32768 /* In specification 3GPP TS 27.010, 5.7.2 */
 #define	GSM_NET_TX_TIMEOUT (HZ*10)
 
-/* Workarounds */
-#undef  WA_VHANGUP_CLOCK
-
 /**
  *	struct gsm_mux_net	-	network interface
  *	@struct gsm_dlci* dlci
@@ -1700,28 +1697,14 @@ static void gsm_dlci_release(struct gsm_dlci *dlci)
 {
 	struct tty_struct *tty = tty_port_tty_get(&dlci->port);
 	if (tty) {
-#ifdef WA_VHANGUP_CLOCK
 		/*
-		 * Calling tty_vhangup from here
-		 * can tickle a circular lock problem  on some
-		 * versions of the kernel where TIOCSETD calls
-		 * tty_set_ldisc and takes tty->ldisc_mutex, and while
-		 * holding that mutex removes the old ldisc (this code)
-		 * then applies the new ldisc so this code is called
-		 * with the mutex held. tty_vhangup synchronously calls
-		 * tty_ldisc_hangup which takes the mutex again.
-		 * From perusing the code, newer versions of the kernel
-		 * do not appear to have this issue but I dion't know what
-		 * version ift was fixed in.
-		 *
-		 * we'll workaround this by just calling tty_hangup
-		 * and waiting a bit
+		 * In Linux 3.0 a new "big tty mutex" have been implemented.
+		 * This prevent tty_vhangup to be nested checking task ID
+		 * (in tty_lock). We need to launch the hangup in another
+		 * workqueue which has a different task ID.
+		 * This is done by an asynchronous hangup.
 		 */
 		tty_hangup(tty);
-		msleep(250);
-#else /* WA_VHANGUP_CLOCK */
-		tty_vhangup(tty);
-#endif /* WA_VHANGUP_CLOCK */
 		tty_kref_put(tty);
 	}
 	kref_put(&dlci->ref, gsm_dlci_free);
