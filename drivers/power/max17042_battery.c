@@ -52,17 +52,29 @@
 
 #define MAX17042_IC_VERSION	0x0092
 
-#define MAX_VOLT_THRLD		0xD2	/* 4200mv */
-#define MIN_VOLT_THRLD		0xBC	/* 3760mv */
+/* Vmax disabled, Vmin disabled */
+#define VOLT_DEF_MAX_MIN_THRLD  0xFF00
+/* Vmax disabled, Vmin set to 3300mV */
+#define VOLT_MIN_THRLD_ENBL	0xFFA5
 
-#define MAX_TEMP_THRLD		0x3C	/* 60 Degrees */
-#define MIN_TEMP_THRLD		0x0	/* 0 Degrees */
+/* Tmax disabled, Tmin disabled */
+#define TEMP_DEF_MAX_MIN_THRLD  0x7F80
 
-/* Interrupt mask bits */
+/* SoCmax disabled, SoCmin set to 1% to get
+ * INT at 0% because chip will generate
+ * the INT when the thresholds are voilated.
+ */
+#define SOC_DEF_MAX_MIN_THRLD	0xFF01
+
 #define CONFIG_ALRT_BIT_ENBL	(1 << 2)
-#define STATUS_INTR_VOLT_BIT	(1 << 12)
-#define STATUS_INTR_TEMP_BIT	(1 << 13)
-#define STATUS_INTR_SOC_BIT	(1 << 14)
+#define CONFIG_TSTICKY_BIT_SET	(1 << 13)
+
+/* Interrupt status bits */
+#define STATUS_INTR_VMAX_BIT	(1 << 12)
+#define STATUS_INTR_VMIN_BIT	(1 << 8)
+#define STATUS_INTR_SOCMAX_BIT	(1 << 14)
+#define STATUS_INTR_SOCMIN_BIT	(1 << 10)
+
 
 #define VFSOC0_LOCK		0x0000
 #define VFSOC0_UNLOCK		0x0080
@@ -271,7 +283,7 @@ static struct notifier_block max17042_reboot_notifier_block = {
 	.priority = 0,
 };
 
-static void set_soc_intr_thresholds(struct max17042_chip *chip, u16 off);
+static void set_soc_intr_thresholds(struct max17042_chip *chip, int off);
 static void save_runtime_params(struct max17042_chip *chip);
 static u16 fg_vfSoc;
 static struct max17042_config_data *fg_conf_data;
@@ -413,16 +425,15 @@ static irqreturn_t max17042_thread_handler(int id, void *dev)
 
 	mutex_lock(&chip->batt_lock);
 	val = max17042_read_reg(chip->client, MAX17042_STATUS);
-	if (val & STATUS_INTR_VOLT_BIT)
-		dev_info(&chip->client->dev, "Volatge threshold INTR\n");
 
-	if (val & STATUS_INTR_TEMP_BIT)
-		dev_info(&chip->client->dev, "Temperature threshold INTR\n");
+	dev_info(&chip->client->dev, "max17042-INTR: Status-val: %x\n", val);
+	if ((val & STATUS_INTR_VMAX_BIT) ||
+		(val & STATUS_INTR_VMIN_BIT))
+		dev_info(&chip->client->dev, "VOLT threshold INTR\n");
 
-	if (val & STATUS_INTR_SOC_BIT) {
+	if ((val & STATUS_INTR_SOCMAX_BIT) ||
+		(val & STATUS_INTR_SOCMIN_BIT))
 		dev_info(&chip->client->dev, "SOC threshold INTR\n");
-		set_soc_intr_thresholds(chip, 1);
-	}
 	mutex_unlock(&chip->batt_lock);
 
 	power_supply_changed(&chip->battery);
@@ -632,7 +643,7 @@ static int max17042_get_property(struct power_supply *psy,
 		/* Check if MSB of lower byte is set
 		 * then round off the SOC to higher digit
 		 */
-		if (ret & 0x80)
+		if ((ret & 0x80) && val->intval)
 			val->intval += 1;
 
 		if (val->intval > 100)
@@ -1112,6 +1123,16 @@ static void max17042_restore_conf_data(struct max17042_chip *chip)
 				/* enable Alerts for SOCRep */
 				max17042_write_reg(chip->client,
 						MAX17042_MiscCFG, 0x0000);
+
+				/* disable the T-alert sticky bit */
+				max17042_reg_read_modify(chip->client,
+						MAX17042_CONFIG,
+						CONFIG_TSTICKY_BIT_SET, 0);
+
+				/* enable alert pin */
+				max17042_reg_read_modify(chip->client,
+						MAX17042_CONFIG,
+						CONFIG_ALRT_BIT_ENBL, 1);
 			}
 			chip->pdata->is_init_done = 1;
 
@@ -1129,10 +1150,6 @@ static void max17042_restore_conf_data(struct max17042_chip *chip)
 		}
 	}
 
-	/* Temporary WA to avoid platform wake issues due
-	 * to FG interrupt by disabling the ALERT pin */
-	max17042_reg_read_modify(chip->client, MAX17042_CONFIG,
-						CONFIG_ALRT_BIT_ENBL, 0);
 
 	mutex_unlock(&chip->init_lock);
 }
@@ -1146,37 +1163,45 @@ static void max17042_init_worker(struct work_struct *work)
 	max17042_restore_conf_data(chip);
 }
 
-static void set_soc_intr_thresholds(struct max17042_chip *chip, u16 off)
+static void set_soc_intr_thresholds(struct max17042_chip *chip, int off)
 {
-	u16 soc, soc_tr;
+	u16 soc_tr;
+	int soc, ret;
 
 	/* program interrupt thesholds such that we should
 	 * get interrupt for every 'off' perc change in the soc
 	 */
-	soc = max17042_read_reg(chip->client, MAX17042_RepSOC) >> 8;
-	soc_tr = (soc + off) << 8;
-	soc_tr |= (soc - off);
-	max17042_write_reg(chip->client, MAX17042_SALRT_Th, soc_tr);
-}
+	ret = max17042_read_reg(chip->client, MAX17042_RepSOC);
+	soc = ret >> 8;
+	/* Check if MSB of lower byte is set
+	 * then round off the SOC to higher digit
+	 */
+	if (ret & 0x80)
+		soc += 1;
 
-static void set_intr_thresholds(struct max17042_chip *chip)
-{
-	u16 volt_tr, temp_tr;
+	/* if the current capacity is below the
+	 * offset limits reduce offset limit */
+	if (soc <= off)
+		off = soc / 2;
 
-	/* Max voltage threshold set to 4200mV */
-	volt_tr = MAX_VOLT_THRLD << 8;
-	/* Min voltage threshold set to 3760mV */
-	volt_tr |= MIN_VOLT_THRLD;
-	max17042_write_reg(chip->client, MAX17042_VALRT_Th, volt_tr);
+	/* if upper threshold exceeds 100% then stop
+	 * the interrupt for upper thresholds */
+	if ((soc + off) > 100)
+		soc_tr = 0xff << 8;
+	else
+		soc_tr = (soc + off) << 8;
 
-	/* Max temperature threshold set 60 Degrees */
-	temp_tr = MAX_TEMP_THRLD << 8;
-	/* Min temperature threshold set 0 Degrees */
-	temp_tr |= MIN_TEMP_THRLD;
-	max17042_write_reg(chip->client, MAX17042_TALRT_Th, temp_tr);
+	/* if lower threshold falls
+	 * below 0% limit it to 0% */
+	if ((soc - off) < 0)
+		soc_tr = 0;
+	else
+		soc_tr |= (soc - off);
 
-	/* set soc threshold */
-	set_soc_intr_thresholds(chip, 1);
+	ret = max17042_write_reg(chip->client, MAX17042_SALRT_Th, soc_tr);
+	if (ret < 0)
+		dev_err(&chip->client->dev,
+				"SOC threshold write to maxim fail:%d", ret);
 }
 
 static void max17042_external_power_changed(struct power_supply *psy)
@@ -1371,6 +1396,26 @@ static int __devinit max17042_probe(struct i2c_client *client,
 	mutex_init(&chip->batt_lock);
 	mutex_init(&chip->init_lock);
 
+	/* disable the Alert pin before setting thresholds */
+	max17042_reg_read_modify(client, MAX17042_CONFIG,
+						CONFIG_ALRT_BIT_ENBL, 0);
+
+	/* disable the T-alert sticky bit */
+	max17042_reg_read_modify(client, MAX17042_CONFIG,
+						CONFIG_TSTICKY_BIT_SET, 0);
+
+	/* Setting V-alrt threshold register to default values */
+	max17042_write_reg(chip->client, MAX17042_VALRT_Th,
+					VOLT_DEF_MAX_MIN_THRLD);
+
+	/* Setting T-alrt threshold register to default values */
+	max17042_write_reg(chip->client, MAX17042_TALRT_Th,
+					TEMP_DEF_MAX_MIN_THRLD);
+
+	/* Setting SoC threshold register to default values */
+	max17042_write_reg(chip->client, MAX17042_SALRT_Th,
+					SOC_DEF_MAX_MIN_THRLD);
+
 	if (chip->pdata->enable_current_sense) {
 		dev_info(&chip->client->dev, "current sensing enabled\n");
 		/* Initialize the chip with battery config data */
@@ -1416,7 +1461,8 @@ static int __devinit max17042_probe(struct i2c_client *client,
 	/* register interrupt */
 	ret = request_threaded_irq(client->irq, max17042_intr_handler,
 						max17042_thread_handler,
-						0, DRV_NAME, chip);
+						IRQF_TRIGGER_FALLING,
+						DRV_NAME, chip);
 	if (ret) {
 		dev_warn(&client->dev, "cannot get IRQ:%d\n", client->irq);
 		client->irq = -1;
@@ -1424,13 +1470,8 @@ static int __devinit max17042_probe(struct i2c_client *client,
 		dev_info(&client->dev, "IRQ No:%d\n", client->irq);
 	}
 
-	/* Temporary WA to avoid platform wake issues due
-	 * to FG interrupt by disabling the ALERT pin */
 	max17042_reg_read_modify(client, MAX17042_CONFIG,
-						CONFIG_ALRT_BIT_ENBL, 0);
-
-	/* set the Interrupt threshold registers */
-	set_intr_thresholds(chip);
+						CONFIG_ALRT_BIT_ENBL, 1);
 
 	/* Create debugfs for maxim registers */
 	max17042_create_debugfs(chip);
@@ -1471,6 +1512,10 @@ static int max17042_suspend(struct device *dev)
 	 * driver.
 	 */
 	if (chip->client->irq > 0) {
+		/* setting Vmin(3300mV) threshold to wake the
+		 * platfrom in under low battery conditions */
+		max17042_write_reg(chip->client, MAX17042_VALRT_Th,
+					VOLT_MIN_THRLD_ENBL);
 		disable_irq(chip->client->irq);
 		enable_irq_wake(chip->client->irq);
 	}
@@ -1489,6 +1534,9 @@ static int max17042_resume(struct device *dev)
 	struct max17042_chip *chip = dev_get_drvdata(dev);
 
 	if (chip->client->irq > 0) {
+		/* Setting V-alrt threshold register to default values */
+		max17042_write_reg(chip->client, MAX17042_VALRT_Th,
+					VOLT_DEF_MAX_MIN_THRLD);
 		enable_irq(chip->client->irq);
 		disable_irq_wake(chip->client->irq);
 	}
