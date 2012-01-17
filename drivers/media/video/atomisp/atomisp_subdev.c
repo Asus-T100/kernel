@@ -583,7 +583,7 @@ static int isp_subdev_init_entities(struct atomisp_sub_device *isp_subdev)
 	isp_subdev->video_out_mo.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 	isp_subdev->video_out_mo.isp = isp_subdev->isp;
 	isp_subdev->video_out_mo.is_main = true;
-	spin_lock_init(&isp_subdev->video_out_vf.irq_lock);
+	spin_lock_init(&isp_subdev->video_out_mo.irq_lock);
 
 	ret = atomisp_video_init(&isp_subdev->video_in, "MEMORY");
 	if (ret < 0)
