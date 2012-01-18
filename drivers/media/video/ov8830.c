@@ -49,6 +49,265 @@
 
 #define HOME_POS 255
 
+/* 816x612_2lane_30fps 100 99 816 612 */
+static const struct ov8830_reg ov8830_mode1[] = {
+	{ OV8830_8BIT, { 0x0100 }, 0x00 },
+	{ OV8830_8BIT, { 0x0103 }, 0x01 },
+	{ OV8830_8BIT, { 0x0100 }, 0x00 },
+	{ OV8830_8BIT, { 0x0100 }, 0x00 },
+	{ OV8830_8BIT, { 0x0100 }, 0x00 },
+	{ OV8830_8BIT, { 0x0100 }, 0x00 },
+	{ OV8830_8BIT, { 0x0102 }, 0x01 },
+	{ OV8830_8BIT, { 0x3001 }, 0x2a },
+	{ OV8830_8BIT, { 0x3002 }, 0x88 },
+	{ OV8830_8BIT, { 0x3005 }, 0x00 },
+	{ OV8830_8BIT, { 0x3011 }, 0x21 },
+	{ OV8830_8BIT, { 0x3015 }, 0xc8 },
+	{ OV8830_8BIT, { 0x301b }, 0xb4 },
+	{ OV8830_8BIT, { 0x301d }, 0x02 },
+	{ OV8830_8BIT, { 0x3021 }, 0x00 },
+	{ OV8830_8BIT, { 0x3022 }, 0x00 },
+	{ OV8830_8BIT, { 0x3081 }, 0x02 },
+	{ OV8830_8BIT, { 0x3083 }, 0x01 },
+	{ OV8830_8BIT, { 0x3090 }, 0x02 },	/* PLL2_prediv: 2 */
+	{ OV8830_8BIT, { 0x3091 }, 0x12 },	/* PLL2_multiplier: 18 */
+	{ OV8830_8BIT, { 0x3092 }, 0x00 },	/* PLL2_divs: 0+1 */
+	{ OV8830_8BIT, { 0x3093 }, 0x00 },	/* PLL2_seld5: 0 */
+	{ OV8830_8BIT, { 0x3098 }, 0x03 },	/* PLL3_prediv: 3 */
+	{ OV8830_8BIT, { 0x3099 }, 0x1e },	/* PLL3_mult2: 30 */
+	{ OV8830_8BIT, { 0x309a }, 0x00 },	/* PLL3_divs: 0 */
+	{ OV8830_8BIT, { 0x309b }, 0x00 },	/* PLL3_div: 0 */
+	{ OV8830_8BIT, { 0x30a2 }, 0x01 },
+	{ OV8830_8BIT, { 0x30b0 }, 0x05 },
+	{ OV8830_8BIT, { 0x30b2 }, 0x00 },
+	{ OV8830_8BIT, { 0x30b3 }, 0x4b },	/* PLL1_multiplier: 75 */
+	{ OV8830_8BIT, { 0x30b4 }, 0x03 },	/* PLL1_prediv: 3 */
+	{ OV8830_8BIT, { 0x30b5 }, 0x04 },	/* PLL1_op_pix_div: 4 *2  */
+	{ OV8830_8BIT, { 0x30b6 }, 0x01 },	/* PLL1_op_sys_div: 1 */
+	{ OV8830_8BIT, { 0x3104 }, 0xa1 },
+	{ OV8830_8BIT, { 0x3106 }, 0x01 },
+	{ OV8830_8BIT, { 0x3400 }, 0x04 },
+	{ OV8830_8BIT, { 0x3401 }, 0x00 },
+	{ OV8830_8BIT, { 0x3402 }, 0x04 },
+	{ OV8830_8BIT, { 0x3403 }, 0x00 },
+	{ OV8830_8BIT, { 0x3404 }, 0x04 },
+	{ OV8830_8BIT, { 0x3405 }, 0x00 },
+	{ OV8830_8BIT, { 0x3406 }, 0x01 },
+	{ OV8830_8BIT, { 0x3500 }, 0x00 },
+	{ OV8830_8BIT, { 0x3501 }, 0x7c },
+	{ OV8830_8BIT, { 0x3502 }, 0x40 },
+	{ OV8830_8BIT, { 0x3503 }, 0x07 },
+	{ OV8830_8BIT, { 0x3504 }, 0x00 },
+	{ OV8830_8BIT, { 0x3505 }, 0x30 },
+	{ OV8830_8BIT, { 0x3506 }, 0x00 },
+	{ OV8830_8BIT, { 0x3507 }, 0x04 },
+	{ OV8830_8BIT, { 0x3508 }, 0x80 },
+	{ OV8830_8BIT, { 0x3509 }, 0x10 },
+	{ OV8830_8BIT, { 0x350a }, 0x00 },
+	{ OV8830_8BIT, { 0x350b }, 0x38 },
+	{ OV8830_8BIT, { 0x3600 }, 0x78 },
+	{ OV8830_8BIT, { 0x3601 }, 0x02 },
+	{ OV8830_8BIT, { 0x3602 }, 0x1c },
+	{ OV8830_8BIT, { 0x3604 }, 0x38 },
+	{ OV8830_8BIT, { 0x3620 }, 0x64 },
+	{ OV8830_8BIT, { 0x3621 }, 0xb5 },
+	{ OV8830_8BIT, { 0x3622 }, 0x03 },
+	{ OV8830_8BIT, { 0x3625 }, 0x64 },
+	{ OV8830_8BIT, { 0x3630 }, 0x55 },
+	{ OV8830_8BIT, { 0x3631 }, 0xd2 },
+	{ OV8830_8BIT, { 0x3632 }, 0x00 },
+	{ OV8830_8BIT, { 0x3633 }, 0x34 },
+	{ OV8830_8BIT, { 0x3634 }, 0x03 },
+	{ OV8830_8BIT, { 0x3660 }, 0x80 },
+	{ OV8830_8BIT, { 0x3662 }, 0x10 },
+	{ OV8830_8BIT, { 0x3665 }, 0x00 },
+	{ OV8830_8BIT, { 0x3666 }, 0x00 },
+	{ OV8830_8BIT, { 0x3667 }, 0x00 },
+	{ OV8830_8BIT, { 0x366a }, 0x80 },
+	{ OV8830_8BIT, { 0x366c }, 0x00 },
+	{ OV8830_8BIT, { 0x366d }, 0x00 },
+	{ OV8830_8BIT, { 0x366e }, 0x00 },
+	{ OV8830_8BIT, { 0x366f }, 0x20 },
+	{ OV8830_8BIT, { 0x3680 }, 0xe0 },
+	{ OV8830_8BIT, { 0x3681 }, 0x00 },
+	{ OV8830_8BIT, { 0x3701 }, 0x14 },
+	{ OV8830_8BIT, { 0x3702 }, 0xbf },
+	{ OV8830_8BIT, { 0x3703 }, 0x8c },
+	{ OV8830_8BIT, { 0x3704 }, 0x78 },
+	{ OV8830_8BIT, { 0x3705 }, 0x02 },
+	{ OV8830_8BIT, { 0x3708 }, 0xe8 },
+	{ OV8830_8BIT, { 0x3709 }, 0x03 },
+	{ OV8830_8BIT, { 0x370a }, 0x00 },
+	{ OV8830_8BIT, { 0x370b }, 0x20 },
+	{ OV8830_8BIT, { 0x370c }, 0x0c },
+	{ OV8830_8BIT, { 0x370d }, 0x11 },
+	{ OV8830_8BIT, { 0x370e }, 0x00 },
+	{ OV8830_8BIT, { 0x370f }, 0x00 },
+	{ OV8830_8BIT, { 0x3710 }, 0x00 },
+	{ OV8830_8BIT, { 0x371c }, 0x01 },
+	{ OV8830_8BIT, { 0x371f }, 0x0c },
+	{ OV8830_8BIT, { 0x3721 }, 0x00 },
+	{ OV8830_8BIT, { 0x3724 }, 0x10 },
+	{ OV8830_8BIT, { 0x3726 }, 0x00 },
+	{ OV8830_8BIT, { 0x372a }, 0x01 },
+	{ OV8830_8BIT, { 0x3730 }, 0x18 },
+	{ OV8830_8BIT, { 0x3738 }, 0x22 },
+	{ OV8830_8BIT, { 0x3739 }, 0x08 },
+	{ OV8830_8BIT, { 0x373a }, 0x51 },
+	{ OV8830_8BIT, { 0x373b }, 0x02 },
+	{ OV8830_8BIT, { 0x373c }, 0x20 },
+	{ OV8830_8BIT, { 0x373f }, 0x02 },
+	{ OV8830_8BIT, { 0x3740 }, 0x42 },
+	{ OV8830_8BIT, { 0x3741 }, 0x02 },
+	{ OV8830_8BIT, { 0x3742 }, 0x18 },
+	{ OV8830_8BIT, { 0x3743 }, 0x01 },
+	{ OV8830_8BIT, { 0x3744 }, 0x02 },
+	{ OV8830_8BIT, { 0x3747 }, 0x10 },
+	{ OV8830_8BIT, { 0x374c }, 0x04 },
+	{ OV8830_8BIT, { 0x3751 }, 0xf0 },
+	{ OV8830_8BIT, { 0x3752 }, 0x00 },
+	{ OV8830_8BIT, { 0x3753 }, 0x00 },
+	{ OV8830_8BIT, { 0x3754 }, 0xc0 },
+	{ OV8830_8BIT, { 0x3755 }, 0x00 },
+	{ OV8830_8BIT, { 0x3756 }, 0x1a },
+	{ OV8830_8BIT, { 0x3758 }, 0x00 },
+	{ OV8830_8BIT, { 0x3759 }, 0x0f },
+	{ OV8830_8BIT, { 0x375c }, 0x04 },
+	{ OV8830_8BIT, { 0x3767 }, 0x01 },
+	{ OV8830_8BIT, { 0x376b }, 0x44 },
+	{ OV8830_8BIT, { 0x3774 }, 0x10 },
+	{ OV8830_8BIT, { 0x3776 }, 0x00 },
+	{ OV8830_8BIT, { 0x377f }, 0x08 },
+	{ OV8830_8BIT, { 0x3780 }, 0x22 },
+	{ OV8830_8BIT, { 0x3781 }, 0x0c },
+	{ OV8830_8BIT, { 0x3784 }, 0x2c },
+	{ OV8830_8BIT, { 0x3785 }, 0x1e },
+	{ OV8830_8BIT, { 0x378f }, 0xf5 },
+	{ OV8830_8BIT, { 0x3791 }, 0xb0 },
+	{ OV8830_8BIT, { 0x3795 }, 0x00 },
+	{ OV8830_8BIT, { 0x3796 }, 0x64 },
+	{ OV8830_8BIT, { 0x3797 }, 0x11 },
+	{ OV8830_8BIT, { 0x3798 }, 0x30 },
+	{ OV8830_8BIT, { 0x3799 }, 0x41 },
+	{ OV8830_8BIT, { 0x379a }, 0x07 },
+	{ OV8830_8BIT, { 0x379b }, 0xb0 },
+	{ OV8830_8BIT, { 0x379c }, 0x0c },
+	{ OV8830_8BIT, { 0x37c5 }, 0x00 },
+	{ OV8830_8BIT, { 0x37c6 }, 0xa0 },
+	{ OV8830_8BIT, { 0x37c7 }, 0x00 },
+	{ OV8830_8BIT, { 0x37c9 }, 0x00 },
+	{ OV8830_8BIT, { 0x37ca }, 0x00 },
+	{ OV8830_8BIT, { 0x37cb }, 0x00 },
+	{ OV8830_8BIT, { 0x37cc }, 0x00 },
+	{ OV8830_8BIT, { 0x37cd }, 0x00 },
+	{ OV8830_8BIT, { 0x37ce }, 0x01 },
+	{ OV8830_8BIT, { 0x37cf }, 0x00 },
+	{ OV8830_8BIT, { 0x37d1 }, 0x01 },
+	{ OV8830_8BIT, { 0x37de }, 0x00 },
+	{ OV8830_8BIT, { 0x37df }, 0x00 },
+	{ OV8830_8BIT, { 0x3800 }, 0x00 },	/* TIMING_X_ADDR_START = 0 */
+	{ OV8830_8BIT, { 0x3801 }, 0x00 },
+	{ OV8830_8BIT, { 0x3802 }, 0x00 },	/* TIMING_Y_ADDR_START = 0 */
+	{ OV8830_8BIT, { 0x3803 }, 0x00 },
+	{ OV8830_8BIT, { 0x3804 }, 0x0c },
+	{ OV8830_8BIT, { 0x3805 }, 0xdf },
+	{ OV8830_8BIT, { 0x3806 }, 0x09 },
+	{ OV8830_8BIT, { 0x3807 }, 0xaf },
+	{ OV8830_8BIT, { 0x3808 }, 0x03 },	/* TIMING_X_OUTPUT_SIZE = 816 */
+	{ OV8830_8BIT, { 0x3809 }, 0x30 },
+	{ OV8830_8BIT, { 0x380a }, 0x02 },	/* TIMING_Y_OUTPUT_SIZE = 612 */
+	{ OV8830_8BIT, { 0x380b }, 0x64 },
+	{ OV8830_8BIT, { 0x380c }, 0x0e },	/* TIMING_HTS = 3608 */
+	{ OV8830_8BIT, { 0x380d }, 0x18 },
+	{ OV8830_8BIT, { 0x380e }, 0x07 },	/* TIMING_VTS = 1996 */
+	{ OV8830_8BIT, { 0x380f }, 0xcc },
+	{ OV8830_8BIT, { 0x3810 }, 0x00 },
+	{ OV8830_8BIT, { 0x3811 }, 0x04 },
+	{ OV8830_8BIT, { 0x3812 }, 0x00 },
+	{ OV8830_8BIT, { 0x3813 }, 0x04 },
+	{ OV8830_8BIT, { 0x3814 }, 0x71 },
+	{ OV8830_8BIT, { 0x3815 }, 0x71 },
+	{ OV8830_8BIT, { 0x3820 }, 0x11 },
+	{ OV8830_8BIT, { 0x3821 }, 0x0f },
+	{ OV8830_8BIT, { 0x3823 }, 0x00 },
+	{ OV8830_8BIT, { 0x3824 }, 0x00 },
+	{ OV8830_8BIT, { 0x3825 }, 0x00 },
+	{ OV8830_8BIT, { 0x3826 }, 0x00 },
+	{ OV8830_8BIT, { 0x3827 }, 0x00 },
+	{ OV8830_8BIT, { 0x382a }, 0x04 },
+	{ OV8830_8BIT, { 0x3a04 }, 0x02 },
+	{ OV8830_8BIT, { 0x3a05 }, 0x69 },
+	{ OV8830_8BIT, { 0x3a06 }, 0x00 },
+	{ OV8830_8BIT, { 0x3a07 }, 0xf8 },
+	{ OV8830_8BIT, { 0x3b00 }, 0x00 },
+	{ OV8830_8BIT, { 0x3b02 }, 0x00 },
+	{ OV8830_8BIT, { 0x3b03 }, 0x00 },
+	{ OV8830_8BIT, { 0x3b04 }, 0x00 },
+	{ OV8830_8BIT, { 0x3b05 }, 0x00 },
+	{ OV8830_8BIT, { 0x3d00 }, 0x00 },
+	{ OV8830_8BIT, { 0x3d01 }, 0x00 },
+	{ OV8830_8BIT, { 0x3d02 }, 0x00 },
+	{ OV8830_8BIT, { 0x3d03 }, 0x00 },
+	{ OV8830_8BIT, { 0x3d04 }, 0x00 },
+	{ OV8830_8BIT, { 0x3d05 }, 0x00 },
+	{ OV8830_8BIT, { 0x3d06 }, 0x00 },
+	{ OV8830_8BIT, { 0x3d07 }, 0x00 },
+	{ OV8830_8BIT, { 0x3d08 }, 0x00 },
+	{ OV8830_8BIT, { 0x3d09 }, 0x00 },
+	{ OV8830_8BIT, { 0x3d0a }, 0x00 },
+	{ OV8830_8BIT, { 0x3d0b }, 0x00 },
+	{ OV8830_8BIT, { 0x3d0c }, 0x00 },
+	{ OV8830_8BIT, { 0x3d0d }, 0x00 },
+	{ OV8830_8BIT, { 0x3d0e }, 0x00 },
+	{ OV8830_8BIT, { 0x3d0f }, 0x00 },
+	{ OV8830_8BIT, { 0x3d80 }, 0x00 },
+	{ OV8830_8BIT, { 0x3d81 }, 0x00 },
+	{ OV8830_8BIT, { 0x3d84 }, 0x00 },
+	{ OV8830_8BIT, { 0x4000 }, 0x18 },
+	{ OV8830_8BIT, { 0x4001 }, 0x04 },
+	{ OV8830_8BIT, { 0x4002 }, 0x45 },
+	{ OV8830_8BIT, { 0x4004 }, 0x02 },
+	{ OV8830_8BIT, { 0x4005 }, 0x1A },
+	{ OV8830_8BIT, { 0x4006 }, 0x16 },
+	{ OV8830_8BIT, { 0x4008 }, 0x20 },
+	{ OV8830_8BIT, { 0x4009 }, 0x10 },
+	{ OV8830_8BIT, { 0x4101 }, 0x12 },
+	{ OV8830_8BIT, { 0x4104 }, 0x5b },
+	{ OV8830_8BIT, { 0x4307 }, 0x30 },
+	{ OV8830_8BIT, { 0x4315 }, 0x00 },
+	{ OV8830_8BIT, { 0x4511 }, 0x05 },
+	{ OV8830_8BIT, { 0x4512 }, 0x00 },
+	{ OV8830_8BIT, { 0x4805 }, 0x01 },
+	{ OV8830_8BIT, { 0x4806 }, 0x00 },
+	{ OV8830_8BIT, { 0x481f }, 0x36 },
+	{ OV8830_8BIT, { 0x4831 }, 0x6c },
+	{ OV8830_8BIT, { 0x4837 }, 0x0d },
+	{ OV8830_8BIT, { 0x4a00 }, 0xaa },
+	{ OV8830_8BIT, { 0x4a03 }, 0x01 },
+	{ OV8830_8BIT, { 0x4a05 }, 0x08 },
+	{ OV8830_8BIT, { 0x4a0a }, 0x88 },
+	{ OV8830_8BIT, { 0x5000 }, 0x06 },
+	{ OV8830_8BIT, { 0x5001 }, 0x01 },
+	{ OV8830_8BIT, { 0x5002 }, 0x80 },
+	{ OV8830_8BIT, { 0x5003 }, 0x20 },
+	{ OV8830_8BIT, { 0x5013 }, 0x00 },
+	{ OV8830_8BIT, { 0x5046 }, 0x4a },
+	{ OV8830_8BIT, { 0x5780 }, 0x1c },
+	{ OV8830_8BIT, { 0x5786 }, 0x20 },
+	{ OV8830_8BIT, { 0x5787 }, 0x10 },
+	{ OV8830_8BIT, { 0x5788 }, 0x18 },
+	{ OV8830_8BIT, { 0x578a }, 0x04 },
+	{ OV8830_8BIT, { 0x578b }, 0x02 },
+	{ OV8830_8BIT, { 0x578c }, 0x02 },
+	{ OV8830_8BIT, { 0x578e }, 0x06 },
+	{ OV8830_8BIT, { 0x578f }, 0x02 },
+	{ OV8830_8BIT, { 0x5790 }, 0x02 },
+	{ OV8830_8BIT, { 0x5791 }, 0xff },
+	{ OV8830_8BIT, { 0x5a08 }, 0x02 },
+	{ OV8830_8BIT, { 0x5e00 }, 0x00 },
+	{ OV8830_8BIT, { 0x5e10 }, 0x0c },
+	{ OV8830_TOK_TERM, {0}, 0}
+};
 
 /* divides a by b using half up rounding and div/0 prevention
  * (result is 0 if b == 0) */
@@ -80,59 +339,28 @@ MODULE_PARM_DESC(debug, "Enable debug messages");
 struct ov8830_resolution ov8830_res_preview[] = {
 	{
 		 .desc =	"PREVIEW_30fps"	,
-		 .width =	820	,
-		 .height =	616	,
+		 .width =	816	,
+		 .height =	612	,
 		 .fps =		30	,
 		 .used =	0	,
 		 .pixels_per_line = 0x20F0, /* consistent with regs arrays */
 		 .lines_per_frame = 0x02F7, /* consistent with regs arrays */
-		 .regs =	ov8830_PREVIEW_30fps	,
+		 .regs =	ov8830_mode1	,
 	},
-	{
-		 .desc =	"WIDE_PREVIEW_30fps"	,
-		 .width =	1640	,
-		 .height =	956	,
-		 .fps =		30	,
-		 .used =	0	,
-		 .pixels_per_line = 0x16C2, /* consistent with regs arrays */
-		 .lines_per_frame = 0x044F, /* consistent with regs arrays */
-		 .regs =	ov8830_WIDE_PREVIEW_30fps	,
-	},
-
 };
 
 #define N_RES_PREVIEW (ARRAY_SIZE(ov8830_res_preview))
 
 struct ov8830_resolution ov8830_res_still[] = {
 	{
-		 .desc =	"STILL_2M_15fps"	,
-		 .width =	1640	,
-		 .height =	1232	,
-		 .fps =		15	,
+		 .desc =	"STILL_30fps"	,
+		 .width =	816	,
+		 .height =	612	,
+		 .fps =		30	,
 		 .used =	0	,
-		 .pixels_per_line = 0x2460, /* consistent with regs arrays */
-		 .lines_per_frame = 0x0563, /* consistent with regs arrays */
-		 .regs =	ov8830_STILL_2M_15fps	,
-	},
-	{
-		 .desc =	"STILL_6M_15fps"	,
-		 .width =	3280	,
-		 .height =	1848	,
-		 .fps =		15	,
-		 .used =	0	,
-		 .pixels_per_line = 0x191C, /* consistent with regs arrays */
-		 .lines_per_frame = 0x07C7, /* consistent with regs arrays */
-		 .regs =	ov8830_STILL_6M_15fps	,
-	},
-	{
-		 .desc =	"STILL_8M_12fps"	,
-		 .width =	3280	,
-		 .height =	2464	,
-		 .fps =		12	,
-		 .used =	0	,
-		 .pixels_per_line = 0x17F8, /* consistent with regs arrays */
-		 .lines_per_frame = 0x0A2F, /* consistent with regs arrays */
-		 .regs =	ov8830_STILL_8M_12fps	,
+		 .pixels_per_line = 0x20F0, /* consistent with regs arrays */
+		 .lines_per_frame = 0x02F7, /* consistent with regs arrays */
+		 .regs =	ov8830_mode1	,
 	},
 };
 
@@ -140,64 +368,14 @@ struct ov8830_resolution ov8830_res_still[] = {
 
 struct ov8830_resolution ov8830_res_video[] = {
 	{
-		 .desc =	"QCIF_strong_dvs_30fps"	,
-		 .width =	384	,
-		 .height =	292	,
-		 .fps =		30	,
-		 .used =	0	,
-		 .pixels_per_line = 0x3978, /* consistent with regs arrays */
-		 .lines_per_frame = 0x01B3, /* consistent with regs arrays */
-		 .regs =	ov8830_QCIF_strong_dvs_30fps	,
-	},
-	{
-		 .desc =	"QVGA_strong_dvs_30fps"	,
-		 .width =	384	,
-		 .height =	288	,
-		 .fps =		30	,
-		 .used =	0	,
-		 .pixels_per_line = 0x3A00, /* consistent with regs arrays */
-		 .lines_per_frame = 0x01AF, /* consistent with regs arrays */
-		 .regs =	ov8830_QVGA_strong_dvs_30fps	,
-	},
-	{
-		 .desc =	"VGA_strong_dvs_30fps"	,
-		 .width =	820	,
-		 .height =	616	,
+		 .desc =	"VIDEO_30fps"	,
+		 .width =	816	,
+		 .height =	612	,
 		 .fps =		30	,
 		 .used =	0	,
 		 .pixels_per_line = 0x20F0, /* consistent with regs arrays */
 		 .lines_per_frame = 0x02F7, /* consistent with regs arrays */
-		 .regs =	ov8830_VGA_strong_dvs_30fps	,
-	},
-	{
-		 .desc =	"WVGA_strong_dvs_30fps"	,
-		 .width =	1640	,
-		 .height =	1024	,
-		 .fps =		30	,
-		 .used =	0	,
-		 .pixels_per_line = 0x156C, /* consistent with regs arrays */
-		 .lines_per_frame = 0x048F, /* consistent with regs arrays */
-		 .regs =	ov8830_WVGA_strong_dvs_30fps	,
-	},
-	{
-		 .desc =	"720p_strong_dvs_30fps"	,
-		 .width =	1568	,
-		 .height =	876	,
-		 .fps =		30	,
-		 .used =	0	,
-		 .pixels_per_line = 0x188C, /* consistent with regs arrays */
-		 .lines_per_frame = 0x03FF, /* consistent with regs arrays */
-		 .regs =	ov8830_720p_strong_dvs_30fps	,
-	},
-	{
-		 .desc =	"1080p_strong_dvs_30fps",
-		 .width =	2336,
-		 .height =	1308,
-		 .fps =		30,
-		 .used =	0,
-		 .pixels_per_line = 0x113A, /* consistent with regs arrays */
-		 .lines_per_frame = 0x05AB, /* consistent with regs arrays */
-		 .regs =	ov8830_1080p_strong_dvs_30fps,
+		 .regs =	ov8830_mode1	,
 	},
 };
 
@@ -570,8 +748,6 @@ static int ov8830_q_focus_status(struct v4l2_subdev *sd, s32 *value)
 	struct ov8830_device *dev = to_ov8830_sensor(sd);
 	struct timeval current_time;
 	bool stillmoving = false;
-	struct i2c_client *client = v4l2_get_subdevdata(sd);
-
 
 	do_gettimeofday(&current_time);
 	if (current_time.tv_sec == (dev->timestamp_t_focus_abs).tv_sec) {
@@ -609,46 +785,7 @@ static long ov8830_set_exposure(struct v4l2_subdev *sd, u16 coarse_itg,
 				 u16 fine_itg, u16 gain)
 
 {
-	struct i2c_client *client = v4l2_get_subdevdata(sd);
-	int ret;
-	u16 frame_length;
-	struct ov8830_device *dev = to_ov8830_sensor(sd);
-
-	if (ov8830_read_reg(client, OV8830_16BIT,
-			     OV8830_FRAME_LENGTH_LINES, &frame_length))
-		return -EINVAL;
-
-	/* enable group hold */
-	ret = ov8830_write_reg_array(client, ov8830_param_hold);
-	if (ret)
-		return ret;
-
-	/* set coarse integration time */
-	ret = ov8830_write_reg(client, OV8830_16BIT,
-			OV8830_COARSE_INTEGRATION_TIME, coarse_itg);
-	if (ret)
-		goto error;
-
-	/* set fine integration time */
-	ret = ov8830_write_reg(client, OV8830_16BIT,
-			OV8830_FINE_INTEGRATION_TIME, fine_itg);
-	if (ret)
-		goto error;
-
-	/* set global gain */
-	ret = ov8830_write_reg(client, OV8830_16BIT,
-			OV8830_GLOBAL_GAIN, gain);
-
-	if (ret)
-		goto error;
-	dev->gain       = gain;
-	dev->coarse_itg = coarse_itg;
-	dev->fine_itg   = fine_itg;
-
-error:
-	/* disable group hold */
-	ov8830_write_reg_array(client, ov8830_param_update);
-	return ret;
+	return -ENXIO;		/* Not supported yet */
 }
 
 static long ov8830_s_exposure(struct v4l2_subdev *sd,
@@ -663,178 +800,11 @@ static long ov8830_s_exposure(struct v4l2_subdev *sd,
 	return ov8830_set_exposure(sd, coarse_itg, fine_itg, gain);
 }
 
-static int ov8830_read_reg_array(struct i2c_client *client, u16 size, u16 addr,
-				  void *data)
-{
-	u8 *buf = data;
-	u16 index;
-	int ret = 0;
-
-	for (index = 0; index + OV8830_BYTE_MAX <= size;
-	     index += OV8830_BYTE_MAX) {
-		ret = ov8830_read_reg(client, OV8830_BYTE_MAX,
-				       OV8830_OTP_START_ADDR + index,
-				       (u16 *)&buf[index]);
-		if (ret)
-			return ret;
-	}
-
-	if (size - index > 0)
-		ret = ov8830_read_reg(client, size - index,
-				       OV8830_OTP_START_ADDR + index,
-				       (u16 *)&buf[index]);
-
-	return ret;
-}
-
-static unsigned long
-ov8830_otp_sum(struct v4l2_subdev *sd, u8 *buf, u16 start, u16 end)
-{
-	unsigned long sum = 0;
-	u16 i;
-
-	for (i = start; i <= end; i++)
-		sum += buf[i];
-
-	return sum;
-}
-
-static int ov8830_otp_checksum(struct v4l2_subdev *sd, u8 *buf, int list_len,
-				const struct ov8830_otp_checksum_format *list)
-{
-	unsigned long sum;
-	u8 checksum;
-	int i;
-
-	for (i = 0; i < list_len; i++) {
-		sum = ov8830_otp_sum(sd, buf, list[i].start, list[i].end);
-		checksum = sum % OV8830_OTP_MOD_CHECKSUM;
-		if (buf[list[i].checksum] != checksum)
-			return -EINVAL;
-	}
-
-	return 0;
-}
-
-static int ov8830_otp_read(struct v4l2_subdev *sd,
-			    const struct ov8830_reg *type,
-			    void __user *data, u32 size)
-{
-	struct i2c_client *client = v4l2_get_subdevdata(sd);
-	int ret;
-	int retry = 100;
-	void *buf;
-	u16 ready;
-
-	ret = ov8830_write_reg_array(client, type);
-	if (ret) {
-		v4l2_err(client, "%s: failed to prepare OTP memory\n",
-			 __func__);
-		return ret;
-	}
-
-	/*
-	 * As we need to wait for sensor to prepare OTP memory, let's allocate
-	 * buffer now to optimize time.
-	 */
-	buf = kmalloc(OV8830_OTP_DATA_SIZE, GFP_KERNEL);
-	if (!buf)
-		return -ENOMEM;
-
-	do {
-		ret = ov8830_read_reg(client, OV8830_16BIT,
-				       OV8830_OTP_READY_REG, &ready);
-		if (ret) {
-			v4l2_err(client, "%s: failed to read OTP memory "
-					 "status\n", __func__);
-			goto out;
-		}
-		if (ready & OV8830_OTP_READY_REG_DONE)
-			break;
-	} while (--retry);
-
-	if (!(ready & OV8830_OTP_READY_REG_OK)) {
-		v4l2_info(client, "%s: OTP memory was initialized with error\n",
-			  __func__);
-		ret = -EIO;
-		goto out;
-	}
-	ret = ov8830_read_reg_array(client, OV8830_OTP_DATA_SIZE,
-				     OV8830_OTP_START_ADDR, buf);
-	if (ret) {
-		v4l2_err(client, "%s: failed to read OTP data\n", __func__);
-		goto out;
-	}
-	if (OV8830_OTP_CHECKSUM) {
-		ret = ov8830_otp_checksum(sd, buf,
-				ARRAY_SIZE(ov8830_otp_checksum_list),
-				ov8830_otp_checksum_list);
-		if (ret)
-			goto out;
-	}
-	ret = copy_to_user(data, buf, size);
-	if (ret) {
-		v4l2_err(client, "%s: failed to copy OTP data to user\n",
-			 __func__);
-		ret = -EFAULT;
-	}
-
-out:
-	kfree(buf);
-	return ret;
-}
-
-static int ov8830_g_priv_int_data(struct v4l2_subdev *sd,
-				   struct v4l2_private_int_data *priv)
-{
-	struct i2c_client *client = v4l2_get_subdevdata(sd);
-	struct ov8830_device *dev = to_ov8830_sensor(sd);
-	u32 read_size = priv->size;
-	int ret;
-
-	if (!dev->power)
-		return -EIO;
-
-	if (dev->streaming)
-		return -EBUSY;
-
-	if (!priv)
-		return -EINVAL;
-
-	/* Return correct size */
-	priv->size = OV8830_OTP_DATA_SIZE;
-
-	/* No need to copy data if size is 0 */
-	if (!read_size)
-		return 0;
-
-	/* Correct read_size value only if bigger than maximum */
-	if (read_size > OV8830_OTP_DATA_SIZE)
-		read_size = OV8830_OTP_DATA_SIZE;
-
-	/* Try all banks, one by one, and return after first success */
-	ret = ov8830_otp_read(sd, ov8830_otp_type30, priv->data, read_size);
-	if (!ret)
-		return 0;
-	ret = ov8830_otp_read(sd, ov8830_otp_type31, priv->data, read_size);
-	if (!ret)
-		return 0;
-	ret = ov8830_otp_read(sd, ov8830_otp_type32, priv->data, read_size);
-	if (!ret)
-		return 0;
-
-	/* Driver has failed to find valid data */
-	v4l2_info(client, "%s: sensor found no valid OTP data\n", __func__);
-	return ret;
-}
-
 static long ov8830_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
 {
 	switch (cmd) {
 	case ATOMISP_IOC_S_EXPOSURE:
 		return ov8830_s_exposure(sd, (struct atomisp_exposure *)arg);
-	case ATOMISP_IOC_G_SENSOR_PRIV_INT_DATA:
-		return ov8830_g_priv_int_data(sd, arg);
 	default:
 		return -EINVAL;
 	}
@@ -843,34 +813,16 @@ static long ov8830_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
 
 static int ov8830_init_registers(struct v4l2_subdev *sd)
 {
-	int ret;
-	struct i2c_client *client = v4l2_get_subdevdata(sd);
-
-	ret  = ov8830_write_reg_array(client, ov8830_reset_register);
-	ret |= ov8830_write_reg_array(client, ov8830_pll_timing);
-	ret |= ov8830_write_reg_array(client, ov8830_raw_10);
-	ret |= ov8830_write_reg_array(client, ov8830_mipi_config);
-	ret |= ov8830_write_reg_array(client, ov8830_recommended_settings);
-	ret |= ov8830_write_reg_array(client, ov8830_mipi_timing);
-	ret |= ov8830_write_reg_array(client, ov8830_scaler);
-	ret |= ov8830_write_reg_array(client, ov8830_init_vcm);
-
-	return ret;
+	return 0;
 }
 
 static int ov8830_init(struct v4l2_subdev *sd, u32 val)
 {
-	int ret;
+	int ret = 0;
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 
 	/* set inital registers */
 	ret = ov8830_init_registers(sd);
-
-	/*set VCM to home position */
-	ret |= ov8830_t_focus_abs(sd, HOME_POS);
-
-	/* Program shading table into sensor */
-	ret |= ov8830_write_reg_array(client, ov8830_lens_shading);
 
 	/* restore settings */
 	ov8830_res = ov8830_res_preview;
@@ -895,22 +847,24 @@ static int power_up(struct v4l2_subdev *sd)
 	struct ov8830_device *dev = to_ov8830_sensor(sd);
 	int ret;
 
-       /* power control */
+	/* Enable power */
 	ret = dev->platform_data->power_ctrl(sd, 1);
 	if (ret)
 		goto fail_power;
 
-	/* flis clock control */
+	/* Release reset */
+	ret = dev->platform_data->gpio_ctrl(sd, 1);
+	if (ret)
+		dev_err(&client->dev, "gpio failed 1\n");
+
+	/* Enable clock */
 	ret = dev->platform_data->flisclk_ctrl(sd, 1);
 	if (ret)
 		goto fail_clk;
 
-	/* gpio ctrl */
-	ret = dev->platform_data->gpio_ctrl(sd, 1);
-	if (ret)
-		dev_err(&client->dev, "gpio failed 1\n");
-	msleep(20);
-
+	/* Minumum delay is 8192 clock cycles before first i2c transaction,
+	 * which is 1.37 ms at the lowest allowed clock rate 6 MHz */
+	msleep(2);
 	return 0;
 
 fail_clk:
@@ -1099,20 +1053,7 @@ static int ov8830_test_pattern(struct v4l2_subdev *sd, s32 value)
 
 static int ov8830_v_flip(struct v4l2_subdev *sd, s32 value)
 {
-	struct i2c_client *client = v4l2_get_subdevdata(sd);
-	int ret;
-
-	if (value > 1)
-		return -EINVAL;
-
-	ret = ov8830_write_reg_array(client, ov8830_param_hold);
-	if (ret)
-		return ret;
-	ret = ov8830_rmw_reg(client, OV8830_16BIT & ~OV8830_RMW,
-			       0x3040, 0x8000, value);
-	if (ret)
-		return ret;
-	return ov8830_write_reg_array(client, ov8830_param_update);
+	return -ENXIO;
 }
 
 
@@ -1490,7 +1431,7 @@ static int ov8830_s_mbus_fmt(struct v4l2_subdev *sd,
 	dev->fps = ov8830_res[dev->fmt_idx].fps;
 	dev->pixels_per_line = ov8830_res[dev->fmt_idx].pixels_per_line;
 	dev->lines_per_frame = ov8830_res[dev->fmt_idx].lines_per_frame;
-
+#if 0
 	ret = ov8830_get_intg_factor(client, ov8830_info, ov8830_def_reg);
 	if (ret) {
 		v4l2_err(sd, "failed to get integration_factor\n");
@@ -1501,7 +1442,7 @@ static int ov8830_s_mbus_fmt(struct v4l2_subdev *sd,
 	if (dev->coarse_itg)
 		ov8830_set_exposure(sd, dev->coarse_itg, dev->fine_itg,
 				     dev->gain);
-
+#endif
 	return 0;
 }
 
@@ -1530,12 +1471,12 @@ static int ov8830_detect(struct i2c_client *client, u16 *id, u8 *revision)
 		return -ENODEV;
 
 	/* check sensor chip ID	 */
-	if (ov8830_read_reg(client, OV8830_8BIT, OV8830_SC_CMMN_CHIP_ID_H,
+	if (ov8830_read_reg(client, OV8830_8BIT, 0x3001,
 			     &high)) {
 		v4l2_err(client, "sensor_id_high = 0x%x\n", high);
 		return -ENODEV;
 	}
-	if (ov8830_read_reg(client, OV8830_8BIT, OV8830_SC_CMMN_CHIP_ID_L,
+	if (ov8830_read_reg(client, OV8830_8BIT, 0x3002,
 			     &low)) {
 		v4l2_err(client, "sensor_id_low = 0x%x\n", high);
 		return -ENODEV;
@@ -1544,7 +1485,7 @@ static int ov8830_detect(struct i2c_client *client, u16 *id, u8 *revision)
 	v4l2_info(client, "sensor_id = 0x%x\n", *id);
 	real_model_id = *id;
 
-	if (*id != OV8830_ID) {
+	if (*id != 0x0A08) {
 		v4l2_err(client, "sensor ID error\n");
 		return -ENODEV;
 	}
@@ -1562,47 +1503,16 @@ static int ov8830_detect(struct i2c_client *client, u16 *id, u8 *revision)
  */
 static int ov8830_s_stream(struct v4l2_subdev *sd, int enable)
 {
-	int ret;
-	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	struct ov8830_device *dev = to_ov8830_sensor(sd);
-	u16 temp;
+	struct i2c_client *client = v4l2_get_subdevdata(sd);
 
-	if (enable) {
-		if (dev->sensor_revision <= 0x0) {
-			/* begin: vcm hack, needs to be removed when new camera module is availible */
-			struct ov8830_reg ov8830_stream_enable[] = {
-				ov8830_streaming[0],
-				{OV8830_16BIT, {0x30F2}, 0x0000}, /* VCM_NEW_CODE */
-				INIT_VCM_CONTROL,
-				{OV8830_16BIT, {0x30F2}, 0x0000}, /* VCM_NEW_CODE */
-				{OV8830_TOK_DELAY, {0}, 100},
-				{OV8830_TOK_TERM, {0}, 0}
-			};
-
-			ov8830_stream_enable[1].val = (OV8830_MAX_FOCUS_POS - dev->focus) + 1;
-			ov8830_stream_enable[3].val = (OV8830_MAX_FOCUS_POS - dev->focus);
-
-			ret = ov8830_write_reg_array(client, ov8830_stream_enable);
-
-			/* end: vcm hack, needs to be removed when new camera module is availible */
-		} else {
-			ret = ov8830_write_reg_array(client, ov8830_streaming);
-		}
-
-		if (ret != 0) {
-			v4l2_err(client, "write_reg_array err\n");
-			return ret;
-		}
-		dev->streaming = 1;
-	} else {
-
-		ret = ov8830_write_reg_array(client, ov8830_soft_standby);
-		if (ret != 0) {
-			v4l2_err(client, "write_reg_array err\n");
-			return ret;
-		}
-		dev->streaming = 0;
+	int ret = ov8830_write_reg(client, OV8830_8BIT, 0x0100, enable ? 1 : 0);
+	if (ret != 0) {
+		v4l2_err(client, "failed to set streaming\n");
+		return ret;
 	}
+
+	dev->streaming = enable;
 
 	/* restore settings */
 	ov8830_res = ov8830_res_preview;
@@ -1824,7 +1734,7 @@ ov8830_g_frame_interval(struct v4l2_subdev *sd,
 	struct ov8830_device *dev = to_ov8830_sensor(sd);
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	u16 lines_per_frame;
-	u8 fps;
+
 	/*
 	 * if no specific information to calculate the fps,
 	 * just used the value in sensor settings
