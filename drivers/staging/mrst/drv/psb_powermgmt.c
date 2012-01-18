@@ -2402,12 +2402,36 @@ int psb_runtime_suspend(struct device *dev)
 	int ret = 0;
 	state.event = 0;
 
+#ifdef CONFIG_SND_INTELMID_HDMI_AUDIO
+        struct drm_psb_private* dev_priv = gpDrmDevice->dev_private;
+        int hdmi_audio_busy = 0;
+        struct snd_intel_had_interface *had_interface = dev_priv->had_interface;
+        pm_event_t hdmi_audio_event;
+        char *uevent_string = NULL;
+
+        if (dev_priv->had_pvt_data && hdmi_state) {
+                hdmi_audio_event.event = 0;
+                hdmi_audio_busy =
+                        had_interface->suspend(dev_priv->had_pvt_data,
+                                        hdmi_audio_event);
+
+                if (!hdmi_audio_busy) {
+                        uevent_string = "HDMI_AUDIO_PM_SUSPENDED=1";
+                        psb_sysfs_uevent(dev_priv->dev, uevent_string);
+                }
+        }
+#endif
+
 #ifdef OSPM_GFX_DPK
 	printk(KERN_ALERT "%s\n", __func__);
 #endif
         if (atomic_read(&g_graphics_access_count) || atomic_read(&g_videoenc_access_count)
 		|| (gbdispstatus == true)
-		|| atomic_read(&g_videodec_access_count) || atomic_read(&g_display_access_count)){
+		|| atomic_read(&g_videodec_access_count) || atomic_read(&g_display_access_count)
+#ifdef CONFIG_SND_INTELMID_HDMI_AUDIO
+                || hdmi_audio_busy
+#endif
+           ) {
 #ifdef OSPM_GFX_DPK
 		printk(KERN_ALERT "GFX:%d VEC:%d VED:%d DC:%d DSR:%d\n",
 			atomic_read(&g_graphics_access_count),
