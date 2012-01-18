@@ -46,7 +46,7 @@
 
 #define OSNIB_OFFSET			0x0C
 #define OSNIB_ALARM_OFFSET		(OSNIB_OFFSET + 2)
-#define OSNIB_RR_MASK			0xF
+#define OSNIB_RR_MASK			0x01
 #define OSNIB_ALARM_MASK		0x04
 
 struct scu_ipc_data {
