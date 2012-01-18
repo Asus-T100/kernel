@@ -130,8 +130,8 @@ struct mt9e013_resolution mt9e013_res_still[] = {
 		 .height =	1848	,
 		 .fps =		15	,
 		 .used =	0	,
-		 .pixels_per_line = 0x191C, /* consistent with regs arrays */
-		 .lines_per_frame = 0x07C7, /* consistent with regs arrays */
+		 .pixels_per_line = 0x1258, /* consistent with regs arrays */
+		 .lines_per_frame = 0x0AA4, /* consistent with regs arrays */
 		 .regs =	mt9e013_STILL_6M_15fps	,
 		 .bin_factor_x =	0,
 		 .bin_factor_y =	0,
@@ -143,8 +143,8 @@ struct mt9e013_resolution mt9e013_res_still[] = {
 		 .height =	2464	,
 		 .fps =		15	,
 		 .used =	0	,
-		 .pixels_per_line = 0x132C, /* consistent with regs arrays */
-		 .lines_per_frame = 0x0A2F, /* consistent with regs arrays */
+		 .pixels_per_line = 0x1258, /* consistent with regs arrays */
+		 .lines_per_frame = 0x0AA4, /* consistent with regs arrays */
 		 .regs =	mt9e013_STILL_8M_15fps	,
 		 .bin_factor_x =	0,
 		 .bin_factor_y =	0,
@@ -161,8 +161,8 @@ struct mt9e013_resolution mt9e013_res_video[] = {
 		 .height =	176	,
 		 .fps =		30	,
 		 .used =	0	,
-		 .pixels_per_line = 0x20F0, /* consistent with regs arrays */
-		 .lines_per_frame = 0x02F7, /* consistent with regs arrays */
+		 .pixels_per_line = 0x1020, /* consistent with regs arrays */
+		 .lines_per_frame = 0x060E, /* consistent with regs arrays */
 		 .regs =	mt9e013_QCIF_strong_dvs_30fps	,
 		 .bin_factor_x =	2,
 		 .bin_factor_y =	2,
@@ -174,8 +174,8 @@ struct mt9e013_resolution mt9e013_res_video[] = {
 		 .height =	308	,
 		 .fps =		30	,
 		 .used =	0	,
-		 .pixels_per_line = 0x20F0, /* consistent with regs arrays */
-		 .lines_per_frame = 0x02F7, /* consistent with regs arrays */
+		 .pixels_per_line = 0x1020, /* consistent with regs arrays */
+		 .lines_per_frame = 0x060E, /* consistent with regs arrays */
 		 .regs =	mt9e013_QVGA_strong_dvs_30fps	,
 		 .bin_factor_x =	2,
 		 .bin_factor_y =	2,
@@ -187,8 +187,8 @@ struct mt9e013_resolution mt9e013_res_video[] = {
 		 .height =	616	,
 		 .fps =		30	,
 		 .used =	0	,
-		 .pixels_per_line = 0x20F0, /* consistent with regs arrays */
-		 .lines_per_frame = 0x02F7, /* consistent with regs arrays */
+		 .pixels_per_line = 0x1020, /* consistent with regs arrays */
+		 .lines_per_frame = 0x060E, /* consistent with regs arrays */
 		 .regs =	mt9e013_VGA_strong_dvs_30fps	,
 		 .bin_factor_x =	2,
 		 .bin_factor_y =	2,
@@ -213,8 +213,8 @@ struct mt9e013_resolution mt9e013_res_video[] = {
 		 .height =	876	,
 		 .fps =		30	,
 		 .used =	0	,
-		 .pixels_per_line = 0x188C, /* consistent with regs arrays */
-		 .lines_per_frame = 0x03FF, /* consistent with regs arrays */
+		 .pixels_per_line = 0x156C, /* consistent with regs arrays */
+		 .lines_per_frame = 0x048F, /* consistent with regs arrays */
 		 .regs =	mt9e013_720p_strong_dvs_30fps	,
 		 .bin_factor_x =	1,
 		 .bin_factor_y =	1,
@@ -1159,11 +1159,6 @@ static int mt9e013_get_intg_factor(struct i2c_client *client,
 
 	vt_pix_clk_freq_mhz = divsave_rounded(ext_clk_freq_mhz*pll_multiplier,
 								pre_pll_clk_div*vt_sys_clk_div*vt_pix_clk_div);
-
-	memset(data, 0, MT9E013_SHORT_MAX * sizeof(u16));
-	if (mt9e013_read_reg(client, 2, MT9E013_FINE_INTEGRATION_TIME, data))
-		return -EINVAL;
-	v4l2_info(client, "fine_integration_time_i2c: %d", data[0]);
 
 	for (; next->type != MT9E013_TOK_TERM; next++) {
 		if (next->type == MT9E013_16BIT) {
