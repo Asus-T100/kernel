@@ -35,6 +35,7 @@
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/sfi.h>
+#include <linux/io.h>
 
 #include <asm-generic/rtc.h>
 #include <asm/intel_scu_ipc.h>
@@ -51,9 +52,22 @@ struct mrst_rtc {
 	u8			suspend_ctrl;
 };
 
+/* both platform and pnp busses use negative numbers for invalid irqs */
+#define is_valid_irq(n)		((n) >= 0)
+
 static const char driver_name[] = "rtc_mrst";
 
 #define	RTC_IRQMASK	(RTC_PF | RTC_AF)
+
+#define IPCMSG_GET_HOBBASE 0xE5
+#define OSHOB_ALARM_OFFSET 0x68
+#define OSHOB_DAYW_OFFSET  0x00
+#define OSHOB_DAYM_OFFSET  0x01
+#define OSHOB_MON_OFFSET   0x02
+#define OSHOB_YEAR_OFFSET  0x03
+
+static u32 oshob_base;
+static void __iomem *oshob_addr;
 
 static inline int is_intr(u8 rtc_intr)
 {
@@ -71,6 +85,33 @@ static inline unsigned char vrtc_is_updating(void)
 	uip = (vrtc_cmos_read(RTC_FREQ_SELECT) & RTC_UIP);
 	spin_unlock_irqrestore(&rtc_lock, flags);
 	return uip;
+}
+
+/* If the interrupt is of alarm-type-RTC_AF, then check if it's for
+ * the correct day. With the support for alarms more than 24-hours,
+ * alarm-date is compared with date-fields in OSHOB, as the vRTC
+ * doesn't have date-fields for alarm
+ */
+static int is_valid_af(u8 rtc_intr)
+{
+	char *p;
+	unsigned long vrtc_date, oshob_date;
+
+	if (__mrst_cpu_chip == MRST_CPU_CHIP_PENWELL) {
+		if (rtc_intr & RTC_AF) {
+			p = (char *) &vrtc_date;
+			*(p+1) = vrtc_cmos_read(RTC_DAY_OF_MONTH);
+			*(p+2) = vrtc_cmos_read(RTC_MONTH);
+			*(p+3) = vrtc_cmos_read(RTC_YEAR);
+
+			oshob_date = readl(oshob_addr);
+			if ((oshob_date & 0xFFFFFF00)
+					!= (vrtc_date & 0xFFFFFF00))
+				return false;
+		}
+	}
+
+	return true;
 }
 
 /*
@@ -146,7 +187,7 @@ static int mrst_read_alarm(struct device *dev, struct rtc_wkalrm *t)
 	struct mrst_rtc	*mrst = dev_get_drvdata(dev);
 	unsigned char rtc_control;
 
-	if (mrst->irq <= 0)
+	if (!is_valid_irq(mrst->irq))
 		return -EIO;
 
 	/* Basic alarms only support hour, minute, and seconds fields.
@@ -182,7 +223,7 @@ static void mrst_checkintr(struct mrst_rtc *mrst, unsigned char rtc_control)
 	 */
 	rtc_intr = vrtc_cmos_read(RTC_INTR_FLAGS);
 	rtc_intr &= (rtc_control & RTC_IRQMASK) | RTC_IRQF;
-	if (is_intr(rtc_intr))
+	if (is_intr(rtc_intr) && is_valid_af(rtc_intr))
 		rtc_update_irq(mrst->rtc, 1, rtc_intr);
 }
 
@@ -217,14 +258,20 @@ static int mrst_set_alarm(struct device *dev, struct rtc_wkalrm *t)
 {
 	struct mrst_rtc	*mrst = dev_get_drvdata(dev);
 	unsigned char hrs, min, sec;
+	unsigned char wday, mday, mon, year;
 	int ret = 0;
 
-	if (!mrst->irq)
+	if (!is_valid_irq(mrst->irq))
 		return -EIO;
 
 	hrs = t->time.tm_hour;
 	min = t->time.tm_min;
 	sec = t->time.tm_sec;
+
+	wday = t->time.tm_wday;
+	mday = t->time.tm_mday;
+	mon = t->time.tm_mon;
+	year = t->time.tm_year;
 
 	spin_lock_irq(&rtc_lock);
 	/* Next rtc irq must not be from previous alarm setting */
@@ -235,11 +282,28 @@ static int mrst_set_alarm(struct device *dev, struct rtc_wkalrm *t)
 	vrtc_cmos_write(min, RTC_MINUTES_ALARM);
 	vrtc_cmos_write(sec, RTC_SECONDS_ALARM);
 
+	if (__mrst_cpu_chip == MRST_CPU_CHIP_PENWELL) {
+		/* Support for date-field in Alarm using OSHOB
+		 * Since, vRTC doesn't have Alarm-registers for date-fields,
+		 * write date-fields into OSHOB for SCU to sync to MSIC-RTC */
+		writeb(wday, oshob_addr+OSHOB_DAYW_OFFSET);
+		writeb(mday, oshob_addr+OSHOB_DAYM_OFFSET);
+		writeb(mon+1, oshob_addr+OSHOB_MON_OFFSET);
+		/* Adjust for the 1972/1900 */
+		writeb(year-72, oshob_addr+OSHOB_YEAR_OFFSET);
+	}
 	spin_unlock_irq(&rtc_lock);
 
-	ret = intel_scu_ipc_simple_command(IPCMSG_VRTC, IPC_CMD_VRTC_SETALARM);
-	if (ret)
-		return ret;
+	/* In moorestown vrtc used to be powered off & was not a wake source
+	 * in Standby. In penwell vRTC is kept on even during standby.
+	 * hence this ipc message need not be sent
+	 */
+	if (__mrst_cpu_chip == MRST_CPU_CHIP_LINCROFT) {
+		ret = intel_scu_ipc_simple_command(IPCMSG_VRTC,
+				IPC_CMD_VRTC_SETALARM);
+		if (ret)
+			return ret;
+	}
 
 	spin_lock_irq(&rtc_lock);
 	if (t->enabled)
@@ -262,7 +326,7 @@ mrst_rtc_ioctl(struct device *dev, unsigned int cmd, unsigned long arg)
 	switch (cmd) {
 	case RTC_AIE_OFF:
 	case RTC_AIE_ON:
-		if (!mrst->irq)
+		if (!is_valid_irq(mrst->irq))
 			return -EINVAL;
 		break;
 	default:
@@ -329,18 +393,29 @@ static struct mrst_rtc	mrst_rtc;
 static irqreturn_t mrst_rtc_irq(int irq, void *p)
 {
 	u8 irqstat;
+	int ret = 0;
 
 	spin_lock(&rtc_lock);
 	/* This read will clear all IRQ flags inside Reg C */
 	irqstat = vrtc_cmos_read(RTC_INTR_FLAGS);
+	irqstat &= RTC_IRQMASK | RTC_IRQF;
+	ret = is_valid_af(irqstat);
 	spin_unlock(&rtc_lock);
 
-	irqstat &= RTC_IRQMASK | RTC_IRQF;
 	if (is_intr(irqstat)) {
-		rtc_update_irq(p, 1, irqstat);
+		/* If it's an alarm-interrupt, update RTC-IRQ only if it's
+		 * for current day. Alarms beyond 24-hours will result in
+		 * interrupts at given time, everyday till actual alarm-date.
+		 * From hardware perspective, it's still a valid interrupt,
+		 * hence need to return IRQ_HANDLED. */
+		if (ret)
+			rtc_update_irq(p, 1, irqstat);
+
 		return IRQ_HANDLED;
+	} else {
+		printk(KERN_ERR "vRTC: error in IRQ handler\n");
+		return IRQ_NONE;
 	}
-	return IRQ_NONE;
 }
 
 static int __devinit
@@ -386,9 +461,9 @@ vrtc_mrst_do_probe(struct device *dev, struct resource *iomem, int rtc_irq)
 	if (!(rtc_control & RTC_24H) || (rtc_control & (RTC_DM_BINARY)))
 		dev_dbg(dev, "TODO: support more than 24-hr BCD mode\n");
 
-	if (rtc_irq) {
+	if (is_valid_irq(rtc_irq)) {
 		retval = request_irq(rtc_irq, mrst_rtc_irq,
-				IRQF_DISABLED, dev_name(&mrst_rtc.rtc->dev),
+				IRQF_NO_SUSPEND, dev_name(&mrst_rtc.rtc->dev),
 				mrst_rtc.rtc);
 		if (retval < 0) {
 			dev_dbg(dev, "IRQ %d is already in use, err %d\n",
@@ -396,7 +471,29 @@ vrtc_mrst_do_probe(struct device *dev, struct resource *iomem, int rtc_irq)
 			goto cleanup1;
 		}
 	}
-	dev_dbg(dev, "initialised\n");
+
+	/* make RTC device wake capable from sleep */
+	device_init_wakeup(dev, true);
+
+	if (__mrst_cpu_chip == MRST_CPU_CHIP_PENWELL) {
+		retval = intel_scu_ipc_command(IPCMSG_GET_HOBBASE, 0,
+				NULL, 0, &oshob_base, 1);
+		if (retval < 0) {
+			dev_dbg(dev,
+				"Unable to get OSHOB base address, err %d\n",
+				retval);
+			goto cleanup1;
+		}
+
+		oshob_addr = ioremap_nocache(oshob_base+OSHOB_ALARM_OFFSET, 4);
+		if (!oshob_addr) {
+			dev_dbg(dev, "Unable to do ioremap for OSHOB\n");
+			retval = -ENOMEM;
+			goto cleanup1;
+		}
+	}
+
+	dev_dbg(dev, "vRTC driver initialised\n");
 	return 0;
 
 cleanup1:
@@ -423,8 +520,13 @@ static void __devexit rtc_mrst_do_remove(struct device *dev)
 
 	rtc_mrst_do_shutdown();
 
-	if (mrst->irq)
+	if (is_valid_irq(mrst->irq))
 		free_irq(mrst->irq, mrst->rtc);
+
+	if (__mrst_cpu_chip == MRST_CPU_CHIP_PENWELL) {
+		if (oshob_addr != NULL)
+			iounmap(oshob_addr);
+	}
 
 	rtc_device_unregister(mrst->rtc);
 	mrst->rtc = NULL;
@@ -500,7 +602,7 @@ static int mrst_resume(struct device *dev)
 
 			mask = vrtc_cmos_read(RTC_INTR_FLAGS);
 			mask &= (tmp & RTC_IRQMASK) | RTC_IRQF;
-			if (!is_intr(mask))
+			if (!(is_intr(mask) && is_valid_af(mask)))
 				break;
 
 			rtc_update_irq(mrst->rtc, 1, mask);
@@ -561,14 +663,45 @@ static struct platform_driver vrtc_mrst_platform_driver = {
 	.driver.pm = &vrtc_mrst_platform_driver_pm_ops,
 };
 
+/*
+ * Moorestown platform has memory mapped virtual RTC device that emulates
+ * the programming interface of the RTC.
+ */
+
+static struct resource vrtc_resources[] = {
+	[0] = {
+		.flags	= IORESOURCE_MEM,
+	},
+	[1] = {
+		.flags	= IORESOURCE_IRQ,
+	}
+};
+
+static struct platform_device vrtc_device = {
+	.name		= "rtc_mrst",
+	.id		= -1,
+	.resource	= vrtc_resources,
+	.num_resources	= ARRAY_SIZE(vrtc_resources),
+};
+
 static int __init vrtc_mrst_init(void)
 {
+	/* iomem resource */
+	vrtc_resources[0].start = sfi_mrtc_array[0].phys_addr;
+	vrtc_resources[0].end = sfi_mrtc_array[0].phys_addr +
+				MRST_VRTC_MAP_SZ;
+	/* irq resource */
+	vrtc_resources[1].start = sfi_mrtc_array[0].irq;
+	vrtc_resources[1].end = sfi_mrtc_array[0].irq;
+
+	platform_device_register(&vrtc_device);
 	return platform_driver_register(&vrtc_mrst_platform_driver);
 }
 
 static void __exit vrtc_mrst_exit(void)
 {
 	platform_driver_unregister(&vrtc_mrst_platform_driver);
+	platform_device_unregister(&vrtc_device);
 }
 
 module_init(vrtc_mrst_init);
