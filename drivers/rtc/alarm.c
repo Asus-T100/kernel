@@ -25,6 +25,9 @@
 #include <linux/spinlock.h>
 #include <linux/sysdev.h>
 #include <linux/wakelock.h>
+#include <linux/reboot.h>
+#include <linux/notifier.h>
+
 
 #define ANDROID_ALARM_PRINT_ERROR (1U << 0)
 #define ANDROID_ALARM_PRINT_INIT_STATUS (1U << 1)
@@ -44,10 +47,6 @@ module_param_named(debug_mask, debug_mask, int, S_IRUGO | S_IWUSR | S_IWGRP);
 			pr_info(args); \
 		} \
 	} while (0)
-
-#define ANDROID_ALARM_WAKEUP_MASK ( \
-	ANDROID_ALARM_RTC_WAKEUP_MASK | \
-	ANDROID_ALARM_ELAPSED_REALTIME_WAKEUP_MASK)
 
 /* support old usespace code */
 #define ANDROID_ALARM_SET_OLD               _IOW('a', 2, time_t) /* set alarm */
@@ -69,12 +68,24 @@ static struct wake_lock alarm_rtc_wake_lock;
 static struct platform_device *alarm_platform_dev;
 struct alarm_queue alarms[ANDROID_ALARM_TYPE_COUNT];
 static bool suspended;
+static struct rtc_wkalrm disable_alarm;
+
+static int alarm_reboot_callback(struct notifier_block *nfb,
+				 unsigned long event, void *data);
+
+static struct notifier_block alarm_reboot_notifier_block = {
+	.notifier_call = alarm_reboot_callback,
+	.priority = 0,
+};
+
+
 
 static void update_timer_locked(struct alarm_queue *base, bool head_removed)
 {
 	struct alarm *alarm;
 	bool is_wakeup = base == &alarms[ANDROID_ALARM_RTC_WAKEUP] ||
-			base == &alarms[ANDROID_ALARM_ELAPSED_REALTIME_WAKEUP];
+		base == &alarms[ANDROID_ALARM_ELAPSED_REALTIME_WAKEUP] ||
+		base == &alarms[ANDROID_ALARM_POWER_OFF_WAKEUP];
 
 	if (base->stopped) {
 		pr_alarm(FLOW, "changed alarm while setting the wall time\n");
@@ -102,6 +113,40 @@ static void update_timer_locked(struct alarm_queue *base, bool head_removed)
 	base->timer.node.expires = ktime_add(base->delta, alarm->expires);
 	base->timer._softexpires = ktime_add(base->delta, alarm->softexpires);
 	hrtimer_start_expires(&base->timer, HRTIMER_MODE_ABS);
+}
+
+static void write_rtc_wakeup(void)
+{
+	struct rtc_wkalrm rtc_alarm;
+	struct rtc_time rtc_current_rtc_time;
+	unsigned long rtc_current_time;
+	unsigned long rtc_alarm_time;
+	struct timespec rtc_delta;
+	struct timespec wall_time;
+	struct alarm_queue *wakeup_queue = NULL;
+
+	hrtimer_cancel(&alarms[ANDROID_ALARM_RTC_WAKEUP].timer);
+	hrtimer_cancel(&alarms[
+			ANDROID_ALARM_ELAPSED_REALTIME_WAKEUP].timer);
+	hrtimer_cancel(&alarms[ANDROID_ALARM_POWER_OFF_WAKEUP].timer);
+
+	wakeup_queue = &alarms[ANDROID_ALARM_POWER_OFF_WAKEUP];
+	if (wakeup_queue->first) {
+		rtc_read_time(alarm_rtc_dev, &rtc_current_rtc_time);
+		getnstimeofday(&wall_time);
+		rtc_tm_to_time(&rtc_current_rtc_time, &rtc_current_time);
+		set_normalized_timespec(&rtc_delta,
+					wall_time.tv_sec - rtc_current_time,
+					wall_time.tv_nsec);
+
+		rtc_alarm_time = timespec_sub(ktime_to_timespec(
+			hrtimer_get_expires(&wakeup_queue->timer)),
+			rtc_delta).tv_sec;
+
+		rtc_time_to_tm(rtc_alarm_time, &rtc_alarm.time);
+		rtc_alarm.enabled = 1;
+		rtc_set_alarm(alarm_rtc_dev, &rtc_alarm);
+	}
 }
 
 static void alarm_enqueue_locked(struct alarm *alarm)
@@ -270,6 +315,13 @@ int alarm_set_rtc(struct timespec new_time)
 		alarms[i].stopped = true;
 		alarms[i].stopped_time = timespec_to_ktime(tmp_time);
 	}
+
+	/* Adding for the new Alarm-type */
+	hrtimer_try_to_cancel(&alarms[ANDROID_ALARM_POWER_OFF_WAKEUP].timer);
+	alarms[ANDROID_ALARM_POWER_OFF_WAKEUP].stopped = true;
+	alarms[ANDROID_ALARM_POWER_OFF_WAKEUP].stopped_time =
+		timespec_to_ktime(tmp_time);
+
 	alarms[ANDROID_ALARM_ELAPSED_REALTIME_WAKEUP].delta =
 		alarms[ANDROID_ALARM_ELAPSED_REALTIME].delta =
 		ktime_sub(alarms[ANDROID_ALARM_ELAPSED_REALTIME].delta,
@@ -281,6 +333,11 @@ int alarm_set_rtc(struct timespec new_time)
 		alarms[i].stopped = false;
 		update_timer_locked(&alarms[i], false);
 	}
+
+	/* Adding for the new Alarm-type */
+	alarms[ANDROID_ALARM_POWER_OFF_WAKEUP].stopped = false;
+	update_timer_locked(&alarms[ANDROID_ALARM_POWER_OFF_WAKEUP], false);
+
 	spin_unlock_irqrestore(&alarm_slock, flags);
 	if (ret < 0) {
 		pr_alarm(ERROR, "alarm_set_rtc: Failed to set time\n");
@@ -390,11 +447,17 @@ static int alarm_suspend(struct device *dev)
 	hrtimer_cancel(&alarms[ANDROID_ALARM_RTC_WAKEUP].timer);
 	hrtimer_cancel(&alarms[
 			ANDROID_ALARM_ELAPSED_REALTIME_WAKEUP].timer);
+	hrtimer_cancel(&alarms[ANDROID_ALARM_POWER_OFF_WAKEUP].timer);
 
 	tmp_queue = &alarms[ANDROID_ALARM_RTC_WAKEUP];
 	if (tmp_queue->first)
 		wakeup_queue = tmp_queue;
 	tmp_queue = &alarms[ANDROID_ALARM_ELAPSED_REALTIME_WAKEUP];
+	if (tmp_queue->first && (!wakeup_queue ||
+				hrtimer_get_expires(&tmp_queue->timer).tv64 <
+				hrtimer_get_expires(&wakeup_queue->timer).tv64))
+		wakeup_queue = tmp_queue;
+	tmp_queue = &alarms[ANDROID_ALARM_POWER_OFF_WAKEUP];
 	if (tmp_queue->first && (!wakeup_queue ||
 				hrtimer_get_expires(&tmp_queue->timer).tv64 <
 				hrtimer_get_expires(&wakeup_queue->timer).tv64))
@@ -422,9 +485,10 @@ static int alarm_suspend(struct device *dev)
 			rtc_delta.tv_sec, rtc_delta.tv_nsec);
 		if (rtc_current_time + 1 >= rtc_alarm_time) {
 			pr_alarm(SUSPEND, "alarm about to go off\n");
-			memset(&rtc_alarm, 0, sizeof(rtc_alarm));
-			rtc_alarm.enabled = 0;
-			rtc_set_alarm(alarm_rtc_dev, &rtc_alarm);
+			err = rtc_set_alarm(alarm_rtc_dev, &disable_alarm);
+			if (err != 0)
+				pr_alarm(ERROR,
+				   "alarm_suspend: Failed to disable alarm\n");
 
 			spin_lock_irqsave(&alarm_slock, flags);
 			suspended = false;
@@ -433,6 +497,9 @@ static int alarm_suspend(struct device *dev)
 									false);
 			update_timer_locked(&alarms[
 				ANDROID_ALARM_ELAPSED_REALTIME_WAKEUP], false);
+			update_timer_locked(&alarms[
+					ANDROID_ALARM_POWER_OFF_WAKEUP],
+									false);
 			err = -EBUSY;
 			spin_unlock_irqrestore(&alarm_slock, flags);
 		}
@@ -442,20 +509,21 @@ static int alarm_suspend(struct device *dev)
 
 static int alarm_resume(struct device *dev)
 {
-	struct rtc_wkalrm alarm;
 	unsigned long       flags;
+	int err;
 
 	pr_alarm(SUSPEND, "alarm_resume(%p)\n", dev);
 
-	memset(&alarm, 0, sizeof(alarm));
-	alarm.enabled = 0;
-	rtc_set_alarm(alarm_rtc_dev, &alarm);
+	err = rtc_set_alarm(alarm_rtc_dev, &disable_alarm);
+	if (err != 0)
+		pr_alarm(ERROR, "alarm_resume: Failed to disable alarm\n");
 
 	spin_lock_irqsave(&alarm_slock, flags);
 	suspended = false;
 	update_timer_locked(&alarms[ANDROID_ALARM_RTC_WAKEUP], false);
 	update_timer_locked(&alarms[ANDROID_ALARM_ELAPSED_REALTIME_WAKEUP],
 									false);
+	update_timer_locked(&alarms[ANDROID_ALARM_POWER_OFF_WAKEUP], false);
 	spin_unlock_irqrestore(&alarm_slock, flags);
 
 	return 0;
@@ -528,6 +596,15 @@ static struct platform_driver alarm_driver = {
 	},
 };
 
+static int alarm_reboot_callback(struct notifier_block *nfb,
+				 unsigned long event, void *data)
+{
+	write_rtc_wakeup();
+	return NOTIFY_OK;
+
+}
+
+
 static int __init alarm_late_init(void)
 {
 	unsigned long   flags;
@@ -546,6 +623,10 @@ static int __init alarm_late_init(void)
 			timespec_to_ktime(timespec_sub(tmp_time, system_time));
 
 	spin_unlock_irqrestore(&alarm_slock, flags);
+	rtc_time_to_tm(0, &disable_alarm.time);
+	disable_alarm.enabled = 0;
+	disable_alarm.pending = 0;
+
 	return 0;
 }
 
@@ -559,6 +640,13 @@ static int __init alarm_driver_init(void)
 				CLOCK_REALTIME, HRTIMER_MODE_ABS);
 		alarms[i].timer.function = alarm_timer_triggered;
 	}
+
+	/* Adding for the new Alarm-type */
+	hrtimer_init(&alarms[ANDROID_ALARM_POWER_OFF_WAKEUP].timer,
+			CLOCK_REALTIME, HRTIMER_MODE_ABS);
+	alarms[ANDROID_ALARM_POWER_OFF_WAKEUP].timer.function =
+		alarm_timer_triggered;
+
 	hrtimer_init(&alarms[ANDROID_ALARM_SYSTEMTIME].timer,
 		     CLOCK_MONOTONIC, HRTIMER_MODE_ABS);
 	alarms[ANDROID_ALARM_SYSTEMTIME].timer.function = alarm_timer_triggered;
@@ -571,6 +659,8 @@ static int __init alarm_driver_init(void)
 	if (err < 0)
 		goto err2;
 
+	register_reboot_notifier(&alarm_reboot_notifier_block);
+
 	return 0;
 
 err2:
@@ -582,6 +672,7 @@ err1:
 
 static void  __exit alarm_exit(void)
 {
+	unregister_reboot_notifier(&alarm_reboot_notifier_block);
 	class_interface_unregister(&rtc_alarm_interface);
 	wake_lock_destroy(&alarm_rtc_wake_lock);
 	platform_driver_unregister(&alarm_driver);
