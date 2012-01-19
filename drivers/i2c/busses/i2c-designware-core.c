@@ -334,7 +334,7 @@ int i2c_dw_init(struct dw_i2c_dev *dev)
 	dev_dbg(dev->dev, "Fast-mode HCNT:LCNT = %d:%d\n", hcnt, lcnt);
 
 	/* Configure Tx/Rx FIFO threshold levels */
-	dw_writel(dev, dev->tx_fifo_depth - 1, DW_IC_TX_TL);
+	dw_writel(dev, dev->tx_fifo_depth/2, DW_IC_TX_TL);
 	dw_writel(dev, 0, DW_IC_RX_TL);
 
 	/* configure the i2c master */
@@ -407,7 +407,17 @@ i2c_dw_xfer_msg(struct dw_i2c_dev *dev)
 	intr_mask = DW_IC_INTR_DEFAULT_MASK;
 
 	raw_local_irq_save(flags);
+	/* if fifo only has one byte, it is not safe */
+	if ((dev->status & STATUS_WRITE_IN_PROGRESS) &&
+		(dw_readl(dev, DW_IC_TXFLR) < 1)) {
+		dev_err(dev->dev, "TX FIFO overrun, addr: 0x%x.\n", addr);
+		dev->msg_err = -EAGAIN;
+	}
+
 	for (; dev->msg_write_idx < dev->msgs_num; dev->msg_write_idx++) {
+		if (dev->msg_err)
+			break;
+
 		/*
 		 * if target address has changed, we need to
 		 * reprogram the target address in the i2c
