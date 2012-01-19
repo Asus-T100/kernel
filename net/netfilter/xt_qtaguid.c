@@ -1672,9 +1672,11 @@ static struct sock *qtaguid_find_sk(const struct sk_buff *skb,
 		return NULL;
 
 	switch (par->family) {
+#if defined(CONFIG_IP6_NF_IPTABLES) || defined(CONFIG_IP6_NF_IPTABLES_MODULE)
 	case NFPROTO_IPV6:
 		sk = xt_socket_get6_sk(skb, par);
 		break;
+#endif
 	case NFPROTO_IPV4:
 		sk = xt_socket_get4_sk(skb, par);
 		break;
