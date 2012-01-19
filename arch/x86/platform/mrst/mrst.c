@@ -1684,21 +1684,27 @@ static const struct devs_id __initconst device_ids[] = {
 	{},
 };
 
-static const struct intel_v4l2_subdev_id v4l2_ids[] = {
+static const struct intel_v4l2_subdev_id v4l2_ids_mfld[] = {
 	{"mt9e013", RAW_CAMERA, ATOMISP_CAMERA_PORT_PRIMARY},
 	{"mt9m114", SOC_CAMERA, ATOMISP_CAMERA_PORT_SECONDARY},
 	{"lm3554", LED_FLASH, -1},
 	{},
 };
 
-#define N_SUBDEV (sizeof(v4l2_ids)/sizeof(v4l2_ids[0]))
+static const struct intel_v4l2_subdev_id *get_v4l2_ids(int *n_subdev)
+{
+	if (n_subdev)
+		*n_subdev = ARRAY_SIZE(v4l2_ids_mfld);
+	return v4l2_ids_mfld;
+}
 
 static struct atomisp_platform_data *v4l2_subdev_table_head;
 
 static void intel_ignore_i2c_device_register(int bus,
 					     struct i2c_board_info *idev)
 {
-	const struct intel_v4l2_subdev_id *vdev = v4l2_ids;
+	int n_subdev;
+	const struct intel_v4l2_subdev_id *vdev = get_v4l2_ids(&n_subdev);
 	struct intel_v4l2_subdev_i2c_board_info *info;
 	static struct intel_v4l2_subdev_table *subdev_table;
 	enum intel_v4l2_subdev_type type = 0;
@@ -1732,7 +1738,7 @@ static void intel_ignore_i2c_device_register(int bus,
 
 	if (v4l2_subdev_table_head == NULL) {
 		subdev_table = kzalloc(sizeof(struct intel_v4l2_subdev_table)
-			* N_SUBDEV, GFP_KERNEL);
+			* n_subdev, GFP_KERNEL);
 
 		if (!subdev_table) {
 			pr_err("MRST: fail to alloc mem for v4l2_subdev_table %s\n",
@@ -1949,7 +1955,7 @@ static void __init sfi_handle_spi_dev(struct spi_board_info *spi_info)
 static void __init sfi_handle_i2c_dev(int bus, struct i2c_board_info *i2c_info)
 {
 	const struct devs_id *dev = device_ids;
-	const struct intel_v4l2_subdev_id *vdev = v4l2_ids;
+	const struct intel_v4l2_subdev_id *vdev = get_v4l2_ids(NULL);
 	void *pdata = NULL;
 
 	while (dev->name[0]) {
