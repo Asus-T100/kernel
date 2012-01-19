@@ -1428,6 +1428,12 @@ static int langwell_pullup(struct usb_gadget *_gadget, int is_on)
 
 	dev_vdbg(&dev->pdev->dev, "---> %s()\n", __func__);
 
+	if (!dev->got_irq) {
+		dev_vdbg(&dev->pdev->dev, "<--- %s() return with got_irq = %d\n",
+		__func__, dev->got_irq);
+		return -ENODEV;
+	}
+
 	pm_runtime_get_sync(&dev->pdev->dev);
 	/* PHY should exit low power before set USBCMD Run/Stop */
 	langwell_phy_low_power(dev, 0);
