@@ -488,7 +488,7 @@ static int __mt9e013_buf_reg_array(struct i2c_client *client,
 	 * possible lack of memory for next item.
 	 */
 	if (ctrl->index + sizeof(u16) >= MT9E013_MAX_WRITE_BUF_SIZE)
-		__mt9e013_flush_reg_array(client, ctrl);
+		return __mt9e013_flush_reg_array(client, ctrl);
 
 	return 0;
 }

@@ -301,10 +301,14 @@ static int __mt9m114_buf_reg_array(struct i2c_client *client,
 {
 	u16 *data16;
 	u32 *data32;
+	int err;
 
 	/* Insufficient buffer? Let's flush and get more free space. */
-	if (ctrl->index + next->length >= MT9M114_MAX_WRITE_BUF_SIZE)
-		__mt9m114_flush_reg_array(client, ctrl);
+	if (ctrl->index + next->length >= MT9M114_MAX_WRITE_BUF_SIZE) {
+		err = __mt9m114_flush_reg_array(client, ctrl);
+		if (err)
+			return err;
+	}
 
 	switch (next->length) {
 	case MISENSOR_8BIT:
