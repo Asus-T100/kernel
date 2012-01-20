@@ -124,7 +124,11 @@ static long scu_ipc_ioctl(struct file *fp, unsigned int cmd,
 	void __user *argp = (void __user *)arg;
 	int platform;
 
-	if (!capable(CAP_SYS_RAWIO))
+	/* Only IOCTL cmd allowed to pass through without capability check */
+	/* is getting fw version info, all others need to check to prevent */
+	/* arbitrary access to all sort of bit of the hardware exposed here*/
+
+	if (cmd != INTEL_SCU_IPC_FW_REVISION_GET && !capable(CAP_SYS_RAWIO))
 		return -EPERM;
 
 	platform = mrst_identify_cpu();
