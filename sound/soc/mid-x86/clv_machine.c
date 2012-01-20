@@ -32,7 +32,6 @@
 #include <linux/delay.h>
 #include <linux/ipc_device.h>
 #include <asm/intel_scu_ipc.h>
-#include <sound/intel_sst.h>
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
 #include <sound/soc.h>
@@ -50,7 +49,7 @@
 
 static unsigned int vsp_mode;
 
-static vsp_mode_get(struct snd_kcontrol *kcontrol,
+static int vsp_mode_get(struct snd_kcontrol *kcontrol,
 	struct snd_ctl_elem_value *ucontrol)
 {
 	ucontrol->value.integer.value[0] = vsp_mode;
@@ -349,10 +348,10 @@ static int clv_set_bias_level(struct snd_soc_card *card,
 	case SND_SOC_BIAS_PREPARE:
 	case SND_SOC_BIAS_STANDBY:
 		if (codec->dapm.bias_level == SND_SOC_BIAS_OFF)
-			intel_sst_set_pll(true, SST_PLL_MSIC);
+			intel_scu_ipc_set_osc_clk0(true, CLK0_MSIC);
 		break;
 	case SND_SOC_BIAS_OFF:
-		intel_sst_set_pll(false, SST_PLL_MSIC);
+		intel_scu_ipc_set_osc_clk0(false, CLK0_MSIC);
 	}
 	codec->dapm.bias_level = level;
 	pr_debug("codec->bias_level %u\n", card->dapm.bias_level);
@@ -418,12 +417,33 @@ static int clv_init(struct snd_soc_pcm_runtime *runtime)
 	return ret;
 }
 
+static unsigned int rates_48000[] = {
+	48000,
+};
+
+static struct snd_pcm_hw_constraint_list constraints_48000 = {
+	.count	= ARRAY_SIZE(rates_48000),
+	.list	= rates_48000,
+};
+
+static int clv_startup(struct snd_pcm_substream *substream)
+{
+	pr_debug("%s - applying rate constraint\n", __func__);
+	snd_pcm_hw_constraint_list(substream->runtime, 0,
+				   SNDRV_PCM_HW_PARAM_RATE,
+				   &constraints_48000);
+	return 0;
+}
+
 static struct snd_soc_ops clv_asp_ops = {
+	.startup = clv_startup,
 	.hw_params = clv_asp_hw_params,
 };
+
 static struct snd_soc_ops clv_vsp_ops = {
 	.hw_params = clv_vsp_hw_params,
 };
+
 struct snd_soc_dai_link clv_msic_dailink[] = {
 	{
 		.name = "Cloverview ASP",
@@ -550,11 +570,10 @@ static struct ipc_driver snd_clv_mc_driver = {
 
 static int __init snd_clv_driver_init(void)
 {
-	pr_debug("In %s\n", __func__);
+	pr_info("In %s\n", __func__);
 	return ipc_driver_register(&snd_clv_mc_driver);
 }
-
-module_init(snd_clv_driver_init);
+late_initcall(snd_clv_driver_init);
 
 static void __exit snd_clv_driver_exit(void)
 {

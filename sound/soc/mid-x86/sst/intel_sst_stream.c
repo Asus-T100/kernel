@@ -34,7 +34,7 @@
 #include <linux/delay.h>
 #include <linux/pm_runtime.h>
 #include <sound/intel_sst_ioctl.h>
-#include <sound/intel_sst.h>
+#include "../sst_platform.h"
 #include "intel_sst_fw_ipc.h"
 #include "intel_sst_common.h"
 
@@ -192,7 +192,14 @@ int sst_alloc_stream(char *params, unsigned int stream_ops,
 	pr_debug("SST DBG:%d %d %d\n", stream_ops, codec, device);
 
 	BUG_ON(!params);
-	sparams = (struct snd_sst_stream_params *)params;
+	sparams = kzalloc(sizeof(*sparams), GFP_KERNEL);
+	if (!sparams) {
+		pr_err("Unable to allocate snd_sst_stream_params\n");
+		return -ENOMEM;
+	}
+	/* TODO: figure out type of codec - assuming PCM size here */
+	memcpy(&sparams->uc, params, sizeof(struct sst_pcm_params));
+
 	num_ch = sparams->uc.pcm_params.num_chan;
 	/*check the device type*/
 	if (sst_drv_ctx->pci_id == SST_MFLD_PCI_ID) {
@@ -232,8 +239,9 @@ int sst_alloc_stream(char *params, unsigned int stream_ops,
 	alloc_param.str_type.protected_str = 0; /* non drm */
 	alloc_param.str_type.time_slots = pcm_slot;
 	alloc_param.str_type.result = alloc_param.str_type.reserved = 0;
-	memcpy(&alloc_param.stream_params, params,
+	memcpy(&alloc_param.stream_params, sparams,
 			sizeof(struct snd_sst_stream_params));
+	kfree(sparams);
 
 	memcpy(msg->mailbox_data, &msg->header, sizeof(u32));
 	memcpy(msg->mailbox_data + sizeof(u32), &alloc_param,

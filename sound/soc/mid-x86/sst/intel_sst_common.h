@@ -259,7 +259,7 @@ struct stream_info {
 	u32			curr_bytes;
 	u32			cumm_bytes;
 	u32			src;
-	enum snd_sst_audio_device_type device;
+	enum sst_audio_device_type device;
 	u8			pcm_slot;
 };
 
@@ -318,13 +318,6 @@ struct sst_ipc_msg_wq {
 	union ipc_header	header;
 	char mailbox[SST_MAILBOX_SIZE];
 	struct work_struct	wq;
-};
-
-struct mad_ops_wq {
-	int stream_id;
-	enum sst_controls control_op;
-	struct work_struct	wq;
-
 };
 
 #define SST_MMAP_PAGES	(640*1024 / PAGE_SIZE)
@@ -409,7 +402,6 @@ struct intel_sst_drv {
 	struct sst_ipc_msg_wq	ipc_process_msg;
 	struct sst_ipc_msg_wq	ipc_process_reply;
 	struct sst_ipc_msg_wq	ipc_post_msg;
-	struct mad_ops_wq	mad_ops;
 	wait_queue_head_t	wait_queue;
 	struct workqueue_struct *mad_wq;
 	struct workqueue_struct *post_msg_wq;
@@ -422,7 +414,7 @@ struct intel_sst_drv {
 				vol_info_blk, mute_info_blk, hs_info_blk,
 				dma_info_blk;
 	struct mutex		list_lock;/* mutex for IPC list locking */
-	spinlock_t	list_spin_lock; /* mutex for IPC list locking */
+	spinlock_t		list_spin_lock; /* mutex for IPC list locking */
 	struct snd_pmic_ops	*scard_ops;
 	struct pci_dev		*pci;
 	void			*mmap_mem;
@@ -438,21 +430,20 @@ struct intel_sst_drv {
 	unsigned int		lpe_stalled; /* LPE is stalled or not */
 	unsigned int		pmic_port_instance; /*pmic port instance*/
 	unsigned int		lpaudio_start;
-		/* 1 - LPA stream(MP3 pb) in progress*/
+	/* 1 - LPA stream(MP3 pb) in progress*/
 	unsigned int		audio_start;
 	dev_t			devt_d, devt_c;
 	unsigned int		max_streams;
 	unsigned int		*fw_cntx;
 	unsigned int		fw_cntx_size;
 	unsigned int		csr_value;
-	unsigned int		pll_mode;
-	const struct firmware *fw;
+	const struct firmware	*fw;
 
 	struct sst_dma		dma;
 	void			*fw_in_mem;
 	struct sst_runtime_param runtime_param;
-	unsigned int 		device_input_mixer;
-	struct mutex         mixer_ctrl_lock;
+	unsigned int		device_input_mixer;
+	struct mutex		mixer_ctrl_lock;
 	struct dma_async_tx_descriptor *desc;
 	struct sst_sg_list fw_sg_list, library_list;
 };
@@ -486,15 +477,15 @@ int sst_start_stream(int streamID);
 int sst_play_frame(int streamID);
 int sst_pcm_play_frame(int str_id, struct sst_stream_bufs *sst_buf);
 int sst_capture_frame(int streamID);
-int sst_set_stream_param(int streamID, struct snd_sst_params *str_param);
+int sst_set_stream_param(int streamID, struct sst_stream_params *str_param);
 int sst_target_device_select(struct snd_sst_target_device *target_device);
 int sst_decode(int str_id, struct snd_sst_dbufs *dbufs);
 int sst_get_decoded_bytes(int str_id, unsigned long long *bytes);
 int sst_get_fw_info(struct snd_sst_fw_info *info);
 int sst_get_stream_params(int str_id,
 		struct snd_sst_get_stream_params *get_params);
-int sst_get_stream(struct snd_sst_params *str_param);
-int sst_get_stream_allocated(struct snd_sst_params *str_param,
+int sst_get_stream(struct sst_stream_params *str_param);
+int sst_get_stream_allocated(struct sst_stream_params *str_param,
 				struct snd_sst_lib_download **lib_dnld);
 int sst_drain_stream(int str_id);
 int sst_get_vol(struct snd_sst_vol *set_vol);
@@ -597,7 +588,7 @@ static inline unsigned int sst_assign_pvt_id(struct intel_sst_drv *sst_drv_ctx)
  */
 static inline void sst_init_stream(struct stream_info *stream,
 		int codec, int sst_id, int ops, u8 slot,
-		enum snd_sst_audio_device_type device)
+		enum sst_audio_device_type device)
 {
 	stream->status = STREAM_INIT;
 	stream->prev = STREAM_UN_INIT;
@@ -660,4 +651,7 @@ sst_set_fw_state_locked(struct intel_sst_drv *sst_drv_ctx, int sst_state)
 	sst_drv_ctx->sst_state = sst_state;
 	mutex_unlock(&sst_drv_ctx->sst_lock);
 }
+
+int register_sst(struct device *);
+int unregister_sst(struct device *);
 #endif /* __INTEL_SST_COMMON_H__ */

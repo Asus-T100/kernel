@@ -37,9 +37,10 @@
 #include "../memrar/memrar.h"
 #endif
 #include <sound/intel_sst_ioctl.h>
-#include <sound/intel_sst.h>
+#include "../sst_platform.h"
 #include "intel_sst_fw_ipc.h"
 #include "intel_sst_common.h"
+
 /**
 * sst_get_stream_params - Send msg to query for stream parameters
 * @str_id:	stream id for which the parameters are queried for
@@ -118,7 +119,7 @@ int sst_get_stream_params(int str_id,
  *
  * This function sets stream params during runtime
  */
-int sst_set_stream_param(int str_id, struct snd_sst_params *str_param)
+int sst_set_stream_param(int str_id, struct sst_stream_params *str_param)
 {
 	int retval = 0;
 	struct ipc_post *msg = NULL;

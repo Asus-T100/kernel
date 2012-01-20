@@ -31,12 +31,11 @@
 #include <linux/pci.h>
 #include <linux/delay.h>
 #include <linux/gpio.h>
-#include <sound/intel_sst.h>
-
+/* FIXME: remove once vibra becomes PCI driver */
+#include "../../../sound/soc/mid-x86/sst_platform.h"
 
 #define VIBRA_ENABLE_GPIO 40
 #define PWM_ENABLE_GPIO 49
-
 
 struct vibra_info {
 	struct mutex		lock;
@@ -85,7 +84,6 @@ static ssize_t vibra_set_vibrator(struct device *dev,
 	struct device_attribute *attr, const char *buf, size_t len)
 {
 	long vibrator_enable;
-	int  ret;
 
 	struct platform_device *pdev = to_platform_device(dev);
 	struct vibra_info *info = platform_get_drvdata(pdev);

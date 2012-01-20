@@ -21,7 +21,7 @@
 #include <linux/uaccess.h>
 #include <linux/delay.h>
 #include <linux/firmware.h>
-#include <sound/intel_sst.h>
+#include <asm/intel_scu_ipc.h>
 #include <linux/a1026.h>
 #include <linux/i2c.h>
 
@@ -155,7 +155,8 @@ static int suspend(struct vp_ctxt *vp)
 	vp->suspended = 1;
 	msleep(120); /* 120 defined by fig 2 of eS305 as the time to wait
 			before clock gating */
-	rc = intel_sst_set_pll(false, SST_PLL_AUDIENCE);
+	pr_debug("A1026 suspend\n");
+	rc = intel_scu_ipc_set_osc_clk0(false, CLK0_AUDIENCE);
 	if (rc)
 		pr_err("ipc clk disable command failed: %d\n", rc);
 
@@ -527,7 +528,7 @@ static long es305_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	case A1026_ENABLE_CLOCK:
 		pr_debug("%s:ipc clk enable command\n", __func__);
 		mutex_lock(&the_vp->mutex);
-		rc = intel_sst_set_pll(true, SST_PLL_AUDIENCE);
+		rc = intel_scu_ipc_set_osc_clk0(true, CLK0_AUDIENCE);
 		mutex_unlock(&the_vp->mutex);
 		if (rc) {
 			pr_err("ipc clk enable command failed: %d\n", rc);

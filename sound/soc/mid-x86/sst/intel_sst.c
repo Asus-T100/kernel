@@ -39,13 +39,12 @@
 #include <linux/pm_runtime.h>
 #include <linux/async.h>
 #include <linux/lnw_gpio.h>
+#include <linux/delay.h>
 #include <asm/intel-mid.h>
-#include <asm/intel_scu_ipc.h>
-#include <sound/intel_sst.h>
 #include <sound/intel_sst_ioctl.h>
+#include "../sst_platform.h"
 #include "intel_sst_fw_ipc.h"
 #include "intel_sst_common.h"
-#include <linux/delay.h>
 
 MODULE_AUTHOR("Vinod Koul <vinod.koul@intel.com>");
 MODULE_AUTHOR("Harsha Priya <priya.harsha@intel.com>");
@@ -134,7 +133,7 @@ static irqreturn_t intel_sst_interrupt(int irq, void *context)
 				stream->period_elapsed(stream->pcm_substream);
 			return IRQ_HANDLED;
 		}
-		pr_err("recieved IPC %x\n", header.full);
+		pr_debug("received IPC %x\n", header.full);
 		if (header.part.large)
 			size = header.part.data;
 		if (header.part.msg_id & REPLY_MSG) {
@@ -223,7 +222,6 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 	INIT_WORK(&sst_drv_ctx->ipc_post_msg.wq, sst_post_message);
 	INIT_WORK(&sst_drv_ctx->ipc_process_msg.wq, sst_process_message);
 	INIT_WORK(&sst_drv_ctx->ipc_process_reply.wq, sst_process_reply);
-	INIT_WORK(&sst_drv_ctx->mad_ops.wq, sst_process_mad_ops);
 	init_waitqueue_head(&sst_drv_ctx->wait_queue);
 
 	sst_drv_ctx->mad_wq = create_singlethread_workqueue("sst_mad_wq");
@@ -394,7 +392,8 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 	pci_set_drvdata(pci, sst_drv_ctx);
 	pm_runtime_allow(&pci->dev);
 	pm_runtime_put_noidle(&pci->dev);
-	pr_debug("...successfully done!!!\n");
+	register_sst(&pci->dev);
+	pr_info("%s successfully done!\n", __func__);
 	return ret;
 
 do_free_misc:
@@ -442,6 +441,7 @@ static void __devexit intel_sst_remove(struct pci_dev *pci)
 {
 	pm_runtime_get_noresume(&pci->dev);
 	pm_runtime_forbid(&pci->dev);
+	unregister_sst(&pci->dev);
 	pci_dev_put(sst_drv_ctx->pci);
 	sst_set_fw_state_locked(sst_drv_ctx, SST_UN_INIT);
 	misc_deregister(&lpe_ctrl);
@@ -518,46 +518,6 @@ static void sst_save_dsp_context(void)
 	return;
 }
 
-int intel_sst_set_pll(unsigned int enable, enum intel_sst_pll_mode mode)
-{
-	int ret = 0;
-	int clock_enable = 0;
-	static const unsigned int clock_khz = 19200;
-
-	pr_debug("set_pll, Enable %x, Mode %x\n", enable, mode);
-	mutex_lock(&sst_drv_ctx->sst_lock);
-	if (enable == true) {
-		/*enable clock */
-		clock_enable = 1;
-		if (sst_drv_ctx->pll_mode) {
-			/* clock is on, so just update and return */
-			sst_drv_ctx->pll_mode |= mode;
-			goto out;
-		}
-		sst_drv_ctx->pll_mode |= mode;
-		pr_debug("set_pll, enabling pll %x\n", sst_drv_ctx->pll_mode);
-	} else {
-		/* for turning off only, we check device state and turn off only
-		 * when device is supspended
-		 */
-		sst_drv_ctx->pll_mode &= ~mode;
-		pr_debug("set_pll, disabling pll %x\n", sst_drv_ctx->pll_mode);
-		if (sst_drv_ctx->pll_mode)
-			goto out;
-		clock_enable = 0; /*disbale clock */
-	}
-	/* send ipc command to configure the PNW clock to MSIC PLLIN */
-	pr_debug("configuring clock now\n");
-	ret = intel_scu_ipc_osc_clk(OSC_CLK_AUDIO, clock_enable ?
-								clock_khz : 0);
-	if (ret)
-		pr_err("ipc clk disable command failed: %d\n", ret);
-out:
-	mutex_unlock(&sst_drv_ctx->sst_lock);
-	return ret;
-}
-EXPORT_SYMBOL(intel_sst_set_pll);
-
 void intel_sst_pwm_suspend(unsigned int pwm_suspend)
 {
 
@@ -570,17 +530,6 @@ void intel_sst_pwm_suspend(unsigned int pwm_suspend)
 	}
 }
 EXPORT_SYMBOL(intel_sst_pwm_suspend);
-/*
- * The runtime_suspend/resume is pretty much similar to the legacy
- * suspend/resume with the noted exception below: The PCI core takes care of
- * taking the system through D3hot and restoring it back to D0 and so there is
- * no need to duplicate that here.
- */
-int intel_sst_get_pll(void)
-{
-	return sst_drv_ctx->pll_mode;
-}
-EXPORT_SYMBOL(intel_sst_get_pll);
 
 int vibra_pwm_configure(unsigned int enable)
 {
@@ -617,6 +566,12 @@ int vibra_pwm_configure(unsigned int enable)
 	return 0;
 }
 
+/*
+ * The runtime_suspend/resume is pretty much similar to the legacy
+ * suspend/resume with the noted exception below: The PCI core takes care of
+ * taking the system through D3hot and restoring it back to D0 and so there is
+ * no need to duplicate that here.
+ */
 static int intel_sst_runtime_suspend(struct device *dev)
 {
 	union config_status_reg csr;
@@ -638,7 +593,6 @@ static int intel_sst_runtime_suspend(struct device *dev)
 	sst_drv_ctx->sst_state = SST_SUSPENDED;
 	sst_shim_write(sst_drv_ctx->shim, SST_CSR, csr.full);
 	mutex_unlock(&sst_drv_ctx->sst_lock);
-	intel_sst_set_pll(false, SST_PLL_AUDIO);
 	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID)
 		vibra_pwm_configure(false);
 	return 0;
@@ -677,7 +631,6 @@ static int intel_sst_runtime_resume(struct device *dev)
 		vibra_pwm_configure(true);
 	}
 
-	intel_sst_set_pll(true, SST_PLL_AUDIO);
 	sst_set_fw_state_locked(sst_drv_ctx, SST_UN_INIT);
 	return 0;
 }
@@ -733,7 +686,7 @@ static int __init intel_sst_init(void)
 {
 	/* Init all variables, data structure etc....*/
 	int ret = 0;
-	pr_debug("INFO: ******** SST DRIVER loading.. Ver: %s\n",
+	pr_info("INFO: ******** SST DRIVER loading.. Ver: %s\n",
 				       SST_DRIVER_VERSION);
 
 	mutex_init(&drv_ctx_lock);

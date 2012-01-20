@@ -33,8 +33,8 @@
 #include <linux/fs.h>
 #include <linux/firmware.h>
 #include <linux/pm_runtime.h>
-#include <sound/intel_sst.h>
 #include <sound/intel_sst_ioctl.h>
+#include "../sst_platform.h"
 #include "intel_sst_fw_ipc.h"
 #include "intel_sst_common.h"
 
@@ -160,7 +160,7 @@ void free_stream_context(unsigned int str_id)
 	}
 }
 
-void sst_send_lpe_mixer_algo_params()
+void sst_send_lpe_mixer_algo_params(void)
 {
 	struct snd_ppp_params algo_param;
 	struct snd_ppp_mixer_params mixer_param;
@@ -198,7 +198,7 @@ void sst_send_lpe_mixer_algo_params()
  * This creates new stream id for a stream, in case lib is to be downloaded to
  * DSP, it downloads that
  */
-int sst_get_stream_allocated(struct snd_sst_params *str_param,
+int sst_get_stream_allocated(struct sst_stream_params *str_param,
 		struct snd_sst_lib_download **lib_dnld)
 {
 	int retval, str_id;
@@ -237,17 +237,17 @@ int sst_get_stream_allocated(struct snd_sst_params *str_param,
  *
  * @str_param : stream params
  */
-static int sst_get_sfreq(struct snd_sst_params *str_param)
+static int sst_get_sfreq(struct sst_stream_params *str_param)
 {
 	switch (str_param->codec) {
 	case SST_CODEC_TYPE_PCM:
-		return str_param->sparams.uc.pcm_params.sfreq;
+		return str_param->sparams.sfreq;
 	case SST_CODEC_TYPE_MP3:
-		return str_param->sparams.uc.mp3_params.sfreq;
+		return str_param->sparams.sfreq;
 	case SST_CODEC_TYPE_AAC:
-		return str_param->sparams.uc.aac_params.sfreq;
+		return str_param->sparams.sfreq;
 	case SST_CODEC_TYPE_WMA9:
-		return str_param->sparams.uc.wma_params.sfreq;
+		return str_param->sparams.sfreq;
 	default:
 		return 0;
 	}
@@ -258,7 +258,7 @@ static int sst_get_sfreq(struct snd_sst_params *str_param)
  *
  * @str_param : stream param
  */
-int sst_get_stream(struct snd_sst_params *str_param)
+int sst_get_stream(struct sst_stream_params *str_param)
 {
 	int i, retval;
 	struct stream_info *str_info;
@@ -342,9 +342,7 @@ static int sst_prepare_fw(void)
 		retval = sst_download_fw();
 		if (retval) {
 			pr_err("FW download fail %x\n", retval);
-			pr_debug("doing rtpm_put\n");
 			sst_set_fw_state_locked(sst_drv_ctx, SST_UN_INIT);
-			pm_runtime_put(&sst_drv_ctx->pci->dev);
 			return retval;
 		}
 	} else {
@@ -378,11 +376,6 @@ void sst_process_mad_ops(struct work_struct *work)
 	case SST_SND_STREAM_PROCESS:
 		pr_debug("play/capt frames...\n");
 		break;
-	case SST_SND_DEVICE_RESUME:
-		pr_debug("SST_SND_DEVICE_RESUME\n");
-		pm_runtime_get_sync(&sst_drv_ctx->pci->dev);
-		sst_prepare_fw();
-		break;
 	default:
 		pr_err(" wrong control_ops reported\n");
 	}
@@ -401,21 +394,22 @@ void sst_process_mad_ops(struct work_struct *work)
  * This function is called by MID sound card driver to open
  * a new pcm interface
  */
-static int sst_open_pcm_stream(struct snd_sst_params *str_param)
+static int sst_open_pcm_stream(struct sst_stream_params *str_param)
 {
 	struct stream_info *str_info;
 	int retval;
+
+	if (!str_param)
+		return -EINVAL;
 
 	pr_debug("open_pcm, doing rtpm_get\n");
 	pm_runtime_get_sync(&sst_drv_ctx->pci->dev);
 
 	retval = sst_prepare_fw();
-	if (retval)
+	if (retval) {
+		pr_err("Unable to download FW\n");
+		pm_runtime_put(&sst_drv_ctx->pci->dev);
 		return retval;
-
-	if (!str_param) {
-		pr_debug("open_pcm, doing rtpm_put\n");
-		return -EINVAL;
 	}
 
 	mutex_lock(&sst_drv_ctx->sst_lock);
@@ -479,8 +473,7 @@ static int sst_device_control(int cmd, void *arg)
 	case SST_SND_PAUSE:
 	case SST_SND_RESUME:
 	case SST_SND_DROP:
-	case SST_SND_START:
-	case SST_SND_DEVICE_RESUME: {
+	case SST_SND_START: {
 		struct mad_ops_wq *work = kzalloc(sizeof(*work), GFP_ATOMIC);
 		if (!work)
 			return -ENOMEM;
@@ -490,15 +483,6 @@ static int sst_device_control(int cmd, void *arg)
 		queue_work(sst_drv_ctx->mad_wq, &work->wq);
 		break;
 	}
-	case SST_SND_DEVICE_RESUME_SYNC:
-		pr_debug("SST_SND_DEVICE_RESUME_SYNC\n");
-		pm_runtime_get_sync(&sst_drv_ctx->pci->dev);
-		sst_prepare_fw();
-		break;
-	case SST_SND_DEVICE_SUSPEND:
-		pr_debug("SST_SND_DEVICE_SUSPEND doing rtpm_put\n");
-		pm_runtime_put(&sst_drv_ctx->pci->dev);
-		break;
 	case SST_SND_STREAM_INIT: {
 		struct pcm_stream_info *str_info;
 		struct stream_info *stream;
@@ -629,50 +613,36 @@ static int sst_set_generic_params(enum sst_controls cmd, void *arg)
 	return ret_val;
 }
 
-static struct intel_sst_pcm_control pcm_ops = {
+static struct sst_ops pcm_ops = {
 	.open = sst_open_pcm_stream,
 	.device_control = sst_device_control,
 	.set_generic_params = sst_set_generic_params,
 	.close = sst_close_pcm_stream,
 };
 
-static struct intel_sst_card_ops sst_pmic_ops = {
-	.pcm_control = &pcm_ops,
+static struct sst_device sst_dsp_device = {
+	.name = "Intel(R) SST LPE",
+	.dev = NULL,
+	.ops = &pcm_ops,
 };
 
 /*
- * register_sst_card - function for sound card to register
+ * register_sst - function to register DSP
  *
- * @card: pointer to structure of operations
- *
- * This function is called card driver loads and is ready for registration
+ * This functions registers DSP with the platform driver
  */
-int register_sst_card(struct intel_sst_card_ops *card)
+int register_sst(struct device *dev)
 {
-	pr_debug("driver register card %p\n", sst_drv_ctx);
-	if (!sst_drv_ctx) {
-		pr_err("No SST driver register card reject\n");
-		return -ENODEV;
-	}
+	int ret_val;
+	sst_dsp_device.dev = dev;
+	ret_val = sst_register_dsp(&sst_dsp_device);
+	if (ret_val)
+		pr_err("Unable to register DSP with platform driver\n");
 
-	if (!card) {
-		pr_err("Null Pointer Passed\n");
-		return -EINVAL;
-	}
-	card->pcm_control = sst_pmic_ops.pcm_control;
-	return 0;
+	return ret_val;
 }
-EXPORT_SYMBOL_GPL(register_sst_card);
 
-/*
- * unregister_sst_card- function for sound card to un-register
- *
- * @card: pointer to structure of operations
- *
- * This function is called when card driver unloads
- */
-void unregister_sst_card(struct intel_sst_card_ops *card)
+int unregister_sst(struct device *dev)
 {
-	return;
+	return sst_unregister_dsp(&sst_dsp_device);
 }
-EXPORT_SYMBOL_GPL(unregister_sst_card);

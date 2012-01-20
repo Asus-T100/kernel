@@ -41,8 +41,8 @@
 #include <linux/rar_register.h>
 #include "../../../drivers/staging/memrar/memrar.h"
 #endif
-#include <sound/intel_sst.h>
 #include <sound/intel_sst_ioctl.h>
+#include "../sst_platform.h"
 #include "intel_sst_fw_ipc.h"
 #include "intel_sst_common.h"
 
@@ -1055,7 +1055,7 @@ long intel_sst_ioctl(struct file *file_ptr, unsigned int cmd, unsigned long arg)
 		break;
 
 	case _IOC_NR(SNDRV_SST_STREAM_SET_PARAMS): {
-		struct snd_sst_params str_param;
+		struct sst_stream_params str_param;
 
 		pr_debug("IOCTL_SET_PARAMS received!\n");
 		if (minor != STREAM_MODULE) {
@@ -1097,11 +1097,9 @@ long intel_sst_ioctl(struct file *file_ptr, unsigned int cmd, unsigned long arg)
 			/* Block the call for reply */
 			if (!retval) {
 				int sfreq = 0, word_size = 0, num_channel = 0;
-				sfreq =	str_param.sparams.uc.pcm_params.sfreq;
-				word_size =
-				   str_param.sparams.uc.pcm_params.pcm_wd_sz;
-				num_channel =
-				   str_param.sparams.uc.pcm_params.num_chan;
+				sfreq =	str_param.sparams.sfreq;
+				word_size = str_param.sparams.pcm_wd_sz;
+				num_channel = str_param.sparams.num_chan;
 			}
 		}
 		break;

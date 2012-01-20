@@ -33,7 +33,7 @@
 #include <linux/types.h>
 
 enum sst_codec_types {
-/*  AUDIO/MUSIC	CODEC Type Definitions */
+	/*  AUDIO/MUSIC	CODEC Type Definitions */
 	SST_CODEC_TYPE_UNKNOWN = 0,
 	SST_CODEC_TYPE_PCM,	/* Pass through Audio codec */
 	SST_CODEC_TYPE_MP3,
@@ -62,14 +62,6 @@ enum sst_algo_types {
 	SST_CODEC_OEM2 = 0xC9,
 };
 
-enum snd_sst_stream_ops {
-	STREAM_OPS_PLAYBACK = 0,	/* Decode */
-	STREAM_OPS_CAPTURE,		/* Encode */
-	STREAM_OPS_PLAYBACK_DRM,	/* Play Audio/Voice */
-	STREAM_OPS_PLAYBACK_ALERT,	/* Play Audio/Voice */
-	STREAM_OPS_CAPTURE_VOICE_CALL,	/* CSV Voice recording */
-};
-
 enum stream_mode {
 	SST_STREAM_MODE_NONE = 0,
 	SST_STREAM_MODE_DNR = 1,
@@ -85,33 +77,12 @@ enum stream_type {
 	SST_STREAM_TYPE_LOW_LATENCY = 4,
 };
 
-enum snd_sst_audio_device_type {
-	SND_SST_DEVICE_HEADSET = 1,
-	SND_SST_DEVICE_IHF,
-	SND_SST_DEVICE_VIBRA,
-	SND_SST_DEVICE_HAPTIC,
-	SND_SST_DEVICE_CAPTURE,
-};
-
-enum snd_sst_input_stream {
-	SST_INPUT_STREAM_PCM = 0x2,
-	SST_INPUT_STREAM_COMPRESS = 0x8,
-	SST_INPUT_STREAM_MIXED = 0xA,
-};
-
-enum snd_sst_stream_type {
-	SST_STREAM_DEVICE_HS = 32,
-	SST_STREAM_DEVICE_IHF = 33,
-	SST_STREAM_DEVICE_MIC0 = 34,
-	SST_STREAM_DEVICE_MIC1 = 35,
-};
-
 /* Firmware Version info */
 struct snd_sst_fw_version {
 	__u8 build;	/* build number*/
 	__u8 minor;	/* minor number*/
 	__u8 major;	/* major number*/
-	__u8 type; /* build type */
+	__u8 type;	/* build type */
 };
 
 /* Port info structure */
@@ -331,7 +302,6 @@ enum snd_sst_device_type {
 };
 
 enum snd_sst_device_mode {
-
 	SND_SST_DEV_MODE_PCM_MODE1 = 1, /*(16-bit word, bit-length frame sync)*/
 	SND_SST_DEV_MODE_PCM_MODE2,
 	SND_SST_DEV_MODE_PCM_MODE3,
@@ -350,7 +320,7 @@ enum snd_sst_port_action {
 enum stream_param_type {
 	SST_SET_TIME_SLOT = 0,
 	SST_SET_CHANNEL_INFO = 1,
-	OTHERS = 2, /*reserved for other params that need to be set in future*/
+	OTHERS = 2, /*reserved for future params*/
 };
 
 /* Target selection per device structure */
@@ -425,7 +395,7 @@ struct snd_sst_tuning_params {
 	__u8 size;
 	__u8 rsvd;
 	__u64 addr;
-} __attribute__ ((packed));
+} __packed;
 
 struct snd_sst_runtime_params {
 	__u8 type;
@@ -433,7 +403,8 @@ struct snd_sst_runtime_params {
 	__u8 size;
 	__u8 rsvd;
 	void *addr;
-} __attribute__ ((packed));
+} __packed;
+
 /*IOCTL defined here */
 /*SST MMF IOCTLS only */
 #define SNDRV_SST_STREAM_SET_PARAMS _IOWR('L', 0x00, \

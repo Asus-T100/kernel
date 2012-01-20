@@ -38,8 +38,8 @@
 #include <linux/firmware.h>
 #include <linux/dmaengine.h>
 #include <linux/intel_mid_dma.h>
-#include <sound/intel_sst.h>
 #include <sound/intel_sst_ioctl.h>
+#include "../sst_platform.h"
 #include "intel_sst_fw_ipc.h"
 #include "intel_sst_common.h"
 #include <linux/sched.h>
@@ -241,7 +241,7 @@ static int sst_parse_module(struct fw_module_header *module,
 		}
 		/*converting from physical to virtual because
 		scattergather list works on virtual pointers*/
-		ram = phys_to_virt(ram);
+		ram = (int) phys_to_virt(ram);
 		sst_fill_sglist(ram, block, &sg_src, &sg_dst);
 		block = (void *)block + sizeof(*block) + block->size;
 	}
