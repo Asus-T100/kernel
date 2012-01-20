@@ -195,13 +195,37 @@ struct mt9e013_resolution mt9e013_res_video[] = {
 		 .skip_frames = 1,
 	},
 	{
+		 .desc =	"mt9e013_D1PAL_strong_dvs_30fps"	,
+		 .width =	880	,
+		 .height =	708	,
+		 .fps =		30	,
+		 .used =	0	,
+		 .pixels_per_line = 0x1020, /* consistent with regs arrays */
+		 .lines_per_frame = 0x060E, /* consistent with regs arrays */
+		 .regs =	mt9e013_D1PAL_strong_dvs_30fps	,
+		 .bin_factor_x =	2,
+		 .bin_factor_y =	2,
+	},
+	{
+		 .desc =	"mt9e013_D1NTSC_strong_dvs_30fps"	,
+		 .width =	904	,
+		 .height =	602	,
+		 .fps =		30	,
+		 .used =	0	,
+		 .pixels_per_line = 0x1020, /* consistent with regs arrays */
+		 .lines_per_frame = 0x060E, /* consistent with regs arrays */
+		 .regs =	mt9e013_D1NTSC_strong_dvs_30fps	,
+		 .bin_factor_x =	2,
+		 .bin_factor_y =	2,
+	},
+	{
 		 .desc =	"WVGA_strong_dvs_30fps"	,
 		 .width =	1640	,
 		 .height =	1024	,
 		 .fps =		30	,
 		 .used =	0	,
-		 .pixels_per_line = 0x156C, /* consistent with regs arrays */
-		 .lines_per_frame = 0x048F, /* consistent with regs arrays */
+		 .pixels_per_line = 0x1020, /* consistent with regs arrays */
+		 .lines_per_frame = 0x060E, /* consistent with regs arrays */
 		 .regs =	mt9e013_WVGA_strong_dvs_30fps	,
 		 .bin_factor_x =	1,
 		 .bin_factor_y =	1,
@@ -210,11 +234,11 @@ struct mt9e013_resolution mt9e013_res_video[] = {
 	{
 		 .desc =	"720p_strong_dvs_30fps"	,
 		 .width =	1568	,
-		 .height =	876	,
+		 .height =	880	,
 		 .fps =		30	,
 		 .used =	0	,
-		 .pixels_per_line = 0x156C, /* consistent with regs arrays */
-		 .lines_per_frame = 0x048F, /* consistent with regs arrays */
+		 .pixels_per_line = 0x1020, /* consistent with regs arrays */
+		 .lines_per_frame = 0x060E, /* consistent with regs arrays */
 		 .regs =	mt9e013_720p_strong_dvs_30fps	,
 		 .bin_factor_x =	1,
 		 .bin_factor_y =	1,
@@ -1574,10 +1598,6 @@ static int nearest_resolution_index(int w, int h)
 	int min_dist = INT_MAX;
 	struct mt9e013_resolution *tmp_res = NULL;
 	s32 m = LARGEST_ALLOWED_RATIO_MISMATCH;
-
-	/* Quick-and-dirty hack related 720p FOV bug. */
-	if (w == 1552 && h == 880)
-		return 4; /* 720p_strong_dvs_30fps */
 
 	for (j = 0; j < 2; ++j) {
 		for (i = 0; i < N_RES; i++) {
