@@ -28,7 +28,6 @@
 #include <linux/init.h>
 #include <linux/kmod.h>
 #include <linux/device.h>
-#include <linux/delay.h>
 #include <linux/fs.h>
 #include <linux/init.h>
 #include <linux/slab.h>
@@ -242,21 +241,6 @@ int misensor_rmw_reg(struct i2c_client *client, u16 data_length, u16 reg,
 }
 
 
-/*
- * mt9m114_write_reg_array - Initializes a list of MT9M114 registers
- * @client: i2c driver client structure
- * @reglist: list of registers to be written
- *
- * This function initializes a list of registers. When consecutive addresses
- * are found in a row on the list, this function creates a buffer and sends
- * consecutive data in a single i2c_transfer().
- *
- * __mt9m114_flush_reg_array, __mt9m114_buf_reg_array() and
- * __mt9m114_write_reg_is_consecutive() are internal functions to
- * mt9m114_write_reg_array() and should be not used anywhere else.
- *
- */
-
 static int __mt9m114_flush_reg_array(struct i2c_client *client,
 				     struct mt9m114_write_ctrl *ctrl)
 {
@@ -348,6 +332,20 @@ __mt9m114_write_reg_is_consecutive(struct i2c_client *client,
 	return ctrl->buffer.addr + ctrl->index == next->reg;
 }
 
+/*
+ * mt9m114_write_reg_array - Initializes a list of mt9m114 registers
+ * @client: i2c driver client structure
+ * @reglist: list of registers to be written
+ * @poll: completion polling requirement
+ * This function initializes a list of registers. When consecutive addresses
+ * are found in a row on the list, this function creates a buffer and sends
+ * consecutive data in a single i2c_transfer().
+ *
+ * __mt9m114_flush_reg_array, __mt9m114_buf_reg_array() and
+ * __mt9m114_write_reg_is_consecutive() are internal functions to
+ * mt9m114_write_reg_array() and should be not used anywhere else.
+ *
+ */
 static int mt9m114_write_reg_array(struct i2c_client *client,
 				const struct misensor_reg *reglist,
 				int poll)
@@ -1128,26 +1126,6 @@ static int mt9m114_s_ctrl(struct v4l2_subdev *sd, struct v4l2_control *ctrl)
 		return ret;
 
 	return 0;
-}
-
-/*
- * Wait till the context has changed. Read the context status register,
- * exit when the target value is reached.
- */
-void mt9m114_poll_awhile(struct v4l2_subdev *sd, int targetval)
-{
-
-	struct i2c_client *c = v4l2_get_subdevdata(sd);
-	int i, val;
-
-	/* POLL to see if the context changes... */
-	for (i = 0; i <= 20; i++) {
-		mt9m114_read_reg(c, MISENSOR_8BIT, 0x8405, &val);
-		if (val == targetval)
-			return;
-		/* REVISIT: Do we need to wait that much? */
-		mdelay(70);
-	}
 }
 
 static int mt9m114_s_stream(struct v4l2_subdev *sd, int enable)
