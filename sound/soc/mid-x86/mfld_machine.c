@@ -26,6 +26,7 @@
 
 #include <linux/init.h>
 #include <linux/device.h>
+#include <linux/delay.h>
 #include <linux/slab.h>
 #include <linux/io.h>
 #include <linux/async.h>
@@ -33,15 +34,14 @@
 #include <linux/gpio.h>
 #include <linux/ipc_device.h>
 #include <asm/intel-mid.h>
+#include <asm/intel_scu_ipc.h>
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
 #include <sound/soc.h>
 #include <sound/jack.h>
+#include <sound/tlv.h>
 #include "../codecs/sn95031.h"
 
-#define MID_MONO 1
-#define MID_STEREO 2
-#define MID_MAX_CAP 5
 #define MFLD_JACK_INSERT 0x04
 #define HEADSET_DET_PIN 77
 
@@ -56,16 +56,14 @@ enum soc_mic_bias_zones {
 	MFLD_MV_UNDEFINED,
 };
 
-static unsigned int	hs_switch;
-static unsigned int	lo_dac;
-
 struct mfld_mc_private {
-	struct ipc_device *socdev;
 	void __iomem *int_base;
-	struct snd_soc_codec *codec;
 	u8 jack_interrupt_status;
 	u8 oc_interrupt_status;
 	spinlock_t lock; /* lock for interrupt status and jack debounce */
+	int pcm1_master_mode;
+	unsigned int hs_switch;
+	unsigned int lo_dac;
 #ifdef CONFIG_HAS_WAKELOCK
 	struct wake_lock wake_lock;
 #endif
@@ -99,7 +97,10 @@ static const struct soc_enum SN95031_pcm1_mode_config_enum =
 static int headset_get_switch(struct snd_kcontrol *kcontrol,
 	struct snd_ctl_elem_value *ucontrol)
 {
-	ucontrol->value.integer.value[0] = hs_switch;
+	struct snd_soc_codec *codec =  snd_kcontrol_chip(kcontrol);
+	struct mfld_mc_private *mc_drv_ctx =
+			snd_soc_card_get_drvdata(codec->card);
+	ucontrol->value.integer.value[0] = mc_drv_ctx->hs_switch;
 	return 0;
 }
 
@@ -107,8 +108,10 @@ static int headset_set_switch(struct snd_kcontrol *kcontrol,
 	struct snd_ctl_elem_value *ucontrol)
 {
 	struct snd_soc_codec *codec =  snd_kcontrol_chip(kcontrol);
+	struct mfld_mc_private *mc_drv_ctx =
+			snd_soc_card_get_drvdata(codec->card);
 
-	if (ucontrol->value.integer.value[0] == hs_switch)
+	if (ucontrol->value.integer.value[0] == mc_drv_ctx->hs_switch)
 		return 0;
 
 	if (ucontrol->value.integer.value[0]) {
@@ -123,20 +126,22 @@ static int headset_set_switch(struct snd_kcontrol *kcontrol,
 	mutex_lock(&codec->mutex);
 	snd_soc_dapm_sync(&codec->dapm);
 	mutex_unlock(&codec->mutex);
-	hs_switch = ucontrol->value.integer.value[0];
+	mc_drv_ctx->hs_switch = ucontrol->value.integer.value[0];
 
 	return 0;
 }
 
 static void lo_enable_out_pins(struct snd_soc_codec *codec)
 {
+	struct mfld_mc_private *mc_drv_ctx =
+			snd_soc_card_get_drvdata(codec->card);
 	snd_soc_dapm_enable_pin(&codec->dapm, "IHFOUTL");
 	snd_soc_dapm_enable_pin(&codec->dapm, "IHFOUTR");
 	snd_soc_dapm_enable_pin(&codec->dapm, "LINEOUTL");
 	snd_soc_dapm_enable_pin(&codec->dapm, "LINEOUTR");
 	snd_soc_dapm_enable_pin(&codec->dapm, "VIB1OUT");
 	snd_soc_dapm_enable_pin(&codec->dapm, "VIB2OUT");
-	if (hs_switch) {
+	if (mc_drv_ctx->hs_switch) {
 		snd_soc_dapm_enable_pin(&codec->dapm, "Headphones");
 		snd_soc_dapm_disable_pin(&codec->dapm, "EPOUT");
 	} else {
@@ -148,7 +153,10 @@ static void lo_enable_out_pins(struct snd_soc_codec *codec)
 static int lo_get_switch(struct snd_kcontrol *kcontrol,
 	struct snd_ctl_elem_value *ucontrol)
 {
-	ucontrol->value.integer.value[0] = lo_dac;
+	struct snd_soc_codec *codec =  snd_kcontrol_chip(kcontrol);
+	struct mfld_mc_private *mc_drv_ctx =
+			snd_soc_card_get_drvdata(codec->card);
+	ucontrol->value.integer.value[0] = mc_drv_ctx->lo_dac;
 	return 0;
 }
 
@@ -156,8 +164,10 @@ static int lo_set_switch(struct snd_kcontrol *kcontrol,
 	struct snd_ctl_elem_value *ucontrol)
 {
 	struct snd_soc_codec *codec =  snd_kcontrol_chip(kcontrol);
+	struct mfld_mc_private *mc_drv_ctx =
+			snd_soc_card_get_drvdata(codec->card);
 
-	if (ucontrol->value.integer.value[0] == lo_dac)
+	if (ucontrol->value.integer.value[0] == mc_drv_ctx->lo_dac)
 		return 0;
 
 	/* we dont want to work with last state of lineout so just enable all
@@ -196,43 +206,102 @@ static int lo_set_switch(struct snd_kcontrol *kcontrol,
 	mutex_lock(&codec->mutex);
 	snd_soc_dapm_sync(&codec->dapm);
 	mutex_unlock(&codec->mutex);
-	lo_dac = ucontrol->value.integer.value[0];
+	mc_drv_ctx->lo_dac = ucontrol->value.integer.value[0];
 	return 0;
 }
+
 static int sn95031_get_pcm1_mode(struct snd_kcontrol *kcontrol,
 					struct snd_ctl_elem_value *ucontrol)
 {
-	int mode;
 	struct snd_soc_codec *codec =  snd_kcontrol_chip(kcontrol);
+	struct mfld_mc_private *mc_drv_ctx =
+			snd_soc_card_get_drvdata(codec->card);
 
-	mode = snd_soc_read(codec, SN95031_PCM1C3) >> 7;
-	pr_debug("mode: %d\n", mode);
-	ucontrol->value.integer.value[0] = mode;
+	pr_debug("PCM1 master mode: %d\n", mc_drv_ctx->pcm1_master_mode);
+	ucontrol->value.integer.value[0] = mc_drv_ctx->pcm1_master_mode;
 	return 0;
 }
+
 static int sn95031_set_pcm1_mode(struct snd_kcontrol *kcontrol,
 				struct snd_ctl_elem_value *ucontrol)
 {
-	u8 mode = ucontrol->value.integer.value[0];
 	struct snd_soc_codec *codec =  snd_kcontrol_chip(kcontrol);
+	struct mfld_mc_private *mc_drv_ctx =
+			snd_soc_card_get_drvdata(codec->card);
 
-	if (mode) {
-		pr_debug("can we set the master mode settings\n");
-		snd_soc_update_bits(codec, SN95031_PCM1C3,
-				BIT(1)|BIT(2)|BIT(3)|BIT(7), BIT(7)|BIT(1));
-		snd_soc_update_bits(codec, SN95031_PCM1C1, BIT(0)|BIT(1),
-								BIT(0)|BIT(1));
-		snd_soc_update_bits(codec, SN95031_PCM1C2,
-						BIT(0)|BIT(1)|BIT(2), 0);
-	} else {
-		pr_debug("setting the slave mode settings\n");
-		snd_soc_update_bits(codec, SN95031_PCM1C3, BIT(7), 0);
-		snd_soc_update_bits(codec, SN95031_PCM1C1, BIT(0)|BIT(1), 0);
-		snd_soc_update_bits(codec, SN95031_PCM1C2, BIT(2), BIT(2));
-
-	}
+	mc_drv_ctx->pcm1_master_mode = ucontrol->value.integer.value[0];
 	return 0;
 }
+
+static int mfld_vibra_enable_clk(struct snd_soc_dapm_widget *w,
+			struct snd_kcontrol *k, int event)
+{
+	int clk_id = 0;
+
+	if (!strcmp(w->name, "Vibra1Clock"))
+		clk_id = CLK0_VIBRA1;
+	else if (!strcmp(w->name, "Vibra2Clock"))
+		clk_id = CLK0_VIBRA2;
+
+	if (SND_SOC_DAPM_EVENT_ON(event))
+		intel_scu_ipc_set_osc_clk0(true, clk_id);
+	else if (SND_SOC_DAPM_EVENT_OFF(event))
+		intel_scu_ipc_set_osc_clk0(false, clk_id);
+	return 0;
+}
+
+/* Callback to set volume for *VOLCTRL regs. Needs to be implemented separately
+ * since clock and VAUDA need to be on before value can be written to the regs
+ */
+static int sn95031_set_vol_2r(struct snd_kcontrol *kcontrol,
+		struct snd_ctl_elem_value *ucontrol)
+{
+	struct soc_mixer_control *mc =
+		(struct soc_mixer_control *)kcontrol->private_value;
+	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
+	unsigned int reg = mc->reg;
+	unsigned int reg2 = mc->rreg;
+	unsigned int shift = mc->shift;
+	int max = mc->max;
+	unsigned int mask = (1 << fls(max)) - 1;
+	unsigned int invert = mc->invert;
+	int err;
+	unsigned int val, val2, val_mask;
+	int sst_pll_mode_saved;
+
+	val_mask = mask << shift;
+	val = (ucontrol->value.integer.value[0] & mask);
+	val2 = (ucontrol->value.integer.value[1] & mask);
+
+	if (invert) {
+		val = max - val;
+		val2 = max - val2;
+	}
+
+	val = val << shift;
+	val2 = val2 << shift;
+
+	pr_debug("enabling PLL and VAUDA to change volume\n");
+	mutex_lock(&codec->mutex);
+	sst_pll_mode_saved = intel_scu_ipc_set_osc_clk0(true, CLK0_QUERY);
+	intel_scu_ipc_set_osc_clk0(true, CLK0_MSIC);
+	snd_soc_dapm_force_enable_pin(&codec->dapm, "VirtBias");
+	snd_soc_dapm_sync(&codec->dapm);
+
+	err = snd_soc_update_bits(codec, reg, val_mask, val);
+	if (err < 0)
+		goto restore_state;
+
+	err = snd_soc_update_bits(codec, reg2, val_mask, val2);
+restore_state:
+	snd_soc_dapm_disable_pin(&codec->dapm, "VirtBias");
+	if (!(sst_pll_mode_saved & CLK0_MSIC))
+		intel_scu_ipc_set_osc_clk0(false, CLK0_MSIC);
+	mutex_unlock(&codec->mutex);
+	return err;
+}
+
+static const DECLARE_TLV_DB_SCALE(out_tlv, -6200, 100, 0);
 
 static const struct snd_kcontrol_new mfld_snd_controls[] = {
 	SOC_ENUM_EXT("Playback Switch", headset_enum,
@@ -241,17 +310,38 @@ static const struct snd_kcontrol_new mfld_snd_controls[] = {
 			lo_get_switch, lo_set_switch),
 	SOC_ENUM_EXT("PCM1 Mode", SN95031_pcm1_mode_config_enum,
 			sn95031_get_pcm1_mode, sn95031_set_pcm1_mode),
+	/* Add digital volume and mute controls for Headphone/Headset*/
+	SOC_DOUBLE_R_EXT_TLV("Headphone Playback Volume", SN95031_HSLVOLCTRL,
+				SN95031_HSRVOLCTRL, 0, 71, 1,
+				snd_soc_get_volsw_2r, sn95031_set_vol_2r,
+				out_tlv),
+	SOC_DOUBLE_R_EXT_TLV("Speaker Playback Volume", SN95031_IHFLVOLCTRL,
+				SN95031_IHFRVOLCTRL, 0, 71, 1,
+				snd_soc_get_volsw_2r, sn95031_set_vol_2r,
+				out_tlv),
 };
 
 static const struct snd_soc_dapm_widget mfld_widgets[] = {
 	SND_SOC_DAPM_HP("Headphones", NULL),
 	SND_SOC_DAPM_MIC("Mic", NULL),
+	/* Dummy widget to trigger VAUDA on/off */
+	SND_SOC_DAPM_MICBIAS("VirtBias", SND_SOC_NOPM, 0, 0),
+	SND_SOC_DAPM_SUPPLY("Vibra1Clock", SND_SOC_NOPM, 0, 0,
+			mfld_vibra_enable_clk,
+			SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMD),
+	SND_SOC_DAPM_SUPPLY("Vibra2Clock", SND_SOC_NOPM, 0, 0,
+			mfld_vibra_enable_clk,
+			SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMD),
 };
 
 static const struct snd_soc_dapm_route mfld_map[] = {
+	{ "HPOUTL", NULL, "Headset Rail"},
+	{ "HPOUTR", NULL, "Headset Rail"},
 	{"Headphones", NULL, "HPOUTR"},
 	{"Headphones", NULL, "HPOUTL"},
 	{"AMIC1", NULL, "Mic"},
+	{"VIB1SPI", NULL, "Vibra1Clock"},
+	{"VIB2SPI", NULL, "Vibra2Clock"},
 };
 
 static void mfld_jack_check(unsigned int intr_status)
@@ -277,6 +367,8 @@ static int mfld_init(struct snd_soc_pcm_runtime *runtime)
 {
 	struct snd_soc_codec *codec = runtime->codec;
 	struct snd_soc_dapm_context *dapm = &codec->dapm;
+	struct mfld_mc_private *mc_drv_ctx =
+			snd_soc_card_get_drvdata(codec->card);
 	int ret_val;
 
 	/* Add jack sense widgets */
@@ -291,16 +383,13 @@ static int mfld_init(struct snd_soc_pcm_runtime *runtime)
 		pr_err("soc_add_controls failed %d", ret_val);
 		return ret_val;
 	}
-	/* always connected */
-	snd_soc_dapm_enable_pin(dapm, "Headphones");
-	snd_soc_dapm_enable_pin(dapm, "Mic");
 	/* default is earpiece pin, userspace sets it explcitly */
 	snd_soc_dapm_disable_pin(dapm, "Headphones");
 	/* default is lineout NC, userspace sets it explcitly */
 	snd_soc_dapm_disable_pin(dapm, "LINEOUTL");
 	snd_soc_dapm_disable_pin(dapm, "LINEOUTR");
-	lo_dac = 3;
-	hs_switch = 0;
+	mc_drv_ctx->lo_dac = 3;
+	mc_drv_ctx->hs_switch = 0;
 	/* we dont use linein in this so set to NC */
 	snd_soc_dapm_disable_pin(dapm, "LINEINL");
 	snd_soc_dapm_disable_pin(dapm, "LINEINR");
@@ -361,6 +450,126 @@ static int mfld_speaker_init(struct snd_soc_pcm_runtime *runtime)
 }
 #endif
 
+static int mfld_media_hw_params(struct snd_pcm_substream *substream,
+		struct snd_pcm_hw_params *params)
+{
+	int ret;
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_codec *codec = rtd->codec;
+
+	pr_debug("%s\n", __func__);
+	/* Force the data width to 24 bit in MSIC since post processing
+	algorithms in DSP enabled with 24 bit precision */
+	ret = snd_soc_codec_set_params(codec, SNDRV_PCM_FORMAT_S24_LE);
+	if (ret < 0) {
+		pr_debug("codec_set_params returned error %d\n", ret);
+		return ret;
+	}
+	snd_soc_codec_set_pll(codec, 0, SN95031_PLLIN, 1, 1);
+
+	/* VAUD needs to be on before configuring PLL */
+	snd_soc_dapm_force_enable_pin(&codec->dapm, "VirtBias");
+	mutex_lock(&codec->mutex);
+	snd_soc_dapm_sync(&codec->dapm);
+	mutex_unlock(&codec->mutex);
+	usleep_range(5000, 6000);
+	sn95031_configure_pll(codec, ENABLE_PLL);
+
+	/* enable PCM2 */
+	snd_soc_dai_set_tristate(rtd->codec_dai, 0);
+	return 0;
+}
+
+static int mfld_voice_hw_params(struct snd_pcm_substream *substream,
+		struct snd_pcm_hw_params *params)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_codec *codec = rtd->codec;
+	struct snd_soc_card *soc_card = rtd->card;
+	struct mfld_mc_private *mc_drv_ctx = snd_soc_card_get_drvdata(soc_card);
+	pr_debug("%s\n", __func__);
+
+	if (mc_drv_ctx->pcm1_master_mode) { /* VOIP call */
+		snd_soc_codec_set_pll(codec, 0, SN95031_PLLIN, 1, 1);
+		snd_soc_dai_set_fmt(rtd->codec_dai, SND_SOC_DAIFMT_CBM_CFM
+						| SND_SOC_DAIFMT_DSP_A);
+		/* Sets the PCM1 clock rate */
+		snd_soc_update_bits(codec, SN95031_PCM1C1, BIT(0)|BIT(1),
+								BIT(0)|BIT(1));
+	} else { /* CSV call */
+		snd_soc_codec_set_pll(codec, 0, SN95031_PCM1BCLK, 1, 1);
+		snd_soc_dai_set_fmt(rtd->codec_dai, SND_SOC_DAIFMT_CBS_CFS
+						| SND_SOC_DAIFMT_I2S);
+		snd_soc_update_bits(codec, SN95031_PCM1C1, BIT(0)|BIT(1), 0);
+	}
+
+	/* VAUD needs to be on before configuring PLL */
+	snd_soc_dapm_force_enable_pin(&codec->dapm, "VirtBias");
+	mutex_lock(&codec->mutex);
+	snd_soc_dapm_sync(&codec->dapm);
+	mutex_unlock(&codec->mutex);
+	usleep_range(5000, 6000);
+	sn95031_configure_pll(codec, ENABLE_PLL);
+	return 0;
+}
+
+static unsigned int rates_44100[] = {
+	44100,
+};
+
+static struct snd_pcm_hw_constraint_list constraints_44100 = {
+	.count	= ARRAY_SIZE(rates_44100),
+	.list	= rates_44100,
+};
+
+static int mfld_media_startup(struct snd_pcm_substream *substream)
+{
+	pr_debug("%s - applying rate constraint\n", __func__);
+	snd_pcm_hw_constraint_list(substream->runtime, 0,
+				   SNDRV_PCM_HW_PARAM_RATE,
+				   &constraints_44100);
+	intel_scu_ipc_set_osc_clk0(true, CLK0_MSIC);
+	return 0;
+}
+
+static void mfld_media_shutdown(struct snd_pcm_substream *substream)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_dai *codec_dai = rtd->codec_dai;
+	pr_debug("%s\n", __func__);
+
+	snd_soc_dapm_disable_pin(&rtd->codec->dapm, "VirtBias");
+	/* switch off PCM2 port */
+	if (!rtd->codec->active)
+		snd_soc_dai_set_tristate(codec_dai, 1);
+}
+
+static int mfld_voice_startup(struct snd_pcm_substream *substream)
+{
+	intel_scu_ipc_set_osc_clk0(true, CLK0_MSIC);
+	return 0;
+}
+
+static void mfld_voice_shutdown(struct snd_pcm_substream *substream)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	pr_debug("%s\n", __func__);
+
+	snd_soc_dapm_disable_pin(&rtd->codec->dapm, "VirtBias");
+}
+
+static struct snd_soc_ops mfld_media_ops = {
+	.startup = mfld_media_startup,
+	.shutdown = mfld_media_shutdown,
+	.hw_params = mfld_media_hw_params,
+};
+
+static struct snd_soc_ops mfld_voice_ops = {
+	.startup = mfld_voice_startup,
+	.shutdown = mfld_voice_shutdown,
+	.hw_params = mfld_voice_hw_params,
+};
+
 static struct snd_soc_dai_link mfld_msic_dailink[] = {
 	{
 		.name = "Medfield Headset",
@@ -371,6 +580,7 @@ static struct snd_soc_dai_link mfld_msic_dailink[] = {
 		.platform_name = "sst-platform",
 		.init = mfld_init,
 		.ignore_suspend = 1,
+		.ops = &mfld_media_ops,
 	},
 	{
 		.name = "Medfield Speaker",
@@ -385,6 +595,7 @@ static struct snd_soc_dai_link mfld_msic_dailink[] = {
 		.init = NULL,
 #endif
 		.ignore_suspend = 1,
+		.ops = &mfld_media_ops,
 	},
 /*
  *	This configurtaion doesnt need Vibra as PCM device
@@ -421,6 +632,7 @@ static struct snd_soc_dai_link mfld_msic_dailink[] = {
 		.init = NULL,
 		.ignore_suspend = 1,
 		.ignore_pmdown_time = 1,
+		.ops = &mfld_voice_ops,
 	},
 };
 
@@ -451,6 +663,19 @@ static int snd_mfld_mc_poweroff(struct device *dev)
 #define snd_mfld_mc_resume NULL
 #define snd_mfld_mc_poweroff NULL
 #endif
+
+static int mfld_card_stream_event(struct snd_soc_dapm_context *dapm, int event)
+{
+	struct snd_soc_codec *codec = dapm->codec;
+	pr_debug("machine stream event: %d\n", event);
+	if (event == SND_SOC_DAPM_STREAM_STOP) {
+		if (!codec->active) {
+			sn95031_configure_pll(codec, DISABLE_PLL);
+			return intel_scu_ipc_set_osc_clk0(false, CLK0_MSIC);
+		}
+	}
+	return 0;
+}
 
 /* SoC card */
 static struct snd_soc_card snd_soc_card_mfld = {
@@ -588,14 +813,14 @@ static int __devinit snd_mfld_mc_probe(struct ipc_device *ipcdev)
 	}
 	/* register the soc card */
 	snd_soc_card_mfld.dev = &ipcdev->dev;
-	snd_soc_initialize_card_lists(&snd_soc_card_mfld);
+	snd_soc_card_mfld.dapm.stream_event = mfld_card_stream_event;
+	snd_soc_card_set_drvdata(&snd_soc_card_mfld, mc_drv_ctx);
 	ret_val = snd_soc_register_card(&snd_soc_card_mfld);
 	if (ret_val) {
 		pr_debug("snd_soc_register_card failed %d\n", ret_val);
 		goto freeirq;
 	}
 	ipc_set_drvdata(ipcdev, &snd_soc_card_mfld);
-	snd_soc_card_set_drvdata(&snd_soc_card_mfld, mc_drv_ctx);
 	pr_debug("successfully exited probe\n");
 	return ret_val;
 
@@ -643,10 +868,10 @@ static struct ipc_driver snd_mfld_mc_driver = {
 
 static int __init snd_mfld_driver_init(void)
 {
-	pr_debug("snd_mfld_driver_init called\n");
+	pr_info("snd_mfld_driver_init called\n");
 	return ipc_driver_register(&snd_mfld_mc_driver);
 }
-module_init_async(snd_mfld_driver_init);
+late_initcall(snd_mfld_driver_init);
 
 static void __exit snd_mfld_driver_exit(void)
 {

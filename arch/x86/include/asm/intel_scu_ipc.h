@@ -69,6 +69,16 @@ int intel_scu_ipc_read_osnib_rr(u8 *rr);
 
 int intel_scu_ipc_osc_clk(u8 clk, unsigned int khz);
 
+enum clk0_mode {
+	CLK0_AUDIENCE = 0x4,
+	CLK0_VIBRA1 = 0x8,
+	CLK0_VIBRA2 = 0x10,
+	CLK0_MSIC = 0x20,
+	CLK0_QUERY = 0x1000,
+};
+
+int intel_scu_ipc_set_osc_clk0(unsigned int enable, enum clk0_mode mode);
+
 extern struct blocking_notifier_head intel_scu_notifier;
 
 static inline void intel_scu_notifier_add(struct notifier_block *nb)

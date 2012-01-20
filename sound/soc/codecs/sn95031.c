@@ -39,7 +39,6 @@
 #include <sound/initval.h>
 #include <sound/tlv.h>
 #include <sound/jack.h>
-#include <sound/intel_sst.h>
 #include "sn95031.h"
 
 #define SN95031_RATES (SNDRV_PCM_RATE_8000_96000)
@@ -95,7 +94,6 @@ static unsigned int sn95031_read_voltage(void)
 static void sn95031_enable_mic_bias(struct snd_soc_codec *codec)
 {
 	pr_debug("enable mic bias\n");
-	pr_debug("codec %p\n", codec);
 	mutex_lock(&codec->mutex);
 	/* GI board has amic bias swapped, we need to enable
 		Mic2 bias for jack */
@@ -149,13 +147,16 @@ static inline int sn95031_write(struct snd_soc_codec *codec,
 	return ret;
 }
 
-static void sn95031_configure_pll(struct snd_soc_codec *codec, int operation)
+void sn95031_configure_pll(struct snd_soc_codec *codec, int operation)
 {
 	struct sn95031_priv *sn95031_ctx;
 	sn95031_ctx = snd_soc_codec_get_drvdata(codec);
 
-	if (operation) {
-		pr_debug("enabling PLL\n");
+	if (sn95031_ctx->pll_state == PLL_ENABLE_PENDING
+			&& operation == ENABLE_PLL) {
+		pr_debug("setting PLL to 0x%x\n", sn95031_ctx->clk_src);
+		snd_soc_write(codec, SN95031_AUDPLLCTRL, 0x20);
+		udelay(1000);
 		/* PLL takes few msec to stabilize
 		Refer sec2.3 MFLD Audio Interface Doc-rev0.7 */
 		snd_soc_write(codec, SN95031_AUDPLLCTRL,
@@ -166,51 +167,31 @@ static void sn95031_configure_pll(struct snd_soc_codec *codec, int operation)
 		snd_soc_update_bits(codec, SN95031_AUDPLLCTRL, BIT(5), BIT(5));
 		udelay(1000);
 		sn95031_ctx->pll_state = PLL_ENABLED;
-	} else {
+	} else if (operation == DISABLE_PLL) {
 		pr_debug("disabling PLL\n");
 		sn95031_ctx->clk_src = SN95031_INVALID;
 		sn95031_ctx->pll_state = PLL_DISABLED;
 		snd_soc_write(codec, SN95031_AUDPLLCTRL, 0);
+	} else {
+		pr_debug("PLL configure state: op=0x%x, state=0x%x\n",
+				operation, sn95031_ctx->pll_state);
 	}
 }
+EXPORT_SYMBOL_GPL(sn95031_configure_pll);
 
-static int sn95031_codec_stream_event(struct snd_soc_dapm_context *dapm,
-		int event)
-{
-	pr_debug("%s:Event=%d\n", __func__, event);
-
-	if (event == SND_SOC_DAPM_STREAM_STOP) {
-		/* disable the MSIC PLL only if no other active streams */
-		if (dapm->codec->active == 0) {
-			sn95031_configure_pll(dapm->codec, DISABLE_PLL);
-			/* disable PLLIN source clock */
-			intel_sst_set_pll(false, SST_PLL_MSIC);
-		}
-	}
-	return 0;
-}
 static int sn95031_set_vaud_bias(struct snd_soc_codec *codec,
 		enum snd_soc_bias_level level)
 {
 	struct sn95031_priv *sn95031_ctx;
 	sn95031_ctx = snd_soc_codec_get_drvdata(codec);
 
+	pr_debug("%s: 0x%x\n", __func__, level);
 	switch (level) {
 	case SND_SOC_BIAS_ON:
 		break;
 
 	case SND_SOC_BIAS_PREPARE:
-		pr_debug("bias_prepare\n");
-		/* enable msic pll only when any codec dai is active,
-			not other use cases like static vibra etc */
-		if (codec->active) {
-			pr_debug("vaud_bias powering up pll\n");
-			intel_sst_set_pll(true, SST_PLL_MSIC);
-			/* allow few ms to stabilize the clock before
-				enabling the MSIC PLL */
-			usleep_range(5000, 6000);
-			sn95031_configure_pll(codec, ENABLE_PLL);
-		}
+		pr_debug("vaud_bias PREPARE\n");
 		break;
 
 	case SND_SOC_BIAS_STANDBY:
@@ -218,14 +199,15 @@ static int sn95031_set_vaud_bias(struct snd_soc_codec *codec,
 			pr_debug("vaud_bias power up rail\n");
 			/* power up the rail, on in normal and aoac mode */
 			snd_soc_write(codec, SN95031_VAUD, 0x2D);
-			msleep(1);
+			usleep_range(1000, 1100);
 		} else if (codec->dapm.bias_level == SND_SOC_BIAS_PREPARE) {
-			pr_debug("vaud_bias standby\n");
+			pr_debug("vaud_bias STANDBY\n");
 		}
 		break;
 
 	case SND_SOC_BIAS_OFF:
-		pr_debug("vaud_bias _OFF doing rail shutdown\n");
+		pr_debug("vaud_bias OFF, doing rail shutdown\n");
+		sn95031_configure_pll(codec, DISABLE_PLL);
 		/*
 		 * off mode is 100, and we need AOAC as off as well,
 		 * so 100100b ie 24
@@ -338,76 +320,6 @@ static int sn95031_dmic56_event(struct snd_soc_dapm_widget *w,
 	return 0;
 }
 
-static int sn95031_enable_pnw_clk(struct snd_soc_dapm_widget *w,
-			struct snd_kcontrol *k, int event)
-{
-	int clk_id = 0;
-
-	if (!strcmp(w->name, "Vibra1Clock"))
-		clk_id = SST_PLL_VIBRA1;
-	else if (!strcmp(w->name, "Vibra2Clock"))
-		clk_id = SST_PLL_VIBRA2;
-
-	if (SND_SOC_DAPM_EVENT_ON(event))
-		intel_sst_set_pll(true, clk_id);
-	else if (SND_SOC_DAPM_EVENT_OFF(event))
-		intel_sst_set_pll(false, clk_id);
-	return 0;
-}
-
-/* Callback to set volume for *VOLCTRL regs. Needs to be implemented separately
- * since clock and VAUDA need to be on before value can be written to the regs
- */
-static int sn95031_set_vol_2r(struct snd_kcontrol *kcontrol,
-		struct snd_ctl_elem_value *ucontrol)
-{
-	struct soc_mixer_control *mc =
-		(struct soc_mixer_control *)kcontrol->private_value;
-	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
-	unsigned int reg = mc->reg;
-	unsigned int reg2 = mc->rreg;
-	unsigned int shift = mc->shift;
-	int max = mc->max;
-	unsigned int mask = (1 << fls(max)) - 1;
-	unsigned int invert = mc->invert;
-	int err;
-	unsigned int val, val2, val_mask;
-	int sst_pll_mode_saved;
-
-	val_mask = mask << shift;
-	val = (ucontrol->value.integer.value[0] & mask);
-	val2 = (ucontrol->value.integer.value[1] & mask);
-
-	if (invert) {
-		val = max - val;
-		val2 = max - val2;
-	}
-
-	val = val << shift;
-	val2 = val2 << shift;
-
-	pr_debug("enabling PLL and VAUDA to change volume\n");
-	mutex_lock(&codec->mutex);
-	sst_pll_mode_saved = intel_sst_get_pll();
-	intel_sst_set_pll(true, SST_PLL_MSIC);
-	udelay(SST_PLL_DELAY);
-	snd_soc_dapm_force_enable_pin(&codec->dapm, "VirtBias");
-	snd_soc_dapm_sync(&codec->dapm);
-
-	err = snd_soc_update_bits(codec, reg, val_mask, val);
-	if (err < 0)
-		goto restore_state;
-
-	err = snd_soc_update_bits(codec, reg2, val_mask, val2);
-restore_state:
-	snd_soc_dapm_disable_pin(&codec->dapm, "VirtBias");
-	snd_soc_dapm_sync(&codec->dapm);
-	if ((sst_pll_mode_saved & SST_PLL_MSIC) == 0)
-		intel_sst_set_pll(false, SST_PLL_MSIC);
-	mutex_unlock(&codec->mutex);
-	return err;
-}
-
 /* mux controls */
 static const char *sn95031_mic_texts[] = { "AMIC", "LineIn" };
 
@@ -463,8 +375,6 @@ static unsigned int mic_tlv[] = {
 	2, 2, TLV_DB_SCALE_ITEM(2100, 0, 0),
 	3, 3, TLV_DB_SCALE_ITEM(3000, 0, 0),
 };
-/* -62db to 9 db in 1db steps*/
-static const DECLARE_TLV_DB_SCALE(out_tlv, -6200, 100, 0);
 
 static const struct soc_enum sn95031_micmode1_enum =
 	SOC_ENUM_SINGLE(SN95031_MICAMP1, 1, 2, sn95031_micmode_text);
@@ -614,18 +524,9 @@ static const struct snd_kcontrol_new sn95031_snd_controls[] = {
 			2, 3, 0, mic_tlv),
 	SOC_SINGLE_TLV("Mic2 Capture Volume", SN95031_MICAMP2,
 			2, 3, 0, mic_tlv),
-	/* Add digital volume and mute controls for Headphone/Headset*/
-	SOC_DOUBLE_R_EXT_TLV("Headphone Playback Volume", SN95031_HSLVOLCTRL,
-				SN95031_HSRVOLCTRL, 0, 71, 1,
-				snd_soc_get_volsw_2r, sn95031_set_vol_2r,
-				out_tlv),
 	SOC_DOUBLE_R("Headphone Playback Switch", SN95031_HSLVOLCTRL,
 				SN95031_HSRVOLCTRL, 7, 1, 0),
 	/* Add digital volume and mute controls for Speaker*/
-	SOC_DOUBLE_R_EXT_TLV("Speaker Playback Volume", SN95031_IHFLVOLCTRL,
-				SN95031_IHFRVOLCTRL, 0, 71, 1,
-				snd_soc_get_volsw_2r, sn95031_set_vol_2r,
-				out_tlv),
 	SOC_DOUBLE_R("Speaker Playback Switch", SN95031_IHFLVOLCTRL,
 				SN95031_IHFRVOLCTRL, 7, 1, 0),
 
@@ -682,8 +583,6 @@ static const struct snd_soc_dapm_widget sn95031_dapm_widgets[] = {
 	SND_SOC_DAPM_MICBIAS("DMIC12Bias", SN95031_DMICMUX, 3, 0),
 	SND_SOC_DAPM_MICBIAS("DMIC34Bias", SN95031_DMICMUX, 4, 0),
 	SND_SOC_DAPM_MICBIAS("DMIC56Bias", SN95031_DMICMUX, 5, 0),
-	/* Dummy widget to trigger VAUDA on/off */
-	SND_SOC_DAPM_MICBIAS("VirtBias", SND_SOC_NOPM, 0, 0),
 
 	SND_SOC_DAPM_SUPPLY("DMIC12supply", SN95031_DMICLK, 0, 0,
 				sn95031_dmic12_event,
@@ -707,12 +606,6 @@ static const struct snd_soc_dapm_widget sn95031_dapm_widgets[] = {
 			SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMD),
 	SND_SOC_DAPM_SUPPLY("Speaker Rail", SND_SOC_NOPM, 0, 0,
 			sn95031_vihf_event,
-			SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMD),
-	SND_SOC_DAPM_SUPPLY("Vibra1Clock", SND_SOC_NOPM, 0, 0,
-			sn95031_enable_pnw_clk,
-			SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMD),
-	SND_SOC_DAPM_SUPPLY("Vibra2Clock", SND_SOC_NOPM, 0, 0,
-			sn95031_enable_pnw_clk,
 			SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMD),
 
 	/* playback path driver enables */
@@ -805,8 +698,6 @@ static const struct snd_soc_dapm_widget sn95031_dapm_widgets[] = {
 
 static const struct snd_soc_dapm_route sn95031_audio_map[] = {
 	/* headset and earpiece map */
-	{ "HPOUTL", NULL, "Headset Rail"},
-	{ "HPOUTR", NULL, "Headset Rail"},
 	{ "HPOUTL", NULL, "Headset Left Playback" },
 	{ "HPOUTR", NULL, "Headset Right Playback" },
 	{ "EPOUT", NULL, "Earpiece Playback" },
@@ -842,13 +733,11 @@ static const struct snd_soc_dapm_route sn95031_audio_map[] = {
 	{ "Vibra1 Playback", NULL, "Vibra1 Enable Mux"},
 	{ "Vibra1 Enable Mux", "PWM", "Vibra1 DAC"},
 	{ "Vibra1 Enable Mux", "SPI", "VIB1SPI"},
-	{ "VIB1SPI", NULL, "Vibra1Clock"},
 
 	{ "VIB2OUT", NULL, "Vibra2 Playback"},
 	{ "Vibra2 Playback", NULL, "Vibra2 Enable Mux"},
 	{ "Vibra2 Enable Mux", "PWM", "Vibra2 DAC"},
 	{ "Vibra2 Enable Mux", "SPI", "VIB2SPI"},
-	{ "VIB2SPI", NULL, "Vibra2Clock"},
 
 	/* lineout */
 	{ "LINEOUTL", NULL, "Lineout Left Playback"},
@@ -970,73 +859,53 @@ static int sn95031_pcm_spkr_mute(struct snd_soc_dai *dai, int mute)
 	return 0;
 }
 
-static int sn95031_set_dai_pll(struct snd_soc_dai *codec_dai, int pll_id,
+static int sn95031_codec_set_pll(struct snd_soc_codec *codec, int pll_id,
 		int source, unsigned int freq_in, unsigned int freq_out)
 {
-	int mode, target_clk_src;
-	struct snd_soc_codec *codec = codec_dai->codec;
+	int retval = 0;
 	struct sn95031_priv *sn95031_ctx;
-	sn95031_ctx = snd_soc_codec_get_drvdata(codec_dai->codec);
+	sn95031_ctx = snd_soc_codec_get_drvdata(codec);
 
-	pr_debug("set_dai_pll\n");
-
+	pr_debug("%s: 0x%x\n", __func__, source);
 	mutex_lock(&codec->mutex);
 	if (!freq_in || !freq_out) {
 		/* disable PLL  */
+		pr_debug("request to disable pll\n");
 		sn95031_configure_pll(codec, DISABLE_PLL);
-		mutex_unlock(&codec->mutex);
-		return 0;
+		retval = 0;
+		goto out;
 	}
-	mode = snd_soc_read(codec, SN95031_PCM1C3) >> 7;
-	if (!mode && (!strcmp(codec_dai->name, "SN95031 Voice"))) {
-		target_clk_src = SN95031_PCM1BCLK;
-		snd_soc_write(codec, SN95031_PCM1C2, 0x04);
-	} else {
-		target_clk_src = SN95031_PLLIN;
-		snd_soc_write(codec, SN95031_PCM1C2, 0x00);
-	}
-	/* clock source is same, so don't do anything */
-	if (sn95031_ctx->clk_src == target_clk_src) {
-		pr_debug("clk src is same, no action\n");
-		mutex_unlock(&codec->mutex);
-		return 0;
-	}
-	sn95031_ctx->clk_src = target_clk_src;
-	if (codec->dapm.bias_level >= SND_SOC_BIAS_PREPARE) {
-		pr_debug("bias_level is active, enabling pll\n");
-		intel_sst_set_pll(true, SST_PLL_MSIC);
-		/* allow few ms to stabilize the clock before
-			enabling the MSIC PLL */
-		usleep_range(5000, 6000);
-		sn95031_configure_pll(codec, ENABLE_PLL);
-	} else
+	if (sn95031_ctx->clk_src != source) {
 		sn95031_ctx->pll_state = PLL_ENABLE_PENDING;
-
+		sn95031_ctx->clk_src = source;
+	}
+	if (source == SN95031_INVALID)
+		sn95031_ctx->pll_state = PLL_DISABLED;
+out:
 	mutex_unlock(&codec->mutex);
-	return 0;
+	return retval;
 }
 
 static int sn95031_set_pcm2_tristate(struct snd_soc_dai *codec_dai,
 							int tristate)
 {
-	u8 val;
-
-	pr_debug("enter:%s\n", __func__);
-	if (tristate)
-		val = 0;
-	else
-		val = 1;
-
 	return snd_soc_update_bits(codec_dai->codec, SN95031_PCM2C2,
-						BIT(0), val);
+					BIT(0), !tristate);
 }
+
+static int sn95031_set_pcm1_tristate(struct snd_soc_dai *codec_dai,
+							int tristate)
+{
+	return snd_soc_update_bits(codec_dai->codec, SN95031_PCM1C3,
+						BIT(0), !tristate);
+}
+
 
 static int sn95031_codec_set_params(struct snd_soc_codec *codec,
 						unsigned int param)
 {
 	unsigned int format;
 
-	pr_debug("enter:%s\n", __func__);
 	switch (param) {
 	case SNDRV_PCM_FORMAT_S16_LE:
 		format = BIT(4)|BIT(5);
@@ -1055,27 +924,69 @@ static int sn95031_codec_set_params(struct snd_soc_codec *codec,
 	return 0;
 }
 
+static int sn95031_set_voice_dai_fmt(struct snd_soc_dai *dai, unsigned int fmt)
+{
+	struct snd_soc_codec *codec = dai->codec;
+	int mode, format;
+
+	/* set master/slave audio interface */
+	switch (fmt & SND_SOC_DAIFMT_MASTER_MASK) {
+	case SND_SOC_DAIFMT_CBS_CFS:
+		mode = 0;
+		break;
+	case SND_SOC_DAIFMT_CBM_CFM:
+		mode = BIT(7);
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	/* interface format */
+	switch (fmt & SND_SOC_DAIFMT_FORMAT_MASK) {
+	case SND_SOC_DAIFMT_I2S:
+		format = BIT(2);
+		break;
+	case SND_SOC_DAIFMT_RIGHT_J:
+		format = BIT(1)|BIT(0);
+		break;
+	case SND_SOC_DAIFMT_LEFT_J:
+		format = BIT(1);
+		break;
+	case SND_SOC_DAIFMT_DSP_A:
+		format = 0;
+		break;
+	case SND_SOC_DAIFMT_DSP_B:
+		format = BIT(0);
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	snd_soc_update_bits(codec, SN95031_PCM1C3, BIT(7), mode);
+	snd_soc_update_bits(codec, SN95031_PCM1C2, BIT(0)|BIT(1)|BIT(2),
+							format);
+	return 0;
+}
+
 static int sn95031_pcm_hw_params(struct snd_pcm_substream *substream,
 		struct snd_pcm_hw_params *params, struct snd_soc_dai *dai)
 {
 	unsigned int rate;
 
-	pr_debug("pcm_hw param\n");
 	switch (params_rate(params)) {
 	case 48000:
 		pr_debug("RATE_48000\n");
 		rate = 0;
 		break;
-
 	case 44100:
 		pr_debug("RATE_44100\n");
 		rate = BIT(7);
 		break;
-
 	default:
 		pr_err("ERR rate %d\n", params_rate(params));
 		return -EINVAL;
 	}
+	pr_debug("%s: format=0x%x\n", __func__, params_format(params));
 	snd_soc_update_bits(dai->codec, SN95031_PCM1C1, BIT(7), rate);
 
 	return 0;
@@ -1097,6 +1008,7 @@ static int sn95031_voice_hw_params(struct snd_pcm_substream *substream,
 	default:
 		return -EINVAL;
 	}
+	pr_debug("%s: format=0x%x\n", __func__, format);
 	snd_soc_update_bits(dai->codec, SN95031_PCM1C3,
 			BIT(4)|BIT(5), format);
 
@@ -1143,20 +1055,21 @@ static int sn95031_voice_hw_params(struct snd_pcm_substream *substream,
 	snd_soc_update_bits(dai->codec, SN95031_PCM1C1, BIT(7), rate);
 	snd_soc_update_bits(dai->codec, SN95031_PCM1C1, BIT(6)|BIT(5)|BIT(4),
 						pcm1fs);
-	/* enable pcm 1 */
-	snd_soc_update_bits(dai->codec, SN95031_PCM1C3, BIT(0), BIT(0));
+	/* enable PCM1 */
+	sn95031_set_pcm1_tristate(dai, 0);
 	return 0;
 }
 
 static int sn95031_voice_hw_free(struct snd_pcm_substream *substream,
 					struct snd_soc_dai *dai)
 {
-	pr_debug("inside hw_free");
-	snd_soc_update_bits(dai->codec, SN95031_PCM1C3, BIT(0), 0);
+	pr_debug("%s\n", __func__);
+	sn95031_set_pcm1_tristate(dai, 1);
 	/* PCM1 should be in slave, short or long sync mode for
 		Tx line to be in Hi-Z state */
-	snd_soc_update_bits(dai->codec, SN95031_PCM1C3, BIT(7), 0);
-	snd_soc_write(dai->codec, SN95031_PCM1C2, 0x00);
+	sn95031_set_voice_dai_fmt(dai, SND_SOC_DAIFMT_CBS_CFS);
+	sn95031_set_voice_dai_fmt(dai, SND_SOC_DAIFMT_CBS_CFS
+					| SND_SOC_DAIFMT_DSP_A);
 	return 0;
 }
 
@@ -1164,34 +1077,21 @@ static int sn95031_voice_hw_free(struct snd_pcm_substream *substream,
 static struct snd_soc_dai_ops sn95031_headset_dai_ops = {
 	.digital_mute	= sn95031_pcm_hs_mute,
 	.hw_params	= sn95031_pcm_hw_params,
-	.set_pll	= sn95031_set_dai_pll,
 	.set_tristate	= sn95031_set_pcm2_tristate,
 };
 
 static struct snd_soc_dai_ops sn95031_speaker_dai_ops = {
 	.digital_mute	= sn95031_pcm_spkr_mute,
 	.hw_params	= sn95031_pcm_hw_params,
-	.set_pll	= sn95031_set_dai_pll,
-	.set_tristate	= sn95031_set_pcm2_tristate,
-};
-
-static struct snd_soc_dai_ops sn95031_vib1_dai_ops = {
-	.hw_params	= sn95031_pcm_hw_params,
-	.set_pll	= sn95031_set_dai_pll,
-	.set_tristate	= sn95031_set_pcm2_tristate,
-};
-
-static struct snd_soc_dai_ops sn95031_vib2_dai_ops = {
-	.hw_params	= sn95031_pcm_hw_params,
-	.set_pll	= sn95031_set_dai_pll,
 	.set_tristate	= sn95031_set_pcm2_tristate,
 };
 
 static struct snd_soc_dai_ops sn95031_voice_dai_ops = {
 	.digital_mute	= sn95031_pcm_hs_mute,
 	.hw_params	= sn95031_voice_hw_params,
+	.set_fmt	= sn95031_set_voice_dai_fmt,
 	.hw_free	= sn95031_voice_hw_free,
-	.set_pll	= sn95031_set_dai_pll,
+	.set_tristate	= sn95031_set_pcm1_tristate,
 };
 
 static struct snd_soc_dai_driver sn95031_dais[] = {
@@ -1231,7 +1131,7 @@ static struct snd_soc_dai_driver sn95031_dais[] = {
 		.rates = SN95031_RATES,
 		.formats = SN95031_FORMATS,
 	},
-	.ops = &sn95031_vib1_dai_ops,
+	.ops = NULL,
 },
 {	.name = "SN95031 Vibra2",
 	.playback = {
@@ -1241,7 +1141,7 @@ static struct snd_soc_dai_driver sn95031_dais[] = {
 		.rates = SN95031_RATES,
 		.formats = SN95031_FORMATS,
 	},
-	.ops = &sn95031_vib2_dai_ops,
+	.ops = NULL,
 },
 {
 	.name = "SN95031 Voice",
@@ -1588,7 +1488,7 @@ struct snd_soc_codec_driver sn95031_codec = {
 	.num_dapm_widgets	= ARRAY_SIZE(sn95031_dapm_widgets),
 	.dapm_routes	= sn95031_audio_map,
 	.num_dapm_routes	= ARRAY_SIZE(sn95031_audio_map),
-	.stream_event	= sn95031_codec_stream_event,
+	.set_pll	= sn95031_codec_set_pll,
 };
 
 static int __devinit sn95031_device_probe(struct platform_device *pdev)

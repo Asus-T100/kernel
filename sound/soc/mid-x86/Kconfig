@@ -14,12 +14,12 @@ config SND_MFLD_MACHINE
 
 config SND_MFLD_MACHINE_GI
 	tristate "SOC Machine Audio driver for Intel Medfield GI board"
-	depends on INTEL_SCU_IPC
-	depends on SND_INTEL_SST
+	depends on INTEL_SCU_IPC && X86 && GPIO_LANGWELL
 	depends on MSIC_GPADC
 	select SND_SOC_SN95031
 	select SND_SST_PLATFORM
-	default N
+	select SND_INTEL_SST
+	default n
 	help
           This adds support for ASoC machine driver for Gilligan Island board, based on
 	  Intel(R) MID Medfield platform. This will create an alsa sound card.

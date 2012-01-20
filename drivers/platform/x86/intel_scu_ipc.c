@@ -148,6 +148,10 @@ static DEFINE_MUTEX(ipclock); /* lock used to prevent multiple call to SCU */
 /* PM Qos struct */
 static struct pm_qos_request_list *qos;
 
+/* Mode for Audio clock */
+static DEFINE_MUTEX(osc_clk0_lock);
+static unsigned int osc_clk0_mode;
+
 /*
  * Command Register (Write Only):
  * A write to this register results in an interrupt to the SCU core processor
@@ -1725,6 +1729,48 @@ int intel_scu_ipc_osc_clk(u8 clk, unsigned int khz)
 	return ipc_ret;
 }
 EXPORT_SYMBOL_GPL(intel_scu_ipc_osc_clk);
+
+/*
+ * OSC_CLK_AUDIO is connected to the MSIC as well as Audience, so it should be
+ * turned on if any one of them requests it to be on and it should be turned off
+ * only if no one needs it on.
+ */
+int intel_scu_ipc_set_osc_clk0(unsigned int enable, enum clk0_mode mode)
+{
+	int ret = 0, clk_enable;
+	static const unsigned int clk_khz = 19200;
+
+	pr_debug("set_clk0 request %s for Mode 0x%x\n",
+				enable ? "ON" : "OFF", mode);
+	mutex_lock(&osc_clk0_lock);
+	if (mode == CLK0_QUERY) {
+		ret = osc_clk0_mode;
+		goto out;
+	}
+	if (enable) {
+		/* if clock is already on, just add new user */
+		if (osc_clk0_mode) {
+			osc_clk0_mode |= mode;
+			goto out;
+		}
+		osc_clk0_mode |= mode;
+		pr_debug("set_clk0: enabling clk, mode 0x%x\n", osc_clk0_mode);
+		clk_enable = 1;
+	} else {
+		osc_clk0_mode &= ~mode;
+		pr_debug("set_clk0: disabling clk, mode 0x%x\n", osc_clk0_mode);
+		/* others using the clock, cannot turn it of */
+		if (osc_clk0_mode)
+			goto out;
+		clk_enable = 0;
+	}
+	pr_debug("configuring OSC_CLK_AUDIO now\n");
+	ret = intel_scu_ipc_osc_clk(OSC_CLK_AUDIO, clk_enable ? clk_khz : 0);
+out:
+	mutex_unlock(&osc_clk0_lock);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(intel_scu_ipc_set_osc_clk0);
 
 /*
  * Interrupt handler gets called when ioc bit of IPC_COMMAND_REG set to 1

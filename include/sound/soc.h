@@ -617,8 +617,9 @@ struct snd_soc_codec_driver {
 			      enum snd_soc_bias_level level);
 	void (*seq_notifier)(struct snd_soc_dapm_context *,
 			     enum snd_soc_dapm_type, int);
-	int (*stream_event)(struct snd_soc_dapm_context *,
-				enum snd_soc_bias_level level);
+
+	/* codec stream completion event */
+	int (*stream_event)(struct snd_soc_dapm_context *, int level);
 };
 
 /* SoC platform interface */

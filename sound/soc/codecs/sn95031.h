@@ -163,6 +163,7 @@ extern void sn95031_jack_detection(struct mfld_jack_data *jack_data);
 extern void sn95031_oc_handler(struct snd_soc_codec *codec,
 					int oc_interrupt_value);
 
+void sn95031_configure_pll(struct snd_soc_codec *codec, int operation);
 #ifdef CONFIG_SWITCH_MID
 extern void mid_headset_report(int state);
 #endif

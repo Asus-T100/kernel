@@ -542,7 +542,7 @@ config MID_I2S_DEV
 
 config A1026
 	tristate "Audience a1026/eS305 Voice Processor"
-	depends on I2C
+	depends on I2C && INTEL_SCU_IPC
 	help
 	  Provides an interface to the Audience voice processing
 	  unit via an I2C bus interface.

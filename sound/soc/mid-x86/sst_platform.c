@@ -32,13 +32,11 @@
 #include <sound/pcm_params.h>
 #include <sound/soc.h>
 #include <sound/intel_sst_ioctl.h>
-#include <sound/intel_sst.h>
-#include "../codecs/sn95031.h"
 #include "sst_platform.h"
+#include "sst_platform_pvt.h"
 
-#define SST_VOICE_DAI "Voice-cpu-dai"
-
-static struct sst_platform_ctx *sst_cpu_ctx;
+struct sst_device *sst_dsp;
+static DEFINE_MUTEX(sst_dsp_lock);
 
 static struct snd_pcm_hardware sst_platform_pcm_hw = {
 	.info =	(SNDRV_PCM_INFO_INTERLEAVED |
@@ -66,66 +64,23 @@ static struct snd_pcm_hardware sst_platform_pcm_hw = {
 	.periods_max = SST_MAX_PERIODS,
 	.fifo_size = SST_FIFO_SIZE,
 };
+
 #ifdef CONFIG_SND_CLV_MACHINE
 static unsigned int	lpe_mixer_input_ihf;
 static unsigned int	lpe_mixer_input_hs;
 
-int sst_set_mixer_param(unsigned int device_input_mixer)
+static int sst_set_mixer_param(unsigned int device_input_mixer)
 {
-	struct intel_sst_card_ops *sstdrv_ops;
-	int ret_val;
-
-	/* allocate memory for SST API set */
-	sstdrv_ops = kzalloc(sizeof(*sstdrv_ops), GFP_KERNEL);
-	if (!sstdrv_ops)
-		return -ENOMEM;
-	/* registering with SST driver to get access to SST APIs to use */
-	ret_val = register_sst_card(sstdrv_ops);
-	if (ret_val) {
-		pr_err("sst: sst card registration failed\n");
-		return -EIO;
+	if (!sst_dsp) {
+		pr_err("sst: DSP not registered\n");
+		return -ENODEV;
 	}
 
 	/*allocate memory for params*/
-	ret_val = sstdrv_ops->pcm_control->set_generic_params(
-			SST_SET_ALGO_PARAMS, (void *)&device_input_mixer);
-	kfree(sstdrv_ops);
-	return ret_val;
+	return sst_dsp->ops->set_generic_params(SST_SET_ALGO_PARAMS,
+					(void *)&device_input_mixer);
 }
-#endif
 
-static int sst_platform_ihf_set_tdm_slot(struct snd_soc_dai *dai,
-			unsigned int tx_mask, unsigned int rx_mask,
-			int slots, int slot_width) {
-	struct intel_sst_card_ops *sstdrv_ops;
-	struct snd_sst_runtime_params params_data;
-	int channels = slots;
-	int ret_val;
-
-	/* allocate memory for SST API set */
-	sstdrv_ops = kzalloc(sizeof(*sstdrv_ops), GFP_KERNEL);
-	if (!sstdrv_ops)
-		return -ENOMEM;
-	/* registering with SST driver to get access to SST APIs to use */
-	ret_val = register_sst_card(sstdrv_ops);
-	if (ret_val) {
-		pr_err("sst: sst card registration failed\n");
-		return -EIO;
-	}
-	params_data.type = SST_SET_CHANNEL_INFO;
-	params_data.str_id = SND_SST_DEVICE_IHF;
-	params_data.size = sizeof(channels);
-	params_data.addr = &channels;
-	ret_val = sstdrv_ops->pcm_control->set_generic_params(SST_SET_RUNTIME_PARAMS,
-							(void *)&params_data);
-	kfree(sstdrv_ops);
-	return ret_val;
-}
-static const struct snd_soc_dai_ops sst_ihf_ops = {
-	.set_tdm_slot = sst_platform_ihf_set_tdm_slot,
-};
-
-#ifdef CONFIG_SND_CLV_MACHINE
 static int lpe_mixer_ihf_get(struct snd_kcontrol *kcontrol,
 	struct snd_ctl_elem_value *ucontrol)
 {
@@ -145,17 +100,17 @@ static int lpe_mixer_ihf_set(struct snd_kcontrol *kcontrol,
 					| SST_INPUT_STREAM_PCM;
 	break;
 	case 1:
-		pr_debug("input is Comptress  stream\n");
+		pr_debug("input is Compress  stream\n");
 		device_input_mixer = SST_STREAM_DEVICE_IHF
 					| SST_INPUT_STREAM_COMPRESS;
 		break;
 	case 2:
-		pr_debug("input is mixed stream\n");
+		pr_debug("input is Mixed stream\n");
 		device_input_mixer = SST_STREAM_DEVICE_IHF
 					| SST_INPUT_STREAM_MIXED;
 		break;
 	default:
-		pr_err("Invalid Input%d\n", ucontrol->value.integer.value[0]);
+		pr_err("Invalid Input:%ld\n", ucontrol->value.integer.value[0]);
 		return -EINVAL;
 	}
 	lpe_mixer_input_ihf  = ucontrol->value.integer.value[0];
@@ -182,29 +137,30 @@ static int lpe_mixer_headset_set(struct snd_kcontrol *kcontrol,
 					 | SST_INPUT_STREAM_PCM;
 		break;
 	case 1:
-		pr_debug("input is Comptress  stream\n");
+		pr_debug("input is Compress  stream\n");
 		mixer_input_stream = SST_STREAM_DEVICE_HS
 					 | SST_INPUT_STREAM_COMPRESS;
 		break;
 	case 2:
-		pr_debug("input is PCM stream\n");
+		pr_debug("input is Mixed stream\n");
 		mixer_input_stream = SST_STREAM_DEVICE_HS
 					 | SST_INPUT_STREAM_MIXED;
 		break;
 	default:
-		pr_err("Invalid Input%d\n", ucontrol->value.integer.value[0]);
+		pr_err("Invalid Input:%ld\n", ucontrol->value.integer.value[0]);
 		return -EINVAL;
 	}
 	lpe_mixer_input_hs  = ucontrol->value.integer.value[0];
 	sst_set_mixer_param(mixer_input_stream);
 	return 0;
 }
+
 static const char *lpe_mixer_text[] = {
-		"PCM", "Compressed", "PCM and Compressed"};
+	"PCM", "Compressed", "PCM and Compressed",
+};
 
 static const struct soc_enum lpe_mixer_enum =
 	SOC_ENUM_SINGLE_EXT(3, lpe_mixer_text);
-
 
 static const struct snd_kcontrol_new sst_controls[] = {
 	SOC_ENUM_EXT("LPE IHF mixer", lpe_mixer_enum,
@@ -214,80 +170,24 @@ static const struct snd_kcontrol_new sst_controls[] = {
 };
 #endif
 
-/* MFLD - MSIC */
-static struct snd_soc_dai_driver sst_platform_dai[] = {
-{
-	.name = "Headset-cpu-dai",
-	.playback = {
-		.channels_min = SST_STEREO,
-		.channels_max = SST_STEREO,
-/**FIXME ***/
-#if (defined(CONFIG_SND_MFLD_MACHINE) || (CONFIG_SND_MFLD_MACHINE_GI))
-		.rates = SNDRV_PCM_RATE_44100,
-#else
-		.rates = SNDRV_PCM_RATE_48000,
-#endif
-		.formats = SNDRV_PCM_FMTBIT_S16_LE,
-	},
-	.capture = {
-		.channels_min = 1,
-		.channels_max = 2,
-#if (defined(CONFIG_SND_MFLD_MACHINE) || (CONFIG_SND_MFLD_MACHINE_GI))
-		.rates = SNDRV_PCM_RATE_44100,
-#else
-		.rates = SNDRV_PCM_RATE_48000,
-#endif
-		.formats = SNDRV_PCM_FMTBIT_S16_LE,
-	},
-},
-{
-	.name = "Speaker-cpu-dai",
-	.playback = {
-		.channels_min = SST_MONO,
-		.channels_max = SST_STEREO,
-#if (defined(CONFIG_SND_MFLD_MACHINE) || (CONFIG_SND_MFLD_MACHINE_GI))
-		.rates = SNDRV_PCM_RATE_44100,
-#else
-		.rates = SNDRV_PCM_RATE_48000,
-#endif
-		.formats = SNDRV_PCM_FMTBIT_S16_LE,
-	},
-	.ops = &sst_ihf_ops,
-},
-{
-	.name = "Vibra1-cpu-dai",
-	.playback = {
-		.channels_min = SST_MONO,
-		.channels_max = SST_MONO,
-		.rates = SNDRV_PCM_RATE_44100,
-		.formats = SNDRV_PCM_FMTBIT_S16_LE,
-	},
-},
-{
-	.name = "Vibra2-cpu-dai",
-	.playback = {
-		.channels_min = SST_MONO,
-		.channels_max = SST_MONO,
-		.rates = SNDRV_PCM_RATE_44100,
-		.formats = SNDRV_PCM_FMTBIT_S16_LE,
-	},
-},
-{
-	.name = "Voice-cpu-dai",
-	.playback = {
-		.channels_min = SST_MONO,
-		.channels_max = SST_STEREO,
-		.rates = SNDRV_PCM_RATE_48000,
-		.formats = SNDRV_PCM_FMTBIT_S16_LE,
-	},
-	.capture = {
-		.channels_min = SST_MONO,
-		.channels_max = SST_STEREO,
-		.rates = SNDRV_PCM_RATE_48000,
-		.formats = SNDRV_PCM_FMTBIT_S16_LE,
-	},
-},
-};
+static int sst_platform_ihf_set_tdm_slot(struct snd_soc_dai *dai,
+			unsigned int tx_mask, unsigned int rx_mask,
+			int slots, int slot_width) {
+	struct snd_sst_runtime_params params_data;
+	int channels = slots;
+
+	/* registering with SST driver to get access to SST APIs to use */
+	if (!sst_dsp) {
+		pr_err("sst: DSP not registered\n");
+		return -EIO;
+	}
+	params_data.type = SST_SET_CHANNEL_INFO;
+	params_data.str_id = SND_SST_DEVICE_IHF;
+	params_data.size = sizeof(channels);
+	params_data.addr = &channels;
+	return sst_dsp->ops->set_generic_params(SST_SET_RUNTIME_PARAMS,
+							(void *)&params_data);
+}
 
 /* helper functions */
 static inline void sst_set_stream_status(struct sst_runtime_stream *stream,
@@ -311,55 +211,51 @@ static inline int sst_get_stream_status(struct sst_runtime_stream *stream)
 }
 
 static void sst_fill_pcm_params(struct snd_pcm_substream *substream,
-				struct snd_sst_stream_params *param)
+				struct sst_pcm_params *param)
 {
-
-	param->uc.pcm_params.codec = SST_CODEC_TYPE_PCM;
-	param->uc.pcm_params.num_chan = (u8) substream->runtime->channels;
-	param->uc.pcm_params.pcm_wd_sz = substream->runtime->sample_bits;
-	param->uc.pcm_params.reserved = 0;
-	param->uc.pcm_params.sfreq = substream->runtime->rate;
-	param->uc.pcm_params.ring_buffer_size =
-					snd_pcm_lib_buffer_bytes(substream);
-	param->uc.pcm_params.period_count = substream->runtime->period_size;
-	param->uc.pcm_params.ring_buffer_addr =
-				virt_to_phys(substream->dma_buffer.area);
-	pr_debug("period_cnt = %d\n", param->uc.pcm_params.period_count);
-	pr_debug("sfreq= %d, wd_sz = %d\n",
-		 param->uc.pcm_params.sfreq, param->uc.pcm_params.pcm_wd_sz);
+	param->codec = SST_CODEC_TYPE_PCM;
+	param->num_chan = (u8) substream->runtime->channels;
+	param->pcm_wd_sz = substream->runtime->sample_bits;
+	param->reserved = 0;
+	param->sfreq = substream->runtime->rate;
+	param->ring_buffer_size = snd_pcm_lib_buffer_bytes(substream);
+	param->period_count = substream->runtime->period_size;
+	param->ring_buffer_addr = virt_to_phys(substream->dma_buffer.area);
+	pr_debug("period_cnt = %d\n", param->period_count);
+	pr_debug("sfreq= %d, wd_sz = %d\n", param->sfreq, param->pcm_wd_sz);
 }
 
 static int sst_platform_alloc_stream(struct snd_pcm_substream *substream)
 {
 	struct sst_runtime_stream *stream =
 			substream->runtime->private_data;
-	struct snd_sst_stream_params param = {{{0,},},};
-	struct snd_sst_params str_params = {0};
+	struct sst_pcm_params param = {0};
+	struct sst_stream_params str_params = {0};
 	int ret_val;
 
 	/* set codec params and inform SST driver the same */
 	sst_fill_pcm_params(substream, &param);
 	substream->runtime->dma_area = substream->dma_buffer.area;
 	str_params.sparams = param;
-	str_params.codec =  param.uc.pcm_params.codec;
+	str_params.codec =  param.codec;
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
 		str_params.ops = STREAM_OPS_PLAYBACK;
 		str_params.device_type = substream->pcm->device + 1;
-		pr_debug("Playbck stream,Device %d\n",
+		pr_debug("Playback stream, Device %d\n",
 					substream->pcm->device);
 	} else {
 		str_params.ops = STREAM_OPS_CAPTURE;
 		str_params.device_type = SND_SST_DEVICE_CAPTURE;
-		pr_debug("Capture stream,Device %d\n",
+		pr_debug("Capture stream, Device %d\n",
 					substream->pcm->device);
 	}
-	ret_val = stream->sstdrv_ops->pcm_control->open(&str_params);
-	pr_debug("SST_SND_PLAY/CAPTURE ret_val = %x\n", ret_val);
+	ret_val = stream->ops->open(&str_params);
+	pr_debug("platform prepare: stream open ret_val = 0x%x\n", ret_val);
 	if (ret_val <= 0)
 		return ret_val;
 
 	stream->stream_info.str_id = ret_val;
-	pr_debug("str id :  %d\n", stream->stream_info.str_id);
+	pr_debug("platform allocated strid:  %d\n", stream->stream_info.str_id);
 
 	return ret_val;
 }
@@ -399,7 +295,7 @@ static int sst_platform_init_stream(struct snd_pcm_substream *substream)
 	stream->stream_info.mad_substream = substream;
 	stream->stream_info.buffer_ptr = 0;
 	stream->stream_info.sfreq = substream->runtime->rate;
-	ret_val = stream->sstdrv_ops->pcm_control->device_control(
+	ret_val = stream->ops->device_control(
 			SST_SND_STREAM_INIT, &stream->stream_info);
 	if (ret_val)
 		pr_err("control_set ret error %d\n", ret_val);
@@ -408,57 +304,34 @@ static int sst_platform_init_stream(struct snd_pcm_substream *substream)
 }
 /* end -- helper functions */
 
-static int sst_platform_open(struct snd_pcm_substream *substream)
+static int sst_media_open(struct snd_pcm_substream *substream,
+		struct snd_soc_dai *dai)
 {
-	struct snd_pcm_runtime *runtime;
-	struct sst_runtime_stream *stream;
 	int ret_val = 0;
-	struct snd_soc_pcm_runtime *rtd = substream->private_data;
-	struct snd_soc_dai_link *dai_link = rtd->dai_link;
-
-	pr_debug("sst_platform_open called:%s\n", dai_link->cpu_dai_name);
-
-	runtime = substream->runtime;
-	runtime->hw = sst_platform_pcm_hw;
-	if (!strcmp(dai_link->cpu_dai_name, SST_VOICE_DAI)) {
-		sst_cpu_ctx->active_voice_cnt++;
-/**FIXME in clean up patch***/
-#if (defined(CONFIG_SND_MFLD_MACHINE) || (CONFIG_SND_MFLD_MACHINE_GI))
-
-		ret_val = intel_sst_set_pll(true, SST_PLL_VOICE);
-#endif
-		if (!ret_val)
-			return snd_pcm_hw_constraint_integer(runtime,
-				SNDRV_PCM_HW_PARAM_PERIODS);
-		else
-			return ret_val;
-	}
+	struct snd_pcm_runtime *runtime = substream->runtime;
+	struct sst_runtime_stream *stream;
 
 	stream = kzalloc(sizeof(*stream), GFP_KERNEL);
 	if (!stream)
 		return -ENOMEM;
 
 	spin_lock_init(&stream->status_lock);
-	stream->stream_info.str_id = 0;
-	sst_set_stream_status(stream, SST_PLATFORM_INIT);
-	stream->stream_info.mad_substream = substream;
-	/* allocate memory for SST API set */
-	stream->sstdrv_ops = kzalloc(sizeof(*stream->sstdrv_ops),
-							GFP_KERNEL);
-	if (!stream->sstdrv_ops) {
-		pr_err("sst: mem allocation for ops fail\n");
-		ret_val = -ENOMEM;
+
+	/* get the sst ops */
+	mutex_lock(&sst_dsp_lock);
+	if (!sst_dsp ||
+	    !try_module_get(sst_dsp->dev->driver->owner)) {
+		pr_err("no device available to run\n");
+		ret_val = -ENODEV;
 		goto out_ops;
 	}
-	stream->sstdrv_ops->vendor_id = MSIC_VENDOR_ID;
-	/* registering with SST driver to get access to SST APIs to use */
-	ret_val = register_sst_card(stream->sstdrv_ops);
-	if (ret_val) {
-		pr_err("sst: sst card registration failed\n");
-		goto out_reg_sst;
-	}
+	stream->ops = sst_dsp->ops;
+	mutex_unlock(&sst_dsp_lock);
+
+	stream->stream_info.str_id = 0;
+	sst_set_stream_status(stream, SST_PLATFORM_UNINIT);
+	stream->stream_info.mad_substream = substream;
 	runtime->private_data = stream;
-	sst_cpu_ctx->active_nonvoice_cnt++;
 
 	/* Make sure, that the period size is always even */
 	snd_pcm_hw_constraint_step(substream->runtime, 0,
@@ -466,71 +339,35 @@ static int sst_platform_open(struct snd_pcm_substream *substream)
 
 	return snd_pcm_hw_constraint_integer(runtime,
 			 SNDRV_PCM_HW_PARAM_PERIODS);
-
-out_reg_sst:
-	kfree(stream->sstdrv_ops);
 out_ops:
 	kfree(stream);
+	mutex_unlock(&sst_dsp_lock);
 	return ret_val;
 }
 
-static int sst_platform_close(struct snd_pcm_substream *substream)
+static void sst_media_close(struct snd_pcm_substream *substream,
+		struct snd_soc_dai *dai)
 {
 	struct sst_runtime_stream *stream;
 	int ret_val = 0, str_id;
-	struct snd_soc_pcm_runtime *rtd = substream->private_data;
-	struct snd_soc_dai_link *dai_link = rtd->dai_link;
-	struct snd_soc_dai *codec_dai = rtd->codec_dai;
 
-	pr_debug("sst_platform_close called:%s\n", dai_link->cpu_dai_name);
-
-	if (!strcmp(dai_link->cpu_dai_name, SST_VOICE_DAI)) {
-		sst_cpu_ctx->active_voice_cnt--;
-#if (defined(CONFIG_SND_MFLD_MACHINE) || (CONFIG_SND_MFLD_MACHINE_GI))
-		intel_sst_set_pll(false, SST_PLL_VOICE);
-#endif
-		goto func_exit;
-	}
-	sst_cpu_ctx->active_nonvoice_cnt--;
 	stream = substream->runtime->private_data;
 	str_id = stream->stream_info.str_id;
-	if (str_id) {
-		if (stream->stream_status == SST_PLATFORM_SUSPENDED) {
-			pr_debug("device suspended resume for closure\n");
-			ret_val = stream->sstdrv_ops->pcm_control->
-				device_control(SST_SND_DEVICE_RESUME_SYNC,
-				&str_id);
-			if (!ret_val)
-				sst_set_stream_status(stream,
-					SST_PLATFORM_DROPPED);
-		}
-		ret_val = stream->sstdrv_ops->pcm_control->close(str_id);
-	}
-	unregister_sst_card(stream->sstdrv_ops);
-	kfree(stream->sstdrv_ops);
+	if (str_id)
+		ret_val = stream->ops->close(str_id);
+	module_put(sst_dsp->dev->driver->owner);
 	kfree(stream);
-func_exit:
-/**FIXME ***/
-#if (defined(CONFIG_SND_MFLD_MACHINE) || (CONFIG_SND_MFLD_MACHINE_GI))
-	if (!sst_cpu_ctx->active_nonvoice_cnt)
-		snd_soc_dai_set_tristate(codec_dai, 1);
-#endif
-	return ret_val;
+	pr_debug("%s: %d\n", __func__, ret_val);
 }
 
-static int sst_platform_pcm_prepare(struct snd_pcm_substream *substream)
+static int sst_media_prepare(struct snd_pcm_substream *substream,
+		struct snd_soc_dai *dai)
 {
 	struct sst_runtime_stream *stream;
 	int ret_val = 0, str_id;
-	struct snd_soc_pcm_runtime *rtd = substream->private_data;
-	struct snd_soc_dai_link *dai_link = rtd->dai_link;
 
-	pr_debug("sst_platform_pcm_prepare called\n");
+	pr_debug("%s\n", __func__);
 
-	if (!strcmp(dai_link->cpu_dai_name, SST_VOICE_DAI)) {
-		pr_debug("pcm_preare for Voice, returning.\n");
-		return ret_val;
-	}
 	stream = substream->runtime->private_data;
 	str_id = stream->stream_info.str_id;
 	if (stream->stream_info.str_id)
@@ -538,7 +375,7 @@ static int sst_platform_pcm_prepare(struct snd_pcm_substream *substream)
 
 	ret_val = sst_platform_alloc_stream(substream);
 	if (ret_val <= 0)
-		goto out;
+		return ret_val;
 	snprintf(substream->pcm->id, sizeof(substream->pcm->id),
 			"%d", stream->stream_info.str_id);
 
@@ -546,17 +383,114 @@ static int sst_platform_pcm_prepare(struct snd_pcm_substream *substream)
 	if (ret_val)
 		return ret_val;
 	substream->runtime->hw.info = SNDRV_PCM_INFO_BLOCK_TRANSFER;
-
-
-out:
-	/* we are suspending the sink/source here as we want to have
-	 * device suspended in idle, before handling next request we will send
-	 * an explict RESUME call  */
-	pr_debug("Suspend NOW\n");
-	stream->sstdrv_ops->pcm_control->device_control(
-			SST_SND_DEVICE_SUSPEND, &stream->stream_info.str_id);
-	sst_set_stream_status(stream, SST_PLATFORM_SUSPENDED);
 	return ret_val;
+}
+
+static int sst_media_hw_params(struct snd_pcm_substream *substream,
+				struct snd_pcm_hw_params *params,
+				struct snd_soc_dai *dai)
+{
+	pr_debug("%s\n", __func__);
+	snd_pcm_lib_malloc_pages(substream, params_buffer_bytes(params));
+	memset(substream->runtime->dma_area, 0, params_buffer_bytes(params));
+	return 0;
+}
+
+static int sst_media_hw_free(struct snd_pcm_substream *substream,
+		struct snd_soc_dai *dai)
+{
+	return snd_pcm_lib_free_pages(substream);
+}
+
+static struct snd_soc_dai_ops sst_media_dai_ops = {
+	.startup = sst_media_open,
+	.shutdown = sst_media_close,
+	.prepare = sst_media_prepare,
+	.hw_params = sst_media_hw_params,
+	.hw_free = sst_media_hw_free,
+	.set_tdm_slot = sst_platform_ihf_set_tdm_slot,
+};
+
+static struct snd_soc_dai_driver sst_platform_dai[] = {
+{
+	.name = SST_HEADSET_DAI,
+	.ops = &sst_media_dai_ops,
+	.playback = {
+		.channels_min = SST_STEREO,
+		.channels_max = SST_STEREO,
+		.rates = SNDRV_PCM_RATE_44100|SNDRV_PCM_RATE_48000,
+		.formats = SNDRV_PCM_FMTBIT_S16_LE,
+	},
+	.capture = {
+		.channels_min = 1,
+		.channels_max = 2,
+		.rates = SNDRV_PCM_RATE_44100|SNDRV_PCM_RATE_48000,
+		.formats = SNDRV_PCM_FMTBIT_S16_LE,
+	},
+},
+{
+	.name = SST_SPEAKER_DAI,
+	.ops = &sst_media_dai_ops,
+	.playback = {
+		.channels_min = SST_MONO,
+		.channels_max = SST_STEREO,
+		.rates = SNDRV_PCM_RATE_44100|SNDRV_PCM_RATE_48000,
+		.formats = SNDRV_PCM_FMTBIT_S16_LE,
+	},
+},
+{
+	.name = SST_VIBRA1_DAI,
+	.playback = {
+		.channels_min = SST_MONO,
+		.channels_max = SST_MONO,
+		.rates = SNDRV_PCM_RATE_44100,
+		.formats = SNDRV_PCM_FMTBIT_S16_LE,
+	},
+},
+{
+	.name = SST_VIBRA2_DAI,
+	.playback = {
+		.channels_min = SST_MONO,
+		.channels_max = SST_MONO,
+		.rates = SNDRV_PCM_RATE_44100,
+		.formats = SNDRV_PCM_FMTBIT_S16_LE,
+	},
+},
+{
+	.name = SST_VOICE_DAI,
+	.playback = {
+		.channels_min = SST_MONO,
+		.channels_max = SST_STEREO,
+		.rates = SNDRV_PCM_RATE_48000,
+		.formats = SNDRV_PCM_FMTBIT_S16_LE,
+	},
+	.capture = {
+		.channels_min = SST_MONO,
+		.channels_max = SST_STEREO,
+		.rates = SNDRV_PCM_RATE_48000,
+		.formats = SNDRV_PCM_FMTBIT_S16_LE,
+	},
+},
+};
+
+static int sst_platform_open(struct snd_pcm_substream *substream)
+{
+	struct snd_pcm_runtime *runtime;
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_dai_link *dai_link = rtd->dai_link;
+
+	pr_debug("sst_platform_open called:%s\n", dai_link->cpu_dai_name);
+	runtime = substream->runtime;
+	runtime->hw = sst_platform_pcm_hw;
+	return 0;
+}
+
+static int sst_platform_close(struct snd_pcm_substream *substream)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_dai_link *dai_link = rtd->dai_link;
+	pr_debug("sst_platform_close called:%s\n", dai_link->cpu_dai_name);
+	return 0;
 }
 
 static int sst_platform_pcm_trigger(struct snd_pcm_substream *substream,
@@ -571,51 +505,35 @@ static int sst_platform_pcm_trigger(struct snd_pcm_substream *substream,
 	str_id = stream->stream_info.str_id;
 	alsa_state = substream->runtime->status->state;
 
-	if (stream->stream_status == SST_PLATFORM_SUSPENDED) {
-		pr_debug("in trigger, device is suspended, so resume it\n");
-		ret_val = stream->sstdrv_ops->pcm_control->device_control(
-					SST_SND_DEVICE_RESUME, &str_id);
-		if (!ret_val)
-			sst_set_stream_status(stream, SST_PLATFORM_DROPPED);
-	}
-
 	switch (cmd) {
 	case SNDRV_PCM_TRIGGER_START:
-		pr_debug("sst: Trigger Start\n");
+		pr_debug("Trigger Start\n");
 		str_cmd = SST_SND_START;
 		status = SST_PLATFORM_RUNNING;
 		stream->stream_info.mad_substream = substream;
 		break;
 	case SNDRV_PCM_TRIGGER_STOP:
-		pr_debug("sst: in stop\n");
+		pr_debug("Trigger stop\n");
 		str_cmd = SST_SND_DROP;
 		status = SST_PLATFORM_DROPPED;
 		break;
 	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
-		pr_debug("sst: in pause\n");
+		pr_debug("Trigger pause\n");
 		str_cmd = SST_SND_PAUSE;
 		status = SST_PLATFORM_PAUSED;
 		break;
 	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
-		pr_debug("sst: in pause release\n");
+		pr_debug("Trigger pause release\n");
 		str_cmd = SST_SND_RESUME;
 		status = SST_PLATFORM_RUNNING;
 		break;
 	default:
 		return -EINVAL;
 	}
-	ret_val = stream->sstdrv_ops->pcm_control->device_control(str_cmd,
-								&str_id);
+	ret_val = stream->ops->device_control(str_cmd, &str_id);
 	if (!ret_val)
 		sst_set_stream_status(stream, status);
 
-	if (cmd == SNDRV_PCM_TRIGGER_STOP &&
-				alsa_state == SNDRV_PCM_STATE_DRAINING) {
-		ret_val = stream->sstdrv_ops->pcm_control->device_control(
-					SST_SND_DEVICE_SUSPEND, &str_id);
-		if (!ret_val)
-			sst_set_stream_status(stream, SST_PLATFORM_SUSPENDED);
-	}
 	return ret_val;
 }
 
@@ -632,7 +550,7 @@ static snd_pcm_uframes_t sst_platform_pcm_pointer
 	if (status == SST_PLATFORM_INIT)
 		return 0;
 	str_info = &stream->stream_info;
-	ret_val = stream->sstdrv_ops->pcm_control->device_control(
+	ret_val = stream->ops->device_control(
 				SST_SND_BUFFER_POINTER, str_info);
 	if (ret_val) {
 		pr_err("sst: error code = %d\n", ret_val);
@@ -642,49 +560,12 @@ static snd_pcm_uframes_t sst_platform_pcm_pointer
 	return stream->stream_info.buffer_ptr;
 }
 
-static int sst_platform_pcm_hw_params(struct snd_pcm_substream *substream,
-		struct snd_pcm_hw_params *params)
-{
-	int ret;
-	struct snd_soc_pcm_runtime *rtd = substream->private_data;
-	struct snd_soc_codec *codec = rtd->codec;
-	struct snd_soc_dai *codec_dai = rtd->codec_dai;
-
-/**FIXME -Need to move all codec related stuff to Machine driver ***/
-#if (defined(CONFIG_SND_MFLD_MACHINE) || (CONFIG_SND_MFLD_MACHINE_GI))
-	if (strcmp(rtd->dai_link->cpu_dai_name, SST_VOICE_DAI)) {
-		/* Force the data width to 24 bit in MSIC. Post Processing
-		algorithms in DSP enabled with 24 bit precision */
-		ret = snd_soc_codec_set_params(codec, SNDRV_PCM_FORMAT_S24_LE);
-		if (ret < 0) {
-			pr_debug("codec set_params returned error %d\n", ret);
-			return ret;
-		}
-	}
-	/*last two parameters have to non-zero, otherwise pll gets disabled*/
-	snd_soc_dai_set_pll(codec_dai, 0, SST_CLK_UNINIT, 1,
-							params_rate(params));
-#endif
-	snd_pcm_lib_malloc_pages(substream, params_buffer_bytes(params));
-	memset(substream->runtime->dma_area, 0, params_buffer_bytes(params));
-
-	return 0;
-}
-
-static int sst_platform_pcm_hw_free(struct snd_pcm_substream *substream)
-{
-	return snd_pcm_lib_free_pages(substream);
-}
-
 static struct snd_pcm_ops sst_platform_ops = {
 	.open = sst_platform_open,
 	.close = sst_platform_close,
 	.ioctl = snd_pcm_lib_ioctl,
-	.prepare = sst_platform_pcm_prepare,
 	.trigger = sst_platform_pcm_trigger,
 	.pointer = sst_platform_pcm_pointer,
-	.hw_params = sst_platform_pcm_hw_params,
-	.hw_free = sst_platform_pcm_hw_free,
 };
 
 static void sst_pcm_free(struct snd_pcm *pcm)
@@ -713,6 +594,7 @@ static int sst_pcm_new(struct snd_soc_pcm_runtime *rtd)
 	}
 	return retval;
 }
+
 #ifdef CONFIG_SND_CLV_MACHINE
 static int sst_soc_probe(struct snd_soc_platform *platform)
 {
@@ -737,22 +619,51 @@ static int sst_soc_probe(struct snd_soc_platform *platform)
 	return snd_soc_add_platform_controls(platform, sst_controls,
 			ARRAY_SIZE(sst_controls));
 }
-
-static int sst_soc_remove(struct snd_soc_platform *platform)
-{
-	pr_debug("%s called\n", __func__);
-	return 0;
-}
 #endif
+
 static struct snd_soc_platform_driver sst_soc_platform_drv = {
 #ifdef CONFIG_SND_CLV_MACHINE
-	.probe		= &sst_soc_probe,
-	.remove		= &sst_soc_remove,
+	.probe		= sst_soc_probe,
 #endif
 	.ops		= &sst_platform_ops,
 	.pcm_new	= sst_pcm_new,
 	.pcm_free	= sst_pcm_free,
 };
+
+int sst_register_dsp(struct sst_device *dev)
+{
+	if (!dev)
+		return -ENODEV;
+	mutex_lock(&sst_dsp_lock);
+	if (sst_dsp) {
+		pr_err("we already have a device %s\n", sst_dsp->name);
+		mutex_unlock(&sst_dsp_lock);
+		return -EEXIST;
+	}
+	pr_debug("registering device %s\n", dev->name);
+	sst_dsp = dev;
+	mutex_unlock(&sst_dsp_lock);
+	return 0;
+}
+EXPORT_SYMBOL_GPL(sst_register_dsp);
+
+int sst_unregister_dsp(struct sst_device *dev)
+{
+	if (dev != sst_dsp)
+		return -EINVAL;
+
+	mutex_lock(&sst_dsp_lock);
+	if (sst_dsp) {
+		mutex_unlock(&sst_dsp_lock);
+		return -EIO;
+	}
+
+	pr_debug("unregister %s\n", sst_dsp->name);
+	sst_dsp = NULL;
+	mutex_unlock(&sst_dsp_lock);
+	return 0;
+}
+EXPORT_SYMBOL_GPL(sst_unregister_dsp);
 
 static int sst_platform_probe(struct platform_device *pdev)
 {
@@ -765,19 +676,11 @@ static int sst_platform_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	sst_cpu_ctx = kzalloc(sizeof(*sst_cpu_ctx), GFP_KERNEL);
-	if (!sst_cpu_ctx) {
-		pr_err("memory alloc failed for cpu_dais context\n");
-		snd_soc_unregister_platform(&pdev->dev);
-		return -ENOMEM;
-	}
-
 	ret = snd_soc_register_dais(&pdev->dev,
 				sst_platform_dai, ARRAY_SIZE(sst_platform_dai));
 	if (ret) {
 		pr_err("registering cpu dais failed\n");
 		snd_soc_unregister_platform(&pdev->dev);
-		kfree(sst_cpu_ctx);
 	}
 	return ret;
 }
@@ -787,7 +690,6 @@ static int sst_platform_remove(struct platform_device *pdev)
 
 	snd_soc_unregister_dais(&pdev->dev, ARRAY_SIZE(sst_platform_dai));
 	snd_soc_unregister_platform(&pdev->dev);
-	kfree(sst_cpu_ctx);
 	pr_debug("sst_platform_remove success\n");
 	return 0;
 }
