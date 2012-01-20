@@ -164,6 +164,13 @@ enum {
 #define MT9M114_RES_QVGA_SIZE_V		240
 #define MT9M114_RES_QCIF_SIZE_H		176
 #define MT9M114_RES_QCIF_SIZE_V		144
+
+/* completion status polling requirements, usage based on Aptina .INI Rev2 */
+enum poll_reg {
+	NO_POLLING,
+	PRE_POLLING,
+	POST_POLLING,
+};
 /*
  * struct misensor_reg - MI sensor  register format
  * @length: length of the register

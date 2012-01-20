@@ -52,6 +52,8 @@ MODULE_PARM_DESC(debug, "Debug level (0-1)");
 
 static int mt9m114_t_vflip(struct v4l2_subdev *sd, int value);
 static int mt9m114_t_hflip(struct v4l2_subdev *sd, int value);
+static int mt9m114_wait_state(struct i2c_client *client, int timeout);
+
 static int
 mt9m114_read_reg(struct i2c_client *client, u16 data_length, u32 reg, u32 *val)
 {
@@ -347,11 +349,18 @@ __mt9m114_write_reg_is_consecutive(struct i2c_client *client,
 }
 
 static int mt9m114_write_reg_array(struct i2c_client *client,
-				   const struct misensor_reg *reglist)
+				const struct misensor_reg *reglist,
+				int poll)
 {
 	const struct misensor_reg *next = reglist;
 	struct mt9m114_write_ctrl ctrl;
 	int err;
+
+	if (poll == PRE_POLLING) {
+		err = mt9m114_wait_state(client, MT9M114_WAIT_STAT_TIMEOUT);
+		if (err)
+			return err;
+	}
 
 	ctrl.index = 0;
 	for (; next->length != MISENSOR_TOK_TERM; next++) {
@@ -396,7 +405,14 @@ static int mt9m114_write_reg_array(struct i2c_client *client,
 		}
 	}
 
-	return __mt9m114_flush_reg_array(client, &ctrl);
+	err = __mt9m114_flush_reg_array(client, &ctrl);
+	if (err)
+		return err;
+
+	if (poll == POST_POLLING)
+		return mt9m114_wait_state(client, MT9M114_WAIT_STAT_TIMEOUT);
+
+	return 0;
 }
 
 
@@ -430,9 +446,8 @@ static int mt9m114_wait_3a(struct v4l2_subdev *sd)
 	return -EINVAL;
 }
 
-static int mt9m114_wait_state(struct v4l2_subdev *sd, int timeout)
+static int mt9m114_wait_state(struct i2c_client *client, int timeout)
 {
-	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	int val, ret;
 
 	while (timeout-- > 0) {
@@ -451,22 +466,15 @@ static int mt9m114_wait_state(struct v4l2_subdev *sd, int timeout)
 static int mt9m114_set_suspend(struct v4l2_subdev *sd)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
-	int ret;
 
-	ret = mt9m114_write_reg_array(client, mt9m114_suspend);
-	if (ret)
-		return ret;
-
-	ret = mt9m114_wait_state(sd, MT9M114_WAIT_STAT_TIMEOUT);
-
-	return ret;
+	return mt9m114_write_reg_array(client, mt9m114_suspend, POST_POLLING);
 }
 
 static int mt9m114_set_streaming(struct v4l2_subdev *sd)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 
-	return mt9m114_write_reg_array(client, mt9m114_streaming);
+	return mt9m114_write_reg_array(client, mt9m114_streaming, POST_POLLING);
 }
 
 static int mt9m114_init_common(struct v4l2_subdev *sd)
@@ -474,10 +482,10 @@ static int mt9m114_init_common(struct v4l2_subdev *sd)
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	int ret;
 
-	ret = mt9m114_write_reg_array(client, mt9m114_common);
+	ret = mt9m114_write_reg_array(client, mt9m114_common, PRE_POLLING);
 	if (ret)
 		return ret;
-	ret = mt9m114_write_reg_array(client, mt9m114_iq);
+	ret = mt9m114_write_reg_array(client, mt9m114_iq, NO_POLLING);
 
 	return ret;
 }
@@ -697,31 +705,31 @@ static int mt9m114_set_mbus_fmt(struct v4l2_subdev *sd,
 
 	switch (res_index->res) {
 	case MT9M114_RES_QCIF:
-		ret = mt9m114_write_reg_array(c, mt9m114_qcif_init);
+		ret = mt9m114_write_reg_array(c, mt9m114_qcif_init, NO_POLLING);
 		break;
 	case MT9M114_RES_QVGA:
-		ret = mt9m114_write_reg_array(c, mt9m114_qvga_init);
+		ret = mt9m114_write_reg_array(c, mt9m114_qvga_init, NO_POLLING);
 		/* set sensor read_mode to Skipping */
 		ret += misensor_rmw_reg(c, MISENSOR_16BIT, MISENSOR_READ_MODE,
 				MISENSOR_R_MODE_MASK, MISENSOR_SKIPPING_SET);
 		break;
 	case MT9M114_RES_VGA:
-		ret = mt9m114_write_reg_array(c, mt9m114_vga_init);
+		ret = mt9m114_write_reg_array(c, mt9m114_vga_init, NO_POLLING);
 		/* set sensor read_mode to Summing */
 		ret += misensor_rmw_reg(c, MISENSOR_16BIT, MISENSOR_READ_MODE,
 				MISENSOR_R_MODE_MASK, MISENSOR_SUMMING_SET);
 		break;
 	case MT9M114_RES_480P:
-		ret = mt9m114_write_reg_array(c, mt9m114_480p_init);
+		ret = mt9m114_write_reg_array(c, mt9m114_480p_init, NO_POLLING);
 		break;
 	case MT9M114_RES_720P:
-		ret = mt9m114_write_reg_array(c, mt9m114_720p_init);
+		ret = mt9m114_write_reg_array(c, mt9m114_720p_init, NO_POLLING);
 		/* set sensor read_mode to Normal */
 		ret += misensor_rmw_reg(c, MISENSOR_16BIT, MISENSOR_READ_MODE,
 				MISENSOR_R_MODE_MASK, MISENSOR_NORMAL_SET);
 		break;
 	case MT9M114_RES_960P:
-		ret = mt9m114_write_reg_array(c, mt9m114_960P_init);
+		ret = mt9m114_write_reg_array(c, mt9m114_960P_init, NO_POLLING);
 		/* set sensor read_mode to Normal */
 		ret += misensor_rmw_reg(c, MISENSOR_16BIT, MISENSOR_READ_MODE,
 				MISENSOR_R_MODE_MASK, MISENSOR_NORMAL_SET);
@@ -734,11 +742,9 @@ static int mt9m114_set_mbus_fmt(struct v4l2_subdev *sd,
 	if (ret)
 		return -EINVAL;
 
-	ret = mt9m114_write_reg_array(c, mt9m114_chgstat_reg);
+	ret = mt9m114_write_reg_array(c, mt9m114_chgstat_reg, POST_POLLING);
 	if (ret < 0)
 		return ret;
-	if (mt9m114_wait_state(sd, MT9M114_WAIT_STAT_TIMEOUT))
-		return -EINVAL;
 
 	if (mt9m114_set_suspend(sd))
 		return -EINVAL;
@@ -820,16 +826,17 @@ static int mt9m114_s_freq(struct v4l2_subdev *sd, s32  val)
 		return -EINVAL;
 
 	if (val == MT9M114_FLICKER_MODE_50HZ) {
-		ret = mt9m114_write_reg_array(c, mt9m114_antiflicker_50hz);
+		ret = mt9m114_write_reg_array(c, mt9m114_antiflicker_50hz,
+					POST_POLLING);
 		if (ret < 0)
 			return ret;
 	} else {
-		ret = mt9m114_write_reg_array(c, mt9m114_antiflicker_60hz);
+		ret = mt9m114_write_reg_array(c, mt9m114_antiflicker_60hz,
+					POST_POLLING);
 		if (ret < 0)
 			return ret;
 	}
 
-	ret = mt9m114_wait_state(sd, MT9M114_WAIT_STAT_TIMEOUT);
 	if (ret == 0)
 		dev->lightfreq = val;
 
@@ -980,7 +987,11 @@ mt9m114_s_config(struct v4l2_subdev *sd, int irq, void *platform_data)
 	if (ret)
 		goto fail_csi_cfg;
 
-	mt9m114_write_reg_array(client, mt9m114_suspend);
+	ret = mt9m114_set_suspend(sd);
+	if (ret) {
+		v4l2_err(client, "mt9m114 suspend err");
+		return ret;
+	}
 
 	ret = mt9m114_s_power(sd, 0);
 	if (ret) {
@@ -1145,10 +1156,8 @@ static int mt9m114_s_stream(struct v4l2_subdev *sd, int enable)
 	struct i2c_client *c = v4l2_get_subdevdata(sd);
 
 	if (enable) {
-		ret = mt9m114_write_reg_array(c, mt9m114_chgstat_reg);
-		if (ret < 0)
-			return ret;
-		ret = mt9m114_wait_state(sd, MT9M114_WAIT_STAT_TIMEOUT);
+		ret = mt9m114_write_reg_array(c, mt9m114_chgstat_reg,
+					POST_POLLING);
 		if (ret < 0)
 			return ret;
 
