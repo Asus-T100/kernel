@@ -363,7 +363,6 @@ static int sfi_cpufreq_cpu_init(struct cpufreq_policy *policy)
 	if (result)
 		goto err_freqfree;
 
-	sfi_cpufreq_driver.get = get_cur_freq_on_cpu;
 	policy->cur = get_cur_freq_on_cpu(cpu);
 
 
@@ -433,6 +432,7 @@ static struct freq_attr *sfi_cpufreq_attr[] = {
 };
 
 static struct cpufreq_driver sfi_cpufreq_driver = {
+	.get = get_cur_freq_on_cpu,
 	.verify = sfi_cpufreq_verify,
 	.target = sfi_cpufreq_target,
 	.init = sfi_cpufreq_cpu_init,
