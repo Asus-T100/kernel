@@ -686,9 +686,22 @@ static int l2cap_sock_setsockopt(struct socket *sock, int level, int optname, ch
 
 static int l2cap_sock_sendmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *msg, size_t len)
 {
-	struct sock *sk = sock->sk;
-	struct l2cap_chan *chan = l2cap_pi(sk)->chan;
+	struct sock *sk;
+	struct l2cap_chan *chan;
 	int err;
+
+	if (!iocb || !sock || !msg || !sock->sk) {
+		BT_ERR("NULL pointer detected");
+		return -EINVAL;
+	}
+
+	sk = sock->sk;
+	chan = l2cap_pi(sk)->chan;
+
+	if (!chan) {
+		BT_ERR("NULL pointer detected");
+		return -EINVAL;
+	}
 
 	BT_DBG("sock %p, sk %p", sock, sk);
 
