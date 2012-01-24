@@ -224,6 +224,16 @@ config CHARGER_SMB347
           Say Y here to enable the charger driver on Intel Medfield based Tablet
           platforms.
 
+config BATTERY_INTEL_FG
+        tristate "Fuel gauge driver for Intel Medfield MID platforms"
+        depends on INTEL_SCU_IPC && MSIC_GPADC
+	help
+	  Say Y here to enable the fuel gauge driver on Intel Medfield based MID
+	  platforms.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called intel_mdf_fg.
+
 config CHARGER_ISP1704
 	tristate "ISP1704 USB Charger Detection"
 	depends on USB_OTG_UTILS
