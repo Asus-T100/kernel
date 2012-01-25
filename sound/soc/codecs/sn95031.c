@@ -45,6 +45,7 @@
 #define SN95031_RATES (SNDRV_PCM_RATE_8000_96000)
 #define SN95031_FORMATS (SNDRV_PCM_FMTBIT_S24_LE | SNDRV_PCM_FMTBIT_S16_LE)
 #define SN95031_SW_DBNC 250
+#define LP_THRESHOLD 400
 #define HEADSET_DET_PIN 77
 
 struct sn95031_jack_work {
@@ -97,15 +98,6 @@ static void sn95031_disable_mic_bias(struct snd_soc_codec *codec)
 	snd_soc_dapm_disable_pin(&codec->dapm, "AMIC1Bias");
 	snd_soc_dapm_sync(&codec->dapm);
 }
-/* reads the ADC registers and gets the mic bias value in mV. */
-static unsigned int sn95031_get_mic_bias(struct snd_soc_codec *codec)
-{
-	unsigned int mic_bias;
-
-	mic_bias = sn95031_read_voltage();
-	return mic_bias;
-}
-EXPORT_SYMBOL_GPL(sn95031_get_mic_bias);
 /* end - adc helper functions */
 
 static inline unsigned int sn95031_read(struct snd_soc_codec *codec,
@@ -1218,7 +1210,7 @@ static int sn95031_get_headset_state(struct snd_soc_jack *mfld_jack)
 	int micbias, jack_type, hs_gpio = 1;
 
 	sn95031_enable_mic_bias(mfld_jack->codec);
-	micbias = sn95031_get_mic_bias(mfld_jack->codec);
+	micbias = sn95031_read_voltage();
 
 	jack_type = snd_soc_jack_get_type(mfld_jack, micbias);
 	pr_debug("jack type detected = %d, micbias = %d\n", jack_type, micbias);
@@ -1241,7 +1233,7 @@ static int sn95031_get_headset_state(struct snd_soc_jack *mfld_jack)
 }
 static void sn95031_jack_report(struct snd_soc_jack *jack, unsigned int status)
 {
-	unsigned int mask = SND_JACK_BTN_0 | SND_JACK_BTN_1 | SND_JACK_HEADSET;
+	unsigned int mask = SND_JACK_BTN_0 | SND_JACK_HEADSET;
 
 	pr_debug("jack reported of type: 0x%x\n", status);
 	if ((status == SND_JACK_HEADSET) || (status == SND_JACK_HEADPHONE)) {
@@ -1255,6 +1247,7 @@ static void sn95031_jack_report(struct snd_soc_jack *jack, unsigned int status)
 	}
 	snd_soc_jack_report(jack, status, mask);
 #ifdef CONFIG_SWITCH_MID
+	/* report to the switch driver as well */
 	if (status) {
 		if (status == SND_JACK_HEADPHONE)
 			mid_headset_report((1<<1));
@@ -1264,14 +1257,11 @@ static void sn95031_jack_report(struct snd_soc_jack *jack, unsigned int status)
 		mid_headset_report(0);
 	}
 #endif
-	/*button pressed and released so we send explicit button release */
-	if (status & SND_JACK_BTN_0)
-		snd_soc_jack_report(jack, SND_JACK_HEADSET, mask);
 }
 
 void sn95031_jack_wq(struct work_struct *work)
 {
-	unsigned int mask = SND_JACK_BTN_0 | SND_JACK_BTN_1 | SND_JACK_HEADSET;
+	unsigned int mask = SND_JACK_BTN_0 | SND_JACK_HEADSET;
 	struct sn95031_priv *sn95031_ctx =
 		container_of(work, struct sn95031_priv, jack_work.work.work);
 	struct sn95031_jack_work *jack_wq = &sn95031_ctx->jack_work;
@@ -1307,12 +1297,18 @@ void sn95031_jack_wq(struct work_struct *work)
 			sn95031_lp_flag = 0;
 			/* clear up BTN1 intr_id if it was not cleared */
 			jack_wq->intr_id &= ~SN95031_JACK_BTN1;
-			pr_debug("short press on releasing long press, "
+			pr_debug("short press intr on releasing long press, "
 				   "report button release\n");
 			return;
 		} else {
 			status = SND_JACK_HEADSET | SND_JACK_BTN_0;
 			pr_debug("short press detected\n");
+			snd_soc_jack_report(jack, status, mask);
+			/* send explicit button release */
+			if (status & SND_JACK_BTN_0)
+				snd_soc_jack_report(jack,
+						SND_JACK_HEADSET, mask);
+			return;
 		}
 	} else if (jack_wq->intr_id & SN95031_JACK_BTN1) {
 		/* we get spurious interrupts if jack key is held down
@@ -1320,7 +1316,7 @@ void sn95031_jack_wq(struct work_struct *work)
 		* voltage level */
 		if (sn95031_lp_flag) {
 			voltage = sn95031_read_voltage();
-			if (voltage > 400) {
+			if (voltage > LP_THRESHOLD) {
 				snd_soc_jack_report(jack,
 						SND_JACK_HEADSET, mask);
 				sn95031_lp_flag = 0;
@@ -1329,7 +1325,10 @@ void sn95031_jack_wq(struct work_struct *work)
 			}
 			return;
 		}
-		status = SND_JACK_HEADSET | SND_JACK_BTN_1;
+		/* Codec sends separate long press event after button pressed
+		 * for a specified time. Need to send separate button pressed
+		 * and released events for Android */
+		status = SND_JACK_HEADSET | SND_JACK_BTN_0;
 		sn95031_lp_flag = 1;
 		jack_wq->intr_id &= ~SN95031_JACK_BTN1;
 		pr_debug("long press detected\n");
@@ -1456,7 +1455,7 @@ static int sn95031_codec_probe(struct snd_soc_codec *codec)
 	/* voice related stuff */
 	snd_soc_write(codec, SN95031_VOICETXVOL, 0x89);
 	/* debounce time and long press duration */
-	snd_soc_write(codec, SN95031_BTNCTRL1, 0x57);
+	snd_soc_write(codec, SN95031_BTNCTRL1, 0x51);
 
 	/* soft mute ramp time */
 	snd_soc_write(codec, SN95031_SOFTMUTE, 0x3);
