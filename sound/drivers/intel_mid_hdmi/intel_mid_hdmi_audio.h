@@ -41,8 +41,8 @@
 #define HAD_NUM_OF_RING_BUFS	4
 #define HAD_MIN_RATE		32000
 #define HAD_MAX_RATE		192000
-#define HAD_MAX_BUFFER		(800*1024)
-#define HAD_MIN_BUFFER		(800*1024)
+#define HAD_MAX_BUFFER		(64*1024)
+#define HAD_MIN_BUFFER		(32*1024)
 #define HAD_MAX_PERIODS		4
 #define HAD_MIN_PERIODS		4
 #define HAD_MAX_PERIOD_BYTES	HAD_MAX_BUFFER
@@ -89,6 +89,28 @@ enum had_stream_status {
 	STREAM_RUNNING = 1,
 	STREAM_PAUSED = 2,
 	STREAM_DROPPED = 3
+};
+
+/**
+ * enum had_status_stream - HAD stream states
+ * */
+enum had_status_stream {
+	HAD_INIT = 0,
+	HAD_RUNNING_SILENCE = 1,
+	HAD_RUNNING_STREAM = 2,
+	HAD_RUNNING_DUMMY = 3,
+};
+
+/**
+ * enum had_process_trigger - Audio stream states
+ * _START is processed in 2 halves.
+ * _PRESTART & _START_TRIGGER
+ * */
+enum had_process_trigger {
+	NO_TRIGGER = 0,
+	PRE_START = 1,
+	START_TRIGGER = 2,
+	STOP_TRIGGER = 3,
 };
 
 enum had_drv_status {
@@ -407,6 +429,11 @@ struct had_stream_pvt {
 	ssize_t				dbg_cum_bytes;
 };
 
+struct had_pvt_data {
+	enum had_stream_status		stream_status;
+	enum had_process_trigger	process_trigger;
+};
+
 struct had_callback_ops {
 	had_event_call_back intel_had_event_call_back;
 };
@@ -420,13 +447,12 @@ struct had_callback_ops {
  * @reg_ops: register operations to program registers
  * @query_ops: caps call backs for get/set operations
  * @drv_status: driver status
- * @playback_cnt: active playback streams
  * @buf_info: ring buffer info
  * @stream_info: stream information
  * @eeld: holds EELD info
  * @curr_buf: pointer to hold current active ring buf
  * @valid_buf_cnt: ring buffer count for stream
- * @had_lock: driver mutex lock
+ * @had_spinlock: driver lock
  * @aes_bits: IEC958 status bits
  */
 struct snd_intelhad {
@@ -436,24 +462,19 @@ struct snd_intelhad {
 	struct hdmi_audio_registers_ops	reg_ops;
 	struct hdmi_audio_query_set_ops	query_ops;
 	enum had_drv_status	drv_status;
-	int		playback_cnt;
 	struct		ring_buf_info buf_info[HAD_NUM_OF_RING_BUFS];
 	struct		pcm_stream_info stream_info;
 	hdmi_eeld_t	eeld;
 	enum		intel_had_aud_buf_type curr_buf;
 	int		valid_buf_cnt;
-	struct		mutex had_lock;
 	unsigned int	aes_bits;
 	int flag_underrun;
+	struct had_pvt_data *private_data;
 	/* Related to sending dummy data */
 	struct delayed_work dummy_audio;
-	int send_data;
 	unsigned long timer;
 	/*  Related to sending silence data */
 	char *flat_data;
-	int pcm_active;
-	int start_trigger;
-	int stop_trigger;
 	spinlock_t had_spinlock;
 	enum		intel_had_aud_buf_type buff_done;
 };
@@ -472,5 +493,14 @@ int snd_intelhad_init_audio_ctrl(struct snd_pcm_substream *substream,
 					int flag_silence);
 int snd_intelhad_prog_buffer(struct snd_intelhad *intelhaddata,
 					int start, int end);
-inline void snd_intelhad_read_len(struct snd_intelhad *intelhaddata);
+int snd_intelhad_invd_buffer(int start, int end);
+inline int snd_intelhad_read_len(struct snd_intelhad *intelhaddata);
+
+/* Register access functions */
+inline int had_get_hwstate(struct snd_intelhad *intelhaddata);
+inline int had_get_caps(enum had_caps_list query_element , void *capabilties);
+inline int had_set_caps(enum had_caps_list set_element , void *capabilties);
+inline int had_read_register(uint32_t reg_addr, uint32_t *data);
+inline int had_write_register(uint32_t reg_addr, uint32_t data);
+inline int had_read_modify(uint32_t reg_addr, uint32_t data, uint32_t mask);
 #endif

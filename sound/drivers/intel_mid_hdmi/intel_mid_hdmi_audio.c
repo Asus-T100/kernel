@@ -37,6 +37,8 @@
 #include <sound/initval.h>
 #include "intel_mid_hdmi_audio.h"
 
+#include <psb_powermgmt.h>
+
 #define PCM_INDEX		0
 #define MAX_PB_STREAMS		1
 #define MAX_CAP_STREAMS		0
@@ -46,7 +48,7 @@ static DEFINE_MUTEX(had_mutex);
 /*standard module options for ALSA. This module supports only one card*/
 static int hdmi_card_index = SNDRV_DEFAULT_IDX1;
 static char *hdmi_card_id = SNDRV_DEFAULT_STR1;
-static struct snd_intelhad *had_pvt_data;
+static struct snd_intelhad *had_data;
 
 module_param(hdmi_card_index, int, 0444);
 MODULE_PARM_DESC(hdmi_card_index,
@@ -106,6 +108,99 @@ static const struct snd_pcm_hardware snd_intel_hadstream = {
 	.fifo_size = HAD_FIFO_SIZE,
 };
 
+/* Register access functions */
+
+inline int had_get_hwstate(struct snd_intelhad *intelhaddata)
+{
+	/* Check for device presence -SW state */
+	if (intelhaddata->drv_status == HAD_DRV_DISCONNECTED) {
+		pr_debug("%s:Device not connected:%d\n", __func__,
+				intelhaddata->drv_status);
+		return -ENODEV;
+	}
+
+	/* Check for device presence -HW state */
+	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
+				OSPM_UHB_ONLY_IF_ON)) {
+		pr_err("%s:Device not connected\n", __func__);
+		dump_stack();
+		/* HOT_UNPLUG event can be sent to
+		 * maintain correct state within HAD
+		 * had_event_handler(HAD_EVENT_HOT_UNPLUG, intelhaddata);
+		 * Drop all acuired locks before executing this.
+		 */
+		return -ENODEV;
+	}
+
+	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+	return 0;
+}
+
+inline int had_get_caps(enum had_caps_list query, void *caps)
+{
+	int retval;
+	struct snd_intelhad *intelhaddata = had_data;
+
+	retval = had_get_hwstate(intelhaddata);
+	if (!retval)
+		retval = intelhaddata->query_ops.hdmi_audio_get_caps(query,
+				caps);
+
+	return retval;
+}
+
+inline int had_set_caps(enum had_caps_list set_element , void *caps)
+{
+	int retval;
+	struct snd_intelhad *intelhaddata = had_data;
+
+	retval = had_get_hwstate(intelhaddata);
+	if (!retval)
+		retval = intelhaddata->query_ops.hdmi_audio_set_caps(
+				set_element, caps);
+
+	return retval;
+}
+
+inline int had_read_register(uint32_t reg_addr, uint32_t *data)
+{
+	int retval;
+	struct snd_intelhad *intelhaddata = had_data;
+
+	retval = had_get_hwstate(intelhaddata);
+	if (!retval)
+		retval = intelhaddata->reg_ops.hdmi_audio_read_register(
+				reg_addr, data);
+
+	return retval;
+}
+
+inline int had_write_register(uint32_t reg_addr, uint32_t data)
+{
+	int retval;
+	struct snd_intelhad *intelhaddata = had_data;
+
+	retval = had_get_hwstate(intelhaddata);
+	if (!retval)
+		retval = intelhaddata->reg_ops.hdmi_audio_write_register(
+				reg_addr, data);
+
+	return retval;
+}
+
+inline int had_read_modify(uint32_t reg_addr, uint32_t data, uint32_t mask)
+{
+	int retval;
+	struct snd_intelhad *intelhaddata = had_data;
+
+	retval = had_get_hwstate(intelhaddata);
+	if (!retval)
+		retval = intelhaddata->reg_ops.hdmi_audio_read_modify(
+				reg_addr, data, mask);
+
+	return retval;
+}
+
 /**
  * snd_intelhad_init_audio_ctrl - to initialize audio channel status
  * registers and confgiuration registers
@@ -157,8 +252,7 @@ int snd_intelhad_init_audio_ctrl(struct snd_pcm_substream *substream,
 	break;
 
 	}
-	intelhaddata->reg_ops.hdmi_audio_write_register(
-				AUD_CH_STATUS_0, ch_stat0.status_0_regval);
+	had_write_register(AUD_CH_STATUS_0, ch_stat0.status_0_regval);
 
 	if (flag_silence)
 		format = SNDRV_PCM_FORMAT_S24_LE;
@@ -175,13 +269,11 @@ int snd_intelhad_init_audio_ctrl(struct snd_pcm_substream *substream,
 		ch_stat1.status_1_regx.max_wrd_len = 0;
 		ch_stat1.status_1_regx.wrd_len = 0;
 	}
-	intelhaddata->reg_ops.hdmi_audio_write_register(
-				AUD_CH_STATUS_1, ch_stat1.status_1_regval);
+	had_write_register(AUD_CH_STATUS_1, ch_stat1.status_1_regval);
 
 	buf_cfg.buf_cfg_regx.fifo_width = FIFO_THRESHOLD;
 	buf_cfg.buf_cfg_regx.aud_delay = 0;
-	intelhaddata->reg_ops.hdmi_audio_write_register(
-					AUD_BUF_CONFIG, buf_cfg.buf_cfgval);
+	had_write_register(AUD_BUF_CONFIG, buf_cfg.buf_cfgval);
 
 	if (flag_silence)
 		channels = HAD_MIN_CHANNEL;
@@ -217,8 +309,7 @@ int snd_intelhad_init_audio_ctrl(struct snd_pcm_substream *substream,
 	}
 
 	cfg_val.cfg_regx.val_bit = 1;
-	intelhaddata->reg_ops.hdmi_audio_write_register(
-						AUD_CONFIG, cfg_val.cfg_regval);
+	had_write_register(AUD_CONFIG, cfg_val.cfg_regval);
 	return 0;
 }
 
@@ -240,8 +331,7 @@ static void snd_intelhad_prog_dip(struct snd_pcm_substream *substream,
 	union aud_info_frame3 frame3 = {.fr3_val = 0};
 	u8 checksum = 0;
 
-	intelhaddata->reg_ops.hdmi_audio_write_register(
-					AUD_CNTL_ST, ctrl_state.ctrl_val);
+	had_write_register(AUD_CNTL_ST, ctrl_state.ctrl_val);
 
 	if (flag_silence)
 		frame2.fr2_regx.chnl_cnt = HAD_MIN_CHANNEL - 1;
@@ -261,21 +351,17 @@ static void snd_intelhad_prog_dip(struct snd_pcm_substream *substream,
 
 	frame2.fr2_regx.chksum = -(checksum);
 
-	intelhaddata->reg_ops.hdmi_audio_write_register(
-					AUD_HDMIW_INFOFR, INFO_FRAME_WORD1);
-	intelhaddata->reg_ops.hdmi_audio_write_register(
-					AUD_HDMIW_INFOFR, frame2.fr2_val);
-	intelhaddata->reg_ops.hdmi_audio_write_register(
-					AUD_HDMIW_INFOFR, frame3.fr3_val);
+	had_write_register(AUD_HDMIW_INFOFR, INFO_FRAME_WORD1);
+	had_write_register(AUD_HDMIW_INFOFR, frame2.fr2_val);
+	had_write_register(AUD_HDMIW_INFOFR, frame3.fr3_val);
+
 	/* program remaining DIP words with zero */
 	for (i = 0; i < HAD_MAX_DIP_WORDS-VALID_DIP_WORDS; i++)
-		intelhaddata->reg_ops.hdmi_audio_write_register(
-					AUD_HDMIW_INFOFR, 0x0);
+		had_write_register(AUD_HDMIW_INFOFR, 0x0);
 
 	ctrl_state.ctrl_regx.dip_freq = 1;
 	ctrl_state.ctrl_regx.dip_en_sta = 1;
-	intelhaddata->reg_ops.hdmi_audio_write_register(
-					AUD_CNTL_ST, ctrl_state.ctrl_val);
+	had_write_register(AUD_CNTL_ST, ctrl_state.ctrl_val);
 }
 
 /**
@@ -295,21 +381,16 @@ int snd_intelhad_prog_buffer(struct snd_intelhad *intelhaddata,
 	struct snd_pcm_substream *substream;
 
 	substream = intelhaddata->stream_info.had_substream;
-	ring_buf_addr = virt_to_phys(substream->runtime->dma_area);
+	ring_buf_addr = substream->runtime->dma_addr;
 	ring_buf_size = snd_pcm_lib_buffer_bytes(substream);
 	intelhaddata->stream_info.ring_buf_size = ring_buf_size;
 	period_bytes = frames_to_bytes(substream->runtime,
 				substream->runtime->period_size);
 	num_periods = substream->runtime->periods;
 
-	pr_debug("Ring buffer address = %#x\n", ring_buf_addr);
-	pr_debug("Ring buffer size = %#x\n", ring_buf_size);
-	pr_debug("period size in bytes = %d\n", period_bytes);
-
 	/* buffer addr should  be 64 byte aligned, period bytes
 	 will be used to calculate addr offset*/
 	period_bytes &= ~0x3F;
-	pr_debug("period size in bytes after align = %d\n", period_bytes);
 
 	/* Hardware supports MAX_PERIODS buffers */
 	if (end >= HAD_MAX_PERIODS)
@@ -325,33 +406,54 @@ int snd_intelhad_prog_buffer(struct snd_intelhad *intelhaddata,
 			intelhaddata->buf_info[i].buf_size = ring_buf_size -
 							(period_bytes*i);
 
-		intelhaddata->reg_ops.hdmi_audio_write_register(
-					AUD_BUF_A_ADDR + (i * HAD_REG_WIDTH),
+		had_write_register(AUD_BUF_A_ADDR + (i * HAD_REG_WIDTH),
 					intelhaddata->buf_info[i].buf_addr |
 					BIT(0) | BIT(1));
-		intelhaddata->reg_ops.hdmi_audio_write_register(
-					AUD_BUF_A_LENGTH + (i * HAD_REG_WIDTH),
+		had_write_register(AUD_BUF_A_LENGTH + (i * HAD_REG_WIDTH),
 					period_bytes);
 		intelhaddata->buf_info[i].is_valid = true;
-		pr_debug("buf[%d] addr=%#x  and size=%d\n", i,
-				intelhaddata->buf_info[i].buf_addr,
-				intelhaddata->buf_info[i].buf_size);
 	}
+	pr_debug("%s:buf[%d-%d] addr=%#x  and size=%d\n", __func__, start, end,
+			intelhaddata->buf_info[start].buf_addr,
+			intelhaddata->buf_info[start].buf_size);
 	intelhaddata->valid_buf_cnt = num_periods;
 	return 0;
 }
 
-inline void snd_intelhad_read_len(struct snd_intelhad *intelhaddata)
+int snd_intelhad_invd_buffer(int start, int end)
 {
 	int i;
-	u32 len;
-	for (i = 0; i < 4 ; i++) {
+
+	/* Hardware supports MAX_PERIODS buffers */
+	if (end >= HAD_MAX_PERIODS)
+		return -EINVAL;
+
+	for (i = start; i <= end; i++) {
 		/* Program the buf registers with addr and len */
-		intelhaddata->reg_ops.hdmi_audio_read_register(
-					AUD_BUF_A_LENGTH + (i * HAD_REG_WIDTH),
-					&len);
-		pr_debug("buf[%d] size=%d\n", i, len);
+		had_write_register(AUD_BUF_A_ADDR + (i * HAD_REG_WIDTH), 0);
+		had_write_register(AUD_BUF_A_LENGTH + (i * HAD_REG_WIDTH), 0);
 	}
+	pr_debug("buf[%d-%d] invalidated\n", start, end);
+	return 0;
+}
+
+inline int snd_intelhad_read_len(struct snd_intelhad *intelhaddata)
+{
+	int i, retval = 0;
+	u32 len[4];
+
+	for (i = 0; i < 4 ; i++) {
+		had_read_register(AUD_BUF_A_LENGTH + (i * HAD_REG_WIDTH),
+					&len[i]);
+		if (!len[i])
+			retval++;
+	}
+	if (retval != 1) {
+		for (i = 0; i < 4 ; i++)
+			pr_debug("buf[%d] size=%d\n", i, len[i]);
+	}
+
+	return retval;
 }
 
 /**
@@ -374,9 +476,9 @@ static void snd_intelhad_prog_cts(u32 aud_samp_freq, u32 tmds, u32 n_param,
 	dividend = (u64)tmds * n_param*1000;
 	divisor = 128 * aud_samp_freq;
 	cts_val = div64_u64(dividend, divisor);
-	pr_debug("CTS Value=%d\n", cts_val);
-	intelhaddata->reg_ops.hdmi_audio_write_register(
-				AUD_HDMI_CTS, (BIT(20) | cts_val));
+	pr_debug("TMDS value=%d, N value=%d, CTS Value=%d\n",
+			tmds, n_param, cts_val);
+	had_write_register(AUD_HDMI_CTS, (BIT(20) | cts_val));
 }
 
 /**
@@ -432,8 +534,7 @@ static int snd_intelhad_prog_n(u32 aud_samp_freq, u32 *n_param,
 	}
 	if (retval)
 		return retval;
-	intelhaddata->reg_ops.hdmi_audio_write_register(
-				AUD_N_ENABLE, (BIT(20) | n_val));
+	had_write_register(AUD_N_ENABLE, (BIT(20) | n_val));
 	*n_param = n_val;
 	return retval;
 }
@@ -449,28 +550,30 @@ static int snd_intelhad_open(struct snd_pcm_substream *substream)
 	struct snd_intelhad *intelhaddata;
 	struct snd_pcm_runtime *runtime;
 	struct had_stream_pvt *stream;
+	struct had_pvt_data *had_stream;
 	int retval;
 
 	pr_debug("snd_intelhad_open called\n");
 	intelhaddata = snd_pcm_substream_chip(substream);
-
-	mutex_lock(&intelhaddata->had_lock);
-	if (intelhaddata->drv_status != HAD_DRV_CONNECTED) {
-		pr_err("had in disconnected/suspended state :%d\n",
-				intelhaddata->drv_status);
-		mutex_unlock(&intelhaddata->had_lock);
+	had_stream = intelhaddata->private_data;
+	if (had_stream->process_trigger != NO_TRIGGER) {
+		pr_err("%s:Yet to process some trigger\n", __func__);
 		return -ENODEV;
 	}
 
-	if (intelhaddata->playback_cnt > 0) {
-		mutex_unlock(&intelhaddata->had_lock);
-		return -EBUSY;
-	} else
-		intelhaddata->playback_cnt++;
-
-	mutex_unlock(&intelhaddata->had_lock);
+	if (had_get_hwstate(intelhaddata)) {
+		pr_err("%s: HDMI cable plugged-out\n", __func__);
+		return -ENODEV;
+	}
 
 	runtime = substream->runtime;
+
+	/* Check, if device already in use */
+	if (runtime->private_data) {
+		pr_err("Device already in use\n");
+		return -EBUSY;
+	}
+
 	/* set the runtime hw parameter with local snd_pcm_hardware struct */
 	runtime->hw = snd_intel_hadstream;
 
@@ -481,20 +584,17 @@ static int snd_intelhad_open(struct snd_pcm_substream *substream)
 	}
 	stream->stream_status = STREAM_INIT;
 	runtime->private_data = stream;
+
 	retval = snd_pcm_hw_constraint_integer(runtime,
 			 SNDRV_PCM_HW_PARAM_PERIODS);
 	if (retval < 0) {
 		kfree(stream);
 		goto exit_err;
 	}
-	mutex_lock(&intelhaddata->had_lock);
-	intelhaddata->drv_status = HAD_DRV_RUNNING;
-	mutex_unlock(&intelhaddata->had_lock);
+
 	return retval;
 exit_err:
-	mutex_lock(&intelhaddata->had_lock);
-	intelhaddata->playback_cnt--;
-	mutex_unlock(&intelhaddata->had_lock);
+	runtime->private_data = NULL;
 	return retval;
 }
 
@@ -548,21 +648,21 @@ static int snd_intelhad_init_stream(struct snd_pcm_substream *substream)
 static int snd_intelhad_close(struct snd_pcm_substream *substream)
 {
 	struct snd_intelhad *intelhaddata;
+	struct snd_pcm_runtime *runtime;
 
 	pr_debug("snd_intelhad_close called\n");
 	intelhaddata = snd_pcm_substream_chip(substream);
-	mutex_lock(&intelhaddata->had_lock);
-	if (intelhaddata->playback_cnt)
-		intelhaddata->playback_cnt--;
+	runtime = substream->runtime;
 
 	intelhaddata->stream_info.buffer_rendered = 0;
 	intelhaddata->stream_info.buffer_ptr = 0;
 	intelhaddata->stream_info.str_id = 0;
 
+	/* Check if following drv_status modification is required - VA */
 	if (intelhaddata->drv_status != HAD_DRV_DISCONNECTED)
 		intelhaddata->drv_status = HAD_DRV_CONNECTED;
-	mutex_unlock(&intelhaddata->had_lock);
-	kfree(substream->runtime->private_data);
+	kfree(runtime->private_data);
+	runtime->private_data = NULL;
 	return 0;
 }
 
@@ -582,7 +682,6 @@ static int snd_intelhad_hw_params(struct snd_pcm_substream *substream,
 	u32 buf_size;
 
 	BUG_ON(!hw_params);
-	pr_debug("snd_intelhad_hw_params called\n");
 
 	buf_size = params_buffer_bytes(hw_params);
 
@@ -594,10 +693,9 @@ static int snd_intelhad_hw_params(struct snd_pcm_substream *substream,
 	retval = snd_pcm_lib_malloc_pages(substream, buf_size);
 	if (retval < 0)
 		return retval;
-	pr_debug("allocated memory = %d\n", buf_size);
+	pr_debug("%s:allocated memory = %d\n", __func__, buf_size);
 	memset(substream->runtime->dma_area, 0, buf_size);
 
-	pr_debug("snd_intelhad_hw_params exited\n");
 	return retval;
 }
 
@@ -621,15 +719,12 @@ int snd_intelhad_configure_silence(struct snd_intelhad *intelhaddata)
 	int retval = 0;
 	u32 disp_samp_freq, n_param;
 
-	pr_debug("Enter %s\n", __func__);
 	/* Get N value in KHz */
-	retval = intelhaddata->query_ops.hdmi_audio_get_caps(
-				HAD_GET_SAMPLING_FREQ, &disp_samp_freq);
+	retval = had_get_caps(HAD_GET_SAMPLING_FREQ, &disp_samp_freq);
 	if (retval) {
 		pr_err("querying display sampling freq failed %#x\n", retval);
 		goto out;
-	} else
-		pr_debug("%s:TMDS freq = %d kHz\n", __func__, disp_samp_freq);
+	}
 
 	retval = snd_intelhad_prog_n(AUD_SAMPLE_RATE_44_1, &n_param,
 								intelhaddata);
@@ -651,8 +746,8 @@ int snd_intelhad_start_silence(struct snd_intelhad *intelhaddata)
 {
 	int i, retval = 0;
 	u32 buf_addr;
-
-	pr_debug("Enter %s\n", __func__);
+	unsigned long flag_irqs;
+	struct had_pvt_data *had_stream;
 
 	buf_addr = virt_to_phys(intelhaddata->flat_data);
 
@@ -662,22 +757,24 @@ int snd_intelhad_start_silence(struct snd_intelhad *intelhaddata)
 		intelhaddata->buf_info[i].buf_addr = buf_addr;
 		intelhaddata->buf_info[i].buf_size = MAX_SZ_ZERO_BUF;
 
-		intelhaddata->reg_ops.hdmi_audio_write_register(
-					AUD_BUF_A_ADDR + (i * HAD_REG_WIDTH),
+		had_write_register(AUD_BUF_A_ADDR + (i * HAD_REG_WIDTH),
 					buf_addr | BIT(0) | BIT(1));
-		intelhaddata->reg_ops.hdmi_audio_write_register(
-					AUD_BUF_A_LENGTH + (i * HAD_REG_WIDTH),
+		had_write_register(AUD_BUF_A_LENGTH + (i * HAD_REG_WIDTH),
 					MAX_SZ_ZERO_BUF);
 		intelhaddata->buf_info[i].is_valid = true;
-		pr_debug("buf[%d] addr=%#x  and size=%d\n", i,
-				intelhaddata->buf_info[i].buf_addr,
-				intelhaddata->buf_info[i].buf_size);
 	}
+	pr_debug("%s:buf[%d-%d] addr=%#x  and size=%d\n", __func__,
+			HAD_BUF_TYPE_C, HAD_BUF_TYPE_D,
+			intelhaddata->buf_info[HAD_BUF_TYPE_C].buf_addr,
+			intelhaddata->buf_info[HAD_BUF_TYPE_C].buf_size);
+	spin_lock_irqsave(&intelhaddata->had_spinlock, flag_irqs);
 	intelhaddata->valid_buf_cnt = HAD_MAX_PERIODS;
 	intelhaddata->curr_buf = HAD_BUF_TYPE_C;
+	had_stream = intelhaddata->private_data;
+	had_stream->stream_status = HAD_RUNNING_SILENCE;
+	spin_unlock_irqrestore(&intelhaddata->had_spinlock, flag_irqs);
 
-	intelhaddata->reg_ops.hdmi_audio_read_modify(AUD_CONFIG, 1,
-				BIT(0));
+	had_read_modify(AUD_CONFIG, 1, BIT(0));
 
 	return retval;
 }
@@ -685,39 +782,37 @@ int snd_intelhad_start_silence(struct snd_intelhad *intelhaddata)
 int snd_intelhad_stop_silence(struct snd_intelhad *intelhaddata)
 {
 	int i, retval = 0;
+	unsigned long flag_irqs;
+	struct had_pvt_data *had_stream;
 
 	pr_debug("Enter %s\n", __func__);
 
-	intelhaddata->reg_ops.hdmi_audio_read_modify(AUD_CONFIG, 0,
-				BIT(0));
+	spin_lock_irqsave(&intelhaddata->had_spinlock, flag_irqs);
+	had_stream = intelhaddata->private_data;
+	had_stream->stream_status = HAD_INIT;
+	spin_unlock_irqrestore(&intelhaddata->had_spinlock, flag_irqs);
+
+	had_read_modify(AUD_CONFIG, 0, BIT(0));
 
 	/* Invalidate Audio buffers C & D */
 	for (i = HAD_BUF_TYPE_C; i < HAD_MAX_PERIODS; i++) {
 		/* Program the buf registers with addr and len */
-		intelhaddata->reg_ops.hdmi_audio_write_register(
-				AUD_BUF_A_ADDR + (i * HAD_REG_WIDTH),
-				0);
-		intelhaddata->reg_ops.hdmi_audio_write_register(
-				AUD_BUF_A_LENGTH + (i * HAD_REG_WIDTH),
-				0);
+		had_write_register(AUD_BUF_A_ADDR + (i * HAD_REG_WIDTH), 0);
+		had_write_register(AUD_BUF_A_LENGTH + (i * HAD_REG_WIDTH), 0);
 	}
 	/* Reset buffer pointers */
-	intelhaddata->reg_ops.hdmi_audio_write_register(AUD_HDMI_STATUS, 1);
-	intelhaddata->reg_ops.hdmi_audio_write_register(AUD_HDMI_STATUS, 0);
+	had_write_register(AUD_HDMI_STATUS, 1);
+	had_write_register(AUD_HDMI_STATUS, 0);
 
 	return retval;
 }
 
 void snd_process_stop_trigger(struct snd_intelhad *intelhaddata)
 {
-	int buf_id, buff_done, i;
+	int buf_id, i;
 	u32 buf_addr;
 
-	buff_done = intelhaddata->buff_done;
-	if (intelhaddata->valid_buf_cnt-1 == buff_done)
-		buf_id = HAD_BUF_TYPE_A;
-	else
-		buf_id = buff_done + 1;
+	buf_id = intelhaddata->curr_buf;
 
 	pr_debug("%s:buf_id=%d\n", __func__, buf_id);
 	/* Invalidate Audio buffers */
@@ -727,12 +822,10 @@ void snd_process_stop_trigger(struct snd_intelhad *intelhaddata)
 		if (i < HAD_BUF_TYPE_C) {
 			/* invalidate */
 			intelhaddata->buf_info[i].buf_size = 0;
-			intelhaddata->reg_ops.hdmi_audio_write_register(
-					AUD_BUF_A_ADDR + (i * HAD_REG_WIDTH),
-					0);
-			intelhaddata->reg_ops.hdmi_audio_write_register(
-					AUD_BUF_A_LENGTH + (i * HAD_REG_WIDTH),
-					0);
+			had_write_register(AUD_BUF_A_ADDR +
+					(i * HAD_REG_WIDTH), 0);
+			had_write_register(AUD_BUF_A_LENGTH +
+					(i * HAD_REG_WIDTH), 0);
 		} else {
 			/* Program with silence buffer */
 			buf_addr = virt_to_phys(intelhaddata->flat_data);
@@ -741,10 +834,10 @@ void snd_process_stop_trigger(struct snd_intelhad *intelhaddata)
 			intelhaddata->buf_info[i].buf_addr = buf_addr;
 			intelhaddata->buf_info[i].buf_size = MAX_SZ_ZERO_BUF;
 
-			intelhaddata->reg_ops.hdmi_audio_write_register(
+			had_write_register(
 					AUD_BUF_A_ADDR + (i * HAD_REG_WIDTH),
 					buf_addr | BIT(0) | BIT(1));
-			intelhaddata->reg_ops.hdmi_audio_write_register(
+			had_write_register(
 					AUD_BUF_A_LENGTH + (i * HAD_REG_WIDTH),
 					(MAX_SZ_ZERO_BUF));
 			intelhaddata->buf_info[i].is_valid = true;
@@ -766,64 +859,55 @@ static int snd_intelhad_pcm_trigger(struct snd_pcm_substream *substream,
 					int cmd)
 {
 	int retval = 0;
-	int buf_id;
 	unsigned long flag_irq;
 	struct snd_intelhad *intelhaddata;
 	struct had_stream_pvt *stream;
-	struct hdmi_audio_registers_ops reg_ops;
+	struct had_pvt_data *had_stream;
 
 	intelhaddata = snd_pcm_substream_chip(substream);
 	stream = substream->runtime->private_data;
-	reg_ops = intelhaddata->reg_ops;
+	had_stream = intelhaddata->private_data;
 
 	switch (cmd) {
 	case SNDRV_PCM_TRIGGER_START:
 		pr_debug("Trigger Start\n");
 		stream->substream = substream;
 		stream->stream_status = STREAM_RUNNING;
-		snd_intelhad_read_len(intelhaddata);
 
 		/* Disable local INTRs till register prgmng is done */
-		spin_lock_irqsave(&intelhaddata->had_spinlock, flag_irq);
-		if (intelhaddata->buff_done == HAD_BUF_TYPE_D)
-			buf_id = HAD_BUF_TYPE_C;
-		else
-			buf_id = HAD_BUF_TYPE_D;
-
-		/* Re-program silence buffers */
-		if (buf_id == HAD_BUF_TYPE_C) {
-			/* Disable Buffer D*/
-			reg_ops.hdmi_audio_write_register(AUD_BUF_A_ADDR +
-					(HAD_BUF_TYPE_D * HAD_REG_WIDTH), 0);
-			reg_ops.hdmi_audio_write_register(AUD_BUF_A_LENGTH +
-					(HAD_BUF_TYPE_D * HAD_REG_WIDTH), 0);
+		if (had_get_hwstate(intelhaddata)) {
+			pr_err("_START: HDMI cable plugged-out\n");
+			retval = -ENODEV;
+			break;
 		}
-		retval = snd_intelhad_prog_buffer(intelhaddata, HAD_BUF_TYPE_A,
-				HAD_BUF_TYPE_B);
-		/* Start reporting BUFFER_DONE/UNDERRUN to above layers*/
-		intelhaddata->pcm_active = 1;
-		intelhaddata->start_trigger = 1;
+
+		spin_lock_irqsave(&intelhaddata->had_spinlock, flag_irq);
+		had_stream->process_trigger = PRE_START;
 		spin_unlock_irqrestore(&intelhaddata->had_spinlock, flag_irq);
-		pr_debug("Processed _Start, buf_id = %d\n", buf_id);
+		pr_debug("Processed _Start\n");
 
 		break;
 
 	case SNDRV_PCM_TRIGGER_STOP:
 		pr_debug("Trigger Stop\n");
-		snd_intelhad_read_len(intelhaddata);
 		spin_lock_irqsave(&intelhaddata->had_spinlock, flag_irq);
 		intelhaddata->stream_info.str_id = 0;
-		intelhaddata->send_data = 0;
 
 		/* Stop reporting BUFFER_DONE/UNDERRUN to above layers*/
-		intelhaddata->pcm_active = 0;
-		intelhaddata->stop_trigger = 1;
+		had_stream->process_trigger = STOP_TRIGGER;
 		/* Send zero filled data */
-		if (intelhaddata->drv_status != HAD_DRV_DISCONNECTED)
-			snd_process_stop_trigger(intelhaddata);
-		spin_unlock_irqrestore(&intelhaddata->had_spinlock, flag_irq);
-		cancel_delayed_work(&intelhaddata->dummy_audio);
-
+		if (had_stream->stream_status == HAD_RUNNING_DUMMY) {
+			spin_unlock_irqrestore(&intelhaddata->had_spinlock,
+					flag_irq);
+			cancel_delayed_work(&intelhaddata->dummy_audio);
+		} else if (intelhaddata->drv_status != HAD_DRV_DISCONNECTED) {
+			spin_unlock_irqrestore(&intelhaddata->had_spinlock,
+					flag_irq);
+			if (!had_get_hwstate(intelhaddata))
+				snd_process_stop_trigger(intelhaddata);
+		} else
+			spin_unlock_irqrestore(&intelhaddata->had_spinlock,
+					flag_irq);
 		stream->stream_status = STREAM_DROPPED;
 		break;
 
@@ -846,10 +930,23 @@ static int snd_intelhad_pcm_prepare(struct snd_pcm_substream *substream)
 	u32 disp_samp_freq, n_param;
 	struct snd_intelhad *intelhaddata;
 	struct snd_pcm_runtime *runtime;
+	struct had_pvt_data *had_stream;
+	unsigned long flag_irqs;
 
 	pr_debug("pcm_prepare called\n");
 
+	intelhaddata = snd_pcm_substream_chip(substream);
 	runtime = substream->runtime;
+	had_stream = intelhaddata->private_data;
+
+	spin_lock_irqsave(&intelhaddata->had_spinlock, flag_irqs);
+	if (had_stream->process_trigger != NO_TRIGGER) {
+		spin_unlock_irqrestore(&intelhaddata->had_spinlock, flag_irqs);
+		pr_err("%s:Yet to process some trigger\n", __func__);
+		return -EBUSY;
+	}
+	spin_unlock_irqrestore(&intelhaddata->had_spinlock, flag_irqs);
+
 	pr_debug("period_size=%d\n",
 				frames_to_bytes(runtime, runtime->period_size));
 	pr_debug("periods=%d\n", runtime->periods);
@@ -866,20 +963,22 @@ static int snd_intelhad_pcm_prepare(struct snd_pcm_substream *substream)
 		return retval;
 	}
 
-	intelhaddata->stream_info.str_id = intelhaddata->playback_cnt;
-	snprintf(substream->pcm->id, sizeof(substream->pcm->id),
-			"%d", intelhaddata->stream_info.str_id);
 	retval = snd_intelhad_init_stream(substream);
 	if (retval)
 		goto prep_end;
+
+	if (had_get_hwstate(intelhaddata)) {
+		pr_err("%s: HDMI cable plugged-out\n", __func__);
+		retval = -ENODEV;
+		goto prep_end;
+	}
+
 	/* Get N value in KHz */
-	retval = intelhaddata->query_ops.hdmi_audio_get_caps(
-				HAD_GET_SAMPLING_FREQ, &disp_samp_freq);
+	retval = had_get_caps(HAD_GET_SAMPLING_FREQ, &disp_samp_freq);
 	if (retval) {
 		pr_err("querying display sampling freq failed %#x\n", retval);
 		goto prep_end;
-	} else
-		pr_debug("TMDS freq = %d kHz\n", disp_samp_freq);
+	}
 
 	retval = snd_intelhad_prog_n(substream->runtime->rate, &n_param,
 								intelhaddata);
@@ -908,7 +1007,7 @@ static snd_pcm_uframes_t snd_intelhad_pcm_pointer(
 					struct snd_pcm_substream *substream)
 {
 	struct snd_intelhad *intelhaddata;
-	u32 bytes_rendered;
+	u32 bytes_rendered = 0;
 
 	intelhaddata = snd_pcm_substream_chip(substream);
 
@@ -917,13 +1016,34 @@ static snd_pcm_uframes_t snd_intelhad_pcm_pointer(
 		return SNDRV_PCM_POS_XRUN;
 	}
 
-	div_u64_rem(intelhaddata->stream_info.buffer_rendered,
+	if (intelhaddata->stream_info.buffer_rendered)
+		div_u64_rem(intelhaddata->stream_info.buffer_rendered,
 			intelhaddata->stream_info.ring_buf_size,
 			&(bytes_rendered));
+
 	intelhaddata->stream_info.buffer_ptr = bytes_to_frames(
 						substream->runtime,
 						bytes_rendered);
 	return intelhaddata->stream_info.buffer_ptr;
+}
+
+/**
+* snd_intelhad_pcm_mmap- mmaps a kernel buffer to user space for copying data
+*
+* @substream:  substream for which the function is called
+* @vma:		struct instance of memory VMM memory area
+*
+* This function is called by OS when a user space component
+* tries to get mmap memory from driver
+*/
+static int snd_intelhad_pcm_mmap(struct snd_pcm_substream *substream,
+	struct vm_area_struct *vma)
+{
+	pr_debug("entry with prot:%s\n", __func__);
+	vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
+	return remap_pfn_range(vma, vma->vm_start,
+			substream->dma_buffer.addr >> PAGE_SHIFT,
+			vma->vm_end - vma->vm_start, vma->vm_page_prot);
 }
 
 int hdmi_audio_mode_change(struct snd_pcm_substream *substream)
@@ -935,17 +1055,14 @@ int hdmi_audio_mode_change(struct snd_pcm_substream *substream)
 	intelhaddata = snd_pcm_substream_chip(substream);
 
 	/* Disable Audio */
-	intelhaddata->reg_ops.hdmi_audio_read_modify(
-			AUD_CONFIG, 0, BIT(0));
+	had_read_modify(AUD_CONFIG, 0, BIT(0));
 
 	/* Update CTS value */
-	retval = intelhaddata->query_ops.hdmi_audio_get_caps(
-				HAD_GET_SAMPLING_FREQ, &disp_samp_freq);
+	retval = had_get_caps(HAD_GET_SAMPLING_FREQ, &disp_samp_freq);
 	if (retval) {
 		pr_err("querying display sampling freq failed %#x\n", retval);
 		goto out;
-	} else
-		pr_debug("TMDS freq = %d kHz\n", disp_samp_freq);
+	}
 
 	retval = snd_intelhad_prog_n(substream->runtime->rate, &n_param,
 								intelhaddata);
@@ -957,8 +1074,7 @@ int hdmi_audio_mode_change(struct snd_pcm_substream *substream)
 					disp_samp_freq, n_param, intelhaddata);
 
 	/* Enable Audio */
-	intelhaddata->reg_ops.hdmi_audio_read_modify(
-			AUD_CONFIG, 1, BIT(0));
+	had_read_modify(AUD_CONFIG, 1, BIT(0));
 
 out:
 	return retval;
@@ -966,23 +1082,27 @@ out:
 
 void dummy_audio_play(struct work_struct *work)
 {
-	struct snd_intelhad *intelhaddata = had_pvt_data;
+	struct snd_intelhad *intelhaddata = had_data;
+	struct had_pvt_data *had_stream;
+	unsigned long flag_irqs;
 
-	mutex_lock(&intelhaddata->had_lock);
+	spin_lock_irqsave(&intelhaddata->had_spinlock, flag_irqs);
 	if (intelhaddata->drv_status != HAD_DRV_DISCONNECTED) {
-		mutex_unlock(&intelhaddata->had_lock);
+		spin_unlock_irqrestore(&intelhaddata->had_spinlock, flag_irqs);
 		pr_debug("HDMI device still connected\n");
 		return;
 	}
+	had_stream = intelhaddata->private_data;
 
-	if (!intelhaddata->send_data) {
-		mutex_unlock(&intelhaddata->had_lock);
+	/* In case _STOP, silence data, return */
+	if (had_stream->stream_status < HAD_RUNNING_STREAM) {
+		spin_unlock_irqrestore(&intelhaddata->had_spinlock, flag_irqs);
 		pr_debug("HDMI device_flag is reset\n");
 		return;
 	}
 
+	spin_unlock_irqrestore(&intelhaddata->had_spinlock, flag_irqs);
 	had_event_handler(HAD_EVENT_AUDIO_BUFFER_DONE, intelhaddata);
-	mutex_unlock(&intelhaddata->had_lock);
 	schedule_delayed_work(&intelhaddata->dummy_audio, intelhaddata->timer);
 }
 
@@ -996,6 +1116,7 @@ struct snd_pcm_ops snd_intelhad_playback_ops = {
 	.prepare =	snd_intelhad_pcm_prepare,
 	.trigger =	snd_intelhad_pcm_trigger,
 	.pointer =	snd_intelhad_pcm_pointer,
+	.mmap =	snd_intelhad_pcm_mmap,
 };
 
 /**
@@ -1043,14 +1164,12 @@ static int had_iec958_get(struct snd_kcontrol *kcontrol,
 				struct snd_ctl_elem_value *ucontrol)
 {
 	struct snd_intelhad *intelhaddata = snd_kcontrol_chip(kcontrol);
-	mutex_lock(&intelhaddata->had_lock);
 	ucontrol->value.iec958.status[0] = (intelhaddata->aes_bits >> 0) & 0xff;
 	ucontrol->value.iec958.status[1] = (intelhaddata->aes_bits >> 8) & 0xff;
 	ucontrol->value.iec958.status[2] =
 					(intelhaddata->aes_bits >> 16) & 0xff;
 	ucontrol->value.iec958.status[3] =
 					(intelhaddata->aes_bits >> 24) & 0xff;
-	mutex_unlock(&intelhaddata->had_lock);
 	return 0;
 }
 static int had_iec958_mask_get(struct snd_kcontrol *kcontrol,
@@ -1073,13 +1192,10 @@ static int had_iec958_put(struct snd_kcontrol *kcontrol,
 		(ucontrol->value.iec958.status[1] << 8) |
 		(ucontrol->value.iec958.status[2] << 16) |
 		(ucontrol->value.iec958.status[3] << 24);
-	mutex_lock(&intelhaddata->had_lock);
 	if (intelhaddata->aes_bits != val) {
 		intelhaddata->aes_bits = val;
-		mutex_unlock(&intelhaddata->had_lock);
 		return 1;
 	}
-	mutex_unlock(&intelhaddata->had_lock);
 	return 1;
 }
 
@@ -1122,6 +1238,7 @@ static int __devinit hdmi_audio_probe(struct platform_device *devptr)
 	struct snd_card *card;
 	struct had_callback_ops ops_cb;
 	struct snd_intelhad *intelhaddata;
+	struct had_pvt_data *had_stream;
 
 	pr_debug("Enter %s\n", __func__);
 
@@ -1132,7 +1249,14 @@ static int __devinit hdmi_audio_probe(struct platform_device *devptr)
 		return -ENOMEM;
 	}
 
-	had_pvt_data = intelhaddata;
+	had_stream = kzalloc(sizeof(*had_stream), GFP_KERNEL);
+	if (!had_stream) {
+		pr_err("mem alloc failed\n");
+		retval = -ENOMEM;
+		goto free_haddata;
+	}
+
+	had_data = intelhaddata;
 	ops_cb.intel_had_event_call_back = had_event_handler;
 
 	/* registering with display driver to get access to display APIs */
@@ -1143,10 +1267,9 @@ static int __devinit hdmi_audio_probe(struct platform_device *devptr)
 			&(intelhaddata->query_ops));
 	if (retval) {
 		pr_err("querying display driver APIs failed %#x\n", retval);
-		goto free_haddata;
+		goto free_hadstream;
 	}
 	mutex_lock(&had_mutex);
-	mutex_init(&intelhaddata->had_lock);
 	spin_lock_init(&intelhaddata->had_spinlock);
 	intelhaddata->drv_status = HAD_DRV_DISCONNECTED;
 	/* create a card instance with ALSA framework */
@@ -1157,7 +1280,7 @@ static int __devinit hdmi_audio_probe(struct platform_device *devptr)
 	intelhaddata->card = card;
 	intelhaddata->card_id = hdmi_card_id;
 	intelhaddata->card_index = card->number;
-	intelhaddata->playback_cnt = 0;
+	intelhaddata->private_data = had_stream;
 	intelhaddata->flag_underrun = 0;
 	intelhaddata->aes_bits = SNDRV_PCM_DEFAULT_CON_SPDIF;
 	strncpy(card->driver, INTEL_HAD, strlen(INTEL_HAD));
@@ -1178,8 +1301,7 @@ static int __devinit hdmi_audio_probe(struct platform_device *devptr)
 			    &snd_intelhad_playback_ops);
 	/* allocate dma pages for ALSA stream operations */
 	retval = snd_pcm_lib_preallocate_pages_for_all(pcm,
-			SNDRV_DMA_TYPE_CONTINUOUS,
-			snd_dma_continuous_data(GFP_KERNEL),
+			SNDRV_DMA_TYPE_DEV, card->dev,
 			HAD_MIN_BUFFER, HAD_MAX_BUFFER);
 	if (retval)
 		goto err;
@@ -1219,18 +1341,20 @@ static int __devinit hdmi_audio_probe(struct platform_device *devptr)
 	if (retval) {
 		pr_err("registering with display driver failed %#x\n", retval);
 		snd_card_free(card);
-		goto free_haddata;
+		goto free_hadstream;
 	}
 
 	return retval;
 err:
-	pr_err("Error returned from %s api %#x\n", __func__, retval);
 	snd_card_free(card);
 unlock_mutex:
 	mutex_unlock(&had_mutex);
+free_hadstream:
+	kfree(had_stream);
 free_haddata:
 	kfree(intelhaddata);
 	intelhaddata = NULL;
+	pr_err("Error returned from %s api %#x\n", __func__, retval);
 	return retval;
 }
 
@@ -1244,7 +1368,7 @@ free_haddata:
  */
 static int __devexit hdmi_audio_remove(struct platform_device *devptr)
 {
-	struct snd_intelhad *intelhaddata = had_pvt_data;
+	struct snd_intelhad *intelhaddata = had_data;
 	int caps;
 
 	pr_debug("Enter %s\n", __func__);
@@ -1252,18 +1376,15 @@ static int __devexit hdmi_audio_remove(struct platform_device *devptr)
 	if (!intelhaddata)
 		return 0;
 
-	mutex_lock(&intelhaddata->had_lock);
 	if (intelhaddata->drv_status != HAD_DRV_DISCONNECTED) {
 		caps = HDMI_AUDIO_UNDERRUN | HDMI_AUDIO_BUFFER_DONE;
-		intelhaddata->query_ops.hdmi_audio_set_caps(
-				HAD_SET_DISABLE_AUDIO_INT, &caps);
-		intelhaddata->query_ops.hdmi_audio_set_caps(
-				HAD_SET_DISABLE_AUDIO, NULL);
+		had_set_caps(HAD_SET_DISABLE_AUDIO_INT, &caps);
+		had_set_caps(HAD_SET_DISABLE_AUDIO, NULL);
 		snd_intelhad_stop_silence(intelhaddata);
 	}
 	kfree(intelhaddata->flat_data);
 	snd_card_free(intelhaddata->card);
-	mutex_unlock(&intelhaddata->had_lock);
+	kfree(intelhaddata->private_data);
 	kfree(intelhaddata);
 	return 0;
 }
