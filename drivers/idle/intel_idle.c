@@ -64,7 +64,7 @@
 #include <asm/mwait.h>
 #include <asm/msr.h>
 #include <asm/atomic.h>
-#include <asm/mrst.h>
+#include <asm/intel-mid.h>
 #ifdef CONFIG_X86_MDFLD
 #include <linux/intel_mid_pm.h>
 #endif

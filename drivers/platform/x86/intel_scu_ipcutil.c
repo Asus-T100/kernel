@@ -27,7 +27,7 @@
 #include <linux/miscdevice.h>
 #include <linux/io.h>
 #include <asm/intel_scu_ipc.h>
-#include <asm/mrst.h>
+#include <asm/intel-mid.h>
 #include <linux/pm_runtime.h>
 
 #define MAX_FW_SIZE 264192

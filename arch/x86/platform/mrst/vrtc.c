@@ -22,7 +22,7 @@
 #include <linux/sfi.h>
 #include <linux/platform_device.h>
 
-#include <asm/mrst.h>
+#include <asm/intel-mid.h>
 #include <asm/mrst-vrtc.h>
 #include <asm/time.h>
 #include <asm/fixmap.h>

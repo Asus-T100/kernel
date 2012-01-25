@@ -36,7 +36,7 @@
 #include <linux/platform_device.h>
 #include <linux/gpio.h>
 #include <linux/sfi.h>
-#include <asm/mrst.h>
+#include <asm/intel-mid.h>
 #include "max3107.h"
 
 /* GPIO direction to input function */

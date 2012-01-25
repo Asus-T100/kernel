@@ -31,7 +31,7 @@
 #include <linux/async.h>
 #include <linux/wakelock.h>
 #include <linux/gpio.h>
-#include <asm/mrst.h>
+#include <asm/intel-mid.h>
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
 #include <sound/soc.h>

@@ -42,7 +42,7 @@
 #include <linux/debugfs.h>
 #include <linux/gpio.h>
 #include <linux/lnw_gpio.h>
-#include <asm/mrst.h>
+#include <asm/intel-mid.h>
 #include <asm/processor.h>
 #include <linux/pm_runtime.h>
 

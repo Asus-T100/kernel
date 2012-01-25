@@ -31,7 +31,7 @@
 
 #include <asm/fixmap.h>
 #include <asm/pgtable.h>
-#include <asm/mrst.h>
+#include <asm/intel-mid.h>
 
 #define MRST_SPI_TIMEOUT		0x200000
 #define MRST_REGBASE_SPI0		0xff128000

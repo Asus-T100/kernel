@@ -2,7 +2,7 @@
 #define  _ASM_X86_INTEL_SCU_IPC_H_
 
 #include <linux/notifier.h>
-#include <asm/mrst.h>
+#include <asm/intel-mid.h>
 
 /* IPC defines the following message types */
 #define IPCMSG_BATTERY          0xEF /* Coulomb Counter Accumulator */

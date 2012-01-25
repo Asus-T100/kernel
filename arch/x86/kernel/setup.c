@@ -68,7 +68,7 @@
 #include <linux/percpu.h>
 #include <linux/crash_dump.h>
 #include <linux/tboot.h>
-#include <asm/mrst.h>
+#include <asm/intel-mid.h>
 
 #include <video/edid.h>
 

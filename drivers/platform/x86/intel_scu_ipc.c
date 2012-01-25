@@ -27,7 +27,7 @@
 #include <linux/interrupt.h>
 #include <linux/debugfs.h>
 #include <linux/fs.h>
-#include <asm/mrst.h>
+#include <asm/intel-mid.h>
 #include <asm/intel_scu_ipc.h>
 #include <linux/pm_qos_params.h>
 #include <linux/intel_mid_pm.h>
