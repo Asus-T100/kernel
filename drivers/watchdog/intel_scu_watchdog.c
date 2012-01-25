@@ -331,10 +331,12 @@ int ret;
 /* timer interrupt handler */
 static irqreturn_t watchdog_timer_interrupt(int irq, void *dev_id)
 {
-	/* has the timer been started? If not, then this is spurious */
-	if (!watchdog_device.started) {
-		pr_warn(PFX "Spurious interrupt received\n");
-		return IRQ_HANDLED;
+	if (watchdog_device.started) {
+		pr_warn(PFX "Expected SW WDT warning irq received\n");
+	} else {
+		/* Unexpected, but we'd better to handle it anyway */
+		/* and so try to avoid a ColdReset */
+		pr_warn(PFX "Unexpected SW WDT warning irq received\n");
 	}
 
 	tasklet_schedule(&watchdog_device.interrupt_tasklet);
