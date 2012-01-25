@@ -1186,7 +1186,7 @@ static irqreturn_t pmu_sc_irq(int irq, void *ignored)
 	 * release scu_ready_sem
 	 */
 	if (mid_pmu_cxt->interactive_cmd_sent) {
-		mid_pmu_cxt->interactive_cmd_sent = 0;
+		mid_pmu_cxt->interactive_cmd_sent = false;
 
 		/* unblock set_power_state() */
 		complete(&mid_pmu_cxt->set_mode_complete);
@@ -1744,7 +1744,7 @@ int __ref pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t state)
 		BUG();
 	}
 
-	mid_pmu_cxt->interactive_cmd_sent = 1;
+	mid_pmu_cxt->interactive_cmd_sent = true;
 
 	status =
 		pmu_pci_to_indexes(pdev, &i, &pmu_num,
@@ -1824,8 +1824,19 @@ int __ref pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t state)
 		 *
 		 */
 		if (!wait_for_completion_timeout(
-			    &mid_pmu_cxt->set_mode_complete, 5 * HZ))
-			BUG();
+			    &mid_pmu_cxt->set_mode_complete, 5 * HZ)) {
+			/* It is possible that in S3 we may miss
+			 * completion signal, so check if interactive_cmd_sent
+			 * cleared indicating completion interrupt received.
+			 */
+			if (!mid_pmu_cxt->interactive_cmd_sent) {
+				WARN(1,
+				"%s: completion timed out.\n", __func__);
+				init_completion
+					(&mid_pmu_cxt->set_mode_complete);
+			} else
+				BUG();
+		}
 
 		pmu_set_s0ix_possible(state);
 
@@ -1835,8 +1846,9 @@ int __ref pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t state)
 	}
 
 unlock:
-	mid_pmu_cxt->interactive_cmd_sent = 0;
+	mid_pmu_cxt->interactive_cmd_sent = false;
 	up(&mid_pmu_cxt->scu_ready_sem);
+
 	return status;
 }
 
@@ -2463,10 +2475,10 @@ static int pmu_init(void)
 	update_all_lss_states(&pmu_config);
 
 	/* send a interactive command to fw */
-	mid_pmu_cxt->interactive_cmd_sent = 1;
+	mid_pmu_cxt->interactive_cmd_sent = true;
 	status = _pmu_issue_command(&pmu_config, SET_MODE, 1, PMU_NUM_2);
 	if (status != PMU_SUCCESS) {
-		mid_pmu_cxt->interactive_cmd_sent = 0;
+		mid_pmu_cxt->interactive_cmd_sent = false;
 		dev_dbg(&mid_pmu_cxt->pmu_dev->dev,\
 		 "Failure from pmu mode change to interactive."
 		" = %d\n", status);

@@ -793,6 +793,7 @@ struct mid_pmu_stats {
 struct mid_pmu_dev {
 	bool suspend_started;
 	bool shutdown_started;
+	bool interactive_cmd_sent;
 
 	u32 apm_base;
 	u32 ospm_base;
@@ -808,7 +809,6 @@ struct mid_pmu_dev {
 	int camera_off;
 	int display_off;
 	int s0ix_possible;
-	int interactive_cmd_sent;
 	int s0ix_entered;
 
 	enum sys_state  pmu_current_state;
