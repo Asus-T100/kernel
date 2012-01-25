@@ -29,7 +29,7 @@
 #else
 	#include <asm/intel_scu_ipc.h>
 #endif
-#include <asm/mrst.h>
+#include <asm/intel-mid.h>
 #include <linux/pm_runtime.h>
 
 #include "psb_drv.h"

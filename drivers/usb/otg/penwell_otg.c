@@ -39,7 +39,7 @@
 #include <linux/pm_runtime.h>
 #include <linux/wakelock.h>
 #include <asm/intel_scu_ipc.h>
-#include <asm/mrst.h>
+#include <asm/intel-mid.h>
 #include "../core/usb.h"
 
 #include <linux/usb/penwell_otg.h>

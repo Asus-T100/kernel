@@ -38,7 +38,7 @@
 #include <linux/miscdevice.h>
 #include <linux/pm_runtime.h>
 #include <linux/async.h>
-#include <asm/mrst.h>
+#include <asm/intel-mid.h>
 #include <asm/intel_scu_ipc.h>
 #include <sound/intel_sst.h>
 #include <sound/intel_sst_ioctl.h>

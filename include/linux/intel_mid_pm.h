@@ -21,7 +21,7 @@
 #ifndef INTEL_MID_PM_H
 #define INTEL_MID_PM_H
 
-#include <asm/mrst.h>
+#include <asm/intel-mid.h>
 #include <linux/init.h>
 #include <linux/pci.h>
 

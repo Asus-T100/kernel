@@ -62,7 +62,7 @@
 #include <asm/hw_irq.h>
 #include <asm/apic.h>
 #include <asm/io_apic.h>
-#include <asm/mrst.h>
+#include <asm/intel-mid.h>
 #include <asm/mrst-vrtc.h>
 #include <asm/io.h>
 #include <asm/i8259.h>

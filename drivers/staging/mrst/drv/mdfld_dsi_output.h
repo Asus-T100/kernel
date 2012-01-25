@@ -41,7 +41,7 @@
 #include "psb_powermgmt.h"
 #include "mdfld_output.h"
 
-#include <asm/mrst.h>
+#include <asm/intel-mid.h>
 
 #define DRM_MODE_ENCODER_MIPI  5
 

@@ -52,7 +52,7 @@
 #include <linux/stddef.h>
 #include <linux/firmware.h>
 #include <asm/intel_scu_ipc.h>
-#include <asm/mrst.h>
+#include <asm/intel-mid.h>
 
 #include <linux/videodev2.h>
 #include <media/v4l2-device.h>

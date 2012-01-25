@@ -19,7 +19,7 @@
 
 #include <linux/kernel.h>
 #include <linux/init.h>
-#include <asm/mrst.h>
+#include <asm/intel-mid.h>
 #include "pci.h"
 
 static bool mid_pci_power_manageable(struct pci_dev *dev)

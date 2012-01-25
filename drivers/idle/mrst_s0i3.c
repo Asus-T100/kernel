@@ -37,7 +37,7 @@
 #include <asm/msr.h>
 #include <asm/mtrr.h>
 #include <asm/mwait.h>
-#include <asm/mrst.h>
+#include <asm/intel-mid.h>
 
 void do_s0i3(void);
 static u64 *wakeup_ptr;
