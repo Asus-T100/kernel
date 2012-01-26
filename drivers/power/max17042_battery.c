@@ -112,6 +112,9 @@
 #define MAX17042_EN_VOLT_FG		0x0007
 #define MAX17042_CFG_INTR_SOCVF		0x0003
 
+/* Vempty value set to 2500mV */
+#define MAX17042_DEF_VEMPTY_VAL		0x7D5A
+
 #define MAX17042_SIGN_INDICATOR		0x8000
 
 #define BYTE_VALUE			1
@@ -844,6 +847,8 @@ static void write_custom_regs(struct max17042_chip *chip)
 						fg_conf_data->ichgt_term);
 	max17042_write_verify_reg(chip->client, MAX17042_SOCempty,
 						fg_conf_data->soc_empty);
+	max17042_write_verify_reg(chip->client, MAX17042_V_empty,
+						MAX17042_DEF_VEMPTY_VAL);
 }
 
 static void update_capacity_regs(struct max17042_chip *chip)
@@ -914,8 +919,6 @@ static void save_runtime_params(struct max17042_chip *chip)
 							MAX17042_RCOMP0);
 	fg_conf_data->tempCo = max17042_read_reg(chip->client,
 							MAX17042_TempCo);
-	fg_conf_data->kempty0 = max17042_read_reg(chip->client,
-							MAX17042_K_empty0);
 	fg_conf_data->full_capnom = max17042_read_reg(chip->client,
 							MAX17042_FullCAPNom);
 	fg_conf_data->full_cap = max17042_read_reg(chip->client,
