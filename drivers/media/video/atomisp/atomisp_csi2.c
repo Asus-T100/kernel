@@ -161,30 +161,30 @@ static int csi2_enum_frame_size(struct v4l2_subdev *sd,
 			 struct v4l2_subdev_fh *fh,
 			 struct v4l2_subdev_frame_size_enum *fse)
 {
-	 struct atomisp_mipi_csi2_device *csi2 = v4l2_get_subdevdata(sd);
-	 struct v4l2_mbus_framefmt format;
+	struct atomisp_mipi_csi2_device *csi2 = v4l2_get_subdevdata(sd);
+	struct v4l2_mbus_framefmt format;
 
 	if (fse->index != 0)
 		return -EINVAL;
 
-	 format.code = fse->code;
-	 format.width = 1;
-	 format.height = 1;
-	 csi2_try_format(csi2, fh, fse->pad, &format, V4L2_SUBDEV_FORMAT_TRY);
-	 fse->min_width = format.width;
-	 fse->min_height = format.height;
+	format.code = fse->code;
+	format.width = 1;
+	format.height = 1;
+	csi2_try_format(csi2, fh, fse->pad, &format, V4L2_SUBDEV_FORMAT_TRY);
+	fse->min_width = format.width;
+	fse->min_height = format.height;
 
 	if (format.code != fse->code)
 		return -EINVAL;
 
-	 format.code = fse->code;
-	 format.width = -1;
-	 format.height = -1;
-	 csi2_try_format(csi2, fh, fse->pad, &format, V4L2_SUBDEV_FORMAT_TRY);
-	 fse->max_width = format.width;
-	 fse->max_height = format.height;
+	format.code = fse->code;
+	format.width = -1;
+	format.height = -1;
+	csi2_try_format(csi2, fh, fse->pad, &format, V4L2_SUBDEV_FORMAT_TRY);
+	fse->max_width = format.width;
+	fse->max_height = format.height;
 
-	 return 0;
+	return 0;
 }
 
 /*
