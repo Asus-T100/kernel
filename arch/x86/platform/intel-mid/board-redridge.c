@@ -863,7 +863,7 @@ static struct camera_sensor_platform_data mt9e013_sensor_platform_data = {
 	.csi_cfg	= mt9e013_csi_configure,
 };
 
-void *mt9e013_platform_data_init(void *info)
+static void *mt9e013_platform_data_init(void *info)
 {
 	gp_camera0_reset = -1;
 	gp_camera0_power_down = -1;
@@ -965,7 +965,7 @@ static struct camera_sensor_platform_data mt9m114_sensor_platform_data = {
 	.csi_cfg	= mt9m114_csi_configure,
 };
 
-void *mt9m114_platform_data_init(void *info)
+static void *mt9m114_platform_data_init(void *info)
 {
 	gp_camera1_reset = -1;
 	gp_camera1_power_down = -1;
