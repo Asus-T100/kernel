@@ -1571,6 +1571,10 @@ static int __mdfld_dsi_dpi_set_power(struct drm_encoder *encoder, bool on)
 			let panel in full color*/
 		mdfld_dsi_dpi_set_color_mode(dsi_config, false);
 	} else if (!on && dsi_config->dsi_hw_context.panel_on) {
+		if (dpi_output->first_boot) {
+			pr_debug("DPMS OFF first boot!\n");
+			goto set_power_err;
+		}
 		/*Just turn off panel for WiDi Extended Mode.*/
 		if (!dev_priv->drm_psb_widi) {
 			if (__dpi_panel_power_off(dsi_config, p_funcs)) {
