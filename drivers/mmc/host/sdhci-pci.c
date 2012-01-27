@@ -321,6 +321,7 @@ static int intel_mfld_sdio_probe_slot(struct sdhci_pci_slot *slot)
 {
 	struct sdhci_host *host = slot->host;
 	host->mmc->caps |= MMC_CAP_NONREMOVABLE;
+	host->mmc->bus_resume_flags |= MMC_BUSRESUME_MANUAL_RESUME;
 	return 0;
 }
 
