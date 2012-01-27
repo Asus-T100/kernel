@@ -27,7 +27,7 @@
 #include <linux/utsname.h>
 #include <linux/platform_device.h>
 #include <linux/mmc/card.h>
-#include <linux/jhash.h>
+#include <linux/jhashv2.h>
 
 #include <linux/usb/ch9.h>
 #include <linux/usb/composite.h>
