@@ -493,8 +493,13 @@ static int fb_show_logo_line(struct fb_info *info, int rotate,
 		fb_set_logo(info, logo, logo_new, fb_logo.depth);
 	}
 
+#ifdef CONFIG_LOGO_CENTERED
+	image.dx = (info->var.xres - (n * logo->width)) / 2;
+	image.dy = (info->var.yres - logo->height) / 2;
+#else
 	image.dx = 0;
 	image.dy = y;
+#endif
 	image.width = logo->width;
 	image.height = logo->height;
 
