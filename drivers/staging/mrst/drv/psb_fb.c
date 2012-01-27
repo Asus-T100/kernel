@@ -1146,7 +1146,7 @@ static int psbfb_create(struct psb_fbdev * fbdev, struct drm_fb_helper_surface_s
 	info->fix.smem_len = size;
 	info->screen_base = (char *)pg->vram_addr;
 	info->screen_size = size;
-	memset(info->screen_base, 0, size);
+	/* memset(info->screen_base, 0, size); */
 
 	drm_fb_helper_fill_fix(info, fb->pitch, fb->depth);
 
