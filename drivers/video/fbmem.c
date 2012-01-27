@@ -494,7 +494,15 @@ static int fb_show_logo_line(struct fb_info *info, int rotate,
 	}
 
 #ifdef CONFIG_LOGO_CENTERED
-	image.dx = (info->var.xres - (n * logo->width)) / 2;
+        /*
+          At IAFW side, the framebuffer resolution is 608x1024, but the scrren
+          size is 600x1024, IAFW draw logo framebuffer centered, not scrren
+          centered, so we need this 4-pixels shift workaround to make sure
+          linux draw logo at the same posotion with IAFW.
+          This workaround just for demo, should be removed when IAFW fix the issue.
+        */
+	#define LOGO_SHIFT 4
+	image.dx = LOGO_SHIFT + (info->var.xres - (n * logo->width)) / 2;
 	image.dy = (info->var.yres - logo->height) / 2;
 #else
 	image.dx = 0;
