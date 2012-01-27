@@ -97,17 +97,24 @@ static void st_reg_completion_cb(void *priv_data, char data)
 static long st_receive(void *priv_data, struct sk_buff *skb)
 {
 	struct ti_st *lhst = priv_data;
+	struct hci_dev *hdev;
 	int err;
 
 	if (!skb)
 		return -EFAULT;
 
 	if (!lhst) {
-		kfree_skb(skb);
 		return -EFAULT;
 	}
 
 	skb->dev = (void *) lhst->hdev;
+	hdev = (struct hci_dev *)skb->dev;
+
+	if (!hdev || (!test_bit(HCI_UP, &hdev->flags)
+		&& !test_bit(HCI_INIT, &hdev->flags))) {
+		BT_DBG("btwilink: Dropping the skb");
+		return -EFAULT;
+	}
 
 	/* Forward skb to HCI core layer */
 	err = hci_recv_frame(skb);
