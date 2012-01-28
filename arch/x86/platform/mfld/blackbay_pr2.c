@@ -118,6 +118,7 @@ static struct a1026_platform_data mfld_audience_platform_data = {
 	.gpio_a1026_wakeup	= A1026_WAKEUP_GPIO,
 	.gpio_a1026_reset	= A1026_RESET_GPIO,
 	.request_resources	= audience_request_resources,
+	.free_resources		= audience_free_resources,
 	.wakeup			= audience_wake_up,
 	.reset			= audience_reset,
 };
@@ -166,7 +167,7 @@ static struct i2c_board_info pr2_i2c_bus5_devs[] = {
 	},
 };
 
-static void register_board_i2c_devs()
+static void register_board_i2c_devs(void)
 {
 	i2c_register_board_info(5, pr2_i2c_bus5_devs,
 				ARRAY_SIZE(pr2_i2c_bus5_devs));

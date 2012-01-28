@@ -75,6 +75,7 @@ struct a1026_platform_data {
 	uint32_t gpio_a1026_wakeup;
 	uint32_t gpio_a1026_reset;
 	int (*request_resources) (struct i2c_client *client);
+	void (*free_resources) (struct i2c_client *client);
 	void (*reset) (bool state);
 	void (*wakeup) (bool state);
 	char firmware_name[128];

@@ -21,7 +21,7 @@
 #include <linux/uaccess.h>
 #include <linux/delay.h>
 #include <linux/firmware.h>
-#include <sound/intel_sst.h> */
+#include <sound/intel_sst.h>
 #include <linux/a1026.h>
 #include <linux/i2c.h>
 
@@ -613,8 +613,12 @@ err_exit:
 
 static int a1026_remove(struct i2c_client *client)
 {
+	struct a1026_platform_data *pdata;
+
+	pdata = client->dev.platform_data;
 	misc_deregister(&a1026_device);
 	mutex_destroy(&es305->mutex);
+	pdata->free_resources(client);
 	kfree(i2c_get_clientdata(client));
 	i2c_set_clientdata(client, NULL);
 	return 0;
