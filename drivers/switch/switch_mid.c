@@ -70,6 +70,8 @@ static ssize_t headset_print_name(struct switch_dev *sdev, char *buf)
 
 	if (name)
 		return sprintf(buf, "%s\n", name);
+	else
+		return -EINVAL;
 }
 
 static ssize_t headset_print_state(struct switch_dev *sdev, char *buf)
@@ -96,6 +98,8 @@ static ssize_t headset_print_state(struct switch_dev *sdev, char *buf)
 
 	if (state)
 		return sprintf(buf, "%s\n", state);
+	else
+		return -EINVAL;
 }
 
 static int mid_switch_probe(struct platform_device *pdev)
