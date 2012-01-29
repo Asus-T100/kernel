@@ -97,6 +97,7 @@ struct uart_hsu_port {
 	int			use_dma;	/* flag for DMA/PIO */
 	int			running;
 	int			dma_tx_on;
+	int			dma_rx_on;
 	char			reg_shadow[HSU_PORT_REG_LENGTH];
 	struct circ_buf		qcirc;
 	int			qbuf[MAXQ * 3]; /* cmd + offset + value */
@@ -493,8 +494,11 @@ void hsu_dma_tx(struct uart_hsu_port *up)
 }
 
 /* The buffer is already cache coherent */
-void hsu_dma_start_rx_chan(struct hsu_dma_chan *rxc, struct hsu_dma_buffer *dbuf)
+void hsu_dma_start_rx_chan(struct uart_hsu_port *up,
+			struct hsu_dma_buffer *dbuf)
 {
+	struct hsu_dma_chan *rxc = up->rxc;
+
 	dbuf->ofs = 0;
 
 	chan_writel(rxc, HSU_CH_BSR, 32);
@@ -507,6 +511,7 @@ void hsu_dma_start_rx_chan(struct hsu_dma_chan *rxc, struct hsu_dma_buffer *dbuf
 					 | (0x1 << 24)	/* timeout bit, see HSU Errata 1 */
 					 );
 	chan_writel(rxc, HSU_CH_CR, 0x3);
+	up->dma_rx_on = 1;
 
 	if (dmarx_need_timer())
 		mod_timer(&rxc->rx_timer, jiffies + HSU_DMA_TIMEOUT_CHECK_FREQ);
@@ -544,9 +549,10 @@ static void serial_hsu_stop_tx(struct uart_port *port)
 	struct hsu_dma_chan *txc = up->txc;
 
 	pm_runtime_get(up->dev);
-	if (up->use_dma)
+	if (up->use_dma) {
 		chan_writel(txc, HSU_CH_CR, 0x0);
-	else if (up->ier & UART_IER_THRI) {
+		up->dma_tx_on = 0;
+	} else if (up->ier & UART_IER_THRI) {
 		up->ier &= ~UART_IER_THRI;
 		serial_out(up, UART_IER, up->ier);
 	}
@@ -603,9 +609,10 @@ void hsu_dma_rx(struct uart_hsu_port *up, u32 int_sts)
 	struct hsu_dma_buffer *dbuf = &up->rxbuf;
 	struct hsu_dma_chan *chan = up->rxc;
 	struct uart_port *port = &up->port;
-	struct tty_struct *tty = port->state->port.tty;
+	struct tty_struct *tty;
 	int count;
 
+	tty = tty_port_tty_get(&up->port.state->port);
 	if (!tty)
 		return;
 
@@ -627,6 +634,7 @@ void hsu_dma_rx(struct uart_hsu_port *up, u32 int_sts)
 	if (!count) {
 		/* Restart the channel before we leave */
 		chan_writel(chan, HSU_CH_CR, 0x3);
+		tty_kref_put(tty);
 		return;
 	}
 
@@ -665,6 +673,7 @@ void hsu_dma_rx(struct uart_hsu_port *up, u32 int_sts)
 		/* Directly call the remainder of hsu_dma_rx function
 		 * form IRQ context */
 		hsu_dma_rx_tasklet((unsigned long)up);
+	tty_kref_put(tty);
 }
 
 
@@ -683,6 +692,7 @@ static void serial_hsu_stop_rx(struct uart_port *port)
 		} else {
 			chan_writel(up->rxc, HSU_CH_CR, 0x2);
 		}
+		up->dma_rx_on = 0;
 	} else {
 		up->ier &= ~UART_IER_RLSI;
 		up->port.read_status_mask &= ~UART_LSR_DR;
@@ -905,7 +915,7 @@ static inline void dma_chan_irq(struct hsu_dma_chan *chan)
 		goto exit;
 
 	/* Rx channel */
-	if (chan->dirt == DMA_FROM_DEVICE)
+	if (up->dma_rx_on && chan->dirt == DMA_FROM_DEVICE)
 		hsu_dma_rx(up, int_sts);
 
 	/* Tx channel */
@@ -1101,7 +1111,7 @@ static int serial_hsu_startup(struct uart_port *port)
 		dbuf->dma_size = HSU_DMA_BUF_SIZE;
 
 		/* Start the RX channel right now */
-		hsu_dma_start_rx_chan(up->rxc, dbuf);
+		hsu_dma_start_rx_chan(up, dbuf);
 
 		/* Next init the TX DMA */
 		dbuf = &up->txbuf;
@@ -1933,6 +1943,7 @@ static int hsu_runtime_suspend(struct device *dev)
 	if (!allow_for_suspend(up))
 		return hsu_runtime_idle(dev);
 
+	chan_writel(up->rxc, HSU_CH_CR, 0x2);
 	disable_irq(up->port.irq);
 	if (up->index == 1) {
 		struct uart_hsu_port *up3 = serial_hsu_ports[3];
@@ -1953,6 +1964,7 @@ static int hsu_runtime_resume(struct device *dev)
 {
 	struct pci_dev *pdev = container_of(dev, struct pci_dev, dev);
 	struct uart_hsu_port *up = pci_get_drvdata(pdev);
+	int dma_rx_on = 0;
 
 	if (up->running)
 		mfld_hsu_disable_wakeup(up->index, dev);
@@ -1961,9 +1973,13 @@ static int hsu_runtime_resume(struct device *dev)
 
 		if (up3->running)
 			mfld_hsu_disable_wakeup(up3->index, dev);
+		if (up3->dma_rx_on)
+			dma_rx_on = 1;
 	}
 
 	enable_irq(up->port.irq);
+	if (up->dma_rx_on || dma_rx_on)
+		chan_writel(up->rxc, HSU_CH_CR, 0x3);
 	return 0;
 }
 #endif
