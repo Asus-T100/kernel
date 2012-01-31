@@ -159,6 +159,7 @@ struct sep_lli_entry {
  */
 struct sep_fastcall_hdr {
 	u32 magic;
+	u32 secure_dma;
 	u32 msg_len;
 	u32 num_dcbs;
 };
@@ -185,6 +186,8 @@ struct sep_dma_context {
 	u32 dmatables_len;
 	/* size of input data */
 	u32 input_data_len;
+	/* secure dma use (for imr memory restriced area in output */
+	bool secure_dma;
 	struct sep_dma_resource dma_res_arr[SEP_MAX_NUM_SYNC_DMA_OPS];
 };
 
@@ -219,5 +222,11 @@ struct sep_private_data {
 
 #define SEP_IOCFREEDCB					\
 	_IO(SEP_IOC_MAGIC_NUMBER, 36)
+
+#define SEP_IOCPREPAREDCB_SECURE_DMA	\
+	_IOW(SEP_IOC_MAGIC_NUMBER, 38, struct build_dcb_struct)
+
+#define SEP_IOCFREEDCB_SECURE_DMA	\
+	_IO(SEP_IOC_MAGIC_NUMBER, 39)
 
 #endif
