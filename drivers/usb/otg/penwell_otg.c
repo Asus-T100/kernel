@@ -1450,6 +1450,44 @@ void penwell_otg_phy_vbus_wakeup(bool on)
 	dev_dbg(pnw->dev, "%s --->\n", __func__);
 }
 
+void penwell_otg_phy_intr(bool on)
+{
+	struct penwell_otg	*pnw = the_transceiver;
+	u8			flag = 0;
+	int			retval;
+	u8			data;
+
+	dev_dbg(pnw->dev, "%s --->\n", __func__);
+
+	penwell_otg_msic_spi_access(true);
+
+	flag = VBUSVLD | IDGND;
+
+	if (on) {
+		dev_info(pnw->dev, "enable VBUSVLD & IDGND\n");
+		penwell_otg_msic_write(MSIC_USBINTEN_RISESET, flag);
+		penwell_otg_msic_write(MSIC_USBINTEN_FALLSET, flag);
+	} else {
+		dev_info(pnw->dev, "disable VBUSVLD & IDGND\n");
+		penwell_otg_msic_write(MSIC_USBINTEN_RISECLR, flag);
+		penwell_otg_msic_write(MSIC_USBINTEN_FALLCLR, flag);
+	}
+
+	retval = intel_scu_ipc_ioread8(MSIC_USBINTEN_RISE, &data);
+	if (retval)
+		dev_warn(pnw->dev, "Failed to read MSIC register\n");
+	else
+		dev_info(pnw->dev, "MSIC_USBINTEN_RISE = 0x%x", data);
+
+	retval = intel_scu_ipc_ioread8(MSIC_USBINTEN_FALL, &data);
+	if (retval)
+		dev_warn(pnw->dev, "Failed to read MSIC register\n");
+	else
+		dev_info(pnw->dev, "MSIC_USBINTEN_FALL = 0x%x", data);
+
+	penwell_otg_msic_spi_access(false);
+}
+
 void penwell_otg_nsf_msg(unsigned long indicator)
 {
 	switch (indicator) {
@@ -2234,6 +2272,13 @@ static void penwell_otg_work(struct work_struct *work)
 			} else if (charger_type == CHRG_CDP) {
 				dev_info(pnw->dev, "CDP detected\n");
 
+				/* MFLD WA: MSIC issue need disable phy intr */
+				if (!is_clovertrail(pdev)) {
+					dev_dbg(pnw->dev,
+						"MFLD WA: enable PHY int\n");
+					penwell_otg_phy_intr(0);
+				}
+
 				/* CDP: set charger type, current, notify EM */
 				penwell_otg_update_chrg_cap(CHRG_CDP,
 							CHRG_CURR_CDP);
@@ -2251,6 +2296,13 @@ static void penwell_otg_work(struct work_struct *work)
 				}
 			} else if (charger_type == CHRG_SDP) {
 				dev_info(pnw->dev, "SDP detected\n");
+
+				/* MFLD WA: MSIC issue need disable phy intr */
+				if (!is_clovertrail(pdev)) {
+					dev_dbg(pnw->dev,
+						"MFLD WA: enable PHY int\n");
+					penwell_otg_phy_intr(0);
+				}
 
 				/* SDP: set charger type */
 				penwell_otg_update_chrg_cap(CHRG_SDP,
@@ -2375,6 +2427,12 @@ static void penwell_otg_work(struct work_struct *work)
 			else
 				dev_dbg(pnw->dev,
 					"client driver has been removed.\n");
+
+			/* MFLD WA: reenable it for unplug event */
+			if (!is_clovertrail(pdev)) {
+				dev_dbg(pnw->dev, "MFLD WA: disable PHY int\n");
+				penwell_otg_phy_intr(1);
+			}
 
 			iotg->otg.state = OTG_STATE_B_IDLE;
 		} else if (hsm->b_bus_req && hsm->a_bus_suspend
