@@ -1001,6 +1001,7 @@ sh_css_shading_table_free(struct sh_css_shading_table *table)
 			sh_css_free(table->data[i]);
 	}
 	sh_css_free(table);
+	sc_table = NULL;
 }
 
 void
