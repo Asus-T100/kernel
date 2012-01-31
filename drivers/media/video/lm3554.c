@@ -58,6 +58,8 @@ struct lm3554_priv {
 	struct mutex i2c_mutex;
 	enum atomisp_flash_mode mode;
 	int timeout;
+	struct timer_list flash_off_delay;
+	u32 intensity;
 };
 
 struct lm3554_reg_field {
@@ -171,8 +173,12 @@ static int lm3554_g_flash_timeout(struct v4l2_subdev *sd, u32 *val)
 
 static int lm3554_s_flash_intensity(struct v4l2_subdev *sd, u32 intensity)
 {
+	struct lm3554_priv *p_lm3554_priv = to_lm3554_priv(sd);
+
 	intensity = LM3554_CLAMP_PERCENTAGE(intensity);
 	intensity = LM3554_PERCENT_TO_VALUE(intensity, LM3554_FLASH_STEP);
+
+	p_lm3554_priv->intensity = intensity;
 
 	return set_reg_field(sd, &flash_current, (u8)intensity);
 }
@@ -225,16 +231,58 @@ static int lm3554_g_indicator_intensity(struct v4l2_subdev *sd, u32 *val)
 
 static int lm3554_s_flash_strobe(struct v4l2_subdev *sd, u32 val)
 {
-	int ret;
+	int ret, timer_pending;
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
+	struct lm3554_priv *p_lm3554_priv = to_lm3554_priv(sd);
 
-	ret = set_gpio_output(GP_LM3554_FLASH_STROBE, "flash", val);
-	if (ret < 0) {
-		dev_err(&client->dev, "failed to generate flash strobe (%d)\n",
-			ret);
-		return ret;
+	/*
+	 * An abnormal high flash current is observed when strobe off the
+	 * flash. Workaround here is firstly set flash current to lower level,
+	 * wait a short moment, and then strobe off the flash.
+	 */
+
+	timer_pending = del_timer_sync(&p_lm3554_priv->flash_off_delay);
+
+	/* Flash off */
+	if (!val) {
+		/* set current to 70mA and wait a while */
+		ret = set_reg_field(sd, &flash_current, 0);
+		if (ret < 0)
+			goto err;
+		mod_timer(&p_lm3554_priv->flash_off_delay,
+			  jiffies + msecs_to_jiffies(LM3554_TIMER_DELAY));
+		return 0;
 	}
+
+	/* Flash on */
+
+	/*
+	 * If timer is killed before run, flash is not strobe off,
+	 * so must strobe off here
+	 */
+	if (timer_pending != 0) {
+		ret = set_gpio_output(GP_LM3554_FLASH_STROBE,
+				      "flash", 0);
+		if (ret < 0)
+			goto err;
+	}
+
+	/* Restore flash current settings */
+	ret = set_reg_field(sd, &flash_current,
+			    (u8)p_lm3554_priv->intensity);
+	if (ret < 0)
+		goto err;
+
+	/* Strobe on Flash */
+	ret = set_gpio_output(GP_LM3554_FLASH_STROBE, "flash", val);
+	if (ret < 0)
+		goto err;
+
 	return 0;
+err:
+	dev_err(&client->dev, "failed to generate flash strobe (%d)\n",
+		ret);
+	return ret;
 }
 
 static int lm3554_s_flash_mode(struct v4l2_subdev *sd, u32 val)
@@ -524,6 +572,12 @@ fail:
 	return ret;
 }
 
+static void lm3554_flash_off_delay(struct i2c_client *client)
+{
+	if (set_gpio_output(GP_LM3554_FLASH_STROBE, "flash", 0) < 0)
+		dev_err(&client->dev, "failed to flash strobe off\n");
+}
+
 static int __devinit lm3554_probe(struct i2c_client *client,
 					 const struct i2c_device_id *id)
 {
@@ -541,6 +595,7 @@ static int __devinit lm3554_probe(struct i2c_client *client,
 	p_lm3554_priv->sd.entity.ops = &lm3554_entity_ops;
 	p_lm3554_priv->timeout = LM3554_DEFAULT_TIMEOUT;
 	p_lm3554_priv->mode = ATOMISP_FLASH_MODE_OFF;
+	p_lm3554_priv->intensity = 0;
 
 	err = media_entity_init(&p_lm3554_priv->sd.entity, 0, NULL, 0);
 	if (err) {
@@ -549,6 +604,9 @@ static int __devinit lm3554_probe(struct i2c_client *client,
 	}
 
 	mutex_init(&p_lm3554_priv->i2c_mutex);
+
+	setup_timer(&p_lm3554_priv->flash_off_delay, lm3554_flash_off_delay,
+		    (unsigned long)client);
 
 	err = lm3554_detect(client);
 	if (err) {
@@ -574,6 +632,8 @@ static int lm3554_remove(struct i2c_client *client)
 
 	media_entity_cleanup(&p_lm3554_priv->sd.entity);
 	v4l2_device_unregister_subdev(sd);
+
+	del_timer_sync(&p_lm3554_priv->flash_off_delay);
 
 	ret = set_gpio_output(GP_LM3554_FLASH_STROBE, "flash", 0);
 	if (ret < 0)

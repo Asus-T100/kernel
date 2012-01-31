@@ -108,6 +108,9 @@
 #define LM3554_MODE_TORCH               2
 #define LM3554_MODE_FLASH               3
 
+/* timer delay time */
+#define LM3554_TIMER_DELAY		5
+
 /* Flags */
 #define LM3554_FLAG_TIMEOUT                  (1<<0)
 #define LM3554_FLAG_THERMAL_SHUTDOWN         (1<<1)

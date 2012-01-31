@@ -644,19 +644,11 @@ static int atomisp_stop_flash(struct atomisp_device *isp)
 {
 	struct v4l2_control ctrl;
 
+	/* Terminate the flash by pulling the STROBE pin low */
 	ctrl.id = V4L2_CID_FLASH_STROBE;
 	ctrl.value = 0;
 	if (v4l2_subdev_call(isp->flash, core, s_ctrl, &ctrl)) {
 		v4l2_err(&atomisp_dev, "flash strobe off failed\n");
-		return -EINVAL;
-	}
-
-	/* switch flash mode into flash off */
-	ctrl.id = V4L2_CID_FLASH_MODE;
-	ctrl.value = ATOMISP_FLASH_MODE_OFF;
-
-	if (v4l2_subdev_call(isp->flash, core, s_ctrl, &ctrl)) {
-		v4l2_err(&atomisp_dev, "flash mode switch failed\n");
 		return -EINVAL;
 	}
 
@@ -676,16 +668,7 @@ static int atomisp_start_flash(struct atomisp_device *isp)
 		return -EINVAL;
 	}
 
-	/* switch flash into flash mode */
-	ctrl.id = V4L2_CID_FLASH_MODE;
-	ctrl.value = ATOMISP_FLASH_MODE_FLASH;
-
-	if (v4l2_subdev_call(isp->flash, core, s_ctrl, &ctrl)) {
-		v4l2_err(&atomisp_dev, "flash mode switch failed\n");
-		return -EINVAL;
-	}
-
-	/* trigger the flash */
+	/* trigger the flash by pulling the STROBE pin high*/
 	ctrl.id = V4L2_CID_FLASH_STROBE;
 	ctrl.value = 1;
 	/* for now we treat it as on/off */
