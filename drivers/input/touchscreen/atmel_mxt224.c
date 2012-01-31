@@ -2524,19 +2524,37 @@ void mxt_early_suspend(struct early_suspend *h)
 	mutex_unlock(&mxt_es->dev_mutex);
 }
 
+static void mxt_calibrate(struct mxt_data *mxt)
+{
+	u16 addr;
+
+	addr = get_object_address(MXT_GEN_COMMANDPROCESSOR_T6,
+			0, mxt->object_table,
+			mxt->device_info.num_objs) + MXT_ADR_T6_CALIBRATE;
+	mxt_write_byte(mxt->client, addr, 0x55);
+}
+
 void mxt_late_resume(struct early_suspend *h)
 {
-	int gpio_intr;
+	int ret;
+	u16 addr;
 
 	enable_irq(mxt_es->irq);
 
 	mutex_lock(&mxt_es->dev_mutex);
 	mxt_es->calibration_confirm = 0;
-	mxt_reset(mxt_es);
-
-	gpio_intr = gpio_get_value(mxt_es->mxt_intr_gpio);
-	if (gpio_intr == 0)
-		mxt_worker(mxt_es);
+	addr = get_object_address(MXT_GEN_POWERCONFIG_T7,
+				0,
+				mxt_es->object_table,
+				mxt_es->device_info.num_objs);
+	ret = mxt_write_block(mxt_es->client, addr, 3, mxt_es->T7);
+	if (ret < 0) {
+		dev_err(&mxt_es->client->dev, "fail to start scan.\n");
+		mxt_gpio_reset(mxt_es);
+	} else {
+		msleep(40);
+		mxt_calibrate(mxt_es);
+	}
 
 	mxt_es->suspended = FALSE;
 	mutex_unlock(&mxt_es->dev_mutex);
