@@ -3047,7 +3047,7 @@ static void sdhci_mfld_panic_request(struct mmc_panic_host *panic_mmc,
 	}
 
 	if (host->flags & SDHCI_USE_ADMA)
-		mrq->cmd->error = -EINVAL;
+		host->flags &= ~SDHCI_USE_ADMA;
 
 	if (host->quirks & SDHCI_QUIRK_MULTIBLOCK_READ_ACMD12) {
 		if (mrq->stop) {
@@ -3082,122 +3082,6 @@ static void sdhci_mfld_panic_request(struct mmc_panic_host *panic_mmc,
 		sdhci_dumpregs(host);
 		sdhci_panic_reinit_host(panic_mmc);
 	}
-}
-
-#define PM_STS	0x0
-#define PM_CMD	0x4
-#define PM_ICS	0x8
-#define PM_SSC0	0x20
-#define PM_SSS0	0x30
-#define EMMC0_POWER_OFF	0xc
-#define	PM_CMD_VALUE	0x2301
-#define	PM_IRQ_PENDING	0x200
-#define PM_BUSY		0x100
-#define PM_IRQ_ENABLE	0x100
-#define	PMU_REG_BASE	0xff11d000
-
-static int sdhci_mfld_emmc0_power_set(struct mmc_panic_host *panic_host,
-		bool enable)
-{
-	unsigned long pm_sss0;
-	unsigned long pm_sts;
-	u32 tmp, state = 0;
-	/*
-	 * clear interrupt pending status
-	 * enable irq
-	 */
-	tmp = readl(panic_host->pmu_cfg + PM_ICS);
-	tmp |= PM_IRQ_ENABLE;
-	writel(tmp, panic_host->pmu_cfg + PM_ICS);
-
-	pm_sss0 = readl(panic_host->pmu_cfg + PM_SSS0);
-	if (enable) {
-		if (pm_sss0 & EMMC0_POWER_OFF)
-			pm_sss0 &= ~(EMMC0_POWER_OFF);
-		else
-			goto out;
-	} else {
-		if (pm_sss0 & EMMC0_POWER_OFF)
-			goto out;
-		else
-			pm_sss0 |= EMMC0_POWER_OFF;
-	}
-
-	writel(pm_sss0, panic_host->pmu_cfg + PM_SSC0);
-	/*
-	 * assume after PM_SSC0 was set, wait for
-	 * stable write
-	 */
-	mdelay(5);
-	writel(PM_CMD_VALUE, panic_host->pmu_cfg + PM_CMD);
-	/*
-	 * max wait for 1s
-	 */
-	tmp = 100;
-	while (!(state & PM_IRQ_PENDING)) {
-		if (tmp == 0) {
-			/*
-			 * check pmu state later
-			 */
-			pr_warn("%s: no irq get when power %s "
-				"eMMC0 host, state 0x%x, pss0 0x%lx\n",
-				__func__, enable ? "up" : "down",
-				state, pm_sss0);
-			break;
-		}
-		state = readl(panic_host->pmu_cfg + PM_ICS);
-		/*
-		 * after sending command, host driver need to poll
-		 * PMU interrupt status register to look up whether
-		 * the power set is down.
-		 * If didn't get the interrupt, try to delay some time
-		 * and look up again.
-		 * Estimate 10ms delay since delay is not sensitive in
-		 * panic mode.
-		 */
-		mdelay(10);
-		tmp--;
-	}
-
-	/*
-	 * clear interrupt pending
-	 */
-	state = readl(panic_host->pmu_cfg + PM_ICS);
-	writel(state, panic_host->pmu_cfg + PM_ICS);
-
-	if ((state & 0xff) == 0x1) {
-		pr_info("%s: power %s eMMC0 host done, state 0x%x\n",
-				__func__, enable ? "up" : "down", state);
-	} else {
-		pr_err("%s: power %s eMMC0 host failed, state 0x%x\n",
-				__func__, enable ? "up" : "down", state);
-		return -EPERM;
-	}
-
-	/*
-	 * after finish power mode change, check sts
-	 */
-	tmp = 100;
-	pm_sts = readl(panic_host->pmu_cfg);
-	while (pm_sts & PM_BUSY) {
-		if (tmp == 0) {
-			pr_err("%s: PMU busy after power %s "
-				"eMMC0 host, pm_sts 0x%lx\n",
-				__func__, enable ? "up" : "down", pm_sts);
-			return -EPERM;
-		}
-		/*
-		 * after finished the command, check whether PMU is free now.
-		 * If not free, try to delay some time and look up again.
-		 * Estimate 10ms delay since delay is not sensitive in
-		 * panic mode.
-		 */
-		mdelay(10);
-		pm_sts = readl(panic_host->pmu_cfg);
-		tmp--;
-	}
-out:
-	return 0;
 }
 
 /*
@@ -3268,8 +3152,6 @@ static int sdhci_mfld_panic_prepare(struct mmc_panic_host *panic_host)
 {
 	struct mmc_host *mmc = panic_host->mmc;
 	struct sdhci_host *host = panic_host->priv;
-	unsigned long pm_sss0;
-	unsigned long pm_sts;
 	int ret;
 	/*
 	 * acquire ownership from SCU
@@ -3279,36 +3161,11 @@ static int sdhci_mfld_panic_prepare(struct mmc_panic_host *panic_host)
 	 * power host controller
 	 */
 	pm_runtime_get_noresume(mmc->parent);
-retry:
-	pm_sts = readl(panic_host->pmu_cfg);
-	if (pm_sts & PM_BUSY) {
-		mdelay(1);
-		goto retry;
-	}
 
-	pm_sss0 = readl(panic_host->pmu_cfg + PM_SSS0);
-
-	if (pm_sss0 & EMMC0_POWER_OFF) {
-		ret = sdhci_mfld_emmc0_power_set(panic_host, 1);
+	if (host->ops->power_up_host) {
+		ret = host->ops->power_up_host(host);
 		if (ret)
 			return ret;
-	}
-
-	/*
-	 * verify if power up correctly
-	 */
-	pm_sss0 = readl(panic_host->pmu_cfg + PM_SSS0);
-	if (!(pm_sss0 & 0xc)) {
-		pr_info("%s: power up eMMC0 host done\n", __func__);
-		/*
-		 * after power up host, let's have a little test
-		 */
-		if (sdhci_readl(host, SDHCI_PRESENT_STATE) ==
-				0xffffffff) {
-			pr_err("%s: but power up failed\n",
-					__func__);
-			return -EPERM;
-		}
 	}
 
 	sdhci_panic_reinit_host(panic_host);
@@ -3324,30 +3181,10 @@ retry:
 
 static int sdhci_mfld_panic_setup(struct mmc_panic_host *panic_host)
 {
-	struct sdhci_host *panic_sdhci_host = NULL;
 	struct sdhci_host *host;
 
-	panic_sdhci_host = kzalloc(sizeof(struct sdhci_host), GFP_KERNEL);
-	if (!panic_sdhci_host)
-		return -ENOMEM;
-	panic_host->priv = (void *)panic_sdhci_host;
 	host = mmc_priv(panic_host->mmc);
-	panic_sdhci_host->mmc = panic_host->mmc;
-	/*
-	 * we only need to know a few things of sdhci_host
-	 */
-	memcpy(panic_sdhci_host, host, sizeof(struct sdhci_host));
-	panic_sdhci_host->clock = 0;
-	panic_sdhci_host->pwr = 0;
-	/*
-	 * Disable ADMA, we use DMA when panic
-	 */
-	panic_sdhci_host->flags = host->flags;
-	panic_sdhci_host->flags &= ~SDHCI_USE_ADMA;
-	/*
-	 * map pmu ssc0
-	 */
-	panic_host->pmu_cfg = ioremap_nocache(PMU_REG_BASE, 0x100);
+	panic_host->priv = (void *)host;
 
 	return 0;
 }

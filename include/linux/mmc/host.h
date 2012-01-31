@@ -190,7 +190,6 @@ struct mmc_panic_host {
 	unsigned int		max_req_size;
 	unsigned int		blkaddr;
 	unsigned int		caps;
-	void __iomem		*pmu_cfg;
 	u32			ocr;		/* the current OCR setting */
 	struct mmc_ios		ios;		/* current io bus settings */
 	struct mmc_card		*card;
