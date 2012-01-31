@@ -54,7 +54,7 @@ void mxt_late_resume(struct early_suspend *h);
 #endif
 
 #define DRIVER_VERSION "0.9a"
-#define MXT_CONFIG_VERSION 7
+#define MXT_CONFIG_VERSION 8
 
 #define MXT_BACKNVM_DELAY 25 /* ms */
 #define MXT_RESET_DELAY   65 /* ms */
@@ -258,7 +258,7 @@ void mxt_config_init(struct mxt_data *mxt)
 	 * Please refer to "mXT224 Firmware 2.x Protocol Guide" for
 	 * the meaning of the config data for each object.
 	 */
-	u8 v20_T7[]  = { 25, 10, 50 };
+	u8 v20_T7[]  = { 32, 10, 50 };
 	u8 v20_T8[]  = { 6, 0, 5, 5, 0, 0, 5, 50, 5, 192 };
 	u8 v20_T9[]  = { 143, 0, 0, 18, 11, 1, 32, 65, 2, 1, 0, 3, 5,
 			 0, 2, 10, 35, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0,
