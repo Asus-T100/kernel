@@ -3037,13 +3037,13 @@ static void gsmtty_wait_until_sent(struct tty_struct *tty, int timeout)
 	   to do here */
 }
 
-static int gsmtty_tiocmget(struct tty_struct *tty, struct file *filp)
+static int gsmtty_tiocmget(struct tty_struct *tty)
 {
 	struct gsm_dlci *dlci = tty->driver_data;
 	return dlci->modem_rx;
 }
 
-static int gsmtty_tiocmset(struct tty_struct *tty, struct file *filp,
+static int gsmtty_tiocmset(struct tty_struct *tty,
 	unsigned int set, unsigned int clear)
 {
 	struct gsm_dlci *dlci = tty->driver_data;
@@ -3094,7 +3094,8 @@ static int gsmtty_ioctl(struct tty_struct *tty,
 		 * NULL and BUG_ON if this is the case
 		 * We can bypass this check by using a dummy value in the code.
 		 */
-		return n_tty_ioctl_helper(tty, 0xb4dc0de, cmd, arg);
+		return n_tty_ioctl_helper(tty, (struct file *) 0xb4dc0de,
+					  cmd, arg);
 	}
 }
 
