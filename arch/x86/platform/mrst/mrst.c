@@ -822,7 +822,8 @@ static struct platform_device msic_device = {
 
 static inline bool mrst_has_msic(void)
 {
-	return mrst_identify_cpu() == MRST_CPU_CHIP_PENWELL;
+	return mrst_identify_cpu() == MRST_CPU_CHIP_PENWELL ||
+		mrst_identify_cpu() == MRST_CPU_CHIP_CLOVERVIEW;
 }
 
 static int msic_scu_status_change(struct notifier_block *nb,
