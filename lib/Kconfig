@@ -262,6 +262,9 @@ config AVERAGE
 
 	  If unsure, say N.
 
+config CLZ_TAB
+	bool
+
 config CORDIC
 	tristate "Cordic function"
 	help
@@ -271,6 +274,7 @@ config CORDIC
 
 config MPILIB
 	tristate "Multiprecision maths library"
+	select CLZ_TAB
 	help
 	  Multiprecision maths library from GnuPG.
 	  It is used to implement RSA digital signature verification,
