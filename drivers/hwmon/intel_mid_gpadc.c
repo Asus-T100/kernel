@@ -273,7 +273,11 @@ static irqreturn_t msic_gpadc_isr(int irq, void *data)
 {
 	struct gpadc_info *mgi = data;
 
-	mgi->irq_status = readl(mgi->intr) >> 8 & 0xff;
+	if (mrst_identify_cpu() == MRST_CPU_CHIP_CLOVERVIEW)
+		mgi->irq_status = ADC1INT_RND;
+	else
+		mgi->irq_status = readl(mgi->intr) >> 8 & 0xff;
+
 	return IRQ_WAKE_THREAD;
 }
 
