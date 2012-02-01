@@ -58,6 +58,9 @@
 #define MAX_FID_REG_LEN			32
 #define MAX_NUM_LOGDWORDS		12
 #define FABERR_INDICATOR		0x15
+#define FWERR_INDICATOR			0x7
+#define UNDEFLVL1ERR_IND		0x11
+#define UNDEFLVL2ERR_IND		0x22
 #define SWDTERR_IND			0xdd
 #define MEMERR_IND			0xf501
 #define INSTERR_IND			0xf502
@@ -301,10 +304,13 @@ static int create_fwerr_log(char *output_buf, void __iomem *oshob_ptr)
 		return 0;
 
 	/* FW error if tenth DW reserved field is 111 */
-	if ((err_status_dw0.data == SWDTERR_IND) ||
-		(err_status_dw0.data == MEMERR_IND) ||
-		(err_status_dw0.data == INSTERR_IND) ||
-		(err_status_dw0.data == ECCERR_IND)) {
+	if (((err_status_dw0.data & 0xFFFF) == SWDTERR_IND) ||
+		((err_status_dw0.data & 0xFFFF) == UNDEFLVL1ERR_IND) ||
+		((err_status_dw0.data & 0xFFFF) == UNDEFLVL2ERR_IND) ||
+		((err_status_dw0.data & 0xFFFF) == MEMERR_IND) ||
+		((err_status_dw0.data & 0xFFFF) == INSTERR_IND) ||
+		((err_status_dw0.data & 0xFFFF) == ECCERR_IND) ||
+		(err_log_dw10.fields.reserved1 == FWERR_INDICATOR)) {
 
 		sprintf(output_buf, "SCU error summary:\n");
 		strcat(output_buf, "===================\n");
