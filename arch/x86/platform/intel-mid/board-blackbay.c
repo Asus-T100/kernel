@@ -1622,6 +1622,7 @@ struct devs_id __initconst device_ids[] = {
 	{"synaptics_3202", SFI_DEV_TYPE_I2C, 0, &s3202_platform_data_init},
 
 	{"lsm303dl", SFI_DEV_TYPE_I2C, 0, &lsm303dlhc_accel_platform_data},
+	{"lsm303cmp", SFI_DEV_TYPE_I2C, 0, &no_platform_data},
 
 	{},
 };

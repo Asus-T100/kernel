@@ -1384,6 +1384,18 @@ config SENSORS_HMC5883
 	help
 	  Say Yes here to enable the Honeywell HMC5883 Magnetometer Driver
 
+config SENSORS_LSM303_MAG
+	bool "ST LSM303DLHC Magnetometer Driver"
+	depends on I2C
+	select INPUT_POLLDEV
+	default y
+	help
+	  Say Yes here to enable the ST LSM303DLHC Magnetometer Driver
+
+	  This driver will enable ST LSM303DLHC Magnetometer device.
+	  LSM303DLHC Magnetometer device is ultra compact high performance
+	  e-compass.
+
 config SENSORS_MPU3050
 	bool "MPU3050 gyro sensor Driver"
 	depends on I2C && INPUT
