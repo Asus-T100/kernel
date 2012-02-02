@@ -43,6 +43,18 @@
 #define PCI_FIXED_BAR_4_SIZE	0x14
 #define PCI_FIXED_BAR_5_SIZE	0x1c
 
+/* Lincroft and Penwell have just one PCI bus (00) */
+#define MID_PCI_BUS	0
+
+/*
+ * Use type 1 PCI config access for host bridge(00:00.0), gfx(00:02.0)
+ * and ISP(00:03.0) and MMCFG for all other devices.
+ */
+#define MID_PCI_DEV_HOST_BRIDGE	PCI_DEVFN(0, 0)
+#define MID_PCI_DEV_GFX		PCI_DEVFN(2, 0)
+#define MID_PCI_DEV_ISP		PCI_DEVFN(3, 0)
+#define ISP_PCI_PMCS		0xD4
+
 /**
  * fixed_bar_cap - return the offset of the fixed BAR cap if found
  * @bus: PCI bus
@@ -148,8 +160,26 @@ static bool type1_access_ok(unsigned int bus, unsigned int devfn, int reg)
 	 */
 	if (reg >= 0x100 || reg == PCI_STATUS || reg == PCI_HEADER_TYPE)
 		return 0;
-	if (bus == 0 && (devfn == PCI_DEVFN(2, 0) || devfn == PCI_DEVFN(0, 0)))
+
+	/*
+	 * Workaround for ISP driver.
+	 * When runtime pm is enabled, PCI core needs access PMCS register when
+	 * ISP power island is off, this will cause pci_set_power_state() to
+	 * fail, thus block the system to enter S0i3.
+	 * We force MMCFG for PCI config access to ISP PMCS register to
+	 * make sure pci_set_power_state() can succeed. All other config
+	 * access is routed to type 1.
+	 */
+	if (bus == MID_PCI_BUS && devfn == MID_PCI_DEV_ISP &&
+			reg == ISP_PCI_PMCS)
+		return 0;
+
+	/* Use type 1 for real PCI devices(0:0:0, 0:2:0 and 0:3:0) */
+	if (bus == MID_PCI_BUS && (devfn == MID_PCI_DEV_HOST_BRIDGE ||
+					devfn == MID_PCI_DEV_GFX ||
+					devfn == MID_PCI_DEV_ISP))
 		return 1;
+
 	return 0; /* langwell on others */
 }
 
