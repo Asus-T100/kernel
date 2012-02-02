@@ -91,6 +91,8 @@ struct otg_hsm {
 
 	/* Others */
 	int vbus_srp_up;
+	int ulpi_error;
+	int ulpi_polling;
 
 	/* Test Mode */
 	int otg_srp_reqd;
