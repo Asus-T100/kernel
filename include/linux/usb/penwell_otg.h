@@ -426,6 +426,7 @@ struct penwell_otg {
 
 	struct work_struct		work;
 	struct work_struct		hnp_poll_work;
+	struct delayed_work		ulpi_poll_work;
 	struct workqueue_struct		*qwork;
 
 	struct timer_list		hsm_timer;

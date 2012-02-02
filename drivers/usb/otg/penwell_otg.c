@@ -2124,6 +2124,47 @@ static void penwell_otg_hnp_poll_work(struct work_struct *work)
 	}
 }
 
+static void penwell_otg_start_ulpi_poll(void)
+{
+	struct penwell_otg		*pnw = the_transceiver;
+
+	schedule_delayed_work(&pnw->ulpi_poll_work, HZ);
+}
+
+static void penwell_otg_continue_ulpi_poll(void)
+{
+	struct penwell_otg		*pnw = the_transceiver;
+
+	schedule_delayed_work(&pnw->ulpi_poll_work, HZ);
+}
+
+static void penwell_otg_ulpi_poll_work(struct work_struct *work)
+{
+	struct penwell_otg		*pnw = the_transceiver;
+	struct intel_mid_otg_xceiv	*iotg = &pnw->iotg;
+	u8				data;
+
+	if (iotg->otg.state != OTG_STATE_B_PERIPHERAL)
+		return;
+
+	if (penwell_otg_ulpi_read(iotg, 0x16, &data)) {
+		dev_err(pnw->dev, "ulpi read time out by polling\n");
+		iotg->hsm.ulpi_error = 1;
+		iotg->hsm.ulpi_polling = 0;
+		penwell_update_transceiver();
+	} else if (data != 0x5A) {
+		dev_err(pnw->dev, "ulpi read value incorrect by polling\n");
+		iotg->hsm.ulpi_error = 1;
+		iotg->hsm.ulpi_polling = 0;
+		penwell_update_transceiver();
+	} else {
+		dev_dbg(pnw->dev, "ulpi fine by polling\n");
+		iotg->hsm.ulpi_error = 0;
+		iotg->hsm.ulpi_polling = 1;
+		penwell_otg_continue_ulpi_poll();
+	}
+}
+
 static void penwell_otg_work(struct work_struct *work)
 {
 	struct penwell_otg		*pnw = container_of(work,
@@ -2333,6 +2374,10 @@ static void penwell_otg_work(struct work_struct *work)
 
 			penwell_otg_eye_diagram_optimize();
 
+			/* MFLD WA for PHY issue */
+			if (!is_clovertrail(pdev))
+				penwell_otg_start_ulpi_poll();
+
 			iotg->otg.state = OTG_STATE_B_PERIPHERAL;
 
 		} else if ((hsm->b_bus_req || hsm->power_up || hsm->adp_change
@@ -2408,8 +2453,27 @@ static void penwell_otg_work(struct work_struct *work)
 
 			iotg->otg.state = OTG_STATE_A_IDLE;
 			penwell_update_transceiver();
+		} else if (hsm->ulpi_error) {
+			/* WA: try to recover once detected PHY issue */
+			hsm->ulpi_error = 0;
+
+			cancel_delayed_work_sync(&pnw->ulpi_poll_work);
+
+			if (iotg->stop_peripheral)
+				iotg->stop_peripheral(iotg);
+
+			msleep(2000);
+
+			if (iotg->start_peripheral)
+				iotg->start_peripheral(iotg);
+
+			if (!is_clovertrail(pdev))
+				penwell_otg_start_ulpi_poll();
+
 		} else if (!hsm->b_sess_vld || hsm->id == ID_ACA_B) {
 			/* Move to B_IDLE state, VBUS off/ACA */
+
+			cancel_delayed_work(&pnw->ulpi_poll_work);
 
 			if (hsm->id == ID_ACA_B)
 				penwell_otg_update_chrg_cap(CHRG_ACA,
@@ -3377,7 +3441,9 @@ show_hsm(struct device *_dev, struct device_attribute *attr, char *buf)
 		"a_bus_drop = \t%d\n"
 		"a_bus_req = \t%d\n"
 		"a_clr_err = \t%d\n"
-		"b_bus_req = \t%d\n",
+		"b_bus_req = \t%d\n"
+		"ulpi_error = \t%d\n"
+		"ulpi_polling = \t%d\n",
 		state_string(iotg->otg.state),
 		iotg->hsm.a_bus_resume,
 		iotg->hsm.a_bus_suspend,
@@ -3414,7 +3480,9 @@ show_hsm(struct device *_dev, struct device_attribute *attr, char *buf)
 		iotg->hsm.a_bus_drop,
 		iotg->hsm.a_bus_req,
 		iotg->hsm.a_clr_err,
-		iotg->hsm.b_bus_req
+		iotg->hsm.b_bus_req,
+		iotg->hsm.ulpi_error,
+		iotg->hsm.ulpi_polling
 		);
 	size -= t;
 	next += t;
@@ -3640,11 +3708,29 @@ set_a_clr_err(struct device *dev, struct device_attribute *attr,
 }
 static DEVICE_ATTR(a_clr_err, S_IRUGO | S_IWUSR | S_IWGRP, NULL, set_a_clr_err);
 
+static ssize_t
+set_ulpi_err(struct device *dev, struct device_attribute *attr,
+		const char *buf, size_t count)
+{
+	struct penwell_otg		*pnw = the_transceiver;
+	struct intel_mid_otg_xceiv	*iotg = &pnw->iotg;
+
+	dev_dbg(pnw->dev, "trigger ulpi error manually\n");
+
+	iotg->hsm.ulpi_error = 1;
+
+	penwell_update_transceiver();
+
+	return count;
+}
+static DEVICE_ATTR(ulpi_err, S_IRUGO | S_IWUSR | S_IWGRP, NULL, set_ulpi_err);
+
 static struct attribute *inputs_attrs[] = {
 	&dev_attr_a_bus_req.attr,
 	&dev_attr_a_bus_drop.attr,
 	&dev_attr_b_bus_req.attr,
 	&dev_attr_a_clr_err.attr,
+	&dev_attr_ulpi_err.attr,
 	NULL,
 };
 
@@ -3741,6 +3827,7 @@ static int penwell_otg_probe(struct pci_dev *pdev,
 	}
 	INIT_WORK(&pnw->work, penwell_otg_work);
 	INIT_WORK(&pnw->hnp_poll_work, penwell_otg_hnp_poll_work);
+	INIT_DELAYED_WORK(&pnw->ulpi_poll_work, penwell_otg_ulpi_poll_work);
 
 	/* OTG common part */
 	pnw->dev = &pdev->dev;
@@ -3857,6 +3944,12 @@ static int penwell_otg_probe(struct pci_dev *pdev,
 
 	reset_otg();
 	init_hsm();
+
+	/* Workaround for PHY issue */
+	penwell_otg_phy_low_power(0);
+	retval = penwell_otg_ulpi_write(&pnw->iotg, 0x16, 0x5a);
+	if (retval)
+		dev_err(pnw->dev, "ulpi write in init failed\n");
 
 	/* we need to set active early or the first irqs will be ignored */
 	pm_runtime_set_active(&pdev->dev);
