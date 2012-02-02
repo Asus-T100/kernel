@@ -585,8 +585,19 @@ void mmc_set_data_timeout(struct mmc_data *data, const struct mmc_card *card)
 			/*
 			 * The limit is really 250 ms, but that is
 			 * insufficient for some crappy cards.
+			 *
+			 * use 3s for SD card write to make sure
+			 * as many as SD cards (include some bad quality cards)
+			 * can be supported well
+			 *
+			 * Increase this value should not impact performance
+			 * since this value only indicate how long should host
+			 * wait for a proper interrupt before report a timeout
+			 * interrupt.
+			 *
+			 * Increase this value to be 3s.
 			 */
-			limit_us = 300000;
+			limit_us = 3000000;
 		else
 			limit_us = 100000;
 
