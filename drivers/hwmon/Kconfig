@@ -1424,6 +1424,16 @@ config SENSORS_MS5607
 	  If you say yes here you get support for the Measurement MS5607 digital
 	  pressure sensor.
 
+config SENSORS_LPS331AP
+	bool "LPS331AP pressure sensor Driver"
+	depends on I2C && INPUT
+	default y
+	help
+	   Say yes here to enable LPS331AP pressure sensor driver
+
+	   Pressure sensor LPS331AP from STMicroelectronics
+	   please search on
+	   http://www.st.com/ for more details.
 
 config MSIC_GPADC
 	tristate "MSIC GPADC driver for Intel Medfield platform"
