@@ -183,6 +183,19 @@
 #define ULPI_VS1SET		0x81
 #define ULPI_VS1CLR		0x82
 #	define DATAPOLARITY		BIT(6)
+#define ULPI_VS2STS		0x83
+#define ULPI_VS2LATCH		0x84
+#	define VBUS_MNTR_STS		BIT(7)
+#	define REG3V3_MNTR_STS		BIT(6)
+#	define SVLDCONWKB_WDOG_STS	BIT(5)
+#	define IDFLOAT_STS		BIT(4)
+#	define IDRARBRC_STS1		BIT(3)
+#	define IDRARBRC_STS2		BIT(2)
+#	define IDRARBRC_MSK		(BIT(2) | BIT(3))
+#	define IDRARBRC_A		BIT(2)
+#	define IDRARBRC_B		BIT(3)
+#	define IDRARBRC_C		(BIT(2) | BIT(3))
+#	define BVALID_STS		BIT(0)
 #define MSIC_VS3		0x3b9
 #define MSIC_VS3SET		0x346	/* Vendor Specific */
 #define MSIC_VS3CLR		0x347
@@ -206,6 +219,22 @@
 #	define R1KERIES			BIT(4)
 #	define CHRG_SERX_DP		BIT(1)
 #	define CHRG_SERX_DM		BIT(0)
+#define ULPI_VS5		0x8b
+#define ULPI_VS5SET		0x8c
+#define ULPI_VS5CLR		0x8d
+#	define AUTORESUME_WDOG		BIT(6)
+#	define IDFLOAT_EN		BIT(5)
+#	define IDRES_EN			BIT(4)
+#	define SVLDCONWKB_WDOG		BIT(3)
+#	define VBUS_MNTR_RISEEN		BIT(2)
+#	define VBUS_MNTR_FALLEN		BIT(1)
+#	define REG3V3IN_MNTR_EN		BIT(0)
+#define ULPI_VS6		0x8e
+#define ULPI_VS6SET		0x8f
+#define ULPI_VS6CLR		0x90
+#	define ACA_RID_B_CFG		BIT(7)
+#	define ACA_RID_A_CFG		BIT(6)
+#	define SOF_EN			BIT(5)
 #define MSIC_ULPIACCESSMODE	0x348
 #	define SPIMODE			BIT(0)
 #define MSIC_INT_EN_RISE	0x39D
@@ -336,13 +365,19 @@ enum msic_vendor {
 	MSIC_VD_UNKNOWN
 };
 
-/* charger defined in BC 1.1 */
+/* charger defined in BC 1.2 */
 enum usb_charger_type {
 	CHRG_UNKNOWN,
 	CHRG_SDP,	/* Standard Downstream Port */
 	CHRG_CDP,	/* Charging Downstream Port */
 	CHRG_DCP,	/* Dedicated Charging Port */
-	CHRG_ACA	/* Accessory Charger Adapter */
+	CHRG_ACA,	/* Accessory Charger Adapter */
+	CHRG_ACA_DOCK,	/* Accessory Charger Adapter - Dock */
+	CHRG_ACA_A,	/* Accessory Charger Adapter - RID_A */
+	CHRG_ACA_B,	/* Accessory Charger Adapter - RID_B */
+	CHRG_ACA_C,	/* Accessory Charger Adapter - RID_C */
+	CHRG_SE1,	/* SE1 (Apple)*/
+	CHRG_MHL	/* Moblie High-Definition Link */
 };
 
 struct adp_status {

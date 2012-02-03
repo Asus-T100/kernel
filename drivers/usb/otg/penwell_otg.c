@@ -1173,6 +1173,244 @@ static int penwell_otg_manual_chrg_det(void)
 	dev_dbg(pnw->dev, "%s <---\n", __func__);
 };
 
+static int penwell_otg_charger_det_dcd_clt(void)
+{
+	struct penwell_otg		*pnw = the_transceiver;
+	struct intel_mid_otg_xceiv	*iotg = &pnw->iotg;
+	int				retval;
+	unsigned long			timeout, interval;
+	u8				data;
+
+	/* Change OPMODE to '01' Non-driving */
+	retval = penwell_otg_ulpi_write(iotg, ULPI_FUNCTRLSET,
+						OPMODE0 | XCVRSELECT0);
+	if (retval)
+		return retval;
+
+	retval = penwell_otg_ulpi_write(iotg, ULPI_FUNCTRLCLR,
+					OPMODE1 | XCVRSELECT1 | TERMSELECT);
+	if (retval)
+		return retval;
+
+	/* Disable DP pulldown to allow weak Idp_src for DCD */
+	retval = penwell_otg_ulpi_write(iotg, ULPI_OTGCTRLCLR, DPPULLDOWN);
+	if (retval)
+		return retval;
+
+	/* Enable SW control */
+	retval = penwell_otg_ulpi_write(iotg, ULPI_PWRCTRLSET, SWCNTRL);
+	if (retval)
+		return retval;
+
+	/* Enable IDPSRC */
+	retval = penwell_otg_ulpi_write(iotg, ULPI_VS3SET, CHGD_IDP_SRC);
+	if (retval)
+		return retval;
+
+	/* Check DCD result, use same polling parameter */
+	timeout = jiffies + msecs_to_jiffies(DATACON_TIMEOUT);
+	interval = DATACON_INTERVAL * 1000; /* us */
+
+	while (!time_after(jiffies, timeout)) {
+		retval = penwell_otg_ulpi_read(iotg, ULPI_VS4, &data);
+		if (retval) {
+			dev_warn(pnw->dev, "Failed to read ULPI register\n");
+			return retval;
+		}
+
+		if (data & !CHRG_SERX_DP) {
+			dev_info(pnw->dev, "Data contact detected!\n");
+			break;
+		}
+
+		/* Polling interval */
+		usleep_range(interval, interval + 2000);
+	}
+
+	/* ulpi_write(0x87, 0x40)*/
+	retval = penwell_otg_ulpi_write(iotg, ULPI_VS3CLR, CHGD_IDP_SRC);
+	if (retval)
+		return retval;
+
+	dev_info(pnw->dev, "DCD complete\n");
+
+	return 0;
+}
+
+static int penwell_otg_charger_det_se1_clt(void)
+{
+	struct penwell_otg		*pnw = the_transceiver;
+	struct intel_mid_otg_xceiv	*iotg = &pnw->iotg;
+	int				retval;
+	u8				data;
+
+	retval = penwell_otg_ulpi_write(iotg, ULPI_OTGCTRLSET,
+						DMPULLDOWN | DPPULLDOWN);
+	if (retval)
+		return retval;
+
+	retval = penwell_otg_ulpi_read(iotg, ULPI_VS4, &data);
+	if (retval) {
+		dev_warn(pnw->dev, "ULPI read failed, exit\n");
+		return -EBUSY;
+	}
+
+	if ((data & CHRG_SERX_DP) && (data & CHRG_SERX_DM))
+		return CHRG_SE1;
+
+	return 0;
+}
+
+static int penwell_otg_charger_det_pri_clt(void)
+{
+	struct penwell_otg		*pnw = the_transceiver;
+	struct intel_mid_otg_xceiv	*iotg = &pnw->iotg;
+	int				retval;
+	u8				vdat_det, serx_dm;
+
+	retval = penwell_otg_ulpi_write(iotg, ULPI_PWRCTRLSET, DPVSRCEN);
+	if (retval)
+		return retval;
+
+	msleep(110);
+
+	retval = penwell_otg_ulpi_read(iotg, ULPI_PWRCTRL, &vdat_det);
+	if (retval) {
+		dev_warn(pnw->dev, "ULPI read failed, exit\n");
+		return -EBUSY;
+	}
+
+	retval = penwell_otg_ulpi_read(iotg, ULPI_VS4, &serx_dm);
+	if (retval) {
+		dev_warn(pnw->dev, "ULPI read failed, exit\n");
+		return -EBUSY;
+	}
+
+	retval = penwell_otg_ulpi_write(iotg, ULPI_PWRCTRLCLR, DPVSRCEN);
+	if (retval)
+		return retval;
+
+	vdat_det &= VDATDET;
+	serx_dm &= CHRG_SERX_DM;
+
+	if ((!vdat_det) || serx_dm)
+		return CHRG_SDP;
+
+	return 0;
+}
+
+static int penwell_otg_charger_det_sec_clt(void)
+{
+	struct penwell_otg		*pnw = the_transceiver;
+	struct intel_mid_otg_xceiv	*iotg = &pnw->iotg;
+	int				retval;
+	u8				vdat_det;
+
+	usleep_range(1000, 1500);
+
+	retval = penwell_otg_ulpi_write(iotg, ULPI_VS1CLR, DATAPOLARITY);
+	if (retval)
+		return retval;
+
+	retval = penwell_otg_ulpi_write(iotg, ULPI_PWRCTRLSET, DPVSRCEN);
+	if (retval)
+		return retval;
+
+	msleep(80);
+
+	retval = penwell_otg_ulpi_read(iotg, ULPI_PWRCTRL, &vdat_det);
+	if (retval) {
+		dev_warn(pnw->dev, "ULPI read failed, exit\n");
+		return retval;
+	}
+
+	retval = penwell_otg_ulpi_write(iotg, ULPI_PWRCTRLCLR, DPVSRCEN);
+	if (retval)
+		return retval;
+
+	retval = penwell_otg_ulpi_write(iotg, ULPI_VS1SET, DATAPOLARITY);
+	if (retval)
+		return retval;
+
+	vdat_det &= VDATDET;
+
+	if (vdat_det)
+		return CHRG_DCP;
+	else
+		return CHRG_CDP;
+
+	return 0;
+}
+
+static int penwell_otg_charger_det_clean_clt(void)
+{
+	struct penwell_otg		*pnw = the_transceiver;
+	struct intel_mid_otg_xceiv	*iotg = &pnw->iotg;
+	int				retval;
+
+	retval = penwell_otg_ulpi_write(iotg, ULPI_PWRCTRLSET,
+					DPVSRCEN | SWCNTRL);
+	if (retval)
+		return retval;
+
+	return 0;
+}
+
+static int penwell_otg_charger_det_clt(void)
+{
+	struct penwell_otg		*pnw = the_transceiver;
+	struct intel_mid_otg_xceiv	*iotg = &pnw->iotg;
+	int				retval;
+	u8				data;
+
+	dev_dbg(pnw->dev, "%s --->\n", __func__);
+
+	/* DCD */
+	retval = penwell_otg_charger_det_dcd_clt();
+	if (retval) {
+		dev_warn(pnw->dev, "DCD failed, exit\n");
+		return CHRG_UNKNOWN;
+	}
+
+	/* SE1 Detection */
+	retval = penwell_otg_charger_det_se1_clt();
+	if (retval < 0) {
+		dev_warn(pnw->dev, "SE1 Det failed, exit\n");
+		return CHRG_UNKNOWN;
+	} else if (retval == CHRG_SE1) {
+		dev_info(pnw->dev, "SE1 detected\n");
+		return CHRG_SE1;
+	}
+
+	/* Pri Det */
+	retval = penwell_otg_charger_det_pri_clt();
+	if (retval < 0) {
+		dev_warn(pnw->dev, "Pri Det failed, exit\n");
+		return CHRG_UNKNOWN;
+	} else if (retval == CHRG_SDP) {
+		dev_info(pnw->dev, "SDP detected\n");
+		return CHRG_SDP;
+	}
+
+	/* Sec Det */
+	retval = penwell_otg_charger_det_sec_clt();
+	if (retval < 0) {
+		dev_warn(pnw->dev, "Sec Det failed, exit\n");
+		return CHRG_UNKNOWN;
+	} else if (retval == CHRG_CDP) {
+		dev_info(pnw->dev, "CDP detected\n");
+		return CHRG_CDP;
+	} else  if (retval == CHRG_DCP) {
+		dev_info(pnw->dev, "DCP detected\n");
+		penwell_otg_charger_det_clean_clt();
+		return CHRG_DCP;
+	}
+
+	dev_dbg(pnw->dev, "%s <---\n", __func__);
+
+	return 0;
+}
+
 void penwell_otg_phy_vbus_wakeup(bool on)
 {
 	struct penwell_otg	*pnw = the_transceiver;
@@ -1974,11 +2212,13 @@ static void penwell_otg_work(struct work_struct *work)
 					charger_type = retval;
 				}
 			} else {
-				/*
-				 * Force CHRG_SDP for Clovertrail,
-				 * need fix later.
-				 */
-				charger_type = CHRG_SDP;
+				/* Clovertrail charger detection flow */
+				retval = penwell_otg_charger_det_clt();
+				if (retval < 0) {
+					dev_warn(pnw->dev, "Charger detect failure\n");
+					break;
+				} else
+					charger_type = retval;
 			}
 
 			if (charger_type == CHRG_DCP) {
