@@ -713,11 +713,13 @@ static int intel_idle_probe(void)
 #ifdef CONFIG_X86_MRST
 		intel_idle_platform_prepare = &mrst_pmu_invalid_cstates;
 #endif
+#ifdef CONFIG_X86_MDFLD
 	case 0x27:	/* 39 - Penwell Atom Processor */
 	case 0x35:	/* 53 - Cloverview Atom Processor */
 		cpuidle_state_table = mfld_cstates;
 		auto_demotion_disable_flags = ATM_LNC_C6_AUTO_DEMOTE;
 		break;
+#endif
 
 	case 0x2A:	/* SNB */
 	case 0x2D:	/* SNB Xeon */
