@@ -452,11 +452,11 @@ static irqreturn_t snd_mfld_jack_intr_handler(int irq, void *dev)
 #ifdef CONFIG_HAS_WAKELOCK
 	/*
 	 * We don't have any call back from the jack detection completed.
-	 * Take wakelock for one second to give time for the detection
+	 * Take wakelock for two seconds to give time for the detection
 	 * to finish. Jack detection is happening rarely so this doesn't
 	 * have big impact to power consumption.
 	 */
-	wake_lock_timeout(&mc_private->wake_lock, 1*HZ);
+	wake_lock_timeout(&mc_private->wake_lock, 2*HZ);
 #endif
 	return IRQ_WAKE_THREAD;
 }
