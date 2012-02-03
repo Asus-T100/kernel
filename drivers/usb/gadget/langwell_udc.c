@@ -529,6 +529,13 @@ static int langwell_ep_disable(struct usb_ep *_ep)
 
 	spin_lock_irqsave(&dev->lock, flags);
 
+	if (!ep->desc) {
+		spin_unlock_irqrestore(&dev->lock, flags);
+		pm_runtime_put(&dev->pdev->dev);
+		dev_err(&dev->pdev->dev, "ep has already disabled\n");
+		return -EINVAL;
+	}
+
 	/* disable endpoint control register */
 	ep_num = ep->ep_num;
 	endptctrl = readl(&dev->op_regs->endptctrl[ep_num]);
@@ -2866,6 +2873,12 @@ static void handle_trans_complete(struct langwell_udc *dev)
 				ep0_req_complete(dev, epn, curr_req);
 				break;
 			} else {
+				/* Check to guarantee ep is enabled */
+				if (!epn->desc) {
+					dev_err(&dev->pdev->dev,
+					"epn is disabled, break in handle trans complete\n");
+					break;
+				}
 				done(epn, curr_req, status);
 			}
 		}
