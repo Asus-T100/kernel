@@ -405,6 +405,13 @@ static int __devinit lnw_gpio_probe(struct pci_dev *pdev,
 		dev_err(&pdev->dev, "langwell gpiochip_add error %d\n", retval);
 		goto err5;
 	}
+	lnw->irq_base = irq_alloc_descs(-1, lnw->irq_base, lnw->chip.ngpio,
+					NUMA_NO_NODE);
+	if (lnw->irq_base < 0) {
+		dev_err(&pdev->dev, "langwell irq_alloc_desc failed %d\n",
+			lnw->irq_base);
+		goto err5;
+	}
 	irq_set_handler_data(pdev->irq, lnw);
 	irq_set_chained_handler(pdev->irq, lnw_irq_handler);
 	for (i = 0; i < lnw->chip.ngpio; i++) {
