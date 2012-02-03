@@ -381,7 +381,12 @@ struct ov8830_device {
 
 };
 
-#define OV8830_MAX_WRITE_BUF_SIZE	128
+/*
+ * The i2c adapter on Intel Medfield can transfer 32 bytes maximum
+ * at a time. In burst mode we require that the buffer is transferred
+ * in one shot, so limit the buffer size to 32 bytes minus a safety.
+ */
+#define OV8830_MAX_WRITE_BUF_SIZE	30
 struct ov8830_write_buffer {
 	u16 addr;
 	u8 data[OV8830_MAX_WRITE_BUF_SIZE];
