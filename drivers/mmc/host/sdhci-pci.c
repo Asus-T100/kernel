@@ -26,7 +26,7 @@
 #include <linux/pm_runtime.h>
 #include <asm/intel_scu_ipc.h>
 
-#if defined(CONFIG_X86_MRST)
+#if defined(CONFIG_X86_MDFLD)
 #include <linux/intel_mid_pm.h>
 #endif
 
@@ -1188,7 +1188,7 @@ static void sdhci_pci_hw_reset(struct sdhci_host *host)
 	usleep_range(300, 1000);
 }
 
-#if defined(CONFIG_X86_MRST)
+#if defined(CONFIG_X86_MDFLD)
 static int sdhci_pci_power_up_host(struct sdhci_host *host)
 {
 	int ret;
