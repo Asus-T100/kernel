@@ -88,7 +88,6 @@ enum sst_stream_states {
 	STREAM_INIT	= 4,	/* stream init, waiting for data */
 };
 
-
 enum sst_ram_type {
 	SST_IRAM	= 1,
 	SST_DRAM	= 2,
@@ -353,7 +352,6 @@ struct sst_sg_list {
 /***
  * struct intel_sst_drv - driver ops
  *
- * @pmic_vendor : pmic vendor detected
  * @sst_state : current sst device state
  * @pci_id : PCI device id loaded
  * @shim : SST shim pointer
@@ -390,7 +388,6 @@ struct sst_sg_list {
  * @cp_streams : total active cp streams
  * @lpe_stalled : lpe stall status
  * @pmic_port_instance : active pmic port instance
- * @rx_time_slot_status : active rx slot
  * @lpaudio_start : lpaudio status
  * @audio_start : audio status
  * @devt_d : pointer to /dev/lpe node
@@ -398,7 +395,6 @@ struct sst_sg_list {
  * @max_streams : max streams allowed
  */
 struct intel_sst_drv {
-	int			pmic_vendor;
 	int			sst_state;
 	unsigned int		pci_id;
 	void __iomem		*shim;
@@ -441,7 +437,6 @@ struct intel_sst_drv {
 	unsigned int		cp_streams;	/* cp streams active */
 	unsigned int		lpe_stalled; /* LPE is stalled or not */
 	unsigned int		pmic_port_instance; /*pmic port instance*/
-	int			rx_time_slot_status;
 	unsigned int		lpaudio_start;
 		/* 1 - LPA stream(MP3 pb) in progress*/
 	unsigned int		audio_start;
@@ -485,7 +480,6 @@ int sst_alloc_stream_response(unsigned int str_id,
 int sst_stalled(void);
 int sst_pause_stream(int id);
 int sst_resume_stream(int id);
-int sst_enable_rx_timeslot(int status);
 int sst_drop_stream(int id);
 int sst_free_stream(int id);
 int sst_start_stream(int streamID);

@@ -9,14 +9,6 @@ menuconfig SND_PCI
 
 if SND_PCI
 
-config SND_INTEL_SST
-	tristate "Intel SST (LPE) Driver"
-	depends on X86 && INTEL_SCU_IPC && GPIO_LANGWELL
-	default n
-	help
-	  Say Y here to include support for the Intel(R) MID SST DSP driver
-	  On other PC platforms if you are unsure answer 'N'
-
 config SND_AD1889
 	tristate "Analog Devices AD1889"
 	select SND_AC97_CODEC

@@ -236,30 +236,3 @@ void sst_wake_up_alloc_block(struct intel_sst_drv *sst_drv_ctx,
 	}
 }
 
-/*
- * sst_enable_rx_timeslot - Send msg to query for stream parameters
- * @status: rx timeslot to be enabled
- *
- * This function is called when the RX timeslot is required to be enabled
- */
-int sst_enable_rx_timeslot(int status)
-{
-	struct ipc_post *msg = NULL;
-
-	if (sst_create_short_msg(&msg)) {
-		pr_err("mem allocation failed\n");
-			return -ENOMEM;
-	}
-	pr_debug("ipc message sending: ENABLE_RX_TIME_SLOT\n");
-	sst_fill_header(&msg->header, IPC_IA_ENABLE_RX_TIME_SLOT, 0, 0);
-	msg->header.part.data = status;
-	sst_drv_ctx->hs_info_blk.condition = false;
-	sst_drv_ctx->hs_info_blk.ret_code = 0;
-	sst_drv_ctx->hs_info_blk.on = true;
-	spin_lock(&sst_drv_ctx->list_spin_lock);
-	list_add_tail(&msg->node,
-			&sst_drv_ctx->ipc_dispatch_list);
-	spin_unlock(&sst_drv_ctx->list_spin_lock);
-	sst_post_message(&sst_drv_ctx->ipc_post_msg_wq);
-	return sst_wait_timeout(sst_drv_ctx, &sst_drv_ctx->hs_info_blk);
-}

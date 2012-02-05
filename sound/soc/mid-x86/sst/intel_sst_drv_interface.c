@@ -45,13 +45,9 @@ static void sst_restore_fw_context(void)
 	int retval = 0;
 
 	pr_debug("restore_fw_context\n");
-	/*check cpu type*/
-	if (sst_drv_ctx->pci_id == SST_MRST_PCI_ID)
-		return;
-		/*not supported for rest*/
+	/*nothing to restore*/
 	if (!sst_drv_ctx->fw_cntx_size)
 		return;
-		/*nothing to restore*/
 	pr_debug("restoring context......\n");
 	/*send msg to fw*/
 	if (sst_create_large_msg(&msg))
@@ -139,7 +135,7 @@ int sst_stalled(void)
 		if (!sst_drv_ctx->lpe_stalled)
 			return 0;
 		/*wait for time and re-check*/
-		msleep(1);
+		usleep_range(1000, 1500);
 
 		retry--;
 	}
@@ -257,23 +253,6 @@ static int sst_get_sfreq(struct snd_sst_params *str_param)
 	}
 }
 
-static int sst_get_wdsize(struct snd_sst_params *str_param)
-{
-	switch (str_param->codec) {
-	case SST_CODEC_TYPE_PCM:
-		return str_param->sparams.uc.pcm_params.pcm_wd_sz;
-	case SST_CODEC_TYPE_MP3:
-		return str_param->sparams.uc.mp3_params.pcm_wd_sz;
-	case SST_CODEC_TYPE_AAC:
-		return str_param->sparams.uc.aac_params.pcm_wd_sz;
-	case SST_CODEC_TYPE_WMA9:
-		return str_param->sparams.uc.wma_params.pcm_wd_sz;
-	default:
-		return 0;
-	}
-}
-
-
 /*
  * sst_get_stream - this function prepares for stream allocation
  *
@@ -350,9 +329,9 @@ err:
 	return retval;
 }
 
-void sst_prepare_fw(void)
+static int sst_prepare_fw(void)
 {
-	int retval;
+	int retval = 0;
 
 	mutex_lock(&sst_drv_ctx->sst_lock);
 	if (sst_drv_ctx->sst_state == SST_UN_INIT) {
@@ -366,10 +345,12 @@ void sst_prepare_fw(void)
 			pr_debug("doing rtpm_put\n");
 			sst_set_fw_state_locked(sst_drv_ctx, SST_UN_INIT);
 			pm_runtime_put(&sst_drv_ctx->pci->dev);
+			return retval;
 		}
 	} else {
 		mutex_unlock(&sst_drv_ctx->sst_lock);
 	}
+	return retval;
 }
 
 void sst_process_mad_ops(struct work_struct *work)
@@ -412,14 +393,6 @@ void sst_process_mad_ops(struct work_struct *work)
 	return;
 }
 
-static void send_intial_rx_timeslot(void)
-{
-	if (sst_drv_ctx->pci_id == SST_MRST_PCI_ID &&
-			sst_drv_ctx->rx_time_slot_status != RX_TIMESLOT_UNINIT
-			&& sst_drv_ctx->pmic_vendor != SND_NC)
-		sst_enable_rx_timeslot(sst_drv_ctx->rx_time_slot_status);
-}
-
 /*
  * sst_open_pcm_stream - Open PCM interface
  *
@@ -436,24 +409,9 @@ static int sst_open_pcm_stream(struct snd_sst_params *str_param)
 	pr_debug("open_pcm, doing rtpm_get\n");
 	pm_runtime_get_sync(&sst_drv_ctx->pci->dev);
 
-	mutex_lock(&sst_drv_ctx->sst_lock);
-	if (sst_drv_ctx->sst_state == SST_UN_INIT) {
-		sst_drv_ctx->sst_state = SST_START_INIT;
-		mutex_unlock(&sst_drv_ctx->sst_lock);
-		/* FW is not downloaded */
-		pr_debug("DSP Downloading FW now...\n");
-		retval = sst_download_fw();
-		if (retval) {
-			pr_err("FW download fail %x, abort\n", retval);
-			pr_debug("open_pcm, doing rtpm_put\n");
-			sst_set_fw_state_locked(sst_drv_ctx, SST_UN_INIT);
-			pm_runtime_put(&sst_drv_ctx->pci->dev);
-			return retval;
-		}
-		send_intial_rx_timeslot();
-	} else {
-		mutex_unlock(&sst_drv_ctx->sst_lock);
-	}
+	retval = sst_prepare_fw();
+	if (retval)
+		return retval;
 
 	if (!str_param) {
 		pr_debug("open_pcm, doing rtpm_put\n");
@@ -594,12 +552,6 @@ static int sst_device_control(int cmd, void *arg)
 			fw_tstamp.samples_rendered, stream_info->buffer_ptr);
 		break;
 	}
-	case SST_ENABLE_RX_TIME_SLOT: {
-		int status = *(int *)arg;
-		sst_drv_ctx->rx_time_slot_status = status ;
-		sst_enable_rx_timeslot(status);
-		break;
-	}
 	default:
 		/* Illegal case */
 		pr_warn("illegal req\n");
@@ -707,8 +659,6 @@ int register_sst_card(struct intel_sst_card_ops *card)
 		pr_err("Null Pointer Passed\n");
 		return -EINVAL;
 	}
-	sst_drv_ctx->pmic_vendor = card->vendor_id;
-	sst_drv_ctx->rx_time_slot_status = 0; /*default AMIC*/
 	card->pcm_control = sst_pmic_ops.pcm_control;
 	return 0;
 }

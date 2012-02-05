@@ -54,26 +54,6 @@ static int sst_send_ipc_msg_nowait(struct ipc_post **msg)
 }
 
 /*
- * sst_send_sound_card_type - send sound card type
- *
- * this function sends the sound card type to sst dsp engine
- */
-static void sst_send_sound_card_type(void)
-{
-	struct ipc_post *msg = NULL;
-
-	if (sst_create_short_msg(&msg))
-		return;
-
-	sst_fill_header(&msg->header, IPC_IA_SET_PMIC_TYPE, 0, 0);
-	msg->header.part.data = sst_drv_ctx->pmic_vendor;
-	spin_lock(&sst_drv_ctx->list_spin_lock);
-	list_add_tail(&msg->node, &sst_drv_ctx->ipc_dispatch_list);
-	spin_unlock(&sst_drv_ctx->list_spin_lock);
-	sst_post_message(&sst_drv_ctx->ipc_post_msg_wq);
-}
-
-/*
  * sst_send_runtime_param - send runtime param to SST
  *
  * this function sends the runtime parameter to sst dsp engine
@@ -93,7 +73,8 @@ static int sst_send_runtime_param(struct snd_sst_runtime_params *params)
 	memcpy(msg->mailbox_data, &msg->header.full, sizeof(u32));
 	memcpy(msg->mailbox_data + sizeof(u32), params, sizeof(*params));
 	/* driver doesn't need to send address, so overwrite addr with data */
-	memcpy(msg->mailbox_data + sizeof(u32) + sizeof(*params) - sizeof(params->addr),
+	memcpy(msg->mailbox_data + sizeof(u32) + sizeof(*params)
+			- sizeof(params->addr),
 			params->addr, params->size);
 	return sst_send_ipc_msg_nowait(&msg);
 }
@@ -248,8 +229,6 @@ static int process_fw_init(struct sst_ipc_msg_wq *msg)
 		retval = -init->result;
 		return retval;
 	}
-	if (sst_drv_ctx->pci_id == SST_MRST_PCI_ID)
-		sst_send_sound_card_type();
 	/* If there any runtime parameter to set, send it */
 	if (sst_drv_ctx->runtime_param.param.addr)
 		sst_send_runtime_param(&(sst_drv_ctx->runtime_param.param));
@@ -652,7 +631,7 @@ void sst_process_reply(struct work_struct *work)
 
 			str_info->curr_bytes = drop_resp->bytes;
 			if (!drop_resp->result)
-				pr_debug("drop sucess for %d\n", str_id);
+				pr_debug("drop success for %d\n", str_id);
 			else
 				pr_err("drop for %d failed with err %d\n",
 						str_id, drop_resp->result);

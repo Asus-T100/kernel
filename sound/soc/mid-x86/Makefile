@@ -12,5 +12,5 @@ obj-$(CONFIG_SND_MFLD_MACHINE_GI) += snd-soc-mfld-machine-gi.o
 # Cloverview/Clovertrail+ board
 snd-soc-clv-machine-objs := clv_machine.o
 obj-$(CONFIG_SND_CLV_MACHINE) += snd-soc-clv-machine.o
-
+obj-$(CONFIG_SND_INTEL_SST) += sst/
 # DSP driver

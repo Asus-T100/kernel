@@ -313,8 +313,8 @@ static void sst_dma_transfer_complete(void *arg)
 		sst_drv_ctx->dma_info_blk.condition = true;
 		wake_up(&sst_drv_ctx->wait_queue);
 	}
-
 }
+
 /**
  * sst_parse_fw_image - parse and load FW
  *

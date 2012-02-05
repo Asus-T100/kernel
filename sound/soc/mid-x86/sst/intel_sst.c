@@ -453,8 +453,9 @@ static void __devexit intel_sst_remove(struct pci_dev *pci)
 	if (sst_drv_ctx->pci_id == SST_MRST_PCI_ID) {
 		misc_deregister(&lpe_dev);
 		kfree(sst_drv_ctx->mmap_mem);
-	} else
+	} else {
 		kfree(sst_drv_ctx->fw_cntx);
+	}
 	kfree(sst_drv_ctx->runtime_param.param.addr);
 	flush_scheduled_work();
 	destroy_workqueue(sst_drv_ctx->process_reply_wq);
@@ -484,7 +485,7 @@ static void sst_save_dsp_context(void)
 	/*check cpu type*/
 	if (sst_drv_ctx->pci_id == SST_MRST_PCI_ID)
 		return;
-		/*not supported for rest*/
+	/*not supported for rest*/
 	if (sst_drv_ctx->sst_state != SST_FW_RUNNING) {
 		pr_debug("fw not running no context save ...\n");
 		return;
@@ -701,7 +702,7 @@ static const struct dev_pm_ops intel_sst_pm = {
 };
 
 /* PCI Routines */
-static struct pci_device_id intel_sst_ids[] = {
+static DEFINE_PCI_DEVICE_TABLE(intel_sst_ids) = {
 	{ PCI_VDEVICE(INTEL, SST_MRST_PCI_ID), 3},
 	{ PCI_VDEVICE(INTEL, SST_MFLD_PCI_ID), 5},
 	{ PCI_VDEVICE(INTEL, SST_CLV_PCI_ID), 3},

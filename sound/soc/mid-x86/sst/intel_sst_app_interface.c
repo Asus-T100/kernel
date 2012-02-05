@@ -72,12 +72,6 @@ static int intel_sst_check_device(void)
 			sst_set_fw_state_locked(sst_drv_ctx, SST_UN_INIT);
 			return -ENODEV;
 		}
-		if (sst_drv_ctx->pci_id == SST_MRST_PCI_ID) {
-			retval = sst_drv_ctx->rx_time_slot_status;
-			if (retval != RX_TIMESLOT_UNINIT
-					&& sst_drv_ctx->pmic_vendor != SND_NC)
-				sst_enable_rx_timeslot(retval);
-		}
 	} else {
 		mutex_unlock(&sst_drv_ctx->sst_lock);
 	}
@@ -541,9 +535,11 @@ static int snd_sst_copy_userbuf_capture(struct stream_info *stream,
 			/* copy to user */
 			list_for_each_entry_safe(entry, _entry,
 						copy_to_list, node) {
-				if (copy_to_user(iovec[entry->iov_index].iov_base + entry->iov_offset,
-					     kbufs->addr + entry->offset,
-					     entry->size)) {
+				if (copy_to_user(
+					iovec[entry->iov_index].iov_base
+						+ entry->iov_offset,
+					kbufs->addr + entry->offset,
+					entry->size)) {
 					/* Clean up the list and return error */
 					retval = -EFAULT;
 					break;
@@ -993,17 +989,20 @@ static int sst_ioctl_tuning_params(unsigned int cmd, unsigned long arg)
 
 	switch (_IOC_NR(cmd)) {
 	case _IOC_NR(SNDRV_SST_TUNING_PARAMS):
-		sst_fill_header(&msg->header, IPC_IA_TUNING_PARAMS, 1, params.str_id);
+		sst_fill_header(&msg->header, IPC_IA_TUNING_PARAMS, 1,
+				params.str_id);
 		break;
 	case _IOC_NR(SNDRV_SST_SET_RUNTIME_PARAMS):
-		sst_fill_header(&msg->header, IPC_IA_SET_RUNTIME_PARAMS, 1, params.str_id);
+		sst_fill_header(&msg->header, IPC_IA_SET_RUNTIME_PARAMS, 1,
+				params.str_id);
 		break;
 	}
 	msg->header.part.data = sizeof(u32) + sizeof(params) + params.size;
 	memcpy(msg->mailbox_data, &msg->header.full, sizeof(u32));
 	memcpy(msg->mailbox_data + sizeof(u32), &params, sizeof(params));
 	/* driver doesn't need to send address, so overwrite addr with data */
-	if (copy_from_user(msg->mailbox_data + sizeof(u32) + sizeof(params) - sizeof(params.addr),
+	if (copy_from_user(msg->mailbox_data + sizeof(u32)
+				+ sizeof(params) - sizeof(params.addr),
 			(void __user *)address, params.size)) {
 		kfree(msg->mailbox_data);
 		kfree(msg);
@@ -1081,8 +1080,10 @@ long intel_sst_ioctl(struct file *file_ptr, unsigned int cmd, unsigned long arg)
 				data->str_id = retval;
 				str_info = &sst_drv_ctx->streams[retval];
 				str_info->src = SST_DRV;
-				dest = (char __user *)arg + offsetof(struct snd_sst_params, stream_id);
-				retval = copy_to_user(dest, &retval, sizeof(__u32));
+				dest = (char __user *)arg +
+				     offsetof(struct snd_sst_params, stream_id);
+				retval = copy_to_user(dest, &retval,
+						sizeof(__u32));
 				if (retval)
 					retval = -EFAULT;
 			} else {
@@ -1097,8 +1098,10 @@ long intel_sst_ioctl(struct file *file_ptr, unsigned int cmd, unsigned long arg)
 			if (!retval) {
 				int sfreq = 0, word_size = 0, num_channel = 0;
 				sfreq =	str_param.sparams.uc.pcm_params.sfreq;
-				word_size = str_param.sparams.uc.pcm_params.pcm_wd_sz;
-				num_channel = str_param.sparams.uc.pcm_params.num_chan;
+				word_size =
+				   str_param.sparams.uc.pcm_params.pcm_wd_sz;
+				num_channel =
+				   str_param.sparams.uc.pcm_params.num_chan;
 			}
 		}
 		break;
@@ -1230,7 +1233,8 @@ long intel_sst_ioctl(struct file *file_ptr, unsigned int cmd, unsigned long arg)
 			break;
 		}
 		memcpy_fromio(&tstamp,
-			sst_drv_ctx->mailbox + SST_TIME_STAMP + str_id * sizeof(tstamp),
+			sst_drv_ctx->mailbox + SST_TIME_STAMP
+				+ str_id * sizeof(tstamp),
 			sizeof(tstamp));
 		time = tstamp.samples_rendered * 1000;
 		if (copy_to_user((void __user *)arg, &time,
@@ -1335,17 +1339,21 @@ long intel_sst_ioctl(struct file *file_ptr, unsigned int cmd, unsigned long arg)
 		dbufs_local.output_bytes_produced =
 					param.output_bytes_produced;
 
-		if (copy_from_user(&ibufs, (void __user *)param.ibufs, sizeof(ibufs))) {
+		if (copy_from_user(&ibufs, (void __user *)param.ibufs,
+					sizeof(ibufs))) {
 			retval = -EFAULT;
 			break;
 		}
-		if (copy_from_user(&obufs, (void __user *)param.obufs, sizeof(obufs))) {
+		if (copy_from_user(&obufs, (void __user *)param.obufs,
+					sizeof(obufs))) {
 			retval = -EFAULT;
 			break;
 		}
 
-		ibuf_tmp = kcalloc(ibufs.entries, sizeof(*ibuf_tmp), GFP_KERNEL);
-		obuf_tmp = kcalloc(obufs.entries, sizeof(*obuf_tmp), GFP_KERNEL);
+		ibuf_tmp =
+			kcalloc(ibufs.entries, sizeof(*ibuf_tmp), GFP_KERNEL);
+		obuf_tmp =
+			kcalloc(obufs.entries, sizeof(*obuf_tmp), GFP_KERNEL);
 		if (!ibuf_tmp || !obuf_tmp) {
 			retval = -ENOMEM;
 			goto free_iobufs;
@@ -1373,7 +1381,8 @@ long intel_sst_ioctl(struct file *file_ptr, unsigned int cmd, unsigned long arg)
 			goto free_iobufs;
 		}
 
-		dest = (char __user *)arg + offsetof(struct snd_sst_dbufs, input_bytes_consumed);
+		dest = (char __user *)arg
+			+ offsetof(struct snd_sst_dbufs, input_bytes_consumed);
 		if (copy_to_user(dest,
 				&dbufs_local.input_bytes_consumed,
 				sizeof(unsigned long long))) {
@@ -1381,7 +1390,8 @@ long intel_sst_ioctl(struct file *file_ptr, unsigned int cmd, unsigned long arg)
 			goto free_iobufs;
 		}
 
-		dest = (char __user *)arg + offsetof(struct snd_sst_dbufs, input_bytes_consumed);
+		dest = (char __user *)arg
+			+ offsetof(struct snd_sst_dbufs, input_bytes_consumed);
 		if (copy_to_user(dest,
 				&dbufs_local.output_bytes_produced,
 				sizeof(unsigned long long))) {
@@ -1404,7 +1414,8 @@ free_iobufs:
 		break;
 
 	case _IOC_NR(SNDRV_SST_STREAM_BYTES_DECODED): {
-		unsigned long long __user *bytes = (unsigned long long __user *)arg;
+		unsigned long long __user *bytes =
+			(unsigned long long __user *)arg;
 		struct snd_sst_tstamp tstamp = {0};
 
 		pr_debug("STREAM_BYTES_DECODED received!\n");
@@ -1413,7 +1424,8 @@ free_iobufs:
 			break;
 		}
 		memcpy_fromio(&tstamp,
-			sst_drv_ctx->mailbox + SST_TIME_STAMP + str_id * sizeof(tstamp),
+			sst_drv_ctx->mailbox + SST_TIME_STAMP
+				+ str_id * sizeof(tstamp),
 			sizeof(tstamp));
 		if (copy_to_user(bytes, &tstamp.bytes_processed,
 				sizeof(*bytes)))

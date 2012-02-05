@@ -252,13 +252,13 @@ union ipc_header {
 		u32  busy:1; /* bit 31 */
 	} part;
 	u32 full;
-} __attribute__ ((packed));
+} __packed;
 
 /* Firmware build info */
 struct sst_fw_build_info {
 	unsigned char  date[16]; /* Firmware build date */
 	unsigned char  time[16]; /* Firmware build time */
-} __attribute__ ((packed));
+} __packed;
 
 struct ipc_header_fw_init {
 	struct snd_sst_fw_version fw_version;/* Firmware version details */
@@ -266,13 +266,13 @@ struct ipc_header_fw_init {
 	u16 result;	/* Fw init result */
 	u8 module_id; /* Module ID in case of error */
 	u8 debug_info; /* Debug info from Module ID in case of fail */
-} __attribute__ ((packed));
+} __packed;
 
 /* Address and size info of a frame buffer in DDR */
 struct sst_address_info {
 	u32 addr; /* Address at IA */
 	u32 size; /* Size of the buffer */
-} __attribute__ ((packed));
+} __packed;
 
 /* Time stamp */
 struct snd_sst_tstamp {
@@ -291,7 +291,7 @@ struct sst_frame_info {
 	u16  num_entries; /* number of entries to follow */
 	u16  rsrvd;
 	struct sst_address_info  addr[MAX_NUM_SCATTER_BUFFERS];
-} __attribute__ ((packed));
+} __packed;
 
 /* Frames info for decode */
 struct snd_sst_decode_info {
@@ -299,13 +299,13 @@ struct snd_sst_decode_info {
 	unsigned long long output_bytes_produced;
 	struct sst_frame_info frames_in;
 	struct sst_frame_info frames_out;
-} __attribute__ ((packed));
+} __packed;
 
 /* SST to IA print debug message*/
 struct ipc_sst_ia_print_params {
 	u32 string_size;/* Max value is 160 */
 	u8 prt_string[160];/* Null terminated Char string */
-} __attribute__ ((packed));
+} __packed;
 
 /* Voice data message  */
 struct snd_sst_voice_data {
@@ -313,7 +313,7 @@ struct snd_sst_voice_data {
 	u8  pcm_wd_size;/* 0=8 bit, 1=16 bit 2=32 bit */
 	u8  reserved;/* Reserved */
 	u8  voice_data_buf[0];/* Voice data buffer in bytes, little endian */
-} __attribute__ ((packed));
+} __packed;
 
 /* SST to IA memory read debug message  */
 struct ipc_sst_ia_dbg_mem_rw  {
@@ -321,13 +321,13 @@ struct ipc_sst_ia_dbg_mem_rw  {
 	u16  data_type;/* enum: dbg_mem_data_type */
 	u32  address;	/* Memory address of data memory of data_type */
 	u8	rw_bytes[MAX_DBG_RW_BYTES];/* Maximum of 64 bytes can be RW */
-} __attribute__ ((packed));
+} __packed;
 
 struct ipc_sst_ia_dbg_loop_back {
 	u16 num_dwords; /* Maximum of MAX_DBG_RW_BYTES */
 	u16 increment_val;/* Increments dwords by this value, 0- no increment */
 	u32 lpbk_dwords[MAX_LOOP_BACK_DWORDS];/* Maximum of 8 dwords loopback */
-} __attribute__ ((packed));
+} __packed;
 
 /* Stream type params struture for Alloc stream */
 struct snd_sst_str_type {
@@ -338,7 +338,7 @@ struct snd_sst_str_type {
 	u8 time_slots;
 	u8 reserved;		/* Reserved */
 	u16 result;		/* Result used for acknowledgment */
-} __attribute__ ((packed));
+} __packed;
 
 /* Library info structure */
 struct module_info {
@@ -349,7 +349,7 @@ struct module_info {
 	u32 lib_caps;
 	unsigned char  b_date[16]; /* Lib build date */
 	unsigned char  b_time[16]; /* Lib build time */
-} __attribute__ ((packed));
+} __packed;
 
 /* Library slot info */
 struct lib_slot_info {
@@ -360,7 +360,7 @@ struct lib_slot_info {
 	u32 dram_size; /* slot size in DRAM */
 	u32 iram_offset; /* starting offset of slot in IRAM */
 	u32 dram_offset; /* starting offset of slot in DRAM */
-} __attribute__ ((packed));
+} __packed;
 
 struct snd_ppp_mixer_params {
 	__u32			type; /*Type of the parameter */

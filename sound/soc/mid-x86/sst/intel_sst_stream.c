@@ -65,6 +65,7 @@ static int sst_check_device_type_clv(u32 device, u32 num_chan, u32 *pcm_slot)
 					sst_drv_ctx->streams[device].status);
 		return -EBADRQC;
 	}
+	return 0;
 }
 
 /*
