@@ -71,7 +71,7 @@
 #include <linux/i2c/tc35876x.h>
 /*
  * the clockevent devices on Moorestown/Medfield can be APBT or LAPIC clock,
- * cmdline option x86_mrst_timer can be used to override the configuration
+ * cmdline option x86_intel_mid_timer can be used to override the configuration
  * to prefer one or the other.
  * at runtime, there are basically three timer configurations:
  * 1. per cpu apbt clock only
@@ -90,12 +90,12 @@
  * lapic (always-on,ARAT) ------ 150
  */
 
-__cpuinitdata enum mrst_timer_options mrst_timer_options;
+__cpuinitdata enum intel_mid_timer_options intel_mid_timer_options;
 
 static u32 sfi_mtimer_usage[SFI_MTMR_MAX_NUM];
 static struct sfi_timer_table_entry sfi_mtimer_array[SFI_MTMR_MAX_NUM];
-enum mrst_cpu_type __mrst_cpu_chip;
-EXPORT_SYMBOL_GPL(__mrst_cpu_chip);
+enum intel_mid_cpu_type __intel_mid_cpu_chip;
+EXPORT_SYMBOL_GPL(__intel_mid_cpu_chip);
 
 int sfi_mtimer_num;
 
@@ -144,9 +144,9 @@ static bool check_charger_conn(void)
 	return true;
 }
 
-static void mrst_power_off(void)
+void intel_mid_power_off(void)
 {
-	if (__mrst_cpu_chip == MRST_CPU_CHIP_LINCROFT)
+	if (__intel_mid_cpu_chip == INTEL_MID_CPU_CHIP_LINCROFT)
 		intel_scu_ipc_simple_command(IPCMSG_COLD_RESET, 1);
 	else {
 #ifdef CONFIG_INTEL_MID_OSIP
@@ -169,13 +169,13 @@ static void mrst_power_off(void)
 
 }
 
-static void mrst_emergency_reboot(void)
+static void intel_mid_reboot(void)
 {
 	if (intel_scu_ipc_medfw_upgrade()) {
 		pr_debug("intel_scu_ipc: IFWI upgrade failed...\n");
 		BUG();
 	}
-	if (__mrst_cpu_chip == MRST_CPU_CHIP_LINCROFT)
+	if (__intel_mid_cpu_chip == INTEL_MID_CPU_CHIP_LINCROFT)
 		intel_scu_ipc_simple_command(IPCMSG_COLD_RESET, 0);
 	else
 		intel_scu_ipc_simple_command(IPCMSG_COLD_BOOT, 0);
@@ -289,11 +289,11 @@ int __init sfi_parse_mrtc(struct sfi_table_header *table)
 	return 0;
 }
 
-static unsigned long __init mrst_calibrate_tsc(void)
+static unsigned long __init intel_mid_calibrate_tsc(void)
 {
 	unsigned long flags, fast_calibrate;
-	if ((__mrst_cpu_chip == MRST_CPU_CHIP_PENWELL) ||
-	    (__mrst_cpu_chip == MRST_CPU_CHIP_CLOVERVIEW)) {
+	if ((__intel_mid_cpu_chip == INTEL_MID_CPU_CHIP_PENWELL) ||
+	    (__intel_mid_cpu_chip == INTEL_MID_CPU_CHIP_CLOVERVIEW)) {
 		u32 lo, hi, ratio, fsb;
 
 		rdmsr(MSR_IA32_PERF_STATUS, lo, hi);
@@ -327,13 +327,13 @@ static unsigned long __init mrst_calibrate_tsc(void)
 	return 0;
 }
 
-static void __init mrst_time_init(void)
+static void __init intel_mid_time_init(void)
 {
 	sfi_table_parse(SFI_SIG_MTMR, NULL, NULL, sfi_parse_mtmr);
-	switch (mrst_timer_options) {
-	case MRST_TIMER_APBT_ONLY:
+	switch (intel_mid_timer_options) {
+	case INTEL_MID_TIMER_APBT_ONLY:
 		break;
-	case MRST_TIMER_LAPIC_APBT:
+	case INTEL_MID_TIMER_LAPIC_APBT:
 		x86_init.timers.setup_percpu_clockev = setup_boot_APIC_clock;
 		x86_cpuinit.setup_percpu_clockev = setup_secondary_APIC_clock;
 		break;
@@ -349,23 +349,23 @@ static void __init mrst_time_init(void)
 	apbt_time_init();
 }
 
-static void __cpuinit mrst_arch_setup(void)
+static void __cpuinit intel_mid_arch_setup(void)
 {
 	if (boot_cpu_data.x86 == 6 && boot_cpu_data.x86_model == 0x27)
-		__mrst_cpu_chip = MRST_CPU_CHIP_PENWELL;
+		__intel_mid_cpu_chip = INTEL_MID_CPU_CHIP_PENWELL;
 	else if (boot_cpu_data.x86 == 6 && boot_cpu_data.x86_model == 0x26)
-		__mrst_cpu_chip = MRST_CPU_CHIP_LINCROFT;
+		__intel_mid_cpu_chip = INTEL_MID_CPU_CHIP_LINCROFT;
 	else if (boot_cpu_data.x86 == 6 && boot_cpu_data.x86_model == 0x35)
-		__mrst_cpu_chip = MRST_CPU_CHIP_CLOVERVIEW;
+		__intel_mid_cpu_chip = INTEL_MID_CPU_CHIP_CLOVERVIEW;
 	else {
 		pr_err("Unknown Moorestown CPU (%d:%d), default to Lincroft\n",
 			boot_cpu_data.x86, boot_cpu_data.x86_model);
-		__mrst_cpu_chip = MRST_CPU_CHIP_LINCROFT;
+		__intel_mid_cpu_chip = INTEL_MID_CPU_CHIP_LINCROFT;
 	}
 }
 
 /* MID systems don't have i8042 controller */
-static int mrst_i8042_detect(void)
+int intel_mid_i8042_detect(void)
 {
 	return 0;
 }
@@ -374,35 +374,35 @@ static int mrst_i8042_detect(void)
  * Moorestown specific x86_init function overrides and early setup
  * calls.
  */
-void __init x86_mrst_early_setup(void)
+void __init x86_intel_mid_early_setup(void)
 {
 	x86_init.resources.probe_roms = x86_init_noop;
 	x86_init.resources.reserve_resources = x86_init_noop;
 
-	x86_init.timers.timer_init = mrst_time_init;
+	x86_init.timers.timer_init = intel_mid_time_init;
 	x86_init.timers.setup_percpu_clockev = x86_init_noop;
 
 	x86_init.irqs.pre_vector_init = x86_init_noop;
 
-	x86_init.oem.arch_setup = mrst_arch_setup;
+	x86_init.oem.arch_setup = intel_mid_arch_setup;
 
 	x86_cpuinit.setup_percpu_clockev = apbt_setup_secondary_clock;
 
-	x86_platform.calibrate_tsc = mrst_calibrate_tsc;
-	x86_platform.i8042_detect = mrst_i8042_detect;
-	x86_init.timers.wallclock_init = mrst_rtc_init;
-	x86_init.pci.init = pci_mrst_init;
+	x86_platform.calibrate_tsc = intel_mid_calibrate_tsc;
+	x86_platform.i8042_detect = intel_mid_i8042_detect;
+	x86_init.timers.wallclock_init = intel_mid_rtc_init;
+	x86_init.pci.init = intel_mid_pci_init;
 	x86_init.pci.fixup_irqs = x86_init_noop;
 
 	legacy_pic = &null_legacy_pic;
 
 	/* Moorestown specific power_off/restart method */
-	pm_power_off = mrst_power_off;
+	pm_power_off = intel_mid_power_off;
 	if (mfld_shutdown) {
 		saved_shutdown = machine_ops.shutdown;
 		machine_ops.shutdown = mfld_shutdown;
 	}
-	machine_ops.emergency_restart  = mrst_emergency_reboot;
+	machine_ops.emergency_restart  = intel_mid_reboot;
 
 	/* Avoid searching for BIOS MP tables */
 	x86_init.mpparse.find_smp_config = x86_init_noop;
@@ -414,24 +414,24 @@ void __init x86_mrst_early_setup(void)
  * if user does not want to use per CPU apb timer, just give it a lower rating
  * than local apic timer and skip the late per cpu timer init.
  */
-static inline int __init setup_x86_mrst_timer(char *arg)
+static inline int __init setup_x86_intel_mid_timer(char *arg)
 {
 	if (!arg)
 		return -EINVAL;
 
 	if (strcmp("apbt_only", arg) == 0)
-		mrst_timer_options = MRST_TIMER_APBT_ONLY;
+		intel_mid_timer_options = INTEL_MID_TIMER_APBT_ONLY;
 	else if (strcmp("lapic_and_apbt", arg) == 0)
-		mrst_timer_options = MRST_TIMER_LAPIC_APBT;
+		intel_mid_timer_options = INTEL_MID_TIMER_LAPIC_APBT;
 	else {
-		pr_warning("X86 MRST timer option %s not recognised"
-			   " use x86_mrst_timer=apbt_only or lapic_and_apbt\n",
+		pr_warning("X86 INTEL_MID timer option %s not recognised"
+			   " use x86_intel_mid_timer=apbt_only or lapic_and_apbt\n",
 			   arg);
 		return -EINVAL;
 	}
 	return 0;
 }
-__setup("x86_mrst_timer=", setup_x86_mrst_timer);
+__setup("x86_intel_mid_timer=", setup_x86_intel_mid_timer);
 
 /*
  * Parsing GPIO table first, since the DEVS table will need this table
@@ -831,8 +831,8 @@ static struct platform_device msic_device = {
 
 static inline bool mrst_has_msic(void)
 {
-	return mrst_identify_cpu() == MRST_CPU_CHIP_PENWELL ||
-		mrst_identify_cpu() == MRST_CPU_CHIP_CLOVERVIEW;
+	return ((intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_PENWELL) ||
+		(intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_CLOVERVIEW));
 }
 
 static int msic_scu_status_change(struct notifier_block *nb,
@@ -1782,7 +1782,7 @@ static const struct intel_v4l2_subdev_id v4l2_ids_mfld[] = {
 
 static const struct intel_v4l2_subdev_id *get_v4l2_ids(int *n_subdev)
 {
-	if (mrst_identify_cpu() == MRST_CPU_CHIP_CLOVERVIEW) {
+	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_CLOVERVIEW) {
 		if (n_subdev)
 			*n_subdev = ARRAY_SIZE(v4l2_ids_clv);
 		return v4l2_ids_clv;
@@ -2137,7 +2137,7 @@ static int __init sfi_parse_devs(struct sfi_table_header *table)
 	for (i = 0; i < num; i++, pentry++) {
 		int irq = pentry->irq;
 
-		if (mrst_identify_cpu() == MRST_CPU_CHIP_CLOVERVIEW &&
+		if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_CLOVERVIEW &&
 		    (strcmp(pentry->name, "dis71430m") == 0 ||
 		     strcmp(pentry->name, "ov2720") == 0)) {
 			/* Skip legacy camera entries which do not exist on this
@@ -2372,7 +2372,7 @@ static struct platform_device switch_device = {
 };
 #endif
 
-static int __init mrst_platform_init(void)
+static int __init intel_mid_platform_init(void)
 {
 #ifdef CONFIG_SWITCH_MID
 	int err;
@@ -2391,7 +2391,7 @@ static int __init mrst_platform_init(void)
 	sfi_table_parse(SFI_SIG_GPIO, NULL, NULL, sfi_parse_gpio);
 	sfi_table_parse(SFI_SIG_DEVS, NULL, NULL, sfi_parse_devs);
 
-	if (mrst_identify_cpu() == MRST_CPU_CHIP_CLOVERVIEW) {
+	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_CLOVERVIEW) {
 		/* Add ov8830 driver for detection
 		 * -- FIXME: remove as soon as ov8830 is defined in SFI table */
 		sfi_handle_i2c_dev(OV8830_BUS, &ov8830_info);
@@ -2403,7 +2403,7 @@ static int __init mrst_platform_init(void)
 
 	return 0;
 }
-arch_initcall(mrst_platform_init);
+arch_initcall(intel_mid_platform_init);
 
 /*
  * we will search these buttons in SFI GPIO table (by name)
@@ -2551,7 +2551,7 @@ void *cloverview_usb_otg_get_pdata(void)
 {
 	struct cloverview_usb_otg_pdata *pdata;
 
-	if (__mrst_cpu_chip != MRST_CPU_CHIP_CLOVERVIEW)
+	if (__intel_mid_cpu_chip != INTEL_MID_CPU_CHIP_CLOVERVIEW)
 		return NULL;
 
 	pdata = (struct cloverview_usb_otg_pdata *)

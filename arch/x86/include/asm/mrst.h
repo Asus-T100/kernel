@@ -14,7 +14,7 @@
 #include <linux/sfi.h>
 #include <linux/pci.h>
 
-extern int pci_mrst_init(void);
+extern int intel_mid_pci_init(void);
 extern int __init sfi_parse_mrtc(struct sfi_table_header *table);
 extern int sfi_mrtc_num;
 extern struct sfi_rtc_table_entry sfi_mrtc_array[];
@@ -26,31 +26,31 @@ extern struct sfi_rtc_table_entry sfi_mrtc_array[];
  * we treat Medfield/Penwell as a variant of Moorestown. Penwell can be
  * identified via MSRs.
  */
-enum mrst_cpu_type {
-	MRST_CPU_CHIP_LINCROFT = 1,
-	MRST_CPU_CHIP_PENWELL,
-	MRST_CPU_CHIP_CLOVERVIEW,
+enum intel_mid_cpu_type {
+	INTEL_MID_CPU_CHIP_LINCROFT = 1,
+	INTEL_MID_CPU_CHIP_PENWELL,
+	INTEL_MID_CPU_CHIP_CLOVERVIEW,
 };
 
-extern enum mrst_cpu_type __mrst_cpu_chip;
+extern enum intel_mid_cpu_type __intel_mid_cpu_chip;
 
 #ifdef CONFIG_X86_INTEL_MID
 
-static inline enum mrst_cpu_type mrst_identify_cpu(void)
+static inline enum intel_mid_cpu_type intel_mid_identify_cpu(void)
 {
-	return __mrst_cpu_chip;
+	return __intel_mid_cpu_chip;
 }
 
 #else /* !CONFIG_X86_INTEL_MID */
 
-#define mrst_identify_cpu()    (0)
+#define intel_mid_identify_cpu()    (0)
 
 #endif /* !CONFIG_X86_INTEL_MID */
 
-enum mrst_timer_options {
-	MRST_TIMER_DEFAULT,
-	MRST_TIMER_APBT_ONLY,
-	MRST_TIMER_LAPIC_APBT,
+enum intel_mid_timer_options {
+	INTEL_MID_TIMER_DEFAULT,
+	INTEL_MID_TIMER_APBT_ONLY,
+	INTEL_MID_TIMER_LAPIC_APBT,
 };
 
 enum {
@@ -61,7 +61,7 @@ enum {
 };
 extern int mrst_platform_id(void);
 
-extern enum mrst_timer_options mrst_timer_options;
+extern enum intel_mid_timer_options intel_mid_timer_options;
 
 enum {
 	MFLD_BOARD_UNKNOWN = 0,
@@ -121,7 +121,7 @@ extern void *cloverview_usb_otg_get_pdata(void);
 #define MRST_VRTC_MAP_SZ	(1024)
 /*#define MRST_VRTC_PGOFFSET	(0xc00) */
 
-extern void mrst_rtc_init(void);
+extern void intel_mid_rtc_init(void);
 
 extern int mrst_pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t state);
 

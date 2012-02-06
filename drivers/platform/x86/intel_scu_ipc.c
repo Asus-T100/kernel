@@ -232,7 +232,7 @@ static int pwr_reg_rdwr(u16 *addr, u8 *data, u32 count, u32 op, u32 id)
 		return -ENODEV;
 	}
 
-	if (platform == MRST_CPU_CHIP_LINCROFT) {
+	if (platform == INTEL_MID_CPU_CHIP_LINCROFT) {
 		bytes = 0;
 		d = 0;
 		for (i = 0; i < count; i++) {
@@ -274,7 +274,7 @@ static int pwr_reg_rdwr(u16 *addr, u8 *data, u32 count, u32 op, u32 id)
 	if (id == IPC_CMD_PCNTRL_R) { /* Read rbuf */
 		/* Workaround: values are read as 0 without memcpy_fromio */
 		memcpy_fromio(cbuf, ipcdev.ipc_base + 0x90, 16);
-		if (platform == MRST_CPU_CHIP_LINCROFT) {
+		if (platform == INTEL_MID_CPU_CHIP_LINCROFT) {
 			for (nc = 0, offset = 2; nc < count; nc++, offset += 3)
 				data[nc] = ipc_data_readb(offset);
 		} else {
@@ -1086,7 +1086,7 @@ int intel_scu_ipc_medfw_prepare(void __user *arg)
 	int ret;
 	struct fw_ud param;
 
-	if (platform != MRST_CPU_CHIP_PENWELL)
+	if (platform != INTEL_MID_CPU_CHIP_PENWELL)
 		return -EINVAL;
 
 	ret = copy_from_user(&param, arg, sizeof(struct fw_ud));
@@ -1377,7 +1377,7 @@ static int read_mip(u8 *data, int len, int offset, int issigned)
 	u32 cmdid;
 	u32 data_off;
 
-	if (platform != MRST_CPU_CHIP_PENWELL)
+	if (platform != INTEL_MID_CPU_CHIP_PENWELL)
 		return -EINVAL;
 
 	if (offset + len > IPC_MIP_MAX_ADDR)
@@ -1424,7 +1424,7 @@ int intel_scu_ipc_write_umip(u8 *data, int len, int offset)
 	u8 *buf = NULL;
 	int offset_align, len_align = 0;
 
-	if (platform != MRST_CPU_CHIP_PENWELL)
+	if (platform != INTEL_MID_CPU_CHIP_PENWELL)
 		return -EINVAL;
 	if (offset + len > IPC_MIP_MAX_ADDR)
 		return -EINVAL;
@@ -2196,8 +2196,10 @@ int intel_scu_ipc_osc_clk(u8 clk, unsigned int khz)
 	ipc_wbuf[0] = clk;
 	ipc_wbuf[1] = 0;
 	if (khz) {
-		base_freq = mrst_identify_cpu() == MRST_CPU_CHIP_CLOVERVIEW ?
-			    38400 : 19200;
+		if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_CLOVERVIEW)
+			base_freq = 38400;
+		else
+			base_freq = 19200;
 		div = base_freq / khz - 1;
 		if (div >= 3 || (div + 1) * khz != base_freq)
 			return -EINVAL;	/* Allow only exact frequencies */
@@ -2330,7 +2332,7 @@ static struct pci_driver ipc_driver = {
 
 static int __init intel_scu_ipc_init(void)
 {
-	platform = mrst_identify_cpu();
+	platform = intel_mid_identify_cpu();
 	if (platform == 0)
 		return -ENODEV;
 

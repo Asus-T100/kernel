@@ -304,7 +304,7 @@ void mrst_lvds_init(struct drm_device *dev,
 
 	 /* This ifdef can go once the cpu ident stuff is cleaned up in arch */
 #if defined(CONFIG_X86_INTEL_MID)
-	if (mrst_identify_cpu())
+	if (intel_mid_identify_cpu())
         	i2c_adap = i2c_get_adapter(2);
         else	/* Oaktrail uses I2C 1 */
 #endif        

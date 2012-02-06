@@ -131,11 +131,11 @@ static long scu_ipc_ioctl(struct file *fp, unsigned int cmd,
 	if (cmd != INTEL_SCU_IPC_FW_REVISION_GET && !capable(CAP_SYS_RAWIO))
 		return -EPERM;
 
-	platform = mrst_identify_cpu();
+	platform = intel_mid_identify_cpu();
 	switch (cmd) {
 	case INTEL_SCU_IPC_FW_UPDATE:
 	{
-		if (platform == MRST_CPU_CHIP_LINCROFT) {
+		if (platform == INTEL_MID_CPU_CHIP_LINCROFT) {
 			u8 *fwbuf = kmalloc(MAX_FW_SIZE, GFP_KERNEL);
 			if (fwbuf == NULL)
 				return -ENOMEM;
@@ -201,7 +201,7 @@ static long scu_ipc_ioctl(struct file *fp, unsigned int cmd,
 	}
 	case INTEL_SCU_IPC_MEDFIELD_FW_UPDATE:
 	{
-		if (platform == MRST_CPU_CHIP_PENWELL) {
+		if (platform == INTEL_MID_CPU_CHIP_PENWELL) {
 			ret = intel_scu_ipc_medfw_prepare(argp);
 
 			if (ret < 0) {
