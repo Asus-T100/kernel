@@ -1772,6 +1772,8 @@ err_dis:
 static void atomisp_curr_user_grid_info(struct atomisp_device *isp,
 				    struct atomisp_grid_info *info)
 {
+	info->isp_in_width          = isp->params.curr_grid_info.isp_in_width;
+	info->isp_in_height         = isp->params.curr_grid_info.isp_in_height;
 	info->s3a_width             = isp->params.curr_grid_info.s3a_width;
 	info->s3a_height            = isp->params.curr_grid_info.s3a_height;
 	info->s3a_bqs_per_grid_cell =

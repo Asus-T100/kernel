@@ -135,6 +135,9 @@ struct atomisp_3a_config {
 
 /* structure that describes the 3A and DIS grids shared with 3A lib*/
 struct atomisp_grid_info {
+	/* ISP input size that is visible for user */
+	unsigned int isp_in_width;
+	unsigned int isp_in_height;
 	/* 3A statistics grid: */
 	unsigned int s3a_width;
 	unsigned int s3a_height;

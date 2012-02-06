@@ -45,6 +45,8 @@ sh_css_binary_grid_info(struct sh_css_binary *binary,
 	info->dis_hor_coef_num      = binary->dis_hor_coef_num_3a;
 	info->dis_ver_coef_num      = binary->dis_ver_coef_num_3a;
 	/* 3A statistics grid */
+	info->isp_in_width = binary->internal_frame_info.width;
+	info->isp_in_height = binary->internal_frame_info.height;
 	info->s3a_width = binary->s3atbl_width;
 	info->s3a_height = binary->s3atbl_height;
 	info->s3a_bqs_per_grid_cell = (1 << binary->deci_factor_log2);

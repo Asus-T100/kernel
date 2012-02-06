@@ -464,6 +464,9 @@ struct sh_css_sp_overlay {
 
 /* structure that describes the 3A and DIS grids */
 struct sh_css_grid_info {
+	/* ISP input size that is visible for user */
+	unsigned int isp_in_width;
+	unsigned int isp_in_height;
 	/* 3A statistics grid: */
 	unsigned int s3a_width;
 	unsigned int s3a_height;
