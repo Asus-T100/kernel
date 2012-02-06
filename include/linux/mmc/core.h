@@ -132,7 +132,7 @@ struct mmc_request {
 };
 
 /*
- * RPMB frame structure
+ * RPMB frame structure for external user
  */
 struct mmc_rpmb_req {
 	__u16 type;			/* RPMB request type */
@@ -143,6 +143,13 @@ struct mmc_rpmb_req {
 	__u8 *nonce;			/* Ramdom number */
 	__u8 *data;			/* Buffer of the user data */
 	__u8 *mac;			/* Message Authentication Code */
+};
+
+/*
+ * RPMB frame structure for MMC core stack
+ */
+struct mmc_core_rpmb_req {
+	struct mmc_rpmb_req *req;
 	__u8 *frame;
 	bool ready;
 };
@@ -178,10 +185,10 @@ extern int mmc_wait_for_app_cmd(struct mmc_host *, struct mmc_card *,
 	struct mmc_command *, int);
 extern int mmc_switch(struct mmc_card *, u8, u8, u8, unsigned int);
 
-extern int mmc_rpmb_partition_ops(struct mmc_rpmb_req *,
+extern int mmc_rpmb_partition_ops(struct mmc_core_rpmb_req *,
 		struct mmc_card *);
-extern int mmc_rpmb_pre_frame(struct mmc_rpmb_req *, struct mmc_card *);
-extern void mmc_rpmb_post_frame(struct mmc_rpmb_req *);
+extern int mmc_rpmb_pre_frame(struct mmc_core_rpmb_req *, struct mmc_card *);
+extern void mmc_rpmb_post_frame(struct mmc_core_rpmb_req *);
 
 #define MMC_ERASE_ARG		0x00000000
 #define MMC_SECURE_ERASE_ARG	0x80000000

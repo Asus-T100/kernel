@@ -642,12 +642,13 @@ static int mmc_rpmb_send_command(struct mmc_card *card, u8 *buf, __u16 blks,
 	return 0;
 }
 
-void mmc_rpmb_post_frame(struct mmc_rpmb_req *p_req)
+void mmc_rpmb_post_frame(struct mmc_core_rpmb_req *rpmb_req)
 {
 	int i;
-	__u8 *ptr, *buf_frame = p_req->frame;
+	struct mmc_rpmb_req *p_req = rpmb_req->req;
+	__u8 *ptr, *buf_frame = rpmb_req->frame;
 
-	if (!p_req->ready || !buf_frame)
+	if (!rpmb_req->ready || !buf_frame)
 		return;
 	/*
 	 * Regarding to the check rules, here is the post
@@ -713,7 +714,7 @@ void mmc_rpmb_post_frame(struct mmc_rpmb_req *p_req)
 	}
 out:
 	kfree(buf_frame);
-	p_req->frame = NULL;
+	rpmb_req->frame = NULL;
 	return;
 }
 EXPORT_SYMBOL_GPL(mmc_rpmb_post_frame);
@@ -822,20 +823,26 @@ static int mmc_rpmb_request_check(struct mmc_card *card,
  * convert needed bytes
  * return how many frames will be prepared
  */
-int mmc_rpmb_pre_frame(struct mmc_rpmb_req *p_req,
+int mmc_rpmb_pre_frame(struct mmc_core_rpmb_req *rpmb_req,
 		struct mmc_card *card)
 {
 	int i, j, ret;
+	struct mmc_rpmb_req *p_req = rpmb_req->req;
 	__u8 *ptr = NULL, *buf_frame;
-	__u8 *data = p_req->data;
 	__u16 blk_cnt, addr, type;
 	__u32 w_counter;
+
+	if (!p_req) {
+		pr_err("%s: mmc_rpmb_req is NULL. Wrong parameter\n",
+				mmc_hostname(card->host));
+		return -EINVAL;
+	}
 
 	/*
 	 * make sure these two items are clear
 	 */
-	p_req->ready = 0;
-	p_req->frame = NULL;
+	rpmb_req->ready = 0;
+	rpmb_req->frame = NULL;
 
 	ret = mmc_rpmb_request_check(card, p_req);
 	if (ret)
@@ -866,6 +873,7 @@ int mmc_rpmb_pre_frame(struct mmc_rpmb_req *p_req,
 		for (i = 0; i < 16; i++, ptr--)
 			*ptr = p_req->nonce[i];
 	} else if (p_req->type == RPMB_WRITE_DATA) {
+		__u8 *data = p_req->data;
 		/*
 		 * multiple package prepared
 		 * This request nees blk_cnt, addr, write_counter,
@@ -906,20 +914,21 @@ int mmc_rpmb_pre_frame(struct mmc_rpmb_req *p_req,
 		kfree(buf_frame);
 		return -EINVAL;
 	}
-	p_req->ready = 1;
-	p_req->frame = buf_frame;
+	rpmb_req->ready = 1;
+	rpmb_req->frame = buf_frame;
 	return 0;
 }
 EXPORT_SYMBOL_GPL(mmc_rpmb_pre_frame);
 
-int mmc_rpmb_partition_ops(struct mmc_rpmb_req *p_req,
+int mmc_rpmb_partition_ops(struct mmc_core_rpmb_req *rpmb_req,
 		struct mmc_card *card)
 {
 	int err = 0;
+	struct mmc_rpmb_req *p_req = rpmb_req->req;
 	__u16 type, blks;
-	__u8 *buf_frame = p_req->frame;
+	__u8 *buf_frame = rpmb_req->frame;
 
-	if (!p_req->ready || !buf_frame) {
+	if (!p_req || !rpmb_req->ready || !buf_frame) {
 		pr_err("%s: mmc_rpmb_req is not prepared\n",
 				mmc_hostname(card->host));
 		return -EINVAL;

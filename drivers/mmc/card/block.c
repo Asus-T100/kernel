@@ -763,6 +763,7 @@ int mmc_rpmb_req_handle(struct device *emmc, struct mmc_rpmb_req *req)
 	struct mmc_card *card	= NULL;
 	struct mmc_blk_data *md = NULL;
 	unsigned int		part_curr;
+	struct mmc_core_rpmb_req rpmb_req;
 
 	if (!emmc)
 		return -ENODEV;
@@ -804,8 +805,10 @@ int mmc_rpmb_req_handle(struct device *emmc, struct mmc_rpmb_req *req)
 		goto err;
 	}
 
+	memset(&rpmb_req, 0, sizeof(struct mmc_core_rpmb_req));
+	rpmb_req.req = req;
 	/* check request */
-	ret = mmc_rpmb_pre_frame(req, card);
+	ret = mmc_rpmb_pre_frame(&rpmb_req, card);
 	if (ret) {
 		pr_err("%s: prepare frame failed\n", mmc_hostname(card->host));
 		goto err;
@@ -813,7 +816,8 @@ int mmc_rpmb_req_handle(struct device *emmc, struct mmc_rpmb_req *req)
 
 	mmc_claim_host(card->host);
 
-	/* * before start, let's change to RPMB partition first
+	/*
+	 * before start, let's change to RPMB partition first
 	 */
 	part_curr = md->part_type;
 	md->part_type = EXT_CSD_PART_CONFIG_RPMB;
@@ -828,7 +832,7 @@ int mmc_rpmb_req_handle(struct device *emmc, struct mmc_rpmb_req *req)
 		goto out;
 	}
 
-	ret = mmc_rpmb_partition_ops(req, card);
+	ret = mmc_rpmb_partition_ops(&rpmb_req, card);
 	if (ret)
 		pr_err("%s: failed (%d) to handle RPMB request type (%d)!\n",
 				mmc_hostname(card->host), ret, req->type);
@@ -853,7 +857,7 @@ out:
 		}
 	}
 	mmc_release_host(card->host);
-	mmc_rpmb_post_frame(req);
+	mmc_rpmb_post_frame(&rpmb_req);
 err:
 	mmc_blk_put(md);
 
