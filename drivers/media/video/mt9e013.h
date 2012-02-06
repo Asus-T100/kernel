@@ -158,7 +158,7 @@
 #define OTPM_COUNT 0x200
 
 /* Defines for register writes and register array processing */
-#define MT9E013_BYTE_MAX	32
+#define MT9E013_BYTE_MAX	30
 #define MT9E013_SHORT_MAX	16
 #define I2C_RETRY_COUNT		5
 #define MT9E013_TOK_MASK	0xfff0

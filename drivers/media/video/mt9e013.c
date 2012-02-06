@@ -297,8 +297,11 @@ mt9e013_read_reg(struct i2c_client *client, u16 len, u16 reg, u16 *val)
 	msg[1].buf = (u8 *)data;
 
 	err = i2c_transfer(client->adapter, msg, 2);
-	if (err < 0)
+	if (err != 2) {
+		if (err >= 0)
+			err = -EIO;
 		goto error;
+	}
 
 	/* high byte comes first */
 	if (len == MT9E013_8BIT) {
