@@ -643,7 +643,7 @@ EXPORT_SYMBOL(get_target_platform_state);
  * in d0i0 during IFWI update. Reboot is needed to work pmu
  * driver properly again. After calling this function and IFWI
  * update, system is always rebooted as IFWI update function,
- * intel_scu_ipc_medfw_upgrade() is called from mrst_emergency_reboot().
+ * intel_scu_ipc_medfw_upgrade() is called from intel_mid_emergency_reboot().
  */
 int pmu_set_devices_in_d0i0(void)
 {
@@ -727,7 +727,7 @@ static void pmu_write_subsys_config(struct pmu_ss_states *pm_ssc)
 	 */
 	writel(pm_ssc->pmu2_states[0], &mid_pmu_cxt->pmu_reg->pm_ssc[0]);
 
-	if (__mrst_cpu_chip == MRST_CPU_CHIP_PENWELL) {
+	if (__intel_mid_cpu_chip == INTEL_MID_CPU_CHIP_PENWELL) {
 		writel(pm_ssc->pmu2_states[1],
 				&mid_pmu_cxt->pmu_reg->pm_ssc[1]);
 		writel(pm_ssc->pmu2_states[2],
@@ -1309,7 +1309,7 @@ static int get_pci_to_pmu_index(struct pci_dev *pdev)
 
 	if ((base_class == PCI_BASE_CLASS_DISPLAY) && !sub_class)
 		index = 1;
-	else if ((__mrst_cpu_chip == MRST_CPU_CHIP_PENWELL) &&
+	else if ((__intel_mid_cpu_chip == INTEL_MID_CPU_CHIP_PENWELL) &&
 			(base_class == PCI_BASE_CLASS_MULTIMEDIA) &&
 			(sub_class == ISP_SUB_CLASS))
 				index = MFLD_ISP_POS;
@@ -1377,7 +1377,7 @@ static void mid_pci_find_info(struct pci_dev *pdev)
 		set_mid_pci_cap(index, PM_SUPPORT);
 	} else if ((base_class == PCI_BASE_CLASS_MULTIMEDIA) &&
 		(sub_class == ISP_SUB_CLASS)) {
-		if (__mrst_cpu_chip == MRST_CPU_CHIP_PENWELL) {
+		if (__intel_mid_cpu_chip == INTEL_MID_CPU_CHIP_PENWELL) {
 			set_mid_pci_log_id(index, (u32)index);
 			set_mid_pci_cap(index, PM_SUPPORT);
 		} else if (ss && cap) {
@@ -1423,7 +1423,7 @@ static void pmu_read_sss(struct pmu_ss_states *pm_ssc)
 {
 	pm_ssc->pmu2_states[0] = readl(&mid_pmu_cxt->pmu_reg->pm_sss[0]);
 
-	if (__mrst_cpu_chip == MRST_CPU_CHIP_PENWELL) {
+	if (__intel_mid_cpu_chip == INTEL_MID_CPU_CHIP_PENWELL) {
 		pm_ssc->pmu2_states[1] =
 				readl(&mid_pmu_cxt->pmu_reg->pm_sss[1]);
 		pm_ssc->pmu2_states[2] =
@@ -2535,7 +2535,7 @@ static int __devinit mid_pmu_probe(struct pci_dev *dev,
 		goto out_err1;
 	}
 
-	if (__mrst_cpu_chip == MRST_CPU_CHIP_PENWELL) {
+	if (__intel_mid_cpu_chip == INTEL_MID_CPU_CHIP_PENWELL) {
 		mid_pmu_cxt->pmu1_max_devs = PMU1_MAX_PENWELL_DEVS;
 		mid_pmu_cxt->pmu2_max_devs = PMU2_MAX_PENWELL_DEVS;
 		mid_pmu_cxt->ss_per_reg = 16;
@@ -2573,7 +2573,7 @@ static int __devinit mid_pmu_probe(struct pci_dev *dev,
 
 	mid_pmu_cxt->pmu_reg = pmu;
 
-	if (__mrst_cpu_chip == MRST_CPU_CHIP_PENWELL) {
+	if (__intel_mid_cpu_chip == INTEL_MID_CPU_CHIP_PENWELL) {
 		/* Map the memory of offload_reg */
 		mid_pmu_cxt->base_addr.offload_reg =
 					ioremap_nocache(0xffd01ffc, 4);
@@ -2629,7 +2629,7 @@ static void __devexit mid_pmu_remove(struct pci_dev *dev)
 	free_irq(dev->irq, &pmu_sc_irq);
 
 	/* Freeing up memory allocated for PMU1 & PMU2 */
-	if (__mrst_cpu_chip == MRST_CPU_CHIP_PENWELL) {
+	if (__intel_mid_cpu_chip == INTEL_MID_CPU_CHIP_PENWELL) {
 		iounmap(mid_pmu_cxt->base_addr.offload_reg);
 		mid_pmu_cxt->base_addr.offload_reg = NULL;
 	}
