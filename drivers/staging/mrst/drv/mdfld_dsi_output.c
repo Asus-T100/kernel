@@ -848,6 +848,8 @@ mdfld_dsi_get_configuration_mode(struct mdfld_dsi_config * dsi_config, int pipe)
 		(struct drm_psb_private *) dev->dev_private;
 	struct mrst_timing_info *ti = &dev_priv->gct_data.DTD;
 	bool use_gct = false;
+	if (IS_CTP(dev))
+		use_gct = true;
 
 	PSB_DEBUG_ENTRY("\n");
 

@@ -490,6 +490,8 @@ struct drm_display_mode *pr2_vid_get_config_mode(struct drm_device *dev)
 		(struct drm_psb_private *) dev->dev_private;
 	struct mrst_timing_info *ti = &dev_priv->gct_data.DTD;
 	bool use_gct = false; /*Disable GCT for now*/
+	if (IS_CTP(dev))
+		use_gct = true;
 
 	PSB_DEBUG_ENTRY("\n");
 

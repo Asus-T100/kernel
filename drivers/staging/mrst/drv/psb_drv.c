@@ -1049,18 +1049,40 @@ bool mrst_get_vbt_data(struct drm_psb_private *dev_priv)
 
 	if (IS_MDFLD(dev_priv->dev)) {
 		if (PanelID == GCT_DETECT) {
-			if (dev_priv->gct_data.bpi == 2) {
-				PSB_DEBUG_ENTRY("[GFX] PYR Panel Detected\n");
-				dev_priv->panel_id = PYR_CMD;
-				PanelID = PYR_CMD;
-			} else if (dev_priv->gct_data.bpi == 0) {
-				PSB_DEBUG_ENTRY("[GFX] TMD Panel Detected.\n");
-				dev_priv->panel_id = TMD_VID;
-				PanelID = TMD_VID;
+			if (IS_CTP(dev_priv->dev)) {
+				if (dev_priv->gct_data.bpi == 2) {
+					PSB_DEBUG_ENTRY(
+						"[GFX] TMD_6X10 panel Detected\n");
+					dev_priv->panel_id = TMD_6X10_VID;
+					PanelID = TMD_6X10_VID;
+				} else if (dev_priv->gct_data.bpi == 1) {
+					PSB_DEBUG_ENTRY(
+						"[GFX] H8C7 panel Detected.\n");
+					dev_priv->panel_id = H8C7_VID;
+					PanelID = H8C7_VID;
+				} else {
+					PSB_DEBUG_ENTRY(
+						"[GFX] Default panel H8C7.\n");
+					dev_priv->panel_id = H8C7_VID;
+					PanelID = H8C7_VID;
+				}
 			} else {
-				PSB_DEBUG_ENTRY("[GFX] Default Panel (TPO)\n");
-				dev_priv->panel_id = TPO_CMD;
-				PanelID = TPO_CMD;
+				if (dev_priv->gct_data.bpi == 2) {
+					PSB_DEBUG_ENTRY(
+						"[GFX] PYR panel Detected\n");
+					dev_priv->panel_id = PYR_CMD;
+					PanelID = PYR_CMD;
+				} else if (dev_priv->gct_data.bpi == 0) {
+					PSB_DEBUG_ENTRY(
+						"[GFX] TMD panel Detected.\n");
+					dev_priv->panel_id = TMD_VID;
+					PanelID = TMD_VID;
+				} else {
+					PSB_DEBUG_ENTRY(
+						"[GFX] Default panel TPO.\n");
+					dev_priv->panel_id = TPO_CMD;
+					PanelID = TPO_CMD;
+				}
 			}
 		} else {
 			PSB_DEBUG_ENTRY("[GFX] Panel Parameter Passed in through cmd line\n");
@@ -1073,17 +1095,13 @@ bool mrst_get_vbt_data(struct drm_psb_private *dev_priv)
 	PSB_DEBUG_ENTRY("[DISPLAY] %s: TMD_VID Panel\n", __func__);  /*DIV5-MM-DISPLAY-NC-LCM_INIT-01*/
 #endif
 
-#ifdef CONFIG_SUPPORT_TMD_MIPI_600X1024_DISPLAY
-		dev_priv->panel_id = TMD_6X10_VID;
-		PanelID = TMD_6X10_VID;
-		printk(KERN_ALERT"%s: TMD_6X10_VID Panel\n", __func__);
-#endif
-
-#ifdef CONFIG_SUPPORT_MIPI_H8C7_DISPLAY
-		dev_priv->panel_id = H8C7_VID;
-		PanelID = H8C7_VID;
-		printk(KERN_ALERT"%s: H8C7_VID Panel\n", __func__);
-#endif
+	if (IS_MDFLD_OLD(dev_priv->dev)) {
+		#ifdef CONFIG_SUPPORT_TMD_MIPI_600X1024_DISPLAY
+			dev_priv->panel_id = TMD_6X10_VID;
+			PanelID = TMD_6X10_VID;
+			printk(KERN_ALERT"%s: TMD_6X10_VID Panel\n", __func__);
+		#endif
+	}
 
 	return true;
 }
