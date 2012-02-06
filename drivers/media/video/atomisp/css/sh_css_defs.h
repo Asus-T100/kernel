@@ -92,7 +92,7 @@
 #if ISP_VEC_NELEMS == 16
 #define SH_CSS_MAX_LEFT_CROPPING          0
 #else
-#define SH_CSS_MAX_LEFT_CROPPING          8
+#define SH_CSS_MAX_LEFT_CROPPING          12
 #endif
 
 #define	SH_CSS_SP_MAX_WIDTH               1280
@@ -104,7 +104,7 @@
 
 /* The minimum dvs envelope is 8x8 to make sure the invalid rows/columns
    that result from filter initialization are skipped. */
-#define SH_CSS_MIN_DVS_ENVELOPE           8
+#define SH_CSS_MIN_DVS_ENVELOPE           12
 
 /* The FPGA system (vec_nelems == 16) only supports upto 5MP */
 #if ISP_VEC_NELEMS == 16

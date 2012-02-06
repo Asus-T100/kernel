@@ -83,11 +83,11 @@
 #define HIVE_MEM_vf_pp_args  scalar_processor_dmem
 #define HIVE_ADDR_vf_pp_args 0x2AE4
 #define HIVE_SIZE_vf_pp_args 76
-#define HIVE_ADDR_vf_pp_dynamic_entry 0x1A42
+#define HIVE_ADDR_vf_pp_dynamic_entry 0x1A06
 #define HIVE_MEM_current_thread  scalar_processor_dmem
 #define HIVE_ADDR_current_thread 0x29C8
 #define HIVE_SIZE_current_thread 4
-#define HIVE_ADDR_sp_raw_copy_entry 0x4CB
+#define HIVE_ADDR_sp_raw_copy_entry 0x4CC
 #define HIVE_MEM_sp_obarea_length_bq  scalar_processor_dmem
 #define HIVE_ADDR_sp_obarea_length_bq 0xFD8
 #define HIVE_SIZE_sp_obarea_length_bq 4
@@ -126,7 +126,7 @@
 #define HIVE_MEM_histogram_args  scalar_processor_dmem
 #define HIVE_ADDR_histogram_args 0x29C4
 #define HIVE_SIZE_histogram_args 4
-#define HIVE_ADDR_capture_pp_dynamic_entry 0x2A59
+#define HIVE_ADDR_capture_pp_dynamic_entry 0x2A18
 #define HIVE_MEM_isp_sdis_horiproj_num  scalar_processor_dmem
 #define HIVE_ADDR_isp_sdis_horiproj_num 0x1580
 #define HIVE_SIZE_isp_sdis_horiproj_num 4
