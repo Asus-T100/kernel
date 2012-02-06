@@ -543,6 +543,42 @@ static const  char *sn95031_jack_debounce_text[] = {"61us", "122us", "244us",
 static const struct soc_enum sn95031_jack_debounce_enum =
 	SOC_ENUM_SINGLE(SN95031_BTNCTRL1, 4, 12, sn95031_jack_debounce_text);
 
+static const  char *sn95031_dac_mode_text[] = {"Low Power", "High Performance"};
+static const struct soc_enum sn95031_dac_mode_enum =
+	SOC_ENUM_SINGLE_EXT(2, sn95031_dac_mode_text);
+static unsigned int sn95031_dac_mode;
+static int sn95031_set_dac_mode(struct snd_kcontrol *kcontrol,
+					struct snd_ctl_elem_value *ucontrol)
+{
+	u8 mode = ucontrol->value.integer.value[0];
+	struct snd_soc_codec *codec =  snd_kcontrol_chip(kcontrol);
+
+	if (ucontrol->value.integer.value[0] == sn95031_dac_mode)
+		return 0;
+	if (mode) {
+		pr_debug("setting hp mode\n");
+		/* aprt from the lp bit we also need to disbale the SSR2
+		 * PWRMODE bit.
+		 */
+		snd_soc_update_bits(codec, SN95031_SSR2, 0x10, 0);
+		snd_soc_update_bits(codec, SN95031_DACCONFIG, 0x10, 0x10);
+	} else {
+		pr_debug("setting lp mode\n");
+		snd_soc_update_bits(codec, SN95031_SSR2, 0x10, 0x10);
+		snd_soc_update_bits(codec, SN95031_DACCONFIG, 0x10, 0);
+	}
+	snd_soc_dapm_sync(&codec->dapm);
+	sn95031_dac_mode = ucontrol->value.integer.value[0];
+	return 0;
+
+}
+static int sn95031_get_dac_mode(struct snd_kcontrol *kcontrol,
+					struct snd_ctl_elem_value *ucontrol)
+{
+	ucontrol->value.integer.value[0] = sn95031_dac_mode;
+	return 0;
+}
+
 static const struct snd_kcontrol_new sn95031_snd_controls[] = {
 	SOC_ENUM("Mic1Mode Capture Route", sn95031_micmode1_enum),
 	SOC_ENUM("Mic2Mode Capture Route", sn95031_micmode2_enum),
@@ -585,6 +621,8 @@ static const struct snd_kcontrol_new sn95031_snd_controls[] = {
 	SOC_ENUM("Vibra2 Start", sn95031_vibra2_start_enum),
 	SOC_ENUM("Vibra2 Brake", sn95031_vibra2_brake_enum),
 	SOC_ENUM("Jack Debounce Time", sn95031_jack_debounce_enum),
+	SOC_ENUM_EXT("DAC Mode", sn95031_dac_mode_enum,
+			sn95031_get_dac_mode, sn95031_set_dac_mode),
 };
 
 /* DAPM widgets */
@@ -1471,6 +1509,7 @@ static int sn95031_codec_probe(struct snd_soc_codec *codec)
 	/* dac mode and lineout workaround */
 	snd_soc_write(codec, SN95031_SSR2, 0x10);
 	snd_soc_write(codec, SN95031_SSR3, 0x40);
+	sn95031_dac_mode = 0;
 
 	/* turn off all rails, will be enabled when required */
 	snd_soc_write(codec, SN95031_VAUD, 0x24);
