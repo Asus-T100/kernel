@@ -48,6 +48,9 @@
 #include <linux/i2c-gpio.h>
 #include <linux/rmi_i2c.h>
 #include <linux/i2c/tc35876x.h>
+#include <linux/interrupt.h>
+#include <linux/delay.h>
+#include <linux/i2c/atmel_mxt_ts.h>
 
 #include <linux/atomisp_platform.h>
 #include <media/v4l2-subdev.h>
@@ -1097,6 +1100,67 @@ void *wl12xx_platform_data_init(void *info)
 }
 #endif
 
+#define TOUCH_RESET_GPIO 129
+#define TOUCH_IRQ_GPIO   62
+
+/* Atmel mxt toucscreen platform setup*/
+static int atmel_mxt_init_platform_hw(void)
+{
+	int rc;
+	int reset_gpio, int_gpio;
+
+	reset_gpio = TOUCH_RESET_GPIO;
+	int_gpio = TOUCH_IRQ_GPIO;
+
+	/* init interrupt gpio */
+	rc = gpio_request(int_gpio, "mxt_ts_intr");
+	if (rc < 0)
+		return rc;
+
+	rc = gpio_direction_input(int_gpio);
+	if (rc < 0)
+		goto err_int;
+
+	/* init reset gpio */
+	rc = gpio_request(reset_gpio, "mxt_ts_rst");
+	if (rc < 0)
+		goto err_int;
+
+	rc = gpio_direction_output(reset_gpio, 1);
+	if (rc < 0)
+		goto err_reset;
+
+	/* reset the chip */
+	gpio_set_value(reset_gpio, 1);
+	msleep(20);
+	gpio_set_value(reset_gpio, 0);
+	msleep(20);
+	gpio_set_value(reset_gpio, 1);
+	msleep(100);
+
+	return 0;
+
+err_reset:
+	gpio_free(reset_gpio);
+err_int:
+	pr_err("mxt touchscreen: configuring reset or int gpio failed\n");
+	gpio_free(int_gpio);
+
+	return rc;
+}
+
+void *mxt_platform_data_init(void *info)
+{
+	struct i2c_board_info *i2c_info = info;
+	static struct mxt_platform_data mxt_pdata = {
+		.irqflags	= IRQF_TRIGGER_FALLING,
+		.init_platform_hw = atmel_mxt_init_platform_hw,
+	};
+
+	i2c_info->irq = TOUCH_IRQ_GPIO + MRST_IRQ_OFFSET;
+	return &mxt_pdata;
+}
+
 #define AUDIENCE_WAKEUP_GPIO               "audience-wakeup"
 #define AUDIENCE_RESET_GPIO                 "audience-reset"
 static int audience_request_resources(struct i2c_client *client)
@@ -1577,6 +1641,7 @@ struct devs_id __initconst device_ids[] = {
 					&intel_ignore_i2c_device_register},
 	{"mt9m114", SFI_DEV_TYPE_I2C, 0, &mt9m114_platform_data_init,
 					&intel_ignore_i2c_device_register},
+	{"mxt1386", SFI_DEV_TYPE_I2C, 0, &mxt_platform_data_init, NULL},
 	{"audience_es305", SFI_DEV_TYPE_I2C, 0, &audience_platform_data_init,
 						NULL},
 	{"accel", SFI_DEV_TYPE_I2C, 0, &lis3dh_pdata_init, NULL},
@@ -1978,3 +2043,28 @@ static int __init blackbay_i2c_init(void)
 	return 0;
 }
 device_initcall(blackbay_i2c_init);
+
+/*
+ * mxt1386 initialization routines for Redridge board
+ * (Should be removed once SFI tables are updated)
+ */
+static struct mxt_platform_data mxt1386_pdata = {
+	.irqflags	= IRQF_TRIGGER_FALLING,
+	.init_platform_hw = atmel_mxt_init_platform_hw,
+
+};
+static struct i2c_board_info dv10_i2c_bus0_devs[] = {
+	{
+		.type       = "mxt1386",
+		.addr       = 0x4c,
+		.irq	    = TOUCH_IRQ_GPIO + MRST_IRQ_OFFSET,
+		.platform_data = &mxt1386_pdata,
+	},
+};
+static int __init redridge_i2c_init(void)
+{
+       i2c_register_board_info(0, dv10_i2c_bus0_devs,
+                               ARRAY_SIZE(dv10_i2c_bus0_devs));
+       return 0;
+}
+device_initcall(redridge_i2c_init);
