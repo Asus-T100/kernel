@@ -92,7 +92,7 @@ void lnw_gpio_set_alt(int gpio, int alt)
 	/* use this trick to get memio */
 	lnw = irq_get_chip_data(gpio_to_irq(gpio));
 	if (!lnw) {
-		dev_err(lnw->chip.dev, "langwell_gpio: can not find pin %d\n", gpio);
+		pr_err("langwell_gpio: can not find pin %d\n", gpio);
 		return;
 	}
 	if (gpio < lnw->chip.base || gpio >= lnw->chip.base + lnw->chip.ngpio) {
