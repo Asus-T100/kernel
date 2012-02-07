@@ -47,7 +47,6 @@
 #include <linux/ms5607.h>
 #include <linux/i2c-gpio.h>
 #include <linux/rmi_i2c.h>
-#include <linux/atmel_mxt_ts.h>
 #include <linux/i2c/tc35876x.h>
 
 #include <linux/atomisp_platform.h>
@@ -1098,20 +1097,6 @@ void *wl12xx_platform_data_init(void *info)
 }
 #endif
 
-void *mxt_platform_data_init(void *info)
-{
-	static struct mxt_platform_data mxt_pdata;
-
-	mxt_pdata.numtouch       = 10;
-	mxt_pdata.max_x          = 1023;
-	mxt_pdata.max_y          = 975;
-	mxt_pdata.orientation    = MXT_MSGB_T9_ORIENT_HORZ_FLIP;
-	mxt_pdata.reset          = 129;
-	mxt_pdata.irq            = 62;
-
-	return &mxt_pdata;
-}
-
 #define AUDIENCE_WAKEUP_GPIO               "audience-wakeup"
 #define AUDIENCE_RESET_GPIO                 "audience-reset"
 static int audience_request_resources(struct i2c_client *client)
@@ -1592,7 +1577,6 @@ struct devs_id __initconst device_ids[] = {
 					&intel_ignore_i2c_device_register},
 	{"mt9m114", SFI_DEV_TYPE_I2C, 0, &mt9m114_platform_data_init,
 					&intel_ignore_i2c_device_register},
-	{"mxt1386", SFI_DEV_TYPE_I2C, 0, &mxt_platform_data_init, NULL},
 	{"audience_es305", SFI_DEV_TYPE_I2C, 0, &audience_platform_data_init,
 						NULL},
 	{"accel", SFI_DEV_TYPE_I2C, 0, &lis3dh_pdata_init, NULL},
@@ -1994,29 +1978,3 @@ static int __init blackbay_i2c_init(void)
 	return 0;
 }
 device_initcall(blackbay_i2c_init);
-/*
- * mxt1386 initialization routines for Redridge board
- * (Should be removed once SFI tables are updated)
- */
-static struct mxt_platform_data mxt1386_pdata = {
-	.numtouch	= 10,
-	.max_x          = 1023,
-	.max_y          = 975,
-	.orientation    = MXT_MSGB_T9_ORIENT_HORZ_FLIP,
-	.reset          = 129,
-	.irq            = 62,
-};
-static struct i2c_board_info dv10_i2c_bus0_devs[] = {
-	{
-		.type       = "mxt1386",
-		.addr       = 0x4C,
-		.platform_data = &mxt1386_pdata,
-	},
-};
-static int __init redridge_i2c_init(void)
-{
-	i2c_register_board_info(0, dv10_i2c_bus0_devs,
-				ARRAY_SIZE(dv10_i2c_bus0_devs));
-	return 0;
-}
-device_initcall(redridge_i2c_init);
