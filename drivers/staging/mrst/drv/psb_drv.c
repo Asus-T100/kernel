@@ -1111,6 +1111,7 @@ bool mrst_get_vbt_data(struct drm_psb_private *dev_priv)
 	return true;
 }
 
+#ifdef CONFIG_MDFD_HDMI
 void hdmi_do_hotplug_wq(struct work_struct *work)
 {
 	u8 data = 0;
@@ -1208,6 +1209,7 @@ void hdmi_do_audio_wq(struct work_struct *work)
 	}
 #endif
 }
+#endif
 
 static int psb_do_init(struct drm_device *dev)
 {
@@ -1798,9 +1800,11 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 		gl3_enable();
 #endif
 
+#ifdef CONFIG_MDFD_HDMI
 	atomic_set(&dev_priv->hotplug_wq_done, 0);
 	INIT_WORK(&dev_priv->hdmi_hotplug_wq, hdmi_do_hotplug_wq);
 	INIT_WORK(&dev_priv->hdmi_audio_wq, hdmi_do_audio_wq);
+#endif
 
 	/*Intel drm driver load is done, continue doing pvr load*/
 	DRM_DEBUG("Pvr driver load\n");
