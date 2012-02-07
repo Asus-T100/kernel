@@ -228,40 +228,9 @@ static irqreturn_t mfd_sd_cd(int irq, void *dev_id)
 
 #define MFLD_SD_CD_PIN 69
 
-#define MFLD_GPIO_CONTROL0_BASE 0xff12c000
-#define MFLD_GPIO_CONTROL0_AFR_OFFSET 0x54
-static int mfd_set_sd_gpio_afr(int gpio, int function)
-{
-	void __iomem *gpio_base = NULL;
-	void __iomem *gafr;
-	u32 value;
-	if (gpio != MFLD_SD_CD_PIN || function > 3)
-		return -EINVAL;
-
-	gpio_base = ioremap_nocache(MFLD_GPIO_CONTROL0_BASE, 0x74);
-
-	if (!gpio_base) {
-		pr_err("MFLD GPIO controller reg base ioremap failed\n");
-		return -ENOMEM;
-	} else
-		gafr = gpio_base + MFLD_GPIO_CONTROL0_AFR_OFFSET +
-			gpio / 16 * 4;
-
-	/*
-	 * set the alternate function for GPIO
-	 */
-	value = readl(gafr) & ~(3 << (gpio % 16 * 2));
-	writel(value | (function << (gpio % 16 * 2)), gafr);
-	iounmap(gpio_base);
-	return 0;
-}
-
 static int mfd_sd_probe_slot(struct sdhci_pci_slot *slot)
 {
 	int err, irq, gpio = MFLD_SD_CD_PIN;
-
-	if (slot->chip->pdev->device != PCI_DEVICE_ID_INTEL_MFD_SD)
-		return 0;
 
 	slot->cd_gpio = -EINVAL;
 	slot->cd_irq = -EINVAL;
@@ -277,23 +246,6 @@ static int mfd_sd_probe_slot(struct sdhci_pci_slot *slot)
 	irq = gpio_to_irq(gpio);
 	if (irq < 0)
 		goto out_free;
-
-	/*
-	 * In MFLD platform, sd detect GPIO can work as alternate
-	 * function 1 or normal function to generate card insert/remove
-	 * interrupt for sd host controller.
-	 * But when host is in D0i3 mode, only
-	 * normal function can be used to detect card insert/remove event.
-	 * So driver need to change the GPIO to work as normal function.
-	 * FIXME:
-	 * If IFWI can config GPIO_ANO_69 to be normal function, then
-	 * this HACK can be removed
-	 */
-	err = mfd_set_sd_gpio_afr(gpio, 0);
-	if (err) {
-		pr_err("set SD card detect GPIO to be normal function failed\n");
-		goto out;
-	}
 
 	err = request_irq(irq, mfd_sd_cd, IRQF_TRIGGER_RISING |
 			  IRQF_TRIGGER_FALLING, "sd_cd", slot);
