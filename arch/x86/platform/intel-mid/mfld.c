@@ -87,15 +87,6 @@ void intel_mid_power_off(void)
 		mfld_power_off();
 }
 
-void intel_mid_reboot(void)
-{
-	if (intel_scu_ipc_medfw_upgrade()) {
-		pr_debug("intel_scu_ipc: IFWI upgrade failed...\n");
-		BUG();
-	}
-	intel_scu_ipc_simple_command(IPCMSG_COLD_BOOT, 0);
-}
-
 unsigned long __init intel_mid_calibrate_tsc(void)
 {
 	unsigned long flags, fast_calibrate;

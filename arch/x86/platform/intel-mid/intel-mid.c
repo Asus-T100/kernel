@@ -254,6 +254,24 @@ int intel_mid_i8042_detect(void)
 	return 0;
 }
 
+static int force_cold_boot;
+module_param(force_cold_boot, bool, 0644);
+MODULE_PARM_DESC(force_cold_boot,
+		 "Set to Y to force a COLD BOOT instead of a COLD RESET "
+		 "on the next reboot system call.");
+
+static void intel_mid_reboot(void)
+{
+	if (intel_scu_ipc_medfw_upgrade()) {
+		pr_debug("intel_scu_ipc: IFWI upgrade failed...\n");
+		BUG();
+	}
+	if (force_cold_boot)
+		intel_scu_ipc_simple_command(IPCMSG_COLD_BOOT, 0);
+	else
+		intel_scu_ipc_simple_command(IPCMSG_COLD_RESET, 0);
+}
+
 /*
  * Moorestown specific x86_init function overrides and early setup
  * calls.
