@@ -1,5 +1,5 @@
 /*
- * board-redridge.c: Intel Medfield based board (Redridge)
+ * board-blackbay.c: Intel Medfield based board (Blackbay)
  *
  * (C) Copyright 2008 Intel Corporation
  * Author:
@@ -42,13 +42,13 @@
 #include <linux/wl12xx.h>
 #include <linux/regulator/machine.h>
 #include <linux/regulator/fixed.h>
+#include <linux/atmel_mxt224.h>
 #include <linux/a1026.h>
 #include <linux/input/lis3dh.h>
 #include <linux/ms5607.h>
 #include <linux/i2c-gpio.h>
 #include <linux/rmi_i2c.h>
-#include <linux/atmel_mxt_ts.h>
-#include <linux/i2c/tc35876x.h>
+
 
 #include <linux/atomisp_platform.h>
 #include <media/v4l2-subdev.h>
@@ -1098,16 +1098,16 @@ void *wl12xx_platform_data_init(void *info)
 }
 #endif
 
-void *mxt_platform_data_init(void *info)
+void *atmel_mxt224_platform_data_init(void *info)
 {
 	static struct mxt_platform_data mxt_pdata;
 
-	mxt_pdata.numtouch       = 10;
+	mxt_pdata.numtouch       = 2;
 	mxt_pdata.max_x          = 1023;
 	mxt_pdata.max_y          = 975;
 	mxt_pdata.orientation    = MXT_MSGB_T9_ORIENT_HORZ_FLIP;
-	mxt_pdata.reset          = 129;
-	mxt_pdata.irq            = 62;
+	mxt_pdata.reset          = get_gpio_by_name("ts_rst");
+	mxt_pdata.irq            = get_gpio_by_name("ts_int");
 
 	return &mxt_pdata;
 }
@@ -1537,15 +1537,6 @@ void *s3202_platform_data_init(void *info)
 
 	return &s3202_platform_data;
 }
-/*tc35876x DSI_LVDS bridge chip and panel platform data*/
-static void *tc35876x_platform_data(void *data)
-{
-	static struct tc35876x_platform_data pdata;
-	pdata.gpio_bridge_reset = get_gpio_by_name("LCMB_RXEN");
-	pdata.gpio_panel_bl_en = get_gpio_by_name("6S6P_BL_EN");
-	pdata.gpio_panel_vadd = get_gpio_by_name("EN_VREG_LCD_V3P3");
-	return &pdata;
-}
 
 struct devs_id __initconst device_ids[] = {
 	{"pmic_gpio", SFI_DEV_TYPE_SPI, 1, &pmic_gpio_platform_data, NULL},
@@ -1592,7 +1583,7 @@ struct devs_id __initconst device_ids[] = {
 					&intel_ignore_i2c_device_register},
 	{"mt9m114", SFI_DEV_TYPE_I2C, 0, &mt9m114_platform_data_init,
 					&intel_ignore_i2c_device_register},
-	{"mxt1386", SFI_DEV_TYPE_I2C, 0, &mxt_platform_data_init, NULL},
+	{"mxt224", SFI_DEV_TYPE_I2C, 0, &atmel_mxt224_platform_data_init, NULL},
 	{"audience_es305", SFI_DEV_TYPE_I2C, 0, &audience_platform_data_init,
 						NULL},
 	{"accel", SFI_DEV_TYPE_I2C, 0, &lis3dh_pdata_init, NULL},
@@ -1601,7 +1592,6 @@ struct devs_id __initconst device_ids[] = {
 	{"als", SFI_DEV_TYPE_I2C, 0, &als_pdata_init, NULL},
 	{"ov8830", SFI_DEV_TYPE_I2C, 0, &ov8830_platform_data_init},
 	{"synaptics_3202", SFI_DEV_TYPE_I2C, 0, &s3202_platform_data_init},
-	{"i2c_disp_brig", SFI_DEV_TYPE_I2C, 0, &tc35876x_platform_data},
 
 	{},
 };
