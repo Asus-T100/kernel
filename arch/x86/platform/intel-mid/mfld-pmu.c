@@ -918,6 +918,22 @@ static int pmu_get_wake_source(void)
 		wake1 &= ~(1<<i);
 	}
 
+	if ((mid_pmu_cxt->pmu_current_state == SYS_STATE_S3)
+			&& mid_pmu_cxt->suspend_started)
+		switch (source - mid_pmu_cxt->pmu1_max_devs) {
+		case PMU_USB_OTG_LSS_06:
+			pr_info("wakeup from USB.\n");
+			break;
+		case PMU_GPIO0_LSS_39:
+			pr_info("wakeup from GPIO.\n");
+			break;
+		case PMU_HSI_LSS_03:
+			pr_info("wakeup from HSI.\n");
+			break;
+		default:
+			pr_info("wakeup from OTHER.\n");
+		}
+
 	return source;
 }
 
