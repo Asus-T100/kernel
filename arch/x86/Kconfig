@@ -435,12 +435,36 @@ config X86_MDFLD
 	  nor standard legacy replacement devices/features. e.g. Medfield does
 	  not contain i8259, i8254, HPET, legacy BIOS, most of the io ports.
 
+choice
+	prompt "Intel MID board type"
+	depends on X86_INTEL_MID
+	---help---
+	  This option is used for selecting the board configuration of
+	  Intel mobile devices.
+	  You should select the board name that matches your hardware
+          configuration.
+#
+# Board-Blackbay
+#
+
+config BOARD_MFLD_BLACKBAY
+	bool "Medfield board type"
+	depends on X86_MDFLD
+	---help---
+	  Medfield based board configuration.Say yes here
+	  if your device falls under blackbay board
+	  type.Devices like PR2/PR3 falls under this
+	  category.
+
 config BOARD_REDRIDGE
-   bool "Medfield redridge board type"
-   depends on X86_MDFLD
-   default n
-   ---help---
-     This option adds support for the Medfield RedRidge board type.
+	bool "Medfield redridge board type"
+	depends on X86_MDFLD
+	default n
+	---help---
+	  Medfield based board configuration.Say yes here if your
+	  device falls under Redridge board type.
+
+endchoice
 
 endif
 

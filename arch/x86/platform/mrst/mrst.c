@@ -9,29 +9,10 @@
  * as published by the Free Software Foundation; version 2
  * of the License.
  */
-#define DEBUG
-
-#define pr_fmt(fmt) "mrst: " fmt
 
 #include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/interrupt.h>
-#include <linux/scatterlist.h>
-#include <linux/sfi.h>
-#include <linux/intel_pmic_gpio.h>
-#include <linux/lnw_gpio.h>
-#include <linux/spi/spi.h>
-#include <linux/cyttsp.h>
-#include <linux/i2c.h>
-#include <linux/i2c/pca953x.h>
-#include <linux/power_supply.h>
-#include <linux/power/max17042_battery.h>
-#include <linux/power/intel_mdf_battery.h>
-#include <linux/nfc/pn544.h>
-#include <linux/skbuff.h>
-#include <linux/ti_wilink_st.h>
-#include <linux/gpio.h>
-#include <linux/gpio_keys.h>
 #include <linux/input.h>
 #include <linux/platform_device.h>
 #include <linux/mfd/intel_msic.h>
@@ -40,20 +21,6 @@
 #include <linux/notifier.h>
 #include <linux/intel_mid_pm.h>
 #include <linux/usb/penwell_otg.h>
-#include <linux/hsi/hsi.h>
-#include <linux/hsi/intel_mid_hsi.h>
-#include <linux/wl12xx.h>
-#include <linux/regulator/machine.h>
-#include <linux/regulator/fixed.h>
-#include <linux/atmel_mxt224.h>
-#include <linux/rmi_i2c.h>
-
-#include <linux/atomisp_platform.h>
-#include <media/v4l2-subdev.h>
-
-#include <linux/mmc/core.h>
-#include <linux/mmc/card.h>
-#include <linux/blkdev.h>
 
 #include <asm/setup.h>
 #include <asm/mpspec_def.h>
@@ -68,258 +35,28 @@
 #include <asm/apb_timer.h>
 #include <asm/intel_mid_gpadc.h>
 #include <asm/reboot.h>
-#include <linux/i2c/tc35876x.h>
-/*
- * the clockevent devices on Moorestown/Medfield can be APBT or LAPIC clock,
- * cmdline option x86_intel_mid_timer can be used to override the configuration
- * to prefer one or the other.
- * at runtime, there are basically three timer configurations:
- * 1. per cpu apbt clock only
- * 2. per cpu always-on lapic clocks only, this is Penwell/Medfield only
- * 3. per cpu lapic clock (C3STOP) and one apbt clock, with broadcast.
- *
- * by default (without cmdline option), platform code first detects cpu type
- * to see if we are on lincroft or penwell, then set up both lapic or apbt
- * clocks accordingly.
- * i.e. by default, medfield uses configuration #2, moorestown uses #1.
- * config #3 is supported but not recommended on medfield.
- *
- * rating and feature summary:
- * lapic (with C3STOP) --------- 100
- * apbt (always-on) ------------ 110
- * lapic (always-on,ARAT) ------ 150
- */
-
-__cpuinitdata enum intel_mid_timer_options intel_mid_timer_options;
-
-static u32 sfi_mtimer_usage[SFI_MTMR_MAX_NUM];
-static struct sfi_timer_table_entry sfi_mtimer_array[SFI_MTMR_MAX_NUM];
-enum intel_mid_cpu_type __intel_mid_cpu_chip;
-EXPORT_SYMBOL_GPL(__intel_mid_cpu_chip);
-
-int sfi_mtimer_num;
-
-static bool is_valid_batt;
-
-struct sfi_rtc_table_entry sfi_mrtc_array[SFI_MRTC_MAX];
-EXPORT_SYMBOL_GPL(sfi_mrtc_array);
-int sfi_mrtc_num;
-
-/* when ITP is needed we must avoid touching the configurations of these pins.*/
-/* see gpio part of this file */
-static int itp_connected;
-static int __init parse_itp(char *arg)
-{
-	itp_connected = 1;
-	return 0;
-}
-early_param("itp", parse_itp);
-
-void (*saved_shutdown)(void);
-EXPORT_SYMBOL(saved_shutdown);
-#define MSIC_POWER_SRC_STAT 0x192
-  #define MSIC_POWER_BATT (1 << 0)
-  #define MSIC_POWER_USB  (1 << 1)
-
-static bool check_charger_conn(void)
-{
-	int ret;
-	struct otg_bc_cap cap;
-	u8 data;
-
-	ret = intel_scu_ipc_ioread8(MSIC_POWER_SRC_STAT, &data);
-	if (ret)
-		return false;
-
-	if (!((data & MSIC_POWER_BATT) && (data & MSIC_POWER_USB)))
-		return false;
-
-	ret = penwell_otg_query_charging_cap(&cap);
-	if (ret)
-		return false;
-
-	if (cap.chrg_type == CHRG_UNKNOWN)
-		return false;
-
-	return true;
-}
 
 void intel_mid_power_off(void)
 {
-	if (__intel_mid_cpu_chip == INTEL_MID_CPU_CHIP_LINCROFT)
-		intel_scu_ipc_simple_command(IPCMSG_COLD_RESET, 1);
-	else {
-#ifdef CONFIG_INTEL_MID_OSIP
-		bool charger_conn = check_charger_conn();
-
-		if (!get_force_shutdown_occured() && charger_conn) {
-			/*
-			 * Do a cold reset to let bootloader bring up the
-			 * platform into acting dead mode to continue
-			 * battery charging.
-			 * If some special condition occured and wants to
-			 * make a force shutdown, even if the charger is
-			 * connected, dont boot(up to COS).
-			 */
-			intel_scu_ipc_simple_command(IPCMSG_COLD_RESET, 0);
-		} else
-#endif
-		mfld_power_off();
-	}
-
+	intel_scu_ipc_simple_command(IPCMSG_COLD_RESET, 1);
 }
 
-static void intel_mid_reboot(void)
+void intel_mid_reboot(void)
 {
 	if (intel_scu_ipc_medfw_upgrade()) {
 		pr_debug("intel_scu_ipc: IFWI upgrade failed...\n");
 		BUG();
 	}
-	if (__intel_mid_cpu_chip == INTEL_MID_CPU_CHIP_LINCROFT)
-		intel_scu_ipc_simple_command(IPCMSG_COLD_RESET, 0);
-	else
-		intel_scu_ipc_simple_command(IPCMSG_COLD_BOOT, 0);
+	intel_scu_ipc_simple_command(IPCMSG_COLD_RESET, 0);
 }
 
-/* parse all the mtimer info to a static mtimer array */
-static int __init sfi_parse_mtmr(struct sfi_table_header *table)
-{
-	struct sfi_table_simple *sb;
-	struct sfi_timer_table_entry *pentry;
-	struct mpc_intsrc mp_irq;
-	int totallen;
-
-	sb = (struct sfi_table_simple *)table;
-	if (!sfi_mtimer_num) {
-		sfi_mtimer_num = SFI_GET_NUM_ENTRIES(sb,
-					struct sfi_timer_table_entry);
-		pentry = (struct sfi_timer_table_entry *) sb->pentry;
-		totallen = sfi_mtimer_num * sizeof(*pentry);
-		memcpy(sfi_mtimer_array, pentry, totallen);
-	}
-
-	pr_debug("SFI MTIMER info (num = %d):\n", sfi_mtimer_num);
-	pentry = sfi_mtimer_array;
-	for (totallen = 0; totallen < sfi_mtimer_num; totallen++, pentry++) {
-		pr_debug("timer[%d]: paddr = 0x%08x, freq = %dHz,"
-			" irq = %d\n", totallen, (u32)pentry->phys_addr,
-			pentry->freq_hz, pentry->irq);
-			if (!pentry->irq)
-				continue;
-			mp_irq.type = MP_INTSRC;
-			mp_irq.irqtype = mp_INT;
-/* triggering mode edge bit 2-3, active high polarity bit 0-1 */
-			mp_irq.irqflag = 5;
-			mp_irq.srcbus = MP_BUS_ISA;
-			mp_irq.srcbusirq = pentry->irq;	/* IRQ */
-			mp_irq.dstapic = MP_APIC_ALL;
-			mp_irq.dstirq = pentry->irq;
-			mp_save_irq(&mp_irq);
-	}
-
-	return 0;
-}
-
-struct sfi_timer_table_entry *sfi_get_mtmr(int hint)
-{
-	int i;
-	if (hint < sfi_mtimer_num) {
-		if (!sfi_mtimer_usage[hint]) {
-			pr_debug("hint taken for timer %d irq %d\n",\
-				hint, sfi_mtimer_array[hint].irq);
-			sfi_mtimer_usage[hint] = 1;
-			return &sfi_mtimer_array[hint];
-		}
-	}
-	/* take the first timer available */
-	for (i = 0; i < sfi_mtimer_num;) {
-		if (!sfi_mtimer_usage[i]) {
-			sfi_mtimer_usage[i] = 1;
-			return &sfi_mtimer_array[i];
-		}
-		i++;
-	}
-	return NULL;
-}
-
-void sfi_free_mtmr(struct sfi_timer_table_entry *mtmr)
-{
-	int i;
-	for (i = 0; i < sfi_mtimer_num;) {
-		if (mtmr->irq == sfi_mtimer_array[i].irq) {
-			sfi_mtimer_usage[i] = 0;
-			return;
-		}
-		i++;
-	}
-}
-
-/* parse all the mrtc info to a global mrtc array */
-int __init sfi_parse_mrtc(struct sfi_table_header *table)
-{
-	struct sfi_table_simple *sb;
-	struct sfi_rtc_table_entry *pentry;
-	struct mpc_intsrc mp_irq;
-
-	int totallen;
-
-	sb = (struct sfi_table_simple *)table;
-	if (!sfi_mrtc_num) {
-		sfi_mrtc_num = SFI_GET_NUM_ENTRIES(sb,
-						struct sfi_rtc_table_entry);
-		pentry = (struct sfi_rtc_table_entry *)sb->pentry;
-		totallen = sfi_mrtc_num * sizeof(*pentry);
-		memcpy(sfi_mrtc_array, pentry, totallen);
-	}
-
-	pr_debug("SFI RTC info (num = %d):\n", sfi_mrtc_num);
-	pentry = sfi_mrtc_array;
-	for (totallen = 0; totallen < sfi_mrtc_num; totallen++, pentry++) {
-		pr_debug("RTC[%d]: paddr = 0x%08x, irq = %d\n",
-			totallen, (u32)pentry->phys_addr, pentry->irq);
-		mp_irq.type = MP_INTSRC;
-		mp_irq.irqtype = mp_INT;
-		mp_irq.irqflag = 0xf;	/* level trigger and active low */
-		mp_irq.srcbus = MP_BUS_ISA;
-		mp_irq.srcbusirq = pentry->irq;	/* IRQ */
-		mp_irq.dstapic = MP_APIC_ALL;
-		mp_irq.dstirq = pentry->irq;
-		mp_save_irq(&mp_irq);
-	}
-	return 0;
-}
-
-static unsigned long __init intel_mid_calibrate_tsc(void)
+unsigned long __init intel_mid_calibrate_tsc(void)
 {
 	unsigned long flags, fast_calibrate;
-	if ((__intel_mid_cpu_chip == INTEL_MID_CPU_CHIP_PENWELL) ||
-	    (__intel_mid_cpu_chip == INTEL_MID_CPU_CHIP_CLOVERVIEW)) {
-		u32 lo, hi, ratio, fsb;
 
-		rdmsr(MSR_IA32_PERF_STATUS, lo, hi);
-		pr_debug("IA32 perf status is 0x%x, 0x%0x\n", lo, hi);
-		ratio = (hi >> 8) & 0x1f;
-		pr_debug("ratio is %d\n", ratio);
-		if (!ratio) {
-			pr_err("read a zero ratio, should be incorrect!\n");
-			pr_err("force tsc ratio to 16 ...\n");
-			ratio = 16;
-		}
-		rdmsr(MSR_FSB_FREQ, lo, hi);
-		if ((lo & 0x7) == 0x7)
-			fsb = PENWELL_FSB_FREQ_83SKU;
-		else
-			fsb = PENWELL_FSB_FREQ_100SKU;
-		fast_calibrate = ratio * fsb;
-		pr_debug("read penwell tsc %lu khz\n", fast_calibrate);
-		lapic_timer_frequency = fsb * 1000 / HZ;
-		/* mark tsc clocksource as reliable */
-		set_cpu_cap(&boot_cpu_data, X86_FEATURE_TSC_RELIABLE);
-	} else {
-		local_irq_save(flags);
-		fast_calibrate = apbt_quick_calibrate();
-		local_irq_restore(flags);
-	}
+	local_irq_save(flags);
+	fast_calibrate = apbt_quick_calibrate();
+	local_irq_restore(flags);
 
 	if (fast_calibrate)
 		return fast_calibrate;
@@ -411,7 +148,7 @@ void __init x86_intel_mid_early_setup(void)
 }
 
 /*
- * if user does not want to use per CPU apb timer, just give it a lower rating
+ * if user does not wanarch/x86/platform/mrst/mrst.ct to use per CPU apb timer, just give it a lower rating
  * than local apic timer and skip the late per cpu timer init.
  */
 static inline int __init setup_x86_intel_mid_timer(char *arg)

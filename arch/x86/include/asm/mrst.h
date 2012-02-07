@@ -13,11 +13,56 @@
 
 #include <linux/sfi.h>
 #include <linux/pci.h>
+#include <linux/platform_device.h>
 
+extern u32 board_id;
 extern int intel_mid_pci_init(void);
+extern int get_gpio_by_name(const char *name);
+extern void *get_oem0_table(void);
+extern void intel_delayed_device_register(void *dev,
+			void (*delayed_callback)(void *dev_desc));
+extern int sdhci_pci_request_regulators(void);
+extern void install_irq_resource(struct platform_device *pdev, int irq);
+extern void intel_scu_device_register(struct platform_device *pdev);
+extern struct devs_id *get_device_id(u8 type, char *name);
 extern int __init sfi_parse_mrtc(struct sfi_table_header *table);
 extern int sfi_mrtc_num;
 extern struct sfi_rtc_table_entry sfi_mrtc_array[];
+
+/*
+ * Here defines the array of devices platform data that IAFW would export
+ * through SFI "DEVS" table, we use name and type to match the device and
+ * its platform data.
+ */
+struct devs_id {
+	char name[SFI_NAME_LEN + 1];
+	u8 type;
+	u8 delay;
+	void *(*get_platform_data)(void *info);
+	void (*device_handler)(struct sfi_device_table_entry *pentry,
+				struct devs_id *dev);
+	/* Custom handler for devices */
+	u8 trash_itp;/* true if this driver uses pin muxed with XDB connector */
+};
+
+#define SD_NAME_SIZE 16
+/**
+ * struct sd_board_info - template for device creation
+ * @name: Initializes sdio_device.name; identifies the driver.
+ * @bus_num: board-specific identifier for a given SDIO controller.
+ * @board_ref_clock: Initializes sd_device.board_ref_clock;
+ * @platform_data: Initializes sd_device.platform_data; the particular
+ *      data stored there is driver-specific.
+ *
+ */
+struct sd_board_info {
+	char            name[SD_NAME_SIZE];
+	int             bus_num;
+	unsigned short  addr;
+	u32             board_ref_clock;
+	void            *platform_data;
+};
+
 
 /*
  * Medfield is the follow-up of Moorestown, it combines two chip solution into
