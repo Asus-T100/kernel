@@ -1,5 +1,5 @@
 /*
- * pmu.h
+ * mfld-pmu.h
  * Copyright (c) 2010, Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
@@ -16,8 +16,8 @@
  * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
  *
  */
-#ifndef _MID_PMU_H_
-#define _MID_PMU_H_
+#ifndef _MFLD_PMU_H_
+#define _MFLD_PMU_H_
 
 #define PCI_ID_ANY	(~0)
 

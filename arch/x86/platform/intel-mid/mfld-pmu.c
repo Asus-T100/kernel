@@ -1,5 +1,5 @@
 /*
- * pmu.c - This driver provides interface to configure the 2 pmu's
+ * mfld-pmu.c - This driver provides interface to configure the 2 pmu's
  * Copyright (c) 2010, Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
@@ -37,7 +37,7 @@
 #include <asm/apic.h>
 
 #include <linux/intel_mid_pm.h>
-#include "pmu.h"
+#include "mfld-pmu.h"
 
 static bool pmu_initialized;
 
@@ -2812,7 +2812,7 @@ static void mid_end(void)
 	mid_pmu_cxt->suspend_started = false;
 }
 
-static struct platform_suspend_ops mid_suspend_ops = {
+static const struct platform_suspend_ops mid_suspend_ops = {
 	.begin = mid_begin,
 	.valid = mid_valid,
 	.prepare = mid_prepare,

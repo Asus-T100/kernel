@@ -1,5 +1,5 @@
 /*
- * mrst/pmu.h - private definitions for MRST Power Management Unit mrst/pmu.c
+ * mrst-pmu.h - private definitions for MRST Power Management Unit mrst-pmu.c
  *
  * Copyright (c) 2011, Intel Corporation.
  *

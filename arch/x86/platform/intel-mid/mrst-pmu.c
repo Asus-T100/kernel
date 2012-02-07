@@ -1,5 +1,5 @@
 /*
- * mrst/pmu.c - driver for MRST Power Management Unit
+ * mrst-pmu.c - driver for MRST Power Management Unit
  *
  * Copyright (c) 2011, Intel Corporation.
  *
@@ -26,7 +26,7 @@
 #include <linux/seq_file.h>
 #include <linux/sfi.h>
 #include <asm/intel_scu_ipc.h>
-#include "pmu.h"
+#include "mrst-pmu.h"
 
 #define IPCMSG_FW_REVISION	0xF4
 
@@ -510,7 +510,7 @@ static int debug_mrst_pmu_show(struct seq_file *s, void *unused)
 			pdev->vendor, pdev->device,
 			dev_driver_string(&pdev->dev));
 
-		if (unlikely (!mrst_dev)) {
+		if (unlikely(!mrst_dev)) {
 			seq_printf(s, " UNKNOWN\n");
 			continue;
 		}
