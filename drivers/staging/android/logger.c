@@ -263,9 +263,10 @@ static ssize_t logger_read(struct file *file, char __user *buf,
 
 start:
 	while (1) {
+		mutex_lock(&log->mutex);
+
 		prepare_to_wait(&log->wq, &wait, TASK_INTERRUPTIBLE);
 
-		mutex_lock(&log->mutex);
 		ret = (log->w_off == reader->r_off);
 		mutex_unlock(&log->mutex);
 		if (!ret)
@@ -727,13 +728,13 @@ static struct logger_log VAR = { \
 	.size = SIZE, \
 };
 
-DEFINE_LOGGER_DEVICE(log_main, LOGGER_LOG_MAIN, 64*1024)
+DEFINE_LOGGER_DEVICE(log_main, LOGGER_LOG_MAIN, 256*1024)
 DEFINE_LOGGER_DEVICE(log_events, LOGGER_LOG_EVENTS, 256*1024)
-DEFINE_LOGGER_DEVICE(log_radio, LOGGER_LOG_RADIO, 64*1024)
+DEFINE_LOGGER_DEVICE(log_radio, LOGGER_LOG_RADIO, 256*1024)
 DEFINE_LOGGER_DEVICE(log_kernel, LOGGER_LOG_KERNEL, 256*1024)
-DEFINE_LOGGER_DEVICE(log_system, LOGGER_LOG_SYSTEM, 64*1024)
+DEFINE_LOGGER_DEVICE(log_system, LOGGER_LOG_SYSTEM, 256*1024)
 
-DEFINE_LOGGER_DEVICE(log_kernel_bottom, LOGGER_LOG_KERNEL_BOT, 192*1024)
+DEFINE_LOGGER_DEVICE(log_kernel_bottom, LOGGER_LOG_KERNEL_BOT, 256*1024)
 
 static struct logger_log *log_list[] = {	\
 	&log_main,	\
@@ -774,7 +775,11 @@ static void flush_to_bottom_log(struct logger_log *log,
 	if (unlikely(!header.len))
 		return;
 
-	spin_lock_irqsave(&log_lock, flags);
+	if (oops_in_progress) {
+		if (!spin_trylock_irqsave(&log_lock, flags))
+			return;
+	} else
+		spin_lock_irqsave(&log_lock, flags);
 
 	fix_up_readers(log, sizeof(struct logger_entry) + header.len);
 
@@ -930,7 +935,8 @@ logger_console_write(struct console *console, const char *s, unsigned int count)
 
 	if (unlikely(!keventd_up()))
 		return;
-	schedule_work(&write_console_wq);
+	if (!oops_in_progress)
+		schedule_work(&write_console_wq);
 }
 
 /* logger console uses CON_IGNORELEVEL that provides a way to ignore
