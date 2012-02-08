@@ -171,7 +171,9 @@ void mdfld_dsi_dbi_set_power(struct drm_encoder * encoder, bool on)
 		else
 			dev_priv->dbi_panel_on = true;
 
-		if (dev_priv->platform_rev_id != MDFLD_PNW_A0)
+		if (get_panel_type(dev, pipe) == GI_SONY_CMD)
+			psb_enable_vblank(dev, pipe);
+		else if (dev_priv->platform_rev_id != MDFLD_PNW_A0)
 			mdfld_enable_te(dev, pipe);
 
 	} else {
@@ -186,7 +188,9 @@ void mdfld_dsi_dbi_set_power(struct drm_encoder * encoder, bool on)
 		else
 			dev_priv->dbi_panel_on = false;
 
-		if (dev_priv->platform_rev_id != MDFLD_PNW_A0)
+		if (get_panel_type(dev, pipe) == GI_SONY_CMD)
+			psb_disable_vblank(dev, pipe);
+		else if (dev_priv->platform_rev_id != MDFLD_PNW_A0)
 			mdfld_disable_te(dev, pipe);
 
 		ret = mdfld_dsi_dbi_update_power(dbi_output, DRM_MODE_DPMS_OFF);

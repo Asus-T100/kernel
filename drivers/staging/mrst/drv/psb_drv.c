@@ -1129,6 +1129,17 @@ bool mrst_get_vbt_data(struct drm_psb_private *dev_priv)
 		printk(KERN_ALERT"%s: 3AUO_SC1_CMD Panel\n", __func__);
 #endif
 
+#ifdef CONFIG_SUPPORT_GI_MIPI_SONY_DISPLAY
+		dev_priv->panel_id = GI_SONY_VID;
+		PanelID = GI_SONY_VID;
+		PSB_DEBUG_ENTRY("GI_SONY_VID.\n");
+#endif
+#ifdef CONFIG_SUPPORT_GI_MIPI_SONY_COMMAND_MODE_DISPLAY
+		dev_priv->panel_id = GI_SONY_CMD;
+		PanelID = GI_SONY_CMD;
+		PSB_DEBUG_ENTRY("GI_SONY_CMD.\n");
+#endif
+
 	return true;
 }
 
@@ -3927,6 +3938,7 @@ static void __exit psb_exit(void)
 
 #if defined(CONFIG_SUPPORT_TMD_MIPI_600X1024_DISPLAY) \
 	|| defined(CONFIG_SUPPORT_MIPI_H8C7_DISPLAY) \
+	|| defined(CONFIG_SUPPORT_GI_MIPI_SONY_DISPLAY) \
 	|| defined(CONFIG_SUPPORT_AUO_MIPI_SC1_DISPLAY) \
 	|| defined(CONFIG_SUPPORT_AUO_MIPI_SC1_COMMAND_MODE_DISPLAY)
 module_init(psb_init);

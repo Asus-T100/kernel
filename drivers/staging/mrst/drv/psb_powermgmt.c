@@ -839,6 +839,7 @@ static int mdfld_save_display_registers (struct drm_device *dev, int pipe)
 	if (pipe != 1 && ((get_panel_type(dev, pipe) == TMD_VID) ||
 		(get_panel_type(dev, pipe) == TMD_6X10_VID) ||
 		(get_panel_type(dev, pipe) == H8C7_VID) ||
+		(get_panel_type(dev, pipe) == GI_SONY_VID) ||
 		/* SC1 setting */
 		(get_panel_type(dev, pipe) == AUO_SC1_VID)))
 		return 0;
@@ -1087,6 +1088,7 @@ static int mdfld_restore_display_registers(struct drm_device *dev, int pipe)
 	if (pipe != 1 && ((get_panel_type(dev, pipe) == TMD_VID) ||
 		(get_panel_type(dev, pipe) == TMD_6X10_VID) ||
 		(get_panel_type(dev, pipe) == H8C7_VID) ||
+		(get_panel_type(dev, pipe) == GI_SONY_VID) ||
 		/* SC1 setting */
 		(get_panel_type(dev, pipe) == AUO_SC1_VID)))
 		return 0;
@@ -1319,7 +1321,9 @@ static int mdfld_restore_display_registers(struct drm_device *dev, int pipe)
 	if (pipe == 1)
 		return 0;
 
-	if (IS_MDFLD(dev) && (dev_priv->platform_rev_id != MDFLD_PNW_A0) &&
+	if (get_panel_type(dev, pipe) == GI_SONY_CMD)
+		psb_enable_vblank(dev, pipe);
+	else if (IS_MDFLD(dev) && (dev_priv->platform_rev_id != MDFLD_PNW_A0) &&
 			!is_panel_vid_or_cmd(dev))
 		mdfld_enable_te(dev, pipe);
 
@@ -1735,6 +1739,8 @@ static void gfx_early_suspend(struct early_suspend *h)
 		if ((dev_priv->panel_id == TMD_VID) ||
 			(dev_priv->panel_id == H8C7_VID) ||
 			(dev_priv->panel_id == TMD_6X10_VID) ||
+			(dev_priv->panel_id == GI_SONY_VID) ||
+			(dev_priv->panel_id == GI_SONY_CMD) ||
 			(dev_priv->panel_id == AUO_SC1_VID) ||
 			/* SC1 setting */
 			(dev_priv->panel_id == AUO_SC1_CMD)) {
@@ -1809,6 +1815,8 @@ static void gfx_late_resume(struct early_suspend *h)
 			if ((dev_priv->panel_id == TMD_VID) ||
 				(dev_priv->panel_id == H8C7_VID) ||
 				(dev_priv->panel_id == TMD_6X10_VID) ||
+				(dev_priv->panel_id == GI_SONY_VID) ||
+				(dev_priv->panel_id == GI_SONY_CMD) ||
 				(dev_priv->panel_id == AUO_SC1_VID) ||
 				/* SC1 setting */
 				(dev_priv->panel_id == AUO_SC1_CMD)) {

@@ -73,6 +73,8 @@ enum panel_type {
 	H8C7_VID,
 	AUO_SC1_VID,
 	AUO_SC1_CMD,
+	GI_SONY_VID,
+	GI_SONY_CMD,
 	PYR_CMD,
 	PYR_VID,
 	TPO,

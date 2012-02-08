@@ -182,7 +182,8 @@ int mdfld_dsi_dbi_update_power(struct mdfld_dsi_dbi_output * dbi_output, int mod
 		mdfld_dsi_encoder_get_pkg_sender(&dbi_output->base);
 	u8 param = 0;
 	u32 err = 0;
-	
+
+	PSB_DEBUG_ENTRY("\n");
 	/* FIXME-RAJESH: TBR */
 #if 0
 	if(!gbdispstatus && mode != DRM_MODE_DPMS_ON){
@@ -299,7 +300,8 @@ int mdfld_dsi_dbi_update_power(struct mdfld_dsi_dbi_output * dbi_output, int mod
 		}
 
 		/*set 2a*/
-		err = mdfld_dsi_dbi_update_area(dbi_output, 0, 0, 539, 959);
+		err = mdfld_dsi_dbi_update_area(dbi_output, 0, 0, 319, 479);
+
 		if (err) {
 			DRM_ERROR("update area failed\n");
 			goto power_err;
@@ -438,8 +440,9 @@ void mdfld_dsi_dbi_enter_dsr (struct mdfld_dsi_dbi_output * dbi_output, int pipe
 		return;
 	}
 		
-	/*disable te interrupts. */
-	if (dev_priv->platform_rev_id != MDFLD_PNW_A0)
+	if (get_panel_type(dev, pipe) == GI_SONY_CMD)
+		psb_disable_vblank(dev, pipe);
+	else if (dev_priv->platform_rev_id != MDFLD_PNW_A0)
 		mdfld_disable_te(dev, pipe);
 
 	/*disable plane*/
@@ -568,8 +571,10 @@ static void mdfld_dbi_output_exit_dsr (struct mdfld_dsi_dbi_output * dbi_output,
 	if (!check_hw_on_only)
 		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 
+	if (get_panel_type(dev, pipe) == GI_SONY_CMD)
+		psb_enable_vblank(dev, pipe);
 	/*enable TE interrupt on this pipe*/
-	if (dev_priv->platform_rev_id != MDFLD_PNW_A0)
+	else if (dev_priv->platform_rev_id != MDFLD_PNW_A0)
 		mdfld_enable_te(dev, pipe);
 
 	/*clean IN_DSR flag*/
@@ -611,7 +616,9 @@ void mdfld_dsi_dbi_exit_dsr (struct drm_device *dev, u32 update_src, void *p_sur
 	dev_priv->dsr_fb_update |= update_src;
 	
 	/*start timer if A0 board*/
-	if (dev_priv->platform_rev_id == MDFLD_PNW_A0)
+	if (get_panel_type(dev, 0) == GI_SONY_CMD)
+		;  /* mdfld_dbi_dsr_timer_start(dsr_info); */
+	else if (dev_priv->platform_rev_id == MDFLD_PNW_A0)
 		mdfld_dbi_dsr_timer_start(dsr_info);
 }
 
@@ -652,6 +659,19 @@ void mdfld_dbi_update_panel (struct drm_device *dev, int pipe)
 		damage_mask = dev_priv->dsr_fb_update & MDFLD_DSR_DAMAGE_MASK_2;
 	else
 		return;
+
+	if (get_panel_type(dev, pipe) == GI_SONY_CMD) {
+		dbi_output->dsr_fb_update_done = false;
+
+		if (dbi_output->p_funcs->update_fb)
+			dbi_output->p_funcs->update_fb(dbi_output, pipe);
+
+		if (dev_priv->b_dsr_enable && dbi_output->dsr_fb_update_done)
+			dev_priv->dsr_fb_update &= ~damage_mask;
+
+		dbi_output->dsr_idle_count = 0;
+		return;
+	}
 
 	/*if FB is damaged and panel is on update on-panel FB*/
 	if (damage_mask && dbi_output->dbi_panel_on) {
@@ -701,6 +721,11 @@ static void mdfld_dsi_dbi_dsr_timer_func(unsigned long data)
 	unsigned long flags;
 
 	mdfld_dbi_update_panel (dev, 0);
+
+	drm_handle_vblank(dev, 0);
+
+	if (dev_priv->psb_vsync_handler != NULL)
+		(*dev_priv->psb_vsync_handler)(dev, 0);
 
 	if (dsr_info->dsr_idle_count > 1)
 		return;
@@ -766,7 +791,9 @@ int mdfld_dbi_dsr_init(struct drm_device * dev)
 		dev_priv->dbi_dsr_info = dsr_info;
 	}
 
-	if (dev_priv->platform_rev_id == MDFLD_PNW_A0)
+	if (get_panel_type(dev, 0) == GI_SONY_CMD)
+		mdfld_dsi_dbi_dsr_timer_init(dev);
+	else if (dev_priv->platform_rev_id == MDFLD_PNW_A0)
 		/*init dsr refresh timer*/
 		mdfld_dsi_dbi_dsr_timer_init(dev);
 	
@@ -911,9 +938,12 @@ struct mdfld_dsi_encoder *mdfld_dsi_dbi_init(struct drm_device *dev,
 		}
 	}
 
+/* FIXME JLIU7 */
+#if 0
 	/*panel drvIC init*/
 	if (p_funcs->drv_ic_init)
 		p_funcs->drv_ic_init(dsi_config, pipe);
+#endif
 
 	/*detect panel connection stauts*/
 	if (p_funcs->detect) {

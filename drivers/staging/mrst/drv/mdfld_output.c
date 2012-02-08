@@ -41,6 +41,8 @@
 #include "displays/h8c7_vid.h"
 #include "displays/auo_sc1_vid.h"
 #include "displays/auo_sc1_cmd.h"
+#include "displays/gi_sony_vid.h"
+#include "displays/gi_sony_cmd.h"
 #include "displays/hdmi.h"
 #include "psb_drv.h"
 
@@ -60,6 +62,7 @@ int is_panel_vid_or_cmd(struct drm_device *dev)
 	int ret = 0;
 	switch(dev_priv->panel_id) {
 	case AUO_SC1_VID:
+	case GI_SONY_VID:
 	case TMD_VID:
 	case TMD_6X10_VID:
 	case H8C7_VID:
@@ -71,6 +74,7 @@ int is_panel_vid_or_cmd(struct drm_device *dev)
 	case TPO_CMD:
 	case PYR_CMD:
 	case AUO_SC1_CMD:
+	case GI_SONY_CMD:
 	default:
 		ret =  MDFLD_DSI_ENCODER_DBI;
 		break;
@@ -135,6 +139,20 @@ void init_panel(struct drm_device* dev, int mipi_pipe, enum panel_type p_type)
 		kfree(p_cmd_funcs);
 		p_cmd_funcs = NULL;
 		auo_sc1_vid_init(dev, p_vid_funcs);
+		ret = mdfld_dsi_output_init(dev, mipi_pipe, NULL, NULL,
+				p_vid_funcs);
+		break;
+	case GI_SONY_CMD:
+		kfree(p_vid_funcs);
+		p_vid_funcs = NULL;
+		gi_sony_cmd_init(dev, p_cmd_funcs);
+		ret = mdfld_dsi_output_init(dev, mipi_pipe, NULL, p_cmd_funcs,
+				NULL);
+		break;
+	case GI_SONY_VID:
+		kfree(p_cmd_funcs);
+		p_cmd_funcs = NULL;
+		gi_sony_vid_init(dev, p_vid_funcs);
 		ret = mdfld_dsi_output_init(dev, mipi_pipe, NULL, NULL,
 				p_vid_funcs);
 		break;

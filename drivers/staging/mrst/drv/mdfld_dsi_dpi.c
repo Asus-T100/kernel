@@ -1549,12 +1549,15 @@ static int __dpi_panel_power_on(struct mdfld_dsi_config *dsi_config,
 	/*set low power output hold*/
 	REG_WRITE(regs->mipi_reg, (ctx->mipi | BIT16));
 
+/* FIXME JLIU7 */
+#if 1
 	/**
 	 * Different panel may have different ways to have
 	 * drvIC initialized. Support it!
 	 */
 	if (p_funcs && p_funcs->drv_ic_init)
 		p_funcs->drv_ic_init(dsi_config, 0);
+#endif
 
 	/**
 	 * Different panel may have different ways to have

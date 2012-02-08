@@ -664,6 +664,7 @@ void mdfld_disable_crtc (struct drm_device *dev, int pipe)
 	if (pipe != 1 && ((get_panel_type(dev, pipe) == TMD_VID) ||
 		(get_panel_type(dev, pipe) == TMD_6X10_VID) ||
 		(get_panel_type(dev, pipe) == H8C7_VID) ||
+		(get_panel_type(dev, pipe) == GI_SONY_VID) ||
 		/* SC1 setting */
 		(get_panel_type(dev, pipe) == AUO_SC1_VID)))
 		return;
@@ -778,6 +779,7 @@ static void mdfld_crtc_dpms(struct drm_crtc *crtc, int mode)
 	if (pipe != 1 && ((get_panel_type(dev, pipe) == TMD_VID) ||
 		(get_panel_type(dev, pipe) == TMD_6X10_VID) ||
 		(get_panel_type(dev, pipe) == H8C7_VID) ||
+		(get_panel_type(dev, pipe) == GI_SONY_VID) ||
 		/* SC1 setting */
 		(get_panel_type(dev, pipe) == AUO_SC1_VID))) {
 			return;
@@ -1521,6 +1523,7 @@ static int mdfld_crtc_mode_set(struct drm_crtc *crtc,
 	struct drm_encoder *encoder;
 	struct drm_connector * connector;
 	int timeout = 0;
+	struct drm_encoder *mipi_encoder;
 
 	PSB_DEBUG_ENTRY("pipe = 0x%x\n", pipe);
 
@@ -1534,6 +1537,7 @@ static int mdfld_crtc_mode_set(struct drm_crtc *crtc,
 	if (pipe != 1 && ((get_panel_type(dev, pipe) == TMD_VID) ||
 		(get_panel_type(dev, pipe) == TMD_6X10_VID) ||
 		(get_panel_type(dev, pipe) == H8C7_VID) ||
+		(get_panel_type(dev, pipe) == GI_SONY_VID) ||
 		/* SC1 setting */
 		(get_panel_type(dev, pipe) == AUO_SC1_VID))) {
 		if (pipe == 0)
@@ -1652,6 +1656,7 @@ static int mdfld_crtc_mode_set(struct drm_crtc *crtc,
 			break;
 		case INTEL_OUTPUT_MIPI:
 			is_mipi = true;
+			mipi_encoder = encoder;
 			break;
 		case INTEL_OUTPUT_MIPI2:
 			is_mipi2 = true;
@@ -1869,6 +1874,9 @@ static int mdfld_crtc_mode_set(struct drm_crtc *crtc,
 
 		dpll = 0x00800000;
 		fp = 0x000000c1;
+
+		if (get_panel_type(dev, pipe) == GI_SONY_CMD)
+			fp = 0x00000044;
 	}
 
 	if (get_panel_type(dev, pipe) == AUO_SC1_CMD) {
@@ -1894,10 +1902,14 @@ static int mdfld_crtc_mode_set(struct drm_crtc *crtc,
 		timeout ++;
 	}
 
-	if (is_mipi)
-		goto mrst_crtc_mode_set_exit;
+	if (is_mipi) {
+		if (get_panel_type(dev, pipe) == GI_SONY_CMD)
+			mdfld_gi_sony_power_on(mipi_encoder);
 
-	PSB_DEBUG_ENTRY("is_mipi = 0x%x \n", is_mipi);
+		goto mrst_crtc_mode_set_exit;
+	}
+
+	PSB_DEBUG_ENTRY("is_mipi = 0x%x\n", is_mipi);
 
 	REG_WRITE(pipeconf_reg, *pipeconf);
 	REG_READ(pipeconf_reg);

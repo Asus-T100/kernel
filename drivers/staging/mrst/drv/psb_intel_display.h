@@ -23,5 +23,6 @@
 int mdfld__intel_pipe_set_base(struct drm_crtc *crtc, int x, int y,
 		struct drm_framebuffer *old_fb);
 bool psb_intel_pipe_has_type(struct drm_crtc *crtc, int type);
+int mdfld_gi_sony_power_on(struct drm_encoder *encoder);
 
 #endif
