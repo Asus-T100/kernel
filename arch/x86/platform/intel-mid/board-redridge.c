@@ -1855,14 +1855,14 @@ static int __init pb_keys_init(void)
 }
 late_initcall(pb_keys_init);
 
-#define EMMC_BLK_NAME	"mmcblk0"
+#define EMMC_BLK_NAME	"mmcblk0rpmb"
 static int emmc_match(struct device *dev, void *data)
 {
-	if (strcmp(dev_name(dev), "mmcblk0") == 0)
+	if (strcmp(dev_name(dev), data) == 0)
 		return 1;
 	return 0;
 }
-int mmc_blk_rpmb_req_handle(struct mmc_rpmb_req *req)
+int mmc_blk_rpmb_req_handle(struct mmc_ioc_rpmb_req *req)
 {
 	struct device *emmc = NULL;
 
