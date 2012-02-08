@@ -623,7 +623,7 @@ static int rmi_sensor_suspend(struct device *dev, pm_message_t state)
 	}
 
 	/* apply customized settings */
-	if (custom_ops->rmi_sensor_custom_suspend)
+	if (custom_ops && custom_ops->rmi_sensor_custom_suspend)
 		custom_ops->rmi_sensor_custom_suspend();
 
 exit:
