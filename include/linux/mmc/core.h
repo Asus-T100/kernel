@@ -10,6 +10,7 @@
 
 #include <linux/interrupt.h>
 #include <linux/device.h>
+#include <linux/mmc/ioctl.h>
 
 struct request;
 struct mmc_data;
@@ -132,24 +133,10 @@ struct mmc_request {
 };
 
 /*
- * RPMB frame structure for external user
- */
-struct mmc_rpmb_req {
-	__u16 type;			/* RPMB request type */
-	__u16 *result;			/* response or request result */
-	__u16 blk_cnt;			/* Number of blocks(half sector 256B) */
-	__u16 addr;			/* data address */
-	__u32 *wc;			/* write counter */
-	__u8 *nonce;			/* Ramdom number */
-	__u8 *data;			/* Buffer of the user data */
-	__u8 *mac;			/* Message Authentication Code */
-};
-
-/*
  * RPMB frame structure for MMC core stack
  */
 struct mmc_core_rpmb_req {
-	struct mmc_rpmb_req *req;
+	struct mmc_ioc_rpmb_req *req;
 	__u8 *frame;
 	bool ready;
 };

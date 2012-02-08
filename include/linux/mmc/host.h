@@ -269,6 +269,7 @@ struct mmc_host {
 	unsigned int		caps2;		/* More host capabilities */
 
 #define MMC_CAP2_BOOTPART_NOACC	(1 << 0)	/* Boot partition no access */
+#define MMC_CAP2_RPMBPART_NOACC	(1 << 1)	/* RPMB partition no access */
 
 	mmc_pm_flag_t		pm_caps;	/* supported pm features */
 
@@ -481,6 +482,11 @@ static inline int mmc_host_cmd23(struct mmc_host *host)
 static inline int mmc_boot_partition_access(struct mmc_host *host)
 {
 	return !(host->caps2 & MMC_CAP2_BOOTPART_NOACC);
+}
+
+static inline int mmc_rpmb_partition_access(struct mmc_host *host)
+{
+	return !(host->caps2 & MMC_CAP2_RPMBPART_NOACC);
 }
 
 #endif /* LINUX_MMC_HOST_H */

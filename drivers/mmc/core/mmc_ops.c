@@ -645,7 +645,7 @@ static int mmc_rpmb_send_command(struct mmc_card *card, u8 *buf, __u16 blks,
 void mmc_rpmb_post_frame(struct mmc_core_rpmb_req *rpmb_req)
 {
 	int i;
-	struct mmc_rpmb_req *p_req = rpmb_req->req;
+	struct mmc_ioc_rpmb_req *p_req = rpmb_req->req;
 	__u8 *ptr, *buf_frame = rpmb_req->frame;
 
 	if (!rpmb_req->ready || !buf_frame)
@@ -720,7 +720,7 @@ out:
 EXPORT_SYMBOL_GPL(mmc_rpmb_post_frame);
 
 static int mmc_rpmb_request_check(struct mmc_card *card,
-		struct mmc_rpmb_req *p_req)
+		struct mmc_ioc_rpmb_req *p_req)
 {
 	/*
 	 * Some paramter is a must for the operation. Different
@@ -827,13 +827,13 @@ int mmc_rpmb_pre_frame(struct mmc_core_rpmb_req *rpmb_req,
 		struct mmc_card *card)
 {
 	int i, j, ret;
-	struct mmc_rpmb_req *p_req = rpmb_req->req;
+	struct mmc_ioc_rpmb_req *p_req = rpmb_req->req;
 	__u8 *ptr = NULL, *buf_frame;
 	__u16 blk_cnt, addr, type;
 	__u32 w_counter;
 
 	if (!p_req) {
-		pr_err("%s: mmc_rpmb_req is NULL. Wrong parameter\n",
+		pr_err("%s: mmc_ioc_rpmb_req is NULL. Wrong parameter\n",
 				mmc_hostname(card->host));
 		return -EINVAL;
 	}
@@ -924,12 +924,12 @@ int mmc_rpmb_partition_ops(struct mmc_core_rpmb_req *rpmb_req,
 		struct mmc_card *card)
 {
 	int err = 0;
-	struct mmc_rpmb_req *p_req = rpmb_req->req;
+	struct mmc_ioc_rpmb_req *p_req = rpmb_req->req;
 	__u16 type, blks;
 	__u8 *buf_frame = rpmb_req->frame;
 
 	if (!p_req || !rpmb_req->ready || !buf_frame) {
-		pr_err("%s: mmc_rpmb_req is not prepared\n",
+		pr_err("%s: mmc_ioc_rpmb_req is not prepared\n",
 				mmc_hostname(card->host));
 		return -EINVAL;
 	}

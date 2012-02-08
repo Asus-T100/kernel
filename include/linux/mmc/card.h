@@ -429,6 +429,7 @@ extern void mmc_unregister_driver(struct mmc_driver *);
 extern void mmc_fixup_device(struct mmc_card *card,
 			     const struct mmc_fixup *table);
 
-extern int mmc_rpmb_req_handle(struct device *emmc, struct mmc_rpmb_req *req);
+extern int mmc_rpmb_req_handle(struct device *emmc,
+		struct mmc_ioc_rpmb_req *req);
 
 #endif /* LINUX_MMC_CARD_H */
