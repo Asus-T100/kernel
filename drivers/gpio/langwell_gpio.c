@@ -88,6 +88,7 @@ void lnw_gpio_set_alt(int gpio, int alt)
 	int reg;
 	int bit;
 	u32 value;
+	unsigned long flags;
 
 	/* use this trick to get memio */
 	lnw = irq_get_chip_data(gpio_to_irq(gpio));
@@ -108,11 +109,13 @@ void lnw_gpio_set_alt(int gpio, int alt)
 	bit = gpio % 16;
 
 	mem = gpio_reg(&lnw->chip, 0, GAFR);
+	spin_lock_irqsave(&lnw->lock, flags);
 	value = readl(mem + reg);
 	value &= ~(3 << (bit * 2));
 	value |= (alt & 3) << (bit * 2);
-	dev_dbg(lnw->chip.dev, "ALT: writing 0x%x to %p\n", value, mem + reg);
 	writel(value, mem + reg);
+	spin_unlock_irqrestore(&lnw->lock, flags);
+	dev_dbg(lnw->chip.dev, "ALT: writing 0x%x to %p\n", value, mem + reg);
 }
 EXPORT_SYMBOL_GPL(lnw_gpio_set_alt);
 
