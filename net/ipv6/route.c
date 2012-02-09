@@ -2614,11 +2614,10 @@ static int rt6_info_route(struct rt6_info *rt, void *p_arg)
 #endif
 	rcu_read_lock();
 	n = dst_get_neighbour(&rt->dst);
-	if (n) {
+	if (n)
 		seq_printf(m, "%pi6", n->primary_key);
-	} else {
+	else
 		seq_puts(m, "00000000000000000000000000000000");
-	}
 	rcu_read_unlock();
 	seq_printf(m, " %08x %08x %08x %08x %8s\n",
 		   rt->rt6i_metric, atomic_read(&rt->dst.__refcnt),
