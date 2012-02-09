@@ -633,8 +633,10 @@ static int unbind_config(struct usb_composite_dev *cdev,
 			/* may free memory for "c" */
 	}
 
-	/* reset cdev->next_string_id */
-	cdev->next_string_id = 0;
+	/* reset cdev->next_string_id to cdev->reset_string_id
+	 * because "android_usb" driver is working and its
+	 * string descriptor numbers have been allocated */
+	cdev->next_string_id = cdev->reset_string_id;
 
 	return 0;
 }

@@ -345,6 +345,7 @@ struct usb_composite_dev {
 	struct list_head		configs;
 	struct usb_composite_driver	*driver;
 	u8				next_string_id;
+	u8				reset_string_id;
 	u8				manufacturer_override;
 	u8				product_override;
 	u8				serial_override;
