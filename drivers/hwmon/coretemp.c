@@ -39,6 +39,7 @@
 #include <linux/moduleparam.h>
 #include <asm/msr.h>
 #include <asm/processor.h>
+#include <linux/intel_mid_pm.h>
 
 #define DRVNAME	"coretemp"
 
@@ -72,6 +73,17 @@ MODULE_PARM_DESC(tjmax, "TjMax value in degrees Celsius");
 #define for_each_sibling(i, cpu)	for (i = 0; false; )
 #endif
 #define TO_ATTR_NO(cpu)		(TO_CORE_ID(cpu) + BASE_SYSFS_ATTR_NO)
+
+/*
+ * SOC DTS Registers:
+ * These registers/values are Documented in the Penwell Thermal
+ * Management HAS.
+ */
+#define PUNIT_PORT		0x04
+#define PUNIT_TEMP_REG		0xB1
+#define SOC_TJMAX		90
+#define SOC_CALIB_TEMP		84
+#define PCI_READ_COMMAND	0x10
 
 /*
  * Per-Core Temperature Data
@@ -111,6 +123,7 @@ struct platform_data {
 	u16 phys_proc_id;
 	struct temp_data *core_data[MAX_CORE_DATA];
 	struct device_attribute name_attr;
+	struct device_attribute soc_temp_attr;
 };
 
 struct pdev_entry {
@@ -121,6 +134,31 @@ struct pdev_entry {
 
 static LIST_HEAD(pdev_list);
 static DEFINE_MUTEX(pdev_list_mutex);
+
+static ssize_t show_soc_temp(struct device *dev,
+			 struct device_attribute *devattr, char *buf)
+{
+	int cmd = (PCI_READ_COMMAND << 24) | (PUNIT_PORT << 16) |
+						(PUNIT_TEMP_REG << 8);
+	int temp, ret;
+	u32 soc_temp_offset;
+
+	/* Read 32 bits of 0xB1 register */
+	ret = mfld_msg_read32(cmd, &soc_temp_offset);
+	if (ret) {
+		dev_err(dev, "reading soc_temp failed: %d\n", ret);
+		return ret;
+	}
+
+	/* Lower 8 bits denote the temperature offset */
+	soc_temp_offset &= 0xFF;
+
+	/* Calculate the temperature from the offset */
+	temp = SOC_TJMAX + SOC_CALIB_TEMP - soc_temp_offset;
+
+	/* Show the temperature in milli degree celsius */
+	return sprintf(buf, "%d\n", temp * 1000);
+}
 
 static ssize_t show_name(struct device *dev,
 			struct device_attribute *devattr, char *buf)
@@ -445,6 +483,15 @@ static int create_name_attr(struct platform_data *pdata, struct device *dev)
 	return device_create_file(dev, &pdata->name_attr);
 }
 
+static int create_soc_temp_attr(struct platform_data *pdata, struct device *dev)
+{
+	sysfs_attr_init(&pdata->soc_temp_attr.attr);
+	pdata->soc_temp_attr.attr.name = "soc_temp_input";
+	pdata->soc_temp_attr.attr.mode = S_IRUGO;
+	pdata->soc_temp_attr.show = show_soc_temp;
+	return device_create_file(dev, &pdata->soc_temp_attr);
+}
+
 static int create_core_attrs(struct temp_data *tdata, struct device *dev,
 				int attr_no, bool have_ttarget)
 {
@@ -694,6 +741,10 @@ static int __devinit coretemp_probe(struct platform_device *pdev)
 	if (err)
 		goto exit_free;
 
+	err = create_soc_temp_attr(pdata, &pdev->dev);
+	if (err)
+		goto exit_name;
+
 	pdata->phys_proc_id = pdev->id;
 	platform_set_drvdata(pdev, pdata);
 
@@ -701,10 +752,12 @@ static int __devinit coretemp_probe(struct platform_device *pdev)
 	if (IS_ERR(pdata->hwmon_dev)) {
 		err = PTR_ERR(pdata->hwmon_dev);
 		dev_err(&pdev->dev, "Class registration failed (%d)\n", err);
-		goto exit_name;
+		goto exit_soc_temp;
 	}
 	return 0;
 
+exit_soc_temp:
+	device_remove_file(&pdev->dev, &pdata->soc_temp_attr);
 exit_name:
 	device_remove_file(&pdev->dev, &pdata->name_attr);
 	platform_set_drvdata(pdev, NULL);
