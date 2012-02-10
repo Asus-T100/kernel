@@ -89,6 +89,7 @@ struct mmc_blk_data {
 	unsigned int	flags;
 #define MMC_BLK_CMD23	(1 << 0)	/* Can do SET_BLOCK_COUNT for multiblock */
 #define MMC_BLK_REL_WR	(1 << 1)	/* MMC Reliable write support */
+#define MMC_BLK_SUSPENDED	(1 << 2)/* MMC block device suspended */
 
 	unsigned int	usage;
 	unsigned int	read_only;
@@ -828,6 +829,13 @@ static int mmc_rpmb_req_process(struct mmc_blk_data *md,
 	}
 
 	mmc_claim_host(card->host);
+
+	if (md->flags & MMC_BLK_SUSPENDED) {
+		pr_warn("%s: MMC block device is already suspended\n",
+				mmc_hostname(card->host));
+		ret = -EPERM;
+		goto out;
+	}
 	/*
 	 * before start, let's change to RPMB partition first
 	 */
@@ -1841,6 +1849,18 @@ static int mmc_blk_suspend(struct mmc_card *card, pm_message_t state)
 		mmc_queue_suspend(&md->queue);
 		list_for_each_entry(part_md, &md->part, part) {
 			mmc_queue_suspend(&part_md->queue);
+			if (part_md->part_type == EXT_CSD_PART_CONFIG_RPMB) {
+				/*
+				 * RPMB partition is accessed by API directly.
+				 * Driver need to set a flag when suspending
+				 * MMC block device to notify API that the
+				 * accessing of RPMB partition needs to be
+				 * stopped
+				 */
+				mmc_claim_host(card->host);
+				part_md->flags |= MMC_BLK_SUSPENDED;
+				mmc_release_host(card->host);
+			}
 		}
 	}
 	return 0;
@@ -1864,6 +1884,17 @@ static int mmc_blk_resume(struct mmc_card *card)
 		mmc_queue_resume(&md->queue);
 		list_for_each_entry(part_md, &md->part, part) {
 			mmc_queue_resume(&part_md->queue);
+			if (part_md->part_type == EXT_CSD_PART_CONFIG_RPMB) {
+				/*
+				 * RPMB partition is accessed by API directly.
+				 * Driver need to clear MMC_BLK_SUSPENDED flag
+				 * to make sure the next RPMB partition access
+				 * request won't be blocked
+				 */
+				mmc_claim_host(card->host);
+				part_md->flags &= ~MMC_BLK_SUSPENDED;
+				mmc_release_host(card->host);
+			}
 		}
 	}
 	return 0;
