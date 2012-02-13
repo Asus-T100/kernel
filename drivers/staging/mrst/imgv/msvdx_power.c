@@ -93,6 +93,9 @@ PVRSRV_ERROR MSVDXPrePowerState(IMG_HANDLE hDevHandle,
 				PVRSRV_DEV_POWER_STATE	eNewPowerState,
 				PVRSRV_DEV_POWER_STATE	eCurrentPowerState)
 {
+	/* Workaround of mid_pmu error for CTP */
+	if (IS_CTP(gpDrmDevice))
+		return PVRSRV_OK;
 #if 1
 	/* ask for a change not power on*/
 	if ((eNewPowerState != eCurrentPowerState) &&

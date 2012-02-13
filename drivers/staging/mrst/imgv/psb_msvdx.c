@@ -1139,6 +1139,9 @@ done:
 		goto loop;
 	}
 
+	if (IS_CTP(gpDrmDevice))
+		drm_msvdx_pmpolicy = PSB_PMPOLICY_NOPM;
+
 	/* we get a frame/slice done, try to save some power*/
 	if (IS_D0(dev)) {
 		if (drm_msvdx_pmpolicy == PSB_PMPOLICY_POWERDOWN)
