@@ -2808,41 +2808,41 @@ static void overlay_wait_flip(struct drm_device *dev)
 
 /*wait for vblank*/
 static void overlay_wait_vblank(struct drm_device *dev,
+				struct drm_file *file_priv,
 				uint32_t ovadd)
 {
 	struct drm_psb_private *dev_priv = psb_priv(dev);
+	union drm_wait_vblank vblwait;
 	uint32_t ovadd_pipe;
-	uint32_t pipestat_reg;
+	int pipe = 0;
 	int retry;
 
 	ovadd_pipe = ((ovadd >> 6) & 0x3);
-	switch (ovadd_pipe) {
-	case 0:
-		pipestat_reg = PIPEASTAT;
-		break;
-	case 1:
-		pipestat_reg = PIPECSTAT;
-		break;
-	case 2:
-		pipestat_reg = PIPEBSTAT;
-		break;
-	default:
-		DRM_ERROR("wrong OVADD pipe seletion\n");
-		return;
+
+	vblwait.request.type = (_DRM_VBLANK_RELATIVE | _DRM_VBLANK_NEXTONMISS);
+	vblwait.request.sequence = 1;
+	if (ovadd_pipe) {
+		pipe = 1;
+		vblwait.request.type |= _DRM_VBLANK_SECONDARY;
 	}
 
-	/**
-	 * wait for vblank upto 30ms,the period of vblank is 22ms.
+	/*
+	 * FIXME: don't enable vblank in this way.
+	 * Current vblank usages didn't follow the DRM framework.
+	 * drm_vblank_get()/drm_vblank_put() should be used to enable/disabe
+	 * vblank interrupt. However, currently driver is using following way
+	 * to enable vblank which may lead to some problems.
+	 * Plus, drm_vblank_get() was called by PVR 3rd party display driver
+	 * when creating a new swapchain, and drm_vblank_put() won't be called
+	 * util destroy swapchain. this will make drm_vblank_get() in
+	 * drm_wait_vblank useless since the refcount is not 0.
 	 */
-	retry = 3000;
-	while (--retry) {
-		if ((PSB_RVDC32(pipestat_reg) & PIPE_VBLANK_STATUS))
-			break;
-		udelay(10);
-	}
+	mid_enable_pipe_event(dev_priv, pipe);
+	psb_enable_pipestat(dev_priv, pipe, PIPE_VBLANK_INTERRUPT_ENABLE);
+	dev_priv->b_is_in_idle = false;
+	dev_priv->dsr_idle_count = 0;
 
-	if (!retry)
-		DRM_ERROR("wait vblank timeout!\n");
+	drm_wait_vblank(dev, (void *)&vblwait, file_priv);
 }
 
 static int validate_overlay_register_buffer(struct drm_file *file_priv,
@@ -3104,9 +3104,10 @@ static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 
 				PSB_WVDC32(arg->overlay.OVADD, OV_OVADD);
 
-				if (arg->overlay.b_wait_vblank) {
-					overlay_wait_flip(dev);
-				}
+				if (arg->overlay.b_wait_vblank)
+					overlay_wait_vblank(dev,
+							file_priv,
+							arg->overlay.OVADD);
 
 				if (IS_MDFLD(dev)) {
 					if ((((arg->overlay.OVADD & OV_PIPE_SELECT) >> OV_PIPE_SELECT_POS) == OV_PIPE_A)
