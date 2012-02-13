@@ -581,7 +581,8 @@ static void mdfld_hdmi_mode_set(struct drm_encoder *encoder,
 	u32 hpolarity = 0, vpolarity = 0;
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *) dev->dev_private;
-#ifdef CONFIG_SND_INTELMID_HDMI_AUDIO
+#if (defined(CONFIG_SND_INTELMID_HDMI_AUDIO) || \
+		defined(CONFIG_SND_INTELMID_HDMI_AUDIO_MODULE))
 	void *had_pvt_data = dev_priv->had_pvt_data;
 	enum had_event_type event_type = HAD_EVENT_MODE_CHANGING;
 #endif
@@ -656,7 +657,8 @@ static void mdfld_hdmi_mode_set(struct drm_encoder *encoder,
 	hdmi_priv->current_mode =
 		drm_mode_duplicate(dev, adjusted_mode);
 
-#ifdef CONFIG_SND_INTELMID_HDMI_AUDIO
+#if (defined(CONFIG_SND_INTELMID_HDMI_AUDIO) || \
+		defined(CONFIG_SND_INTELMID_HDMI_AUDIO_MODULE))
 	/* Send MODE_CHANGE event to Audio driver */
 	if (dev_priv->mdfld_had_event_callbacks && !dev_priv->bDVIport)
 		(*dev_priv->mdfld_had_event_callbacks)(event_type,

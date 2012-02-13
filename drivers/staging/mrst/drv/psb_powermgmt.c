@@ -1537,7 +1537,8 @@ void ospm_resume_display(struct pci_dev *pdev)
 	struct drm_device *dev = pci_get_drvdata(pdev);
 	struct drm_psb_private *dev_priv = dev->dev_private;
 	struct psb_gtt *pg = dev_priv->pg;
-#ifdef CONFIG_SND_INTELMID_HDMI_AUDIO
+#if (defined(CONFIG_SND_INTELMID_HDMI_AUDIO) || \
+		defined(CONFIG_SND_INTELMID_HDMI_AUDIO_MODULE))
 	char *uevent_string = NULL;
 #endif
 
@@ -1590,7 +1591,8 @@ void ospm_resume_display(struct pci_dev *pdev)
 			mdfld_restore_display_registers(dev, 1);
 			/*devices connect status will be changed
 			 when system suspend,re-detect once here*/
-#ifdef CONFIG_SND_INTELMID_HDMI_AUDIO
+#if (defined(CONFIG_SND_INTELMID_HDMI_AUDIO) || \
+		defined(CONFIG_SND_INTELMID_HDMI_AUDIO_MODULE))
 			if (!is_hdmi_plugged_out(dev)) {
 				PSB_DEBUG_ENTRY("resume hdmi_state %d", hdmi_state);
 				if (dev_priv->had_pvt_data && hdmi_state) {
@@ -2397,6 +2399,7 @@ increase_count:
 
 	return ret;
 }
+EXPORT_SYMBOL(ospm_power_using_hw_begin);
 
 
 /*
@@ -2434,6 +2437,7 @@ void ospm_power_using_hw_end(int hw_island)
 	WARN_ON(atomic_read(&g_videodec_access_count) < 0);
 	WARN_ON(atomic_read(&g_display_access_count) < 0);
 }
+EXPORT_SYMBOL(ospm_power_using_hw_end);
 
 int ospm_runtime_pm_allow(struct drm_device * dev)
 {
@@ -2491,7 +2495,8 @@ int psb_runtime_suspend(struct device *dev)
 	int ret = 0;
 	state.event = 0;
 
-#ifdef CONFIG_SND_INTELMID_HDMI_AUDIO
+#if (defined(CONFIG_SND_INTELMID_HDMI_AUDIO) || \
+		defined(CONFIG_SND_INTELMID_HDMI_AUDIO_MODULE))
         struct drm_psb_private* dev_priv = gpDrmDevice->dev_private;
         int hdmi_audio_busy = 0;
         struct snd_intel_had_interface *had_interface = dev_priv->had_interface;
@@ -2517,7 +2522,8 @@ int psb_runtime_suspend(struct device *dev)
         if (atomic_read(&g_graphics_access_count) || atomic_read(&g_videoenc_access_count)
 		|| (gbdispstatus == true)
 		|| atomic_read(&g_videodec_access_count) || atomic_read(&g_display_access_count)
-#ifdef CONFIG_SND_INTELMID_HDMI_AUDIO
+#if (defined(CONFIG_SND_INTELMID_HDMI_AUDIO) || \
+	defined(CONFIG_SND_INTELMID_HDMI_AUDIO_MODULE))
                 || hdmi_audio_busy
 #endif
            ) {
@@ -2549,7 +2555,8 @@ int psb_runtime_resume(struct device *dev)
 
 int psb_runtime_idle(struct device *dev)
 {
-#ifdef CONFIG_SND_INTELMID_HDMI_AUDIO
+#if (defined(CONFIG_SND_INTELMID_HDMI_AUDIO) || \
+		defined(CONFIG_SND_INTELMID_HDMI_AUDIO_MODULE))
 	struct drm_psb_private* dev_priv = gpDrmDevice->dev_private;
 	struct snd_intel_had_interface *had_interface = dev_priv->had_interface;
 	int hdmi_audio_busy = 0;
@@ -2570,7 +2577,8 @@ int psb_runtime_idle(struct device *dev)
 	if (atomic_read(&g_graphics_access_count) || atomic_read(&g_videoenc_access_count)
 		|| atomic_read(&g_videodec_access_count) || atomic_read(&g_display_access_count)
 		|| (gbdispstatus == true)
-#ifdef CONFIG_SND_INTELMID_HDMI_AUDIO
+#if (defined(CONFIG_SND_INTELMID_HDMI_AUDIO) || \
+	defined(CONFIG_SND_INTELMID_HDMI_AUDIO_MODULE))
 		|| hdmi_audio_busy
 #endif
 
