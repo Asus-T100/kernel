@@ -1196,11 +1196,7 @@ static int audience_request_resources(struct i2c_client *client)
 		dev_err(&client->dev, "Set GPIO Direction fails %d\n", ret);
 		goto err_reset;
 	}
-	if (mfld_board_id() == MFLD_BID_PR3 ||
-			mfld_board_id() == MFLD_BID_PR3_PNP)
-		sprintf(pdata->firmware_name, "%s", "vpimg_es305b.bin");
-	else
-		sprintf(pdata->firmware_name, "%s", "vpimg.bin");
+	sprintf(pdata->firmware_name, "%s", "vpimg_es305b.bin");
 
 	return 0;
 err_reset:
