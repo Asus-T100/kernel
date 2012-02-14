@@ -39,6 +39,35 @@
 #include "intel_sst_common.h"
 
 /*
+ * sst_check_device_type_clv - Check the medfield device type
+ *
+ * @device: Device to be checked
+ * @num_ch: Number of channels queried
+ * @pcm_slot: slot to be enabled for this device
+ *
+ * This checks the deivce against the map and calculates pcm_slot value
+ */
+static int sst_check_device_type_clv(u32 device, u32 num_chan, u32 *pcm_slot)
+{
+	if (sst_drv_ctx->streams[device].status == STREAM_UN_INIT) {
+		if (device == SND_SST_DEVICE_HEADSET && num_chan == 2)
+			*pcm_slot = 0x03;
+		else if (device == SND_SST_DEVICE_CAPTURE && num_chan == 1)
+			*pcm_slot = 0x03;
+		else if (device == SND_SST_DEVICE_CAPTURE && num_chan == 2)
+			*pcm_slot = 0x03;
+		else {
+			pr_debug("No condition satisfied.. ret err\n");
+			return -EINVAL;
+		}
+	} else {
+		pr_debug("this stream state is not uni-init, is %d\n",
+					sst_drv_ctx->streams[device].status);
+		return -EBADRQC;
+	}
+}
+
+/*
  * sst_check_device_type - Check the medfield device type
  *
  * @device: Device to be checked
@@ -83,12 +112,13 @@ static int sst_check_device_type(u32 device, u32 num_chan, u32 *pcm_slot)
 		}
 	} else {
 		pr_debug("this stream state is not uni-init, is %d\n",
-				sst_drv_ctx->streams[device].status);
+					sst_drv_ctx->streams[device].status);
 		return -EBADRQC;
 	}
 	pr_debug("returning slot %x\n", *pcm_slot);
 	return 0;
 }
+
 /**
  * get_mrst_stream_id	-	gets a new stream id for use
  *
@@ -105,6 +135,34 @@ static unsigned int get_mrst_stream_id(void)
 	}
 	pr_debug("Didn't find empty stream for mrst\n");
 	return -EBUSY;
+}
+
+/**
+ * get_clv_stream_id   -       gets a new stream id for use
+ *
+ * This functions searches the current streams and allocated an empty stream
+ * lock stream_lock required to be held before calling this
+ */
+static unsigned int get_clv_stream_id(u32 device)
+{
+	int str_id;
+	/*device id range starts from 1 */
+	pr_debug("device_id %d\n", device);
+	if (sst_drv_ctx->streams[device].status == STREAM_UN_INIT) {
+		if (device == SND_SST_DEVICE_HEADSET)
+			str_id = 1;
+		else if (device == SND_SST_DEVICE_CAPTURE)
+			str_id = 2;
+		else
+			return -EINVAL;
+		/*srr_id = 3 for encoded playback */
+	} else {
+		pr_debug("this stream state is not uni-init, is %d\n",
+					sst_drv_ctx->streams[device].status);
+		return -EBADRQC;
+	}
+
+	return str_id;
 }
 
 /**
@@ -143,6 +201,14 @@ int sst_alloc_stream(char *params, unsigned int stream_ops,
 		str_id = device;
 		mutex_unlock(&sst_drv_ctx->stream_lock);
 		pr_debug("SST_DBG: slot %x\n", pcm_slot);
+	} else if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID) {
+		if (sst_check_device_type_clv(device, num_ch, &pcm_slot))
+			return -EINVAL;
+		mutex_lock(&sst_drv_ctx->stream_lock);
+		str_id = get_clv_stream_id(device);
+		mutex_unlock(&sst_drv_ctx->stream_lock);
+		if (str_id <= 0)
+			return -EBUSY;
 	} else {
 		mutex_lock(&sst_drv_ctx->stream_lock);
 		str_id = get_mrst_stream_id();

@@ -46,7 +46,7 @@ static void sst_restore_fw_context(void)
 
 	pr_debug("restore_fw_context\n");
 	/*check cpu type*/
-	if (sst_drv_ctx->pci_id != SST_MFLD_PCI_ID)
+	if (sst_drv_ctx->pci_id == SST_MRST_PCI_ID)
 		return;
 		/*not supported for rest*/
 	if (!sst_drv_ctx->fw_cntx_size)
@@ -103,9 +103,8 @@ int sst_download_fw(void)
 	sst_drv_ctx->alloc_block[0].sst_id = FW_DWNL_ID;
 	sst_drv_ctx->alloc_block[0].ops_block.condition = false;
 	retval = sst_load_fw(sst_drv_ctx->fw_in_mem, NULL);
-	if (retval) {
+	if (retval)
 		goto end_restore;
-	}
 
 	retval = sst_wait_timeout(sst_drv_ctx, &sst_drv_ctx->alloc_block[0]);
 	if (retval) {
@@ -328,8 +327,8 @@ void sst_prepare_fw(void)
 		pr_debug("DSP Downloading FW now...\n");
 		retval = sst_download_fw();
 		if (retval) {
-			pr_err("sst: FW download fail %x\n", retval);
-			pr_debug("sst: doing rtpm_put\n");
+			pr_err("FW download fail %x\n", retval);
+			pr_debug("doing rtpm_put\n");
 			sst_set_fw_state_locked(sst_drv_ctx, SST_UN_INIT);
 			pm_runtime_put(&sst_drv_ctx->pci->dev);
 		}
@@ -375,7 +374,7 @@ void sst_process_mad_ops(struct work_struct *work)
 
 	if (retval)
 		pr_err("%s(): op: %d, retval: %d\n",
-				__func__, mad_ops->control_op, retval );
+				__func__, mad_ops->control_op, retval);
 	return;
 }
 
@@ -411,8 +410,8 @@ static int sst_open_pcm_stream(struct snd_sst_params *str_param)
 		pr_debug("DSP Downloading FW now...\n");
 		retval = sst_download_fw();
 		if (retval) {
-			pr_err("sst: FW download fail %x, abort\n", retval);
-			pr_debug("sst: open_pcm, doing rtpm_put\n");
+			pr_err("FW download fail %x, abort\n", retval);
+			pr_debug("open_pcm, doing rtpm_put\n");
 			sst_set_fw_state_locked(sst_drv_ctx, SST_UN_INIT);
 			pm_runtime_put(&sst_drv_ctx->pci->dev);
 			return retval;
@@ -423,7 +422,7 @@ static int sst_open_pcm_stream(struct snd_sst_params *str_param)
 	}
 
 	if (!str_param) {
-		pr_debug("sst: open_pcm, doing rtpm_put\n");
+		pr_debug("open_pcm, doing rtpm_put\n");
 		return -EINVAL;
 	}
 

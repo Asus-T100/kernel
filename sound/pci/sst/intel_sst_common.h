@@ -38,6 +38,7 @@
 #define SST_DRV_NAME "intel_sst_driver"
 #define SST_MRST_PCI_ID 0x080A
 #define SST_MFLD_PCI_ID 0x082F
+#define SST_CLV_PCI_ID	0x08E7
 #define PCI_ID_LENGTH 4
 #define SST_SUSPEND_DELAY 2000
 #define FW_CONTEXT_MEM (64*1024)
@@ -233,7 +234,7 @@ struct stream_info {
 	spinlock_t          pcm_lock;
 	bool			mmapped;
 	unsigned int		sg_index; /*  current buf Index  */
-	unsigned char __user 	*cur_ptr; /*  Current static bufs  */
+	unsigned char __user	*cur_ptr; /*  Current static bufs  */
 	struct snd_sst_buf_entry __user *buf_entry;
 	struct sst_block	data_blk; /* stream ops block */
 	struct sst_block	ctrl_blk; /* stream control cmd block */
@@ -347,7 +348,9 @@ struct sst_dma {
 	struct pci_dev *dmac;
 };
 
-#define PCI_DMAC_ID 0x0830
+
+#define PCI_DMAC_MFLD_ID 0x0830
+#define PCI_DMAC_CLV_ID 0x08F0
 #define SST_MAX_DMA_LEN (4095*4)
 #define SST_DMA_DELAY 2000
 /***

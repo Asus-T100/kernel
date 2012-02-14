@@ -178,19 +178,22 @@ static int sst_parse_module(struct fw_module_header *module)
 				return -ENOMEM;
 			}
 			node->dstn = ram + block->ram_offset + offset;
-			node->src = virt_to_phys((void *)block + sizeof(*block) + offset);
+			node->src = virt_to_phys((void *)block +
+						sizeof(*block) + offset);
 			node->len = block->size - offset;
 			node->is_last = false;
 			node->trf_status = SST_DESC_NULL;
-			pr_debug("DMA block src %lx, dstn %lx, size %d, offset %d\n",
-				node->src, node->dstn, node->len, offset);
+			pr_debug("DMA blk src%lx,dstn %lx,size %d,offset %d\n",
+				 node->src, node->dstn, node->len, offset);
 			if (node->len > SST_MAX_DMA_LEN) {
-				pr_debug("block size exceeds %d\n", SST_MAX_DMA_LEN);
+				pr_debug("block size exceeds %d\n",
+					SST_MAX_DMA_LEN);
 				node->len = SST_MAX_DMA_LEN;
 				offset += node->len;
 			} else {
 				offset = 0;
-				pr_debug("Node length less that %d\n", SST_MAX_DMA_LEN);
+				pr_debug("Node length less that %d\n",
+				SST_MAX_DMA_LEN);
 			}
 			list_add_tail(&node->node, &sst_drv_ctx->fw_list);
 		} while (offset > 0);
@@ -223,9 +226,15 @@ static int sst_alloc_dma_chan(struct sst_dma *dma)
 	dma_cap_zero(mask);
 	dma_cap_set(DMA_MEMCPY, mask);
 
-	dma->dmac = pci_get_device(PCI_VENDOR_ID_INTEL, PCI_DMAC_ID, NULL);
+	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID)
+		dma->dmac = pci_get_device(PCI_VENDOR_ID_INTEL,
+						PCI_DMAC_CLV_ID, NULL);
+	else
+		dma->dmac = pci_get_device(PCI_VENDOR_ID_INTEL,
+						PCI_DMAC_MFLD_ID, NULL);
+
 	if (!dma->dmac) {
-		pr_err("Can't find DMAC %x\n", PCI_DMAC_ID);
+		pr_err("Can't find DMAC\n");
 		return -ENODEV;
 	}
 	dma->ch = dma_request_channel(mask, chan_filter, dma);
@@ -356,7 +365,8 @@ int sst_request_fw(void)
 
 	if (!sst_drv_ctx->fw_in_mem) {
 		pr_debug("firmware not in memory\n");
-		sst_drv_ctx->fw_in_mem = kzalloc(sst_drv_ctx->fw->size, GFP_KERNEL);
+		sst_drv_ctx->fw_in_mem = kzalloc(sst_drv_ctx->fw->size,
+							GFP_KERNEL);
 		if (!sst_drv_ctx->fw_in_mem) {
 			pr_err("%s unable to allocate memory\n", __func__);
 			retval = -ENOMEM;
@@ -452,7 +462,8 @@ int sst_load_fw(const void *fw_in_mem, void *context)
 
 	if (sst_drv_ctx->pci_id == SST_MRST_PCI_ID)
 		ret_val = intel_sst_reset_dsp_mrst();
-	else if (sst_drv_ctx->pci_id == SST_MFLD_PCI_ID)
+	else if ((sst_drv_ctx->pci_id == SST_MFLD_PCI_ID) ||
+			(sst_drv_ctx->pci_id == SST_CLV_PCI_ID))
 		ret_val = intel_sst_reset_dsp_medfield();
 	if (ret_val)
 		return ret_val;
@@ -468,7 +479,8 @@ int sst_load_fw(const void *fw_in_mem, void *context)
 	/* bring sst out of reset */
 	if (sst_drv_ctx->pci_id == SST_MRST_PCI_ID)
 		ret_val = sst_start_mrst();
-	else if (sst_drv_ctx->pci_id == SST_MFLD_PCI_ID)
+	else if ((sst_drv_ctx->pci_id == SST_MFLD_PCI_ID) ||
+			(sst_drv_ctx->pci_id == SST_CLV_PCI_ID))
 		ret_val = sst_start_medfield();
 	if (ret_val)
 		goto free_dma;

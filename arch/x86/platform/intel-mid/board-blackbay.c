@@ -1612,6 +1612,8 @@ struct devs_id __initconst device_ids[] = {
 					&blackbay_ipc_device_handler},
 	{"msic_audio", SFI_DEV_TYPE_IPC, 1, &msic_audio_platform_data,
 					&blackbay_ipc_device_handler},
+	{"clvcs_audio", SFI_DEV_TYPE_IPC, 1, &msic_audio_platform_data,
+					     NULL},
 	{"msic_power_btn", SFI_DEV_TYPE_IPC, 1, &msic_power_btn_platform_data,
 					&blackbay_ipc_device_handler},
 	{"msic_ocd", SFI_DEV_TYPE_IPC, 1, &msic_ocd_platform_data,
@@ -1637,6 +1639,7 @@ struct devs_id __initconst device_ids[] = {
 	{"als", SFI_DEV_TYPE_I2C, 0, &als_pdata_init, NULL},
 	{"ov8830", SFI_DEV_TYPE_I2C, 0, &ov8830_platform_data_init},
 	{"synaptics_3202", SFI_DEV_TYPE_I2C, 0, &s3202_platform_data_init},
+	{"cs42l73", SFI_DEV_TYPE_I2C, 1, &no_platform_data, NULL},
 
 	{"lsm303dl", SFI_DEV_TYPE_I2C, 0, &lsm303dlhc_accel_platform_data},
 	{"lsm303cmp", SFI_DEV_TYPE_I2C, 0, &no_platform_data},

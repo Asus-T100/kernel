@@ -327,8 +327,9 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 		if (ret) {
 			pr_err("couldn't register LPE device\n");
 			goto do_free_misc;
- 		}
-	} else if (sst_drv_ctx->pci_id == SST_MFLD_PCI_ID) {
+		}
+	} else if ((sst_drv_ctx->pci_id == SST_MFLD_PCI_ID) ||
+			(sst_drv_ctx->pci_id == SST_CLV_PCI_ID)) {
 		u32 csr;
 		u32 csr2;
 		u32 clkctl;
@@ -351,11 +352,15 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 
 		/*set clock output enable for SSP0,1,3*/
 		clkctl = sst_shim_read(sst_drv_ctx->shim, SST_CLKCTL);
-		clkctl |= ((1<<16)|(1<<17));
+		if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID)
+			clkctl |= (0x7 << 16);
+		else
+			clkctl |= ((1<<16)|(1<<17));
 		sst_shim_write(sst_drv_ctx->shim, SST_CLKCTL, clkctl);
 
 		/* set SSP0 & SSP1 disable DMA Finish*/
 		csr2 = sst_shim_read(sst_drv_ctx->shim, SST_CSR2);
+		/*set SSP3 disable DMA finsh for SSSP3 */
 		csr2 |= BIT(1)|BIT(2);
 		sst_shim_write(sst_drv_ctx->shim, SST_CSR2, csr2);
 	}
@@ -447,7 +452,7 @@ static void sst_save_dsp_context(void)
 	struct ipc_post *msg = NULL;
 
 	/*check cpu type*/
-	if (sst_drv_ctx->pci_id != SST_MFLD_PCI_ID)
+	if (sst_drv_ctx->pci_id == SST_MRST_PCI_ID)
 		return;
 		/*not supported for rest*/
 	if (sst_drv_ctx->sst_state != SST_FW_RUNNING) {
@@ -605,6 +610,7 @@ static const struct dev_pm_ops intel_sst_pm = {
 static struct pci_device_id intel_sst_ids[] = {
 	{ PCI_VDEVICE(INTEL, SST_MRST_PCI_ID), 3},
 	{ PCI_VDEVICE(INTEL, SST_MFLD_PCI_ID), 5},
+	{ PCI_VDEVICE(INTEL, SST_CLV_PCI_ID), 3},
 	{ 0, }
 };
 MODULE_DEVICE_TABLE(pci, intel_sst_ids);

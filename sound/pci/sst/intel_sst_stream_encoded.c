@@ -417,7 +417,7 @@ err:
 			}
 		}
 	}
-    return retval;
+	return retval;
 }
 
 /**
@@ -695,8 +695,7 @@ int sst_capture_frame(int str_id)
 	/*update bytes recevied*/
 	stream->cumm_bytes += stream->curr_bytes;
 	stream->curr_bytes = 0;
-
-    pr_debug("Cum bytes  = %d\n", stream->cumm_bytes);
+	pr_debug("Cum bytes  = %d\n", stream->cumm_bytes);
 	return 0;
 }
 
