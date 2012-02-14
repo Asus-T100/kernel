@@ -267,6 +267,8 @@
 #define MSIC_BATT_TEMP_MIN		0
 #define MSIC_TEMP_HYST_ERR		4	/* 4 degrees */
 
+#define VBATT_FULL_DET_MARGIN		50	/* 50mV */
+
 /* internal return values */
 #define BIT_SET		1
 #define BIT_RESET	0
