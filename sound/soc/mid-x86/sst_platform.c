@@ -74,13 +74,22 @@ static struct snd_soc_dai_driver sst_platform_dai[] = {
 	.playback = {
 		.channels_min = SST_STEREO,
 		.channels_max = SST_STEREO,
+/**FIXME ***/
+#ifdef CONFIG_SND_MFLD_MACHINE
 		.rates = SNDRV_PCM_RATE_44100,
+#else
+		.rates = SNDRV_PCM_RATE_48000,
+#endif
 		.formats = SNDRV_PCM_FMTBIT_S16_LE,
 	},
 	.capture = {
 		.channels_min = 1,
 		.channels_max = 2,
+#ifdef CONFIG_SND_MFLD_MACHINE
 		.rates = SNDRV_PCM_RATE_44100,
+#else
+		.rates = SNDRV_PCM_RATE_48000,
+#endif
 		.formats = SNDRV_PCM_FMTBIT_S16_LE,
 	},
 },
@@ -89,7 +98,11 @@ static struct snd_soc_dai_driver sst_platform_dai[] = {
 	.playback = {
 		.channels_min = SST_MONO,
 		.channels_max = SST_STEREO,
+#ifdef CONFIG_SND_MFLD_MACHINE
 		.rates = SNDRV_PCM_RATE_44100,
+#else
+		.rates = SNDRV_PCM_RATE_48000,
+#endif
 		.formats = SNDRV_PCM_FMTBIT_S16_LE,
 	},
 },
@@ -340,10 +353,12 @@ static int sst_platform_close(struct snd_pcm_substream *substream)
 	if (str_id) {
 		if (stream->stream_status == SST_PLATFORM_SUSPENDED) {
 			pr_debug("device suspended resume for closure\n");
-			ret_val = stream->sstdrv_ops->pcm_control->device_control(
-					SST_SND_DEVICE_RESUME_SYNC, &str_id);
+			ret_val = stream->sstdrv_ops->pcm_control->
+				device_control(SST_SND_DEVICE_RESUME_SYNC,
+				&str_id);
 			if (!ret_val)
-				sst_set_stream_status(stream, SST_PLATFORM_DROPPED);
+				sst_set_stream_status(stream,
+					SST_PLATFORM_DROPPED);
 		}
 		ret_val = stream->sstdrv_ops->pcm_control->close(str_id);
 	}
@@ -351,8 +366,11 @@ static int sst_platform_close(struct snd_pcm_substream *substream)
 	kfree(stream->sstdrv_ops);
 	kfree(stream);
 func_exit:
+/**FIXME ***/
+#ifdef CONFIG_SND_MFLD_MACHINE
 	if (!sst_cpu_ctx->active_nonvoice_cnt)
 		snd_soc_dai_set_tristate(codec_dai, 1);
+#endif
 	return ret_val;
 }
 
@@ -488,18 +506,21 @@ static int sst_platform_pcm_hw_params(struct snd_pcm_substream *substream,
 	struct snd_soc_codec *codec = rtd->codec;
 	struct snd_soc_dai *codec_dai = rtd->codec_dai;
 
+/**FIXME -Need to move all codec related stuff to Machine driver ***/
+#ifdef CONFIG_SND_MFLD_MACHINE
 	if (strcmp(rtd->dai_link->cpu_dai_name, SST_VOICE_DAI)) {
 		/* Force the data width to 24 bit in MSIC. Post Processing
 		algorithms in DSP enabled with 24 bit precision */
 		ret = snd_soc_codec_set_params(codec, SNDRV_PCM_FORMAT_S24_LE);
 		if (ret < 0) {
-			pr_debug("codec set_params returned error\n");
+			pr_debug("codec set_params returned error %d\n", ret);
 			return ret;
 		}
 	}
 	/*last two parameters have to non-zero, otherwise pll gets disabled*/
 	snd_soc_dai_set_pll(codec_dai, 0, SST_CLK_UNINIT, 1,
 							params_rate(params));
+#endif
 	snd_pcm_lib_malloc_pages(substream, params_buffer_bytes(params));
 	memset(substream->runtime->dma_area, 0, params_buffer_bytes(params));
 

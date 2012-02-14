@@ -26,6 +26,7 @@ config SND_SOC_ALL_CODECS
 	select SND_SOC_ALC5623 if I2C
 	select SND_SOC_CQ0093VC if MFD_DAVINCI_VOICECODEC
 	select SND_SOC_CS42L51 if I2C
+	select SND_SOC_CS42L73 if I2C
 	select SND_SOC_CS4270 if I2C
 	select SND_SOC_CS4271 if SND_SOC_I2C_AND_SPI
 	select SND_SOC_CX20442
@@ -130,7 +131,7 @@ config SND_SOC_AD1980
 
 config SND_SOC_AD73311
 	tristate
-	
+
 config SND_SOC_ADS117X
 	tristate
 
@@ -156,6 +157,18 @@ config SND_SOC_CQ0093VC
 	tristate
 
 config SND_SOC_CS42L51
+	tristate
+
+config SND_SOC_CS42L73
+        tristate
+
+# Enable CS42L73 MIC2_SDET. This requires enabling PDN and MIC2 Bias
+# and handling codec's interrupt
+config SND_SOC_CS42L73_MIC2SDET
+	bool
+	depends on SND_SOC_CS42L73
+
+config SND_SOC_CS42L73
 	tristate
 
 # Cirrus Logic CS4270 Codec

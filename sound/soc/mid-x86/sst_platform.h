@@ -35,9 +35,18 @@
 #define SST_MAX_RATE		48000
 #define SST_MIN_CHANNEL		1
 #define SST_MAX_CHANNEL		2
+
+/**FIXME ***/
+#ifdef CONFIG_SND_MFLD_MACHINE
 #define SST_MAX_BUFFER		88200 /*500ms*/
 #define SST_MIN_PERIOD_BYTES	1764  /*10ms@44.1,16bit,2ch*/
 #define SST_MAX_PERIOD_BYTES	44100 /*250ms*/
+#else
+#define SST_MAX_BUFFER		96000 /*500ms*/
+#define SST_MIN_PERIOD_BYTES	1920  /*10ms@44.1,16bit,2ch*/
+#define SST_MAX_PERIOD_BYTES	48000 /*250ms*/
+#endif
+
 #define SST_MIN_PERIODS		2
 #define SST_MAX_PERIODS		50
 #define SST_FIFO_SIZE		0
