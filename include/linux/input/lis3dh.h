@@ -68,6 +68,11 @@ Revision 1-0-7 26/11/2010
 #define LIS3DH_ACC_G_8G		0x20
 #define LIS3DH_ACC_G_16G		0x30
 
+/* supported accelerometer model */
+enum acc_model {
+	MODEL_LIS3DH,
+	MODEL_LSM303DLHC
+};
 
 #ifdef	__KERNEL__
 struct lis3dh_acc_platform_data {
@@ -94,6 +99,8 @@ struct lis3dh_acc_platform_data {
 	 */
 	int gpio_int1;
 	int gpio_int2;
+
+	enum acc_model model;
 };
 #endif	/* __KERNEL__ */
 

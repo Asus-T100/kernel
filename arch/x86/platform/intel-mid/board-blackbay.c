@@ -36,6 +36,7 @@
 #include <linux/module.h>
 #include <linux/notifier.h>
 #include <linux/intel_mid_pm.h>
+#include <linux/input/lis3dh.h>
 #include <linux/usb/penwell_otg.h>
 #include <linux/hsi/hsi.h>
 #include <linux/hsi/intel_mid_hsi.h>
@@ -183,6 +184,24 @@ static void *mpu3050_platform_data(void *info)
 
 	i2c_info->irq = intr + MRST_IRQ_OFFSET;
 	return NULL;
+}
+
+static void *lsm303dlhc_accel_platform_data(void *info)
+{
+	static struct lis3dh_acc_platform_data accel;
+
+	accel.poll_interval = 200;
+	accel.negate_x = 1;
+	accel.negate_y = 0;
+	accel.negate_z = 0;
+	accel.axis_map_x = 0;
+	accel.axis_map_y = 1;
+	accel.axis_map_z = 2;
+	accel.gpio_int1 = get_gpio_by_name("accel_int");
+	accel.gpio_int2 = get_gpio_by_name("accel_2");
+	accel.model = MODEL_LSM303DLHC;
+
+	return &accel;
 }
 
 static void *ektf2136_spi_platform_data(void *info)
@@ -1601,6 +1620,8 @@ struct devs_id __initconst device_ids[] = {
 	{"als", SFI_DEV_TYPE_I2C, 0, &als_pdata_init, NULL},
 	{"ov8830", SFI_DEV_TYPE_I2C, 0, &ov8830_platform_data_init},
 	{"synaptics_3202", SFI_DEV_TYPE_I2C, 0, &s3202_platform_data_init},
+
+	{"lsm303dl", SFI_DEV_TYPE_I2C, 0, &lsm303dlhc_accel_platform_data},
 
 	{},
 };

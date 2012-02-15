@@ -255,14 +255,17 @@ static int lis3dh_acc_hw_init(struct lis3dh_acc_data *acc)
 
 	dev_dbg(&acc->client->dev, "hw init start\n");
 
-	err = lis3dh_acc_i2c_read(acc, WHO_AM_I, buf, 1);
-	if (err < 0) {
-		dev_warn(&acc->client->dev, "Error reading WHO_AM_I: is device "
-			"available/working?\n");
-		goto err_firstread;
-	} else {
-		acc->hw_working = 1;
+	/* LSM303DLHC doesn't have WHO_AM_I register */
+	if (acc->pdata->model != MODEL_LSM303DLHC) {
+		err = lis3dh_acc_i2c_read(acc, WHO_AM_I, buf, 1);
+		if (err < 0) {
+			dev_warn(&acc->client->dev, "Error reading WHO_AM_I: "
+					"is device available/working?\n");
+			goto err_firstread;
+		}
 	}
+
+	acc->hw_working = 1;
 
 	buf[0] = acc->resume_state[RES_CTRL_REG1];
 	err = lis3dh_acc_i2c_write(acc, CTRL_REG1, buf, 1);
@@ -1262,7 +1265,7 @@ static const struct dev_pm_ops lis3dh_acc_pm_ops = {
 };
 
 static const struct i2c_device_id lis3dh_acc_id[]
-		= { { LIS3DH_ACC_DEV_NAME, 0 }, { }, };
+		= { { LIS3DH_ACC_DEV_NAME, 0 }, { "lsm303dl", 0 }, { }, };
 
 MODULE_DEVICE_TABLE(i2c, lis3dh_acc_id);
 
