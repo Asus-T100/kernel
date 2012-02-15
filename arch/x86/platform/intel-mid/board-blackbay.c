@@ -40,6 +40,7 @@
 #include <linux/usb/penwell_otg.h>
 #include <linux/hsi/hsi.h>
 #include <linux/hsi/intel_mid_hsi.h>
+#include <linux/input/l3g4200d_poll.h>
 #include <linux/wl12xx.h>
 #include <linux/regulator/machine.h>
 #include <linux/regulator/fixed.h>
@@ -232,6 +233,22 @@ static void __init *emc1403_platform_data(void *info)
 	intr2nd_pdata = intr2nd + MRST_IRQ_OFFSET;
 
 	return &intr2nd_pdata;
+}
+
+static void __init *l3g4200d_platform_data(void *info)
+{
+	static struct l3g4200d_gyr_platform_data l3g4200d_pdata;
+
+	l3g4200d_pdata.fs_range = L3G4200D_GYR_FS_2000DPS;
+	l3g4200d_pdata.poll_interval = 200;
+	l3g4200d_pdata.negate_x = 1;
+	l3g4200d_pdata.negate_y = 0;
+	l3g4200d_pdata.negate_z = 0;
+	l3g4200d_pdata.axis_map_x = 0;
+	l3g4200d_pdata.axis_map_y = 1;
+	l3g4200d_pdata.axis_map_z = 2;
+
+	return &l3g4200d_pdata;
 }
 
 static void __init *lis331dl_platform_data(void *info)
@@ -1623,6 +1640,7 @@ struct devs_id __initconst device_ids[] = {
 
 	{"lsm303dl", SFI_DEV_TYPE_I2C, 0, &lsm303dlhc_accel_platform_data},
 	{"lsm303cmp", SFI_DEV_TYPE_I2C, 0, &no_platform_data},
+	{"l3g4200d", SFI_DEV_TYPE_I2C, 0, &l3g4200d_platform_data},
 
 	{},
 };

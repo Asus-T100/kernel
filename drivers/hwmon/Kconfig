@@ -1358,6 +1358,16 @@ config SENSORS_MC13783_ADC
         help
           Support for the A/D converter on MC13783 PMIC.
 
+config SENSORS_L3G4200D_POLL
+	bool "Polling based STMicroeletronics L3G4200D three-axis angular rate sensor"
+	depends on I2C && INPUT
+	default y
+	help
+	   A polling based L3G4200D gyroscope sensor driver. Support retrieving
+	   gyro data with specified polling intervals in milliseconds. Suitable
+	   for low precision but easy use requirements such as for Android integration.
+           Say Yes here to enable it.
+
 config SENSORS_LIS3DH_ACC
 	bool "ST Accel Sensor Driver"
 	depends on I2C
