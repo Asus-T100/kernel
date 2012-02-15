@@ -1411,10 +1411,13 @@ static enum drm_connector_status mdfld_hdmi_detect(struct drm_connector
 		this is not through MSIC for CTP
 		always return connected for now.
 		*/
-		return connector_status_connected;
+		/* Fixme: always return conected will block video playing
+		 * on MIPI; just modify return disconnected for WMC demo.
+		 * Fot CTP hdmi detect, it now depends on HDP enabling.
+		 * Need to look back it after HDP enabled on CTP.
+		 */
+		return connect_status;
 	}
-
-
 
 	/* Check if monitor is attached to HDMI connector. */
 	if (IS_MDFLD_OLD(dev)) {
@@ -1736,6 +1739,9 @@ static int mdfld_hdmi_get_modes(struct drm_connector *connector)
 	}
 
 	/* MSIC HW issue would be fixed after C0. */
+	/* Fixme: The Macros of IS_MDFLD_OLD and IS_MDFLD will be refined after
+	 * HDMI hotplug enabled on CTP
+	 * */
 	if (!((IS_MDFLD_OLD(dev)) &&
 		(dev_priv->platform_rev_id < MDFLD_PNW_C0))) {
 		if (connector->edid_blob_ptr)
