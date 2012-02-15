@@ -66,6 +66,7 @@ struct lnw_gpio {
 	void				*reg_base;
 	spinlock_t			lock;
 	unsigned			irq_base;
+	int				wakeup;
 	struct pci_dev			*pdev;
 };
 
@@ -295,6 +296,9 @@ static void lnw_irq_handler(unsigned irq, struct irq_desc *desc)
 		pending = readl(gedr);
 		while (pending) {
 			gpio = __ffs(pending);
+			if (!lnw->wakeup)
+				dev_info(&lnw->pdev->dev,
+				"wakeup source: gpio %d\n", base + gpio);
 			mask = BIT(gpio);
 			pending &= ~mask;
 			/* Clear before handling so we can't lose an edge */
@@ -307,6 +311,26 @@ static void lnw_irq_handler(unsigned irq, struct irq_desc *desc)
 }
 
 #ifdef CONFIG_PM
+static int lnw_gpio_suspend_noirq(struct device *dev)
+{
+	struct pci_dev *pdev = container_of(dev, struct pci_dev, dev);
+	struct lnw_gpio *lnw = pci_get_drvdata(pdev);
+
+	lnw->wakeup = 0;
+
+	return 0;
+}
+
+static int lnw_gpio_resume_noirq(struct device *dev)
+{
+	struct pci_dev *pdev = container_of(dev, struct pci_dev, dev);
+	struct lnw_gpio *lnw = pci_get_drvdata(pdev);
+
+	lnw->wakeup = 1;
+
+	return 0;
+}
+
 static int lnw_gpio_runtime_resume(struct device *dev)
 {
 	return 0;
@@ -328,12 +352,16 @@ static int lnw_gpio_runtime_idle(struct device *dev)
 }
 
 #else
+#define lnw_gpio_suspend_noirq		NULL
+#define lnw_gpio_resume_noirq		NULL
 #define lnw_gpio_runtime_suspend	NULL
 #define lnw_gpio_runtime_resume		NULL
 #define lnw_gpio_runtime_idle		NULL
 #endif
 
 static const struct dev_pm_ops lnw_gpio_pm_ops = {
+	.suspend_noirq = lnw_gpio_suspend_noirq,
+	.resume_noirq = lnw_gpio_resume_noirq,
 	.runtime_suspend = lnw_gpio_runtime_suspend,
 	.runtime_resume = lnw_gpio_runtime_resume,
 	.runtime_idle = lnw_gpio_runtime_idle,
@@ -389,6 +417,7 @@ static int __devinit lnw_gpio_probe(struct pci_dev *pdev,
 	}
 	lnw->reg_base = base;
 	lnw->irq_base = irq_base;
+	lnw->wakeup = 1;
 	lnw->chip.label = dev_name(&pdev->dev);
 	lnw->chip.direction_input = lnw_gpio_direction_input;
 	lnw->chip.direction_output = lnw_gpio_direction_output;
