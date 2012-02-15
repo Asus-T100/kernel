@@ -1102,7 +1102,7 @@ void *atmel_mxt224_platform_data_init(void *info)
 {
 	static struct mxt_platform_data mxt_pdata;
 
-	mxt_pdata.numtouch       = 2;
+	mxt_pdata.numtouch       = 10;
 	mxt_pdata.max_x          = 1023;
 	mxt_pdata.max_y          = 975;
 	mxt_pdata.orientation    = MXT_MSGB_T9_ORIENT_HORZ_FLIP;
