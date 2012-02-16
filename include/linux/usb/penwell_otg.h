@@ -21,6 +21,7 @@
 #define __PENWELL_OTG_H__
 
 #include <linux/usb/intel_mid_otg.h>
+#include <linux/power_supply.h>
 #include <linux/wakelock.h>
 
 #define CI_USBCMD		0x30
@@ -426,6 +427,7 @@ struct penwell_otg {
 
 	struct work_struct		work;
 	struct work_struct		hnp_poll_work;
+	struct work_struct		psc_notify;
 	struct delayed_work		ulpi_poll_work;
 	struct workqueue_struct		*qwork;
 
@@ -447,6 +449,7 @@ struct penwell_otg {
 
 	spinlock_t			charger_lock;
 	struct otg_bc_cap		charging_cap;
+	struct power_supply_charger_cap psc_cap;
 	int (*bc_callback)(void *arg, int event, struct otg_bc_cap *cap);
 	void				*bc_arg;
 
