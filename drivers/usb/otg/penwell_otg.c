@@ -2741,12 +2741,12 @@ static void penwell_otg_work(struct work_struct *work)
 			msleep(5);
 			penwell_otg_phy_low_power(1);
 
+			iotg->otg.state = OTG_STATE_B_IDLE;
+			penwell_update_transceiver();
+
 			/* Decrement the device usage counter */
 			pm_runtime_put(pnw->dev);
 			wake_unlock(&pnw->wake_lock);
-
-			iotg->otg.state = OTG_STATE_B_IDLE;
-			penwell_update_transceiver();
 		} else if (hsm->id == ID_ACA_A) {
 
 			penwell_otg_update_chrg_cap(CHRG_ACA, CHRG_CURR_ACA);
@@ -2861,8 +2861,6 @@ static void penwell_otg_work(struct work_struct *work)
 				break;
 			}
 
-			pm_runtime_put(pnw->dev);
-			wake_unlock(&pnw->wake_lock);
 			penwell_otg_add_timer(TA_WAIT_BCON_TMR);
 			iotg->otg.state = OTG_STATE_A_WAIT_BCON;
 		}
@@ -2887,8 +2885,6 @@ static void penwell_otg_work(struct work_struct *work)
 			if (iotg->otg.set_vbus)
 				iotg->otg.set_vbus(&iotg->otg, false);
 
-			pm_runtime_get(pnw->dev);
-			wake_lock(&pnw->wake_lock);
 			penwell_otg_add_timer(TA_WAIT_VFALL_TMR);
 			iotg->otg.state = OTG_STATE_A_WAIT_VFALL;
 		} else if (!hsm->a_vbus_vld) {
@@ -2963,8 +2959,6 @@ static void penwell_otg_work(struct work_struct *work)
 			if (iotg->otg.set_vbus)
 				iotg->otg.set_vbus(&iotg->otg, false);
 
-			pm_runtime_get(pnw->dev);
-			wake_lock(&pnw->wake_lock);
 			penwell_otg_add_timer(TA_WAIT_VFALL_TMR);
 			iotg->otg.state = OTG_STATE_A_WAIT_VFALL;
 		} else if (hsm->test_device && hsm->tst_maint_tmout) {
@@ -2989,10 +2983,6 @@ static void penwell_otg_work(struct work_struct *work)
 			/* Clear states and wait for SRP */
 			hsm->a_srp_det = 0;
 			hsm->a_bus_req = 0;
-
-			/* Prevent device enter D0i1 or S3*/
-			wake_lock(&pnw->wake_lock);
-			pm_runtime_get(pnw->dev);
 
 			iotg->otg.state = OTG_STATE_A_IDLE;
 		} else if (!hsm->a_vbus_vld) {
@@ -3071,8 +3061,6 @@ static void penwell_otg_work(struct work_struct *work)
 			if (iotg->otg.set_vbus)
 				iotg->otg.set_vbus(&iotg->otg, false);
 
-			pm_runtime_get(pnw->dev);
-			wake_lock(&pnw->wake_lock);
 			penwell_otg_add_timer(TTST_NOADP_TMR);
 			iotg->otg.state = OTG_STATE_A_WAIT_VFALL;
 
@@ -3127,8 +3115,6 @@ static void penwell_otg_work(struct work_struct *work)
 			if (iotg->otg.set_vbus)
 				iotg->otg.set_vbus(&iotg->otg, false);
 
-			pm_runtime_get(pnw->dev);
-			wake_lock(&pnw->wake_lock);
 			penwell_otg_add_timer(TA_WAIT_VFALL_TMR);
 			iotg->otg.state = OTG_STATE_A_WAIT_VFALL;
 		} else if (!hsm->a_vbus_vld) {
@@ -3231,8 +3217,6 @@ static void penwell_otg_work(struct work_struct *work)
 				iotg->otg.set_vbus(&iotg->otg, false);
 			set_host_mode();
 
-			pm_runtime_get(pnw->dev);
-			wake_lock(&pnw->wake_lock);
 			penwell_otg_add_timer(TA_WAIT_VFALL_TMR);
 			iotg->otg.state = OTG_STATE_A_WAIT_VFALL;
 		} else if (!hsm->a_vbus_vld) {
@@ -3300,8 +3284,6 @@ static void penwell_otg_work(struct work_struct *work)
 			if (hsm->a_clr_err)
 				hsm->a_clr_err = 0;
 
-			pm_runtime_get(pnw->dev);
-			wake_lock(&pnw->wake_lock);
 			penwell_otg_add_timer(TA_WAIT_VFALL_TMR);
 			iotg->otg.state = OTG_STATE_A_WAIT_VFALL;
 		}
