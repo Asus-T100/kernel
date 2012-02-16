@@ -359,7 +359,8 @@ static int mfd_emmc_probe_slot(struct sdhci_pci_slot *slot)
 
 	slot->host->mmc->caps |= MMC_CAP_8_BIT_DATA | MMC_CAP_NONREMOVABLE;
 
-	slot->host->mmc->caps2 |= MMC_CAP2_BOOTPART_NOACC;
+	slot->host->mmc->caps2 |= MMC_CAP2_BOOTPART_NOACC |
+				MMC_CAP2_HC_ERASE_SZ;
 
 	return 0;
 }

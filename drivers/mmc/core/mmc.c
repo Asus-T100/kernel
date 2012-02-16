@@ -316,6 +316,8 @@ static int mmc_read_ext_csd(struct mmc_card *card, u8 *ext_csd)
 		ext_csd[EXT_CSD_ERASE_TIMEOUT_MULT];
 	card->ext_csd.raw_hc_erase_grp_size =
 		ext_csd[EXT_CSD_HC_ERASE_GRP_SIZE];
+	card->ext_csd.part_set_complete =
+		ext_csd[EXT_CSD_PART_SET_COMPLETE];
 	if (card->ext_csd.rev >= 3) {
 		u8 sa_shift = ext_csd[EXT_CSD_S_A_TIMEOUT];
 		card->ext_csd.part_config = ext_csd[EXT_CSD_PART_CONFIG];
@@ -393,8 +395,8 @@ static int mmc_read_ext_csd(struct mmc_card *card, u8 *ext_csd)
 			 * If the enhanced area is not enabled, disable these
 			 * device attributes.
 			 */
-			card->ext_csd.enhanced_area_offset = -EINVAL;
-			card->ext_csd.enhanced_area_size = -EINVAL;
+			card->ext_csd.enhanced_area_offset = 0;
+			card->ext_csd.enhanced_area_size = 0;
 		}
 		card->ext_csd.sec_trim_mult =
 			ext_csd[EXT_CSD_SEC_TRIM_MULT];
@@ -535,8 +537,8 @@ MMC_DEV_ATTR(name, "%s\n", card->cid.prod_name);
 MMC_DEV_ATTR(oemid, "0x%04x\n", card->cid.oemid);
 MMC_DEV_ATTR(serial, "0x%08x\n", card->cid.serial);
 MMC_DEV_ATTR(enhanced_area_offset, "%llu\n",
-		card->ext_csd.enhanced_area_offset);
-MMC_DEV_ATTR(enhanced_area_size, "%u\n", card->ext_csd.enhanced_area_size);
+		card->enhanced_area_offset);
+MMC_DEV_ATTR(enhanced_area_size, "%u\n", card->enhanced_area_size);
 MMC_DEV_ATTR(hpi_support, "%d\n", card->ext_csd.hpi);
 MMC_DEV_ATTR(hpi_enable, "%d\n", card->ext_csd.hpi_en);
 MMC_DEV_ATTR(hpi_command, "%d\n", card->ext_csd.hpi_cmd);
@@ -544,6 +546,10 @@ MMC_DEV_ATTR(hw_reset_support, "%d\n", card->ext_csd.rst_n_function);
 MMC_DEV_ATTR(bkops_support, "%d\n", card->ext_csd.bkops);
 MMC_DEV_ATTR(bkops_enable, "%d\n", card->ext_csd.bkops_en);
 MMC_DEV_ATTR(rpmb_size, "%d\n", card->ext_csd.rpmb_size);
+MMC_DEV_ATTR(trim_timeout, "%d\n", card->ext_csd.trim_timeout);
+MMC_DEV_ATTR(hc_erase_timeout, "%d\n", card->ext_csd.hc_erase_timeout);
+MMC_DEV_ATTR(sec_trim_mult, "%d\n", card->ext_csd.sec_trim_mult);
+MMC_DEV_ATTR(erase_group_def, "%d\n", card->ext_csd.erase_group_def);
 
 static struct attribute *mmc_std_attrs[] = {
 	&dev_attr_cid.attr,
@@ -566,6 +572,10 @@ static struct attribute *mmc_std_attrs[] = {
 	&dev_attr_bkops_support.attr,
 	&dev_attr_bkops_enable.attr,
 	&dev_attr_rpmb_size.attr,
+	&dev_attr_trim_timeout.attr,
+	&dev_attr_hc_erase_timeout.attr,
+	&dev_attr_sec_trim_mult.attr,
+	&dev_attr_erase_group_def.attr,
 	NULL,
 };
 
@@ -714,12 +724,20 @@ static int mmc_init_card(struct mmc_host *host, u32 ocr,
 		/* Erase size depends on CSD and Extended CSD */
 		mmc_set_erase_size(card);
 	}
+	/*
+	 * this bit will be lost after power off
+	 * or reset, so change this bit to be 0
+	 */
+	card->ext_csd.erase_group_def = 0;
 
 	/*
 	 * If enhanced_area_en is TRUE, host needs to enable ERASE_GRP_DEF
 	 * bit.  This bit will be lost every time after a reset or power off.
 	 */
-	if (card->ext_csd.enhanced_area_en) {
+	if (card->ext_csd.enhanced_area_en ||
+			card->ext_csd.part_set_complete ||
+			(card->ext_csd.rev >= 3 &&
+			 (host->caps2 & MMC_CAP2_HC_ERASE_SZ))) {
 		err = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
 				 EXT_CSD_ERASE_GROUP_DEF, 1, 0);
 
@@ -733,10 +751,14 @@ static int mmc_init_card(struct mmc_host *host, u32 ocr,
 			 * will try to enable ERASE_GROUP_DEF
 			 * during next time reinit
 			 */
-			card->ext_csd.enhanced_area_offset = -EINVAL;
-			card->ext_csd.enhanced_area_size = -EINVAL;
+			card->enhanced_area_offset = 0;
+			card->enhanced_area_size = 0;
 		} else {
 			card->ext_csd.erase_group_def = 1;
+			card->enhanced_area_offset =
+				card->ext_csd.enhanced_area_offset;
+			card->enhanced_area_size =
+				card->ext_csd.enhanced_area_size;
 			/*
 			 * enable ERASE_GRP_DEF successfully.
 			 * This will affect the erase size, so
