@@ -328,6 +328,7 @@ static void do_modem_power(struct ffl_ctx *ctx)
 
 	ctx->reset.ongoing = 1;
 
+	dev_dbg(&cl->device, "GPIO ON1 toggle");
 	gpio_set_value(pd->gpio_mdm_pwr_on, 1);
 	mdelay(PO_INTERLINE_DELAY);
 	gpio_set_value(pd->gpio_mdm_pwr_on, 0);
