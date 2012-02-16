@@ -70,11 +70,35 @@ struct dw_pci_controller {
 	u32 tx_fifo_depth;
 	u32 rx_fifo_depth;
 	u32 clk_khz;
+	int (*scl_cfg) (struct dw_i2c_dev *dev);
+
 };
 
 #define INTEL_MID_STD_CFG  (DW_IC_CON_MASTER |			\
 				DW_IC_CON_SLAVE_DISABLE |	\
 				DW_IC_CON_RESTART_EN)
+
+static int mfld_i2c_scl_cfg(struct dw_i2c_dev *dev)
+{
+	dw_writel(dev, PNW_SS_SCLK_HCNT, DW_IC_SS_SCL_HCNT);
+	dw_writel(dev, PNW_SS_SCLK_LCNT, DW_IC_SS_SCL_LCNT);
+
+	dw_writel(dev, PNW_FS_SCLK_HCNT, DW_IC_FS_SCL_HCNT);
+	dw_writel(dev, PNW_FS_SCLK_LCNT, DW_IC_FS_SCL_LCNT);
+
+	return 0;
+}
+
+static int ctp_i2c_scl_cfg(struct dw_i2c_dev *dev)
+{
+	dw_writel(dev, CLV_SS_SCLK_HCNT, DW_IC_SS_SCL_HCNT);
+	dw_writel(dev, CLV_SS_SCLK_LCNT, DW_IC_SS_SCL_LCNT);
+
+	dw_writel(dev, CLV_FS_SCLK_HCNT, DW_IC_FS_SCL_HCNT);
+	dw_writel(dev, CLV_FS_SCLK_LCNT, DW_IC_FS_SCL_LCNT);
+
+	return 0;
+}
 
 static struct  dw_pci_controller  dw_pci_controllers[] = {
 	[moorestown_0] = {
@@ -104,6 +128,7 @@ static struct  dw_pci_controller  dw_pci_controllers[] = {
 		.tx_fifo_depth = 32,
 		.rx_fifo_depth = 32,
 		.clk_khz      = 17000,
+		.scl_cfg = mfld_i2c_scl_cfg,
 	},
 	[medfield_1] = {
 		.bus_num     = 1,
@@ -111,6 +136,7 @@ static struct  dw_pci_controller  dw_pci_controllers[] = {
 		.tx_fifo_depth = 32,
 		.rx_fifo_depth = 32,
 		.clk_khz      = 20500,
+		.scl_cfg = mfld_i2c_scl_cfg,
 	},
 	[medfield_2] = {
 		.bus_num     = 2,
@@ -118,6 +144,7 @@ static struct  dw_pci_controller  dw_pci_controllers[] = {
 		.tx_fifo_depth = 32,
 		.rx_fifo_depth = 32,
 		.clk_khz      = 17000,
+		.scl_cfg = mfld_i2c_scl_cfg,
 	},
 	[medfield_3] = {
 		.bus_num     = 3,
@@ -125,6 +152,7 @@ static struct  dw_pci_controller  dw_pci_controllers[] = {
 		.tx_fifo_depth = 32,
 		.rx_fifo_depth = 32,
 		.clk_khz      = 20500,
+		.scl_cfg = mfld_i2c_scl_cfg,
 	},
 	[medfield_4] = {
 		.bus_num     = 4,
@@ -132,6 +160,7 @@ static struct  dw_pci_controller  dw_pci_controllers[] = {
 		.tx_fifo_depth = 32,
 		.rx_fifo_depth = 32,
 		.clk_khz      = 17000,
+		.scl_cfg = mfld_i2c_scl_cfg,
 	},
 	[medfield_5] = {
 		.bus_num     = 5,
@@ -139,6 +168,7 @@ static struct  dw_pci_controller  dw_pci_controllers[] = {
 		.tx_fifo_depth = 32,
 		.rx_fifo_depth = 32,
 		.clk_khz      = 17000,
+		.scl_cfg = mfld_i2c_scl_cfg,
 	},
 
 	[cloverview_0] = {
@@ -147,6 +177,7 @@ static struct  dw_pci_controller  dw_pci_controllers[] = {
 		.tx_fifo_depth = 32,
 		.rx_fifo_depth = 32,
 		.clk_khz      = 17000,
+		.scl_cfg = ctp_i2c_scl_cfg,
 	},
 	[cloverview_1] = {
 		.bus_num     = 1,
@@ -154,6 +185,7 @@ static struct  dw_pci_controller  dw_pci_controllers[] = {
 		.tx_fifo_depth = 32,
 		.rx_fifo_depth = 32,
 		.clk_khz      = 17000,
+		.scl_cfg = ctp_i2c_scl_cfg,
 	},
 	[cloverview_2] = {
 		.bus_num     = 2,
@@ -161,6 +193,7 @@ static struct  dw_pci_controller  dw_pci_controllers[] = {
 		.tx_fifo_depth = 32,
 		.rx_fifo_depth = 32,
 		.clk_khz      = 17000,
+		.scl_cfg = ctp_i2c_scl_cfg,
 	},
 	[cloverview_3] = {
 		.bus_num     = 3,
@@ -168,6 +201,7 @@ static struct  dw_pci_controller  dw_pci_controllers[] = {
 		.tx_fifo_depth = 32,
 		.rx_fifo_depth = 32,
 		.clk_khz      = 20500,
+		.scl_cfg = ctp_i2c_scl_cfg,
 	},
 	[cloverview_4] = {
 		.bus_num     = 4,
@@ -175,6 +209,7 @@ static struct  dw_pci_controller  dw_pci_controllers[] = {
 		.tx_fifo_depth = 32,
 		.rx_fifo_depth = 32,
 		.clk_khz      = 17000,
+		.scl_cfg = ctp_i2c_scl_cfg,
 	},
 	[cloverview_5] = {
 		.bus_num     = 5,
@@ -182,6 +217,7 @@ static struct  dw_pci_controller  dw_pci_controllers[] = {
 		.tx_fifo_depth = 32,
 		.rx_fifo_depth = 32,
 		.clk_khz      = 17000,
+		.scl_cfg = ctp_i2c_scl_cfg,
 	},
 };
 static struct i2c_algorithm i2c_dw_algo = {
@@ -342,6 +378,7 @@ const struct pci_device_id *id)
 		I2C_FUNC_SMBUS_WORD_DATA |
 		I2C_FUNC_SMBUS_I2C_BLOCK;
 	dev->master_cfg =  controller->bus_cfg;
+	dev->get_scl_cfg = controller->scl_cfg;
 
 	pci_set_drvdata(pdev, dev);
 
