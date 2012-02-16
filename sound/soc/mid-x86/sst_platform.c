@@ -278,7 +278,11 @@ static int sst_platform_open(struct snd_pcm_substream *substream)
 			return -EBUSY;
 		}
 		sst_cpu_ctx->active_voice_cnt++;
+/**FIXME in clean up patch***/
+#ifdef CONFIG_SND_MFLD_MACHINE
+
 		ret_val = intel_sst_set_pll(true, SST_PLL_VOICE);
+#endif
 		if (!ret_val)
 			return snd_pcm_hw_constraint_integer(runtime,
 				SNDRV_PCM_HW_PARAM_PERIODS);
@@ -344,7 +348,9 @@ static int sst_platform_close(struct snd_pcm_substream *substream)
 
 	if (!strcmp(dai_link->cpu_dai_name, SST_VOICE_DAI)) {
 		sst_cpu_ctx->active_voice_cnt--;
+#ifdef CONFIG_SND_MFLD_MACHINE
 		intel_sst_set_pll(false, SST_PLL_VOICE);
+#endif
 		goto func_exit;
 	}
 	sst_cpu_ctx->active_nonvoice_cnt--;
