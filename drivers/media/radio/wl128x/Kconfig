@@ -4,14 +4,12 @@
 menu "Texas Instruments WL128x FM driver (ST based)"
 config RADIO_WL128X
 	tristate "Texas Instruments WL128x FM Radio"
-	depends on VIDEO_V4L2 && RFKILL
+	depends on VIDEO_DEV
 	select TI_ST
 	help
-	Choose Y here if you have this FM radio chip.
-
-	In order to control your radio card, you will need to use programs
-	that are compatible with the Video For Linux 2 API.  Information on
-	this API and pointers to "v4l2" programs may be found at
-	<file:Documentation/video4linux/API.html>.
+	This enables the FM driver for TI BT/FM/GPS combo devices
+	  This makes use of shared transport line discipline core driver to
+	  communicate with the FM core of the combo chip. This is not V4L2 compliant
+	  and must be used with TI proprietary MCP stack for FM
 
 endmenu
