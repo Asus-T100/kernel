@@ -31,6 +31,7 @@
 #include <linux/async.h>
 #include <linux/delay.h>
 #include <asm/intel_scu_ipc.h>
+#include <sound/intel_sst.h>
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
 #include <sound/soc.h>
@@ -42,7 +43,6 @@
 #define C42L73_DEFAULT_MCLK	6144000
 #define CS42L73_FMT_I2S
 #define CS42L73_HPSENSE_GPIO 34
-
 
 static int clv_hw_params(struct snd_pcm_substream *substream,
 	struct snd_pcm_hw_params *params)
@@ -99,11 +99,9 @@ static void clv_soc_jack_gpio_detect(struct snd_soc_jack_gpio *gpio)
 	int enable;
 	struct snd_soc_jack *jack = gpio->jack;
 	struct snd_soc_codec *codec = jack->codec;
-
-	enable = gpio_get_value_cansleep(gpio->gpio);
+	enable = gpio_get_value(gpio->gpio);
 	if (gpio->invert)
 		enable = !enable;
-
 	cs42l73_hp_detection(codec, jack, enable);
 }
 
@@ -138,16 +136,14 @@ int clv_soc_jack_add_gpio(struct snd_soc_jack *jack,
 	int ret;
 	struct snd_soc_codec *codec = jack->codec;
 
-	printk(KERN_ERR "name for gpio %d\n", gpio->gpio);
-
 	if (!gpio_is_valid(gpio->gpio)) {
-		printk(KERN_ERR "Invalid gpio %d\n", gpio->gpio);
+		pr_err("Invalid gpio %d\n", gpio->gpio);
 		ret = -EINVAL;
 		goto undo;
 	}
 
 	if (!gpio->name) {
-		printk(KERN_ERR "No name for gpio %d\n", gpio->gpio);
+		pr_err("No name for gpio %d\n", gpio->gpio);
 		ret = -EINVAL;
 		goto undo;
 	}
@@ -199,16 +195,45 @@ static const struct snd_soc_dapm_route clv_audio_map[] = {
 	{"Headphone", NULL, "HPOUTB"},
 };
 
+
+/* Board specific codec bias level control */
+static int clv_set_bias_level(struct snd_soc_card *card,
+				enum snd_soc_bias_level level)
+{
+	struct snd_soc_codec *codec = card->rtd->codec;
+
+	switch (level) {
+	case SND_SOC_BIAS_ON:
+	case SND_SOC_BIAS_PREPARE:
+	case SND_SOC_BIAS_STANDBY:
+		if (codec->dapm.bias_level == SND_SOC_BIAS_OFF)
+			intel_sst_set_pll(true, SST_PLL_MSIC);
+		break;
+	case SND_SOC_BIAS_OFF:
+		intel_sst_set_pll(false, SST_PLL_MSIC);
+	}
+	codec->dapm.bias_level = level;
+	pr_debug("codec->bias_level %u\n", card->dapm.bias_level);
+
+	return 0;
+}
+
+
 static int clv_init(struct snd_soc_pcm_runtime *runtime)
 {
 	struct snd_soc_codec *codec = runtime->codec;
 	struct snd_soc_dapm_context *dapm = &codec->dapm;
 	int ret;
+	struct snd_soc_card *card = runtime->card;
 
 	/*Enable  IHFAMP_SD_N  GPIO */
 	ret = intel_scu_ipc_iowrite8(0x70, 0x3d);
 	if (ret)
 		pr_err("write of  failed, err %d\n", ret);
+
+	/* Set codec bias level */
+	clv_set_bias_level(card, SND_SOC_BIAS_OFF);
+
 
 	/* Add Jack specific widgets */
 	ret = snd_soc_dapm_new_controls(dapm, clv_dapm_widgets,
@@ -301,6 +326,7 @@ static struct snd_soc_card snd_soc_card_clv = {
 	.name = "cloverview_audio",
 	.dai_link = clv_msic_dailink,
 	.num_links = ARRAY_SIZE(clv_msic_dailink),
+	.set_bias_level = clv_set_bias_level,
 };
 
 static int snd_clv_mc_probe(struct platform_device *pdev)

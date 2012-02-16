@@ -708,7 +708,7 @@ struct cs42l73_mclkx_div {
 static struct cs42l73_mclkx_div cs42l73_mclkx_coeffs[] = {
 	{5644800,  1, 0},	/* 5644800 */
 	{6000000,  1, 0},	/* 6000000 */
-	{6144000,  1, 5},	/* 6144000 */
+	{6144000,  1, 3},	/* 6144000 */
 	{11289600, 2, 2},	/* 5644800 */
 	{12288000, 2, 2},	/* 6144000 */
 	{12000000, 2, 2},	/* 6000000 */
@@ -1161,8 +1161,8 @@ void cs42l73_hp_detection(struct snd_soc_codec *codec,
 			status = SND_JACK_BTN_1;
 	}
 	snd_soc_jack_report(jack, status, status);
-	pr_debug("%s(): Plug Status = %x\n", plug_status);
-	pr_debug("%s(): Jack Status = %x\n", status);
+	pr_debug("Plug Status = %x\n", plug_status);
+	pr_debug("Jack Status = %x\n", status);
 
 }
 EXPORT_SYMBOL_GPL(cs42l73_hp_detection);
@@ -1179,7 +1179,8 @@ static int cs42l73_probe(struct snd_soc_codec *codec)
 		dev_err(codec->dev, "Failed to set cache I/O: %d\n", ret);
 		return ret;
 	}
-	cs42l73_set_bias_level(codec, SND_SOC_BIAS_STANDBY);
+	cs42l73_set_bias_level(codec, SND_SOC_BIAS_OFF);
+	codec->dapm.idle_bias_off = 1;
 
 	/* initialize codec */
 	ret = snd_soc_read(codec, CS42L73_DEVID_AB);

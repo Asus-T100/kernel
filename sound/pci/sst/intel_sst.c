@@ -488,15 +488,15 @@ static void sst_save_dsp_context(void)
 
 int intel_sst_set_pll(unsigned int enable, enum intel_sst_pll_mode mode)
 {
-	u32 *ipc_wbuf, ret = 0;
-	u8 cbuf[16] = { '\0' };
+	int ret = 0;
+	int clock_enable = 0;
+	static const unsigned int clock_khz = 19200;
 
 	pr_debug("set_pll, Enable %x, Mode %x\n", enable, mode);
-	ipc_wbuf = (u32 *)&cbuf;
-	cbuf[0] = 0; /* OSC_CLK_OUT0 */
 	mutex_lock(&sst_drv_ctx->sst_lock);
 	if (enable == true) {
-		cbuf[1] = 1; /* enable the clock, preserve clk ratio */
+		/*enable clock */
+		clock_enable = 1;
 		if (sst_drv_ctx->pll_mode) {
 			/* clock is on, so just update and return */
 			sst_drv_ctx->pll_mode |= mode;
@@ -512,11 +512,12 @@ int intel_sst_set_pll(unsigned int enable, enum intel_sst_pll_mode mode)
 		pr_debug("set_pll, disabling pll %x\n", sst_drv_ctx->pll_mode);
 		if (sst_drv_ctx->pll_mode)
 			goto out;
-		cbuf[1] = 0; /* Disable the clock */
+		clock_enable = 0; /*disbale clock */
 	}
 	/* send ipc command to configure the PNW clock to MSIC PLLIN */
 	pr_debug("configuring clock now\n");
-	ret = intel_scu_ipc_command(0xE6, 0, ipc_wbuf, 2, NULL, 0);
+	ret = intel_scu_ipc_osc_clk(OSC_CLK_AUDIO, clock_enable ?
+								clock_khz : 0);
 	if (ret)
 		pr_err("ipc clk disable command failed: %d\n", ret);
 out:
