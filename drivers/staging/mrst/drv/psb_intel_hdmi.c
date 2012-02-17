@@ -1865,12 +1865,19 @@ static int mdfld_hdmi_get_modes(struct drm_connector *connector)
 static int mdfld_hdmi_mode_valid(struct drm_connector *connector,
 				 struct drm_display_mode *mode)
 {
+	struct drm_device *dev = connector->dev;
+
 	PSB_DEBUG_ENTRY("display info. hdisplay = %d, vdisplay = %d, vrefresh = %d.\n",
 			mode->hdisplay, mode->vdisplay, mode->vrefresh);
 
 	/* change the maximum clock to be 74.25mhz per DC spec */
-        if (mode->clock > 74250)
-                return MODE_CLOCK_HIGH;
+	if (IS_CTP(dev)) {
+		if (mode->clock > 165000)
+			return MODE_CLOCK_HIGH;
+	} else {
+		if (mode->clock > 74250)
+			return MODE_CLOCK_HIGH;
+	}
 
 	if (mode->clock < 20000)
 		return MODE_CLOCK_LOW;
