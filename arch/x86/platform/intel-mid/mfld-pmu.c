@@ -203,135 +203,6 @@ EXPORT_SYMBOL(mfld_msg_write32);
  *
  */
 
-static struct sram_save_info {
-	u32 start;
-	u32 end;
-	int s0i1_need;
-	void __iomem *ddr_iomap;
-	void *ddr_save;
-} sram_save_info_all[] = {
-	/* Data in these areas of SRAM will lost in S0i1/2/3 */
-#if 0
-	/* DAFCA is for debug purpose, so we dn't save/restore it */
-	{0xfffc0000, 0xfffd03ff, 1, 0, 0},	/* DAFCA */
-
-	/* Currently, we don't use below Hooks */
-	{0xfffd0400, 0xfffd7fff, 1, 0, 0},	/* OEM/Validation Hooks */
-
-	/* We assume below buffers are not used across s0i3 */
-	{0xfffd8000, 0xfffdbfff, 1, 0, 0},	/* IA UMIP update Buf */
-	{0xfffdc000, 0xfffdffff, 1, 0, 0},	/* Security UMIP update Buf */
-#endif
-
-	/* Data in these areas of SRAM will lost in S0i2/3 */
-#if 0
-	/*
-	 * Audio driver/LPE engine reinitialize Audio SRAM region
-	 * after exiting from s0i3. We needn't save/restore it.
-	 */
-	{0xfffe1000, 0xffff0fff, 0, 0, 0},	/* Audio Buffer */
-	{0xffff1000, 0xffff2fff, 0, 0, 0},	/* Audio Mailbox */
-#endif
-	{0xffff3000, 0xffff306c, 0, 0, 0},	/* OSHOB */
-	{0xffff3400, 0xffff341f, 0, 0, 0},	/* OSNIBW */
-#if 0
-	/* SCU/Punit handles this, OS should treat this as reserved */
-	{0xffff6000, 0xffff6fff, 0, 0, 0},	/* P-unit/SCU mailbox */
-
-	/* Debug only. SCU writes this space when feature is enabled */
-	{0xffff7000, 0xffff71ef, 0, 0, 0},	/* LP Residency Counters */
-
-	/* SCU initialize this region when powering on SRAM Bank#1 */
-	{0xffff7fb0, 0xffff7fbf, 0, 0, 0},	/* eMMC Mutex Register */
-#endif
-#if 0
-	/* Don't save/restore OTG as USB OTG driver takes care it */
-	{0xffff8000, 0xffffbfff, 0, 0, 0},	/* USB OTG */
-#endif
-};
-
-static inline void s0ix_sram_save(u32 s0ix)
-{
-	struct sram_save_info *p;
-	u32 len;
-	int i, index;
-
-	for (index = 0; index < ARRAY_SIZE(sram_save_info_all); index++) {
-		p = &sram_save_info_all[index];
-		if (((s0ix == MID_S0I1_STATE) || (s0ix == MID_LPMP3_STATE))
-							&& !p->s0i1_need)
-			continue;
-
-		len = ALIGN(p->end - p->start + 1, 4);
-		for (i = 0; i < len; i += 4)
-			*(unsigned int *)(p->ddr_save + i) =
-				readl(p->ddr_iomap + i);
-	}
-}
-
-static inline void s0ix_sram_restore(u32 s0ix)
-{
-	struct sram_save_info *p;
-	u32 len;
-	int i, index;
-
-	for (index = 0; index < ARRAY_SIZE(sram_save_info_all); index++) {
-		p = &sram_save_info_all[index];
-		if (((s0ix == MID_S0I1_STATE) || (s0ix == MID_LPMP3_STATE))
-							&& !p->s0i1_need)
-			continue;
-
-		len = ALIGN(p->end - p->start + 1, 4);
-		for (i = 0; i < len; i += 4)
-			writel(*(unsigned int *)(p->ddr_save + i),
-					p->ddr_iomap + i);
-	}
-}
-
-static void s0ix_sram_save_cleanup(void)
-{
-	struct sram_save_info *p;
-	int index;
-
-	for (index = 0; index < ARRAY_SIZE(sram_save_info_all); index++) {
-		p = &sram_save_info_all[index];
-		if (p->ddr_iomap) {
-			iounmap(p->ddr_iomap);
-			p->ddr_iomap = 0;
-		}
-
-		kfree(p->ddr_save);
-		p->ddr_save = 0;
-	}
-}
-
-static int s0ix_sram_save_init(void)
-{
-	int index, ret = 0;
-	u32 len;
-	struct sram_save_info *p;
-
-	for (index = 0; index < ARRAY_SIZE(sram_save_info_all); index++) {
-		p = &sram_save_info_all[index];
-		len = ALIGN(p->end - p->start + 1, 4);
-		p->ddr_iomap = ioremap_nocache(p->start, len);
-		if (!p->ddr_iomap) {
-			ret = -ENOMEM;
-			s0ix_sram_save_cleanup();
-			break;
-		}
-
-		p->ddr_save = kmalloc(len, GFP_KERNEL);
-		if (!p->ddr_save) {
-			ret = -ENOMEM;
-			s0ix_sram_save_cleanup();
-			break;
-		}
-	}
-
-	return ret;
-}
-
 /* To CLEAR C6 offload Bit(LSB) in MSR 120 */
 static inline void clear_c6offload_bit(void)
 {
@@ -1104,8 +975,6 @@ int mfld_s0ix_enter(int s0ix_state)
 
 	clear_c6offload_bit();
 
-	s0ix_sram_save(s0ix_state);
-
 	/* no need to proceed if schedule pending */
 	if (unlikely(need_resched())) {
 		pmu_stat_clear();
@@ -1153,8 +1022,8 @@ int mfld_s0ix_enter(int s0ix_state)
 			goto ret;
 		}
 	}
-	ret = s0ix_state;
 
+	ret = s0ix_state;
 ret:
 	return ret;
 }
@@ -1224,8 +1093,6 @@ static irqreturn_t pmu_sc_irq(int irq, void *ignored)
 		/* unblock set_power_state() */
 		complete(&mid_pmu_cxt->set_mode_complete);
 	} else {
-		s0ix_sram_restore(mid_pmu_cxt->s0ix_entered);
-
 		/* Wakeup allother CPU's */
 		if (mid_pmu_cxt->s0ix_entered == MID_S0I3_STATE)
 			apic->send_IPI_allbutself(RESCHEDULE_VECTOR);
@@ -2500,9 +2367,6 @@ static int pmu_init(void)
 	dev_dbg(&mid_pmu_cxt->pmu_dev->dev, "PMU Driver loaded\n");
 	spin_lock_init(&mid_pmu_cxt->nc_ready_lock);
 
-	if (s0ix_sram_save_init())
-		pr_err("sram save init fail!\n");
-
 	/* enumerate the PCI configuration space */
 	pmu_enumerate();
 
@@ -2935,7 +2799,7 @@ fs_initcall(mid_pci_register_init);
 static void __exit mid_pci_cleanup(void)
 {
 	suspend_set_ops(NULL);
-	s0ix_sram_save_cleanup();
+
 	/* registering PCI device */
 	pci_unregister_driver(&driver);
 
