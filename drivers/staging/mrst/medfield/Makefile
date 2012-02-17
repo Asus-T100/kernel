@@ -175,6 +175,7 @@ gfx-y += $(DRMDRVDIR)/psb_bl.o \
 	  $(DRMDRVDIR)/psb_intel_sdvo.o \
 	  $(DRMDRVDIR)/mdfld_hdmi_audio.o \
 	  $(DRMDRVDIR)/mdfld_msic.o \
+	  $(DRMDRVDIR)/mdfld_ti_tpd.o \
 	  $(DRMDRVDIR)/mdfld_csc.o \
 	  $(DRMDRVDIR)/mdfld_intel_hdcp.o \
 	  $(DRMDRVDIR)/psb_intel_hdmi.o \

@@ -39,6 +39,7 @@
 #include "mdfld_dsi_dbi_dpu.h"
 #include <asm/intel_scu_ipc.h>
 #include "psb_intel_hdmi.h"
+#include "mdfld_ti_tpd.h"
 #ifdef CONFIG_GFX_RTPM
 #include <linux/pm_runtime.h>
 #endif
@@ -426,9 +427,11 @@ void ospm_post_init(struct drm_device *dev)
 /* if HDMI is disabled in the kernel .config, then we want to
 disable these MSIC power rails permanently.  */
 #ifndef CONFIG_MDFD_HDMI
-	/* turn off HDMI power rails */
-	intel_scu_ipc_iowrite8(MSIC_VHDMICNT, VHDMI_OFF);
-	intel_scu_ipc_iowrite8(MSIC_VCC330CNT, VCC330_OFF);
+	if (IS_MDFLD_OLD(dev)) {
+		/* turn off HDMI power rails */
+		intel_scu_ipc_iowrite8(MSIC_VHDMICNT, VHDMI_OFF);
+		intel_scu_ipc_iowrite8(MSIC_VCC330CNT, VCC330_OFF);
+	}
 #endif
 
 }
@@ -1501,17 +1504,28 @@ void ospm_suspend_display(struct drm_device *dev)
  * Description: to check whether hdmi is plugged out in S3 suspend
  *
  */
-static bool is_hdmi_plugged_out(void)
+static bool is_hdmi_plugged_out(struct drm_device *dev)
 {
 	u8 data = 0;
-	intel_scu_ipc_ioread8(MSIC_HDMI_STATUS, &data);
+	bool hdmi_plugged_out = true;
 
-	if ((data & HPD_SIGNAL_STATUS)) {
-		return false;
-	} else {
-		return true;
+	if (IS_MDFLD_OLD(dev)) {
+		intel_scu_ipc_ioread8(MSIC_HDMI_STATUS, &data);
+
+		if (data & HPD_SIGNAL_STATUS)
+			hdmi_plugged_out = false;
+		else
+			hdmi_plugged_out = true;
+	} else if (IS_CTP(dev)) {
+		if (gpio_get_value(CLV_TI_HPD_GPIO_PIN) == 0)
+			hdmi_plugged_out = true;
+		else
+			hdmi_plugged_out = false;
 	}
+
+	return hdmi_plugged_out;
 }
+
 /*
  * ospm_resume_display
  *
@@ -1577,7 +1591,7 @@ void ospm_resume_display(struct pci_dev *pdev)
 			/*devices connect status will be changed
 			 when system suspend,re-detect once here*/
 #ifdef CONFIG_SND_INTELMID_HDMI_AUDIO
-			if (!is_hdmi_plugged_out()) {
+			if (!is_hdmi_plugged_out(dev)) {
 				PSB_DEBUG_ENTRY("resume hdmi_state %d", hdmi_state);
 				if (dev_priv->had_pvt_data && hdmi_state) {
 					if (!dev_priv->had_interface->resume(dev_priv->had_pvt_data)) {
@@ -1958,13 +1972,22 @@ void ospm_power_island_up(int hw_islands)
 	if (hw_islands & OSPM_DISPLAY_ISLAND) {
 
 #ifdef CONFIG_MDFD_HDMI
-		/* Always turn on MSIC VCC330 and VHDMI when display is on. */
-		intel_scu_ipc_iowrite8(MSIC_VCC330CNT, VCC330_ON);
-		/* MSIC documentation requires that there be a 500us delay
-		after enabling VCC330 before you can enable VHDMI */
-		usleep_range(500, 1000);
-		/* turn on HDMI power rails */
-		intel_scu_ipc_iowrite8(MSIC_VHDMICNT, VHDMI_ON | VHDMI_DB_30MS);
+		if (IS_MDFLD_OLD(dev_priv->dev)) {
+			/*
+			 * Always turn on MSIC VCC330 and VHDMI when display is
+			 * on.
+			 */
+			intel_scu_ipc_iowrite8(MSIC_VCC330CNT, VCC330_ON);
+			/*
+			 * MSIC documentation requires that there be a 500us
+			 * delay after enabling VCC330 before you can enable
+			 * VHDMI
+			 */
+			usleep_range(500, 1000);
+			/* turn on HDMI power rails */
+			intel_scu_ipc_iowrite8(MSIC_VHDMICNT,
+					VHDMI_ON | VHDMI_DB_30MS);
+		}
 #endif
 		/*Power-up required islands only*/
 		if (dev_priv->panel_desc & DISPLAY_A)
@@ -2096,11 +2119,18 @@ void ospm_power_island_down(int hw_islands)
 		spin_unlock_irqrestore(&dev_priv->ospm_lock, flags);
 
 #ifdef CONFIG_MDFD_HDMI
-		/* Turn off MSIC VCC330 and VHDMI if HDMI is disconnected. */
-		if (!hdmi_state) {
-			/* turn off HDMI power rails */
-			intel_scu_ipc_iowrite8(MSIC_VHDMICNT, VHDMI_OFF);
-			intel_scu_ipc_iowrite8(MSIC_VCC330CNT, VCC330_OFF);
+		if (IS_MDFLD_OLD(dev_priv->dev)) {
+			/*
+			 * Turn off MSIC VCC330 and VHDMI if HDMI is
+			 * disconnected.
+			 */
+			if (!hdmi_state) {
+				/* turn off HDMI power rails */
+				intel_scu_ipc_iowrite8(MSIC_VHDMICNT,
+						VHDMI_OFF);
+				intel_scu_ipc_iowrite8(MSIC_VCC330CNT,
+						VCC330_OFF);
+			}
 		}
 #endif
 		/* handle other islands */

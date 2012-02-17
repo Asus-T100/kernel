@@ -40,6 +40,7 @@
 #include "mdfld_hdmi_audio_if.h"
 #include <linux/pm_runtime.h>
 #include <linux/intel_mid_pm.h>
+#include "mdfld_ti_tpd.h"
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,34))
 #include <asm/intel_scu_ipc.h>
@@ -1406,25 +1407,24 @@ static enum drm_connector_status mdfld_hdmi_detect(struct drm_connector
 	enum drm_connector_status connect_status =
 			 connector_status_disconnected;
 	static bool first_time_boot_detect = true;
-	if (IS_CTP(dev)) {
-		/* to be fixed :: HPD enabling is work in progress
-		this is not through MSIC for CTP
-		always return connected for now.
-		*/
-		/* Fixme: always return conected will block video playing
-		 * on MIPI; just modify return disconnected for WMC demo.
-		 * Fot CTP hdmi detect, it now depends on HDP enabling.
-		 * Need to look back it after HDP enabled on CTP.
-		 */
-		return connect_status;
-	}
+	bool hdmi_hpd_connected = false;
 
 	/* Check if monitor is attached to HDMI connector. */
 	if (IS_MDFLD_OLD(dev)) {
-
 		intel_scu_ipc_ioread8(MSIC_HDMI_STATUS, &data);
 
-	if (data & HPD_SIGNAL_STATUS) {
+		if (data & HPD_SIGNAL_STATUS)
+			hdmi_hpd_connected = true;
+		else
+			hdmi_hpd_connected = false;
+	} else if (IS_CTP(dev)) {
+		if (gpio_get_value(CLV_TI_HPD_GPIO_PIN) == 0)
+			hdmi_hpd_connected = false;
+		else
+			hdmi_hpd_connected = true;
+	}
+
+	if (hdmi_hpd_connected) {
 		DRM_DEBUG("%s: HPD connected data = 0x%x.\n", __func__, data);
 
 		if (connector->status == connector_status_connected) {
@@ -1477,7 +1477,6 @@ static enum drm_connector_status mdfld_hdmi_detect(struct drm_connector
 		}
 
 	}
-	} /* IS_MDFLD_OLD(dev) code */
 #else
 	connect_status =  mdfld_hdmi_edid_detect(connector);
 #endif
@@ -1739,9 +1738,6 @@ static int mdfld_hdmi_get_modes(struct drm_connector *connector)
 	}
 
 	/* MSIC HW issue would be fixed after C0. */
-	/* Fixme: The Macros of IS_MDFLD_OLD and IS_MDFLD will be refined after
-	 * HDMI hotplug enabled on CTP
-	 * */
 	if (!((IS_MDFLD_OLD(dev)) &&
 		(dev_priv->platform_rev_id < MDFLD_PNW_C0))) {
 		if (connector->edid_blob_ptr)
@@ -2065,12 +2061,13 @@ void mdfld_hdmi_init(struct drm_device *dev,
 	hdmi_priv->edid_preferred_mode = NULL;
 	mdfld_hdcp_init(hdmi_priv);
 	mdfld_hdmi_audio_init(hdmi_priv);
-	mdfld_msic_init(hdmi_priv);
 
 	/* CTP has separate companion chip for HDMI. This is not required.
 	   To be fixed : enable HPD for CTP.
 	 */
 	if (IS_MDFLD_OLD(dev)) {
+		mdfld_msic_init(hdmi_priv);
+
 		/* turn on HDMI power rails. These will be on in all non-S0iX
 		states so that HPD and connection status will work. VCC330 will
 		have ~1.7mW usage during idle states when the display is
@@ -2084,7 +2081,8 @@ void mdfld_hdmi_init(struct drm_device *dev,
 		/* Extend VHDMI switch de-bounce time, to avoid redundant MSIC
 		 * VREG/HDMI interrupt during HDMI cable plugged in/out. */
 		intel_scu_ipc_iowrite8(MSIC_VHDMICNT, VHDMI_ON | VHDMI_DB_30MS);
-	}
+	} else if (IS_CTP(dev))
+		mdfld_ti_tpd_init(hdmi_priv);
 
 	drm_sysfs_connector_add(connector);
 	return;

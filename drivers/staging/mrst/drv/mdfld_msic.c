@@ -25,7 +25,6 @@
  */
 
 #include "mdfld_msic.h"
-#include <drm/drmP.h>
 #include "psb_drv.h"
 #include "psb_intel_hdmi.h"
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,34))
@@ -48,9 +47,8 @@ void mdfld_msic_init(struct mid_intel_hdmi_priv *p_hdmi_priv)
 /**
  *  hpd_notify_um
  */
-void hpd_notify_um (void)
+void hpd_notify_um(struct drm_device *dev)
 {
-	struct drm_device *dev = hdmi_priv ? hdmi_priv->dev : NULL;
 	struct drm_psb_private *dev_priv = NULL;
 	struct pci_dev *pdev = NULL;
 	struct device *ddev = NULL;
@@ -88,7 +86,7 @@ void hpd_notify_um (void)
 	}
 
 	if (dev_priv->psb_hotplug_state) {
-		DRM_INFO("%s: HPD interrupt.\n", __func__);
+		PSB_DEBUG_ENTRY("%s: HPD interrupt.\n", __func__);
 		psb_hotplug_notify_change_um("hpd_hdmi", dev_priv->psb_hotplug_state);
 	} else {
 		DRM_INFO("%s: Hotplug comm layer isn't initialized!\n",
@@ -130,7 +128,7 @@ irqreturn_t msic_vreg_handler(int irq, void *dev_id)
 			DRM_INFO("%s: HPD interrupt.vrint data = 0x%x.\n", __func__, vrint_dat);
 
 			if (dev_priv->um_start)
-				hpd_notify_um();
+				hpd_notify_um(dev);
 		}
 	}
 	/* handle other msic vreq interrupts when necessary. */

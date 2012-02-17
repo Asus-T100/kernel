@@ -54,6 +54,7 @@
 
 #ifdef CONFIG_MDFD_HDMI
 #include "mdfld_msic.h"
+#include "mdfld_ti_tpd.h"
 #endif
 #include "psb_intel_hdmi.h"
 
@@ -1150,6 +1151,8 @@ void hdmi_do_hotplug_wq(struct work_struct *work)
 	struct drm_psb_private *dev_priv = container_of(work,
 					   struct drm_psb_private,
 					   hdmi_hotplug_wq);
+	struct drm_device *dev = dev_priv->dev;
+	bool hdmi_hpd_connected = false;
 
 	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
 				       OSPM_UHB_FORCE_POWER_ON))
@@ -1172,23 +1175,41 @@ void hdmi_do_hotplug_wq(struct work_struct *work)
 	* the header file "mdfld_msic.h" where this is defined.
 	*/
 
-	intel_scu_ipc_iowrite8(MSIC_VCC330CNT, VCC330_ON);
+	if (IS_MDFLD_OLD(dev)) {
+		intel_scu_ipc_iowrite8(MSIC_VCC330CNT, VCC330_ON);
 
-	if (vrint_dat & HDMI_OCP_STATUS) {
-		/* when there occurs overcurrent in msic hdmi hdp,
-		need to reset VHDMIEN by clearing to 0 then set to 1*/
-		intel_scu_ipc_iowrite8(MSIC_VHDMICNT, VHDMI_OFF);
+		if (vrint_dat & HDMI_OCP_STATUS) {
+			/*
+			 * when there occurs overcurrent in msic hdmi hdp,
+			 * need to reset VHDMIEN by clearing to 0 then set to 1
+			 */
+			intel_scu_ipc_iowrite8(MSIC_VHDMICNT, VHDMI_OFF);
 
-		/* MSIC documentation requires that there be a 500us delay
-		after enabling VCC330 before you can enable VHDMI */
-		usleep_range(500, 1000);
-		intel_scu_ipc_iowrite8(MSIC_VHDMICNT, VHDMI_ON | VHDMI_DB_30MS);
+			/*
+			 * MSIC documentation requires that there be a 500us
+			 * delay after enabling VCC330 before you can enable
+			 * VHDMI
+			 */
+			usleep_range(500, 1000);
+			intel_scu_ipc_iowrite8(MSIC_VHDMICNT,
+					VHDMI_ON | VHDMI_DB_30MS);
+		}
+
+		intel_scu_ipc_ioread8(MSIC_HDMI_STATUS, &data);
+
+		if (data & HPD_SIGNAL_STATUS)
+			hdmi_hpd_connected = true;
+		else
+			hdmi_hpd_connected = false;
+	} else if (IS_CTP(dev)) {
+		if (gpio_get_value(CLV_TI_HPD_GPIO_PIN) == 0)
+			hdmi_hpd_connected = false;
+		else
+			hdmi_hpd_connected = true;
 	}
 
-	intel_scu_ipc_ioread8(MSIC_HDMI_STATUS, &data);
-
-	if (data & HPD_SIGNAL_STATUS) {
-		PSB_DEBUG_ENTRY( "hdmi_do_hotplug_wq: HDMI plugged in\n");
+	if (hdmi_hpd_connected) {
+		DRM_INFO("%s: HDMI plugged in\n", __func__);
 		dev_priv->bhdmiconnected = true;
 		if (dev_priv->mdfld_had_event_callbacks)
 			(*dev_priv->mdfld_had_event_callbacks)
@@ -1196,7 +1217,7 @@ void hdmi_do_hotplug_wq(struct work_struct *work)
 
 		drm_sysfs_hotplug_event(dev_priv->dev);
 	} else {
-		PSB_DEBUG_ENTRY( "hdmi_do_hotplug_wq: HDMI unplugged\n");
+		DRM_INFO("%s: HDMI unplugged\n", __func__);
 		dev_priv->bhdmiconnected = false;
 		hdmi_state = 0;
 		if (dev_priv->mdfld_had_event_callbacks)
@@ -1216,6 +1237,7 @@ void hdmi_do_audio_wq(struct work_struct *work)
 	struct drm_psb_private *dev_priv = container_of(work,
 					   struct drm_psb_private,
 					   hdmi_audio_wq);
+	bool hdmi_hpd_connected = false;
 
 #if defined(CONFIG_X86_MDFLD) && defined(CONFIG_MDFD_HDMI)
 	/* As in the hdmi_do_hotplug_wq() function above
@@ -1227,11 +1249,24 @@ void hdmi_do_audio_wq(struct work_struct *work)
 	* if HDMI connector is plugged in.
 	*/
 
-	intel_scu_ipc_iowrite8(MSIC_VCC330CNT, VCC330_ON);
-	intel_scu_ipc_ioread8(MSIC_HDMI_STATUS, &data);
 	DRM_INFO("hdmi_do_audio_wq: Checking for HDMI connection at boot\n");
 
-	if (data & HPD_SIGNAL_STATUS) {
+	if (IS_MDFLD_OLD(dev_priv->dev)) {
+		intel_scu_ipc_iowrite8(MSIC_VCC330CNT, VCC330_ON);
+		intel_scu_ipc_ioread8(MSIC_HDMI_STATUS, &data);
+
+		if (data & HPD_SIGNAL_STATUS)
+			hdmi_hpd_connected = true;
+		else
+			hdmi_hpd_connected = false;
+	} else if (IS_CTP(dev_priv->dev)) {
+		if (gpio_get_value(CLV_TI_HPD_GPIO_PIN) == 0)
+			hdmi_hpd_connected = false;
+		else
+			hdmi_hpd_connected = true;
+	}
+
+	if (hdmi_hpd_connected) {
 		DRM_INFO("hdmi_do_audio_wq: HDMI plugged in\n");
 		if (dev_priv->mdfld_had_event_callbacks) {
 			DRM_INFO("hdmi_do_audio_wq: HDMI calling audio probe\n");
@@ -3888,6 +3923,9 @@ early_param("hdmi_edid", parse_hdmi_edid);
 static int __init psb_init(void)
 {
 	int ret;
+#ifdef CONFIG_MDFD_HDMI
+	struct drm_psb_private *dev_priv = NULL;
+#endif
 
 #if defined(MODULE) && defined(CONFIG_NET)
 	psb_kobject_uevent_init();
@@ -3912,7 +3950,13 @@ static int __init psb_init(void)
 #endif
 
 #ifdef CONFIG_MDFD_HDMI
-	msic_regsiter_driver();
+	if (gpDrmDevice) {
+		dev_priv = (struct drm_psb_private *)gpDrmDevice->dev_private;
+		if (dev_priv && IS_MDFLD_OLD(dev_priv->dev))
+			msic_regsiter_driver();
+		else if (dev_priv && IS_CTP(dev_priv->dev))
+			ti_tpd_regsiter_driver();
+	}
 #endif
 
 	return ret;
@@ -3921,6 +3965,9 @@ static int __init psb_init(void)
 static void __exit psb_exit(void)
 {
 	int ret;
+#ifdef CONFIG_MDFD_HDMI
+	struct drm_psb_private *dev_priv = NULL;
+#endif
 
 #ifdef CONFIG_MDFD_VIDEO_DECODE
 	/*cleanup for bc_video*/
@@ -3931,7 +3978,13 @@ static void __exit psb_exit(void)
 #endif
 
 #ifdef CONFIG_MDFD_HDMI
-	msic_unregister_driver();
+	if (gpDrmDevice) {
+		dev_priv = (struct drm_psb_private *)gpDrmDevice->dev_private;
+		if (dev_priv && IS_MDFLD_OLD(dev_priv->dev))
+			msic_unregister_driver();
+		else if (dev_priv && IS_CTP(dev_priv->dev))
+			ti_tpd_unregister_driver();
+	}
 #endif
 	drm_pci_exit(&driver, &psb_pci_driver);
 }

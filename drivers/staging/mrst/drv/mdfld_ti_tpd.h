@@ -1,5 +1,5 @@
 /*
- * Copyright © 2010 Intel Corporation
+ * Copyright (c) 2010 Intel Corporation
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -21,14 +21,22 @@
  * DEALINGS IN THE SOFTWARE.
  *
  * Authors:
- *	Jim Liu <jim.liu@intel.com>
+ *	Austin Hu <austin.hu@intel.com>
  */
+
+/*
+ * TI HDMI COMPANION CHIP (TPD12S015) used for Intel CloverView SoC.
+ */
+#ifndef __MDFLD_TI_TPD_H__
+#define __MDFLD_TI_TPD_H__
 
 #include <drm/drmP.h>
 
-#define MSIC_PCI_DEVICE_ID 0x831
+#define TI_TPD_PCI_DEVICE_ID 0x901
+#define CLV_TI_HPD_GPIO_PIN 43
 
-int msic_regsiter_driver(void);
-int msic_unregister_driver(void);
+int ti_tpd_regsiter_driver(void);
+int ti_tpd_unregister_driver(void);
 extern void hpd_notify_um(struct drm_device *dev);
-extern unsigned char vrint_dat;
+
+#endif /* __MDFLD_TI_TPD_H__ */
