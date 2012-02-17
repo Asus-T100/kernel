@@ -513,8 +513,8 @@ static void *cyttsp_platform_data(void *info)
 	static struct cyttsp_platform_data cyttsp_pdata = {
 		.init = cyttsp_init,
 		.mt_sync = input_mt_sync,
-		.maxx = 479,
-		.maxy = 853,
+		.maxx = 480,
+		.maxy = 864,
 		.flags = 0,
 		.gen = CY_GEN3,
 		.use_st = 0,
