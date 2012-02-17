@@ -581,7 +581,7 @@ void mmc_set_data_timeout(struct mmc_data *data, const struct mmc_card *card)
 			timeout_us += data->timeout_clks * 1000 /
 				(mmc_host_clk_rate(card->host) / 1000);
 
-		if (data->flags & MMC_DATA_WRITE)
+		if (data->flags & MMC_DATA_WRITE) {
 			/*
 			 * The limit is really 250 ms, but that is
 			 * insufficient for some crappy cards.
@@ -596,9 +596,19 @@ void mmc_set_data_timeout(struct mmc_data *data, const struct mmc_card *card)
 			 * interrupt.
 			 *
 			 * Increase this value to be 3s.
+			 *
+			 * If host has max_discard_to, use max_discard_to as
+			 * timeout value. Use max_discard_to -1 to make sure
+			 * the write timeout value won't large than the max
 			 */
-			limit_us = 3000000;
-		else
+			if (card->host->max_discard_to) {
+				limit_us =
+					(card->host->max_discard_to - 1) * 1000;
+				if (limit_us > 3000000)
+					limit_us = 3000000;
+			} else
+				limit_us = 3000000;
+		} else
 			limit_us = 100000;
 
 		/*
