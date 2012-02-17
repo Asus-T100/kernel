@@ -28,6 +28,7 @@
 #define DEBUG			(0)
 #define ENABLE_DIAG_IOCTLS	(0)
 #define ES305_I2C_CMD_FIFO_SIZE	(128) /* Max cmd length on es305 side is 252 */
+#define ES305_HARD_RESET_PERIOD (100) /* delay (in us) in order to wait for stable power supplies & for stable system clock */
 /*
  * This driver is based on the eS305-UG-APIGINTEL-V0 2.pdf spec
  * for the eS305 Voice Processor
@@ -190,6 +191,8 @@ static ssize_t es305_bootup_init(struct vp_ctxt *vp)
 	while (retry--) {
 		/* Reset es305 chip */
 		vp->pdata->reset(gpio_l);
+                /* delay in order to wait for stable power supplies & for stable system clock */
+		usleep_range(ES305_HARD_RESET_PERIOD, ES305_HARD_RESET_PERIOD);
 		/* Take out of reset */
 		vp->pdata->reset(gpio_h);
 		msleep(50); /* Delay defined in Figure 1 of eS305 spec */
@@ -201,7 +204,7 @@ static ssize_t es305_bootup_init(struct vp_ctxt *vp)
 
 		rc = es305_i2c_write(buf, 2, vp);
 		if (rc < 0) {
-			pr_debug("%s: set boot mode error (%d retries left)\n",
+			pr_err("%s: set boot mode error (%d retries left)\n",
 					__func__, retry);
 			continue;
 		}
@@ -209,13 +212,13 @@ static ssize_t es305_bootup_init(struct vp_ctxt *vp)
 		mdelay(1); /* eS305 internal delay */
 		rc = es305_i2c_read(buf, 1, vp);
 		if (rc < 0) {
-			pr_debug("%s: boot mode ack error (%d retries left)\n",
+			pr_err("%s: boot mode ack error (%d retries left)\n",
 					__func__, retry);
 			continue;
 		}
 
 		if (buf[0] != A1026_msg_BOOT_ACK) {
-			pr_debug("%s: not a boot-mode ack (%d retries left)\n",
+			pr_err("%s: not a boot-mode ack (%d retries left)\n",
 					__func__, retry);
 			continue;
 		}
@@ -251,7 +254,7 @@ static ssize_t es305_bootup_init(struct vp_ctxt *vp)
 
 		rc = execute_cmdmsg(A100_msg_Sync, vp);
 		if (rc < 0) {
-			pr_debug("%s: sync command error %d (%d retries left)\n",
+			pr_err("%s: sync command error %d (%d retries left)\n",
 					__func__, rc, retry);
 			continue;
 		}
