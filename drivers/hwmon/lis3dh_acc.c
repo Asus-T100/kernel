@@ -411,6 +411,11 @@ int lis3dh_acc_update_odr(struct lis3dh_acc_data *acc, int poll_interval_ms)
 		if (lis3dh_acc_odr_table[i].cutoff_ms <= poll_interval_ms)
 			break;
 	}
+
+	/* i < 0 should not happen ... */
+	if (i < 0)
+		goto error;
+
 	config = lis3dh_acc_odr_table[i].mask;
 	config |= LIS3DH_ACC_ENABLE_ALL_AXES;
 
