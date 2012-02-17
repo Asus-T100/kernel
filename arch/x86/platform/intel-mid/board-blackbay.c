@@ -50,6 +50,7 @@
 #include <linux/ms5607.h>
 #include <linux/i2c-gpio.h>
 #include <linux/rmi_i2c.h>
+#include <linux/max11871.h>
 
 
 #include <linux/atomisp_platform.h>
@@ -1582,6 +1583,73 @@ void *s3202_platform_data_init(void *info)
 	return &s3202_platform_data;
 }
 
+static struct max11871_platform_data max11871_pdata = {
+	.version = 0x101,
+
+	.abs_x_min = 0,
+	.abs_x_max = 1240,
+	.abs_y_min = 0,
+	.abs_y_max = 1880,
+	.abs_z_min = 0,
+	.abs_z_max = 255,
+
+	.abs_button_area_x_max = 1240,
+	.abs_button_area_x_min = 0,
+	.abs_button_area_y_max = 2180,
+	.abs_button_area_y_min = 1900,
+	.abs_back_button_x   = 180,
+	.abs_back_button_y   =  2010,
+	.abs_home_button_x   = 480,
+	.abs_home_button_y   = 2010,
+	.abs_menu_button_x   = 800,
+	.abs_menu_button_y   =  2010,
+	.abs_search_button_x = 1100,
+	.abs_search_button_y =  2010,
+	.abs_button_fuzz_x = 100,
+	.abs_button_fuzz_y = 100,
+
+	.irq_flags = IRQF_TRIGGER_FALLING,
+};
+
+static int max11871_power(int on)
+{
+	if (on) {
+		gpio_set_value(max11871_pdata.gpio_rst, 1);
+		msleep(40);
+	} else {
+		gpio_set_value(max11871_pdata.gpio_rst, 0);
+		msleep(20);
+	}
+
+	return 0;
+}
+
+static int max11871_board_init(void)
+{
+	int ret = 0;
+	int gpio = max11871_pdata.gpio_irq;
+
+	ret = gpio_request(gpio, "max11871_irq");
+	if (ret < 0) {
+		pr_err("%s: failed to request GPIO %d\n", __func__, gpio);
+		return ret;
+	}
+	return gpio_direction_input(gpio);
+}
+
+void *max11871_platform_data_init(void *info)
+{
+	struct i2c_board_info *i2c_info = info;
+
+	max11871_pdata.platform_hw_init = max11871_board_init,
+	max11871_pdata.power = max11871_power,
+	max11871_pdata.i2c_addr = i2c_info->addr;
+	max11871_pdata.gpio_irq = get_gpio_by_name("ts_int");
+	max11871_pdata.gpio_rst = get_gpio_by_name("ts_rst");
+
+	return &max11871_pdata;
+}
+
 struct devs_id __initconst device_ids[] = {
 	{"pmic_gpio", SFI_DEV_TYPE_SPI, 1, &pmic_gpio_platform_data, NULL},
 	{"pmic_gpio", SFI_DEV_TYPE_IPC, 1, &pmic_gpio_platform_data,
@@ -1630,6 +1698,7 @@ struct devs_id __initconst device_ids[] = {
 	{"mt9m114", SFI_DEV_TYPE_I2C, 0, &mt9m114_platform_data_init,
 					&intel_ignore_i2c_device_register},
 	{"mxt224", SFI_DEV_TYPE_I2C, 0, &atmel_mxt224_platform_data_init, NULL},
+	{"max11871", SFI_DEV_TYPE_I2C, 0, &max11871_platform_data_init},
 	{"audience_es305", SFI_DEV_TYPE_I2C, 0, &audience_platform_data_init,
 						NULL},
 	{"accel", SFI_DEV_TYPE_I2C, 0, &lis3dh_pdata_init, NULL},
