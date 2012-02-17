@@ -538,6 +538,13 @@ static int lis3dh_acc_enable(struct lis3dh_acc_data *acc)
 	if (acc->pdata->poll_interval > 0) {
 		schedule_delayed_work(&acc->input_work,
 				msecs_to_jiffies(acc->pdata->poll_interval));
+	} else {
+		/* simulate 6D interrupt here so that initial events would
+		 * be sent to userspace
+		 */
+		acc->report_cnt = LIS3DH_6D_REPORT_CNT;
+		schedule_delayed_work(&acc->input_work,
+				msecs_to_jiffies(acc->report_interval));
 	}
 
 	return 0;
