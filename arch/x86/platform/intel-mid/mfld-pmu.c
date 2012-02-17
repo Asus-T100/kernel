@@ -889,6 +889,28 @@ static int pmu_send_set_config_command(union pmu_pm_set_cfg_cmd_t
 	return 0;
 }
 
+static void log_wakeup_irq(void)
+{
+	unsigned int irr = 0, vector = 0;
+	int offset = 0, irq = 0;
+	for (offset = (FIRST_EXTERNAL_VECTOR/32);
+			offset < (NR_VECTORS/32); offset++) {
+		irr = apic_read(APIC_IRR + (offset * 0x10));
+		while (irr) {
+			vector = __ffs(irr);
+			irr &= ~(1 << vector);
+
+			irq = __this_cpu_read(
+				vector_irq[vector + (offset * 32)]);
+			if (irq < 0)
+				continue;
+
+			pr_info("wakeup from  IRQ %d\n", irq);
+		}
+	}
+	return;
+}
+
 /* return the last wake source id, and make statistics about wake sources */
 static int pmu_get_wake_source(void)
 {
@@ -931,7 +953,7 @@ static int pmu_get_wake_source(void)
 			pr_info("wakeup from HSI.\n");
 			break;
 		default:
-			pr_info("wakeup from OTHER.\n");
+			log_wakeup_irq();
 		}
 
 	return source;
