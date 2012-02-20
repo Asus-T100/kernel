@@ -501,9 +501,9 @@ void kim_st_list_protocols(struct st_data_s *st_gdata, void *buf)
 {
 	seq_printf(buf, "[%d]\nBT=%c\nFM=%c\nGPS=%c\n",
 			st_gdata->protos_registered,
-			st_gdata->is_registered[0x04] == true ? 'R' : 'U',
-			st_gdata->is_registered[0x08] == true ? 'R' : 'U',
-			st_gdata->is_registered[0x09] == true ? 'R' : 'U');
+			st_gdata->is_registered[ST_BT] == true ? 'R' : 'U',
+			st_gdata->is_registered[ST_FM] == true ? 'R' : 'U',
+			st_gdata->is_registered[ST_GPS] == true ? 'R' : 'U');
 }
 
 /********************************************************************/
@@ -739,7 +739,7 @@ static void st_tty_close(struct tty_struct *tty)
 	 * un-installed for some reason - what should be done ?
 	 */
 	spin_lock_irqsave(&st_gdata->lock, flags);
-	for (i = ST_BT; i < ST_MAX_CHANNELS; i++) {
+	for (i = 0; i < ST_MAX_CHANNELS; i++) {
 		if (st_gdata->is_registered[i] == true)
 			pr_err("%d not un-registered", i);
 		st_gdata->list[i] = NULL;

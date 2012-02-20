@@ -164,9 +164,9 @@ void kim_int_recv(struct kim_data_s *kim_gdata,
 		}		/* end of if rx_state */
 		switch (*ptr) {
 			/* Bluetooth event packet? */
-		case 0x04:
+		case ST_BT:
 			kim_gdata->rx_state = ST_W4_HEADER;
-			kim_gdata->rx_count = 2;
+			kim_gdata->rx_count = HCI_EVENT_HDR_SIZE;
 			type = *ptr;
 			break;
 		default:
@@ -178,7 +178,7 @@ void kim_int_recv(struct kim_data_s *kim_gdata,
 		ptr++;
 		count--;
 		kim_gdata->rx_skb =
-			alloc_skb(1024+8, GFP_ATOMIC);
+			alloc_skb(HCI_MAX_FRAME_SIZE + 4, GFP_ATOMIC);
 		if (!kim_gdata->rx_skb) {
 			pr_err("can't allocate mem for new packet");
 			kim_gdata->rx_state = ST_W4_PACKET_TYPE;

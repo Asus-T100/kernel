@@ -30,11 +30,16 @@
  *	common physical interface like UART.
  */
 enum proto_type {
-	ST_BT,
-	ST_FM,
-	ST_GPS,
+	ST_BT = 4, /* HCI_EVENT_PKT */
+	ST_FM = 8,
+	ST_GPS = 9,
 	ST_MAX_CHANNELS = 16,
 };
+
+/* Those are also defined in include/net/bluetooth/hci.h */
+#define HCI_EVENT_HDR_SIZE	2
+#define HCI_MAX_ACL_SIZE	1024
+#define HCI_MAX_FRAME_SIZE	(HCI_MAX_ACL_SIZE + 4)
 
 /**
  * struct st_proto_s - Per Protocol structure from BT/FM/GPS to ST
