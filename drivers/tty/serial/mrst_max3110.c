@@ -65,6 +65,7 @@ struct uart_max3110 {
 	u16 irq;
 
 	unsigned long uart_flags;
+	bool opened;
 
 	/* console related */
 	struct circ_buf con_xmit;
@@ -430,7 +431,8 @@ static int max3110_main_thread(void *_max)
 
 		mutex_lock(&max->thread_mutex);
 
-		if (test_and_clear_bit(BIT_IRQ_PENDING, &max->uart_flags))
+		if (test_and_clear_bit(BIT_IRQ_PENDING, &max->uart_flags) &&
+			max->opened)
 			max3110_con_receive(max);
 
 		/* first handle console output */
@@ -438,7 +440,8 @@ static int max3110_main_thread(void *_max)
 			send_circ_buf(max, xmit);
 
 		/* handle uart output */
-		if (test_and_clear_bit(UART_TX_NEEDED, &max->uart_flags))
+		if (test_and_clear_bit(UART_TX_NEEDED, &max->uart_flags) &&
+			max->opened)
 			transmit_char(max);
 
 		mutex_unlock(&max->thread_mutex);
@@ -541,6 +544,7 @@ static int serial_m3110_startup(struct uart_port *port)
 	}
 
 	max->cur_conf = config;
+	max->opened = true;
 	return 0;
 }
 
@@ -561,6 +565,7 @@ static void serial_m3110_shutdown(struct uart_port *port)
 	/* Disable interrupts from this port */
 	config = WC_TAG | WC_SW_SHDI;
 	max3110_out(max, config);
+	max->opened = false;
 }
 
 static void serial_m3110_release_port(struct uart_port *port)
