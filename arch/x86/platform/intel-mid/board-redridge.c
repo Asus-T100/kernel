@@ -1881,11 +1881,11 @@ static struct platform_device linux_kim_device = {
 };
 
 /* BT WILINK related */
-static int mrst_bt_enable(struct platform_device *pdev)
+static int mrst_bt_enable(void)
 {
 	return 0;
 }
-static int mrst_bt_disable(struct platform_device *pdev)
+static int mrst_bt_disable(void)
 {
 	return 0;
 }
