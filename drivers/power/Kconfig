@@ -266,4 +266,11 @@ config CHARGER_GPIO
 	  This driver can be build as a module. If so, the module will be
 	  called gpio-charger.
 
+config CHARGER_BQ24192
+	tristate "TI BQ24192/BQ24191/BQ24190 Charger"
+	depends on I2C
+	help
+	  BQ24192 is charger chip for lithium-ion (Li+) batteries
+	  in handheld and portable equipment.
+
 endif # POWER_SUPPLY
