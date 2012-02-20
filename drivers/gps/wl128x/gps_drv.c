@@ -142,7 +142,7 @@ long gpsdrv_st_recv(void *arg, struct sk_buff *skb)
 	}
 
 	/* Sanity Check - To Check if the Rx Pkt is Channel -9 or not */
-	if (0x09 != skb->cb[0]) {
+	if (ST_GPS != skb->cb[0]) {
 		GPSDRV_ERR("Input SKB is not a Channel-9 packet");
 		return GPS_ERR_FAILURE;
 	}
@@ -219,7 +219,7 @@ void gpsdrv_st_cb(void *arg, char data)
 	return;
 }
 
-static struct st_proto_s gpsdrv_proto = { .chnl_id = 0x09,
+static struct st_proto_s gpsdrv_proto = { .chnl_id = ST_GPS,
 	.max_frame_size = 1024,
 	.hdr_len = 3,
 	.offset_len_in_hdr = 1,
