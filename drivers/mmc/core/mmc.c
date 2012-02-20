@@ -431,6 +431,7 @@ static int mmc_read_ext_csd(struct mmc_card *card, u8 *ext_csd)
 				ext_csd[EXT_CSD_BKOPS_EN];
 		}
 
+		card->ext_csd.rel_set = ext_csd[EXT_CSD_WR_REL_SET];
 		card->ext_csd.rel_param = ext_csd[EXT_CSD_WR_REL_PARAM];
 		card->ext_csd.rst_n_function = ext_csd[EXT_CSD_RST_N_FUNCTION];
 	}
@@ -523,6 +524,7 @@ out:
 	return err;
 }
 
+MMC_DEV_ATTR(rel_set, "0x%x\n", card->ext_csd.rel_set);
 MMC_DEV_ATTR(cid, "%08x%08x%08x%08x\n", card->raw_cid[0], card->raw_cid[1],
 	card->raw_cid[2], card->raw_cid[3]);
 MMC_DEV_ATTR(csd, "%08x%08x%08x%08x\n", card->raw_csd[0], card->raw_csd[1],
@@ -552,6 +554,7 @@ MMC_DEV_ATTR(sec_trim_mult, "%d\n", card->ext_csd.sec_trim_mult);
 MMC_DEV_ATTR(erase_group_def, "%d\n", card->ext_csd.erase_group_def);
 
 static struct attribute *mmc_std_attrs[] = {
+	&dev_attr_rel_set.attr,
 	&dev_attr_cid.attr,
 	&dev_attr_csd.attr,
 	&dev_attr_date.attr,

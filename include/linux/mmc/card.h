@@ -49,6 +49,7 @@ struct mmc_ext_csd {
 	u8			sec_feature_support;
 	u8			rel_sectors;
 	u8			rel_param;
+	u8			rel_set;
 	u8			part_config;
 	u8			rst_n_function;
 	unsigned int		part_time;		/* Units: ms */
