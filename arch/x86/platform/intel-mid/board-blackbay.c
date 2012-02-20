@@ -24,6 +24,7 @@
 #include <linux/power_supply.h>
 #include <linux/power/max17042_battery.h>
 #include <linux/power/intel_mdf_battery.h>
+#include <linux/power/bq24192_charger.h>
 #include <linux/nfc/pn544.h>
 #include <linux/skbuff.h>
 #include <linux/ti_wilink_st.h>
@@ -651,7 +652,7 @@ static void *max17042_platform_data(void *info)
 	platform_data.is_init_done = 0;
 	platform_data.reset_i2c_lines = max17042_i2c_reset_workaround;
 
-#ifdef CONFIG_BATTERY_INTEL_MDF
+#if defined(CONFIG_BATTERY_INTEL_MDF)
 	platform_data.current_sense_enabled =
 	    intel_msic_is_current_sense_enabled;
 	platform_data.battery_present = intel_msic_check_battery_present;
@@ -667,8 +668,19 @@ static void *max17042_platform_data(void *info)
 	platform_data.is_lowbatt_shutdown_enabled =
 					intel_msic_is_lowbatt_shutdown_en;
 	platform_data.get_vmin_threshold = intel_msic_get_vsys_min;
+#elif defined(CONFIG_CHARGER_BQ24192)
+	platform_data.battery_status = bq24192_query_battery_status;
 #endif
 
+	return &platform_data;
+}
+
+static void *bq24192_platform_data(void *info)
+{
+	static struct bq24192_platform_data platform_data;
+	struct i2c_board_info *i2c_info = (struct i2c_board_info *)info;
+
+	platform_data.slave_mode = 0;
 	return &platform_data;
 }
 
@@ -1714,6 +1726,7 @@ struct devs_id __initconst device_ids[] = {
 	{"lsm303cmp", SFI_DEV_TYPE_I2C, 0, &no_platform_data},
 	{"l3g4200d", SFI_DEV_TYPE_I2C, 0, &l3g4200d_platform_data},
 	{"lps331ap", SFI_DEV_TYPE_I2C, 0, &no_platform_data},
+	{"bq24192", SFI_DEV_TYPE_I2C, 1, &bq24192_platform_data},
 	{},
 };
 
