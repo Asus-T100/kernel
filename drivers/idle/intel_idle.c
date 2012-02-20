@@ -445,14 +445,20 @@ static int soc_s0ix_idle(struct cpuidle_device *dev,
 
 	/* In case of demotion to S0i1/lpmp3 update last_state */
 	if (s0ix_entered) {
-		if (s0ix_state == MID_S0I1_STATE)
+		if (s0ix_state == MID_S0I1_STATE) {
 			dev->last_state = &dev->states[S0I1_STATE_IDX];
-		else if (s0ix_state == MID_LPMP3_STATE)
+			trace_cpu_idle(S0I1_STATE_IDX, dev->cpu);
+		} else if (s0ix_state == MID_LPMP3_STATE) {
 			dev->last_state = &dev->states[LPMP3_STATE_IDX];
-	} else if (eax == C4_HINT)
+			trace_cpu_idle(LPMP3_STATE_IDX, dev->cpu);
+		}
+	} else if (eax == C4_HINT) {
 		dev->last_state = &dev->states[C4_STATE_IDX];
-	else
+		trace_cpu_idle(C4_STATE_IDX, dev->cpu);
+	} else {
 		dev->last_state = &dev->states[C6_STATE_IDX];
+		trace_cpu_idle(C6_STATE_IDX, dev->cpu);
+	}
 
 	return usec_delta;
 }
@@ -490,7 +496,9 @@ static int intel_idle(struct cpuidle_device *dev, struct cpuidle_state *state)
 	kt_before = ktime_get_real();
 
 	stop_critical_timings();
-
+#ifndef MODULE
+	trace_cpu_idle((eax >> 4) + 1, dev->cpu);
+#endif
 	if (!need_resched()) {
 		__monitor((void *)&current_thread_info()->flags, 0, 0);
 		smp_mb();

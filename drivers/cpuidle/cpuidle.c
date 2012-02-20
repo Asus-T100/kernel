@@ -97,12 +97,8 @@ static void cpuidle_idle_call(void)
 	/* enter the state and update stats */
 	dev->last_state = target_state;
 
-	trace_power_start(POWER_CSTATE, next_state, dev->cpu);
-	trace_cpu_idle(next_state, dev->cpu);
-
 	dev->last_residency = target_state->enter(dev, target_state);
 
-	trace_power_end(dev->cpu);
 	trace_cpu_idle(PWR_EVENT_EXIT, dev->cpu);
 
 	if (dev->last_state)
