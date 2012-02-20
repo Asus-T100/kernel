@@ -25,6 +25,14 @@ EXPORT_SYMBOL_GPL(power_supply_class);
 
 static struct device_type power_supply_dev_type;
 
+static struct mutex ps_chrg_evt_lock;
+
+static struct power_supply_charger_cap power_supply_chrg_cap = {
+		.chrg_evt	= POWER_SUPPLY_CHARGER_EVENT_DISCONNECT,
+		.chrg_type	= POWER_SUPPLY_TYPE_USB,
+		.mA		= 0	/* 0 mA */
+};
+
 static int __power_supply_changed_work(struct device *dev, void *data)
 {
 	struct power_supply *psy = (struct power_supply *)data;
@@ -78,6 +86,37 @@ void power_supply_changed(struct power_supply *psy)
 	schedule_work(&psy->changed_work);
 }
 EXPORT_SYMBOL_GPL(power_supply_changed);
+
+static int __power_supply_charger_event(struct device *dev, void *data)
+{
+	struct power_supply_charger_cap *cap =
+				(struct power_supply_charger_cap *)data;
+	struct power_supply *psy = dev_get_drvdata(dev);
+
+	if (psy->charging_port_changed)
+		psy->charging_port_changed(psy, cap);
+
+	return 0;
+}
+
+void power_supply_charger_event(struct power_supply_charger_cap cap)
+{
+	class_for_each_device(power_supply_class, NULL, &cap,
+				      __power_supply_charger_event);
+
+	mutex_lock(&ps_chrg_evt_lock);
+	memcpy(&power_supply_chrg_cap, &cap, sizeof(power_supply_chrg_cap));
+	mutex_unlock(&ps_chrg_evt_lock);
+}
+EXPORT_SYMBOL_GPL(power_supply_charger_event);
+
+void power_supply_query_charger_caps(struct power_supply_charger_cap *cap)
+{
+	mutex_lock(&ps_chrg_evt_lock);
+	memcpy(cap, &power_supply_chrg_cap, sizeof(power_supply_chrg_cap));
+	mutex_unlock(&ps_chrg_evt_lock);
+}
+EXPORT_SYMBOL_GPL(power_supply_query_charger_caps);
 
 static int __power_supply_am_i_supplied(struct device *dev, void *data)
 {
@@ -238,6 +277,7 @@ static int __init power_supply_class_init(void)
 
 	power_supply_class->dev_uevent = power_supply_uevent;
 	power_supply_init_attrs(&power_supply_dev_type);
+	mutex_init(&ps_chrg_evt_lock);
 
 	return 0;
 }

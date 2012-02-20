@@ -75,6 +75,14 @@ enum {
 	POWER_SUPPLY_CAPACITY_LEVEL_FULL,
 };
 
+enum {
+	POWER_SUPPLY_CHARGE_CURRENT_LIMIT_ZERO = 0,
+	POWER_SUPPLY_CHARGE_CURRENT_LIMIT_LOW,
+	POWER_SUPPLY_CHARGE_CURRENT_LIMIT_MEDIUM,
+	POWER_SUPPLY_CHARGE_CURRENT_LIMIT_HIGH,
+	POWER_SUPPLY_CHARGE_CURRENT_LIMIT_NONE,
+};
+
 enum power_supply_property {
 	/* Properties of type `int' */
 	POWER_SUPPLY_PROP_STATUS = 0,
@@ -102,6 +110,7 @@ enum power_supply_property {
 	POWER_SUPPLY_PROP_CHARGE_NOW,
 	POWER_SUPPLY_PROP_CHARGE_AVG,
 	POWER_SUPPLY_PROP_CHARGE_COUNTER,
+	POWER_SUPPLY_CHARGE_CURRENT_LIMIT,
 	POWER_SUPPLY_PROP_ENERGY_FULL_DESIGN,
 	POWER_SUPPLY_PROP_ENERGY_EMPTY_DESIGN,
 	POWER_SUPPLY_PROP_ENERGY_FULL,
@@ -131,6 +140,21 @@ enum power_supply_type {
 	POWER_SUPPLY_TYPE_USB_DCP,	/* Dedicated Charging Port */
 	POWER_SUPPLY_TYPE_USB_CDP,	/* Charging Downstream Port */
 	POWER_SUPPLY_TYPE_USB_ACA,	/* Accessory Charger Adapters */
+	POWER_SUPPLY_TYPE_UNKNOWN,	/* Supply type Unknown */
+};
+
+enum power_supply_charger_event {
+	POWER_SUPPLY_CHARGER_EVENT_CONNECT = 0,
+	POWER_SUPPLY_CHARGER_EVENT_UPDATE,
+	POWER_SUPPLY_CHARGER_EVENT_RESUME,
+	POWER_SUPPLY_CHARGER_EVENT_SUSPEND,
+	POWER_SUPPLY_CHARGER_EVENT_DISCONNECT,
+};
+
+struct power_supply_charger_cap {
+	enum power_supply_charger_event	chrg_evt;
+	enum power_supply_type		chrg_type;
+	unsigned int			mA;	/* input current limit */
 };
 
 union power_supply_propval {
@@ -157,6 +181,8 @@ struct power_supply {
 				     enum power_supply_property psp);
 	void (*external_power_changed)(struct power_supply *psy);
 	void (*set_charged)(struct power_supply *psy);
+	void (*charging_port_changed)(struct power_supply *psy,
+				struct power_supply_charger_cap *cap);
 
 	/* For APM emulation, think legacy userspace. */
 	int use_for_apm;
@@ -205,6 +231,9 @@ extern struct power_supply *power_supply_get_by_name(char *name);
 extern void power_supply_changed(struct power_supply *psy);
 extern int power_supply_am_i_supplied(struct power_supply *psy);
 extern int power_supply_set_battery_charged(struct power_supply *psy);
+extern void power_supply_charger_event(struct power_supply_charger_cap cap);
+extern void power_supply_query_charger_caps(struct power_supply_charger_cap
+									*cap);
 
 #if defined(CONFIG_POWER_SUPPLY) || defined(CONFIG_POWER_SUPPLY_MODULE)
 extern int power_supply_is_system_supplied(void);
