@@ -29,27 +29,6 @@
 #include <linux/skbuff.h>
 
 #include <linux/ti_wilink_st.h>
-#include <linux/pm_runtime.h>
-
-/*
- * The main goal of this Inactivity Timeout wake lock is to avoid putting
- * the system into Sleep while no application are running and some incoming
- * data has to be processed. For instance, during a BT SDP service discovery
- * session initiated by a remote with no service level connection opened yet,
- * it will ensure enough CPU time remains to handle incoming request(s).
- * Assuming the amount of "no-app-running" traffic is concentrated (mainly
- * right before service connection level establishment), Power
- * consumption impact is negligible.
- */
-#define ST_PM_PROTECT_INACTIVITY_TIMEOUT (1*HZ)
-#define ST_PM_PROTECT_WAKE_LOCK_NAME "st_core"
-
-#ifndef DEBUG
-#ifdef pr_info
-#undef pr_info
-#define pr_info(fmt, arg...)
-#endif
-#endif
 
 /* function pointer pointing to either,
  * st_kim_recv during registration to receive fw download responses
@@ -133,15 +112,6 @@ void st_send_frame(unsigned char chnl_id, struct st_data_s *st_gdata)
 		kfree_skb(st_gdata->rx_skb);
 		return;
 	}
-
-	/*
-	 * Refresh inactivity timeout for Power Management protection
-	 * mechanism. It will prevent from S3 sleeping for a while
-	 * in order to handle the incoming data.
-	 */
-	wake_lock_timeout(&st_gdata->wake_lock,
-			ST_PM_PROTECT_INACTIVITY_TIMEOUT);
-
 	/* this cannot fail
 	 * this shouldn't take long
 	 * - should be just skb_queue_tail for the
@@ -175,7 +145,7 @@ void st_reg_complete(struct st_data_s *st_gdata, char err)
 	for (i = 0; i < ST_MAX_CHANNELS; i++) {
 		if (likely(st_gdata != NULL &&
 			st_gdata->is_registered[i] == true &&
-			   st_gdata->list[i]->reg_complete_cb != NULL)) {
+				st_gdata->list[i]->reg_complete_cb != NULL)) {
 			st_gdata->list[i]->reg_complete_cb
 				(st_gdata->list[i]->priv_data, err);
 			pr_info("protocol %d's cb sent %d\n", i, err);
@@ -347,16 +317,8 @@ void st_int_recv(void *disc_data,
 			 * and assume chip awake
 			 */
 			spin_unlock_irqrestore(&st_gdata->lock, flags);
-			if (st_ll_getstate(st_gdata) == ST_LL_AWAKE) {
-				/* pm_runtime_get has already been done
-				 * in st_ll_sleep_state. st_wakeup_ack will
-				 * call st_ll_sleep_state again and another
-				 * pm_runtime_get will be done. We need to
-				 * compensate the first one here.
-				 */
-				pm_runtime_put(st_gdata->tty_dev);
+			if (st_ll_getstate(st_gdata) == ST_LL_AWAKE)
 				st_wakeup_ack(st_gdata, LL_WAKE_UP_ACK);
-			}
 			spin_lock_irqsave(&st_gdata->lock, flags);
 
 			ptr++;
@@ -376,26 +338,33 @@ void st_int_recv(void *disc_data,
 			/* Unknow packet? */
 		default:
 			type = *ptr;
-			if (type < ST_MAX_CHANNELS) {
-				if (!st_gdata->list[type]) {
-					pr_err("dropping frame "
-					"starting with 0x%02x\n", type);
-					goto done;
-				}
-			} else {
-				pr_err("Invalid packet type : 0x%02x\n", type);
+
+			/* Default case means non-HCILL packets,
+			 * possibilities are packets for:
+			 * (a) valid protocol -  Supported Protocols within
+			 *     the ST_MAX_CHANNELS.
+			 * (b) registered protocol - Checked by
+			 *     "st_gdata->list[type] == NULL)" are supported
+			 *     protocols only.
+			 *  Rules out any invalid protocol and
+			 *  unregistered protocols with channel ID < 16.
+			 */
+
+			if ((type >= ST_MAX_CHANNELS) ||
+					(st_gdata->list[type] == NULL)) {
+				pr_err("chip/interface misbehavior "
+						"dropping frame starting "
+						"with 0x%02x", type);
 				goto done;
 			}
 			st_gdata->rx_skb = alloc_skb(
 					st_gdata->list[type]->max_frame_size,
 					GFP_ATOMIC);
-			if (st_gdata->rx_skb) {
-				skb_reserve(st_gdata->rx_skb,
-					st_gdata->list[type]->reserve);
-			} else {
-				pr_err("alloc_skb error\n");
+			if (!st_gdata->rx_skb)
 				goto done;
-			}
+
+			skb_reserve(st_gdata->rx_skb,
+					st_gdata->list[type]->reserve);
 			/* next 2 required for BT only */
 			st_gdata->rx_skb->cb[0] = type; /*pkt_type*/
 			st_gdata->rx_skb->cb[1] = 0; /*incoming*/
@@ -532,9 +501,9 @@ void kim_st_list_protocols(struct st_data_s *st_gdata, void *buf)
 {
 	seq_printf(buf, "[%d]\nBT=%c\nFM=%c\nGPS=%c\n",
 			st_gdata->protos_registered,
-			st_gdata->is_registered[ST_BT] == true ? 'R' : 'U',
-			st_gdata->is_registered[ST_FM] == true ? 'R' : 'U',
-			st_gdata->is_registered[ST_GPS] == true ? 'R' : 'U');
+			st_gdata->is_registered[0x04] == true ? 'R' : 'U',
+			st_gdata->is_registered[0x08] == true ? 'R' : 'U',
+			st_gdata->is_registered[0x09] == true ? 'R' : 'U');
 }
 
 /********************************************************************/
@@ -659,7 +628,7 @@ long st_unregister(struct st_proto_s *proto)
 	pr_debug("%s: %d ", __func__, proto->chnl_id);
 
 	st_kim_ref(&st_gdata, 0);
-	if (proto->chnl_id >= ST_MAX_CHANNELS) {
+	if (!st_gdata || proto->chnl_id >= ST_MAX_CHANNELS) {
 		pr_err(" chnl_id %d not supported", proto->chnl_id);
 		return -EPROTONOSUPPORT;
 	}
@@ -709,16 +678,9 @@ long st_write(struct sk_buff *skb)
 		pr_err("data/tty unavailable to perform write");
 		return -EINVAL;
 	}
+
 	pr_debug("%d to be written", skb->len);
 	len = skb->len;
-
-	/*
-	 * Refresh inactivity timeout for Power Management protection mechanism
-	 * It will prevent from S3 sleeping for a while as it is very likely
-	 * some incoming data will be received soon.
-	 */
-	wake_lock_timeout(&st_gdata->wake_lock,
-			ST_PM_PROTECT_INACTIVITY_TIMEOUT);
 
 	/* st_ll to decide where to enqueue the skb */
 	st_int_enqueue(st_gdata, skb);
@@ -745,16 +707,6 @@ static int st_tty_open(struct tty_struct *tty)
 	st_kim_ref(&st_gdata, 0);
 	st_gdata->tty = tty;
 	tty->disc_data = st_gdata;
-
-	if (tty->dev->parent)
-		st_gdata->tty_dev = tty->dev->parent;
-	else
-		return -EINVAL;
-
-	/* Asynchronous Get is enough here since we just want to avoid
-	 * interface to be released too early
-	 */
-	pm_runtime_get(st_gdata->tty_dev);
 
 	/* don't do an wakeup for now */
 	clear_bit(TTY_DO_WRITE_WAKEUP, &tty->flags);
@@ -791,6 +743,7 @@ static void st_tty_close(struct tty_struct *tty)
 		if (st_gdata->is_registered[i] == true)
 			pr_err("%d not un-registered", i);
 		st_gdata->list[i] = NULL;
+		st_gdata->is_registered[i] = false;
 	}
 	st_gdata->protos_registered = 0;
 	spin_unlock_irqrestore(&st_gdata->lock, flags);
@@ -814,8 +767,6 @@ static void st_tty_close(struct tty_struct *tty)
 	kfree_skb(st_gdata->rx_skb);
 	st_gdata->rx_skb = NULL;
 	spin_unlock_irqrestore(&st_gdata->lock, flags);
-
-	pm_runtime_put(st_gdata->tty_dev);
 
 	pr_debug("%s: done ", __func__);
 }
@@ -906,14 +857,9 @@ int st_core_init(struct st_data_s **core_data)
 	/* Locking used in st_int_enqueue() to avoid multiple execution */
 	spin_lock_init(&st_gdata->lock);
 
-	/* Power Management protection mechanism w.r.t. RX queue activity */
-	wake_lock_init(&st_gdata->wake_lock, WAKE_LOCK_SUSPEND,
-			ST_PM_PROTECT_WAKE_LOCK_NAME);
-
 	err = st_ll_init(st_gdata);
 	if (err) {
 		pr_err("error during st_ll initialization(%ld)", err);
-		wake_lock_destroy(&st_gdata->wake_lock);
 		kfree(st_gdata);
 		err = tty_unregister_ldisc(N_TI_WL);
 		if (err)
@@ -933,9 +879,7 @@ void st_core_exit(struct st_data_s *st_gdata)
 		pr_err("error during deinit of ST LL %ld", err);
 
 	if (st_gdata != NULL) {
-
 		/* Free ST Tx Qs and skbs */
-		wake_lock_destroy(&st_gdata->wake_lock);
 		skb_queue_purge(&st_gdata->txq);
 		skb_queue_purge(&st_gdata->tx_waitq);
 		kfree_skb(st_gdata->rx_skb);
@@ -948,3 +892,5 @@ void st_core_exit(struct st_data_s *st_gdata)
 		kfree(st_gdata);
 	}
 }
+
+

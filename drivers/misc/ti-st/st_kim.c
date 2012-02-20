@@ -31,22 +31,11 @@
 #include <linux/seq_file.h>
 #include <linux/sched.h>
 #include <linux/sysfs.h>
-#include <linux/rfkill.h>
 #include <linux/tty.h>
 
-/* understand BT events for fw response */
-#include <net/bluetooth/bluetooth.h>
-#include <net/bluetooth/hci_core.h>
-#include <net/bluetooth/hci.h>
-
+#include <linux/skbuff.h>
 #include <linux/ti_wilink_st.h>
 
-#ifndef DEBUG
-#ifdef pr_info
-#undef pr_info
-#define pr_info(fmt, arg...)
-#endif
-#endif
 
 #define MAX_ST_DEVICES	3	/* Imagine 1 on each UART for now */
 static struct platform_device *st_kim_devices[MAX_ST_DEVICES];
@@ -79,6 +68,7 @@ void validate_firmware_response(struct kim_data_s *kim_gdata)
 	if (unlikely(skb->data[5] != 0)) {
 		pr_err("no proper response during fw download");
 		pr_err("data6 %x", skb->data[5]);
+		kfree_skb(skb);
 		return;		/* keep waiting for the proper response */
 	}
 	/* becos of all the script being downloaded */
@@ -174,11 +164,10 @@ void kim_int_recv(struct kim_data_s *kim_gdata,
 		}		/* end of if rx_state */
 		switch (*ptr) {
 			/* Bluetooth event packet? */
-		case HCI_EVENT_PKT:
-			pr_debug("Event packet");
+		case 0x04:
 			kim_gdata->rx_state = ST_W4_HEADER;
-			kim_gdata->rx_count = HCI_EVENT_HDR_SIZE;
-			type = HCI_EVENT_PKT;
+			kim_gdata->rx_count = 2;
+			type = *ptr;
 			break;
 		default:
 			pr_info("unknown packet");
@@ -189,7 +178,7 @@ void kim_int_recv(struct kim_data_s *kim_gdata,
 		ptr++;
 		count--;
 		kim_gdata->rx_skb =
-		    alloc_skb(HCI_MAX_FRAME_SIZE, GFP_ATOMIC);
+			alloc_skb(1024+8, GFP_ATOMIC);
 		if (!kim_gdata->rx_skb) {
 			pr_err("can't allocate mem for new packet");
 			kim_gdata->rx_state = ST_W4_PACKET_TYPE;
@@ -201,7 +190,6 @@ void kim_int_recv(struct kim_data_s *kim_gdata,
 		kim_gdata->rx_skb->cb[1] = 0;
 
 	}
-	pr_debug("done %s", __func__);
 	return;
 }
 
@@ -223,6 +211,7 @@ static long read_local_version(struct kim_data_s *kim_gdata, char *bts_scr_name)
 		pr_err(" waiting for ver info- timed out ");
 		return -ETIMEDOUT;
 	}
+	INIT_COMPLETION(kim_gdata->kim_rcvd);
 
 	version =
 		MAKEWORD(kim_gdata->resp_buffer[13],
@@ -281,10 +270,7 @@ static long download_firmware(struct kim_data_s *kim_gdata)
 	int wr_room_space;
 	int cmd_size;
 	unsigned long timeout;
-	struct st_data_s *core_data;
-	core_data = kim_gdata->core_data;
 
-	pr_err("download_firmware start");
 	err = read_local_version(kim_gdata, bts_scr_name);
 	if (err != 0) {
 		pr_err("kim: failed to read local ver");
@@ -314,6 +300,7 @@ static long download_firmware(struct kim_data_s *kim_gdata)
 
 		switch (((struct bts_action *)ptr)->type) {
 		case ACTION_SEND_COMMAND:	/* action send */
+			pr_debug("S");
 			action_ptr = &(((struct bts_action *)ptr)->data[0]);
 			if (unlikely
 			    (((struct hci_command *)action_ptr)->opcode ==
@@ -325,12 +312,6 @@ static long download_firmware(struct kim_data_s *kim_gdata)
 				skip_change_remote_baud(&ptr, &len);
 				break;
 			}
-			/*Enable the ST_LL state machine if HCILL SLEEP command
-			 * enabled in BT init script*/
-			if (unlikely
-			   (((struct hci_command *)action_ptr)->opcode ==
-			     HCILL_SLEEP_MODE_OPCODE))
-				st_ll_enable(core_data);
 			/*
 			 * Make sure we have enough free space in uart
 			 * tx buffer to write current firmware command
@@ -357,6 +338,10 @@ static long download_firmware(struct kim_data_s *kim_gdata)
 				release_firmware(kim_gdata->fw_entry);
 				return -ETIMEDOUT;
 			}
+			/* reinit completion before sending for the
+			 * relevant wait
+			 */
+			INIT_COMPLETION(kim_gdata->kim_rcvd);
 
 			/*
 			 * Free space found in uart buffer, call st_int_write
@@ -383,6 +368,7 @@ static long download_firmware(struct kim_data_s *kim_gdata)
 			}
 			break;
 		case ACTION_WAIT_EVENT:  /* wait */
+			pr_debug("W");
 			if (!wait_for_completion_timeout
 					(&kim_gdata->kim_rcvd,
 					 msecs_to_jiffies(CMD_RESP_TIME))) {
@@ -408,14 +394,6 @@ static long download_firmware(struct kim_data_s *kim_gdata)
 	}
 	/* fw download complete */
 	release_firmware(kim_gdata->fw_entry);
-	pr_err("download_firmware complete");
-
-
-	/* If the firmware wasn't parsed completely, warn user about remaining
-	 * commands in firmware, so that the firmware can be relooked at
-	 */
-	if (len != 0)
-		pr_err("%s:incomplete, script not parsed completely", __func__);
 	return 0;
 }
 
@@ -431,7 +409,6 @@ void st_kim_recv(void *disc_data, const unsigned char *data, long count)
 	struct st_data_s	*st_gdata = (struct st_data_s *)disc_data;
 	struct kim_data_s	*kim_gdata = st_gdata->kim_data;
 
-	pr_debug(" %s ", __func__);
 	/* copy to local buffer */
 	if (unlikely(data[4] == 0x01 && data[5] == 0x10 && data[0] == 0x04)) {
 		/* must be the read_ver_cmd */
@@ -452,7 +429,6 @@ void st_kim_complete(void *kim_data)
 {
 	struct kim_data_s	*kim_gdata = (struct kim_data_s *)kim_data;
 	complete(&kim_gdata->ldisc_installed);
-	pr_info("%s", __func__);
 }
 
 /**
@@ -466,13 +442,18 @@ long st_kim_start(void *kim_data)
 {
 	long err = 0;
 	long retry = POR_RETRY_COUNT;
+	struct ti_st_plat_data	*pdata;
 	struct kim_data_s	*kim_gdata = (struct kim_data_s *)kim_data;
 
 	pr_info(" %s", __func__);
+	pdata = kim_gdata->kim_pdev->dev.platform_data;
 
 	do {
+		/* platform specific enabling code here */
+		if (pdata->chip_enable)
+			pdata->chip_enable();
+
 		/* Configure BT nShutdown to HIGH state */
-		pr_err("Access to gpio %d", kim_gdata->nshutdown);
 		gpio_set_value(kim_gdata->nshutdown, GPIO_LOW);
 		mdelay(5);	/* FIXME: a proper toggle */
 		gpio_set_value(kim_gdata->nshutdown, GPIO_HIGH);
@@ -487,41 +468,21 @@ long st_kim_start(void *kim_data)
 		/* wait for ldisc to be installed */
 		err = wait_for_completion_timeout(&kim_gdata->ldisc_installed,
 				msecs_to_jiffies(LDISC_TIME));
-		if (!err) {	/* timeout */
-			pr_err("line disc installation timed out ");
-			kim_gdata->ldisc_install = 0;
-			pr_info("ldisc_install = 0");
-			sysfs_notify(&kim_gdata->kim_pdev->dev.kobj,
-					NULL, "install");
-
-			/* wait for uart close */
-			err = wait_for_completion_timeout(
-					&kim_gdata->ldisc_installed,
-					msecs_to_jiffies(1000));
-			if (!err) {		/* timeout */
-				pr_err("uart close  timeout");
-				err = -ETIMEDOUT;
-			}
+		if (!err) {
+			/* ldisc installation timeout,
+			 * flush uart, power cycle BT_EN */
+			pr_err("ldisc installation timeout");
+			err = st_kim_stop(kim_gdata);
 			continue;
 		} else {
 			/* ldisc installed now */
-			pr_info(" line discipline installed ");
+			pr_info("line discipline installed");
 			err = download_firmware(kim_gdata);
 			if (err != 0) {
+				/* ldisc installed but fw download failed,
+				 * flush uart & power cycle BT_EN */
 				pr_err("download firmware failed");
-				kim_gdata->ldisc_install = 0;
-				pr_info("ldisc_install = 0");
-				sysfs_notify(&kim_gdata->kim_pdev->dev.kobj,
-						NULL, "install");
-
-				/* wait for ldisc to be un-installed */
-				err = wait_for_completion_timeout(
-						&kim_gdata->ldisc_installed,
-						msecs_to_jiffies(1000));
-				if (!err) {		/* timeout */
-					pr_err("uninstall ldisc timeout");
-					err = -ETIMEDOUT;
-				}
+				err = st_kim_stop(kim_gdata);
 				continue;
 			} else {	/* on success don't retry */
 				break;
@@ -532,20 +493,31 @@ long st_kim_start(void *kim_data)
 }
 
 /**
- * st_kim_stop - called from ST Core, on the last un-registration
- *	toggle low the chip enable gpio
+ * st_kim_stop - stop communication with chip.
+ *	This can be called from ST Core/KIM, on the-
+ *	(a) last un-register when chip need not be powered there-after,
+ *	(b) upon failure to either install ldisc or download firmware.
+ *	The function is responsible to (a) notify UIM about un-installation,
+ *	(b) flush UART if the ldisc was installed.
+ *	(c) reset BT_EN - pull down nshutdown at the end.
+ *	(d) invoke platform's chip disabling routine.
  */
 long st_kim_stop(void *kim_data)
 {
 	long err = 0;
 	struct kim_data_s	*kim_gdata = (struct kim_data_s *)kim_data;
+	struct ti_st_plat_data	*pdata =
+		kim_gdata->kim_pdev->dev.platform_data;
+	struct tty_struct	*tty = kim_gdata->core_data->tty;
 
-	pr_info("%s", __func__);
 	INIT_COMPLETION(kim_gdata->ldisc_installed);
 
-	/* Flush any pending characters in the driver and discipline. */
-	tty_ldisc_flush(kim_gdata->core_data->tty);
-	tty_driver_flush_buffer(kim_gdata->core_data->tty);
+	if (tty) {	/* can be called before ldisc is installed */
+		/* Flush any pending characters in the driver and discipline. */
+		tty_ldisc_flush(tty);
+		tty_driver_flush_buffer(tty);
+		tty->ops->flush_buffer(tty);
+	}
 
 	/* send uninstall notification to UIM */
 	pr_info("ldisc_install = 0");
@@ -566,6 +538,10 @@ long st_kim_stop(void *kim_data)
 	gpio_set_value(kim_gdata->nshutdown, GPIO_HIGH);
 	mdelay(1);
 	gpio_set_value(kim_gdata->nshutdown, GPIO_LOW);
+
+	/* platform specific disable */
+	if (pdata->chip_disable)
+		pdata->chip_disable();
 	return err;
 }
 
@@ -655,6 +631,10 @@ void st_kim_ref(struct st_data_s **core_data, int id)
 	struct kim_data_s	*kim_gdata;
 	/* get kim_gdata reference from platform device */
 	pdev = st_get_plat_device(id);
+	if (!pdev) {
+		*core_data = NULL;
+		return;
+	}
 	kim_gdata = dev_get_drvdata(&pdev->dev);
 	*core_data = kim_gdata->core_data;
 }
@@ -701,7 +681,7 @@ static int kim_probe(struct platform_device *pdev)
 		/* multiple devices could exist */
 		st_kim_devices[pdev->id] = pdev;
 	} else {
-		/* platform's sure about existance of 1 device */
+		/* platform's sure about existence of 1 device */
 		st_kim_devices[0] = pdev;
 	}
 

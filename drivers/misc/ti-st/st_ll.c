@@ -1,7 +1,8 @@
 /*
  *  Shared Transport driver
  *	HCI-LL module responsible for TI proprietary HCI_LL protocol
- *  Copyright (C) 2009 Texas Instruments
+ *  Copyright (C) 2009-2010 Texas Instruments
+ *  Author: Pavan Savoy <pavan_savoy@ti.com>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License version 2 as
@@ -18,20 +19,11 @@
  *
  */
 
-
 #define pr_fmt(fmt) "(stll) :" fmt
 #include <linux/skbuff.h>
 #include <linux/module.h>
+#include <linux/platform_device.h>
 #include <linux/ti_wilink_st.h>
-
-#include <linux/pm_runtime.h>
-
-#ifndef DEBUG
-#ifdef pr_info
-#undef pr_info
-#define pr_info(fmt, arg...)
-#endif
-#endif
 
 /**********************************************************************/
 /* internal functions */
@@ -46,36 +38,48 @@ static void send_ll_cmd(struct st_data_s *st_data,
 
 static void ll_device_want_to_sleep(struct st_data_s *st_data)
 {
+	struct kim_data_s	*kim_data;
+	struct ti_st_plat_data	*pdata;
+
 	pr_debug("%s", __func__);
 	/* sanity check */
-	if (st_data->ll_state != ST_LL_AWAKE) {
-		pr_err("ERR hcill: ST_LL_GO_TO_SLEEP_IND "
+	if (st_data->ll_state != ST_LL_AWAKE)
+		pr_err("ERR hcill: ST_LL_GO_TO_SLEEP_IND"
 			  "in state %ld", st_data->ll_state);
 
-		/* Since Driver is asked to go to sleep but not aware to be
-		* awake Runtime PM is not aware of the state change either
-		* Requesting the device has not been done, so we do it*/
-		pm_runtime_get(st_data->tty_dev);
-	}
 	send_ll_cmd(st_data, LL_SLEEP_ACK);
 	/* update state */
 	st_data->ll_state = ST_LL_ASLEEP;
+
+	/* communicate to platform about chip asleep */
+	kim_data = st_data->kim_data;
+	pdata = kim_data->kim_pdev->dev.platform_data;
+	if (pdata->chip_asleep)
+		pdata->chip_asleep();
 }
 
 static void ll_device_want_to_wakeup(struct st_data_s *st_data)
 {
+	struct kim_data_s	*kim_data = st_data->kim_data;
+	struct ti_st_plat_data	*pdata = kim_data->kim_pdev->dev.platform_data;
+
 	/* diff actions in diff states */
 	switch (st_data->ll_state) {
 	case ST_LL_ASLEEP:
+		/* communicate to platform about chip wakeup */
+		if (pdata->chip_awake)
+			pdata->chip_awake();
+
 		send_ll_cmd(st_data, LL_WAKE_UP_ACK);	/* send wake_ack */
 		break;
 	case ST_LL_ASLEEP_TO_AWAKE:
 		/* duplicate wake_ind */
-		pr_err("duplicate wake_ind while waiting for Wake ack");
+		pr_debug("duplicate wake_ind while waiting for Wake ack");
+		send_ll_cmd(st_data, LL_WAKE_UP_ACK);	/* send wake_ack */
 		break;
 	case ST_LL_AWAKE:
 		/* duplicate wake_ind */
-		pr_err("duplicate wake_ind already AWAKE");
+		pr_debug("duplicate wake_ind already AWAKE");
 		send_ll_cmd(st_data, LL_WAKE_UP_ACK);	/* send wake_ack */
 		break;
 	case ST_LL_AWAKE_TO_ASLEEP:
@@ -83,6 +87,7 @@ static void ll_device_want_to_wakeup(struct st_data_s *st_data)
 		pr_err("duplicate wake_ind");
 		break;
 	}
+
 	/* update state */
 	st_data->ll_state = ST_LL_AWAKE;
 }
@@ -94,6 +99,12 @@ static void ll_device_want_to_wakeup(struct st_data_s *st_data)
  * enable ST LL */
 void st_ll_enable(struct st_data_s *ll)
 {
+	struct kim_data_s      *kim_data = ll->kim_data;
+	struct ti_st_plat_data *pdata = kim_data->kim_pdev->dev.platform_data;
+	/* communicate to platform about chip enable */
+	if (pdata->chip_enable)
+		pdata->chip_enable();
+
 	ll->ll_state = ST_LL_AWAKE;
 }
 
@@ -101,13 +112,26 @@ void st_ll_enable(struct st_data_s *ll)
  * disable ST LL */
 void st_ll_disable(struct st_data_s *ll)
 {
+	struct kim_data_s      *kim_data = ll->kim_data;
+	struct ti_st_plat_data *pdata = kim_data->kim_pdev->dev.platform_data;
+	/* communicate to platform about chip disable */
+	if (pdata->chip_disable)
+		pdata->chip_disable();
+
 	ll->ll_state = ST_LL_INVALID;
 }
 
 /* called when ST Core wants to update the state */
 void st_ll_wakeup(struct st_data_s *ll)
 {
+	struct kim_data_s       *kim_data = ll->kim_data;
+	struct ti_st_plat_data  *pdata = kim_data->kim_pdev->dev.platform_data;
+
 	if (likely(ll->ll_state != ST_LL_AWAKE)) {
+		/* communicate to platform about chip wakeup */
+		if (pdata->chip_awake)
+			pdata->chip_awake();
+
 		send_ll_cmd(ll, LL_WAKE_UP_IND);	/* WAKE_IND */
 		ll->ll_state = ST_LL_ASLEEP_TO_AWAKE;
 	} else {
@@ -131,23 +155,16 @@ unsigned long st_ll_sleep_state(struct st_data_s *st_data,
 	case LL_SLEEP_IND:	/* sleep ind */
 		pr_debug("sleep indication recvd");
 		ll_device_want_to_sleep(st_data);
-		pm_runtime_put(st_data->tty_dev);
 		break;
 	case LL_SLEEP_ACK:	/* sleep ack */
 		pr_err("sleep ack rcvd: host shouldn't");
 		break;
 	case LL_WAKE_UP_IND:	/* wake ind */
 		pr_debug("wake indication recvd");
-		/* Getting the Device is done to avoid power gating the
-		* Interface (for example UART). This can be done
-		* asynchronously since low level driver is getting the device
-		* when doing a transfert */
-		pm_runtime_get(st_data->tty_dev);
 		ll_device_want_to_wakeup(st_data);
 		break;
 	case LL_WAKE_UP_ACK:	/* wake ack */
 		pr_debug("wake ack rcvd");
-		pm_runtime_get(st_data->tty_dev);
 		st_data->ll_state = ST_LL_AWAKE;
 		break;
 	default:
