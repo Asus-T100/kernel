@@ -1978,7 +1978,7 @@ static int __init intel_kpd_led_init(void)
 	}
 	return 0;
 }
-device_initcall(intel_kpd_led_init);
+fs_initcall(intel_kpd_led_init);
 #endif
 
 
