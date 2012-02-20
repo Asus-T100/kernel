@@ -567,13 +567,9 @@ static int adc_to_temp(uint16_t adc_val)
 	return temp;
 }
 
-static int is_ttl_valid(u64 ttl)
+static inline bool is_ttl_valid(u64 ttl)
 {
-
-	if (time_before64(get_jiffies_64(), ttl))
-		return 1;
-	else
-		return 0;
+	return time_before64(get_jiffies_64(), ttl);
 }
 
 /**
@@ -592,22 +588,22 @@ static int mdf_multi_read_adc_regs(struct msic_power_module_info *mbi,
 	int *adc_val;
 	int temp_adc_val[MSIC_BATT_SENSORS];
 
-
 	mutex_lock(&mbi->adc_val_lock);
 	if (!is_ttl_valid(adc_ttl) || (sample_count > 1)) {
 		ret =
 		    intel_mid_gpadc_sample(mbi->adc_handle, sample_count,
 					   &adc_sensor_vals[MSIC_ADC_TEMP_IDX],
 					   &adc_sensor_vals
-					   [MSIC_ADC_USB_VOL_IDX],
+						[MSIC_ADC_USB_VOL_IDX],
 					   &adc_sensor_vals
-					   [MSIC_ADC_BATTID_IDX]);
+						[MSIC_ADC_BATTID_IDX]);
 		if (ret) {
 			dev_err(&mbi->pdev->dev,
 				"adc driver api returned error(%d)\n", ret);
 			mutex_unlock(&mbi->adc_val_lock);
 			goto adc_multi_exit;
 		}
+
 		adc_ttl = get_jiffies_64() + ADC_TIME_TO_LIVE;
 	}
 	memcpy(temp_adc_val, adc_sensor_vals, sizeof(temp_adc_val));
@@ -943,9 +939,9 @@ static void msic_handle_exception(struct msic_power_module_info *mbi,
 {
 	enum msic_event exception;
 	int temp, retval;
+	unsigned int health = POWER_SUPPLY_HEALTH_GOOD;
 
 	/* Battery Events */
-	mutex_lock(&mbi->batt_lock);
 	if (CHRINT_reg_value & MSIC_BATT_CHR_BATTOCP_MASK) {
 		exception = MSIC_EVENT_BATTOCP_EXCPT;
 		msic_log_exception_event(exception);
@@ -960,13 +956,13 @@ static void msic_handle_exception(struct msic_power_module_info *mbi,
 		}
 		if (retval || (temp > batt_thrshlds->temp_high) ||
 			(temp < batt_thrshlds->temp_low))
-			mbi->batt_props.health = POWER_SUPPLY_HEALTH_OVERHEAT;
+			health = POWER_SUPPLY_HEALTH_OVERHEAT;
 		exception = MSIC_EVENT_BATTOTP_EXCPT;
 		msic_log_exception_event(exception);
 	}
 
 	if (CHRINT_reg_value & MSIC_BATT_CHR_LOWBATT_MASK) {
-		mbi->batt_props.health = POWER_SUPPLY_HEALTH_DEAD;
+		health = POWER_SUPPLY_HEALTH_DEAD;
 		exception = MSIC_EVENT_LOWBATT_EXCPT;
 		msic_log_exception_event(exception);
 	}
@@ -981,31 +977,41 @@ static void msic_handle_exception(struct msic_power_module_info *mbi,
 	}
 
 	if (CHRINT1_reg_value & MSIC_BATT_CHR_BATTOVP_MASK) {
-		mbi->batt_props.health = POWER_SUPPLY_HEALTH_OVERVOLTAGE;
+		health = POWER_SUPPLY_HEALTH_OVERVOLTAGE;
 		exception = MSIC_EVENT_BATTOVP_EXCPT;
 		msic_log_exception_event(exception);
 	}
-	mutex_unlock(&mbi->batt_lock);
+
+	if (health != POWER_SUPPLY_HEALTH_GOOD) {
+		mutex_lock(&mbi->batt_lock);
+		mbi->batt_props.health = health;
+		mutex_unlock(&mbi->batt_lock);
+		health = POWER_SUPPLY_HEALTH_GOOD;
+	}
 
 	/* Charger Events */
-	mutex_lock(&mbi->usb_chrg_lock);
 	if (CHRINT1_reg_value & MSIC_BATT_CHR_CHROTP_MASK) {
 		exception = MSIC_EVENT_CHROTP_EXCPT;
 		msic_log_exception_event(exception);
 	}
 
 	if (CHRINT1_reg_value & MSIC_BATT_CHR_USBOVP_MASK) {
-		mbi->usb_chrg_props.charger_health =
-		    POWER_SUPPLY_HEALTH_OVERVOLTAGE;
+		health = POWER_SUPPLY_HEALTH_OVERVOLTAGE;
 		exception = MSIC_EVENT_USBOVP_EXCPT;
 		msic_log_exception_event(exception);
 	}
 	if (CHRINT1_reg_value & MSIC_BATT_CHR_WKVINDET_MASK) {
-		mbi->usb_chrg_props.charger_health = POWER_SUPPLY_HEALTH_DEAD;
+		health = POWER_SUPPLY_HEALTH_DEAD;
 		exception = MSIC_EVENT_WEAKVIN_EXCPT;
 		msic_log_exception_event(exception);
 	}
-	mutex_unlock(&mbi->usb_chrg_lock);
+
+	if (health != POWER_SUPPLY_HEALTH_GOOD) {
+		mutex_lock(&mbi->usb_chrg_lock);
+		mbi->usb_chrg_props.charger_health = health;
+		mutex_unlock(&mbi->usb_chrg_lock);
+		health = POWER_SUPPLY_HEALTH_GOOD;
+	}
 
 	mutex_lock(&mbi->event_lock);
 	if (CHRINT1_reg_value & MSIC_BATT_CHR_VINREGMINT_MASK) {
@@ -1458,7 +1464,7 @@ static unsigned int sfi_temp_range_lookup(int adc_temp)
 */
 static void msic_batt_temp_charging(struct work_struct *work)
 {
-	int ret, i, is_maint_chrg = false, is_lowchrg_enbl;
+	int ret, i, is_maint_chrg = false, is_lowchrg_enbl, is_chrg_flt;
 	static int iprev = -1, is_chrg_enbl;
 	short int cv = 0, cc = 0, vinlimit = 0, cvref;
 	int adc_temp, adc_vol;
@@ -1493,10 +1499,13 @@ static void msic_batt_temp_charging(struct work_struct *work)
 	/* find the temperature range */
 	i = sfi_temp_range_lookup(adc_temp);
 
+	/* get charger status */
+	is_chrg_flt = is_charger_fault();
+
 	/* change to fix buffer overflow issue */
 	if (i >= ((sfi_table->temp_mon_ranges < SFI_TEMP_NR_RNG) ?
 			sfi_table->temp_mon_ranges : SFI_TEMP_NR_RNG) ||
-						is_charger_fault()) {
+							is_chrg_flt) {
 		if ((adc_temp > batt_thrshlds->temp_high) ||
 			(adc_temp < batt_thrshlds->temp_low)) {
 			dev_warn(msic_dev,
@@ -1507,7 +1516,7 @@ static void msic_batt_temp_charging(struct work_struct *work)
 			mutex_unlock(&mbi->batt_lock);
 		}
 		/* Check charger Status bits */
-		if (is_charger_fault()) {
+		if (is_chrg_flt) {
 			mutex_lock(&mbi->batt_lock);
 			mbi->batt_props.status =
 					POWER_SUPPLY_STATUS_NOT_CHARGING;
@@ -1994,7 +2003,7 @@ static int msic_charger_callback(void *arg, int event, struct otg_bc_cap *cap)
  */
 static void msic_status_monitor(struct work_struct *work)
 {
-	int chr_mode, chr_event;
+	int chr_mode, chr_event, is_chrg_flt;
 	unsigned int delay = CHARGE_STATUS_DELAY_JIFFIES;
 	struct msic_power_module_info *mbi =
 	    container_of(work, struct msic_power_module_info,
@@ -2011,8 +2020,10 @@ static void msic_status_monitor(struct work_struct *work)
 	update_charger_health(mbi);
 	update_battery_health(mbi);
 
-	mutex_lock(&mbi->batt_lock);
+	/* Check charger Status bits */
+	is_chrg_flt = is_charger_fault();
 
+	mutex_lock(&mbi->batt_lock);
 	if (chr_mode == BATT_CHARGING_MODE_MAINTENANCE)
 		mbi->batt_props.status = POWER_SUPPLY_STATUS_FULL;
 	else if (chr_mode == BATT_CHARGING_MODE_NORMAL)
@@ -2022,14 +2033,10 @@ static void msic_status_monitor(struct work_struct *work)
 	else
 		mbi->batt_props.status = POWER_SUPPLY_STATUS_DISCHARGING;
 
-
-	/* Check charger Status bits */
-	if (is_charger_fault()) {
-
+	if (is_chrg_flt) {
 		dev_warn(msic_dev, "charger fault detected\n");
 		mbi->batt_props.status = POWER_SUPPLY_STATUS_NOT_CHARGING;
 	}
-
 	mutex_unlock(&mbi->batt_lock);
 
 	dump_registers(MSIC_CHRG_REG_DUMP_EVENT);
