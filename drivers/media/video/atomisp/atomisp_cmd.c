@@ -272,9 +272,8 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 			isp->isp3a_stat_ready = true;
 			irq_infos &= ~SH_CSS_IRQ_INFO_STATISTICS_READY;
 		}
-		if (irq_infos & SH_CSS_IRQ_INFO_FW_ACC_DONE) {
+		if (irq_infos & SH_CSS_IRQ_INFO_FW_ACC_DONE)
 			signal_acceleration = true;
-		}
 	} else if (irq_infos & SH_CSS_IRQ_INFO_CSS_RECEIVER_ERROR) {
 		/* handle mipi receiver error*/
 		u32 rx_infos;
@@ -1274,13 +1273,12 @@ bool atomisp_is_viewfinder_support(struct atomisp_device *isp)
  */
 static void atomisp_update_capture_mode(struct atomisp_device *isp)
 {
-	if (isp->params.low_light) {
+	if (isp->params.low_light)
 		sh_css_capture_set_mode(SH_CSS_CAPTURE_MODE_LOW_LIGHT);
-	} else if (isp->params.gdc_cac_en ) {
+	else if (isp->params.gdc_cac_en)
 		sh_css_capture_set_mode(SH_CSS_CAPTURE_MODE_ADVANCED);
-	} else {
+	else
 		sh_css_capture_set_mode(SH_CSS_CAPTURE_MODE_PRIMARY);
-	}
 }
 
 /*
@@ -3923,9 +3921,11 @@ void flush_acc_api_arguments(struct sh_css_acc_fw *fw)
 		enum atomisp_acc_arg_type type = sh_css_argument_type(fw, i);
 		union host *host;
 		size_t size;
+
 		switch (type) {
 		case SH_CSS_ACC_ARG_PTR_STABLE:
-			if (sh_css_acc_is_stable(fw, i)) break;
+			if (sh_css_acc_is_stable(fw, i))
+				break;
 			/* Fall through */
 		case SH_CSS_ACC_ARG_FRAME:
 		case SH_CSS_ACC_ARG_PTR_IN:

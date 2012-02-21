@@ -242,13 +242,13 @@ int hmm_load(void *virt, void *data, unsigned int bytes)
 			 "hmm_load NULL argument\n");
 		return -EINVAL;
 	}
-	return load_and_flush (virt, data, bytes);
+	return load_and_flush(virt, data, bytes);
 }
 
 /*Flush hmm data from the data cache*/
 int hmm_flush(void *virt, unsigned int bytes)
 {
-	return load_and_flush (virt, NULL, bytes);
+	return load_and_flush(virt, NULL, bytes);
 }
 
 /*Write function in ISP memory management*/

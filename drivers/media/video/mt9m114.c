@@ -1168,9 +1168,9 @@ static int mt9m114_s_stream(struct v4l2_subdev *sd, int enable)
 		 */
 		if (mt9m114_wait_3a(sd))
 			v4l2_warn(c, "3A can not finish!");
-	}
-	else
+	} else {
 		ret = mt9m114_set_suspend(sd);
+	}
 
 	return ret;
 }

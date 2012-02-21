@@ -68,8 +68,8 @@ static const unsigned int isp_subdev_mo_output_fmts[] = {
 };
 
 /*
-* V4L2 subdev operations
-*/
+ * V4L2 subdev operations
+ */
 
 /*
  * isp_subdev_get_ctrl - V4L2 control get handler
@@ -77,7 +77,7 @@ static const unsigned int isp_subdev_mo_output_fmts[] = {
  * @ctrl: V4L2 control
  *
  * Return 0 on success or a negative error code otherwise.
-*/
+ */
 static int isp_subdev_get_ctrl(struct v4l2_subdev *sd,
 	struct v4l2_control *ctrl)
 {
@@ -90,7 +90,7 @@ static int isp_subdev_get_ctrl(struct v4l2_subdev *sd,
  * @ctrl: V4L2 control
  *
  * Return 0 on success or a negative error code otherwise.
-*/
+ */
 static int isp_subdev_set_ctrl(struct v4l2_subdev *sd,
 	struct v4l2_control *ctrl)
 {
@@ -104,7 +104,7 @@ static int isp_subdev_set_ctrl(struct v4l2_subdev *sd,
  * @arg: ioctl argument
  *
  * Return 0 on success or a negative error code otherwise.
-*/
+ */
 static long isp_subdev_ioctl(struct v4l2_subdev *sd,
 	unsigned int cmd, void *arg)
 {
@@ -119,7 +119,7 @@ static long isp_subdev_ioctl(struct v4l2_subdev *sd,
  * @on: power on/off
  *
  * Return 0 on success or a negative error code otherwise.
-*/
+ */
 static int isp_subdev_set_power(struct v4l2_subdev *sd, int on)
 {
 	return 0;
@@ -183,7 +183,7 @@ __isp_subdev_get_format(struct atomisp_sub_device *isp_subdev,
  * @fh : V4L2 subdev file handle
  * @pad: Pad number
  * @fmt: Format
-*/
+ */
 static void
 isp_subdev_try_format(struct atomisp_sub_device *isp_subdev,
 	struct v4l2_subdev_fh *fh,
@@ -291,7 +291,7 @@ isp_subdev_try_format(struct atomisp_sub_device *isp_subdev,
  * @fh : V4L2 subdev file handle
  * @code: pointer to v4l2_subdev_pad_mbus_code_enum structure
  * return -EINVAL or zero on success
-*/
+ */
 static int isp_subdev_enum_mbus_code(struct v4l2_subdev *sd,
 	struct v4l2_subdev_fh *fh,
 	struct v4l2_subdev_mbus_code_enum *code)
@@ -367,7 +367,7 @@ static int isp_subdev_enum_frame_size(struct v4l2_subdev *sd,
  *
  * Return 0 on success or -EINVAL if the pad is invalid or doesn't correspond
  * to the format type.
-*/
+ */
 static int isp_subdev_get_format(struct v4l2_subdev *sd,
 	struct v4l2_subdev_fh *fh, struct v4l2_subdev_format *fmt)
 {
@@ -393,7 +393,7 @@ static int isp_subdev_get_format(struct v4l2_subdev *sd,
  *
  * Return 0 on success or -EINVAL if the pad is invalid or doesn't correspond
  * to the format type.
-*/
+ */
 static int isp_subdev_set_format(struct v4l2_subdev *sd,
 	struct v4l2_subdev_fh *fh, struct v4l2_subdev_format *fmt)
 {
@@ -426,40 +426,39 @@ static int isp_subdev_set_format(struct v4l2_subdev *sd,
 	return 0;
 }
 
- /* V4L2 subdev core operations */
- static const struct v4l2_subdev_core_ops isp_subdev_v4l2_core_ops = {
+/* V4L2 subdev core operations */
+static const struct v4l2_subdev_core_ops isp_subdev_v4l2_core_ops = {
 	 .g_ctrl = isp_subdev_get_ctrl,
 	 .s_ctrl = isp_subdev_set_ctrl,
 	 .ioctl = isp_subdev_ioctl,
 	 .s_power = isp_subdev_set_power,
 	 .subscribe_event = isp_subdev_subscribe_event,
 	 .unsubscribe_event = isp_subdev_unsubscribe_event,
- };
+};
 
- /* V4L2 subdev video operations */
- static const struct v4l2_subdev_video_ops isp_subdev_v4l2_video_ops = {
+/* V4L2 subdev video operations */
+static const struct v4l2_subdev_video_ops isp_subdev_v4l2_video_ops = {
 	 .s_stream = isp_subdev_set_stream,
- };
+};
 
- /* V4L2 subdev pad operations */
- static const struct v4l2_subdev_pad_ops isp_subdev_v4l2_pad_ops = {
+/* V4L2 subdev pad operations */
+static const struct v4l2_subdev_pad_ops isp_subdev_v4l2_pad_ops = {
 	 .enum_mbus_code = isp_subdev_enum_mbus_code,
 	 .enum_frame_size = isp_subdev_enum_frame_size,
 	 .get_fmt = isp_subdev_get_format,
 	 .set_fmt = isp_subdev_set_format,
- };
+};
 
- /* V4L2 subdev operations */
- static const struct v4l2_subdev_ops isp_subdev_v4l2_ops = {
+/* V4L2 subdev operations */
+static const struct v4l2_subdev_ops isp_subdev_v4l2_ops = {
 	 .core = &isp_subdev_v4l2_core_ops,
 	 .video = &isp_subdev_v4l2_video_ops,
 	 .pad = &isp_subdev_v4l2_pad_ops,
- };
+};
 
 static void isp_subdev_init_params(struct atomisp_sub_device *isp_subdev)
 {
 	/* parameters initialization */
-
 }
 
 /*
@@ -527,18 +526,18 @@ static int isp_subdev_link_setup(struct media_entity *entity,
 	return 0;
 }
 
- /* media operations */
- static const struct media_entity_operations isp_subdev_media_ops = {
+/* media operations */
+static const struct media_entity_operations isp_subdev_media_ops = {
 	 .link_setup = isp_subdev_link_setup,
 /*	 .set_power = v4l2_subdev_set_power,	*/
- };
+};
 
 /*
  * isp_subdev_init_entities - Initialize V4L2 subdev and media entity
  * @isp_subdev: ISP CCDC module
  *
  * Return 0 on success and a negative error code on failure.
-*/
+ */
 static int isp_subdev_init_entities(struct atomisp_sub_device *isp_subdev)
 {
 	struct v4l2_subdev *sd = &isp_subdev->subdev;
@@ -664,7 +663,7 @@ error:
  * TODO: Get the initialisation values from platform data.
  *
  * Return 0 on success or a negative error code otherwise.
-*/
+ */
 int atomisp_subdev_init(struct atomisp_device *isp)
 {
 	struct atomisp_sub_device *isp_subdev = &isp->isp_subdev;

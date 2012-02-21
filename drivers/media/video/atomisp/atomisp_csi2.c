@@ -82,24 +82,24 @@ csi2_try_format(struct atomisp_mipi_csi2_device *csi2,
 
 	switch (pad) {
 	case CSI2_PAD_SINK:
-		 /* Clamp the width and height to valid range (1-8191). */
-		 for (i = 0; i < ARRAY_SIZE(csi2_input_fmts); i++) {
+		/* Clamp the width and height to valid range (1-8191). */
+		for (i = 0; i < ARRAY_SIZE(csi2_input_fmts); i++) {
 			if (fmt->code == csi2_input_fmts[i])
 				break;
-		 }
+		}
 
-		 /* If not found, use SGRBG10 as default */
-		 if (i >= ARRAY_SIZE(csi2_input_fmts))
+		/* If not found, use SGRBG10 as default */
+		if (i >= ARRAY_SIZE(csi2_input_fmts))
 			fmt->code = V4L2_MBUS_FMT_SBGGR10_1X10;
 
-		 fmt->width = clamp_t(u32, fmt->width, 1, 4608);
-		 fmt->height = clamp_t(u32, fmt->height, 1, 8191);
-		 break;
+		fmt->width = clamp_t(u32, fmt->width, 1, 4608);
+		fmt->height = clamp_t(u32, fmt->height, 1, 8191);
+		break;
 
 	case CSI2_PAD_SOURCE:
 		/* Source format same as sink format, except for DPCM
-		* compression.
-		*/
+		 * compression.
+		 */
 		pixelcode = fmt->code;
 		format = __csi2_get_format(csi2, fh, CSI2_PAD_SINK, which);
 		memcpy(fmt, format, sizeof(*fmt));
@@ -109,6 +109,7 @@ csi2_try_format(struct atomisp_mipi_csi2_device *csi2,
 			fmt->code = pixelcode;
 
 		break;
+
 	default:
 		break;
 	}
@@ -311,9 +312,9 @@ static int csi2_link_setup(struct media_entity *entity,
 		if (flags & MEDIA_LNK_FL_ENABLED) {
 			if (csi2->output & ~CSI2_OUTPUT_ISP_SUBDEV)
 				return -EBUSY;
-				csi2->output |= CSI2_OUTPUT_ISP_SUBDEV;
-			} else {
-				csi2->output &= ~CSI2_OUTPUT_ISP_SUBDEV;
+			csi2->output |= CSI2_OUTPUT_ISP_SUBDEV;
+		} else {
+			csi2->output &= ~CSI2_OUTPUT_ISP_SUBDEV;
 		}
 		break;
 

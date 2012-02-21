@@ -1664,7 +1664,7 @@ static long atomisp_vidioc_default(struct file *file, void *fh,
 
 	case ATOMISP_IOC_S_DIS_VECTOR:
 		return atomisp_set_dis_vector(isp,
-				(struct atomisp_dis_vector*) arg);
+				(struct atomisp_dis_vector *) arg);
 
 	case ATOMISP_IOC_G_ISP_PARM:
 		return atomisp_param(isp, 0, arg);
