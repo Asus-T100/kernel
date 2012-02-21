@@ -1804,10 +1804,10 @@ static int mdfld_hdmi_get_modes(struct drm_connector *connector)
 		return ret;
 	}
 
-	/*reset preferred mode if NULL EDID got when detect*/
+	/* Reset preferred mode if NULL EDID detected on PNW C1 or latter. */
 	if (hdmi_priv->is_hardcode_edid) {
-		if (!((IS_MDFLD_OLD(dev)) &&
-			(dev_priv->platform_rev_id < MDFLD_PNW_C0))) {
+		if ((IS_MDFLD_OLD(dev)) &&
+			(dev_priv->platform_rev_id > MDFLD_PNW_C0)) {
 			/*from C1, driver can get edid right
 			  if not right,set prefer mode to 640*480p
 			  it is required by HDMI compliance test.*/
