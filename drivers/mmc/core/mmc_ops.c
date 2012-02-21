@@ -753,6 +753,9 @@ static int mmc_rpmb_request_check(struct mmc_card *card,
 					mmc_hostname(card->host), p_req->type);
 			return -EINVAL;
 		}
+		/*
+		 * used to allocate frame
+		 */
 		p_req->blk_cnt = 1;
 	} else if (p_req->type == RPMB_WRITE_DATA ||
 			p_req->type == RPMB_READ_DATA) {
@@ -765,6 +768,19 @@ static int mmc_rpmb_request_check(struct mmc_card *card,
 					p_req->addr,
 					p_req->blk_cnt,
 					card->ext_csd.rpmb_size);
+			return -EINVAL;
+		}
+		if (p_req->blk_cnt == 0) {
+			pr_err("%s: Type %d has zero block count\n",
+					mmc_hostname(card->host),
+					p_req->blk_cnt);
+			return -EINVAL;
+		} else if (p_req->blk_cnt > card->rpmb_max_req) {
+			pr_err("%s: Type %d has invalid block count, "
+					"cannot large than %d\n",
+					mmc_hostname(card->host),
+					p_req->blk_cnt,
+					card->rpmb_max_req);
 			return -EINVAL;
 		}
 		if (!p_req->data) {
@@ -795,24 +811,12 @@ static int mmc_rpmb_request_check(struct mmc_card *card,
 					mmc_hostname(card->host), p_req->type);
 			return -EINVAL;
 		}
+		/*
+		 * used to allocate frame
+		 */
 		p_req->blk_cnt = 1;
 	} else
 		return -EOPNOTSUPP;
-
-	if (p_req->blk_cnt == 0) {
-		pr_err("%s: Type %d has zero block count\n",
-				mmc_hostname(card->host), p_req->blk_cnt);
-		return -EINVAL;
-	}
-
-	if (p_req->blk_cnt > card->rpmb_max_req) {
-		pr_err("%s: Type %d has invalid block count, "
-				"cannot large than %d\n",
-				mmc_hostname(card->host),
-				p_req->blk_cnt,
-				card->rpmb_max_req);
-		return -EINVAL;
-	}
 
 	return 0;
 }
@@ -940,11 +944,12 @@ int mmc_rpmb_partition_ops(struct mmc_core_rpmb_req *rpmb_req,
 	/*
 	 * STEP 1: send request to RPMB partition
 	 */
-	if (type == RPMB_READ_DATA)
-		err = mmc_rpmb_send_command(card, buf_frame, 1, type, RPMB_REQ);
+	if (type == RPMB_WRITE_DATA)
+		err = mmc_rpmb_send_command(card, buf_frame, blks,
+				type, RPMB_REQ);
 	else
-		err = mmc_rpmb_send_command(card, buf_frame,
-				blks, type, RPMB_REQ);
+		err = mmc_rpmb_send_command(card, buf_frame, 1, type, RPMB_REQ);
+
 	if (err) {
 		pr_err("%s: request write counter failed (%d)\n",
 			mmc_hostname(card->host), err);

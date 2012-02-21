@@ -2381,10 +2381,21 @@ static void sdhci_data_irq(struct sdhci_host *host, u32 intmask)
 		 * The "data complete" interrupt is also used to
 		 * indicate that a busy state has ended. See comment
 		 * above in sdhci_cmd_irq().
+		 *
+		 * "data timeout" interrupt may also happen
 		 */
 		if (host->cmd && (host->cmd->flags & MMC_RSP_BUSY)) {
 			if (intmask & SDHCI_INT_DATA_END) {
 				sdhci_finish_command(host);
+				return;
+			} else if (intmask & SDHCI_INT_DATA_TIMEOUT) {
+				pr_err("%s: Got data interrupt 0x%08x for "
+						"busy cmd %d\n",
+						mmc_hostname(host->mmc),
+						(unsigned)intmask,
+						host->cmd->opcode);
+				host->cmd->error = -ETIMEDOUT;
+				tasklet_schedule(&host->finish_tasklet);
 				return;
 			}
 		}

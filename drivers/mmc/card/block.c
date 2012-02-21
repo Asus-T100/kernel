@@ -101,6 +101,7 @@ struct mmc_blk_data {
 #define MMC_BLK_DISCARD		BIT(2)
 #define MMC_BLK_SECDISCARD	BIT(3)
 #define MMC_BLK_RPMB		BIT(4)
+#define MMC_BLK_USER		BIT(5)
 
 	/*
 	 * Only set in main mmc_blk_data associated
@@ -1459,8 +1460,12 @@ static int mmc_blk_issue_rq(struct mmc_queue *mq, struct request *req)
 
 	ret = mmc_blk_part_switch(card, md);
 	if (ret) {
-		ret = 0;
-		goto out;
+		pr_err("%s: switch to user part failed. Try to reset eMMC\n",
+				mmc_hostname(card->host));
+		if (mmc_blk_reset(md, card->host, MMC_BLK_USER))
+			goto out;
+		pr_info("%s: Reset eMMC success\n", mmc_hostname(card->host));
+		mmc_blk_reset_success(md, MMC_BLK_USER);
 	}
 
 	if (req && req->cmd_flags & REQ_DISCARD) {
