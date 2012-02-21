@@ -1959,6 +1959,9 @@ static int __init pb_keys_init(void)
 	num = sizeof(gpio_button) / sizeof(struct gpio_keys_button);
 	for (i = 0; i < num; i++) {
 		gb[i].gpio = get_gpio_by_name(gb[i].desc);
+		if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_CLOVERVIEW &&
+			 (!strcmp(gb[i].desc, "vol_up")))
+			gb[i].gpio = 30;
 		if (gb[i].gpio == -1)
 			continue;
 
