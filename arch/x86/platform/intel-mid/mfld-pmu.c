@@ -1088,7 +1088,7 @@ int mfld_s0ix_enter(int s0ix_state)
 			break;
 
 		cpu_relax();
-	} while (num_retry--);
+	} while (--num_retry);
 
 	if (!num_retry && !readl(&mid_pmu_cxt->pmu_reg->pm_msic))
 		WARN(1, "%s: pm_msic not set.\n", __func__);
