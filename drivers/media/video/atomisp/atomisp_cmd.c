@@ -1010,8 +1010,6 @@ error:
 /*
  * utils for buffer allocation/free
  */
-#define bytes_to_pgnr_ceil(bytes) \
-    (((bytes) + ((1<<PAGE_SHIFT) - 1)) >> PAGE_SHIFT)
 
 int atomisp_get_frame_pgnr(const struct sh_css_frame *frame, u32 * p_pgnr)
 {
@@ -1022,7 +1020,7 @@ int atomisp_get_frame_pgnr(const struct sh_css_frame *frame, u32 * p_pgnr)
 		return -EINVAL;
 	}
 
-	(*p_pgnr) = bytes_to_pgnr_ceil(frame->data_bytes);
+	*p_pgnr = DIV_ROUND_UP(frame->data_bytes, PAGE_SIZE);
 	return 0;
 }
 
