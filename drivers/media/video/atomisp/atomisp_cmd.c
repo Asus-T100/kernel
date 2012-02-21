@@ -2763,11 +2763,11 @@ done:
 	}
 
 	/* app vs isp */
-	out_width = min(out_width, (u32)ATOM_ISP_MAX_WIDTH);
-	out_height = min(out_height, (u32)ATOM_ISP_MAX_HEIGHT);
+	out_width = min_t(u32, out_width, ATOM_ISP_MAX_WIDTH);
+	out_height = min_t(u32, out_height, ATOM_ISP_MAX_HEIGHT);
 
-	out_width = max(out_width, (u32)ATOM_ISP_MIN_WIDTH);
-	out_height = max(out_height, (u32)ATOM_ISP_MIN_HEIGHT);
+	out_width = max_t(u32, out_width, ATOM_ISP_MIN_WIDTH);
+	out_height = max_t(u32, out_height, ATOM_ISP_MIN_HEIGHT);
 
 	out_width = out_width - out_width % ATOM_ISP_STEP_WIDTH;
 	out_height = out_height - out_height % ATOM_ISP_STEP_HEIGHT;
@@ -3326,11 +3326,11 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 		width -= padding_w;
 		height -= padding_h;
 		/* app vs isp */
-		width = min(width, (u32)ATOM_ISP_MAX_WIDTH);
-		height = min(height, (u32)ATOM_ISP_MAX_HEIGHT);
+		width = min_t(u32, width, ATOM_ISP_MAX_WIDTH);
+		height = min_t(u32, height, ATOM_ISP_MAX_HEIGHT);
 
-		width = max(width, (u32)ATOM_ISP_MIN_WIDTH);
-		height = max(height, (u32)ATOM_ISP_MIN_HEIGHT);
+		width = max_t(u32, width, ATOM_ISP_MIN_WIDTH);
+		height = max_t(u32, height, ATOM_ISP_MIN_HEIGHT);
 
 		width = width - width % ATOM_ISP_STEP_WIDTH;
 		height = height - height % ATOM_ISP_STEP_HEIGHT;
