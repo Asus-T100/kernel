@@ -55,16 +55,15 @@
  * (result is 0 if b == 0) */
 #define divsave_rounded(a, b)	(((b) != 0) ? (((a)+((b)>>1))/(b)) : (-1))
 
-typedef unsigned int sensor_register;
 struct sensor_mode_data {
-	sensor_register coarse_integration_time_min;
-	sensor_register coarse_integration_time_max_margin;
-	sensor_register fine_integration_time_min;
-	sensor_register fine_integration_time_max_margin;
-	sensor_register fine_integration_time_def;
-	sensor_register frame_length_lines;
-	sensor_register line_length_pck;
-	sensor_register read_mode;
+	unsigned int coarse_integration_time_min;
+	unsigned int coarse_integration_time_max_margin;
+	unsigned int fine_integration_time_min;
+	unsigned int fine_integration_time_max_margin;
+	unsigned int fine_integration_time_def;
+	unsigned int frame_length_lines;
+	unsigned int line_length_pck;
+	unsigned int read_mode;
 	int vt_pix_clk_freq_mhz;
 };
 
@@ -1122,12 +1121,12 @@ static int mt9e013_get_intg_factor(struct i2c_client *client,
 								   struct camera_mipi_info *info,
 								   const struct mt9e013_reg *reglist)
 {
-	sensor_register	vt_pix_clk_div;
-	sensor_register	vt_sys_clk_div;
-	sensor_register	pre_pll_clk_div;
-	sensor_register	pll_multiplier;
-	sensor_register	op_pix_clk_div;
-	sensor_register	op_sys_clk_div;
+	unsigned int	vt_pix_clk_div;
+	unsigned int	vt_sys_clk_div;
+	unsigned int	pre_pll_clk_div;
+	unsigned int	pll_multiplier;
+	unsigned int	op_pix_clk_div;
+	unsigned int	op_sys_clk_div;
 
     /* TODO: this should not be a constant but should be set by a call to
      * MSIC's driver to get the ext_clk that MSIC supllies to the sensor.
@@ -1138,13 +1137,13 @@ static int mt9e013_get_intg_factor(struct i2c_client *client,
 	int vt_pix_clk_freq_mhz;
 	u16 data[MT9E013_SHORT_MAX];
 
-	sensor_register coarse_integration_time_min;
-	sensor_register coarse_integration_time_max_margin;
-	sensor_register fine_integration_time_min;
-	sensor_register fine_integration_time_max_margin;
-	sensor_register frame_length_lines;
-	sensor_register line_length_pck;
-	sensor_register read_mode;
+	unsigned int coarse_integration_time_min;
+	unsigned int coarse_integration_time_max_margin;
+	unsigned int fine_integration_time_min;
+	unsigned int fine_integration_time_max_margin;
+	unsigned int frame_length_lines;
+	unsigned int line_length_pck;
+	unsigned int read_mode;
 
 	if (info == NULL)
 		return -EINVAL;
