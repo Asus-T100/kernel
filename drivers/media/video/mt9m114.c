@@ -417,7 +417,7 @@ static int mt9m114_write_reg_array(struct i2c_client *client,
 static int mt9m114_wait_3a(struct v4l2_subdev *sd)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
-	int timeout = 100;
+	int timeout = 35;
 	int status_exp, status_wb, ret;
 
 	while (timeout--) {
@@ -435,7 +435,7 @@ static int mt9m114_wait_3a(struct v4l2_subdev *sd)
 			return ret;
 		if (status_wb & MISENSOR_AWB_STEADY) {
 			v4l2_info(client, "ae/awb stablize retry count  %d.\n",
-				  (100-timeout));
+				  (35-timeout));
 			return 0;
 		}
 		msleep(20);
