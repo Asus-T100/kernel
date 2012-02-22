@@ -244,7 +244,7 @@ static void __init *l3g4200d_platform_data(void *info)
 
 	l3g4200d_pdata.fs_range = L3G4200D_GYR_FS_2000DPS;
 	l3g4200d_pdata.poll_interval = 200;
-	l3g4200d_pdata.negate_x = 1;
+	l3g4200d_pdata.negate_x = 0;
 	l3g4200d_pdata.negate_y = 0;
 	l3g4200d_pdata.negate_z = 0;
 	l3g4200d_pdata.axis_map_x = 0;

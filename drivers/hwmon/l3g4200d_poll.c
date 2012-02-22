@@ -39,6 +39,7 @@
 #include <linux/jiffies.h>
 #include <linux/earlysuspend.h>
 #include <linux/input/l3g4200d_poll.h>
+#include <linux/delay.h>
 
 /* l3g4200d gyroscope registers */
 #define WHO_AM_I        0x0F
@@ -150,9 +151,32 @@ static int l3g4200d_hw_init(struct l3g4200d_data *gyro)
 	gyro->resume_state[RES_CTRL_REG5] = 0x00;
 	l3g4200d_update_odr_bits(gyro);
 
-	return i2c_smbus_write_block_data(gyro->client,
-			AUTO_INCREMENT | CTRL_REG1,
-			5, &gyro->resume_state[0]);
+	ret = i2c_smbus_write_byte_data(gyro->client, CTRL_REG1,
+		gyro->resume_state[RES_CTRL_REG1]);
+	if (ret < 0)
+		return ret;
+
+	ret = i2c_smbus_write_byte_data(gyro->client, CTRL_REG2,
+		gyro->resume_state[RES_CTRL_REG2]);
+	if (ret < 0)
+		return ret;
+
+	ret = i2c_smbus_write_byte_data(gyro->client, CTRL_REG3,
+		gyro->resume_state[RES_CTRL_REG3]);
+	if (ret < 0)
+		return ret;
+
+	ret = i2c_smbus_write_byte_data(gyro->client, CTRL_REG4,
+		gyro->resume_state[RES_CTRL_REG4]);
+	if (ret < 0)
+		return ret;
+
+	ret = i2c_smbus_write_byte_data(gyro->client, CTRL_REG5,
+		gyro->resume_state[RES_CTRL_REG5]);
+	if (ret < 0)
+		return ret;
+
+	return ret;
 }
 
 static void l3g4200d_queue_delayed_work(struct l3g4200d_data *gyro)
@@ -247,6 +271,8 @@ static int l3g4200d_enable(struct l3g4200d_data *gyro)
 		return err;
 	}
 
+	/* wait 200ms for device to be stable */
+	msleep(200);
 	l3g4200d_queue_delayed_work(gyro);
 	return 0;
 }
