@@ -483,6 +483,18 @@ config BOARD_MRFLD_VP
 	---help---
 	  Merrifield based simulation configuration. This includes:
 	  VP, HVP, SLE targets.
+
+config BOARD_CTP
+	bool "Clovertrail board type"
+	depends on X86_MDFLD
+	default n
+	---help---
+	  Clovertrail board type is special.
+	  We use Medfield Soc file for Clovertrail but define a new
+	  board file for Clovertrail. That's because Clovertrail Soc
+	  shares all the codes with Medfield except the board file(i.e.
+	  only platform devices and platform device data are different)
+
 endchoice
 
 endif

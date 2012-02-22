@@ -13,3 +13,4 @@ obj-$(CONFIG_INTEL_MID_MDFLD_POWER)		+= mfld-pmu.o
 # BOARD files
 obj-$(CONFIG_BOARD_MFLD_BLACKBAY)		+= board-blackbay.o
 obj-$(CONFIG_BOARD_REDRIDGE)		+= board-redridge.o
+obj-$(CONFIG_BOARD_CTP)			+= board-ctp.o
