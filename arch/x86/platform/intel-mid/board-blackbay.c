@@ -52,6 +52,7 @@
 #include <linux/i2c-gpio.h>
 #include <linux/rmi_i2c.h>
 #include <linux/max11871.h>
+#include <linux/i2c/apds990x.h>
 
 
 #include <linux/atomisp_platform.h>
@@ -1658,6 +1659,17 @@ void *max11871_platform_data_init(void *info)
 	return &max11871_pdata;
 }
 
+void *apds990x_platform_data_init(void *info)
+{
+	static struct apds990x_platform_data platform_data = {
+		.pdrive = 0,
+		.ppcount = 1,
+	};
+	platform_data.gpio_number = get_gpio_by_name("AL-intr");
+
+	return &platform_data;
+}
+
 struct devs_id __initconst device_ids[] = {
 	{"pmic_gpio", SFI_DEV_TYPE_SPI, 1, &pmic_gpio_platform_data, NULL},
 	{"pmic_gpio", SFI_DEV_TYPE_IPC, 1, &pmic_gpio_platform_data,
@@ -1718,6 +1730,7 @@ struct devs_id __initconst device_ids[] = {
 	{"synaptics_3202", SFI_DEV_TYPE_I2C, 0, &s3202_platform_data_init},
 	{"cs42l73", SFI_DEV_TYPE_I2C, 1, &no_platform_data, NULL},
 
+	{"apds990x", SFI_DEV_TYPE_I2C, 0, &apds990x_platform_data_init},
 	{"lsm303dl", SFI_DEV_TYPE_I2C, 0, &lsm303dlhc_accel_platform_data},
 	{"lsm303cmp", SFI_DEV_TYPE_I2C, 0, &no_platform_data},
 	{"l3g4200d", SFI_DEV_TYPE_I2C, 0, &l3g4200d_platform_data},
