@@ -56,11 +56,7 @@ enum sst_states {
 #define MAX_ACTIVE_STREAM	3
 #define MAX_ENC_STREAM		1
 #define MAX_AM_HANDLES		1
-#define ALLOC_TIMEOUT		5000
-/* SST numbers */
 #define SST_BLOCK_TIMEOUT	5000
-#define TARGET_DEV_BLOCK_TIMEOUT	5000
-
 #define BLOCK_UNINIT		-1
 #define RX_TIMESLOT_UNINIT	-1
 
@@ -536,10 +532,8 @@ int sst_get_block_stream(struct intel_sst_drv *sst_drv_ctx);
 
 int sst_wait_interruptible(struct intel_sst_drv *sst_drv_ctx,
 				struct sst_block *block);
-int sst_wait_interruptible_timeout(struct intel_sst_drv *sst_drv_ctx,
-		struct sst_block *block, int timeout);
 int sst_wait_timeout(struct intel_sst_drv *sst_drv_ctx,
-		struct stream_alloc_block *block);
+			struct sst_block *block);
 int sst_create_large_msg(struct ipc_post **arg);
 int sst_create_short_msg(struct ipc_post **arg);
 void sst_wake_up_alloc_block(struct intel_sst_drv *sst_drv_ctx,

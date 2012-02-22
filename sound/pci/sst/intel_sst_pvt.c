@@ -100,47 +100,6 @@ int sst_wait_interruptible(struct intel_sst_drv *sst_drv_ctx,
 
 }
 
-
-/*
- * sst_wait_interruptible_timeout - wait on event interruptable
- *
- * @sst_drv_ctx: Driver context
- * @block: Driver block to wait on
- * @timeout: time for wait on
- *
- * This function waits with a timeout value (and is interruptible) on a
- * given block event
- */
-int sst_wait_interruptible_timeout(
-			struct intel_sst_drv *sst_drv_ctx,
-			struct sst_block *block, int timeout)
-{
-	int retval = 0;
-
-	pr_debug("sst_wait_interruptible_timeout - waiting....\n");
-	if (wait_event_interruptible_timeout(sst_drv_ctx->wait_queue,
-						block->condition,
-						msecs_to_jiffies(timeout))) {
-		if (block->ret_code < 0)
-			pr_err("stream failed %d\n", block->ret_code);
-		else
-			pr_debug("event up\n");
-		retval = block->ret_code;
-	} else {
-		block->on = false;
-		pr_err("timeout occurred...\n");
-		/*setting firmware state as uninit so that the
-		firmware will get re-downloaded on next request
-		this is because firmare not responding for 5 sec
-		is equalant to some unrecoverable error of FW
-		sst_drv_ctx->sst_state = SST_UN_INIT;*/
-		retval = -EBUSY;
-	}
-	return retval;
-
-}
-
-
 /*
  * sst_wait_timeout - wait on event for timeout
  *
@@ -150,35 +109,32 @@ int sst_wait_interruptible_timeout(
  * This function waits with a timeout value (and is not interruptible) on a
  * given block event
  */
-int sst_wait_timeout(struct intel_sst_drv *sst_drv_ctx,
-		struct stream_alloc_block *block)
+int sst_wait_timeout(struct intel_sst_drv *sst_drv_ctx, struct sst_block *block)
 {
 	int retval = 0;
 
 	/* NOTE:
 	Observed that FW processes the alloc msg and replies even
 	before the alloc thread has finished execution */
-	pr_debug("waiting for %x, condition %x\n",
-		       block->sst_id, block->ops_block.condition);
-	if (wait_event_interruptible_timeout(sst_drv_ctx->wait_queue,
-				block->ops_block.condition,
+	pr_debug("sst: waiting for condition %x\n",
+		       block->condition);
+	if (wait_event_timeout(sst_drv_ctx->wait_queue,
+				block->condition,
 				msecs_to_jiffies(SST_BLOCK_TIMEOUT))) {
 		/* event wake */
-		pr_debug("Event wake %x\n", block->ops_block.condition);
-		pr_debug("message ret: %d\n", block->ops_block.ret_code);
-		retval = block->ops_block.ret_code;
+		pr_debug("sst: Event wake %x\n", block->condition);
+		pr_debug("sst: message ret: %d\n", block->ret_code);
+		retval = block->ret_code;
 	} else {
-		block->ops_block.on = false;
-		pr_err("Wait timed-out %x\n", block->ops_block.condition);
+		block->on = false;
+		pr_err("sst: Wait timed-out %x\n", block->condition);
 		/* settign firmware state as uninit so that the
 		firmware will get redownloaded on next request
 		this is because firmare not responding for 5 sec
-		is equalant to some unrecoverable error of FW
-		sst_drv_ctx->sst_state = SST_UN_INIT;*/
+		is equalant to some unrecoverable error of FW */
 		retval = -EBUSY;
 	}
 	return retval;
-
 }
 
 /*
@@ -288,7 +244,6 @@ void sst_wake_up_alloc_block(struct intel_sst_drv *sst_drv_ctx,
  */
 int sst_enable_rx_timeslot(int status)
 {
-	int retval = 0;
 	struct ipc_post *msg = NULL;
 
 	if (sst_create_short_msg(&msg)) {
@@ -306,7 +261,5 @@ int sst_enable_rx_timeslot(int status)
 			&sst_drv_ctx->ipc_dispatch_list);
 	spin_unlock(&sst_drv_ctx->list_spin_lock);
 	sst_post_message(&sst_drv_ctx->ipc_post_msg_wq);
-	retval = sst_wait_interruptible_timeout(sst_drv_ctx,
-				&sst_drv_ctx->hs_info_blk, SST_BLOCK_TIMEOUT);
-	return retval;
+	return sst_wait_timeout(sst_drv_ctx, &sst_drv_ctx->hs_info_blk);
 }

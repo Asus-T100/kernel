@@ -87,8 +87,7 @@ int sst_get_stream_params(int str_id,
 		list_add_tail(&msg->node, &sst_drv_ctx->ipc_dispatch_list);
 		spin_unlock(&sst_drv_ctx->list_spin_lock);
 		sst_post_message(&sst_drv_ctx->ipc_post_msg_wq);
-		retval = sst_wait_interruptible_timeout(sst_drv_ctx,
-				&str_info->ctrl_blk, SST_BLOCK_TIMEOUT);
+		retval = sst_wait_timeout(sst_drv_ctx, &str_info->ctrl_blk);
 		if (retval) {
 			get_params->codec_params.result = retval;
 			kfree(fw_params);
@@ -157,8 +156,7 @@ int sst_set_stream_param(int str_id, struct snd_sst_params *str_param)
 		list_add_tail(&msg->node, &sst_drv_ctx->ipc_dispatch_list);
 		spin_unlock(&sst_drv_ctx->list_spin_lock);
 		sst_post_message(&sst_drv_ctx->ipc_post_msg_wq);
-		retval = sst_wait_interruptible_timeout(sst_drv_ctx,
-				&str_info->ctrl_blk, SST_BLOCK_TIMEOUT);
+		retval = sst_wait_timeout(sst_drv_ctx, &str_info->ctrl_blk);
 		if (retval < 0) {
 			retval = -EIO;
 			sst_clean_stream(str_info);
@@ -206,8 +204,7 @@ int sst_get_vol(struct snd_sst_vol *get_vol)
 	list_add_tail(&msg->node, &sst_drv_ctx->ipc_dispatch_list);
 	spin_unlock(&sst_drv_ctx->list_spin_lock);
 	sst_post_message(&sst_drv_ctx->ipc_post_msg_wq);
-	retval = sst_wait_interruptible_timeout(sst_drv_ctx,
-			&sst_drv_ctx->vol_info_blk, SST_BLOCK_TIMEOUT);
+	retval = sst_wait_timeout(sst_drv_ctx, &sst_drv_ctx->vol_info_blk);
 	if (retval)
 		retval = -EIO;
 	else {
@@ -253,8 +250,7 @@ int sst_set_vol(struct snd_sst_vol *set_vol)
 	list_add_tail(&msg->node, &sst_drv_ctx->ipc_dispatch_list);
 	spin_unlock(&sst_drv_ctx->list_spin_lock);
 	sst_post_message(&sst_drv_ctx->ipc_post_msg_wq);
-	retval = sst_wait_interruptible_timeout(sst_drv_ctx,
-			&sst_drv_ctx->vol_info_blk, SST_BLOCK_TIMEOUT);
+	retval = sst_wait_timeout(sst_drv_ctx, &sst_drv_ctx->vol_info_blk);
 	if (retval) {
 		pr_err("error in set_vol = %d\n", retval);
 		retval = -EIO;
@@ -296,8 +292,7 @@ int sst_set_mute(struct snd_sst_mute *set_mute)
 	list_add_tail(&msg->node, &sst_drv_ctx->ipc_dispatch_list);
 	spin_unlock(&sst_drv_ctx->list_spin_lock);
 	sst_post_message(&sst_drv_ctx->ipc_post_msg_wq);
-	retval = sst_wait_interruptible_timeout(sst_drv_ctx,
-			&sst_drv_ctx->mute_info_blk, SST_BLOCK_TIMEOUT);
+	retval = sst_wait_timeout(sst_drv_ctx, &sst_drv_ctx->mute_info_blk);
 	if (retval) {
 		pr_err("error in set_mute = %d\n", retval);
 		retval = -EIO;
@@ -372,9 +367,8 @@ static int sst_send_target(struct snd_sst_target_device *target)
 	list_add_tail(&msg->node, &sst_drv_ctx->ipc_dispatch_list);
 	spin_unlock(&sst_drv_ctx->list_spin_lock);
 	sst_post_message(&sst_drv_ctx->ipc_post_msg_wq);
-	pr_debug("message sent- waiting\n");
-	retval = sst_wait_interruptible_timeout(sst_drv_ctx,
-			&sst_drv_ctx->tgt_dev_blk, TARGET_DEV_BLOCK_TIMEOUT);
+	pr_debug("sst: message sent- waiting\n");
+	retval = sst_wait_timeout(sst_drv_ctx, &sst_drv_ctx->tgt_dev_blk);
 	if (retval)
 		pr_err("target device ipc failed = 0x%x\n", retval);
 	return retval;

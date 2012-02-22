@@ -479,8 +479,9 @@ static void sst_save_dsp_context(void)
 	spin_unlock(&sst_drv_ctx->list_spin_lock);
 	sst_post_message(&sst_drv_ctx->ipc_post_msg_wq);
 	/*wait for reply*/
-	if (sst_wait_timeout(sst_drv_ctx, &sst_drv_ctx->alloc_block[0]))
-		pr_debug("err fw context save timeout  ...\n");
+	if (sst_wait_timeout(sst_drv_ctx,
+				&sst_drv_ctx->alloc_block[0].ops_block))
+		pr_err("sst: err fw context save timeout  ...\n");
 	sst_drv_ctx->alloc_block[0].sst_id = BLOCK_UNINIT;
 	pr_debug("fw context saved  ...\n");
 	return;

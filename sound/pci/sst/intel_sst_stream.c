@@ -322,8 +322,7 @@ int sst_get_fw_info(struct snd_sst_fw_info *info)
 	list_add_tail(&msg->node, &sst_drv_ctx->ipc_dispatch_list);
 	spin_unlock(&sst_drv_ctx->list_spin_lock);
 	sst_post_message(&sst_drv_ctx->ipc_post_msg_wq);
-	retval = sst_wait_interruptible_timeout(sst_drv_ctx,
-			&sst_drv_ctx->fw_info_blk, SST_BLOCK_TIMEOUT);
+	retval = sst_wait_timeout(sst_drv_ctx, &sst_drv_ctx->fw_info_blk);
 	if (retval) {
 		pr_err("SST ERR: error in fw_info = %d\n", retval);
 		retval = -EIO;
@@ -403,8 +402,7 @@ int sst_pause_stream(int str_id)
 				&sst_drv_ctx->ipc_dispatch_list);
 		spin_unlock(&sst_drv_ctx->list_spin_lock);
 		sst_post_message(&sst_drv_ctx->ipc_post_msg_wq);
-		retval = sst_wait_interruptible_timeout(sst_drv_ctx,
-				&str_info->ctrl_blk, SST_BLOCK_TIMEOUT);
+		retval = sst_wait_timeout(sst_drv_ctx, &str_info->ctrl_blk);
 		if (retval == 0) {
 			str_info->prev = str_info->status;
 			str_info->status = STREAM_PAUSED;
@@ -460,8 +458,7 @@ int sst_resume_stream(int str_id)
 				&sst_drv_ctx->ipc_dispatch_list);
 		spin_unlock(&sst_drv_ctx->list_spin_lock);
 		sst_post_message(&sst_drv_ctx->ipc_post_msg_wq);
-		retval = sst_wait_interruptible_timeout(sst_drv_ctx,
-				&str_info->ctrl_blk, SST_BLOCK_TIMEOUT);
+		retval = sst_wait_timeout(sst_drv_ctx, &str_info->ctrl_blk);
 		if (!retval) {
 			if (str_info->prev == STREAM_RUNNING)
 				str_info->status = STREAM_RUNNING;
@@ -633,8 +630,7 @@ int sst_free_stream(int str_id)
 		str_info->ctrl_blk.on = true;
 		str_info->ctrl_blk.condition = false;
 		sst_post_message(&sst_drv_ctx->ipc_post_msg_wq);
-		retval = sst_wait_interruptible_timeout(sst_drv_ctx,
-				&str_info->ctrl_blk, SST_BLOCK_TIMEOUT);
+		retval = sst_wait_timeout(sst_drv_ctx, &str_info->ctrl_blk);
 		pr_debug("sst: wait for free returned %d\n", retval);
 		mutex_lock(&sst_drv_ctx->stream_lock);
 		sst_clean_stream(str_info);

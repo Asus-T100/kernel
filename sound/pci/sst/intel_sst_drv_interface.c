@@ -73,7 +73,8 @@ static void sst_restore_fw_context(void)
 	list_add_tail(&msg->node, &sst_drv_ctx->ipc_dispatch_list);
 	spin_unlock(&sst_drv_ctx->list_spin_lock);
 	sst_post_message(&sst_drv_ctx->ipc_post_msg_wq);
-	retval = sst_wait_timeout(sst_drv_ctx, &sst_drv_ctx->alloc_block[0]);
+	retval = sst_wait_timeout(sst_drv_ctx,
+				&sst_drv_ctx->alloc_block[0].ops_block);
 	sst_drv_ctx->alloc_block[0].sst_id = BLOCK_UNINIT;
 	if (retval)
 		pr_err("sst_restore_fw_context..timeout!\n");
@@ -106,7 +107,8 @@ int sst_download_fw(void)
 	if (retval)
 		goto end_restore;
 
-	retval = sst_wait_timeout(sst_drv_ctx, &sst_drv_ctx->alloc_block[0]);
+	retval = sst_wait_timeout(sst_drv_ctx,
+				&sst_drv_ctx->alloc_block[0].ops_block);
 	if (retval) {
 		pr_err("fw download failed %d\n" , retval);
 		/* assume FW d/l failed due to timeout*/
@@ -186,8 +188,7 @@ int sst_get_stream_allocated(struct snd_sst_params *str_param,
 	str_id = retval;
 	str_info = &sst_drv_ctx->streams[str_id];
 	/* Block the call for reply */
-	retval = sst_wait_interruptible_timeout(sst_drv_ctx,
-			&str_info->ctrl_blk, SST_BLOCK_TIMEOUT);
+	retval = sst_wait_timeout(sst_drv_ctx, &str_info->ctrl_blk);
 	if ((retval != 0) || (str_info->ctrl_blk.ret_code != 0)) {
 		pr_err("sst: FW alloc failed retval %d, ret_code %d\n",
 				retval, str_info->ctrl_blk.ret_code);

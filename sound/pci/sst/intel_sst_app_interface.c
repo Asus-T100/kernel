@@ -870,8 +870,7 @@ static int sst_send_algo_ipc(struct ipc_post **msg)
 	list_add_tail(&(*msg)->node, &sst_drv_ctx->ipc_dispatch_list);
 	spin_unlock(&sst_drv_ctx->list_spin_lock);
 	sst_post_message(&sst_drv_ctx->ipc_post_msg_wq);
-	return sst_wait_interruptible_timeout(sst_drv_ctx,
-			&sst_drv_ctx->ppp_params_blk, SST_BLOCK_TIMEOUT);
+	return sst_wait_timeout(sst_drv_ctx, &sst_drv_ctx->ppp_params_blk);
 }
 
 /**

@@ -526,7 +526,8 @@ static int sst_download_library(const struct firmware *fw_lib,
 	list_add_tail(&msg->node, &sst_drv_ctx->ipc_dispatch_list);
 	spin_unlock(&sst_drv_ctx->list_spin_lock);
 	sst_post_message(&sst_drv_ctx->ipc_post_msg_wq);
-	retval = sst_wait_timeout(sst_drv_ctx, &sst_drv_ctx->alloc_block[i]);
+	retval = sst_wait_timeout(sst_drv_ctx,
+				&sst_drv_ctx->alloc_block[i].ops_block);
 	if (retval) {
 		/* error */
 		sst_drv_ctx->alloc_block[i].sst_id = BLOCK_UNINIT;
@@ -586,7 +587,8 @@ static int sst_download_library(const struct firmware *fw_lib,
 	sst_post_message(&sst_drv_ctx->ipc_post_msg_wq);
 	pr_debug("Waiting for FW response Download complete\n");
 	sst_drv_ctx->alloc_block[i].ops_block.condition = false;
-	retval = sst_wait_timeout(sst_drv_ctx, &sst_drv_ctx->alloc_block[i]);
+	retval = sst_wait_timeout(sst_drv_ctx,
+				&sst_drv_ctx->alloc_block[i].ops_block);
 	if (retval) {
 		/* error */
 		sst_set_fw_state_locked(sst_drv_ctx, SST_UN_INIT);
