@@ -442,7 +442,7 @@ static struct snd_soc_card snd_soc_card_mfld = {
 static irqreturn_t snd_mfld_jack_intr_handler(int irq, void *dev)
 {
 	struct mfld_mc_private *mc_private = (struct mfld_mc_private *) dev;
-	u16 intr_status;
+	u16 intr_status = 0;
 
 	memcpy_fromio(&intr_status, ((void *)(mc_private->int_base)),
 			sizeof(u16));

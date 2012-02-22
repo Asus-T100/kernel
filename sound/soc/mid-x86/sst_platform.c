@@ -315,7 +315,6 @@ static int sst_platform_open(struct snd_pcm_substream *substream)
 	/* registering with SST driver to get access to SST APIs to use */
 	ret_val = register_sst_card(stream->sstdrv_ops);
 	if (ret_val) {
-		kfree(stream);
 		pr_err("sst: sst card registration failed\n");
 		goto out_reg_sst;
 	}

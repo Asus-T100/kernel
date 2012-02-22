@@ -170,6 +170,7 @@ static int sn95031_codec_stream_event(struct snd_soc_dapm_context *dapm,
 			intel_sst_set_pll(false, SST_PLL_MSIC);
 		}
 	}
+	return 0;
 }
 static int sn95031_set_vaud_bias(struct snd_soc_codec *codec,
 		enum snd_soc_bias_level level)
