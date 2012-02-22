@@ -1875,6 +1875,9 @@ int atomisp_macc_table(struct atomisp_device *isp, int flag,
 	}
 
 	switch (arg->color_effect) {
+	case V4L2_COLORFX_NONE:
+		macc_table = &isp->params.macc_table;
+		break;
 	case V4L2_COLORFX_SKY_BLUE:
 		macc_table = &blue_macc_table;
 		break;
@@ -2164,6 +2167,8 @@ int atomisp_color_effect(struct atomisp_device *isp, int flag, __s32 *effect)
 
 	switch (*effect) {
 	case V4L2_COLORFX_NONE:
+		macc_table = &isp->params.macc_table;
+		isp->params.macc_en = true;
 		break;
 	case V4L2_COLORFX_SEPIA:
 		cc_config = &sepia_cc_config;
