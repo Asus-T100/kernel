@@ -268,7 +268,9 @@ struct max17042_chip {
 	int health;
 	int technology;
 	int charge_full_des;
-	struct delayed_work init_worker;
+
+	struct work_struct	init_worker;
+	struct work_struct	evt_worker;
 
 	bool plat_rebooting;
 };
@@ -1160,7 +1162,7 @@ static void max17042_restore_conf_data(struct max17042_chip *chip)
 static void max17042_init_worker(struct work_struct *work)
 {
 	struct max17042_chip *chip = container_of(work,
-				struct max17042_chip, init_worker.work);
+				struct max17042_chip, init_worker);
 
 	dev_info(&chip->client->dev, "%s\n", __func__);
 	max17042_restore_conf_data(chip);
@@ -1207,21 +1209,27 @@ static void set_soc_intr_thresholds(struct max17042_chip *chip, int off)
 				"SOC threshold write to maxim fail:%d", ret);
 }
 
-static void max17042_external_power_changed(struct power_supply *psy)
+static void max17042_evt_worker(struct work_struct *work)
 {
-	struct max17042_chip *chip = container_of(psy,
-				struct max17042_chip, battery);
+	struct max17042_chip *chip = container_of(work,
+			  struct max17042_chip, evt_worker);
+	int status, health;
 
 	pm_runtime_get_sync(&chip->client->dev);
 
-	mutex_lock(&chip->batt_lock);
 	/* get the battery status */
 	if (chip->pdata->battery_status)
-		chip->status = chip->pdata->battery_status();
+		status = chip->pdata->battery_status();
 
 	/* get the battery health */
 	if (chip->pdata->battery_health)
-		chip->health = chip->pdata->battery_health();
+		health = chip->pdata->battery_health();
+
+	mutex_lock(&chip->batt_lock);
+	if (chip->pdata->battery_status)
+		chip->status = status;
+	if (chip->pdata->battery_health)
+		chip->health = health;
 	mutex_unlock(&chip->batt_lock);
 
 	/* Init maxim chip if it is not already initialized */
@@ -1234,11 +1242,18 @@ static void max17042_external_power_changed(struct power_supply *psy)
 			chip->pdata->is_lowbatt_shutdown =
 				chip->pdata->is_lowbatt_shutdown_enabled();
 
-		schedule_delayed_work(&chip->init_worker, 0);
+		schedule_work(&chip->init_worker);
 	}
 
 	power_supply_changed(&chip->battery);
 	pm_runtime_put_sync(&chip->client->dev);
+}
+
+static void max17042_external_power_changed(struct power_supply *psy)
+{
+	struct max17042_chip *chip = container_of(psy,
+			struct max17042_chip, battery);
+	schedule_work(&chip->evt_worker);
 }
 
 static void init_battery_props(struct max17042_chip *chip)
@@ -1395,7 +1410,8 @@ static int __devinit max17042_probe(struct i2c_client *client,
 
 	/* init battery properties */
 	init_battery_props(chip);
-	INIT_DELAYED_WORK(&chip->init_worker, max17042_init_worker);
+	INIT_WORK(&chip->init_worker, max17042_init_worker);
+	INIT_WORK(&chip->evt_worker, max17042_evt_worker);
 	mutex_init(&chip->batt_lock);
 	mutex_init(&chip->init_lock);
 
