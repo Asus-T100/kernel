@@ -45,6 +45,7 @@
 #include <linux/irq.h>
 #include <linux/delay.h>
 #include <linux/version.h>
+#include <asm/intel_scu_ipc.h>
 
 #define DRVNAME				"hsi-ffl"
 #define TTYNAME				"tty"CONFIG_HSI_FFL_TTY_NAME
@@ -132,6 +133,14 @@ enum {
 #define ERROR_RECOVERY_TX_DRAINED_BIT	(0x10 << FFL_GLOBAL_STATE_SZ)
 #define ERROR_RECOVERY_ONGOING_BIT	(0x20 << FFL_GLOBAL_STATE_SZ)
 #define TTY_OFF_BIT			(0x40 << FFL_GLOBAL_STATE_SZ)
+
+/* For modem cold boot */
+#define V1P35CNT_W		0x0E0	/* PMIC register used to power off */
+					/* the modem */
+#define V1P35_OFF		4
+#define V1P35_ON		6
+#define COLD_BOOT_DELAY_OFF	20000	/* 20 ms (use of usleep_range) */
+#define COLD_BOOT_DELAY_ON 	10000	/* 10 ms (use of usleep_range) */
 
 /* Forward declaration for ffl_xfer_ctx structure */
 struct ffl_ctx;
@@ -2984,6 +2993,97 @@ static int hangup_reasons(char *val, const struct kernel_param *kp)
 	return sprintf(val, "%d", hangup_reasons);
 }
 
+/**
+  * modem_cold_reset - modem cold reset command function
+  * @val: a reference to the string where the cold reset reasons clear query is
+  * given
+  * @kp: an unused reference to the kernel parameter
+  *
+  * This callback performs a cold reset once a "1" is written into
+  * the /sys/module/hsi_ffl_tty/parameters/cold_reset_modem sysFS file
+  */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 36)
+static int modem_cold_reset(const char *val, struct kernel_param *kp)
+#else
+static int modem_cold_reset(const char *val, const struct kernel_param *kp)
+#endif
+{
+	int ret = 0;
+	int err;
+	u16 addr;
+	u8 data;
+	u8 def_value;
+	long request;
+
+	if (strict_strtol(val, 10, &request) < 0)
+		return -EINVAL;
+
+	pr_debug(DRVNAME " - %s - start", __func__);
+
+	/*
+	 * The modem cold boot is done by the following sequence:
+	 *  - Writes to PMIC register V1P35CNT_W to set EXT1P35VREN to low
+	 *    during 20ms
+	 *  - Writes to PMIC register V1P35CNT_W to set EXT1P35VREN to high
+	 *    during 10ms
+	 */
+
+	addr = V1P35CNT_W;
+	err = intel_scu_ipc_readv(&addr, &data, 2);
+	if (err != 0) {
+		pr_err(DRVNAME " - %s -  read error: %d", __func__, err);
+		ret = -EINVAL;
+		goto exit_modem_cold_reset;
+	}
+	def_value = data;
+
+	addr = V1P35CNT_W;
+	data = (def_value & 0xf8) | V1P35_OFF;
+	err =  intel_scu_ipc_writev(&addr, &data, 1);
+	if (err != 0) {
+		pr_err(DRVNAME " - %s -  write error: %d", __func__, err);
+		ret = -EINVAL;
+		goto exit_modem_cold_reset;
+	}
+	usleep_range(COLD_BOOT_DELAY_OFF, COLD_BOOT_DELAY_OFF);
+
+	addr = V1P35CNT_W;
+	data = (def_value & 0xf8) | V1P35_ON;
+	err =  intel_scu_ipc_writev(&addr, &data, 1);
+	if (err != 0) {
+		pr_err(DRVNAME " - %s -  write error: %d", __func__, err);
+		ret = -EINVAL;
+		goto exit_modem_cold_reset;
+	}
+	usleep_range(COLD_BOOT_DELAY_ON, COLD_BOOT_DELAY_ON);
+
+	addr = V1P35CNT_W;
+	err = intel_scu_ipc_readv(&addr, &data, 1);
+	if (err != 0) {
+		pr_err(DRVNAME " - %s -  read error: %d", __func__, err);
+		ret = -EINVAL;
+		goto exit_modem_cold_reset;
+	}
+
+	addr = V1P35CNT_W;
+	data = def_value;
+	err =  intel_scu_ipc_writev(&addr, &data, 1);
+	if (err != 0) {
+		pr_err(DRVNAME " - %s -  write error: %d", __func__, err);
+		ret = -EINVAL;
+		goto exit_modem_cold_reset;
+	}
+
+exit_modem_cold_reset:
+	pr_debug(DRVNAME " - %s - end", __func__);
+
+	/* do a reset_modem to perform a complete modem reset */
+	if (ret != -EINVAL)
+		reset_modem(val, kp);
+
+	return ret;
+}
+
 /*
  * Modem reset interrupt service routine
  */
@@ -3950,6 +4050,7 @@ module_exit(ffl_driver_exit);
 module_param_call(reset_modem, reset_modem, is_modem_reset, NULL, 0644);
 module_param_call(hangup_reasons, clear_hangup_reasons, hangup_reasons,
 		  NULL, 0644);
+module_param_call(cold_reset_modem, modem_cold_reset, NULL, NULL, 0644);
 
 #else
 
@@ -3964,6 +4065,12 @@ static struct kernel_param_ops hangup_reasons_ops = {
 	.get = hangup_reasons,
 };
 module_param_cb(hangup_reasons, &hangup_reasons_ops, NULL, 0644);
+
+static struct kernel_param_ops cold_reset_modem_ops = {
+	.set = modem_cold_reset,
+	.get = NULL,
+};
+module_param_cb(cold_reset_modem, &cold_reset_modem_ops, NULL, 0644);
 
 #endif
 
