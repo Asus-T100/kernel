@@ -31,6 +31,7 @@
 #include <linux/i2c.h>
 #include <linux/interrupt.h>
 #include <linux/input.h>
+#include <linux/input/mt.h>
 #include <linux/debugfs.h>
 #include <linux/cdev.h>
 #include <linux/mutex.h>
@@ -66,10 +67,6 @@ void mxt_late_resume(struct early_suspend *h);
 static int debug = DEBUG_TRACE;
 module_param(debug, int, 0644);
 MODULE_PARM_DESC(debug, "Activate debugging output");
-
-static int stored_size[MXT_MAX_NUM_TOUCHES];
-static int stored_x[MXT_MAX_NUM_TOUCHES];
-static int stored_y[MXT_MAX_NUM_TOUCHES];
 
 static struct mxt_data *mxt_es;
 
@@ -113,6 +110,12 @@ struct report_id_map {
 	u8  first_rid;
 };
 
+struct mxt_finger {
+	int status;
+	int x;
+	int y;
+	int area;
+};
 
 /* Driver datastructure */
 struct mxt_data {
@@ -140,6 +143,7 @@ struct mxt_data {
 	u8                   ypos_format;
 
 	u8                   numtouch;
+	struct mxt_finger    finger[MXT_MAX_NUM_TOUCHES];
 
 	struct mxt_device_info	device_info;
 
@@ -1039,31 +1043,27 @@ static int calculate_infoblock_crc(u32 *crc_result, u8 *data, int crc_area_size)
 static void report_mt(struct mxt_data *mxt)
 {
 	int i;
-	/* origin from atmel */
-	int active_touches = 0;
+	struct mxt_finger *finger = mxt->finger;
 
 	for (i = 0; i < mxt->numtouch; i++) {
-		if (!stored_size[i])
+		if (!finger[i].status)
 			continue;
 
-		active_touches++;
-		input_report_abs(mxt->touch_input,
-				ABS_MT_TRACKING_ID,
-				i);
-		input_report_abs(mxt->touch_input,
-				ABS_MT_TOUCH_MAJOR,
-				stored_size[i]);
-		input_report_abs(mxt->touch_input,
-				ABS_MT_POSITION_X,
-				stored_x[i]);
-		input_report_abs(mxt->touch_input,
-				ABS_MT_POSITION_Y,
-				stored_y[i]);
-		input_mt_sync(mxt->touch_input);
+		input_mt_slot(mxt->touch_input, i);
+		input_mt_report_slot_state(mxt->touch_input, MT_TOOL_FINGER,
+				finger[i].status != MXT_MSGB_T9_RELEASE);
+		if (finger[i].status != MXT_MSGB_T9_RELEASE) {
+			input_report_abs(mxt->touch_input,
+					ABS_MT_TOUCH_MAJOR, finger[i].area);
+			input_report_abs(mxt->touch_input,
+					ABS_MT_POSITION_X, finger[i].x);
+			input_report_abs(mxt->touch_input,
+					ABS_MT_POSITION_Y, finger[i].y);
+		} else {
+			finger[i].status = 0;
+		}
 	}
 
-	if (active_touches == 0)
-		input_mt_sync(mxt->touch_input);
 	input_sync(mxt->touch_input);
 }
 
@@ -1097,6 +1097,7 @@ static void process_T9_message(u8 *message, struct mxt_data *mxt)
 {
 	struct input_dev *input;
 	struct device *dev = &mxt->client->dev;
+	struct mxt_finger *finger = mxt->finger;
 	u8  status;
 	u16 xpos = 0xFFFF;
 	u16 ypos = 0xFFFF;
@@ -1124,8 +1125,8 @@ static void process_T9_message(u8 *message, struct mxt_data *mxt)
 		touch_number = message[MXT_MSG_REPORTID] -
 			mxt->rid_map[report_id].first_rid;
 
-		stored_x[touch_number] = xpos;
-		stored_y[touch_number] = ypos;
+		finger[touch_number].x = xpos;
+		finger[touch_number].y = ypos;
 
 		if (status & MXT_MSGB_T9_DETECT) {
 			/*
@@ -1139,7 +1140,8 @@ static void process_T9_message(u8 *message, struct mxt_data *mxt)
 			touch_size = touch_size >> 2;
 			if (!touch_size)
 				touch_size = 1;
-			stored_size[touch_number] = touch_size;
+			finger[touch_number].area = touch_size;
+			finger[touch_number].status = MXT_MSGB_T9_DETECT;
 			if (status & MXT_MSGB_T9_AMP)
 				/* Amplitude of touch has changed */
 				amplitude = message[MXT_MSG_T9_TCHAMPLITUDE];
@@ -1153,11 +1155,11 @@ static void process_T9_message(u8 *message, struct mxt_data *mxt)
 			dev_dbg(dev, "RELEASE");
 
 			/* The previously reported touch has been removed.*/
-			stored_size[touch_number] = 0;
+			finger[touch_number].status = MXT_MSGB_T9_RELEASE;
 		}
 
 		dev_dbg(dev, "X=%d, Y=%d, touch number=%d, TOUCHSIZE=%d",
-			xpos, ypos, touch_number, stored_size[touch_number]);
+			xpos, ypos, touch_number, touch_size);
 	}
 }
 
@@ -2252,12 +2254,13 @@ static int __devinit mxt_probe(struct i2c_client *client,
 	dev_dbg(&client->dev, "maXTouch driver setting abs parameters\n");
 
 	/* Multitouch */
-	input_set_abs_params(touch_input, ABS_MT_POSITION_X, TS_MIN_X, TS_MAX_X, 0, 0);
-	input_set_abs_params(touch_input, ABS_MT_POSITION_Y, TS_MIN_Y, TS_MAX_Y, 0, 0);
-	input_set_abs_params(touch_input, ABS_MT_TOUCH_MAJOR, 0, MXT_MAX_TOUCH_SIZE,
-			     0, 0);
-	input_set_abs_params(touch_input, ABS_MT_TRACKING_ID, 0,
-			     MXT_MAX_NUM_TOUCHES, 0, 0);
+	input_mt_init_slots(touch_input, MXT_MAX_NUM_TOUCHES);
+	input_set_abs_params(touch_input, ABS_MT_POSITION_X,
+			     TS_MIN_X, TS_MAX_X, 0, 0);
+	input_set_abs_params(touch_input, ABS_MT_POSITION_Y,
+			     TS_MIN_Y, TS_MAX_Y, 0, 0);
+	input_set_abs_params(touch_input, ABS_MT_TOUCH_MAJOR,
+			     0, MXT_MAX_TOUCH_SIZE, 0, 0);
 
 	__set_bit(EV_ABS, touch_input->evbit);
 	__set_bit(EV_SYN, touch_input->evbit);
@@ -2496,6 +2499,7 @@ static int mxt_resume(struct device *dev)
 #ifdef CONFIG_HAS_EARLYSUSPEND
 void mxt_early_suspend(struct early_suspend *h)
 {
+	int i;
 	u16 addr;
 	u8 buf[3] = { 0 };
 	u8 err;
@@ -2516,7 +2520,11 @@ void mxt_early_suspend(struct early_suspend *h)
 		dev_err(&mxt_es->client->dev, "fail to stop scan.\n");
 
 	/* clear touch state when suspending */
-	memset(stored_size, 0, mxt_es->numtouch * sizeof(stored_size[0]));
+	for (i = 0; i < mxt_es->numtouch; i++) {
+		if (!mxt_es->finger[i].status)
+			continue;
+		mxt_es->finger[i].status = MXT_MSGB_T9_RELEASE;
+	}
 	report_mt(mxt_es);
 
 	mxt_es->suspended = TRUE;
