@@ -370,11 +370,10 @@ void sst_process_mad_ops(struct work_struct *work)
 	default:
 		pr_err(" wrong control_ops reported\n");
 	}
-	kfree(mad_ops);
-
 	if (retval)
 		pr_err("%s(): op: %d, retval: %d\n",
 				__func__, mad_ops->control_op, retval);
+	kfree(mad_ops);
 	return;
 }
 

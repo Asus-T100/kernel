@@ -455,7 +455,7 @@ void sst_dma_free_resources(struct list_head *head, struct sst_dma *dma)
  */
 int sst_load_fw(const void *fw_in_mem, void *context)
 {
-	int ret_val;
+	int ret_val = 0;
 
 	pr_debug("load_fw called\n");
 	BUG_ON(!fw_in_mem);
