@@ -245,12 +245,12 @@ static int __init setup_early_printk(char *buf)
 			mrst_early_console_init();
 			early_console_register(&early_mrst_console, keep);
 		}
-
+#ifdef CONFIG_SERIAL_MFD_HSU_CONSOLE_PORT
 		if (!strncmp(buf, "hsu", 3)) {
 			hsu_early_console_init();
 			early_console_register(&early_hsu_console, keep);
 		}
-
+#endif
 		if (!strncmp(buf, "pti", 3))
 			early_console_register(&early_pti_console, keep);
 #endif
