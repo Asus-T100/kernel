@@ -287,7 +287,12 @@ void mdfld_dsi_brightness_control (struct drm_device *dev, int pipe, int level)
 		duty_val = level + 1;
 	}
 
-	#define BACKLIGHT_DUTY_FACTOR 255
+#if defined(CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE)
+#define BACKLIGHT_DUTY_FACTOR 127
+#else
+#define BACKLIGHT_DUTY_FACTOR 255
+#endif
+
 	duty_val = level*BACKLIGHT_DUTY_FACTOR/MDFLD_DSI_BRIGHTNESS_MAX_LEVEL;
 
 	PSB_DEBUG_ENTRY("[DISPLAY] %s: level is %d and duty = %x\n", __func__, level, duty_val);
