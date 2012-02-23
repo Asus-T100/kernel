@@ -80,10 +80,15 @@ void atomisp_kernel_free(void *ptr)
 		kfree(ptr);
 }
 
+static struct sh_css_acc_fw *
+__acc_get_fw(struct atomisp_device *isp, unsigned int handle);
+static int
+__acc_get_index(struct atomisp_device *isp, struct sh_css_acc_fw *fw);
 static void
-atomisp_acc_fw_free_args(struct atomisp_device *isp, struct sh_css_acc_fw *fw);
+__acc_fw_free_args(struct atomisp_device *isp, struct sh_css_acc_fw *fw);
 static void
-atomisp_acc_fw_free(struct atomisp_device *isp, struct sh_css_acc_fw *fw);
+__acc_fw_free(struct atomisp_device *isp, struct sh_css_acc_fw *fw);
+
 static int atomisp_wdt_pet_dog(struct atomisp_device *isp);
 static void atomisp_buf_done(struct atomisp_device *isp, int error);
 static int atomisp_start_binary(struct atomisp_device *isp);
@@ -948,12 +953,9 @@ void atomisp_work(struct work_struct *work)
 		 * TODO: Check how to handle multiple firmwares.
 		 */
 		if (isp->marked_fw_for_unload != NULL) {
-			atomisp_acc_fw_free_args(isp,
-				isp->marked_fw_for_unload);
-			sh_css_unload_acceleration(
-				isp->marked_fw_for_unload);
-			atomisp_acc_fw_free(isp,
-				isp->marked_fw_for_unload);
+			__acc_fw_free_args(isp, isp->marked_fw_for_unload);
+			sh_css_unload_acceleration(isp->marked_fw_for_unload);
+			__acc_fw_free(isp, isp->marked_fw_for_unload);
 			isp->marked_fw_for_unload = NULL;
 			complete(&isp->acc_unload_fw_complete);
 		}
@@ -3523,7 +3525,7 @@ out:
 }
 
 /*
- * atomisp_acc_get_fw - Search for firmware with given handle
+ * __acc_get_fw - Search for firmware with given handle
  *
  * This function will search for given handle until:
  * - Handle is found
@@ -3533,7 +3535,7 @@ out:
  * then ATOMISP_ACC_FW_MAX.
  */
 static struct sh_css_acc_fw *
-atomisp_acc_get_fw(struct atomisp_device *isp, unsigned int handle)
+__acc_get_fw(struct atomisp_device *isp, unsigned int handle)
 {
 	int i = -1;
 	int count = isp->acc_fw_count;
@@ -3556,7 +3558,7 @@ atomisp_acc_get_fw(struct atomisp_device *isp, unsigned int handle)
 }
 
 /*
- * atomisp_acc_get_index - Search for firmware index in isp->acc_fw[] array
+ * __acc_get_index - Search for firmware index in isp->acc_fw[] array
  *
  * This function will search for firmware index until:
  * - Given firmware is found
@@ -3566,7 +3568,7 @@ atomisp_acc_get_fw(struct atomisp_device *isp, unsigned int handle)
  * then ATOMISP_ACC_FW_MAX.
  */
 static int
-atomisp_acc_get_index(struct atomisp_device *isp, struct sh_css_acc_fw *fw)
+__acc_get_index(struct atomisp_device *isp, struct sh_css_acc_fw *fw)
 {
 	int i = -1;
 	int count = isp->acc_fw_count;
@@ -3589,9 +3591,9 @@ atomisp_acc_get_index(struct atomisp_device *isp, struct sh_css_acc_fw *fw)
 }
 
 static void
-atomisp_acc_fw_free_args(struct atomisp_device *isp, struct sh_css_acc_fw *fw)
+__acc_fw_free_args(struct atomisp_device *isp, struct sh_css_acc_fw *fw)
 {
-	int i = atomisp_acc_get_index(isp, fw);
+	int i = __acc_get_index(isp, fw);
 
 	/* Sanity check */
 	if (i < 0) {
@@ -3632,9 +3634,9 @@ atomisp_acc_fw_free_args(struct atomisp_device *isp, struct sh_css_acc_fw *fw)
 }
 
 static void
-atomisp_acc_fw_free(struct atomisp_device *isp, struct sh_css_acc_fw *fw)
+__acc_fw_free(struct atomisp_device *isp, struct sh_css_acc_fw *fw)
 {
-	int i = atomisp_acc_get_index(isp, fw);
+	int i = __acc_get_index(isp, fw);
 
 	/* Sanity check */
 	if (i < 0) {
@@ -3722,7 +3724,7 @@ int atomisp_acc_load(struct atomisp_device *isp,
 	mutex_lock(&isp->isp_lock);
 	ret = sh_css_load_acceleration(fw);
 	if (ret) {
-		atomisp_acc_fw_free(isp, fw);
+		__acc_fw_free(isp, fw);
 		mutex_unlock(&isp->isp_lock);
 		v4l2_err(&atomisp_dev, "%s: Failed to load acceleration "
 				       "firmware\n", __func__);
@@ -3743,7 +3745,8 @@ int atomisp_acc_unload(struct atomisp_device *isp, unsigned int *handle)
 	int ret = 0;
 
 	mutex_lock(&isp->input_lock);
-	fw = atomisp_acc_get_fw(isp, *handle);
+
+	fw = __acc_get_fw(isp, *handle);
 
 	if (fw == NULL) {
 		v4l2_err(&atomisp_dev, "%s: Invalid acceleration firmware "
@@ -3766,11 +3769,13 @@ int atomisp_acc_unload(struct atomisp_device *isp, unsigned int *handle)
 
 	if (isp->sw_contex.isp_streaming == false) {
 		/* We're not streaming, so it's safe to unload now */
+
 		mutex_lock(&isp->isp_lock);
-		atomisp_acc_fw_free_args(isp, fw);
+		__acc_fw_free_args(isp, fw);
 		sh_css_unload_acceleration(fw);
-		atomisp_acc_fw_free(isp, fw);
+		__acc_fw_free(isp, fw);
 		mutex_unlock(&isp->isp_lock);
+
 		ret = 0;
 		goto out;
 	}
@@ -3805,7 +3810,9 @@ int atomisp_acc_set_arg(struct atomisp_device *isp,
 	int ret;
 
 	mutex_lock(&isp->input_lock);
-	fw = atomisp_acc_get_fw(isp, handle);
+
+	fw = __acc_get_fw(isp, handle);
+
 	if (fw == NULL) {
 		v4l2_err(&atomisp_dev, "Invalid fw handle\n");
 		ret = -EINVAL;
@@ -3938,16 +3945,18 @@ int atomisp_acc_destabilize(struct atomisp_device *isp,
 
 	mutex_lock(&isp->input_lock);
 	mutex_lock(&isp->isp_lock);
-	fw = atomisp_acc_get_fw(isp, handle);
+
+	fw = __acc_get_fw(isp, handle);
 	if (fw == NULL) {
 		v4l2_err(&atomisp_dev, "%s: Invalid firmware handle\n",
 			 __func__);
 		ret = -EINVAL;
+		goto err;
 	}
 
-	if (!ret)
-		sh_css_acc_stabilize(fw, index, false);
+	sh_css_acc_stabilize(fw, index, false);
 
+err:
 	mutex_unlock(&isp->isp_lock);
 	mutex_unlock(&isp->input_lock);
 	return ret;
@@ -3960,7 +3969,8 @@ int atomisp_acc_start(struct atomisp_device *isp, unsigned int *handle)
 
 	mutex_lock(&isp->input_lock);
 	mutex_lock(&isp->isp_lock);
-	fw = atomisp_acc_get_fw(isp, *handle);
+
+	fw = __acc_get_fw(isp, *handle);
 	if (fw == NULL) {
 		v4l2_err(&atomisp_dev, "%s: Invalid firmware handle\n",
 			 __func__);
@@ -3997,7 +4007,7 @@ int atomisp_acc_wait(struct atomisp_device *isp, unsigned int *handle)
 	mutex_lock(&isp->input_lock);
 	mutex_lock(&isp->isp_lock);
 
-	fw = atomisp_acc_get_fw(isp, *handle);
+	fw = __acc_get_fw(isp, *handle);
 
 	mutex_unlock(&isp->isp_lock);
 	mutex_unlock(&isp->input_lock);
@@ -4038,7 +4048,7 @@ int atomisp_acc_abort(struct atomisp_device *isp,
 	mutex_lock(&isp->input_lock);
 	mutex_lock(&isp->isp_lock);
 
-	fw = atomisp_acc_get_fw(isp, abort->fw_handle);
+	fw = __acc_get_fw(isp, abort->fw_handle);
 	if (fw == NULL) {
 		v4l2_err(&atomisp_dev, "%s: Invalid firmware handle\n",
 			 __func__);
