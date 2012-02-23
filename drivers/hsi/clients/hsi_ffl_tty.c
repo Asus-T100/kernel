@@ -3513,6 +3513,8 @@ static int ffl_reset_ctx_init(struct ffl_reset_ctx *ctx_reset,
 	ffl_request_irq(irq, IRQF_TRIGGER_RISING|IRQF_TRIGGER_FALLING,
 			mdm_rst_out, "RST_OUT");
 	ffl_request_irq(cd_irq, IRQF_TRIGGER_RISING, fcdp_rb, "CORE DUMP");
+	enable_irq_wake(ctx_reset->irq);
+	enable_irq_wake(ctx_reset->cd_irq);
 
 #ifdef USE_WAKE_POST_BOOT_HANDSHAKE
 	init_waitqueue_head(&ctx_reset->modem_awake_event);
