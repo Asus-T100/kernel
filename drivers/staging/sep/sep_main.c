@@ -69,9 +69,6 @@
 #include "sep_driver_api.h"
 #include "sep_dev.h"
 
-#define CREATE_TRACE_POINTS
-#include "sep_trace_events.h"
-
 /*
  * Let's not spend cycles iterating over message
  * area contents if debugging not enabled
