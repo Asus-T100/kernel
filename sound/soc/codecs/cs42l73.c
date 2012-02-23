@@ -1113,11 +1113,18 @@ static int cs42l73_set_mic2_bias(struct snd_soc_codec *codec, int state)
 		snd_soc_update_bits(codec, CS42L73_PWRCTL1, PDN, 0);
 		snd_soc_update_bits(codec, CS42L73_PWRCTL2, PDN_MIC2_BIAS,
 					PDN_MIC2_BIAS);
+		/**FIX ME -- for PR0.1, Mic1_bias needs to be enabled
+		- no board info available yet**/
+		snd_soc_update_bits(codec, CS42L73_PWRCTL2, PDN_MIC1_BIAS,
+					PDN_MIC1_BIAS);
 		break;
 	case MIC2_BIAS_ENABLE:
 		snd_soc_update_bits(codec, CS42L73_DMMCC, MCLKDIS, 0);
 		snd_soc_update_bits(codec, CS42L73_PWRCTL1, PDN, 0);
 		snd_soc_update_bits(codec, CS42L73_PWRCTL2, PDN_MIC2_BIAS, 0);
+		/**FIX ME -- for PR0.1, Mic_bias needs to be enabled
+		- no board info available yet**/
+		snd_soc_update_bits(codec, CS42L73_PWRCTL2, PDN_MIC1_BIAS, 0);
 		break;
 	}
 	return 0;
@@ -1131,36 +1138,54 @@ void cs42l73_hp_detection(struct snd_soc_codec *codec,
 	unsigned int micbias = 0;
 	int hs_status = 0;
 	unsigned int reg;
+	unsigned int mask = SND_JACK_BTN_0 | SND_JACK_HEADSET;
 
 	if (plug_status) {
+		pr_debug("In cs42l73_hp_detection disable micbias\n");
 		cs42l73_set_mic2_bias(codec, MIC2_BIAS_DISABLE);
-		return;
-	}
-
-	micbias = snd_soc_read(codec, CS42L73_PWRCTL2);
-	micbias >>= 7;
-	if (micbias) {
-		/* MICBIAS is off so this is a plug - look for HS/HP */
-		cs42l73_set_mic2_bias(codec, MIC2_BIAS_ENABLE);
-		hs_status = 1;
-	}
-
-	snd_soc_update_bits(codec, CS42L73_IM1, MIC2_SDET, MIC2_SDET);
-	reg = snd_soc_read(codec, CS42L73_IS1);
-
-	if (hs_status) {
-		if ((reg & MIC2_SDET)) {
-			status = SND_JACK_HEADPHONE;
-			cs42l73_set_mic2_bias(codec, MIC2_BIAS_DISABLE);
-		} else
-			status = SND_JACK_HEADSET;
 	} else {
-		if (reg & MIC2_SDET)
-			status = SND_JACK_BTN_0;
-		else
-			status = SND_JACK_BTN_1;
+
+		micbias = snd_soc_read(codec, CS42L73_PWRCTL2);
+		micbias &= 0x40; /*=7*/
+		if (micbias) {
+			/* MICBIAS is off so this is a plug - look for HS/HP */
+			cs42l73_set_mic2_bias(codec, MIC2_BIAS_ENABLE);
+			hs_status = 1;
+		}		
+
+		snd_soc_update_bits(codec, CS42L73_IM1, MIC2_SDET, MIC2_SDET);
+		mdelay(1000);
+		reg = snd_soc_read(codec, CS42L73_IS1);
+
+		pr_debug("Mic detect = %x ISI =%x\n", micbias, reg);
+		if (hs_status) {
+			if ((reg & MIC2_SDET)) {
+				status = SND_JACK_HEADPHONE;
+				cs42l73_set_mic2_bias(codec, MIC2_BIAS_DISABLE);
+				pr_debug("Headphone detected\n");
+			} else {
+				status = SND_JACK_HEADSET;
+				pr_debug("Headset detected\n");
+			}
+		} else {
+			if (reg & MIC2_SDET)  /*button pressed */
+				status = SND_JACK_HEADSET | SND_JACK_BTN_0;
+			else
+				status = SND_JACK_HEADSET;
+		}
 	}
-	snd_soc_jack_report(jack, status, status);
+	snd_soc_jack_report(jack, status, mask);
+
+#ifdef CONFIG_SWITCH_MID
+	if (status) {
+		if (status == SND_JACK_HEADPHONE)
+			mid_headset_report((1<<1));
+		else if (status == SND_JACK_HEADSET)
+			mid_headset_report(1);
+	} else {
+		mid_headset_report(0);
+	}
+#endif
 	pr_debug("Plug Status = %x\n", plug_status);
 	pr_debug("Jack Status = %x\n", status);
 

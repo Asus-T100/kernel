@@ -44,6 +44,7 @@
 #define C42L73_DEFAULT_MCLK	6144000
 #define CS42L73_FMT_I2S
 #define CS42L73_HPSENSE_GPIO 34
+#define CS42L73_BUTTON_GPIO 32
 
 static int clv_hw_params(struct snd_pcm_substream *substream,
 	struct snd_pcm_hw_params *params)
@@ -95,12 +96,19 @@ static struct snd_soc_jack_gpio hs_jack_gpio = {
 	.debounce_time = 400,
 };
 
+static struct snd_soc_jack_gpio hs_button_gpio = {
+
+	.gpio = CS42L73_BUTTON_GPIO,
+	.name = "hsbutton-gpio",
+	.report = SND_JACK_BTN_0,
+	.debounce_time = 100,
+};
 static void clv_soc_jack_gpio_detect(struct snd_soc_jack_gpio *gpio)
 {
 	int enable;
 	struct snd_soc_jack *jack = gpio->jack;
 	struct snd_soc_codec *codec = jack->codec;
-	enable = gpio_get_value(gpio->gpio);
+	enable = gpio_get_value_cansleep(gpio->gpio);
 	if (gpio->invert)
 		enable = !enable;
 	cs42l73_hp_detection(codec, jack, enable);
@@ -262,6 +270,12 @@ static int clv_init(struct snd_soc_pcm_runtime *runtime)
 		return ret;
 	}
 
+	ret = clv_soc_jack_add_gpio(&clv_jack, &hs_button_gpio);
+	if (ret) {
+		pr_err("adding jack GPIO failed\n");
+		return ret;
+	}
+
 	return ret;
 }
 
@@ -366,7 +380,7 @@ static int __devexit snd_clv_mc_remove(struct ipc_device *ipcdev)
 
 	pr_debug("In %s\n", __func__);
 	snd_soc_jack_free_gpios(&clv_jack, 1, &hs_jack_gpio);
-	/*snd_soc_jack_free_gpios(&clv_jack, 1, &hs_button_gpio);*/
+	snd_soc_jack_free_gpios(&clv_jack, 1, &hs_button_gpio);
 	snd_soc_unregister_card(&snd_soc_card_clv);
 	kfree(mc_drv_ctx);
 	ipc_set_drvdata(ipcdev, NULL);

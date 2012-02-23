@@ -229,4 +229,6 @@
 extern void cs42l73_hp_detection(struct snd_soc_codec *codec,
 				  struct snd_soc_jack *jack, int plug_status);
 
+extern void mid_headset_report(int state);
+
 #endif	/* __CS42L73_H__ */
