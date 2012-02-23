@@ -173,19 +173,19 @@ static void pti_control_frame_built_and_sent(struct pti_masterchannel *mc,
 	 * structure is.
 	 */
 
-	char comm[TASK_COMM_LEN];
+	char comm[TASK_COMM_LEN+1];
 	/* task information */
 	if (thread_name)
-		strncpy(comm, thread_name, sizeof(comm));
+		strncpy(comm, thread_name, sizeof(comm)-1);
 	else if (in_irq())
-		strncpy(comm, "hardirq", sizeof(comm));
+		strncpy(comm, "hardirq", sizeof(comm)-1);
 	else if (in_softirq())
-		strncpy(comm, "softirq", sizeof(comm));
+		strncpy(comm, "softirq", sizeof(comm)-1);
 	else
-		strncpy(comm, current->comm, sizeof(comm));
+		strncpy(comm, current->comm, sizeof(comm)-1);
 
 	/* Absolutely ensure our buffer is zero terminated. */
-	comm[TASK_COMM_LEN-1] = 0;
+	comm[TASK_COMM_LEN] = 0;
 
 	mccontrol.channel = pti_control_channel;
 	pti_control_channel = (pti_control_channel + 1) & 0x7f;
