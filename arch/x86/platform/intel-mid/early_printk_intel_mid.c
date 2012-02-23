@@ -252,11 +252,20 @@ struct console early_mrst_console = {
 	.index =	-1,
 };
 
+#ifdef CONFIG_SERIAL_MFD_HSU_CONSOLE_PORT
+
 /*
- * Following is the early console based on Medfield HSU (High
- * Speed UART) device.
+ * For Medfield boards, HSU port 3(mirrored from 1) can be used as
+ * UART console.
+ * For Clovertrail boards, HSU port 2 can be used as UART console.
  */
-#define HSU_PORT2_PADDR		0xffa28180
+#if CONFIG_SERIAL_MFD_HSU_CONSOLE_PORT == 2
+	#define HSU_PORT_PADDR  0xffa28180
+#elif CONFIG_SERIAL_MFD_HSU_CONSOLE_PORT == 3
+	#define HSU_PORT_PADDR  0xffa28100
+#else
+	#warning "Unsupported CONFIG_SERIAL_MFD_HSU_CONSOLE_PORT, reset to 3"
+#endif
 
 static void __iomem *phsu;
 
@@ -265,7 +274,7 @@ void hsu_early_console_init(void)
 	u8 lcr;
 
 	phsu = (void *)set_fixmap_offset_nocache(FIX_EARLYCON_MEM_BASE,
-							HSU_PORT2_PADDR);
+							HSU_PORT_PADDR);
 
 	/* Disable FIFO */
 	writeb(0x0, phsu + UART_FCR);
@@ -340,6 +349,8 @@ void hsu_early_printk(const char *fmt, ...)
 
 	early_hsu_console.write(&early_mrst_console, buf, n);
 }
+
+#endif
 
 #define PTI_ADDRESS		0xfd800000
 #define CONTROL_FRAME_LEN 32    /* PTI control frame maximum size */

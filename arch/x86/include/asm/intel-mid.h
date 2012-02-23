@@ -153,8 +153,10 @@ extern unsigned char hsu_dma_enable;
 extern struct console early_mrst_console;
 extern void mrst_early_console_init(void);
 
+#ifdef CONFIG_SERIAL_MFD_HSU_CONSOLE_PORT
 extern struct console early_hsu_console;
 extern void hsu_early_console_init(void);
+#endif
 
 extern struct console early_pti_console;
 
