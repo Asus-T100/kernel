@@ -240,6 +240,7 @@ typedef struct MRSTLFB_DEVINFO_TAG
 	uint32_t uPlaneCSize;
 	uint32_t uPlaneCStride;
     MRST_BOOL bScreenState;
+	struct timer_list sFlipTimer;
 }  MRSTLFB_DEVINFO;
 
 #if 0

@@ -50,6 +50,8 @@ extern int drm_psb_3D_vblank;
 
 #define MRSTLFB_COMMAND_COUNT		1
 
+#define FLIP_TIMEOUT (HZ/4)
+
 static PFN_DC_GET_PVRJTABLE pfnGetPVRJTable = 0;
 
 static MRSTLFB_DEVINFO * GetAnchorPtr(void)
@@ -1033,6 +1035,33 @@ static PVRSRV_ERROR SwapToDCBuffer(IMG_HANDLE hDevice,
 	return (PVRSRV_OK);
 }
 
+void MRSTLFBFlipTimerFn(unsigned long arg)
+{
+	MRSTLFB_DEVINFO *psDevInfo = (MRSTLFB_DEVINFO *)arg;
+	unsigned long ulLockFlags;
+	MRSTLFB_SWAPCHAIN *psSwapChain;
+	printk(KERN_WARNING "MRSTLFBFlipTimerFn trigered\n");
+
+	spin_lock_irqsave(&psDevInfo->sSwapChainLock, ulLockFlags);
+
+	psSwapChain = psDevInfo->psCurrentSwapChain;
+	if (psSwapChain == NULL)
+	{
+		printk(KERN_WARNING "MRSTLFBFlipTimerFn: Swapchain is null\n");
+		goto ExitUnlock;
+	}
+	if (psSwapChain->ulRemoveIndex == psSwapChain->ulInsertIndex)
+	{
+		printk(KERN_INFO "MRSTLFBFlipTimerFn: swapchain is empty\n");
+		goto ExitUnlock;
+	}
+	printk(KERN_WARNING "MRSTLFBFlipTimerFn: flush flip queue\n");
+	FlushInternalVSyncQueue(psSwapChain, MRST_TRUE);
+ExitUnlock:
+	spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
+}
+
+
 static PVRSRV_ERROR SwapToDCSystem(IMG_HANDLE hDevice,
                                    IMG_HANDLE hSwapChain)
 {
@@ -1118,7 +1147,12 @@ static MRST_BOOL MRSTLFBVSyncIHandler(MRSTLFB_DEVINFO *psDevInfo, int iPipe)
 	}
 
 	if (psSwapChain->ulRemoveIndex == psSwapChain->ulInsertIndex)
+	{
 		bStatus = MRST_TRUE;
+		del_timer(&psDevInfo->sFlipTimer);
+	}
+	else
+		mod_timer(&psDevInfo->sFlipTimer, FLIP_TIMEOUT + jiffies);
 ExitUnlock:
 	spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
 
@@ -1195,6 +1229,8 @@ static IMG_BOOL ProcessFlip2(IMG_HANDLE hCmdCookie,
 	}
 	if (dev_priv->b_dsr_enable)
 		dev_priv->exit_idle(dev, MDFLD_DSR_2D_3D, NULL, true);
+	/*start Flip watch dog*/
+	mod_timer(&psDevInfo->sFlipTimer, FLIP_TIMEOUT + jiffies);
 
 	if (hdmi_state) {
 		/*
@@ -1310,6 +1346,9 @@ static IMG_BOOL ProcessFlip(IMG_HANDLE  hCmdCookie,
 	}
 	if (dev_priv->b_dsr_enable)
 		dev_priv->exit_idle(dev, MDFLD_DSR_2D_3D, NULL, true);
+
+	/*start Flip watch dog*/
+	mod_timer(&psDevInfo->sFlipTimer, FLIP_TIMEOUT + jiffies);
 
 	if (hdmi_state) {
 		/*
@@ -1976,7 +2015,9 @@ MRST_ERROR MRSTLFBInit(struct drm_device * dev)
 
 	psDevInfo->ulRefCount++;
 
-
+	psDevInfo->sFlipTimer.data = (unsigned long)psDevInfo;
+	psDevInfo->sFlipTimer.function = MRSTLFBFlipTimerFn;
+	init_timer(&psDevInfo->sFlipTimer);
 	return (MRST_OK);
 }
 
