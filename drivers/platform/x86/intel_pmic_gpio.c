@@ -34,7 +34,7 @@
 #include <asm/intel_scu_ipc.h>
 #include <linux/device.h>
 #include <linux/intel_pmic_gpio.h>
-#include <linux/platform_device.h>
+#include <linux/ipc_device.h>
 
 #define DRIVER_NAME "pmic_gpio"
 
@@ -230,10 +230,10 @@ static irqreturn_t pmic_irq_handler(int irq, void *data)
 	return ret;
 }
 
-static int __devinit platform_pmic_gpio_probe(struct platform_device *pdev)
+static int __devinit ipc_pmic_gpio_probe(struct ipc_device *ipcdev)
 {
-	struct device *dev = &pdev->dev;
-	int irq = platform_get_irq(pdev, 0);
+	struct device *dev = &ipcdev->dev;
+	int irq = ipc_get_irq(ipcdev, 0);
 	struct intel_pmic_gpio_platform_data *pdata = dev->platform_data;
 
 	struct pmic_gpio *pg;
@@ -306,22 +306,22 @@ err2:
 	return retval;
 }
 
-/* at the same time, register a platform driver
+/* at the same time, register a ipc driver
  * this supports the sfi 0.81 fw */
-static struct platform_driver platform_pmic_gpio_driver = {
+static struct ipc_driver ipc_pmic_gpio_driver = {
 	.driver = {
 		.name		= DRIVER_NAME,
 		.owner		= THIS_MODULE,
 	},
-	.probe		= platform_pmic_gpio_probe,
+	.probe		= ipc_pmic_gpio_probe,
 };
 
-static int __init platform_pmic_gpio_init(void)
+static int __init ipc_pmic_gpio_init(void)
 {
-	return platform_driver_register(&platform_pmic_gpio_driver);
+	return ipc_driver_register(&ipc_pmic_gpio_driver);
 }
 
-subsys_initcall(platform_pmic_gpio_init);
+subsys_initcall(ipc_pmic_gpio_init);
 
 MODULE_AUTHOR("Alek Du <alek.du@intel.com>");
 MODULE_DESCRIPTION("Intel Moorestown PMIC GPIO driver");

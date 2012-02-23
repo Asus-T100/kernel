@@ -31,6 +31,7 @@
 #include <linux/async.h>
 #include <linux/wakelock.h>
 #include <linux/gpio.h>
+#include <linux/ipc_device.h>
 #include <asm/intel-mid.h>
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
@@ -59,7 +60,7 @@ static unsigned int	hs_switch;
 static unsigned int	lo_dac;
 
 struct mfld_mc_private {
-	struct platform_device *socdev;
+	struct ipc_device *socdev;
 	void __iomem *int_base;
 	struct snd_soc_codec *codec;
 	u8 jack_interrupt_status;
@@ -502,7 +503,7 @@ ret:
 	return IRQ_HANDLED;
 }
 
-static int __devinit snd_mfld_mc_probe(struct platform_device *pdev)
+static int __devinit snd_mfld_mc_probe(struct ipc_device *ipcdev)
 {
 	int ret_val = 0, irq;
 	struct mfld_mc_private *mc_drv_ctx;
@@ -511,7 +512,7 @@ static int __devinit snd_mfld_mc_probe(struct platform_device *pdev)
 	pr_debug("snd_mfld_mc_probe called\n");
 
 	/* retrive the irq number */
-	irq = platform_get_irq(pdev, 0);
+	irq = ipc_get_irq(ipcdev, 0);
 
 	/* audio interrupt base of SRAM location where
 	 * interrupts are stored by System FW */
@@ -526,8 +527,8 @@ static int __devinit snd_mfld_mc_probe(struct platform_device *pdev)
 		       WAKE_LOCK_SUSPEND, "jack_detect");
 #endif
 
-	irq_mem = platform_get_resource_byname(
-				pdev, IORESOURCE_MEM, "IRQ_BASE");
+	irq_mem = ipc_get_resource_byname(
+				ipcdev, IORESOURCE_MEM, "IRQ_BASE");
 	if (!irq_mem) {
 		pr_err("no mem resource given\n");
 		ret_val = -ENODEV;
@@ -560,20 +561,20 @@ static int __devinit snd_mfld_mc_probe(struct platform_device *pdev)
 	ret_val = request_threaded_irq(irq, snd_mfld_jack_intr_handler,
 			snd_mfld_codec_intr_detection,
 			IRQF_SHARED | IRQF_NO_SUSPEND,
-			pdev->dev.driver->name, mc_drv_ctx);
+			ipcdev->dev.driver->name, mc_drv_ctx);
 	if (ret_val) {
 		pr_err("cannot register IRQ\n");
 		goto unalloc;
 	}
 	/* register the soc card */
-	snd_soc_card_mfld.dev = &pdev->dev;
+	snd_soc_card_mfld.dev = &ipcdev->dev;
 	snd_soc_initialize_card_lists(&snd_soc_card_mfld);
 	ret_val = snd_soc_register_card(&snd_soc_card_mfld);
 	if (ret_val) {
 		pr_debug("snd_soc_register_card failed %d\n", ret_val);
 		goto freeirq;
 	}
-	platform_set_drvdata(pdev, &snd_soc_card_mfld);
+	ipc_set_drvdata(ipcdev, &snd_soc_card_mfld);
 	snd_soc_card_set_drvdata(&snd_soc_card_mfld, mc_drv_ctx);
 	pr_debug("successfully exited probe\n");
 	return ret_val;
@@ -585,12 +586,12 @@ unalloc:
 	return ret_val;
 }
 
-static int __devexit snd_mfld_mc_remove(struct platform_device *pdev)
+static int __devexit snd_mfld_mc_remove(struct ipc_device *ipcdev)
 {
-	struct snd_soc_card *soc_card = platform_get_drvdata(pdev);
+	struct snd_soc_card *soc_card = ipc_get_drvdata(ipcdev);
 	struct mfld_mc_private *mc_drv_ctx = snd_soc_card_get_drvdata(soc_card);
 	pr_debug("snd_mfld_mc_remove called\n");
-	free_irq(platform_get_irq(pdev, 0), mc_drv_ctx);
+	free_irq(ipc_get_irq(ipcdev, 0), mc_drv_ctx);
 #ifdef CONFIG_HAS_WAKELOCK
 	if (wake_lock_active(&mc_drv_ctx->wake_lock))
 		wake_unlock(&mc_drv_ctx->wake_lock);
@@ -601,7 +602,7 @@ static int __devexit snd_mfld_mc_remove(struct platform_device *pdev)
 		gpio_free(HEADSET_DET_PIN);
 	snd_soc_card_set_drvdata(soc_card, NULL);
 	snd_soc_unregister_card(soc_card);
-	platform_set_drvdata(pdev, NULL);
+	ipc_set_drvdata(ipcdev, NULL);
 	return 0;
 }
 static const struct dev_pm_ops snd_mfld_mc_pm_ops = {
@@ -610,7 +611,7 @@ static const struct dev_pm_ops snd_mfld_mc_pm_ops = {
 	.poweroff = snd_mfld_mc_poweroff,
 };
 
-static struct platform_driver snd_mfld_mc_driver = {
+static struct ipc_driver snd_mfld_mc_driver = {
 	.driver = {
 		.owner = THIS_MODULE,
 		.name = "msic_audio",
@@ -623,7 +624,7 @@ static struct platform_driver snd_mfld_mc_driver = {
 static int __init snd_mfld_driver_init(void)
 {
 	pr_debug("snd_mfld_driver_init called\n");
-	return platform_driver_register(&snd_mfld_mc_driver);
+	return ipc_driver_register(&snd_mfld_mc_driver);
 }
 module_init_async(snd_mfld_driver_init);
 
@@ -631,7 +632,7 @@ static void __exit snd_mfld_driver_exit(void)
 {
 	pr_debug("snd_mfld_driver_exit called\n");
 	async_synchronize_full_domain(&mfld_jack_async_list);
-	platform_driver_unregister(&snd_mfld_mc_driver);
+	ipc_driver_unregister(&snd_mfld_mc_driver);
 }
 module_exit(snd_mfld_driver_exit);
 
@@ -639,4 +640,4 @@ MODULE_DESCRIPTION("ASoC Intel(R) MID Machine driver");
 MODULE_AUTHOR("Vinod Koul <vinod.koul@intel.com>");
 MODULE_AUTHOR("Harsha Priya <priya.harsha@intel.com>");
 MODULE_LICENSE("GPL v2");
-MODULE_ALIAS("platform:msic-audio");
+MODULE_ALIAS("ipc:msic-audio");

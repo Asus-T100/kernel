@@ -30,7 +30,7 @@
 #include <linux/err.h>
 #include <linux/param.h>
 #include <linux/device.h>
-#include <linux/platform_device.h>
+#include <linux/ipc_device.h>
 #include <linux/slab.h>
 #include <linux/pm.h>
 #include <linux/thermal.h>
@@ -67,8 +67,8 @@ static const int adc_code[2][TABLE_LENGTH] = {
 /* ADC handle used to read sensor temperature values */
 void *therm_adc_handle;
 
-struct platform_info {
-	struct platform_device *pdev;
+struct ipc_info {
+	struct ipc_device *ipcdev;
 	struct thermal_zone_device *tzd[MSIC_THERMAL_SENSORS];
 };
 
@@ -277,12 +277,12 @@ static struct thermal_zone_device_ops tzd_ops = {
 
 /**
  * mid_thermal_probe - mfld thermal initialize
- * @pdev: platform device structure
+ * @ipcdev: ipc device structure
  *
  * mid thermal probe initializes the hardware and registers
  * all the sensors with the generic thermal framework. Can sleep.
  */
-static int mid_thermal_probe(struct platform_device *pdev)
+static int mid_thermal_probe(struct ipc_device *ipcdev)
 {
 	static char *name[MSIC_THERMAL_SENSORS] = {
 		"skin0", "skin1", "sys", "msicdie"
@@ -290,10 +290,10 @@ static int mid_thermal_probe(struct platform_device *pdev)
 
 	int ret;
 	int i;
-	struct platform_info *pinfo;
+	struct ipc_info *ipcinfo;
 
-	pinfo = kzalloc(sizeof(struct platform_info), GFP_KERNEL);
-	if (!pinfo)
+	ipcinfo = kzalloc(sizeof(struct ipc_info), GFP_KERNEL);
+	if (!ipcinfo)
 		return -ENOMEM;
 
 	/* Allocate ADC channels for all sensors */
@@ -309,42 +309,42 @@ static int mid_thermal_probe(struct platform_device *pdev)
 
 	/* Register each sensor with the generic thermal framework*/
 	for (i = 0; i < MSIC_THERMAL_SENSORS; i++) {
-		pinfo->tzd[i] = thermal_zone_device_register(name[i],
+		ipcinfo->tzd[i] = thermal_zone_device_register(name[i],
 					0, initialize_sensor(i),
 					&tzd_ops, 0, 0, 0, 0);
-		if (IS_ERR(pinfo->tzd[i]))
+		if (IS_ERR(ipcinfo->tzd[i]))
 			goto reg_fail;
 	}
 
-	pinfo->pdev = pdev;
-	platform_set_drvdata(pdev, pinfo);
+	ipcinfo->ipcdev = ipcdev;
+	ipc_set_drvdata(ipcdev, ipcinfo);
 	return 0;
 
 reg_fail:
-	ret = PTR_ERR(pinfo->tzd[i]);
+	ret = PTR_ERR(ipcinfo->tzd[i]);
 	while (--i >= 0)
-		thermal_zone_device_unregister(pinfo->tzd[i]);
+		thermal_zone_device_unregister(ipcinfo->tzd[i]);
 alloc_fail:
-	kfree(pinfo);
+	kfree(ipcinfo);
 	return ret;
 }
 
 /**
  * mid_thermal_remove - mfld thermal finalize
- * @dev: platform device structure
+ * @dev: ipc device structure
  *
  * MLFD thermal remove unregisters all the sensors from the generic
  * thermal framework. Can sleep.
  */
-static int mid_thermal_remove(struct platform_device *pdev)
+static int mid_thermal_remove(struct ipc_device *ipcdev)
 {
 	int i;
-	struct platform_info *pinfo = platform_get_drvdata(pdev);
+	struct ipc_info *ipcinfo = ipc_get_drvdata(ipcdev);
 
 	for (i = 0; i < MSIC_THERMAL_SENSORS; i++)
-		thermal_zone_device_unregister(pinfo->tzd[i]);
+		thermal_zone_device_unregister(ipcinfo->tzd[i]);
 
-	platform_set_drvdata(pdev, NULL);
+	ipc_set_drvdata(ipcdev, NULL);
 
 	/* Free the allocated ADC channels */
 	intel_mid_gpadc_free(therm_adc_handle);
@@ -358,7 +358,7 @@ static int mid_thermal_remove(struct platform_device *pdev)
 
 #define DRIVER_NAME "msic_thermal"
 
-static const struct platform_device_id therm_id_table[] = {
+static const struct ipc_device_id therm_id_table[] = {
 	{ DRIVER_NAME, 1 },
 };
 
@@ -366,7 +366,7 @@ static const struct dev_pm_ops msic_thermal_pm_ops = {
 	.suspend = mid_thermal_suspend,
 	.resume = mid_thermal_resume,
 };
-static struct platform_driver mid_thermal_driver = {
+static struct ipc_driver mid_thermal_driver = {
 	.driver = {
 		.name = DRIVER_NAME,
 		.owner = THIS_MODULE,
@@ -379,12 +379,12 @@ static struct platform_driver mid_thermal_driver = {
 
 static int __init mid_thermal_module_init(void)
 {
-	return platform_driver_register(&mid_thermal_driver);
+	return ipc_driver_register(&mid_thermal_driver);
 }
 
 static void __exit mid_thermal_module_exit(void)
 {
-	platform_driver_unregister(&mid_thermal_driver);
+	ipc_driver_unregister(&mid_thermal_driver);
 }
 
 /* Changing _init call to make the thermal driver

@@ -21,7 +21,7 @@
 #include <linux/init.h>
 #include <linux/interrupt.h>
 #include <linux/slab.h>
-#include <linux/platform_device.h>
+#include <linux/ipc_device.h>
 #include <linux/input.h>
 #include <linux/io.h>
 #include <asm/intel_scu_ipc.h>
@@ -60,7 +60,7 @@ static irqreturn_t mfld_pb_isr(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
-static int __devinit mfld_pb_probe(struct platform_device *pdev)
+static int __devinit mfld_pb_probe(struct ipc_device *ipcdev)
 {
 	struct mfld_pb_priv *priv;
 	struct input_dev *input;
@@ -68,7 +68,7 @@ static int __devinit mfld_pb_probe(struct platform_device *pdev)
 	int irq;
 	u8 value;
 
-	irq = platform_get_irq(pdev, 0);
+	irq = ipc_get_irq(ipcdev, 0);
 	if (irq < 0)
 		return -EINVAL;
 
@@ -81,11 +81,11 @@ static int __devinit mfld_pb_probe(struct platform_device *pdev)
 
 	priv->input = input;
 	priv->irq = irq;
-	platform_set_drvdata(pdev, priv);
+	ipc_set_drvdata(ipcdev, priv);
 
-	input->name = pdev->name;
+	input->name = ipcdev->name;
 	input->phys = "power-button/input0";
-	input->dev.parent = &pdev->dev;
+	input->dev.parent = &ipcdev->dev;
 
 	input_set_capability(input, EV_KEY, KEY_POWER);
 
@@ -98,14 +98,14 @@ static int __devinit mfld_pb_probe(struct platform_device *pdev)
 	ret = request_irq(priv->irq, mfld_pb_isr,
 			  IRQF_NO_SUSPEND, DRIVER_NAME, priv);
 	if (ret) {
-		dev_err(&pdev->dev,
+		dev_err(&ipcdev->dev,
 			"unable to request irq %d for power button\n", irq);
 		goto out_iounmap;
 	}
 
 	ret = input_register_device(input);
 	if (ret) {
-		dev_err(&pdev->dev,
+		dev_err(&ipcdev->dev,
 			"unable to register input dev, error %d\n", ret);
 		goto out_free_irq;
 	}
@@ -130,15 +130,15 @@ out_free_irq:
 out_iounmap:
 	iounmap(priv->pb_stat);
 fail:
-	platform_set_drvdata(pdev, NULL);
+	ipc_set_drvdata(ipcdev, NULL);
 	input_free_device(input);
 	kfree(priv);
 	return ret;
 }
 
-static int __devexit mfld_pb_remove(struct platform_device *pdev)
+static int __devexit mfld_pb_remove(struct ipc_device *ipcdev)
 {
-	struct mfld_pb_priv *priv = platform_get_drvdata(pdev);
+	struct mfld_pb_priv *priv = ipc_get_drvdata(ipcdev);
 
 	iounmap(priv->pb_stat);
 	free_irq(priv->irq, priv);
@@ -148,7 +148,7 @@ static int __devexit mfld_pb_remove(struct platform_device *pdev)
 	return 0;
 }
 
-static struct platform_driver mfld_pb_driver = {
+static struct ipc_driver mfld_pb_driver = {
 	.driver = {
 		.name = DRIVER_NAME,
 		.owner = THIS_MODULE,
@@ -159,12 +159,12 @@ static struct platform_driver mfld_pb_driver = {
 
 static int __init mfld_pb_init(void)
 {
-	return platform_driver_register(&mfld_pb_driver);
+	return ipc_driver_register(&mfld_pb_driver);
 }
 
 static void __exit mfld_pb_exit(void)
 {
-	platform_driver_unregister(&mfld_pb_driver);
+	ipc_driver_unregister(&mfld_pb_driver);
 }
 
 module_init(mfld_pb_init);

@@ -31,6 +31,7 @@
 #include <asm/intel_scu_ipc.h>
 #include <linux/pm_qos_params.h>
 #include <linux/intel_mid_pm.h>
+#include <linux/ipc_device.h>
 #include <linux/kernel.h>
 
 /*
@@ -69,7 +70,7 @@
 static int ipc_probe(struct pci_dev *dev, const struct pci_device_id *id);
 static void ipc_remove(struct pci_dev *pdev);
 
-struct intel_scu_ipc_dev {
+struct intel_ipc_controller {
 	struct pci_dev *pdev;
 	void __iomem *ipc_base;
 	void __iomem *i2c_base;
@@ -80,7 +81,7 @@ struct intel_scu_ipc_dev {
 	struct fw_ud *fwud_pending;
 };
 
-static struct intel_scu_ipc_dev  ipcdev; /* Only one for now */
+static struct intel_ipc_controller  ipcdev; /* Only one for now */
 
 static int platform;		/* Platform type */
 
@@ -2238,11 +2239,19 @@ static irqreturn_t ioc(int irq, void *dev_id)
  */
 static int ipc_probe(struct pci_dev *dev, const struct pci_device_id *id)
 {
-	int err;
+	int err, *bus_id;
 	resource_size_t pci_resource;
 
 	if (ipcdev.pdev)		/* We support only one SCU */
 		return -EBUSY;
+
+	bus_id = kzalloc(sizeof(*bus_id), GFP_KERNEL);
+	if (bus_id == NULL) {
+		dev_err(&dev->dev, "memory is not sufficient\n");
+		return -ENOMEM;
+	}
+
+	*bus_id = id->driver_data;
 
 	ipcdev.pdev = pci_dev_get(dev);
 
@@ -2281,11 +2290,13 @@ static int ipc_probe(struct pci_dev *dev, const struct pci_device_id *id)
 		return -ENOMEM;
 	}
 
-	intel_scu_devices_create();
+	intel_scu_devices_create(*bus_id);
 
 	create_msic_debug_entries();
 
 	intel_scu_sysfs_create(dev);
+
+	pci_set_drvdata(dev, bus_id);
 
 	return 0;
 }
@@ -2302,6 +2313,7 @@ static int ipc_probe(struct pci_dev *dev, const struct pci_device_id *id)
  */
 static void ipc_remove(struct pci_dev *pdev)
 {
+	int *bus_id = pci_get_drvdata(pdev);
 	intel_scu_sysfs_remove(pdev);
 	remove_msic_debug_entries();
 	free_irq(pdev->irq, &ipcdev);
@@ -2311,13 +2323,14 @@ static void ipc_remove(struct pci_dev *pdev)
 	iounmap(ipcdev.i2c_base);
 	iounmap(ipcdev.mip_base);
 	ipcdev.pdev = NULL;
-	intel_scu_devices_destroy();
+	intel_scu_devices_destroy(*bus_id);
+	kfree(bus_id);
 }
 
 static const struct pci_device_id pci_ids[] = {
-	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x080e)},
-	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x082a)},
-	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x08ea)},
+	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x080e), IPC_SCU},
+	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x082a), IPC_SCU},
+	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x08ea), IPC_SCU},
 	{ 0,}
 };
 MODULE_DEVICE_TABLE(pci, pci_ids);
