@@ -962,7 +962,8 @@ static void msic_handle_exception(struct msic_power_module_info *mbi,
 	}
 
 	if (CHRINT_reg_value & MSIC_BATT_CHR_LOWBATT_MASK) {
-		health = POWER_SUPPLY_HEALTH_DEAD;
+		if (!mbi->usb_chrg_props.charger_present)
+			health = POWER_SUPPLY_HEALTH_DEAD;
 		exception = MSIC_EVENT_LOWBATT_EXCPT;
 		msic_log_exception_event(exception);
 	}
@@ -2171,7 +2172,8 @@ static irqreturn_t msic_battery_thread_handler(int id, void *dev)
 	 * on LOWBATT INT, So no need to service LOWBATT INT
 	 * afterwards and increase the load on CPU.
 	 */
-	if (data[0] & MSIC_BATT_CHR_LOWBATT_MASK) {
+	if ((data[0] & MSIC_BATT_CHR_LOWBATT_MASK) &&
+			!mbi->usb_chrg_props.charger_present) {
 		dev_warn(msic_dev, "Masking LOWBATTINT\n");
 		mbi->chrint_mask |= MSIC_BATT_CHR_LOWBATT_MASK;
 		ret = intel_scu_ipc_iowrite8(MSIC_BATT_CHR_MCHRINT_ADDR,
