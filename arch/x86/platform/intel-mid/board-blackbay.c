@@ -32,10 +32,10 @@
 #include <linux/gpio_keys.h>
 #include <linux/input.h>
 #include <linux/platform_device.h>
+#include <linux/ipc_device.h>
 #include <linux/mfd/intel_msic.h>
 #include <linux/irq.h>
 #include <linux/module.h>
-#include <linux/notifier.h>
 #include <linux/intel_mid_pm.h>
 #include <linux/input/lis3dh.h>
 #include <linux/usb/penwell_otg.h>
@@ -79,8 +79,140 @@
 /* the offset for the mapping of global gpio pin to irq */
 #define MRST_IRQ_OFFSET 0x100
 
+enum ipc_dev_type {
+	IPC_DEV_PMIC_GPIO,
+	IPC_DEV_PMIC_AUDIO,
+	IPC_DEV_MSIC_ADC,
+	IPC_DEV_MSIC_BATTERY,
+	IPC_DEV_MSIC_GPIO,
+	IPC_DEV_MSIC_AUDIO,
+	IPC_DEV_MSIC_POWER_BTN,
+	IPC_DEV_MSIC_OCD,
+
+	IPC_DEV_NUM,
+};
+
+static enum ipc_dev_type current_ipcdev;
+static DEFINE_MUTEX(ipc_dev_lock);
+
+static struct resource pmic_gpio_resources[] __initdata = {
+	{
+		.flags = IORESOURCE_IRQ,
+	},
+};
+
+static struct resource pmic_audio_resources[] __initdata = {
+	{
+		.flags = IORESOURCE_IRQ,
+	},
+};
+
+static struct resource msic_adc_resources[] __initdata = {
+	{
+		.flags = IORESOURCE_IRQ,
+	},
+};
+
+static struct resource msic_battery_resources[] __initdata = {
+	{
+		.flags = IORESOURCE_IRQ,
+	},
+};
+
+static struct resource msic_gpio_resources[] __initdata = {
+	{
+		.flags = IORESOURCE_IRQ,
+	},
+};
+
+static struct resource msic_audio_resources[] __initdata = {
+	{
+		.name  = "IRQ",
+		.flags = IORESOURCE_IRQ,
+	},
+	{
+		.name  = "IRQ_BASE",
+		.flags = IORESOURCE_MEM,
+		.start = MSIC_IRQ_STATUS_OCAUDIO,
+		.end   = MSIC_IRQ_STATUS_ACCDET,
+	},
+};
+
+static struct resource msic_power_btn_resources[] __initdata = {
+	{
+		.flags = IORESOURCE_IRQ,
+	},
+};
+
+static struct resource msic_ocd_resources[] __initdata = {
+	{
+		.flags = IORESOURCE_IRQ,
+	},
+};
+
+struct intel_ipc_dev_res {
+	const char *name;
+	int num_resources;
+	struct resource *resources;
+};
+
+static struct intel_ipc_dev_res ipc_dev_res[IPC_DEV_NUM] __initdata = {
+	[IPC_DEV_PMIC_GPIO]		= {
+		.name                   = "pmic_gpio",
+		.num_resources          = ARRAY_SIZE(pmic_gpio_resources),
+		.resources              = pmic_gpio_resources,
+	},
+	[IPC_DEV_PMIC_AUDIO]		= {
+		.name                   = "pmic_audio",
+		.num_resources          = ARRAY_SIZE(pmic_audio_resources),
+		.resources              = pmic_audio_resources,
+	},
+	[IPC_DEV_MSIC_ADC]		= {
+		.name                   = "msic_adc",
+		.num_resources          = ARRAY_SIZE(msic_adc_resources),
+		.resources              = msic_adc_resources,
+	},
+	[IPC_DEV_MSIC_BATTERY]		= {
+		.name                   = "msic_battery",
+		.num_resources          = ARRAY_SIZE(msic_battery_resources),
+		.resources              = msic_battery_resources,
+	},
+	[IPC_DEV_MSIC_GPIO]		= {
+		.name                   = "msic_gpio",
+		.num_resources          = ARRAY_SIZE(msic_gpio_resources),
+		.resources              = msic_gpio_resources,
+	},
+	[IPC_DEV_MSIC_AUDIO]		= {
+		.name                   = "msic_audio",
+		.num_resources          = ARRAY_SIZE(msic_audio_resources),
+		.resources              = msic_audio_resources,
+	},
+	[IPC_DEV_MSIC_POWER_BTN]	= {
+		.name                   = "msic_power_btn",
+		.num_resources          = ARRAY_SIZE(msic_power_btn_resources),
+		.resources              = msic_power_btn_resources,
+	},
+	[IPC_DEV_MSIC_OCD]		= {
+		.name                   = "msic_ocd",
+		.num_resources          = ARRAY_SIZE(msic_ocd_resources),
+		.resources              = msic_ocd_resources,
+	},
+};
+
+/* this should be called with the holding of ipc_dev_lock */
+static void handle_ipc_irq_res(enum ipc_dev_type type, int irq)
+{
+	struct resource *res = &ipc_dev_res[type].resources[0];
+
+	if (res->flags & IORESOURCE_IRQ)
+		res->start = irq;
+
+	current_ipcdev = type;
+}
+
 static void __init *pmic_gpio_platform_data(void *info)
 {
+	struct sfi_device_table_entry *entry = info;
 	static struct intel_pmic_gpio_platform_data pmic_gpio_pdata;
 	int gpio_base = get_gpio_by_name("pmic_gpio_base");
 
@@ -90,7 +222,16 @@ static void __init *pmic_gpio_platform_data(void *info)
 	pmic_gpio_pdata.irq_base = gpio_base + MRST_IRQ_OFFSET;
 	pmic_gpio_pdata.gpiointr = 0xffffeff8;
 
+	handle_ipc_irq_res(IPC_DEV_PMIC_GPIO, entry->irq);
+
 	return &pmic_gpio_pdata;
+}
+
+static void __init *pmic_audio_platform_data(void *info)
+{
+	struct sfi_device_table_entry *entry = info;
+	handle_ipc_irq_res(IPC_DEV_PMIC_AUDIO, entry->irq);
+	return NULL;
 }
 
 static void __init *max3111_platform_data(void *info)
@@ -414,85 +555,15 @@ static void __init *no_platform_data(void *info)
 	return NULL;
 }
 
-static struct resource msic_resources[] = {
-	{
-		.start	= INTEL_MSIC_IRQ_PHYS_BASE,
-		.end	= INTEL_MSIC_IRQ_PHYS_BASE + 64 - 1,
-		.flags	= IORESOURCE_MEM,
-	},
-};
-
-static struct intel_msic_platform_data msic_pdata;
-
-static struct platform_device msic_device = {
-	.name		= "intel_msic",
-	.id		= -1,
-	.dev		= {
-		.platform_data	= &msic_pdata,
-	},
-	.num_resources	= ARRAY_SIZE(msic_resources),
-	.resource	= msic_resources,
-};
-
-inline bool intel_mid_has_msic(void)
-{
-	return ((intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_PENWELL) ||
-		(intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_CLOVERVIEW));
-}
-
-static int msic_scu_status_change(struct notifier_block *nb,
-				  unsigned long code, void *data)
-{
-	if (code == SCU_DOWN) {
-		platform_device_unregister(&msic_device);
-		return 0;
-	}
-
-	return platform_device_register(&msic_device);
-}
-
-static int __init msic_init(void)
-{
-	static struct notifier_block msic_scu_notifier = {
-		.notifier_call	= msic_scu_status_change,
-	};
-
-	/*
-	 * We need to be sure that the SCU IPC is ready before MSIC device
-	 * can be registered.
-	 */
-	if (intel_mid_has_msic())
-		intel_scu_notifier_add(&msic_scu_notifier);
-
-	return 0;
-}
-arch_initcall(msic_init);
-
-/*
- * msic_generic_platform_data - sets generic platform data for the block
- * @info: pointer to the SFI device table entry for this block
- * @block: MSIC block
- *
- * Function sets IRQ number from the SFI table entry for given device to
- * the MSIC platform data.
- */
-static void *msic_generic_platform_data(void *info, enum intel_msic_block block)
-{
-	struct sfi_device_table_entry *entry = info;
-
-	BUG_ON(block < 0 || block >= INTEL_MSIC_BLOCK_LAST);
-	msic_pdata.irq[block] = entry->irq;
-
-	return no_platform_data(info);
-}
-
 static void *msic_adc_platform_data(void *info)
 {
+	struct sfi_device_table_entry *entry = info;
 	static struct intel_mid_gpadc_platform_data pdata;
 	pdata.intr = 0xffff7fc0;
-	msic_pdata.gpadc = &pdata;
 
-	return msic_generic_platform_data(info, INTEL_MSIC_BLOCK_ADC);
+	handle_ipc_irq_res(IPC_DEV_MSIC_ADC, entry->irq);
+
+	return &pdata;
 }
 
 
@@ -588,21 +659,24 @@ static void *hsi_modem_platform_data(void *data)
 
 static void *msic_battery_platform_data(void *info)
 {
-	return msic_generic_platform_data(info, INTEL_MSIC_BLOCK_BATTERY);
+	struct sfi_device_table_entry *entry = info;
+	handle_ipc_irq_res(IPC_DEV_MSIC_BATTERY, entry->irq);
+	return NULL;
 }
 
 static void *msic_gpio_platform_data(void *info)
 {
+	struct sfi_device_table_entry *entry = info;
 	static struct intel_msic_gpio_pdata pdata;
-	int gpio = get_gpio_by_name("msic_gpio_base");
 
+	int gpio = get_gpio_by_name("msic_gpio_base");
 	if (gpio < 0)
 		return NULL;
 
 	pdata.gpio_base = gpio;
-	msic_pdata.gpio = &pdata;
+	handle_ipc_irq_res(IPC_DEV_MSIC_GPIO, entry->irq);
 
-	return msic_generic_platform_data(info, INTEL_MSIC_BLOCK_GPIO);
+	return &pdata;
 }
 
 void max17042_i2c_reset_workaround(void)
@@ -687,8 +761,9 @@ static void *bq24192_platform_data(void *info)
 
 static void *msic_audio_platform_data(void *info)
 {
-	struct platform_device *pdev;
 	int ret;
+	struct platform_device *pdev;
+	struct sfi_device_table_entry *entry = info;
 
 	pdev = platform_device_alloc("sst-platform", -1);
 	if (!pdev) {
@@ -716,26 +791,46 @@ static void *msic_audio_platform_data(void *info)
 		return NULL;
 	}
 
-	return msic_generic_platform_data(info, INTEL_MSIC_BLOCK_AUDIO);
+	pdev = platform_device_alloc("sn95031", -1);
+	if (!pdev) {
+		pr_err("failed to allocate sn95031 platform device\n");
+		return NULL;
+	}
+
+	ret = platform_device_add(pdev);
+	if (ret) {
+		pr_err("failed to add sn95031 platform device\n");
+		platform_device_put(pdev);
+		return NULL;
+	}
+
+	if (strncmp(entry->name, "msic_audio", 16) == 0)
+		handle_ipc_irq_res(IPC_DEV_MSIC_AUDIO, entry->irq);
+
+	return NULL;
 }
 
 static void *msic_power_btn_platform_data(void *info)
 {
-	return msic_generic_platform_data(info, INTEL_MSIC_BLOCK_POWER_BTN);
+	struct sfi_device_table_entry *entry = info;
+	handle_ipc_irq_res(IPC_DEV_MSIC_POWER_BTN, entry->irq);
+	return NULL;
 }
 
 static void *msic_ocd_platform_data(void *info)
 {
+	int gpio;
 	static struct intel_msic_ocd_pdata pdata;
-	int gpio = get_gpio_by_name("ocd_gpio");
 
+	gpio = get_gpio_by_name("ocd_gpio");
 	if (gpio < 0)
 		return NULL;
 
 	pdata.gpio = gpio;
-	msic_pdata.ocd = &pdata;
 
-	return msic_generic_platform_data(info, INTEL_MSIC_BLOCK_OCD);
+	handle_ipc_irq_res(IPC_DEV_MSIC_OCD, gpio + MRST_IRQ_OFFSET);
+
+	return &pdata;
 }
 
 /* MFLD iCDK camera sensor GPIOs */
@@ -1448,23 +1543,37 @@ const struct atomisp_platform_data *intel_get_v4l2_subdev_table(void)
 EXPORT_SYMBOL_GPL(intel_get_v4l2_subdev_table);
 
 void blackbay_ipc_device_handler(struct sfi_device_table_entry *pentry,
-				struct devs_id *dev) {
+				struct devs_id *dev)
+{
+	int res_num;
+	struct resource *res;
+	struct ipc_device *ipcdev;
 	void *pdata = NULL;
-	/*
-	 * IPC device creation is handled by the MSIC
-	 * MFD driver so we don't need to do it here.
-	 */
 
-	/*
-	 * We need to call platform init of IPC devices to fill
-	 * misc_pdata structure. It will be used in msic_init for
-	 * initialization.
-	 */
-	pr_info("IPC bus, name = %16.16s, "
-		"irq = 0x%2x\n", pentry->name, pentry->irq);
-	if (dev != NULL)
-		pdata = dev->get_platform_data(pentry);
+	pr_info("IPC bus = %d, name = %16.16s, "
+		"irq = 0x%2x\n", pentry->host_num, pentry->name, pentry->irq);
+
+	mutex_lock(&ipc_dev_lock);
+
+	pdata = dev->get_platform_data(pentry);
+
+	ipcdev = ipc_device_alloc(pentry->name, -1);
+	if (ipcdev == NULL) {
+		pr_err("out of memory for SFI platform device '%s'.\n",
+				pentry->name);
+		return;
+	}
+
+	res = ipc_dev_res[current_ipcdev].resources;
+	res_num = ipc_dev_res[current_ipcdev].num_resources;
+	ipc_device_add_resources(ipcdev, res, res_num);
+
+	ipcdev->dev.platform_data = pdata;
+	ipc_device_add_to_list(ipcdev);
+
+	mutex_unlock(&ipc_dev_lock);
 }
+
 /*
  * CLV PR0 primary camera sensor - OV8830 platform data
  */
@@ -1681,7 +1790,7 @@ struct devs_id __initconst device_ids[] = {
 	{"tca6416", SFI_DEV_TYPE_I2C, 1, &tca6416_platform_data, NULL},
 	{"emc1403", SFI_DEV_TYPE_I2C, 1, &emc1403_platform_data, NULL},
 	{"i2c_accel", SFI_DEV_TYPE_I2C, 0, &lis331dl_platform_data, NULL},
-	{"pmic_audio", SFI_DEV_TYPE_IPC, 1, &no_platform_data,
+	{"pmic_audio", SFI_DEV_TYPE_IPC, 1, &pmic_audio_platform_data,
 					&blackbay_ipc_device_handler},
 	{"pn544", SFI_DEV_TYPE_I2C, 0, &pn544_platform_data, NULL},
 	{"mpu3050", SFI_DEV_TYPE_I2C, 1, &mpu3050_platform_data, NULL},
@@ -2062,19 +2171,44 @@ rootfs_initcall(hdmi_i2c_workaround);
 #ifdef CONFIG_LEDS_INTEL_KPD
 static int __init intel_kpd_led_init(void)
 {
-	struct platform_device *pdev = NULL;
-	pdev = platform_device_alloc("intel_kpd_led", 0);
-	if (!pdev)
-		pr_err("out of memory for SFI platform dev 'intel_kpd_led'.\n");
-	else {
-		install_irq_resource(pdev, 0xff);
-		intel_scu_device_register(pdev);
+	int ret;
+	struct ipc_board_info board_info;
+
+	memset(&board_info, 0, sizeof(board_info));
+	strncpy(board_info.name, "intel_kpd_led", 16);
+	board_info.bus_id = IPC_SCU;
+	board_info.id = -1;
+
+	ret = ipc_new_device(&board_info);
+	if (ret) {
+		pr_err("failed to create ipc device: intel_kpd_led\n");
+		return -1;
 	}
+
 	return 0;
 }
 fs_initcall(intel_kpd_led_init);
 #endif
 
+static int __init intel_msic_thermal_init(void)
+{
+	int ret;
+	struct ipc_board_info board_info;
+
+	memset(&board_info, 0, sizeof(board_info));
+	strncpy(board_info.name, "msic_thermal", 16);
+	board_info.bus_id = IPC_SCU;
+	board_info.id = -1;
+
+	ret = ipc_new_device(&board_info);
+	if (ret) {
+		pr_err("failed to create ipc device: msic_thermal\n");
+		return -1;
+	}
+
+	return 0;
+}
+fs_initcall(intel_msic_thermal_init);
 
 
 #ifdef CONFIG_SWITCH_MID

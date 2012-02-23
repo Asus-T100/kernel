@@ -23,7 +23,7 @@
 #include <linux/gpio.h>
 #include <linux/gpio_keys.h>
 #include <linux/input.h>
-#include <linux/platform_device.h>
+#include <linux/ipc_device.h>
 #include <linux/irq.h>
 #include <linux/module.h>
 #include <linux/notifier.h>
@@ -400,10 +400,6 @@ int get_gpio_by_name(const char *name)
 	return -1;
 }
 
-#define MAX_IPCDEVS	24
-static struct platform_device *ipc_devs[MAX_IPCDEVS];
-static int ipc_next_dev;
-
 #define MAX_SCU_SPI	24
 static struct spi_board_info *spi_devs[MAX_SCU_SPI];
 static int spi_next_dev;
@@ -412,14 +408,6 @@ static int spi_next_dev;
 static struct i2c_board_info *i2c_devs[MAX_SCU_I2C];
 static int i2c_bus[MAX_SCU_I2C];
 static int i2c_next_dev;
-
-void __init intel_scu_device_register(struct platform_device *pdev)
-{
-	if (ipc_next_dev == MAX_IPCDEVS)
-		pr_err("too many SCU IPC devices");
-	else
-		ipc_devs[ipc_next_dev++] = pdev;
-}
 
 static void __init intel_scu_spi_device_register(struct spi_board_info *sdev)
 {
@@ -463,10 +451,6 @@ static void __init intel_scu_i2c_device_register(int bus,
 	i2c_devs[i2c_next_dev++] = new_dev;
 }
 
-struct blocking_notifier_head intel_scu_notifier =
-			BLOCKING_NOTIFIER_INIT(intel_scu_notifier);
-EXPORT_SYMBOL_GPL(intel_scu_notifier);
-
 #define MAX_DELAYEDDEVS 60
 static void *delayed_devs[MAX_DELAYEDDEVS];
 typedef void (*delayed_callback_t)(void *dev_desc);
@@ -481,51 +465,49 @@ void intel_delayed_device_register(void *dev,
 	BUG_ON(delayed_next_dev == MAX_DELAYEDDEVS);
 }
 
-
-/* Called by IPC driver */
-void intel_scu_devices_create(void)
+/* Called by IPC driver, and we have only one IPC bus */
+void intel_scu_devices_create(int bus_id)
 {
 	int i;
 
-	for (i = 0; i < delayed_next_dev; i++)
-		delayed_callbacks[i](delayed_devs[i]);
+	if (bus_id == IPC_SCU) {
 
-	for (i = 0; i < ipc_next_dev; i++)
-		platform_device_add(ipc_devs[i]);
+		ipc_register_devices(bus_id);
 
-	for (i = 0; i < spi_next_dev; i++)
-		spi_register_board_info(spi_devs[i], 1);
+		for (i = 0; i < delayed_next_dev; i++)
+			delayed_callbacks[i](delayed_devs[i]);
 
-	for (i = 0; i < i2c_next_dev; i++) {
-		struct i2c_adapter *adapter;
-		struct i2c_client *client;
+		for (i = 0; i < spi_next_dev; i++)
+			spi_register_board_info(spi_devs[i], 1);
 
-		adapter = i2c_get_adapter(i2c_bus[i]);
-		if (adapter) {
-			client = i2c_new_device(adapter, i2c_devs[i]);
-			if (!client)
-				pr_err("can't create i2c device %s\n",
-					i2c_devs[i]->type);
-		} else
-			i2c_register_board_info(i2c_bus[i], i2c_devs[i], 1);
+		for (i = 0; i < i2c_next_dev; i++) {
+			struct i2c_adapter *adapter;
+			struct i2c_client *client;
+
+			adapter = i2c_get_adapter(i2c_bus[i]);
+			if (adapter) {
+				client = i2c_new_device(adapter, i2c_devs[i]);
+				if (!client)
+					pr_err("can't create i2c device %s\n",
+							i2c_devs[i]->type);
+			} else
+				i2c_register_board_info(i2c_bus[i],
+						i2c_devs[i], 1);
+		}
 	}
-	intel_scu_notifier_post(SCU_AVAILABLE, 0L);
+
 }
 EXPORT_SYMBOL_GPL(intel_scu_devices_create);
 
 /* Called by IPC driver */
-void intel_scu_devices_destroy(void)
+void intel_scu_devices_destroy(int bus_id)
 {
-	int i;
-
-	intel_scu_notifier_post(SCU_DOWN, 0L);
-
-	for (i = 0; i < ipc_next_dev; i++)
-		platform_device_del(ipc_devs[i]);
+	if (bus_id == IPC_SCU)
+		ipc_remove_devices(bus_id);
 }
 EXPORT_SYMBOL_GPL(intel_scu_devices_destroy);
 
-void __init install_irq_resource(struct platform_device *pdev, int irq)
+void __init install_ipc_irq_resource(struct ipc_device *ipcdev, int irq)
 {
 	/* Single threaded */
 	static struct resource __initdata res = {
@@ -533,27 +515,31 @@ void __init install_irq_resource(struct platform_device *pdev, int irq)
 		.flags = IORESOURCE_IRQ,
 	};
 	res.start = irq;
-	platform_device_add_resources(pdev, &res, 1);
+	ipc_device_add_resources(ipcdev, &res, 1);
 }
 
 static void __init sfi_handle_ipc_dev(struct sfi_device_table_entry *pentry,
 					struct devs_id *dev)
 {
-	struct platform_device *pdev;
+	struct ipc_device *ipcdev;
 	void *pdata = NULL;
-	pr_info("IPC bus, name = %16.16s, "
-		"irq = 0x%2x\n", pentry->name, pentry->irq);
+
+	pr_info("IPC bus = %d, name = %16.16s, "
+		"irq = 0x%2x\n", pentry->host_num, pentry->name, pentry->irq);
+
 	pdata = dev->get_platform_data(pentry);
-	pdev = platform_device_alloc(pentry->name, 0);
-	if (pdev == NULL) {
-		pr_err("out of memory for SFI platform device '%s'.\n",
+
+	ipcdev = ipc_device_alloc(pentry->name, 0);
+	if (ipcdev == NULL) {
+		pr_err("out of memory for SFI ipc device '%s'.\n",
 			pentry->name);
 		return;
 	}
-	install_irq_resource(pdev, pentry->irq);
 
-	pdev->dev.platform_data = pdata;
-	intel_scu_device_register(pdev);
+	install_ipc_irq_resource(ipcdev, pentry->irq);
+
+	ipcdev->dev.platform_data = pdata;
+	ipc_device_add_to_list(ipcdev);
 }
 
 static void __init sfi_handle_spi_dev(struct sfi_device_table_entry *pentry,

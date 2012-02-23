@@ -33,7 +33,7 @@
 #include <linux/kfifo.h>
 #include <linux/param.h>
 #include <linux/device.h>
-#include <linux/platform_device.h>
+#include <linux/ipc_device.h>
 #include <linux/power_supply.h>
 #include <linux/io.h>
 #include <linux/sched.h>
@@ -257,9 +257,9 @@ EXPORT_SYMBOL(intel_msic_get_vsys_min);
 
 int intel_msic_is_current_sense_enabled(void)
 {
-	struct platform_device *pdev = container_of(msic_dev,
-					struct platform_device, dev);
-	struct msic_power_module_info *mbi = platform_get_drvdata(pdev);
+	struct ipc_device *ipcdev = container_of(msic_dev,
+					struct ipc_device, dev);
+	struct msic_power_module_info *mbi = ipc_get_drvdata(ipcdev);
 
 	return mbi->is_batt_valid;
 }
@@ -267,9 +267,9 @@ EXPORT_SYMBOL(intel_msic_is_current_sense_enabled);
 
 int intel_msic_check_battery_present(void)
 {
-	struct platform_device *pdev = container_of(msic_dev,
-					struct platform_device, dev);
-	struct msic_power_module_info *mbi = platform_get_drvdata(pdev);
+	struct ipc_device *ipcdev = container_of(msic_dev,
+					struct ipc_device, dev);
+	struct msic_power_module_info *mbi = ipc_get_drvdata(ipcdev);
 	int val;
 
 	mutex_lock(&mbi->batt_lock);
@@ -282,9 +282,9 @@ EXPORT_SYMBOL(intel_msic_check_battery_present);
 
 int intel_msic_check_battery_health(void)
 {
-	struct platform_device *pdev = container_of(msic_dev,
-					struct platform_device, dev);
-	struct msic_power_module_info *mbi = platform_get_drvdata(pdev);
+	struct ipc_device *ipcdev = container_of(msic_dev,
+					struct ipc_device, dev);
+	struct msic_power_module_info *mbi = ipc_get_drvdata(ipcdev);
 	int val;
 
 	mutex_lock(&mbi->batt_lock);
@@ -297,9 +297,9 @@ EXPORT_SYMBOL(intel_msic_check_battery_health);
 
 int intel_msic_check_battery_status(void)
 {
-	struct platform_device *pdev = container_of(msic_dev,
-					struct platform_device, dev);
-	struct msic_power_module_info *mbi = platform_get_drvdata(pdev);
+	struct ipc_device *ipcdev = container_of(msic_dev,
+					struct ipc_device, dev);
+	struct msic_power_module_info *mbi = ipc_get_drvdata(ipcdev);
 	int val;
 
 	mutex_lock(&mbi->batt_lock);
@@ -338,9 +338,9 @@ static inline int handle_ipc_rw_status(int error_val,
 		const u16 address, char rw)
 {
 
-	struct platform_device *pdev = container_of(msic_dev,
-					struct platform_device, dev);
-	struct msic_power_module_info *mbi = platform_get_drvdata(pdev);
+	struct ipc_device *ipcdev = container_of(msic_dev,
+					struct ipc_device, dev);
+	struct msic_power_module_info *mbi = ipc_get_drvdata(ipcdev);
 
 	/*
 	* Write to protected registers in unsigned kernel
@@ -598,7 +598,7 @@ static int mdf_multi_read_adc_regs(struct msic_power_module_info *mbi,
 					   &adc_sensor_vals
 						[MSIC_ADC_BATTID_IDX]);
 		if (ret) {
-			dev_err(&mbi->pdev->dev,
+			dev_err(&mbi->ipcdev->dev,
 				"adc driver api returned error(%d)\n", ret);
 			mutex_unlock(&mbi->adc_val_lock);
 			goto adc_multi_exit;
@@ -631,7 +631,7 @@ static int mdf_multi_read_adc_regs(struct msic_power_module_info *mbi,
 			tmp = *adc_val;
 			break;
 		default:
-			dev_err(&mbi->pdev->dev, "invalid sensor%d", sensor);
+			dev_err(&mbi->ipcdev->dev, "invalid sensor%d", sensor);
 			return -EINVAL;
 		}
 		*adc_val = tmp;
@@ -649,16 +649,16 @@ static int mdf_read_adc_regs(int sensor, int *sensor_val,
 	ret = mdf_multi_read_adc_regs(mbi, 1, 1, sensor, sensor_val);
 
 	if (ret)
-		dev_err(&mbi->pdev->dev, "%s:mdf_multi_read_adc_regs failed",
+		dev_err(&mbi->ipcdev->dev, "%s:mdf_multi_read_adc_regs failed",
 			__func__);
 	return ret;
 }
 
 int intel_msic_get_battery_pack_temp(int *temp)
 {
-	struct platform_device *pdev = container_of(msic_dev,
-					struct platform_device, dev);
-	struct msic_power_module_info *mbi = platform_get_drvdata(pdev);
+	struct ipc_device *ipcdev = container_of(msic_dev,
+					struct ipc_device, dev);
+	struct msic_power_module_info *mbi = ipc_get_drvdata(ipcdev);
 
 	/* check if msic charger is ready */
 	if (!power_supply_get_by_name(CHARGER_PS_NAME))
@@ -744,9 +744,9 @@ static bool is_charger_fault(void)
 	uint8_t fault_reg, chrctrl_reg, stat, spwrsrcint_reg;
 	int chr_mode, retval = 0;
 	int adc_temp, adc_usb_volt, batt_volt;
-	struct platform_device *pdev = container_of(msic_dev,
-					struct platform_device, dev);
-	struct msic_power_module_info *mbi = platform_get_drvdata(pdev);
+	struct ipc_device *ipcdev = container_of(msic_dev,
+					struct ipc_device, dev);
+	struct msic_power_module_info *mbi = ipc_get_drvdata(ipcdev);
 
 	mutex_lock(&mbi->event_lock);
 	chr_mode = mbi->charging_mode;
@@ -1911,7 +1911,7 @@ static int msic_event_handler(void *arg, int event, struct otg_bc_cap *cap)
 
 	switch (event) {
 	case USBCHRG_EVENT_CONNECT:
-		pm_runtime_get_sync(&mbi->pdev->dev);
+		pm_runtime_get_sync(&mbi->ipcdev->dev);
 	case USBCHRG_EVENT_RESUME:
 	case USBCHRG_EVENT_UPDATE:
 		/*
@@ -1941,7 +1941,7 @@ static int msic_event_handler(void *arg, int event, struct otg_bc_cap *cap)
 		schedule_delayed_work(&mbi->connect_handler, 0);
 		break;
 	case USBCHRG_EVENT_DISCONN:
-		pm_runtime_put_sync(&mbi->pdev->dev);
+		pm_runtime_put_sync(&mbi->ipcdev->dev);
 	case USBCHRG_EVENT_SUSPEND:
 		dev_info(msic_dev, "USB DISCONN or SUSPEND\n");
 		cancel_delayed_work_sync(&mbi->connect_handler);
@@ -2010,7 +2010,7 @@ static void msic_status_monitor(struct work_struct *work)
 	    container_of(work, struct msic_power_module_info,
 			 chr_status_monitor.work);
 
-	pm_runtime_get_sync(&mbi->pdev->dev);
+	pm_runtime_get_sync(&mbi->ipcdev->dev);
 
 	mutex_lock(&mbi->event_lock);
 	chr_mode = mbi->charging_mode;
@@ -2044,7 +2044,7 @@ static void msic_status_monitor(struct work_struct *work)
 	power_supply_changed(&mbi->usb);
 	schedule_delayed_work(&mbi->chr_status_monitor, delay);
 
-	pm_runtime_put_sync(&mbi->pdev->dev);
+	pm_runtime_put_sync(&mbi->ipcdev->dev);
 }
 
 /**
@@ -2065,7 +2065,7 @@ static irqreturn_t msic_battery_interrupt_handler(int id, void *dev)
 	 * using any lock to protect fifo.
 	 */
 	if (unlikely(kfifo_is_full(&irq_fifo))) {
-		dev_warn(&mbi->pdev->dev, "KFIFO Full\n");
+		dev_warn(&mbi->ipcdev->dev, "KFIFO Full\n");
 		return IRQ_WAKE_THREAD;
 	}
 	/* Copy Interrupt registers locally */
@@ -2255,9 +2255,9 @@ static ssize_t set_chrg_enable(struct device *dev,
 			       struct device_attribute *attr, const char *buf,
 			       size_t count)
 {
-	struct platform_device *pdev =
-	    container_of(dev, struct platform_device, dev);
-	struct msic_power_module_info *mbi = platform_get_drvdata(pdev);
+	struct ipc_device *ipcdev =
+	    container_of(dev, struct ipc_device, dev);
+	struct msic_power_module_info *mbi = ipc_get_drvdata(ipcdev);
 	unsigned long value;
 	int retval, chr_mode;
 
@@ -2311,9 +2311,9 @@ static ssize_t set_chrg_enable(struct device *dev,
 static ssize_t get_chrg_enable(struct device *dev,
 			       struct device_attribute *attr, char *buf)
 {
-	struct platform_device *pdev =
-	    container_of(dev, struct platform_device, dev);
-	struct msic_power_module_info *mbi = platform_get_drvdata(pdev);
+	struct ipc_device *ipcdev =
+	    container_of(dev, struct ipc_device, dev);
+	struct msic_power_module_info *mbi = ipc_get_drvdata(ipcdev);
 	unsigned int val;
 
 	mutex_lock(&mbi->event_lock);
@@ -2368,9 +2368,9 @@ static int __init sfi_table_populate(struct sfi_table_header *table)
 {
 	struct sfi_table_simple *sb;
 	struct msic_batt_sfi_prop *pentry;
-	struct platform_device *pdev =
-	    container_of(msic_dev, struct platform_device, dev);
-	struct msic_power_module_info *mbi = platform_get_drvdata(pdev);
+	struct ipc_device *ipcdev =
+	    container_of(msic_dev, struct ipc_device, dev);
+	struct msic_power_module_info *mbi = ipc_get_drvdata(ipcdev);
 	int totentrs = 0, totlen = 0;
 
 	sb = (struct sfi_table_simple *)table;
@@ -2535,13 +2535,13 @@ static int init_msic_regs(struct msic_power_module_info *mbi)
 
 /**
  * msic_battery_probe - msic battery initialize
- * @pdev: msic battery platform device structure
+ * @ipcdev: msic battery ipc device structure
  * Context: can sleep
  *
  * MSIC battery initializes its internal data structure and other
  * infrastructure components for it to work as expected.
  */
-static int msic_battery_probe(struct platform_device *pdev)
+static int msic_battery_probe(struct ipc_device *ipcdev)
 {
 	int retval, read_temp;
 	uint8_t data;
@@ -2549,14 +2549,14 @@ static int msic_battery_probe(struct platform_device *pdev)
 
 	mbi = kzalloc(sizeof(struct msic_power_module_info), GFP_KERNEL);
 	if (!mbi) {
-		dev_err(&pdev->dev, "%s(): memory allocation failed\n",
+		dev_err(&ipcdev->dev, "%s(): memory allocation failed\n",
 			__func__);
 		return -ENOMEM;
 	}
 
 	sfi_table = kzalloc(sizeof(struct msic_batt_sfi_prop), GFP_KERNEL);
 	if (!sfi_table) {
-		dev_err(&pdev->dev, "%s(): memory allocation failed\n",
+		dev_err(&ipcdev->dev, "%s(): memory allocation failed\n",
 			__func__);
 		kfree(mbi);
 		return -ENOMEM;
@@ -2564,17 +2564,17 @@ static int msic_battery_probe(struct platform_device *pdev)
 	batt_thrshlds = kzalloc(sizeof(struct batt_safety_thresholds),
 				GFP_KERNEL);
 	if (!batt_thrshlds) {
-		dev_err(&pdev->dev, "%s(): memory allocation failed\n",
+		dev_err(&ipcdev->dev, "%s(): memory allocation failed\n",
 			__func__);
 		kfree(sfi_table);
 		kfree(mbi);
 		return -ENOMEM;
 	}
 
-	mbi->pdev = pdev;
-	mbi->irq = platform_get_irq(pdev, 0);
-	platform_set_drvdata(pdev, mbi);
-	msic_dev = &pdev->dev;
+	mbi->ipcdev = ipcdev;
+	mbi->irq = ipc_get_irq(ipcdev, 0);
+	ipc_set_drvdata(ipcdev, mbi);
+	msic_dev = &ipcdev->dev;
 
 	/* initialize all required framework before enabling interrupts */
 
@@ -2604,7 +2604,7 @@ static int msic_battery_probe(struct platform_device *pdev)
 				  MSIC_USB_VOLTAGE | CH_NEED_VCALIB,
 				  MSIC_BATTID | CH_NEED_VREF | CH_NEED_VCALIB);
 	if (mbi->adc_handle == NULL)
-		dev_err(&pdev->dev, "ADC allocation failed\n");
+		dev_err(&ipcdev->dev, "ADC allocation failed\n");
 
 	/* check for valid SFI table entry for OEM0 table */
 	if (sfi_table_parse(SFI_SIG_OEM0, NULL, NULL, sfi_table_populate)) {
@@ -2620,7 +2620,7 @@ static int msic_battery_probe(struct platform_device *pdev)
 	/* Re Map Phy address space for MSIC regs */
 	mbi->msic_intr_iomap = ioremap_nocache(MSIC_SRAM_INTR_ADDR, 8);
 	if (!mbi->msic_intr_iomap) {
-		dev_err(&pdev->dev, "battery: ioremap Failed\n");
+		dev_err(&ipcdev->dev, "battery: ioremap Failed\n");
 		retval = -ENOMEM;
 		goto ioremap_intr_failed;
 	}
@@ -2628,7 +2628,7 @@ static int msic_battery_probe(struct platform_device *pdev)
 	/* Init MSIC Registers */
 	retval = init_msic_regs(mbi);
 	if (retval < 0)
-		dev_err(&pdev->dev, "MSIC registers init failed\n");
+		dev_err(&ipcdev->dev, "MSIC registers init failed\n");
 
 	/* register msic-usb with power supply subsystem */
 	mbi->usb.name = CHARGER_PS_NAME;
@@ -2638,36 +2638,36 @@ static int msic_battery_probe(struct platform_device *pdev)
 	mbi->usb.properties = msic_usb_props;
 	mbi->usb.num_properties = ARRAY_SIZE(msic_usb_props);
 	mbi->usb.get_property = msic_usb_get_property;
-	retval = power_supply_register(&pdev->dev, &mbi->usb);
+	retval = power_supply_register(&ipcdev->dev, &mbi->usb);
 	if (retval) {
-		dev_err(&pdev->dev, "%s(): failed to register msic usb "
+		dev_err(&ipcdev->dev, "%s(): failed to register msic usb "
 			"device with power supply subsystem\n", __func__);
 		goto power_reg_failed_usb;
 	}
 
-	retval = device_create_file(&pdev->dev, &dev_attr_charge_enable);
+	retval = device_create_file(&ipcdev->dev, &dev_attr_charge_enable);
 	if (retval)
 		goto  sysfs1_create_failed;
-	retval = device_create_file(&pdev->dev, &dev_attr_power_supply_conn);
+	retval = device_create_file(&ipcdev->dev, &dev_attr_power_supply_conn);
 	if (retval)
 		goto sysfs2_create_failed;
 	/* Register with OTG */
 	otg_handle = penwell_otg_register_bc_callback(msic_charger_callback,
 						      (void *)mbi);
 	if (!otg_handle) {
-		dev_err(&pdev->dev, "battery: OTG Registration failed\n");
+		dev_err(&ipcdev->dev, "battery: OTG Registration failed\n");
 		retval = -EBUSY;
 		goto otg_failed;
 	}
 
 	/* Init Runtime PM State */
-	pm_runtime_put_noidle(&mbi->pdev->dev);
-	pm_schedule_suspend(&mbi->pdev->dev, MSEC_PER_SEC);
+	pm_runtime_put_noidle(&mbi->ipcdev->dev);
+	pm_schedule_suspend(&mbi->ipcdev->dev, MSEC_PER_SEC);
 
 	/* Check if already exist a Charger connection */
 	retval = check_charger_conn(mbi);
 	if (retval)
-		dev_err(&pdev->dev, "check charger Conn failed\n");
+		dev_err(&ipcdev->dev, "check charger Conn failed\n");
 
 	mbi->chrint_mask = CHRINT_MASK;
 	mbi->chrint1_mask = CHRINT1_MASK;
@@ -2689,7 +2689,7 @@ static int msic_battery_probe(struct platform_device *pdev)
 				      msic_battery_thread_handler,
 				      IRQF_NO_SUSPEND, DRIVER_NAME, mbi);
 	if (retval) {
-		dev_err(&pdev->dev, "%s(): cannot get IRQ\n", __func__);
+		dev_err(&ipcdev->dev, "%s(): cannot get IRQ\n", __func__);
 		goto requestirq_failed;
 	}
 
@@ -2739,9 +2739,9 @@ static int msic_battery_probe(struct platform_device *pdev)
 requestirq_failed:
 	penwell_otg_unregister_bc_callback(otg_handle);
 otg_failed:
-	device_remove_file(&pdev->dev, &dev_attr_power_supply_conn);
+	device_remove_file(&ipcdev->dev, &dev_attr_power_supply_conn);
 sysfs2_create_failed:
-	device_remove_file(&pdev->dev, &dev_attr_charge_enable);
+	device_remove_file(&ipcdev->dev, &dev_attr_charge_enable);
 sysfs1_create_failed:
 	power_supply_unregister(&mbi->usb);
 power_reg_failed_usb:
@@ -2765,28 +2765,28 @@ static void do_exit_ops(struct msic_power_module_info *mbi)
 
 /**
  * msic_battery_remove - msic battery finalize
- * @pdev: msic battery platform  device structure
+ * @ipcdev: msic battery ipc device structure
  * Context: can sleep
  *
  * MSIC battery finalizes its internal data structure and other
  * infrastructure components that it initialized in
  * msic_battery_probe.
  */
-static int msic_battery_remove(struct platform_device *pdev)
+static int msic_battery_remove(struct ipc_device *ipcdev)
 {
-	struct msic_power_module_info *mbi = platform_get_drvdata(pdev);
+	struct msic_power_module_info *mbi = ipc_get_drvdata(ipcdev);
 
 	if (mbi) {
 		penwell_otg_unregister_bc_callback(otg_handle);
 		flush_scheduled_work();
 		intel_mid_gpadc_free(mbi->adc_handle);
 		free_irq(mbi->irq, mbi);
-		pm_runtime_get_noresume(&mbi->pdev->dev);
+		pm_runtime_get_noresume(&mbi->ipcdev->dev);
 		do_exit_ops(mbi);
 		if (mbi->msic_intr_iomap != NULL)
 			iounmap(mbi->msic_intr_iomap);
-		device_remove_file(&pdev->dev, &dev_attr_charge_enable);
-		device_remove_file(&pdev->dev, &dev_attr_power_supply_conn);
+		device_remove_file(&ipcdev->dev, &dev_attr_charge_enable);
+		device_remove_file(&ipcdev->dev, &dev_attr_power_supply_conn);
 		power_supply_unregister(&mbi->usb);
 		wake_lock_destroy(&mbi->wakelock);
 
@@ -2801,9 +2801,9 @@ static int msic_battery_remove(struct platform_device *pdev)
 static int battery_reboot_notifier_callback(struct notifier_block *notifier,
 		unsigned long event, void *data)
 {
-	struct platform_device *pdev = container_of(msic_dev,
-					struct platform_device, dev);
-	struct msic_power_module_info *mbi = platform_get_drvdata(pdev);
+	struct ipc_device *ipcdev = container_of(msic_dev,
+					struct ipc_device, dev);
+	struct msic_power_module_info *mbi = ipc_get_drvdata(ipcdev);
 
 	if (mbi)
 		do_exit_ops(mbi);
@@ -2825,7 +2825,7 @@ static int msic_battery_suspend(struct device *dev)
 	    event == USBCHRG_EVENT_UPDATE || event == USBCHRG_EVENT_RESUME) {
 
 		msic_event_handler(mbi, USBCHRG_EVENT_SUSPEND, NULL);
-		dev_dbg(&mbi->pdev->dev, "Forced suspend\n");
+		dev_dbg(&mbi->ipcdev->dev, "Forced suspend\n");
 	}
 
 	cancel_delayed_work_sync(&mbi->chr_status_monitor);
@@ -2876,9 +2876,9 @@ static int msic_runtime_resume(struct device *dev)
 
 static int msic_runtime_idle(struct device *dev)
 {
-	struct platform_device *pdev =
-	    container_of(dev, struct platform_device, dev);
-	struct msic_power_module_info *mbi = platform_get_drvdata(pdev);
+	struct ipc_device *ipcdev =
+	    container_of(dev, struct ipc_device, dev);
+	struct msic_power_module_info *mbi = ipc_get_drvdata(ipcdev);
 	int event;
 
 	dev_dbg(dev, "%s called\n", __func__);
@@ -2890,7 +2890,7 @@ static int msic_runtime_idle(struct device *dev)
 	if (event == USBCHRG_EVENT_CONNECT ||
 	    event == USBCHRG_EVENT_UPDATE || event == USBCHRG_EVENT_RESUME) {
 
-		dev_warn(&mbi->pdev->dev, "%s: device busy\n", __func__);
+		dev_warn(&mbi->ipcdev->dev, "%s: device busy\n", __func__);
 
 		return -EBUSY;
 	}
@@ -2906,7 +2906,7 @@ static int msic_runtime_idle(struct device *dev)
  *		Driver initialisation and finalization
  *********************************************************************/
 
-static const struct platform_device_id battery_id_table[] = {
+static const struct ipc_device_id battery_id_table[] = {
 	{"msic_battery", 1},
 };
 
@@ -2918,7 +2918,7 @@ static const struct dev_pm_ops msic_batt_pm_ops = {
 	.runtime_idle = msic_runtime_idle,
 };
 
-static struct platform_driver msic_battery_driver = {
+static struct ipc_driver msic_battery_driver = {
 	.driver = {
 		   .name = DRIVER_NAME,
 		   .owner = THIS_MODULE,
@@ -2933,7 +2933,7 @@ static int __init msic_battery_module_init(void)
 {
 	int ret;
 
-	ret = platform_driver_register(&msic_battery_driver);
+	ret = ipc_driver_register(&msic_battery_driver);
 	if (ret)
 		dev_err(msic_dev, "driver_register failed");
 
@@ -2946,7 +2946,7 @@ static int __init msic_battery_module_init(void)
 static void __exit msic_battery_module_exit(void)
 {
 	unregister_reboot_notifier(&battery_reboot_notifier);
-	platform_driver_unregister(&msic_battery_driver);
+	ipc_driver_unregister(&msic_battery_driver);
 }
 
 late_initcall_async(msic_battery_module_init);

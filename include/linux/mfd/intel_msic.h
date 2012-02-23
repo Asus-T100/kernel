@@ -54,6 +54,15 @@
 #define INTEL_MSIC_PBCONFIG		0x03e
 #define INTEL_MSIC_PBSTATUS		0x03f	/* RO */
 
+/*
+ * MSIC interrupt tree is readable from SRAM at INTEL_MSIC_IRQ_PHYS_BASE.
+ * Since IRQ block starts from address 0x002 we need to substract that from
+ * the actual IRQ status register address.
+ */
+#define MSIC_IRQ_STATUS(x)      (INTEL_MSIC_IRQ_PHYS_BASE + ((x) - 2))
+#define MSIC_IRQ_STATUS_ACCDET  MSIC_IRQ_STATUS(INTEL_MSIC_ACCDET)
+#define MSIC_IRQ_STATUS_OCAUDIO MSIC_IRQ_STATUS(INTEL_MSIC_OCAUDIO)
+
 /* GPIO */
 #define INTEL_MSIC_GPIO0LV7CTLO		0x040
 #define INTEL_MSIC_GPIO0LV6CTLO		0x041

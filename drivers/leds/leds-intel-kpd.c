@@ -24,7 +24,7 @@
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/device.h>
-#include <linux/platform_device.h>
+#include <linux/ipc_device.h>
 #include <linux/leds.h>
 #include <linux/earlysuspend.h>
 #include <asm/intel_scu_ipc.h>
@@ -81,13 +81,13 @@ static struct early_suspend intel_kpd_led_suspend_desc = {
 	.resume  = intel_kpd_led_late_resume,
 };
 
-static int __devinit intel_kpd_led_probe(struct platform_device *pdev)
+static int __devinit intel_kpd_led_probe(struct ipc_device *ipcdev)
 {
 	int ret;
 
-	ret = led_classdev_register(&pdev->dev, &intel_kpd_led);
+	ret = led_classdev_register(&ipcdev->dev, &intel_kpd_led);
 	if (ret) {
-		dev_err(&pdev->dev, "register intel_kpd_led failed");
+		dev_err(&ipcdev->dev, "register intel_kpd_led failed");
 		return ret;
 	}
 	intel_keypad_led_set(&intel_kpd_led, intel_kpd_led.brightness);
@@ -96,7 +96,7 @@ static int __devinit intel_kpd_led_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int __devexit intel_kpd_led_remove(struct platform_device *pdev)
+static int __devexit intel_kpd_led_remove(struct ipc_device *ipcdev)
 {
 	intel_keypad_led_set(&intel_kpd_led, LED_OFF);
 	unregister_early_suspend(&intel_kpd_led_suspend_desc);
@@ -105,7 +105,7 @@ static int __devexit intel_kpd_led_remove(struct platform_device *pdev)
 	return 0;
 }
 
-static struct platform_driver kpd_led_driver = {
+static struct ipc_driver kpd_led_driver = {
 	.driver = {
 		   .name = "intel_kpd_led",
 		   .owner = THIS_MODULE,
@@ -117,13 +117,13 @@ static struct platform_driver kpd_led_driver = {
 static int __init intel_kpd_led_init(void)
 {
 	int ret;
-	ret = platform_driver_register(&kpd_led_driver);
+	ret = ipc_driver_register(&kpd_led_driver);
 	return ret;
 }
 
 static void __exit intel_kpd_led_exit(void)
 {
-	platform_driver_unregister(&kpd_led_driver);
+	ipc_driver_unregister(&kpd_led_driver);
 }
 
 module_init(intel_kpd_led_init);

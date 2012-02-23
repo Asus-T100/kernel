@@ -31,7 +31,7 @@
 #include <linux/device.h>
 #include <linux/delay.h>
 #include <linux/sched.h>
-#include <linux/platform_device.h>
+#include <linux/ipc_device.h>
 #include <linux/pm_qos_params.h>
 #include <linux/intel_mid_pm.h>
 #include <linux/workqueue.h>
@@ -767,27 +767,27 @@ static struct attribute_group intel_mid_gpadc_attr_group = {
 	.attrs = intel_mid_gpadc_attrs,
 };
 
-static int __devinit msic_gpadc_probe(struct platform_device *pdev)
+static int __devinit msic_gpadc_probe(struct ipc_device *ipcdev)
 {
 	struct gpadc_info *mgi = &gpadc_info;
-	struct intel_mid_gpadc_platform_data *pdata = pdev->dev.platform_data;
+	struct intel_mid_gpadc_platform_data *pdata = ipcdev->dev.platform_data;
 	int err = 0;
 
 	mutex_init(&mgi->lock);
 	init_waitqueue_head(&mgi->wait);
 	init_waitqueue_head(&mgi->trimming_wait);
-	mgi->workq = create_singlethread_workqueue(dev_name(&pdev->dev));
+	mgi->workq = create_singlethread_workqueue(dev_name(&ipcdev->dev));
 	if (mgi->workq == NULL)
 		return -ENOMEM;
 
-	mgi->dev = &pdev->dev;
+	mgi->dev = &ipcdev->dev;
 	mgi->intr = ioremap_nocache(pdata->intr, 4);
-	mgi->irq = platform_get_irq(pdev, 0);
+	mgi->irq = ipc_get_irq(ipcdev, 0);
 
 	gpadc_clear_bits(IRQLVL1MSK, IRQLVL1MSK_ADCM);
 	if (request_threaded_irq(mgi->irq, msic_gpadc_isr, msic_gpadc_irq,
 					IRQF_ONESHOT, "msic_adc", mgi)) {
-		dev_err(&pdev->dev, "unable to register irq %d\n", mgi->irq);
+		dev_err(&ipcdev->dev, "unable to register irq %d\n", mgi->irq);
 		err = -ENODEV;
 		goto err_exit;
 	}
@@ -801,9 +801,10 @@ static int __devinit msic_gpadc_probe(struct platform_device *pdev)
 
 	init_completion(&gsmadc_complete);
 
-	err = sysfs_create_group(&pdev->dev.kobj, &intel_mid_gpadc_attr_group);
+	err = sysfs_create_group(&ipcdev->dev.kobj,
+			&intel_mid_gpadc_attr_group);
 	if (err) {
-		dev_err(&pdev->dev, "Unable to export sysfs interface, error: %d\n",
+		dev_err(&ipcdev->dev, "Unable to export sysfs interface, error: %d\n",
 			err);
 		goto err_release_irq;
 	}
@@ -818,11 +819,11 @@ err_exit:
 	return err;
 }
 
-static int __devexit msic_gpadc_remove(struct platform_device *pdev)
+static int __devexit msic_gpadc_remove(struct ipc_device *ipcdev)
 {
 	struct gpadc_info *mgi = &gpadc_info;
 
-	sysfs_remove_group(&pdev->dev.kobj, &intel_mid_gpadc_attr_group);
+	sysfs_remove_group(&ipcdev->dev.kobj, &intel_mid_gpadc_attr_group);
 	free_irq(mgi->irq, mgi);
 	iounmap(mgi->intr);
 	flush_workqueue(mgi->workq);
@@ -859,7 +860,7 @@ static const struct dev_pm_ops msic_gpadc_driver_pm_ops = {
 	.resume_noirq	= msic_gpadc_resume_noirq,
 };
 
-static struct platform_driver msic_gpadc_driver = {
+static struct ipc_driver msic_gpadc_driver = {
 	.driver = {
 		   .name = "msic_adc",
 		   .owner = THIS_MODULE,
@@ -871,12 +872,12 @@ static struct platform_driver msic_gpadc_driver = {
 
 static int __init msic_gpadc_module_init(void)
 {
-	return platform_driver_register(&msic_gpadc_driver);
+	return ipc_driver_register(&msic_gpadc_driver);
 }
 
 static void __exit msic_gpadc_module_exit(void)
 {
-	platform_driver_unregister(&msic_gpadc_driver);
+	ipc_driver_unregister(&msic_gpadc_driver);
 }
 
 module_init(msic_gpadc_module_init);

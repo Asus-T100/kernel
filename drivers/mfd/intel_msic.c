@@ -24,15 +24,6 @@
 #define MSIC_MINOR(id)		(id & 7)
 
 /*
- * MSIC interrupt tree is readable from SRAM at INTEL_MSIC_IRQ_PHYS_BASE.
- * Since IRQ block starts from address 0x002 we need to substract that from
- * the actual IRQ status register address.
- */
-#define MSIC_IRQ_STATUS(x)	(INTEL_MSIC_IRQ_PHYS_BASE + ((x) - 2))
-#define MSIC_IRQ_STATUS_ACCDET	MSIC_IRQ_STATUS(INTEL_MSIC_ACCDET)
-#define MSIC_IRQ_STATUS_OCAUDIO	MSIC_IRQ_STATUS(INTEL_MSIC_OCAUDIO)
-
-/*
  * The SCU hardware has limitation of 16 bytes per read/write buffer on
  * Medfield.
  */

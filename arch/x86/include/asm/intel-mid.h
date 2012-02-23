@@ -158,8 +158,8 @@ extern void hsu_early_console_init(void);
 
 extern struct console early_pti_console;
 
-extern void intel_scu_devices_create(void);
-extern void intel_scu_devices_destroy(void);
+extern void intel_scu_devices_create(int bus_id);
+extern void intel_scu_devices_destroy(int bus_id);
 extern void *cloverview_usb_otg_get_pdata(void);
 
 /* VRTC timer */

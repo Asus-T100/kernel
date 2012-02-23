@@ -27,7 +27,7 @@
 
 #include <linux/module.h>
 #include <linux/init.h>
-#include <linux/platform_device.h>
+#include <linux/ipc_device.h>
 #include <linux/pm.h>
 #include <linux/slab.h>
 #include <linux/hwmon-sysfs.h>
@@ -120,7 +120,7 @@ struct ocd_info {
 	/* Cached value of the status register, since the last interrupt */
 	uint8_t intrpt_status;
 	struct device *dev;
-	struct platform_device *pdev;
+	struct ipc_device *ipcdev;
 };
 
 /*
@@ -775,41 +775,41 @@ static struct attribute_group mid_ocd_gr = {
 	.attrs = mid_ocd_attrs
 };
 
-static int mid_ocd_probe(struct platform_device *pdev)
+static int mid_ocd_probe(struct ipc_device *ipcdev)
 {
 	int ret;
 	struct ocd_info *cinfo = kzalloc(sizeof(struct ocd_info), GFP_KERNEL);
 
 	if (!cinfo) {
-		dev_err(&pdev->dev, "kzalloc failed\n");
+		dev_err(&ipcdev->dev, "kzalloc failed\n");
 		return -ENOMEM;
 	}
 
-	cinfo->pdev = pdev;
-	cinfo->irq = platform_get_irq(pdev, 0);
+	cinfo->ipcdev = ipcdev;
+	cinfo->irq = ipc_get_irq(ipcdev, 0);
 	cinfo->acc_time = jiffies;
-	platform_set_drvdata(pdev, cinfo);
+	ipc_set_drvdata(ipcdev, cinfo);
 
 	/* Read SMIP to obtain BCU configurations for various battery levels */
 	ret = get_bcu_config_from_smip();
 	if (ret) {
-		dev_err(&pdev->dev, "SMIP read failed\n");
+		dev_err(&ipcdev->dev, "SMIP read failed\n");
 		goto ocd_error1;
 	}
 
 	/* Creating a sysfs group with mid_ocd_gr attributes */
-	ret = sysfs_create_group(&pdev->dev.kobj, &mid_ocd_gr);
+	ret = sysfs_create_group(&ipcdev->dev.kobj, &mid_ocd_gr);
 	if (ret) {
-		dev_err(&pdev->dev, "sysfs create group failed\n");
+		dev_err(&ipcdev->dev, "sysfs create group failed\n");
 		goto ocd_error1;
 	}
 
 	/* Registering with hwmon class */
-	cinfo->dev = hwmon_device_register(&pdev->dev);
+	cinfo->dev = hwmon_device_register(&ipcdev->dev);
 	if (IS_ERR(cinfo->dev)) {
 		ret = PTR_ERR(cinfo->dev);
 		cinfo->dev = NULL;
-		dev_err(&pdev->dev, "hwmon_dev_regs failed\n");
+		dev_err(&ipcdev->dev, "hwmon_dev_regs failed\n");
 		goto ocd_error2;
 	}
 
@@ -832,7 +832,7 @@ static int mid_ocd_probe(struct platform_device *pdev)
 	return 0;
 
 ocd_error2:
-	sysfs_remove_group(&pdev->dev.kobj, &mid_ocd_gr);
+	sysfs_remove_group(&ipcdev->dev.kobj, &mid_ocd_gr);
 ocd_error1:
 	kfree(cinfo);
 	return ret;
@@ -849,13 +849,13 @@ static int mid_ocd_suspend(struct device *dev)
 	return disable_sysburst();
 }
 
-static int mid_ocd_remove(struct platform_device *pdev)
+static int mid_ocd_remove(struct ipc_device *ipcdev)
 {
-	struct ocd_info *cinfo = platform_get_drvdata(pdev);
+	struct ocd_info *cinfo = ipc_get_drvdata(ipcdev);
 
 	if (cinfo) {
 		hwmon_device_unregister(cinfo->dev);
-		sysfs_remove_group(&pdev->dev.kobj, &mid_ocd_gr);
+		sysfs_remove_group(&ipcdev->dev.kobj, &mid_ocd_gr);
 		kfree(cinfo);
 	}
 	return 0;
@@ -864,7 +864,7 @@ static int mid_ocd_remove(struct platform_device *pdev)
 /*********************************************************************
  *		Driver initialisation and finalization
  *********************************************************************/
-static const struct platform_device_id ocd_id_table[] = {
+static const struct ipc_device_id ocd_id_table[] = {
 	{ DRIVER_NAME, 1 },
 	{ },
 };
@@ -874,7 +874,7 @@ static const struct dev_pm_ops msic_ocd_pm_ops = {
 	.resume = mid_ocd_resume,
 };
 
-static struct platform_driver mid_over_curr_detect_driver = {
+static struct ipc_driver mid_over_curr_detect_driver = {
 	.driver = {
 		.name = DRIVER_NAME,
 		.owner = THIS_MODULE,
@@ -887,12 +887,12 @@ static struct platform_driver mid_over_curr_detect_driver = {
 
 static int __init mid_ocd_module_init(void)
 {
-	return platform_driver_register(&mid_over_curr_detect_driver);
+	return ipc_driver_register(&mid_over_curr_detect_driver);
 }
 
 static void __exit mid_ocd_module_exit(void)
 {
-	platform_driver_unregister(&mid_over_curr_detect_driver);
+	ipc_driver_unregister(&mid_over_curr_detect_driver);
 }
 
 module_init(mid_ocd_module_init);

@@ -420,7 +420,7 @@ struct msic_charg_props {
  */
 struct msic_power_module_info {
 
-	struct platform_device *pdev;
+	struct ipc_device *ipcdev;
 	bool is_batt_valid;
 
 	/* msic charger data */

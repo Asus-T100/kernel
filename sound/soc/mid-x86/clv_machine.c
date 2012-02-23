@@ -30,6 +30,7 @@
 #include <linux/io.h>
 #include <linux/async.h>
 #include <linux/delay.h>
+#include <linux/ipc_device.h>
 #include <asm/intel_scu_ipc.h>
 #include <sound/intel_sst.h>
 #include <sound/pcm.h>
@@ -77,7 +78,7 @@ static int clv_hw_params(struct snd_pcm_substream *substream,
 
 
 struct clv_mc_private {
-	struct platform_device *socdev;
+	struct ipc_device *socdev;
 	void __iomem *int_base;
 	struct snd_soc_codec *codec;
 };
@@ -329,7 +330,7 @@ static struct snd_soc_card snd_soc_card_clv = {
 	.set_bias_level = clv_set_bias_level,
 };
 
-static int snd_clv_mc_probe(struct platform_device *pdev)
+static int snd_clv_mc_probe(struct ipc_device *ipcdev)
 {
 	int ret_val = 0;
 	struct clv_mc_private *mc_drv_ctx;
@@ -342,15 +343,15 @@ static int snd_clv_mc_probe(struct platform_device *pdev)
 	}
 
 	/* register the soc card */
-	snd_soc_card_clv.dev = &pdev->dev;
+	snd_soc_card_clv.dev = &ipcdev->dev;
 	snd_soc_initialize_card_lists(&snd_soc_card_clv);
 	ret_val = snd_soc_register_card(&snd_soc_card_clv);
 	if (ret_val) {
 		pr_err("snd_soc_register_card failed %d\n", ret_val);
 		goto unalloc;
 	}
-	platform_set_drvdata(pdev, mc_drv_ctx);
-	dev_set_drvdata(&pdev->dev, &snd_soc_card_clv);
+	ipc_set_drvdata(ipcdev, mc_drv_ctx);
+	dev_set_drvdata(&ipcdev->dev, &snd_soc_card_clv);
 	pr_debug("successfully exited probe\n");
 	return ret_val;
 
@@ -359,16 +360,16 @@ unalloc:
 	return ret_val;
 }
 
-static int __devexit snd_clv_mc_remove(struct platform_device *pdev)
+static int __devexit snd_clv_mc_remove(struct ipc_device *ipcdev)
 {
-	struct mfld_mc_private *mc_drv_ctx = platform_get_drvdata(pdev);
+	struct mfld_mc_private *mc_drv_ctx = ipc_get_drvdata(ipcdev);
 
 	pr_debug("In %s\n", __func__);
 	snd_soc_jack_free_gpios(&clv_jack, 1, &hs_jack_gpio);
 	/*snd_soc_jack_free_gpios(&clv_jack, 1, &hs_button_gpio);*/
 	snd_soc_unregister_card(&snd_soc_card_clv);
 	kfree(mc_drv_ctx);
-	platform_set_drvdata(pdev, NULL);
+	ipc_set_drvdata(ipcdev, NULL);
 	return 0;
 }
 const struct dev_pm_ops snd_clv_mc_pm_ops = {
@@ -377,7 +378,7 @@ const struct dev_pm_ops snd_clv_mc_pm_ops = {
 	.poweroff = snd_clv_poweroff,
 };
 
-static struct platform_driver snd_clv_mc_driver = {
+static struct ipc_driver snd_clv_mc_driver = {
 	.driver = {
 		.owner = THIS_MODULE,
 		.name = "clvcs_audio",
@@ -390,7 +391,7 @@ static struct platform_driver snd_clv_mc_driver = {
 static int __init snd_clv_driver_init(void)
 {
 	pr_debug("In %s\n", __func__);
-	return platform_driver_register(&snd_clv_mc_driver);
+	return ipc_driver_register(&snd_clv_mc_driver);
 }
 
 module_init(snd_clv_driver_init);
@@ -398,7 +399,7 @@ module_init(snd_clv_driver_init);
 static void __exit snd_clv_driver_exit(void)
 {
 	pr_debug("In %s\n", __func__);
-	platform_driver_unregister(&snd_clv_mc_driver);
+	ipc_driver_unregister(&snd_clv_mc_driver);
 }
 
 module_exit(snd_clv_driver_exit);
@@ -406,4 +407,4 @@ module_exit(snd_clv_driver_exit);
 MODULE_DESCRIPTION("ASoC Intel(R) Cloverview MID Machine driver");
 MODULE_AUTHOR("Jeeja KP<jeeja.kp@intel.com>");
 MODULE_LICENSE("GPL v2");
-MODULE_ALIAS("platform:clvcs42l73-audio");
+MODULE_ALIAS("ipc:clvcs42l73-audio");
