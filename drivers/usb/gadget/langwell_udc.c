@@ -718,6 +718,8 @@ static int queue_dtd(struct langwell_ep *ep, struct langwell_request *req)
 	int			i;
 	struct langwell_dqh	*dqh;
 	struct langwell_udc	*dev;
+	bool			saw_zero;
+	u32			timeout;
 
 	dev = ep->dev;
 	dev_vdbg(&dev->pdev->dev, "---> %s()\n", __func__);
@@ -753,7 +755,24 @@ static int queue_dtd(struct langwell_ep *ep, struct langwell_request *req)
 		if (readl(&dev->op_regs->endptprime) & bit_mask)
 			goto out;
 
-		do {
+		/* PNW */
+		if (dev->pdev->device != 0xE006) {
+			do {
+
+				/* set ATDTW bit in USBCMD */
+				usbcmd = readl(&dev->op_regs->usbcmd);
+				writel(usbcmd | CMD_ATDTW,
+					&dev->op_regs->usbcmd);
+
+				/* read correct status bit */
+				endptstat =
+				readl(&dev->op_regs->endptstat) & bit_mask;
+
+			} while (!(readl(&dev->op_regs->usbcmd) & CMD_ATDTW));
+
+		} else {
+			saw_zero = false;
+step_3:
 			/* set ATDTW bit in USBCMD */
 			usbcmd = readl(&dev->op_regs->usbcmd);
 			writel(usbcmd | CMD_ATDTW, &dev->op_regs->usbcmd);
@@ -761,8 +780,24 @@ static int queue_dtd(struct langwell_ep *ep, struct langwell_request *req)
 			/* read correct status bit */
 			endptstat = readl(&dev->op_regs->endptstat) & bit_mask;
 
-		} while (!(readl(&dev->op_regs->usbcmd) & CMD_ATDTW));
+			if (!(readl(&dev->op_regs->usbcmd) & CMD_ATDTW)) {
+				saw_zero = true;
+				goto step_3;
+			}
 
+			if (!saw_zero) {
+				timeout = 20;
+				while (timeout &&
+				readl(&dev->op_regs->usbcmd) & CMD_ATDTW)
+					timeout--;
+
+				if (timeout > 0) {
+					saw_zero = true;
+					goto step_3;
+				}
+
+			}
+		}
 		/* write ATDTW bit to 0 */
 		usbcmd = readl(&dev->op_regs->usbcmd);
 		writel(usbcmd & ~CMD_ATDTW, &dev->op_regs->usbcmd);
@@ -3536,12 +3571,6 @@ static int langwell_udc_probe(struct pci_dev *pdev,
 	}
 
 	dev->has_sram = 1;
-
-	/* FIXME: SRAM doesn't work stably with Cloverview */
-	if (pdev->vendor == 0x8086 && pdev->device == 0xE006) {
-		dev_info(&pdev->dev, "Disable SRAM for Cloverview.\n");
-		dev->has_sram = 0;
-	}
 
 	dev->got_sram = 0;
 	dev_vdbg(&dev->pdev->dev, "dev->has_sram: %d\n", dev->has_sram);
