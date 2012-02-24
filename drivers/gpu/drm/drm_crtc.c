@@ -162,6 +162,7 @@ static struct drm_conn_prop_enum_list drm_connector_enum_list[] =
 	{ DRM_MODE_CONNECTOR_HDMIB, "HDMI-B", 0 },
 	{ DRM_MODE_CONNECTOR_TV, "TV", 0 },
 	{ DRM_MODE_CONNECTOR_eDP, "eDP", 0 },
+	{ DRM_MODE_CONNECTOR_MIPI, "MIPI", 0},
 };
 
 static struct drm_prop_enum_list drm_encoder_enum_list[] =
@@ -170,6 +171,7 @@ static struct drm_prop_enum_list drm_encoder_enum_list[] =
 	{ DRM_MODE_ENCODER_TMDS, "TMDS" },
 	{ DRM_MODE_ENCODER_LVDS, "LVDS" },
 	{ DRM_MODE_ENCODER_TVDAC, "TV" },
+	{ DRM_MODE_ENCODER_MIPI, "MIPI"},
 };
 
 char *drm_get_encoder_name(struct drm_encoder *encoder)
@@ -447,6 +449,10 @@ void drm_connector_init(struct drm_device *dev,
 		     const struct drm_connector_funcs *funcs,
 		     int connector_type)
 {
+	if (connector_type >= sizeof(drm_connector_enum_list)/sizeof(*drm_connector_enum_list)) {
+		DRM_ERROR("Invalid index!\n");
+		return;
+	}
 	mutex_lock(&dev->mode_config.mutex);
 
 	connector->dev = dev;

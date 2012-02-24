@@ -125,6 +125,7 @@ struct drm_mode_crtc {
 #define DRM_MODE_ENCODER_TMDS	2
 #define DRM_MODE_ENCODER_LVDS	3
 #define DRM_MODE_ENCODER_TVDAC	4
+#define DRM_MODE_ENCODER_MIPI   5
 
 struct drm_mode_get_encoder {
 	__u32 encoder_id;
