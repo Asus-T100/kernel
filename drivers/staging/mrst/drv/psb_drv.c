@@ -3417,7 +3417,7 @@ static long psb_unlocked_ioctl(struct file *filp, unsigned int cmd,
 	 */
 
 	if ((nr >= DRM_COMMAND_BASE) && (nr < DRM_COMMAND_END)
-	    && (nr < DRM_COMMAND_BASE + dev->driver->num_ioctls)) {
+	    && (nr < DRM_COMMAND_BASE + DRM_ARRAY_SIZE(psb_ioctls))) {
 		struct drm_ioctl_desc *ioctl =
 					&psb_ioctls[nr - DRM_COMMAND_BASE];
 

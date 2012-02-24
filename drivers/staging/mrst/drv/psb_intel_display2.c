@@ -982,7 +982,7 @@ static void mdfld_crtc_dpms(struct drm_crtc *crtc, int mode)
 				 * FIXME: better to move it into the MIPI
 				 * encoder DPMS off process.
 				 */
-				if (get_panel_type(dev, pipe) == AUO_SC1_CMD) {
+				if (get_panel_type(dev, pipe) == AUO_SC1_CMD && pipe < sizeof(dev_priv->dsi_configs)/sizeof(*(dev_priv->dsi_configs))) {
 					dsi_config =
 						dev_priv->dsi_configs[pipe];
 					regs = &dsi_config->regs;

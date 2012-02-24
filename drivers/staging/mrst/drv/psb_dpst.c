@@ -199,6 +199,10 @@ void psb_dpst_dev_change_wq(struct work_struct *work)
 				DRM_DPST_READ_COMPLETE;
 				curr_event_index = wq_data->dpst_events
 					[wq_data->dev_name_read];
+				if (curr_event_index >= DRM_DPST_MAX_NUM_EVENTS) {
+					DRM_ERROR("Invalid index!\n");
+					return;
+				}
 				psb_umevent_notify_change_gfxsock
 					(list_entry(
 					   (wq_data->dev_umevent_arry
@@ -218,6 +222,10 @@ void psb_dpst_dev_change_wq(struct work_struct *work)
 				DRM_DPST_READ_COMPLETE;
 				curr_event_index = wq_data->dpst_events
 					[wq_data->dev_name_read];
+				if (curr_event_index >= DRM_DPST_MAX_NUM_EVENTS) {
+					DRM_ERROR("Invalid index!\n");
+					return;
+				}
 				psb_umevent_notify_change_gfxsock
 					(list_entry(
 					   (wq_data->dev_umevent_arry
@@ -237,6 +245,10 @@ void psb_dpst_dev_change_wq(struct work_struct *work)
 					DRM_DPST_READ_COMPLETE;
 				curr_event_index = wq_data->dpst_events
 					[wq_data->dev_name_read];
+				if (curr_event_index >= DRM_DPST_MAX_NUM_EVENTS) {
+					DRM_ERROR("Invalid index!\n");
+					return;
+				}
 				psb_umevent_notify_change_gfxsock
 					(list_entry(
 					   (wq_data->dev_umevent_arry

@@ -3638,6 +3638,10 @@ _SetDispatchTableEntry(IMG_UINT32 ui32Index,
 #endif
 
 	
+	if (ui32Index >= BRIDGE_DISPATCH_TABLE_ENTRY_COUNT) {
+		PVR_DPF((PVR_DBG_ERROR, "Invalid parameters."));
+		return;
+	}
 	if(g_BridgeDispatchTable[ui32Index].pfFunction)
 	{
 #if defined(DEBUG_BRIDGE_KM)

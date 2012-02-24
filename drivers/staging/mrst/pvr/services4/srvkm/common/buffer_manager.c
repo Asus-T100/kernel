@@ -1423,6 +1423,10 @@ BM_Wrap (	IMG_HANDLE hDevMemHeap,
 	}
 #endif
 	
+	if (psSysAddr == IMG_NULL) {
+		PVR_DPF((PVR_DBG_ERROR, "Invalid parameter."));
+		return IMG_FALSE;
+	}
 	sHashAddress = psSysAddr[0];
 
 	

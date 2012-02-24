@@ -673,6 +673,10 @@ BC_Video_Bridge(struct drm_device *dev, IMG_VOID * arg,
 		break;
 	}
 	case BC_Video_ioctl_release_buffer_device: {
+		if (id >= BC_VIDEO_DEVICE_MAX_ID) {
+			printk(KERN_ERR " : Debug: Invalid parameter.\n");
+			return -EINVAL;
+		}
 		bc_video_id_usage[id] = 0;
 
 		BC_DestroyBuffers(id);
