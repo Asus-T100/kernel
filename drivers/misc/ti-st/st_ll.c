@@ -25,6 +25,8 @@
 #include <linux/platform_device.h>
 #include <linux/ti_wilink_st.h>
 
+#include <linux/pm_runtime.h>
+
 /**********************************************************************/
 /* internal functions */
 static void send_ll_cmd(struct st_data_s *st_data,
@@ -43,10 +45,15 @@ static void ll_device_want_to_sleep(struct st_data_s *st_data)
 
 	pr_debug("%s", __func__);
 	/* sanity check */
-	if (st_data->ll_state != ST_LL_AWAKE)
+	if (st_data->ll_state != ST_LL_AWAKE) {
 		pr_err("ERR hcill: ST_LL_GO_TO_SLEEP_IND"
 			  "in state %ld", st_data->ll_state);
 
+		/* Since Driver is asked to go to sleep but not aware to be
+		* awake Runtime PM is not aware of the state change either
+		* Requesting the device has not been done, so we do it*/
+		pm_runtime_get(st_data->tty_dev);
+	}
 	send_ll_cmd(st_data, LL_SLEEP_ACK);
 	/* update state */
 	st_data->ll_state = ST_LL_ASLEEP;
@@ -155,16 +162,23 @@ unsigned long st_ll_sleep_state(struct st_data_s *st_data,
 	case LL_SLEEP_IND:	/* sleep ind */
 		pr_debug("sleep indication recvd");
 		ll_device_want_to_sleep(st_data);
+		pm_runtime_put(st_data->tty_dev);
 		break;
 	case LL_SLEEP_ACK:	/* sleep ack */
 		pr_err("sleep ack rcvd: host shouldn't");
 		break;
 	case LL_WAKE_UP_IND:	/* wake ind */
 		pr_debug("wake indication recvd");
+		/* Getting the Device is done to avoid power gating the
+		* Interface (for example UART). This can be done
+		* asynchronously since low level driver is getting the device
+		* when doing a transfert */
+		pm_runtime_get(st_data->tty_dev);
 		ll_device_want_to_wakeup(st_data);
 		break;
 	case LL_WAKE_UP_ACK:	/* wake ack */
 		pr_debug("wake ack rcvd");
+		pm_runtime_get(st_data->tty_dev);
 		st_data->ll_state = ST_LL_AWAKE;
 		break;
 	default:

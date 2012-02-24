@@ -29,6 +29,20 @@
 #include <linux/skbuff.h>
 
 #include <linux/ti_wilink_st.h>
+#include <linux/pm_runtime.h>
+
+/*
+ * The main goal of this Inactivity Timeout wake lock is to avoid putting
+ * the system into Sleep while no application are running and some incoming
+ * data has to be processed. For instance, during a BT SDP service discovery
+ * session initiated by a remote with no service level connection opened yet,
+ * it will ensure enough CPU time remains to handle incoming request(s).
+ * Assuming the amount of "no-app-running" traffic is concentrated (mainly
+ * right before service connection level establishment), Power
+ * consumption impact is negligible.
+ */
+#define ST_PM_PROTECT_INACTIVITY_TIMEOUT (1*HZ)
+#define ST_PM_PROTECT_WAKE_LOCK_NAME "st_core"
 
 /* function pointer pointing to either,
  * st_kim_recv during registration to receive fw download responses
@@ -112,6 +126,15 @@ void st_send_frame(unsigned char chnl_id, struct st_data_s *st_gdata)
 		kfree_skb(st_gdata->rx_skb);
 		return;
 	}
+
+	/*
+	 * Refresh inactivity timeout for Power Management protection
+	 * mechanism. It will prevent from S3 sleeping for a while
+	 * in order to handle the incoming data.
+	 */
+	wake_lock_timeout(&st_gdata->wake_lock,
+			ST_PM_PROTECT_INACTIVITY_TIMEOUT);
+
 	/* this cannot fail
 	 * this shouldn't take long
 	 * - should be just skb_queue_tail for the
@@ -317,8 +340,16 @@ void st_int_recv(void *disc_data,
 			 * and assume chip awake
 			 */
 			spin_unlock_irqrestore(&st_gdata->lock, flags);
-			if (st_ll_getstate(st_gdata) == ST_LL_AWAKE)
+			if (st_ll_getstate(st_gdata) == ST_LL_AWAKE) {
+				/* pm_runtime_get has already been done
+				 * in st_ll_sleep_state. st_wakeup_ack will
+				 * call st_ll_sleep_state again and another
+				 * pm_runtime_get will be done. We need to
+				 * compensate the first one here.
+				 */
+				pm_runtime_put(st_gdata->tty_dev);
 				st_wakeup_ack(st_gdata, LL_WAKE_UP_ACK);
+			}
 			spin_lock_irqsave(&st_gdata->lock, flags);
 
 			ptr++;
@@ -682,6 +713,14 @@ long st_write(struct sk_buff *skb)
 	pr_debug("%d to be written", skb->len);
 	len = skb->len;
 
+	/*
+	 * Refresh inactivity timeout for Power Management protection mechanism
+	 * It will prevent from S3 sleeping for a while as it is very likely
+	 * some incoming data will be received soon.
+	 */
+	wake_lock_timeout(&st_gdata->wake_lock,
+			ST_PM_PROTECT_INACTIVITY_TIMEOUT);
+
 	/* st_ll to decide where to enqueue the skb */
 	st_int_enqueue(st_gdata, skb);
 	/* wake up */
@@ -707,6 +746,16 @@ static int st_tty_open(struct tty_struct *tty)
 	st_kim_ref(&st_gdata, 0);
 	st_gdata->tty = tty;
 	tty->disc_data = st_gdata;
+
+	if (tty->dev->parent)
+		st_gdata->tty_dev = tty->dev->parent;
+	else
+		return -EINVAL;
+
+	/* Asynchronous Get is enough here since we just want to avoid
+	 * interface to be released too early
+	 */
+	pm_runtime_get(st_gdata->tty_dev);
 
 	/* don't do an wakeup for now */
 	clear_bit(TTY_DO_WRITE_WAKEUP, &tty->flags);
@@ -767,6 +816,8 @@ static void st_tty_close(struct tty_struct *tty)
 	kfree_skb(st_gdata->rx_skb);
 	st_gdata->rx_skb = NULL;
 	spin_unlock_irqrestore(&st_gdata->lock, flags);
+
+	pm_runtime_put(st_gdata->tty_dev);
 
 	pr_debug("%s: done ", __func__);
 }
@@ -857,9 +908,14 @@ int st_core_init(struct st_data_s **core_data)
 	/* Locking used in st_int_enqueue() to avoid multiple execution */
 	spin_lock_init(&st_gdata->lock);
 
+	/* Power Management protection mechanism w.r.t. RX queue activity */
+	wake_lock_init(&st_gdata->wake_lock, WAKE_LOCK_SUSPEND,
+			ST_PM_PROTECT_WAKE_LOCK_NAME);
+
 	err = st_ll_init(st_gdata);
 	if (err) {
 		pr_err("error during st_ll initialization(%ld)", err);
+		wake_lock_destroy(&st_gdata->wake_lock);
 		kfree(st_gdata);
 		err = tty_unregister_ldisc(N_TI_WL);
 		if (err)
@@ -880,6 +936,7 @@ void st_core_exit(struct st_data_s *st_gdata)
 
 	if (st_gdata != NULL) {
 		/* Free ST Tx Qs and skbs */
+		wake_lock_destroy(&st_gdata->wake_lock);
 		skb_queue_purge(&st_gdata->txq);
 		skb_queue_purge(&st_gdata->tx_waitq);
 		kfree_skb(st_gdata->rx_skb);
