@@ -37,7 +37,11 @@
 #include <linux/suspend.h>
 #include <linux/wakelock.h>
 
-#define MAX_BUFFER_SIZE	512
+#define MAX_BUFFER_SIZE		512
+
+#if defined(CONFIG_I2C_DESIGNWARE_PCI_SPLIT_XFER)
+#define MAX_I2C_XFER_SIZE	31
+#endif
 
 struct pn544_dev	{
 	wait_queue_head_t	read_wq;
@@ -120,6 +124,11 @@ static ssize_t pn544_dev_read(struct file *filp, char __user *buf,
 	struct pn544_dev *pn544_dev = filp->private_data;
 	char tmp[MAX_BUFFER_SIZE];
 	int ret;
+#if defined(CONFIG_I2C_DESIGNWARE_PCI_SPLIT_XFER)
+	char *tmp_p = tmp;
+	int i2c_xfer_size;
+	int i2c_xfer_ret;
+#endif
 
 	if (count > MAX_BUFFER_SIZE)
 		count = MAX_BUFFER_SIZE;
@@ -143,6 +152,7 @@ static ssize_t pn544_dev_read(struct file *filp, char __user *buf,
 	}
 
 	/* Read data */
+#if !defined(CONFIG_I2C_DESIGNWARE_PCI_SPLIT_XFER)
 	ret = i2c_master_recv(pn544_dev->client, tmp, count);
 
 	if (ret < 0) {
@@ -154,12 +164,37 @@ static ssize_t pn544_dev_read(struct file *filp, char __user *buf,
 			__func__, ret);
 		return -EIO;
 	}
+#else
+	ret = count;
+
+	while (count) {
+		i2c_xfer_size = count;
+		if (i2c_xfer_size > MAX_I2C_XFER_SIZE)
+			i2c_xfer_size = MAX_I2C_XFER_SIZE;
+
+		i2c_xfer_ret = i2c_master_recv(pn544_dev->client,
+				tmp_p, i2c_xfer_size);
+		if (i2c_xfer_ret < 0) {
+			pr_err("%s: i2c_master_recv returned %d\n",
+					__func__, i2c_xfer_ret);
+			return i2c_xfer_ret;
+		}
+		if (i2c_xfer_ret > i2c_xfer_size) {
+			pr_err("%s: received too many bytes from i2c (%d)\n",
+					__func__, i2c_xfer_ret);
+			return -EIO;
+		}
+
+		count -= i2c_xfer_size;
+		tmp_p += i2c_xfer_size;
+	}
+#endif
 	if (copy_to_user(buf, tmp, ret)) {
 		pr_warning("%s : failed to copy to user space\n", __func__);
 		return -EFAULT;
 	}
 
-	/* Handle the corner case where read is cycle is broken */
+	/* Handle the corner case where read cycle is broken */
 	if (ret == 1 && pn544_dev->busy) {
 		pn544_dev->busy = 0;
 		wake_unlock(&pn544_dev->read_wake);
@@ -205,6 +240,11 @@ static ssize_t pn544_dev_write(struct file *filp, const char __user *buf,
 	struct pn544_dev  *pn544_dev;
 	char tmp[MAX_BUFFER_SIZE];
 	int ret;
+#if defined(CONFIG_I2C_DESIGNWARE_PCI_SPLIT_XFER)
+	char *tmp_p = tmp;
+	int i2c_xfer_size;
+	int i2c_xfer_ret;
+#endif
 
 	pn544_dev = filp->private_data;
 
@@ -217,13 +257,35 @@ static ssize_t pn544_dev_write(struct file *filp, const char __user *buf,
 	}
 
 	pr_debug("%s : writing %zu bytes.\n", __func__, count);
+
 	/* Write data */
+#if !defined(CONFIG_I2C_DESIGNWARE_PCI_SPLIT_XFER)
 	ret = i2c_master_send(pn544_dev->client, tmp, count);
 	if (ret != count) {
-		pr_err("%s : i2c_master_send returned %d\n", __func__, ret);
+		pr_err("%s : i2c_master_send returned %d\n",
+			__func__, ret);
 		ret = -EIO;
 	}
+#else
+	ret = count;
 
+	while (count) {
+		i2c_xfer_size = count;
+		if (i2c_xfer_size > MAX_I2C_XFER_SIZE)
+			i2c_xfer_size = MAX_I2C_XFER_SIZE;
+
+		i2c_xfer_ret = i2c_master_send(pn544_dev->client,
+				tmp_p, i2c_xfer_size);
+		if (i2c_xfer_ret != i2c_xfer_size) {
+			pr_err("%s : i2c_master_send returned %d\n",
+					__func__, i2c_xfer_ret);
+			return -EIO;
+		}
+
+		count -= i2c_xfer_size;
+		tmp_p += i2c_xfer_size;
+	}
+#endif
 	return ret;
 }
 
