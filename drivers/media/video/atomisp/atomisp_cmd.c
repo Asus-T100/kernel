@@ -88,6 +88,8 @@ static void
 __acc_fw_free_args(struct atomisp_device *isp, struct sh_css_acc_fw *fw);
 static void
 __acc_fw_free(struct atomisp_device *isp, struct sh_css_acc_fw *fw);
+static struct sh_css_acc_fw *
+__acc_fw_alloc(struct atomisp_device *isp, struct atomisp_acc_fw_load *user_fw);
 
 static int atomisp_wdt_pet_dog(struct atomisp_device *isp);
 static void atomisp_buf_done(struct atomisp_device *isp, int error);
@@ -3550,7 +3552,7 @@ out:
  * - Handle is found
  * - Function has found total number of non-NULL slots
  *
- * It's ensured by atomisp_acc_fw_alloc() number of used slots is never bigger
+ * It's ensured by __acc_fw_alloc() number of used slots is never bigger
  * then ATOMISP_ACC_FW_MAX.
  */
 static struct sh_css_acc_fw *
@@ -3583,7 +3585,7 @@ __acc_get_fw(struct atomisp_device *isp, unsigned int handle)
  * - Given firmware is found
  * - Function has searched all non-NULL slots
  *
- * It's ensured by atomisp_acc_fw_alloc() number of used slots is never bigger
+ * It's ensured by __acc_fw_alloc() number of used slots is never bigger
  * then ATOMISP_ACC_FW_MAX.
  */
 static int
@@ -3670,14 +3672,13 @@ __acc_fw_free(struct atomisp_device *isp, struct sh_css_acc_fw *fw)
 }
 
 static struct sh_css_acc_fw *
-atomisp_acc_fw_alloc(struct atomisp_device *isp,
-		     struct atomisp_acc_fw_load *user_fw)
+__acc_fw_alloc(struct atomisp_device *isp, struct atomisp_acc_fw_load *user_fw)
 {
 	struct sh_css_acc_fw *fw;
 	int ret;
 	int i;
 
-	if ((user_fw->data == NULL) || (user_fw->size == 0))
+	if (user_fw->data == NULL || user_fw->size == 0)
 		return ERR_PTR(-EINVAL);
 
 	/* REVISIT: does size need to be multiple of page size? */
@@ -3686,8 +3687,7 @@ atomisp_acc_fw_alloc(struct atomisp_device *isp,
 	if (fw == NULL) {
 		v4l2_err(&atomisp_dev, "%s: Failed to alloc acc fw blob\n",
 			 __func__);
-		ret = -ENOMEM;
-		goto err;
+		return ERR_PTR(-ENOMEM);
 	}
 
 	ret = copy_from_user(fw, user_fw->data, user_fw->size);
@@ -3698,9 +3698,7 @@ atomisp_acc_fw_alloc(struct atomisp_device *isp,
 		goto err;
 	}
 
-	mutex_lock(&isp->isp_lock);
 	if (isp->acc_fw_count >= ATOMISP_ACC_FW_MAX) {
-		mutex_unlock(&isp->isp_lock);
 		ret = -EINVAL;
 		goto err;
 	}
@@ -3716,7 +3714,6 @@ atomisp_acc_fw_alloc(struct atomisp_device *isp,
 
 	isp->acc_fw_handle++;
 	isp->acc_fw_count++;
-	mutex_unlock(&isp->isp_lock);
 
 	return fw;
 
@@ -3732,7 +3729,8 @@ int atomisp_acc_load(struct atomisp_device *isp,
 	int ret;
 
 	mutex_lock(&isp->input_lock);
-	fw = atomisp_acc_fw_alloc(isp, user_fw);
+	mutex_lock(&isp->isp_lock);
+	fw = __acc_fw_alloc(isp, user_fw);
 	if (IS_ERR(fw)) {
 		v4l2_err(&atomisp_dev, "%s: Acceleration firmware allocation "
 				       "failed\n", __func__);
@@ -3740,20 +3738,18 @@ int atomisp_acc_load(struct atomisp_device *isp,
 		goto out;
 	}
 
-	mutex_lock(&isp->isp_lock);
 	ret = sh_css_load_acceleration(fw);
 	if (ret) {
 		__acc_fw_free(isp, fw);
-		mutex_unlock(&isp->isp_lock);
 		v4l2_err(&atomisp_dev, "%s: Failed to load acceleration "
 				       "firmware\n", __func__);
 		ret = -EAGAIN;
 		goto out;
 	}
-	mutex_unlock(&isp->isp_lock);
 	init_completion(&isp->acc_fw_complete);
 
 out:
+	mutex_unlock(&isp->isp_lock);
 	mutex_unlock(&isp->input_lock);
 	return ret;
 }
@@ -3764,6 +3760,7 @@ int atomisp_acc_unload(struct atomisp_device *isp, unsigned int *handle)
 	int ret = 0;
 
 	mutex_lock(&isp->input_lock);
+	mutex_lock(&isp->isp_lock);
 
 	fw = __acc_get_fw(isp, *handle);
 
@@ -3789,11 +3786,9 @@ int atomisp_acc_unload(struct atomisp_device *isp, unsigned int *handle)
 	if (isp->sw_contex.isp_streaming == false) {
 		/* We're not streaming, so it's safe to unload now */
 
-		mutex_lock(&isp->isp_lock);
 		__acc_fw_free_args(isp, fw);
 		sh_css_unload_acceleration(fw);
 		__acc_fw_free(isp, fw);
-		mutex_unlock(&isp->isp_lock);
 
 		ret = 0;
 		goto out;
@@ -3805,12 +3800,16 @@ int atomisp_acc_unload(struct atomisp_device *isp, unsigned int *handle)
 	 */
 	init_completion(&isp->acc_unload_fw_complete);
 	isp->marked_fw_for_unload = fw;
+
+	mutex_unlock(&isp->isp_lock);
 	mutex_unlock(&isp->input_lock);
+
 	wait_for_completion_timeout(&isp->acc_unload_fw_complete, 1 * HZ);
 
 	return 0;
 
 out:
+	mutex_unlock(&isp->isp_lock);
 	mutex_unlock(&isp->input_lock);
 	return ret;
 }
@@ -3829,6 +3828,7 @@ int atomisp_acc_set_arg(struct atomisp_device *isp,
 	int ret;
 
 	mutex_lock(&isp->input_lock);
+	mutex_lock(&isp->isp_lock);
 
 	fw = __acc_get_fw(isp, handle);
 
@@ -3867,13 +3867,16 @@ int atomisp_acc_set_arg(struct atomisp_device *isp,
 
 		/* Allocate and copy data into kernel space */
 		host->scalar.kernel_ptr = kmalloc(size, GFP_KERNEL);
-		if (!host->scalar.kernel_ptr)
-			return -ENOMEM;
+		if (!host->scalar.kernel_ptr) {
+			ret = -ENOMEM;
+			goto out;
+		}
 		if (copy_from_user(host->scalar.kernel_ptr,
 					fw_arg->value, size)) {
 			kfree(host->scalar.kernel_ptr);
 			host->scalar.kernel_ptr = NULL;
-			return -EFAULT;
+			ret = -EFAULT;
+			goto out;
 		}
 		host->scalar.size = size;
 		host->scalar.user_ptr = fw_arg->value;
@@ -3888,13 +3891,11 @@ int atomisp_acc_set_arg(struct atomisp_device *isp,
 	case SH_CSS_ACC_ARG_PTR_STABLE:
 		/* Free old argument data if one already exists */
 		hrt_isp_css_mm_free(host->ptr.hmm_ptr);
-		pgnr = (size + (PAGE_SIZE - 1)) >> PAGE_SHIFT;
+		pgnr = DIV_ROUND_UP(size, PAGE_SIZE);
 
-		mutex_lock(&isp->isp_lock);
 		frame_ptr = hrt_isp_css_mm_alloc_user_ptr(size,
 					(unsigned int)fw_arg->value, pgnr,
 					type != SH_CSS_ACC_ARG_PTR_NOFLUSH);
-		mutex_unlock(&isp->isp_lock);
 
 		if (IS_ERR_OR_NULL(frame_ptr)) {
 			v4l2_err(&atomisp_dev, "%s: Failed to allocate frame "
@@ -3916,11 +3917,13 @@ int atomisp_acc_set_arg(struct atomisp_device *isp,
 	}
 
 out:
+	mutex_unlock(&isp->isp_lock);
 	mutex_unlock(&isp->input_lock);
 	return ret;
 }
 
-/* Flush all flushable pointer arguments of <fw>, this function is private to this layer, yet used in atomisp_fops.c */
+/* Flush all flushable pointer arguments of <fw>, this function is private to
+ * this layer, yet used in atomisp_fops.c */
 void flush_acc_api_arguments(struct sh_css_acc_fw *fw)
 {
 	unsigned i;
@@ -3993,7 +3996,6 @@ int atomisp_acc_start(struct atomisp_device *isp, unsigned int *handle)
 	if (fw == NULL) {
 		v4l2_err(&atomisp_dev, "%s: Invalid firmware handle\n",
 			 __func__);
-		mutex_unlock(&isp->isp_lock);
 		ret = -EINVAL;
 		goto out;
 	}
@@ -4001,7 +4003,6 @@ int atomisp_acc_start(struct atomisp_device *isp, unsigned int *handle)
 	flush_acc_api_arguments(fw);
 
 	ret = sh_css_start_acceleration(fw);
-	mutex_unlock(&isp->isp_lock);
 	if (ret) {
 		v4l2_err(&atomisp_dev, "%s: Failed to start acceleration "
 				       "firmware\n", __func__);
@@ -4014,6 +4015,7 @@ int atomisp_acc_start(struct atomisp_device *isp, unsigned int *handle)
 		INIT_COMPLETION(isp->acc_fw_complete);
 
 out:
+	mutex_unlock(&isp->isp_lock);
 	mutex_unlock(&isp->input_lock);
 	return ret;
 }
@@ -4022,22 +4024,26 @@ int atomisp_acc_wait(struct atomisp_device *isp, unsigned int *handle)
 {
 	struct sh_css_acc_fw *fw;
 	unsigned int time_left;
+	int ret = 0;
 
 	mutex_lock(&isp->input_lock);
 	mutex_lock(&isp->isp_lock);
 
 	fw = __acc_get_fw(isp, *handle);
 
-	mutex_unlock(&isp->isp_lock);
-	mutex_unlock(&isp->input_lock);
-
 	if (fw == NULL) {
 		v4l2_err(&atomisp_dev, "Invalid fw handle\n");
-		return -EINVAL;
+		ret = -EINVAL;
+		goto out;
 	}
 
-	if (fw->header.type != ATOMISP_ACC_STANDALONE)
-		return -EINVAL;
+	if (fw->header.type != ATOMISP_ACC_STANDALONE) {
+		ret = -EINVAL;
+		goto out;
+	}
+
+	mutex_unlock(&isp->isp_lock);
+	mutex_unlock(&isp->input_lock);
 
 	time_left =
 	    wait_for_completion_timeout(&isp->acc_fw_complete,
@@ -4051,11 +4057,27 @@ int atomisp_acc_wait(struct atomisp_device *isp, unsigned int *handle)
 		return -EINVAL;
 	}
 
+	mutex_lock(&isp->input_lock);
 	mutex_lock(&isp->isp_lock);
-	sh_css_acceleration_done(fw);
-	mutex_unlock(&isp->isp_lock);
 
-	return 0;
+	/* Even here we could potentially have a collision, but the probability
+	 * of it is very small. Perhaps in the future we could move out the
+	 * sh_css_acceleration_done() to the completion job. */
+	fw = __acc_get_fw(isp, *handle);
+
+	if (fw == NULL) {
+		v4l2_err(&atomisp_dev, "Acceleration fw is already gone\n");
+		ret = -EINVAL;
+		goto out;
+	}
+
+	sh_css_acceleration_done(fw);
+
+out:
+	mutex_unlock(&isp->isp_lock);
+	mutex_unlock(&isp->input_lock);
+
+	return ret;
 }
 
 int atomisp_acc_abort(struct atomisp_device *isp,
