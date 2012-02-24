@@ -63,6 +63,7 @@ extern int sfi_mtimer_num;
 
 static inline unsigned long apbt_quick_calibrate(void) {return 0; }
 static inline void apbt_time_init(void) { }
+static inline apbt_setup_secondary_clock(void) { }
 
 #endif
 #endif /* ASM_X86_APBT_H */
