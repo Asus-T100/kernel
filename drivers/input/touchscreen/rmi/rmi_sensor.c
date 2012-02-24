@@ -649,7 +649,7 @@ static int rmi_sensor_resume(struct device *dev)
 		/* reset suspend flag reenable irq */
 		sensor_device->device_is_suspended = 0;
 		/* apply customized settings */
-		if (custom_ops->rmi_sensor_custom_resume)
+		if (custom_ops && custom_ops->rmi_sensor_custom_resume)
 			custom_ops->rmi_sensor_custom_resume();
 
 		/* invoke the resume handler of each functions of this sensor */
@@ -664,7 +664,7 @@ static int rmi_sensor_resume(struct device *dev)
 		}
 
 		/* apply delay after setup hardware */
-		if (custom_ops->delay_resume)
+		if (custom_ops && custom_ops->delay_resume)
 			mdelay(custom_ops->delay_resume);
 
 		if (rmi_polling_required(sensor_drvr)) {
