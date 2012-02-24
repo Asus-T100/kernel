@@ -74,6 +74,9 @@ static u32 h8c7_set_display_on[] = {0x00000029};
 static u32 h8c7_set_display_off[] = {0x00000028};
 static u32 h8c7_enter_sleep_mode[] = {0x00000010};
 
+#define MIN_BRIGHTNESS_LEVEL 54
+#define MAX_BRIGHTNESS_LEVEL 100
+
 static void mdfld_h8c7_dpi_ic_init(struct mdfld_dsi_config *dsi_config, int pipe)
 {
 	struct mdfld_dsi_pkg_sender *sender
@@ -361,13 +364,13 @@ static int mdfld_dsi_h8c7_power_on(struct mdfld_dsi_config *dsi_config)
 	}
 
 	/* sleep out and wait for 150ms. */
-	mdfld_dsi_send_mcs_long_lp(sender, h8c7_exit_sleep_mode, 1, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, h8c7_exit_sleep_mode, 1, 0);
 	wait_timeout = jiffies + (3 * HZ / 20);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 
 	/*set display on*/
-	mdfld_dsi_send_mcs_long_lp(sender, h8c7_set_display_on, 1, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, h8c7_set_display_on, 1, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
@@ -375,7 +378,7 @@ static int mdfld_dsi_h8c7_power_on(struct mdfld_dsi_config *dsi_config)
 	/* FIXME Enable CABC later*/
 
 	/*send TURN_ON packet*/
-	err = mdfld_dsi_send_dpi_spk_pkg_lp(sender,
+	err = mdfld_dsi_send_dpi_spk_pkg_hs(sender,
 				MDFLD_DSI_DPI_SPK_TURN_ON);
 	if (err) {
 		DRM_ERROR("Failed to send turn on packet\n");
@@ -400,7 +403,7 @@ static int mdfld_dsi_h8c7_power_off(struct mdfld_dsi_config *dsi_config)
 	}
 
 	/*send SHUT_DOWN packet*/
-	err = mdfld_dsi_send_dpi_spk_pkg_lp(sender,
+	err = mdfld_dsi_send_dpi_spk_pkg_hs(sender,
 				MDFLD_DSI_DPI_SPK_SHUT_DOWN);
 	if (err) {
 		DRM_ERROR("Failed to send turn off packet\n");
@@ -410,13 +413,13 @@ static int mdfld_dsi_h8c7_power_off(struct mdfld_dsi_config *dsi_config)
 	/* FIXME disable CABC later*/
 
 	/*set display off*/
-	mdfld_dsi_send_mcs_long_lp(sender, h8c7_set_display_off, 1, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, h8c7_set_display_off, 1, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 
 	/* sleep in and wait for 150ms. */
-	mdfld_dsi_send_mcs_long_lp(sender, h8c7_enter_sleep_mode, 1, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, h8c7_enter_sleep_mode, 1, 0);
 	wait_timeout = jiffies + (3 * HZ / 20);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
@@ -430,8 +433,16 @@ int mdfld_dsi_h8c7_set_brightness(struct mdfld_dsi_config *dsi_config,
 	struct mdfld_dsi_pkg_sender *sender =
 		mdfld_dsi_get_pkg_sender(dsi_config);
 	int duty_val = 0;
-	static int cabc_enable = 1;
 	unsigned long wait_timeout;
+
+	/*
+	 * FIXME: need to check the CABA setting about brightness adjustment
+	 * range.
+	 */
+	if (level < MIN_BRIGHTNESS_LEVEL || level > MAX_BRIGHTNESS_LEVEL) {
+		PSB_DEBUG_ENTRY("Invalid brightness level: %d\n", level);
+		return -EINVAL;
+	}
 
 	if (!sender) {
 		DRM_ERROR("Failed to get DSI packet sender\n");
@@ -442,7 +453,7 @@ int mdfld_dsi_h8c7_set_brightness(struct mdfld_dsi_config *dsi_config,
 	h8c7_set_brightness[0] = (0x00000051 | (duty_val << 8));
 
 	/* set backlight to full brightness and wait for 10ms. */
-	mdfld_dsi_send_mcs_long_lp(sender, h8c7_set_brightness, 1, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, h8c7_set_brightness, 1, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
@@ -477,7 +488,7 @@ int mdfld_dsi_h8c7_panel_reset(struct mdfld_dsi_config *dsi_config,
 	struct mdfld_dsi_hw_context *ctx;
 	struct drm_device *dev;
 	int ret = 0;
-	static bool b_gpio_required[PSB_NUM_PIPE] = {0};
+	bool b_gpio_required[PSB_NUM_PIPE] = {0};
 	unsigned gpio_mipi_panel_reset = 128;
 
 	regs = &dsi_config->regs;

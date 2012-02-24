@@ -106,7 +106,7 @@ config MDFD_GL3
 
 config GFX_RTPM
 	bool "Enable GFX runtime_pm"
-	depends on DRM_MDFLD
+	depends on DRM_MDFLD || DRM_CTP
 	default n
 	help
 	  xxxxxx
