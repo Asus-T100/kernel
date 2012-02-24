@@ -27,14 +27,13 @@ atomisp-objs := \
 
 obj-$(CONFIG_VIDEO_ATOMISP) = atomisp.o
 
-INC	:= $(src)/include
-INCLUDES := -I$(INC) \
-            -I$(INC)/atomisp \
+INCLUDES := -I$(srctree)/$(src)/include \
+	    -I$(srctree)/$(src)/include/atomisp \
             -I$(src) \
             -I$(src)/hrt \
             -I$(src)/css \
-            -I$(src)/css/hrt \
-	    -I$(src)/../../../staging/mrst/bc_video
+	    -I$(srctree)/$(src)/css/hrt \
+	    -I$(srctree)/drivers/staging/mrst/bc_video
 
 DEFINES := -DHRT_HW -DHRT_ISP_CSS_CUSTOM_HOST -DHRT_USE_VIR_ADDRS -DHRT_KERNEL
 DEFINES += -DUSE_DYNAMIC_BIN
