@@ -79,6 +79,11 @@ static struct sfi_timer_table_entry sfi_mtimer_array[SFI_MTMR_MAX_NUM];
 enum intel_mid_cpu_type __intel_mid_cpu_chip;
 EXPORT_SYMBOL_GPL(__intel_mid_cpu_chip);
 
+#ifdef CONFIG_X86_MRFLD
+enum intel_mrfl_sim_type __intel_mrfl_sim_platform;
+EXPORT_SYMBOL_GPL(__intel_mrfl_sim_platform);
+#endif /* X86_CONFIG_MRFLD */
+
 int sfi_mtimer_num;
 
 struct sfi_rtc_table_entry sfi_mrtc_array[SFI_MRTC_MAX];
@@ -214,6 +219,13 @@ unsigned long __init intel_mid_calibrate_tsc(void)
 static void __init intel_mid_time_init(void)
 {
 	sfi_table_parse(SFI_SIG_MTMR, NULL, NULL, sfi_parse_mtmr);
+
+/* [REVERT ME] ARAT capability not set in VP. Force setting */
+#ifdef CONFIG_X86_MRFLD
+	if (intel_mrfl_identify_sim() == INTEL_MRFL_CPU_SIMULATION_VP)
+		set_cpu_cap(&boot_cpu_data, X86_FEATURE_ARAT);
+#endif /* CONFIG_X86_MRFLD */
+
 	switch (intel_mid_timer_options) {
 	case INTEL_MID_TIMER_APBT_ONLY:
 		break;
@@ -241,6 +253,8 @@ static void __cpuinit intel_mid_arch_setup(void)
 		__intel_mid_cpu_chip = INTEL_MID_CPU_CHIP_LINCROFT;
 	else if (boot_cpu_data.x86 == 6 && boot_cpu_data.x86_model == 0x35)
 		__intel_mid_cpu_chip = INTEL_MID_CPU_CHIP_CLOVERVIEW;
+	else if (boot_cpu_data.x86 == 6 && boot_cpu_data.x86_model == 0x3C)
+		__intel_mid_cpu_chip = INTEL_MID_CPU_CHIP_TANGIER;
 	else {
 		pr_err("Unknown Moorestown CPU (%d:%d), default to Lincroft\n",
 			boot_cpu_data.x86, boot_cpu_data.x86_model);

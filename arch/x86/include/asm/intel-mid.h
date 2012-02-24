@@ -76,6 +76,7 @@ enum intel_mid_cpu_type {
 	INTEL_MID_CPU_CHIP_LINCROFT = 1,
 	INTEL_MID_CPU_CHIP_PENWELL,
 	INTEL_MID_CPU_CHIP_CLOVERVIEW,
+	INTEL_MID_CPU_CHIP_TANGIER,
 };
 
 extern enum intel_mid_cpu_type __intel_mid_cpu_chip;
@@ -200,4 +201,23 @@ extern int get_force_shutdown_occured(void);
 extern const struct atomisp_platform_data *intel_get_v4l2_subdev_table(void);
 
 extern void (*saved_shutdown)(void);
+
+#ifdef CONFIG_X86_MRFLD
+enum intel_mrfl_sim_type {
+	INTEL_MRFL_CPU_SIMULATION_NONE = 0,
+	INTEL_MRFL_CPU_SIMULATION_VP,
+	INTEL_MRFL_CPU_SIMULATION_SLE,
+};
+
+extern enum intel_mrfl_sim_type __intel_mrfl_sim_platform;
+
+static inline enum intel_mrfl_sim_type intel_mrfl_identify_sim(void)
+{
+	return __intel_mrfl_sim_platform;
+}
+
+#else /* !CONFIG_X86_MRFLD */
+#define intel_mrfl_identify_sim()	(0)
+#endif /* !CONFIG_X86_MRFLD */
+
 #endif /* _ASM_X86_INTEL_MID_H */

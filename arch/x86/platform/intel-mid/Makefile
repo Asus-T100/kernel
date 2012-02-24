@@ -10,7 +10,10 @@ obj-$(CONFIG_X86_MRST)		+= mrst-pmu.o
 # MFLD specific files
 obj-$(CONFIG_X86_MDFLD)		+= mfld.o
 obj-$(CONFIG_INTEL_MID_MDFLD_POWER)		+= mfld-pmu.o
+# MRFL specific file
+obj-$(CONFIG_X86_MRFLD)		+= mrfl.o
 # BOARD files
 obj-$(CONFIG_BOARD_MFLD_BLACKBAY)		+= board-blackbay.o
 obj-$(CONFIG_BOARD_REDRIDGE)		+= board-redridge.o
 obj-$(CONFIG_BOARD_CTP)			+= board-ctp.o
+obj-$(CONFIG_BOARD_MRFLD_VP)		+= board-vp.o
