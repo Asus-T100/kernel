@@ -1863,17 +1863,46 @@ int __ref pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t state)
 		 */
 		if (!wait_for_completion_timeout(
 			    &mid_pmu_cxt->set_mode_complete, 5 * HZ)) {
-			/* It is possible that in S3 we may miss
-			 * completion signal, so check if interactive_cmd_sent
-			 * cleared indicating completion interrupt received.
+
+			/* Since we didn't receive the completion
+			 * interrupt, check if the power transition
+			 * indeed happend, if yes continue, else BUG
 			 */
-			if (!mid_pmu_cxt->interactive_cmd_sent) {
+			struct pmu_ss_states new_pmsss;
+			pmu_read_sss(&new_pmsss);
+
+			if (new_value == new_pmsss.pmu2_states[sub_sys_index]) {
 				WARN(1,
 				"%s: completion timed out.\n", __func__);
 				init_completion
 					(&mid_pmu_cxt->set_mode_complete);
-			} else
+			} else {
+				printk(KERN_CRIT "%s: completion timeout:"
+					" %04x %04X %s %20s:\n", __func__,
+					pdev->vendor, pdev->device,
+					dev_name(&pdev->dev),
+					dev_driver_string(&pdev->dev));
+				printk(KERN_CRIT "interrupt pending = %d\n",
+					pmu_is_interrupt_pending(PMU_NUM_2));
+				printk(KERN_CRIT "pmu_busy_status = %d\n",
+				_pmu_read_status(PMU_NUM_2, PMU_BUSY_STATUS));
+				printk(KERN_CRIT "suspend_started = %d\n",
+						mid_pmu_cxt->suspend_started);
+				printk(KERN_CRIT "shutdown_started = %d\n",
+						mid_pmu_cxt->shutdown_started);
+				printk(KERN_CRIT "interactive_cmd_sent = %d\n",
+					mid_pmu_cxt->interactive_cmd_sent);
+				printk(KERN_CRIT "camera_off = %d"
+				" display_off = %d\n", mid_pmu_cxt->camera_off,
+						mid_pmu_cxt->display_off);
+				printk(KERN_CRIT "s0ix_possible = 0x%x\n",
+						mid_pmu_cxt->s0ix_possible);
+				printk(KERN_CRIT "s0ix_entered = 0x%x\n",
+						mid_pmu_cxt->s0ix_entered);
+				printk(KERN_CRIT "pmu_current_state = %d\n",
+						mid_pmu_cxt->pmu_current_state);
 				BUG();
+			}
 		}
 
 		pmu_set_s0ix_possible(state);
