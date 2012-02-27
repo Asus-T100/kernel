@@ -37,7 +37,7 @@
 #define MAXIM_DEBUG_VERBOSE 0
 #define MAXIM_TOUCH_REPORT_MODE 0x01 /* 1=basic, 2=extended */
 
-#define MAXIM_BUTTONS_HANDLED_IN_DRIVER 1 /* Set to 1 to use driver for
+#define MAXIM_BUTTONS_HANDLED_IN_DRIVER 0 /* Set to 1 to use driver for
 					   * checking if a point is in the
 					   * virtual button region */
 #define MAXIM_BUTTONS_HANDLED_IN_CHIP 0 /* Set to 1 if the chip is configured

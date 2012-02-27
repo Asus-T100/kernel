@@ -1534,7 +1534,7 @@ static struct max11871_platform_data max11871_pdata = {
 	.version = 0x101,
 
 	.abs_x_min = 0,
-	.abs_x_max = 1240,
+	.abs_x_max = 1280,
 	.abs_y_min = 0,
 	.abs_y_max = 1880,
 	.abs_z_min = 0,
@@ -1584,9 +1584,35 @@ static int max11871_board_init(void)
 	return gpio_direction_input(gpio);
 }
 
+static ssize_t max11871_virtual_keys_show(struct kobject *obj,
+				struct kobj_attribute *attr, char *buf)
+{
+	/*
+	 * virtual key format: version:code:centerX:centerY:width:height
+	 * version must be 0x01, coordinate uses display unit
+	 * (GI display size is 320 * 480), not raw touch unit
+	 */
+
+	return sprintf(buf,
+			"0x01:" __stringify(KEY_BACK) ":45:513:50:51:"
+			"0x01:" __stringify(KEY_HOME) ":120:513:50:51:"
+			"0x01:" __stringify(KEY_SEARCH) ":200:513:50:51:"
+			"0x01:" __stringify(KEY_MENU) ":275:513:50:51\n");
+}
+
+static struct kobj_attribute max11871_virtual_keys_attr = {
+	.attr = {
+		.name = "virtualkeys.max11871_touchscreen_0",
+		.mode = S_IRUGO,
+	},
+	.show = max11871_virtual_keys_show,
+};
+
 void *max11871_platform_data_init(void *info)
 {
 	struct i2c_board_info *i2c_info = info;
+
+	intel_mid_create_property(&max11871_virtual_keys_attr.attr);
 
 	max11871_pdata.platform_hw_init = max11871_board_init,
 	max11871_pdata.power = max11871_power,
