@@ -35,7 +35,11 @@
 
 /* Set the following to prevent ACWAKE toggling (for debugging). This also
  * disbales power management */
+#ifdef CONFIG_HSI_DLP
+#define PREVENT_ACWAKE_TOGGLING
+#else
 #undef PREVENT_ACWAKE_TOGGLING
+#endif
 
 /* Set the following to allow software workaround of the DMA link listing */
 #define USE_SOFWARE_WORKAROUND_FOR_DMA_LLI
@@ -3466,3 +3470,4 @@ MODULE_ALIAS("pci:intel_hsi");
 MODULE_AUTHOR("Olivier Stoltz Douchet <olivierx.stoltz-douchet@intel.com>");
 MODULE_DESCRIPTION("Intel mid HSI Controller Driver");
 MODULE_LICENSE("GPL v2");
+

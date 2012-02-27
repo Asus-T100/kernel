@@ -100,3 +100,65 @@ config HSI_FFL_TTY_STATS
 
 endif
 
+config HSI_DLP
+	tristate "Data Link Protocol protocol on HSI for LTE IMC modems"
+	default n
+	depends on HSI
+	help
+	  If you say Y here, you will enable the DLP protocol for LTE IMC modem
+	  over an HSI physical link.
+	  This driver implements network interfaces and a TTY interface for
+	  transferring data over HSI between an APE and an IMC modem.
+
+	  If unsure, say N.
+
+if HSI_DLP
+
+config HSI_DLP_TTY_NAME
+	string "Base name for the TTY"
+	default "IFX"
+	help
+	  Sets the base name for the TTY associated to this IMC modem protocol
+	  for LTE.
+
+config HSI_DLP_TTY_STATS
+	bool "Statistics to assess the performance of the protocol (TTY)"
+	default n
+	help
+	  If you say Y here, you will instanciate performance related counters
+	  for measuring the number of sent and received frames as well as their
+	  total actual length in bytes.
+
+	  If not fine-tuning the HSI IMC LTE driver, say N.
+
+config HSI_DLP_NET_NAME
+	string "Base name for the network interfaces"
+	default "rmnet"
+	help
+	  Sets the base name for the NETWORK interfaces associated to this IMC
+	  modem protocol for LTE.
+
+config HSI_DLP_PDU_LENGTH
+	int "Fixed frame length"
+	default "4096"
+	range 4 131072
+	help
+	  Sets the fixed frame length in bytes to be used in this protocol
+	  driver. This frame length must be a multiple of 4 bytes, set between
+	  4 bytes and 128 kiB (131072 bytes).
+
+	  Set to 4096 bytes by default.
+
+config HSI_DLP_HEADER_LENGTH
+	int "Fixed frame header length"
+	default "4"
+	range 0 4
+	help
+	  Sets the fixed frame header length in bytes to be used in this
+	  protocol driver. This header length must be set to 4 in normal usage
+	  or to 0 in raw protocol debug mode.
+
+	  Set to 4 bytes by default.
+
+endif
+
