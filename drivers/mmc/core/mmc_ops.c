@@ -646,7 +646,7 @@ void mmc_rpmb_post_frame(struct mmc_core_rpmb_req *rpmb_req)
 {
 	int i;
 	struct mmc_ioc_rpmb_req *p_req = rpmb_req->req;
-	__u8 *ptr, *buf_frame = rpmb_req->frame;
+	__u8 *buf_frame = rpmb_req->frame;
 
 	if (!rpmb_req->ready || !buf_frame)
 		return;
@@ -684,34 +684,25 @@ void mmc_rpmb_post_frame(struct mmc_core_rpmb_req *rpmb_req)
 	if (p_req->type == RPMB_GET_WRITE_COUNTER ||
 			p_req->type == RPMB_READ_DATA) {
 		/* nonce copy */
-		ptr = buf_frame + RPMB_NONCE_END;
-		for (i = 0; i < 16; i++, ptr--)
-			p_req->nonce[i] = *ptr;
+		memcpy(p_req->nonce, buf_frame + RPMB_NONCE_BEG, 16);
 	}
 	/*
 	 * Take MAC within the last package
 	 */
 	if (p_req->type == RPMB_READ_DATA) {
-		int j;
 		__u8 *data = p_req->data;
 		for (i = 0; i < p_req->blk_cnt; i++) {
-			ptr = buf_frame + i * 512 + RPMB_DATA_END;
-			for (j = 0; j < 256; j++, ptr--, data++)
-				*data = *ptr;
+			memcpy(data, buf_frame + i * 512 + RPMB_DATA_BEG, 256);
+			data += 256;
 		}
 		/*
 		 * MAC stored in the last package
 		 */
-		if (p_req->mac) {
-			ptr = buf_frame + 512 * i + RPMB_MAC_END;
-			for (i = 0; i < 32; i++, ptr--)
-				p_req->mac[i] = *ptr;
-		}
-	} else if (p_req->mac) {
-		ptr = buf_frame + RPMB_MAC_END;
-		for (i = 0; i < 32; i++, ptr--)
-			p_req->mac[i] = *ptr;
-	}
+		if (p_req->mac)
+			memcpy(p_req->mac, buf_frame + i * 512 + RPMB_MAC_BEG,
+					32);
+	} else if (p_req->mac)
+		memcpy(p_req->mac, buf_frame + RPMB_MAC_BEG, 32);
 out:
 	kfree(buf_frame);
 	rpmb_req->frame = NULL;
@@ -830,9 +821,9 @@ static int mmc_rpmb_request_check(struct mmc_card *card,
 int mmc_rpmb_pre_frame(struct mmc_core_rpmb_req *rpmb_req,
 		struct mmc_card *card)
 {
-	int i, j, ret;
+	int i, ret;
 	struct mmc_ioc_rpmb_req *p_req = rpmb_req->req;
-	__u8 *ptr = NULL, *buf_frame;
+	__u8 *buf_frame;
 	__u16 blk_cnt, addr, type;
 	__u32 w_counter;
 
@@ -873,9 +864,7 @@ int mmc_rpmb_pre_frame(struct mmc_core_rpmb_req *rpmb_req,
 			memcpy(buf_frame + RPMB_ADDR_BEG, &addr, 2);
 		}
 		/* convert Nonce code */
-		ptr = buf_frame + RPMB_NONCE_END;
-		for (i = 0; i < 16; i++, ptr--)
-			*ptr = p_req->nonce[i];
+		memcpy(buf_frame + RPMB_NONCE_BEG, p_req->nonce, 16);
 	} else if (p_req->type == RPMB_WRITE_DATA) {
 		__u8 *data = p_req->data;
 		/*
@@ -895,24 +884,22 @@ int mmc_rpmb_pre_frame(struct mmc_core_rpmb_req *rpmb_req,
 					&addr, 2);
 			memcpy(buf_frame + i * 512 + RPMB_WCOUNTER_BEG,
 					&w_counter, 4);
-			ptr = buf_frame + i * 512 + RPMB_DATA_END;
-			for (j = 0; j < 256; j++, ptr--, data++)
-				*ptr = *data;
+			memcpy(buf_frame + i * 512 + RPMB_DATA_BEG,
+					data, 256);
+			data += 256;
 		}
-		ptr = buf_frame + 512 * (i - 1) + RPMB_MAC_END;
 		/* convert MAC code */
-		for (i = 0; i < 32; i++, ptr--)
-			*ptr = p_req->mac[i];
+		memcpy(buf_frame + 512 * (i - 1) + RPMB_MAC_BEG,
+				p_req->mac, 32);
 	} else if (p_req->type == RPMB_PROGRAM_KEY) {
 		/*
 		 * One package prepared
 		 * This request only need mac
 		 */
 		memcpy(buf_frame + RPMB_TYPE_BEG, &type, 2);
-		ptr = buf_frame + RPMB_MAC_END;
 		/* convert MAC code */
-		for (i = 0; i < 32; i++, ptr--)
-			*ptr = p_req->mac[i];
+		memcpy(buf_frame + RPMB_MAC_BEG,
+				p_req->mac, 32);
 	} else {
 		pr_err("%s: We shouldn't be here\n", mmc_hostname(card->host));
 		kfree(buf_frame);

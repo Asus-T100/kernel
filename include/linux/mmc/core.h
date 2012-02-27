@@ -155,9 +155,10 @@ struct mmc_core_rpmb_req {
 #define RPMB_BLKS_BEG		506
 #define RPMB_ADDR_BEG		504
 #define RPMB_WCOUNTER_BEG	500
-#define RPMB_NONCE_END		499
-#define RPMB_DATA_END		483
-#define RPMB_MAC_END		227
+
+#define RPMB_NONCE_BEG		484
+#define RPMB_DATA_BEG		228
+#define RPMB_MAC_BEG		196
 
 struct mmc_host;
 struct mmc_card;
