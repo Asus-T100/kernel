@@ -780,9 +780,33 @@ static int __init sfi_parse_oemb(struct sfi_table_header *table)
 	return 0;
 }
 
+static struct kobject *board_properties;
+
+static int __init intel_mid_board_properties(void)
+{
+	int ret = 0;
+
+	board_properties = kobject_create_and_add("board_properties", NULL);
+	if (!board_properties) {
+		pr_err("failed to create /sys/board_properties\n");
+		ret = -EINVAL;
+	}
+
+	return ret;
+}
+
+int intel_mid_create_property(const struct attribute *attr)
+{
+	if (!board_properties)
+		return -EINVAL;
+
+	return sysfs_create_file(board_properties, attr);
+}
 
 static int __init intel_mid_platform_init(void)
 {
+	intel_mid_board_properties();
+
 	/* Get MFD Validation SFI OEMB Layout */
 	sfi_table_parse(SFI_SIG_OEMB, NULL, NULL, sfi_parse_oemb);
 	sfi_table_parse(SFI_SIG_OEM0, NULL, NULL, sfi_parse_oem0);

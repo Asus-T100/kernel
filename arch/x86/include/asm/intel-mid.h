@@ -28,6 +28,7 @@ extern struct devs_id *get_device_id(u8 type, char *name);
 extern int __init sfi_parse_mrtc(struct sfi_table_header *table);
 extern int sfi_mrtc_num;
 extern struct sfi_rtc_table_entry sfi_mrtc_array[];
+extern int intel_mid_create_property(const struct attribute *attr);
 
 /*
  * Here defines the array of devices platform data that IAFW would export
