@@ -67,6 +67,38 @@ static struct snd_pcm_hardware sst_platform_pcm_hw = {
 	.fifo_size = SST_FIFO_SIZE,
 };
 
+static int sst_platform_ihf_set_tdm_slot(struct snd_soc_dai *dai,
+			unsigned int tx_mask, unsigned int rx_mask,
+			int slots, int slot_width) {
+	struct intel_sst_card_ops *sstdrv_ops;
+	struct snd_sst_runtime_params params_data;
+	int channels = slots;
+	int ret_val;
+
+	/* allocate memory for SST API set */
+	sstdrv_ops = kzalloc(sizeof(*sstdrv_ops), GFP_KERNEL);
+	if (!sstdrv_ops)
+		return -ENOMEM;
+	/* registering with SST driver to get access to SST APIs to use */
+	ret_val = register_sst_card(sstdrv_ops);
+	if (ret_val) {
+		pr_err("sst: sst card registration failed\n");
+		return -EIO;
+	}
+	params_data.type = SST_SET_CHANNEL_INFO;
+	params_data.str_id = SND_SST_DEVICE_IHF;
+	params_data.size = sizeof(channels);
+	params_data.addr = &channels;
+	ret_val = sstdrv_ops->pcm_control->set_generic_params(SST_SET_RUNTIME_PARAMS,
+							(void *)&params_data);
+	kfree(sstdrv_ops);
+	return ret_val;
+}
+
+static const struct snd_soc_dai_ops sst_ihf_ops = {
+	.set_tdm_slot = sst_platform_ihf_set_tdm_slot,
+};
+
 /* MFLD - MSIC */
 static struct snd_soc_dai_driver sst_platform_dai[] = {
 {
@@ -105,6 +137,7 @@ static struct snd_soc_dai_driver sst_platform_dai[] = {
 #endif
 		.formats = SNDRV_PCM_FMTBIT_S16_LE,
 	},
+	.ops = &sst_ihf_ops,
 },
 {
 	.name = "Vibra1-cpu-dai",

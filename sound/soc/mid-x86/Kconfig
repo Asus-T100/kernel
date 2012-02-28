@@ -27,3 +27,12 @@ config SND_CLV_MACHINE
 
 config SND_SST_PLATFORM
 	tristate
+
+config SND_MFLD_MONO_SPEAKER_SUPPORT
+	tristate "Mono Speaker support for Medfield based devices"
+	default N
+	help
+          This adds support for Mono speaker support on Intel(R) MID Medfield based devices.
+          Say Y if you have device with mono speaker. If you say N support for stereo speakers
+          will be enabled.
+          If unsure select "N".
