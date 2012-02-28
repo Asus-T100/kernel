@@ -808,6 +808,7 @@ static int camera_vprog1_on;
  */
 static int camera_sensor_gpio(int gpio, char *name, int dir, int value)
 {
+	pr_err("%s: GPIO:%d, Name:%s, Dir:%d, Value:%d", __func__, gpio, name, dir, value);
 	int ret, pin;
 
 	if (gpio == -1) {
@@ -995,13 +996,15 @@ static int mt9m114_flisclk_ctrl(struct v4l2_subdev *sd, int flag)
 }
 
 static int mt9e013_reset;
+
+#define MFLD_DV10_CAM_GPIO 176
 static int mt9m114_power_ctrl(struct v4l2_subdev *sd, int flag)
 {
 	int ret;
 
 	/* Note here, there maybe a workaround to avoid I2C SDA issue */
 	if (gp_camera1_power_down < 0) {
-		ret = camera_sensor_gpio(-1, GP_CAMERA_1_POWER_DOWN,
+		ret = camera_sensor_gpio(MFLD_DV10_CAM_GPIO, GP_CAMERA_1_POWER_DOWN,
 					GPIOF_DIR_OUT, 1);
 		if (ret < 0)
 			return ret;
@@ -2141,40 +2144,16 @@ static int __init blackbay_i2c_init(void)
 			intel_ignore_i2c_device_register(&ov8830_pentry, dev);
 		else
 			pr_err("Dev id is NULL for %s\n", "ov8830");
-
-		/* Add mt9m114 driver for detection
-		 * -- FIXME: remove when the sensor is defined in SFI table */
-		dev = get_device_id(SFI_DEV_TYPE_I2C, "mt9m114");
-		if (dev != NULL)
-			intel_ignore_i2c_device_register(&mt9m114_pentry, dev);
-		else
-			pr_err("Dev id is NULL for %s\n", "mt9m114");
 	}
+
+	/* Add mt9m114 driver for detection
+	 * -- FIXME: remove when the sensor is defined in SFI table */
+	dev = get_device_id(SFI_DEV_TYPE_I2C, "mt9m114");
+	if (dev != NULL)
+		intel_ignore_i2c_device_register(&mt9m114_pentry, dev);
+	else
+		pr_err("Dev id is NULL for %s\n", "mt9m114");
+
 	return 0;
 }
 device_initcall(blackbay_i2c_init);
-
-/*
- * mxt1386 initialization routines for Redridge board
- * (Should be removed once SFI tables are updated)
- */
-static struct mxt_platform_data mxt1386_pdata = {
-	.irqflags	= IRQF_TRIGGER_FALLING,
-	.init_platform_hw = atmel_mxt_init_platform_hw,
-
-};
-static struct i2c_board_info dv10_i2c_bus0_devs[] = {
-	{
-		.type       = "mxt1386",
-		.addr       = 0x4c,
-		.irq	    = TOUCH_IRQ_GPIO + MRST_IRQ_OFFSET,
-		.platform_data = &mxt1386_pdata,
-	},
-};
-static int __init redridge_i2c_init(void)
-{
-       i2c_register_board_info(0, dv10_i2c_bus0_devs,
-                               ARRAY_SIZE(dv10_i2c_bus0_devs));
-       return 0;
-}
-device_initcall(redridge_i2c_init);
