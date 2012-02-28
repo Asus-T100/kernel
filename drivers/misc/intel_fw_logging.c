@@ -234,10 +234,10 @@ static void get_additional_error(char *buf, int num_err_log,
 				sprintf(str, "Unknown agent index (%d)\n",
 					log.fields.agent_idx);
 			else
-				sprintf(str, "%s\n",
+				snprintf(str, sizeof(str)-1, "%s\n",
 					Agent_Names[log.fields.agent_idx]);
 
-			sprintf(temp, "Agent Index: %s\n", str);
+			snprintf(temp, sizeof(temp)-1, "Agent Index:%s\n", str);
 			strcat(buf, temp);
 
 			sprintf(temp, "Cmd initiator ID: %d\n",
