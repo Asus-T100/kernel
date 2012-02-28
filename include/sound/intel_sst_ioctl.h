@@ -335,8 +335,9 @@ enum snd_sst_port_action {
 };
 
 enum stream_param_type {
-	SET_TIME_SLOT = 0,
-	OTHERS = 1, /*reserved for other params that need to be set in future*/
+	SST_SET_TIME_SLOT = 0,
+	SST_SET_CHANNEL_INFO = 1,
+	OTHERS = 2, /*reserved for other params that need to be set in future*/
 };
 
 /* Target selection per device structure */
@@ -411,6 +412,14 @@ struct snd_sst_tuning_params {
 	__u8 size;
 	__u8 rsvd;
 	__u64 addr;
+} __attribute__ ((packed));
+
+struct snd_sst_runtime_params {
+	__u8 type;
+	__u8 str_id;
+	__u8 size;
+	__u8 rsvd;
+	void *addr;
 } __attribute__ ((packed));
 /*IOCTL defined here */
 /*SST MMF IOCTLS only */

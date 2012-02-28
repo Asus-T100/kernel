@@ -65,7 +65,8 @@ enum sst_controls {
 	SST_VMIC_CHANNEL_SELECT =	0x1011,
 	SST_SND_DEVICE_RESUME =		0x1012,
 	SST_SND_DEVICE_RESUME_SYNC =	0x1013,
-	SST_MAX_CONTROLS =		0x1013,
+	SST_SET_RUNTIME_PARAMS =	0x1014,
+	SST_MAX_CONTROLS =		0x1014,
 };
 
 enum SND_CARDS {
@@ -118,6 +119,7 @@ int intelmad_get_mic_bias(void);
 struct intel_sst_pcm_control {
 	int (*open) (struct snd_sst_params *str_param);
 	int (*device_control) (int cmd, void *arg);
+	int (*set_generic_params) (enum sst_controls cmd, void *arg);
 	int (*close) (unsigned int str_id);
 };
 struct intel_sst_card_ops {

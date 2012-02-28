@@ -344,7 +344,9 @@ struct sst_dma {
 	struct pci_dev *dmac;
 };
 
-
+struct sst_runtime_param {
+	struct snd_sst_runtime_params param;
+};
 #define PCI_DMAC_MFLD_ID 0x0830
 #define PCI_DMAC_CLV_ID 0x08F0
 #define SST_MAX_DMA_LEN (4095*4)
@@ -454,6 +456,7 @@ struct intel_sst_drv {
 	struct list_head	fw_list;
 	struct sst_dma		dma;
 	void			*fw_in_mem;
+	struct sst_runtime_param runtime_param;
 };
 
 extern struct intel_sst_drv *sst_drv_ctx;

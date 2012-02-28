@@ -575,10 +575,70 @@ static int sst_device_control(int cmd, void *arg)
 	return retval;
 }
 
+/*
+ * sst_copy_runtime_param - copy runtime params from src to dst
+ *				 structure.
+ *
+ *@dst: destination runtime structure
+ *@src: source runtime structure
+ *
+ * This helper function is called to copy the runtime parameter
+ * structure.
+*/
+static int sst_copy_runtime_param(struct snd_sst_runtime_params *dst,
+			struct snd_sst_runtime_params *src)
+{
+	dst->type = src->type;
+	dst->str_id = src->str_id;
+	dst->size = src->size;
+	if (dst->addr) {
+		pr_err("mem allocated in prev setting, use the same memory\n");
+		return -EINVAL;
+	}
+	dst->addr = kzalloc(dst->size, GFP_KERNEL);
+	if (!dst->addr)
+		return -ENOMEM;
+	memcpy(dst->addr, src->addr, dst->size);
+	return 0;
+}
+/*
+ * sst_set_generic_params - Set generic params
+ *
+ * @cmd: control cmd to be set
+ * @arg: command argument
+ *
+ * This function is called by MID sound card driver to configure
+ * SST runtime params.
+ */
+static int sst_set_generic_params(enum sst_controls cmd, void *arg)
+{
+	int ret_val = 0;
+	pr_debug("Enter:%s, cmd:%d\n", __func__, cmd);
+
+	if (NULL == arg)
+		return -EINVAL;
+
+	switch (cmd) {
+	case SST_SET_RUNTIME_PARAMS: {
+		struct snd_sst_runtime_params *src;
+		struct snd_sst_runtime_params *dst;
+
+		src = (struct snd_sst_runtime_params *)arg;
+		dst = &(sst_drv_ctx->runtime_param.param);
+		ret_val = sst_copy_runtime_param(dst, src);
+		break;
+		}
+	default:
+		pr_err("Invalid cmd request:%d\n", cmd);
+		ret_val = -EINVAL;
+	}
+	return ret_val;
+}
 
 static struct intel_sst_pcm_control pcm_ops = {
 	.open = sst_open_pcm_stream,
 	.device_control = sst_device_control,
+	.set_generic_params = sst_set_generic_params,
 	.close = sst_close_pcm_stream,
 };
 

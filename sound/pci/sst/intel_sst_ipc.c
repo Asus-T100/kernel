@@ -36,6 +36,23 @@
 #include "intel_sst_fw_ipc.h"
 #include "intel_sst_common.h"
 
+/**
+ * sst_send_ipc_msg_nowait - send ipc msg for algorithm parameters
+ *		and returns immediately without waiting for reply
+ *
+ * @msg: post msg pointer
+ *
+ * This function is called to send ipc msg
+ */
+static int sst_send_ipc_msg_nowait(struct ipc_post **msg)
+{
+	spin_lock(&sst_drv_ctx->list_spin_lock);
+	list_add_tail(&(*msg)->node, &sst_drv_ctx->ipc_dispatch_list);
+	spin_unlock(&sst_drv_ctx->list_spin_lock);
+	sst_post_message(&sst_drv_ctx->ipc_post_msg_wq);
+	return  0;
+}
+
 /*
  * sst_send_sound_card_type - send sound card type
  *
@@ -56,6 +73,30 @@ static void sst_send_sound_card_type(void)
 	sst_post_message(&sst_drv_ctx->ipc_post_msg_wq);
 }
 
+/*
+ * sst_send_runtime_param - send runtime param to SST
+ *
+ * this function sends the runtime parameter to sst dsp engine
+ */
+static int sst_send_runtime_param(struct snd_sst_runtime_params *params)
+{
+	struct ipc_post *msg = NULL;
+	int ret_val;
+
+	pr_debug("Enter:%s\n", __func__);
+	ret_val = sst_create_large_msg(&msg);
+	if (ret_val)
+		return ret_val;
+	sst_fill_header(&msg->header, IPC_IA_SET_RUNTIME_PARAMS, 1,
+							params->str_id);
+	msg->header.part.data = sizeof(u32) + sizeof(*params) + params->size;
+	memcpy(msg->mailbox_data, &msg->header.full, sizeof(u32));
+	memcpy(msg->mailbox_data + sizeof(u32), params, sizeof(*params));
+	/* driver doesn't need to send address, so overwrite addr with data */
+	memcpy(msg->mailbox_data + sizeof(u32) + sizeof(*params) - sizeof(params->addr),
+			params->addr, params->size);
+	return sst_send_ipc_msg_nowait(&msg);
+}
 /**
 * sst_post_message - Posts message to SST
 *
@@ -176,6 +217,9 @@ static int process_fw_init(struct sst_ipc_msg_wq *msg)
 	}
 	if (sst_drv_ctx->pci_id == SST_MRST_PCI_ID)
 		sst_send_sound_card_type();
+	/* If there any runtime parameter to set, send it */
+	if (sst_drv_ctx->runtime_param.param.addr)
+		sst_send_runtime_param(&(sst_drv_ctx->runtime_param.param));
 	mutex_lock(&sst_drv_ctx->sst_lock);
 	sst_drv_ctx->lpe_stalled = 0;
 	mutex_unlock(&sst_drv_ctx->sst_lock);

@@ -447,6 +447,7 @@ static void __devexit intel_sst_remove(struct pci_dev *pci)
 		kfree(sst_drv_ctx->mmap_mem);
 	} else
 		kfree(sst_drv_ctx->fw_cntx);
+	kfree(sst_drv_ctx->runtime_param.param.addr);
 	flush_scheduled_work();
 	destroy_workqueue(sst_drv_ctx->process_reply_wq);
 	destroy_workqueue(sst_drv_ctx->process_msg_wq);
