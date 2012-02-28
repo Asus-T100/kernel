@@ -206,7 +206,8 @@ static inline int had_start_dummy_playback(struct snd_intelhad *intelhaddata)
 		schedule_delayed_work(
 				&intelhaddata->dummy_audio,
 				intelhaddata->timer);
-	}
+	} else
+		spin_unlock_irqrestore(&intelhaddata->had_spinlock, flag_irqs);
 
 	return retval;
 }
@@ -303,7 +304,6 @@ static inline int had_process_stop_trigger(struct snd_intelhad *intelhaddata)
 	struct had_pvt_data *had_stream;
 	enum intel_had_aud_buf_type buf_id;
 	u32 buf_addr;
-	unsigned long flag_irqs;
 
 	had_stream = intelhaddata->private_data;
 
@@ -311,6 +311,7 @@ static inline int had_process_stop_trigger(struct snd_intelhad *intelhaddata)
 	/* If device disconnected, ignore this interrupt */
 	if (had_stream->stream_status == HAD_RUNNING_DUMMY) {
 		had_stream->stream_status = HAD_INIT;
+		had_stream->process_trigger = NO_TRIGGER;
 		return retval;
 	}
 
@@ -327,7 +328,6 @@ static inline int had_process_stop_trigger(struct snd_intelhad *intelhaddata)
 		intelhaddata->curr_buf = HAD_BUF_TYPE_D;
 	else
 		intelhaddata->curr_buf = HAD_BUF_TYPE_C;
-	spin_unlock_irqrestore(&intelhaddata->had_spinlock, flag_irqs);
 
 	/* _STOP -> _START -> _STOP occured
 	 * invalidate Buff_A, Buff_B
@@ -347,7 +347,6 @@ static inline int had_process_stop_trigger(struct snd_intelhad *intelhaddata)
 	pr_debug("buf[%d] addr=%#x  and size=%d\n", i,
 			intelhaddata->buf_info[i].buf_addr,
 			intelhaddata->buf_info[i].buf_size);
-	spin_lock_irqsave(&intelhaddata->had_spinlock, flag_irqs);
 
 	return retval;
 }
@@ -377,7 +376,6 @@ int had_process_buffer_done(struct snd_intelhad *intelhaddata)
 	buf_size = intelhaddata->buf_info[buf_id].buf_size;
 	stream_status = had_stream->stream_status;
 	process_trigger = had_stream->process_trigger;
-	spin_unlock_irqrestore(&intelhaddata->had_spinlock, flag_irqs);
 
 	pr_debug("Enter:%s buf_id=%d", __func__, buf_id);
 
@@ -387,9 +385,10 @@ int had_process_buffer_done(struct snd_intelhad *intelhaddata)
 	 */
 
 	/* Check for any intr_miss in case of active playback */
-	if ((stream_status == HAD_RUNNING_STREAM) &&
-			(process_trigger == NO_TRIGGER) &&
+	if ((had_stream->stream_status == HAD_RUNNING_STREAM) &&
+			(had_stream->process_trigger == NO_TRIGGER) &&
 			!flag_en_allbufs) {
+		spin_unlock_irqrestore(&intelhaddata->had_spinlock, flag_irqs);
 		intr_count = had_chk_intrmiss(intelhaddata, buf_id);
 		if (!intr_count || (intr_count > 3)) {
 			pr_err("HAD SW state in non-recoverable!!! mode\n");
@@ -398,9 +397,9 @@ int had_process_buffer_done(struct snd_intelhad *intelhaddata)
 		}
 		buf_id += (intr_count - 1);
 		buf_id = buf_id % 4;
+		spin_lock_irqsave(&intelhaddata->had_spinlock, flag_irqs);
 	}
 
-	spin_lock_irqsave(&intelhaddata->had_spinlock, flag_irqs);
 	/* Acknowledge _START trigger recieved */
 	if (had_stream->process_trigger == PRE_START) {
 		spin_unlock_irqrestore(&intelhaddata->had_spinlock, flag_irqs);
@@ -624,6 +623,12 @@ int had_process_hot_plug(struct snd_intelhad *intelhaddata)
 		retval = had_set_caps(HAD_SET_ENABLE_AUDIO, NULL);
 		retval = snd_intelhad_configure_silence(intelhaddata);
 		retval = snd_intelhad_start_silence(intelhaddata);
+		return retval;
+	}
+
+	/* Safety check */
+	if (!substream) {
+		pr_err("PANIC!!! Should never come here\n");
 		return retval;
 	}
 

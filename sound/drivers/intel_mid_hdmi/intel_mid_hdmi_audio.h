@@ -430,7 +430,7 @@ struct had_stream_pvt {
 };
 
 struct had_pvt_data {
-	enum had_stream_status		stream_status;
+	enum had_status_stream		stream_status;
 	enum had_process_trigger	process_trigger;
 };
 

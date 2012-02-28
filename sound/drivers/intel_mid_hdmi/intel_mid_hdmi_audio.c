@@ -556,16 +556,15 @@ static int snd_intelhad_open(struct snd_pcm_substream *substream)
 	pr_debug("snd_intelhad_open called\n");
 	intelhaddata = snd_pcm_substream_chip(substream);
 	had_stream = intelhaddata->private_data;
-	if (had_stream->process_trigger != NO_TRIGGER) {
-		pr_err("%s:Yet to process some trigger\n", __func__);
-		return -ENODEV;
-	}
 
 	if (had_get_hwstate(intelhaddata)) {
 		pr_err("%s: HDMI cable plugged-out\n", __func__);
 		return -ENODEV;
 	}
-
+	if (had_stream->process_trigger != NO_TRIGGER) {
+		pr_err("%s:Yet to process some trigger\n", __func__);
+		return -EAGAIN;
+	}
 	runtime = substream->runtime;
 
 	/* Check, if device already in use */
@@ -893,6 +892,7 @@ static int snd_intelhad_pcm_trigger(struct snd_pcm_substream *substream,
 		/* Disable local INTRs till register prgmng is done */
 		if (had_get_hwstate(intelhaddata)) {
 			pr_err("_START: HDMI cable plugged-out\n");
+			snd_pcm_stop(substream, SNDRV_PCM_STATE_DISCONNECTED);
 			retval = -ENODEV;
 			break;
 		}
@@ -913,6 +913,8 @@ static int snd_intelhad_pcm_trigger(struct snd_pcm_substream *substream,
 		had_stream->process_trigger = STOP_TRIGGER;
 		/* Send zero filled data */
 		if (had_stream->stream_status == HAD_RUNNING_DUMMY) {
+			had_stream->stream_status = HAD_INIT;
+			had_stream->process_trigger = NO_TRIGGER;
 			spin_unlock_irqrestore(&intelhaddata->had_spinlock,
 					flag_irq);
 			cancel_delayed_work(&intelhaddata->dummy_audio);
@@ -955,11 +957,18 @@ static int snd_intelhad_pcm_prepare(struct snd_pcm_substream *substream)
 	runtime = substream->runtime;
 	had_stream = intelhaddata->private_data;
 
+	if (had_get_hwstate(intelhaddata)) {
+		pr_err("%s: HDMI cable plugged-out\n", __func__);
+		snd_pcm_stop(substream, SNDRV_PCM_STATE_DISCONNECTED);
+		retval = -ENODEV;
+		goto prep_end;
+	}
+
 	spin_lock_irqsave(&intelhaddata->had_spinlock, flag_irqs);
 	if (had_stream->process_trigger != NO_TRIGGER) {
 		spin_unlock_irqrestore(&intelhaddata->had_spinlock, flag_irqs);
 		pr_err("%s:Yet to process some trigger\n", __func__);
-		return -EBUSY;
+		return -EAGAIN;
 	}
 	spin_unlock_irqrestore(&intelhaddata->had_spinlock, flag_irqs);
 
@@ -983,11 +992,6 @@ static int snd_intelhad_pcm_prepare(struct snd_pcm_substream *substream)
 	if (retval)
 		goto prep_end;
 
-	if (had_get_hwstate(intelhaddata)) {
-		pr_err("%s: HDMI cable plugged-out\n", __func__);
-		retval = -ENODEV;
-		goto prep_end;
-	}
 
 	/* Get N value in KHz */
 	retval = had_get_caps(HAD_GET_SAMPLING_FREQ, &disp_samp_freq);
