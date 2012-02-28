@@ -351,7 +351,7 @@ config I2C_DAVINCI
 	  For details please see http://www.ti.com/davinci
 
 config I2C_DESIGNWARE_PLATFORM
-	tristate "Synopsys DesignWare Platfrom"
+	tristate "Synopsys DesignWare Platform"
 	depends on HAVE_CLK
 	help
 	  If you say yes to this option, support will be included for the
@@ -360,6 +360,17 @@ config I2C_DESIGNWARE_PLATFORM
 	  This driver can also be built as a module.  If so, the module
 	  will be called i2c-designware-platform.
 
+
+config I2C_DESIGNWARE_PCI_SPLIT_XFER
+	bool "Split long I2C xfers into smaller chunks supported by I2C controller"
+	depends on I2C_DESIGNWARE_PCI
+	help
+	  Due to limitation of I2C silicon on Penwell I2C xfers longer than 31 bytes
+	  are not guaranteed to be atomic. If TX fifo underrun occurs during such
+	  a transfer I2C controller will automatically generate a STOP condition.
+
+	  Use this flag in all users of Penwell's I2C controller that are affected
+	  by this constraint.
 config I2C_GPIO
 	tristate "GPIO-based bitbanging I2C"
 	depends on GENERIC_GPIO
