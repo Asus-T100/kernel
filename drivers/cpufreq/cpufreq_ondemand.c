@@ -456,10 +456,20 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 		struct cpu_dbs_info_s *j_dbs_info;
 		cputime64_t cur_wall_time, cur_idle_time, cur_iowait_time;
 		unsigned int idle_time, wall_time, iowait_time;
-		unsigned int load, load_freq;
+		unsigned int load, io_load = 0, load_freq;
+		bool has_hw_res_counters = 0;
 		int freq_avg;
 
 		j_dbs_info = &per_cpu(od_cpu_dbs_info, j);
+
+		/*
+		 * for systems that have HW residency counters for
+		 * idle accounting, better to rely on them for a more
+		 * accurate one
+		 */
+		load = __cpufreq_driver_getload(policy, j);
+		if (load >= 0)
+			has_hw_res_counters = true;
 
 		cur_idle_time = get_cpu_idle_time(j, &cur_wall_time);
 		cur_iowait_time = get_cpu_iowait_time(j, &cur_wall_time);
@@ -500,13 +510,19 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 		 * from the cpu idle time.
 		 */
 
-		if (dbs_tuners_ins.io_is_busy && idle_time >= iowait_time)
+		if (dbs_tuners_ins.io_is_busy && idle_time >= iowait_time) {
 			idle_time -= iowait_time;
+			if (wall_time)
+				io_load = (100 * iowait_time) / wall_time;
+			if (has_hw_res_counters)
+				load += io_load;
+		}
 
 		if (unlikely(!wall_time || wall_time < idle_time))
 			continue;
 
-		load = 100 * (wall_time - idle_time) / wall_time;
+		if (!has_hw_res_counters)
+			load = 100 * (wall_time - idle_time) / wall_time;
 
 		freq_avg = __cpufreq_driver_getavg(policy, j);
 		if (freq_avg <= 0)
