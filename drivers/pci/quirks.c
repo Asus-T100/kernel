@@ -2890,6 +2890,7 @@ static void quirk_mfld_d1_support(struct pci_dev *dev)
 
 #ifdef CONFIG_USB_PENWELL_OTG
 DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_INTEL, 0x0829, quirk_mfld_d1_support);
+DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_INTEL, 0xE006, quirk_mfld_d1_support);
 #endif /*CONFIG_USB_PENWELL_OTG*/
 
 #ifdef CONFIG_SERIAL_MFD_HSU
