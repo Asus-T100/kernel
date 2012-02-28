@@ -742,7 +742,7 @@ ipcread_err:
 static bool is_charger_fault(void)
 {
 	uint8_t fault_reg, chrctrl_reg, stat, spwrsrcint_reg;
-	int chr_mode, retval = 0;
+	int chr_mode, i, retval = 0;
 	int adc_temp, adc_usb_volt, batt_volt;
 	struct ipc_device *ipcdev = container_of(msic_dev,
 					struct ipc_device, dev);
@@ -783,17 +783,34 @@ static bool is_charger_fault(void)
 	if (chrctrl_reg & CHRCNTL_CHRG_DISABLE)
 		return false;
 
-	retval = intel_scu_ipc_ioread8(CHR_STATUS_FAULT_REG, &fault_reg);
-	if (retval) {
-		retval = handle_ipc_rw_status(retval, CHR_STATUS_FAULT_REG,
-				MSIC_IPC_READ);
-		if (retval)
-			return false;
+	/* due to MSIC HW bug, the fault register is not getting updated
+	 * immediately after the charging is enabled. As a SW WA the
+	 * driver will retry reading the fault registers for 3 times
+	 * with delay of 1 mSec.
+	 */
+	for (i = 0; i < CHR_READ_RETRY_CNT; i++) {
+		retval = intel_scu_ipc_ioread8(CHR_STATUS_FAULT_REG,
+								&fault_reg);
+		if (retval) {
+			retval = handle_ipc_rw_status(retval,
+					CHR_STATUS_FAULT_REG, MSIC_IPC_READ);
+			if (retval)
+				return retval;
+		}
+
+		stat = (fault_reg & CHR_STATUS_BIT_MASK) >> CHR_STATUS_BIT_POS;
+		if (stat == CHR_STATUS_BIT_READY) {
+			dev_info(msic_dev, "retry reading Fault Reg:0x%x\n",
+								fault_reg);
+			mdelay(30);
+			continue;
+		}
+		break;
 	}
 
-	/*If charger is enabled and STAT(0:1) shows charging progress or
-	 * charging done then we report false*/
-	stat = (fault_reg & CHR_STATUS_BIT_MASK) >> CHR_STATUS_BIT_POS;
+	/* if charger is enabled and STAT(0:1) shows charging
+	* progress or charging done then we report false
+	*/
 	if (stat == CHR_STATUS_BIT_PROGRESS ||
 		stat == CHR_STATUS_BIT_CYCLE_DONE)
 		return false;

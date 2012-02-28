@@ -226,6 +226,7 @@
 #define MAX_IPC_ERROR_COUNT 20
 
 #define CHR_WRITE_RETRY_CNT 3
+#define CHR_READ_RETRY_CNT 5
 
 /*
  * Each LSB of Charger LED PWM register
