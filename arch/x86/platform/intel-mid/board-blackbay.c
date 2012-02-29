@@ -71,6 +71,7 @@
 #include <asm/intel_scu_ipc.h>
 #include <asm/apb_timer.h>
 #include <asm/intel_mid_gpadc.h>
+#include <asm/intel_mid_pwm.h>
 #include <asm/reboot.h>
 
 /* the offset for the mapping of global gpio pin to irq */
@@ -1981,6 +1982,36 @@ out:
 	return ret;
 }
 rootfs_initcall(hdmi_i2c_workaround);
+
+#ifdef CONFIG_MID_PWM
+static int __init intel_mid_pwm_init(void)
+{
+	int ret, i;
+	struct ipc_board_info board_info;
+	static struct intel_mid_pwm_platform_data mid_pwm_pdata;
+
+	for (i = 0; i < PWM_NUM; i++) {
+		mid_pwm_pdata.reg_clkdiv0[i] = MSIC_REG_PWM0CLKDIV0 + i * 2;
+		mid_pwm_pdata.reg_clkdiv1[i] = MSIC_REG_PWM0CLKDIV1 + i * 2;
+		mid_pwm_pdata.reg_dutycyc[i] = MSIC_REG_PWM0DUTYCYCLE + i;
+	}
+
+	memset(&board_info, 0, sizeof(board_info));
+	strncpy(board_info.name, "intel_mid_pwm", 16);
+	board_info.bus_id = IPC_SCU;
+	board_info.id = -1;
+	board_info.platform_data = &mid_pwm_pdata;
+
+	ret = ipc_new_device(&board_info);
+	if (ret) {
+		pr_err("failed to create ipc device: intel_mid_pwm\n");
+		return -1;
+	}
+
+	return 0;
+}
+fs_initcall(intel_mid_pwm_init);
+#endif
 
 #ifdef CONFIG_LEDS_INTEL_KPD
 static int __init intel_kpd_led_init(void)

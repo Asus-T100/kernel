@@ -28,34 +28,12 @@
 #include <linux/leds.h>
 #include <linux/earlysuspend.h>
 #include <asm/intel_scu_ipc.h>
-
-#define	MSIC_REG_PWM0CLKDIV1	0x061
-#define	MSIC_REG_PWM0CLKDIV0	0x062
-#define	MSIC_REG_PWM0DUTYCYCLE	0x067
+#include <asm/intel_mid_pwm.h>
 
 static void intel_keypad_led_set(struct led_classdev *led_cdev,
 	enum led_brightness value)
 {
-	int ret;
-
-	ret = intel_scu_ipc_iowrite8(MSIC_REG_PWM0CLKDIV1, 0x00);
-	if (ret)
-		dev_err(led_cdev->dev, "set MSIC_REG_PWM0CLKDIV1 failed");
-
-	ret = intel_scu_ipc_iowrite8(MSIC_REG_PWM0CLKDIV0, 0x03);
-	if (ret)
-		dev_err(led_cdev->dev, "set MSIC_REG_PWM0CLKDIV0 failed");
-
-	ret = intel_scu_ipc_iowrite8(MSIC_REG_PWM0DUTYCYCLE, value);
-	if (ret)
-		dev_err(led_cdev->dev, "set MSIC_REG_PWM0DUTYCYCLE failed");
-
-	if (value == 0) {
-		ret = intel_scu_ipc_iowrite8(MSIC_REG_PWM0CLKDIV0, 0x00);
-		if (ret)
-			dev_err(led_cdev->dev, "set MSIC_REG_PWM0CLKDIV0 failed\n");
-	}
-
+	intel_mid_pwm(PWM_LED, value);
 }
 
 static struct led_classdev intel_kpd_led = {
