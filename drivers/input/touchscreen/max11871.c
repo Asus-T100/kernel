@@ -37,9 +37,6 @@
 #define MAXIM_DEBUG_VERBOSE 0
 #define MAXIM_TOUCH_REPORT_MODE 0x01 /* 1=basic, 2=extended */
 
-#define MAXIM_BUTTONS_HANDLED_IN_DRIVER 0 /* Set to 1 to use driver for
-					   * checking if a point is in the
-					   * virtual button region */
 #define MAXIM_BUTTONS_HANDLED_IN_CHIP 0 /* Set to 1 if the chip is configured
 					 * to report button touches in the
 					 * touch report */
@@ -282,59 +279,6 @@ max11871_report_button_press_chip(const struct max11871_data *ts,
 	return keycode;
 }
 
-static inline int
-max11871_report_button(const struct max11871_data *ts, u16 x, u16 y)
-{
-	int keycode = -1;
-	struct max11871_platform_data *pdata = ts->client->dev.platform_data;
-
-	if (x <= (pdata->abs_home_button_x + pdata->abs_button_fuzz_x) &&
-			x >= (pdata->abs_home_button_x -
-					pdata->abs_button_fuzz_x) &&
-			y <= (pdata->abs_home_button_y +
-					pdata->abs_button_fuzz_y) &&
-			y >= (pdata->abs_home_button_y -
-					pdata->abs_button_fuzz_y)) {
-		/*Report Home button*/
-		keycode = MAXIM_TOUCH_HOME;
-	} else if (x <= (pdata->abs_menu_button_x + pdata->abs_button_fuzz_x) &&
-			   x >= (pdata->abs_menu_button_x -
-					pdata->abs_button_fuzz_x) &&
-			   y <= (pdata->abs_menu_button_y +
-					pdata->abs_button_fuzz_y) &&
-			   y >= (pdata->abs_menu_button_y -
-					pdata->abs_button_fuzz_y)) {
-		/*Report Menu button*/
-		keycode = MAXIM_TOUCH_MENU;
-	} else if (x <= (pdata->abs_back_button_x + pdata->abs_button_fuzz_x) &&
-			   x >= (pdata->abs_back_button_x -
-					pdata->abs_button_fuzz_x) &&
-			   y <= (pdata->abs_back_button_y +
-					pdata->abs_button_fuzz_y) &&
-			   y >= (pdata->abs_back_button_y -
-					pdata->abs_button_fuzz_y)) {
-		/*Report Back button*/
-		keycode = MAXIM_TOUCH_BACK;
-	} else if (x <= (pdata->abs_search_button_x +
-				pdata->abs_button_fuzz_x) &&
-			   x >= (pdata->abs_search_button_x -
-				pdata->abs_button_fuzz_x) &&
-			   y <= (pdata->abs_search_button_y +
-				pdata->abs_button_fuzz_y) &&
-			   y >= (pdata->abs_search_button_y -
-				pdata->abs_button_fuzz_y)) {
-		/*Report Search button*/
-		keycode = MAXIM_TOUCH_SEARCH;
-	}
-
-	if (keycode >= 0) {
-		input_report_key(ts->key_input_dev, keycode, 1);
-		input_sync(ts->key_input_dev);
-	}
-
-	return keycode;
-}
-
 static inline void
 max11871_report_button_release(const struct max11871_data *ts, int keycode)
 {
@@ -540,18 +484,6 @@ max11871_process_touch_report(struct max11871_data *ts, u8 *reportBuffer)
 		max11871_curr_data[counter].finger_id = -1;
 
 	if (touch_count == 0) {
-		if (MAXIM_BUTTONS_HANDLED_IN_DRIVER && buttondown != -1) {
-			max11871_report_button_release(ts, buttondown);
-			buttondown = -1;
-		}
-		/* input_report_key(ts->input_dev, BTN_TOUCH, 0);
-		   input_report_abs(ts->input_dev, ABS_MT_POSITION_X, 0);
-		   input_report_abs(ts->input_dev, ABS_MT_POSITION_Y, 0);
-		   input_report_abs(ts->input_dev, ABS_MT_TOUCH_MAJOR, 0);
-		   input_report_abs(ts->input_dev, ABS_MT_WIDTH_MAJOR, 0);
-		   input_report_abs(ts->input_dev, ABS_MT_TOOL_TYPE, 0);
-		   input_report_abs(ts->input_dev, ABS_MT_PRESSURE,   0); */
-
 		input_mt_sync(ts->input_dev);
 		input_sync(ts->input_dev);
 
@@ -576,20 +508,15 @@ max11871_process_touch_report(struct max11871_data *ts, u8 *reportBuffer)
 
 			x = (x > 1280) ? 0 : 1280 - x; /* Y axis reversal */
 
-			if (MAXIM_BUTTONS_HANDLED_IN_DRIVER &&
-			    max11871_is_button_area(pdata, x, y)) {
-				buttondown = max11871_report_button(ts, x, y);
-			} else {
-				curr_touch_count++;
-				/* scale x and y */
-				x = ((long)x*0x3ff)/0x3b5;
-				y = ((long)y*0x3ce)/0x38c;
-				max11871_curr_data[finger_id].finger_id =
-								finger_id;
-				max11871_curr_data[finger_id].x = x;
-				max11871_curr_data[finger_id].y = y;
-				max11871_curr_data[finger_id].z = z;
-			}
+			curr_touch_count++;
+			/* scale x and y */
+			x = ((long)x * 0x3ff) / 0x3b5;
+			y = ((long)y * 0x3ce) / 0x38c;
+			max11871_curr_data[finger_id].finger_id =
+				finger_id;
+			max11871_curr_data[finger_id].x = x;
+			max11871_curr_data[finger_id].y = y;
+			max11871_curr_data[finger_id].z = z;
 		}
 
 		/* First process the previous and new touch point union */
