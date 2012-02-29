@@ -1855,13 +1855,18 @@ static int mdfld_crtc_mode_set(struct drm_crtc *crtc,
 		/* compute bitmask from p1 value */
 		dpll |= (1 << (clock.p1 - 2)) << 17;
 
-#if 0 /* 1080p30 & 720p */
-        	dpll = 0x00050000;
-        	fp = 0x000001be;
+		if (IS_CTP(dev)) {
+#ifndef CONFIG_CTP_CRYSTAL_38M4
+			dpll = 0x00050000;
+			fp = 0x000001be;
+#endif
 		/* In case clocking issues try value below for CTP.
-		Please keep this one for reference. */
+		Please keep this one for reference. For 38.4 MHz. */
+#if 0 /* 1080p30 & 720p */
 		fp = 0x000101be;
 #endif
+		}
+
 #if 0 /* 480p */
         	dpll = 0x02010000;
         	fp = 0x000000d2;
