@@ -610,9 +610,8 @@ static irqreturn_t apds990x_irq(int irq, void *data)
 
 	if (status & APDS990X_ST_PINT)
 		ps_handle_irq(chip);
-out:
 	mutex_unlock(&chip->mutex);
-
+out:
 	return IRQ_HANDLED;
 }
 
