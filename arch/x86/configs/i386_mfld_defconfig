@@ -1344,6 +1344,7 @@ CONFIG_I2C_ALGOBIT=y
 # I2C system bus drivers (mostly embedded / system-on-chip)
 #
 CONFIG_I2C_DESIGNWARE_PCI=y
+CONFIG_I2C_DESIGNWARE_PCI_SPLIT_XFER=y
 CONFIG_I2C_GPIO=y
 # CONFIG_I2C_INTEL_MID is not set
 # CONFIG_I2C_OCORES is not set
