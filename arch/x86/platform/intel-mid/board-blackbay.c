@@ -24,7 +24,6 @@
 #include <linux/power_supply.h>
 #include <linux/power/max17042_battery.h>
 #include <linux/power/intel_mdf_battery.h>
-#include <linux/power/bq24192_charger.h>
 #include <linux/nfc/pn544.h>
 #include <linux/skbuff.h>
 #include <linux/ti_wilink_st.h>
@@ -41,7 +40,6 @@
 #include <linux/usb/penwell_otg.h>
 #include <linux/hsi/hsi.h>
 #include <linux/hsi/intel_mid_hsi.h>
-#include <linux/input/l3g4200d_poll.h>
 #include <linux/wl12xx.h>
 #include <linux/regulator/machine.h>
 #include <linux/regulator/fixed.h>
@@ -50,7 +48,6 @@
 #include <linux/input/lis3dh.h>
 #include <linux/ms5607.h>
 #include <linux/i2c-gpio.h>
-#include <linux/rmi_i2c.h>
 #include <linux/max11871.h>
 #include <linux/i2c/apds990x.h>
 
@@ -377,22 +374,6 @@ static void __init *emc1403_platform_data(void *info)
 	intr2nd_pdata = intr2nd + MRST_IRQ_OFFSET;
 
 	return &intr2nd_pdata;
-}
-
-static void __init *l3g4200d_platform_data(void *info)
-{
-	static struct l3g4200d_gyr_platform_data l3g4200d_pdata;
-
-	l3g4200d_pdata.fs_range = L3G4200D_GYR_FS_2000DPS;
-	l3g4200d_pdata.poll_interval = 200;
-	l3g4200d_pdata.negate_x = 0;
-	l3g4200d_pdata.negate_y = 0;
-	l3g4200d_pdata.negate_z = 0;
-	l3g4200d_pdata.axis_map_x = 0;
-	l3g4200d_pdata.axis_map_y = 1;
-	l3g4200d_pdata.axis_map_z = 2;
-
-	return &l3g4200d_pdata;
 }
 
 static void __init *lis331dl_platform_data(void *info)
@@ -727,7 +708,6 @@ static void *max17042_platform_data(void *info)
 	platform_data.is_init_done = 0;
 	platform_data.reset_i2c_lines = max17042_i2c_reset_workaround;
 
-#if defined(CONFIG_BATTERY_INTEL_MDF)
 	platform_data.current_sense_enabled =
 	    intel_msic_is_current_sense_enabled;
 	platform_data.battery_present = intel_msic_check_battery_present;
@@ -743,19 +723,7 @@ static void *max17042_platform_data(void *info)
 	platform_data.is_lowbatt_shutdown_enabled =
 					intel_msic_is_lowbatt_shutdown_en;
 	platform_data.get_vmin_threshold = intel_msic_get_vsys_min;
-#elif defined(CONFIG_CHARGER_BQ24192)
-	platform_data.battery_status = bq24192_query_battery_status;
-#endif
 
-	return &platform_data;
-}
-
-static void *bq24192_platform_data(void *info)
-{
-	static struct bq24192_platform_data platform_data;
-	struct i2c_board_info *i2c_info = (struct i2c_board_info *)info;
-
-	platform_data.slave_mode = 0;
 	return &platform_data;
 }
 
@@ -1424,24 +1392,12 @@ static const struct intel_v4l2_subdev_id v4l2_ids_mfld[] = {
 	{"lm3554", LED_FLASH, -1},
 	{},
 };
-static const struct intel_v4l2_subdev_id v4l2_ids_clv[] = {
-	{"ov8830", RAW_CAMERA, ATOMISP_CAMERA_PORT_PRIMARY},
-	{"mt9m114", SOC_CAMERA, ATOMISP_CAMERA_PORT_SECONDARY},
-	{"lm3554", LED_FLASH, -1},
-	{},
-};
 
 static const struct intel_v4l2_subdev_id *get_v4l2_ids(int *n_subdev)
 {
-	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_CLOVERVIEW) {
-		if (n_subdev)
-			*n_subdev = ARRAY_SIZE(v4l2_ids_clv);
-		return v4l2_ids_clv;
-	} else {
-		if (n_subdev)
-			*n_subdev = ARRAY_SIZE(v4l2_ids_mfld);
-		return v4l2_ids_mfld;
-	}
+	if (n_subdev)
+		*n_subdev = ARRAY_SIZE(v4l2_ids_mfld);
+	return v4l2_ids_mfld;
 }
 
 static struct atomisp_platform_data *v4l2_subdev_table_head;
@@ -1574,133 +1530,6 @@ void blackbay_ipc_device_handler(struct sfi_device_table_entry *pentry,
 	mutex_unlock(&ipc_dev_lock);
 }
 
-/*
- * CLV PR0 primary camera sensor - OV8830 platform data
- */
-
-static int ov8830_gpio_ctrl(struct v4l2_subdev *sd, int flag)
-{
-	int ret;
-
-	if (gp_camera0_reset < 0) {
-		ret = camera_sensor_gpio(-1, GP_CAMERA_0_RESET,
-					GPIOF_DIR_OUT, 1);
-		if (ret < 0)
-			return ret;
-		gp_camera0_reset = ret;
-	}
-
-	if (flag) {
-		gpio_set_value(gp_camera0_reset, 0);
-		msleep(20);
-		gpio_set_value(gp_camera0_reset, 1);
-	} else {
-		gpio_set_value(gp_camera0_reset, 0);
-	}
-
-	return 0;
-}
-
-static int ov8830_flisclk_ctrl(struct v4l2_subdev *sd, int flag)
-{
-	static const unsigned int clock_khz = 19200;
-	return intel_scu_ipc_osc_clk(OSC_CLK_CAM0, flag ? clock_khz : 0);
-}
-
-static int ov8830_power_ctrl(struct v4l2_subdev *sd, int flag)
-{
-	if (flag) {
-		if (!camera_vprog1_on) {
-			camera_vprog1_on = 1;
-			intel_scu_ipc_msic_vprog1(1);
-		}
-	} else {
-		if (camera_vprog1_on) {
-			camera_vprog1_on = 0;
-			intel_scu_ipc_msic_vprog1(0);
-		}
-	}
-
-	return 0;
-}
-
-static int ov8830_csi_configure(struct v4l2_subdev *sd, int flag)
-{
-	static const int LANES = 4;
-	return camera_sensor_csi(sd, ATOMISP_CAMERA_PORT_PRIMARY, LANES,
-		ATOMISP_INPUT_FORMAT_RAW_10, atomisp_bayer_order_bggr, flag);
-}
-
-static struct camera_sensor_platform_data ov8830_sensor_platform_data = {
-	.gpio_ctrl      = ov8830_gpio_ctrl,
-	.flisclk_ctrl   = ov8830_flisclk_ctrl,
-	.power_ctrl     = ov8830_power_ctrl,
-	.csi_cfg        = ov8830_csi_configure,
-};
-
-void *ov8830_platform_data_init(void *info)
-{
-	gp_camera0_reset = -1;
-	gp_camera0_power_down = -1;
-
-	return &ov8830_sensor_platform_data;
-}
-
-
-static struct rmi_f11_functiondata synaptics_f11_data = {
-	.swap_axes = true,
-};
-
-static unsigned char synaptic_keys[31] = {1, 2, 3, 4,};
-			/* {KEY_BACK,KEY_MENU,KEY_HOME,KEY_SEARCH,} */
-
-static struct rmi_button_map synaptics_button_map = {
-	.nbuttons = 31,
-	.map = synaptic_keys,
-};
-static struct rmi_f19_functiondata  synaptics_f19_data = {
-	.button_map = &synaptics_button_map,
-};
-
-#define RMI_F11_INDEX 0x11
-#define RMI_F19_INDEX 0x19
-
-static struct rmi_functiondata synaptics_functiondata[] = {
-	{
-		.function_index = RMI_F11_INDEX,
-		.data = &synaptics_f11_data,
-	},
-	{
-		.function_index = RMI_F19_INDEX,
-		.data = &synaptics_f19_data,
-	},
-};
-
-static struct rmi_functiondata_list synaptics_perfunctiondata = {
-	.count = ARRAY_SIZE(synaptics_functiondata),
-	.functiondata = synaptics_functiondata,
-};
-
-
-static struct rmi_sensordata s3202_sensordata = {
-	.perfunctiondata = &synaptics_perfunctiondata,
-};
-
-void *s3202_platform_data_init(void *info)
-{
-	struct i2c_board_info *i2c_info = info;
-	static struct rmi_i2c_platformdata s3202_platform_data = {
-		.delay_ms = 50,
-		.sensordata = &s3202_sensordata,
-	};
-
-	s3202_platform_data.i2c_address = i2c_info->addr;
-	s3202_sensordata.attn_gpio_number = get_gpio_by_name("ts_int");
-	s3202_sensordata.rst_gpio_number  = get_gpio_by_name("ts_rst");
-
-	return &s3202_platform_data;
-}
-
 static struct max11871_platform_data max11871_pdata = {
 	.version = 0x101,
 
@@ -1809,8 +1638,6 @@ struct devs_id __initconst device_ids[] = {
 					&blackbay_ipc_device_handler},
 	{"msic_audio", SFI_DEV_TYPE_IPC, 1, &msic_audio_platform_data,
 					&blackbay_ipc_device_handler},
-	{"clvcs_audio", SFI_DEV_TYPE_IPC, 1, &msic_audio_platform_data,
-					     NULL},
 	{"msic_power_btn", SFI_DEV_TYPE_IPC, 1, &msic_power_btn_platform_data,
 					&blackbay_ipc_device_handler},
 	{"msic_ocd", SFI_DEV_TYPE_IPC, 1, &msic_ocd_platform_data,
@@ -1835,16 +1662,11 @@ struct devs_id __initconst device_ids[] = {
 	{"gyro", SFI_DEV_TYPE_I2C, 0, &gyro_pdata_init, NULL},
 	{"baro", SFI_DEV_TYPE_I2C, 0, &baro_pdata_init, NULL},
 	{"als", SFI_DEV_TYPE_I2C, 0, &als_pdata_init, NULL},
-	{"ov8830", SFI_DEV_TYPE_I2C, 0, &ov8830_platform_data_init},
-	{"synaptics_3202", SFI_DEV_TYPE_I2C, 0, &s3202_platform_data_init},
 	{"cs42l73", SFI_DEV_TYPE_I2C, 1, &no_platform_data, NULL},
 
 	{"apds990x", SFI_DEV_TYPE_I2C, 0, &apds990x_platform_data_init},
 	{"lsm303dl", SFI_DEV_TYPE_I2C, 0, &lsm303dlhc_accel_platform_data},
 	{"lsm303cmp", SFI_DEV_TYPE_I2C, 0, &no_platform_data},
-	{"l3g4200d", SFI_DEV_TYPE_I2C, 0, &l3g4200d_platform_data},
-	{"lps331ap", SFI_DEV_TYPE_I2C, 0, &no_platform_data},
-	{"bq24192", SFI_DEV_TYPE_I2C, 1, &bq24192_platform_data},
 	{},
 };
 
@@ -2035,40 +1857,6 @@ device_initcall(bluetooth_init);
 
 #endif
 
-void *cloverview_usb_otg_get_pdata(void)
-{
-	struct cloverview_usb_otg_pdata *pdata;
-
-	if (__intel_mid_cpu_chip != INTEL_MID_CPU_CHIP_CLOVERVIEW)
-		return NULL;
-
-	pdata = (struct cloverview_usb_otg_pdata *)
-				kmalloc(sizeof(*pdata), GFP_KERNEL);
-	if (!pdata) {
-		pr_err("%s: out of memory.\n", __func__);
-		goto failed1;
-	}
-	pdata->gpio_cs = get_gpio_by_name("usb_otg_phy_cs");
-	if (pdata->gpio_cs == -1) {
-		pr_err("%s: No gpio pin for 'usb_otg_phy_cs'\n", __func__);
-		goto failed2;
-	}
-	pdata->gpio_reset = get_gpio_by_name("usb_otg_phy_reset");
-	if (pdata->gpio_reset == -1) {
-		pr_err("%s: No gpio pin for 'usb_otg_phy_reset'\n", __func__);
-		goto failed2;
-	}
-	pr_info("%s: CS pin: gpio %d, Reset pin: gpio %d\n", __func__,
-			 pdata->gpio_cs, pdata->gpio_reset);
-	return pdata;
-
-failed2:
-	kfree(pdata);
-failed1:
-	return NULL;
-}
-EXPORT_SYMBOL_GPL(cloverview_usb_otg_get_pdata);
-
 /*
  * Shrink the non-existent buttons, register the gpio button
  * device if there is some
@@ -2222,45 +2010,3 @@ static int __init switch_mid_init(void)
 }
 device_initcall(switch_mid_init);
 #endif
-
-#define MT9M114_I2C_ADDR (0x90 >> 1)	/* i2c address, 0x90 or 0xBA */
-#define MT9M114_BUS      4		/* i2c bus number */
-
-struct sfi_device_table_entry mt9m114_pentry = {
-	.name		=	"mt9m114",
-	.host_num	=	MT9M114_BUS,
-	.irq		=	255,
-	.addr		=	MT9M114_I2C_ADDR,
-};
-#define OV8830_I2C_ADDR	(0x6C >> 1)	/* i2c address, 0x20 or 0x6C */
-#define OV8830_BUS	4		/* i2c bus number */
-
-struct sfi_device_table_entry ov8830_pentry = {
-	.name		=	"ov8830",
-	.host_num	=	OV8830_BUS,
-	.irq		=	255,
-	.addr		=	OV8830_I2C_ADDR,
-};
-static int __init blackbay_i2c_init(void)
-{
-	struct devs_id *dev = NULL;
-	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_CLOVERVIEW) {
-		/* Add ov8830 driver for detection
-		 * -- FIXME: remove as soon as ov8830 is defined in SFI table */
-		dev = get_device_id(SFI_DEV_TYPE_I2C, "ov8830");
-		if (dev != NULL)
-			intel_ignore_i2c_device_register(&ov8830_pentry, dev);
-		else
-			pr_err("Dev id is NULL for %s\n", "ov8830");
-
-		/* Add mt9m114 driver for detection
-		 * -- FIXME: remove when the sensor is defined in SFI table */
-		dev = get_device_id(SFI_DEV_TYPE_I2C, "mt9m114");
-		if (dev != NULL)
-			intel_ignore_i2c_device_register(&mt9m114_pentry, dev);
-		else
-			pr_err("Dev id is NULL for %s\n", "mt9m114");
-	}
-	return 0;
-}
-device_initcall(blackbay_i2c_init);

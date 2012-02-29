@@ -3861,40 +3861,40 @@ static int penwell_otg_probe(struct pci_dev *pdev,
 		goto err;
 	}
 
+#ifdef CONFIG_BOARD_CTP
 	/* Set up gpio for Clovertrail */
-	if (is_clovertrail(pdev)) {
-		pnw->otg_pdata = (struct cloverview_usb_otg_pdata *)
-				cloverview_usb_otg_get_pdata();
-		if (pnw->otg_pdata == NULL) {
-			dev_err(pnw->dev, "Failed to get OTG platform data.\n");
-			retval = -ENODEV;
-			goto err;
-		}
-		retval = gpio_request(pnw->otg_pdata->gpio_reset,
-					"usb_otg_phy_reset");
-		if (retval < 0) {
-			dev_err(pnw->dev, "request gpio(%d) for usb otg phy reset "
-				"failed\n", pnw->otg_pdata->gpio_reset);
-			retval = -ENODEV;
-			goto err;
-		}
-		retval = gpio_request(pnw->otg_pdata->gpio_cs,
-					"usb_otg_phy_cs");
-		if (retval < 0) {
-			dev_err(pnw->dev, "request gpio(%d) for usb otg phy cs "
-				"failed\n", pnw->otg_pdata->gpio_cs);
-			gpio_free(pnw->otg_pdata->gpio_reset);
-			retval = -ENODEV;
-			goto err;
-		}
-		/* Drive CS pin to high */
-		gpio_direction_output(pnw->otg_pdata->gpio_cs, 1);
-
-		/* Reset the PHY (minimal reset width: 100us) */
-		gpio_direction_output(pnw->otg_pdata->gpio_reset, 0);
-		usleep_range(200, 500);
-		gpio_set_value(pnw->otg_pdata->gpio_reset, 1);
+	pnw->otg_pdata = (struct cloverview_usb_otg_pdata *)
+			cloverview_usb_otg_get_pdata();
+	if (pnw->otg_pdata == NULL) {
+		dev_err(pnw->dev, "Failed to get OTG platform data.\n");
+		retval = -ENODEV;
+		goto err;
 	}
+	retval = gpio_request(pnw->otg_pdata->gpio_reset,
+				"usb_otg_phy_reset");
+	if (retval < 0) {
+		dev_err(pnw->dev, "request gpio(%d) for usb otg phy reset "
+			"failed\n", pnw->otg_pdata->gpio_reset);
+		retval = -ENODEV;
+		goto err;
+	}
+	retval = gpio_request(pnw->otg_pdata->gpio_cs,
+				"usb_otg_phy_cs");
+	if (retval < 0) {
+		dev_err(pnw->dev, "request gpio(%d) for usb otg phy cs "
+			"failed\n", pnw->otg_pdata->gpio_cs);
+		gpio_free(pnw->otg_pdata->gpio_reset);
+		retval = -ENODEV;
+		goto err;
+	}
+	/* Drive CS pin to high */
+	gpio_direction_output(pnw->otg_pdata->gpio_cs, 1);
+
+	/* Reset the PHY (minimal reset width: 100us) */
+	gpio_direction_output(pnw->otg_pdata->gpio_reset, 0);
+	usleep_range(200, 500);
+	gpio_set_value(pnw->otg_pdata->gpio_reset, 1);
+#endif
 
 	mutex_init(&pnw->msic_mutex);
 	pnw->msic = penwell_otg_check_msic();
