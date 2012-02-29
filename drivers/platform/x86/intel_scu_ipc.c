@@ -2197,10 +2197,11 @@ int intel_scu_ipc_osc_clk(u8 clk, unsigned int khz)
 	ipc_wbuf[0] = clk;
 	ipc_wbuf[1] = 0;
 	if (khz) {
-		if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_CLOVERVIEW)
-			base_freq = 38400;
-		else
-			base_freq = 19200;
+#ifdef CONFIG_CTP_CRYSTAL_38M4
+		base_freq = 38400;
+#else
+		base_freq = 19200;
+#endif
 		div = base_freq / khz - 1;
 		if (div >= 3 || (div + 1) * khz != base_freq)
 			return -EINVAL;	/* Allow only exact frequencies */

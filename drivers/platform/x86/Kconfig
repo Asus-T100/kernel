@@ -653,6 +653,20 @@ config INTEL_SCU_IPC_UTIL
 	  low level access for debug work and updating the firmware. Say
 	  N unless you will be doing this on an Intel MID platform.
 
+config CTP_CRYSTAL_38M4
+	bool "38.4M Hz crystal for CLV A0 boards"
+	depends on INTEL_SCU_IPC
+	default n
+	---help---
+	  Display, audio and camers use osillator output clocks from the
+	  Soc. Currently SCU FW doesn't handle crystal frequency, thus
+	  Linux kernel has to explicitly calculate the divider based on
+	  the acutal crystal frequency, then SCU can correctly set up
+	  the oscillator output clocks based on the divider.
+	  Old CLV A0 boards use 38.4M crystal whereas CLV+ based boards
+	  will use 19.2M crystal. Say y for CLV boards (ctp_pr0 build)
+	  and n for CLV+ based boards (ctp_pr1 build)
+
 config GPIO_INTEL_PMIC
 	bool "Intel PMIC GPIO support"
 	depends on INTEL_SCU_IPC && GPIOLIB
