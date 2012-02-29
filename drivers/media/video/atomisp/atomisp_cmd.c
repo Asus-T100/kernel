@@ -113,6 +113,27 @@ struct atomisp_video_pipe *atomisp_to_video_pipe(struct video_device *dev)
 }
 
 /*
+ * reset and restore ISP
+ */
+int atomisp_reset(struct atomisp_device *isp)
+{
+	/* Reset ISP by power-cycling it */
+	int ret = 0;
+
+	sh_css_suspend();
+	ret = pm_runtime_put_sync(isp->dev);
+	if (ret) {
+		v4l2_err(&atomisp_dev, "can not disable ISP power\n");
+	} else {
+		ret = pm_runtime_get_sync(isp->dev);
+		if (ret)
+			v4l2_err(&atomisp_dev, "can not enable ISP power\n");
+	}
+	sh_css_resume();
+	return ret;
+}
+
+/*
  * interrupt enable/disable functions
  */
 static void enable_isp_irq(enum hrt_isp_css_irq irq, bool enable)
@@ -593,11 +614,9 @@ static void atomisp_pipe_reset(struct atomisp_device *isp)
 				 video, s_stream, 0);
 		isp->sw_contex.sensor_streaming = false;
 	}
-	/* power cycle ISP */
-	sh_css_suspend();
-	pm_runtime_put_sync(isp->dev);
-	pm_runtime_get_sync(isp->dev);
-	sh_css_resume();
+
+	/* reset ISP and restore its state */
+	atomisp_reset(isp);
 }
 
 static void atomisp_timeout_handler(struct atomisp_device *isp)

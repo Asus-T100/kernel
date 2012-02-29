@@ -1180,13 +1180,9 @@ int atomisp_streamoff(struct file *file, void *fh,
 	atomisp_msg_write32(isp, PUNIT_PORT, OR1, msg_ret);
 #endif
 
-	/* ISP work around, need to power cycle isp*/
-	if (pipe->is_main && isp->sw_contex.power_state == ATOM_ISP_POWER_UP) {
-		sh_css_suspend();
-		pm_runtime_put_sync(vdev->v4l2_dev->dev);
-		pm_runtime_get_sync(vdev->v4l2_dev->dev);
-		sh_css_resume();
-	}
+	/* ISP work around, need to reset isp */
+	if (pipe->is_main && isp->sw_contex.power_state == ATOM_ISP_POWER_UP)
+		atomisp_reset(isp);
 
 	return ret;
 }
