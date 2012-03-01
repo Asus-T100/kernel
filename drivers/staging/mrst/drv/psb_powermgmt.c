@@ -1822,10 +1822,12 @@ static void gfx_late_resume(struct early_suspend *h)
 
 #ifdef CONFIG_GFX_RTPM
 		pm_runtime_forbid(&gpDrmDevice->pdev->dev);
+		mutex_lock(&g_ospm_mutex);
 		ospm_resume_pci(gpDrmDevice->pdev);
 		ospm_resume_display(gpDrmDevice->pdev);
 		psb_irq_preinstall_islands(gpDrmDevice, OSPM_DISPLAY_ISLAND);
 		psb_irq_postinstall_islands(gpDrmDevice, OSPM_DISPLAY_ISLAND);
+		mutex_unlock(&g_ospm_mutex);
 #endif
 		if (IS_MDFLD(gpDrmDevice)) {
 			if ((dev_priv->panel_id == TMD_VID) ||
