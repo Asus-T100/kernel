@@ -710,7 +710,7 @@ config SERIAL_SA1100_CONSOLE
 
 config SERIAL_MRST_MAX3110
 	tristate "SPI UART driver for Max3110"
-	depends on SPI_DW_PCI
+	depends on SPI
 	select SERIAL_CORE
 	select SERIAL_CORE_CONSOLE
 	help
