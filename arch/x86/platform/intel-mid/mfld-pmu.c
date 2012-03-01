@@ -571,6 +571,7 @@ static int _pmu2_wait_not_busy(void);
 static DEFINE_PCI_DEVICE_TABLE(mid_pm_ids) = {
 	{PCI_VDEVICE(INTEL, MID_PMU_MRST_DRV_DEV_ID), 0},
 	{PCI_VDEVICE(INTEL, MID_PMU_MFLD_DRV_DEV_ID), 0},
+	{PCI_VDEVICE(INTEL, MID_PMU_CLV_DRV_DEV_ID), 0},
 	{}
 };
 
@@ -726,15 +727,9 @@ static void pmu_write_subsys_config(struct pmu_ss_states *pm_ssc)
 	 * PM_SSC, etc.
 	 */
 	writel(pm_ssc->pmu2_states[0], &mid_pmu_cxt->pmu_reg->pm_ssc[0]);
-
-	if (__intel_mid_cpu_chip == INTEL_MID_CPU_CHIP_PENWELL) {
-		writel(pm_ssc->pmu2_states[1],
-				&mid_pmu_cxt->pmu_reg->pm_ssc[1]);
-		writel(pm_ssc->pmu2_states[2],
-				&mid_pmu_cxt->pmu_reg->pm_ssc[2]);
-		writel(pm_ssc->pmu2_states[3],
-				&mid_pmu_cxt->pmu_reg->pm_ssc[3]);
-	}
+	writel(pm_ssc->pmu2_states[1], &mid_pmu_cxt->pmu_reg->pm_ssc[1]);
+	writel(pm_ssc->pmu2_states[2], &mid_pmu_cxt->pmu_reg->pm_ssc[2]);
+	writel(pm_ssc->pmu2_states[3], &mid_pmu_cxt->pmu_reg->pm_ssc[3]);
 }
 
 /**
@@ -1347,10 +1342,9 @@ static int get_pci_to_pmu_index(struct pci_dev *pdev)
 
 	if ((base_class == PCI_BASE_CLASS_DISPLAY) && !sub_class)
 		index = 1;
-	else if ((__intel_mid_cpu_chip == INTEL_MID_CPU_CHIP_PENWELL) &&
-			(base_class == PCI_BASE_CLASS_MULTIMEDIA) &&
-			(sub_class == ISP_SUB_CLASS))
-				index = MFLD_ISP_POS;
+	else if ((base_class == PCI_BASE_CLASS_MULTIMEDIA) &&
+		(sub_class == ISP_SUB_CLASS))
+		index = MFLD_ISP_POS;
 	else if (type) {
 		WARN_ON(ss >= MAX_LSS_POSSIBLE);
 		index = mid_pmu_cxt->pmu1_max_devs + ss;
@@ -1415,13 +1409,8 @@ static void mid_pci_find_info(struct pci_dev *pdev)
 		set_mid_pci_cap(index, PM_SUPPORT);
 	} else if ((base_class == PCI_BASE_CLASS_MULTIMEDIA) &&
 		(sub_class == ISP_SUB_CLASS)) {
-		if (__intel_mid_cpu_chip == INTEL_MID_CPU_CHIP_PENWELL) {
-			set_mid_pci_log_id(index, (u32)index);
-			set_mid_pci_cap(index, PM_SUPPORT);
-		} else if (ss && cap) {
-			set_mid_pci_log_id(index, (u32)(ss & LOG_ID_MASK));
-			set_mid_pci_cap(index, cap);
-		}
+		set_mid_pci_log_id(index, (u32)index);
+		set_mid_pci_cap(index, PM_SUPPORT);
 	} else if (ss && cap) {
 		set_mid_pci_log_id(index, (u32)(ss & LOG_ID_MASK));
 		set_mid_pci_cap(index, cap);
@@ -1460,19 +1449,9 @@ static void pmu_enumerate(void)
 static void pmu_read_sss(struct pmu_ss_states *pm_ssc)
 {
 	pm_ssc->pmu2_states[0] = readl(&mid_pmu_cxt->pmu_reg->pm_sss[0]);
-
-	if (__intel_mid_cpu_chip == INTEL_MID_CPU_CHIP_PENWELL) {
-		pm_ssc->pmu2_states[1] =
-				readl(&mid_pmu_cxt->pmu_reg->pm_sss[1]);
-		pm_ssc->pmu2_states[2] =
-				readl(&mid_pmu_cxt->pmu_reg->pm_sss[2]);
-		pm_ssc->pmu2_states[3] =
-				readl(&mid_pmu_cxt->pmu_reg->pm_sss[3]);
-	} else {
-		pm_ssc->pmu2_states[1] = 0;
-		pm_ssc->pmu2_states[2] = 0;
-		pm_ssc->pmu2_states[3] = 0;
-	}
+	pm_ssc->pmu2_states[1] = readl(&mid_pmu_cxt->pmu_reg->pm_sss[1]);
+	pm_ssc->pmu2_states[2] = readl(&mid_pmu_cxt->pmu_reg->pm_sss[2]);
+	pm_ssc->pmu2_states[3] = readl(&mid_pmu_cxt->pmu_reg->pm_sss[3]);
 }
 
 static bool check_s0ix_possible(struct pmu_ss_states *pmsss)
@@ -2614,15 +2593,9 @@ static int __devinit mid_pmu_probe(struct pci_dev *dev,
 		goto out_err1;
 	}
 
-	if (__intel_mid_cpu_chip == INTEL_MID_CPU_CHIP_PENWELL) {
-		mid_pmu_cxt->pmu1_max_devs = PMU1_MAX_PENWELL_DEVS;
-		mid_pmu_cxt->pmu2_max_devs = PMU2_MAX_PENWELL_DEVS;
-		mid_pmu_cxt->ss_per_reg = 16;
-	} else {
-		mid_pmu_cxt->pmu1_max_devs = PMU1_MAX_MRST_DEVS;
-		mid_pmu_cxt->pmu2_max_devs = PMU2_MAX_MRST_DEVS;
-		mid_pmu_cxt->ss_per_reg = 8;
-	}
+	mid_pmu_cxt->pmu1_max_devs = PMU1_MAX_PENWELL_DEVS;
+	mid_pmu_cxt->pmu2_max_devs = PMU2_MAX_PENWELL_DEVS;
+	mid_pmu_cxt->ss_per_reg = 16;
 
 	/* Map the NC PM registers */
 	cmd = (MSG_READ_CMD << 24) | (OSPM_PUNIT_PORT << 16) |
@@ -2652,16 +2625,13 @@ static int __devinit mid_pmu_probe(struct pci_dev *dev,
 
 	mid_pmu_cxt->pmu_reg = pmu;
 
-	if (__intel_mid_cpu_chip == INTEL_MID_CPU_CHIP_PENWELL) {
-		/* Map the memory of offload_reg */
-		mid_pmu_cxt->base_addr.offload_reg =
-					ioremap_nocache(0xffd01ffc, 4);
-		if (mid_pmu_cxt->base_addr.offload_reg == NULL) {
-			dev_dbg(&mid_pmu_cxt->pmu_dev->dev,
-			"Unable to map the offload_reg address space\n");
-			ret = PMU_FAILED;
-			goto out_err3;
-		}
+	/* Map the memory of offload_reg */
+	mid_pmu_cxt->base_addr.offload_reg = ioremap_nocache(0xffd01ffc, 4);
+	if (mid_pmu_cxt->base_addr.offload_reg == NULL) {
+		dev_dbg(&mid_pmu_cxt->pmu_dev->dev,
+		"Unable to map the offload_reg address space\n");
+		ret = PMU_FAILED;
+		goto out_err3;
 	}
 
 	if (request_irq(dev->irq, pmu_sc_irq, IRQF_NO_SUSPEND, PMU_DRV_NAME,
@@ -2708,10 +2678,8 @@ static void __devexit mid_pmu_remove(struct pci_dev *dev)
 	free_irq(dev->irq, &pmu_sc_irq);
 
 	/* Freeing up memory allocated for PMU1 & PMU2 */
-	if (__intel_mid_cpu_chip == INTEL_MID_CPU_CHIP_PENWELL) {
-		iounmap(mid_pmu_cxt->base_addr.offload_reg);
-		mid_pmu_cxt->base_addr.offload_reg = NULL;
-	}
+	iounmap(mid_pmu_cxt->base_addr.offload_reg);
+	mid_pmu_cxt->base_addr.offload_reg = NULL;
 
 	pci_iounmap(dev, mid_pmu_cxt->pmu_reg);
 	mid_pmu_cxt->base_addr.pmu1_base = NULL;

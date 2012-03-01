@@ -143,7 +143,7 @@
 /* Need to be changed after PMU driver is added as PCI device */
 #define MID_PMU_MRST_DRV_DEV_ID			0x0810
 #define MID_PMU_MFLD_DRV_DEV_ID			0x0828
-
+#define MID_PMU_CLV_DRV_DEV_ID			0x08EC
 #define PMU_DRV_NAME				"intel_pmu_driver"
 
 #define MID_PCI_INDEX_HASH_BITS		7 /*size 128*/
