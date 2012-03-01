@@ -25,6 +25,11 @@
 #ifndef INTEL_MID_SSP_SPI_H_
 #define INTEL_MID_SSP_SPI_H_
 
+#include <linux/intel_mid_dma.h>
+#include <linux/pm_qos_params.h>
+#include <linux/spi/spi.h>
+#include <linux/interrupt.h>
+
 #define PCI_MRST_DMAC1_ID	0x0814
 #define PCI_MDFL_DMAC1_ID	0x0827
 
@@ -316,6 +321,6 @@ struct spi_dib_header {
 	u8         rev;
 	u8         checksum;
 	u8         dib[0];
-} __attribute__((packed));
+} __packed;
 
 #endif /*INTEL_MID_SSP_SPI_H_*/

@@ -42,7 +42,7 @@
 #include <asm/intel-mid.h>
 
 #include <linux/spi/spi.h>
-#include "intel_mid_ssp_spi.h"
+#include <linux/spi/intel_mid_ssp_spi.h>
 
 #define DRIVER_NAME "intel_mid_ssp_spi_unified"
 
