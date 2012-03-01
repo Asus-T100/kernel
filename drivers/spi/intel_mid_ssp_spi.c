@@ -39,6 +39,7 @@
 #include <linux/dma-mapping.h>
 #include <linux/intel_mid_dma.h>
 #include <linux/pm_qos_params.h>
+#include <asm/intel-mid.h>
 
 #include <linux/spi/spi.h>
 #include "intel_mid_ssp_spi.h"
@@ -757,6 +758,12 @@ static void poll_transfer(unsigned long data)
 
 	if (drv_context->tx)
 		while (drv_context->tx != drv_context->tx_end) {
+#ifdef CONFIG_X86_MRFLD
+			/* [REVERT ME] Tangier simulator requires a delay */
+			if (intel_mrfl_identify_sim() ==
+				INTEL_MRFL_CPU_SIMULATION_VP)
+				udelay(10);
+#endif /* CONFIG_X86_MRFLD */
 			drv_context->write(drv_context);
 			drv_context->read(drv_context);
 		}
@@ -906,8 +913,14 @@ static int transfer(struct spi_device *spi, struct spi_message *msg)
 	drv_context->tx_end = drv_context->tx + transfer->len;
 	drv_context->rx_end = drv_context->rx + transfer->len;
 
+/* [REVERT ME] Bug in status register clear for Tangier simulation */
+#ifdef CONFIG_X86_MRFLD
+	if (intel_mrfl_identify_sim() != INTEL_MRFL_CPU_SIMULATION_VP)
+		write_SSSR(drv_context->clear_sr, reg);
+#else
 	/* Clear status  */
 	write_SSSR(drv_context->clear_sr, reg);
+#endif /* CONFIG_X86_MRFLD */
 
 	/* setup the CR1 control register */
 	cr1 = chip->cr1 | drv_context->cr1_sig;
@@ -1153,6 +1166,16 @@ static int intel_mid_ssp_spi_probe(struct pci_dev *pdev,
 		dev_info(dev, "No Vendor Specific PCI capability\n");
 		goto err_abort_probe;
 	}
+
+/* [REVERT ME] SPI mode bit not configured correctly in tangier simulation */
+#ifdef CONFIG_X86_MRFLD
+	if (intel_mrfl_identify_sim() == INTEL_MRFL_CPU_SIMULATION_VP &&
+		(PCI_FUNC(pdev->devfn) == 1)) {
+		/* override */
+		ssp_cfg |= SSP_CFG_SPI_MODE_ID;
+	}
+#endif /* CONFIG_X86_MRFLD */
+
 	if (SSP_CFG_GET_MODE(ssp_cfg) != SSP_CFG_SPI_MODE_ID) {
 		dev_info(dev, "Unsupported SSP mode (%02xh)\n",
 			ssp_cfg);
@@ -1375,6 +1398,8 @@ static const struct pci_device_id pci_ids[] __devinitdata = {
 	{ PCI_VDEVICE(INTEL, 0x0825), QUIRKS_PLATFORM_MDFL},
 	/* MDFL SSP3 */
 	{ PCI_VDEVICE(INTEL, 0x0816), QUIRKS_PLATFORM_MDFL},
+	/* MRFL SSP5 */
+	{ PCI_VDEVICE(INTEL, 0x1194), 0},
 	{},
 };
 
