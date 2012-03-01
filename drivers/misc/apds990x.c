@@ -27,7 +27,6 @@
 #include <linux/i2c.h>
 #include <linux/interrupt.h>
 #include <linux/mutex.h>
-#include <linux/pm_runtime.h>
 #include <linux/delay.h>
 #include <linux/wait.h>
 #include <linux/slab.h>
@@ -367,10 +366,6 @@ static int apds990x_refresh_pthres(struct apds990x_chip *chip, int data)
 {
 	int ret, lo, hi;
 
-	/* If the chip is not in use, don't try to access it */
-	if (pm_runtime_suspended(&chip->client->dev))
-		return 0;
-
 	if (data < chip->prox_thres) {
 		lo = 0;
 		hi = chip->prox_thres;
@@ -388,10 +383,6 @@ static int apds990x_refresh_pthres(struct apds990x_chip *chip, int data)
 static int apds990x_refresh_athres(struct apds990x_chip *chip)
 {
 	int ret;
-	/* If the chip is not in use, don't try to access it */
-	if (pm_runtime_suspended(&chip->client->dev))
-		return 0;
-
 	ret = apds990x_write_word(chip, APDS990X_AILTL,
 			apds990x_lux_to_threshold(chip, chip->lux_thres_lo));
 	ret |= apds990x_write_word(chip, APDS990X_AIHTL,
@@ -601,9 +592,6 @@ static irqreturn_t apds990x_irq(int irq, void *data)
 	apds990x_read_byte(chip, APDS990X_STATUS, &status);
 	apds990x_ack_int(chip, status);
 
-	if (pm_runtime_suspended(&chip->client->dev))
-		goto out;
-
 	mutex_lock(&chip->mutex);
 	if (status & APDS990X_ST_AINT)
 		als_handle_irq(chip);
@@ -683,9 +671,6 @@ static ssize_t apds990x_lux_show(struct device *dev,
 	ssize_t ret;
 	u32 result;
 
-	if (pm_runtime_suspended(dev))
-		return -EIO;
-
 	mutex_lock(&chip->mutex);
 	result = (chip->lux * chip->lux_calib) / APDS_CALIB_SCALER;
 	if (result > (APDS_RANGE * APDS990X_LUX_OUTPUT_SCALE))
@@ -762,10 +747,6 @@ static int apds990x_set_arate(struct apds990x_chip *chip, int rate)
 	chip->lux_persistence = apersis[i];
 	chip->arate = arates_hz[i];
 
-	/* If the chip is not in use, don't try to access it */
-	if (pm_runtime_suspended(&chip->client->dev))
-		return 0;
-
 	/* Persistence levels */
 	return apds990x_write_byte(chip, APDS990X_PERS,
 			(chip->lux_persistence << APDS990X_APERS_SHIFT) |
@@ -803,7 +784,7 @@ static ssize_t apds990x_prox_show(struct device *dev,
 	struct apds990x_chip *chip =  dev_get_drvdata(dev);
 
 	mutex_lock(&chip->mutex);
-	if (pm_runtime_suspended(dev) || !chip->ps_cnt) {
+	if (!chip->ps_cnt) {
 		ret = -EIO;
 		goto out;
 	}
@@ -917,40 +898,6 @@ static DEVICE_ATTR(prox0_thresh_above_value, S_IRUGO | S_IWUSR,
 		apds990x_prox_threshold_show,
 		apds990x_prox_threshold_store);
 
-static ssize_t apds990x_power_state_show(struct device *dev,
-				   struct device_attribute *attr, char *buf)
-{
-	return sprintf(buf, "%d\n", !pm_runtime_suspended(dev));
-}
-
-static ssize_t apds990x_power_state_store(struct device *dev,
-				  struct device_attribute *attr,
-				  const char *buf, size_t len)
-{
-	struct apds990x_chip *chip =  dev_get_drvdata(dev);
-	unsigned long value;
-
-	if (strict_strtoul(buf, 0, &value))
-		return -EINVAL;
-	if (value) {
-		pm_runtime_get_sync(dev);
-		mutex_lock(&chip->mutex);
-		chip->lux_wait_fresh_res = true;
-		apds990x_force_a_refresh(chip);
-		apds990x_force_p_refresh(chip);
-		mutex_unlock(&chip->mutex);
-	} else {
-		if (!pm_runtime_suspended(dev))
-			pm_runtime_put(dev);
-	}
-
-	return len;
-}
-
-static DEVICE_ATTR(power_state, S_IRUGO | S_IWUSR,
-		apds990x_power_state_show,
-		apds990x_power_state_store);
-
 static ssize_t apds990x_chip_id_show(struct device *dev,
 				   struct device_attribute *attr, char *buf)
 {
@@ -970,7 +917,6 @@ static struct attribute *sysfs_attrs_ctrl[] = {
 	&dev_attr_prox0_raw.attr,
 	&dev_attr_prox0_thresh_above_value.attr,
 	&dev_attr_chip_id.attr,
-	&dev_attr_power_state.attr,
 	NULL
 };
 
@@ -1456,13 +1402,9 @@ static int __devinit apds990x_probe(struct i2c_client *client,
 		goto fail2;
 	}
 
-	pm_runtime_set_active(&client->dev);
-
 	apds990x_configure(chip);
 	apds990x_set_arate(chip, APDS_LUX_DEFAULT_RATE);
 	apds990x_switch(chip, APDS_POWER_DOWN);
-
-	pm_runtime_enable(&client->dev);
 
 	err = sysfs_create_group(&chip->client->dev.kobj,
 				apds990x_attribute_group);
@@ -1535,12 +1477,8 @@ static int __devexit apds990x_remove(struct i2c_client *client)
 	if (chip->pdata && chip->pdata->release_resources)
 		chip->pdata->release_resources();
 
-	if (!pm_runtime_suspended(&client->dev))
-		apds990x_switch(chip, APDS_POWER_DOWN);
-
+	apds990x_switch(chip, APDS_POWER_DOWN);
 	unregister_early_suspend(&chip->es);
-	pm_runtime_disable(&client->dev);
-	pm_runtime_set_suspended(&client->dev);
 
 	kfree(chip);
 	return 0;
@@ -1586,30 +1524,6 @@ static int apds990x_resume(struct device *dev)
 #define apds990x_shutdown NULL
 #endif
 
-#ifdef CONFIG_PM_RUNTIME
-static int apds990x_runtime_suspend(struct device *dev)
-{
-	struct i2c_client *client = container_of(dev, struct i2c_client, dev);
-	struct apds990x_chip *chip = i2c_get_clientdata(client);
-
-	mutex_lock(&chip->mutex);
-	apds990x_switch(chip, chip->alsps_switch & APDS_PS_ENABLE);
-	mutex_unlock(&chip->mutex);
-	return 0;
-}
-
-static int apds990x_runtime_resume(struct device *dev)
-{
-	struct i2c_client *client = container_of(dev, struct i2c_client, dev);
-	struct apds990x_chip *chip = i2c_get_clientdata(client);
-
-	mutex_lock(&chip->mutex);
-	apds990x_switch(chip, chip->alsps_switch);
-	mutex_unlock(&chip->mutex);
-	return 0;
-}
-#endif
-
 static const struct i2c_device_id apds990x_id[] = {
 	{"apds990x", 0 },
 	{}
@@ -1619,9 +1533,6 @@ MODULE_DEVICE_TABLE(i2c, apds990x_id);
 
 static const struct dev_pm_ops apds990x_pm_ops = {
 	SET_SYSTEM_SLEEP_PM_OPS(apds990x_suspend, apds990x_resume)
-	SET_RUNTIME_PM_OPS(apds990x_runtime_suspend,
-			apds990x_runtime_resume,
-			NULL)
 };
 
 static struct i2c_driver apds990x_driver = {
