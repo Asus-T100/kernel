@@ -24,7 +24,7 @@
 #include <linux/suspend.h>
 #include <linux/hrtimer.h>
 #include <linux/i2c.h>
-#include <linux/input.h>
+#include <linux/input/mt.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
 #include <linux/platform_device.h>
@@ -65,11 +65,26 @@ do {\
 do { ; } while (0);
 #endif
 
+#define MAX_TOUCHES_LIMIT	10
+#define MAX11871_FINGER_NONE	0
+#define MAX11871_FINGER_PRESS	1
+#define MAX11871_FINGER_RELEASE	2
+#define MAX11871_X_OFFSET	30
+#define MAX11871_Y_OFFSET	30
+
+struct max11871_finger_data {
+	int status;
+	int x;
+	int y;
+	int z;
+};
+
 struct max11871_data {
 	struct i2c_client *client;
 	struct input_dev *input_dev;
 	struct input_dev *key_input_dev;
 	struct work_struct work;
+	struct max11871_finger_data finger[MAX_TOUCHES_LIMIT];
 	struct early_suspend early_suspend;
 	struct device dev;
 	int irq_flags;
@@ -84,14 +99,10 @@ static unsigned char max11871_keycode[4] = {
 	MAXIM_TOUCH_SEARCH
 };
 
-#define MAX_TOUCHES_LIMIT 10
 #define DEBUG_ENABLE 0
 #define DRIVER_MSG_DEBUG_ENABLE 0
 #define MAX_TOUCHES_ALLOWED 2
 static struct workqueue_struct *maxim_wq;
-static struct max11871_finger_data max11871_curr_data[10];
-static struct max11871_finger_data max11871_prev_data[10];
-static int curr_touch_count, prev_touch_count;
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
 static void max11871_early_suspend(struct early_suspend *h);
@@ -234,23 +245,6 @@ static inline u16 maxim_read_report(
 }
 
 static inline int
-max11871_is_button_area(struct max11871_platform_data *pdata, u16 x, u16 y)
-{
-	printk("%s: check (%d,%d) in (%d,%d,%d,%d)\n", x, y,
-		pdata->abs_button_area_x_min,
-		pdata->abs_button_area_y_min,
-		pdata->abs_button_area_x_max, pdata->abs_button_area_y_max);
-
-	if (x <= pdata->abs_button_area_x_max &&
-	    x >= pdata->abs_button_area_x_min) {
-		if (y <= pdata->abs_button_area_y_max &&
-		    y >= pdata->abs_button_area_y_min)
-			return 1;
-	}
-	return 0;
-}
-
-static inline int
 max11871_report_button_press_chip(const struct max11871_data *ts,
 				  int *isbuttonpressed)
 {
@@ -289,137 +283,29 @@ max11871_report_button_release(const struct max11871_data *ts, int keycode)
 
 static void max11871_send_touches(struct max11871_data *ts)
 {
-	int counter = 0;
+	int i;
+	struct max11871_finger_data *finger = ts->finger;
 
-	if (curr_touch_count > 0) {
-		/*
-		printk(KERN_INFO "current_data CC=%d PC=%d\n",
-			curr_touch_count, prev_touch_count);
-		printk(KERN_INFO "%d %d %d %d %d %d %d %d %d %d",
-			max11871_curr_data[0].finger_id,
-			max11871_curr_data[1].finger_id,
-			max11871_curr_data[2].finger_id,
-			max11871_curr_data[3].finger_id,
-			max11871_curr_data[4].finger_id,
-			max11871_curr_data[5].finger_id,
-			max11871_curr_data[6].finger_id,
-			max11871_curr_data[7].finger_id,
-			max11871_curr_data[8].
-			finger_id,max11871_curr_data[9].finger_id);
-		*/
+	for (i = 0; i < MAX_TOUCHES_LIMIT; i++) {
+		if (finger[i].status == MAX11871_FINGER_NONE)
+			continue;
 
-		int reported_count = 0;
-		for (counter = 0; counter < MAX_TOUCHES_LIMIT; counter++) {
-			if (max11871_curr_data[counter].finger_id != -1) {
-
-				/* input_report_key(ts->input_dev,
-					BTN_TOUCH, 1); */
-				input_report_abs(ts->input_dev,
-					ABS_MT_TRACKING_ID,
-					max11871_curr_data[counter].finger_id);
-				input_report_abs(ts->input_dev,
-					ABS_MT_POSITION_X,
-					max11871_curr_data[counter].x);
-				input_report_abs(ts->input_dev,
-					ABS_MT_POSITION_Y,
-					max11871_curr_data[counter].y);
-				input_report_abs(ts->input_dev,
-					ABS_MT_TOUCH_MAJOR,
-					max11871_curr_data[counter].z);
-				/* input_report_abs(ts->input_dev,
-					   ABS_MT_WIDTH_MAJOR, 30); */
-
-				reported_count++;
-				/* input_report_abs(ts->input_dev,
-					ABS_MT_PRESSURE, z); */
-
-				input_mt_sync(ts->input_dev);
-			}
+		input_mt_slot(ts->input_dev, i);
+		input_mt_report_slot_state(ts->input_dev, MT_TOOL_FINGER,
+				finger[i].status != MAX11871_FINGER_RELEASE);
+		if (finger[i].status == MAX11871_FINGER_RELEASE) {
+			finger[i].status = MAX11871_FINGER_NONE;
+			continue;
 		}
-		input_sync(ts->input_dev);
+
+		input_report_abs(ts->input_dev, ABS_MT_POSITION_X, finger[i].x);
+		input_report_abs(ts->input_dev, ABS_MT_POSITION_Y, finger[i].y);
+		input_report_abs(ts->input_dev,
+				 ABS_MT_TOUCH_MAJOR, finger[i].z);
 	}
+
+	input_sync(ts->input_dev);
 }
-
-static void max11871_send_touches_union(struct max11871_data *ts)
-{
-	int counter = 0;
-	int intersection_count = 0, union_count = 0;
-	int reported_count = 0;
-
-	/* Count number of common ids between previous and new touches */
-	for (counter = 0; counter < MAX_TOUCHES_LIMIT; counter++)
-		if (max11871_curr_data[counter].finger_id != -1 &&
-		    max11871_prev_data[counter].finger_id != -1)
-			intersection_count++;
-
-	union_count = curr_touch_count + prev_touch_count - intersection_count;
-
-	if ((curr_touch_count-intersection_count > 0) ||
-	    (prev_touch_count-intersection_count > 0)) {
-		/* Create union of previous and new touch lists in
-		 * max11871_prev_data array*/
-		for (counter = 0; counter < MAX_TOUCHES_LIMIT; counter++)
-			if (max11871_curr_data[counter].finger_id != -1)
-				memcpy(max11871_prev_data + counter,
-					max11871_curr_data + counter,
-					sizeof(struct max11871_finger_data));
-
-
-		/*
-		printk(KERN_INFO "union_data UC=%d IC=%d\n",
-				 union_count, intersection_count);
-		printk(KERN_INFO "%d %d %d %d %d %d %d %d %d %d",
-				 max11871_prev_data[0].finger_id,
-				 max11871_prev_data[1].finger_id,
-				 max11871_prev_data[2].finger_id,
-				 max11871_prev_data[3].finger_id,
-				 max11871_prev_data[4].finger_id,
-				 max11871_prev_data[5].finger_id,
-				 max11871_prev_data[6].finger_id,
-				 max11871_prev_data[7].finger_id,
-				 max11871_prev_data[8].finger_id,
-				 max11871_prev_data[9].finger_id);
-		*/
-
-		for (counter = 0; counter < MAX_TOUCHES_LIMIT; counter++) {
-			if (max11871_prev_data[counter].finger_id != -1) {
-
-				/* input_report_key(ts->input_dev,
-					BTN_TOUCH, 1); */
-				input_report_abs(ts->input_dev,
-					ABS_MT_TRACKING_ID,
-					max11871_prev_data[counter].finger_id);
-				input_report_abs(ts->input_dev,
-					ABS_MT_POSITION_X,
-					max11871_prev_data[counter].x);
-				input_report_abs(ts->input_dev,
-					ABS_MT_POSITION_Y,
-					max11871_prev_data[counter].y);
-				input_report_abs(ts->input_dev,
-					ABS_MT_TOUCH_MAJOR,
-					max11871_prev_data[counter].z);
-				/* input_report_abs(ts->input_dev,
-					   ABS_MT_WIDTH_MAJOR, 30); */
-
-				reported_count++;
-				/* input_report_abs(ts->input_dev,
-					ABS_MT_PRESSURE,
-					max11871_prev_data[counter].z); */
-
-				input_mt_sync(ts->input_dev);
-			}
-		}
-		input_sync(ts->input_dev);
-	}
-
-	prev_touch_count = curr_touch_count;
-	for (counter = 0; counter < MAX_TOUCHES_LIMIT; counter++) {
-		memcpy(max11871_prev_data + counter,
-				max11871_curr_data + counter,
-				sizeof(struct max11871_finger_data));
-	}
-}
-
 
 /*
  * Parses and passes touch report info up to the input HAL
@@ -434,11 +320,10 @@ max11871_process_touch_report(struct max11871_data *ts, u8 *reportBuffer)
 	struct max11871_report_finger_data *data;
 	int touch_count = 0, button_count = 0, button_report[4];
 	int byteCount = reportBuffer[0] + 1;
-	int i = 0, counter = 0;
+	int i;
 	int x = 0, y = 0, z = 0, finger_id = 0;
 	int isBasicReport = 0;
 	u16 *wordBuffer = NULL;
-	struct max11871_platform_data *pdata = ts->client->dev.platform_data;
 
 	/* +2 accounts for the 2byte header*/
 	byteCount = (2 * reportBuffer[0]) + 2;
@@ -478,53 +363,45 @@ max11871_process_touch_report(struct max11871_data *ts, u8 *reportBuffer)
 		}
 	}
 
-	/* Reset current_data array to store new touches */
-	curr_touch_count = 0;
-	for (counter = 0; counter < MAX_TOUCHES_LIMIT; counter++)
-		max11871_curr_data[counter].finger_id = -1;
-
-	if (touch_count == 0) {
-		input_mt_sync(ts->input_dev);
-		input_sync(ts->input_dev);
-
-		/* Reset max11871_prev_data array for no-touch case */
-		prev_touch_count = 0;
-		for (counter = 0; counter < MAX_TOUCHES_LIMIT; counter++)
-			max11871_prev_data[counter].finger_id = -1;
-
-	} else {
-		maxinfo("touch_count = %d, isBasicReport = %d\n",
-			touch_count, isBasicReport);
-		for (i = 0; i < touch_count; i++) {
-			if (isBasicReport == 0)
-				data = &report->ext_data[i].basic;
-			else
-				data = &report->basic_data[i];
-
-			x = data->pos_Y;
-			y = data->pos_X;
-			z = data->pos_Z >> 8;
-			finger_id = data->status_fingerID & 0x000F;
-
-			x = (x > 1280) ? 0 : 1280 - x; /* Y axis reversal */
-
-			curr_touch_count++;
-			/* scale x and y */
-			x = ((long)x * 0x3ff) / 0x3b5;
-			y = ((long)y * 0x3ce) / 0x38c;
-			max11871_curr_data[finger_id].finger_id =
-				finger_id;
-			max11871_curr_data[finger_id].x = x;
-			max11871_curr_data[finger_id].y = y;
-			max11871_curr_data[finger_id].z = z;
-		}
-
-		/* First process the previous and new touch point union */
-		max11871_send_touches_union(ts);
-
-		/* Then send the new touch points */
-		max11871_send_touches(ts);
+	for (i = 0; i < MAX_TOUCHES_LIMIT; i++) {
+		/*
+		 * set previously pressed finger to release, will
+		 * update back to pressed if we get new finger data,
+		 * otherwise report finger release.
+		 */
+		if (ts->finger[i].status == MAX11871_FINGER_PRESS)
+			ts->finger[i].status = MAX11871_FINGER_RELEASE;
 	}
+
+	maxinfo("touch_count = %d, isBasicReport = %d\n",
+		touch_count, isBasicReport);
+
+	for (i = 0; i < touch_count; i++) {
+		if (isBasicReport == 0)
+			data = &report->ext_data[i].basic;
+		else
+			data = &report->basic_data[i];
+
+		x = data->pos_Y;
+		y = data->pos_X;
+		z = data->pos_Z >> 8;
+		finger_id = data->status_fingerID & 0x000F;
+		if (finger_id >= MAX_TOUCHES_LIMIT)
+			continue;
+
+		x = (x > 1280) ? 0 : 1280 - x; /* Y axis reversal */
+
+		/* scale x and y */
+		x = ((long)x * 0x3ff) / 0x3b5 - MAX11871_X_OFFSET;
+		y = ((long)y * 0x3ce) / 0x38c - MAX11871_Y_OFFSET;
+
+		ts->finger[finger_id].status = MAX11871_FINGER_PRESS;
+		ts->finger[finger_id].x = x < 0 ? 0 : x;
+		ts->finger[finger_id].y = y < 0 ? 0 : y;
+		ts->finger[finger_id].z = z;
+	}
+
+	max11871_send_touches(ts);
 
 	return 0;
 }
@@ -657,6 +534,7 @@ static int max11871_probe(struct i2c_client *client,
 	int i = 0;
 
 	/*maxinfo(":....\n");*/
+	pr_info("max11871: offset to 30\n");
 
 	ReportBuffer = kmalloc(SIZE_OF_RPT_BUFFER, GFP_KERNEL);
 	if (ReportBuffer == NULL) {
@@ -765,25 +643,15 @@ static int max11871_probe(struct i2c_client *client,
 
 	for (i = 0; i < ARRAY_SIZE(max11871_keycode); i++)
 		set_bit(max11871_keycode[i], ts->key_input_dev->keybit);
-	/*
-	set_bit(MAXIM_TOUCH_HOME, ts->input_dev->keybit);
-	set_bit(MAXIM_TOUCH_BACK, ts->input_dev->keybit);
-	set_bit(MAXIM_TOUCH_MENU, ts->input_dev->keybit);
-	set_bit(MAXIM_TOUCH_SEARCH, ts->input_dev->keybit);
-	*/
 
-	{
-		input_set_abs_params(ts->input_dev, ABS_MT_POSITION_X,
-				     pdata->abs_x_min, pdata->abs_x_max, 0, 0);
-		input_set_abs_params(ts->input_dev, ABS_MT_POSITION_Y,
-				     pdata->abs_y_min, pdata->abs_y_max, 0, 0);
-		input_set_abs_params(ts->input_dev, ABS_MT_TOUCH_MAJOR,
-					0, 255, 0, 0);
-		input_set_abs_params(ts->input_dev, ABS_MT_TRACKING_ID,
-					0, 2, 0, 0);
-		/* input_set_abs_params(ts->input_dev, ABS_MT_WIDTH_MAJOR,
-					0, 100, 0, 0); */
-	}
+	/* multi-touch protocol type B */
+	input_mt_init_slots(ts->input_dev, MAX_TOUCHES_LIMIT);
+	input_set_abs_params(ts->input_dev, ABS_MT_POSITION_X,
+			pdata->abs_x_min, pdata->abs_x_max, 0, 0);
+	input_set_abs_params(ts->input_dev, ABS_MT_POSITION_Y,
+			pdata->abs_y_min, pdata->abs_y_max, 0, 0);
+	input_set_abs_params(ts->input_dev, ABS_MT_TOUCH_MAJOR,
+			0, 255, 0, 0);
 
 	/* Register input device */
 	ret = input_register_device(ts->input_dev);
@@ -964,16 +832,16 @@ static int max11871_suspend(struct i2c_client *client, pm_message_t mesg)
 
 static int max11871_resume(struct i2c_client *client)
 {
+	struct max11871_data *ts = i2c_get_clientdata(client);
 	uint8_t data[16];
 	int ret = 0;
-	int counter = 0;
+	int i;
 
 	maxinfo("Enter max11871_resume\n");
 
-	curr_touch_count = 0; prev_touch_count = 0;
-	for (counter = 0; counter < MAX_TOUCHES_LIMIT; counter++) {
-		max11871_curr_data[counter].finger_id = -1;
-		max11871_prev_data[counter].finger_id = -1;
+	for (i = 0; i < MAX_TOUCHES_LIMIT; i++) {
+		if (ts->finger[i].status == MAX11871_FINGER_PRESS)
+			ts->finger[i].status = MAX11871_FINGER_RELEASE;
 	}
 
 	memset(data , 0x00 , sizeof(data));

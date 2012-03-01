@@ -96,13 +96,6 @@ struct max11871_simple_report {
 	u16 data;
 };
 
-struct max11871_finger_data {
-	int x;
-	int y;
-	int z;
-	int finger_id;
-};
-
 struct max11871_platform_data {
 	u16 version;
 	u8 i2c_addr;
