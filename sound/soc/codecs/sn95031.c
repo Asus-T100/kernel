@@ -1325,18 +1325,16 @@ void sn95031_jack_wq(struct work_struct *work)
 		container_of(work, struct sn95031_priv, jack_work.work.work);
 	struct sn95031_jack_work *jack_wq = &sn95031_ctx->jack_work;
 	struct snd_soc_jack *jack = jack_wq->jack;
-	unsigned int voltage, status = 0;
+	unsigned int voltage, status = 0, intr_id = jack_wq->intr_id;
 
-	pr_debug("jack status in wq: 0x%x\n", jack_wq->intr_id);
-	if (jack_wq->intr_id & SN95031_JACK_INSERTED) {
+	pr_debug("jack status in wq: 0x%x\n", intr_id);
+	if (intr_id & SN95031_JACK_INSERTED) {
 		status = sn95031_get_headset_state(jack);
-		jack_wq->intr_id &= ~SN95031_JACK_INSERTED;
 		/* unmask button press interrupts */
 		if (status == SND_JACK_HEADSET)
 			snd_soc_update_bits(jack->codec, SN95031_ACCDETMASK,
 							BIT(1)|BIT(0), 0);
-		cancel_delayed_work(&sn95031_ctx->jack_work.work);
-	} else if (jack_wq->intr_id & SN95031_JACK_REMOVED) {
+	} else if (intr_id & SN95031_JACK_REMOVED) {
 		if (mfld_board_id() == MFLD_BID_PR3) {
 			if (!gpio_get_value(HEADSET_DET_PIN)) {
 				pr_debug("remove interrupt, but GPIO says inserted\n");
@@ -1349,14 +1347,11 @@ void sn95031_jack_wq(struct work_struct *work)
 		sn95031_disable_mic_bias(jack->codec);
 		jack_wq->intr_id = 0;
 		cancel_delayed_work(&sn95031_ctx->jack_work.work);
-	} else if (jack_wq->intr_id & SN95031_JACK_BTN0) {
-		jack_wq->intr_id &= ~SN95031_JACK_BTN0;
+	} else if (intr_id & SN95031_JACK_BTN0) {
 		if (sn95031_lp_flag) {
 			snd_soc_jack_report(jack, SND_JACK_HEADSET, mask);
 			sn95031_lp_flag = 0;
-			/* clear up BTN1 intr_id if it was not cleared */
-			jack_wq->intr_id &= ~SN95031_JACK_BTN1;
-			pr_debug("short press intr on releasing long press, "
+			pr_debug("short press on releasing long press, "
 				   "report button release\n");
 			return;
 		} else {
@@ -1369,7 +1364,7 @@ void sn95031_jack_wq(struct work_struct *work)
 						SND_JACK_HEADSET, mask);
 			return;
 		}
-	} else if (jack_wq->intr_id & SN95031_JACK_BTN1) {
+	} else if (intr_id & SN95031_JACK_BTN1) {
 		/* we get spurious interrupts if jack key is held down
 		* so we ignore them until key is released by checking the
 		* voltage level */
@@ -1379,7 +1374,6 @@ void sn95031_jack_wq(struct work_struct *work)
 				snd_soc_jack_report(jack,
 						SND_JACK_HEADSET, mask);
 				sn95031_lp_flag = 0;
-				jack_wq->intr_id &= ~SN95031_JACK_BTN1;
 				pr_debug("button released after long press\n");
 			}
 			return;
@@ -1389,8 +1383,10 @@ void sn95031_jack_wq(struct work_struct *work)
 		 * and released events for Android */
 		status = SND_JACK_HEADSET | SND_JACK_BTN_0;
 		sn95031_lp_flag = 1;
-		jack_wq->intr_id &= ~SN95031_JACK_BTN1;
 		pr_debug("long press detected\n");
+	} else {
+		pr_err("Invalid intr_id:0x%x\n", intr_id);
+		return;
 	}
 	sn95031_jack_report(jack, status);
 }
@@ -1417,14 +1413,10 @@ void sn95031_jack_detection(struct mfld_jack_data *jack_data)
 
 	if (jack_data->intr_id & SN95031_JACK_INSERTED ||
 				jack_data->intr_id & SN95031_JACK_REMOVED) {
-
 		retval = sn95031_schedule_jack_wq(jack_data);
-		if (!retval) {
-			pr_debug("jack inserted/removed, intr already queued \n");
-			sn95031->jack_work.intr_id = jack_data->intr_id;
-		} else {
-			sn95031->jack_work.intr_id |= jack_data->intr_id;
-		}
+		if (!retval)
+			pr_debug("jack inserted/removed,intr already queued\n");
+		sn95031->jack_work.intr_id = jack_data->intr_id;
 		/* mask button press interrupts until jack is reported*/
 		snd_soc_update_bits(jack_data->mfld_jack->codec,
 		     SN95031_ACCDETMASK, BIT(1)|BIT(0), BIT(1)|BIT(0));
@@ -1434,14 +1426,13 @@ void sn95031_jack_detection(struct mfld_jack_data *jack_data)
 	if (jack_data->intr_id & SN95031_JACK_BTN0 ||
 				jack_data->intr_id & SN95031_JACK_BTN1) {
 		if ((jack_data->mfld_jack->status & SND_JACK_HEADSET) != 0) {
+			sn95031->jack_work.intr_id = jack_data->intr_id;
 			retval = sn95031_schedule_jack_wq(jack_data);
 			if (!retval) {
 				pr_debug("spurious btn press, lp_flag:%d\n",
 							sn95031_lp_flag);
-				sn95031->jack_work.intr_id = jack_data->intr_id;
 				return;
 			}
-			sn95031->jack_work.intr_id |= jack_data->intr_id;
 			pr_debug("BTN_Press detected\n");
 		} else {
 			pr_debug("BTN_press received, but jack is removed\n");
