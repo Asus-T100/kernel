@@ -155,13 +155,13 @@ static inline int had_chk_intrmiss(struct snd_intelhad *intelhaddata,
 		buf_id += (intr_count - 1);
 		/* Reprogram registers*/
 		for (i = buff_done; i < buf_id; i++) {
-			i = i % 4;
-			buf_size = intelhaddata->buf_info[i].buf_size;
-			buf_addr = intelhaddata->buf_info[i].buf_addr;
+			int j = i % 4;
+			buf_size = intelhaddata->buf_info[j].buf_size;
+			buf_addr = intelhaddata->buf_info[j].buf_addr;
 			had_write_register(AUD_BUF_A_LENGTH +
-					(i * HAD_REG_WIDTH), buf_size);
+					(j * HAD_REG_WIDTH), buf_size);
 			had_write_register(
-					AUD_BUF_A_ADDR+(i * HAD_REG_WIDTH),
+					AUD_BUF_A_ADDR+(j * HAD_REG_WIDTH),
 					(buf_addr | BIT(0) | BIT(1)));
 		}
 		buf_id = buf_id % 4;
