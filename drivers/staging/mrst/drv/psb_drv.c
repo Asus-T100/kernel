@@ -2816,6 +2816,7 @@ static void overlay_wait_vblank(struct drm_device *dev,
 	uint32_t ovadd_pipe;
 	int pipe = 0;
 	int retry;
+	uint32_t reg_val = 0;
 
 	ovadd_pipe = ((ovadd >> 6) & 0x3);
 
@@ -2825,6 +2826,13 @@ static void overlay_wait_vblank(struct drm_device *dev,
 		pipe = 1;
 		vblwait.request.type |= _DRM_VBLANK_SECONDARY;
 	}
+
+	/*
+	 * this is ugly. but still need because we need protect the
+	 * the vblank waiting from being interrupted by randomly mode
+	 * setting & dpms from user space.
+	 */
+	mutex_lock(&dev->mode_config.mutex);
 
 	/*
 	 * FIXME: don't enable vblank in this way.
@@ -2837,12 +2845,14 @@ static void overlay_wait_vblank(struct drm_device *dev,
 	 * util destroy swapchain. this will make drm_vblank_get() in
 	 * drm_wait_vblank useless since the refcount is not 0.
 	 */
-	mid_enable_pipe_event(dev_priv, pipe);
-	psb_enable_pipestat(dev_priv, pipe, PIPE_VBLANK_INTERRUPT_ENABLE);
-	dev_priv->b_is_in_idle = false;
-	dev_priv->dsr_idle_count = 0;
 
-	drm_wait_vblank(dev, (void *)&vblwait, file_priv);
+	if (!psb_enable_vblank(dev, pipe)) {
+		dev_priv->b_is_in_idle = false;
+		dev_priv->dsr_idle_count = 0;
+		drm_wait_vblank(dev, (void *)&vblwait, file_priv);
+	}
+
+	mutex_unlock(&dev->mode_config.mutex);
 }
 
 static int validate_overlay_register_buffer(struct drm_file *file_priv,
