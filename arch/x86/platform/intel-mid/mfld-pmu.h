@@ -146,6 +146,10 @@
 #define MID_PMU_CLV_DRV_DEV_ID			0x08EC
 #define PMU_DRV_NAME				"intel_pmu_driver"
 
+/* FIXME:: Avoid CVT platform to Hang on enabling RTPM*/
+#define USB_DEVICE_ID 0xe006
+#define SPI1_DEVICE_ID 0x8e1
+
 #define MID_PCI_INDEX_HASH_BITS		7 /*size 128*/
 #define MID_PCI_INDEX_HASH_SIZE		(1<<MID_PCI_INDEX_HASH_BITS)
 #define MID_PCI_INDEX_HASH_MASK		(MID_PCI_INDEX_HASH_SIZE-1)

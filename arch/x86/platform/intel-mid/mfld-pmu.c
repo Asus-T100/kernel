@@ -1726,6 +1726,18 @@ err:
 EXPORT_SYMBOL(pmu_set_lss01_to_d0i0_atomic);
 
 /**
+* FIXME:: device_causing_hang - Checks Devices which are causing the platform Hang
+* at boot time on RTPM Enabling.
+*
+*/
+static inline bool device_causing_hang(struct pci_dev *pdev)
+{
+	/* USB and SPI are currently causing platform Hang on enabling RTPM*/
+	return ((pdev) && (pdev->device) && ((pdev->device == USB_DEVICE_ID) ||
+			 (pdev->device == SPI1_DEVICE_ID)));
+}
+
+/**
  * pmu_pci_set_power_state - Callback function is used by all the PCI devices
  *			for a platform  specific device power on/shutdown.
  *
@@ -1743,6 +1755,13 @@ int __ref pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t state)
 	/* Ignore callback from devices until we have initialized */
 	if (unlikely((!pmu_initialized)))
 		return 0;
+	/* FIXME:: This is to prevent D0ix requests from USB and SPI1 on CVT.
+	 * Platform is getting Hanged when these are sending D0ix requests.
+	 */
+	if (__intel_mid_cpu_chip == INTEL_MID_CPU_CHIP_CLOVERVIEW) {
+		if (device_causing_hang(pdev))
+			return 0;
+	}
 
 	/* Try to acquire the scu_ready_sem, if not
 	 * get blocked, until pmu_sc_irq() releases */
