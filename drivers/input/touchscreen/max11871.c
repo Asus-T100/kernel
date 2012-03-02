@@ -81,11 +81,8 @@ struct max11871_data {
 	struct i2c_client *client;
 	struct input_dev *input_dev;
 	struct input_dev *key_input_dev;
-	struct work_struct work;
 	struct max11871_finger_data finger[MAX_TOUCHES_LIMIT];
 	struct early_suspend early_suspend;
-	struct device dev;
-	int irq_flags;
 	char phys[32];
 	char key_phys[32];
 };
@@ -100,7 +97,6 @@ static unsigned char max11871_keycode[4] = {
 #define DEBUG_ENABLE 0
 #define DRIVER_MSG_DEBUG_ENABLE 0
 #define MAX_TOUCHES_ALLOWED 2
-static struct workqueue_struct *maxim_wq;
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
 static void max11871_early_suspend(struct early_suspend *h);
@@ -452,27 +448,6 @@ static int maxim_process_report(struct max11871_data *ts,
 	return ret;
 }
 
-static void maxim_ts_work_func(struct work_struct *work)
-{
-	int result = 0;
-	u16 reportType = 0;
-	struct max11871_data *ts = container_of(work,
-						struct max11871_data, work);
-
-	/* Read the entire report in from i2c */
-	reportType = maxim_read_report(ts, ReportBuffer);
-
-	result = maxim_process_report(ts, reportType, ReportBuffer);
-
-	/* Wipe the buffer if we got a packet we didn't process */
-	if (result < 0)
-		memset(ReportBuffer, 0, SIZE_OF_RPT_BUFFER);
-
-	enable_irq(ts->client->irq);
-
-	return;
-}
-
 /*
  * Finds the part on the i2c bus. If found, maxim_ts_data->client will have
  * the correct address stored.
@@ -511,8 +486,18 @@ static int max11871_find_part(struct max11871_data *ts, u8 *buffer)
 static irqreturn_t max11871_irq_handler(int irq, void *dev_id)
 {
 	struct max11871_data *ts = dev_id;
-	disable_irq_nosync(ts->client->irq);
-	queue_work(maxim_wq, &ts->work);
+	int result = 0;
+	u16 reportType = 0;
+
+	/* Read the entire report in from i2c */
+	reportType = maxim_read_report(ts, ReportBuffer);
+
+	result = maxim_process_report(ts, reportType, ReportBuffer);
+
+	/* Wipe the buffer if we got a packet we didn't process */
+	if (result < 0)
+		memset(ReportBuffer, 0, SIZE_OF_RPT_BUFFER);
+
 	return IRQ_HANDLED;
 }
 
@@ -520,15 +505,10 @@ static int max11871_probe(struct i2c_client *client,
 			const struct i2c_device_id *id)
 {
 	struct max11871_data *ts = NULL;
-	struct max11871_platform_data *pdata = pdata =
+	struct max11871_platform_data *pdata =
 					client->dev.platform_data;
-
 	int ret = 0;
-	/*struct i2c_data *pdata = NULL;*/
 	int i = 0;
-
-	/*maxinfo(":....\n");*/
-	pr_info("max11871: offset to 30\n");
 
 	ReportBuffer = kmalloc(SIZE_OF_RPT_BUFFER, GFP_KERNEL);
 	if (ReportBuffer == NULL) {
@@ -536,13 +516,6 @@ static int max11871_probe(struct i2c_client *client,
 		ret = -ENOMEM;
 		goto err_alloc_data_failed;
 	}
-
-	maxim_wq = create_singlethread_workqueue("maxim_wq");
-	if (!maxim_wq) {
-		ret = -ENOMEM;
-		goto err_alloc_data_failed;
-	}
-
 
 	if (!pdata) {
 		dev_err(&client->dev, "platform data is required!\n");
@@ -574,8 +547,7 @@ static int max11871_probe(struct i2c_client *client,
 		goto err_alloc_data_failed;
 	}
 
-	/* Setup work queue and setup i2c client data */
-	INIT_WORK(&ts->work, maxim_ts_work_func);
+	/* setup i2c client data */
 	ts->client = client;
 	i2c_set_clientdata(client, ts);
 
@@ -669,17 +641,13 @@ static int max11871_probe(struct i2c_client *client,
 	/* Setup the IRQ and irq_handler to use */
 	client->irq = gpio_to_irq(pdata->gpio_irq);
 	if (client->irq > 0) {
-		ret = request_irq(client->irq,
-					max11871_irq_handler,
-					IRQ_TYPE_EDGE_FALLING,
-					client->name, ts);
+		ret = request_threaded_irq(client->irq, NULL,
+				max11871_irq_handler,
+				IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
+				client->name, ts);
 
-		if (ret == 0) {
-			maxinfo(" max11871 using irq:%i", client->irq);
-		} else {
+		if (ret < 0) {
 			dev_err(&ts->client->dev, "request_irq failed\n");
-			maxerr("request_irq %i failed\n", client->irq);
-			ret = -ENODEV;
 			goto err_input_register_device_failed;
 		}
 	}
@@ -713,7 +681,6 @@ err_input_register_device_failed:
 
 err_input_dev_alloc_failed:
 err_power_failed:
-/*	destroy_workqueue(maxim_wq); */
 err_detect_failed:
 	if (ts != NULL)
 		kfree(ts);
@@ -730,9 +697,6 @@ static int max11871_remove(struct i2c_client *client)
 	unregister_early_suspend(&ts->early_suspend);
 #endif
 	free_irq(client->irq, ts);
-
-	if (maxim_wq)
-		destroy_workqueue(maxim_wq);
 
 	input_unregister_device(ts->input_dev);
 	kfree(ReportBuffer);
@@ -785,16 +749,12 @@ static int max11871_get_fw_version(struct i2c_client *client)
 
 static int max11871_suspend(struct i2c_client *client, pm_message_t mesg)
 {
-	struct max11871_data *ts = i2c_get_clientdata(client);
 	uint8_t data[16];
 	int ret = 0;
 
 	maxinfo("Enter max11871_suspend\n");
 
 	disable_irq_nosync(client->irq);
-	ret = cancel_work_sync(&ts->work);
-	if (ret)
-		enable_irq(client->irq);
 
 	memset(data , 0x00 , sizeof(data));
 
@@ -816,10 +776,8 @@ static int max11871_suspend(struct i2c_client *client, pm_message_t mesg)
 	data[9] = 0x00;
 
 	ret = i2c_master_send(client, data, 10);
-	if (ret < 0) {
-		maxerr("Maxim 11871 I2C failure on Suspend: %d. Exiting\n",
-			ret);
-	}
+	if (ret < 0)
+		maxerr("max11871 I2C failure on Suspend: %d. Exiting\n", ret);
 
 	return ret;
 }
