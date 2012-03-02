@@ -2518,8 +2518,10 @@ static void handle_setup_packet(struct langwell_udc *dev,
 			}
 
 			if (wValue != 0 || wLength != 0
-					|| epn->ep_num > dev->ep_max)
+					|| epn->ep_num > dev->ep_max) {
+				ep0_stall(dev);
 				break;
+			}
 
 			spin_unlock(&dev->lock);
 			rc = _langwell_ep_set_halt(&epn->ep,
@@ -2587,7 +2589,8 @@ static void handle_setup_packet(struct langwell_udc *dev,
 		if (rc == 0) {
 			if (prime_status_phase(dev, EP_DIR_IN))
 				ep0_stall(dev);
-		}
+		} else if (rc == -EOPNOTSUPP)
+			ep0_stall(dev);
 		goto end;
 	}
 
