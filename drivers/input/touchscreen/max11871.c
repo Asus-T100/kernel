@@ -69,8 +69,6 @@ do { ; } while (0);
 #define MAX11871_FINGER_NONE	0
 #define MAX11871_FINGER_PRESS	1
 #define MAX11871_FINGER_RELEASE	2
-#define MAX11871_X_OFFSET	30
-#define MAX11871_Y_OFFSET	30
 
 struct max11871_finger_data {
 	int status;
@@ -391,13 +389,9 @@ max11871_process_touch_report(struct max11871_data *ts, u8 *reportBuffer)
 
 		x = (x > 1280) ? 0 : 1280 - x; /* Y axis reversal */
 
-		/* scale x and y */
-		x = ((long)x * 0x3ff) / 0x3b5 - MAX11871_X_OFFSET;
-		y = ((long)y * 0x3ce) / 0x38c - MAX11871_Y_OFFSET;
-
 		ts->finger[finger_id].status = MAX11871_FINGER_PRESS;
-		ts->finger[finger_id].x = x < 0 ? 0 : x;
-		ts->finger[finger_id].y = y < 0 ? 0 : y;
+		ts->finger[finger_id].x = x;
+		ts->finger[finger_id].y = y;
 		ts->finger[finger_id].z = z;
 	}
 
