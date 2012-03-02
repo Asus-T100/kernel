@@ -244,8 +244,8 @@ const char * const *v4l2_ctrl_get_menu(u32 id)
 	};
 	static const char * const tune_preemphasis[] = {
 		"No Preemphasis",
-		"50 useconds",
-		"75 useconds",
+		"50 Microseconds",
+		"75 Microseconds",
 		NULL,
 	};
 	static const char * const header_mode[] = {
@@ -342,7 +342,7 @@ const char * const *v4l2_ctrl_get_menu(u32 id)
 	};
 	static const char * const mpeg4_profile[] = {
 		"Simple",
-		"Adcanved Simple",
+		"Advanced Simple",
 		"Core",
 		"Simple Scalable",
 		"Advanced Coding Efficency",
