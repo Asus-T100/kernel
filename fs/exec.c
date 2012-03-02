@@ -2055,17 +2055,24 @@ void do_coredump(long signr, int exit_code, struct pt_regs *regs)
 		.mm_flags = mm->flags,
 	};
 
+	printk(KERN_ERR "starting coredump : %s\n", current->comm);
 	audit_core_dumps(signr);
 
 	binfmt = mm->binfmt;
-	if (!binfmt || !binfmt->core_dump)
+	if (!binfmt || !binfmt->core_dump) {
+		printk(KERN_ERR " binfmt failed\n");
 		goto fail;
-	if (!__get_dumpable(cprm.mm_flags))
+	}
+	if (!__get_dumpable(cprm.mm_flags)) {
+		printk(KERN_ERR " get_dumpable fail\n");
 		goto fail;
-
+	}
 	cred = prepare_creds();
-	if (!cred)
+	if (!cred) {
+		printk(KERN_ERR " prepare_creds fail\n");
 		goto fail;
+	}
+
 	/*
 	 *	We cannot trust fsuid as being the "true" uid of the
 	 *	process nor do we know its entire history. We only know it
@@ -2078,8 +2085,10 @@ void do_coredump(long signr, int exit_code, struct pt_regs *regs)
 	}
 
 	retval = coredump_wait(exit_code, &core_state);
-	if (retval < 0)
+	if (retval < 0) {
+		printk(KERN_ERR " coredump_wait fail_creds\n");
 		goto fail_creds;
+	}
 
 	old_cred = override_creds(cred);
 
@@ -2092,8 +2101,8 @@ void do_coredump(long signr, int exit_code, struct pt_regs *regs)
 	ispipe = format_corename(&cn, signr);
 
 	if (ispipe == -ENOMEM) {
-		printk(KERN_WARNING "format_corename failed\n");
-		printk(KERN_WARNING "Aborting core\n");
+		printk(KERN_ERR "format_corename failed\n");
+		printk(KERN_ERR "Aborting core\n");
 		goto fail_corename;
 	}
 
@@ -2116,25 +2125,25 @@ void do_coredump(long signr, int exit_code, struct pt_regs *regs)
 			 * right pid if a thread in a multi-threaded
 			 * core_pattern process dies.
 			 */
-			printk(KERN_WARNING
+			printk(KERN_ERR
 				"Process %d(%s) has RLIMIT_CORE set to 1\n",
 				task_tgid_vnr(current), current->comm);
-			printk(KERN_WARNING "Aborting core\n");
+			printk(KERN_ERR "Aborting core\n");
 			goto fail_unlock;
 		}
 		cprm.limit = RLIM_INFINITY;
 
 		dump_count = atomic_inc_return(&core_dump_count);
 		if (core_pipe_limit && (core_pipe_limit < dump_count)) {
-			printk(KERN_WARNING "Pid %d(%s) over core_pipe_limit\n",
+			printk(KERN_ERR "Pid %d(%s) over core_pipe_limit\n",
 			       task_tgid_vnr(current), current->comm);
-			printk(KERN_WARNING "Skipping core dump\n");
+			printk(KERN_ERR "Skipping core dump\n");
 			goto fail_dropcount;
 		}
 
 		helper_argv = argv_split(GFP_KERNEL, cn.corename+1, NULL);
 		if (!helper_argv) {
-			printk(KERN_WARNING "%s failed to allocate memory\n",
+			printk(KERN_ERR "%s failed to allocate memory\n",
 			       __func__);
 			goto fail_dropcount;
 		}
@@ -2144,21 +2153,26 @@ void do_coredump(long signr, int exit_code, struct pt_regs *regs)
 					NULL, &cprm);
 		argv_free(helper_argv);
 		if (retval) {
- 			printk(KERN_INFO "Core dump to %s pipe failed\n",
+			printk(KERN_ERR "Core dump to %s pipe failed\n",
 			       cn.corename);
 			goto close_fail;
  		}
 	} else {
 		struct inode *inode;
 
-		if (cprm.limit < binfmt->min_coredump)
+		if (cprm.limit < binfmt->min_coredump) {
+			printk(KERN_ERR " min_coredump: %x less than %x\n",
+					cprm.limit, binfmt->min_coredump);
 			goto fail_unlock;
+		}
 
 		cprm.file = filp_open(cn.corename,
 				 O_CREAT | 2 | O_NOFOLLOW | O_LARGEFILE | flag,
 				 0600);
-		if (IS_ERR(cprm.file))
+		if (IS_ERR(cprm.file)) {
+			printk(KERN_ERR " cprm file fail unlock\n");
 			goto fail_unlock;
+		}
 
 		inode = cprm.file->f_path.dentry->d_inode;
 		if (inode->i_nlink > 1)
