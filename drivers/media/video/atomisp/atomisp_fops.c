@@ -464,6 +464,8 @@ static int atomisp_release(struct file *file)
 	isp->hw_contex.mmu_l1_base = sh_css_mmu_get_page_table_base_address();
 	isp->sw_contex.init = false;
 
+	atomisp_acc_unload_all(isp);
+
 #ifdef CONFIG_PM
 	if (pm_runtime_put_sync(vdev->v4l2_dev->dev))
 		v4l2_err(&atomisp_dev,

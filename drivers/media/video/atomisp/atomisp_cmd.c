@@ -3754,44 +3754,34 @@ out:
 	return ret;
 }
 
-int atomisp_acc_unload(struct atomisp_device *isp, unsigned int *handle)
+/*
+ * returns   1  if caller needs to wait for completion,
+ *           0  if there's no need to wait or
+ *         < 0  if an error occurred.
+ */
+static int __acc_unload(struct atomisp_device *isp, struct sh_css_acc_fw *fw)
 {
-	struct sh_css_acc_fw *fw;
-	int ret = 0;
-
-	mutex_lock(&isp->input_lock);
-	mutex_lock(&isp->isp_lock);
-
-	fw = __acc_get_fw(isp, *handle);
-
 	if (fw == NULL) {
 		v4l2_err(&atomisp_dev, "%s: Invalid acceleration firmware "
 				       "handle\n", __func__);
-		ret = -EINVAL;
-		goto out;
+		return -EINVAL;
 	}
 
-	if (!fw->header.loaded) {
-		ret = -EINVAL;
-		goto out;
-	}
+	if (!fw->header.loaded)
+		return -EINVAL;
 
 	if (isp->marked_fw_for_unload != NULL) {
 		v4l2_err(&atomisp_dev, "%s: Acceleration firmware unload "
 				       "pending\n", __func__);
-		ret = -EBUSY;
-		goto out;
+		return -EBUSY;
 	}
 
 	if (isp->sw_contex.isp_streaming == false) {
 		/* We're not streaming, so it's safe to unload now */
-
 		__acc_fw_free_args(isp, fw);
 		sh_css_unload_acceleration(fw);
 		__acc_fw_free(isp, fw);
-
-		ret = 0;
-		goto out;
+		return 0;
 	}
 
 	/*
@@ -3800,18 +3790,63 @@ int atomisp_acc_unload(struct atomisp_device *isp, unsigned int *handle)
 	 */
 	init_completion(&isp->acc_unload_fw_complete);
 	isp->marked_fw_for_unload = fw;
+	return 1;
+}
+
+int atomisp_acc_unload(struct atomisp_device *isp, unsigned int *handle)
+{
+	struct sh_css_acc_fw *fw;
+	int need_to_wait = 0;
+
+	mutex_lock(&isp->input_lock);
+	mutex_lock(&isp->isp_lock);
+
+	fw  = __acc_get_fw(isp, *handle);
+	need_to_wait = __acc_unload(isp, fw);
 
 	mutex_unlock(&isp->isp_lock);
 	mutex_unlock(&isp->input_lock);
 
-	wait_for_completion_timeout(&isp->acc_unload_fw_complete, 1 * HZ);
+	if (need_to_wait < 0)
+		return need_to_wait;
 
+	if (need_to_wait > 0)
+		wait_for_completion_timeout(&isp->acc_unload_fw_complete,
+					    1 * HZ);
 	return 0;
+}
 
-out:
+/*
+ * Call with input_lock held
+ */
+void atomisp_acc_unload_all(struct atomisp_device *isp)
+{
+	struct sh_css_acc_fw *fw;
+	int i, need_to_wait;
+
+	if (!isp)
+		return;
+
+	mutex_lock(&isp->isp_lock);
+	for (i = 0; i < ATOMISP_ACC_FW_MAX; i++) {
+		fw = isp->acc_fw[i];
+		if (!fw)
+			continue;
+
+		need_to_wait = __acc_unload(isp, fw);
+
+		if (need_to_wait > 0) {
+			mutex_unlock(&isp->isp_lock);
+			mutex_unlock(&isp->input_lock);
+
+			wait_for_completion_timeout(
+				&isp->acc_unload_fw_complete, 1 * HZ);
+
+			mutex_lock(&isp->input_lock);
+			mutex_lock(&isp->isp_lock);
+		}
+	}
 	mutex_unlock(&isp->isp_lock);
-	mutex_unlock(&isp->input_lock);
-	return ret;
 }
 
 int atomisp_acc_set_arg(struct atomisp_device *isp,

@@ -286,6 +286,8 @@ int atomisp_acc_load(struct atomisp_device *isp,
 int atomisp_acc_unload(struct atomisp_device *isp,
 		       unsigned int *handler);
 
+void atomisp_acc_unload_all(struct atomisp_device *isp);
+
 int atomisp_acc_set_arg(struct atomisp_device *isp,
 			struct atomisp_acc_fw_arg *fw_arg);
 
