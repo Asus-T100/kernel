@@ -102,7 +102,7 @@ ssize_t usb_host_enable_timeout_store(struct device *dev,
 	string_length = strlen(buffer);
 
 	if (string_length < MAX_USB_TIMEOUT_LEN) {
-		snprintf(timeout, string_length, "%s", buffer);
+		snprintf(timeout, sizeof(timeout), "%s", buffer);
 	} else {
 		pr_err("Invalid value written."
 		"Check the Availabe values that can be used\n");

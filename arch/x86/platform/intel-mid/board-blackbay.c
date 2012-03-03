@@ -256,7 +256,7 @@ static void __init *max7315_platform_data(void *info)
 	char base_pin_name[SFI_NAME_LEN + 1];
 	char intr_pin_name[SFI_NAME_LEN + 1];
 
-	if (nr == MAX7315_NUM) {
+	if (nr >= MAX7315_NUM) {
 		pr_err("too many max7315s, we only support %d\n",
 				MAX7315_NUM);
 		return NULL;
@@ -266,8 +266,10 @@ static void __init *max7315_platform_data(void *info)
 	 */
 	strcpy(i2c_info->type, "max7315");
 	if (nr++) {
-		sprintf(base_pin_name, "max7315_%d_base", nr);
-		sprintf(intr_pin_name, "max7315_%d_int", nr);
+		snprintf(base_pin_name, sizeof(base_pin_name), \
+							"max7315_%d_base", nr);
+		snprintf(intr_pin_name, sizeof(intr_pin_name), \
+							"max7315_%d_int", nr);
 	} else {
 		strcpy(base_pin_name, "max7315_base");
 		strcpy(intr_pin_name, "max7315_int");
