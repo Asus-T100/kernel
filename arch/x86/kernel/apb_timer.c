@@ -626,7 +626,7 @@ void __init apbt_time_init(void)
 		} else
 			printk(KERN_ERR "Failed to get timer for cpu %d\n", i);
 		adev->count = 0;
-		sprintf(adev->name, "apbt%d", i);
+		snprintf(adev->name, sizeof(adev->name), "apbt%d", i);
 	}
 #endif
 

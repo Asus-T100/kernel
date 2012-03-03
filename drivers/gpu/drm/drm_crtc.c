@@ -2122,7 +2122,7 @@ struct drm_property *drm_property_create(struct drm_device *dev, int flags,
 	INIT_LIST_HEAD(&property->enum_blob_list);
 
 	if (name)
-		strncpy(property->name, name, DRM_PROP_NAME_LEN);
+		strncpy(property->name, name, DRM_PROP_NAME_LEN-1);
 
 	list_add_tail(&property->head, &dev->mode_config.property_list);
 	return property;
@@ -2143,7 +2143,8 @@ int drm_property_add_enum(struct drm_property *property, int index,
 	if (!list_empty(&property->enum_blob_list)) {
 		list_for_each_entry(prop_enum, &property->enum_blob_list, head) {
 			if (prop_enum->value == value) {
-				strncpy(prop_enum->name, name, DRM_PROP_NAME_LEN);
+				strncpy(prop_enum->name, name, \
+					DRM_PROP_NAME_LEN-1);
 				prop_enum->name[DRM_PROP_NAME_LEN-1] = '\0';
 				return 0;
 			}

@@ -1490,7 +1490,7 @@ static void cur_err(const char *err_str)
 {
 	if (err_str) {
 		memset(err_buf, 0, sizeof(err_buf));
-		strncpy(err_buf, err_str, strlen(err_str));
+		strncpy(err_buf, err_str, sizeof(err_buf)-1);
 	}
 }
 
@@ -1960,7 +1960,8 @@ static ssize_t msic_debug_read(struct file *filp, char __user *buffer,
 			msic_debug_reg_addr, ret);
 		return -EFAULT;
 	}
-	len = sprintf(buf, "msic[%3.3x]=0x%x\n", msic_debug_reg_addr, data);
+	len = snprintf(buf, sizeof(buf), "msic[%3.3x]=0x%x\n", \
+						msic_debug_reg_addr, data);
 	if (copy_to_user(buffer, buf, len))
 		return -EFAULT;
 	*off = len;

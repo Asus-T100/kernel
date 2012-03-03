@@ -410,6 +410,12 @@ void compute_shiftstate(void)
 			if (val == KVAL(K_CAPSSHIFT))
 				val = KVAL(K_SHIFT);
 
+			/* fix a KW error */
+			if (val >= (sizeof(shift_down) \
+						/ sizeof(shift_down[0]))) {
+				BUG();
+				continue;
+			}
 			shift_down[val]++;
 			shift_state |= (1 << val);
 		}

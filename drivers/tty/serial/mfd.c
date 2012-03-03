@@ -1754,7 +1754,7 @@ static void hsu_global_init(void)
 		uport->port.membase = hsu->reg + HSU_PORT_REG_OFFSET
 					+ offset * HSU_PORT_REG_LENGTH;
 
-		sprintf(uport->name, "hsu_port%d", i);
+		snprintf(uport->name, sizeof(uport->name), "hsu_port%d", i);
 		uport->port.fifosize = 64;
 		uport->port.ops = &serial_hsu_pops;
 		uport->port.line = i;

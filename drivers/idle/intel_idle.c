@@ -891,10 +891,16 @@ static int intel_idle_cpuidle_devices_init(void)
 			cpuidle_state_table[cstate].target_residency =
 						get_target_residency(cstate);
 
-			dev->states[dev->state_count] =	/* structure copy */
-				cpuidle_state_table[cstate];
+			if (dev->state_count >= \
+				(sizeof(dev->states)/sizeof(dev->states[0]))) {
+				BUG();
+			} else {
+				/* structure copy */
+				dev->states[dev->state_count] =	\
+					cpuidle_state_table[cstate];
 
-			dev->state_count += 1;
+				dev->state_count += 1;
+			}
 		}
 
 		dev->cpu = i;
