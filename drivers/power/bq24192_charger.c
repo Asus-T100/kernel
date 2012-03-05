@@ -38,7 +38,6 @@
 #include <linux/io.h>
 #include <linux/sched.h>
 #include <linux/delay.h>
-#include <linux/usb/penwell_otg.h>
 
 #define DRV_NAME "bq24192_charger"
 #define DEV_NAME "bq24192"
@@ -201,7 +200,6 @@ static struct dentry *bq24192_dbgfs_root;
 static char bq24192_dbg_regs[BQ24192_MAX_MEM][4];
 #endif
 
-static void *otg_handle;
 static struct i2c_client *bq24192_client;
 
 static char *bq24192_power_supplied_to[] = {
@@ -543,6 +541,18 @@ static void bq24192_event_worker(struct work_struct *work)
 		chip->present = 1;
 		chip->online = 1;
 		chip->chrg_type = chip->cap.chrg_type;
+		if (chip->chrg_type == POWER_SUPPLY_TYPE_USB_DCP) {
+			chip->usb.type = POWER_SUPPLY_TYPE_USB_DCP;
+			dev_info(&chip->client->dev,
+				 "Charger type DCP\n");
+		} else if (chip->chrg_type == POWER_SUPPLY_TYPE_USB) {
+			chip->usb.type = POWER_SUPPLY_TYPE_USB;
+			dev_info(&chip->client->dev,
+				 "Charger type SDP\n");
+		} else {
+			dev_info(&chip->client->dev,
+				 "Unknown Charger type\n");
+		}
 		chip->batt_status = POWER_SUPPLY_STATUS_CHARGING;
 		break;
 	case POWER_SUPPLY_CHARGER_EVENT_DISCONNECT:
@@ -622,33 +632,6 @@ static void bq24192_charging_port_changed(struct power_supply *psy,
 	dev_info(&chip->client->dev, "[chrg] evt:%d type:%d cur:%d\n",
 				cap->chrg_evt, cap->chrg_type, cap->mA);
 	schedule_delayed_work(&chip->chrg_evt_wrkr, 0);
-}
-
-static int bq24192_charger_callback(void *arg, int event,
-					struct otg_bc_cap *cap)
-{
-	struct bq24192_chip *chip = (struct bq24192_chip *)arg;
-
-	mutex_lock(&chip->event_lock);
-	if (event == USBCHRG_EVENT_CONNECT)
-		chip->cap.chrg_evt = POWER_SUPPLY_CHARGER_EVENT_CONNECT;
-	else if (event == USBCHRG_EVENT_UPDATE)
-		chip->cap.chrg_evt = POWER_SUPPLY_CHARGER_EVENT_UPDATE;
-	else if (event == USBCHRG_EVENT_RESUME)
-		chip->cap.chrg_evt = POWER_SUPPLY_CHARGER_EVENT_RESUME;
-	else if (event == USBCHRG_EVENT_SUSPEND)
-		chip->cap.chrg_evt = POWER_SUPPLY_CHARGER_EVENT_SUSPEND;
-	else
-		chip->cap.chrg_evt = POWER_SUPPLY_CHARGER_EVENT_DISCONNECT;
-	chip->cap.mA = cap->mA;
-	chip->cap.chrg_type = cap->chrg_type;
-	mutex_unlock(&chip->event_lock);
-
-	dev_info(&chip->client->dev, "[chrg] evt:%d type:%d cur:%d\n",
-				event, cap->chrg_type, cap->mA);
-
-	schedule_delayed_work(&chip->chrg_evt_wrkr, 0);
-	return 0;
 }
 
 #ifdef CONFIG_DEBUG_FS
@@ -945,17 +928,6 @@ static int __devinit bq24192_probe(struct i2c_client *client,
 			kfree(chip);
 			return ret;
 		}
-
-		/* Register with OTG */
-		otg_handle = penwell_otg_register_bc_callback(
-				bq24192_charger_callback, (void *)chip);
-		if (!otg_handle) {
-			dev_err(&client->dev, "battery: OTG Registration failed\n");
-			power_supply_unregister(&chip->usb);
-			i2c_set_clientdata(client, NULL);
-			kfree(chip);
-			return -EBUSY;
-		}
 	}
 
 	/* Init Runtime PM State */
@@ -980,10 +952,8 @@ static int __devexit bq24192_remove(struct i2c_client *client)
 	struct bq24192_chip *chip = i2c_get_clientdata(client);
 
 	bq24192_remove_debugfs(chip);
-	if (!chip->pdata->slave_mode) {
-		penwell_otg_unregister_bc_callback(otg_handle);
+	if (!chip->pdata->slave_mode)
 		power_supply_unregister(&chip->usb);
-	}
 	i2c_set_clientdata(client, NULL);
 	kfree(chip);
 	return 0;
