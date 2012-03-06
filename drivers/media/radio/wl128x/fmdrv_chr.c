@@ -36,8 +36,6 @@
 
 #include <linux/ti_wilink_st.h>
 
-//#define DEBUG
-
 /* Debug macros */
 #define FM_CHR_DRV_ERR(fmt, arg...) \
 	pr_err("(fmc):"fmt"\n" , ## arg)
@@ -46,19 +44,19 @@
 #define FM_CHR_DRV_DBG(fmt, arg...) \
 	pr_info("(fmc):"fmt"\n" , ## arg)
 #define FM_CHR_DRV_VER(fmt, arg...)
-#define	FM_CHR_DRV_START()	\
+#define	FM_CHR_DRV_TRACE()	\
 	pr_info("(fmc): Inside %s\n", __func__)
 #elif defined(VERBOSE)		/* very verbose */
 #define FM_CHR_DRV_DBG(fmt, arg...) \
 	pr_info("(fmc):"fmt"\n" , ## arg)
 #define FM_CHR_DRV_VER(fmt, arg...) \
 	pr_info("(fmc):"fmt"\n" , ## arg)
-#define FM_CHR_DRV_START()	\
+#define FM_CHR_DRV_TRACE()	\
 	pr_info("(fmc): Inside %s\n", __func__)
 #else /* Error msgs only */
 #define FM_CHR_DRV_DBG(fmt, arg...)
 #define FM_CHR_DRV_VER(fmt, arg...)
-#define FM_CHR_DRV_START()
+#define FM_CHR_DRV_TRACE()
 #endif
 
 /* FM device */
@@ -141,13 +139,13 @@ struct hci_command_hdr {
 	uint8_t prefix;
 	uint16_t opcode;
 	uint8_t plen;
-} __attribute__ ((packed));
+} __packed;
 
 /* Header structure for HCI event packet */
 struct evt_cmd_complete {
 	uint8_t ncmd;
 	uint16_t opcode;
-} __attribute__ ((packed));
+} __packed;
 
 /* FM Character driver data */
 struct fmdrv_chr_ops {
@@ -203,7 +201,7 @@ static struct sk_buff *convert2_channel_4(struct sk_buff *ch8_skb)
 	unsigned char num_hci, param_len, fm_opcode;
 	unsigned char read_write, evt_code, cmd_len, int_len, chan8_cmd_len;
 
-	FM_CHR_DRV_START();
+	FM_CHR_DRV_TRACE();
 
 	fm_opcode = read_write = 0;
 	chan8_index = chan4_index = 0;
@@ -392,7 +390,7 @@ static int convert2_channel_8(struct sk_buff *skb)
 		0x02, 0x00, 0x00
 	};
 
-	FM_CHR_DRV_START();
+	FM_CHR_DRV_TRACE();
 
 	hdr = NULL;
 	fm_opcode = 0;
@@ -489,7 +487,7 @@ static long fm_rx_task(struct fmdrv_chr_ops *fm_chr_dev)
 	struct sk_buff *skb;
 	unsigned long flags = 0;
 
-	FM_CHR_DRV_START();
+	FM_CHR_DRV_TRACE();
 
 	skb = NULL;
 	spin_lock_irqsave(&fm_chr_dev->lock, flags);
@@ -554,7 +552,7 @@ static long fm_rx_task(struct fmdrv_chr_ops *fm_chr_dev)
 static int fm_chr_fasync(int fd, struct file *file, int on)
 {
 	struct fmdrv_chr_ops *fm_chr_dev = file->private_data;
-	FM_CHR_DRV_START();
+	FM_CHR_DRV_TRACE();
 	return fasync_helper(fd, file, on, &fm_chr_dev->fm_fasync);
 }
 
@@ -578,7 +576,7 @@ static long fm_st_receive(void *arg, struct sk_buff *skb)
 		pr_err("(fmdrv): Invalid SKB received from ST");
 		return -EFAULT;
 	}
-	if (skb->cb[0] != 0x08) {
+	if (skb->cb[0] != ST_FM) {
 		pr_err("(fmdrv): Received SKB (%p) is not FM Channel 8 pkt",
 		       skb);
 		return -EINVAL;
@@ -598,7 +596,7 @@ int fmc_prepare(struct fmdrv_chr_ops *fmdev)
 	unsigned long timeleft;
 	int ret = 0;
 
-	FM_CHR_DRV_START();
+	FM_CHR_DRV_TRACE();
 
 	if (test_bit(FM_CORE_READY, &fmdev->flag)) {
 		pr_info("(fmdrv): FM Core is already up");
@@ -611,7 +609,7 @@ int fmc_prepare(struct fmdrv_chr_ops *fmdev)
 
 	/* register channel ID & relevant details */
 	memset(&fm_st_proto, 0, sizeof(fm_st_proto));
-	fm_st_proto.chnl_id = 0x08;
+	fm_st_proto.chnl_id = ST_FM;
 	fm_st_proto.max_frame_size = 0xff;
 	fm_st_proto.hdr_len = 1;
 	fm_st_proto.offset_len_in_hdr = 0;
@@ -664,10 +662,10 @@ int fmc_prepare(struct fmdrv_chr_ops *fmdev)
 		goto exit;
 	}
 
-	/* Initialize the wait queue and the Rx tasklets */
-	// SOLDEL Removed call init_waitqueue_head as this is
-	// already done at open
-	//init_waitqueue_head(&fmdev->fm_data_q);
+	/* Initialize the wait queue and the Rx tasklets
+	SOLDEL Removed call init_waitqueue_head as this is
+	already done at open
+	init_waitqueue_head(&fmdev->fm_data_q); */
 	tasklet_init(&fmdev->rx_task, (void *)fm_rx_task,
 		     (unsigned long)fmdev);
 
@@ -684,7 +682,7 @@ static int fm_chr_open(struct inode *inod, struct file *fil)
 	int err_st_release;
 	struct fmdrv_chr_ops *fm_chr_dev;
 
-	FM_CHR_DRV_START();
+	FM_CHR_DRV_TRACE();
 
 	err = FM_CHR_DRV_SUCCESS;
 	err_st_release = FM_CHR_DRV_SUCCESS;
@@ -718,7 +716,7 @@ static int fm_chr_release(struct inode *inod, struct file *fil)
 	int err;
 	struct fmdrv_chr_ops *fm_chr_dev = fil->private_data;
 
-	FM_CHR_DRV_START();
+	FM_CHR_DRV_TRACE();
 
 	err = 0;
 
@@ -752,7 +750,7 @@ static ssize_t fm_chr_write(struct file *fil, const char __user *data,
 	struct sk_buff *skb;
 	struct fmdrv_chr_ops *fm_chr_dev = fil->private_data;
 
-	FM_CHR_DRV_START();
+	FM_CHR_DRV_TRACE();
 
 	err = FM_CHR_DRV_SUCCESS;
 
@@ -806,9 +804,9 @@ static ssize_t fm_chr_write(struct file *fil, const char __user *data,
 		return FM_CHR_DRV_ERR_FAILURE;
 	}
 
-	// SOLDEL Removed call init_waitqueue_head as this is
-	// already done at open
-	//init_waitqueue_head(&fm_chr_dev->fm_data_q);
+	/* SOLDEL Removed call init_waitqueue_head as this is
+	already done at open
+	init_waitqueue_head(&fm_chr_dev->fm_data_q); */
 
 
 	return size;
@@ -823,7 +821,7 @@ static ssize_t fm_chr_read(struct file *fil, char __user *data, size_t size,
 	unsigned long flags = 0;
 	struct fmdrv_chr_ops *fm_chr_dev = fil->private_data;
 
-	FM_CHR_DRV_START();
+	FM_CHR_DRV_TRACE();
 
 	skb = NULL;
 	ch4_skb = NULL;
@@ -926,7 +924,6 @@ static unsigned int fm_chr_poll(struct file *file, poll_table * wait)
 	unsigned long flags = 0;
 	struct fmdrv_chr_ops *fm_chr_dev = file->private_data;
 
-	//FM_CHR_DRV_DBG(" inside %s", __func__);
 	mask = 0;
 
 	/* Poll and wait */
@@ -951,7 +948,7 @@ struct class *fm_chr_class;
 /* FM character driver init: Initializes the FM character driver parametes */
 int fm_chr_init(void)
 {
-	FM_CHR_DRV_START();
+	FM_CHR_DRV_TRACE();
 
 	/* Expose the device FM_CHAR_DEVICE_NAME to user space
 	 * and obtain the major number for the device
@@ -987,7 +984,7 @@ int fm_chr_init(void)
 /* FM character driver init: Destroys the FM character driver parametes */
 void fm_chr_exit(void)
 {
-	FM_CHR_DRV_START();
+	FM_CHR_DRV_TRACE();
 	FM_CHR_DRV_VER(" Freeing up %d", fm_chr_major);
 
 	device_destroy(fm_chr_class, MKDEV(fm_chr_major, 0));
