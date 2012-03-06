@@ -399,7 +399,7 @@ struct ov8830_write_ctrl {
 
 #define MAX_FMTS 1
 
-#define OV8830_RES_WIDTH_MAX	3280
-#define OV8830_RES_HEIGHT_MAX	2464
+#define OV8830_RES_WIDTH_MAX	3264
+#define OV8830_RES_HEIGHT_MAX	2448
 
 #endif
