@@ -48,6 +48,7 @@
 #include <linux/a1026.h>
 #include <linux/input/lis3dh.h>
 #include <linux/ms5607.h>
+#include <linux/i2c/apds990x.h>
 #include <linux/i2c-gpio.h>
 #include <linux/rmi_i2c.h>
 
@@ -288,6 +289,17 @@ static void *lsm303dlhc_accel_platform_data(void *info)
 	accel.model = MODEL_LSM303DLHC;
 
 	return &accel;
+}
+
+void *apds990x_platform_data_init(void *info)
+{
+	static struct apds990x_platform_data platform_data = {
+		.pdrive = 0,
+		.ppcount = 1,
+	};
+	platform_data.gpio_number = get_gpio_by_name("AL-intr");
+
+	return &platform_data;
 }
 
 /* VV board only */
@@ -1401,6 +1413,7 @@ struct devs_id __initconst device_ids[] = {
 	{"pn544", SFI_DEV_TYPE_I2C, 0, &pn544_platform_data, NULL},
 
 	/* Sensors */
+	{"apds990x", SFI_DEV_TYPE_I2C, 0, &apds990x_platform_data_init},
 	{"lsm303dl", SFI_DEV_TYPE_I2C, 0, &lsm303dlhc_accel_platform_data},
 	{"lsm303cmp", SFI_DEV_TYPE_I2C, 0, &no_platform_data},
 	{"l3g4200d", SFI_DEV_TYPE_I2C, 0, &l3g4200d_platform_data},
