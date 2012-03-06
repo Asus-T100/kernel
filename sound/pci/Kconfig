@@ -11,7 +11,7 @@ if SND_PCI
 
 config SND_INTEL_SST
 	tristate "Intel SST (LPE) Driver"
-	depends on X86 && INTEL_SCU_IPC
+	depends on X86 && INTEL_SCU_IPC && GPIO_LANGWELL
 	default n
 	help
 	  Say Y here to include support for the Intel(R) MID SST DSP driver

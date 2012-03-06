@@ -38,6 +38,7 @@
 #include <linux/miscdevice.h>
 #include <linux/pm_runtime.h>
 #include <linux/async.h>
+#include <linux/lnw_gpio.h>
 #include <asm/intel-mid.h>
 #include <asm/intel_scu_ipc.h>
 #include <sound/intel_sst.h>
@@ -53,6 +54,12 @@ MODULE_AUTHOR("KP Jeeja <jeeja.kp@intel.com>");
 MODULE_DESCRIPTION("Intel (R) SST(R) Audio Engine Driver");
 MODULE_LICENSE("GPL v2");
 MODULE_VERSION(SST_DRIVER_VERSION);
+
+/* GPIO pins used for SSP3 */
+#define CLV_I2S_3_CLK_GPIO_PIN	12
+#define CLV_I2S_3_FS_GPIO_PIN	13
+#define CLV_I2S_3_TXD_GPIO_PIN	74
+#define CLV_I2S_3_RXD_GPIO_PIN	75
 
 struct intel_sst_drv *sst_drv_ctx;
 static struct mutex drv_ctx_lock;
@@ -364,6 +371,17 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 		csr2 |= BIT(1)|BIT(2);
 		sst_shim_write(sst_drv_ctx->shim, SST_CSR2, csr2);
 	}
+
+	/* GPIO_PIN 12,13,74,75 needs to be configured in
+	 * ALT_FUNC_2 mode for SSP3 IOs
+	 */
+	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID) {
+		lnw_gpio_set_alt(CLV_I2S_3_CLK_GPIO_PIN, LNW_ALT_2);
+		lnw_gpio_set_alt(CLV_I2S_3_FS_GPIO_PIN, LNW_ALT_2);
+		lnw_gpio_set_alt(CLV_I2S_3_TXD_GPIO_PIN, LNW_ALT_2);
+		lnw_gpio_set_alt(CLV_I2S_3_RXD_GPIO_PIN, LNW_ALT_2);
+	}
+
 	sst_drv_ctx->lpe_stalled = 0;
 	pci_set_drvdata(pci, sst_drv_ctx);
 	pm_runtime_allow(&pci->dev);
@@ -583,6 +601,16 @@ static int intel_sst_runtime_resume(struct device *dev)
 	 */
 	csr |= (sst_drv_ctx->csr_value | 0x30000);
 	sst_shim_write(sst_drv_ctx->shim, SST_CSR, csr);
+
+	/* GPIO_PIN 12,13,74,75 needs to be configured in
+	 * ALT_FUNC_2 mode for SSP3 IOs
+	 */
+	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID) {
+		lnw_gpio_set_alt(CLV_I2S_3_CLK_GPIO_PIN, LNW_ALT_2);
+		lnw_gpio_set_alt(CLV_I2S_3_FS_GPIO_PIN, LNW_ALT_2);
+		lnw_gpio_set_alt(CLV_I2S_3_TXD_GPIO_PIN, LNW_ALT_2);
+		lnw_gpio_set_alt(CLV_I2S_3_RXD_GPIO_PIN, LNW_ALT_2);
+	}
 
 	intel_sst_set_pll(true, SST_PLL_AUDIO);
 	sst_set_fw_state_locked(sst_drv_ctx, SST_UN_INIT);
