@@ -21,10 +21,6 @@
 
 #define MAX11871_NAME  "max11871"
 
-#define MAX11871_CMD_SET_TOUCH_RPT_MODE    0x0018
-#define MAX11871_CMD_SET_POWER_MODE        0x0020
-#define MAX11871_CMD_GET_FW_VERSION        0x0040
-
 #define MAX11871_RPT_CFG_INF               0x0102
 #define MAX11871_RPT_PRIV_CFG              0x0104
 #define MAX11871_RPT_CAL_DATA              0x0111

@@ -1,5 +1,4 @@
-/* drivers/input/keyboard/max1871.c
- *
+/*
  * Copyright (C) 2011 Maxim Integrated Products, Inc.
  *
  * Driver Version: 1.01
@@ -16,7 +15,6 @@
  *
  */
 
-
 #include <linux/slab.h>
 #include <linux/module.h>
 #include <linux/delay.h>
@@ -31,11 +29,35 @@
 #include <linux/max11871.h>
 #include <linux/gpio.h>
 
-#define MAXIM_I2C_RETRY_TIMES 10
-#define MAXIM_NULL '\0'
+#define MAX11871_CMD_ADDR 0x0000
+#define MAX11871_CMD_LEN  10
 
-#define MAXIM_DEBUG_VERBOSE 0
-#define MAXIM_TOUCH_REPORT_MODE 0x01 /* 1=basic, 2=extended */
+/* commands */
+#define MAX11871_CMD_SET_TOUCH_RPT_MODE	0x0018
+#define   MAX11871_TOUCH_RPT_RAW	0x00
+#define   MAX11871_TOUCH_RPT_BASIC	0x01
+#define   MAX11871_TOUCH_RPT_EXTEND	0x02
+#define MAX11871_CMD_SET_POWER_MODE	0x0020
+#define   MAX11871_POWER_SLEEP		0x0
+#define   MAX11871_POWER_ACTIVE		0x2
+#define MAX11871_CMD_GET_FW_VERSION	0x0040
+
+/*
+ * command packet format
+ * header: 15 - 12                  11 - 8                 7 - 0
+ *         total number of packets  current packet number  current packet size
+ * id: command id
+ * size: command data size in word (16-bit)
+ */
+
+struct max11871_packet {
+#define PACKET_NUM_SHIFT 12
+#define PACKET_CUR_SHIFT 8
+	__le16 header;
+	__le16 id;
+	__le16 size;
+	__le16 data[0];
+} __packed;
 
 #define MAXIM_BUTTONS_HANDLED_IN_CHIP 0 /* Set to 1 if the chip is configured
 					 * to report button touches in the
@@ -44,6 +66,8 @@
 #define MAXIM_TOUCH_MENU   KEY_MENU
 #define MAXIM_TOUCH_BACK   KEY_BACK
 #define MAXIM_TOUCH_SEARCH KEY_SEARCH
+
+#define MAXIM_DEBUG_VERBOSE 0
 
 #if MAXIM_DEBUG_VERBOSE
 #define maxinfo(format, args...)\
@@ -103,8 +127,8 @@ static void max11871_early_suspend(struct early_suspend *h);
 static void max11871_late_resume(struct early_suspend *h);
 #endif
 
-static int max11871_change_touch_rpt(struct i2c_client *client, int to);
-static int max11871_get_fw_version(struct i2c_client *client);
+static int max11871_change_touch_rpt(struct max11871_data *ts, int mode);
+static int max11871_get_fw_version(struct max11871_data *ts);
 
 u8 *ReportBuffer;
 #define SIZE_OF_RPT_BUFFER 1024
@@ -560,12 +584,10 @@ static int max11871_probe(struct i2c_client *client,
 		}
 	}
 
-	/* Configure for Extended Touch reports */
-	i = max11871_change_touch_rpt(ts->client, (int)MAXIM_TOUCH_REPORT_MODE);
-
-	if (i < 0) {
+	/* Configure for basic Touch reports */
+	ret = max11871_change_touch_rpt(ts, MAX11871_TOUCH_RPT_BASIC);
+	if (ret < 0) {
 		maxerr("Failed to configure touch mode!!!\n");
-		ret = -ENODEV;
 		goto err_detect_failed;
 	}
 
@@ -660,7 +682,7 @@ static int max11871_probe(struct i2c_client *client,
 	}
 
 	/* Get the firmware version */
-	if (max11871_get_fw_version(ts->client) < 0) {
+	if (max11871_get_fw_version(ts) < 0) {
 		maxerr("Couldn't send firmware version command!");
 		ret = -ENODEV;
 		goto err_detect_failed;
@@ -704,80 +726,66 @@ static int max11871_remove(struct i2c_client *client)
 	return 0;
 }
 
-/*
-	COMMANDS
-*/
-static int max11871_get_fw_version(struct i2c_client *client)
+/* packet size in bytes including the header */
+static int max11871_packet_size(struct max11871_packet *p)
 {
-	uint8_t data[16];
-	int ret = 0;
+	return ((le16_to_cpu(p->header) & 0xff) + 1) * 2;
+}
 
-	memset(data, 0x00, sizeof(data));
-	/*
-	*  Retrieve the Firmware Version
-	*/
+/* TODO: support cmd with data > 7 words */
+static int max11871_write_cmd(struct max11871_data *ts,
+			struct max11871_packet *p)
+{
+	int size = max11871_packet_size(p);
+	__le16 buf[MAX11871_CMD_LEN + 1];
 
-	data[0] = 0x00; /*for cmd addr pointer*/
-	data[1] = 0x00;
+	buf[0] = cpu_to_le16(MAX11871_CMD_ADDR);
+	memcpy(&buf[1], p, size);
 
-	data[2] = 0x02;
-	data[3] = 0x11;
+	return i2c_master_send(ts->client, (const char *)buf, size + 2);
+}
 
-	data[4] = MAX11871_CMD_GET_FW_VERSION; /*0x40*/
-	data[5] = 0x00;
+/*
+ * COMMANDS
+ */
+static int max11871_get_fw_version(struct max11871_data *ts)
+{
+	u16 buf[MAX11871_CMD_LEN];
+	struct max11871_packet *p = (struct max11871_packet *)buf;
 
-	data[6] = 0x00;
-	data[7] = 0x00;
+	p->header = cpu_to_le16(1 << PACKET_NUM_SHIFT |
+				1 << PACKET_CUR_SHIFT | 2);
+	p->id = cpu_to_le16(MAX11871_CMD_GET_FW_VERSION);
+	p->size = cpu_to_le16(0);
 
-	/*
-	maxinfo("FWVW: Data[0:3]: 0x%02X 0x%02X 0x%02X 0x%02X\n",
-		data[0], data[1], data[2], data[3]);
+	return max11871_write_cmd(ts, p);
+}
 
-	maxinfo("FWVW: Data[4:7]: 0x%02X 0x%02X 0x%02X 0x%02X\n",
-		data[4], data[5], data[6], data[7]);
-	*/
+static int max11871_set_power_mode(struct max11871_data *ts, int mode)
+{
+	u16 buf[MAX11871_CMD_LEN];
+	struct max11871_packet *p = (struct max11871_packet *)buf;
 
-	/*maxinfo("-> I2C master send...\n");*/
-	ret = i2c_master_send(client, data, 8);
-	/*maxinfo("<- I2C master send: ret: %d\n", ret);*/
+	p->header = cpu_to_le16(1 << PACKET_NUM_SHIFT |
+				1 << PACKET_CUR_SHIFT | 3);
+	p->id = cpu_to_le16(MAX11871_CMD_SET_POWER_MODE);
+	p->size = cpu_to_le16(1);
+	p->data[0] = cpu_to_le16(mode);
 
-	if (ret < 0)
-		maxerr("Maxim 11871 I2C failure: %d. Exiting\n", ret);
-
-	return ret;
+	return max11871_write_cmd(ts, p);
 }
 
 static int max11871_suspend(struct i2c_client *client, pm_message_t mesg)
 {
-	uint8_t data[16];
-	int ret = 0;
+	struct max11871_data *ts = i2c_get_clientdata(client);
+	int ret;
 
 	maxinfo("Enter max11871_suspend\n");
 
-	disable_irq_nosync(client->irq);
-
-	memset(data , 0x00 , sizeof(data));
-
-	/* Set Power level to Sleep mode... */
-
-	data[0] = 0x00;
-	data[1] = 0x00;
-
-	data[2] = 0x03;
-	data[3] = 0x11;
-
-	data[4] = MAX11871_CMD_SET_POWER_MODE;
-	data[5] = 0x00;
-
-	data[6] = 0x01;
-	data[7] = 0x00;
-
-	data[8] = 0x00; /* Sleep mode */
-	data[9] = 0x00;
-
-	ret = i2c_master_send(client, data, 10);
+	disable_irq(client->irq);
+	ret = max11871_set_power_mode(ts, MAX11871_POWER_SLEEP);
 	if (ret < 0)
-		maxerr("max11871 I2C failure on Suspend: %d. Exiting\n", ret);
+		dev_err(&client->dev, "failed to put device to sleep\n");
 
 	return ret;
 }
@@ -785,7 +793,6 @@ static int max11871_suspend(struct i2c_client *client, pm_message_t mesg)
 static int max11871_resume(struct i2c_client *client)
 {
 	struct max11871_data *ts = i2c_get_clientdata(client);
-	uint8_t data[16];
 	int ret = 0;
 	int i;
 
@@ -796,77 +803,27 @@ static int max11871_resume(struct i2c_client *client)
 			ts->finger[i].status = MAX11871_FINGER_RELEASE;
 	}
 
-	memset(data , 0x00 , sizeof(data));
-	/* Set Power level to Active Scan mode... */
-	data[0] = 0x00; /* Sets addr ptr to command area */
-	data[1] = 0x00;
-
-	data[2] = 0x03;
-	data[3] = 0x11;
-
-	data[4] = MAX11871_CMD_SET_POWER_MODE;
-	data[5] = 0x00;
-
-	data[6] = 0x01;
-	data[7] = 0x00;
-
-	data[8] = 0x02; /* Active Scan mode */
-	data[9] = 0x00;
-
-	ret = i2c_master_send(client, data, 10);
+	ret = max11871_set_power_mode(ts, MAX11871_POWER_ACTIVE);
 	if (ret < 0)
-		maxerr("Maxim11871 I2C failure on Resume: %d. Exiting\n", ret);
-
+		dev_err(&client->dev, "failed to resume device\n");
 	enable_irq(client->irq);
+
 	return ret;
 }
 
-static int max11871_change_touch_rpt(struct i2c_client *client,  int to)
+static int max11871_change_touch_rpt(struct max11871_data *ts,  int mode)
 {
-	int ret = 0;
-	uint8_t data[16];
+	u16 buf[MAX11871_CMD_LEN];
+	struct max11871_packet *p = (struct max11871_packet *)buf;
 
-	memset(data, 0x00, sizeof(data));
+	p->header = cpu_to_le16(1 << PACKET_NUM_SHIFT |
+				1 << PACKET_CUR_SHIFT | 3);
+	p->id = cpu_to_le16(MAX11871_CMD_SET_TOUCH_RPT_MODE);
+	p->size = cpu_to_le16(1);
+	p->data[0] = cpu_to_le16(mode);
 
-	to &= 0x00000003;  /* 0: 800, 1: 801, 2: 802 */
-
-	/*maxinfo("Entry: new rpt code: %d\n", to);*/
-
-	data[0] = 0x00;
-	data[1] = 0x00;
-
-	data[2] = 0x03;
-	data[3] = 0x11;
-
-	data[4] = MAX11871_CMD_SET_TOUCH_RPT_MODE; /*0x18*/
-	data[5] = 0x00;
-
-	data[6] = 0x01;
-	data[7] = 0x00;
-
-	data[8] = (unsigned char) to;
-	data[9] = 0x00;
-
-
-	/*
-	maxinfo("B18W: Data[0:3]:  0x%02X 0x%02X 0x%02X 0x%02X\n",
-		data[0], data[1], data[2], data[3]);
-	maxinfo("B18W: Data[4:7]:  0x%02X 0x%02X 0x%02X 0x%02X\n",
-		data[4], data[5], data[6], data[7]);
-	maxinfo("B18W: Data[8:11]: 0x%02X 0x%02X 0x%02X 0x%02X\n",
-		data[8], data[9], data[10], data[11]);
-	*/
-
-
-	ret = i2c_master_send(client, data, 10);
-	if (ret < 0) {
-		maxerr("Maxim 11871 I2C failure: %d. Exiting\n", ret);
-		;
-	}
-
-	return ret;
+	return max11871_write_cmd(ts, p);
 }
-
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
 static void max11871_early_suspend(struct early_suspend *h)
