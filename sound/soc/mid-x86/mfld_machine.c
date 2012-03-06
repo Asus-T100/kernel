@@ -120,7 +120,9 @@ static int headset_set_switch(struct snd_kcontrol *kcontrol,
 		snd_soc_dapm_disable_pin(&codec->dapm, "Headphones");
 		snd_soc_dapm_enable_pin(&codec->dapm, "EPOUT");
 	}
+	mutex_lock(&codec->mutex);
 	snd_soc_dapm_sync(&codec->dapm);
+	mutex_unlock(&codec->mutex);
 	hs_switch = ucontrol->value.integer.value[0];
 
 	return 0;
@@ -191,7 +193,9 @@ static int lo_set_switch(struct snd_kcontrol *kcontrol,
 		snd_soc_update_bits(codec, SN95031_LOCTL, 0x66, 0x66);
 		break;
 	}
+	mutex_lock(&codec->mutex);
 	snd_soc_dapm_sync(&codec->dapm);
+	mutex_unlock(&codec->mutex);
 	lo_dac = ucontrol->value.integer.value[0];
 	return 0;
 }
@@ -281,17 +285,15 @@ static int mfld_init(struct snd_soc_pcm_runtime *runtime)
 	/* Set up the map */
 	snd_soc_dapm_add_routes(dapm, mfld_map, ARRAY_SIZE(mfld_map));
 
-	/* always connected */
-	snd_soc_dapm_enable_pin(dapm, "Headphones");
-	snd_soc_dapm_enable_pin(dapm, "Mic");
-	snd_soc_dapm_sync(dapm);
-
 	ret_val = snd_soc_add_controls(codec, mfld_snd_controls,
 				ARRAY_SIZE(mfld_snd_controls));
 	if (ret_val) {
 		pr_err("soc_add_controls failed %d", ret_val);
 		return ret_val;
 	}
+	/* always connected */
+	snd_soc_dapm_enable_pin(dapm, "Headphones");
+	snd_soc_dapm_enable_pin(dapm, "Mic");
 	/* default is earpiece pin, userspace sets it explcitly */
 	snd_soc_dapm_disable_pin(dapm, "Headphones");
 	/* default is lineout NC, userspace sets it explcitly */
@@ -319,7 +321,9 @@ static int mfld_init(struct snd_soc_pcm_runtime *runtime)
 	snd_soc_dapm_ignore_suspend(dapm, "DMIC5");
 	snd_soc_dapm_ignore_suspend(dapm, "Headphones");
 	snd_soc_dapm_ignore_suspend(dapm, "Mic");
+	mutex_lock(&codec->mutex);
 	snd_soc_dapm_sync(dapm);
+	mutex_unlock(&codec->mutex);
 	/* Headset and button jack detection */
 	ret_val = snd_soc_jack_new(codec, "Intel(R) MID Audio Jack",
 			SND_JACK_HEADSET | SND_JACK_BTN_0 |

@@ -87,16 +87,20 @@ static void sn95031_enable_mic_bias(struct snd_soc_codec *codec)
 {
 	pr_debug("enable mic bias\n");
 	pr_debug("codec %p\n", codec);
+	mutex_lock(&codec->mutex);
 	snd_soc_dapm_force_enable_pin(&codec->dapm, "AMIC1Bias");
 	snd_soc_dapm_sync(&codec->dapm);
+	mutex_unlock(&codec->mutex);
 }
 
 /* disables mic bias voltage */
 static void sn95031_disable_mic_bias(struct snd_soc_codec *codec)
 {
 	pr_debug("disable mic bias\n");
+	mutex_lock(&codec->mutex);
 	snd_soc_dapm_disable_pin(&codec->dapm, "AMIC1Bias");
 	snd_soc_dapm_sync(&codec->dapm);
+	mutex_unlock(&codec->mutex);
 }
 /* end - adc helper functions */
 
