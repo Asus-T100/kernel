@@ -555,23 +555,6 @@ void kdb_syslog_data(char *syslog_data[4])
 }
 #endif	/* CONFIG_KGDB_KDB */
 
-/*
- * Call the console drivers on a range of log_buf
- */
-static void __call_console_drivers(unsigned start, unsigned end)
-{
-	struct console *con;
-
-	for_each_console(con) {
-		if (exclusive_console && con != exclusive_console)
-			continue;
-		if ((con->flags & CON_ENABLED) && con->write &&
-				(cpu_online(smp_processor_id()) ||
-				(con->flags & CON_ANYTIME)))
-			con->write(con, &LOG_BUF(start), end - start);
-	}
-}
-
 static int __read_mostly ignore_loglevel;
 
 static int __init ignore_loglevel_setup(char *str)
@@ -583,6 +566,24 @@ static int __init ignore_loglevel_setup(char *str)
 }
 
 early_param("ignore_loglevel", ignore_loglevel_setup);
+/*
+ * Call the console drivers on a range of log_buf
+ */
+static void __call_console_drivers(unsigned start, unsigned end, int loglevel)
+{
+	struct console *con;
+
+	for_each_console(con) {
+		if (exclusive_console && con != exclusive_console)
+			continue;
+		if (((con->flags & CON_IGNORELEVEL) || ignore_loglevel ||
+			loglevel < console_loglevel) &&
+			(con->flags & CON_ENABLED) && con->write &&
+			(cpu_online(smp_processor_id()) ||
+			(con->flags & CON_ANYTIME)))
+				con->write(con, &LOG_BUF(start), end - start);
+	}
+}
 
 /*
  * Write out chars from start to end - 1 inclusive
@@ -590,15 +591,15 @@ early_param("ignore_loglevel", ignore_loglevel_setup);
 static void _call_console_drivers(unsigned start,
 				unsigned end, int msg_log_level)
 {
-	if ((msg_log_level < console_loglevel || ignore_loglevel) &&
-			console_drivers && start != end) {
+	if (console_drivers && start != end) {
 		if ((start & LOG_BUF_MASK) > (end & LOG_BUF_MASK)) {
 			/* wrapped write */
 			__call_console_drivers(start & LOG_BUF_MASK,
-						log_buf_len);
-			__call_console_drivers(0, end & LOG_BUF_MASK);
+						log_buf_len, msg_log_level);
+			__call_console_drivers(0, end & LOG_BUF_MASK,
+								msg_log_level);
 		} else {
-			__call_console_drivers(start, end);
+			__call_console_drivers(start, end, msg_log_level);
 		}
 	}
 }

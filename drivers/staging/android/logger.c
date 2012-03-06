@@ -900,10 +900,14 @@ logger_console_write(struct console *console, const char *s, unsigned int count)
 	schedule_work(&write_console_wq);
 }
 
+/* logger console uses CON_IGNORELEVEL that provides a way to ignore
+ * the log level set in the kernel command line
+ */
+
 static struct console logger_console = {
 	.name	= "logk",
 	.write	= logger_console_write,
-	.flags	= CON_PRINTBUFFER,
+	.flags	= CON_PRINTBUFFER | CON_IGNORELEVEL,
 	.index	= -1,
 };
 
