@@ -837,6 +837,16 @@ fail_irq:
 	return ret;
 }
 
+void ltr502als_shutdown(struct i2c_client *client)
+{
+	struct alsps_device *alsps = i2c_get_clientdata(client);
+
+	dev_info(&client->dev, "enter %s\n", __func__);
+
+	/* shutdown the device during system reboot */
+	alsps_write(alsps, CONFIGREG, POWER_DOWN);
+}
+
 static int __exit ltr502als_remove(struct i2c_client *client)
 {
 	struct alsps_device *alsps = i2c_get_clientdata(client);
@@ -871,6 +881,7 @@ static struct i2c_driver ltr502als_driver = {
 	.id_table = ltr502als_id,
 	.probe = ltr502als_probe,
 	.remove = ltr502als_remove,
+	.shutdown = ltr502als_shutdown,
 };
 
 static int __init ltr502als_i2c_init(void)
