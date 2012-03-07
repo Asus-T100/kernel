@@ -1798,7 +1798,7 @@ sh_css_free(void *ptr)
 void
 sh_css_flush(struct sh_css_acc_fw *fw)
 {
-	if (fw && my_css.flush)
+	if ((fw != NULL) && (my_css.flush != NULL))
 		my_css.flush(fw);
 }
 
