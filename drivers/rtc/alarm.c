@@ -28,7 +28,6 @@
 #include <linux/reboot.h>
 #include <linux/notifier.h>
 
-
 #define ANDROID_ALARM_PRINT_ERROR (1U << 0)
 #define ANDROID_ALARM_PRINT_INIT_STATUS (1U << 1)
 #define ANDROID_ALARM_PRINT_TSET (1U << 2)
@@ -69,6 +68,12 @@ static struct wake_lock alarm_rtc_wake_lock;
 static struct platform_device *alarm_platform_dev;
 struct alarm_queue alarms[ANDROID_ALARM_TYPE_COUNT];
 static bool suspended;
+
+#if defined(CONFIG_ALARM_PM_THRESHOLD)
+static u32 config_pm_threshold = (u32)CONFIG_ALARM_PM_THRESHOLD;
+#else
+static u32 config_pm_threshold;
+#endif
 
 static int alarm_reboot_callback(struct notifier_block *nfb,
 				 unsigned long event, void *data);
@@ -427,27 +432,10 @@ static void alarm_triggered_func(void *p)
 	wake_lock_timeout(&alarm_rtc_wake_lock, 1 * HZ);
 }
 
-static int alarm_suspend(struct device *dev)
+static struct alarm_queue *alarm_find_next_wakeup_hrtimer(void)
 {
-	int                 err = 0;
-	unsigned long       flags;
-	struct rtc_wkalrm   rtc_alarm;
-	struct rtc_time     rtc_current_rtc_time;
-	unsigned long       rtc_current_time;
-	unsigned long       rtc_alarm_time;
-	struct timespec     rtc_delta;
-	struct timespec     wall_time;
 	struct alarm_queue *wakeup_queue = NULL;
 	struct alarm_queue *tmp_queue = NULL;
-
-	spin_lock_irqsave(&alarm_slock, flags);
-	suspended = true;
-	spin_unlock_irqrestore(&alarm_slock, flags);
-
-	hrtimer_cancel(&alarms[ANDROID_ALARM_RTC_WAKEUP].timer);
-	hrtimer_cancel(&alarms[
-			ANDROID_ALARM_ELAPSED_REALTIME_WAKEUP].timer);
-	hrtimer_cancel(&alarms[ANDROID_ALARM_POWER_OFF_WAKEUP].timer);
 
 	tmp_queue = &alarms[ANDROID_ALARM_RTC_WAKEUP];
 	if (tmp_queue->first)
@@ -462,6 +450,32 @@ static int alarm_suspend(struct device *dev)
 				hrtimer_get_expires(&tmp_queue->timer).tv64 <
 				hrtimer_get_expires(&wakeup_queue->timer).tv64))
 		wakeup_queue = tmp_queue;
+
+	return wakeup_queue;
+}
+
+static int alarm_suspend(struct device *dev)
+{
+	int                 err = 0;
+	unsigned long       flags;
+	struct rtc_wkalrm   rtc_alarm;
+	struct rtc_time     rtc_current_rtc_time;
+	unsigned long       rtc_current_time;
+	unsigned long       rtc_alarm_time;
+	struct timespec     rtc_delta;
+	struct timespec     wall_time;
+	struct alarm_queue *wakeup_queue = NULL;
+
+	spin_lock_irqsave(&alarm_slock, flags);
+	suspended = true;
+	spin_unlock_irqrestore(&alarm_slock, flags);
+
+	hrtimer_cancel(&alarms[ANDROID_ALARM_RTC_WAKEUP].timer);
+	hrtimer_cancel(&alarms[
+			ANDROID_ALARM_ELAPSED_REALTIME_WAKEUP].timer);
+	hrtimer_cancel(&alarms[ANDROID_ALARM_POWER_OFF_WAKEUP].timer);
+
+	wakeup_queue = alarm_find_next_wakeup_hrtimer();
 	if (wakeup_queue) {
 		rtc_read_time(alarm_rtc_dev, &rtc_current_rtc_time);
 		getnstimeofday(&wall_time);
@@ -527,6 +541,31 @@ static int alarm_resume(struct device *dev)
 	spin_unlock_irqrestore(&alarm_slock, flags);
 
 	return 0;
+}
+
+int alarm_pm_wake_check(void)
+{
+	struct alarm_queue *wk_queue = alarm_find_next_wakeup_hrtimer();
+
+	if (wk_queue && config_pm_threshold) {
+		/*
+		 * Compute the timestamp of the next wakeup alarm in
+		 * second.
+		 */
+		ktime_t expire = hrtimer_get_remaining(
+			&wk_queue->timer);
+		struct timespec x = ktime_to_timespec(expire);
+		unsigned long timeout = timespec_to_jiffies(&x);
+		unsigned long next_alarm_secs = timeout / HZ;
+
+		if (next_alarm_secs < config_pm_threshold) {
+			wake_lock_timeout(&alarm_rtc_wake_lock,
+					  timeout + HZ);
+			return 0;
+		}
+	}
+
+	return 1;
 }
 
 static struct rtc_task alarm_rtc_task = {
@@ -657,7 +696,6 @@ static int __init alarm_driver_init(void)
 		goto err2;
 
 	register_reboot_notifier(&alarm_reboot_notifier_block);
-
 	return 0;
 
 err2:
