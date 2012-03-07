@@ -791,21 +791,21 @@ static const struct ov8830_reg ov8830_mode2[] = {
 	{ OV8830_8BIT, { 0x37de }, 0x00 },
 	{ OV8830_8BIT, { 0x37df }, 0x00 },
 	{ OV8830_8BIT, { 0x3800 }, 0x00 },
-	{ OV8830_8BIT, { 0x3801 }, 0x0c },
+	{ OV8830_8BIT, { 0x3801 }, 0x04 },
 	{ OV8830_8BIT, { 0x3802 }, 0x00 },
-	{ OV8830_8BIT, { 0x3803 }, 0x0c },
+	{ OV8830_8BIT, { 0x3803 }, 0x04 },
 	{ OV8830_8BIT, { 0x3804 }, 0x0c },
-	{ OV8830_8BIT, { 0x3805 }, 0xd3 },
+	{ OV8830_8BIT, { 0x3805 }, 0xdb },
 	{ OV8830_8BIT, { 0x3806 }, 0x09 },
-	{ OV8830_8BIT, { 0x3807 }, 0xa3 },
+	{ OV8830_8BIT, { 0x3807 }, 0xab },
 	{ OV8830_8BIT, { 0x3808 }, 0x0c },
-	{ OV8830_8BIT, { 0x3809 }, 0xc0 },
+	{ OV8830_8BIT, { 0x3809 }, 0xd0 },
 	{ OV8830_8BIT, { 0x380a }, 0x09 },
-	{ OV8830_8BIT, { 0x380b }, 0x90 },
+	{ OV8830_8BIT, { 0x380b }, 0xa0 },
 	{ OV8830_8BIT, { 0x380c }, 0x0e },
 	{ OV8830_8BIT, { 0x380d }, 0x18 },
-	{ OV8830_8BIT, { 0x380e }, 0x09 },
-	{ OV8830_8BIT, { 0x380f }, 0xb4 },
+	{ OV8830_8BIT, { 0x380e }, 0x0a },
+	{ OV8830_8BIT, { 0x380f }, 0x00 },
 	{ OV8830_8BIT, { 0x3810 }, 0x00 },
 	{ OV8830_8BIT, { 0x3811 }, 0x04 },
 	{ OV8830_8BIT, { 0x3812 }, 0x00 },
@@ -957,12 +957,12 @@ struct ov8830_resolution ov8830_res_preview[] = {
 	},
 	{
 		.desc =        "STILL_8M_15fps"        ,
-		.width =       3264    ,
-		.height =      2448    ,
+		.width =       3280    ,
+		.height =      2464    ,
 		.fps =         15      ,
 		.used =        0       ,
 		.pixels_per_line = 3608, /* consistent with regs arrays */
-		.lines_per_frame = 2484, /* consistent with regs arrays */
+		.lines_per_frame = 2560, /* consistent with regs arrays */
 		.regs =        ov8830_mode2  ,
 	},
 };
@@ -992,12 +992,12 @@ struct ov8830_resolution ov8830_res_still[] = {
 	},
 	{
 		.desc =        "STILL_8M_15fps"        ,
-		.width =       3264    ,
-		.height =      2448    ,
+		.width =       3280    ,
+		.height =      2464    ,
 		.fps =         15      ,
 		.used =        0       ,
 		.pixels_per_line = 3608, /* consistent with regs arrays */
-		.lines_per_frame = 2484, /* consistent with regs arrays */
+		.lines_per_frame = 2560, /* consistent with regs arrays */
 		.regs =        ov8830_mode2  ,
 	},
 };
@@ -1027,12 +1027,12 @@ struct ov8830_resolution ov8830_res_video[] = {
 	},
 	{
 		.desc =        "STILL_8M_15fps"        ,
-		.width =       3264    ,
-		.height =      2448    ,
+		.width =       3280    ,
+		.height =      2464    ,
 		.fps =         15      ,
 		.used =        0       ,
 		.pixels_per_line = 3608, /* consistent with regs arrays */
-		.lines_per_frame = 2484, /* consistent with regs arrays */
+		.lines_per_frame = 2560, /* consistent with regs arrays */
 		.regs =        ov8830_mode2  ,
 	},
 };
