@@ -3636,7 +3636,7 @@ __acc_fw_free(struct atomisp_device *isp, struct sh_css_acc_fw *fw)
 	isp->acc_fw[i] = NULL;
 	isp->acc_fw_count--;
 
-	kfree(fw);
+	vfree(fw);
 }
 
 static struct sh_css_acc_fw *
@@ -3649,14 +3649,14 @@ __acc_fw_alloc(struct atomisp_device *isp, struct atomisp_acc_fw_load *user_fw)
 	if (user_fw->data == NULL || user_fw->size == 0)
 		return ERR_PTR(-EINVAL);
 
-	/* REVISIT: does size need to be multiple of page size? */
-	fw = kzalloc(user_fw->size, GFP_KERNEL);
+	fw = vmalloc(user_fw->size);
 
 	if (fw == NULL) {
 		v4l2_err(&atomisp_dev, "%s: Failed to alloc acc fw blob\n",
 			 __func__);
 		return ERR_PTR(-ENOMEM);
 	}
+	memset(fw, 0, user_fw->size);
 
 	ret = copy_from_user(fw, user_fw->data, user_fw->size);
 	if (ret) {
@@ -3687,7 +3687,7 @@ __acc_fw_alloc(struct atomisp_device *isp, struct atomisp_acc_fw_load *user_fw)
 	return fw;
 
 err:
-	kfree(fw);
+	vfree(fw);
 	return ERR_PTR(ret);
 }
 
