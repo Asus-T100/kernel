@@ -107,7 +107,7 @@ static struct snd_soc_dai_driver sst_platform_dai[] = {
 		.channels_min = SST_STEREO,
 		.channels_max = SST_STEREO,
 /**FIXME ***/
-#ifdef CONFIG_SND_MFLD_MACHINE
+#if (defined(CONFIG_SND_MFLD_MACHINE) || (CONFIG_SND_MFLD_MACHINE_GI))
 		.rates = SNDRV_PCM_RATE_44100,
 #else
 		.rates = SNDRV_PCM_RATE_48000,
@@ -117,7 +117,7 @@ static struct snd_soc_dai_driver sst_platform_dai[] = {
 	.capture = {
 		.channels_min = 1,
 		.channels_max = 2,
-#ifdef CONFIG_SND_MFLD_MACHINE
+#if (defined(CONFIG_SND_MFLD_MACHINE) || (CONFIG_SND_MFLD_MACHINE_GI))
 		.rates = SNDRV_PCM_RATE_44100,
 #else
 		.rates = SNDRV_PCM_RATE_48000,
@@ -130,7 +130,7 @@ static struct snd_soc_dai_driver sst_platform_dai[] = {
 	.playback = {
 		.channels_min = SST_MONO,
 		.channels_max = SST_STEREO,
-#ifdef CONFIG_SND_MFLD_MACHINE
+#if (defined(CONFIG_SND_MFLD_MACHINE) || (CONFIG_SND_MFLD_MACHINE_GI))
 		.rates = SNDRV_PCM_RATE_44100,
 #else
 		.rates = SNDRV_PCM_RATE_48000,
@@ -312,7 +312,7 @@ static int sst_platform_open(struct snd_pcm_substream *substream)
 		}
 		sst_cpu_ctx->active_voice_cnt++;
 /**FIXME in clean up patch***/
-#ifdef CONFIG_SND_MFLD_MACHINE
+#if (defined(CONFIG_SND_MFLD_MACHINE) || (CONFIG_SND_MFLD_MACHINE_GI))
 
 		ret_val = intel_sst_set_pll(true, SST_PLL_VOICE);
 #endif
@@ -380,7 +380,7 @@ static int sst_platform_close(struct snd_pcm_substream *substream)
 
 	if (!strcmp(dai_link->cpu_dai_name, SST_VOICE_DAI)) {
 		sst_cpu_ctx->active_voice_cnt--;
-#ifdef CONFIG_SND_MFLD_MACHINE
+#if (defined(CONFIG_SND_MFLD_MACHINE) || (CONFIG_SND_MFLD_MACHINE_GI))
 		intel_sst_set_pll(false, SST_PLL_VOICE);
 #endif
 		goto func_exit;
@@ -405,7 +405,7 @@ static int sst_platform_close(struct snd_pcm_substream *substream)
 	kfree(stream);
 func_exit:
 /**FIXME ***/
-#ifdef CONFIG_SND_MFLD_MACHINE
+#if (defined(CONFIG_SND_MFLD_MACHINE) || (CONFIG_SND_MFLD_MACHINE_GI))
 	if (!sst_cpu_ctx->active_nonvoice_cnt)
 		snd_soc_dai_set_tristate(codec_dai, 1);
 #endif
@@ -545,7 +545,7 @@ static int sst_platform_pcm_hw_params(struct snd_pcm_substream *substream,
 	struct snd_soc_dai *codec_dai = rtd->codec_dai;
 
 /**FIXME -Need to move all codec related stuff to Machine driver ***/
-#ifdef CONFIG_SND_MFLD_MACHINE
+#if (defined(CONFIG_SND_MFLD_MACHINE) || (CONFIG_SND_MFLD_MACHINE_GI))
 	if (strcmp(rtd->dai_link->cpu_dai_name, SST_VOICE_DAI)) {
 		/* Force the data width to 24 bit in MSIC. Post Processing
 		algorithms in DSP enabled with 24 bit precision */
