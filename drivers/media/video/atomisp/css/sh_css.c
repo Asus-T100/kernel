@@ -693,13 +693,14 @@ program_input_formatter(struct sh_css_binary *binary)
 	if (err != sh_css_success)
 		return err;
 
+	err = input_start_column(cropped_width, &start_column);
+	if (err != sh_css_success)
+		return err;
+
 	if (left_padding) {
 		num_vectors = CEIL_DIV(cropped_width + left_padding,
 				       ISP_VEC_NELEMS);
 	} else {
-		err = input_start_column(cropped_width, &start_column);
-		if (err != sh_css_success)
-			return err;
 		num_vectors = CEIL_DIV(cropped_width, ISP_VEC_NELEMS);
 		num_vectors *= buffer_height;
 		/* todo: in case of left padding,
