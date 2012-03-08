@@ -54,6 +54,10 @@ extern int drm_psb_enable_pr2_cabc ;
 extern int drm_psb_enable_sc1_cabc; /* SC1 setting */
 extern int gfxrtdelay;
 extern int drm_psb_te_timer_delay;
+extern int drm_psb_enable_gamma;
+extern int drm_psb_adjust_contrast;
+extern int drm_psb_adjust_brightness;
+extern int drm_psb_enable_color_conversion;
 
 extern struct ttm_bo_driver psb_ttm_bo_driver;
 
@@ -842,6 +846,9 @@ struct drm_psb_private {
 	uint32_t saveDSPBCURSOR_POS;
 	uint32_t save_palette_a[256];
 	uint32_t save_palette_b[256];
+	uint32_t save_color_coef_a[6];
+	uint32_t save_color_coef_b[6];
+	uint32_t save_color_coef_c[6];
 	uint32_t saveOV_OVADD;
 	uint32_t saveOV_OGAMC0;
 	uint32_t saveOV_OGAMC1;
@@ -1078,6 +1085,9 @@ struct drm_psb_private {
 	/* fix Lock screen flip in resume issue */
 	unsigned long init_screen_start;
 	unsigned long init_screen_offset;
+
+	/* gamma and csc setting lock*/
+	struct mutex gamma_csc_lock;
 };
 
 struct psb_fpriv {
@@ -1089,6 +1099,10 @@ struct psb_mmu_driver;
 
 extern int drm_crtc_probe_output_modes(struct drm_device *dev, int, int);
 extern int drm_pick_crtcs(struct drm_device *dev);
+extern int mdfld_intel_crtc_set_gamma(struct drm_device *dev,
+					struct gamma_setting *setting_data);
+extern int mdfld_intel_crtc_set_color_conversion(struct drm_device *dev,
+					struct csc_setting *setting_data);
 
 
 static inline struct psb_fpriv *psb_fpriv(struct drm_file *file_priv) {
@@ -1244,6 +1258,7 @@ extern int mdfld_irq_enable_hdmi_audio(struct drm_device *dev);
 extern int mdfld_irq_disable_hdmi_audio(struct drm_device *dev);
 extern void psb_te_timer_func(unsigned long data);
 extern void mdfld_te_handler_work(struct work_struct *te_work);
+extern void mdfld_display_setting__work(struct work_struct *te_work);
 
 /*
  *psb_fence.c

@@ -234,6 +234,10 @@ struct mdfld_dsi_hw_context {
 	u32 dspstride;
 	u32 dsplinoff;
 
+	/* gamma and csc */
+	u32 palette[256];
+	u32 color_coef[6];
+
 	/*pipe regs*/
 	u32 htotal;
 	u32 hblank;
@@ -316,6 +320,8 @@ struct mdfld_dsi_hw_registers {
 	u32 dsppos_reg;
 	u32 dspstride_reg;
 
+	/* csc */
+	u32 color_coef_reg;
 
 	/*pipe regs*/
 	u32 htotal_reg;
@@ -331,6 +337,10 @@ struct mdfld_dsi_hw_registers {
 	u32 dpll_reg;
 	u32 fp_reg;
 	u32 pipeconf_reg;
+	u32 palette_reg;
+	u32 gamma_red_max_reg;
+	u32 gamma_green_max_reg;
+	u32 gamma_blue_max_reg;
 
 	/*mipi port*/
 	u32 mipi_reg;

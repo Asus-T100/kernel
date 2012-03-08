@@ -72,6 +72,8 @@
 int drm_psb_debug;
 int drm_psb_enable_pr2_cabc = 1;
 int drm_psb_enable_sc1_cabc = 1;  /* [SC1] change paremeter name */
+int drm_psb_enable_gamma;
+int drm_psb_enable_color_conversion;
 /*EXPORT_SYMBOL(drm_psb_debug); */
 static int drm_psb_trap_pagefaults;
 
@@ -120,9 +122,13 @@ MODULE_PARM_DESC(smart_vsync, "Enable Smart Vsync for Display");
 MODULE_PARM_DESC(te_delay, "swap delay after TE interrpt");
 MODULE_PARM_DESC(cpu_relax, "replace udelay with cpu_relax for video");
 MODULE_PARM_DESC(udelay_divider, "divide the usec value of video udelay");
+MODULE_PARM_DESC(enable_color_conversion, "Enable display side color conversion");
+MODULE_PARM_DESC(enable_gamma, "Enable display side gamma");
 
 module_param_named(debug, drm_psb_debug, int, 0600);
 module_param_named(psb_enable_pr2_cabc, drm_psb_enable_pr2_cabc, int, 0600);
+module_param_named(enable_color_conversion, drm_psb_enable_color_conversion, int, 0600);
+module_param_named(enable_gamma, drm_psb_enable_gamma, int, 0600);
 /* [SC1] change parameter name */
 module_param_named(psb_enable_sc1_cabc, drm_psb_enable_sc1_cabc, int, 0600);
 module_param_named(no_fb, drm_psb_no_fb, int, 0600);
@@ -315,10 +321,13 @@ MODULE_DEVICE_TABLE(pci, pciidlist);
 		DRM_IO(DRM_PSB_DISABLE_HDCP + DRM_COMMAND_BASE)
 #define DRM_IOCTL_PSB_GET_HDCP_LINK_STATUS \
 		DRM_IOR(DRM_PSB_GET_HDCP_LINK_STATUS + DRM_COMMAND_BASE, uint32_t)
-
 /* CSC IOCTLS */
 #define DRM_IOCTL_PSB_SET_CSC \
         DRM_IOW(DRM_PSB_SET_CSC + DRM_COMMAND_BASE, struct drm_psb_csc_matrix)
+
+/*CSC GAMMA Setting*/
+#define DRM_IOCTL_PSB_CSC_GAMMA_SETTING \
+		DRM_IOWR(DRM_PSB_CSC_GAMMA_SETTING + DRM_COMMAND_BASE, struct drm_psb_csc_gamma_setting)
 
 /*
  * TTM execbuf extension.
@@ -471,6 +480,8 @@ static int psb_set_csc_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv);
 static int psb_get_hdcp_link_status_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv);
+static int psb_csc_gamma_setting_ioctl(struct drm_device *dev, void *data,
+				 struct drm_file *file_priv);
 
 
 #define PSB_IOCTL_DEF(ioctl, func, flags) \
@@ -574,6 +585,7 @@ static struct drm_ioctl_desc psb_ioctls[] = {
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_GET_HDCP_STATUS, psb_get_hdcp_status_ioctl, DRM_AUTH),
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_ENABLE_HDCP, psb_enable_hdcp_ioctl, DRM_AUTH),
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_DISABLE_HDCP, psb_disable_hdcp_ioctl, DRM_AUTH),
+	PSB_IOCTL_DEF(DRM_IOCTL_PSB_CSC_GAMMA_SETTING, psb_csc_gamma_setting_ioctl, DRM_AUTH),
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_SET_CSC, psb_set_csc_ioctl, DRM_AUTH),
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_GET_HDCP_LINK_STATUS, psb_get_hdcp_link_status_ioctl, DRM_AUTH)
 };
@@ -1615,6 +1627,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	INIT_LIST_HEAD(&dev_priv->context.kern_validate_list);
 
 	mutex_init(&dev_priv->dsr_mutex);
+	mutex_init(&dev_priv->gamma_csc_lock);
 
 	spin_lock_init(&dev_priv->reloc_lock);
 
@@ -2105,13 +2118,32 @@ exit:
 	return 0;
 }
 
+static int psb_csc_gamma_setting_ioctl(struct drm_device *dev, void *data,
+			 struct drm_file *file_priv)
+{
+	struct drm_psb_csc_gamma_setting *csc_gamma_setting = NULL;
+	int ret = 0;
+	csc_gamma_setting = (struct drm_psb_csc_gamma_setting *)
+					data;
+	printk("seting gamma ioctl!\n");
+	if (!csc_gamma_setting)
+		return -EINVAL;
+
+	if (csc_gamma_setting->type == GAMMA)
+		ret = mdfld_intel_crtc_set_gamma(dev,
+			&csc_gamma_setting->data.gamma_data);
+	else if (csc_gamma_setting->type == CSC)
+		ret = mdfld_intel_crtc_set_color_conversion(dev,
+			&csc_gamma_setting->data.csc_data);
+	return ret;
+}
 
 static int psb_disp_ioctl(struct drm_device *dev, void *data,
 			 struct drm_file *file_priv)
 {
 	struct drm_psb_disp_ctrl *dp_ctrl = data;
 	struct drm_psb_private *dev_priv = psb_priv(dev);
-	struct drm_psb_flip_chain_data *flip_data;
+	struct drm_psb_flip_chain_data *flip_data = NULL;
 	struct drm_mode_object *obj;
 	struct drm_framebuffer *fb;
 	struct psb_framebuffer *psbfb;
@@ -3671,6 +3703,8 @@ static int psb_display_register_write(struct file *file, const char *buffer,
 		/*make sure, during read no DSR again*/
 		dbi_output->mode_flags |= MODE_SETTING_ON_GOING;
 #endif
+	PSB_WVDC32(0x30164, PSB_RVDC32(0x30164) | BIT16);
+	printk(KERN_ALERT "Overlay0x30164  0x%x\n", PSB_RVDC32(0x30164));
 	}
 	if (op == 'r') {
 		if (reg >= 0xa000) {

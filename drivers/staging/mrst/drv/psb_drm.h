@@ -23,7 +23,8 @@
 #define _PSB_DRM_H_
 
 #if defined(__linux__) && !defined(__KERNEL__)
-#include<stdint.h>
+#include <stdbool.h>
+#include <stdint.h>
 #include <linux/types.h>
 #include "drm_mode.h"
 #endif
@@ -747,10 +748,11 @@ typedef struct drm_psb_msvdx_decode_status {
 #define DRM_PSB_GET_HDCP_STATUS		0x26
 #define DRM_PSB_ENABLE_HDCP		0x27
 #define DRM_PSB_DISABLE_HDCP		0x28
-#define DRM_PSB_GET_HDCP_LINK_STATUS	0x29
+#define DRM_PSB_GET_HDCP_LINK_STATUS	0x2b
 
 /* CSC IOCTLS */
-#define DRM_PSB_SET_CSC     0x29
+#define DRM_PSB_CSC_GAMMA_SETTING 0x29
+#define DRM_PSB_SET_CSC 0x2a
 
 #define DRM_PSB_DSR_ENABLE	0xfffffffe
 #define DRM_PSB_DSR_DISABLE	0xffffffff
@@ -793,6 +795,60 @@ struct drm_psb_get_pipe_from_crtc_id_arg {
 #define DRM_PSB_DISP_PLANEB_ENABLE  5
 #define DRM_PSB_HDMI_OSPM_ISLAND_DOWN 6
 
+/*csc gamma setting*/
+typedef enum {
+	GAMMA,
+	CSC,
+	GAMMA_INITIA,
+	GAMMA_SETTING,
+	CSC_INITIA,
+	CSC_CHROME_SETTING,
+	CSC_SETTING
+} setting_type;
+
+typedef enum {
+	/* gamma 0.5 */
+	GAMMA_05 = 1,
+	/* gamma 2.0 */
+	GAMMA_20,
+	/* gamma 0.5 + 2.0*/
+	GAMMA_05_20,
+	/* gamma 2.0 + 0.5*/
+	GAMMA_20_05,
+	/* gamma 1.0 */
+	GAMMA_10
+} gamma_mode;
+
+#define CHROME_COUNT 16
+#define CSC_COUNT    9
+
+struct csc_setting {
+	uint32_t pipe;
+	setting_type type;
+	bool enable_state;
+	uint32_t data_len;
+	union {
+		int chrome_data[CHROME_COUNT];
+		int64_t csc_data[CSC_COUNT];
+	} data;
+};
+#define GAMMA_10_BIT_TABLE_COUNT  129
+
+struct gamma_setting {
+	uint32_t pipe;
+	setting_type type;
+	bool enable_state;
+	gamma_mode initia_mode;
+	uint32_t data_len;
+	uint32_t gamma_tableX100[GAMMA_10_BIT_TABLE_COUNT];
+};
+struct drm_psb_csc_gamma_setting {
+	setting_type type;
+	union {
+		struct csc_setting csc_data;
+		struct gamma_setting gamma_data;
+	} data;
+};
 struct drm_psb_buffer_data {
 	void* h_buffer;
 };

@@ -807,6 +807,7 @@ static int mdfld_save_display_registers (struct drm_device *dev, int pipe)
 	u32 dspcntr_reg = DSPACNTR;
 	u32 dspstatus_reg = PIPEASTAT;
 	u32 palette_reg = PALETTE_A;
+	u32 color_coef_reg = PIPEA_COLOR_COEF0;
 
 	/* pointer to values */
 	u32 *dpll_val = &dev_priv->saveDPLL_A;
@@ -829,6 +830,7 @@ static int mdfld_save_display_registers (struct drm_device *dev, int pipe)
 	u32 *dspcntr_val = &dev_priv->saveDSPACNTR;
 	u32 *dspstatus_val = &dev_priv->saveDSPASTATUS;
 	u32 *palette_val = dev_priv->save_palette_a;
+	u32 *color_coef = dev_priv->save_color_coef_a;
 	PSB_DEBUG_ENTRY("\n");
 
 	/**
@@ -874,6 +876,7 @@ static int mdfld_save_display_registers (struct drm_device *dev, int pipe)
 		dspcntr_reg = DSPBCNTR;
 		dspstatus_reg = PIPEBSTAT;
 		palette_reg = PALETTE_B;
+		color_coef_reg = PIPEB_COLOR_COEF0;
 
 		/* values */
 		dpll_val = &dev_priv->saveDPLL_B;
@@ -895,6 +898,7 @@ static int mdfld_save_display_registers (struct drm_device *dev, int pipe)
 		dspcntr_val = &dev_priv->saveDSPBCNTR;
 		dspstatus_val = &dev_priv->saveDSPBSTATUS;
 		palette_val = dev_priv->save_palette_b;
+		color_coef = dev_priv->save_color_coef_b;
 		break;
 	case 2:
 		/* regester */
@@ -916,6 +920,7 @@ static int mdfld_save_display_registers (struct drm_device *dev, int pipe)
 		dspcntr_reg = DSPCCNTR;
 		dspstatus_reg = PIPECSTAT;
 		palette_reg = PALETTE_C;
+		color_coef_reg = PIPEC_COLOR_COEF0;
 
 		/* pointer to values */
 		pipeconf_val = &dev_priv->savePIPECCONF;
@@ -936,6 +941,7 @@ static int mdfld_save_display_registers (struct drm_device *dev, int pipe)
 		dspcntr_val = &dev_priv->saveDSPCCNTR;
 		dspstatus_val = &dev_priv->saveDSPCSTATUS;
 		palette_val = dev_priv->save_palette_c;
+		color_coef = dev_priv->save_color_coef_c;
 		break;
 	default:
 		DRM_ERROR("%s, invalid pipe number.\n", __func__);
@@ -965,6 +971,13 @@ static int mdfld_save_display_registers (struct drm_device *dev, int pipe)
 	/*save palette (gamma) */
 	for (i = 0; i < 256; i++)
 		palette_val[i] = PSB_RVDC32(palette_reg + (i<<2));
+
+	/*save color_coef (chrome) */
+	for (i = 0; i < 6; i++) {
+		color_coef[i] = PSB_RVDC32(color_coef_reg + (i<<2));
+		printk("0x%x ", color_coef[i]);
+	}
+
 
 	if (pipe == 1) {
 		dev_priv->savePFIT_CONTROL = PSB_RVDC32(PFIT_CONTROL);
@@ -1056,6 +1069,7 @@ static int mdfld_restore_display_registers(struct drm_device *dev, int pipe)
 	u32 mipi_reg = MIPI;
 	u32 dspcntr_reg = DSPACNTR;
 	u32 palette_reg = PALETTE_A;
+	u32 color_coef_reg = PIPEA_COLOR_COEF0;
 
 	/* values */
 	u32 dpll_val = dev_priv->saveDPLL_A & ~DPLL_VCO_ENABLE;
@@ -1078,6 +1092,7 @@ static int mdfld_restore_display_registers(struct drm_device *dev, int pipe)
 	u32 mipi_val = dev_priv->saveMIPI;
 	u32 dspcntr_val = dev_priv->saveDSPACNTR;
 	u32 *palette_val = dev_priv->save_palette_a;
+	u32 *color_coef = dev_priv->save_color_coef_a;
 	PSB_DEBUG_ENTRY("\n");
 
 	/**
@@ -1124,6 +1139,7 @@ static int mdfld_restore_display_registers(struct drm_device *dev, int pipe)
 		dspcntr_reg = DSPBCNTR;
 		palette_reg = PALETTE_B;
 		dspstatus_reg = PIPEBSTAT;
+		color_coef_reg = PIPEB_COLOR_COEF0;
 
 		/* values */
 		dpll_val = dev_priv->saveDPLL_B & ~DPLL_VCO_ENABLE;
@@ -1145,6 +1161,7 @@ static int mdfld_restore_display_registers(struct drm_device *dev, int pipe)
 		dspcntr_val = dev_priv->saveDSPBCNTR & ~DISPLAY_PLANE_ENABLE;
 		dspstatus_val = dev_priv->saveDSPBSTATUS;
 		palette_val = dev_priv->save_palette_b;
+		color_coef = dev_priv->save_color_coef_b;
 		break;
 	case 2:
 		reg_offset = MIPIC_REG_OFFSET;
@@ -1168,6 +1185,7 @@ static int mdfld_restore_display_registers(struct drm_device *dev, int pipe)
 		dspcntr_reg = DSPCCNTR;
 		palette_reg = PALETTE_C;
 		dspstatus_reg = PIPECSTAT;
+		color_coef_reg = PIPEC_COLOR_COEF0;
 
 		/* values */
 		pipeconf_val = dev_priv->savePIPECCONF;
@@ -1188,6 +1206,7 @@ static int mdfld_restore_display_registers(struct drm_device *dev, int pipe)
 		mipi_val = dev_priv->saveMIPI_C;
 		dspcntr_val = dev_priv->saveDSPCCNTR;
 		palette_val = dev_priv->save_palette_c;
+		color_coef = dev_priv->save_color_coef_c;
 
 		dsi_config = dev_priv->dsi_configs[1];
 		break;
@@ -1283,6 +1302,25 @@ static int mdfld_restore_display_registers(struct drm_device *dev, int pipe)
 		/*mdfld_dsi_tmd_drv_ic_init(dsi_config, pipe);*/
 	}
 
+	/*save color_coef (chrome) */
+	for (i = 0; i < 6; i++) {
+		PSB_WVDC32(color_coef[i], color_coef_reg + (i<<2));
+		printk("0x%x ", color_coef[i]);
+	}
+
+	/* restore palette (gamma) */
+	/*DRM_UDELAY(50000); */
+	for (i = 0; i < 256; i++)
+		PSB_WVDC32(palette_val[i], palette_reg + (i<<2));
+
+	/* disable gamma if needed */
+	if (pipe == 0 && drm_psb_enable_gamma == 0)
+		 dspcntr_val &= ~(PIPEACONF_GAMMA);
+
+	/* disable csc if needed */
+	if (pipe == 0 && drm_psb_enable_color_conversion == 0)
+		 pipeconf_val &= ~(PIPEACONF_COLOR_MATRIX_ENABLE);
+
 	/*enable the plane*/
 	PSB_WVDC32(dspcntr_val, dspcntr_reg);
 
@@ -1313,14 +1351,8 @@ static int mdfld_restore_display_registers(struct drm_device *dev, int pipe)
         REG_WRITE(device_ready_reg, temp);
         mdelay(1);
 #endif
-
 	/*enable the pipe*/
-    PSB_WVDC32(pipeconf_val, pipeconf_reg);
-
-	/* restore palette (gamma) */
-	/*DRM_UDELAY(50000); */
-	for (i = 0; i < 256; i++)
-		PSB_WVDC32(palette_val[i], palette_reg + (i<<2));
+	PSB_WVDC32(pipeconf_val, pipeconf_reg);
 
 	if (pipe == 1)
 		return 0;

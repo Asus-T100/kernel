@@ -752,6 +752,7 @@ static int mdfld_dsi_regs_init(struct mdfld_dsi_config *dsi_config,
 		regs->dsplinoff_reg = DSPALINOFF;
 		regs->dsppos_reg = DSPAPOS;
 		regs->dspstride_reg = DSPASTRIDE;
+		regs->color_coef_reg = PIPEA_COLOR_COEF0;
 		regs->htotal_reg = HTOTAL_A;
 		regs->hblank_reg = HBLANK_A;
 		regs->hsync_reg = HSYNC_A;
@@ -762,7 +763,10 @@ static int mdfld_dsi_regs_init(struct mdfld_dsi_config *dsi_config,
 		regs->pipeconf_reg = PIPEACONF;
 		regs->pipestat_reg = PIPEASTAT;
 		regs->mipi_reg = MIPI;
-
+		regs->palette_reg = PALETTE_A;
+		regs->gamma_red_max_reg = GAMMA_RED_MAX_A;
+		regs->gamma_green_max_reg = GAMMA_GREEN_MAX_A;
+		regs->gamma_blue_max_reg = GAMMA_BLUE_MAX_A;
 		reg_offset = 0;
 	} else if (pipe == 2) {
 		regs->dspcntr_reg = DSPCCNTR;
@@ -771,6 +775,7 @@ static int mdfld_dsi_regs_init(struct mdfld_dsi_config *dsi_config,
 		regs->dsplinoff_reg = DSPCLINOFF;
 		regs->dsppos_reg = DSPCPOS;
 		regs->dspstride_reg = DSPCSTRIDE;
+		regs->color_coef_reg = PIPEC_COLOR_COEF0;
 		regs->htotal_reg = HTOTAL_C;
 		regs->hblank_reg = HBLANK_C;
 		regs->hsync_reg = HSYNC_C;
@@ -781,6 +786,10 @@ static int mdfld_dsi_regs_init(struct mdfld_dsi_config *dsi_config,
 		regs->pipeconf_reg = PIPECCONF;
 		regs->pipestat_reg = PIPECSTAT;
 		regs->mipi_reg = MIPI_C;
+		regs->palette_reg = PALETTE_C;
+		regs->gamma_red_max_reg = GAMMA_RED_MAX_C;
+		regs->gamma_green_max_reg = GAMMA_GREEN_MAX_C;
+		regs->gamma_blue_max_reg = GAMMA_BLUE_MAX_C;
 
 		reg_offset = MIPIC_REG_OFFSET;
 	} else {

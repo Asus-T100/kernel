@@ -393,6 +393,7 @@
 #define PIPECONF_PROGRESSIVE	(0 << 21)
 #define PIPECONF_INTERLACE_W_FIELD_INDICATION	(6 << 21)
 #define PIPECONF_INTERLACE_FIELD_0_ONLY		(7 << 21)
+#define PIPEACONF_COLOR_MATRIX_ENABLE (1 << 20)
 #define PIPECONF_PLANE_OFF 	(1<<19)
 #define PIPECONF_CURSOR_OFF 	(1<<18)
 
@@ -642,6 +643,15 @@ struct dpst_guardband {
 #define PALETTE_A		0x0a000
 #define PALETTE_B		0x0a800
 #define PALETTE_C		0x0ac00
+
+/*Gamma max register*/
+#define GAMMA_RED_MAX_A         0x70010
+#define GAMMA_GREEN_MAX_A       0x70014
+#define GAMMA_BLUE_MAX_A        0x70018
+
+#define GAMMA_RED_MAX_C         0x72010
+#define GAMMA_GREEN_MAX_C       0x72014
+#define GAMMA_BLUE_MAX_C        0x72018
 
 #define IS_I830(dev) ((dev)->pci_device == PCI_DEVICE_ID_INTEL_82830_CGC)
 #define IS_845G(dev) ((dev)->pci_device == PCI_DEVICE_ID_INTEL_82845G_IG)

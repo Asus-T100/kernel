@@ -420,62 +420,63 @@ static void csc_XYZ (int *chrom, int64_t *M_csc)
 			M_csc[i] = csc_div64 (M_csc[i] - 5, 10);
 	}
 }
-
 /**
- *  csc_to_12bit_register_value
- *
- *  Convert the 64bit integer to a 12bit 2-complement fixed point value in
- *  format {12, 10,1}
- *
- */
+*  csc_to_12bit_register_value
+*
+*  Convert the 64bit integer to a 12bit 2-complement fixed point value in
+*  format {12, 10,1}
+*
+*/
 static void csc_to_12bit_register_value (int64_t csc, u16 *reg_val)
 {
-	uint64_t temp_N = (uint64_t) -1;
-	uint64_t temp64 = 0;
-	u32 temp_32_1;
-	u32 temp_32_2;
-	bool sign = true;  /* true: positive, false: negative. */
-	u16 remain = 0;
-	u8 integer = 0;
+      uint64_t temp_N = (uint64_t) -1;
+      uint64_t temp64 = 0;
+      u32 temp_32_1;
+      u32 temp_32_2;
+      bool sign = true;  /* true: positive, false: negative. */
+      u16 remain = 0;
+      u8 integer = 0;
 
-	/*
-	* Convert the signed number to absolute value.
-	*
-	*/
-	if (csc < 0) {
+      /*
+      * Convert the signed number to absolute value.
+      *
+      */
+      if (csc < 0) {
 		sign = false;
 		temp64 = temp_N - ((uint64_t) csc) + 1;
 		temp_32_2 = (u32) temp64;
 		temp_32_1 = (u32) (temp64 >> 32);
-	} else {
+      } else {
 		temp64 = (uint64_t) csc;
 		temp_32_2 = (u32) temp64;
 		temp_32_1 = (u32) (temp64 >> 32);
-	}
+      }
 
-	/*
-	* Convert the absolute value to register value.
-	*
-	*/
-	integer = temp_32_2 / 1000;
-	remain = temp_32_2 % 1000;
+      /*
+      * Convert the absolute value to register value.
+      *
+      */
+      integer = temp_32_2 / 1000;
+      remain = temp_32_2 % 1000;
 
-	if (sign) {
-		*reg_val = 0;
-		remain = (remain * 1024) / 1000;
-		*reg_val |= remain;
-	} else {
-		*reg_val = BIT11;
-		remain = (remain * 1024) / 1000;
-		*reg_val |= remain;
-	}
+      *reg_val = 0;
+      remain = (remain * 1024) / 1000;
+      *reg_val |= remain;
 
-	if (integer > 1)
-		DRM_ERROR("Invalid parameters\n");
-
-	if (integer)
+      if (integer)
 		*reg_val |= BIT10;
+
+      /* if negative values */
+      if (!sign) {
+		*reg_val = ~(*reg_val);
+		*reg_val++;
+		*reg_val &= 0xFFF;
+      }
+
+      if (integer > 1)
+		DRM_ERROR("Invalid parameters\n");
 }
+
 
 /**
  *  csc_program_DC
@@ -498,21 +499,23 @@ void csc_program_DC (struct drm_device* dev, int64_t *csc, int pipe)
 		color_coef_reg += PIPEB_OFFSET;
 	else if (pipe == PIPEC)
 		color_coef_reg += PIPEC_OFFSET;
-
 	/*
  	*  Convert the 64bit integer to a 12bit 2-complement fixed point value in
 	*  format {12, 10,1}
 	*
 	*/
 	for (i = 0; i < 9; i += 3) {
+		printk(KERN_ALERT "csc0 =%lld csc1=%lld csc2=%lld\n", csc[i], csc[i+1], csc[i+2]);
 		csc_to_12bit_register_value (csc[i], &reg_val1);
 		csc_to_12bit_register_value (csc[i + 1], &reg_val2);
 		reg_val = reg_val1 | (reg_val2 << CC_1_POS);
 		REG_WRITE(color_coef_reg, reg_val);
+		printk(KERN_ALERT "offset = 0x%x regs0  =0x%x \n", color_coef_reg, REG_READ(color_coef_reg));
 		color_coef_reg += 4;
 		csc_to_12bit_register_value (csc[i + 2], &reg_val1);
 		reg_val = reg_val1;
 		REG_WRITE(color_coef_reg, reg_val);
+		printk(KERN_ALERT "offset = 0x%x regs1  =0x%x \n", color_coef_reg, REG_READ(color_coef_reg));
 		color_coef_reg += 4;
 	}
 }

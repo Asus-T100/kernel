@@ -29,6 +29,7 @@
 #include "mdfld_output.h"
 #include "mdfld_dsi_pkg_sender.h"
 #include "psb_drv.h"
+#include "mdfld_csc.h"
 
 #ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
 #include "mdfld_dsi_lvds_bridge.h"
@@ -48,6 +49,8 @@ static void mdfld_dsi_dpi_shut_down(struct mdfld_dsi_dpi_output *output, int pip
 bool dsi_device_ready = true;
 struct drm_encoder *gencoder;
 extern struct drm_device *gpDrmDevice;
+extern int drm_psb_enable_gamma;
+extern int drm_psb_enable_color_conversion;
 
 #ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY
 
@@ -1439,8 +1442,10 @@ static int __dpi_panel_power_on(struct mdfld_dsi_config *dsi_config,
 	u32 val = 0;
 	struct mdfld_dsi_hw_registers *regs;
 	struct mdfld_dsi_hw_context *ctx;
+	struct drm_psb_private *dev_priv;
 	struct drm_device *dev;
 	int retry;
+	int i;
 	int err = 0;
 
 	if (!dsi_config)
@@ -1449,6 +1454,7 @@ static int __dpi_panel_power_on(struct mdfld_dsi_config *dsi_config,
 	regs = &dsi_config->regs;
 	ctx = &dsi_config->dsi_hw_context;
 	dev = dsi_config->dev;
+	dev_priv = dev->dev_private;
 
 	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
 					OSPM_UHB_FORCE_POWER_ON))
@@ -1559,6 +1565,15 @@ static int __dpi_panel_power_on(struct mdfld_dsi_config *dsi_config,
 	REG_WRITE(regs->dsplinoff_reg, ctx->dsplinoff);
 	REG_WRITE(regs->vgacntr_reg, ctx->vgacntr);
 
+	/*restore color_coef (chrome) */
+	for (i = 0; i < 6; i++) {
+		REG_WRITE(regs->color_coef_reg + (i<<2), ctx->color_coef[i]);
+	}
+
+	/* restore palette (gamma) */
+	for (i = 0; i < 256; i++)
+		REG_WRITE(regs->palette_reg + (i<<2), ctx->palette[i]);
+
 	/*exit ULPS state*/
 	__dpi_exit_ulps_locked(dsi_config);
 
@@ -1596,6 +1611,12 @@ static int __dpi_panel_power_on(struct mdfld_dsi_config *dsi_config,
 	val = ctx->pipeconf;
 	val &= ~0x000c0000;
 	val |= BIT31;
+
+	/* disable gamma if needed */
+	if (drm_psb_enable_color_conversion == 0)
+		 val &= ~(PIPEACONF_COLOR_MATRIX_ENABLE);
+
+
 	REG_WRITE(regs->pipeconf_reg, val);
 	REG_WRITE(regs->pipestat_reg, ctx->pipestat |
 			PIPE_VBLANK_INTERRUPT_ENABLE);
@@ -1612,7 +1633,13 @@ static int __dpi_panel_power_on(struct mdfld_dsi_config *dsi_config,
 	}
 
 	/*enable plane*/
-	REG_WRITE(regs->dspcntr_reg, (ctx->dspcntr | BIT31));
+	val = ctx->dspcntr | BIT31;
+
+	/* disable gamma if needed */
+	if (drm_psb_enable_gamma == 0)
+		 val &= ~(PIPEACONF_GAMMA);
+
+	REG_WRITE(regs->dspcntr_reg, val);
 
 	if (p_funcs->set_brightness(dsi_config, ctx->lastbrightnesslevel))
 		DRM_ERROR("Failed to set panel brightness\n");
@@ -1636,6 +1663,7 @@ static int __dpi_panel_power_off(struct mdfld_dsi_config *dsi_config,
 	struct drm_device *dev;
 	struct drm_psb_private *dev_priv;
 	int retry;
+	int i;
 	int pipe0_enabled;
 	int pipe2_enabled;
 	int err = 0;
@@ -1665,14 +1693,25 @@ static int __dpi_panel_power_off(struct mdfld_dsi_config *dsi_config,
 
 	tmp = REG_READ(regs->pipeconf_reg);
 
+	/*save color_coef (chrome) */
+	for (i = 0; i < 6; i++) {
+		ctx->color_coef[i] = REG_READ(regs->color_coef_reg + (i<<2));
+	}
+
+	/* save palette (gamma) */
+	for (i = 0; i < 256; i++)
+		ctx->palette[i] = REG_READ(regs->palette_reg + (i<<2));
+
 	/*Disable panel*/
 	val = ctx->dspcntr;
+	val &= ~(PIPEACONF_COLOR_MATRIX_ENABLE | PIPEACONF_GAMMA);
 	REG_WRITE(regs->dspcntr_reg, (val & ~BIT31));
 	/*Disable overlay & cursor panel assigned to this pipe*/
 	REG_WRITE(regs->pipeconf_reg, (tmp | (0x000c0000)));
 
 	/*Disable pipe*/
 	val = REG_READ(regs->pipeconf_reg);
+	ctx->pipeconf = val;
 	REG_WRITE(regs->pipeconf_reg, (val & ~BIT31));
 
 	/*wait for pipe disabling*/
