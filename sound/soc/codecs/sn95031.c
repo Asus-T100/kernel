@@ -88,7 +88,14 @@ static void sn95031_enable_mic_bias(struct snd_soc_codec *codec)
 	pr_debug("enable mic bias\n");
 	pr_debug("codec %p\n", codec);
 	mutex_lock(&codec->mutex);
-	snd_soc_dapm_force_enable_pin(&codec->dapm, "AMIC1Bias");
+	/* GI board has amic bias swapped, we need to enable
+		Mic2 bias for jack */
+	/* TODO Remove this once issue fixed in HW */
+#ifdef CONFIG_SND_MFLD_MACHINE_GI
+		snd_soc_dapm_force_enable_pin(&codec->dapm, "AMIC2Bias");
+#else
+		snd_soc_dapm_force_enable_pin(&codec->dapm, "AMIC1Bias");
+#endif
 	snd_soc_dapm_sync(&codec->dapm);
 	mutex_unlock(&codec->mutex);
 }
@@ -98,7 +105,12 @@ static void sn95031_disable_mic_bias(struct snd_soc_codec *codec)
 {
 	pr_debug("disable mic bias\n");
 	mutex_lock(&codec->mutex);
-	snd_soc_dapm_disable_pin(&codec->dapm, "AMIC1Bias");
+	/* TODO Remove this once issue fixed in HW */
+#ifdef CONFIG_SND_MFLD_MACHINE_GI
+		snd_soc_dapm_disable_pin(&codec->dapm, "AMIC2Bias");
+#else
+		snd_soc_dapm_disable_pin(&codec->dapm, "AMIC1Bias");
+#endif
 	snd_soc_dapm_sync(&codec->dapm);
 	mutex_unlock(&codec->mutex);
 }
@@ -840,16 +852,21 @@ static const struct snd_soc_dapm_route sn95031_audio_map[] = {
 	{ "Lineout Right Playback", NULL, "Vibra2 DAC"},
 
 	/* Headset (AMIC1) mic */
-	{ "AMIC1Bias", NULL, "AMIC1"},
-	{ "MIC1 Enable", NULL, "AMIC1Bias"},
 	{ "Mic_InputL Capture Route", "AMIC", "MIC1 Enable"},
 
 	/* AMIC2 */
-	{ "AMIC2Bias", NULL, "AMIC2"},
-	{ "MIC2 Enable", NULL, "AMIC2Bias"},
 	{ "Mic_InputR Capture Route", "AMIC", "MIC2 Enable"},
-
-
+#ifdef CONFIG_SND_MFLD_MACHINE_GI
+	{ "MIC1 Enable", NULL, "AMIC2Bias"},
+	{ "MIC2 Enable", NULL, "AMIC1Bias"},
+	{ "AMIC1Bias", NULL, "AMIC2"},
+	{ "AMIC2Bias", NULL, "AMIC1"},
+#else
+	{ "MIC1 Enable", NULL, "AMIC1Bias"},
+	{ "MIC2 Enable", NULL, "AMIC2Bias"},
+	{ "AMIC1Bias", NULL, "AMIC1"},
+	{ "AMIC2Bias", NULL, "AMIC2"},
+#endif
 	/* Linein */
 	{ "LineIn Enable Left", NULL, "LINEINL"},
 	{ "LineIn Enable Right", NULL, "LINEINR"},
