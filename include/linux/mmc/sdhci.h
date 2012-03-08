@@ -93,6 +93,8 @@ struct sdhci_host {
 #define SDHCI_QUIRK2_OWN_CARD_DETECTION			(1<<0)
 /* Host controller cannot keep power control value after power off */
 #define SDHCI_QUIRK_CANNOT_KEEP_POWERCTL		(1<<1)
+/* V2.0 host controller support DDR50 */
+#define SDHCI_QUIRK2_V2_0_SUPPORT_DDR50			(1<<2)
 
 
 	int irq;		/* Device IRQ */
