@@ -1486,6 +1486,7 @@ static void msic_batt_temp_charging(struct work_struct *work)
 	static int iprev = -1, is_chrg_enbl;
 	short int cv = 0, cc = 0, vinlimit = 0, cvref;
 	int adc_temp, adc_vol;
+	int vbus_voltage;
 	struct charge_params charge_param;
 	struct msic_power_module_info *mbi =
 	    container_of(work, struct msic_power_module_info,
@@ -1520,10 +1521,19 @@ static void msic_batt_temp_charging(struct work_struct *work)
 	/* get charger status */
 	is_chrg_flt = is_charger_fault();
 
+	if (mdf_read_adc_regs(MSIC_ADC_USB_VOL_IDX, &vbus_voltage, mbi)) {
+		dev_warn(msic_dev, "Error in reading charger"
+					" voltage:%s\n", __func__);
+		goto lbl_sched_work;
+	}
+
 	/* change to fix buffer overflow issue */
 	if (i >= ((sfi_table->temp_mon_ranges < SFI_TEMP_NR_RNG) ?
 			sfi_table->temp_mon_ranges : SFI_TEMP_NR_RNG) ||
-							is_chrg_flt) {
+							is_chrg_flt ||
+				vbus_voltage < WEAKVIN_VOLTAGE_LEVEL) {
+
+
 		if ((adc_temp > batt_thrshlds->temp_high) ||
 			(adc_temp < batt_thrshlds->temp_low)) {
 			dev_warn(msic_dev,
@@ -1540,6 +1550,14 @@ static void msic_batt_temp_charging(struct work_struct *work)
 					POWER_SUPPLY_STATUS_NOT_CHARGING;
 			mutex_unlock(&mbi->batt_lock);
 		}
+
+		if (vbus_voltage < WEAKVIN_VOLTAGE_LEVEL) {
+			mutex_lock(&mbi->usb_chrg_lock);
+				mbi->usb_chrg_props.charger_health =
+						POWER_SUPPLY_HEALTH_DEAD;
+			mutex_unlock(&mbi->usb_chrg_lock);
+		}
+
 		dump_registers(MSIC_CHRG_REG_DUMP_EVENT);
 		/*
 		 * If we are in middle of charge cycle is safer to Reset WDT
