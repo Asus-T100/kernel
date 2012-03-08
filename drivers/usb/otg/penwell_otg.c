@@ -665,8 +665,8 @@ penwell_otg_ulpi_read(struct intel_mid_otg_xceiv *iotg, u8 reg, u8 *val)
 	val32 = ULPI_RUN | reg << 16;
 	writel(val32, pnw->iotg.base + CI_ULPIVP);
 
-	/* Polling at least 1ms for read operation to complete*/
-	count = 200;
+	/* Polling at least 2ms for read operation to complete*/
+	count = 400;
 
 	while (count) {
 		val32 = readl(pnw->iotg.base + CI_ULPIVP);
@@ -701,8 +701,8 @@ penwell_otg_ulpi_write(struct intel_mid_otg_xceiv *iotg, u8 reg, u8 val)
 	val32 = ULPI_RUN | ULPI_RW | reg << 16 | val;
 	writel(val32, pnw->iotg.base + CI_ULPIVP);
 
-	/* Polling at least 1ms for write operation to complete*/
-	count = 200;
+	/* Polling at least 2ms for write operation to complete*/
+	count = 400;
 
 	while (count && penwell_otg_ulpi_run()) {
 		count--;
