@@ -86,7 +86,7 @@ static u32 gi_l5f3_set_ngammactl[] = {0x0f040cfb, 0x2d2f2e2e, 0x1f212421,
 static u32 gi_l5f3_set_miectl1[] = {0x108080c0};
 static u32 gi_l5f3_set_bcmode[] = {0x000011c1};
 static u32 gi_l5f3_set_wrmiectl2[] = {0x000008c2, 0x0000df01, 0x00003f01};
-static u32 gi_l5f3_set_wrblctl[] = {0x204e01c3};
+static u32 gi_l5f3_set_wrblctl[] = {0x201000c3};
 static u32 gi_l5f3_passwd1_off[] = {0x00a5a5f0};
 
 
