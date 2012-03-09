@@ -607,8 +607,7 @@ static void mdfld_hdmi_mode_set(struct drm_encoder *encoder,
 	hdmi_phy_misc = REG_READ(HDMIPHYMISCCTL) & ~HDMI_PHY_POWER_DOWN;
 	REG_WRITE(HDMIPHYMISCCTL, hdmi_phy_misc);
 
-	hdmib = REG_READ(hdmi_priv->hdmib_reg) | HDMIB_PORT_EN |
-		HDMIB_PIPE_B_SELECT;
+	hdmib = REG_READ(hdmi_priv->hdmib_reg) | HDMIB_PIPE_B_SELECT;
 
 	if (dev_priv->bDVIport) {
 		hdmib &= ~(HDMIB_NULL_PACKET | HDMI_AUDIO_ENABLE) ;
@@ -657,6 +656,10 @@ static void mdfld_hdmi_mode_set(struct drm_encoder *encoder,
 		hdmib |= BIT4;
 	else
 		hdmib &= ~BIT4;
+
+	/*port will be enabled in dpms function
+	here make sure it is off before mode set completed */
+	hdmib &= ~HDMIB_PORT_EN;
 
 	REG_WRITE(hdmi_priv->hdmib_reg, hdmib);
 	REG_READ(hdmi_priv->hdmib_reg);
@@ -783,6 +786,7 @@ static void mdfld_hdmi_dpms(struct drm_encoder *encoder, int mode)
 		(struct drm_psb_private *)dev->dev_private;
 	struct psb_intel_output *output = enc_to_psb_intel_output(encoder);
 	struct mid_intel_hdmi_priv *hdmi_priv = output->dev_priv;
+	u32 hdmip_enabled = 0;
 	u32 hdmib, hdmi_phy_misc;
 
 	PSB_DEBUG_ENTRY("%s\n", mode == DRM_MODE_DPMS_ON ?
@@ -802,11 +806,13 @@ static void mdfld_hdmi_dpms(struct drm_encoder *encoder, int mode)
 		hdmib |= (HDMIB_NULL_PACKET | HDMI_AUDIO_ENABLE);
 
 	hdmi_phy_misc = REG_READ(HDMIPHYMISCCTL);
+	hdmip_enabled = REG_READ(hdmi_priv->hdmib_reg) & HDMIB_PORT_EN;
+	PSB_DEBUG_ENTRY("hdmip_enabled is %x\n", hdmip_enabled);
 
 	if (mode != DRM_MODE_DPMS_ON) {
 		if (dev_priv->mdfld_had_event_callbacks
 			&& !dev_priv->bDVIport
-			&& !dev_priv->bhdmiconnected)
+			&& (hdmip_enabled != 0))
 			(*dev_priv->mdfld_had_event_callbacks)
 				(HAD_EVENT_HOT_UNPLUG, dev_priv->had_pvt_data);
 
@@ -824,7 +830,7 @@ static void mdfld_hdmi_dpms(struct drm_encoder *encoder, int mode)
 
 		if (dev_priv->mdfld_had_event_callbacks
 			&& !dev_priv->bDVIport
-			&& dev_priv->bhdmiconnected)
+			&& (hdmip_enabled == 0))
 			(*dev_priv->mdfld_had_event_callbacks)
 				(HAD_EVENT_HOT_PLUG, dev_priv->had_pvt_data);
 	}
