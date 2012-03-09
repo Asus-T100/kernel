@@ -573,7 +573,7 @@ EXPORT_SYMBOL(smp_call_function_many);
 int smp_call_function(smp_call_func_t func, void *info, int wait)
 {
 	preempt_disable();
-	smp_call_function_many(cpu_online_mask, func, info, wait);
+	smp_call_function_many(cpu_active_mask, func, info, wait);
 	preempt_enable();
 
 	return 0;
