@@ -33,6 +33,7 @@
 #include <linux/intel_mid_pm.h>
 #include <linux/ipc_device.h>
 #include <linux/kernel.h>
+#include <linux/bitops.h>
 
 /*
  * IPC register summary
@@ -2203,8 +2204,8 @@ int intel_scu_ipc_osc_clk(u8 clk, unsigned int khz)
 #else
 		base_freq = 19200;
 #endif
-		div = base_freq / khz - 1;
-		if (div >= 3 || (div + 1) * khz != base_freq)
+		div = fls(base_freq / khz) - 1;
+		if (div >= 3 || (1 << div) * khz != base_freq)
 			return -EINVAL;	/* Allow only exact frequencies */
 		ipc_wbuf[1] = 0x03 | (div << 2);
 	}
