@@ -1181,6 +1181,28 @@ static void serial_hsu_shutdown(struct uart_port *port)
 	/* Disable interrupts from this port */
 	up->ier = 0;
 	serial_out(up, UART_IER, 0);
+
+	/* Free allocated dma buffer */
+	if (up->use_dma) {
+		struct hsu_dma_buffer *dbuf;
+
+		/* Free and unmap rx dma buffer */
+		dbuf = &up->rxbuf;
+		dma_unmap_single(port->dev,
+				dbuf->dma_addr,
+				dbuf->dma_size,
+				DMA_FROM_DEVICE);
+
+		kfree(dbuf->buf);
+
+		/* Next unmap tx dma buffer*/
+		dbuf = &up->txbuf;
+		dma_unmap_single(port->dev,
+				dbuf->dma_addr,
+				dbuf->dma_size,
+				DMA_TO_DEVICE);
+	}
+
 	mutex_unlock(&hsu_lock);
 
 	spin_lock_irqsave(&up->port.lock, flags);
