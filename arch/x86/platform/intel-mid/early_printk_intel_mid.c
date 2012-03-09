@@ -10,11 +10,18 @@
  */
 
 /*
- * This file implements three early consoles named mrst, hsu and pti.
- * mrst is based on Maxim3110 spi-uart device, it exists in both
- * Moorestown and Medfield platforms, while hsu is based on a High
- * Speed UART device and pti is based on a Parallel Trace Interface
- * The last two consoles only exist in the Medfield platform
+ * Currently we have 3 types of early printk consoles: PTI, HSU and
+ * MAX3110 SPI-UART.
+ * PTI is available for mdfld, clv and mrfld.
+ * HSU is available for mdfld, clv and mrfld. But it depends on board design.
+ * Some boards don't have HSU UART pins routed to the connector so we can't
+ * use it.
+ * Max3110 SPI-UART is a stand-alone chip with SPI interface located in the
+ * debug card. Drivers can access to this chip via Soc's SPI controller or SSP
+ * controller(working in SPI mode).
+ * Max3110 is available for mrst, mdfld, clv and mrfld. But for mrst, mdfld
+ * and clv, MAX3110 is connected to SPI controller, for mrfld, MAX3110 is
+ * connected to SSP controller.
  */
 
 #include <linux/serial_reg.h>
@@ -38,6 +45,8 @@
 #define MRST_REGBASE_SPI1		0xff128400
 #define CLV_REGBASE_SPI1		0xff135000
 #define MRST_CLK_SPI0_REG		0xff11d86c
+#define MRFLD_SSP_TIMEOUT		0x200000
+#define MRFLD_REGBASE_SSP5		0xff189000
 
 /* Bit fields in CTRLR0 */
 #define SPI_DFS_OFFSET			0
@@ -71,9 +80,13 @@
 #define SR_TX_ERR			(1 << 5)
 #define SR_DCOL				(1 << 6)
 
+/* SR bit fields for SSP*/
+#define SSP_SR_TF_NOT_FULL		(1 << 2)
+
 static unsigned int early_pti_console_channel;
 static unsigned int early_pti_control_channel;
 
+/* SPI controller registers */
 struct dw_spi_reg {
 	u32	ctrl0;
 	u32	ctrl1;
@@ -104,6 +117,15 @@ struct dw_spi_reg {
 	u32	dr;
 } __packed;
 
+/* SSP controler registers */
+struct dw_ssp_reg {
+	u32 ctrl0;
+	u32 ctrl1;
+	u32 sr;
+	u32 ssitr;
+	u32 dr;
+} __packed;
+
 #define dw_readl(dw, name)		__raw_readl(&(dw)->name)
 #define dw_writel(dw, name, val)	__raw_writel((val), &(dw)->name)
 
@@ -113,6 +135,7 @@ static unsigned long mrst_spi_paddr = MRST_REGBASE_SPI0;
 static u32 *pclk_spi0;
 /* Always contains an accessible address, start with 0 */
 static struct dw_spi_reg *pspi;
+static struct dw_ssp_reg *pssp;
 
 static struct kmsg_dumper dw_dumper;
 static int dumper_registered;
@@ -134,7 +157,7 @@ static void dw_kmsg_dump(struct kmsg_dumper *dumper,
 }
 
 /* Set the ratio rate to 115200, 8n1, IRQ disabled */
-static void max3110_write_config(void)
+static void max3110_spi_write_config(void)
 {
 	u16 config;
 
@@ -143,12 +166,36 @@ static void max3110_write_config(void)
 }
 
 /* Translate char to a eligible word and send to max3110 */
-static void max3110_write_data(char c)
+static void max3110_spi_write_data(char c)
 {
 	u16 data;
 
 	data = 0x8000 | c;
 	dw_writel(pspi, dr, data);
+}
+
+/* similar to max3110_spi_write_config, but via SSP controller */
+static void max3110_ssp_write_config(void)
+{
+	u16 config;
+
+	config = 0xc001;
+	dw_writel(pssp, dr, config);
+	dw_readl(pssp, dr);
+	udelay(10);
+	return;
+}
+
+/* similar to max3110_spi_write_data, but via SSP controller */
+static void max3110_ssp_write_data(char c)
+{
+	u16 data;
+
+	data = 0x8000 | c;
+	dw_writel(pssp, dr, data);
+	dw_readl(pssp, dr);
+	udelay(10);
+	return;
 }
 
 void mrst_early_console_init(void)
@@ -199,7 +246,7 @@ void mrst_early_console_init(void)
 	dw_writel(pspi, ssienr, 0x1);
 
 	/* Set the default configuration */
-	max3110_write_config();
+	max3110_spi_write_config();
 
 	/* Register the kmsg dumper */
 	if (!dumper_registered) {
@@ -228,7 +275,7 @@ static void early_mrst_spi_putc(char c)
 	if (!timeout)
 		pr_warning("MRST earlycon: timed out\n");
 	else
-		max3110_write_data(c);
+		max3110_spi_write_data(c);
 }
 
 /* Early SPI only uses polling mode */
@@ -251,6 +298,86 @@ struct console early_mrst_console = {
 	.flags =	CON_PRINTBUFFER,
 	.index =	-1,
 };
+
+void mrfld_early_console_init(void)
+{
+	u32 ctrlr0 = 0;
+
+	set_fixmap_nocache(FIX_EARLYCON_MEM_BASE, MRFLD_REGBASE_SSP5);
+
+	pssp = (void *)(__fix_to_virt(FIX_EARLYCON_MEM_BASE) +
+			(MRFLD_REGBASE_SSP5 & (PAGE_SIZE - 1)));
+
+	/* mask interrupts, clear enable and set DSS config */
+	dw_writel(pssp, ctrl0, 0xc0000f);
+	/* SSPSCLK on active transfers only */
+	dw_writel(pssp, ctrl1, 0x10000000);
+	dw_readl(pssp, sr);
+
+	/* enable port */
+	ctrlr0 = dw_readl(pssp, ctrl0);
+	ctrlr0 |= 0x80;
+	dw_writel(pssp, ctrl0, ctrlr0);
+}
+
+/* slave select should be called in the read/write function */
+static int early_mrfld_putc(char c)
+{
+	unsigned int timeout;
+	u32 sr;
+
+	timeout = MRFLD_SSP_TIMEOUT;
+	/* early putc need make sure the TX FIFO is not full*/
+	while (timeout--) {
+		sr = dw_readl(pssp, sr);
+		if (!(sr & SSP_SR_TF_NOT_FULL))
+			cpu_relax();
+		else
+			break;
+	}
+
+	if (timeout == 0xffffffff) {
+		printk(KERN_INFO "SSP: waiting timeout\n");
+		return -1;
+	}
+
+	max3110_ssp_write_data(c);
+	return 0;
+}
+
+static void early_mrfld_write(struct console *con,
+				const char *str, unsigned n)
+{
+	int  i;
+
+	for (i = 0; i < n && *str; i++) {
+		if (*str == '\n')
+			early_mrfld_putc('\r');
+		early_mrfld_putc(*str);
+
+		str++;
+	}
+}
+
+struct console early_mrfld_console = {
+	.name =		"earlymrfld",
+	.write =	early_mrfld_write,
+	.flags =	CON_PRINTBUFFER,
+	.index =	-1,
+};
+
+void mrfld_early_printk(const char *fmt, ...)
+{
+	char buf[512];
+	int n;
+	va_list ap;
+
+	va_start(ap, fmt);
+	n = vscnprintf(buf, 512, fmt, ap);
+	va_end(ap);
+
+	early_mrfld_console.write(&early_mrfld_console, buf, n);
+}
 
 #ifdef CONFIG_SERIAL_MFD_HSU_CONSOLE_PORT
 
@@ -347,7 +474,7 @@ void hsu_early_printk(const char *fmt, ...)
 	n = vscnprintf(buf, 512, fmt, ap);
 	va_end(ap);
 
-	early_hsu_console.write(&early_mrst_console, buf, n);
+	early_hsu_console.write(&early_hsu_console, buf, n);
 }
 
 #endif
@@ -469,5 +596,5 @@ void pti_early_printk(const char *fmt, ...)
 	n = vscnprintf(buf, sizeof(buf), fmt, ap);
 	va_end(ap);
 
-	early_pti_console.write(&early_mrst_console, buf, n);
+	early_pti_console.write(&early_pti_console, buf, n);
 }
