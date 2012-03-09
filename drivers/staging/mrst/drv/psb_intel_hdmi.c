@@ -805,7 +805,8 @@ static void mdfld_hdmi_dpms(struct drm_encoder *encoder, int mode)
 
 	if (mode != DRM_MODE_DPMS_ON) {
 		if (dev_priv->mdfld_had_event_callbacks
-			&& !dev_priv->bDVIport)
+			&& !dev_priv->bDVIport
+			&& !dev_priv->bhdmiconnected)
 			(*dev_priv->mdfld_had_event_callbacks)
 				(HAD_EVENT_HOT_UNPLUG, dev_priv->had_pvt_data);
 
@@ -822,7 +823,8 @@ static void mdfld_hdmi_dpms(struct drm_encoder *encoder, int mode)
 				hdmib | HDMIB_PORT_EN);
 
 		if (dev_priv->mdfld_had_event_callbacks
-			&& !dev_priv->bDVIport)
+			&& !dev_priv->bDVIport
+			&& dev_priv->bhdmiconnected)
 			(*dev_priv->mdfld_had_event_callbacks)
 				(HAD_EVENT_HOT_PLUG, dev_priv->had_pvt_data);
 	}

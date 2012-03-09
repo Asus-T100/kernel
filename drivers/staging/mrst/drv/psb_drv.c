@@ -1212,18 +1212,11 @@ void hdmi_do_hotplug_wq(struct work_struct *work)
 	if (hdmi_hpd_connected) {
 		DRM_INFO("%s: HDMI plugged in\n", __func__);
 		dev_priv->bhdmiconnected = true;
-		if (dev_priv->mdfld_had_event_callbacks)
-			(*dev_priv->mdfld_had_event_callbacks)
-				(HAD_EVENT_HOT_PLUG, dev_priv->had_pvt_data);
-
 		drm_sysfs_hotplug_event(dev_priv->dev);
 	} else {
 		DRM_INFO("%s: HDMI unplugged\n", __func__);
 		dev_priv->bhdmiconnected = false;
 		hdmi_state = 0;
-		if (dev_priv->mdfld_had_event_callbacks)
-			(*dev_priv->mdfld_had_event_callbacks)
-				(HAD_EVENT_HOT_UNPLUG, dev_priv->had_pvt_data);
 		drm_sysfs_hotplug_event(dev_priv->dev);
 	}
 #endif
