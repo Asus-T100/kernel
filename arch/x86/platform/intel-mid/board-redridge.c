@@ -2157,3 +2157,30 @@ static int __init blackbay_i2c_init(void)
 	return 0;
 }
 device_initcall(blackbay_i2c_init);
+
+
+/*
+ * mxt1386 initialization routines for Redridge board
+ * (Should be removed once SFI tables are updated)
+ */
+static struct mxt_platform_data mxt1386_pdata = {
+	.irqflags	= IRQF_TRIGGER_FALLING,
+	.init_platform_hw = atmel_mxt_init_platform_hw,
+
+};
+
+static struct i2c_board_info dv10_i2c_bus0_devs[] = {
+	{	.type       = "mxt1386",
+		.addr       = 0x4c,
+		.irq	    = TOUCH_IRQ_GPIO + MRST_IRQ_OFFSET,
+		.platform_data = &mxt1386_pdata,
+	},
+};
+
+static int __init redridge_i2c_init(void)
+{
+	i2c_register_board_info(0, dv10_i2c_bus0_devs,
+		ARRAY_SIZE(dv10_i2c_bus0_devs));
+	return 0;
+}
+device_initcall(redridge_i2c_init);
