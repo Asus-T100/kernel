@@ -42,6 +42,8 @@
 #define PCI_ID_LENGTH 4
 #define SST_SUSPEND_DELAY 2000
 #define FW_CONTEXT_MEM (64*1024)
+#define MAX_TIMEDIVSOR  0xFF
+#define MAX_BASEUNIT 0x80
 
 enum sst_states {
 	SST_FW_LOADED = 1,
@@ -72,6 +74,7 @@ enum sst_states {
 #define SST_SHIM_SIZE		0X44
 #define SST_CLKCTL		0x78
 #define SST_CSR2		0x80
+#define SST_PWMCTRL             0x1000
 
 #define SPI_MODE_ENABLE_BASE_ADDR 0xffae4000
 #define FW_SIGNATURE_SIZE	4
@@ -138,6 +141,16 @@ union sst_pimr_reg {
 		u32 rsvd2:3;
 		u32 dmac_sc:1;
 		u32 rsvd3:10;
+	} part;
+	u32 full;
+};
+
+union sst_pwmctrl_reg {
+	struct {
+		u32 pwmtd:8;
+		u32 pwmbu:22;
+		u32 pwmswupdate:1;
+		u32 pwmenable:1;
 	} part;
 	u32 full;
 };
@@ -545,6 +558,7 @@ void sst_clear_interrupt(void);
 int sst_download_fw(void);
 void free_stream_context(unsigned int str_id);
 void sst_clean_stream(struct stream_info *stream);
+vibra_pwm_configure(unsigned int enable);
 
 /*
  * sst_fill_header - inline to fill sst header

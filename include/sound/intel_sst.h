@@ -152,4 +152,5 @@ int register_sst_card(struct intel_sst_card_ops *card);
 void unregister_sst_card(struct intel_sst_card_ops *card);
 int intel_sst_set_pll(unsigned int enable, enum intel_sst_pll_mode mode);
 int intel_sst_get_pll(void);
+void intel_sst_pwm_suspend(unsigned int suspend);
 #endif /* __INTEL_SST_H__ */

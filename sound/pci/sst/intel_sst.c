@@ -45,7 +45,7 @@
 #include <sound/intel_sst_ioctl.h>
 #include "intel_sst_fw_ipc.h"
 #include "intel_sst_common.h"
-
+#include <linux/delay.h>
 
 MODULE_AUTHOR("Vinod Koul <vinod.koul@intel.com>");
 MODULE_AUTHOR("Harsha Priya <priya.harsha@intel.com>");
@@ -60,6 +60,7 @@ MODULE_VERSION(SST_DRIVER_VERSION);
 #define CLV_I2S_3_FS_GPIO_PIN	13
 #define CLV_I2S_3_TXD_GPIO_PIN	74
 #define CLV_I2S_3_RXD_GPIO_PIN	75
+#define CLV_VIBRA_PWM_GPIO_PIN  49
 
 struct intel_sst_drv *sst_drv_ctx;
 static struct mutex drv_ctx_lock;
@@ -380,6 +381,9 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 		lnw_gpio_set_alt(CLV_I2S_3_FS_GPIO_PIN, LNW_ALT_2);
 		lnw_gpio_set_alt(CLV_I2S_3_TXD_GPIO_PIN, LNW_ALT_2);
 		lnw_gpio_set_alt(CLV_I2S_3_RXD_GPIO_PIN, LNW_ALT_2);
+		lnw_gpio_set_alt(CLV_VIBRA_PWM_GPIO_PIN, LNW_ALT_2);
+
+		vibra_pwm_configure(true);
 	}
 
 	sst_drv_ctx->lpe_stalled = 0;
@@ -546,6 +550,18 @@ out:
 }
 EXPORT_SYMBOL(intel_sst_set_pll);
 
+void intel_sst_pwm_suspend(unsigned int pwm_suspend)
+{
+
+	if (pwm_suspend) {
+		pr_debug("SST_SND_DEVICE_SUSPEND doing rtpm_put\n");
+		pm_runtime_put(&sst_drv_ctx->pci->dev);
+	} else	{
+		pr_debug("SST_SND_DEVICE_RESUME_SYNC\n");
+		pm_runtime_get_sync(&sst_drv_ctx->pci->dev);
+	}
+}
+EXPORT_SYMBOL(intel_sst_pwm_suspend);
 /*
  * The runtime_suspend/resume is pretty much similar to the legacy
  * suspend/resume with the noted exception below: The PCI core takes care of
@@ -557,6 +573,41 @@ int intel_sst_get_pll(void)
 	return sst_drv_ctx->pll_mode;
 }
 EXPORT_SYMBOL(intel_sst_get_pll);
+
+int vibra_pwm_configure(unsigned int enable)
+{
+	union sst_pwmctrl_reg pwmctrl;
+
+	if (enable) {
+
+		/*1. Enable the PWM by setting PWM enable bit to 1 */
+		pwmctrl.full = readl(sst_drv_ctx->shim + SST_PWMCTRL);
+		pr_debug("Vibra:Read pwmctrl %x\n", pwmctrl.full);
+		pwmctrl.part.pwmenable = 1;
+		writel(pwmctrl.full, sst_drv_ctx->shim + SST_PWMCTRL);
+
+		/*2. Read the PWM register to make sure there is no pending
+		update.*/
+		pwmctrl.full = readl(sst_drv_ctx->shim + SST_PWMCTRL);
+		pr_debug("Read pwmctrl %x\n", pwmctrl.full);
+
+		/*check pwnswupdate bit */
+		if (pwmctrl.part.pwmswupdate)
+			return -EBUSY;
+		/*Base unit == 1*/
+		pwmctrl.part.pwmswupdate = 0x1;
+		pwmctrl.part.pwmbu = MAX_BASEUNIT;
+		pwmctrl.part.pwmtd = MAX_TIMEDIVSOR;
+		writel(pwmctrl.full,  sst_drv_ctx->shim + SST_PWMCTRL);
+		pr_debug("Read pwmctrl %x\n", pwmctrl.full);
+	} else { /*disable PWM block */
+		   /*1. setting PWM enable bit to 0 */
+		pwmctrl.full = readl(sst_drv_ctx->shim + SST_PWMCTRL);
+		pwmctrl.part.pwmenable = 0;
+		writel(pwmctrl.full,  sst_drv_ctx->shim + SST_PWMCTRL);
+	}
+	return 0;
+}
 
 static int intel_sst_runtime_suspend(struct device *dev)
 {
@@ -580,6 +631,8 @@ static int intel_sst_runtime_suspend(struct device *dev)
 	sst_shim_write(sst_drv_ctx->shim, SST_CSR, csr.full);
 	mutex_unlock(&sst_drv_ctx->sst_lock);
 	intel_sst_set_pll(false, SST_PLL_AUDIO);
+	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID)
+		vibra_pwm_configure(false);
 	return 0;
 }
 
@@ -611,6 +664,9 @@ static int intel_sst_runtime_resume(struct device *dev)
 		lnw_gpio_set_alt(CLV_I2S_3_FS_GPIO_PIN, LNW_ALT_2);
 		lnw_gpio_set_alt(CLV_I2S_3_TXD_GPIO_PIN, LNW_ALT_2);
 		lnw_gpio_set_alt(CLV_I2S_3_RXD_GPIO_PIN, LNW_ALT_2);
+		lnw_gpio_set_alt(CLV_VIBRA_PWM_GPIO_PIN, LNW_ALT_2);
+
+		vibra_pwm_configure(true);
 	}
 
 	intel_sst_set_pll(true, SST_PLL_AUDIO);
