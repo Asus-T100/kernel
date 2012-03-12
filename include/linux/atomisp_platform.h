@@ -91,6 +91,12 @@ struct camera_sensor_platform_data {
 	int (*csi_cfg)(struct v4l2_subdev *subdev, int flag);
 };
 
+struct camera_flash_platform_data {
+	int gpio_torch;
+	int gpio_strobe;
+	int gpio_reset;
+};
+
 struct camera_mipi_info {
 	enum atomisp_camera_port        port;
 	unsigned int                    num_lanes;

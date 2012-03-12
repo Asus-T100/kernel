@@ -942,6 +942,31 @@ static void *mt9m114_platform_data_init(void *info)
 	return &mt9m114_sensor_platform_data;
 }
 
+static void *lm3554_platform_data_init(void *info)
+{
+	static struct camera_flash_platform_data lm3554_platform_data;
+	void *ret = &lm3554_platform_data;
+
+	lm3554_platform_data.gpio_reset  = get_gpio_by_name("GP_FLASH_RESET");
+	lm3554_platform_data.gpio_strobe = get_gpio_by_name("GP_FLASH_STROBE");
+	lm3554_platform_data.gpio_torch  = get_gpio_by_name("GP_FLASH_TORCH");
+
+	if (lm3554_platform_data.gpio_reset == -1) {
+		pr_err("%s: Unable to find GP_FLASH_RESET\n", __func__);
+		ret = NULL;
+	}
+	if (lm3554_platform_data.gpio_strobe == -1) {
+		pr_err("%s: Unable to find GP_FLASH_STROBE\n", __func__);
+		ret = NULL;
+	}
+	if (lm3554_platform_data.gpio_torch == -1) {
+		pr_err("%s: Unable to find GP_FLASH_TORCH\n", __func__);
+		ret = NULL;
+	}
+
+	return ret;
+}
+
 #ifdef CONFIG_WL12XX_PLATFORM_DATA
 static struct wl12xx_platform_data mid_wifi_control = {
 	.board_ref_clock = 1,
@@ -1465,7 +1490,7 @@ struct devs_id __initconst device_ids[] = {
 	 * I2C devices for camera image subsystem which will not be load into
 	 * I2C core while initialize
 	 */
-	{"lm3554", SFI_DEV_TYPE_I2C, 0, &no_platform_data,
+	{"lm3554", SFI_DEV_TYPE_I2C, 0, &lm3554_platform_data_init,
 					&intel_ignore_i2c_device_register},
 	{"mt9m114", SFI_DEV_TYPE_I2C, 0, &mt9m114_platform_data_init,
 					&intel_ignore_i2c_device_register},

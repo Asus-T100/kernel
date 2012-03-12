@@ -60,6 +60,7 @@ struct lm3554_priv {
 	int timeout;
 	struct timer_list flash_off_delay;
 	u32 intensity;
+	struct camera_flash_platform_data *platform_data;
 };
 
 struct lm3554_reg_field {
@@ -138,15 +139,19 @@ static int set_gpio_output(int gpio, const char *name, int val)
 
 static int lm3554_hw_reset(struct i2c_client *client)
 {
-	int ret = 0;
-	ret = gpio_request(GP_LM3554_FLASH_RESET, "flash reset");
+	struct v4l2_subdev *sd = i2c_get_clientdata(client);
+	struct lm3554_priv *p_lm3554_priv = to_lm3554_priv(sd);
+	struct camera_flash_platform_data *pdata = p_lm3554_priv->platform_data;
+	int ret;
+
+	ret = gpio_request(pdata->gpio_reset, "flash reset");
 	if (ret < 0)
 		return ret;
-	gpio_set_value(GP_LM3554_FLASH_RESET, 0);
+	gpio_set_value(pdata->gpio_reset, 0);
 	msleep(50);
-	gpio_set_value(GP_LM3554_FLASH_RESET, 1);
+	gpio_set_value(pdata->gpio_reset, 1);
 	msleep(50);
-	gpio_free(GP_LM3554_FLASH_RESET);
+	gpio_free(pdata->gpio_reset);
 	return ret;
 }
 
@@ -234,6 +239,7 @@ static int lm3554_s_flash_strobe(struct v4l2_subdev *sd, u32 val)
 	int ret, timer_pending;
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	struct lm3554_priv *p_lm3554_priv = to_lm3554_priv(sd);
+	struct camera_flash_platform_data *pdata = p_lm3554_priv->platform_data;
 
 	/*
 	 * An abnormal high flash current is observed when strobe off the
@@ -261,8 +267,7 @@ static int lm3554_s_flash_strobe(struct v4l2_subdev *sd, u32 val)
 	 * so must strobe off here
 	 */
 	if (timer_pending != 0) {
-		ret = set_gpio_output(GP_LM3554_FLASH_STROBE,
-				      "flash", 0);
+		ret = set_gpio_output(pdata->gpio_strobe, "flash", 0);
 		if (ret < 0)
 			goto err;
 	}
@@ -274,7 +279,7 @@ static int lm3554_s_flash_strobe(struct v4l2_subdev *sd, u32 val)
 		goto err;
 
 	/* Strobe on Flash */
-	ret = set_gpio_output(GP_LM3554_FLASH_STROBE, "flash", val);
+	ret = set_gpio_output(pdata->gpio_strobe, "flash", val);
 	if (ret < 0)
 		goto err;
 
@@ -524,6 +529,8 @@ static int lm3554_detect(struct i2c_client *client)
 	u32 status;
 	struct i2c_adapter *adapter = client->adapter;
 	struct v4l2_subdev *sd = i2c_get_clientdata(client);
+	struct lm3554_priv *p_lm3554_priv = to_lm3554_priv(sd);
+	struct camera_flash_platform_data *pdata = p_lm3554_priv->platform_data;
 	int ret;
 
 	if (!i2c_check_functionality(adapter, I2C_FUNC_SMBUS_BYTE_DATA)) {
@@ -533,11 +540,11 @@ static int lm3554_detect(struct i2c_client *client)
 
 	lm3554_hw_reset(client);
 
-	ret = set_gpio_output(GP_LM3554_FLASH_STROBE, "flash", 0);
+	ret = set_gpio_output(pdata->gpio_strobe, "flash", 0);
 	if (ret < 0)
 		goto fail;
 
-	ret = set_gpio_output(GP_LM3554_FLASH_TORCH, "torch", 0);
+	ret = set_gpio_output(pdata->gpio_torch, "torch", 0);
 	if (ret < 0)
 		goto fail;
 
@@ -574,7 +581,11 @@ fail:
 
 static void lm3554_flash_off_delay(struct i2c_client *client)
 {
-	if (set_gpio_output(GP_LM3554_FLASH_STROBE, "flash", 0) < 0)
+	struct v4l2_subdev *sd = i2c_get_clientdata(client);
+	struct lm3554_priv *p_lm3554_priv = to_lm3554_priv(sd);
+	struct camera_flash_platform_data *pdata = p_lm3554_priv->platform_data;
+
+	if (set_gpio_output(pdata->gpio_strobe, "flash", 0) < 0)
 		dev_err(&client->dev, "failed to flash strobe off\n");
 }
 
@@ -588,6 +599,13 @@ static int __devinit lm3554_probe(struct i2c_client *client,
 	if (!p_lm3554_priv) {
 		dev_err(&client->dev, "out of memory\n");
 		return -ENOMEM;
+	}
+
+	p_lm3554_priv->platform_data = client->dev.platform_data;
+	if (!p_lm3554_priv->platform_data) {
+		dev_err(&client->dev, "no platform data\n");
+		kfree(p_lm3554_priv);
+		return -ENODEV;
 	}
 
 	v4l2_i2c_subdev_init(&(p_lm3554_priv->sd), client, &lm3554_ops);
@@ -628,6 +646,7 @@ static int lm3554_remove(struct i2c_client *client)
 {
 	struct v4l2_subdev *sd = i2c_get_clientdata(client);
 	struct lm3554_priv *p_lm3554_priv = to_lm3554_priv(sd);
+	struct camera_flash_platform_data *pdata = p_lm3554_priv->platform_data;
 	int ret;
 
 	media_entity_cleanup(&p_lm3554_priv->sd.entity);
@@ -635,7 +654,7 @@ static int lm3554_remove(struct i2c_client *client)
 
 	del_timer_sync(&p_lm3554_priv->flash_off_delay);
 
-	ret = set_gpio_output(GP_LM3554_FLASH_STROBE, "flash", 0);
+	ret = set_gpio_output(pdata->gpio_strobe, "flash", 0);
 	if (ret < 0)
 		goto fail;
 

@@ -30,15 +30,11 @@
 #include <media/v4l2-chip-ident.h>
 #include <linux/ioctl.h>
 
+#include <linux/atomisp_platform.h>
 #include <linux/atomisp.h>
 
 #define LEDFLASH_LM3554_NAME    "lm3554"
 #define LEDFLASH_LM3554_ID      3554
-
-#define	__GP_CORE(offset)	(96 + (offset))
-#define GP_LM3554_FLASH_TORCH   33
-#define	GP_LM3554_FLASH_STROBE	__GP_CORE(65)
-#define GP_LM3554_FLASH_RESET	__GP_CORE(66)
 
 #define	v4l2_queryctrl_entry_integer(_id, _name,\
 		_minimum, _maximum, _step, \
