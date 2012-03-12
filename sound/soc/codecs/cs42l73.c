@@ -1289,7 +1289,10 @@ static __devexit int cs42l73_i2c_remove(struct i2c_client *client)
 	struct cs42l73_private *cs42l73 = i2c_get_clientdata(client);
 
 	snd_soc_unregister_codec(&client->dev);
-	kfree(cs42l73);
+
+	/* No need for kfree(cs42l73), as it'll be automatically freed
+	 * once driver detach. Refer  devm_kzalloc() for details
+	 */
 
 	return 0;
 }

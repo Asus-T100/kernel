@@ -237,7 +237,8 @@ int clv_soc_jack_add_gpio(struct snd_soc_jack *jack,
 	gpio_export(gpio->gpio, false);
 #endif
 	/* Update initial jack status */
-	clv_soc_jack_gpio_detect(gpio);
+	if (gpio->gpio == CS42L73_HPSENSE_GPIO)
+		clv_soc_jack_gpio_detect(gpio);
 	return 0;
 
 err:
@@ -436,8 +437,8 @@ static int snd_clv_mc_probe(struct ipc_device *ipcdev)
 		goto unalloc;
 	}
 	vsp_mode = 1;
-	ipc_set_drvdata(ipcdev, mc_drv_ctx);
-	dev_set_drvdata(&ipcdev->dev, &snd_soc_card_clv);
+	ipc_set_drvdata(ipcdev, &snd_soc_card_clv);
+	snd_soc_card_set_drvdata(&snd_soc_card_clv, mc_drv_ctx);
 	pr_debug("successfully exited probe\n");
 	return ret_val;
 
@@ -448,13 +449,15 @@ unalloc:
 
 static int __devexit snd_clv_mc_remove(struct ipc_device *ipcdev)
 {
-	struct mfld_mc_private *mc_drv_ctx = ipc_get_drvdata(ipcdev);
+	struct snd_soc_card *soc_card = ipc_get_drvdata(ipcdev);
+	struct mfld_mc_private *mc_drv_ctx = snd_soc_card_get_drvdata(soc_card);
 
 	pr_debug("In %s\n", __func__);
+	kfree(mc_drv_ctx);
 	snd_soc_jack_free_gpios(&clv_jack, 1, &hs_jack_gpio);
 	snd_soc_jack_free_gpios(&clv_jack, 1, &hs_button_gpio);
-	snd_soc_unregister_card(&snd_soc_card_clv);
-	kfree(mc_drv_ctx);
+	snd_soc_card_set_drvdata(soc_card, NULL);
+	snd_soc_unregister_card(soc_card);
 	ipc_set_drvdata(ipcdev, NULL);
 	return 0;
 }
