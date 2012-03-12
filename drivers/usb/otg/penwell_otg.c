@@ -2217,6 +2217,16 @@ static int penwell_otg_iotg_notify(struct notifier_block *nb,
 		flag = 1;
 		break;
 	/* Test mode support */
+	case MID_OTG_NOTIFY_TEST_MODE_START:
+		dev_dbg(pnw->dev, "PNW OTG Notfiy Client Testmode Start\n");
+		iotg->hsm.in_test_mode = 1;
+		flag = 0;
+		break;
+	case MID_OTG_NOTIFY_TEST_MODE_STOP:
+		dev_dbg(pnw->dev, "PNW OTG Notfiy Client Testmode Stop\n");
+		iotg->hsm.in_test_mode = 0;
+		flag = 0;
+		break;
 	case MID_OTG_NOTIFY_TEST_SRP_REQD:
 		dev_dbg(pnw->dev, "PNW OTG Notfiy Client SRP REQD\n");
 		iotg->hsm.otg_srp_reqd = 1;
@@ -2322,6 +2332,9 @@ static void penwell_otg_ulpi_poll_work(struct work_struct *work)
 	u8				data;
 
 	if (iotg->otg.state != OTG_STATE_B_PERIPHERAL)
+		return;
+
+	if (iotg->hsm.in_test_mode)
 		return;
 
 	if (penwell_otg_ulpi_read(iotg, 0x16, &data)) {
@@ -2571,6 +2584,9 @@ static void penwell_otg_work(struct work_struct *work)
 			penwell_otg_eye_diagram_optimize();
 
 			/* MFLD WA for PHY issue */
+			iotg->hsm.in_test_mode = 0;
+			iotg->hsm.ulpi_error = 0;
+
 			if (!is_clovertrail(pdev))
 				penwell_otg_start_ulpi_poll();
 
@@ -2654,7 +2670,7 @@ static void penwell_otg_work(struct work_struct *work)
 
 			iotg->otg.state = OTG_STATE_A_IDLE;
 			penwell_update_transceiver();
-		} else if (hsm->ulpi_error) {
+		} else if (hsm->ulpi_error && !hsm->in_test_mode) {
 			/* WA: try to recover once detected PHY issue */
 			hsm->ulpi_error = 0;
 
