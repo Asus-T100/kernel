@@ -98,6 +98,7 @@ struct otg_hsm {
 	int otg_srp_reqd;
 	int otg_hnp_reqd;
 	int otg_vbus_off;
+	int in_test_mode;
 };
 
 /* must provide ULPI access function to read/write registers implemented in
@@ -190,6 +191,8 @@ struct intel_mid_otg_xceiv *otg_to_mid_xceiv(struct otg_transceiver *otg)
 #define	MID_OTG_NOTIFY_TEST_SRP_REQD	0x0101
 #define	MID_OTG_NOTIFY_TEST_VBUS_OFF	0x0102
 #define	MID_OTG_NOTIFY_TEST		0x0103
+#define	MID_OTG_NOTIFY_TEST_MODE_START	0x0104
+#define	MID_OTG_NOTIFY_TEST_MODE_STOP	0x0105
 
 static inline int
 intel_mid_otg_register_notifier(struct intel_mid_otg_xceiv *iotg,

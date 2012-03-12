@@ -1677,6 +1677,9 @@ static void langwell_udc_stop_testmode(struct langwell_udc *dev)
 		writel(portsc1, &dev->op_regs->portsc1);
 	}
 
+	langwell_udc_notify_otg(
+			MID_OTG_NOTIFY_TEST_MODE_STOP);
+
 	dev_dbg(&dev->pdev->dev, "<--- %s()\n", __func__);
 	return;
 }
@@ -2251,6 +2254,8 @@ static void test_mode_complete(struct usb_ep *ep, struct usb_request *_req)
 		langwell_vbus_draw(&dev->gadget, 0);
 	case TEST_PACKET:
 	case TEST_FORCE_EN:
+		langwell_udc_notify_otg(
+			MID_OTG_NOTIFY_TEST_MODE_START);
 		portsc1 = readl(&dev->op_regs->portsc1);
 		portsc1 |= req->test_mode << 16;
 		writel(portsc1, &dev->op_regs->portsc1);
