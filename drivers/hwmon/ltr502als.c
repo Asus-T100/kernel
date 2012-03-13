@@ -11,7 +11,6 @@
  * GNU General Public License for more details.
  *
  */
-
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/kernel.h>
@@ -107,7 +106,9 @@
 
 /* it takes about 650ms to generate the first interrupt when ALS is enabled*/
 #define ALS_FIRST_INT_DELAY	650
+#define PS_FIRST_INT_DELAY	400
 #define ALS_INIT_DATA		0xffff
+#define CONFIGREG_DELAY         50
 
 struct alsps_client {
 	struct list_head list;
@@ -423,6 +424,7 @@ static int ltr502als_initchip(struct alsps_device *alsps)
 static void ltr502_switch(int mode)
 {
 	u8 data;
+	u8 reg = 0;
 
 	mode = mode & ENABLE_MASK;
 	switch (mode) {
@@ -440,6 +442,19 @@ static void ltr502_switch(int mode)
 		data = POWER_DOWN;
 		break;
 	}
+
+	if (alsps_read(alsps_dev, CONFIGREG, &reg) < 0) {
+		dev_err(&alsps_dev->client->dev, "fail to read CONFIGREG\n");
+		return;
+	}
+	if (reg == data)
+		return;
+
+	/* when change the device mode, we need to set the CONFIG REG to
+	 * "idle" first to disable interrupt. Otherwise, some interrupts
+	 * may be triggered abnormally during the mode switch */
+	alsps_write(alsps_dev, CONFIGREG, IDLE);
+	msleep(CONFIGREG_DELAY);
 	alsps_write(alsps_dev, CONFIGREG, data);
 
 	if (mode & AMBIENT_ENABLE) {
@@ -510,7 +525,7 @@ proximity_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	struct alsps_client *client = file->private_data;
 
 	dev_dbg(&alsps_dev->client->dev,
-		"cmd = %d, arg = %d\n", (int)cmd, (int)arg);
+		"%s:cmd = %d, arg = %d\n", __func__, (int)cmd, (int)arg);
 	/* 1 - enable; 0 - disable */
 
 	mutex_lock(&alsps_dev->lock);
@@ -535,7 +550,7 @@ ambient_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	struct alsps_client *client = file->private_data;
 
 	dev_dbg(&alsps_dev->client->dev,
-		"cmd = %d, arg = %d\n", (int)cmd, (int)arg);
+		"%s:cmd = %d, arg = %d\n", __func__, (int)cmd, (int)arg);
 
 	mutex_lock(&alsps_dev->lock);
 	/* 1 - enable; 0 - disable */
@@ -628,13 +643,14 @@ static void alsps_early_suspend(struct early_suspend *h)
 	/* Only proximity is kept actice over the suspend period */
 	ltr502_switch(alsps->alsps_switch & PROXIMITY_ENABLE);
 
-	/* If proximity status is changed during mode switch, there may be no
-	 * interrupt occurred, so we need to check the data register after mode
-	 * switching here */
-	/* Sleep 1 intergration cycle(100 ms) to ensure ADC sample */
-	msleep(100);
-	alsps_read(alsps, DATAREG, &data);
-	proximity_handle_irq(alsps, data);
+	/* If PS is enabled during early supend, some PS interrupt may be lost
+	 * during the CONFIG REG switch, so we need to check the data register
+	 * after mode switch after a specific delay time */
+	if (alsps->alsps_switch & PROXIMITY_ENABLE) {
+		msleep(PS_FIRST_INT_DELAY);
+		alsps_read(alsps, DATAREG, &data);
+		proximity_handle_irq(alsps, data);
+	}
 	mutex_unlock(&alsps_dev->lock);
 }
 
@@ -698,7 +714,6 @@ static void als_avoid_slience(struct work_struct *work)
 	}
 	mutex_unlock(&alsps->lock);
 }
-
 
 static struct alsps_device *ltr502als_alloc_dev(void)
 {
