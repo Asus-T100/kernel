@@ -705,7 +705,7 @@ static void dump_registers(int dump_mask)
 				chk_reg_addr = reg_addr_boot[i];
 				goto ipcread_err;
 			}
-			dev_info(msic_dev, "%s val: %x\n", reg_str_boot[i],
+			dev_dbg(msic_dev, "%s val: %x\n", reg_str_boot[i],
 								reg_val);
 		}
 	}
@@ -717,7 +717,7 @@ static void dump_registers(int dump_mask)
 				chk_reg_addr = reg_addr_int[i];
 				goto ipcread_err;
 			}
-			dev_info(msic_dev, "%s val: %x\n", reg_str_int[i],
+			dev_dbg(msic_dev, "%s val: %x\n", reg_str_int[i],
 								reg_val);
 		}
 	}
@@ -729,7 +729,7 @@ static void dump_registers(int dump_mask)
 				chk_reg_addr = reg_addr_evt[i];
 				goto ipcread_err;
 			}
-			dev_info(msic_dev, "%s val: %x\n", reg_str_evt[i],
+			dev_dbg(msic_dev, "%s val: %x\n", reg_str_evt[i],
 								reg_val);
 		}
 	}
