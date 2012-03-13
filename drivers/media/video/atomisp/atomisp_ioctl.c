@@ -202,19 +202,24 @@ static const u32 ctrls_num = ARRAY_SIZE(ci_v4l2_controls);
  * FIXME: capabilities should be different for video0/video2/video3
  */
 static int atomisp_querycap(struct file *file, void *fh,
-	struct v4l2_capability *cap)
+			    struct v4l2_capability *cap)
 {
 	int ret = 0;
 
 	memset(cap, 0, sizeof(struct v4l2_capability));
-	strncpy(cap->driver, DRIVER, strlen(DRIVER));
-	strncpy(cap->card, CARD, strlen(CARD));
-	strncpy(cap->bus_info, BUS_INFO, strlen(BUS_INFO));
+
+	WARN_ON(sizeof(DRIVER) > sizeof(cap->driver) ||
+		sizeof(CARD) > sizeof(cap->card) ||
+		sizeof(BUS_INFO) > sizeof(cap->bus_info));
+
+	strncpy(cap->driver, DRIVER, sizeof(cap->driver) - 1);
+	strncpy(cap->card, CARD, sizeof(cap->card) - 1);
+	strncpy(cap->bus_info, BUS_INFO, sizeof(cap->card) - 1);
+
 	cap->version = VERSION;
 
 	cap->capabilities = V4L2_CAP_VIDEO_CAPTURE |
-				V4L2_CAP_STREAMING |
-				V4L2_CAP_VIDEO_OUTPUT;
+	    V4L2_CAP_STREAMING | V4L2_CAP_VIDEO_OUTPUT;
 
 	return ret;
 }
