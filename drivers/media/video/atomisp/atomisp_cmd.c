@@ -882,15 +882,14 @@ void atomisp_work(struct work_struct *work)
 			isp->fr_status = ATOMISP_FRAME_STATUS_OK;
 		}
 
-		if (isp->params.num_flash_frames) {
-			ret = atomisp_start_flash(isp);
-
+		if (!flash_enabled && isp->params.num_flash_frames) {
 			/* The flash failed frame status is needed to signal to
 			 * the appication that flash has been attempted but no
 			 * flash frames will be generated. Without this, the
 			 * applicaton would end up an in endless loop waiting
 			 * for a flash-exposed frame.
 			 */
+			ret = atomisp_start_flash(isp);
 			if (ret)
 				isp->fr_status =
 					ATOMISP_FRAME_STATUS_FLASH_FAILED;
@@ -900,7 +899,7 @@ void atomisp_work(struct work_struct *work)
 				flash_in_progress = true;
 				flash_enabled = true;
 			}
-			isp->params.num_flash_frames = 0;
+			isp->params.num_flash_frames--;
 		}
 
 		/*Check ISP processing pipeline if any binary left*/
@@ -4317,10 +4316,10 @@ int atomisp_exif_makernote(struct atomisp_device *isp,
 
 int atomisp_flash_enable(struct atomisp_device *isp, int num_frames)
 {
-	if (num_frames <= 0)
+	if (num_frames < 0)
 		return -EINVAL;
 	/* a requested flash is still in progress. */
-	if (isp->params.num_flash_frames)
+	if (num_frames && isp->params.num_flash_frames)
 		return -EBUSY;
 
 	isp->params.num_flash_frames = num_frames;
