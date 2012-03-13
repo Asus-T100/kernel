@@ -267,6 +267,13 @@ static int mfld_init(struct snd_soc_pcm_runtime *runtime)
 	return ret_val;
 }
 
+static int mfld_speaker_init(struct snd_soc_pcm_runtime *runtime)
+{
+	struct snd_soc_dai *cpu_dai = runtime->cpu_dai;
+
+	return cpu_dai->driver->ops->set_tdm_slot(cpu_dai, 0, 0, 1, 0);
+}
+
 static struct snd_soc_dai_link mfld_msic_dailink[] = {
 	{
 		.name = "Medfield Headset",
@@ -285,7 +292,7 @@ static struct snd_soc_dai_link mfld_msic_dailink[] = {
 		.codec_dai_name = "SN95031 Speaker",
 		.codec_name = "sn95031",
 		.platform_name = "sst-platform",
-		.init = NULL,
+		.init = mfld_speaker_init,
 		.ignore_suspend = 1,
 	},
 	{
