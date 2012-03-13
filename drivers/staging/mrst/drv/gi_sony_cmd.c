@@ -300,7 +300,9 @@ static struct drm_display_mode
 		mode->vsync_start = mode->vdisplay + 32;
 		mode->vsync_end = mode->vsync_start + 8;
 		mode->vtotal = mode->vsync_end + 32;
-		mode->clock = 16500;
+		mode->vrefresh = 60;
+		mode->clock = mode->vrefresh * mode->vtotal *
+						mode->htotal / 1000;
 	}
 
 	drm_mode_set_name(mode);

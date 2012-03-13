@@ -1269,7 +1269,7 @@ static int mdfld_restore_display_registers(struct drm_device *dev, int pipe)
 		/*set up pipe related registers*/
 		PSB_WVDC32(mipi_val, mipi_reg);
 
-		/*setup MIPI adapter + MIPI IP registers*/
+		/* setup MIPI adapter + MIPI IP registers */
 		mdfld_dsi_controller_init(dsi_config, pipe);
 
 		if(in_atomic() || in_interrupt())
@@ -2571,6 +2571,7 @@ int psb_runtime_idle(struct device *dev)
 		}
 	}
 #endif
+
 	if (atomic_read(&g_graphics_access_count) || atomic_read(&g_videoenc_access_count)
 		|| atomic_read(&g_videodec_access_count) || atomic_read(&g_display_access_count)
 		|| (gbdispstatus == true)

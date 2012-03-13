@@ -154,7 +154,9 @@ static struct drm_display_mode *auo_cmd_get_config_mode(struct drm_device* dev)
 		mode->vsync_start = mode->vdisplay + 4;
 		mode->vsync_end = mode->vsync_start + 2;
 		mode->vtotal = mode->vsync_end + 4;
-		mode->clock = 16500;
+		mode->vrefresh = 60;
+		mode->clock = mode->vrefresh * mode->vtotal *
+						mode->htotal / 1000;
 	}
 
 	drm_mode_set_name(mode);

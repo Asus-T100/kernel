@@ -1275,7 +1275,8 @@ mdfldFindBestPLL(struct drm_crtc *crtc, int target, int refclk,
 static int mdfld_crtc_dsi_pll_calc(struct drm_crtc *crtc,
 				struct mdfld_dsi_config *dsi_config,
 				struct drm_device *dev,
-				struct mdfld_dsi_hw_context *ctx,
+				u32 *out_dpll,
+				u32 *out_fp,
 				struct drm_display_mode *adjusted_mode)
 {
 	DRM_DRIVER_PRIVATE_T *dev_priv = dev->dev_private;
@@ -1340,8 +1341,8 @@ static int mdfld_crtc_dsi_pll_calc(struct drm_crtc *crtc,
 	/* compute bitmask from p1 value */
 	dpll |= (1 << (clock.p1 - 2)) << 17;
 
-	ctx->dpll = dpll;
-	ctx->fp = fp;
+	*(out_dpll) = dpll;
+	*(out_fp) = fp;
 
 	PSB_DEBUG_ENTRY("dsi dpll = 0x%x  fp = 0x%x\n", dpll, fp);
 	return 0;
@@ -1392,7 +1393,10 @@ static int mdfld_crtc_dsi_mode_set(struct drm_crtc *crtc,
 	ctx->vgacntr = 0x80000000;
 
 	/*setup pll*/
-	mdfld_crtc_dsi_pll_calc(crtc, dsi_config, dev, ctx, adjusted_mode);
+	mdfld_crtc_dsi_pll_calc(crtc, dsi_config, dev,
+				 &ctx->dpll,
+				 &ctx->fp,
+				 adjusted_mode);
 
 	/*set up pipe timings*/
 	ctx->htotal = (mode->crtc_hdisplay - 1) |
@@ -1518,11 +1522,6 @@ static int mdfld_crtc_mode_set(struct drm_crtc *crtc,
 	struct mrst_clock_t clock;
 	bool ok;
 	u32 dpll = 0, fp = 0;
-	/* 400MHz DSI 2x Clock w/ 19.2MHz reference: M1 = 167, N1 = 1, P1 = 8 */
-	/* seed = 193 = 167 decimal multipler */
-	u32 fp_m1 = 0xc1;
-	/* Encoding for N1 = 1 */
-	u32 fp_n1 = 0x0;
 	/* One hot encoding for P1 = 8 */
 	u32 p1_post = 0x40;
 	bool is_crt = false, is_lvds = false, is_tv = false;
@@ -1887,50 +1886,31 @@ static int mdfld_crtc_mode_set(struct drm_crtc *crtc,
 #endif
 		}
 
-#if 0 /* 480p */
-        	dpll = 0x02010000;
-        	fp = 0x000000d2;
-#endif
 	} else {
-#if 0 /*DBI_TPO_480x864*/
-		dpll = 0x00020000;
-		fp = 0x00000156;
-#endif /* DBI_TPO_480x864 */ /* get from spec. */
+		if (pipe == 2)
+			dsi_config = dev_priv->dsi_configs[1];
+		else
+			dsi_config = dev_priv->dsi_configs[0];
 
-		dpll = 0x00800000;
-		fp = 0x000000c1;
+		/*caculate pll*/
+		mdfld_crtc_dsi_pll_calc(crtc, dsi_config, dev,
+				 &dpll,
+				 &fp,
+				 adjusted_mode);
 
-		if (get_panel_type(dev, pipe) == GI_SONY_CMD)
-			fp = 0x00000044;
 	}
 
-	if (get_panel_type(dev, pipe) == H8C7_CMD)   //h8c7_cmd
-	{
-		mdfld_crtc_dsi_pll_calc(crtc, dsi_config, dev, ctx, adjusted_mode);
-		dpll = 	ctx->dpll;
-		fp = 	ctx->fp;
-		REG_WRITE(fp_reg, fp);
-		REG_WRITE(dpll_reg, dpll);
-		udelay(500);
-		dpll |= DPLL_VCO_ENABLE;
-		REG_WRITE(dpll_reg, dpll);
-		REG_READ(dpll_reg);
-	}else if (get_panel_type(dev, pipe) == AUO_SC1_CMD) {
-		REG_WRITE(dpll_reg, 0x0);
-		REG_WRITE(fp_reg, fp_m1 | (fp_n1 << FP_N_DIV_SHIFT));
-		REG_WRITE(dpll_reg, p1_post << MDFLD_P1_SHIFT);
+	/*set pll*/
+	REG_WRITE(dpll_reg, 0);
+	REG_WRITE(fp_reg, 0);
+	REG_WRITE(fp_reg, fp);
+	REG_WRITE(dpll_reg, dpll & (~BIT30));
+	/* FIXME_MDFLD PO - change 500 to 1 after PO */
+	udelay(2);
+	dpll = REG_READ(dpll_reg);
+	REG_WRITE(dpll_reg, dpll | BIT31);
 
-		REG_WRITE(dpll_reg, REG_READ(dpll_reg) | DPLL_VCO_ENABLE);
-	} else {
-		REG_WRITE(fp_reg, fp);
-		REG_WRITE(dpll_reg, dpll);
-		/* FIXME_MDFLD PO - change 500 to 1 after PO */
-		udelay(500);
-
-		dpll |= DPLL_VCO_ENABLE;
-		REG_WRITE(dpll_reg, dpll);
-		REG_READ(dpll_reg);
-	}
+	printk(KERN_ALERT "dpll = 0x%x, fb = 0x%x", REG_READ(dpll_reg), REG_READ(fp_reg));
 
 	/* wait for DSI PLL to lock */
 	while ((timeout < 20000) && !(REG_READ(pipeconf_reg) & PIPECONF_DSIPLL_LOCK)) {
@@ -1941,9 +1921,8 @@ static int mdfld_crtc_mode_set(struct drm_crtc *crtc,
 	if (is_mipi) {
 		if (get_panel_type(dev, pipe) == GI_SONY_CMD)
 			mdfld_gi_sony_power_on(mipi_encoder);
-		else if (get_panel_type(dev, pipe) == H8C7_CMD) mdfld_h8c7_cmd_power_on(mipi_encoder); //h8c7_cmd
-
-
+		else if (get_panel_type(dev, pipe) == H8C7_CMD)
+			mdfld_h8c7_cmd_power_on(mipi_encoder);
 
 		goto mrst_crtc_mode_set_exit;
 	}

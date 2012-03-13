@@ -540,8 +540,8 @@ struct drm_display_mode *pr2_vid_get_config_mode(struct drm_device *dev)
 		mode->vsync_end = 1033;
 		mode->vtotal = 1035;
 		mode->vrefresh = 60;
-		mode->clock = mode->vrefresh * (mode->vtotal + 1) *
-				(mode->htotal + 1) / 1000;
+		mode->clock = mode->vrefresh * mode->vtotal *
+				mode->htotal / 1000;
 	}
 
 	drm_mode_set_name(mode);
