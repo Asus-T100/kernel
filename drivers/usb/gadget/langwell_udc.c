@@ -1082,18 +1082,20 @@ static int _langwell_ep_set_halt(struct usb_ep *_ep, int value, int chq)
 
 	dev_vdbg(&dev->pdev->dev, "---> %s()\n", __func__);
 
-	if (!_ep || !ep->desc)
-		return -EINVAL;
 
 	if (!dev->driver || dev->gadget.speed == USB_SPEED_UNKNOWN)
 		return -ESHUTDOWN;
 
-	if (usb_endpoint_xfer_isoc(ep->desc))
-		return  -EOPNOTSUPP;
-
-	pm_runtime_get_sync(&dev->pdev->dev);
 
 	spin_lock_irqsave(&dev->lock, flags);
+	if (!_ep || !ep->desc) {
+		retval = -EINVAL;
+		goto done;
+	}
+	if (usb_endpoint_xfer_isoc(ep->desc)) {
+		retval = -EOPNOTSUPP;
+		goto done;
+	}
 
 	/*
 	 * attempt to halt IN ep will fail if any transfer requests
@@ -1115,8 +1117,6 @@ static int _langwell_ep_set_halt(struct usb_ep *_ep, int value, int chq)
 	}
 done:
 	spin_unlock_irqrestore(&dev->lock, flags);
-
-	pm_runtime_put_sync(&dev->pdev->dev);
 
 	dev_dbg(&dev->pdev->dev, "%s %s halt\n",
 			_ep->name, value ? "set" : "clear");
@@ -2369,6 +2369,8 @@ static int ep_is_stall(struct langwell_ep *ep)
 	int			retval;
 
 	dev_vdbg(&dev->pdev->dev, "---> %s()\n", __func__);
+	if (!ep->desc)
+		return 0;
 
 	endptctrl = readl(&dev->op_regs->endptctrl[ep->ep_num]);
 	if (is_in(ep))
