@@ -1,8 +1,8 @@
 /*
- * Copyright (C) 2011 Maxim Integrated Products, Inc.
+ * Copyright (C) 2012 Maxim Integrated Products, Inc.
  *
- * Driver Version: 1.01
- * Release Date: Dec 5, 2011
+ * Driver Version: 2.0
+ * Release Date: Mar 6, 2012
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -20,17 +20,23 @@
 #include <linux/delay.h>
 #include <linux/earlysuspend.h>
 #include <linux/suspend.h>
-#include <linux/hrtimer.h>
 #include <linux/i2c.h>
 #include <linux/input/mt.h>
 #include <linux/interrupt.h>
-#include <linux/io.h>
-#include <linux/platform_device.h>
 #include <linux/max11871.h>
 #include <linux/gpio.h>
+#include <linux/crc16.h>
+#include <linux/completion.h>
+#include <asm/byteorder.h>
+#include <linux/firmware.h>
+
+#define NWORDS(a)	(sizeof(a) / sizeof(u16))
 
 #define MAX11871_CMD_ADDR 0x0000
-#define MAX11871_CMD_LEN  10
+#define MAX11871_ONE_CMD_LEN  9
+#define MAX11871_MAX_CMD_LEN  (15 * MAX11871_ONE_CMD_LEN)
+#define MAX11871_RPT_ADDR 0x000a
+#define MAX11871_RPT_LEN  (255 - MAX11871_ONE_CMD_LEN - 1)
 
 /* commands */
 #define MAX11871_CMD_SET_TOUCH_RPT_MODE	0x0018
@@ -40,7 +46,29 @@
 #define MAX11871_CMD_SET_POWER_MODE	0x0020
 #define   MAX11871_POWER_SLEEP		0x0
 #define   MAX11871_POWER_ACTIVE		0x2
+
+#define MAX11871_CMD_SET_TOUCH_CFG	0x0001
+#define MAX11871_CMD_GET_CFG_INF	0x0002
 #define MAX11871_CMD_GET_FW_VERSION	0x0040
+#define MAX11871_CMD_RESET		0x00e9
+
+/* report id */
+#define MAX11871_RPT_CFG_INF               0x0102
+#define MAX11871_RPT_PRIV_CFG              0x0104
+#define MAX11871_RPT_CAL_DATA              0x0111
+#define MAX11871_RPT_TOUCH_RPT_MODE        0x0119
+#define MAX11871_RPT_POWER_MODE            0x0121
+#define MAX11871_RPT_SENSITIVITY           0x0125
+#define MAX11871_RPT_FRAMERATE             0x0127
+#define MAX11871_RPT_RESET_BASELINE        0x0134
+#define MAX11871_RPT_FW_VERSION            0x0140
+#define MAX11871_RPT_SYS_STATUS            0x01A0
+#define MAX11871_RPT_INIT                  0x0400
+#define MAX11871_RPT_TOUCH_RAW_IMAGE       0x0800
+#define MAX11871_RPT_TOUCH_INFO_BASIC      0x0801
+#define MAX11871_RPT_TOUCH_INFO_EXTENDED   0x0802
+
+#define MAX11871_INVALID_COMMAND           0xBADC  /* Invalid cmd identifier */
 
 /*
  * command packet format
@@ -53,41 +81,48 @@
 struct max11871_packet {
 #define PACKET_NUM_SHIFT 12
 #define PACKET_CUR_SHIFT 8
-	__le16 header;
-	__le16 id;
-	__le16 size;
-	__le16 data[0];
+	u16 header;
+	u16 id;
+	u16 size;
+	u16 data[0];
 } __packed;
 
-#define MAXIM_BUTTONS_HANDLED_IN_CHIP 0 /* Set to 1 if the chip is configured
-					 * to report button touches in the
-					 * touch report */
-#define MAXIM_TOUCH_HOME   KEY_HOME
-#define MAXIM_TOUCH_MENU   KEY_MENU
-#define MAXIM_TOUCH_BACK   KEY_BACK
-#define MAXIM_TOUCH_SEARCH KEY_SEARCH
+struct max11871_report_finger_data {
+	u16 finger_status;
+#define MAX11871_FINGER_STATUS_MASK      0x0F00
+#define MAX11871_FINGER_ID_MASK          0x000F
 
-#define MAXIM_DEBUG_VERBOSE 0
+	u16 pos_x;
+	u16 pos_y;
+#define MAX11871_FINGER_POSITION_MASK    0x1FFF
 
-#if MAXIM_DEBUG_VERBOSE
-#define maxinfo(format, args...)\
-do { \
-	printk(KERN_INFO "%s:%i " format, __func__, __LINE__, ##args); \
-} while (0);
-#else
-#define maxinfo(format, args...)\
-do { ; } while (0);
-#endif
+	u16 pos_z;
+#define MAX11871_Z_MASK    0x00FF
+};
 
-#if MAXIM_DEBUG_VERBOSE
-#define maxerr(format, args...)\
-do {\
-	printk(KERN_ERR "%s:%i " format, __func__, __LINE__, ##args); \
-} while (0);
-#else
-#define maxerr(format, args...)\
-do { ; } while (0);
-#endif
+struct max11871_report_finger_data_extended {
+	struct max11871_report_finger_data basic;
+	u16 pos_x_speed;
+	u16 pos_y_speed;
+	u16 pos_x_size;
+	u16 pos_y_size;
+	u16 min_x;
+	u16 min_y;
+	u16 max_x;
+	u16 max_y;
+};
+
+struct max11871_touch_report {
+	/* note: size == (#touches * 4) + 3 */
+	u16 touch_count;
+	u16 gpi_button;
+	u16 frame_count;
+
+	union {
+		struct max11871_report_finger_data basic_data[10];
+		struct max11871_report_finger_data_extended ext_data[10];
+	};
+};
 
 #define MAX_TOUCHES_LIMIT	10
 #define MAX11871_FINGER_NONE	0
@@ -104,199 +139,127 @@ struct max11871_finger_data {
 struct max11871_data {
 	struct i2c_client *client;
 	struct input_dev *input_dev;
-	struct input_dev *key_input_dev;
+	struct mutex dev_mutex;
+
+	u16 addr_pointer;
+	u16 report[MAX11871_RPT_LEN];
 	struct max11871_finger_data finger[MAX_TOUCHES_LIMIT];
+
+	u16 wait_reportid;
+	struct completion cmd_completion;
+
 	struct early_suspend early_suspend;
+
+	int fw_version;
+	u16 fw_crc16;
+	u16 touch_config[MAX11871_MAX_CMD_LEN];
 	char phys[32];
 	char key_phys[32];
 };
 
-static unsigned char max11871_keycode[4] = {
-	MAXIM_TOUCH_HOME,
-	MAXIM_TOUCH_MENU,
-	MAXIM_TOUCH_BACK,
-	MAXIM_TOUCH_SEARCH
-};
-
-#define DEBUG_ENABLE 0
-#define DRIVER_MSG_DEBUG_ENABLE 0
-#define MAX_TOUCHES_ALLOWED 2
-
-#ifdef CONFIG_HAS_EARLYSUSPEND
-static void max11871_early_suspend(struct early_suspend *h);
-static void max11871_late_resume(struct early_suspend *h);
-#endif
-
-static int max11871_change_touch_rpt(struct max11871_data *ts, int mode);
-static int max11871_get_fw_version(struct max11871_data *ts);
-
-u8 *ReportBuffer;
-#define SIZE_OF_RPT_BUFFER 1024
-
-static inline int max11871_i2c_read_bytes(
-		const struct max11871_data *const maxim_ts,
-		u8 *buffer, const int count) {
-	int bytesRead = 0;
-
-	bytesRead = i2c_master_recv(maxim_ts->client, buffer, count);
-
-	return bytesRead;
-
+/* packet size in words including the header */
+static int max11871_packet_size(struct max11871_packet *p)
+{
+	return (p->header & 0xff) + 1;
 }
 
-/* returns size of packet from a valid header, returns -1 on bad header */
-static int max11871_read_header(const struct max11871_data *const maxim_ts)
+static int i2c_tx_bytes(struct max11871_data *ts, const u8 *buf, u16 len)
 {
-	u8 buffer[2];
-	u8 byte = 0;
-	int bytesRead = 0;
-	int ret = 0;
+	int ret;
 
-	memset(buffer, 0, sizeof(buffer));
+	do {
+		ret = i2c_master_send(ts->client, buf, len);
+	} while (ret == -EAGAIN);
 
-	bytesRead = i2c_master_recv(maxim_ts->client, buffer, 2);
-
-	if (bytesRead == 2) {
-		byte = buffer[0];
-		buffer[0]   = buffer[1];
-		buffer[1] = byte;
-
-		if (buffer[0] != 0x11) {
-			ret = -1;
-			maxerr("Bad Header = 0x%.2x%.2x",
-				   buffer[0], buffer[1]);
-		}
-
-		ret = buffer[1];
-	} else {
-		ret = -1;
-	}
+	if (ret < 0 || ret != len)
+		dev_err(&ts->client->dev, "i2c tx failed, ret=%d\n", ret);
 
 	return ret;
 }
 
-/*
- * Reads the report into the malloc'd buffer provided .
- * returns the report type, or <0 if there was an error
- */
-static inline u16 maxim_read_report(
-	const struct max11871_data *const maxim_ts, u8 *byteBuffer) {
-	/* Packet header
-	 * All reports begine with a u16 packet header.
-	 * Bits 15-8 == 0x1100
-	 * 0x00FE >= Bits 7-0 (size) >= 0x0001 or 1-244
-	 */
-	/*u16 report_start_addr = 0;*/
-	u8 data[2];
-	u16 reportType = 0;
-	int wordSize = 0, bytesRead = 0, byteSize = 0, bytesTx = 0;
+static int i2c_tx_words(struct max11871_data *ts, u16 *buf, u16 wlen)
+{
+	int ret;
 
-	/* maxinfo(""); */
-	memset(data, 0x00, 2);
+#ifdef __BIG_ENDIAN
+	int i;
 
-	if (byteBuffer == NULL) {
-		maxerr("Called with no buffer for storage.\n");
-		maxerr("Should be at least 1000bytes\n");
-		return -1;
-	}
+	for (i = 0; i < wlen; i++)
+		buf[i] = cpu_to_le16(buf[i]);
+#endif
 
-	/*
-	* When TIRQ goes low, three steps are required to read a report packet
-		 from MAX11871:
-	* 1) Write 0x00A to the MAX11871. This sets the Address Pointer
-	* 2) Read just the "Packet Header" word to get the packet size.
-		When the I2C STOP is
-	*    received, the MAX11871 sets TIRQ high.
-	* 3) Read the whole packet. The size to read will be the size read in
-		 the packet
-	*    header plus one word. *NOTE*, size is in 16bit WORDS so a size
-		 of 2 equals 32bits!!!
-	*    1 <= size <= 244
-	*
-	*/
-
-	/* Step 1 send 0x000A */
-	data[0] = 0x0A;
-	data[1] = 0x00;
-	bytesTx = i2c_master_send(maxim_ts->client, data, 2);
-	if (bytesTx < 2) {
-		maxerr("Failed to set FP31 addr ptr! bytesTx=%i\n", bytesTx);
-		return -1;
-	}
-
-
-	/* Step 2 read header, get size */
-	wordSize = max11871_read_header(maxim_ts);
-
-	if (wordSize <= 0) {
-		/*Attempting to handling error condition*/
-		u8 *garbage = ReportBuffer;
-
-		/*Set all buffer  memory to zero */
-		memset(ReportBuffer, 0, SIZE_OF_RPT_BUFFER);
-
-		bytesRead = max11871_i2c_read_bytes(maxim_ts, garbage, 490);
-		maxerr("Bad header!\n");
-		maxerr("trying to fix... cleared %i bytes\n", bytesRead);
-
-		return -1;
-	}
-
-	wordSize++; /*to account for the header.*/
-	byteSize = wordSize*2;
-
-	/* Step 3 read the whole packet */
-	/*maxinfo("byteBuffer = %p\n",
-				byteBuffer);*/
-	bytesRead = max11871_i2c_read_bytes(maxim_ts, byteBuffer, byteSize);
-
-	if (bytesRead < byteSize) {
-		maxerr("Failed to read entire packet!\n");
-		maxerr("Read %i bytes\n", bytesRead);
-		return -1;
-	}
-
-	reportType = ((u16)byteBuffer[3]) << 8 | (u16)byteBuffer[2];
-	/*returns the report type*/
-	/*maxim_print_report_type(maxim_ts,reportType);*/
-	return reportType;
+	ret = i2c_tx_bytes(ts, (u8 *)buf, wlen * 2);
+	if (ret == wlen * 2)
+		return wlen;
+	else
+		return -EIO;
 }
 
-static inline int
-max11871_report_button_press_chip(const struct max11871_data *ts,
-				  int *isbuttonpressed)
+static int i2c_rx_bytes(struct max11871_data *ts, u8 *buf, u16 len)
 {
-	int keycode = -1;
+	int ret;
 
-	/*Mapping for chip buttons to Android buttons
-	Button 1 : Menu Button
-	Button 2 : Back Button
-	Button 3 : Home Button
-	Button 4 : Search Button */
+	do {
+		ret = i2c_master_recv(ts->client, buf, len);
+	} while (ret == -EAGAIN);
 
-	if (isbuttonpressed[0])
-		keycode = MAXIM_TOUCH_MENU;
-	else if (isbuttonpressed[1])
-		keycode = MAXIM_TOUCH_BACK;
-	else if (isbuttonpressed[2])
-		keycode = MAXIM_TOUCH_HOME;
-	else if (isbuttonpressed[3])
-		keycode = MAXIM_TOUCH_SEARCH;
+	if (ret < 0 || ret != len)
+		dev_err(&ts->client->dev, "i2c rx failed\n");
 
-	if (keycode >= 0) {
-		input_report_key(ts->key_input_dev, keycode, 1);
-		input_sync(ts->key_input_dev);
-	}
-
-	return keycode;
+	return ret;
 }
 
-static inline void
-max11871_report_button_release(const struct max11871_data *ts, int keycode)
+static int i2c_rx_words(struct max11871_data *ts, u16 *buf, u16 wlen)
 {
-	/* setting zero to indicate button up */
-	input_report_key(ts->key_input_dev, keycode, 0);
-	input_sync(ts->key_input_dev);
+	int ret;
+#ifdef __BIG_ENDIAN
+	int i;
+#endif
+
+	ret = i2c_rx_bytes(ts, (u8 *)buf, wlen * 2);
+	if (ret != wlen * 2)
+		return -EIO;
+#ifdef __BIG_ENDIAN
+	for (i = 0; i < wlen; i++)
+		buf[i] = le16_to_cpu(buf[i]);
+#endif
+	return wlen;
+}
+
+static int max11871_read_report(struct max11871_data *ts, u16 *buf)
+{
+	struct max11871_packet *p;
+	struct device *dev = &ts->client->dev;
+	int ret;
+	int i;
+	int words = 1;
+	u16 header;
+	u16 rpt_addr = MAX11871_RPT_ADDR;
+
+	if (ts->addr_pointer != MAX11871_RPT_ADDR) {
+		ret = i2c_tx_words(ts, &rpt_addr, 1);
+		if (ret < 0) {
+			dev_err(dev, "fail to set report address\n");
+			return ret;
+		}
+		ts->addr_pointer = MAX11871_RPT_ADDR;
+	}
+
+	for (i = 0; i < 2; i++) {
+		ret = i2c_rx_words(ts, buf, words);
+		if (ret < 0)
+			return ret;
+
+		p = (struct max11871_packet *)buf;
+		header = p->header;
+		words = max11871_packet_size(p);
+		if ((header >> 8) != 0x11 || words > MAX11871_RPT_LEN) {
+			dev_err(dev, "corrupted header:0x%04x\n", header);
+			return -EIO;
+		}
+	}
+
+	return 0;
 }
 
 static void max11871_send_touches(struct max11871_data *ts)
@@ -318,8 +281,7 @@ static void max11871_send_touches(struct max11871_data *ts)
 
 		input_report_abs(ts->input_dev, ABS_MT_POSITION_X, finger[i].x);
 		input_report_abs(ts->input_dev, ABS_MT_POSITION_Y, finger[i].y);
-		input_report_abs(ts->input_dev,
-				 ABS_MT_TOUCH_MAJOR, finger[i].z);
+		input_report_abs(ts->input_dev, ABS_MT_PRESSURE, finger[i].z);
 	}
 
 	input_sync(ts->input_dev);
@@ -328,58 +290,36 @@ static void max11871_send_touches(struct max11871_data *ts)
 /*
  * Parses and passes touch report info up to the input HAL
  * expects the packet in reportBuffer to be of type 0x0801 or 0x0802,
- * if not there will be memory access errors
  */
-static inline int
-max11871_process_touch_report(struct max11871_data *ts, u8 *reportBuffer)
+static int
+max11871_process_touch_report(struct max11871_data *ts, u16 reportid, u16 *buf)
 {
-	static int buttondown = -1;
-	struct max11871_touch_report *report = NULL;
+	struct device *dev = &ts->client->dev;
+	struct max11871_touch_report *report;
 	struct max11871_report_finger_data *data;
-	int touch_count = 0, button_count = 0, button_report[4];
-	int byteCount = reportBuffer[0] + 1;
+	int touch_count;
 	int i;
-	int x = 0, y = 0, z = 0, finger_id = 0;
-	int isBasicReport = 0;
-	u16 *wordBuffer = NULL;
+	int x, y, z, finger_id;
+	int basic;
 
-	/* +2 accounts for the 2byte header*/
-	byteCount = (2 * reportBuffer[0]) + 2;
-	wordBuffer = (u16 *) reportBuffer;
-
-	report = (struct max11871_touch_report *)reportBuffer;
-	touch_count = report->tStatus_tCount & 0x000F;
-
-	for (i = 0; i < 4; i++) {
-		button_report[i] = (report->gpi_button & (1 << i)) >> i;
-		button_count += button_report[i];
+	if (reportid == MAX11871_RPT_TOUCH_INFO_EXTENDED)
+		basic = 0;
+	else if (reportid == MAX11871_RPT_TOUCH_INFO_BASIC)
+		basic = 1;
+	else {
+		dev_err(dev, "unknown touch report id 0x%04x\n", reportid);
+		return -EINVAL;
 	}
+
+	report = (struct max11871_touch_report *)buf;
+	touch_count = report->touch_count & 0x000f;
 
 	if (touch_count < 0 || touch_count > 10) {
-		maxerr("Touch count ==%i, out of bounds [0,10]!", touch_count);
-		return -1;
+		dev_err(dev, "Touch count ==%i, out of bounds [0,10]!",
+			touch_count);
+		return -EINVAL;
 	}
 
-	if (report->header.id == MAX11871_RPT_TOUCH_INFO_EXTENDED)
-		isBasicReport = 0;
-	else if (report->header.id == MAX11871_RPT_TOUCH_INFO_BASIC)
-		isBasicReport = 1;
-	else {
-		maxerr("Error! Touch report is not basic OR extended!!!\n");
-		maxerr("Error report not a touch report! %.4x",
-			report->header.id);
-		return -1;
-	}
-
-	if (MAXIM_BUTTONS_HANDLED_IN_CHIP) {
-		if (button_count > 0)
-			buttondown = max11871_report_button_press_chip(ts,
-								button_report);
-		else if (buttondown != -1) {
-			max11871_report_button_release(ts, buttondown);
-			buttondown = -1;
-		}
-	}
 
 	for (i = 0; i < MAX_TOUCHES_LIMIT; i++) {
 		/*
@@ -391,23 +331,24 @@ max11871_process_touch_report(struct max11871_data *ts, u8 *reportBuffer)
 			ts->finger[i].status = MAX11871_FINGER_RELEASE;
 	}
 
-	maxinfo("touch_count = %d, isBasicReport = %d\n",
-		touch_count, isBasicReport);
+	dev_dbg(dev, "touch_count = %d, isBasicReport = %d\n",
+		touch_count, basic);
 
 	for (i = 0; i < touch_count; i++) {
-		if (isBasicReport == 0)
+		if (basic == 0)
 			data = &report->ext_data[i].basic;
 		else
 			data = &report->basic_data[i];
 
-		x = data->pos_Y;
-		y = data->pos_X;
-		z = data->pos_Z >> 8;
-		finger_id = data->status_fingerID & 0x000F;
+		x = data->pos_y;
+		y = data->pos_x;
+		z = data->pos_z >> 8;
+		finger_id = data->finger_status & MAX11871_FINGER_ID_MASK;
+		dev_dbg(dev, "x:%d y:%d z:%d fingerid:%d\n",
+			x, y, z, finger_id);
+
 		if (finger_id >= MAX_TOUCHES_LIMIT)
 			continue;
-
-		x = (x > 1280) ? 0 : 1280 - x; /* Y axis reversal */
 
 		ts->finger[finger_id].status = MAX11871_FINGER_PRESS;
 		ts->finger[finger_id].x = x;
@@ -416,18 +357,22 @@ max11871_process_touch_report(struct max11871_data *ts, u8 *reportBuffer)
 	}
 
 	max11871_send_touches(ts);
-
 	return 0;
 }
 
-static int maxim_process_report(struct max11871_data *ts,
-				u16 reportType, u8 *buffer)
+static int max11871_process_report(struct max11871_data *ts, u16 *buf)
 {
+	struct device *dev = &ts->client->dev;
+	struct max11871_packet *p = (struct max11871_packet *)buf;
 	int ret = 0;
 
+	dev_dbg(dev, "report id 0x%x\n", p->id);
+
 	/* Figure out which report we have and process it */
-	switch (reportType) {
+	switch (p->id) {
 	case MAX11871_RPT_CFG_INF:
+		memcpy(ts->touch_config, &p->id, (p->size + 2) * 2);
+		break;
 	case MAX11871_RPT_PRIV_CFG:
 	case MAX11871_RPT_CAL_DATA:
 	case MAX11871_RPT_TOUCH_RPT_MODE:
@@ -435,344 +380,596 @@ static int maxim_process_report(struct max11871_data *ts,
 	case MAX11871_RPT_SENSITIVITY:
 	case MAX11871_RPT_FRAMERATE:
 	case MAX11871_RPT_RESET_BASELINE:
-	case MAX11871_RPT_SYS_STATUS:
 	case MAX11871_RPT_INIT:
 	case MAX11871_RPT_TOUCH_RAW_IMAGE:
 		/* No handling required in driver */
-		maxinfo("Report type: %.4x not handled", reportType);
-		ret = 0;
+		break;
+	case MAX11871_RPT_SYS_STATUS:
 		break;
 	case MAX11871_RPT_FW_VERSION:
-		{
-		struct max11871_simple_report *firmware = NULL;
-		firmware = (struct max11871_simple_report *)buffer;
-		maxinfo("Firmware Version %u detected\n", (u16)firmware->data);
-		ret = 0;
-		}
-	break;
+		ts->fw_version = buf[3];
+		break;
 	case MAX11871_RPT_TOUCH_INFO_BASIC:  /* Touch Report Handling */
 	case MAX11871_RPT_TOUCH_INFO_EXTENDED:
-		if (max11871_process_touch_report(ts, buffer) < 0) {
-			maxerr("Error processing touch report");
-			ret = -1;
-		} else
-			ret = 0;
+		ret = max11871_process_touch_report(ts, p->id, p->data);
 		break;
 	case 0xFFFF:
-		maxinfo("Read report failed!\n");
+		dev_err(dev, "Read report failed!\n");
 		ret = -1;
 		break;
 	case MAX11871_INVALID_COMMAND:
 	default:
-		maxinfo("0x%.4x == bad report type!!!!", reportType);
+		dev_err(dev, "0x%.4x == bad report type!!!!", p->id);
 		ret = -1;
 		break;
 	}
 
+	if (ts->wait_reportid == p->id)
+		complete(&ts->cmd_completion);
+
 	return ret;
-}
-
-/*
- * Finds the part on the i2c bus. If found, maxim_ts_data->client will have
- * the correct address stored.
- * Searches through all 4 addresses unless the i2c addr is non-zero
- * maxim_ts_data->firmwar_version contains the version on success
- * returns 0 on success or -1 on failure
- */
-static int max11871_find_part(struct max11871_data *ts, u8 *buffer)
-{
-	/* 0x48, 0x49, 0x4A, 0x4B */
-	int i = 0;
-	struct max11871_platform_data *pdata = ts->client->dev.platform_data;
-
-	if (!pdata) {
-		/* dev_err(&ts->client->dev, "platform data is required!\n"); */
-		maxerr("platform data is required\n");
-		return -EINVAL;
-	}
-
-	/* Clear any pending reports if the IRQ line is low */
-	/* while (pdata->get_report_ready()) { */
-	while (i == 0) {
-		u16 reportType = 0;
-		memset(buffer, 0, SIZE_OF_RPT_BUFFER);
-		reportType = maxim_read_report(ts, ReportBuffer);
-		maxinfo("%s reportType: %d\n", __func__, reportType);
-		/* maxim_print_report_type(ts,reportType); */
-		maxim_process_report(ts, reportType, ReportBuffer);
-		i++;
-	}
-	maxinfo("Read %i reports.\n", i);
-
-	return 0;
 }
 
 static irqreturn_t max11871_irq_handler(int irq, void *dev_id)
 {
 	struct max11871_data *ts = dev_id;
-	int result = 0;
-	u16 reportType = 0;
+	int ret;
+
+	mutex_lock(&ts->dev_mutex);
 
 	/* Read the entire report in from i2c */
-	reportType = maxim_read_report(ts, ReportBuffer);
+	ret = max11871_read_report(ts, ts->report);
+	if (ret < 0) {
+		dev_err(&ts->client->dev, "fail to read report\n");
+		goto out;
+	}
 
-	result = maxim_process_report(ts, reportType, ReportBuffer);
-
-	/* Wipe the buffer if we got a packet we didn't process */
-	if (result < 0)
-		memset(ReportBuffer, 0, SIZE_OF_RPT_BUFFER);
-
+	max11871_process_report(ts, ts->report);
+out:
+	mutex_unlock(&ts->dev_mutex);
 	return IRQ_HANDLED;
 }
 
-static int max11871_probe(struct i2c_client *client,
-			const struct i2c_device_id *id)
+static int max11871_send_cmd(struct max11871_data *ts, u16 *buf, u16 len)
 {
-	struct max11871_data *ts = NULL;
-	struct max11871_platform_data *pdata =
-					client->dev.platform_data;
-	int ret = 0;
-	int i = 0;
+	int i, ret;
+	struct device *dev = &ts->client->dev;
+	u16 txbuf[MAX11871_ONE_CMD_LEN + 2]; /* with address and header */
+	u16 packets, words;
 
-	ReportBuffer = kmalloc(SIZE_OF_RPT_BUFFER, GFP_KERNEL);
-	if (ReportBuffer == NULL) {
-		maxerr("kmalloc failed!\n");
-		ret = -ENOMEM;
-		goto err_alloc_data_failed;
+	if (len < 2 || len > MAX11871_MAX_CMD_LEN) {
+		dev_err(dev, "wrong data len %d\n", len);
+		return -EINVAL;
+	}
+	if (buf[1] + 2 != len) {
+		dev_err(dev, "inconsistent data len expected:%d, given:%d\n",
+			buf[1] + 2, len);
+		return -EINVAL;
 	}
 
-	if (!pdata) {
-		dev_err(&client->dev, "platform data is required!\n");
-		maxerr("platform data is required\n");
-		ret = -ENOMEM;
-		goto err_alloc_data_failed;
-	}
-
-	if (pdata->platform_hw_init) {
-		if (pdata->platform_hw_init() < 0) {
-			maxerr("Eror initializing platform data\n");
-			return -EINVAL;
-		}
-	}
-
-	/* Verify I2C is working */
-	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
-		maxerr("need I2C_FUNC_I2C\n");
-		ret = -ENODEV;
-		goto err_check_functionality_failed;
-	}
-
-	/* Grab some mem for the maxim data structure */
-	ts = kzalloc(sizeof(*ts), GFP_KERNEL);
-
-	if (ts == NULL) {
-		maxerr("kzalloc failed!\n");
-		ret = -ENOMEM;
-		goto err_alloc_data_failed;
-	}
-
-	/* setup i2c client data */
-	ts->client = client;
-	i2c_set_clientdata(client, ts);
-
-	if (pdata->power) {
-		ret = pdata->power(1);
-		msleep(20);
+	packets = (len + MAX11871_ONE_CMD_LEN - 1) / MAX11871_ONE_CMD_LEN;
+	txbuf[0] = MAX11871_CMD_ADDR;
+	for (i = 0; i < packets; i++) {
+		words = (i == packets - 1) ? len : MAX11871_ONE_CMD_LEN;
+		txbuf[1] = (packets << 12) | ((i + 1) << 8) | words;
+		memcpy(&txbuf[2], &buf[i * MAX11871_ONE_CMD_LEN], words * 2);
+		ret = i2c_tx_words(ts, txbuf, words + 2);
 		if (ret < 0) {
-			printk(KERN_ERR "%s:power on failed\n", __func__);
-			goto err_power_failed;
+			dev_err(dev, "cmd tx fail\n");
+			break;
 		}
+		len -= MAX11871_ONE_CMD_LEN;
 	}
 
-	/* Configure for basic Touch reports */
-	ret = max11871_change_touch_rpt(ts, MAX11871_TOUCH_RPT_BASIC);
-	if (ret < 0) {
-		maxerr("Failed to configure touch mode!!!\n");
-		goto err_detect_failed;
-	}
-
-	/* Allocate input device */
-	ts->input_dev = input_allocate_device();
-
-	if (ts->input_dev == NULL) {
-		ret = -ENOMEM;
-		maxerr("Failed to allocate input device\n");
-		goto err_input_dev_alloc_failed;
-	}
-
-	/* Allocate key input device */
-	ts->key_input_dev = input_allocate_device();
-
-	if (ts->key_input_dev == NULL) {
-		ret = -ENOMEM;
-		maxerr("Failed to allocate key input device\n");
-		goto err_input_dev_alloc_failed;
-	}
-
-	snprintf(ts->phys, sizeof(ts->phys),
-			 "%s/input0", dev_name(&client->dev));
-	snprintf(ts->key_phys, sizeof(ts->phys),
-			 "%s/input1", dev_name(&client->dev));
-
-	ts->input_dev->name = "max11871_touchscreen_0";
-	ts->input_dev->phys = ts->phys;
-	ts->input_dev->id.bustype = BUS_I2C;
-
-	ts->key_input_dev->name = "max11871_key_0";
-	ts->key_input_dev->phys = ts->key_phys;
-	ts->key_input_dev->id.bustype = BUS_I2C;
-
-	__set_bit(EV_SYN, ts->input_dev->evbit);
-	__set_bit(EV_ABS, ts->input_dev->evbit);
-
-	__set_bit(EV_KEY,    ts->key_input_dev->evbit);
-	/*__set_bit(BTN_TOUCH, ts->key_input_dev->keybit);
-	set_bit(BTN_2, ts->input_dev->keybit); */
-
-	for (i = 0; i < ARRAY_SIZE(max11871_keycode); i++)
-		set_bit(max11871_keycode[i], ts->key_input_dev->keybit);
-
-	/* multi-touch protocol type B */
-	input_mt_init_slots(ts->input_dev, MAX_TOUCHES_LIMIT);
-	input_set_abs_params(ts->input_dev, ABS_MT_POSITION_X,
-			pdata->abs_x_min, pdata->abs_x_max, 0, 0);
-	input_set_abs_params(ts->input_dev, ABS_MT_POSITION_Y,
-			pdata->abs_y_min, pdata->abs_y_max, 0, 0);
-	input_set_abs_params(ts->input_dev, ABS_MT_TOUCH_MAJOR,
-			0, 255, 0, 0);
-
-	/* Register input device */
-	ret = input_register_device(ts->input_dev);
-
-	if (ret) {
-		maxerr("Unable to register %s input device\n",
-			   ts->input_dev->name);
-		ret = -ENODEV;
-		goto err_input_register_device_failed;
-	}
-
-	ret = input_register_device(ts->key_input_dev);
-
-	if (ret) {
-		maxerr("Unable to register %s input device\n",
-			   ts->key_input_dev->name);
-		ret = -ENODEV;
-		goto err_input_register_device_failed;
-	}
-
-	/* Setup the IRQ and irq_handler to use */
-	client->irq = gpio_to_irq(pdata->gpio_irq);
-	if (client->irq > 0) {
-		ret = request_threaded_irq(client->irq, NULL,
-				max11871_irq_handler,
-				IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
-				client->name, ts);
-
-		if (ret < 0) {
-			dev_err(&ts->client->dev, "request_irq failed\n");
-			goto err_input_register_device_failed;
-		}
-	}
-
-	/* Find the Max11871 on the bus */
-	if (max11871_find_part(ts, ReportBuffer) < 0) {
-		maxerr("Didn't find any Maxim11871 part on the i2c bus!!!.");
-		ret = -ENODEV;
-		goto err_detect_failed;
-	}
-
-	/* Get the firmware version */
-	if (max11871_get_fw_version(ts) < 0) {
-		maxerr("Couldn't send firmware version command!");
-		ret = -ENODEV;
-		goto err_detect_failed;
-	}
-
-
-#ifdef CONFIG_HAS_EARLYSUSPEND
-	ts->early_suspend.level = EARLY_SUSPEND_LEVEL_STOP_DRAWING - 1;
-	ts->early_suspend.suspend = max11871_early_suspend;
-	ts->early_suspend.resume = max11871_late_resume;
-	register_early_suspend(&ts->early_suspend);
-#endif
-
-	return 0;
-
-err_input_register_device_failed:
-	input_free_device(ts->input_dev);
-
-err_input_dev_alloc_failed:
-err_power_failed:
-err_detect_failed:
-	if (ts != NULL)
-		kfree(ts);
-err_alloc_data_failed:
-err_check_functionality_failed:
+	ts->addr_pointer = MAX11871_CMD_ADDR;
 	return ret;
 }
 
-static int max11871_remove(struct i2c_client *client)
+/* dev_mutex must be hold when calling this func */
+static int max11871_wait_for_simple_cmd(struct max11871_data *ts,
+					u16 cmd_id, u16 report_id)
 {
-	struct max11871_data *ts = i2c_get_clientdata(client);
+	int ret;
+	struct device *dev = &ts->client->dev;
 
-#ifdef CONFIG_HAS_EARLYSUSPEND
-	unregister_early_suspend(&ts->early_suspend);
-#endif
-	free_irq(client->irq, ts);
+	if (cmd_id) {
+		u16 cmdbuf[] = { cmd_id, 0x0000 };
 
-	input_unregister_device(ts->input_dev);
-	kfree(ReportBuffer);
-	kfree(ts);
+		ret = max11871_send_cmd(ts, cmdbuf, NWORDS(cmdbuf));
+		if (ret < 0) {
+			dev_err(dev, "fail to send cmd:0x%x\n", cmd_id);
+			return ret;
+		}
+	}
+
+	ts->wait_reportid = report_id;
+
+	mutex_unlock(&ts->dev_mutex);
+	ret = wait_for_completion_timeout(&ts->cmd_completion, HZ);
+	mutex_lock(&ts->dev_mutex);
+
+	if (ret == 0) {
+		dev_err(dev, "timeout cmd 0x%04x report 0x%04x\n",
+			cmd_id, report_id);
+		return -ETIMEDOUT;
+	}
+
 	return 0;
-}
-
-/* packet size in bytes including the header */
-static int max11871_packet_size(struct max11871_packet *p)
-{
-	return ((le16_to_cpu(p->header) & 0xff) + 1) * 2;
-}
-
-/* TODO: support cmd with data > 7 words */
-static int max11871_write_cmd(struct max11871_data *ts,
-			struct max11871_packet *p)
-{
-	int size = max11871_packet_size(p);
-	__le16 buf[MAX11871_CMD_LEN + 1];
-
-	buf[0] = cpu_to_le16(MAX11871_CMD_ADDR);
-	memcpy(&buf[1], p, size);
-
-	return i2c_master_send(ts->client, (const char *)buf, size + 2);
 }
 
 /*
  * COMMANDS
  */
+
+static int max11871_wait_sys_status(struct max11871_data *ts)
+{
+	return max11871_wait_for_simple_cmd(ts, 0, MAX11871_RPT_SYS_STATUS);
+}
+
+static int max11871_sw_reset(struct max11871_data *ts)
+{
+	return max11871_wait_for_simple_cmd(ts,
+			MAX11871_CMD_RESET, MAX11871_RPT_SYS_STATUS);
+}
+
 static int max11871_get_fw_version(struct max11871_data *ts)
 {
-	u16 buf[MAX11871_CMD_LEN];
-	struct max11871_packet *p = (struct max11871_packet *)buf;
+	return max11871_wait_for_simple_cmd(ts,
+			MAX11871_CMD_GET_FW_VERSION, MAX11871_RPT_FW_VERSION);
+}
 
-	p->header = cpu_to_le16(1 << PACKET_NUM_SHIFT |
-				1 << PACKET_CUR_SHIFT | 2);
-	p->id = cpu_to_le16(MAX11871_CMD_GET_FW_VERSION);
-	p->size = cpu_to_le16(0);
-
-	return max11871_write_cmd(ts, p);
+static int max11871_get_touch_config(struct max11871_data *ts)
+{
+	return max11871_wait_for_simple_cmd(ts,
+			MAX11871_CMD_GET_CFG_INF, MAX11871_RPT_CFG_INF);
 }
 
 static int max11871_set_power_mode(struct max11871_data *ts, int mode)
 {
-	u16 buf[MAX11871_CMD_LEN];
-	struct max11871_packet *p = (struct max11871_packet *)buf;
+	u16 cmdbuf[] = { MAX11871_CMD_SET_POWER_MODE, 0x0001, mode };
 
-	p->header = cpu_to_le16(1 << PACKET_NUM_SHIFT |
-				1 << PACKET_CUR_SHIFT | 3);
-	p->id = cpu_to_le16(MAX11871_CMD_SET_POWER_MODE);
-	p->size = cpu_to_le16(1);
-	p->data[0] = cpu_to_le16(mode);
+	return max11871_send_cmd(ts, cmdbuf, NWORDS(cmdbuf));
+}
 
-	return max11871_write_cmd(ts, p);
+static int max11871_change_touch_rpt(struct max11871_data *ts,  int mode)
+{
+	u16 cmdbuf[] = { MAX11871_CMD_SET_TOUCH_RPT_MODE, 0x0001, mode };
+
+	return max11871_send_cmd(ts, cmdbuf, NWORDS(cmdbuf));
+}
+
+static void max11871_cmd_csum(u16 *buf, u16 len)
+{
+	int i;
+	u16 csum = 0;
+
+	for (i = 2; i < (len - 1); i++)
+		csum += buf[i];
+	buf[len - 1] = csum;
+}
+
+
+#define BUTTON_AREA_HEIGHT 50
+static int max11871_update_touch_config(struct max11871_data *ts)
+{
+	struct device *dev = &ts->client->dev;
+	struct max11871_platform_data *pdata = ts->client->dev.platform_data;
+	int ret;
+	int x_range, y_range;
+
+	ret = max11871_get_touch_config(ts);
+	if (ret < 0) {
+		dev_info(dev, "continue to use default touch config\n");
+		return 0;
+	}
+
+	x_range = pdata->abs_x_max | 0x8000;
+	y_range = pdata->abs_y_max + BUTTON_AREA_HEIGHT;
+	dev_info(dev, "touch cfg X:0x%x, Y:0x%x, xrange:0x%x, yrange:0x%x\n",
+		 ts->touch_config[27], ts->touch_config[28], x_range, y_range);
+
+
+	if (ts->touch_config[28] != x_range ||
+	    ts->touch_config[27] != y_range) {
+		dev_info(dev, "touch cfg mismatch, need to update\n");
+
+		ts->touch_config[28] = x_range;
+		ts->touch_config[27] = y_range;
+		ts->touch_config[0] = MAX11871_CMD_SET_TOUCH_CFG;
+
+		max11871_cmd_csum(ts->touch_config, ts->touch_config[1] + 2);
+		max11871_send_cmd(ts, ts->touch_config,
+				  ts->touch_config[1] + 2);
+		ret = max11871_sw_reset(ts);
+		if (ret < 0)
+			dev_err(dev, "time out software reset, continue\n");
+
+		ret = max11871_get_touch_config(ts);
+		if (ret < 0)
+			dev_err(dev, "time out get touch config, continue\n");
+	}
+
+	return 0;
+}
+
+static int max11871_config_chip(struct max11871_data *ts)
+{
+	struct device *dev = &ts->client->dev;
+	struct max11871_platform_data *pdata = ts->client->dev.platform_data;
+	int ret;
+
+	/* 1. reset the chip and then bring it to normal operation */
+	pdata->power(0);
+	/* enable irq here to start handling report */
+	enable_irq(ts->client->irq);
+	pdata->power(1);
+
+	mutex_lock(&ts->dev_mutex);
+
+	max11871_wait_sys_status(ts);
+	max11871_get_fw_version(ts);
+
+	/* 2. update touch config if needed */
+	max11871_update_touch_config(ts);
+
+	/* 3. change to basic touch report mode */
+	ret = max11871_change_touch_rpt(ts, MAX11871_TOUCH_RPT_BASIC);
+	if (ret < 0)
+		dev_err(dev, "fail to config touch report mode\n");
+
+	mutex_unlock(&ts->dev_mutex);
+	return ret;
+}
+
+#define FW_SIZE     0x8000
+#define FW_SIZE_CRC 0x7cfc
+#define CHUNK_SIZE  128
+
+#define STATUS_ADDR	0x00ff
+#define DATA_ADDR	0x00fe
+#define STATUS_READY	0xabcc
+#define RXTX_COMPLETE	0x5432
+#define CMD_CONFIRM	0x003e
+
+static int bootloader_write_status(struct max11871_data *ts, u16 status)
+{
+	u16 buf[] = { STATUS_ADDR, status };
+
+	return i2c_tx_words(ts, buf, NWORDS(buf));
+}
+
+static int bootloader_read_data(struct max11871_data *ts, u16 *data)
+{
+	struct device *dev = &ts->client->dev;
+	int ret;
+	u16 addr = DATA_ADDR;
+	u16 buf[2];
+
+	ret = i2c_tx_words(ts, &addr, 1);
+	if (ret < 0) {
+		dev_err(dev, "fail to send data addr\n");
+		return ret;
+	}
+	ret = i2c_rx_words(ts, buf, NWORDS(buf));
+	if (ret < 0) {
+		dev_err(dev, "fail to read data register\n");
+		return ret;
+	}
+
+	if (buf[1] != STATUS_READY) {
+		dev_err(dev, "status is not ready\n");
+		return -EINVAL;
+	}
+	*data = buf[0];
+
+	return bootloader_write_status(ts, RXTX_COMPLETE);
+}
+
+static int bootloader_get_confirm(struct max11871_data *ts, int retries)
+{
+	u16 data;
+
+	do {
+		if (bootloader_read_data(ts, &data) >= 0) {
+			if (data == CMD_CONFIRM)
+				return 0;
+		}
+	} while (--retries > 0);
+
+	dev_err(&ts->client->dev, "fail to get command confirmation\n");
+	return -EIO;
+}
+
+static int bootloader_enter(struct max11871_data *ts)
+{
+	int i, ret;
+	u16 enter_cmd[3][2] = {
+		{ 0x7f00, 0x0047 },
+		{ 0x7f00, 0x00c7 },
+		{ 0x7f00, 0x0007 },
+	};
+
+	for (i = 0; i < 3; i++) {
+		ret = i2c_tx_words(ts, enter_cmd[i], 2);
+		if (ret < 0)
+			return ret;
+
+		usleep_range(20000, 21000);
+	}
+
+	return bootloader_get_confirm(ts, 5);
+}
+
+static int bootloader_exit(struct max11871_data *ts)
+{
+	int ret;
+	u16 exit_cmd[] = { DATA_ADDR, 0x0001, RXTX_COMPLETE };
+
+	ret = i2c_tx_words(ts, exit_cmd, NWORDS(exit_cmd));
+	if (ret < 0) {
+		dev_err(&ts->client->dev, "fail to exit bootloader\n");
+		return ret;
+	}
+	return 0;
+}
+
+static int bootloader_check_status(struct max11871_data *ts, u16 status)
+{
+	u16 addr = STATUS_ADDR;
+	u16 regstatus;
+	int ret;
+
+	ret = i2c_tx_words(ts, &addr, 1);
+	if (ret < 0)
+		return ret;
+
+	ret = i2c_rx_words(ts, &regstatus, 1);
+	if (ret < 0)
+		return ret;
+
+	if (regstatus != status) {
+		dev_err(&ts->client->dev, "status expected:0x%x, get:0x%x\n",
+				status, regstatus);
+		return -EIO;
+	}
+	return 0;
+}
+
+static int bootloader_write_data(struct max11871_data *ts, u16 data)
+{
+	struct device *dev = &ts->client->dev;
+	int ret;
+	u16 buf[3] = { DATA_ADDR, data, RXTX_COMPLETE };
+
+	ret = bootloader_check_status(ts, STATUS_READY);
+	if (ret < 0)
+		return ret;
+
+	ret = i2c_tx_words(ts, buf, NWORDS(buf));
+	if (ret < 0) {
+		dev_err(dev, "fail to write 0x%04x to data register\n", data);
+		return ret;
+	}
+
+	return 0;
+}
+
+static int bootloader_write_buf(struct max11871_data *ts, u8 *buf, int len)
+{
+	int i;
+
+	for (i = 0; i < len; i++) {
+		if (bootloader_write_data(ts, buf[i]) < 0)
+			return -EIO;
+	}
+
+	return 0;
+}
+
+static int bootloader_get_crc(struct max11871_data *ts, u16 *crc16, u16 len)
+{
+	int ret;
+	struct device *dev = &ts->client->dev;
+	u8 crc_cmd[] = { 0x30, 0x02, 0x00, 0x00, (len & 0xff), (len >> 8) };
+	u16 data;
+	u16 rx_crc16 = 0;
+
+	ret = bootloader_write_buf(ts, crc_cmd, sizeof(crc_cmd));
+	if (ret < 0) {
+		dev_err(dev, "fail to write crc command\n");
+		return ret;
+	}
+	usleep_range(200000, 201000);
+
+	/* read low 8-bit crc */
+	bootloader_read_data(ts, &data);
+	rx_crc16 = (data & 0xff);
+
+	/* read high 8-bit crc */
+	bootloader_read_data(ts, &data);
+	rx_crc16 = ((data & 0xff) << 8) | rx_crc16;
+
+	if (bootloader_get_confirm(ts, 5) < 0)
+		return -EIO;
+
+	*crc16 = rx_crc16;
+	return 0;
+}
+
+static int bootloader_erase_flash(struct max11871_data *ts)
+{
+	struct device *dev = &ts->client->dev;
+	int i;
+	int ret;
+
+	ret = bootloader_write_data(ts, 0x0002);
+	if (ret < 0) {
+		dev_err(dev, "fail to send erase flash cmd\n");
+		return ret;
+	}
+
+	for (i = 0; i < 10; i++) {
+		usleep_range(60000, 61000);
+
+		if (bootloader_get_confirm(ts, 0) == 0)
+			break;
+	}
+
+	if (i == 10) {
+		dev_err(dev, "flash erase failed\n");
+		return -EIO;
+	}
+
+	return 0;
+}
+
+static int bootloader_write_flash(struct max11871_data *ts, const u8 *image)
+{
+	u8 cmd[] = { 0xf0, 0x00, 0x80, 0x00, 0x00 };
+	u8 buf[130];
+	int i, j, ret;
+	struct device *dev = &ts->client->dev;
+
+	ret = bootloader_write_buf(ts, cmd, sizeof(cmd));
+	if (ret < 0)
+		return ret;
+
+	for (i = 0; i < FW_SIZE / CHUNK_SIZE; i++) {
+		for (j = 0; j < 100; j++) {
+			usleep_range(1200, 1300);
+			if (bootloader_check_status(ts, STATUS_READY) == 0)
+				break;
+		}
+		if (j == 100) {
+			dev_err(dev, "fail to check status register\n");
+			return -EIO;
+		}
+
+		buf[0] = ((i % 2) == 0) ? 0x00 : 0x40;
+		buf[1] = 0x00;
+		memcpy(buf + 2, image + i * CHUNK_SIZE, CHUNK_SIZE);
+		ret = i2c_tx_bytes(ts, buf, CHUNK_SIZE + 2);
+		if (ret != CHUNK_SIZE + 2) {
+			dev_err(dev, "fail to write chunk %d\n", i);
+			return -EIO;
+		}
+
+		ret = bootloader_write_status(ts, RXTX_COMPLETE);
+		if (ret < 0) {
+			dev_err(dev, "transfer failure at chunk %d\n", i);
+			return -EIO;
+		}
+	}
+
+	usleep_range(10000, 11000);
+	if (bootloader_get_confirm(ts, 5) < 0) {
+		dev_err(dev, "flash programming failed\n");
+		return -EIO;
+	}
+
+	return 0;
+}
+
+static int bootloader_set_byte_mode(struct max11871_data *ts)
+{
+	int ret;
+	u8 cmd[] = { 0x0a, 0x00 };
+
+	ret = bootloader_write_buf(ts, cmd, sizeof(cmd));
+	if (ret < 0)
+		return ret;
+
+	return bootloader_get_confirm(ts, 10);
+}
+
+static int
+max11871_load_fw(struct max11871_data *ts, const struct firmware *fw)
+{
+	struct device *dev = &ts->client->dev;
+	u16 fw_crc16 = 0, chip_crc16;
+	int ret;
+
+	fw_crc16 = crc16(fw_crc16, fw->data, FW_SIZE_CRC);
+
+	ret = bootloader_enter(ts);
+	if (ret < 0) {
+		dev_err(dev, "fail to enter bootloader mode\n");
+		return ret;
+	}
+
+	ret = bootloader_get_crc(ts, &chip_crc16, FW_SIZE_CRC);
+	if (ret < 0) {
+		dev_err(dev, "fail to get crc16 from chip\n");
+		return ret;
+	}
+
+	dev_info(dev, "crc16 firmware:0x%04x, chip:0x%04x\n",
+		 fw_crc16, chip_crc16);
+
+	if (fw_crc16 != chip_crc16) {
+		dev_info(dev, "crc16 mismatch, need to update firmware\n");
+
+		ret = bootloader_erase_flash(ts);
+		if (ret < 0) {
+			dev_err(dev, "fail to erase chip flash\n");
+			return ret;
+		}
+
+		ret = bootloader_set_byte_mode(ts);
+		if (ret < 0) {
+			dev_err(dev, "fail to set byte mode\n");
+			return ret;
+		}
+
+		ret = bootloader_write_flash(ts, fw->data);
+		if (ret < 0) {
+			dev_err(dev, "fail to write flash\n");
+			return ret;
+		}
+
+		fw_crc16 = 0;
+		fw_crc16 = crc16(fw_crc16, fw->data, FW_SIZE);
+		ret = bootloader_get_crc(ts, &chip_crc16, FW_SIZE);
+		if (ret < 0) {
+			dev_err(dev, "fail to get crc16 from chip\n");
+			return ret;
+		}
+		if (fw_crc16 != chip_crc16) {
+			dev_err(dev, "fail to verify programming! "
+				"crc16 fw:0x%04x, chip:0x%04x not equal\n",
+				fw_crc16, chip_crc16);
+		}
+
+		ret = bootloader_get_crc(ts, &chip_crc16, FW_SIZE_CRC);
+		if (ret < 0) {
+			dev_err(dev, "faile to get crc16 from chip\n");
+			return ret;
+		}
+		ts->fw_crc16 = chip_crc16;
+	}
+
+	bootloader_exit(ts);
+	return 0;
+}
+
+static void max11871_update_fw(const struct firmware *fw, void *context)
+{
+	struct max11871_data *ts = context;
+	struct i2c_client *client = ts->client;
+	struct device *dev = &client->dev;
+	struct max11871_platform_data *pdata = ts->client->dev.platform_data;
+
+	if (fw && fw->size >= FW_SIZE) {
+		dev_info(dev, "got firmware, size:%d\n", fw->size);
+
+		/* take chip out of reset state */
+		pdata->power(1);
+		if (max11871_load_fw(ts, fw) < 0)
+			dev_err(dev, "firmware download failed\n");
+		release_firmware(fw);
+	}
+
+	max11871_config_chip(ts);
 }
 
 static int max11871_suspend(struct i2c_client *client, pm_message_t mesg)
@@ -780,13 +977,16 @@ static int max11871_suspend(struct i2c_client *client, pm_message_t mesg)
 	struct max11871_data *ts = i2c_get_clientdata(client);
 	int ret;
 
-	maxinfo("Enter max11871_suspend\n");
+	dev_dbg(&client->dev, "enter %s\n", __func__);
 
 	disable_irq(client->irq);
+
+	mutex_lock(&ts->dev_mutex);
 	ret = max11871_set_power_mode(ts, MAX11871_POWER_SLEEP);
 	if (ret < 0)
 		dev_err(&client->dev, "failed to put device to sleep\n");
 
+	mutex_unlock(&ts->dev_mutex);
 	return ret;
 }
 
@@ -796,8 +996,11 @@ static int max11871_resume(struct i2c_client *client)
 	int ret = 0;
 	int i;
 
-	maxinfo("Enter max11871_resume\n");
+	dev_dbg(&client->dev, "enter %s\n", __func__);
 
+	enable_irq(client->irq);
+
+	mutex_lock(&ts->dev_mutex);
 	for (i = 0; i < MAX_TOUCHES_LIMIT; i++) {
 		if (ts->finger[i].status == MAX11871_FINGER_PRESS)
 			ts->finger[i].status = MAX11871_FINGER_RELEASE;
@@ -806,23 +1009,10 @@ static int max11871_resume(struct i2c_client *client)
 	ret = max11871_set_power_mode(ts, MAX11871_POWER_ACTIVE);
 	if (ret < 0)
 		dev_err(&client->dev, "failed to resume device\n");
-	enable_irq(client->irq);
 
+
+	mutex_unlock(&ts->dev_mutex);
 	return ret;
-}
-
-static int max11871_change_touch_rpt(struct max11871_data *ts,  int mode)
-{
-	u16 buf[MAX11871_CMD_LEN];
-	struct max11871_packet *p = (struct max11871_packet *)buf;
-
-	p->header = cpu_to_le16(1 << PACKET_NUM_SHIFT |
-				1 << PACKET_CUR_SHIFT | 3);
-	p->id = cpu_to_le16(MAX11871_CMD_SET_TOUCH_RPT_MODE);
-	p->size = cpu_to_le16(1);
-	p->data[0] = cpu_to_le16(mode);
-
-	return max11871_write_cmd(ts, p);
 }
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
@@ -841,11 +1031,136 @@ static void max11871_late_resume(struct early_suspend *h)
 }
 #endif
 
-/****************************************
- *
- * Standard Driver Structures/Functions
- *
- ****************************************/
+static int __devinit max11871_probe(struct i2c_client *client,
+					const struct i2c_device_id *id)
+{
+	struct max11871_data *ts;
+	struct max11871_platform_data *pdata = client->dev.platform_data;
+	struct device *dev = &client->dev;
+	int ret;
+
+	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
+		dev_err(dev, "I2C_FUNC_I2C not supported by i2c adapter\n");
+		return -ENODEV;
+	}
+
+	if (!pdata || !pdata->platform_hw_init || !pdata->power) {
+		dev_err(dev, "platform data not OK\n");
+		return -EINVAL;
+	}
+
+	/* initialize GPIO pins */
+	ret = pdata->platform_hw_init();
+	if (ret < 0) {
+		dev_err(dev, "fail to init GPIO IRQ pin\n");
+		return ret;
+	}
+
+	/* reset chip */
+	pdata->power(0);
+
+	ts = kzalloc(sizeof(*ts), GFP_KERNEL);
+	if (!ts) {
+		dev_err(dev, "fail to kzalloc max11871_data!\n");
+		return -ENOMEM;
+	}
+	ts->client = client;
+	i2c_set_clientdata(client, ts);
+	mutex_init(&ts->dev_mutex);
+	init_completion(&ts->cmd_completion);
+
+	client->irq = gpio_to_irq(pdata->gpio_irq);
+	if (client->irq < 0) {
+		dev_err(dev, "fail to get irq for gpio %d\n", pdata->gpio_irq);
+		ret = client->irq;
+		goto out_free_ts;
+	}
+
+	ts->input_dev = input_allocate_device();
+	if (!ts->input_dev) {
+		dev_err(dev, "Failed to allocate input device\n");
+		ret = -ENOMEM;
+		goto out_free_ts;
+	}
+
+	snprintf(ts->phys, sizeof(ts->phys),
+			 "%s/input0", dev_name(&client->dev));
+
+	ts->input_dev->name = "max11871_touchscreen_0";
+	ts->input_dev->phys = ts->phys;
+	ts->input_dev->id.bustype = BUS_I2C;
+
+	__set_bit(EV_SYN, ts->input_dev->evbit);
+	__set_bit(EV_ABS, ts->input_dev->evbit);
+
+	/* multi-touch protocol type B */
+	input_mt_init_slots(ts->input_dev, MAX_TOUCHES_LIMIT);
+	input_set_abs_params(ts->input_dev, ABS_MT_POSITION_X,
+			pdata->abs_x_min, pdata->abs_x_max - 1 , 0, 0);
+	input_set_abs_params(ts->input_dev, ABS_MT_POSITION_Y,
+			pdata->abs_y_min, pdata->abs_y_max - 1, 0, 0);
+	input_set_abs_params(ts->input_dev, ABS_MT_PRESSURE,
+			0, 255, 0, 0);
+
+	ret = input_register_device(ts->input_dev);
+	if (ret) {
+		dev_err(dev, "Unable to register %s input device\n",
+			   ts->input_dev->name);
+		input_free_device(ts->input_dev);
+		goto out_free_ts;
+	}
+
+	ret = request_threaded_irq(client->irq, NULL,
+			max11871_irq_handler,
+			IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
+			client->name, ts);
+	if (ret < 0) {
+		dev_err(dev, "request_irq failed\n");
+		goto out_unresigter_input;
+	}
+
+	/*
+	 * disable irq here to avoid receiving garbage during firwmare
+	 * update and chip configuration
+	 */
+	disable_irq(client->irq);
+
+#ifdef CONFIG_HAS_EARLYSUSPEND
+	ts->early_suspend.level = EARLY_SUSPEND_LEVEL_STOP_DRAWING - 1;
+	ts->early_suspend.suspend = max11871_early_suspend;
+	ts->early_suspend.resume = max11871_late_resume;
+#endif
+	register_early_suspend(&ts->early_suspend);
+
+	ret = request_firmware_nowait(THIS_MODULE, FW_ACTION_HOTPLUG,
+			"max11871.bin", dev, GFP_KERNEL, ts,
+			max11871_update_fw);
+	if (ret < 0) {
+		dev_info(dev, "error requset firmware, continue power on\n");
+		max11871_config_chip(ts);
+	}
+
+	return 0;
+
+out_unresigter_input:
+	input_unregister_device(ts->input_dev);
+out_free_ts:
+	kfree(ts);
+	return ret;
+}
+
+static int max11871_remove(struct i2c_client *client)
+{
+	struct max11871_data *ts = i2c_get_clientdata(client);
+
+	free_irq(client->irq, ts);
+
+	unregister_early_suspend(&ts->early_suspend);
+	input_unregister_device(ts->input_dev);
+	kfree(ts);
+	return 0;
+}
+
 static const struct i2c_device_id max11871_id[] = {
 	{ MAX11871_NAME, 0 },
 	{ }
@@ -868,20 +1183,18 @@ static struct i2c_driver max11871_driver = {
 
 static int __devinit max11871_init(void)
 {
-	maxinfo("...\n");
 	return i2c_add_driver(&max11871_driver);
 }
 
 static void __exit max11871_exit(void)
 {
-	maxinfo("...\n");
 	i2c_del_driver(&max11871_driver);
 }
 
 module_init(max11871_init);
 module_exit(max11871_exit);
 
-MODULE_AUTHOR("Maxim Integrated Products, Inc.>");
+MODULE_AUTHOR("Maxim Integrated Products, Inc.");
 MODULE_DESCRIPTION("Maxim-IC 11871 Touchscreen Driver");
-MODULE_LICENSE("GPLv2");
+MODULE_LICENSE("GPL");
 
