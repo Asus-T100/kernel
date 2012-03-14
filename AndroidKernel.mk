@@ -6,7 +6,7 @@
 TARGET_KERNEL_SOURCE_IS_PRESENT ?= true
 
 .PHONY: get_kernel_from_source menuconfig
-menuconfig get_kernel_from_source:
+menuconfig get_kernel_from_source: $(MINIGZIP)
 	+TARGET_TOOLS_PREFIX="$(ANDROID_BUILD_TOP)/$(TARGET_TOOLS_PREFIX)" DIFFCONFIGS="$(DIFFCONFIGS)" vendor/intel/support/kernel-build.sh -c $(CUSTOM_BOARD) -o $@
 
 # This rule is useful for creating a kernel that will be
