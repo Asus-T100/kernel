@@ -41,25 +41,46 @@
 #include <linux/gpio.h>
 
 /* CDB42L73 Y1 (6.144 MHz) )oscillator =  MCLK1 */
-#define C42L73_DEFAULT_MCLK	6144000
-#define CS42L73_FMT_I2S
-#define CS42L73_HPSENSE_GPIO 34
-#define CS42L73_BUTTON_GPIO 32
+#define C42L73_DEFAULT_MCLK	19200000
+#define CS42L73_HPSENSE_GPIO 	34
+#define CS42L73_BUTTON_GPIO	32
 
-static int clv_hw_params(struct snd_pcm_substream *substream,
+static unsigned int vsp_mode;
+
+static vsp_mode_get(struct snd_kcontrol *kcontrol,
+	struct snd_ctl_elem_value *ucontrol)
+{
+	ucontrol->value.integer.value[0] = vsp_mode;
+	return 0;
+}
+
+static int vsp_mode_set(struct snd_kcontrol *kcontrol,
+	struct snd_ctl_elem_value *ucontrol)
+{
+	vsp_mode  = ucontrol->value.integer.value[0];
+	return 0;
+}
+
+static const char *vsp_mode_text[] = {"Master", "Slave"};
+
+static const struct soc_enum vsp_mode_enum =
+	SOC_ENUM_SINGLE_EXT(ARRAY_SIZE(vsp_mode_text), vsp_mode_text);
+
+static const struct snd_kcontrol_new clv_controls[] = {
+	SOC_ENUM_EXT("VSP Mode", vsp_mode_enum, vsp_mode_get, vsp_mode_set),
+};
+
+static int clv_asp_hw_params(struct snd_pcm_substream *substream,
 	struct snd_pcm_hw_params *params)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct snd_soc_dai *codec_dai = rtd->codec_dai;
-	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
 	unsigned int fmt;
 	int ret;
 
-	pr_debug("cpu dai name  slave %s\n", cpu_dai->name);
-
 	/* CS42L73  Slave Mode`*/
 	fmt =   SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF
-				| SND_SOC_DAIFMT_CBS_CFS;
+					| SND_SOC_DAIFMT_CBS_CFS;
 
 	/* Set codec DAI configuration */
 	ret = snd_soc_dai_set_fmt(codec_dai, fmt);
@@ -77,6 +98,44 @@ static int clv_hw_params(struct snd_pcm_substream *substream,
 	return 0;
 }
 
+static int clv_vsp_hw_params(struct snd_pcm_substream *substream,
+	struct snd_pcm_hw_params *params)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_dai *codec_dai = rtd->codec_dai;
+	unsigned int fmt;
+	int ret , clk_source;
+
+	if (!vsp_mode) {
+		pr_debug("Master Mode selected\n");
+		/* CS42L73  Master Mode`*/
+		fmt = SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF
+			| SND_SOC_DAIFMT_CBM_CFM;
+		clk_source = SND_SOC_CLOCK_OUT;
+
+	} else {
+		pr_debug("Slave Mode selected\n");
+		/* CS42L73  Slave Mode`*/
+		fmt =   SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF
+			| SND_SOC_DAIFMT_CBS_CFS;
+		clk_source = SND_SOC_CLOCK_IN;
+	}
+
+	/* Set codec DAI configuration */
+	ret = snd_soc_dai_set_fmt(codec_dai, fmt);
+	if (ret < 0) {
+		pr_err("can't set codec DAI configuration %d\n", ret);
+		return ret;
+	}
+
+	ret = snd_soc_dai_set_sysclk(codec_dai, CS42L73_CLKID_MCLK1,
+			C42L73_DEFAULT_MCLK, clk_source);
+	if (ret < 0) {
+		pr_err("can't set codec clock %d\n", ret);
+		return ret;
+	}
+	return 0;
+}
 
 struct clv_mc_private {
 	struct ipc_device *socdev;
@@ -287,10 +346,12 @@ static int clv_init(struct snd_soc_pcm_runtime *runtime)
 	return ret;
 }
 
-static struct snd_soc_ops clv_ops = {
-	.hw_params = clv_hw_params,
+static struct snd_soc_ops clv_asp_ops = {
+	.hw_params = clv_asp_hw_params,
 };
-
+static struct snd_soc_ops clv_vsp_ops = {
+	.hw_params = clv_vsp_hw_params,
+};
 struct snd_soc_dai_link clv_msic_dailink[] = {
 	{
 		.name = "Cloverview ASP",
@@ -301,7 +362,7 @@ struct snd_soc_dai_link clv_msic_dailink[] = {
 		.platform_name = "sst-platform",
 		.init = clv_init,
 		.ignore_suspend = 1,
-		.ops = &clv_ops,
+		.ops = &clv_asp_ops,
 	},
 	{
 		.name = "Cloverview VSP",
@@ -312,7 +373,7 @@ struct snd_soc_dai_link clv_msic_dailink[] = {
 		.platform_name = "sst-platform",
 		.init = NULL,
 		.ignore_suspend = 1,
-		.ops = &clv_ops,
+		.ops = &clv_vsp_ops,
 	},
 };
 
@@ -350,6 +411,8 @@ static struct snd_soc_card snd_soc_card_clv = {
 	.dai_link = clv_msic_dailink,
 	.num_links = ARRAY_SIZE(clv_msic_dailink),
 	.set_bias_level = clv_set_bias_level,
+	.controls = clv_controls,
+	.num_controls = ARRAY_SIZE(clv_controls),
 };
 
 static int snd_clv_mc_probe(struct ipc_device *ipcdev)
@@ -372,6 +435,7 @@ static int snd_clv_mc_probe(struct ipc_device *ipcdev)
 		pr_err("snd_soc_register_card failed %d\n", ret_val);
 		goto unalloc;
 	}
+	vsp_mode = 1;
 	ipc_set_drvdata(ipcdev, mc_drv_ctx);
 	dev_set_drvdata(&ipcdev->dev, &snd_soc_card_clv);
 	pr_debug("successfully exited probe\n");
