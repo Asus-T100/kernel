@@ -816,8 +816,9 @@ static void configure_learncfg(struct max17042_chip *chip)
 
 	u16 cycles;
 
-	cycles = max17042_read_reg(chip->client, MAX17042_Cycles);
-	if (cycles > CYCLES_ROLLOVER_CUTOFF)
+	/*assigning cycles value from restored data*/
+	cycles = fg_conf_data->cycles;
+	if (cycles >= CYCLES_ROLLOVER_CUTOFF)
 		max17042_write_verify_reg(chip->client, MAX17042_LearnCFG,
 						MAX17042_DEF_RO_LRNCFG);
 	else
@@ -878,33 +879,33 @@ static void load_new_capacity_params(struct max17042_chip *chip, bool is_por)
 	u16 full_cap0, rem_cap, rep_cap, dq_acc;
 
 	if (is_por) {
-		full_cap0 = max17042_read_reg(chip->client, MAX17042_FullCAP0);
-
 		/* fg_vfSoc needs to shifted by 8 bits to get the
 		 * perc in 1% accuracy, to get the right rem_cap multiply
 		 * full_cap0, fg_vfSoc and devide by 100
 		 */
-		rem_cap = ((fg_vfSoc >> 8) * (u32)full_cap0) / 100;
+		rem_cap = ((fg_vfSoc >> 8) * (u32)fg_conf_data->full_capnom)
+		 / 100;
 		max17042_write_verify_reg(chip->client,
 					MAX17042_RemCap, rem_cap);
-
-		rep_cap = rem_cap;
+		/*using model scaling factor to calculate rep_cap*/
+		rep_cap = rem_cap * (u32)MAX17042_MODEL_MUL_FACTOR(
+			fg_conf_data->full_cap/fg_conf_data->full_capnom);
 		max17042_write_verify_reg(chip->client,
 					MAX17042_RepCap, rep_cap);
 	}
 
 	/* Write dQ_acc to 200% of Capacity and dP_acc to 200% */
-	dq_acc = MAX17042_MODEL_MUL_FACTOR(fg_conf_data->full_cap) / dQ_ACC_DIV;
+	dq_acc = fg_conf_data->full_capnom / dQ_ACC_DIV;
 	max17042_write_verify_reg(chip->client, MAX17042_dQacc, dq_acc);
 	max17042_write_verify_reg(chip->client, MAX17042_dPacc, dP_ACC_200);
 
 	max17042_write_verify_reg(chip->client, MAX17042_FullCAP,
-			MAX17042_MODEL_MUL_FACTOR(fg_conf_data->full_cap)
+			fg_conf_data->full_cap
 			* fg_conf_data->rsense);
 	max17042_write_reg(chip->client, MAX17042_DesignCap,
 			fg_conf_data->design_cap * fg_conf_data->rsense);
 	max17042_write_verify_reg(chip->client, MAX17042_FullCAPNom,
-			MAX17042_MODEL_MUL_FACTOR(fg_conf_data->full_capnom)
+			fg_conf_data->full_capnom
 			* fg_conf_data->rsense);
 }
 
