@@ -927,6 +927,7 @@ struct mid_intel_hdmi_priv {
 	struct drm_display_mode *edid_preferred_mode;
 	bool is_hardcode_edid;
 	struct drm_display_mode *current_mode;
+	bool need_encoder_restore;
 };
 
 struct hdmi_edid_info {

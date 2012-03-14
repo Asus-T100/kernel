@@ -1359,10 +1359,12 @@ static int mdfld_crtc_dsi_mode_set(struct drm_crtc *crtc,
 	struct psb_framebuffer *mdfld_fb;
 	struct psb_intel_mode_device *mode_dev;
 	struct mdfld_dsi_hw_context *ctx;
+	struct drm_psb_private *dev_priv;
 	int fb_bpp;
 	int fb_pitch;
 	int fb_depth;
 	int hdelay;
+	static int init_flag = 1;   /*bootstrap flag*/
 
 	if (!crtc || !crtc->fb) {
 		DRM_ERROR("Invalid CRTC\n");
@@ -1383,6 +1385,7 @@ static int mdfld_crtc_dsi_mode_set(struct drm_crtc *crtc,
 	fb_pitch = crtc->fb->pitch;
 	fb_depth = crtc->fb->depth;
 	dev = crtc->dev;
+	dev_priv = (struct drm_psb_private *)dev->dev_private;
 
 	mutex_lock(&dsi_config->context_lock);
 
@@ -1426,6 +1429,14 @@ static int mdfld_crtc_dsi_mode_set(struct drm_crtc *crtc,
 	ctx->dspstride = fb_pitch;
 	ctx->dspsurf = mode_dev->bo_offset(dev, mdfld_fb);
 	ctx->dsplinoff = y * fb_pitch + x * (fb_bpp / 8);
+
+	if (init_flag == 1) {
+		printk(KERN_DEBUG"%s: ctx->dspsurf = 0x%x, ctx->dsplinoff = 0x%x\n",
+				__func__, ctx->dsplinoff, ctx->dspsurf);
+		dev_priv->init_screen_start = ctx->dspsurf;
+		dev_priv->init_screen_offset = ctx->dsplinoff;
+		init_flag = 0;
+	}
 
 	switch (fb_bpp) {
 	case 8:

@@ -65,7 +65,8 @@ static void SetAnchorPtr(MRSTLFB_DEVINFO *psDevInfo)
 static void MRSTLFBFlip(MRSTLFB_DEVINFO *psDevInfo, MRSTLFB_BUFFER *psBuffer)
 {
 	unsigned long ulAddr = (unsigned long)psBuffer->sDevVAddr.uiAddr;
-    struct fb_info *psLINFBInfo;
+	struct fb_info *psLINFBInfo;
+	static int FirstCleanFlag = 1;
 
 	if (!psDevInfo->bSuspended && !psDevInfo->bLeaveVT)
 	{
@@ -77,6 +78,11 @@ static void MRSTLFBFlip(MRSTLFB_DEVINFO *psDevInfo, MRSTLFB_BUFFER *psBuffer)
 
 	psLINFBInfo = psDevInfo->psLINFBInfo;
 	psLINFBInfo->screen_base = psBuffer->sCPUVAddr;
+
+	if (FirstCleanFlag == 1) {
+		memset(psDevInfo->sSystemBuffer.sCPUVAddr, 0, psDevInfo->sSystemBuffer.ui32BufferSize);
+		FirstCleanFlag = 0;
+	}
 }
 
 static void MRSTLFBRestoreLastFlip(MRSTLFB_DEVINFO *psDevInfo)

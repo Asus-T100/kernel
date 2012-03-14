@@ -1270,7 +1270,7 @@ PVRSRV_ERROR SysDevicePrePowerState(IMG_UINT32			ui32DeviceIndex,
 #endif
 
 #ifdef CONFIG_GFX_RTPM
-			pm_schedule_suspend(&gpDrmDevice->pdev->dev, 0);
+			pm_request_idle(&gpDrmDevice->pdev->dev);
 #endif
 
 		}

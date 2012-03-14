@@ -1151,9 +1151,9 @@ static int psbfb_create(struct psb_fbdev * fbdev, struct drm_fb_helper_surface_s
 	drm_fb_helper_fill_fix(info, fb->pitch, fb->depth);
 
 	if (get_panel_type(dev, 0) == TMD_6X10_VID)
-		drm_fb_helper_fill_var(info, &fbdev->psb_fb_helper, sizes->fb_width-200, sizes->fb_height);
+		drm_fb_helper_fill_var(info, &fbdev->psb_fb_helper, fb->width, fb->height);
 	else
-		drm_fb_helper_fill_var(info, &fbdev->psb_fb_helper, sizes->fb_width, sizes->fb_height);
+		drm_fb_helper_fill_var(info, &fbdev->psb_fb_helper, fb->width, fb->height);
 
 	info->fix.mmio_start = pci_resource_start(dev->pdev, 0);
 	info->fix.mmio_len = pci_resource_len(dev->pdev, 0);

@@ -164,10 +164,14 @@ static struct hdmi_edid_info mdfld_hdmi_edid[] = {
 };
 
 mdfld_hdmi_timing_t mdfld_hdmi_video_mode_table[] = {
-	{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-	{2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-	{3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-	{4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+	/* 640*480/60 */
+	{640, 480, 60, 25200, 800, 640, 800, 656, 752, 525, 480, 525, 490, 492},
+	/* 720*480/60 */
+	{720, 480, 60, 27027, 858, 720, 858, 736, 798, 525, 480, 525, 489, 495},
+	/* 720*480/60-16:9 */
+	{720, 480, 60, 27027, 858, 720, 858, 736, 798, 525, 480, 525, 489, 495},
+	/* 1280*720/60 */
+	{1280, 720, 60, 74250, 1650, 1280, 1650, 1390, 1430, 750, 720, 750, 725, 730},
 	{5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
 	{6, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
 	{7, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
@@ -183,7 +187,8 @@ mdfld_hdmi_timing_t mdfld_hdmi_video_mode_table[] = {
 	{16, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
 	{17, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
 	{18, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-	{19, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+	/* 1280*720/50 */
+	{1280, 720, 50, 74250, 1980, 1280, 1980, 1720, 1760, 750, 720, 750, 725, 730},
 	{20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
 	{21, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
 	{22, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
@@ -396,6 +401,12 @@ static int mdfld_hdmi_set_avi_infoframe(struct drm_device *dev,
 	u32 *p_vsif = (u32 *)&avi_if;
 
 	PSB_DEBUG_ENTRY("%s\n", __func__);
+
+	if(unlikely(!mode))
+	{
+		PSB_DEBUG_ENTRY("display mode is NULL!\n");
+		return 0;
+	}
 
 	/*get edid infomation*/
 	if (connector && connector->edid_blob_ptr) {
@@ -825,12 +836,16 @@ static void mdfld_hdmi_encoder_save(struct drm_encoder *encoder)
 	int dspcntr_reg = DSPBCNTR;
 	int dspbase_reg = MRST_DSPBBASE;
 	struct drm_device *dev = encoder->dev;
+	struct psb_intel_output *output = enc_to_psb_intel_output(encoder);
+	struct mid_intel_hdmi_priv *hdmi_priv = output->dev_priv;
 	u32 temp;
 	PSB_DEBUG_ENTRY("\n");
 
 	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
 				OSPM_UHB_FORCE_POWER_ON))
 		return ;
+
+	hdmi_priv->need_encoder_restore = true;
 
 	/*Use Disable pipeB plane to turn off HDMI screen
 	 in early_suspend  */
@@ -849,6 +864,8 @@ static void mdfld_hdmi_encoder_restore(struct drm_encoder *encoder)
 {
 	int dspcntr_reg = DSPBCNTR;
 	int dspbase_reg = MRST_DSPBBASE;
+	int dspbsurf_reg = DSPBSURF;
+	int dspblinoff_reg = DSPBLINOFF;
 	struct drm_device *dev = encoder->dev;
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *)dev->dev_private;
@@ -857,9 +874,18 @@ static void mdfld_hdmi_encoder_restore(struct drm_encoder *encoder)
 	u32 temp;
 	PSB_DEBUG_ENTRY("\n");
 
+	if(unlikely(!(hdmi_priv->need_encoder_restore)))
+		return;
+
+	hdmi_priv->need_encoder_restore = false;
+
 	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
 				OSPM_UHB_FORCE_POWER_ON))
 		return ;
+
+	/*Set DSPBSURF to systemBuffer temporary to avoid hdmi display last picture*/
+	REG_WRITE(dspbsurf_reg, dev_priv->init_screen_start);
+	REG_WRITE(dspblinoff_reg, dev_priv->init_screen_offset);
 
 	/*Restore pipe B plane to turn on HDMI screen
 	in late_resume*/
@@ -1661,7 +1687,9 @@ int mdfld_add_eedid_video_block_modes(struct drm_connector *connector, struct ed
                                 vic = *(c + j) & 0x7F;
 
                                 printk("vic: %d\n", vic);
-                                if (vic == 34 || vic == 32 || vic == 33) {
+                                if (vic == 34 || vic == 32 || vic == 33 ||
+				    vic == 1 || vic == 2 || vic == 3 ||
+				    vic == 4 || vic == 19) {
                                     p_video_mode = &mdfld_hdmi_video_mode_table[vic - 1];
 
                                     mode = drm_mode_create(dev);
@@ -1792,7 +1820,6 @@ static int mdfld_hdmi_get_modes(struct drm_connector *connector)
 			ret += 1;
 		}
 	}
-
 	if (ret <= 0) {
 		/*
 		 * Didn't get an EDID, so set wide sync ranges so we get all
@@ -1861,7 +1888,7 @@ static int mdfld_hdmi_get_modes(struct drm_connector *connector)
         }
     }
 
-	return ret;
+    return ret;
 }
 
 static int mdfld_hdmi_mode_valid(struct drm_connector *connector,
@@ -2043,6 +2070,7 @@ void mdfld_hdmi_init(struct drm_device *dev,
 	/*FIXME: May need to get this somewhere, but CG code seems hard coded it*/
 	hdmi_priv->hdmib_reg = HDMIB_CONTROL;
 	hdmi_priv->has_hdmi_sink = false;
+	hdmi_priv->need_encoder_restore = false;
 	psb_intel_output->dev_priv = hdmi_priv;
 
 	drm_encoder_helper_add(encoder, &mdfld_hdmi_helper_funcs);

@@ -99,34 +99,34 @@ void mdfld_dsi_pr2_ic_init(struct mdfld_dsi_config *dsi_config, int pipe)
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 
-	mdfld_dsi_send_gen_long_hs(sender, pr2_mcs_protect_off, 1, 0);
-	mdfld_dsi_send_gen_long_hs(sender, pr2_pixel_format, 1, 0);
-	mdfld_dsi_send_gen_long_hs(sender, pr2_dsi_control, 1, 0);
-	mdfld_dsi_send_gen_long_hs(sender, pr2_panel_driving, 2, 0);
-	mdfld_dsi_send_gen_long_hs(sender, pr2_v_timing, 2, 0);
-	mdfld_dsi_send_gen_long_hs(sender, pr2_control, 1, 0);
-	mdfld_dsi_send_gen_long_hs(sender, pr2_test_mode_0, 1, 0);
-	mdfld_dsi_send_gen_long_hs(sender, pr2_h_timing, 4, 0);
-	mdfld_dsi_send_gen_long_hs(sender, pr2_can_skip, 1, 0);
-	mdfld_dsi_send_gen_long_hs(sender, pr2_gamma_set_a, 4, 0);
-	mdfld_dsi_send_gen_long_hs(sender, pr2_gamma_set_b, 4, 0);
-	mdfld_dsi_send_gen_long_hs(sender, pr2_gamma_set_c, 4, 0);
-	mdfld_dsi_send_gen_long_hs(sender, pr2_charge_pump_setting, 2, 0);
-	mdfld_dsi_send_gen_long_hs(sender, pr2_test_mode_1, 2, 0);
-	mdfld_dsi_send_gen_long_hs(sender, pr2_source_amplifiers, 1, 0);
-	mdfld_dsi_send_gen_long_hs(sender, pr2_power_supply_circuit, 1, 0);
-	mdfld_dsi_send_gen_long_hs(sender, pr2_vreg_setting, 1, 0);
-	mdfld_dsi_send_gen_long_hs(sender, pr2_test_mode_2, 1, 0);
-	mdfld_dsi_send_gen_long_hs(sender, pr2_timing_control_0, 3, 0);
-	mdfld_dsi_send_gen_long_hs(sender, pr2_timing_control_1, 2, 0);
-	mdfld_dsi_send_gen_long_hs(sender, pr2_timing_control_2, 1, 0);
-	mdfld_dsi_send_gen_long_hs(sender, pr2_white_balance, 2, 0);
-	mdfld_dsi_send_gen_long_hs(sender, pr2_vcs_setting, 1, 0);
-	mdfld_dsi_send_gen_long_hs(sender, pr2_vcom_dc_setting, 1, 0);
-	mdfld_dsi_send_gen_long_hs(sender, pr2_test_mode_3, 2, 0);
-	mdfld_dsi_send_gen_long_hs(sender, pr2_mcs_protect_on, 1, 0);
-	mdfld_dsi_send_mcs_long_hs(sender, pr2_set_address_mode, 1, 0);
-	mdfld_dsi_send_mcs_long_hs(sender, pr2_set_pixel_format, 1, 0);
+	mdfld_dsi_send_gen_long_lp(sender, pr2_mcs_protect_off, 1, 0);
+	mdfld_dsi_send_gen_long_lp(sender, pr2_pixel_format, 1, 0);
+	mdfld_dsi_send_gen_long_lp(sender, pr2_dsi_control, 1, 0);
+	mdfld_dsi_send_gen_long_lp(sender, pr2_panel_driving, 2, 0);
+	mdfld_dsi_send_gen_long_lp(sender, pr2_v_timing, 2, 0);
+	mdfld_dsi_send_gen_long_lp(sender, pr2_control, 1, 0);
+	mdfld_dsi_send_gen_long_lp(sender, pr2_test_mode_0, 1, 0);
+	mdfld_dsi_send_gen_long_lp(sender, pr2_h_timing, 4, 0);
+	mdfld_dsi_send_gen_long_lp(sender, pr2_can_skip, 1, 0);
+	mdfld_dsi_send_gen_long_lp(sender, pr2_gamma_set_a, 4, 0);
+	mdfld_dsi_send_gen_long_lp(sender, pr2_gamma_set_b, 4, 0);
+	mdfld_dsi_send_gen_long_lp(sender, pr2_gamma_set_c, 4, 0);
+	mdfld_dsi_send_gen_long_lp(sender, pr2_charge_pump_setting, 2, 0);
+	mdfld_dsi_send_gen_long_lp(sender, pr2_test_mode_1, 2, 0);
+	mdfld_dsi_send_gen_long_lp(sender, pr2_source_amplifiers, 1, 0);
+	mdfld_dsi_send_gen_long_lp(sender, pr2_power_supply_circuit, 1, 0);
+	mdfld_dsi_send_gen_long_lp(sender, pr2_vreg_setting, 1, 0);
+	mdfld_dsi_send_gen_long_lp(sender, pr2_test_mode_2, 1, 0);
+	mdfld_dsi_send_gen_long_lp(sender, pr2_timing_control_0, 3, 0);
+	mdfld_dsi_send_gen_long_lp(sender, pr2_timing_control_1, 2, 0);
+	mdfld_dsi_send_gen_long_lp(sender, pr2_timing_control_2, 1, 0);
+	mdfld_dsi_send_gen_long_lp(sender, pr2_white_balance, 2, 0);
+	mdfld_dsi_send_gen_long_lp(sender, pr2_vcs_setting, 1, 0);
+	mdfld_dsi_send_gen_long_lp(sender, pr2_vcom_dc_setting, 1, 0);
+	mdfld_dsi_send_gen_long_lp(sender, pr2_test_mode_3, 2, 0);
+	mdfld_dsi_send_gen_long_lp(sender, pr2_mcs_protect_on, 1, 0);
+	mdfld_dsi_send_mcs_long_lp(sender, pr2_set_address_mode, 1, 0);
+	mdfld_dsi_send_mcs_long_lp(sender, pr2_set_pixel_format, 1, 0);
 
 	/* Now In Sleep Mode */
 }
