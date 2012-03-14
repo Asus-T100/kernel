@@ -1444,6 +1444,27 @@ static int check_charge_full(struct msic_power_module_info *mbi,
 
 	return is_full;
 }
+static void get_batt_temp_thresholds(short int *temp_high, short int *temp_low)
+{
+	int i, max_range;
+	*temp_high = *temp_low = 0;
+
+	if (sfi_table->temp_mon_ranges < SFI_TEMP_NR_RNG)
+		max_range = sfi_table->temp_mon_ranges;
+	else
+		max_range = SFI_TEMP_NR_RNG;
+
+	for (i = 0; i < max_range; i++) {
+		if (*temp_high < sfi_table->temp_mon_range[i].temp_up_lim)
+			*temp_high = sfi_table->temp_mon_range[i].temp_up_lim;
+	}
+
+	for (i = 0; i < max_range; i++) {
+		if (*temp_low > sfi_table->temp_mon_range[i].temp_low_lim)
+			*temp_low = sfi_table->temp_mon_range[i].temp_low_lim;
+	}
+}
+
 
 /**
 * sfi_temp_range_lookup - lookup SFI table to find the temperature range index
@@ -1544,7 +1565,8 @@ static void msic_batt_temp_charging(struct work_struct *work)
 			mutex_unlock(&mbi->batt_lock);
 		}
 		/* Check charger Status bits */
-		if (is_chrg_flt) {
+		if (is_chrg_flt || mbi->batt_props.status
+				== POWER_SUPPLY_STATUS_DISCHARGING) {
 			mutex_lock(&mbi->batt_lock);
 			mbi->batt_props.status =
 					POWER_SUPPLY_STATUS_NOT_CHARGING;
@@ -2487,6 +2509,31 @@ static void init_batt_props(struct msic_power_module_info *mbi)
 			    MSIC_MPWRSRCINT_BATTDET, 1);
 }
 
+static u8 compute_pwrsrc_lmt_reg_val(int temp_high, int temp_low)
+{
+	u8 data = 0;
+	if (temp_high >= 60)
+		data |= CHR_PWRSRCLMT_TMPH_60;
+	else if (temp_high >= 55)
+		data |= CHR_PWRSRCLMT_TMPH_55;
+	else if (temp_high >= 50)
+		data |= CHR_PWRSRCLMT_TMPH_50;
+	else
+		data |= CHR_PWRSRCLMT_TMPH_45;
+
+	if (temp_low >= 15)
+		data |= CHR_PWRSRCLMT_TMPL_15;
+	else if (temp_low >= 10)
+		data |= CHR_PWRSRCLMT_TMPL_10;
+	else if (temp_low >= 5)
+		data |= CHR_PWRSRCLMT_TMPL_05;
+	else
+		data |= CHR_PWRSRCLMT_TMPL_0;
+
+	return data;
+
+}
+
 /**
  * init_batt_thresholds - initialize battery thresholds
  * @mbi: msic module device structure
@@ -2495,6 +2542,10 @@ static void init_batt_props(struct msic_power_module_info *mbi)
 static void init_batt_thresholds(struct msic_power_module_info *mbi)
 {
 	int ret;
+	static const u16 address[] = {
+		MSIC_BATT_CHR_WDTWRITE_ADDR, MSIC_BATT_CHR_PWRSRCLMT_ADDR,
+	};
+	static u8 data[2];
 
 	batt_thrshlds->vbatt_sh_min = MSIC_BATT_VMIN_THRESHOLD;
 	batt_thrshlds->vbatt_crit = BATT_CRIT_CUTOFF_VOLT;
@@ -2508,6 +2559,16 @@ static void init_batt_thresholds(struct msic_power_module_info *mbi)
 			  BATT_SMIP_BASE_OFFSET, 1);
 	if (ret)
 		dev_warn(msic_dev, "%s: smip read failed\n", __func__);
+
+	if (mbi->is_batt_valid)
+		get_batt_temp_thresholds(&batt_thrshlds->temp_high,
+				&batt_thrshlds->temp_low);
+
+	data[0] = WDTWRITE_UNLOCK_VALUE;
+	data[1] = compute_pwrsrc_lmt_reg_val(batt_thrshlds->temp_high,
+			batt_thrshlds->temp_low);
+	if (msic_chr_write_multi(mbi, address, data, 2))
+		dev_err(msic_dev, "Error in programming PWRSRCLMT reg\n");
 
 	dev_dbg(msic_dev, "vbatt shutdown: %d\n", batt_thrshlds->vbatt_sh_min);
 	dev_dbg(msic_dev, "vbatt_crit: %d\n", batt_thrshlds->vbatt_crit);
@@ -2543,7 +2604,6 @@ static void init_charger_props(struct msic_power_module_info *mbi)
 static int init_msic_regs(struct msic_power_module_info *mbi)
 {
 	static const u16 address[] = {
-		MSIC_BATT_CHR_WDTWRITE_ADDR, MSIC_BATT_CHR_PWRSRCLMT_ADDR,
 		MSIC_BATT_CHR_WDTWRITE_ADDR, MSIC_BATT_CHR_CHRCVOLTAGE_ADDR,
 		MSIC_BATT_CHR_WDTWRITE_ADDR, MSIC_BATT_CHR_CHRTTIME_ADDR,
 		MSIC_BATT_CHR_WDTWRITE_ADDR, MSIC_BATT_CHR_SPCHARGER_ADDR,
@@ -2552,7 +2612,6 @@ static int init_msic_regs(struct msic_power_module_info *mbi)
 		MSIC_BATT_CHR_WDTWRITE_ADDR, MSIC_BATT_CHR_VBUSDET_ADDR,
 	};
 	static u8 data[] = {
-		WDTWRITE_UNLOCK_VALUE, CHR_PWRSRCLMT_SET_RANGE,
 		WDTWRITE_UNLOCK_VALUE,
 		CONV_VOL_DEC_MSICREG(CHR_CHRVOLTAGE_SET_DEF),
 		WDTWRITE_UNLOCK_VALUE, CHR_CHRTIME_SET_13HRS,
@@ -2565,7 +2624,7 @@ static int init_msic_regs(struct msic_power_module_info *mbi)
 
 	dump_registers(MSIC_CHRG_REG_DUMP_BOOT | MSIC_CHRG_REG_DUMP_EVENT);
 
-	return msic_chr_write_multi(mbi, address, data, 14);
+	return msic_chr_write_multi(mbi, address, data, 12);
 }
 
 /**

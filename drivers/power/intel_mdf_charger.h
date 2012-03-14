@@ -123,6 +123,16 @@
 #define MSIC_BATT_CHR_PWRSRCLMT_ADDR	0x18E	/* Temperature limits */
 #define CHR_PWRSRCLMT_SET_RANGE		0xC0
 
+#define CHR_PWRSRCLMT_TMPH_60		(0x03 << 6)
+#define CHR_PWRSRCLMT_TMPH_55		(0x02 << 6)
+#define CHR_PWRSRCLMT_TMPH_50		(0x01 << 6)
+#define CHR_PWRSRCLMT_TMPH_45		(0x00 << 6)
+
+#define CHR_PWRSRCLMT_TMPL_0		(0x00 << 4)
+#define CHR_PWRSRCLMT_TMPL_05		(0x01 << 4)
+#define CHR_PWRSRCLMT_TMPL_10		(0x02 << 4)
+#define CHR_PWRSRCLMT_TMPL_15		(0x03 << 4)
+
 #define MSIC_BATT_CHR_CHRSTWDT_ADDR	0x18F	/* Watchdog timer */
 #define CHR_WDT_DISABLE			0x0
 #define CHR_WDT_SET_60SEC		(1 << 4)
