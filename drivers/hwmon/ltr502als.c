@@ -104,8 +104,8 @@
 #define PS_MODE_DISABLE		2
 #define PS_MODE_ENABLE		3
 
-/* it takes about 650ms to generate the first interrupt when ALS is enabled*/
-#define ALS_FIRST_INT_DELAY	650
+/* it takes about 800ms to generate the first interrupt when ALS is enabled*/
+#define ALS_FIRST_INT_DELAY	800
 #define PS_FIRST_INT_DELAY	400
 #define ALS_INIT_DATA		0xffff
 #define CONFIGREG_DELAY         50
