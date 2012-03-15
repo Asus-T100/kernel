@@ -108,7 +108,6 @@ extern void pmu_set_s0ix_complete(void);
 extern bool pmu_is_s0i3_in_progress(void);
 extern int pmu_nc_set_power_state
 	(int islands, int state_type, int reg_type);
-extern void mfld_shutdown(void);
 extern void mfld_power_off(void);
 extern void acquire_scu_ready_sem(void);
 extern void release_scu_ready_sem(void);
@@ -144,8 +143,6 @@ static inline void pmu_set_s0ix_complete(void) { return; }
 static inline void mfld_power_off(void) { return; }
 static inline bool pmu_is_s0ix_in_progress(void) { return false; };
 static inline int pmu_set_devices_in_d0i0(void) { return 0; }
-
-#define mfld_shutdown NULL
 
 /*returns function not implemented*/
 static inline  int mfld_msg_read32(u32 cmd, u32 *data) { return -ENOSYS; }

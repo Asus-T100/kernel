@@ -210,8 +210,6 @@ extern int get_force_shutdown_occured(void);
 
 extern const struct atomisp_platform_data *intel_get_v4l2_subdev_table(void);
 
-extern void (*saved_shutdown)(void);
-
 #ifdef CONFIG_X86_MRFLD
 enum intel_mrfl_sim_type {
 	INTEL_MRFL_CPU_SIMULATION_NONE = 0,

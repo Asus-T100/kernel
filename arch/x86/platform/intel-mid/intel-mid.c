@@ -100,9 +100,6 @@ static int __init parse_itp(char *arg)
 }
 early_param("itp", parse_itp);
 
-void (*saved_shutdown)(void);
-EXPORT_SYMBOL(saved_shutdown);
-
 /* parse all the mtimer info to a static mtimer array */
 static int __init sfi_parse_mtmr(struct sfi_table_header *table)
 {
@@ -314,10 +311,6 @@ void __init x86_intel_mid_early_setup(void)
 
 	/* Moorestown specific power_off/restart method */
 	pm_power_off = intel_mid_power_off;
-	if (mfld_shutdown) {
-		saved_shutdown = machine_ops.shutdown;
-		machine_ops.shutdown = mfld_shutdown;
-	}
 	machine_ops.emergency_restart  = intel_mid_reboot;
 
 	/* Avoid searching for BIOS MP tables */

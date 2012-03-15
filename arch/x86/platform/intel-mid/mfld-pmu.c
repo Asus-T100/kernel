@@ -1755,6 +1755,7 @@ int __ref pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t state)
 	/* Ignore callback from devices until we have initialized */
 	if (unlikely((!pmu_initialized)))
 		return 0;
+
 	/* FIXME:: This is to prevent D0ix requests from USB and SPI1 on CVT.
 	 * Platform is getting Hanged when these are sending D0ix requests.
 	 */
@@ -1767,18 +1768,9 @@ int __ref pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t state)
 	 * get blocked, until pmu_sc_irq() releases */
 	down(&mid_pmu_cxt->scu_ready_sem);
 
-	/* There could be some drivers that don't handle
-	 * shutdown properly, that is even thou
-	 * device shtudown is called we still could
-	 * recieve set_power_state from buggy drivers
-	 */
-	if (unlikely(mid_pmu_cxt->shutdown_started)) {
-		printk(KERN_CRIT "%s: received after device shutdown from"
-		       " %04x %04X %s %20s:\n",
-		__func__, pdev->vendor, pdev->device, dev_name(&pdev->dev),
-			dev_driver_string(&pdev->dev));
-		BUG();
-	}
+	/* dont proceed if shutdown in progress */
+	if (unlikely(mid_pmu_cxt->shutdown_started))
+		goto unlock;
 
 	mid_pmu_cxt->interactive_cmd_sent = true;
 
@@ -1913,6 +1905,22 @@ int __ref pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t state)
 unlock:
 	mid_pmu_cxt->interactive_cmd_sent = false;
 	up(&mid_pmu_cxt->scu_ready_sem);
+
+	/*
+	 * Device shutdown is called we still could
+	 * recieve set_power_state from drivers.
+	 * wait for shutdown to complete.
+	 */
+	if (unlikely(mid_pmu_cxt->shutdown_started)) {
+		WARN(1,
+		"%s: received after device shutdown from %04x %04X %s %20s:\n",
+		__func__, pdev->vendor, pdev->device, dev_name(&pdev->dev),
+			dev_driver_string(&pdev->dev));
+
+		/* wait for shutdown/power_off */
+		while (true)
+			msleep(100);
+	}
 
 	return status;
 }
@@ -2709,11 +2717,23 @@ static void __devexit mid_pmu_remove(struct pci_dev *dev)
 	pci_disable_device(dev);
 }
 
+static void mid_pmu_shutdown(struct pci_dev *dev)
+{
+	dev_dbg(&mid_pmu_cxt->pmu_dev->dev, "Mid PM mid_pmu_shutdown called\n");
+
+	if (mid_pmu_cxt) {
+		down(&mid_pmu_cxt->scu_ready_sem);
+		mid_pmu_cxt->shutdown_started = true;
+		up(&mid_pmu_cxt->scu_ready_sem);
+	}
+}
+
 static struct pci_driver driver = {
 	.name = PMU_DRV_NAME,
 	.id_table = mid_pm_ids,
 	.probe = mid_pmu_probe,
 	.remove = __devexit_p(mid_pmu_remove),
+	.shutdown = mid_pmu_shutdown
 };
 
 /* return platform specific deepest states that the device can enter */
@@ -2836,22 +2856,6 @@ static int mid_suspend(suspend_state_t state)
 				"Failed to enter S3 status: %d\n", ret);
 
 	return ret;
-}
-
-/* This function is here just to have a hook to execute code before
- * generic x86 shutdown is executed. saved_shutdown contains pointer
- * to original generic x86 shutdown function
- */
-void mfld_shutdown(void)
-{
-	if (mid_pmu_cxt) {
-		down(&mid_pmu_cxt->scu_ready_sem);
-		mid_pmu_cxt->shutdown_started = true;
-		up(&mid_pmu_cxt->scu_ready_sem);
-	}
-
-	if (saved_shutdown)
-		saved_shutdown();
 }
 
 void mfld_power_off(void)
