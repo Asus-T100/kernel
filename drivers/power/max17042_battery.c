@@ -51,6 +51,7 @@
 #define STATUS_BR_BIT		(1 << 15)
 
 #define MAX17042_IC_VERSION	0x0092
+#define MAX17050_IC_VERSION	0x00AC
 
 /* Vmax disabled, Vmin disabled */
 #define VOLT_DEF_MAX_MIN_THRLD  0xFF00
@@ -99,8 +100,12 @@
 
 #define MAX17042_MAX_MEM	(0xFF + 1)
 
+/* Model multiplying and dividing factors for Max17050
+ * chip to be added later as needed
+ */
 #define MAX17042_MODEL_MUL_FACTOR(a)	((a * 10) / 7)
 #define MAX17042_MODEL_DIV_FACTOR(a)	((a * 7) / 10)
+
 #define CONSTANT_TEMP_IN_POWER_SUPPLY	350
 #define POWER_SUPPLY_VOLT_MIN_THRESHOLD	3500000
 #define BATTERY_VOLT_MIN_THRESHOLD	3600000
@@ -204,8 +209,21 @@ enum max17042_register {
 
 };
 
+#ifdef CONFIG_BATTERY_MAX17050
+enum max17050_register {
+	MAX17050_QRTbl00	= 0x12,
+	MAX17050_FullSOCThr	= 0x13,
+	MAX17050_QRTbl10	= 0x22,
+	MAX17050_QRTbl20	= 0x32,
+	MAX17050_V_empty	= 0x3A,
+	MAX17050_QRTbl30	= 0x42,
+};
+#define DRV_NAME "max17050_battery"
+#define DEV_NAME "max17050"
+#else
 #define DRV_NAME "max17042_battery"
 #define DEV_NAME "max17042"
+#endif
 
 /* No of times we should retry on -EAGAIN error */
 #define NR_RETRY_CNT	3
@@ -253,6 +271,15 @@ struct max17042_config_data {
 	u16	learn_cfg;
 	u16	filter_cfg;
 	u16	relax_cfg;
+
+#ifdef CONFIG_BATTERY_MAX17050
+	u16   full_soc_thr;
+	u16   vempty;
+	u16   qrtbl00;
+	u16   qrtbl10;
+	u16   qrtbl20;
+	u16   qrtbl30;
+#endif
 	u16	cell_char_tbl[CELL_CHAR_TBL_SAMPLES];
 } __packed;
 
@@ -596,7 +623,11 @@ static int max17042_get_property(struct power_supply *psy,
 		val->intval = (ret >> 3) * MAX17042_VOLT_CONV_FCTR;
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_MIN_DESIGN:
+#ifdef CONFIG_BATTERY_MAX17050
+		ret = max17042_read_reg(chip->client, MAX17050_V_empty);
+#else
 		ret = max17042_read_reg(chip->client, MAX17042_V_empty);
+#endif
 		if (ret < 0)
 			goto ps_prop_read_err;
 		val->intval = (ret >> 7) * 10000; /* Units of LSB = 10mV */
@@ -697,18 +728,25 @@ static void dump_fg_conf_data(struct max17042_chip *chip)
 					fg_conf_data->config_init);
 	dev_info(&chip->client->dev, "rcomp0:%x\n", fg_conf_data->rcomp0);
 	dev_info(&chip->client->dev, "tempCo:%x\n", fg_conf_data->tempCo);
+#ifdef CONFIG_BATTERY_MAX17050
+	dev_info(&chip->client->dev, "qrtbl00:%x\n", fg_conf_data->qrtbl00);
+	dev_info(&chip->client->dev, "qrtbl10:%x\n", fg_conf_data->qrtbl10);
+	dev_info(&chip->client->dev, "qrtbl20:%x\n", fg_conf_data->qrtbl20);
+	dev_info(&chip->client->dev, "qrtbl30:%x\n", fg_conf_data->qrtbl30);
+#else
 	dev_info(&chip->client->dev, "kempty0:%x\n", fg_conf_data->kempty0);
+	dev_info(&chip->client->dev, "etc:%x\n", fg_conf_data->etc);
+	dev_info(&chip->client->dev, "soc_empty:%x\n",
+						fg_conf_data->soc_empty);
+#endif
 	dev_info(&chip->client->dev, "full_cap:%x\n", fg_conf_data->full_cap);
 	dev_info(&chip->client->dev, "cycles:%x\n", fg_conf_data->cycles);
 	dev_info(&chip->client->dev, "full_capnom:%x\n",
 						fg_conf_data->full_capnom);
-	dev_info(&chip->client->dev, "soc_empty:%x\n",
-						fg_conf_data->soc_empty);
 	dev_info(&chip->client->dev, "ichgt_term:%x\n",
 						fg_conf_data->ichgt_term);
 	dev_info(&chip->client->dev, "design_cap:%x\n",
 						fg_conf_data->design_cap);
-	dev_info(&chip->client->dev, "etc:%x\n", fg_conf_data->etc);
 	dev_info(&chip->client->dev, "rsense:%x\n", fg_conf_data->rsense);
 	dev_info(&chip->client->dev, "cfg:%x\n", fg_conf_data->cfg);
 	dev_info(&chip->client->dev, "learn_cfg:%x\n",
@@ -835,6 +873,10 @@ static void write_config_regs(struct max17042_chip *chip)
 						fg_conf_data->filter_cfg);
 	max17042_write_reg(chip->client, MAX17042_RelaxCFG,
 						fg_conf_data->relax_cfg);
+#ifdef CONFIG_BATTERY_MAX17050
+	max17042_write_reg(chip->client, MAX17050_FullSOCThr,
+					fg_conf_data->full_soc_thr);
+#endif
 }
 
 static void write_custom_regs(struct max17042_chip *chip)
@@ -843,15 +885,28 @@ static void write_custom_regs(struct max17042_chip *chip)
 						fg_conf_data->rcomp0);
 	max17042_write_verify_reg(chip->client, MAX17042_TempCo,
 						fg_conf_data->tempCo);
+	max17042_write_verify_reg(chip->client, MAX17042_ICHGTerm,
+						fg_conf_data->ichgt_term);
+#ifdef CONFIG_BATTER_MAX17050
+	max17042_write_verify_reg(chip->client, MAX17050_V_empty,
+							fg_data->vempty);
+	max17042_write_verify_reg(chip->client, MAX17050_QRTbl00,
+							fg_conf_data->qrtbl00);
+	max17042_write_verify_reg(chip->client, MAX17050_QRTbl10,
+							fg_conf_data->qrtbl10);
+	max17042_write_verify_reg(chip->client, MAX17050_QRTbl20,
+							fg_conf_data->qrtbl20);
+	max17042_write_verify_reg(chip->client, MAX17050_QRTbl30,
+							fg_conf_data->qrtbl30);
+#else
 	max17042_write_reg(chip->client, MAX17042_ETC, fg_conf_data->etc);
 	max17042_write_verify_reg(chip->client, MAX17042_K_empty0,
 						fg_conf_data->kempty0);
-	max17042_write_verify_reg(chip->client, MAX17042_ICHGTerm,
-						fg_conf_data->ichgt_term);
 	max17042_write_verify_reg(chip->client, MAX17042_SOCempty,
 						fg_conf_data->soc_empty);
 	max17042_write_verify_reg(chip->client, MAX17042_V_empty,
 						MAX17042_DEF_VEMPTY_VAL);
+#endif
 }
 
 static void update_capacity_regs(struct max17042_chip *chip)
@@ -922,6 +977,16 @@ static void save_runtime_params(struct max17042_chip *chip)
 							MAX17042_RCOMP0);
 	fg_conf_data->tempCo = max17042_read_reg(chip->client,
 							MAX17042_TempCo);
+#ifdef CONFIG_BATTERY_MAX17050
+	fg_conf_data->qrtbl00 = max17042_read_reg(chip->client,
+							MAX17050_QRTbl00);
+	fg_conf_data->qrtbl10 = max17042_read_reg(chip->client,
+							MAX17050_QRTbl10);
+	fg_conf_data->qrtbl20 = max17042_read_reg(chip->client,
+							MAX17050_QRTbl20);
+	fg_conf_data->qrtbl30 = max17042_read_reg(chip->client,
+							MAX17050_QRTbl30);
+#endif
 	fg_conf_data->full_capnom = max17042_read_reg(chip->client,
 							MAX17042_FullCAPNom);
 	fg_conf_data->full_cap = max17042_read_reg(chip->client,
@@ -1402,7 +1467,8 @@ static int __devinit max17042_probe(struct i2c_client *client,
 		}
 	}
 
-	if (ret != MAX17042_IC_VERSION) {
+	if ((ret != MAX17042_IC_VERSION) &&
+			(ret != MAX17050_IC_VERSION)) {
 		dev_err(&client->dev, "device version mismatch: %x\n", ret);
 		kfree(chip);
 		kfree(fg_conf_data);
@@ -1456,8 +1522,11 @@ static int __devinit max17042_probe(struct i2c_client *client,
 						MAX17042_CFG_INTR_SOCVF);
 	}
 	chip->technology = chip->pdata->technology;
-
+#ifdef CONFIG_BATTERY_MAX17050
+	chip->battery.name		= "max17050_battery";
+#else
 	chip->battery.name		= "max17042_battery";
+#endif
 	chip->battery.type		= POWER_SUPPLY_TYPE_BATTERY;
 	chip->battery.get_property	= max17042_get_property;
 	chip->battery.external_power_changed = max17042_external_power_changed;
@@ -1600,7 +1669,8 @@ static int max17042_runtime_idle(struct device *dev)
 #endif
 
 static const struct i2c_device_id max17042_id[] = {
-	{ DEV_NAME, 0 },
+	{ "max17042", 0 },
+	{ "max17050", 1 },
 	{ },
 };
 MODULE_DEVICE_TABLE(i2c, max17042_id);
