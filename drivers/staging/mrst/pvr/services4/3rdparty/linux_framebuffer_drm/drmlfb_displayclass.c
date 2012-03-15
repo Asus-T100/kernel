@@ -70,6 +70,7 @@ static void MRSTLFBFlip(MRSTLFB_DEVINFO *psDevInfo, MRSTLFB_BUFFER *psBuffer)
 
 	if (!psDevInfo->bSuspended && !psDevInfo->bLeaveVT)
 	{
+		MRSTLFBRestorePlaneConfig(psDevInfo);
 		MRSTLFBFlipToSurface(psDevInfo, ulAddr);
 	}
 
@@ -83,6 +84,81 @@ static void MRSTLFBFlip(MRSTLFB_DEVINFO *psDevInfo, MRSTLFB_BUFFER *psBuffer)
 		memset(psDevInfo->sSystemBuffer.sCPUVAddr, 0, psDevInfo->sSystemBuffer.ui32BufferSize);
 		FirstCleanFlag = 0;
 	}
+}
+
+static void MRSTLFBFlipOverlay(MRSTLFB_DEVINFO *psDevInfo,
+			struct intel_overlay_context *psContext)
+{
+
+}
+
+static void MRSTLFBFlipSprite(MRSTLFB_DEVINFO *psDevInfo,
+			struct intel_sprite_context *psContext)
+{
+	struct drm_device *dev;
+	struct drm_psb_private *dev_priv;
+	u32 reg_offset;
+	int pipe;
+
+	dev = psDevInfo->psDrmDevice;
+	dev_priv =
+		(struct drm_psb_private *)psDevInfo->psDrmDevice->dev_private;
+
+	if (psContext->index == 0) {
+		reg_offset = 0;
+		pipe = 0;
+	} else if (psContext->index == 1) {
+		reg_offset = 0x1000;
+		pipe = 1;
+	} else if (psContext->index == 2) {
+		reg_offset = 0x2000;
+		pipe = 2;
+	} else
+		return;
+
+	if ((psContext->update_mask & SPRITE_UPDATE_POSITION))
+		PSB_WVDC32(psContext->pos, DSPAPOS + reg_offset);
+	if ((psContext->update_mask & SPRITE_UPDATE_SIZE)) {
+		PSB_WVDC32(psContext->size, DSPASIZE + reg_offset);
+		PSB_WVDC32(psContext->stride, DSPASTRIDE + reg_offset);
+	}
+
+	if ((psContext->update_mask & SPRITE_UPDATE_CONTROL))
+		PSB_WVDC32(psContext->cntr, DSPACNTR + reg_offset);
+
+	if ((psContext->update_mask & SPRITE_UPDATE_SURFACE)) {
+		PSB_WVDC32(psContext->linoff, DSPALINOFF + reg_offset);
+		PSB_WVDC32(psContext->surf, DSPASURF + reg_offset);
+	}
+}
+
+static void MRSTLFBFlipContexts(MRSTLFB_DEVINFO *psDevInfo,
+			struct mdfld_plane_contexts *psContexts)
+{
+	struct intel_sprite_context *psSpriteContext;
+	struct intel_overlay_context *psOverlayContext;
+	int i;
+
+	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, MRST_FALSE))
+		return;
+
+	/*flip all active sprite planes*/
+	for (i = 0; i < INTEL_SPRITE_PLANE_NUM; i++) {
+		if (psContexts->active_sprites & (1 << i)) {
+			psSpriteContext = &psContexts->sprite_contexts[i];
+			MRSTLFBFlipSprite(psDevInfo, psSpriteContext);
+		}
+	}
+
+	/*flip all active overlay planes*/
+	for (i = 0; i < INTEL_OVERLAY_PLANE_NUM; i++) {
+		if (psContexts->active_overlays & (i << i)) {
+			psOverlayContext = &psContexts->overlay_contexts[i];
+			MRSTLFBFlipOverlay(psDevInfo, psOverlayContext);
+		}
+	}
+
+	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 }
 
 static void MRSTLFBRestoreLastFlip(MRSTLFB_DEVINFO *psDevInfo)
@@ -121,13 +197,14 @@ static void FlushInternalVSyncQueue(MRSTLFB_SWAPCHAIN *psSwapChain, MRST_BOOL bF
 
 		DEBUG_PRINTK((KERN_INFO DRIVER_PREFIX ": FlushInternalVSyncQueue: Flushing swap buffer (index %lu)\n", psSwapChain->ulRemoveIndex));
 
-		if(psFlipItem->bFlipped == MRST_FALSE)
+		if (psFlipItem->bFlipped == MRST_FALSE && bFlip)
 		{
-			if (bFlip)
-			{
-				
-				MRSTLFBFlip(psSwapChain->psDevInfo, psFlipItem->psBuffer);
-			}
+			if (psFlipItem->psBuffer)
+				MRSTLFBFlip(psSwapChain->psDevInfo,
+					psFlipItem->psBuffer);
+			else
+				MRSTLFBFlipContexts(psSwapChain->psDevInfo,
+					&psFlipItem->sPlaneContexts);
 		}
 		
 		if(psFlipItem->bCmdCompleted == MRST_FALSE)
@@ -158,13 +235,15 @@ static void FlushInternalVSyncQueue(MRSTLFB_SWAPCHAIN *psSwapChain, MRST_BOOL bF
 	psSwapChain->ulRemoveIndex = 0;
 }
 
-static void DRMLFBFlipBuffer(MRSTLFB_DEVINFO *psDevInfo, MRSTLFB_SWAPCHAIN *psSwapChain, MRSTLFB_BUFFER *psBuffer) 
+static void DRMLFBFlipBuffer(MRSTLFB_DEVINFO *psDevInfo,
+			MRSTLFB_SWAPCHAIN *psSwapChain,
+			MRSTLFB_BUFFER *psBuffer)
 {
-	if(psSwapChain != NULL) 
+	if (psSwapChain != NULL)
 	{
 		if(psDevInfo->psCurrentSwapChain != NULL)
 		{
-			
+
 			if(psDevInfo->psCurrentSwapChain != psSwapChain) 
 				FlushInternalVSyncQueue(psDevInfo->psCurrentSwapChain, MRST_FALSE);
 		}
@@ -173,6 +252,26 @@ static void DRMLFBFlipBuffer(MRSTLFB_DEVINFO *psDevInfo, MRSTLFB_SWAPCHAIN *psSw
 	}
 
 	MRSTLFBFlip(psDevInfo, psBuffer);
+}
+
+static void DRMLFBFlipBuffer2(MRSTLFB_DEVINFO *psDevInfo,
+			MRSTLFB_SWAPCHAIN *psSwapChain,
+			struct mdfld_plane_contexts *psContexts)
+{
+	if (!psSwapChain)
+		goto flip_out;
+
+	if (!psDevInfo->psCurrentSwapChain) {
+		psDevInfo->psCurrentSwapChain = psSwapChain;
+		psDevInfo->psCurrentBuffer = NULL;
+		goto flip_out;
+	}
+
+	if (psDevInfo->psCurrentSwapChain != psSwapChain)
+		FlushInternalVSyncQueue(psDevInfo->psCurrentSwapChain,
+					MRST_FALSE);
+flip_out:
+	MRSTLFBFlipContexts(psDevInfo, psContexts);
 }
 
 static void SetFlushStateNoLock(MRSTLFB_DEVINFO* psDevInfo,
@@ -907,7 +1006,7 @@ static PVRSRV_ERROR SwapToDCSystem(IMG_HANDLE hDevice,
 	return (PVRSRV_OK);
 }
 
-static MRST_BOOL MRSTLFBVSyncIHandler(MRSTLFB_DEVINFO *psDevInfo)
+static MRST_BOOL MRSTLFBVSyncIHandler(MRSTLFB_DEVINFO *psDevInfo, int iPipe)
 {
 	MRST_BOOL bStatus = MRST_FALSE;
 	MRSTLFB_VSYNC_FLIP_ITEM *psFlipItem;
@@ -916,85 +1015,55 @@ static MRST_BOOL MRSTLFBVSyncIHandler(MRSTLFB_DEVINFO *psDevInfo)
 	MRSTLFB_SWAPCHAIN *psSwapChain;
 
 	spin_lock_irqsave(&psDevInfo->sSwapChainLock, ulLockFlags);
-
 	
 	psSwapChain = psDevInfo->psCurrentSwapChain;
 	if (psSwapChain == NULL)
-	{
 		goto ExitUnlock;
-	}
-
 	
-	if (psDevInfo->bFlushCommands || psDevInfo->bSuspended || psDevInfo->bLeaveVT)
-	{
+	if (psDevInfo->bFlushCommands || psDevInfo->bSuspended ||
+		psDevInfo->bLeaveVT)
 		goto ExitUnlock;
-	}
 
 	psFlipItem = &psSwapChain->psVSyncFlips[psSwapChain->ulRemoveIndex];
 	ulMaxIndex = psSwapChain->ulSwapChainLength - 1;
 
-	while(psFlipItem->bValid)
-	{	
-		
-		if(psFlipItem->bFlipped)
-		{
-			
-			if(!psFlipItem->bCmdCompleted)
-			{
-				
+	while (psFlipItem->bValid) {
+		if (psFlipItem->bFlipped) {
+			if (!psFlipItem->bCmdCompleted) {
 				MRST_BOOL bScheduleMISR;
-				
 				bScheduleMISR = MRST_TRUE;
-
-				
 				psSwapChain->psPVRJTable->pfnPVRSRVCmdComplete((IMG_HANDLE)psFlipItem->hCmdComplete, bScheduleMISR);
-
-				
 				psFlipItem->bCmdCompleted = MRST_TRUE;
 			}
-
 			
 			psFlipItem->ulSwapInterval--;
-
 			
-			if(psFlipItem->ulSwapInterval == 0)
-			{	
-				
+			if (psFlipItem->ulSwapInterval == 0) {
 				psSwapChain->ulRemoveIndex++;
-				
+
 				if(psSwapChain->ulRemoveIndex > ulMaxIndex)
-				{
 					psSwapChain->ulRemoveIndex = 0;
-				}
-				
 				
 				psFlipItem->bCmdCompleted = MRST_FALSE;
 				psFlipItem->bFlipped = MRST_FALSE;
-	
 				
 				psFlipItem->bValid = MRST_FALSE;
-			}
-			else
-			{
-				
+			} else
 				break;
-			}
-		}
-		else
-		{
-			
-			DRMLFBFlipBuffer(psDevInfo, psSwapChain, psFlipItem->psBuffer);
-			
-			
+		} else {
+			if (psFlipItem->psBuffer)
+				DRMLFBFlipBuffer(psDevInfo, psSwapChain,
+						psFlipItem->psBuffer);
+			else
+				DRMLFBFlipBuffer2(psDevInfo, psSwapChain,
+						&psFlipItem->sPlaneContexts);
 			psFlipItem->bFlipped = MRST_TRUE;
-			
-			
 			break;
 		}
 		
-		
 		psFlipItem = &psSwapChain->psVSyncFlips[psSwapChain->ulRemoveIndex];
 	}
+
 	if (psSwapChain->ulRemoveIndex == psSwapChain->ulInsertIndex)
 		bStatus = MRST_TRUE;
 ExitUnlock:
@@ -1003,17 +1072,123 @@ ExitUnlock:
 	return bStatus;
 }
 
-
-
 #if defined(MRST_USING_INTERRUPTS)
 static int
 MRSTLFBVSyncISR(struct drm_device *psDrmDevice, int iPipe)
 {
 	MRSTLFB_DEVINFO *psDevInfo = GetAnchorPtr();	
 
-	return MRSTLFBVSyncIHandler(psDevInfo);
+	return MRSTLFBVSyncIHandler(psDevInfo, iPipe);
 }
 #endif
+
+static IMG_BOOL ProcessFlip2(IMG_HANDLE hCmdCookie,
+			IMG_UINT32 ui32DataSize,
+			IMG_VOID *pvData)
+{
+	DISPLAYCLASS_FLIP_COMMAND2 *psFlipCmd;
+	MRSTLFB_SWAPCHAIN *psSwapChain;
+#if defined(MRST_USING_INTERRUPTS)
+	MRSTLFB_VSYNC_FLIP_ITEM *psFlipItem;
+#endif
+	unsigned long ulLockFlags;
+	unsigned long irqflags;
+	struct drm_device *dev;
+	struct drm_psb_private *dev_priv;
+	MRSTLFB_DEVINFO *psDevInfo;
+	struct mdfld_plane_contexts *psPlaneContexts;
+
+	psFlipCmd = (DISPLAYCLASS_FLIP_COMMAND2 *)pvData;
+	psDevInfo = (MRSTLFB_DEVINFO *)psFlipCmd->hExtDevice;
+	psSwapChain = (MRSTLFB_SWAPCHAIN *)psFlipCmd->hExtSwapChain;
+	dev = psDevInfo->psDrmDevice;
+	dev_priv =
+		(struct drm_psb_private *)psDevInfo->psDrmDevice->dev_private;
+
+	/*verify private data*/
+	if (!psFlipCmd->pvPrivData ||
+	psFlipCmd->ui32PrivDataLength != sizeof(struct mdfld_plane_contexts)) {
+		DRM_ERROR("%s: Invalid private data\n", __func__);
+		return IMG_FALSE;
+	}
+
+	psPlaneContexts = (struct mdfld_plane_contexts *)psFlipCmd->pvPrivData;
+
+	spin_lock_irqsave(&psDevInfo->sSwapChainLock, ulLockFlags);
+#if defined(MRST_USING_INTERRUPTS)
+	if (!drm_psb_3D_vblank || psFlipCmd->ui32SwapInterval == 0 ||
+		psDevInfo->bFlushCommands) {
+#endif
+		/* update sprite plane context*/
+		DRMLFBFlipBuffer2(psDevInfo, psSwapChain, psPlaneContexts);
+		psSwapChain->psPVRJTable->pfnPVRSRVCmdComplete(hCmdCookie,
+								IMG_TRUE);
+#if defined(MRST_USING_INTERRUPTS)
+		goto ExitTrueUnlock;
+	}
+
+	psFlipItem = &psSwapChain->psVSyncFlips[psSwapChain->ulInsertIndex];
+
+	/**
+	 * Enable vblank on pipe
+	 * TODO: replace following vblank enabling code with drm_get_vblank
+	 * it's UGLY to enable the vblank in this way!!!
+	 */
+	if (!dev_priv->um_start) {
+		dev_priv->um_start = true;
+
+		if (dev_priv->b_dsr_enable_config)
+			dev_priv->b_dsr_enable = true;
+	}
+	if (dev_priv->b_dsr_enable)
+		dev_priv->exit_idle(dev, MDFLD_DSR_2D_3D, NULL, true);
+
+	if (hdmi_state) {
+		/*
+		 * Enable HDMI vblank interrupt, otherwise page flip would stuck
+		 * if both MIPI A and C are off.
+		 */
+		spin_lock_irqsave(&dev_priv->irqmask_lock, irqflags);
+		mid_enable_pipe_event(dev_priv, 1);
+		psb_enable_pipestat(dev_priv, 1, PIPE_VBLANK_INTERRUPT_ENABLE);
+		spin_unlock_irqrestore(&dev_priv->irqmask_lock, irqflags);
+	}
+
+	if (psFlipItem->bValid == MRST_FALSE) {
+		unsigned long ulMaxIndex = psSwapChain->ulSwapChainLength - 1;
+
+		if (psSwapChain->ulInsertIndex == psSwapChain->ulRemoveIndex) {
+			/*update sprite plane context*/
+			DRMLFBFlipBuffer2(psDevInfo, psSwapChain,
+				psPlaneContexts);
+			psFlipItem->bFlipped = MRST_TRUE;
+		} else {
+			psFlipItem->bFlipped = MRST_FALSE;
+		}
+
+		psFlipItem->hCmdComplete = (MRST_HANDLE)hCmdCookie;
+		psFlipItem->ulSwapInterval =
+			(unsigned long)psFlipCmd->ui32SwapInterval;
+		psFlipItem->psBuffer = NULL;
+		/*copy plane contexts to this flip item*/
+		memcpy(&psFlipItem->sPlaneContexts, psPlaneContexts,
+			sizeof(struct mdfld_plane_contexts));
+		psFlipItem->bValid = MRST_TRUE;
+
+		psSwapChain->ulInsertIndex++;
+		if (psSwapChain->ulInsertIndex > ulMaxIndex)
+			psSwapChain->ulInsertIndex = 0;
+
+		goto ExitTrueUnlock;
+	}
+
+	spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
+	return IMG_FALSE;
+ExitTrueUnlock:
+#endif
+	spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
+	return IMG_TRUE;
+}
 
 static IMG_BOOL ProcessFlip(IMG_HANDLE  hCmdCookie,
                             IMG_UINT32  ui32DataSize,
@@ -1032,25 +1207,22 @@ static IMG_BOOL ProcessFlip(IMG_HANDLE  hCmdCookie,
 	struct drm_psb_private *dev_priv;
 	
 	if(!hCmdCookie || !pvData)
-	{
 		return IMG_FALSE;
-	}
 
-	
 	psFlipCmd = (DISPLAYCLASS_FLIP_COMMAND*)pvData;
 
-	if (psFlipCmd == IMG_NULL || sizeof(DISPLAYCLASS_FLIP_COMMAND) != ui32DataSize)
-	{
+	if (psFlipCmd == IMG_NULL)
 		return IMG_FALSE;
-	}
 
-	
 	psDevInfo = (MRSTLFB_DEVINFO*)psFlipCmd->hExtDevice;
 	dev = psDevInfo->psDrmDevice;
 	dev_priv = (struct drm_psb_private *)
 		psDevInfo->psDrmDevice->dev_private;
 	psBuffer = (MRSTLFB_BUFFER*)psFlipCmd->hExtBuffer;
 	psSwapChain = (MRSTLFB_SWAPCHAIN*) psFlipCmd->hExtSwapChain;
+
+	if (!psBuffer)
+		return ProcessFlip2(hCmdCookie, ui32DataSize, pvData);
 
 	spin_lock_irqsave(&psDevInfo->sSwapChainLock, ulLockFlags);
 
@@ -1618,7 +1790,9 @@ MRST_ERROR MRSTLFBInit(struct drm_device * dev)
 		psDevInfo->psDrmDevice = dev;
 		psDevInfo->ulRefCount = 0;
 
-		
+		/*save default plane config*/
+		MRSTLFBSavePlaneConfig(psDevInfo);
+
 		if(InitDev(psDevInfo) != MRST_OK)
 		{
 			return (MRST_ERROR_INIT_FAILURE);

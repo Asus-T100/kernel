@@ -188,6 +188,49 @@ void MRSTLFBFlipToSurface(MRSTLFB_DEVINFO *psDevInfo,  unsigned long uiAddr)
     }   
 }
 
+void MRSTLFBSavePlaneConfig(MRSTLFB_DEVINFO *psDevInfo)
+{
+	struct drm_psb_private *dev_priv =
+		(struct drm_psb_private *) psDevInfo->psDrmDevice->dev_private;
+	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, false))
+		return;
+
+	psDevInfo->uPlaneACntr = PSB_RVDC32(DSPACNTR);
+	psDevInfo->uPlaneAStride = PSB_RVDC32(DSPASTRIDE);
+#ifdef CONFIG_MDFD_HDMI
+	/*TODO: fully support HDMI later*/
+	/*psDevInfo->uPlaneBCntr = PSB_RVDC32(DSPBCNTR);*/
+	/*psDevInfo->uPlaneBStride = PSB_RVDC32(DSPBSTRIDE);*/
+#endif
+
+#ifdef CONFIG_MDFD_DUAL_MIPI
+	psDevInfo->uPlaneCCntr = PSB_RVDC32(DSPCCNTR);
+	psDevInfo->uPlaneCStride = PSB_RVDC32(DSPCSTRIDE);
+#endif
+	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+}
+
+void MRSTLFBRestorePlaneConfig(MRSTLFB_DEVINFO *psDevInfo)
+{
+	struct drm_psb_private *dev_priv =
+		(struct drm_psb_private *) psDevInfo->psDrmDevice->dev_private;
+	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, false))
+		return;
+	PSB_WVDC32(psDevInfo->uPlaneACntr, DSPACNTR);
+	PSB_WVDC32(psDevInfo->uPlaneAStride, DSPASTRIDE);
+#ifdef CONFIG_MDFD_HDMI
+	/*TODO: fully support HDMI later*/
+	/*PSB_WVDC32(psDevInfo->uPlaneBCntr, DSPBCNTR);*/
+	/*PSB_WVDC32(psDevInfo->uPlaneBStride, DSPBSTRIDE);*/
+#endif
+
+#ifdef CONFIG_MDFD_DUAL_MIPI
+	PSB_WVDC32(psDevInfo->uPlaneCCntr, DSPCCNTR);
+	PSB_RVDC32(psDevInfo->uPlaneCStride, DSPCSTRIDE);
+#endif
+	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+}
+
 int PVR_DRM_MAKENAME(DISPLAY_CONTROLLER, _Init)(struct drm_device unref__ *dev)
 {
 	if(MRSTLFBInit(dev) != MRST_OK)

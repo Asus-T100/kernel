@@ -29,6 +29,7 @@
 
 #include <drm/drmP.h>
 #include "psb_intel_reg.h"
+#include "psb_drm.h"
 
 #define MRST_USING_INTERRUPTS
 
@@ -89,9 +90,6 @@ typedef struct MRSTLFB_BUFFER_TAG
 
 typedef struct MRSTLFB_VSYNC_FLIP_ITEM_TAG
 {
-	
-
-
 	MRST_HANDLE      hCmdComplete;
 	
 	unsigned long    ulSwapInterval;
@@ -102,12 +100,9 @@ typedef struct MRSTLFB_VSYNC_FLIP_ITEM_TAG
 	
 	MRST_BOOL        bCmdCompleted;
 
-	
-	
-
-	
-	
 	MRSTLFB_BUFFER*	psBuffer;
+
+	struct mdfld_plane_contexts sPlaneContexts;
 } MRSTLFB_VSYNC_FLIP_ITEM;
 
 typedef struct MRSTLFB_SWAPCHAIN_TAG
@@ -223,6 +218,13 @@ typedef struct MRSTLFB_DEVINFO_TAG
 
 	
 	MRST_BOOL bLastFlipAddrValid;
+
+	uint32_t uPlaneACntr;
+	uint32_t uPlaneAStride;
+	uint32_t uPlaneBCntr;
+	uint32_t uPlaneBStride;
+	uint32_t uPlaneCCntr;
+	uint32_t uPlaneCStride;
     MRST_BOOL bScreenState;
 }  MRSTLFB_DEVINFO;
 
@@ -279,6 +281,8 @@ void MRSTLFBEnableVSyncInterrupt(MRSTLFB_DEVINFO *psDevInfo);
 void MRSTLFBDisableVSyncInterrupt(MRSTLFB_DEVINFO *psDevInfo);
 
 void MRSTLFBFlipToSurface(MRSTLFB_DEVINFO *psDevInfo,  unsigned long uiAddr);
+void MRSTLFBSavePlaneConfig(MRSTLFB_DEVINFO *psDevInfo);
+void MRSTLFBRestorePlaneConfig(MRSTLFB_DEVINFO *psDevInfo);
 
 void MRSTLFBSuspend(void);
 void MRSTLFBResume(void);

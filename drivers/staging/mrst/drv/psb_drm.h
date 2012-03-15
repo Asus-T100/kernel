@@ -568,10 +568,17 @@ struct drm_psb_stolen_memory_arg {
 #define SPRITE_UPDATE_WAIT_VBLANK		(0X00000010UL)
 #define SPRITE_UPDATE_ALL			(0x0000001fUL)
 
+struct intel_overlay_context {
+	uint32_t index;
+	uint32_t pipe;
+	uint32_t ovadd;
+};
+
 struct intel_sprite_context {
 	uint32_t update_mask;
 	/*plane index 0-A, 1-B, 2-C,etc*/
 	uint32_t index;
+	uint32_t pipe;
 
 	uint32_t cntr;
 	uint32_t linoff;
@@ -584,6 +591,18 @@ struct intel_sprite_context {
 	uint32_t keymaxval;
 	uint32_t tileoff;
 	uint32_t contalpa;
+};
+
+/*platform dependent macros*/
+#define INTEL_SPRITE_PLANE_NUM		3
+#define INTEL_OVERLAY_PLANE_NUM		2
+#define INTEL_DISPLAY_PLANE_NUM		5
+
+struct mdfld_plane_contexts {
+	uint32_t active_sprites;
+	uint32_t active_overlays;
+	struct intel_sprite_context sprite_contexts[INTEL_SPRITE_PLANE_NUM];
+	struct intel_overlay_context overlay_contexts[INTEL_OVERLAY_PLANE_NUM];
 };
 
 struct drm_psb_register_rw_arg {
@@ -602,9 +621,6 @@ struct drm_psb_register_rw_arg {
 		uint32_t dspcntr_a;
 		uint32_t dspcntr_b;
 	} display;
-
-	uint32_t sprite_context_mask;
-	struct intel_sprite_context sprite_context;
 
 	uint32_t overlay_read_mask;
 	uint32_t overlay_write_mask;
