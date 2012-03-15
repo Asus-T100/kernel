@@ -217,6 +217,13 @@ config BATTERY_INTEL_MDF
           Say Y here to enable the battery driver on Intel Medfield based MID
           platforms.
 
+config CHARGER_SMB347
+        tristate "Charger driver for Intel Medfield Tablet platforms"
+        depends on I2C && USB_PENWELL_OTG
+        help
+          Say Y here to enable the charger driver on Intel Medfield based Tablet
+          platforms.
+
 config CHARGER_ISP1704
 	tristate "ISP1704 USB Charger Detection"
 	depends on USB_OTG_UTILS
