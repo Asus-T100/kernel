@@ -218,7 +218,7 @@ static void print_csi_rx_errors(void)
 	u32 infos = 0;
 	sh_css_rx_get_interrupt_info(&infos);
 
-	v4l2_info(&atomisp_dev, "CSI Receiver errors:\n");
+	v4l2_err(&atomisp_dev, "CSI Receiver errors:\n");
 	if (infos & SH_CSS_RX_IRQ_INFO_BUFFER_OVERRUN)
 		v4l2_err(&atomisp_dev, "  buffer overrun");
 	if (infos & SH_CSS_RX_IRQ_INFO_ERR_SOT)
@@ -2752,8 +2752,6 @@ int atomisp_try_fmt(struct video_device *vdev, struct v4l2_format *f,
 			f->fmt.pix.pixelformat = fmt->pixelformat;
 	}
 
-	v4l2_info(&atomisp_dev, "return snr_try_fmt, (wxh: %d*%d)\n",
-		    in_width, in_height);
 	if ((in_width < out_width) && (in_height < out_height)) {
 		out_width = in_width;
 		out_height = in_height;
@@ -2851,16 +2849,6 @@ static inline void
 atomisp_set_sensor_mipi_to_isp(struct camera_mipi_info *mipi_info)
 {
 	if (mipi_info) {
-		v4l2_info(&atomisp_dev,
-			  "MIPI info from sensor:\n"
-			  "  port: %d\n"
-			  "  number of lanes: %d\n"
-			  "  input format: %d\n"
-			  "  bayer order: %d\n",
-			  mipi_info->port,
-			  mipi_info->num_lanes,
-			  mipi_info->input_format,
-			  mipi_info->raw_bayer_order);
 		if (atomisp_input_format_is_raw(mipi_info->input_format))
 			sh_css_input_set_bayer_order((enum sh_css_bayer_order)
 						mipi_info->raw_bayer_order);
@@ -2872,11 +2860,8 @@ atomisp_set_sensor_mipi_to_isp(struct camera_mipi_info *mipi_info)
 					    0xffff4);
 	} else {
 		/*Use default MIPI configuration*/
-		v4l2_info(&atomisp_dev,
-			    "no sensor config info\n");
 		sh_css_input_set_bayer_order(sh_css_bayer_order_grbg);
 		sh_css_input_set_format(SH_CSS_INPUT_FORMAT_RAW_10);
-		v4l2_info(&atomisp_dev, "MIPI 2 lane\n");
 		sh_css_input_configure_port(SH_CSS_MIPI_PORT_4LANE,
 						2, 0xffff4);
 	}
@@ -2921,9 +2906,6 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 	if (sh_css_input_set_effective_resolution(effective_input_width,
 						  effective_input_height))
 		return -EINVAL;
-
-	v4l2_info(&atomisp_dev, "effective resolution  %dx%d\n",
-		    effective_input_width, effective_input_height);
 
 	if (!isp->vf_format)
 		isp->vf_format =
@@ -2978,7 +2960,6 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 		break;
 	default:
 		if (format->sh_fmt == SH_CSS_FRAME_FORMAT_RAW) {
-			v4l2_info(&atomisp_dev, "ISP raw mode\n");
 			sh_css_capture_set_mode(SH_CSS_CAPTURE_MODE_RAW);
 		}
 
@@ -3161,11 +3142,6 @@ static int atomisp_set_fmt_to_snr(struct atomisp_device *isp,
 		isp->input_format->out.height = snr_mbus_fmt.height;
 		isp->input_format->out.pixelformat =
 		    snr_mbus_fmt.code;
-		v4l2_info(&atomisp_dev,
-			  "sensor output resolution %dx%d\n",
-			  isp->input_format->out.width,
-			  isp->input_format->out.height);
-
 	} else {	/* file input case */
 		isp->input_format->out.width = out_pipe->out_fmt->width;
 		isp->input_format->out.height = out_pipe->out_fmt->height;
@@ -3202,9 +3178,6 @@ static void atomisp_get_yuv_ds_status(struct atomisp_device *isp,
 		isp->params.yuv_ds_en = false;
 	else
 		isp->params.yuv_ds_en = true;
-	v4l2_info(&atomisp_dev, "yuv downscaling is %s.\n",
-	       isp->params.yuv_ds_en ? "enabled" : "disabled");
-
 }
 int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 {
@@ -3404,10 +3377,6 @@ done:
 
 	pipe->capq.field = f->fmt.pix.field;
 
-	v4l2_info(&atomisp_dev,
-		    "ISP output resolution: %dx%d, format = %s\n",
-		    pipe->format->out.width, pipe->format->out.height,
-		    format_bridge->description);
 	return 0;
 }
 

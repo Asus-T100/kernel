@@ -353,7 +353,7 @@ static int lm3554_g_flash_status(struct v4l2_subdev *sd, s32 *val)
 
 	if (*val == ATOMISP_FLASH_STATUS_HW_ERROR) {
 		struct i2c_client *client = v4l2_get_subdevdata(sd);
-		dev_err(&client->dev, "LM3554 flag status: %d\n", value);
+		dev_dbg(&client->dev, "LM3554 flag status: %d\n", value);
 	}
 	return 0;
 }

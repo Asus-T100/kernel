@@ -251,7 +251,6 @@ static int csi2_set_format(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 */
 static int csi2_set_stream(struct v4l2_subdev *sd, int enable)
 {
-	 v4l2_info(&atomisp_dev, "csi2_set_stream\n");
 	 return 0;
 }
 

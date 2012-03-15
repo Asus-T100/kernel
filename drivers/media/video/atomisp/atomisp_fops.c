@@ -351,7 +351,6 @@ static int atomisp_open(struct file *file)
 	atomisp_init_struct(isp);
 
 	isp->sw_contex.init = true;
-	v4l2_dbg(1, dbg_level, &atomisp_dev, "open done\n");
 done:
 	mutex_unlock(&isp->input_lock);
 
@@ -430,11 +429,9 @@ static int atomisp_release(struct file *file)
 	if (!pipe->is_main)
 		goto done;
 
-	if (isp->sw_contex.init == false) {
-		v4l2_info(&atomisp_dev,
-			  "device already closed\n");
+	if (isp->sw_contex.init == false)
 		goto done;
-	}
+
 	if ((!isp->isp_subdev.video_out_vf.opened) &&
 	    (isp->vf_frame)) {
 		sh_css_frame_free(isp->vf_frame);
@@ -655,10 +652,6 @@ static int atomisp_mmap(struct file *file, struct vm_area_struct *vma)
 		origin_size = raw_virt_addr->data_bytes;
 		raw_virt_addr->data_bytes = new_size;
 
-		v4l2_info(&atomisp_dev,
-			  "raw = %x, size = %d, ALIGN = %d\n",
-			  (unsigned int)raw_virt_addr, size,
-			  PAGE_ALIGN(raw_virt_addr->data_bytes));
 		if (size != PAGE_ALIGN(new_size)) {
 			v4l2_err(&atomisp_dev,
 				 "incorrect size for mmap ISP"

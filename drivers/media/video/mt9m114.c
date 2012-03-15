@@ -162,7 +162,7 @@ again:
 	dev_err(&client->dev, "write error: wrote 0x%x to offset 0x%x error %d",
 		val, reg, num_msg);
 	if (retry <= I2C_RETRY_COUNT) {
-		dev_err(&client->dev, "retrying... %d", retry);
+		dev_dbg(&client->dev, "retrying... %d", retry);
 		retry++;
 		msleep(20);
 		goto again;
@@ -262,12 +262,12 @@ again:
 
 	ret = i2c_transfer(client->adapter, &msg, num_msg);
 	if (ret != num_msg) {
-		dev_err(&client->dev, "%s: i2c transfer error\n", __func__);
 		if (++retry <= I2C_RETRY_COUNT) {
-			dev_err(&client->dev, "retrying... %d\n", retry);
+			dev_dbg(&client->dev, "retrying... %d\n", retry);
 			msleep(20);
 			goto again;
 		}
+		dev_err(&client->dev, "%s: i2c transfer error\n", __func__);
 		return -EIO;
 	}
 
@@ -436,7 +436,7 @@ static int mt9m114_wait_3a(struct v4l2_subdev *sd)
 		if (ret)
 			return ret;
 		if (status_wb & MISENSOR_AWB_STEADY) {
-			v4l2_info(client, "ae/awb stablize retry count  %d.\n",
+			dev_dbg(&client->dev, "ae/awb stablize retry count  %d.\n",
 				  (35-timeout));
 			return 0;
 		}
@@ -947,7 +947,6 @@ static int mt9m114_detect(struct mt9m114_device *dev, struct i2c_client *client)
 	}
 	mt9m114_read_reg(client, MISENSOR_16BIT, (u32)MT9M114_PID, &retvalue);
 	dev->real_model_id = retvalue;
-	dev_info(&client->dev, "%s: module_ID = 0x%x\n", __func__, retvalue);
 
 	if (retvalue != MT9M114_MOD_ID) {
 		dev_err(&client->dev, "%s: failed: client->addr = %x\n",

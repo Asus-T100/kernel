@@ -698,9 +698,6 @@ static int atomisp_enum_frameintervals(struct file *file, void *fh,
 		arg->discrete.denominator = 15;
 	}
 
-	v4l2_info(&atomisp_dev, "%s: sensor_support:%d "
-		"FPS:%d\n", __func__, ret, arg->discrete.denominator);
-
 	return 0;
 }
 /*
@@ -801,12 +798,8 @@ int atomisp_reqbufs(struct file *file, void *fh,
 	 * for user pointer type, buffers are not really allcated here,
 	 * buffers are setup in QBUF operation through v4l2_buffer structure
 	 */
-	if (req->memory == V4L2_MEMORY_USERPTR) {
-		v4l2_info(&atomisp_dev,
-			    "user pointer, not really allocate"
-			    " memory here.\n");
+	if (req->memory == V4L2_MEMORY_USERPTR)
 		return 0;
-	}
 
 	if (!pipe->is_main)
 		/*
@@ -919,7 +912,6 @@ static int atomisp_qbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 		return -EINVAL;
 	}
 
-	v4l2_dbg(2, dbg_level, &atomisp_dev, "%s\n", __func__);
 	/*
 	 * For userptr type frame, we convert user space address to physic
 	 * address and reprograme out page table properly
@@ -1050,8 +1042,6 @@ static int atomisp_dqbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
 	struct atomisp_device *isp = video_get_drvdata(vdev);
 	int ret = 0;
-
-	v4l2_dbg(2, dbg_level, &atomisp_dev, "%s\n", __func__);
 
 	if ((!pipe->is_main) &&
 	    (!atomisp_is_viewfinder_support(isp)))

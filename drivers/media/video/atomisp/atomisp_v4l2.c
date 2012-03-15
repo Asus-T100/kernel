@@ -401,10 +401,6 @@ static int atomisp_subdev_probe(struct atomisp_device *isp)
 
 	for (subdevs = pdata->subdevs; subdevs->type; ++subdevs) {
 		board_info = &subdevs->v4l2_subdev.board_info;
-		v4l2_info(&atomisp_dev, "name %s, addr %d, id %d\n",
-			  board_info->type,
-			  board_info->addr,
-			  subdevs->v4l2_subdev.i2c_adapter_id);
 
 		adapter = i2c_get_adapter(subdevs->v4l2_subdev.i2c_adapter_id);
 		if (adapter == NULL) {
@@ -413,14 +409,12 @@ static int atomisp_subdev_probe(struct atomisp_device *isp)
 				    , board_info->type);
 			break;
 		}
-		v4l2_info(&atomisp_dev, "Found adapter %s for subdev %s\n",
-			 adapter->name, board_info->type);
 
 		subdev = v4l2_i2c_new_subdev_board(&isp->v4l2_dev, adapter,
 				board_info, NULL);
 
 		if (subdev == NULL) {
-			v4l2_info(&atomisp_dev,
+			v4l2_warn(&atomisp_dev,
 				    "Subdev %s detection fail\n",
 				    board_info->type);
 			continue;
@@ -439,8 +433,6 @@ static int atomisp_subdev_probe(struct atomisp_device *isp)
 				break;
 			}
 
-			v4l2_info(&atomisp_dev,
-				"still camera sensor detected\n");
 			isp->inputs[isp->input_cnt].type = subdevs->type;
 			isp->inputs[isp->input_cnt].port = subdevs->port;
 			isp->inputs[isp->input_cnt].camera = subdev;
@@ -455,16 +447,15 @@ static int atomisp_subdev_probe(struct atomisp_device *isp)
 			isp->input_cnt++;
 			break;
 		case CAMERA_MOTOR:
-			v4l2_info(&atomisp_dev, "lens/motor probed\n");
 			isp->motor = subdev;
 			break;
 		case LED_FLASH:
 		case XENON_FLASH:
-			v4l2_info(&atomisp_dev, "flash probed\n");
 			isp->flash = subdev;
 			break;
 		default:
-			v4l2_info(&atomisp_dev, "unkonw subdev probed\n");
+			v4l2_dbg(1, dbg_level, &atomisp_dev,
+				"unkonw subdev probed\n");
 			break;
 		}
 
@@ -472,11 +463,10 @@ static int atomisp_subdev_probe(struct atomisp_device *isp)
 
 	/*Check camera for at least one subdev in it */
 	if (!isp->inputs[0].camera) {
-		v4l2_info(&atomisp_dev, "atomisp: "
+		v4l2_err(&atomisp_dev, "atomisp: "
 		       "no camera attached or fail to detect\n");
 		return -ENODEV;
 	}
-	v4l2_info(&atomisp_dev, "%d camera(s) detect\n", isp->input_cnt);
 	return 0;
 }
 
@@ -579,7 +569,7 @@ static int atomisp_register_entities(struct atomisp_device *isp)
 			flags = 0;
 			break;
 		default:
-			v4l2_info(&atomisp_dev,
+			v4l2_dbg(1, dbg_level, &atomisp_dev,
 				  "isp->inputs type not supported\n");
 			break;
 		}
@@ -592,7 +582,7 @@ static int atomisp_register_entities(struct atomisp_device *isp)
 		}
 	}
 
-	v4l2_info(&atomisp_dev,
+	v4l2_dbg(1, dbg_level, &atomisp_dev,
 		"FILE_INPUT enable, camera_cnt: %d\n", isp->input_cnt);
 	isp->inputs[isp->input_cnt].type = FILE_INPUT;
 	isp->inputs[isp->input_cnt].port = -1;
@@ -601,7 +591,7 @@ static int atomisp_register_entities(struct atomisp_device *isp)
 	isp->inputs[isp->input_cnt++].camera = &isp->file_dev.sd;
 
 	if (isp->input_cnt < ATOM_ISP_MAX_INPUTS) {
-		v4l2_info(&atomisp_dev,
+		v4l2_dbg(1, dbg_level, &atomisp_dev,
 			"TPG detected, camera_cnt: %d\n", isp->input_cnt);
 		isp->inputs[isp->input_cnt].type = TEST_PATTERN;
 		isp->inputs[isp->input_cnt].port = -1;
@@ -702,30 +692,25 @@ load_firmware(struct device *dev)
 	const struct firmware *fw;
 	int rc;
 
-	v4l2_info(&atomisp_dev, "loading ISP firmware ...\n");
-
 	rc = request_firmware(&fw, FW_PATH, dev);
 	if (rc) {
 		if (rc == -ENOENT)
-			v4l2_info(&atomisp_dev,
+			v4l2_err(&atomisp_dev,
 				    "Error ISP firmware %s not found.\n",
 				    FW_PATH);
 		else
-			v4l2_info(&atomisp_dev,
+			v4l2_err(&atomisp_dev,
 				    "atomisp: Error %d while requesting"
 				    " firmware %s\n", rc, FW_PATH);
 		return NULL;
 	}
 
-	if (fw->data != NULL) {
-		v4l2_info(&atomisp_dev,
-			    "isp_fw_file info: file:%p, size:%x\n",
-			    fw->data, fw->size);
-	} else {
+	if (fw->data == NULL) {
+		v4l2_err(&atomisp_dev,
+			    "ISP firmware data is NULL.\n");
 		return NULL;
 	}
 
-	v4l2_info(&atomisp_dev, "loading isp firmware ... done\n");
 	return fw;
 }
 
@@ -752,10 +737,6 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 
 	start = pci_resource_start(dev, 0);
 	len = pci_resource_len(dev, 0);
-
-	v4l2_info(&atomisp_dev,
-		    "ATOM ISP resource start 0x%x, len %d\n",
-		    start, len);
 
 	err = pci_request_region(dev, 0, atomisp_pci_driver.name);
 	if (err) {
@@ -817,12 +798,9 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 	INIT_WORK(&isp->work, atomisp_work);
 
 	isp->hw_contex.ispmmadr = start;
-	v4l2_info(&atomisp_dev, "isp memory address = %x\n",
-		    isp->hw_contex.ispmmadr);
 
 	pci_set_master(dev);
 	atomisp_io_base = base;
-	v4l2_info(&atomisp_dev, "ATOM ISP base address %p\n", base);
 
 	isp->tvnorm = tvnorms;
 	mutex_init(&isp->input_lock);
@@ -946,14 +924,11 @@ static struct pci_driver atomisp_pci_driver = {
 
 static int __init atomisp_init(void)
 {
-	v4l2_info(&atomisp_dev, "Init ATOM ISP device driver,"
-		    " version: %s-%x\n", DRIVER_VERSION_STR, MAGIC_NUMBER);
 	return pci_register_driver(&atomisp_pci_driver);
 }
 
 static void __exit atomisp_exit(void)
 {
-	v4l2_info(&atomisp_dev, "Exit ATOM ISP device driver\n");
 	pci_unregister_driver(&atomisp_pci_driver);
 }
 

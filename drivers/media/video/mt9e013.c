@@ -336,7 +336,7 @@ again:
 		return 0;
 
 	if (retry <= I2C_RETRY_COUNT) {
-		dev_err(&client->dev, "retrying i2c write transfer... %d",
+		dev_dbg(&client->dev, "retrying i2c write transfer... %d",
 			retry);
 		retry++;
 		msleep(20);
@@ -381,9 +381,6 @@ mt9e013_write_reg(struct i2c_client *client, u16 data_length, u16 reg, u16 val)
 		dev_err(&client->dev,
 			"write error: wrote 0x%x to offset 0x%x error %d",
 			val, reg, ret);
-	dev_dbg(&client->dev,
-		"wrote 0x%x to offset 0x%x error %d",
-		val, reg, ret);
 
 	return ret;
 }
@@ -803,7 +800,7 @@ __mt9e013_otp_read(struct v4l2_subdev *sd, const struct mt9e013_reg *type,
 	}
 
 	if (!(ready & MT9E013_OTP_READY_REG_OK)) {
-		v4l2_info(client, "%s: OTP memory was initialized with error\n",
+		v4l2_err(client, "%s: OTP memory was initialized with error\n",
 			  __func__);
 		return -EIO;
 	}
@@ -848,7 +845,7 @@ static void *mt9e013_otp_read(struct v4l2_subdev *sd)
 
 	/* Driver has failed to find valid data */
 	if (ret) {
-		v4l2_info(client, "%s: sensor found no valid OTP data\n",
+		v4l2_err(client, "%s: sensor found no valid OTP data\n",
 			  __func__);
 		kfree(buf);
 		return ERR_PTR(ret);
@@ -1736,24 +1733,22 @@ static int mt9e013_detect(struct i2c_client *client, u16 *id, u8 *revision)
 	/* check sensor chip model and revision IDs */
 	if (mt9e013_read_reg(client, MT9E013_16BIT, MT9E013_SC_CMMN_CHIP_ID,
 				id)) {
-		v4l2_err(client, "sensor_id = 0x%x\n", *id);
+		v4l2_err(client, "Reading sensor_id error.\n");
 		return -ENODEV;
 	}
-	v4l2_info(client, "sensor_id = 0x%x\n", *id);
 
 	if (*id != MT9E013_ID) {
-		v4l2_err(client, "sensor ID error\n");
+		v4l2_err(client,
+			"sensor ID error, sensor_id = 0x%x\n", *id);
 		return -ENODEV;
 	}
-	v4l2_info(client, "detect mt9e013 success\n");
 
 	if (mt9e013_read_reg(client, MT9E013_8BIT, MT9E013_SC_CMMN_REV_ID,
 				&reg)) {
-		v4l2_err(client, "sensor_rev_id = 0x%2x\n", (u8)reg);
+		v4l2_err(client, "Reading sensor_rev_id error.\n");
 		return -ENODEV;
 	}
 	*revision = (u8)reg;
-	v4l2_info(client, "sensor_rev_id = 0x%2x\n", *revision);
 
 	return 0;
 }
