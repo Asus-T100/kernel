@@ -25,6 +25,10 @@
 #define PMU1_PMU_BASE_ADDR			0x940
 #define PMU2_PMU_BASE_ADDR			0xFF11D000
 
+/* SRAM address where PANIC START is written */
+#define PMU_PANIC_EMMC_UP_ADDR			0xFFFF3080
+#define PMU_PANIC_EMMC_UP_REQ_CMD		0xDEADBEEF
+
 #ifdef CONFIG_DRM_INTEL_MID
 #define GFX_ENABLE
 #endif
@@ -806,6 +810,8 @@ struct mid_pmu_dev {
 	u32 ss_per_reg;
 	u32 d0ix_stat[MAX_LSS_POSSIBLE][SS_STATE_D0I3+1];
 	u32 num_wakes[MAX_DEVICES][SYS_STATE_MAX];
+
+	u32 __iomem *emergeny_emmc_up_addr;
 
 	u64 pmu_init_time;
 

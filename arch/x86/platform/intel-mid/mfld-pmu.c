@@ -1569,6 +1569,9 @@ int pmu_set_lss01_to_d0i0_atomic(void)
 	cur_pmssc.pmu2_states[2] &= ~IGNORE_SSS2;
 	cur_pmssc.pmu2_states[3] &= ~IGNORE_SSS3;
 
+	/* Request SCU for PM interrupt enabling */
+	writel(PMU_PANIC_EMMC_UP_REQ_CMD, mid_pmu_cxt->emergeny_emmc_up_addr);
+
 	status = _pmu_issue_command(&cur_pmssc, SET_MODE, 0, PMU_NUM_2);
 
 	if (unlikely(status != PMU_SUCCESS)) {
@@ -2498,7 +2501,7 @@ static int __devinit mid_pmu_probe(struct pci_dev *dev,
 						(OSPM_APMBA << 8);
 	if (mfld_msg_read32(cmd, &data)) {
 		ret = PMU_FAILED;
-		goto out_err1;
+		goto out_err2;
 	}
 	mid_pmu_cxt->apm_base = data & 0xffff;
 
@@ -2506,7 +2509,7 @@ static int __devinit mid_pmu_probe(struct pci_dev *dev,
 						 (OSPM_OSPMBA << 8);
 	if (mfld_msg_read32(cmd, &data)) {
 		ret = PMU_FAILED;
-		goto out_err1;
+		goto out_err2;
 	}
 	mid_pmu_cxt->ospm_base = data & 0xffff;
 
@@ -2522,7 +2525,8 @@ static int __devinit mid_pmu_probe(struct pci_dev *dev,
 	mid_pmu_cxt->pmu_reg = pmu;
 
 	/* Map the memory of offload_reg */
-	mid_pmu_cxt->base_addr.offload_reg = ioremap_nocache(0xffd01ffc, 4);
+	mid_pmu_cxt->base_addr.offload_reg =
+				ioremap_nocache(0xffd01ffc, 4);
 	if (mid_pmu_cxt->base_addr.offload_reg == NULL) {
 		dev_dbg(&mid_pmu_cxt->pmu_dev->dev,
 		"Unable to map the offload_reg address space\n");
@@ -2530,18 +2534,28 @@ static int __devinit mid_pmu_probe(struct pci_dev *dev,
 		goto out_err3;
 	}
 
+	/* Map the memory of emergency emmc up */
+	mid_pmu_cxt->emergeny_emmc_up_addr =
+			ioremap_nocache(PMU_PANIC_EMMC_UP_ADDR, 4);
+	if (mid_pmu_cxt->emergeny_emmc_up_addr == NULL) {
+		dev_dbg(&mid_pmu_cxt->pmu_dev->dev,
+		"Unable to map the emergency emmc up address space\n");
+		ret = PMU_FAILED;
+		goto out_err4;
+	}
+
 	if (request_irq(dev->irq, pmu_sc_irq, IRQF_NO_SUSPEND, PMU_DRV_NAME,
 			NULL)) {
 		dev_dbg(&mid_pmu_cxt->pmu_dev->dev, "Registering isr has failed\n");
 		ret = PMU_FAILED;
-		goto out_err3;
+		goto out_err5;
 	}
 
 	/* call pmu init() for initialization of pmu interface */
 	ret = pmu_init();
 	if (ret != PMU_SUCCESS) {
 		dev_dbg(&mid_pmu_cxt->pmu_dev->dev, "PMU initialization has failed\n");
-		goto out_err4;
+		goto out_err6;
 	}
 
 	mid_pmu_cxt->pmu_init_time =
@@ -2549,15 +2563,22 @@ static int __devinit mid_pmu_probe(struct pci_dev *dev,
 
 	return 0;
 
-out_err4:
+out_err6:
 	free_irq(dev->irq, &pmu_sc_irq);
+out_err5:
+	iounmap(mid_pmu_cxt->emergeny_emmc_up_addr);
+	mid_pmu_cxt->emergeny_emmc_up_addr = NULL;
+out_err4:
+	iounmap(mid_pmu_cxt->base_addr.offload_reg);
+	mid_pmu_cxt->base_addr.offload_reg = NULL;
 out_err3:
-	pci_iounmap(dev, mid_pmu_cxt->base_addr.pmu2_base);
+	pci_iounmap(dev, mid_pmu_cxt->pmu_reg);
+	mid_pmu_cxt->pmu_reg = NULL;
 	mid_pmu_cxt->base_addr.pmu2_base = NULL;
-out_err2:
 	mid_pmu_cxt->base_addr.pmu1_base = NULL;
-out_err1:
+out_err2:
 	pci_release_region(dev, 0);
+out_err1:
 	pci_disable_device(dev);
 out_err0:
 #ifdef CONFIG_HAS_WAKELOCK
@@ -2576,6 +2597,9 @@ static void __devexit mid_pmu_remove(struct pci_dev *dev)
 	/* Freeing up memory allocated for PMU1 & PMU2 */
 	iounmap(mid_pmu_cxt->base_addr.offload_reg);
 	mid_pmu_cxt->base_addr.offload_reg = NULL;
+
+	iounmap(mid_pmu_cxt->emergeny_emmc_up_addr);
+	mid_pmu_cxt->emergeny_emmc_up_addr = NULL;
 
 	pci_iounmap(dev, mid_pmu_cxt->pmu_reg);
 	mid_pmu_cxt->base_addr.pmu1_base = NULL;
