@@ -158,6 +158,17 @@ static struct usb_device_descriptor device_desc = {
 	.bNumConfigurations   = 1,
 };
 
+static struct usb_otg_descriptor otg_descriptor = {
+	.bLength		= sizeof otg_descriptor,
+	.bDescriptorType	= USB_DT_OTG,
+	.bcdOTG			= 0x0200, /* version 2.0 */
+};
+
+const struct usb_descriptor_header *otg_desc[] = {
+	(struct usb_descriptor_header *) &otg_descriptor,
+	NULL,
+};
+
 static struct usb_configuration android_config_driver = {
 	.label		= "android",
 	.unbind		= android_unbind_config,
@@ -1148,6 +1159,9 @@ static int android_bind_config(struct usb_configuration *c)
 	struct android_dev *dev = _android_dev;
 	int ret = 0;
 
+	if (gadget_is_otg(c->cdev->gadget))
+		c->descriptors = otg_desc;
+
 	ret = android_bind_enabled_functions(dev, c);
 	if (ret)
 		return ret;
@@ -1252,6 +1266,10 @@ static int android_bind(struct usb_composite_dev *cdev)
 		device_desc.bcdDevice = __constant_cpu_to_le16(0x9999);
 	}
 
+	if (gadget_is_otg(gadget))
+		cdev->otg_desc = &otg_descriptor;
+
+	usb_gadget_set_selfpowered(gadget);
 	dev->cdev = cdev;
 
 	return 0;
