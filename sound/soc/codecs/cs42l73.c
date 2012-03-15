@@ -66,7 +66,6 @@ static const u8 cs42l73_reg[] = {
 /*54*/ 0x3F, 0xAA, 0x3F, 0x3F,
 /*58*/ 0x3F, 0x3F, 0x3F, 0x3F,
 /*5C*/ 0x3F, 0x3F, 0x00, 0x00,
-/*60*/ 0x00, 0x00
 };
 
 static const unsigned int hpaloa_tlv[] = {
@@ -635,7 +634,7 @@ static const struct snd_soc_dapm_route cs42l73_audio_map[] = {
 
 	/* Voice Capture */
 	{"VSPL Output Mixer", NULL, "Input Left Capture"},
-	{"VSPR Output Mixer", NULL, "Input Left Capture"},
+	{"VSPR Output Mixer", NULL, "Input Right Capture"},
 
 	{"VSPOUTL", "VSP-IP Volume", "VSPL Output Mixer"},
 	{"VSPOUTR", "VSP-IP Volume", "VSPR Output Mixer"},
@@ -1109,22 +1108,16 @@ static int cs42l73_set_mic2_bias(struct snd_soc_codec *codec, int state)
 {
 	switch (state) {
 	case MIC2_BIAS_DISABLE:
-		snd_soc_update_bits(codec, CS42L73_DMMCC, MCLKDIS, 0);
-		snd_soc_update_bits(codec, CS42L73_PWRCTL1, PDN, 0);
-		snd_soc_update_bits(codec, CS42L73_PWRCTL2, PDN_MIC2_BIAS,
-					PDN_MIC2_BIAS);
-		/**FIX ME -- for PR0.1, Mic1_bias needs to be enabled
-		- no board info available yet**/
-		snd_soc_update_bits(codec, CS42L73_PWRCTL2, PDN_MIC1_BIAS,
-					PDN_MIC1_BIAS);
+		mutex_lock(&codec->mutex);
+		snd_soc_dapm_disable_pin(&codec->dapm, "MIC2 Bias");
+		snd_soc_dapm_sync(&codec->dapm);
+		mutex_unlock(&codec->mutex);
 		break;
 	case MIC2_BIAS_ENABLE:
-		snd_soc_update_bits(codec, CS42L73_DMMCC, MCLKDIS, 0);
-		snd_soc_update_bits(codec, CS42L73_PWRCTL1, PDN, 0);
-		snd_soc_update_bits(codec, CS42L73_PWRCTL2, PDN_MIC2_BIAS, 0);
-		/**FIX ME -- for PR0.1, Mic_bias needs to be enabled
-		- no board info available yet**/
-		snd_soc_update_bits(codec, CS42L73_PWRCTL2, PDN_MIC1_BIAS, 0);
+		mutex_lock(&codec->mutex);
+		snd_soc_dapm_force_enable_pin(&codec->dapm, "MIC2 Bias");
+		snd_soc_dapm_sync(&codec->dapm);
+		mutex_unlock(&codec->mutex);
 		break;
 	}
 	return 0;

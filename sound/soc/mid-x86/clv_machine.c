@@ -108,7 +108,7 @@ static void clv_soc_jack_gpio_detect(struct snd_soc_jack_gpio *gpio)
 	int enable;
 	struct snd_soc_jack *jack = gpio->jack;
 	struct snd_soc_codec *codec = jack->codec;
-	enable = gpio_get_value_cansleep(gpio->gpio);
+	enable = gpio_get_value(gpio->gpio);
 	if (gpio->invert)
 		enable = !enable;
 	cs42l73_hp_detection(codec, jack, enable);
@@ -254,7 +254,9 @@ static int clv_init(struct snd_soc_pcm_runtime *runtime)
 	snd_soc_dapm_add_routes(dapm, clv_audio_map,
 				ARRAY_SIZE(clv_audio_map));
 
+	mutex_lock(&codec->mutex);
 	snd_soc_dapm_sync(dapm);
+	mutex_unlock(&codec->mutex);
 	/* Headset and button jack detection */
 	ret = snd_soc_jack_new(codec, "Intel MID Audio Jack",
 			SND_JACK_HEADSET | SND_JACK_BTN_0 |
