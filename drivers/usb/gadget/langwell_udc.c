@@ -80,6 +80,97 @@ static void ep_set_halt(struct langwell_ep *ep, int value);
 /*-------------------------------------------------------------------------*/
 /* debugging */
 
+/* dump_ep dumps all information a specific endpoint
+*  @ep_index: the endpoint index
+*  Caller should lock dev->lock first
+*/
+static void dump_ep(struct langwell_udc *dev, int ep_index)
+{
+	struct langwell_ep *ep;
+	struct langwell_dqh *dqh = &dev->ep_dqh[ep_index];
+	struct langwell_request *req;
+	struct langwell_dtd     *dtd;
+	u32	value, i;
+	u32 in = ep_index % 2;
+	u32 num = ep_index / 2;
+	unsigned long	flags;
+
+
+	printk(KERN_ERR"Showing ep %d (ep%d%s) ...\n\n",
+			ep_index, num, in ? "IN" : "OUT");
+
+	printk(KERN_ERR"[ep REG]\n");
+	printk(KERN_ERR"\tendptPRIME Bit: %u, endptSTATUS Bit: %u\n",
+		readl(&dev->op_regs->endptprime) & (1 << (num + in ? 16 : 0)),
+		readl(&dev->op_regs->endptstat) & (1 << (num + in ? 16 : 0))
+		);
+	value = readl(&dev->op_regs->endptctrl[num]);
+	value >>= in ? 16 : 0;
+	printk(KERN_ERR"\tendptCTRL = 0x%08x\n"
+		"\t\tEnabled? %s, Stalled? %s\n",
+		readl(&dev->op_regs->endptctrl[num]),
+		value & BIT(7) ? "Yes" : "NO",
+		value & BIT(0) ? "Yes" : "NO"
+		);
+	value = readl(&dev->op_regs->endptsetupstat);
+	printk(KERN_ERR
+		"\tendptSETUPSTAT = 0x%04x\n\n",
+		value & SETUPSTAT_MASK
+		);
+
+	printk(KERN_ERR"[dQH]\n");
+	printk(KERN_ERR
+		"\tcurrent = 0x%08x\n"
+		"\tdtd_next = 0x%08x\n"
+		"\tdtd_status = 0x%08x\n"
+		"\tdtd_ioc = 0x%08x\n"
+		"\tdtd_total = 0x%08x\n\n",
+		dqh->dqh_current,
+		dqh->dtd_next,
+		dqh->dtd_status,
+		dqh->dtd_ioc,
+		dqh->dtd_total
+		);
+
+	if (ep_index == 0)
+		return;
+
+	printk(KERN_ERR"[Request & dTD]\n");
+	ep = &dev->ep[ep_index == 1 ? 0 : ep_index];
+	list_for_each_entry(req, &ep->queue, queue) {
+		printk(KERN_ERR
+			"req %p actual 0x%x length "
+			"0x%x  buf %p\n",
+			&req->req, req->req.actual,
+			req->req.length, req->req.buf
+			);
+
+		dtd = req->head;
+		for (i = 0; i < req->dtd_count; i++) {
+			printk(KERN_ERR
+				"\tdTD %d (virt addr 0x%p)\n"
+				"\t\tdtd_next = 0x%08x\n"
+				"\t\tdtd_status = 0x%08x\n"
+				"\t\tdtd_ioc = 0x%08x\n"
+				"\t\tdtd_total = 0x%08x\n"
+				"\t\tdtd_dma = 0x%08x\n",
+				i, dtd,
+				dtd->dtd_next,
+				dtd->dtd_status,
+				dtd->dtd_ioc,
+				dtd->dtd_total,
+				dtd->dtd_dma
+				);
+
+			if (i != req->dtd_count - 1)
+				dtd = (struct langwell_dtd *)dtd->next_dtd_virt;
+		}
+	}
+
+	return;
+}
+
+
 #ifdef	VERBOSE_DEBUG
 static inline void print_all_registers(struct langwell_udc *dev)
 {
@@ -2735,6 +2826,8 @@ static int process_ep_req(struct langwell_udc *dev, int index,
 				dev_err(&dev->pdev->dev,
 					"dTD error %08x dQH[%d]\n",
 					dtd_status, index);
+				dump_ep(dev, index);
+
 				/* clear the errors and halt condition */
 				curr_dqh->dtd_status = 0;
 				retval = -EPIPE;
