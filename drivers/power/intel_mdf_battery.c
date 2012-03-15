@@ -64,6 +64,7 @@ static struct power_supply *fg_psy;
 static char *msic_power_supplied_to[] = {
 			"msic_battery",
 			"max17042_battery",
+			"max17050_battery",
 };
 
 static unsigned long long adc_ttl;
