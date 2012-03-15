@@ -735,9 +735,16 @@ static int __init sfi_parse_devs(struct sfi_table_header *table)
 		}
 	}
 
+#if CONFIG_CHARGER_SMB347	/* WA untill SFI entry for smb347 gets added */
+	strncpy(pentry->name, "smb347", SFI_NAME_LEN);
+	pentry->type = SFI_DEV_TYPE_I2C;
+	pentry->addr = 0x6;
+	pentry->host_num = 1;
+	dev = get_device_id(pentry->type, "smb347");
+	sfi_handle_i2c_dev(pentry, dev);
+#endif
 	return 0;
 }
-
 
 static int __init sfi_parse_oemb(struct sfi_table_header *table)
 {

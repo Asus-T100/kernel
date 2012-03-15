@@ -23,6 +23,7 @@
 #include <linux/i2c/pca953x.h>
 #include <linux/power_supply.h>
 #include <linux/power/max17042_battery.h>
+#include <linux/power/smb347-charger.h>
 #include <linux/power/intel_mdf_battery.h>
 #include <linux/nfc/pn544.h>
 #include <linux/skbuff.h>
@@ -708,6 +709,41 @@ static void *max17042_platform_data(void *info)
 #endif
 
 	return &platform_data;
+}
+
+#define SMB347_IRQ_GPIO		52
+
+static struct smb347_charger_platform_data smb347_pdata = {
+	.battery_info	= {
+		.name			= "UP110005",
+		.technology		= POWER_SUPPLY_TECHNOLOGY_LIPO,
+		.voltage_max_design	= 3700000,
+		.voltage_min_design	= 3000000,
+		.charge_full_design	= 6894000,
+	},
+	.max_charge_current		= 3360000,
+	.max_charge_voltage		= 4200000,
+	.otg_uvlo_voltage		= 3300000,
+	.chip_temp_threshold		= 120,
+	.soft_cold_temp_limit		= 5,
+	.soft_hot_temp_limit		= 50,
+	.hard_cold_temp_limit		= 5,
+	.hard_hot_temp_limit		= 55,
+	.suspend_on_hard_temp_limit	= true,
+	.soft_temp_limit_compensation	= SMB347_SOFT_TEMP_COMPENSATE_CURRENT
+					| SMB347_SOFT_TEMP_COMPENSATE_VOLTAGE,
+	.charge_current_compensation	= 900000,
+	.use_mains			= true,
+	.enable_control			= SMB347_CHG_ENABLE_PIN_ACTIVE_LOW,
+	.otg_control			= SMB347_OTG_CONTROL_SW_AUTO,
+	.irq_gpio			= SMB347_IRQ_GPIO,
+};
+
+static void *smb347_platform_data(void *info)
+{
+	struct i2c_board_info *i2c_info = (struct i2c_board_info *)info;
+
+	return &smb347_pdata;
 }
 
 static void *msic_audio_platform_data(void *info)
@@ -1724,6 +1760,7 @@ struct devs_id __initconst device_ids[] = {
 	{"msic_adc", SFI_DEV_TYPE_IPC, 1, &msic_adc_platform_data,
 					&blackbay_ipc_device_handler},
 	{"max17042", SFI_DEV_TYPE_I2C, 1, &max17042_platform_data, NULL},
+	{"smb347", SFI_DEV_TYPE_I2C, 1, &smb347_platform_data, NULL},
 	{"hsi_ifx_modem", SFI_DEV_TYPE_HSI, 0, &hsi_modem_platform_data, NULL},
 	{"wl12xx_clk_vmmc", SFI_DEV_TYPE_SD, 0, &wl12xx_platform_data_init,
 						NULL},
