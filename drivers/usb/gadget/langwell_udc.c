@@ -387,12 +387,14 @@ static int langwell_ep_enable(struct usb_ep *_ep,
 	int			i, retval = 0;
 	unsigned char		zlt, ios = 0, mult = 0;
 
+	if (!_ep || !desc)
+		return -EINVAL;
+
 	ep = container_of(_ep, struct langwell_ep, ep);
 	dev = ep->dev;
 	dev_vdbg(&dev->pdev->dev, "---> %s()\n", __func__);
 
-	if (!_ep || !desc || ep->desc
-			|| desc->bDescriptorType != USB_DT_ENDPOINT)
+	if (ep->desc || desc->bDescriptorType != USB_DT_ENDPOINT)
 		return -EINVAL;
 
 	if (!dev->driver || dev->gadget.speed == USB_SPEED_UNKNOWN)
@@ -609,20 +611,20 @@ static int langwell_ep_disable(struct usb_ep *_ep)
 	int			ep_num;
 	u32			endptctrl;
 
+	if (!_ep)
+		return -EINVAL;
+
 	ep = container_of(_ep, struct langwell_ep, ep);
 	dev = ep->dev;
 	dev_vdbg(&dev->pdev->dev, "---> %s()\n", __func__);
 
-	if (!_ep || !ep->desc)
+	if (!ep->desc)
 		return -EINVAL;
-
-	pm_runtime_get(&dev->pdev->dev);
 
 	spin_lock_irqsave(&dev->lock, flags);
 
 	if (!ep->desc) {
 		spin_unlock_irqrestore(&dev->lock, flags);
-		pm_runtime_put(&dev->pdev->dev);
 		dev_err(&dev->pdev->dev, "ep has already disabled\n");
 		return -EINVAL;
 	}
@@ -643,8 +645,6 @@ static int langwell_ep_disable(struct usb_ep *_ep)
 	ep->stopped = 1;
 
 	spin_unlock_irqrestore(&dev->lock, flags);
-
-	pm_runtime_put(&dev->pdev->dev);
 
 	dev_dbg(&dev->pdev->dev, "disabled %s\n", _ep->name);
 	dev_vdbg(&dev->pdev->dev, "<--- %s()\n", __func__);
@@ -689,12 +689,12 @@ static void langwell_free_request(struct usb_ep *_ep,
 	struct langwell_udc	*dev;
 	struct langwell_request	*req = NULL;
 
+	if (!_ep || !_req)
+		return;
+
 	ep = container_of(_ep, struct langwell_ep, ep);
 	dev = ep->dev;
 	dev_vdbg(&dev->pdev->dev, "---> %s()\n", __func__);
-
-	if (!_ep || !_req)
-		return;
 
 	req = container_of(_req, struct langwell_request, req);
 	WARN_ON(!list_empty(&req->queue));
@@ -908,17 +908,16 @@ static int langwell_ep_queue(struct usb_ep *_ep, struct usb_request *_req,
 	unsigned long		flags;
 	int			is_iso = 0, zlflag = 0, in = 0;
 
+	if (unlikely(!_ep || !_req))
+		return -EINVAL;
 	/* always require a cpu-view buffer */
 	req = container_of(_req, struct langwell_request, req);
 	ep = container_of(_ep, struct langwell_ep, ep);
 
-	if (!_req || !_req->complete || !_req->buf
+	if (!_req->complete || !_req->buf
 			|| !list_empty(&req->queue)) {
 		return -EINVAL;
 	}
-
-	if (unlikely(!_ep || !ep->desc))
-		return -EINVAL;
 
 	dev = ep->dev;
 	req->ep = ep;
@@ -1034,17 +1033,18 @@ static int langwell_ep_dequeue(struct usb_ep *_ep, struct usb_request *_req)
 	int			stopped, ep_num, retval = 0;
 	u32			endptctrl;
 
+	if (!_ep || !_req)
+		return -EINVAL;
+
 	ep = container_of(_ep, struct langwell_ep, ep);
 	dev = ep->dev;
 	dev_vdbg(&dev->pdev->dev, "---> %s()\n", __func__);
 
-	if (!_ep || !ep->desc || !_req)
+	if (!ep->desc)
 		return -EINVAL;
 
 	if (!dev->driver)
 		return -ESHUTDOWN;
-
-	pm_runtime_get_sync(&dev->pdev->dev);
 
 	spin_lock_irqsave(&dev->lock, flags);
 	stopped = ep->stopped;
@@ -1116,8 +1116,6 @@ done:
 	ep->stopped = stopped;
 	spin_unlock_irqrestore(&dev->lock, flags);
 
-	pm_runtime_put_sync(&dev->pdev->dev);
-
 	dev_vdbg(&dev->pdev->dev, "<--- %s()\n", __func__);
 	return retval;
 }
@@ -1168,18 +1166,18 @@ static int _langwell_ep_set_halt(struct usb_ep *_ep, int value, int chq)
 	unsigned long		flags;
 	int			retval = 0;
 
+	if (!_ep)
+		return -EINVAL;
+
 	ep = container_of(_ep, struct langwell_ep, ep);
 	dev = ep->dev;
-
 	dev_vdbg(&dev->pdev->dev, "---> %s()\n", __func__);
-
 
 	if (!dev->driver || dev->gadget.speed == USB_SPEED_UNKNOWN)
 		return -ESHUTDOWN;
 
-
 	spin_lock_irqsave(&dev->lock, flags);
-	if (!_ep || !ep->desc) {
+	if (!ep->desc) {
 		retval = -EINVAL;
 		goto done;
 	}
@@ -1226,12 +1224,14 @@ static int langwell_ep_set_wedge(struct usb_ep *_ep)
 	struct langwell_ep	*ep;
 	struct langwell_udc	*dev;
 
+	if (!_ep)
+		return -EINVAL;
+
 	ep = container_of(_ep, struct langwell_ep, ep);
 	dev = ep->dev;
-
 	dev_vdbg(&dev->pdev->dev, "---> %s()\n", __func__);
 
-	if (!_ep || !ep->desc)
+	if (!ep->desc)
 		return -EINVAL;
 
 	dev_vdbg(&dev->pdev->dev, "<--- %s()\n", __func__);
@@ -1297,13 +1297,16 @@ static void langwell_ep_fifo_flush(struct usb_ep *_ep)
 	u32			flush_bit;
 	unsigned long		timeout;
 
+	if (!_ep)
+		return;
+
 	ep = container_of(_ep, struct langwell_ep, ep);
 	dev = ep->dev;
 
 	dev_vdbg(&dev->pdev->dev, "---> %s()\n", __func__);
 
-	if (!_ep || !ep->desc) {
-		dev_vdbg(&dev->pdev->dev, "ep or ep->desc is NULL\n");
+	if (!ep->desc) {
+		dev_vdbg(&dev->pdev->dev, "ep->desc is NULL\n");
 		dev_vdbg(&dev->pdev->dev, "<--- %s()\n", __func__);
 		return;
 	}
@@ -1423,14 +1426,11 @@ static int langwell_wakeup(struct usb_gadget *_gadget)
 		return -ENOTSUPP;
 	}
 
-	pm_runtime_get_sync(&dev->pdev->dev);
-
 	spin_lock_irqsave(&dev->lock, flags);
 
 	portsc1 = readl(&dev->op_regs->portsc1);
 	if (!(portsc1 & PORTS_SUSP)) {
 		spin_unlock_irqrestore(&dev->lock, flags);
-		pm_runtime_put(&dev->pdev->dev);
 		return 0;
 	}
 
@@ -1440,15 +1440,11 @@ static int langwell_wakeup(struct usb_gadget *_gadget)
 	else
 		dev_info(&dev->pdev->dev, "device remote wakeup\n");
 
-	/* exit PHY low power suspend */
-	langwell_phy_low_power(dev, 0);
-
 	/* force port resume */
 	portsc1 |= PORTS_FPR;
 	writel(portsc1, &dev->op_regs->portsc1);
 
 	spin_unlock_irqrestore(&dev->lock, flags);
-	pm_runtime_put(&dev->pdev->dev);
 
 	dev_vdbg(&dev->pdev->dev, "<--- %s()\n", __func__);
 	return 0;
@@ -1532,10 +1528,6 @@ static int langwell_pullup(struct usb_gadget *_gadget, int is_on)
 		return -ENODEV;
 	}
 
-	pm_runtime_get_sync(&dev->pdev->dev);
-	/* PHY should exit low power before set USBCMD Run/Stop */
-	langwell_phy_low_power(dev, 0);
-
 	spin_lock_irqsave(&dev->lock, flags);
 	dev->softconnected = (is_on != 0);
 
@@ -1549,8 +1541,6 @@ static int langwell_pullup(struct usb_gadget *_gadget, int is_on)
 		writel(usbcmd, &dev->op_regs->usbcmd);
 	}
 	spin_unlock_irqrestore(&dev->lock, flags);
-
-	pm_runtime_put(&dev->pdev->dev);
 
 	dev_vdbg(&dev->pdev->dev, "<--- %s()\n", __func__);
 	return 0;
@@ -3157,9 +3147,6 @@ static void handle_bus_resume(struct langwell_udc *dev)
 	dev->usb_state = dev->resume_state;
 	dev->resume_state = 0;
 
-	/* exit PHY low power suspend */
-	langwell_phy_low_power(dev, 0);
-
 	langwell_udc_notify_otg(MID_OTG_NOTIFY_CRESUME);
 
 	/* report resume to the driver */
@@ -3869,65 +3856,6 @@ static int langwell_udc_resume(struct pci_dev *pdev)
 	return 0;
 }
 
-#ifdef CONFIG_PM_RUNTIME
-/* device controller runtime suspend */
-static int langwell_udc_runtime_suspend(struct device *device)
-{
-	struct langwell_udc	*dev = the_controller;
-	struct pci_dev		*pdev;
-
-	dev_dbg(&dev->pdev->dev, "---> %s()\n", __func__);
-
-	pdev = to_pci_dev(device);
-
-	/* save PCI state */
-	pci_save_state(pdev);
-
-	/* disable PCI device */
-	pci_disable_device(pdev);
-
-	/* set device power state */
-	pci_set_power_state(pdev, PCI_D3hot);
-
-	dev->vbus_active = 0;
-
-	dev_dbg(&dev->pdev->dev, "<--- %s()\n", __func__);
-	return 0;
-}
-
-
-/* device controller runtime resume */
-static int langwell_udc_runtime_resume(struct device *device)
-{
-	struct langwell_udc	*dev = the_controller;
-	struct pci_dev		*pdev;
-
-	dev_dbg(&dev->pdev->dev, "---> %s()\n", __func__);
-
-	pdev = to_pci_dev(device);
-
-	/* set device D0 power state */
-	pci_set_power_state(pdev, PCI_D0);
-
-	/* restore PCI state */
-	pci_restore_state(pdev);
-
-	/* enable PCI device */
-	if (pci_enable_device(pdev) < 0)
-		return -ENODEV;
-
-	dev->vbus_active = 1;
-
-	dev_dbg(&dev->pdev->dev, "<--- %s()\n", __func__);
-	return 0;
-}
-
-#else
-
-#define langwell_udc_runtime_suspend NULL
-#define langwell_udc_runtime_resume NULL
-
-#endif
 
 
 /* pci driver shutdown */
@@ -3975,15 +3903,8 @@ static const struct pci_device_id pci_ids[] = { {
 
 MODULE_DEVICE_TABLE(pci, pci_ids);
 
-static const struct dev_pm_ops langwell_udc_pm_ops = {
-	.runtime_suspend = langwell_udc_runtime_suspend,
-	.runtime_resume = langwell_udc_runtime_resume,
-};
 
 static struct pci_driver langwell_pci_driver = {
-	.driver	=	{
-		.pm = &langwell_udc_pm_ops,
-	},
 	.name =		(char *) driver_name,
 	.id_table =	pci_ids,
 
@@ -4007,7 +3928,7 @@ static int intel_mid_start_peripheral(struct intel_mid_otg_xceiv *iotg)
 	dev_dbg(&dev->pdev->dev, "---> %s()\n", __func__);
 
 	wake_lock(&dev->wake_lock);
-	pm_runtime_get(&dev->pdev->dev);
+	pm_runtime_get_sync(&dev->pdev->dev);
 
 	/* exit PHY low power suspend */
 	langwell_phy_low_power(dev, 0);
