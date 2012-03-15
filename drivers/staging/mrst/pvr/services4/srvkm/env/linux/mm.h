@@ -1,26 +1,26 @@
 /**********************************************************************
  *
  * Copyright (C) Imagination Technologies Ltd. All rights reserved.
- * 
+ *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
  * version 2, as published by the Free Software Foundation.
- * 
- * This program is distributed in the hope it will be useful but, except 
- * as otherwise stated in writing, without any warranty; without even the 
- * implied warranty of merchantability or fitness for a particular purpose. 
+ *
+ * This program is distributed in the hope it will be useful but, except
+ * as otherwise stated in writing, without any warranty; without even the
+ * implied warranty of merchantability or fitness for a particular purpose.
  * See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License along with
  * this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
- * 
+ *
  * The full GNU General Public License is included in this distribution in
  * the file called "COPYING".
  *
  * Contact Information:
  * Imagination Technologies Ltd. <gpl-support@imgtec.com>
- * Home Park Estate, Kings Langley, Herts, WD4 8LZ, UK 
+ * Home Park Estate, Kings Langley, Herts, WD4 8LZ, UK
  *
  ******************************************************************************/
 
@@ -73,7 +73,7 @@
 static inline IMG_UINT32 VMallocToPhys(IMG_VOID *pCpuVAddr)
 {
 	return (page_to_phys(vmalloc_to_page(pCpuVAddr)) + ADDR_TO_PAGE_OFFSET(pCpuVAddr));
-		
+
 }
 
 typedef enum {
@@ -96,16 +96,16 @@ struct _LinuxMemArea {
     {
         struct _sIORemap
         {
-            
+
             IMG_CPU_PHYADDR CPUPhysAddr;
             IMG_VOID *pvIORemapCookie;
         }sIORemap;
         struct _sExternalKV
         {
-            
+
 	    IMG_BOOL bPhysContig;
 	    union {
-		    
+
 		    IMG_SYS_PHYADDR SysPhysAddr;
 		    IMG_SYS_PHYADDR *pSysPhysAddr;
 	    } uPhysAddr;
@@ -113,17 +113,17 @@ struct _LinuxMemArea {
         }sExternalKV;
         struct _sIO
         {
-            
+
             IMG_CPU_PHYADDR CPUPhysAddr;
         }sIO;
         struct _sVmalloc
         {
-            
+
             IMG_VOID *pvVmallocAddress;
         }sVmalloc;
         struct _sPageList
         {
-            
+
             struct page **pvPageList;
 	    IMG_HANDLE hBlockPageList;
         }sPageList;
@@ -135,24 +135,24 @@ struct _LinuxMemArea {
         }sIONTilerAlloc;
         struct _sSubAlloc
         {
-            
+
             LinuxMemArea *psParentLinuxMemArea;
             IMG_UINT32 ui32ByteOffset;
         }sSubAlloc;
     }uData;
 
-    IMG_UINT32 ui32ByteSize;		
+    IMG_UINT32 ui32ByteSize;
 
-    IMG_UINT32 ui32AreaFlags;		
+    IMG_UINT32 ui32AreaFlags;
 
-    IMG_BOOL bMMapRegistered;		
+    IMG_BOOL bMMapRegistered;
 
-    IMG_BOOL bNeedsCacheInvalidate;	
+    IMG_BOOL bNeedsCacheInvalidate;
 
-    
+
     struct list_head	sMMapItem;
 
-    
+
     struct list_head	sMMapOffsetStructList;
 };
 
@@ -371,5 +371,5 @@ const IMG_CHAR *LinuxMemAreaTypeToString(LINUX_MEM_AREA_TYPE eMemAreaType);
 const IMG_CHAR *HAPFlagsToString(IMG_UINT32 ui32Flags);
 #endif
 
-#endif 
+#endif
 

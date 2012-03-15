@@ -1,26 +1,26 @@
 /**********************************************************************
  *
  * Copyright (C) Imagination Technologies Ltd. All rights reserved.
- * 
+ *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
  * version 2, as published by the Free Software Foundation.
- * 
- * This program is distributed in the hope it will be useful but, except 
- * as otherwise stated in writing, without any warranty; without even the 
- * implied warranty of merchantability or fitness for a particular purpose. 
+ *
+ * This program is distributed in the hope it will be useful but, except
+ * as otherwise stated in writing, without any warranty; without even the
+ * implied warranty of merchantability or fitness for a particular purpose.
  * See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License along with
  * this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
- * 
+ *
  * The full GNU General Public License is included in this distribution in
  * the file called "COPYING".
  *
  * Contact Information:
  * Imagination Technologies Ltd. <gpl-support@imgtec.com>
- * Home Park Estate, Kings Langley, Herts, WD4 8LZ, UK 
+ * Home Park Estate, Kings Langley, Herts, WD4 8LZ, UK
  *
 ******************************************************************************/
 
@@ -103,7 +103,7 @@ typedef IMG_PVOID       IMG_HANDLE;
 
 typedef void**          IMG_HVOID,	* IMG_PHVOID;
 
-#define IMG_NULL        0 
+#define IMG_NULL        0
 
 /* services/stream ID */
 typedef IMG_UINT32      IMG_SID;
@@ -167,7 +167,7 @@ typedef struct _IMG_DEV_VIRTADDR
 	/* device virtual addresses are 32bit for now */
 	IMG_UINT32  uiAddr;
 #define IMG_CAST_TO_DEVVADDR_UINT(var)		(IMG_UINT32)(var)
-	
+
 } IMG_DEV_VIRTADDR;
 
 typedef IMG_UINT32 IMG_DEVMEM_SIZE_T;

@@ -1,35 +1,35 @@
 /**********************************************************************
  *
  * Copyright (C) Imagination Technologies Ltd. All rights reserved.
- * 
+ *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
  * version 2, as published by the Free Software Foundation.
- * 
- * This program is distributed in the hope it will be useful but, except 
- * as otherwise stated in writing, without any warranty; without even the 
- * implied warranty of merchantability or fitness for a particular purpose. 
+ *
+ * This program is distributed in the hope it will be useful but, except
+ * as otherwise stated in writing, without any warranty; without even the
+ * implied warranty of merchantability or fitness for a particular purpose.
  * See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License along with
  * this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
- * 
+ *
  * The full GNU General Public License is included in this distribution in
  * the file called "COPYING".
  *
  * Contact Information:
  * Imagination Technologies Ltd. <gpl-support@imgtec.com>
- * Home Park Estate, Kings Langley, Herts, WD4 8LZ, UK 
+ * Home Park Estate, Kings Langley, Herts, WD4 8LZ, UK
  *
  ******************************************************************************/
 
 #ifndef __SERVICES_PROC_H__
 #define __SERVICES_PROC_H__
 
-#include <asm/system.h>		
-#include <linux/proc_fs.h>	
-#include <linux/seq_file.h> 
+#include <asm/system.h>
+#include <linux/proc_fs.h>
+#include <linux/seq_file.h>
 
 #define END_OF_FILE (off_t) -1
 
@@ -43,8 +43,8 @@ typedef void (pvr_show_proc_seq_t)(struct seq_file *,void*);
 typedef void (pvr_startstop_proc_seq_t)(struct seq_file *, IMG_BOOL start);
 
 typedef struct _PVR_PROC_SEQ_HANDLERS_ {
-	pvr_next_proc_seq_t *next;	
-	pvr_show_proc_seq_t *show;	
+	pvr_next_proc_seq_t *next;
+	pvr_show_proc_seq_t *show;
 	pvr_off2element_proc_seq_t *off2element;
 	pvr_startstop_proc_seq_t *startstop;
 	IMG_VOID *data;
@@ -73,18 +73,18 @@ IMG_VOID RemovePerProcessProcEntry(const IMG_CHAR * name);
 IMG_VOID RemoveProcEntries(IMG_VOID);
 
 struct proc_dir_entry* CreateProcReadEntrySeq (
-								const IMG_CHAR* name, 
+								const IMG_CHAR* name,
 								IMG_VOID* data,
-								pvr_next_proc_seq_t next_handler, 
+								pvr_next_proc_seq_t next_handler,
 								pvr_show_proc_seq_t show_handler,
 								pvr_off2element_proc_seq_t off2element_handler,
 								pvr_startstop_proc_seq_t startstop_handler
 							   );
 
 struct proc_dir_entry* CreateProcEntrySeq (
-								const IMG_CHAR* name, 
+								const IMG_CHAR* name,
 								IMG_VOID* data,
-								pvr_next_proc_seq_t next_handler, 
+								pvr_next_proc_seq_t next_handler,
 								pvr_show_proc_seq_t show_handler,
 								pvr_off2element_proc_seq_t off2element_handler,
 								pvr_startstop_proc_seq_t startstop_handler,
@@ -92,9 +92,9 @@ struct proc_dir_entry* CreateProcEntrySeq (
 							   );
 
 struct proc_dir_entry* CreatePerProcessProcEntrySeq (
-								const IMG_CHAR* name, 
+								const IMG_CHAR* name,
 								IMG_VOID* data,
-								pvr_next_proc_seq_t next_handler, 
+								pvr_next_proc_seq_t next_handler,
 								pvr_show_proc_seq_t show_handler,
 								pvr_off2element_proc_seq_t off2element_handler,
 								pvr_startstop_proc_seq_t startstop_handler,

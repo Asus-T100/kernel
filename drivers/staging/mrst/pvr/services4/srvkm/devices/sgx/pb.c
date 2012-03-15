@@ -1,26 +1,26 @@
 /**********************************************************************
  *
  * Copyright (C) Imagination Technologies Ltd. All rights reserved.
- * 
+ *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
  * version 2, as published by the Free Software Foundation.
- * 
- * This program is distributed in the hope it will be useful but, except 
- * as otherwise stated in writing, without any warranty; without even the 
- * implied warranty of merchantability or fitness for a particular purpose. 
+ *
+ * This program is distributed in the hope it will be useful but, except
+ * as otherwise stated in writing, without any warranty; without even the
+ * implied warranty of merchantability or fitness for a particular purpose.
  * See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License along with
  * this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
- * 
+ *
  * The full GNU General Public License is included in this distribution in
  * the file called "COPYING".
  *
  * Contact Information:
  * Imagination Technologies Ltd. <gpl-support@imgtec.com>
- * Home Park Estate, Kings Langley, Herts, WD4 8LZ, UK 
+ * Home Park Estate, Kings Langley, Herts, WD4 8LZ, UK
  *
  ******************************************************************************/
 
@@ -108,7 +108,7 @@ SGXFindSharedPBDescKM(PVRSRV_PER_PROCESS_DATA	*psPerProc,
 					  sizeof(PVRSRV_KERNEL_MEM_INFO *) * psStubPBDesc->ui32SubKernelMemInfosCount,
 					  ppsSharedPBDescSubKernelMemInfos,
 					  0);
-			
+
 
 			PVR_DPF((PVR_DBG_ERROR, "SGXFindSharedPBDescKM: ResManRegisterRes failed"));
 
@@ -173,15 +173,15 @@ ExitNotFound:
 static PVRSRV_ERROR
 SGXCleanupSharedPBDescKM(PVRSRV_STUB_PBDESC *psStubPBDescIn)
 {
-	
+
 	IMG_UINT32 i;
 	PVRSRV_DEVICE_NODE *psDeviceNode;
 
 	psDeviceNode = (PVRSRV_DEVICE_NODE*)psStubPBDescIn->hDevCookie;
 
-	
 
-	
+
+
 	psStubPBDescIn->ui32RefCount--;
 	if (psStubPBDescIn->ui32RefCount == 0)
 	{
@@ -189,7 +189,7 @@ SGXCleanupSharedPBDescKM(PVRSRV_STUB_PBDESC *psStubPBDescIn)
 		List_PVRSRV_STUB_PBDESC_Remove(psStubPBDescIn);
 		for(i=0 ; i<psStubPBDescIn->ui32SubKernelMemInfosCount; i++)
 		{
-			
+
 			PVRSRVFreeDeviceMemKM(psStubPBDescIn->hDevCookie,
 								  psStubPBDescIn->ppsSubKernelMemInfos[i]);
 		}
@@ -212,16 +212,16 @@ SGXCleanupSharedPBDescKM(PVRSRV_STUB_PBDESC *psStubPBDescIn)
 				  sizeof(PVRSRV_STUB_PBDESC),
 				  psStubPBDescIn,
 				  0);
-		
 
-		
+
+
 		SGXCleanupRequest(psDeviceNode,
 						  &sHWPBDescDevVAddr,
 						  PVRSRV_CLEANUPCMD_PB,
 						  CLEANUP_WITH_POLL);
 	}
 	return PVRSRV_OK;
-	
+
 }
 
 static PVRSRV_ERROR SGXCleanupSharedPBDescCallback(IMG_PVOID pvParam, IMG_UINT32 ui32Param, IMG_BOOL bDummy)
@@ -281,7 +281,7 @@ SGXAddSharedPBDescKM(PVRSRV_PER_PROCESS_DATA	*psPerProc,
 	PVRSRV_SGXDEV_INFO *psSGXDevInfo;
 	PRESMAN_ITEM psResItem;
 
-	
+
 	if (psPerProcCreateSharedPB != psPerProc)
 	{
 		goto NoAdd;
@@ -309,7 +309,7 @@ SGXAddSharedPBDescKM(PVRSRV_PER_PROCESS_DATA	*psPerProc,
 
 		}
 
-		
+
 		psResItem = ResManRegisterRes(psPerProc->hResManContext,
 									  RESMAN_TYPE_SHARED_PB_DESC,
 									  psStubPBDesc,
@@ -324,7 +324,7 @@ SGXAddSharedPBDescKM(PVRSRV_PER_PROCESS_DATA	*psPerProc,
 			goto NoAddKeepPB;
 		}
 
-		
+
 		psStubPBDesc->ui32RefCount++;
 
 		*phSharedPBDesc = (IMG_HANDLE)psResItem;
@@ -423,7 +423,7 @@ SGXAddSharedPBDescKM(PVRSRV_PER_PROCESS_DATA	*psPerProc,
 	}
 	psStubPBDesc->hDevCookie = hDevCookie;
 
-	
+
 	List_PVRSRV_STUB_PBDESC_Insert(&(psSGXDevInfo->psStubPBDescListKM),
 									psStubPBDesc);
 
@@ -446,7 +446,7 @@ NoAdd:
 				  sizeof(PVRSRV_STUB_PBDESC),
 				  psStubPBDesc,
 				  0);
-		
+
 	}
 
 NoAddKeepPB:

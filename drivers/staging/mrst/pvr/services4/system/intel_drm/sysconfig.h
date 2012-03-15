@@ -1,26 +1,26 @@
 /**********************************************************************
  *
  * Copyright (C) Imagination Technologies Ltd. All rights reserved.
- * 
+ *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
  * version 2, as published by the Free Software Foundation.
- * 
- * This program is distributed in the hope it will be useful but, except 
- * as otherwise stated in writing, without any warranty; without even the 
- * implied warranty of merchantability or fitness for a particular purpose. 
+ *
+ * This program is distributed in the hope it will be useful but, except
+ * as otherwise stated in writing, without any warranty; without even the
+ * implied warranty of merchantability or fitness for a particular purpose.
  * See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License along with
  * this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
- * 
+ *
  * The full GNU General Public License is included in this distribution in
  * the file called "COPYING".
  *
  * Contact Information:
  * Imagination Technologies Ltd. <gpl-support@imgtec.com>
- * Home Park Estate, Kings Langley, Herts, WD4 8LZ, UK 
+ * Home Park Estate, Kings Langley, Herts, WD4 8LZ, UK
  *
  ******************************************************************************/
 
@@ -38,7 +38,7 @@
 #define SYS_SGX_USSE_COUNT					(2)
 
 #define POULSBO_REGS_OFFSET	0x00000
-#define POULSBO_REG_SIZE	0x2100	
+#define POULSBO_REG_SIZE	0x2100
 
 #define SGX_REGS_OFFSET		0x80000
 #if defined(SGX544)
@@ -84,7 +84,7 @@
 #define POULSBO_VSYNC_PIPEB_EVENT_MASK		(1<<4)
 
 #define POULSBO_DISPLAY_REGS_OFFSET			0x70000
-#define POULSBO_DISPLAY_REG_SIZE			0x2000		
+#define POULSBO_DISPLAY_REG_SIZE			0x2000
 
 #define POULSBO_DISPLAY_A_CONFIG			0x00008
 #define POULSBO_DISPLAY_A_STATUS_SELECT		0x00024
@@ -97,17 +97,17 @@
 
 #if defined(SGX_FEATURE_HOST_PORT)
 	#define SYS_SGX_HP_SIZE		0x8000000
-	
+
 	#define SYS_SGX_HOSTPORT_BASE_DEVVADDR 0xD0000000
 	#if defined(FIX_HW_BRN_22997) && defined(FIX_HW_BRN_23030)
-		
+
 
 
 		#define SYS_SGX_HOSTPORT_BRN23030_OFFSET 0x7C00000
 	#endif
 #endif
 
- 
+
 typedef struct
 {
 	union
@@ -117,7 +117,7 @@ typedef struct
 		IMG_UINT16	aui16PCISpace[128];
 		IMG_UINT32	aui32PCISpace[64];
 #endif
-		struct  
+		struct
 		{
 			IMG_UINT16	ui16VenID;
 			IMG_UINT16	ui16DevID;
@@ -131,4 +131,4 @@ extern IMG_UINT32 gui32SGXDeviceID;
 extern IMG_UINT32 gui32MRSTDisplayDeviceID;
 extern IMG_UINT32 gui32MRSTMSVDXDeviceID;
 extern IMG_UINT32 gui32MRSTTOPAZDeviceID;
-#endif	
+#endif

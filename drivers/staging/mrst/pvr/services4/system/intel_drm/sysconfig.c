@@ -2,26 +2,26 @@
 /**********************************************************************
  *
  * Copyright (C) Imagination Technologies Ltd. All rights reserved.
- * 
+ *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
  * version 2, as published by the Free Software Foundation.
- * 
- * This program is distributed in the hope it will be useful but, except 
- * as otherwise stated in writing, without any warranty; without even the 
- * implied warranty of merchantability or fitness for a particular purpose. 
+ *
+ * This program is distributed in the hope it will be useful but, except
+ * as otherwise stated in writing, without any warranty; without even the
+ * implied warranty of merchantability or fitness for a particular purpose.
  * See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License along with
  * this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
- * 
+ *
  * The full GNU General Public License is included in this distribution in
  * the file called "COPYING".
  *
  * Contact Information:
  * Imagination Technologies Ltd. <gpl-support@imgtec.com>
- * Home Park Estate, Kings Langley, Herts, WD4 8LZ, UK 
+ * Home Park Estate, Kings Langley, Herts, WD4 8LZ, UK
  *
  ******************************************************************************/
 
@@ -67,8 +67,8 @@ extern struct drm_device *gpDrmDevice;
 #endif
 
 #define SYS_SGX_CLOCK_SPEED			(400000000)
-#define SYS_SGX_HWRECOVERY_TIMEOUT_FREQ		(100) 
-#define SYS_SGX_PDS_TIMER_FREQ			(1000) 
+#define SYS_SGX_HWRECOVERY_TIMEOUT_FREQ		(100)
+#define SYS_SGX_PDS_TIMER_FREQ			(1000)
 #define SYS_SGX_ACTIVE_POWER_LATENCY_MS		(5)
 
 #if defined(SUPPORT_DRI_DRM_EXT)
@@ -84,7 +84,7 @@ static SYS_SPECIFIC_DATA gsSysSpecificData;
 
 #if defined(DRM_PVR_USE_INTEL_FB)
 IMG_UINT32 gui32SGXDeviceID;
-#else 
+#else
 static IMG_UINT32 gui32SGXDeviceID;
 #endif
 #if defined(PVR_MDFLD_SYS_MSVDX_AND_TOPAZ)
@@ -137,14 +137,14 @@ static PVRSRV_ERROR PCIInitDev(SYS_DATA *psSysData)
 
 	psSysSpecData->hSGXPCI = OSPCISetDev((IMG_VOID *)psSysSpecData->psPCIDev, 0);
 	ui32MaxOffset = (IS_MRST(psSysSpecData->psDRMDev) || IS_MDFLD(psSysSpecData->psDRMDev)) ? MRST_MAX_OFFSET : POULSBO_MAX_OFFSET;
-	
-#else	
+
+#else
 #if defined(LDM_PCI) || defined(SUPPORT_DRI_DRM)
 	psSysSpecData->hSGXPCI = OSPCISetDev((IMG_VOID *)psSysSpecData->psPCIDev, HOST_PCI_INIT_FLAG_BUS_MASTER | HOST_PCI_INIT_FLAG_MSI);
 #else
 	psSysSpecData->hSGXPCI = OSPCIAcquireDev(SYS_SGX_DEV_VENDOR_ID, SYS_SGX_DEV_DEVICE_ID, HOST_PCI_INIT_FLAG_BUS_MASTER | HOST_PCI_INIT_FLAG_MSI);
 #endif
-#endif	
+#endif
 	if (!psSysSpecData->hSGXPCI)
 	{
 		PVR_DPF((PVR_DBG_ERROR,"PCIInitDev: Failed to acquire PCI device"));
@@ -157,14 +157,14 @@ static PVRSRV_ERROR PCIInitDev(SYS_DATA *psSysData)
 #if defined(SGX_FEATURE_HOST_PORT)
 	PVR_TRACE(("Host Port region: %x to %x", OSPCIAddrRangeStart(psSysSpecData->hSGXPCI, POULSBO_HP_ADDR_RANGE_INDEX), OSPCIAddrRangeEnd(psSysSpecData->hSGXPCI, POULSBO_HP_ADDR_RANGE_INDEX)));
 #endif
-	
+
 	if (OSPCIAddrRangeLen(psSysSpecData->hSGXPCI, POULSBO_ADDR_RANGE_INDEX) < ui32MaxOffset)
 	{
 		PVR_DPF((PVR_DBG_ERROR,"PCIInitDev: Device memory region isn't big enough"));
 		return PVRSRV_ERROR_PCI_REGION_TOO_SMALL;
 	}
 
-	
+
 	if (OSPCIRequestAddrRange(psSysSpecData->hSGXPCI, POULSBO_ADDR_RANGE_INDEX) != PVRSRV_OK)
 	{
 		PVR_DPF((PVR_DBG_ERROR,"PCIInitDev: Device memory region not available"));
@@ -172,16 +172,16 @@ static PVRSRV_ERROR PCIInitDev(SYS_DATA *psSysData)
 
 	}
 	 SYS_SPECIFIC_DATA_SET(psSysSpecData, SYS_SPECIFIC_DATA_PCI_REQUEST_SGX_ADDR_RANGE);
-	
+
 #if defined(SGX_FEATURE_HOST_PORT)
-	
+
 	if (OSPCIRequestAddrRange(psSysSpecData->hSGXPCI, POULSBO_HP_ADDR_RANGE_INDEX) != PVRSRV_OK)
 	{
 		PVR_DPF((PVR_DBG_ERROR,"PCIInitDev: Host Port region not available"));
 		return PVRSRV_ERROR_PCI_REGION_UNAVAILABLE;
 	}
 	 SYS_SPECIFIC_DATA_SET(psSysSpecData, SYS_SPECIFIC_DATA_PCI_REQUEST_HOST_PORT_RANGE);
-#endif	
+#endif
 	return PVRSRV_OK;
 }
 
@@ -233,11 +233,11 @@ static PVRSRV_ERROR SysLocateDevices(SYS_DATA *psSysData)
 #endif
 	PVR_TRACE(("IRQ: %d", ui32IRQ));
 
-	
+
 	gsSGXDeviceMap.ui32Flags = 0x0;
 	gsSGXDeviceMap.ui32IRQ = ui32IRQ;
 
-	
+
 #if defined(SUPPORT_DRI_DRM_EXT)
 	gsSGXDeviceMap.sRegsSysPBase.uiAddr = ui32BaseAddr + ((IS_MRST(psSysSpecData->psDRMDev) || IS_MDFLD(psSysSpecData->psDRMDev)) ? MRST_SGX_REGS_OFFSET : POULSBO_SGX_REGS_OFFSET);
 #else
@@ -245,22 +245,22 @@ static PVRSRV_ERROR SysLocateDevices(SYS_DATA *psSysData)
 #endif
 	gsSGXDeviceMap.sRegsCpuPBase = SysSysPAddrToCpuPAddr(gsSGXDeviceMap.sRegsSysPBase);
 	gsSGXDeviceMap.ui32RegsSize = SGX_REG_SIZE;
-	
+
 #if defined(SGX_FEATURE_HOST_PORT)
-	
+
 	gsSGXDeviceMap.ui32Flags = SGX_HOSTPORT_PRESENT;
 	gsSGXDeviceMap.sHPSysPBase.uiAddr = ui32HostPortAddr;
 	gsSGXDeviceMap.sHPCpuPBase = SysSysPAddrToCpuPAddr(gsSGXDeviceMap.sHPSysPBase);
 	gsSGXDeviceMap.ui32HPSize = SYS_SGX_HP_SIZE;
-#endif		
+#endif
 
 #if defined(MRST_SLAVEPORT)
-	
+
 	gsSGXDeviceMap.sSPSysPBase.uiAddr = ui32BaseAddr + MRST_SGX_SP_OFFSET;
 	gsSGXDeviceMap.sSPCpuPBase = SysSysPAddrToCpuPAddr(gsSGXDeviceMap.sSPSysPBase);
 	gsSGXDeviceMap.ui32SPSize = SGX_SP_SIZE;
 #endif
-	
+
 
 
 
@@ -278,7 +278,7 @@ static PVRSRV_ERROR SysLocateDevices(SYS_DATA *psSysData)
 
 
 #if !defined(NO_HARDWARE)
-	
+
 	{
 		IMG_SYS_PHYADDR sPoulsboRegsCpuPBase;
 		sPoulsboRegsCpuPBase.uiAddr = ui32BaseAddr + POULSBO_REGS_OFFSET;
@@ -296,7 +296,7 @@ static PVRSRV_ERROR SysLocateDevices(SYS_DATA *psSysData)
 #endif
 #if defined(PDUMP)
 	{
-		
+
 		static IMG_CHAR pszPDumpDevName[] = "SGXMEM";
 		gsSGXDeviceMap.pszPDumpDevName = pszPDumpDevName;
 	}
@@ -361,7 +361,7 @@ static PVRSRV_ERROR SysCreateVersionString(SYS_DATA *psSysData)
                     ui32MaxStrLen + 1,
                     pszVersionString,
                     IMG_NULL);
-		
+
 		return PVRSRV_ERROR_INVALID_PARAMS;
     }
 
@@ -371,7 +371,7 @@ static PVRSRV_ERROR SysCreateVersionString(SYS_DATA *psSysData)
 }
 
 static IMG_VOID SysFreeVersionString(SYS_DATA *psSysData)
-{ 
+{
     if(psSysData->pszVersionString)
     {
         IMG_UINT32 ui32MaxStrLen;
@@ -401,12 +401,12 @@ PVRSRV_ERROR SysInitialise(IMG_VOID)
 	gpsSysData->pvSysSpecificData = &gsSysSpecificData;
 	gsSysSpecificData.ui32SysSpecificData = 0;
 #if defined(LDM_PCI) || defined(SUPPORT_DRI_DRM)
-	
+
 	PVR_ASSERT(gpsPVRLDMDev != IMG_NULL);
 	gsSysSpecificData.psPCIDev = gpsPVRLDMDev;
 #endif
 #if defined(SUPPORT_DRI_DRM)
-	
+
 	PVR_ASSERT(gpsPVRDRMDev != IMG_NULL);
 	gsSysSpecificData.psDRMDev = gpsPVRDRMDev;
 #endif
@@ -420,17 +420,17 @@ PVRSRV_ERROR SysInitialise(IMG_VOID)
 		return eError;
 	}
 
-	
+
 	psTimingInfo = &gsSGXDeviceMap.sTimingInfo;
 	psTimingInfo->ui32CoreClockSpeed = SYS_SGX_CLOCK_SPEED;
-	psTimingInfo->ui32HWRecoveryFreq = SYS_SGX_HWRECOVERY_TIMEOUT_FREQ; 
+	psTimingInfo->ui32HWRecoveryFreq = SYS_SGX_HWRECOVERY_TIMEOUT_FREQ;
 #if defined(SUPPORT_ACTIVE_POWER_MANAGEMENT)
 	psTimingInfo->bEnableActivePM = IMG_TRUE;
-#else	
+#else
 	psTimingInfo->bEnableActivePM = IMG_FALSE;
-#endif 
-	psTimingInfo->ui32ActivePowManLatencyms = SYS_SGX_ACTIVE_POWER_LATENCY_MS; 
-	psTimingInfo->ui32uKernelFreq = SYS_SGX_PDS_TIMER_FREQ; 
+#endif
+	psTimingInfo->ui32ActivePowManLatencyms = SYS_SGX_ACTIVE_POWER_LATENCY_MS;
+	psTimingInfo->ui32uKernelFreq = SYS_SGX_PDS_TIMER_FREQ;
 
 	eError = PCIInitDev(gpsSysData);
 	if (eError != PVRSRV_OK)
@@ -442,7 +442,7 @@ PVRSRV_ERROR SysInitialise(IMG_VOID)
 
 	gpsSysData->ui32NumDevices = SYS_DEVICE_COUNT;
 
-	
+
 	for(i=0; i<SYS_DEVICE_COUNT; i++)
 	{
 		gpsSysData->sDeviceID[i].uiID = i;
@@ -460,8 +460,8 @@ PVRSRV_ERROR SysInitialise(IMG_VOID)
 		gpsSysData = IMG_NULL;
 		return eError;
 	}
-	
-	
+
+
 
 
 
@@ -487,7 +487,7 @@ PVRSRV_ERROR SysInitialise(IMG_VOID)
 
 #ifdef CONFIG_MDFD_VIDEO_DECODE
 #if defined(PVR_MDFLD_SYS_MSVDX_AND_TOPAZ)
-	
+
 	eError = PVRSRVRegisterDevice(gpsSysData, MSVDXRegisterDevice,
 				      DEVICE_MSVDX_INTERRUPT, &gui32MRSTMSVDXDeviceID);
 	if (eError != PVRSRV_OK)
@@ -500,7 +500,7 @@ PVRSRV_ERROR SysInitialise(IMG_VOID)
 
 	if (IS_MDFLD(gpDrmDevice) && !dev_priv->topaz_disabled)
 	{
-		
+
 		eError = PVRSRVRegisterDevice(gpsSysData, TOPAZRegisterDevice,
 					      DEVICE_TOPAZ_INTERRUPT, &gui32MRSTTOPAZDeviceID);
 		if (eError != PVRSRV_OK)
@@ -513,34 +513,34 @@ PVRSRV_ERROR SysInitialise(IMG_VOID)
 	}
 #endif
 #endif
-	
+
 
 
 	psDeviceNode = gpsSysData->psDeviceNodeList;
 
 	while(psDeviceNode)
 	{
-		
+
 		switch(psDeviceNode->sDevId.eDeviceType)
 		{
 			case PVRSRV_DEVICE_TYPE_SGX:
 			{
 				DEVICE_MEMORY_INFO *psDevMemoryInfo;
 				DEVICE_MEMORY_HEAP_INFO *psDeviceMemoryHeap;
-				
-				
+
+
 				psDeviceNode->psLocalDevMemArena = IMG_NULL;
-				
-				
+
+
 				psDevMemoryInfo = &psDeviceNode->sDevMemoryInfo;
 				psDeviceMemoryHeap = psDevMemoryInfo->psDeviceMemoryHeap;
-				
-				
+
+
 				for(i=0; i<psDevMemoryInfo->ui32HeapCount; i++)
 				{
 					psDeviceMemoryHeap[i].ui32Attribs |= PVRSRV_BACKINGSTORE_SYSMEM_NONCONTIG;
 #ifdef OEM_CUSTOMISE
-					
+
 #endif
 				}
 #if defined(SUPPORT_DRI_DRM_EXT)
@@ -550,7 +550,7 @@ PVRSRV_ERROR SysInitialise(IMG_VOID)
 			}
 #if defined(PVR_MDFLD_SYS_MSVDX_AND_TOPAZ)
 			case PVRSRV_DEVICE_TYPE_MSVDX:
-			
+
 			break;
 			case PVRSRV_DEVICE_TYPE_TOPAZ:
 			break;
@@ -562,14 +562,14 @@ PVRSRV_ERROR SysInitialise(IMG_VOID)
 			}
 		}
 
-		
+
 		psDeviceNode = psDeviceNode->psNext;
 	}
 
 	PDUMPINIT();
 	SYS_SPECIFIC_DATA_SET(&gsSysSpecificData, SYS_SPECIFIC_DATA_PDUMP_INIT);
 
-	
+
 	eError = PVRSRVInitialiseDevice (gui32SGXDeviceID);
 	if (eError != PVRSRV_OK)
 	{
@@ -615,15 +615,15 @@ static IMG_VOID SysEnableInterrupts(SYS_DATA *psSysData)
 
 	ui32Mask = POULSBO_THALIA_MASK;
 
-	
+
 	ui32RegData = OSReadHWReg(gsPoulsboRegsCPUVaddr, POULSBO_INTERRUPT_IDENTITY_REG);
 	OSWriteHWReg(gsPoulsboRegsCPUVaddr, POULSBO_INTERRUPT_IDENTITY_REG, ui32RegData | ui32Mask);
 
-	
+
 	ui32RegData = OSReadHWReg(gsPoulsboRegsCPUVaddr, POULSBO_INTERRUPT_MASK_REG);
 	OSWriteHWReg(gsPoulsboRegsCPUVaddr, POULSBO_INTERRUPT_MASK_REG, ui32RegData & (~ui32Mask));
 
-	
+
 	ui32RegData = OSReadHWReg(gsPoulsboRegsCPUVaddr, POULSBO_INTERRUPT_ENABLE_REG);
 	OSWriteHWReg(gsPoulsboRegsCPUVaddr, POULSBO_INTERRUPT_ENABLE_REG, ui32RegData | ui32Mask);
 
@@ -631,7 +631,7 @@ static IMG_VOID SysEnableInterrupts(SYS_DATA *psSysData)
 #endif
 	PVR_UNREFERENCED_PARAMETER(psSysData);
 }
-#endif	
+#endif
 
 #if !defined(SUPPORT_DRI_DRM_EXT)
 static IMG_VOID SysDisableInterrupts(SYS_DATA *psSysData)
@@ -641,11 +641,11 @@ static IMG_VOID SysDisableInterrupts(SYS_DATA *psSysData)
 	IMG_UINT32 ui32Mask;
 	ui32Mask = POULSBO_THALIA_MASK;
 
-	
+
 	ui32RegData = OSReadHWReg(gsPoulsboRegsCPUVaddr, POULSBO_INTERRUPT_ENABLE_REG);
 	OSWriteHWReg(gsPoulsboRegsCPUVaddr, POULSBO_INTERRUPT_ENABLE_REG, ui32RegData & (~ui32Mask));
 
-	
+
 	ui32RegData = OSReadHWReg(gsPoulsboRegsCPUVaddr, POULSBO_INTERRUPT_MASK_REG);
 	OSWriteHWReg(gsPoulsboRegsCPUVaddr, POULSBO_INTERRUPT_MASK_REG, ui32RegData | ui32Mask);
 
@@ -653,13 +653,13 @@ static IMG_VOID SysDisableInterrupts(SYS_DATA *psSysData)
 #endif
 	PVR_UNREFERENCED_PARAMETER(psSysData);
 }
-#endif	
+#endif
 
 PVRSRV_ERROR SysFinalise(IMG_VOID)
 {
 	PVRSRV_ERROR eError = PVRSRV_OK;
 
-	
+
 	eError = OSInstallMISR(gpsSysData);
 	if (eError != PVRSRV_OK)
 	{
@@ -676,7 +676,7 @@ PVRSRV_ERROR SysFinalise(IMG_VOID)
 		return eError;
 	}
 	SYS_SPECIFIC_DATA_SET(&gsSysSpecificData, SYS_SPECIFIC_DATA_LISR_INSTALLED);
-#endif	
+#endif
 
 #if (defined(SYS_USING_INTERRUPTS) && !defined(SUPPORT_DRI_DRM_EXT))
 	SysEnableInterrupts(gpsSysData);
@@ -684,7 +684,7 @@ PVRSRV_ERROR SysFinalise(IMG_VOID)
 #endif
 
 #if defined(__linux__)
-	
+
 	eError = SysCreateVersionString(gpsSysData);
 	if (eError != PVRSRV_OK)
 	{
@@ -724,7 +724,7 @@ PVRSRV_ERROR SysDeinitialise (SYS_DATA *psSysData)
 			return eError;
 		}
 	}
-#endif 
+#endif
 
 	if (SYS_SPECIFIC_DATA_TEST(psSysSpecData, SYS_SPECIFIC_DATA_MISR_INSTALLED))
 	{
@@ -738,7 +738,7 @@ PVRSRV_ERROR SysDeinitialise (SYS_DATA *psSysData)
 
 	if (SYS_SPECIFIC_DATA_TEST(psSysSpecData, SYS_SPECIFIC_DATA_SGX_INITIALISED))
 	{
-		
+
 		eError = PVRSRVDeinitialiseDevice(gui32SGXDeviceID);
 		if (eError != PVRSRV_OK)
 		{
@@ -762,7 +762,7 @@ PVRSRV_ERROR SysDeinitialise (SYS_DATA *psSysData)
 
 
 #if !defined(NO_HARDWARE)
-	
+
 	OSUnMapPhysToLin(gsPoulsboRegsCPUVaddr,
 											 POULSBO_REG_SIZE,
 											 PVRSRV_HAP_KERNEL_ONLY|PVRSRV_HAP_UNCACHED,
@@ -794,7 +794,7 @@ IMG_UINT32 SysGetInterruptSource(SYS_DATA* psSysData,
 	PVR_UNREFERENCED_PARAMETER(psSysData);
 	PVR_UNREFERENCED_PARAMETER(psDeviceNode);
 
-	
+
 	ui32Data = OSReadHWReg(gsPoulsboRegsCPUVaddr, POULSBO_INTERRUPT_IDENTITY_REG);
 
 	if (ui32Data & POULSBO_THALIA_MASK)
@@ -807,23 +807,23 @@ IMG_UINT32 SysGetInterruptSource(SYS_DATA* psSysData,
 		ui32Devices |= DEVICE_MSVDX_INTERRUPT;
 	}
 
-	
+
 	ui32DIMMask = OSReadHWReg(gsPoulsboRegsCPUVaddr, POULSBO_INTERRUPT_ENABLE_REG);
 	ui32DIMMask &= ~(POULSBO_THALIA_MASK | POULSBO_MSVDX_MASK);
 
-	
+
 	if (ui32Data & ui32DIMMask)
 	{
 		ui32Devices |= DEVICE_DISP_INTERRUPT;
 	}
 
 	return (ui32Devices);
-#else	
+#else
 	PVR_UNREFERENCED_PARAMETER(psSysData);
 	PVR_UNREFERENCED_PARAMETER(psDeviceNode);
 
 	return 0;
-#endif	
+#endif
 }
 
 IMG_VOID SysClearInterrupts(SYS_DATA* psSysData, IMG_UINT32 ui32ClearBits)
@@ -858,21 +858,21 @@ IMG_VOID SysClearInterrupts(SYS_DATA* psSysData, IMG_UINT32 ui32ClearBits)
 	{
 		OSWriteHWReg(gsPoulsboRegsCPUVaddr, POULSBO_INTERRUPT_IDENTITY_REG, ui32Mask);
 	}
-#else	
+#else
 	PVR_UNREFERENCED_PARAMETER(psSysData);
 	PVR_UNREFERENCED_PARAMETER(ui32ClearBits);
-#endif	
+#endif
 }
 
 
-PVRSRV_ERROR SysGetDeviceMemoryMap(PVRSRV_DEVICE_TYPE eDeviceType, 
+PVRSRV_ERROR SysGetDeviceMemoryMap(PVRSRV_DEVICE_TYPE eDeviceType,
 									IMG_VOID **ppvDeviceMap)
 {
 	switch(eDeviceType)
 	{
 		case PVRSRV_DEVICE_TYPE_SGX:
 		{
-			
+
 			*ppvDeviceMap = (IMG_VOID*)&gsSGXDeviceMap;
 			break;
 		}
@@ -881,18 +881,18 @@ PVRSRV_ERROR SysGetDeviceMemoryMap(PVRSRV_DEVICE_TYPE eDeviceType,
 			PVR_DPF((PVR_DBG_ERROR,"SysGetDeviceMemoryMap: unsupported device type"));
 		}
 	}
-	return PVRSRV_OK;	
+	return PVRSRV_OK;
 }
 
 
-IMG_DEV_PHYADDR SysCpuPAddrToDevPAddr (PVRSRV_DEVICE_TYPE eDeviceType, 
+IMG_DEV_PHYADDR SysCpuPAddrToDevPAddr (PVRSRV_DEVICE_TYPE eDeviceType,
 										IMG_CPU_PHYADDR CpuPAddr)
 {
 	IMG_DEV_PHYADDR DevPAddr;
 
 	PVR_UNREFERENCED_PARAMETER(eDeviceType);
 
-	
+
 	DevPAddr.uiAddr = CpuPAddr.uiAddr;
 
 	return DevPAddr;
@@ -903,7 +903,7 @@ IMG_CPU_PHYADDR SysSysPAddrToCpuPAddr (IMG_SYS_PHYADDR sys_paddr)
 {
 	IMG_CPU_PHYADDR cpu_paddr;
 
-	
+
 	cpu_paddr.uiAddr = sys_paddr.uiAddr;
 	return cpu_paddr;
 }
@@ -911,8 +911,8 @@ IMG_CPU_PHYADDR SysSysPAddrToCpuPAddr (IMG_SYS_PHYADDR sys_paddr)
 IMG_SYS_PHYADDR SysCpuPAddrToSysPAddr (IMG_CPU_PHYADDR cpu_paddr)
 {
 	IMG_SYS_PHYADDR sys_paddr;
-	
-	
+
+
 	sys_paddr.uiAddr = cpu_paddr.uiAddr;
 	return sys_paddr;
 }
@@ -924,9 +924,9 @@ IMG_DEV_PHYADDR SysSysPAddrToDevPAddr (PVRSRV_DEVICE_TYPE eDeviceType, IMG_SYS_P
 
 	PVR_UNREFERENCED_PARAMETER(eDeviceType);
 
-	
+
     DevPAddr.uiAddr = SysPAddr.uiAddr;
-    
+
     return DevPAddr;
 }
 
@@ -937,7 +937,7 @@ IMG_SYS_PHYADDR SysDevPAddrToSysPAddr (PVRSRV_DEVICE_TYPE eDeviceType, IMG_DEV_P
 
 	PVR_UNREFERENCED_PARAMETER(eDeviceType);
 
-    
+
     SysPAddr.uiAddr = DevPAddr.uiAddr;
 
     return SysPAddr;
@@ -946,8 +946,8 @@ IMG_SYS_PHYADDR SysDevPAddrToSysPAddr (PVRSRV_DEVICE_TYPE eDeviceType, IMG_DEV_P
 
 IMG_VOID SysRegisterExternalDevice(PVRSRV_DEVICE_NODE *psDeviceNode)
 {
-  
-  psDeviceNode->ui32SOCInterruptBit = DEVICE_DISP_INTERRUPT;   
+
+  psDeviceNode->ui32SOCInterruptBit = DEVICE_DISP_INTERRUPT;
 }
 
 
@@ -956,7 +956,7 @@ IMG_VOID SysRemoveExternalDevice(PVRSRV_DEVICE_NODE *psDeviceNode)
 	PVR_UNREFERENCED_PARAMETER(psDeviceNode);
 }
 
-PVRSRV_ERROR SysOEMFunction (	IMG_UINT32	ui32ID, 
+PVRSRV_ERROR SysOEMFunction (	IMG_UINT32	ui32ID,
 								IMG_VOID	*pvIn,
 								IMG_UINT32  ulInSize,
 								IMG_VOID	*pvOut,
@@ -997,7 +997,7 @@ static PVRSRV_ERROR SysMapInRegisters(IMG_VOID)
 		case PVRSRV_DEVICE_TYPE_SGX:
 		{
 			PVRSRV_SGXDEV_INFO *psDevInfo = (PVRSRV_SGXDEV_INFO *)psDeviceNodeList->pvDevice;
-			
+
 			if (SYS_SPECIFIC_DATA_TEST(&gsSysSpecificData, SYS_SPECIFIC_DATA_PM_UNMAP_SGX_REGS))
 			{
 				psDevInfo->pvRegsBaseKM = OSMapPhysToLin(gsSGXDeviceMap.sRegsCpuPBase,
@@ -1020,7 +1020,7 @@ static PVRSRV_ERROR SysMapInRegisters(IMG_VOID)
 			{
 				if (SYS_SPECIFIC_DATA_TEST(&gsSysSpecificData, SYS_SPECIFIC_DATA_PM_UNMAP_SGX_HP))
 				{
-					
+
 					psDevInfo->pvHostPortBaseKM = OSMapPhysToLin(gsSGXDeviceMap.sHPCpuPBase,
 														     gsSGXDeviceMap.ui32HPSize,
 														     PVRSRV_HAP_KERNEL_ONLY|PVRSRV_HAP_UNCACHED,
@@ -1035,7 +1035,7 @@ static PVRSRV_ERROR SysMapInRegisters(IMG_VOID)
 				psDevInfo->ui32HPSize  = gsSGXDeviceMap.ui32HPSize;
 				psDevInfo->sHPSysPAddr = gsSGXDeviceMap.sHPSysPBase;
 			}
-#endif 
+#endif
 			break;
 		}
 		default:
@@ -1062,7 +1062,7 @@ static PVRSRV_ERROR SysUnmapRegisters(IMG_VOID)
 		{
 			PVRSRV_SGXDEV_INFO *psDevInfo = (PVRSRV_SGXDEV_INFO *)psDeviceNodeList->pvDevice;
 #if !(defined(NO_HARDWARE) && defined(__linux__))
-			
+
 			if (psDevInfo->pvRegsBaseKM)
 			{
 				OSUnMapPhysToLin(psDevInfo->pvRegsBaseKM,
@@ -1072,7 +1072,7 @@ static PVRSRV_ERROR SysUnmapRegisters(IMG_VOID)
 
 				SYS_SPECIFIC_DATA_SET(&gsSysSpecificData, SYS_SPECIFIC_DATA_PM_UNMAP_SGX_REGS);
 			}
-#endif	
+#endif
 
 			psDevInfo->pvRegsBaseKM = IMG_NULL;
 			psDevInfo->ui32RegSize          = 0;
@@ -1081,7 +1081,7 @@ static PVRSRV_ERROR SysUnmapRegisters(IMG_VOID)
 #if defined(SGX_FEATURE_HOST_PORT)
 			if (gsSGXDeviceMap.ui32Flags & SGX_HOSTPORT_PRESENT)
 			{
-				
+
 				if (psDevInfo->pvHostPortBaseKM)
 				{
 					OSUnMapPhysToLin(psDevInfo->pvHostPortBaseKM,
@@ -1097,7 +1097,7 @@ static PVRSRV_ERROR SysUnmapRegisters(IMG_VOID)
 				psDevInfo->ui32HPSize  = 0;
 				psDevInfo->sHPSysPAddr.uiAddr = 0;
 			}
-#endif 
+#endif
 			break;
 		}
 		default:
@@ -1107,23 +1107,23 @@ static PVRSRV_ERROR SysUnmapRegisters(IMG_VOID)
 	}
 
 #if !(defined(NO_HARDWARE) || defined(__linux__))
-	
+
 	OSUnMapPhysToLin(gsPoulsboRegsCPUVaddr,
 				POULSBO_REG_SIZE,
 				PVRSRV_HAP_KERNEL_ONLY|PVRSRV_HAP_UNCACHED,
 				IMG_NULL);
 
-	
+
 	OSUnMapPhysToLin(gsPoulsboDisplayRegsCPUVaddr,
 				POULSBO_DISPLAY_REG_SIZE,
 				PVRSRV_HAP_KERNEL_ONLY|PVRSRV_HAP_UNCACHED,
 				IMG_NULL);
 
-#endif	
+#endif
 
 	return PVRSRV_OK;
 }
-#endif	
+#endif
 
 
 PVRSRV_ERROR SysSystemPrePowerState(PVRSRV_SYS_POWER_STATE eNewPowerState)
@@ -1136,7 +1136,7 @@ PVRSRV_ERROR SysSystemPrePowerState(PVRSRV_SYS_POWER_STATE eNewPowerState)
 		if ((eNewPowerState == PVRSRV_SYS_POWER_STATE_D3) &&
 			(gpsSysData->eCurrentPowerState < PVRSRV_SYS_POWER_STATE_D3))
 		{
-			
+
 			if (SYS_SPECIFIC_DATA_TEST(&gsSysSpecificData, SYS_SPECIFIC_DATA_IRQ_ENABLED))
 			{
 				SysDisableInterrupts(gpsSysData);
@@ -1156,9 +1156,9 @@ PVRSRV_ERROR SysSystemPrePowerState(PVRSRV_SYS_POWER_STATE eNewPowerState)
 				SYS_SPECIFIC_DATA_SET(&gsSysSpecificData, SYS_SPECIFIC_DATA_PM_UNINSTALL_LISR);
 				SYS_SPECIFIC_DATA_CLEAR(&gsSysSpecificData, SYS_SPECIFIC_DATA_LISR_INSTALLED);
 			}
-#endif 
+#endif
 
-			
+
 			SysUnmapRegisters();
 
 			eError = OSPCISuspendDev(gsSysSpecificData.hSGXPCI);
@@ -1169,11 +1169,11 @@ PVRSRV_ERROR SysSystemPrePowerState(PVRSRV_SYS_POWER_STATE eNewPowerState)
 		}
 	}
 	return eError;
-#else	
+#else
 	PVR_UNREFERENCED_PARAMETER(eNewPowerState);
 
 	return PVRSRV_ERROR_NOT_SUPPORTED;
-#endif	
+#endif
 }
 
 PVRSRV_ERROR SysSystemPostPowerState(PVRSRV_SYS_POWER_STATE eNewPowerState)
@@ -1193,7 +1193,7 @@ PVRSRV_ERROR SysSystemPostPowerState(PVRSRV_SYS_POWER_STATE eNewPowerState)
 				return eError;
 			}
 
-			
+
 
 
 			eError = SysLocateDevices(gpsSysData);
@@ -1203,7 +1203,7 @@ PVRSRV_ERROR SysSystemPostPowerState(PVRSRV_SYS_POWER_STATE eNewPowerState)
 				return eError;
 			}
 
-			
+
 			eError = SysMapInRegisters();
 			if (eError != PVRSRV_OK)
 			{
@@ -1222,7 +1222,7 @@ PVRSRV_ERROR SysSystemPostPowerState(PVRSRV_SYS_POWER_STATE eNewPowerState)
 				SYS_SPECIFIC_DATA_SET(&gsSysSpecificData, SYS_SPECIFIC_DATA_LISR_INSTALLED);
 				SYS_SPECIFIC_DATA_CLEAR(&gsSysSpecificData, SYS_SPECIFIC_DATA_PM_UNINSTALL_LISR);
 			}
-#endif 
+#endif
 
 			if (SYS_SPECIFIC_DATA_TEST(&gsSysSpecificData, SYS_SPECIFIC_DATA_PM_IRQ_DISABLE))
 			{
@@ -1234,11 +1234,11 @@ PVRSRV_ERROR SysSystemPostPowerState(PVRSRV_SYS_POWER_STATE eNewPowerState)
 		}
 	}
 	return eError;
-#else	
+#else
 	PVR_UNREFERENCED_PARAMETER(eNewPowerState);
 
 	return PVRSRV_ERROR_NOT_SUPPORTED;
-#endif	
+#endif
 }
 
 
@@ -1276,7 +1276,7 @@ PVRSRV_ERROR SysDevicePrePowerState(IMG_UINT32			ui32DeviceIndex,
 		}
 #if defined(PVR_MDFLD_SYS_MSVDX_AND_TOPAZ)
 		else if (ui32DeviceIndex == gui32MRSTMSVDXDeviceID)
-		{			
+		{
 			psb_irq_uninstall_islands(gpDrmDevice, OSPM_VIDEO_DEC_ISLAND);
 			if (ospm_power_is_hw_on(OSPM_DISPLAY_ISLAND)) {
 				ospm_power_island_down(OSPM_VIDEO_DEC_ISLAND);
@@ -1308,7 +1308,7 @@ PVRSRV_ERROR SysDevicePrePowerState(IMG_UINT32			ui32DeviceIndex,
 			ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 #endif
 #endif
-#endif	
+#endif
 	}
 	return PVRSRV_OK;
 }
@@ -1342,14 +1342,14 @@ PVRSRV_ERROR SysDevicePostPowerState(IMG_UINT32			ui32DeviceIndex,
 		else if (ui32DeviceIndex == gui32MRSTMSVDXDeviceID)
 		{
 			PVR_DPF((PVR_DBG_MESSAGE,"SysDevicePrePowerState: Restore MSVDX power"));
-			if (ospm_power_is_hw_on(OSPM_DISPLAY_ISLAND)) {	
+			if (ospm_power_is_hw_on(OSPM_DISPLAY_ISLAND)) {
 				ospm_power_island_up(OSPM_VIDEO_DEC_ISLAND);
 			} else {
 				ospm_power_island_up(OSPM_DISPLAY_ISLAND);
 				ospm_power_island_up(OSPM_VIDEO_DEC_ISLAND);
 				ospm_power_island_down(OSPM_DISPLAY_ISLAND);
 			}
-#if 0 
+#if 0
 #if defined(SUPPORT_DRI_DRM_EXT)
 			if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, true))
 			{
@@ -1375,7 +1375,7 @@ PVRSRV_ERROR SysDevicePostPowerState(IMG_UINT32			ui32DeviceIndex,
 				ospm_power_island_up(OSPM_VIDEO_ENC_ISLAND);
 				ospm_power_island_down(OSPM_DISPLAY_ISLAND);
 			}
-#if 0 
+#if 0
 #if defined(SUPPORT_DRI_DRM_EXT)
 			if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, true))
 			{
@@ -1391,7 +1391,7 @@ PVRSRV_ERROR SysDevicePostPowerState(IMG_UINT32			ui32DeviceIndex,
 #endif
 #endif
 		}
-#endif 
+#endif
 	}
 
 	return PVRSRV_OK;
@@ -1415,7 +1415,7 @@ int SYSPVRServiceSGXInterrupt(struct drm_device *dev)
 
 	if (gpsSGXDevNode != IMG_NULL)
 	{
-		bStatus = (*gpsSGXDevNode->pfnDeviceISR)(gpsSGXDevNode->pvISRData);		
+		bStatus = (*gpsSGXDevNode->pfnDeviceISR)(gpsSGXDevNode->pvISRData);
 		if (bStatus)
 		{
 			OSScheduleMISR((IMG_VOID *)gpsSGXDevNode->psSysData);

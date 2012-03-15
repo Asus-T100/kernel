@@ -1,26 +1,26 @@
 /**********************************************************************
  *
  * Copyright (C) Imagination Technologies Ltd. All rights reserved.
- * 
+ *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
  * version 2, as published by the Free Software Foundation.
- * 
- * This program is distributed in the hope it will be useful but, except 
- * as otherwise stated in writing, without any warranty; without even the 
- * implied warranty of merchantability or fitness for a particular purpose. 
+ *
+ * This program is distributed in the hope it will be useful but, except
+ * as otherwise stated in writing, without any warranty; without even the
+ * implied warranty of merchantability or fitness for a particular purpose.
  * See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License along with
  * this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
- * 
+ *
  * The full GNU General Public License is included in this distribution in
  * the file called "COPYING".
  *
  * Contact Information:
  * Imagination Technologies Ltd. <gpl-support@imgtec.com>
- * Home Park Estate, Kings Langley, Herts, WD4 8LZ, UK 
+ * Home Park Estate, Kings Langley, Herts, WD4 8LZ, UK
  *
  ******************************************************************************/
 
@@ -147,7 +147,7 @@ static INLINE IMG_VOID PVRSRVTimeTraceSysPhysAddr(IMG_UINT32 ui32Group, IMG_UINT
 				1, (IMG_UINT8 *) &psPAddr.uiAddr);
 }
 
-#else 
+#else
 
 	#define PVR_TTRACE(group, class, token) \
 			((void) 0)
@@ -170,7 +170,7 @@ static INLINE IMG_VOID PVRSRVTimeTraceSysPhysAddr(IMG_UINT32 ui32Group, IMG_UINT
 	#define PVR_TTRACE_SYNC_OBJECT(group, token, syncobj, op) \
 			((void) 0)
 
-#endif 
+#endif
 
 IMG_IMPORT PVRSRV_ERROR PVRSRVTimeTraceInit(IMG_VOID);
 IMG_IMPORT IMG_VOID PVRSRVTimeTraceDeinit(IMG_VOID);
@@ -181,4 +181,4 @@ IMG_IMPORT PVRSRV_ERROR PVRSRVTimeTraceBufferCreate(IMG_UINT32 ui32PID);
 IMG_IMPORT PVRSRV_ERROR PVRSRVTimeTraceBufferDestroy(IMG_UINT32 ui32PID);
 
 IMG_IMPORT IMG_VOID PVRSRVDumpTimeTraceBuffers(IMG_VOID);
-#endif 
+#endif

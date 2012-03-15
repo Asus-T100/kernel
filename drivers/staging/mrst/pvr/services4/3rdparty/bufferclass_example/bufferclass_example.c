@@ -1,26 +1,26 @@
 /**********************************************************************
  *
  * Copyright (C) Imagination Technologies Ltd. All rights reserved.
- * 
+ *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
  * version 2, as published by the Free Software Foundation.
- * 
- * This program is distributed in the hope it will be useful but, except 
- * as otherwise stated in writing, without any warranty; without even the 
- * implied warranty of merchantability or fitness for a particular purpose. 
+ *
+ * This program is distributed in the hope it will be useful but, except
+ * as otherwise stated in writing, without any warranty; without even the
+ * implied warranty of merchantability or fitness for a particular purpose.
  * See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License along with
  * this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
- * 
+ *
  * The full GNU General Public License is included in this distribution in
  * the file called "COPYING".
  *
  * Contact Information:
  * Imagination Technologies Ltd. <gpl-support@imgtec.com>
- * Home Park Estate, Kings Langley, Herts, WD4 8LZ, UK 
+ * Home Park Estate, Kings Langley, Herts, WD4 8LZ, UK
  *
  ******************************************************************************/
 
@@ -53,15 +53,15 @@ static void SetAnchorPtr(BC_EXAMPLE_DEVINFO *psDevInfo)
 static PVRSRV_ERROR OpenBCDevice(IMG_UINT32 ui32DeviceID, IMG_HANDLE *phDevice)
 {
 	BC_EXAMPLE_DEVINFO *psDevInfo;
-	
-	
+
+
 
 
 	UNREFERENCED_PARAMETER(ui32DeviceID);
 
 	psDevInfo = GetAnchorPtr();
 
-	
+
 	*phDevice = (IMG_HANDLE)psDevInfo;
 
 	return (PVRSRV_OK);
@@ -161,21 +161,21 @@ BCE_ERROR BC_Example_Register(void)
 {
 	BC_EXAMPLE_DEVINFO	*psDevInfo;
 
-	
 
 
 
-	
 
 
 
-	
+
+
+
 
 	psDevInfo = GetAnchorPtr();
 
 	if (psDevInfo == NULL)
 	{
-		
+
 		psDevInfo = (BC_EXAMPLE_DEVINFO *)BCAllocKernelMem(sizeof(BC_EXAMPLE_DEVINFO));
 
 		if(!psDevInfo)
@@ -183,13 +183,13 @@ BCE_ERROR BC_Example_Register(void)
 			return (BCE_ERROR_OUT_OF_MEMORY);
 		}
 
-		
+
 		SetAnchorPtr((void*)psDevInfo);
 
-		
+
 		psDevInfo->ulRefCount = 0;
 
-	
+
 		if(BCOpenPVRServices(&psDevInfo->hPVRServices) != BCE_OK)
 		{
 			return (BCE_ERROR_INIT_FAILURE);
@@ -199,13 +199,13 @@ BCE_ERROR BC_Example_Register(void)
 			return (BCE_ERROR_INIT_FAILURE);
 		}
 
-		
+
 		if(!(*pfnGetPVRJTable)(&psDevInfo->sPVRJTable))
 		{
 			return (BCE_ERROR_INIT_FAILURE);
 		}
 
-		
+
 
 		psDevInfo->ulNumBuffers = 0;
 
@@ -216,7 +216,7 @@ BCE_ERROR BC_Example_Register(void)
 			return (BCE_ERROR_OUT_OF_MEMORY);
 		}
 
-		
+
 		psDevInfo->sBufferInfo.pixelformat        = PVRSRV_PIXEL_FORMAT_UNKNOWN;
 		psDevInfo->sBufferInfo.ui32Width          = 0;
 		psDevInfo->sBufferInfo.ui32Height         = 0;
@@ -224,10 +224,10 @@ BCE_ERROR BC_Example_Register(void)
 		psDevInfo->sBufferInfo.ui32BufferDeviceID = BC_EXAMPLE_DEVICEID;
 		psDevInfo->sBufferInfo.ui32Flags          = 0;
 		psDevInfo->sBufferInfo.ui32BufferCount    = (IMG_UINT32)psDevInfo->ulNumBuffers;
-		
+
 		strncpy(psDevInfo->sBufferInfo.szDeviceName, BUFFERCLASS_DEVICE_NAME, MAX_BUFFER_DEVICE_NAME_SIZE);
 
-		
+
 
 		psDevInfo->sBCJTable.ui32TableSize    = sizeof(PVRSRV_BC_SRV2BUFFER_KMJTABLE);
 		psDevInfo->sBCJTable.pfnOpenBCDevice  = OpenBCDevice;
@@ -237,8 +237,8 @@ BCE_ERROR BC_Example_Register(void)
 		psDevInfo->sBCJTable.pfnGetBufferAddr = GetBCBufferAddr;
 
 
-		
-		
+
+
 		if(psDevInfo->sPVRJTable.pfnPVRSRVRegisterBCDevice (&psDevInfo->sBCJTable,
 															(IMG_UINT32*)&psDevInfo->ulDeviceID ) != PVRSRV_OK)
 		{
@@ -246,10 +246,10 @@ BCE_ERROR BC_Example_Register(void)
 		}
 	}
 
-	
+
 	psDevInfo->ulRefCount++;
 
-	
+
 	return (BCE_OK);
 }
 
@@ -259,21 +259,21 @@ BCE_ERROR BC_Example_Unregister(void)
 
 	psDevInfo = GetAnchorPtr();
 
-	
+
 	if (psDevInfo == NULL)
 	{
 		return (BCE_ERROR_GENERIC);
 	}
-	
+
 	psDevInfo->ulRefCount--;
 
 	if (psDevInfo->ulRefCount == 0)
 	{
-		
+
 		PVRSRV_BC_BUFFER2SRV_KMJTABLE	*psJTable = &psDevInfo->sPVRJTable;
 
 
-		
+
 		if (psJTable->pfnPVRSRVRemoveBCDevice(psDevInfo->ulDeviceID) != PVRSRV_OK)
 		{
 			return (BCE_ERROR_GENERIC);
@@ -290,14 +290,14 @@ BCE_ERROR BC_Example_Unregister(void)
 			BCFreeKernelMem(psDevInfo->psSystemBuffer);
 		}
 
-		
+
 		BCFreeKernelMem(psDevInfo);
 
-		
+
 		SetAnchorPtr(NULL);
 	}
 
-	
+
 	return (BCE_OK);
 }
 
@@ -316,21 +316,21 @@ BCE_ERROR BC_Example_Buffers_Create(void)
 
 	IMG_UINT32 ui32MaxWidth = 320 * 4;
 
-	
+
 
 	psDevInfo = GetAnchorPtr();
 	if (psDevInfo == NULL)
 	{
-		
+
 		return (BCE_ERROR_DEVICE_REGISTER_FAILED);
 	}
 	if (psDevInfo->ulNumBuffers)
 	{
-		
+
 		return (BCE_ERROR_GENERIC);
 	}
-		
-	
+
+
 	psDevInfo->sBufferInfo.pixelformat        = BC_EXAMPLE_PIXELFORMAT;
 	psDevInfo->sBufferInfo.ui32Width          = ui32Width;
 	psDevInfo->sBufferInfo.ui32Height         = ui32Height;
@@ -344,15 +344,15 @@ BCE_ERROR BC_Example_Buffers_Create(void)
 
 		if(psDevInfo->sBufferInfo.pixelformat == PVRSRV_PIXEL_FORMAT_NV12)
 		{
-			
+
 			ulSize += ((ui32ByteStride >> 1) * (ui32Height >> 1) << 1);
 		}
 		else if(psDevInfo->sBufferInfo.pixelformat == PVRSRV_PIXEL_FORMAT_I420)
 		{
-			
+
 			ulSize += (ui32ByteStride >> 1) * (ui32Height >> 1);
-			
-			
+
+
 			ulSize += (ui32ByteStride >> 1) * (ui32Height >> 1);
 		}
 
@@ -365,7 +365,7 @@ BCE_ERROR BC_Example_Buffers_Create(void)
 			break;
 		}
 #else
-		
+
 		if (BCAllocContigMemory(ulSize,
 		                        &psDevInfo->psSystemBuffer[i].hMemHandle,
 		                        &psDevInfo->psSystemBuffer[i].sCPUVAddr,
@@ -385,7 +385,7 @@ BCE_ERROR BC_Example_Buffers_Create(void)
 
 	psDevInfo->sBufferInfo.ui32BufferCount = (IMG_UINT32)psDevInfo->ulNumBuffers;
 
-	
+
 
 	psDevInfo->sBCJTable.ui32TableSize    = sizeof(PVRSRV_BC_SRV2BUFFER_KMJTABLE);
 	psDevInfo->sBCJTable.pfnOpenBCDevice  = OpenBCDevice;
@@ -393,10 +393,10 @@ BCE_ERROR BC_Example_Buffers_Create(void)
 	psDevInfo->sBCJTable.pfnGetBCBuffer   = GetBCBuffer;
 	psDevInfo->sBCJTable.pfnGetBCInfo     = GetBCInfo;
 	psDevInfo->sBCJTable.pfnGetBufferAddr = GetBCBufferAddr;
-	
 
 
-	
+
+
 	if (ui32Width < ui32MaxWidth)
 	{
 		switch(pixelformat)
@@ -439,7 +439,7 @@ BCE_ERROR BC_Example_Buffers_Create(void)
 		ui32ByteStride = BC_EXAMPLE_STRIDE;
 	}
 
-	
+
 	return (BCE_OK);
 }
 
@@ -451,15 +451,15 @@ BCE_ERROR BC_Example_Buffers_Destroy(void)
 
 	psDevInfo = GetAnchorPtr();
 
-	
+
 	if (psDevInfo == NULL)
 	{
-		
+
 
 		return (BCE_ERROR_DEVICE_REGISTER_FAILED);
 	}
 
-	
+
 
 	for(i = 0; i < psDevInfo->ulNumBuffers; i++)
 	{
@@ -477,7 +477,7 @@ BCE_ERROR BC_Example_Buffers_Destroy(void)
 	}
 	psDevInfo->ulNumBuffers = 0;
 
-	
+
 	psDevInfo->sBufferInfo.pixelformat        = PVRSRV_PIXEL_FORMAT_UNKNOWN;
 	psDevInfo->sBufferInfo.ui32Width          = 0;
 	psDevInfo->sBufferInfo.ui32Height         = 0;
@@ -486,7 +486,7 @@ BCE_ERROR BC_Example_Buffers_Destroy(void)
 	psDevInfo->sBufferInfo.ui32Flags          = 0;
 	psDevInfo->sBufferInfo.ui32BufferCount    = (IMG_UINT32)psDevInfo->ulNumBuffers;
 
-	
+
 	return (BCE_OK);
 }
 

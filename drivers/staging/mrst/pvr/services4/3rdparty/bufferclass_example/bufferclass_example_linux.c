@@ -1,26 +1,26 @@
 /**********************************************************************
  *
  * Copyright (C) Imagination Technologies Ltd. All rights reserved.
- * 
+ *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
  * version 2, as published by the Free Software Foundation.
- * 
- * This program is distributed in the hope it will be useful but, except 
- * as otherwise stated in writing, without any warranty; without even the 
- * implied warranty of merchantability or fitness for a particular purpose. 
+ *
+ * This program is distributed in the hope it will be useful but, except
+ * as otherwise stated in writing, without any warranty; without even the
+ * implied warranty of merchantability or fitness for a particular purpose.
  * See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License along with
  * this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
- * 
+ *
  * The full GNU General Public License is included in this distribution in
  * the file called "COPYING".
  *
  * Contact Information:
  * Imagination Technologies Ltd. <gpl-support@imgtec.com>
- * Home Park Estate, Kings Langley, Herts, WD4 8LZ, UK 
+ * Home Park Estate, Kings Langley, Herts, WD4 8LZ, UK
  *
  ******************************************************************************/
 
@@ -94,8 +94,8 @@ static struct file_operations bufferclass_example_fops = {
 #define unref__ __attribute__ ((unused))
 
 #if defined(LMA)
-#define PVR_BUFFERCLASS_MEMOFFSET (220 * 1024 * 1024) 
-#define PVR_BUFFERCLASS_MEMSIZE	  (4 * 1024 * 1024)	  
+#define PVR_BUFFERCLASS_MEMOFFSET (220 * 1024 * 1024)
+#define PVR_BUFFERCLASS_MEMSIZE	  (4 * 1024 * 1024)
 
 unsigned long g_ulMemBase = 0;
 unsigned long g_ulMemCurrent = 0;
@@ -125,7 +125,7 @@ static int __init BC_Example_ModInit(void)
 	psPCIDev = pci_get_device(VENDOR_ID_PVR, DEVICE_ID_PVR, NULL);
 	if (psPCIDev == NULL)
 	{
-		
+
 		psPCIDev = pci_get_device(VENDOR_ID_PVR, DEVICE_ID1_PVR, NULL);
 	}
 
@@ -157,7 +157,7 @@ static int __init BC_Example_ModInit(void)
 #endif
 
 #if defined(LDM_PLATFORM) || defined(LDM_PCI)
-	
+
 	psPvrClass = class_create(THIS_MODULE, "bc_example");
 
 	if (IS_ERR(psPvrClass))
@@ -169,17 +169,17 @@ static int __init BC_Example_ModInit(void)
 	psDev = device_create(psPvrClass, NULL, MKDEV(AssignedMajorNumber, 0),
 #if (LINUX_VERSION_CODE > KERNEL_VERSION(2,6,26))
 						  NULL,
-#endif 
+#endif
 						  DEVNAME);
 	if (IS_ERR(psDev))
 	{
 		printk(KERN_ERR DRVNAME ": BC_Example_ModInit: unable to create device (%ld)", PTR_ERR(psDev));
 		goto ExitDestroyClass;
 	}
-#endif 
+#endif
 
 #if defined(LMA)
-	
+
 	g_ulMemBase =  pci_resource_start(psPCIDev, PVR_MEM_PCI_BASENUM) + PVR_BUFFERCLASS_MEMOFFSET;
 #endif
 
@@ -190,7 +190,7 @@ static int __init BC_Example_ModInit(void)
 	}
 
 #if defined(LMA)
-	
+
 	pci_disable_device(psPCIDev);
 #endif
 
@@ -208,7 +208,7 @@ ExitDisable:
 ExitError:
 #endif
 	return -EBUSY;
-} 
+}
 
 static void __exit BC_Example_ModCleanup(void)
 {
@@ -218,13 +218,13 @@ static void __exit BC_Example_ModCleanup(void)
 #endif
 
 	unregister_chrdev(AssignedMajorNumber, DEVNAME);
-	
+
 	if(BC_Example_Deinit() != BCE_OK)
 	{
 		printk (KERN_ERR DRVNAME ": BC_Example_ModCleanup: can't deinit device\n");
 	}
 
-} 
+}
 
 
 void *BCAllocKernelMem(unsigned long ulSize)
@@ -288,7 +288,7 @@ void BCFreeDiscontigMemory(unsigned long ulSize,
 
 	vfree(LinAddr);
 }
-#else	
+#else
 
 BCE_ERROR BCAllocContigMemory(unsigned long ulSize,
                               BCE_HANDLE unref__ *phMemHandle,
@@ -297,8 +297,8 @@ BCE_ERROR BCAllocContigMemory(unsigned long ulSize,
 {
 #if defined(LMA)
 	void *pvLinAddr;
-	
-	
+
+
 	if(g_ulMemCurrent + ulSize >= PVR_BUFFERCLASS_MEMSIZE)
 	{
 		return (BCE_ERROR_OUT_OF_MEMORY);
@@ -309,14 +309,14 @@ BCE_ERROR BCAllocContigMemory(unsigned long ulSize,
 	if(pvLinAddr)
 	{
 		pPhysAddr->uiAddr = g_ulMemBase + g_ulMemCurrent;
-		*pLinAddr = pvLinAddr;	
+		*pLinAddr = pvLinAddr;
 
-		
+
 		g_ulMemCurrent += ulSize;
 		return (BCE_OK);
 	}
 	return (BCE_ERROR_OUT_OF_MEMORY);
-#else	
+#else
 #if defined(BCE_USE_SET_MEMORY)
 	void *pvLinAddr;
 	unsigned long ulAlignedSize = PAGE_ALIGN(ulSize);
@@ -337,7 +337,7 @@ BCE_ERROR BCAllocContigMemory(unsigned long ulSize,
 	*pLinAddr = pvLinAddr;
 
 	return (BCE_OK);
-#else	
+#else
 	dma_addr_t dma;
 	void *pvLinAddr;
 
@@ -351,8 +351,8 @@ BCE_ERROR BCAllocContigMemory(unsigned long ulSize,
 	*pLinAddr = pvLinAddr;
 
 	return (BCE_OK);
-#endif	
-#endif	
+#endif
+#endif
 }
 
 void BCFreeContigMemory(unsigned long ulSize,
@@ -363,7 +363,7 @@ void BCFreeContigMemory(unsigned long ulSize,
 #if defined(LMA)
 	g_ulMemCurrent -= ulSize;
 	iounmap(LinAddr);
-#else	
+#else
 #if defined(BCE_USE_SET_MEMORY)
 	unsigned long ulAlignedSize = PAGE_ALIGN(ulSize);
 	int iError;
@@ -375,34 +375,34 @@ void BCFreeContigMemory(unsigned long ulSize,
 		printk(KERN_ERR DRVNAME ": BCFreeContigMemory:  set_memory_wb failed (%d)\n", iError);
 	}
 	kfree(LinAddr);
-#else	
+#else
 	dma_free_coherent(NULL, ulSize, LinAddr, (dma_addr_t)PhysAddr.uiAddr);
-#endif	
-#endif	
+#endif
+#endif
 }
-#endif	
+#endif
 
 IMG_SYS_PHYADDR CpuPAddrToSysPAddrBC(IMG_CPU_PHYADDR cpu_paddr)
 {
 	IMG_SYS_PHYADDR sys_paddr;
-	
-	
+
+
 	sys_paddr.uiAddr = cpu_paddr.uiAddr;
 	return sys_paddr;
 }
 
 IMG_CPU_PHYADDR SysPAddrToCpuPAddrBC(IMG_SYS_PHYADDR sys_paddr)
 {
-	
+
 	IMG_CPU_PHYADDR cpu_paddr;
-	
+
 	cpu_paddr.uiAddr = sys_paddr.uiAddr;
 	return cpu_paddr;
 }
 
 BCE_ERROR BCOpenPVRServices (BCE_HANDLE *phPVRServices)
 {
-	
+
 	*phPVRServices = 0;
 	return (BCE_OK);
 }
@@ -410,7 +410,7 @@ BCE_ERROR BCOpenPVRServices (BCE_HANDLE *phPVRServices)
 
 BCE_ERROR BCClosePVRServices (BCE_HANDLE unref__ hPVRServices)
 {
-	
+
 	return (BCE_OK);
 }
 
@@ -421,7 +421,7 @@ BCE_ERROR BCGetLibFuncAddr (BCE_HANDLE unref__ hExtDrv, char *szFunctionName, PF
 		return (BCE_ERROR_INVALID_PARAMS);
 	}
 
-	
+
 	*ppfnFuncTable = PVRGetBufferClassJTable;
 
 	return (BCE_OK);

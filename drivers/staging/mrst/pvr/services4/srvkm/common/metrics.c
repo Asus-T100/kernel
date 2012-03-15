@@ -1,26 +1,26 @@
 /**********************************************************************
  *
  * Copyright (C) Imagination Technologies Ltd. All rights reserved.
- * 
+ *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
  * version 2, as published by the Free Software Foundation.
- * 
- * This program is distributed in the hope it will be useful but, except 
- * as otherwise stated in writing, without any warranty; without even the 
- * implied warranty of merchantability or fitness for a particular purpose. 
+ *
+ * This program is distributed in the hope it will be useful but, except
+ * as otherwise stated in writing, without any warranty; without even the
+ * implied warranty of merchantability or fitness for a particular purpose.
  * See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License along with
  * this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
- * 
+ *
  * The full GNU General Public License is included in this distribution in
  * the file called "COPYING".
  *
  * Contact Information:
  * Imagination Technologies Ltd. <gpl-support@imgtec.com>
- * Home Park Estate, Kings Langley, Herts, WD4 8LZ, UK 
+ * Home Park Estate, Kings Langley, Herts, WD4 8LZ, UK
  *
  ******************************************************************************/
 
@@ -44,7 +44,7 @@ static volatile IMG_UINT32 *pui32TimerRegister = 0;
 #define PVRSRV_TIMER_COUNT(X)			asTimers[X].ui32Count
 
 
-Temporal_Data asTimers[PVRSRV_NUM_TIMERS]; 
+Temporal_Data asTimers[PVRSRV_NUM_TIMERS];
 
 
 IMG_UINT32 PVRSRVTimeNow(IMG_VOID)
@@ -67,11 +67,11 @@ IMG_UINT32 PVRSRVTimeNow(IMG_VOID)
 
 	return (0xffffffff-*pui32TimerRegister);
 
-#else 
+#else
 
 	return 0;
 
-#endif 
+#endif
 }
 
 
@@ -106,25 +106,25 @@ IMG_VOID PVRSRVSetupMetricTimers(IMG_VOID *pvDevInfo)
 
 	#if defined(__sh__)
 
-		
-		
-		
-		
+
+
+
+
 		*TCR_2 = TIMER_DIVISOR;
 
-		
+
 		*TCOR_2 = *TCNT_2 = (IMG_UINT)0xffffffff;
 
-		
+
 		*TST_REG |= (IMG_UINT8)0x04;
 
 		pui32TimerRegister = (IMG_UINT32 *)TCNT_2;
 
-	#else 
+	#else
 
 		pui32TimerRegister = 0;
 
-	#endif 
+	#endif
 
 }
 
@@ -149,12 +149,12 @@ IMG_VOID PVRSRVOutputMetricTotals(IMG_VOID)
 		}
 	}
 #if 0
-	
+
 	PVR_DPF((PVR_DBG_ERROR," Timer(%u): Total = %u",PVRSRV_TIMER_EXAMPLE_1, PVRSRV_TIMER_TOTAL_IN_TICKS(PVRSRV_TIMER_EXAMPLE_1)));
 	PVR_DPF((PVR_DBG_ERROR," Timer(%u): Time = %ums",PVRSRV_TIMER_EXAMPLE_1, PVRSRV_TIMER_TOTAL_IN_MS(PVRSRV_TIMER_EXAMPLE_1)));
 	PVR_DPF((PVR_DBG_ERROR," Timer(%u): Count = %u",PVRSRV_TIMER_EXAMPLE_1, PVRSRV_TIMER_COUNT(PVRSRV_TIMER_EXAMPLE_1)));
 #endif
 }
 
-#endif 
+#endif
 

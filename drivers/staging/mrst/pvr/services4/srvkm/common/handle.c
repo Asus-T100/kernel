@@ -1,26 +1,26 @@
 /**********************************************************************
  *
  * Copyright (C) Imagination Technologies Ltd. All rights reserved.
- * 
+ *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
  * version 2, as published by the Free Software Foundation.
- * 
- * This program is distributed in the hope it will be useful but, except 
- * as otherwise stated in writing, without any warranty; without even the 
- * implied warranty of merchantability or fitness for a particular purpose. 
+ *
+ * This program is distributed in the hope it will be useful but, except
+ * as otherwise stated in writing, without any warranty; without even the
+ * implied warranty of merchantability or fitness for a particular purpose.
  * See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License along with
  * this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
- * 
+ *
  * The full GNU General Public License is included in this distribution in
  * the file called "COPYING".
  *
  * Contact Information:
  * Imagination Technologies Ltd. <gpl-support@imgtec.com>
- * Home Park Estate, Kings Langley, Herts, WD4 8LZ, UK 
+ * Home Park Estate, Kings Langley, Herts, WD4 8LZ, UK
  *
  ******************************************************************************/
 
@@ -130,85 +130,85 @@ enum ePVRSRVInternalHandleFlag
 
 struct sHandle
 {
-	
+
 	PVRSRV_HANDLE_TYPE eType;
 
-	
+
 	IMG_VOID *pvData;
 
-	
+
 	IMG_UINT32 ui32NextIndexPlusOne;
 
-	
+
 	enum ePVRSRVInternalHandleFlag eInternalFlag;
 
-	
+
 	PVRSRV_HANDLE_ALLOC_FLAG eFlag;
 
-	
+
 	IMG_UINT32 ui32Index;
 
-	
+
 	struct sHandleList sChildren;
 
-	
+
 	struct sHandleList sSiblings;
 };
 
 struct sHandleIndex
 {
-	
+
 	struct sHandle *psHandle;
 
-	
+
 	IMG_HANDLE hBlockAlloc;
 
-	
+
 	IMG_UINT32 ui32FreeHandBlockCount;
 };
 
 struct _PVRSRV_HANDLE_BASE_
 {
-	
+
 	IMG_HANDLE hBaseBlockAlloc;
 
-	
+
 	IMG_HANDLE hArrayBlockAlloc;
 
-	
+
 	struct sHandleIndex *psHandleArray;
 
-	
+
 	HASH_TABLE *psHashTab;
 
-	
+
 	IMG_UINT32 ui32FreeHandCount;
 
-	
+
 	IMG_UINT32 ui32FirstFreeIndex;
 
-	
+
 	IMG_UINT32 ui32MaxIndexPlusOne;
 
-	
+
 	IMG_UINT32 ui32TotalHandCount;
 
-	
+
 	IMG_UINT32 ui32LastFreeIndexPlusOne;
 
-	
+
 	IMG_UINT32 ui32HandBatchSize;
 
-	
+
 	IMG_UINT32 ui32TotalHandCountPreBatch;
 
-	
+
 	IMG_UINT32 ui32FirstBatchIndexPlusOne;
 
-	
+
 	IMG_UINT32 ui32BatchHandAllocFailures;
 
-	
+
 	IMG_BOOL bPurgingEnabled;
 };
 
@@ -216,7 +216,7 @@ enum eHandKey {
 	HAND_KEY_DATA = 0,
 	HAND_KEY_TYPE,
 	HAND_KEY_PARENT,
-	HAND_KEY_LEN			
+	HAND_KEY_LEN
 };
 
 PVRSRV_HANDLE_BASE *gpsKernelHandleBase = IMG_NULL;
@@ -310,7 +310,7 @@ IMG_BOOL NoParent(struct sHandle *psHandle)
 	}
 	return IMG_FALSE;
 }
-#endif 
+#endif
 #ifdef INLINE_IS_PRAGMA
 #pragma inline(ParentHandle)
 #endif
@@ -333,7 +333,7 @@ IMG_HANDLE ParentHandle(struct sHandle *psHandle)
 static INLINE
 IMG_VOID HandleListInsertBefore(PVRSRV_HANDLE_BASE *psBase, IMG_UINT32 ui32InsIndex, struct sHandleList *psIns, IMG_SIZE_T uiParentOffset, IMG_UINT32 ui32EntryIndex, struct sHandleList *psEntry, IMG_SIZE_T uiEntryOffset, IMG_UINT32 ui32ParentIndex)
 {
-	 
+
 	struct sHandleList *psPrevIns = LIST_PTR_FROM_INDEX_AND_OFFSET(psBase, psIns->ui32Prev, ui32ParentIndex, uiParentOffset, uiEntryOffset);
 
 	PVR_ASSERT(psEntry->hParent == IMG_NULL)
@@ -370,11 +370,11 @@ IMG_VOID HandleListRemove(PVRSRV_HANDLE_BASE *psBase, IMG_UINT32 ui32EntryIndex,
 {
 	if (!HandleListIsEmpty(ui32EntryIndex, psEntry))
 	{
-		 
+
 		struct sHandleList *psPrev = LIST_PTR_FROM_INDEX_AND_OFFSET(psBase, psEntry->ui32Prev, HANDLE_TO_INDEX(psEntry->hParent), uiParentOffset, uiEntryOffset);
 		struct sHandleList *psNext = LIST_PTR_FROM_INDEX_AND_OFFSET(psBase, psEntry->ui32Next, HANDLE_TO_INDEX(psEntry->hParent), uiParentOffset, uiEntryOffset);
 
-		
+
 		PVR_ASSERT(psEntry->hParent != IMG_NULL)
 
 		psPrev->ui32Next = psEntry->ui32Next;
@@ -404,16 +404,16 @@ PVRSRV_ERROR HandleListIterate(PVRSRV_HANDLE_BASE *psBase, struct sHandleList *p
 
 	PVR_ASSERT(psHead->hParent != IMG_NULL)
 
-	
+
 	for(ui32Index = psHead->ui32Next; ui32Index != ui32Parent; )
 	{
 		struct sHandle *psHandle = INDEX_TO_HANDLE_STRUCT_PTR(psBase, ui32Index);
-		 
+
 		struct sHandleList *psEntry = LIST_PTR_FROM_INDEX_AND_OFFSET(psBase, ui32Index, ui32Parent, uiParentOffset, uiEntryOffset);
 		PVRSRV_ERROR eError;
 
 		PVR_ASSERT(psEntry->hParent == psHead->hParent)
-		
+
 		ui32Index = psEntry->ui32Next;
 
 		eError = (*pfnIterFunc)(psBase, psHandle);
@@ -448,7 +448,7 @@ PVRSRV_ERROR GetHandleStructure(PVRSRV_HANDLE_BASE *psBase, struct sHandle **pps
 	IMG_UINT32 ui32Index = HANDLE_TO_INDEX(hHandle);
 	struct sHandle *psHandle;
 
-	
+
 	if (!INDEX_IS_VALID(psBase, ui32Index))
 	{
 		PVR_DPF((PVR_DBG_ERROR, "GetHandleStructure: Handle index out of range (%u >= %u)", ui32Index, psBase->ui32TotalHandCount));
@@ -468,7 +468,7 @@ PVRSRV_ERROR GetHandleStructure(PVRSRV_HANDLE_BASE *psBase, struct sHandle **pps
 		return PVRSRV_ERROR_HANDLE_NOT_ALLOCATED;
 	}
 
-	
+
 	if (eType != PVRSRV_HANDLE_TYPE_NONE && eType != psHandle->eType)
 	{
 		PVR_DPF((PVR_DBG_ERROR, "GetHandleStructure: Handle type mismatch (%d != %d)", eType, psHandle->eType));
@@ -478,7 +478,7 @@ PVRSRV_ERROR GetHandleStructure(PVRSRV_HANDLE_BASE *psBase, struct sHandle **pps
 		return PVRSRV_ERROR_HANDLE_TYPE_MISMATCH;
 	}
 
-	
+
 	*ppsHandle = psHandle;
 
 	return PVRSRV_OK;
@@ -549,7 +549,7 @@ PVRSRV_ERROR ReallocHandleArray(PVRSRV_HANDLE_BASE *psBase, IMG_UINT32 ui32NewCo
 
 	if (ui32NewCount != 0)
 	{
-		
+
 		eError = OSAllocMem(PVRSRV_OS_NON_PAGEABLE_HEAP,
 			HANDLE_ARRAY_SIZE(ui32NewCount) * sizeof(struct sHandleIndex),
 			(IMG_VOID **)&psNewArray,
@@ -568,7 +568,7 @@ PVRSRV_ERROR ReallocHandleArray(PVRSRV_HANDLE_BASE *psBase, IMG_UINT32 ui32NewCo
 		}
 	}
 
-	
+
 	for(ui32Index = ui32NewCount; ui32Index < ui32OldCount; ui32Index += HANDLE_BLOCK_SIZE)
 	{
 		struct sHandleIndex *psIndex = INDEX_TO_INDEX_STRUCT_PTR(psOldArray, ui32Index);
@@ -583,10 +583,10 @@ PVRSRV_ERROR ReallocHandleArray(PVRSRV_HANDLE_BASE *psBase, IMG_UINT32 ui32NewCo
 		}
 	}
 
-	
+
 	for(ui32Index = ui32OldCount; ui32Index < ui32NewCount; ui32Index += HANDLE_BLOCK_SIZE)
 	{
-		 
+
 		struct sHandleIndex *psIndex = INDEX_TO_INDEX_STRUCT_PTR(psNewArray, ui32Index);
 
 		eError = OSAllocMem(PVRSRV_OS_NON_PAGEABLE_HEAP,
@@ -624,7 +624,7 @@ PVRSRV_ERROR ReallocHandleArray(PVRSRV_HANDLE_BASE *psBase, IMG_UINT32 ui32NewCo
 	}
 
 #ifdef	DEBUG_MAX_HANDLE_COUNT
-	
+
 	if (ui32NewCount > DEBUG_MAX_HANDLE_COUNT)
 	{
 		PVR_DPF((PVR_DBG_ERROR, "ReallocHandleArray: Max handle count (%u) reached", DEBUG_MAX_HANDLE_COUNT));
@@ -635,7 +635,7 @@ PVRSRV_ERROR ReallocHandleArray(PVRSRV_HANDLE_BASE *psBase, IMG_UINT32 ui32NewCo
 
 	if (psOldArray != IMG_NULL)
 	{
-		
+
 		eError = OSFreeMem(PVRSRV_OS_PAGEABLE_HEAP,
 			HANDLE_ARRAY_SIZE(ui32OldCount) * sizeof(struct sHandleIndex),
 			psOldArray,
@@ -652,13 +652,13 @@ PVRSRV_ERROR ReallocHandleArray(PVRSRV_HANDLE_BASE *psBase, IMG_UINT32 ui32NewCo
 
 	if (ui32NewCount > ui32OldCount)
 	{
-		
+
 		PVR_ASSERT(psBase->ui32FreeHandCount + (ui32NewCount - ui32OldCount) > psBase->ui32FreeHandCount)
 
-		 
+
 		psBase->ui32FreeHandCount += (ui32NewCount - ui32OldCount);
 
-		
+
 		if (psBase->ui32FirstFreeIndex == 0)
 		{
 			PVR_ASSERT(psBase->ui32LastFreeIndexPlusOne == 0)
@@ -687,7 +687,7 @@ PVRSRV_ERROR ReallocHandleArray(PVRSRV_HANDLE_BASE *psBase, IMG_UINT32 ui32NewCo
 		PVR_ASSERT(ui32NewCount == 0 || psBase->ui32FirstFreeIndex <= ui32NewCount)
 		PVR_ASSERT(psBase->ui32FreeHandCount - (ui32OldCount - ui32NewCount) < psBase->ui32FreeHandCount)
 
-		 
+
 		psBase->ui32FreeHandCount -= (ui32OldCount - ui32NewCount);
 
 		if (ui32NewCount == 0)
@@ -706,7 +706,7 @@ error:
 
 	if (psNewArray != IMG_NULL)
 	{
-		
+
 		for(ui32Index = ui32OldCount; ui32Index < ui32NewCount; ui32Index += HANDLE_BLOCK_SIZE)
 		{
 			struct sHandleIndex *psIndex = INDEX_TO_INDEX_STRUCT_PTR(psNewArray, ui32Index);
@@ -723,7 +723,7 @@ error:
 			}
 		}
 
-		
+
 		eError = OSFreeMem(PVRSRV_OS_PAGEABLE_HEAP,
 			HANDLE_ARRAY_SIZE(ui32NewCount) * sizeof(struct sHandleIndex),
 			psNewArray,
@@ -748,7 +748,7 @@ static PVRSRV_ERROR FreeHandle(PVRSRV_HANDLE_BASE *psBase, struct sHandle *psHan
 	IMG_UINT32 ui32Index = HANDLE_PTR_TO_INDEX(psHandle);
 	PVRSRV_ERROR eError;
 
-	
+
 	InitKey(aKey, psBase, psHandle->pvData, psHandle->eType, ParentIfPrivate(psHandle));
 
 	if (!TEST_ALLOC_FLAG(psHandle, PVRSRV_HANDLE_ALLOC_FLAG_MULTI) && !BATCHED_HANDLE_PARTIALLY_FREE(psHandle))
@@ -767,10 +767,10 @@ static PVRSRV_ERROR FreeHandle(PVRSRV_HANDLE_BASE *psBase, struct sHandle *psHan
 		PVR_UNREFERENCED_PARAMETER(hHandle);
 	}
 
-	
+
 	UnlinkFromParent(psBase, psHandle);
 
-	
+
 	eError = IterateOverChildren(psBase, psHandle, FreeHandle);
 	if (eError != PVRSRV_OK)
 	{
@@ -778,18 +778,18 @@ static PVRSRV_ERROR FreeHandle(PVRSRV_HANDLE_BASE *psBase, struct sHandle *psHan
 		return eError;
 	}
 
-	
+
 	psHandle->eType = PVRSRV_HANDLE_TYPE_NONE;
 
 	if (BATCHED_HANDLE(psHandle) && !BATCHED_HANDLE_PARTIALLY_FREE(psHandle))
 	{
-		 
+
         SET_BATCHED_HANDLE_PARTIALLY_FREE(psHandle);
-		
+
 		return PVRSRV_OK;
 	}
 
-	
+
 	if (!psBase->bPurgingEnabled)
 	{
 		if (psBase->ui32FreeHandCount == 0)
@@ -801,7 +801,7 @@ static PVRSRV_ERROR FreeHandle(PVRSRV_HANDLE_BASE *psBase, struct sHandle *psHan
 		}
 		else
 		{
-			
+
 			PVR_ASSERT(psBase->ui32LastFreeIndexPlusOne != 0)
 			PVR_ASSERT(INDEX_TO_HANDLE_STRUCT_PTR(psBase, psBase->ui32LastFreeIndexPlusOne - 1)->ui32NextIndexPlusOne == 0)
 			INDEX_TO_HANDLE_STRUCT_PTR(psBase, psBase->ui32LastFreeIndexPlusOne - 1)->ui32NextIndexPlusOne =  ui32Index + 1;
@@ -809,7 +809,7 @@ static PVRSRV_ERROR FreeHandle(PVRSRV_HANDLE_BASE *psBase, struct sHandle *psHan
 
 		PVR_ASSERT(psHandle->ui32NextIndexPlusOne == 0)
 
-		
+
 		psBase->ui32LastFreeIndexPlusOne = ui32Index + 1;
 	}
 
@@ -860,7 +860,7 @@ static PVRSRV_ERROR FreeAllHandles(PVRSRV_HANDLE_BASE *psBase)
 				break;
 			}
 
-			
+
 			if (psBase->ui32FreeHandCount == psBase->ui32TotalHandCount)
 			{
 				break;
@@ -881,7 +881,7 @@ static PVRSRV_ERROR FreeHandleBase(PVRSRV_HANDLE_BASE *psBase)
 		PVRSRVReleaseHandleBatch(psBase);
 	}
 
-	
+
 	eError = FreeAllHandles(psBase);
 	if (eError != PVRSRV_OK)
 	{
@@ -889,7 +889,7 @@ static PVRSRV_ERROR FreeHandleBase(PVRSRV_HANDLE_BASE *psBase)
 		return eError;
 	}
 
-	
+
 	eError = FreeHandleArray(psBase);
 	if (eError != PVRSRV_OK)
 	{
@@ -899,7 +899,7 @@ static PVRSRV_ERROR FreeHandleBase(PVRSRV_HANDLE_BASE *psBase)
 
 	if (psBase->psHashTab != IMG_NULL)
 	{
-		
+
 		HASH_Delete(psBase->psHashTab);
 	}
 
@@ -948,7 +948,7 @@ static PVRSRV_ERROR IncreaseHandleArraySize(PVRSRV_HANDLE_BASE *psBase, IMG_UINT
 
 	PVR_ASSERT(ui32Delta != 0)
 
-	
+
 	if (ui32NewTotalHandCount > psBase->ui32MaxIndexPlusOne || ui32NewTotalHandCount <= psBase->ui32TotalHandCount)
 	{
 		ui32NewTotalHandCount = psBase->ui32MaxIndexPlusOne;
@@ -964,7 +964,7 @@ static PVRSRV_ERROR IncreaseHandleArraySize(PVRSRV_HANDLE_BASE *psBase, IMG_UINT
 
 	PVR_ASSERT(ui32DeltaAdjusted >= ui32Delta)
 
-	
+
 	eError = ReallocHandleArray(psBase, ui32NewTotalHandCount);
 	if (eError != PVRSRV_OK)
 	{
@@ -1010,23 +1010,23 @@ static PVRSRV_ERROR AllocHandle(PVRSRV_HANDLE_BASE *psBase, IMG_HANDLE *phHandle
 	HAND_KEY aKey;
 	PVRSRV_ERROR eError;
 
-	
+
 	PVR_ASSERT(eType != PVRSRV_HANDLE_TYPE_NONE)
 	PVR_ASSERT(psBase != IMG_NULL)
 	PVR_ASSERT(psBase->psHashTab != IMG_NULL)
 
 	if (!TEST_FLAG(eFlag, PVRSRV_HANDLE_ALLOC_FLAG_MULTI))
 	{
-		
+
 		PVR_ASSERT(FindHandle(psBase, pvData, eType, hParent) == IMG_NULL)
 	}
 
 	if (psBase->ui32FreeHandCount == 0 && HANDLES_BATCHED(psBase))
 	{
-		 PVR_DPF((PVR_DBG_WARNING, "AllocHandle: Handle batch size (%u) was too small, allocating additional space", psBase->ui32HandBatchSize)); 
+		 PVR_DPF((PVR_DBG_WARNING, "AllocHandle: Handle batch size (%u) was too small, allocating additional space", psBase->ui32HandBatchSize));
 	}
 
-	
+
 	eError = EnsureFreeHandles(psBase, 1);
 	if (eError != PVRSRV_OK)
 	{
@@ -1037,18 +1037,18 @@ static PVRSRV_ERROR AllocHandle(PVRSRV_HANDLE_BASE *psBase, IMG_HANDLE *phHandle
 
 	if (!psBase->bPurgingEnabled)
 	{
-		
+
 		ui32NewIndex = psBase->ui32FirstFreeIndex;
 
-		
+
 		psNewHandle = INDEX_TO_HANDLE_STRUCT_PTR(psBase, ui32NewIndex);
 	}
 	else
 	{
 		IMG_UINT32 ui32BlockedIndex;
 
-		
-		
+
+
 		PVR_ASSERT((psBase->ui32FirstFreeIndex % HANDLE_BLOCK_SIZE) == 0)
 
 		for (ui32BlockedIndex = ROUND_DOWN_TO_MULTIPLE_OF_BLOCK_SIZE(psBase->ui32FirstFreeIndex); ui32BlockedIndex < psBase->ui32TotalHandCount; ui32BlockedIndex += HANDLE_BLOCK_SIZE)
@@ -1077,16 +1077,16 @@ static PVRSRV_ERROR AllocHandle(PVRSRV_HANDLE_BASE *psBase, IMG_HANDLE *phHandle
 		return PVRSRV_ERROR_INVALID_PARAMS;
 	}
 
-	
+
 	hHandle = INDEX_TO_HANDLE(ui32NewIndex);
 
-	
+
 	if (!TEST_FLAG(eFlag, PVRSRV_HANDLE_ALLOC_FLAG_MULTI))
 	{
-		
+
 		InitKey(aKey, psBase, pvData, eType, hParent);
 
-		
+
 		if (!HASH_Insert_Extended(psBase->psHashTab, aKey, (IMG_UINTPTR_T)hHandle))
 		{
 			PVR_DPF((PVR_DBG_ERROR, "AllocHandle: Couldn't add handle to hash table"));
@@ -1102,10 +1102,10 @@ static PVRSRV_ERROR AllocHandle(PVRSRV_HANDLE_BASE *psBase, IMG_HANDLE *phHandle
 
 	INDEX_TO_FREE_HAND_BLOCK_COUNT(psBase, ui32NewIndex)--;
 
-	
+
 	if (!psBase->bPurgingEnabled)
 	{
-		
+
 		if (psBase->ui32FreeHandCount == 0)
 		{
 			PVR_ASSERT(psBase->ui32FirstFreeIndex == ui32NewIndex)
@@ -1116,17 +1116,17 @@ static PVRSRV_ERROR AllocHandle(PVRSRV_HANDLE_BASE *psBase, IMG_HANDLE *phHandle
 		}
 		else
 		{
-			
+
 			psBase->ui32FirstFreeIndex = (psNewHandle->ui32NextIndexPlusOne == 0) ?
 				ui32NewIndex + 1 :
 				psNewHandle->ui32NextIndexPlusOne - 1;
 		}
 	}
 
-	
+
 	PVR_ASSERT(psNewHandle->ui32Index == ui32NewIndex)
 
-	 
+
 	psNewHandle->eType = eType;
 	psNewHandle->pvData = pvData;
 	psNewHandle->eInternalFlag = INTERNAL_HANDLE_FLAG_NONE;
@@ -1144,12 +1144,12 @@ static PVRSRV_ERROR AllocHandle(PVRSRV_HANDLE_BASE *psBase, IMG_HANDLE *phHandle
 
 	if (HANDLES_BATCHED(psBase))
 	{
-		
+
 		psNewHandle->ui32NextIndexPlusOne = psBase->ui32FirstBatchIndexPlusOne;
 
 		psBase->ui32FirstBatchIndexPlusOne = ui32NewIndex + 1;
 
-		 
+
 		SET_BATCHED_HANDLE(psNewHandle);
 	}
 	else
@@ -1157,7 +1157,7 @@ static PVRSRV_ERROR AllocHandle(PVRSRV_HANDLE_BASE *psBase, IMG_HANDLE *phHandle
 		psNewHandle->ui32NextIndexPlusOne = 0;
 	}
 
-	
+
 	*phHandle = hHandle;
 
 	return PVRSRV_OK;
@@ -1184,16 +1184,16 @@ PVRSRV_ERROR PVRSRVAllocHandle(PVRSRV_HANDLE_BASE *psBase, IMG_HANDLE *phHandle,
 
 	if (HANDLES_BATCHED(psBase))
 	{
-		
+
 		psBase->ui32BatchHandAllocFailures++;
 	}
 
-	
+
 	PVR_ASSERT(eType != PVRSRV_HANDLE_TYPE_NONE)
 
 	if (!TEST_FLAG(eFlag, PVRSRV_HANDLE_ALLOC_FLAG_MULTI))
 	{
-		
+
 		hHandle = FindHandle(psBase, pvData, eType, IMG_NULL);
 #if defined (SUPPORT_SID_INTERFACE)
 		if (hHandle != 0)
@@ -1210,14 +1210,14 @@ PVRSRV_ERROR PVRSRVAllocHandle(PVRSRV_HANDLE_BASE *psBase, IMG_HANDLE *phHandle,
 				return eError;
 			}
 
-			
+
 			if (TEST_FLAG(psHandle->eFlag & eFlag, PVRSRV_HANDLE_ALLOC_FLAG_SHARED))
 			{
 				*phHandle = hHandle;
 				eError = PVRSRV_OK;
 				goto exit_ok;
 			}
-			
+
 #if defined (SUPPORT_SID_INTERFACE)
 			PVR_DBG_BREAK
 #endif
@@ -1226,7 +1226,7 @@ PVRSRV_ERROR PVRSRVAllocHandle(PVRSRV_HANDLE_BASE *psBase, IMG_HANDLE *phHandle,
 	}
 
 	eError = AllocHandle(psBase, phHandle, pvData, eType, eFlag, IMG_NULL);
-	
+
 exit_ok:
 	if (HANDLES_BATCHED(psBase) && (eError == PVRSRV_OK))
 	{
@@ -1259,17 +1259,17 @@ PVRSRV_ERROR PVRSRVAllocSubHandle(PVRSRV_HANDLE_BASE *psBase, IMG_HANDLE *phHand
 
 	if (HANDLES_BATCHED(psBase))
 	{
-		
+
 		psBase->ui32BatchHandAllocFailures++;
 	}
 
-	
+
 	PVR_ASSERT(eType != PVRSRV_HANDLE_TYPE_NONE)
 
 	hParentKey = TEST_FLAG(eFlag, PVRSRV_HANDLE_ALLOC_FLAG_PRIVATE) ?
 			hParent : IMG_NULL;
 
-	
+
 	eError = GetHandleStructure(psBase, &psPHand, hParent, PVRSRV_HANDLE_TYPE_NONE);
 	if (eError != PVRSRV_OK)
 	{
@@ -1278,7 +1278,7 @@ PVRSRV_ERROR PVRSRVAllocSubHandle(PVRSRV_HANDLE_BASE *psBase, IMG_HANDLE *phHand
 
 	if (!TEST_FLAG(eFlag, PVRSRV_HANDLE_ALLOC_FLAG_MULTI))
 	{
-		
+
 		hHandle = FindHandle(psBase, pvData, eType, hParentKey);
 #if defined (SUPPORT_SID_INTERFACE)
 		if (hHandle != 0)
@@ -1298,7 +1298,7 @@ PVRSRV_ERROR PVRSRVAllocSubHandle(PVRSRV_HANDLE_BASE *psBase, IMG_HANDLE *phHand
 
 			PVR_ASSERT(hParentKey != IMG_NULL && ParentHandle(HANDLE_TO_HANDLE_STRUCT_PTR(psBase, hHandle)) == hParent)
 
-			
+
 			if (TEST_FLAG(psCHandle->eFlag & eFlag, PVRSRV_HANDLE_ALLOC_FLAG_SHARED) && ParentHandle(HANDLE_TO_HANDLE_STRUCT_PTR(psBase, hHandle)) == hParent)
 			{
 				*phHandle = hHandle;
@@ -1317,7 +1317,7 @@ PVRSRV_ERROR PVRSRVAllocSubHandle(PVRSRV_HANDLE_BASE *psBase, IMG_HANDLE *phHand
 		return eError;
 	}
 
-	
+
 	psPHand = HANDLE_TO_HANDLE_STRUCT_PTR(psBase, hParent);
 
 	psCHand = HANDLE_TO_HANDLE_STRUCT_PTR(psBase, hHandle);
@@ -1349,7 +1349,7 @@ PVRSRV_ERROR PVRSRVFindHandle(PVRSRV_HANDLE_BASE *psBase, IMG_HANDLE *phHandle, 
 
 	PVR_ASSERT(eType != PVRSRV_HANDLE_TYPE_NONE)
 
-	
+
 #if defined (SUPPORT_SID_INTERFACE)
 	hHandle = (IMG_SID) FindHandle(psBase, pvData, eType, IMG_NULL);
 #else
@@ -1441,7 +1441,7 @@ PVRSRV_ERROR PVRSRVLookupSubHandle(PVRSRV_HANDLE_BASE *psBase, IMG_PVOID *ppvDat
 		return eError;
 	}
 
-	
+
 	for (psPHand = psCHand; ParentHandle(psPHand) != hAncestor; )
 	{
 		eError = GetHandleStructure(psBase, &psPHand, ParentHandle(psPHand), PVRSRV_HANDLE_TYPE_NONE);
@@ -1556,7 +1556,7 @@ PVRSRV_ERROR PVRSRVNewHandleBatch(PVRSRV_HANDLE_BASE *psBase, IMG_UINT32 ui32Bat
 
 	psBase->ui32HandBatchSize = ui32BatchSize;
 
-	
+
 	psBase->ui32TotalHandCountPreBatch = psBase->ui32TotalHandCount;
 
 	PVR_ASSERT(psBase->ui32BatchHandAllocFailures == 0)
@@ -1589,7 +1589,7 @@ static PVRSRV_ERROR PVRSRVHandleBatchCommitOrRelease(PVRSRV_HANDLE_BASE *psBase,
 		}
 		bCommitBatch = IMG_FALSE;
 	}
-	
+
 	PVR_ASSERT(psBase->ui32BatchHandAllocFailures == 0 || !bCommit)
 
 	ui32IndexPlusOne = psBase->ui32FirstBatchIndexPlusOne;
@@ -1605,11 +1605,11 @@ static PVRSRV_ERROR PVRSRVHandleBatchCommitOrRelease(PVRSRV_HANDLE_BASE *psBase,
 		{
 			PVRSRV_ERROR eError;
 
-			
+
 			if (!BATCHED_HANDLE_PARTIALLY_FREE(psHandle))
 			{
-				 
-				SET_UNBATCHED_HANDLE(psHandle);  
+
+				SET_UNBATCHED_HANDLE(psHandle);
 			}
 
 			eError = FreeHandle(psBase, psHandle);
@@ -1621,7 +1621,7 @@ static PVRSRV_ERROR PVRSRVHandleBatchCommitOrRelease(PVRSRV_HANDLE_BASE *psBase,
 		}
 		else
 		{
-			 
+
 			SET_UNBATCHED_HANDLE(psHandle);
 		}
 
@@ -1675,7 +1675,7 @@ PVRSRV_ERROR PVRSRVSetMaxHandle(PVRSRV_HANDLE_BASE *psBase, IMG_UINT32 ui32MaxHa
 		return PVRSRV_ERROR_INVALID_PARAMS;
 	}
 
-	
+
 	if (ui32MaxHandle  == 0 || ui32MaxHandle > DEFAULT_MAX_HANDLE)
 	{
 		PVR_DPF((PVR_DBG_ERROR, "PVRSRVSetMaxHandle: Limit must be between %u and %u, inclusive", 0, DEFAULT_MAX_HANDLE));
@@ -1683,7 +1683,7 @@ PVRSRV_ERROR PVRSRVSetMaxHandle(PVRSRV_HANDLE_BASE *psBase, IMG_UINT32 ui32MaxHa
 		return PVRSRV_ERROR_INVALID_PARAMS;
 	}
 
-	
+
 	if (psBase->ui32TotalHandCount != 0)
 	{
 		PVR_DPF((PVR_DBG_ERROR, "PVRSRVSetMaxHandle: Limit cannot be set because handles have already been allocated"));
@@ -1693,7 +1693,7 @@ PVRSRV_ERROR PVRSRVSetMaxHandle(PVRSRV_HANDLE_BASE *psBase, IMG_UINT32 ui32MaxHa
 
 	ui32MaxHandleRounded = ROUND_DOWN_TO_MULTIPLE_OF_BLOCK_SIZE(ui32MaxHandle);
 
-	
+
 	if (ui32MaxHandleRounded != 0 && ui32MaxHandleRounded < psBase->ui32MaxIndexPlusOne)
 	{
 		psBase->ui32MaxIndexPlusOne = ui32MaxHandleRounded;
@@ -1719,7 +1719,7 @@ PVRSRV_ERROR PVRSRVEnableHandlePurging(PVRSRV_HANDLE_BASE *psBase)
 		return PVRSRV_OK;
 	}
 
-	
+
 	if (psBase->ui32TotalHandCount != 0)
 	{
 		PVR_DPF((PVR_DBG_ERROR, "PVRSRVEnableHandlePurging: Handles have already been allocated"));
@@ -1759,12 +1759,12 @@ PVRSRV_ERROR PVRSRVPurgeHandles(PVRSRV_HANDLE_BASE *psBase)
 	}
 	ui32NewHandCount = BLOCK_INDEX_TO_INDEX(ui32BlockIndex);
 
-	
+
 	if (ui32NewHandCount <= (psBase->ui32TotalHandCount/2))
 	{
 		PVRSRV_ERROR eError;
 
-		
+
 
 		eError = ReallocHandleArray(psBase, ui32NewHandCount);
 		if (eError != PVRSRV_OK)
@@ -1794,7 +1794,7 @@ PVRSRV_ERROR PVRSRVAllocHandleBase(PVRSRV_HANDLE_BASE **ppsBase)
 	}
 	OSMemSet(psBase, 0, sizeof(*psBase));
 
-	
+
 	psBase->psHashTab = HASH_Create_Extended(HANDLE_HASH_TAB_INIT_SIZE, sizeof(HAND_KEY), HASH_Func_Default, HASH_Key_Comp_Default);
 	if (psBase->psHashTab == IMG_NULL)
 	{
@@ -1873,4 +1873,4 @@ PVRSRV_ERROR PVRSRVHandleDeInit(IMG_VOID)
 	return eError;
 }
 #else
-#endif	
+#endif

@@ -1,26 +1,26 @@
 /**********************************************************************
  *
  * Copyright (C) Imagination Technologies Ltd. All rights reserved.
- * 
+ *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
  * version 2, as published by the Free Software Foundation.
- * 
- * This program is distributed in the hope it will be useful but, except 
- * as otherwise stated in writing, without any warranty; without even the 
- * implied warranty of merchantability or fitness for a particular purpose. 
+ *
+ * This program is distributed in the hope it will be useful but, except
+ * as otherwise stated in writing, without any warranty; without even the
+ * implied warranty of merchantability or fitness for a particular purpose.
  * See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License along with
  * this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
- * 
+ *
  * The full GNU General Public License is included in this distribution in
  * the file called "COPYING".
  *
  * Contact Information:
  * Imagination Technologies Ltd. <gpl-support@imgtec.com>
- * Home Park Estate, Kings Langley, Herts, WD4 8LZ, UK 
+ * Home Park Estate, Kings Langley, Herts, WD4 8LZ, UK
  *
  ******************************************************************************/
 
@@ -36,7 +36,7 @@ extern "C" {
 #if defined(DEBUG) || defined(TIMING)
 
 
-typedef struct 
+typedef struct
 {
 	IMG_UINT32 ui32Start;
 	IMG_UINT32 ui32Stop;
@@ -44,7 +44,7 @@ typedef struct
 	IMG_UINT32 ui32Count;
 } Temporal_Data;
 
-extern Temporal_Data asTimers[]; 
+extern Temporal_Data asTimers[];
 
 extern IMG_UINT32 PVRSRVTimeNow(IMG_VOID);
 extern IMG_VOID   PVRSRVSetupMetricTimers(IMG_VOID *pvDevInfo);
@@ -90,21 +90,21 @@ extern IMG_VOID   PVRSRVOutputMetricTotals(IMG_VOID);
 
 #if defined(__sh__)
 
-#define TST_REG   ((volatile IMG_UINT8 *) (psDevInfo->pvSOCRegsBaseKM)) 	
+#define TST_REG   ((volatile IMG_UINT8 *) (psDevInfo->pvSOCRegsBaseKM))
 
-#define TCOR_2    ((volatile IMG_UINT *)  (psDevInfo->pvSOCRegsBaseKM+28))	
-#define TCNT_2    ((volatile IMG_UINT *)  (psDevInfo->pvSOCRegsBaseKM+32))	
-#define TCR_2     ((volatile IMG_UINT16 *)(psDevInfo->pvSOCRegsBaseKM+36))	
+#define TCOR_2    ((volatile IMG_UINT *)  (psDevInfo->pvSOCRegsBaseKM+28))
+#define TCNT_2    ((volatile IMG_UINT *)  (psDevInfo->pvSOCRegsBaseKM+32))
+#define TCR_2     ((volatile IMG_UINT16 *)(psDevInfo->pvSOCRegsBaseKM+36))
 
 #define TIMER_DIVISOR  4
 
-#endif 
+#endif
 
 
 
 
 
-#else 
+#else
 
 
 
@@ -119,12 +119,12 @@ extern IMG_VOID   PVRSRVOutputMetricTotals(IMG_VOID);
 
 
 
-#endif 
+#endif
 
 #if defined(__cplusplus)
 }
 #endif
 
 
-#endif 
+#endif
 

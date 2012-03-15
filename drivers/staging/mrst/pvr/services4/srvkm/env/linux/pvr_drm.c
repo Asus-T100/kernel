@@ -1,26 +1,26 @@
 /**********************************************************************
  *
  * Copyright (C) Imagination Technologies Ltd. All rights reserved.
- * 
+ *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
  * version 2, as published by the Free Software Foundation.
- * 
- * This program is distributed in the hope it will be useful but, except 
- * as otherwise stated in writing, without any warranty; without even the 
- * implied warranty of merchantability or fitness for a particular purpose. 
+ *
+ * This program is distributed in the hope it will be useful but, except
+ * as otherwise stated in writing, without any warranty; without even the
+ * implied warranty of merchantability or fitness for a particular purpose.
  * See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License along with
  * this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
- * 
+ *
  * The full GNU General Public License is included in this distribution in
  * the file called "COPYING".
  *
  * Contact Information:
  * Imagination Technologies Ltd. <gpl-support@imgtec.com>
- * Home Park Estate, Kings Langley, Herts, WD4 8LZ, UK 
+ * Home Park Estate, Kings Langley, Herts, WD4 8LZ, UK
  *
  ******************************************************************************/
 
@@ -102,20 +102,20 @@ static struct platform_device_id asPlatIdList[] = {
 	{}
 };
 #endif
-#else	
+#else
 static struct pci_device_id asPciIdList[] = {
 #if defined(PVR_DRI_DRM_NOT_PCI)
 	{1, 1, 1, 1, 0, 0, 0},
-#else	
+#else
 	{SYS_SGX_DEV_VENDOR_ID, SYS_SGX_DEV_DEVICE_ID, PCI_ANY_ID, PCI_ANY_ID, 0, 0, 0},
 #if defined(SYS_SGX_DEV1_DEVICE_ID)
 	{SYS_SGX_DEV_VENDOR_ID, SYS_SGX_DEV1_DEVICE_ID, PCI_ANY_ID, PCI_ANY_ID, 0, 0, 0},
-#endif	
-#endif	
+#endif
+#endif
 	{0}
 };
-#endif	
-#endif	
+#endif
+#endif
 
 DRI_DRM_STATIC int
 PVRSRVDrmLoad(struct drm_device *dev, unsigned long flags)
@@ -140,7 +140,7 @@ PVRSRVDrmLoad(struct drm_device *dev, unsigned long flags)
 		goto exit;
 	}
 #endif
-	
+
 	iRes = PVRCore_Init();
 	if (iRes != 0)
 	{
@@ -247,7 +247,7 @@ PVRSRVDrmRelease(struct inode *inode, struct file *filp)
 
 	if (ret != 0)
 	{
-		
+
 		PVR_DPF((PVR_DBG_ERROR, "%s : drm_release failed: %d",
 			__FUNCTION__, ret));
 	}
@@ -355,9 +355,9 @@ static int pvr_max_ioctl = DRM_ARRAY_SIZE(sPVRDrmIoctls);
 #if defined(PVR_DRI_DRM_PLATFORM_DEV) && !defined(SUPPORT_DRI_DRM_EXT)
 static int PVRSRVDrmProbe(struct platform_device *pDevice);
 static int PVRSRVDrmRemove(struct platform_device *pDevice);
-#endif	
+#endif
 
-static struct drm_driver sPVRDrmDriver = 
+static struct drm_driver sPVRDrmDriver =
 {
 #if defined(PVR_DRI_DRM_PLATFORM_DEV)
 	.driver_features = DRIVER_USE_PLATFORM_DEVICE,
@@ -377,7 +377,7 @@ static struct drm_driver sPVRDrmDriver =
 	.get_reg_ofs = drm_core_get_reg_ofs,
 #endif
 	.ioctls = sPVRDrmIoctls,
-	.fops = 
+	.fops =
 	{
 		.owner = THIS_MODULE,
 		.open = drm_open,
@@ -402,7 +402,7 @@ static struct drm_driver sPVRDrmDriver =
 		.shutdown = PVRSRVDriverShutdown,
 	},
 #else
-	.pci_driver = 
+	.pci_driver =
 	{
 		.name = PVR_DRM_NAME,
 		.id_table = asPciIdList,
@@ -435,13 +435,13 @@ PVRSRVDrmRemove(struct platform_device *pDevice)
 	return 0;
 }
 
-#endif	
+#endif
 static int __init PVRSRVDrmInit(void)
 {
 	int iRes;
 	sPVRDrmDriver.num_ioctls = pvr_max_ioctl;
 
-	
+
 	PVRDPFInit();
 
 #if defined(PVR_DRI_DRM_NOT_PCI)
@@ -461,7 +461,7 @@ static int __init PVRSRVDrmInit(void)
 #endif
 	return iRes;
 }
-	
+
 static void __exit PVRSRVDrmExit(void)
 {
 	drm_exit(&sPVRDrmDriver);
@@ -473,7 +473,7 @@ static void __exit PVRSRVDrmExit(void)
 
 module_init(PVRSRVDrmInit);
 module_exit(PVRSRVDrmExit);
-#endif	
-#endif	
+#endif
+#endif
 
 

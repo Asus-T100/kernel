@@ -1,26 +1,26 @@
 /**********************************************************************
  *
  * Copyright (C) Imagination Technologies Ltd. All rights reserved.
- * 
+ *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
  * version 2, as published by the Free Software Foundation.
- * 
- * This program is distributed in the hope it will be useful but, except 
- * as otherwise stated in writing, without any warranty; without even the 
- * implied warranty of merchantability or fitness for a particular purpose. 
+ *
+ * This program is distributed in the hope it will be useful but, except
+ * as otherwise stated in writing, without any warranty; without even the
+ * implied warranty of merchantability or fitness for a particular purpose.
  * See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License along with
  * this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
- * 
+ *
  * The full GNU General Public License is included in this distribution in
  * the file called "COPYING".
  *
  * Contact Information:
  * Imagination Technologies Ltd. <gpl-support@imgtec.com>
- * Home Park Estate, Kings Langley, Herts, WD4 8LZ, UK 
+ * Home Park Estate, Kings Langley, Herts, WD4 8LZ, UK
  *
  ******************************************************************************/
 /*
@@ -83,7 +83,7 @@ MRST_ERROR MRSTLFBGetLibFuncAddr (char *szFunctionName, PFN_DC_GET_PVRJTABLE *pp
 		return (MRST_ERROR_INVALID_PARAMS);
 	}
 
-	
+
 	*ppfnFuncTable = PVRGetDisplayClassJTable;
 
 	return (MRST_OK);
@@ -99,7 +99,7 @@ static void MRSTLFBVSyncWriteReg(MRSTLFB_DEVINFO *psDevInfo, unsigned long ulOff
 
 void MRSTLFBEnableVSyncInterrupt(MRSTLFB_DEVINFO * psDevinfo)
 {
-#if defined(MRST_USING_INTERRUPTS)	
+#if defined(MRST_USING_INTERRUPTS)
 	if( drm_vblank_get( psDevinfo->psDrmDevice , psDevinfo->ui32MainPipe ) )
 	{
 		DEBUG_PRINTK((KERN_INFO DRIVER_PREFIX	"Couldn't get vsync enabled"));
@@ -109,8 +109,8 @@ void MRSTLFBEnableVSyncInterrupt(MRSTLFB_DEVINFO * psDevinfo)
 
 void MRSTLFBDisableVSyncInterrupt(MRSTLFB_DEVINFO * psDevinfo)
 {
-#if defined(MRST_USING_INTERRUPTS)	
-	drm_vblank_put( psDevinfo->psDrmDevice,  psDevinfo->ui32MainPipe );    
+#if defined(MRST_USING_INTERRUPTS)
+	drm_vblank_put( psDevinfo->psDrmDevice,  psDevinfo->ui32MainPipe );
 #endif
 }
 
@@ -131,7 +131,7 @@ MRST_ERROR MRSTLFBUninstallVSyncISR(MRSTLFB_DEVINFO	*psDevInfo)
 	dev_priv->psb_vsync_handler = NULL;
 	return (MRST_OK);
 }
-#endif 
+#endif
 
 
 void MRSTLFBFlipToSurface(MRSTLFB_DEVINFO *psDevInfo,  unsigned long uiAddr)
@@ -144,7 +144,7 @@ void MRSTLFBFlipToSurface(MRSTLFB_DEVINFO *psDevInfo,  unsigned long uiAddr)
     MRSTLFB_SWAPCHAIN *psCurrentSwapChain = psDevInfo->psCurrentSwapChain;
 
     if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, false))
-    {   
+    {
         if (IS_MRST(dev)) {
             MRSTLFBVSyncWriteReg(psDevInfo, dspsurf, uiAddr);
         } else if (IS_MDFLD(dev)) {
@@ -183,9 +183,9 @@ void MRSTLFBFlipToSurface(MRSTLFB_DEVINFO *psDevInfo,  unsigned long uiAddr)
 		}
         } else {
             MRSTLFBVSyncWriteReg(psDevInfo, dspbase, uiAddr);
-        }   
+        }
         ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
-    }   
+    }
 }
 
 void MRSTLFBSavePlaneConfig(MRSTLFB_DEVINFO *psDevInfo)
@@ -274,7 +274,7 @@ int PVR_DRM_MAKENAME(DISPLAY_CONTROLLER, _Init)(struct drm_device unref__ *dev)
 }
 
 void PVR_DRM_MAKENAME(DISPLAY_CONTROLLER, _Cleanup)(struct drm_device unref__ *dev)
-{    
+{
 	if(MRSTLFBDeinit() != MRST_OK)
 	{
 		printk(KERN_WARNING DRIVER_PREFIX ": %s: can't deinit device\n", __FUNCTION__);

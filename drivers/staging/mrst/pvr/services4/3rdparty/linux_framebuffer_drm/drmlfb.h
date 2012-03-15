@@ -1,26 +1,26 @@
 /**********************************************************************
  *
  * Copyright (C) Imagination Technologies Ltd. All rights reserved.
- * 
+ *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
  * version 2, as published by the Free Software Foundation.
- * 
- * This program is distributed in the hope it will be useful but, except 
- * as otherwise stated in writing, without any warranty; without even the 
- * implied warranty of merchantability or fitness for a particular purpose. 
+ *
+ * This program is distributed in the hope it will be useful but, except
+ * as otherwise stated in writing, without any warranty; without even the
+ * implied warranty of merchantability or fitness for a particular purpose.
  * See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License along with
  * this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
- * 
+ *
  * The full GNU General Public License is included in this distribution in
  * the file called "COPYING".
  *
  * Contact Information:
  * Imagination Technologies Ltd. <gpl-support@imgtec.com>
- * Home Park Estate, Kings Langley, Herts, WD4 8LZ, UK 
+ * Home Park Estate, Kings Langley, Herts, WD4 8LZ, UK
  *
  ******************************************************************************/
 
@@ -65,23 +65,23 @@ typedef int(* MRSTLFB_SCREEN_EVENT_PFN)(struct drm_device* psDrmDevice, int stat
 
 typedef struct MRSTLFB_BUFFER_TAG
 {
-	
+
     IMG_UINT32		             	ui32BufferSize;
 	union {
-		
+
 		IMG_SYS_PHYADDR             *psNonCont;
-		
+
 		IMG_SYS_PHYADDR				sCont;
 	} uSysAddr;
-	
+
 	IMG_DEV_VIRTADDR             	sDevVAddr;
-	
-    IMG_CPU_VIRTADDR             	sCPUVAddr;    
-	
+
+    IMG_CPU_VIRTADDR             	sCPUVAddr;
+
 	PVRSRV_SYNC_DATA             	*psSyncData;
-	
+
 	MRST_BOOL					 	bIsContiguous;
-	
+
 	MRST_BOOL					 	bIsAllocated;
 
 	IMG_UINT32						ui32OwnerTaskID;
@@ -90,15 +90,23 @@ typedef struct MRSTLFB_BUFFER_TAG
 
 typedef struct MRSTLFB_VSYNC_FLIP_ITEM_TAG
 {
+
+
+
 	MRST_HANDLE      hCmdComplete;
-	
+
 	unsigned long    ulSwapInterval;
-	
+
 	MRST_BOOL        bValid;
-	
+
 	MRST_BOOL        bFlipped;
-	
+
 	MRST_BOOL        bCmdCompleted;
+
+
+
+
+
 
 	MRSTLFB_BUFFER*	psBuffer;
 
@@ -107,35 +115,35 @@ typedef struct MRSTLFB_VSYNC_FLIP_ITEM_TAG
 
 typedef struct MRSTLFB_SWAPCHAIN_TAG
 {
-	
+
 	unsigned long       ulBufferCount;
 
 	IMG_UINT32			ui32SwapChainID;
 	IMG_UINT32			ui32SwapChainPropertyFlag;
 	unsigned long			ulSwapChainGTTOffset;
 
-	
+
 	MRSTLFB_BUFFER     **ppsBuffer;
 
-	
+
 	unsigned long	    ulSwapChainLength;
 
-	
+
 	MRSTLFB_VSYNC_FLIP_ITEM	*psVSyncFlips;
 
-	
+
 	unsigned long       ulInsertIndex;
-	
-	
+
+
 	unsigned long       ulRemoveIndex;
 
-	
+
 	PVRSRV_DC_DISP2SRV_KMJTABLE	*psPVRJTable;
 
-	
+
 	struct drm_driver         *psDrmDriver;
 
-	
+
 	struct drm_device         *psDrmDev;
 
 	struct MRSTLFB_SWAPCHAIN_TAG *psNext;
@@ -150,17 +158,17 @@ typedef struct MRSTLFB_DEVINFO_TAG
 
 	struct drm_device 	*psDrmDevice;
 
-	
+
 
 	MRSTLFB_BUFFER          sSystemBuffer;
 
-	
+
 	PVRSRV_DC_DISP2SRV_KMJTABLE	sPVRJTable;
-	
-	
+
+
 	PVRSRV_DC_SRV2DISP_KMJTABLE	sDCJTable;
 
-	
+
 	unsigned long           ulRefCount;
 
 	MRSTLFB_SWAPCHAIN      *psCurrentSwapChain;
@@ -170,53 +178,53 @@ typedef struct MRSTLFB_DEVINFO_TAG
 	IMG_UINT32	   	ui32SwapChainNum;
 
 	MRSTLFB_BUFFER	*psCurrentBuffer;
-	
+
 	void *pvRegs;
 
-	
+
 	unsigned long ulSetFlushStateRefCount;
 
-	
+
 	MRST_BOOL           bFlushCommands;
 
-	
+
 	MRST_BOOL           bBlanked;
 
-	
+
 	struct fb_info         *psLINFBInfo;
 
-	
+
 	struct notifier_block   sLINNotifBlock;
 
-	
+
 	spinlock_t             sSwapChainLock;
 
-	
-	
 
-	
+
+
+
 	IMG_DEV_VIRTADDR	sDisplayDevVAddr;
 
 	DISPLAY_INFO            sDisplayInfo;
 
-	
+
 	DISPLAY_FORMAT          sDisplayFormat;
-	
-	
+
+
 	DISPLAY_DIMS            sDisplayDim;
 
 	IMG_UINT32		ui32MainPipe;
 
-	
+
 	MRST_BOOL bSuspended;
 
-	
+
 	MRST_BOOL bLeaveVT;
 
-	
+
 	unsigned long ulLastFlipAddr;
 
-	
+
 	MRST_BOOL bLastFlipAddrValid;
 
 	uint32_t uPlaneACntr;
@@ -296,5 +304,5 @@ void MRSTLFBResume(void);
 MRST_ERROR MRSTLFBChangeSwapChainProperty(unsigned long *psSwapChainGTTOffset,
 		unsigned long ulSwapChainGTTSize, IMG_INT32 i32Pipe);
 
-#endif 
+#endif
 

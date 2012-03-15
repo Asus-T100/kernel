@@ -1,26 +1,26 @@
 /**********************************************************************
  *
  * Copyright (C) Imagination Technologies Ltd. All rights reserved.
- * 
+ *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
  * version 2, as published by the Free Software Foundation.
- * 
- * This program is distributed in the hope it will be useful but, except 
- * as otherwise stated in writing, without any warranty; without even the 
- * implied warranty of merchantability or fitness for a particular purpose. 
+ *
+ * This program is distributed in the hope it will be useful but, except
+ * as otherwise stated in writing, without any warranty; without even the
+ * implied warranty of merchantability or fitness for a particular purpose.
  * See the GNU General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU General Public License along with
  * this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
- * 
+ *
  * The full GNU General Public License is included in this distribution in
  * the file called "COPYING".
  *
  * Contact Information:
  * Imagination Technologies Ltd. <gpl-support@imgtec.com>
- * Home Park Estate, Kings Langley, Herts, WD4 8LZ, UK 
+ * Home Park Estate, Kings Langley, Herts, WD4 8LZ, UK
  *
  ******************************************************************************/
 
@@ -109,10 +109,10 @@ off_t printAppend(IMG_CHAR * buffer, size_t size, off_t off, const IMG_CHAR * fo
     n = vsnprintf (buffer+off, space, format, ap);
 
     va_end (ap);
-    
+
     if (n >= (IMG_INT)space || n < 0)
     {
-	
+
         buffer[size - 1] = 0;
         return (off_t)(size - 1);
     }
@@ -126,7 +126,7 @@ off_t printAppend(IMG_CHAR * buffer, size_t size, off_t off, const IMG_CHAR * fo
 void* ProcSeq1ElementOff2Element(struct seq_file *sfile, loff_t off)
 {
 	PVR_UNREFERENCED_PARAMETER(sfile);
-	
+
 	if(!off)
 		return (void*)2;
 	return NULL;
@@ -142,7 +142,7 @@ void* ProcSeq1ElementHeaderOff2Element(struct seq_file *sfile, loff_t off)
 		return PVR_PROC_SEQ_START_TOKEN;
 	}
 
-	
+
 	if(off == 1)
 		return (void*)2;
 
@@ -157,7 +157,7 @@ static IMG_INT pvr_proc_open(struct inode *inode,struct file *file)
 	struct seq_file *seq = (struct seq_file*)file->private_data;
 	struct proc_dir_entry* pvr_proc_entry = PDE(inode);
 
-	
+
 	seq->private = pvr_proc_entry->data;
 	return ret;
 }
@@ -259,7 +259,7 @@ static struct proc_dir_entry* CreateProcEntryInDirSeq(
 		file->proc_fops = &pvr_proc_operations;
 		file->write_proc = whandler;
 
-		
+
 		file->data =  kmalloc(sizeof(PVR_PROC_SEQ_HANDLERS), GFP_KERNEL);
 		if(file->data)
 		{
@@ -423,7 +423,7 @@ IMG_VOID RemovePerProcessProcEntrySeq(struct proc_dir_entry* proc_entry)
 static IMG_INT pvr_read_proc(IMG_CHAR *page, IMG_CHAR **start, off_t off,
                          IMG_INT count, IMG_INT *eof, IMG_VOID *data)
 {
-	 
+
     pvr_read_proc_t *pprn = (pvr_read_proc_t *)data;
 
     off_t len = pprn (page, (size_t)count, off);
@@ -433,9 +433,9 @@ static IMG_INT pvr_read_proc(IMG_CHAR *page, IMG_CHAR **start, off_t off,
         len  = 0;
         *eof = 1;
     }
-    else if (!len)             
+    else if (!len)
     {
-        *start = (IMG_CHAR *) 0;   
+        *start = (IMG_CHAR *) 0;
     }
     else
     {
@@ -560,7 +560,7 @@ IMG_INT CreateProcReadEntry(const IMG_CHAR * name, pvr_read_proc_t handler)
         return -ENOMEM;
     }
 
-	 
+
     file = create_proc_read_entry (name, S_IFREG | S_IRUGO, dir, pvr_read_proc, (IMG_VOID *)handler);
 
     if (file)
@@ -686,7 +686,7 @@ IMG_VOID RemoveProcEntries(IMG_VOID)
 	RemoveProcEntrySeq( g_pProcDebugLevel );
 #ifdef PVR_MANUAL_POWER_CONTROL
 	RemoveProcEntrySeq( g_pProcPowerLevel );
-#endif 
+#endif
 #endif
 
 	RemoveProcEntrySeq(g_pProcQueue);
@@ -811,9 +811,9 @@ static void* ProcSeqOff2ElementSysNodes(struct seq_file * sfile, loff_t off)
 {
     SYS_DATA *psSysData;
     PVRSRV_DEVICE_NODE*psDevNode = IMG_NULL;
-    
+
     PVR_UNREFERENCED_PARAMETER(sfile);
-    
+
     if(!off)
     {
 	return PVR_PROC_SEQ_START_TOKEN;
@@ -822,14 +822,14 @@ static void* ProcSeqOff2ElementSysNodes(struct seq_file * sfile, loff_t off)
     psSysData = SysAcquireDataNoCheck();
     if (psSysData != IMG_NULL)
     {
-	
+
 	psDevNode = (PVRSRV_DEVICE_NODE*)
 			List_PVRSRV_DEVICE_NODE_Any_va(psSysData->psDeviceNodeList,
 													DecOffPsDev_AnyVaCb,
 													&off);
     }
 
-    
+
     return (void*)psDevNode;
 }
 
