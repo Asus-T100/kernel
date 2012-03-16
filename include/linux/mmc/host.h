@@ -271,6 +271,7 @@ struct mmc_host {
 #define MMC_CAP2_BOOTPART_NOACC	(1 << 0)	/* Boot partition no access */
 #define MMC_CAP2_RPMBPART_NOACC	(1 << 1)	/* RPMB partition no access */
 #define MMC_CAP2_HC_ERASE_SZ	(1 << 2)	/* high capacity erase size */
+#define MMC_CAP2_INIT_CARD_SYNC	(1 << 3)	/* init card in sync mode */
 
 	mmc_pm_flag_t		pm_caps;	/* supported pm features */
 

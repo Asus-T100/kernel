@@ -337,6 +337,7 @@ static int mfd_emmc_probe_slot(struct sdhci_pci_slot *slot)
 		mfd_emmc_mutex_register(slot);
 		gpio = mfd_emmc0_rst_gpio;
 		name = "eMMC0_reset";
+		slot->host->mmc->caps2 |= MMC_CAP2_INIT_CARD_SYNC;
 		sdhci_alloc_panic_host(slot->host);
 		break;
 	case PCI_DEVICE_ID_INTEL_CLV_EMMC0:
@@ -345,6 +346,7 @@ static int mfd_emmc_probe_slot(struct sdhci_pci_slot *slot)
 		sdhci_alloc_panic_host(slot->host);
 		slot->host->quirks2 |= SDHCI_QUIRK2_V2_0_SUPPORT_DDR50;
 		slot->host->mmc->caps |= MMC_CAP_1_8V_DDR;
+		slot->host->mmc->caps2 |= MMC_CAP2_INIT_CARD_SYNC;
 		break;
 	case PCI_DEVICE_ID_INTEL_CLV_EMMC1:
 		gpio = mfd_emmc1_rst_gpio;
