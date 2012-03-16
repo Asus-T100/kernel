@@ -417,7 +417,22 @@ static int soc_s0ix_idle(struct cpuidle_device *dev,
 				pmu_set_s0ix_complete();
 			}
 		}
-
+		switch (s0ix_state) {
+		case MID_S0I1_STATE:
+			trace_cpu_idle(S0I1_STATE_IDX, dev->cpu);
+			break;
+		case MID_LPMP3_STATE:
+			trace_cpu_idle(LPMP3_STATE_IDX, dev->cpu);
+			break;
+		case MID_S0I3_STATE:
+			trace_cpu_idle(S0I3_STATE_IDX, dev->cpu);
+			break;
+		case MID_S3_STATE:
+			trace_cpu_idle(S0I3_STATE_IDX, dev->cpu);
+			break;
+		default:
+			trace_cpu_idle((eax >> 4) + 1, dev->cpu);
+		}
 		__monitor((void *)&current_thread_info()->flags, 0, 0);
 		smp_mb();
 		if (!need_resched())
@@ -447,17 +462,13 @@ static int soc_s0ix_idle(struct cpuidle_device *dev,
 	if (s0ix_entered) {
 		if (s0ix_state == MID_S0I1_STATE) {
 			dev->last_state = &dev->states[S0I1_STATE_IDX];
-			trace_cpu_idle(S0I1_STATE_IDX, dev->cpu);
 		} else if (s0ix_state == MID_LPMP3_STATE) {
 			dev->last_state = &dev->states[LPMP3_STATE_IDX];
-			trace_cpu_idle(LPMP3_STATE_IDX, dev->cpu);
 		}
 	} else if (eax == C4_HINT) {
 		dev->last_state = &dev->states[C4_STATE_IDX];
-		trace_cpu_idle(C4_STATE_IDX, dev->cpu);
 	} else {
 		dev->last_state = &dev->states[C6_STATE_IDX];
-		trace_cpu_idle(C6_STATE_IDX, dev->cpu);
 	}
 
 	return usec_delta;
