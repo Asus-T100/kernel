@@ -144,8 +144,8 @@
 #define PDN_ASP_SDIN		(1 << 2)
 #define PDN_XSP_SDOUT		(1 << 1)
 #define PDN_XSP_SDIN		(1 << 0)
-#define MIC2_BIAS_DISABLE	1
-#define MIC2_BIAS_ENABLE	0
+#define MIC_BIAS_DISABLE	1
+#define MIC_BIAS_ENABLE	0
 
 /* CS42L73_PWRCTL3 */
 #define PDN_THMS		(1 << 5)

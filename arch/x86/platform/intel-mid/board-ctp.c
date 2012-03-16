@@ -1538,8 +1538,16 @@ static int board_id_proc_show(struct seq_file *m, void *v)
 {
 	char *bid;
 
-	/* Will add IDs later, but return unknown right now. */
-	bid = "unknown";
+	switch (board_id) {
+	case CTP_BID_VV:
+		bid = "ctp-vv";
+		break;
+	case CTP_BID_PR0:
+		bid = "ctp-pr0";
+		break;
+	default:
+		bid = "unknown";
+	}
 	seq_printf(m, "boardid=%s\n", bid);
 
 	return 0;

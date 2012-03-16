@@ -139,6 +139,14 @@ enum {
 };
 extern u32 mfld_board_id(void);
 
+/* Right now board id information is updated from sfi table print*/
+
+enum {
+	CTP_BID_UNKNOWN = 0,
+	CTP_BID_VV	= 0x08,
+	CTP_BID_PR0	= 0x04
+};
+extern u32 ctp_board_id(void);
 
 /*
  * Penwell uses spread spectrum clock, so the freq number is not exactly

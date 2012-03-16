@@ -198,6 +198,7 @@ static const struct snd_soc_dapm_widget clv_dapm_widgets[] = {
 
 /* CDB42L73 Audio Map */
 static const struct snd_soc_dapm_route clv_audio_map[] = {
+	{"MIC1", NULL, "Headset Mic"},
 	{"MIC2", NULL, "Headset Mic"},
 	/* Headphone (L+R)->  HPOUTA, HPOUTB */
 	{"Headphone", NULL, "HPOUTA"},
@@ -254,6 +255,11 @@ static int clv_init(struct snd_soc_pcm_runtime *runtime)
 	snd_soc_dapm_add_routes(dapm, clv_audio_map,
 				ARRAY_SIZE(clv_audio_map));
 
+	/*In VV board MIC1 is connected  and MIC2 is PR boards */
+	if (ctp_board_id() == CTP_BID_VV)
+		snd_soc_dapm_disable_pin(dapm, "MIC1");
+	else
+		snd_soc_dapm_disable_pin(dapm, "MIC2");
 	mutex_lock(&codec->mutex);
 	snd_soc_dapm_sync(dapm);
 	mutex_unlock(&codec->mutex);

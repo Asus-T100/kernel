@@ -28,6 +28,7 @@
 #include <sound/initval.h>
 #include <sound/tlv.h>
 #include <sound/jack.h>
+#include <asm/intel-mid.h>
 #include "cs42l73.h"
 
 struct sp_config {
@@ -1104,22 +1105,29 @@ static int cs42l73_resume(struct snd_soc_codec *codec)
 	return 0;
 }
 
-static int cs42l73_set_mic2_bias(struct snd_soc_codec *codec, int state)
+static int cs42l73_set_mic_bias(struct snd_soc_codec *codec, int state)
 {
+
+	mutex_lock(&codec->mutex);
 	switch (state) {
-	case MIC2_BIAS_DISABLE:
-		mutex_lock(&codec->mutex);
-		snd_soc_dapm_disable_pin(&codec->dapm, "MIC2 Bias");
-		snd_soc_dapm_sync(&codec->dapm);
-		mutex_unlock(&codec->mutex);
+	case MIC_BIAS_DISABLE:
+		if (ctp_board_id() == CTP_BID_VV)
+			snd_soc_dapm_disable_pin(&codec->dapm, "MIC1 Bias");
+		else
+			snd_soc_dapm_disable_pin(&codec->dapm, "MIC2 Bias");
 		break;
-	case MIC2_BIAS_ENABLE:
-		mutex_lock(&codec->mutex);
-		snd_soc_dapm_force_enable_pin(&codec->dapm, "MIC2 Bias");
-		snd_soc_dapm_sync(&codec->dapm);
-		mutex_unlock(&codec->mutex);
+	case MIC_BIAS_ENABLE:
+		if (ctp_board_id() == CTP_BID_VV)
+			snd_soc_dapm_force_enable_pin(&codec->dapm,
+							"MIC1 Bias");
+		else
+			snd_soc_dapm_force_enable_pin(&codec->dapm,
+							"MIC2 Bias");
 		break;
 	}
+	snd_soc_dapm_sync(&codec->dapm);
+	mutex_unlock(&codec->mutex);
+
 	return 0;
 }
 
@@ -1135,16 +1143,14 @@ void cs42l73_hp_detection(struct snd_soc_codec *codec,
 
 	if (plug_status) {
 		pr_debug("In cs42l73_hp_detection disable micbias\n");
-		cs42l73_set_mic2_bias(codec, MIC2_BIAS_DISABLE);
+		cs42l73_set_mic_bias(codec, MIC_BIAS_DISABLE);
 	} else {
-
 		micbias = snd_soc_read(codec, CS42L73_PWRCTL2);
-		micbias &= 0x40; /*=7*/
+		micbias &= 0xC0;
 		if (micbias) {
-			/* MICBIAS is off so this is a plug - look for HS/HP */
-			cs42l73_set_mic2_bias(codec, MIC2_BIAS_ENABLE);
+			cs42l73_set_mic_bias(codec, MIC_BIAS_ENABLE);
 			hs_status = 1;
-		}		
+		}
 
 		snd_soc_update_bits(codec, CS42L73_IM1, MIC2_SDET, MIC2_SDET);
 		mdelay(1000);
@@ -1154,7 +1160,7 @@ void cs42l73_hp_detection(struct snd_soc_codec *codec,
 		if (hs_status) {
 			if ((reg & MIC2_SDET)) {
 				status = SND_JACK_HEADPHONE;
-				cs42l73_set_mic2_bias(codec, MIC2_BIAS_DISABLE);
+				cs42l73_set_mic_bias(codec, MIC_BIAS_DISABLE);
 				pr_debug("Headphone detected\n");
 			} else {
 				status = SND_JACK_HEADSET;
