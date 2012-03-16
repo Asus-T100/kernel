@@ -1733,7 +1733,7 @@ EXPORT_SYMBOL(pmu_set_lss01_to_d0i0_atomic);
 static inline bool device_causing_hang(struct pci_dev *pdev)
 {
 	/* USB and SPI are currently causing platform Hang on enabling RTPM*/
-	return ((pdev) && (pdev->device) && ((pdev->device == USB_DEVICE_ID) ||
+	return ((pdev) && (pdev->device) && ((pdev->device == SPI1_DEVICE_ID) ||
 			 (pdev->device == SPI1_DEVICE_ID)));
 }
 
