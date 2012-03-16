@@ -137,6 +137,8 @@ static const char *psc_string(enum power_supply_type charger)
 		return "Dedicated Charging Port";
 	case POWER_SUPPLY_TYPE_USB_ACA:
 		return "Accessory Charger Adaptor";
+	case POWER_SUPPLY_TYPE_USB_HOST:
+		return "USB Host";
 	case POWER_SUPPLY_TYPE_BATTERY:
 		return "Unknown";
 	default:
@@ -596,9 +598,11 @@ static void penwell_otg_phy_enable(int on)
 /* A-device drives vbus, controlled through MSIC register */
 static int penwell_otg_set_vbus(struct otg_transceiver *otg, bool enabled)
 {
-	struct penwell_otg	*pnw = the_transceiver;
-	u8			data;
-	int			retval;
+	struct penwell_otg		*pnw = the_transceiver;
+	u8				data;
+	unsigned long			flags;
+	int				retval;
+	struct power_supply_charger_cap psc_cap;
 
 	dev_dbg(pnw->dev, "%s ---> %s\n", __func__, enabled ? "on" : "off");
 
@@ -615,6 +619,33 @@ static int penwell_otg_set_vbus(struct otg_transceiver *otg, bool enabled)
 			penwell_otg_ulpi_write(&pnw->iotg,
 				ULPI_OTGCTRLCLR, DRVVBUS | DRVVBUS_EXTERNAL);
 		retval = 0;
+
+		if (enabled) {
+			spin_lock_irqsave(&pnw->charger_lock, flags);
+			pnw->psc_cap.mA = 500;
+			pnw->psc_cap.chrg_type =
+				POWER_SUPPLY_TYPE_USB_HOST;
+			pnw->psc_cap.chrg_evt =
+				POWER_SUPPLY_CHARGER_EVENT_CONNECT;
+			psc_cap =  pnw->psc_cap;
+			spin_unlock_irqrestore(&pnw->charger_lock, flags);
+		} else {
+			spin_lock_irqsave(&pnw->charger_lock, flags);
+			pnw->psc_cap.mA = 0;
+			pnw->psc_cap.chrg_type =
+				POWER_SUPPLY_TYPE_BATTERY;
+			pnw->psc_cap.chrg_evt =
+				POWER_SUPPLY_CHARGER_EVENT_DISCONNECT;
+			psc_cap =  pnw->psc_cap;
+			spin_unlock_irqrestore(&pnw->charger_lock, flags);
+		}
+
+		dev_dbg(pnw->dev, "notify power_supply_charger_event\n");
+		dev_dbg(pnw->dev, "mA = %d\n", psc_cap.mA);
+		dev_dbg(pnw->dev, "event = %d\n", psc_cap.chrg_evt);
+		dev_dbg(pnw->dev, "type = %s\n", psc_string(psc_cap.chrg_type));
+
+		power_supply_charger_event(psc_cap);
 		goto done;
 	}
 
