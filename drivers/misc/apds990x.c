@@ -456,8 +456,11 @@ static int apds990x_calc_again(struct apds990x_chip *chip)
 	 */
 	if (ret < 0)
 		apds990x_force_a_refresh(chip);
-	else
+	else {
+		chip->lux_thres_lo = chip->lux_raw / APDS990X_LUX_OUTPUT_SCALE;
+		chip->lux_thres_hi = chip->lux_thres_lo + 1;
 		apds990x_refresh_athres(chip);
+	}
 
 	return ret;
 }
