@@ -1439,23 +1439,48 @@ static int ov8830_vcm_enable(struct v4l2_subdev *sd)
 				OV8830_VCM_ENABLE, 0x1);
 }
 */
-static long ov8830_set_exposure(struct v4l2_subdev *sd, u16 coarse_itg,
-				 u16 fine_itg, u16 gain)
-
+static int ov8830_set_exposure(struct v4l2_subdev *sd, int exposure, int gain)
 {
-	return -ENXIO;		/* Not supported yet */
+	struct i2c_client *client = v4l2_get_subdevdata(sd);
+	struct ov8830_device *dev = to_ov8830_sensor(sd);
+	int exp_val, ret;
+
+	/* set exposure time */
+	exp_val = exposure << 4;
+	ret = ov8830_write_reg(client, OV8830_8BIT,
+			       OV8830_LONG_EXPO+2, exp_val & 0xFF);
+	if (ret)
+		goto out;
+
+	ret = ov8830_write_reg(client, OV8830_8BIT,
+			       OV8830_LONG_EXPO+1, (exp_val >> 8) & 0xFF);
+	if (ret)
+		goto out;
+
+	ret = ov8830_write_reg(client, OV8830_8BIT,
+			       OV8830_LONG_EXPO, (exp_val >> 16) & 0x0F);
+	if (ret)
+		goto out;
+
+	/* set global gain */
+	ret = ov8830_write_reg(client, OV8830_8BIT,
+			       OV8830_AGC_ADJ, gain);
+	if (ret)
+		goto out;
+
+	dev->gain     = gain;
+	dev->exposure = exposure;
+out:
+	return ret;
 }
 
-static long ov8830_s_exposure(struct v4l2_subdev *sd,
-			       struct atomisp_exposure *exposure)
+static int ov8830_s_exposure(struct v4l2_subdev *sd,
+			      struct atomisp_exposure *exposure)
 {
-	u16 coarse_itg, fine_itg, gain;
+	int exp = exposure->integration_time[0];
+	int gain = exposure->gain[0];
 
-	coarse_itg = exposure->integration_time[0];
-	fine_itg = exposure->integration_time[1];
-	gain = exposure->gain[0];
-
-	return ov8830_set_exposure(sd, coarse_itg, fine_itg, gain);
+	return ov8830_set_exposure(sd, exp, gain);
 }
 
 static long ov8830_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
@@ -1492,10 +1517,9 @@ static void ov8830_uninit(struct v4l2_subdev *sd)
 {
 	struct ov8830_device *dev = to_ov8830_sensor(sd);
 
-	dev->coarse_itg = 0;
-	dev->fine_itg   = 0;
-	dev->gain       = 0;
-	dev->focus      = OV8830_INVALID_CONFIG;
+	dev->exposure = 0;
+	dev->gain     = 0;
+	dev->focus    = OV8830_INVALID_CONFIG;
 }
 
 static int power_up(struct v4l2_subdev *sd)
@@ -1594,16 +1618,9 @@ static int ov8830_g_chip_ident(struct v4l2_subdev *sd,
    for filling in EXIF data, not for actual image processing. */
 static int ov8830_q_exposure(struct v4l2_subdev *sd, s32 *value)
 {
-	struct i2c_client *client = v4l2_get_subdevdata(sd);
-	u16 coarse;
-	int ret;
-
-	/* the fine integration time is currently not calculated */
-	ret = ov8830_read_reg(client, OV8830_16BIT,
-			       OV8830_COARSE_INTEGRATION_TIME, &coarse);
-	*value = coarse;
-
-	return ret;
+	struct ov8830_device *dev = to_ov8830_sensor(sd);
+	*value = dev->exposure;
+	return 0;
 }
 
 static int ov8830_test_pattern(struct v4l2_subdev *sd, s32 value)
@@ -1986,18 +2003,22 @@ static int ov8830_s_mbus_fmt(struct v4l2_subdev *sd,
 	dev->fps = ov8830_res[dev->fmt_idx].fps;
 	dev->pixels_per_line = ov8830_res[dev->fmt_idx].pixels_per_line;
 	dev->lines_per_frame = ov8830_res[dev->fmt_idx].lines_per_frame;
+
 #if 0
-	ret = ov8830_get_intg_factor(client, ov8830_info, ov8830_def_reg);
+	ret = ov8830_get_intg_factor(sd, ov8830_info, ov8830_def_reg);
 	if (ret) {
 		v4l2_err(sd, "failed to get integration_factor\n");
 		return -EINVAL;
 	}
+#endif
 
 	/* restore exposure, gain settings */
-	if (dev->coarse_itg)
-		ov8830_set_exposure(sd, dev->coarse_itg, dev->fine_itg,
-				     dev->gain);
-#endif
+	if (dev->exposure) {
+		ret = ov8830_set_exposure(sd, dev->exposure, dev->gain);
+		if (ret)
+			v4l2_warn(sd, "failed to set exposure time\n");
+	}
+
 	return 0;
 }
 
@@ -2305,17 +2326,17 @@ ov8830_g_frame_interval(struct v4l2_subdev *sd,
 	 * lines_per_frame the frame_size will be expanded to
 	 * coarse_integration_time+1
 	 */
-	if (dev->coarse_itg > dev->lines_per_frame) {
-		if (dev->coarse_itg == 0xFFFF) {
+	if (dev->exposure > dev->lines_per_frame) {
+		if (dev->exposure == 0xFFFF) {
 			/*
 			 * we can not add 1 according to ds, as this will
 			 * cause over flow
 			 */
-			v4l2_warn(client, "%s: abnormal coarse_itg:0x%x\n",
-				  __func__, dev->coarse_itg);
-			lines_per_frame = dev->coarse_itg;
+			v4l2_warn(client, "%s: abnormal exposure:0x%x\n",
+				  __func__, dev->exposure);
+			lines_per_frame = dev->exposure;
 		} else
-			lines_per_frame = dev->coarse_itg + 1;
+			lines_per_frame = dev->exposure + 1;
 	} else
 		lines_per_frame = dev->lines_per_frame;
 

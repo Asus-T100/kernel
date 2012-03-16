@@ -86,13 +86,8 @@
 #define OV8830_FINE_INTG_MAX_DEF		0x3EE
 
 #define OV8830_READ_MODE				0x3040
-
-
-#define OV8830_COARSE_INTEGRATION_TIME		0x3012
-#define OV8830_FINE_INTEGRATION_TIME		0x3014
-#define OV8830_ROW_SPEED			0x3016
-#define OV8830_GLOBAL_GAIN			0x305e
-#define OV8830_GLOBAL_GAIN_WR			0x1000
+#define OV8830_LONG_EXPO			0x3500
+#define OV8830_AGC_ADJ				0x350B
 #define OV8830_TEST_PATTERN_MODE		0x3070
 #define OV8830_VCM_SLEW_STEP			0x30F0
 #define OV8830_VCM_SLEW_STEP_MAX		0x7
@@ -369,9 +364,8 @@ struct ov8830_device {
 	u8 type;
 	u16 sensor_id;
 	u8 sensor_revision;
-	u16 coarse_itg;
-	u16 fine_itg;
-	u16 gain;
+	int exposure;
+	int gain;
 	u32 focus;
 	u16 pixels_per_line;
 	u16 lines_per_frame;
