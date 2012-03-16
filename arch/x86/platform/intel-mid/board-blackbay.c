@@ -692,11 +692,15 @@ static bool msic_battery_check(void)
 }
 
 
-static void *max17042_platform_data(void *info)
+static void *max170XX_platform_data(void *info)
 {
 	static struct max17042_platform_data platform_data;
 	struct i2c_board_info *i2c_info = (struct i2c_board_info *)info;
+#ifdef CONFIG_BATTERY_MAX17050
+	int intr = get_gpio_by_name("max17050");
+#else
 	int intr = get_gpio_by_name("max17042");
+#endif
 
 	i2c_info->irq = intr + MRST_IRQ_OFFSET;
 
@@ -1656,7 +1660,8 @@ struct devs_id __initconst device_ids[] = {
 						NULL},
 	{"msic_adc", SFI_DEV_TYPE_IPC, 1, &msic_adc_platform_data,
 					&blackbay_ipc_device_handler},
-	{"max17042", SFI_DEV_TYPE_I2C, 1, &max17042_platform_data, NULL},
+	{"max17050", SFI_DEV_TYPE_I2C, 1, &max170XX_platform_data, NULL},
+	{"max17042", SFI_DEV_TYPE_I2C, 1, &max170XX_platform_data, NULL},
 	{"hsi_ifx_modem", SFI_DEV_TYPE_HSI, 0, &hsi_modem_platform_data, NULL},
 	{"wl12xx_clk_vmmc", SFI_DEV_TYPE_SD, 0, &wl12xx_platform_data_init,
 						NULL},
