@@ -340,16 +340,8 @@ void st_int_recv(void *disc_data,
 			 * and assume chip awake
 			 */
 			spin_unlock_irqrestore(&st_gdata->lock, flags);
-			if (st_ll_getstate(st_gdata) == ST_LL_AWAKE) {
-				/* pm_runtime_get has already been done
-				 * in st_ll_sleep_state. st_wakeup_ack will
-				 * call st_ll_sleep_state again and another
-				 * pm_runtime_get will be done. We need to
-				 * compensate the first one here.
-				 */
-				pm_runtime_put(st_gdata->tty_dev);
+			if (st_ll_getstate(st_gdata) == ST_LL_AWAKE)
 				st_wakeup_ack(st_gdata, LL_WAKE_UP_ACK);
-			}
 			spin_lock_irqsave(&st_gdata->lock, flags);
 
 			ptr++;

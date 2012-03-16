@@ -451,7 +451,7 @@ long st_kim_start(void *kim_data)
 	do {
 		/* platform specific enabling code here */
 		if (pdata->chip_enable)
-			pdata->chip_enable();
+			pdata->chip_enable(kim_gdata->core_data);
 
 		/* Configure BT nShutdown to HIGH state */
 		gpio_set_value(kim_gdata->nshutdown, GPIO_LOW);
@@ -541,7 +541,7 @@ long st_kim_stop(void *kim_data)
 
 	/* platform specific disable */
 	if (pdata->chip_disable)
-		pdata->chip_disable();
+		pdata->chip_disable(kim_gdata->core_data);
 	return err;
 }
 
@@ -776,6 +776,14 @@ static int kim_remove(struct platform_device *pdev)
 int kim_suspend(struct platform_device *pdev, pm_message_t state)
 {
 	struct ti_st_plat_data	*pdata = pdev->dev.platform_data;
+	struct kim_data_s *kim_data = dev_get_drvdata(&pdev->dev);
+	struct st_data_s *st_data = kim_data->core_data;
+
+	if (st_data->ll_state != ST_LL_ASLEEP &&
+	    st_data->ll_state != ST_LL_INVALID) {
+		pr_info("Shared Transport LL state : %d", st_data->ll_state);
+		return -EBUSY;
+	}
 
 	if (pdata->suspend)
 		return pdata->suspend(pdev, state);

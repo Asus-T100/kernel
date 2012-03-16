@@ -15,24 +15,63 @@
 #include <linux/skbuff.h>
 #include <linux/lnw_gpio.h>
 #include <linux/ti_wilink_st.h>
+#include <linux/pm_runtime.h>
 #include <asm/intel-mid.h>
 #include "platform_btwilink.h"
 
-/* KIM related */
-static int kim_suspend(struct platform_device *pdev, pm_message_t state)
+/* Shared transport callbacks */
+static int st_suspend(struct platform_device *pdev, pm_message_t state)
 {
 	return 0;
 }
-static int kim_resume(struct platform_device *pdev)
+static int st_resume(struct platform_device *pdev)
 {
+	return 0;
+}
+
+static int st_chip_enable(struct st_data_s *s)
+{
+	return 0;
+}
+
+static int st_chip_disable(struct st_data_s *s)
+{
+	return 0;
+}
+
+static int st_chip_awake(struct st_data_s *s)
+{
+	/* Tell PM runtime to power on the tty device and block S3 */
+	if (!s->is_awake) {
+		pm_runtime_get(s->tty_dev);
+		wake_lock(&s->wake_lock);
+		s->is_awake = 1;
+	}
+
+	return 0;
+}
+
+static int st_chip_asleep(struct st_data_s *s)
+{
+	/* Tell PM runtime to release tty device and allow S3 */
+	if (s->is_awake) {
+		pm_runtime_put(s->tty_dev);
+		wake_unlock(&s->wake_lock);
+		s->is_awake = 0;
+	}
+
 	return 0;
 }
 
 static struct ti_st_plat_data kim_pdata = {
 	.nshutdown_gpio	= -1,/* BT, FM, GPS gpios */
 	.flow_cntrl	= 1,		/* flow control flag */
-	.suspend	= kim_suspend,
-	.resume		= kim_resume,
+	.suspend	= st_suspend,
+	.resume		= st_resume,
+	.chip_enable	= st_chip_enable,
+	.chip_disable	= st_chip_disable,
+	.chip_asleep	= st_chip_asleep,
+	.chip_awake	= st_chip_awake,
 };
 
 static struct platform_device linux_kim_device = {
@@ -42,11 +81,11 @@ static struct platform_device linux_kim_device = {
 };
 
 /* BT WILINK related */
-static int bt_enable(void)
+static int bt_enable(struct st_data_s *s)
 {
 	return 0;
 }
-static int bt_disable(void)
+static int bt_disable(struct st_data_s *s)
 {
 	return 0;
 }
