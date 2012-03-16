@@ -365,10 +365,17 @@ static ssize_t adb_write(struct file *fp, const char __user *buf,
 			break;
 		}
 
+		if (!dev->online) {
+			pr_debug("adb_write !dev->online\n");
+			r = -EIO;
+			break;
+		}
+
 		/* get an idle tx request to use */
 		req = 0;
 		ret = wait_event_interruptible(dev->write_wq,
-			(req = adb_req_get(dev, &dev->tx_idle)) || dev->error);
+				dev->error || !dev->online ||
+				(req = adb_req_get(dev, &dev->tx_idle)));
 
 		if (ret < 0) {
 			r = ret;
