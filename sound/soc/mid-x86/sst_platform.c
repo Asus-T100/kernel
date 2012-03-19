@@ -306,10 +306,6 @@ static int sst_platform_open(struct snd_pcm_substream *substream)
 	runtime = substream->runtime;
 	runtime->hw = sst_platform_pcm_hw;
 	if (!strcmp(dai_link->cpu_dai_name, SST_VOICE_DAI)) {
-		if (sst_cpu_ctx->active_nonvoice_cnt > 0) {
-			pr_err("music/vibra dai is active, voice is not allowed\n");
-			return -EBUSY;
-		}
 		sst_cpu_ctx->active_voice_cnt++;
 /**FIXME in clean up patch***/
 #if (defined(CONFIG_SND_MFLD_MACHINE) || (CONFIG_SND_MFLD_MACHINE_GI))
@@ -321,11 +317,6 @@ static int sst_platform_open(struct snd_pcm_substream *substream)
 				SNDRV_PCM_HW_PARAM_PERIODS);
 		else
 			return ret_val;
-	}
-
-	if (sst_cpu_ctx->active_voice_cnt > 0) {
-		pr_err("Voice dai is active, no other stream allowed\n");
-		return -EBUSY;
 	}
 
 	stream = kzalloc(sizeof(*stream), GFP_KERNEL);
