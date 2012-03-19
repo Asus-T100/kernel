@@ -549,6 +549,28 @@ static void __init sfi_handle_ipc_dev(struct sfi_device_table_entry *pentry,
 	ipc_device_add_to_list(ipcdev);
 }
 
+#ifdef CONFIG_INTEL_SCU_IPC
+static int __init intel_scu_pmic_init(void)
+{
+	int ret;
+	struct ipc_board_info board_info;
+
+	memset(&board_info, 0, sizeof(board_info));
+	strncpy(board_info.name, "intel_scu_pmic", 16);
+	board_info.bus_id = IPC_SCU;
+
+	ret = ipc_new_device(&board_info);
+	if (ret) {
+		pr_err("failed to create ipc device: intel_scu_pmic\n");
+		return -EINVAL;
+	}
+
+	return 0;
+}
+/* Ensure that it's created as the first ipc device in the ipc_device_list */
+postcore_initcall(intel_scu_pmic_init);
+#endif
+
 static void __init sfi_handle_spi_dev(struct sfi_device_table_entry *pentry,
 					struct devs_id *dev)
 {
