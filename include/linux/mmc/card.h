@@ -74,6 +74,8 @@ struct mmc_ext_csd {
 	unsigned int		hpi_cmd;		/* cmd used as HPI */
 	unsigned int            data_sector_size;       /* 512 bytes or 4KB */
 	unsigned int            data_tag_unit_size;     /* DATA TAG UNIT size */
+	bool			bkops;			/* BKOPS support bit */
+	bool			bkops_en;		/* BKOPS enable bit */
 	unsigned int		boot_ro_lock;		/* ro lock support */
 	bool			boot_ro_lockable;
 	u8			raw_partition_support;	/* 160 */
