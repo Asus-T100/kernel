@@ -623,6 +623,10 @@ MMC_DEV_ATTR(serial, "0x%08x\n", card->cid.serial);
 MMC_DEV_ATTR(enhanced_area_offset, "%llu\n",
 		card->ext_csd.enhanced_area_offset);
 MMC_DEV_ATTR(enhanced_area_size, "%u\n", card->ext_csd.enhanced_area_size);
+MMC_DEV_ATTR(hpi_support, "%d\n", card->ext_csd.hpi);
+MMC_DEV_ATTR(hpi_enable, "%d\n", card->ext_csd.hpi_en);
+MMC_DEV_ATTR(hpi_command, "%d\n", card->ext_csd.hpi_cmd);
+MMC_DEV_ATTR(hw_reset_support, "%d\n", card->ext_csd.rst_n_function);
 
 static struct attribute *mmc_std_attrs[] = {
 	&dev_attr_cid.attr,
@@ -638,6 +642,10 @@ static struct attribute *mmc_std_attrs[] = {
 	&dev_attr_serial.attr,
 	&dev_attr_enhanced_area_offset.attr,
 	&dev_attr_enhanced_area_size.attr,
+	&dev_attr_hpi_support.attr,
+	&dev_attr_hpi_enable.attr,
+	&dev_attr_hpi_command.attr,
+	&dev_attr_hw_reset_support.attr,
 	NULL,
 };
 
