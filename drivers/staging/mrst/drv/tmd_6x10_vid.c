@@ -47,7 +47,7 @@
 static u32 pr2_mcs_protect_off[] = {0x000004b0};
 static u32 pr2_pixel_format[] = {0x008700b3};
 static u32 pr2_dsi_control[] = {0x008330b6};
-static u32 pr2_panel_driving[] = {0x850001c0, 0x00000000};
+static u32 pr2_panel_driving[] = {0x65FE01c0, 0x00000100};
 static u32 pr2_v_timing[] = {0x001000c1, 0x00000001};
 static u32 pr2_control[] = {0x001900c3};
 static u32 pr2_test_mode_0[] = {0x000003c4};
