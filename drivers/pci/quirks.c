@@ -2935,6 +2935,7 @@ static void quirk_mfld_d2_support(struct pci_dev *dev)
 }
 
 DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_INTEL, 0x0826, quirk_mfld_d2_support);
+DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_INTEL, 0x08E9, quirk_mfld_d2_support);
 #endif /*CONFIG_DX_SEP*/
 
 #endif /*CONFIG_X86_MDFLD*/
