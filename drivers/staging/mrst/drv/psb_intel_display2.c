@@ -1536,7 +1536,16 @@ static int mdfld_crtc_mode_set(struct drm_crtc *crtc,
 	int timeout = 0;
 	struct drm_encoder *mipi_encoder;
 
+	struct mdfld_dsi_hw_context *ctx;
+
 	PSB_DEBUG_ENTRY("pipe = 0x%x\n", pipe);
+
+	if (pipe == 0)   //h8c7_cmd
+		dsi_config = dev_priv->dsi_configs[0];
+	else if (pipe == 2)
+		dsi_config = dev_priv->dsi_configs[1];
+	ctx = &dsi_config->dsi_hw_context;
+
 
 #ifndef CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY
 #ifndef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
@@ -1895,7 +1904,18 @@ static int mdfld_crtc_mode_set(struct drm_crtc *crtc,
 			fp = 0x00000044;
 	}
 
-	if (get_panel_type(dev, pipe) == AUO_SC1_CMD) {
+	if (get_panel_type(dev, pipe) == H8C7_CMD)   //h8c7_cmd
+	{
+		mdfld_crtc_dsi_pll_calc(crtc, dsi_config, dev, ctx, adjusted_mode);
+		dpll = 	ctx->dpll;
+		fp = 	ctx->fp;
+		REG_WRITE(fp_reg, fp);
+		REG_WRITE(dpll_reg, dpll);
+		udelay(500);
+		dpll |= DPLL_VCO_ENABLE;
+		REG_WRITE(dpll_reg, dpll);
+		REG_READ(dpll_reg);
+	}else if (get_panel_type(dev, pipe) == AUO_SC1_CMD) {
 		REG_WRITE(dpll_reg, 0x0);
 		REG_WRITE(fp_reg, fp_m1 | (fp_n1 << FP_N_DIV_SHIFT));
 		REG_WRITE(dpll_reg, p1_post << MDFLD_P1_SHIFT);
@@ -1921,6 +1941,9 @@ static int mdfld_crtc_mode_set(struct drm_crtc *crtc,
 	if (is_mipi) {
 		if (get_panel_type(dev, pipe) == GI_SONY_CMD)
 			mdfld_gi_sony_power_on(mipi_encoder);
+		else if (get_panel_type(dev, pipe) == H8C7_CMD) mdfld_h8c7_cmd_power_on(mipi_encoder); //h8c7_cmd
+
+
 
 		goto mrst_crtc_mode_set_exit;
 	}

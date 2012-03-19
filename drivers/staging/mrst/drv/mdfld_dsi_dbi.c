@@ -440,7 +440,7 @@ void mdfld_dsi_dbi_enter_dsr (struct mdfld_dsi_dbi_output * dbi_output, int pipe
 		return;
 	}
 		
-	if (get_panel_type(dev, pipe) == GI_SONY_CMD)
+	if ((get_panel_type(dev, pipe) == GI_SONY_CMD)||(get_panel_type(dev, pipe) == H8C7_CMD))
 		psb_disable_vblank(dev, pipe);
 	else if (dev_priv->platform_rev_id != MDFLD_PNW_A0)
 		mdfld_disable_te(dev, pipe);
@@ -571,7 +571,7 @@ static void mdfld_dbi_output_exit_dsr (struct mdfld_dsi_dbi_output * dbi_output,
 	if (!check_hw_on_only)
 		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 
-	if (get_panel_type(dev, pipe) == GI_SONY_CMD)
+	if ((get_panel_type(dev, pipe) == GI_SONY_CMD)||(get_panel_type(dev, pipe) == H8C7_CMD))
 		psb_enable_vblank(dev, pipe);
 	/*enable TE interrupt on this pipe*/
 	else if (dev_priv->platform_rev_id != MDFLD_PNW_A0)
@@ -616,7 +616,7 @@ void mdfld_dsi_dbi_exit_dsr (struct drm_device *dev, u32 update_src, void *p_sur
 	dev_priv->dsr_fb_update |= update_src;
 	
 	/*start timer if A0 board*/
-	if (get_panel_type(dev, 0) == GI_SONY_CMD)
+	if ((get_panel_type(dev, 0) == GI_SONY_CMD)||(get_panel_type(dev, 0) == H8C7_CMD))
 		;  /* mdfld_dbi_dsr_timer_start(dsr_info); */
 	else if (dev_priv->platform_rev_id == MDFLD_PNW_A0)
 		mdfld_dbi_dsr_timer_start(dsr_info);
@@ -644,7 +644,6 @@ void mdfld_dbi_update_panel (struct drm_device *dev, int pipe)
 	struct mdfld_dsi_dbi_output **dbi_outputs;
 	struct mdfld_dsi_dbi_output *dbi_output;
 	int i;
-	int enter_dsr = 0;
 	u32 damage_mask = 0;
 
 	dbi_outputs = dsr_info->dbi_outputs;
@@ -660,7 +659,7 @@ void mdfld_dbi_update_panel (struct drm_device *dev, int pipe)
 	else
 		return;
 
-	if (get_panel_type(dev, pipe) == GI_SONY_CMD) {
+	if ((get_panel_type(dev, pipe) == GI_SONY_CMD)||(get_panel_type(dev, pipe) == H8C7_CMD)) {
 		dbi_output->dsr_fb_update_done = false;
 
 		if (dbi_output->p_funcs->update_fb)

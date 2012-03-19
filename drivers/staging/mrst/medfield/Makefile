@@ -205,6 +205,7 @@ gfx-y += $(DRMDRVDIR)/psb_bl.o \
 	  $(DRMDRVDIR)/tmd_vid.o \
 	  $(DRMDRVDIR)/tmd_6x10_vid.o \
 	  $(DRMDRVDIR)/h8c7_vid.o \
+	  $(DRMDRVDIR)/h8c7_cmd.o \
 	  $(DRMDRVDIR)/pyr_cmd.o \
 	  $(DRMDRVDIR)/mdfld_dsi_pkg_sender.o \
 	  $(DRMDRVDIR)/psb_powermgmt.o \

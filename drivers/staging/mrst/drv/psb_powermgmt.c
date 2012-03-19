@@ -1324,7 +1324,7 @@ static int mdfld_restore_display_registers(struct drm_device *dev, int pipe)
 	if (pipe == 1)
 		return 0;
 
-	if (get_panel_type(dev, pipe) == GI_SONY_CMD)
+	if ((get_panel_type(dev, pipe) == GI_SONY_CMD)||(get_panel_type(dev, pipe) == H8C7_CMD))
 		psb_enable_vblank(dev, pipe);
 	else if (IS_MDFLD(dev) && (dev_priv->platform_rev_id != MDFLD_PNW_A0) &&
 			!is_panel_vid_or_cmd(dev))
@@ -1382,15 +1382,16 @@ static int mdfld_restore_cursor_overlay_registers(struct drm_device *dev)
  */
 void mdfld_save_display(struct drm_device *dev)
 {
+	struct drm_psb_private *dev_priv = dev->dev_private;
 #ifdef OSPM_GFX_DPK
 		printk(KERN_ALERT "ospm_save_display\n");
 #endif
-		mdfld_save_cursor_overlay_registers(dev);
+	mdfld_save_cursor_overlay_registers(dev);
 
-		mdfld_save_display_registers(dev, 0);
-
-		mdfld_save_display_registers(dev, 2);
+	if (dev_priv->panel_desc & DISPLAY_A) mdfld_save_display_registers(dev, 0);
+	if (dev_priv->panel_desc & DISPLAY_C) mdfld_save_display_registers(dev, 2);  //h8c7_cmd
 }
+
 /*
  * powermgmt_suspend_display
  *
@@ -1757,6 +1758,7 @@ static void gfx_early_suspend(struct early_suspend *h)
 			(dev_priv->panel_id == TMD_6X10_VID) ||
 			(dev_priv->panel_id == GI_SONY_VID) ||
 			(dev_priv->panel_id == GI_SONY_CMD) ||
+			(dev_priv->panel_id == H8C7_CMD) ||
 			(dev_priv->panel_id == AUO_SC1_VID) ||
 			/* SC1 setting */
 			(dev_priv->panel_id == AUO_SC1_CMD)) {
@@ -1835,6 +1837,7 @@ static void gfx_late_resume(struct early_suspend *h)
 				(dev_priv->panel_id == TMD_6X10_VID) ||
 				(dev_priv->panel_id == GI_SONY_VID) ||
 				(dev_priv->panel_id == GI_SONY_CMD) ||
+				(dev_priv->panel_id == H8C7_CMD) ||
 				(dev_priv->panel_id == AUO_SC1_VID) ||
 				/* SC1 setting */
 				(dev_priv->panel_id == AUO_SC1_CMD)) {

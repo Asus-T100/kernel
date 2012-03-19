@@ -1065,6 +1065,11 @@ bool mrst_get_vbt_data(struct drm_psb_private *dev_priv)
 						"[GFX] H8C7 panel Detected.\n");
 					dev_priv->panel_id = H8C7_VID;
 					PanelID = H8C7_VID;
+					#ifdef CONFIG_SUPPORT_MIPI_H8C7_CMD_DISPLAY
+						dev_priv->panel_id = H8C7_CMD;
+						PanelID = H8C7_CMD;
+					#endif
+
 				} else {
 					PSB_DEBUG_ENTRY(
 						"[GFX] Default panel H8C7.\n");
@@ -2779,27 +2784,6 @@ static int psb_dpu_dsr_off_ioctl(struct drm_device *dev, void *arg,
 	return 0;
 }
 
-/*wait for ovadd flip complete*/
-static void overlay_wait_flip(struct drm_device *dev)
-{
-	int retry;
-	struct drm_psb_private *dev_priv = psb_priv(dev);
-	/**
-	 * make sure overlay command buffer
-	 * was copied before updating the system
-	 * overlay command buffer.
-	 */
-	retry = 3000;
-	while (--retry) {
-		if (BIT31 & PSB_RVDC32(OV_DOVASTA))
-			break;
-		udelay(10);
-	}
-
-	if (!retry)
-		DRM_ERROR("OVADD flip timeout!\n");
-}
-
 /*wait for vblank*/
 static void overlay_wait_vblank(struct drm_device *dev,
 				struct drm_file *file_priv,
@@ -2809,8 +2793,6 @@ static void overlay_wait_vblank(struct drm_device *dev,
 	union drm_wait_vblank vblwait;
 	uint32_t ovadd_pipe;
 	int pipe = 0;
-	int retry;
-	uint32_t reg_val = 0;
 
 	ovadd_pipe = ((ovadd >> 6) & 0x3);
 
@@ -2883,7 +2865,7 @@ static int validate_overlay_register_buffer(struct drm_file *file_priv,
 
 	if ((reg_buffer->offset & 0x0fff0000) != (*OVADD & 0xffff0000)) {
 		DRM_DEBUG("%s: old value 0x%08x, buffer gpu address 0x%08x\n",
-				*OVADD, reg_buffer->offset, __func__);
+				__func__, *OVADD, (unsigned int)reg_buffer->offset);
 		*OVADD = (*OVADD & 0xffff) + (reg_buffer->offset & 0x0fffffff);
 		DRM_DEBUG("patch ovadd value, new value 0x%08x\n", *OVADD);
 	}
@@ -2908,7 +2890,6 @@ static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 	unsigned long iep_timeout;
 	UHBUsage usage =
 		arg->b_force_hw_on ? OSPM_UHB_FORCE_POWER_ON : OSPM_UHB_ONLY_IF_ON;
-	uint32_t ovadd;
 
 	if (arg->display_write_mask != 0) {
 		if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, usage)) {
@@ -3338,10 +3319,12 @@ static int psb_driver_open(struct drm_device *dev, struct drm_file *priv)
 static long psb_unlocked_ioctl(struct file *filp, unsigned int cmd,
 			       unsigned long arg)
 {
+#ifdef CONFIG_GFX_RTPM
 	struct drm_file *file_priv = filp->private_data;
 	struct drm_device *dev = file_priv->minor->dev;
 	struct drm_psb_private *dev_priv = dev->dev_private;
 	static unsigned int runtime_allowed = 0;
+#endif
 	unsigned int nr = DRM_IOCTL_NR(cmd);
 	long ret;
 
@@ -3716,7 +3699,6 @@ static int psb_display_register_write(struct file *file, const char *buffer,
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 	return count;
 }
-
 /* When a client dies:
  *    - Check for and clean up flipped page state
  */
@@ -3761,6 +3743,7 @@ static void psb_proc_cleanup(struct drm_minor *minor)
 	remove_proc_entry(BLC_PROC_ENTRY, minor->proc_root);
 	return;
 }
+
 static const struct dev_pm_ops psb_pm_ops = {
 	.runtime_suspend = psb_runtime_suspend,
 	.runtime_resume = psb_runtime_resume,
@@ -3789,8 +3772,8 @@ static struct drm_driver driver = {
 	.lastclose = psb_lastclose,
 	.open = psb_driver_open,
 	.postclose = PVRSRVDrmPostClose,
-//	.proc_init = psb_proc_init,
-//	.proc_cleanup = psb_proc_cleanup,
+	.debugfs_init = psb_proc_init,
+	.debugfs_cleanup = psb_proc_cleanup,
 	.preclose = psb_driver_preclose,
 	.fops = {
 		.owner = THIS_MODULE,
@@ -3847,6 +3830,8 @@ static __init int parse_panelid(char *arg)
 		PanelID = PYR_VID;
 	else if (!strcasecmp(arg, "H8C7_VID"))
 		PanelID = H8C7_VID;
+	else if (!strcasecmp(arg, "H8C7_CMD"))
+		PanelID = H8C7_CMD;
 	else
 		PanelID = GCT_DETECT;
 
@@ -3941,6 +3926,7 @@ static void __exit psb_exit(void)
 
 #if defined(CONFIG_SUPPORT_TMD_MIPI_600X1024_DISPLAY) \
 	|| defined(CONFIG_SUPPORT_MIPI_H8C7_DISPLAY) \
+	|| defined(CONFIG_SUPPORT_MIPI_H8C7_CMD_DISPLAY) \
 	|| defined(CONFIG_SUPPORT_GI_MIPI_SONY_DISPLAY) \
 	|| defined(CONFIG_SUPPORT_AUO_MIPI_SC1_DISPLAY) \
 	|| defined(CONFIG_SUPPORT_AUO_MIPI_SC1_COMMAND_MODE_DISPLAY)

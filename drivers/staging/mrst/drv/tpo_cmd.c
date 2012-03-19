@@ -377,9 +377,6 @@ static void mdfld_dsi_dbi_commit(struct drm_encoder * encoder)
 static void mdfld_dsi_dbi_dpms(struct drm_encoder *encoder, int mode)
 {
 	struct mdfld_dsi_encoder * dsi_encoder = MDFLD_DSI_ENCODER(encoder);
-	struct mdfld_dsi_dbi_output * dbi_output = MDFLD_DSI_DBI_OUTPUT(dsi_encoder);
-	struct drm_device * dev = dbi_output->dev;
-	static bool bdispoff = false;
 
 	PSB_DEBUG_ENTRY("%s \n",  (mode == DRM_MODE_DPMS_ON ? "on":"off"));
 

@@ -71,6 +71,7 @@ enum panel_type {
 	TMD_VID,
 	TMD_6X10_VID,
 	H8C7_VID,
+	H8C7_CMD,
 	AUO_SC1_VID,
 	AUO_SC1_CMD,
 	GI_SONY_VID,

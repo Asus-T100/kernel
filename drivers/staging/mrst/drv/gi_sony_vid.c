@@ -94,7 +94,6 @@ static u32 gi_l5f3_set_full_brightness[] = {0x0000ff51};
 static u32 gi_l5f3_turn_on_backlight[] = {0x00002453};
 static u32 gi_l5f3_disable_cabc[] = {0x00000055};
 static u32 gi_l5f3_exit_sleep_mode[] = {0x00000011};
-static u32 gi_l5f3_set_brightness[] = {0x00000051};
 
 /* FIXME Optimize the delay time after PO.  */
 static void mdfld_gi_l5f3_dpi_ic_init(struct mdfld_dsi_config *dsi_config,
