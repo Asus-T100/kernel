@@ -354,6 +354,13 @@ struct hc_driver {
 		 * address is set
 		 */
 	int	(*update_device)(struct usb_hcd *, struct usb_device *);
+
+#ifdef CONFIG_USB_OTG
+	int	(*start_host) (struct usb_hcd *hcd);
+	int	(*stop_host) (struct usb_hcd *hcd);
+	int	(*reset_port) (struct usb_hcd *hcd);
+	int	(*release_host) (struct usb_hcd *hcd);
+#endif
 };
 
 extern int usb_hcd_link_urb_to_ep(struct usb_hcd *hcd, struct urb *urb);

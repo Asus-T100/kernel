@@ -113,6 +113,8 @@ struct otg_transceiver {
 	/* start or continue HNP role switch */
 	int	(*start_hnp)(struct otg_transceiver *otg);
 
+	/* for A or B-peripheral: host has released the bus.  */
+	int     (*host_release)(struct otg_transceiver *otg);
 };
 
 

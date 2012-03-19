@@ -149,4 +149,17 @@ config USB_PENWELL_OTG_TEST
 	  To compile this driver as a module, choose M here: the
 	  module will be called pnwotg_test.
 
+config USB_DWC_OTG_XCEIV
+	tristate "Synopsys DWC OTG 3.0 for USB 3.0"
+	depends on USB && PCI
+	select USB_OTG
+	select USB_OTG_UTILS
+	select USB_OTG_DWC
+	help
+	  Enables support for the DWC USB 3.0 OTG controller which supports the
+	  new OTG 2.0 spec for USB 2.0 ports and OTG 3.0 spec for USB 3.0 ports.
+	  This controller contains both an xHCI and DWC UDC interface.  Enabling
+	  this option will create the DWC OTG transceiver module and registers
+	  the xHCI and DWC as platform device.
+
 endif # USB || OTG
