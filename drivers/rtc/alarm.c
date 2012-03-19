@@ -69,7 +69,6 @@ static struct wake_lock alarm_rtc_wake_lock;
 static struct platform_device *alarm_platform_dev;
 struct alarm_queue alarms[ANDROID_ALARM_TYPE_COUNT];
 static bool suspended;
-static struct rtc_wkalrm disable_alarm;
 
 static int alarm_reboot_callback(struct notifier_block *nfb,
 				 unsigned long event, void *data);
@@ -486,7 +485,7 @@ static int alarm_suspend(struct device *dev)
 			rtc_delta.tv_sec, rtc_delta.tv_nsec);
 		if (rtc_current_time + 1 >= rtc_alarm_time) {
 			pr_alarm(SUSPEND, "alarm about to go off\n");
-			err = rtc_set_alarm(alarm_rtc_dev, &disable_alarm);
+			err = rtc_alarm_irq_enable(alarm_rtc_dev, false);
 			if (err != 0)
 				pr_alarm(ERROR,
 				   "alarm_suspend: Failed to disable alarm\n");
@@ -515,7 +514,7 @@ static int alarm_resume(struct device *dev)
 
 	pr_alarm(SUSPEND, "alarm_resume(%p)\n", dev);
 
-	err = rtc_set_alarm(alarm_rtc_dev, &disable_alarm);
+	err = rtc_alarm_irq_enable(alarm_rtc_dev, false);
 	if (err != 0)
 		pr_alarm(ERROR, "alarm_resume: Failed to disable alarm\n");
 
@@ -624,9 +623,6 @@ static int __init alarm_late_init(void)
 			timespec_to_ktime(timespec_sub(tmp_time, system_time));
 
 	spin_unlock_irqrestore(&alarm_slock, flags);
-	rtc_time_to_tm(0, &disable_alarm.time);
-	disable_alarm.enabled = 0;
-	disable_alarm.pending = 0;
 
 	return 0;
 }

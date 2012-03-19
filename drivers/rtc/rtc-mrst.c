@@ -375,13 +375,26 @@ static int mrst_procfs(struct device *dev, struct seq_file *seq)
 #define	mrst_procfs	NULL
 #endif
 
+static int mrst_alarm_irq_enable(struct device *dev, unsigned int enabled)
+{
+	struct mrst_rtc *mrst = dev_get_drvdata(dev);
+
+	if (enabled)
+		mrst_irq_enable(mrst, RTC_AIE);
+	else
+		mrst_irq_disable(mrst, RTC_AIE);
+
+	return 0;
+}
+
 static const struct rtc_class_ops mrst_rtc_ops = {
-	.ioctl		= mrst_rtc_ioctl,
-	.read_time	= mrst_read_time,
-	.set_time	= mrst_set_time,
-	.read_alarm	= mrst_read_alarm,
-	.set_alarm	= mrst_set_alarm,
-	.proc		= mrst_procfs,
+	.ioctl		  = mrst_rtc_ioctl,
+	.read_time	  = mrst_read_time,
+	.set_time	  = mrst_set_time,
+	.read_alarm	  = mrst_read_alarm,
+	.set_alarm	  = mrst_set_alarm,
+	.proc		  = mrst_procfs,
+	.alarm_irq_enable = mrst_alarm_irq_enable,
 };
 
 static struct mrst_rtc	mrst_rtc;
