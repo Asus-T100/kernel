@@ -25,7 +25,6 @@
 #include <linux/pm.h>
 #include <linux/pci.h>
 #include <linux/interrupt.h>
-#include <linux/debugfs.h>
 #include <linux/fs.h>
 #include <asm/intel-mid.h>
 #include <asm/intel_scu_ipc.h>
@@ -55,8 +54,6 @@
 
 #define IPC_BASE_ADDR     0xFF11C000	/* IPC1 base register address */
 #define IPC_MAX_ADDR      0x100		/* Maximum IPC regisers */
-#define IPC_WWBUF_SIZE    20		/* IPC Write buffer Size */
-#define IPC_RWBUF_SIZE    20		/* IPC Read buffer Size */
 #define IPC_I2C_BASE      0xFF12B000	/* I2C control register base address */
 #define IPC_I2C_MAX_ADDR  0x10		/* Maximum I2C regisers */
 
@@ -66,7 +63,6 @@
 #define IPC_MIP_MAX_ADDR  0x1000
 
 #define IPC_IOC		  0x100
-#define DATA_STRING_LEN   20
 
 static int ipc_probe(struct pci_dev *dev, const struct pci_device_id *id);
 static void ipc_remove(struct pci_dev *pdev);
@@ -215,240 +211,6 @@ static inline int ipc_wait_interrupt(void)
 	release_scu_ready_sem();
 	return ret;
 }
-
-/* Read/Write power control(PMIC in Langwell, MSIC in PenWell) registers */
-static int pwr_reg_rdwr(u16 *addr, u8 *data, u32 count, u32 op, u32 id)
-{
-	int i, nc, bytes, d;
-	u32 offset = 0;
-	int err;
-	u8 cbuf[IPC_WWBUF_SIZE] = { };
-	u32 *wbuf = (u32 *)&cbuf;
-
-	mutex_lock(&ipclock);
-
-	memset(cbuf, 0, sizeof(cbuf));
-
-	if (ipcdev.pdev == NULL) {
-		mutex_unlock(&ipclock);
-		return -ENODEV;
-	}
-
-	if (platform == INTEL_MID_CPU_CHIP_LINCROFT) {
-		bytes = 0;
-		d = 0;
-		for (i = 0; i < count; i++) {
-			cbuf[bytes++] = addr[i];
-			cbuf[bytes++] = addr[i] >> 8;
-			if (id != IPC_CMD_PCNTRL_R)
-				cbuf[bytes++] = data[d++];
-			if (id == IPC_CMD_PCNTRL_M)
-				cbuf[bytes++] = data[d++];
-		}
-		for (i = 0; i < bytes; i += 4)
-			ipc_data_writel(wbuf[i/4], i);
-		ipc_command(bytes << 16 |  id << 12 | 0 << 8 | op);
-	} else { /* Penwell or Cloverview */
-		for (nc = 0; nc < count; nc++, offset += 2) {
-			cbuf[offset] = addr[nc];
-			cbuf[offset + 1] = addr[nc] >> 8;
-		}
-
-		if (id == IPC_CMD_PCNTRL_R) {
-			for (nc = 0, offset = 0; nc < count; nc++, offset += 4)
-				ipc_data_writel(wbuf[nc], offset);
-			ipc_command((count*2) << 16 |  id << 12 | 0 << 8 | op);
-		} else if (id == IPC_CMD_PCNTRL_W) {
-			for (nc = 0; nc < count; nc++, offset += 1)
-				cbuf[offset] = data[nc];
-			for (nc = 0, offset = 0; nc < count; nc++, offset += 4)
-				ipc_data_writel(wbuf[nc], offset);
-			ipc_command((count*3) << 16 |  id << 12 | 0 << 8 | op);
-		} else if (id == IPC_CMD_PCNTRL_M) {
-			cbuf[offset] = data[0];
-			cbuf[offset + 1] = data[1];
-			ipc_data_writel(wbuf[0], 0); /* Write wbuff */
-			ipc_command(4 << 16 |  id << 12 | 0 << 8 | op);
-		}
-	}
-
-	err = ipc_wait_interrupt();
-	if (id == IPC_CMD_PCNTRL_R) { /* Read rbuf */
-		/* Workaround: values are read as 0 without memcpy_fromio */
-		memcpy_fromio(cbuf, ipcdev.ipc_base + 0x90, 16);
-		if (platform == INTEL_MID_CPU_CHIP_LINCROFT) {
-			for (nc = 0, offset = 2; nc < count; nc++, offset += 3)
-				data[nc] = ipc_data_readb(offset);
-		} else {
-			for (nc = 0; nc < count; nc++)
-				data[nc] = ipc_data_readb(nc);
-		}
-	}
-	mutex_unlock(&ipclock);
-	return err;
-}
-
-/**
- *	intel_scu_ipc_ioread8		-	read a word via the SCU
- *	@addr: register on SCU
- *	@data: return pointer for read byte
- *
- *	Read a single register. Returns 0 on success or an error code. All
- *	locking between SCU accesses is handled for the caller.
- *
- *	This function may sleep.
- */
-int intel_scu_ipc_ioread8(u16 addr, u8 *data)
-{
-	return pwr_reg_rdwr(&addr, data, 1, IPCMSG_PCNTRL, IPC_CMD_PCNTRL_R);
-}
-EXPORT_SYMBOL(intel_scu_ipc_ioread8);
-
-/**
- *	intel_scu_ipc_ioread16		-	read a word via the SCU
- *	@addr: register on SCU
- *	@data: return pointer for read word
- *
- *	Read a register pair. Returns 0 on success or an error code. All
- *	locking between SCU accesses is handled for the caller.
- *
- *	This function may sleep.
- */
-int intel_scu_ipc_ioread16(u16 addr, u16 *data)
-{
-	u16 x[2] = {addr, addr + 1 };
-	return pwr_reg_rdwr(x, (u8 *)data, 2, IPCMSG_PCNTRL, IPC_CMD_PCNTRL_R);
-}
-EXPORT_SYMBOL(intel_scu_ipc_ioread16);
-
-/**
- *	intel_scu_ipc_ioread32		-	read a dword via the SCU
- *	@addr: register on SCU
- *	@data: return pointer for read dword
- *
- *	Read four registers. Returns 0 on success or an error code. All
- *	locking between SCU accesses is handled for the caller.
- *
- *	This function may sleep.
- */
-int intel_scu_ipc_ioread32(u16 addr, u32 *data)
-{
-	u16 x[4] = {addr, addr + 1, addr + 2, addr + 3};
-	return pwr_reg_rdwr(x, (u8 *)data, 4, IPCMSG_PCNTRL, IPC_CMD_PCNTRL_R);
-}
-EXPORT_SYMBOL(intel_scu_ipc_ioread32);
-
-/**
- *	intel_scu_ipc_iowrite8		-	write a byte via the SCU
- *	@addr: register on SCU
- *	@data: byte to write
- *
- *	Write a single register. Returns 0 on success or an error code. All
- *	locking between SCU accesses is handled for the caller.
- *
- *	This function may sleep.
- */
-int intel_scu_ipc_iowrite8(u16 addr, u8 data)
-{
-	return pwr_reg_rdwr(&addr, &data, 1, IPCMSG_PCNTRL, IPC_CMD_PCNTRL_W);
-}
-EXPORT_SYMBOL(intel_scu_ipc_iowrite8);
-
-/**
- *	intel_scu_ipc_iowrite16		-	write a word via the SCU
- *	@addr: register on SCU
- *	@data: word to write
- *
- *	Write two registers. Returns 0 on success or an error code. All
- *	locking between SCU accesses is handled for the caller.
- *
- *	This function may sleep.
- */
-int intel_scu_ipc_iowrite16(u16 addr, u16 data)
-{
-	u16 x[2] = {addr, addr + 1 };
-	return pwr_reg_rdwr(x, (u8 *)&data, 2, IPCMSG_PCNTRL, IPC_CMD_PCNTRL_W);
-}
-EXPORT_SYMBOL(intel_scu_ipc_iowrite16);
-
-/**
- *	intel_scu_ipc_iowrite32		-	write a dword via the SCU
- *	@addr: register on SCU
- *	@data: dword to write
- *
- *	Write four registers. Returns 0 on success or an error code. All
- *	locking between SCU accesses is handled for the caller.
- *
- *	This function may sleep.
- */
-int intel_scu_ipc_iowrite32(u16 addr, u32 data)
-{
-	u16 x[4] = {addr, addr + 1, addr + 2, addr + 3};
-	return pwr_reg_rdwr(x, (u8 *)&data, 4, IPCMSG_PCNTRL, IPC_CMD_PCNTRL_W);
-}
-EXPORT_SYMBOL(intel_scu_ipc_iowrite32);
-
-/**
- *	intel_scu_ipc_readvv		-	read a set of registers
- *	@addr: register list
- *	@data: bytes to return
- *	@len: length of array
- *
- *	Read registers. Returns 0 on success or an error code. All
- *	locking between SCU accesses is handled for the caller.
- *
- *	The largest array length permitted by the hardware is 5 items.
- *
- *	This function may sleep.
- */
-int intel_scu_ipc_readv(u16 *addr, u8 *data, int len)
-{
-	return pwr_reg_rdwr(addr, data, len, IPCMSG_PCNTRL, IPC_CMD_PCNTRL_R);
-}
-EXPORT_SYMBOL(intel_scu_ipc_readv);
-
-/**
- *	intel_scu_ipc_writev		-	write a set of registers
- *	@addr: register list
- *	@data: bytes to write
- *	@len: length of array
- *
- *	Write registers. Returns 0 on success or an error code. All
- *	locking between SCU accesses is handled for the caller.
- *
- *	The largest array length permitted by the hardware is 5 items.
- *
- *	This function may sleep.
- *
- */
-int intel_scu_ipc_writev(u16 *addr, u8 *data, int len)
-{
-	return pwr_reg_rdwr(addr, data, len, IPCMSG_PCNTRL, IPC_CMD_PCNTRL_W);
-}
-EXPORT_SYMBOL(intel_scu_ipc_writev);
-
-
-/**
- *	intel_scu_ipc_update_register	-	r/m/w a register
- *	@addr: register address
- *	@bits: bits to update
- *	@mask: mask of bits to update
- *
- *	Read-modify-write power control unit register. The first data argument
- *	must be register value and second is mask value
- *	mask is a bitmap that indicates which bits to update.
- *	0 = masked. Don't modify this bit, 1 = modify this bit.
- *	returns 0 on success or an error code.
- *
- *	This function may sleep. Locking between SCU accesses is handled
- *	for the caller.
- */
-int intel_scu_ipc_update_register(u16 addr, u8 bits, u8 mask)
-{
-	u8 data[2] = { bits, mask };
-	return pwr_reg_rdwr(&addr, data, 1, IPCMSG_PCNTRL, IPC_CMD_PCNTRL_M);
-}
-EXPORT_SYMBOL(intel_scu_ipc_update_register);
 
 /**
  *	intel_scu_ipc_simple_command	-	send a simple command
@@ -1484,15 +1246,12 @@ EXPORT_SYMBOL(intel_scu_ipc_write_umip);
 
 #define IPCMSG_FW_REVISION 0xF4
 
-static u16 msic_sysfs_reg_addr;
-static char err_buf[50];
+#define ERR_BUF_SIZE 50
+static char err_buf[ERR_BUF_SIZE];
 
-static void cur_err(const char *err_str)
+static void cur_err(const char *err_info)
 {
-	if (err_str) {
-		memset(err_buf, 0, sizeof(err_buf));
-		strncpy(err_buf, err_str, sizeof(err_buf)-1);
-	}
+	strncpy(err_buf, err_info, ERR_BUF_SIZE - 1);
 }
 
 static ssize_t write_dnx(struct file *file, struct kobject *kobj,
@@ -1746,77 +1505,6 @@ end:
 	return sprintf(buf, "%s", "Error in fwud prepare");
 }
 
-
-static ssize_t intel_scu_ipc_show_addr(struct device *dev,
-		struct device_attribute *attr, char *buf)
-{
-	if (msic_sysfs_reg_addr < MIN_MSIC_REG ||
-			msic_sysfs_reg_addr > MAX_MSIC_REG)
-		return sprintf(buf, "%s", "invalid reg addr");
-	else
-		return sprintf(buf, "0x%x", msic_sysfs_reg_addr);
-}
-
-
-static ssize_t intel_scu_ipc_store_addr(struct device *dev,
-		struct device_attribute *attr, const char *buf, size_t size)
-{
-	u32 reg_addr;
-	if (sscanf(buf, "%x", &reg_addr) == 1) {
-		if (reg_addr < MIN_MSIC_REG || reg_addr > MAX_MSIC_REG) {
-			cur_err("MSIC reg addr out of range");
-			return -EINVAL;
-		}
-		msic_sysfs_reg_addr = (u16)reg_addr;
-		dev_info(&ipcdev.pdev->dev,
-			"Set MSIC reg addr = 0x%x\n", msic_sysfs_reg_addr);
-	}
-
-	return size;
-}
-
-static ssize_t intel_scu_ipc_show_value(struct device *dev,
-		struct device_attribute *attr, char *buf)
-{
-	uint8_t data;
-	int ret;
-
-	ret = intel_scu_ipc_ioread8(msic_sysfs_reg_addr, &data);
-	if (ret) {
-		cur_err("Error read msic register");
-		return -EFAULT;
-	}
-
-	return sprintf(buf, "msic[%3.3x]=0x%x\n", msic_sysfs_reg_addr, data);
-}
-
-static ssize_t intel_scu_ipc_store_value(struct device *dev,
-		struct device_attribute *attr, const char *buf, size_t size)
-{
-	u32 val;
-	u8 data;
-	int ret;
-
-	if (sscanf(buf, "%x", &val) == 1) {
-		if (val > 0xFF) {
-			cur_err("Write data out of range");
-			return -EINVAL;
-		}
-		data = (u8)val;
-		dev_info(&ipcdev.pdev->dev,
-			"Write 0x%x to MSIC reg addr = 0x%x\n",
-			data, msic_sysfs_reg_addr);
-
-		ret = intel_scu_ipc_iowrite8(msic_sysfs_reg_addr, data);
-		if (ret) {
-			cur_err("Error write msic register");
-			return -EFAULT;
-		}
-	}
-
-	return size;
-}
-
 static ssize_t intel_scu_ipc_show_fw_version(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
@@ -1864,18 +1552,12 @@ static struct bin_attribute bin_attr_dnx_hdr = {
 	.read = read_dnx_hdr,
 };
 
-static DEVICE_ATTR(addr, S_IRUGO | S_IWUSR,
-		intel_scu_ipc_show_addr, intel_scu_ipc_store_addr);
-static DEVICE_ATTR(value, S_IRUGO | S_IWUSR,
-		intel_scu_ipc_show_value, intel_scu_ipc_store_value);
 static DEVICE_ATTR(fw_version, S_IRUGO, intel_scu_ipc_show_fw_version, NULL);
 static DEVICE_ATTR(last_error, S_IRUGO, intel_scu_ipc_show_last_error, NULL);
 static DEVICE_ATTR(medfw_prepare, S_IRUGO,
 		intel_scu_ipc_show_medfw_prepare, NULL);
 
 static struct attribute *intel_scu_ipc_attrs[] = {
-	&dev_attr_addr.attr,
-	&dev_attr_value.attr,
 	&dev_attr_fw_version.attr,
 	&dev_attr_last_error.attr,
 	&dev_attr_medfw_prepare.attr,
@@ -1931,158 +1613,6 @@ static void intel_scu_sysfs_remove(struct pci_dev *dev)
 	sysfs_remove_bin_file(&dev->dev.kobj, &bin_attr_ifwi);
 	sysfs_remove_bin_file(&dev->dev.kobj, &bin_attr_dnx);
 	sysfs_remove_group(&dev->dev.kobj, &intel_scu_ipc_attr_group);
-}
-
-static struct dentry *msic_debug_file;
-static struct dentry *msic_all_debug_file;
-static u16 msic_debug_reg_addr;
-static char *msic_all_buf;
-static int kbuf_offset;
-
-/* MSIC read register with DEBUGFS */
-/* Usage : */
-/*    echo "-0x188" > msic && cat msic */
-/*    => read value of register 0x188 */
-static ssize_t msic_debug_read(struct file *filp, char __user *buffer,
-				size_t length, loff_t *off)
-{
-	uint8_t data;
-	char buf[DATA_STRING_LEN];
-	int len;
-	int ret;
-
-	if (*off)
-		return 0;
-
-	ret = intel_scu_ipc_ioread8(msic_debug_reg_addr, &data);
-	if (ret) {
-		dev_err(&ipcdev.pdev->dev,
-			"Error read msic register[%3.3x],ret=%d\n",
-			msic_debug_reg_addr, ret);
-		return -EFAULT;
-	}
-	len = snprintf(buf, sizeof(buf), "msic[%3.3x]=0x%x\n", \
-						msic_debug_reg_addr, data);
-	if (copy_to_user(buffer, buf, len))
-		return -EFAULT;
-	*off = len;
-	return len;
-}
-
-static ssize_t msic_debug_write(struct file *filp,
-		const char __user *buffer, size_t len, loff_t *off)
-{
-	u32 reg_addr;
-	char buf[DATA_STRING_LEN];
-	int ret;
-
-	ret = copy_from_user(buf, buffer, min(sizeof(buf), len));
-	if (ret)
-		return -EFAULT;
-
-	if (buf[0] == '-') {
-		if (sscanf(buf+1, "%x", &reg_addr) == 1) {
-			if (reg_addr < MIN_MSIC_REG
-				|| reg_addr > MAX_MSIC_REG) {
-				dev_err(&ipcdev.pdev->dev,
-					"msic reg addr out of range\n");
-				return -EINVAL;
-			}
-			msic_debug_reg_addr = (u16)reg_addr;
-			dev_err(&ipcdev.pdev->dev,
-				"Set MSIC reg addr=%x\n", msic_debug_reg_addr);
-		}
-	}
-	return len;
-}
-/* Basic function for dumping all MSIC registers */
-/* Called by msic_all_debug_read */
-static void msic_all_debug_dump(void)
-{
-	int i, j;
-	int ret;
-	uint8_t reg_value[4];
-
-	kbuf_offset = 0;
-	for (i = MIN_MSIC_REG ; i <= MAX_MSIC_REG ; i += 4) {
-		ret = intel_scu_ipc_ioread32(i, (u32 *) reg_value);
-		if (ret) {
-			dev_err(&ipcdev.pdev->dev,
-			"Error read msic reg[%x .. %x],ret=%d\n", i, i+3, ret);
-		} else {
-			for (j = 0 ; j < 4 ; j++)
-				kbuf_offset += sprintf(
-						msic_all_buf+kbuf_offset,
-						"[%3.3x]=0x%2.2x\n",
-						i+j,
-						reg_value[j]);
-		}
-	}
-}
-
-/* MSIC dump all registers with DEBUGFS */
-/* Usage : */
-/*    cat msic_all */
-/*    => dump all registers */
-static ssize_t msic_all_debug_read(struct file *filp,
-		char *buffer, size_t length, loff_t *offset)
-{
-	int buf_count;
-
-	if (*offset == 0)
-		/* Dump MSIC registers */
-		msic_all_debug_dump();
-
-	if (*offset >= kbuf_offset) {
-		buf_count = 0;
-		goto end_of_read;
-	} else
-		buf_count = min(length,
-			(unsigned int)(kbuf_offset-(int)*offset));
-
-	if (copy_to_user(buffer, msic_all_buf + *offset, buf_count)) {
-		buf_count = -EFAULT;
-		goto end_of_read;
-	}
-	*offset += buf_count;
-end_of_read:
-	return buf_count;
-}
-
-static const struct file_operations msic_debug_ops = {
-	.write = msic_debug_write,
-	.read = msic_debug_read
-};
-
-static const struct file_operations msic_all_debug_ops = {
-	.read = msic_all_debug_read
-};
-
-static void create_msic_debug_entries(void)
-{
-	msic_debug_file = debugfs_create_file(MSIC_DEBUG_FILE,
-					0644, NULL, NULL, &msic_debug_ops);
-	/* if DEBUGFS is not activated NULL pointer is returned */
-	if (msic_debug_file) {
-		msic_all_debug_file = debugfs_create_file(MSIC_ALL_DEBUG_FILE,
-					0444, NULL, NULL, &msic_all_debug_ops);
-		msic_all_buf = kmalloc((MAX_MSIC_REG - MIN_MSIC_REG + 1)*40,
-						GFP_KERNEL);
-		if (!msic_all_buf) {
-			dev_err(&ipcdev.pdev->dev, "Error allocate memory\n");
-			return;
-		}
-		msic_debug_reg_addr = MIN_MSIC_REG;
-	} else {
-		/* DEBUGFS not activated, nothing to be done */
-	}
-}
-
-static void remove_msic_debug_entries(void)
-{
-	kfree(msic_all_buf);
-	debugfs_remove(msic_debug_file);
-	debugfs_remove(msic_all_debug_file);
 }
 
 #define OSHOB_SIZE		60
@@ -2295,8 +1825,6 @@ static int ipc_probe(struct pci_dev *dev, const struct pci_device_id *id)
 
 	intel_scu_devices_create(*bus_id);
 
-	create_msic_debug_entries();
-
 	intel_scu_sysfs_create(dev);
 
 	pci_set_drvdata(dev, bus_id);
@@ -2305,7 +1833,7 @@ static int ipc_probe(struct pci_dev *dev, const struct pci_device_id *id)
 }
 
 /**
- *	ipc_remove	-	remove a bound IPC device
+ *	ipc_remove - remove a bound IPC device
  *	@pdev: PCI device
  *
  *	In practice the SCU is not removable but this function is also
@@ -2318,7 +1846,6 @@ static void ipc_remove(struct pci_dev *pdev)
 {
 	int *bus_id = pci_get_drvdata(pdev);
 	intel_scu_sysfs_remove(pdev);
-	remove_msic_debug_entries();
 	free_irq(pdev->irq, &ipcdev);
 	pci_release_regions(pdev);
 	pci_dev_put(ipcdev.pdev);
