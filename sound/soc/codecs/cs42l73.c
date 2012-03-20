@@ -1131,18 +1131,44 @@ static int cs42l73_set_mic_bias(struct snd_soc_codec *codec, int state)
 	return 0;
 }
 
-void cs42l73_hp_detection(struct snd_soc_codec *codec,
+void cs42l73_bp_detection(struct snd_soc_codec *codec,
 			   struct snd_soc_jack *jack,
 			   int plug_status)
 {
 	unsigned int status;
+	unsigned int reg;
+	unsigned int mask = SND_JACK_BTN_0 | SND_JACK_HEADSET;
+
+	if (plug_status) {
+		pr_err("%s: Invalid interrupt\n", __func__);
+		return;
+	} else {
+		snd_soc_update_bits(codec, CS42L73_IM1, MIC2_SDET, MIC2_SDET);
+		reg = snd_soc_read(codec, CS42L73_IS1);
+		if (reg & MIC2_SDET) { /*button pressed */
+			pr_debug("%s:Button Pressed\n", __func__);
+			status = SND_JACK_HEADSET | SND_JACK_BTN_0;
+		} else {
+			pr_debug("%s:Button Released\n", __func__);
+			status = SND_JACK_HEADSET;
+		}
+	}
+	snd_soc_jack_report(jack, status, mask);
+}
+EXPORT_SYMBOL_GPL(cs42l73_bp_detection);
+
+void cs42l73_hp_detection(struct snd_soc_codec *codec,
+			   struct snd_soc_jack *jack,
+			   int plug_status)
+{
+	unsigned int status = 0;
 	unsigned int micbias = 0;
 	int hs_status = 0;
 	unsigned int reg;
 	unsigned int mask = SND_JACK_BTN_0 | SND_JACK_HEADSET;
 
 	if (plug_status) {
-		pr_debug("In cs42l73_hp_detection disable micbias\n");
+		pr_debug("%s: Jack removed - disable micbias\n", __func__);
 		cs42l73_set_mic_bias(codec, MIC_BIAS_DISABLE);
 	} else {
 		micbias = snd_soc_read(codec, CS42L73_PWRCTL2);
@@ -1153,7 +1179,6 @@ void cs42l73_hp_detection(struct snd_soc_codec *codec,
 		}
 
 		snd_soc_update_bits(codec, CS42L73_IM1, MIC2_SDET, MIC2_SDET);
-		mdelay(1000);
 		reg = snd_soc_read(codec, CS42L73_IS1);
 
 		pr_debug("Mic detect = %x ISI =%x\n", micbias, reg);
@@ -1166,11 +1191,6 @@ void cs42l73_hp_detection(struct snd_soc_codec *codec,
 				status = SND_JACK_HEADSET;
 				pr_debug("Headset detected\n");
 			}
-		} else {
-			if (reg & MIC2_SDET)  /*button pressed */
-				status = SND_JACK_HEADSET | SND_JACK_BTN_0;
-			else
-				status = SND_JACK_HEADSET;
 		}
 	}
 	snd_soc_jack_report(jack, status, mask);
@@ -1286,8 +1306,6 @@ static __devinit int cs42l73_i2c_probe(struct i2c_client *i2c_client,
 
 static __devexit int cs42l73_i2c_remove(struct i2c_client *client)
 {
-	struct cs42l73_private *cs42l73 = i2c_get_clientdata(client);
-
 	snd_soc_unregister_codec(&client->dev);
 
 	/* No need for kfree(cs42l73), as it'll be automatically freed

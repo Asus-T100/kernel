@@ -162,6 +162,40 @@ static struct snd_soc_jack_gpio hs_button_gpio = {
 	.report = SND_JACK_BTN_0,
 	.debounce_time = 100,
 };
+
+static void clv_soc_jack_gpio_detect_bp(struct snd_soc_jack_gpio *gpio)
+{
+	int enable;
+	struct snd_soc_jack *jack = gpio->jack;
+	struct snd_soc_codec *codec = jack->codec;
+
+	enable = gpio_get_value(gpio->gpio);
+	if (gpio->invert)
+		enable = !enable;
+	pr_debug("%s: gpio->%d=0x%x\n", __func__, gpio->gpio, enable);
+	cs42l73_bp_detection(codec, jack, enable);
+}
+
+/* irq handler for button_press gpio pin */
+static irqreturn_t clv_gpio_handler_bp(int irq, void *data)
+{
+	struct snd_soc_jack_gpio *gpio = data;
+
+	schedule_delayed_work(&gpio->work,
+				msecs_to_jiffies(gpio->debounce_time));
+
+	return IRQ_HANDLED;
+}
+
+/* gpio work */
+static void clv_gpio_work_bp(struct work_struct *work)
+{
+	struct snd_soc_jack_gpio *gpio;
+
+	gpio = container_of(work, struct snd_soc_jack_gpio, work.work);
+	clv_soc_jack_gpio_detect_bp(gpio);
+}
+
 static void clv_soc_jack_gpio_detect(struct snd_soc_jack_gpio *gpio)
 {
 	int enable;
@@ -170,6 +204,7 @@ static void clv_soc_jack_gpio_detect(struct snd_soc_jack_gpio *gpio)
 	enable = gpio_get_value(gpio->gpio);
 	if (gpio->invert)
 		enable = !enable;
+	pr_debug("%s:gpio->%d=0x%d\n", __func__, gpio->gpio, enable);
 	cs42l73_hp_detection(codec, jack, enable);
 }
 
@@ -224,11 +259,21 @@ int clv_soc_jack_add_gpio(struct snd_soc_jack *jack,
 	if (ret)
 		goto err;
 
-	INIT_DELAYED_WORK(&gpio->work, clv_gpio_work);
-	gpio->jack = jack;
+	if (gpio->gpio == CS42L73_HPSENSE_GPIO) {
 
-	ret = request_irq(gpio_to_irq(gpio->gpio), clv_gpio_handler,
-				 IRQF_TRIGGER_FALLING, codec->name, gpio);
+		INIT_DELAYED_WORK(&gpio->work, clv_gpio_work);
+		gpio->jack = jack;
+
+		ret = request_irq(gpio_to_irq(gpio->gpio), clv_gpio_handler,
+				IRQF_TRIGGER_FALLING, codec->name, gpio);
+	} else {
+		INIT_DELAYED_WORK(&gpio->work, clv_gpio_work_bp);
+		gpio->jack = jack;
+
+		ret = request_irq(gpio_to_irq(gpio->gpio), clv_gpio_handler_bp,
+				IRQF_TRIGGER_FALLING, codec->name, gpio);
+
+	}
 	if (ret)
 		goto err;
 
@@ -239,6 +284,7 @@ int clv_soc_jack_add_gpio(struct snd_soc_jack *jack,
 	/* Update initial jack status */
 	if (gpio->gpio == CS42L73_HPSENSE_GPIO)
 		clv_soc_jack_gpio_detect(gpio);
+
 	return 0;
 
 err:
