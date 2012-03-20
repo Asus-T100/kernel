@@ -217,6 +217,9 @@ struct sep_private_data {
 #define SEP_IOCENDTRANSACTION	 \
 	_IO(SEP_IOC_MAGIC_NUMBER, 15)
 
+#define SEP_DRIVER_INSERT_SHARE_ADDR_CMD \
+	_IO(SEP_IOC_MAGIC_NUMBER, 0x30)
+
 #define SEP_IOCPREPAREDCB					\
 	_IOW(SEP_IOC_MAGIC_NUMBER, 35, struct build_dcb_struct)
 

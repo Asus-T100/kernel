@@ -157,6 +157,11 @@ held by the proccess (struct file) */
 /* message area offset */
 #define SEP_DRIVER_MESSAGE_AREA_OFFSET_IN_BYTES			0
 
+#define SEP_DRIVER_MESSAGE_START_AFTER_OPCODE			5
+
+#define SEP_SHARED_AREA_PHYSADDRESS_OFFSET \
+	(SEP_DRIVER_MESSAGE_START_AFTER_OPCODE + 6)
+
 /* static pool area offset */
 #define SEP_DRIVER_STATIC_AREA_OFFSET_IN_BYTES \
 	(SEP_DRIVER_MESSAGE_SHARED_AREA_SIZE_IN_BYTES)
