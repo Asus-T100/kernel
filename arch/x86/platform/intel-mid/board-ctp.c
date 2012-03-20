@@ -50,7 +50,7 @@
 #include <linux/ms5607.h>
 #include <linux/i2c/apds990x.h>
 #include <linux/i2c-gpio.h>
-#include <linux/rmi_i2c.h>
+#include <linux/synaptics_i2c_rmi4.h>
 
 
 #include <linux/atomisp_platform.h>
@@ -1411,57 +1411,14 @@ void *ov8830_platform_data_init(void *info)
 	return &ov8830_sensor_platform_data;
 }
 
-
-static struct rmi_f11_functiondata synaptics_f11_data = {
-	.swap_axes = true,
-};
-
-static unsigned char synaptic_keys[31] = {1, 2, 3, 4,};
-			/* {KEY_BACK,KEY_MENU,KEY_HOME,KEY_SEARCH,} */
-
-static struct rmi_button_map synaptics_button_map = {
-	.nbuttons = 31,
-	.map = synaptic_keys,
-};
-static struct rmi_f19_functiondata  synaptics_f19_data = {
-	.button_map = &synaptics_button_map,
-};
-
-#define RMI_F11_INDEX 0x11
-#define RMI_F19_INDEX 0x19
-
-static struct rmi_functiondata synaptics_functiondata[] = {
-	{
-		.function_index = RMI_F11_INDEX,
-		.data = &synaptics_f11_data,
-	},
-	{
-		.function_index = RMI_F19_INDEX,
-		.data = &synaptics_f19_data,
-	},
-};
-
-static struct rmi_functiondata_list synaptics_perfunctiondata = {
-	.count = ARRAY_SIZE(synaptics_functiondata),
-	.functiondata = synaptics_functiondata,
-};
-
-
-static struct rmi_sensordata s3202_sensordata = {
-	.perfunctiondata = &synaptics_perfunctiondata,
-};
-
 void *s3202_platform_data_init(void *info)
 {
-	struct i2c_board_info *i2c_info = info;
-	static struct rmi_i2c_platformdata s3202_platform_data = {
-		.delay_ms = 50,
-		.sensordata = &s3202_sensordata,
+	static struct rmi4_platform_data s3202_platform_data = {
+		.irq_type = IRQ_TYPE_EDGE_FALLING | IRQF_ONESHOT,
+		.swap_axes = true,
 	};
-
-	s3202_platform_data.i2c_address = i2c_info->addr;
-	s3202_sensordata.attn_gpio_number = get_gpio_by_name("ts_int");
-	s3202_sensordata.rst_gpio_number  = get_gpio_by_name("ts_rst");
+	s3202_platform_data.int_gpio_number = get_gpio_by_name("ts_int");
+	s3202_platform_data.rst_gpio_number = get_gpio_by_name("ts_rst");
 
 	return &s3202_platform_data;
 }
