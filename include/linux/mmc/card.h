@@ -96,6 +96,7 @@ struct mmc_ext_csd {
 
 	unsigned int            feature_support;
 #define MMC_DISCARD_FEATURE	BIT(0)                  /* CMD38 feature */
+	u8			part_set_complete;	/* 155 */
 };
 
 struct sd_scr {
@@ -276,6 +277,9 @@ struct mmc_card {
 	unsigned int    nr_parts;
 
 	unsigned int		rpmb_max_req;
+
+	unsigned long long	enhanced_area_offset;	/* Units: Byte */
+	unsigned int		enhanced_area_size;	/* Units: KB */
 };
 
 /*
