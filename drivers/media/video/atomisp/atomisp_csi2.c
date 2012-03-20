@@ -52,7 +52,7 @@ __csi2_get_format(struct atomisp_mipi_csi2_device *csi2,
 		return &csi2->formats[pad];
 }
 
-enum v4l2_mbus_pixelcode
+static enum v4l2_mbus_pixelcode
 isp_video_uncompressed_code(enum v4l2_mbus_pixelcode code)
 {
 	switch (code) {

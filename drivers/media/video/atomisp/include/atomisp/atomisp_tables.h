@@ -26,25 +26,25 @@
 #include "sh_css_params.h"
 
 /*Sepia image effect table*/
-const struct sh_css_cc_config sepia_cc_config = {
+static const struct sh_css_cc_config sepia_cc_config = {
 	.fraction_bits  = 8,
 	.matrix	 = {141, 18, 68, -40, -5, -19, 35, 4, 16},
 };
 
 /*Negative image effect table*/
-const struct sh_css_cc_config nega_cc_config = {
+static const struct sh_css_cc_config nega_cc_config = {
 	.fraction_bits  = 8,
 	.matrix	 = {255, 29, 120, 0, 374, 342, 0, 672, -301},
 };
 
 /*Mono image effect table*/
-const struct sh_css_cc_config mono_cc_config = {
+static const struct sh_css_cc_config mono_cc_config = {
 	.fraction_bits  = 8,
 	.matrix	 = {255, 29, 120, 0, 0, 0, 0, 0, 0},
 };
 
 /*Skin whiten image effect table*/
-struct sh_css_macc_table skin_low_macc_table = {
+static struct sh_css_macc_table skin_low_macc_table = {
 	.data = {
 	8192, 0, 0, 8192,
 	8192, 0, 0, 8192,
@@ -65,7 +65,7 @@ struct sh_css_macc_table skin_low_macc_table = {
 	}
 };
 
-struct sh_css_macc_table skin_medium_macc_table = {
+static struct sh_css_macc_table skin_medium_macc_table = {
 	.data = {
 	8192, 0, 0, 8192,
 	8192, 0, 0, 8192,
@@ -86,7 +86,7 @@ struct sh_css_macc_table skin_medium_macc_table = {
 	}
 };
 
-struct sh_css_macc_table skin_high_macc_table = {
+static struct sh_css_macc_table skin_high_macc_table = {
 	.data = {
 	8192, 0, 0, 8192,
 	8192, 0, 0, 8192,
@@ -108,7 +108,7 @@ struct sh_css_macc_table skin_high_macc_table = {
 };
 
 /*Blue enhencement image effect table*/
-struct sh_css_macc_table blue_macc_table = {
+static struct sh_css_macc_table blue_macc_table = {
 	.data = {
 	8192, 0, 0, 8192,
 	8192, 0, 0, 8192,
@@ -130,7 +130,7 @@ struct sh_css_macc_table blue_macc_table = {
 };
 
 /*Green enhencement image effect table*/
-struct sh_css_macc_table green_macc_table = {
+static struct sh_css_macc_table green_macc_table = {
 	.data = {
 	8192, 0, 0, 8192,
 	8192, 0, 0, 8192,
@@ -152,7 +152,7 @@ struct sh_css_macc_table green_macc_table = {
 };
 
 /*Color enhancement image effect table*/
-struct sh_css_ctc_table vivid_ctc_table = {
+static struct sh_css_ctc_table vivid_ctc_table = {
 	.data = {
 	876, 872, 869, 865, 861, 858, 854, 850,
 	847, 843, 839, 835, 832, 828, 824, 821,

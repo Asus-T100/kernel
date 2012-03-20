@@ -25,33 +25,40 @@
 
 #include "atomisp_cmd.h"
 
-
+/*
+ * _hrt_master_port_store/load/uload -macros using __force attributed
+ * cast to intentional dereferencing __iomem attributed (noderef)
+ * pointer from atomisp_get_io_virt_addr
+ */
 #define _hrt_master_port_store_8(a, d) \
-	(*((__iomem s8 *)atomisp_get_io_virt_addr((unsigned int)(a))) = (d))
+	(*((s8 __force *)atomisp_get_io_virt_addr((unsigned int)(a)))\
+	= (d))
 
 #define _hrt_master_port_store_16(a, d) \
-	(*((__iomem s16 *)atomisp_get_io_virt_addr((unsigned int)(a))) = (d))
+	(*((s16 __force *)atomisp_get_io_virt_addr((unsigned int)(a)))\
+	= (d))
 
 #define _hrt_master_port_store_32(a, d) \
-	(*((__iomem s32 *)atomisp_get_io_virt_addr((unsigned int)(a))) = (d))
+	(*((s32 __force *)atomisp_get_io_virt_addr((unsigned int)(a)))\
+	= (d))
 
 #define _hrt_master_port_load_8(a) \
-	(*(__iomem s8  *)atomisp_get_io_virt_addr((unsigned int)(a)))
+	(*(s8 __force *)atomisp_get_io_virt_addr((unsigned int)(a)))
 
 #define _hrt_master_port_load_16(a) \
-	(*(__iomem s16 *)atomisp_get_io_virt_addr((unsigned int)(a)))
+	(*(s16 __force *)atomisp_get_io_virt_addr((unsigned int)(a)))
 
 #define _hrt_master_port_load_32(a) \
-	(*(__iomem s32 *)atomisp_get_io_virt_addr((unsigned int)(a)))
+	(*(s32 __force *)atomisp_get_io_virt_addr((unsigned int)(a)))
 
 #define _hrt_master_port_uload_8(a) \
-	(*(__iomem u8  *)atomisp_get_io_virt_addr((unsigned int)(a)))
+	(*(u8 __force *)atomisp_get_io_virt_addr((unsigned int)(a)))
 
 #define _hrt_master_port_uload_16(a) \
-	(*(__iomem u16 *)atomisp_get_io_virt_addr((unsigned int)(a)))
+	(*(u16 __force *)atomisp_get_io_virt_addr((unsigned int)(a)))
 
 #define _hrt_master_port_uload_32(a) \
-	(*(__iomem u32 *)atomisp_get_io_virt_addr((unsigned int)(a)))
+	(*(u32 __force *)atomisp_get_io_virt_addr((unsigned int)(a)))
 
 #define _hrt_master_port_store_8_volatile(a, d)  _hrt_master_port_store_8(a, d)
 #define _hrt_master_port_store_16_volatile(a, d) _hrt_master_port_store_16(a, d)

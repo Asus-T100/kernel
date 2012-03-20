@@ -78,7 +78,7 @@ isp_mmu_init_err:
 
 void hmm_bo_device_exit(struct hmm_bo_device *bdev)
 {
-	check_bodev_null_return(bdev, (void)0);
+	check_bodev_null_return_void(bdev);
 
 	/*
 	 * destroy all bos in the bo list, even they are in use.
@@ -211,7 +211,7 @@ void hmm_bo_device_destroy_free_bo_list(struct hmm_bo_device *bdev)
 	unsigned long flags;
 	struct list_head new_head;
 
-	check_bodev_null_return(bdev, (void)0);
+	check_bodev_null_return_void(bdev);
 
 	spin_lock_irqsave(&bdev->list_lock, flags);
 	list_replace_init(&bdev->free_bo_list, &new_head);
@@ -233,7 +233,7 @@ void hmm_bo_device_destroy_free_bo_addr(struct hmm_bo_device *bdev,
 	struct hmm_buffer_object *bo;
 	unsigned long flags;
 
-	check_bodev_null_return(bdev, (void)0);
+	check_bodev_null_return_void(bdev);
 
 	spin_lock_irqsave(&bdev->list_lock, flags);
 	list_for_each(pos, &bdev->free_bo_list) {
@@ -262,7 +262,7 @@ void hmm_bo_device_destroy_free_bo_size(struct hmm_bo_device *bdev,
 	struct hmm_buffer_object *bo;
 	unsigned long flags;
 
-	check_bodev_null_return(bdev, (void)0);
+	check_bodev_null_return_void(bdev);
 
 retry:
 	spin_lock_irqsave(&bdev->list_lock, flags);

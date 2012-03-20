@@ -68,29 +68,6 @@ static int file_input_s_stream(struct v4l2_subdev *sd, int enable)
 	return 0;
 }
 
-static int file_input_enum_fmt(struct v4l2_subdev *sd,
-		struct v4l2_fmtdesc *fmtdesc)
-{
-	/*to fake*/
-	return 0;
-}
-
-static int file_input_try_fmt(struct v4l2_subdev *sd, struct v4l2_format *fmt)
-{
-	/*to fake*/
-	return 0;
-}
-static int file_input_g_fmt(struct v4l2_subdev *sd, struct v4l2_format *fmt)
-{
-	/*to fake*/
-	return 0;
-}
-static int file_input_s_fmt(struct v4l2_subdev *sd, struct v4l2_format *fmt)
-{
-	/*to fake*/
-	return 0;
-}
-
 static int file_input_g_parm(struct v4l2_subdev *sd,
 		struct v4l2_streamparm *param)
 {
@@ -203,13 +180,6 @@ static int file_input_g_chip_ident(struct v4l2_subdev *sd,
 }
 
 static int file_input_log_status(struct v4l2_subdev *sd)
-{
-	/*to fake*/
-	return 0;
-}
-
-static int file_input_s_config(struct v4l2_subdev *sd, int irq,
-				void *platform_data)
 {
 	/*to fake*/
 	return 0;

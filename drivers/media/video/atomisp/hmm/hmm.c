@@ -45,7 +45,7 @@
 static struct hmm_bo_device bo_device;
 static void *dummy_ptr;
 
-int hmm_init()
+int hmm_init(void)
 {
 	int ret;
 
@@ -66,7 +66,7 @@ int hmm_init()
 	return ret;
 }
 
-void hmm_cleanup()
+void hmm_cleanup(void)
 {
 	/*
 	 * free dummy memory first

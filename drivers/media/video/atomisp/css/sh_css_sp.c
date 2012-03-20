@@ -279,7 +279,7 @@ set_capture_pp_frame_buffer(const struct sh_css_frame *frame)
 	if (frame == NULL)
 		return sh_css_err_invalid_arguments;
 
-	switch (frame->info.format != SH_CSS_FRAME_FORMAT_YUV420)
+	if (frame->info.format != SH_CSS_FRAME_FORMAT_YUV420)
 		return sh_css_err_unsupported_frame_format;
 	sh_css_sp_group.sp_extra_frame = *frame;
 	return sh_css_success;

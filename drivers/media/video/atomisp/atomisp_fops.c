@@ -102,9 +102,9 @@ void atomisp_buf_release(struct videobuf_queue *vq,
 	vb->state = VIDEOBUF_NEEDS_INIT;
 }
 
-int atomisp_buf_setup_output(struct videobuf_queue *vq,
-			     unsigned int *count,
-			     unsigned int *size)
+static int atomisp_buf_setup_output(struct videobuf_queue *vq,
+				    unsigned int *count,
+				    unsigned int *size)
 {
 	struct atomisp_video_pipe *pipe = vq->priv_data;
 
@@ -113,9 +113,9 @@ int atomisp_buf_setup_output(struct videobuf_queue *vq,
 	return 0;
 }
 
-int atomisp_buf_prepare_output(struct videobuf_queue *vq,
-			       struct videobuf_buffer *vb,
-			       enum v4l2_field field)
+static int atomisp_buf_prepare_output(struct videobuf_queue *vq,
+				      struct videobuf_buffer *vb,
+				      enum v4l2_field field)
 {
 	struct atomisp_video_pipe *pipe = vq->priv_data;
 
@@ -128,8 +128,8 @@ int atomisp_buf_prepare_output(struct videobuf_queue *vq,
 	return 0;
 }
 
-void atomisp_buf_queue_output(struct videobuf_queue *vq,
-			      struct videobuf_buffer *vb)
+static void atomisp_buf_queue_output(struct videobuf_queue *vq,
+				     struct videobuf_buffer *vb)
 {
 	struct atomisp_video_pipe *pipe = vq->priv_data;
 
@@ -137,8 +137,8 @@ void atomisp_buf_queue_output(struct videobuf_queue *vq,
 	vb->state = VIDEOBUF_QUEUED;
 }
 
-void atomisp_buf_release_output(struct videobuf_queue *vq,
-				struct videobuf_buffer *vb)
+static void atomisp_buf_release_output(struct videobuf_queue *vq,
+				       struct videobuf_buffer *vb)
 {
 	videobuf_vmalloc_free(vb);
 	vb->state = VIDEOBUF_NEEDS_INIT;

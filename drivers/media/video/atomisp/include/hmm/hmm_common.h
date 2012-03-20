@@ -43,6 +43,15 @@
 		} \
 	} while (0)
 
+#define	var_equal_return_void(var1, var2, fmt, arg ...)	\
+	do { \
+		if ((var1) == (var2)) { \
+			v4l2_err(&atomisp_dev, \
+			fmt, ## arg); \
+			return;\
+		} \
+	} while (0)
+
 #define	var_equal_goto(var1, var2, label, fmt, arg ...)	\
 	do { \
 		if ((var1) == (var2)) { \
@@ -63,5 +72,10 @@
 
 #define	check_null_return(ptr, exp, fmt, arg ...)	\
 		var_equal_return(ptr, NULL, exp, fmt, ## arg)
+
+#define	check_null_return_void(ptr, fmt, arg ...)	\
+		var_equal_return_void(ptr, NULL, fmt, ## arg)
+
+
 
 #endif

@@ -37,6 +37,10 @@
 		check_null_return(bdev, exp, \
 			"NULL hmm_bo_device.\n")
 
+#define	check_bodev_null_return_void(bdev)	\
+		check_null_return_void(bdev, \
+			"NULL hmm_bo_device.\n")
+
 #define	HMM_BO_DEVICE_INITED	0x1
 
 struct hmm_buffer_object;

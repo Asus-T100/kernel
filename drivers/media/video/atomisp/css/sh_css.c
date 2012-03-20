@@ -2376,7 +2376,8 @@ crop_and_interpolate(unsigned int cropped_width,
 		/* calculate target point and make sure it falls within
 		   the table */
 		ty = out_start_row + i * out_cell_size;
-		ty = min(min(ty, sensor_height-1), table_cell_h);
+		ty = min(ty, sensor_height-1);
+		ty = min(ty, table_cell_h);
 		/* calculate closest source points in shading table and
 		   make sure they fall within the table */
 		src_y0 = ty / in_cell_size;

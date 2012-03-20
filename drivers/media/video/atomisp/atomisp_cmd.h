@@ -42,15 +42,14 @@
 struct camera_mipi_info *atomisp_to_sensor_mipi_info(struct v4l2_subdev *sd);
 struct atomisp_video_pipe *atomisp_to_video_pipe(struct video_device *dev);
 int atomisp_reset(struct atomisp_device *isp);
-
+void flush_acc_api_arguments(struct sh_css_acc_fw *fw);
 
 extern void __iomem *atomisp_io_base;
 
 static inline void __iomem *atomisp_get_io_virt_addr(unsigned int address)
 {
-	unsigned int ret = 0;
-	ret = ((unsigned int)atomisp_io_base) + (address & 0x003FFFFF);
-	return (void __iomem *)ret;
+	void __iomem *ret = atomisp_io_base + (address & 0x003FFFFF);
+	return ret;
 }
 
 void *atomisp_kernel_malloc(size_t bytes);

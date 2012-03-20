@@ -883,7 +883,7 @@ void atomisp_work(struct work_struct *work)
 		}
 
 		if (isp->params.num_flash_frames) {
-			int ret = atomisp_start_flash(isp);
+			ret = atomisp_start_flash(isp);
 
 			/* The flash failed frame status is needed to signal to
 			 * the appication that flash has been attempted but no
@@ -1108,7 +1108,7 @@ static int raw_output_format_match_input(u32 input, u32 output)
  * 2 types of format: SH format, v4l2 format
  * atomisp_format_bridge is a wrapper format for the other 2
  */
-struct atomisp_format_bridge *get_atomisp_format_bridge(
+static struct atomisp_format_bridge *get_atomisp_format_bridge(
 					unsigned int pixelformat)
 {
 	u32 i;
@@ -1120,7 +1120,7 @@ struct atomisp_format_bridge *get_atomisp_format_bridge(
 	return NULL;
 }
 
-struct atomisp_format_bridge *get_atomisp_format_bridge_from_mbus(
+static struct atomisp_format_bridge *get_atomisp_format_bridge_from_mbus(
 				enum v4l2_mbus_pixelcode mbus_code)
 {
 	int i;
@@ -1853,7 +1853,7 @@ int atomisp_gdc_cac_table(struct atomisp_device *isp, int flag,
 
 		for (i = 0; i < SH_CSS_MORPH_TABLE_NUM_PLANES; i++) {
 			ret = copy_from_user(tab->coordinates_x[i],
-				(void __user *)arg->coordinates_x[i],
+				arg->coordinates_x[i],
 				arg->height * arg->width *
 				sizeof(*arg->coordinates_x[i]));
 			if (ret) {
@@ -1864,7 +1864,7 @@ int atomisp_gdc_cac_table(struct atomisp_device *isp, int flag,
 				return -EFAULT;
 			}
 			ret = copy_from_user(tab->coordinates_y[i],
-				(void __user *)arg->coordinates_y[i],
+				arg->coordinates_y[i],
 				arg->height * arg->width *
 				sizeof(*arg->coordinates_y[i]));
 			if (ret) {
@@ -2006,12 +2006,12 @@ int atomisp_set_dis_coefs(struct atomisp_device *isp,
 		return -EINVAL;
 
 	error = copy_from_user(isp->params.dis_hor_coef_buf,
-			       (void __user *)coefs->horizontal_coefficients,
+			       coefs->horizontal_coefficients,
 			       isp->params.dis_hor_coef_bytes);
 	if (error)
 		return -EFAULT;
 	error = copy_from_user(isp->params.dis_ver_coef_buf,
-			       (void __user *)coefs->vertical_coefficients,
+			       coefs->vertical_coefficients,
 			       isp->params.dis_ver_coef_bytes);
 	if (error)
 		return -EFAULT;
@@ -2056,7 +2056,8 @@ int atomisp_3a_stat(struct atomisp_device *isp, int flag,
 		mutex_unlock(&isp->isp_lock);
 		return -EIO;
 	}
-	ret = copy_to_user(arg->data, isp->params.s3a_output_buf,
+	ret = copy_to_user(arg->data,
+			   isp->params.s3a_output_buf,
 			   isp->params.s3a_output_bytes);
 	mutex_unlock(&isp->isp_lock);
 	if (ret) {
@@ -2380,7 +2381,9 @@ atomisp_v4l2_framebuffer_to_sh_css_frame(const struct v4l2_framebuffer *arg,
 		ret = -ENOMEM;
 		goto err;
 	}
-	if (copy_from_user(tmp_buf, arg->base, arg->fmt.sizeimage)) {
+	if (copy_from_user(tmp_buf,
+			   (void __user __force *)arg->base,
+			   arg->fmt.sizeimage)) {
 		ret = -EFAULT;
 		goto err;
 	}
@@ -2750,7 +2753,6 @@ int atomisp_try_fmt(struct video_device *vdev, struct v4l2_format *f,
 			f->fmt.pix.pixelformat = fmt->pixelformat;
 	}
 
-done:
 	v4l2_info(&atomisp_dev, "return snr_try_fmt, (wxh: %d*%d)\n",
 		    in_width, in_height);
 	if ((in_width < out_width) && (in_height < out_height)) {
@@ -2779,7 +2781,8 @@ done:
 	return 0;
 }
 
-int atomisp_try_fmt_file(struct atomisp_device *isp, struct v4l2_format *f)
+static int
+atomisp_try_fmt_file(struct atomisp_device *isp, struct v4l2_format *f)
 {
 	u32 width = f->fmt.pix.width;
 	u32 height = f->fmt.pix.height;
@@ -2860,10 +2863,12 @@ atomisp_set_sensor_mipi_to_isp(struct camera_mipi_info *mipi_info)
 			  mipi_info->input_format,
 			  mipi_info->raw_bayer_order);
 		if (atomisp_input_format_is_raw(mipi_info->input_format))
-			sh_css_input_set_bayer_order(
-					mipi_info->raw_bayer_order);
-		sh_css_input_set_format(mipi_info->input_format);
-		sh_css_input_configure_port(mipi_info->port,
+			sh_css_input_set_bayer_order((enum sh_css_bayer_order)
+						mipi_info->raw_bayer_order);
+		sh_css_input_set_format((enum sh_css_input_format)
+					mipi_info->input_format);
+		sh_css_input_configure_port((enum sh_css_mipi_port)
+					    mipi_info->port,
 					    mipi_info->num_lanes,
 					    0xffff4);
 	} else {
@@ -3134,7 +3139,6 @@ static int atomisp_set_fmt_to_snr(struct atomisp_device *isp,
 {
 	struct atomisp_format_bridge *format;
 	struct v4l2_mbus_framefmt snr_mbus_fmt;
-	struct v4l2_format snr_fmt;
 	struct atomisp_video_pipe *out_pipe = &isp->isp_subdev.video_in;
 	int ret;
 
@@ -3176,8 +3180,8 @@ static int atomisp_set_fmt_to_snr(struct atomisp_device *isp,
 
 	return 0;
 }
-void atomisp_get_yuv_ds_status(struct atomisp_device *isp,
-			       unsigned int width, unsigned int height)
+static void atomisp_get_yuv_ds_status(struct atomisp_device *isp,
+				      unsigned int width, unsigned int height)
 {
 	/* no YUV downscaling if sensor output is 10% larger than isp output */
 	unsigned int w_tmp =  isp->input_format->out.width -
@@ -3894,7 +3898,7 @@ int atomisp_acc_set_arg(struct atomisp_device *isp,
 		}
 	}
 
-	type = sh_css_argument_type(fw, index);
+	type = (enum atomisp_acc_arg_type)sh_css_argument_type(fw, index);
 	switch (type) {
 	case SH_CSS_ACC_ARG_SCALAR_IN:
 		/* Free old argument data if one already exists */#
@@ -3907,7 +3911,7 @@ int atomisp_acc_set_arg(struct atomisp_device *isp,
 			goto out;
 		}
 		if (copy_from_user(host->scalar.kernel_ptr,
-					fw_arg->value, size)) {
+				  fw_arg->value, size)) {
 			kfree(host->scalar.kernel_ptr);
 			host->scalar.kernel_ptr = NULL;
 			ret = -EFAULT;
@@ -3929,7 +3933,8 @@ int atomisp_acc_set_arg(struct atomisp_device *isp,
 		pgnr = DIV_ROUND_UP(size, PAGE_SIZE);
 
 		frame_ptr = hrt_isp_css_mm_alloc_user_ptr(size,
-					(unsigned int)fw_arg->value, pgnr,
+					(unsigned int __force)fw_arg->value,
+					pgnr,
 					type != SH_CSS_ACC_ARG_PTR_NOFLUSH);
 
 		if (IS_ERR_OR_NULL(frame_ptr)) {
@@ -3964,7 +3969,8 @@ void flush_acc_api_arguments(struct sh_css_acc_fw *fw)
 	unsigned i;
 
 	for (i = 0; i < sh_css_num_accelerator_args(fw); i++) {
-		enum atomisp_acc_arg_type type = sh_css_argument_type(fw, i);
+		enum atomisp_acc_arg_type type =
+			(enum atomisp_acc_arg_type)sh_css_argument_type(fw, i);
 		union host *host;
 		size_t size;
 

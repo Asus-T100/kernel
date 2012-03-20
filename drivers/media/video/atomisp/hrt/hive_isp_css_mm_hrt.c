@@ -27,12 +27,13 @@
 
 #include <linux/kernel.h>
 #include <linux/slab.h>
+#include <hive_isp_css_mm_hrt.h>
 #include "atomisp_internal.h"
 
 #define __page_align(size)	(((size) + (PAGE_SIZE-1)) & (~(PAGE_SIZE-1)))
 
 static unsigned init_done;
-void hrt_isp_css_mm_init(void)
+static void hrt_isp_css_mm_init(void)
 {
 	hmm_init();
 	init_done = 1;

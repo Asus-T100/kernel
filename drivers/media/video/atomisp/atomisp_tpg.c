@@ -32,28 +32,6 @@ static int tpg_s_stream(struct v4l2_subdev *sd, int enable)
 	return 0;
 }
 
-static int tpg_enum_fmt(struct v4l2_subdev *sd, struct v4l2_fmtdesc *fmtdesc)
-{
-	/*to fake*/
-	return 0;
-}
-
-static int tpg_try_fmt(struct v4l2_subdev *sd, struct v4l2_format *fmt)
-{
-	/*to fake*/
-	return 0;
-}
-static int tpg_g_fmt(struct v4l2_subdev *sd, struct v4l2_format *fmt)
-{
-	/*to fake*/
-	return 0;
-}
-static int tpg_s_fmt(struct v4l2_subdev *sd, struct v4l2_format *fmt)
-{
-	/*to fake*/
-	return 0;
-}
-
 static int tpg_g_parm(struct v4l2_subdev *sd, struct v4l2_streamparm *param)
 {
 	/*to fake*/
@@ -120,12 +98,6 @@ static int tpg_g_chip_ident(struct v4l2_subdev *sd,
 }
 
 static int tpg_log_status(struct v4l2_subdev *sd)
-{
-	/*to fake*/
-	return 0;
-}
-
-static int tpg_s_config(struct v4l2_subdev *sd, int irq, void *platform_data)
 {
 	/*to fake*/
 	return 0;

@@ -155,7 +155,7 @@ static void hmm_bo_release(struct hmm_buffer_object *bo)
 	struct hmm_bo_device *bdev;
 	unsigned long flags;
 
-	check_bo_null_return(bo, (void)0);
+	check_bo_null_return_void(bo);
 
 	bdev = bo->bdev;
 
@@ -216,7 +216,7 @@ void hmm_bo_unactivate(struct hmm_buffer_object *bo)
 	struct hmm_bo_device *bdev;
 	unsigned long flags;
 
-	check_bo_null_return(bo, (void)0);
+	check_bo_null_return_void(bo);
 
 	check_bo_status_no_goto(bo, HMM_BO_ACTIVE, status_err);
 
@@ -275,7 +275,7 @@ void hmm_bo_free_vm(struct hmm_buffer_object *bo)
 {
 	struct hmm_bo_device *bdev;
 
-	check_bo_null_return(bo, (void)0);
+	check_bo_null_return_void(bo);
 
 	mutex_lock(&bo->mutex);
 
@@ -738,7 +738,7 @@ status_err:
  */
 void hmm_bo_free_pages(struct hmm_buffer_object *bo)
 {
-	check_bo_null_return(bo, (void)0);
+	check_bo_null_return_void(bo);
 
 	mutex_lock(&bo->mutex);
 
@@ -761,7 +761,6 @@ status_err2:
 	mutex_unlock(&bo->mutex);
 	v4l2_err(&atomisp_dev,
 			"buffer object not page allocated yet.\n");
-
 }
 
 int hmm_bo_page_allocated(struct hmm_buffer_object *bo)
@@ -887,7 +886,7 @@ void hmm_bo_unbind(struct hmm_buffer_object *bo)
 	struct hmm_bo_device *bdev;
 	unsigned int i;
 
-	check_bo_null_return(bo, (void)0);
+	check_bo_null_return_void(bo);
 
 	mutex_lock(&bo->mutex);
 
@@ -948,7 +947,7 @@ void *hmm_bo_vmap(struct hmm_buffer_object *bo)
 
 void hmm_bo_ref(struct hmm_buffer_object *bo)
 {
-	check_bo_null_return(bo, (void)0);
+	check_bo_null_return_void(bo);
 
 	kref_get(&bo->kref);
 }
@@ -963,7 +962,7 @@ static void kref_hmm_bo_release(struct kref *kref)
 
 void hmm_bo_unref(struct hmm_buffer_object *bo)
 {
-	check_bo_null_return(bo, (void)0);
+	check_bo_null_return_void(bo);
 
 	kref_put(&bo->kref, kref_hmm_bo_release);
 }
@@ -973,7 +972,7 @@ static void hmm_bo_vm_open(struct vm_area_struct *vma)
 	struct hmm_buffer_object *bo =
 	    (struct hmm_buffer_object *)vma->vm_private_data;
 
-	check_bo_null_return(bo, (void)0);
+	check_bo_null_return_void(bo);
 
 	hmm_bo_ref(bo);
 
@@ -991,7 +990,7 @@ static void hmm_bo_vm_close(struct vm_area_struct *vma)
 	struct hmm_buffer_object *bo =
 	    (struct hmm_buffer_object *)vma->vm_private_data;
 
-	check_bo_null_return(bo, (void)0);
+	check_bo_null_return_void(bo);
 
 	hmm_bo_unref(bo);
 

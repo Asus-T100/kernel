@@ -53,6 +53,9 @@
 #define	check_bo_null_return(bo, exp)	\
 	check_null_return(bo, exp, "NULL hmm buffer object.\n")
 
+#define	check_bo_null_return_void(bo)	\
+	check_null_return_void(bo, "NULL hmm buffer object.\n")
+
 #define	HMM_MAX_ORDER		3
 #define	HMM_MIN_ORDER		0
 
