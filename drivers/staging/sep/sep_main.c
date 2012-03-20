@@ -2714,6 +2714,7 @@ static long sep_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 	struct sep_dma_context **dma_ctx = &private_data->dma_ctx;
 	struct sep_queue_info **my_queue_elem = &private_data->my_queue_elem;
 	int error = 0;
+	u32 *shared_place = NULL; /* used only for secure dma operation */
 
 	dev_dbg(&sep->pdev->dev, "[PID%d] ioctl cmd 0x%x\n",
 		current->pid, cmd);
@@ -2830,6 +2831,22 @@ static long sep_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		dev_dbg(&sep->pdev->dev, "[PID%d] SEP_IOCFREEDCB end\n",
 			current->pid);
 		break;
+	case SEP_DRIVER_INSERT_SHARE_ADDR_CMD:
+
+		/**
+		 * This is used only for some secure dma operations
+		 * Where the physical location of the shared memory
+		 * area is to be inserted into a specific location
+		 * of the message pool
+		 */
+		dev_dbg(&sep->pdev->dev, "Inserting shared memory physical\n");
+		shared_place = (u32 *)sep->shared_addr;
+		shared_place += SEP_SHARED_AREA_PHYSADDRESS_OFFSET;
+		*shared_place = (u32)sep->shared_bus;
+		dev_dbg(&sep->pdev->dev, "addr inserted %x by %x wd offset\n",
+			SEP_SHARED_AREA_PHYSADDRESS_OFFSET * 4,
+			SEP_SHARED_AREA_PHYSADDRESS_OFFSET);
+		break;
 	default:
 		error = -ENOTTY;
 		dev_dbg(&sep->pdev->dev, "[PID%d] default end\n",
@@ -2839,6 +2856,8 @@ static long sep_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 
 end_function:
 	dev_dbg(&sep->pdev->dev, "[PID%d] ioctl end\n", current->pid);
+	dev_dbg(&sep->pdev->dev, "[PID%d] SEP_DRIVER_INSERT_SHARE_ADDR_CMD %x\n",
+		SEP_DRIVER_INSERT_SHARE_ADDR_CMD);
 
 	return error;
 }
