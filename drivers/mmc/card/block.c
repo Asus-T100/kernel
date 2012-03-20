@@ -750,8 +750,17 @@ static int mmc_blk_cmd_recovery(struct mmc_card *card, struct request *req,
 				prev_cmd_status_valid, status);
 
 	/* Data errors */
-	if (!brq->stop.error)
-		return ERR_CONTINUE;
+	if (!brq->stop.error) {
+		/*
+		 * Didn't re-send stop command, and if card status
+		 * is already in transfer state, let's have
+		 * a retry.
+		 */
+		if (R1_CURRENT_STATE(status) == R1_STATE_TRAN)
+			return ERR_RETRY;
+		else
+			return ERR_CONTINUE;
+	}
 
 	/* Now for stop errors.  These aren't fatal to the transfer. */
 	pr_err("%s: error %d sending stop command, original cmd response %#x, card status %#x\n",
