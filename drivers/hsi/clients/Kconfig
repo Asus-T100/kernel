@@ -114,11 +114,11 @@ config HSI_DLP
 
 if HSI_DLP
 
-config HSI_DLP_TTY_NAME
-	string "Base name for the TTY"
+config HSI_DLP_IPC_TTY_NAME
+	string "Base name for the IPC TTY"
 	default "IFX"
 	help
-	  Sets the base name for the TTY associated to this IMC modem protocol
+	  Sets the base name for the TTY associated to this eDLP modem protocol
 	  for LTE.
 
 config HSI_DLP_TTY_STATS

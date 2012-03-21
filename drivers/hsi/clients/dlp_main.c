@@ -1214,14 +1214,14 @@ int dlp_hsi_controller_push(struct dlp_xfer_ctx *xfer_ctx, struct hsi_msg *pdu)
 	/* Dump the PDU */
 	if (pdu->ttype == HSI_MSG_WRITE) {
 		dlp_pdu_dump(pdu, 0);
-		//dlp_dbg_dump_pdu(pdu, 16, 160, 0);
+		/* dlp_dbg_dump_pdu(pdu, 16, 160, 0); */
 	}
 
 	err = hsi_async(pdu->cl, pdu);
 	if (!err) {
 		if ((pdu->ttype == HSI_MSG_WRITE) && (xfer_ctx->ctrl_len)) {
-			mod_timer(&ch_ctx->hangup_timer,
-				  jiffies + ch_ctx->hangup_delay);
+			mod_timer(&ch_ctx->hangup.timer,
+				  jiffies + usecs_to_jiffies(DLP_HANGUP_DELAY));
 		}
 	} else {
 		unsigned int ctrl_len;
@@ -1244,7 +1244,7 @@ int dlp_hsi_controller_push(struct dlp_xfer_ctx *xfer_ctx, struct hsi_msg *pdu)
 
 		if (!ctrl_len) {
 			struct dlp_channel *ch_ctx = xfer_ctx->channel;
-			del_timer(&ch_ctx->hangup_timer);
+			del_timer(&ch_ctx->hangup.timer);
 		}
 	}
 
@@ -1290,9 +1290,13 @@ void dlp_hsi_start_tx(struct dlp_xfer_ctx *xfer_ctx)
 		return;
 
 	if (dlp_ctx_is_state(xfer_ctx, IDLE)) {
+		int ret;
+
 		dlp_ctx_set_state(xfer_ctx, ACTIVE);
 
-		hsi_start_tx(dlp_drv.client);
+		ret = hsi_start_tx(dlp_drv.client);
+		if (ret)
+			dlp_ctx_set_state(xfer_ctx, IDLE);
 	} else {
 		del_timer(&xfer_ctx->timer);
 	}
@@ -1341,17 +1345,16 @@ inline void dlp_stop_rx(struct dlp_xfer_ctx *xfer_ctx,
 
 /**
  * dlp_hsi_port_claim - Claim & setup the HSI port
- * @ch_ctx: a reference to related channel context
+ *
  */
-int dlp_hsi_port_claim(struct dlp_channel *ch_ctx)
+int dlp_hsi_port_claim(void)
 {
 	int ret = 0;
 
-	//PROLOG("hsi_ch: %d", ch_ctx->hsi_channel);
 	PROLOG();
 
-	/* Claim the HSI port (if not claimed already) */
-	if (atomic_inc_return(&dlp_drv.busy) != 1)
+	/* Claim the HSI port (if not already done) */
+	if (hsi_port_claimed(dlp_drv.client))
 		goto out;
 
 	/* Claim the HSI port */
@@ -1376,14 +1379,13 @@ out:
 
 /**
  * dlp_hsi_port_unclaim - UnClaim (release) the HSI port
- * @ch_ctx: a reference to related channel context
+ *
  */
-inline void dlp_hsi_port_unclaim(struct dlp_channel *ch_ctx)
+inline void dlp_hsi_port_unclaim(void)
 {
-	//PROLOG("hsi_ch: %d", ch_ctx->hsi_channel);
 	PROLOG();
 
-	if (atomic_dec_and_test(&dlp_drv.busy))
+	if (hsi_port_claimed(dlp_drv.client))
 		hsi_release_port(dlp_drv.client);
 
 	EPILOG();
@@ -1428,11 +1430,47 @@ static void dlp_hsi_stop_rx_cb(struct hsi_client *cl)
 	EPILOG();
 }
 
-/****************************************************************************
- *
- * RX/TX xfer contexts
- *
- ***************************************************************************/
+/*
+* @brief This function is used to deactivate the HSI client RX callbacks
+*
+* @param start_rx_cb : Start RX callback backup function
+* @param stop_rx_cb : Stop RX callback backup function
+*/
+void dlp_save_rx_callbacks(hsi_client_cb *start_rx_cb, hsi_client_cb *stop_rx_cb)
+{
+	PROLOG();
+
+	/* Save the current client CB */
+	(*start_rx_cb) = dlp_drv.client->hsi_start_rx;
+	(*stop_rx_cb) = dlp_drv.client->hsi_stop_rx;
+
+	/* Set to NULL the CB pointer */
+	dlp_drv.client->hsi_start_rx = NULL;
+	dlp_drv.client->hsi_stop_rx = NULL;
+
+	EPILOG();
+}
+
+/*
+* @brief This function is used to reactivate the HSI client RX callbacks
+*
+* @param start_rx_cb : Start RX callback to set
+* @param stop_rx_cb : Stop RX callback to set
+*/
+void dlp_restore_rx_callbacks(hsi_client_cb *start_rx_cb, hsi_client_cb *stop_rx_cb)
+{
+	PROLOG();
+
+	/* Restore the client CB */
+	dlp_drv.client->hsi_start_rx = (*start_rx_cb);
+	dlp_drv.client->hsi_stop_rx = (*stop_rx_cb);
+
+	/* Set to NULL the CB pointer */
+	start_rx_cb = NULL;
+	stop_rx_cb = NULL;
+
+	EPILOG();
+}
 
 /**
  * dlp_increase_pdus_pool - background work aimed at creating new pdus
@@ -1503,6 +1541,74 @@ static void dlp_increase_pdus_pool(struct work_struct *work)
 	       (xfer_ctx->ttype == HSI_MSG_WRITE ? "TX" : "RX"),
 	       xfer_ctx->channel->hsi_channel);
 }
+
+/****************************************************************************
+ *
+ * Hangup/Reset management
+ *
+ ***************************************************************************/
+/*
+* dlp_hangup_ctx_init - Initialises the given hangup context
+*
+* @param ch_ctx : Channel context to consider
+* @param work_func : Work callback
+* @param timeout_func : Timeout callback
+* @param data : Timeout callback user data
+*/
+void dlp_hangup_ctx_init(struct dlp_channel *ch_ctx,
+		void (* work_func)(struct work_struct *work),
+		void (* timeout_func)(unsigned long int param),
+		void *data)
+{
+	PROLOG();
+
+	/* Init values */
+	ch_ctx->hangup.cause = 0;
+	ch_ctx->hangup.last_cause = 0;
+
+	/* Worker function */
+	INIT_WORK(&ch_ctx->hangup.work, work_func);
+
+	/* TX Timeout timer */
+	init_timer(&ch_ctx->hangup.timer);
+	ch_ctx->hangup.timer.function = timeout_func;
+	ch_ctx->hangup.timer.data = (unsigned long int)data;
+
+	EPILOG();
+}
+
+/**
+ * dlp_hangup_ctx_deinit - Clears a hangup context
+ * @hangup_ctx: a reference to the considered hangup context
+ */
+void dlp_hangup_ctx_deinit(struct dlp_channel *ch_ctx)
+{
+	struct dlp_xfer_ctx *xfer_ctx = &ch_ctx->tx;
+	unsigned long flags;
+	int is_hunging_up;
+
+	PROLOG();
+
+	write_lock_irqsave(&xfer_ctx->lock, flags);
+	is_hunging_up = (ch_ctx->hangup.cause);
+	write_unlock_irqrestore(&xfer_ctx->lock, flags);
+
+	/* No need to wait for the end of the calling work! */
+	if (! is_hunging_up) {
+		if (del_timer_sync(&ch_ctx->hangup.timer))
+			cancel_work_sync(&ch_ctx->hangup.work);
+		else
+			flush_work(&ch_ctx->hangup.work);
+	}
+
+	EPILOG();
+}
+
+/****************************************************************************
+ *
+ * RX/TX xfer contexts
+ *
+ ***************************************************************************/
 
 /**
  * dlp_xfer_ctx_init - initialise a TX or RX context after its creation
@@ -1596,11 +1702,11 @@ static void dlp_driver_cleanup(void)
 	/* NOTE : this array should be aligned with the context enum
 	 *                defined in the .h file */
 	dlp_context_delete delete_funcs[DLP_CHANNEL_COUNT] = {
-		dlp_ctrl_ctx_delete,	/* 0 : CTRL */
-		dlp_tty_ctx_delete,		/* 1 : TTY  */
-		dlp_net_ctx_delete,		/* 2 : NET  */
-		dlp_net_ctx_delete,		/* 3 : NET  */
-		dlp_net_ctx_delete};	/* 4 : NET  */
+		dlp_ctrl_ctx_delete,	/* CTRL */
+		dlp_tty_ctx_delete,		/* TTY  */
+		dlp_net_ctx_delete,		/* NET  */
+		dlp_net_ctx_delete,		/* NET  */
+		dlp_net_ctx_delete};	/* NET  */
 
 	PROLOG();
 
@@ -1609,7 +1715,6 @@ static void dlp_driver_cleanup(void)
 		if (dlp_drv.channels[i]) {
 			delete_funcs[i] (dlp_drv.channels[i]);
 			dlp_drv.channels[i] = NULL;
-
 		}
 	}
 
@@ -1638,11 +1743,11 @@ static int __init dlp_driver_probe(struct device *dev)
 	/* NOTE : this array should be aligned with the context enum
 	 *                defined in the .h file */
 	dlp_context_create create_funcs[DLP_CHANNEL_COUNT] = {
-		dlp_ctrl_ctx_create,	/* 0 : CTRL */
-		dlp_tty_ctx_create,		/* 1 : TTY  */
-		dlp_net_ctx_create,		/* 2 : NET  */
-		dlp_net_ctx_create,		/* 3 : NET  */
-		dlp_net_ctx_create};	/* 4 : NET  */
+		dlp_ctrl_ctx_create,	/* CTRL */
+		dlp_tty_ctx_create,		/* TTY  */
+		dlp_net_ctx_create,		/* NET  */
+		dlp_net_ctx_create,		/* NET  */
+		dlp_net_ctx_create};	/* NET  */
 
 	PROLOG();
 
@@ -1657,8 +1762,20 @@ static int __init dlp_driver_probe(struct device *dev)
 		WARNING("HSI device is not DMA capable");
 	}
 
+	/* Save IPC controller configs */
+	dlp_drv.ipc_rx_cfg = client->rx_cfg;
+	dlp_drv.ipc_tx_cfg = client->tx_cfg;
+
+	/* Save the Boot/Flashing controller config */
+	/* And deactivate the "Channel description" bits */
+	/* because not managed by the modem */
+	dlp_drv.flash_rx_cfg = client->rx_cfg;
+	dlp_drv.flash_tx_cfg = client->tx_cfg;
+	dlp_drv.flash_rx_cfg.channels = 1;
+	dlp_drv.flash_tx_cfg.channels = 1;
+
 	/* FIXME: Claim the HSI port */
-	ret = dlp_hsi_port_claim(NULL);
+	ret = dlp_hsi_port_claim();
 	if (ret) {
 		goto out;
 	}
@@ -1679,7 +1796,7 @@ static int __init dlp_driver_probe(struct device *dev)
 	hsi_client_set_drvdata(client, dlp_drv.channels[DLP_CHANNEL_TTY]);
 
 	/* Create /proc/hsi-dlp */
-	// FIXME
+	// FIXME: Will be removed
 	//if (dlp_drv.debug)
 	{
 		proc_create_data(DRVNAME, S_IRUGO, NULL, &dlp_proc_ops, NULL);
@@ -1718,7 +1835,7 @@ static int __exit dlp_driver_remove(struct device *dev)
 	dlp_driver_cleanup();
 
 	/* UnClaim the HSI port */
-	dlp_hsi_port_unclaim(NULL);
+	dlp_hsi_port_unclaim();
 
 	EPILOG();
 	return 0;
@@ -1743,13 +1860,16 @@ static struct hsi_client_driver dlp_driver_setup = {
  */
 static int __init dlp_module_init(void)
 {
-	int err;
+	int err, debug_value;
+
+	/* Save the debug param value */
+	debug_value = dlp_drv.debug;
 
 	/* Initialization */
 	memset(&dlp_drv, 0, sizeof(struct dlp_driver));
 
-	/* FIXME : to be removed */
-	dlp_drv.debug = 0x0;
+	/* Restore the debug param value */
+	dlp_drv.debug = debug_value;
 
 	PROLOG();
 
@@ -1769,21 +1889,30 @@ static int __init dlp_module_init(void)
 		goto del_wq;
 	}
 
-	/* Not used yet (claimed) */
-	atomic_set(&dlp_drv.busy, 0);
+	/* Create the workqueue for TTY line discipline buffer flush */
+	dlp_drv.forwarding_wq = create_singlethread_workqueue(DRVNAME "-hwq");
+	if (unlikely(!dlp_drv.forwarding_wq)) {
+		CRITICAL("Unable to create TTY forwarding workqueue");
+		err = -EFAULT;
+		goto del_2wq;
+	}
 
 	/* Now, register the client */
 	err = hsi_register_client_driver(&dlp_driver_setup);
 	if (unlikely(err)) {
 		CRITICAL("hsi_register_client_driver() failed (%d)", err);
-		goto del_2wq;
+		goto del_3wq;
 	}
 
 	EPILOG("driver initialized");
 	return 0;
 
+del_3wq:
+	destroy_workqueue(dlp_drv.forwarding_wq);
+
 del_2wq:
 	destroy_workqueue(dlp_drv.tx_hangup_wq);
+
 del_wq:
 	destroy_workqueue(dlp_drv.recycle_wq);
 
@@ -1799,6 +1928,7 @@ static void __exit dlp_module_exit(void)
 {
 	PROLOG();
 
+	destroy_workqueue(dlp_drv.forwarding_wq);
 	destroy_workqueue(dlp_drv.recycle_wq);
 	destroy_workqueue(dlp_drv.tx_hangup_wq);
 
@@ -1814,4 +1944,4 @@ MODULE_AUTHOR("Olivier Stoltz Douchet <olivierx.stoltz-douchet@intel.com>");
 MODULE_AUTHOR("Faouaz Tenoutit <faouazx.tenoutit@intel.com>");
 MODULE_DESCRIPTION("LTE protocol driver over HSI for IMC modems");
 MODULE_LICENSE("GPL");
-MODULE_VERSION("1.0-HSI-LTE");
+MODULE_VERSION("1.1-HSI-LTE");

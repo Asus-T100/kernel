@@ -35,6 +35,7 @@
 #include <linux/hsi/hsi_dlp.h>
 #include <linux/tty.h>
 #include <linux/netdevice.h>
+#include <linux/wait.h>
 
 #include "../dlp_debug.h"
 
@@ -51,10 +52,6 @@
 
 /* Maximal number of pdu allocation failure prior firing an error message */
 #define DLP_PDU_ALLOC_RETRY_MAX_CNT	10
-
-/* Delays for powering up/resetting the modem (in milliseconds) */
-#define DLP_POWER_ON_INTERLINE_DELAY	1
-#define DLP_POWER_ON_POST_DELAY			200
 
 /* Round-up the pdu and header length to a multiple of 4-bytes to align
  * on the HSI 4-byte granularity*/
@@ -118,6 +115,11 @@
 #ifndef MIN
 #define MIN(a,b) ((a)<(b)?(a):(b))
 #endif
+
+/*
+ * Get a ref to the given channel context
+ */
+#define DLP_CHANNEL_CTX(hsi_ch) dlp_drv.channels[hsi_ch]
 
 /* RX and TX state machine definitions */
 enum {
@@ -211,6 +213,20 @@ struct dlp_xfer_ctx {
 };
 
 /**
+ * struct dlp_ctrl_hangup_ctx - Hangup management context
+ * @cause: Current cause of the hangup
+ * @last_cause: Previous cause of the hangup
+ * @timer: TX timeout timner
+ * @work: TX timeout deferred work
+ */
+struct dlp_hangup_ctx {
+	unsigned int cause;
+	unsigned int last_cause;
+	struct timer_list timer;
+	struct work_struct work;
+};
+
+/**
  * struct dlp_channel - HSI channel context
  * @client: reference to this HSI client
  * @credits: credits value (nb of pdus that can be sent to the modem)
@@ -237,11 +253,7 @@ struct dlp_channel {
 	struct dlp_xfer_ctx rx;
 
 	/* Hangup management */
-	struct timer_list hangup_timer;
-	struct work_struct hangup_queue;
-
-	int hangup_reason;
-	int hangup_delay;
+	struct dlp_hangup_ctx hangup;
 
 	/* Reset & Coredump callbacks */
 	void (*modem_coredump_cb) (struct dlp_channel * ch_ctx);
@@ -259,14 +271,15 @@ struct dlp_channel {
  * @channels: array of DLP Channel contex references
  * @is_dma_capable: a flag to check if the ctrl supports the DMA
  * @controller: a reference to the HSI controller
- * @busy: port usage (claiming) counter
  * @channels: a reference to the HSI client
  * @recycle_wq: Workqueue for submitting pdu-recycling background tasks
  * @tx_hangup_wq: Workqueue for submitting tx timeout hangup background tasks
  * @modem_ready: The modem is up & running
- * @core_dump_irq:
- * @reset_irq:
- * @reset_ignore:
+ * @lock: Used for modem ready flag lock
+ * @ipc_tx_cfg: HSI client configuration (Used for IPC TX)
+ * @ipc_xx_cfg: HSI client configuration (Used for IPC RX)
+ * @flash_tx_cfg: HSI client configuration (Used for Boot/Flashing TX)
+ * @flash_rx_cfg: HSI client configuration (Used for Boot/Flashing RX)
  *
  * @debug: Debug variable
  */
@@ -277,8 +290,8 @@ struct dlp_driver {
 	struct hsi_client *client;
 	struct device *controller;
 
-	/* Port claiming counter */
-	atomic_t busy;
+	/* Workqueue for tty buffer forwarding */
+	struct workqueue_struct *forwarding_wq;
 
 	struct workqueue_struct *recycle_wq;
 	struct workqueue_struct *tx_hangup_wq;
@@ -286,12 +299,13 @@ struct dlp_driver {
 	/* Modem readiness */
 	int modem_ready;
 	spinlock_t lock;
-	spinlock_t at_lock;
 
-	/* Modem coredump & reset */
-	int core_dump_irq;
-	int reset_irq;
-	int reset_ignore;
+	/* Modem boot/flashing */
+	struct hsi_config ipc_tx_cfg;
+	struct hsi_config ipc_rx_cfg;
+
+	struct hsi_config flash_tx_cfg;
+	struct hsi_config flash_rx_cfg;
 
 	/* Debug variables */
 	int debug;
@@ -431,16 +445,34 @@ void dlp_stop_tx(struct dlp_xfer_ctx *xfer_ctx);
 inline void dlp_stop_rx(struct dlp_xfer_ctx *xfer_ctx,
 			struct dlp_channel *ch_ctx);
 
-int dlp_hsi_port_claim(struct dlp_channel *ch_ctx);
+int dlp_hsi_port_claim(void);
 
-inline void dlp_hsi_port_unclaim(struct dlp_channel *ch_ctx);
+inline void dlp_hsi_port_unclaim(void);
+
+void dlp_save_rx_callbacks(hsi_client_cb *start_rx_cb,
+		hsi_client_cb *stop_rx_cb);
+
+void dlp_restore_rx_callbacks(hsi_client_cb *start_rx_cb,
+		hsi_client_cb *stop_rx_cb);
+
+/****************************************************************************
+ *
+ * Hangup/Reset management
+ *
+ ***************************************************************************/
+
+void dlp_hangup_ctx_init(struct dlp_channel *ch_ctx,
+		void (* work_func)(struct work_struct *work),
+		void (* timeout_func)(unsigned long int param),
+		void *data);
+
+void dlp_hangup_ctx_deinit(struct dlp_channel *ch_ctx);
 
 /****************************************************************************
  *
  * RX/TX xfer contexts
  *
  ***************************************************************************/
-
 void dlp_xfer_ctx_init(struct dlp_channel *ch_ctx,
 		       struct dlp_xfer_ctx *xfer_ctx,
 		       unsigned int delay,
@@ -467,15 +499,22 @@ struct dlp_channel *dlp_ctrl_ctx_create(unsigned int index,
 
 int dlp_ctrl_ctx_delete(struct dlp_channel *ch_ctx);
 
-int dlp_ctrl_modem_reset(struct dlp_channel *ch_ctx);
+void dlp_ctrl_modem_reset(struct dlp_channel *ch_ctx);
+
+inline int dlp_ctrl_get_reset_ongoing(void);
+
+inline void dlp_ctrl_set_reset_ongoing(int ongoing);
+
+inline int dlp_ctrl_get_hangup_reasons(void);
+
+inline void dlp_ctrl_set_hangup_reasons(unsigned int hsi_channel,
+		int hangup_reasons);
 
 inline unsigned int dlp_ctrl_modem_is_ready(void);
 
-int dlp_ctrl_send_echo_cmd(struct dlp_channel *ch_ctx);
+int dlp_ctrl_open_channel(struct dlp_channel *ch_ctx);
 
-int dlp_ctrl_send_open_conn_cmd(struct dlp_channel *ch_ctx);
-
-int dlp_ctrl_send_cancel_conn_cmd(struct dlp_channel *ch_ctx);
+int dlp_ctrl_close_channel(struct dlp_channel *ch_ctx);
 
 /****************************************************************************
  *

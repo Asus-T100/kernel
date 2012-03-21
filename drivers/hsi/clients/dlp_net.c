@@ -44,9 +44,6 @@
 #define DEBUG_TAG 0x8
 #define DEBUG_VAR dlp_drv.debug
 
-/* Defaut HSI TX timeout delay (in microseconds) */
-#define NET_HANGUP_DELAY		1000000	/* 1 sec */
-
 /* Defaut NET stack TX timeout delay (in milliseconds) */
 #define DLP_NET_TX_DELAY		20000	/* 20 sec */
 
@@ -90,7 +87,7 @@ static void dlp_net_modem_hangup(struct dlp_channel *ch_ctx, int reason)
 
 	PROLOG();
 
-	ch_ctx->hangup_reason |= reason;
+	ch_ctx->hangup.cause |= reason;
 
 	/* Stop the NET IF */
 	if (!netif_queue_stopped(net_ctx->ndev))
@@ -189,6 +186,9 @@ static void dlp_net_complete_tx(struct hsi_msg *pdu)
 
 	PROLOG("%s", net_ctx->ndev->name);
 
+	/* TX xfer done => Reset the "ongoing" flag */
+	dlp_ctrl_set_reset_ongoing(0);
+
 	/* TX done, free the skb */
 	dev_kfree_skb(msg_param->skb);
 
@@ -206,15 +206,12 @@ static void dlp_net_complete_tx(struct hsi_msg *pdu)
 	write_lock_irqsave(&xfer_ctx->lock, flags);
 	dlp_hsi_controller_pop(xfer_ctx);
 
-	/* Decrease the pdus counter */
-	xfer_ctx->all_len--;
-
 	/* Still have queued TX pdu ? */
 	if (xfer_ctx->ctrl_len) {
-		mod_timer(&ch_ctx->hangup_timer,
-			  jiffies + ch_ctx->hangup_delay);
+		mod_timer(&ch_ctx->hangup.timer,
+			  jiffies + usecs_to_jiffies(DLP_HANGUP_DELAY));
 	} else {
-		del_timer(&ch_ctx->hangup_timer);
+		del_timer(&ch_ctx->hangup.timer);
 	}
 
 	write_unlock_irqrestore(&xfer_ctx->lock, flags);
@@ -344,8 +341,8 @@ static void dlp_net_hangup_timer_cb(unsigned long int param)
 
 	CRITICAL("Hangup (Timeout) !");
 
-	ch_ctx->hangup_reason |= DLP_MODEM_HU_TIMEOUT;
-	queue_work(dlp_drv.tx_hangup_wq, &ch_ctx->hangup_queue);
+	ch_ctx->hangup.cause |= DLP_MODEM_HU_TIMEOUT;
+	queue_work(dlp_drv.tx_hangup_wq, &ch_ctx->hangup.work);
 
 	EPILOG();
 }
@@ -357,10 +354,12 @@ static void dlp_net_hangup_timer_cb(unsigned long int param)
  */
 static void dlp_net_hsi_tx_timeout(struct work_struct *work)
 {
-	//struct dlp_channel    *ch_ctx = container_of(work, struct dlp_channel,
-	//                                          hangup_queue);
+/*
+	struct dlp_channel *ch_ctx = DLP_CHANNEL_CTX(DLP_CHANNEL_TTY);
+	struct dlp_net_context *net_ctx = ch_ctx->ch_data;
+*/
 
-	/* FIXME : TBD */
+	/* FIXME : Stop the NETIF ? */
 
 	CRITICAL("HSI TX timeout");
 }
@@ -384,18 +383,12 @@ int dlp_net_open(struct net_device *dev)
 		goto out;
 	}
 
-	/* Claim the HSI port */
-	ret = dlp_hsi_port_claim(ch_ctx);
-	if (ret) {
-		goto out;
-	}
-
 	// FIXME: To be removed (done in dlp_net_ctx_create)
-	ret = dlp_ctrl_send_open_conn_cmd(ch_ctx);
+	ret = dlp_ctrl_open_channel(ch_ctx);
 	if (ret) {
-		CRITICAL("dlp_ctrl_send_open_conn_cmd() failed !");
+		CRITICAL("dlp_ctrl_open_channel() failed !");
 		ret = -EIO;
-		goto unclaim;
+		goto out;
 	}
 
 	/* Push all RX pdus */
@@ -407,9 +400,6 @@ int dlp_net_open(struct net_device *dev)
 	EPILOG();
 	return ret;
 
-unclaim:
-	dlp_hsi_port_unclaim(ch_ctx);
-
 out:
 	EPILOG();
 	return ret;
@@ -417,30 +407,29 @@ out:
 
 int dlp_net_stop(struct net_device *dev)
 {
-	int ret;
 	struct dlp_channel *ch_ctx = netdev_priv(dev);
 	struct dlp_xfer_ctx *tx_ctx;
 	struct dlp_xfer_ctx *rx_ctx;
+	int ret;
 
 	PROLOG("%s, hsi_ch:%d", dev->name, ch_ctx->hsi_channel);
 
 	tx_ctx = &ch_ctx->tx;
 	rx_ctx = &ch_ctx->rx;
 
-	del_timer_sync(&ch_ctx->hangup_timer);
+	del_timer_sync(&ch_ctx->hangup.timer);
 
 	/* Stop the NET IF */
 	if (!netif_queue_stopped(dev))
 		netif_stop_queue(dev);
 
-	// FIXME: To be removed (should be done in dlp_net_ctx_delete)
-	ret = dlp_ctrl_send_cancel_conn_cmd(ch_ctx);
+	ret = dlp_ctrl_close_channel(ch_ctx);
 	if (ret) {
-		CRITICAL("dlp_ctrl_send_cancel_conn_cmd() failed !");
+		CRITICAL("dlp_ctrl_close_channel() failed !");
 	}
 
-	del_timer_sync(&ch_ctx->hangup_timer);
-	hsi_flush(dlp_drv.client);
+	/* FIXME : Will flush everything */
+	// hsi_flush(dlp_drv.client);
 
 	/* RX */
 	del_timer_sync(&rx_ctx->timer);
@@ -451,9 +440,6 @@ int dlp_net_stop(struct net_device *dev)
 	dlp_stop_tx(tx_ctx);
 
 	dlp_ctx_set_state(tx_ctx, IDLE);
-
-	/* Release the HSI port */
-	dlp_hsi_port_unclaim(ch_ctx);
 
 	EPILOG();
 	return 0;
@@ -828,7 +814,7 @@ struct dlp_channel *dlp_net_ctx_create(unsigned int index, struct device *dev)
 	if (!net_ctx->net_padd) {
 		CRITICAL("No more memory to allocate padding buffer");
 		ret = -ENOMEM;
-		goto out;
+		goto free_dev;
 	}
 
 	/* Register the net device */
@@ -842,7 +828,6 @@ struct dlp_channel *dlp_net_ctx_create(unsigned int index, struct device *dev)
 	net_ctx->ndev = ndev;
 	ch_ctx = netdev_priv(ndev);
 
-	/* Save params */
 	ch_ctx->ch_data = net_ctx;
 	ch_ctx->hsi_channel = index;
 	ch_ctx->credits = 0;
@@ -851,13 +836,13 @@ struct dlp_channel *dlp_net_ctx_create(unsigned int index, struct device *dev)
 	ch_ctx->tx.config = client->tx_cfg;
 
 	spin_lock_init(&ch_ctx->lock);
-	init_timer(&ch_ctx->hangup_timer);
 	init_waitqueue_head(&ch_ctx->tx_empty_event);
-	INIT_WORK(&ch_ctx->hangup_queue, dlp_net_hsi_tx_timeout);
 
-	ch_ctx->hangup_delay = from_usecs(NET_HANGUP_DELAY);
-	ch_ctx->hangup_timer.function = dlp_net_hangup_timer_cb;
-	ch_ctx->hangup_timer.data = (unsigned long int)ch_ctx;
+	/* Hangup context */
+	dlp_hangup_ctx_init(ch_ctx,
+			dlp_net_hsi_tx_timeout,
+			dlp_net_hangup_timer_cb,
+			ch_ctx);
 
 	ch_ctx->modem_coredump_cb = dlp_net_mdm_coredump_cb;
 	ch_ctx->modem_reset_cb = dlp_net_mdm_reset_cb;
@@ -873,13 +858,14 @@ struct dlp_channel *dlp_net_ctx_create(unsigned int index, struct device *dev)
 			  DLP_HSI_RX_WAIT_FIFO, DLP_HSI_RX_CTRL_FIFO,
 			  dlp_net_complete_rx, HSI_MSG_READ);
 
-	/* FIXME : to be activated */
 	/* Open the HSI channel */
-	//ret = dlp_ctrl_send_open_conn_cmd(ch_ctx);
-	//if (ret) {
-	//      CRITICAL("dlp_ctrl_send_open_conn_cmd() failed !");
-	//      goto free_dev;
-	//}
+#if 0 /* FIXME : to be activated when the modem boot time is optimized */
+	ret = dlp_ctrl_open_channel(ch_ctx);
+	if (ret) {
+	      CRITICAL("dlp_ctrl_open_channel() failed !");
+	      goto free_dev;
+	}
+#endif
 
 	/* Allocate RX FIFOs in background */
 	queue_work(dlp_drv.recycle_wq, &ch_ctx->rx.increase_pool);
@@ -900,7 +886,8 @@ int dlp_net_ctx_delete(struct dlp_channel *ch_ctx)
 	int ret = 0;
 	struct dlp_net_context *net_ctx = ch_ctx->ch_data;
 
-	del_timer_sync(&ch_ctx->hangup_timer);
+	/* Clear the hangup context */
+	dlp_hangup_ctx_deinit(ch_ctx);
 
 	/* Unregister the net device */
 	unregister_netdev(net_ctx->ndev);
@@ -909,12 +896,13 @@ int dlp_net_ctx_delete(struct dlp_channel *ch_ctx)
 	dlp_xfer_ctx_clear(&ch_ctx->rx);
 	dlp_xfer_ctx_clear(&ch_ctx->tx);
 
-	/* FIXME : to be activated */
+#if 0 /* FIXME : Not supported by the modem */
 	/* Release the HSI channel */
-	// ret = dlp_ctrl_send_cancel_conn_cmd(ch_ctx);
-	//if (ret) {
-	//      CRITICAL("dlp_ctrl_send_cancel_conn_cmd() failed !");
-	//}
+	ret = dlp_ctrl_send_cancel_conn_cmd(ch_ctx);
+	if (ret) {
+	      CRITICAL("dlp_ctrl_send_cancel_conn_cmd() failed !");
+	}
+#endif
 
 	/* Free the padding buffer */
 	dlp_buffer_free(net_ctx->net_padd,

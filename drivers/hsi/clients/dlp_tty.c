@@ -40,7 +40,6 @@
 #include <linux/hsi/hsi.h>
 #include <linux/dma-mapping.h>
 #include <linux/gpio.h>
-#include <linux/wait.h>
 #include <linux/interrupt.h>
 #include <linux/irq.h>
 
@@ -49,7 +48,7 @@
 #define DEBUG_TAG 0x4
 #define DEBUG_VAR dlp_drv.debug
 
-#define TTYNAME				"tty"CONFIG_HSI_DLP_TTY_NAME
+#define IPC_TTYNAME				"tty"CONFIG_HSI_DLP_IPC_TTY_NAME
 
 #define RX_TTY_FORWARDING_BIT		(1<<DLP_GLOBAL_STATE_SZ)
 #define RX_TTY_REFORWARD_BIT		(2<<DLP_GLOBAL_STATE_SZ)
@@ -63,12 +62,14 @@
  * @tty_prt: TTY port struct
  * @buffer_wq: Workqueue for tty buffer flush
  * @ch_ctx : Channel context ref
+ * @do_tty_forward: dedicated TTY forwarding work structure
  */
 struct dlp_tty_context {
 	struct tty_port tty_prt;
 	struct tty_driver *tty_drv;
 
 	struct dlp_channel *ch_ctx;
+	struct work_struct	do_tty_forward;
 };
 
 /*
@@ -82,7 +83,7 @@ static void dlp_tty_modem_hangup(struct dlp_channel *ch_ctx, int reason)
 
 	PROLOG();
 
-	ch_ctx->hangup_reason |= reason;
+	ch_ctx->hangup.cause |= reason;
 	tty = tty_port_tty_get(&tty_ctx->tty_prt);
 	if (tty) {
 		tty_hangup(tty);
@@ -195,7 +196,7 @@ static void dlp_tty_wakeup(struct dlp_channel *ch_ctx)
 }
 
 /**
- * dlp_tty_forward - RX data TTY forwarding helper function
+ * _dlp_forward_tty - RX data TTY forwarding helper function
  * @tty: a reference to the TTY where the data shall be forwarded
  * @xfer_ctx: a reference to the RX context where the FIFO of waiting pdus sits
  *
@@ -207,7 +208,7 @@ static void dlp_tty_wakeup(struct dlp_channel *ch_ctx)
  *  - Restart delayed job if some data is remaining in the waiting FIFO or if the
  *    controller FIFO is not full yet.
  */
-static void dlp_tty_forward(struct tty_struct *tty,
+static void _dlp_forward_tty(struct tty_struct *tty,
 			    struct dlp_xfer_ctx *xfer_ctx)
 {
 	struct hsi_msg *pdu;
@@ -219,21 +220,12 @@ static void dlp_tty_forward(struct tty_struct *tty,
 
 	PROLOG();
 
-	if (dlp_ctx_has_flag(xfer_ctx, RX_TTY_FORWARDING_BIT)) {
-		dlp_ctx_set_flag(xfer_ctx, RX_TTY_REFORWARD_BIT);
-		return;
-	}
-
 	/* Initialised to 1 to prevent unexpected TTY forwarding resume
 	 * function when there is no TTY or when it is throttled */
-	dlp_ctx_set_flag(xfer_ctx, RX_TTY_FORWARDING_BIT);
-
 	copied = 1;
 	do_push = 0;
 
 	del_timer(&xfer_ctx->timer);
-
-shoot_again_now:
 
 	read_lock_irqsave(&xfer_ctx->lock, flags);
 
@@ -253,7 +245,7 @@ shoot_again_now:
 			tty_flag = TTY_FRAME;
 
 		if (unlikely(!tty))
-			goto recycle_pdu;
+			goto free_pdu;
 
 		while (pdu->actual_len > 0) {
 
@@ -262,7 +254,6 @@ shoot_again_now:
 				 * forwarding resume function schedule */
 				copied = 1;
 				dlp_fifo_wait_push_back(xfer_ctx, pdu);
-
 				goto no_more_tty_insert;
 			}
 
@@ -281,12 +272,11 @@ shoot_again_now:
 
 			if (copied == 0) {
 				dlp_fifo_wait_push_back(xfer_ctx, pdu);
-
 				goto no_more_tty_insert;
 			}
 		}
 
-recycle_pdu:
+free_pdu:
 		/* Reset the pdu offset & length */
 		dlp_pdu_reset(xfer_ctx,
 			      pdu,
@@ -301,18 +291,11 @@ recycle_pdu:
 	read_unlock_irqrestore(&xfer_ctx->lock, flags);
 
 no_more_tty_insert:
-	/* Schedule a flip since called from complete_rx() in an interrupt
-	 * context instead of tty_flip_buffer_push() */
-	if (do_push)
+	if (do_push) {
+		/* Schedule a flip since called from complete_rx() in an interrupt
+		* context instead of tty_flip_buffer_push() */
 		tty_schedule_flip(tty);
-
-	/* If some reforwarding request occur in the meantime, do this now */
-	if (dlp_ctx_has_flag(xfer_ctx, RX_TTY_REFORWARD_BIT)) {
-		dlp_ctx_clear_flag(xfer_ctx, RX_TTY_REFORWARD_BIT);
-		goto shoot_again_now;
 	}
-
-	dlp_ctx_clear_flag(xfer_ctx, RX_TTY_FORWARDING_BIT);
 
 	/* Push any available pud to the CTRL */
 	ret = dlp_pop_recycled_push_ctrl(xfer_ctx);
@@ -321,6 +304,30 @@ no_more_tty_insert:
 	 * the RX controller FIFO is not full yet */
 	if ((!copied) || (unlikely(ret == -EAGAIN)))
 		mod_timer(&xfer_ctx->timer, jiffies + xfer_ctx->delay);
+
+	EPILOG();
+}
+
+/**
+ * dlp_do_tty_forward - forwarding data to the above line discipline
+ * @work: a reference to work queue element
+ */
+static void dlp_do_tty_forward(struct work_struct *work)
+{
+	struct dlp_tty_context *tty_ctx;
+	struct tty_struct *tty;
+
+	PROLOG();
+
+	tty_ctx = container_of(work, struct dlp_tty_context, do_tty_forward);
+	tty = tty_port_tty_get(&tty_ctx->tty_prt);
+	if (tty) {
+		/* Lock really needed ?
+		 * We are using a single thread workqueue,
+		 * so works are executed sequentially */
+		_dlp_forward_tty(tty, &tty_ctx->ch_ctx->rx);
+		tty_kref_put(tty);
+	}
 
 	EPILOG();
 }
@@ -336,17 +343,9 @@ static void dlp_tty_rx_forward_retry(unsigned long param)
 {
 	struct dlp_xfer_ctx *xfer_ctx = (struct dlp_xfer_ctx *)param;
 	struct dlp_tty_context *tty_ctx = xfer_ctx->channel->ch_data;
-	struct tty_struct *tty;
 
 	PROLOG();
-
-	tty = tty_port_tty_get(&tty_ctx->tty_prt);
-
-	dlp_tty_forward(tty, xfer_ctx);
-
-	if (tty)
-		tty_kref_put(tty);
-
+	queue_work(dlp_drv.forwarding_wq, &tty_ctx->do_tty_forward);
 	EPILOG();
 }
 
@@ -366,10 +365,10 @@ static void dlp_tty_rx_forward_resume(struct tty_struct *tty)
 	/* Get the context reference from the driver data if already opened */
 	ch_ctx = (struct dlp_channel *)tty->driver_data;
 
-	if (!ch_ctx)
-		return;
-
-	dlp_tty_forward(tty, &ch_ctx->rx);
+	if (ch_ctx) {
+		struct dlp_tty_context *tty_ctx = ch_ctx->ch_data;
+		queue_work(dlp_drv.forwarding_wq, &tty_ctx->do_tty_forward);
+	}
 
 	EPILOG();
 }
@@ -390,7 +389,8 @@ static void dlp_tty_complete_tx(struct hsi_msg *pdu)
 
 	PROLOG();
 
-	dlp_drv.reset_ignore = 0;
+	/* TX xfer done => Reset the "ongoing" flag */
+	dlp_ctrl_set_reset_ongoing(0);
 
 	/* Dump the PDU */
 	// dlp_pdu_dump(pdu, 1);
@@ -407,10 +407,10 @@ static void dlp_tty_complete_tx(struct hsi_msg *pdu)
 
 	/* Still have queued TX pdu ? */
 	if (xfer_ctx->ctrl_len) {
-		mod_timer(&ch_ctx->hangup_timer,
-			  jiffies + ch_ctx->hangup_delay);
+		mod_timer(&ch_ctx->hangup.timer,
+			  jiffies + usecs_to_jiffies(DLP_HANGUP_DELAY));
 	} else {
-		del_timer(&ch_ctx->hangup_timer);
+		del_timer(&ch_ctx->hangup.timer);
 	}
 
 	read_unlock_irqrestore(&xfer_ctx->lock, flags);
@@ -453,15 +453,12 @@ static void dlp_tty_complete_rx(struct hsi_msg *pdu)
 {
 	struct dlp_xfer_ctx *xfer_ctx = pdu->context;
 	struct dlp_tty_context *tty_ctx = xfer_ctx->channel->ch_data;
-	struct tty_struct *tty;
 	unsigned long flags;
 
 	PROLOG();
 
-	tty = tty_port_tty_get(&tty_ctx->tty_prt);
-
 	/* Dump the PDU : Do it before or after the actual_len update ? */
-	dlp_pdu_dump(pdu, 1);
+	/* dlp_pdu_dump(pdu, 1); */
 
 	/* Check and update the PDU len & status */
 	dlp_pdu_update(tty_ctx->ch_ctx, pdu);
@@ -480,11 +477,7 @@ static void dlp_tty_complete_rx(struct hsi_msg *pdu)
 
 	dlp_fifo_wait_push(xfer_ctx, pdu);
 
-	dlp_tty_forward(tty, xfer_ctx);
-
-	if (tty)
-		tty_kref_put(tty);
-
+	queue_work(dlp_drv.forwarding_wq, &tty_ctx->do_tty_forward);
 	EPILOG();
 }
 
@@ -604,9 +597,9 @@ static int dlp_tty_port_activate(struct tty_port *port, struct tty_struct *tty)
 	/* Configure the DLP channel */
 	// FIXME: To be removed (should be done in dlp_tty_ctx_create)
 	if (tty->count == 1) {
-		ret = dlp_ctrl_send_open_conn_cmd(ch_ctx);
+		ret = dlp_ctrl_open_channel(ch_ctx);
 		if (ret) {
-			CRITICAL("dlp_ctrl_send_open_conn_cmd() failed !");
+			CRITICAL("dlp_ctrl_open_channel() failed !");
 			goto out;
 		}
 	}
@@ -635,6 +628,7 @@ static void dlp_tty_port_shutdown(struct tty_port *port)
 	struct dlp_tty_context *tty_ctx;
 	struct dlp_xfer_ctx *tx_ctx;
 	struct dlp_xfer_ctx *rx_ctx;
+	int ret;
 
 	PROLOG();
 
@@ -644,10 +638,10 @@ static void dlp_tty_port_shutdown(struct tty_port *port)
 	rx_ctx = &ch_ctx->rx;
 
 	/* we need hang_up timer alive to avoid long wait here */
-	if (!(ch_ctx->hangup_reason & DLP_MODEM_HU_TIMEOUT))
+	if (!(ch_ctx->hangup.cause & DLP_MODEM_HU_TIMEOUT))
 		dlp_tty_wait_until_ctx_sent(ch_ctx, 0);
 
-	del_timer_sync(&ch_ctx->hangup_timer);
+	del_timer_sync(&ch_ctx->hangup.timer);
 
 	// FIXME: FTE
 	// hsi_flush(dlp_drv.client);
@@ -665,15 +659,10 @@ static void dlp_tty_port_shutdown(struct tty_port *port)
 	dlp_ctx_set_state(tx_ctx, IDLE);
 
 	/* Close the HSI channel */
-#if 0 /* FIXME : Not supported by the modem */	
-	if (port->tty->count == 1) {
-		int ret;
-		ret = dlp_ctrl_send_cancel_conn_cmd(ch_ctx);
-		if (ret) {
-			CRITICAL("dlp_ctrl_send_cancel_conn_cmd() failed !");
-		}
+	ret = dlp_ctrl_close_channel(ch_ctx);
+	if (ret) {
+		CRITICAL("dlp_ctrl_close_channel() failed !");
 	}
-#endif
 
 	PDEBUG("tty port shut down");
 	EPILOG();
@@ -722,7 +711,7 @@ static int dlp_tty_open(struct tty_struct *tty, struct file *filp)
 	tty_ctx = ch_ctx->ch_data;
 	ret = tty_port_open(&tty_ctx->tty_prt, tty, filp);
 	if (ret)
-		CRITICAL("TTY open failed (%d)", ret);
+		CRITICAL("TTY port open failed (%d)", ret);
 
 	/* Set the TTY_NO_WRITE_SPLIT to transfer as much data as possible on
 	 * the first write request. This shall not introduce denial of service
@@ -770,10 +759,10 @@ void dlp_tty_tx_stop(unsigned long param)
 }
 
 /**
- * dlp_tty_hangup_timer_cb - timer function for tx timeout hangup request
+ * dlp_tty_tx_timeout - timer function for tx timeout hangup request
  * @param: a reference to the channel to consider
  */
-static void dlp_tty_hangup_timer_cb(unsigned long int param)
+static void dlp_tty_tx_timeout(unsigned long int param)
 {
 	struct dlp_channel *ch_ctx = (struct dlp_channel *)param;
 
@@ -781,31 +770,29 @@ static void dlp_tty_hangup_timer_cb(unsigned long int param)
 
 	CRITICAL("Tx timeout");
 
-	ch_ctx->hangup_reason |= DLP_MODEM_HU_TIMEOUT;
-	queue_work(dlp_drv.tx_hangup_wq, &ch_ctx->hangup_queue);
+	ch_ctx->hangup.cause |= DLP_MODEM_HU_TIMEOUT;
+	queue_work(dlp_drv.tx_hangup_wq, &ch_ctx->hangup.work);
 
 	EPILOG();
 }
 
 /**
- * dlp_tty_handle_tx_timeout - work queue function called from hangup timer
+ * dlp_tty_do_tx_hangup - initiate a hangup (TX timeout, modem reset or core dump)
  * @work: a reference to work queue element
  *
  * Required since port shutdown calls a mutex that might sleep
  */
-static void dlp_tty_handle_tx_timeout(struct work_struct *work)
+static void dlp_tty_do_tx_hangup(struct work_struct *work)
 {
-	struct dlp_channel *ch_ctx = container_of(work, struct dlp_channel,
-						  hangup_queue);
+	struct dlp_channel *ch_ctx = DLP_CHANNEL_CTX(DLP_CHANNEL_TTY);
 	struct dlp_tty_context *tty_ctx = ch_ctx->ch_data;
 	struct tty_struct *tty;
 
 	PROLOG();
 
-	wake_up(&ch_ctx->tx_empty_event);
 	tty = tty_port_tty_get(&tty_ctx->tty_prt);
 	if (tty) {
-		tty_hangup(tty);
+		tty_vhangup(tty);
 		tty_kref_put(tty);
 	}
 
@@ -1014,7 +1001,7 @@ static int dlp_tty_write_room(struct tty_struct *tty)
 {
 	struct dlp_xfer_ctx *ch_ctx =
 	    &((struct dlp_channel *)tty->driver_data)->tx;
-	unsigned int room;
+	int room;
 	unsigned long flags;
 
 	PROLOG();
@@ -1039,7 +1026,7 @@ static int dlp_tty_chars_in_buffer(struct tty_struct *tty)
 {
 	struct dlp_xfer_ctx *ch_ctx =
 	    &((struct dlp_channel *)tty->driver_data)->tx;
-	unsigned int buffered;
+	int buffered;
 	unsigned long flags;
 
 	PROLOG();
@@ -1393,15 +1380,15 @@ static int dlp_tty_ioctl(struct tty_struct *tty,
 		break;
 
 	case HSI_DLP_MODEM_STATE:
-		data = !(dlp_drv.reset_ignore);
+		data = !(dlp_ctrl_get_reset_ongoing());
 		return put_user(data, (unsigned int __user *)arg);
 		break;
 
 	case HSI_DLP_GET_HANGUP_REASON:
-		ret = put_user(ch_ctx->hangup_reason,
+		ret = put_user(ch_ctx->hangup.cause,
 			       (unsigned int __user *)arg);
 		write_lock_irqsave(&ch_ctx->rx.lock, flags);
-		ch_ctx->hangup_reason = 0;
+		ch_ctx->hangup.cause = 0;
 		write_unlock_irqrestore(&ch_ctx->rx.lock, flags);
 		return ret;
 		break;
@@ -1489,16 +1476,15 @@ struct dlp_channel *dlp_tty_ctx_create(unsigned int index, struct device *dev)
 
 	/* Allocate & configure the TTY driver */
 	new_drv = alloc_tty_driver(1);
-	if (unlikely(!new_drv)) {
-		CRITICAL("alloc_tty_driver() failed !");
+	if (!new_drv) {
+		CRITICAL("alloc_tty_driver() failed");
 		goto free_ctx;
 	}
 
-	/* Configure the TTY */
 	new_drv->magic = TTY_DRIVER_MAGIC;
 	new_drv->owner = THIS_MODULE;
 	new_drv->driver_name = DRVNAME;
-	new_drv->name = TTYNAME;
+	new_drv->name = IPC_TTYNAME;
 	new_drv->minor_start = 0;
 	new_drv->num = 1;
 	new_drv->type = TTY_DRIVER_TYPE_SERIAL;
@@ -1510,12 +1496,11 @@ struct dlp_channel *dlp_tty_ctx_create(unsigned int index, struct device *dev)
 
 	/* Register the TTY driver */
 	ret = tty_register_driver(new_drv);
-	if (unlikely(ret)) {
+	if (ret) {
 		CRITICAL("tty_register_driver() failed (%d)", ret);
 		goto free_drv;
 	}
 
-	/* Save params */
 	ch_ctx->ch_data = tty_ctx;
 	ch_ctx->hsi_channel = index;
 	ch_ctx->credits = 0;
@@ -1523,16 +1508,14 @@ struct dlp_channel *dlp_tty_ctx_create(unsigned int index, struct device *dev)
 	ch_ctx->rx.config = client->rx_cfg;
 	ch_ctx->tx.config = client->tx_cfg;
 
-	dlp_drv.reset_ignore = 1;
-
 	spin_lock_init(&ch_ctx->lock);
-	init_timer(&ch_ctx->hangup_timer);
 	init_waitqueue_head(&ch_ctx->tx_empty_event);
-	INIT_WORK(&ch_ctx->hangup_queue, dlp_tty_handle_tx_timeout);
 
-	ch_ctx->hangup_delay = from_usecs(DLP_HANGUP_DELAY);
-	ch_ctx->hangup_timer.function = dlp_tty_hangup_timer_cb;
-	ch_ctx->hangup_timer.data = (unsigned long int)ch_ctx;
+	/* Hangup context */
+	dlp_hangup_ctx_init(ch_ctx,
+			dlp_tty_do_tx_hangup,
+			dlp_tty_tx_timeout,
+			ch_ctx);
 
 	ch_ctx->modem_coredump_cb = dlp_tty_mdm_coredump_cb;
 	ch_ctx->modem_reset_cb = dlp_tty_mdm_reset_cb;
@@ -1548,6 +1531,8 @@ struct dlp_channel *dlp_tty_ctx_create(unsigned int index, struct device *dev)
 			  DLP_HSI_RX_WAIT_FIFO, DLP_HSI_RX_CTRL_FIFO,
 			  dlp_tty_complete_rx, HSI_MSG_READ);
 
+	INIT_WORK(&tty_ctx->do_tty_forward, dlp_do_tty_forward);
+
 	ch_ctx->tx.timer.function = dlp_tty_tx_stop;
 	ch_ctx->rx.timer.function = dlp_tty_rx_forward_retry;
 
@@ -1555,7 +1540,7 @@ struct dlp_channel *dlp_tty_ctx_create(unsigned int index, struct device *dev)
 	tty_port_init(&(tty_ctx->tty_prt));
 	tty_ctx->tty_prt.ops = &dlp_port_tty_ops;
 
-	if (unlikely(!tty_register_device(new_drv, 0, dev))) {
+	if (!tty_register_device(new_drv, 0, dev)) {
 		CRITICAL("tty_register_device() failed (%d)!", ret);
 		goto unreg_drv;
 	}
@@ -1594,7 +1579,8 @@ int dlp_tty_ctx_delete(struct dlp_channel *ch_ctx)
 
 	PROLOG();
 
-	del_timer(&ch_ctx->hangup_timer);
+	/* Clear the hangup context */
+	dlp_hangup_ctx_deinit(ch_ctx);
 
 	/* Unregister device */
 	tty_unregister_device(tty_ctx->tty_drv, 0);
