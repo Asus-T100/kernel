@@ -1311,7 +1311,7 @@ static int mt9e013_g_bin_factor_y(struct v4l2_subdev *sd, s32 *val)
 	return 0;
 }
 
-struct mt9e013_control mt9e013_controls[] = {
+static struct mt9e013_control mt9e013_controls[] = {
 	{
 		.qc = {
 			.id = V4L2_CID_EXPOSURE_ABSOLUTE,
@@ -1544,13 +1544,6 @@ static int mt9e013_s_ctrl(struct v4l2_subdev *sd, struct v4l2_control *ctrl)
 
 	return ret;
 }
-
-struct mt9e013_format mt9e013_formats[] = {
-	{
-	 .desc = "RGB Bayer Format",
-	 .regs = NULL,
-	 },
-};
 
 /*
  * distance - calculate the distance
@@ -2043,7 +2036,7 @@ mt9e013_s_parm(struct v4l2_subdev *sd, struct v4l2_streamparm *param)
 	return 0;
 }
 
-int
+static int
 mt9e013_g_frame_interval(struct v4l2_subdev *sd,
 				struct v4l2_subdev_frame_interval *interval)
 {
