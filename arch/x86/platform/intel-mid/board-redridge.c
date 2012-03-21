@@ -1417,6 +1417,14 @@ void *ms5607_platform_data_init(void *info)
 	return &baro_pdata;
 };
 
+void *compass_pdata_init(void *info)
+{
+	struct i2c_board_info *i2c_info = (struct i2c_board_info *)info;
+
+	i2c_info->irq = 0xff;
+	return NULL;
+}
+
 void *gyro_pdata_init(void *info)
 {
 	struct i2c_board_info *i2c_info = (struct i2c_board_info *)info;
@@ -1790,6 +1798,7 @@ struct devs_id __initconst device_ids[] = {
 	{"audience_es305", SFI_DEV_TYPE_I2C, 0, &audience_platform_data_init,
 						NULL},
 	{"accel", SFI_DEV_TYPE_I2C, 0, &lis3dh_pdata_init, NULL},
+	{"compass", SFI_DEV_TYPE_I2C, 0, &compass_pdata_init, NULL},
 	{"gyro", SFI_DEV_TYPE_I2C, 0, &gyro_pdata_init, NULL},
 	{"baro", SFI_DEV_TYPE_I2C, 0, &bara_pdata_init, NULL},
 	{"als", SFI_DEV_TYPE_I2C, 0, &als_pdata_init, NULL},
