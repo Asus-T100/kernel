@@ -3866,10 +3866,10 @@ static __init int parse_hdmi_edid(char *arg)
 {
 	/* HDMI EDID info can be passed in as a cmdline parameter,
 	 * and need to remove it after we can get EDID info via MSIC.*/
-	if ((!arg) || (strlen(arg) >= 20))
+	if ((!arg) || (strlen(arg) >= HDMI_MONITOR_NAME_LENGTH))
 		return -EINVAL;
 
-	strncpy(HDMI_EDID, arg, strlen(arg));
+	strncpy(HDMI_EDID, arg, strlen(arg) + 1);
 
 	return 0;
 }

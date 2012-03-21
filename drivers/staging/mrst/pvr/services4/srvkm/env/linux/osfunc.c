@@ -2037,10 +2037,9 @@ PVRSRV_ERROR OSEventObjectCreateKM(const IMG_CHAR *pszName, PVRSRV_EVENTOBJECT *
     
     if(psEventObject)
     {
-	if (pszName && strlen(pszName) <= EVENTOBJNAME_MAXLENGTH)
+	if (pszName && strlen(pszName) < EVENTOBJNAME_MAXLENGTH)
         {
-            
-            strncpy(psEventObject->szName, pszName, strlen(pszName));
+            strncpy(psEventObject->szName, pszName, strlen(pszName) + 1);
         }
         else
         {

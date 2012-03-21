@@ -182,7 +182,7 @@ IMG_VOID PVRSRVReleasePrintf(const IMG_CHAR *pszFormat, ...)
 	va_start(vaArgs, pszFormat);
 
 	GetBufferLock(&ulLockFlags);
-	strncpy (pszBuf, pszName, strlen(pszName));
+	strncpy (pszBuf, pszName, strlen(pszName) + 1);
 
 	if (VBAppend(pszBuf, ui32BufSiz, pszFormat, vaArgs))
 	{
