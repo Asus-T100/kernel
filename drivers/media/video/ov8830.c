@@ -934,7 +934,7 @@ static u16 real_model_id;
 module_param(debug, int, 0644);
 MODULE_PARM_DESC(debug, "Enable debug messages");
 
-struct ov8830_resolution ov8830_res_preview[] = {
+static struct ov8830_resolution ov8830_res_preview[] = {
 	{
 		 .desc =	"PREVIEW_30fps"	,
 		 .width =	816	,
@@ -969,7 +969,7 @@ struct ov8830_resolution ov8830_res_preview[] = {
 
 #define N_RES_PREVIEW (ARRAY_SIZE(ov8830_res_preview))
 
-struct ov8830_resolution ov8830_res_still[] = {
+static struct ov8830_resolution ov8830_res_still[] = {
 	{
 		 .desc =	"STILL_30fps"	,
 		 .width =	816	,
@@ -1004,7 +1004,7 @@ struct ov8830_resolution ov8830_res_still[] = {
 
 #define N_RES_STILL (ARRAY_SIZE(ov8830_res_still))
 
-struct ov8830_resolution ov8830_res_video[] = {
+static struct ov8830_resolution ov8830_res_video[] = {
 	{
 		 .desc =	"VIDEO_30fps"	,
 		 .width =	816	,
@@ -1039,7 +1039,7 @@ struct ov8830_resolution ov8830_res_video[] = {
 
 #define N_RES_VIDEO (ARRAY_SIZE(ov8830_res_video))
 
-struct ov8830_resolution *ov8830_res = ov8830_res_preview;
+static struct ov8830_resolution *ov8830_res = ov8830_res_preview;
 static int N_RES = N_RES_PREVIEW;
 
 static int
@@ -1477,7 +1477,6 @@ static int ov8830_init_registers(struct v4l2_subdev *sd)
 static int ov8830_init(struct v4l2_subdev *sd, u32 val)
 {
 	int ret = 0;
-	struct i2c_client *client = v4l2_get_subdevdata(sd);
 
 	/* set inital registers */
 	ret = ov8830_init_registers(sd);
@@ -1591,101 +1590,6 @@ static int ov8830_g_chip_ident(struct v4l2_subdev *sd,
 	return 0;
 }
 
-static int ov8830_get_intg_factor(struct i2c_client *client,
-								   struct camera_mipi_info *info,
-								   const struct ov8830_reg *reglist)
-{
-	sensor_register	vt_pix_clk_div;
-	sensor_register	vt_sys_clk_div;
-	sensor_register	pre_pll_clk_div;
-	sensor_register	pll_multiplier;
-	sensor_register	op_pix_clk_div;
-	sensor_register	op_sys_clk_div;
-
-    /* TODO: this should not be a constant but should be set by a call to
-     * MSIC's driver to get the ext_clk that MSIC supllies to the sensor.
-     */
-	const int ext_clk_freq_mhz = 19200000;
-	struct sensor_mode_data buf;
-	const struct ov8830_reg *next = reglist;
-	int vt_pix_clk_freq_mhz;
-	u16 data[OV8830_SHORT_MAX];
-
-	sensor_register coarse_integration_time_min;
-	sensor_register coarse_integration_time_max_margin;
-	sensor_register fine_integration_time_min;
-	sensor_register fine_integration_time_max_margin;
-	sensor_register frame_length_lines;
-	sensor_register line_length_pck;
-	sensor_register read_mode;
-
-	if (info == NULL)
-		return -EINVAL;
-
-	memset(data, 0, OV8830_SHORT_MAX * sizeof(u16));
-	if (ov8830_read_reg(client, 12, OV8830_VT_PIX_CLK_DIV, data))
-		return -EINVAL;
-	vt_pix_clk_div = data[0];
-	vt_sys_clk_div = data[1];
-	pre_pll_clk_div = data[2];
-	pll_multiplier = data[3];
-	op_pix_clk_div = data[4];
-	op_sys_clk_div = data[5];
-
-	memset(data, 0, OV8830_SHORT_MAX * sizeof(u16));
-	if (ov8830_read_reg(client, 4, OV8830_FRAME_LENGTH_LINES, data))
-		return -EINVAL;
-	frame_length_lines = data[0];
-	line_length_pck = data[1];
-
-	memset(data, 0, OV8830_SHORT_MAX * sizeof(u16));
-	if (ov8830_read_reg(client, 8, OV8830_COARSE_INTG_TIME_MIN, data))
-		return -EINVAL;
-	coarse_integration_time_min = data[0];
-	coarse_integration_time_max_margin = data[1];
-	fine_integration_time_min = data[2];
-	fine_integration_time_max_margin = data[3];
-
-	memset(data, 0, OV8830_SHORT_MAX * sizeof(u16));
-	if (ov8830_read_reg(client, 2, OV8830_READ_MODE, data))
-		return -EINVAL;
-	read_mode = data[0];
-
-	vt_pix_clk_freq_mhz = divsave_rounded(ext_clk_freq_mhz*pll_multiplier,
-								pre_pll_clk_div*vt_sys_clk_div*vt_pix_clk_div);
-
-	memset(data, 0, OV8830_SHORT_MAX * sizeof(u16));
-	if (ov8830_read_reg(client, 2, OV8830_FINE_INTEGRATION_TIME, data))
-		return -EINVAL;
-	v4l2_info(client, "fine_integration_time_i2c: %d", data[0]);
-
-	for (; next->type != OV8830_TOK_TERM; next++) {
-		if (next->type == OV8830_16BIT) {
-			if (next->reg.sreg == OV8830_FINE_INTEGRATION_TIME) {
-				buf.fine_integration_time_def = next->val;
-				break;
-			}
-		}
-	}
-
-    /* something's wrong here, this mode does not have fine_igt set! */
-	if (next->type == OV8830_TOK_TERM)
-		return -EINVAL;
-
-	buf.coarse_integration_time_min = coarse_integration_time_min;
-	buf.coarse_integration_time_max_margin = coarse_integration_time_max_margin;
-	buf.fine_integration_time_min = fine_integration_time_min;
-	buf.fine_integration_time_max_margin = fine_integration_time_max_margin;
-	buf.vt_pix_clk_freq_mhz = vt_pix_clk_freq_mhz;
-	buf.line_length_pck = line_length_pck;
-	buf.frame_length_lines = frame_length_lines;
-	buf.read_mode = read_mode;
-
-	memcpy(&info->data, &buf, sizeof(buf));
-
-	return 0;
-}
-
 /* This returns the exposure time being used. This should only be used
    for filling in EXIF data, not for actual image processing. */
 static int ov8830_q_exposure(struct v4l2_subdev *sd, s32 *value)
@@ -1759,7 +1663,7 @@ static int ov8830_g_fnumber_range(struct v4l2_subdev *sd, s32 *val)
 	return 0;
 }
 
-struct ov8830_control ov8830_controls[] = {
+static struct ov8830_control ov8830_controls[] = {
 	{
 		.qc = {
 			.id = V4L2_CID_EXPOSURE_ABSOLUTE,
@@ -1951,13 +1855,6 @@ static int ov8830_s_ctrl(struct v4l2_subdev *sd, struct v4l2_control *ctrl)
 
 	return octrl->tweak(sd, ctrl->value);
 }
-
-struct ov8830_format ov8830_formats[] = {
-	{
-	 .desc = "RGB Bayer Format",
-	 .regs = NULL,
-	 },
-};
 
 /*
  * distance - calculate the distance
@@ -2385,9 +2282,9 @@ ov8830_s_parm(struct v4l2_subdev *sd, struct v4l2_streamparm *param)
 	return 0;
 }
 
-int
+static int
 ov8830_g_frame_interval(struct v4l2_subdev *sd,
-				struct v4l2_subdev_frame_interval *interval)
+			struct v4l2_subdev_frame_interval *interval)
 {
 	struct ov8830_device *dev = to_ov8830_sensor(sd);
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
