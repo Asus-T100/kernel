@@ -50,7 +50,7 @@
 struct lm3554_ctrl_id {
 	struct v4l2_queryctrl qc;
 	int (*s_ctrl) (struct v4l2_subdev *sd, __u32 val);
-	int (*g_ctrl) (struct v4l2_subdev *sd, __u32 *val);
+	int (*g_ctrl) (struct v4l2_subdev *sd, __s32 *val);
 };
 
 struct lm3554_priv {
@@ -166,7 +166,7 @@ static int lm3554_s_flash_timeout(struct v4l2_subdev *sd, u32 val)
 	return set_reg_field(sd, &flash_timeout, (u8)val);
 }
 
-static int lm3554_g_flash_timeout(struct v4l2_subdev *sd, u32 *val)
+static int lm3554_g_flash_timeout(struct v4l2_subdev *sd, s32 *val)
 {
 	u8 value;
 
@@ -188,7 +188,7 @@ static int lm3554_s_flash_intensity(struct v4l2_subdev *sd, u32 intensity)
 	return set_reg_field(sd, &flash_current, (u8)intensity);
 }
 
-static int lm3554_g_flash_intensity(struct v4l2_subdev *sd, u32 *val)
+static int lm3554_g_flash_intensity(struct v4l2_subdev *sd, s32 *val)
 {
 	u8 value;
 
@@ -206,7 +206,7 @@ static int lm3554_s_torch_intensity(struct v4l2_subdev *sd, u32 intensity)
 	return set_reg_field(sd, &torch_current, (u8)intensity);
 }
 
-static int lm3554_g_torch_intensity(struct v4l2_subdev *sd, u32 *val)
+static int lm3554_g_torch_intensity(struct v4l2_subdev *sd, s32 *val)
 {
 	u8 value;
 
@@ -224,7 +224,7 @@ static int lm3554_s_indicator_intensity(struct v4l2_subdev *sd, u32 intensity)
 	return set_reg_field(sd, &indicator_current, (u8)intensity);
 }
 
-static int lm3554_g_indicator_intensity(struct v4l2_subdev *sd, u32 *val)
+static int lm3554_g_indicator_intensity(struct v4l2_subdev *sd, s32 *val)
 {
 	u8 value;
 
@@ -323,14 +323,14 @@ static int lm3554_s_flash_mode(struct v4l2_subdev *sd, u32 val)
 	return ret;
 }
 
-static int lm3554_g_flash_mode(struct v4l2_subdev *sd, u32 * val)
+static int lm3554_g_flash_mode(struct v4l2_subdev *sd, s32 * val)
 {
 	struct lm3554_priv *p_lm3554_priv = to_lm3554_priv(sd);
 	*val = p_lm3554_priv->mode;
 	return 0;
 }
 
-static int lm3554_g_flash_status(struct v4l2_subdev *sd, u32 *val)
+static int lm3554_g_flash_status(struct v4l2_subdev *sd, s32 *val)
 {
 	u8 value;
 
@@ -526,7 +526,7 @@ static const struct i2c_device_id lm3554_id[] = {
 
 static int lm3554_detect(struct i2c_client *client)
 {
-	u32 status;
+	s32 status;
 	struct i2c_adapter *adapter = client->adapter;
 	struct v4l2_subdev *sd = i2c_get_clientdata(client);
 	struct lm3554_priv *p_lm3554_priv = to_lm3554_priv(sd);
@@ -579,8 +579,9 @@ fail:
 	return ret;
 }
 
-static void lm3554_flash_off_delay(struct i2c_client *client)
+static void lm3554_flash_off_delay(long unsigned int arg)
 {
+	struct i2c_client *client = (struct i2c_client *)arg;
 	struct v4l2_subdev *sd = i2c_get_clientdata(client);
 	struct lm3554_priv *p_lm3554_priv = to_lm3554_priv(sd);
 	struct camera_flash_platform_data *pdata = p_lm3554_priv->platform_data;
