@@ -183,7 +183,8 @@ again:
  * Read/modify/write a value to a register in the  sensor device.
  * Returns zero if successful, or non-zero otherwise.
  */
-int misensor_rmw_reg(struct i2c_client *client, u16 data_length, u16 reg,
+static int
+misensor_rmw_reg(struct i2c_client *client, u16 data_length, u16 reg,
 		     u32 mask, u32 set)
 {
 	int err;
@@ -418,7 +419,8 @@ static int mt9m114_wait_3a(struct v4l2_subdev *sd)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	int timeout = 35;
-	int status_exp, status_wb, ret;
+	int ret;
+	unsigned int status_exp, status_wb;
 
 	while (timeout--) {
 		ret = mt9m114_read_reg(client, MISENSOR_16BIT,
@@ -446,7 +448,8 @@ static int mt9m114_wait_3a(struct v4l2_subdev *sd)
 
 static int mt9m114_wait_state(struct i2c_client *client, int timeout)
 {
-	int val, ret;
+	int ret;
+	unsigned int val;
 
 	while (timeout-- > 0) {
 		ret = mt9m114_read_reg(client, MISENSOR_16BIT, 0x0080, &val);
