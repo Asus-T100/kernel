@@ -3426,7 +3426,10 @@ static const struct dev_pm_ops intel_mid_hsi_rtpm = {
  * struct pci_ids - PCI IDs handled by the driver (ID of HSI controller)
  */
 static const struct pci_device_id pci_ids[] __devinitdata = {
-	{ PCI_VDEVICE(INTEL, HSI_PNW_PCI_DEVICE_ID) },	/* HSI - Penwell */
+	/*disable HSI controller for Redridge boards*/
+#ifndef CONFIG_BOARD_REDRIDGE
+	{ PCI_VDEVICE(INTEL, HSI_PNW_PCI_DEVICE_ID) }, /* HSI - Penwell */
+#endif
 	{ PCI_VDEVICE(INTEL, HSI_CLV_PCI_DEVICE_ID) },  /* HSI - Cloverview */
 	{ }
 };
