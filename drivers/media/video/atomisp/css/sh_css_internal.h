@@ -24,6 +24,10 @@
 #ifndef _SH_CSS_INTERNAL_H_
 #define _SH_CSS_INTERNAL_H_
 
+#ifdef CONFIG_X86_MRFLD
+#define SYSTEM_hive_isp_css_2400_system
+#endif
+
 #include "sh_css_types.h"
 #include "sh_css_binary.h"
 
@@ -189,6 +193,43 @@ struct sh_css_if_config {
 	unsigned int block_no_reqs;
 };
 
+#ifdef SYSTEM_hive_isp_css_2400_system
+struct sh_css_sp_group {
+	int	                     sp_isp_binary_id;
+	int	                     sp_enable_xnr;
+	unsigned int	           sp_uds_curr_dx;
+	unsigned int	           sp_uds_curr_dy;
+	unsigned int	           sp_uds_xc;
+	unsigned int	           sp_uds_yc;
+	int	                     sp_input_stream_format;
+	unsigned int	           isp_dvs_envelope_width;
+	unsigned int	           isp_dvs_envelope_height;
+	unsigned int	           isp_deci_log_factor;
+	unsigned int	           isp_vf_downscale_bits;
+	unsigned int	           isp_online;
+	unsigned int	           isp_copy_vf;
+	unsigned int	           isp_copy_output;
+	unsigned int	           isp_2ppc;
+	unsigned int	           sp_out_crop_pos_x;
+	unsigned int	           sp_out_crop_pos_y;
+	unsigned int	           sp_run_copy;
+	void                    *xmem_bin_addr;
+	void                    *xmem_map_addr;
+	struct sh_css_frame      sp_in_frame;
+	struct sh_css_frame      sp_out_frame;
+	struct sh_css_frame      sp_ref_in_frame;
+	struct sh_css_frame      sp_tnr_in_frame;
+	struct sh_css_frame      sp_out_vf_frame;
+	struct sh_css_frame      sp_extra_frame;
+	struct sh_css_frame      sp_ref_out_frame;
+	struct sh_css_frame      sp_tnr_out_frame;
+	struct sh_css_frame_info sp_internal_frame_info;
+} ;
+
+extern struct sh_css_sp_group sp_group;
+extern struct sh_css_frame sp_in_frame;
+extern struct sh_css_frame sp_out_frame;
+#else
 /* Group all host initialized SP variables into this struct. */
 struct sh_css_sp_group {
 	int				sp_isp_binary_id;
@@ -263,7 +304,7 @@ struct sh_css_sp_group {
 	} input_circuit;
 	struct sh_css_sp_overlay	overlay;
 };
-
+#endif
 /* Data in SP dmem that is set from the host every frame. */
 
 struct sh_css_sp_per_frame_data {

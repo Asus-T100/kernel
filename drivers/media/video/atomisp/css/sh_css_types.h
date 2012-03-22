@@ -24,6 +24,10 @@
 #ifndef _SH_CSS_TYPES_H_
 #define _SH_CSS_TYPES_H_
 
+#ifdef CONFIG_X86_MRFLD
+#define SYSTEM_hive_isp_css_2400_system
+#endif
+
 /* This code is also used by Silicon Hive in a simulation environment
  * Therefore, the following macro is used to differentiate when this
  * code is being included from within the Linux kernel source
@@ -179,6 +183,30 @@ enum sh_css_capture_mode {
  * Note that the sh_css API uses some internal interrupts, these are not listed
  * here.
  */
+/* MW_R1MRFLD : 2300 and 2400 have a different IRQ enumeration */
+#if defined(SYSTEM_hive_isp_css_2400_system)
+
+enum sh_css_interrupt_info {
+	/* the current frame is done and a new one can be started */
+	SH_CSS_IRQ_INFO_FRAME_DONE = 1 << 0,
+	/* another stage (ISP binary) needs to be started. */
+	SH_CSS_IRQ_INFO_START_NEXT_STAGE = 1 << 1,
+	/* 3A + DIS statistics are ready. */
+	SH_CSS_IRQ_INFO_STATISTICS_READY = 1 << 2,
+	/* the css input system has encountered an error */
+	SH_CSS_IRQ_INFO_INPUT_SYSTEM_ERROR = 1 << 3,
+	/* the input formatter in in error */
+	SH_CSS_IRQ_INFO_IF_ERROR = 1 << 4,
+	/* the css receiver received the start of frame */
+	SH_CSS_IRQ_INFO_DMA_ERROR = 1 << 5,
+	/* A firmware accelerator has terminated */
+	SH_CSS_IRQ_INFO_FW_ACC_DONE = 1 << 6,
+	/* software interrupts */
+	SH_CSS_IRQ_INFO_SW_0 = 1 << 7,
+	SH_CSS_IRQ_INFO_SW_1 = 1 << 8,
+};
+
+#else  /* defined(SYSTEM_hive_isp_css_2400_system) */
 enum sh_css_interrupt_info {
 	/* the current frame is done and a new one can be started */
 	SH_CSS_IRQ_INFO_FRAME_DONE = 1 << 0,
@@ -221,6 +249,8 @@ enum sh_css_interrupt_info {
 	/* Inform the ISR that there is an invalid first frame */
 	SH_CSS_IRQ_INFO_INVALID_FIRST_FRAME = 1 << 20,
 };
+
+#endif /* defined(SYSTEM_hive_isp_css_2400_system) */
 
 enum sh_css_rx_irq_info {
 	SH_CSS_RX_IRQ_INFO_BUFFER_OVERRUN   = 1 << 0,

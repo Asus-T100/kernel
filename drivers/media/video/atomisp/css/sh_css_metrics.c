@@ -20,11 +20,17 @@
  * 02110-1301, USA.
  *
  */
+#ifdef CONFIG_X86_MRFLD
+#define SYSTEM_hive_isp_css_2400_system
+#endif
 
 #include "sh_css_hw.h"
 #include "sh_css_hrt.h"
 #include "sh_css_internal.h"
 #include "sh_css_metrics.h"
+#if defined(SYSTEM_hive_isp_css_2400_system)
+#include <scalar_processor_2400_params.h>    /* SP_PMEM_DEPTH */
+#endif
 
 #define ISP_RUN_BIT 0x3
 #define MULTIPLE_PCS 0

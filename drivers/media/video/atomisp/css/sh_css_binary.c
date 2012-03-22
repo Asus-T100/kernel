@@ -20,7 +20,13 @@
 * 02110-1301, USA.
 *
 */
+#ifdef CONFIG_X86_MRFLD
+#define SYSTEM_hive_isp_css_2400_system
+#endif
 
+#if defined(SYSTEM_hive_isp_css_2400_system)
+#include <hmm_2400/hmm_2400.h>
+#endif
 #include "sh_css_binary.h"
 #include "sh_css.h"
 #include "sh_css_internal.h"
@@ -157,8 +163,10 @@ init_binary_info(struct sh_css_binary_info *info, bool *binary_found)
 	case SH_CSS_BINARY_ID_POST_ISP:
 		_init_binary_info(info, ISP_POST_ISP_);
 		break;
+#ifndef SYSTEM_hive_isp_css_2400_system
 	case SH_CSS_BINARY_ID_ANR:
 		_init_binary_info(info, ISP_ANR_);
+#endif
 		break;
 	case SH_CSS_BINARY_ID_PREVIEW_DZ:
 		_init_binary_info(info, ISP_PREVIEW_DZ_);

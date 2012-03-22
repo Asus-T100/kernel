@@ -24,6 +24,10 @@
 #ifndef _SH_CSS_BINARY_H_
 #define _SH_CSS_BINARY_H_
 
+#ifdef CONFIG_X86_MRFLD
+#define SYSTEM_hive_isp_css_2400_system
+#endif
+
 #include "sh_css_types.h"
 #include "sh_css_metrics.h"
 
@@ -36,12 +40,20 @@
 #define SH_CSS_BINARY_MODE_PRE_ISP    4
 #define SH_CSS_BINARY_MODE_GDC        5
 #define SH_CSS_BINARY_MODE_POST_ISP   6
+#ifdef SYSTEM_hive_isp_css_2400_system
+#define SH_CSS_BINARY_MODE_CAPTURE_PP 7
+#define SH_CSS_BINARY_MODE_BAYER_DS   8
+#define SH_CSS_BINARY_MODE_VF_PP      9
+#define SH_CSS_BINARY_NUM_MODES       10
+#define SH_CSS_BINARY_MODE_NONE       11
+#else
 #define SH_CSS_BINARY_MODE_ANR        7
 #define SH_CSS_BINARY_MODE_CAPTURE_PP 8
 #define SH_CSS_BINARY_MODE_BAYER_DS   9
 #define SH_CSS_BINARY_MODE_VF_PP      10
 #define SH_CSS_BINARY_NUM_MODES       11
 #define SH_CSS_BINARY_MODE_NONE       12
+#endif
 
 /* Indicate where binaries can read input from */
 #define SH_CSS_BINARY_INPUT_SENSOR   0
@@ -54,6 +66,31 @@
    Also, the SP firmware uses this same order (sp_main_funcs in sp.hive.c).
    Also, gen_firmware.c uses this order in its firmware_header.
 */
+#ifdef SYSTEM_hive_isp_css_2400_system
+enum sh_css_binary_id {
+	SH_CSS_BINARY_ID_COPY,
+	SH_CSS_BINARY_ID_BAYER_DS,
+	SH_CSS_BINARY_ID_VF_PP,
+	SH_CSS_BINARY_ID_CAPTURE_PP,
+	SH_CSS_BINARY_ID_PRE_ISP,
+	SH_CSS_BINARY_ID_GDC,
+	SH_CSS_BINARY_ID_POST_ISP,
+	SH_CSS_BINARY_ID_PREVIEW_DS,
+	SH_CSS_BINARY_ID_PREVIEW_DZ,
+	SH_CSS_BINARY_ID_PRIMARY_DS,
+	SH_CSS_BINARY_ID_PRIMARY_VAR,
+	SH_CSS_BINARY_ID_PRIMARY_8MP,
+	SH_CSS_BINARY_ID_PRIMARY_14MP,
+	SH_CSS_BINARY_ID_PRIMARY_16MP,
+	SH_CSS_BINARY_ID_PRIMARY_SMALL,
+	SH_CSS_BINARY_ID_PRIMARY_REF,
+	SH_CSS_BINARY_ID_VIDEO_OFFLINE,
+	SH_CSS_BINARY_ID_VIDEO_DS,
+	SH_CSS_BINARY_ID_VIDEO_DZ,
+	SH_CSS_BINARY_ID_VIDEO_NODZ,
+	SH_CSS_BINARY_NUM_IDS,
+};
+#else
 enum sh_css_binary_id {
 	SH_CSS_BINARY_ID_COPY,
 	SH_CSS_BINARY_ID_BAYER_DS,
@@ -78,6 +115,7 @@ enum sh_css_binary_id {
 	SH_CSS_BINARY_ID_VIDEO_NODZ,
 	SH_CSS_BINARY_NUM_IDS,
 };
+#endif
 
 #define SH_CSS_BINARY_ID(BINARY) SH_CSS_BINARY_##BINARY
 /* The maximum number of different frame formats any binary can support */

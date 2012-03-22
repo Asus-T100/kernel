@@ -20,6 +20,9 @@
 * 02110-1301, USA.
 *
 */
+#ifdef CONFIG_X86_MRFLD
+#define SYSTEM_hive_isp_css_2400_system
+#endif
 
 #include "sh_css.h"
 #include "sh_css_hrt.h"
@@ -324,9 +327,11 @@ static struct sh_css_binary_descr preview_descr,
 				  pre_gdc_descr,
 				  gdc_descr,
 				  post_gdc_descr,
+#ifndef SYSTEM_hive_isp_css_2400_system
 				  pre_anr_descr,
 				  anr_descr,
 				  post_anr_descr,
+#endif
 				  video_descr,
 				  capture_pp_descr;
 
@@ -1179,9 +1184,14 @@ start_copy_on_sp(struct sh_css_binary *binary,
 	if (my_css.reconfigure_css_rx)
 		sh_css_rx_disable();
 
+#if defined(SYSTEM_hive_isp_css_2400_system)
+	sh_css_hrt_irq_enable(hrt_isp_css_irq_sw_pin_0, true, false);
+	sh_css_hrt_irq_enable(hrt_isp_css_irq_sw_pin_1, true, false);
+#else  /* defined(SYSTEM_hive_isp_css_2400_system) */
 	sh_css_hrt_irq_enable(hrt_isp_css_irq_sw_0, true, false);
 	sh_css_hrt_irq_enable(hrt_isp_css_irq_sw_1, true, false);
 	sh_css_hrt_irq_enable(hrt_isp_css_irq_sw_2, true, false);
+#endif /* defined(SYSTEM_hive_isp_css_2400_system) */
 	if (my_css.input_format == SH_CSS_INPUT_FORMAT_BINARY_8) {
 		sh_css_sp_start_binary_copy(out_frame, my_css.two_ppc);
 	} else {
@@ -1936,6 +1946,106 @@ acceleration_done(void)
 	       pipeline->current_stage &&
 	       pipeline->current_stage->firmware;
 }
+/* MW_R1MRFLD : 2300 and 2400 have a different IRQ enumeration */
+#if defined(SYSTEM_hive_isp_css_2400_system)
+
+enum sh_css_err
+sh_css_translate_interrupt(unsigned int *irq_infos)
+{
+	enum hrt_isp_css_irq irq;
+	enum hrt_isp_css_irq_status status = hrt_isp_css_irq_status_more_irqs;
+	unsigned int infos = 0;
+
+	while (status == hrt_isp_css_irq_status_more_irqs) {
+		status = sh_css_hrt_irq_get_id(&irq);
+		if (status == hrt_isp_css_irq_status_error)
+			return sh_css_err_interrupt_error;
+
+#if WITH_PC_MONITORING
+		sh_css_print("PC_MONITORING: %s() irq = %d, "
+			     "sh_binary_running set to 0\n", __func__, irq);
+		sh_binary_running = 0 ;
+#endif
+
+		switch (irq) {
+		case hrt_isp_css_irq_sp:
+			sh_css_hrt_irq_clear_sp();
+			if (sh_css_frame_done())
+				infos |= SH_CSS_IRQ_INFO_FRAME_DONE;
+			else
+				infos |= SH_CSS_IRQ_INFO_START_NEXT_STAGE;
+			if (sh_css_statistics_ready())
+				infos |= SH_CSS_IRQ_INFO_STATISTICS_READY;
+			if (acceleration_done())
+				infos |= SH_CSS_IRQ_INFO_FW_ACC_DONE;
+			my_css.state = sh_css_state_idle;
+			break;
+		case hrt_isp_css_irq_isp:
+			/* nothing */
+			break;
+		case hrt_isp_css_irq_isys:
+			infos |= SH_CSS_IRQ_INFO_INPUT_SYSTEM_ERROR;
+			break;
+		case hrt_isp_css_irq_ifmt:
+			infos |= SH_CSS_IRQ_INFO_IF_ERROR;
+			break;
+		case hrt_isp_css_irq_dma:
+			infos |= SH_CSS_IRQ_INFO_DMA_ERROR;
+			break;
+		case hrt_isp_css_irq_sw_pin_0:
+			infos |= SH_CSS_IRQ_INFO_SW_0;
+			break;
+		case hrt_isp_css_irq_sw_pin_1:
+			infos |= SH_CSS_IRQ_INFO_SW_1;
+			break;
+		default:
+			break;
+		}
+	}
+
+	if (irq_infos)
+		*irq_infos = infos;
+	return sh_css_success;
+}
+
+enum sh_css_err
+sh_css_enable_interrupt(enum sh_css_interrupt_info info,
+			bool enable)
+{
+	enum hrt_isp_css_irq irq = -1;
+	bool edge = my_css.irq_edge;
+
+	switch (info) {
+	case SH_CSS_IRQ_INFO_INPUT_SYSTEM_ERROR:
+		irq = hrt_isp_css_irq_isys;
+		break;
+	case SH_CSS_IRQ_INFO_IF_ERROR:
+		irq = hrt_isp_css_irq_ifmt;
+		break;
+	case SH_CSS_IRQ_INFO_DMA_ERROR:
+		irq = hrt_isp_css_irq_dma;
+		break;
+	case SH_CSS_IRQ_INFO_SW_0:
+		irq = hrt_isp_css_irq_sw_pin_0;
+		edge = false;
+		break;
+	case SH_CSS_IRQ_INFO_SW_1:
+		irq = hrt_isp_css_irq_sw_pin_1;
+		edge = false;
+		break;
+	default:
+		return sh_css_err_invalid_arguments;
+	}
+
+	if (enable)
+		sh_css_hrt_irq_enable(irq, true, edge);
+	else
+		sh_css_hrt_irq_disable(irq);
+
+	return sh_css_success;
+}
+
+#else  /* defined(SYSTEM_hive_isp_css_2400_system) */
 
 enum sh_css_err
 sh_css_translate_interrupt(unsigned int *irq_infos)
@@ -2041,7 +2151,7 @@ sh_css_translate_interrupt(unsigned int *irq_infos)
 		*irq_infos = infos;
 	return sh_css_success;
 }
-
+#endif
 void
 sh_css_mmu_set_page_table_base_address(void *base_address)
 {
@@ -2059,9 +2169,14 @@ sh_css_mmu_get_page_table_base_address(void)
 void
 sh_css_mmu_invalidate_cache(void)
 {
+#ifdef SYSTEM_hive_isp_css_2400_system
+	sh_css_hrt_mmu_invalidate_cache();
+#else
 	sh_css_sp_invalidate_mmu();
+#endif
 }
 
+#ifndef SYSTEM_hive_isp_css_2400_system
 enum sh_css_err
 sh_css_enable_interrupt(enum sh_css_interrupt_info info,
 			bool enable)
@@ -2132,7 +2247,7 @@ sh_css_enable_interrupt(enum sh_css_interrupt_info info,
 
 	return sh_css_success;
 }
-
+#endif
 unsigned int
 sh_css_get_sw_interrupt_value(void)
 {
@@ -3605,6 +3720,7 @@ init_post_gdc_descr(struct sh_css_frame_info *in_info,
 			   in_info, out_info, vf_info);
 }
 
+#ifndef SYSTEM_hive_isp_css_2400_system
 static void
 init_pre_anr_descr(struct sh_css_frame_info *in_info,
 		   struct sh_css_frame_info *out_info)
@@ -3644,6 +3760,7 @@ init_post_anr_descr(struct sh_css_frame_info *in_info,
 	init_offline_descr(&post_anr_descr, SH_CSS_BINARY_MODE_POST_ISP,
 			   in_info, out_info, vf_info);
 }
+#endif
 
 static enum sh_css_err
 load_primary_binaries(void)
@@ -3812,6 +3929,7 @@ load_advanced_binaries(void)
 		return sh_css_success;
 }
 
+#ifndef SYSTEM_hive_isp_css_2400_system
 static enum sh_css_err
 load_low_light_binaries(void)
 {
@@ -3901,6 +4019,7 @@ load_low_light_binaries(void)
 	else
 		return sh_css_success;
 }
+#endif
 
 static bool
 copy_on_sp(void)
@@ -3942,7 +4061,11 @@ load_capture_binaries(void)
 	case SH_CSS_CAPTURE_MODE_ADVANCED:
 		return load_advanced_binaries();
 	case SH_CSS_CAPTURE_MODE_LOW_LIGHT:
+#ifndef SYSTEM_hive_isp_css_2400_system
 		return load_low_light_binaries();
+#else
+		return sh_css_err_unsupported_configuration;
+#endif
 	}
 	return sh_css_success;
 }

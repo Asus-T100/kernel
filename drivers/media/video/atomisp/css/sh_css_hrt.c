@@ -20,19 +20,28 @@
 * 02110-1301, USA.
 *
 */
+#ifdef CONFIG_X86_MRFLD
+#define SYSTEM_hive_isp_css_2400_system
+#endif
 
 #include <linux/bitops.h>
 
 #include "sh_css_hrt.h"
 #include "sh_css_internal.h"
 #define HRT_NO_BLOB_sp
-#include "sp.map.h"
 #include "sh_css.h"
 #include "sh_css_hw.h"
 #include "sh_css_debug.h"
 
 #define HBLANK_CYCLES (187)
 #define MARKER_CYCLES (6)
+#if defined(SYSTEM_hive_isp_css_2400_system)
+#include <dma_v2.h>
+#include <inputformatter.h>
+#include "hrt_2400/sp.map.h"
+#else
+#include "hrt/sp.map.h"
+#endif
 
 /* The data type is used to send special cases:
  * yuv420: odd lines (1, 3 etc) are twice as wide as even
@@ -43,12 +52,20 @@
  *      WARNING: This type should also be used for Legacy YUV420.
  * regular: used for all other data types (RAW, YUV422, etc)
  */
+#if defined(SYSTEM_hive_isp_css_2400_system)
+enum sh_css_mipi_data_type {
+	sh_css_mipi_data_type_regular,
+	sh_css_mipi_data_type_yuv420,
+	sh_css_mipi_data_type_rgb,
+};
+#else  /* defined(SYSTEM_hive_isp_css_2400_system) */
 enum sh_css_mipi_data_type {
 	sh_css_mipi_data_type_regular,
 	sh_css_mipi_data_type_yuv420,
 	sh_css_mipi_data_type_yuv420_legacy,
 	sh_css_mipi_data_type_rgb,
 };
+#endif /* !defined(SYSTEM_hive_isp_css_2400_system) */
 
 /* these are unsigned long pointers such that we can simply
  * add the register index to get the right address.
@@ -297,6 +314,14 @@ sh_css_hrt_sp_get_state(struct sh_css_cell_state *state,
 		!sp_ctrl_get_bit(SP_FIFO6_SINK_REG, SP_FIFO6_SINK_BIT);
 	stall_state->fifo7 =
 		!sp_ctrl_get_bit(SP_FIFO7_SINK_REG, SP_FIFO7_SINK_BIT);
+#if defined(SYSTEM_hive_isp_css_2400_system)
+	stall_state->fifo8 =
+		sp_ctrl_get_bit(SP_FIFO8_SINK_BIT, SP_FIFO8_SINK_REG);
+	stall_state->fifo9 =
+		sp_ctrl_get_bit(SP_FIFO9_SINK_BIT, SP_FIFO9_SINK_REG);
+	stall_state->fifoa =
+		sp_ctrl_get_bit(SP_FIFOA_SINK_BIT, SP_FIFOA_SINK_REG);
+#endif
 	stall_state->dmem =
 		!sp_ctrl_get_bit(SP_DMEM_SINK_REG, SP_DMEM_SINK_BIT);
 	stall_state->control_master =
@@ -319,6 +344,10 @@ sh_css_hrt_isp_get_state(struct sh_css_cell_state *state,
 	state->is_stalling = isp_ctrl_get_bit(ISP_SC_REG, ISP_STALLING_BIT);
 	stall_state->stat_ctrl =
 		!isp_ctrl_get_bit(ISP_CTRL_SINK_REG  , ISP_CTRL_SINK_BIT);
+#if defined(SYSTEM_hive_isp_css_2400_system)
+	stall_state->pmem =
+		isp_ctrl_get_bit(ISP_PMEM_SINK_BIT, ISP_PMEM_SINK_REG);
+#endif
 	stall_state->dmem =
 		!isp_ctrl_get_bit(ISP_DMEM_SINK_REG  , ISP_DMEM_SINK_BIT);
 	stall_state->vmem =
@@ -335,10 +364,20 @@ sh_css_hrt_isp_get_state(struct sh_css_cell_state *state,
 		!isp_ctrl_get_bit(ISP_FIFO4_SINK_REG , ISP_FIFO4_SINK_BIT);
 	stall_state->fifo5 =
 		!isp_ctrl_get_bit(ISP_FIFO5_SINK_REG , ISP_FIFO5_SINK_BIT);
+#if defined(SYSTEM_hive_isp_css_2400_system)
+	stall_state->fifo6 =
+		isp_ctrl_get_bit(ISP_FIFO6_SINK_BIT, ISP_FIFO6_SINK_REG);
+#endif
 	stall_state->vamem1 =
 		!isp_ctrl_get_bit(ISP_VAMEM1_SINK_REG, ISP_VAMEM1_SINK_BIT);
 	stall_state->vamem2 =
 		!isp_ctrl_get_bit(ISP_VAMEM2_SINK_REG, ISP_VAMEM2_SINK_BIT);
+#if defined(SYSTEM_hive_isp_css_2400_system)
+	stall_state->vamem3 =
+		isp_ctrl_get_bit(ISP_VAMEM3_SINK_BIT, ISP_VAMEM3_SINK_REG);
+	stall_state->hmem =
+		isp_ctrl_get_bit(ISP_HMEM_SINK_BIT, ISP_HMEM_SINK_REG);
+#endif
 }
 
 static inline unsigned long
@@ -353,94 +392,145 @@ _sh_css_dma_get_register(unsigned int addr)
 static inline unsigned
 sh_css_dma_get_command_fsm_state(void)
 {
+#if defined(SYSTEM_hive_isp_css_2400_system)
+	return _sh_css_dma_get_register(_hrt_dma_v2_sel_comp(0));
+#else
 	return _sh_css_dma_get_register(_hrt_dma_v1_sel_comp(0));
+#endif
 }
 
 /* Get channel parameters */
 static inline unsigned
 _sh_css_dma_get_channel_parameter(int ch, int param)
 {
-	return _sh_css_dma_get_register(
-		    hrt_dma_v1_channel_parameter_register_address(ch, param));
+#if defined(SYSTEM_hive_isp_css_2400_system)
+	return _sh_css_dma_get_register(hrt_dma_v2_channel_parameter_register_address(ch, param));
+#else
+	return _sh_css_dma_get_register(hrt_dma_v1_channel_parameter_register_address(ch, param));
+#endif
 }
 
 static inline unsigned
 sh_css_dma_get_channel_connection(int channel)
 {
-	return _hrt_dma_v1_get_connection(
-			_sh_css_dma_get_channel_parameter(channel, 0));
+#if defined(SYSTEM_hive_isp_css_2400_system)
+	return _hrt_dma_v2_get_connection(_sh_css_dma_get_channel_parameter(channel, _DMA_V2_PACKING_SETUP_PARAM));
+#else
+	return _hrt_dma_v1_get_connection(_sh_css_dma_get_channel_parameter(channel, 0));
+#endif
 }
 
 static inline unsigned
 sh_css_dma_get_channel_extension(int channel)
 {
-	return _hrt_dma_v1_get_extension(
-			_sh_css_dma_get_channel_parameter(channel, 0));
+#if defined(SYSTEM_hive_isp_css_2400_system)
+	return _hrt_dma_v2_get_extension(_sh_css_dma_get_channel_parameter(channel, _DMA_V2_PACKING_SETUP_PARAM));
+#else
+	return _hrt_dma_v1_get_extension(_sh_css_dma_get_channel_parameter(channel, 0));
+#endif
 }
 
 static inline unsigned
 sh_css_dma_get_channel_element_order(int channel)
 {
-	return _hrt_dma_v1_get_element_order(
-			_sh_css_dma_get_channel_parameter(channel, 0));
+#if defined(SYSTEM_hive_isp_css_2400_system)
+(void)channel;
+	return 0;
+#else
+	return _hrt_dma_v1_get_element_order(_sh_css_dma_get_channel_parameter(channel, 0));
+#endif
 }
 
 static inline unsigned
 sh_css_dma_get_channel_stride_A(int channel)
 {
+#if defined(SYSTEM_hive_isp_css_2400_system)
+	return _sh_css_dma_get_channel_parameter(channel, _DMA_V2_STRIDE_A_PARAM);
+#else
 	return _sh_css_dma_get_channel_parameter(channel, 1);
+#endif
 }
 
 static inline unsigned
 sh_css_dma_get_channel_elements_A(int channel)
 {
-	return _hrt_dma_v1_get_elements(
-			_sh_css_dma_get_channel_parameter(channel, 2));
+#if defined(SYSTEM_hive_isp_css_2400_system)
+	return _hrt_dma_v2_get_elements(_sh_css_dma_get_channel_parameter(channel, _DMA_V2_ELEM_CROPPING_A_PARAM));
+#else
+	return _hrt_dma_v1_get_elements(_sh_css_dma_get_channel_parameter(channel, 2));
+#endif
 }
 
 static inline unsigned
 sh_css_dma_get_channel_cropping_A(int channel)
 {
+#if defined(SYSTEM_hive_isp_css_2400_system)
+	return _hrt_dma_v2_get_cropping(
+			_sh_css_dma_get_channel_parameter(channel, _DMA_V2_ELEM_CROPPING_A_PARAM));
+#else
 	return _hrt_dma_v1_get_cropping(
 			_sh_css_dma_get_channel_parameter(channel, 2));
+#endif
 }
 
 static inline unsigned
 sh_css_dma_get_channel_width_A(int channel)
 {
+#if defined(SYSTEM_hive_isp_css_2400_system)
+	return _sh_css_dma_get_channel_parameter(channel, _DMA_V2_WIDTH_A_PARAM);
+#else
 	return _sh_css_dma_get_channel_parameter(channel, 3);
+#endif
 }
 
 static inline unsigned
 sh_css_dma_get_channel_stride_B(int channel)
 {
+#if defined(SYSTEM_hive_isp_css_2400_system)
+	return _sh_css_dma_get_channel_parameter(channel, _DMA_V2_STRIDE_B_PARAM);
+#else
 	return _sh_css_dma_get_channel_parameter(channel, 4);
+#endif
 }
 
 static inline unsigned
 sh_css_dma_get_channel_elements_B(int channel)
 {
-	return	_hrt_dma_v1_get_elements(
-			_sh_css_dma_get_channel_parameter(channel, 5));
+#if defined(SYSTEM_hive_isp_css_2400_system)
+	return	_hrt_dma_v2_get_elements(_sh_css_dma_get_channel_parameter(channel, _DMA_V2_ELEM_CROPPING_B_PARAM));
+#else
+	return	_hrt_dma_v1_get_elements(_sh_css_dma_get_channel_parameter(channel, 5));
+#endif
 }
 
 static inline unsigned
 sh_css_dma_get_channel_cropping_B(int channel)
 {
-	return _hrt_dma_v1_get_cropping(
-			_sh_css_dma_get_channel_parameter(channel, 5));
+#if defined(SYSTEM_hive_isp_css_2400_system)
+	return _hrt_dma_v2_get_cropping(_sh_css_dma_get_channel_parameter(channel, _DMA_V2_ELEM_CROPPING_B_PARAM));
+#else
+	return _hrt_dma_v1_get_cropping(_sh_css_dma_get_channel_parameter(channel, 5));
+#endif
 }
 
 static inline unsigned
 sh_css_dma_get_channel_width_B(int channel)
 {
+#if defined(SYSTEM_hive_isp_css_2400_system)
+	return _sh_css_dma_get_channel_parameter(channel, _DMA_V2_WIDTH_B_PARAM);
+#else
 	return _sh_css_dma_get_channel_parameter(channel, 6);
+#endif
 }
 
 static inline unsigned
 sh_css_dma_get_channel_height(int channel)
 {
+#if defined(SYSTEM_hive_isp_css_2400_system)
+	return _sh_css_dma_get_channel_parameter(channel, _DMA_V2_HEIGHT_PARAM);
+#else
 	return _sh_css_dma_get_channel_parameter(channel, 7);
+#endif
 }
 
 /* Connection group */
@@ -448,185 +538,306 @@ sh_css_dma_get_channel_height(int channel)
 static inline unsigned
 _sh_css_dma_get_conn_group_info(int info_id, int comp_id, int gr_id)
 {
+#if defined(SYSTEM_hive_isp_css_2400_system)
+(void)gr_id;
 	return _sh_css_dma_get_register(
-		  hrt_dma_v1_conn_group_info_register_address(info_id,
-			  comp_id, gr_id));
+		  hrt_dma_v2_conn_group_info_register_address(info_id,comp_id));
+#else
+	return _sh_css_dma_get_register(
+		  hrt_dma_v1_conn_group_info_register_address(info_id,comp_id, gr_id));
+#endif
 }
 
 static inline unsigned
 sh_css_dma_get_conn_group_command(int gr_id)
 {
-	return _sh_css_dma_get_conn_group_info(0, 0, gr_id);
+#if defined(SYSTEM_hive_isp_css_2400_system)
+	return _sh_css_dma_get_conn_group_info(0, _DMA_V2_FSM_GROUP_CMD_IDX, gr_id);
+#else
+	return _sh_css_dma_get_conn_group_info(0, _DMA_SEL_CONN_CMD, gr_id);
+#endif
 }
 
 static inline unsigned
 sh_css_dma_get_conn_group_address_A(int gr_id)
 {
-	return _sh_css_dma_get_conn_group_info(0, 1, gr_id);
+#if defined(SYSTEM_hive_isp_css_2400_system)
+	return _sh_css_dma_get_conn_group_info(0, _DMA_V2_FSM_GROUP_ADDR_SRC_IDX, gr_id);
+#else
+	return _sh_css_dma_get_conn_group_info(0, _DMA_SEL_CONN_ADDRESS_A, gr_id);
+#endif
 }
 
 static inline unsigned
 sh_css_dma_get_conn_group_address_B(int gr_id)
 {
-	return _sh_css_dma_get_conn_group_info(0, 2, gr_id);
+#if defined(SYSTEM_hive_isp_css_2400_system)
+	return _sh_css_dma_get_conn_group_info(0, _DMA_V2_FSM_GROUP_ADDR_DEST_IDX, gr_id);
+#else
+	return _sh_css_dma_get_conn_group_info(0, _DMA_SEL_CONN_ADDRESS_B, gr_id);
+#endif
 }
 
 static inline unsigned
 sh_css_dma_get_conn_group_fsm_control_state(int	gr_id)
 {
-	return _sh_css_dma_get_conn_group_info(0, 3, gr_id);
+#if defined(SYSTEM_hive_isp_css_2400_system)
+	return _sh_css_dma_get_conn_group_info(_DMA_V2_FSM_GROUP_FSM_CTRL_STATE_IDX, _DMA_V2_FSM_GROUP_FSM_CTRL_IDX, gr_id);
+#else
+	return _sh_css_dma_get_conn_group_info(_DMA_FSM_GROUP_FSM_CTRL_STATE_IDX, _DMA_SEL_FSM_CONN_CTRL, gr_id);
+#endif
 }
 
 static inline unsigned
 sh_css_dma_get_conn_group_fsm_control_request_device(int gr_id)
 {
-	return _sh_css_dma_get_conn_group_info(1, 3, gr_id);
+#if defined(SYSTEM_hive_isp_css_2400_system)
+	return _sh_css_dma_get_conn_group_info(_DMA_V2_FSM_GROUP_FSM_CTRL_REQ_DEV_IDX, _DMA_V2_FSM_GROUP_FSM_CTRL_IDX, gr_id);
+#else
+	return _sh_css_dma_get_conn_group_info(_DMA_FSM_GROUP_FSM_CTRL_REQ_DEV_IDX, _DMA_SEL_FSM_CONN_CTRL, gr_id);
+#endif
 }
 
 static inline unsigned
 sh_css_dma_get_conn_group_fsm_control_request_address(int gr_id)
 {
-	return _sh_css_dma_get_conn_group_info(2, 3, gr_id);
+#if defined(SYSTEM_hive_isp_css_2400_system)
+	return _sh_css_dma_get_conn_group_info(_DMA_V2_FSM_GROUP_FSM_CTRL_REQ_ADDR_IDX, _DMA_V2_FSM_GROUP_FSM_CTRL_IDX, gr_id);
+#else
+	return _sh_css_dma_get_conn_group_info(_DMA_FSM_GROUP_FSM_CTRL_REQ_ADDR_IDX, _DMA_SEL_FSM_CONN_CTRL, gr_id);
+#endif
 }
 
 static inline unsigned
 sh_css_dma_get_conn_group_fsm_control_request_stride(int gr_id)
 {
-	return _sh_css_dma_get_conn_group_info(3, 3, gr_id);
+#if defined(SYSTEM_hive_isp_css_2400_system)
+	return _sh_css_dma_get_conn_group_info(_DMA_V2_FSM_GROUP_FSM_CTRL_REQ_STRIDE_IDX, _DMA_V2_FSM_GROUP_FSM_CTRL_IDX, gr_id);
+#else
+	return _sh_css_dma_get_conn_group_info(_DMA_FSM_GROUP_FSM_CTRL_REQ_STRIDE_IDX, _DMA_SEL_FSM_CONN_CTRL, gr_id);
+#endif
 }
 
 static inline unsigned
 sh_css_dma_get_conn_group_fsm_control_request_width(int gr_id)
 {
-	return _sh_css_dma_get_conn_group_info(4, 3, gr_id);
+#if defined(SYSTEM_hive_isp_css_2400_system)
+	return _sh_css_dma_get_conn_group_info(_DMA_V2_FSM_GROUP_FSM_CTRL_REQ_XB_IDX, _DMA_V2_FSM_GROUP_FSM_CTRL_IDX, gr_id);
+#else
+	return _sh_css_dma_get_conn_group_info(_DMA_FSM_GROUP_FSM_CTRL_REQ_XB_IDX, _DMA_SEL_FSM_CONN_CTRL, gr_id);
+#endif
 }
 
 static inline unsigned
 sh_css_dma_get_conn_group_fsm_control_request_height(int gr_id)
 {
-	return _sh_css_dma_get_conn_group_info(5, 3, gr_id);
+#if defined(SYSTEM_hive_isp_css_2400_system)
+	return _sh_css_dma_get_conn_group_info(_DMA_V2_FSM_GROUP_FSM_CTRL_REQ_YB_IDX, _DMA_V2_FSM_GROUP_FSM_CTRL_IDX, gr_id);
+#else
+	return _sh_css_dma_get_conn_group_info(_DMA_FSM_GROUP_FSM_CTRL_REQ_YB_IDX, _DMA_SEL_FSM_CONN_CTRL, gr_id);
+#endif
 }
 
 static inline unsigned
 sh_css_dma_get_conn_group_fsm_control_pack_request_device(int gr_id)
 {
-	return _sh_css_dma_get_conn_group_info(6, 3, gr_id);
+#if defined(SYSTEM_hive_isp_css_2400_system)
+	return _sh_css_dma_get_conn_group_info(_DMA_V2_FSM_GROUP_FSM_CTRL_PACK_REQ_DEV_IDX, _DMA_V2_FSM_GROUP_FSM_CTRL_IDX, gr_id);
+#else
+	return _sh_css_dma_get_conn_group_info(_DMA_FSM_GROUP_FSM_CTRL_PACK_REQ_DEV_IDX, _DMA_SEL_FSM_CONN_CTRL, gr_id);
+#endif
 }
 
 static inline unsigned
 sh_css_dma_get_conn_group_fsm_control_pack_write_device(int gr_id)
 {
-	return _sh_css_dma_get_conn_group_info(7, 3, gr_id);
+#if defined(SYSTEM_hive_isp_css_2400_system)
+	return _sh_css_dma_get_conn_group_info(_DMA_V2_FSM_GROUP_FSM_CTRL_PACK_WR_DEV_IDX, _DMA_V2_FSM_GROUP_FSM_CTRL_IDX, gr_id);
+#else
+	return _sh_css_dma_get_conn_group_info(_DMA_FSM_GROUP_FSM_CTRL_PACK_WR_DEV_IDX, _DMA_SEL_FSM_CONN_CTRL, gr_id);
+#endif
 }
 
 static inline unsigned
 sh_css_dma_get_conn_group_fsm_control_write_address(int gr_id)
 {
-	return _sh_css_dma_get_conn_group_info(8, 3, gr_id);
+#if defined(SYSTEM_hive_isp_css_2400_system)
+	return _sh_css_dma_get_conn_group_info(_DMA_V2_FSM_GROUP_FSM_CTRL_WR_ADDR_IDX, _DMA_V2_FSM_GROUP_FSM_CTRL_IDX, gr_id);
+#else
+	return _sh_css_dma_get_conn_group_info(_DMA_FSM_GROUP_FSM_CTRL_WR_ADDR_IDX, _DMA_SEL_FSM_CONN_CTRL, gr_id);
+#endif
 }
 
 static inline unsigned
 sh_css_dma_get_conn_group_fsm_control_write_stride(int gr_id)
 {
-	return _sh_css_dma_get_conn_group_info(9, 3, gr_id);
+#if defined(SYSTEM_hive_isp_css_2400_system)
+	return _sh_css_dma_get_conn_group_info(_DMA_V2_FSM_GROUP_FSM_CTRL_WR_STRIDE_IDX, _DMA_V2_FSM_GROUP_FSM_CTRL_IDX, gr_id);
+#else
+	return _sh_css_dma_get_conn_group_info(_DMA_FSM_GROUP_FSM_CTRL_WR_STRIDE_IDX, _DMA_SEL_FSM_CONN_CTRL, gr_id);
+#endif
 }
 
 static inline unsigned
 sh_css_dma_get_conn_group_fsm_control_pack_request_width(int gr_id)
 {
-	return _sh_css_dma_get_conn_group_info(10, 3, gr_id);
+#if defined(SYSTEM_hive_isp_css_2400_system)
+	return _sh_css_dma_get_conn_group_info(_DMA_V2_FSM_GROUP_FSM_CTRL_PACK_REQ_XB_IDX, _DMA_V2_FSM_GROUP_FSM_CTRL_IDX, gr_id);
+#else
+	return _sh_css_dma_get_conn_group_info(_DMA_FSM_GROUP_FSM_CTRL_PACK_REQ_XB_IDX, _DMA_SEL_FSM_CONN_CTRL, gr_id);
+#endif
 }
 
 static inline unsigned
 sh_css_dma_get_conn_group_fsm_control_pack_write_height(int gr_id)
 {
-	return _sh_css_dma_get_conn_group_info(11, 3, gr_id);
+#if defined(SYSTEM_hive_isp_css_2400_system)
+	return _sh_css_dma_get_conn_group_info(_DMA_V2_FSM_GROUP_FSM_CTRL_PACK_WR_YB_IDX, _DMA_V2_FSM_GROUP_FSM_CTRL_IDX, gr_id);
+#else
+	return _sh_css_dma_get_conn_group_info(_DMA_FSM_GROUP_FSM_CTRL_PACK_WR_YB_IDX, _DMA_SEL_FSM_CONN_CTRL, gr_id);
+#endif
 }
 
 static inline unsigned
 sh_css_dma_get_conn_group_fsm_control_pack_write_width(int gr_id)
 {
-	return _sh_css_dma_get_conn_group_info(12, 3, gr_id);
+#if defined(SYSTEM_hive_isp_css_2400_system)
+	return _sh_css_dma_get_conn_group_info(_DMA_V2_FSM_GROUP_FSM_CTRL_PACK_WR_XB_IDX, _DMA_V2_FSM_GROUP_FSM_CTRL_IDX, gr_id);
+#else
+	return _sh_css_dma_get_conn_group_info(_DMA_FSM_GROUP_FSM_CTRL_PACK_WR_XB_IDX, _DMA_SEL_FSM_CONN_CTRL, gr_id);
+#endif
 }
 
 static inline unsigned
 sh_css_dma_get_conn_group_fsm_control_pack_request_elems(int gr_id)
 {
-	return _sh_css_dma_get_conn_group_info(13, 3, gr_id);
+#if defined(SYSTEM_hive_isp_css_2400_system)
+	return _sh_css_dma_get_conn_group_info(_DMA_V2_FSM_GROUP_FSM_CTRL_PACK_ELEM_REQ_IDX, _DMA_V2_FSM_GROUP_FSM_CTRL_IDX, gr_id);
+#else
+	return _sh_css_dma_get_conn_group_info(_DMA_FSM_GROUP_FSM_CTRL_PACK_ELEM_REQ_IDX, _DMA_SEL_FSM_CONN_CTRL, gr_id);
+#endif
 }
 
 static inline unsigned
 sh_css_dma_get_conn_group_fsm_control_pack_write_elems(int gr_id)
 {
-	return _sh_css_dma_get_conn_group_info(14, 3, gr_id);
+#if defined(SYSTEM_hive_isp_css_2400_system)
+	return _sh_css_dma_get_conn_group_info(_DMA_V2_FSM_GROUP_FSM_CTRL_PACK_ELEM_WR_IDX, _DMA_V2_FSM_GROUP_FSM_CTRL_IDX, gr_id);
+#else
+	return _sh_css_dma_get_conn_group_info(_DMA_FSM_GROUP_FSM_CTRL_PACK_ELEM_WR_IDX, _DMA_SEL_FSM_CONN_CTRL, gr_id);
+#endif
 }
 
 static inline unsigned
 sh_css_dma_get_conn_group_fsm_control_pack_extension_and_elem_order(int
 								    gr_id)
 {
-	return _sh_css_dma_get_conn_group_info(15, 3, gr_id);
+#if defined(SYSTEM_hive_isp_css_2400_system)
+	return _sh_css_dma_get_conn_group_info(_DMA_V2_FSM_GROUP_FSM_CTRL_PACK_S_Z_IDX, _DMA_V2_FSM_GROUP_CMD_CTRL_IDX, gr_id);
+#else
+	return _sh_css_dma_get_conn_group_info(_DMA_FSM_GROUP_FSM_CTRL_PACK_S_Z_REV_IDX, _DMA_SEL_FSM_CONN_CTRL, gr_id);
+#endif
 }
 
 static inline unsigned sh_css_dma_get_conn_group_fsm_pack_state(int gr_id)
 {
-	return _sh_css_dma_get_conn_group_info(0, 4, gr_id);
+#if defined(SYSTEM_hive_isp_css_2400_system)
+	return _sh_css_dma_get_conn_group_info(_DMA_V2_FSM_GROUP_FSM_PACK_STATE_IDX, _DMA_V2_FSM_GROUP_FSM_PACK_IDX, gr_id);
+#else
+	return _sh_css_dma_get_conn_group_info(_DMA_FSM_GROUP_FSM_PACK_STATE_IDX, _DMA_SEL_FSM_PACK, gr_id);
+#endif
 }
 
 static inline unsigned
 sh_css_dma_get_conn_group_fsm_pack_counter_height(int gr_id)
 {
-	return _sh_css_dma_get_conn_group_info(1, 4, gr_id);
+#if defined(SYSTEM_hive_isp_css_2400_system)
+	return _sh_css_dma_get_conn_group_info(_DMA_V2_FSM_GROUP_FSM_PACK_CNT_YB_IDX, _DMA_V2_FSM_GROUP_FSM_PACK_IDX, gr_id);
+#else
+	return _sh_css_dma_get_conn_group_info(_DMA_FSM_GROUP_FSM_PACK_CNT_YB_IDX, _DMA_SEL_FSM_PACK, gr_id);
+#endif
 }
 
 static inline unsigned
 sh_css_dma_get_conn_group_fsm_pack_request_counter_width(int gr_id)
 {
-	return _sh_css_dma_get_conn_group_info(2, 4, gr_id);
+#if defined(SYSTEM_hive_isp_css_2400_system)
+	return _sh_css_dma_get_conn_group_info(_DMA_V2_FSM_GROUP_FSM_PACK_CNT_XB_REQ_IDX, _DMA_V2_FSM_GROUP_FSM_PACK_IDX, gr_id);
+#else
+	return _sh_css_dma_get_conn_group_info(_DMA_FSM_GROUP_FSM_PACK_CNT_XB_REQ_IDX, _DMA_SEL_FSM_PACK, gr_id);
+#endif
 }
 
 static inline unsigned
 sh_css_dma_get_conn_group_fsm_pack_write_counter_width(int gr_id)
 {
-	return _sh_css_dma_get_conn_group_info(3, 4, gr_id);
+#if defined(SYSTEM_hive_isp_css_2400_system)
+	return _sh_css_dma_get_conn_group_info(_DMA_V2_FSM_GROUP_FSM_PACK_CNT_XB_WR_IDX, _DMA_V2_FSM_GROUP_FSM_PACK_IDX, gr_id);
+#else
+	return _sh_css_dma_get_conn_group_info(_DMA_FSM_GROUP_FSM_PACK_CNT_XB_WR_IDX, _DMA_SEL_FSM_PACK, gr_id);
+#endif
 }
 
 static inline unsigned
 sh_css_dma_get_conn_group_fsm_request_state(int	gr_id)
 {
-	return _sh_css_dma_get_conn_group_info(0, 5, gr_id);
+#if defined(SYSTEM_hive_isp_css_2400_system)
+	return _sh_css_dma_get_conn_group_info(_DMA_V2_FSM_GROUP_FSM_REQ_STATE_IDX, _DMA_V2_FSM_GROUP_FSM_REQ_IDX, gr_id);
+#else
+	return _sh_css_dma_get_conn_group_info(_DMA_FSM_GROUP_FSM_REQ_STATE_IDX, _DMA_SEL_FSM_REQ, gr_id);
+#endif
 }
 
 static inline unsigned
 sh_css_dma_get_conn_group_fsm_request_counter_height(int gr_id)
 {
-	return _sh_css_dma_get_conn_group_info(1, 5, gr_id);
+#if defined(SYSTEM_hive_isp_css_2400_system)
+	return _sh_css_dma_get_conn_group_info(_DMA_V2_FSM_GROUP_FSM_REQ_CNT_YB_IDX, _DMA_V2_FSM_GROUP_FSM_REQ_IDX, gr_id);
+#else
+	return _sh_css_dma_get_conn_group_info(_DMA_FSM_GROUP_FSM_REQ_CNT_YB_IDX, _DMA_SEL_FSM_REQ, gr_id);
+#endif
 }
 
 static inline unsigned
 sh_css_dma_get_conn_group_fsm_request_counter_width(int gr_id)
 {
-	return _sh_css_dma_get_conn_group_info(2, 5, gr_id);
+#if defined(SYSTEM_hive_isp_css_2400_system)
+	return _sh_css_dma_get_conn_group_info(_DMA_V2_FSM_GROUP_FSM_REQ_CNT_XB_IDX, _DMA_V2_FSM_GROUP_FSM_REQ_IDX, gr_id);
+#else
+	return _sh_css_dma_get_conn_group_info(_DMA_FSM_GROUP_FSM_REQ_CNT_XB_IDX, _DMA_SEL_FSM_REQ, gr_id);
+#endif
 }
 
 static inline unsigned
 sh_css_dma_get_conn_group_fsm_write_height(int gr_id)
 {
-	return _sh_css_dma_get_conn_group_info(1, 6, gr_id);
+#if defined(SYSTEM_hive_isp_css_2400_system)
+	return _sh_css_dma_get_conn_group_info(_DMA_V2_FSM_GROUP_FSM_WR_CNT_YB_IDX, _DMA_V2_FSM_GROUP_FSM_WR_IDX, gr_id);
+#else
+	return _sh_css_dma_get_conn_group_info(_DMA_FSM_GROUP_FSM_WR_CNT_YB_IDX, _DMA_SEL_FSM_WR, gr_id);
+#endif
 }
 
 static inline unsigned sh_css_dma_get_conn_group_fsm_write_width(int gr_id)
 {
-	return _sh_css_dma_get_conn_group_info(2, 6, gr_id);
+#if defined(SYSTEM_hive_isp_css_2400_system)
+	return _sh_css_dma_get_conn_group_info(_DMA_V2_FSM_GROUP_FSM_WR_CNT_XB_IDX, _DMA_V2_FSM_GROUP_FSM_WR_IDX, gr_id);
+#else
+	return _sh_css_dma_get_conn_group_info(_DMA_FSM_GROUP_FSM_WR_CNT_XB_IDX, _DMA_SEL_FSM_WR, gr_id);
+#endif
 }
 
 /* Device Interface */
 static inline unsigned
 _sh_css_dma_get_device_interface_info(int info_id, int dev_id)
 {
+#if defined(SYSTEM_hive_isp_css_2400_system)
 	return _sh_css_dma_get_register(
-		  hrt_dma_v1_device_interface_info_register_address(info_id,
-			  dev_id));
+		  hrt_dma_v2_device_interface_info_register_address(info_id,dev_id));
+#else
+	return _sh_css_dma_get_register(
+		  hrt_dma_v1_device_interface_info_register_address(info_id,dev_id));
+#endif
 }
 
 static inline unsigned
@@ -1219,19 +1430,31 @@ sh_css_stream_monitor_get_register(unsigned addr)
 static inline unsigned int
 sh_css_sp_stream_monitor_get_status(void)
 {
+#if defined(SYSTEM_hive_isp_css_2400_system)
+	return sh_css_stream_monitor_get_register(HIVE_GP_REGS_SP_STREAM_STAT_IDX);
+#else
 	return sh_css_stream_monitor_get_register(HIVE_GP_REGS_SP_STREAM_STAT);
+#endif
 }
 
 static inline unsigned int
 sh_css_isp_stream_monitor_get_status(void)
 {
+#if defined(SYSTEM_hive_isp_css_2400_system)
+	return sh_css_stream_monitor_get_register(HIVE_GP_REGS_ISP_STREAM_STAT_IDX);
+#else
 	return sh_css_stream_monitor_get_register(HIVE_GP_REGS_ISP_STREAM_STAT);
+#endif
 }
 
 static inline unsigned int
 sh_css_mod_stream_monitor_get_status(void)
 {
+#if defined(SYSTEM_hive_isp_css_2400_system)
+	return sh_css_stream_monitor_get_register(HIVE_GP_REGS_MOD_STREAM_STAT_IDX);
+#else
 	return sh_css_stream_monitor_get_register(HIVE_GP_REGS_MOD_STREAM_STAT);
+#endif
 }
 
 /* use the following function if the stream stat word is already available.  */
@@ -1356,13 +1579,17 @@ sh_css_hrt_system_is_idle(void)
 	/* GDC to SP/ISP */
 	not_idle |=
 	    sh_css_get_mod_stream_stat_valid(MOD_STR_MON_PORT_SND_GDC);
+#ifndef SYSTEM_hive_isp_css_2400_system
 	not_idle |=
 	    sh_css_get_sp_stream_stat_valid(SP_STR_MON_PORT_RCV_GDC);
+#endif
 	not_idle |=
 	    sh_css_get_isp_stream_stat_valid(ISP_STR_MON_PORT_RCV_GDC);
 	/* SP/ISP to GDC */
+#ifndef SYSTEM_hive_isp_css_2400_system
 	not_idle |=
 	    sh_css_get_sp_stream_stat_valid(SP_STR_MON_PORT_SND_GDC);
+#endif
 	not_idle |=
 	    sh_css_get_isp_stream_stat_valid(ISP_STR_MON_PORT_SND_GDC);
 	not_idle |=
@@ -1818,14 +2045,17 @@ sh_css_hrt_s2m_send_line2(unsigned short *data,
 	if (type == sh_css_mipi_data_type_rgb)
 		is_rgb = 1;
 
+#ifndef SYSTEM_hive_isp_css_2400_system
 	if (type == sh_css_mipi_data_type_yuv420_legacy)
 		is_legacy = 1;
+#endif
 
 	for (i = 0; i < hblank_cycles; i++)
 		sh_css_streaming_to_mipi_send_empty_token();
 	sh_css_streaming_to_mipi_send_sol();
 	for (i = 0; i < marker_cycles; i++)
 		sh_css_streaming_to_mipi_send_empty_token();
+#ifdef SYSTEM_hive_isp_css_2400_system
 	for (i = 0; i < width; i++, data++) {
 		/* for RGB in two_ppc, we only actually send 2 pixels per
 		 * clock in the even pixels (0, 2 etc). In the other cycles,
@@ -1853,8 +2083,9 @@ sh_css_hrt_s2m_send_line2(unsigned short *data,
 		} else {
 			sh_css_streaming_to_mipi_send_data_a(data[0]);
 		}
+		hrt_sleep();
 	}
-
+#else
 	for (i = 0; i < width2; i++, data2++) {
 		/* for RGB in two_ppc, we only actually send 2 pixels per
 		 * clock in the even pixels (0, 2 etc). In the other cycles,
@@ -1883,6 +2114,7 @@ sh_css_hrt_s2m_send_line2(unsigned short *data,
 			sh_css_streaming_to_mipi_send_data_a(data2[0]);
 		}
 	}
+#endif
 	for (i = 0; i < hblank_cycles; i++)
 		sh_css_streaming_to_mipi_send_empty_token();
 	sh_css_streaming_to_mipi_send_eol();
@@ -1945,6 +2177,7 @@ sh_css_hrt_s2m_send_frame(unsigned short *data,
 
 	sh_css_hrt_s2m_start_frame(ch_id, fmt_type);
 	for (i = 0; i < height; i++) {
+		printk(KERN_ALERT "!!! SENDING LINE %d.\n", i);
 		if ((type == sh_css_mipi_data_type_yuv420) &&
 		    (i & 1) == 1) {
 			sh_css_hrt_s2m_send_line(data, 2 * width,
@@ -1959,9 +2192,16 @@ sh_css_hrt_s2m_send_frame(unsigned short *data,
 							   two_ppc, type);
 			data += width;
 		}
+		printk(KERN_ALERT "!!! FINISH SENDING LINE %d.\n", i);
 	}
+	printk(KERN_ALERT "!!! SENDING END .\n");
 	sh_css_hrt_s2m_end_frame(marker_cycles);
+	printk(KERN_ALERT "!!! FINISH SENDING END .\n");
 }
+
+#if defined(SYSTEM_hive_isp_css_2400_system)
+#include <hive_isp_css_2400_system.h>
+#endif
 
 static enum sh_css_mipi_data_type
 sh_css_hrt_s2m_determine_type(enum sh_css_input_format input_format)
@@ -1970,8 +2210,13 @@ sh_css_hrt_s2m_determine_type(enum sh_css_input_format input_format)
 
 	type = sh_css_mipi_data_type_regular;
 	if (input_format == SH_CSS_INPUT_FORMAT_YUV420_8_LEGACY) {
+#if defined(SYSTEM_hive_isp_css_2400_system)
+/* MW_R1MRFLD : yuv420_legacy and rgb share the same protocol */
+		type = sh_css_mipi_data_type_rgb;
+#else
 		type =
 			sh_css_mipi_data_type_yuv420_legacy;
+#endif
 	} else if (input_format == SH_CSS_INPUT_FORMAT_YUV420_8 ||
 		   input_format == SH_CSS_INPUT_FORMAT_YUV420_10) {
 		type =
@@ -2001,6 +2246,28 @@ sh_css_hrt_send_input_frame(unsigned short *data,
 	unsigned int fmt_type, hblank_cycles, marker_cycles;
 	enum sh_css_mipi_data_type type;
 
+#if defined(SYSTEM_hive_isp_css_2400_system)
+	hblank_cycles = 187;
+	marker_cycles = 6;
+
+	sh_css_input_format_type(input_format, SH_CSS_MIPI_COMPRESSION_NONE, &fmt_type);
+	type = sh_css_mipi_data_type_regular;
+	if (input_format == SH_CSS_INPUT_FORMAT_YUV420_8_LEGACY) {
+/* MW_R1MRFLD : yuv420_legacy and rgb share the same protocol */
+		type = sh_css_mipi_data_type_rgb;
+	} else if (input_format == SH_CSS_INPUT_FORMAT_YUV420_8 ||
+		   input_format == SH_CSS_INPUT_FORMAT_YUV420_10) {
+		type = sh_css_mipi_data_type_yuv420;
+	} else if (input_format >= SH_CSS_INPUT_FORMAT_RGB_444 &&
+		   input_format <= SH_CSS_INPUT_FORMAT_RGB_888) {
+		type = sh_css_mipi_data_type_rgb;
+	}
+
+	sh_css_hrt_s2m_send_frame(data, width, height,
+			ch_id, fmt_type, hblank_cycles, marker_cycles,
+			two_ppc, type);
+
+#else
 	hblank_cycles = HBLANK_CYCLES;
 	marker_cycles = MARKER_CYCLES;
 	sh_css_input_format_type(input_format,
@@ -2012,6 +2279,7 @@ sh_css_hrt_send_input_frame(unsigned short *data,
 	sh_css_hrt_s2m_send_frame(data, width, height,
 			ch_id, fmt_type, hblank_cycles, marker_cycles,
 			two_ppc, type);
+#endif
 }
 
 void

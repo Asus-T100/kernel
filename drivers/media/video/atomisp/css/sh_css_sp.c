@@ -29,8 +29,17 @@
 #include "sh_css_defs.h"
 #include "sh_css_internal.h"
 #include "sh_css_hw.h"
+
+#ifdef CONFIG_X86_MRFLD
+#define SYSTEM_hive_isp_css_2400_system
+#endif
+
 #define HRT_NO_BLOB_sp
-#include "sp.map.h"
+#ifdef SYSTEM_hive_isp_css_2400_system
+#include "hrt_2400/sp.map.h"
+#else
+#include "hrt/sp.map.h"
+#endif
 
 /* Convenience macro to force a value to a lower even value.
  *  We do not want to (re)use the kernel macro round_down here
@@ -40,12 +49,16 @@
 #define EVEN_FLOOR(x)	(x & ~1)
 
 struct sh_css_sp_group		sh_css_sp_group;
+#ifndef SYSTEM_hive_isp_css_2400_system
 static struct sh_css_sp_per_frame_data per_frame_data;
-
+#endif
 /* This data is stored every frame */
 void
 sh_css_store_sp_per_frame_data(void)
 {
+#ifdef SYSTEM_hive_isp_css_2400_system
+	store_sp_var(sp_group, &sh_css_sp_group, sizeof(sh_css_sp_group));
+#else
 	per_frame_data.sp_group_addr = sh_css_store_sp_group_to_ddr();
 	per_frame_data.read_sp_group_from_ddr = true;
 
@@ -53,6 +66,7 @@ sh_css_store_sp_per_frame_data(void)
 			sizeof(per_frame_data));
 	/* Clear for next frame */
 	memset(&per_frame_data, 0, sizeof(per_frame_data));
+#endif
 }
 
 static void *init_dmem_ddr;
@@ -99,15 +113,30 @@ sh_css_sp_uninit(void)
 	}
 }
 
+#ifdef SYSTEM_hive_isp_css_2400_system
+/* Copy all host initialized SP variables at once. */
+void
+sh_css_copy_sp_group(void)
+{
+  store_sp_var(sp_group, &sh_css_sp_group, sizeof(sh_css_sp_group));
+}
+#endif
+
 void
 sh_css_sp_start_histogram(struct sh_css_histogram *histogram,
 			  const struct sh_css_frame *frame)
 {
+#ifdef SYSTEM_hive_isp_css_2400_system
+	store_sp_ptr(sp_histo_addr, histogram->data);
+	sh_css_sp_group.sp_in_frame = *frame;
+	sh_css_copy_sp_group();
+#else
 	sh_css_sp_group.histo_addr = histogram->data;
 	sh_css_sp_group.sp_in_frame = *frame;
 	sh_css_sp_group.dma_proxy.busy_wait = false;
 
 	sh_css_store_sp_per_frame_data();
+#endif
 	sh_css_hrt_sp_start_histogram();
 }
 
@@ -126,12 +155,19 @@ void
 sh_css_sp_start_binary_copy(struct sh_css_frame *out_frame,
 			    unsigned two_ppc)
 {
+#ifdef SYSTEM_hive_isp_css_2400_system
+	store_sp_ptr(sp_bin_copy_out, out_frame->planes.binary.data.data);
+	store_sp_int(sp_bin_copy_bytes_available, out_frame->data_bytes);
+	sh_css_sp_group.isp_2ppc = two_ppc;
+	sh_css_copy_sp_group();
+#else
 	sh_css_sp_group.bin_copy.out = out_frame->planes.binary.data.data;
 	sh_css_sp_group.bin_copy.bytes_available = out_frame->data_bytes;
 	sh_css_sp_group.isp_2ppc = two_ppc;
 	sh_css_sp_group.dma_proxy.busy_wait = false;
 
 	sh_css_store_sp_per_frame_data();
+#endif
 	sh_css_hrt_sp_start_copy_binary_data();
 }
 
@@ -141,6 +177,21 @@ sh_css_sp_start_raw_copy(struct sh_css_binary *binary,
 			 unsigned two_ppc,
 			 bool start)
 {
+#ifdef SYSTEM_hive_isp_css_2400_system
+	store_sp_ptr(sp_raw_copy_out,           out_frame->planes.raw.data);
+	store_sp_ptr(sp_raw_copy_height,        out_frame->info.height);
+	store_sp_ptr(sp_raw_copy_width,         out_frame->info.width);
+	store_sp_ptr(sp_raw_copy_padded_width,  out_frame->info.padded_width);
+	store_sp_ptr(sp_raw_copy_raw_bit_depth, out_frame->info.raw_bit_depth);
+	store_sp_ptr(sp_raw_copy_max_input_width,
+		     binary->info->max_input_width);
+	store_sp_ptr(sp_proxy_busy_wait,        true);
+  	sh_css_sp_group.isp_2ppc = two_ppc;
+	sh_css_sp_group.xmem_bin_addr = binary->info->xmem_addr;
+	sh_css_copy_sp_group();
+	if (start)
+		sh_css_hrt_sp_start_copy_raw_data();
+#else
 	sh_css_sp_group.raw_copy.out	= out_frame->planes.raw.data;
 	sh_css_sp_group.raw_copy.height	= out_frame->info.height;
 	sh_css_sp_group.raw_copy.width	= out_frame->info.width;
@@ -156,6 +207,7 @@ sh_css_sp_start_raw_copy(struct sh_css_binary *binary,
 		sh_css_store_sp_per_frame_data();
 		sh_css_hrt_sp_start_copy_raw_data();
 	}
+#endif
 }
 
 unsigned int
@@ -423,6 +475,15 @@ sh_css_sp_set_if_configs(const struct sh_css_if_config *config_a,
 		block_b = config_b->block_no_reqs;
 	sh_css_hrt_if_reset();
 	sh_css_hrt_if_set_block_fifo_no_reqs(block_a, block_b);
+#ifdef SYSTEM_hive_isp_css_2400_system
+	store_sp_int(sp_if_a_changed, 1);
+	store_sp_var(sp_if_a, (void *)config_a, sizeof(*config_a));
+
+	if (config_b) {
+		store_sp_int(sp_if_b_changed, 1);
+		store_sp_var(sp_if_b, (void *)config_b, sizeof(*config_b));
+	}
+#else
 	sh_css_sp_group.if_config_a = *config_a;
 	per_frame_data.if_a_changed = true;
 
@@ -430,6 +491,7 @@ sh_css_sp_set_if_configs(const struct sh_css_if_config *config_a,
 		sh_css_sp_group.if_config_b = *config_b;
 		per_frame_data.if_b_changed = true;
 	}
+#endif
 }
 
 void
@@ -437,11 +499,19 @@ sh_css_sp_program_input_circuit(int fmt_type,
 				int ch_id,
 				enum sh_css_input_mode input_mode)
 {
+#ifdef SYSTEM_hive_isp_css_2400_system
+	store_sp_int(sp_no_side_band, 0);
+	store_sp_int(sp_fmt_type, fmt_type);
+	store_sp_int(sp_ch_id, ch_id);
+	store_sp_int(sp_input_mode, input_mode);
+	store_sp_int(sp_program_input_circuit, 1);
+#else
 	sh_css_sp_group.input_circuit.no_side_band = false;
 	sh_css_sp_group.input_circuit.fmt_type     = fmt_type;
 	sh_css_sp_group.input_circuit.ch_id	   = ch_id;
 	sh_css_sp_group.input_circuit.input_mode   = input_mode;
 	per_frame_data.program_input_circuit = true;
+#endif
 }
 
 void
@@ -449,10 +519,17 @@ sh_css_sp_configure_sync_gen(int width, int height,
 			     int hblank_cycles,
 			     int vblank_cycles)
 {
+#ifdef SYSTEM_hive_isp_css_2400_system
+	store_sp_int(sp_sync_gen_width, width);
+	store_sp_int(sp_sync_gen_height, height);
+	store_sp_int(sp_sync_gen_hblank_cycles, hblank_cycles);
+	store_sp_int(sp_sync_gen_vblank_cycles, vblank_cycles);
+#else
 	sh_css_sp_group.sync_gen.width	       = width;
 	sh_css_sp_group.sync_gen.height	       = height;
 	sh_css_sp_group.sync_gen.hblank_cycles = hblank_cycles;
 	sh_css_sp_group.sync_gen.vblank_cycles = vblank_cycles;
+#endif
 }
 
 void
@@ -462,17 +539,29 @@ sh_css_sp_configure_tpg(int x_mask,
 			int y_delta,
 			int xy_mask)
 {
+#ifdef SYSTEM_hive_isp_css_2400_system
+	store_sp_int(sp_tpg_x_mask, x_mask);
+	store_sp_int(sp_tpg_y_mask, y_mask);
+	store_sp_int(sp_tpg_x_delta, x_delta);
+	store_sp_int(sp_tpg_y_delta, y_delta);
+	store_sp_int(sp_tpg_xy_mask, xy_mask);
+#else
 	sh_css_sp_group.tpg.x_mask  = x_mask;
 	sh_css_sp_group.tpg.y_mask  = y_mask;
 	sh_css_sp_group.tpg.x_delta = x_delta;
 	sh_css_sp_group.tpg.y_delta = y_delta;
 	sh_css_sp_group.tpg.xy_mask = xy_mask;
+#endif
 }
 
 void
 sh_css_sp_configure_prbs(int seed)
 {
+#ifdef SYSTEM_hive_isp_css_2400_system
+	store_sp_int(sp_prbs_seed, seed);
+#else
 	sh_css_sp_group.prbs.seed = seed;
+#endif
 }
 
 static enum sh_css_err
@@ -557,7 +646,13 @@ sh_css_sp_compute_overlay(const struct sh_css_overlay *overlay,
 void
 sh_css_sp_set_overlay(const struct sh_css_overlay *overlay)
 {
+#ifdef SYSTEM_hive_isp_css_2400_system
+	struct sh_css_sp_overlay sp_overlay;
+	sh_css_sp_compute_overlay(overlay, &sp_overlay);
+	store_sp_var(sp_si, &sp_overlay, sizeof(sp_overlay));
+#else
 	sh_css_sp_compute_overlay(overlay, &sh_css_sp_group.overlay);
+#endif
 }
 
 enum sh_css_err
@@ -610,9 +705,10 @@ sh_css_sp_start_isp(struct sh_css_binary *binary,
 	sh_css_sp_group.xmem_bin_addr            = binary->info->xmem_addr;
 	sh_css_sp_group.xmem_map_addr            =
 					sh_css_params_ddr_address_map();
+#ifndef SYSTEM_hive_isp_css_2400_system
 	sh_css_sp_group.anr			 = low_light;
 	sh_css_sp_group.dma_proxy.busy_wait	 = start_copy;
-
+#endif
 	store_sp_int(sp_isp_started, 0);
 
 	if (binary->info->enable_dvs_envelope)
@@ -626,9 +722,11 @@ sh_css_sp_start_isp(struct sh_css_binary *binary,
 	err = sh_css_sp_write_frame_pointers(args);
 	if (err != sh_css_success)
 		return err;
-
+#ifdef SYSTEM_hive_isp_css_2400_system
+	sh_css_copy_sp_group();
+#else
 	sh_css_store_sp_per_frame_data();
-
+#endif
 	sh_css_hrt_sp_start_isp();
 	return err;
 }

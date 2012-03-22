@@ -24,10 +24,40 @@
 #ifndef _SH_CSS_SP_START_H_
 #define _SH_CSS_SP_START_H_
 
+#ifdef CONFIG_X86_MRFLD
+#define SYSTEM_hive_isp_css_2400_system
+#endif
+
+#if defined(SYSTEM_hive_isp_css_2400_system)
+#include "hrt_2400/cell.h"
+#include "hrt_2400/host.h" 
+#endif
+
 #include "sh_css_firmware.h"
 
+#if defined(SYSTEM_hive_isp_css_2400_system)
+
+#ifdef PRINT_CSIM_STATS
+#include "sh_css_statistics.h"
+#define stat_new_binary() sh_css_statistics_frame(true)
+#else
+#define stat_new_binary() 
+#endif
+
+#define sh_css_sp_start_function(func) \
+	do { \
+		/* sh_css_print_statistics();*/ \
+		stat_new_binary(); \
+		hrt_cell_start_function(SP, func); \
+		/* wait for input network to be ready */ \
+		while (!sh_css_isp_has_started()) { \
+			hrt_sleep(); \
+		} \
+	} while (0)
+#else
 #define sh_css_sp_start_function(func) \
 	sh_css_sp_start(HIVE_ADDR_ ## func ## _entry)
+#endif
 
 /* int on SP is 4 bytes */
 #define SP_INT_BYTES 4

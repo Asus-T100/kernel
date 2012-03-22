@@ -27,19 +27,37 @@
 #ifndef _SH_CSS_HRT_H_
 #define _SH_CSS_HRT_H_
 
-#include <hmm/hmm.h>
+#ifdef CONFIG_X86_MRFLD
+#define SYSTEM_hive_isp_css_2400_system
+#endif
 
 /* here we include some system header files that provide constants and such
    about the system and the ISP processor. */
 #include <hive_isp_css_host_ids_hrt.h>
-#include <hive_isp_css_defs.h>
+#if defined(SYSTEM_hive_isp_css_2400_system)
+
+#include <hmm_2400/hmm_2400.h>
+#include <isp2400_mamoiada_params.h>
+/* MW_R1MRFLD : Include file added to "sp_template" in DevGhanius2, but not needed here */
+/*#include <scalar_processor_params.h>*/
+#include <gdc_v2_defs.h>
+#include <hive_isp_css_2400_defs.h>
+#include <hive_isp_css_2400_irq_types_hrt.h>
+
+#else  /* defined(SYSTEM_hive_isp_css_2400_system) */
+
+#include <hmm/hmm.h>
 #include <isp2300_medfield_params.h>
+#include <hive_isp_css_defs.h>
+#include <hive_isp_css_irq_types_hrt.h>
+/* MW_R1MRFLD : Include file added to "sp_template" in DevGhanius2, but not needed here */
 #include <scalar_processor_params.h>
 #include <gdc_defs.h>
 
+#endif /* !defined(SYSTEM_hive_isp_css_2400_system) */
+
 /* The following files provide access to types and memory related functions
    that contain system specific behavior. */
-#include <hive_isp_css_irq_types_hrt.h>
 #include <hive_isp_css_mm_hrt.h>
 
 #include "sh_css_types.h"
@@ -229,6 +247,11 @@ struct sh_css_sp_stall_state {
 	bool fifo5;
 	bool fifo6;
 	bool fifo7;
+#if defined(SYSTEM_hive_isp_css_2400_system)
+	bool fifo8;
+	bool fifo9;
+	bool fifoa;
+#endif
 	bool dmem;
 	bool control_master;
 	bool icache_master;
@@ -241,11 +264,19 @@ struct sh_css_isp_stall_state {
 	bool fifo3;
 	bool fifo4;
 	bool fifo5;
+#if defined(SYSTEM_hive_isp_css_2400_system)
+	bool fifo6;
+#endif
 	bool stat_ctrl;
 	bool dmem;
 	bool vmem;
 	bool vamem1;
 	bool vamem2;
+#if defined(SYSTEM_hive_isp_css_2400_system)
+	bool vamem3;
+	bool hmem;
+	bool pmem;
+#endif
 };
 
 struct sh_css_fifo_channel_state {

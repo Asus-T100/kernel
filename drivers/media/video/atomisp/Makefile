@@ -35,6 +35,7 @@ INCLUDES := -I$(srctree)/$(src)/include \
 	    -I$(src)/hrt \
 	    -I$(src)/css \
 	    -I$(srctree)/$(src)/css/hrt \
+	    -I$(srctree)/$(src)/css/hrt_2400 \
 	    -I$(srctree)/drivers/staging/mrst/bc_video
 
 DEFINES := -DHRT_HW -DHRT_ISP_CSS_CUSTOM_HOST -DHRT_USE_VIR_ADDRS -DHRT_KERNEL

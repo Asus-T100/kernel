@@ -20,14 +20,22 @@
 * 02110-1301, USA.
 *
 */
+#ifdef CONFIG_X86_MRFLD
+#define SYSTEM_hive_isp_css_2400_system
+#endif
 
 #include "sh_css_sp_start.h"
 #include "sh_css_sp.h"
 #include "sh_css_hw.h"
 #include "sh_css_hrt.h"
-#include "sp.map.h"
 #include "sh_css_firmware.h"
 
+#ifdef SYSTEM_hive_isp_css_2400_system
+#include "hrt_2400/cell.h"
+#include "hrt_2400/sp.map.h"
+#else
+#include "hrt/sp.map.h"
+#endif
 static unsigned char *sp_dmem_base_address = SP_DMEM_BASE;
 static bool invalidate_mmu;
 
@@ -58,6 +66,10 @@ sh_css_sp_load_program(const struct sh_css_sp_fw *fw, const char *sp_prog,
 {
 	if (!code_addr) {
 		/* store code (text section) to DDR */
+#if defined(SYSTEM_hive_isp_css_2400_system)
+		code_addr = (void *)hrt_isp_css_mm_alloc(1);
+	}
+#else
 		code_addr = hrt_isp_css_mm_alloc(fw->text_size);
 		if (!code_addr)
 			return NULL;
@@ -67,13 +79,24 @@ sh_css_sp_load_program(const struct sh_css_sp_fw *fw, const char *sp_prog,
 		struct sh_css_sp_fw *f = (struct sh_css_sp_fw *)fw;
 		f->dmem_init_data = (void *)HIVE_ADDR_sp_init_dmem_data;
 	}
-
+#endif
 	/* Set the correct start address for the SP program */
 	sh_css_sp_activate_program(fw, code_addr, sp_prog);
 
 	return code_addr;
 }
-
+#ifdef SYSTEM_hive_isp_css_2400_system
+void
+sh_css_sp_activate_program(const struct sh_css_sp_fw *fw,
+			   void *code_addr,
+			   const char *sp_prog)
+{
+	(void)fw; /* not used on csim, only on hw */
+	hrt_cell_set_icache_base_address(SP, (unsigned long)code_addr);
+	hrt_cell_invalidate_icache(SP);
+	hrt_cell_load_program(SP, sp_prog);
+}
+#else
 void
 sh_css_sp_activate_program(const struct sh_css_sp_fw *fw,
 				void *code_addr,
@@ -90,7 +113,7 @@ sh_css_sp_activate_program(const struct sh_css_sp_fw *fw,
 	/* Set descr in the SP to initialize the SP DMEM */
 	sh_css_sp_store_init_dmem(fw);
 }
-
+#endif
 
 unsigned int
 sh_css_sp_dmem_load_32(unsigned int address)

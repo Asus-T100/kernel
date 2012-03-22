@@ -24,27 +24,34 @@
 *
 */
 
+#ifdef CONFIG_X86_MRFLD
+#define SYSTEM_hive_isp_css_2400_system
+#endif
+
 #if defined(SYSTEM_hive_isp_css_2400_system) || defined(__isp2400_mamoiada) || \
 	defined(__scalar_processor_2400)
 #include <isp2400_mamoiada_params.h>         /* ISP_VEC_NELEMS */
 #include "gdc_v2_defs.h"                     /* HRT_GDC_N */
+#include <hive_isp_css_2400_defs.h>              /* HIVE_ISP_DDR_WORD_BYTES */
 #elif defined(SYSTEM_hive_isp_css_system) || defined(__isp2300_medfield) || \
 	defined(__scalar_processor)
 #include <isp2300_medfield_params.h>
 #include "gdc_defs.h"
+#include <hive_isp_css_defs.h>              /* HIVE_ISP_DDR_WORD_BYTES */
 #elif defined(SYSTEM_hive_isp_css_large_system) || \
 	defined(__isp2300_medfield_large) || defined(__scalar_processor_large)
 #include <isp2300_medfield_large_params.h>
 #include "gdc_defs.h"
+#include <hive_isp_css_defs.h>              /* HIVE_ISP_DDR_WORD_BYTES */
 #elif defined(SYSTEM_isp_css_dev_tb) || defined(__isp2300_medfield_demo) || \
 	defined(__scalar_processor_demo)
 #include <isp2300_medfield_demo_params.h>
 #include "gdc_defs.h"
+#include <hive_isp_css_defs.h>              /* HIVE_ISP_DDR_WORD_BYTES */
 #else
 /* pipeline generator does not accept -D<var> */
 /*#error "sh_css_defs.h: Unknown system" */
 #endif
-#include <hive_isp_css_defs.h>              /* HIVE_ISP_DDR_WORD_BYTES */
 /* Width of a DDR word in bytes */
 #define HIVE_ISP_DDR_WORD_BYTES           (HIVE_ISP_DDR_WORD_BITS/8)
 
@@ -92,7 +99,11 @@
 #if ISP_VEC_NELEMS == 16
 #define SH_CSS_MAX_LEFT_CROPPING          0
 #else
+#ifdef SYSTEM_hive_isp_css_2400_system
+#define SH_CSS_MAX_LEFT_CROPPING          8
+#else
 #define SH_CSS_MAX_LEFT_CROPPING          12
+#endif
 #endif
 
 #define	SH_CSS_SP_MAX_WIDTH               1280
@@ -104,7 +115,11 @@
 
 /* The minimum dvs envelope is 8x8 to make sure the invalid rows/columns
    that result from filter initialization are skipped. */
+#ifdef SYSTEM_hive_isp_css_2400_system
+#define SH_CSS_MIN_DVS_ENVELOPE           8
+#else
 #define SH_CSS_MIN_DVS_ENVELOPE           12
+#endif
 
 /* The FPGA system (vec_nelems == 16) only supports upto 5MP */
 #if ISP_VEC_NELEMS == 16
