@@ -1546,7 +1546,8 @@ static struct i2c_driver mxt_driver = {
 	.driver = {
 		.name	= "atmel_mxt_ts",
 		.owner	= THIS_MODULE,
-#ifdef CONFIG_PM
+/* Avoid calling into suspend/resume ops twice when earlysuspend enabled */
+#if (defined CONFIG_PM) && !(defined CONFIG_HAS_EARLYSUSPEND)
 		.pm	= &mxt_pm_ops,
 #endif
 	},
