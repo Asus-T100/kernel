@@ -40,7 +40,7 @@
  * hmm_bo_device functions.
  */
 int hmm_bo_device_init(struct hmm_bo_device *bdev,
-		       struct isp_mmu_driver *mmu_driver,
+		       struct isp_mmu_client *mmu_driver,
 		       unsigned int vaddr_start, unsigned int size)
 {
 	int ret;

@@ -28,6 +28,9 @@
 #include "hrt/hive_isp_css_mm_hrt.h"
 #include "css/sh_css_debug.h"
 
+#include "css/sh_css_firmware.h"
+#include "atomisp_fw.h"
+
 #define ISP_LEFT_PAD			128	/* equal to 2*NWAY */
 #define CSS_DTRACE_VERBOSITY_LEVEL	5	/* Controls trace verbosity */
 
@@ -316,11 +319,13 @@ static int atomisp_open(struct file *file)
 	}
 
 #ifdef CONFIG_PM
-	/* runtime power management, turn on ISP */
-	if (pm_runtime_get_sync(vdev->v4l2_dev->dev) < 0) {
-		v4l2_err(&atomisp_dev,
-			 "Failed to power on device\n");
-		goto runtime_get_failed;
+	if (!IS_MRFLD) {
+		/* runtime power management, turn on ISP */
+		if (pm_runtime_get_sync(vdev->v4l2_dev->dev) < 0) {
+			v4l2_err(&atomisp_dev,
+				 "Failed to power on device\n");
+			goto runtime_get_failed;
+		}
 	}
 #endif
 	/* if the driver gets closed and reopened, the HMM is not reinitialized
@@ -330,18 +335,31 @@ static int atomisp_open(struct file *file)
 		sh_css_mmu_set_page_table_base_address(
 						isp->hw_contex.mmu_l1_base);
 
-	/* Init ISP */
-	if (sh_css_init(atomisp_kernel_malloc,
-			atomisp_kernel_free,
-			flush_acc_api_arguments, /*NULL,*/
-			SH_CSS_INTERRUPT_SETTING_PULSE,
-			isp->firmware->data,
-			isp->firmware->size))
-		goto css_init_failed;
-	/* CSS has default zoom factor of 61x61, we want no zoom
-	   because the zoom binary for capture is broken (XNR). */
-	sh_css_set_zoom_factor(64, 64);
-
+	if (IS_MRFLD) {
+		/* Init ISP */
+		if (sh_css_init(atomisp_kernel_malloc,
+				atomisp_kernel_free,
+				flush_acc_api_arguments, /*NULL,*/
+				SH_CSS_INTERRUPT_SETTING_PULSE,
+				isp2400_fw_data_sim,
+				sizeof(isp2400_fw_data_sim)))
+			goto css_init_failed;
+		/* CSS has default zoom factor of 61x61, we want no zoom
+		   because the zoom binary for capture is broken (XNR). */
+		sh_css_set_zoom_factor(1024, 1024);
+	} else {
+		/* Init ISP */
+		if (sh_css_init(atomisp_kernel_malloc,
+				atomisp_kernel_free,
+				flush_acc_api_arguments, /*NULL,*/
+				SH_CSS_INTERRUPT_SETTING_PULSE,
+				isp->firmware->data,
+				isp->firmware->size))
+			goto css_init_failed;
+		/* CSS has default zoom factor of 61x61, we want no zoom
+		   because the zoom binary for capture is broken (XNR). */
+		sh_css_set_zoom_factor(64, 64);
+	}
 	/* Initialize the CSS debug trace verbosity level. To change
 	 * the verbosity level, change the definition of this macro
 	 * up in the file
@@ -358,7 +376,8 @@ done:
 
 css_init_failed:
 #ifdef CONFIG_PM
-	pm_runtime_put(vdev->v4l2_dev->dev);
+	if (!IS_MRFLD)
+		pm_runtime_put(vdev->v4l2_dev->dev);
 #endif
 runtime_get_failed:
 	atomisp_uninit_pipe(pipe);

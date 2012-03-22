@@ -61,6 +61,39 @@ static int file_input_s_stream(struct v4l2_subdev *sd, int enable)
 		/* we are facing ISP timeout, if removed this delay */
 		mdelay(1);
 
+	/*
+	 * ISP will stall in copy binary when sending lines more than
+	 * output lines work around here to send lines that fulfills
+	 * the requirement for enough lines do cropping
+	 */
+	if (IS_MRFLD) {
+		switch (isp->sw_contex.run_mode) {
+		case CI_MODE_STILL_CAPTURE:
+			if (isp->sw_contex.bypass)
+				/* copy mode */
+				height = isp->main_format->out.height +
+				    ((isp->input_format->out.height -
+				      isp->main_format->out.height) >> 1) + 1;
+			else
+				/* primary mode */
+				height = isp->main_format->out.height +
+				    ((isp->input_format->out.height -
+				      isp->main_format->out.height) >> 1) + 5;
+			break;
+		case CI_MODE_PREVIEW:
+			/* preview mode */
+			height = isp->main_format->out.height +
+			    ((isp->input_format->out.height -
+			      isp->main_format->out.height) >> 1) + 5;
+			break;
+		default:
+			/* video mode */
+			height = isp->main_format->out.height +
+			    ((isp->input_format->out.height -
+			      isp->main_format->out.height) >> 1) + 5;
+			break;
+		}
+	}
 	sh_css_send_input_frame(data, width, height);
 
 	if (out_pipe->out_fmt->depth == 8)

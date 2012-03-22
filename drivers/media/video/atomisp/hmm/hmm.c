@@ -34,9 +34,14 @@
 #include "hmm/hmm_bo_dev.h"
 
 #include "mmu/isp_mmu.h"
-#include "mmu/sh_mmu.h"
+
+#include "mmu/sh_mmu_mrfld.h"
+#include "mmu/sh_mmu_mfld.h"
+
 #include "atomisp_internal.h"
 #include "asm/cacheflush.h"
+
+#include "atomisp_common.h"
 
 #ifdef USE_SSSE3
 #include <asm/ssse3.h>
@@ -49,8 +54,13 @@ int hmm_init(void)
 {
 	int ret;
 
-	ret = hmm_bo_device_init(&bo_device, &sh_mmu_driver,
-				 ISP_VM_START, ISP_VM_SIZE);
+	if (IS_MRFLD)
+		ret = hmm_bo_device_init(&bo_device, &sh_mmu_mrfld,
+					 ISP_VM_START, ISP_VM_SIZE);
+	else
+		ret = hmm_bo_device_init(&bo_device, &sh_mmu_mfld,
+					 ISP_VM_START, ISP_VM_SIZE);
+
 	if (ret)
 		v4l2_err(&atomisp_dev,
 			    "hmm_bo_device_init failed.\n");
@@ -364,7 +374,7 @@ int hmm_set(void *virt, int c, unsigned int bytes)
 }
 
 /*Virtual address to physical address convert*/
-unsigned int hmm_virt_to_phys(void *virt)
+phys_addr_t hmm_virt_to_phys(void *virt)
 {
 	unsigned int ptr = (unsigned int)virt;
 	unsigned int idx, offset;

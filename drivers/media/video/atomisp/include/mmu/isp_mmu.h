@@ -26,7 +26,9 @@
 #ifndef	__ISP_MMU_H__
 #define	__ISP_MMU_H__
 
+#include <linux/types.h>
 #include <linux/mutex.h>
+#include <linux/slab.h>
 
 /*
  * do not change these values, the page size for ISP must be the
@@ -67,7 +69,7 @@
 
 struct isp_mmu;
 
-struct isp_mmu_driver {
+struct isp_mmu_client {
 	/*
 	 * const value
 	 *
@@ -79,6 +81,7 @@ struct isp_mmu_driver {
 	 */
 	char *name;
 	unsigned int pte_valid_mask;
+	unsigned int null_pte;
 
 	/*
 	 * set page directory base address (physical address).
@@ -86,7 +89,7 @@ struct isp_mmu_driver {
 	 * must be provided.
 	 */
 	int (*set_pd_base) (struct isp_mmu *mmu,
-			unsigned int pd_base);
+			phys_addr_t pd_base);
 	/*
 	 * callback to flush tlb.
 	 *
@@ -101,14 +104,21 @@ struct isp_mmu_driver {
 	void (*tlb_flush_range) (struct isp_mmu *mmu,
 				 unsigned int addr, unsigned int size);
 	void (*tlb_flush_all) (struct isp_mmu *mmu);
+	unsigned int (*phys_to_pte) (struct isp_mmu *mmu,
+				     phys_addr_t phys);
+	phys_addr_t (*pte_to_phys) (struct isp_mmu *mmu,
+				    unsigned int pte);
 
 };
 
 struct isp_mmu {
-	struct isp_mmu_driver *driver;
+	struct isp_mmu_client *driver;
 	unsigned int l1_pte;
 
 	struct mutex pt_mutex;
+#ifdef USE_KMEM_CACHE
+	struct kmem_cache *tbl_cache;
+#endif
 };
 
 /* flags for PDE and PTE */
@@ -118,17 +128,13 @@ struct isp_mmu {
 #define	ISP_PTE_VALID(mmu, pte)	\
 	((pte) & ISP_PTE_VALID_MASK(mmu))
 
-#define	UNVALID_PHYS	0xffffffff
-
-#define	NULL_PAGE	(UNVALID_PHYS & ISP_PAGE_MASK)
-#define	NULL_PTE	NULL_PAGE
-
+#define	NULL_PAGE	((phys_addr_t)(-1) & ISP_PAGE_MASK)
 #define	PAGE_VALID(page)	((page) != NULL_PAGE)
 
 /*
  * init mmu with specific mmu driver.
  */
-int isp_mmu_init(struct isp_mmu *mmu, struct isp_mmu_driver *driver);
+int isp_mmu_init(struct isp_mmu *mmu, struct isp_mmu_client *driver);
 /*
  * cleanup all mmu related things.
  */
@@ -145,7 +151,7 @@ void isp_mmu_exit(struct isp_mmu *mmu);
  * this itself.
  */
 int isp_mmu_map(struct isp_mmu *mmu, unsigned int isp_virt,
-		unsigned int phys, unsigned int pgnr);
+		phys_addr_t phys, unsigned int pgnr);
 
 void isp_mmu_unmap(struct isp_mmu *mmu, unsigned int isp_virt,
 		   unsigned int pgnr);

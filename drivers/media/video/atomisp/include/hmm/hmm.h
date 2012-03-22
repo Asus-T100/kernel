@@ -48,7 +48,7 @@ int hmm_flush(void *virt, unsigned int bytes);
 /*
  * get kernel memory physical address from ISP virtual address.
  */
-unsigned int hmm_virt_to_phys(void *virt);
+phys_addr_t hmm_virt_to_phys(void *virt);
 
 /*
  * map ISP memory starts with virt to kernel virtual address

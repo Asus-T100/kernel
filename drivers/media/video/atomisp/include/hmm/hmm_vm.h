@@ -45,6 +45,9 @@ struct hmm_vm_node {
 	unsigned int size;
 	struct hmm_vm *vm;
 };
+#define	ISP_VM_START	0x0
+#define	ISP_VM_SIZE	(0x7FFFFFFF)	/* 2G address space */
+#define	ISP_PTR_NULL	NULL
 
 int hmm_vm_init(struct hmm_vm *vm, unsigned int start,
 		unsigned int size);

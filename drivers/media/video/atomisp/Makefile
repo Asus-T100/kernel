@@ -11,6 +11,8 @@ atomisp-objs := \
 		css/sh_css_firmware.o \
 		css/sh_css_accelerate.o \
 		mmu/isp_mmu.o \
+		mmu/sh_mmu_mrfld.o \
+		mmu/sh_mmu_mfld.o \
 		hmm/hmm.o \
 		hmm/hmm_bo.o \
 		hmm/hmm_bo_dev.o \
@@ -41,5 +43,6 @@ DEFINES += -DISP_POWER_GATING
 DEFINES += -DUSE_INTERRUPTS
 #DEFINES += -DUSE_SSSE3
 DEFINES += -DPUNIT_CAMERA_BUSY
+DEFINES += -DUSE_KMEM_CACHE
 
 EXTRA_CFLAGS := $(INCLUDES) $(DEFINES) -fno-common -Werror

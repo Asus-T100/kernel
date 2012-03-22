@@ -62,7 +62,9 @@
 #include <media/videobuf-core.h>
 #include <media/videobuf-vmalloc.h>
 
+#ifndef CONFIG_X86_MRFLD
 #include <hmm/hmm.h>
+#endif
 #include <css/sh_css.h>
 
 #include "atomisp_internal.h"
@@ -73,7 +75,16 @@ extern int pad_w;
 extern int pad_h;
 
 #define PUNIT_PORT		0x04
-#define IUNIT_PORT		0x08
+
+#define IUNIT_PORT_MDFLD		0x08
+/*
+ * Fixing me!
+ * Not that IUnit port change to 0x1C according to
+ * IUnit HAS 0.95_R6, but currently VP4.0.0 still
+ * use the old 0x15 value
+ */
+#define IUNIT_PORT_MRFLD		0x15
+
 #define IUNITPHY_PORT		0x09
 
 #define CSI_RCOMP		0x00
@@ -102,6 +113,11 @@ extern int pad_h;
 #define PCI_I_CONTROL		0xFC
 
 #define PCI_MEM_ACCESS		0x100002
+
+extern int atomisp_pci_vendor;
+extern int atomisp_pci_device;
+
+#define IS_MRFLD ((atomisp_pci_device & 0xfff8) == 0x1178)
 
 struct atomisp_tvnorm {
 	char *name;

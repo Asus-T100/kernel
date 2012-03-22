@@ -26,6 +26,7 @@
 #include "atomisp_fops.h"
 #include "css/sh_css.h"
 #include <css/sh_css_debug.h>
+
 #include "bufferclass_video_linux.h"
 
 /* for v4l2_capability */
@@ -1139,7 +1140,8 @@ int atomisp_streamoff(struct file *file, void *fh,
 	isp->sw_contex.isp_streaming = false;
 	spin_unlock_irqrestore(&isp->irq_lock, flags);
 
-	atomisp_wdt_lock_dog(isp);
+	if (!IS_MRFLD)
+		atomisp_wdt_lock_dog(isp);
 
 	/* cancel work queue*/
 	if (isp->sw_contex.work_queued) {
@@ -1766,9 +1768,18 @@ static long atomisp_vidioc_default(struct file *file, void *fh,
 		 * We do this to avoid exporting the BC_Video struct in
 		 * atomisp.h which causes duplicate structure compilation
 		 * errors. */
-		return BC_Camera_Bridge((BC_Video_ioctl_package *)arg,
+		/*
+		 * fixing me!
+		 * no BC_Camera_Bridge function defined in Merrifield.
+		 * so use CONFIG_X86_MRFLD to differentiate code for
+		 * merrifield and medfield to avoid compile error.
+		 */
+#ifndef CONFIG_X86_MRFLD
+			return BC_Camera_Bridge((BC_Video_ioctl_package *)arg,
 					(unsigned long) NULL);
-
+#else
+			return -EINVAL;
+#endif
 	case ATOMISP_IOC_S_ISP_SHD_TAB:
 		return atomisp_set_shading_table(isp, arg);
 

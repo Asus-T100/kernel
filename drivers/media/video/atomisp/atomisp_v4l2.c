@@ -25,6 +25,7 @@
 #include "atomisp_cmd.h"
 #include "atomisp_fops.h"
 #include "atomisp_file.h"
+#include "hrt/hive_isp_css_mm_hrt.h"
 
 /* cross componnet debug message flag */
 int dbg_level;
@@ -55,6 +56,9 @@ struct v4l2_device atomisp_dev = {
 };
 
 void __iomem *atomisp_io_base;
+
+int atomisp_pci_vendor; /* pci vendor id */
+int atomisp_pci_device; /* pci device id */
 
 /*
  * supported V4L2 fmts and resolutions
@@ -393,7 +397,16 @@ static int atomisp_subdev_probe(struct atomisp_device *isp)
 	struct i2c_adapter *adapter = NULL;
 	struct i2c_board_info *board_info;
 
+	/*
+	 * fixing me!
+	 * currently no function intel_get_v4l2_subdev_table()
+	 * defined in board specific source code
+	 */
+#ifndef CONFIG_X86_MRFLD
 	pdata = (struct atomisp_platform_data *)intel_get_v4l2_subdev_table();
+#else
+	pdata = NULL;
+#endif
 	if (pdata == NULL) {
 		v4l2_err(&atomisp_dev, "no platform data available\n");
 		return -ENODEV;
@@ -512,9 +525,16 @@ static int atomisp_register_entities(struct atomisp_device *isp)
 		goto v4l2_device_failed;
 	}
 
-	ret = atomisp_subdev_probe(isp);
-	if (ret < 0)
-		goto lane4_and_subdev_probe_failed;
+	/*
+	 * fixing me!
+	 * not sub device exists on
+	 * mrfld vp
+	 */
+	if (!IS_MRFLD) {
+		ret = atomisp_subdev_probe(isp);
+		if (ret < 0)
+			goto lane4_and_subdev_probe_failed;
+	}
 
 	/* Register internal entities */
 	ret =
@@ -728,6 +748,9 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 		return -EINVAL;
 	}
 
+	atomisp_pci_vendor = id->vendor;
+	atomisp_pci_device = id->device;
+
 	err = pci_enable_device(dev);
 	if (err) {
 		v4l2_err(&atomisp_dev,
@@ -768,10 +791,17 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 	isp->hw_contex.pci_root = pci_get_bus_and_slot(0, 0);
 
 	/* Load isp firmware from user space */
-	isp->firmware = load_firmware(&dev->dev);
-	if (!isp->firmware) {
-		v4l2_err(&atomisp_dev, "Load firmwares failed\n");
-		goto load_fw_fail;
+	/*
+	 * fixing me:
+	 * MRFLD VP does not use firmware loading
+	 * from file system
+	 */
+	if (!IS_MRFLD) {
+		isp->firmware = load_firmware(&dev->dev);
+		if (!isp->firmware) {
+			v4l2_err(&atomisp_dev, "Load firmwares failed\n");
+			goto load_fw_fail;
+		}
 	}
 
 	err = atomisp_initialize_modules(isp);
@@ -829,9 +859,17 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 
 	atomisp_msi_irq_init(isp, dev);
 
-	pm_runtime_put_noidle(&dev->dev);
-	pm_runtime_allow(&dev->dev);
-
+	/*
+	 * fixing me!
+	 * MRFLD VP does not implement
+	 * PM Core
+	 */
+#ifdef CONFIG_PM
+	if (!IS_MRFLD) {
+		pm_runtime_put_noidle(&dev->dev);
+		pm_runtime_allow(&dev->dev);
+	}
+#endif
 	isp->sw_contex.probed = true;
 
 	return 0;
@@ -880,7 +918,13 @@ static void __devexit atomisp_pci_remove(struct pci_dev *dev)
 	pci_disable_device(dev);
 
 	/* in case user forget to close */
-	release_firmware(isp->firmware);
+	/*
+	 * fixing me:
+	 * MRFLD VP does not use firmware loading
+	 * from file system
+	 */
+	if (!IS_MRFLD)
+		release_firmware(isp->firmware);
 
 	kfree(isp);
 }
@@ -895,6 +939,7 @@ static DEFINE_PCI_DEVICE_TABLE(atomisp_pci_tbl) = {
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x014E)},
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x014F)},
 	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x08D0)},
+	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x1178)},
 	{0,}
 };
 

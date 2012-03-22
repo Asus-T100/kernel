@@ -267,7 +267,13 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 	 */
 	spin_lock_irqsave(&isp->irq_lock, irqflags);
 
-	if (isp->sw_contex.isp_streaming && atomisp_wdt_pet_dog(isp) < 0) {
+	/*
+	 * fixing me!
+	 * For mrfl VP, ISP is running on simulator which takes
+	 * lots of time, and watch dog is disable for this case
+	 */
+	if (!IS_MRFLD && isp->sw_contex.isp_streaming &&
+	    atomisp_wdt_pet_dog(isp) < 0) {
 		/*
 		 * BUG! Despite ISP is running, watchdog was woken up.
 		 * ISP reset may come soon.
@@ -295,23 +301,42 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 		}
 		if (irq_infos & SH_CSS_IRQ_INFO_FW_ACC_DONE)
 			signal_acceleration = true;
+	/*
+	 * CSS has differernt enum sh_css_interrupt_info defines
+	 * according to 2300 and 2400 hardware.
+	 * So use CONFIG_X86_MRFLD to differentiate Medfield &
+	 * Merrifield code to avoid compiling error.
+	 */
+#if defined(CONFIG_X86_MRFLD)
+	} else if ((irq_infos & SH_CSS_IRQ_INFO_INPUT_SYSTEM_ERROR) ||
+		(irq_infos & SH_CSS_IRQ_INFO_IF_ERROR)) {
+#else
 	} else if (irq_infos & SH_CSS_IRQ_INFO_CSS_RECEIVER_ERROR) {
+#endif
 		/* handle mipi receiver error*/
 		u32 rx_infos;
 		print_csi_rx_errors();
 		sh_css_rx_get_interrupt_info(&rx_infos);
 		sh_css_rx_clear_interrupt_info(rx_infos);
+#if defined(CONFIG_X86_MRFLD)
+		if (rx_infos & SH_CSS_IRQ_INFO_DMA_ERROR) {
+#else
 		if (rx_infos & SH_CSS_RX_IRQ_INFO_BUFFER_OVERRUN) {
+#endif
 			signal_worker = true;
 			signal_statistics = true;
 			signal_acceleration = true;
 		}
 
 	}
-
+	/*
+	 * CSS does not have SH_CSS_IRQ_INFO_INVALID_FIRST_FRAME
+	 * defined for Merrifield code
+	 */
+#ifndef CONFIG_X86_MRFLD
 	if (irq_infos & SH_CSS_IRQ_INFO_INVALID_FIRST_FRAME)
 		isp->sw_contex.invalid_frame = true;
-
+#endif
 	/*
 	 * Cannot handle frame from ISR when there's events from:
 	 * - Acceleration API
@@ -393,9 +418,15 @@ no_frame_done:
 		complete(&isp->dis_state_complete);
 
 	/* Clear irq reg at PENWELL B0 */
-	msg_ret = atomisp_msg_read32(isp, IUNIT_PORT, INTR_CTL);
-	msg_ret |=  (1 << INTR_IIR);
-	atomisp_msg_write32(isp, IUNIT_PORT, INTR_CTL, msg_ret);
+	if (IS_MRFLD) {
+		msg_ret = atomisp_msg_read32(isp, IUNIT_PORT_MRFLD, INTR_CTL);
+		msg_ret |=  (1 << INTR_IIR);
+		atomisp_msg_write32(isp, IUNIT_PORT_MRFLD, INTR_CTL, msg_ret);
+	} else {
+		msg_ret = atomisp_msg_read32(isp, IUNIT_PORT_MDFLD, INTR_CTL);
+		msg_ret |=  (1 << INTR_IIR);
+		atomisp_msg_write32(isp, IUNIT_PORT_MDFLD, INTR_CTL, msg_ret);
+	}
 
 out:
 	spin_unlock_irqrestore(&isp->irq_lock, irqflags);
@@ -847,8 +878,14 @@ void atomisp_work(struct work_struct *work)
 			goto error;
 		}
 
-		/* (re)start watchdog */
-		atomisp_wdt_init(isp);
+		/*
+		 * Fixing me!
+		 * For mrfl VP, ISP is running on simulator which takes
+		 * lots of time, and watch dog is not used for this case
+		 */
+		if (!IS_MRFLD)
+			/* (re)start watchdog */
+			atomisp_wdt_init(isp);
 
 		ret = atomisp_streamon_input(isp);
 		if (ret) {

@@ -190,5 +190,5 @@ int hrt_isp_css_mm_store_int(void *virt_addr, int data)
 
 void *hrt_isp_css_virt_to_phys(void *virt_addr)
 {
-	return (void *)hmm_virt_to_phys(virt_addr);
+	return (void *)(u32)hmm_virt_to_phys(virt_addr);
 }

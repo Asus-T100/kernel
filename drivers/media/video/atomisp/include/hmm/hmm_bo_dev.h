@@ -62,8 +62,8 @@ struct hmm_bo_device {
 };
 
 int hmm_bo_device_init(struct hmm_bo_device *bdev,
-		struct isp_mmu_driver *mmu_driver,
-		unsigned int vaddr_start, unsigned int size);
+		       struct isp_mmu_client *mmu_driver,
+		       unsigned int vaddr_start, unsigned int size);
 
 /*
  * clean up all hmm_bo_device related things.
