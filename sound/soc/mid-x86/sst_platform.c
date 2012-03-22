@@ -66,6 +66,33 @@ static struct snd_pcm_hardware sst_platform_pcm_hw = {
 	.periods_max = SST_MAX_PERIODS,
 	.fifo_size = SST_FIFO_SIZE,
 };
+#ifdef CONFIG_SND_CLV_MACHINE
+static unsigned int	lpe_mixer_input_ihf;
+static unsigned int	lpe_mixer_input_hs;
+
+int sst_set_mixer_param(unsigned int device_input_mixer)
+{
+	struct intel_sst_card_ops *sstdrv_ops;
+	int ret_val;
+
+	/* allocate memory for SST API set */
+	sstdrv_ops = kzalloc(sizeof(*sstdrv_ops), GFP_KERNEL);
+	if (!sstdrv_ops)
+		return -ENOMEM;
+	/* registering with SST driver to get access to SST APIs to use */
+	ret_val = register_sst_card(sstdrv_ops);
+	if (ret_val) {
+		pr_err("sst: sst card registration failed\n");
+		return -EIO;
+	}
+
+	/*allocate memory for params*/
+	ret_val = sstdrv_ops->pcm_control->set_generic_params(
+			SST_SET_ALGO_PARAMS, (void *)&device_input_mixer);
+	kfree(sstdrv_ops);
+	return ret_val;
+}
+#endif
 
 static int sst_platform_ihf_set_tdm_slot(struct snd_soc_dai *dai,
 			unsigned int tx_mask, unsigned int rx_mask,
@@ -94,10 +121,98 @@ static int sst_platform_ihf_set_tdm_slot(struct snd_soc_dai *dai,
 	kfree(sstdrv_ops);
 	return ret_val;
 }
-
 static const struct snd_soc_dai_ops sst_ihf_ops = {
 	.set_tdm_slot = sst_platform_ihf_set_tdm_slot,
 };
+
+#ifdef CONFIG_SND_CLV_MACHINE
+static int lpe_mixer_ihf_get(struct snd_kcontrol *kcontrol,
+	struct snd_ctl_elem_value *ucontrol)
+{
+	ucontrol->value.integer.value[0] = lpe_mixer_input_ihf;
+	return 0;
+}
+
+static int lpe_mixer_ihf_set(struct snd_kcontrol *kcontrol,
+	struct snd_ctl_elem_value *ucontrol)
+{
+	int device_input_mixer;
+
+	switch (ucontrol->value.integer.value[0]) {
+	case 0:
+		pr_debug("input is PCM stream\n");
+		device_input_mixer = SST_STREAM_DEVICE_IHF
+					| SST_INPUT_STREAM_PCM;
+	break;
+	case 1:
+		pr_debug("input is Comptress  stream\n");
+		device_input_mixer = SST_STREAM_DEVICE_IHF
+					| SST_INPUT_STREAM_COMPRESS;
+		break;
+	case 2:
+		pr_debug("input is mixed stream\n");
+		device_input_mixer = SST_STREAM_DEVICE_IHF
+					| SST_INPUT_STREAM_MIXED;
+		break;
+	default:
+		pr_err("Invalid Input%d\n", ucontrol->value.integer.value[0]);
+		return -EINVAL;
+	}
+	lpe_mixer_input_ihf  = ucontrol->value.integer.value[0];
+	sst_set_mixer_param(device_input_mixer);
+	return 0;
+}
+
+static int lpe_mixer_headset_get(struct snd_kcontrol *kcontrol,
+	struct snd_ctl_elem_value *ucontrol)
+{
+	ucontrol->value.integer.value[0] = lpe_mixer_input_hs;
+	return 0;
+}
+
+static int lpe_mixer_headset_set(struct snd_kcontrol *kcontrol,
+	struct snd_ctl_elem_value *ucontrol)
+{
+	int mixer_input_stream;
+
+	switch (ucontrol->value.integer.value[0]) {
+	case 0:
+		pr_debug("input is PCM stream\n");
+		mixer_input_stream = SST_STREAM_DEVICE_HS
+					 | SST_INPUT_STREAM_PCM;
+		break;
+	case 1:
+		pr_debug("input is Comptress  stream\n");
+		mixer_input_stream = SST_STREAM_DEVICE_HS
+					 | SST_INPUT_STREAM_COMPRESS;
+		break;
+	case 2:
+		pr_debug("input is PCM stream\n");
+		mixer_input_stream = SST_STREAM_DEVICE_HS
+					 | SST_INPUT_STREAM_MIXED;
+		break;
+	default:
+		pr_err("Invalid Input%d\n", ucontrol->value.integer.value[0]);
+		return -EINVAL;
+	}
+	lpe_mixer_input_hs  = ucontrol->value.integer.value[0];
+	sst_set_mixer_param(mixer_input_stream);
+	return 0;
+}
+static const char *lpe_mixer_text[] = {
+		"PCM", "Compressed", "PCM and Compressed"};
+
+static const struct soc_enum lpe_mixer_enum =
+	SOC_ENUM_SINGLE_EXT(3, lpe_mixer_text);
+
+
+static const struct snd_kcontrol_new sst_controls[] = {
+	SOC_ENUM_EXT("LPE IHF mixer", lpe_mixer_enum,
+		lpe_mixer_ihf_get, lpe_mixer_ihf_set),
+	SOC_ENUM_EXT("LPE headset mixer", lpe_mixer_enum,
+		lpe_mixer_headset_get, lpe_mixer_headset_set),
+};
+#endif
 
 /* MFLD - MSIC */
 static struct snd_soc_dai_driver sst_platform_dai[] = {
@@ -598,7 +713,42 @@ static int sst_pcm_new(struct snd_soc_pcm_runtime *rtd)
 	}
 	return retval;
 }
+#ifdef CONFIG_SND_CLV_MACHINE
+static int sst_soc_probe(struct snd_soc_platform *platform)
+{
+	pr_debug("%s called\n", __func__);
+
+	lpe_mixer_input_ihf = 0;
+	lpe_mixer_input_hs = 0;
+	pr_debug("platform is %p\n", platform);
+	if (!platform) {
+		pr_err("platform ptr invalid");
+		return -EINVAL;
+	}
+	if (!platform->card) {
+		pr_err("platform card ptr invalid");
+		return -EINVAL;
+	}
+	if (!platform->card->snd_card) {
+		pr_err("platform card snd_card ptr invalid");
+		return -EINVAL;
+	}
+
+	return snd_soc_add_platform_controls(platform, sst_controls,
+			ARRAY_SIZE(sst_controls));
+}
+
+static int sst_soc_remove(struct snd_soc_platform *platform)
+{
+	pr_debug("%s called\n", __func__);
+	return 0;
+}
+#endif
 static struct snd_soc_platform_driver sst_soc_platform_drv = {
+#ifdef CONFIG_SND_CLV_MACHINE
+	.probe		= &sst_soc_probe,
+	.remove		= &sst_soc_remove,
+#endif
 	.ops		= &sst_platform_ops,
 	.pcm_new	= sst_pcm_new,
 	.pcm_free	= sst_pcm_free,
