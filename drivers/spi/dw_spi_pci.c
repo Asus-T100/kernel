@@ -182,8 +182,13 @@ static int spi_dw_pci_runtime_idle(struct device *dev)
 	int err;
 
 	dev_dbg(dev, "pci_runtime_idle called\n");
-
-	err = pm_schedule_suspend(dev, 500);
+        if (system_state == SYSTEM_BOOTING)
+		/* if SPI UART is set as default console and earlyprintk
+		 * is enabled, it cannot shutdown SPI controller during booting.
+		 */
+                err = pm_schedule_suspend(dev, 30000);
+        else
+                err = pm_schedule_suspend(dev, 500);
 	if (err != 0)
 		return 0;
 	return -EBUSY;
