@@ -119,7 +119,7 @@ static void mdfld_dsi_write_hysteresis (struct mdfld_dsi_config * dsi_config, in
 
 	mdfld_dsi_send_mcs_long_hs(sender,
 				   mdfld_dbi_mcs_hysteresis,
-				   17,
+				   68,
 				   MDFLD_DSI_SEND_PACKAGE);
 }
 
@@ -137,7 +137,7 @@ static void mdfld_dsi_write_display_profile (struct mdfld_dsi_config * dsi_confi
 
 	mdfld_dsi_send_mcs_long_hs(sender,
 				   mdfld_dbi_mcs_display_profile,
-				   5,
+				   20,
 				   MDFLD_DSI_SEND_PACKAGE);
 }
 
@@ -155,7 +155,7 @@ static void mdfld_dsi_write_kbbc_profile (struct mdfld_dsi_config * dsi_config, 
 
 	mdfld_dsi_send_mcs_long_hs(sender,
 				   mdfld_dbi_mcs_kbbc_profile,
-				   4,
+				   20,
 				   MDFLD_DSI_SEND_PACKAGE);
 }
 

@@ -85,14 +85,14 @@ struct mdfld_dsi_gen_short_pkg
 
 struct mdfld_dsi_gen_long_pkg
 {
-	u32 * data;
+	u8 * data;
 	u32 len;
 };
 
 struct mdfld_dsi_dcs_pkg
 {
 	u8 cmd;
-	u8 param[MDFLD_MAX_DCS_PARAM];
+	u8 *param;
 	u32 param_num;
 	u8 data_src;
 };
@@ -163,11 +163,11 @@ extern int mdfld_dsi_send_mcs_short_hs(struct mdfld_dsi_pkg_sender * sender,
 extern int mdfld_dsi_send_mcs_short_lp(struct mdfld_dsi_pkg_sender * sender,
 					u8 cmd, u8 param, u8 param_num, int delay);
 extern int mdfld_dsi_send_mcs_long_hs(struct mdfld_dsi_pkg_sender * sender,
-					u32 * data,
+					u8 * data,
 					u32 len,
 					int delay);
 extern int mdfld_dsi_send_mcs_long_lp(struct mdfld_dsi_pkg_sender * sender,
-					u32 * data,
+					u8 * data,
 					u32 len,
 					int delay);
 extern int mdfld_dsi_send_gen_short_hs(struct mdfld_dsi_pkg_sender * sender,
@@ -175,11 +175,11 @@ extern int mdfld_dsi_send_gen_short_hs(struct mdfld_dsi_pkg_sender * sender,
 extern int mdfld_dsi_send_gen_short_lp(struct mdfld_dsi_pkg_sender * sender,
 					u8 param0, u8 param1, u8 param_num, int delay);
 extern int mdfld_dsi_send_gen_long_hs(struct mdfld_dsi_pkg_sender * sender,
-				u32 * data,
+				u8 * data,
 				u32 len,
 				int delay);
 extern int mdfld_dsi_send_gen_long_lp(struct mdfld_dsi_pkg_sender * sender,
-				u32 * data,
+				u8 * data,
 				u32 len,
 				int delay);
 extern int mdfld_dsi_send_dpi_spk_pkg_hs(struct mdfld_dsi_pkg_sender *sender,

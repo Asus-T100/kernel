@@ -123,90 +123,90 @@ static void mdfld_gi_l5f3_dbi_ic_init(struct mdfld_dsi_config *dsi_config,
 	/*wait for 5ms*/
 	mdfld_ms_delay(MSLEEP, 5);
 
-	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_set_column_add, 2, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_set_column_add, 8, 0);
 	mdfld_ms_delay(MSLEEP, 5);
 
-	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_set_row_add, 2, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_set_row_add, 8, 0);
 	mdfld_ms_delay(MSLEEP, 5);
 
-	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_set_address_mode, 1, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_set_address_mode, 4, 0);
 	mdfld_ms_delay(MSLEEP, 5);
 
-	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_set_pixel_format, 1, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_set_pixel_format, 4, 0);
 	mdfld_ms_delay(MSLEEP, 5);
 
 	/* set TE scanline and wait for 10ms. */
-	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_set_te_scanline, 1, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_set_te_scanline, 4, 0);
 	mdfld_ms_delay(MSLEEP, 5);
 
 	/* set TE on and wait for 10ms. */
-	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_set_tear_on, 1, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_set_tear_on, 4, 0);
 	mdfld_ms_delay(MSLEEP, 5);
 
 	/* set password on and wait for 10ms. */
-	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_passwd1_on, 1, 0);
+	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_passwd1_on, 4, 0);
 	mdfld_ms_delay(MSLEEP, 5);
 
-	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_disctl, 5, 0);
+	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_disctl, 20, 0);
 	mdfld_ms_delay(MSLEEP, 5);
 
-	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_pwrctl, 4, 0);
+	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_pwrctl, 16, 0);
 	mdfld_ms_delay(MSLEEP, 5);
 
-	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_vcmctl, 4, 0);
+	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_vcmctl, 16, 0);
 	mdfld_ms_delay(MSLEEP, 5);
 
-	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_srcctl, 3, 0);
+	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_srcctl, 12, 0);
 	mdfld_ms_delay(MSLEEP, 5);
 
-	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_ifctl, 2, 0);
+	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_ifctl, 8, 0);
 	mdfld_ms_delay(MSLEEP, 5);
 
-	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_panelctl, 1, 0);
+	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_panelctl, 4, 0);
 	mdfld_ms_delay(MSLEEP, 5);
 
-	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_gammasel, 1, 0);
+	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_gammasel, 4, 0);
 	mdfld_ms_delay(MSLEEP, 5);
 
-	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_pgammactl, 5, 0);
+	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_pgammactl, 20, 0);
 	mdfld_ms_delay(MSLEEP, 5);
 
-	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_ngammactl, 5, 0);
+	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_ngammactl, 20, 0);
 	mdfld_ms_delay(MSLEEP, 5);
 
-	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_miectl1, 1, 0);
+	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_miectl1, 4, 0);
 	mdfld_ms_delay(MSLEEP, 5);
 
-	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_bcmode, 1, 0);
+	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_bcmode, 4, 0);
 	mdfld_ms_delay(MSLEEP, 5);
 
-	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_wrmiectl2, 1, 0);
+	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_wrmiectl2, 4, 0);
 	mdfld_ms_delay(MSLEEP, 5);
 
-	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_wrblctl, 1, 0);
+	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_wrblctl, 4, 0);
 	mdfld_ms_delay(MSLEEP, 5);
 
-	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_passwd1_off, 1, 0);
+	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_passwd1_off, 4, 0);
 	mdfld_ms_delay(MSLEEP, 5);
 
 	/* set backlight to full brightness and wait for 10ms. */
-	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_set_full_brightness, 1, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_set_full_brightness, 16, 0);
 	mdfld_ms_delay(MSLEEP, 5);
 
 	/* set backlight on and wait for 10ms. */
-	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_turn_on_backlight, 1, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_turn_on_backlight, 4, 0);
 	mdfld_ms_delay(MSLEEP, 5);
 
 	/* disalble CABC and wait for 10ms. */
-	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_disable_cabc, 1, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_disable_cabc, 4, 0);
 	mdfld_ms_delay(MSLEEP, 5);
 
 	/* sleep out and wait for 150ms. */
-	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_exit_sleep_mode, 1, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_exit_sleep_mode, 4, 0);
 	mdfld_ms_delay(MSLEEP, 150);
 
 	/* set display on */
-	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_set_display_on, 1, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_set_display_on, 4, 0);
 	mdfld_ms_delay(MSLEEP, 5);
 
 	dsi_config->drv_ic_inited = 1;
@@ -365,7 +365,7 @@ static int __mdfld_gi_sony_dsi_power_on(struct mdfld_dsi_config *dsi_config)
 		return -EINVAL;
 	}
 
-	/* mdfld_dsi_send_gen_long_hs(sender, sc1_mcs_protect_off, 1, 0); */
+	/* mdfld_dsi_send_gen_long_hs(sender, sc1_mcs_protect_off, 4, 0); */
 #if 1
 	param[0] = 0x00;
 	param[1] = 0x00;
@@ -483,28 +483,28 @@ power_err:
 #else
 
 	/* change power state */
-	mdfld_dsi_send_mcs_long_hs(sender, sc1_exit_sleep_mode, 1, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, sc1_exit_sleep_mode, 4, 0);
 
 	msleep(120);
 
 	/* enable CABC with backlight off */
-	mdfld_dsi_send_mcs_long_hs(sender, sc1_set_brightness_max, 1, 0);
-	mdfld_dsi_send_mcs_long_hs(sender, sc1_select_CABC_mode, 1, 0);
-	mdfld_dsi_send_mcs_long_hs(sender, sc1_enable_CABC_bl_off, 1, 0);
-	mdfld_dsi_send_mcs_long_hs(sender, sc1_set_te_on, 1, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, sc1_set_brightness_max, 4, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, sc1_select_CABC_mode, 4, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, sc1_enable_CABC_bl_off, 4, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, sc1_set_te_on, 4, 0);
 
 	err = mdfld_dsi_dbi_update_area(dbi_output, 0, 0, 539, 959);
 	if (err)
 		DRM_ERROR("update area failed\n");
 
 	/* set display on */
-	mdfld_dsi_send_mcs_long_hs(sender, sc1_set_display_on, 1, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, sc1_set_display_on, 4, 0);
 
 	msleep(21);
 
 	/* enable BLON, CABC*/
-	mdfld_dsi_send_mcs_long_hs(sender, sc1_enable_CABC_bl_on, 1, 0);
-	/* mdfld_dsi_send_gen_long_hs(sender, sc1_mcs_protect_on, 1, 0); */
+	mdfld_dsi_send_mcs_long_hs(sender, sc1_enable_CABC_bl_on, 4, 0);
+	/* mdfld_dsi_send_gen_long_hs(sender, sc1_mcs_protect_on, 4, 0); */
 
 	/* send TURN_ON packet */
 	/*err = mdfld_dsi_send_dpi_spk_pkg_hs(sender,
@@ -1087,7 +1087,7 @@ static void gi_sony_dsi_dbi_update_fb(struct mdfld_dsi_dbi_output *dbi_output,
 	REG_WRITE(dspsurf_reg, REG_READ(dspsurf_reg));
 	REG_READ(dspsurf_reg);
 
-	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_set_address_mode, 1, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_set_address_mode, 4, 0);
 	mdfld_dsi_send_dcs(sender,
 			   write_mem_start,
 			   NULL,
@@ -1386,7 +1386,7 @@ int mdfld_gi_sony_power_on(struct drm_encoder *encoder)
 	}
 	msleep(21);
 
-	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_set_address_mode, 1, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_set_address_mode, 4, 0);
 	err = mdfld_dsi_send_dcs(sender,
 				   write_mem_start,
 				   NULL,

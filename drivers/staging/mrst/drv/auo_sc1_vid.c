@@ -240,25 +240,25 @@ static int mdfld_dsi_sc1_power_on(struct mdfld_dsi_config *dsi_config)
 		return -EINVAL;
 	}
 
-	mdfld_dsi_send_gen_long_hs(sender, sc1_mcs_protect_off, 1, 0);
+	mdfld_dsi_send_gen_long_hs(sender, sc1_mcs_protect_off, 4, 0);
 
 	/*change power state*/
-	mdfld_dsi_send_mcs_long_hs(sender, sc1_exit_sleep_mode, 1, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, sc1_exit_sleep_mode, 4, 0);
 
 	msleep(120);
 
 	/*enable CABC with backlight off*/
-	mdfld_dsi_send_mcs_long_hs(sender, sc1_select_CABC_mode, 1, 0);
-	mdfld_dsi_send_mcs_long_hs(sender, sc1_enable_CABC_bl_off, 1, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, sc1_select_CABC_mode, 4, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, sc1_enable_CABC_bl_off, 4, 0);
 
 	/*set display on*/
-	mdfld_dsi_send_mcs_long_hs(sender, sc1_set_display_on, 1, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, sc1_set_display_on, 4, 0);
 
 	msleep(21);
 
 	/*enable BLON , CABC*/
 	if (drm_psb_enable_sc1_cabc) {
-		mdfld_dsi_send_mcs_long_hs(sender, sc1_enable_CABC_bl_on, 1, 0);
+		mdfld_dsi_send_mcs_long_hs(sender, sc1_enable_CABC_bl_on, 4, 0);
 		printk(KERN_ALERT "enable SC1 cabc\n");
 	}
 
@@ -293,25 +293,25 @@ static int mdfld_dsi_sc1_power_off(struct mdfld_dsi_config *dsi_config)
 		return err;
 	}
 
-	mdfld_dsi_send_gen_long_hs(sender, sc1_mcs_protect_off, 1, 0);
+	mdfld_dsi_send_gen_long_hs(sender, sc1_mcs_protect_off, 4, 0);
 
 	/*change power state here*/
-	mdfld_dsi_send_mcs_long_hs(sender, sc1_set_display_off, 1, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, sc1_set_display_off, 4, 0);
 
 	/*disable BLCON, disable CABC*/
-	mdfld_dsi_send_mcs_long_hs(sender, sc1_enable_CABC_bl_off, 1, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, sc1_enable_CABC_bl_off, 4, 0);
 	printk(KERN_ALERT "disable SC1 cabc\n");
 
 	msleep(21);
 
-	mdfld_dsi_send_mcs_long_hs(sender, sc1_enter_sleep_mode, 1, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, sc1_enter_sleep_mode, 4, 0);
 
 	msleep(120);
 
 	/*put panel into deep standby mode*/
-	mdfld_dsi_send_gen_long_hs(sender, sc1_enter_low_power_mode, 1, 0);
+	mdfld_dsi_send_gen_long_hs(sender, sc1_enter_low_power_mode, 4, 0);
 
-	mdfld_dsi_send_gen_long_hs(sender, sc1_mcs_protect_on, 1, 0);
+	mdfld_dsi_send_gen_long_hs(sender, sc1_mcs_protect_on, 4, 0);
 	return 0;
 }
 
@@ -330,14 +330,14 @@ static int mdfld_dsi_sc1_set_brightness(struct mdfld_dsi_config *dsi_config,
 
 	duty_val = (255 * level) / 100;
 
-	mdfld_dsi_send_gen_long_hs(sender, sc1_mcs_protect_off, 1, 0);
+	mdfld_dsi_send_gen_long_hs(sender, sc1_mcs_protect_off, 4, 0);
 
 	/*update duty value*/
 	sc1_set_brightness[0] =  (0x00000051 | (duty_val << 8));
 	/* [SC1] change backlight control- brightness */
-	mdfld_dsi_send_gen_long_hs(sender, sc1_set_brightness, 1, 0);
+	mdfld_dsi_send_gen_long_hs(sender, sc1_set_brightness, 4, 0);
 
-	mdfld_dsi_send_gen_long_hs(sender, sc1_mcs_protect_on, 1, 0);
+	mdfld_dsi_send_gen_long_hs(sender, sc1_mcs_protect_on, 4, 0);
 
 	return 0;
 }

@@ -224,16 +224,16 @@ static inline int dbi_cmd_sent(struct mdfld_dsi_pkg_sender * sender)
 	u32 dbi_cmd_addr_reg = sender->mipi_cmd_addr_reg;
 	int ret = 0;
 
-        /*query the command execution status*/
-        while(retry--) {
-                if(!(REG_READ(dbi_cmd_addr_reg) & BIT0))
-                        break;
-        }
+	/*query the command execution status*/
+	while (retry--) {
+		if (!(REG_READ(dbi_cmd_addr_reg) & BIT0))
+			break;
+	}
 
-        if(!retry) {
-                DRM_ERROR("Timeout waiting for DBI Command status\n");
-                ret = -EAGAIN;
-        }
+	if (!retry) {
+		DRM_ERROR("Timeout waiting for DBI Command status\n");
+		ret = -EAGAIN;
+	}
 
 	return ret;
 }
@@ -331,8 +331,10 @@ static int __send_long_pkg(struct mdfld_dsi_pkg_sender * sender,
 	u32 lp_gen_ctrl_reg = sender->mipi_lp_gen_ctrl_reg;
 	u32 lp_gen_data_reg = sender->mipi_lp_gen_data_reg;
 	u32 gen_ctrl_val = 0;
-	u32 * dp;
+	u8 * dp = NULL;
+	u32 reg_val = 0;
 	int i;
+	int dword_count = 0, remain_byte_count = 0;
 	struct mdfld_dsi_gen_long_pkg * long_pkg = &pkg->pkg.long_pkg;
 
 	dp = long_pkg->data;
@@ -345,7 +347,7 @@ static int __send_long_pkg(struct mdfld_dsi_pkg_sender * sender,
 	 * | DI |   WC   | ECC|         PAYLOAD              |CHECKSUM|
 	 * ------------------------------------------------------------
 	 */
-	gen_ctrl_val |= (long_pkg->len << 2) << WORD_COUNTS_POS;
+	gen_ctrl_val |= (long_pkg->len) << WORD_COUNTS_POS;
 	gen_ctrl_val |= 0 << DCS_CHANNEL_NUMBER_POS;
 	gen_ctrl_val |= pkg->pkg_type;
 
@@ -353,21 +355,51 @@ static int __send_long_pkg(struct mdfld_dsi_pkg_sender * sender,
 		/*wait for hs ctrl and data fifos to be empty*/
 		wait_for_hs_fifos_empty(sender);
 
-		for(i=0; i<long_pkg->len; i++) {
-			PSB_DEBUG_ENTRY("HS Sending data 0x%08x\n", *(dp + i));
-
-			REG_WRITE(hs_gen_data_reg, *(dp + i));
+		dword_count = long_pkg->len / 4;
+		remain_byte_count = long_pkg->len % 4;
+		for(i=0; i< dword_count * 4; i = i + 4) {
+			reg_val = 0;
+			reg_val = *(dp + i);
+			reg_val |= *(dp + i + 1) << 8;
+			reg_val |= *(dp + i + 2) << 16;
+			reg_val |= *(dp + i + 3) << 24;
+			PSB_DEBUG_ENTRY("HS Sending data 0x%08x\n", reg_val);
+			REG_WRITE(hs_gen_data_reg, reg_val);
 		}
+		if (remain_byte_count){
+			reg_val = 0;
+			for(i = 0; i < remain_byte_count; i ++){
+				reg_val |= *(dp + dword_count * 4 + i ) << (8 * i);
+			}
+			PSB_DEBUG_ENTRY("HS Sending data 0x%08x\n", reg_val);
+			REG_WRITE(hs_gen_data_reg, reg_val);
+		}
+
 
 		REG_WRITE(hs_gen_ctrl_reg, gen_ctrl_val);
 
 	} else if(pkg->transmission_type == MDFLD_DSI_LP_TRANSMISSION) {
 		wait_for_lp_fifos_empty(sender);
 
-		for(i=0; i<long_pkg->len; i++) {
-			PSB_DEBUG_ENTRY("LP Sending data 0x%08x\n", *(dp + i));
+		dword_count = long_pkg->len / 4;
+		remain_byte_count = long_pkg->len % 4;
+		for(i=0; i< dword_count * 4; i = i + 4) {
+			reg_val = 0;
+			reg_val = *(dp + i);
+			reg_val |= *(dp + i + 1) << 8;
+			reg_val |= *(dp + i + 2) << 16;
+			reg_val |= *(dp + i + 3) << 24;
+			PSB_DEBUG_ENTRY("LP Sending data 0x%08x\n", reg_val);
+			REG_WRITE(lp_gen_data_reg, reg_val);
+		}
 
-			REG_WRITE(lp_gen_data_reg, *(dp + i));
+		if (remain_byte_count){
+			reg_val = 0;
+			for(i = 0; i < remain_byte_count; i ++){
+				reg_val |= *(dp + dword_count * 4 + i ) << (8 * i);
+			}
+			PSB_DEBUG_ENTRY("LP Sending data 0x%08x\n", reg_val);
+			REG_WRITE(lp_gen_data_reg, reg_val);
 		}
 		REG_WRITE(lp_gen_ctrl_reg, gen_ctrl_val);
 	} else {
@@ -494,6 +526,7 @@ static int send_pkg_done(struct mdfld_dsi_pkg_sender * sender,
 		cmd = pkg->pkg.short_pkg.cmd;
 		break;
 	case MDFLD_DSI_PKG_MCS_LONG_WRITE:
+	case MDFLD_DSI_PKG_GEN_LONG_WRITE:
 		data = (u8 *)pkg->pkg.long_pkg.data;
 		cmd = *data;
 		break;
@@ -508,6 +541,13 @@ static int send_pkg_done(struct mdfld_dsi_pkg_sender * sender,
 		sender->panel_mode &= ~MDFLD_DSI_PANEL_MODE_SLEEP;
 
 	sender->status = MDFLD_DSI_PKG_SENDER_FREE;
+
+	/*after sending pkg done, free the data buffer for mcs long pkg*/
+	if (pkg->pkg_type == MDFLD_DSI_PKG_MCS_LONG_WRITE ||
+		pkg->pkg_type == MDFLD_DSI_PKG_GEN_LONG_WRITE) {
+		if (data != NULL)
+			kfree(data);
+	}
 
 	return 0;
 
@@ -699,13 +739,14 @@ static inline void process_pkg_list(struct mdfld_dsi_pkg_sender * sender)
 }
 
 static int mdfld_dsi_send_mcs_long(struct mdfld_dsi_pkg_sender * sender,
-				   u32 * data,
-			           u32 len,
+				   u8 * data,
+				   u32 len,
 				   u8 transmission,
 				   int delay)
 {
 	struct mdfld_dsi_pkg * pkg;
 	unsigned long flags;
+	u8 *pdata = NULL;
 
 	spin_lock_irqsave(&sender->lock, flags);
 
@@ -718,9 +759,20 @@ static int mdfld_dsi_send_mcs_long(struct mdfld_dsi_pkg_sender * sender,
 		return -ENOMEM;
 	}
 
+	/* alloc a data buffer to save the long pkg data,
+	 * free the buffer when send_pkg_done.
+	 * */
+	pdata = kmalloc(sizeof(u8)*len, GFP_KERNEL);
+	if (!pdata) {
+		DRM_ERROR("No memory for long_pkg data\n");
+		return -ENOMEM;
+	}
+
+	memcpy(pdata, data, len*sizeof(u8));
+
 	pkg->pkg_type = MDFLD_DSI_PKG_MCS_LONG_WRITE;
 	pkg->transmission_type = transmission;
-	pkg->pkg.long_pkg.data = data;
+	pkg->pkg.long_pkg.data = pdata;
 	pkg->pkg.long_pkg.len = len;
 
 	INIT_LIST_HEAD(&pkg->entry);
@@ -813,13 +865,14 @@ static int mdfld_dsi_send_gen_short(struct mdfld_dsi_pkg_sender * sender,
 }
 
 static int mdfld_dsi_send_gen_long(struct mdfld_dsi_pkg_sender * sender,
-				   u32 * data,
-			           u32 len,
+				   u8 * data,
+				   u32 len,
 				   u8 transmission,
 				   int delay)
 {
 	struct mdfld_dsi_pkg * pkg;
 	unsigned long flags;
+	u8 *pdata = NULL;
 
 	spin_lock_irqsave(&sender->lock, flags);
 
@@ -832,9 +885,20 @@ static int mdfld_dsi_send_gen_long(struct mdfld_dsi_pkg_sender * sender,
 		return -ENOMEM;
 	}
 
+	/* alloc a data buffer to save the long pkg data,
+	 * free the buffer when send_pkg_done.
+	 * */
+	pdata = kmalloc(sizeof(u8)*len, GFP_KERNEL);
+	if (!pdata) {
+		DRM_ERROR("No memory for long_pkg data\n");
+		return -ENOMEM;
+	}
+
+	memcpy(pdata, data, len*sizeof(u8));
+
 	pkg->pkg_type = MDFLD_DSI_PKG_GEN_LONG_WRITE;
 	pkg->transmission_type = transmission;
-	pkg->pkg.long_pkg.data = data;
+	pkg->pkg.long_pkg.data = pdata;
 	pkg->pkg.long_pkg.len = len;
 
 	INIT_LIST_HEAD(&pkg->entry);
@@ -1156,7 +1220,7 @@ int mdfld_dsi_send_dcs(struct mdfld_dsi_pkg_sender * sender,
 			u8 dcs, u8 * param, u32 param_num, u8 data_src,
 			int delay)
 {
-	struct mdfld_dsi_pkg * pkg;
+	struct mdfld_dsi_pkg dsi_pkg = { 0 };
 	u32 cb_phy = sender->dbi_cb_phy;
 	struct drm_device *dev = sender->dev;
 	u32 index = 0;
@@ -1164,7 +1228,7 @@ int mdfld_dsi_send_dcs(struct mdfld_dsi_pkg_sender * sender,
 	unsigned long flags;
 	int retry;
 	u8 *dst = NULL;
-	u32 len;
+	u8 *pSendparam = NULL;
 	int err = 0;
 
 	if(!sender) {
@@ -1175,11 +1239,6 @@ int mdfld_dsi_send_dcs(struct mdfld_dsi_pkg_sender * sender,
 	if(!sender->dbi_pkg_support) {
 		DRM_ERROR("No DBI pkg sending on this sender\n");
 		return -ENOTSUPP;
-	}
-
-	if(param_num > MDFLD_MAX_DCS_PARAM) {
-		DRM_ERROR("Sender only support up to %d DCS params\n", MDFLD_MAX_DCS_PARAM);
-		return -EINVAL;
 	}
 
 	/*if dcs is write_mem_start, send it directly using DSI adapter interface*/
@@ -1213,47 +1272,44 @@ int mdfld_dsi_send_dcs(struct mdfld_dsi_pkg_sender * sender,
 			udelay(1);
 			retry--;
 		}
- 
+
+		/*wait for this frame done*/
+		if (REG_READ(HS_LS_DBI_ENABLE_REG) & BIT0)
+			wait_for_lp_fifos_empty(sender);
+		else
+			wait_for_hs_fifos_empty(sender);
+
 		spin_unlock(&sender->lock);
 		return 0;
 	}
 
-	/*get a free pkg*/
-	spin_lock_irqsave(&sender->lock, flags);
-
-	pkg = pkg_sender_get_pkg_locked(sender);
-
-	spin_unlock_irqrestore(&sender->lock, flags);
-
-	if(!pkg) {
-		DRM_ERROR("No memory\n");
-		return -ENOMEM;
-	}
-
-	dst = pkg->pkg.dcs_pkg.param;
-	memcpy(dst, param, param_num);
-
-	pkg->pkg_type = MDFLD_DSI_PKG_DCS;
-	pkg->transmission_type = MDFLD_DSI_DCS;
-	pkg->pkg.dcs_pkg.cmd = dcs;
-	pkg->pkg.dcs_pkg.param_num = param_num;
-	pkg->pkg.dcs_pkg.data_src = data_src;
-
-	INIT_LIST_HEAD(&pkg->entry);
-
 	if(param_num == 0)
-		return mdfld_dsi_send_mcs_short_hs(sender, dcs, 0, 0, delay);
+		err =  mdfld_dsi_send_mcs_short_hs(
+				sender, dcs, 0, 0, delay);
 	else if(param_num == 1)
-		return mdfld_dsi_send_mcs_short_hs(sender, dcs, param[0], 1, delay);
+		err =  mdfld_dsi_send_mcs_short_hs(
+				sender, dcs, param[0], 1, delay);
 	else if(param_num > 1) {
-		len = (param_num + 1) / 4;
-		if((param_num + 1) % 4)
-			len++;
+		/*transfer to dcs package*/
+		pSendparam = kmalloc(sizeof(u8) * (param_num + 1 ), GFP_KERNEL);
+		if (!pSendparam) {
+			DRM_ERROR("No memory \n");
+			return -ENOMEM;
+		}
 
-		return mdfld_dsi_send_mcs_long_hs(sender, (u32 *)&pkg->pkg.dcs_pkg, len, delay);
+		(*pSendparam) = dcs;
 
+		dst = pSendparam + 1;
+		memcpy(dst, param, param_num);
+
+		err = mdfld_dsi_send_mcs_long_hs(
+			sender, pSendparam, param_num + 1, delay);
+
+		/*free pkg*/
+		if (pSendparam) {
+			kfree(pSendparam);
+		}
 	}
-
 	return err;
 }
 
@@ -1280,7 +1336,7 @@ int mdfld_dsi_send_mcs_short_lp(struct mdfld_dsi_pkg_sender * sender,
 }
 
 int mdfld_dsi_send_mcs_long_hs(struct mdfld_dsi_pkg_sender * sender,
-				u32 * data,
+				u8 * data,
 				u32 len,
 				int delay)
 {
@@ -1293,7 +1349,7 @@ int mdfld_dsi_send_mcs_long_hs(struct mdfld_dsi_pkg_sender * sender,
 }
 
 int mdfld_dsi_send_mcs_long_lp(struct mdfld_dsi_pkg_sender * sender,
-				u32 * data,
+				u8 * data,
 				u32 len,
 				int delay)
 {
@@ -1328,7 +1384,7 @@ int mdfld_dsi_send_gen_short_lp(struct mdfld_dsi_pkg_sender * sender,
 }
 
 int mdfld_dsi_send_gen_long_hs(struct mdfld_dsi_pkg_sender * sender,
-				u32 * data,
+				u8 * data,
 				u32 len,
 				int delay)
 {
@@ -1341,7 +1397,7 @@ int mdfld_dsi_send_gen_long_hs(struct mdfld_dsi_pkg_sender * sender,
 }
 
 int mdfld_dsi_send_gen_long_lp(struct mdfld_dsi_pkg_sender * sender,
-				u32 * data,
+				u8 * data,
 				u32 len,
 				int delay)
 {

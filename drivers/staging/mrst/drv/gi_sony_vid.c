@@ -115,134 +115,134 @@ static void mdfld_gi_l5f3_dpi_ic_init(struct mdfld_dsi_config *dsi_config,
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 
-	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_set_column_add, 2, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_set_column_add, 8, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 
-	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_set_row_add, 2, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_set_row_add, 8, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 
-	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_set_address_mode, 1, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_set_address_mode, 4, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 
-	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_set_pixel_format, 1, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_set_pixel_format, 4, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 
 	/* set TE scanline and wait for 10ms. */
-	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_set_te_scanline, 1, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_set_te_scanline, 4, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 
 	/* set TE on and wait for 10ms. */
-	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_set_tear_on, 1, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_set_tear_on, 4, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 
 	/* set password on and wait for 10ms. */
-	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_passwd1_on, 1, 0);
+	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_passwd1_on, 4, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 
-	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_disctl, 5, 0);
+	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_disctl, 20, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 
-	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_pwrctl, 4, 0);
+	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_pwrctl, 16, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 
-	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_vcmctl, 4, 0);
+	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_vcmctl, 16, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 
-	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_srcctl, 3, 0);
+	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_srcctl, 12, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 
-	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_ifctl, 2, 0);
+	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_ifctl, 8, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 
-	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_panelctl, 1, 0);
+	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_panelctl, 4, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 
-	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_gammasel, 1, 0);
+	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_gammasel, 4, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 
-	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_pgammactl, 5, 0);
+	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_pgammactl, 20, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 
-	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_ngammactl, 5, 0);
+	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_ngammactl, 20, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 
-	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_miectl1, 1, 0);
+	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_miectl1, 4, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 
-	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_bcmode, 1, 0);
+	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_bcmode, 4, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 
-	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_wrmiectl2, 1, 0);
+	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_wrmiectl2, 4, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 
-	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_wrblctl, 1, 0);
+	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_wrblctl, 4, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 
-	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_passwd1_off, 1, 0);
+	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_passwd1_off, 4, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 
 	/* set backlight to full brightness and wait for 10ms. */
-	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_set_full_brightness, 1, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_set_full_brightness, 4, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 
 	/* set backlight on and wait for 10ms. */
-	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_turn_on_backlight, 1, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_turn_on_backlight, 4, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 
 	/* disalble CABC and wait for 10ms. */
-	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_disable_cabc, 1, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_disable_cabc, 4, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 
 	/* sleep out and wait for 150ms. */
-	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_exit_sleep_mode, 1, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_exit_sleep_mode, 4, 0);
 	wait_timeout = jiffies + (3 * HZ / 20);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
@@ -393,23 +393,23 @@ static int mdfld_dsi_gi_sony_power_on(struct mdfld_dsi_config *dsi_config)
 	}
 
 	/*change power state*/
-	mdfld_dsi_send_mcs_long_hs(sender, gi_sony_exit_sleep_mode, 1, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, gi_sony_exit_sleep_mode, 4, 0);
 
 	msleep(120);
 
 	/*enable CABC with backlight off*/
-	mdfld_dsi_send_mcs_long_hs(sender, gi_sony_select_CABC_mode, 1, 0);
-	mdfld_dsi_send_mcs_long_hs(sender, gi_sony_enable_CABC_bl_off, 1, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, gi_sony_select_CABC_mode, 4, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, gi_sony_enable_CABC_bl_off, 4, 0);
 
 	/*set display on*/
-	mdfld_dsi_send_mcs_long_hs(sender, gi_sony_set_display_on, 1, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, gi_sony_set_display_on, 4, 0);
 
 	msleep(21);
 
 	/*enable BLON , CABC*/
 	if (1) {
 		mdfld_dsi_send_mcs_long_hs(sender, gi_sony_enable_CABC_bl_on,
-				1, 0);
+				4, 0);
 		printk(KERN_ALERT "enable SC1 cabc\n");
 	}
 
@@ -445,15 +445,15 @@ static int mdfld_dsi_gi_sony_power_off(struct mdfld_dsi_config *dsi_config)
 	}
 
 	/*change power state here*/
-	mdfld_dsi_send_mcs_long_hs(sender, gi_sony_set_display_off, 1, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, gi_sony_set_display_off, 4, 0);
 
 	/*disable BLCON, disable CABC*/
-	mdfld_dsi_send_mcs_long_hs(sender, gi_sony_enable_CABC_bl_off, 1, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, gi_sony_enable_CABC_bl_off, 4, 0);
 	printk(KERN_ALERT "disable SC1 cabc\n");
 
 	msleep(21);
 
-	mdfld_dsi_send_mcs_long_hs(sender, gi_sony_enter_sleep_mode, 1, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, gi_sony_enter_sleep_mode, 4, 0);
 
 	msleep(120);
 
@@ -478,7 +478,7 @@ static int mdfld_dsi_gi_sony_set_brightness(struct mdfld_dsi_config *dsi_config,
 	/*update duty value*/
 	gi_sony_set_brightness[0] =  (0x00000051 | (duty_val << 8));
 	/* [SC1] change backlight control- brightness */
-	mdfld_dsi_send_gen_long_hs(sender, gi_sony_set_brightness, 1, 0);
+	mdfld_dsi_send_gen_long_hs(sender, gi_sony_set_brightness, 4, 0);
 
 	return 0;
 }

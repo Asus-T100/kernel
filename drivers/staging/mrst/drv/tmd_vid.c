@@ -183,18 +183,18 @@ static void mdfld_dsi_tmd_drv_ic_init(struct mdfld_dsi_config *dsi_config,
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 
-	mdfld_dsi_send_gen_long_lp(sender, tmd_cmd_mcap_off, 1, 0);
-	mdfld_dsi_send_gen_long_lp(sender, tmd_cmd_enable_lane_switch, 1, 0);
-	mdfld_dsi_send_gen_long_lp(sender, tmd_cmd_set_lane_num, 1, 0);
-	mdfld_dsi_send_gen_long_lp(sender, tmd_cmd_pushing_clock0, 1, 0);
-	mdfld_dsi_send_gen_long_lp(sender, tmd_cmd_pushing_clock1, 1, 0);
-	mdfld_dsi_send_gen_long_lp(sender, tmd_cmd_set_mode, 1, 0);
-	mdfld_dsi_send_gen_long_lp(sender, tmd_cmd_set_sync_pulse_mode, 1, 0);
-	mdfld_dsi_send_mcs_long_lp(sender, tmd_cmd_set_column, 2, 0);
-	mdfld_dsi_send_mcs_long_lp(sender, tmd_cmd_set_page, 2, 0);
-	mdfld_dsi_send_gen_long_lp(sender, tmd_cmd_set_video_mode, 1, 0);
-	mdfld_dsi_send_gen_long_lp(sender, tmd_cmd_enable_backlight, 1, 0);
-	mdfld_dsi_send_gen_long_lp(sender, tmd_cmd_set_backlight_dimming, 1, 0);
+	mdfld_dsi_send_gen_long_lp(sender, tmd_cmd_mcap_off, 4, 0);
+	mdfld_dsi_send_gen_long_lp(sender, tmd_cmd_enable_lane_switch, 4, 0);
+	mdfld_dsi_send_gen_long_lp(sender, tmd_cmd_set_lane_num, 4, 0);
+	mdfld_dsi_send_gen_long_lp(sender, tmd_cmd_pushing_clock0, 4, 0);
+	mdfld_dsi_send_gen_long_lp(sender, tmd_cmd_pushing_clock1, 4, 0);
+	mdfld_dsi_send_gen_long_lp(sender, tmd_cmd_set_mode, 4, 0);
+	mdfld_dsi_send_gen_long_lp(sender, tmd_cmd_set_sync_pulse_mode, 4, 0);
+	mdfld_dsi_send_mcs_long_lp(sender, tmd_cmd_set_column, 8, 0);
+	mdfld_dsi_send_mcs_long_lp(sender, tmd_cmd_set_page, 8, 0);
+	mdfld_dsi_send_gen_long_lp(sender, tmd_cmd_set_video_mode, 4, 0);
+	mdfld_dsi_send_gen_long_lp(sender, tmd_cmd_enable_backlight, 4, 0);
+	mdfld_dsi_send_gen_long_lp(sender, tmd_cmd_set_backlight_dimming, 4, 0);
 
 	/*wait for a frame. ~20ms*/
 	wait_timeout = jiffies + HZ / 50;

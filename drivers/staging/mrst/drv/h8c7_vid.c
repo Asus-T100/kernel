@@ -96,123 +96,123 @@ static void mdfld_h8c7_dpi_ic_init(struct mdfld_dsi_config *dsi_config, int pipe
 		cpu_relax();
 
 	/* sleep out and wait for 150ms. */
-	mdfld_dsi_send_mcs_long_lp(sender, h8c7_exit_sleep_mode, 1, 0);
+	mdfld_dsi_send_mcs_long_lp(sender, h8c7_exit_sleep_mode, 4, 0);
 	wait_timeout = jiffies + (3 * HZ / 20);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 
 	/* set password and wait for 10ms. */
-	mdfld_dsi_send_gen_long_lp(sender, h8c7_mcs_protect_off, 1, 0);
+	mdfld_dsi_send_gen_long_lp(sender, h8c7_mcs_protect_off, 4, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 
 	/* set TE on and wait for 10ms. */
-	mdfld_dsi_send_mcs_long_lp(sender, h8c7_set_tear_on, 1, 0);
+	mdfld_dsi_send_mcs_long_lp(sender, h8c7_set_tear_on, 4, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 
 	/* set backlight to full brightness and wait for 10ms. */
-	mdfld_dsi_send_mcs_long_lp(sender, h8c7_set_full_brightness, 1, 0);
+	mdfld_dsi_send_mcs_long_lp(sender, h8c7_set_full_brightness, 4, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 
 	/* set backlight on and wait for 10ms. */
-	mdfld_dsi_send_mcs_long_lp(sender, h8c7_turn_on_backlight, 1, 0);
+	mdfld_dsi_send_mcs_long_lp(sender, h8c7_turn_on_backlight, 4, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 
 	/* disalble CABC and wait for 10ms. */
-	mdfld_dsi_send_mcs_long_lp(sender, h8c7_disable_cabc, 1, 0);
+	mdfld_dsi_send_mcs_long_lp(sender, h8c7_disable_cabc, 4, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 
-	mdfld_dsi_send_gen_long_lp(sender, h8c7_ic_bias_current, 2, 0);
+	mdfld_dsi_send_gen_long_lp(sender, h8c7_ic_bias_current, 8, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 
-	mdfld_dsi_send_gen_long_lp(sender, h8c7_set_power, 4, 0);
+	mdfld_dsi_send_gen_long_lp(sender, h8c7_set_power, 16, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 
-	mdfld_dsi_send_gen_long_lp(sender, h8c7_set_disp_reg, 4, 0);
+	mdfld_dsi_send_gen_long_lp(sender, h8c7_set_disp_reg, 16, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 
-	mdfld_dsi_send_gen_long_lp(sender, h8c7_set_command_cyc, 6, 0);
+	mdfld_dsi_send_gen_long_lp(sender, h8c7_set_command_cyc, 24, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 
-	mdfld_dsi_send_gen_long_lp(sender, h8c7_set_mipi_ctrl, 1, 0);
+	mdfld_dsi_send_gen_long_lp(sender, h8c7_set_mipi_ctrl, 4, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 
-	mdfld_dsi_send_gen_long_lp(sender, h8c7_video_mode, 1, 0);
+	mdfld_dsi_send_gen_long_lp(sender, h8c7_video_mode, 4, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 
-	mdfld_dsi_send_gen_long_lp(sender, h8c7_set_blanking_opt_2, 1, 0);
+	mdfld_dsi_send_gen_long_lp(sender, h8c7_set_blanking_opt_2, 4, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 
-	mdfld_dsi_send_gen_long_lp(sender, h8c7_set_panel, 1, 0);
+	mdfld_dsi_send_gen_long_lp(sender, h8c7_set_panel, 4, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 
-	mdfld_dsi_send_gen_long_lp(sender, h8c7_set_eq_func_ltps, 1, 0);
+	mdfld_dsi_send_gen_long_lp(sender, h8c7_set_eq_func_ltps, 4, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 
-	mdfld_dsi_send_gen_long_lp(sender, h8c7_set_ltps_ctrl_output, 6, 0);
+	mdfld_dsi_send_gen_long_lp(sender, h8c7_set_ltps_ctrl_output, 24, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 
-	mdfld_dsi_send_gen_long_lp(sender, h8c7_set_video_cyc, 6, 0);
+	mdfld_dsi_send_gen_long_lp(sender, h8c7_set_video_cyc, 24, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 
-	mdfld_dsi_send_gen_long_lp(sender, h8c7_gamma_r, 9, 0);
+	mdfld_dsi_send_gen_long_lp(sender, h8c7_gamma_r, 36, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 
-	mdfld_dsi_send_gen_long_lp(sender, h8c7_gamma_g, 9, 0);
+	mdfld_dsi_send_gen_long_lp(sender, h8c7_gamma_g, 36, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 
-	mdfld_dsi_send_gen_long_lp(sender, h8c7_gamma_b, 9, 0);
+	mdfld_dsi_send_gen_long_lp(sender, h8c7_gamma_b, 36, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 
 	/* disable password and wait for 10ms. */
-	mdfld_dsi_send_gen_long_lp(sender, h8c7_mcs_protect_on, 1, 0);
+	mdfld_dsi_send_gen_long_lp(sender, h8c7_mcs_protect_on, 4, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 
-	mdfld_dsi_send_mcs_long_lp(sender, h8c7_set_address_mode, 1, 0);
+	mdfld_dsi_send_mcs_long_lp(sender, h8c7_set_address_mode, 4, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 
-	mdfld_dsi_send_mcs_long_lp(sender, h8c7_set_pixel_format, 1, 0);
+	mdfld_dsi_send_mcs_long_lp(sender, h8c7_set_pixel_format, 4, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
@@ -364,13 +364,13 @@ static int mdfld_dsi_h8c7_power_on(struct mdfld_dsi_config *dsi_config)
 	}
 
 	/* sleep out and wait for 150ms. */
-	mdfld_dsi_send_mcs_long_hs(sender, h8c7_exit_sleep_mode, 1, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, h8c7_exit_sleep_mode, 4, 0);
 	wait_timeout = jiffies + (3 * HZ / 20);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 
 	/*set display on*/
-	mdfld_dsi_send_mcs_long_hs(sender, h8c7_set_display_on, 1, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, h8c7_set_display_on, 4, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
@@ -413,13 +413,13 @@ static int mdfld_dsi_h8c7_power_off(struct mdfld_dsi_config *dsi_config)
 	/* FIXME disable CABC later*/
 
 	/*set display off*/
-	mdfld_dsi_send_mcs_long_hs(sender, h8c7_set_display_off, 1, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, h8c7_set_display_off, 4, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 
 	/* sleep in and wait for 150ms. */
-	mdfld_dsi_send_mcs_long_hs(sender, h8c7_enter_sleep_mode, 1, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, h8c7_enter_sleep_mode, 4, 0);
 	wait_timeout = jiffies + (3 * HZ / 20);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
@@ -453,7 +453,7 @@ int mdfld_dsi_h8c7_set_brightness(struct mdfld_dsi_config *dsi_config,
 	h8c7_set_brightness[0] = (0x00000051 | (duty_val << 8));
 
 	/* set backlight to full brightness and wait for 10ms. */
-	mdfld_dsi_send_mcs_long_hs(sender, h8c7_set_brightness, 1, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, h8c7_set_brightness, 4, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();

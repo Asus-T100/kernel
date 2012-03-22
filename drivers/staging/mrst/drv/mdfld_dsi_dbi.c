@@ -117,11 +117,11 @@ int mdfld_dsi_dbi_update_area(struct mdfld_dsi_dbi_output * dbi_output,
 	}
 #else
 	u32 sc1_set_column_address[] = {0x0200002a, 0x0000001b};
-	mdfld_dsi_send_mcs_long_hs(sender, sc1_set_column_address, 2, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, sc1_set_column_address, 8, 0);
 
 
 	u32 sc1_set_page_address[] = {0x0300002b, 0x000000bf};
-	mdfld_dsi_send_mcs_long_hs(sender, sc1_set_page_address, 2, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, sc1_set_page_address, 8, 0);
 #endif
 
 	/* mdelay(100); */

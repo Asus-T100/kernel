@@ -99,34 +99,34 @@ void mdfld_dsi_pr2_ic_init(struct mdfld_dsi_config *dsi_config, int pipe)
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 
-	mdfld_dsi_send_gen_long_lp(sender, pr2_mcs_protect_off, 1, 0);
-	mdfld_dsi_send_gen_long_lp(sender, pr2_pixel_format, 1, 0);
-	mdfld_dsi_send_gen_long_lp(sender, pr2_dsi_control, 1, 0);
-	mdfld_dsi_send_gen_long_lp(sender, pr2_panel_driving, 2, 0);
-	mdfld_dsi_send_gen_long_lp(sender, pr2_v_timing, 2, 0);
-	mdfld_dsi_send_gen_long_lp(sender, pr2_control, 1, 0);
-	mdfld_dsi_send_gen_long_lp(sender, pr2_test_mode_0, 1, 0);
-	mdfld_dsi_send_gen_long_lp(sender, pr2_h_timing, 4, 0);
-	mdfld_dsi_send_gen_long_lp(sender, pr2_can_skip, 1, 0);
-	mdfld_dsi_send_gen_long_lp(sender, pr2_gamma_set_a, 4, 0);
-	mdfld_dsi_send_gen_long_lp(sender, pr2_gamma_set_b, 4, 0);
-	mdfld_dsi_send_gen_long_lp(sender, pr2_gamma_set_c, 4, 0);
-	mdfld_dsi_send_gen_long_lp(sender, pr2_charge_pump_setting, 2, 0);
-	mdfld_dsi_send_gen_long_lp(sender, pr2_test_mode_1, 2, 0);
-	mdfld_dsi_send_gen_long_lp(sender, pr2_source_amplifiers, 1, 0);
-	mdfld_dsi_send_gen_long_lp(sender, pr2_power_supply_circuit, 1, 0);
-	mdfld_dsi_send_gen_long_lp(sender, pr2_vreg_setting, 1, 0);
-	mdfld_dsi_send_gen_long_lp(sender, pr2_test_mode_2, 1, 0);
-	mdfld_dsi_send_gen_long_lp(sender, pr2_timing_control_0, 3, 0);
-	mdfld_dsi_send_gen_long_lp(sender, pr2_timing_control_1, 2, 0);
-	mdfld_dsi_send_gen_long_lp(sender, pr2_timing_control_2, 1, 0);
-	mdfld_dsi_send_gen_long_lp(sender, pr2_white_balance, 2, 0);
-	mdfld_dsi_send_gen_long_lp(sender, pr2_vcs_setting, 1, 0);
-	mdfld_dsi_send_gen_long_lp(sender, pr2_vcom_dc_setting, 1, 0);
-	mdfld_dsi_send_gen_long_lp(sender, pr2_test_mode_3, 2, 0);
-	mdfld_dsi_send_gen_long_lp(sender, pr2_mcs_protect_on, 1, 0);
-	mdfld_dsi_send_mcs_long_lp(sender, pr2_set_address_mode, 1, 0);
-	mdfld_dsi_send_mcs_long_lp(sender, pr2_set_pixel_format, 1, 0);
+	mdfld_dsi_send_gen_long_lp(sender, pr2_mcs_protect_off, 4, 0);
+	mdfld_dsi_send_gen_long_lp(sender, pr2_pixel_format, 4, 0);
+	mdfld_dsi_send_gen_long_lp(sender, pr2_dsi_control, 4, 0);
+	mdfld_dsi_send_gen_long_lp(sender, pr2_panel_driving, 8, 0);
+	mdfld_dsi_send_gen_long_lp(sender, pr2_v_timing, 8, 0);
+	mdfld_dsi_send_gen_long_lp(sender, pr2_control, 4, 0);
+	mdfld_dsi_send_gen_long_lp(sender, pr2_test_mode_0, 4, 0);
+	mdfld_dsi_send_gen_long_lp(sender, pr2_h_timing, 16, 0);
+	mdfld_dsi_send_gen_long_lp(sender, pr2_can_skip, 4, 0);
+	mdfld_dsi_send_gen_long_lp(sender, pr2_gamma_set_a, 16, 0);
+	mdfld_dsi_send_gen_long_lp(sender, pr2_gamma_set_b, 16, 0);
+	mdfld_dsi_send_gen_long_lp(sender, pr2_gamma_set_c, 16, 0);
+	mdfld_dsi_send_gen_long_lp(sender, pr2_charge_pump_setting, 8, 0);
+	mdfld_dsi_send_gen_long_lp(sender, pr2_test_mode_1, 8, 0);
+	mdfld_dsi_send_gen_long_lp(sender, pr2_source_amplifiers, 4, 0);
+	mdfld_dsi_send_gen_long_lp(sender, pr2_power_supply_circuit, 4, 0);
+	mdfld_dsi_send_gen_long_lp(sender, pr2_vreg_setting, 4, 0);
+	mdfld_dsi_send_gen_long_lp(sender, pr2_test_mode_2, 4, 0);
+	mdfld_dsi_send_gen_long_lp(sender, pr2_timing_control_0, 12, 0);
+	mdfld_dsi_send_gen_long_lp(sender, pr2_timing_control_1, 8, 0);
+	mdfld_dsi_send_gen_long_lp(sender, pr2_timing_control_2, 4, 0);
+	mdfld_dsi_send_gen_long_lp(sender, pr2_white_balance, 8, 0);
+	mdfld_dsi_send_gen_long_lp(sender, pr2_vcs_setting, 4, 0);
+	mdfld_dsi_send_gen_long_lp(sender, pr2_vcom_dc_setting, 4, 0);
+	mdfld_dsi_send_gen_long_lp(sender, pr2_test_mode_3, 8, 0);
+	mdfld_dsi_send_gen_long_lp(sender, pr2_mcs_protect_on, 4, 0);
+	mdfld_dsi_send_mcs_long_lp(sender, pr2_set_address_mode, 4, 0);
+	mdfld_dsi_send_mcs_long_lp(sender, pr2_set_pixel_format, 4, 0);
 
 	/* Now In Sleep Mode */
 }
@@ -279,19 +279,19 @@ static int mdfld_dsi_pr2_power_on(struct mdfld_dsi_config *dsi_config)
 
 	/*Just turn on panel for WiDi Extended Mode.*/
 	if (!dev_priv->drm_psb_widi && !dev_priv->dpms_on_off) {
-		mdfld_dsi_send_gen_long_hs(sender, pr2_mcs_protect_off, 1, 0);
+		mdfld_dsi_send_gen_long_hs(sender, pr2_mcs_protect_off, 4, 0);
 		/*change power state*/
-		mdfld_dsi_send_mcs_long_hs(sender, pr2_exit_sleep_mode, 1, 0);
+		mdfld_dsi_send_mcs_long_hs(sender, pr2_exit_sleep_mode, 4, 0);
 
 		msleep(120);
 
 		/*enable PWMON*/
 		pr2_backlight_control_2[0] |= BIT8;
 		mdfld_dsi_send_mcs_long_hs(sender,
-			pr2_backlight_control_2, 2, 0);
+			pr2_backlight_control_2, 8, 0);
 
 		/*set display on*/
-		mdfld_dsi_send_mcs_long_hs(sender, pr2_set_display_on, 1, 0);
+		mdfld_dsi_send_mcs_long_hs(sender, pr2_set_display_on, 4, 0);
 
 		msleep(21);
 
@@ -299,7 +299,7 @@ static int mdfld_dsi_pr2_power_on(struct mdfld_dsi_config *dsi_config)
 		if (drm_psb_enable_pr2_cabc) {
 			pr2_backlight_control_1[0] |= BIT8;
 			mdfld_dsi_send_gen_long_hs(sender,
-				pr2_backlight_control_1, 6, 0);
+				pr2_backlight_control_1, 24, 0);
 			printk(KERN_ALERT "enable pr2 cabc\n");
 		}
 
@@ -339,27 +339,27 @@ static int mdfld_dsi_pr2_power_off(struct mdfld_dsi_config *dsi_config)
 
 	/*Just turn off panel for WiDi Extended Mode.*/
 	if (!dev_priv->drm_psb_widi && !dev_priv->dpms_on_off) {
-		mdfld_dsi_send_gen_long_hs(sender, pr2_mcs_protect_off, 1, 0);
+		mdfld_dsi_send_gen_long_hs(sender, pr2_mcs_protect_off, 4, 0);
 		/*change power state here*/
-		mdfld_dsi_send_mcs_long_hs(sender, pr2_set_display_off, 1, 0);
+		mdfld_dsi_send_mcs_long_hs(sender, pr2_set_display_off, 4, 0);
 
 		/*disable BLCON, disable CABC*/
 		pr2_backlight_control_1[0] &= (~BIT8);
 		mdfld_dsi_send_gen_long_hs(sender,
-			pr2_backlight_control_1, 6, 0);
+			pr2_backlight_control_1, 24, 0);
 		printk(KERN_ALERT "disable pr2 cabc\n");
 
 		msleep(21);
 
-		mdfld_dsi_send_mcs_long_hs(sender, pr2_enter_sleep_mode, 1, 0);
+		mdfld_dsi_send_mcs_long_hs(sender, pr2_enter_sleep_mode, 4, 0);
 
 		msleep(120);
 
 		/*put panel into deep standby mode*/
 		mdfld_dsi_send_gen_long_hs(sender,
-			pr2_enter_low_power_mode, 1, 0);
+			pr2_enter_low_power_mode, 4, 0);
 
-		mdfld_dsi_send_gen_long_hs(sender, pr2_mcs_protect_on, 1, 0);
+		mdfld_dsi_send_gen_long_hs(sender, pr2_mcs_protect_on, 4, 0);
 	}
 	return 0;
 }
@@ -380,14 +380,14 @@ static int mdfld_dsi_pr2_set_brightness(struct mdfld_dsi_config *dsi_config,
 
 	duty_val = (255 * level) / 100;
 
-	mdfld_dsi_send_gen_long_hs(sender, pr2_mcs_protect_off, 1, 0);
+	mdfld_dsi_send_gen_long_hs(sender, pr2_mcs_protect_off, 4, 0);
 
 	/*update duty value*/
 	pr2_backlight_control_2[0] =  (0x0000001b9 | (duty_val << 16));
 
-	mdfld_dsi_send_gen_long_hs(sender, pr2_backlight_control_2, 2, 0);
+	mdfld_dsi_send_gen_long_hs(sender, pr2_backlight_control_2, 8, 0);
 
-	mdfld_dsi_send_gen_long_hs(sender, pr2_mcs_protect_on, 1, 0);
+	mdfld_dsi_send_gen_long_hs(sender, pr2_mcs_protect_on, 4, 0);
 
 	return 0;
 }
