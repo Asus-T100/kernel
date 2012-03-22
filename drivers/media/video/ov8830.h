@@ -63,6 +63,13 @@
 /*
  * ov8830 System control registers
  */
+#define OV8830_PLL_PLL10			0x3090
+#define OV8830_PLL_PLL11			0x3091
+#define OV8830_PLL_PLL12			0x3092
+#define OV8830_PLL_PLL13			0x3093
+#define	OV8830_TIMING_VTS			0x380E
+#define OV8830_TIMING_HTS			0x380C
+
 #define OV8830_SC_CMMN_CHIP_ID_H		0x0000
 #define OV8830_SC_CMMN_CHIP_ID_L		0x0001
 

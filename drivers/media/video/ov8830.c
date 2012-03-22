@@ -1614,6 +1614,96 @@ static int ov8830_g_chip_ident(struct v4l2_subdev *sd,
 	return 0;
 }
 
+/* Return value of the specified register, first try getting it from
+ * the register list and if not found, get from the sensor via i2c.
+ */
+static int ov8830_get_register(struct v4l2_subdev *sd, int reg,
+			       const struct ov8830_reg *reglist)
+{
+	struct i2c_client *client = v4l2_get_subdevdata(sd);
+	const struct ov8830_reg *next;
+	u16 val;
+
+	/* Try if the values is in the register list */
+	for (next = reglist; next->type != OV8830_TOK_TERM; next++) {
+		if (next->type != OV8830_8BIT) {
+			v4l2_err(sd, "only 8-bit registers supported\n");
+			return -ENXIO;
+		}
+		if (next->reg.sreg == reg)
+			return next->val;
+	}
+
+	/* If not, read from sensor */
+	if (ov8830_read_reg(client, OV8830_8BIT, reg, &val)) {
+		v4l2_err(sd, "failed to read register 0x%04X\n", reg);
+		return -EIO;
+	}
+
+	return val;
+}
+
+static int ov8830_get_intg_factor(struct v4l2_subdev *sd,
+				  struct camera_mipi_info *info,
+				  const struct ov8830_reg *reglist)
+{
+	const int ext_clk = 19200000; /* MHz */
+	struct sensor_mode_data *m = (struct sensor_mode_data *)&info->data;
+	int pll2_prediv;
+	int pll2_multiplier;
+	int pll2_divs;
+	int pll2_seld5;
+	int timing_vts_hi;
+	int timing_vts_lo;
+	int timing_hts_hi;
+	int timing_hts_lo;
+	int t1, t2, t3;
+	int sclk;
+
+	memset(&info->data, 0, sizeof(info->data));
+
+	timing_vts_hi = ov8830_get_register(sd, OV8830_TIMING_VTS, reglist);
+	timing_vts_lo = ov8830_get_register(sd, OV8830_TIMING_VTS + 1, reglist);
+	timing_hts_hi = ov8830_get_register(sd, OV8830_TIMING_HTS, reglist);
+	timing_hts_lo = ov8830_get_register(sd, OV8830_TIMING_HTS + 1, reglist);
+
+	pll2_prediv     = ov8830_get_register(sd, OV8830_PLL_PLL10, reglist);
+	pll2_multiplier = ov8830_get_register(sd, OV8830_PLL_PLL11, reglist);
+	pll2_divs       = ov8830_get_register(sd, OV8830_PLL_PLL12, reglist);
+	pll2_seld5      = ov8830_get_register(sd, OV8830_PLL_PLL13, reglist);
+
+	if (timing_vts_hi < 0 || timing_vts_lo < 0 ||
+	    timing_hts_hi < 0 || timing_vts_lo < 0 ||
+	    pll2_prediv < 0 || pll2_multiplier < 0 ||
+	    pll2_divs < 0 || pll2_seld5 < 0)
+		return -EIO;
+
+	pll2_prediv &= 0x07;
+	pll2_multiplier &= 0x3F;
+	pll2_divs = (pll2_divs & 0x0F) + 1;
+	pll2_seld5 &= 0x03;
+
+	if (pll2_prediv <= 0)
+		return -EIO;
+
+	t1 = ext_clk / pll2_prediv;
+	t2 = t1 * pll2_multiplier;
+	t3 = t2 / pll2_divs;
+	sclk = t3;
+	if (pll2_seld5 == 0)
+		sclk = t3;
+	else if (pll2_seld5 == 3)
+		sclk = t3 * 2 / 5;
+	else
+		sclk = t3 / pll2_seld5;
+	m->vt_pix_clk_freq_mhz = sclk;
+
+	m->frame_length_lines = (timing_vts_hi  << 8) | timing_vts_lo;
+	m->line_length_pck = (timing_hts_hi << 8) | timing_hts_lo;
+
+	return 0;
+}
+
 /* This returns the exposure time being used. This should only be used
    for filling in EXIF data, not for actual image processing. */
 static int ov8830_q_exposure(struct v4l2_subdev *sd, s32 *value)
@@ -2004,13 +2094,11 @@ static int ov8830_s_mbus_fmt(struct v4l2_subdev *sd,
 	dev->pixels_per_line = ov8830_res[dev->fmt_idx].pixels_per_line;
 	dev->lines_per_frame = ov8830_res[dev->fmt_idx].lines_per_frame;
 
-#if 0
 	ret = ov8830_get_intg_factor(sd, ov8830_info, ov8830_def_reg);
 	if (ret) {
 		v4l2_err(sd, "failed to get integration_factor\n");
 		return -EINVAL;
 	}
-#endif
 
 	/* restore exposure, gain settings */
 	if (dev->exposure) {
