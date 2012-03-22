@@ -920,13 +920,26 @@ static int __read_panel_data(struct mdfld_dsi_pkg_sender *sender,
 	int retry = MDFLD_DSI_READ_MAX_COUNT;
 	u8 transmission = pkg->transmission_type;
 
+	/*Check the len. Max value is 0x40
+	based on the generic read FIFO size*/
+	if (len * sizeof(*data) > 0x40) {
+		len = 0x40 / sizeof(*data);
+		DRM_ERROR("Bigger than Max.Set the len to Max 0x40 bytes\n");
+	}
+
 	/**
 	 * do reading.
-	 * 0) send out generic read request
-	 * 1) polling read data avail interrupt
-	 * 2) read data
+	 * 0) set the max return pack size
+	 * 1) send out generic read request
+	 * 2) polling read data avail interrupt
+	 * 3) read data
 	 */
 	spin_lock_irqsave(&sender->lock, flags);
+
+	/*Set the Max return pack size*/
+	wait_for_all_fifos_empty(sender);
+	REG_WRITE(MIPIA_MAX_RETURN_PACK_SIZE_REG, (len*sizeof(*data)) & 0x3FF);
+	wait_for_all_fifos_empty(sender);
 
 	REG_WRITE(sender->mipi_intr_stat_reg, BIT29);
 
@@ -965,7 +978,7 @@ static int __read_panel_data(struct mdfld_dsi_pkg_sender *sender,
 
 	spin_unlock_irqrestore(&sender->lock, flags);
 
-	return 0;
+	return len;
 }
 
 static int mdfld_dsi_read_gen(struct mdfld_dsi_pkg_sender *sender,
