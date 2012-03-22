@@ -1621,6 +1621,7 @@ static int __dpi_panel_power_off(struct mdfld_dsi_config *dsi_config,
 	struct mdfld_dsi_hw_registers *regs;
 	struct mdfld_dsi_hw_context *ctx;
 	struct drm_device *dev;
+	struct drm_psb_private *dev_priv;
 	int retry;
 	int pipe0_enabled;
 	int pipe2_enabled;
@@ -1632,6 +1633,7 @@ static int __dpi_panel_power_off(struct mdfld_dsi_config *dsi_config,
 	regs = &dsi_config->regs;
 	ctx = &dsi_config->dsi_hw_context;
 	dev = dsi_config->dev;
+	dev_priv = dev->dev_private;
 
 	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
 					OSPM_UHB_FORCE_POWER_ON))
@@ -1642,8 +1644,8 @@ static int __dpi_panel_power_off(struct mdfld_dsi_config *dsi_config,
 		DRM_ERROR("Failed to set panel brightness\n");
 
 	/*save the plane informaton, for it will updated*/
-	ctx->dspsurf = REG_READ(regs->dspsurf_reg);
-	ctx->dsplinoff = REG_READ(regs->dsplinoff_reg);
+	ctx->dspsurf = dev_priv->init_screen_start;
+	ctx->dsplinoff = dev_priv->init_screen_offset;
 	ctx->pipestat = REG_READ(regs->pipestat_reg);
 
 	tmp = REG_READ(regs->pipeconf_reg);
