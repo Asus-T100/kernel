@@ -1732,9 +1732,14 @@ EXPORT_SYMBOL(pmu_set_lss01_to_d0i0_atomic);
 */
 static inline bool device_causing_hang(struct pci_dev *pdev)
 {
-	/* USB and SPI are currently causing platform Hang on enabling RTPM*/
-	return ((pdev) && (pdev->device) && ((pdev->device == SPI1_DEVICE_ID) ||
-			 (pdev->device == SPI1_DEVICE_ID)));
+	/*
+	 * lss 41  -  causing Hang in platform when Bluetooth
+	 * is turned ON/OFF (UART0/1/2 are under lss41).
+	*/
+	return ((pdev) && (pdev->device) &&
+			((pdev->device == UART0_DEVICE_ID) ||
+			(pdev->device == UART1_DEVICE_ID) ||
+			(pdev->device == UART2_DEVICE_ID)));
 }
 
 /**
