@@ -66,7 +66,8 @@ enum sst_controls {
 	SST_SND_DEVICE_RESUME =		0x1012,
 	SST_SND_DEVICE_RESUME_SYNC =	0x1013,
 	SST_SET_RUNTIME_PARAMS =	0x1014,
-	SST_MAX_CONTROLS =		0x1014,
+	SST_SET_ALGO_PARAMS =		0x1015,
+	SST_MAX_CONTROLS =		0x1015,
 };
 
 enum SND_CARDS {
@@ -147,6 +148,11 @@ enum intel_sst_pll_mode {
 	SST_PLL_VIBRA2 = 0x10,
 	SST_PLL_MSIC = 0x20,
 };
+
+enum lpe_param_types_mixer {
+	SST_ALGO_PARAM_MIXER_STREAM_CFG = 0x801,
+};
+
 
 int register_sst_card(struct intel_sst_card_ops *card);
 void unregister_sst_card(struct intel_sst_card_ops *card);

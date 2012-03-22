@@ -93,6 +93,19 @@ enum snd_sst_audio_device_type {
 	SND_SST_DEVICE_CAPTURE,
 };
 
+enum snd_sst_input_stream {
+	SST_INPUT_STREAM_PCM = 0x2,
+	SST_INPUT_STREAM_COMPRESS = 0x8,
+	SST_INPUT_STREAM_MIXED = 0xA,
+};
+
+enum snd_sst_stream_type {
+	SST_STREAM_DEVICE_HS = 32,
+	SST_STREAM_DEVICE_IHF = 33,
+	SST_STREAM_DEVICE_MIC0 = 34,
+	SST_STREAM_DEVICE_MIC1 = 35,
+};
+
 /* Firmware Version info */
 struct snd_sst_fw_version {
 	__u8 build;	/* build number*/

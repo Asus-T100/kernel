@@ -97,6 +97,39 @@ static int sst_send_runtime_param(struct snd_sst_runtime_params *params)
 			params->addr, params->size);
 	return sst_send_ipc_msg_nowait(&msg);
 }
+
+/*
+ * sst_send_algo_param - send LPE Mixer param to SST
+ *
+ * this function sends the algo parameter to sst dsp engine
+ */
+int sst_send_algo_param(struct snd_ppp_params *algo_params)
+{
+	u32 header_size = 0;
+	struct ipc_post *msg = NULL;
+	u32 ipc_msg_size = sizeof(u32) + sizeof(*algo_params)
+			 - sizeof(algo_params->params) + algo_params->size;
+	u32 offset = 0;
+
+	if (ipc_msg_size > SST_MAILBOX_SIZE)
+		return -ENOMEM;
+	if (sst_create_large_msg(&msg))
+		return -ENOMEM;
+	sst_fill_header(&msg->header,
+			IPC_IA_ALG_PARAMS, 1, algo_params->str_id);
+	msg->header.part.data = sizeof(u32) + sizeof(*algo_params)
+			 - sizeof(algo_params->params) + algo_params->size;
+	memcpy(msg->mailbox_data, &msg->header, sizeof(u32));
+	offset = sizeof(u32);
+	header_size = sizeof(*algo_params) - sizeof(algo_params->params);
+	memcpy(msg->mailbox_data + sizeof(u32), algo_params,
+		sizeof(*algo_params) - sizeof(algo_params->params));
+	offset += header_size;
+	memcpy(msg->mailbox_data + offset , algo_params->params,
+			algo_params->size);
+	return sst_send_ipc_msg_nowait(&msg);
+}
+
 /**
 * sst_post_message - Posts message to SST
 *

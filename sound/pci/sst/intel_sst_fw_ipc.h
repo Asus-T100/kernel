@@ -362,6 +362,12 @@ struct lib_slot_info {
 	u32 dram_offset; /* starting offset of slot in DRAM */
 } __attribute__ ((packed));
 
+struct snd_ppp_mixer_params {
+	__u32			type; /*Type of the parameter */
+	__u32			size;
+	__u32			input_stream_bitmap; /*Input stream Bit Map*/
+} __attribute__ ((packed));
+
 struct snd_sst_lib_download {
 	struct module_info lib_info; /* library info type, capabilities etc */
 	struct lib_slot_info slot_info; /* slot info to be downloaded */

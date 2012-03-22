@@ -470,6 +470,8 @@ struct intel_sst_drv {
 	struct sst_dma		dma;
 	void			*fw_in_mem;
 	struct sst_runtime_param runtime_param;
+	unsigned int 		device_input_mixer;
+	struct mutex         mixer_ctrl_lock;
 };
 
 extern struct intel_sst_drv *sst_drv_ctx;
@@ -558,7 +560,8 @@ void sst_clear_interrupt(void);
 int sst_download_fw(void);
 void free_stream_context(unsigned int str_id);
 void sst_clean_stream(struct stream_info *stream);
-vibra_pwm_configure(unsigned int enable);
+int vibra_pwm_configure(unsigned int enable);
+int sst_send_algo_param(struct snd_ppp_params *algo_params);
 
 /*
  * sst_fill_header - inline to fill sst header

@@ -207,6 +207,7 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 
 	mutex_init(&sst_drv_ctx->stream_lock);
 	mutex_init(&sst_drv_ctx->sst_lock);
+	mutex_init(&sst_drv_ctx->mixer_ctrl_lock);
 
 	sst_drv_ctx->stream_cnt = 0;
 	sst_drv_ctx->encoded_cnt = 0;
@@ -275,6 +276,10 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 			pr_debug("mem alloc failed...trying %d\n",
 						sst_drv_ctx->mmap_len);
 		}
+	}
+	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID) {
+		sst_drv_ctx->device_input_mixer = SST_STREAM_DEVICE_IHF
+							| SST_INPUT_STREAM_PCM;
 	}
 
 	/* Init the device */

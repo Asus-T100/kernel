@@ -162,6 +162,34 @@ void free_stream_context(unsigned int str_id)
 	}
 }
 
+void sst_send_lpe_mixer_algo_params()
+{
+	struct snd_ppp_params algo_param;
+	struct snd_ppp_mixer_params mixer_param;
+	unsigned int input_mixer, stream_device_id;
+
+	mutex_lock(&sst_drv_ctx->mixer_ctrl_lock);
+	input_mixer = (sst_drv_ctx->device_input_mixer)
+				& SST_INPUT_STREAM_MIXED;
+	stream_device_id = sst_drv_ctx->device_input_mixer - input_mixer;
+	algo_param.algo_id = SST_CODEC_MIXER;
+	algo_param.str_id = stream_device_id;
+	algo_param.enable = 1;
+	algo_param.reserved = 0;
+	algo_param.size = sizeof(algo_param);
+	mixer_param.type = SST_ALGO_PARAM_MIXER_STREAM_CFG;
+	mixer_param.input_stream_bitmap = input_mixer;
+	mixer_param.size = sizeof(input_mixer);
+	algo_param.params = &mixer_param;
+	mutex_unlock(&sst_drv_ctx->mixer_ctrl_lock);
+	pr_err("setting pp param\n");
+	pr_debug("Algo ID %d Str id %d Enable %d Size %d\n",
+			algo_param.algo_id, algo_param.str_id,
+			algo_param.enable, algo_param.size);
+	 sst_send_algo_param(&algo_param);
+}
+
+
 /*
  * sst_get_stream_allocated - this function gets a stream allocated with
  * the given params
@@ -178,6 +206,10 @@ int sst_get_stream_allocated(struct snd_sst_params *str_param,
 	int retval, str_id;
 	struct stream_info *str_info;
 
+	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID) {
+		pr_debug("Sending LPE mixer algo Params\n");
+		sst_send_lpe_mixer_algo_params();
+	}
 	retval = sst_alloc_stream((char *) &str_param->sparams, str_param->ops,
 				str_param->codec, str_param->device_type);
 	if (retval < 0) {
@@ -628,6 +660,14 @@ static int sst_set_generic_params(enum sst_controls cmd, void *arg)
 		ret_val = sst_copy_runtime_param(dst, src);
 		break;
 		}
+	case SST_SET_ALGO_PARAMS: {
+		unsigned int device_input_mixer = *((unsigned int *)arg);
+		pr_debug("LPE mixer algo param set %x\n", device_input_mixer);
+		mutex_lock(&sst_drv_ctx->mixer_ctrl_lock);
+		sst_drv_ctx->device_input_mixer = device_input_mixer;
+		mutex_unlock(&sst_drv_ctx->mixer_ctrl_lock);
+		break;
+	}
 	default:
 		pr_err("Invalid cmd request:%d\n", cmd);
 		ret_val = -EINVAL;
