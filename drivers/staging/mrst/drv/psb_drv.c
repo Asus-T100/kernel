@@ -935,6 +935,7 @@ bool mrst_get_vbt_data(struct drm_psb_private *dev_priv)
 	struct gct_r10_timing_info ti;
 	void *pGCT;
 	struct pci_dev *pci_gfx_root = pci_get_bus_and_slot(0, PCI_DEVFN(2, 0));
+	mdfld_dsi_encoder_t mipi_mode = MDFLD_DSI_ENCODER_DBI;
 
 	/*get the address of the platform config vbt, B0:D2:F0;0xFC */
 	pci_read_config_dword(pci_gfx_root, 0xFC, &platform_config_address);
@@ -1046,6 +1047,9 @@ bool mrst_get_vbt_data(struct drm_psb_private *dev_priv)
 			*((u8 *)pGCT + 0x0d);
 		dev_priv->gct_data.Panel_MIPI_Display_Descriptor |=
 			(*((u8 *)pGCT + 0x0e)) << 8;
+		mipi_mode =
+			(dev_priv->gct_data.Panel_MIPI_Display_Descriptor &
+			 0x40) ? MDFLD_DSI_ENCODER_DPI : MDFLD_DSI_ENCODER_DBI;
 		break;
 	default:
 		PSB_DEBUG_ENTRY("Unknown revision of GCT!\n");
@@ -1056,12 +1060,13 @@ bool mrst_get_vbt_data(struct drm_psb_private *dev_priv)
 	if (IS_MDFLD(dev_priv->dev)) {
 		if (PanelID == GCT_DETECT) {
 			if (IS_CTP(dev_priv->dev)) {
-				if (dev_priv->gct_data.bpi == 2) {
+				if (dev_priv->gct_data.bpi == CLV_GCT_NDX_STD) {
 					PSB_DEBUG_ENTRY(
 						"[GFX] TMD_6X10 panel Detected\n");
 					dev_priv->panel_id = TMD_6X10_VID;
 					PanelID = TMD_6X10_VID;
-				} else if (dev_priv->gct_data.bpi == 1) {
+				} else if (dev_priv->gct_data.bpi ==
+						CLV_GCT_NDX_OEM) {
 					PSB_DEBUG_ENTRY(
 						"[GFX] H8C7 panel Detected.\n");
 					dev_priv->panel_id = H8C7_VID;
@@ -1077,76 +1082,114 @@ bool mrst_get_vbt_data(struct drm_psb_private *dev_priv)
 					dev_priv->panel_id = H8C7_VID;
 					PanelID = H8C7_VID;
 				}
-			} else {
-				if (dev_priv->gct_data.bpi == 2) {
-					PSB_DEBUG_ENTRY(
-						"[GFX] PYR panel Detected\n");
-					dev_priv->panel_id = PYR_CMD;
-					PanelID = PYR_CMD;
-				} else if (dev_priv->gct_data.bpi == 0) {
-					PSB_DEBUG_ENTRY(
-						"[GFX] TMD panel Detected.\n");
+			} else if (IS_MDFLD_OLD(dev_priv->dev)) {
+				switch (dev_priv->gct_data.bpi) {
+				case PNW_GCT_NDX_OEM:
+					PSB_DEBUG_ENTRY("[GFX] Customer Panel"
+							"Detected.\n");
+					/*
+					 * Set Enzo command mode panel as
+					 * default for customer panel.
+					 */
+					/*
+					 * FIXME: need to distinguish different
+					 * customer panels.
+					 */
+					if (mipi_mode ==
+							MDFLD_DSI_ENCODER_DBI) {
+						dev_priv->panel_id =
+							AUO_SC1_CMD;
+						PSB_DEBUG_ENTRY("AUO_SC1_CMD"
+								"Panel\n");
+					} else {
+						dev_priv->panel_id =
+							AUO_SC1_VID;
+						PSB_DEBUG_ENTRY("AUO_SC1_VID"
+								"Panel\n");
+					}
+
+#ifdef CONFIG_SUPPORT_AUO_MIPI_SC1_DISPLAY
+					dev_priv->panel_id = AUO_SC1_VID;
+					PSB_DEBUG_ENTRY("AUO_SC1_VID Panel\n");
+#endif
+
+#ifdef CONFIG_SUPPORT_AUO_MIPI_SC1_COMMAND_MODE_DISPLAY
+					dev_priv->panel_id = AUO_SC1_CMD;
+					PSB_DEBUG_ENTRY("AUO_SC1_CMD Panel\n");
+#endif
+					break;
+				case PNW_GCT_NDX_STD:
+					PSB_DEBUG_ENTRY("Standard (PRx) Panel"
+							"Detected.\n");
+					/*
+					 * Set TMD 600 x 1024 panel as default
+					 * for standard internal (PRx) panel.
+					 */
+					dev_priv->panel_id = TMD_6X10_VID;
+					PanelID = TMD_6X10_VID;
+#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY
+					/*DIV5-MM-DISPLAY-NC-LCM_INIT-01*/
+					dev_priv->panel_id = TMD_VID;
+					PSB_DEBUG_ENTRY("TMD_VID Panel\n");
+#endif
+
+#ifdef CONFIG_SUPPORT_TMD_MIPI_600X1024_DISPLAY
+					dev_priv->panel_id = TMD_6X10_VID;
+					PSB_DEBUG_ENTRY("TMD_6X10_VID Panel\n");
+#endif
+
+#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
+					dev_priv->panel_id = TMD_VID;
+					PSB_DEBUG_ENTRY("TOSHIBA MIPI LVDS"
+							"BRIDGE Panel\n");
+#endif
+
+					break;
+				case PNW_GCT_NDX_TMD:
+					PSB_DEBUG_ENTRY("TMD Panel"
+							"Detected.\n");
 					dev_priv->panel_id = TMD_VID;
 					PanelID = TMD_VID;
-				} else {
-					PSB_DEBUG_ENTRY(
-						"[GFX] Default panel TPO.\n");
+					break;
+				case PNW_GCT_NDX_TPO:
+					PSB_DEBUG_ENTRY("TPO Panel"
+							"Detected.\n");
 					dev_priv->panel_id = TPO_CMD;
 					PanelID = TPO_CMD;
+					break;
+				default:
+					PSB_DEBUG_ENTRY("No Panel type"
+							"Detected.\n");
+					dev_priv->panel_id = TMD_6X10_VID;
+					PanelID = TMD_6X10_VID;
+
+                                        /* FIXME: temporarily move the GI CONFIG support here
+                                         * because the gct support on GI phone is not clear enough,
+                                         * from the print log, gct_data.bpi read from IAFW is 4.
+                                         *
+                                         * This part can be moved after the GCT table is confirmed.
+                                         * */
+#ifdef CONFIG_SUPPORT_GI_MIPI_SONY_DISPLAY
+                                        dev_priv->panel_id = GI_SONY_VID;
+                                        PSB_DEBUG_ENTRY("GI_SONY_VID.\n");
+                                        printk("GI_SONY_VID.\n");
+#endif
+
+#ifdef CONFIG_SUPPORT_GI_MIPI_SONY_COMMAND_MODE_DISPLAY
+                                        dev_priv->panel_id = GI_SONY_CMD;
+                                        PSB_DEBUG_ENTRY("GI_SONY_CMD.\n");
+#endif
+					break;
 				}
 			}
 		} else {
-			PSB_DEBUG_ENTRY("[GFX] Panel Parameter Passed in through cmd line\n");
+			PSB_DEBUG_ENTRY("[GFX] Panel Parameter Passed in"
+					"through cmd line\n");
 			dev_priv->panel_id = PanelID;
 		}
 	}
 
-#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY
-	dev_priv->panel_id = TMD_VID;
-	PSB_DEBUG_ENTRY("[DISPLAY] %s: TMD_VID Panel\n", __func__);  /*DIV5-MM-DISPLAY-NC-LCM_INIT-01*/
-#endif
-
-	if (IS_MDFLD_OLD(dev_priv->dev)) {
-		#ifdef CONFIG_SUPPORT_TMD_MIPI_600X1024_DISPLAY
-			dev_priv->panel_id = TMD_6X10_VID;
-			PanelID = TMD_6X10_VID;
-			printk(KERN_ALERT"%s: TMD_6X10_VID Panel\n", __func__);
-		#endif
-	}
-
-#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
-		dev_priv->panel_id = TMD_VID;
-		printk(KERN_ALERT
-		"[DISPLAY] %s:SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE Panel\n", __func__);
-#endif
-
-#ifdef CONFIG_SUPPORT_AUO_MIPI_SC1_DISPLAY
-		dev_priv->panel_id = AUO_SC1_VID;
-		PanelID = AUO_SC1_VID;
-		printk(KERN_ALERT"%s: AUO_SC1_VID Panel\n", __func__);
-#endif
-
-#ifdef CONFIG_SUPPORT_AUO_MIPI_SC1_COMMAND_MODE_DISPLAY
-		/*
-		   dev_priv->panel_id = TPO_CMD;
-		   PanelID = TPO_CMD;
-		   printk(KERN_ALERT"%s: 3TPO_CMD Panel\n", __func__);
-		 */
-		dev_priv->panel_id = AUO_SC1_CMD;
-		PanelID = AUO_SC1_CMD;
-		printk(KERN_ALERT"%s: 3AUO_SC1_CMD Panel\n", __func__);
-#endif
-
-#ifdef CONFIG_SUPPORT_GI_MIPI_SONY_DISPLAY
-		dev_priv->panel_id = GI_SONY_VID;
-		PanelID = GI_SONY_VID;
-		PSB_DEBUG_ENTRY("GI_SONY_VID.\n");
-#endif
-#ifdef CONFIG_SUPPORT_GI_MIPI_SONY_COMMAND_MODE_DISPLAY
-		dev_priv->panel_id = GI_SONY_CMD;
-		PanelID = GI_SONY_CMD;
-		PSB_DEBUG_ENTRY("GI_SONY_CMD.\n");
-#endif
+	PanelID = dev_priv->panel_id;
 
 	return true;
 }

@@ -103,7 +103,8 @@ static struct drm_display_mode *auo_cmd_get_config_mode(struct drm_device* dev)
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *)dev->dev_private;
 	struct mrst_timing_info *ti = &dev_priv->gct_data.DTD;
-	bool use_gct = false;
+	struct mrst_vbt *pVBT = &dev_priv->vbt_data;
+	bool use_gct = (pVBT->Size > 0) ? true : false ;
 
 	PSB_DEBUG_ENTRY("\n");
 

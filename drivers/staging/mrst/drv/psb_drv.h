@@ -85,6 +85,15 @@ enum panel_type {
 	GCT_DETECT
 };
 
+#define PNW_GCT_NDX_OEM		0
+#define PNW_GCT_NDX_STD		1
+#define PNW_GCT_NDX_TMD		2
+#define PNW_GCT_NDX_TPO		3
+
+#define CLV_GCT_NDX_DEFAULT		0
+#define CLV_GCT_NDX_OEM		1
+#define CLV_GCT_NDX_STD		2
+
 #define PCI_ID_TOPAZ_DISABLED 0x4101
 
 /*
