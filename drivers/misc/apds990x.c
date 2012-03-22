@@ -125,11 +125,9 @@
 
 /* alsps_client.status bits */
 #define PS_DATA_READY     0
-#define PS_FIRST_POLL     1
-#define PS_IOCTL_ENABLE   2
-#define ALS_DATA_READY    3
-#define ALS_FIRST_POLL    4
-#define ALS_IOCTL_ENABLE  5
+#define PS_IOCTL_ENABLE   1
+#define ALS_DATA_READY    2
+#define ALS_IOCTL_ENABLE  3
 
 /* Reverse chip factors for threshold calculation */
 struct reverse_factors {
@@ -138,11 +136,6 @@ struct reverse_factors {
 	int irf1;
 	int cf2;
 	int irf2;
-};
-
-struct alsps_state {
-	int now;
-	int once;
 };
 
 struct apds990x_chip {
@@ -156,8 +149,6 @@ struct apds990x_chip {
 	struct list_head	als_list;
 	wait_queue_head_t	ps_workq_head;
 	wait_queue_head_t	als_wordq_head;
-	struct alsps_state	als_state;
-	struct alsps_state	ps_state;
 	struct early_suspend	es;
 	struct miscdevice	ps_dev;
 	struct miscdevice	als_dev;
@@ -532,20 +523,14 @@ static void als_handle_irq(struct apds990x_chip *chip)
 	chip->lux = chip->lux_raw;
 	chip->lux_wait_fresh_res = false;
 
-	chip->als_state.now = chip->lux;
 	dev_dbg(&chip->client->dev,
-			"lux_clear=%u, lux_ir=%u, ambient once=%u, now=%u\n",
-			chip->lux_clear, chip->lux_ir,
-			chip->als_state.once, chip->als_state.now);
+			"lux_clear=%u, lux_ir=%u, ambient=%u\n",
+			chip->lux_clear, chip->lux_ir, chip->lux);
 
-	if (chip->als_state.now != chip->als_state.once) {
-		chip->als_state.once = chip->als_state.now;
+	list_for_each_entry(client, &chip->als_list, list)
+		set_bit(ALS_DATA_READY, &client->status);
 
-		list_for_each_entry(client, &chip->als_list, list)
-			set_bit(ALS_DATA_READY, &client->status);
-
-		wake_up(&chip->als_wordq_head);
-	}
+	wake_up(&chip->als_wordq_head);
 }
 
 /* mutex must be held when calling this function */
@@ -572,18 +557,13 @@ static void ps_handle_irq(struct apds990x_chip *chip)
 	else
 		chip->prox_data = 1;
 
-	chip->ps_state.now = chip->prox_data;
-	dev_dbg(&chip->client->dev, "clr_ch=%u, proximity once=%u, now=%u\n",
-			clr_ch, chip->ps_state.once, chip->ps_state.now);
+	dev_dbg(&chip->client->dev, "clr_ch=%u, proximity =%u\n",
+			clr_ch, chip->prox_data);
 
-	if (chip->ps_state.now != chip->ps_state.once) {
-		chip->ps_state.once = chip->ps_state.now;
+	list_for_each_entry(client, &chip->ps_list, list)
+		set_bit(PS_DATA_READY, &client->status);
 
-		list_for_each_entry(client, &chip->ps_list, list)
-			set_bit(PS_DATA_READY, &client->status);
-
-		wake_up(&chip->ps_workq_head);
-	}
+	wake_up(&chip->ps_workq_head);
 }
 
 static irqreturn_t apds990x_irq(int irq, void *data)
@@ -931,17 +911,17 @@ static ssize_t ps_read(struct file *filep,
 			char __user *buffer, size_t size, loff_t *offset)
 {
 	int ret = -ENODEV;
+	int value;
 	struct alsps_client *client = filep->private_data;
 	struct apds990x_chip *chip = client->chip;
 
 	mutex_lock(&chip->mutex);
 	if (chip->alsps_switch & APDS_PS_ENABLE) {
-		ret = sizeof(chip->ps_state.now);
+		value = chip->prox_data;
+		ret = sizeof(value);
 		clear_bit(PS_DATA_READY, &client->status);
-		if (copy_to_user(buffer, &chip->ps_state.now,
-				 sizeof(chip->ps_state.now))) {
+		if (copy_to_user(buffer, &value, sizeof(value)))
 			ret = -EFAULT;
-		}
 	}
 	mutex_unlock(&chip->mutex);
 
@@ -956,10 +936,6 @@ static unsigned int ps_poll(struct file *filep, struct poll_table_struct *wait)
 
 	poll_wait(filep, &chip->ps_workq_head, wait);
 
-	if (test_bit(PS_FIRST_POLL, &client->status)) {
-		mask |= (POLLIN | POLLRDNORM);
-		clear_bit(PS_FIRST_POLL, &client->status);
-	}
 	if (test_bit(PS_DATA_READY, &client->status))
 		mask |= (POLLIN | POLLRDNORM);
 
@@ -1020,11 +996,6 @@ als_poll(struct file *filep, struct poll_table_struct *wait)
 	struct apds990x_chip *chip = client->chip;
 
 	poll_wait(filep, &chip->als_wordq_head, wait);
-
-	if (test_bit(ALS_FIRST_POLL, &client->status)) {
-		mask |= (POLLIN | POLLRDNORM);
-		clear_bit(ALS_FIRST_POLL, &client->status);
-	}
 
 	if (test_bit(ALS_DATA_READY, &client->status))
 		mask |= (POLLIN | POLLRDNORM);
@@ -1105,14 +1076,14 @@ static void apds990x_mode(struct alsps_client *client, int mode)
 		}
 		break;
 	case APDS_PS_ENABLE:
-		list_for_each_entry(list_tmp, &chip->ps_list, list)
-			set_bit(PS_FIRST_POLL, &list_tmp->status);
-
 		if (test_and_set_bit(PS_IOCTL_ENABLE, &client->status))
 			return;
 		chip->ps_cnt++;
+
+		/* always report first data when ps power on */
+		if (chip->ps_cnt == 1)
+			apds990x_force_p_refresh(chip);
 		chip->alsps_switch |= APDS_PS_ENABLE;
-		chip->ps_state.once = 0;
 		break;
 	case APDS_ALS_DISABLE:
 		if (!test_and_clear_bit(ALS_IOCTL_ENABLE, &client->status)) {
@@ -1129,6 +1100,8 @@ static void apds990x_mode(struct alsps_client *client, int mode)
 		if (test_and_set_bit(ALS_IOCTL_ENABLE, &client->status) ||
 				chip->als_cnt++ > 0)
 			return;
+		/* always report first data when als power on */
+		apds990x_force_a_refresh(chip);
 		chip->alsps_switch |= APDS_ALS_ENABLE;
 		break;
 	default:
