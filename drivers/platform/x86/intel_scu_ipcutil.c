@@ -36,18 +36,12 @@
 #define MAX_FW_SIZE 264192
 
 #define OSHOB_PMIT_OFFSET		0x0000002c
-#define OSNIB_RR_OFFSET			OSNIB_OFFSET
-#define OSNIB_WD_OFFSET			(OSNIB_OFFSET + 1)
-#define OSNIB_ALARM_OFFSET		(OSNIB_OFFSET + 2)
-#define OSNIB_WAKESRC_OFFSET		(OSNIB_OFFSET + 3)
-#define OSNIB_RESETIRQ1_OFFSET		(OSNIB_OFFSET + 4)
-#define OSNIB_RESETIRQ2_OFFSET		(OSNIB_OFFSET + 5)
-#define OSNIB_RR_MASK			0x00000001
-#define OSNIB_WD_MASK			0x00000002
-#define OSNIB_ALARM_MASK		0x00000004
-#define OSNIB_WAKESRC_MASK		0x00000008
-#define OSNIB_RESETIRQ1_MASK		0x00000010
-#define OSNIB_RESETIRQ2_MASK		0x00000020
+#define OSNIB_RR_OFFSET		0
+#define OSNIB_WD_OFFSET		1
+#define OSNIB_ALARM_OFFSET		2
+#define OSNIB_WAKESRC_OFFSET	3
+#define OSNIB_RESETIRQ1_OFFSET	4
+#define OSNIB_RESETIRQ2_OFFSET	5
 #define PMIT_RESETIRQ1_OFFSET		14
 #define PMIT_RESETIRQ2_OFFSET		15
 
@@ -264,14 +258,14 @@ static long scu_ipc_ioctl(struct file *fp, unsigned int cmd,
 			pr_err("copy from user failed!!\n");
 			return ret;
 		}
-		ret = intel_scu_ipc_read_oshob(&data, 1, OSNIB_ALARM_OFFSET);
+		ret = intel_scu_ipc_read_osnib(&data, 1, OSNIB_ALARM_OFFSET);
 		if (ret < 0)
 			return ret;
 		if (flag)
 			data = data | 0x1; /* set alarm flag */
 		else
 			data = data & 0xFE; /* clear alarm flag */
-		ret = intel_scu_ipc_write_osnib(&data, 1, 2, OSNIB_ALARM_MASK);
+		ret = intel_scu_ipc_write_osnib(&data, 1, OSNIB_ALARM_OFFSET);
 		break;
 	}
 	case INTEL_SCU_IPC_READ_VBATTCRIT:
@@ -389,12 +383,51 @@ EXPORT_SYMBOL_GPL(intel_scu_ipc_read_oshob);
 #define IPCMSG_WRITE_OSNIB      0xE4
 #define POSNIBW_OFFSET          0x34
 
-int intel_scu_ipc_write_osnib(u8 *data, int len, int offset, u32 mask)
+int intel_scu_ipc_read_osnib(u8 *data, int len, int offset)
+{
+	int i, ret = 0;
+	u32 oshob_base;
+	u8 *ptr;
+	void __iomem *oshob_addr;
+	void __iomem *osnibr_addr;
+	ret = intel_scu_ipc_command(IPCMSG_GET_HOBADDR,
+		0, NULL, 0, &oshob_base, 1);
+	if (ret < 0) {
+		pr_err("ipc_read_osnib failed!\n");
+		goto exit;
+	}
+	pr_info("OSHOB addr values is %x\n", oshob_base);
+	oshob_addr = ioremap_nocache(oshob_base, OSHOB_SIZE);
+	if (!oshob_addr) {
+		pr_err("ioremap failed!\n");
+		ret = -ENOMEM;
+		goto exit;
+	}
+	osnibr_addr = oshob_addr + OSNIB_OFFSET;
+
+	ptr = data;
+	for (i = 0; i < len; i++) {
+		*ptr = readb(osnibr_addr + offset + i);
+		pr_info("addr=%8x, offset=%2x, value=%2x\n",
+			(u32)(osnibr_addr+offset+i), offset+i, *ptr);
+		ptr++;
+	}
+
+unmap_oshob_addr:
+	iounmap(oshob_addr);
+exit:
+	return ret;
+}
+EXPORT_SYMBOL_GPL(intel_scu_ipc_read_osnib);
+
+int intel_scu_ipc_write_osnib(u8 *data, int len, int offset)
 {
 	int i;
 	int ret = 0;
 	u32 posnibw, oshob_base;
-	void __iomem *oshob_addr, *osnibw_addr;
+	u8 osnib_data[OSNIB_SIZE];
+	u8 chksum = 0;
+	void __iomem *oshob_addr, *osnibw_addr, *osnibr_addr;
 
 	ret = intel_scu_ipc_command(IPCMSG_GET_HOBADDR, 0, NULL, 0,
 			&oshob_base, 1);
@@ -414,6 +447,18 @@ int intel_scu_ipc_write_osnib(u8 *data, int len, int offset, u32 mask)
 		goto exit;
 	}
 
+	/*Dump osnib data for generate chksum */
+	osnibr_addr = oshob_addr + OSNIB_OFFSET;
+	for (i = 0; i < OSNIB_SIZE; i++)
+		osnib_data[i] = readb(osnibr_addr + i);
+
+	memcpy(osnib_data + offset, data, len);
+
+	/* generate chksum */
+	for (i = 0; i < OSNIB_SIZE - 1; i++)
+		chksum += osnib_data[i];
+	osnib_data[OSNIB_SIZE - 1] = ~chksum + 1;
+
 	posnibw = readl(oshob_addr + POSNIBW_OFFSET);
 	if (posnibw == 0) { /* workaround here for BZ 2914 */
 		posnibw = 0xFFFF3400;
@@ -429,11 +474,11 @@ int intel_scu_ipc_write_osnib(u8 *data, int len, int offset, u32 mask)
 		goto unmap_oshob_addr;
 	}
 
-	for (i = 0; i < len; i++)
-		writeb(*(data + i), (osnibw_addr + offset + i));
+	for (i = 0; i < OSNIB_SIZE; i++)
+		writeb(*(osnib_data + i), (osnibw_addr + i));
 
 	ret = intel_scu_ipc_raw_cmd(IPCMSG_WRITE_OSNIB, 0, NULL, 0, NULL,
-			0, 0, mask);
+			0, 0, 0xFFFFFFFF);
 	if (ret < 0)
 		pr_err("ipc_write_osnib failed!!\n");
 
@@ -453,8 +498,7 @@ EXPORT_SYMBOL_GPL(intel_scu_ipc_write_osnib);
  */
 int intel_scu_ipc_write_osnib_rr(u8 rr)
 {
-	return intel_scu_ipc_write_osnib(&rr, 1, OSNIB_RR_OFFSET-OSNIB_OFFSET,
-						OSNIB_RR_MASK);
+	return intel_scu_ipc_write_osnib(&rr, 1, OSNIB_RR_OFFSET);
 }
 EXPORT_SYMBOL_GPL(intel_scu_ipc_write_osnib_rr);
 
@@ -463,7 +507,7 @@ EXPORT_SYMBOL_GPL(intel_scu_ipc_write_osnib_rr);
  */
 int intel_scu_ipc_read_osnib_rr(u8 *rr)
 {
-	return intel_scu_ipc_read_oshob(rr, 1, OSNIB_RR_OFFSET);
+	return intel_scu_ipc_read_osnib(rr, 1, OSNIB_RR_OFFSET);
 }
 EXPORT_SYMBOL_GPL(intel_scu_ipc_read_osnib_rr);
 
@@ -483,7 +527,7 @@ static int intel_scu_ipc_read_oshob_it_tree(u32 *ptr)
 #ifdef DUMP_OSNIB
 static int intel_scu_ipc_read_osnib_resetirq1(u8 *rirq1)
 {
-	return intel_scu_ipc_read_oshob(rirq1, 1, OSNIB_RESETIRQ1_OFFSET);
+	return intel_scu_ipc_read_osnib(rirq1, 1, OSNIB_RESETIRQ1_OFFSET);
 }
 #endif
 
@@ -493,7 +537,7 @@ static int intel_scu_ipc_read_osnib_resetirq1(u8 *rirq1)
 #ifdef DUMP_OSNIB
 static int intel_scu_ipc_read_osnib_resetirq2(u8 *rirq2)
 {
-	return intel_scu_ipc_read_oshob(rirq2, 1, OSNIB_RESETIRQ2_OFFSET);
+	return intel_scu_ipc_read_osnib(rirq2, 1, OSNIB_RESETIRQ2_OFFSET);
 }
 #endif
 

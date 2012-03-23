@@ -404,8 +404,8 @@ static int intel_scu_open(struct inode *inode, struct file *file)
 	/* Let shared OSNIB (sram) know we are open */
 	/* To publish a proc and ioctl to do this and leave userland decide */
 	/* when it is sensible to do it (boot completed intent) */
-	ret = intel_scu_ipc_write_osnib(&osnib_reset, OSNIB_WRITE_SIZE,
-		OSNIB_WDOG_OFFSET, OSNIB_WRITE_MASK);
+	ret = intel_scu_ipc_write_osnib(&osnib_reset,
+		OSNIB_WRITE_SIZE, OSNIB_WDOG_OFFSET);
 
 	if (ret != 0) {
 		pr_err(PFX "cannot write OSNIB\n");
