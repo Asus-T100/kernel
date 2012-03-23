@@ -84,7 +84,7 @@ void intel_mid_power_off(void)
 		intel_scu_ipc_simple_command(IPCMSG_COLD_RESET, 0);
 	} else
 #endif
-		mfld_power_off();
+	pmu_power_off();
 }
 
 unsigned long __init intel_mid_calibrate_tsc(void)

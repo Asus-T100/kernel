@@ -61,15 +61,14 @@
 #define CSTATE_EXIT_LATENCY_S0i1 1040
 #define CSTATE_EXIT_LATENCY_S0i3 2800
 
-#ifdef CONFIG_INTEL_MID_MDFLD_POWER
+#ifdef CONFIG_ATOM_SOC_POWER
 #define LOG_PMU_EVENTS
 
-#define PMU1_MAX_PENWELL_DEVS   8
-#define PMU2_MAX_PENWELL_DEVS   55
-#define PMU1_MAX_MRST_DEVS   2
-#define PMU2_MAX_MRST_DEVS   15
-#define MAX_DEVICES	(PMU1_MAX_PENWELL_DEVS + PMU2_MAX_PENWELL_DEVS)
+#define PMU1_MAX_DEVS   8
+#define PMU2_MAX_DEVS   55
+#define MAX_DEVICES	(PMU1_MAX_DEVS + PMU2_MAX_DEVS)
 #define PMU_MAX_LSS_SHARE 4
+
 
 /* Error codes for pmu */
 #define	PMU_SUCCESS			0
@@ -84,7 +83,10 @@
 
 #define MID_S0I1_STATE         0x1
 #define MID_LPMP3_STATE        0x3
+
 #define MID_S0I3_STATE         0x7
+#define MID_S0I2_STATE         0x7
+
 #define MID_S0IX_STATE         0xf
 #define MID_S3_STATE           0x1f
 
@@ -105,18 +107,19 @@
 extern int get_target_platform_state(unsigned long *eax);
 extern int mid_s0ix_enter(int);
 extern int pmu_set_devices_in_d0i0(void);
+extern void acquire_scu_ready_sem(void);
+extern void release_scu_ready_sem(void);
+extern int pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t state);
+extern pci_power_t pmu_pci_choose_state(struct pci_dev *pdev);
+
+extern void pmu_power_off(void);
 extern void pmu_set_s0ix_complete(void);
 extern bool pmu_is_s0i3_in_progress(void);
 extern int pmu_nc_set_power_state
 	(int islands, int state_type, int reg_type);
-extern void mfld_power_off(void);
-extern void acquire_scu_ready_sem(void);
-extern void release_scu_ready_sem(void);
-
-extern int mfld_msg_read32(u32 cmd, u32 *data);
-extern int mfld_msg_write32(u32 cmd, u32 data);
-
-extern int pmu_set_lss01_to_d0i0_atomic(void);
+extern int mid_nc_read32(u32 cmd, u32 *data);
+extern int mid_nc_write32(u32 cmd, u32 data);
+extern int pmu_set_emmc_to_d0i0_atomic(void);
 
 #ifdef LOG_PMU_EVENTS
 extern void pmu_log_ipc(u32 command);
@@ -129,7 +132,7 @@ static inline void pmu_log_ipc_irq(void) { return; };
 #else
 
 /*
- * If CONFIG_X86_MDFLD is not defined
+ * If CONFIG_ATOM_SOC_POWER is not defined
  * fall back to C6
  */
 #define MID_S0I1_STATE         C6_HINT
@@ -149,20 +152,18 @@ static inline int pmu_nc_set_power_state
 	(int islands, int state_type, int reg_type) { return 0; }
 
 static inline void pmu_set_s0ix_complete(void) { return; }
-static inline void mfld_power_off(void) { return; }
 static inline bool pmu_is_s0ix_in_progress(void) { return false; };
-static inline int pmu_set_devices_in_d0i0(void) { return 0; }
 
 /*returns function not implemented*/
-static inline  int mfld_msg_read32(u32 cmd, u32 *data) { return -ENOSYS; }
-static inline int mfld_msg_write32(u32 cmd, u32 data) { return -ENOSYS; }
-
+static inline  int mid_nc_read32(u32 cmd, u32 *data) { return -ENOSYS; }
+static inline int mid_nc_write32(u32 cmd, u32 data) { return -ENOSYS; }
+static inline int pmu_set_devices_in_d0i0(void) { return 0; }
 static inline void acquire_scu_ready_sem(void) { return; };
 static inline void release_scu_ready_sem(void) { return; };
-
-static inline int pmu_set_lss01_to_d0i0_atomic(void) { return -ENOSYS; }
 static inline void pmu_log_ipc(u32 command) { return; };
 static inline void pmu_log_ipc_irq(void) { return; };
-#endif /* #ifdef CONFIG_INTEL_MID_POWER */
+static inline int pmu_set_emmc_to_d0i0_atomic(void) { return -ENOSYS; }
+static inline void pmu_power_off(void) { return; }
+#endif /* #ifdef CONFIG_ATOM_SOC_POWER */
 
 #endif /* #ifndef INTEL_MID_PM_H */

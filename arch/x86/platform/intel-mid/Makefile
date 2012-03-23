@@ -1,5 +1,6 @@
 CFLAGS_intel_soc_pm_debug.o		:= -Werror
 CFLAGS_intel_soc_pmu.o			:= -Werror
+CFLAGS_intel_soc_mdfld.o		:= -Werror
 
 # platform configuration for board devices
 obj-y					+= device_libs/
@@ -19,6 +20,7 @@ obj-$(CONFIG_X86_MDFLD)			+= mfld.o
 obj-$(CONFIG_X86_MRFLD)			+= mrfl.o
 
 obj-$(CONFIG_ATOM_SOC_POWER)		+= intel_soc_pm_debug.o intel_soc_pmu.o
+obj-$(CONFIG_INTEL_ATOM_MDFLD_POWER)	+= intel_soc_mdfld.o
 
 # BOARD files
 obj-$(CONFIG_BOARD_MFLD_BLACKBAY)	+= board-blackbay.o
