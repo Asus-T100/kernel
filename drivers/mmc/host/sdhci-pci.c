@@ -409,6 +409,47 @@ static const struct sdhci_pci_fixes sdhci_intel_mfd_emmc = {
 	.remove_slot	= mfd_emmc_remove_slot,
 };
 
+static int intel_mrfl_mmc_probe(struct sdhci_pci_chip *chip)
+{
+	int ret = 0;
+
+#ifdef CONFIG_BOARD_MRFLD_HVP
+	/* Only mmc Func 0 (eMMC0) implemented in FPGA of MRFLD HVP board */
+	if (PCI_FUNC(chip->pdev->devfn) > 0) {
+		dev_info(&chip->pdev->dev, "Disable MMC Function %d.\n",
+			PCI_FUNC(chip->pdev->devfn));
+		ret = -ENODEV;
+	} else {
+		dev_info(&chip->pdev->dev, "Initialize MMC function %d\n",
+			PCI_FUNC(chip->pdev->devfn));
+		ret = 0;
+	}
+#endif
+
+	return ret;
+}
+
+static int intel_mrfl_mmc_probe_slot(struct sdhci_pci_slot *slot)
+{
+	if ((PCI_FUNC(slot->chip->pdev->devfn) == 0) ||
+		(PCI_FUNC(slot->chip->pdev->devfn) == 1))
+		/* Fun 0 and 1 are eMMC - 8bit, nonremovable */
+		slot->host->mmc->caps |= MMC_CAP_8_BIT_DATA |
+					MMC_CAP_NONREMOVABLE;
+
+	return 0;
+}
+
+static void intel_mrfl_mmc_remove_slot(struct sdhci_pci_slot *slot, int dead)
+{
+}
+
+static const struct sdhci_pci_fixes sdhci_intel_mrfl_mmc = {
+	.probe		= intel_mrfl_mmc_probe,
+	.probe_slot	= intel_mrfl_mmc_probe_slot,
+	.remove_slot	= intel_mrfl_mmc_remove_slot,
+};
+
 /* O2Micro extra registers */
 #define O2_SD_LOCK_WP		0xD3
 #define O2_SD_MULTI_VCC3V	0xEE
@@ -982,6 +1023,14 @@ static const struct pci_device_id pci_ids[] __devinitdata = {
 		.subvendor	= PCI_ANY_ID,
 		.subdevice	= PCI_ANY_ID,
 		.driver_data	= (kernel_ulong_t)&sdhci_intel_mfd_emmc,
+	},
+
+	{
+		.vendor		= PCI_VENDOR_ID_INTEL,
+		.device		= PCI_DEVICE_ID_INTEL_MRFL_MMC,
+		.subvendor	= PCI_ANY_ID,
+		.subdevice	= PCI_ANY_ID,
+		.driver_data	= (kernel_ulong_t)&sdhci_intel_mrfl_mmc,
 	},
 
 	{
