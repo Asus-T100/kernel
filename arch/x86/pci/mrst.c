@@ -242,7 +242,11 @@ static int intel_mid_pci_irq_enable(struct pci_dev *dev)
 	irq_attr.ioapic = mp_find_ioapic(dev->irq);
 	irq_attr.ioapic_pin = dev->irq;
 	irq_attr.trigger = 1; /* level */
+#ifdef CONFIG_X86_MRFLD
+	irq_attr.polarity = 0; /* active high */
+#else
 	irq_attr.polarity = 1; /* active low */
+#endif
 	io_apic_set_pci_routing(&dev->dev, dev->irq, &irq_attr);
 
 	return 0;
