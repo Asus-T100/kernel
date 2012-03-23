@@ -40,6 +40,7 @@
 #include <asm/intel_scu_ipc.h>
 #include <linux/intel_mid_pm.h>
 #include "intel_soc_mdfld.h"
+#include "intel_soc_clv.h"
 
 #define MID_PMU_MFLD_DRV_DEV_ID                 0x0828
 #define MID_PMU_CLV_DRV_DEV_ID			0x08EC

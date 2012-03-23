@@ -79,6 +79,7 @@ static int pci_to_platform_state(pci_power_t pci_state)
 /* PCI Device Id structure */
 static DEFINE_PCI_DEVICE_TABLE(mid_pm_ids) = {
 	{PCI_VDEVICE(INTEL, MID_PMU_MFLD_DRV_DEV_ID), 0},
+	{PCI_VDEVICE(INTEL, MID_PMU_CLV_DRV_DEV_ID), 0},
 	{}
 };
 
