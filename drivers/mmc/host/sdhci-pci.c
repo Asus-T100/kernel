@@ -1221,7 +1221,7 @@ static int sdhci_pci_power_up_host(struct sdhci_host *host)
 	bool atomic_context;
 
 	/*
-	 * Since pmu_set_lss01_to_d0i0_atomic function can
+	 * Since pmu_set_emmc_to_d0i0_atomic function can
 	 * only be used in atomic context, before call this
 	 * function, do a check first and make sure this function
 	 * is used in atomic context.
@@ -1233,7 +1233,7 @@ static int sdhci_pci_power_up_host(struct sdhci_host *host)
 		return -EPERM;
 	}
 
-	ret = pmu_set_lss01_to_d0i0_atomic();
+	ret = pmu_set_emmc_to_d0i0_atomic();
 	if (ret) {
 		pr_err("%s: power up host failed\n", __func__);
 		return ret;

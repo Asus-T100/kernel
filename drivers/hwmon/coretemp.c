@@ -144,7 +144,7 @@ static ssize_t show_soc_temp(struct device *dev,
 	u32 soc_temp_offset;
 
 	/* Read 32 bits of 0xB1 register */
-	ret = mfld_msg_read32(cmd, &soc_temp_offset);
+	ret = mid_nc_read32(cmd, &soc_temp_offset);
 	if (ret) {
 		dev_err(dev, "reading soc_temp failed: %d\n", ret);
 		return ret;
