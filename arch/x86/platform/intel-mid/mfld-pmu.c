@@ -203,6 +203,8 @@ EXPORT_SYMBOL(mfld_msg_write32);
  *
  */
 
+/* C6 offload is handled in PMU Driver on MFLD Platform */
+#ifdef CONFIG_INTEL_MID_C6OFFLOAD_CAPABLE
 /* To CLEAR C6 offload Bit(LSB) in MSR 120 */
 static inline void clear_c6offload_bit(void)
 {
@@ -228,7 +230,15 @@ static inline void set_c6offload_bit(void)
 	msr_high = msr_high | MSR_C6OFFLOAD_SET_HIGH;
 	wrmsr(MSR_C6OFFLOAD_CTL_REG, msr_low, msr_high);
 }
-
+#else
+/* C6 Offload is Handled in PUNIT on Cloverview Platform.*/
+static inline void clear_c6offload_bit(void)
+{
+}
+static inline void set_c6offload_bit(void)
+{
+}
+#endif
 static void pmu_stat_start(enum sys_state type)
 {
 	mid_pmu_cxt->pmu_current_state = type;
@@ -1016,6 +1026,12 @@ int mfld_s0ix_enter(int s0ix_state)
 
 	mid_pmu_cxt->s0ix_entered = s0ix_state;
 
+	/*
+	 * On Cloverview Platform, C6 offload does not handled by PMU Driver
+	 * It is handled by PUNIT Firmware.
+	 */
+	ssw_val = 0;
+#ifdef CONFIG_INTEL_MID_C6OFFLOAD_CAPABLE
 	if (s0ix_value == S0I3_VALUE) {
 		do {
 			ssw_val = readl(mid_pmu_cxt->base_addr.offload_reg);
@@ -1034,6 +1050,7 @@ int mfld_s0ix_enter(int s0ix_state)
 			goto ret;
 		}
 	}
+#endif
 
 	ret = s0ix_state;
 ret:
