@@ -201,12 +201,12 @@
 #define UMIP_REV_MAJ_MIN_NUMBER		0x800
 #define UMIP_SIZE_IN_BYTES		0x802
 
-#define UMIP_FG_TBL_SIZE		144
+#define UMIP_FG_TBL_SIZE		158
 #define UMIP_REF_FG_TBL			0x806	/* 2 bytes */
 
-#define UMIP_BATT_FG_TABLE_SIZE		0x90
+#define UMIP_BATT_FG_TABLE_SIZE		0x9E
 #define UMIP_NO_OF_CFG_TBLS_SIZE	0x01
-#define UMIP_BATT_FG_TABLE_OFFSET	0x896
+#define UMIP_BATT_FG_TABLE_OFFSET	0x8A4
 
 #define UMIP_NO_OF_CFG_TBLS		UMIP_BATT_FG_TABLE_OFFSET
 #define UMIP_BATT_FG_CFG_TBL1 \
@@ -225,8 +225,9 @@
 #define BATT_FG_TBL_NAME		2	/* 4 bytes */
 #define BATT_FG_TBL_BATTID		6	/* 8 bytes */
 #define BATT_FG_TBL_SIZE		14	/* 2 bytes */
-#define BATT_FG_TBL_TYPE		16	/* 1 bytes */
-#define BATT_FG_TBL_BODY		14	/* 130 bytes */
+#define BATT_FG_TBL_CHKSUM		16	/* 2 bytes */
+#define BATT_FG_TBL_TYPE		18	/* 1 bytes */
+#define BATT_FG_TBL_BODY		14	/* 144 bytes */
 
 #define UMIP_READ	0
 #define UMIP_WRITE	1
