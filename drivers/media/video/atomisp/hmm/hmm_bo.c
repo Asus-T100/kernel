@@ -315,7 +315,7 @@ static int alloc_private_pages(struct hmm_buffer_object *bo, int from_highmem,
 	unsigned int pgnr, order, blk_pgnr;
 	struct page *pages;
 	struct page_block *pgblk;
-	gfp_t gfp = GFP_NOWAIT | __GFP_NOWARN;
+	gfp_t gfp = GFP_NOWAIT | __GFP_NOWARN; /* REVISIT: need __GFP_FS too? */
 	int i, j;
 	int failure_number = 0;
 	bool reduce_order = false;
@@ -344,6 +344,20 @@ static int alloc_private_pages(struct hmm_buffer_object *bo, int from_highmem,
 		else if (order > HMM_MAX_ORDER)
 			order = HMM_MAX_ORDER;
 retry:
+		/*
+		 * When order > HMM_MIN_ORDER, for performance reasons we don't
+		 * want alloc_pages() to sleep. In case it fails and fallbacks
+		 * to HMM_MIN_ORDER or in case the requested order is originally
+		 * the minimum value, we can allow alloc_pages() to sleep for
+		 * robustness purpose.
+		 *
+		 * REVISIT: why __GFP_FS is necessary?
+		 */
+		if (order == HMM_MIN_ORDER) {
+			gfp &= ~GFP_NOWAIT;
+			gfp |= __GFP_WAIT | __GFP_FS;
+		}
+
 		pages = alloc_pages(gfp, order);
 		if (unlikely(!pages)) {
 			/*
@@ -354,13 +368,10 @@ retry:
 			 */
 			if (order == HMM_MIN_ORDER) {
 				v4l2_err(&atomisp_dev,
-					 "out of memory in alloc_pages\n");
+					 "%s: cannot allocate pages\n",
+					 __func__);
 				goto cleanup;
 			}
-			v4l2_warn(&atomisp_dev,
-				  "allocate order=%d pages failed."
-				  "reduing page order to %d.\n",
-				  order, HMM_MIN_ORDER);
 			order = HMM_MIN_ORDER;
 			failure_number++;
 			reduce_order = true;
