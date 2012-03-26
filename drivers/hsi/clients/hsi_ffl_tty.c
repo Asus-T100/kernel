@@ -3920,7 +3920,7 @@ static int __init ffl_driver_init(void)
 	}
 
 	/* Create the workqueue for tx hangup */
-	ffl_hangup_wq = create_singlethread_workqueue(DRVNAME "-hg");
+	ffl_hangup_wq = create_freezable_workqueue(DRVNAME "-hg");
 	if (unlikely(!ffl_hangup_wq)) {
 		pr_err(DRVNAME ": unable to create tx hangup workqueue");
 		err = -EFAULT;
