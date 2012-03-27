@@ -421,6 +421,8 @@ static int mdfld_dsi_pr2_panel_reset(struct mdfld_dsi_config *dsi_config,
 	int ret = 0;
 	static bool b_gpio_required[PSB_NUM_PIPE] = {0};
 	unsigned gpio_mipi_panel_reset = 128;
+	struct mdfld_dsi_pkg_sender *sender =
+		mdfld_dsi_get_pkg_sender(dsi_config);
 
 	regs = &dsi_config->regs;
 	ctx = &dsi_config->dsi_hw_context;
@@ -455,6 +457,17 @@ static int mdfld_dsi_pr2_panel_reset(struct mdfld_dsi_config *dsi_config,
 			PSB_DEBUG_ENTRY(
 				"FW has initialized the panel, skip reset during boot up\n.");
 			psb_enable_vblank(dev, dsi_config->pipe);
+
+			/* enable BLC */
+			mdfld_dsi_send_gen_long_hs(sender,
+						pr2_mcs_protect_off, 4, 0);
+			mdfld_dsi_send_gen_long_hs(sender,
+						pr2_panel_driving, 8, 0);
+			mdfld_dsi_send_gen_long_hs(sender,
+						pr2_backlight_control_1, 24, 0);
+			mdfld_dsi_send_gen_long_hs(sender,
+						pr2_mcs_protect_on, 4, 0);
+
 			goto fun_exit;
 		}
 	}
