@@ -127,16 +127,6 @@ static void get_reg_field(struct v4l2_subdev *sd,
 	*value = (tmp & mask) >> field->lsb;
 }
 
-static int set_gpio_output(int gpio, const char *name, int val)
-{
-	int ret = gpio_request(gpio, name);
-	if (ret < 0)
-		return ret;
-	ret = gpio_direction_output(gpio, val);
-	gpio_free(gpio);
-	return ret;
-}
-
 static int lm3554_hw_reset(struct i2c_client *client)
 {
 	struct v4l2_subdev *sd = i2c_get_clientdata(client);
@@ -147,10 +137,13 @@ static int lm3554_hw_reset(struct i2c_client *client)
 	ret = gpio_request(pdata->gpio_reset, "flash reset");
 	if (ret < 0)
 		return ret;
+
 	gpio_set_value(pdata->gpio_reset, 0);
 	msleep(50);
+
 	gpio_set_value(pdata->gpio_reset, 1);
 	msleep(50);
+
 	gpio_free(pdata->gpio_reset);
 	return ret;
 }
@@ -266,11 +259,8 @@ static int lm3554_s_flash_strobe(struct v4l2_subdev *sd, u32 val)
 	 * If timer is killed before run, flash is not strobe off,
 	 * so must strobe off here
 	 */
-	if (timer_pending != 0) {
-		ret = set_gpio_output(pdata->gpio_strobe, "flash", 0);
-		if (ret < 0)
-			goto err;
-	}
+	if (timer_pending != 0)
+		gpio_set_value(pdata->gpio_strobe, 0);
 
 	/* Restore flash current settings */
 	ret = set_reg_field(sd, &flash_current,
@@ -279,9 +269,7 @@ static int lm3554_s_flash_strobe(struct v4l2_subdev *sd, u32 val)
 		goto err;
 
 	/* Strobe on Flash */
-	ret = set_gpio_output(pdata->gpio_strobe, "flash", val);
-	if (ret < 0)
-		goto err;
+	gpio_set_value(pdata->gpio_strobe, val);
 
 	return 0;
 err:
@@ -540,14 +528,6 @@ static int lm3554_detect(struct i2c_client *client)
 
 	lm3554_hw_reset(client);
 
-	ret = set_gpio_output(pdata->gpio_strobe, "flash", 0);
-	if (ret < 0)
-		goto fail;
-
-	ret = set_gpio_output(pdata->gpio_torch, "torch", 0);
-	if (ret < 0)
-		goto fail;
-
 	/* Set to TX2 mode, then ENVM/TX2 pin is a power
 	 * amplifier sync input:
 	 * ENVM/TX pin asserted, flash forced into torch;
@@ -575,19 +555,70 @@ static int lm3554_detect(struct i2c_client *client)
 	return 0;
 
 fail:
-	dev_err(&client->dev, "gpio request/direction_output fail");
 	return ret;
 }
 
 static void lm3554_flash_off_delay(long unsigned int arg)
 {
-	struct i2c_client *client = (struct i2c_client *)arg;
-	struct v4l2_subdev *sd = i2c_get_clientdata(client);
+	struct v4l2_subdev *sd = i2c_get_clientdata((struct i2c_client *)arg);
 	struct lm3554_priv *p_lm3554_priv = to_lm3554_priv(sd);
 	struct camera_flash_platform_data *pdata = p_lm3554_priv->platform_data;
 
-	if (set_gpio_output(pdata->gpio_strobe, "flash", 0) < 0)
-		dev_err(&client->dev, "failed to flash strobe off\n");
+	gpio_set_value(pdata->gpio_strobe, 0);
+}
+
+static int __devinit lm3554_gpio_init(struct i2c_client *client)
+{
+	struct v4l2_subdev *sd = i2c_get_clientdata(client);
+	struct lm3554_priv *p_lm3554_priv = to_lm3554_priv(sd);
+	struct camera_flash_platform_data *pdata = p_lm3554_priv->platform_data;
+	int ret;
+
+	ret = gpio_request(pdata->gpio_strobe, "flash");
+	if (ret < 0)
+		return ret;
+
+	ret = gpio_direction_output(pdata->gpio_strobe, 0);
+	if (ret < 0)
+		goto err_gpio_flash;
+
+	ret = gpio_request(pdata->gpio_torch, "torch");
+	if (ret < 0)
+		goto err_gpio_flash;
+
+	ret = gpio_direction_output(pdata->gpio_torch, 0);
+	if (ret < 0)
+		goto err_gpio_torch;
+
+	return 0;
+
+err_gpio_torch:
+	gpio_free(pdata->gpio_torch);
+err_gpio_flash:
+	gpio_free(pdata->gpio_strobe);
+	return ret;
+}
+
+static int lm3554_gpio_uninit(struct i2c_client *client)
+{
+	struct v4l2_subdev *sd = i2c_get_clientdata(client);
+	struct lm3554_priv *p_lm3554_priv = to_lm3554_priv(sd);
+	struct camera_flash_platform_data *pdata = p_lm3554_priv->platform_data;
+	int ret;
+
+	ret = gpio_direction_output(pdata->gpio_torch, 0);
+	if (ret < 0)
+		return ret;
+
+	ret = gpio_direction_output(pdata->gpio_strobe, 0);
+	if (ret < 0)
+		return ret;
+
+	gpio_free(pdata->gpio_torch);
+
+	gpio_free(pdata->gpio_strobe);
+
+	return 0;
 }
 
 static int __devinit lm3554_probe(struct i2c_client *client,
@@ -633,6 +664,12 @@ static int __devinit lm3554_probe(struct i2c_client *client,
 		goto fail2;
 	}
 
+	err = lm3554_gpio_init(client);
+	if (err) {
+		dev_err(&client->dev, "gpio request/direction_output fail");
+		goto fail2;
+	}
+
 	return 0;
 fail2:
 	media_entity_cleanup(&p_lm3554_priv->sd.entity);
@@ -655,7 +692,7 @@ static int lm3554_remove(struct i2c_client *client)
 
 	del_timer_sync(&p_lm3554_priv->flash_off_delay);
 
-	ret = set_gpio_output(pdata->gpio_strobe, "flash", 0);
+	ret = lm3554_gpio_uninit(client);
 	if (ret < 0)
 		goto fail;
 
