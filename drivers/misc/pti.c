@@ -34,6 +34,8 @@
 #include <linux/miscdevice.h>
 #include <linux/pti.h>
 
+#include <asm/intel_scu_ipc.h>
+
 #define DRIVERNAME		"pti"
 #define PCINAME			"pciPTI"
 #define TTYNAME			"ttyPTI"
@@ -52,6 +54,15 @@
 #define USER_COPY_SIZE		8192 /* 8Kb buffer for user space copy */
 #define APERTURE_14		0x3800000 /* offset to first OS write addr */
 #define APERTURE_LEN		0x400000  /* address length */
+
+#define SMIP_PTI_OFFSET		0x30C /*
+				       * offset to PTI configuration
+				       * in MIP header
+				       */
+#define SMIP_PTI_EN		(1<<7) /*
+					* PTI enable bit in PTI
+					* configuration
+					*/
 
 struct pti_tty {
 	struct pti_masterchannel *mc;
@@ -295,6 +306,9 @@ static struct pti_masterchannel *get_id(u8 *id_array, int max_ids,
 struct pti_masterchannel *pti_request_masterchannel(u8 type, const char *name)
 {
 	struct pti_masterchannel *mc;
+
+	if (drv_data == NULL)
+		return NULL;
 
 	mutex_lock(&alloclock);
 
@@ -888,6 +902,9 @@ static struct pci_driver pti_pci_driver = {
  * pti_init()- Overall entry/init call to the pti driver.
  *             It starts the registration process with the kernel.
  *
+ *             MIP header is checked if PTI is enabled and error is
+ *             returned if not
+ *
  * Returns:
  *	int __init, 0 for success
  *	otherwise value is an error
@@ -896,6 +913,22 @@ static struct pci_driver pti_pci_driver = {
 static int __init pti_init(void)
 {
 	int retval = -EINVAL;
+
+#ifdef CONFIG_INTEL_SCU_IPC
+	u8 smip_pti;
+
+	retval = intel_scu_ipc_read_mip(&smip_pti, 1, SMIP_PTI_OFFSET, 1);
+	if (retval) {
+		pr_err("%s(%d): Mip read failed (retval = %d)\n",
+		       __func__, __LINE__, retval);
+		return retval;
+	}
+	if (!(smip_pti & SMIP_PTI_EN)) {
+		pr_info("%s(%d): PTI disabled in MIP header\n",
+			__func__, __LINE__);
+		return -EPERM;
+	}
+#endif /* CONFIG_INTEL_SCU_IPC */
 
 	/* First register module as tty device */
 
