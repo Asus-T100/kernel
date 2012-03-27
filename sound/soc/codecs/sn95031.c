@@ -44,9 +44,18 @@
 
 #define SN95031_RATES (SNDRV_PCM_RATE_8000_96000)
 #define SN95031_FORMATS (SNDRV_PCM_FMTBIT_S24_LE | SNDRV_PCM_FMTBIT_S16_LE)
-#define SN95031_SW_DBNC 250
 #define LP_THRESHOLD 400
 #define HEADSET_DET_PIN 77
+/*
+ * On LEX platform, for JACK mechanism changed, the mic bias voltage
+ * maybe unstale after 250ms wq delay, Use longer time delay 700ms as
+ * workaround, it covers most normal plug in operation.
+ */
+#ifdef CONFIG_SND_MFLD_MACHINE_GI
+#define SN95031_SW_DBNC 700
+#else
+#define SN95031_SW_DBNC 250
+#endif
 
 struct sn95031_jack_work {
 	unsigned int intr_id;
