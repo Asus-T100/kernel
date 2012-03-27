@@ -281,17 +281,8 @@ void mdfld_dsi_brightness_control (struct drm_device *dev, int pipe, int level)
 	int duty_val = 0;
 	int ret = 0;
 
-	if(level == 0) {
-		duty_val = level;
-	} else {
-		duty_val = level + 1;
-	}
-
-#if defined(CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE)
-#define BACKLIGHT_DUTY_FACTOR 127
-#else
-#define BACKLIGHT_DUTY_FACTOR 255
-#endif
+	/* MSIC PWM duty cycle goes up to 0x63 = 99% */
+	#define BACKLIGHT_DUTY_FACTOR 0x63
 
 	duty_val = level*BACKLIGHT_DUTY_FACTOR/MDFLD_DSI_BRIGHTNESS_MAX_LEVEL;
 
