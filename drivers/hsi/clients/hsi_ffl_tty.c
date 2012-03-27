@@ -72,6 +72,9 @@
 /* ACWAKE minimal pulse udelay in us (set to 0 if none is necessary) */
 #define ACWAKE_MINIMAL_PULSE_UDELAY	800
 
+/* ACWAKE to DATA transmission minimal delay in us (0 if none is necessary) */
+#define ACWAKE_TO_DATA_MINIMAL_UDELAY	100
+
 /* Initial minimal buffering size (in bytes) */
 #define FFL_MIN_TX_BUFFERING	65536
 #define FFL_MIN_RX_BUFFERING	65536
@@ -117,8 +120,8 @@
 /* RX and TX state machine definitions */
 enum {
 	IDLE,
+	READY,
 	ACTIVE,
-	TTY,
 };
 
 #define FFL_GLOBAL_STATE_SZ		2
@@ -140,7 +143,7 @@ enum {
 #define V1P35_OFF		4
 #define V1P35_ON		6
 #define COLD_BOOT_DELAY_OFF	20000	/* 20 ms (use of usleep_range) */
-#define COLD_BOOT_DELAY_ON 	10000	/* 10 ms (use of usleep_range) */
+#define COLD_BOOT_DELAY_ON	10000	/* 10 ms (use of usleep_range) */
 
 /* Forward declaration for ffl_xfer_ctx structure */
 struct ffl_ctx;
@@ -259,6 +262,8 @@ struct ffl_recovery_ctx {
  *			      clean or about to be clean
  * @tx_write_pipe_clean_event: event signalling that the write part of the TX
  *			       pipeline is clean (no more write can occur)
+ * @start_tx: work for making synchronous TX start request
+ * @stop_tx: work for making synchronous TX stop request
  * @tx: current TX context
  * @rx: current RX context
  * @do_tty_forward: dedicated TTY forwarding work structure
@@ -273,9 +278,8 @@ struct ffl_ctx {
 	struct tty_port		tty_prt;
 	wait_queue_head_t	tx_full_pipe_clean_event;
 	wait_queue_head_t	tx_write_pipe_clean_event;
-#if (ACWAKE_MINIMAL_PULSE_UDELAY > 0)
-	ktime_t			ktime_stop_tx;
-#endif
+	struct work_struct	start_tx;
+	struct work_struct	stop_tx;
 	struct ffl_xfer_ctx	tx;
 	struct ffl_xfer_ctx	rx;
 	struct work_struct	do_tty_forward;
@@ -303,22 +307,14 @@ struct ffl_driver {
 /* Protocol driver instance */
 static struct ffl_driver ffl_drv;
 
-/* Workqueue for submitting frame-recycling background tasks */
-static struct workqueue_struct *ffl_recycle_wq;
+/* Workqueue for submitting tx background tasks */
+static struct workqueue_struct *ffl_tx_wq;
 
-/* Workqueue for submitting tx timeout hangup background tasks */
-static struct workqueue_struct *ffl_hangup_wq;
+/* Workqueue for submitting rx background tasks */
+static struct workqueue_struct *ffl_rx_wq;
 
-#ifdef USE_IPC_ERROR_RECOVERY
-/* Workqueue for submitting TX draining upon recovery background tasks */
-static struct workqueue_struct *ffl_tx_drain_wq;
-
-/* Workqueue for submitting RX draining upon recovery background tasks */
-static struct workqueue_struct *ffl_rx_drain_wq;
-#endif
-
-/* Workqueue for tty buffer flush */
-static struct workqueue_struct *ffl_forwarding_wq;
+/* Workqueue for submitting hangup background tasks */
+static struct workqueue_struct *ffl_hu_wq;
 
 /*
  * Modem power / reset managers
@@ -926,6 +922,7 @@ static int _ffl_from_wait_to_ctrl(struct ffl_xfer_ctx *ctx,
 			mod_timer(&main_ctx->hangup.timer,
 				  jiffies + usecs_to_jiffies(TTY_HANGUP_DELAY));
 			del_timer(&ctx->timer);
+			_ffl_ctx_set_state(ctx, ACTIVE);
 		}
 #ifdef CONFIG_HSI_FFL_TTY_STATS
 		ctx->data_sz += actual_len;
@@ -1175,32 +1172,91 @@ static __must_check int ffl_modem_is_awake(struct ffl_xfer_ctx *ctx)
  */
 
 /**
+ * ffl_do_start_tx - making a synchronous HSI TX start request
+ * @work: a reference to work queue element
+ */
+static void ffl_do_start_tx(struct work_struct *work)
+{
+	struct ffl_ctx		*main_ctx;
+	struct ffl_xfer_ctx	*ctx;
+	unsigned long		 flags;
+	int			 exit;
+
+	main_ctx = container_of(work, struct ffl_ctx, start_tx);
+	ctx = &main_ctx->tx;
+
+	spin_lock_irqsave(&ctx->lock, flags);
+	exit = !_ffl_ctx_is_state(ctx, IDLE);
+	spin_unlock_irqrestore(&ctx->lock, flags);
+
+	if (unlikely(exit))
+		return;
+
+	exit = hsi_start_tx(main_ctx->client);
+
+	if (unlikely(exit)) {
+		pr_err(DRVNAME ": hsi_start_tx error (%d)", exit);
+		return;
+	}
+
+#if (ACWAKE_TO_DATA_MINIMAL_UDELAY > 0)
+	/* Prevent too soon a data write further to a ACWAKE */
+	udelay(ACWAKE_TO_DATA_MINIMAL_UDELAY);
+#endif
+
+	spin_lock_irqsave(&ctx->lock, flags);
+	/* The HSI controller is ready, push as many frames as possible */
+	_ffl_ctx_set_state(ctx, READY);
+	_ffl_pop_wait_push_ctrl(ctx, &flags);
+	spin_unlock_irqrestore(&ctx->lock, flags);
+}
+
+/**
+ * ffl_do_stop_tx - making a synchronous HSI TX stop request
+ * @work: a reference to work queue element
+ */
+static void ffl_do_stop_tx(struct work_struct *work)
+{
+	struct ffl_ctx		*main_ctx;
+	struct ffl_xfer_ctx	*ctx;
+	unsigned long		 flags;
+	int			 exit;
+
+	main_ctx = container_of(work, struct ffl_ctx, stop_tx);
+	ctx = &main_ctx->tx;
+
+	exit = hsi_stop_tx(main_ctx->client);
+
+	if (unlikely(exit)) {
+		pr_err(DRVNAME ": hsi_stop_tx error (%d)", exit);
+		spin_lock_irqsave(&ctx->lock, flags);
+		_ffl_ctx_set_state(ctx, READY);
+		spin_unlock_irqrestore(&ctx->lock, flags);
+		return;
+	}
+
+#if (ACWAKE_MINIMAL_PULSE_UDELAY > 0)
+	/* Prevent too small a ACWAKE pulse */
+	udelay(ACWAKE_MINIMAL_PULSE_UDELAY);
+#endif
+}
+
+/**
  * _ffl_start_tx - update the TX state machine on every new transfer
  * @ctx: a reference to the FFL TX context to consider
- * @flags: a reference to the flag used by the external spinlock, passed in to
- *	   unlock it and end the atomic context temporarily.
  *
  * This helper function updates the TX state if it is currently idle and
  * inform the HSI framework and attached controller.
  */
-static void _ffl_start_tx(struct ffl_xfer_ctx *ctx, unsigned long *flags)
+static void _ffl_start_tx(struct ffl_xfer_ctx *ctx)
 {
-	struct ffl_ctx	*main_ctx = container_of(ctx, struct ffl_ctx, tx);
-	int err;
+	struct ffl_ctx *main_ctx;
 
 	if (_ffl_ctx_is_state(ctx, IDLE)) {
-		_ffl_ctx_set_state(ctx, ACTIVE);
-		spin_unlock_irqrestore(&ctx->lock, *flags);
-#if (ACWAKE_MINIMAL_PULSE_UDELAY > 0)
-		while (ktime_us_delta(ktime_get(), main_ctx->ktime_stop_tx) <
-		       ACWAKE_MINIMAL_PULSE_UDELAY)
-			cpu_relax();
-#endif
-		err = hsi_start_tx(main_ctx->client);
-		spin_lock_irqsave(&ctx->lock, *flags);
-		if (unlikely(err))
-			_ffl_ctx_set_state(ctx, IDLE);
+		main_ctx = container_of(ctx, struct ffl_ctx, tx);
+		queue_work(ffl_tx_wq, &main_ctx->start_tx);
 	} else {
+		_ffl_ctx_set_state(ctx, READY);
 		del_timer(&ctx->timer);
 	}
 }
@@ -1209,25 +1265,18 @@ static void _ffl_start_tx(struct ffl_xfer_ctx *ctx, unsigned long *flags)
  * _ffl_stop_tx - update the TX state machine after expiration of the TX active
  *		  timeout further to a no outstanding TX transaction status
  * @ctx: a reference to the FFL TX context to consider
- * @flags: a reference to the flag used by the external spinlock, passed in to
- *	   unlock it and end the atomic context temporarily.
  *
  * This helper function updates the TX state if it is currently active and
  * inform the HSI framework and attached controller.
  */
-static void _ffl_stop_tx(struct ffl_xfer_ctx *ctx, unsigned long *flags)
+static void _ffl_stop_tx(struct ffl_xfer_ctx *ctx)
 {
-	struct ffl_ctx		*main_ctx;
+	struct ffl_ctx *main_ctx;
 
 	if (_ffl_ctx_is_state(ctx, ACTIVE)) {
-		_ffl_ctx_set_state(ctx, IDLE);
 		main_ctx = container_of(ctx, struct ffl_ctx, tx);
-		spin_unlock_irqrestore(&ctx->lock, *flags);
-		hsi_stop_tx(main_ctx->client);
-#if (ACWAKE_MINIMAL_PULSE_UDELAY > 0)
-		main_ctx->ktime_stop_tx = ktime_get();
-#endif
-		spin_lock_irqsave(&ctx->lock, *flags);
+		_ffl_ctx_set_state(ctx, IDLE);
+		queue_work(ffl_tx_wq, &main_ctx->stop_tx);
 	}
 }
 
@@ -1245,7 +1294,7 @@ static void ffl_stop_tx(unsigned long param)
 	unsigned long		flags;
 
 	spin_lock_irqsave(&ctx->lock, flags);
-	_ffl_stop_tx(ctx, &flags);
+	_ffl_stop_tx(ctx);
 	spin_unlock_irqrestore(&ctx->lock, flags);
 }
 
@@ -1280,7 +1329,7 @@ static void ffl_start_rx(struct hsi_client *cl)
 static inline void _ffl_state_rx_not_active(struct ffl_xfer_ctx *ctx)
 {
 	if (!_ffl_ctx_is_empty(ctx))
-		_ffl_ctx_set_state(ctx, TTY);
+		_ffl_ctx_set_state(ctx, READY);
 	else
 		_ffl_ctx_set_state(ctx, IDLE);
 }
@@ -1503,8 +1552,8 @@ static void _ffl_rx_fifo_wait_recycle(struct ffl_xfer_ctx *ctx)
  * ffl_increase_pool_of_frames - background work aimed at creating new frames
  * @work: a reference to the work context
  *
- * This function is called as a background job (in the ffl_recycle_wq work
- * queue) for performing the frame resource allocation (which can then sleep).
+ * This function is called as a background job (in the ffl_rx_wq/ffl_tx_wq work
+ * queues) for performing the frame resource allocation (which can then sleep).
  *
  * An error message is sent upon the failure of FFL_FRAME_ALLOC_RETRY_MAX_CNT
  * allocation requests.
@@ -1847,7 +1896,7 @@ static void ffl_complete_rx(struct hsi_msg *frame)
 #endif
 	_ffl_fifo_wait_push(ctx, frame);
 	spin_unlock_irqrestore(&ctx->lock, flags);
-	queue_work(ffl_forwarding_wq, &main_ctx->do_tty_forward);
+	queue_work(ffl_rx_wq, &main_ctx->do_tty_forward);
 }
 
 /**
@@ -1863,7 +1912,7 @@ static void ffl_rx_forward_retry(unsigned long param)
 	struct ffl_ctx		*main_ctx = container_of(ctx,
 							 struct ffl_ctx, rx);
 
-	queue_work(ffl_forwarding_wq, &main_ctx->do_tty_forward);
+	queue_work(ffl_rx_wq, &main_ctx->do_tty_forward);
 }
 
 /**
@@ -1881,7 +1930,7 @@ static void ffl_rx_forward_resume(struct tty_struct *tty)
 	main_ctx = (struct ffl_ctx *) tty->driver_data;
 
 	if (main_ctx)
-		queue_work(ffl_forwarding_wq, &main_ctx->do_tty_forward);
+		queue_work(ffl_rx_wq, &main_ctx->do_tty_forward);
 }
 
 /*
@@ -2058,8 +2107,12 @@ static void ffl_tty_port_shutdown(struct tty_port *port)
 	del_timer_sync(&tx_ctx->timer);
 	spin_lock_irqsave(&tx_ctx->lock, flags);
 	_ffl_tx_fifo_wait_recycle(tx_ctx);
-	_ffl_stop_tx(tx_ctx, &flags);
+	_ffl_stop_tx(tx_ctx);
 	spin_unlock_irqrestore(&tx_ctx->lock, flags);
+
+	/* Flush the ACWAKE works */
+	flush_work_sync(&ctx->start_tx);
+	flush_work_sync(&ctx->stop_tx);
 
 	hsi_release_port(ctx->client);
 }
@@ -2143,7 +2196,7 @@ static void ffl_tty_tx_timeout(unsigned long int param)
 
 	if (do_hangup) {
 		pr_err(DRVNAME ": TX timeout");
-		queue_work(ffl_hangup_wq, &ctx->hangup.work);
+		queue_work(ffl_hu_wq, &ctx->hangup.work);
 	}
 }
 
@@ -2274,7 +2327,7 @@ static int do_ffl_tty_write(struct ffl_xfer_ctx *ctx, unsigned char *buf,
 		/* Do a start TX on new frames only and after having marked
 		 * the current frame as pending, e.g. don't touch ! */
 		if (offset == 0)
-			_ffl_start_tx(ctx, &flags);
+			_ffl_start_tx(ctx);
 	} else {
 		_ffl_ctx_set_flag(ctx, TX_TTY_WRITE_PENDING_BIT);
 #ifdef CONFIG_HSI_FFL_TTY_STATS
@@ -2298,7 +2351,8 @@ static int do_ffl_tty_write(struct ffl_xfer_ctx *ctx, unsigned char *buf,
 		ctx->buffered		+= copied;
 		ctx->room		-= copied;
 		frame->status		 = HSI_STATUS_COMPLETED;
-		_ffl_pop_wait_push_ctrl(ctx, &flags);
+		if (!_ffl_ctx_is_state(ctx, IDLE))
+			_ffl_pop_wait_push_ctrl(ctx, &flags);
 	} else {
 		/* ERROR frames have already been popped from the wait FIFO */
 		_ffl_free_frame(ctx, frame);
@@ -2426,6 +2480,7 @@ static int ffl_tty_ioctl(struct tty_struct *tty,
 {
 	struct ffl_ctx		*ctx = (struct ffl_ctx *) tty->driver_data;
 	struct work_struct	*increase_pool = NULL;
+	static struct workqueue_struct *increase_pool_wq;
 	unsigned int		data;
 #ifdef CONFIG_HSI_FFL_TTY_STATS
 	struct hsi_ffl_stats	stats;
@@ -2461,6 +2516,7 @@ static int ffl_tty_ioctl(struct tty_struct *tty,
 			if (arg >  ctx->tx.wait_max)
 				increase_pool = &ctx->tx.increase_pool;
 			ctx->tx.wait_max = arg;
+			increase_pool_wq = ffl_tx_wq;
 			spin_unlock_irqrestore(&ctx->tx.lock, flags);
 		} else {
 			dev_dbg(&ctx->client->device,
@@ -2483,6 +2539,7 @@ static int ffl_tty_ioctl(struct tty_struct *tty,
 			if (arg > ctx->rx.ctrl_max)
 				increase_pool = &ctx->rx.increase_pool;
 			ctx->rx.wait_max = arg;
+			increase_pool_wq = ffl_rx_wq;
 			spin_unlock_irqrestore(&ctx->rx.lock, flags);
 		} else {
 			dev_dbg(&ctx->client->device,
@@ -2505,6 +2562,7 @@ static int ffl_tty_ioctl(struct tty_struct *tty,
 			if (arg > ctx->tx.ctrl_max)
 				increase_pool = &ctx->tx.increase_pool;
 			ctx->tx.ctrl_max = arg;
+			increase_pool_wq = ffl_tx_wq;
 			spin_unlock_irqrestore(&ctx->tx.lock, flags);
 		} else {
 			dev_dbg(&ctx->client->device,
@@ -2527,6 +2585,7 @@ static int ffl_tty_ioctl(struct tty_struct *tty,
 			if (arg > ctx->rx.ctrl_max)
 				increase_pool = &ctx->rx.increase_pool;
 			ctx->rx.ctrl_max = arg;
+			increase_pool_wq = ffl_rx_wq;
 			spin_unlock_irqrestore(&ctx->rx.lock, flags);
 		} else {
 			dev_dbg(&ctx->client->device,
@@ -2838,7 +2897,7 @@ static int ffl_tty_ioctl(struct tty_struct *tty,
 }
 
 	if (increase_pool)
-		(void) queue_work(ffl_recycle_wq, increase_pool);
+		(void) queue_work(increase_pool_wq, increase_pool);
 
 	return 0;
 }
@@ -2907,7 +2966,7 @@ static int is_modem_reset(char *val, const struct kernel_param *kp)
 			reset_ongoing |= (ctx->reset.ongoing << i);
 	}
 
-	return sprintf(val, "%d", reset_ongoing);
+	return sprintf(val, "%lu", reset_ongoing);
 }
 
 /**
@@ -2990,7 +3049,7 @@ static int hangup_reasons(char *val, const struct kernel_param *kp)
 		}
 	}
 
-	return sprintf(val, "%d", hangup_reasons);
+	return sprintf(val, "%lu", hangup_reasons);
 }
 
 /**
@@ -3136,7 +3195,7 @@ static irqreturn_t ffl_reset_isr(int irq, void *dev)
 		spin_unlock(&tx_ctx->lock);
 
 		if (do_hangup)
-			queue_work(ffl_hangup_wq, &ctx->hangup.work);
+			queue_work(ffl_hu_wq, &ctx->hangup.work);
 	}
 
 	return IRQ_HANDLED;
@@ -3164,11 +3223,9 @@ static void do_recovery_drain_unless(struct ffl_xfer_ctx *xfer_ctx,
 		_ffl_ctx_set_flag(xfer_ctx, ERROR_RECOVERY_ONGOING_BIT);
 		if (xfer_ctx == &main_ctx->rx) {
 			del_timer(&recovery_ctx->rx_drain_timer);
-			queue_work(ffl_rx_drain_wq,
-				   &recovery_ctx->do_rx_drain);
+			queue_work(ffl_rx_wq, &recovery_ctx->do_rx_drain);
 		} else {
-			queue_work(ffl_tx_drain_wq,
-				   &recovery_ctx->do_tx_drain);
+			queue_work(ffl_tx_wq, &recovery_ctx->do_tx_drain);
 		}
 	}
 	spin_unlock_irqrestore(&xfer_ctx->lock, flags);
@@ -3377,7 +3434,7 @@ static void ffl_recovery_ctx_clear(struct ffl_recovery_ctx *ctx_recovery)
 	 * been started in any case) */
 	flush_work(&ctx_recovery->do_tx_drain);
 	if (del_timer_sync(&ctx_recovery->rx_drain_timer))
-		queue_work(ffl_rx_drain_wq, &ctx_recovery->do_rx_drain);
+		queue_work(ffl_rx_wq, &ctx_recovery->do_rx_drain);
 	flush_work(&ctx_recovery->do_rx_drain);
 }
 #endif
@@ -3781,6 +3838,9 @@ static int __init ffl_driver_probe(struct device *dev)
 			  &client->rx_cfg);
 	INIT_WORK(&ctx->do_tty_forward, ffl_do_tty_forward);
 
+	INIT_WORK(&ctx->start_tx, ffl_do_start_tx);
+	INIT_WORK(&ctx->stop_tx, ffl_do_stop_tx);
+
 	ctx->tx.timer.function = ffl_stop_tx;
 	ctx->rx.timer.function = ffl_rx_forward_retry;
 
@@ -3816,8 +3876,8 @@ static int __init ffl_driver_probe(struct device *dev)
 #endif
 
 	/* Allocate FIFO in background */
-	(void) queue_work(ffl_recycle_wq, &ctx->tx.increase_pool);
-	(void) queue_work(ffl_recycle_wq, &ctx->rx.increase_pool);
+	(void) queue_work(ffl_tx_wq, &ctx->tx.increase_pool);
+	(void) queue_work(ffl_rx_wq, &ctx->rx.increase_pool);
 
 	dev_dbg(dev, "ffl_driver_probe completed\n");
 	return 0;
@@ -3911,46 +3971,29 @@ static int __init ffl_driver_init(void)
 	for (i = 0; i < FFL_TTY_MAX_LINES; i++)
 		ffl_drv.ctx[i] = NULL;
 
-	/* Create the workqueue for allocating frames */
-	ffl_recycle_wq = create_singlethread_workqueue(DRVNAME "-rc");
-	if (unlikely(!ffl_recycle_wq)) {
-		pr_err(DRVNAME ": unable to create pool-handling workqueue");
+	/* Create a single thread workqueue for serialising tx background
+	 * tasks */
+	ffl_tx_wq = alloc_workqueue(DRVNAME "-tq", WQ_UNBOUND, 1);
+	if (unlikely(!ffl_tx_wq)) {
+		pr_err(DRVNAME ": unable to create FFL TX-side workqueue");
 		err = -EFAULT;
-		goto out;
+		goto no_tx_wq;
 	}
 
-	/* Create the workqueue for tx hangup */
-	ffl_hangup_wq = create_freezable_workqueue(DRVNAME "-hg");
-	if (unlikely(!ffl_hangup_wq)) {
-		pr_err(DRVNAME ": unable to create tx hangup workqueue");
+	/* Create a high priority workqueue for rx background tasks */
+	ffl_rx_wq = alloc_workqueue(DRVNAME "-rq", WQ_HIGHPRI, 1);
+	if (unlikely(!ffl_rx_wq)) {
+		pr_err(DRVNAME ": unable to create FFL RX-side workqueue");
 		err = -EFAULT;
-		goto no_tx_hangup_wq;
+		goto no_rx_wq;
 	}
 
-#ifdef USE_IPC_ERROR_RECOVERY
-	/* Create the workqueue for TX drain recovery */
-	ffl_tx_drain_wq = create_singlethread_workqueue(DRVNAME "-td");
-	if (unlikely(!ffl_tx_drain_wq)) {
-		pr_err(DRVNAME ": unable to create rx error workqueue");
+	/* Create a single thread workqueue for hangup background tasks */
+	ffl_hu_wq = alloc_workqueue(DRVNAME "-hq", WQ_UNBOUND, 1);
+	if (unlikely(!ffl_hu_wq)) {
+		pr_err(DRVNAME ": unable to create FFL hangup workqueue");
 		err = -EFAULT;
-		goto no_tx_drain_wq;
-	}
-
-	/* Create the workqueue for RX drain recovery */
-	ffl_rx_drain_wq = create_singlethread_workqueue(DRVNAME "-rd");
-	if (unlikely(!ffl_rx_drain_wq)) {
-		pr_err(DRVNAME ": unable to create rx break workqueue");
-		err = -EFAULT;
-		goto no_rx_drain_wq;
-	}
-#endif
-
-	/* Create the workqueue for TTY line discipline buffer flush */
-	ffl_forwarding_wq = create_singlethread_workqueue(DRVNAME "-fw");
-	if (unlikely(!ffl_forwarding_wq)) {
-		pr_err(DRVNAME ": unable to create TTY forwarding workqueue");
-		err = -EFAULT;
-		goto no_ffl_forwarding_wq;
+		goto no_hu_wq;
 	}
 
 	/* Allocate the TTY interface */
@@ -4004,18 +4047,12 @@ no_tty_driver_registration:
 	put_tty_driver(ffl_drv.tty_drv);
 	ffl_drv.tty_drv = NULL;
 no_tty_driver_allocation:
-	destroy_workqueue(ffl_forwarding_wq);
-no_ffl_forwarding_wq:
-#ifdef USE_IPC_ERROR_RECOVERY
-	destroy_workqueue(ffl_rx_drain_wq);
-no_rx_drain_wq:
-	destroy_workqueue(ffl_tx_drain_wq);
-no_tx_drain_wq:
-#endif
-	destroy_workqueue(ffl_hangup_wq);
-no_tx_hangup_wq:
-	destroy_workqueue(ffl_recycle_wq);
-out:
+	destroy_workqueue(ffl_hu_wq);
+no_hu_wq:
+	destroy_workqueue(ffl_rx_wq);
+no_rx_wq:
+	destroy_workqueue(ffl_tx_wq);
+no_tx_wq:
 	return err;
 }
 module_init(ffl_driver_init);
@@ -4031,13 +4068,9 @@ static void __exit ffl_driver_exit(void)
 	put_tty_driver(ffl_drv.tty_drv);
 	ffl_drv.tty_drv = NULL;
 
-	destroy_workqueue(ffl_forwarding_wq);
-#ifdef USE_IPC_ERROR_RECOVERY
-	destroy_workqueue(ffl_rx_drain_wq);
-	destroy_workqueue(ffl_tx_drain_wq);
-#endif
-	destroy_workqueue(ffl_hangup_wq);
-	destroy_workqueue(ffl_recycle_wq);
+	destroy_workqueue(ffl_hu_wq);
+	destroy_workqueue(ffl_rx_wq);
+	destroy_workqueue(ffl_tx_wq);
 
 	pr_debug(DRVNAME ": driver removed");
 }

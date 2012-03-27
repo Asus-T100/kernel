@@ -126,6 +126,11 @@ enum {
 };
 
 enum {
+	HSI_PM_ASYNC,
+	HSI_PM_SYNC
+};
+
+enum {
 	RX_SLEEPING,
 	RX_READY,
 	RX_CAN_SLEEP
@@ -301,7 +306,8 @@ struct intel_xfer_ctx {
  * @arb_cfg: current arbiter priority configuration register
  * @sz_cfg: current program1 configuration register
  * @ip_freq: HSI controller IP frequency in kHz
- * @brk_us_delay: Minimal BREAK sequence delay in us
+ * @brk_us_delay: minimal BREAK sequence delay in us
+ * @ip_resumed: event signalling that the IP has actually been resumed
  * @stay_awake: Android wake lock for preventing entering low power mode
  * @dir: debugfs HSI root directory
  */
@@ -354,6 +360,7 @@ struct intel_controller {
 	/* HSI controller IP frequency */
 	unsigned int		 ip_freq;
 	unsigned int		 brk_us_delay;
+	wait_queue_head_t	 ip_resumed;
 #ifdef CONFIG_HAS_WAKELOCK
 	/* Android PM support */
 	struct wake_lock	 stay_awake;
@@ -460,56 +467,65 @@ static inline void hsi_enable_error_interrupt(void __iomem *ctrl,
 	iowrite32(irq_enable, ARASAN_HSI_ERROR_INTERRUPT_SIGNAL_ENABLE(ctrl));
 }
 
-
 /**
- * hsi_pm_wake_lock - acquire the wake lock whenever necessary
+ * hsi_is_resumed - checks if the HSI controller IP has been resumed or not
  * @intel_hsi: Intel HSI controller reference
+ *
+ * This helper function is returning a non-zero value if the HSI IP has been
+ * resumed or 0 if still suspended.
  */
-static inline void hsi_pm_wake_lock(struct intel_controller *intel_hsi)
+static __must_check int hsi_is_resumed(struct intel_controller *intel_hsi)
 	__acquires(&intel_hsi->hw_lock) __releases(&intel_hsi->hw_lock)
 {
-#ifdef CONFIG_HAS_WAKELOCK
 	unsigned long flags;
+	int ip_resumed;
 
 	spin_lock_irqsave(&intel_hsi->hw_lock, flags);
-	if (intel_hsi->suspend_state != DEVICE_READY)
-		wake_lock(&intel_hsi->stay_awake);
+	ip_resumed = (intel_hsi->suspend_state == DEVICE_READY);
 	spin_unlock_irqrestore(&intel_hsi->hw_lock, flags);
-#endif
+
+	return ip_resumed;
 }
 
 /**
  * hsi_pm_runtime_get - getting a PM runtime reference to the HSI controller
  * @intel_hsi: Intel HSI controller reference
+ * @mode: mode of the runtime PM reference get
  *
  * This function is also getting the wake lock should wake lock is used.
  */
-static void hsi_pm_runtime_get(struct intel_controller *intel_hsi)
+static void hsi_pm_runtime_get(struct intel_controller *intel_hsi, int mode)
 {
-	hsi_pm_wake_lock(intel_hsi);
-	pm_runtime_get(intel_hsi->pdev);
-}
+#ifdef CONFIG_HAS_WAKELOCK
+	unsigned long flags;
+#endif
 
-/**
- * hsi_pm_runtime_get_sync - getting a synchronised PM runtime reference to the
- *			     HSI controller
- * @intel_hsi: Intel HSI controller reference
- *
- * This function is also getting the wake lock should wake lock is used.
- */
-static void hsi_pm_runtime_get_sync(struct intel_controller *intel_hsi)
-{
-	hsi_pm_wake_lock(intel_hsi);
-	pm_runtime_get_sync(intel_hsi->pdev);
+	might_sleep_if(mode == HSI_PM_SYNC);
+
+#ifdef CONFIG_HAS_WAKELOCK
+	spin_lock_irqsave(&intel_hsi->hw_lock, flags);
+	if (intel_hsi->suspend_state != DEVICE_READY)
+		wake_lock(&intel_hsi->stay_awake);
+	spin_unlock_irqrestore(&intel_hsi->hw_lock, flags);
+#endif
+
+	if (mode == HSI_PM_ASYNC) {
+		pm_runtime_get(intel_hsi->pdev);
+	} else {
+		pm_runtime_get_sync(intel_hsi->pdev);
+		wait_event_interruptible(intel_hsi->ip_resumed,
+					 hsi_is_resumed(intel_hsi));
+	}
 }
 
 /**
  * assert_acwake - asserting the ACWAKE line status
  * @intel_hsi: Intel HSI controller reference
+ * @mode: mode of the ACWAKE assertion
  *
  * The actual ACWAKE assertion happens when tx_state was 0.
  */
-static void assert_acwake(struct intel_controller *intel_hsi)
+static void assert_acwake(struct intel_controller *intel_hsi, int mode)
 	__acquires(&intel_hsi->hw_lock) __releases(&intel_hsi->hw_lock)
 {
 #ifndef PREVENT_ACWAKE_TOGGLING
@@ -533,7 +549,7 @@ static void assert_acwake(struct intel_controller *intel_hsi)
 	spin_unlock_irqrestore(&intel_hsi->hw_lock, flags);
 
 	if (do_wakeup)
-		hsi_pm_runtime_get(intel_hsi);
+		hsi_pm_runtime_get(intel_hsi, mode);
 }
 
 /**
@@ -675,7 +691,7 @@ static int has_enabled_acready(struct intel_controller *intel_hsi)
 	spin_unlock_irqrestore(&intel_hsi->hw_lock, flags);
 
 	if (do_wakeup)
-		hsi_pm_runtime_get(intel_hsi);
+		hsi_pm_runtime_get(intel_hsi, HSI_PM_ASYNC);
 
 	return do_wakeup;
 }
@@ -988,6 +1004,8 @@ static int hsi_ctrl_resume(struct intel_controller *intel_hsi)
 	}
 	spin_unlock_irqrestore(&intel_hsi->hw_lock, flags);
 
+	wake_up(&intel_hsi->ip_resumed);
+
 	return err;
 }
 
@@ -1265,14 +1283,19 @@ static void hsi_ctrl_clean_reset(struct intel_controller *intel_hsi)
 	/* Disable the interrupt line */
 	disable_irq(intel_hsi->irq);
 
+	/* Deassert ACWAKE and ACREADY as shutting down */
+	while (deassert_acwake(intel_hsi))
+		;
+	force_disable_acready(intel_hsi);
+
+	/* Remove the CAWAKE poll timer */
+	del_timer_sync(&intel_hsi->cawake_poll);
+
 	/* Disable (and flush) all tasklets */
 	tasklet_disable(&intel_hsi->isr_tasklet);
 	tasklet_disable(&intel_hsi->fwd_tasklet);
 
 	spin_lock_irqsave(&intel_hsi->hw_lock, flags);
-
-	/* Remove the CAWAKE poll timer */
-	del_timer_sync(&intel_hsi->cawake_poll);
 
 	/* If suspended then there is nothing to do on the hardware side */
 	if (intel_hsi->suspend_state != DEVICE_READY)
@@ -1291,17 +1314,11 @@ static void hsi_ctrl_clean_reset(struct intel_controller *intel_hsi)
 	iowrite32(0, ARASAN_HSI_PROGRAM(ctrl));
 
 exit_clean_reset:
-	if (intel_hsi->rx_state == RX_READY)
-		intel_hsi->rx_state = RX_CAN_SLEEP;
 	intel_hsi->dma_running	 = 0;
 	intel_hsi->irq_status	 = 0;
 	intel_hsi->err_status	 = 0;
 	intel_hsi->prg_cfg	 = ARASAN_RESET;
 	spin_unlock_irqrestore(&intel_hsi->hw_lock, flags);
-
-	while (deassert_acwake(intel_hsi))
-		;
-	(void) has_disabled_acready(intel_hsi);
 
 	/* Re-enable all tasklets */
 	tasklet_enable(&intel_hsi->fwd_tasklet);
@@ -1368,7 +1385,7 @@ static int hsi_debug_show(struct seq_file *m, void *p)
 	void __iomem *ctrl = intel_hsi->ctrl_io;
 	int ch;
 
-	hsi_pm_runtime_get_sync(intel_hsi);
+	hsi_pm_runtime_get(intel_hsi, HSI_PM_SYNC);
 	seq_printf(m, "REVISION\t\t: 0x%08x\n",
 		ioread32(ARASAN_HSI_VERSION(ctrl)));
 	for (ch = 0; ch < DWAHB_CHAN_CNT; ch++) {
@@ -1429,7 +1446,7 @@ static int hsi_debug_dma_show(struct seq_file *m, void *p)
 	void __iomem *dma = intel_hsi->dma_io;
 	int i;
 
-	hsi_pm_runtime_get_sync(intel_hsi);
+	hsi_pm_runtime_get(intel_hsi, HSI_PM_SYNC);
 	for (i = 0; i < DWAHB_CHAN_CNT; i++) {
 		HSI_DEBUG_GDD_PRINT2(SAR, i);
 		HSI_DEBUG_GDD_PRINT2(DAR, i);
@@ -1795,7 +1812,7 @@ static void hsi_transfer(struct intel_controller *intel_hsi, int tx_not_rx,
 
 	/* Assert ACWAKE (deasserted on complete or destruct) */
 	if (tx_not_rx)
-		assert_acwake(intel_hsi);
+		assert_acwake(intel_hsi, HSI_PM_ASYNC);
 	else
 		unforce_disable_acready(intel_hsi);
 
@@ -1985,9 +2002,9 @@ static int hsi_async_break(struct hsi_msg *msg)
 	if (unlikely(!is_in_tx_frame_mode(intel_hsi)))
 		return -EINVAL;
 
-	hsi_pm_runtime_get_sync(intel_hsi);
 	if (msg->ttype == HSI_MSG_WRITE) {
-		assert_acwake(intel_hsi);
+		hsi_pm_runtime_get(intel_hsi, HSI_PM_SYNC);
+		assert_acwake(intel_hsi, HSI_PM_ASYNC);
 		spin_lock_irqsave(&intel_hsi->hw_lock, flags);
 		intel_hsi->clk_cfg |= ARASAN_TX_BREAK;
 		iowrite32(intel_hsi->clk_cfg, ARASAN_HSI_CLOCK_CONTROL(ctrl));
@@ -2001,12 +2018,12 @@ static int hsi_async_break(struct hsi_msg *msg)
 		msg->status = HSI_STATUS_COMPLETED;
 		msg->complete(msg);
 		(void) deassert_acwake(intel_hsi);
+		pm_runtime_put(intel_hsi->pdev);
 	} else {
 		spin_lock_irqsave(&intel_hsi->sw_lock, flags);
 		list_add_tail(&msg->link, &intel_hsi->brk_queue);
 		spin_unlock_irqrestore(&intel_hsi->sw_lock, flags);
 	}
-	pm_runtime_put(intel_hsi->pdev);
 
 	return 0;
 }
@@ -2400,7 +2417,7 @@ static int hsi_mid_flush(struct hsi_client *cl)
 	spin_unlock_irqrestore(&intel_hsi->sw_lock, flags);
 
 	/* Wake the device not to react on the CAWAKE and to access hw */
-	hsi_pm_runtime_get_sync(intel_hsi);
+	hsi_pm_runtime_get(intel_hsi, HSI_PM_SYNC);
 
 	/* Disable the ACREADY line not to be disturbed during flush */
 	force_disable_acready(intel_hsi);
@@ -2472,7 +2489,7 @@ static int hsi_mid_start_tx(struct hsi_client *cl)
 	struct hsi_port *port = hsi_get_port(cl);
 	struct intel_controller *intel_hsi = hsi_port_drvdata(port);
 
-	assert_acwake(intel_hsi);
+	assert_acwake(intel_hsi, HSI_PM_SYNC);
 
 	return 0;
 }
@@ -2860,6 +2877,13 @@ static irqreturn_t hsi_isr(int irq, void *hsi)
 	if (unlikely(intel_hsi->suspend_state != DEVICE_READY)) {
 		intel_hsi->suspend_state = DEVICE_AND_IRQ_SUSPENDED;
 		disable_irq_nosync(intel_hsi->irq);
+
+		/* Ignore this wakeup signal if not configured */
+		if (intel_hsi->prg_cfg & ARASAN_RESET) {
+			spin_unlock(&intel_hsi->hw_lock);
+			return IRQ_HANDLED;
+		}
+
 		intel_hsi->irq_status |= ARASAN_IRQ_RX_WAKE;
 		goto exit_irq;
 	}
@@ -3053,6 +3077,8 @@ static int hsi_controller_init(struct intel_controller *intel_hsi)
 
 	spin_lock_init(&intel_hsi->sw_lock);
 	spin_lock_init(&intel_hsi->hw_lock);
+
+	init_waitqueue_head(&intel_hsi->ip_resumed);
 
 #ifdef CONFIG_HAS_WAKELOCK
 	wake_lock_init(&intel_hsi->stay_awake, WAKE_LOCK_SUSPEND,
