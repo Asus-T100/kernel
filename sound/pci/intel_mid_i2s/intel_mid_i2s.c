@@ -1963,7 +1963,9 @@ static u32 calculate_sscr0_scr(struct intel_mid_i2s_hdl *drv_data,
 	u16 l_ssp_data_size = ps_settings->data_size;
 	enum mrst_ssp_frm_freq freq = ps_settings->master_mode_standard_freq;
 	struct device *ddbg = &(drv_data->pdev->dev);
-	u16 delay = ps_settings->ssp_psp_T2 + ps_settings->ssp_psp_T4;
+	u16 delay = ps_settings->ssp_psp_T2 +
+		    ps_settings->ssp_psp_T4 +
+		    ps_settings->ssp_psp_T1;
 	int frame_sync_length, hw_freq, requested_freq;
 
 	dev_dbg(ddbg, "delay=%d\n", delay);
@@ -1977,9 +1979,10 @@ static u32 calculate_sscr0_scr(struct intel_mid_i2s_hdl *drv_data,
 		dev_warn(ddbg, "Review SSP config, clock not accurate\n");
 	}
 
-	if (ps_settings->ssp_psp_T5 != 0)
-		dev_warn(ddbg, "T5 not null -> NOT SUPPORTED\n");
-
+	dev_dbg(ddbg, "T1=%d, T2=%d, T4=%d, T5=%d, T6=%d\n",
+		ps_settings->ssp_psp_T1, ps_settings->ssp_psp_T2,
+		ps_settings->ssp_psp_T4, ps_settings->ssp_psp_T5,
+		ps_settings->ssp_psp_T6);
 
 	/* frequency */
 	switch (freq) {

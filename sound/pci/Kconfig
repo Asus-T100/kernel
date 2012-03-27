@@ -887,7 +887,7 @@ config SND_INTEL_MID_I2S
 	  This interface is mostly used on Intel MID platforms and provide
 	  the low level interface for some upper layer drivers such as
 	  Alsa SoC, char device interfaces... depending of peripheral connected.
-	  PCI Header should have ADID field set to I2S BT_FM or 
+	  PCI Header should have ADID field set to I2S BT_FM or
 	  I2S MODEM to be used by this driver (so it knows connected peripheral).
 	  NOTES :
 	  - This is a prototype driver and support for continuous
@@ -903,18 +903,31 @@ config SND_INTEL_ALSA_SSP
 	  Say Y here to include support for ALSA SSP soundcard.
 	  To compile this driver as a module, choose M here: the module
 	  will be called snd-alsa-ssp.ko
-	  This is a sound card driver for TI LNW1273 BT/FM Board
+	  This is a sound card driver for BT/FM/Builtin devices
 	  This ALSA driver offers:
+	  1 built-in device with 1 capture and 1 playback substreams
 	  1 BT device with 1 capture and 1 playback substreams
 	  1 FM device with 1 capture substream
 
 config SND_INTEL_ALSA_SSP_MASTER_MODE
         depends on SND_INTEL_ALSA_SSP && SND_INTEL_MID_I2S
-	bool "Set the ALSA SSP in MASTER instead SLAVE by default"
+	bool "Set the ALSA SSP BT device in MASTER instead SLAVE by default"
 	default n
 	help
-	   This an option to select ALSA SSP in MASTER instead of default
+	   This is an option to select ALSA SSP BT in MASTER instead of default
 	   SLAVE.
+
+config SND_INTEL_ALSA_SSP_BUILTIN_MASTER_MODE
+        depends on SND_INTEL_ALSA_SSP && SND_INTEL_MID_I2S
+	bool "Sets ALSA SSP BUILT IN device in MASTER instead SLAVE by default"
+	default n
+	help
+	   Say Y here to include support for this option.
+	   This is an option to select ALSA SSP BUILT IN in
+	   Master I2S 16 bits 48Khz.
+	   First channel (Framesync low) : 16bits of channel 1 data
+	   second channel (framesync high) : 16bits of channel 2 data +
+	   8 dummy bits (clk is running at 1.923Mhz need 40bits)
 
 config SND_INTEL_ALSA_IFX
 	tristate "ALSA IFX modem SND Card Driver"
