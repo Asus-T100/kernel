@@ -238,7 +238,7 @@ static void mdfld_dsi_dbi_mode_set(struct drm_encoder * encoder,
 	u32 mipi_val = (PASS_FROM_SPHY_TO_AFE | SEL_FLOPPED_HSTX);
 
 	if (dev_priv->platform_rev_id != MDFLD_PNW_A0)
-		mipi_val = (PASS_FROM_SPHY_TO_AFE | SEL_FLOPPED_HSTX | TE_TRIGGER_GPIO_PIN);
+		mipi_val = (PASS_FROM_SPHY_TO_AFE | TE_TRIGGER_GPIO_PIN);
 
 	PSB_DEBUG_ENTRY("mipi_val =0x%x\n", mipi_val);
 

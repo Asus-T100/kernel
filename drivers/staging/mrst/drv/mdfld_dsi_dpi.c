@@ -320,7 +320,10 @@ void dsi_set_pipe_plane_enable_state(struct drm_device *dev,
 
 	u32 pipeconf = dev_priv->pipeconf;
 	u32 dspcntr = dev_priv->dspcntr;
-	u32 mipi = MIPI_PORT_EN | PASS_FROM_SPHY_TO_AFE | SEL_FLOPPED_HSTX;
+	u32 mipi = MIPI_PORT_EN | PASS_FROM_SPHY_TO_AFE;
+
+	if (dev_priv->platform_rev_id == MDFLD_PNW_A0)
+		mipi |= SEL_FLOPPED_HSTX;
 
 	PSB_DEBUG_ENTRY("[DISPLAY TRK] %s: state = %d, pipe = %d\n",
 			__func__, state, pipe);
@@ -703,7 +706,10 @@ void dsi_set_pipe_plane_enable_state(struct drm_device *dev, int state, int pipe
 
 	u32 pipeconf = dev_priv->pipeconf;
 	u32 dspcntr = dev_priv->dspcntr;
-	u32 mipi = MIPI_PORT_EN | PASS_FROM_SPHY_TO_AFE | SEL_FLOPPED_HSTX;
+	u32 mipi = MIPI_PORT_EN | PASS_FROM_SPHY_TO_AFE;
+
+	if (dev_priv->platform_rev_id == MDFLD_PNW_A0)
+		mipi |= SEL_FLOPPED_HSTX;
 
 	printk(KERN_ALERT "[DISPLAY TRK] %s: state = %d, pipe = %d\n", __func__, state, pipe);
 
@@ -2214,7 +2220,13 @@ void mdfld_dsi_dpi_mode_set(struct drm_encoder *encoder,
 	u32 reg_offset = 0;
 	u32 pipeconf = dev_priv->pipeconf;
 	u32 dspcntr = dev_priv->dspcntr;
-	u32 mipi = MIPI_PORT_EN | PASS_FROM_SPHY_TO_AFE | SEL_FLOPPED_HSTX;
+	u32 mipi = MIPI_PORT_EN | PASS_FROM_SPHY_TO_AFE;
+
+	/* The bit defination changed from PNW_A0 -> B0 and forward,
+	* Only for PNW_A0 that we need to set FLOPPED_HSTX
+	* */
+	if (dev_priv->platform_rev_id == MDFLD_PNW_A0)
+		mipi |= SEL_FLOPPED_HSTX;
 
 	PSB_DEBUG_ENTRY("set mode %dx%d on pipe %d",
 			mode->hdisplay, mode->vdisplay, pipe);
@@ -2282,7 +2294,10 @@ void mdfld_dsi_dpi_mode_set(struct drm_encoder *encoder,
 
 	    REG_WRITE(DEVICE_READY_REG, 0x00000001);  /*0xB000 */
 
-	    REG_WRITE(mipi_reg, 0x80810000); /*0x61190 */
+	    if (dev_priv->platform_rev_id == MDFLD_PNW_A0)
+		    REG_WRITE(mipi_reg, 0x80810000); /*0x61190 */
+	    else
+		    REG_WRITE(mipi_reg, 0x80010000); /*0x61190 */
 	}
 #endif
 

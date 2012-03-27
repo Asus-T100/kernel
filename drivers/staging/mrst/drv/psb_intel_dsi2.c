@@ -2504,7 +2504,7 @@ static void mdfld_dpi_mode_set(struct drm_encoder *encoder,
 
 	/* defaut to be dpi on values on pipe A. */
 	/* Enable MIPI Port */
-	u32 mipi_val = MIPI_PORT_EN | PASS_FROM_SPHY_TO_AFE | SEL_FLOPPED_HSTX; 
+	u32 mipi_val = MIPI_PORT_EN | PASS_FROM_SPHY_TO_AFE;
 	u32 mipi_control_val = 0x00000018;
 	u32 dphy_param_val = 0x150c3408; /* dual dbi - dpi */ /* single = 0x0B14540C; */
 	u32 clk_lane_swt_val = 0x000A0014;
@@ -2541,6 +2541,9 @@ static void mdfld_dpi_mode_set(struct drm_encoder *encoder,
 	u32 pipe = 0;
 
 	PSB_DEBUG_ENTRY("output_type = 0x%x \n", output->type);
+
+	if (dev_priv->platform_rev_id == MDFLD_PNW_A0)
+		mipi_val |= SEL_FLOPPED_HSTX;
 
 	if (output->type == INTEL_OUTPUT_MIPI2)
 	{
@@ -2800,7 +2803,7 @@ static void mdfld_dbi_mode_set(struct drm_encoder *encoder,
 	u32 disp_cntr_reg = DSPACNTR;
 
 	/* defaut to be dbi values on pipe A. */
-	u32 mipi_val = PASS_FROM_SPHY_TO_AFE | SEL_FLOPPED_HSTX; 
+	u32 mipi_val = PASS_FROM_SPHY_TO_AFE;
 	u32 dphy_param_val = 0x150c3408; /* dual dbi - dpi */ /* single 0x180a2b07; */  /*SLE 0x0b14540c;*/  /* HW SIMU 0x0b061a10; */
 	u32 mipi_control_val = 0x00000018;
 	u32 hs_tx_timeout_val = 0x3fffff;
@@ -2823,6 +2826,9 @@ static void mdfld_dbi_mode_set(struct drm_encoder *encoder,
 	u32 pipe = 0;
 
 	PSB_DEBUG_ENTRY("output_type = 0x%x \n", output->type);
+
+	if (dev_priv->platform_rev_id == MDFLD_PNW_A0)
+		mipi_val |= SEL_FLOPPED_HSTX;
 
 	if (output->type == INTEL_OUTPUT_MIPI2)
 	{
