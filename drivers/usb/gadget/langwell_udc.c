@@ -643,6 +643,7 @@ static int langwell_ep_disable(struct usb_ep *_ep)
 
 	ep->desc = NULL;
 	ep->stopped = 1;
+	ep->ep.maxpacket = (unsigned short) ~0;
 
 	spin_unlock_irqrestore(&dev->lock, flags);
 
