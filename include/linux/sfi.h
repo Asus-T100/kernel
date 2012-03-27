@@ -87,6 +87,8 @@
 #define SFI_GET_NUM_ENTRIES(ptable, entry_type) \
 	((ptable->header.len - sizeof(struct sfi_table_header)) / \
 	(sizeof(entry_type)))
+
+#define SPID_FRU_SIZE	10
 /*
  * Table structures must be byte-packed to match the SFI specification,
  * as they are provided by the BIOS.
@@ -105,6 +107,22 @@ struct sfi_table_simple {
 	u64				pentry[1];
 } __packed;
 
+struct sfi_soft_platform_id {
+	u16 customer_id; /*Defines the final customer for the product */
+	u16 vendor_id; /* Defines who owns the final product delivery */
+	u16 manufacturer_id; /* Defines who build the hardware. This can be
+			      * different for the same product */
+	u16 platform_family_id; /* Defined by vendor and defines the family of
+				 * the product with the same root components */
+	u16 product_line_id; /* Defined by vendor and defines the name of the
+			      * product. This can be used to differentiate the
+			      * feature set for the same product family (low
+			      * cost vs full feature). */
+	u16 hardware_id; /* Defined by vendor and defines the physical hardware
+			  * component set present on the PCB/FAB */
+	u8  fru[SPID_FRU_SIZE]; /* Field Replaceabl Unit */
+} __packed;
+
 /* OEMB table */
 struct sfi_table_oemb {
 	struct sfi_table_header header;
@@ -120,6 +138,7 @@ struct sfi_table_oemb {
 	u8 scu_runtime_minor_version;
 	u8 ifwi_major_version;
 	u8 ifwi_minor_version;
+	struct sfi_soft_platform_id spid;
 } __packed;
 
 /* Comply with UEFI spec 2.1 */
