@@ -65,14 +65,10 @@
 #include <asm/msr.h>
 #include <asm/atomic.h>
 #include <asm/intel-mid.h>
-#ifdef CONFIG_X86_MDFLD
 #include <linux/intel_mid_pm.h>
-#endif
 
 #define INTEL_IDLE_VERSION "0.4"
 #define PREFIX "intel_idle: "
-
-static atomic_t nr_cpus_in_c6;
 
 static struct cpuidle_driver intel_idle_driver = {
 	.name = "intel_idle",
@@ -89,9 +85,8 @@ static unsigned int lapic_timer_reliable_states = (1 << 1);	 /* Default to only 
 
 static struct cpuidle_device __percpu *intel_idle_cpuidle_devices;
 static int intel_idle(struct cpuidle_device *dev, struct cpuidle_state *state);
-static int intel_mid_idle(struct cpuidle_device *dev, struct cpuidle_state *state);
 
-#ifdef CONFIG_INTEL_MID_MDFLD_POWER
+#ifdef CONFIG_ATOM_SOC_POWER
 #define C4_STATE_IDX	3
 #define C6_STATE_IDX	4
 #define S0I1_STATE_IDX  5
@@ -100,6 +95,7 @@ static int intel_mid_idle(struct cpuidle_device *dev, struct cpuidle_state *stat
 static int soc_s0ix_idle(struct cpuidle_device *dev,
 			 struct cpuidle_state *state);
 
+static atomic_t nr_cpus_in_c6;
 #else
 #define soc_s0ix_idle	intel_idle
 #endif
@@ -227,9 +223,7 @@ static struct cpuidle_state atom_cstates[MWAIT_MAX_NUM_CSTATES] = {
 		.enter = &intel_idle },
 };
 
-#ifdef CONFIG_X86_INTEL_MID
-
-#ifdef CONFIG_X86_MDFLD
+#ifdef CONFIG_ATOM_SOC_POWER
 static struct cpuidle_state mfld_cstates[MWAIT_MAX_NUM_CSTATES] = {
 	{ /* MWAIT C0 */
 		.power_usage = C0_POWER_USAGE },
@@ -272,7 +266,7 @@ static struct cpuidle_state mfld_cstates[MWAIT_MAX_NUM_CSTATES] = {
 		.name = "ATM-S0i1",
 		.desc = "MWAIT 0x52",
 		.driver_data = (void *) MID_S0I1_STATE,
-		.flags = CPUIDLE_FLAG_TIME_VALID,
+		.flags = CPUIDLE_FLAG_TIME_VALID | CPUIDLE_FLAG_TLB_FLUSHED,
 		.exit_latency = CSTATE_EXIT_LATENCY_S0i1,
 		.power_usage  = S0I1_POWER_USAGE,
 		.enter = &soc_s0ix_idle },
@@ -280,7 +274,7 @@ static struct cpuidle_state mfld_cstates[MWAIT_MAX_NUM_CSTATES] = {
 		.name = "ATM-LpAudio",
 		.desc = "MWAIT 0x52",
 		.driver_data = (void *) MID_LPMP3_STATE,
-		.flags = CPUIDLE_FLAG_TIME_VALID,
+		.flags = CPUIDLE_FLAG_TIME_VALID | CPUIDLE_FLAG_TLB_FLUSHED,
 		.exit_latency = CSTATE_EXIT_LATENCY_LPMP3,
 		.power_usage  = LPMP3_POWER_USAGE,
 		.prev_state_idx = 6,
@@ -289,97 +283,84 @@ static struct cpuidle_state mfld_cstates[MWAIT_MAX_NUM_CSTATES] = {
 		.name = "ATM-S0i3",
 		.desc = "MWAIT 0x52",
 		.driver_data = (void *) MID_S0I3_STATE,
-		.flags = CPUIDLE_FLAG_TIME_VALID,
+		.flags = CPUIDLE_FLAG_TIME_VALID | CPUIDLE_FLAG_TLB_FLUSHED,
 		.exit_latency = CSTATE_EXIT_LATENCY_S0i3,
 		.power_usage  = S0I3_POWER_USAGE,
 		.prev_state_idx = 7,
 		.enter = &soc_s0ix_idle }
 };
 #else
-static struct cpuidle_state mrst_cstates[MWAIT_MAX_NUM_CSTATES] = {
-	{ /* MWAIT C0 */ },
-	{ /* MWAIT C1 */
-		.name = "ATM-C1",
-		.desc = "MWAIT 0x00",
-		.driver_data = (void *) 0x00,
-		.flags = CPUIDLE_FLAG_TIME_VALID,
-		.exit_latency = 1,
-		.target_residency = 4,
-		.enter = &intel_idle },
-	{ /* MWAIT C2 */
-		.name = "ATM-C2",
-		.desc = "MWAIT 0x10",
-		.driver_data = (void *) 0x10,
-		.flags = CPUIDLE_FLAG_TIME_VALID,
-		.exit_latency = 20,
-		.target_residency = 80,
-		.enter = &intel_idle },
-	{ /* MWAIT C3 */ },
-	{ /* MWAIT C4 */
-		.name = "ATM-C4",
-		.desc = "MWAIT 0x30",
-		.driver_data = (void *) 0x30,
-		.flags = CPUIDLE_FLAG_TIME_VALID | CPUIDLE_FLAG_TLB_FLUSHED,
-		.exit_latency = 100,
-		.target_residency = 400,
-		.enter = &intel_idle },
-	{ /* MWAIT C5 */ },
-	{ /* MWAIT C6 */
-		.name = "ATM-C6",
-		.desc = "MWAIT 0x52",
-		.driver_data = (void *) 0x52,
-		.flags = CPUIDLE_FLAG_TIME_VALID | CPUIDLE_FLAG_TLB_FLUSHED,
-		.exit_latency = 140,
-		.target_residency = 560,
-		.enter = &intel_mid_idle, },
-	{ /* MRST S0i3 */
-		.name = "MRST-S0i3",
-		.desc = "MRST S0i3",
-		.driver_data = (void *) -1UL, /* Special */
-		.flags = CPUIDLE_FLAG_TIME_VALID,
-		.exit_latency = 300, /* XXX */
-		.target_residency = 1200, /* XXX */
-		.enter = &intel_mid_idle },
-};
-#endif
-
-#else
-
-#ifdef CONFIG_X86_MDFLD
 #define mfld_cstates atom_cstates
-#else
-#define mrst_cstates atom_cstates
 #endif
 
-#endif
+#ifdef CONFIG_ATOM_SOC_POWER
+static void enter_s0ix_state(u32 eax, int s0ix_state,
+		  struct cpuidle_device *dev)
+{
+	int s0ix_entered = 0;
+	if (atomic_add_return(1, &nr_cpus_in_c6) == num_online_cpus() &&
+		 s0ix_state) {
+		s0ix_entered = mid_s0ix_enter(s0ix_state);
+		if (!s0ix_entered) {
+			if (pmu_is_s0i3_in_progress()) {
+				atomic_dec(&nr_cpus_in_c6);
+				eax = C4_HINT;
+			}
+			pmu_set_s0ix_complete();
+		}
+	}
+	switch (s0ix_state) {
+	case MID_S0I1_STATE:
+		trace_cpu_idle(S0I1_STATE_IDX, dev->cpu);
+		break;
+	case MID_LPMP3_STATE:
+		trace_cpu_idle(LPMP3_STATE_IDX, dev->cpu);
+		break;
+	case MID_S0I3_STATE:
+		trace_cpu_idle(S0I3_STATE_IDX, dev->cpu);
+		break;
+	case MID_S3_STATE:
+		trace_cpu_idle(S0I3_STATE_IDX, dev->cpu);
+		break;
+	default:
+		trace_cpu_idle((eax >> 4) + 1, dev->cpu);
+	}
+	__monitor((void *)&current_thread_info()->flags, 0, 0);
+	smp_mb();
+	if (!need_resched())
+		__mwait(C6_HINT, 1);
 
-#ifdef CONFIG_INTEL_MID_MDFLD_POWER
+	if (likely(eax == C6_HINT))
+		atomic_dec(&nr_cpus_in_c6);
+
+	/* During s0ix exit inform scu that OS
+	 * has exited. In case scu is still waiting
+	 * for ack c6 trigger, it would exit out
+	 * of the ack-c6 timeout loop
+	 */
+	pmu_set_s0ix_complete();
+
+	/* In case of demotion to S0i1/lpmp3 update last_state */
+	if (s0ix_entered) {
+		if (s0ix_state == MID_S0I1_STATE)
+			dev->last_state = &dev->states[S0I1_STATE_IDX];
+		else if (s0ix_state == MID_LPMP3_STATE)
+			dev->last_state = &dev->states[LPMP3_STATE_IDX];
+		}
+	else if (eax == C4_HINT)
+		dev->last_state = &dev->states[C4_STATE_IDX];
+	else
+		dev->last_state = &dev->states[C6_STATE_IDX];
+}
+
 static int soc_s0ix_idle(struct cpuidle_device *dev,
 			struct cpuidle_state *state)
 {
-	unsigned long ecx = 1; /* break on interrupt flag */
 	unsigned long eax = (unsigned long)cpuidle_get_statedata(state);
 	ktime_t kt_before, kt_after;
 	s64 usec_delta;
 	int cpu = smp_processor_id();
-	int s0ix_entered = 0;
 	int s0ix_state   = 0;
-	int gov_s0ix_state, pl_s0ix_state;
-
-	/* check if we need/possible to do s0ix */
-	if (eax != C6_HINT) {
-		gov_s0ix_state = (int)cpuidle_get_statedata(state);
-		pl_s0ix_state = get_target_platform_state();
-
-		if ((pl_s0ix_state == MID_S0IX_STATE) &&
-			(gov_s0ix_state == MID_LPMP3_STATE))
-			s0ix_state = MID_S0I1_STATE;
-		else if ((pl_s0ix_state <= gov_s0ix_state ||
-			(pl_s0ix_state == MID_S0IX_STATE)))
-			s0ix_state = pl_s0ix_state & gov_s0ix_state;
-
-		eax = C6_HINT;
-	}
 
 	/* Check if s0i3 is already in progress,
 	 * This is required to demote C6 while S0ix
@@ -389,6 +370,10 @@ static int soc_s0ix_idle(struct cpuidle_device *dev,
 		dev->last_state = &dev->states[C4_STATE_IDX];
 		return intel_idle(dev, &dev->states[C4_STATE_IDX]);
 	}
+
+	/* check if we need/possible to do s0ix */
+	if (eax != C6_HINT)
+		s0ix_state = get_target_platform_state(&eax);
 
 	local_irq_disable();
 
@@ -405,49 +390,8 @@ static int soc_s0ix_idle(struct cpuidle_device *dev,
 
 	stop_critical_timings();
 
-	if (!need_resched()) {
-		if (atomic_add_return(1, &nr_cpus_in_c6) ==
-		    num_online_cpus() && s0ix_state) {
-			s0ix_entered = mfld_s0ix_enter(s0ix_state);
-			if (!s0ix_entered) {
-				if (pmu_is_s0i3_in_progress()) {
-					atomic_dec(&nr_cpus_in_c6);
-					eax = C4_HINT;
-				}
-				pmu_set_s0ix_complete();
-			}
-		}
-		switch (s0ix_state) {
-		case MID_S0I1_STATE:
-			trace_cpu_idle(S0I1_STATE_IDX, dev->cpu);
-			break;
-		case MID_LPMP3_STATE:
-			trace_cpu_idle(LPMP3_STATE_IDX, dev->cpu);
-			break;
-		case MID_S0I3_STATE:
-			trace_cpu_idle(S0I3_STATE_IDX, dev->cpu);
-			break;
-		case MID_S3_STATE:
-			trace_cpu_idle(S0I3_STATE_IDX, dev->cpu);
-			break;
-		default:
-			trace_cpu_idle((eax >> 4) + 1, dev->cpu);
-		}
-		__monitor((void *)&current_thread_info()->flags, 0, 0);
-		smp_mb();
-		if (!need_resched())
-			__mwait(eax, ecx);
-
-		if (likely(eax == C6_HINT))
-			atomic_dec(&nr_cpus_in_c6);
-
-		/* During s0ix exit inform scu that OS
-		 * has exited. In case scu is still waiting
-		 * for ack c6 trigger, it would exit out
-		 * of the ack-c6 timeout loop
-		 */
-		pmu_set_s0ix_complete();
-	}
+	if (!need_resched())
+		enter_s0ix_state(eax, s0ix_state, dev);
 
 	start_critical_timings();
 
@@ -457,19 +401,6 @@ static int soc_s0ix_idle(struct cpuidle_device *dev,
 	local_irq_enable();
 
 	clockevents_notify(CLOCK_EVT_NOTIFY_BROADCAST_EXIT, &cpu);
-
-	/* In case of demotion to S0i1/lpmp3 update last_state */
-	if (s0ix_entered) {
-		if (s0ix_state == MID_S0I1_STATE) {
-			dev->last_state = &dev->states[S0I1_STATE_IDX];
-		} else if (s0ix_state == MID_LPMP3_STATE) {
-			dev->last_state = &dev->states[LPMP3_STATE_IDX];
-		}
-	} else if (eax == C4_HINT) {
-		dev->last_state = &dev->states[C4_STATE_IDX];
-	} else {
-		dev->last_state = &dev->states[C6_STATE_IDX];
-	}
 
 	return usec_delta;
 }
@@ -529,81 +460,6 @@ static int intel_idle(struct cpuidle_device *dev, struct cpuidle_state *state)
 
 	return usec_delta;
 }
-
-int intel_mid_idle(struct cpuidle_device *dev, struct cpuidle_state *state)
-{
-	return 0;
-}
-
-#if 0
-/**
- * intel_mid_idle	-	Idle a MID device
- * @dev: cpuidle_device
- * @state: cpuidle state
- *
- * This enters S0i3, C6 or C4 depending on what is currently permitted.
- * C1-C4 are handled via the normal intel_idle entry.
- */
-int intel_mid_idle(struct cpuidle_device *dev, struct cpuidle_state *state)
-{
-	unsigned long ecx = 1; /* break on interrupt flag */
-	unsigned long eax = (unsigned long)cpuidle_get_statedata(state);
-	ktime_t kt_before, kt_after;
-	s64 usec_delta;
-	int cpu = smp_processor_id();
-	int s0ix_entered = 0;
-
-	local_irq_disable();
-
-	/*
-	 * leave_mm() to avoid costly and often unnecessary wakeups
-	 * for flushing the user TLB's associated with the active mm.
-	 */
-#ifdef CPUIDLE_FLAG_TLB_FLUSHED
-	if (state->flags & CPUIDLE_FLAG_TLB_FLUSHED)
-		leave_mm(cpu);
-#endif /* FIXME */
-	clockevents_notify(CLOCK_EVT_NOTIFY_BROADCAST_ENTER, &cpu);
-
-	kt_before = ktime_get_real();
-
-	stop_critical_timings();
-
-	if (!need_resched()) {
-#ifdef CONFIG_X86_MDFLD
-		if (eax == -1UL) {
-			eax = C6_HINT;
-			if (!atomic_add_unless(&nr_cpus_in_c6, 0,
-						num_online_cpus()-1))
-				s0ix_entered = mfld_s0ix_enter();
-		}
-#endif
-		/* Conventional MWAIT */
-		__monitor((void *)&current_thread_info()->flags, 0, 0);
-		smp_mb();
-		if (!need_resched()) {
-			atomic_inc(&nr_cpus_in_c6);
-			__mwait(eax, ecx);
-			atomic_dec(&nr_cpus_in_c6);
-		}
-#ifdef CONFIG_X86_MDFLD
-		if (s0ix_entered)
-			pmu_set_s0ix_complete();
-#endif
-	}
-
-	start_critical_timings();
-
-	kt_after = ktime_get_real();
-	usec_delta = ktime_to_us(ktime_sub(kt_after, kt_before));
-
-	local_irq_enable();
-
-	clockevents_notify(CLOCK_EVT_NOTIFY_BROADCAST_EXIT, &cpu);
-
-	return usec_delta;
-}
-#endif
 
 static void __setup_broadcast_timer(void *arg)
 {
@@ -886,6 +742,8 @@ static int intel_idle_cpuidle_devices_init(void)
 				break;
 #ifndef CONFIG_X86_MDFLD
 				case 0x27:	/* 39 - Penwell Atom variant */
+				case 0x35:	/* 53 - Clv Atom Processor */
+				/*place holder for mrfld BZ:21210*/
 					if (cstate > 6)
 						continue;
 				break;
