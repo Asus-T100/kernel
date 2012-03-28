@@ -171,6 +171,8 @@
 #define BQ24192_CHRG_CUR_HIGH		900	/* 900mA */
 #define BQ24192_CHRG_CUR_NOLIMIT	1500	/* 1500mA */
 
+#define STATUS_UPDATE_INTERVAL		(HZ * 60) /* 60sec */
+
 struct bq24192_chrg_regs {
 	u8 in_src;
 	u8 pwr_cfg;
@@ -184,6 +186,7 @@ struct bq24192_chip {
 	struct power_supply usb;
 	struct power_supply_charger_cap cap;
 	struct delayed_work chrg_evt_wrkr;
+	struct delayed_work stat_mon_wrkr;
 	struct mutex event_lock;
 
 	int present;
@@ -513,6 +516,14 @@ static void set_up_charging(struct bq24192_chip *chip,
 	reg->in_src = chrg_ilim_to_reg(chip->cap.mA);
 	reg->chr_cur = chrg_cur_to_reg(BQ24192_DEF_CHRG_CUR);
 	reg->chr_volt = chrg_volt_to_reg(BQ24192_DEF_VBATT_MAX);
+}
+
+static void bq24192_monitor_worker(struct work_struct *work)
+{
+	struct bq24192_chip *chip = container_of(work,
+				struct bq24192_chip, stat_mon_wrkr.work);
+	power_supply_changed(&chip->usb);
+	schedule_delayed_work(&chip->stat_mon_wrkr, STATUS_UPDATE_INTERVAL);
 }
 
 static void bq24192_event_worker(struct work_struct *work)
@@ -902,6 +913,7 @@ static int __devinit bq24192_probe(struct i2c_client *client,
 	}
 
 	INIT_DELAYED_WORK(&chip->chrg_evt_wrkr, bq24192_event_worker);
+	INIT_DELAYED_WORK(&chip->stat_mon_wrkr, bq24192_monitor_worker);
 	mutex_init(&chip->event_lock);
 
 	chip->chrg_cur_cntl = POWER_SUPPLY_CHARGE_CURRENT_LIMIT_NONE;
@@ -943,7 +955,8 @@ static int __devinit bq24192_probe(struct i2c_client *client,
 		kfree(chip);
 		return ret;
 	}
-
+	/* start the status monitor worker */
+	schedule_delayed_work(&chip->stat_mon_wrkr, 0);
 	return 0;
 }
 
@@ -964,6 +977,7 @@ static int bq24192_suspend(struct device *dev)
 {
 	struct bq24192_chip *chip = dev_get_drvdata(dev);
 
+	cancel_delayed_work(&chip->stat_mon_wrkr);
 	dev_dbg(&chip->client->dev, "bq24192 suspend\n");
 	return 0;
 }
@@ -972,6 +986,7 @@ static int bq24192_resume(struct device *dev)
 {
 	struct bq24192_chip *chip = dev_get_drvdata(dev);
 
+	schedule_delayed_work(&chip->stat_mon_wrkr, 0);
 	dev_dbg(&chip->client->dev, "bq24192 resume\n");
 	return 0;
 }
