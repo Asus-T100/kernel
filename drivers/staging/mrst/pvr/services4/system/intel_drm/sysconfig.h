@@ -41,7 +41,11 @@
 #define POULSBO_REG_SIZE	0x2100	
 
 #define SGX_REGS_OFFSET		0x80000
-#define SGX_REG_SIZE 		0x4000
+#if defined(SGX544)
+#define SGX_REG_SIZE 		0x10000
+#else
+#define SGX_REG_SIZE            0x4000
+#endif
 
 #define MRST_SGX_REGS_OFFSET		SGX_REGS_OFFSET
 #define POULSBO_SGX_REGS_OFFSET		0x40000

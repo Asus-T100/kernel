@@ -69,6 +69,14 @@ config DRM_CTP
           platform. If M is selected the module will be called
           mid_gfx.
 
+config DRM_CTP_PR1
+	tristate "Intel Clover Trail Phone for SGX544MP2(CTP)"
+        depends on DRM_CTP
+        help
+          Choose this option if you have a Clover Trail Phone
+          platform. If M is selected the module will be called
+          mid_gfx.
+
 config MDFLD_DSI_DSR
 	bool "Support DSI Fullscreen Display Self Refreshment "
 	depends on (DRM_MDFLD || DRM_CTP) && !MDFLD_DSI_DPU
