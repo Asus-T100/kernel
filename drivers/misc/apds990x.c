@@ -1284,8 +1284,7 @@ static int apds990x_setup_irq(struct apds990x_chip *chip)
 
 	ret = request_threaded_irq(client->irq, NULL,
 				apds990x_irq,
-				IRQF_TRIGGER_FALLING | IRQF_TRIGGER_LOW |
-				IRQF_ONESHOT,
+				IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
 				"apds990x", chip);
 	if (ret < 0) {
 		dev_err(&client->dev, "Can't allocate irq %d\n", client->irq);
