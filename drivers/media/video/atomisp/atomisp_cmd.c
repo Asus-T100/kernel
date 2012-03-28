@@ -3676,10 +3676,11 @@ __acc_fw_alloc(struct atomisp_device *isp, struct atomisp_acc_fw_load *user_fw)
 	}
 
 	/* Find first free slot */
-	for (i = 0; i < ATOMISP_ACC_FW_MAX; i++) {
+	for (i = 0; i < ATOMISP_ACC_FW_MAX - 1; i++) {
 		if (isp->acc_fw[i] == NULL)
 			break;
 	}
+	WARN(isp->acc_fw[i] != NULL, "%s: excess of accel fw.\n", __func__);
 	user_fw->fw_handle = isp->acc_fw_handle;
 	fw->header.handle = isp->acc_fw_handle;
 	isp->acc_fw[i] = fw;
