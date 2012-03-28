@@ -36,8 +36,13 @@
 #define IPC_CMD_VRTC_SYNC_RTC     3 /* Sync MSIC/PMIC RTC to VRTC */
 /* Issue commands to the SCU with or without data */
 int intel_scu_ipc_simple_command(int cmd, int sub);
-int intel_scu_ipc_command(int cmd, int sub, u32 *in, int inlen,
-							u32 *out, int outlen);
+void intel_scu_ipc_lock(void);
+void intel_scu_ipc_unlock(void);
+int intel_scu_ipc_command(u32 cmd, u32 sub, u32 *in, u32 inlen,
+		u32 *out, u32 outlen);
+int intel_scu_ipc_raw_cmd(u32 cmd, u32 sub, u32 *in, u32 inlen,
+		u32 *out, u32 outlen, u32 dptr, u32 sptr);
+
 /* I2C control api */
 int intel_scu_ipc_i2c_cntrl(u32 addr, u32 *data);
 
@@ -45,7 +50,6 @@ int intel_scu_ipc_i2c_cntrl(u32 addr, u32 *data);
 int intel_scu_ipc_mrstfw_update(u8 *buffer, u32 length);
 int intel_scu_ipc_medfw_upgrade(void);
 int intel_scu_ipc_medfw_prepare(void __user *arg);
-
 int intel_scu_ipc_read_mip(u8 *data, int len, int offset, int issigned);
 int intel_scu_ipc_write_umip(u8 *data, int len, int offset);
 

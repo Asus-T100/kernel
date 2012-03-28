@@ -57,12 +57,12 @@
 #define IPC_I2C_BASE      0xFF12B000	/* I2C control register base address */
 #define IPC_I2C_MAX_ADDR  0x10		/* Maximum I2C regisers */
 
-#define IPC_SPTR_ADDR     0x08          /* IPC source pointer regiser*/
-#define IPC_DPTR_ADDR     0x0c          /* IPC destination pointer regiser*/
-#define IPC_MIP_BASE	   0xFFFD8000   /* sram base address for mip accessing*/
-#define IPC_MIP_MAX_ADDR  0x1000
-
-#define IPC_IOC		  0x100
+#define IPC_STATUS_ADDR         0X04
+#define IPC_SPTR_ADDR           0x08
+#define IPC_DPTR_ADDR           0x0C
+#define IPC_READ_BUFFER         0x90
+#define IPC_WRITE_BUFFER        0x80
+#define IPC_IOC			0x100
 
 static int ipc_probe(struct pci_dev *dev, const struct pci_device_id *id);
 static void ipc_remove(struct pci_dev *pdev);
@@ -98,13 +98,6 @@ static char *ipc_err_sources[] = {
 	[IPC_ERR_EMSECURITY] =
 		"unsigned kernel",
 };
-
-/*
- * IPC Read Buffer (Read Only):
- * 16 byte buffer for receiving data from SCU, if IPC command
- * processing results in response data
- */
-#define IPC_READ_BUFFER		0x90
 
 #define IPC_I2C_CNTRL_ADDR	0
 #define I2C_DATA_ADDR		0x04
@@ -145,7 +138,7 @@ static inline void ipc_command(u32 cmd) /* Send ipc command */
  */
 static inline void ipc_data_writel(u32 data, u32 offset) /* Write ipc data */
 {
-	writel(data, ipcdev.ipc_base + 0x80 + offset);
+	writel(data, ipcdev.ipc_base + IPC_WRITE_BUFFER + offset);
 }
 
 /*
@@ -158,7 +151,7 @@ static inline void ipc_data_writel(u32 data, u32 offset) /* Write ipc data */
 
 static inline u32 ipc_read_status(void)
 {
-	return __raw_readl(ipcdev.ipc_base + 0x04);
+	return __raw_readl(ipcdev.ipc_base + IPC_STATUS_ADDR);
 }
 
 static inline u8 ipc_data_readb(u32 offset) /* Read ipc byte data */
@@ -241,29 +234,44 @@ int intel_scu_ipc_simple_command(int cmd, int sub)
 }
 EXPORT_SYMBOL(intel_scu_ipc_simple_command);
 
-/**
- *	intel_scu_ipc_command	-	command with data
- *	@cmd: command
- *	@sub: sub type
- *	@in: input data
- *	@inlen: input length in dwords
- *	@out: output data
- *	@outlein: output length in dwords
- *
- *	Issue a command to the SCU which involves data transfers. Do the
- *	data copies under the lock but leave it for the caller to interpret
- */
+void intel_scu_ipc_lock(void)
+{
+	mutex_lock(&ipclock);
+}
+EXPORT_SYMBOL_GPL(intel_scu_ipc_lock);
 
-int intel_scu_ipc_command(int cmd, int sub, u32 *in, int inlen,
-							u32 *out, int outlen)
+void intel_scu_ipc_unlock(void)
+{
+	mutex_unlock(&ipclock);
+}
+EXPORT_SYMBOL_GPL(intel_scu_ipc_unlock);
+
+/**
+ * intel_scu_ipc_raw_cmd - raw ipc command with data
+ * @cmd: command
+ * @sub: sub type
+ * @in: input data
+ * @inlen: input length in dwords
+ * @out: output data
+ * @outlen: output length in dwords
+ * @sptr: data writing to SPTR register
+ * @dptr: data writing to DPTR register
+ *
+ * Issue a command to the SCU which involves data transfers. Do the
+ * data copies under the lock but leave it for the caller to interpret
+ * Note: This function should be called with the holding of ipclock
+ */
+int intel_scu_ipc_raw_cmd(u32 cmd, u32 sub, u32 *in, u32 inlen, u32 *out,
+		u32 outlen, u32 dptr, u32 sptr)
 {
 	int i, err;
 
-	mutex_lock(&ipclock);
 	if (ipcdev.pdev == NULL) {
-		mutex_unlock(&ipclock);
 		return -ENODEV;
 	}
+
+	writel(dptr, ipcdev.ipc_base + IPC_DPTR_ADDR);
+	writel(sptr, ipcdev.ipc_base + IPC_SPTR_ADDR);
 
 	for (i = 0; i < inlen; i++)
 		ipc_data_writel(*in++, 4 * i);
@@ -274,10 +282,20 @@ int intel_scu_ipc_command(int cmd, int sub, u32 *in, int inlen,
 	for (i = 0; i < outlen; i++)
 		*out++ = ipc_data_readl(4 * i);
 
-	mutex_unlock(&ipclock);
 	return err;
 }
-EXPORT_SYMBOL(intel_scu_ipc_command);
+EXPORT_SYMBOL_GPL(intel_scu_ipc_raw_cmd);
+
+int intel_scu_ipc_command(u32 cmd, u32 sub, u32 *in, u32 inlen,
+		u32 *out, u32 outlen)
+{
+	int ret;
+	mutex_lock(&ipclock);
+	ret = intel_scu_ipc_raw_cmd(cmd, sub, in, inlen, out, outlen, 0, 0);
+	mutex_unlock(&ipclock);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(intel_scu_ipc_command);
 
 /*I2C commands */
 #define IPC_I2C_WRITE 1 /* I2C Write command */
@@ -1135,101 +1153,6 @@ out_unlock:
 }
 EXPORT_SYMBOL_GPL(intel_scu_ipc_medfw_upgrade);
 
-static int read_mip(u8 *data, int len, int offset, int issigned)
-{
-	int ret;
-	u32 cmdid;
-	u32 data_off;
-
-	if (platform != INTEL_MID_CPU_CHIP_PENWELL)
-		return -EINVAL;
-
-	if (offset + len > IPC_MIP_MAX_ADDR)
-		return -EINVAL;
-
-	if (ipcdev.mip_base == NULL)
-		return -ENODEV;
-
-	do {
-		writel(offset, ipcdev.ipc_base + IPC_DPTR_ADDR);
-		writel((len + 3) / 4, ipcdev.ipc_base + IPC_SPTR_ADDR);
-
-		cmdid = issigned ? IPC_CMD_SMIP_RD : IPC_CMD_UMIP_RD;
-		ipc_command(4 << 16 | cmdid << 12 | IPCMSG_MIP_ACCESS);
-		ret = ipc_wait_interrupt();
-	} while (ret == -EIO);
-	if (!ret) {
-		data_off = ipc_data_readl(0);
-		memcpy(data, ipcdev.mip_base + data_off, len);
-	}
-
-	return ret;
-}
-
-int intel_scu_ipc_read_mip(u8 *data, int len, int offset, int issigned)
-{
-	int ret;
-
-	mutex_lock(&ipclock);
-	if (ipcdev.pdev == NULL) {
-		mutex_unlock(&ipclock);
-		return -ENODEV;
-	}
-	ret = read_mip(data, len, offset, issigned);
-	mutex_unlock(&ipclock);
-
-	return ret;
-}
-EXPORT_SYMBOL(intel_scu_ipc_read_mip);
-
-int intel_scu_ipc_write_umip(u8 *data, int len, int offset)
-{
-	int ret;
-	u8 *buf = NULL;
-	int offset_align, len_align = 0;
-
-	if (platform != INTEL_MID_CPU_CHIP_PENWELL)
-		return -EINVAL;
-	if (offset + len > IPC_MIP_MAX_ADDR)
-		return -EINVAL;
-
-	mutex_lock(&ipclock);
-	if (ipcdev.pdev == NULL || ipcdev.mip_base == NULL) {
-		ret = -ENODEV;
-		goto fail;
-	}
-	offset_align = offset & (~0x3);
-	len_align = (len + (offset - offset_align) + 3) & (~0x3);
-	if (len != len_align) {
-		buf = kzalloc(len_align, GFP_KERNEL);
-		if (!buf) {
-			dev_err(&ipcdev.pdev->dev, "Alloc memory failed\n");
-			ret = -ENOMEM;
-			goto fail;
-		}
-		ret = read_mip(buf, len_align, offset_align, 0);
-		if (ret)
-			goto fail;
-		memcpy(buf + offset - offset_align, data, len);
-	} else {
-		buf = data;
-	}
-	do {
-		writel(offset_align, ipcdev.ipc_base + IPC_DPTR_ADDR);
-		writel(len_align / 4, ipcdev.ipc_base + IPC_SPTR_ADDR);
-		memcpy(ipcdev.mip_base, buf, len_align);
-		ipc_command(IPC_CMD_UMIP_WR << 12 | IPCMSG_MIP_ACCESS);
-		ret = ipc_wait_interrupt();
-	} while (ret == -EIO);
-fail:
-	if (buf && len_align != len)
-		kfree(buf);
-	mutex_unlock(&ipclock);
-
-	return ret;
-}
-EXPORT_SYMBOL(intel_scu_ipc_write_umip);
-
 #define MAX_BIN_BUF_SIZE (4*1024*1024)
 #define DNX_SIZE_OFFSET 0
 #define GP_FLAG_OFFSET 4
@@ -1816,13 +1739,6 @@ static int ipc_probe(struct pci_dev *dev, const struct pci_device_id *id)
 		return -ENOMEM;
 	}
 
-	ipcdev.mip_base = ioremap_nocache(IPC_MIP_BASE, IPC_MIP_MAX_ADDR);
-	if (!ipcdev.mip_base) {
-		iounmap(ipcdev.i2c_base);
-		iounmap(ipcdev.ipc_base);
-		return -ENOMEM;
-	}
-
 	intel_scu_devices_create(*bus_id);
 
 	intel_scu_sysfs_create(dev);
@@ -1851,7 +1767,6 @@ static void ipc_remove(struct pci_dev *pdev)
 	pci_dev_put(ipcdev.pdev);
 	iounmap(ipcdev.ipc_base);
 	iounmap(ipcdev.i2c_base);
-	iounmap(ipcdev.mip_base);
 	ipcdev.pdev = NULL;
 	intel_scu_devices_destroy(*bus_id);
 	kfree(bus_id);
