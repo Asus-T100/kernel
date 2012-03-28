@@ -65,7 +65,7 @@ static void jffs2_write_super(struct super_block *sb)
 	struct jffs2_sb_info *c = JFFS2_SB_INFO(sb);
 
 	lock_super(sb);
-	sb->s_dirt = 0;
+	sb_mark_clean(sb);
 
 	if (!(sb->s_flags & MS_RDONLY)) {
 		D1(printk(KERN_DEBUG "jffs2_write_super()\n"));
@@ -199,7 +199,7 @@ static void jffs2_put_super (struct super_block *sb)
 
 	D2(printk(KERN_DEBUG "jffs2: jffs2_put_super()\n"));
 
-	if (sb->s_dirt)
+	if (sb_is_dirty(sb))
 		jffs2_write_super(sb);
 
 	mutex_lock(&c->alloc_sem);

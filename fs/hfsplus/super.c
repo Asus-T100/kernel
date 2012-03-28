@@ -122,7 +122,7 @@ static int hfsplus_system_write_inode(struct inode *inode)
 
 	if (fork->total_size != cpu_to_be64(inode->i_size)) {
 		set_bit(HFSPLUS_SB_WRITEBACKUP, &sbi->flags);
-		inode->i_sb->s_dirt = 1;
+		sb_mark_dirty(inode->i_sb);
 	}
 	hfsplus_inode_write_fork(inode, fork);
 	if (tree)
@@ -167,7 +167,7 @@ int hfsplus_sync_fs(struct super_block *sb, int wait)
 
 	dprint(DBG_SUPER, "hfsplus_write_super\n");
 
-	sb->s_dirt = 0;
+	sb_mark_clean(sb);
 
 	/*
 	 * Explicitly write out the special metadata inodes.
@@ -225,7 +225,7 @@ static void hfsplus_write_super(struct super_block *sb)
 	if (!(sb->s_flags & MS_RDONLY))
 		hfsplus_sync_fs(sb, 1);
 	else
-		sb->s_dirt = 0;
+		sb_mark_clean(sb);
 }
 
 static void hfsplus_put_super(struct super_block *sb)

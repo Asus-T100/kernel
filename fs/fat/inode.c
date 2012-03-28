@@ -462,7 +462,7 @@ static void fat_evict_inode(struct inode *inode)
 static void fat_write_super(struct super_block *sb)
 {
 	lock_super(sb);
-	sb->s_dirt = 0;
+	sb_mark_clean(sb);
 
 	if (!(sb->s_flags & MS_RDONLY))
 		fat_clusters_flush(sb);
@@ -473,9 +473,9 @@ static int fat_sync_fs(struct super_block *sb, int wait)
 {
 	int err = 0;
 
-	if (sb->s_dirt) {
+	if (sb_is_dirty(sb)) {
 		lock_super(sb);
-		sb->s_dirt = 0;
+		sb_mark_clean(sb);
 		err = fat_clusters_flush(sb);
 		unlock_super(sb);
 	}
@@ -487,7 +487,7 @@ static void fat_put_super(struct super_block *sb)
 {
 	struct msdos_sb_info *sbi = MSDOS_SB(sb);
 
-	if (sb->s_dirt)
+	if (sb_is_dirty(sb))
 		fat_write_super(sb);
 
 	iput(sbi->fat_inode);

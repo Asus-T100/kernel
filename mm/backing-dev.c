@@ -41,6 +41,7 @@ LIST_HEAD(bdi_pending_list);
 
 static struct task_struct *sync_supers_tsk;
 static struct timer_list sync_supers_timer;
+static unsigned long supers_dirty __read_mostly;
 
 static int bdi_sync_supers(void *);
 static void sync_supers_timer_fn(unsigned long);
@@ -261,6 +262,22 @@ static void bdi_flush_io(struct backing_dev_info *bdi)
 	writeback_inodes_wb(&bdi->wb, &wbc);
 }
 
+void sb_mark_dirty(struct super_block *sb)
+{
+	sb->s_dirt = 1;
+	/*
+	 * sb->s_dirty store must be visible to sync_super before we load
+	 * supers_dirty in case we need to re-arm the timer.
+	 */
+	smp_mb();
+	if (likely(supers_dirty))
+		return;
+	supers_dirty = 1;
+	bdi_arm_supers_timer();
+}
+EXPORT_SYMBOL_GPL(sb_mark_dirty);
+
+
 /*
  * kupdated() used to do this. We cannot do it from the bdi_forker_thread()
  * or we risk deadlocking on ->s_umount. The longer term solution would be
@@ -273,10 +290,20 @@ static int bdi_sync_supers(void *unused)
 
 	while (!kthread_should_stop()) {
 		set_current_state(TASK_INTERRUPTIBLE);
+		if (supers_dirty)
+			bdi_arm_supers_timer();
 		schedule();
 
+		supers_dirty = 0;
 		/*
-		 * Do this periodically, like kupdated() did before.
+		 * supers_dirty store must be visible to sb_mark_dirty() before
+		 * sync_supers runs (which loads ->s_dirty), so a barrier is
+		 * needed.
+		 */
+		smp_mb();
+		/*
+		 * sync_supers() used to do this periodically, but now we
+		 * wake up only if there are dirty superblocks.
 		 */
 		sync_supers();
 	}
@@ -298,7 +325,6 @@ void bdi_arm_supers_timer(void)
 static void sync_supers_timer_fn(unsigned long unused)
 {
 	wake_up_process(sync_supers_tsk);
-	bdi_arm_supers_timer();
 }
 
 static void wakeup_timer_fn(unsigned long data)

@@ -354,7 +354,7 @@ int exofs_sync_fs(struct super_block *sb, int wait)
 	if (unlikely(ret))
 		EXOFS_ERR("%s: exofs_sbi_write failed.\n", __func__);
 	else
-		sb->s_dirt = 0;
+		sb_mark_clean(sb);
 
 
 	unlock_super(sb);
@@ -370,7 +370,7 @@ static void exofs_write_super(struct super_block *sb)
 	if (!(sb->s_flags & MS_RDONLY))
 		exofs_sync_fs(sb, 1);
 	else
-		sb->s_dirt = 0;
+		sb_mark_clean(sb);
 }
 
 static void _exofs_print_device(const char *msg, const char *dev_path,

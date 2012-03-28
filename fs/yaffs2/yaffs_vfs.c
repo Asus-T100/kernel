@@ -1122,7 +1122,7 @@ static void yaffs_touch_super(struct yaffs_dev *dev)
 
 	yaffs_trace(YAFFS_TRACE_OS, "yaffs_touch_super() sb = %p", sb);
 	if (sb)
-		sb->s_dirt = 1;
+		sb_mark_dirty(sb);
 }
 
 static int yaffs_readpage_nolock(struct file *f, struct page *pg)
@@ -1579,7 +1579,7 @@ static int yaffs_do_sync_fs(struct super_block *sb, int request_checkpoint)
 	yaffs_trace(YAFFS_TRACE_OS | YAFFS_TRACE_SYNC | YAFFS_TRACE_BACKGROUND,
 		"yaffs_do_sync_fs: gc-urgency %d %s %s%s",
 		gc_urgent,
-		sb->s_dirt ? "dirty" : "clean",
+		sb_is_dirty(sb) ? "dirty" : "clean",
 		request_checkpoint ? "checkpoint requested" : "no checkpoint",
 		oneshot_checkpoint ? " one-shot" : "");
 
@@ -1587,9 +1587,9 @@ static int yaffs_do_sync_fs(struct super_block *sb, int request_checkpoint)
 	do_checkpoint = ((request_checkpoint && !gc_urgent) ||
 			 oneshot_checkpoint) && !dev->is_checkpointed;
 
-	if (sb->s_dirt || do_checkpoint) {
+	if (sb_is_dirty(sb) || do_checkpoint) {
 		yaffs_flush_super(sb, !dev->is_checkpointed && do_checkpoint);
-		sb->s_dirt = 0;
+		sb_mark_clean(sb);
 		if (oneshot_checkpoint)
 			yaffs_auto_checkpoint &= ~4;
 	}
@@ -2360,7 +2360,11 @@ static struct super_block *yaffs_internal_read_super(int yaffs_version,
 		return NULL;
 	}
 	sb->s_root = root;
-	sb->s_dirt = !dev->is_checkpointed;
+	if (dev->is_checkpointed)
+		sb_mark_clean(sb);
+	else
+		sb_mark_dirty(sb);
+
 	yaffs_trace(YAFFS_TRACE_ALWAYS,
 		"yaffs_read_super: is_checkpointed %d",
 		dev->is_checkpointed);

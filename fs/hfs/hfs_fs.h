@@ -253,7 +253,7 @@ static inline const char *hfs_mdb_name(struct super_block *sb)
 static inline void hfs_bitmap_dirty(struct super_block *sb)
 {
 	set_bit(HFS_FLG_BITMAP_DIRTY, &HFS_SB(sb)->flags);
-	sb->s_dirt = 1;
+	sb_mark_dirty(sb);
 }
 
 #define sb_bread512(sb, sec, data) ({			\

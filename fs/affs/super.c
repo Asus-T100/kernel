@@ -61,7 +61,7 @@ affs_write_super(struct super_block *sb)
 	lock_super(sb);
 	if (!(sb->s_flags & MS_RDONLY))
 		affs_commit_super(sb, 1, 2);
-	sb->s_dirt = 0;
+	sb_mark_clean(sb);
 	unlock_super(sb);
 
 	pr_debug("AFFS: write_super() at %lu, clean=2\n", get_seconds());
@@ -72,7 +72,7 @@ affs_sync_fs(struct super_block *sb, int wait)
 {
 	lock_super(sb);
 	affs_commit_super(sb, wait, 2);
-	sb->s_dirt = 0;
+	sb_mark_clean(sb);
 	unlock_super(sb);
 	return 0;
 }

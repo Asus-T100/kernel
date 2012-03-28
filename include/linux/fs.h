@@ -1847,10 +1847,7 @@ extern struct dentry *mount_pseudo(struct file_system_type *, char *,
 	const struct dentry_operations *dops,
 	unsigned long);
 
-static inline void sb_mark_dirty(struct super_block *sb)
-{
-	sb->s_dirt = 1;
-}
+void sb_mark_dirty(struct super_block *sb);
 static inline void sb_mark_clean(struct super_block *sb)
 {
 	sb->s_dirt = 0;
