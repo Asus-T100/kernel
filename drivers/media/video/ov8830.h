@@ -36,6 +36,26 @@
 #include <media/v4l2-device.h>
 #include <media/v4l2-subdev.h>
 
+#define to_drv201_device(sd)	(&container_of(sd, struct ov8830_device, sd) \
+				->drv201)
+
+#define DRV201_I2C_ADDR				0x0E
+#define DRV201_CONTROL				2
+#define DRV201_VCM_CURRENT			3
+#define DRV201_STATUS				5
+#define DRV201_MODE				6
+#define DRV201_VCM_FREQ				7
+
+#define DRV201_MAX_FOCUS_POS			1023
+
+/* drv201 device structure */
+struct drv201_device {
+	s32 focus;			/* Current focus value */
+	struct timespec focus_time;	/* Time when focus was last time set */
+	__u8 buffer[4];			/* Used for i2c transactions */
+	const struct camera_af_platform_data *platform_data;
+};
+
 #define	OV8830_NAME	"ov8830"
 #define	OV8830_ADDR	0x36
 #define OV8830_ID	0x4b00
@@ -45,9 +65,6 @@
 #define I2C_MSG_LENGTH		0x2
 
 #define OV8830_INVALID_CONFIG	0xffffffff
-
-#define OV8830_MAX_FOCUS_POS	255
-#define OV8830_MAX_FOCUS_NEG	(-255)
 
 #define OV8830_INTG_UNIT_US	100
 #define OV8830_MCLK		192
@@ -96,13 +113,6 @@
 #define OV8830_LONG_EXPO			0x3500
 #define OV8830_AGC_ADJ				0x350B
 #define OV8830_TEST_PATTERN_MODE		0x3070
-#define OV8830_VCM_SLEW_STEP			0x30F0
-#define OV8830_VCM_SLEW_STEP_MAX		0x7
-#define OV8830_VCM_SLEW_STEP_MASK		0x7
-#define OV8830_VCM_CODE			0x30F2
-#define OV8830_VCM_SLEW_TIME			0x30F4
-#define OV8830_VCM_SLEW_TIME_MAX		0xffff
-#define OV8830_VCM_ENABLE			0x8000
 
 /* ov8830 SCCB */
 #define OV8830_SCCB_CTRL			0x3100
@@ -355,7 +365,6 @@ struct ov8830_format {
 	struct s_register_setting *regs;
 };
 
-
 /* ov8830 device structure */
 struct ov8830_device {
 	struct v4l2_subdev sd;
@@ -373,13 +382,11 @@ struct ov8830_device {
 	u8 sensor_revision;
 	int exposure;
 	int gain;
-	u32 focus;
 	u16 pixels_per_line;
 	u16 lines_per_frame;
 	u8 fps;
 	int run_mode;
-	struct timeval timestamp_t_focus_abs;
-
+	struct drv201_device drv201;
 };
 
 /*

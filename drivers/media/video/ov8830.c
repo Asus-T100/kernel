@@ -1669,85 +1669,185 @@ static int ov8830_write_reg_array(struct i2c_client *client,
 	return __ov8830_flush_reg_array(client, &ctrl);
 }
 
-
-static int ov8830_t_focus_abs(struct v4l2_subdev *sd, s32 value)
+static int drv201_write8(struct v4l2_subdev *sd, int reg, int val)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
-	struct ov8830_device *dev = to_ov8830_sensor(sd);
-	int ret;
+	struct drv201_device *dev = to_drv201_device(sd);
+	struct i2c_msg msg;
 
-	value = min(value, OV8830_MAX_FOCUS_POS);
+	memset(&msg, 0 , sizeof(msg));
+	msg.addr = DRV201_I2C_ADDR;
+	msg.len = 2;
+	msg.buf = dev->buffer;
+	msg.buf[0] = reg;
+	msg.buf[1] = val;
 
-	ret = ov8830_write_reg(client, OV8830_16BIT, OV8830_VCM_CODE,
-				OV8830_MAX_FOCUS_POS - value);
-	if (ret == 0) {
-		dev->focus = value;
-		do_gettimeofday(&(dev->timestamp_t_focus_abs));
-	}
-	return ret;
+	return i2c_transfer(client->adapter, &msg, 1);
 }
 
-static int ov8830_q_focus_abs(struct v4l2_subdev *sd, s32 *value)
+static int drv201_write16(struct v4l2_subdev *sd, int reg, int val)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
-	int ret;
-	u16 val;
+	struct drv201_device *dev = to_drv201_device(sd);
+	struct i2c_msg msg;
 
+	memset(&msg, 0 , sizeof(msg));
+	msg.addr = DRV201_I2C_ADDR;
+	msg.len = 3;
+	msg.buf = dev->buffer;
+	msg.buf[0] = reg;
+	msg.buf[1] = val >> 8;
+	msg.buf[2] = val & 0xFF;
 
-
-	ret = ov8830_read_reg(client, OV8830_16BIT,
-			       OV8830_VCM_CODE, &val);
-	*value = OV8830_MAX_FOCUS_POS - val;
-
-	return ret;
+	return i2c_transfer(client->adapter, &msg, 1);
 }
 
-static int ov8830_t_focus_rel(struct v4l2_subdev *sd, s32 value)
+static int drv201_read8(struct v4l2_subdev *sd, int reg)
 {
-	struct ov8830_device *dev = to_ov8830_sensor(sd);
-	return ov8830_t_focus_abs(sd, dev->focus + value);
+	struct i2c_client *client = v4l2_get_subdevdata(sd);
+	struct drv201_device *dev = to_drv201_device(sd);
+	struct i2c_msg msg[2];
+	int r;
+
+	memset(msg, 0 , sizeof(msg));
+	msg[0].addr = DRV201_I2C_ADDR;
+	msg[0].flags = 0;
+	msg[0].len = 1;
+	msg[0].buf = dev->buffer;
+	msg[0].buf[0] = reg;
+
+	msg[1].addr = DRV201_I2C_ADDR;
+	msg[1].flags = I2C_M_RD;
+	msg[1].len = 1;
+	msg[1].buf = dev->buffer;
+
+	r = i2c_transfer(client->adapter, msg, ARRAY_SIZE(msg));
+	if (r != ARRAY_SIZE(msg))
+		return -EIO;
+
+	return dev->buffer[0];
 }
 
-#define WAIT_FOR_VCM_MOTOR	60000
-static int ov8830_q_focus_status(struct v4l2_subdev *sd, s32 *value)
+static int drv201_init(struct v4l2_subdev *sd)
 {
-	u32 status = 0;
-	struct ov8830_device *dev = to_ov8830_sensor(sd);
-	struct timeval current_time;
-	bool stillmoving = false;
+	struct drv201_device *dev = to_drv201_device(sd);
+	struct i2c_client *client = v4l2_get_subdevdata(sd);
 
-	do_gettimeofday(&current_time);
-	if (current_time.tv_sec == (dev->timestamp_t_focus_abs).tv_sec) {
-		if (current_time.tv_usec < ((dev->timestamp_t_focus_abs).tv_usec+WAIT_FOR_VCM_MOTOR)) {
-			stillmoving = true;
-		}
-	} else {
-		if ((current_time.tv_usec+1000000) < ((dev->timestamp_t_focus_abs).tv_usec+WAIT_FOR_VCM_MOTOR)) {
-			/* assuming the delay betwee calls does not take more than a second. */
-			stillmoving = true;
-		}
+	dev->platform_data = camera_get_af_platform_data();
+	if (!dev->platform_data) {
+		v4l2_err(client, "failed to get platform data\n");
+		return -ENXIO;
 	}
-
-	if (stillmoving) {
-		status |= ATOMISP_FOCUS_STATUS_MOVING;
-		status |= ATOMISP_FOCUS_HP_IN_PROGRESS;
-	} else {
-		status |= ATOMISP_FOCUS_HP_COMPLETE;
-		status |= ATOMISP_FOCUS_STATUS_ACCEPTS_NEW_MOVE;
-	}
-	*value = status;
 	return 0;
 }
 
-/*
-static int ov8830_vcm_enable(struct v4l2_subdev *sd)
+static int drv201_power_up(struct v4l2_subdev *sd)
 {
-	struct i2c_client *client = v4l2_get_subdevdata(sd);
+	/* Transition time required from shutdown to standby state */
+	const int WAKEUP_DELAY_US = 100;
+	const int DEFAULT_CONTROL_VAL = 0x02;
 
-	return ov8830_rmw_reg(client, OV8830_16BIT, OV8830_VCM_SLEW_STEP,
-				OV8830_VCM_ENABLE, 0x1);
+	struct drv201_device *dev = to_drv201_device(sd);
+	struct i2c_client *client = v4l2_get_subdevdata(sd);
+	int r;
+
+	/* Enable power */
+	r = dev->platform_data->power_ctrl(sd, 1);
+	if (r)
+		return r;
+
+	udelay(1);		/* Wait for VBAT to stabilize */
+
+	/* jiggle SCL pin to wake up device */
+	drv201_write8(sd, DRV201_CONTROL, 1);
+
+	usleep_range(WAKEUP_DELAY_US, WAKEUP_DELAY_US * 10);
+
+	/* Reset device */
+	r = drv201_write8(sd, DRV201_CONTROL, 1);
+	if (r < 0)
+		goto fail_powerdown;
+
+	/* Detect device */
+	r = drv201_read8(sd, DRV201_CONTROL);
+	if (r < 0)
+		goto fail_powerdown;
+	if (r != DEFAULT_CONTROL_VAL) {
+		r = -ENXIO;
+		goto fail_powerdown;
+	}
+
+	dev->focus = DRV201_MAX_FOCUS_POS;
+
+	v4l2_info(client, "detected drv201\n");
+	return 0;
+
+fail_powerdown:
+	dev->platform_data->power_ctrl(sd, 0);
+	return r;
 }
-*/
+
+static int drv201_power_down(struct v4l2_subdev *sd)
+{
+	struct drv201_device *dev = to_drv201_device(sd);
+
+	return dev->platform_data->power_ctrl(sd, 0);
+}
+
+static int drv201_t_focus_abs(struct v4l2_subdev *sd, s32 value)
+{
+	struct drv201_device *dev = to_drv201_device(sd);
+	int r;
+
+	value = clamp(value, 0, DRV201_MAX_FOCUS_POS);
+	r = drv201_write16(sd, DRV201_VCM_CURRENT,
+			   DRV201_MAX_FOCUS_POS - value);
+	if (r < 0)
+		return r;
+
+	getnstimeofday(&dev->focus_time);
+	dev->focus = value;
+	return 0;
+}
+
+static int drv201_q_focus_abs(struct v4l2_subdev *sd, s32 *value)
+{
+	struct drv201_device *dev = to_drv201_device(sd);
+	*value = dev->focus;
+	return 0;
+}
+
+static int drv201_t_focus_rel(struct v4l2_subdev *sd, s32 value)
+{
+	struct drv201_device *dev = to_drv201_device(sd);
+	return drv201_t_focus_abs(sd, dev->focus + value);
+}
+
+static int drv201_q_focus_status(struct v4l2_subdev *sd, s32 *value)
+{
+	static const struct timespec move_time = {
+		/* The time required for focus motor to move the lens */
+		.tv_sec = 0,
+		.tv_nsec = 60000000
+	};
+	struct drv201_device *dev = to_drv201_device(sd);
+	struct timespec current_time, finish_time, delta_time;
+
+	getnstimeofday(&current_time);
+	finish_time = timespec_add(dev->focus_time, move_time);
+	delta_time = timespec_sub(current_time, finish_time);
+	if (delta_time.tv_sec >= 0 && delta_time.tv_nsec >= 0) {
+		/* VCM motor is not moving */
+		*value = ATOMISP_FOCUS_HP_COMPLETE |
+			 ATOMISP_FOCUS_STATUS_ACCEPTS_NEW_MOVE;
+	} else {
+		/* VCM motor is still moving */
+		*value = ATOMISP_FOCUS_STATUS_MOVING |
+			 ATOMISP_FOCUS_HP_IN_PROGRESS;
+	}
+	return 0;
+}
+
 static int ov8830_set_exposure(struct v4l2_subdev *sd, int exposure, int gain)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
@@ -1828,7 +1928,6 @@ static void ov8830_uninit(struct v4l2_subdev *sd)
 
 	dev->exposure = 0;
 	dev->gain     = 0;
-	dev->focus    = OV8830_INVALID_CONFIG;
 }
 
 static int power_up(struct v4l2_subdev *sd)
@@ -1892,19 +1991,26 @@ static int power_down(struct v4l2_subdev *sd)
 static int ov8830_s_power(struct v4l2_subdev *sd, int on)
 {
 	struct ov8830_device *dev = to_ov8830_sensor(sd);
-	int ret;
+	int ret, r;
 
 	if (on == 0) {
 		ov8830_uninit(sd);
 		ret = power_down(sd);
+		r = drv201_power_down(sd);
+		if (ret == 0)
+			ret = r;
 		dev->power = 0;
 	} else {
 		ret = power_up(sd);
-		if (!ret) {
-			dev->power = 1;
-			/* init motor initial position */
-			return ov8830_init(sd, 0);
-		}
+		if (ret)
+			return ret;
+		ret = drv201_power_up(sd);
+		if (ret)
+			return ret;
+
+		dev->power = 1;
+		/* init motor initial position */
+		ret = ov8830_init(sd, 0);
 	}
 
 	return ret;
@@ -2034,30 +2140,6 @@ static int ov8830_v_flip(struct v4l2_subdev *sd, s32 value)
 	return -ENXIO;
 }
 
-
-static int ov8830_t_vcm_slew(struct v4l2_subdev *sd, s32 value)
-{
-	struct i2c_client *client = v4l2_get_subdevdata(sd);
-
-	if (value > OV8830_VCM_SLEW_STEP_MAX)
-		return -EINVAL;
-
-	return ov8830_rmw_reg(client, OV8830_16BIT, OV8830_VCM_SLEW_STEP,
-				OV8830_VCM_SLEW_STEP_MASK, value);
-}
-
-static int ov8830_t_vcm_timing(struct v4l2_subdev *sd, s32 value)
-{
-	struct i2c_client *client = v4l2_get_subdevdata(sd);
-
-	/* Max 16 bits */
-	if (value > OV8830_VCM_SLEW_TIME_MAX)
-		return -EINVAL;
-
-	return ov8830_write_reg(client, OV8830_16BIT, OV8830_VCM_SLEW_TIME,
-				 value);
-}
-
 static int ov8830_g_focal(struct v4l2_subdev *sd, s32 *val)
 {
 	*val = (OV8830_FOCAL_LENGTH_NUM << 16) | OV8830_FOCAL_LENGTH_DEM;
@@ -2123,26 +2205,26 @@ static struct ov8830_control ov8830_controls[] = {
 			.type = V4L2_CTRL_TYPE_INTEGER,
 			.name = "focus move absolute",
 			.minimum = 0,
-			.maximum = OV8830_MAX_FOCUS_POS,
+			.maximum = DRV201_MAX_FOCUS_POS,
 			.step = 1,
 			.default_value = 0,
 			.flags = 0,
 		},
-		.tweak = ov8830_t_focus_abs,
-		.query = ov8830_q_focus_abs,
+		.tweak = drv201_t_focus_abs,
+		.query = drv201_q_focus_abs,
 	},
 	{
 		.qc = {
 			.id = V4L2_CID_FOCUS_RELATIVE,
 			.type = V4L2_CTRL_TYPE_INTEGER,
 			.name = "focus move relative",
-			.minimum = OV8830_MAX_FOCUS_NEG,
-			.maximum = OV8830_MAX_FOCUS_POS,
+			.minimum = -DRV201_MAX_FOCUS_POS,
+			.maximum = DRV201_MAX_FOCUS_POS,
 			.step = 1,
 			.default_value = 0,
 			.flags = 0,
 		},
-		.tweak = ov8830_t_focus_rel,
+		.tweak = drv201_t_focus_rel,
 	},
 	{
 		.qc = {
@@ -2155,33 +2237,7 @@ static struct ov8830_control ov8830_controls[] = {
 			.default_value = 0,
 			.flags = 0,
 		},
-		.query = ov8830_q_focus_status,
-	},
-	{
-		.qc = {
-			.id = V4L2_CID_VCM_SLEW,
-			.type = V4L2_CTRL_TYPE_INTEGER,
-			.name = "vcm slew",
-			.minimum = 0,
-			.maximum = OV8830_VCM_SLEW_STEP_MAX,
-			.step = 1,
-			.default_value = 0,
-			.flags = 0,
-		},
-		.tweak = ov8830_t_vcm_slew,
-	},
-	{
-		.qc = {
-			.id = V4L2_CID_VCM_TIMEING,
-			.type = V4L2_CTRL_TYPE_INTEGER,
-			.name = "vcm step time",
-			.minimum = 0,
-			.maximum = OV8830_VCM_SLEW_TIME_MAX,
-			.step = 1,
-			.default_value = 0,
-			.flags = 0,
-		},
-		.tweak = ov8830_t_vcm_timing,
+		.query = drv201_q_focus_status,
 	},
 	{
 		.qc = {
@@ -2812,14 +2868,15 @@ static int ov8830_probe(struct i2c_client *client,
 	dev->fmt_idx = 0;
 	v4l2_i2c_subdev_init(&(dev->sd), client, &ov8830_ops);
 
+	ret = drv201_init(&dev->sd);
+	if (ret < 0)
+		goto out_free;
+
 	if (client->dev.platform_data) {
 		ret = ov8830_s_config(&dev->sd, client->irq,
 				      client->dev.platform_data);
-		if (ret) {
-			v4l2_device_unregister_subdev(&dev->sd);
-			kfree(dev);
-			return ret;
-		}
+		if (ret)
+			goto out_free;
 	}
 
 	dev->sd.flags |= V4L2_SUBDEV_FL_HAS_DEVNODE;
@@ -2835,6 +2892,11 @@ static int ov8830_probe(struct i2c_client *client,
 	}
 
 	return 0;
+
+out_free:
+	v4l2_device_unregister_subdev(&dev->sd);
+	kfree(dev);
+	return ret;
 }
 
 static const struct i2c_device_id ov8830_id[] = {

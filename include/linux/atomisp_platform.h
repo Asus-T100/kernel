@@ -98,6 +98,12 @@ struct camera_flash_platform_data {
 	int gpio_reset;
 };
 
+struct camera_af_platform_data {
+	int (*power_ctrl)(struct v4l2_subdev *subdev, int flag);
+};
+
+const struct camera_af_platform_data *camera_get_af_platform_data(void);
+
 struct camera_mipi_info {
 	enum atomisp_camera_port        port;
 	unsigned int                    num_lanes;

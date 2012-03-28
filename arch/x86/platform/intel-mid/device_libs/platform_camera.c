@@ -216,3 +216,40 @@ const struct atomisp_platform_data *intel_get_v4l2_subdev_table(void)
 }
 EXPORT_SYMBOL_GPL(intel_get_v4l2_subdev_table);
 
+static int camera_af_power_gpio = -1;
+
+static int camera_af_power_ctrl(struct v4l2_subdev *sd, int flag)
+{
+	return gpio_direction_output(camera_af_power_gpio, flag);
+}
+
+const struct camera_af_platform_data *camera_get_af_platform_data(void)
+{
+	static const int GP_CORE = 96;
+	static const int GPIO_DEFAULT = GP_CORE + 76;
+	static const char gpio_name[] = "CAM_0_AF_EN";
+	static const struct camera_af_platform_data platform_data = {
+		.power_ctrl = camera_af_power_ctrl
+	};
+	int gpio, r;
+
+	if (camera_af_power_gpio == -1) {
+		gpio = get_gpio_by_name(gpio_name);
+		if (gpio < 0) {
+			pr_err("%s: can not find gpio `%s', using default\n",
+				__func__, gpio_name);
+			gpio = GPIO_DEFAULT;
+		}
+		r = gpio_request(gpio, gpio_name);
+		if (r)
+			return NULL;
+		r = gpio_direction_output(gpio, 0);
+		if (r)
+			return NULL;
+		pr_info("%s: using gpio %i\n", __func__, gpio);
+		camera_af_power_gpio = gpio;
+	}
+
+	return &platform_data;
+}
+EXPORT_SYMBOL_GPL(camera_get_af_platform_data);
