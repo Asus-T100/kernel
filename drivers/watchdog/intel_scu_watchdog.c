@@ -747,7 +747,7 @@ static int __init intel_scu_watchdog_init(void)
 #endif
 
 	if (disable_kernel_watchdog) {
-		pr_debug(PFX "disabling the timer\n");
+		pr_err(PFX "%s: Disable kernel watchdog\n", __func__);
 
 		/* Make sure timer is stopped */
 		ret = intel_scu_stop();
