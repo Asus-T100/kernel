@@ -332,6 +332,18 @@ config VIDEO_MT9E013
 
 	  It currently only works with the atomisp driver.
 
+config VIDEO_LC898211
+	tristate "LC898211 IC driver for Semco HVCA actuator/EEPROM modules"
+	depends on I2C && VIDEO_V4L2 && VIDEO_ATOMISP
+	---help---
+	  This is a Video4Linux2 driver for LC898211 IC to control
+	  Semco Hybrid VCA and EEPROM modules.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called lc898211.
+
+	  It currently only works with the atomisp driver.
+
 config VIDEO_OV8830
 	tristate "Omnivision ov8830 sensor support"
 	depends on I2C && VIDEO_V4L2 && VIDEO_ATOMISP
