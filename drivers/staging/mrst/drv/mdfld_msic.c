@@ -165,6 +165,13 @@ static int msic_resume(struct device *dev)
 
 	hpd_suspended = false;
 
+	ret = intel_scu_ipc_update_register(MSIC_IRQLVL1_MASK, 0x0, VREG_MASK);
+	if (ret) {
+		DRM_ERROR("%s: Failed to unmask VREG IRQ.\n",
+			__func__);
+		goto err;
+	}
+
 	ret = intel_scu_ipc_iowrite8(MSIC_VCC330CNT, VCC330_ON);
 	if (ret) {
 		DRM_ERROR("%s: Failed to read MSIC_HDMI_STATUS.\n",
@@ -233,6 +240,13 @@ static int msic_suspend(struct device *dev)
 		goto err1;
 	}
 
+	ret = intel_scu_ipc_update_register(MSIC_IRQLVL1_MASK, 0xff, VREG_MASK);
+	if (ret) {
+		DRM_ERROR("%s: Failed to mask VREG IRQ.\n",
+			  __func__);
+		goto err1;
+	}
+
 	hpd_suspended = true;
 
 	ret = intel_scu_ipc_iowrite8(MSIC_VHDMICNT, VHDMI_OFF);
@@ -255,6 +269,7 @@ err3:
 	err |= intel_scu_ipc_iowrite8(MSIC_VHDMICNT, VHDMI_ON | VHDMI_DB_30MS);
 err2:
 	hpd_suspended = false;
+	err |= intel_scu_ipc_update_register(MSIC_IRQLVL1_MASK, 0x0, VREG_MASK);
 	err |= intel_scu_ipc_ioread8(MSIC_HDMI_STATUS, &hdmi_status);
 	if (!err && (hdmi_saved_status & HPD_SIGNAL_STATUS) !=
 	    (hdmi_status & HPD_SIGNAL_STATUS))
