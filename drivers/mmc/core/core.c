@@ -1578,23 +1578,13 @@ static unsigned int mmc_mmc_erase_timeout(struct mmc_card *card,
 {
 	unsigned int erase_timeout;
 
-	/*
-	 * If use trim operation, the timeout value is trim_timeout
-	 *
-	 * If use high capacity erase operations, the timeout value
-	 * should be hc_erase_timeout.
-	 *
-	 * If use normal erase operations for erase group, the timeout
-	 * should be write block timeout.
-	 *
-	 * If use secure trim/erase operation, the timeout value is
-	 * hc_erase_timeout * SEC_TRIM/ERASE_MULT
-	 */
-	if (arg & MMC_TRIM_ARGS)
-		erase_timeout = card->ext_csd.trim_timeout;
-	else if (card->ext_csd.erase_group_def & 1)
-		erase_timeout = card->ext_csd.hc_erase_timeout;
-	else {
+	if (card->ext_csd.erase_group_def & 1) {
+		/* High Capacity Erase Group Size uses HC timeouts */
+		if (arg == MMC_TRIM_ARG)
+			erase_timeout = card->ext_csd.trim_timeout;
+		else
+			erase_timeout = card->ext_csd.hc_erase_timeout;
+	} else {
 		/* CSD Erase Group Size uses write timeout */
 		unsigned int mult = (10 << card->csd.r2w_factor);
 		unsigned int timeout_clks = card->csd.tacc_clks * mult;
