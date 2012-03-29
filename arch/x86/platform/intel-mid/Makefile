@@ -1,3 +1,6 @@
+CFLAGS_intel_soc_pm_debug.o		:= -Werror
+CFLAGS_intel_soc_pmu.o			:= -Werror
+
 # platform configuration for board devices
 obj-y					+= device_libs/
 
@@ -5,17 +8,17 @@ obj-y					+= device_libs/
 obj-$(CONFIG_X86_INTEL_MID)		+= intel_mid_vrtc.o
 obj-$(CONFIG_EARLY_PRINTK_INTEL_MID)	+= early_printk_intel_mid.o
 obj-$(CONFIG_X86_INTEL_MID)		+= intel-mid.o
-
 # MRST specific files
 obj-$(CONFIG_X86_MRST)			+= mrst.o
 obj-$(CONFIG_X86_MRST)			+= mrst-pmu.o
-
 # MFLD specific files
-obj-$(CONFIG_X86_MDFLD)			+= mfld.o
 obj-$(CONFIG_SERIAL_MFD_HSU)		+= mfld-hsu.o
 
+obj-$(CONFIG_X86_MDFLD)			+= mfld.o
 # MRFL specific file
 obj-$(CONFIG_X86_MRFLD)			+= mrfl.o
+
+obj-$(CONFIG_ATOM_SOC_POWER)		+= intel_soc_pm_debug.o intel_soc_pmu.o
 
 # BOARD files
 obj-$(CONFIG_BOARD_MFLD_BLACKBAY)	+= board-blackbay.o

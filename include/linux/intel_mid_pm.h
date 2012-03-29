@@ -62,6 +62,7 @@
 #define CSTATE_EXIT_LATENCY_S0i3 2800
 
 #ifdef CONFIG_INTEL_MID_MDFLD_POWER
+#define LOG_PMU_EVENTS
 
 #define PMU1_MAX_PENWELL_DEVS   8
 #define PMU2_MAX_PENWELL_DEVS   55
@@ -101,8 +102,8 @@
 #define S0I1_POWER_USAGE       50
 #define S0I3_POWER_USAGE       31
 
-extern int mfld_s0ix_enter(int);
-extern int get_target_platform_state(void);
+extern int get_target_platform_state(unsigned long *eax);
+extern int mid_s0ix_enter(int);
 extern int pmu_set_devices_in_d0i0(void);
 extern void pmu_set_s0ix_complete(void);
 extern bool pmu_is_s0i3_in_progress(void);
@@ -116,6 +117,14 @@ extern int mfld_msg_read32(u32 cmd, u32 *data);
 extern int mfld_msg_write32(u32 cmd, u32 data);
 
 extern int pmu_set_lss01_to_d0i0_atomic(void);
+
+#ifdef LOG_PMU_EVENTS
+extern void pmu_log_ipc(u32 command);
+extern void pmu_log_ipc_irq(void);
+#else
+static inline void pmu_log_ipc(u32 command) { return; };
+static inline void pmu_log_ipc_irq(void) { return; };
+#endif
 
 #else
 
@@ -152,8 +161,8 @@ static inline void acquire_scu_ready_sem(void) { return; };
 static inline void release_scu_ready_sem(void) { return; };
 
 static inline int pmu_set_lss01_to_d0i0_atomic(void) { return -ENOSYS; }
-
+static inline void pmu_log_ipc(u32 command) { return; };
+static inline void pmu_log_ipc_irq(void) { return; };
 #endif /* #ifdef CONFIG_INTEL_MID_POWER */
-
 
 #endif /* #ifndef INTEL_MID_PM_H */
