@@ -1,5 +1,3 @@
-CFLAGS_mfld-pmu.o        := -Werror
-
 # platform configuration for board devices
 obj-y					+= device_libs/
 
@@ -14,7 +12,6 @@ obj-$(CONFIG_X86_MRST)			+= mrst-pmu.o
 
 # MFLD specific files
 obj-$(CONFIG_X86_MDFLD)			+= mfld.o
-obj-$(CONFIG_INTEL_MID_MDFLD_POWER)	+= mfld-pmu.o
 obj-$(CONFIG_SERIAL_MFD_HSU)		+= mfld-hsu.o
 
 # MRFL specific file
