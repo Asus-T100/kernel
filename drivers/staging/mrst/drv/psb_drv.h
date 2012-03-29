@@ -1549,6 +1549,9 @@ do {                                                \
 #define IS_CTP(dev) (((dev->pci_device & 0xffff) == 0x08c0) ||	\
 		     ((dev->pci_device & 0xffff) == 0x08c7) ||  \
 		     ((dev->pci_device & 0xffff) == 0x08c8))
+
+#define IS_CTP_NEED_WA(dev) ((dev->pci_device & 0xffff) == 0x08c8)
+
 #define IS_MDFLD(dev) (IS_CTP(dev) || IS_MDFLD_OLD(dev))
 #define IS_MID(dev) (IS_MRST(dev) || IS_MDFLD(dev))
 

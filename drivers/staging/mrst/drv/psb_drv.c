@@ -1677,6 +1677,22 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	if (!dev_priv->sgx_reg)
 		goto out_err;
 
+	/*WA in PO: Program SGX544MP master clk gating earlier, or CPU stuck later
+	 *before loading SGX driver, root cause is still unkown
+	 */
+#if defined(SGX_FEATURE_MP)
+	if (IS_CTP_NEED_WA(dev)) {
+		if (SGX_FEATURE_MP_CORE_COUNT == 2) {
+			iowrite32(0x1, dev_priv->sgx_reg + 0x4000);
+			iowrite32(0xa, dev_priv->sgx_reg + 0x4004);
+		} else if  (SGX_FEATURE_MP_CORE_COUNT == 1) {
+			iowrite32(0x0, dev_priv->sgx_reg + 0x4000);
+			iowrite32(0x2, dev_priv->sgx_reg + 0x4004);
+		}
+		iowrite32(0x2aa, dev_priv->sgx_reg + 0x4020);
+	}
+#endif
+
 	if (IS_MID(dev)) {
 		mrst_get_fuse_settings(dev);
 		mrst_get_vbt_data(dev_priv);
