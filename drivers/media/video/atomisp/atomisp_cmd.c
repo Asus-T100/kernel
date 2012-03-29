@@ -1284,8 +1284,6 @@ static void atomisp_update_capture_mode(struct atomisp_device *isp)
  */
 int atomisp_gdc_cac(struct atomisp_device *isp, int flag, __s32 * value)
 {
-	struct sh_css_morph_table *tab;
-
 	if (flag == 0) {
 		*value = isp->params.gdc_cac_en;
 		return 0;
@@ -1293,11 +1291,8 @@ int atomisp_gdc_cac(struct atomisp_device *isp, int flag, __s32 * value)
 
 	isp->params.gdc_cac_en = (*value == 0) ? 0 : 1;
 	if (isp->params.gdc_cac_en) {
-		tab = isp->inputs[isp->input_curr].morph_table;
-		if (tab) {
-			sh_css_morph_table_free(tab);
-			isp->inputs[isp->input_curr].morph_table = NULL;
-		}
+		sh_css_set_morph_table(
+				isp->inputs[isp->input_curr].morph_table);
 	} else {
 		sh_css_set_morph_table(NULL);
 	}
@@ -1598,7 +1593,7 @@ int atomisp_ctc(struct atomisp_device *isp, int flag,
 		sh_css_get_ctc_table(&tab);
 		memcpy(arg, tab, sizeof(*arg));
 	} else {
-		/* Set gamma table to isp parameters */
+		/* Set ctc table to isp parameters */
 		memcpy(&isp->params.ctc_table, arg,
 			sizeof(isp->params.ctc_table));
 		sh_css_set_ctc_table(&isp->params.ctc_table);
@@ -1808,7 +1803,7 @@ int atomisp_gdc_cac_table(struct atomisp_device *isp, int flag,
 	struct atomisp_morph_table *arg = (struct atomisp_morph_table *)config;
 
 	if (flag == 0) {
-		/* Get gamma table from current setup */
+		/* Get gdc table from current setup */
 		const struct sh_css_morph_table *tab;
 		sh_css_get_morph_table(&tab);
 
@@ -1875,7 +1870,8 @@ int atomisp_gdc_cac_table(struct atomisp_device *isp, int flag,
 			}
 		}
 		isp->inputs[isp->input_curr].morph_table = tab;
-		sh_css_set_morph_table(tab);
+		if (isp->params.gdc_cac_en)
+			sh_css_set_morph_table(tab);
 	}
 
 	return 0;
