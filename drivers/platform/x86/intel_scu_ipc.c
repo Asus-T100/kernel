@@ -186,6 +186,7 @@ static inline void ipc_command(u32 cmd) /* Send ipc command */
 	}
 
 end:
+	pmu_log_ipc(cmd);
 	/* Prevent C-states beyond C6 */
 	pm_qos_update_request(qos, CSTATE_EXIT_LATENCY_S0i1 - 1);
 }
@@ -1688,6 +1689,7 @@ EXPORT_SYMBOL_GPL(intel_scu_ipc_set_osc_clk0);
 static irqreturn_t ioc(int irq, void *dev_id)
 {
 	complete(&ipcdev.cmd_complete);
+	pmu_log_ipc_irq();
 	return IRQ_HANDLED;
 }
 

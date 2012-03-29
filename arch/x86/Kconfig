@@ -1929,6 +1929,10 @@ source "drivers/cpuidle/Kconfig"
 
 source "drivers/idle/Kconfig"
 
+config ATOM_SOC_POWER
+	def_bool y
+	depends on INTEL_ATOM_MDFLD_POWER || INTEL_ATOM_CLV_POWER || INTEL_ATOM_MRFLD_POWER
+
 config INTEL_MID_MDFLD_POWER
         bool "Power Management driver for Intel MDLFD Mid platform"
         depends on X86_MDFLD && PCI && CPU_IDLE && PM_RUNTIME
