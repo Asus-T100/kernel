@@ -88,6 +88,11 @@
 /** Registers Contents */
 #define WHOAMI_L3G4200D		0x00D3	/* Expected content for WAI register*/
 
+/* After device enable a short delay
+ * is needed for device to be stable.
+ */
+#define L3G4200D_STABLE_DELAY	500
+
 struct output_rate {
 	int poll_rate_ms;
 	u8 mask;
@@ -271,8 +276,8 @@ static int l3g4200d_enable(struct l3g4200d_data *gyro)
 		return err;
 	}
 
-	/* wait 200ms for device to be stable */
-	msleep(200);
+	/* wait L3G4200D_STABLE_DELAY for device to be stable */
+	msleep(L3G4200D_STABLE_DELAY);
 	l3g4200d_queue_delayed_work(gyro);
 	return 0;
 }
