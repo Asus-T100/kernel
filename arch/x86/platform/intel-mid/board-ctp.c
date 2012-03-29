@@ -1714,9 +1714,9 @@ void *cloverview_usb_otg_get_pdata(void)
 		pr_err("%s: No gpio pin for 'usb_otg_phy_cs'\n", __func__);
 		goto failed2;
 	}
-	pdata->gpio_reset = get_gpio_by_name("usb_otg_phy_reset");
+	pdata->gpio_reset = get_gpio_by_name("usb_otg_phy_rst");
 	if (pdata->gpio_reset == -1) {
-		pr_err("%s: No gpio pin for 'usb_otg_phy_reset'\n", __func__);
+		pr_err("%s: No gpio pin for 'usb_otg_phy_rst'\n", __func__);
 		goto failed2;
 	}
 	pr_info("%s: CS pin: gpio %d, Reset pin: gpio %d\n", __func__,
