@@ -1602,11 +1602,6 @@ void ospm_resume_display(struct pci_dev *pdev)
 						psb_sysfs_uevent(dev_priv->dev, uevent_string);
 					}
 				}
-			} else {
-				PSB_DEBUG_ENTRY("hdmi is unplugged: %d!\n", hdmi_state);
-				if (hdmi_state)
-					schedule_work(&dev_priv->hdmi_hotplug_wq);
-				msleep(100);
 			}
 #endif
 		}
@@ -1996,25 +1991,6 @@ void ospm_power_island_up(int hw_islands)
 		 __func__, hw_islands);
 #endif
 	if (hw_islands & OSPM_DISPLAY_ISLAND) {
-
-#ifdef CONFIG_MDFD_HDMI
-		if (IS_MDFLD_OLD(dev_priv->dev)) {
-			/*
-			 * Always turn on MSIC VCC330 and VHDMI when display is
-			 * on.
-			 */
-			intel_scu_ipc_iowrite8(MSIC_VCC330CNT, VCC330_ON);
-			/*
-			 * MSIC documentation requires that there be a 500us
-			 * delay after enabling VCC330 before you can enable
-			 * VHDMI
-			 */
-			usleep_range(500, 1000);
-			/* turn on HDMI power rails */
-			intel_scu_ipc_iowrite8(MSIC_VHDMICNT,
-					VHDMI_ON | VHDMI_DB_30MS);
-		}
-#endif
 		/*Power-up required islands only*/
 		if (dev_priv->panel_desc & DISPLAY_A)
 			dc_islands |= OSPM_DISPLAY_A_ISLAND;
@@ -2144,21 +2120,6 @@ void ospm_power_island_down(int hw_islands)
 			BUG();
 		spin_unlock_irqrestore(&dev_priv->ospm_lock, flags);
 
-#ifdef CONFIG_MDFD_HDMI
-		if (IS_MDFLD_OLD(dev_priv->dev)) {
-			/*
-			 * Turn off MSIC VCC330 and VHDMI if HDMI is
-			 * disconnected.
-			 */
-			if (!hdmi_state) {
-				/* turn off HDMI power rails */
-				intel_scu_ipc_iowrite8(MSIC_VHDMICNT,
-						VHDMI_OFF);
-				intel_scu_ipc_iowrite8(MSIC_VCC330CNT,
-						VCC330_OFF);
-			}
-		}
-#endif
 		/* handle other islands */
 		gfx_islands = hw_islands & ~OSPM_DISPLAY_ISLAND;
 	}

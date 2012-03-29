@@ -1226,8 +1226,6 @@ void hdmi_do_hotplug_wq(struct work_struct *work)
 	*/
 
 	if (IS_MDFLD_OLD(dev)) {
-		intel_scu_ipc_iowrite8(MSIC_VCC330CNT, VCC330_ON);
-
 		if (vrint_dat & HDMI_OCP_STATUS) {
 			/*
 			 * when there occurs overcurrent in msic hdmi hdp,
@@ -1261,6 +1259,7 @@ void hdmi_do_hotplug_wq(struct work_struct *work)
 	if (hdmi_hpd_connected) {
 		DRM_INFO("%s: HDMI plugged in\n", __func__);
 		dev_priv->bhdmiconnected = true;
+		hdmi_state = 1;
 		drm_sysfs_hotplug_event(dev_priv->dev);
 	} else {
 		DRM_INFO("%s: HDMI unplugged\n", __func__);
@@ -1295,7 +1294,6 @@ void hdmi_do_audio_wq(struct work_struct *work)
 	DRM_INFO("hdmi_do_audio_wq: Checking for HDMI connection at boot\n");
 
 	if (IS_MDFLD_OLD(dev_priv->dev)) {
-		intel_scu_ipc_iowrite8(MSIC_VCC330CNT, VCC330_ON);
 		intel_scu_ipc_ioread8(MSIC_HDMI_STATUS, &data);
 
 		if (data & HPD_SIGNAL_STATUS)
