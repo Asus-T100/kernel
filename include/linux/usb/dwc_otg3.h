@@ -320,6 +320,9 @@ struct dwc_otg2 {
 #define USER_RSP_EVENT 0x10
 	/** Host release event */
 #define PCD_RECEIVED_HOST_RELEASE_EVENT 0x20
+	/** User space ID switch event */
+#define USER_ID_A_CHANGE_EVENT 0x40
+#define USER_ID_B_CHANGE_EVENT 0x80
 
 	/* States */
 	enum dwc_otg_state prev;

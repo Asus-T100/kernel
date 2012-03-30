@@ -14,7 +14,9 @@
 #include <linux/usb/gadget.h>
 #include <linux/usb/dwc_otg3.h>
 
+#define SUPPORT_USER_ID_CHANGE_EVENTS
 
+static int otg_id = -1;
 static struct mutex lock;
 static const char driver_name[] = "dwc_otg3";
 static void __devexit dwc_otg_remove(struct pci_dev *pdev);
@@ -431,12 +433,10 @@ static enum dwc_otg_state do_charger_detection(struct dwc_otg2 *otg)
 
 static enum dwc_otg_state do_connector_id_status(struct dwc_otg2 *otg)
 {
-	u32 events = 0;
+	u32 events = 0, user_events = 0;
 	enum dwc_otg_state state = DWC_STATE_INVALID;
-	u32 osts = 0;
 
 	otg_dbg(otg, "\n");
-
 
 	/* Reset ADP related registers */
 	otg_write(otg, ADPCFG, 0);
@@ -451,6 +451,7 @@ static enum dwc_otg_state do_connector_id_status(struct dwc_otg2 *otg)
 
 	msleep(60);
 
+#ifndef SUPPORT_USER_ID_CHANGE_EVENTS
 	osts = otg_read(otg, OSTS);
 	if (!(osts & OSTS_CONN_ID_STS)) {
 		otg_dbg(otg, "Connector ID is A\n");
@@ -462,11 +463,14 @@ static enum dwc_otg_state do_connector_id_status(struct dwc_otg2 *otg)
 		else
 			otg_dbg(otg, "B session invalied, so haven't connect HOST\n");
 	}
+#endif
 
 	sleep_until_event(otg, OEVT_CONN_ID_STS_CHNG_EVNT \
 			| OEVT_B_DEV_VBUS_CHNG_EVNT \
 			| OEVT_B_DEV_SES_VLD_DET_EVNT, \
-			0, 0, &events, NULL, NULL, 0);
+			0, USER_ID_B_CHANGE_EVENT \
+			| USER_ID_A_CHANGE_EVENT, &events,\
+			NULL, &user_events, 0);
 
 	if (events & (OEVT_B_DEV_VBUS_CHNG_EVNT | \
 				OEVT_B_DEV_SES_VLD_DET_EVNT)) {
@@ -479,6 +483,17 @@ static enum dwc_otg_state do_connector_id_status(struct dwc_otg2 *otg)
 		state = DWC_STATE_A_HOST;
 	}
 
+#ifdef SUPPORT_USER_ID_CHANGE_EVENTS
+	if (user_events & USER_ID_A_CHANGE_EVENT) {
+		otg_dbg(otg, "events is user id A change\n");
+		state = DWC_STATE_A_HOST;
+	}
+
+	if (user_events & USER_ID_B_CHANGE_EVENT) {
+		otg_dbg(otg, "events is user id B change\n");
+		state = DWC_STATE_B_PERIPHERAL;
+	}
+#endif
 
 	return state;
 }
@@ -505,6 +520,7 @@ static enum dwc_otg_state do_a_host(struct dwc_otg2 *otg)
 	ret = start_host(otg);
 
 	otg_mask = OEVT_CONN_ID_STS_CHNG_EVNT;
+	user_mask = USER_ID_B_CHANGE_EVENT;
 
 	rc = sleep_until_event(otg,
 			otg_mask, 0, user_mask,
@@ -536,7 +552,8 @@ static int do_b_peripheral(struct dwc_otg2 *otg)
 	otg_mask = OEVT_CONN_ID_STS_CHNG_EVNT \
 			| OEVT_B_DEV_VBUS_CHNG_EVNT \
 			| OEVT_B_DEV_SES_VLD_DET_EVNT;
-	user_mask = 0;
+
+	user_mask = USER_ID_A_CHANGE_EVENT;
 
 	rc = sleep_until_event(otg,
 			otg_mask, 0, user_mask,
@@ -551,12 +568,12 @@ static int do_b_peripheral(struct dwc_otg2 *otg)
 
 	if (otg_events & OEVT_B_DEV_VBUS_CHNG_EVNT) {
 		otg_dbg(otg, "OEVT_B_DEV_VBUS_CHNG_EVNT!\n");
-		state = DWC_STATE_CHARGER_DETECTION;
+		return DWC_STATE_CHARGER_DETECTION;
 	}
 
 	if (otg_events & OEVT_B_DEV_SES_VLD_DET_EVNT) {
 		otg_dbg(otg, "OEVT_B_DEV_SES_VLD_DET_EVNT!\n");
-		state = DWC_STATE_CHARGER_DETECTION;
+		return DWC_STATE_CHARGER_DETECTION;
 	}
 
 	return DWC_STATE_INVALID;
@@ -584,12 +601,14 @@ int otg_main_thread(void *data)
 	set_freezable();
 	reset_hw(otg);
 
+#ifndef SUPPORT_USER_ID_CHANGE_EVENTS
 	if (request_irq(otg->irqnum, dwc_otg_irq, IRQF_SHARED,
 				driver_name, otg) != 0) {
 		otg_dbg(otg,
 			"request interrupt %d failed\n", otg->irqnum);
 		return -EINVAL;
 	}
+#endif
 
 	otg_dbg(otg, "Thread running\n");
 	while (otg->state != DWC_STATE_TERMINATED) {
@@ -643,7 +662,7 @@ int otg_main_thread(void *data)
 static void start_main_thread(struct dwc_otg2 *otg)
 {
 	mutex_lock(&lock);
-	if (!otg->main_thread && otg->otg.gadget && otg->otg.host) {
+	if (!otg->main_thread /* && otg->otg.gadget */&& otg->otg.host) {
 		otg_dbg(otg, "Starting OTG main thread\n");
 		otg->main_thread = kthread_create(otg_main_thread, otg, "otg");
 		wake_up_process(otg->main_thread);
@@ -766,7 +785,7 @@ static int dwc_otg2_set_peripheral(struct otg_transceiver *x,
 	struct dwc_otg2 *otg;
 
 	if (!x) {
-		otg_err(otg, "%s, otg is NULL!\n", __func__);
+		otg_err(otg, "otg is NULL!\n");
 		return -ENODEV;
 	}
 
@@ -790,7 +809,7 @@ static int dwc_otg2_set_host(struct otg_transceiver *x, struct usb_bus *host)
 	struct dwc_otg2 *otg;
 
 	if (!x) {
-		otg_err(otg, "%s, otg is NULL!\n", __func__);
+		otg_err(otg, "otg is NULL!\n");
 		return -ENODEV;
 	}
 
@@ -813,7 +832,7 @@ static int dwc_otg2_received_host_release(struct otg_transceiver *x)
 	unsigned long flags;
 	struct dwc_otg2 *otg;
 	if (!x) {
-		otg_err(otg, "%s otg is NULL!\n", __func__);
+		otg_err(otg, "otg is NULL!\n");
 		return -ENODEV;
 	}
 
@@ -830,7 +849,70 @@ static int dwc_otg2_received_host_release(struct otg_transceiver *x)
 	return 0;
 }
 
-static struct dwc_otg2 *the_transceiver;
+#ifdef SUPPORT_USER_ID_CHANGE_EVENTS
+static ssize_t store_otg_id(struct device *_dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct dwc_otg2		*otg = the_transceiver;
+	unsigned long flags;
+
+	if (count != 2) {
+		otg_err(otg, "return EINVAL\n");
+		return -EINVAL;
+	}
+
+	if (count > 0 && buf[count-1] == '\n')
+		((char *) buf)[count-1] = 0;
+
+	switch (buf[0]) {
+	case 'a':
+	case 'A':
+		otg_dbg(otg, "Change ID to A\n");
+		otg->user_events |= USER_ID_A_CHANGE_EVENT;
+		spin_lock_irqsave(&otg->lock, flags);
+		wakeup_main_thread(otg);
+		otg_id = 0;
+		spin_unlock_irqrestore(&otg->lock, flags);
+		return count;
+	case 'b':
+	case 'B':
+		otg_dbg(otg, "Change ID to B\n");
+		otg->user_events |= USER_ID_B_CHANGE_EVENT;
+		spin_lock_irqsave(&otg->lock, flags);
+		wakeup_main_thread(otg);
+		otg_id = 1;
+		spin_unlock_irqrestore(&otg->lock, flags);
+		return count;
+	default:
+		otg_err(otg, "Just support change ID to A!\n");
+		return -EINVAL;
+	}
+
+	return count;
+}
+
+static ssize_t
+show_otg_id(struct device *_dev, struct device_attribute *attr, char *buf)
+{
+	char				*next;
+	unsigned			size, t;
+
+	next = buf;
+	size = PAGE_SIZE;
+
+	t = scnprintf(next, size,
+		"USB OTG ID: %s\n",
+		(otg_id ? "B" : "A")
+		);
+	size -= t;
+	next += t;
+
+	return PAGE_SIZE - size;
+}
+static DEVICE_ATTR(otg_id, S_IRUGO|S_IWUSR|S_IWGRP,\
+			show_otg_id, store_otg_id);
+#endif
+
 static int dwc_otg_probe(struct pci_dev *pdev,
 			const struct pci_device_id *id)
 {
@@ -839,7 +921,6 @@ static int dwc_otg_probe(struct pci_dev *pdev,
 	struct platform_device *dwc_host, *dwc_gadget;
 	unsigned long resource, len;
 	int retval;
-	otg_dbg(otg, "%s is calling\n", __func__);
 
 	if (pci_enable_device(pdev) < 0) {
 		otg_err(otg, "pci device enable failed\n");
@@ -963,6 +1044,15 @@ static int dwc_otg_probe(struct pci_dev *pdev,
 	otg->host = dwc_host;
 	otg->gadget = dwc_gadget;
 	otg->irqnum = pdev->irq;
+
+#ifdef SUPPORT_USER_ID_CHANGE_EVENTS
+	retval = device_create_file(&pdev->dev, &dev_attr_otg_id);
+	if (retval < 0) {
+		otg_dbg(otg,
+			"Can't register sysfs attribute: %d\n", retval);
+		goto exit;
+	}
+#endif
 
 	return 0;
 exit:
