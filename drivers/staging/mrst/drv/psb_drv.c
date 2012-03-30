@@ -3607,6 +3607,9 @@ static int psb_display_register_write(struct file *file, const char *buffer,
 	struct drm_device *dev = minor->dev;
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *) dev->dev_private;
+	struct mdfld_dsi_dbi_output **dbi_outputs;
+	struct mdfld_dsi_dbi_output *dbi_output;
+	struct mdfld_dbi_dsr_info *dsr_info = dev_priv->dbi_dsr_info;
 	int reg_val = 0;
 	char buf[256];
 	char op = '0';
@@ -3658,11 +3661,17 @@ static int psb_display_register_write(struct file *file, const char *buffer,
 		PSB_DEBUG_ENTRY("Display controller can not power on.!\n");
 		return -EPERM;
 	}
-	if (IS_MDFLD(dev)) {
+	if (is_panel_vid_or_cmd(dev) == MDFLD_DSI_ENCODER_DBI) {
 #ifndef CONFIG_MDFLD_DSI_DPU
 		if (!(dev_priv->dsr_fb_update & MDFLD_DSR_MIPI_CONTROL) &&
 		    (dev_priv->dbi_panel_on || dev_priv->dbi_panel_on2))
 			mdfld_dsi_dbi_exit_dsr(dev, MDFLD_DSR_MIPI_CONTROL, 0, 0); //assume cursor move once
+
+		dsr_info = dev_priv->dbi_dsr_info;
+		dbi_outputs = dsr_info->dbi_outputs;
+		dbi_output = dbi_outputs[0];
+		/*make sure, during read no DSR again*/
+		dbi_output->mode_flags |= MODE_SETTING_ON_GOING;
 #endif
 	}
 	if (op == 'r') {
@@ -3755,6 +3764,11 @@ static int psb_display_register_write(struct file *file, const char *buffer,
 			}
 
 		}
+	}
+	if (is_panel_vid_or_cmd(dev) == MDFLD_DSI_ENCODER_DBI) {
+#ifndef CONFIG_MDFLD_DSI_DPU
+		dbi_output->mode_flags &= ~MODE_SETTING_ON_GOING;
+#endif
 	}
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 	return count;

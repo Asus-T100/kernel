@@ -1034,9 +1034,6 @@ static void h8c7_dsi_dbi_update_fb(struct mdfld_dsi_dbi_output *dbi_output,
 	REG_WRITE(dspsurf_reg, REG_READ(dspsurf_reg));
 	REG_READ(dspsurf_reg);
 
-    mdfld_dsi_send_mcs_long_hs(sender, h8c7_set_address_mode, 4, 0);
-    mdelay(1);
-
 	mdfld_dsi_send_dcs(sender,
 			   write_mem_start,
 			   NULL,
@@ -1280,7 +1277,6 @@ int mdfld_h8c7_cmd_power_on(struct drm_encoder *encoder)
 
 
 	REG_WRITE(0x70184, 0);
-	REG_WRITE(0x70184, 0x1c2000);
 	REG_WRITE(0x70188, fixed_mode->hdisplay*4);
 	REG_WRITE(0x7018c, 0);
 	REG_WRITE(0x70190, ((fixed_mode->vdisplay - 1)<<16) | (fixed_mode->hdisplay - 1));  //h8c7_cmd
