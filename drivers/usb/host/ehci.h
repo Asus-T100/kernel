@@ -161,7 +161,19 @@ struct ehci_hcd {			/* one per controller */
 	unsigned		has_hostpc:1;
 	unsigned		has_lpm:1;  /* support link power management */
 	unsigned		has_ppcd:1; /* support per-port change bits */
+
+#ifdef CONFIG_USB_OTG
+	unsigned		has_otg:1;	/* if it is otg host*/
+	/* otg host has additional bus_suspend and bus_resume */
+	int (*otg_suspend)(struct usb_hcd *hcd);
+	int (*otg_resume)(struct usb_hcd *hcd);
+#endif
+	/* SRAM backup memory */
+	void *sram_swap;
+
 	u8			sbrn;		/* packed release number */
+	unsigned int		sram_addr;
+	unsigned int		sram_size;
 
 	/* irq statistics */
 #ifdef EHCI_STATS
@@ -174,6 +186,7 @@ struct ehci_hcd {			/* one per controller */
 	/* debug files */
 #ifdef DEBUG
 	struct dentry		*debug_dir;
+	struct dentry		*debug_lpm;
 #endif
 	/*
 	 * OTG controllers and transceivers need software interaction
@@ -772,4 +785,9 @@ static inline unsigned ehci_read_frame_index(struct ehci_hcd *ehci)
 
 /*-------------------------------------------------------------------------*/
 
+#ifdef CONFIG_PCI
+static void sram_deinit(struct usb_hcd *hcd);
+#else
+static void sram_deinit(struct usb_hcd *hcd) { return; };
+#endif
 #endif /* __LINUX_EHCI_HCD_H */

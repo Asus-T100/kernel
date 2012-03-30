@@ -135,6 +135,19 @@
 #define	TEST_FORCE_EN	5
 
 /*
+ * USB OTG 2.0 Test Mode
+ * See OTG 2.0 spec Table 6-8
+ */
+#define	TEST_SRP_REQD	6
+#define	TEST_HNP_REQD	7
+
+/*
+ * OTG 2.0
+ * Section 6.2 & 6.3
+ */
+#define	 OTG_STATUS_SELECTOR	0xF000
+
+/*
  * New Feature Selectors as added by USB 3.0
  * See USB 3.0 spec Table 9-6
  */
@@ -267,6 +280,8 @@ struct usb_device_descriptor {
 
 #define USB_DT_DEVICE_SIZE		18
 
+/* bcdDevice defined in OTG2.0 section 6.4.3.2 */
+#define USB_DT_BCD_VBUSOFF		BIT(0)
 
 /*
  * Device and/or Interface Class codes

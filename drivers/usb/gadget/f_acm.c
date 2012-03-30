@@ -608,6 +608,8 @@ acm_bind(struct usb_configuration *c, struct usb_function *f)
 	struct f_acm		*acm = func_to_acm(f);
 	int			status;
 	struct usb_ep		*ep;
+	struct usb_descriptor_header **fs_function;
+	struct usb_descriptor_header **hs_function;
 
 	/* allocate instance-specific interface IDs, and patch descriptors */
 	status = usb_interface_id(c, f);
@@ -659,8 +661,15 @@ acm_bind(struct usb_configuration *c, struct usb_function *f)
 	acm->notify_req->complete = acm_cdc_notify_complete;
 	acm->notify_req->context = acm;
 
+	if (c->bConfigurationValue == 4) {
+		/* Descriptors with association descriptor */
+		fs_function = acm_fs_function;
+	} else {
+		/* Descriptors without association descriptor */
+		fs_function = &acm_fs_function[1];
+	}
 	/* copy descriptors */
-	f->descriptors = usb_copy_descriptors(acm_fs_function);
+	f->descriptors = usb_copy_descriptors(fs_function);
 	if (!f->descriptors)
 		goto fail;
 
@@ -676,8 +685,15 @@ acm_bind(struct usb_configuration *c, struct usb_function *f)
 		acm_hs_notify_desc.bEndpointAddress =
 				acm_fs_notify_desc.bEndpointAddress;
 
+		if (c->bConfigurationValue == 4) {
+			/* Descriptors with association descriptor */
+			hs_function = acm_hs_function;
+		} else {
+			/* Descriptors without association descriptor */
+			hs_function = &acm_hs_function[1];
+		}
 		/* copy descriptors */
-		f->hs_descriptors = usb_copy_descriptors(acm_hs_function);
+		f->hs_descriptors = usb_copy_descriptors(hs_function);
 	}
 	if (gadget_is_superspeed(c->cdev->gadget)) {
 		acm_ss_in_desc.bEndpointAddress =

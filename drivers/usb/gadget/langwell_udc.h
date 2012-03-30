@@ -1,5 +1,5 @@
 /*
- * Intel Langwell USB Device Controller driver
+ * Intel Langwell/Penwell USB Device Controller driver
  * Copyright (C) 2008-2009, Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
@@ -8,6 +8,8 @@
  */
 
 #include <linux/usb/langwell_udc.h>
+#include <linux/usb/intel_mid_otg.h>
+#include <linux/wakelock.h>
 
 /*-------------------------------------------------------------------------*/
 
@@ -133,6 +135,7 @@ struct langwell_request {
 	struct list_head	queue;
 	unsigned		dtd_count;
 	unsigned		mapped:1;
+	unsigned		test_mode;
 };
 
 
@@ -191,8 +194,8 @@ struct langwell_udc {
 	/* pci state used to access those endpoints */
 	struct pci_dev		*pdev;
 
-	/* Langwell otg transceiver */
-	struct langwell_otg	*lotg;
+	/* Intel mid otg transceiver */
+	struct intel_mid_otg_xceiv	*iotg;
 
 	/* control registers */
 	struct langwell_cap_regs	__iomem	*cap_regs;
@@ -218,6 +221,8 @@ struct langwell_udc {
 
 	/* device status data for get_status request */
 	u16			dev_status;
+
+	struct	wake_lock	wake_lock;
 };
 
 #define gadget_to_langwell(g)	container_of((g), struct langwell_udc, gadget)

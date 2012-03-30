@@ -534,6 +534,7 @@ struct usb_gadget {
 	unsigned			b_hnp_enable:1;
 	unsigned			a_hnp_support:1;
 	unsigned			a_alt_hnp_support:1;
+	unsigned			host_request_flag:1;
 	const char			*name;
 	struct device			dev;
 };
@@ -764,6 +765,11 @@ static inline int usb_gadget_disconnect(struct usb_gadget *gadget)
 	return gadget->ops->pullup(gadget, 0);
 }
 
+enum gadget_driver_state {
+	REGISTERED,
+	UNREGISTERED,
+	BIND_UNBIND,
+};
 
 /*-------------------------------------------------------------------------*/
 

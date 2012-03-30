@@ -631,6 +631,8 @@ static void __devinit quirk_usb_disable_ehci(struct pci_dev *pdev)
 	if (base == NULL)
 		return;
 
+	pci_set_power_state(pdev, PCI_D0);
+
 	cap_length = readb(base);
 	op_reg_base = base + cap_length;
 
@@ -682,6 +684,9 @@ static void __devinit quirk_usb_disable_ehci(struct pci_dev *pdev)
 	writel(0x3f, op_reg_base + EHCI_USBSTS);
 
 	iounmap(base);
+
+	/* after disable ehci, put it back to correct power state */
+	pci_set_power_state(pdev, pci_choose_state(pdev, PMSG_SUSPEND));
 }
 
 /*
@@ -906,6 +911,11 @@ static void __devinit quirk_usb_early_handoff(struct pci_dev *pdev)
 	 */
 	if (pdev->vendor == 0x184e)	/* vendor Netlogic */
 		return;
+
+	/* Skip Intel Medfield SOC */
+	if (pdev->vendor == 0x8086 && pdev->device == 0x0829)
+		return;
+
 	if (pdev->class != PCI_CLASS_SERIAL_USB_UHCI &&
 			pdev->class != PCI_CLASS_SERIAL_USB_OHCI &&
 			pdev->class != PCI_CLASS_SERIAL_USB_EHCI &&
