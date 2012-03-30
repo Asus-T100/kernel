@@ -90,6 +90,8 @@
 
 #define DW_IC_ERR_TX_ABRT	0x1
 
+#define DW_IC_CMD_STOP		0x200
+
 /*
  * status codes
  */
@@ -188,6 +190,7 @@ struct dw_i2c_dev {
 	u32			(*get_clk_rate_khz) (struct dw_i2c_dev *dev);
 	int			(*get_scl_cfg) (struct dw_i2c_dev *dev);
 	struct dw_pci_controller *controller;
+	int			enable_stop;
 	int			cmd_err;
 	struct i2c_msg		*msgs;
 	int			msgs_num;

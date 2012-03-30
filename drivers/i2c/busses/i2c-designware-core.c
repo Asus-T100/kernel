@@ -309,6 +309,7 @@ i2c_dw_xfer_msg(struct dw_i2c_dev *dev)
 	struct i2c_msg *msgs = dev->msgs;
 	u32 intr_mask;
 	int tx_limit, rx_limit;
+	int cmd;
 	u32 addr = msgs[dev->msg_write_idx].addr;
 	u32 buf_len = dev->tx_buf_len;
 	u8 *buf = dev->tx_buf;
@@ -357,11 +358,13 @@ i2c_dw_xfer_msg(struct dw_i2c_dev *dev)
 		rx_limit = dev->rx_fifo_depth - dw_readl(dev, DW_IC_RXFLR);
 
 		while (buf_len > 0 && tx_limit > 0 && rx_limit > 0) {
+			cmd = (dev->enable_stop	&& buf_len == 1) ?
+				DW_IC_CMD_STOP : 0;
 			if (msgs[dev->msg_write_idx].flags & I2C_M_RD) {
-				dw_writel(dev, 0x100, DW_IC_DATA_CMD);
+				dw_writel(dev, cmd | 0x100, DW_IC_DATA_CMD);
 				rx_limit--;
 			} else
-				dw_writel(dev, *buf++, DW_IC_DATA_CMD);
+				dw_writel(dev, cmd | *buf++, DW_IC_DATA_CMD);
 			tx_limit--; buf_len--;
 		}
 
