@@ -38,6 +38,7 @@
 #include <linux/io.h>
 #include <linux/sched.h>
 #include <linux/delay.h>
+#include <linux/gpio.h>
 
 #define DRV_NAME "bq24192_charger"
 #define DEV_NAME "bq24192"
@@ -71,7 +72,7 @@
 #define CHR_CFG_BIT_LEN				2
 #define POWER_ON_CFG_CHRG_CFG_DIS		(0 << 4)
 #define POWER_ON_CFG_CHRG_CFG_EN		(1 << 4)
-#define POWER_ON_CFG_CHRG_CFG_OTG		(2 << 4)
+#define POWER_ON_CFG_CHRG_CFG_OTG		(3 << 4)
 #define POWER_ON_CFG_BOOST_LIM			(1 << 0)
 
 /*
@@ -173,6 +174,8 @@
 
 #define STATUS_UPDATE_INTERVAL		(HZ * 60) /* 60sec */
 
+#define BQ24192_CHRG_OTG_GPIO		36
+
 struct bq24192_chrg_regs {
 	u8 in_src;
 	u8 pwr_cfg;
@@ -196,6 +199,7 @@ struct bq24192_chip {
 
 	/* battery info */
 	int batt_status;
+	bool votg;
 };
 
 #ifdef CONFIG_DEBUG_FS
@@ -526,6 +530,61 @@ static void bq24192_monitor_worker(struct work_struct *work)
 	schedule_delayed_work(&chip->stat_mon_wrkr, STATUS_UPDATE_INTERVAL);
 }
 
+static int turn_otg_vbus(struct bq24192_chip *chip, bool votg_on)
+{
+	int ret = 0;
+
+	if (votg_on) {
+			/* Configure the charger in OTG mode */
+			ret = bq24192_reg_read_modify(chip->client,
+					BQ24192_POWER_ON_CFG_REG,
+					POWER_ON_CFG_CHRG_CFG_OTG, true);
+			if (ret < 0) {
+				dev_warn(&chip->client->dev,
+						"read reg modify failed\n");
+				goto i2c_write_fail;
+			}
+			/* Put the charger IC in reverse boost mode. Since
+			 * SDP charger can supply max 500mA charging current
+			 * Setting the boost current to 500mA
+			 */
+			ret = bq24192_reg_read_modify(chip->client,
+					BQ24192_POWER_ON_CFG_REG,
+					POWER_ON_CFG_BOOST_LIM, false);
+			if (ret < 0) {
+				dev_warn(&chip->client->dev,
+						"read reg modify failed\n");
+				goto i2c_write_fail;
+			}
+			/* assert the chrg_otg gpio now */
+			gpio_direction_output(BQ24192_CHRG_OTG_GPIO, 1);
+	} else {
+			/* Clear the charger from the OTG mode */
+			ret = bq24192_reg_read_modify(chip->client,
+					BQ24192_POWER_ON_CFG_REG,
+					POWER_ON_CFG_CHRG_CFG_OTG, false);
+			if (ret < 0) {
+				dev_warn(&chip->client->dev,
+						"read reg modify failed\n");
+				goto i2c_write_fail;
+			}
+			/* Put the charger IC out of reverse boost mode 500mA */
+			ret = bq24192_reg_read_modify(chip->client,
+					BQ24192_POWER_ON_CFG_REG,
+					POWER_ON_CFG_BOOST_LIM, false);
+			if (ret < 0) {
+				dev_warn(&chip->client->dev,
+						"read reg modify failed\n");
+				goto i2c_write_fail;
+			}
+			/* de-assert the chrg_otg gpio now */
+			gpio_direction_output(BQ24192_CHRG_OTG_GPIO, 0);
+			gpio_direction_input(BQ24192_CHRG_OTG_GPIO);
+	}
+i2c_write_fail:
+	return ret;
+}
+
 static void bq24192_event_worker(struct work_struct *work)
 {
 	struct bq24192_chip *chip = container_of(work,
@@ -560,6 +619,17 @@ static void bq24192_event_worker(struct work_struct *work)
 			chip->usb.type = POWER_SUPPLY_TYPE_USB;
 			dev_info(&chip->client->dev,
 				 "Charger type SDP\n");
+		} else if (chip->chrg_type == POWER_SUPPLY_TYPE_USB_HOST) {
+			dev_info(&chip->client->dev,
+				 "Charger type USB HOST\n");
+			ret = turn_otg_vbus(chip, true);
+			if (ret < 0) {
+				dev_err(&chip->client->dev,
+				"turning OTG vbus ON failed\n");
+				goto i2c_write_fail;
+			}
+			/* otg vbus is turned ON */
+			chip->votg = true;
 		} else {
 			dev_info(&chip->client->dev,
 				 "Unknown Charger type\n");
@@ -581,10 +651,21 @@ static void bq24192_event_worker(struct work_struct *work)
 			chip->present = 1;
 		} else {
 			chip->present = 0;
-			chip->chrg_type = POWER_SUPPLY_TYPE_USB;
+			chip->chrg_type = chip->cap.chrg_type;
+			chip->usb.type = POWER_SUPPLY_TYPE_USB;
 		}
 		chip->online = 0;
 		chip->batt_status = POWER_SUPPLY_STATUS_DISCHARGING;
+		if (chip->votg) {
+				ret = turn_otg_vbus(chip, false);
+				if (ret < 0) {
+					dev_err(&chip->client->dev,
+						"turning OTG vbus OFF failed\n");
+					goto i2c_write_fail;
+				}
+				/* otg vbus is turned OFF */
+				chip->votg = false;
+		}
 		break;
 	default:
 		dev_err(&chip->client->dev,
@@ -911,6 +992,15 @@ static int __devinit bq24192_probe(struct i2c_client *client,
 		kfree(chip);
 		return -EIO;
 	}
+
+	ret = gpio_request(BQ24192_CHRG_OTG_GPIO, "CHRG_OTG");
+	if (ret) {
+		dev_err(&chip->client->dev,
+			"Failed to request gpio %d with error %d\n",
+			BQ24192_CHRG_OTG_GPIO, ret);
+	}
+	dev_info(&chip->client->dev, "request gpio %d for CHRG_OTG pin\n",
+			BQ24192_CHRG_OTG_GPIO);
 
 	INIT_DELAYED_WORK(&chip->chrg_evt_wrkr, bq24192_event_worker);
 	INIT_DELAYED_WORK(&chip->stat_mon_wrkr, bq24192_monitor_worker);
