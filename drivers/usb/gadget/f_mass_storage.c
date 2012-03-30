@@ -297,6 +297,9 @@
 
 #include "gadget_chips.h"
 
+#ifdef CONFIG_USB_GADGET_DWC3
+const char lun_file_name[30] = "/storage/storage.img";
+#endif
 
 /*------------------------------------------------------------------------*/
 
@@ -776,8 +779,23 @@ static int do_read(struct fsg_common *common)
 
 	/* Carry out the file reads */
 	amount_left = common->data_size_from_cmnd;
+#ifdef CONFIG_USB_GADGET_DWC3
+	if (unlikely(amount_left == 0)) {
+		/* Wait for the next buffer to become available */
+		bh = common->next_buffhd_to_fill;
+		while (bh->state != BUF_STATE_EMPTY) {
+			rc = sleep_thread(common);
+			if (rc)
+				return rc;
+		}
+		bh->inreq->length = 0;
+
+		return -EIO;		/* No default reply */
+	}
+#else
 	if (unlikely(amount_left == 0))
 		return -EIO;		/* No default reply */
+#endif
 
 	for (;;) {
 		/*
@@ -2324,6 +2342,30 @@ static int enable_endpoint(struct fsg_common *common, struct usb_ep *ep,
 	int	rc;
 
 	ep->driver_data = common;
+#ifdef CONFIG_USB_GADGET_DWC3
+	if (common->fsg->gadget->speed == USB_SPEED_SUPER) {
+		if (ep == common->fsg->bulk_in) {
+			ep->maxburst = fsg_ss_bulk_in_comp_desc.bMaxBurst;
+			ep->max_streams =
+				fsg_ss_bulk_in_comp_desc.bmAttributes;
+		} else if (ep == common->fsg->bulk_out) {
+			ep->maxburst = fsg_ss_bulk_out_comp_desc.bMaxBurst;
+			ep->max_streams =
+				fsg_ss_bulk_out_comp_desc.bmAttributes;
+#if 0
+		} else if (ep == common->fsg->intr_in) {
+			ep->maxburst = fsg_ss_intr_ep_comp_desc.bMaxBurst;
+			ep->max_streams = 0;
+#endif
+		} else {
+			ep->maxburst = 0;
+			ep->max_streams = 0;
+		}
+	} else {
+		ep->maxburst = 0;
+		ep->max_streams = 0;
+	}
+#endif
 	rc = usb_ep_enable(ep, d);
 	if (rc)
 		ERROR(common, "can't enable %s, result %d\n", ep->name, rc);
@@ -2390,15 +2432,29 @@ reset:
 	fsg = common->fsg;
 
 	/* Enable the endpoints */
+#ifdef CONFIG_USB_GADGET_DWC3
+	d = fsg_ep_desc(common->gadget,
+			&fsg_fs_bulk_in_desc,
+			&fsg_hs_bulk_in_desc,
+			&fsg_ss_bulk_in_desc);
+#else
 	d = fsg_ep_desc(common->gadget,
 			&fsg_fs_bulk_in_desc, &fsg_hs_bulk_in_desc);
+#endif
 	rc = enable_endpoint(common, fsg->bulk_in, d);
 	if (rc)
 		goto reset;
 	fsg->bulk_in_enabled = 1;
 
+#ifdef CONFIG_USB_GADGET_DWC3
+	d = fsg_ep_desc(common->gadget,
+			&fsg_fs_bulk_out_desc,
+			&fsg_hs_bulk_out_desc,
+			&fsg_ss_bulk_out_desc);
+#else
 	d = fsg_ep_desc(common->gadget,
 			&fsg_fs_bulk_out_desc, &fsg_hs_bulk_out_desc);
+#endif
 	rc = enable_endpoint(common, fsg->bulk_out, d);
 	if (rc)
 		goto reset;
@@ -2766,6 +2822,9 @@ static struct fsg_common *fsg_common_init(struct fsg_common *common,
 		fsg_strings[FSG_STRING_INTERFACE].id = rc;
 		fsg_intf_desc.iInterface = rc;
 	}
+#ifdef CONFIG_USB_GADGET_DWC3
+		fsg_intf_desc.iInterface = 0;
+#endif
 
 	/*
 	 * Create the LUNs, open their backing files, and register the
@@ -2813,6 +2872,13 @@ static struct fsg_common *fsg_common_init(struct fsg_common *common,
 		if (rc)
 			goto error_luns;
 
+#ifdef CONFIG_USB_GADGET_DWC3
+		/* lcfg->filename = lun_file_name; */
+		lcfg->filename = NULL;
+		curlun->removable = 1;
+		curlun->ro = 0;
+		printk(KERN_ERR "lun open: %s", lcfg->filename);
+#endif
 		if (lcfg->filename) {
 			rc = fsg_lun_open(curlun, lcfg->filename);
 			if (rc)
@@ -3031,7 +3097,31 @@ static int fsg_bind(struct usb_configuration *c, struct usb_function *f)
 			return -ENOMEM;
 		}
 	}
+#ifdef CONFIG_USB_GADGET_DWC3
+	if (gadget_is_superspeed(gadget)) {
+		unsigned	max_burst;
 
+		/* Calculate bMaxBurst, we know packet size is 1024 */
+		max_burst = min_t(unsigned, FSG_BUFLEN / 1024, 15);
+
+		fsg_ss_bulk_in_desc.bEndpointAddress =
+			fsg_fs_bulk_in_desc.bEndpointAddress;
+		fsg_ss_bulk_in_comp_desc.bMaxBurst = max_burst;
+
+		fsg_ss_bulk_out_desc.bEndpointAddress =
+			fsg_fs_bulk_out_desc.bEndpointAddress;
+		fsg_ss_bulk_out_comp_desc.bMaxBurst = max_burst;
+
+		f->ss_descriptors = usb_copy_descriptors(fsg_ss_function);
+
+		if (unlikely(!f->ss_descriptors)) {
+			usb_free_descriptors(f->hs_descriptors);
+			usb_free_descriptors(f->descriptors);
+			return -ENOMEM;
+		}
+	}
+
+#endif
 	return 0;
 
 autoconf_fail:

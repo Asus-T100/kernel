@@ -246,6 +246,17 @@ struct usb_ep *usb_ep_autoconfig (
 
 	type = desc->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK;
 
+#ifdef CONFIG_USB_GADGET_DWC3
+	/* fix ep2in for bulk transfer */
+	if (USB_ENDPOINT_XFER_BULK == type
+			&& (USB_DIR_IN & desc->bEndpointAddress)) {
+		/* DMA may be available */
+		ep = find_ep(gadget, "ep2in");
+		if (ep && ep_matches(gadget, ep, desc))
+			return ep;
+	}
+#endif
+
 	/* First, apply chip-specific "best usage" knowledge.
 	 * This might make a good usb_gadget_ops hook ...
 	 */

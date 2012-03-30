@@ -16,6 +16,12 @@
 #define __LINUX_USB_GADGET_H
 
 #include <linux/slab.h>
+#include <linux/device.h>
+#include <linux/errno.h>
+#include <linux/init.h>
+#include <linux/list.h>
+#include <linux/types.h>
+#include <linux/usb/ch9.h>
 
 struct usb_ep;
 
@@ -27,6 +33,7 @@ struct usb_ep;
  *	field, and the usb controller needs one, it is responsible
  *	for mapping and unmapping the buffer.
  * @length: Length of that data
+ * @stream_id: The stream id, when USB3.0 bulk streams are being used
  * @no_interrupt: If true, hints that no completion irq is needed.
  *	Helpful sometimes with deep request queues that are handled
  *	directly by DMA controllers.
@@ -81,6 +88,7 @@ struct usb_request {
 	unsigned		length;
 	dma_addr_t		dma;
 
+	unsigned		stream_id:16;
 	unsigned		no_interrupt:1;
 	unsigned		zero:1;
 	unsigned		short_not_ok:1;
@@ -131,6 +139,18 @@ struct usb_ep_ops {
  * @maxpacket:The maximum packet size used on this endpoint.  The initial
  *	value can sometimes be reduced (hardware allowing), according to
  *      the endpoint descriptor used to configure the endpoint.
+ * @max_streams: The maximum number of streams supported
+ *	by this EP (0 - 16, actual number is 2^n)
+ * @mult: multiplier, 'mult' value for SS Isoc EPs
+ * @maxburst: the maximum number of bursts supported by this EP (for usb3)
+ * @driver_data:for use by the gadget driver.
+ * @address: used to identify the endpoint when finding descriptor that
+ *	matches connection speed
+ * @desc: endpoint descriptor.  This pointer is set before the endpoint is
+ *	enabled and remains valid until the endpoint is disabled.
+ * @comp_desc: In case of SuperSpeed support, this is the endpoint companion
+ *	descriptor that is used to configure the endpoint
+ *
  * @driver_data:for use by the gadget driver.  all other fields are
  *	read-only to gadget drivers.
  *
@@ -145,6 +165,12 @@ struct usb_ep {
 	const struct usb_ep_ops	*ops;
 	struct list_head	ep_list;
 	unsigned		maxpacket:16;
+	unsigned		max_streams:16;
+	unsigned		mult:2;
+	unsigned		maxburst:4;
+	u8			address;
+	const struct usb_endpoint_descriptor	*desc;
+	const struct usb_ss_ep_comp_descriptor	*comp_desc;
 };
 
 /*-------------------------------------------------------------------------*/
@@ -416,6 +442,13 @@ static inline void usb_ep_fifo_flush(struct usb_ep *ep)
 
 /*-------------------------------------------------------------------------*/
 
+struct usb_dcd_config_params {
+	__u8  bU1devExitLat;	/* U1 Device exit Latency */
+#define USB_DEFAULT_U1_DEV_EXIT_LAT	0x01	/* Less then 1 microsec */
+	__le16 bU2DevExitLat;	/* U2 Device exit Latency */
+#define USB_DEFAULT_U2_DEV_EXIT_LAT	0x1F4	/* Less then 500 microsec */
+};
+
 struct usb_gadget;
 struct usb_gadget_driver;
 
@@ -431,6 +464,12 @@ struct usb_gadget_ops {
 	int	(*pullup) (struct usb_gadget *, int is_on);
 	int	(*ioctl)(struct usb_gadget *,
 				unsigned code, unsigned long param);
+	void	(*get_config_params)(struct usb_dcd_config_params *);
+	int	(*udc_start)(struct usb_gadget *,
+			struct usb_gadget_driver *);
+	int	(*udc_stop)(struct usb_gadget *,
+			struct usb_gadget_driver *);
+
 	int	(*start)(struct usb_gadget_driver *,
 			int (*bind)(struct usb_gadget *));
 	int	(*stop)(struct usb_gadget_driver *);
@@ -519,6 +558,24 @@ static inline int gadget_is_dualspeed(struct usb_gadget *g)
 {
 #ifdef CONFIG_USB_GADGET_DUALSPEED
 	/* runtime test would check "g->is_dualspeed" ... that might be
+	 * useful to work around hardware bugs, but is mostly pointless
+	 */
+	return 1;
+#else
+	return 0;
+#endif
+}
+
+/**
+ * gadget_is_superspeed() - return true if the hardware handles
+ * supperspeed
+ * @g: controller that might support supper speed
+ */
+static inline int gadget_is_superspeed(struct usb_gadget *g)
+{
+#ifdef CONFIG_USB_GADGET_SUPERSPEED
+	/*
+	 * runtime test would check "g->is_superspeed" ... that might be
 	 * useful to work around hardware bugs, but is mostly pointless
 	 */
 	return 1;

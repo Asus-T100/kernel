@@ -503,6 +503,19 @@ config USB_CI13XXX_MSM
 	  dynamically linked module called "ci13xxx_msm" and force all
 	  gadget drivers to also be dynamically linked.
 
+config USB_GADGET_DWC3
+	tristate "DesignWare USB3.0 (DRD) Controller"
+	depends on USB_DWC3
+	select USB_GADGET_DUALSPEED
+	select USB_GADGET_SUPERSPEED
+	select USB_GADGET_SELECTED
+	help
+	  DesignWare USB3.0 controller is a SuperSpeed USB3.0 Controller
+	  which can be configured for peripheral-only, host-only, hub-only
+	  and Dual-Role operation. This Controller was first integrated into
+	  the OMAP5 series of processors. More information about the OMAP5
+	  version of this controller, refer to http://www.ti.com/omap5.
+
 #
 # LAST -- dummy/emulated controller
 #
@@ -539,6 +552,12 @@ endchoice
 config USB_GADGET_DUALSPEED
 	bool
 	depends on USB_GADGET
+
+# Selected by UDC drivers that support super-speed opperation
+config USB_GADGET_SUPERSPEED
+	bool
+	depends on USB_GADGET
+	depends on USB_GADGET_DUALSPEED
 
 #
 # USB Gadget Drivers

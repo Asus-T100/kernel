@@ -131,10 +131,14 @@ static int __init msg_do_config(struct usb_configuration *c)
 	config.ops = &ops;
 
 	retp = fsg_common_init(&common, c->cdev, &config);
+#ifndef CONFIG_USB_GADGET_DWC3
 	if (IS_ERR(retp))
 		return PTR_ERR(retp);
 
 	ret = fsg_bind_config(c->cdev, c, &common);
+#else
+	ret = fsg_add(c->cdev, c, &common);
+#endif
 	fsg_common_put(&common);
 	return ret;
 }
@@ -169,6 +173,7 @@ static struct usb_composite_driver msg_driver = {
 	.name		= "g_mass_storage",
 	.dev		= &msg_device_desc,
 	.iProduct	= DRIVER_DESC,
+	.max_speed	= USB_SPEED_SUPER,
 	.needs_serial	= 1,
 };
 
