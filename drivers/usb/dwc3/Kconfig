@@ -1,0 +1,39 @@
+config USB_DWC3
+	tristate "DesignWare USB3 DRD Core Support"
+	depends on (USB || USB_GADGET)
+	select USB_OTG_UTILS
+	help
+	  Say Y or M here if your system has a Dual Role SuperSpeed
+	  USB controller based on the DesignWare USB3 IP Core.
+
+	  If you choose to build this driver is a dynamically linked
+	  module, the module will be called dwc3.ko.
+
+if USB_DWC3
+
+config USB_DWC3_DEBUG
+	bool "Enable Debugging Messages"
+	help
+	  Say Y here to enable debugging messages on DWC3 Driver.
+
+	  Avoid enabling these messages, even if you're actively
+	  debugging such a driver.  Many drivers will emit so many
+	  messages that the driver timings are affected, which will
+	  either create new failure modes or remove the one you're
+	  trying to track down.  Never enable these messages for a
+	  production build.
+
+config USB_DWC3_VERBOSE
+	bool "Enable Verbose Debugging Messages"
+	depends on USB_DWC3_DEBUG
+	help
+	  Say Y here to enable verbose debugging messages on DWC3 Driver.
+
+	  Avoid enabling these messages, even if you're actively
+	  debugging such a driver.  Many drivers will emit so many
+	  messages that the driver timings are affected, which will
+	  either create new failure modes or remove the one you're
+	  trying to track down.  Never enable these messages for a
+	  production build.
+
+endif
