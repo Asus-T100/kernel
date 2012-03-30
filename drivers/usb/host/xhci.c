@@ -32,6 +32,11 @@
 #define DRIVER_AUTHOR "Sarah Sharp"
 #define DRIVER_DESC "'eXtensible' Host Controller (xHC) Driver"
 
+#ifdef CONFIG_USB_DWC_OTG_XCEIV
+#include "xhci-dwc.c"
+#define	XHCI_PLATFORM_DRIVER		xhci_dwc_driver
+#endif
+
 /* Some 0.95 hardware can't handle the chain bit on a Link TRB being cleared */
 static int link_quirk;
 module_param(link_quirk, int, S_IRUGO | S_IWUSR);
@@ -175,6 +180,7 @@ int xhci_reset(struct xhci_hcd *xhci)
 	return handshake(xhci, &xhci->op_regs->status, STS_CNR, 0, 250 * 1000);
 }
 
+#ifndef XHCI_PLATFORM_DRIVER
 /*
  * Free IRQs
  * free all IRQs request
@@ -182,6 +188,7 @@ int xhci_reset(struct xhci_hcd *xhci)
 static void xhci_free_irq(struct xhci_hcd *xhci)
 {
 	int i;
+
 	struct pci_dev *pdev = to_pci_dev(xhci_to_hcd(xhci)->self.controller);
 
 	/* return if using legacy interrupt */
@@ -281,10 +288,12 @@ free_entries:
 	xhci->msix_entries = NULL;
 	return ret;
 }
+#endif
 
 /* Free any IRQs and disable MSI-X */
 static void xhci_cleanup_msix(struct xhci_hcd *xhci)
 {
+#ifndef XHCI_PLATFORM_DRIVER
 	struct usb_hcd *hcd = xhci_to_hcd(xhci);
 	struct pci_dev *pdev = to_pci_dev(hcd->self.controller);
 
@@ -299,6 +308,7 @@ static void xhci_cleanup_msix(struct xhci_hcd *xhci)
 	}
 
 	hcd->msix_enabled = 0;
+#endif
 	return;
 }
 
@@ -413,9 +423,11 @@ int xhci_run(struct usb_hcd *hcd)
 {
 	u32 temp;
 	u64 temp_64;
-	u32 ret;
 	struct xhci_hcd *xhci = hcd_to_xhci(hcd);
+#ifndef XHCI_PLATFORM_DRIVER
+	u32 ret;
 	struct pci_dev  *pdev = to_pci_dev(xhci_to_hcd(xhci)->self.controller);
+#endif
 
 	/* Start the xHCI host controller running only after the USB 2.0 roothub
 	 * is setup.
@@ -426,6 +438,8 @@ int xhci_run(struct usb_hcd *hcd)
 		return xhci_run_finished(xhci);
 
 	xhci_dbg(xhci, "xhci_run\n");
+
+#ifndef XHCI_PLATFORM_DRIVER
 	/* unregister the legacy interrupt */
 	if (hcd->irq)
 		free_irq(hcd->irq, hcd);
@@ -459,6 +473,7 @@ legacy_irq:
 		}
 		hcd->irq = pdev->irq;
 	}
+#endif
 
 #ifdef CONFIG_USB_XHCI_HCD_DEBUGGING
 	init_timer(&xhci->event_ring_timer);
@@ -3076,9 +3091,18 @@ MODULE_LICENSE("GPL");
 
 static int __init xhci_hcd_init(void)
 {
-#ifdef CONFIG_PCI
 	int retval = 0;
+#ifdef XHCI_PLATFORM_DRIVER
+	retval = platform_driver_register(&XHCI_PLATFORM_DRIVER);
 
+	if (retval < 0) {
+		printk(KERN_DEBUG "Problem registering Platform driver.");
+		return retval;
+	}
+	goto done;
+#endif
+
+#ifdef CONFIG_PCI
 	retval = xhci_register_pci();
 
 	if (retval < 0) {
@@ -3086,6 +3110,7 @@ static int __init xhci_hcd_init(void)
 		return retval;
 	}
 #endif
+done:
 	/*
 	 * Check the compiler generated sizes of structures that must be laid
 	 * out in specific ways for hardware access.
@@ -3110,6 +3135,10 @@ module_init(xhci_hcd_init);
 
 static void __exit xhci_hcd_cleanup(void)
 {
+#ifdef XHCI_PLATFORM_DRIVER
+	platform_driver_unregister(&XHCI_PLATFORM_DRIVER);
+	return;
+#endif
 #ifdef CONFIG_PCI
 	xhci_unregister_pci();
 #endif
