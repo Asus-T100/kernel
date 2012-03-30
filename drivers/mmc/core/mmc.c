@@ -437,6 +437,18 @@ static int mmc_read_ext_csd(struct mmc_card *card, u8 *ext_csd)
 	}
 
 	card->ext_csd.raw_erased_mem_count = ext_csd[EXT_CSD_ERASED_MEM_CONT];
+
+	if (card->ext_csd.rev >= 6) { /* eMMC v4.5 */
+		if ((ext_csd[EXT_CSD_DATA_SECTOR_SIZE] & 0x1) &&
+		(ext_csd[EXT_CSD_USE_NATIVE_SECTOR] & 0x1) &&
+		(ext_csd[EXT_CSD_NATIVE_SECTOR_SIZE] & 0x1) &&
+		(ext_csd[EXT_CSD_WR_REL_PARAM] & EXT_CSD_WR_REL_PARAM_EN)) {
+			printk(KERN_INFO "%s: Large sector size enabled.\n",
+				mmc_hostname(card->host));
+			card->ext_csd.large_sect_size_en = 1;
+		}
+	}
+
 	if (ext_csd[EXT_CSD_ERASED_MEM_CONT])
 		card->erased_byte = 0xFF;
 	else
@@ -552,6 +564,7 @@ MMC_DEV_ATTR(trim_timeout, "%d\n", card->ext_csd.trim_timeout);
 MMC_DEV_ATTR(hc_erase_timeout, "%d\n", card->ext_csd.hc_erase_timeout);
 MMC_DEV_ATTR(sec_trim_mult, "%d\n", card->ext_csd.sec_trim_mult);
 MMC_DEV_ATTR(erase_group_def, "%d\n", card->ext_csd.erase_group_def);
+MMC_DEV_ATTR(large_sect_size_en, "%d\n", card->ext_csd.large_sect_size_en);
 
 static struct attribute *mmc_std_attrs[] = {
 	&dev_attr_rel_set.attr,
@@ -579,6 +592,7 @@ static struct attribute *mmc_std_attrs[] = {
 	&dev_attr_hc_erase_timeout.attr,
 	&dev_attr_sec_trim_mult.attr,
 	&dev_attr_erase_group_def.attr,
+	&dev_attr_large_sect_size_en.attr,
 	NULL,
 };
 

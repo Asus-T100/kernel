@@ -72,6 +72,7 @@ struct mmc_ext_csd {
 	bool			bkops; 			/* BKOPS support bit */
 	bool			bkops_en;		/* BKOPS enable bit */
 	unsigned int		rpmb_size;		/* Units: half sector */
+	bool	large_sect_size_en;	/* eMMC4.5 Large Sector Size enabled */
 	u8			raw_partition_support;	/* 160 */
 	u8			raw_erased_mem_count;	/* 181 */
 	u8			raw_ext_csd_structure;	/* 194 */

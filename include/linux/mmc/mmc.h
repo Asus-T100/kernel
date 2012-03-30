@@ -271,6 +271,9 @@ struct _mmc_csd {
  * EXT_CSD fields
  */
 
+#define EXT_CSD_DATA_SECTOR_SIZE	61	/* RO */
+#define EXT_CSD_USE_NATIVE_SECTOR	62	/* R/W */
+#define EXT_CSD_NATIVE_SECTOR_SIZE	63	/* RO */
 #define EXT_CSD_PART_SET_COMPLETE	155	/* R/W */
 #define EXT_CSD_PARTITION_ATTRIBUTE	156	/* R/W */
 #define EXT_CSD_PARTITION_SUPPORT	160	/* RO */
