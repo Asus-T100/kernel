@@ -220,10 +220,16 @@ typedef struct MRSTLFB_DEVINFO_TAG
 	MRST_BOOL bLastFlipAddrValid;
 
 	uint32_t uPlaneACntr;
+	uint32_t uPlaneAPos;
+	uint32_t uPlaneASize;
 	uint32_t uPlaneAStride;
 	uint32_t uPlaneBCntr;
+	uint32_t uPlaneBPos;
+	uint32_t uPlaneBSize;
 	uint32_t uPlaneBStride;
 	uint32_t uPlaneCCntr;
+	uint32_t uPlaneCPos;
+	uint32_t uPlaneCSize;
 	uint32_t uPlaneCStride;
     MRST_BOOL bScreenState;
 }  MRSTLFB_DEVINFO;

@@ -192,11 +192,26 @@ void MRSTLFBSavePlaneConfig(MRSTLFB_DEVINFO *psDevInfo)
 {
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *) psDevInfo->psDrmDevice->dev_private;
+	u32 uPlaneFormat = 0;
+
+	/*update format based on active display pixel format*/
+	switch (psDevInfo->sDisplayFormat.pixelformat) {
+	case PVRSRV_PIXEL_FORMAT_RGB565:
+		uPlaneFormat = DISPPLANE_16BPP;
+		break;
+	case PVRSRV_PIXEL_FORMAT_ARGB8888:
+	default:
+		uPlaneFormat = DISPPLANE_32BPP;
+		break;
+	}
+
 	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, false))
 		return;
 
-	psDevInfo->uPlaneACntr = PSB_RVDC32(DSPACNTR);
+	psDevInfo->uPlaneACntr = uPlaneFormat;
 	psDevInfo->uPlaneAStride = PSB_RVDC32(DSPASTRIDE);
+	psDevInfo->uPlaneAPos = PSB_RVDC32(DSPAPOS);
+	psDevInfo->uPlaneASize = PSB_RVDC32(DSPASIZE);
 #ifdef CONFIG_MDFD_HDMI
 	/*TODO: fully support HDMI later*/
 	/*psDevInfo->uPlaneBCntr = PSB_RVDC32(DSPBCNTR);*/
@@ -204,20 +219,30 @@ void MRSTLFBSavePlaneConfig(MRSTLFB_DEVINFO *psDevInfo)
 #endif
 
 #ifdef CONFIG_MDFD_DUAL_MIPI
-	psDevInfo->uPlaneCCntr = PSB_RVDC32(DSPCCNTR);
+	psDevInfo->uPlaneCCntr = uPlaneFormat;
 	psDevInfo->uPlaneCStride = PSB_RVDC32(DSPCSTRIDE);
+	psDevInfo->uPlaneCPos = PSB_RVDC32(DSPCPOS);
+	psDevInfo->uPlaneCSize = PSB_RVDC32(DSPCSIZE);
 #endif
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+
 }
 
 void MRSTLFBRestorePlaneConfig(MRSTLFB_DEVINFO *psDevInfo)
 {
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *) psDevInfo->psDrmDevice->dev_private;
+	u32 uDspCntr = 0;
+
 	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, false))
 		return;
-	PSB_WVDC32(psDevInfo->uPlaneACntr, DSPACNTR);
+	uDspCntr = PSB_RVDC32(DSPACNTR);
+	uDspCntr &= ~(0xf << 26);
+	uDspCntr |= psDevInfo->uPlaneACntr;
+	PSB_WVDC32(uDspCntr, DSPACNTR);
 	PSB_WVDC32(psDevInfo->uPlaneAStride, DSPASTRIDE);
+	PSB_WVDC32(psDevInfo->uPlaneAPos, DSPAPOS);
+	PSB_WVDC32(psDevInfo->uPlaneASize, DSPASIZE);
 #ifdef CONFIG_MDFD_HDMI
 	/*TODO: fully support HDMI later*/
 	/*PSB_WVDC32(psDevInfo->uPlaneBCntr, DSPBCNTR);*/
@@ -225,8 +250,14 @@ void MRSTLFBRestorePlaneConfig(MRSTLFB_DEVINFO *psDevInfo)
 #endif
 
 #ifdef CONFIG_MDFD_DUAL_MIPI
+	uDspCntr = PSB_RVDC32(DSPCCNTR);
+	uDspCntr &= ~(0xf << 26);
+	uDspCntr |= psDevInfo->uPlaneCCntr;
+	PSB_WVDC32(uDspCntr, DSPCCNTR);
 	PSB_WVDC32(psDevInfo->uPlaneCCntr, DSPCCNTR);
-	PSB_RVDC32(psDevInfo->uPlaneCStride, DSPCSTRIDE);
+	PSB_WVDC32(psDevInfo->uPlaneCStride, DSPCSTRIDE);
+	PSB_WVDC32(psDevInfo->uPlaneCPos, DSPCPOS);
+	PSB_WVDC32(psDevInfo->uPlaneCSize, DSPCSIZE);
 #endif
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 }

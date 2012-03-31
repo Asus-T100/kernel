@@ -89,7 +89,24 @@ static void MRSTLFBFlip(MRSTLFB_DEVINFO *psDevInfo, MRSTLFB_BUFFER *psBuffer)
 static void MRSTLFBFlipOverlay(MRSTLFB_DEVINFO *psDevInfo,
 			struct intel_overlay_context *psContext)
 {
+	struct drm_device *dev;
+	struct drm_psb_private *dev_priv;
+	u32 ovadd_reg = OV_OVADD;
 
+	dev = psDevInfo->psDrmDevice;
+	dev_priv =
+		(struct drm_psb_private *)psDevInfo->psDrmDevice->dev_private;
+
+	DRM_INFO("%s: flip 0x%x, index %d, pipe 0x%x\n", __func__,
+		psContext->ovadd, psContext->index, psContext->pipe);
+
+	if (psContext->index == 1)
+		ovadd_reg = OVC_OVADD;
+
+	psContext->ovadd |= psContext->pipe;
+	psContext->ovadd |= 1;
+
+	PSB_WVDC32(psContext->ovadd, ovadd_reg);
 }
 
 static void MRSTLFBFlipSprite(MRSTLFB_DEVINFO *psDevInfo,
@@ -152,7 +169,7 @@ static void MRSTLFBFlipContexts(MRSTLFB_DEVINFO *psDevInfo,
 
 	/*flip all active overlay planes*/
 	for (i = 0; i < INTEL_OVERLAY_PLANE_NUM; i++) {
-		if (psContexts->active_overlays & (i << i)) {
+		if (psContexts->active_overlays & (1 << i)) {
 			psOverlayContext = &psContexts->overlay_contexts[i];
 			MRSTLFBFlipOverlay(psDevInfo, psOverlayContext);
 		}
@@ -1797,13 +1814,13 @@ MRST_ERROR MRSTLFBInit(struct drm_device * dev)
 		psDevInfo->psDrmDevice = dev;
 		psDevInfo->ulRefCount = 0;
 
-		/*save default plane config*/
-		MRSTLFBSavePlaneConfig(psDevInfo);
-
 		if(InitDev(psDevInfo) != MRST_OK)
 		{
 			return (MRST_ERROR_INIT_FAILURE);
 		}
+
+		/*save default plane config*/
+		MRSTLFBSavePlaneConfig(psDevInfo);
 
 		if(MRSTLFBGetLibFuncAddr ("PVRGetDisplayClassJTable", &pfnGetPVRJTable) != MRST_OK)
 		{
