@@ -1647,11 +1647,13 @@ static int __dpi_panel_power_off(struct mdfld_dsi_config *dsi_config,
 	ctx->dspsurf = dev_priv->init_screen_start;
 	ctx->dsplinoff = dev_priv->init_screen_offset;
 	ctx->pipestat = REG_READ(regs->pipestat_reg);
+	ctx->dspcntr = REG_READ(regs->dspcntr_reg);
+	ctx->dspstride= REG_READ(regs->dspstride_reg);
 
 	tmp = REG_READ(regs->pipeconf_reg);
 
 	/*Disable panel*/
-	val = REG_READ(regs->dspcntr_reg);
+	val = ctx->dspcntr;
 	REG_WRITE(regs->dspcntr_reg, (val & ~BIT31));
 	/*Disable overlay & cursor panel assigned to this pipe*/
 	REG_WRITE(regs->pipeconf_reg, (tmp | (0x000c0000)));
