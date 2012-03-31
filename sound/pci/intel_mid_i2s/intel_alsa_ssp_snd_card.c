@@ -161,9 +161,13 @@ int snd_i2s_alsa_close(struct snd_pcm_substream *substream)
 	WARN(!substream->runtime, "ALSA_SSP: ERROR NULL substream->runtime\n");
 	if (!substream->runtime)
 		return -EINVAL;
+
 	str_info = substream->runtime->private_data;
 
 	if (str_info) {
+		/* Cancel pending work */
+		cancel_work_sync(&str_info->ssp_ws);
+
 		/* SST API to actually stop/free the stream */
 		ret_val = intel_alsa_ssp_control(INTEL_ALSA_SSP_CTRL_SND_CLOSE,
 				str_info);
@@ -182,9 +186,6 @@ int snd_i2s_alsa_close(struct snd_pcm_substream *substream)
 	pr_debug("ALSA SSP CLOSE: Playback cnt = %d Capture cnt = %d\n",
 			p_alsa_ssp_snd_card->playback_cnt,
 			p_alsa_ssp_snd_card->capture_cnt);
-
-	/* Cancel pending work */
-	cancel_work_sync(&str_info->ssp_ws);
 
 	kfree(substream->runtime->private_data);
 
