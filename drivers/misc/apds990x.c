@@ -122,6 +122,7 @@
 #define APDS_ALS_DISABLE       (1 << 2)
 #define APDS_PS_ENABLE         (1 << 3)
 #define APDS_PS_DISABLE        (1 << 4)
+#define APDS_GPIO_CHECK_MAX	5
 
 /* alsps_client.status bits */
 #define PS_DATA_READY     0
@@ -564,26 +565,6 @@ static void ps_handle_irq(struct apds990x_chip *chip)
 		set_bit(PS_DATA_READY, &client->status);
 
 	wake_up(&chip->ps_workq_head);
-}
-
-static irqreturn_t apds990x_irq(int irq, void *data)
-{
-	struct apds990x_chip *chip = data;
-	u8 status;
-
-	dev_dbg(&chip->client->dev, "Enter apds990x irq handler.\n");
-	apds990x_read_byte(chip, APDS990X_STATUS, &status);
-	apds990x_ack_int(chip, status);
-
-	mutex_lock(&chip->mutex);
-	if (status & APDS990X_ST_AINT)
-		als_handle_irq(chip);
-
-	if (status & APDS990X_ST_PINT)
-		ps_handle_irq(chip);
-	mutex_unlock(&chip->mutex);
-out:
-	return IRQ_HANDLED;
 }
 
 static int apds990x_configure(struct apds990x_chip *chip)
@@ -1060,7 +1041,6 @@ static int apds990x_switch(struct apds990x_chip *chip, int mode)
 /* mutex must be held when calling this function */
 static void apds990x_mode(struct alsps_client *client, int mode)
 {
-	struct alsps_client *list_tmp;
 	struct apds990x_chip *chip = client->chip;
 
 	switch (mode) {
@@ -1108,6 +1088,47 @@ static void apds990x_mode(struct alsps_client *client, int mode)
 		break;
 	}
 	apds990x_switch(chip, chip->alsps_switch);
+}
+
+static irqreturn_t apds990x_irq(int irq, void *data)
+{
+	u8 status;
+	int i, value;
+	struct apds990x_chip *chip = data;
+
+	mutex_lock(&chip->mutex);
+	for (i = 0; i < APDS_GPIO_CHECK_MAX; i++) {
+		apds990x_read_byte(chip, APDS990X_STATUS, &status);
+		apds990x_ack_int(chip, status);
+
+		if (status & APDS990X_ST_AINT)
+			als_handle_irq(chip);
+		if (status & APDS990X_ST_PINT)
+			ps_handle_irq(chip);
+
+		/* Since apds990x's interrupt pin is level type and some GPIO
+		 * controllers don't support level trigger, we need to check
+		 * gpio pin value to see if there is another interupt occurs
+		 * in the time window that interrupt status register read and
+		 * interrupt ack. If that happens, do irq handle again to
+		 * avert interrupt missing.
+		 */
+		value = gpio_get_value(chip->pdata->gpio_number);
+		dev_dbg(&chip->client->dev,
+					"%s: try=%d, GPIO value = 0x%x",
+					__func__, i, value);
+		if (value)
+			break;
+	}
+	if (i == APDS_GPIO_CHECK_MAX) {
+		dev_dbg(&chip->client->dev,
+				"GPIO check max, reset the sensor\n");
+		apds990x_switch(chip, APDS_POWER_DOWN);
+		apds990x_switch(chip, chip->alsps_switch);
+	}
+	mutex_unlock(&chip->mutex);
+
+	return IRQ_HANDLED;
 }
 
 static long ps_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
@@ -1413,6 +1434,7 @@ static int __devinit apds990x_probe(struct i2c_client *client,
 		dev_err(&client->dev, "Setup IRQ error\n");
 		goto fail5;
 	}
+	enable_irq_wake(client->irq);
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
 	chip->es.level = EARLY_SUSPEND_LEVEL_DISABLE_FB + 10;
@@ -1443,6 +1465,7 @@ static int __devexit apds990x_remove(struct i2c_client *client)
 {
 	struct apds990x_chip *chip = i2c_get_clientdata(client);
 
+	disable_irq_wake(client->irq);
 	free_irq(client->irq, chip);
 	sysfs_remove_group(&chip->client->dev.kobj,
 			apds990x_attribute_group);
@@ -1465,32 +1488,32 @@ static int apds990x_suspend(struct device *dev)
 	struct i2c_client *i2c_client = to_i2c_client(dev);
 	struct apds990x_chip *chip = i2c_get_clientdata(i2c_client);
 	struct alsps_client *client;
-	int ret = 0;
 
+	dev_dbg(&i2c_client->dev, "%s: pm suspend", __func__);
+	disable_irq(i2c_client->irq);
 	if (!mutex_trylock(&chip->mutex)) {
-		ret = -EBUSY;
 		goto out1;
 	}
 	list_for_each_entry(client, &chip->ps_list, list) {
 		if (test_bit(PS_DATA_READY, &client->status)) {
-			ret = -EBUSY;
 			goto out2;
 		}
 	}
-	disable_irq(i2c_client->irq);
-	enable_irq_wake(i2c_client->irq);
+	mutex_unlock(&chip->mutex);
+	return 0;
 out2:
 	mutex_unlock(&chip->mutex);
 out1:
-	return ret;
+	enable_irq(i2c_client->irq);
+	return -EBUSY;
 }
 
 static int apds990x_resume(struct device *dev)
 {
 	struct i2c_client *client = to_i2c_client(dev);
 
+	dev_dbg(&client->dev, "%s: pm resume", __func__);
 	enable_irq(client->irq);
-	disable_irq_wake(client->irq);
 	return 0;
 }
 #else
