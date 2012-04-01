@@ -1618,6 +1618,17 @@ static int langwell_udc_reset(struct langwell_udc *dev)
 		udelay(10);
 	}
 
+	/* change ITC value. ITC field is used to set the maximum rate at which
+	   the device controller will issue interrupts. ITC contain the maximum
+	   interrupt interval measured in micro-frames. ITC=2 is the smallest
+	   available value. The USB network gadget become instability if ITC is
+	   set to 1 or 0.
+	*/
+	usbcmd = readl(&dev->op_regs->usbcmd);
+	usbcmd &= ~CMD_SET_ITC(0xff);	/* clear ITC field */
+	usbcmd |= CMD_SET_ITC(0x02);	/* set ITC field */
+	writel(usbcmd, &dev->op_regs->usbcmd);
+
 	/* set controller to device mode */
 	usbmode = readl(&dev->op_regs->usbmode);
 	usbmode |= MODE_DEVICE;

@@ -87,6 +87,8 @@ struct langwell_op_regs {
 	(((u)>>24)&0xf)		/* bits 27:24, host init resume duration */
 #define	CMD_ITC(u)	\
 	(((u)>>16)&0xff)	/* bits 23:16, interrupt threshold control */
+#define CMD_SET_ITC(u)  \
+	(((u)&0xff)<<16)	/* set value to ITC field */
 #define	CMD_PPE		BIT(15)	/* per-port change events enable */
 #define	CMD_ATDTW	BIT(14)	/* add dTD tripwire */
 #define	CMD_SUTW	BIT(13)	/* setup tripwire */
