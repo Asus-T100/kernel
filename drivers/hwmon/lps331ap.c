@@ -115,6 +115,7 @@
 #define LPS331AP_MIN_DELAY	75
 
 #define LPS331AP_DEVICE_NAME "lps331ap"
+#define LPS331AP_DEVICE_ID	0xbb
 
 struct lps331ap_data {
 	struct i2c_client *client;
@@ -155,7 +156,7 @@ static int lps331ap_write(struct lps331ap_data *lps331ap, u8 reg, u8 val)
 }
 
 static void lps331ap_get_data(struct lps331ap_data *lps331ap,
-		unsigned long *data)
+		s32 *data)
 {
 	int err;
 	u8 buf[3];
@@ -165,24 +166,21 @@ static void lps331ap_get_data(struct lps331ap_data *lps331ap,
 	if (err < 0)
 		return;
 
-	data[0] = 65536 * buf[2];
-	data[0] += 256 * buf[1];
-	data[0] += buf[0];
+	data[0] = (s8)buf[2] << 16 | buf[1] << 8 | buf[0];
 
 	err = i2c_smbus_read_i2c_block_data(lps331ap->client,
 			TEMP_OUT_L | I2C_AUTO_INC, 2, buf);
 	if (err < 0)
 		return;
 
-	data[1] = 256 * buf[1];
-	data[1] += buf[0];
+	data[1] = (s8)buf[1] << 8 | buf[0];
 }
 
 static void lps331ap_report_values(struct lps331ap_data *lps331ap,
-		unsigned long *data)
+		s32 *data)
 {
-	input_report_rel(lps331ap->input_dev, REL_X, data[0]);
-	input_report_rel(lps331ap->input_dev, REL_Y, data[1]);
+	input_report_rel(lps331ap->input_dev, REL_X, (int)data[0]);
+	input_report_rel(lps331ap->input_dev, REL_Y, (int)data[1]);
 
 	input_sync(lps331ap->input_dev);
 }
@@ -190,6 +188,16 @@ static void lps331ap_report_values(struct lps331ap_data *lps331ap,
 static int lps331ap_initchip(struct lps331ap_data *lps331ap)
 {
 	int ret;
+	u8 val;
+
+	ret = lps331ap_read(lps331ap, WHO_AM_I, &val);
+	if (ret < 0)
+		return ret;
+
+	if (LPS331AP_DEVICE_ID != val) {
+		dev_err(&lps331ap->client->dev, "device id not match\n");
+		return -ENODEV;
+	}
 
 	ret = lps331ap_write(lps331ap, RES_CONF, 0x34);
 	if (ret < 0)
@@ -259,7 +267,7 @@ static void lps331ap_disable(struct lps331ap_data *lps331ap)
 static void lps331ap_input_work_func(struct work_struct *work)
 {
 	struct lps331ap_data *lps331ap;
-	unsigned long pt[2] = { 0 };
+	s32 pt[2] = { 0 };
 
 	lps331ap = container_of((struct delayed_work *)work,
 			struct lps331ap_data, input_work);
@@ -459,7 +467,8 @@ static int __devinit lps331ap_probe(struct i2c_client *client,
 
 	err = lps331ap_initchip(lps331ap);
 	if (err < 0) {
-		dev_err(&client->dev, "lps331ap_initchip failed\n");
+		dev_err(&client->dev,
+				"lps331ap_initchip failed with %d\n", err);
 		goto fail_init;
 	}
 
