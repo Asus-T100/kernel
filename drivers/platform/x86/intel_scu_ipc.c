@@ -34,6 +34,55 @@
 #include <linux/kernel.h>
 #include <linux/bitops.h>
 
+enum {
+	SCU_IPC_LINCROFT,
+	SCU_IPC_PENWELL,
+	SCU_IPC_CLOVERVIEW,
+	SCU_IPC_TANGIER,
+};
+
+/* intel scu ipc driver data*/
+struct intel_scu_ipc_ddata_t {
+	u32 bus_id;
+	u32 ipc_base;
+	u32 i2c_base;
+	u32 ipc_len;
+	u32 i2c_len;
+};
+
+static struct intel_scu_ipc_ddata_t intel_scu_ipc_ddata[] = {
+	[SCU_IPC_LINCROFT] = {
+		.bus_id = IPC_SCU,
+		.ipc_base = 0xFF11C000,
+		.i2c_base = 0xFF12B000,
+		.ipc_len = 0x100,
+		.i2c_len = 0x10,
+	},
+	[SCU_IPC_PENWELL] = {
+		.bus_id = IPC_SCU,
+		.ipc_base = 0xFF11C000,
+		.i2c_base = 0xFF12B000,
+		.ipc_len = 0x100,
+		.i2c_len = 0x10,
+	},
+	[SCU_IPC_CLOVERVIEW] = {
+		.bus_id = IPC_SCU,
+		.ipc_base = 0xFF11C000,
+		.i2c_base = 0xFF12B000,
+		.ipc_len = 0x100,
+		.i2c_len = 0x10,
+	},
+	[SCU_IPC_TANGIER] = {
+		.bus_id = IPC_SCU,
+		.ipc_base = 0xFF009000,
+		.i2c_base  = 0xFF00D000,
+		.ipc_len  = 0x100,
+		.i2c_len = 0x10,
+	},
+};
+
+static struct intel_scu_ipc_ddata_t *ddata;
+
 /*
  * IPC register summary
  *
@@ -52,20 +101,12 @@
  *    message handler is called within firmware.
  */
 
-#define IPC_BASE_ADDR     0xFF11C000	/* IPC1 base register address */
-#define IPC_MAX_ADDR      0x100		/* Maximum IPC regisers */
-#define IPC_I2C_BASE      0xFF12B000	/* I2C control register base address */
-#define IPC_I2C_MAX_ADDR  0x10		/* Maximum I2C regisers */
-
 #define IPC_STATUS_ADDR         0X04
 #define IPC_SPTR_ADDR           0x08
 #define IPC_DPTR_ADDR           0x0C
 #define IPC_READ_BUFFER         0x90
 #define IPC_WRITE_BUFFER        0x80
 #define IPC_IOC			0x100
-
-static int ipc_probe(struct pci_dev *dev, const struct pci_device_id *id);
-static void ipc_remove(struct pci_dev *pdev);
 
 struct intel_ipc_controller {
 	struct pci_dev *pdev;
@@ -119,6 +160,17 @@ static inline void ipc_command(u32 cmd) /* Send ipc command */
 	INIT_COMPLETION(ipcdev.cmd_complete);
 	acquire_scu_ready_sem();
 
+	/* Revert me:
+	 * This is a workaround here for MRFLD, because IPC interrupt for MRFLD
+	 * is still not supported on HVP. So we use polling mode to access PMIC
+	 * registers. Will remove when MRFLD IPC interrupt is functional.
+	 */
+	if (platform == INTEL_MID_CPU_CHIP_TANGIER) {
+		ipcdev.ioc = 0;
+		writel(cmd, ipcdev.ipc_base);
+		goto end;
+	}
+
 	if (system_state == SYSTEM_RUNNING) {
 		ipcdev.ioc = 1;
 		writel(cmd | IPC_IOC, ipcdev.ipc_base);
@@ -127,6 +179,7 @@ static inline void ipc_command(u32 cmd) /* Send ipc command */
 		writel(cmd, ipcdev.ipc_base);
 	}
 
+end:
 	/* Prevent C-states beyond C6 */
 	pm_qos_update_request(qos, CSTATE_EXIT_LATENCY_S0i1 - 1);
 }
@@ -206,7 +259,7 @@ static inline int ipc_wait_interrupt(void)
 }
 
 /**
- *	intel_scu_ipc_simple_command	-	send a simple command
+ *	intel_scu_ipc_simple_command - send a simple command
  *	@cmd: command
  *	@sub: sub type
  *
@@ -365,9 +418,8 @@ struct fw_update_mailbox {
 	u32    driver_flag;
 };
 
-
 /**
- *	intel_scu_ipc_fw_update	-	 Firmware update utility
+ *	intel_scu_ipc_fw_update - Firmware update utility
  *	@buffer: firmware buffer
  *	@length: size of firmware buffer
  *
@@ -1686,7 +1738,7 @@ static irqreturn_t ioc(int irq, void *dev_id)
 }
 
 /**
- *	ipc_probe	-	probe an Intel SCU IPC
+ *	ipc_probe - probe an Intel SCU IPC
  *	@dev: the PCI device matching
  *	@id: entry in the match table
  *
@@ -1695,19 +1747,15 @@ static irqreturn_t ioc(int irq, void *dev_id)
  */
 static int ipc_probe(struct pci_dev *dev, const struct pci_device_id *id)
 {
-	int err, *bus_id;
+	int err, pid, bus_id;
 	resource_size_t pci_resource;
 
 	if (ipcdev.pdev)		/* We support only one SCU */
 		return -EBUSY;
 
-	bus_id = kzalloc(sizeof(*bus_id), GFP_KERNEL);
-	if (bus_id == NULL) {
-		dev_err(&dev->dev, "memory is not sufficient\n");
-		return -ENOMEM;
-	}
-
-	*bus_id = id->driver_data;
+	pid = id->driver_data;
+	ddata = &intel_scu_ipc_ddata[pid];
+	bus_id = ddata->bus_id;
 
 	ipcdev.pdev = pci_dev_get(dev);
 
@@ -1726,24 +1774,22 @@ static int ipc_probe(struct pci_dev *dev, const struct pci_device_id *id)
 	init_completion(&ipcdev.cmd_complete);
 
 	if (request_irq(dev->irq, ioc, IRQF_NO_SUSPEND, "intel_scu_ipc",
-		&ipcdev))
+				&ipcdev))
 		return -EBUSY;
 
-	ipcdev.ipc_base = ioremap_nocache(IPC_BASE_ADDR, IPC_MAX_ADDR);
+	ipcdev.ipc_base = ioremap_nocache(ddata->ipc_base, ddata->ipc_len);
 	if (!ipcdev.ipc_base)
 		return -ENOMEM;
 
-	ipcdev.i2c_base = ioremap_nocache(IPC_I2C_BASE, IPC_I2C_MAX_ADDR);
+	ipcdev.i2c_base = ioremap_nocache(ddata->i2c_base, ddata->i2c_len);
 	if (!ipcdev.i2c_base) {
 		iounmap(ipcdev.ipc_base);
 		return -ENOMEM;
 	}
 
-	intel_scu_devices_create(*bus_id);
+	intel_scu_devices_create(bus_id);
 
 	intel_scu_sysfs_create(dev);
-
-	pci_set_drvdata(dev, bus_id);
 
 	return 0;
 }
@@ -1760,7 +1806,6 @@ static int ipc_probe(struct pci_dev *dev, const struct pci_device_id *id)
  */
 static void ipc_remove(struct pci_dev *pdev)
 {
-	int *bus_id = pci_get_drvdata(pdev);
 	intel_scu_sysfs_remove(pdev);
 	free_irq(pdev->irq, &ipcdev);
 	pci_release_regions(pdev);
@@ -1768,14 +1813,14 @@ static void ipc_remove(struct pci_dev *pdev)
 	iounmap(ipcdev.ipc_base);
 	iounmap(ipcdev.i2c_base);
 	ipcdev.pdev = NULL;
-	intel_scu_devices_destroy(*bus_id);
-	kfree(bus_id);
+	intel_scu_devices_destroy(ddata->bus_id);
 }
 
-static const struct pci_device_id pci_ids[] = {
-	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x080e), IPC_SCU},
-	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x082a), IPC_SCU},
-	{PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x08ea), IPC_SCU},
+static DEFINE_PCI_DEVICE_TABLE(pci_ids) = {
+	{PCI_VDEVICE(INTEL, 0x080e), SCU_IPC_PENWELL},
+	{PCI_VDEVICE(INTEL, 0x082a), SCU_IPC_LINCROFT},
+	{PCI_VDEVICE(INTEL, 0x08ea), SCU_IPC_CLOVERVIEW},
+	{PCI_VDEVICE(INTEL, 0x11a0), SCU_IPC_TANGIER},
 	{ 0,}
 };
 MODULE_DEVICE_TABLE(pci, pci_ids);
@@ -1787,7 +1832,6 @@ static struct pci_driver ipc_driver = {
 	.remove = ipc_remove,
 };
 
-
 static int __init intel_scu_ipc_init(void)
 {
 	platform = intel_mid_identify_cpu();
@@ -1798,8 +1842,7 @@ static int __init intel_scu_ipc_init(void)
 	if (!qos)
 		return -ENOMEM;
 
-	pm_qos_add_request(qos, PM_QOS_CPU_DMA_LATENCY,
-				PM_QOS_DEFAULT_VALUE);
+	pm_qos_add_request(qos, PM_QOS_CPU_DMA_LATENCY, PM_QOS_DEFAULT_VALUE);
 
 	return  pci_register_driver(&ipc_driver);
 
