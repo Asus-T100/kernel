@@ -495,6 +495,16 @@ config BOARD_CTP
 	  shares all the codes with Medfield except the board file(i.e.
 	  only platform devices and platform device data are different)
 
+
+config BOARD_MRFLD_HVP
+	bool "Merrifield Hybrid Virtual Platform (HVP) board type"
+	depends on X86_MRFLD
+	default n
+	---help---
+	  Merrifield HVP integrates a functionally equlvalent software.
+	  model of the Merrifield North Cluster interface to the FPGA
+	  implementation of the TNG South Cluster RTL in the Cypress
+	  River (CR4) Board.
 endchoice
 
 endif
