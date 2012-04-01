@@ -67,30 +67,10 @@ void dsi_lvds_suspend_lvds_bridge(struct drm_device *dev)
 
 	printk(KERN_INFO "[DISPLAY ] Enter %s\n", __func__);
 
-	if (gpio_direction_output(GPIO_MIPI_LCD_BL_EN, 0))
-		gpio_set_value_cansleep(GPIO_MIPI_LCD_BL_EN, 0);
-	mdelay(1);
-	if (gpio_direction_output(GPIO_MIPI_LCD_VADD, 0))
-		gpio_set_value_cansleep(GPIO_MIPI_LCD_VADD, 0);
-#ifdef CONFIG_LVDS_HARD_RESET
 	if (gpio_direction_output(GPIO_MIPI_BRIDGE_RESET, 0))
 		gpio_set_value_cansleep(GPIO_MIPI_BRIDGE_RESET, 0);
-#else
-	/* Put the panel in ULPS mode for S0ix. */
-	temp = REG_READ(DEVICE_READY_REG);
-	temp &= ~ULPS_MASK;
-	temp |= ENTERING_ULPS;
-	REG_WRITE(DEVICE_READY_REG, temp);
-	temp = REG_READ(DEVICE_READY_REG);
+	msleep(10);
 
-	/* LP Hold */
-	temp = REG_READ(MIPI);
-	temp &= ~LP_OUTPUT_HOLD;
-	REG_WRITE(MIPI, temp);
-	temp = REG_READ(MIPI);
-
-	mdelay(1);
-#endif
 	lvds_suspend_state = true;
 }
 
@@ -103,49 +83,30 @@ void dsi_lvds_suspend_lvds_bridge(struct drm_device *dev)
 void dsi_lvds_resume_lvds_bridge(struct drm_device *dev)
 {
 	u32 temp;
+
 	printk(KERN_INFO "[DISPLAY ] Enter %s\n", __func__);
+
 	if (gpio_direction_output(GPIO_MIPI_LCD_BL_EN, 1))
 		gpio_set_value_cansleep(GPIO_MIPI_LCD_BL_EN, 1);
+
 	/* VADD */
 	if (gpio_direction_output(GPIO_MIPI_LCD_VADD, 1))
 		gpio_set_value_cansleep(GPIO_MIPI_LCD_VADD, 1);
-	mdelay(10);
+	msleep(10);
 
-#ifdef CONFIG_LVDS_HARD_RESET
 	/* RESET */
 	if (gpio_direction_output(GPIO_MIPI_BRIDGE_RESET, 1))
 		gpio_set_value_cansleep(GPIO_MIPI_BRIDGE_RESET, 1);
 	msleep(20);
+
 	if (gpio_direction_output(GPIO_MIPI_BRIDGE_RESET, 0))
 		gpio_set_value_cansleep(GPIO_MIPI_BRIDGE_RESET, 0);
 	msleep(20);
+
 	if (gpio_direction_output(GPIO_MIPI_BRIDGE_RESET, 1))
 		gpio_set_value_cansleep(GPIO_MIPI_BRIDGE_RESET, 1);
-	mdelay(20);
-#else
-	/* LP Hold Release */
-	temp = REG_READ(MIPI);
-	temp |= LP_OUTPUT_HOLD_RELEASE;
-	REG_WRITE(MIPI, temp);
-	mdelay(1);
-	temp = REG_READ(MIPI);
+	msleep(20);
 
-
-	/* Set DSI host to exit from Utra Low Power State */
-	temp = REG_READ(DEVICE_READY_REG);
-
-	temp &= ~ULPS_MASK;
-	temp |= EXITING_ULPS;
-	REG_WRITE(DEVICE_READY_REG, temp);
-	mdelay(1);
-	temp = REG_READ(DEVICE_READY_REG);
-
-	temp &= ~ULPS_MASK;
-	REG_WRITE(DEVICE_READY_REG, temp);
-	mdelay(1);
-	temp = REG_READ(DEVICE_READY_REG);
-
-#endif
 	lvds_suspend_state = false;
 }
 
@@ -161,15 +122,15 @@ void dsi_lvds_set_bridge_reset_state(int state)
 	if (state) {
 		if (gpio_direction_output(GPIO_MIPI_BRIDGE_RESET, 0))
 			gpio_set_value_cansleep(GPIO_MIPI_BRIDGE_RESET, 0);
-		mdelay(10);
+		msleep(10);
 	} else {
 
 		if (gpio_direction_output(GPIO_MIPI_BRIDGE_RESET, 0))
 			gpio_set_value_cansleep(GPIO_MIPI_BRIDGE_RESET, 0);  /*Pull MIPI Bridge reset pin to Low */
-		mdelay(20);
+		msleep(20);
 		if (gpio_direction_output(GPIO_MIPI_BRIDGE_RESET, 1))
 			gpio_set_value_cansleep(GPIO_MIPI_BRIDGE_RESET, 1);  /*Pull MIPI Bridge reset pin to High */
-		mdelay(40);
+		msleep(40);
 	}
 }
 
@@ -251,9 +212,8 @@ void dsi_lvds_toshiba_bridge_panel_off(void)
 		gpio_set_value_cansleep(GPIO_MIPI_LCD_BL_EN, 0);
 	mdelay(1);
 
-	/* if (gpio_direction_output(GPIO_MIPI_LCD_VADD, 0))
-	 *	gpio_set_value_cansleep(GPIO_MIPI_LCD_VADD, 0);
-	 */
+	if (gpio_direction_output(GPIO_MIPI_LCD_VADD, 0))
+		gpio_set_value_cansleep(GPIO_MIPI_LCD_VADD, 0);
 }
 
 /* ************************************************************************* *\
@@ -267,7 +227,7 @@ void dsi_lvds_toshiba_bridge_panel_on(void)
 
 	if (gpio_direction_output(GPIO_MIPI_LCD_VADD, 1))
 		gpio_set_value_cansleep(GPIO_MIPI_LCD_VADD, 1);
-	mdelay(50);
+	msleep(260);
 
 	if (gpio_direction_output(GPIO_MIPI_LCD_BL_EN, 1))
 		gpio_set_value_cansleep(GPIO_MIPI_LCD_BL_EN, 1);

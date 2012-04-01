@@ -40,6 +40,7 @@
 #include <asm/intel_scu_ipc.h>
 #include "psb_intel_hdmi.h"
 #include "mdfld_ti_tpd.h"
+#include "mdfld_dsi_dpi.h"
 #ifdef CONFIG_GFX_RTPM
 #include <linux/pm_runtime.h>
 #endif
@@ -1807,6 +1808,7 @@ static void gfx_late_resume(struct early_suspend *h)
 	struct drm_device *dev = dev_priv->dev;
 	struct drm_encoder *encoder;
 	struct drm_encoder_helper_funcs *enc_funcs;
+	struct drm_crtc *crtc = NULL;
 	u32 dspcntr_val;
 #ifdef OSPM_GFX_DPK
 	printk(KERN_ALERT "\ngfx_late_resume\n");
@@ -1836,26 +1838,37 @@ static void gfx_late_resume(struct early_suspend *h)
 				(dev_priv->panel_id == AUO_SC1_VID) ||
 				/* SC1 setting */
 				(dev_priv->panel_id == AUO_SC1_CMD)) {
-#if	defined(CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY) || defined(CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE)
-				if (dev_priv->encoder0 &&
-					(dev_priv->panel_desc & DISPLAY_A))
-					mdfld_dsi_dpi_set_power(
-						dev_priv->encoder0, true);
-				if (dev_priv->encoder2 &&
-					(dev_priv->panel_desc & DISPLAY_C))
-					mdfld_dsi_dpi_set_power(
-						dev_priv->encoder2, true);
-#else
-				list_for_each_entry(encoder,
-					&dev->mode_config.encoder_list,
-					head) {
-					enc_funcs = encoder->helper_private;
-					if (!drm_helper_encoder_in_use(encoder))
-						continue;
-					if (enc_funcs && enc_funcs->restore)
-						enc_funcs->restore(encoder);
-			}
-#endif
+				if (get_panel_type(dev, 0) == TMD_VID) {
+					if (dev_priv->encoder0 &&
+							(dev_priv->panel_desc & DISPLAY_A)) {
+						encoder = &dev_priv->encoder0->base;
+						crtc = encoder->crtc;
+						if (crtc)
+							mdfld_dsi_dpi_mode_set(encoder,
+									&crtc->mode, &crtc->hwmode);
+						mdfld_dsi_dpi_set_power(encoder, true);
+					}
+					if (dev_priv->encoder2 &&
+							(dev_priv->panel_desc & DISPLAY_C)) {
+						encoder = &dev_priv->encoder2->base;
+						crtc = encoder->crtc;
+						if (crtc)
+							mdfld_dsi_dpi_mode_set(encoder,
+									&crtc->mode, &crtc->hwmode);
+						mdfld_dsi_dpi_set_power(
+								dev_priv->encoder2, true);
+					}
+				} else {
+					list_for_each_entry(encoder,
+							&dev->mode_config.encoder_list,
+							head) {
+						enc_funcs = encoder->helper_private;
+						if (!drm_helper_encoder_in_use(encoder))
+							continue;
+						if (enc_funcs && enc_funcs->restore)
+							enc_funcs->restore(encoder);
+					}
+				}
 			} else if (dev_priv->panel_id == TPO_CMD) {
 				if (dev_priv->encoder0 &&
 					(dev_priv->panel_desc & DISPLAY_A))

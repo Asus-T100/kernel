@@ -261,10 +261,7 @@ void dsi_set_device_ready_state(struct drm_device *dev, int state, int pipe)
 	PSB_DEBUG_ENTRY("[DISPLAY TRK] %s: state = %d, pipe = %d\n",
 		__func__, state, pipe);
 
-	if (state)
-		REG_WRITE((MIPIA_DEVICE_READY_REG + reg_offset), 0x00000001);
-	else
-		REG_WRITE((MIPIA_DEVICE_READY_REG + reg_offset), 0x00000000);
+	REG_FLD_MOD((DEVICE_READY_REG + reg_offset), !!state, 0, 0);
 }
 
 void dsi_send_turn_on_packet(struct drm_device *dev)
@@ -743,11 +740,35 @@ void dsi_set_pipe_plane_enable_state(struct drm_device *dev, int state, int pipe
 		/*Set up display plane */
 		REG_WRITE(dspcntr_reg, dspcntr);
 	} else {
-		/*Disable PIPE */
+		u32 val;
+		u32 dspbase_reg = pipe ? DSPCBASE : DSPABASE;
+		u32 device_ready_reg = 0;
+
+		if (pipe) {
+			device_ready_reg = DEVICE_READY_REG + MIPIC_REG_OFFSET;
+		} else {
+			device_ready_reg = DEVICE_READY_REG;
+		}
+
+		/* Disable display plane */
+		REG_FLD_MOD(dspcntr_reg, 0, 31, 31);
+
+		/* Flush the plane changes ??? posted write? */
+		REG_WRITE(dspbase_reg, REG_READ(dspbase_reg));
+		REG_READ(dspbase_reg);
+
+		/* Disable PIPE */
 		REG_WRITE(pipeconf_reg, 0);
 		mdfld_wait_for_PIPEA_DISABLE(dev, pipe);
 		mdfld_wait_for_DPI_CTRL_FIFO(dev, pipe);
 
+		/* Put DSI lanes to ULPS to disable pipe */
+		REG_FLD_MOD(device_ready_reg, 2, 2, 1);
+		REG_READ(device_ready_reg); /* posted write? */
+
+		/* LP Hold */
+		REG_FLD_MOD(dspcntr_reg, 0, 16, 16);
+		REG_READ(dspcntr_reg); /* posted write? */
 	}
 }
 
@@ -766,21 +787,15 @@ static void mdfld_dsi_configure_down(struct mdfld_dsi_encoder * dsi_encoder, int
 	}
 #ifdef	CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
 	dsi_lvds_toshiba_bridge_panel_off();
-	udelay(100);
+	dsi_lvds_suspend_lvds_bridge(dev);
 	dsi_lvds_deinit_lvds_bridge(dev);
-	/* dsi_lvds_suspend_lvds_bridge(dev); */
 #else
 	mdfld_deinit_TOSHIBA_MIPI(dev);  /* De-init MIPI bridge and Panel */
 	dsi_set_bridge_reset_state(1);  /* Pull Low Reset */
 #endif
 	dsi_set_pipe_plane_enable_state(dev, 0, pipe);  /* Disable pipe and plane */
-
-	/* dsi_set_ptarget_state(dev, 0); */ /* Disable PTARGET */
-
 	mdfld_dsi_dpi_shut_down(dpi_output, pipe);  /* Send shut down command */
-
 	dsi_set_device_ready_state(dev, 0, pipe);  /* Clear device ready state */
-
 	dev_priv->dpi_panel_on = false;
 }
 
@@ -807,9 +822,7 @@ static void mdfld_dsi_configure_up(struct mdfld_dsi_encoder * dsi_encoder, int p
 
 	dsi_set_device_ready_state(dev, 1, pipe);  //Set device ready state
 #ifdef	CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
-	dsi_lvds_toshiba_bridge_panel_on();
-	udelay(100);
-	/* dsi_lvds_set_bridge_reset_state(0); */
+	dsi_lvds_resume_lvds_bridge(dev);
 	dsi_lvds_configure_lvds_bridge(dev);
 #else
 	dsi_set_bridge_reset_state(0);  /* Pull High Reset */
@@ -2205,6 +2218,7 @@ static void __mdfld_dsi_dpi_set_timing(struct mdfld_dsi_config *config,
 	mutex_unlock(&config->context_lock);
 }
 
+
 void mdfld_dsi_dpi_mode_set(struct drm_encoder *encoder,
 				   struct drm_display_mode *mode,
 				   struct drm_display_mode *adjusted_mode)
@@ -2303,10 +2317,10 @@ void mdfld_dsi_dpi_mode_set(struct drm_encoder *encoder,
 	    else
 		    REG_WRITE(mipi_reg, 0x80010000); /*0x61190 */
 	}
-#endif
-
+#else
 	/*set up mipi port FIXME: do at init time */
 	REG_WRITE(mipi_reg, mipi);
+#endif
 	REG_READ(mipi_reg);
 
 	/*set up DSI controller DPI interface*/
