@@ -118,8 +118,22 @@ config HSI_DLP_IPC_TTY_NAME
 	string "Base name for the IPC TTY"
 	default "IFX"
 	help
-	  Sets the base name for the TTY associated to this eDLP modem protocol
+	  Sets the base name for the TTY associated to this IMC modem protocol
 	  for LTE.
+	  The base name will be appended to the tty interface used by the HSI
+	  eDLP protocol.
+
+	  If unsure, use the default value.
+
+config HSI_FLASHING_DEV_NAME
+	string "Base name for the Boot/Flashing driver"
+	default "IFX"
+	help
+	  Sets the base name for the char device associated to this IMC Boot/Flashing protocol
+	  The base name will be appended to the char device interface used by the HSI
+	  flashing protocol
+
+	  If unsure, use the default value.
 
 config HSI_DLP_TTY_STATS
 	bool "Statistics to assess the performance of the protocol (TTY)"
@@ -137,6 +151,10 @@ config HSI_DLP_NET_NAME
 	help
 	  Sets the base name for the NETWORK interfaces associated to this IMC
 	  modem protocol for LTE.
+	  The base name will be exported by the network interface used by the HSI
+	  eDLP protocol
+
+	  If unsure, use the default value.
 
 config HSI_DLP_PDU_LENGTH
 	int "Fixed frame length"

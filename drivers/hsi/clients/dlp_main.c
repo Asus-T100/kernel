@@ -190,7 +190,7 @@ void dlp_pdu_dump(struct hsi_msg *pdu, int as_string)
 void *dlp_buffer_alloc(unsigned int buff_size, dma_addr_t * dma_addr)
 {
 	void *buff;
-	int flags = in_interrupt()? GFP_ATOMIC : GFP_KERNEL;
+	int flags = in_interrupt() ? GFP_ATOMIC : GFP_KERNEL;
 
 	if (dlp_drv.is_dma_capable) {
 		buff = dma_alloc_coherent(dlp_drv.controller,
@@ -253,7 +253,7 @@ struct hsi_msg *dlp_pdu_alloc(unsigned int hsi_channel,
 {
 	struct hsi_msg *new;
 	void *buffer;
-	int flags = in_interrupt()? GFP_ATOMIC : GFP_KERNEL;
+	int flags = in_interrupt() ? GFP_ATOMIC : GFP_KERNEL;
 
 	PROLOG("%d, %s, size:%d",
 	       hsi_channel,
@@ -446,8 +446,7 @@ unsigned int dlp_pdu_get_offset(struct hsi_msg *pdu)
 inline unsigned int dlp_pdu_get_length(struct hsi_msg *pdu)
 {
 	u32 *header = (u32 *)(sg_virt(pdu->sgt.sgl));
-
-	return (header[2] & 0x3FFFF);
+	return header[2] & 0x3FFFF;
 }
 
 
@@ -468,10 +467,14 @@ void dlp_pdu_update(struct dlp_channel *ch_ctx, struct hsi_msg *pdu)
 	if ((!pdu->break_frame) && (pdu->status == HSI_STATUS_COMPLETED)) {
 		pdu->actual_len = dlp_pdu_get_length(pdu);
 	} else {
-		CRITICAL
-		    ("Invalid RX pdu (0x%p) status [status: %d, break_frame: %d,"
-		     " actual_len: %d", pdu, pdu->status, pdu->break_frame,
-		     pdu->actual_len);
+		CRITICAL("Invalid RX pdu (0x%p)"
+				" status [status: %d,"
+				" break_frame: %d,"
+				" actual_len: %d",
+				pdu,
+				pdu->status,
+				pdu->break_frame,
+				pdu->actual_len);
 
 		pdu->actual_len = 1;
 	}
@@ -520,7 +523,7 @@ inline unsigned int dlp_pdu_room_in(struct hsi_msg *pdu)
 {
 	unsigned int used_len = pdu->actual_len + DLP_TTY_HEADER_LENGTH;
 
-	return (pdu->sgt.sgl->length - used_len);
+	return pdu->sgt.sgl->length - used_len;
 }
 
 /**
@@ -565,9 +568,9 @@ static void dlp_pdu_destructor(struct hsi_msg *pdu)
  * Returns the current state of the requested TX or RX context.
  */
 static inline __must_check
-    unsigned int _dlp_ctx_get_state(struct dlp_xfer_ctx *xfer_ctx)
+unsigned int _dlp_ctx_get_state(struct dlp_xfer_ctx *xfer_ctx)
 {
-	return (xfer_ctx->state & DLP_GLOBAL_STATE_MASK);
+	return xfer_ctx->state & DLP_GLOBAL_STATE_MASK;
 }
 
 /**
@@ -602,7 +605,7 @@ static inline __must_check int dlp_ctx_is_state(struct dlp_xfer_ctx *xfer_ctx,
  * This version adds the spinlock guarding
  */
 inline __must_check
-    unsigned int dlp_ctx_get_state(struct dlp_xfer_ctx *xfer_ctx)
+unsigned int dlp_ctx_get_state(struct dlp_xfer_ctx *xfer_ctx)
 {
 	unsigned int state;
 	unsigned long flags;
@@ -765,7 +768,7 @@ void dlp_ctx_update_status(struct dlp_xfer_ctx *xfer_ctx)
 
 		sg = pdu->sgt.sgl;
 
-		// FIXME: To be removed !!!
+		/* FIXME: To be removed !!! */
 		sg->length = xfer_ctx->payload_len + DLP_TTY_HEADER_LENGTH;
 
 		read_unlock_irqrestore(&xfer_ctx->lock, flags);
@@ -841,16 +844,15 @@ static inline void dlp_ctx_update_state(struct dlp_xfer_ctx *xfer_ctx)
  * Returns a reference to the last pdu of this FIFO or NULL if the FIFO is
  * empty.
  */
-inline __must_check
-    struct hsi_msg *dlp_fifo_tail(struct dlp_xfer_ctx *xfer_ctx,
-				  struct list_head *fifo)
+inline __must_check struct hsi_msg *
+dlp_fifo_tail(struct dlp_xfer_ctx *xfer_ctx,
+			struct list_head *fifo)
 {
 	struct hsi_msg *pdu = NULL;
 
 	/* Empty ? */
-	if (! list_empty(fifo)) {
+	if (!list_empty(fifo))
 		pdu = list_entry(fifo->prev, struct hsi_msg, link);
-	}
 
 	return pdu;
 }
@@ -920,7 +922,7 @@ struct hsi_msg *dlp_fifo_wait_pop(struct dlp_xfer_ctx *xfer_ctx)
 	/* Remove the pdu from the list */
 	list_del_init(&pdu->link);
 
-	xfer_ctx->wait_len --;
+	xfer_ctx->wait_len--;
 	xfer_ctx->buffered -= pdu->actual_len;
 
 out:
@@ -1011,9 +1013,8 @@ void dlp_pop_wait_push_ctrl(struct dlp_xfer_ctx *xfer_ctx,
 	if (!pdu)
 		goto out;
 
-	if (check_pdu) {
+	if (check_pdu)
 		ok = !pdu->break_frame;
-	}
 
 	if (ok) {
 		/* Note that no error is returned upon transfer failure,
@@ -1213,8 +1214,8 @@ int dlp_hsi_controller_push(struct dlp_xfer_ctx *xfer_ctx, struct hsi_msg *pdu)
 
 	/* Dump the PDU */
 	if (pdu->ttype == HSI_MSG_WRITE) {
-		dlp_pdu_dump(pdu, 0);
-		/* dlp_dbg_dump_pdu(pdu, 16, 160, 0); */
+		/* dlp_pdu_dump(pdu, 0);
+		dlp_dbg_dump_pdu(pdu, 16, 160, 0); */
 	}
 
 	err = hsi_async(pdu->cl, pdu);
@@ -1399,8 +1400,7 @@ inline void dlp_hsi_port_unclaim(void)
  */
 static void dlp_hsi_start_rx_cb(struct hsi_client *cl)
 {
-	// FIXME: only ch_ctx[1]
-	struct dlp_channel *ch_ctx = (struct dlp_channel *)hsi_client_drvdata(cl);
+	struct dlp_channel *ch_ctx = hsi_client_drvdata(cl);
 	struct dlp_xfer_ctx *xfer_ctx = &ch_ctx->rx;
 
 	PROLOG();
@@ -1419,8 +1419,7 @@ static void dlp_hsi_start_rx_cb(struct hsi_client *cl)
  */
 static void dlp_hsi_stop_rx_cb(struct hsi_client *cl)
 {
-	// FIXME: only ch_ctx[1]
-	struct dlp_channel *ch_ctx = (struct dlp_channel *)hsi_client_drvdata(cl);
+	struct dlp_channel *ch_ctx = hsi_client_drvdata(cl);
 	struct dlp_xfer_ctx *xfer_ctx = &ch_ctx->rx;
 
 	PROLOG();
@@ -1436,7 +1435,8 @@ static void dlp_hsi_stop_rx_cb(struct hsi_client *cl)
 * @param start_rx_cb : Start RX callback backup function
 * @param stop_rx_cb : Stop RX callback backup function
 */
-void dlp_save_rx_callbacks(hsi_client_cb *start_rx_cb, hsi_client_cb *stop_rx_cb)
+void dlp_save_rx_callbacks(hsi_client_cb *start_rx_cb,
+		hsi_client_cb *stop_rx_cb)
 {
 	PROLOG();
 
@@ -1457,7 +1457,8 @@ void dlp_save_rx_callbacks(hsi_client_cb *start_rx_cb, hsi_client_cb *stop_rx_cb
 * @param start_rx_cb : Start RX callback to set
 * @param stop_rx_cb : Stop RX callback to set
 */
-void dlp_restore_rx_callbacks(hsi_client_cb *start_rx_cb, hsi_client_cb *stop_rx_cb)
+void dlp_restore_rx_callbacks(hsi_client_cb *start_rx_cb,
+		hsi_client_cb *stop_rx_cb)
 {
 	PROLOG();
 
@@ -1470,6 +1471,51 @@ void dlp_restore_rx_callbacks(hsi_client_cb *start_rx_cb, hsi_client_cb *stop_rx
 	stop_rx_cb = NULL;
 
 	EPILOG();
+}
+
+/*
+* @brief This function will:
+*	 - Release the HSI client
+*	 - Update the HSI client configuration (Use IPC/Flashing config)
+*	 - Claim the HSI client again
+*
+* @param value : ON/OFF to activate/deactivate the flashing mode
+*/
+int dlp_set_flashing_mode(int value)
+{
+	int ret;
+
+	PROLOG();
+
+	/* Release the HSI controller */
+	dlp_hsi_port_unclaim();
+
+	/* Flush everything */
+	hsi_flush(dlp_drv.client);
+
+	if (value) {
+		/* Set the Boot/Flashing configs */
+		dlp_drv.client->tx_cfg = dlp_drv.flash_tx_cfg;
+		dlp_drv.client->rx_cfg = dlp_drv.flash_rx_cfg;
+
+		/* Disable the IPC RX start/stop cb */
+		dlp_save_rx_callbacks(&dlp_drv.start_rx_cb,
+				&dlp_drv.stop_rx_cb);
+	} else {
+		/* Set IPC configs */
+		dlp_drv.client->tx_cfg = dlp_drv.ipc_tx_cfg;
+		dlp_drv.client->rx_cfg = dlp_drv.ipc_rx_cfg;
+
+		/* Restore the IPC RX start/stop cb */
+		dlp_restore_rx_callbacks(&dlp_drv.start_rx_cb,
+				&dlp_drv.stop_rx_cb);
+	}
+
+	/* Claim the HSI port (to use for IPC) */
+	ret = dlp_hsi_port_claim();
+
+	EPILOG();
+	return ret;
 }
 
 /**
@@ -1508,7 +1554,8 @@ static void dlp_increase_pdus_pool(struct work_struct *work)
 		while (!new) {
 			++retry;
 			if (retry == DLP_PDU_ALLOC_RETRY_MAX_CNT) {
-				CRITICAL("Cannot allocate a pdu after %d retries...", retry);
+				CRITICAL("Cannot allocate a pdu after "
+						"%d retries...", retry);
 				retry = 0;
 			}
 
@@ -1556,8 +1603,8 @@ static void dlp_increase_pdus_pool(struct work_struct *work)
 * @param data : Timeout callback user data
 */
 void dlp_hangup_ctx_init(struct dlp_channel *ch_ctx,
-		void (* work_func)(struct work_struct *work),
-		void (* timeout_func)(unsigned long int param),
+		void (*work_func)(struct work_struct *work),
+		void (*timeout_func)(unsigned long int param),
 		void *data)
 {
 	PROLOG();
@@ -1594,7 +1641,7 @@ void dlp_hangup_ctx_deinit(struct dlp_channel *ch_ctx)
 	write_unlock_irqrestore(&xfer_ctx->lock, flags);
 
 	/* No need to wait for the end of the calling work! */
-	if (! is_hunging_up) {
+	if (!is_hunging_up) {
 		if (del_timer_sync(&ch_ctx->hangup.timer))
 			cancel_work_sync(&ch_ctx->hangup.work);
 		else
@@ -1706,7 +1753,8 @@ static void dlp_driver_cleanup(void)
 		dlp_tty_ctx_delete,		/* TTY  */
 		dlp_net_ctx_delete,		/* NET  */
 		dlp_net_ctx_delete,		/* NET  */
-		dlp_net_ctx_delete};	/* NET  */
+		dlp_net_ctx_delete,		/* NET  */
+		dlp_flash_ctx_delete};	/* BOOT/FLASHING  */
 
 	PROLOG();
 
@@ -1747,7 +1795,8 @@ static int __init dlp_driver_probe(struct device *dev)
 		dlp_tty_ctx_create,		/* TTY  */
 		dlp_net_ctx_create,		/* NET  */
 		dlp_net_ctx_create,		/* NET  */
-		dlp_net_ctx_create};	/* NET  */
+		dlp_net_ctx_create,		/* NET  */
+		dlp_flash_ctx_create};	/* BOOT/FLASHING */
 
 	PROLOG();
 
@@ -1758,9 +1807,8 @@ static int __init dlp_driver_probe(struct device *dev)
 	spin_lock_init(&dlp_drv.lock);
 
 	/* Warn if no DMA capability */
-	if (!dlp_drv.is_dma_capable) {
+	if (!dlp_drv.is_dma_capable)
 		WARNING("HSI device is not DMA capable");
-	}
 
 	/* Save IPC controller configs */
 	dlp_drv.ipc_rx_cfg = client->rx_cfg;
@@ -1774,18 +1822,14 @@ static int __init dlp_driver_probe(struct device *dev)
 	dlp_drv.flash_rx_cfg.channels = 1;
 	dlp_drv.flash_tx_cfg.channels = 1;
 
-	/* FIXME: Claim the HSI port */
-	ret = dlp_hsi_port_claim();
-	if (ret) {
-		goto out;
-	}
+	/* Start in IPC mode */
+	dlp_set_flashing_mode(0);
 
 	/* Create DLP contexts */
 	for (i = 0; i < DLP_CHANNEL_COUNT; i++) {
 		dlp_drv.channels[i] = create_funcs[i] (i, dev);
-		if (!dlp_drv.channels[i]) {
+		if (!dlp_drv.channels[i])
 			goto cleanup;
-		}
 	}
 
 	/*  */
@@ -1796,8 +1840,8 @@ static int __init dlp_driver_probe(struct device *dev)
 	hsi_client_set_drvdata(client, dlp_drv.channels[DLP_CHANNEL_TTY]);
 
 	/* Create /proc/hsi-dlp */
-	// FIXME: Will be removed
-	//if (dlp_drv.debug)
+	/* FIXME: Will be removed */
+	/*if (dlp_drv.debug) */
 	{
 		proc_create_data(DRVNAME, S_IRUGO, NULL, &dlp_proc_ops, NULL);
 	}
@@ -1808,7 +1852,6 @@ static int __init dlp_driver_probe(struct device *dev)
 cleanup:
 	dlp_driver_cleanup();
 
-out:
 	EPILOG("%d", ret);
 	return ret;
 }
@@ -1944,4 +1987,4 @@ MODULE_AUTHOR("Olivier Stoltz Douchet <olivierx.stoltz-douchet@intel.com>");
 MODULE_AUTHOR("Faouaz Tenoutit <faouazx.tenoutit@intel.com>");
 MODULE_DESCRIPTION("LTE protocol driver over HSI for IMC modems");
 MODULE_LICENSE("GPL");
-MODULE_VERSION("1.1-HSI-LTE");
+MODULE_VERSION("1.2-HSI-LTE");

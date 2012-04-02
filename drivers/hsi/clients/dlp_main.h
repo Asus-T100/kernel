@@ -67,8 +67,11 @@
 /* Compute the TX and RX, FIFO depth from the buffering requirements */
 /* For optimal performances the DLP_HSI_TX_CTRL_FIFO size shall be set to 2 at
  * least to allow back-to-back transfers. */
-#define DLP_TX_MAX_LEN	((DLP_MIN_TX_BUFFERING+DLP_PAYLOAD_LENGTH-1)/DLP_PAYLOAD_LENGTH)
-#define DLP_RX_MAX_LEN	((DLP_MIN_RX_BUFFERING+DLP_PAYLOAD_LENGTH-1)/DLP_PAYLOAD_LENGTH)
+#define DLP_TX_MAX_LEN	((DLP_MIN_TX_BUFFERING+DLP_PAYLOAD_LENGTH-1) \
+		/DLP_PAYLOAD_LENGTH)
+
+#define DLP_RX_MAX_LEN	((DLP_MIN_RX_BUFFERING+DLP_PAYLOAD_LENGTH-1) \
+		/DLP_PAYLOAD_LENGTH)
 
 #define DLP_HSI_TX_CTRL_FIFO	2
 #define DLP_HSI_TX_WAIT_FIFO	max(DLP_TX_MAX_LEN-DLP_HSI_TX_CTRL_FIFO, 1)
@@ -90,6 +93,9 @@
 
 /* PDU size for CTRL channel */
 #define DLP_CTRL_PDU_SIZE	4	/* 4 Bytes */
+
+/* PDU size for Flashing channel */
+#define DLP_FLASH_PDU_SIZE	4	/* 4 Bytes */
 
 /* Alignment params */
 #define DLP_PACKET_ALIGN_AP		16
@@ -113,8 +119,15 @@
 #define DLP_HDR_COMPLETE_PACKET	 (0x3 << 29)
 
 #ifndef MIN
-#define MIN(a,b) ((a)<(b)?(a):(b))
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
 #endif
+
+/*
+ * Number of /dev/tty exported for IPC
+ * Currently only one is used (/dev/ttyIFX0)
+ */
+#define DLP_TTY_DEV_NUM 1
+
 
 /*
  * Get a ref to the given channel context
@@ -136,6 +149,7 @@ enum {
 	DLP_CHANNEL_NET2,	/* HSI Channel 3 */
 	DLP_CHANNEL_NET3,	/* HSI Channel 4 */
 
+	DLP_CHANNEL_FLASH,	/* HSI Channel 0 */
 	DLP_CHANNEL_COUNT
 };
 
@@ -146,12 +160,12 @@ enum {
 /*
  * HSI transfer complete callback prototype
  */
-typedef void (*xfer_complete_cb) (struct hsi_msg * pdu);
+typedef void (*xfer_complete_cb) (struct hsi_msg *pdu);
 
 /*
  * HSI client start/stop RX callback prototype
  */
-typedef void (*hsi_client_cb) (struct hsi_client * cl);
+typedef void (*hsi_client_cb) (struct hsi_client *cl);
 
 /**
  * struct dlp_xfer_ctx - TX/RX transfer context
@@ -256,11 +270,11 @@ struct dlp_channel {
 	struct dlp_hangup_ctx hangup;
 
 	/* Reset & Coredump callbacks */
-	void (*modem_coredump_cb) (struct dlp_channel * ch_ctx);
-	void (*modem_reset_cb) (struct dlp_channel * ch_ctx);
+	void (*modem_coredump_cb) (struct dlp_channel *ch_ctx);
+	void (*modem_reset_cb) (struct dlp_channel *ch_ctx);
 
 	/* Credits callback */
-	void (*credits_available_cb) (struct dlp_channel * ch_ctx);
+	void (*credits_available_cb) (struct dlp_channel *ch_ctx);
 
 	/* Channel sepecific data */
 	void *ch_data;
@@ -280,6 +294,8 @@ struct dlp_channel {
  * @ipc_xx_cfg: HSI client configuration (Used for IPC RX)
  * @flash_tx_cfg: HSI client configuration (Used for Boot/Flashing TX)
  * @flash_rx_cfg: HSI client configuration (Used for Boot/Flashing RX)
+ * @start_rx_cb: HSI client start RX callback
+ * @stop_rx_cb: HSI client stop RX callback
  *
  * @debug: Debug variable
  */
@@ -300,12 +316,19 @@ struct dlp_driver {
 	int modem_ready;
 	spinlock_t lock;
 
+	/* RX start/stop callbacks */
+	hsi_client_cb start_rx_cb;
+	hsi_client_cb stop_rx_cb;
+
 	/* Modem boot/flashing */
 	struct hsi_config ipc_tx_cfg;
 	struct hsi_config ipc_rx_cfg;
 
 	struct hsi_config flash_tx_cfg;
 	struct hsi_config flash_rx_cfg;
+
+	/* Platform data */
+
 
 	/* Debug variables */
 	int debug;
@@ -315,16 +338,23 @@ struct dlp_driver {
  * Context alloc/free function proptype
  */
 typedef struct dlp_channel *(*dlp_context_create) (unsigned int index,
-						   struct device * dev);
+						   struct device *dev);
 
-typedef int (*dlp_context_delete) (struct dlp_channel * ch_ctx);
+typedef int (*dlp_context_delete) (struct dlp_channel *ch_ctx);
+
+/****************************************************************************
+ *
+ * IPC/FLASH switching
+ *
+ ***************************************************************************/
+int dlp_set_flashing_mode(int on_off);
 
 /****************************************************************************
  *
  * PDU handling
  *
  ***************************************************************************/
-void *dlp_buffer_alloc(unsigned int buff_size, dma_addr_t * dma_addr);
+void *dlp_buffer_alloc(unsigned int buff_size, dma_addr_t *dma_addr);
 
 void dlp_buffer_free(void *buff, dma_addr_t dma_addr, unsigned int buff_size);
 
@@ -358,7 +388,7 @@ unsigned int dlp_pdu_get_offset(struct hsi_msg *pdu);
 inline unsigned int dlp_pdu_room_in(struct hsi_msg *pdu);
 
 inline __attribute_const__
-    unsigned char *dlp_pdu_data_ptr(struct hsi_msg *pdu, unsigned int offset);
+unsigned char *dlp_pdu_data_ptr(struct hsi_msg *pdu, unsigned int offset);
 
 /****************************************************************************
  *
@@ -366,7 +396,7 @@ inline __attribute_const__
  *
  ***************************************************************************/
 inline __must_check
-    unsigned int dlp_ctx_get_state(struct dlp_xfer_ctx *xfer_ctx);
+unsigned int dlp_ctx_get_state(struct dlp_xfer_ctx *xfer_ctx);
 
 inline void dlp_ctx_set_state(struct dlp_xfer_ctx *xfer_ctx,
 			      unsigned int state);
@@ -394,7 +424,7 @@ void dlp_ctx_update_status(struct dlp_xfer_ctx *xfer_ctx);
  *
  ***************************************************************************/
 inline __must_check
-    struct hsi_msg *dlp_fifo_tail(struct dlp_xfer_ctx *xfer_ctx,
+struct hsi_msg *dlp_fifo_tail(struct dlp_xfer_ctx *xfer_ctx,
 				  struct list_head *fifo);
 
 inline void _dlp_fifo_pdu_push(struct hsi_msg *pdu, struct list_head *fifo);
@@ -462,8 +492,8 @@ void dlp_restore_rx_callbacks(hsi_client_cb *start_rx_cb,
  ***************************************************************************/
 
 void dlp_hangup_ctx_init(struct dlp_channel *ch_ctx,
-		void (* work_func)(struct work_struct *work),
-		void (* timeout_func)(unsigned long int param),
+		void (*work_func)(struct work_struct *work),
+		void (*timeout_func)(unsigned long int param),
 		void *data);
 
 void dlp_hangup_ctx_deinit(struct dlp_channel *ch_ctx);
@@ -501,6 +531,8 @@ int dlp_ctrl_ctx_delete(struct dlp_channel *ch_ctx);
 
 void dlp_ctrl_modem_reset(struct dlp_channel *ch_ctx);
 
+void dlp_ctrl_modem_power(struct dlp_channel *ch_ctx);
+
 inline int dlp_ctrl_get_reset_ongoing(void);
 
 inline void dlp_ctrl_set_reset_ongoing(int ongoing);
@@ -533,6 +565,16 @@ int dlp_tty_ctx_delete(struct dlp_channel *ch_ctx);
 struct dlp_channel *dlp_net_ctx_create(unsigned int index, struct device *dev);
 
 int dlp_net_ctx_delete(struct dlp_channel *ch_ctx);
+
+/****************************************************************************
+ *
+ * Boot/Flashing channel exported functions
+ *
+ ***************************************************************************/
+struct dlp_channel *dlp_flash_ctx_create(unsigned int index,
+		struct device *dev);
+
+int dlp_flash_ctx_delete(struct dlp_channel *ch_ctx);
 
 /****************************************************************************
  *

@@ -47,7 +47,7 @@ void dlp_dbg_dump_data_as_byte(unsigned char *data,
 	int i;
 
 	if (should_dump)
-		printk("-----\n");
+		printk(KERN_DEBUG "-----\n");
 	else if (is_rx)
 		PRINT_RX("-----\n");
 	else
@@ -55,7 +55,7 @@ void dlp_dbg_dump_data_as_byte(unsigned char *data,
 
 	for (i = 0; i < nb_bytes; i++) {
 		if (should_dump)
-			printk("%02X ", data[i]);
+			printk(KERN_DEBUG "%02X ", data[i]);
 		else if (is_rx)
 			PRINT_RX("%02X ", data[i]);
 		else
@@ -75,7 +75,7 @@ void dlp_dbg_dump_data_as_byte(unsigned char *data,
 	/* Previous line was less than "bytes_per_line" */
 	if ((i & (bytes_per_line - 1)) != 0) {
 		if (should_dump)
-			printk("\n");
+			printk(KERN_DEBUG "\n");
 		else if (is_rx)
 			PRINT_RX("\n");
 		else
@@ -83,7 +83,7 @@ void dlp_dbg_dump_data_as_byte(unsigned char *data,
 	}
 
 	if (should_dump)
-		printk("-----\n");
+		printk(KERN_DEBUG "-----\n");
 	else if (is_rx)
 		PRINT_RX("-----\n");
 	else
@@ -97,7 +97,7 @@ void dlp_dbg_dump_data_as_word(unsigned int *data,
 	int i;
 
 	if (should_dump)
-		printk("-----\n");
+		printk(KERN_DEBUG "-----\n");
 	else if (is_rx)
 		PRINT_RX("-----\n");
 	else
@@ -105,7 +105,7 @@ void dlp_dbg_dump_data_as_word(unsigned int *data,
 
 	for (i = 0; i < nb_words; i++) {
 		if (should_dump)
-			printk("%08X ", data[i]);
+			printk(KERN_DEBUG "%08X ", data[i]);
 		else if (is_rx)
 			PRINT_RX("%08X ", data[i]);
 		else
@@ -125,7 +125,7 @@ void dlp_dbg_dump_data_as_word(unsigned int *data,
 	/* Previous line was less than "words_per_line" */
 	if ((i & (words_per_line - 1)) != 0) {
 		if (should_dump)
-			printk("\n");
+			printk(KERN_DEBUG "\n");
 		else if (is_rx)
 			PRINT_RX("\n");
 		else
@@ -133,7 +133,7 @@ void dlp_dbg_dump_data_as_word(unsigned int *data,
 	}
 
 	if (should_dump)
-		printk("-----\n");
+		printk(KERN_DEBUG "-----\n");
 	else if (is_rx)
 		PRINT_RX("-----\n");
 	else
@@ -167,15 +167,14 @@ void dlp_dbg_dump_pdu(struct hsi_msg *pdu,
 	is_rx = (pdu->ttype == HSI_MSG_READ);
 
 	if (is_rx)
-		PRINT_RX("RX PDU (0x%p): \n", pdu);
+		PRINT_RX("RX PDU (0x%p):\n", pdu);
 	else
-		PRINT_TX("TX PDU (0x%p): \n", pdu);
+		PRINT_TX("TX PDU (0x%p):\n", pdu);
 
 	/* Check the PDU signature */
 	data = sg_virt(sg);
-	if (!dlp_pdu_header_valid(pdu)) {
+	if (!dlp_pdu_header_valid(pdu))
 		is_corrupted = 1;
-	}
 
 	for (i = 0; i < pdu->sgt.nents; i++) {
 		data = sg_virt(sg);
@@ -186,9 +185,8 @@ void dlp_dbg_dump_pdu(struct hsi_msg *pdu,
 			if (dumped >= items_to_dump) {
 				break;
 			} else {
-				if ((len + dumped) > items_to_dump) {
+				if ((len + dumped) > items_to_dump)
 					len = items_to_dump - dumped;
-				}
 			}
 		} else {
 			len = items_to_dump - dumped;

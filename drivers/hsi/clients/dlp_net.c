@@ -193,7 +193,7 @@ static void dlp_net_complete_tx(struct hsi_msg *pdu)
 	dev_kfree_skb(msg_param->skb);
 
 	/* Dump the PDU */
-	// dlp_pdu_dump(pdu, 1);
+	/* dlp_pdu_dump(pdu, 1); */
 
 	/* Update statistics */
 	net_ctx->ndev->stats.tx_bytes += pdu->actual_len;
@@ -276,7 +276,8 @@ static void dlp_net_complete_rx(struct hsi_msg *pdu)
 		     data_addr, offset, data_size);
 
 		/* Dump the first 160 bytes */
-		// dlp_dbg_dump_data_as_byte(data_addr, MIN(data_size, 160), 16, 0);
+		/* dlp_dbg_dump_data_as_byte(data_addr,
+				MIN(data_size, 160), 16, 0); */
 
 		/*
 		 * The packet has been retrieved from the transmission
@@ -284,9 +285,8 @@ static void dlp_net_complete_rx(struct hsi_msg *pdu)
 		 */
 		skb = netdev_alloc_skb_ip_align(net_ctx->ndev, data_size);
 		if (!skb) {
-			CRITICAL
-			    ("No more memory (data_size: %d) - packet dropped\n",
-			     data_size);
+			CRITICAL("No more memory (data_size: %d)"
+				   " - packet dropped\n", data_size);
 
 			net_ctx->ndev->stats.rx_dropped++;
 			goto out;
@@ -301,7 +301,8 @@ static void dlp_net_complete_rx(struct hsi_msg *pdu)
 		skb->ip_summed = CHECKSUM_UNNECESSARY;	/* don't check it */
 
 		/* Dump the first 160 bytes */
-		//dlp_dbg_dump_data_as_byte(skb->data, MIN(skb->len, 160), 16, 0);
+		/* dlp_dbg_dump_data_as_byte(skb->data,
+				MIN(skb->len, 160), 16, 0);*/
 
 		/* Push received packet up to the IP networking stack */
 		ret = netif_rx(skb);
@@ -317,8 +318,7 @@ static void dlp_net_complete_rx(struct hsi_msg *pdu)
 			net_ctx->ndev->stats.rx_bytes += data_size;
 			net_ctx->ndev->stats.rx_packets++;
 		}
-	}
-	while (more_packets);
+	} while (more_packets);
 
 	ret = 0;
 
@@ -377,13 +377,12 @@ int dlp_net_open(struct net_device *dev)
 	PROLOG("%s, hsi_ch:%d", dev->name, ch_ctx->hsi_channel);
 
 	/* Check the modem readiness */
-	if (! dlp_ctrl_modem_is_ready()) {
+	if (!dlp_ctrl_modem_is_ready()) {
 		CRITICAL("Unale to open NETWORK IF (Modem NOT ready) !");
 		ret = -EBUSY;
 		goto out;
 	}
 
-	// FIXME: To be removed (done in dlp_net_ctx_create)
 	ret = dlp_ctrl_open_channel(ch_ctx);
 	if (ret) {
 		CRITICAL("dlp_ctrl_open_channel() failed !");
@@ -424,12 +423,8 @@ int dlp_net_stop(struct net_device *dev)
 		netif_stop_queue(dev);
 
 	ret = dlp_ctrl_close_channel(ch_ctx);
-	if (ret) {
+	if (ret)
 		CRITICAL("dlp_ctrl_close_channel() failed !");
-	}
-
-	/* FIXME : Will flush everything */
-	// hsi_flush(dlp_drv.client);
 
 	/* RX */
 	del_timer_sync(&rx_ctx->timer);
@@ -486,14 +481,12 @@ static int dlp_net_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	}
 
 	/* Dump the first 160 bytes */
-	// dlp_dbg_dump_data_as_byte(skb->data, MIN(skb->len, 160), 16);
+	/* dlp_dbg_dump_data_as_byte(skb->data, MIN(skb->len, 160), 16); */
 
 	if (skb->len < ETH_ZLEN) {
-		// WARNING("Padding received packet (too small size: %d)", skb->len);
-
-		if (skb_padto(skb, ETH_ZLEN)) {
+		/* WARNING("Padding received packet (size: %d)", skb->len); */
+		if (skb_padto(skb, ETH_ZLEN))
 			return NETDEV_TX_OK;
-		}
 	}
 
 	/* Set msg params */
@@ -504,46 +497,14 @@ static int dlp_net_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	/* Save the timestamp */
 	dev->trans_start = jiffies;
 
-	/* Set the IP header */
-#if 0				// FIXME : Check if it is V4/6
-	struct iphdr *iph;
-
-	iph = ip_hdr(skb);
-	iph->check = 0;
-
-	{
-		unsigned int saddr, daddr;
-		char *s, *d;
-
-#define	BYTE(b)	(((int)b)&0xff)
-
-		saddr = htonl(iph->saddr);
-		daddr = htonl(iph->daddr);
-
-		s = (char *)&saddr;
-		d = (char *)&daddr;
-
-		PDEBUG("\n\tver: 0x%x, ihl: 0x%x, tos: 0x%x, tot_len: %d\n"
-		       "\tid : 0x%x, frag_off: 0x%x\n"
-		       "\tttl: 0x%x, protocol: 0x%x, check: 0x%x\n"
-		       "\tsaddr: [%u.%u.%u.%u]\n"
-		       "\tdaddr: [%u.%u.%u.%u]\n",
-		       iph->version, iph->ihl, iph->tos, ntohs(iph->tot_len),
-		       ntohs(iph->id), ntohs(iph->frag_off),
-		       iph->ttl, iph->protocol, iph->check,
-		       BYTE(s[3]), BYTE(s[2]), BYTE(s[1]), BYTE(s[0]),
-		       BYTE(d[3]), BYTE(d[2]), BYTE(d[1]), BYTE(d[0]));
-	}
-
-	iph->check = ip_fast_csum((unsigned char *)iph, iph->ihl);
-#endif
-
 	/* Compute the number of needed padding entries */
 	nb_padding = 1;
 	if (skb_has_frag_list(skb)) {
 		for (i = 0; i < skb_shinfo(skb)->nr_frags; i++) {
+			align_size = IS_ALIGNED(skb_shinfo(skb)->frags[i].size,
+						DLP_PACKET_ALIGN_CP);
 			/* Size aligned ? */
-			nb_padding += (IS_ALIGNED(skb_shinfo(skb)->frags[i].size,DLP_PACKET_ALIGN_CP) ? 0 : 1);
+			nb_padding += (align_size ? 0 : 1);
 		}
 	}
 
@@ -614,7 +575,7 @@ static int dlp_net_start_xmit(struct sk_buff *skb, struct net_device *dev)
 
 		/* Set the size */
 		ptr++;
-		(*ptr) = (DLP_HDR_NO_MORE_DESC | DLP_HDR_COMPLETE_PACKET | skb_len);
+		(*ptr) = (DLP_HDR_NO_MORE_DESC|DLP_HDR_COMPLETE_PACKET|skb_len);
 		(*ptr) += DLP_HDR_SPACE_CP;
 
 		/* Set the packet SG entry */
@@ -650,8 +611,7 @@ static int dlp_net_start_xmit(struct sk_buff *skb, struct net_device *dev)
 			/* Update the offset value */
 			offset += skb_len + DLP_HDR_SPACE_CP;
 		}
-	}
-	while (i < nb_packets);
+	} while (i < nb_packets);
 
 	/* Write the padding entry (Check 4 bytes alignment) */
 	/*---------------------------------------------------*/
@@ -665,33 +625,6 @@ static int dlp_net_start_xmit(struct sk_buff *skb, struct net_device *dev)
 
 	PRINT_TX("TX: Entry %d (Padding): offset: 0x%x, size:0x%x\n", i, offset,
 		 padding_len);
-
-#if  0
-	/* */
-	u32 first_len, first_mapping;
-	int frag, first_entry = entry;
-
-	BUG_ON(1);
-
-	/* give this initial chunk to the */
-	first_len = skb_headlen(skb);
-	first_mapping = dma_map_single(hp->dma_dev, skb->data, first_len,
-				       DMA_TO_DEVICE);
-	entry = NEXT_TX(entry);
-
-	for (frag = 0; frag < skb_shinfo(skb)->nr_frags; frag++) {
-		skb_frag_t *this_frag = &skb_shinfo(skb)->frags[frag];
-		u32 len, mapping, this_txflags;
-
-		len = this_frag->size;
-		mapping = dma_map_page(hp->dma_dev, this_frag->page,
-				       this_frag->page_offset, len,
-				       DMA_TO_DEVICE);
-		// Process
-
-		entry = NEXT_TX(entry);
-	}
-#endif
 
 	ret = dlp_hsi_controller_push(&ch_ctx->tx, new);
 	if (ret) {
@@ -765,10 +698,10 @@ void dlp_net_dev_setup(struct net_device *dev)
 	dev->watchdog_timeo = DLP_NET_TX_DELAY;
 
 	/* fill in the other fields */
-//  dev->features = NETIF_F_SG | NETIF_F_NO_CSUM; // FIXME: wget is KO
+	/*  dev->features = NETIF_F_SG | NETIF_F_NO_CSUM; FIXME: wget is KO */
 
 	dev->type = ARPHRD_NONE;
-	dev->mtu = DLP_NET_PDU_SIZE;	// FIXME: check wget crash
+	dev->mtu = DLP_NET_PDU_SIZE;	/* FIXME: check wget crash */
 	dev->tx_queue_len = 10;
 	dev->flags = IFF_POINTOPOINT | IFF_NOARP | IFF_MULTICAST;
 
@@ -858,15 +791,6 @@ struct dlp_channel *dlp_net_ctx_create(unsigned int index, struct device *dev)
 			  DLP_HSI_RX_WAIT_FIFO, DLP_HSI_RX_CTRL_FIFO,
 			  dlp_net_complete_rx, HSI_MSG_READ);
 
-	/* Open the HSI channel */
-#if 0 /* FIXME : to be activated when the modem boot time is optimized */
-	ret = dlp_ctrl_open_channel(ch_ctx);
-	if (ret) {
-	      CRITICAL("dlp_ctrl_open_channel() failed !");
-	      goto free_dev;
-	}
-#endif
-
 	/* Allocate RX FIFOs in background */
 	queue_work(dlp_drv.recycle_wq, &ch_ctx->rx.increase_pool);
 
@@ -895,14 +819,6 @@ int dlp_net_ctx_delete(struct dlp_channel *ch_ctx)
 	/* Delete the xfers context */
 	dlp_xfer_ctx_clear(&ch_ctx->rx);
 	dlp_xfer_ctx_clear(&ch_ctx->tx);
-
-#if 0 /* FIXME : Not supported by the modem */
-	/* Release the HSI channel */
-	ret = dlp_ctrl_send_cancel_conn_cmd(ch_ctx);
-	if (ret) {
-	      CRITICAL("dlp_ctrl_send_cancel_conn_cmd() failed !");
-	}
-#endif
 
 	/* Free the padding buffer */
 	dlp_buffer_free(net_ctx->net_padd,

@@ -67,19 +67,19 @@
 
 #define DLP_ECHO_CMD_CHECKSUM	0xACAFFE
 
-#define DLP_CTRL_CMD_TO_STR(id)								\
-	(id == DLP_CMD_BREAK		? "BREAK":					\
-	(id == DLP_CMD_ECHO			? "ECHO":					\
-	(id == DLP_CMD_NOP)			? "NOP":					\
-	(id == DLP_CMD_CONF_CH)		? "CONF_CH":				\
-	(id == DLP_CMD_OPEN_CONN)	? "OPEN_CONN":				\
-	(id == DLP_CMD_CANCEL_CONN) ? "CANCEL_CONN":			\
-	(id == DLP_CMD_ACK)			? "ACK":					\
-	(id == DLP_CMD_NACK)		? "NACK":					\
-	(id == DLP_CMD_OPEN_CONN_OCTET)  ? "OPEN_CONN_OCTET":	\
+#define DLP_CTRL_CMD_TO_STR(id) \
+	(id == DLP_CMD_BREAK		? "BREAK" :	\
+	(id == DLP_CMD_ECHO			? "ECHO" : \
+	(id == DLP_CMD_NOP)			? "NOP" : \
+	(id == DLP_CMD_CONF_CH)		? "CONF_CH" : \
+	(id == DLP_CMD_OPEN_CONN)	? "OPEN_CONN" : \
+	(id == DLP_CMD_CANCEL_CONN) ? "CANCEL_CONN" : \
+	(id == DLP_CMD_ACK)			? "ACK" : \
+	(id == DLP_CMD_NACK)		? "NACK" : \
+	(id == DLP_CMD_OPEN_CONN_OCTET)  ? "OPEN_CONN_OCTET" : \
 	(id == DLP_CMD_CREDITS)		? "CREDITS" : "UNKNOWN"))
 
-#define DLP_CTRL_CTX	dlp_drv.channels[DLP_CHANNEL_CTRL]->ch_data
+#define DLP_CTRL_CTX	(dlp_drv.channels[DLP_CHANNEL_CTRL]->ch_data)
 
 /* DLP commands list */
 #define DLP_CMD_BREAK				0x0
@@ -113,11 +113,12 @@ enum {
 };
 
 /* Modem cold boot management */
-#define V1P35CNT_W		0x0E0		/* PMIC reg to power off the modem */
-#define V1P35_OFF		4
-#define V1P35_ON		6
+#define V1P35CNT_W	0x0E0		/* PMIC reg to power off the modem */
+#define V1P35_OFF	4
+#define V1P35_ON	6
+
 #define COLD_BOOT_DELAY_OFF	20000	/* 20 ms (use of usleep_range) */
-#define COLD_BOOT_DELAY_ON 	10000	/* 10 ms (use of usleep_range) */
+#define COLD_BOOT_DELAY_ON	10000	/* 10 ms (use of usleep_range) */
 
 /* Delays for powering up/resetting the modem */
 #define DLP_DURATION_ON1	60	/* ON1 pulse delay: 60 us */
@@ -216,14 +217,14 @@ static irqreturn_t dlp_ctrl_coredump_it(int irq, void *data)
 
 	PROLOG();
 
-	CRITICAL("Modem CORE_DUMP 0x%x", gpio_get_value(ctrl_ctx->gpio_fcdp_rb));
+	CRITICAL("Modem CORE_DUMP 0x%x",
+			gpio_get_value(ctrl_ctx->gpio_fcdp_rb));
 
 	/* Call registered channels */
 	for (i = 0; i < DLP_CHANNEL_COUNT; i++) {
 		ch_ctx = dlp_drv.channels[i];
-		if (ch_ctx && ch_ctx->modem_coredump_cb) {
+		if (ch_ctx && ch_ctx->modem_coredump_cb)
 			ch_ctx->modem_coredump_cb(ch_ctx);
-		}
 	}
 
 	EPILOG();
@@ -262,9 +263,8 @@ static irqreturn_t dlp_ctrl_reset_it(int irq, void *data)
 		ch_ctx = dlp_drv.channels[i];
 		if (ch_ctx) {
 			/* Call any register callback */
-			if (ch_ctx->modem_reset_cb) {
+			if (ch_ctx->modem_reset_cb)
 				ch_ctx->modem_reset_cb(ch_ctx);
-			}
 
 			/* Reset the credits value */
 			ch_ctx->credits = 0;
@@ -280,8 +280,9 @@ out:
  *
  *
  */
-static int dlp_ctrl_free_gpios(struct dlp_channel *ch_ctx,
-								struct device *dev)
+static int
+dlp_ctrl_free_gpios(struct dlp_channel *ch_ctx,
+					struct device *dev)
 {
 	struct dlp_ctrl_context *ctrl_ctx = ch_ctx->ch_data;
 
@@ -310,21 +311,20 @@ static int dlp_ctrl_free_gpios(struct dlp_channel *ch_ctx,
 *
 * @return
 */
-static inline int dlp_ctrl_configure_gpio(int gpio,
-										int direction,
-										int value,
-										const char *desc)
+static inline int
+dlp_ctrl_configure_gpio(int gpio,
+						int direction,
+						int value,
+						const char *desc)
 {
 	int ret;
 
 	ret = gpio_request(gpio, "ifxHSIModem");
 
-	if (direction) {
+	if (direction)
 		ret += gpio_direction_output(gpio, value);
-	}
-	else {
+	else
 		ret += gpio_direction_input(gpio);
-	}
 
 	if (ret) {
 		CRITICAL("Unable to configure GPIO%d (%s)",
@@ -336,8 +336,18 @@ static inline int dlp_ctrl_configure_gpio(int gpio,
 	return ret;
 }
 
-static int dlp_ctrl_setup_irq_gpio(struct dlp_channel *ch_ctx,
-								    struct device *dev)
+/*
+* @brief This function is:
+*	- requesting all needed gpios
+*	- requesting all needed irqs
+*	- registering irqs callbacks
+*
+* @param ch_ctx : Channel context
+* @param dev : Device driver info
+*/
+static int
+dlp_ctrl_setup_irq_gpio(struct dlp_channel *ch_ctx,
+						struct device *dev)
 {
 	int ret;
 	struct dlp_ctrl_context *ctrl_ctx = ch_ctx->ch_data;
@@ -345,22 +355,22 @@ static int dlp_ctrl_setup_irq_gpio(struct dlp_channel *ch_ctx,
 	PROLOG();
 
 	/* Configure the RESET_BB gpio */
-	ret = dlp_ctrl_configure_gpio(ctrl_ctx->gpio_mdm_rst_bbn, 1, 1, "RST_BB");
-	if (ret) {
+	ret = dlp_ctrl_configure_gpio(ctrl_ctx->gpio_mdm_rst_bbn,
+			1, 1, "RST_BB");
+	if (ret)
 		goto free_ctx4;
-	}
 
 	/* Configure the ON gpio */
-	ret = dlp_ctrl_configure_gpio(ctrl_ctx->gpio_mdm_pwr_on, 1, 1, "ON");
-	if (ret) {
+	ret = dlp_ctrl_configure_gpio(ctrl_ctx->gpio_mdm_pwr_on,
+			1, 1, "ON");
+	if (ret)
 		goto free_ctx3;
-	}
 
 	/* Configure the RESET_OUT gpio & irq */
-	ret = dlp_ctrl_configure_gpio(ctrl_ctx->gpio_mdm_rst_out, 0, 0, "RST_OUT");
-	if (ret) {
+	ret = dlp_ctrl_configure_gpio(ctrl_ctx->gpio_mdm_rst_out,
+			0, 0, "RST_OUT");
+	if (ret)
 		goto free_ctx2;
-	}
 
 	ctrl_ctx->reset.rst_irq = gpio_to_irq(ctrl_ctx->gpio_mdm_rst_out);
 	if (ctrl_ctx->reset.rst_irq < 0) {
@@ -381,10 +391,10 @@ static int dlp_ctrl_setup_irq_gpio(struct dlp_channel *ch_ctx,
 	}
 
 	/* Configure the CORE_DUMP gpio & irq */
-	ret = dlp_ctrl_configure_gpio(ctrl_ctx->gpio_fcdp_rb, 0, 0, "CORE_DUMP");
-	if (ret) {
+	ret = dlp_ctrl_configure_gpio(ctrl_ctx->gpio_fcdp_rb,
+			0, 0, "CORE_DUMP");
+	if (ret)
 		goto free_all;
-	}
 
 	ctrl_ctx->reset.cd_irq = gpio_to_irq(ctrl_ctx->gpio_fcdp_rb);
 	if (ctrl_ctx->reset.cd_irq < 0) {
@@ -452,8 +462,8 @@ static struct dlp_command *dlp_ctrl_cmd_alloc(struct dlp_channel *ch_ctx,
 					      unsigned char param2,
 					      unsigned char param3)
 {
-	int flags = in_interrupt()? GFP_ATOMIC : GFP_KERNEL;
 	struct dlp_command *dlp_cmd;
+	int flags = in_interrupt() ? GFP_ATOMIC : GFP_KERNEL;
 
 	/* Allocate DLP command */
 	dlp_cmd = kmalloc(sizeof(struct dlp_command), flags);
@@ -480,8 +490,7 @@ out:
  */
 static inline void dlp_ctrl_cmd_free(struct dlp_command *dlp_cmd)
 {
-	if (dlp_cmd)
-		kfree(dlp_cmd);
+	kfree(dlp_cmd);
 }
 
 /*
@@ -584,7 +593,7 @@ static void dlp_ctrl_complete_rx(struct hsi_msg *msg)
 	hsi_channel = params.channel;
 	if ((hsi_channel < 0) || (hsi_channel >= DLP_CHANNEL_COUNT)) {
 		CRITICAL("CREDITS: Invalid channel id (%d)", hsi_channel);
-		BUG_ON(1);	/* FIXME: We have BIGGGGGG pb (To be removed ?) */
+		BUG_ON(1); /* FIXME: We have BIGGGGGG issue */
 		goto out;
 	}
 
@@ -602,9 +611,8 @@ static void dlp_ctrl_complete_rx(struct hsi_msg *msg)
 			spin_unlock_irqrestore(&ch_ctx->lock, flags);
 
 			/* Credits available ==> Notify the channel */
-			if (ch_ctx->credits_available_cb) {
+			if (ch_ctx->credits_available_cb)
 				ch_ctx->credits_available_cb(ch_ctx);
-			}
 
 			PTRACE_NO_FUNC("New CREDITS value: %d (+%d)\n", ret,
 				       params.data3);
@@ -619,10 +627,11 @@ static void dlp_ctrl_complete_rx(struct hsi_msg *msg)
 
 			/* Check the requested PDU size */
 			if (ch_ctx->pdu_size != ret) {
-				CRITICAL
-				    ("Unexpected PDU size: %d => Expected: %d (ch: %d)",
-				     ret, ch_ctx->pdu_size,
-				     ch_ctx->hsi_channel);
+				CRITICAL("Unexpected PDU size: %d => "
+						"Expected: %d (ch: %d)",
+						ret,
+						ch_ctx->pdu_size,
+						ch_ctx->hsi_channel);
 
 				response = DLP_CMD_NACK;
 			}
@@ -965,8 +974,7 @@ static void dlp_ctrl_ipc_readiness(struct work_struct *work)
 			/* Set the modem state */
 			dlp_ctrl_set_modem_readiness(1);
 		}
-	}
-	while (ret);
+	} while (ret);
 
 	EPILOG();
 }
@@ -1011,7 +1019,7 @@ void dlp_ctrl_modem_reset(struct dlp_channel *ch_ctx)
 *
 * @param ch_ctx: IPC CTRL channel
 */
-static void dlp_ctrl_modem_power(struct dlp_channel *ch_ctx)
+void dlp_ctrl_modem_power(struct dlp_channel *ch_ctx)
 {
 	struct dlp_channel *ctrl_ch = dlp_drv.channels[DLP_CHANNEL_CTRL];
 	struct dlp_ctrl_context	*ctrl_ctx = ctrl_ch->ch_data;
@@ -1139,7 +1147,8 @@ struct dlp_channel *dlp_ctrl_ctx_create(unsigned int index, struct device *dev)
 	}
 
 	/* Create a workqueue to check the modem readiness */
-	ctrl_ctx->readiness_wq = create_singlethread_workqueue(DRVNAME "-mdmreadiness");
+	ctrl_ctx->readiness_wq = create_singlethread_workqueue(
+			DRVNAME "-mdmreadiness");
 	if (!ctrl_ctx->readiness_wq) {
 		CRITICAL("Unable to create modem readiness workqueue");
 		goto free_ctx;
@@ -1173,9 +1182,8 @@ struct dlp_channel *dlp_ctrl_ctx_create(unsigned int index, struct device *dev)
 	ctrl_ctx->gpio_fcdp_rb	   = pd->gpio_fcdp_rb;
 
 	ret = dlp_ctrl_setup_irq_gpio(ch_ctx, dev);
-	if (ret) {
+	if (ret)
 		goto free_ctx;
-	}
 
 	/* Set ch_ctx, not yet done in the probe */
 	dlp_drv.channels[DLP_CHANNEL_CTRL] = ch_ctx;
@@ -1309,20 +1317,17 @@ int dlp_ctrl_close_channel(struct dlp_channel *ch_ctx)
 */
 static int do_modem_reset(const char *val, struct kernel_param *kp)
 {
-	unsigned long reset_request;
+	long do_reset;
 
 	PROLOG();
 
-	if (strict_strtoul(val, 16, &reset_request) < 0) {
+	if (strict_strtol(val, 16, &do_reset) < 0) {
 		EPILOG();
 		return -EINVAL;
 	}
 
-	if (reset_request) {
-		struct dlp_channel *ch_ctx = dlp_drv.channels[DLP_CHANNEL_CTRL];
-
-		dlp_ctrl_modem_reset(ch_ctx);
-	}
+	if (do_reset)
+		dlp_ctrl_modem_reset(dlp_drv.channels[DLP_CHANNEL_CTRL]);
 
 	EPILOG();
 	return 0;
@@ -1340,6 +1345,33 @@ static int get_modem_reset(char *val, struct kernel_param *kp)
 {
 	struct dlp_ctrl_context *ctrl_ctx = DLP_CTRL_CTX;
 	return sprintf(val, "%d", ctrl_ctx->reset.ongoing);
+}
+
+/*
+* @brief Modem reset module_param set function
+*	- This function is performing a modem reset
+*
+* @param val
+* @param kp
+*
+* @return 0
+*/
+static int do_modem_power(const char *val, struct kernel_param *kp)
+{
+	long do_power;
+
+	PROLOG();
+
+	if (strict_strtol(val, 16, &do_power) < 0) {
+		EPILOG();
+		return -EINVAL;
+	}
+
+	if (do_power)
+		dlp_ctrl_modem_power(dlp_drv.channels[DLP_CHANNEL_CTRL]);
+
+	EPILOG();
+	return 0;
 }
 
 /*
@@ -1436,11 +1468,11 @@ static int dp_modem_cold_reset(const char *val, struct kernel_param *kp)
 */
 static int clear_hangup_reasons(const char *val, struct kernel_param *kp)
 {
-	unsigned long reasons_to_clear;
+	long reasons_to_clear;
 
 	PROLOG();
 
-	if (strict_strtoul(val, 16, &reasons_to_clear) < 0)
+	if (strict_strtol(val, 16, &reasons_to_clear) < 0)
 		return -EINVAL;
 
 	if (reasons_to_clear) {
@@ -1479,6 +1511,7 @@ static int get_hangup_reasons(char *val, struct kernel_param *kp)
 
 module_param_call(cold_reset_modem, dp_modem_cold_reset, NULL, NULL, 0644);
 module_param_call(reset_modem, do_modem_reset, get_modem_reset, NULL, 0644);
+module_param_call(power_modem, do_modem_power, NULL, NULL, 0644);
 module_param_call(hangup_reasons, clear_hangup_reasons, get_hangup_reasons,
 		  NULL, 0644);
 

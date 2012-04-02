@@ -264,7 +264,10 @@ struct hsi_dlp_stats {
  */
 #define HSI_DLP_NET_RESET_TX_STATS		_IOW(HSI_DLP_MAGIC, 41, unsigned int)
 
-
+/*
+ * HSI_DLP_SET_FLASHING_MODE	- Activate/Deactivate the flashing mode
+ */
+#define HSI_DLP_SET_FLASHING_MODE	_IOW(HSI_DLP_MAGIC, 42, unsigned int)
 
 #endif /* _HSI_DLP_H */
 

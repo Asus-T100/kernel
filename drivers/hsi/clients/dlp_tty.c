@@ -127,21 +127,21 @@ static void dlp_tty_mdm_reset_cb(struct dlp_channel *ch_ctx)
 
 /**
  * dlp_tty_pdu_data_ptr - helper function for getting the actual virtual address of
- *					a pdu data, taking into account the header offset
+ *	a pdu data, taking into account the header offset
+ *
  * @pdu: a reference to the considered pdu
  * @offset: an offset to add to the current virtual address of the pdu data
  *
  * Returns the virtual base address of the actual pdu data
  */
 inline __attribute_const__
-    unsigned char *dlp_tty_pdu_data_ptr(struct hsi_msg *pdu, unsigned int offset)
+unsigned char *dlp_tty_pdu_data_ptr(struct hsi_msg *pdu, unsigned int offset)
 {
 	u32 *addr = sg_virt(pdu->sgt.sgl);
 
 	/* Skip the Signature (+2) & Start address (+2) */
 	addr += 4;
-
-	return (((unsigned char *)addr) + offset);
+	return ((unsigned char *)addr) + offset;
 }
 
 /**
@@ -205,8 +205,8 @@ static void dlp_tty_wakeup(struct dlp_channel *ch_ctx)
  *	- Pushing as much data as possible to the TTY interface
  *  - Recycling pdus that have been fully forwarded
  *  - Kicking a TTY insert
- *  - Restart delayed job if some data is remaining in the waiting FIFO or if the
- *    controller FIFO is not full yet.
+ *  - Restart delayed job if some data is remaining in the waiting FIFO
+ *	  or if the controller FIFO is not full yet.
  */
 static void _dlp_forward_tty(struct tty_struct *tty,
 			    struct dlp_xfer_ctx *xfer_ctx)
@@ -292,8 +292,9 @@ free_pdu:
 
 no_more_tty_insert:
 	if (do_push) {
-		/* Schedule a flip since called from complete_rx() in an interrupt
-		* context instead of tty_flip_buffer_push() */
+		/* Schedule a flip since called from complete_rx()
+		 * in an interrupt context instead of
+		 * tty_flip_buffer_push() */
 		tty_schedule_flip(tty);
 	}
 
@@ -393,7 +394,7 @@ static void dlp_tty_complete_tx(struct hsi_msg *pdu)
 	dlp_ctrl_set_reset_ongoing(0);
 
 	/* Dump the PDU */
-	// dlp_pdu_dump(pdu, 1);
+	/* dlp_pdu_dump(pdu, 1); */
 
 	/* Recycle or Free the pdu */
 	write_lock_irqsave(&xfer_ctx->lock, flags);
@@ -595,7 +596,6 @@ static int dlp_tty_port_activate(struct tty_port *port, struct tty_struct *tty)
 	dlp_ctx_update_status(rx_ctx);
 
 	/* Configure the DLP channel */
-	// FIXME: To be removed (should be done in dlp_tty_ctx_create)
 	if (tty->count == 1) {
 		ret = dlp_ctrl_open_channel(ch_ctx);
 		if (ret) {
@@ -643,9 +643,6 @@ static void dlp_tty_port_shutdown(struct tty_port *port)
 
 	del_timer_sync(&ch_ctx->hangup.timer);
 
-	// FIXME: FTE
-	// hsi_flush(dlp_drv.client);
-
 	/* RX */
 	del_timer(&rx_ctx->timer);
 	dlp_tty_rx_fifo_wait_recycle(rx_ctx);
@@ -660,9 +657,8 @@ static void dlp_tty_port_shutdown(struct tty_port *port)
 
 	/* Close the HSI channel */
 	ret = dlp_ctrl_close_channel(ch_ctx);
-	if (ret) {
+	if (ret)
 		CRITICAL("dlp_ctrl_close_channel() failed !");
-	}
 
 	PDEBUG("tty port shut down");
 	EPILOG();
@@ -686,7 +682,7 @@ static int dlp_tty_open(struct tty_struct *tty, struct file *filp)
 	PROLOG();
 
 	/* Check the modem readiness */
-	if (! dlp_ctrl_modem_is_ready()) {
+	if (!dlp_ctrl_modem_is_ready()) {
 		CRITICAL("Unale to open TTY (Modem NOT ready) !");
 		ret = -EBUSY;
 		goto out;
@@ -900,19 +896,16 @@ int dlp_tty_do_write(struct dlp_xfer_ctx *xfer_ctx, unsigned char *buf,
 		}
 	}
 
-	if (!pdu) {
+	if (!pdu)
 		goto out;
-	}
 
 	pdu->status = HSI_STATUS_PENDING;
 	/* Do a start TX on new frames only and after having marked
 	 * the current frame as pending, e.g. don't touch ! */
-	if (offset == 0) {
+	if (offset == 0)
 		dlp_hsi_start_tx(xfer_ctx);
-	}
-	else {
+	else
 		dlp_ctx_set_flag(xfer_ctx, TX_TTY_WRITE_PENDING_BIT);
-	}
 
 	copied = min(avail, len);
 	updated_actual_len = pdu->actual_len + copied;
@@ -1375,7 +1368,6 @@ static int dlp_tty_ioctl(struct tty_struct *tty,
 #endif
 
 	case HSI_DLP_MODEM_RESET:
-		WARNING("Modem reset requested");
 		dlp_ctrl_modem_reset(ch_ctx);
 		break;
 
@@ -1391,6 +1383,10 @@ static int dlp_tty_ioctl(struct tty_struct *tty,
 		ch_ctx->hangup.cause = 0;
 		write_unlock_irqrestore(&ch_ctx->rx.lock, flags);
 		return ret;
+		break;
+
+	case HSI_DLP_SET_FLASHING_MODE:
+		ret = dlp_set_flashing_mode(arg);
 		break;
 
 	default:
@@ -1486,7 +1482,7 @@ struct dlp_channel *dlp_tty_ctx_create(unsigned int index, struct device *dev)
 	new_drv->driver_name = DRVNAME;
 	new_drv->name = IPC_TTYNAME;
 	new_drv->minor_start = 0;
-	new_drv->num = 1;
+	new_drv->num = DLP_TTY_DEV_NUM;
 	new_drv->type = TTY_DRIVER_TYPE_SERIAL;
 	new_drv->subtype = SERIAL_TYPE_NORMAL;
 	new_drv->flags = TTY_DRIVER_REAL_RAW | TTY_DRIVER_DYNAMIC_DEV;
