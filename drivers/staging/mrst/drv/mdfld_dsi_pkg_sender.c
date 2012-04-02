@@ -704,6 +704,11 @@ static inline void pkg_sender_queue_pkg(struct mdfld_dsi_pkg_sender * sender,
 {
 	unsigned long flags;
 
+	if (pkg->transmission_type == MDFLD_DSI_HS_TRANSMISSION)
+		wait_for_hs_fifos_empty(sender);
+	else if (pkg->transmission_type == MDFLD_DSI_LP_TRANSMISSION)
+		wait_for_lp_fifos_empty(sender);
+
 	spin_lock_irqsave(&sender->lock, flags);
 
 	if(!delay) {
