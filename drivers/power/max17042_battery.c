@@ -229,9 +229,7 @@ enum max170xx_chip_type {MAX17042, MAX17050};
 /* No of times we should reset I2C lines */
 #define NR_I2C_RESET_CNT	8
 
-/* No of cell characterization words to be written to max17042 */
-#define CELL_CHAR_TBL_SAMPLES	48
-
+/* default fuel gauge cell data for debug purpose only */
 static uint16_t cell_char_tbl[] = {
 	/* Data to be written from 0x80h */
 	0xA250, 0xB720, 0xB800, 0xB880, 0xB920, 0xBA00, 0xBA60, 0xBBF0,
@@ -243,46 +241,6 @@ static uint16_t cell_char_tbl[] = {
 	0x0100, 0x0100, 0x0100, 0x0100, 0x0100, 0x0100, 0x0100, 0x0100,
 	0x0100, 0x0100, 0x0100, 0x0100, 0x0100, 0x0100, 0x0100, 0x0100,
 };
-
-struct max17042_config_data {
-	/*
-	 * if config_init is 0, which means new
-	 * configuration has been loaded in that case
-	 * we need to perform complete init of chip
-	 */
-	u16	size;
-	u16	checksum;
-	u8	table_type;
-	u8	config_init;
-
-	u16	rcomp0;
-	u16	tempCo;
-	u16	kempty0;
-	u16	full_cap;
-	u16	cycles;
-	u16	full_capnom;
-
-	/* config data specific to max17050 */
-	u16   qrtbl00;
-	u16   qrtbl10;
-	u16   qrtbl20;
-	u16   qrtbl30;
-	u16   full_soc_thr;
-	u16   vempty;
-
-	u16	soc_empty;
-	u16	ichgt_term;
-	u16	design_cap;
-	u16	etc;
-	u16	rsense;
-	u16	cfg;
-	u16	learn_cfg;
-	u16	filter_cfg;
-	u16	relax_cfg;
-
-
-	u16	cell_char_tbl[CELL_CHAR_TBL_SAMPLES];
-} __packed;
 
 struct max17042_chip {
 	struct i2c_client *client;
@@ -1185,12 +1143,6 @@ static void reset_max17042(struct max17042_chip *chip)
 	/* adjust Temperature gain and offset */
 	max17042_write_reg(chip->client, MAX17042_TGAIN, NTC_47K_TGAIN);
 	max17042_write_reg(chip->client, MAx17042_TOFF, NTC_47K_TOFF);
-
-	/* Init complete, Clear the POR bit */
-	val = max17042_read_reg(chip->client, MAX17042_STATUS);
-	max17042_write_reg(chip->client, MAX17042_STATUS,
-					val & (~STATUS_POR_BIT));
-
 }
 
 static void max17042_restore_conf_data(struct max17042_chip *chip)
@@ -1221,6 +1173,12 @@ static void max17042_restore_conf_data(struct max17042_chip *chip)
 						(val & STATUS_POR_BIT)) {
 				dev_info(&chip->client->dev,
 					"config data needs to be loaded\n");
+
+				/* WA: reset if table tyoe is dv10 */
+				if (fg_conf_data->table_type ==
+							MAX17042_TBL_TYPE_DV10)
+					reset_max17042(chip);
+
 				retval = init_max17042_chip(chip);
 				if (retval < 0) {
 					dev_err(&chip->client->dev,
@@ -1243,6 +1201,12 @@ static void max17042_restore_conf_data(struct max17042_chip *chip)
 						CONFIG_ALRT_BIT_ENBL, 1);
 			}
 			chip->pdata->is_init_done = 1;
+
+			/* multiply with 1000 to align with
+			 * linux power supply sub system.
+			 */
+			chip->charge_full_des =
+					(fg_conf_data->design_cap / 2) * 1000;
 
 			/* mark the dirty byte in non-volatile memory */
 			if (!fg_conf_data->config_init && retval >= 0) {

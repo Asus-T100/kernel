@@ -23,6 +23,51 @@
 #ifndef __MAX17042_BATTERY_H_
 #define __MAX17042_BATTERY_H_
 
+/* No of cell characterization words to be written to max17042 */
+#define CELL_CHAR_TBL_SAMPLES	48
+
+/* fuel gauge table type for DV10 platfrom */
+#define MAX17042_TBL_TYPE_DV10	0xff
+
+struct max17042_config_data {
+	/*
+	 * if config_init is 0, which means new
+	 * configuration has been loaded in that case
+	 * we need to perform complete init of chip
+	 */
+	u16	size;
+	u16	checksum;
+	u8	table_type;
+	u8	config_init;
+
+	u16	rcomp0;
+	u16	tempCo;
+	u16	kempty0;
+	u16	full_cap;
+	u16	cycles;
+	u16	full_capnom;
+
+	u16	qrtbl00;
+	u16	qrtbl10;
+	u16	qrtbl20;
+	u16	qrtbl30;
+	u16	full_soc_thr;
+	u16	vempty;
+
+	u16	soc_empty;
+	u16	ichgt_term;
+	u16	design_cap;
+	u16	etc;
+	u16	rsense;
+	u16	cfg;
+	u16	learn_cfg;
+	u16	filter_cfg;
+	u16	relax_cfg;
+
+
+	u16	cell_char_tbl[CELL_CHAR_TBL_SAMPLES];
+} __packed;
+
 struct max17042_platform_data {
 	bool enable_current_sense;
 	bool is_init_done;
@@ -38,7 +83,7 @@ struct max17042_platform_data {
 	int (*battery_pack_temp)(int *);
 	int (*save_config_data)(const char *name, void *data, int len);
 	int (*restore_config_data)(const char *name, void *data, int len);
-	int (*reset_i2c_lines)(void);
+	void (*reset_i2c_lines)(void);
 
 	bool (*is_cap_shutdown_enabled)(void);
 	bool (*is_volt_shutdown_enabled)(void);
