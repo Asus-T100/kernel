@@ -217,6 +217,39 @@ static const struct snd_kcontrol_new spklo_amp_ctl =
 static const struct snd_kcontrol_new ear_amp_ctl =
 	SOC_DAPM_SINGLE("Switch", CS42L73_PWRCTL3, 3, 1, 1);
 
+
+static const char * const loopback_text[] = {
+	"Enable", "Disable"};
+
+static const unsigned int loopback_values[] = { 0x3e, 0x3f };
+
+static const struct soc_enum esl_loopback_enum =
+	SOC_VALUE_ENUM_SINGLE(CS42L73_ESLMIPMA, 0, 0x3f,
+			      ARRAY_SIZE(loopback_text),
+			      loopback_text,
+			      loopback_values);
+
+static const struct snd_kcontrol_new esl_loopback_mux =
+	SOC_DAPM_ENUM("ESL Loopback Mux", esl_loopback_enum);
+
+static const struct soc_enum spk_loopback_enum =
+	SOC_VALUE_ENUM_SINGLE(CS42L73_SPKMIPMA, 0, 0x3f,
+			      ARRAY_SIZE(loopback_text),
+			      loopback_text,
+			      loopback_values);
+
+static const struct snd_kcontrol_new spk_loopback_mux =
+	SOC_DAPM_ENUM("SPK Loopback Mux", spk_loopback_enum);
+
+static const struct soc_enum hl_loopback_enum =
+	SOC_VALUE_ENUM_SINGLE(CS42L73_HLBIPBA, 0, 0x3f,
+			      ARRAY_SIZE(loopback_text),
+			      loopback_text,
+			      loopback_values);
+
+static const struct snd_kcontrol_new hl_loopback_mux =
+	SOC_DAPM_ENUM("HL Loopback Mux", hl_loopback_enum);
+
 static const struct snd_kcontrol_new cs42l73_snd_controls[] = {
 	SOC_DOUBLE_R_SX_TLV("Headphone Analog Playback Volume",
 			CS42L73_HPAAVOL, CS42L73_HPBAVOL, 7,
@@ -447,6 +480,13 @@ static const struct snd_soc_dapm_widget cs42l73_dapm_widgets[] = {
 	SND_SOC_DAPM_MIXER_NAMED_CTL("Input Right Capture", SND_SOC_NOPM,
 			0, 0, input_right_mixer,
 			ARRAY_SIZE(input_right_mixer)),
+	SND_SOC_DAPM_MIXER("Input Loopback Mixer", SND_SOC_NOPM, 0, 0, NULL, 0),
+	SND_SOC_DAPM_MUX("ESL Loopback", SND_SOC_NOPM, 0, 0,
+			    &esl_loopback_mux),
+	SND_SOC_DAPM_MUX("SPK Loopback", SND_SOC_NOPM, 0, 0,
+				&spk_loopback_mux),
+	SND_SOC_DAPM_MUX("HL Loopback", SND_SOC_NOPM, 0, 0,
+				&hl_loopback_mux),
 
 	SND_SOC_DAPM_MIXER("ASPL Output Mixer", SND_SOC_NOPM, 0, 0, NULL, 0),
 	SND_SOC_DAPM_MIXER("ASPR Output Mixer", SND_SOC_NOPM, 0, 0, NULL, 0),
@@ -494,15 +534,15 @@ static const struct snd_soc_dapm_widget cs42l73_dapm_widgets[] = {
 	SND_SOC_DAPM_PGA("SPK DAC", SND_SOC_NOPM, 0, 0, NULL, 0),
 	SND_SOC_DAPM_PGA("ESL DAC", SND_SOC_NOPM, 0, 0, NULL, 0),
 
-	SND_SOC_DAPM_SWITCH("HP Amp", CS42L73_PWRCTL3, 0, 1,
-			    &hp_amp_ctl),
-	SND_SOC_DAPM_SWITCH("LO Amp", CS42L73_PWRCTL3, 1, 1,
-			    &lo_amp_ctl),
-	SND_SOC_DAPM_SWITCH("SPK Amp", CS42L73_PWRCTL3, 2, 1,
+	SND_SOC_DAPM_SWITCH("HP Amp", SND_SOC_NOPM, 0, 0,
+				&hp_amp_ctl),
+	SND_SOC_DAPM_SWITCH("LO Amp", SND_SOC_NOPM, 0, 0,
+				&lo_amp_ctl),
+	SND_SOC_DAPM_SWITCH("SPK Amp", SND_SOC_NOPM, 0, 0,
 			    &spk_amp_ctl),
-	SND_SOC_DAPM_SWITCH("EAR Amp", CS42L73_PWRCTL3, 3, 1,
+	SND_SOC_DAPM_SWITCH("EAR Amp", SND_SOC_NOPM, 0, 0,
 			    &ear_amp_ctl),
-	SND_SOC_DAPM_SWITCH("SPKLO Amp", CS42L73_PWRCTL3, 4, 1,
+	SND_SOC_DAPM_SWITCH("SPKLO Amp", SND_SOC_NOPM, 0, 0,
 			    &spklo_amp_ctl),
 
 	SND_SOC_DAPM_OUTPUT("HPOUTA"),
@@ -527,8 +567,8 @@ static const struct snd_soc_dapm_route cs42l73_audio_map[] = {
 	{"ESL DAC", "ESL-XSP Mono Volume", "ESL Mixer"},
 	{"ESL DAC", "ESL-VSP Mono Volume", "VSPIN"},
 	/* Loopback */
-	{"ESL DAC", "ESL-IP Mono Volume", "Input Left Capture"},
-	{"ESL DAC", "ESL-IP Mono Volume", "Input Right Capture"},
+	{"ESL DAC", "ESL-IP Mono Volume", "ESL Loopback"},
+	{"ESL Loopback", "Enable", "Input Loopback Mixer"},
 
 	{"ESL Mixer", NULL, "ESL-ASP Mux"},
 	{"ESL Mixer", NULL, "ESL-XSP Mux"},
@@ -549,8 +589,8 @@ static const struct snd_soc_dapm_route cs42l73_audio_map[] = {
 	{"SPK DAC", "SPK-XSP Mono Volume", "SPK Mixer"},
 	{"SPK DAC", "SPK-VSP Mono Volume", "VSPIN"},
 	/* Loopback */
-	{"SPK DAC", "SPK-IP Mono Volume", "Input Left Capture"},
-	{"SPK DAC", "SPK-IP Mono Volume", "Input Right Capture"},
+	{"SPK DAC", "SPK-IP Mono Volume", "SPK Loopback"},
+	{"SPK Loopback", "Enable", "Input Loopback Mixer"},
 
 	{"SPK Mixer", NULL, "SPK-ASP Mux"},
 	{"SPK Mixer", NULL, "SPK-XSP Mux"},
@@ -583,8 +623,10 @@ static const struct snd_soc_dapm_route cs42l73_audio_map[] = {
 	/* Loopback */
 	{"HL Left DAC", "HL-IP Volume", "HL Left Mixer"},
 	{"HL Right DAC", "HL-IP Volume", "HL Right Mixer"},
-	{"HL Left Mixer", NULL, "Input Left Capture"},
-	{"HL Right Mixer", NULL, "Input Right Capture"},
+	{"HL Left Mixer", NULL, "HL Loopback"},
+	{"HL Right Mixer", NULL, "HL Loopback"},
+	{"HL Loopback", "Enable", "Input Loopback Mixer"},
+
 
 	{"HL Left Mixer", NULL, "ASPINL"},
 	{"HL Right Mixer", NULL, "ASPINR"},
@@ -615,6 +657,8 @@ static const struct snd_soc_dapm_route cs42l73_audio_map[] = {
 	{"Input Right Capture", "ADC Right Input", "ADC Right"},
 	{"Input Left Capture", "DMIC Left Input", "DMIC Left"},
 	{"Input Right Capture", "DMIC Right Input", "DMIC Right"},
+	{"Input Loopback Mixer", NULL, "Input Left Capture"},
+	{"Input Loopback Mixer", NULL, "Input Right Capture"},
 
 	/* Audio Capture */
 	{"ASPL Output Mixer", NULL, "Input Left Capture"},
