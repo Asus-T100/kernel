@@ -670,6 +670,53 @@ static bool msic_battery_check(void)
 	return false;
 }
 
+static uint16_t cell_char_tbl[] = {
+	/* Data to be written from 0x80h */
+	0xABB0, 0xB2B0, 0xBB10, 0xBBB0, 0xBC10, 0xBC70, 0xBD00, 0xBD70,
+	0xBDC0, 0xBE10, 0xC010, 0xC130, 0xC4A0, 0xC9C0, 0xCD10, 0xD090,
+
+	/* Data to be written from 0x90h */
+	0x0620, 0x0420, 0x1900, 0x3600, 0x3DA0, 0x2CA0, 0x3C20, 0x3500,
+	0x3500, 0x0440, 0x1240, 0x0DF0, 0x08F0, 0x0870, 0x07F0, 0x07F0,
+
+	/* Data to be written from 0xA0h */
+	0x0100, 0x0100, 0x0100, 0x0100, 0x0100, 0x0100, 0x0100, 0x0100,
+	0x0100, 0x0100, 0x0100, 0x0100, 0x0100, 0x0100, 0x0100, 0x0100,
+};
+
+/* WA function until UMIP support is provided for FG data */
+static int init_max170xx_fg_config_data(const char *name, void *data, int len)
+{
+	struct max17042_config_data *fg_conf_data =
+				(struct max17042_config_data *)data;
+
+	fg_conf_data->size = 0x9e;
+	fg_conf_data->table_type = MAX17042_TBL_TYPE_DV10;
+	fg_conf_data->cfg = 0x2210;
+	fg_conf_data->learn_cfg = 0x0006;
+	fg_conf_data->filter_cfg = 0x87A4;
+	fg_conf_data->relax_cfg = 0x506B;
+	memcpy(&fg_conf_data->cell_char_tbl, cell_char_tbl,
+					sizeof(cell_char_tbl));
+	fg_conf_data->rcomp0 = 0x0092;
+	fg_conf_data->tempCo = 0x081D;
+	fg_conf_data->etc = 0x0B19;
+	fg_conf_data->kempty0 = 0x0D83;
+	fg_conf_data->ichgt_term = 0x0300;
+	fg_conf_data->soc_empty = 0x0001;
+	fg_conf_data->cycles = 0x00A0;
+	fg_conf_data->full_cap = 0x3988;
+	fg_conf_data->design_cap = 0x3988;
+	fg_conf_data->full_capnom = 0x3988;
+	fg_conf_data->rsense = 1;
+
+	return 0;
+}
+
+static int save_max170xx_fg_config_data(const char *name, void *data, int len)
+{
+	return 0;
+}
 
 static void *max17042_platform_data(void *info)
 {
@@ -689,23 +736,13 @@ static void *max17042_platform_data(void *info)
 
 	platform_data.is_init_done = 0;
 	platform_data.reset_i2c_lines = max17042_i2c_reset_workaround;
+	platform_data.enable_current_sense = true;
+	platform_data.technology = POWER_SUPPLY_TECHNOLOGY_LION;
+	platform_data.restore_config_data = init_max170xx_fg_config_data;
+	platform_data.save_config_data = save_max170xx_fg_config_data;
 
-#ifdef CONFIG_BATTERY_INTEL_MDF
-	platform_data.current_sense_enabled =
-	    intel_msic_is_current_sense_enabled;
-	platform_data.battery_present = intel_msic_check_battery_present;
-	platform_data.battery_health = intel_msic_check_battery_health;
-	platform_data.battery_status = intel_msic_check_battery_status;
-	platform_data.battery_pack_temp = intel_msic_get_battery_pack_temp;
-	platform_data.save_config_data = intel_msic_save_config_data;
-	platform_data.restore_config_data = intel_msic_restore_config_data;
-
-	platform_data.is_cap_shutdown_enabled =
-					intel_msic_is_capacity_shutdown_en;
-	platform_data.is_volt_shutdown_enabled = intel_msic_is_volt_shutdown_en;
-	platform_data.is_lowbatt_shutdown_enabled =
-					intel_msic_is_lowbatt_shutdown_en;
-	platform_data.get_vmin_threshold = intel_msic_get_vsys_min;
+#ifdef CONFIG_CHARGER_SMB347
+	platform_data.battery_status = smb347_get_charging_status;
 #endif
 
 	return &platform_data;
@@ -735,7 +772,7 @@ static struct smb347_charger_platform_data smb347_pdata = {
 	.charge_current_compensation	= 900000,
 	.use_mains			= true,
 	.enable_control			= SMB347_CHG_ENABLE_PIN_ACTIVE_LOW,
-	.otg_control			= SMB347_OTG_CONTROL_SW_AUTO,
+	.otg_control			= SMB347_OTG_CONTROL_DISABLED,
 	.irq_gpio			= SMB347_IRQ_GPIO,
 };
 

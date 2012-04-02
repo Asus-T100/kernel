@@ -142,4 +142,6 @@ struct smb347_charger_platform_data {
 	enum smb347_otg_control otg_control;
 };
 
+int smb347_get_charging_status(void);
+
 #endif /* SMB347_CHARGER_H */

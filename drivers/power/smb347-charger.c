@@ -177,6 +177,12 @@ struct smb347_charger {
 	struct delayed_work	smb347_statmon_worker;
 };
 
+static struct smb347_charger *smb347_dev;
+static char *smb347_power_supplied_to[] = {
+			"max17042_battery",
+			"max17050_battery",
+};
+
 /* Fast charge current in uA */
 static const unsigned int fcc_tbl[] = {
 	700000,
@@ -352,7 +358,7 @@ static void smb347_status_monitor(struct work_struct *work)
 	if (ret < 0)
 		dev_err(&smb->client->dev, "error in updating smb347 status\n");
 
-	power_supply_changed(&smb->battery);
+	power_supply_changed(&smb->mains);
 	schedule_delayed_work(&smb->smb347_statmon_worker,
 						STATUS_UPDATE_INTERVAL);
 }
@@ -1308,6 +1314,22 @@ static int smb347_usb_get_property(struct power_supply *psy,
 	return -EINVAL;
 }
 
+int smb347_get_charging_status(void)
+{
+	if (!smb347_dev)
+		return -EINVAL;
+
+	if (!smb347_is_online(smb347_dev))
+		return POWER_SUPPLY_STATUS_DISCHARGING;
+
+	if (smb347_charging_status(smb347_dev))
+		return POWER_SUPPLY_STATUS_CHARGING;
+	else
+		return POWER_SUPPLY_STATUS_FULL;
+
+}
+EXPORT_SYMBOL_GPL(smb347_usb_get_property);
+
 static enum power_supply_property smb347_usb_properties[] = {
 	POWER_SUPPLY_PROP_ONLINE,
 };
@@ -1492,8 +1514,6 @@ static const struct file_operations smb347_debugfs_fops = {
 static int smb347_probe(struct i2c_client *client,
 			const struct i2c_device_id *id)
 {
-	printk(KERN_DEBUG "Inside smb347_probe\n");
-	static char *battery[] = { "msic_battery" };
 	const struct smb347_charger_platform_data *pdata;
 	struct device *dev = &client->dev;
 	struct smb347_charger *smb;
@@ -1525,16 +1545,16 @@ static int smb347_probe(struct i2c_client *client,
 	smb->mains.get_property = smb347_mains_get_property;
 	smb->mains.properties = smb347_mains_properties;
 	smb->mains.num_properties = ARRAY_SIZE(smb347_mains_properties);
-	smb->mains.supplied_to = battery;
-	smb->mains.num_supplicants = ARRAY_SIZE(battery);
+	smb->mains.supplied_to = smb347_power_supplied_to;
+	smb->mains.num_supplicants = ARRAY_SIZE(smb347_power_supplied_to);
 
 	smb->usb.name = "smb347-usb";
 	smb->usb.type = POWER_SUPPLY_TYPE_USB;
 	smb->usb.get_property = smb347_usb_get_property;
 	smb->usb.properties = smb347_usb_properties;
 	smb->usb.num_properties = ARRAY_SIZE(smb347_usb_properties);
-	smb->usb.supplied_to = battery;
-	smb->usb.num_supplicants = ARRAY_SIZE(battery);
+	smb->usb.supplied_to = smb347_power_supplied_to;
+	smb->usb.num_supplicants = ARRAY_SIZE(smb347_power_supplied_to);
 
 	smb->battery.name = "smb347-battery";
 	smb->battery.type = POWER_SUPPLY_TYPE_BATTERY;
@@ -1579,6 +1599,8 @@ static int smb347_probe(struct i2c_client *client,
 
 	/* Start the status monitoring worker */
 	schedule_delayed_work(&smb->smb347_statmon_worker, 0);
+
+	smb347_dev = smb;
 	return 0;
 }
 
