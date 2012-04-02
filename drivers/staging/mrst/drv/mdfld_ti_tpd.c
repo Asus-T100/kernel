@@ -69,51 +69,76 @@ irqreturn_t hdmi_hpd_handler(int irq, void *dev_id)
 static int __devinit ti_tpd_probe(struct pci_dev *pdev,
 		const struct pci_device_id *ent)
 {
+	struct drm_device *dev = hdmi_priv ? hdmi_priv->dev : 0;
+	struct drm_psb_private *dev_priv = psb_priv(dev);
 	int ret = 0;
 
 	PSB_DEBUG_ENTRY("\n");
 
-	/* enable HDMI COMPANION CHIP device */
-	ret = pci_enable_device(pdev);
-
-	if ((!ret) && (pdev->device == TI_TPD_PCI_DEVICE_ID)) {
-		ret = gpio_request(CLV_TI_HPD_GPIO_PIN, "ti_tpd_hdmi_hpd");
-		if (ret) {
-			DRM_ERROR("%s: Failed to request GPIO %d for kbd IRQ\n",
-					__func__, CLV_TI_HPD_GPIO_PIN);
-			goto out_err;
-		}
-
-		ret = gpio_direction_input(CLV_TI_HPD_GPIO_PIN);
-		if (ret) {
-			DRM_ERROR("%s: Failed to set GPIO %d as input\n",
-					__func__, CLV_TI_HPD_GPIO_PIN);
-			goto out_err;
-		}
-
-		ret = irq_set_irq_type(gpio_to_irq(CLV_TI_HPD_GPIO_PIN),
-				IRQ_TYPE_EDGE_BOTH);
-		if (ret) {
-			DRM_ERROR("%s: Failed to set HDMI HPD IRQ type\n",
-					__func__);
-			goto out_err;
-		}
-
-		ret = request_irq(gpio_to_irq(CLV_TI_HPD_GPIO_PIN),
-				hdmi_hpd_handler, IRQF_SHARED,
-				"hdmi_hpd_handler", (void *)hdmi_priv);
-		if (ret) {
-			DRM_ERROR("%s: Can not register GPIO %d IRQ!\n",
-					__func__, CLV_TI_HPD_GPIO_PIN);
-			goto out_err;
-		}
-
-		PSB_DEBUG_ENTRY("%s: Requested HDMI HPD IRQ"
-				"sussessfully.\n", __func__);
-		return ret;
+	if (pdev->device != TI_TPD_PCI_DEVICE_ID) {
+		DRM_ERROR("%s: pciid = 0x%x is not ti_tpd pciid.\n",
+			  __func__, pdev->device);
+		ret = -EINVAL;
+		goto err0;
 	}
 
-out_err:
+	/* enable HDMI COMPANION CHIP device */
+	ret = pci_enable_device(pdev);
+	if (ret) {
+		DRM_ERROR("%s:Fail to enable pci devices\n",
+				__func__);
+		goto err0;
+	}
+
+	ret = gpio_request(CLV_TI_HPD_GPIO_PIN, "ti_tpd_hdmi_hpd");
+	if (ret) {
+		DRM_ERROR("%s: Failed to request GPIO %d for kbd IRQ\n",
+				__func__, CLV_TI_HPD_GPIO_PIN);
+		goto err1;
+	}
+
+	ret = gpio_direction_input(CLV_TI_HPD_GPIO_PIN);
+	if (ret) {
+		DRM_ERROR("%s: Failed to set GPIO %d as input\n",
+				__func__, CLV_TI_HPD_GPIO_PIN);
+		goto err2;
+	}
+
+	ret = irq_set_irq_type(gpio_to_irq(CLV_TI_HPD_GPIO_PIN),
+			IRQ_TYPE_EDGE_BOTH);
+	if (ret) {
+		DRM_ERROR("%s: Failed to set HDMI HPD IRQ type\n",
+				__func__);
+		goto err2;
+	}
+
+	dev_priv->hpd_detect = create_freezable_workqueue("hpd_detect");
+	if (dev_priv->hpd_detect == NULL) {
+		DRM_ERROR("%s: Creating workqueue failed", __func__);
+		ret = -ENOMEM;
+		goto err2;
+	}
+
+	ret = request_irq(gpio_to_irq(CLV_TI_HPD_GPIO_PIN),
+			hdmi_hpd_handler, IRQF_SHARED,
+			"hdmi_hpd_handler", (void *)hdmi_priv);
+	if (ret) {
+		DRM_ERROR("%s: Can not register GPIO %d IRQ!\n",
+				__func__, CLV_TI_HPD_GPIO_PIN);
+		goto err3;
+	}
+
+	PSB_DEBUG_ENTRY("%s: Requested HDMI HPD IRQ"
+			"sussessfully.\n", __func__);
+	return ret;
+
+err3:
+	destroy_workqueue(dev_priv->hpd_detect);
+err2:
+	gpio_free(CLV_TI_HPD_GPIO_PIN);
+err1:
+	pci_disable_device(pdev);
+err0:
 	pci_dev_put(pdev);
 	DRM_ERROR("%s: request_irq failed. ret = %d.\n", __func__, ret);
 	return ret;
