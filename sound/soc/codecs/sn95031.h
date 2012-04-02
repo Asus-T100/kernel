@@ -121,13 +121,6 @@
 #define SN95031_ADC_LOOP_MAX (SN95031_ADC_CHANLS_MAX - 1)
 #define SN95031_ADC_NO_LOOP 0x07
 #define SN95031_AUDIO_GPIO_CTRL 0x070
-/* ADC channel code values */
-#define SN95031_AUDIO_DETECT_CODE 0x06
-/*Count of AUD_DETECT ADC Registers*/
-#define SN95031_AUDIO_SENSOR 1
-#define SN95031_ADC_SAMPLE_COUNT 1
-/* multipier to convert to mV */
-#define SN95031_ADC_ONE_LSB_MULTIPLIER 2346
 
 /*BCU related values*/
 #define SN95031_BCU_VOLUME_RECOVERY_3DB 0x3
@@ -144,8 +137,8 @@
 #define SN95031_PCM1SYNC 0x04
 #define SN95031_INVALID 0x8
 
-#define DISABLE_PLL 0
-#define ENABLE_PLL 1
+#define SN95031_DISABLE_PLL 0
+#define SN95031_ENABLE_PLL 1
 
 enum sn95031_pll_status {
 	PLL_DISABLED,
@@ -153,17 +146,8 @@ enum sn95031_pll_status {
 	PLL_ENABLED
 };
 
-struct mfld_jack_data {
-	int intr_id;
-	int micbias_vol;
-	struct snd_soc_jack *mfld_jack;
-};
-
-extern void sn95031_jack_detection(struct mfld_jack_data *jack_data);
-extern void sn95031_oc_handler(struct snd_soc_codec *codec,
-					int oc_interrupt_value);
-
 void sn95031_configure_pll(struct snd_soc_codec *codec, int operation);
+
 #ifdef CONFIG_SWITCH_MID
 extern void mid_headset_report(int state);
 #endif

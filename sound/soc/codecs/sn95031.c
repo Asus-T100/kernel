@@ -28,9 +28,9 @@
 #include <linux/platform_device.h>
 #include <linux/delay.h>
 #include <linux/slab.h>
+#include <linux/module.h>
 #include <linux/gpio.h>
 #include <asm/intel_scu_ipc.h>
-#include <asm/intel_mid_gpadc.h>
 #include <asm/intel-mid.h>
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
@@ -43,85 +43,12 @@
 
 #define SN95031_RATES (SNDRV_PCM_RATE_8000_96000)
 #define SN95031_FORMATS (SNDRV_PCM_FMTBIT_S24_LE | SNDRV_PCM_FMTBIT_S16_LE)
-#define LP_THRESHOLD 400
-#define HEADSET_DET_PIN 77
-/*
- * On LEX platform, for JACK mechanism changed, the mic bias voltage
- * maybe unstale after 250ms wq delay, Use longer time delay 700ms as
- * workaround, it covers most normal plug in operation.
- */
-#ifdef CONFIG_SND_MFLD_MACHINE_GI
-#define SN95031_SW_DBNC 700
-#else
-#define SN95031_SW_DBNC 250
-#endif
-
-struct sn95031_jack_work {
-	unsigned int intr_id;
-	struct delayed_work work;
-	struct snd_soc_jack *jack;
-};
 
 /* codec private data */
 struct sn95031_priv {
 	uint8_t clk_src;
-	enum sn95031_pll_status  pll_state;
-	struct sn95031_jack_work jack_work;
+	enum sn95031_pll_status pll_state;
 };
-
-void *audio_adc_handle;
-unsigned int sn95031_lp_flag;
-
-/* This Function reads the voltage level from the ADC Driver*/
-static unsigned int sn95031_read_voltage(void)
-{
-	unsigned int mic_bias;
-
-	/* Reads the mic bias value */
-	if (!sn95031_lp_flag)
-		/* GPADC MIC BIAS takes around a 50ms to settle down and
-		* get sampled porperly, reading earlier than this causes to
-		* read incorrect values */
-		msleep(50);
-	intel_mid_gpadc_sample(audio_adc_handle, SN95031_ADC_SAMPLE_COUNT,
-								&mic_bias);
-	mic_bias = (mic_bias * SN95031_ADC_ONE_LSB_MULTIPLIER) / 1000;
-	pr_debug("mic bias = %dmV\n", mic_bias);
-	return mic_bias;
-}
-
-/* enables mic bias voltage */
-static void sn95031_enable_mic_bias(struct snd_soc_codec *codec)
-{
-	pr_debug("enable mic bias\n");
-	mutex_lock(&codec->mutex);
-	/* GI board has amic bias swapped, we need to enable
-		Mic2 bias for jack */
-	/* TODO Remove this once issue fixed in HW */
-#ifdef CONFIG_SND_MFLD_MACHINE_GI
-		snd_soc_dapm_force_enable_pin(&codec->dapm, "AMIC2Bias");
-#else
-		snd_soc_dapm_force_enable_pin(&codec->dapm, "AMIC1Bias");
-#endif
-	snd_soc_dapm_sync(&codec->dapm);
-	mutex_unlock(&codec->mutex);
-}
-
-/* disables mic bias voltage */
-static void sn95031_disable_mic_bias(struct snd_soc_codec *codec)
-{
-	pr_debug("disable mic bias\n");
-	mutex_lock(&codec->mutex);
-	/* TODO Remove this once issue fixed in HW */
-#ifdef CONFIG_SND_MFLD_MACHINE_GI
-		snd_soc_dapm_disable_pin(&codec->dapm, "AMIC2Bias");
-#else
-		snd_soc_dapm_disable_pin(&codec->dapm, "AMIC1Bias");
-#endif
-	snd_soc_dapm_sync(&codec->dapm);
-	mutex_unlock(&codec->mutex);
-}
-/* end - adc helper functions */
 
 static inline unsigned int sn95031_read(struct snd_soc_codec *codec,
 			unsigned int reg)
@@ -153,7 +80,7 @@ void sn95031_configure_pll(struct snd_soc_codec *codec, int operation)
 	sn95031_ctx = snd_soc_codec_get_drvdata(codec);
 
 	if (sn95031_ctx->pll_state == PLL_ENABLE_PENDING
-			&& operation == ENABLE_PLL) {
+			&& operation == SN95031_ENABLE_PLL) {
 		pr_debug("setting PLL to 0x%x\n", sn95031_ctx->clk_src);
 		snd_soc_write(codec, SN95031_AUDPLLCTRL, 0x20);
 		udelay(1000);
@@ -167,7 +94,7 @@ void sn95031_configure_pll(struct snd_soc_codec *codec, int operation)
 		snd_soc_update_bits(codec, SN95031_AUDPLLCTRL, BIT(5), BIT(5));
 		udelay(1000);
 		sn95031_ctx->pll_state = PLL_ENABLED;
-	} else if (operation == DISABLE_PLL) {
+	} else if (operation == SN95031_DISABLE_PLL) {
 		pr_debug("disabling PLL\n");
 		sn95031_ctx->clk_src = SN95031_INVALID;
 		sn95031_ctx->pll_state = PLL_DISABLED;
@@ -207,7 +134,7 @@ static int sn95031_set_vaud_bias(struct snd_soc_codec *codec,
 
 	case SND_SOC_BIAS_OFF:
 		pr_debug("vaud_bias OFF, doing rail shutdown\n");
-		sn95031_configure_pll(codec, DISABLE_PLL);
+		sn95031_configure_pll(codec, SN95031_DISABLE_PLL);
 		/*
 		 * off mode is 100, and we need AOAC as off as well,
 		 * so 100100b ie 24
@@ -228,7 +155,7 @@ static int sn95031_vhs_event(struct snd_soc_dapm_widget *w,
 		/* power up the rail- 1.8v, powersave mode */
 		snd_soc_write(w->codec, SN95031_VHSP, 0xED);
 		snd_soc_write(w->codec, SN95031_VHSN, 0x2D);
-		msleep(1);
+		usleep_range(1000, 1100);
 	} else if (SND_SOC_DAPM_EVENT_OFF(event)) {
 		pr_debug("VHS SND_SOC_DAPM_EVENT_OFF doing rail shutdown\n");
 		/* First disable VHSN and then followed by VHSP rail.
@@ -248,7 +175,7 @@ static int sn95031_vihf_event(struct snd_soc_dapm_widget *w,
 		pr_debug("VIHF SND_SOC_DAPM_EVENT_ON doing rail startup now\n");
 		/* power up the rail */
 		snd_soc_write(w->codec, SN95031_VIHF, 0x2D);
-		msleep(1);
+		usleep_range(1000, 1100);
 	} else if (SND_SOC_DAPM_EVENT_OFF(event)) {
 		pr_debug("VIHF SND_SOC_DAPM_EVENT_OFF doing rail shutdown\n");
 		snd_soc_write(w->codec, SN95031_VIHF, 0x24);
@@ -754,7 +681,8 @@ static const struct snd_soc_dapm_route sn95031_audio_map[] = {
 
 	/* AMIC2 */
 	{ "Mic_InputR Capture Route", "AMIC", "MIC2 Enable"},
-#ifdef CONFIG_SND_MFLD_MACHINE_GI
+#if (defined(CONFIG_SND_MFLD_MACHINE_GI) \
+		|| defined(CONFIG_SND_MFLD_MACHINE_GI_MODULE))
 	{ "MIC1 Enable", NULL, "AMIC2Bias"},
 	{ "MIC2 Enable", NULL, "AMIC1Bias"},
 	{ "AMIC1Bias", NULL, "AMIC2"},
@@ -871,7 +799,7 @@ static int sn95031_codec_set_pll(struct snd_soc_codec *codec, int pll_id,
 	if (!freq_in || !freq_out) {
 		/* disable PLL  */
 		pr_debug("request to disable pll\n");
-		sn95031_configure_pll(codec, DISABLE_PLL);
+		sn95031_configure_pll(codec, SN95031_DISABLE_PLL);
 		retval = 0;
 		goto out;
 	}
@@ -1074,19 +1002,19 @@ static int sn95031_voice_hw_free(struct snd_pcm_substream *substream,
 }
 
 /* Codec DAI section */
-static struct snd_soc_dai_ops sn95031_headset_dai_ops = {
+static const struct snd_soc_dai_ops sn95031_headset_dai_ops = {
 	.digital_mute	= sn95031_pcm_hs_mute,
 	.hw_params	= sn95031_pcm_hw_params,
 	.set_tristate	= sn95031_set_pcm2_tristate,
 };
 
-static struct snd_soc_dai_ops sn95031_speaker_dai_ops = {
+static const struct snd_soc_dai_ops sn95031_speaker_dai_ops = {
 	.digital_mute	= sn95031_pcm_spkr_mute,
 	.hw_params	= sn95031_pcm_hw_params,
 	.set_tristate	= sn95031_set_pcm2_tristate,
 };
 
-static struct snd_soc_dai_ops sn95031_voice_dai_ops = {
+static const struct snd_soc_dai_ops sn95031_voice_dai_ops = {
 	.digital_mute	= sn95031_pcm_hs_mute,
 	.hw_params	= sn95031_voice_hw_params,
 	.set_fmt	= sn95031_set_voice_dai_fmt,
@@ -1163,193 +1091,6 @@ static struct snd_soc_dai_driver sn95031_dais[] = {
 },
 };
 
-static inline void sn95031_disable_jack_btn(struct snd_soc_codec *codec)
-{
-	snd_soc_update_bits(codec, SN95031_BTNCTRL2, BIT(0), 0);
-}
-
-static inline void sn95031_enable_jack_btn(struct snd_soc_codec *codec)
-{
-	snd_soc_update_bits(codec, SN95031_BTNCTRL2, BIT(0), BIT(0));
-}
-
-static int sn95031_get_headset_state(struct snd_soc_jack *mfld_jack)
-{
-	int micbias, jack_type, hs_gpio = 1;
-
-	sn95031_enable_mic_bias(mfld_jack->codec);
-	micbias = sn95031_read_voltage();
-
-	jack_type = snd_soc_jack_get_type(mfld_jack, micbias);
-	pr_debug("jack type detected = %d, micbias = %d\n", jack_type, micbias);
-
-	if (mfld_board_id() == MFLD_BID_PR3) {
-		if ((jack_type != SND_JACK_HEADSET) &&
-		    (jack_type != SND_JACK_HEADPHONE))
-			hs_gpio = gpio_get_value(HEADSET_DET_PIN);
-		if (!hs_gpio) {
-			jack_type = SND_JACK_HEADPHONE;
-			pr_debug("GPIO says there is a headphone, reporting it\n");
-		}
-	}
-	if (jack_type == SND_JACK_HEADSET)
-		sn95031_enable_jack_btn(mfld_jack->codec);
-	else
-		sn95031_disable_mic_bias(mfld_jack->codec);
-
-	return jack_type;
-}
-static void sn95031_jack_report(struct snd_soc_jack *jack, unsigned int status)
-{
-	unsigned int mask = SND_JACK_BTN_0 | SND_JACK_HEADSET;
-
-	pr_debug("jack reported of type: 0x%x\n", status);
-	if ((status == SND_JACK_HEADSET) || (status == SND_JACK_HEADPHONE)) {
-		/* if we detected valid headset then disable headset ground.
-		 * Otherwise enable it in else condition
-		 * this is required for jack detect to work well */
-		snd_soc_update_bits(jack->codec, SN95031_BTNCTRL2, BIT(1), 0);
-	} else if (status == 0) {
-		snd_soc_update_bits(jack->codec,
-					SN95031_BTNCTRL2, BIT(1), BIT(1));
-	}
-	snd_soc_jack_report(jack, status, mask);
-#ifdef CONFIG_SWITCH_MID
-	/* report to the switch driver as well */
-	if (status) {
-		if (status == SND_JACK_HEADPHONE)
-			mid_headset_report((1<<1));
-		else if (status == SND_JACK_HEADSET)
-			mid_headset_report(1);
-	} else {
-		mid_headset_report(0);
-	}
-#endif
-}
-
-void sn95031_jack_wq(struct work_struct *work)
-{
-	unsigned int mask = SND_JACK_BTN_0 | SND_JACK_HEADSET;
-	struct sn95031_priv *sn95031_ctx =
-		container_of(work, struct sn95031_priv, jack_work.work.work);
-	struct sn95031_jack_work *jack_wq = &sn95031_ctx->jack_work;
-	struct snd_soc_jack *jack = jack_wq->jack;
-	unsigned int voltage, status = 0, intr_id = jack_wq->intr_id;
-
-	pr_debug("jack status in wq: 0x%x\n", intr_id);
-	if (intr_id & SN95031_JACK_INSERTED) {
-		status = sn95031_get_headset_state(jack);
-		/* unmask button press interrupts */
-		if (status == SND_JACK_HEADSET)
-			snd_soc_update_bits(jack->codec, SN95031_ACCDETMASK,
-							BIT(1)|BIT(0), 0);
-	} else if (intr_id & SN95031_JACK_REMOVED) {
-		if (mfld_board_id() == MFLD_BID_PR3) {
-			if (!gpio_get_value(HEADSET_DET_PIN)) {
-				pr_debug("remove interrupt, but GPIO says inserted\n");
-				return;
-			}
-		}
-		pr_debug("reporting jack as removed\n");
-		sn95031_disable_jack_btn(jack->codec);
-		snd_soc_update_bits(jack->codec, SN95031_ACCDETMASK, BIT(2), 0);
-		sn95031_disable_mic_bias(jack->codec);
-		jack_wq->intr_id = 0;
-		cancel_delayed_work(&sn95031_ctx->jack_work.work);
-	} else if (intr_id & SN95031_JACK_BTN0) {
-		if (sn95031_lp_flag) {
-			snd_soc_jack_report(jack, SND_JACK_HEADSET, mask);
-			sn95031_lp_flag = 0;
-			pr_debug("short press on releasing long press, "
-				   "report button release\n");
-			return;
-		} else {
-			status = SND_JACK_HEADSET | SND_JACK_BTN_0;
-			pr_debug("short press detected\n");
-			snd_soc_jack_report(jack, status, mask);
-			/* send explicit button release */
-			if (status & SND_JACK_BTN_0)
-				snd_soc_jack_report(jack,
-						SND_JACK_HEADSET, mask);
-			return;
-		}
-	} else if (intr_id & SN95031_JACK_BTN1) {
-		/* we get spurious interrupts if jack key is held down
-		* so we ignore them until key is released by checking the
-		* voltage level */
-		if (sn95031_lp_flag) {
-			voltage = sn95031_read_voltage();
-			if (voltage > LP_THRESHOLD) {
-				snd_soc_jack_report(jack,
-						SND_JACK_HEADSET, mask);
-				sn95031_lp_flag = 0;
-				pr_debug("button released after long press\n");
-			}
-			return;
-		}
-		/* Codec sends separate long press event after button pressed
-		 * for a specified time. Need to send separate button pressed
-		 * and released events for Android */
-		status = SND_JACK_HEADSET | SND_JACK_BTN_0;
-		sn95031_lp_flag = 1;
-		pr_debug("long press detected\n");
-	} else {
-		pr_err("Invalid intr_id:0x%x\n", intr_id);
-		return;
-	}
-	sn95031_jack_report(jack, status);
-}
-
-static int sn95031_schedule_jack_wq(struct mfld_jack_data *jack_data)
-{
-	int retval = 0;
-	struct sn95031_priv *sn95031 = snd_soc_codec_get_drvdata(
-			jack_data->mfld_jack->codec);
-
-	sn95031->jack_work.jack = jack_data->mfld_jack;
-	retval = schedule_delayed_work(&sn95031->jack_work.work,
-			msecs_to_jiffies(SN95031_SW_DBNC));
-	return retval;
-}
-
-void sn95031_jack_detection(struct mfld_jack_data *jack_data)
-{
-	int retval = 0;
-	struct sn95031_priv *sn95031 = snd_soc_codec_get_drvdata(
-			jack_data->mfld_jack->codec);
-
-	pr_debug("interrupt id read in sram = 0x%x\n", jack_data->intr_id);
-
-	if (jack_data->intr_id & SN95031_JACK_INSERTED ||
-				jack_data->intr_id & SN95031_JACK_REMOVED) {
-		retval = sn95031_schedule_jack_wq(jack_data);
-		if (!retval)
-			pr_debug("jack inserted/removed,intr already queued\n");
-		sn95031->jack_work.intr_id = jack_data->intr_id;
-		/* mask button press interrupts until jack is reported*/
-		snd_soc_update_bits(jack_data->mfld_jack->codec,
-		     SN95031_ACCDETMASK, BIT(1)|BIT(0), BIT(1)|BIT(0));
-		return;
-	}
-
-	if (jack_data->intr_id & SN95031_JACK_BTN0 ||
-				jack_data->intr_id & SN95031_JACK_BTN1) {
-		if ((jack_data->mfld_jack->status & SND_JACK_HEADSET) != 0) {
-			sn95031->jack_work.intr_id = jack_data->intr_id;
-			retval = sn95031_schedule_jack_wq(jack_data);
-			if (!retval) {
-				pr_debug("spurious btn press, lp_flag:%d\n",
-							sn95031_lp_flag);
-				return;
-			}
-			pr_debug("BTN_Press detected\n");
-		} else {
-			pr_debug("BTN_press received, but jack is removed\n");
-		}
-	}
-}
-EXPORT_SYMBOL_GPL(sn95031_jack_detection);
-
 /* codec registration */
 static int sn95031_codec_probe(struct snd_soc_codec *codec)
 {
@@ -1357,7 +1098,6 @@ static int sn95031_codec_probe(struct snd_soc_codec *codec)
 
 	pr_debug("codec_probe called\n");
 
-	codec->dapm.bias_level = SND_SOC_BIAS_OFF;
 	codec->dapm.idle_bias_off = 1;
 
 	sn95031_ctx = kzalloc(sizeof(struct sn95031_priv), GFP_ATOMIC);
@@ -1368,7 +1108,6 @@ static int sn95031_codec_probe(struct snd_soc_codec *codec)
 	sn95031_ctx->clk_src = SN95031_INVALID;
 	sn95031_ctx->pll_state = PLL_DISABLED;
 
-	INIT_DELAYED_WORK(&sn95031_ctx->jack_work.work, sn95031_jack_wq);
 
 	/* PCM1 slot configurations*/
 	snd_soc_write(codec, SN95031_NOISEMUX, 0x0);
@@ -1448,17 +1187,7 @@ static int sn95031_codec_probe(struct snd_soc_codec *codec)
 	snd_soc_add_controls(codec, sn95031_snd_controls,
 			     ARRAY_SIZE(sn95031_snd_controls));
 
-	/*GPADC handle for audio_detection*/
-	audio_adc_handle = intel_mid_gpadc_alloc(SN95031_AUDIO_SENSOR,
-				SN95031_AUDIO_DETECT_CODE);
-	if (!audio_adc_handle) {
-		pr_err("invalid ADC handle\n");
-		kfree(sn95031_ctx);
-		return -ENOMEM;
-	}
-
 	snd_soc_codec_set_drvdata(codec, sn95031_ctx);
-
 	return 0;
 }
 
@@ -1470,13 +1199,10 @@ static int sn95031_codec_remove(struct snd_soc_codec *codec)
 	pr_debug("codec_remove called\n");
 	sn95031_set_vaud_bias(codec, SND_SOC_BIAS_OFF);
 
-	/*Free the adc handle*/
-	intel_mid_gpadc_free(audio_adc_handle);
-	cancel_delayed_work(&sn95031_ctx->jack_work.work);
 	kfree(sn95031_ctx);
-
 	return 0;
 }
+
 struct snd_soc_codec_driver sn95031_codec = {
 	.probe		= sn95031_codec_probe,
 	.remove		= sn95031_codec_remove,

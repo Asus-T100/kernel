@@ -65,7 +65,7 @@ static struct snd_pcm_hardware sst_platform_pcm_hw = {
 	.fifo_size = SST_FIFO_SIZE,
 };
 
-#ifdef CONFIG_SND_CLV_MACHINE
+#if (defined(CONFIG_SND_CLV_MACHINE) || defined(CONFIG_SND_CLV_MACHINE_MODULE))
 static unsigned int	lpe_mixer_input_ihf;
 static unsigned int	lpe_mixer_input_hs;
 
@@ -595,7 +595,7 @@ static int sst_pcm_new(struct snd_soc_pcm_runtime *rtd)
 	return retval;
 }
 
-#ifdef CONFIG_SND_CLV_MACHINE
+#if (defined(CONFIG_SND_CLV_MACHINE) || defined(CONFIG_SND_CLV_MACHINE_MODULE))
 static int sst_soc_probe(struct snd_soc_platform *platform)
 {
 	pr_debug("%s called\n", __func__);
@@ -622,7 +622,7 @@ static int sst_soc_probe(struct snd_soc_platform *platform)
 #endif
 
 static struct snd_soc_platform_driver sst_soc_platform_drv = {
-#ifdef CONFIG_SND_CLV_MACHINE
+#if (defined(CONFIG_SND_CLV_MACHINE) || defined(CONFIG_SND_CLV_MACHINE_MODULE))
 	.probe		= sst_soc_probe,
 #endif
 	.ops		= &sst_platform_ops,
