@@ -3099,7 +3099,7 @@ static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 
 				if (IS_MDFLD(dev)) {
 					if ((((arg->overlay.OVADD & OV_PIPE_SELECT) >> OV_PIPE_SELECT_POS) == OV_PIPE_A)
-					    && ((dev_priv->dsr_fb_update & MDFLD_DSR_OVERLAY_0))) {
+					    && (!(dev_priv->dsr_fb_update & MDFLD_DSR_OVERLAY_0))) {
 #ifndef CONFIG_MDFLD_DSI_DPU
 						mdfld_dsi_dbi_exit_dsr(dev, MDFLD_DSR_OVERLAY_0, 0, 0);
 #else
@@ -3108,7 +3108,7 @@ static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 					}
 
 					if ((((arg->overlay.OVADD & OV_PIPE_SELECT) >> OV_PIPE_SELECT_POS) == OV_PIPE_C)
-					    && ((dev_priv->dsr_fb_update & MDFLD_DSR_OVERLAY_2))) {
+					    && (!(dev_priv->dsr_fb_update & MDFLD_DSR_OVERLAY_2))) {
 #ifndef CONFIG_MDFLD_DSI_DPU
 						mdfld_dsi_dbi_exit_dsr(dev, MDFLD_DSR_OVERLAY_2, 0, 0);
 #else
