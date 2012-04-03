@@ -44,6 +44,9 @@
 #define C42L73_DEFAULT_MCLK	19200000
 #define CS42L73_HPSENSE_GPIO 	34
 #define CS42L73_BUTTON_GPIO	32
+#define GPIO_AMP_ON 0x3d
+#define GPIO_AMP_OFF 0x0
+#define GPIOHVCTL 0x70
 
 static unsigned int vsp_mode;
 
@@ -295,11 +298,33 @@ undo:
 return ret;
 }
 
+
+static int clv_amp_event(struct snd_soc_dapm_widget *w,
+				struct snd_kcontrol *k, int event)
+{
+	int ret;
+
+	if (SND_SOC_DAPM_EVENT_ON(event)) {
+		/*Enable  IHFAMP_SD_N  GPIO */
+		ret = intel_scu_ipc_iowrite8(GPIOHVCTL, GPIO_AMP_ON);
+		if (ret)
+			pr_err("write of  failed, err %d\n", ret);
+	} else {
+		/*Disable  IHFAMP_SD_N  GPIO */
+		ret = intel_scu_ipc_iowrite8(GPIOHVCTL, GPIO_AMP_OFF);
+		if (ret)
+			pr_err("write of  failed, err %d\n", ret);
+	}
+	return 0;
+}
+
+
 /* CDB42L73 widgets */
 static const struct snd_soc_dapm_widget clv_dapm_widgets[] = {
 
 	SND_SOC_DAPM_HP("Headphone", NULL),
 	SND_SOC_DAPM_MIC("Headset Mic", NULL),
+	SND_SOC_DAPM_SPK("Ext Spk", clv_amp_event),
 };
 
 /* CDB42L73 Audio Map */
@@ -309,8 +334,9 @@ static const struct snd_soc_dapm_route clv_audio_map[] = {
 	/* Headphone (L+R)->  HPOUTA, HPOUTB */
 	{"Headphone", NULL, "HPOUTA"},
 	{"Headphone", NULL, "HPOUTB"},
+	{"Ext Spk", NULL, "SPKLINEOUT"},
+	{"Ext Spk", NULL, "SPKOUT"},
 };
-
 
 /* Board specific codec bias level control */
 static int clv_set_bias_level(struct snd_soc_card *card,
@@ -342,10 +368,6 @@ static int clv_init(struct snd_soc_pcm_runtime *runtime)
 	int ret;
 	struct snd_soc_card *card = runtime->card;
 
-	/*Enable  IHFAMP_SD_N  GPIO */
-	ret = intel_scu_ipc_iowrite8(0x70, 0x3d);
-	if (ret)
-		pr_err("write of  failed, err %d\n", ret);
 
 	/* Set codec bias level */
 	clv_set_bias_level(card, SND_SOC_BIAS_OFF);
@@ -359,13 +381,16 @@ static int clv_init(struct snd_soc_pcm_runtime *runtime)
 
 	/* Set up Jack specific audio path audio_map */
 	snd_soc_dapm_add_routes(dapm, clv_audio_map,
-				ARRAY_SIZE(clv_audio_map));
-
+					ARRAY_SIZE(clv_audio_map));
+	/*In VV board SPKOUT is connected and SPKLINEOUT on PR board*/
 	/*In VV board MIC1 is connected  and MIC2 is PR boards */
-	if (ctp_board_id() == CTP_BID_VV)
+	if (ctp_board_id() == CTP_BID_VV) {
 		snd_soc_dapm_disable_pin(dapm, "MIC1");
-	else
+		snd_soc_dapm_disable_pin(dapm, "SPKOUT");
+	} else {
 		snd_soc_dapm_disable_pin(dapm, "MIC2");
+		snd_soc_dapm_disable_pin(dapm, "SPKLINEOUT");
+	}
 	mutex_lock(&codec->mutex);
 	snd_soc_dapm_sync(dapm);
 	mutex_unlock(&codec->mutex);
