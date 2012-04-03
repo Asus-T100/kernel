@@ -1963,6 +1963,13 @@ config INTEL_ATOM_MDFLD_POWER
 	Power management driver for medfield Platform.
 	If you don't know what to do here, say N.
 
+config INTEL_MID_C6OFFLOAD_CAPABLE
+        bool "C6 Offload supported in OS for Intel MDLFD Mid platform"
+        depends on INTEL_MID_MDFLD_POWER
+        ---help---
+	C6 Offload Capablity in OS.
+	For MFLD - Y, For CVT - N. If you don't know what to do here, say Y.
+
 endmenu
 
 
