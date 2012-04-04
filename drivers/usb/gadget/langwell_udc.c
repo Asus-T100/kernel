@@ -1643,10 +1643,6 @@ static int langwell_udc_reset(struct langwell_udc *dev)
 	/* Write-Clear setup status */
 	writel(0, &dev->op_regs->usbsts);
 
-	/* FIXME: workaround for bug9000364367 */
-	sbuscfg_addr = (unsigned long)dev->cap_regs + SBUSCFG_REG_OFFSET;
-	writel(0x7, sbuscfg_addr);
-
 	/* if support USB LPM, ACK all LPM token */
 	if (dev->lpm) {
 		devlc = readl(&dev->op_regs->devlc);
