@@ -678,8 +678,8 @@ static int snd_intelhad_close(struct snd_pcm_substream *substream)
 static int snd_intelhad_hw_params(struct snd_pcm_substream *substream,
 				    struct snd_pcm_hw_params *hw_params)
 {
-	int retval;
-	u32 buf_size;
+	unsigned long addr;
+	int pages, buf_size, retval;
 
 	BUG_ON(!hw_params);
 
@@ -694,6 +694,14 @@ static int snd_intelhad_hw_params(struct snd_pcm_substream *substream,
 	if (retval < 0)
 		return retval;
 	pr_debug("%s:allocated memory = %d\n", __func__, buf_size);
+	/* mark the pages as uncached region */
+	addr = (unsigned long) substream->runtime->dma_area;
+	pages = (substream->runtime->dma_bytes + PAGE_SIZE - 1) / PAGE_SIZE;
+	retval = set_memory_uc(addr, pages);
+	if (retval) {
+		pr_err("set_memory_uc failed.Error:%d\n", retval);
+		return retval;
+	}
 	memset(substream->runtime->dma_area, 0, buf_size);
 
 	return retval;
@@ -710,7 +718,15 @@ static int snd_intelhad_hw_params(struct snd_pcm_substream *substream,
  */
 static int snd_intelhad_hw_free(struct snd_pcm_substream *substream)
 {
+	unsigned long addr;
+	u32 pages;
+
 	pr_debug("snd_intelhad_hw_free called\n");
+
+	/* mark back the pages as cached/writeback region before the free */
+	addr = (unsigned long) substream->runtime->dma_area;
+	pages = (substream->runtime->dma_bytes + PAGE_SIZE - 1) / PAGE_SIZE;
+	set_memory_wb(addr, pages);
 	return snd_pcm_lib_free_pages(substream);
 }
 
@@ -1039,6 +1055,7 @@ static snd_pcm_uframes_t snd_intelhad_pcm_pointer(
 static int snd_intelhad_pcm_mmap(struct snd_pcm_substream *substream,
 	struct vm_area_struct *vma)
 {
+
 	pr_debug("entry with prot:%s\n", __func__);
 	vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
 	return remap_pfn_range(vma, vma->vm_start,
