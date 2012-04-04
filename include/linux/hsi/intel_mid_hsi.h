@@ -57,4 +57,11 @@ struct hsi_mid_platform_data {
 	int	gpio_fcdp_rb;
 };
 
+/* FIXME::Flag declration to avoid register of HSI Driver
+ * to enable Standby on CVT Platform
+ */
+#ifdef CONFIG_BOARD_CTP
+extern unsigned int enable_standby;
+#endif
+
 #endif /* __INTEL_MID_HSI_H__ */
