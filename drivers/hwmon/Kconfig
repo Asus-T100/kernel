@@ -1441,6 +1441,15 @@ config MSIC_GPADC
         help
 	  Say Y here to enable MSIC GPADC driver on Intel Medfield Platform
 
+config BASINCOVE_GPADC
+        tristate "BASINCOVE GPADC driver for Intel Merrifield platform"
+        depends on INTEL_SCU_IPC
+        help
+          Say Y here to enable Basin Cove GPADC driver on Intel Merrifield
+	  Platform, and this driver is dependent on intel_scu_ipc driver for
+	  pmic register access.
+	  For details, pls refer to the source code.
+
 config MID_PWM
 	tristate "MID PWM driver for Intel Medfield platform"
         depends on INTEL_SCU_IPC
