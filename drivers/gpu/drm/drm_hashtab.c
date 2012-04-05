@@ -92,6 +92,21 @@ static struct hlist_node *drm_ht_find_key(struct drm_open_hash *ht,
 	return NULL;
 }
 
+static struct hlist_node *drm_ht_find_anyused(struct drm_open_hash *ht)
+{
+	struct drm_hash_item *entry;
+	struct hlist_head *h_list;
+	struct hlist_node *list;
+	int i;
+
+	for (i = 0; i < (1 << ht->order); i++) {
+		h_list = &ht->table[i];
+		hlist_for_each(list, h_list) {
+			return list;
+		}
+	}
+	return NULL;
+}
 
 int drm_ht_insert_item(struct drm_open_hash *ht, struct drm_hash_item *item)
 {
@@ -117,6 +132,7 @@ int drm_ht_insert_item(struct drm_open_hash *ht, struct drm_hash_item *item)
 	} else {
 		hlist_add_head(&item->head, h_list);
 	}
+
 	return 0;
 }
 EXPORT_SYMBOL(drm_ht_insert_item);
@@ -163,6 +179,20 @@ int drm_ht_find_item(struct drm_open_hash *ht, unsigned long key,
 	return 0;
 }
 EXPORT_SYMBOL(drm_ht_find_item);
+
+int drm_ht_find_item_anyused(struct drm_open_hash *ht,
+		     struct drm_hash_item **item)
+{
+	struct hlist_node *list;
+
+	list = drm_ht_find_anyused(ht);
+	if (!list)
+		return -EINVAL;
+
+	*item = hlist_entry(list, struct drm_hash_item, head);
+	return 0;
+}
+EXPORT_SYMBOL(drm_ht_find_item_anyused);
 
 int drm_ht_remove_key(struct drm_open_hash *ht, unsigned long key)
 {
