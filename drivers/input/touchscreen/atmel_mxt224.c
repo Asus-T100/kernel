@@ -64,6 +64,12 @@ void mxt_late_resume(struct early_suspend *h);
 #define MXT_RECALIB_NG	 1
 #define MXT_RECALIB_DONE 2
 
+/*
+ * Designware i2c controller can only support up to 32 byte block read/write,
+ * max224 uses 16bit address, this leaves 30 bytes for read/write
+ */
+#define I2C_MAX_BLKSZ 30
+
 static int debug = DEBUG_TRACE;
 module_param(debug, int, 0644);
 MODULE_PARM_DESC(debug, "Activate debugging output");
@@ -928,6 +934,7 @@ static int mxt_read_block(struct i2c_client *client,
 {
 	struct mxt_data *mxt;
 	int ret = 0;
+	int readlen;
 	__le16	le_addr;
 
 	mxt = i2c_get_clientdata(client);
@@ -940,27 +947,35 @@ static int mxt_read_block(struct i2c_client *client,
 		return 0;
 	}
 
-	dev_dbg(&client->dev, "Writing address pointer & reading %d bytes"
-		" in on i2c transaction...\n", length);
+	dev_dbg(&client->dev, "Writing address pointer 0x%x & reading %d bytes"
+		" in on i2c transaction...\n", addr, length);
 
-	/*
-	 * block read must be split into two i2c transactions:
-	 * 1st: set the 16bit address pointer
-	 * 2nd: read data
-	 *
-	 * need STOP on the i2c bus between write and read:
-	 */
-	le_addr = cpu_to_le16(addr);
-	ret = i2c_master_send(client, (u8 *)&le_addr, sizeof(le_addr));
-	if (ret < 0)
-		goto out_err;
+	while (length > 0) {
+		readlen = length > I2C_MAX_BLKSZ ? I2C_MAX_BLKSZ : length;
+		/*
+		 * block read must be split into two i2c transactions:
+		 * 1st: set the 16bit address pointer
+		 * 2nd: read data
+		 *
+		 * need STOP on the i2c bus between write and read:
+		 */
+		le_addr = cpu_to_le16(addr);
+		ret = i2c_master_send(client, (u8 *)&le_addr, sizeof(le_addr));
+		if (ret < 0)
+			goto out_err;
 
-	ret = i2c_master_recv(client, value, length);
-	if (ret < 0)
-		goto out_err;
+		ret = i2c_master_recv(client, value, readlen);
+		if (ret < 0)
+			goto out_err;
 
-	if (mxt)
-		mxt->last_read_addr = addr;
+		if (mxt)
+			mxt->last_read_addr = addr;
+
+		addr += readlen;
+		value += readlen;
+		length -= readlen;
+	}
+
 	return 0;
 
 out_err:
@@ -998,28 +1013,39 @@ static int mxt_write_block(struct i2c_client *client,
 		    u16 length,
 		    u8 *value)
 {
-	int i;
+	int ret;
+	int wlen;
 	struct {
 		__le16	le_addr;
-		u8	data[256];
+		u8	data[I2C_MAX_BLKSZ];
 
-	} i2c_block_transfer;
+	} i2c_block_transfer __packed;
 
 	struct mxt_data *mxt;
 	dev_dbg(&client->dev, "Writing %d bytes to %d...", length, addr);
 	if (length > 256)
 		return -EINVAL;
+
 	mxt = i2c_get_clientdata(client);
 	if (mxt != NULL)
 		mxt->last_read_addr = -1;
-	for (i = 0; i < length; i++)
-		i2c_block_transfer.data[i] = *value++;
-	i2c_block_transfer.le_addr = cpu_to_le16(addr);
-	i = i2c_master_send(client, (u8 *) &i2c_block_transfer, length + 2);
-	if (i == (length + 2))
-		return length;
-	else
-		return -EIO;
+
+	while (length > 0) {
+		wlen = length > I2C_MAX_BLKSZ ? I2C_MAX_BLKSZ : length;
+		memcpy(i2c_block_transfer.data, value, wlen);
+		i2c_block_transfer.le_addr = cpu_to_le16(addr);
+
+		ret = i2c_master_send(client, (u8 *)&i2c_block_transfer,
+				wlen + sizeof(i2c_block_transfer.le_addr));
+		if (ret != wlen + sizeof(i2c_block_transfer.le_addr))
+			return -EIO;
+
+		value += wlen;
+		addr += wlen;
+		length -= wlen;
+	}
+
+	return length;
 }
 
 /* Calculates the CRC value for mXT infoblock. */
