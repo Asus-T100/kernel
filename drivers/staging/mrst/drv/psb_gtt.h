@@ -109,5 +109,7 @@ extern int psb_gtt_map_pvr_memory(struct drm_device *dev,
 extern int psb_gtt_unmap_pvr_memory(struct drm_device *dev,
 				    unsigned int hHandle,
 				    unsigned int ui32TaskId);
+extern int psb_gtt_free_ht_for_tgid(struct drm_device *dev,
+	unsigned int ui32TaskId);
 
 #endif

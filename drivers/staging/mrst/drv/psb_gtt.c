@@ -596,6 +596,30 @@ psb_gtt_mm_get_mem_mapping_locked(struct drm_open_hash *ht,
 }
 
 static int
+psb_gtt_mm_get_mem_mapping_anyused_locked(struct drm_open_hash *ht,
+				  struct psb_gtt_mem_mapping **hentry)
+{
+	struct drm_hash_item *entry;
+	struct psb_gtt_mem_mapping *mapping;
+	int ret;
+
+	ret = drm_ht_find_item_anyused(ht, &entry);
+	if (ret) {
+		DRM_DEBUG("Cannot find\n");
+		return ret;
+	}
+
+	mapping =  container_of(entry, struct psb_gtt_mem_mapping, item);
+	if (!mapping) {
+		DRM_DEBUG("Invalid entry\n");
+		return -EINVAL;
+	}
+
+	*hentry = mapping;
+	return 0;
+}
+
+static int
 psb_gtt_mm_insert_mem_mapping_locked(struct drm_open_hash *ht,
 				     u32 key,
 				     struct psb_gtt_mem_mapping *hentry)
@@ -694,6 +718,27 @@ psb_gtt_mm_remove_mem_mapping_locked(struct drm_open_hash *ht, u32 key) {
 	return tmp;
 }
 
+static struct psb_gtt_mem_mapping *
+psb_gtt_mm_remove_mem_mapping_anyused_locked(struct drm_open_hash *ht) {
+	struct psb_gtt_mem_mapping *tmp;
+	struct psb_gtt_hash_entry *entry;
+	int ret;
+
+	ret = psb_gtt_mm_get_mem_mapping_anyused_locked(ht, &tmp);
+	if (ret) {
+		DRM_DEBUG("Cannot find any used\n");
+		return NULL;
+	}
+
+	drm_ht_remove_item(ht, &tmp->item);
+
+	entry = container_of(ht, struct psb_gtt_hash_entry, ht);
+	if (entry)
+		entry->count--;
+
+	return tmp;
+}
+
 static int psb_gtt_mm_remove_free_mem_mapping_locked(struct drm_open_hash *ht,
 		u32 key,
 		struct drm_mm_node **node)
@@ -701,6 +746,24 @@ static int psb_gtt_mm_remove_free_mem_mapping_locked(struct drm_open_hash *ht,
 	struct psb_gtt_mem_mapping *entry;
 
 	entry = psb_gtt_mm_remove_mem_mapping_locked(ht, key);
+	if (!entry) {
+		DRM_DEBUG("entry is NULL\n");
+		return -EINVAL;
+	}
+
+	*node = entry->node;
+
+	kfree(entry);
+	return 0;
+}
+
+static int psb_gtt_mm_remove_free_mem_mapping_anyused_locked
+	(struct drm_open_hash *ht,
+	struct drm_mm_node **node)
+{
+	struct psb_gtt_mem_mapping *entry;
+
+	entry = psb_gtt_mm_remove_mem_mapping_anyused_locked(ht);
 	if (!entry) {
 		DRM_DEBUG("entry is NULL\n");
 		return -EINVAL;
@@ -765,6 +828,45 @@ static int psb_gtt_remove_node(struct psb_gtt_mm *mm,
 	spin_lock(&mm->lock);
 	ret = psb_gtt_mm_remove_free_mem_mapping_locked(&hentry->ht,
 			key,
+			&tmp);
+	if (ret) {
+		DRM_DEBUG("remove_free failed\n");
+		spin_unlock(&mm->lock);
+		return ret;
+	}
+
+	*node = tmp;
+
+	/*check the count of mapping entry*/
+	if (!hentry->count) {
+		DRM_DEBUG("count of mapping entry is zero, tgid=%d\n", tgid);
+		psb_gtt_mm_remove_free_ht_locked(mm, tgid);
+	}
+
+	spin_unlock(&mm->lock);
+
+	return 0;
+}
+
+static int psb_gtt_remove_node_anyused(struct psb_gtt_mm *mm,
+			       u32 tgid,
+			       struct drm_mm_node **node)
+{
+	struct psb_gtt_hash_entry *hentry;
+	struct drm_mm_node *tmp;
+	int ret;
+
+	spin_lock(&mm->lock);
+	ret = psb_gtt_mm_get_ht_by_pid_locked(mm, tgid, &hentry);
+	if (ret) {
+		spin_unlock(&mm->lock);
+		return ret;
+	}
+	spin_unlock(&mm->lock);
+
+	/*remove mapping entry*/
+	spin_lock(&mm->lock);
+	ret = psb_gtt_mm_remove_free_mem_mapping_anyused_locked(&hentry->ht,
 			&tmp);
 	if (ret) {
 		DRM_DEBUG("remove_free failed\n");
@@ -860,8 +962,8 @@ int psb_gtt_map_meminfo(struct drm_device *dev,
 	pages = (size + PAGE_SIZE - 1) >> PAGE_SHIFT;
 
 	DRM_DEBUG("KerMemInfo size %d, cpuVadr %x, pages %d, osMemHdl %x\n",
-		  size, kmem, pages,
-		  (int)psKernelMemInfo->sMemBlk.hOSMemHandle);
+		  size, (unsigned int)kmem, pages,
+		  (int)(psKernelMemInfo->sMemBlk.hOSMemHandle));
 
 	if (!kmem)
 		DRM_DEBUG("kmem is NULL");
@@ -921,7 +1023,9 @@ failed_pages_alloc:
 	return ret;
 }
 
-int psb_gtt_unmap_meminfo(struct drm_device *dev, IMG_HANDLE hKernelMemInfo)
+static int psb_gtt_unmap_common(struct drm_device *dev,
+			unsigned int ui32TaskId,
+			unsigned int hHandle)
 {
 	struct drm_psb_private *dev_priv
 	= (struct drm_psb_private *)dev->dev_private;
@@ -932,8 +1036,8 @@ int psb_gtt_unmap_meminfo(struct drm_device *dev, IMG_HANDLE hKernelMemInfo)
 	int ret;
 
 	ret = psb_gtt_remove_node(mm,
-				  (u32)psb_get_tgid(),
-				  (u32)hKernelMemInfo,
+				  (u32)ui32TaskId,
+				  (u32)hHandle,
 				  &node);
 	if (ret) {
 		DRM_DEBUG("remove node failed\n");
@@ -951,6 +1055,48 @@ int psb_gtt_unmap_meminfo(struct drm_device *dev, IMG_HANDLE hKernelMemInfo)
 
 	psb_gtt_mm_free_mem(mm, node);
 	return 0;
+
+}
+
+static int psb_gtt_unmap_anyused(struct drm_device *dev,
+			unsigned int ui32TaskId)
+{
+	struct drm_psb_private *dev_priv
+	= (struct drm_psb_private *)dev->dev_private;
+	struct psb_gtt_mm *mm = dev_priv->gtt_mm;
+	struct psb_gtt *pg = dev_priv->pg;
+	uint32_t pages, offset_pages;
+	struct drm_mm_node *node;
+	int ret;
+
+	ret = psb_gtt_remove_node_anyused(mm,
+				  (u32)ui32TaskId,
+				  &node);
+	if (ret) {
+		DRM_DEBUG("remove node failed\n");
+		return ret;
+	}
+
+	/*remove gtt entries*/
+	offset_pages = node->start;
+	pages = node->size;
+
+	psb_gtt_remove_pages(pg, offset_pages, pages, 0, 0, 1);
+
+
+	/*free tt node*/
+
+	psb_gtt_mm_free_mem(mm, node);
+	return 0;
+
+}
+
+
+int psb_gtt_unmap_meminfo(struct drm_device *dev, IMG_HANDLE hKernelMemInfo)
+{
+	return psb_gtt_unmap_common(dev,
+				psb_get_tgid(),
+				(unsigned int)hKernelMemInfo);
 }
 
 static int psb_gtt_map_bcd(struct drm_device *dev,
@@ -1027,33 +1173,10 @@ static int psb_gtt_unmap_bcd(struct drm_device *dev,
 			uint32_t device_id,
 			uint32_t buffer_id)
 {
-	struct drm_psb_private *dev_priv
-		= (struct drm_psb_private *)dev->dev_private;
-	struct psb_gtt_mm *mm = dev_priv->gtt_mm;
-	struct psb_gtt *pg = dev_priv->pg;
-	uint32_t pages, offset_pages;
-	struct drm_mm_node *node;
-	int ret;
-
-	ret = psb_gtt_remove_node(mm,
-				  (u32)psb_get_tgid(),
-				  ((device_id << 16) | buffer_id),
-				  &node);
-	if (ret) {
-		DRM_DEBUG("remove node failed\n");
-		return ret;
-	}
-
-	/*remove gtt entries*/
-	offset_pages = node->start;
-	pages = node->size;
-
-	psb_gtt_remove_pages(pg, offset_pages, pages, 0, 0, 1);
-
-
-	/*free tt node*/
-	psb_gtt_mm_free_mem(mm, node);
-	return 0;
+	return psb_gtt_unmap_common(dev,
+			psb_get_tgid(),
+			(device_id << 16) | buffer_id
+			);
 }
 
 static int psb_gtt_get_bcd_device_info(struct drm_device *dev,
@@ -1161,33 +1284,8 @@ static int psb_gtt_unmap_vaddr(struct drm_device *dev,
 			uint32_t vaddr,
 			uint32_t size)
 {
-	struct drm_psb_private *dev_priv
-		= (struct drm_psb_private *)dev->dev_private;
-	struct psb_gtt_mm *mm = dev_priv->gtt_mm;
-	struct psb_gtt *pg = dev_priv->pg;
-	uint32_t pages, offset_pages;
-	struct drm_mm_node *node;
-	int ret;
+	return psb_gtt_unmap_common(dev, psb_get_tgid(), vaddr);
 
-	ret = psb_gtt_remove_node(mm,
-				  (u32)psb_get_tgid(),
-				  vaddr,
-				  &node);
-	if (ret) {
-		DRM_DEBUG("remove node failed\n");
-		return ret;
-	}
-
-	/*remove gtt entries*/
-	offset_pages = node->start;
-	pages = node->size;
-
-	psb_gtt_remove_pages(pg, offset_pages, pages, 0, 0, 1);
-
-
-	/*free tt node*/
-	psb_gtt_mm_free_mem(mm, node);
-	return 0;
 }
 
 int psb_gtt_map_meminfo_ioctl(struct drm_device *dev, void *data,
@@ -1318,31 +1416,18 @@ failed_pages_alloc:
 }
 
 
-int psb_gtt_unmap_pvr_memory(struct drm_device *dev, unsigned int hHandle, unsigned int ui32TaskId)
+int psb_gtt_unmap_pvr_memory(struct drm_device *dev,
+	unsigned int hHandle,
+	unsigned int ui32TaskId)
 {
-	struct drm_psb_private * dev_priv = (struct drm_psb_private *)dev->dev_private;
-	struct psb_gtt_mm * mm = dev_priv->gtt_mm;
-	struct psb_gtt * pg = dev_priv->pg;
-	uint32_t pages, offset_pages;
-	struct drm_mm_node * node;
-	int ret;
+	return psb_gtt_unmap_common(dev, ui32TaskId, hHandle);
+}
 
-	ret = psb_gtt_remove_node(mm,
-				  (u32)ui32TaskId,
-				  (u32)hHandle,
-				  &node);
-	if (ret) {
-		printk(KERN_ERR"remove node failed\n");
-		return ret;
-	}
+int psb_gtt_free_ht_for_tgid(struct drm_device *dev,
+	unsigned int ui32TaskId)
+{
+	while (!psb_gtt_unmap_anyused(dev, ui32TaskId)) 
+		;
 
-	/*remove gtt entries*/
-	offset_pages = node->start;
-	pages = node->size;
-
-	psb_gtt_remove_pages(pg, offset_pages, pages, 0, 0, 1);
-
-	/*free tt node*/
-	psb_gtt_mm_free_mem(mm, node);
 	return 0;
 }

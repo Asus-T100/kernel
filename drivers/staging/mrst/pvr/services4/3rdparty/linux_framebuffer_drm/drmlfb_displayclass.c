@@ -811,8 +811,8 @@ static PVRSRV_ERROR DestroyDCSwapChain(IMG_HANDLE hDevice,
 	MRSTLFB_SWAPCHAIN *psSwapChain;
 	unsigned long ulLockFlags;
 	int i;
+	IMG_UINT32 taskid;
 
-	
 	if(!hDevice || !hSwapChain)
 	{
 		return (PVRSRV_ERROR_INVALID_PARAMS);
@@ -848,11 +848,18 @@ static PVRSRV_ERROR DestroyDCSwapChain(IMG_HANDLE hDevice,
 
 	spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
 
-	
+	if (psSwapChain->ulBufferCount)
+		taskid = (psSwapChain->ppsBuffer[0])->ui32OwnerTaskID;
+
 	for (i = 0; i < psSwapChain->ulBufferCount; i++)
 	{
 		MRSTLFBFreeBuffer(psDevInfo, &psSwapChain->ppsBuffer[i] );
 	}
+
+	if (psSwapChain->ulBufferCount)
+		psb_gtt_free_ht_for_tgid(psDevInfo->psDrmDevice,
+			taskid);
+
 	MRSTLFBFreeKernelMem(psSwapChain->psVSyncFlips);
 	MRSTLFBFreeKernelMem(psSwapChain->ppsBuffer);
 	MRSTLFBFreeKernelMem(psSwapChain);
