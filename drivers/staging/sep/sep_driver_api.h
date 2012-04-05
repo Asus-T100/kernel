@@ -160,6 +160,7 @@ struct sep_lli_entry {
 struct sep_fastcall_hdr {
 	u32 magic;
 	u32 secure_dma;
+	u32 shared_phys_offset_insert;
 	u32 msg_len;
 	u32 num_dcbs;
 };
