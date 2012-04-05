@@ -3405,6 +3405,7 @@ static ssize_t sep_write(struct file *filp,
 	struct sep_device *sep = private_data->device;
 	struct sep_dma_context *dma_ctx = NULL;
 	struct sep_fastcall_hdr call_hdr = {0};
+	u32 *insert_point;
 	void *msg_region = NULL;
 	void *dmatables_region = NULL;
 	struct sep_dcblock *dcb_region = NULL;
@@ -3514,6 +3515,21 @@ static ssize_t sep_write(struct file *filp,
 				dma_ctx);
 		if (error)
 			goto end_function_error_clear_transact;
+	}
+
+	/**
+	 * Check shared_phys_offset_insert; if this is greater than 0, then we
+	 * need to insert the physical address of the shared area into the
+	 * message;
+	 * this is a work around for a bug in the chaabi firmware
+	 */
+	if (call_hdr.shared_phys_offset_insert != 0) {
+		dev_dbg(&sep->pdev->dev,
+			"[PID%d] inserting shared phys in msg %x\n",
+			current->pid, call_hdr.shared_phys_offset_insert);
+		insert_point = (u32 *)sep->shared_addr;
+		insert_point += call_hdr.shared_phys_offset_insert;
+		*insert_point = (u32)sep->shared_bus;
 	}
 
 	/* Send command to SEP */
