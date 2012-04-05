@@ -1854,11 +1854,46 @@ static int drv201_q_focus_status(struct v4l2_subdev *sd, s32 *value)
 	return 0;
 }
 
+/* Start group hold for the following register writes */
+static int ov8830_grouphold_start(struct v4l2_subdev *sd)
+{
+	struct i2c_client *client = v4l2_get_subdevdata(sd);
+	const int group = 0;
+
+	return ov8830_write_reg(client, OV8830_8BIT,
+				OV8830_GROUP_ACCESS,
+				group | OV8830_GROUP_ACCESS_HOLD_START);
+}
+
+/* End group hold and quick launch it */
+static int ov8830_grouphold_launch(struct v4l2_subdev *sd)
+{
+	struct i2c_client *client = v4l2_get_subdevdata(sd);
+	const int group = 0;
+	int ret;
+
+	/* End group */
+	ret = ov8830_write_reg(client, OV8830_8BIT,
+			       OV8830_GROUP_ACCESS,
+			       group | OV8830_GROUP_ACCESS_HOLD_END);
+	if (ret)
+		return ret;
+
+	/* Delay launch group (during next vertical blanking) */
+	return ov8830_write_reg(client, OV8830_8BIT,
+				OV8830_GROUP_ACCESS,
+				group | OV8830_GROUP_ACCESS_DELAY_LAUNCH);
+}
+
 static int ov8830_set_exposure(struct v4l2_subdev *sd, int exposure, int gain)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	struct ov8830_device *dev = to_ov8830_sensor(sd);
 	int exp_val, ret;
+
+	ret = ov8830_grouphold_start(sd);
+	if (ret)
+		goto out;
 
 	/* set exposure time */
 	exp_val = exposure << 4;
@@ -1880,6 +1915,10 @@ static int ov8830_set_exposure(struct v4l2_subdev *sd, int exposure, int gain)
 	/* set global gain */
 	ret = ov8830_write_reg(client, OV8830_8BIT,
 			       OV8830_AGC_ADJ, gain);
+	if (ret)
+		goto out;
+
+	ret = ov8830_grouphold_launch(sd);
 	if (ret)
 		goto out;
 
