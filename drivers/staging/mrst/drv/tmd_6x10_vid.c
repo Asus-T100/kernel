@@ -78,7 +78,7 @@ static u32 pr2_set_display_off[] = {0x00000028};
 static u32 pr2_enter_sleep_mode[] = {0x00000010};
 static u32 pr2_enter_low_power_mode[] = {0x000001b1};
 static u32 pr2_backlight_control_1[] = {0x0f0f01b8, 0xc8c8ffff, 0x18180f0f,
-					0x02001010, 0x5A371D0c, 0x00FFBE87};
+					0x02009090, 0x5A371D0c, 0x00FFBE87};
 static u32 pr2_backlight_control_2[] = {0x00cc01b9, 0x00000018};
 
 void mdfld_dsi_pr2_ic_init(struct mdfld_dsi_config *dsi_config, int pipe)
