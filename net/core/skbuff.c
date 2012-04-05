@@ -1272,13 +1272,7 @@ pull_pages:
 			put_page(skb_shinfo(skb)->frags[i].page);
 			eat -= skb_shinfo(skb)->frags[i].size;
 		} else {
-			/* KW issue 116144 */
-			if ((k < sizeof(skb_shinfo(skb)->frags) \
-				/ sizeof(skb_shinfo(skb)->frags[0])) &&
-			(i < sizeof(skb_shinfo(skb)->frags) \
-				/ sizeof(skb_shinfo(skb)->frags[0])))
-				skb_shinfo(skb)->frags[k] = \
-					skb_shinfo(skb)->frags[i];
+			skb_shinfo(skb)->frags[k] = skb_shinfo(skb)->frags[i];
 			if (eat) {
 				skb_shinfo(skb)->frags[k].page_offset += eat;
 				skb_shinfo(skb)->frags[k].size -= eat;
@@ -2051,10 +2045,7 @@ static inline void skb_split_no_header(struct sk_buff *skb,
 	skb->data_len		  = len - pos;
 
 	for (i = 0; i < nfrags; i++) {
-		int size = 0;
-		if (i < sizeof(skb_shinfo(skb)->frags) \
-				 / sizeof(skb_shinfo(skb)->frags[0]))
-				skb_shinfo(skb)->frags[i].size;
+		int size = skb_shinfo(skb)->frags[i].size;
 
 		if (pos + size > len) {
 			skb_shinfo(skb1)->frags[k] = skb_shinfo(skb)->frags[i];
@@ -2217,12 +2208,7 @@ int skb_shift(struct sk_buff *tgt, struct sk_buff *skb, int shiftlen)
 
 	/* Reposition in the original skb */
 	to = 0;
-	/* KW issue 116146 */
-	while (from < skb_shinfo(skb)->nr_frags &&
-		(from < sizeof(skb_shinfo(skb)->frags) \
-			/ sizeof(skb_shinfo(skb)->frags[0])) &&
-		(to < sizeof(skb_shinfo(skb)->frags)
-			/ sizeof(skb_shinfo(skb)->frags[0])))
+	while (from < skb_shinfo(skb)->nr_frags)
 		skb_shinfo(skb)->frags[to++] = skb_shinfo(skb)->frags[from++];
 	skb_shinfo(skb)->nr_frags = to;
 
@@ -2703,9 +2689,7 @@ int skb_gro_receive(struct sk_buff **head, struct sk_buff *skb)
 		skbinfo->nr_frags = 0;
 
 		frag = pinfo->frags + nr_frags;
-		/* KW issue 116147 */
-		if (i < sizeof(skbinfo->frags) / sizeof(skbinfo->frags[0]))
-			frag2 = skbinfo->frags + i;
+		frag2 = skbinfo->frags + i;
 		do {
 			*--frag = *--frag2;
 		} while (--i);
