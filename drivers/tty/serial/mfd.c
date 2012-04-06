@@ -45,6 +45,7 @@
 #include <asm/intel-mid.h>
 #include <asm/processor.h>
 #include <linux/pm_runtime.h>
+#include <asm/intel_mid_hsu.h>
 
 #define  MFD_HSU_A0_STEPPING	1
 
@@ -1050,7 +1051,7 @@ static int serial_hsu_startup(struct uart_port *port)
 		/* wait for mux port to close */
 		while (up1->running)
 			msleep(1000);
-		mfld_hsu_port1_switch(1);
+		intel_mid_hsu_switch(3);
 	}
 	if (up->index == 1) {
 		struct uart_hsu_port *up3 = serial_hsu_ports[3];
@@ -1061,7 +1062,7 @@ static int serial_hsu_startup(struct uart_port *port)
 			 */
 			up3->running = 1;
 		}
-		mfld_hsu_port1_switch(0);
+		intel_mid_hsu_switch(1);
 	}
 	/* startup function is not under atomic context for sure */
 	pm_runtime_get_sync(up->dev);
@@ -1172,7 +1173,7 @@ static void serial_hsu_shutdown(struct uart_port *port)
 	up->running = 0;
 	if (up->index == 1) {
 		struct uart_hsu_port *up3 = serial_hsu_ports[3];
-		mfld_hsu_port1_switch(1);
+		intel_mid_hsu_switch(3);
 		if (up3->running) {
 			mutex_unlock(&hsu_lock);
 			uart_resume_port(&serial_hsu_reg, &up3->port);
@@ -1651,6 +1652,7 @@ static int serial_hsu_probe(struct pci_dev *pdev,
 			uport->port.irq = pdev->irq;
 			uport->port.dev = &pdev->dev;
 			uport->dev = &pdev->dev;
+			intel_mid_hsu_init(index, &pdev->dev, wakeup_irq);
 
 			if (index != 3) {
 				ret = request_irq(pdev->irq, port_irq, 0, uport->name, uport);
@@ -1673,7 +1675,6 @@ static int serial_hsu_probe(struct pci_dev *pdev,
 			}
 #endif
 			if ( index == 1 ) {
-				mfld_hsu_port1_switch(1);
 				index = 3;
 			} else
 				break;
@@ -1891,9 +1892,6 @@ static const struct pci_device_id pci_ids[] __devinitdata = {
 };
 
 #ifdef CONFIG_PM
-void mfld_hsu_enable_wakeup(int index, struct device *dev, irq_handler_t wakeup);
-void mfld_hsu_disable_wakeup(int index, struct device *dev);
-
 static bool allow_for_suspend(struct uart_hsu_port *up)
 {
 	struct circ_buf *xmit = &up->port.state->xmit;
@@ -1973,7 +1971,7 @@ static int hsu_runtime_suspend(struct device *dev)
 	if (up->index == 1) {
 		struct uart_hsu_port *up3 = serial_hsu_ports[3];
 		if (up3->running) {
-			mfld_hsu_enable_wakeup(up3->index, dev, wakeup_irq);
+			intel_mid_hsu_suspend(up3->index);
 			clear_bit(PM_WAKEUP, &up3->pm_flags);
 		}
 		memcpy(up3->reg_shadow + 1, up3->port.membase + 1,
@@ -1981,7 +1979,7 @@ static int hsu_runtime_suspend(struct device *dev)
 	}
 	memcpy(up->reg_shadow + 1, up->port.membase + 1, HSU_PORT_REG_LENGTH - 1);
 	if (up->running)
-		mfld_hsu_enable_wakeup(up->index, dev, wakeup_irq);
+		intel_mid_hsu_suspend(up->index);
 
 	return 0;
 }
@@ -1993,12 +1991,12 @@ static int hsu_runtime_resume(struct device *dev)
 	int dma_rx_on = 0;
 
 	if (up->running)
-		mfld_hsu_disable_wakeup(up->index, dev);
+		intel_mid_hsu_resume(up->index);
 	if (up->index == 1) {
 		struct uart_hsu_port *up3 = serial_hsu_ports[3];
 
 		if (up3->running)
-			mfld_hsu_disable_wakeup(up3->index, dev);
+			intel_mid_hsu_resume(up3->index);
 		if (up3->dma_rx_on)
 			dma_rx_on = 1;
 	}
@@ -2077,7 +2075,7 @@ static int hsu_suspend(struct device *dev)
 		if (up->running) {
 			uart_suspend_port(&serial_hsu_reg, &up->port);
 			up->running = 1;
-			mfld_hsu_enable_wakeup(up->index, dev, wakeup_irq);
+			intel_mid_hsu_suspend(up->index);
 		}
 		up->suspended = 1;
 	}
@@ -2107,7 +2105,7 @@ static int hsu_resume(struct device *dev)
 
 		if (up->suspended && up->running) {
 			uart_resume_port(&serial_hsu_reg, &up->port);
-			mfld_hsu_disable_wakeup(up->index, dev);
+			intel_mid_hsu_resume(up->index);
 			schedule_work(&up->qwork);
 		}
 		up->suspended = 0;
