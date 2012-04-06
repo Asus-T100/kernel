@@ -3920,7 +3920,7 @@ static __init int parse_hdmi_edid(char *arg)
 	if ((!arg) || (strlen(arg) >= HDMI_MONITOR_NAME_LENGTH))
 		return -EINVAL;
 
-	strncpy(HDMI_EDID, arg, strlen(arg) + 1);
+	strncpy(HDMI_EDID, arg, HDMI_MONITOR_NAME_LENGTH - 1);
 
 	return 0;
 }

@@ -285,7 +285,7 @@ static int __devinit msic_probe(struct pci_dev *pdev,
 			const struct pci_device_id *ent)
 {
 	struct drm_device *dev = hdmi_priv ? hdmi_priv->dev : 0;
-	struct drm_psb_private *dev_priv = psb_priv(dev);
+	struct drm_psb_private *dev_priv = dev ? psb_priv(dev) : 0;
 	int ret = 0;
 
 	if (pdev->device != MSIC_PCI_DEVICE_ID) {
@@ -307,6 +307,12 @@ static int __devinit msic_probe(struct pci_dev *pdev,
 		DRM_ERROR("%s: Memory map failed", __func__);
 		ret = -ENOMEM;
 		goto err2;
+	}
+
+	if (dev_priv == NULL) {
+		DRM_ERROR("%s: Invalid parameter", __func__);
+		ret = -EINVAL;
+		goto err3;
 	}
 
 	dev_priv->hpd_detect = create_freezable_workqueue("hpd_detect");
