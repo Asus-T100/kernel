@@ -74,6 +74,7 @@
 #include <asm/intel_mid_gpadc.h>
 #include <asm/intel_mid_pwm.h>
 #include <asm/reboot.h>
+#include <asm/intel_mid_hsu.h>
 
 /* the offset for the mapping of global gpio pin to irq */
 #define MRST_IRQ_OFFSET 0x100
@@ -1907,4 +1908,59 @@ static int __init switch_mid_init(void)
 	return 0;
 }
 device_initcall(switch_mid_init);
+#endif
+
+#ifdef CONFIG_SERIAL_MFD_HSU
+static struct mfld_hsu_info ctp_hsu_info[] = {
+	[0] = {
+		.id = 0,
+		.name = "hsu0",
+		.wake_gpio = 42,
+		.cts_gpio = 96+28,
+		.cts_alt = 1,
+		.rts_gpio = 96+29,
+		.rts_alt = 1,
+	},
+	[1] = {
+		.id = 1,
+		.name = "hsu1",
+		.wake_gpio = 64,
+		.rx_gpio = 64,
+		.rx_alt = 1,
+		.tx_gpio = 65,
+		.tx_alt = 1,
+		.cts_gpio = 68,
+		.cts_alt = 1,
+		.rts_gpio = 66,
+		.rts_alt = 2,
+	},
+	[2] = {
+		.id = 2,
+		.name = "hsu2",
+		.wake_gpio = 67,
+		.rx_gpio = 67,
+		.rx_alt = 1,
+	},
+	[3] = {
+		.id = 1,
+		.name = "hsu3",
+		.wake_gpio = 96+30,
+		.rx_gpio = 96+30,
+		.rx_alt = 1,
+		.tx_gpio = 96+31,
+		.tx_alt = 1,
+		.cts_gpio = 96+33,
+		.cts_alt = 1,
+		.rts_gpio = 96+32,
+		.rts_alt = 2,
+	},
+
+};
+
+static int __init ctp_hsu_init(void)
+{
+	platform_hsu_info = ctp_hsu_info;
+	return 0;
+}
+device_initcall(ctp_hsu_init);
 #endif
