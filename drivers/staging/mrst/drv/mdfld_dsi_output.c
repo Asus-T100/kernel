@@ -435,17 +435,14 @@ static enum drm_connector_status mdfld_dsi_connector_detect
 		= to_psb_intel_output(connector);
 	struct mdfld_dsi_connector *dsi_connector
 		= MDFLD_DSI_CONNECTOR(psb_output);
-
+	struct drm_device *dev = connector->dev;
 
 	PSB_DEBUG_ENTRY("\n");
 
+	if (get_panel_type(dev, 0) == TMD_VID)
+		dsi_connector->status = connector_status_connected;
 
-#if defined(CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY) || defined(CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE)
-
-	dsi_connector->status = connector_status_connected;
-#else
 	return dsi_connector->status;
-#endif
 }
 
 static int mdfld_dsi_connector_set_property(struct drm_connector *connector,
