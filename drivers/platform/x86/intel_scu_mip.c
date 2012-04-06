@@ -27,7 +27,6 @@ static int read_mip(u8 *data, int len, int offset, int issigned)
 {
 	int ret;
 	u32 sptr, dptr, cmd, cmdid, data_off;
-	int retry = 10000;
 
 	if (!intel_mip_base)
 		return -ENODEV;
@@ -44,7 +43,7 @@ static int read_mip(u8 *data, int len, int offset, int issigned)
 	do {
 		ret = intel_scu_ipc_raw_cmd(cmd, 0, NULL, 0, &data_off, 1,
 				dptr, sptr);
-	} while (ret == -EIO && --retry != 0);
+	} while (ret == -EIO);
 
 	if (!ret)
 		memcpy(data, intel_mip_base + data_off, len);
@@ -67,7 +66,7 @@ EXPORT_SYMBOL(intel_scu_ipc_read_mip);
 int intel_scu_ipc_write_umip(u8 *data, int len, int offset)
 {
 	int ret, offset_align;
-	int retry = 10000, len_align = 0;
+	int len_align = 0;
 	u32 dptr, sptr, cmd;
 	u8 *buf = NULL;
 
@@ -102,9 +101,10 @@ int intel_scu_ipc_write_umip(u8 *data, int len, int offset)
 	cmd = IPC_CMD_UMIP_WR << 12 | IPCMSG_MIP_ACCESS;
 
 	do {
+		memcpy(intel_mip_base, buf, len_align);
 		ret = intel_scu_ipc_raw_cmd(cmd, 0, NULL, 0, NULL, 0,
 				dptr, sptr);
-	} while (ret == -EIO && --retry != 0);
+	} while (ret == -EIO);
 
 fail:
 	if (buf && len_align != len)
