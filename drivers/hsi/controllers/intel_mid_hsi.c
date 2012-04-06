@@ -3460,8 +3460,14 @@ static int __init intel_hsi_init(void)
  * So we can choose between Standby/HSI based on enable_stadby 1/0.
 */
 #ifdef CONFIG_BOARD_CTP
+/*
+ * FIXME:: enable_standby has been define in mfld-pmu file so
+ * compilation fails if OSPM is Disabled.
+ */
+#ifdef CONFIG_INTEL_MID_MDFLD_POWER
 	if (enable_standby)
 		return -EBUSY;
+#endif
 #endif
 	pr_info("init Intel HSI controller driver\n");
 	return pci_register_driver(&intel_hsi_driver);

@@ -61,7 +61,13 @@ struct hsi_mid_platform_data {
  * to enable Standby on CVT Platform
  */
 #ifdef CONFIG_BOARD_CTP
+/*
+ * FIXME:: enable_standby has been define in mfld-pmu file so
+ * compilation fails if OSPM is Disabled.
+ */
+#ifdef CONFIG_INTEL_MID_MDFLD_POWER
 extern unsigned int enable_standby;
+#endif
 #endif
 
 #endif /* __INTEL_MID_HSI_H__ */
