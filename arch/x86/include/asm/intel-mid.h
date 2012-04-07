@@ -135,7 +135,8 @@ enum {
 	MFLD_BID_PR2_PNP     = 0x08,
 	MFLD_BID_PR2_VOLUME  = 0x25,
 	MFLD_BID_PR3         = 0x35,
-	MFLD_BID_PR3_PNP     = 0x18
+	MFLD_BID_PR3_PNP     = 0x18,
+	MFLD_BID_LEX	= 0xe0000025
 };
 extern u32 mfld_board_id(void);
 

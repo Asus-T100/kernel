@@ -458,19 +458,48 @@ static const struct mt9e013_reg mt9e013_recommended_settings[] = {
 	{MT9E013_TOK_TERM, {0}, 0}
 };
 
-static const struct mt9e013_reg mt9e013_pll_timing[] = {
-	/*			pixelrate into the isp =	153.600.000 Hz		 */
-	{MT9E013_16BIT, {0x0300},	0x0004	}, /*	vt_pix_clk_div=	4	internal pixel clock freq =	192.000.000 Hz		 */
-	{MT9E013_16BIT, {0x0302},	0x0001	}, /*	vt_sys_clk_div=	1				 */
-	{MT9E013_16BIT, {0x0304},	0x0001	}, /*	pre_pll_clk_div=	1	PLL input clock freq =	19.200.000 Hz		 */
-	{MT9E013_16BIT, {0x0306},	0x0028	}, /*	pll_multiplier=	40	mipi bus speed =	768.000.000 Hz		 */
-	{MT9E013_16BIT, {0x0308},	0x000A	}, /*	op_pix_clk_div=	10	output pixel clock freq =	76.800.000 Hz		 */
-	{MT9E013_16BIT, {0x030A},	0x0001	}, /*	op_sys_clk_div=	1				 */
-	{MT9E013_16BIT, {0x3016},	0x111	}, /*	row_speed=	273				 */
+
+static const struct mt9e013_reg mt9e013_pll_timing_96MHz[] = {
+	/* pixelrate into the isp = 96.000.000 Hz */
+	{MT9E013_16BIT, {0x0300}, 0x0005}, /* vt_pix_clk_div = 5, internal
+					    * pixel clk freq = 96.000MHz
+					    */
+	{MT9E013_16BIT, {0x0302}, 0x0001}, /* vt_sys_clk_div = 1 */
+	{MT9E013_16BIT, {0x0304}, 0x0001}, /* pre_pll_clk_div = 1
+					    * PLL input clk freq = 19.200MHz
+					    */
+	{MT9E013_16BIT, {0x0306}, 0x0019}, /* pll_multiplier = 25
+					    * mipi bus speed = 480.000MHz
+					    */
+	{MT9E013_16BIT, {0x0308}, 0x000A}, /* op_pix_clk_div = 10
+					    * output pixel clk freq = 48.000MHz
+					    */
+	{MT9E013_16BIT, {0x030A}, 0x0001}, /* op_sys_clk_div = 1 */
+	{MT9E013_16BIT, {0x3016}, 0x111}, /* row_speed = 273 */
 	{MT9E013_TOK_DELAY, {0}, 1},
 	{MT9E013_TOK_TERM, {0}, 0}
 };
 
+static const struct mt9e013_reg mt9e013_pll_timing_153MHz[] = {
+	/* pixelrate into the isp = 153.600.000 Hz */
+	{MT9E013_16BIT, {0x0300}, 0x0004}, /* vt_pix_clk_div = 4, internal
+					    * pixel clk freq = 192.000MHz
+					    */
+	{MT9E013_16BIT, {0x0302}, 0x0001}, /* vt_sys_clk_div = 1 */
+	{MT9E013_16BIT, {0x0304}, 0x0001}, /* pre_pll_clk_div = 1
+					    * PLL input clock freq = 19.200MHz
+					    */
+	{MT9E013_16BIT, {0x0306}, 0x0028}, /* pll_multiplier = 40
+					    * mipi bus speed = 768.000MHz
+					    */
+	{MT9E013_16BIT, {0x0308}, 0x000A}, /* op_pix_clk_div = 10, output
+					    * pixel clk freq = 76.800MHz
+					    */
+	{MT9E013_16BIT, {0x030A}, 0x0001}, /* op_sys_clk_div = 1 */
+	{MT9E013_16BIT, {0x3016}, 0x111}, /* row_speed = 273 */
+	{MT9E013_TOK_DELAY, {0}, 1},
+	{MT9E013_TOK_TERM, {0}, 0}
+};
 
 /*2-lane MIPI Interface Configuration*/
 static const struct mt9e013_reg mt9e013_mipi_config[] = {

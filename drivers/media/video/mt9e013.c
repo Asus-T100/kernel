@@ -927,9 +927,20 @@ static int mt9e013_init_registers(struct v4l2_subdev *sd)
 {
 	int ret;
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
+	struct mt9e013_device *dev = to_mt9e013_sensor(sd);
 
 	ret  = mt9e013_write_reg_array(client, mt9e013_reset_register);
-	ret |= mt9e013_write_reg_array(client, mt9e013_pll_timing);
+
+	if (dev->platform_data->pixel_rate &&
+	    dev->platform_data->pixel_rate() <= 96) {
+		ret |= mt9e013_write_reg_array(client,
+					       mt9e013_pll_timing_96MHz);
+	} else {
+		/* default 153MHz */
+		ret |= mt9e013_write_reg_array(client,
+					       mt9e013_pll_timing_153MHz);
+	}
+
 	ret |= mt9e013_write_reg_array(client, mt9e013_raw_10);
 	ret |= mt9e013_write_reg_array(client, mt9e013_mipi_config);
 	ret |= mt9e013_write_reg_array(client, mt9e013_recommended_settings);

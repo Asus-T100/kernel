@@ -89,6 +89,7 @@ struct camera_sensor_platform_data {
 	int (*flisclk_ctrl)(struct v4l2_subdev *subdev, int flag);
 	int (*power_ctrl)(struct v4l2_subdev *subdev, int flag);
 	int (*csi_cfg)(struct v4l2_subdev *subdev, int flag);
+	unsigned int (*pixel_rate)(void);
 };
 
 struct camera_flash_platform_data {
