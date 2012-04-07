@@ -32,6 +32,7 @@
 #include "hrt/bits.h"
 #include "linux/intel_mid_pm.h"
 #include <linux/kernel.h>
+#include <asm/intel-mid.h>
 
 /* We should never need to run the flash for more than 2 frames.
  * At 15fps this means 133ms. We set the timeout a bit longer.
@@ -443,63 +444,59 @@ static int atomisp_buf_pre_dequeue(struct atomisp_video_pipe *pipe,
 	return 0;
 }
 
-/* set the bit range [lsb, lsb+num_bits] of in_val to new_val
- * and return the result.
+/*
+ * Background:
+ * The IUNITPHY register CSI_CONTROL bit definition was changed since PNW C0.
+ * For PNW A0 and B0, CSI4_TERM_EN_COUNT is bit 23:20 (4 bits).
+ * Starting from PWN C0, including all CLV and CLV+ steppings,
+ * CSI4_TERM_EN_COUNT is bit 30:24 (7 bits).
+ *
+ * ------------------------------------------
+ * Silicon	Stepping	PCI revision
+ * Penwell	A0		0x00
+ * Penwell	B0		0x04
+ * Penwell	C0		0x06
+ * Penwell	D0		0x06
+ * Penwell	D1		0x06
+ * Penwell	D2		0x06
+ * Cloverview	A0		0x06
+ * Cloverview	B0		0x05
+ * Cloverview	C0		0x04
+ * Cloverview+	A0		0x08
+ * Cloverview+	B0		0x0C
+ *
  */
-static uint32_t u32_set_bits(uint32_t in_val, unsigned int lsb,
-	     unsigned int num_bits, uint32_t new_val)
-{
-	unsigned int bit_mask;
-	/* avoid overflow in calculating the bit masks */
-	if (num_bits > 32)
-		return in_val;
-	if (num_bits == 32)
-		return new_val;
-	/* calculate number of 1 bits in mask */
-	bit_mask = (1<<(num_bits+1)) - 1;
-	/* make sure new_val doesn't contain more than num_bits */
-	new_val &= bit_mask;
-	/* shift bits into the target place */
-	bit_mask <<= lsb;
-	/* clear old bits */
-	in_val &= ~bit_mask;
-	/* assign new_val to the output position */
-	in_val |= new_val << lsb;
-	return in_val;
-}
 
-/* The term_en_count is set via 2 registers, one for the 4lane port and one
-   for the 1lane port. */
-#define TERM_EN_COUNT_1LANE_START_BIT 16
-#define PNW_B0_TERM_EN_COUNT_4LANE_START_BIT 20
-#define PNW_B0_TERM_EN_COUNT_NUM_BITS        4
-#define TERM_EN_COUNT_4LANE_START_BIT 24
-#define TERM_EN_COUNT_NUM_BITS        7
+#define TERM_EN_COUNT_1LANE_OFFSET		16	/* bit 22:16 */
+#define TERM_EN_COUNT_1LANE_MASK		0x7f0000
+#define TERM_EN_COUNT_4LANE_OFFSET		24	/* bit 30:24 */
+#define TERM_EN_COUNT_4LANE_MASK		0x7f000000
+#define TERM_EN_COUNT_4LANE_PWN_B0_OFFSET	20	/* bit 23:20 */
+#define TERM_EN_COUNT_4LANE_PWN_B0_MASK		0xf00000
 
-static void set_term_en_count(struct atomisp_device *isp, int b0)
+static void set_term_en_count(struct atomisp_device *isp)
 {
 	uint32_t val;
-	unsigned int lane1_start_bit,
-		     lane4_start_bit,
-		     num_bits;
+	int pwn_b0 = 0;
 
-	lane1_start_bit = TERM_EN_COUNT_1LANE_START_BIT;
-	if (b0) {
-		lane4_start_bit = PNW_B0_TERM_EN_COUNT_4LANE_START_BIT;
-		num_bits = PNW_B0_TERM_EN_COUNT_NUM_BITS;
-	} else {
-		lane4_start_bit = TERM_EN_COUNT_4LANE_START_BIT;
-		num_bits = TERM_EN_COUNT_NUM_BITS;
-	}
+	if (isp->pdev->device == 0x0148 && isp->pdev->revision < 0x6 &&
+		__intel_mid_cpu_chip == INTEL_MID_CPU_CHIP_PENWELL)
+		pwn_b0 = 1;
 
 	val = atomisp_msg_read32(isp, IUNITPHY_PORT, CSI_CONTROL);
-	/* 1 lane CSI port */
-	val = u32_set_bits(val, lane1_start_bit, num_bits, 0xF);
-	/* 4 lane CSI port */
-	val = u32_set_bits(val, lane4_start_bit, num_bits, 0xF);
+
+	/* set TERM_EN_COUNT_1LANE to 0xf */
+	val &= ~TERM_EN_COUNT_1LANE_MASK;
+	val |= 0xf << TERM_EN_COUNT_1LANE_OFFSET;
+
+	/* set TERM_EN_COUNT_4LANE to 0xf */
+	val &= pwn_b0 ? ~TERM_EN_COUNT_4LANE_PWN_B0_MASK :
+				~TERM_EN_COUNT_4LANE_MASK;
+	val |= 0xf << (pwn_b0 ? TERM_EN_COUNT_4LANE_PWN_B0_OFFSET :
+				TERM_EN_COUNT_4LANE_OFFSET);
+
 	atomisp_msg_write32(isp, IUNITPHY_PORT, CSI_CONTROL, val);
 }
-
 static int atomisp_buffer_dequeue(struct atomisp_device *isp, int wait)
 {
 	struct videobuf_vmalloc_memory *vmem;
@@ -578,7 +575,7 @@ static int atomisp_start_binary(struct atomisp_device *isp)
 
 static int atomisp_streamon_input(struct atomisp_device *isp)
 {
-	int is_b0, ret;
+	int ret;
 
 	if (isp->sw_contex.file_input) {
 		ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
@@ -587,8 +584,7 @@ static int atomisp_streamon_input(struct atomisp_device *isp)
 	}
 
 	if (isp->sw_contex.sensor_streaming == false) {
-		is_b0 = (isp->pdev->revision == 6) ? 0 : 1;
-		set_term_en_count(isp, is_b0);
+		set_term_en_count(isp);
 		/*
 		 * stream on the sensor, power on is called before
 		 * work queue start
