@@ -534,20 +534,8 @@ int psb_setup_fw(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv = dev->dev_private;
 	uint32_t ram_bank_size;
-	struct msvdx_fw *fw;
-	uint32_t *fw_ptr = NULL;
-	uint32_t *text_ptr = NULL;
-	uint32_t *data_ptr = NULL;
-	const struct firmware *raw = NULL;
 	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
-	int ec_firmware = 0, ret = 0;
-
-	/* load error concealment firmware? */
-	if (IS_MRST(dev) && dev_priv->last_msvdx_ctx &&
-	    (dev_priv->last_msvdx_ctx->ctx_type >> 8) == VAProfileH264ConstrainedBaseline) {
-		ec_firmware = 1;
-		PSB_DEBUG_INIT("MSVDX: load error concealment firmware\n");
-	}
+	int ret = 0;
 
 	/* todo : Assert the clock is on - if not turn it on to upload code */
 	PSB_DEBUG_GENERAL("MSVDX: psb_setup_fw\n");
@@ -613,93 +601,108 @@ int psb_setup_fw(struct drm_device *dev)
 	PSB_DEBUG_GENERAL("MSVDX: RAM bank size = %d bytes\n",
 			  ram_bank_size);
 
-	/* if FW already loaded from storage */
-	if (msvdx_priv->msvdx_fw)
-		fw_ptr = msvdx_priv->msvdx_fw;
-	else {
-		if (IS_MRST(dev)) {
-			fw_ptr = msvdx_get_fw(dev, &raw, "msvdx_fw.bin");
-			PSB_DEBUG_GENERAL("MSVDX:load msvdx_fw.bin by udevd\n");
-		} else if (IS_MDFLD(dev)) {
-			if (IS_FW_UPDATED)
-				fw_ptr = msvdx_get_fw(dev, &raw, "msvdx_fw_mfld_DE2.0.bin");
-			else
-				fw_ptr = msvdx_get_fw(dev, &raw, "msvdx_fw_mfld.bin");
+    if (!IS_D0(dev)) {
+        struct msvdx_fw *fw;
+        uint32_t *fw_ptr = NULL;
+        uint32_t *text_ptr = NULL;
+        uint32_t *data_ptr = NULL;
+        const struct firmware *raw = NULL;
+        int ec_firmware = 0;
 
-			PSB_DEBUG_GENERAL("MSVDX:load msvdx_fw_mfld_DE2.0.bin by udevd\n");
-		} else
-			DRM_ERROR("MSVDX:HW is neither mrst nor mfld\n");
-	}
+        /* load error concealment firmware? */
+        if (IS_MRST(dev) && dev_priv->last_msvdx_ctx &&
+            (dev_priv->last_msvdx_ctx->ctx_type >> 8) == VAProfileH264ConstrainedBaseline) {
+            ec_firmware = 1;
+            PSB_DEBUG_INIT("MSVDX: load error concealment firmware\n");
+        }
 
-	if (!fw_ptr) {
-		DRM_ERROR("MSVDX:load msvdx_fw.bin failed,is udevd running?\n");
-		ret = 1;
-		goto out;
-	}
+    	/* if FW already loaded from storage */
+    	if (msvdx_priv->msvdx_fw)
+    		fw_ptr = msvdx_priv->msvdx_fw;
+    	else {
+    		if (IS_MRST(dev)) {
+    			fw_ptr = msvdx_get_fw(dev, &raw, "msvdx_fw.bin");
+    			PSB_DEBUG_GENERAL("MSVDX:load msvdx_fw.bin by udevd\n");
+    		} else if (IS_MDFLD(dev)) {
+    			if (IS_FW_UPDATED)
+    				fw_ptr = msvdx_get_fw(dev, &raw, "msvdx_fw_mfld_DE2.0.bin");
+    			else
+    				fw_ptr = msvdx_get_fw(dev, &raw, "msvdx_fw_mfld.bin");
 
-	if (!msvdx_priv->is_load) {/* Load firmware into BO */
-		PSB_DEBUG_GENERAL("MSVDX:load msvdx_fw.bin by udevd into BO\n");
-		if (IS_MRST(dev))
-			ret = msvdx_get_fw_bo(dev, &raw, "msvdx_fw.bin");
-		else if (IS_MDFLD(dev)) {
-			if (IS_FW_UPDATED)
-				ret = msvdx_get_fw_bo(dev, &raw, "msvdx_fw_mfld_DE2.0.bin");
-			else
-				ret = msvdx_get_fw_bo(dev, &raw, "msvdx_fw_mfld.bin");
-		} else
-			DRM_ERROR("MSVDX:HW is neither mrst nor mfld\n");
-		msvdx_priv->is_load = 1;
-	}
+    			PSB_DEBUG_GENERAL("MSVDX:load msvdx_fw_mfld_DE2.0.bin by udevd\n");
+    		} else
+    			DRM_ERROR("MSVDX:HW is neither mrst nor mfld\n");
+    	}
 
+    	if (!fw_ptr) {
+    		DRM_ERROR("MSVDX:load msvdx_fw.bin failed,is udevd running?\n");
+    		ret = 1;
+    		goto out;
+    	}
 
-	fw = (struct msvdx_fw *) fw_ptr;
-
-	if (ec_firmware) {
-		fw_ptr += (((sizeof(struct msvdx_fw) + (fw->text_size + fw->data_size) * 4 + 0xfff) & ~0xfff) / sizeof(uint32_t));
-		fw = (struct msvdx_fw *) fw_ptr;
-	}
-
-	/*
-	  if (fw->ver != 0x02) {
-	  DRM_ERROR("psb: msvdx_fw.bin firmware version mismatch,"
-	  "got version=%02x expected version=%02x\n",
-	  fw->ver, 0x02);
-	  ret = 1;
-	  goto out;
-	  }
-	*/
-	text_ptr =
-		(uint32_t *)((uint8_t *) fw_ptr + sizeof(struct msvdx_fw));
-	data_ptr = text_ptr + fw->text_size;
-
-	if (fw->text_size == 2858)
-		PSB_DEBUG_GENERAL(
-			"MSVDX: FW ver 1.00.10.0187 of SliceSwitch variant\n");
-	else if (fw->text_size == 3021)
-		PSB_DEBUG_GENERAL(
-			"MSVDX: FW ver 1.00.10.0187 of FrameSwitch variant\n");
-	else if (fw->text_size == 2841)
-		PSB_DEBUG_GENERAL("MSVDX: FW ver 1.00.10.0788\n");
-	else if (fw->text_size == 3147)
-		PSB_DEBUG_GENERAL("MSVDX: FW ver BUILD_DXVA_FW1.00.10.1042 of SliceSwitch variant\n");
-	else if (fw->text_size == 3097)
-		PSB_DEBUG_GENERAL("MSVDX: FW ver BUILD_DXVA_FW1.00.10.0963.02.0011 of FrameSwitch variant\n");
-	else
-		PSB_DEBUG_GENERAL("MSVDX: FW ver unknown\n");
+    	if (!msvdx_priv->is_load) {/* Load firmware into BO */
+    		PSB_DEBUG_GENERAL("MSVDX:load msvdx_fw.bin by udevd into BO\n");
+    		if (IS_MRST(dev))
+    			ret = msvdx_get_fw_bo(dev, &raw, "msvdx_fw.bin");
+    		else if (IS_MDFLD(dev)) {
+    			if (IS_FW_UPDATED)
+    				ret = msvdx_get_fw_bo(dev, &raw, "msvdx_fw_mfld_DE2.0.bin");
+    			else
+    				ret = msvdx_get_fw_bo(dev, &raw, "msvdx_fw_mfld.bin");
+    		} else
+    			DRM_ERROR("MSVDX:HW is neither mrst nor mfld\n");
+    		msvdx_priv->is_load = 1;
+    	}
 
 
-	PSB_DEBUG_GENERAL("MSVDX: Retrieved pointers for firmware\n");
-	PSB_DEBUG_GENERAL("MSVDX: text_size: %d\n", fw->text_size);
-	PSB_DEBUG_GENERAL("MSVDX: data_size: %d\n", fw->data_size);
-	PSB_DEBUG_GENERAL("MSVDX: data_location: 0x%x\n",
-			  fw->data_location);
-	PSB_DEBUG_GENERAL("MSVDX: First 4 bytes of text: 0x%x\n",
-			  *text_ptr);
-	PSB_DEBUG_GENERAL("MSVDX: First 4 bytes of data: 0x%x\n",
-			  *data_ptr);
+    	fw = (struct msvdx_fw *) fw_ptr;
 
-	PSB_DEBUG_GENERAL("MSVDX: Uploading firmware\n");
-	if (!IS_D0(dev)) {
+    	if (ec_firmware) {
+    		fw_ptr += (((sizeof(struct msvdx_fw) + (fw->text_size + fw->data_size) * 4 + 0xfff) & ~0xfff) / sizeof(uint32_t));
+    		fw = (struct msvdx_fw *) fw_ptr;
+    	}
+
+        /*
+            if (fw->ver != 0x02) {
+                DRM_ERROR("psb: msvdx_fw.bin firmware version mismatch,"
+                    "got version=%02x expected version=%02x\n",
+                    fw->ver, 0x02);
+                ret = 1;
+                goto out;
+            }
+            */
+    	text_ptr =
+    		(uint32_t *)((uint8_t *) fw_ptr + sizeof(struct msvdx_fw));
+    	data_ptr = text_ptr + fw->text_size;
+
+    	if (fw->text_size == 2858)
+    		PSB_DEBUG_GENERAL(
+    			"MSVDX: FW ver 1.00.10.0187 of SliceSwitch variant\n");
+    	else if (fw->text_size == 3021)
+    		PSB_DEBUG_GENERAL(
+    			"MSVDX: FW ver 1.00.10.0187 of FrameSwitch variant\n");
+    	else if (fw->text_size == 2841)
+    		PSB_DEBUG_GENERAL("MSVDX: FW ver 1.00.10.0788\n");
+    	else if (fw->text_size == 3147)
+    		PSB_DEBUG_GENERAL("MSVDX: FW ver BUILD_DXVA_FW1.00.10.1042 of SliceSwitch variant\n");
+    	else if (fw->text_size == 3097)
+    		PSB_DEBUG_GENERAL("MSVDX: FW ver BUILD_DXVA_FW1.00.10.0963.02.0011 of FrameSwitch variant\n");
+    	else
+    		PSB_DEBUG_GENERAL("MSVDX: FW ver unknown\n");
+
+
+    	PSB_DEBUG_GENERAL("MSVDX: Retrieved pointers for firmware\n");
+    	PSB_DEBUG_GENERAL("MSVDX: text_size: %d\n", fw->text_size);
+    	PSB_DEBUG_GENERAL("MSVDX: data_size: %d\n", fw->data_size);
+    	PSB_DEBUG_GENERAL("MSVDX: data_location: 0x%x\n",
+    			  fw->data_location);
+    	PSB_DEBUG_GENERAL("MSVDX: First 4 bytes of text: 0x%x\n",
+    			  *text_ptr);
+    	PSB_DEBUG_GENERAL("MSVDX: First 4 bytes of data: 0x%x\n",
+    			  *data_ptr);
+
+    	PSB_DEBUG_GENERAL("MSVDX: Uploading firmware\n");
+
 #if UPLOAD_FW_BY_DMA
 		psb_upload_fw(dev_priv, 0, msvdx_priv->mtx_mem_size / 4, ec_firmware);
 #else
@@ -710,31 +713,31 @@ int psb_setup_fw(struct drm_device *dev)
 				fw->data_location - MTX_DATA_BASE, fw->data_size,
 				data_ptr);
 #endif
-	}
-#if 0
-	/* todo :  Verify code upload possibly only in debug */
-	ret = psb_verify_fw(dev_priv, ram_bank_size,
-			    MTX_CORE_CODE_MEM,
-			    PC_START_ADDRESS - MTX_CODE_BASE,
-			    fw->text_size, text_ptr);
-	if (ret) {
-		/* Firmware code upload failed */
-		ret = 1;
-		goto out;
-	}
 
-	ret = psb_verify_fw(dev_priv, ram_bank_size, MTX_CORE_DATA_MEM,
-			    fw->data_location - MTX_DATA_BASE,
-			    fw->data_size, data_ptr);
-	if (ret) {
-		/* Firmware data upload failed */
-		ret = 1;
-		goto out;
-	}
+#if 0
+    	/* todo :  Verify code upload possibly only in debug */
+    	ret = psb_verify_fw(dev_priv, ram_bank_size,
+    			    MTX_CORE_CODE_MEM,
+    			    PC_START_ADDRESS - MTX_CODE_BASE,
+    			    fw->text_size, text_ptr);
+    	if (ret) {
+    		/* Firmware code upload failed */
+    		ret = 1;
+    		goto out;
+    	}
+
+    	ret = psb_verify_fw(dev_priv, ram_bank_size, MTX_CORE_DATA_MEM,
+    			    fw->data_location - MTX_DATA_BASE,
+    			    fw->data_size, data_ptr);
+    	if (ret) {
+    		/* Firmware data upload failed */
+    		ret = 1;
+    		goto out;
+    	}
 #else
-	(void)psb_verify_fw;
+    	(void)psb_verify_fw;
 #endif
-	if (!IS_D0(dev)) {
+
 		/*	-- Set starting PC address	*/
 		psb_write_mtx_core_reg(dev_priv, MTX_PC, PC_START_ADDRESS);
 
