@@ -69,6 +69,7 @@
 #include <asm/io.h>
 #include <asm/i8259.h>
 #include <asm/intel_scu_ipc.h>
+#include <asm/intel_kpd_gpio_led.h>
 #include <asm/apb_timer.h>
 #include <asm/intel_mid_gpadc.h>
 #include <asm/intel_mid_pwm.h>
@@ -2048,6 +2049,33 @@ static int __init intel_kpd_led_init(void)
 	return 0;
 }
 fs_initcall(intel_kpd_led_init);
+#endif
+
+#ifdef CONFIG_LEDS_INTEL_KPD_GPIO
+static int __init intel_kpd_gpio_led_init(void)
+{
+	int ret;
+	struct platform_device *pdev;
+	static struct intel_kpd_gpio_led_pdata pdata;
+
+	pdev = platform_device_alloc("intel_kpd_led", -1);
+	if (!pdev) {
+		pr_err("Failed to create platform device: intel_kpd_led\n");
+		return -ENOMEM;
+	}
+
+	ret = get_gpio_by_name("intel_kpd_led");
+	if (ret == -1) {
+		pr_err("Failed to get KPD LED gpio pin from SFI table\n");
+		return -ENODEV;
+	}
+
+	pdata.gpio = ret;
+	pdev->dev.platform_data = &pdata;
+
+	return platform_device_add(pdev);
+}
+device_initcall(intel_kpd_gpio_led_init);
 #endif
 
 static int __init intel_msic_thermal_init(void)

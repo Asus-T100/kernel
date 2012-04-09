@@ -44,6 +44,7 @@ obj-$(CONFIG_LEDS_NS2)			+= leds-ns2.o
 obj-$(CONFIG_LEDS_NETXBIG)		+= leds-netxbig.o
 obj-$(CONFIG_LEDS_ASIC3)		+= leds-asic3.o
 obj-$(CONFIG_LEDS_INTEL_KPD)		+= leds-intel-kpd.o
+obj-$(CONFIG_LEDS_INTEL_KPD_GPIO)	+= leds-intel-kpd-gpio.o
 
 # LED SPI Drivers
 obj-$(CONFIG_LEDS_DAC124S085)		+= leds-dac124s085.o

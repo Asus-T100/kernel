@@ -379,6 +379,16 @@ config LEDS_INTEL_KPD
           For detail information of sysfs control, Please refer to kernel document
           Documentation/ABI/testing/sysfs-class-led.
 
+config LEDS_INTEL_KPD_GPIO
+	tristate "LED driver for Intel Keypad GPIO LED"
+	depends on GPIOLIB
+	help
+	  This option enables to support for Intel Keypad GPIO LED on Lexington
+	  Platform. LED brightness can be controlled via sysfs.
+
+	  For detail information of sysfs control, Please refer to kernel document
+	  Documentation/ABI/testing/sysfs-class-led.
+
 config LEDS_NS2
 	tristate "LED support for Network Space v2 GPIO LEDs"
 	depends on LEDS_CLASS
