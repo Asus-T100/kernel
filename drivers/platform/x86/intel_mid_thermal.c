@@ -38,8 +38,37 @@
 #include <asm/intel_scu_ipc.h>
 #include <asm/intel_mid_gpadc.h>
 
+#ifdef CONFIG_BOARD_CTP
+
+/* Number of thermal sensors */
+#define MSIC_THERMAL_SENSORS	3
+#define MSIC_DIE_INDEX		2
+
+static char *name[MSIC_THERMAL_SENSORS] = {
+	"skin0", "skin1", "msicdie"
+};
+
+/*
+ *Skin sensors attributes
+ *temp = temp*slope+intercept
+ */
+#define BOTTOM_SKIN_SLOPE	806
+#define BOTTOM_SKIN_INTERCEPT   1800
+#define TOP_SKIN_SLOPE	        851
+#define TOP_SKIN_INTERCEPT      2800
+#define SKIN0_INDX		0
+#define SKIN1_INDX		1
+
+#else
+
 /* Number of thermal sensors */
 #define MSIC_THERMAL_SENSORS	4
+#define MSIC_DIE_INDEX		3
+static char *name[MSIC_THERMAL_SENSORS] = {
+	"skin0", "skin1", "sys", "msicdie"
+};
+#endif
+
 
 /* MSIC die attributes */
 #define MSIC_DIE_ADC_MIN	488
@@ -47,8 +76,6 @@
 
 /* Convert adc_val to die temperature (in milli degree celsius) */
 #define TO_MSIC_DIE_TEMP(adc_val)	(368 * adc_val - 219560)
-
-#define MSIC_DIE_INDEX		3
 
 #define TABLE_LENGTH 24
 /*
@@ -207,15 +234,37 @@ static int mid_read_temp(struct thermal_zone_device *tzd, unsigned long *temp)
 	int indx = td_info->sensor_index; /* Required Index */
 	int val[MSIC_THERMAL_SENSORS];
 
+#ifdef CONFIG_BOARD_CTP
+	ret = intel_mid_gpadc_sample(therm_adc_handle, sample_count,
+					&val[0], &val[1], &val[2]);
+#else
 	ret = intel_mid_gpadc_sample(therm_adc_handle, sample_count,
 					&val[0], &val[1], &val[2], &val[3]);
+#endif
 	if (ret)
 		return ret;
 
 	/* Convert ADC value to temperature */
 	ret = adc_to_temp(td_info->direct, val[indx], &curr_temp);
+
+#ifdef CONFIG_BOARD_CTP
+	if (ret == 0) {
+		if (indx == SKIN0_INDX) {
+			curr_temp = (curr_temp * TOP_SKIN_SLOPE) +
+				(TOP_SKIN_INTERCEPT * 1000);
+			(*temp) = curr_temp / 1000;
+		} else if (indx == SKIN1_INDX) {
+			curr_temp = (curr_temp * BOTTOM_SKIN_SLOPE) +
+				(BOTTOM_SKIN_INTERCEPT * 1000);
+			(*temp) = curr_temp / 1000;
+		} else {
+			*temp = curr_temp;
+		}
+	}
+#else
 	if (ret == 0)
 		*temp = curr_temp;
+#endif
 	return ret;
 }
 
@@ -284,10 +333,6 @@ static struct thermal_zone_device_ops tzd_ops = {
  */
 static int mid_thermal_probe(struct ipc_device *ipcdev)
 {
-	static char *name[MSIC_THERMAL_SENSORS] = {
-		"skin0", "skin1", "sys", "msicdie"
-	};
-
 	int ret;
 	int i;
 	struct ipc_info *ipcinfo;
@@ -296,12 +341,20 @@ static int mid_thermal_probe(struct ipc_device *ipcdev)
 	if (!ipcinfo)
 		return -ENOMEM;
 
+#ifdef CONFIG_BOARD_CTP
+	/* Allocate ADC channels for all sensors */
+	therm_adc_handle = intel_mid_gpadc_alloc(MSIC_THERMAL_SENSORS,
+					0x04 | CH_NEED_VREF | CH_NEED_VCALIB,
+					0x04 | CH_NEED_VREF | CH_NEED_VCALIB,
+					0x03 | CH_NEED_VCALIB);
+#else
 	/* Allocate ADC channels for all sensors */
 	therm_adc_handle = intel_mid_gpadc_alloc(MSIC_THERMAL_SENSORS,
 					0x08 | CH_NEED_VREF | CH_NEED_VCALIB,
 					0x09 | CH_NEED_VREF | CH_NEED_VCALIB,
 					0x0A | CH_NEED_VREF | CH_NEED_VCALIB,
 					0x03 | CH_NEED_VCALIB);
+#endif
 	if (!therm_adc_handle) {
 		ret = -ENOMEM;
 		goto alloc_fail;
