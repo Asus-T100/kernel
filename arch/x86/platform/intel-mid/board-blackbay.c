@@ -1564,29 +1564,12 @@ void blackbay_ipc_device_handler(struct sfi_device_table_entry *pentry,
 
 static struct max11871_platform_data max11871_pdata = {
 	.version = 0x101,
-
 	.abs_x_min = 0,
 	.abs_x_max = 320,
 	.abs_y_min = 4,
 	.abs_y_max = 484,
 	.abs_z_min = 0,
 	.abs_z_max = 255,
-
-	.abs_button_area_x_max = 321,
-	.abs_button_area_x_min = 2,
-	.abs_button_area_y_max = 539,
-	.abs_button_area_y_min = 510,
-	.abs_back_button_x   = 41,
-	.abs_back_button_y   = 518,
-	.abs_home_button_x   = 120,
-	.abs_home_button_y   = 518,
-	.abs_menu_button_x   = 200,
-	.abs_menu_button_y   = 518,
-	.abs_search_button_x = 275,
-	.abs_search_button_y = 518,
-	.abs_button_fuzz_x = 10,
-	.abs_button_fuzz_y = 10,
-
 	.irq_flags = IRQF_TRIGGER_FALLING,
 };
 
@@ -1626,10 +1609,10 @@ static ssize_t max11871_virtual_keys_show(struct kobject *obj,
 	 */
 
 	return sprintf(buf,
-			"0x01:" __stringify(KEY_BACK) ":41:518:30:30:"
-			"0x01:" __stringify(KEY_HOME) ":120:518:30:30:"
-			"0x01:" __stringify(KEY_SEARCH) ":200:518:30:30:"
-			"0x01:" __stringify(KEY_MENU) ":275:518:30:30\n");
+			"0x01:" __stringify(KEY_BACK) ":40:520:60:60:"
+			"0x01:" __stringify(KEY_HOME) ":120:520:60:60:"
+			"0x01:" __stringify(KEY_SEARCH) ":200:520:60:60:"
+			"0x01:" __stringify(KEY_MENU) ":280:520:60:60\n");
 }
 
 static struct kobj_attribute max11871_virtual_keys_attr = {
