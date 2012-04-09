@@ -32,28 +32,28 @@ static const struct sysfs_ops umevent_obj_sysfs_ops = {
  *
  */
 static struct umevent_attribute data_0 =
-	__ATTR(data_0_val, 0666, psb_umevent_attr_show_imp,
+	__ATTR(data_0_val, 0664, psb_umevent_attr_show_imp,
 	       psb_umevent_attr_store_imp);
 static struct umevent_attribute data_1 =
-	__ATTR(data_1_val, 0666, psb_umevent_attr_show_imp,
+	__ATTR(data_1_val, 0664, psb_umevent_attr_show_imp,
 	       psb_umevent_attr_store_imp);
 static struct umevent_attribute data_2 =
-	__ATTR(data_2_val, 0666, psb_umevent_attr_show_imp,
+	__ATTR(data_2_val, 0664, psb_umevent_attr_show_imp,
 	       psb_umevent_attr_store_imp);
 static struct umevent_attribute data_3 =
-	__ATTR(data_3_val, 0666, psb_umevent_attr_show_imp,
+	__ATTR(data_3_val, 0664, psb_umevent_attr_show_imp,
 	       psb_umevent_attr_store_imp);
 static struct umevent_attribute data_4 =
-	__ATTR(data_4_val, 0666, psb_umevent_attr_show_imp,
+	__ATTR(data_4_val, 0664, psb_umevent_attr_show_imp,
 	       psb_umevent_attr_store_imp);
 static struct umevent_attribute data_5 =
-	__ATTR(data_5_val, 0666, psb_umevent_attr_show_imp,
+	__ATTR(data_5_val, 0664, psb_umevent_attr_show_imp,
 	       psb_umevent_attr_store_imp);
 static struct umevent_attribute data_6 =
-	__ATTR(data_6_val, 0666, psb_umevent_attr_show_imp,
+	__ATTR(data_6_val, 0664, psb_umevent_attr_show_imp,
 	       psb_umevent_attr_store_imp);
 static struct umevent_attribute data_7 =
-	__ATTR(data_7_val, 0666, psb_umevent_attr_show_imp,
+	__ATTR(data_7_val, 0664, psb_umevent_attr_show_imp,
 	       psb_umevent_attr_store_imp);
 /**
  * define the structure used to seed our ktype.

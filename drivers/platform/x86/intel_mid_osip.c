@@ -520,10 +520,10 @@ static void create_debugfs_files(void)
 	/* /sys/kernel/debug/osip */
 	osip_dir = debugfs_create_dir("osip", NULL);
 	/* /sys/kernel/debug/osip/cmdline */
-	(void) debugfs_create_file("cmdline", S_IFREG | S_IRUGO | S_IWUGO,
+	(void) debugfs_create_file("cmdline", S_IFREG | S_IRUGO | S_IWUSR | S_IWGRP,
 				   osip_dir, (void *)0, &osip_cmdline_fops);
 	/* /sys/kernel/debug/osip/cmdline_pos */
-	(void) debugfs_create_file("cmdline_pos", S_IFREG | S_IRUGO | S_IWUGO,
+	(void) debugfs_create_file("cmdline_pos", S_IFREG | S_IRUGO | S_IWUSR | S_IWGRP,
 				osip_dir, (void *)1, &osip_cmdline_fops);
 	/* /sys/kernel/debug/osip/decode */
 	(void) debugfs_create_file("decode", S_IFREG | S_IRUGO,
