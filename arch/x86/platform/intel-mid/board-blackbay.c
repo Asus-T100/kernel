@@ -697,11 +697,7 @@ static void *max170XX_platform_data(void *info)
 {
 	static struct max17042_platform_data platform_data;
 	struct i2c_board_info *i2c_info = (struct i2c_board_info *)info;
-#ifdef CONFIG_BATTERY_MAX17050
-	int intr = get_gpio_by_name("max17050");
-#else
-	int intr = get_gpio_by_name("max17042");
-#endif
+	int intr = get_gpio_by_name("max_fg_alert");
 
 	i2c_info->irq = intr + MRST_IRQ_OFFSET;
 
