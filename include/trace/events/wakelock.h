@@ -4,43 +4,39 @@
 #if !defined(_TRACE_WAKELOCK_H) || defined(TRACE_HEADER_MULTI_READ)
 #define _TRACE_WAKELOCK_H
 
-#include <linux/ktime.h>
 #include <linux/tracepoint.h>
 #include <linux/wakelock.h>
 
-TRACE_EVENT(wake_lock,
+DECLARE_EVENT_CLASS(wake_lock_template,
 
 	TP_PROTO(struct wake_lock *lock),
 
 	TP_ARGS(lock),
 
 	TP_STRUCT__entry(
-	         __field( void *,    lock   )
+		__string(name,		lock->name)
+		__field(unsigned long,	expires)
+		__field(int,		flags)
 	),
 
 	TP_fast_assign(
-	    __entry->lock  = lock;
+		__assign_str(name, lock->name);
+		__entry->expires = lock->expires;
+		__entry->flags = lock->flags;
 	),
 
-	TP_printk("timer=%p", __entry->lock)
+	TP_printk("name=%s, flags=%d, expires=%lu",
+		__get_str(name),
+		__entry->flags,
+		__entry->expires)
 );
 
-TRACE_EVENT(wake_unlock,
-
-	TP_PROTO(struct wake_lock *lock),
-
-	TP_ARGS(lock),
-
-	TP_STRUCT__entry(
-	         __field( void *,    lock   )
-	),
-
-	TP_fast_assign(
-	    __entry->lock  = lock;
-	),
-
-	TP_printk("timer=%p", __entry->lock)
-);
+DEFINE_EVENT(wake_lock_template, wake_lock,
+		TP_PROTO(struct wake_lock *lock),
+		TP_ARGS(lock));
+DEFINE_EVENT(wake_lock_template, wake_unlock,
+		TP_PROTO(struct wake_lock *lock),
+		TP_ARGS(lock));
 
 #endif /* _TRACE_WAKELOCK_H */
 
