@@ -1174,11 +1174,6 @@ static void max17042_restore_conf_data(struct max17042_chip *chip)
 				dev_info(&chip->client->dev,
 					"config data needs to be loaded\n");
 
-				/* WA: reset if table tyoe is dv10 */
-				if (fg_conf_data->table_type ==
-							MAX17042_TBL_TYPE_DV10)
-					reset_max17042(chip);
-
 				retval = init_max17042_chip(chip);
 				if (retval < 0) {
 					dev_err(&chip->client->dev,
