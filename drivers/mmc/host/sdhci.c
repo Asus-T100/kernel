@@ -687,6 +687,12 @@ static u8 sdhci_calc_timeout(struct sdhci_host *host, struct mmc_command *cmd)
 			target_timeout += data->timeout_clks / host->clock;
 	}
 
+	if (unlikely(target_timeout > host->mmc->max_discard_to * 1000)) {
+		pr_warn("%s: Too large target_timeout requested for CMD%d!\n",
+		       mmc_hostname(host->mmc), cmd->opcode);
+		return 0xE;
+	}
+
 	/*
 	 * Figure out needed cycles.
 	 * We do this in steps in order to fit inside a 32 bit int.
@@ -702,15 +708,8 @@ static u8 sdhci_calc_timeout(struct sdhci_host *host, struct mmc_command *cmd)
 	while (current_timeout < target_timeout) {
 		count++;
 		current_timeout <<= 1;
-		if (count >= 0xF)
+		if (count >= 0xE)
 			break;
-	}
-
-	if (count >= 0xF) {
-		if (target_timeout > (host->mmc->max_discard_to * 1000))
-			pr_warn("%s: Too large timeout requested for CMD%d!\n",
-			       mmc_hostname(host->mmc), cmd->opcode);
-		count = 0xE;
 	}
 
 	return count;

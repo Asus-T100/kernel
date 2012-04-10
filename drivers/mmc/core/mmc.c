@@ -404,6 +404,8 @@ static int mmc_read_ext_csd(struct mmc_card *card, u8 *ext_csd)
 			ext_csd[EXT_CSD_SEC_ERASE_MULT];
 		card->ext_csd.sec_feature_support =
 			ext_csd[EXT_CSD_SEC_FEATURE_SUPPORT];
+		if (card->ext_csd.sec_feature_support & EXT_CSD_SEC_ER_EN)
+			card->sec_trim_en = SEC_TRIM_EN;
 		card->ext_csd.trim_timeout = 300 *
 			ext_csd[EXT_CSD_TRIM_MULT];
 	}
@@ -565,6 +567,11 @@ MMC_DEV_ATTR(hc_erase_timeout, "%d\n", card->ext_csd.hc_erase_timeout);
 MMC_DEV_ATTR(sec_trim_mult, "%d\n", card->ext_csd.sec_trim_mult);
 MMC_DEV_ATTR(erase_group_def, "%d\n", card->ext_csd.erase_group_def);
 MMC_DEV_ATTR(large_sect_size_en, "%d\n", card->ext_csd.large_sect_size_en);
+MMC_DEV_ATTR(tacc_ns, "%d\n", card->csd.tacc_ns);
+MMC_DEV_ATTR(tacc_clks, "%d\n", card->csd.tacc_clks);
+MMC_DEV_ATTR(r2w_factor, "%d\n", card->csd.r2w_factor);
+MMC_DEV_ATTR(sec_erase_mult, "%d\n", card->ext_csd.sec_erase_mult);
+MMC_DEV_ATTR(sec_trim_en, "%d\n", card->sec_trim_en);
 
 static struct attribute *mmc_std_attrs[] = {
 	&dev_attr_rel_set.attr,
@@ -593,6 +600,11 @@ static struct attribute *mmc_std_attrs[] = {
 	&dev_attr_sec_trim_mult.attr,
 	&dev_attr_erase_group_def.attr,
 	&dev_attr_large_sect_size_en.attr,
+	&dev_attr_tacc_ns.attr,
+	&dev_attr_tacc_clks.attr,
+	&dev_attr_r2w_factor.attr,
+	&dev_attr_sec_erase_mult.attr,
+	&dev_attr_sec_trim_en.attr,
 	NULL,
 };
 
