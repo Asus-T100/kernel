@@ -1,7 +1,7 @@
 /*
- * Support for Medifield PNW Camera Imaging ISP subsystem.
+ * LED flash driver for LM3554
  *
- * Copyright (c) 2010 Intel Corporation. All Rights Reserved.
+ * Copyright (c) 2010-2012 Intel Corporation. All Rights Reserved.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License version
@@ -32,14 +32,11 @@
 
 #include <linux/videodev2.h>
 #include <media/v4l2-device.h>
-#include <media/v4l2-chip-ident.h>
 
-#include <linux/io.h>
+#include <linux/atomisp.h>
+#include <linux/atomisp_platform.h>
 
 #include "lm3554.h"
-
-#define to_lm3554_priv(p_sd) \
-	container_of(p_sd, struct lm3554_priv, sd)
 
 #define INIT_FIELD(_reg_address, _lsb, _msb) { \
 	.reg_address = _reg_address, \
@@ -62,6 +59,8 @@ struct lm3554_priv {
 	u32 intensity;
 	struct camera_flash_platform_data *platform_data;
 };
+
+#define to_lm3554_priv(p_sd)	container_of(p_sd, struct lm3554_priv, sd)
 
 struct lm3554_reg_field {
 	u32 reg_address;
@@ -423,26 +422,9 @@ static const struct lm3554_ctrl_id *find_ctrl_id(unsigned int id)
 	return NULL;
 }
 
-static int lm3554_g_chip_ident(struct v4l2_subdev *sd,
-			  struct v4l2_dbg_chip_ident *chip)
-{
-	struct i2c_client *client = v4l2_get_subdevdata(sd);
-
-	chip->ident = LEDFLASH_LM3554_ID;
-	chip->revision = 0;
-	chip->match.type = V4L2_CHIP_MATCH_I2C_DRIVER;
-	chip->match.addr = client->addr;
-	strlcpy(chip->match.name, client->name, strlen(client->name));
-
-	return 0;
-}
-
 static int lm3554_queryctrl(struct v4l2_subdev *sd, struct v4l2_queryctrl *qc)
 {
-	struct i2c_client *client;
 	int num;
-
-	client = v4l2_get_subdevdata(sd);
 
 	if (!qc)
 		return -EINVAL;
@@ -486,13 +468,10 @@ static int lm3554_g_ctrl(struct v4l2_subdev *sd, struct v4l2_control *ctrl)
 
 static int lm3554_s_power(struct v4l2_subdev *sd, int power)
 {
-	sd = sd;
-	power = power;
 	return 0;
 }
 
 static const struct v4l2_subdev_core_ops lm3554_core_ops = {
-	.g_chip_ident = lm3554_g_chip_ident,
 	.queryctrl = lm3554_queryctrl,
 	.g_ctrl = lm3554_g_ctrl,
 	.s_ctrl = lm3554_s_ctrl,
@@ -503,22 +482,11 @@ static const struct v4l2_subdev_ops lm3554_ops = {
 	.core = &lm3554_core_ops,
 };
 
-static const struct media_entity_operations lm3554_entity_ops = {
-/*	.set_power = v4l2_subdev_set_power,	*/
-};
-
-static const struct i2c_device_id lm3554_id[] = {
-	{LEDFLASH_LM3554_NAME, 0},
-	{},
-};
-
-static int lm3554_detect(struct i2c_client *client)
+static int lm3554_detect(struct v4l2_subdev *sd)
 {
 	s32 status;
+	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	struct i2c_adapter *adapter = client->adapter;
-	struct v4l2_subdev *sd = i2c_get_clientdata(client);
-	struct lm3554_priv *p_lm3554_priv = to_lm3554_priv(sd);
-	struct camera_flash_platform_data *pdata = p_lm3554_priv->platform_data;
 	int ret;
 
 	if (!i2c_check_functionality(adapter, I2C_FUNC_SMBUS_BYTE_DATA)) {
@@ -557,6 +525,22 @@ static int lm3554_detect(struct i2c_client *client)
 fail:
 	return ret;
 }
+
+static int lm3554_open(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh)
+{
+	return lm3554_s_power(sd, 1);
+}
+
+static int lm3554_close(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh)
+{
+	return lm3554_s_power(sd, 0);
+}
+
+static const struct v4l2_subdev_internal_ops lm3554_internal_ops = {
+	.registered = lm3554_detect,
+	.open = lm3554_open,
+	.close = lm3554_close,
+};
 
 static void lm3554_flash_off_delay(long unsigned int arg)
 {
@@ -599,7 +583,7 @@ err_gpio_flash:
 	return ret;
 }
 
-static int lm3554_gpio_uninit(struct i2c_client *client)
+static int __devexit lm3554_gpio_uninit(struct i2c_client *client)
 {
 	struct v4l2_subdev *sd = i2c_get_clientdata(client);
 	struct lm3554_priv *p_lm3554_priv = to_lm3554_priv(sd);
@@ -627,6 +611,11 @@ static int __devinit lm3554_probe(struct i2c_client *client,
 	int err;
 	struct lm3554_priv *p_lm3554_priv;
 
+	if (client->dev.platform_data == NULL) {
+		dev_err(&client->dev, "no platform data\n");
+		return -ENODEV;
+	}
+
 	p_lm3554_priv = kzalloc(sizeof(*p_lm3554_priv), GFP_KERNEL);
 	if (!p_lm3554_priv) {
 		dev_err(&client->dev, "out of memory\n");
@@ -634,18 +623,12 @@ static int __devinit lm3554_probe(struct i2c_client *client,
 	}
 
 	p_lm3554_priv->platform_data = client->dev.platform_data;
-	if (!p_lm3554_priv->platform_data) {
-		dev_err(&client->dev, "no platform data\n");
-		kfree(p_lm3554_priv);
-		return -ENODEV;
-	}
 
-	v4l2_i2c_subdev_init(&(p_lm3554_priv->sd), client, &lm3554_ops);
+	v4l2_i2c_subdev_init(&p_lm3554_priv->sd, client, &lm3554_ops);
+	p_lm3554_priv->sd.internal_ops = &lm3554_internal_ops;
 	p_lm3554_priv->sd.flags |= V4L2_SUBDEV_FL_HAS_DEVNODE;
-	p_lm3554_priv->sd.entity.ops = &lm3554_entity_ops;
 	p_lm3554_priv->timeout = LM3554_DEFAULT_TIMEOUT;
 	p_lm3554_priv->mode = ATOMISP_FLASH_MODE_OFF;
-	p_lm3554_priv->intensity = 0;
 
 	err = media_entity_init(&p_lm3554_priv->sd.entity, 0, NULL, 0);
 	if (err) {
@@ -653,16 +636,12 @@ static int __devinit lm3554_probe(struct i2c_client *client,
 		goto fail1;
 	}
 
+	p_lm3554_priv->sd.entity.type = MEDIA_ENT_T_V4L2_SUBDEV_FLASH;
+
 	mutex_init(&p_lm3554_priv->i2c_mutex);
 
 	setup_timer(&p_lm3554_priv->flash_off_delay, lm3554_flash_off_delay,
 		    (unsigned long)client);
-
-	err = lm3554_detect(client);
-	if (err) {
-		dev_err(&client->dev, "device not found\n");
-		goto fail2;
-	}
 
 	err = lm3554_gpio_init(client);
 	if (err) {
@@ -680,11 +659,10 @@ fail1:
 	return err;
 }
 
-static int lm3554_remove(struct i2c_client *client)
+static int __devexit lm3554_remove(struct i2c_client *client)
 {
 	struct v4l2_subdev *sd = i2c_get_clientdata(client);
 	struct lm3554_priv *p_lm3554_priv = to_lm3554_priv(sd);
-	struct camera_flash_platform_data *pdata = p_lm3554_priv->platform_data;
 	int ret;
 
 	media_entity_cleanup(&p_lm3554_priv->sd.entity);
@@ -704,6 +682,11 @@ fail:
 	return ret;
 }
 
+static const struct i2c_device_id lm3554_id[] = {
+	{LEDFLASH_LM3554_NAME, 0},
+	{},
+};
+
 MODULE_DEVICE_TABLE(i2c, lm3554_id);
 
 static struct i2c_driver lm3554_driver = {
@@ -712,7 +695,7 @@ static struct i2c_driver lm3554_driver = {
 		.name = LEDFLASH_LM3554_NAME,
 	},
 	.probe = lm3554_probe,
-	.remove = lm3554_remove,
+	.remove = __devexit_p(lm3554_remove),
 	.id_table = lm3554_id,
 };
 
@@ -729,4 +712,5 @@ static __exit void exit_lm3554(void)
 module_init(init_lm3554);
 module_exit(exit_lm3554);
 MODULE_AUTHOR("Jing Tao <jing.tao@intel.com>");
+MODULE_DESCRIPTION("LED flash driver for LM3554");
 MODULE_LICENSE("GPL");

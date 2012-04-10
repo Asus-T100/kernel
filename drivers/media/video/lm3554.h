@@ -27,11 +27,7 @@
 #include <linux/mutex.h>
 #include <media/v4l2-subdev.h>
 #include <media/v4l2-device.h>
-#include <media/v4l2-chip-ident.h>
 #include <linux/ioctl.h>
-
-#include <linux/atomisp_platform.h>
-#include <linux/atomisp.h>
 
 #define LEDFLASH_LM3554_NAME    "lm3554"
 #define LEDFLASH_LM3554_ID      3554
