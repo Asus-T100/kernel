@@ -3464,7 +3464,7 @@ static int __init intel_hsi_init(void)
  * FIXME:: enable_standby has been define in mfld-pmu file so
  * compilation fails if OSPM is Disabled.
  */
-#ifdef CONFIG_INTEL_MID_MDFLD_POWER
+#ifdef CONFIG_ATOM_SOC_POWER
 	if (enable_standby)
 		return -EBUSY;
 #endif

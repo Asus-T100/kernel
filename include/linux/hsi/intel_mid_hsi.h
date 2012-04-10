@@ -65,7 +65,7 @@ struct hsi_mid_platform_data {
  * FIXME:: enable_standby has been define in mfld-pmu file so
  * compilation fails if OSPM is Disabled.
  */
-#ifdef CONFIG_INTEL_MID_MDFLD_POWER
+#ifdef CONFIG_ATOM_SOC_POWER
 extern unsigned int enable_standby;
 #endif
 #endif

@@ -979,6 +979,17 @@ void init_nc_device_states(void)
 	return;
 }
 
+/* FIXME::Currently HSI Modem 7060 (BZ# 28529) is having a issue and
+* it will not go to Low Power State on CVT. So Standby will not work
+* if HSI is enabled.
+* We can choose between Standby/HSI based on enable_stadby 1/0.
+*/
+#ifdef CONFIG_BOARD_CTP
+unsigned int enable_standby __read_mostly;
+module_param(enable_standby, uint, 0000);
+#endif
+
+
 /*
  * APIs to communicate with pci root,
  * Returns zero on sucess.
