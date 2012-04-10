@@ -491,22 +491,19 @@ static void wake_lock_internal(
 				queue_work(suspend_work_queue, &suspend_work);
 		}
 	}
+	trace_wake_lock(lock);
 	spin_unlock_irqrestore(&list_lock, irqflags);
 }
 
 void wake_lock(struct wake_lock *lock)
 {
 	wake_lock_internal(lock, 0, 0);
-
-	trace_wake_lock(lock);
 }
 EXPORT_SYMBOL(wake_lock);
 
 void wake_lock_timeout(struct wake_lock *lock, long timeout)
 {
 	wake_lock_internal(lock, timeout, 1);
-
-	trace_wake_lock(lock);
 }
 EXPORT_SYMBOL(wake_lock_timeout);
 
@@ -514,10 +511,8 @@ void wake_unlock(struct wake_lock *lock)
 {
 	int type;
 	unsigned long irqflags;
-
-	trace_wake_unlock(lock);
-
 	spin_lock_irqsave(&list_lock, irqflags);
+	trace_wake_unlock(lock);
 	type = lock->flags & WAKE_LOCK_TYPE_MASK;
 #ifdef CONFIG_WAKELOCK_STAT
 	wake_unlock_stat_locked(lock, 0);
