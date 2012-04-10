@@ -1540,6 +1540,16 @@ PVRSRV_ERROR PVRSRVSwapToDCBufferKM(IMG_HANDLE	hDeviceKM,
 	psBuffer->psSwapChain->psLastFlipBuffer = psBuffer;
 	psDCInfo->psDCSwapChainCur = psBuffer->psSwapChain;
 
+#if !defined(SUPPORT_DC_CMDCOMPLETE_WHEN_NO_LONGER_DISPLAYED)
+	if (psBuffer->psSwapChain->ppsLastSyncInfos)
+	{
+		OSFreeMem(PVRSRV_OS_PAGEABLE_HEAP, sizeof(PVRSRV_KERNEL_SYNC_INFO *) * psBuffer->psSwapChain->ui32LastNumSyncInfos,
+                                                psBuffer->psSwapChain->ppsLastSyncInfos, IMG_NULL);
+		psBuffer->psSwapChain->ppsLastSyncInfos = IMG_NULL;
+		psBuffer->psSwapChain->ui32LastNumSyncInfos = 0;
+	}
+#endif
+
 Exit:
 
 	if(eError == PVRSRV_ERROR_CANNOT_GET_QUEUE_SPACE)
