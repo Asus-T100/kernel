@@ -504,4 +504,14 @@ config INPUT_XEN_KBDDEV_FRONTEND
 	  To compile this driver as a module, choose M here: the
 	  module will be called xen-kbdfront.
 
+config INPUT_LTR301ALS
+	bool "Lite-on ltr301 ambient light sensor"
+	depends on I2C
+	help
+	  This driver provides support for the Lite-on ltr301 ambient light
+	  sensor connected to an I2C bus.
+
+	  Driver supports setting thresholds to hi_tresh and lo_tresh
+	  sysfs entries.
+
 endif

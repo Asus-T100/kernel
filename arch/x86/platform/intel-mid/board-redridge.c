@@ -58,6 +58,7 @@
 #include "device_libs/platform_ms5607.h"
 #include "device_libs/platform_mpu3050.h"
 #include "device_libs/platform_ltr502als.h"
+#include "device_libs/platform_ltr301als.h"
 #include "device_libs/platform_tc35876x.h"
 #include "device_libs/platform_lm3554.h"
 
@@ -142,6 +143,7 @@ struct devs_id __initconst device_ids[] = {
 	{"gyro", SFI_DEV_TYPE_I2C, 0, &gyro_platform_data, NULL},
 	{"baro", SFI_DEV_TYPE_I2C, 0, &ms5607_platform_data, NULL},
 	{"als", SFI_DEV_TYPE_I2C, 0, &ltr502als_platform_data, NULL},
+	{"ltr301", SFI_DEV_TYPE_I2C, 0, &ltr301als_platform_data, NULL},
 	{"i2c_disp_brig", SFI_DEV_TYPE_I2C, 0, &tc35876x_platform_data},
 
 	{},

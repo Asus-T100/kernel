@@ -18,6 +18,7 @@ obj-$(CONFIG_SENSORS_EMC1403)				+= platform_emc1403.o
 obj-$(CONFIG_SENSORS_HMC5883)				+= platform_hmc5883.o
 obj-$(CONFIG_SENSORS_LIS3DH_ACC)			+= platform_lis3dh.o
 obj-$(CONFIG_SENSORS_LTR502ALS)				+= platform_ltr502als.o
+obj-$(CONFIG_INPUT_LTR301ALS)				+= platform_ltr301als.o
 obj-$(CONFIG_SENSORS_L3G4200D_POLL)			+= platform_l3g4200d.o
 obj-$(CONFIG_SENSORS_LSM303_MAG)			+= platform_lsm303.o
 obj-$(CONFIG_SENSORS_APDS990X)				+= platform_apds990x.o
