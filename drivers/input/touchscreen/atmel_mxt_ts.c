@@ -266,6 +266,7 @@ struct mxt_data {
 	bool is_stopped;
 	u8 idle_acq_int;
 	u8 actv_acq_int;
+	char devname[I2C_NAME_SIZE];
 #ifdef CONFIG_HAS_EARLYSUSPEND
 	struct early_suspend esuspend;
 #endif
@@ -718,6 +719,35 @@ static int mxt_check_reg_init(struct mxt_data *data)
 	return 0;
 }
 
+/*
+ * There are 3 touch panels used:
+ * dv1.0	mxt1386		0x4c maxtouch.cfg
+ * dv2.0	mxt1386_wintek	0x4c maxtouch_wintek.cfg
+ * dv2.0	mxt1386_hanns	0x4d maxtouch_hanns.cfg
+ * Currently we mannual check the device name and slave address to
+ * decide which cfg file to load.
+ *
+ * This hack can be removed once firmware can detect the panel runtime,
+ * and provides correct name + slave addr to driver.
+ */
+static void mxt_get_fwname(struct mxt_data *data, char *name, int size)
+{
+	struct i2c_client *client = data->client;
+	const char *fname;
+
+	if (!strncmp(data->devname, "mxt1386", sizeof(data->devname)))
+		fname = "maxtouch.cfg";
+	else {
+		if (client->addr == 0x4c)
+			fname = "maxtouch_wintek.cfg";
+		else
+			fname = "maxtouch_hanns.cfg";
+	}
+
+	strncpy(name, fname, size);
+	dev_info(&client->dev, "load firmware %s\n", name);
+}
+
 static int mxt_check_reg_init_fw(struct mxt_data *data)
 {
 	struct mxt_object *object;
@@ -726,10 +756,13 @@ static int mxt_check_reg_init_fw(struct mxt_data *data)
 	int i, j, config_offset;
 	const struct firmware *cfg = NULL;
 	int ret;
+	char fwname[32] = { 0 };
 
-	ret = request_firmware(&cfg, "maxtouch.cfg", dev);
+	mxt_get_fwname(data, fwname, sizeof(fwname));
+
+	ret = request_firmware(&cfg, fwname, dev);
 	if (ret) {
-		dev_dbg(dev, "Unable to open maxtouch.cfg\n");
+		dev_dbg(dev, "Unable to open %s\n", fwname);
 		return 0;
 	}
 
@@ -1315,6 +1348,7 @@ static int __devinit mxt_probe(struct i2c_client *client,
 	data->input_dev = input_dev;
 	data->pdata = pdata;
 	data->irq = client->irq;
+	memcpy(data->devname, id->name, sizeof(data->devname));
 
 	if (pdata->init_platform_hw) {
 		error = pdata->init_platform_hw(client);
@@ -1502,6 +1536,8 @@ static const struct i2c_device_id mxt_id[] = {
 	{ "atmel_mxt_ts", 0 },
 	{ "mXT224", 0 },
 	{ "mxt1386", 0 },
+	{ "mxt1386_wintek", 0 },
+	{ "mxt1386_hanns", 0 },
 	{ }
 };
 MODULE_DEVICE_TABLE(i2c, mxt_id);
