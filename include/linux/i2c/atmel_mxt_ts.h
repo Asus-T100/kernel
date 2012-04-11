@@ -14,6 +14,7 @@
 #define __LINUX_ATMEL_MXT_TS_H
 
 #include <linux/types.h>
+#include <linux/i2c.h>
 
 /* Orient */
 #define MXT_NORMAL		0x0
@@ -39,7 +40,7 @@ struct mxt_platform_data {
 	unsigned int voltage;
 	unsigned char orient;
 	unsigned long irqflags;
-	int (*init_platform_hw)(void);
+	int (*init_platform_hw)(struct i2c_client *client);
 };
 
 #endif /* __LINUX_ATMEL_MXT_TS_H */

@@ -1317,7 +1317,7 @@ static int __devinit mxt_probe(struct i2c_client *client,
 	data->irq = client->irq;
 
 	if (pdata->init_platform_hw) {
-		error = pdata->init_platform_hw();
+		error = pdata->init_platform_hw(client);
 		if (error)
 			goto err_free_object;
 	}
