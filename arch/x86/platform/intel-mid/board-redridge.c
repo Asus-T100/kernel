@@ -714,7 +714,7 @@ static void *max17042_platform_data(void *info)
 {
 	static struct max17042_platform_data platform_data;
 	struct i2c_board_info *i2c_info = (struct i2c_board_info *)info;
-	int intr = get_gpio_by_name("max17042");
+	int intr = get_gpio_by_name("max_fg_alert");
 
 	i2c_info->irq = intr + MRST_IRQ_OFFSET;
 
