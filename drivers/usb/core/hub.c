@@ -1783,13 +1783,25 @@ static int usb_enumerate_device_otg(struct usb_device *udev)
 				/* enable HNP before suspend, it's simpler */
 				if (port1 == bus->otg_port)
 					bus->b_hnp_enable = 1;
-				err = usb_control_msg(udev,
-					usb_sndctrlpipe(udev, 0),
-					USB_REQ_SET_FEATURE, 0,
-					bus->b_hnp_enable
+
+				/* A_ALT_HNP_SUPPORT is obsolete in OTG 2.0 */
+				if (desc->bcdOTG >= 0x0200 && bus->b_hnp_enable)
+					err = usb_control_msg(udev,
+						usb_sndctrlpipe(udev, 0),
+						USB_REQ_SET_FEATURE, 0,
+						USB_DEVICE_B_HNP_ENABLE,
+						0, NULL, 0,
+						USB_CTRL_SET_TIMEOUT);
+				else if (desc->bcdOTG < 0x0200)
+					err = usb_control_msg(udev,
+						usb_sndctrlpipe(udev, 0),
+						USB_REQ_SET_FEATURE, 0,
+						bus->b_hnp_enable
 						? USB_DEVICE_B_HNP_ENABLE
 						: USB_DEVICE_A_ALT_HNP_SUPPORT,
-					0, NULL, 0, USB_CTRL_SET_TIMEOUT);
+						0, NULL, 0,
+						USB_CTRL_SET_TIMEOUT);
+
 				if (err < 0) {
 					/* OTG MESSAGE: report errors here,
 					 * customize to match your product.
