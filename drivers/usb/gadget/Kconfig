@@ -463,6 +463,14 @@ config USB_LANGWELL
 
 config USB_GADGET_EG20T
 	tristate "Intel EG20T PCH/OKI SEMICONDUCTOR IOH(ML7213/ML7831) UDC"
+
+config USB_LANGWELLUDC_OTG
+	boolean "Intel Langwell/Penwell USB Device Controller OTG support"
+	depends on USB_LANGWELL
+	help
+	   OTG support from UDC driver's point of view, this will decide if
+	   USB OTG descriptor is needed or not from gadget.
+
 config USB_EG20T
 	tristate "Intel EG20T PCH/OKI SEMICONDUCTOR ML7213 IOH UDC"
 	depends on PCI
