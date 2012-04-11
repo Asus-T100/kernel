@@ -3645,7 +3645,7 @@ static int langwell_udc_probe(struct pci_dev *pdev,
 	INIT_LIST_HEAD(&dev->gadget.ep_list);	/* ep_list */
 	dev->gadget.speed = USB_SPEED_UNKNOWN;	/* speed */
 	dev->gadget.is_dualspeed = 1;		/* support dual speed */
-#ifdef	OTG_TRANSCEIVER
+#if defined(OTG_TRANSCEIVER) && defined(CONFIG_USB_LANGWELLUDC_OTG)
 	dev->gadget.is_otg = 1;			/* support otg mode */
 #endif
 
