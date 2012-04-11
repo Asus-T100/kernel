@@ -50,7 +50,7 @@ static u32 h8c7_set_full_brightness[] = {0x0000ff51};
 static u32 h8c7_turn_on_backlight[] = {0x00002453};
 static u32 h8c7_disable_cabc[] = {0x00000055};
 static u32 h8c7_ic_bias_current[] = {0x826005bf, 0x00000000};
-static u32 h8c7_set_power[] = {0x44007cb1, 0x0d0d0024, 0x3f3f1a12, 0x00007242};
+static u32 h8c7_set_power[] = {0x44007cb1, 0x0d0d00a5, 0x3f3f1a12, 0x00007242};
 static u32 h8c7_set_disp_reg[] = {0x05c80fb2, 0x0084080f, 0x040f05ff, 0x00000020};
 static u32 h8c7_set_command_cyc[] = {0x050000b4, 0x1605a000, 0x1603309d,
 	0x00030300, 0x0707061b, 0x00000000};
