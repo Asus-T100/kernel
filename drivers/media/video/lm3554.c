@@ -288,34 +288,29 @@ err:
 	return ret;
 }
 
-static int lm3554_s_flash_mode(struct v4l2_subdev *sd, u32 val)
+static int lm3554_s_flash_mode(struct v4l2_subdev *sd, u32 new_mode)
 {
 	int ret;
-	enum atomisp_flash_mode new_mode = (enum atomisp_flash_mode)val;
 	struct lm3554 *flash = to_lm3554(sd);
+	unsigned int mode;
 
 	switch (new_mode) {
 	case ATOMISP_FLASH_MODE_OFF:
-		if (flash->mode == ATOMISP_FLASH_MODE_FLASH) {
-			ret = set_reg_field(sd, &flash_mode,
-					    LM3554_MODE_SHUTDOWN);
-		} else {
-			ret = set_reg_field(sd, &torch_mode,
-					    LM3554_MODE_SHUTDOWN);
-		}
+		mode = LM3554_MODE_SHUTDOWN;
 		break;
 	case ATOMISP_FLASH_MODE_FLASH:
-		ret = set_reg_field(sd, &flash_mode, LM3554_MODE_FLASH);
+		mode = LM3554_MODE_FLASH;
 		break;
 	case ATOMISP_FLASH_MODE_INDICATOR:
-		ret = set_reg_field(sd, &flash_mode, LM3554_MODE_INDICATOR);
+		mode = LM3554_MODE_INDICATOR;
 		break;
 	case ATOMISP_FLASH_MODE_TORCH:
-		ret = set_reg_field(sd, &torch_mode, LM3554_MODE_TORCH);
+		mode = LM3554_MODE_TORCH;
 		break;
 	default:
-		ret = -EINVAL;
+		return -EINVAL;
 	}
+	ret = set_reg_field(sd, &flash_mode, mode);
 	if (ret == 0)
 		flash->mode = new_mode;
 	return ret;
