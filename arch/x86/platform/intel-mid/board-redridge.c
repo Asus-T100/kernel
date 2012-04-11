@@ -1869,6 +1869,8 @@ struct devs_id __initconst device_ids[] = {
 	{"mt9m114", SFI_DEV_TYPE_I2C, 0, &mt9m114_platform_data_init,
 					&intel_ignore_i2c_device_register},
 	{"mxt1386", SFI_DEV_TYPE_I2C, 0, &mxt_platform_data_init, NULL},
+	{"mxt1386_wintek", SFI_DEV_TYPE_I2C, 0, &mxt_platform_data_init, NULL},
+	{"mxt1386_hanns", SFI_DEV_TYPE_I2C, 0, &mxt_platform_data_init, NULL},
 	{"audience_es305", SFI_DEV_TYPE_I2C, 0, &audience_platform_data_init,
 						NULL},
 	{"accel", SFI_DEV_TYPE_I2C, 0, &lis3dh_pdata_init, NULL},
