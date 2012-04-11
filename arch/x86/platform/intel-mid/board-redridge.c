@@ -1292,7 +1292,7 @@ void *wl12xx_platform_data_init(void *info)
 #define TOUCH_IRQ_GPIO   62
 
 /* Atmel mxt toucscreen platform setup*/
-static int atmel_mxt_init_platform_hw(void)
+static int atmel_mxt_init_platform_hw(struct i2c_client *client)
 {
 	int rc;
 	int reset_gpio, int_gpio;
@@ -1325,6 +1325,26 @@ static int atmel_mxt_init_platform_hw(void)
 	msleep(20);
 	gpio_set_value(reset_gpio, 1);
 	msleep(100);
+
+	/*
+	 * HACK: depending on which touchpanel is used the mxt1386 controller
+	 * may be at i2c address 0x4d instead of the default 0x4c stated in SFI
+	 * table. Probe for chip by sending a i2c message and wait for ACK.
+	 * (writing 0x00 will prepare chip for reading chip family id)
+	 */
+
+	rc = i2c_smbus_write_byte_data(client, 0, 0);
+	if (rc < 0) {
+		/* retry */
+		msleep(60);
+		rc = i2c_smbus_write_byte_data(client, 0, 0);
+		if (rc < 0) {
+			if (client->addr == 0x4c)
+				client->addr = 0x4d;
+			else if (client->addr == 0x4d)
+				client->addr = 0x4c;
+		}
+	}
 
 	return 0;
 
