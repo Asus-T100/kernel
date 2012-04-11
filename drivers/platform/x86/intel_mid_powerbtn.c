@@ -29,8 +29,15 @@
 #define DRIVER_NAME "msic_power_btn"
 
 /* SRAM address for power button state */
+#if defined(CONFIG_BOARD_CTP) && defined(CONFIG_POWER_BUTTON_CLVP)
+#define MSIC_PB_STAT    0xffffefcb
+#elif defined(CONFIG_BOARD_CTP)
+#define MSIC_PB_STAT    0xffff7fcb
+#else
 #define MSIC_PB_STAT	0xffff7fd0
-  #define MSIC_PB_LEVEL (1 << 3) /* 1 - release, 0 - press */
+#endif
+
+#define MSIC_PB_LEVEL (1 << 3) /* 1 - release, 0 - press */
 #define MSIC_PB_LEN	1
 
 /*

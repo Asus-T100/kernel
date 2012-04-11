@@ -682,6 +682,13 @@ config INTEL_MID_POWER_BUTTON
 
 	  If unsure, say N.
 
+config POWER_BUTTON_CLVP
+	bool "SRAM address for CLVP"
+	depends on INTEL_MID_POWER_BUTTON
+	default n
+	---help---
+	  CLVP SRAM address for powerbutton status. Say y for CLV+ and n for CLV
+
 config INTEL_MID_OSIP
        tristate "osip driver for Intel MID platforms"
        depends on INTEL_SCU_IPC
