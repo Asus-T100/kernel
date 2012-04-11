@@ -477,6 +477,11 @@ static int emmc_ipanic_writeflashpage(struct mmc_emergency_info *emmc,
 	int rc;
 	size_t wlen = SECTOR_SIZE;
 
+	if (to >= emmc->start_block + emmc->block_count) {
+		printk(KERN_EMERG "%s: panic partition is full.\n", __func__);
+		return 0;
+	}
+
 	rc = emmc->write((char *)buf, (unsigned int)to);
 	if (rc) {
 		printk(KERN_EMERG
