@@ -220,8 +220,13 @@ int sst_get_stream_allocated(struct sst_stream_params *str_param,
 	/* Block the call for reply */
 	retval = sst_wait_timeout(sst_drv_ctx, &str_info->ctrl_blk);
 	if ((retval != 0) || (str_info->ctrl_blk.ret_code != 0)) {
-		pr_err("sst: FW alloc failed retval %d, ret_code %d\n",
+		pr_err("sst: FW alloc failed retval %d, ret_code %d\n",\
 				retval, str_info->ctrl_blk.ret_code);
+		if (retval == SST_ERR_STREAM_IN_USE) {
+			pr_err("sst:FW not in clean state, send free for:%d\n",
+					str_param->device_type);
+			sst_free_stream(str_param->device_type);
+		}
 		str_id = -str_info->ctrl_blk.ret_code; /*return error*/
 		if (str_id == 0)
 			str_id = retval; /*FW timed out*/
