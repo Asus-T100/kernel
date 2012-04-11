@@ -141,7 +141,6 @@ static int ehci_mid_probe(struct pci_dev *pdev,
 		goto err1;
 	}
 
-	hcd->self.otg_port = 1;
 	ehci = hcd_to_ehci(hcd);
 	/* this will be called in ehci_bus_suspend and ehci_bus_resume */
 	ehci->otg_suspend = usb_otg_suspend;
