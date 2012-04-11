@@ -1457,6 +1457,12 @@ static void serial_hsu_console_putchar(struct uart_port *port, int ch)
 	struct uart_hsu_port *up =
 		container_of(port, struct uart_hsu_port, port);
 
+#ifdef CONFIG_EMMC_IPANIC
+	static int oops_char_len;
+
+	if (oops_in_progress && oops_char_len++ > 2048)
+		return;
+#endif
 	wait_for_xmitr(up);
 	serial_out(up, UART_TX, ch);
 }
