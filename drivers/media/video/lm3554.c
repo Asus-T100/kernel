@@ -50,17 +50,17 @@ struct lm3554_ctrl_id {
 	int (*g_ctrl) (struct v4l2_subdev *sd, __s32 *val);
 };
 
-struct lm3554_priv {
+struct lm3554 {
 	struct v4l2_subdev sd;
 	struct mutex i2c_mutex;
 	enum atomisp_flash_mode mode;
 	int timeout;
 	struct timer_list flash_off_delay;
 	u32 intensity;
-	struct camera_flash_platform_data *platform_data;
+	struct camera_flash_platform_data *pdata;
 };
 
-#define to_lm3554_priv(p_sd)	container_of(p_sd, struct lm3554_priv, sd)
+#define to_lm3554(p_sd)	container_of(p_sd, struct lm3554, sd)
 
 struct lm3554_reg_field {
 	u32 reg_address;
@@ -94,14 +94,14 @@ static int set_reg_field(struct v4l2_subdev *sd,
 	    bits = (field->msb - field->lsb) + 1,
 	    mask = ((1<<bits)-1) << field->lsb;
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
-	struct lm3554_priv *p_lm3554_priv = to_lm3554_priv(sd);
+	struct lm3554 *flash = to_lm3554(sd);
 
-	mutex_lock(&p_lm3554_priv->i2c_mutex);
+	mutex_lock(&flash->i2c_mutex);
 	tmp = i2c_smbus_read_byte_data(client, field->reg_address);
 	tmp &= ~mask;
 	val = (val << field->lsb) & mask;
 	ret = i2c_smbus_write_byte_data(client, field->reg_address, val | tmp);
-	mutex_unlock(&p_lm3554_priv->i2c_mutex);
+	mutex_unlock(&flash->i2c_mutex);
 
 	if (ret < 0)
 		dev_err(&client->dev, "%s: flash i2c fail", __func__);
@@ -117,11 +117,11 @@ static void get_reg_field(struct v4l2_subdev *sd,
 	    bits = (field->msb - field->lsb) + 1,
 	    mask = ((1<<bits)-1) << field->lsb;
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
-	struct lm3554_priv *p_lm3554_priv = to_lm3554_priv(sd);
+	struct lm3554 *flash = to_lm3554(sd);
 
-	mutex_lock(&p_lm3554_priv->i2c_mutex);
+	mutex_lock(&flash->i2c_mutex);
 	tmp = i2c_smbus_read_byte_data(client, field->reg_address);
-	mutex_unlock(&p_lm3554_priv->i2c_mutex);
+	mutex_unlock(&flash->i2c_mutex);
 
 	*value = (tmp & mask) >> field->lsb;
 }
@@ -129,8 +129,8 @@ static void get_reg_field(struct v4l2_subdev *sd,
 static int lm3554_hw_reset(struct i2c_client *client)
 {
 	struct v4l2_subdev *sd = i2c_get_clientdata(client);
-	struct lm3554_priv *p_lm3554_priv = to_lm3554_priv(sd);
-	struct camera_flash_platform_data *pdata = p_lm3554_priv->platform_data;
+	struct lm3554 *flash = to_lm3554(sd);
+	struct camera_flash_platform_data *pdata = flash->pdata;
 	int ret;
 
 	ret = gpio_request(pdata->gpio_reset, "flash reset");
@@ -149,10 +149,10 @@ static int lm3554_hw_reset(struct i2c_client *client)
 
 static int lm3554_s_flash_timeout(struct v4l2_subdev *sd, u32 val)
 {
-	struct lm3554_priv *p_lm3554 = to_lm3554_priv(sd);
+	struct lm3554 *flash = to_lm3554(sd);
 
 	val = clamp(val, LM3554_MIN_TIMEOUT, LM3554_MAX_TIMEOUT);
-	p_lm3554->timeout = val;
+	flash->timeout = val;
 
 	val = val / LM3554_TIMEOUT_STEPSIZE - 1;
 	return set_reg_field(sd, &flash_timeout, (u8)val);
@@ -170,12 +170,12 @@ static int lm3554_g_flash_timeout(struct v4l2_subdev *sd, s32 *val)
 
 static int lm3554_s_flash_intensity(struct v4l2_subdev *sd, u32 intensity)
 {
-	struct lm3554_priv *p_lm3554_priv = to_lm3554_priv(sd);
+	struct lm3554 *flash = to_lm3554(sd);
 
 	intensity = LM3554_CLAMP_PERCENTAGE(intensity);
 	intensity = LM3554_PERCENT_TO_VALUE(intensity, LM3554_FLASH_STEP);
 
-	p_lm3554_priv->intensity = intensity;
+	flash->intensity = intensity;
 
 	return set_reg_field(sd, &flash_current, (u8)intensity);
 }
@@ -230,8 +230,8 @@ static int lm3554_s_flash_strobe(struct v4l2_subdev *sd, u32 val)
 {
 	int ret, timer_pending;
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
-	struct lm3554_priv *p_lm3554_priv = to_lm3554_priv(sd);
-	struct camera_flash_platform_data *pdata = p_lm3554_priv->platform_data;
+	struct lm3554 *flash = to_lm3554(sd);
+	struct camera_flash_platform_data *pdata = flash->pdata;
 
 	/*
 	 * An abnormal high flash current is observed when strobe off the
@@ -239,7 +239,7 @@ static int lm3554_s_flash_strobe(struct v4l2_subdev *sd, u32 val)
 	 * wait a short moment, and then strobe off the flash.
 	 */
 
-	timer_pending = del_timer_sync(&p_lm3554_priv->flash_off_delay);
+	timer_pending = del_timer_sync(&flash->flash_off_delay);
 
 	/* Flash off */
 	if (!val) {
@@ -247,7 +247,7 @@ static int lm3554_s_flash_strobe(struct v4l2_subdev *sd, u32 val)
 		ret = set_reg_field(sd, &flash_current, 0);
 		if (ret < 0)
 			goto err;
-		mod_timer(&p_lm3554_priv->flash_off_delay,
+		mod_timer(&flash->flash_off_delay,
 			  jiffies + msecs_to_jiffies(LM3554_TIMER_DELAY));
 		return 0;
 	}
@@ -263,7 +263,7 @@ static int lm3554_s_flash_strobe(struct v4l2_subdev *sd, u32 val)
 
 	/* Restore flash current settings */
 	ret = set_reg_field(sd, &flash_current,
-			    (u8)p_lm3554_priv->intensity);
+			    (u8)flash->intensity);
 	if (ret < 0)
 		goto err;
 
@@ -281,11 +281,11 @@ static int lm3554_s_flash_mode(struct v4l2_subdev *sd, u32 val)
 {
 	int ret;
 	enum atomisp_flash_mode new_mode = (enum atomisp_flash_mode)val;
-	struct lm3554_priv *p_lm3554_priv = to_lm3554_priv(sd);
+	struct lm3554 *flash = to_lm3554(sd);
 
 	switch (new_mode) {
 	case ATOMISP_FLASH_MODE_OFF:
-		if (p_lm3554_priv->mode == ATOMISP_FLASH_MODE_FLASH) {
+		if (flash->mode == ATOMISP_FLASH_MODE_FLASH) {
 			ret = set_reg_field(sd, &flash_mode,
 					    LM3554_MODE_SHUTDOWN);
 		} else {
@@ -306,14 +306,14 @@ static int lm3554_s_flash_mode(struct v4l2_subdev *sd, u32 val)
 		ret = -EINVAL;
 	}
 	if (ret == 0)
-		p_lm3554_priv->mode = new_mode;
+		flash->mode = new_mode;
 	return ret;
 }
 
 static int lm3554_g_flash_mode(struct v4l2_subdev *sd, s32 * val)
 {
-	struct lm3554_priv *p_lm3554_priv = to_lm3554_priv(sd);
-	*val = p_lm3554_priv->mode;
+	struct lm3554 *flash = to_lm3554(sd);
+	*val = flash->mode;
 	return 0;
 }
 
@@ -545,8 +545,8 @@ static const struct v4l2_subdev_internal_ops lm3554_internal_ops = {
 static void lm3554_flash_off_delay(long unsigned int arg)
 {
 	struct v4l2_subdev *sd = i2c_get_clientdata((struct i2c_client *)arg);
-	struct lm3554_priv *p_lm3554_priv = to_lm3554_priv(sd);
-	struct camera_flash_platform_data *pdata = p_lm3554_priv->platform_data;
+	struct lm3554 *flash = to_lm3554(sd);
+	struct camera_flash_platform_data *pdata = flash->pdata;
 
 	gpio_set_value(pdata->gpio_strobe, 0);
 }
@@ -554,8 +554,8 @@ static void lm3554_flash_off_delay(long unsigned int arg)
 static int __devinit lm3554_gpio_init(struct i2c_client *client)
 {
 	struct v4l2_subdev *sd = i2c_get_clientdata(client);
-	struct lm3554_priv *p_lm3554_priv = to_lm3554_priv(sd);
-	struct camera_flash_platform_data *pdata = p_lm3554_priv->platform_data;
+	struct lm3554 *flash = to_lm3554(sd);
+	struct camera_flash_platform_data *pdata = flash->pdata;
 	int ret;
 
 	ret = gpio_request(pdata->gpio_strobe, "flash");
@@ -586,8 +586,8 @@ err_gpio_flash:
 static int __devexit lm3554_gpio_uninit(struct i2c_client *client)
 {
 	struct v4l2_subdev *sd = i2c_get_clientdata(client);
-	struct lm3554_priv *p_lm3554_priv = to_lm3554_priv(sd);
-	struct camera_flash_platform_data *pdata = p_lm3554_priv->platform_data;
+	struct lm3554 *flash = to_lm3554(sd);
+	struct camera_flash_platform_data *pdata = flash->pdata;
 	int ret;
 
 	ret = gpio_direction_output(pdata->gpio_torch, 0);
@@ -609,38 +609,38 @@ static int __devinit lm3554_probe(struct i2c_client *client,
 					 const struct i2c_device_id *id)
 {
 	int err;
-	struct lm3554_priv *p_lm3554_priv;
+	struct lm3554 *flash;
 
 	if (client->dev.platform_data == NULL) {
 		dev_err(&client->dev, "no platform data\n");
 		return -ENODEV;
 	}
 
-	p_lm3554_priv = kzalloc(sizeof(*p_lm3554_priv), GFP_KERNEL);
-	if (!p_lm3554_priv) {
+	flash = kzalloc(sizeof(*flash), GFP_KERNEL);
+	if (!flash) {
 		dev_err(&client->dev, "out of memory\n");
 		return -ENOMEM;
 	}
 
-	p_lm3554_priv->platform_data = client->dev.platform_data;
+	flash->pdata = client->dev.platform_data;
 
-	v4l2_i2c_subdev_init(&p_lm3554_priv->sd, client, &lm3554_ops);
-	p_lm3554_priv->sd.internal_ops = &lm3554_internal_ops;
-	p_lm3554_priv->sd.flags |= V4L2_SUBDEV_FL_HAS_DEVNODE;
-	p_lm3554_priv->timeout = LM3554_DEFAULT_TIMEOUT;
-	p_lm3554_priv->mode = ATOMISP_FLASH_MODE_OFF;
+	v4l2_i2c_subdev_init(&flash->sd, client, &lm3554_ops);
+	flash->sd.internal_ops = &lm3554_internal_ops;
+	flash->sd.flags |= V4L2_SUBDEV_FL_HAS_DEVNODE;
+	flash->timeout = LM3554_DEFAULT_TIMEOUT;
+	flash->mode = ATOMISP_FLASH_MODE_OFF;
 
-	err = media_entity_init(&p_lm3554_priv->sd.entity, 0, NULL, 0);
+	err = media_entity_init(&flash->sd.entity, 0, NULL, 0);
 	if (err) {
 		dev_err(&client->dev, "error initialize a media entity.\n");
 		goto fail1;
 	}
 
-	p_lm3554_priv->sd.entity.type = MEDIA_ENT_T_V4L2_SUBDEV_FLASH;
+	flash->sd.entity.type = MEDIA_ENT_T_V4L2_SUBDEV_FLASH;
 
-	mutex_init(&p_lm3554_priv->i2c_mutex);
+	mutex_init(&flash->i2c_mutex);
 
-	setup_timer(&p_lm3554_priv->flash_off_delay, lm3554_flash_off_delay,
+	setup_timer(&flash->flash_off_delay, lm3554_flash_off_delay,
 		    (unsigned long)client);
 
 	err = lm3554_gpio_init(client);
@@ -651,10 +651,10 @@ static int __devinit lm3554_probe(struct i2c_client *client,
 
 	return 0;
 fail2:
-	media_entity_cleanup(&p_lm3554_priv->sd.entity);
+	media_entity_cleanup(&flash->sd.entity);
 fail1:
-	v4l2_device_unregister_subdev(&p_lm3554_priv->sd);
-	kfree(p_lm3554_priv);
+	v4l2_device_unregister_subdev(&flash->sd);
+	kfree(flash);
 
 	return err;
 }
@@ -662,19 +662,19 @@ fail1:
 static int __devexit lm3554_remove(struct i2c_client *client)
 {
 	struct v4l2_subdev *sd = i2c_get_clientdata(client);
-	struct lm3554_priv *p_lm3554_priv = to_lm3554_priv(sd);
+	struct lm3554 *flash = to_lm3554(sd);
 	int ret;
 
-	media_entity_cleanup(&p_lm3554_priv->sd.entity);
+	media_entity_cleanup(&flash->sd.entity);
 	v4l2_device_unregister_subdev(sd);
 
-	del_timer_sync(&p_lm3554_priv->flash_off_delay);
+	del_timer_sync(&flash->flash_off_delay);
 
 	ret = lm3554_gpio_uninit(client);
 	if (ret < 0)
 		goto fail;
 
-	kfree(p_lm3554_priv);
+	kfree(flash);
 
 	return 0;
 fail:
