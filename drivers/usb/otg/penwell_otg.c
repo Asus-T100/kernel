@@ -4177,6 +4177,12 @@ static int penwell_otg_probe(struct pci_dev *pdev,
 		penwell_otg_phy_enable(0);
 		usleep_range(4000, 4500);
 		penwell_otg_phy_enable(1);
+		/* reset phy */
+		dev_dbg(pnw->dev, "Reset Phy over SPI\n");
+		penwell_otg_msic_spi_access(true);
+		penwell_otg_msic_write(MSIC_FUNCTRLSET, PHYRESET);
+		penwell_otg_msic_spi_access(false);
+		dev_dbg(pnw->dev, "Reset Phy over SPI Done\n");
 	}
 
 	/* Enable ID pullup immediately after reeable PHY */

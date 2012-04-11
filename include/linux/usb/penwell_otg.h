@@ -172,6 +172,7 @@
 #define ULPI_FUNCTRL		0x04
 #define ULPI_FUNCTRLSET		0x05
 #define ULPI_FUNCTRLCLR		0x06
+#	define PHYRESET			BIT(5)
 #	define OPMODE1			BIT(4)
 #	define OPMODE0			BIT(3)
 #	define TERMSELECT		BIT(2)
