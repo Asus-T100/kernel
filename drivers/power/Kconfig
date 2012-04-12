@@ -284,4 +284,11 @@ config CHARGER_BQ24192
 	  BQ24192 is charger chip for lithium-ion (Li+) batteries
 	  in handheld and portable equipment.
 
+config CHARGER_HELPER
+	bool "Charger Helper"
+	help
+	  Say Y to enable charger helper support
+	  Charger helper abstracts common charger operations and
+	  provides callback interfaces for hardware dependant functions.
+
 endif # POWER_SUPPLY
