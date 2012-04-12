@@ -164,7 +164,9 @@
 
 #define CHARGER_PRESENT		1
 #define CHARGER_NOT_PRESENT	0
-
+/*FIXME: Modify below conversion formula*/
+/*Convert ADC value to VBUS voltage*/
+#define MSIC_ADC_TO_VBUS_VOL(adc_val)   ((6843 * (adc_val)) / 1000)
 /*FIXME: Modify default values */
 #define BATT_DEAD_CUTOFF_VOLT		3400	/* 3400 mV */
 #define BATT_CRIT_CUTOFF_VOLT		3700	/* 3700 mV */

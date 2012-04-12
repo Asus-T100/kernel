@@ -42,7 +42,7 @@
 #include <linux/reboot.h>
 /*TODO remove this below header file once tangier_otg.h is available*/
 #include <linux/usb/penwell_otg.h>
-
+#include <asm/intel_basincove_gpadc.h>
 #include "basin_cove_charger.h"
 
 #define CHARGER_PS_NAME "bcove_charger"
@@ -106,6 +106,47 @@ static int bc_set_chrgr_current_limit(int cur_inlmt)
 }
 
 /**
+ * mrfl_read_adc_regs - read ADC value of specified sensors
+ * @channel: channel of the sensor to be sampled
+ * @sensor_val: pointer to the charger property to hold sampled value
+ * @chrgr_drv_cxt :  battery info pointer
+ *
+ * Returns 0 if success
+ */
+
+static int mrfl_read_adc_regs(int channel, int *sensor_val,
+	struct bc_chrgr_drv_context *chrgr_drv_cxt)
+{
+	int ret, adc_val;
+	struct gpadc_result *adc_res;
+	adc_res = kzalloc(sizeof(struct gpadc_result), GFP_KERNEL);
+	if (!adc_res)
+		return -ENOMEM;
+	ret = intel_basincove_gpadc_sample(channel, adc_res);
+	if (ret) {
+		dev_err(&chrgr_drv_cxt->pdev->dev,
+			"gpadc_sample failed:%d\n", ret);
+		goto exit;
+	}
+
+	adc_val = GPADC_RSL(channel, adc_res);
+	switch (channel) {
+	case GPADC_VBAT:
+		/*TO BE MODIFIED: This switch case retained for
+		 use in future though vbus_volt cannot be obtained*/
+		*sensor_val = MSIC_ADC_TO_VBUS_VOL(adc_val);
+		break;
+	default:
+		dev_err(&chrgr_drv_cxt->pdev->dev,
+			"invalid sensor%d", channel);
+		ret = -EINVAL;
+	}
+exit:
+	kfree(adc_res);
+	return ret;
+}
+
+/**
  * bc_chrgr_get_property - charger power supply get property
  * @psy: charger power supply context
  * @psp: charger property
@@ -121,7 +162,7 @@ static int bc_chrgr_ps_get_property(struct power_supply *psy,
 {
 	struct bc_chrgr_drv_context *chrgr_drv_cxt =
 	    container_of(psy, struct bc_chrgr_drv_context, bc_chrgr_ps);
-
+	int retval = 0;
 	mutex_lock(&chrgr_drv_cxt->bc_chrgr_lock);
 
 	switch (psp) {
@@ -140,7 +181,7 @@ static int bc_chrgr_ps_get_property(struct power_supply *psy,
 		val->intval = chrgr_drv_cxt->chrgr_props_cxt.charger_health;
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
-		/* TODO: ADC sampling of voltage */
+		/*from hardcoded value since no adc channel for vbus_volt*/
 		val->intval = chrgr_drv_cxt->chrgr_props_cxt.vbus_vol * 1000;
 		break;
 	case POWER_SUPPLY_PROP_MODEL_NAME:
@@ -155,7 +196,7 @@ static int bc_chrgr_ps_get_property(struct power_supply *psy,
 	}
 
 	mutex_unlock(&chrgr_drv_cxt->bc_chrgr_lock);
-	return 0;
+	return retval;
 }
 
 static void init_charger_ps_context(struct bc_chrgr_drv_context *chrgr_drv_cxt)
@@ -174,7 +215,7 @@ static void init_charger_ps_context(struct bc_chrgr_drv_context *chrgr_drv_cxt)
 	       sizeof("Unknown"));
 	memcpy(chrgr_drv_cxt->chrgr_props_cxt.charger_vender, "Unknown",
 	       sizeof("Unknown"));
-	/*TODO remove this assignment. No default val. Read from ADC */
+	/*Vbus_volt hardcoded.Not reading from ADC since no channel available*/
 	chrgr_drv_cxt->chrgr_props_cxt.vbus_vol = 4200;
 }
 
