@@ -225,6 +225,10 @@ static int ehci_pci_setup(struct usb_hcd *hcd)
 			ehci_info(ehci, "Detected Penwell OTG HC\n");
 			hcd->has_tt = 1;
 			ehci->has_hostpc = 1;
+		} else if (pdev->device == 0x08F2) {
+			ehci_info(ehci, "Detected SPH HC\n");
+			hcd->has_tt = 1;
+			ehci->has_hostpc = 1;
 		}
 	}
 
