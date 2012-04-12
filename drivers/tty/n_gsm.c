@@ -3000,8 +3000,13 @@ static int gsmtty_write(struct tty_struct *tty, const unsigned char *buf,
 								    int len)
 {
 	struct gsm_dlci *dlci = tty->driver_data;
+	int sent;
+
+	if (dlci->state != DLCI_OPEN)
+		return -EAGAIN;
+
 	/* Stuff the bytes into the fifo queue */
-	int sent = kfifo_in_locked(dlci->fifo, buf, len, &dlci->lock);
+	sent = kfifo_in_locked(dlci->fifo, buf, len, &dlci->lock);
 	/* Need to kick the channel */
 	gsm_dlci_data_kick(dlci);
 	return sent;
