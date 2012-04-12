@@ -164,9 +164,6 @@
 #define SCHGRIRQ1_ADDR		0x4F
 #define BATT_PRESENT		1
 #define BATT_NOT_PRESENT	0
-#define BATT_STRING_MAX		8
-#define BATTID_STR_LEN		8
-#define BATT_PROF_MAX_TEMP_NR_RNG	6
 
 #define CHARGER_PRESENT		1
 #define CHARGER_NOT_PRESENT	0
@@ -179,34 +176,12 @@
 
 /* Bit definitions */
 
-/* Temperature Monitoring Table */
-struct temp_mon_table {
-	short int temp_up_lim;
-	short int temp_low_lim;
-	short int rbatt;
-	short int full_chrg_vol;
-	short int full_chrg_cur;
-	short int maint_chrg_vol_ll;
-	short int maint_chrg_vol_ul;
-	short int maint_chrg_cur;
-} __packed;
-
-/*Battery properties */
-struct charging_profile {
-	char batt_id[BATTID_STR_LEN];
-	unsigned short int voltage_max;
-	unsigned int capacity;
-	u8 battery_type;
-	u8 temp_mon_ranges;
-	struct temp_mon_table temp_mon_range[BATT_PROF_MAX_TEMP_NR_RNG];
-} __packed;
 
 struct bc_batt_props_cxt {
 	unsigned int status;
 	unsigned int health;
 	bool present;
 };
-
 struct bc_charger_props_cxt {
 	unsigned int charging_mode;
 	unsigned int charger_present;
@@ -216,26 +191,6 @@ struct bc_charger_props_cxt {
 	char charger_vender[BATT_STRING_MAX];
 };
 
-/* Battery Settings info from platfrom layer*/
-struct battery_config {
-	u8 smip_rev;
-	u8 fpo;			/* fixed implementation options */
-	u8 fpo1;		/* fixed implementation options1 */
-	u8 rsys;		/* System Resistance for Fuel gauging */
-
-	/* Minimum voltage necessary to
-	 * be able to safely shut down */
-	short int vbatt_sh_min;
-
-	/* Voltage at which the battery driver
-	 * should report the LEVEL as CRITICAL */
-	short int vbatt_crit;
-
-	short int itc;		/* Charge termination current */
-	short int temp_high;	/* Safe Temp Upper Limit */
-	short int temp_low;	/* Safe Temp lower Limit */
-	u8 brd_id;		/* Unique Board ID */
-} __packed;
 
 /*
  * basinc cove charger driver info
@@ -245,9 +200,8 @@ struct bc_chrgr_drv_context {
 	struct platform_device *pdev;
 	bool invalid_batt;
 	bool is_batt_present;
-
-	struct charging_profile *chrg_profile;
-	struct battery_config *batt_config;
+	struct batt_charging_profile *chrg_profile;
+	struct plat_battery_config *batt_config;
 
 	/* lock to protect the charger properties
 	 * locking is applied wherever read or write

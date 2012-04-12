@@ -40,6 +40,7 @@
 #include <linux/wakelock.h>
 #include <linux/async.h>
 #include <linux/reboot.h>
+#include <linux/power/intel_mid_powersupply.h>
 /*TODO remove this below header file once tangier_otg.h is available*/
 #include <linux/usb/penwell_otg.h>
 #include <asm/intel_basincove_gpadc.h>
@@ -258,60 +259,9 @@ static void init_charger_ps_context(struct bc_chrgr_drv_context *chrgr_drv_cxt)
 	chrgr_drv_cxt->chrgr_props_cxt.vbus_vol = 4200;
 }
 
-static int get_charging_profile(struct charging_profile *chrg_profile)
-{
-	/*
-	 * TODO: Get battery profile from platfrom layer. Using hardcoded sample
-	 * value till this is done.
-	 */
 
-	memcpy(chrg_profile->batt_id, "UNKNOWN", sizeof("UNKNOWN"));
-	chrg_profile->voltage_max = 4200;
-	chrg_profile->capacity = 1500;
-	chrg_profile->battery_type = 2;	/* POWER_SUPPLY_TECHNOLOGY_LION */
-	chrg_profile->temp_mon_ranges = 4;
-
-	chrg_profile->temp_mon_range[0].temp_low_lim = 45;
-	chrg_profile->temp_mon_range[0].temp_up_lim = 60;
-	chrg_profile->temp_mon_range[0].rbatt = 120;
-	chrg_profile->temp_mon_range[0].full_chrg_cur = 950;
-	chrg_profile->temp_mon_range[0].full_chrg_vol = 4100;
-	chrg_profile->temp_mon_range[0].maint_chrg_cur = 950;
-	chrg_profile->temp_mon_range[0].maint_chrg_vol_ll = 4000;
-	chrg_profile->temp_mon_range[0].maint_chrg_vol_ul = 4050;
-
-	chrg_profile->temp_mon_range[1].temp_low_lim = 10;
-	chrg_profile->temp_mon_range[1].temp_up_lim = 45;
-	chrg_profile->temp_mon_range[1].rbatt = 120;
-	chrg_profile->temp_mon_range[1].full_chrg_cur = 950;
-	chrg_profile->temp_mon_range[1].full_chrg_vol = 4200;
-	chrg_profile->temp_mon_range[1].maint_chrg_cur = 950;
-	chrg_profile->temp_mon_range[1].maint_chrg_vol_ll = 4100;
-	chrg_profile->temp_mon_range[1].maint_chrg_vol_ul = 4150;
-
-	chrg_profile->temp_mon_range[2].temp_low_lim = 0;
-	chrg_profile->temp_mon_range[2].temp_up_lim = 10;
-	chrg_profile->temp_mon_range[2].rbatt = 120;
-	chrg_profile->temp_mon_range[2].full_chrg_cur = 950;
-	chrg_profile->temp_mon_range[2].full_chrg_vol = 4100;
-	chrg_profile->temp_mon_range[2].maint_chrg_cur = 950;
-	chrg_profile->temp_mon_range[2].maint_chrg_vol_ll = 4000;
-	chrg_profile->temp_mon_range[2].maint_chrg_vol_ul = 4050;
-
-	chrg_profile->temp_mon_range[3].temp_low_lim = -10;
-	chrg_profile->temp_mon_range[3].temp_up_lim = 0;
-	chrg_profile->temp_mon_range[3].rbatt = 120;
-	chrg_profile->temp_mon_range[3].full_chrg_cur = 950;
-	chrg_profile->temp_mon_range[3].full_chrg_vol = 3900;
-	chrg_profile->temp_mon_range[3].maint_chrg_cur = 950;
-	chrg_profile->temp_mon_range[3].maint_chrg_vol_ll = 3950;
-	chrg_profile->temp_mon_range[3].maint_chrg_vol_ul = 3950;
-
-	return 0;
-
-}
-
-static void populate_invalid_chrg_profile(struct charging_profile *chrg_profile)
+static void populate_invalid_chrg_profile
+	(struct batt_charging_profile *chrg_profile)
 {
 
 	/*
@@ -325,7 +275,8 @@ static void populate_invalid_chrg_profile(struct charging_profile *chrg_profile)
 
 }
 
-static int get_batt_config(struct battery_config *batt_config)
+static void populate_default_battery_config(
+		struct plat_battery_config *batt_config)
 {
 
 	/*TODO: Get battery configuration from platfrom layer.Using default
@@ -339,13 +290,6 @@ static int get_batt_config(struct battery_config *batt_config)
 	return 0;
 }
 
-static void populate_default_battery_config(struct battery_config *batt_config)
-{
-	batt_config->vbatt_sh_min = BATT_DEAD_CUTOFF_VOLT;
-	batt_config->vbatt_crit = BATT_CRIT_CUTOFF_VOLT;
-	batt_config->temp_high = MSIC_BATT_TEMP_MAX;
-	batt_config->temp_low = MSIC_BATT_TEMP_MIN;
-}
 
 /*TO BE FIXED : event handler stub*/
 static int pmic_bc_event_handler(void *arg, int event, struct otg_bc_cap *cap)
@@ -519,7 +463,7 @@ static int bc_chrgr_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	}
 	chrgr_drv_cxt->chrg_profile =
-	    kzalloc(sizeof(struct charging_profile), GFP_KERNEL);
+	    kzalloc(sizeof(struct batt_charging_profile), GFP_KERNEL);
 	if (!chrgr_drv_cxt->chrg_profile) {
 
 		dev_err(&pdev->dev, "%s(): memory allocation failed: Unable to"
@@ -529,7 +473,7 @@ static int bc_chrgr_probe(struct platform_device *pdev)
 	}
 
 	chrgr_drv_cxt->batt_config =
-	    kzalloc(sizeof(struct battery_config), GFP_KERNEL);
+	    kzalloc(sizeof(struct plat_battery_config), GFP_KERNEL);
 	if (!chrgr_drv_cxt->batt_config) {
 
 		dev_err(&pdev->dev, "%s(): memory allocation failed: Unable to"
@@ -548,7 +492,7 @@ static int bc_chrgr_probe(struct platform_device *pdev)
 	INIT_DELAYED_WORK(&chrgr_drv_cxt->chrg_callback_dwrk,
 				bc_chrg_callback_worker);
 
-	if (get_charging_profile(chrgr_drv_cxt->chrg_profile)) {
+	if (get_batt_charging_profile(chrgr_drv_cxt->chrg_profile)) {
 		dev_err(&pdev->dev, "%s() :Failed to get battery properties\n",
 			__func__);
 		populate_invalid_chrg_profile(chrgr_drv_cxt->chrg_profile);
