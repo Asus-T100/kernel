@@ -810,14 +810,17 @@ static void *mt9e013_otp_read(struct v4l2_subdev *sd)
 	if (!buf)
 		return ERR_PTR(-ENOMEM);
 
-	/* Try all banks, one by one, and return after first success */
-	ret = __mt9e013_otp_read(sd, mt9e013_otp_type30, buf);
+	/*
+	 * Try all banks in reverse order and return after first success.
+	 * Last used bank has most up-to-date data.
+	 */
+	ret = __mt9e013_otp_read(sd, mt9e013_otp_type32, buf);
 	if (!ret)
 		return buf;
 	ret = __mt9e013_otp_read(sd, mt9e013_otp_type31, buf);
 	if (!ret)
 		return buf;
-	ret = __mt9e013_otp_read(sd, mt9e013_otp_type32, buf);
+	ret = __mt9e013_otp_read(sd, mt9e013_otp_type30, buf);
 
 	/* Driver has failed to find valid data */
 	if (ret) {
