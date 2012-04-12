@@ -449,17 +449,11 @@ static const struct snd_soc_dapm_widget cs42l73_dapm_widgets[] = {
 	SND_SOC_DAPM_INPUT("MIC2"),
 	SND_SOC_DAPM_SUPPLY("MIC2 Bias", CS42L73_PWRCTL2, 7, 1, NULL, 0),
 
-	SND_SOC_DAPM_AIF_OUT("XSPOUTL", "XSP Capture",  0,
+	SND_SOC_DAPM_AIF_OUT("XSPOUT", "XSP Capture",  0,
 			CS42L73_PWRCTL2, 1, 1),
-	SND_SOC_DAPM_AIF_OUT("XSPOUTR", "XSP Capture",  0,
-			CS42L73_PWRCTL2, 1, 1),
-	SND_SOC_DAPM_AIF_OUT("ASPOUTL", "ASP Capture",  0,
+	SND_SOC_DAPM_AIF_OUT("ASPOUT", "ASP Capture",  0,
 			CS42L73_PWRCTL2, 3, 1),
-	SND_SOC_DAPM_AIF_OUT("ASPOUTR", "ASP Capture",  0,
-			CS42L73_PWRCTL2, 3, 1),
-	SND_SOC_DAPM_AIF_OUT("VSPOUTL", "VSP Capture",  0,
-			CS42L73_PWRCTL2, 4, 1),
-	SND_SOC_DAPM_AIF_OUT("VSPOUTR", "VSP Capture",  0,
+	SND_SOC_DAPM_AIF_OUT("VSPOUT", "VSP Capture",  0,
 			CS42L73_PWRCTL2, 4, 1),
 
 	SND_SOC_DAPM_PGA("PGA Left", SND_SOC_NOPM, 0, 0, NULL, 0),
@@ -468,10 +462,10 @@ static const struct snd_soc_dapm_widget cs42l73_dapm_widgets[] = {
 	SND_SOC_DAPM_MUX("PGA Left Mux", SND_SOC_NOPM, 0, 0, &pgaa_mux),
 	SND_SOC_DAPM_MUX("PGA Right Mux", SND_SOC_NOPM, 0, 0, &pgab_mux),
 
-	SND_SOC_DAPM_ADC("ADC Left", NULL, CS42L73_PWRCTL1, 7, 1),
-	SND_SOC_DAPM_ADC("ADC Right", NULL, CS42L73_PWRCTL1, 5, 1),
-	SND_SOC_DAPM_ADC("DMIC Left", NULL, CS42L73_PWRCTL1, 6, 1),
-	SND_SOC_DAPM_ADC("DMIC Right", NULL, CS42L73_PWRCTL1, 4, 1),
+	SND_SOC_DAPM_ADC("ADC Left", NULL, CS42L73_PWRCTL1, 5, 1),
+	SND_SOC_DAPM_ADC("ADC Right", NULL, CS42L73_PWRCTL1, 7, 1),
+	SND_SOC_DAPM_ADC("DMIC Left", NULL, CS42L73_PWRCTL1, 4, 1),
+	SND_SOC_DAPM_ADC("DMIC Right", NULL, CS42L73_PWRCTL1, 6, 1),
 
 	SND_SOC_DAPM_MIXER_NAMED_CTL("Input Left Capture", SND_SOC_NOPM,
 			 0, 0, input_left_mixer,
@@ -495,20 +489,10 @@ static const struct snd_soc_dapm_widget cs42l73_dapm_widgets[] = {
 	SND_SOC_DAPM_MIXER("VSPL Output Mixer", SND_SOC_NOPM, 0, 0, NULL, 0),
 	SND_SOC_DAPM_MIXER("VSPR Output Mixer", SND_SOC_NOPM, 0, 0, NULL, 0),
 
-	SND_SOC_DAPM_AIF_IN("XSPINL", "XSP Playback", 0,
+	SND_SOC_DAPM_AIF_IN("XSPIN", "XSP Playback", 0,
 				CS42L73_PWRCTL2, 0, 1),
-	SND_SOC_DAPM_AIF_IN("XSPINR", "XSP Playback", 0,
-				CS42L73_PWRCTL2, 0, 1),
-	SND_SOC_DAPM_AIF_IN("XSPINM", "XSP Playback", 0,
-				CS42L73_PWRCTL2, 0, 1),
-
-	SND_SOC_DAPM_AIF_IN("ASPINL", "ASP Playback", 0,
+	SND_SOC_DAPM_AIF_IN("ASPIN", "ASP Playback", 0,
 				CS42L73_PWRCTL2, 2, 1),
-	SND_SOC_DAPM_AIF_IN("ASPINR", "ASP Playback", 0,
-				CS42L73_PWRCTL2, 2, 1),
-	SND_SOC_DAPM_AIF_IN("ASPINM", "ASP Playback", 0,
-				CS42L73_PWRCTL2, 2, 1),
-
 	SND_SOC_DAPM_AIF_IN("VSPIN", "VSP Playback", 0,
 				CS42L73_PWRCTL2, 4, 1),
 
@@ -573,13 +557,13 @@ static const struct snd_soc_dapm_route cs42l73_audio_map[] = {
 	{"ESL Mixer", NULL, "ESL-ASP Mux"},
 	{"ESL Mixer", NULL, "ESL-XSP Mux"},
 
-	{"ESL-ASP Mux", "Left", "ASPINL"},
-	{"ESL-ASP Mux", "Right", "ASPINR"},
-	{"ESL-ASP Mux", "Mono Mix", "ASPINM"},
+	{"ESL-ASP Mux", "Left", "ASPIN"},
+	{"ESL-ASP Mux", "Right", "ASPIN"},
+	{"ESL-ASP Mux", "Mono Mix", "ASPIN"},
 
-	{"ESL-XSP Mux", "Left", "XSPINL"},
-	{"ESL-XSP Mux", "Right", "XSPINR"},
-	{"ESL-XSP Mux", "Mono Mix", "XSPINM"},
+	{"ESL-XSP Mux", "Left", "XSPIN"},
+	{"ESL-XSP Mux", "Right", "XSPIN"},
+	{"ESL-XSP Mux", "Mono Mix", "XSPIN"},
 
 	/* Speakerphone Paths */
 	{"SPKOUT", NULL, "SPK Amp"},
@@ -595,13 +579,13 @@ static const struct snd_soc_dapm_route cs42l73_audio_map[] = {
 	{"SPK Mixer", NULL, "SPK-ASP Mux"},
 	{"SPK Mixer", NULL, "SPK-XSP Mux"},
 
-	{"SPK-ASP Mux", "Left", "ASPINL"},
-	{"SPK-ASP Mux", "Mono Mix", "ASPINM"},
-	{"SPK-ASP Mux", "Right", "ASPINR"},
+	{"SPK-ASP Mux", "Left", "ASPIN"},
+	{"SPK-ASP Mux", "Mono Mix", "ASPIN"},
+	{"SPK-ASP Mux", "Right", "ASPIN"},
 
-	{"SPK-XSP Mux", "Left", "XSPINL"},
-	{"SPK-XSP Mux", "Mono Mix", "XSPINM"},
-	{"SPK-XSP Mux", "Right", "XSPINR"},
+	{"SPK-XSP Mux", "Left", "XSPIN"},
+	{"SPK-XSP Mux", "Mono Mix", "XSPIN"},
+	{"SPK-XSP Mux", "Right", "XSPIN"},
 
 	/* HP LineOUT Paths */
 	{"HPOUTA", NULL, "HP Amp"},
@@ -628,10 +612,10 @@ static const struct snd_soc_dapm_route cs42l73_audio_map[] = {
 	{"HL Loopback", "Enable", "Input Loopback Mixer"},
 
 
-	{"HL Left Mixer", NULL, "ASPINL"},
-	{"HL Right Mixer", NULL, "ASPINR"},
-	{"HL Left Mixer", NULL, "XSPINL"},
-	{"HL Right Mixer", NULL, "XSPINR"},
+	{"HL Left Mixer", NULL, "ASPIN"},
+	{"HL Right Mixer", NULL, "ASPIN"},
+	{"HL Left Mixer", NULL, "XSPIN"},
+	{"HL Right Mixer", NULL, "XSPIN"},
 	{"HL Left Mixer", NULL, "VSPIN"},
 	{"HL Right Mixer", NULL, "VSPIN"},
 
@@ -664,33 +648,33 @@ static const struct snd_soc_dapm_route cs42l73_audio_map[] = {
 	{"ASPL Output Mixer", NULL, "Input Left Capture"},
 	{"ASPR Output Mixer", NULL, "Input Right Capture"},
 
-	{"ASPOUTL", "ASP-IP Volume", "ASPL Output Mixer"},
-	{"ASPOUTR", "ASP-IP Volume", "ASPR Output Mixer"},
+	{"ASPOUT", "ASP-IP Volume", "ASPL Output Mixer"},
+	{"ASPOUT", "ASP-IP Volume", "ASPR Output Mixer"},
 
 	/* Auxillary Capture */
 	{"XSPL Output Mixer", NULL, "Input Left Capture"},
 	{"XSPR Output Mixer", NULL, "Input Right Capture"},
 
-	{"XSPOUTL", "XSP-IP Volume", "XSPL Output Mixer"},
-	{"XSPOUTR", "XSP-IP Volume", "XSPR Output Mixer"},
+	{"XSPOUT", "XSP-IP Volume", "XSPL Output Mixer"},
+	{"XSPOUT", "XSP-IP Volume", "XSPR Output Mixer"},
 
-	{"XSPOUTL", NULL, "XSPL Output Mixer"},
-	{"XSPOUTR", NULL, "XSPR Output Mixer"},
+	{"XSPOUT", NULL, "XSPL Output Mixer"},
+	{"XSPOUT", NULL, "XSPR Output Mixer"},
 
 	/* Voice Capture */
 	{"VSPL Output Mixer", NULL, "Input Left Capture"},
 	{"VSPR Output Mixer", NULL, "Input Right Capture"},
 
-	{"VSPOUTL", "VSP-IP Volume", "VSPL Output Mixer"},
-	{"VSPOUTR", "VSP-IP Volume", "VSPR Output Mixer"},
+	{"VSPOUT", "VSP-IP Volume", "VSPL Output Mixer"},
+	{"VSPOUT", "VSP-IP Volume", "VSPR Output Mixer"},
 
-	{"VSPOUTL", NULL, "VSPL Output Mixer"},
-	{"VSPOUTR", NULL, "VSPR Output Mixer"},
-	{"ASPL Output Mixer", NULL, "ASPINL"},
-	{"ASPR Output Mixer", NULL, "ASPINR"},
+	{"VSPOUT", NULL, "VSPL Output Mixer"},
+	{"VSPOUT", NULL, "VSPR Output Mixer"},
+	{"ASPL Output Mixer", NULL, "ASPIN"},
+	{"ASPR Output Mixer", NULL, "ASPIN"},
 
-	{"ASPOUTL", "ASP-ASP Volume", "ASPL Output Mixer"},
-	{"ASPOUTR", "ASP-ASP Volume", "ASPR Output Mixer"},
+	{"ASPOUT", "ASP-ASP Volume", "ASPL Output Mixer"},
+	{"ASPOUT", "ASP-ASP Volume", "ASPR Output Mixer"},
 };
 
 struct cs42l73_mclk_div {
@@ -809,7 +793,7 @@ static int cs42l73_set_mclk(struct snd_soc_dai *dai, unsigned int freq)
 	dmmcc = (priv->mclksel << 4) |
 		(cs42l73_mclkx_coeffs[mclkx_coeff].mclkdiv << 1);
 
-	snd_soc_write(codec, CS42L73_DMMCC, dmmcc);
+	snd_soc_update_bits(codec, CS42L73_DMMCC, dmmcc, dmmcc);
 
 	priv->sysclk = mclkx_coeff;
 	priv->mclk = mclk;
@@ -991,8 +975,10 @@ static int cs42l73_pcm_hw_params(struct snd_pcm_substream *substream,
 	/* Update ASRCs */
 	priv->config[id].srate = srate;
 
-	snd_soc_write(codec, CS42L73_SPC(id), priv->config[id].spc);
-	snd_soc_write(codec, CS42L73_MMCC(id), priv->config[id].mmcc);
+	snd_soc_update_bits(codec, CS42L73_SPC(id),
+				priv->config[id].spc, priv->config[id].spc);
+	snd_soc_update_bits(codec, CS42L73_MMCC(id),
+				priv->config[id].mmcc, priv->config[id].mmcc);
 
 	cs42l73_update_asrc(codec, id, srate);
 
