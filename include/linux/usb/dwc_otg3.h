@@ -25,6 +25,8 @@
 #include <linux/device.h>
 #include <linux/compiler.h>
 
+#define SUPPORT_USER_ID_CHANGE_EVENTS
+
 struct dwc_device_par {
 	void __iomem *io_addr;
 	int len;
@@ -320,9 +322,12 @@ struct dwc_otg2 {
 #define USER_RSP_EVENT 0x10
 	/** Host release event */
 #define PCD_RECEIVED_HOST_RELEASE_EVENT 0x20
+
+#ifdef SUPPORT_USER_ID_CHANGE_EVENTS
 	/** User space ID switch event */
 #define USER_ID_A_CHANGE_EVENT 0x40
 #define USER_ID_B_CHANGE_EVENT 0x80
+#endif
 
 	/* States */
 	enum dwc_otg_state prev;

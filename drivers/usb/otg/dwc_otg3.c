@@ -14,15 +14,12 @@
 #include <linux/usb/gadget.h>
 #include <linux/usb/dwc_otg3.h>
 
-#define SUPPORT_USER_ID_CHANGE_EVENTS
-
 static int otg_id = -1;
 static struct mutex lock;
 static const char driver_name[] = "dwc_otg3";
 static void __devexit dwc_otg_remove(struct pci_dev *pdev);
 static struct dwc_device_par *platform_par;
 static struct dwc_otg2 *the_transceiver;
-static irqreturn_t dwc_otg_irq(int irq, void *_dev);
 
 static void print_debug_regs(struct dwc_otg2 *otg)
 {
@@ -251,17 +248,6 @@ static int handshake(struct dwc_otg2 *otg,
 	return 0;
 }
 
-static int reset_port(struct dwc_otg2 *otg)
-{
-	struct usb_hcd *hcd = NULL;
-
-	if (otg->otg.host) {
-		hcd = container_of(otg->otg.host, struct usb_hcd, self);
-		return hcd->driver->reset_port(hcd);
-	}
-	return -ENODEV;
-}
-
 static int set_peri_mode(struct dwc_otg2 *otg, int mode)
 {
 	u32 octl = 0;
@@ -312,7 +298,8 @@ static void set_sus_phy(struct dwc_otg2 *otg, int bit)
 
 static int start_host(struct dwc_otg2 *otg)
 {
-	int ret = 0;
+	int ret = 0, flg;
+	u32 osts, octl;
 	struct usb_hcd *hcd = NULL;
 
 	otg_dbg(otg, "\n");
@@ -329,6 +316,27 @@ static int start_host(struct dwc_otg2 *otg)
 	hcd = container_of(otg->otg.host, struct usb_hcd, self);
 	ret = hcd->driver->start_host(hcd);
 
+	/* Power the port only for A-host */
+	if (otg->state == DWC_STATE_A_HOST) {
+		set_sus_phy(otg, 1);
+
+		/* Spin osts xhciPrtPwr bit until it becomes 1 */
+		osts = otg_read(otg, OSTS);
+		flg = handshake(otg, OSTS,
+				OSTS_XHCI_PRT_PWR,
+				OSTS_XHCI_PRT_PWR,
+				1000);
+		if (flg) {
+			otg_dbg(otg, "Port is powered by xhci-hcd\n");
+			/* Set port power control bit */
+			octl = otg_read(otg, OCTL);
+			octl |= OCTL_PRT_PWR_CTL;
+			otg_write(otg, OCTL, octl);
+		} else {
+			otg_dbg(otg, "Port is not powered by xhci-hcd\n");
+		}
+	}
+
 	return ret;
 }
 
@@ -338,7 +346,6 @@ static int stop_host(struct dwc_otg2 *otg)
 	struct usb_hcd *hcd = NULL;
 
 	otg_dbg(otg, "\n");
-	return 0;
 
 	if (otg->otg.host) {
 		hcd = container_of(otg->otg.host, struct usb_hcd, self);
@@ -346,19 +353,6 @@ static int stop_host(struct dwc_otg2 *otg)
 	}
 
 	return ret;
-}
-
-/* Sends the host release set feature request */
-static void host_release(struct dwc_otg2 *otg)
-{
-	struct usb_hcd *hcd = NULL;
-
-	otg_dbg(otg, "\n");
-
-	if (otg->otg.host) {
-		hcd = container_of(otg->otg.host, struct usb_hcd, self);
-		hcd->driver->release_host(hcd);
-	}
 }
 
 static void start_peripheral(struct dwc_otg2 *otg)
@@ -434,6 +428,7 @@ static enum dwc_otg_state do_charger_detection(struct dwc_otg2 *otg)
 static enum dwc_otg_state do_connector_id_status(struct dwc_otg2 *otg)
 {
 	u32 events = 0, user_events = 0;
+	u32 otg_mask = 0, user_mask = 0;
 	enum dwc_otg_state state = DWC_STATE_INVALID;
 
 	otg_dbg(otg, "\n");
@@ -452,6 +447,7 @@ static enum dwc_otg_state do_connector_id_status(struct dwc_otg2 *otg)
 	msleep(60);
 
 #ifndef SUPPORT_USER_ID_CHANGE_EVENTS
+	u32 osts, otg_events = 0;
 	osts = otg_read(otg, OSTS);
 	if (!(osts & OSTS_CONN_ID_STS)) {
 		otg_dbg(otg, "Connector ID is A\n");
@@ -463,13 +459,17 @@ static enum dwc_otg_state do_connector_id_status(struct dwc_otg2 *otg)
 		else
 			otg_dbg(otg, "B session invalied, so haven't connect HOST\n");
 	}
+
+	otg_mask = OEVT_CONN_ID_STS_CHNG_EVNT | \
+			   OEVT_B_DEV_VBUS_CHNG_EVNT | \
+			   OEVT_B_DEV_SES_VLD_DET_EVNT;
+#else
+	user_mask = USER_ID_B_CHANGE_EVENT | \
+				USER_ID_A_CHANGE_EVENT;
 #endif
 
-	sleep_until_event(otg, OEVT_CONN_ID_STS_CHNG_EVNT \
-			| OEVT_B_DEV_VBUS_CHNG_EVNT \
-			| OEVT_B_DEV_SES_VLD_DET_EVNT, \
-			0, USER_ID_B_CHANGE_EVENT \
-			| USER_ID_A_CHANGE_EVENT, &events,\
+	sleep_until_event(otg, otg_mask, \
+			0, user_mask, &events,\
 			NULL, &user_events, 0);
 
 	if (events & (OEVT_B_DEV_VBUS_CHNG_EVNT | \
@@ -519,8 +519,11 @@ static enum dwc_otg_state do_a_host(struct dwc_otg2 *otg)
 
 	ret = start_host(otg);
 
+#ifndef SUPPORT_USER_ID_CHANGE_EVENTS
 	otg_mask = OEVT_CONN_ID_STS_CHNG_EVNT;
+#else
 	user_mask = USER_ID_B_CHANGE_EVENT;
+#endif
 
 	rc = sleep_until_event(otg,
 			otg_mask, 0, user_mask,
@@ -528,14 +531,19 @@ static enum dwc_otg_state do_a_host(struct dwc_otg2 *otg)
 	if (rc < 0)
 		return DWC_STATE_EXIT;
 
-	if (!ret)
-		stop_host(otg);
-
 	/* Higher priority first */
 	if (otg_events & OEVT_CONN_ID_STS_CHNG_EVNT) {
 		otg_dbg(otg, "OEVT_CONN_ID_STS_CHNG_EVNT\n");
 		return DWC_STATE_CHARGER_DETECTION;
 	}
+
+#ifdef SUPPORT_USER_ID_CHANGE_EVENTS
+	/* Higher priority first */
+	if (user_events & USER_ID_B_CHANGE_EVENT) {
+		otg_dbg(otg, "USER_ID_B_CHANGE_EVENT\n");
+		return DWC_STATE_B_PERIPHERAL;
+	}
+#endif
 
 	/* Invalid state */
 	return DWC_STATE_INVALID;
@@ -549,11 +557,13 @@ static int do_b_peripheral(struct dwc_otg2 *otg)
 	u32 otg_events = 0;
 	u32 user_events = 0;
 
+#ifndef SUPPORT_USER_ID_CHANGE_EVENTS
 	otg_mask = OEVT_CONN_ID_STS_CHNG_EVNT \
 			| OEVT_B_DEV_VBUS_CHNG_EVNT \
 			| OEVT_B_DEV_SES_VLD_DET_EVNT;
-
+#else
 	user_mask = USER_ID_A_CHANGE_EVENT;
+#endif
 
 	rc = sleep_until_event(otg,
 			otg_mask, 0, user_mask,
@@ -575,6 +585,13 @@ static int do_b_peripheral(struct dwc_otg2 *otg)
 		otg_dbg(otg, "OEVT_B_DEV_SES_VLD_DET_EVNT!\n");
 		return DWC_STATE_CHARGER_DETECTION;
 	}
+
+#ifdef SUPPORT_USER_ID_CHANGE_EVENTS
+	if (user_events & USER_ID_A_CHANGE_EVENT) {
+		otg_dbg(otg, "USER_ID_A_CHANGE_EVENT\n");
+		return DWC_STATE_A_HOST;
+	}
+#endif
 
 	return DWC_STATE_INVALID;
 }
@@ -691,6 +708,7 @@ static int dwc_otg2_set_suspend(struct otg_transceiver *x, int suspend)
 	return 0;
 }
 
+#ifndef SUPPORT_USER_ID_CHANGE_EVENTS
 static irqreturn_t dwc_otg_irq(int irq, void *_dev)
 {
 	struct dwc_otg2 *otg = _dev;
@@ -778,6 +796,7 @@ static irqreturn_t dwc_otg_irq(int irq, void *_dev)
 
 	return IRQ_HANDLED;
 }
+#endif
 
 static int dwc_otg2_set_peripheral(struct otg_transceiver *x,
 		struct usb_gadget *gadget)

@@ -143,31 +143,48 @@ static int xhci_start_host(struct usb_hcd *hcd)
 	return 0;
 
 put_usb3_hcd:
-	usb_put_hcd(xhci->shared_hcd);
+	if (xhci->shared_hcd) {
+		usb_remove_hcd(xhci->shared_hcd);
+		usb_put_hcd(xhci->shared_hcd);
+	}
 
 dealloc_usb2_hcd:
 	local_irq_disable();
 	usb_hcd_irq(0, hcd);
 	local_irq_enable();
 	usb_remove_hcd(hcd);
-	if (hcd->driver->flags & HCD_MEMORY) {
-		iounmap(hcd->regs);
-		release_mem_region(hcd->rsrc_start, hcd->rsrc_len);
-	} else {
-		release_region(hcd->rsrc_start, hcd->rsrc_len);
-	}
-	usb_put_hcd(hcd);
+
+	kfree(xhci);
 	return ret;
 }
 
 static int xhci_stop_host(struct usb_hcd *hcd)
 {
+	struct xhci_hcd *xhci;
+
 	if (!hcd) {
 		printk(KERN_DEBUG "%s() - NULL pointer returned", __func__);
 		return -EINVAL;
 	}
 
+	xhci = hcd_to_xhci(hcd);
+
+	if (xhci->shared_hcd) {
+		usb_remove_hcd(xhci->shared_hcd);
+		usb_put_hcd(xhci->shared_hcd);
+	}
+
+	/* Fake an interrupt request in order to give the driver a chance
+	 * to test whether the controller hardware has been removed (e.g.,
+	 * cardbus physical eject).
+	 */
+	local_irq_disable();
+	usb_hcd_irq(0, hcd);
+	local_irq_enable();
+
 	usb_remove_hcd(hcd);
+
+	kfree(xhci);
 	return 0;
 }
 
@@ -324,7 +341,6 @@ static int xhci_release_host(struct usb_hcd *hcd)
 	return 0;
 }
 
-
 static int xhci_dwc_drv_probe(struct platform_device *pdev)
 {
 	struct dwc_device_par *pdata;
@@ -392,7 +408,6 @@ static int xhci_dwc_drv_remove(struct platform_device *pdev)
 	otg_set_host(otg, NULL);
 	otg_put_transceiver(otg);
 
-	usb_remove_hcd(hcd);
 	usb_put_hcd(hcd);
 	return 0;
 }
