@@ -40,6 +40,8 @@
 #include <linux/wakelock.h>
 #include <linux/async.h>
 #include <linux/reboot.h>
+/*TODO remove this below header file once tangier_otg.h is available*/
+#include <linux/usb/penwell_otg.h>
 
 #include "basin_cove_charger.h"
 
@@ -49,6 +51,7 @@
 #define DEVICE_NAME "bc_charger"
 
 static struct device *bc_chrgr_dev;
+static void *otg_handle;
 
 /*
  * Basin Cove Charger power supply  properties
@@ -264,6 +267,64 @@ static void populate_default_battery_config(struct battery_config *batt_config)
 	batt_config->temp_low = MSIC_BATT_TEMP_MIN;
 }
 
+/*TO BE FIXED : event handler stub*/
+static int pmic_bc_event_handler(void *arg, int event, struct otg_bc_cap *cap)
+{
+	return 0;
+}
+/*TO BE REMOVED : chargin cap query - OTG function stub*/
+static int tangier_otg_query_charging_cap(struct otg_bc_cap *cap)
+{
+	return 0;
+}
+/*TO BE REMOVED : OTG callback register/unregister function stub*/
+static void *tangier_otg_register_bc_callback(
+int (*cb)(void *, int, struct otg_bc_cap *), void *arg)
+{
+	struct penwell_otg *temp_ptr = kzalloc(sizeof(struct penwell_otg),
+					GFP_KERNEL);
+	if (!temp_ptr)
+		dev_err(bc_chrgr_dev, "%s(): memory allocation failed\n",
+		__func__);
+	return temp_ptr;
+}
+
+static int tangier_otg_unregister_bc_callback(void *handle)
+{
+	kfree(handle);
+	return 0;
+}
+
+static void bc_chrg_callback_worker(struct work_struct *work)
+{
+	int retval;
+	struct otg_bc_cap cap;
+	struct bc_chrgr_drv_context *chrgr_drv_cxt =
+		container_of(work, struct bc_chrgr_drv_context,
+		chrg_callback_dwrk.work);
+	retval = tangier_otg_query_charging_cap(&cap);
+	if (retval)
+		dev_err(bc_chrgr_dev, "%s(): Failed to get otg capabalities\n",
+		__func__);
+	else {
+		retval = pmic_bc_event_handler(chrgr_drv_cxt,
+						cap.current_event, &cap);
+		if (retval)
+			dev_err(bc_chrgr_dev, "%s(): Event handler failed\n",
+			__func__);
+	}
+}
+
+/* bc_charger_callback - callback for USB OTG*/
+static int bc_charger_callback(void *arg, int event,
+					struct otg_bc_cap *cap)
+{
+	struct bc_chrgr_drv_context *chrgr_drv_cxt =
+		(struct bc_chrgr_drv_context *)arg;
+	schedule_delayed_work(&chrgr_drv_cxt->chrg_callback_dwrk, 0);
+	return 0;
+}
+
 /**
  * bc_charger_probe - basin cove charger probe function
  * @pdev: basin cove platform device structure
@@ -311,6 +372,10 @@ static int bc_chrgr_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, chrgr_drv_cxt);
 	bc_chrgr_dev = &pdev->dev;
 
+	/* Initialize work for otg callback worker*/
+	INIT_DELAYED_WORK(&chrgr_drv_cxt->chrg_callback_dwrk,
+				bc_chrg_callback_worker);
+
 	if (get_charging_profile(chrgr_drv_cxt->chrg_profile)) {
 		dev_err(&pdev->dev, "%s() :Failed to get battery properties\n",
 			__func__);
@@ -339,8 +404,18 @@ static int bc_chrgr_probe(struct platform_device *pdev)
 			"device with power supply subsystem\n", __func__);
 		goto ps_reg_failed;
 	}
-	/*TODO: register OTG callback handle */
 
+	/*register OTG callback handle-	callback register function not
+	implemented yet so a stub with temporary return type as
+	integer is provided above*/
+	otg_handle = tangier_otg_register_bc_callback(bc_charger_callback,
+					(void *)chrgr_drv_cxt);
+
+	if (!otg_handle) {
+		dev_err(&pdev->dev, "battery: OTG Registration failed\n");
+		retval = PTR_ERR(otg_handle);
+		goto otg_reg_failed;
+	}
 	/* Enable SWCONTROL bit to handle USB events from SW */
 	retval = intel_scu_ipc_update_register(CHGRCTRL0_ADDR, SWCONTROL_ENABLE,
 					       CHGRCTRL0_SWCONTROL_MASK);
@@ -350,7 +425,8 @@ static int bc_chrgr_probe(struct platform_device *pdev)
 			"Continuing in HW charging mode\n", __func__);
 	}
 	return retval;
-
+otg_reg_failed:
+	power_supply_unregister(&chrgr_drv_cxt->bc_chrgr_ps);
 ps_reg_failed:
 	kfree(chrgr_drv_cxt->batt_config);
 batt_config_alloc_failed:
@@ -385,7 +461,7 @@ static int bc_chrgr_remove(struct platform_device *pdev)
 
 	if (chrgr_drv_cxt) {
 		bc_chrgr_do_exit_ops(chrgr_drv_cxt);
-
+		tangier_otg_unregister_bc_callback(otg_handle);
 		power_supply_unregister(&chrgr_drv_cxt->bc_chrgr_ps);
 
 		kfree(chrgr_drv_cxt->chrg_profile);

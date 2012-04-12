@@ -258,6 +258,8 @@ struct bc_chrgr_drv_context {
 	 * is used to synchronize those Charger IPC read or write calls.
 	 */
 	struct mutex bc_ipc_rw_lock;
-
+	/* Worker to handle otg callback events */
+	struct delayed_work chrg_callback_dwrk;
 };
+
 #endif
