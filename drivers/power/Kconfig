@@ -224,6 +224,17 @@ config CHARGER_SMB347
           Say Y here to enable the charger driver on Intel Medfield based Tablet
           platforms.
 
+config INTEL_MID_BASIN_COVE_CHARGER
+        tristate "Charger driver for Basin Cove PMIC on Intel MID"
+        depends on INTEL_SCU_IPC
+        help
+	  Say Y here to enable the Basin Cove charger driver on Intel MID
+	  platforms.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called basin_cove_charger.
+
+
 config BATTERY_INTEL_FG
         tristate "Fuel gauge driver for Intel Medfield MID platforms"
         depends on INTEL_SCU_IPC && MSIC_GPADC
