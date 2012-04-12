@@ -72,6 +72,19 @@ static int intel_scu_ipc_update_register(u16 addr, u8 bits, u8 mask)
 	return 0;
 }
 
+/*FIXME: Remove this IPC call stub */
+static int intel_scu_ipc_ioread8(u16 addr, u8 *data)
+{
+	return 0;
+}
+
+/*TODO : Implement the function for adc value to temp conversion*/
+static int adc_to_temp(uint16_t adc_val, int *tp)
+{
+
+	return 0;
+
+}
 static int bc_enable_charger(void)
 {
 	return intel_scu_ipc_update_register(CHGRCTRL0_ADDR, EXTCHRDIS_ENABLE,
@@ -131,10 +144,8 @@ static int mrfl_read_adc_regs(int channel, int *sensor_val,
 
 	adc_val = GPADC_RSL(channel, adc_res);
 	switch (channel) {
-	case GPADC_VBAT:
-		/*TO BE MODIFIED: This switch case retained for
-		 use in future though vbus_volt cannot be obtained*/
-		*sensor_val = MSIC_ADC_TO_VBUS_VOL(adc_val);
+	case GPADC_BATTEMP0:
+		ret = adc_to_temp(adc_val, sensor_val);
 		break;
 	default:
 		dev_err(&chrgr_drv_cxt->pdev->dev,
@@ -197,6 +208,34 @@ static int bc_chrgr_ps_get_property(struct power_supply *psy,
 
 	mutex_unlock(&chrgr_drv_cxt->bc_chrgr_lock);
 	return retval;
+}
+
+
+
+/**
+ * init_batt_props_context - initialize battery properties
+ * @chrgr_drv_cxt: basin cove charger driver structure
+ * init_batt_props function initializes the
+ * battery properties.
+ */
+static void init_batt_props_context(struct bc_chrgr_drv_context *chrgr_drv_cxt)
+{
+	unsigned char data;
+	int retval;
+
+	chrgr_drv_cxt->batt_props_cxt.status = POWER_SUPPLY_STATUS_DISCHARGING;
+	chrgr_drv_cxt->batt_props_cxt.health = POWER_SUPPLY_HEALTH_GOOD;
+	chrgr_drv_cxt->batt_props_cxt.present = BATT_NOT_PRESENT;
+	/*TODO: remove the default assignment: Assumed as battery present*/
+	chrgr_drv_cxt->current_sense_enabled = 1;
+
+	/*read specific to determine the status*/
+	retval = intel_scu_ipc_ioread8(SCHGRIRQ1_ADDR, &data);
+	if (retval)
+		dev_crit(bc_chrgr_dev, "PMIC IPC read access to SCHGRIRQ1_ADDR failed\n");
+	/* determine battery Presence */
+	else if (data & BATT_CHR_BATTDET_MASK)
+		chrgr_drv_cxt->batt_props_cxt.present = BATT_PRESENT;
 }
 
 static void init_charger_ps_context(struct bc_chrgr_drv_context *chrgr_drv_cxt)
@@ -366,6 +405,98 @@ static int bc_charger_callback(void *arg, int event,
 	return 0;
 }
 
+/* Exported Functions to use with Fuel Gauge driver */
+
+bool bc_is_current_sense_enabled(void)
+{
+	struct platform_device *pdev = container_of(bc_chrgr_dev,
+					struct platform_device, dev);
+	struct bc_chrgr_drv_context *chrgr_drv_cxt = platform_get_drvdata(pdev);
+	bool val;
+	/* check if basincove  charger is ready */
+	if (!power_supply_get_by_name(CHARGER_PS_NAME))
+		return -EAGAIN;
+
+	mutex_lock(&chrgr_drv_cxt->batt_lock);
+	val = chrgr_drv_cxt->current_sense_enabled;
+	mutex_unlock(&chrgr_drv_cxt->batt_lock);
+
+	return val;
+}
+EXPORT_SYMBOL(bc_is_current_sense_enabled);
+
+bool bc_check_battery_present(void)
+{
+	struct platform_device *pdev = container_of(bc_chrgr_dev,
+					struct platform_device, dev);
+	struct bc_chrgr_drv_context *chrgr_drv_cxt = platform_get_drvdata(pdev);
+	bool val;
+	/* check if basincove  charger is ready */
+	if (!power_supply_get_by_name(CHARGER_PS_NAME))
+		return -EAGAIN;
+
+	mutex_lock(&chrgr_drv_cxt->batt_lock);
+	val = chrgr_drv_cxt->batt_props_cxt.present;
+	mutex_unlock(&chrgr_drv_cxt->batt_lock);
+
+	return val;
+}
+EXPORT_SYMBOL(bc_check_battery_present);
+
+int bc_check_battery_health(void)
+{
+	struct platform_device *pdev = container_of(bc_chrgr_dev,
+					struct platform_device, dev);
+	struct bc_chrgr_drv_context *chrgr_drv_cxt = platform_get_drvdata(pdev);
+	unsigned int val;
+	/* check if basincove  charger is ready */
+	if (!power_supply_get_by_name(CHARGER_PS_NAME))
+		return -EAGAIN;
+
+	mutex_lock(&chrgr_drv_cxt->batt_lock);
+	val = chrgr_drv_cxt->batt_props_cxt.health;
+	mutex_unlock(&chrgr_drv_cxt->batt_lock);
+
+	return val;
+}
+EXPORT_SYMBOL(bc_check_battery_health);
+
+int bc_check_battery_status(void)
+{
+	struct platform_device *pdev = container_of(bc_chrgr_dev,
+					struct platform_device, dev);
+	struct bc_chrgr_drv_context *chrgr_drv_cxt = platform_get_drvdata(pdev);
+	unsigned int val;
+	/* check if basincove  charger is ready */
+	if (!power_supply_get_by_name(CHARGER_PS_NAME))
+		return -EAGAIN;
+
+	mutex_lock(&chrgr_drv_cxt->batt_lock);
+	val = chrgr_drv_cxt->batt_props_cxt.status;
+	mutex_unlock(&chrgr_drv_cxt->batt_lock);
+
+	return val;
+}
+EXPORT_SYMBOL(bc_check_battery_status);
+
+
+int bc_get_battery_pack_temp(int *temp)
+{
+	struct platform_device *pdev = container_of(bc_chrgr_dev,
+					struct platform_device, dev);
+	struct bc_chrgr_drv_context *chrgr_drv_cxt = platform_get_drvdata(pdev);
+
+	if (!chrgr_drv_cxt->current_sense_enabled)
+		return -ENODEV;
+	/* check if basincove  charger is ready */
+	if (!power_supply_get_by_name(CHARGER_PS_NAME))
+		return -EAGAIN;
+
+	return mrfl_read_adc_regs(GPADC_BATTEMP0, temp, chrgr_drv_cxt);
+}
+EXPORT_SYMBOL(bc_get_battery_pack_temp);
+
+
 /**
  * bc_charger_probe - basin cove charger probe function
  * @pdev: basin cove platform device structure
@@ -431,12 +562,14 @@ static int bc_chrgr_probe(struct platform_device *pdev)
 	}
 
 	init_charger_ps_context(chrgr_drv_cxt);
+	init_batt_props_context(chrgr_drv_cxt);
 
 	/*TODO: Interrupt tree mapping */
 	/*TODO: Register IRQ handler */
 
 	/* initialize mutexes */
 	mutex_init(&chrgr_drv_cxt->bc_chrgr_lock);
+	mutex_init(&chrgr_drv_cxt->batt_lock);
 
 	retval = power_supply_register(&pdev->dev, &chrgr_drv_cxt->bc_chrgr_ps);
 	if (retval) {

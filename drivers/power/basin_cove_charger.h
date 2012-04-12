@@ -158,15 +158,18 @@
 #define TT_CHGRENVAL_ADDR		0X32
 #define TT_CHGRDISVAL_ADDR		0X33
 
+/*Interrupt registers*/
+#define BATT_CHR_BATTDET_MASK	D2
+/*Status registers*/
+#define SCHGRIRQ1_ADDR		0x4F
+#define BATT_PRESENT		1
+#define BATT_NOT_PRESENT	0
 #define BATT_STRING_MAX		8
 #define BATTID_STR_LEN		8
 #define BATT_PROF_MAX_TEMP_NR_RNG	6
 
 #define CHARGER_PRESENT		1
 #define CHARGER_NOT_PRESENT	0
-/*FIXME: Modify below conversion formula*/
-/*Convert ADC value to VBUS voltage*/
-#define MSIC_ADC_TO_VBUS_VOL(adc_val)   ((6843 * (adc_val)) / 1000)
 /*FIXME: Modify default values */
 #define BATT_DEAD_CUTOFF_VOLT		3400	/* 3400 mV */
 #define BATT_CRIT_CUTOFF_VOLT		3700	/* 3700 mV */
@@ -197,6 +200,12 @@ struct charging_profile {
 	u8 temp_mon_ranges;
 	struct temp_mon_table temp_mon_range[BATT_PROF_MAX_TEMP_NR_RNG];
 } __packed;
+
+struct bc_batt_props_cxt {
+	unsigned int status;
+	unsigned int health;
+	bool present;
+};
 
 struct bc_charger_props_cxt {
 	unsigned int charging_mode;
@@ -253,6 +262,14 @@ struct bc_chrgr_drv_context {
 
 	unsigned int irq;		/* GPE_ID or IRQ# */
 
+	/* bc battery data */
+	/* lock to protect battery  properties
+	* locking is applied wherever read or write
+	* operation is being performed to the battery
+	* property structure.
+	*/
+	struct mutex batt_lock;
+	struct bc_batt_props_cxt batt_props_cxt;
 
 	/* lock to avoid concurrent  access to HW Registers.
 	 * As some charger control and parameter registers
@@ -262,6 +279,14 @@ struct bc_chrgr_drv_context {
 	struct mutex bc_ipc_rw_lock;
 	/* Worker to handle otg callback events */
 	struct delayed_work chrg_callback_dwrk;
+	bool current_sense_enabled;
+
 };
+
+extern bool bc_is_current_sense_enabled(void);
+extern bool bc_check_battery_present(void);
+extern int bc_check_battery_health(void);
+extern int bc_check_battery_status(void);
+extern int bc_get_battery_pack_temp(int *val);
 
 #endif
