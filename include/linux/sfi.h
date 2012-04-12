@@ -73,6 +73,7 @@
 #define SFI_SIG_DEVS		"DEVS"
 #define SFI_SIG_GPIO		"GPIO"
 #define SFI_SIG_OEMB		"OEMB"
+#define SFI_SIG_OEM0		"OEM0"
 
 #define SFI_SIGNATURE_SIZE	4
 #define SFI_OEM_ID_SIZE		6
