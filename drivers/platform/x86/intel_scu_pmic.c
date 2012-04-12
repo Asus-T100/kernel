@@ -172,21 +172,27 @@ static int pmic_dbg_error;
 
 static ssize_t pmic_generic_show(char *buf, int valid, u8 *array, int type)
 {
-	int i;
+	int i, buf_size;
 	ssize_t ret = 0;
 
 	switch (type) {
 	case PMIC_DBG_ADDR:
-		for (i = 0; i < valid; i++)
-			ret += sprintf(buf + ret, pmic_msg_format[type],
+		for (i = 0; i < valid; i++) {
+			buf_size = PAGE_SIZE - ret;
+			ret += snprintf(buf + ret, buf_size,
+					pmic_msg_format[type],
 					i, pmic_reg_addr[i]);
+		}
 		break;
 	case PMIC_DBG_BITS:
 	case PMIC_DBG_DATA:
 	case PMIC_DBG_MASK:
-		for (i = 0; i < valid; i++)
-			ret += sprintf(buf + ret, pmic_msg_format[type],
+		for (i = 0; i < valid; i++) {
+			buf_size = PAGE_SIZE - ret;
+			ret += snprintf(buf + ret, buf_size,
+					pmic_msg_format[type],
 					i, array[i]);
+		}
 		break;
 	default:
 		break;
@@ -201,7 +207,7 @@ static void pmic_generic_store(const char *buf, int *valid, u8 *array, int type)
 	int i, ret;
 
 	ret = sscanf(buf, "%x %x %x %x", &tmp[0], &tmp[1], &tmp[2], &tmp[3]);
-	if (ret < 0 || ret > MAX_PMIC_REG_NR) {
+	if (ret == 0 || ret > MAX_PMIC_REG_NR) {
 		*valid = 0;
 		pmic_dbg_error = -EINVAL;
 		return;
@@ -290,7 +296,7 @@ static ssize_t pmic_ops_store(struct device *dev,
 	memset(pmic_ops, 0, sizeof(pmic_ops));
 
 	ret = sscanf(buf, "%9s", pmic_ops);
-	if (ret < 0) {
+	if (ret == 0) {
 		pmic_dbg_error = -EINVAL;
 		goto end;
 	}
@@ -355,7 +361,7 @@ end:
 static ssize_t pmic_show_error(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
-	return sprintf(buf, "%d\n", pmic_dbg_error);
+	return snprintf(buf, PAGE_SIZE, "%d\n", pmic_dbg_error);
 }
 
 static DEVICE_ATTR(addr, S_IRUGO|S_IWUSR, pmic_addr_show, pmic_addr_store);
