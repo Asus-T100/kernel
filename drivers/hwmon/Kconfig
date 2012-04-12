@@ -1494,4 +1494,10 @@ config SENSORS_ATK0110
 
 endif # ACPI
 
+config SENSORS_MRFLD_CURRENT
+        tristate "Over Current Detection driver for Intel Merrifield platform"
+        depends on INTEL_SCU_IPC
+        help
+          Say Y here to enable Over Current Detection driver on Intel Merrifield
+          Platform.
 endif # HWMON
