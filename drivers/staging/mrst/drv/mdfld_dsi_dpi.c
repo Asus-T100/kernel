@@ -1979,17 +1979,32 @@ void mdfld_dsi_dpi_commit(struct drm_encoder *encoder)
 {
 	struct mdfld_dsi_encoder *dsi_encoder;
 	struct mdfld_dsi_dpi_output *dpi_output;
+	struct mdfld_dsi_hw_context *ctx;
+	struct mdfld_dsi_config *dsi_config;
+	struct drm_device *dev;
+	u32 temp_val = 0;
 
 	PSB_DEBUG_ENTRY("\n");
 
 	dsi_encoder = MDFLD_DSI_ENCODER(encoder);
 	dpi_output = MDFLD_DSI_DPI_OUTPUT(dsi_encoder);
+	dsi_config = mdfld_dsi_encoder_get_config(dsi_encoder);
+	dev = dsi_config->dev;
+	ctx = &dsi_config->dsi_hw_context;
 
 #if  defined(CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY)
 	mdfld_dsi_dpi_set_power(encoder, false);
 #elif defined(CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE)
 	mdfld_dsi_dpi_set_power(encoder, true);
 #else
+	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, OSPM_UHB_FORCE_POWER_ON))
+		return;
+	temp_val = REG_READ(PIPEACONF);
+	temp_val &= ~(BIT27 | BIT28);
+	/* Setup pipe configuration for different panels*/
+	REG_WRITE(PIPEACONF, temp_val | (ctx->pipeconf & (BIT27 | BIT28)));
+	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+
 	/*Everything is ready, commit DSI hw context to HW*/
 	__mdfld_dsi_dpi_set_power(encoder, true);
 #endif
