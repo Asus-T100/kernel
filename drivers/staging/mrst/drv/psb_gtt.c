@@ -500,7 +500,7 @@ static int psb_gtt_mm_alloc_insert_ht(struct psb_gtt_mm *mm,
 	spin_lock(&mm->lock);
 	ret = psb_gtt_mm_get_ht_by_pid_locked(mm, tgid, &hentry);
 	if (!ret) {
-		DRM_DEBUG("Entry for tgid %d exist, hentry %p\n",
+		DRM_DEBUG("Entry for tgid %d exists, hentry %p\n",
 			  tgid, hentry);
 		*entry = hentry;
 		spin_unlock(&mm->lock);
@@ -512,22 +512,34 @@ static int psb_gtt_mm_alloc_insert_ht(struct psb_gtt_mm *mm,
 
 	hentry = kzalloc(sizeof(struct psb_gtt_hash_entry), GFP_KERNEL);
 	if (!hentry) {
-		DRM_DEBUG("Kmalloc failled\n");
+		DRM_DEBUG("Kmalloc failed\n");
 		return -ENOMEM;
 	}
 
 	ret = drm_ht_create(&hentry->ht, 20);
 	if (ret) {
 		DRM_DEBUG("Create hash table failed\n");
-		return ret;
+		goto failed_drm_ht_create;
 	}
 
 	spin_lock(&mm->lock);
 	ret = psb_gtt_mm_insert_ht_locked(mm, tgid, hentry);
 	spin_unlock(&mm->lock);
 
-	if (!ret)
-		*entry = hentry;
+	if (ret) {
+		DRM_DEBUG("Insert hash table entry failed\n");
+		goto failed_psb_gtt_mm_insert_ht_locked;
+	}
+
+	*entry = hentry;
+
+	return ret;
+
+failed_psb_gtt_mm_insert_ht_locked:
+	drm_ht_remove(&hentry->ht);
+
+failed_drm_ht_create:
+	kfree(hentry);
 
 	return ret;
 }
