@@ -276,8 +276,8 @@ MODULE_PARM_DESC(force_cold_boot,
 
 static void intel_mid_reboot(void)
 {
-	if (intel_scu_ipc_medfw_upgrade()) {
-		pr_debug("intel_scu_ipc: IFWI upgrade failed...\n");
+	if (intel_scu_ipc_fw_update()) {
+		pr_debug("intel_scu_fw_update: IFWI upgrade failed...\n");
 		BUG();
 	}
 	if (force_cold_boot)
@@ -564,6 +564,11 @@ static int __init intel_scu_ipc_subdev_init(void)
 
 		[1] = {
 			.name = "intel_scu_mip",
+			.bus_id = IPC_SCU,
+		},
+
+		[2] = {
+			.name = "intel_fw_update",
 			.bus_id = IPC_SCU,
 		},
 	};
