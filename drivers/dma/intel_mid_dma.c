@@ -400,7 +400,8 @@ static void midc_scan_descriptors(struct middma_device *mid,
  */
 static int midc_lli_fill_sg(struct intel_mid_dma_chan *midc,
 				struct intel_mid_dma_desc *desc,
-				struct scatterlist *sglist,
+				struct scatterlist *src_sglist,
+				struct scatterlist *dst_sglist,
 				unsigned int sglen,
 				unsigned int flags)
 {
@@ -420,7 +421,7 @@ static int midc_lli_fill_sg(struct intel_mid_dma_chan *midc,
 
 	ctl_lo.ctl_lo = desc->ctl_lo;
 	ctl_hi.ctl_hi = desc->ctl_hi;
-	for_each_sg(sglist, sg, sglen, i) {
+	for_each_sg(src_sglist, sg, sglen, i) {
 		/*Populate CTL_LOW and LLI values*/
 		if (i != sglen - 1) {
 			lli_next = lli_next +
@@ -448,6 +449,9 @@ static int midc_lli_fill_sg(struct intel_mid_dma_chan *midc,
 		} else if (desc->dirn ==  DMA_FROM_DEVICE) {
 			lli_bloc_desc->sar  = mids->dma_slave.src_addr;
 			lli_bloc_desc->dar  = sg_phy_addr;
+		} else if (desc->dirn == DMA_NONE && dst_sglist) {
+				lli_bloc_desc->sar = sg_phy_addr;
+				lli_bloc_desc->dar = sg_phys(dst_sglist);
 		}
 		/*Copy values into block descriptor in system memroy*/
 		lli_bloc_desc->llp = lli_next;
@@ -455,6 +459,8 @@ static int midc_lli_fill_sg(struct intel_mid_dma_chan *midc,
 		lli_bloc_desc->ctl_hi = ctl_hi.ctl_hi;
 
 		lli_bloc_desc++;
+		if (dst_sglist)
+			dst_sglist = sg_next(dst_sglist);
 	}
 	/*Copy very first LLI values to descriptor*/
 	desc->ctl_lo = desc->lli->ctl_lo;
@@ -780,47 +786,41 @@ err_desc_get:
 	return NULL;
 }
 /**
- * intel_mid_dma_prep_slave_sg -	Prep slave sg txn
+ * intel_mid_dma_chan_prep_desc
  * @chan: chan for DMA transfer
- * @sgl: scatter gather list
- * @sg_len: length of sg txn
- * @direction: DMA transfer dirtn
+ * @src_sg: destination scatter gather list
+ * @dst_sg: source scatter gather list
  * @flags: DMA flags
+ * @src_sg_len: length of src sg list
+ * @direction DMA transfer dirtn
  *
  * Prepares LLI based periphral transfer
  */
-static struct dma_async_tx_descriptor *intel_mid_dma_prep_slave_sg(
-			struct dma_chan *chan, struct scatterlist *sgl,
-			unsigned int sg_len, enum dma_data_direction direction,
-			unsigned long flags)
+static struct dma_async_tx_descriptor *intel_mid_dma_chan_prep_desc(
+			struct dma_chan *chan, struct scatterlist *src_sg,
+			struct scatterlist *dst_sg, unsigned long flags,
+			unsigned long src_sg_len,
+			enum dma_data_direction direction)
 {
 	struct intel_mid_dma_chan *midc = NULL;
 	struct intel_mid_dma_slave *mids = NULL;
 	struct intel_mid_dma_desc *desc = NULL;
 	struct dma_async_tx_descriptor *txd = NULL;
 	union intel_mid_dma_ctl_lo ctl_lo;
+	pr_debug("MDMA:intel_mid_dma_chan_prep_desc\n");
 
-	pr_debug("MDMA: Prep for slave SG\n");
-
-	if (!sg_len) {
-		pr_err("MDMA: Invalid SG length\n");
-		return NULL;
-	}
-	midc = to_intel_mid_dma_chan(chan);
+	 midc = to_intel_mid_dma_chan(chan);
 	BUG_ON(!midc);
 
 	mids = midc->mid_slave;
 	BUG_ON(!mids);
 
 	if (!midc->dma->pimr_mask) {
-		pr_debug("MDMA: SG list is not supported by this controller\n");
+		pr_err("MDMA: SG list is not supported by this controller\n");
 		return  NULL;
 	}
 
-	pr_debug("MDMA: SG Length = %d, direction = %d, Flags = %#lx\n",
-			sg_len, direction, flags);
-
-	txd = intel_mid_dma_prep_memcpy(chan, 0, 0, sgl->length, flags);
+	txd = intel_mid_dma_prep_memcpy(chan, 0, 0, src_sg->length, flags);
 	if (NULL == txd) {
 		pr_err("MDMA: Prep memcpy failed\n");
 		return NULL;
@@ -832,12 +832,12 @@ static struct dma_async_tx_descriptor *intel_mid_dma_prep_slave_sg(
 	ctl_lo.ctlx.llp_dst_en = 1;
 	ctl_lo.ctlx.llp_src_en = 1;
 	desc->ctl_lo = ctl_lo.ctl_lo;
-	desc->lli_length = sg_len;
+	desc->lli_length = src_sg_len;
 	desc->current_lli = 0;
 	/* DMA coherent memory pool for LLI descriptors*/
 	desc->lli_pool = pci_pool_create("intel_mid_dma_lli_pool",
 				midc->dma->pdev,
-				(sizeof(struct intel_mid_dma_lli)*sg_len),
+				(sizeof(struct intel_mid_dma_lli)*src_sg_len),
 				32, 0);
 	if (NULL == desc->lli_pool) {
 		pr_err("MID_DMA:LLI pool create failed\n");
@@ -850,14 +850,81 @@ static struct dma_async_tx_descriptor *intel_mid_dma_prep_slave_sg(
 		pci_pool_destroy(desc->lli_pool);
 		return NULL;
 	}
-
-	midc_lli_fill_sg(midc, desc, sgl, sg_len, flags);
+	midc_lli_fill_sg(midc, desc, src_sg, dst_sg, src_sg_len, flags);
 	if (flags & DMA_PREP_INTERRUPT) {
 		iowrite32(UNMASK_INTR_REG(midc->ch_id),
 				midc->dma_base + MASK_BLOCK);
 		pr_debug("MDMA:Enabled Block interrupt\n");
 	}
 	return &desc->txd;
+
+}
+
+/**
+ * intel_mid_dma_prep_sg -        Prep sg txn
+ * @chan: chan for DMA transfer
+ * @dst_sg: destination scatter gather list
+ * @dst_sg_len: length of dest sg list
+ * @src_sg: source scatter gather list
+ * @src_sg_len: length of src sg list
+ * @flags: DMA flags
+ *
+ * Prepares LLI based periphral transfer
+ */
+static struct dma_async_tx_descriptor *intel_mid_dma_prep_sg(
+			struct dma_chan *chan, struct scatterlist *dst_sg,
+			unsigned int dst_sg_len, struct scatterlist *src_sg,
+			unsigned int src_sg_len, unsigned long flags)
+{
+
+	pr_debug("MDMA: Prep for memcpy SG\n");
+
+	if ((dst_sg_len != src_sg_len) || (dst_sg == NULL) ||
+							(src_sg == NULL)) {
+		pr_err("MDMA: Invalid SG length\n");
+		return NULL;
+	}
+
+	pr_debug("MDMA: SG Length = %d, Flags = %#lx, src_sg->length = %d\n",
+				src_sg_len, flags, src_sg->length);
+
+	return intel_mid_dma_chan_prep_desc(chan, src_sg, dst_sg, flags,
+						src_sg_len, DMA_NONE);
+
+}
+
+
+/**
+ * intel_mid_dma_prep_slave_sg -	Prep slave sg txn
+ * @chan: chan for DMA transfer
+ * @sgl: scatter gather list
+ * @sg_len: length of sg txn
+ * @direction: DMA transfer dirtn
+ * @flags: DMA flags
+ *
+ * Prepares LLI based periphral transfer
+ */
+static struct dma_async_tx_descriptor *intel_mid_dma_prep_slave_sg(
+			struct dma_chan *chan, struct scatterlist *sg,
+			unsigned int sg_len, enum dma_data_direction direction,
+			unsigned long flags)
+{
+
+	pr_debug("MDMA: Prep for slave SG\n");
+
+	if (!sg_len || sg == NULL) {
+		pr_err("MDMA: Invalid SG length\n");
+		return NULL;
+	}
+	pr_debug("MDMA: SG Length = %d, direction = %d, Flags = %#lx\n",
+				sg_len, direction, flags);
+	if (direction != DMA_NONE) {
+		return intel_mid_dma_chan_prep_desc(chan, sg, NULL, flags,
+							sg_len, direction);
+	} else {
+		pr_err("MDMA: Invalid Direction\n");
+		return NULL;
+	}
 }
 
 /**
@@ -1211,6 +1278,7 @@ static int mid_setup_dma(struct pci_dev *pdev)
 
 	dma->common.device_tx_status = intel_mid_dma_tx_status;
 	dma->common.device_prep_dma_memcpy = intel_mid_dma_prep_memcpy;
+	dma->common.device_prep_dma_sg = intel_mid_dma_prep_sg;
 	dma->common.device_issue_pending = intel_mid_dma_issue_pending;
 	dma->common.device_prep_slave_sg = intel_mid_dma_prep_slave_sg;
 	dma->common.device_control = intel_mid_dma_device_control;
