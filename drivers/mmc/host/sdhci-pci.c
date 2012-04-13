@@ -437,6 +437,18 @@ static int intel_mrfl_mmc_probe_slot(struct sdhci_pci_slot *slot)
 		slot->host->mmc->caps |= MMC_CAP_8_BIT_DATA |
 					MMC_CAP_NONREMOVABLE;
 
+#ifdef CONFIG_BOARD_MRFLD_VP
+	/*
+	 * The current eMMC component in Merrifield VP only
+	 * implementes boot partition 0, does not implements
+	 * boot partition 1. And the VP will crash if eMMC
+	 * boot partition 1 is accessed during kernel boot.
+	 * So, here we just disable boot partition support
+	 * for Merrifield VP platform.
+	 */
+	slot->host->mmc->caps2 |= MMC_CAP2_BOOTPART_NOACC;
+#endif
+
 	return 0;
 }
 
