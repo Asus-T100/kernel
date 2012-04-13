@@ -214,21 +214,6 @@ static long scu_ipc_ioctl(struct file *fp, unsigned int cmd,
 
 	platform = intel_mid_identify_cpu();
 	switch (cmd) {
-	case INTEL_SCU_IPC_FW_UPDATE:
-	{
-		if (platform == INTEL_MID_CPU_CHIP_LINCROFT) {
-			u8 *fwbuf = kmalloc(MAX_FW_SIZE, GFP_KERNEL);
-			if (fwbuf == NULL)
-				return -ENOMEM;
-			if (copy_from_user(fwbuf, (u8 *)arg, MAX_FW_SIZE)) {
-				kfree(fwbuf);
-				return -EFAULT;
-			}
-			ret = intel_scu_ipc_mrstfw_update(fwbuf, MAX_FW_SIZE);
-			kfree(fwbuf);
-		}
-		break;
-	}
 	case INTEL_SCU_IPC_READ_RR_FROM_OSNIB:
 	{
 		u8 reboot_reason;
@@ -278,18 +263,6 @@ static long scu_ipc_ioctl(struct file *fp, unsigned int cmd,
 			return ret;
 		pr_debug("VBATTCRIT VALUE = %x\n", value);
 		ret = copy_to_user(argp, &value, 4);
-		break;
-	}
-	case INTEL_SCU_IPC_MEDFIELD_FW_UPDATE:
-	{
-		if (platform == INTEL_MID_CPU_CHIP_PENWELL) {
-			ret = intel_scu_ipc_medfw_prepare(argp);
-
-			if (ret < 0) {
-				pr_err("ipc_device_medfw_upgrade failed!!\n");
-				return ret;
-			}
-		}
 		break;
 	}
 	case INTEL_SCU_IPC_FW_REVISION_GET:

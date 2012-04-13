@@ -49,9 +49,8 @@ int intel_scu_ipc_raw_cmd(u32 cmd, u32 sub, u32 *in, u32 inlen,
 int intel_scu_ipc_i2c_cntrl(u32 addr, u32 *data);
 
 /* Update FW version */
-int intel_scu_ipc_mrstfw_update(u8 *buffer, u32 length);
-int intel_scu_ipc_medfw_upgrade(void);
-int intel_scu_ipc_medfw_prepare(void __user *arg);
+int intel_scu_ipc_fw_update(void);
+
 int intel_scu_ipc_read_mip(u8 *data, int len, int offset, int issigned);
 int intel_scu_ipc_write_umip(u8 *data, int len, int offset);
 
