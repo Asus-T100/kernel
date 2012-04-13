@@ -1375,6 +1375,8 @@ static int dwc3_start_peripheral(struct usb_gadget *g)
 
 	spin_lock_irqsave(&dwc->lock, flags);
 
+	dwc3_core_init(dwc);
+
 	irq = platform_get_irq(to_platform_device(dwc->dev), 0);
 
 	ret = request_irq(irq, dwc3_interrupt, IRQF_SHARED,
@@ -1412,28 +1414,80 @@ static int dwc3_start_peripheral(struct usb_gadget *g)
 	return 0;
 }
 
+static void dwc3_disconnect_gadget(struct dwc3 *dwc);
+static void dwc3_stop_active_transfers(struct dwc3 *dwc);
+static void dwc3_gadget_usb2_phy_power(struct dwc3 *dwc, int on);
+static void dwc3_gadget_usb3_phy_power(struct dwc3 *dwc, int on);
 static int dwc3_stop_peripheral(struct usb_gadget *g)
 {
-	struct dwc3		*dwc = gadget_to_dwc(g);
-	unsigned long		flags;
-	int			irq;
+	struct dwc3			*dwc = gadget_to_dwc(g);
+	unsigned long			flags;
+	int				ret;
+	u8				epnum;
+	struct dwc3_event_buffer	*evt;
+	int				n;
 
 	spin_lock_irqsave(&dwc->lock, flags);
+
+	if (dwc->ep0state != EP0_SETUP_PHASE) {
+		dev_err(dwc->dev, "Control Transfer not done. Please wait\n");
+		ret = -EBUSY;
+		goto err0;
+	}
+
+	dwc3_stop_active_transfers(dwc);
+
+	if (dwc->gadget.speed != USB_SPEED_UNKNOWN) {
+		dwc3_disconnect_gadget(dwc);
+
+		dwc->gadget.speed = USB_SPEED_UNKNOWN;
+	}
+
+	dwc->start_config_issued = false;
 
 	/* Clear Run/Stop bit */
 	dwc3_gadget_run_stop(dwc, 0);
 
-	irq = platform_get_irq(to_platform_device(dwc->dev), 0);
+	for (epnum = 0; epnum < 2; epnum++) {
+		struct dwc3_ep	*dep;
+
+		dep = dwc->eps[epnum];
+
+		if (dep->flags & DWC3_EP_ENABLED)
+			dep->flags = 0;
+	}
 
 	dwc3_writel(dwc->regs, DWC3_DEVTEN, 0x00);
-	if (dwc->got_irq) {
-		free_irq(irq, dwc);
-		dwc->got_irq = 0;
+
+	for (n = 0; n < DWC3_EVENT_BUFFERS_NUM; n++) {
+		evt = dwc->ev_buffs[n];
+
+		evt->lpos = 0;
+
+		memset(evt->buf, 0, evt->length);
+
+		dwc3_writel(dwc->regs, DWC3_GEVNTADRLO(n), 0);
+		dwc3_writel(dwc->regs, DWC3_GEVNTADRHI(n), 0);
+		dwc3_writel(dwc->regs, DWC3_GEVNTSIZ(n), 0);
+		dwc3_writel(dwc->regs, DWC3_GEVNTCOUNT(n), 0);
 	}
+
+	dwc3_gadget_usb2_phy_power(dwc, false);
+	dwc3_gadget_usb3_phy_power(dwc, false);
 
 	spin_unlock_irqrestore(&dwc->lock, flags);
 
+	if (dwc->got_irq) {
+		free_irq(dwc->irq, dwc);
+		dwc->got_irq = 0;
+	}
+
 	return 0;
+
+err0:
+	spin_unlock_irqrestore(&dwc->lock, flags);
+
+	return ret;
 }
 #endif
 

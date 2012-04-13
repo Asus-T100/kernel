@@ -206,6 +206,8 @@ static int __devinit dwc3_event_buffers_setup(struct dwc3 *dwc)
 				evt->buf, (unsigned long long) evt->dma,
 				evt->length);
 
+		memset(evt->buf, 0, evt->length);
+
 		dwc3_writel(dwc->regs, DWC3_GEVNTADRLO(n),
 				lower_32_bits(evt->dma));
 		dwc3_writel(dwc->regs, DWC3_GEVNTADRHI(n),
@@ -253,7 +255,7 @@ static void __devinit dwc3_cache_hwparams(struct dwc3 *dwc)
  *
  * Returns 0 on success otherwise negative errno.
  */
-static int __devinit dwc3_core_init(struct dwc3 *dwc)
+int dwc3_core_init(struct dwc3 *dwc)
 {
 	unsigned long		timeout;
 	u32			reg;
@@ -287,26 +289,15 @@ static int __devinit dwc3_core_init(struct dwc3 *dwc)
 		cpu_relax();
 	} while (true);
 
-	ret = dwc3_alloc_event_buffers(dwc, DWC3_EVENT_BUFFERS_NUM,
-			DWC3_EVENT_BUFFERS_SIZE);
-	if (ret) {
-		dev_err(dwc->dev, "failed to allocate event buffers\n");
-		ret = -ENOMEM;
-		goto err1;
-	}
-
 	ret = dwc3_event_buffers_setup(dwc);
 	if (ret) {
 		dev_err(dwc->dev, "failed to setup event buffers\n");
-		goto err1;
+		goto err0;
 	}
 
 	dwc3_cache_hwparams(dwc);
 
 	return 0;
-
-err1:
-	dwc3_free_event_buffers(dwc);
 
 err0:
 	return ret;
@@ -393,9 +384,11 @@ static int __devinit dwc3_probe(struct platform_device *pdev)
 	pm_runtime_get_sync(&pdev->dev);
 	pm_runtime_forbid(&pdev->dev);
 
-	ret = dwc3_core_init(dwc);
+	ret = dwc3_alloc_event_buffers(dwc, DWC3_EVENT_BUFFERS_NUM,
+			DWC3_EVENT_BUFFERS_SIZE);
 	if (ret) {
-		dev_err(&pdev->dev, "failed to initialize core\n");
+		dev_err(dwc->dev, "failed to allocate event buffers\n");
+		ret = -ENOMEM;
 		goto err3;
 	}
 
@@ -422,7 +415,7 @@ err5:
 		dwc3_gadget_exit(dwc);
 
 err4:
-	dwc3_core_exit(dwc);
+	dwc3_free_event_buffers(dwc);
 
 err3:
 #ifndef CONFIG_USB_DWC_OTG_XCEIV
