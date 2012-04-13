@@ -33,6 +33,7 @@
 #include "mdfld_dsi_pkg_sender.h"
 #include <linux/pm_runtime.h>
 #include "psb_drv.h"
+#include "mdfld_dsi_lvds_bridge.h"
 
 #define MDFLD_DSI_BRIGHTNESS_MAX_LEVEL 100
 
@@ -279,20 +280,36 @@ void mdfld_dsi_brightness_control (struct drm_device *dev, int pipe, int level)
 {
 #if defined(CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY) || defined(CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE)
 	int duty_val = 0;
+	int panel_duty_val = 0;
 	int ret = 0;
 
 	/* MSIC PWM duty cycle goes up to 0x63 = 99% */
-	#define BACKLIGHT_DUTY_FACTOR 0x63
+	#define BACKLIGHT_DUTY_FACTOR	0x63
+	#define PWM0DUTYCYCLE		0x67
 
 	duty_val = level*BACKLIGHT_DUTY_FACTOR/MDFLD_DSI_BRIGHTNESS_MAX_LEVEL;
 
-	PSB_DEBUG_ENTRY("[DISPLAY] %s: level is %d and duty = %x\n", __func__, level, duty_val);
+	PSB_DEBUG_ENTRY("level is %d and duty = %x\n", level, duty_val);
 
-	ret = intel_scu_ipc_iowrite8(0x67, duty_val);  //PWM0DUTYCYCLE
+	ret = intel_scu_ipc_iowrite8(PWM0DUTYCYCLE, duty_val);
 
 	if (ret) {
 		printk(KERN_ERR "[DISPLAY] %s: ipc write fail\n");
 		return;
+	}
+
+	/* I won't pretend to understand this formula. The panel spec is quite
+	 * bad engrish.
+	 */
+	panel_duty_val = (230 * (level - 100) / 100) + 255;
+
+	if (cmi_lcd_i2c_client) {
+		PSB_DEBUG_ENTRY("panel_duty_val = %d\n", panel_duty_val);
+		ret = i2c_smbus_write_byte_data(cmi_lcd_i2c_client,
+						PANEL_PWM_MAX, panel_duty_val);
+		if (ret < 0)
+			dev_err(&cmi_lcd_i2c_client->dev, "%s: i2c write failed\n",
+				__func__);
 	}
 #else
 	struct drm_psb_private *dev_priv;

@@ -25,6 +25,8 @@
 #include "mdfld_dsi_dpi.h"
 #include "mdfld_output.h"
 #include "mdfld_dsi_pkg_sender.h"
+#include "mdfld_dsi_lvds_bridge.h"
+#include <asm/intel_scu_ipc.h>
 
 #define CONFIG_LVDS_HARD_RESET
 #ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
@@ -39,6 +41,13 @@
 #define GPIO_MIPI_PANEL_RESET	-1
 #define GPIO_MIPI_LCD_STBYB	-1
 #define GPIO_MIPI_LCD_COLOR_EN	-1
+
+struct i2c_client *cmi_lcd_i2c_client;
+
+struct cmi_lcd_data {
+	bool enabled;
+	struct mutex lock; /* for enabled */
+};
 
 int lvds_disp_init;
 
@@ -63,8 +72,6 @@ static bool lvds_suspend_state;
 \* ************************************************************************* */
 void dsi_lvds_suspend_lvds_bridge(struct drm_device *dev)
 {
-	u32 temp;
-
 	printk(KERN_INFO "[DISPLAY ] Enter %s\n", __func__);
 
 	if (gpio_direction_output(GPIO_MIPI_BRIDGE_RESET, 0))
@@ -82,8 +89,6 @@ void dsi_lvds_suspend_lvds_bridge(struct drm_device *dev)
 \* ************************************************************************* */
 void dsi_lvds_resume_lvds_bridge(struct drm_device *dev)
 {
-	u32 temp;
-
 	printk(KERN_INFO "[DISPLAY ] Enter %s\n", __func__);
 
 	if (gpio_direction_output(GPIO_MIPI_LCD_BL_EN, 1))
@@ -220,7 +225,7 @@ void dsi_lvds_toshiba_bridge_panel_off(void)
  * FUNCTION: dsi_lvds_toshiba_bridge_panel_on
  *
  * DESCRIPTION:  This function uses GPIO to turn ON panel.
-\* ************************************************************************* */
+ \* ************************************************************************* */
 void dsi_lvds_toshiba_bridge_panel_on(void)
 {
 	printk(KERN_INFO "[DISPLAY ] %s\n", __func__);
@@ -228,6 +233,53 @@ void dsi_lvds_toshiba_bridge_panel_on(void)
 	if (gpio_direction_output(GPIO_MIPI_LCD_VADD, 1))
 		gpio_set_value_cansleep(GPIO_MIPI_LCD_VADD, 1);
 	msleep(260);
+
+	if (cmi_lcd_i2c_client) {
+		int ret;
+		PSB_DEBUG_ENTRY("setting TCON\n");
+		/* Bit 4 is average_saving. Setting it to 1, the brightness is
+		 * referenced to the average of the frame content. 0 means
+		 * reference to the maximum of frame contents. Bits 3:0 are
+		 * allow_distort. When set to a nonzero value, all color values
+		 * between 255-allow_distort*2 and 255 are mapped to the
+		 * 255-allow_distort*2 value.
+		 */
+		ret = i2c_smbus_write_byte_data(cmi_lcd_i2c_client,
+				PANEL_ALLOW_DISTORT, 0x32);
+		if (ret < 0)
+			dev_err(&cmi_lcd_i2c_client->dev,
+					"i2c write failed (%d)\n", ret);
+		ret = i2c_smbus_write_byte_data(cmi_lcd_i2c_client,
+				PANEL_BYPASS_PWMI, 0);
+		if (ret < 0)
+			dev_err(&cmi_lcd_i2c_client->dev,
+					"i2c write failed (%d)\n", ret);
+		/* Set minimum brightness value - this is tunable */
+		ret = i2c_smbus_write_byte_data(cmi_lcd_i2c_client,
+				PANEL_PWM_MIN, 0x35);
+		if (ret < 0)
+			dev_err(&cmi_lcd_i2c_client->dev,
+					"i2c write failed (%d)\n", ret);
+
+		/*changing CABC PWM frequency to 5 Khz */
+		ret = i2c_smbus_write_byte_data(cmi_lcd_i2c_client,
+				PANEL_FREQ_DIVIDER_HI, 0xE0);
+		if (ret < 0)
+			dev_err(&cmi_lcd_i2c_client->dev,
+					"i2c write failed (%d)\n", ret);
+		ret = i2c_smbus_write_byte_data(cmi_lcd_i2c_client,
+				PANEL_FREQ_DIVIDER_LO, 0x64);
+		if (ret < 0)
+			dev_err(&cmi_lcd_i2c_client->dev,
+					"i2c write failed (%d)\n", ret);
+
+		/*PANEL_MODIFY_RGB to 0x00 to get rid of flicker*/
+		ret = i2c_smbus_write_byte_data(cmi_lcd_i2c_client,
+				PANEL_MODIFY_RGB, 0x00);
+		if (ret < 0)
+			dev_err(&cmi_lcd_i2c_client->dev,
+					"i2c write failed (%d)\n", ret);
+	}
 
 	if (gpio_direction_output(GPIO_MIPI_LCD_BL_EN, 1))
 		gpio_set_value_cansleep(GPIO_MIPI_LCD_BL_EN, 1);
@@ -511,6 +563,127 @@ static struct miscdevice dsi_lvds_bridge_dev = {
 	.fops = &mipi_dsi_dev_fops,
 };
 
+/* LCD panel I2C */
+static int cmi_lcd_i2c_probe(struct i2c_client *client,
+			     const struct i2c_device_id *id)
+{
+	struct cmi_lcd_data *lcd_data;
+
+	printk(KERN_INFO "[DISPLAY] %s: Enter\n", __func__);
+
+	dev_info(&client->dev, "%s\n", __func__);
+
+	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
+		dev_err(&client->dev, "%s: i2c_check_functionality() failed\n",
+			__func__);
+		return -ENODEV;
+	}
+
+	lcd_data = devm_kzalloc(&client->dev, sizeof(*lcd_data), GFP_KERNEL);
+	if (!lcd_data) {
+		dev_err(&client->dev, "out of memory\n");
+		return -ENOMEM;
+	}
+
+	mutex_init(&lcd_data->lock);
+
+	i2c_set_clientdata(client, lcd_data);
+
+	cmi_lcd_i2c_client = client;
+
+	return 0;
+}
+
+static int cmi_lcd_i2c_remove(struct i2c_client *client)
+{
+	dev_dbg(&client->dev, "%s\n", __func__);
+
+	cmi_lcd_i2c_client = NULL;
+
+	return 0;
+}
+
+static const struct i2c_device_id cmi_lcd_i2c_id[] = {
+	{ "cmi-lcd", 0 },
+	{ }
+};
+MODULE_DEVICE_TABLE(i2c, cmi_lcd_i2c_id);
+
+static struct i2c_driver cmi_lcd_i2c_driver = {
+	.driver = {
+		.name = "cmi-lcd",
+	},
+	.id_table = cmi_lcd_i2c_id,
+	.probe = cmi_lcd_i2c_probe,
+	.remove = __devexit_p(cmi_lcd_i2c_remove),
+};
+
+
+/* HACK to create I2C device while it's not created by platform code */
+#define CMI_LCD_I2C_ADAPTER	2
+#define CMI_LCD_I2C_ADDR	0x60
+
+static int cmi_lcd_hack_create_device(void)
+{
+	struct i2c_adapter *adapter;
+	struct i2c_client *client;
+	struct i2c_board_info info = {
+		.type = "cmi-lcd",
+		.addr = CMI_LCD_I2C_ADDR,
+	};
+
+	printk(KERN_INFO "[DISPLAY] %s: Enter\n", __func__);
+
+	adapter = i2c_get_adapter(CMI_LCD_I2C_ADAPTER);
+	if (!adapter) {
+		pr_err("%s: i2c_get_adapter(%d) failed\n", __func__,
+			CMI_LCD_I2C_ADAPTER);
+		return -EINVAL;
+	}
+
+	client = i2c_new_device(adapter, &info);
+	if (!client) {
+		pr_err("%s: i2c_new_device() failed\n", __func__);
+		i2c_put_adapter(adapter);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static void mdfld_dsi_lvds_brightness_init(void)
+{
+	int ret;
+	u8 pwmctrl;
+
+	printk(KERN_INFO "[DISPLAY] %s: Enter\n", __func__);
+
+	/* Make sure the PWM reference is the 19.2 MHz system clock. Read first
+	 * instead of setting directly to catch potential conflicts between PWM
+	 * users. */
+	ret = intel_scu_ipc_ioread8(GPIOPWMCTRL, &pwmctrl);
+	if (ret || pwmctrl != 0x01) {
+		if (ret)
+			pr_err("%s: GPIOPWMCTRL read failed\n", __func__);
+		else
+			PSB_DEBUG_ENTRY("GPIOPWMCTRL was not set to system"\
+					"clock (pwmctrl = 0x%02x)\n", pwmctrl);
+
+		ret = intel_scu_ipc_iowrite8(GPIOPWMCTRL, 0x01);
+		if (ret)
+			pr_err("%s: GPIOPWMCTRL set failed\n", __func__);
+	}
+
+	ret = intel_scu_ipc_iowrite8(PWM0CLKDIV1, 0x00);
+	if (!ret)
+		ret = intel_scu_ipc_iowrite8(PWM0CLKDIV0, 0x25);
+
+	if (ret)
+		pr_err("%s: PWM0CLKDIV set failed\n", __func__);
+	else
+		PSB_DEBUG_ENTRY("PWM0CLKDIV set to 0x%04x\n", 0x25);
+}
+
 /* ************************************************************************* *\
  * FUNCTION: dsi_lvds_bridge_init
  *
@@ -523,10 +696,19 @@ static int __init dsi_lvds_bridge_init(void)
 
 	printk(KERN_INFO "[DISPLAY] %s: Enter\n", __func__);
 
+	ret = cmi_lcd_hack_create_device();
+	if (ret)
+		pr_err("%s: cmi_lcd_hack_create_device() faild!\n", __func__);
+
+	ret = i2c_add_driver(&cmi_lcd_i2c_driver);
+	if (ret)
+		pr_err("%s: add LCD I2C	driver faild!\n", __func__);
+
 	ret = i2c_add_driver(&dsi_lvds_bridge_i2c_driver);
 
 	printk(KERN_INFO "[DISPLAY] %s: Exit, ret = %d\n", __func__, ret);
 
+	mdfld_dsi_lvds_brightness_init();
 	return 0;
 }
 
