@@ -1526,6 +1526,10 @@ fun_exit:
 		first_time_boot_detect = false;
 		PSB_DEBUG_ENTRY("first time boot detect state 0x%d.\n",
 				connect_status);
+	} else {
+		/* bhdmiconnected indicates that the HDMI power island is up */
+		if (connect_status == connector_status_connected)
+			dev_priv->bhdmiconnected = true;
 	}
 
 	return connect_status;

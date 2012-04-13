@@ -623,7 +623,7 @@ static void mdfld_dsi_connector_dpms(struct drm_connector *connector, int mode)
 #ifdef CONFIG_PM_RUNTIME
 	struct drm_device * dev = connector->dev;
 	struct drm_psb_private * dev_priv = dev->dev_private;
-	bool panel_on, panel_on2;
+	bool panel_on, panel_on1, panel_on2;
 #endif
 	/*first, execute dpms*/
 	drm_helper_connector_dpms(connector, mode);
@@ -639,11 +639,20 @@ static void mdfld_dsi_connector_dpms(struct drm_connector *connector, int mode)
 		panel_on2 = dev_priv->dbi_panel_on2;
 	}
 
+
 	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
 				OSPM_UHB_ONLY_IF_ON))
 		return ;
+
+	acquire_ospm_lock();
+	if (dev_priv->bhdmiconnected)
+		panel_on1 = (REG_READ(HDMIB_CONTROL) & HDMIB_PORT_EN);
+	else
+		panel_on1 = false;
+	release_ospm_lock();
+
 	/*then check all display panels + monitors status*/
-	if(!panel_on && !panel_on2 && !(REG_READ(HDMIB_CONTROL) & HDMIB_PORT_EN)) {
+	if (!panel_on && !panel_on2 && !panel_on1) {
 		/*request rpm idle*/
 		if(dev_priv->rpm_enabled) {
 			pm_request_idle(&dev->pdev->dev);

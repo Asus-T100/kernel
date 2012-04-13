@@ -168,7 +168,7 @@ static int mipi_hdmi_vsync_check(struct drm_device *dev, uint32_t pipe)
 	unsigned long irqflags;
 
 	spin_lock_irqsave(&dev_priv->irqmask_lock, irqflags);
-	if (hdmi_state && dsi_config->dsi_hw_context.panel_on) {
+	if (dev_priv->bhdmiconnected && dsi_config->dsi_hw_context.panel_on) {
 		if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, OSPM_UHB_ONLY_IF_ON)) {
 			pipea_stat = REG_READ(psb_pipestat(0));
 			pipeb_stat = REG_READ(psb_pipestat(1));
@@ -322,6 +322,11 @@ static void mid_pipe_event_handler(struct drm_device *dev, uint32_t pipe)
 	uint32_t pipe_status;
 	uint32_t i = 0;
 	unsigned long irq_flags;
+
+	/* if pipe is HDMI, but hdmi is plugged out, should not handle
+	* HDMI reg any more here */
+	if (pipe == 1 && !dev_priv->bhdmiconnected)
+		return;
 
 	spin_lock_irqsave(&dev_priv->irqmask_lock, irq_flags);
 
@@ -991,6 +996,8 @@ void psb_disable_vblank(struct drm_device *dev, int pipe)
  */
 u32 psb_get_vblank_counter(struct drm_device *dev, int pipe)
 {
+	struct drm_psb_private *dev_priv =
+		(struct drm_psb_private *) dev->dev_private;
 	uint32_t high_frame = PIPEAFRAMEHIGH;
 	uint32_t low_frame = PIPEAFRAMEPIXEL;
 	uint32_t pipeconf_reg = PIPEACONF;
@@ -1017,6 +1024,12 @@ u32 psb_get_vblank_counter(struct drm_device *dev, int pipe)
 
 	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, false))
 		return 0;
+
+	if (pipe == 1 && dev_priv->bhdmiconnected == false) {
+		DRM_ERROR("trying to get vblank count for power off pipe %d\n",
+									pipe);
+		goto psb_get_vblank_counter_exit;
+	}
 
 	reg_val = REG_READ(pipeconf_reg);
 

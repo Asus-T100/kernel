@@ -1215,6 +1215,9 @@ void hdmi_do_hotplug_wq(struct work_struct *work)
 					   hdmi_hotplug_wq);
 	struct drm_device *dev = dev_priv->dev;
 	bool hdmi_hpd_connected = false;
+	char *uevent_string = NULL;
+
+	dev_priv->panel_desc |= DISPLAY_B;
 
 	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
 				       OSPM_UHB_FORCE_POWER_ON))
@@ -1270,14 +1273,15 @@ void hdmi_do_hotplug_wq(struct work_struct *work)
 
 	if (hdmi_hpd_connected) {
 		DRM_INFO("%s: HDMI plugged in\n", __func__);
-		dev_priv->bhdmiconnected = true;
+		/* hdmi_state indicates that hotplug event happens */
 		hdmi_state = 1;
-		drm_sysfs_hotplug_event(dev_priv->dev);
+		uevent_string = "HOTPLUG_IN=1";
+		psb_sysfs_uevent(dev_priv->dev, uevent_string);
 	} else {
 		DRM_INFO("%s: HDMI unplugged\n", __func__);
-		dev_priv->bhdmiconnected = false;
 		hdmi_state = 0;
-		drm_sysfs_hotplug_event(dev_priv->dev);
+		uevent_string = "HOTPLUG_OUT=1";
+		psb_sysfs_uevent(dev_priv->dev, uevent_string);
 	}
 #endif
 
@@ -2225,14 +2229,23 @@ static int psb_disp_ioctl(struct drm_device *dev, void *data,
 			ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
                 }
 	} else if (dp_ctrl->cmd == DRM_PSB_HDMI_OSPM_ISLAND_DOWN) {
-		/*Set power  state  island down when hdmi disconnected */
-		 acquire_ospm_lock();
-		 if (pmu_nc_set_power_state(OSPM_DISPLAY_B_ISLAND,
-				OSPM_ISLAND_DOWN, OSPM_REG_TYPE))
+		/* before turning off HDMI power island, re-check the
+		*HDMI hotplus status in case that there are plug-in
+		*signals agains.
+		*/
+		if (!hdmi_state) {
+			/*Set power island down when hdmi disconnected*/
+			acquire_ospm_lock();
+			/*HDMI is considered totally disconected
+			*before power off its island */
+			dev_priv->bhdmiconnected = false;
+			if (pmu_nc_set_power_state(OSPM_DISPLAY_B_ISLAND,
+					OSPM_ISLAND_DOWN, OSPM_REG_TYPE))
 				BUG();
-		 dev_priv->panel_desc &= ~DISPLAY_B;
-		 DISP_PLANEB_STATUS = ~DISPLAY_PLANE_ENABLE;
-		 release_ospm_lock();
+			dev_priv->panel_desc &= ~DISPLAY_B;
+			DISP_PLANEB_STATUS = ~DISPLAY_PLANE_ENABLE;
+			release_ospm_lock();
+		}
 	}
 exit:
 	return ret;
