@@ -7,6 +7,7 @@
 #include <linux/stacktrace.h>
 #include <linux/module.h>
 #include <linux/uaccess.h>
+#include <linux/mm.h>
 #include <asm/stacktrace.h>
 
 static int save_stack_stack(void *data, char *name)
@@ -143,4 +144,58 @@ void save_stack_trace_user(struct stack_trace *trace)
 	if (trace->nr_entries < trace->max_entries)
 		trace->entries[trace->nr_entries++] = ULONG_MAX;
 }
+
+static inline void __save_stack_trace_user_task(struct task_struct *task,
+		struct stack_trace *trace)
+{
+	const struct pt_regs *regs = task_pt_regs(task);
+	const void __user *fp;
+	unsigned long addr;
+#ifdef CONFIG_SMP
+	if (task != current && task->state == TASK_RUNNING && task->on_cpu) {
+		/* To trap into kernel at least once */
+		smp_send_reschedule(task_cpu(task));
+	}
+#endif
+	fp = (const void __user *)regs->bp;
+	if (trace->nr_entries < trace->max_entries)
+		trace->entries[trace->nr_entries++] = regs->ip;
+
+	while (trace->nr_entries < trace->max_entries) {
+		struct stack_frame_user frame;
+
+		frame.next_fp = NULL;
+		frame.ret_addr = 0;
+
+		addr = (unsigned long)fp;
+		if (!access_process_vm(task, addr, (void *)&frame,
+				sizeof(frame), 0))
+			break;
+		if ((unsigned long)fp < regs->sp)
+			break;
+		if (frame.ret_addr) {
+			trace->entries[trace->nr_entries++] =
+				frame.ret_addr;
+		}
+		if (fp == frame.next_fp)
+			break;
+		fp = frame.next_fp;
+	}
+}
+
+void save_stack_trace_user_task(struct task_struct *task,
+		struct stack_trace *trace)
+{
+	if (task == current || !task) {
+		save_stack_trace_user(trace);
+		return;
+	}
+
+	if (task->mm)
+		__save_stack_trace_user_task(task, trace);
+
+	if (trace->nr_entries < trace->max_entries)
+		trace->entries[trace->nr_entries++] = ULONG_MAX;
+}
+EXPORT_SYMBOL_GPL(save_stack_trace_user_task);
 
