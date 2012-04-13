@@ -98,9 +98,11 @@ int sst_download_fw(void)
 	snprintf(name, sizeof(name), "%s%04x%s", "fw_sst_",
 					sst_drv_ctx->pci_id, ".bin");
 
-	retval = sst_request_fw();
-	if (retval)
-		return retval;
+	if (!sst_drv_ctx->fw_in_mem) {
+		retval = sst_request_fw();
+		if (retval)
+			return retval;
+	}
 	sst_drv_ctx->alloc_block[0].sst_id = FW_DWNL_ID;
 	sst_drv_ctx->alloc_block[0].ops_block.condition = false;
 	retval = sst_load_fw(sst_drv_ctx->fw_in_mem, NULL);

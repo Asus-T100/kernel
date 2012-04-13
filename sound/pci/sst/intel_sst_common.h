@@ -331,26 +331,6 @@ struct mad_ops_wq {
 #define SST_MMAP_PAGES	(640*1024 / PAGE_SIZE)
 #define SST_MMAP_STEP	(40*1024 / PAGE_SIZE)
 
-/* FIXME optimze this */
-enum sst_dma_desc {
-	SST_DESC_NULL = 0,
-	SST_DESC_PREPARED,
-	SST_DESC_SUBMITTED,
-	SST_DESC_DONE,
-};
-
-struct sst_firmware_list {
-	unsigned long src;
-	unsigned long dstn;
-	unsigned int len;
-	struct list_head node;
-	struct dma_async_tx_descriptor *desc;
-	enum sst_dma_desc trf_status;
-	bool is_last;
-	wait_queue_t *wait;
-	wait_queue_head_t *queue;
-};
-
 struct sst_dma {
 	struct dma_chan *ch;
 	struct intel_mid_dma_slave slave;
@@ -360,10 +340,16 @@ struct sst_dma {
 struct sst_runtime_param {
 	struct snd_sst_runtime_params param;
 };
+
+struct sst_sg_list {
+	struct scatterlist *src;
+	struct scatterlist *dst;
+	int list_len;
+};
+
 #define PCI_DMAC_MFLD_ID 0x0830
 #define PCI_DMAC_CLV_ID 0x08F0
 #define SST_MAX_DMA_LEN (4095*4)
-#define SST_DMA_DELAY 2000
 /***
  * struct intel_sst_drv - driver ops
  *
@@ -437,7 +423,8 @@ struct intel_sst_drv {
 	struct stream_info streams[MAX_NUM_STREAMS+1]; /*str_id 0 is not used*/
 	struct stream_alloc_block alloc_block[MAX_ACTIVE_STREAM];
 	struct sst_block	tgt_dev_blk, fw_info_blk, ppp_params_blk,
-				vol_info_blk, mute_info_blk, hs_info_blk;
+				vol_info_blk, mute_info_blk, hs_info_blk,
+				dma_info_blk;
 	struct mutex		list_lock;/* mutex for IPC list locking */
 	spinlock_t	list_spin_lock; /* mutex for IPC list locking */
 	struct snd_pmic_ops	*scard_ops;
@@ -466,12 +453,13 @@ struct intel_sst_drv {
 	unsigned int		pll_mode;
 	const struct firmware *fw;
 
-	struct list_head	fw_list;
 	struct sst_dma		dma;
 	void			*fw_in_mem;
 	struct sst_runtime_param runtime_param;
 	unsigned int 		device_input_mixer;
 	struct mutex         mixer_ctrl_lock;
+	struct dma_async_tx_descriptor *desc;
+	struct sst_sg_list fw_sg_list, library_list;
 };
 
 extern struct intel_sst_drv *sst_drv_ctx;

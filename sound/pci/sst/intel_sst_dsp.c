@@ -42,6 +42,7 @@
 #include <sound/intel_sst_ioctl.h>
 #include "intel_sst_fw_ipc.h"
 #include "intel_sst_common.h"
+#include <linux/sched.h>
 
 
 /**
@@ -130,21 +131,69 @@ static int sst_start_medfield(void)
 	return 0;
 }
 
+/*
+ * sst_fill_sglist - Fill the sg list
+ *
+ * @ram: virtual address of IRAM/DRAM.
+ * @block: Dma block infromation
+ * @sg_src: source scatterlist pointer
+ * @sg_dst: Destination scatterlist pointer
+ *
+ * Parses modules that need to be placed in SST IRAM and DRAM
+ * and stores them in a sg list for transfer
+ * returns error or 0 if list creation fails or pass.
+  */
+
+void sst_fill_sglist(unsigned long ram, struct dma_block_info *block,
+		struct scatterlist **sg_src, struct scatterlist **sg_dst)
+{
+	u32 offset;
+	unsigned long dstn, src;
+	int len = 0;
+	pr_debug("sst_fill_sglist\n");
+
+	offset = 0;
+	do {
+		dstn = (unsigned long)(ram + block->ram_offset + offset);
+		src = (unsigned long)((void *)block + sizeof(*block) + offset);
+		len = block->size - offset;
+		pr_debug("DMA blk src%lx,dstn %lx,size %d,offset %d\n",
+				src, dstn, len, offset);
+		if (len > SST_MAX_DMA_LEN) {
+			pr_debug("block size exceeds %d\n", SST_MAX_DMA_LEN);
+			len = SST_MAX_DMA_LEN;
+			offset += len;
+		} else {
+			offset = 0;
+			pr_debug("Node length less that %d\n",
+							SST_MAX_DMA_LEN);
+		}
+
+		sg_set_buf(*sg_src, (void *)src, len);
+		sg_set_buf(*sg_dst, (void *)dstn, len);
+		*sg_src = sg_next(*sg_src);
+		*sg_dst = sg_next(*sg_dst);
+	} while (offset > 0);
+
+}
+
 /**
  * sst_parse_module - Parse audio FW modules
  *
  * @module: FW module header
  *
- * Parses modules that need to be placed in SST IRAM and DRAM
- * and stores them in a list for transfer
+ * Count the length for scattergather list
+ * and create the scattergather list of same length
  * returns error or 0 if module sizes are proper
  */
-static int sst_parse_module(struct fw_module_header *module)
+static int sst_parse_module(struct fw_module_header *module,
+				struct sst_sg_list *sg_list)
 {
 	struct dma_block_info *block;
-	struct sst_firmware_list *node = NULL;
-	u32 count, offset;
+	u32 count;
 	unsigned long ram;
+	int sg_len = 0;
+	struct scatterlist *sg_src, *sg_dst;
 
 	pr_debug("module sign %s size %x blocks %x type %x\n",
 			module->signature, module->mod_size,
@@ -153,6 +202,26 @@ static int sst_parse_module(struct fw_module_header *module)
 
 	block = (void *)module + sizeof(*module);
 
+	for (count = 0; count < module->blocks; count++) {
+		sg_len += (block->size) / SST_MAX_DMA_LEN;
+		if ((block->size) % SST_MAX_DMA_LEN)
+			sg_len = sg_len + 1;
+		block = (void *)block + sizeof(*block) + block->size;
+	}
+
+	sg_src = kzalloc(sizeof(*sg_src)*(sg_len), GFP_KERNEL);
+	if (NULL == sg_src)
+		return -ENOMEM;
+	sg_dst = kzalloc(sizeof(*sg_dst)*(sg_len), GFP_KERNEL);
+	if (NULL == sg_dst) {
+		kfree(sg_src);
+		return -ENOMEM;
+	}
+	sg_list->src = sg_src;
+	sg_list->dst = sg_dst;
+	sg_list->list_len = sg_len;
+
+	block = (void *)module + sizeof(*module);
 	for (count = 0; count < module->blocks; count++) {
 		if (block->size <= 0) {
 			pr_err("block size invalid\n");
@@ -170,37 +239,12 @@ static int sst_parse_module(struct fw_module_header *module)
 					block->type, count);
 			return -EINVAL;
 		}
-		offset = 0;
-		do {
-			node = kmalloc(sizeof(*node), GFP_KERNEL);
-			if (!node) {
-				pr_err("mem alloc failed\n");
-				return -ENOMEM;
-			}
-			node->dstn = ram + block->ram_offset + offset;
-			node->src = virt_to_phys((void *)block +
-						sizeof(*block) + offset);
-			node->len = block->size - offset;
-			node->is_last = false;
-			node->trf_status = SST_DESC_NULL;
-			pr_debug("DMA blk src%lx,dstn %lx,size %d,offset %d\n",
-				 node->src, node->dstn, node->len, offset);
-			if (node->len > SST_MAX_DMA_LEN) {
-				pr_debug("block size exceeds %d\n",
-					SST_MAX_DMA_LEN);
-				node->len = SST_MAX_DMA_LEN;
-				offset += node->len;
-			} else {
-				offset = 0;
-				pr_debug("Node length less that %d\n",
-				SST_MAX_DMA_LEN);
-			}
-			list_add_tail(&node->node, &sst_drv_ctx->fw_list);
-		} while (offset > 0);
+		/*converting from physical to virtual because
+		scattergather list works on virtual pointers*/
+		ram = phys_to_virt(ram);
+		sst_fill_sglist(ram, block, &sg_src, &sg_dst);
 		block = (void *)block + sizeof(*block) + block->size;
 	}
-	if (node)
-		node->is_last = true;
 	return 0;
 }
 
@@ -262,43 +306,14 @@ static int sst_alloc_dma_chan(struct sst_dma *dma)
 
 static void sst_dma_transfer_complete(void *arg)
 {
-	struct sst_firmware_list *block = arg;
-	static unsigned int count;
-
-	pr_debug("%s, dma callback for %d\n", __func__, count);
-	count++;
-
-	pr_debug("current desc status %d\n", block->trf_status);
-	if (block->trf_status != SST_DESC_SUBMITTED)
-		pr_warn("desc status is showing wrongly\n");
-	block->trf_status = SST_DESC_DONE;
-	pr_debug("new desc status %d\n", block->trf_status);
-	if (block->is_last == true) {
-		count = 0;
-		pr_debug("end of list callback, waking up...\n");
+	sst_drv_ctx  = (struct intel_sst_drv *)arg;
+	pr_debug(" sst_dma_transfer_complete\n");
+	if (sst_drv_ctx->dma_info_blk.on == true) {
+		sst_drv_ctx->dma_info_blk.on = false;
+		sst_drv_ctx->dma_info_blk.condition = true;
+		wake_up(&sst_drv_ctx->wait_queue);
 	}
-}
 
-static int
-sst_get_dma_desc(struct list_head *head, struct sst_dma *dma)
-{
-	struct sst_firmware_list *block;
-	enum dma_ctrl_flags flag = DMA_PREP_INTERRUPT | DMA_CTRL_ACK;
-	int i = 0;
-
-	pr_debug("%s\n", __func__);
-	list_for_each_entry(block, head, node) {
-		pr_debug("prep for block %d\n", i); i++;
-		block->desc = dma->ch->device->device_prep_dma_memcpy(
-			dma->ch, block->dstn, block->src, block->len, flag);
-		if (block->desc) {
-			block->trf_status = SST_DESC_PREPARED;
-			block->desc->callback = sst_dma_transfer_complete;
-			block->desc->callback_param = block;
-			pr_debug("set block ptrs\n");
-		}
-	}
-	return 0;
 }
 /**
  * sst_parse_fw_image - parse and load FW
@@ -308,7 +323,8 @@ sst_get_dma_desc(struct list_head *head, struct sst_dma *dma)
  * This function is called to verify and parse the FW image and save the parsed
  * image in a list for DMA
  */
-static int sst_parse_fw_image(const void *sst_fw_in_mem, unsigned long size)
+static int sst_parse_fw_image(const void *sst_fw_in_mem, unsigned long size,
+				struct sst_sg_list *sg_list)
 {
 	struct fw_header *header;
 	u32 count;
@@ -332,7 +348,7 @@ static int sst_parse_fw_image(const void *sst_fw_in_mem, unsigned long size)
 	module = (void *)sst_fw_in_mem + sizeof(*header);
 	for (count = 0; count < header->modules; count++) {
 		/* module */
-		ret_val = sst_parse_module(module);
+		ret_val = sst_parse_module(module, sg_list);
 		if (ret_val)
 			return ret_val;
 		module = (void *)module + sizeof(*module) + module->mod_size ;
@@ -363,21 +379,17 @@ int sst_request_fw(void)
 		return retval;
 	}
 
+	sst_drv_ctx->fw_in_mem = kzalloc(sst_drv_ctx->fw->size, GFP_KERNEL);
 	if (!sst_drv_ctx->fw_in_mem) {
-		pr_debug("firmware not in memory\n");
-		sst_drv_ctx->fw_in_mem = kzalloc(sst_drv_ctx->fw->size,
-							GFP_KERNEL);
-		if (!sst_drv_ctx->fw_in_mem) {
-			pr_err("%s unable to allocate memory\n", __func__);
-			retval = -ENOMEM;
-			goto end_release;
-		}
-		memcpy(sst_drv_ctx->fw_in_mem, sst_drv_ctx->fw->data,
-				sst_drv_ctx->fw->size);
+		pr_err("%s unable to allocate memory\n", __func__);
+		retval = -ENOMEM;
+		goto end_release;
 	}
-
+	memcpy(sst_drv_ctx->fw_in_mem, sst_drv_ctx->fw->data,
+			sst_drv_ctx->fw->size);
 	retval = sst_parse_fw_image(sst_drv_ctx->fw_in_mem,
-					sst_drv_ctx->fw->size);
+					sst_drv_ctx->fw->size,
+					&sst_drv_ctx->fw_sg_list);
 	if (retval) {
 		kfree(sst_drv_ctx->fw_in_mem);
 		goto end_release;
@@ -389,59 +401,41 @@ end_release:
 	return retval;
 }
 
-int sst_dma_firmware(struct list_head *head)
+int sst_dma_firmware(struct sst_dma *dma, struct sst_sg_list *sg_list)
 {
-	/* submit the descriptors */
-	struct sst_firmware_list *block;
-	int i = 0;
-	int cnt = 0;
-	pr_debug("%s\n", __func__);
+	int retval = 0;
+	enum dma_ctrl_flags flag = DMA_CTRL_ACK;
+	struct scatterlist *sg_src_list, *sg_dst_list;
+	int length;
+	pr_debug(" sst_dma_firmware\n");
 
-	list_for_each_entry(block, head, node) {
-		pr_debug("submitting desc %d\n", i); i++;
-		pr_debug("before submit desc status %d\n", block->trf_status);
-		block->trf_status = SST_DESC_SUBMITTED;
-		block->desc->tx_submit(block->desc);
-		/* wait for dma completion
-		 * since this is memcpy, max block length should get completed
-		 * within 2ms, since we are waiting for dma compleetion here and
-		 * dont want to yeild, just poll
-		 * this is required till multiblock memcpy support API is added
-		 * in the dma driver
-		 */
-		udelay(SST_DMA_DELAY);
-		pr_debug("after submit desc status %d\n", block->trf_status);
-		cnt = 0;
-		/* wait in loop with counter */
-		while (1) {
-			pr_debug("while desc status %d\n", block->trf_status);
-			if (block->trf_status == SST_DESC_DONE) {
-				pr_debug("desc done %d\n", (i-1));
-				break;
-			}
-			udelay(SST_DMA_DELAY);
-			cnt++;
-			if (cnt >= 10) {
-				pr_err("dma for block %d failed\n", (i-1));
-				break;
-			}
-		}
-		pr_debug("wait done\n");
-	}
-	pr_debug("submitted all desc, waiting now...\n");
-	return 0;
+	sg_src_list = sg_list->src;
+	sg_dst_list = sg_list->dst;
+	length = sg_list->list_len;
+	sst_drv_ctx->desc = dma->ch->device->device_prep_dma_sg(dma->ch,
+					sg_dst_list, length,
+					sg_src_list, length, flag);
+	if (!sst_drv_ctx->desc)
+		return -EFAULT;
+	sst_drv_ctx->desc->callback = sst_dma_transfer_complete;
+	sst_drv_ctx->desc->callback_param = sst_drv_ctx;
+
+	sst_drv_ctx->dma_info_blk.condition = false;
+	sst_drv_ctx->dma_info_blk.ret_code = 0;
+	sst_drv_ctx->dma_info_blk.on = true;
+
+	sst_drv_ctx->desc->tx_submit(sst_drv_ctx->desc);
+	retval = sst_wait_timeout(sst_drv_ctx, &sst_drv_ctx->dma_info_blk);
+	if (retval)
+		pr_err("sst_dma_firmware..timeout!\n");
+
+	return retval;
 }
 
-void sst_dma_free_resources(struct list_head *head, struct sst_dma *dma)
+void sst_dma_free_resources(struct sst_dma *dma)
 {
-	struct sst_firmware_list *block, *__block;
-
 	pr_debug("entry:%s\n", __func__);
 
-	list_for_each_entry_safe(block, __block, head, node) {
-		list_del(&block->node);
-		kfree(block);
-	}
 	dma_release_channel(dma->ch);
 }
 
@@ -470,9 +464,9 @@ int sst_load_fw(const void *fw_in_mem, void *context)
 
 	/* get a dmac channel */
 	sst_alloc_dma_chan(&sst_drv_ctx->dma);
-	/* allocate desc for transfer */
-	sst_get_dma_desc(&sst_drv_ctx->fw_list, &sst_drv_ctx->dma);
-	ret_val = sst_dma_firmware(&sst_drv_ctx->fw_list);
+	 /* allocate desc for transfer and submit */
+	ret_val = sst_dma_firmware(&sst_drv_ctx->dma,
+					&sst_drv_ctx->fw_sg_list);
 	if (ret_val)
 		goto free_dma;
 	sst_set_fw_state_locked(sst_drv_ctx, SST_FW_LOADED);
@@ -487,7 +481,7 @@ int sst_load_fw(const void *fw_in_mem, void *context)
 
 	pr_debug("fw loaded successful!!!\n");
 free_dma:
-	sst_dma_free_resources(&sst_drv_ctx->fw_list, &sst_drv_ctx->dma);
+	sst_dma_free_resources(&sst_drv_ctx->dma);
 	return ret_val;
 }
 
@@ -550,15 +544,17 @@ static int sst_download_library(const struct firmware *fw_lib,
 	if (!codec_fw)
 		return -ENOMEM;
 	memcpy(codec_fw, fw_lib->data, fw_lib->size);
-	retval = sst_parse_fw_image(codec_fw, fw_lib->size);
-	sst_alloc_dma_chan(&sst_drv_ctx->dma);
-	sst_get_dma_desc(&sst_drv_ctx->fw_list, &sst_drv_ctx->dma);
-	retval = sst_dma_firmware(&sst_drv_ctx->fw_list);
-
-	sst_dma_free_resources(&sst_drv_ctx->fw_list, &sst_drv_ctx->dma);
-	kfree(codec_fw);
-	if (retval)
+	retval = sst_parse_fw_image(codec_fw, fw_lib->size,
+					&sst_drv_ctx->library_list);
+	if (retval) {
+		kfree(codec_fw);
 		return retval;
+	}
+	sst_alloc_dma_chan(&sst_drv_ctx->dma);
+	retval = sst_dma_firmware(&sst_drv_ctx->dma,
+					&sst_drv_ctx->library_list);
+	if (retval)
+		goto free_dma;
 
 	/* set the FW to running again */
 	csr.full = sst_shim_read(sst_drv_ctx->shim, SST_CSR);
@@ -572,7 +568,8 @@ static int sst_download_library(const struct firmware *fw_lib,
 	/* send download complete and wait */
 	if (sst_create_large_msg(&msg)) {
 		sst_drv_ctx->alloc_block[i].sst_id = BLOCK_UNINIT;
-		return -ENOMEM;
+		retval = -ENOMEM;
+		goto free_dma;
 	}
 
 	sst_fill_header(&msg->header, IPC_IA_LIB_DNLD_CMPLT, 1, pvt_id);
@@ -593,13 +590,20 @@ static int sst_download_library(const struct firmware *fw_lib,
 		/* error */
 		sst_set_fw_state_locked(sst_drv_ctx, SST_UN_INIT);
 		sst_drv_ctx->alloc_block[i].sst_id = BLOCK_UNINIT;
-		return -EIO;
+		retval = -EIO;
+		goto free_dma;
 	}
 
 	pr_debug("FW success on Download complete\n");
 	sst_drv_ctx->alloc_block[i].sst_id = BLOCK_UNINIT;
 	sst_set_fw_state_locked(sst_drv_ctx, SST_FW_RUNNING);
-	return 0;
+free_dma:
+	sst_dma_free_resources(&sst_drv_ctx->dma);
+	kfree(sst_drv_ctx->library_list.src);
+	kfree(sst_drv_ctx->library_list.dst);
+	sst_drv_ctx->library_list.list_len = 0;
+	kfree(codec_fw);
+	return retval;
 }
 
 /* This function is called before downloading the codec/postprocessing
