@@ -383,9 +383,9 @@ static int __init sfi_parse_gpio(struct sfi_table_header *table)
 	memcpy(gpio_table, pentry, num * sizeof(*pentry));
 	gpio_num_entry = num;
 
-	pr_debug("GPIO pin info:\n");
+	pr_info("GPIO pin info:\n");
 	for (i = 0; i < num; i++, pentry++)
-		pr_debug("info[%2d]: controller = %16.16s, pin_name = %16.16s,"
+		pr_info("info[%2d]: controller = %16.16s, pin_name = %16.16s,"
 		" pin = %d\n", i,
 			pentry->controller_name,
 			pentry->pin_name,
@@ -728,7 +728,7 @@ static int __init sfi_parse_devs(struct sfi_table_header *table)
 
 		dev = get_device_id(pentry->type, pentry->name);
 
-		if (dev == NULL)
+		if ((dev == NULL) || (dev->get_platform_data == NULL))
 			continue;
 
 		if (dev->device_handler) {

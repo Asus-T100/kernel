@@ -228,5 +228,5 @@ static inline enum intel_mrfl_sim_type intel_mrfl_identify_sim(void)
 #else /* !CONFIG_X86_MRFLD */
 #define intel_mrfl_identify_sim()	(0)
 #endif /* !CONFIG_X86_MRFLD */
-
+#define INTEL_MID_IRQ_OFFSET 0x100
 #endif /* _ASM_X86_INTEL_MID_H */
