@@ -311,6 +311,8 @@ static int mdfld_dsi_pr2_power_on(struct mdfld_dsi_config *dsi_config)
 		DRM_ERROR("Failed to send turn on packet\n");
 		return err;
 	}
+	/*According HW DSI spec, here need wait for 100ms*/
+	msleep(100);
 	return 0;
 }
 
@@ -336,6 +338,8 @@ static int mdfld_dsi_pr2_power_off(struct mdfld_dsi_config *dsi_config)
 		DRM_ERROR("Failed to send turn off packet\n");
 		return err;
 	}
+	/*according HW DSI spec, need wait for 100ms*/
+	msleep(100);
 
 	/*Just turn off panel for WiDi Extended Mode.*/
 	if (!dev_priv->drm_psb_widi && !dev_priv->dpms_on_off) {
