@@ -1427,6 +1427,31 @@ static const struct usb_ep_ops langwell_ep_ops = {
 
 /* device controller usb_gadget_ops structure */
 
+static inline int can_pullup(struct langwell_udc *dev)
+{
+	return dev->driver && dev->softconnected &&
+		 dev->vbus_active && !dev->stopped;
+}
+
+static void langwell_udc_pullup(struct langwell_udc *dev, u32 on)
+{
+	u32 usbcmd;
+
+	if (dev->stopped)
+		return;
+
+	usbcmd = readl(&dev->op_regs->usbcmd);
+	if (!(usbcmd & CMD_RUNSTOP) && on) {
+		if (can_pullup(dev)) {
+			usbcmd |= CMD_RUNSTOP;
+			writel(usbcmd, &dev->op_regs->usbcmd);
+		}
+	} else if ((usbcmd & CMD_RUNSTOP) && !on) {
+		usbcmd &= ~CMD_RUNSTOP;
+		writel(usbcmd, &dev->op_regs->usbcmd);
+	}
+}
+
 /* returns the current frame number */
 static int langwell_get_frame(struct usb_gadget *_gadget)
 {
@@ -1495,7 +1520,6 @@ static int langwell_vbus_session(struct usb_gadget *_gadget, int is_active)
 {
 	struct langwell_udc	*dev;
 	unsigned long		flags;
-	u32			usbcmd;
 
 	if (!_gadget)
 		return -ENODEV;
@@ -1507,17 +1531,17 @@ static int langwell_vbus_session(struct usb_gadget *_gadget, int is_active)
 	dev_vdbg(&dev->pdev->dev, "VBUS status: %s\n",
 			is_active ? "on" : "off");
 
-	dev->vbus_active = (is_active != 0);
-	if (dev->driver && dev->softconnected && dev->vbus_active) {
-		usbcmd = readl(&dev->op_regs->usbcmd);
-		usbcmd |= CMD_RUNSTOP;
-		writel(usbcmd, &dev->op_regs->usbcmd);
-	} else {
-		usbcmd = readl(&dev->op_regs->usbcmd);
-		usbcmd &= ~CMD_RUNSTOP;
-		writel(usbcmd, &dev->op_regs->usbcmd);
-	}
+	if (dev->vbus_active == !!is_active)
+		goto done;
 
+	dev->vbus_active = !!is_active;
+
+	if (is_active)
+		langwell_udc_pullup(dev, 1);
+	else
+		langwell_udc_pullup(dev, 0);
+
+done:
 	spin_unlock_irqrestore(&dev->lock, flags);
 
 	dev_vdbg(&dev->pdev->dev, "<--- %s()\n", __func__);
@@ -1551,7 +1575,6 @@ static int langwell_vbus_draw(struct usb_gadget *_gadget, unsigned mA)
 static int langwell_pullup(struct usb_gadget *_gadget, int is_on)
 {
 	struct langwell_udc	*dev;
-	u32			usbcmd;
 	unsigned long		flags;
 
 	if (!_gadget)
@@ -1561,24 +1584,17 @@ static int langwell_pullup(struct usb_gadget *_gadget, int is_on)
 
 	dev_vdbg(&dev->pdev->dev, "---> %s()\n", __func__);
 
-	if (!dev->got_irq) {
-		dev_vdbg(&dev->pdev->dev, "<--- %s() return with got_irq = %d\n",
-		__func__, dev->got_irq);
-		return -ENODEV;
-	}
-
 	spin_lock_irqsave(&dev->lock, flags);
-	dev->softconnected = (is_on != 0);
+	if (dev->softconnected == !!is_on)
+		goto done;
+	dev->softconnected = !!is_on;
 
-	if (dev->driver && dev->softconnected && dev->vbus_active) {
-		usbcmd = readl(&dev->op_regs->usbcmd);
-		usbcmd |= CMD_RUNSTOP;
-		writel(usbcmd, &dev->op_regs->usbcmd);
-	} else {
-		usbcmd = readl(&dev->op_regs->usbcmd);
-		usbcmd &= ~CMD_RUNSTOP;
-		writel(usbcmd, &dev->op_regs->usbcmd);
-	}
+	if (is_on)
+		langwell_udc_pullup(dev, 1);
+	else
+		langwell_udc_pullup(dev, 0);
+
+done:
 	spin_unlock_irqrestore(&dev->lock, flags);
 
 	dev_vdbg(&dev->pdev->dev, "<--- %s()\n", __func__);
@@ -1636,10 +1652,8 @@ static int langwell_udc_reset(struct langwell_udc *dev)
 	devlc &= ~LPM_ASUS;
 	writel(devlc, &dev->op_regs->devlc);
 
-	/* set controller to stop state */
-	usbcmd = readl(&dev->op_regs->usbcmd);
-	usbcmd &= ~CMD_RUNSTOP;
-	writel(usbcmd, &dev->op_regs->usbcmd);
+	/* disconnect pullup */
+	langwell_udc_pullup(dev, 0);
 
 	/* reset device controller */
 	usbcmd = readl(&dev->op_regs->usbcmd);
@@ -1766,7 +1780,7 @@ static int eps_reinit(struct langwell_udc *dev)
 /* enable interrupt and set controller to run state */
 static void langwell_udc_start(struct langwell_udc *dev)
 {
-	u32	usbintr, usbcmd;
+	u32	usbintr;
 	dev_dbg(&dev->pdev->dev, "---> %s()\n", __func__);
 
 	/* enable interrupts */
@@ -1785,10 +1799,8 @@ static void langwell_udc_start(struct langwell_udc *dev)
 	/* clear stopped bit */
 	dev->stopped = 0;
 
-	/* set controller to run */
-	usbcmd = readl(&dev->op_regs->usbcmd);
-	usbcmd |= CMD_RUNSTOP;
-	writel(usbcmd, &dev->op_regs->usbcmd);
+	/* Connect pullup if we can */
+	langwell_udc_pullup(dev, 1);
 
 	dev_dbg(&dev->pdev->dev, "<--- %s()\n", __func__);
 }
@@ -1818,20 +1830,16 @@ static void langwell_udc_stop_testmode(struct langwell_udc *dev)
 /* disable interrupt and set controller to stop state */
 static void langwell_udc_stop(struct langwell_udc *dev)
 {
-	u32	usbcmd;
-
 	dev_dbg(&dev->pdev->dev, "---> %s()\n", __func__);
+
+	/* disconnect pullup */
+	langwell_udc_pullup(dev, 0);
 
 	/* disable all interrupts */
 	writel(0, &dev->op_regs->usbintr);
 
 	/* set stopped bit */
 	dev->stopped = 1;
-
-	/* set controller to stop state */
-	usbcmd = readl(&dev->op_regs->usbcmd);
-	usbcmd &= ~CMD_RUNSTOP;
-	writel(usbcmd, &dev->op_regs->usbcmd);
 
 	dev_dbg(&dev->pdev->dev, "<--- %s()\n", __func__);
 }
@@ -3952,6 +3960,7 @@ static struct pci_driver langwell_pci_driver = {
 	.shutdown =	langwell_udc_shutdown,
 };
 
+
 #ifdef	OTG_TRANSCEIVER
 static int intel_mid_start_peripheral(struct intel_mid_otg_xceiv *iotg)
 {
@@ -4003,31 +4012,27 @@ static int intel_mid_start_peripheral(struct intel_mid_otg_xceiv *iotg)
 	}
 	dev->got_irq = 1;
 
-	if ((!dev->driver) || (dev->driver->drv_state != BIND_UNBIND)) {
-		/* reset and start controller to run state */
-		if (dev->stopped) {
-			/* reset device controller */
-			langwell_udc_reset(dev);
+	spin_lock_irqsave(&dev->lock, flags);
+	dev->vbus_active = 1;
 
-			/* reset ep0 dQH and endptctrl */
-			ep0_reset(dev);
+	/* reset and start controller to run state */
+	if (dev->stopped) {
+		/* reset device controller */
+		langwell_udc_reset(dev);
 
-			/* start device if gadget is loaded */
-			if (dev->driver)
-				langwell_udc_start(dev);
+		/* reset ep0 dQH and endptctrl */
+		ep0_reset(dev);
 
-			/* reset USB status */
-			dev->usb_state = USB_STATE_ATTACHED;
-			dev->ep0_state = WAIT_FOR_SETUP;
-			dev->ep0_dir = USB_DIR_OUT;
-		}
+		/* reset USB status */
+		dev->usb_state = USB_STATE_ATTACHED;
+		dev->ep0_state = WAIT_FOR_SETUP;
+		dev->ep0_dir = USB_DIR_OUT;
+
+		/* Enable interrupts */
+		langwell_udc_start(dev);
+
 	}
-
-	if (dev) {
-		spin_lock_irqsave(&dev->lock, flags);
-		dev->vbus_active = 1;
-		spin_unlock_irqrestore(&dev->lock, flags);
-	}
+	spin_unlock_irqrestore(&dev->lock, flags);
 
 	dev_dbg(&dev->pdev->dev, "<--- %s()\n", __func__);
 	return 0;
