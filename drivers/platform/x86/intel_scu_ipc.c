@@ -156,6 +156,8 @@ static struct pm_qos_request_list *qos;
  */
 static inline void ipc_command(u32 cmd) /* Send ipc command */
 {
+	might_sleep();
+
 	ipcdev.cmd = cmd;
 	INIT_COMPLETION(ipcdev.cmd_complete);
 	acquire_scu_ready_sem();
