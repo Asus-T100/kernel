@@ -691,16 +691,14 @@ static int mt9e013_read_reg_array(struct i2c_client *client, u16 size, u16 addr,
 
 	for (index = 0; index + MT9E013_BYTE_MAX <= size;
 	     index += MT9E013_BYTE_MAX) {
-		ret = mt9e013_read_reg(client, MT9E013_BYTE_MAX,
-				       MT9E013_OTP_START_ADDR + index,
+		ret = mt9e013_read_reg(client, MT9E013_BYTE_MAX, addr + index,
 				       (u16 *)&buf[index]);
 		if (ret)
 			return ret;
 	}
 
 	if (size - index > 0)
-		ret = mt9e013_read_reg(client, size - index,
-				       MT9E013_OTP_START_ADDR + index,
+		ret = mt9e013_read_reg(client, size - index, addr + index,
 				       (u16 *)&buf[index]);
 
 	return ret;
