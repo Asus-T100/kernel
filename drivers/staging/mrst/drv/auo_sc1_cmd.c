@@ -620,6 +620,7 @@ static void mdfld_auo_dsi_dbi_prepare(struct drm_encoder *encoder)
 	dbi_output->mode_flags &= ~MODE_SETTING_ENCODER_DONE;
 
 	mdfld_auo_dsi_dbi_set_power(encoder, false);
+	gbdispstatus = false;
 }
 
 static void mdfld_auo_dsi_dbi_commit(struct drm_encoder *encoder)
@@ -638,6 +639,8 @@ static void mdfld_auo_dsi_dbi_commit(struct drm_encoder *encoder)
 	PSB_DEBUG_ENTRY("\n");
 
 	mdfld_auo_dsi_dbi_set_power(encoder, true);
+
+	gbdispstatus = true;
 
 	dbi_output->mode_flags &= ~MODE_SETTING_IN_ENCODER;
 
