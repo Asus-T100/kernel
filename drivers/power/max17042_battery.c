@@ -209,7 +209,7 @@ enum max17042_register {
 
 };
 
-/* Registers specific to max17050 */
+/* Registers specific to max17047/50 */
 enum max17050_register {
 	MAX17050_QRTbl00	= 0x12,
 	MAX17050_FullSOCThr	= 0x13,
@@ -1467,7 +1467,7 @@ static int __devinit max17042_probe(struct i2c_client *client,
 		dev_info(&client->dev, "chip type max17042 detected\n");
 		chip->chip_type = MAX17042;
 	} else if (ret == MAX17050_IC_VERSION) {
-		dev_info(&client->dev, "chip type max17050 detected\n");
+		dev_info(&client->dev, "chip type max17047/50 detected\n");
 		chip->chip_type = MAX17050;
 	} else {
 		dev_err(&client->dev, "device version mismatch: %x\n", ret);
@@ -1524,10 +1524,7 @@ static int __devinit max17042_probe(struct i2c_client *client,
 	}
 	chip->technology = chip->pdata->technology;
 
-	if (chip->chip_type == MAX17042)
-		chip->battery.name = "max17042_battery";
-	else
-		chip->battery.name = "max17050_battery";
+	chip->battery.name = "max170xx_battery";
 	chip->battery.type		= POWER_SUPPLY_TYPE_BATTERY;
 	chip->battery.get_property	= max17042_get_property;
 	chip->battery.external_power_changed = max17042_external_power_changed;
@@ -1671,7 +1668,8 @@ static int max17042_runtime_idle(struct device *dev)
 
 static const struct i2c_device_id max17042_id[] = {
 	{ "max17042", 0 },
-	{ "max17050", 1 },
+	{ "max17047", 1 },
+	{ "max17050", 2 },
 	{ },
 };
 MODULE_DEVICE_TABLE(i2c, max17042_id);
