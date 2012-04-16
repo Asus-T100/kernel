@@ -28,6 +28,7 @@
 #include <linux/debugfs.h>
 #include <linux/genhd.h>
 #include <linux/seq_file.h>
+#include <asm/intel_scu_ipcutil.h>
 
 /* change to "loop0" and use losetup for safe testing */
 #define OSIP_BLKDEVICE "mmcblk0"
@@ -544,11 +545,16 @@ static void remove_debugfs_files(void)
 
 static int __init osip_init(void)
 {
+	if (intel_mid_identify_cpu() == 0)
+		return -ENODEV;
+
 	if (register_reboot_notifier(&osip_reboot_notifier))
 		pr_warning("osip: unable to register reboot notifier");
+
 	create_debugfs_files();
 	return 0;
 }
+
 static void __exit osip_exit(void)
 {
 	unregister_reboot_notifier(&osip_reboot_notifier);
