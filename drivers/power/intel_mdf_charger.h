@@ -355,6 +355,12 @@ enum {
 	BATT_CHARGING_MODE_MAINTENANCE,
 };
 
+/* Error types */
+enum {
+	MSIC_CHRG_ERROR_NONE = 0,
+	MSIC_CHRG_ERROR_CHRTMR_EXPIRY,
+};
+
 /* Battery Thresholds info which need to get from SMIP area */
 struct batt_safety_thresholds {
 	u8 smip_rev;
@@ -473,6 +479,7 @@ struct msic_power_module_info {
 	int charging_mode;
 	int usr_chrg_enbl;	/* User Charge Enable or Disable */
 	int refresh_charger;	/* Refresh charger parameters */
+	int msic_chr_err;	/* Type of error event */
 
 	/* Worker to monitor status and faults */
 	struct delayed_work chr_status_monitor;

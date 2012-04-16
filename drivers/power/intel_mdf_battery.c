@@ -1905,9 +1905,11 @@ static void msic_batt_disconn(struct work_struct *work)
 	struct msic_power_module_info *mbi =
 	    container_of(work, struct msic_power_module_info,
 			 disconn_handler.work);
+	int err_event;
 
 	mutex_lock(&mbi->event_lock);
 	event = mbi->batt_event;
+	err_event = mbi->msic_chr_err;
 	mutex_unlock(&mbi->event_lock);
 
 	if (event != USBCHRG_EVENT_SUSPEND &&
@@ -1917,9 +1919,22 @@ static void msic_batt_disconn(struct work_struct *work)
 		return ;
 	}
 
-	dev_dbg(msic_dev, "Stopping charging due to charger event: %s\n",
-			(event == USBCHRG_EVENT_SUSPEND) ? "SUSPEND" :
-			"DISCONNECT");
+	switch (err_event) {
+	case MSIC_CHRG_ERROR_NONE:
+		dev_info(msic_dev, "Stopping charging due to "
+				"charger event: %s\n",
+				(event == USBCHRG_EVENT_SUSPEND) ? "SUSPEND" :
+				"DISCONNECT");
+		break;
+	case MSIC_CHRG_ERROR_CHRTMR_EXPIRY:
+		dev_info(msic_dev, "Stopping charging due to "
+				"charge-timer expiry");
+		break;
+	default:
+		dev_warn(msic_dev, "Stopping charging due to "
+				"unknown error event:%d\n", err_event);
+	}
+
 	dump_registers(MSIC_CHRG_REG_DUMP_EVENT);
 	ret = msic_batt_stop_charging(mbi);
 	if (ret) {
@@ -2002,8 +2017,11 @@ static int msic_event_handler(void *arg, int event, struct otg_bc_cap *cap)
 		break;
 	case USBCHRG_EVENT_DISCONN:
 		pm_runtime_put_sync(&mbi->ipcdev->dev);
+		mutex_lock(&mbi->event_lock);
+		/* Reset the error value on DISCONNECT */
+		mbi->msic_chr_err = MSIC_CHRG_ERROR_NONE;
+		mutex_unlock(&mbi->event_lock);
 	case USBCHRG_EVENT_SUSPEND:
-		dev_info(msic_dev, "USB DISCONN or SUSPEND\n");
 		cancel_delayed_work_sync(&mbi->connect_handler);
 		schedule_delayed_work(&mbi->disconn_handler, 0);
 
@@ -2173,6 +2191,12 @@ static irqreturn_t msic_battery_thread_handler(int id, void *dev)
 	if ((data[0] & MSIC_BATT_CHR_TIMEEXP_MASK) &&
 			(tmp == BATT_CHARGING_MODE_NORMAL)) {
 		dev_dbg(msic_dev, "force suspend event\n");
+
+		/* Note the error-event, so that we don't restart charging */
+		mutex_lock(&mbi->event_lock);
+		mbi->msic_chr_err = MSIC_CHRG_ERROR_CHRTMR_EXPIRY;
+		mutex_unlock(&mbi->event_lock);
+
 		msic_event_handler(mbi, USBCHRG_EVENT_SUSPEND, NULL);
 	}
 
@@ -2303,6 +2327,14 @@ static ssize_t set_chrg_enable(struct device *dev,
 		return -EINVAL;
 
 	mutex_lock(&mbi->event_lock);
+	/* No need to process if same value given
+	 * or charging stopped due to an error */
+	if (value == mbi->usr_chrg_enbl ||
+			mbi->msic_chr_err != MSIC_CHRG_ERROR_NONE) {
+		mutex_unlock(&mbi->event_lock);
+		return -EIO;
+	}
+
 	chr_mode = mbi->charging_mode;
 	mutex_unlock(&mbi->event_lock);
 
@@ -2449,6 +2481,7 @@ static void init_batt_props(struct msic_power_module_info *mbi)
 	mbi->charging_mode = BATT_CHARGING_MODE_NONE;
 	mbi->usr_chrg_enbl = USER_SET_CHRG_NOLMT;
 	mbi->in_cur_lmt = CHRCNTL_VINLMT_NOLMT;
+	mbi->msic_chr_err = MSIC_CHRG_ERROR_NONE;
 
 	mbi->batt_props.status = POWER_SUPPLY_STATUS_DISCHARGING;
 	mbi->batt_props.health = POWER_SUPPLY_HEALTH_GOOD;
@@ -2914,7 +2947,8 @@ static int msic_battery_resume(struct device *dev)
 	event = mbi->batt_event;
 	mutex_unlock(&mbi->event_lock);
 
-	if (event == USBCHRG_EVENT_SUSPEND || event == USBCHRG_EVENT_DISCONN) {
+	if ((event == USBCHRG_EVENT_SUSPEND || event == USBCHRG_EVENT_DISCONN)
+			&& (mbi->msic_chr_err == MSIC_CHRG_ERROR_NONE)) {
 		/* Check if already exist a Charger connection */
 		retval = check_charger_conn(mbi);
 		if (retval)
