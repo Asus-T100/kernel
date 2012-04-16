@@ -80,14 +80,6 @@
 		.g_ctrl = _g_ctrl, \
 	}
 
-/* Registers */
-#define LM3554_TORCH_BRIGHTNESS_REG     0xA0
-#define LM3554_FLASH_BRIGHTNESS_REG     0xB0
-#define LM3554_FLASH_DURATION_REG       0xC0
-#define LM3554_FLAGS_REG                0xD0
-#define LM3554_CONFIG_REG_1             0xE0
-#define LM3554_CONFIG_REG_2             0xF0
-
 /* Value settings for Flash Time-out Duration*/
 #define LM3554_DEFAULT_TIMEOUT          512U
 #define LM3554_MIN_TIMEOUT              32U
@@ -102,15 +94,6 @@
 
 /* timer delay time */
 #define LM3554_TIMER_DELAY		5
-
-/* Flags */
-#define LM3554_FLAG_TIMEOUT                  (1<<0)
-#define LM3554_FLAG_THERMAL_SHUTDOWN         (1<<1)
-#define LM3554_FLAG_LED_FAULT                (1<<2)
-#define LM3554_FLAG_TX1_INTERRUPT            (1<<3)
-#define LM3554_FLAG_TX2_INTERRUPT            (1<<4)
-#define LM3554_FLAG_LED_THERMAL_FAULT        (1<<5)
-#define LM3554_FLAG_INPUT_VOLTAGE_LOW        (1<<7)
 
 /* Percentage <-> value macros */
 #define LM3554_MIN_PERCENT                   0U

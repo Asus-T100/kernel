@@ -38,27 +38,53 @@
 
 #include "lm3554.h"
 
-#define INIT_FIELD(_reg_address, _lsb, _msb) { \
-	.reg_address = _reg_address, \
-	.lsb = _lsb, \
-	.msb = _msb \
-}
-
 struct lm3554_ctrl_id {
 	struct v4l2_queryctrl qc;
 	int (*s_ctrl) (struct v4l2_subdev *sd, __u32 val);
 	int (*g_ctrl) (struct v4l2_subdev *sd, __s32 *val);
 };
 
+/* Registers */
+
+#define LM3554_TORCH_BRIGHTNESS_REG	0xA0
+#define LM3554_TORCH_MODE_SHIFT		0
+#define LM3554_TORCH_CURRENT_SHIFT	3
+#define LM3554_INDICATOR_CURRENT_SHIFT	6
+
+#define LM3554_FLASH_BRIGHTNESS_REG	0xB0
+#define LM3554_FLASH_MODE_SHIFT		0
+#define LM3554_FLASH_CURRENT_SHIFT	3
+#define LM3554_STROBE_SENSITIVITY_SHIFT	7
+
+#define LM3554_FLASH_DURATION_REG	0xC0
+#define LM3554_FLASH_TIMEOUT_SHIFT	0
+#define LM3554_CURRENT_LIMIT_SHIFT	5
+
+#define LM3554_FLAGS_REG		0xD0
+#define LM3554_FLAG_TIMEOUT		(1 << 0)
+#define LM3554_FLAG_THERMAL_SHUTDOWN	(1 << 1)
+#define LM3554_FLAG_LED_FAULT		(1 << 2)
+#define LM3554_FLAG_TX1_INTERRUPT	(1 << 3)
+#define LM3554_FLAG_TX2_INTERRUPT	(1 << 4)
+#define LM3554_FLAG_LED_THERMAL_FAULT	(1 << 5)
+#define LM3554_FLAG_INPUT_VOLTAGE_LOW	(1 << 7)
+
+#define LM3554_CONFIG_REG_1		0xE0
+#define LM3554_ENVM_TX2_SHIFT		5
+#define LM3554_TX2_POLARITY_SHIFT	6
+
 struct lm3554 {
 	struct v4l2_subdev sd;
-	struct mutex i2c_mutex;
-	enum atomisp_flash_mode mode;
 
+	unsigned int mode;
 	int timeout;
 	u8 torch_current;
 	u8 indicator_current;
 	u8 flash_current;
+	/* XXX: should go to the platform data */
+	u8 current_limit;
+	u8 envm_tx2;
+	u8 tx2_polarity;
 
 	struct timer_list flash_off_delay;
 	struct camera_flash_platform_data *pdata;
@@ -66,68 +92,90 @@ struct lm3554 {
 
 #define to_lm3554(p_sd)	container_of(p_sd, struct lm3554, sd)
 
-struct lm3554_reg_field {
-	u32 reg_address;
-	u32 lsb;
-	u32 msb;
-};
-
-/* This defines the register field properties. The LSBs and MSBs come from
- * the lm3554 datasheet. */
-static const struct lm3554_reg_field
-	torch_mode         = INIT_FIELD(LM3554_TORCH_BRIGHTNESS_REG, 0, 2),
-	torch_current      = INIT_FIELD(LM3554_TORCH_BRIGHTNESS_REG, 3, 5),
-	indicator_current  = INIT_FIELD(LM3554_TORCH_BRIGHTNESS_REG, 6, 7),
-	flash_mode         = INIT_FIELD(LM3554_FLASH_BRIGHTNESS_REG, 0, 2),
-	flash_current      = INIT_FIELD(LM3554_FLASH_BRIGHTNESS_REG, 3, 6),
-	strobe_sensitivity = INIT_FIELD(LM3554_FLASH_BRIGHTNESS_REG, 7, 7),
-	flash_timeout      = INIT_FIELD(LM3554_FLASH_DURATION_REG,   0, 4),
-	current_limit      = INIT_FIELD(LM3554_FLASH_DURATION_REG,   5, 6),
-	flags              = INIT_FIELD(LM3554_FLAGS_REG,            0, 7),
-	envm_tx2           = INIT_FIELD(LM3554_CONFIG_REG_1,         5, 5),
-	tx2_polarity       = INIT_FIELD(LM3554_CONFIG_REG_1,         6, 6),
-	tx2_shutdown       = INIT_FIELD(LM3554_CONFIG_REG_2,         0, 0);
-
-static int set_reg_field(struct v4l2_subdev *sd,
-			 const struct lm3554_reg_field *field,
-			 u8 value)
+/* Return negative errno else zero on success */
+static int lm3554_write(struct lm3554 *flash, u8 addr, u8 val)
 {
+	struct i2c_client *client = v4l2_get_subdevdata(&flash->sd);
 	int ret;
-	u32 tmp,
-	    val = value,
-	    bits = (field->msb - field->lsb) + 1,
-	    mask = ((1<<bits)-1) << field->lsb;
-	struct i2c_client *client = v4l2_get_subdevdata(sd);
-	struct lm3554 *flash = to_lm3554(sd);
 
-	mutex_lock(&flash->i2c_mutex);
-	tmp = i2c_smbus_read_byte_data(client, field->reg_address);
-	tmp &= ~mask;
-	val = (val << field->lsb) & mask;
-	ret = i2c_smbus_write_byte_data(client, field->reg_address, val | tmp);
-	mutex_unlock(&flash->i2c_mutex);
+	ret = i2c_smbus_write_byte_data(client, addr, val);
 
-	if (ret < 0)
-		dev_err(&client->dev, "%s: flash i2c fail", __func__);
+	dev_dbg(&client->dev, "Write Addr:%02X Val:%02X %s\n", addr, val,
+		ret < 0 ? "fail" : "ok");
 
 	return ret;
 }
 
-static void get_reg_field(struct v4l2_subdev *sd,
-			  const struct lm3554_reg_field *field,
-			  u8 *value)
+/* Return negative errno else a data byte received from the device. */
+static int lm3554_read(struct lm3554 *flash, u8 addr)
 {
-	u32 tmp,
-	    bits = (field->msb - field->lsb) + 1,
-	    mask = ((1<<bits)-1) << field->lsb;
-	struct i2c_client *client = v4l2_get_subdevdata(sd);
-	struct lm3554 *flash = to_lm3554(sd);
+	struct i2c_client *client = v4l2_get_subdevdata(&flash->sd);
+	int ret;
 
-	mutex_lock(&flash->i2c_mutex);
-	tmp = i2c_smbus_read_byte_data(client, field->reg_address);
-	mutex_unlock(&flash->i2c_mutex);
+	ret = i2c_smbus_read_byte_data(client, addr);
 
-	*value = (tmp & mask) >> field->lsb;
+	dev_dbg(&client->dev, "Read Addr:%02X Val:%02X %s\n", addr, ret,
+		ret < 0 ? "fail" : "ok");
+
+	return ret;
+}
+
+/* -----------------------------------------------------------------------------
+ * Hardware configuration
+ */
+
+static int lm3554_set_mode(struct lm3554 *flash, unsigned int mode)
+{
+	u8 val;
+	int ret;
+
+	val = (mode << LM3554_FLASH_MODE_SHIFT) |
+	      (flash->flash_current << LM3554_FLASH_CURRENT_SHIFT);
+
+	ret = lm3554_write(flash, LM3554_FLASH_BRIGHTNESS_REG, val);
+	if (ret == 0)
+		flash->mode = mode;
+	return ret;
+}
+
+static int lm3554_set_torch(struct lm3554 *flash)
+{
+	u8 val;
+
+	val = (flash->mode << LM3554_TORCH_MODE_SHIFT) |
+	      (flash->torch_current << LM3554_TORCH_CURRENT_SHIFT) |
+	      (flash->indicator_current << LM3554_INDICATOR_CURRENT_SHIFT);
+
+	return lm3554_write(flash, LM3554_TORCH_BRIGHTNESS_REG, val);
+}
+
+static int lm3554_set_flash(struct lm3554 *flash)
+{
+	u8 val;
+
+	val = (flash->mode << LM3554_FLASH_MODE_SHIFT) |
+	      (flash->flash_current << LM3554_FLASH_CURRENT_SHIFT);
+
+	return lm3554_write(flash, LM3554_FLASH_BRIGHTNESS_REG, val);
+}
+
+static int lm3554_set_duration(struct lm3554 *flash)
+{
+	u8 val;
+
+	val = (flash->timeout << LM3554_FLASH_TIMEOUT_SHIFT) |
+	      (flash->current_limit << LM3554_CURRENT_LIMIT_SHIFT);
+
+	return lm3554_write(flash, LM3554_FLASH_DURATION_REG, val);
+}
+
+static int lm3554_set_config1(struct lm3554 *flash)
+{
+	u8 val;
+
+	val = (flash->envm_tx2 << LM3554_ENVM_TX2_SHIFT) |
+	      (flash->tx2_polarity << LM3554_TX2_POLARITY_SHIFT);
+	return lm3554_write(flash, LM3554_CONFIG_REG_1, val);
 }
 
 static int lm3554_hw_reset(struct i2c_client *client)
@@ -151,6 +199,10 @@ static int lm3554_hw_reset(struct i2c_client *client)
 	return ret;
 }
 
+/* -----------------------------------------------------------------------------
+ * V4L2 controls
+ */
+
 static int lm3554_s_flash_timeout(struct v4l2_subdev *sd, u32 val)
 {
 	struct lm3554 *flash = to_lm3554(sd);
@@ -160,7 +212,7 @@ static int lm3554_s_flash_timeout(struct v4l2_subdev *sd, u32 val)
 
 	flash->timeout = val;
 
-	return set_reg_field(sd, &flash_timeout, (u8)val);
+	return lm3554_set_duration(flash);
 }
 
 static int lm3554_g_flash_timeout(struct v4l2_subdev *sd, s32 *val)
@@ -181,7 +233,7 @@ static int lm3554_s_flash_intensity(struct v4l2_subdev *sd, u32 intensity)
 
 	flash->flash_current = intensity;
 
-	return set_reg_field(sd, &flash_current, (u8)intensity);
+	return lm3554_set_flash(flash);
 }
 
 static int lm3554_g_flash_intensity(struct v4l2_subdev *sd, s32 *val)
@@ -203,7 +255,7 @@ static int lm3554_s_torch_intensity(struct v4l2_subdev *sd, u32 intensity)
 
 	flash->torch_current = intensity;
 
-	return set_reg_field(sd, &torch_current, (u8)intensity);
+	return lm3554_set_torch(flash);
 }
 
 static int lm3554_g_torch_intensity(struct v4l2_subdev *sd, s32 *val)
@@ -225,7 +277,7 @@ static int lm3554_s_indicator_intensity(struct v4l2_subdev *sd, u32 intensity)
 
 	flash->indicator_current = intensity;
 
-	return set_reg_field(sd, &indicator_current, (u8)intensity);
+	return lm3554_set_torch(flash);
 }
 
 static int lm3554_g_indicator_intensity(struct v4l2_subdev *sd, s32 *val)
@@ -256,7 +308,7 @@ static int lm3554_s_flash_strobe(struct v4l2_subdev *sd, u32 val)
 	/* Flash off */
 	if (!val) {
 		/* set current to 70mA and wait a while */
-		ret = set_reg_field(sd, &flash_current, 0);
+		ret = lm3554_write(flash, LM3554_FLASH_BRIGHTNESS_REG, 0);
 		if (ret < 0)
 			goto err;
 		mod_timer(&flash->flash_off_delay,
@@ -274,7 +326,7 @@ static int lm3554_s_flash_strobe(struct v4l2_subdev *sd, u32 val)
 		gpio_set_value(pdata->gpio_strobe, 0);
 
 	/* Restore flash current settings */
-	ret = set_reg_field(sd, &flash_current, flash->flash_current);
+	ret = lm3554_set_flash(flash);
 	if (ret < 0)
 		goto err;
 
@@ -290,7 +342,6 @@ err:
 
 static int lm3554_s_flash_mode(struct v4l2_subdev *sd, u32 new_mode)
 {
-	int ret;
 	struct lm3554 *flash = to_lm3554(sd);
 	unsigned int mode;
 
@@ -310,10 +361,8 @@ static int lm3554_s_flash_mode(struct v4l2_subdev *sd, u32 new_mode)
 	default:
 		return -EINVAL;
 	}
-	ret = set_reg_field(sd, &flash_mode, mode);
-	if (ret == 0)
-		flash->mode = new_mode;
-	return ret;
+
+	return lm3554_set_mode(flash, mode);
 }
 
 static int lm3554_g_flash_mode(struct v4l2_subdev *sd, s32 * val)
@@ -325,9 +374,15 @@ static int lm3554_g_flash_mode(struct v4l2_subdev *sd, s32 * val)
 
 static int lm3554_g_flash_status(struct v4l2_subdev *sd, s32 *val)
 {
+	struct lm3554 *flash = to_lm3554(sd);
 	u8 value;
+	int ret;
 
-	get_reg_field(sd, &flags, &value);
+	ret = lm3554_read(flash, LM3554_FLAGS_REG);
+	if (ret < 0)
+		return ret;
+
+	value = ret;
 
 	/*
 	 * do not take TX1/TX2 signal as an error.
@@ -493,6 +548,7 @@ static int lm3554_detect(struct v4l2_subdev *sd)
 	s32 status;
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	struct i2c_adapter *adapter = client->adapter;
+	struct lm3554 *flash = to_lm3554(sd);
 	int ret;
 
 	if (!i2c_check_functionality(adapter, I2C_FUNC_SMBUS_BYTE_DATA)) {
@@ -507,16 +563,17 @@ static int lm3554_detect(struct v4l2_subdev *sd)
 	 * ENVM/TX pin asserted, flash forced into torch;
 	 * ENVM/TX pin desserted, flash set back;
 	 */
-	ret = set_reg_field(sd, &envm_tx2, 1);
-	if (ret < 0)
-		goto fail;
+	flash->envm_tx2 = 1;
+	flash->tx2_polarity = 0;
 
-	ret = set_reg_field(sd, &tx2_polarity, 0);
+	ret = lm3554_set_config1(flash);
 	if (ret < 0)
 		goto fail;
 
 	/* set peak current limit to be 1000mA */
-	ret = set_reg_field(sd, &current_limit, 0);
+	flash->current_limit = 0;
+
+	ret = lm3554_set_duration(flash);
 	if (ret < 0)
 		goto fail;
 
@@ -642,8 +699,6 @@ static int __devinit lm3554_probe(struct i2c_client *client,
 	}
 
 	flash->sd.entity.type = MEDIA_ENT_T_V4L2_SUBDEV_FLASH;
-
-	mutex_init(&flash->i2c_mutex);
 
 	setup_timer(&flash->flash_off_delay, lm3554_flash_off_delay,
 		    (unsigned long)client);
