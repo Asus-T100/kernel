@@ -77,7 +77,7 @@
 #define FFL_MIN_RX_BUFFERING	65536
 
 /* Modem post book wake handshake timeout value (10 seconds) */
-#define POST_BOOT_HANDSHAKE_TIMEOUT_JIFFIES	(msecs_to_jiffies(10000))
+#define POST_BOOT_HANDSHAKE_TIMEOUT_JIFFIES	(msecs_to_jiffies(60000))
 
 /* Error recovery related timings */
 #define RECOVERY_TO_NORMAL_DELAY_JIFFIES	(usecs_to_jiffies(100000))
