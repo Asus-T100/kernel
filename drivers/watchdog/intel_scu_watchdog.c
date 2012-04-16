@@ -54,6 +54,7 @@
 #include <asm/atomic.h>
 #include <linux/intel_mid_pm.h>
 #include <asm/intel_scu_ipc.h>
+#include <asm/intel_scu_ipcutil.h>
 #include <asm/apb_timer.h>
 
 #include "intel_scu_watchdog.h"

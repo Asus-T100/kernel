@@ -27,6 +27,7 @@
 #include <linux/miscdevice.h>
 #include <linux/io.h>
 #include <asm/intel_scu_ipc.h>
+#include <asm/intel_scu_ipcutil.h>
 #include <asm/intel-mid.h>
 #include <linux/pm_runtime.h>
 
@@ -244,6 +245,109 @@ static long scu_ipc_ioctl(struct file *fp, unsigned int cmd,
 
 	return ret;
 }
+
+#define OSHOB_SIZE              60
+#define OSNIB_SIZE              32
+#define IPCMSG_GET_HOBADDR      0xE5
+
+int intel_scu_ipc_read_oshob(u8 *data, int len, int offset)
+{
+	int ret, i;
+	u32 oshob_base;
+	void __iomem *oshob_addr;
+
+	ret = intel_scu_ipc_command(IPCMSG_GET_HOBADDR, 0, NULL, 0,
+			&oshob_base, 1);
+	if (ret < 0) {
+		pr_err("ipc_read_oshob failed!!\n");
+		goto exit;
+	}
+
+	pr_info("OSHOB addr values is %x\n", oshob_base);
+
+	oshob_addr = ioremap_nocache(oshob_base, OSHOB_SIZE);
+	if (!oshob_addr) {
+		pr_err("ioremap failed!\n");
+		ret = -ENOMEM;
+		goto exit;
+	} else {
+		u8 *ptr = data;
+		for (i = 0; i < len; i = i+1) {
+			*ptr = readb(oshob_addr + offset + i);
+			pr_info("addr=%8x, offset=%2x, value=%2x\n",
+					(u32)(oshob_addr + i),
+					offset + i, *ptr);
+			ptr++;
+		}
+	}
+
+	iounmap(oshob_addr);
+exit:
+	return ret;
+}
+EXPORT_SYMBOL_GPL(intel_scu_ipc_read_oshob);
+
+#define IPCMSG_WRITE_OSNIB      0xE4
+#define POSNIBW_OFFSET          0x34
+
+int intel_scu_ipc_write_osnib(u8 *data, int len, int offset, u32 mask)
+{
+	int i;
+	int ret = 0;
+	u32 posnibw, oshob_base;
+	void __iomem *oshob_addr, *osnibw_addr;
+
+	ret = intel_scu_ipc_command(IPCMSG_GET_HOBADDR, 0, NULL, 0,
+			&oshob_base, 1);
+	if (ret < 0) {
+		pr_err("ipc_get_hobaddr failed!!\n");
+		goto exit;
+	}
+
+	pr_info("OSHOB addr values is %x\n", oshob_base);
+
+	intel_scu_ipc_lock();
+
+	oshob_addr = ioremap_nocache(oshob_base, OSHOB_SIZE);
+	if (!oshob_addr) {
+		pr_err("ioremap failed!\n");
+		ret = -ENOMEM;
+		goto exit;
+	}
+
+	posnibw = readl(oshob_addr + POSNIBW_OFFSET);
+	if (posnibw == 0) { /* workaround here for BZ 2914 */
+		posnibw = 0xFFFF3400;
+		pr_err("ERR: posnibw from oshob is 0, manually set it here\n");
+	}
+
+	pr_info("POSNIB: %x\n", posnibw);
+
+	osnibw_addr = ioremap_nocache(posnibw, OSNIB_SIZE);
+	if (!osnibw_addr) {
+		pr_err("ioremap failed!\n");
+		ret = -ENOMEM;
+		goto unmap_oshob_addr;
+	}
+
+	for (i = 0; i < len; i++)
+		writeb(*(data + i), (osnibw_addr + offset + i));
+
+	ret = intel_scu_ipc_raw_cmd(IPCMSG_WRITE_OSNIB, 0, NULL, 0, NULL,
+			0, 0, mask);
+	if (ret < 0)
+		pr_err("ipc_write_osnib failed!!\n");
+
+	iounmap(osnibw_addr);
+
+unmap_oshob_addr:
+	iounmap(oshob_addr);
+exit:
+	intel_scu_ipc_unlock();
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(intel_scu_ipc_write_osnib);
 
 /*
  * This writes the reboot reason in the OSNIB (factor and avoid any overlap)
