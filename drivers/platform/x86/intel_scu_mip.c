@@ -385,7 +385,7 @@ static void __exit mip_module_exit(void)
 	ipc_driver_unregister(&mip_driver);
 }
 
-module_init(mip_module_init);
+fs_initcall(mip_module_init);
 module_exit(mip_module_exit);
 
 MODULE_AUTHOR("Shijie Zhang <shijie.zhang@intel.com>");

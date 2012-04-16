@@ -426,7 +426,7 @@ static void __exit pmic_module_exit(void)
 	ipc_driver_unregister(&pmic_driver);
 }
 
-module_init(pmic_module_init);
+fs_initcall(pmic_module_init);
 module_exit(pmic_module_exit);
 
 MODULE_AUTHOR("Bin Yang<bin.yang@intel.com>");
