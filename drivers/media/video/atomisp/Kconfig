@@ -1,13 +1,11 @@
 config VIDEO_ATOMISP
-        tristate "Medfield Penwell Image Signal Processor Driver"
-        depends on VIDEO_V4L2
-	select	VIDEOBUF_VMALLOC 
+	tristate "Medfield Penwell Image Signal Processor Driver"
+	depends on VIDEO_V4L2
+	select VIDEOBUF_VMALLOC
 
-	default m
+	---help---
+	  Say Y here if your platform support camera imaging subsystem on
+	  the Intel Medfield platform.
 
-        ---help---
-          Say Y here if your platform support camera imaging subsystem on
-	  the intel Medifield platform.
-
-          To compile this driver as a module, choose M here: the
-          module will be called atomisp.
+	  To compile this driver as a module, choose M here: the
+	  module will be called atomisp.
