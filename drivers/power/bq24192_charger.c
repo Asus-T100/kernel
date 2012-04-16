@@ -215,6 +215,7 @@ static char bq24192_dbg_regs[BQ24192_MAX_MEM][4];
 static struct i2c_client *bq24192_client;
 
 static char *bq24192_power_supplied_to[] = {
+			"max170xx_battery",
 			"max17042_battery",
 };
 
