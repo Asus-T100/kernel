@@ -181,6 +181,10 @@
 #define _SDIS_VER_COEF_TBL_USE_DMEM(mode, enable_sdis) \
 	(mode == SH_CSS_BINARY_MODE_VIDEO && enable_sdis)
 
+/* For YUV upscaling, the internal size is used for DIS statistics */
+#define _ISP_SDIS_ELEMS_ISP(input, internal, enable_us) \
+	((enable_us) ? (internal) : (input))
+
 /* SDIS Projections:
  * Horizontal projections are calculated for each line.
  * Vertical projections are calculated for each column.
@@ -224,10 +228,15 @@
 	(_ISP_BQS(in_width) >> deci_factor_log2)
 #define _ISP_S3ATBL_HEIGHT(in_height, deci_factor_log2) \
 	(_ISP_BQS(in_height) >> deci_factor_log2)
-#define _ISP_S3A_ISP_WIDTH(in_width, left_crop) \
-	((in_width) - ((left_crop) ? 2*ISP_VEC_NELEMS : 0))
-#define _ISP_S3ATBL_ISP_WIDTH(in_width, deci_log2, left_crop) \
-	CEIL_SHIFT(_ISP_BQS(_ISP_S3A_ISP_WIDTH(in_width, left_crop)), deci_log2)
+
+#define _ISP_S3A_ELEMS_ISP_WIDTH(in_width, int_width, enable_hus, left_crop) \
+	(((enable_hus) ? (int_width) : (in_width)) \
+	 - ((left_crop) ? 2 * ISP_VEC_NELEMS : 0))
+#define _ISP_S3A_ELEMS_ISP_HEIGHT(in_height, int_height, enable_vus) \
+	((enable_vus) ? (int_height) : (in_height))
+
+#define _ISP_S3ATBL_ISP_WIDTH(in_width, deci_factor_log2) \
+	CEIL_SHIFT(_ISP_BQS(in_width), deci_factor_log2)
 #define _ISP_S3ATBL_ISP_HEIGHT(in_height, deci_factor_log2) \
 	CEIL_SHIFT(_ISP_BQS(in_height), deci_factor_log2)
 #define ISP_S3ATBL_VECTORS \

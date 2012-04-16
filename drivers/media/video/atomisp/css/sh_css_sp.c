@@ -318,6 +318,10 @@ sh_css_sp_configure_dvs(const struct sh_css_binary *binary,
 	int half_env_x, half_env_y,
 	    motion_x = args->dvs_vector_x,
 	    motion_y = args->dvs_vector_y;
+	bool upscale_x = binary->in_frame_info.width <
+			 binary->out_frame_info.width;
+	bool upscale_y = binary->in_frame_info.height <
+			 binary->out_frame_info.height;
 
 	if (binary->info->enable_uds) {
 		/* we calculate with the envelope that we can actually use,
@@ -331,10 +335,20 @@ sh_css_sp_configure_dvs(const struct sh_css_binary *binary,
 		/* for digital zoom, we use the dvs envelope and make sure
 		   that we don't include the 8 leftmost pixels or 8 topmost
 		   rows. */
-		uds_xc = (binary->out_frame_info.width + env_width) / 2 +
-			 SH_CSS_MIN_DVS_ENVELOPE;
-		uds_yc = (binary->out_frame_info.height + env_height) / 2 +
-			 SH_CSS_MIN_DVS_ENVELOPE;
+		if (upscale_x) {
+			uds_xc = (binary->in_frame_info.width + env_width
+					+ SH_CSS_MIN_DVS_ENVELOPE) / 2;
+		} else {
+			uds_xc = (binary->out_frame_info.width + env_width)
+					/ 2 + SH_CSS_MIN_DVS_ENVELOPE;
+		}
+		if (upscale_y) {
+			uds_yc = (binary->in_frame_info.height + env_height
+					+ SH_CSS_MIN_DVS_ENVELOPE) / 2;
+		} else {
+			uds_yc = (binary->out_frame_info.height + env_height)
+					/ 2 + SH_CSS_MIN_DVS_ENVELOPE;
+		}
 		/* clip the motion vector to +/- half the envelope */
 		motion_x = clamp(motion_x, -half_env_x, half_env_x);
 		motion_y = clamp(motion_y, -half_env_y, half_env_y);

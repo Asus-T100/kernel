@@ -318,6 +318,9 @@ fill_binary_info(const struct sh_css_binary_info *info,
 		     isp_output_width  = out_info->padded_width,
 		     isp_output_height = out_info->height,
 		     s3a_isp_width;
+	bool enable_ds = info->enable_ds;
+	bool enable_hus = in_info->width < out_info->width;
+	bool enable_vus = in_info->height < out_info->height;
 
 	if (info->enable_dvs_envelope) {
 		sh_css_video_get_dis_envelope(&dvs_env_width, &dvs_env_height);
@@ -337,10 +340,13 @@ fill_binary_info(const struct sh_css_binary_info *info,
 		bits_per_pixel = sh_css_input_format_bits_per_pixel(
 					stream_format, two_ppc);
 	}
-	if (info->enable_ds) {
-		ds_input_width  = in_info->padded_width + info->left_cropping;
-		ds_input_height = in_info->height + info->top_cropping;
-	}
+	ds_input_width  = in_info->padded_width + info->left_cropping;
+	ds_input_height = in_info->height + info->top_cropping;
+	if (enable_hus)
+		ds_input_width  += dvs_env_width;
+	if (enable_vus)
+		ds_input_height += dvs_env_height;
+
 	/* We first calculate the resolutions used by the ISP. After that,
 	 * we use those resolutions to compute sizes for tables etc. */
 	isp_internal_width  =
@@ -354,12 +360,14 @@ fill_binary_info(const struct sh_css_binary_info *info,
 		__ISP_INTERNAL_HEIGHT(isp_output_height, info->top_cropping,
 				      dvs_env_height);
 	isp_input_width = _ISP_INPUT_WIDTH(isp_internal_width,
-					   ds_input_width, info->enable_ds);
+					   ds_input_width,
+					   enable_ds || enable_hus);
 	isp_input_height = _ISP_INPUT_HEIGHT(isp_internal_height,
-					     ds_input_height, info->enable_ds);
+					     ds_input_height,
+					     enable_ds || enable_vus);
 
-	s3a_isp_width = _ISP_S3A_ISP_WIDTH(isp_input_width,
-		info->left_cropping);
+	s3a_isp_width = _ISP_S3A_ELEMS_ISP_WIDTH(isp_input_width,
+		isp_internal_width, enable_hus, info->left_cropping);
 	if (info->fixed_s3a_deci_log)
 		s3a_log_deci = info->fixed_s3a_deci_log;
 	else
@@ -435,12 +443,18 @@ fill_binary_info(const struct sh_css_binary_info *info,
 			_ISP_S3ATBL_WIDTH(binary->in_frame_info.width,
 				s3a_log_deci);
 		binary->s3atbl_height =
-			_ISP_S3ATBL_HEIGHT(isp_input_height, s3a_log_deci);
+			_ISP_S3ATBL_HEIGHT(binary->in_frame_info.height,
+				s3a_log_deci);
 		binary->s3atbl_isp_width =
-			_ISP_S3ATBL_ISP_WIDTH(isp_input_width, s3a_log_deci,
-					  info->left_cropping);
+			_ISP_S3ATBL_ISP_WIDTH(
+				_ISP_S3A_ELEMS_ISP_WIDTH(isp_input_width,
+				isp_internal_width, enable_hus,
+				info->left_cropping),
+				s3a_log_deci);
 		binary->s3atbl_isp_height =
-			_ISP_S3ATBL_ISP_HEIGHT(isp_input_height, s3a_log_deci);
+			_ISP_S3ATBL_ISP_HEIGHT(
+				_ISP_S3A_ELEMS_ISP_HEIGHT(isp_input_height,
+				isp_internal_height, enable_vus), s3a_log_deci);
 	} else {
 		binary->s3atbl_width  = 0;
 		binary->s3atbl_height = 0;
@@ -467,23 +481,31 @@ fill_binary_info(const struct sh_css_binary_info *info,
 			_ISP_SDIS_HOR_COEF_NUM_3A(binary->in_frame_info.width,
 						  SH_CSS_DIS_DECI_FACTOR_LOG2);
 		binary->dis_ver_coef_num_3a  =
-			_ISP_SDIS_VER_COEF_NUM_3A(isp_input_height,
+			_ISP_SDIS_VER_COEF_NUM_3A(binary->in_frame_info.height,
 						  SH_CSS_DIS_DECI_FACTOR_LOG2);
 		binary->dis_hor_coef_num_isp =
-			_ISP_SDIS_HOR_COEF_NUM_ISP(isp_input_width);
+			_ISP_SDIS_HOR_COEF_NUM_ISP(
+				_ISP_SDIS_ELEMS_ISP(isp_input_width,
+				isp_internal_width, enable_hus));
 		binary->dis_ver_coef_num_isp =
-			_ISP_SDIS_VER_COEF_NUM_ISP(isp_input_height);
+			_ISP_SDIS_VER_COEF_NUM_ISP(
+				_ISP_SDIS_ELEMS_ISP(isp_input_height,
+				isp_internal_height, enable_vus));
 		binary->dis_hor_proj_num_3a  =
-			_ISP_SDIS_HOR_PROJ_NUM_3A(isp_input_height,
+			_ISP_SDIS_HOR_PROJ_NUM_3A(binary->in_frame_info.height,
 						  SH_CSS_DIS_DECI_FACTOR_LOG2);
 		binary->dis_ver_proj_num_3a  =
 			_ISP_SDIS_VER_PROJ_NUM_3A(binary->in_frame_info.width,
 						  SH_CSS_DIS_DECI_FACTOR_LOG2);
 		binary->dis_hor_proj_num_isp =
-			__ISP_SDIS_HOR_PROJ_NUM_ISP(isp_input_height,
+			__ISP_SDIS_HOR_PROJ_NUM_ISP(
+				_ISP_SDIS_ELEMS_ISP(isp_input_height,
+				isp_internal_height, enable_vus),
 						SH_CSS_DIS_DECI_FACTOR_LOG2);
 		binary->dis_ver_proj_num_isp =
-			__ISP_SDIS_VER_PROJ_NUM_ISP(isp_input_width,
+			__ISP_SDIS_VER_PROJ_NUM_ISP(
+				_ISP_SDIS_ELEMS_ISP(isp_input_width,
+				isp_internal_width, enable_hus),
 						SH_CSS_DIS_DECI_FACTOR_LOG2);
 	} else {
 		binary->dis_deci_factor_log2 = 0;
