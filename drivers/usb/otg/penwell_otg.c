@@ -439,7 +439,7 @@ static void penwell_otg_update_chrg_cap(enum usb_charger_type charger,
 		if (new.chrg_evt == -1)
 			dev_dbg(pnw->dev, "no need to notify\n");
 		else
-			queue_work(pnw->qwork, &pnw->psc_notify);
+			queue_work(pnw->chrg_qwork, &pnw->psc_notify);
 	}
 
 	dev_dbg(pnw->dev, "%s <---\n", __func__);
@@ -488,7 +488,7 @@ static int penwell_otg_set_power(struct otg_transceiver *otg,
 		if (new.chrg_evt == -1)
 			dev_dbg(pnw->dev, "no need to notify\n");
 		else
-			queue_work(pnw->qwork, &pnw->psc_notify);
+			queue_work(pnw->chrg_qwork, &pnw->psc_notify);
 	}
 
 	dev_dbg(pnw->dev, "%s <---\n", __func__);
@@ -625,6 +625,16 @@ static int penwell_otg_set_vbus(struct otg_transceiver *otg, bool enabled)
 			pnw->psc_cap.mA = 500;
 			pnw->psc_cap.chrg_type =
 				POWER_SUPPLY_TYPE_USB_HOST;
+			pnw->psc_cap.chrg_evt =
+				POWER_SUPPLY_CHARGER_EVENT_CONNECT;
+			psc_cap =  pnw->psc_cap;
+			spin_unlock_irqrestore(&pnw->charger_lock, flags);
+		} else if (pnw->psc_cap.chrg_type ==
+					POWER_SUPPLY_TYPE_USB_ACA) {
+			spin_lock_irqsave(&pnw->charger_lock, flags);
+			pnw->psc_cap.mA = CHRG_CURR_ACA;
+			pnw->psc_cap.chrg_type =
+				POWER_SUPPLY_TYPE_USB_ACA;
 			pnw->psc_cap.chrg_evt =
 				POWER_SUPPLY_CHARGER_EVENT_CONNECT;
 			psc_cap =  pnw->psc_cap;
@@ -1570,6 +1580,9 @@ static int penwell_otg_charger_det_clt(void)
 	struct intel_mid_otg_xceiv	*iotg = &pnw->iotg;
 	int				retval;
 	u8				data;
+	u8				usb_vs2_latch = 0;
+	u8				usb_vs2_sts = 0;
+	struct iotg_ulpi_access_ops	*ops;
 
 	dev_dbg(pnw->dev, "%s --->\n", __func__);
 
@@ -1578,6 +1591,40 @@ static int penwell_otg_charger_det_clt(void)
 	if (retval) {
 		dev_warn(pnw->dev, "DCD failed, exit\n");
 		return CHRG_UNKNOWN;
+	}
+
+	/* ACA Detection */
+	ops = &iotg->ulpi_ops;
+	ops->read(iotg, ULPI_VS2LATCH, &usb_vs2_latch);
+	dev_dbg(pnw->dev, "%s: usb_vs2_latch = 0x%x\n",
+			__func__, usb_vs2_latch);
+	if (usb_vs2_latch & IDRARBRC_MSK) {
+		ops->read(iotg, ULPI_VS2STS, &usb_vs2_sts);
+		dev_dbg(pnw->dev, "%s: usb_vs2_sts = 0x%x\n",
+				__func__, usb_vs2_sts);
+
+		switch (IDRARBRC_STS(usb_vs2_sts)) {
+		case IDRARBRC_A:
+			iotg->hsm.id = ID_ACA_A;
+			dev_dbg(pnw->dev, "ACA-A interrupt detected\n");
+			break;
+		case IDRARBRC_B:
+			iotg->hsm.id = ID_ACA_B;
+			dev_dbg(pnw->dev, "ACA-B interrupt detected\n");
+			break;
+		case IDRARBRC_C:
+			iotg->hsm.id = ID_ACA_C;
+			dev_dbg(pnw->dev, "ACA-C interrupt detected\n");
+			break;
+		default:
+			break;
+		}
+	}
+
+	if (iotg->hsm.id == ID_ACA_A || iotg->hsm.id == ID_ACA_B
+			|| iotg->hsm.id == ID_ACA_C) {
+		dev_info(pnw->dev, "ACA detected\n");
+		return CHRG_ACA;
 	}
 
 	/* SE1 Detection */
@@ -2005,8 +2052,12 @@ static irqreturn_t otg_dummy_irq(int irq, void *_dev)
 static irqreturn_t otg_irq_handle(struct penwell_otg *pnw,
 					struct intel_mid_otg_xceiv *iotg)
 {
+	int				id = 0;
 	int				flag = 0;
 	u32				int_sts, int_en, int_mask = 0;
+	u8				usb_vs2_latch = 0;
+	u8				usb_vs2_sts = 0;
+	struct iotg_ulpi_access_ops	*ops;
 
 	/* Check VBUS/SRP interrup */
 	int_sts = readl(pnw->iotg.base + CI_OTGSC);
@@ -2016,13 +2067,53 @@ static irqreturn_t otg_irq_handle(struct penwell_otg *pnw,
 	if (int_mask == 0)
 		return IRQ_NONE;
 
+	ops = &iotg->ulpi_ops;
+	ops->read(iotg, ULPI_VS2LATCH, &usb_vs2_latch);
+	dev_dbg(pnw->dev, "usb_vs2_latch = 0x%x\n", usb_vs2_latch);
+	if (usb_vs2_latch & IDRARBRC_MSK) {
+		ops->read(iotg, ULPI_VS2STS, &usb_vs2_sts);
+		dev_dbg(pnw->dev, "%s: usb_vs2_sts = 0x%x\n",
+				__func__, usb_vs2_sts);
+
+		switch (IDRARBRC_STS(usb_vs2_sts)) {
+		case IDRARBRC_A:
+			id = ID_ACA_A;
+			dev_dbg(pnw->dev, "ACA-A interrupt detected\n");
+			break;
+		case IDRARBRC_B:
+			id = ID_ACA_B;
+			dev_dbg(pnw->dev, "ACA-B interrupt detected\n");
+			break;
+		case IDRARBRC_C:
+			id = ID_ACA_C;
+			dev_dbg(pnw->dev, "ACA-C interrupt detected\n");
+			break;
+		default:
+			break;
+		}
+
+		if (id) {
+			iotg->hsm.id = id;
+			flag = 1;
+			dev_dbg(pnw->dev, "%s: id change int = %d\n",
+					__func__, iotg->hsm.id);
+		} else {
+			iotg->hsm.id = (int_sts & OTGSC_ID) ?
+				ID_B : ID_A;
+			flag = 1;
+			dev_dbg(pnw->dev, "%s: id change int = %d\n",
+					__func__, iotg->hsm.id);
+		}
+	}
+
 	if (int_mask) {
 		dev_dbg(pnw->dev,
 			"OTGSC = 0x%x, mask =0x%x\n", int_sts, int_mask);
 
-		/* FIXME: if ACA/ID interrupt is enabled, */
 		if (int_mask & OTGSC_IDIS) {
-			iotg->hsm.id = (int_sts & OTGSC_ID) ? ID_B : ID_A;
+			if (!id)
+				iotg->hsm.id = (int_sts & OTGSC_ID) ?
+					ID_B : ID_A;
 			flag = 1;
 			dev_dbg(pnw->dev, "%s: id change int = %d\n",
 						__func__, iotg->hsm.id);
@@ -2487,21 +2578,6 @@ static void penwell_otg_work(struct work_struct *work)
 
 			penwell_otg_phy_low_power(0);
 
-			/* Check it is caused by ACA attachment */
-			if (hsm->id == ID_ACA_B) {
-				/* in this case, update current limit*/
-				penwell_otg_update_chrg_cap(CHRG_ACA,
-							CHRG_CURR_ACA);
-
-				/* make sure PHY low power state */
-				penwell_otg_phy_low_power(1);
-				break;
-			} else if (hsm->id == ID_ACA_C) {
-				/* in this case, update current limit*/
-				penwell_otg_update_chrg_cap(CHRG_ACA,
-							CHRG_CURR_ACA);
-			}
-
 			/* Clear power_up */
 			hsm->power_up = 0;
 
@@ -2569,6 +2645,58 @@ static void penwell_otg_work(struct work_struct *work)
 				penwell_otg_phy_low_power(1);
 				break;
 
+			} else if (charger_type == CHRG_ACA) {
+				dev_info(pnw->dev, "ACA detected\n");
+				if (hsm->id == ID_ACA_A) {
+					/* Move to A_IDLE state, ID changes */
+					penwell_otg_update_chrg_cap(CHRG_ACA,
+								CHRG_CURR_ACA);
+
+					/* Delete current timer */
+					penwell_otg_del_timer(TB_SRP_FAIL_TMR);
+
+					iotg->otg.default_a = 1;
+					hsm->a_srp_det = 0;
+					set_host_mode();
+					penwell_otg_phy_low_power(0);
+
+					/* Always set a_bus_req to 1,
+					 * in case no ADP */
+					hsm->a_bus_req = 1;
+
+					/* Prevent device enter D0i1 or S3*/
+					wake_lock(&pnw->wake_lock);
+					pm_runtime_get(pnw->dev);
+
+					iotg->otg.state = OTG_STATE_A_IDLE;
+					penwell_update_transceiver();
+					break;
+				} else if (hsm->id == ID_ACA_B) {
+					penwell_otg_update_chrg_cap(CHRG_ACA,
+								CHRG_CURR_ACA);
+
+					/* make sure PHY low power state */
+					penwell_otg_phy_low_power(1);
+					break;
+				} else if (hsm->id == ID_ACA_C) {
+					penwell_otg_update_chrg_cap(CHRG_ACA,
+								CHRG_CURR_ACA);
+					/* Clear HNP polling flag */
+					if (iotg->otg.gadget)
+						iotg->otg.gadget->
+							host_request_flag = 0;
+
+					penwell_otg_phy_low_power(0);
+					set_client_mode();
+
+					if (iotg->start_peripheral) {
+						iotg->start_peripheral(iotg);
+					} else {
+						dev_dbg(pnw->dev,
+							"client driver not support\n");
+						break;
+					}
+				}
 			} else if (charger_type == CHRG_CDP) {
 				dev_info(pnw->dev, "CDP detected\n");
 
@@ -2686,6 +2814,10 @@ static void penwell_otg_work(struct work_struct *work)
 						ULPI_PWRCTRLCLR, DPVSRCEN);
 				if (retval)
 					dev_warn(pnw->dev, "ulpi failed\n");
+			} else if (ps_type == POWER_SUPPLY_TYPE_USB_ACA) {
+				/* Notify EM charger remove event */
+				penwell_otg_update_chrg_cap(CHRG_UNKNOWN,
+						CHRG_CURR_DISCONN);
 			} else if (ps_type == POWER_SUPPLY_TYPE_USB_DCP) {
 				/* Notify EM charger remove event */
 				penwell_otg_update_chrg_cap(CHRG_UNKNOWN,
@@ -3037,7 +3169,7 @@ static void penwell_otg_work(struct work_struct *work)
 			if (hsm->a_srp_det)
 				hsm->a_srp_det = 0;
 
-			hsm->b_conn = 0;
+			hsm->b_conn = 1;
 			hsm->hnp_poll_enable = 0;
 
 			if (iotg->start_host)
@@ -4045,25 +4177,80 @@ static struct attribute_group debug_dev_attr_group = {
 
 static int penwell_otg_aca_enable(void)
 {
-	int			retval = 0;
-	struct penwell_otg	*pnw = the_transceiver;
+	struct penwell_otg		*pnw = the_transceiver;
+	struct intel_mid_otg_xceiv	*iotg = &pnw->iotg;
+	int				retval = 0;
+	struct pci_dev			*pdev;
 
-	penwell_otg_msic_spi_access(true);
+	dev_dbg(pnw->dev, "%s --->\n", __func__);
 
-	retval = intel_scu_ipc_update_register(SPI_TI_VS4,
-		TI_ACA_DET_EN, TI_ACA_DET_EN);
-	if (retval)
-		goto done;
+	pdev = to_pci_dev(pnw->dev);
 
-	retval = intel_scu_ipc_update_register(SPI_TI_VS5,
-		TI_ID_FLOAT_EN | TI_ID_RES_EN,
-		TI_ID_FLOAT_EN | TI_ID_RES_EN);
+	if (!is_clovertrail(pdev)) {
+		penwell_otg_msic_spi_access(true);
 
+		retval = intel_scu_ipc_update_register(SPI_TI_VS4,
+				TI_ACA_DET_EN, TI_ACA_DET_EN);
+		if (retval)
+			goto done;
+
+		retval = intel_scu_ipc_update_register(SPI_TI_VS5,
+				TI_ID_FLOAT_EN | TI_ID_RES_EN,
+				TI_ID_FLOAT_EN | TI_ID_RES_EN);
+		if (retval)
+			goto done;
+	} else {
+		retval = penwell_otg_ulpi_write(iotg, ULPI_VS6SET,
+				ACA_RID_B_CFG);
+		if (retval)
+			goto done;
+
+		retval = penwell_otg_ulpi_write(iotg, ULPI_VS6SET,
+				ACA_RID_A_CFG);
+		if (retval)
+			goto done;
+
+		retval = penwell_otg_ulpi_write(iotg, ULPI_VS4SET,
+				ACADET);
+		if (retval)
+			goto done;
+
+		retval = penwell_otg_ulpi_write(iotg, ULPI_VS5SET,
+				IDFLOAT_EN | IDRES_EN);
+	}
 done:
-	penwell_otg_msic_spi_access(false);
+	if (!is_clovertrail(pdev))
+		penwell_otg_msic_spi_access(false);
 
 	if (retval)
 		dev_warn(pnw->dev, "Failed to enable ACA device detection\n");
+
+	dev_dbg(pnw->dev, "%s <---\n", __func__);
+
+	return retval;
+}
+
+static int penwell_otg_aca_disable(void)
+{
+	struct penwell_otg		*pnw = the_transceiver;
+	struct intel_mid_otg_xceiv	*iotg = &pnw->iotg;
+	int				retval = 0;
+
+	dev_dbg(pnw->dev, "%s --->\n", __func__);
+
+	retval = penwell_otg_ulpi_write(iotg, ULPI_VS5CLR,
+			IDFLOAT_EN | IDRES_EN);
+	if (retval)
+		goto done;
+
+	retval = penwell_otg_ulpi_write(iotg, ULPI_VS4CLR,
+			ACADET);
+
+done:
+	if (retval)
+		dev_warn(pnw->dev, "Failed to disable ACA device detection\n");
+
+	dev_dbg(pnw->dev, "%s <---\n", __func__);
 
 	return retval;
 }
@@ -4077,6 +4264,7 @@ static int penwell_otg_probe(struct pci_dev *pdev,
 	u32			val32;
 	struct penwell_otg	*pnw;
 	char			qname[] = "penwell_otg_queue";
+	char			chrg_qname[] = "penwell_otg_chrg_queue";
 
 	retval = 0;
 
@@ -4129,6 +4317,14 @@ static int penwell_otg_probe(struct pci_dev *pdev,
 		retval = -ENOMEM;
 		goto err;
 	}
+
+	pnw->chrg_qwork = create_singlethread_workqueue(chrg_qname);
+	if (!pnw->chrg_qwork) {
+		dev_dbg(&pdev->dev, "cannot create workqueue %s\n", chrg_qname);
+		retval = -ENOMEM;
+		goto err;
+	}
+
 	INIT_WORK(&pnw->work, penwell_otg_work);
 	INIT_WORK(&pnw->psc_notify, penwell_otg_psc_notify_work);
 	INIT_WORK(&pnw->hnp_poll_work, penwell_otg_hnp_poll_work);
@@ -4252,11 +4448,8 @@ static int penwell_otg_probe(struct pci_dev *pdev,
 	penwell_otg_phy_low_power(1);
 	msleep(100);
 
-	/* ACA is automatically enabled inside tusb1211 */
-	if (!is_clovertrail(pdev)) {
-		/* enable ACA device detection */
-		penwell_otg_aca_enable();
-	}
+	/* enable ACA device detection */
+	penwell_otg_aca_enable();
 
 	reset_otg();
 	init_hsm();
@@ -4322,12 +4515,20 @@ static void penwell_otg_remove(struct pci_dev *pdev)
 {
 	struct penwell_otg *pnw = the_transceiver;
 
+	/* ACA device detection disable */
+	penwell_otg_aca_disable();
+
 	pm_runtime_get_noresume(&pdev->dev);
 	pm_runtime_forbid(&pdev->dev);
 
 	if (pnw->qwork) {
 		flush_workqueue(pnw->qwork);
 		destroy_workqueue(pnw->qwork);
+	}
+
+	if (pnw->chrg_qwork) {
+		flush_workqueue(pnw->chrg_qwork);
+		destroy_workqueue(pnw->chrg_qwork);
 	}
 
 	/* disable OTGSC interrupt as OTGSC doesn't change in reset */

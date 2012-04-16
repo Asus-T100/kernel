@@ -191,12 +191,13 @@
 #	define REG3V3_MNTR_STS		BIT(6)
 #	define SVLDCONWKB_WDOG_STS	BIT(5)
 #	define IDFLOAT_STS		BIT(4)
+#	define IDRARBRC_STS(d)		(((d)>>2)&3)
 #	define IDRARBRC_STS1		BIT(3)
 #	define IDRARBRC_STS2		BIT(2)
 #	define IDRARBRC_MSK		(BIT(2) | BIT(3))
-#	define IDRARBRC_A		BIT(2)
-#	define IDRARBRC_B		BIT(3)
-#	define IDRARBRC_C		(BIT(2) | BIT(3))
+#	define IDRARBRC_A		1
+#	define IDRARBRC_B		2
+#	define IDRARBRC_C		3
 #	define BVALID_STS		BIT(0)
 #define MSIC_VS3		0x3b9
 #define MSIC_VS3SET		0x346	/* Vendor Specific */
@@ -431,6 +432,7 @@ struct penwell_otg {
 	struct work_struct		psc_notify;
 	struct delayed_work		ulpi_poll_work;
 	struct workqueue_struct		*qwork;
+	struct workqueue_struct		*chrg_qwork;
 
 	struct timer_list		hsm_timer;
 	struct timer_list		hnp_poll_timer;
