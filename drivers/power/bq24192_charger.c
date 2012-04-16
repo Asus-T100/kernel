@@ -162,7 +162,7 @@
 
 #define CHARGER_PS_NAME				"bq24192_charger"
 
-#define BQ24192_DEF_VBATT_MAX		4200	/* 4200mV */
+#define BQ24192_DEF_VBATT_MAX		4192	/* 4192mV */
 #define BQ24192_DEF_SDP_ILIM_CUR	500	/* 500mA */
 #define BQ24192_DEF_DCP_ILIM_CUR	1500	/* 1500mA */
 #define BQ24192_DEF_CHRG_CUR		1500	/* 1500mA */
@@ -175,7 +175,10 @@
 #define STATUS_UPDATE_INTERVAL		(HZ * 60) /* 60sec */
 
 #define BQ24192_CHRG_OTG_GPIO		36
+#define MAINTENANCE_CHRG_JIFFIES	(HZ * 30) /* 30sec */
 
+static struct power_supply *fg_psy;
+static struct clt_batt_sfi_prop *sfi_table;
 struct bq24192_chrg_regs {
 	u8 in_src;
 	u8 pwr_cfg;
@@ -190,6 +193,7 @@ struct bq24192_chip {
 	struct power_supply_charger_cap cap;
 	struct delayed_work chrg_evt_wrkr;
 	struct delayed_work stat_mon_wrkr;
+	struct delayed_work maint_chrg_wrkr;
 	struct mutex event_lock;
 
 	int present;
@@ -200,6 +204,7 @@ struct bq24192_chip {
 	/* battery info */
 	int batt_status;
 	bool votg;
+	enum bq24192_bat_chrg_mode batt_mode;
 };
 
 #ifdef CONFIG_DEBUG_FS
@@ -517,9 +522,74 @@ static int update_ilim_settings(struct bq24192_chip *chip, int chrg_lim)
 static void set_up_charging(struct bq24192_chip *chip,
 				struct bq24192_chrg_regs *reg)
 {
+	int ret;
 	reg->in_src = chrg_ilim_to_reg(chip->cap.mA);
 	reg->chr_cur = chrg_cur_to_reg(BQ24192_DEF_CHRG_CUR);
 	reg->chr_volt = chrg_volt_to_reg(BQ24192_DEF_VBATT_MAX);
+
+	/* Disable the Charge termination */
+	ret = bq24192_reg_read_modify(chip->client,
+		BQ24192_CHRG_TIMER_EXP_CNTL_REG,
+			CHRG_TIMER_EXP_CNTL_EN_TERM, false);
+	if (ret < 0)
+		dev_warn(&chip->client->dev, "I2C write failed:%s\n", __func__);
+}
+
+/* check_batt_psy -check for whether power supply type is battery
+ * @dev : Power Supply dev structure
+ * @data : Power Supply Driver Data
+ * Context: can sleep
+ *
+ * Return true if power supply type is battery
+ *
+ */
+static bool check_batt_psy(struct device *dev, void *data)
+{
+	struct power_supply *psy = dev_get_drvdata(dev);
+
+	/* check for whether power supply type is battery */
+	if (psy->type == POWER_SUPPLY_TYPE_BATTERY) {
+		fg_psy = psy;
+		return true;
+	}
+	return false;
+}
+/**
+ * get_fg_chip_psy - identify the Fuel Gauge Power Supply device
+ * Context: can sleep
+ *
+ * Return Fuel Gauge power supply structure
+ */
+static struct power_supply *get_fg_chip_psy(void)
+{
+	if (fg_psy)
+		return fg_psy;
+
+	/* loop through power supply class */
+	class_for_each_device(power_supply_class, NULL, NULL,
+			check_batt_psy);
+	return fg_psy;
+}
+/**
+ * fg_chip_get_property - read a power supply property from Fuel Gauge driver
+ * @psp : Power Supply property
+ *
+ * Return power supply property value
+ *
+ */
+static int fg_chip_get_property(enum power_supply_property psp)
+{
+	union power_supply_propval val;
+	int ret = -ENODEV;
+
+	if (!fg_psy)
+		fg_psy = get_fg_chip_psy();
+	if (fg_psy) {
+		ret = fg_psy->get_property(fg_psy, psp, &val);
+		if (!ret)
+			return val.intval;
+	}
+	return ret;
 }
 
 static void bq24192_monitor_worker(struct work_struct *work)
@@ -528,6 +598,139 @@ static void bq24192_monitor_worker(struct work_struct *work)
 				struct bq24192_chip, stat_mon_wrkr.work);
 	power_supply_changed(&chip->usb);
 	schedule_delayed_work(&chip->stat_mon_wrkr, STATUS_UPDATE_INTERVAL);
+}
+
+static int bq24192_do_charging(int curr)
+{
+	struct bq24192_chip *chip = i2c_get_clientdata(bq24192_client);
+	struct bq24192_chrg_regs reg;
+	static bool is_charging;
+	int ret = 0;
+
+	dev_info(&chip->client->dev, "+ %s\n", __func__);
+	chip->cap.mA = curr;
+	if (chip->batt_mode != BATT_CHRG_FULL) {
+		if (!is_charging) {
+			set_up_charging(chip, &reg);
+			ret = enable_charging(chip, &reg);
+			if (ret < 0) {
+				dev_err(&chip->client->dev,
+					"maintenance charge failed\n");
+			} else {
+				dev_info(&chip->client->dev,
+					"Maintenance Charging enabled\n");
+				is_charging = true;
+			}
+		}
+	} else {
+		dev_info(&chip->client->dev, "Battery is full. Don't charge\n");
+		is_charging = false;
+	}
+	dev_info(&chip->client->dev, "is_charging %d\n", is_charging);
+	dev_info(&chip->client->dev, "- %s\n", __func__);
+	return ret;
+}
+
+static void bq24192_maintenance_worker(struct work_struct *work)
+{
+	int ret, temp, adc_temp, chrg_curr, battery_status, vbatt = 0;
+	u8 chgr_status;
+	struct bq24192_chip *chip = container_of(work,
+				struct bq24192_chip, maint_chrg_wrkr.work);
+	dev_dbg(&chip->client->dev, "+ %s\n", __func__);
+	/* Check if we have the charger present */
+	if (chip->present && chip->online) {
+		dev_info(&chip->client->dev,
+			"Charger is present\n");
+	} else {
+		dev_info(&chip->client->dev,
+				"Charger is not present. Schedule worker\n");
+		goto sched_maint_work;
+	}
+	/*
+	 * A temporary work around to do maintenance charging until we
+	 * we get the entries in SFI table
+	 */
+	if (!chip->pdata->sfi_tabl_present) {
+		/* Read the charger status bit for charge complete */
+		chgr_status = bq24192_read_reg(chip->client,
+					BQ24192_SYSTEM_STAT_REG);
+		if (chgr_status < 0) {
+			dev_err(&chip->client->dev,
+					"I2C read failed %s\n", __func__);
+		}
+		/* Check the battery voltage */
+		vbatt = fg_chip_get_property(POWER_SUPPLY_PROP_VOLTAGE_NOW);
+		if (vbatt == -ENODEV || vbatt == -EINVAL) {
+			dev_warn(&chip->client->dev,
+				"Can't read voltage from FG\n");
+			goto sched_maint_work;
+		}
+		/* convert voltage into millivolts */
+		vbatt /= 1000;
+		dev_info(&chip->client->dev, "vbatt = %d\n", vbatt);
+		/*
+		 * If we have achieved the charging voltage
+		 * then stop charging. Check the status bits as well
+		 */
+		chgr_status &= SYSTEM_STAT_CHRG_DONE;
+		if ((vbatt >= chip->pdata->vHigh) ||
+			(chgr_status == SYSTEM_STAT_CHRG_DONE)) {
+			if (chip->batt_mode == BATT_CHRG_FULL)
+				goto sched_maint_work;
+			dev_info(&chip->client->dev,
+				   "Charging done. Stop charging\n");
+			ret = stop_charging(chip);
+			if (ret < 0) {
+				dev_info(&chip->client->dev,
+					"Stop charging failed:%s\n", __func__);
+			}
+			chip->batt_mode = BATT_CHRG_FULL;
+			goto sched_maint_work;
+		} else if ((vbatt <= chip->pdata->vLow) &&
+			(chip->batt_mode == BATT_CHRG_FULL)) {
+				dev_info(&chip->client->dev,
+					"Start the maintenance charging\n");
+			chip->batt_mode = BATT_CHRG_MAINT;
+			ret = bq24192_do_charging(
+					chip->pdata->maint_chrg_curr);
+			if (ret < 0) {
+				dev_warn(&chip->client->dev,
+					"Maintenance charging failed:\n");
+				goto sched_maint_work;
+			}
+		} else if ((vbatt <= chip->pdata->vLow - RANGE)) {
+			if (chip->batt_mode == BATT_CHRG_NORMAL)
+				goto sched_maint_work;
+			if (chip->chrg_type == POWER_SUPPLY_TYPE_USB)
+				chrg_curr = chip->pdata->fc_sdp_curr;
+			else
+				chrg_curr = chip->pdata->fc_dcp_curr;
+			ret = bq24192_do_charging(chrg_curr);
+			if (ret < 0) {
+				dev_warn(&chip->client->dev,
+					"Maintenance charging failed:\n");
+				goto sched_maint_work;
+			}
+			chip->batt_mode = BATT_CHRG_NORMAL;
+		}
+	}
+	power_supply_changed(&chip->usb);
+sched_maint_work:
+	if ((chip->batt_mode == BATT_CHRG_MAINT) ||
+		(chip->batt_mode == BATT_CHRG_FULL))
+		battery_status = POWER_SUPPLY_STATUS_FULL;
+	else
+		battery_status = POWER_SUPPLY_STATUS_CHARGING;
+	if ((!chip->present || !chip->online) ||
+		(chip->chrg_type == POWER_SUPPLY_TYPE_USB_HOST))
+		battery_status = POWER_SUPPLY_STATUS_DISCHARGING;
+	mutex_lock(&chip->event_lock);
+	chip->batt_status = battery_status;
+	mutex_unlock(&chip->event_lock);
+	schedule_delayed_work(&chip->maint_chrg_wrkr, MAINTENANCE_CHRG_JIFFIES);
+	dev_info(&chip->client->dev, "battery mode is  %d\n", chip->batt_mode);
+	dev_dbg(&chip->client->dev, "- %s\n", __func__);
 }
 
 static int turn_otg_vbus(struct bq24192_chip *chip, bool votg_on)
@@ -635,6 +838,7 @@ static void bq24192_event_worker(struct work_struct *work)
 				 "Unknown Charger type\n");
 		}
 		chip->batt_status = POWER_SUPPLY_STATUS_CHARGING;
+		chip->batt_mode = BATT_CHRG_NORMAL;
 		break;
 	case POWER_SUPPLY_CHARGER_EVENT_DISCONNECT:
 		pm_runtime_put_sync(&chip->client->dev);
@@ -666,6 +870,7 @@ static void bq24192_event_worker(struct work_struct *work)
 				/* otg vbus is turned OFF */
 				chip->votg = false;
 		}
+		chip->batt_mode = BATT_CHRG_NORMAL;
 		break;
 	default:
 		dev_err(&chip->client->dev,
@@ -972,7 +1177,6 @@ static int __devinit bq24192_probe(struct i2c_client *client,
 	chip->pdata = client->dev.platform_data;
 	i2c_set_clientdata(client, chip);
 	bq24192_client = client;
-
 	ret = bq24192_read_reg(client, BQ24192_VENDER_REV_REG);
 	if (ret < 0) {
 		dev_err(&client->dev, "i2c read err:%d\n", ret);
@@ -1004,6 +1208,7 @@ static int __devinit bq24192_probe(struct i2c_client *client,
 
 	INIT_DELAYED_WORK(&chip->chrg_evt_wrkr, bq24192_event_worker);
 	INIT_DELAYED_WORK(&chip->stat_mon_wrkr, bq24192_monitor_worker);
+	INIT_DELAYED_WORK(&chip->maint_chrg_wrkr, bq24192_maintenance_worker);
 	mutex_init(&chip->event_lock);
 
 	chip->chrg_cur_cntl = POWER_SUPPLY_CHARGE_CURRENT_LIMIT_NONE;
@@ -1047,6 +1252,8 @@ static int __devinit bq24192_probe(struct i2c_client *client,
 	}
 	/* start the status monitor worker */
 	schedule_delayed_work(&chip->stat_mon_wrkr, 0);
+	/* start the maintenance charge worker */
+	schedule_delayed_work(&chip->maint_chrg_wrkr, 0);
 	return 0;
 }
 
@@ -1068,6 +1275,7 @@ static int bq24192_suspend(struct device *dev)
 	struct bq24192_chip *chip = dev_get_drvdata(dev);
 
 	cancel_delayed_work(&chip->stat_mon_wrkr);
+	cancel_delayed_work(&chip->maint_chrg_wrkr);
 	dev_dbg(&chip->client->dev, "bq24192 suspend\n");
 	return 0;
 }
@@ -1077,6 +1285,7 @@ static int bq24192_resume(struct device *dev)
 	struct bq24192_chip *chip = dev_get_drvdata(dev);
 
 	schedule_delayed_work(&chip->stat_mon_wrkr, 0);
+	schedule_delayed_work(&chip->maint_chrg_wrkr, 0);
 	dev_dbg(&chip->client->dev, "bq24192 resume\n");
 	return 0;
 }

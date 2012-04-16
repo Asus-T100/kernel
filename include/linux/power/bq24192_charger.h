@@ -22,10 +22,49 @@
 #ifndef __BQ24192_CHARGER_H_
 #define __BQ24192_CHARGER_H_
 
-struct bq24192_platform_data {
-	bool slave_mode;
+#define SFI_TEMP_NR_RNG	4
+#define BATTID_STR_LEN	8
+#define RANGE	25
+enum bq24192_bat_chrg_mode {
+	BATT_CHRG_FULL = 0,
+	BATT_CHRG_NORMAL = 1,
+	BATT_CHRG_MAINT
 };
 
+struct bq24192_platform_data {
+	bool slave_mode;
+	unsigned int vHigh;
+	unsigned int vLow;
+	int fc_dcp_curr;
+	int fc_sdp_curr;
+	int maint_chrg_curr;
+	bool sfi_tabl_present;
+};
+
+/*********************************************************************
+SFI table entries Structures
+*********************************************************************/
+
+/* Parameters defining the range */
+struct temp_mon_table {
+	short int temp_up_lim;
+	short int temp_low_lim;
+	short int rbatt;
+	short int full_chrg_vol;
+	short int full_chrg_cur;
+	short int maint_chrg_vol_ll;
+	short int maint_chrg_vol_ul;
+	short int maint_chrg_cur;
+} __packed;
+
+struct clt_batt_sfi_prop {
+	char batt_id[BATTID_STR_LEN];
+	unsigned short int voltage_max;
+	unsigned int capacity;
+	u8 battery_type;
+	u8 temp_mon_ranges;
+	struct temp_mon_table temp_mon_range[SFI_TEMP_NR_RNG];
+};
 int bq24192_slave_mode_enable_charging(int volt, int cur, int ilim);
 int bq24192_slave_mode_disable_charging(void);
 extern int bq24192_query_battery_status(void);
