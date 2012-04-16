@@ -54,9 +54,13 @@ struct lm3554 {
 	struct v4l2_subdev sd;
 	struct mutex i2c_mutex;
 	enum atomisp_flash_mode mode;
+
 	int timeout;
+	u8 torch_current;
+	u8 indicator_current;
+	u8 flash_current;
+
 	struct timer_list flash_off_delay;
-	u32 intensity;
 	struct camera_flash_platform_data *pdata;
 };
 
@@ -152,18 +156,18 @@ static int lm3554_s_flash_timeout(struct v4l2_subdev *sd, u32 val)
 	struct lm3554 *flash = to_lm3554(sd);
 
 	val = clamp(val, LM3554_MIN_TIMEOUT, LM3554_MAX_TIMEOUT);
+	val = val / LM3554_TIMEOUT_STEPSIZE - 1;
+
 	flash->timeout = val;
 
-	val = val / LM3554_TIMEOUT_STEPSIZE - 1;
 	return set_reg_field(sd, &flash_timeout, (u8)val);
 }
 
 static int lm3554_g_flash_timeout(struct v4l2_subdev *sd, s32 *val)
 {
-	u8 value;
+	struct lm3554 *flash = to_lm3554(sd);
 
-	get_reg_field(sd, &flash_timeout, &value);
-	*val = (u32)(value + 1) * LM3554_TIMEOUT_STEPSIZE;
+	*val = (u32)(flash->timeout + 1) * LM3554_TIMEOUT_STEPSIZE;
 
 	return 0;
 }
@@ -175,53 +179,61 @@ static int lm3554_s_flash_intensity(struct v4l2_subdev *sd, u32 intensity)
 	intensity = LM3554_CLAMP_PERCENTAGE(intensity);
 	intensity = LM3554_PERCENT_TO_VALUE(intensity, LM3554_FLASH_STEP);
 
-	flash->intensity = intensity;
+	flash->flash_current = intensity;
 
 	return set_reg_field(sd, &flash_current, (u8)intensity);
 }
 
 static int lm3554_g_flash_intensity(struct v4l2_subdev *sd, s32 *val)
 {
-	u8 value;
+	struct lm3554 *flash = to_lm3554(sd);
 
-	get_reg_field(sd, &flash_current, &value);
-	*val = LM3554_VALUE_TO_PERCENT((u32)value, LM3554_FLASH_STEP);
+	*val = LM3554_VALUE_TO_PERCENT((u32)flash->flash_current,
+			LM3554_FLASH_STEP);
 
 	return 0;
 }
 
 static int lm3554_s_torch_intensity(struct v4l2_subdev *sd, u32 intensity)
 {
+	struct lm3554 *flash = to_lm3554(sd);
+
 	intensity = LM3554_CLAMP_PERCENTAGE(intensity);
 	intensity = LM3554_PERCENT_TO_VALUE(intensity, LM3554_TORCH_STEP);
+
+	flash->torch_current = intensity;
 
 	return set_reg_field(sd, &torch_current, (u8)intensity);
 }
 
 static int lm3554_g_torch_intensity(struct v4l2_subdev *sd, s32 *val)
 {
-	u8 value;
+	struct lm3554 *flash = to_lm3554(sd);
 
-	get_reg_field(sd, &torch_current, &value);
-	*val = LM3554_VALUE_TO_PERCENT((u32)value, LM3554_TORCH_STEP);
+	*val = LM3554_VALUE_TO_PERCENT((u32)flash->torch_current,
+			LM3554_TORCH_STEP);
 
 	return 0;
 }
 
 static int lm3554_s_indicator_intensity(struct v4l2_subdev *sd, u32 intensity)
 {
+	struct lm3554 *flash = to_lm3554(sd);
+
 	intensity = LM3554_CLAMP_PERCENTAGE(intensity);
 	intensity = LM3554_PERCENT_TO_VALUE(intensity, LM3554_INDICATOR_STEP);
+
+	flash->indicator_current = intensity;
 
 	return set_reg_field(sd, &indicator_current, (u8)intensity);
 }
 
 static int lm3554_g_indicator_intensity(struct v4l2_subdev *sd, s32 *val)
 {
-	u8 value;
+	struct lm3554 *flash = to_lm3554(sd);
 
-	get_reg_field(sd, &indicator_current, &value);
-	*val = LM3554_VALUE_TO_PERCENT((u32)value, LM3554_INDICATOR_STEP);
+	*val = LM3554_VALUE_TO_PERCENT((u32)flash->indicator_current,
+			LM3554_INDICATOR_STEP);
 
 	return 0;
 }
@@ -262,8 +274,7 @@ static int lm3554_s_flash_strobe(struct v4l2_subdev *sd, u32 val)
 		gpio_set_value(pdata->gpio_strobe, 0);
 
 	/* Restore flash current settings */
-	ret = set_reg_field(sd, &flash_current,
-			    (u8)flash->intensity);
+	ret = set_reg_field(sd, &flash_current, flash->flash_current);
 	if (ret < 0)
 		goto err;
 
@@ -627,7 +638,6 @@ static int __devinit lm3554_probe(struct i2c_client *client,
 	v4l2_i2c_subdev_init(&flash->sd, client, &lm3554_ops);
 	flash->sd.internal_ops = &lm3554_internal_ops;
 	flash->sd.flags |= V4L2_SUBDEV_FL_HAS_DEVNODE;
-	flash->timeout = LM3554_DEFAULT_TIMEOUT;
 	flash->mode = ATOMISP_FLASH_MODE_OFF;
 
 	err = media_entity_init(&flash->sd.entity, 0, NULL, 0);
