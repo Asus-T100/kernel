@@ -1211,6 +1211,7 @@ static int atomisp_g_ctrl(struct file *file, void *fh,
 	switch (control->id) {
 	case V4L2_CID_IRIS_ABSOLUTE:
 	case V4L2_CID_EXPOSURE_ABSOLUTE:
+	case V4L2_CID_FNUMBER_ABSOLUTE:
 	case V4L2_CID_HFLIP:
 	case V4L2_CID_VFLIP:
 		ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
@@ -1359,6 +1360,7 @@ static int atomisp_camera_g_ext_ctrls(struct file *file, void *fh,
 		switch (ctrl.id) {
 		case V4L2_CID_EXPOSURE_ABSOLUTE:
 		case V4L2_CID_IRIS_ABSOLUTE:
+		case V4L2_CID_FNUMBER_ABSOLUTE:
 		case V4L2_CID_BIN_FACTOR_HORZ:
 		case V4L2_CID_BIN_FACTOR_VERT:
 			/*
@@ -1458,6 +1460,7 @@ static int atomisp_camera_s_ext_ctrls(struct file *file, void *fh,
 		switch (ctrl.id) {
 		case V4L2_CID_EXPOSURE_ABSOLUTE:
 		case V4L2_CID_IRIS_ABSOLUTE:
+		case V4L2_CID_FNUMBER_ABSOLUTE:
 		case V4L2_CID_VCM_TIMEING:
 		case V4L2_CID_VCM_SLEW:
 		case V4L2_CID_TEST_PATTERN:
