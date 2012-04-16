@@ -50,6 +50,7 @@
 
 /* drv201 device structure */
 struct drv201_device {
+	bool initialized;		/* true if drv201 is detected */
 	s32 focus;			/* Current focus value */
 	struct timespec focus_time;	/* Time when focus was last time set */
 	__u8 buffer[4];			/* Used for i2c transactions */

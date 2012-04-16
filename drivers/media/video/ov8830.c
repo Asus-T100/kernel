@@ -1778,6 +1778,7 @@ static int drv201_power_up(struct v4l2_subdev *sd)
 	}
 
 	dev->focus = DRV201_MAX_FOCUS_POS;
+	dev->initialized = true;
 
 	v4l2_info(client, "detected drv201\n");
 	return 0;
@@ -1798,6 +1799,9 @@ static int drv201_t_focus_abs(struct v4l2_subdev *sd, s32 value)
 {
 	struct drv201_device *dev = to_drv201_device(sd);
 	int r;
+
+	if (!dev->initialized)
+		return -ENODEV;
 
 	value = clamp(value, 0, DRV201_MAX_FOCUS_POS);
 	r = drv201_write16(sd, DRV201_VCM_CURRENT,
@@ -2004,9 +2008,7 @@ static int ov8830_s_power(struct v4l2_subdev *sd, int on)
 		ret = power_up(sd);
 		if (ret)
 			return ret;
-		ret = drv201_power_up(sd);
-		if (ret)
-			return ret;
+		drv201_power_up(sd);
 
 		dev->power = 1;
 		/* init motor initial position */
