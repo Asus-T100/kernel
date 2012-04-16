@@ -179,7 +179,9 @@ struct smb347_charger {
 
 static struct smb347_charger *smb347_dev;
 static char *smb347_power_supplied_to[] = {
+			"max170xx_battery",
 			"max17042_battery",
+			"max17047_battery",
 			"max17050_battery",
 };
 
