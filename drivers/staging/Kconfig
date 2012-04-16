@@ -162,4 +162,6 @@ source "drivers/staging/nvec/Kconfig"
 
 source "drivers/staging/mrst/Kconfig"
 
+source "drivers/staging/matrix/Kconfig"
+
 endif # STAGING
