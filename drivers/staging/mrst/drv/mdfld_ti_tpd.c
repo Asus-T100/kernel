@@ -70,7 +70,7 @@ static int __devinit ti_tpd_probe(struct pci_dev *pdev,
 		const struct pci_device_id *ent)
 {
 	struct drm_device *dev = hdmi_priv ? hdmi_priv->dev : 0;
-	struct drm_psb_private *dev_priv = psb_priv(dev);
+	struct drm_psb_private *dev_priv = dev ? psb_priv(dev) : 0;
 	int ret = 0;
 
 	PSB_DEBUG_ENTRY("\n");
@@ -112,6 +112,11 @@ static int __devinit ti_tpd_probe(struct pci_dev *pdev,
 		goto err2;
 	}
 
+	if (dev_priv == NULL) {
+		DRM_ERROR("%s: Invalid parameter", __func__);
+		ret = -EINVAL;
+		goto err2;
+	}
 	dev_priv->hpd_detect = create_freezable_workqueue("hpd_detect");
 	if (dev_priv->hpd_detect == NULL) {
 		DRM_ERROR("%s: Creating workqueue failed", __func__);
