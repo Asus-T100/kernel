@@ -1008,19 +1008,22 @@ static int als_open(struct inode *inode, struct file *filep)
 
 static int apds990x_switch(struct apds990x_chip *chip, int mode)
 {
-	u8 data = APDS990X_EN_PON | APDS990X_EN_AEN | APDS990X_EN_WEN;
+	int ret = 0;
+	u8 reg = 0;
+	u8 data = APDS990X_EN_PON | APDS990X_EN_WEN;
 
 	switch (mode) {
 	case APDS_POWER_ON:
 		break;
 	case APDS_ALS_ENABLE | APDS_PS_ENABLE:
-		data |= APDS990X_EN_AIEN | APDS990X_EN_PIEN | APDS990X_EN_PEN;
+		data |= APDS990X_EN_AEN | APDS990X_EN_AIEN |
+			APDS990X_EN_PEN | APDS990X_EN_PIEN;
 		break;
 	case APDS_PS_ENABLE:
 		data |= APDS990X_EN_PIEN | APDS990X_EN_PEN;
 		break;
 	case APDS_ALS_ENABLE:
-		data |= APDS990X_EN_AIEN;
+		data |= APDS990X_EN_AIEN | APDS990X_EN_AEN;
 		break;
 	case APDS_POWER_DOWN:
 		data = APDS990X_EN_DISABLE_ALL;
@@ -1029,13 +1032,24 @@ static int apds990x_switch(struct apds990x_chip *chip, int mode)
 		dev_err(&chip->client->dev, "apds990x switch error\n");
 		return -1;
 	}
+	ret = apds990x_read_byte(chip, APDS990X_ENABLE, &reg);
+	if (ret < 0) {
+		dev_err(&chip->client->dev,
+			"%s: APDS990X_ENABLE read failed\n", __func__);
+		return ret;
+	}
+	if (reg == data)
+		return 0;
 	dev_dbg(&chip->client->dev, "apds990x switch data=0x%x\n", data);
-	if (apds990x_write_byte(chip, APDS990X_ENABLE, data) < 0)
-		return -1;
+	ret = apds990x_write_byte(chip, APDS990X_ENABLE, data);
+	if (ret < 0) {
+		dev_err(&chip->client->dev,
+			"%s: APDS990X_ENABLE write failed\n", __func__);
+		return ret;
+	}
 	msleep(APDS_STARTUP_DELAY / 1000 +
 			((APDS_STARTUP_DELAY % 1000) ? 1 : 0));
 	return 0;
-
 }
 
 /* mutex must be held when calling this function */
