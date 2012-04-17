@@ -161,7 +161,6 @@ static inline void ipc_command(u32 cmd) /* Send ipc command */
 
 	ipcdev.cmd = cmd;
 	INIT_COMPLETION(ipcdev.cmd_complete);
-	acquire_scu_ready_sem();
 
 	/* Revert me:
 	 * This is a workaround here for MRFLD, because IPC interrupt for MRFLD
@@ -258,7 +257,6 @@ static inline int ipc_wait_interrupt(void)
 
 	/* Re-enable Deeper C-states beyond C6 */
 	pm_qos_update_request(qos, PM_QOS_DEFAULT_VALUE);
-	release_scu_ready_sem();
 	return ret;
 }
 
@@ -461,12 +459,6 @@ int intel_scu_ipc_mrstfw_update(u8 *buffer, u32 length)
 	/* Driver copies the 2KB MIP header to SRAM at 0xFFFC0000*/
 	memcpy_toio(fw_update_base, buffer, 0x800);
 
-	/* ipc_command will hold scu_ready_sem
-	 * but there is no call to wait for
-	 * interrupt completioin hence doing here
-	 */
-	release_scu_ready_sem();
-
 	/* Driver sends "FW Update" IPC command (CMD_ID 0xFE; MSG_ID 0x02).
 	* Upon receiving this command, SCU will write the 2K MIP header
 	* from 0xFFFC0000 into NAND.
@@ -480,12 +472,6 @@ int intel_scu_ipc_mrstfw_update(u8 *buffer, u32 length)
 		rmb();
 		mdelay(1);
 	}
-
-	/* ipc_command will hold scu_ready_sem
-	 * but there is no call to wait for
-	 * interrupt completioin hence doing here
-	 */
-	release_scu_ready_sem();
 
 	/* Driver checks Mailbox status.
 	 * If the status is 'BADN', then abort (bad NAND).
@@ -1118,7 +1104,6 @@ int intel_scu_ipc_medfw_upgrade(void)
 
 	if (busy_wait(&mfld_fw_upd) < 0) {
 		ret_val = -1;
-		release_scu_ready_sem();
 		goto term;
 	}
 
@@ -1137,7 +1122,6 @@ int intel_scu_ipc_medfw_upgrade(void)
 		if (mb_state == MB_ERROR) {
 			dev_dbg(&ipcdev.pdev->dev, "check_mb_status,error\n");
 			ret_val = -1;
-			release_scu_ready_sem();
 			goto term;
 		}
 
@@ -1159,7 +1143,6 @@ int intel_scu_ipc_medfw_upgrade(void)
 
 			if (busy_wait(&mfld_fw_upd) < 0) {
 				ret_val = -1;
-				release_scu_ready_sem();
 				goto term;
 			}
 
@@ -1171,7 +1154,6 @@ int intel_scu_ipc_medfw_upgrade(void)
 			dev_err(&ipcdev.pdev->dev,
 			"calc_offset_and_length_error,error\n");
 			ret_val = -1;
-			release_scu_ready_sem();
 			goto term;
 		}
 
@@ -1181,7 +1163,6 @@ int intel_scu_ipc_medfw_upgrade(void)
 			"Error processing fw chunk=%s\n",
 			mfld_fw_upd.mb_status);
 			ret_val = -1;
-			release_scu_ready_sem();
 			goto term;
 		} else
 			dev_dbg(&ipcdev.pdev->dev,
