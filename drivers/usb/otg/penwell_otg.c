@@ -3040,8 +3040,7 @@ static void penwell_otg_work(struct work_struct *work)
 				usleep_range(10000, 11000);
 			}
 
-			if (iotg->otg.set_vbus)
-				iotg->otg.set_vbus(&iotg->otg, true);
+			otg_set_vbus(&iotg->otg, true);
 
 			penwell_otg_add_timer(TA_WAIT_VRISE_TMR);
 
@@ -3066,8 +3065,7 @@ static void penwell_otg_work(struct work_struct *work)
 			penwell_otg_del_timer(TA_WAIT_VRISE_TMR);
 
 			/* Turn off VBUS */
-			if (iotg->otg.set_vbus)
-				iotg->otg.set_vbus(&iotg->otg, false);
+			otg_set_vbus(&iotg->otg, false);
 
 			penwell_otg_add_timer(TA_WAIT_VFALL_TMR);
 			iotg->otg.state = OTG_STATE_A_WAIT_VFALL;
@@ -3079,8 +3077,7 @@ static void penwell_otg_work(struct work_struct *work)
 
 			if (!hsm->a_vbus_vld) {
 				/* Turn off VBUS */
-				if (iotg->otg.set_vbus)
-					iotg->otg.set_vbus(&iotg->otg, false);
+				otg_set_vbus(&iotg->otg, false);
 
 				penwell_otg_add_timer(TA_WAIT_VFALL_TMR);
 				iotg->otg.state = OTG_STATE_A_WAIT_VFALL;
@@ -3088,8 +3085,7 @@ static void penwell_otg_work(struct work_struct *work)
 			}
 
 			if (hsm->id == ID_ACA_A) {
-				if (iotg->otg.set_vbus)
-					iotg->otg.set_vbus(&iotg->otg, false);
+				otg_set_vbus(&iotg->otg, false);
 
 				penwell_otg_update_chrg_cap(CHRG_ACA,
 							CHRG_CURR_ACA);
@@ -3130,8 +3126,7 @@ static void penwell_otg_work(struct work_struct *work)
 					"host driver has been removed.\n");
 
 			/* Turn off VBUS */
-			if (iotg->otg.set_vbus)
-				iotg->otg.set_vbus(&iotg->otg, false);
+			otg_set_vbus(&iotg->otg, false);
 
 			penwell_otg_add_timer(TA_WAIT_VFALL_TMR);
 			iotg->otg.state = OTG_STATE_A_WAIT_VFALL;
@@ -3148,8 +3143,7 @@ static void penwell_otg_work(struct work_struct *work)
 					"host driver has been removed.\n");
 
 			/* Turn off VBUS and enter PHY low power mode */
-			if (iotg->otg.set_vbus)
-				iotg->otg.set_vbus(&iotg->otg, false);
+			otg_set_vbus(&iotg->otg, false);
 
 			penwell_otg_phy_low_power(1);
 			iotg->otg.state = OTG_STATE_A_VBUS_ERR;
@@ -3173,8 +3167,7 @@ static void penwell_otg_work(struct work_struct *work)
 			penwell_otg_update_chrg_cap(CHRG_ACA, CHRG_CURR_ACA);
 
 			/* Turn off VBUS */
-			if (iotg->otg.set_vbus)
-				iotg->otg.set_vbus(&iotg->otg, false);
+			otg_set_vbus(&iotg->otg, false);
 		}
 		break;
 
@@ -3204,8 +3197,7 @@ static void penwell_otg_work(struct work_struct *work)
 					"host driver has been removed.\n");
 
 			/* Turn off VBUS */
-			if (iotg->otg.set_vbus)
-				iotg->otg.set_vbus(&iotg->otg, false);
+			otg_set_vbus(&iotg->otg, false);
 
 			penwell_otg_add_timer(TA_WAIT_VFALL_TMR);
 			iotg->otg.state = OTG_STATE_A_WAIT_VFALL;
@@ -3225,8 +3217,7 @@ static void penwell_otg_work(struct work_struct *work)
 					"host driver has been removed.\n");
 
 			/* Turn off VBUS */
-			if (iotg->otg.set_vbus)
-				iotg->otg.set_vbus(&iotg->otg, false);
+			otg_set_vbus(&iotg->otg, false);
 
 			/* Clear states and wait for SRP */
 			hsm->a_srp_det = 0;
@@ -3252,8 +3243,7 @@ static void penwell_otg_work(struct work_struct *work)
 					"host driver has been removed.\n");
 
 			/* Turn off VBUS */
-			if (iotg->otg.set_vbus)
-				iotg->otg.set_vbus(&iotg->otg, false);
+			otg_set_vbus(&iotg->otg, false);
 
 			penwell_otg_phy_low_power(1);
 			iotg->otg.state = OTG_STATE_A_VBUS_ERR;
@@ -3306,8 +3296,7 @@ static void penwell_otg_work(struct work_struct *work)
 					"host driver has been removed.\n");
 
 			/* Turn off VBUS */
-			if (iotg->otg.set_vbus)
-				iotg->otg.set_vbus(&iotg->otg, false);
+			otg_set_vbus(&iotg->otg, false);
 
 			penwell_otg_add_timer(TTST_NOADP_TMR);
 			iotg->otg.state = OTG_STATE_A_WAIT_VFALL;
@@ -3329,8 +3318,7 @@ static void penwell_otg_work(struct work_struct *work)
 			penwell_otg_update_chrg_cap(CHRG_ACA, CHRG_CURR_ACA);
 
 			/* Turn off VBUS */
-			if (iotg->otg.set_vbus)
-				iotg->otg.set_vbus(&iotg->otg, false);
+			otg_set_vbus(&iotg->otg, false);
 		}
 		break;
 
@@ -3360,8 +3348,7 @@ static void penwell_otg_work(struct work_struct *work)
 					"host driver has been removed.\n");
 
 			/* Turn off VBUS */
-			if (iotg->otg.set_vbus)
-				iotg->otg.set_vbus(&iotg->otg, false);
+			otg_set_vbus(&iotg->otg, false);
 
 			penwell_otg_add_timer(TA_WAIT_VFALL_TMR);
 			iotg->otg.state = OTG_STATE_A_WAIT_VFALL;
@@ -3380,8 +3367,7 @@ static void penwell_otg_work(struct work_struct *work)
 					"host driver has been removed.\n");
 
 			/* Turn off VBUS */
-			if (iotg->otg.set_vbus)
-				iotg->otg.set_vbus(&iotg->otg, false);
+			otg_set_vbus(&iotg->otg, false);
 			penwell_otg_phy_low_power(1);
 			iotg->otg.state = OTG_STATE_A_VBUS_ERR;
 		} else if (!hsm->b_conn && !pnw->iotg.otg.host->b_hnp_enable) {
@@ -3443,8 +3429,7 @@ static void penwell_otg_work(struct work_struct *work)
 			penwell_otg_update_chrg_cap(CHRG_ACA, CHRG_CURR_ACA);
 
 			/* Turn off VBUS */
-			if (iotg->otg.set_vbus)
-				iotg->otg.set_vbus(&iotg->otg, false);
+			otg_set_vbus(&iotg->otg, false);
 		}
 		break;
 	case OTG_STATE_A_PERIPHERAL:
@@ -3461,8 +3446,7 @@ static void penwell_otg_work(struct work_struct *work)
 					"client driver has been removed.\n");
 
 			/* Turn off VBUS */
-			if (iotg->otg.set_vbus)
-				iotg->otg.set_vbus(&iotg->otg, false);
+			otg_set_vbus(&iotg->otg, false);
 			set_host_mode();
 
 			penwell_otg_add_timer(TA_WAIT_VFALL_TMR);
@@ -3480,8 +3464,7 @@ static void penwell_otg_work(struct work_struct *work)
 					"client driver has been removed.\n");
 
 			/* Turn off the VBUS and enter PHY low power mode */
-			if (iotg->otg.set_vbus)
-				iotg->otg.set_vbus(&iotg->otg, false);
+			otg_set_vbus(&iotg->otg, false);
 			penwell_otg_phy_low_power(1);
 
 			iotg->otg.state = OTG_STATE_A_VBUS_ERR;
@@ -3521,8 +3504,7 @@ static void penwell_otg_work(struct work_struct *work)
 			penwell_otg_update_chrg_cap(CHRG_ACA, CHRG_CURR_ACA);
 
 			/* Turn off VBUS */
-			if (iotg->otg.set_vbus)
-				iotg->otg.set_vbus(&iotg->otg, false);
+			otg_set_vbus(&iotg->otg, false);
 		}
 		break;
 	case OTG_STATE_A_VBUS_ERR:
@@ -4124,6 +4106,8 @@ static int penwell_otg_probe(struct pci_dev *pdev,
 	pnw->psc_cap.chrg_evt = POWER_SUPPLY_CHARGER_EVENT_DISCONNECT;
 
 	ATOMIC_INIT_NOTIFIER_HEAD(&pnw->iotg.iotg_notifier);
+	/* For generic otg notifications */
+	ATOMIC_INIT_NOTIFIER_HEAD(&pnw->iotg.otg.notifier);
 
 	pnw->iotg_notifier.notifier_call = penwell_otg_iotg_notify;
 	if (intel_mid_otg_register_notifier(&pnw->iotg, &pnw->iotg_notifier)) {
@@ -4366,7 +4350,7 @@ static int penwell_otg_suspend_noirq(struct device *dev)
 		iotg->hsm.a_srp_det = 0;
 
 		/* Turn off VBus */
-		iotg->otg.set_vbus(&iotg->otg, false);
+		otg_set_vbus(&iotg->otg, false);
 		iotg->otg.state = OTG_STATE_A_IDLE;
 		break;
 	case OTG_STATE_A_WAIT_BCON:
@@ -4381,7 +4365,7 @@ static int penwell_otg_suspend_noirq(struct device *dev)
 		penwell_otg_phy_vbus_wakeup(false);
 
 		/* Turn off VBus */
-		iotg->otg.set_vbus(&iotg->otg, false);
+		otg_set_vbus(&iotg->otg, false);
 		iotg->otg.state = OTG_STATE_A_IDLE;
 		break;
 	case OTG_STATE_A_HOST:
@@ -4400,7 +4384,7 @@ static int penwell_otg_suspend_noirq(struct device *dev)
 		penwell_otg_phy_vbus_wakeup(false);
 
 		/* Turn off VBus */
-		iotg->otg.set_vbus(&iotg->otg, false);
+		otg_set_vbus(&iotg->otg, false);
 		iotg->otg.state = OTG_STATE_A_IDLE;
 		break;
 	case OTG_STATE_A_PERIPHERAL:
@@ -4412,7 +4396,7 @@ static int penwell_otg_suspend_noirq(struct device *dev)
 			dev_dbg(pnw->dev, "client driver has been stopped.\n");
 
 		/* Turn off VBus */
-		iotg->otg.set_vbus(&iotg->otg, false);
+		otg_set_vbus(&iotg->otg, false);
 		iotg->hsm.a_srp_det = 0;
 		iotg->otg.state = OTG_STATE_A_IDLE;
 		break;
