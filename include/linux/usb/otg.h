@@ -200,6 +200,8 @@ otg_start_hnp(struct otg_transceiver *otg)
 static inline int
 otg_set_vbus(struct otg_transceiver *otg, bool enabled)
 {
+	atomic_notifier_call_chain(&otg->notifier, USB_EVENT_DRIVE_VBUS,
+			&enabled);
 	return otg->set_vbus(otg, enabled);
 }
 
