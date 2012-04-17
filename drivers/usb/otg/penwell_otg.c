@@ -4553,6 +4553,7 @@ static int penwell_otg_runtime_resume(struct device *dev)
 		penwell_otg_check_wakeup_event(pnw);
 	}
 
+	penwell_otg_phy_low_power(0);
 	penwell_otg_vusb330_low_power(0);
 	penwell_otg_intr(1);
 
@@ -4570,10 +4571,8 @@ static int penwell_otg_runtime_resume(struct device *dev)
 	case OTG_STATE_A_WAIT_BCON:
 	case OTG_STATE_A_HOST:
 	case OTG_STATE_A_SUSPEND:
-		if (pnw->iotg.runtime_resume_host) {
-			penwell_otg_phy_low_power(0);
+		if (pnw->iotg.runtime_resume_host)
 			ret = pnw->iotg.runtime_resume_host(&pnw->iotg);
-		}
 		break;
 	case OTG_STATE_A_PERIPHERAL:
 	case OTG_STATE_B_PERIPHERAL:
