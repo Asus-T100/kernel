@@ -35,7 +35,7 @@ static struct mid_intel_hdmi_priv *hdmi_priv;
 
 void mdfld_hdcp_init(struct mid_intel_hdmi_priv *p_hdmi_priv)
 {
-	hdmi_priv = p_hdmi_priv;
+    hdmi_priv = p_hdmi_priv;
 }
 
 /* 
@@ -53,8 +53,8 @@ int hdcp_is_valid_bksv(uint8_t *buffer, uint32_t size)
     int ret = 0;
 
     if(buffer == NULL || size != CP_HDCP_KEY_SELECTION_VECTOR_SIZE)
-	return ret;
-    
+        return ret;
+
     while(i<CP_HDCP_KEY_SELECTION_VECTOR_SIZE)
     {
         bksv=buffer[i];
@@ -80,7 +80,7 @@ int hdcp_is_valid_bksv(uint8_t *buffer, uint32_t size)
  */
 int hdcp_query(void)
 {
-	return hdmi_priv->is_hdcp_supported;
+    return hdmi_priv->is_hdcp_supported;
 }
 
 /* 
@@ -93,12 +93,12 @@ int hdcp_is_enabled(void)
 	mdfld_hdcp_status_t hdcp_status = {0};
 	int ret = 0;
 
+
 	if(hdmi_priv->is_hdcp_supported)
 	{
 		hdcp_status.value = REG_READ(MDFLD_HDCP_STATUS_REG);
 		ret = hdcp_status.cipher_hdcp_status;
 	}
-    
 	return ret;
 }
 
@@ -251,7 +251,7 @@ int hdcp_enable(int enable)
     struct drm_device *dev = hdmi_priv->dev;
     mdfld_hdcp_config_t config;
     mdfld_hdcp_receiver_ri_t receivers_ri;
-    mdfld_hdcp_status_t status;    
+    mdfld_hdcp_status_t status;
     mdfld_hdcp_rep_t hdcp_repeater;
     uint32_t max_retry = 0;
     sqword_t hw_an;
@@ -261,12 +261,12 @@ int hdcp_enable(int enable)
     uint32_t rx_ri = 0;
     int ret = 0;
 
+
     if(enable == 0)
     {
         config.value = REG_READ(MDFLD_HDCP_CONFIG_REG);
         config.hdcp_config =  HDCP_Off;
-	REG_WRITE(MDFLD_HDCP_CONFIG_REG,config.value);
-
+        REG_WRITE(MDFLD_HDCP_CONFIG_REG, config.value);
         //Check the status of cipher till it get's turned off
         // Bug #2808007-Delay required is one frame period.
         // waiting for 2 VBlanks provides this amount of delay
@@ -282,8 +282,9 @@ int hdcp_enable(int enable)
         // Check for cipher time out
         if(status.cipher_hdcp_status || status.cipher_encrypting_status)
         {
-            ret = 0; 
-	    return ret;
+            ret = 0;
+            DRM_ERROR("HDCP: failed to clear MDFLD_HDCP_STATUS_REG.\n");
+            return ret;
         }
 
         // clear the repeater specfic bits and set the repeater to idle
@@ -307,8 +308,9 @@ int hdcp_enable(int enable)
         // Check for cipher time out
         if(max_retry == -1)
         {
-            ret = 0; 
-	    return 0;
+            ret = 0;
+            DRM_ERROR("HDCP: failed to clear MDFLD_HDCP_REP_REG.\n");
+            return 0;
         }
 
         // Clear the Ri' register
@@ -318,27 +320,28 @@ int hdcp_enable(int enable)
         // for details
         REG_WRITE(MDFLD_HDCP_RECEIVER_RI_REG, 0);
 
-	//Disable the port on which HDCP is enabled
-	REG_WRITE(hdmi_priv->hdmib_reg, REG_READ(hdmi_priv->hdmib_reg) & ~HDMIB_HDCP_PORT);
+        //Disable the port on which HDCP is enabled
+        REG_WRITE(hdmi_priv->hdmib_reg, REG_READ(hdmi_priv->hdmib_reg) & ~HDMIB_HDCP_PORT);
     }
     else
     {
         //Generate An
         config.value = REG_READ(MDFLD_HDCP_CONFIG_REG);
 
-        if (config.hdcp_config != HDCP_Off) {
+        if(config.hdcp_config != HDCP_Off)
+        {
             config.hdcp_config = HDCP_Off;
             REG_WRITE(MDFLD_HDCP_CONFIG_REG, config.value);
         }
-  
+
         /* used the jiffies as a random number. */
         REG_WRITE(MDFLD_HDCP_INIT_REG, (uint32_t) jiffies); 
         REG_WRITE(MDFLD_HDCP_INIT_REG, (uint32_t) (jiffies >> 1)); 
-	udelay (10);
+        udelay (10);
 
         config.hdcp_config =  HDCP_CAPTURE_AN;
         REG_WRITE(MDFLD_HDCP_CONFIG_REG, config.value);
-            
+
         //check the status of cipher before reading an
         max_retry = HDCP_MAX_RETRY_STATUS;//tbd: not yet finalized
         while(max_retry--)
@@ -350,47 +353,64 @@ int hdcp_enable(int enable)
                 break;
             }
         }
-            
+
         if(max_retry == -1)
+        {
+            DRM_ERROR("HDCP: waiting for An ready times out.\n");
             return 0;//Cipher timeout, was not able to generate An :(
+        }
 
         //Read An
         hw_an.u.low_part = REG_READ(MDFLD_HDCP_AN_LOW_REG);
         hw_an.u.high_part = REG_READ(MDFLD_HDCP_AN_HI_REG);
-                
-	if(hw_aksv.quad_part == 0){
-		hw_aksv.u.low_part = REG_READ(MDFLD_HDCP_AKSV_LOW_REG);
-		hw_aksv.u.high_part = REG_READ(MDFLD_HDCP_AKSV_HI_REG);
-	}
+
+        if(hw_aksv.quad_part == 0)
+        {
+            hw_aksv.u.low_part = REG_READ(MDFLD_HDCP_AKSV_LOW_REG);
+            hw_aksv.u.high_part = REG_READ(MDFLD_HDCP_AKSV_HI_REG);
+        }
+
         //stHdcpParams.hwAksv.MajorPart_Low = 0x0361f714;//test data
         //stHdcpParams.hwAksv.MajorPart_High = 0xb7;
-
         //write An
         ret = write_hdcp_port(RX_AN_0, hw_an.byte, 8);
         if(!ret)
+        {
+            DRM_ERROR("HDCP: failed to write An.\n");
             return 0;
+        }
 
         //write Aksv
         ret = write_hdcp_port(RX_AKSV_0, hw_aksv.byte, 5);
         if(!ret)
-            return 0;
-
-        
-        //Read the Bksv from receiver
-        ret =read_hdcp_port(RX_TYPE_BKSV_DATA, &hw_bksv.byte[0], 5);
-        if(ret)
         {
-             // Validate BKSV
-             ret = hdcp_is_valid_bksv(&hw_bksv.byte[0], 5);
+            DRM_ERROR("HDCP: failed to write Aksv.\n");
+            return 0;
         }
 
-         if(!ret)
+        //Read the Bksv from receiver
+        ret =read_hdcp_port(RX_TYPE_BKSV_DATA, &hw_bksv.byte[0], 5);
+        if(!ret)
+        {
+           DRM_ERROR("HDCP: failed to read Bksv.\n");
+           return 0;
+        }
+
+        // Validate BKSV
+        ret = hdcp_is_valid_bksv(&hw_bksv.byte[0], 5);
+        if(!ret)
+        {
+            DRM_ERROR("HDCP: failed to validate Bksv.\n");
             return 0;
+        }
 
         //read the BCaps 
         ret = read_hdcp_port(RX_TYPE_BCAPS, &bcaps, 1);
         if(!ret)
+        {
+            DRM_ERROR("HDCP: failed to read BCaps.\n");
             return 0;
+        }
 
         // set repeater bit if receiver connected is a repeater
         if(bcaps & BIT6)
@@ -399,21 +419,18 @@ int hdcp_enable(int enable)
         }
 
         //Write the BKsv into the encoder
-	REG_WRITE(MDFLD_HDCP_BKSV_LOW_REG, hw_bksv.u.low_part);
-	REG_WRITE(MDFLD_HDCP_BKSV_HI_REG, hw_bksv.u.high_part);
- 
- 
+        REG_WRITE(MDFLD_HDCP_BKSV_LOW_REG, hw_bksv.u.low_part);
+        REG_WRITE(MDFLD_HDCP_BKSV_HI_REG, hw_bksv.u.high_part);
+
         //enable HDCP on this port
-	REG_WRITE(hdmi_priv->hdmib_reg, REG_READ(hdmi_priv->hdmib_reg) | HDMIB_HDCP_PORT);
+        REG_WRITE(hdmi_priv->hdmib_reg, REG_READ(hdmi_priv->hdmib_reg) | HDMIB_HDCP_PORT);
 
         //TBD :Check the bStatus, for repeater and set HDCP_REP[1]
         //Set HDCP_CONFIG to 011 = Authenticate and encrypt
         config.hdcp_config = HDCP_AUTHENTICATE_AND_ENCRYPT;
         REG_WRITE(MDFLD_HDCP_CONFIG_REG, config.value);
 
-
         //At this point of time the Km is created
-        
         //TBD:Have some delay before reading the Ri'
         //Right now using 100 ms, as per the HDCP spec(Refer HDCP SAS for details)
         mdelay(HDCP_100MS_DELAY);
@@ -428,34 +445,35 @@ int hdcp_enable(int enable)
         }
 
         if(max_retry == -1)
+        {
+            DRM_ERROR("HDCP:  waiting for Ri ready times out.\n");
             return 0;//Cipher timeout, was not able to generate An :(
+        }
 
         //Compare the R0 and Ri
         //Read the Ri' of reciever
         ret = read_hdcp_port(RX_TYPE_RI_DATA, (uint8_t*)&rx_ri, 2);
         if(!ret)
+        {
+            DRM_ERROR("HDCP: failed to read Ri.\n");
             return 0;
+        }
 
         //update the HDCP_Ri' register and read the status reg for confrmation
         receivers_ri.value = REG_READ(MDFLD_HDCP_RECEIVER_RI_REG);
         receivers_ri.ri = rx_ri;
         REG_WRITE(MDFLD_HDCP_RECEIVER_RI_REG, receivers_ri.value);
-        
         status.value = REG_READ(MDFLD_HDCP_STATUS_REG);
 
-        //SoftbiosDebugMessage(DBG_CRITICAL,"R Prime       = %x\n",dwRxRi);
-        //SoftbiosDebugMessage(DBG_CRITICAL,"HDCP_STATUS = %x\n",stStatus.value);
         ret = status.cipher_ri_match_status;
-	printk("%s: cipher ri %s\n",__func__,(ret==1)?"MATCH":"UNMATCH!");
-       /*if(GEN4INTHDCPCONTROLLER_HasInterruptOccured(pThis,ePort) == TRUE)
-       {
-	        bRet = 0;
-       }*/
-    }
-
-    if(!ret)
-    {
-        //TODO: SoftbiosDebugMessage(DBG_CRITICAL," EnableHDCP failed \n");
+        if(ret)
+        {
+            DRM_INFO("HDCP: cipher Ri is MATCHED.\n");
+        }
+        else
+        {
+            DRM_ERROR("HDCP: cipher Ri is UNMATCHED.\n");
+        }
     }
 
     return ret;
@@ -507,7 +525,7 @@ static int hdcp_wait_for_next_data_ready(void)
             break;
         }
     }
-    
+
     return ret;
 }
 
@@ -900,7 +918,6 @@ static uint32_t hdcp_set_encryption_level(cp_parameters_t* cp)
                           }
                      }
                 }
-                
 
                 if(ret == STATUS_SUCCESS)
                 {
@@ -942,11 +959,10 @@ static uint32_t hdcp_activate_repeater(cp_parameters_t* cp)
     hdcp_rx_bcaps_t b_caps;
     hdcp_rx_bstatus_t b_status;
     //TBD: TO be enabled for OPM - Vista
-    
     // Init bcaps
     b_caps.value = 0;
     b_status.value = 0;
-    
+
     for(i = 0; i<5; i++)
         repeater_prime_v[i] = 0;
 
@@ -969,7 +985,7 @@ static uint32_t hdcp_activate_repeater(cp_parameters_t* cp)
             ret = STATUS_INVALID_PARAMETER;
             break;
         }
-        
+
         // Check if the KSV FIFO is ready
         if(!(b_caps.ksv_fifo_ready))
         {
@@ -980,7 +996,7 @@ static uint32_t hdcp_activate_repeater(cp_parameters_t* cp)
             ret = STATUS_PENDING;
             break;
         }
-    
+
         //Read repeater's Bstatus
         hdcp_get_receiver_data((uint8_t*)&b_status.value, 2, RX_TYPE_BSTATUS);
         
@@ -990,7 +1006,7 @@ static uint32_t hdcp_activate_repeater(cp_parameters_t* cp)
             ret = STATUS_INVALID_PARAMETER;
             break;
         }
-        
+
         // Check for topology error. This happens when
         // more then seven levels of video repeater have been cascaded.
         if(b_status.max_cascade_exceeded)
@@ -998,7 +1014,7 @@ static uint32_t hdcp_activate_repeater(cp_parameters_t* cp)
             ret =  STATUS_INVALID_PARAMETER;
             break;
         }
-        
+
         device_count = b_status.device_count;
         if(device_count == 0)
         {
@@ -1013,7 +1029,7 @@ static uint32_t hdcp_activate_repeater(cp_parameters_t* cp)
             ret =  STATUS_INVALID_PARAMETER;
             break;
         }
-        
+
         // Update the cipher saying sink supports repeater capabilities
         if(!hdcp_update_repeater_state(1))
         {
@@ -1027,7 +1043,7 @@ static uint32_t hdcp_activate_repeater(cp_parameters_t* cp)
             ret = STATUS_UNSUCCESSFUL;
             break;
         }
-        
+
         for(j=0; j<device_count; j++)
         {
             for(k=0; k<cp->hdcp.ksv_list_length; k++)
@@ -1039,13 +1055,13 @@ static uint32_t hdcp_activate_repeater(cp_parameters_t* cp)
                 }
             }
         }
-        
+
         if(!hdcp_compute_transmitter_v((ksv_t *)ksv_list,device_count,b_status.value))
         {
             ret = STATUS_UNSUCCESSFUL;
             break;
         }
-                
+
         //Get the HDCP receiver's V' value (20 bytes in size)
         if(!hdcp_get_receiver_data((uint8_t*)repeater_prime_v, KSV_SIZE*4, RX_TYPE_REPEATER_PRIME_V))
         {
@@ -1053,7 +1069,6 @@ static uint32_t hdcp_activate_repeater(cp_parameters_t* cp)
             break;
         }
 
-        
         if(!hdcp_compare_v_prime(repeater_prime_v, KSV_SIZE))
         {
             //set hdcp encryption level to 0
@@ -1069,7 +1084,7 @@ static uint32_t hdcp_activate_repeater(cp_parameters_t* cp)
 
     if(ksv_list)
     {
-            kfree(ksv_list);             
+            kfree(ksv_list);
             ksv_list = NULL;
     }
 
@@ -1117,13 +1132,15 @@ int hdcp_get_link_status(void)
         //Read the Ri' of reciever
         ret = read_hdcp_port(RX_TYPE_RI_DATA,(uint8_t*)&rx_ri,2);
         if(!ret)
+        {
+            DRM_ERROR("HDCP: failed to read Ri during link status check.\n");
             break; // I2C access failed
-
+        }
         //update the HDCP_Ri' register and read the status reg for cofrmation
         receivers_ri.value = REG_READ(MDFLD_HDCP_RECEIVER_RI_REG);
         receivers_ri.ri = rx_ri;
         REG_WRITE(MDFLD_HDCP_RECEIVER_RI_REG, receivers_ri.value);
-        
+
         status.value = REG_READ(MDFLD_HDCP_STATUS_REG);
 
         ret = status.cipher_ri_match_status;
@@ -1178,7 +1195,7 @@ uint32_t hdcp_get_cp_data(cp_parameters_t* cp)
 {
     uint32_t ret = STATUS_SUCCESS;
     int is_repeater = 0;
-    
+
     if((cp->protect_type_mask & CP_PROTECTION_TYPE_HDCP))
     {
         //Check whether HDCP is on
@@ -1208,7 +1225,7 @@ uint32_t hdcp_get_cp_data(cp_parameters_t* cp)
             memset(&(cp->hdcp.bksv), 0, CP_HDCP_KEY_SELECTION_VECTOR_SIZE);
             ret = STATUS_DATA_ERROR;
         }
-        else 
+        else
         {
             // This is via opregion. This will return all zeros in production mode
             // Get the AKSV
@@ -1325,7 +1342,7 @@ uint32_t hdcp_set_cp_data(cp_parameters_t* cp)
                 hdcp_set_encryption_level(cp);
             }
         }
-        
+
         if(ret == STATUS_SUCCESS)
         {
 #if 0 //Do need this for client        

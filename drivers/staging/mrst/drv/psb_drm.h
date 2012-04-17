@@ -752,7 +752,7 @@ typedef struct drm_psb_msvdx_decode_status {
 
 /* CSC IOCTLS */
 #define DRM_PSB_CSC_GAMMA_SETTING 0x29
-#define DRM_PSB_SET_CSC 0x2a
+#define DRM_PSB_SET_CSC         0x2a
 
 #define DRM_PSB_DSR_ENABLE	0xfffffffe
 #define DRM_PSB_DSR_DISABLE	0xffffffff
