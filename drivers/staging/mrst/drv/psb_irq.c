@@ -102,7 +102,7 @@ psb_enable_pipestat(struct drm_psb_private *dev_priv, int pipe, u32 mask)
 		if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, OSPM_UHB_ONLY_IF_ON)) {
 			u32 writeVal = PSB_RVDC32(reg);
 			/* Don't clear other interrupts */
-			writeVal &= PIPE_EVENT_MASK;
+			writeVal &= (PIPE_EVENT_MASK | PIPE_VBLANK_MASK);
 			writeVal |= (mask | (mask >> 16));
 			PSB_WVDC32(writeVal, reg);
 			(void) PSB_RVDC32(reg);
@@ -120,7 +120,7 @@ psb_disable_pipestat(struct drm_psb_private *dev_priv, int pipe, u32 mask)
 		if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, OSPM_UHB_ONLY_IF_ON)) {
 			u32 writeVal = PSB_RVDC32(reg);
 			/* Don't clear other interrupts */
-			writeVal &= PIPE_EVENT_MASK;
+			writeVal &= (PIPE_EVENT_MASK | PIPE_VBLANK_MASK);
 			writeVal &= ~mask;
 			PSB_WVDC32(writeVal, reg);
 			(void) PSB_RVDC32(reg);

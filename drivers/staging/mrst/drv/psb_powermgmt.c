@@ -348,7 +348,6 @@ void ospm_power_init(struct drm_device *dev)
 	mutex_init(&g_ospm_mutex);
 	spin_lock_init(&dev_priv->ospm_lock);
 
-	dev_priv->drm_psb_widi = 0;
 	spin_lock_irqsave(&dev_priv->ospm_lock, flags);
 	g_hw_power_status_mask = OSPM_ALL_ISLANDS;
 	spin_unlock_irqrestore(&dev_priv->ospm_lock, flags);
@@ -1617,6 +1616,7 @@ void ospm_resume_display(struct pci_dev *pdev)
 			mdfld_restore_display_registers(dev, 2);
 		if (dev_priv->panel_desc & DISPLAY_A)
 			mdfld_restore_display_registers(dev, 0);
+
 		/*
 		 * Don't restore Display B registers during resuming, if HDMI
 		 * isn't turned on before suspending.
@@ -1629,12 +1629,9 @@ void ospm_resume_display(struct pci_dev *pdev)
 		defined(CONFIG_SND_INTELMID_HDMI_AUDIO_MODULE))
 			if (!is_hdmi_plugged_out(dev)) {
 				PSB_DEBUG_ENTRY("resume hdmi_state %d", hdmi_state);
-				if (dev_priv->had_pvt_data && hdmi_state) {
-					if (!dev_priv->had_interface->resume(dev_priv->had_pvt_data)) {
-						uevent_string = "HDMI_AUDIO_PM_RESUMED=1";
-						psb_sysfs_uevent(dev_priv->dev, uevent_string);
-					}
-				}
+				if (dev_priv->had_pvt_data && hdmi_state)
+					dev_priv->had_interface->
+						resume(dev_priv->had_pvt_data);
 			}
 #endif
 		}
@@ -1775,8 +1772,6 @@ static void gfx_early_suspend(struct early_suspend *h)
 	printk(KERN_ALERT "\n   gfx_early_suspend\n");
 #endif
 
-	if( dev_priv->drm_psb_widi )
-		dev_priv->drm_psb_widi = 0;
     if (dev_priv->pvr_screen_event_handler)
         dev_priv->pvr_screen_event_handler(dev, 0);
 	/*Display off*/
@@ -1845,9 +1840,6 @@ static void gfx_late_resume(struct early_suspend *h)
 #ifdef OSPM_GFX_DPK
 	printk(KERN_ALERT "\ngfx_late_resume\n");
 #endif
-
-	if( dev_priv->drm_psb_widi )
-		dev_priv->drm_psb_widi = 0;
 
 	if(IS_MDFLD(gpDrmDevice)){
 
@@ -2571,10 +2563,6 @@ int psb_runtime_idle(struct device *dev)
 		hdmi_audio_busy =
 			had_interface->suspend(dev_priv->had_pvt_data,
 					hdmi_audio_event);
-		if (!hdmi_audio_busy) {
-			uevent_string = "HDMI_AUDIO_PM_SUSPENDED=1";
-			psb_sysfs_uevent(dev_priv->dev, uevent_string);
-		}
 	}
 #endif
 

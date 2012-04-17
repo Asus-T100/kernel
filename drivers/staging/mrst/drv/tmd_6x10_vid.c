@@ -277,33 +277,31 @@ static int mdfld_dsi_pr2_power_on(struct mdfld_dsi_config *dsi_config)
 		return -EINVAL;
 	}
 
-	/*Just turn on panel for WiDi Extended Mode.*/
-	if (!dev_priv->drm_psb_widi && !dev_priv->dpms_on_off) {
-		mdfld_dsi_send_gen_long_hs(sender, pr2_mcs_protect_off, 4, 0);
-		/*change power state*/
-		mdfld_dsi_send_mcs_long_hs(sender, pr2_exit_sleep_mode, 4, 0);
+	mdfld_dsi_send_gen_long_hs(sender, pr2_mcs_protect_off, 4, 0);
+	/*change power state*/
+	mdfld_dsi_send_mcs_long_hs(sender, pr2_exit_sleep_mode, 4, 0);
 
-		msleep(120);
+	/*120ms delay is needed between enter and exit sleep mode per spec*/
+	msleep(120);
 
-		/*enable PWMON*/
-		pr2_backlight_control_2[0] |= BIT8;
-		mdfld_dsi_send_mcs_long_hs(sender,
+	/*enable PWMON*/
+	pr2_backlight_control_2[0] |= BIT8;
+	mdfld_dsi_send_mcs_long_hs(sender,
 			pr2_backlight_control_2, 8, 0);
 
-		/*set display on*/
-		mdfld_dsi_send_mcs_long_hs(sender, pr2_set_display_on, 4, 0);
+	/*set display on*/
+	mdfld_dsi_send_mcs_long_hs(sender, pr2_set_display_on, 4, 0);
+	/* Per panel spec, 21ms delay is needed */
+	msleep(21);
 
-		msleep(21);
-
-		/*Enable BLON , CABC*/
-		if (drm_psb_enable_pr2_cabc) {
-			pr2_backlight_control_1[0] |= BIT8;
-			mdfld_dsi_send_gen_long_hs(sender,
+	/*Enable BLON , CABC*/
+	if (drm_psb_enable_pr2_cabc) {
+		pr2_backlight_control_1[0] |= BIT8;
+		mdfld_dsi_send_gen_long_hs(sender,
 				pr2_backlight_control_1, 24, 0);
-			printk(KERN_ALERT "enable pr2 cabc\n");
-		}
-
+		printk(KERN_ALERT "enable pr2 cabc\n");
 	}
+
 	/*send TURN_ON packet*/
 	err = mdfld_dsi_send_dpi_spk_pkg_hs(sender,
 				MDFLD_DSI_DPI_SPK_TURN_ON);
@@ -341,30 +339,30 @@ static int mdfld_dsi_pr2_power_off(struct mdfld_dsi_config *dsi_config)
 	/*according HW DSI spec, need wait for 100ms*/
 	msleep(100);
 
-	/*Just turn off panel for WiDi Extended Mode.*/
-	if (!dev_priv->drm_psb_widi && !dev_priv->dpms_on_off) {
-		mdfld_dsi_send_gen_long_hs(sender, pr2_mcs_protect_off, 4, 0);
-		/*change power state here*/
-		mdfld_dsi_send_mcs_long_hs(sender, pr2_set_display_off, 4, 0);
+	mdfld_dsi_send_gen_long_hs(sender, pr2_mcs_protect_off, 4, 0);
+	/*change power state here*/
+	mdfld_dsi_send_mcs_long_hs(sender, pr2_set_display_off, 4, 0);
 
-		/*disable BLCON, disable CABC*/
-		pr2_backlight_control_1[0] &= (~BIT8);
-		mdfld_dsi_send_gen_long_hs(sender,
-			pr2_backlight_control_1, 24, 0);
-		printk(KERN_ALERT "disable pr2 cabc\n");
+	/*disable BLCON, disable CABC*/
+	pr2_backlight_control_1[0] &= (~BIT8);
+	mdfld_dsi_send_gen_long_hs(sender,
+			pr2_backlight_control_1, 6, 0);
+	printk(KERN_ALERT "disable pr2 cabc\n");
 
-		msleep(21);
+	/* Per panel spec, 21ms delay is needed */
+	msleep(21);
 
-		mdfld_dsi_send_mcs_long_hs(sender, pr2_enter_sleep_mode, 4, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, pr2_enter_sleep_mode, 4, 0);
 
-		msleep(120);
+	/*120ms delay is needed between enter and exit sleep mode per spec*/
+	msleep(120);
 
-		/*put panel into deep standby mode*/
-		mdfld_dsi_send_gen_long_hs(sender,
+	/*put panel into deep standby mode*/
+	mdfld_dsi_send_gen_long_hs(sender,
 			pr2_enter_low_power_mode, 4, 0);
 
-		mdfld_dsi_send_gen_long_hs(sender, pr2_mcs_protect_on, 4, 0);
-	}
+	mdfld_dsi_send_gen_long_hs(sender, pr2_mcs_protect_on, 4, 0);
+
 	return 0;
 }
 
