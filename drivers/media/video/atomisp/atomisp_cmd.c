@@ -3068,6 +3068,8 @@ static void atomisp_set_dis_envelop(struct atomisp_device *isp,
 		 */
 		*dvs_env_w = width / 5;
 		*dvs_env_h = height / 5;
+		*dvs_env_w = *dvs_env_w - *dvs_env_w % ATOM_ISP_STEP_WIDTH;
+		*dvs_env_h = *dvs_env_h - *dvs_env_h % ATOM_ISP_STEP_HEIGHT;
 		sh_css_video_set_dis_envelope(*dvs_env_w, *dvs_env_h);
 	} else {
 		/* if DVS gets disabled, make sure it's indeed turned off */
