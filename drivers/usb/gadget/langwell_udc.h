@@ -189,13 +189,9 @@ struct langwell_udc {
 				enabled:1,
 				region:1,
 				got_irq:1,
-				powered:1,
 				remote_wakeup:1,
-				rate:1,
-				is_reset:1,
 				softconnected:1,
 				vbus_active:1,
-				suspended:1,
 				stopped:1,
 				lpm:1,		/* LPM capability */
 				has_sram:1,	/* SRAM caching */

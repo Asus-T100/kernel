@@ -3632,12 +3632,7 @@ static int langwell_udc_probe(struct pci_dev *pdev,
 	/* allocate device dQH memory */
 	size = dev->ep_max * sizeof(struct langwell_dqh);
 	dev_vdbg(&dev->pdev->dev, "orig size = %zd\n", size);
-	if (size < DQH_ALIGNMENT)
-		size = DQH_ALIGNMENT;
-	else if ((size % DQH_ALIGNMENT) != 0) {
-		size += DQH_ALIGNMENT + 1;
-		size &= ~(DQH_ALIGNMENT - 1);
-	}
+	size = roundup(size, DQH_ALIGHMENT);
 	dev->ep_dqh = dma_alloc_coherent(&pdev->dev, size,
 					&dev->ep_dqh_dma, GFP_KERNEL);
 	if (!dev->ep_dqh) {
@@ -3841,12 +3836,7 @@ static int langwell_udc_resume(struct pci_dev *pdev)
 	/* allocate device dQH memory */
 	size = dev->ep_max * sizeof(struct langwell_dqh);
 	dev_vdbg(&dev->pdev->dev, "orig size = %zd\n", size);
-	if (size < DQH_ALIGNMENT)
-		size = DQH_ALIGNMENT;
-	else if ((size % DQH_ALIGNMENT) != 0) {
-		size += DQH_ALIGNMENT + 1;
-		size &= ~(DQH_ALIGNMENT - 1);
-	}
+	size = roundup(size, DQH_ALIGNMENT);
 	dev->ep_dqh = dma_alloc_coherent(&pdev->dev, size,
 					&dev->ep_dqh_dma, GFP_KERNEL);
 	if (!dev->ep_dqh) {
@@ -3984,12 +3974,7 @@ static int intel_mid_start_peripheral(struct intel_mid_otg_xceiv *iotg)
 	/* allocate device dQH memory */
 	size = dev->ep_max * sizeof(struct langwell_dqh);
 	dev_vdbg(&dev->pdev->dev, "orig size = %d\n", size);
-	if (size < DQH_ALIGNMENT)
-		size = DQH_ALIGNMENT;
-	else if ((size % DQH_ALIGNMENT) != 0) {
-		size += DQH_ALIGNMENT + 1;
-		size &= ~(DQH_ALIGNMENT - 1);
-	}
+	size = roundup(size, DQH_ALIGNMENT);
 	dev->ep_dqh = dma_alloc_coherent(&dev->pdev->dev, size,
 					&dev->ep_dqh_dma, GFP_KERNEL);
 	if (!dev->ep_dqh) {
