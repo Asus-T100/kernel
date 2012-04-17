@@ -107,8 +107,6 @@
 extern int get_target_platform_state(unsigned long *eax);
 extern int mid_s0ix_enter(int);
 extern int pmu_set_devices_in_d0i0(void);
-extern void acquire_scu_ready_sem(void);
-extern void release_scu_ready_sem(void);
 extern int pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t state);
 extern pci_power_t pmu_pci_choose_state(struct pci_dev *pdev);
 
@@ -158,8 +156,6 @@ static inline bool pmu_is_s0ix_in_progress(void) { return false; };
 static inline  int mid_nc_read32(u32 cmd, u32 *data) { return -ENOSYS; }
 static inline int mid_nc_write32(u32 cmd, u32 data) { return -ENOSYS; }
 static inline int pmu_set_devices_in_d0i0(void) { return 0; }
-static inline void acquire_scu_ready_sem(void) { return; };
-static inline void release_scu_ready_sem(void) { return; };
 static inline void pmu_log_ipc(u32 command) { return; };
 static inline void pmu_log_ipc_irq(void) { return; };
 static inline int pmu_set_emmc_to_d0i0_atomic(void) { return -ENOSYS; }
