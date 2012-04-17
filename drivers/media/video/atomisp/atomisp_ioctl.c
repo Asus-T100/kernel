@@ -1606,9 +1606,21 @@ static int atomisp_s_parm(struct file *file, void *fh,
 	}
 
 	isp->sw_contex.run_mode = parm->parm.capture.capturemode;
+	ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
+				video, s_parm, parm);
 
 	mutex_unlock(&isp->input_lock);
-	return ret;
+	/*
+	 * why do we think the return value -ENOIOCTLCMD is ok?
+	 * that's because some sensor drivers may don't need s_parm
+	 * to set their run_mode and so have no the s_parm interface.
+	 */
+	if (ret && ret != -ENOIOCTLCMD) {
+		v4l2_err(&atomisp_dev,
+			    "failed to s_parm for sensor\n");
+		return ret;
+	}
+	return 0;
 }
 
 static int atomisp_s_parm_file(struct file *file, void *fh,

@@ -258,6 +258,7 @@ struct mt9e013_resolution {
 	int width;
 	int height;
 	int fps;
+	int low_fps;
 	bool used;
 	unsigned short pixels_per_line;
 	unsigned short lines_per_frame;
