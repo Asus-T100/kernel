@@ -1041,6 +1041,9 @@ static int langwell_ep_dequeue(struct usb_ep *_ep, struct usb_request *_req)
 	dev = ep->dev;
 	dev_vdbg(&dev->pdev->dev, "---> %s()\n", __func__);
 
+	if (!dev->got_irq)
+		return -ENODEV;
+
 	if (!ep->desc)
 		return -EINVAL;
 
