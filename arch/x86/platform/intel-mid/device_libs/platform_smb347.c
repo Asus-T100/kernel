@@ -38,7 +38,7 @@ static struct smb347_charger_platform_data smb347_pdata = {
 	.charge_current_compensation	= 900000,
 	.use_mains			= true,
 	.enable_control			= SMB347_CHG_ENABLE_PIN_ACTIVE_LOW,
-	.otg_control			= SMB347_OTG_CONTROL_DISABLED,
+	.otg_control			= SMB347_OTG_CONTROL_SW,
 	.irq_gpio			= SMB347_IRQ_GPIO,
 };
 
