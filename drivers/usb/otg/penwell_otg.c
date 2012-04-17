@@ -4493,13 +4493,10 @@ static int penwell_otg_resume_noirq(struct device *dev)
 static int penwell_otg_runtime_suspend(struct device *dev)
 {
 	struct penwell_otg	*pnw = the_transceiver;
-	struct pci_dev		*pdev;
 	int			ret = 0;
 	u32			val;
 
 	dev_dbg(dev, "%s --->\n", __func__);
-
-	pdev = to_pci_dev(dev);
 
 	switch (pnw->iotg.otg.state) {
 	case OTG_STATE_A_IDLE:
@@ -4540,13 +4537,10 @@ static int penwell_otg_runtime_suspend(struct device *dev)
 static int penwell_otg_runtime_resume(struct device *dev)
 {
 	struct penwell_otg	*pnw = the_transceiver;
-	struct pci_dev		*pdev;
 	int			ret = 0;
 	u32			val;
 
 	dev_dbg(dev, "%s --->\n", __func__);
-
-	pdev = to_pci_dev(dev);
 
 	if (pnw->rt_resuming) {
 		dev_dbg(pnw->dev, "%s  rt_resuming--->\n", __func__);
@@ -4591,7 +4585,8 @@ static int penwell_otg_runtime_resume(struct device *dev)
 	}
 
 	dev_dbg(dev, "%s <---\n", __func__);
-	return 0;
+
+	return ret;
 }
 
 static int penwell_otg_runtime_idle(struct device *dev)
