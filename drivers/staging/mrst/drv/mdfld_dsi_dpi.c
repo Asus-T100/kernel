@@ -46,7 +46,6 @@ static u32 mode_vdisplay;
 
 /* Local functions */
 static void mdfld_dsi_dpi_shut_down(struct mdfld_dsi_dpi_output *output, int pipe);
-bool dsi_device_ready = true;
 struct drm_encoder *gencoder;
 extern struct drm_device *gpDrmDevice;
 extern int drm_psb_enable_gamma;
@@ -72,7 +71,6 @@ extern int drm_psb_enable_color_conversion;
 
 static int gGpioOutput;
 int disp_init;
-bool dsi_device_ready;
 
 #define IOCTL_LCM_POWER_OFF 0
 #define IOCTL_LCM_POWER_ON  1
@@ -784,10 +782,6 @@ static void mdfld_dsi_configure_down(struct mdfld_dsi_encoder * dsi_encoder, int
 
 	PSB_DEBUG_ENTRY("[DISPLAY TRK] Enter %s\n", __func__);
 
-	if (!dev_priv->dpi_panel_on) {
-		PSB_DEBUG_ENTRY("[DISPLAY] %s: DPI Panel is Already Off\n", __func__);
-		return;
-	}
 #ifdef	CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
 	dsi_lvds_toshiba_bridge_panel_off();
 	dsi_lvds_suspend_lvds_bridge(dev);
@@ -812,11 +806,6 @@ static void mdfld_dsi_configure_up(struct mdfld_dsi_encoder * dsi_encoder, int p
 
 	PSB_DEBUG_ENTRY("[DISPLAY TRK] Enter %s\n", __func__);
 
-	if (dev_priv->dpi_panel_on) {
-		PSB_DEBUG_ENTRY("[DISPLAY] %s: DPI Panel is Already On\n", __func__);
-		return;
-	}
-
 	/* For resume path sequence */
 	/* dsi_set_pipe_plane_enable_state(dev, 0, pipe); */
 	/* dsi_set_ptarget_state(dev, 0); */
@@ -839,6 +828,88 @@ static void mdfld_dsi_configure_up(struct mdfld_dsi_encoder * dsi_encoder, int p
 	dev_priv->dpi_panel_on = true;
 }
 
+static void mdfld_dsi_lvds_set_power(struct drm_encoder *encoder, bool on)
+{
+	struct mdfld_dsi_encoder *dsi_encoder;
+	struct mdfld_dsi_connector *dsi_connector;
+	struct mdfld_dsi_dpi_output *dpi_output;
+	struct mdfld_dsi_config *dsi_config;
+	struct panel_funcs *p_funcs;
+	int pipe;
+	struct drm_device *dev;
+	struct drm_psb_private *dev_priv;
+	static int last_ospm_suspend = -1;
+
+	if (!encoder) {
+		DRM_ERROR("Invalid encoder\n");
+		return -EINVAL;
+	}
+
+	PSB_DEBUG_ENTRY("last_ospm_suspend = %s\n", (on ? "on" : "off"),
+			(last_ospm_suspend ? "true" : "false"));
+
+	dsi_encoder = MDFLD_DSI_ENCODER(encoder);
+	dpi_output = MDFLD_DSI_DPI_OUTPUT(dsi_encoder);
+	dsi_config = mdfld_dsi_encoder_get_config(dsi_encoder);
+	p_funcs = dpi_output->p_funcs;
+	pipe = mdfld_dsi_encoder_get_pipe(dsi_encoder);
+	dsi_connector = mdfld_dsi_encoder_get_connector(dsi_encoder);
+	dev = dsi_config->dev;
+	dev_priv = dev->dev_private;
+
+	mutex_lock(&dsi_config->context_lock);
+
+	if (last_ospm_suspend == -1)
+		last_ospm_suspend = false;
+
+	if (dpi_output->first_boot && dev_priv->dpi_panel_on) {
+		printk(KERN_ALERT "skip panle power setting for first boot!"
+				" panel is already powered on\n");
+		goto fun_exit;
+	}
+	/**
+	 * if ospm has turned panel off, but dpms tries to turn panel on, skip
+	 */
+	if (dev_priv->dpms_on_off && on && last_ospm_suspend)
+		goto fun_exit;
+
+	switch (on) {
+	case true:
+		/* panel is already on */
+		if (dev_priv->dpi_panel_on) {
+			if (!dev_priv->dpms_on_off)
+				last_ospm_suspend = false;
+			goto fun_exit;
+		}
+
+		/* For DPMS case, just turn on/off panel */
+		if (dev_priv->dpms_on_off)
+			/*dsi_lvds_toshiba_bridge_panel_on();*/
+			mdfld_dsi_dpi_turn_on(dpi_output, pipe);
+		else
+			mdfld_dsi_configure_up(dsi_encoder, pipe);
+
+		last_ospm_suspend = false;
+		break;
+	case false:
+		if (dev_priv->dpms_on_off && dev_priv->dpi_panel_on) {
+			/*dsi_lvds_toshiba_bridge_panel_off();*/
+			mdfld_dsi_dpi_shut_down(dpi_output, pipe);
+			last_ospm_suspend = false;
+		} else if (!dev_priv->dpms_on_off && !last_ospm_suspend) {
+			mdfld_dsi_configure_down(dsi_encoder, pipe);
+			/* ospm suspend called? */
+			last_ospm_suspend = true;
+		}
+		break;
+	default:
+		break;
+	}
+fun_exit:
+	mutex_unlock(&dsi_config->context_lock);
+	PSB_DEBUG_ENTRY("successfully\n");
+	return 0;
+}
 #endif
 
 /* ************************************************************************* *\
@@ -1945,15 +2016,9 @@ void mdfld_dsi_dpi_set_power(struct drm_encoder *encoder, bool on)
 
 #if defined(CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY) || defined(CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE)
 	if (on) {
-		if (get_panel_type(dev, pipe) == TMD_VID){
-			if (dsi_device_ready) {
-				ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
-				return;
-			}
-
-			mdfld_dsi_configure_up(dsi_encoder, pipe);
-			dsi_device_ready = true;
-		} else {
+		if (get_panel_type(dev, pipe) == TMD_VID)
+			mdfld_dsi_lvds_set_power(encoder, on);
+		else {
 			/*enable mipi port*/
 			REG_WRITE(mipi_reg, (REG_READ(mipi_reg) | BIT31));
 			REG_READ(mipi_reg);
@@ -1969,15 +2034,9 @@ void mdfld_dsi_dpi_set_power(struct drm_encoder *encoder, bool on)
 		}
 
 	} else {
- 		if (get_panel_type(dev, pipe) == TMD_VID) {
-			if (!dsi_device_ready) {
-				ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
-				return;
-			}
-
-			mdfld_dsi_configure_down(dsi_encoder, pipe);
-			dsi_device_ready = false;
- 		} else {
+		if (get_panel_type(dev, pipe) == TMD_VID)
+			mdfld_dsi_lvds_set_power(encoder, on);
+		else {
 			mdfld_dsi_dpi_shut_down(dpi_output, pipe);
 
 			/*disable mipi port*/
@@ -2441,14 +2500,12 @@ void mdfld_dsi_dpi_mode_set(struct drm_encoder *encoder,
 	if (get_panel_type(dev, pipe) == TMD_VID) {
 #ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
 		dsi_lvds_configure_lvds_bridge(dev);  /*Configure MIPI Bridge and Panel */
-		dsi_device_ready = true;
 		dev_priv->dpi_panel_on = true;
 #else
 		/*Pull High Reset*/
 		dsi_set_bridge_reset_state(0);
 		/*Init MIPI Bridge and Panel*/
 		mdfld_init_TOSHIBA_MIPI(dev);
-		dsi_device_ready = true;
 #endif
 	} else {
 		/*turn on DPI interface*/
