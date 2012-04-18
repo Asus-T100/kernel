@@ -108,19 +108,21 @@ static const struct snd_kcontrol_new pgaa_mux =
 static const struct snd_kcontrol_new pgab_mux =
 	SOC_DAPM_ENUM("Right Analog Input Capture Mux", pgab_enum);
 
-static const struct snd_kcontrol_new input_left_mixer[] = {
-	SOC_DAPM_SINGLE("ADC Left Input", CS42L73_PWRCTL1,
-			5, 1, 1),
-	SOC_DAPM_SINGLE("DMIC Left Input", CS42L73_PWRCTL1,
-			4, 1, 1),
-};
+static const char * const input_left_enum_text[] = {"None", "ADC A", "DMIC A"};
 
-static const struct snd_kcontrol_new input_right_mixer[] = {
-	SOC_DAPM_SINGLE("ADC Right Input", CS42L73_PWRCTL1,
-			7, 1, 1),
-	SOC_DAPM_SINGLE("DMIC Right Input", CS42L73_PWRCTL1,
-			6, 1, 1),
-};
+static const struct soc_enum input_left_enum =
+	SOC_ENUM_SINGLE(0, 0, 3, input_left_enum_text);
+
+static const struct snd_kcontrol_new input_left_mux =
+	SOC_DAPM_ENUM_VIRT("Input Left Capture Mux", input_left_enum);
+
+static const char * const input_right_enum_text[] = {"None", "ADC B", "DMIC B"};
+
+static const struct soc_enum input_right_enum =
+	SOC_ENUM_SINGLE(0, 0, 3, input_right_enum_text);
+
+static const struct snd_kcontrol_new input_right_mux =
+	SOC_DAPM_ENUM_VIRT("Input Right Capture Mux", input_right_enum);
 
 static const char * const cs42l73_ng_delay_text[] = {
 	"50ms", "100ms", "150ms", "200ms" };
@@ -442,6 +444,8 @@ static const struct snd_kcontrol_new cs42l73_snd_controls[] = {
 };
 
 static const struct snd_soc_dapm_widget cs42l73_dapm_widgets[] = {
+	SND_SOC_DAPM_INPUT("DMICA"),
+	SND_SOC_DAPM_INPUT("DMICB"),
 	SND_SOC_DAPM_INPUT("LINEINA"),
 	SND_SOC_DAPM_INPUT("LINEINB"),
 	SND_SOC_DAPM_INPUT("MIC1"),
@@ -467,13 +471,11 @@ static const struct snd_soc_dapm_widget cs42l73_dapm_widgets[] = {
 	SND_SOC_DAPM_ADC("DMIC Left", NULL, CS42L73_PWRCTL1, 4, 1),
 	SND_SOC_DAPM_ADC("DMIC Right", NULL, CS42L73_PWRCTL1, 6, 1),
 
-	SND_SOC_DAPM_MIXER_NAMED_CTL("Input Left Capture", SND_SOC_NOPM,
-			 0, 0, input_left_mixer,
-			 ARRAY_SIZE(input_left_mixer)),
+	SND_SOC_DAPM_VIRT_MUX("Input Left Capture", SND_SOC_NOPM,
+			 0, 0, &input_left_mux),
+	SND_SOC_DAPM_VIRT_MUX("Input Right Capture", SND_SOC_NOPM,
+			0, 0, &input_right_mux),
 
-	SND_SOC_DAPM_MIXER_NAMED_CTL("Input Right Capture", SND_SOC_NOPM,
-			0, 0, input_right_mixer,
-			ARRAY_SIZE(input_right_mixer)),
 	SND_SOC_DAPM_MIXER("Input Loopback Mixer", SND_SOC_NOPM, 0, 0, NULL, 0),
 	SND_SOC_DAPM_MUX("ESL Loopback", SND_SOC_NOPM, 0, 0,
 			    &esl_loopback_mux),
@@ -633,14 +635,13 @@ static const struct snd_soc_dapm_route cs42l73_audio_map[] = {
 
 	{"ADC Left", NULL, "PGA Left"},
 	{"ADC Right", NULL, "PGA Right"},
+	{"DMIC Left", NULL, "DMICA"},
+	{"DMIC Right", NULL, "DMICB"},
 
-	{"DMIC Left", NULL, "MIC1"},
-	{"DMIC Right", NULL, "MIC2"},
-
-	{"Input Left Capture", "ADC Left Input", "ADC Left"},
-	{"Input Right Capture", "ADC Right Input", "ADC Right"},
-	{"Input Left Capture", "DMIC Left Input", "DMIC Left"},
-	{"Input Right Capture", "DMIC Right Input", "DMIC Right"},
+	{"Input Left Capture", "ADC A", "ADC Left"},
+	{"Input Right Capture", "ADC B", "ADC Right"},
+	{"Input Left Capture", "DMIC A", "DMIC Left"},
+	{"Input Right Capture", "DMIC B", "DMIC Right"},
 	{"Input Loopback Mixer", NULL, "Input Left Capture"},
 	{"Input Loopback Mixer", NULL, "Input Right Capture"},
 
