@@ -319,7 +319,7 @@ static int alloc_private_pages(struct hmm_buffer_object *bo, int from_highmem,
 	int i, j;
 	int failure_number = 0;
 	bool reduce_order = false;
-	bool lack_mem = false;
+	bool lack_mem = true;
 
 	if (from_highmem)
 		gfp |= __GFP_HIGHMEM;
