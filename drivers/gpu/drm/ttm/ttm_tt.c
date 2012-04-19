@@ -464,10 +464,12 @@ static int alloc_user_pages_ttm(struct ttm_tt *ttm,
 	 * and map to user space
 	 */
 	if (vma->vm_flags & (VM_IO | VM_PFNMAP)) {
+		down_read(&current->mm->mmap_sem);
 		page_nr = get_pfnmap_pages(current, current->mm,
 					   (unsigned long)userptr,
 					   (int)(ttm->num_pages), 1, 0,
 					   ttm->pages, NULL);
+		up_read(&current->mm->mmap_sem);
 	} else {
 		/*Handle frame buffer allocated in user space*/
 		down_read(&current->mm->mmap_sem);
@@ -515,19 +517,20 @@ int ttm_tt_set_user(struct ttm_tt *ttm,
 	if (unlikely(ret != 0))
 		return ret;
 
-	down_read(&mm->mmap_sem);
-
 	/**
 	 * get_user_pages can only handle the buffer allocated from user space,
 	 * but we need handle the buffer allocated from other kernel driver
 	 */
 #if 0
+	down_read(&mm->mmap_sem);
+
 	ret = get_user_pages(tsk, mm, start, num_pages,
 			     write, 0, ttm->pages, NULL);
+	up_read(&mm->mmap_sem);
 #else
 	ret = alloc_user_pages_ttm(ttm, start);
 #endif
-	up_read(&mm->mmap_sem);
+
 
 	if (ret != num_pages && write) {
 		ttm_tt_free_user_pages(ttm);
