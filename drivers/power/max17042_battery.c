@@ -884,16 +884,19 @@ static void update_capacity_regs(struct max17042_chip *chip)
 			MAX17042_MODEL_MUL_FACTOR(fg_conf_data->full_cap)
 			* fg_conf_data->rsense);
 		max17042_write_verify_reg(chip->client, MAX17042_FullCAPNom,
-			MAX17042_MODEL_MUL_FACTOR(fg_conf_data->full_capnom)
+			MAX17042_MODEL_MUL_FACTOR(fg_conf_data->full_cap)
+			* fg_conf_data->rsense);
+		max17042_write_reg(chip->client, MAX17042_DesignCap,
+			MAX17042_MODEL_MUL_FACTOR(fg_conf_data->full_cap)
 			* fg_conf_data->rsense);
 	} else {
 		max17042_write_verify_reg(chip->client, MAX17042_FullCAP,
 			fg_conf_data->full_cap * fg_conf_data->rsense);
 		max17042_write_verify_reg(chip->client, MAX17042_FullCAPNom,
 			fg_conf_data->full_capnom * fg_conf_data->rsense);
-	}
-	max17042_write_reg(chip->client, MAX17042_DesignCap,
+		max17042_write_reg(chip->client, MAX17042_DesignCap,
 			fg_conf_data->design_cap * fg_conf_data->rsense);
+	}
 }
 
 static void reset_vfsoc0_reg(struct max17042_chip *chip)
@@ -911,39 +914,52 @@ static void load_new_capacity_params(struct max17042_chip *chip, bool is_por)
 	if (is_por) {
 		/* fg_vfSoc needs to shifted by 8 bits to get the
 		 * perc in 1% accuracy, to get the right rem_cap multiply
-		 * full_cap0, fg_vfSoc and devide by 100
+		 * full_cap by model multiplication factor,fg_vfSoc
+		 * and divide by 100
 		 */
-		rem_cap = ((fg_vfSoc >> 8) * (u32)fg_conf_data->full_capnom)
-		 / 100;
+		if (chip->chip_type == MAX17042)
+			rem_cap = ((fg_vfSoc >> 8) *
+			(u32)(MAX17042_MODEL_MUL_FACTOR
+			(fg_conf_data->full_cap))) / 100;
+		else
+			rem_cap = ((fg_vfSoc >> 8) *
+			(u32)fg_conf_data->full_capnom) / 100;
+
 		max17042_write_verify_reg(chip->client,
 					MAX17042_RemCap, rem_cap);
-		/* using model scaling factor to calculate rep_cap */
-		if (chip->chip_type == MAX17042)
-			rep_cap = rem_cap * (u32)MAX17042_MODEL_MUL_FACTOR(
-					fg_conf_data->full_cap
-					/ fg_conf_data->full_capnom);
-		else
-			rep_cap = rem_cap * (u32)(fg_conf_data->full_cap /
-					fg_conf_data->full_capnom);
+
+		rep_cap = rem_cap;
 
 		max17042_write_verify_reg(chip->client,
 					MAX17042_RepCap, rep_cap);
 	}
 
 	/* Write dQ_acc to 200% of Capacity and dP_acc to 200% */
-	dq_acc = fg_conf_data->full_capnom / dQ_ACC_DIV;
+	if (chip->chip_type == MAX17042)
+		dq_acc = MAX17042_MODEL_MUL_FACTOR(fg_conf_data->full_cap)
+		/ dQ_ACC_DIV;
+	else
+		dq_acc = fg_conf_data->full_capnom / dQ_ACC_DIV;
 	max17042_write_verify_reg(chip->client, MAX17042_dQacc, dq_acc);
 	max17042_write_verify_reg(chip->client, MAX17042_dPacc, dP_ACC_200);
 
 	max17042_write_verify_reg(chip->client, MAX17042_FullCAP,
 			fg_conf_data->full_cap
 			* fg_conf_data->rsense);
-	max17042_write_reg(chip->client, MAX17042_DesignCap,
+	if (chip->chip_type == MAX17042) {
+		max17042_write_reg(chip->client, MAX17042_DesignCap,
+			MAX17042_MODEL_MUL_FACTOR(fg_conf_data->full_cap)
+			* fg_conf_data->rsense);
+		max17042_write_verify_reg(chip->client, MAX17042_FullCAPNom,
+			MAX17042_MODEL_MUL_FACTOR(fg_conf_data->full_cap)
+			* fg_conf_data->rsense);
+	} else {
+		max17042_write_reg(chip->client, MAX17042_DesignCap,
 			fg_conf_data->design_cap * fg_conf_data->rsense);
-	max17042_write_verify_reg(chip->client, MAX17042_FullCAPNom,
+		max17042_write_verify_reg(chip->client, MAX17042_FullCAPNom,
 			fg_conf_data->full_capnom
 			* fg_conf_data->rsense);
-
+	}
 	/* Update SOC register with new SOC */
 	max17042_write_reg(chip->client, MAX17042_RepSOC, fg_vfSoc);
 }
