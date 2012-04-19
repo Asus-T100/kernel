@@ -254,7 +254,7 @@ enum mpu_ext_sync {
 #define DEFAULT_POLL_INTERVAL	200
 #define DEFAULT_FS_RANGE	3
 #define MPU_RESET_DELAY		15
-#define MPU_ENABLE_DELAY	80
+#define MPU_ENABLE_DELAY	200
 
 struct mpu_data {
 	struct i2c_client	*client;
