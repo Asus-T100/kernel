@@ -2114,6 +2114,35 @@ int gsm_activate_mux(struct gsm_mux *gsm)
 EXPORT_SYMBOL_GPL(gsm_activate_mux);
 
 /**
+ *	gsm_mux_malloc		-
+ *	@size: bytes to allocate
+ *
+ *	Dedicated for gsm_mux buf/txframe malloc
+ */
+unsigned char *gsm_mux_buf_malloc(unsigned int size)
+{
+	if (size <= PAGE_SIZE)
+		return kmalloc(size, GFP_KERNEL);
+	else
+		return vmalloc(size);
+}
+
+/**
+ *	gsm_mux_buf_free		-
+ *	@size: bytes to free
+ *	@add: addr to free
+ *
+ *	Dedicated for gsm_mux buf/txframe free
+ */
+void gsm_mux_buf_free(unsigned int size, void *addr)
+{
+	if (size <= PAGE_SIZE)
+		kfree(addr);
+	else
+		vfree(addr);
+}
+
+/**
  *	gsm_free_mux		-	free up a mux
  *	@mux: mux to free
  *
@@ -2121,8 +2150,14 @@ EXPORT_SYMBOL_GPL(gsm_activate_mux);
  */
 void gsm_free_mux(struct gsm_mux *gsm)
 {
-	kfree(gsm->txframe);
-	kfree(gsm->buf);
+	if (gsm->buf != NULL)
+		gsm_mux_buf_free(gsm->mru + 1, gsm->buf);
+	if (gsm->txframe != NULL) {
+		if (gsm->encoding == 0)
+			gsm_mux_buf_free(gsm->mtu + 1, gsm->txframe);
+		else
+			gsm_mux_buf_free(2 * gsm->mtu + 2, gsm->txframe);
+	}
 	kfree(gsm);
 }
 EXPORT_SYMBOL_GPL(gsm_free_mux);
@@ -2162,17 +2197,6 @@ struct gsm_mux *gsm_alloc_mux(void)
 	struct gsm_mux *gsm = kzalloc(sizeof(struct gsm_mux), GFP_KERNEL);
 	if (gsm == NULL)
 		return NULL;
-	gsm->buf = kmalloc(MAX_MRU + 1, GFP_KERNEL);
-	if (gsm->buf == NULL) {
-		kfree(gsm);
-		return NULL;
-	}
-	gsm->txframe = kmalloc(2 * MAX_MRU + 2, GFP_KERNEL);
-	if (gsm->txframe == NULL) {
-		kfree(gsm->buf);
-		kfree(gsm);
-		return NULL;
-	}
 	spin_lock_init(&gsm->lock);
 	kref_init(&gsm->ref);
 	INIT_LIST_HEAD(&gsm->tx_list);
@@ -2547,6 +2571,34 @@ static int gsmld_config(struct tty_struct *tty, struct gsm_mux *gsm,
 		need_restart = 1;
 	if (c->mtu != gsm->mtu)
 		need_restart = 1;
+
+	/*
+	 *	gsm_mux.buf allocate dynamically
+	 *	according to ldisc configuration
+	 */
+	if (gsm->buf != NULL)
+		gsm_mux_buf_free(gsm->mru + 1, gsm->buf);
+	gsm->buf = gsm_mux_buf_malloc(c->mru + 1);
+	if (gsm->buf == NULL)
+		return -ENOMEM;
+	/*
+	 *	gsm_mux.txframe allocate dynamically
+	 *	according to ldisc configuration
+	 */
+	if (gsm->txframe != NULL) {
+		if (gsm->encoding == 0)
+			gsm_mux_buf_free(gsm->mtu + 1, gsm->txframe);
+		else
+			gsm_mux_buf_free(2 * gsm->mtu + 2, gsm->txframe);
+	}
+	if (c->encapsulation == 0)
+		gsm->txframe = gsm_mux_buf_malloc(c->mtu + 1);
+	else
+		gsm->txframe = gsm_mux_buf_malloc(2 * c->mtu + 2);
+	if (gsm->txframe == NULL) {
+		gsm_mux_buf_free(c->mru + 1, gsm->buf);
+		return -ENOMEM;
+	}
 
 	/*
 	 *	Close down what is needed, restart and initiate the new
