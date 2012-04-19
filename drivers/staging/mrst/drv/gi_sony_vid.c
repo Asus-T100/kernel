@@ -68,6 +68,8 @@ static u32 gi_l5f3_set_pixel_format[] = {0x0000773a};
 static u32 gi_l5f3_set_te_scanline[] = {0x00000044};
 static u32 gi_l5f3_set_tear_on[] = {0x00000035};
 static u32 gi_l5f3_passwd1_on[] = {0x005a5af0};
+static u32 gi_l5f3_passwd2_on[] = {0x005a5af1};
+static u32 gi_l5f3_dstb_on[] = {0x000001df};
 static u32 gi_l5f3_set_disctl[] = {0x0f4a3bf2, 0x08081004, 0x00080800,
 	0x4c000000, 0x20201004};
 static u32 gi_l5f3_set_pwrctl[] = {0x000007f4, 0x00000000, 0x05440000,
@@ -346,6 +348,13 @@ static int mdfld_dsi_gi_sony_power_off(struct mdfld_dsi_config *dsi_config)
 	mdfld_dsi_send_mcs_long_hs(sender, gi_sony_enter_sleep_mode, 4, 0);
 
 	msleep(120);
+
+	/* DSTB, deep standby sequenc */
+	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_passwd2_on, 4, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_dstb_on, 4, 0);
+	PSB_DEBUG_ENTRY("putting panel into deep sleep standby\n");
+
+	msleep(50);
 
 	return 0;
 }
