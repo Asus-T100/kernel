@@ -358,8 +358,8 @@ static int adjust_tjmax(struct cpuinfo_x86 *c, u32 id, struct device *dev)
 		usemsr_ee = 0;
 
 	/* Atom CPUs */
-
-	if (c->x86_model == 0x1c) {
+	/* Model '0x27' for Atom based Penwell CPU */
+	if (c->x86_model == 0x1c || c->x86_model == 0x27) {
 		usemsr_ee = 0;
 
 		host_bridge = pci_get_bus_and_slot(0, PCI_DEVFN(0, 0));
