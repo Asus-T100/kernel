@@ -25,6 +25,16 @@ int __init setup_hsu_dma_enable_flag(char *p)
 }
 early_param("hsu_dma", setup_hsu_dma_enable_flag);
 
+int hsu_rx_wa;
+EXPORT_SYMBOL_GPL(hsu_rx_wa);
+
+int __init setup_hsu_rx_workarround_flag(char *p)
+{
+	hsu_rx_wa = 1;
+	return 0;
+}
+early_param("hsu_rx_wa", setup_hsu_rx_workarround_flag);
+
 static struct mfld_hsu_info default_hsu_info[] = {
 	[0] = {
 		.id = 0,

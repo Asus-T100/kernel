@@ -20,6 +20,7 @@ struct mfld_hsu_info {
 
 extern struct mfld_hsu_info *platform_hsu_info;
 extern unsigned char hsu_dma_enable;
+extern int hsu_rx_wa;
 void intel_mid_hsu_suspend(int port);
 void intel_mid_hsu_resume(int port);
 void intel_mid_hsu_switch(int port);
