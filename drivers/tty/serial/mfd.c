@@ -57,7 +57,7 @@
 #define mfd_readl(obj, offset)		readl(obj->reg + offset)
 #define mfd_writel(obj, offset, val)	writel(val, obj->reg + offset)
 
-#define HSU_DMA_TIMEOUT_CHECK_FREQ	(HZ/10)
+#define HSU_DMA_TIMEOUT_CHECK_FREQ	(HZ/100)
 
 struct hsu_dma_buffer {
 	u8		*buf;
@@ -200,7 +200,15 @@ module_param(hsu_low_latency, uint, S_IRUGO);
  */
 static inline int dmarx_need_timer(void)
 {
-	return (boot_cpu_data.x86_model == 0x27 && boot_cpu_data.x86_mask == 0);
+	return hsu_rx_wa ||
+		(boot_cpu_data.x86_model == 0x27 &&
+		boot_cpu_data.x86_mask == 0);
+}
+
+static inline void runtime_suspend_delay(struct uart_hsu_port *up)
+{
+	pm_runtime_get(up->dev);
+	pm_runtime_put(up->dev);
 }
 
 static inline unsigned int serial_in_irq(struct uart_hsu_port *up, int offset)
@@ -517,8 +525,10 @@ void hsu_dma_start_rx_chan(struct uart_hsu_port *up,
 	chan_writel(rxc, HSU_CH_CR, 0x3);
 	up->dma_rx_on = 1;
 
-	if (dmarx_need_timer())
+	if (dmarx_need_timer()) {
 		mod_timer(&rxc->rx_timer, jiffies + HSU_DMA_TIMEOUT_CHECK_FREQ);
+		runtime_suspend_delay(up);
+	}
 }
 
 /* Protected by spin_lock_irqsave(port->lock) */
@@ -598,6 +608,7 @@ static void hsu_dma_rx_tasklet(unsigned long data)
 			chan->rx_timer.expires =
 					jiffies + HSU_DMA_TIMEOUT_CHECK_FREQ;
 			add_timer(&chan->rx_timer);
+			runtime_suspend_delay(up);
 		}
 
 		/* If function is called from tasklet context, pm_runtime
@@ -642,8 +653,10 @@ void hsu_dma_rx(struct uart_hsu_port *up, u32 int_sts)
 		return;
 	}
 
-	if (dmarx_need_timer())
+	if (dmarx_need_timer()) {
 		del_timer(&chan->rx_timer);
+		runtime_suspend_delay(up);
+	}
 
 	dma_sync_single_for_cpu(port->dev, dbuf->dma_addr,
 			dbuf->dma_size, DMA_FROM_DEVICE);
@@ -1708,9 +1721,11 @@ static void hsu_dma_rx_timeout(unsigned long data)
 	count = chan_readl(chan, HSU_CH_D0SAR) - dbuf->dma_addr;
 
 	if (!count) {
-		if (dmarx_need_timer())
+		if (dmarx_need_timer()) {
 			mod_timer(&chan->rx_timer,
 				jiffies + HSU_DMA_TIMEOUT_CHECK_FREQ);
+			runtime_suspend_delay(up);
+		}
 		goto exit;
 	}
 
