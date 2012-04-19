@@ -1,5 +1,5 @@
 /*
- * platform_misc_thermal.c: misc_thermal platform data initilization file
+ * platform_msic_thermal.c: msic_thermal platform data initilization file
  *
  * (C) Copyright 2008 Intel Corporation
  * Author:
@@ -26,7 +26,7 @@ static int __init intel_msic_thermal_init(void)
 	struct ipc_board_info board_info;
 
 	memset(&board_info, 0, sizeof(board_info));
-	strncpy(board_info.name, DEVICE_NAME, 16);
+	strncpy(board_info.name, MSIC_THERM_DEV_NAME, 16);
 	board_info.bus_id = IPC_SCU;
 	board_info.id = -1;
 

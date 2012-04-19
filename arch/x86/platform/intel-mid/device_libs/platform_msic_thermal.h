@@ -1,5 +1,5 @@
 /*
- * platform_misc_thermal.h: misc_thermal platform data header file
+ * platform_msic_thermal.h: msic_thermal platform data header file
  *
  * (C) Copyright 2008 Intel Corporation
  * Author:
@@ -9,8 +9,8 @@
  * as published by the Free Software Foundation; version 2
  * of the License.
  */
-#ifndef _PLATFORM_MISC_THERMAL_H_
-#define _PLATFORM_MISC_THERMAL_H_
+#ifndef _PLATFORM_MSIC_THERMAL_H_
+#define _PLATFORM_MSIC_THERMAL_H_
 
-#define DEVICE_NAME "misc_thermal"
+#define MSIC_THERM_DEV_NAME	"msic_thermal"
 #endif
