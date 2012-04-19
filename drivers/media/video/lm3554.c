@@ -77,6 +77,9 @@ struct lm3554_ctrl_id {
 struct lm3554 {
 	struct v4l2_subdev sd;
 
+	struct mutex power_lock;
+	int power_count;
+
 	unsigned int mode;
 	int timeout;
 	u8 torch_current;
@@ -603,9 +606,30 @@ static int lm3554_setup(struct lm3554 *flash)
 	return ret ? -EIO : 0;
 }
 
-static int lm3554_s_power(struct v4l2_subdev *sd, int power)
+static int __lm3554_s_power(struct lm3554 *flash, int power)
 {
 	return 0;
+}
+
+static int lm3554_s_power(struct v4l2_subdev *sd, int power)
+{
+	struct lm3554 *flash = to_lm3554(sd);
+	int ret = 0;
+
+	mutex_lock(&flash->power_lock);
+
+	if (flash->power_count == !power) {
+		ret = __lm3554_s_power(flash, !!power);
+		if (ret < 0)
+			goto done;
+	}
+
+	flash->power_count += power ? 1 : -1;
+	WARN_ON(flash->power_count < 0);
+
+done:
+	mutex_unlock(&flash->power_lock);
+	return ret;
 }
 
 static const struct v4l2_subdev_core_ops lm3554_core_ops = {
@@ -631,6 +655,11 @@ static int lm3554_detect(struct v4l2_subdev *sd)
 		return -ENODEV;
 	}
 
+	/* Power up the flash driver and reset it */
+	ret = lm3554_s_power(&flash->sd, 1);
+	if (ret < 0)
+		return ret;
+
 	lm3554_hw_reset(client);
 
 	/* Setup default values. This makes sure that the chip is in a known
@@ -641,9 +670,11 @@ static int lm3554_detect(struct v4l2_subdev *sd)
 		goto fail;
 
 	dev_dbg(&client->dev, "Successfully detected lm3554 LED flash\n");
+	lm3554_s_power(&flash->sd, 0);
 	return 0;
 
 fail:
+	lm3554_s_power(&flash->sd, 0);
 	return ret;
 }
 
@@ -662,6 +693,52 @@ static const struct v4l2_subdev_internal_ops lm3554_internal_ops = {
 	.open = lm3554_open,
 	.close = lm3554_close,
 };
+
+/* -----------------------------------------------------------------------------
+ *  I2C driver
+ */
+#ifdef CONFIG_PM
+
+static int lm3554_suspend(struct device *dev)
+{
+	struct i2c_client *client = to_i2c_client(dev);
+	struct v4l2_subdev *subdev = i2c_get_clientdata(client);
+	struct lm3554 *flash = to_lm3554(subdev);
+	int rval;
+
+	if (flash->power_count == 0)
+		return 0;
+
+	rval = __lm3554_s_power(flash, 0);
+
+	dev_dbg(&client->dev, "Suspend %s\n", rval < 0 ? "failed" : "ok");
+
+	return rval;
+}
+
+static int lm3554_resume(struct device *dev)
+{
+	struct i2c_client *client = to_i2c_client(dev);
+	struct v4l2_subdev *subdev = i2c_get_clientdata(client);
+	struct lm3554 *flash = to_lm3554(subdev);
+	int rval;
+
+	if (flash->power_count == 0)
+		return 0;
+
+	rval = __lm3554_s_power(flash, 1);
+
+	dev_dbg(&client->dev, "Resume %s\n", rval < 0 ? "fail" : "ok");
+
+	return rval;
+}
+
+#else
+
+#define lm3554_suspend NULL
+#define lm3554_resume  NULL
+
+#endif /* CONFIG_PM */
 
 static int __devinit lm3554_gpio_init(struct i2c_client *client)
 {
@@ -760,6 +837,8 @@ static int __devinit lm3554_probe(struct i2c_client *client,
 
 	flash->sd.entity.type = MEDIA_ENT_T_V4L2_SUBDEV_FLASH;
 
+	mutex_init(&flash->power_lock);
+
 	setup_timer(&flash->flash_off_delay, lm3554_flash_off_delay,
 		    (unsigned long)client);
 
@@ -809,10 +888,16 @@ static const struct i2c_device_id lm3554_id[] = {
 
 MODULE_DEVICE_TABLE(i2c, lm3554_id);
 
+static const struct dev_pm_ops lm3554_pm_ops = {
+	.suspend = lm3554_suspend,
+	.resume = lm3554_resume,
+};
+
 static struct i2c_driver lm3554_driver = {
 	.driver = {
 		.owner = THIS_MODULE,
 		.name = LEDFLASH_LM3554_NAME,
+		.pm   = &lm3554_pm_ops,
 	},
 	.probe = lm3554_probe,
 	.remove = __devexit_p(lm3554_remove),
