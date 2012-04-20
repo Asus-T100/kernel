@@ -194,6 +194,7 @@ struct intel_mid_dma_chan {
 	u32			raw_tfr;
 	u32			raw_block;
 	struct intel_mid_dma_slave *mid_slave;
+	struct dma_pool		*lli_pool;
 };
 
 static inline struct intel_mid_dma_chan *to_intel_mid_dma_chan(

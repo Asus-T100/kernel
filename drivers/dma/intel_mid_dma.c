@@ -339,7 +339,6 @@ static void midc_descriptor_complete(struct intel_mid_dma_chan *midc,
 		if (desc->lli != NULL && desc->lli->llp != NULL) {
 			pci_pool_free(desc->lli_pool, desc->lli,
 						desc->lli_phys);
-			pci_pool_destroy(desc->lli_pool);
 		}
 		list_move(&desc->desc_node, &midc->free_list);
 		midc->busy = false;
@@ -843,6 +842,7 @@ static struct dma_async_tx_descriptor *intel_mid_dma_chan_prep_desc(
 		pr_err("MID_DMA:LLI pool create failed\n");
 		return NULL;
 	}
+	midc->lli_pool = desc->lli_pool;
 
 	desc->lli = pci_pool_alloc(desc->lli_pool, GFP_KERNEL, &desc->lli_phys);
 	if (!desc->lli) {
@@ -958,7 +958,14 @@ static void intel_mid_dma_free_chan_resources(struct dma_chan *chan)
 		list_del(&desc->desc_node);
 		pci_pool_free(mid->dma_pool, desc, desc->txd.phys);
 	}
+
 	spin_unlock_bh(&midc->lock);
+
+	if (midc->lli_pool) {
+		pci_pool_destroy(midc->lli_pool);
+		midc->lli_pool = NULL;
+	}
+
 	midc->in_use = false;
 	midc->busy = false;
 	/* Disable CH interrupts */
