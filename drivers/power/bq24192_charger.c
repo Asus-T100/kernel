@@ -821,6 +821,10 @@ static void bq24192_event_worker(struct work_struct *work)
 			chip->usb.type = POWER_SUPPLY_TYPE_USB_DCP;
 			dev_info(&chip->client->dev,
 				 "Charger type DCP\n");
+		} else if (chip->chrg_type == POWER_SUPPLY_TYPE_USB_CDP) {
+			chip->usb.type = POWER_SUPPLY_TYPE_USB_CDP;
+			dev_info(&chip->client->dev,
+				"Charger type CDP\n");
 		} else if (chip->chrg_type == POWER_SUPPLY_TYPE_USB) {
 			chip->usb.type = POWER_SUPPLY_TYPE_USB;
 			dev_info(&chip->client->dev,
