@@ -834,7 +834,8 @@ static void mdfld_hdmi_dpms(struct drm_encoder *encoder, int mode)
 			(*dev_priv->mdfld_had_event_callbacks)
 				(HAD_EVENT_HOT_PLUG, dev_priv->had_pvt_data);
 	}
-	REG_READ(hdmi_priv->hdmib_reg);
+	/* flush hdmi port register */
+	REG_WRITE(hdmi_priv->hdmib_reg, REG_READ(hdmi_priv->hdmib_reg));
 
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 }
