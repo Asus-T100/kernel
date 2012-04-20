@@ -804,16 +804,18 @@ static void bq24192_event_worker(struct work_struct *work)
 		pm_runtime_get_sync(&chip->client->dev);
 	case POWER_SUPPLY_CHARGER_EVENT_UPDATE:
 	case POWER_SUPPLY_CHARGER_EVENT_RESUME:
-		dev_info(&chip->client->dev, "Enable charging\n");
-		set_up_charging(chip, &reg);
-		ret = enable_charging(chip, &reg);
-		if (ret < 0) {
-			dev_err(&chip->client->dev,
-				"charge enabling failed\n");
-			goto i2c_write_fail;
+		if (chip->cap.chrg_type != POWER_SUPPLY_TYPE_USB_HOST) {
+			dev_info(&chip->client->dev, "Enable charging\n");
+			set_up_charging(chip, &reg);
+			ret = enable_charging(chip, &reg);
+			if (ret < 0) {
+				dev_err(&chip->client->dev,
+					"charge enabling failed\n");
+				goto i2c_write_fail;
+			}
+			chip->present = 1;
+			chip->online = 1;
 		}
-		chip->present = 1;
-		chip->online = 1;
 		chip->chrg_type = chip->cap.chrg_type;
 		if (chip->chrg_type == POWER_SUPPLY_TYPE_USB_DCP) {
 			chip->usb.type = POWER_SUPPLY_TYPE_USB_DCP;
@@ -838,7 +840,12 @@ static void bq24192_event_worker(struct work_struct *work)
 			dev_info(&chip->client->dev,
 				 "Unknown Charger type\n");
 		}
-		chip->batt_status = POWER_SUPPLY_STATUS_CHARGING;
+
+		if (chip->chrg_type != POWER_SUPPLY_TYPE_USB_HOST)
+			chip->batt_status = POWER_SUPPLY_STATUS_CHARGING;
+		else
+			chip->batt_status = POWER_SUPPLY_STATUS_DISCHARGING;
+
 		chip->batt_mode = BATT_CHRG_NORMAL;
 		break;
 	case POWER_SUPPLY_CHARGER_EVENT_DISCONNECT:
