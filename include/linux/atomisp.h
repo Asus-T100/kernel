@@ -626,6 +626,17 @@ struct v4l2_private_int_data {
 #define ATOMISP_IOC_ACC_DESTAB \
 	_IOW('v', BASE_VIDIOC_PRIVATE + 54, struct atomisp_acc_fw_arg)
 
+/*
+ * Reserved ioctls. We have customer implementing it internally.
+ * We can't use both numbers to not cause ABI conflict.
+ * Anyway, those ioctls are hacks and not implemented by us:
+ *
+ * #define ATOMISP_IOC_G_SENSOR_REG \
+ *	_IOW('v', BASE_VIDIOC_PRIVATE + 55, struct atomisp_sensor_regs)
+ * #define ATOMISP_IOC_S_SENSOR_REG \
+ *	_IOW('v', BASE_VIDIOC_PRIVATE + 56, struct atomisp_sensor_regs)
+ */
+
 /*  ISP Private control IDs */
 #define V4L2_CID_ATOMISP_BAD_PIXEL_DETECTION \
 	(V4L2_CID_PRIVATE_BASE + 0)
