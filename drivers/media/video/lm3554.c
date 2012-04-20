@@ -592,20 +592,9 @@ static int lm3554_detect(struct v4l2_subdev *sd)
 
 	lm3554_hw_reset(client);
 
-	/* Set to TX2 mode, then ENVM/TX2 pin is a power
-	 * amplifier sync input:
-	 * ENVM/TX pin asserted, flash forced into torch;
-	 * ENVM/TX pin desserted, flash set back;
-	 */
-	flash->envm_tx2 = 1;
-	flash->tx2_polarity = 0;
-
 	ret = lm3554_set_config1(flash);
 	if (ret < 0)
 		goto fail;
-
-	/* set peak current limit to be 1000mA */
-	flash->current_limit = 0;
 
 	ret = lm3554_set_duration(flash);
 	if (ret < 0)
@@ -711,6 +700,17 @@ static int __devinit lm3554_probe(struct i2c_client *client,
 	}
 
 	flash->pdata = client->dev.platform_data;
+
+	/* Set to TX2 mode, then ENVM/TX2 pin is a power
+	 * amplifier sync input:
+	 * ENVM/TX pin asserted, flash forced into torch;
+	 * ENVM/TX pin desserted, flash set back;
+	 */
+	flash->envm_tx2 = 1;
+	flash->tx2_polarity = 0;
+
+	/* set peak current limit to be 1000mA */
+	flash->current_limit = 0;
 
 	v4l2_i2c_subdev_init(&flash->sd, client, &lm3554_ops);
 	flash->sd.internal_ops = &lm3554_internal_ops;
