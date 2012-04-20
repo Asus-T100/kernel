@@ -637,6 +637,10 @@ struct v4l2_private_int_data {
  *	_IOW('v', BASE_VIDIOC_PRIVATE + 56, struct atomisp_sensor_regs)
  */
 
+/* motor internal memory read */
+#define ATOMISP_IOC_G_MOTOR_PRIV_INT_DATA \
+	_IOWR('v', BASE_VIDIOC_PRIVATE + 57, struct v4l2_private_int_data)
+
 /*  ISP Private control IDs */
 #define V4L2_CID_ATOMISP_BAD_PIXEL_DETECTION \
 	(V4L2_CID_PRIVATE_BASE + 0)
