@@ -44,8 +44,17 @@
 #include <linux/pci.h>
 #include <linux/blkdev.h>
 #include <linux/genhd.h>
-#include "../staging/android/logger.h"
 #include "emmc_ipanic.h"
+
+#ifdef CONFIG_ANDROID_LOGGER
+#include "../staging/android/logger.h"
+static unsigned char *logcat_name[LOGCAT_BUFF_COUNT] = {
+	LOGGER_LOG_MAIN,
+	LOGGER_LOG_EVENTS,
+	LOGGER_LOG_RADIO,
+	LOGGER_LOG_SYSTEM
+};
+#endif
 
 static struct mmc_emergency_info emmc_info = {
 	.init = mmc_emergency_init,
@@ -59,13 +68,6 @@ static struct mmc_emergency_info emmc_info = {
 static unsigned char *ipanic_proc_entry_name[IPANIC_LOG_PROC_ENTRY] = {
 	"emmc_ipanic_console",
 	"emmc_ipanic_threads"
-};
-
-static unsigned char *logcat_name[LOGCAT_BUFF_COUNT] = {
-	LOGGER_LOG_MAIN,
-	LOGGER_LOG_EVENTS,
-	LOGGER_LOG_RADIO,
-	LOGGER_LOG_SYSTEM
 };
 
 static int in_panic;
@@ -83,6 +85,12 @@ static int last_chunk_buf_len;
 static DEFINE_MUTEX(drv_mutex);
 static void (*func_stream_emmc) (void);
 
+#ifdef CONFIG_ANDROID_LOGGER
+static int emmc_ipanic_writeflashpage(struct mmc_emergency_info *emmc,
+				      loff_t to, const u_char *buf);
+static void emmc_ipanic_flush_lastchunk_emmc(loff_t to,
+					     int *size_written,
+					     int *sector_written);
 static struct logger_log *get_logcat_log(unsigned char *buf_name)
 {
 	struct logger_log *log = NULL;
@@ -153,6 +161,73 @@ static void set_logcat_woff(struct logger_log *log, size_t woff)
 	if (log)
 		log->w_off = woff;
 }
+
+static int emmc_ipanic_write_logcat(struct mmc_emergency_info *emmc,
+				    void *logcat, unsigned int off,
+				    int *actual_size)
+{
+	int rc, block_shift = 0;
+	unsigned char *buf;
+	size_t index = 0, log_size;
+
+	buf = get_logcat_buffer(logcat);
+	if (!buf) {
+		printk(KERN_EMERG "Invalid logcat buffer pointer(%u)\n",
+					(unsigned int)logcat);
+		return 0;
+	}
+
+	log_size = get_logcat_size(logcat);
+	while (index < log_size) {
+		size_t size_copy = log_size - index;
+		if (size_copy < SECTOR_SIZE) {
+			memcpy(last_chunk_buf, buf + index, size_copy);
+			last_chunk_buf_len = size_copy;
+			break;
+		}
+		rc = emmc_ipanic_writeflashpage(emmc, off + block_shift,
+						buf + index);
+		if (rc <= 0) {
+			printk(KERN_EMERG
+			       "%s: Flash write failed (%d)\n", __func__, rc);
+			return 0;
+		}
+		index += rc;
+		block_shift++;
+	}
+	*actual_size = index;
+
+	return block_shift;
+}
+
+static void emmc_ipanic_write_logcatbuf(struct mmc_emergency_info *emmc,
+					int log, unsigned char *logcat_buf_name)
+{
+	void *logcat = get_logcat_log(logcat_buf_name);
+	if (!logcat) {
+			printk(KERN_EMERG "Invalid log buffer name(%s)\n",
+				logcat_buf_name);
+			return;
+	}
+	log_offset[log] = log_offset[log - 1] + log_len[log - 1];
+	log_len[log] = emmc_ipanic_write_logcat(emmc, logcat,
+						log_offset[log],
+						&log_size[log]);
+	if (log_size[log] < 0) {
+		printk(KERN_EMERG
+		       "Error writing console to panic log! (%d)\n",
+		       log_len[log]);
+		log_size[log] = 0;
+		log_len[log] = 0;
+	}
+	/* flush last chunk buffer */
+	emmc_ipanic_flush_lastchunk_emmc(log_offset[log] +
+					 log_len[log],
+					 &log_size[log], &log_len[log]);
+	log_head[log] = get_logcat_head(logcat);
+	log_woff[log] = get_logcat_woff(logcat);
+}
+#endif
 
 static void emmc_panic_erase(unsigned char *buffer, Sector *sect)
 {
@@ -414,6 +489,7 @@ static void emmc_panic_notify_add(void)
 			continue;
 		}
 
+#ifdef CONFIG_ANDROID_LOGGER
 		/* For logcat log, copy back to logcat buffer. */
 		logcat =
 		    get_logcat_log(logcat_name[log - IPANIC_LOG_PROC_ENTRY]);
@@ -452,6 +528,7 @@ static void emmc_panic_notify_add(void)
 		set_logcat_head(logcat, ctx->curr.log_head[log]);
 		set_logcat_woff(logcat, ctx->curr.log_woff[log]);
 		unlock_logcat_mutex(logcat);
+#endif
 	}
 
 	if (!proc_entry_created)
@@ -607,44 +684,6 @@ static void emmc_ipanic_write_thread_func(void)
 	log_buf_clear();
 }
 
-static int emmc_ipanic_write_logcat(struct mmc_emergency_info *emmc,
-				    void *logcat, unsigned int off,
-				    int *actual_size)
-{
-	int rc, block_shift = 0;
-	unsigned char *buf;
-	size_t index = 0, log_size;
-
-	buf = get_logcat_buffer(logcat);
-	if (!buf) {
-		printk(KERN_EMERG "Invalid logcat buffer pointer(%u)\n",
-					(unsigned int)logcat);
-		return 0;
-	}
-
-	log_size = get_logcat_size(logcat);
-	while (index < log_size) {
-		size_t size_copy = log_size - index;
-		if (size_copy < SECTOR_SIZE) {
-			memcpy(last_chunk_buf, buf + index, size_copy);
-			last_chunk_buf_len = size_copy;
-			break;
-		}
-		rc = emmc_ipanic_writeflashpage(emmc, off + block_shift,
-						buf + index);
-		if (rc <= 0) {
-			printk(KERN_EMERG
-			       "%s: Flash write failed (%d)\n", __func__, rc);
-			return 0;
-		}
-		index += rc;
-		block_shift++;
-	}
-	*actual_size = index;
-
-	return block_shift;
-}
-
 static void emmc_ipanic_write_logbuf(struct mmc_emergency_info *emmc, int log)
 {
 	/*
@@ -683,34 +722,6 @@ static void emmc_ipanic_write_calltrace(struct mmc_emergency_info *emmc,
 	emmc_ipanic_flush_lastchunk_emmc(log_offset[log] +
 					 log_len[log],
 					 &log_size[log], &log_len[log]);
-}
-
-static void emmc_ipanic_write_logcatbuf(struct mmc_emergency_info *emmc,
-					int log, unsigned char *logcat_buf_name)
-{
-	void *logcat = get_logcat_log(logcat_buf_name);
-	if (!logcat) {
-			printk(KERN_EMERG "Invalid log buffer name(%s)\n",
-				logcat_buf_name);
-			return;
-	}
-	log_offset[log] = log_offset[log - 1] + log_len[log - 1];
-	log_len[log] = emmc_ipanic_write_logcat(emmc, logcat,
-						log_offset[log],
-						&log_size[log]);
-	if (log_size[log] < 0) {
-		printk(KERN_EMERG
-		       "Error writing console to panic log! (%d)\n",
-		       log_len[log]);
-		log_size[log] = 0;
-		log_len[log] = 0;
-	}
-	/* flush last chunk buffer */
-	emmc_ipanic_flush_lastchunk_emmc(log_offset[log] +
-					 log_len[log],
-					 &log_size[log], &log_len[log]);
-	log_head[log] = get_logcat_head(logcat);
-	log_woff[log] = get_logcat_woff(logcat);
 }
 
 static void emmc_ipanic_write_pageheader(struct mmc_emergency_info *emmc)
@@ -799,6 +810,7 @@ static int emmc_ipanic(struct notifier_block *this, unsigned long event,
 		case IPANIC_LOG_THREADS:
 			emmc_ipanic_write_calltrace(emmc, log);
 			break;
+#ifdef CONFIG_ANDROID_LOGGER
 		case IPANIC_LOG_LOGCAT_MAIN:
 		case IPANIC_LOG_LOGCAT_EVENTS:
 		case IPANIC_LOG_LOGCAT_RADIO:
@@ -806,6 +818,7 @@ static int emmc_ipanic(struct notifier_block *this, unsigned long event,
 			emmc_ipanic_write_logcatbuf(emmc, log,
 				logcat_name[log - IPANIC_LOG_PROC_ENTRY]);
 			break;
+#endif
 		default:
 			break;
 		}

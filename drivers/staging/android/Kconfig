@@ -17,8 +17,9 @@ config ANDROID_LOGGER
 	default n
 
 config ANDROID_LOGGER_PTI
-	tristate "Android log driber on PTI"
+	tristate "Android log driver on PTI"
 	default n
+	depends on ANDROID_LOGGER
 
 config ANDROID_RAM_CONSOLE
 	bool "Android RAM buffer console"

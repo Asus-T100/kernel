@@ -33,16 +33,20 @@ extern void log_buf_clear(void);
 #define EMMC_PANIC_PART_NUM 6
 
 #define SECTOR_SIZE_SHIFT (9)
-#define LOGCAT_BUFF_COUNT (4)
 
 #define IPANIC_LOG_CONSOLE       0
 #define IPANIC_LOG_THREADS       1
+#ifdef CONFIG_ANDROID_LOGGER
 #define IPANIC_LOG_LOGCAT_MAIN   2
 #define IPANIC_LOG_LOGCAT_EVENTS 3
 #define IPANIC_LOG_LOGCAT_RADIO  4
 #define IPANIC_LOG_LOGCAT_SYSTEM 5
+#define LOGCAT_BUFF_COUNT        4
 #define IPANIC_LOG_MAX           6
-#define IPANIC_LOG_PROC_ENTRY    (IPANIC_LOG_MAX - LOGCAT_BUFF_COUNT)
+#else
+#define IPANIC_LOG_MAX           2
+#endif
+#define IPANIC_LOG_PROC_ENTRY    2
 
 struct mmc_emergency_info {
 #define DISK_NAME_LENGTH 20
