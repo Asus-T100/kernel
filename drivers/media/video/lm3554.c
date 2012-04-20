@@ -67,6 +67,7 @@ struct lm3554_ctrl_id {
 #define LM3554_FLAG_TX1_INTERRUPT	(1 << 3)
 #define LM3554_FLAG_TX2_INTERRUPT	(1 << 4)
 #define LM3554_FLAG_LED_THERMAL_FAULT	(1 << 5)
+#define LM3554_FLAG_UNUSED		(1 << 6)
 #define LM3554_FLAG_INPUT_VOLTAGE_LOW	(1 << 7)
 
 #define LM3554_CONFIG_REG_1		0xE0
@@ -266,6 +267,35 @@ err:
  * V4L2 controls
  */
 
+static int lm3554_read_status(struct lm3554 *flash)
+{
+	int ret;
+	struct i2c_client *client = v4l2_get_subdevdata(&flash->sd);
+
+	/* NOTE: reading register clear fault status */
+	ret = lm3554_read(flash, LM3554_FLAGS_REG);
+	if (ret < 0)
+		return ret;
+
+	/*
+	 * Accordingly to datasheet we read back '1' in bit 6.
+	 * Clear it first.
+	 */
+	ret &= ~LM3554_FLAG_UNUSED;
+
+	/*
+	 * Do not take TX1/TX2 signal as an error
+	 * because MSIC will not turn off flash, but turn to
+	 * torch mode according to gsm modem signal by hardware.
+	 */
+	ret &= ~(LM3554_FLAG_TX1_INTERRUPT | LM3554_FLAG_TX2_INTERRUPT);
+
+	if (ret > 0)
+		dev_dbg(&client->dev, "LM3554 flag status: %02x\n", ret);
+
+	return ret;
+}
+
 static int lm3554_s_flash_timeout(struct v4l2_subdev *sd, u32 val)
 {
 	struct lm3554 *flash = to_lm3554(sd);
@@ -395,34 +425,19 @@ static int lm3554_g_flash_mode(struct v4l2_subdev *sd, s32 * val)
 static int lm3554_g_flash_status(struct v4l2_subdev *sd, s32 *val)
 {
 	struct lm3554 *flash = to_lm3554(sd);
-	u8 value;
-	int ret;
+	int value;
 
-	ret = lm3554_read(flash, LM3554_FLAGS_REG);
-	if (ret < 0)
-		return ret;
+	value = lm3554_read_status(flash);
+	if (value < 0)
+		return value;
 
-	value = ret;
-
-	/*
-	 * do not take TX1/TX2 signal as an error.
-	 * because MSIC will not turn off flash, but turn to
-	 * torch mode according to gsm modem signal by hardware.
-	 */
 	if (value & LM3554_FLAG_TIMEOUT)
 		*val = ATOMISP_FLASH_STATUS_TIMEOUT;
-	else if (value & LM3554_FLAG_THERMAL_SHUTDOWN ||
-			value & LM3554_FLAG_LED_FAULT ||
-			value & LM3554_FLAG_LED_THERMAL_FAULT ||
-			value & LM3554_FLAG_INPUT_VOLTAGE_LOW) {
+	else if (value > 0)
 		*val = ATOMISP_FLASH_STATUS_HW_ERROR;
-	} else
+	else
 		*val = ATOMISP_FLASH_STATUS_OK;
 
-	if (*val == ATOMISP_FLASH_STATUS_HW_ERROR) {
-		struct i2c_client *client = v4l2_get_subdevdata(sd);
-		dev_dbg(&client->dev, "LM3554 flag status: %d\n", value);
-	}
 	return 0;
 }
 
@@ -565,7 +580,6 @@ static const struct v4l2_subdev_ops lm3554_ops = {
 
 static int lm3554_detect(struct v4l2_subdev *sd)
 {
-	s32 status;
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	struct i2c_adapter *adapter = client->adapter;
 	struct lm3554 *flash = to_lm3554(sd);
@@ -598,7 +612,7 @@ static int lm3554_detect(struct v4l2_subdev *sd)
 		goto fail;
 
 	/* clear the flags register */
-	ret = lm3554_g_flash_status(sd, &status);
+	ret = lm3554_read_status(flash);
 	if (ret < 0)
 		goto fail;
 
@@ -680,7 +694,7 @@ static int __devexit lm3554_gpio_uninit(struct i2c_client *client)
 }
 
 static int __devinit lm3554_probe(struct i2c_client *client,
-					 const struct i2c_device_id *id)
+				  const struct i2c_device_id *id)
 {
 	int err;
 	struct lm3554 *flash;
