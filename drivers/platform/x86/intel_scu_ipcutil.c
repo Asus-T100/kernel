@@ -5,6 +5,8 @@
  * Author: Sreedhara DS (sreedhara.ds@intel.com)
  * (C) Copyright 2010 Intel Corporation
  * Author: Sudha Krishnakumar (sudha.krishnakumar@intel.com)
+ * (C) Copyright 2012 Intel Corporation
+ * Author: Shijie Zhang (shijie.zhang@intel.com)
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -44,6 +46,7 @@
 #define INTEL_SCU_IPC_WRITE_RR_TO_OSNIB	0xC2
 #define INTEL_SCU_IPC_READ_VBATTCRIT	0xC4
 #define INTEL_SCU_IPC_WRITE_ALARM_FLAG_TO_OSNIB 0xC5
+#define INTEL_SCU_IPC_OSC_CLK_CNTL 0xC6
 
 #define OSHOB_PMIT_OFFSET		0x0000002c
 #define OSNIB_RR_OFFSET			OSNIB_OFFSET
@@ -73,6 +76,11 @@ struct scu_ipc_data {
 struct scu_ipc_version {
 	u32     count;  /* length of version info */
 	u8      data[16]; /* version data */
+};
+
+struct osc_clk_t {
+	unsigned int id; /* clock id */
+	unsigned int khz; /* clock frequency */
 };
 
 /**
@@ -230,6 +238,19 @@ static long scu_ipc_ioctl(struct file *fp, unsigned int cmd,
 		if (copy_to_user(argp + sizeof(u32),
 					version.data, version.count))
 			ret = -EFAULT;
+		break;
+	}
+	case INTEL_SCU_IPC_OSC_CLK_CNTL:
+	{
+		struct osc_clk_t osc_clk;
+
+		if (copy_from_user(&osc_clk, argp, sizeof(struct osc_clk_t)))
+			return -EFAULT;
+
+		ret = intel_scu_ipc_osc_clk(osc_clk.id, osc_clk.khz);
+		if (ret)
+			pr_err("%s: failed to set osc clk\n", __func__);
+
 		break;
 	}
 	default:
