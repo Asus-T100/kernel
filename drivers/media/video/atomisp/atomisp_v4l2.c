@@ -396,6 +396,7 @@ static int atomisp_subdev_probe(struct atomisp_device *isp)
 	struct v4l2_subdev *subdev = NULL;
 	struct i2c_adapter *adapter = NULL;
 	struct i2c_board_info *board_info;
+	int raw_index = -1;
 
 	/*
 	 * fixing me!
@@ -439,6 +440,7 @@ static int atomisp_subdev_probe(struct atomisp_device *isp)
 
 		switch (subdevs->type) {
 		case RAW_CAMERA:
+			raw_index = isp->input_cnt;
 		case SOC_CAMERA:
 			if (isp->input_cnt >= ATOM_ISP_MAX_INPUTS) {
 				v4l2_warn(&atomisp_dev,
@@ -473,6 +475,14 @@ static int atomisp_subdev_probe(struct atomisp_device *isp)
 		}
 
 	}
+
+	/*
+	 * HACK: Currently VCM belongs to primary sensor only, but correct
+	 * approach must be to acquire from platform code which sensor
+	 * owns it.
+	 */
+	if (isp->motor && raw_index >= 0)
+		isp->inputs[raw_index].motor = isp->motor;
 
 	/*Check camera for at least one subdev in it */
 	if (!isp->inputs[0].camera) {

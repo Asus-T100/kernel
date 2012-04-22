@@ -339,7 +339,27 @@ static int atomisp_enum_input(struct file *file, void *fh,
 		return -EINVAL;
 
 	memset(input, 0, sizeof(struct v4l2_input));
-	strcpy(input->name, isp->inputs[index].camera->name);
+	strncpy(input->name, isp->inputs[index].camera->name,
+		sizeof(input->name) - 1);
+
+	/*
+	 * HACK: append actuator's name to sensor's
+	 * As currently userspace can't talk directly to subdev nodes, this
+	 * ioctl is the only way to enum inputs + possible external actuators
+	 * for 3A tuning purpose.
+	 */
+	if (isp->inputs[index].motor &&
+	    strlen(isp->inputs[index].motor->name) > 0) {
+		const int cur_len = strlen(input->name);
+		const int max_size = sizeof(input->name) - cur_len - 1;
+
+		if (max_size > 0) {
+			input->name[cur_len] = '+';
+			strncpy(&input->name[cur_len + 1],
+				isp->inputs[index].motor->name, max_size - 1);
+		}
+	}
+
 	input->type = V4L2_INPUT_TYPE_CAMERA;
 	input->index = index;
 	input->reserved[0] = isp->inputs[index].type;
@@ -407,6 +427,9 @@ static int atomisp_s_input(struct file *file, void *fh, unsigned int input)
 			mutex_unlock(&isp->input_lock);
 			return -EINVAL;
 		}
+		if (isp->inputs[input].motor)
+			ret = v4l2_subdev_call(isp->inputs[input].motor, core,
+					       init, 1);
 	}
 
 	isp->input_curr = input;
@@ -1377,9 +1400,10 @@ static int atomisp_camera_g_ext_ctrls(struct file *file, void *fh,
 		case V4L2_CID_FOCUS_RELATIVE:
 		case V4L2_CID_FOCUS_STATUS:
 		case V4L2_CID_FOCUS_AUTO:
-			if (isp->motor)
+			if (isp->inputs[isp->input_curr].motor)
 				ret = v4l2_subdev_call(
-					isp->motor, core, g_ctrl, &ctrl);
+					isp->inputs[isp->input_curr].motor,
+					core, g_ctrl, &ctrl);
 			else
 				ret = v4l2_subdev_call(
 					isp->inputs[isp->input_curr].camera,
@@ -1474,8 +1498,9 @@ static int atomisp_camera_s_ext_ctrls(struct file *file, void *fh,
 		case V4L2_CID_FOCUS_RELATIVE:
 		case V4L2_CID_FOCUS_STATUS:
 		case V4L2_CID_FOCUS_AUTO:
-			if (isp->motor)
-				ret = v4l2_subdev_call(isp->motor,
+			if (isp->inputs[isp->input_curr].motor)
+				ret = v4l2_subdev_call(
+					isp->inputs[isp->input_curr].motor,
 					core, s_ctrl, &ctrl);
 			else
 				ret = v4l2_subdev_call(
