@@ -1462,6 +1462,8 @@ static void serial_hsu_console_putchar(struct uart_port *port, int ch)
 
 	if (oops_in_progress && oops_char_len++ > 2048)
 		return;
+	if (!oops_in_progress)
+		oops_char_len = 0;
 #endif
 	wait_for_xmitr(up);
 	serial_out(up, UART_TX, ch);
