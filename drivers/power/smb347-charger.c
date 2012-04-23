@@ -360,7 +360,10 @@ static void smb347_status_monitor(struct work_struct *work)
 	if (ret < 0)
 		dev_err(&smb->client->dev, "error in updating smb347 status\n");
 
-	power_supply_changed(&smb->mains);
+	if (smb->pdata->use_mains)
+		power_supply_changed(&smb->mains);
+	if (smb->pdata->use_usb)
+		power_supply_changed(&smb->usb);
 	schedule_delayed_work(&smb->smb347_statmon_worker,
 						STATUS_UPDATE_INTERVAL);
 }
@@ -569,8 +572,10 @@ static void smb347_otg_drive_vbus(struct smb347_charger *smb, bool enable)
 		smb347_charging_disable(smb);
 		smb347_otg_enable(smb);
 
-		power_supply_changed(&smb->mains);
-		power_supply_changed(&smb->usb);
+		if (smb->pdata->use_mains)
+			power_supply_changed(&smb->mains);
+		if (smb->pdata->use_usb)
+			power_supply_changed(&smb->usb);
 
 		dev_dbg(&smb->client->dev, "OTG VBUS on\n");
 	} else {
@@ -582,8 +587,10 @@ static void smb347_otg_drive_vbus(struct smb347_charger *smb, bool enable)
 		if (smb347_is_online(smb)) {
 			smb347_charging_enable(smb);
 			smb->otg_battery_uv = false;
-			power_supply_changed(&smb->mains);
-			power_supply_changed(&smb->usb);
+			if (smb->pdata->use_mains)
+				power_supply_changed(&smb->mains);
+			if (smb->pdata->use_usb)
+				power_supply_changed(&smb->usb);
 		}
 
 		dev_dbg(&smb->client->dev, "OTG VBUS off\n");
@@ -1141,8 +1148,10 @@ static irqreturn_t smb347_interrupt(int irq, void *data)
 	if (irqstat_e & (IRQSTAT_E_USBIN_UV_IRQ | IRQSTAT_E_DCIN_UV_IRQ)) {
 		if (smb347_update_status(smb) > 0) {
 			smb347_update_online(smb);
-			power_supply_changed(&smb->mains);
-			power_supply_changed(&smb->usb);
+			if (smb->pdata->use_mains)
+				power_supply_changed(&smb->mains);
+			if (smb->pdata->use_usb)
+				power_supply_changed(&smb->usb);
 		}
 		ret = IRQ_HANDLED;
 	}
@@ -1394,44 +1403,6 @@ static int smb347_battery_get_property(struct power_supply *psy,
 		val->intval = pdata->battery_info.voltage_max_design;
 		break;
 
-	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
-		if (!smb347_is_online(smb))
-			return -ENODATA;
-		ret = smb347_read(smb, STAT_A);
-		if (ret < 0)
-			return ret;
-
-		ret &= STAT_A_FLOAT_VOLTAGE_MASK;
-		if (ret > 0x3d)
-			ret = 0x3d;
-
-		val->intval = 3500000 + ret * 20000;
-		break;
-
-	case POWER_SUPPLY_PROP_CURRENT_NOW:
-		if (!smb347_is_online(smb))
-			return -ENODATA;
-
-		ret = smb347_read(smb, STAT_B);
-		if (ret < 0)
-			return ret;
-
-		/*
-		 * The current value is composition of FCC and PCC values
-		 * and we can detect which table to use from bit 5.
-		 */
-		if (ret & 0x20) {
-			val->intval = hw_to_current(fcc_tbl,
-						    ARRAY_SIZE(fcc_tbl),
-						    ret & 7);
-		} else {
-			ret >>= 3;
-			val->intval = hw_to_current(pcc_tbl,
-						    ARRAY_SIZE(pcc_tbl),
-						    ret & 7);
-		}
-		break;
-
 	case POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN:
 		val->intval = pdata->battery_info.charge_full_design;
 		break;
@@ -1453,8 +1424,6 @@ static enum power_supply_property smb347_battery_properties[] = {
 	POWER_SUPPLY_PROP_TECHNOLOGY,
 	POWER_SUPPLY_PROP_VOLTAGE_MIN_DESIGN,
 	POWER_SUPPLY_PROP_VOLTAGE_MAX_DESIGN,
-	POWER_SUPPLY_PROP_VOLTAGE_NOW,
-	POWER_SUPPLY_PROP_CURRENT_NOW,
 	POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN,
 	POWER_SUPPLY_PROP_MODEL_NAME,
 };
@@ -1542,42 +1511,47 @@ static int smb347_probe(struct i2c_client *client,
 	if (ret < 0)
 		return ret;
 
-	smb->mains.name = "smb347-mains";
-	smb->mains.type = POWER_SUPPLY_TYPE_MAINS;
-	smb->mains.get_property = smb347_mains_get_property;
-	smb->mains.properties = smb347_mains_properties;
-	smb->mains.num_properties = ARRAY_SIZE(smb347_mains_properties);
-	smb->mains.supplied_to = smb347_power_supplied_to;
-	smb->mains.num_supplicants = ARRAY_SIZE(smb347_power_supplied_to);
+	if (smb->pdata->use_mains) {
+		smb->mains.name = "smb347-mains";
+		smb->mains.type = POWER_SUPPLY_TYPE_MAINS;
+		smb->mains.get_property = smb347_mains_get_property;
+		smb->mains.properties = smb347_mains_properties;
+		smb->mains.num_properties = ARRAY_SIZE(smb347_mains_properties);
+		smb->mains.supplied_to = smb347_power_supplied_to;
+		smb->mains.num_supplicants =
+				ARRAY_SIZE(smb347_power_supplied_to);
+		ret = power_supply_register(dev, &smb->mains);
+		if (ret < 0)
+			return ret;
+	}
 
-	smb->usb.name = "smb347-usb";
-	smb->usb.type = POWER_SUPPLY_TYPE_USB;
-	smb->usb.get_property = smb347_usb_get_property;
-	smb->usb.properties = smb347_usb_properties;
-	smb->usb.num_properties = ARRAY_SIZE(smb347_usb_properties);
-	smb->usb.supplied_to = smb347_power_supplied_to;
-	smb->usb.num_supplicants = ARRAY_SIZE(smb347_power_supplied_to);
+	if (smb->pdata->use_usb) {
+		smb->usb.name = "smb347-usb";
+		smb->usb.type = POWER_SUPPLY_TYPE_USB;
+		smb->usb.get_property = smb347_usb_get_property;
+		smb->usb.properties = smb347_usb_properties;
+		smb->usb.num_properties = ARRAY_SIZE(smb347_usb_properties);
+		smb->usb.supplied_to = smb347_power_supplied_to;
+		smb->usb.num_supplicants = ARRAY_SIZE(smb347_power_supplied_to);
+		ret = power_supply_register(dev, &smb->usb);
+		if (ret < 0) {
+			if (smb->pdata->use_mains)
+				power_supply_unregister(&smb->mains);
+			return ret;
+		}
+	}
 
 	smb->battery.name = "smb347-battery";
 	smb->battery.type = POWER_SUPPLY_TYPE_BATTERY;
 	smb->battery.get_property = smb347_battery_get_property;
 	smb->battery.properties = smb347_battery_properties;
 	smb->battery.num_properties = ARRAY_SIZE(smb347_battery_properties);
-
-	ret = power_supply_register(dev, &smb->mains);
-	if (ret < 0)
-		return ret;
-
-	ret = power_supply_register(dev, &smb->usb);
-	if (ret < 0) {
-		power_supply_unregister(&smb->mains);
-		return ret;
-	}
-
 	ret = power_supply_register(dev, &smb->battery);
 	if (ret < 0) {
-		power_supply_unregister(&smb->usb);
-		power_supply_unregister(&smb->mains);
+		if (smb->pdata->use_usb)
+			power_supply_unregister(&smb->usb);
+		if (smb->pdata->use_mains)
+			power_supply_unregister(&smb->mains);
 		return ret;
 	}
 
@@ -1637,8 +1611,10 @@ static int smb347_remove(struct i2c_client *client)
 	}
 
 	power_supply_unregister(&smb->battery);
-	power_supply_unregister(&smb->usb);
-	power_supply_unregister(&smb->mains);
+	if (smb->pdata->use_usb)
+		power_supply_unregister(&smb->usb);
+	if (smb->pdata->use_mains)
+		power_supply_unregister(&smb->mains);
 	return 0;
 }
 
