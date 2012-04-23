@@ -562,6 +562,47 @@ static int lm3554_g_ctrl(struct v4l2_subdev *sd, struct v4l2_control *ctrl)
 	return s_ctrl->g_ctrl(sd, &ctrl->value);
 }
 
+/* -----------------------------------------------------------------------------
+ * V4L2 subdev core operations
+ */
+
+/* Put device into known state. */
+static int lm3554_setup(struct lm3554 *flash)
+{
+	struct i2c_client *client = v4l2_get_subdevdata(&flash->sd);
+	int ret;
+
+	/* clear the flags register */
+	ret = lm3554_read(flash, LM3554_FLAGS_REG);
+	if (ret < 0)
+		return ret;
+
+	dev_dbg(&client->dev, "Fault info: %02x\n", ret);
+
+	ret = lm3554_set_config1(flash);
+	if (ret < 0)
+		return ret;
+
+	ret = lm3554_set_duration(flash);
+	if (ret < 0)
+		return ret;
+
+	ret = lm3554_set_torch(flash);
+	if (ret < 0)
+		return ret;
+
+	ret = lm3554_set_flash(flash);
+	if (ret < 0)
+		return ret;
+
+	/* read status */
+	ret = lm3554_read_status(flash);
+	if (ret < 0)
+		return ret;
+
+	return ret ? -EIO : 0;
+}
+
 static int lm3554_s_power(struct v4l2_subdev *sd, int power)
 {
 	return 0;
@@ -592,16 +633,10 @@ static int lm3554_detect(struct v4l2_subdev *sd)
 
 	lm3554_hw_reset(client);
 
-	ret = lm3554_set_config1(flash);
-	if (ret < 0)
-		goto fail;
-
-	ret = lm3554_set_duration(flash);
-	if (ret < 0)
-		goto fail;
-
-	/* clear the flags register */
-	ret = lm3554_read_status(flash);
+	/* Setup default values. This makes sure that the chip is in a known
+	 * state.
+	 */
+	ret = lm3554_setup(flash);
 	if (ret < 0)
 		goto fail;
 
