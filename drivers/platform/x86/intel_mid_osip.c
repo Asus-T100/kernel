@@ -33,7 +33,7 @@
 /* change to "loop0" and use losetup for safe testing */
 #define OSIP_BLKDEVICE "mmcblk0"
 #include <asm/intel_scu_ipc.h>
-#include <linux/usb/penwell_otg.h>
+#include <linux/power_supply.h>
 
 /* OSIP backup will be stored with this offset in the first sector */
 #define OSIP_BACKUP_OFFSET 0xE0
@@ -220,17 +220,15 @@ static int osip_reboot_notifier_call(struct notifier_block *notifier,
 	int ret = NOTIFY_DONE;
 	int ret_ipc;
 	char *cmd = (char *)data;
-	struct otg_bc_cap cap;
 	u8 rbt_reason;
 
 	/* If system power off with charger connected, set the Reboot
 	   Reason to COS */
 	if (what != SYS_RESTART || !data) {
 		pr_err("%s(): invalid args\n", __func__);
-		penwell_otg_query_charging_cap(&cap);
 		if (what == SYS_HALT || what == SYS_POWER_OFF) {
 			pr_info("%s(): sys power off ...\n", __func__);
-			if (cap.chrg_type) {
+			if (power_supply_is_system_supplied()) {
 				pr_warn("[SHTDWN] %s, Shutdown overload, "
 					"switching to COS because a charger is "
 					"plugged in\n", __func__);
