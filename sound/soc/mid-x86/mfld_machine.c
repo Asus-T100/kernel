@@ -34,7 +34,7 @@
 #include <linux/gpio.h>
 #include <linux/ipc_device.h>
 #include <asm/intel-mid.h>
-#include <asm/intel_scu_ipc.h>
+#include <asm/intel_scu_ipcutil.h>
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
 #include <sound/soc.h>

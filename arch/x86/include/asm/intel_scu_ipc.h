@@ -53,24 +53,6 @@ int intel_scu_ipc_medfw_prepare(void __user *arg);
 int intel_scu_ipc_read_mip(u8 *data, int len, int offset, int issigned);
 int intel_scu_ipc_write_umip(u8 *data, int len, int offset);
 
-/* Penwell has 4 osc clocks */
-#define OSC_CLK_AUDIO	0	/* Audio */
-#define OSC_CLK_CAM0	1	/* Primary camera */
-#define OSC_CLK_CAM1	2	/* Secondary camera */
-#define OSC_CLK_DISP	3	/* Display buffer */
-
-int intel_scu_ipc_osc_clk(u8 clk, unsigned int khz);
-
-enum clk0_mode {
-	CLK0_AUDIENCE = 0x4,
-	CLK0_VIBRA1 = 0x8,
-	CLK0_VIBRA2 = 0x10,
-	CLK0_MSIC = 0x20,
-	CLK0_QUERY = 0x1000,
-};
-
-int intel_scu_ipc_set_osc_clk0(unsigned int enable, enum clk0_mode mode);
-
 extern struct blocking_notifier_head intel_scu_notifier;
 
 static inline void intel_scu_notifier_add(struct notifier_block *nb)
@@ -90,23 +72,5 @@ static inline int intel_scu_notifier_post(unsigned long v, void *p)
 
 #define		SCU_AVAILABLE		1
 #define		SCU_DOWN		2
-
-#define MSIC_VPROG1_CTRL	0xD6
-#define MSIC_VPROG2_CTRL	0xD7
-#define MSIC_VPROG_ON		0xFF
-#define MSIC_VPROG_OFF		0
-
-/* Helpers to turn on/off msic vprog1 and vprog2 */
-static inline int intel_scu_ipc_msic_vprog1(int on)
-{
-	return intel_scu_ipc_iowrite8(MSIC_VPROG1_CTRL,
-			on ? MSIC_VPROG_ON : MSIC_VPROG_OFF);
-}
-
-static inline int intel_scu_ipc_msic_vprog2(int on)
-{
-	return intel_scu_ipc_iowrite8(MSIC_VPROG2_CTRL,
-			on ? MSIC_VPROG_ON : MSIC_VPROG_OFF);
-}
 
 #endif
