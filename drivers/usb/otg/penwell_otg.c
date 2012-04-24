@@ -2345,6 +2345,11 @@ static void penwell_otg_hnp_poll_work(struct work_struct *work)
 static void penwell_otg_start_ulpi_poll(void)
 {
 	struct penwell_otg		*pnw = the_transceiver;
+	int				retval = 0;
+
+	retval = penwell_otg_ulpi_write(&pnw->iotg, 0x16, 0x5a);
+	if (retval)
+		dev_err(pnw->dev, "ulpi write in init failed\n");
 
 	schedule_delayed_work(&pnw->ulpi_poll_work, HZ);
 }
@@ -4187,12 +4192,6 @@ static int penwell_otg_probe(struct pci_dev *pdev,
 
 	reset_otg();
 	init_hsm();
-
-	/* Workaround for PHY issue */
-	penwell_otg_phy_low_power(0);
-	retval = penwell_otg_ulpi_write(&pnw->iotg, 0x16, 0x5a);
-	if (retval)
-		dev_err(pnw->dev, "ulpi write in init failed\n");
 
 	/* we need to set active early or the first irqs will be ignored */
 	pm_runtime_set_active(&pdev->dev);
