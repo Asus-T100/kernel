@@ -35,6 +35,8 @@
 #define IPC_CMD_VRTC_SETALARM     2 /* Set alarm */
 #define IPC_CMD_VRTC_SYNC_RTC     3 /* Sync MSIC/PMIC RTC to VRTC */
 /* Issue commands to the SCU with or without data */
+void intel_scu_ipc_send_command(u32 cmd);
+int intel_scu_ipc_check_status(void);
 int intel_scu_ipc_simple_command(int cmd, int sub);
 void intel_scu_ipc_lock(void);
 void intel_scu_ipc_unlock(void);

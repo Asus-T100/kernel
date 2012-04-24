@@ -155,10 +155,8 @@ static struct pm_qos_request_list *qos;
  * Format:
  * |rfu2(8) | size(8) | command id(4) | rfu1(3) | ioc(1) | command(8)|
  */
-static inline void ipc_command(u32 cmd) /* Send ipc command */
+void intel_scu_ipc_send_command(u32 cmd) /* Send ipc command */
 {
-	might_sleep();
-
 	ipcdev.cmd = cmd;
 	INIT_COMPLETION(ipcdev.cmd_complete);
 
@@ -183,8 +181,6 @@ static inline void ipc_command(u32 cmd) /* Send ipc command */
 
 end:
 	pmu_log_ipc(cmd);
-	/* Prevent C-states beyond C6 */
-	pm_qos_update_request(qos, CSTATE_EXIT_LATENCY_S0i1 - 1);
 }
 
 /*
@@ -220,7 +216,7 @@ static inline u32 ipc_data_readl(u32 offset) /* Read ipc u32 data */
 	return readl(ipcdev.ipc_base + IPC_READ_BUFFER + offset);
 }
 
-static inline int ipc_wait_interrupt(void)
+int intel_scu_ipc_check_status(void)
 {
 	int ret = 0;
 	int status;
@@ -255,8 +251,6 @@ static inline int ipc_wait_interrupt(void)
 				status, ipcdev.cmd);
 	}
 
-	/* Re-enable Deeper C-states beyond C6 */
-	pm_qos_update_request(qos, PM_QOS_DEFAULT_VALUE);
 	return ret;
 }
 
@@ -276,15 +270,13 @@ int intel_scu_ipc_simple_command(int cmd, int sub)
 {
 	int err;
 
-	mutex_lock(&ipclock);
-	if (ipcdev.pdev == NULL) {
-		mutex_unlock(&ipclock);
+	if (ipcdev.pdev == NULL)
 		return -ENODEV;
-	}
 
-	ipc_command(sub << 12 | cmd);
-	err = ipc_wait_interrupt();
-	mutex_unlock(&ipclock);
+	intel_scu_ipc_lock();
+	intel_scu_ipc_send_command(sub << 12 | cmd);
+	err = intel_scu_ipc_check_status();
+	intel_scu_ipc_unlock();
 	return err;
 }
 EXPORT_SYMBOL(intel_scu_ipc_simple_command);
@@ -292,11 +284,17 @@ EXPORT_SYMBOL(intel_scu_ipc_simple_command);
 void intel_scu_ipc_lock(void)
 {
 	mutex_lock(&ipclock);
+
+	/* Prevent C-states beyond C6 */
+	pm_qos_update_request(qos, CSTATE_EXIT_LATENCY_S0i1 - 1);
 }
 EXPORT_SYMBOL_GPL(intel_scu_ipc_lock);
 
 void intel_scu_ipc_unlock(void)
 {
+	/* Re-enable Deeper C-states beyond C6 */
+	pm_qos_update_request(qos, PM_QOS_DEFAULT_VALUE);
+
 	mutex_unlock(&ipclock);
 }
 EXPORT_SYMBOL_GPL(intel_scu_ipc_unlock);
@@ -321,9 +319,8 @@ int intel_scu_ipc_raw_cmd(u32 cmd, u32 sub, u32 *in, u32 inlen, u32 *out,
 {
 	int i, err;
 
-	if (ipcdev.pdev == NULL) {
+	if (ipcdev.pdev == NULL)
 		return -ENODEV;
-	}
 
 	writel(dptr, ipcdev.ipc_base + IPC_DPTR_ADDR);
 	writel(sptr, ipcdev.ipc_base + IPC_SPTR_ADDR);
@@ -331,8 +328,8 @@ int intel_scu_ipc_raw_cmd(u32 cmd, u32 sub, u32 *in, u32 inlen, u32 *out,
 	for (i = 0; i < inlen; i++)
 		ipc_data_writel(*in++, 4 * i);
 
-	ipc_command((inlen << 16) | (sub << 12) | cmd);
-	err = ipc_wait_interrupt();
+	intel_scu_ipc_send_command((inlen << 16) | (sub << 12) | cmd);
+	err = intel_scu_ipc_check_status();
 
 	for (i = 0; i < outlen; i++)
 		*out++ = ipc_data_readl(4 * i);
@@ -345,9 +342,9 @@ int intel_scu_ipc_command(u32 cmd, u32 sub, u32 *in, u32 inlen,
 		u32 *out, u32 outlen)
 {
 	int ret;
-	mutex_lock(&ipclock);
+	intel_scu_ipc_lock();
 	ret = intel_scu_ipc_raw_cmd(cmd, sub, in, inlen, out, outlen, 0, 0);
-	mutex_unlock(&ipclock);
+	intel_scu_ipc_unlock();
 	return ret;
 }
 EXPORT_SYMBOL_GPL(intel_scu_ipc_command);
@@ -372,11 +369,10 @@ int intel_scu_ipc_i2c_cntrl(u32 addr, u32 *data)
 {
 	u32 cmd = 0;
 
-	mutex_lock(&ipclock);
-	if (ipcdev.pdev == NULL) {
-		mutex_unlock(&ipclock);
+	if (ipcdev.pdev == NULL)
 		return -ENODEV;
-	}
+
+	intel_scu_ipc_lock();
 	cmd = (addr >> 24) & 0xFF;
 	if (cmd == IPC_I2C_READ) {
 		writel(addr, ipcdev.i2c_base + IPC_I2C_CNTRL_ADDR);
@@ -391,10 +387,10 @@ int intel_scu_ipc_i2c_cntrl(u32 addr, u32 *data)
 		dev_err(&ipcdev.pdev->dev,
 			"intel_scu_ipc: I2C INVALID_CMD = 0x%x\n", cmd);
 
-		mutex_unlock(&ipclock);
+		intel_scu_ipc_unlock();
 		return -EIO;
 	}
-	mutex_unlock(&ipclock);
+	intel_scu_ipc_unlock();
 	return 0;
 }
 EXPORT_SYMBOL(intel_scu_ipc_i2c_cntrl);
@@ -435,21 +431,19 @@ int intel_scu_ipc_mrstfw_update(u8 *buffer, u32 length)
 	int retry_cnt = 0;
 	u32 status;
 
-	mutex_lock(&ipclock);
 	fw_update_base = ioremap_nocache(IPC_FW_LOAD_ADDR, (128*1024));
 	if (fw_update_base == NULL) {
-		mutex_unlock(&ipclock);
 		return -ENOMEM;
 	}
 	mailbox = ioremap_nocache(IPC_FW_UPDATE_MBOX_ADDR,
 					sizeof(struct fw_update_mailbox));
 	if (mailbox == NULL) {
 		iounmap(fw_update_base);
-		mutex_unlock(&ipclock);
 		return -ENOMEM;
 	}
 
-	ipc_command(IPC_CMD_FW_UPDATE_READY);
+	intel_scu_ipc_lock();
+	intel_scu_ipc_send_command(IPC_CMD_FW_UPDATE_READY);
 
 	/* Intitialize mailbox */
 	writel(0, &mailbox->status);
@@ -465,7 +459,7 @@ int intel_scu_ipc_mrstfw_update(u8 *buffer, u32 length)
 	* SCU will write a status code into the Mailbox, and then set scu_flag.
 	*/
 
-	ipc_command(IPC_CMD_FW_UPDATE_GO_MHUPD);
+	intel_scu_ipc_send_command(IPC_CMD_FW_UPDATE_GO_MHUPD);
 
 	/*Driver stalls until scu_flag is set */
 	while (readl(&mailbox->scu_flag) != 1) {
@@ -533,10 +527,7 @@ update_end:
 
 	iounmap(fw_update_base);
 	iounmap(mailbox);
-	mutex_unlock(&ipclock);
-
-	/* Re-enable Deeper C-states beyond C6 */
-	pm_qos_update_request(qos, PM_QOS_DEFAULT_VALUE);
+	intel_scu_ipc_unlock();
 
 	if (status == IPC_FW_UPDATE_SUCCESS)
 		return 0;
@@ -1021,7 +1012,7 @@ int intel_scu_ipc_medfw_upgrade(void)
 	if (!fw_ud_param)
 		return 0;
 
-	mutex_lock(&ipclock);
+	intel_scu_ipc_lock();
 	mfld_fw_upd.wscu = 0;
 	mfld_fw_upd.wia = 0;
 	memset(mfld_fw_upd.mb_status, 0, sizeof(char) * 8);
@@ -1087,7 +1078,7 @@ int intel_scu_ipc_medfw_upgrade(void)
 	/* TODO_SK::There is just
 	 *  1 write required from IA side for DFU.
 	 *  So commenting this-out, until it gets confirmed */
-	/*ipc_command(IPC_CMD_FW_UPDATE_READY); */
+	/*intel_scu_ipc_send_command(IPC_CMD_FW_UPDATE_READY); */
 
 	/*1. DNX SIZE HEADER   */
 	memcpy(fws, fw_ud_param->dnx_hdr, DNX_HDR_LEN);
@@ -1098,7 +1089,7 @@ int intel_scu_ipc_medfw_upgrade(void)
 	mb();
 
 	/* Write cmd to trigger an interrupt to SCU for firmware update*/
-	ipc_command(IPC_CMD_FW_UPDATE_GO);
+	intel_scu_ipc_send_command(IPC_CMD_FW_UPDATE_GO);
 
 	mfld_fw_upd.wscu = !mfld_fw_upd.wscu;
 
@@ -1169,7 +1160,7 @@ int intel_scu_ipc_medfw_upgrade(void)
 				"PASS processing fw chunk=%s\n",
 				mfld_fw_upd.mb_status);
 	}
-	ret_val = ipc_wait_interrupt();
+	ret_val = intel_scu_ipc_check_status();
 
 term:
 	kfree(fws);
@@ -1185,7 +1176,7 @@ out_unlock:
 		kfree(ipcdev.fwud_pending);
 		ipcdev.fwud_pending = NULL;
 	}
-	mutex_unlock(&ipclock);
+	intel_scu_ipc_unlock();
 	return ret_val;
 }
 EXPORT_SYMBOL_GPL(intel_scu_ipc_medfw_upgrade);
