@@ -177,6 +177,10 @@ void *max17042_platform_data(void *info)
 #ifdef CONFIG_BOARD_REDRIDGE /* TODO: get rid of this */
 	platform_data.enable_current_sense = true;
 	platform_data.technology = POWER_SUPPLY_TECHNOLOGY_LION;
+	platform_data.temp_min_lim = 0;
+	platform_data.temp_max_lim = 60;
+	platform_data.volt_min_lim = 3200;
+	platform_data.volt_max_lim = 4500;
 	platform_data.restore_config_data = mfld_fg_restore_config_data;
 	platform_data.save_config_data = mfld_fg_save_config_data;
 #endif

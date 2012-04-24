@@ -1125,7 +1125,8 @@ static irqreturn_t smb347_interrupt(int irq, void *data)
 			"error in charger, disabling charging\n");
 
 		smb347_charging_disable(smb);
-		power_supply_changed(&smb->battery);
+		if (smb->pdata->show_battery)
+			power_supply_changed(&smb->battery);
 
 		ret = IRQ_HANDLED;
 	}
@@ -1136,7 +1137,8 @@ static irqreturn_t smb347_interrupt(int irq, void *data)
 	 * disabled by the hardware.
 	 */
 	if (irqstat_c & (IRQSTAT_C_TERMINATION_IRQ | IRQSTAT_C_TAPER_IRQ)) {
-		if (irqstat_c & IRQSTAT_C_TERMINATION_STAT)
+		if ((irqstat_c & IRQSTAT_C_TERMINATION_STAT) &&
+						smb->pdata->show_battery)
 			power_supply_changed(&smb->battery);
 		ret = IRQ_HANDLED;
 	}
@@ -1541,18 +1543,21 @@ static int smb347_probe(struct i2c_client *client,
 		}
 	}
 
-	smb->battery.name = "smb347-battery";
-	smb->battery.type = POWER_SUPPLY_TYPE_BATTERY;
-	smb->battery.get_property = smb347_battery_get_property;
-	smb->battery.properties = smb347_battery_properties;
-	smb->battery.num_properties = ARRAY_SIZE(smb347_battery_properties);
-	ret = power_supply_register(dev, &smb->battery);
-	if (ret < 0) {
-		if (smb->pdata->use_usb)
-			power_supply_unregister(&smb->usb);
-		if (smb->pdata->use_mains)
-			power_supply_unregister(&smb->mains);
-		return ret;
+	if (smb->pdata->show_battery) {
+		smb->battery.name = "smb347-battery";
+		smb->battery.type = POWER_SUPPLY_TYPE_BATTERY;
+		smb->battery.get_property = smb347_battery_get_property;
+		smb->battery.properties = smb347_battery_properties;
+		smb->battery.num_properties =
+				ARRAY_SIZE(smb347_battery_properties);
+		ret = power_supply_register(dev, &smb->battery);
+		if (ret < 0) {
+			if (smb->pdata->use_usb)
+				power_supply_unregister(&smb->usb);
+			if (smb->pdata->use_mains)
+				power_supply_unregister(&smb->mains);
+			return ret;
+		}
 	}
 
 	/*
@@ -1610,7 +1615,8 @@ static int smb347_remove(struct i2c_client *client)
 		}
 	}
 
-	power_supply_unregister(&smb->battery);
+	if (smb->pdata->show_battery)
+		power_supply_unregister(&smb->battery);
 	if (smb->pdata->use_usb)
 		power_supply_unregister(&smb->usb);
 	if (smb->pdata->use_mains)
