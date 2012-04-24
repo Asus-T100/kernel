@@ -165,6 +165,10 @@ static int ehci_mid_probe(struct pci_dev *pdev,
 		retval = -EFAULT;
 		goto err2;
 	}
+
+	/* Mandatorily set the controller as remote-wakeup enabled */
+	device_set_wakeup_enable(&pdev->dev, true);
+
 	retval = usb_add_hcd(hcd, irq, IRQF_DISABLED | IRQF_SHARED);
 	if (retval != 0)
 		goto err2;
@@ -238,6 +242,87 @@ static int ehci_mid_stop_host(struct intel_mid_otg_xceiv *iotg)
 	return 0;
 }
 
+#ifdef CONFIG_PM_SLEEP
+static int ehci_mid_suspend_host(struct intel_mid_otg_xceiv *iotg)
+{
+	int	retval;
+
+	if (iotg == NULL)
+		return -EINVAL;
+
+	if (ehci_otg_driver.driver.pm == NULL)
+		return -EINVAL;
+
+	retval = ehci_otg_driver.driver.pm->suspend(iotg->otg.dev);
+	if (retval)
+		dev_warn(iotg->otg.dev, "suspend failed, return %d\n", retval);
+
+	return retval;
+
+}
+
+static int ehci_mid_suspend_noirq_host(struct intel_mid_otg_xceiv *iotg)
+{
+	int	retval;
+
+	if (iotg == NULL)
+		return -EINVAL;
+
+	if (ehci_otg_driver.driver.pm == NULL)
+		return -EINVAL;
+
+	retval = ehci_otg_driver.driver.pm->suspend_noirq(iotg->otg.dev);
+	if (retval)
+		dev_warn(iotg->otg.dev, "suspend_noirq failed, return %d\n",
+				retval);
+
+	return retval;
+
+}
+
+static int ehci_mid_resume_host(struct intel_mid_otg_xceiv *iotg)
+{
+	int	retval;
+
+	if (iotg == NULL)
+		return -EINVAL;
+
+	if (ehci_otg_driver.driver.pm == NULL)
+		return -EINVAL;
+
+	retval = ehci_otg_driver.driver.pm->resume(iotg->otg.dev);
+	if (retval)
+		dev_warn(iotg->otg.dev, "resume failed, return %d\n", retval);
+
+	return retval;
+}
+
+static int ehci_mid_resume_noirq_host(struct intel_mid_otg_xceiv *iotg)
+{
+	int	retval;
+
+	if (iotg == NULL)
+		return -EINVAL;
+
+	if (ehci_otg_driver.driver.pm == NULL)
+		return -EINVAL;
+
+	retval = ehci_otg_driver.driver.pm->resume_noirq(iotg->otg.dev);
+	if (retval)
+		dev_warn(iotg->otg.dev, "resume_noirq failed, return %d\n",
+				retval);
+
+	return retval;
+}
+#else
+
+#define ehci_mid_suspend_host NULL
+#define ehci_mid_suspend_noirq_host NULL
+#define ehci_mid_resume_host NULL
+#define ehci_mid_resume_noirq_host NULL
+
+#endif
+
 #ifdef CONFIG_PM_RUNTIME
 static int ehci_mid_runtime_suspend_host(struct intel_mid_otg_xceiv *iotg)
 {
@@ -309,6 +394,11 @@ static int intel_mid_ehci_driver_register(struct pci_driver *host_driver)
 	iotg->stop_host = ehci_mid_stop_host;
 	iotg->runtime_suspend_host = ehci_mid_runtime_suspend_host;
 	iotg->runtime_resume_host = ehci_mid_runtime_resume_host;
+
+	iotg->suspend_host = ehci_mid_suspend_host;
+	iotg->suspend_noirq_host = ehci_mid_suspend_noirq_host;
+	iotg->resume_host = ehci_mid_resume_host;
+	iotg->resume_noirq_host = ehci_mid_resume_noirq_host;
 
 	/* notify host driver is registered */
 	atomic_notifier_call_chain(&iotg->iotg_notifier,
