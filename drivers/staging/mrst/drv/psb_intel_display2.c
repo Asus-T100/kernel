@@ -151,6 +151,7 @@ int mdfld_intel_crtc_set_gamma(struct drm_device *dev,
 	else if (pipe == 1) {
 		PSB_DEBUG_ENTRY("/KAI1 palette no implement for HDMI\n"
 				"do it later\n");
+		return -EINVAL;
 	} else
 		return -EINVAL;
 
@@ -341,6 +342,7 @@ int mdfld_intel_crtc_set_color_conversion(struct drm_device *dev,
 	else if (pipe == 1) {
 		PSB_DEBUG_ENTRY("/KAI1 color conversion no implement for HDMI\n"
 				"do it later\n");
+		return -EINVAL;
 	} else
 		return -EINVAL;
 
