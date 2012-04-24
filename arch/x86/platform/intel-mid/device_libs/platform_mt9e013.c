@@ -92,15 +92,15 @@ static int mt9e013_power_ctrl(struct v4l2_subdev *sd, int flag)
 	return 0;
 }
 
-static int mt9e013_pixel_rate(void)
-{
-	return (board_id == MFLD_BID_LEX) ? 96 : 153;
-}
-
 static int mt9e013_csi_configure(struct v4l2_subdev *sd, int flag)
 {
 	return camera_sensor_csi(sd, ATOMISP_CAMERA_PORT_PRIMARY, 2,
 		ATOMISP_INPUT_FORMAT_RAW_10, atomisp_bayer_order_grbg, flag);
+}
+
+static bool mt9e013_low_fps(void)
+{
+	return (board_id == MFLD_BID_LEX) ? true : false;
 }
 
 static struct camera_sensor_platform_data mt9e013_sensor_platform_data = {
@@ -108,7 +108,7 @@ static struct camera_sensor_platform_data mt9e013_sensor_platform_data = {
 	.flisclk_ctrl	= mt9e013_flisclk_ctrl,
 	.power_ctrl	= mt9e013_power_ctrl,
 	.csi_cfg	= mt9e013_csi_configure,
-	.pixel_rate	= mt9e013_pixel_rate,
+	.low_fps	= mt9e013_low_fps,
 };
 
 

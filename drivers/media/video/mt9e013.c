@@ -73,7 +73,6 @@ static struct mt9e013_resolution mt9e013_res_preview[] = {
 		 .width =	820	,
 		 .height =	616	,
 		 .fps =		30	,
-		 .low_fps =	15	, /* fps when pixel clock is 96MHZ */
 		 .used =	0	,
 		 .pixels_per_line = 0x1020, /* consistent with regs arrays */
 		 .lines_per_frame = 0x060E, /* consistent with regs arrays */
@@ -87,7 +86,6 @@ static struct mt9e013_resolution mt9e013_res_preview[] = {
 		 .width =	1640	,
 		 .height =	956	,
 		 .fps =		30	,
-		 .low_fps =	15	, /* fps when pixel clock is 96MHZ */
 		 .used =	0	,
 		 .pixels_per_line = 0x1020, /* consistent with regs arrays */
 		 .lines_per_frame = 0x060E, /* consistent with regs arrays */
@@ -101,13 +99,56 @@ static struct mt9e013_resolution mt9e013_res_preview[] = {
 
 #define N_RES_PREVIEW (ARRAY_SIZE(mt9e013_res_preview))
 
-static struct mt9e013_resolution mt9e013_res_still[] = {
+static struct mt9e013_resolution mt9e013_res_still_low_fps[] = {
+	{
+		 .desc =	"STILL_2M_3fps"	,
+		 .width =	1640	,
+		 .height =	1232	,
+		 .fps =		3	,
+		 .used =	0	,
+		 .pixels_per_line = 0x1F40, /* consistent with regs arrays */
+		 .lines_per_frame = 0x1F40, /* consistent with regs arrays */
+		 .regs =	mt9e013_STILL_2M_3fps	,
+		 .bin_factor_x =	1,
+		 .bin_factor_y =	1,
+		 .skip_frames = 1,
+	},
+	{
+		 .desc =	"STILL_6M_3fps"	,
+		 .width =	3280	,
+		 .height =	1848	,
+		 .fps =		3	,
+		 .used =	0	,
+		 .pixels_per_line = 0x1F40, /* consistent with regs arrays */
+		 .lines_per_frame = 0x1F40, /* consistent with regs arrays */
+		 .regs =	mt9e013_STILL_6M_3fps	,
+		 .bin_factor_x =	0,
+		 .bin_factor_y =	0,
+		 .skip_frames = 1,
+	},
+	{
+		 .desc =	"STILL_8M_3fps"	,
+		 .width =	3280	,
+		 .height =	2464	,
+		 .fps =		3	,
+		 .used =	0	,
+		 .pixels_per_line = 0x1F40, /* consistent with regs arrays */
+		 .lines_per_frame = 0x1F40, /* consistent with regs arrays */
+		 .regs =	mt9e013_STILL_8M_3fps	,
+		 .bin_factor_x =	0,
+		 .bin_factor_y =	0,
+		 .skip_frames = 1,
+	},
+};
+
+#define N_RES_STILL_LOW_FPS (ARRAY_SIZE(mt9e013_res_still_low_fps))
+
+static struct mt9e013_resolution mt9e013_res_still_high_fps[] = {
 	{
 		 .desc =	"STILL_2M_15fps"	,
 		 .width =	1640	,
 		 .height =	1232	,
 		 .fps =		15	,
-		 .low_fps =	3	, /* fps when pixel clock is 96MHZ */
 		 .used =	0	,
 		 .pixels_per_line = 0x1020, /* consistent with regs arrays */
 		 .lines_per_frame = 0x0C1C, /* consistent with regs arrays */
@@ -121,7 +162,6 @@ static struct mt9e013_resolution mt9e013_res_still[] = {
 		 .width =	3280	,
 		 .height =	1848	,
 		 .fps =		15	,
-		 .low_fps =	3	, /* fps when pixel clock is 96MHZ */
 		 .used =	0	,
 		 .pixels_per_line = 0x1258, /* consistent with regs arrays */
 		 .lines_per_frame = 0x0AA4, /* consistent with regs arrays */
@@ -135,7 +175,6 @@ static struct mt9e013_resolution mt9e013_res_still[] = {
 		 .width =	3280	,
 		 .height =	2464	,
 		 .fps =		15	,
-		 .low_fps =	3	, /* fps when pixel clock is 96MHZ */
 		 .used =	0	,
 		 .pixels_per_line = 0x1258, /* consistent with regs arrays */
 		 .lines_per_frame = 0x0AA4, /* consistent with regs arrays */
@@ -146,15 +185,14 @@ static struct mt9e013_resolution mt9e013_res_still[] = {
 	},
 };
 
-#define N_RES_STILL (ARRAY_SIZE(mt9e013_res_still))
+#define N_RES_STILL_HIGH_FPS (ARRAY_SIZE(mt9e013_res_still_high_fps))
 
-static struct mt9e013_resolution mt9e013_res_video[] = {
+static struct mt9e013_resolution mt9e013_res_video_low_fps[] = {
 	{
 		 .desc =	"QCIF_strong_dvs_30fps"	,
 		 .width =	216	,
 		 .height =	176	,
 		 .fps =		30	,
-		 .low_fps =	15	, /* fps when pixel clock is 96MHZ */
 		 .used =	0	,
 		 .pixels_per_line = 0x1020, /* consistent with regs arrays */
 		 .lines_per_frame = 0x060E, /* consistent with regs arrays */
@@ -168,7 +206,6 @@ static struct mt9e013_resolution mt9e013_res_video[] = {
 		 .width =	408	,
 		 .height =	308	,
 		 .fps =		30	,
-		 .low_fps =	15	, /* fps when pixel clock is 96MHZ */
 		 .used =	0	,
 		 .pixels_per_line = 0x1020, /* consistent with regs arrays */
 		 .lines_per_frame = 0x060E, /* consistent with regs arrays */
@@ -182,7 +219,6 @@ static struct mt9e013_resolution mt9e013_res_video[] = {
 		 .width =	820	,
 		 .height =	616	,
 		 .fps =		30	,
-		 .low_fps =	15	, /* fps when pixel clock is 96MHZ */
 		 .used =	0	,
 		 .pixels_per_line = 0x1020, /* consistent with regs arrays */
 		 .lines_per_frame = 0x060E, /* consistent with regs arrays */
@@ -196,7 +232,6 @@ static struct mt9e013_resolution mt9e013_res_video[] = {
 		 .width =	1640	,
 		 .height =	1024	,
 		 .fps =		30	,
-		 .low_fps =	15	, /* fps when pixel clock is 96MHZ */
 		 .used =	0	,
 		 .pixels_per_line = 0x1020, /* consistent with regs arrays */
 		 .lines_per_frame = 0x060E, /* consistent with regs arrays */
@@ -210,7 +245,90 @@ static struct mt9e013_resolution mt9e013_res_video[] = {
 		 .width =	1568	,
 		 .height =	880	,
 		 .fps =		30	,
-		 .low_fps =	15	, /* fps when pixel clock is 96MHZ */
+		 .used =	0	,
+		 .pixels_per_line = 0x1836, /* consistent with regs arrays */
+		 .lines_per_frame = 0x408, /* consistent with regs arrays */
+		 .regs =	mt9e013_720p_strong_dvs_30fps_low_fps	,
+		 .bin_factor_x =	1,
+		 .bin_factor_y =	1,
+		 .skip_frames = 1,
+	},
+	{
+		 .desc =	"1080p_strong_dvs_30fps",
+		 .width =	2336,
+		 .height =	1308,
+		 .fps =		30,
+		 .used =	0,
+		 .pixels_per_line = 0x113A, /* consistent with regs arrays */
+		 .lines_per_frame = 0x05AB, /* consistent with regs arrays */
+		 .regs =	mt9e013_1080p_strong_dvs_30fps,
+		 .bin_factor_x =	0,
+		 .bin_factor_y =	0,
+		 .skip_frames = 1,
+	},
+
+};
+
+#define N_RES_VIDEO_LOW_FPS (ARRAY_SIZE(mt9e013_res_video_low_fps))
+
+static struct mt9e013_resolution mt9e013_res_video_high_fps[] = {
+	{
+		 .desc =	"QCIF_strong_dvs_30fps"	,
+		 .width =	216	,
+		 .height =	176	,
+		 .fps =		30	,
+		 .used =	0	,
+		 .pixels_per_line = 0x1020, /* consistent with regs arrays */
+		 .lines_per_frame = 0x060E, /* consistent with regs arrays */
+		 .regs =	mt9e013_QCIF_strong_dvs_30fps	,
+		 .bin_factor_x =	2,
+		 .bin_factor_y =	2,
+		 .skip_frames = 1,
+	},
+	{
+		 .desc =	"QVGA_strong_dvs_30fps"	,
+		 .width =	408	,
+		 .height =	308	,
+		 .fps =		30	,
+		 .used =	0	,
+		 .pixels_per_line = 0x1020, /* consistent with regs arrays */
+		 .lines_per_frame = 0x060E, /* consistent with regs arrays */
+		 .regs =	mt9e013_QVGA_strong_dvs_30fps	,
+		 .bin_factor_x =	2,
+		 .bin_factor_y =	2,
+		 .skip_frames = 1,
+	},
+	{
+		 .desc =	"VGA_strong_dvs_30fps"	,
+		 .width =	820	,
+		 .height =	616	,
+		 .fps =		30	,
+		 .used =	0	,
+		 .pixels_per_line = 0x1020, /* consistent with regs arrays */
+		 .lines_per_frame = 0x060E, /* consistent with regs arrays */
+		 .regs =	mt9e013_VGA_strong_dvs_30fps	,
+		 .bin_factor_x =	2,
+		 .bin_factor_y =	2,
+		 .skip_frames = 1,
+	},
+	{
+		 .desc =	"WVGA_strong_dvs_30fps"	,
+		 .width =	1640	,
+		 .height =	1024	,
+		 .fps =		30	,
+		 .used =	0	,
+		 .pixels_per_line = 0x1020, /* consistent with regs arrays */
+		 .lines_per_frame = 0x060E, /* consistent with regs arrays */
+		 .regs =	mt9e013_WVGA_strong_dvs_30fps	,
+		 .bin_factor_x =	1,
+		 .bin_factor_y =	1,
+		 .skip_frames = 1,
+	},
+	{
+		 .desc =	"720p_strong_dvs_30fps"	,
+		 .width =	1568	,
+		 .height =	880	,
+		 .fps =		30	,
 		 .used =	0	,
 		 .pixels_per_line = 0x1020, /* consistent with regs arrays */
 		 .lines_per_frame = 0x060E, /* consistent with regs arrays */
@@ -224,7 +342,6 @@ static struct mt9e013_resolution mt9e013_res_video[] = {
 		 .width =	2336,
 		 .height =	1308,
 		 .fps =		30,
-		 .low_fps =	15	, /* fps when pixel clock is 96MHZ */
 		 .used =	0,
 		 .pixels_per_line = 0x113A, /* consistent with regs arrays */
 		 .lines_per_frame = 0x05AB, /* consistent with regs arrays */
@@ -235,7 +352,7 @@ static struct mt9e013_resolution mt9e013_res_video[] = {
 	},
 };
 
-#define N_RES_VIDEO (ARRAY_SIZE(mt9e013_res_video))
+#define N_RES_VIDEO_HIGH_FPS (ARRAY_SIZE(mt9e013_res_video_high_fps))
 
 static struct mt9e013_resolution *mt9e013_res = mt9e013_res_preview;
 static int N_RES = N_RES_PREVIEW;
@@ -939,20 +1056,9 @@ static int mt9e013_init_registers(struct v4l2_subdev *sd)
 {
 	int ret;
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
-	struct mt9e013_device *dev = to_mt9e013_sensor(sd);
 
 	ret  = mt9e013_write_reg_array(client, mt9e013_reset_register);
-
-	if (dev->platform_data->pixel_rate &&
-	    dev->platform_data->pixel_rate() <= 96) {
-		ret |= mt9e013_write_reg_array(client,
-					       mt9e013_pll_timing_96MHz);
-	} else {
-		/* default 153MHz */
-		ret |= mt9e013_write_reg_array(client,
-					       mt9e013_pll_timing_153MHz);
-	}
-
+	ret |= mt9e013_write_reg_array(client, mt9e013_pll_timing);
 	ret |= mt9e013_write_reg_array(client, mt9e013_raw_10);
 	ret |= mt9e013_write_reg_array(client, mt9e013_mipi_config);
 	ret |= mt9e013_write_reg_array(client, mt9e013_recommended_settings);
@@ -1828,7 +1934,6 @@ static int mt9e013_enum_framesizes(struct v4l2_subdev *sd,
 static int mt9e013_enum_frameintervals(struct v4l2_subdev *sd,
 				       struct v4l2_frmivalenum *fival)
 {
-	struct mt9e013_device *dev = to_mt9e013_sensor(sd);
 	unsigned int index = fival->index;
 
 	if (index >= N_RES)
@@ -1846,11 +1951,7 @@ static int mt9e013_enum_frameintervals(struct v4l2_subdev *sd,
 /*	fival->width = mt9e013_res[index].width;
 	fival->height = mt9e013_res[index].height; */
 	fival->discrete.numerator = 1;
-	if (dev->platform_data->pixel_rate &&
-	    dev->platform_data->pixel_rate() <= 96)
-		fival->discrete.denominator = mt9e013_res[index].low_fps;
-	else
-		fival->discrete.denominator = mt9e013_res[index].fps;
+	fival->discrete.denominator = mt9e013_res[index].fps;
 
 	return 0;
 }
@@ -2020,12 +2121,24 @@ mt9e013_s_parm(struct v4l2_subdev *sd, struct v4l2_streamparm *param)
 	mutex_lock(&dev->input_lock);
 	switch (dev->run_mode) {
 	case CI_MODE_VIDEO:
-		mt9e013_res = mt9e013_res_video;
-		N_RES = N_RES_VIDEO;
+		if (dev->platform_data->low_fps &&
+		    dev->platform_data->low_fps()) {
+			mt9e013_res = mt9e013_res_video_low_fps;
+			N_RES = N_RES_VIDEO_LOW_FPS;
+		} else {
+			mt9e013_res = mt9e013_res_video_high_fps;
+			N_RES = N_RES_VIDEO_HIGH_FPS;
+		}
 		break;
 	case CI_MODE_STILL_CAPTURE:
-		mt9e013_res = mt9e013_res_still;
-		N_RES = N_RES_STILL;
+		if (dev->platform_data->low_fps &&
+		    dev->platform_data->low_fps()) {
+			mt9e013_res = mt9e013_res_still_low_fps;
+			N_RES = N_RES_STILL_LOW_FPS;
+		} else {
+			mt9e013_res = mt9e013_res_still_high_fps;
+			N_RES = N_RES_STILL_HIGH_FPS;
+		}
 		break;
 	default:
 		mt9e013_res = mt9e013_res_preview;
