@@ -153,9 +153,10 @@ struct intel_mid_otg_xceiv {
 
 #ifdef CONFIG_PM
 	/* suspend/resume USB host function */
-	int	(*suspend_host)(struct intel_mid_otg_xceiv *iotg,
-					pm_message_t message);
+	int	(*suspend_host)(struct intel_mid_otg_xceiv *iotg);
+	int	(*suspend_noirq_host)(struct intel_mid_otg_xceiv *iotg);
 	int	(*resume_host)(struct intel_mid_otg_xceiv *iotg);
+	int	(*resume_noirq_host)(struct intel_mid_otg_xceiv *iotg);
 
 	int	(*suspend_peripheral)(struct intel_mid_otg_xceiv *iotg,
 					pm_message_t message);

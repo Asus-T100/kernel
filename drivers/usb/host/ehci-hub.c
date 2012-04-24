@@ -206,8 +206,12 @@ static __maybe_unused void ehci_adjust_port_wakeup_flags(struct ehci_hcd *ehci,
 		ehci_writel(ehci, t2, reg);
 	}
 
-	/* enter phy low-power mode again */
-	if (ehci->has_hostpc) {
+
+	/* enter phy low-power mode again if it's suspending*/
+	/* during remote-wakeup if the phy enters low power mode, the port
+	* will get disconnected.
+	*/
+	if (ehci->has_hostpc && suspending) {
 		port = HCS_N_PORTS(ehci->hcs_params);
 		while (port--) {
 			u32 __iomem	*hostpc_reg;
@@ -339,7 +343,12 @@ static int ehci_bus_suspend (struct usb_hcd *hcd)
 		udelay(150);
 
 	/* turn off now-idle HC */
+	/* if halt ehci, after remote-wakeup, the port get disabled,
+	* so don't halt ehci here
+	*/
+#if 0
 	ehci_halt (ehci);
+#endif
 	hcd->state = HC_STATE_SUSPENDED;
 
 	if (ehci->reclaim)
@@ -425,6 +434,11 @@ static int ehci_bus_resume (struct usb_hcd *hcd)
 	 */
 	ehci_writel(ehci, 0, &ehci->regs->intr_enable);
 
+	/* if halt ehci in ehci_bus_suspend, after remote-wakeup, the port
+	* gets disabled, so don't halt ehci in ehci_bus_suspend, and don't need
+	* to re-start here
+	*/
+#if 0
 	/* re-init operational registers */
 	ehci_writel(ehci, 0, &ehci->regs->segment);
 	ehci_writel(ehci, ehci->periodic_dma, &ehci->regs->frame_list);
@@ -432,6 +446,7 @@ static int ehci_bus_resume (struct usb_hcd *hcd)
 
 	/* restore CMD_RUN, framelist size, and irq threshold */
 	ehci_writel(ehci, ehci->command, &ehci->regs->command);
+#endif
 
 	/* Some controller/firmware combinations need a delay during which
 	 * they set up the port statuses.  See Bugzilla #8190. */

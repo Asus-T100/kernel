@@ -1231,6 +1231,9 @@ static int hub_configure(struct usb_hub *hub,
 	if (hub->has_indicators && blinkenlights)
 		hub->indicator [0] = INDICATOR_CYCLE;
 
+	/* Mandatorily set hub as remote-wakeup enabled */
+	device_set_wakeup_enable(&hdev->dev, true);
+
 	hub_activate(hub, HUB_INIT);
 	return 0;
 
