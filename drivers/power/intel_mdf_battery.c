@@ -1557,7 +1557,6 @@ static void msic_batt_temp_charging(struct work_struct *work)
 							is_chrg_flt ||
 				vbus_voltage < WEAKVIN_VOLTAGE_LEVEL) {
 
-
 		if ((adc_temp > batt_thrshlds->temp_high) ||
 			(adc_temp < batt_thrshlds->temp_low)) {
 			dev_warn(msic_dev,
@@ -1567,9 +1566,9 @@ static void msic_batt_temp_charging(struct work_struct *work)
 			mbi->batt_props.health = POWER_SUPPLY_HEALTH_OVERHEAT;
 			mutex_unlock(&mbi->batt_lock);
 		}
-		/* Check charger Status bits */
-		if (is_chrg_flt || mbi->batt_props.status
-				== POWER_SUPPLY_STATUS_DISCHARGING) {
+		/* set battery charging status */
+		if (mbi->batt_props.status !=
+				POWER_SUPPLY_STATUS_NOT_CHARGING) {
 			mutex_lock(&mbi->batt_lock);
 			mbi->batt_props.status =
 					POWER_SUPPLY_STATUS_NOT_CHARGING;
@@ -1583,6 +1582,7 @@ static void msic_batt_temp_charging(struct work_struct *work)
 			mutex_unlock(&mbi->usb_chrg_lock);
 		}
 
+		iprev = -1;
 		dump_registers(MSIC_CHRG_REG_DUMP_EVENT);
 		/*
 		 * If we are in middle of charge cycle is safer to Reset WDT
@@ -2064,7 +2064,6 @@ static int msic_charger_callback(void *arg, int event, struct otg_bc_cap *cap)
  */
 static void msic_status_monitor(struct work_struct *work)
 {
-	int chr_mode, chr_event, is_chrg_flt;
 	unsigned int delay = CHARGE_STATUS_DELAY_JIFFIES;
 	struct msic_power_module_info *mbi =
 	    container_of(work, struct msic_power_module_info,
@@ -2072,35 +2071,10 @@ static void msic_status_monitor(struct work_struct *work)
 
 	pm_runtime_get_sync(&mbi->ipcdev->dev);
 
-	mutex_lock(&mbi->event_lock);
-	chr_mode = mbi->charging_mode;
-	chr_event = mbi->batt_event;
-	mutex_unlock(&mbi->event_lock);
-
 	/*update charger and battery health */
 	update_charger_health(mbi);
 	update_battery_health(mbi);
 
-	/* Check charger Status bits */
-	is_chrg_flt = is_charger_fault();
-
-	mutex_lock(&mbi->batt_lock);
-	if (chr_mode == BATT_CHARGING_MODE_MAINTENANCE)
-		mbi->batt_props.status = POWER_SUPPLY_STATUS_FULL;
-	else if (chr_mode == BATT_CHARGING_MODE_NORMAL)
-		mbi->batt_props.status = POWER_SUPPLY_STATUS_CHARGING;
-	else if (chr_event == USBCHRG_EVENT_SUSPEND)
-		mbi->batt_props.status = POWER_SUPPLY_STATUS_NOT_CHARGING;
-	else
-		mbi->batt_props.status = POWER_SUPPLY_STATUS_DISCHARGING;
-
-	if (is_chrg_flt) {
-		dev_warn(msic_dev, "charger fault detected\n");
-		mbi->batt_props.status = POWER_SUPPLY_STATUS_NOT_CHARGING;
-	}
-	mutex_unlock(&mbi->batt_lock);
-
-	dump_registers(MSIC_CHRG_REG_DUMP_EVENT);
 	power_supply_changed(&mbi->usb);
 	schedule_delayed_work(&mbi->chr_status_monitor, delay);
 
