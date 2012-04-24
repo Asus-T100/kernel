@@ -2340,20 +2340,32 @@ static int ov8830_s_ctrl(struct v4l2_subdev *sd, struct v4l2_control *ctrl)
  * res->width/height smaller than w/h wouldn't be considered.
  * Returns the value of gap or -1 if fail.
  */
-#define LARGEST_ALLOWED_RATIO_MISMATCH 140   /* tune this value so that the DVS resolutions get selected properly, but make sure 16:9 do not match 4:3*/
-static int distance(struct ov8830_resolution *res, u32 w, u32 h)
+/* tune this value so that the DVS resolutions get selected properly,
+ * but make sure 16:9 does not match 4:3.
+ */
+#define LARGEST_ALLOWED_RATIO_MISMATCH 600
+static int distance(struct ov8830_resolution const *res, const u32 w,
+				const u32 h)
 {
 	unsigned int w_ratio = ((res->width<<13)/w);
 	unsigned int h_ratio = ((res->height<<13)/h);
 	int match   = abs(((w_ratio<<13)/h_ratio) - ((int)8192));
 
-	if ((w_ratio < (int)8192) || (h_ratio < (int)8192)  || (match > LARGEST_ALLOWED_RATIO_MISMATCH))
+	if ((w_ratio < (int)8192) || (h_ratio < (int)8192)
+		|| (match > LARGEST_ALLOWED_RATIO_MISMATCH))
 		return -1;
 
 	return w_ratio + h_ratio;
 }
 
-/* Return the nearest higher resolution index */
+/*
+ * Returns the nearest higher resolution index.
+ * @w: width
+ * @h: height
+ * matching is done based on enveloping resolution and
+ * aspect ratio. If the aspect ratio cannot be matched
+ * to any index, -1 is returned.
+ */
 static int nearest_resolution_index(int w, int h)
 {
 	int i;
@@ -2372,10 +2384,6 @@ static int nearest_resolution_index(int w, int h)
 			idx = i;
 		}
 	}
-
-	if (idx == -1)
-		return -1;
-
 	return idx;
 }
 
