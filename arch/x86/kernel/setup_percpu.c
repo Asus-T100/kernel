@@ -185,9 +185,13 @@ void __init setup_per_cpu_areas(void)
 #endif
 	rc = -EINVAL;
 	if (pcpu_chosen_fc != PCPU_FC_PAGE) {
+		size_t atom_size;
 		const size_t dyn_size = PERCPU_MODULE_RESERVE +
 			PERCPU_DYNAMIC_RESERVE - PERCPU_FIRST_CHUNK_RESERVE;
-		size_t atom_size;
+		if (pcpu_chosen_fc == PCPU_FC_FIXED && pcpu_atom_size)
+			atom_size = pcpu_atom_size;
+		else
+			atom_size = cpu_has_pse ? PMD_SIZE : PAGE_SIZE;
 
 		/*
 		 * On 64bit, use PMD_SIZE for atom_size so that embedded

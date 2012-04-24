@@ -104,12 +104,14 @@ enum pcpu_fc {
 	PCPU_FC_AUTO,
 	PCPU_FC_EMBED,
 	PCPU_FC_PAGE,
+	PCPU_FC_FIXED,
 
 	PCPU_FC_NR,
 };
 extern const char *pcpu_fc_names[PCPU_FC_NR];
 
 extern enum pcpu_fc pcpu_chosen_fc;
+extern size_t pcpu_atom_size;
 
 typedef void * (*pcpu_fc_alloc_fn_t)(unsigned int cpu, size_t size,
 				     size_t align);

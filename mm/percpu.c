@@ -112,7 +112,6 @@ struct pcpu_chunk {
 static int pcpu_unit_pages __read_mostly;
 static int pcpu_unit_size __read_mostly;
 static int pcpu_nr_units __read_mostly;
-static int pcpu_atom_size __read_mostly;
 static int pcpu_nr_slots __read_mostly;
 static size_t pcpu_chunk_struct_size __read_mostly;
 
@@ -123,6 +122,8 @@ static unsigned int pcpu_high_unit_cpu __read_mostly;
 /* the address of the first chunk which starts with the kernel static area */
 void *pcpu_base_addr __read_mostly;
 EXPORT_SYMBOL_GPL(pcpu_base_addr);
+
+size_t pcpu_atom_size __read_mostly = 256 * 1024;
 
 static const int *pcpu_unit_map __read_mostly;		/* cpu -> unit */
 const unsigned long *pcpu_unit_offsets __read_mostly;	/* cpu -> unit offset */
@@ -1356,12 +1357,15 @@ const char *pcpu_fc_names[PCPU_FC_NR] __initdata = {
 	[PCPU_FC_AUTO]	= "auto",
 	[PCPU_FC_EMBED]	= "embed",
 	[PCPU_FC_PAGE]	= "page",
+	[PCPU_FC_FIXED]	= "fixed",
 };
 
-enum pcpu_fc pcpu_chosen_fc __initdata = PCPU_FC_AUTO;
+enum pcpu_fc pcpu_chosen_fc __initdata = PCPU_FC_FIXED;
 
 static int __init percpu_alloc_setup(char *str)
 {
+	size_t size = memparse(str, NULL);
+
 	if (0)
 		/* nada */;
 #ifdef CONFIG_NEED_PER_CPU_EMBED_FIRST_CHUNK
@@ -1372,7 +1376,12 @@ static int __init percpu_alloc_setup(char *str)
 	else if (!strcmp(str, "page"))
 		pcpu_chosen_fc = PCPU_FC_PAGE;
 #endif
-	else
+	else if (!strcmp(str, "auto"))
+		pcpu_chosen_fc = PCPU_FC_AUTO;
+	else if (size > 0) {
+		pcpu_atom_size = size;
+		pcpu_chosen_fc = PCPU_FC_FIXED;
+	} else
 		pr_warning("PERCPU: unknown allocator %s specified\n", str);
 
 	return 0;
