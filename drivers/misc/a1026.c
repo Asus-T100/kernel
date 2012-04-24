@@ -21,7 +21,7 @@
 #include <linux/uaccess.h>
 #include <linux/delay.h>
 #include <linux/firmware.h>
-#include <asm/intel_scu_ipc.h>
+#include <asm/intel_scu_ipcutil.h>
 #include <linux/a1026.h>
 #include <linux/i2c.h>
 

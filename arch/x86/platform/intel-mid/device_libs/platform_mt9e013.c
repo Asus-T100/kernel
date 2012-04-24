@@ -13,7 +13,7 @@
 #include <linux/gpio.h>
 #include <linux/delay.h>
 #include <linux/atomisp_platform.h>
-#include <asm/intel_scu_ipc.h>
+#include <asm/intel_scu_ipcutil.h>
 #include <asm/intel-mid.h>
 #include <media/v4l2-subdev.h>
 #include "platform_camera.h"
