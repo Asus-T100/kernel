@@ -178,6 +178,10 @@ static int lm3554_set_config1(struct lm3554 *flash)
 	return lm3554_write(flash, LM3554_CONFIG_REG_1, val);
 }
 
+/* -----------------------------------------------------------------------------
+ * Hardware reset and trigger
+ */
+
 static int lm3554_hw_reset(struct i2c_client *client)
 {
 	struct v4l2_subdev *sd = i2c_get_clientdata(client);
@@ -196,6 +200,65 @@ static int lm3554_hw_reset(struct i2c_client *client)
 	msleep(50);
 
 	gpio_free(pdata->gpio_reset);
+	return ret;
+}
+
+static void lm3554_flash_off_delay(long unsigned int arg)
+{
+	struct v4l2_subdev *sd = i2c_get_clientdata((struct i2c_client *)arg);
+	struct lm3554 *flash = to_lm3554(sd);
+	struct camera_flash_platform_data *pdata = flash->pdata;
+
+	gpio_set_value(pdata->gpio_strobe, 0);
+}
+
+static int lm3554_hw_strobe(struct i2c_client *client, bool strobe)
+{
+	int ret, timer_pending;
+	struct v4l2_subdev *sd = i2c_get_clientdata(client);
+	struct lm3554 *flash = to_lm3554(sd);
+	struct camera_flash_platform_data *pdata = flash->pdata;
+
+	/*
+	 * An abnormal high flash current is observed when strobe off the
+	 * flash. Workaround here is firstly set flash current to lower level,
+	 * wait a short moment, and then strobe off the flash.
+	 */
+
+	timer_pending = del_timer_sync(&flash->flash_off_delay);
+
+	/* Flash off */
+	if (!strobe) {
+		/* set current to 70mA and wait a while */
+		ret = lm3554_write(flash, LM3554_FLASH_BRIGHTNESS_REG, 0);
+		if (ret < 0)
+			goto err;
+		mod_timer(&flash->flash_off_delay,
+			  jiffies + msecs_to_jiffies(LM3554_TIMER_DELAY));
+		return 0;
+	}
+
+	/* Flash on */
+
+	/*
+	 * If timer is killed before run, flash is not strobe off,
+	 * so must strobe off here
+	 */
+	if (timer_pending)
+		gpio_set_value(pdata->gpio_strobe, 0);
+
+	/* Restore flash current settings */
+	ret = lm3554_set_flash(flash);
+	if (ret < 0)
+		goto err;
+
+	/* Strobe on Flash */
+	gpio_set_value(pdata->gpio_strobe, 1);
+
+	return 0;
+err:
+	dev_err(&client->dev, "failed to %s flash strobe (%d)\n",
+		strobe ? "on" : "off", ret);
 	return ret;
 }
 
@@ -292,52 +355,9 @@ static int lm3554_g_indicator_intensity(struct v4l2_subdev *sd, s32 *val)
 
 static int lm3554_s_flash_strobe(struct v4l2_subdev *sd, u32 val)
 {
-	int ret, timer_pending;
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
-	struct lm3554 *flash = to_lm3554(sd);
-	struct camera_flash_platform_data *pdata = flash->pdata;
 
-	/*
-	 * An abnormal high flash current is observed when strobe off the
-	 * flash. Workaround here is firstly set flash current to lower level,
-	 * wait a short moment, and then strobe off the flash.
-	 */
-
-	timer_pending = del_timer_sync(&flash->flash_off_delay);
-
-	/* Flash off */
-	if (!val) {
-		/* set current to 70mA and wait a while */
-		ret = lm3554_write(flash, LM3554_FLASH_BRIGHTNESS_REG, 0);
-		if (ret < 0)
-			goto err;
-		mod_timer(&flash->flash_off_delay,
-			  jiffies + msecs_to_jiffies(LM3554_TIMER_DELAY));
-		return 0;
-	}
-
-	/* Flash on */
-
-	/*
-	 * If timer is killed before run, flash is not strobe off,
-	 * so must strobe off here
-	 */
-	if (timer_pending != 0)
-		gpio_set_value(pdata->gpio_strobe, 0);
-
-	/* Restore flash current settings */
-	ret = lm3554_set_flash(flash);
-	if (ret < 0)
-		goto err;
-
-	/* Strobe on Flash */
-	gpio_set_value(pdata->gpio_strobe, val);
-
-	return 0;
-err:
-	dev_err(&client->dev, "failed to generate flash strobe (%d)\n",
-		ret);
-	return ret;
+	return lm3554_hw_strobe(client, val);
 }
 
 static int lm3554_s_flash_mode(struct v4l2_subdev *sd, u32 new_mode)
@@ -604,15 +624,6 @@ static const struct v4l2_subdev_internal_ops lm3554_internal_ops = {
 	.open = lm3554_open,
 	.close = lm3554_close,
 };
-
-static void lm3554_flash_off_delay(long unsigned int arg)
-{
-	struct v4l2_subdev *sd = i2c_get_clientdata((struct i2c_client *)arg);
-	struct lm3554 *flash = to_lm3554(sd);
-	struct camera_flash_platform_data *pdata = flash->pdata;
-
-	gpio_set_value(pdata->gpio_strobe, 0);
-}
 
 static int __devinit lm3554_gpio_init(struct i2c_client *client)
 {
