@@ -31,6 +31,8 @@
 #include <linux/firmware.h>
 
 #define NWORDS(a)	(sizeof(a) / sizeof(u16))
+#define BYTEH(a)     ((a) >> 8)
+#define BYTEL(a)     ((a) & 0xFF)
 
 #define MAX11871_CMD_ADDR 0x0000
 #define MAX11871_ONE_CMD_LEN  9
@@ -155,6 +157,9 @@ struct max11871_data {
 	u16 touch_config[MAX11871_MAX_CMD_LEN];
 	char phys[32];
 	char key_phys[32];
+
+	/* Debug values */
+	u32 irq_counter;
 };
 
 /* packet size in words including the header */
@@ -426,6 +431,7 @@ static irqreturn_t max11871_irq_handler(int irq, void *dev_id)
 
 	max11871_process_report(ts, ts->report);
 out:
+	ts->irq_counter++;
 	mutex_unlock(&ts->dev_mutex);
 	return IRQ_HANDLED;
 }
@@ -1031,6 +1037,193 @@ static void max11871_late_resume(struct early_suspend *h)
 }
 #endif
 
+/* Debug sysfs support */
+static ssize_t irq_count_show(struct device *dev, struct device_attribute *attr,
+			char *buf)
+{
+	struct i2c_client *client = to_i2c_client(dev);
+	struct max11871_data *ts = i2c_get_clientdata(client);
+	int ret;
+
+	mutex_lock(&ts->dev_mutex);
+	ret = snprintf(buf, PAGE_SIZE, "%u\n", ts->irq_counter);
+	mutex_unlock(&ts->dev_mutex);
+	return ret;
+}
+
+static ssize_t irq_count_store(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct i2c_client *client = to_i2c_client(dev);
+	struct max11871_data *ts = i2c_get_clientdata(client);
+
+	mutex_lock(&ts->dev_mutex);
+	ts->irq_counter = 0;
+	mutex_unlock(&ts->dev_mutex);
+	return count;
+}
+
+static ssize_t panel_params_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	int ret;
+	struct max11871_platform_data *pdata = dev->platform_data;
+	struct i2c_client *client = to_i2c_client(dev);
+	struct max11871_data *ts = i2c_get_clientdata(client);
+
+	mutex_lock(&ts->dev_mutex);
+	ret = snprintf(buf, PAGE_SIZE, "%u %u %u %u %u %u %u %u %u %u %u %u "
+		"%u %u %u %u %u %u %u %u\n", pdata->abs_x_min,
+		pdata->abs_x_max, pdata->abs_y_min, pdata->abs_y_max,
+		pdata->abs_z_min, pdata->abs_z_max,
+		pdata->abs_button_area_x_max, pdata->abs_button_area_x_min,
+		pdata->abs_button_area_y_max, pdata->abs_button_area_y_min,
+		pdata->abs_back_button_x, pdata->abs_back_button_y,
+		pdata->abs_home_button_x, pdata->abs_home_button_y,
+		pdata->abs_menu_button_x, pdata->abs_menu_button_y,
+		pdata->abs_search_button_x, pdata->abs_search_button_y,
+		pdata->abs_button_fuzz_x, pdata->abs_button_fuzz_y);
+	mutex_unlock(&ts->dev_mutex);
+
+	return ret;
+}
+
+static ssize_t panel_params_store(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t count)
+{
+	int ret;
+	struct max11871_platform_data *pdata = dev->platform_data;
+	struct i2c_client *client = to_i2c_client(dev);
+	struct max11871_data *ts = i2c_get_clientdata(client);
+
+	mutex_lock(&ts->dev_mutex);
+	ret = sscanf(buf, "%hu %hu %hu %hu %hu %hu %hu %hu %hu %hu %hu %hu "
+		"%hu %hu %hu %hu %hu %hu %hu %hu", &pdata->abs_x_min,
+		&pdata->abs_x_max, &pdata->abs_y_min, &pdata->abs_y_max,
+		&pdata->abs_z_min, &pdata->abs_z_max,
+		&pdata->abs_button_area_x_max, &pdata->abs_button_area_x_min,
+		&pdata->abs_button_area_y_max, &pdata->abs_button_area_y_min,
+		&pdata->abs_back_button_x, &pdata->abs_back_button_y,
+		&pdata->abs_home_button_x, &pdata->abs_home_button_y,
+		&pdata->abs_menu_button_x, &pdata->abs_menu_button_y,
+		&pdata->abs_search_button_x, &pdata->abs_search_button_y,
+		&pdata->abs_button_fuzz_x, &pdata->abs_button_fuzz_y);
+
+	mutex_unlock(&ts->dev_mutex);
+	if (ret != 20) {
+		dev_err(&client->dev, "not all values were entered");
+		return -EINVAL;
+	}
+	return count;
+}
+
+static ssize_t fw_ver_show(struct device *dev, struct device_attribute *attr,
+			char *buf)
+{
+	int ret;
+	struct i2c_client *client = to_i2c_client(dev);
+	struct max11871_data *ts = i2c_get_clientdata(client);
+
+	mutex_lock(&ts->dev_mutex);
+	ret = snprintf(buf, PAGE_SIZE, "%u.%u 0x%04X\n", BYTEH(ts->fw_version),
+			BYTEL(ts->fw_version), ts->fw_crc16);
+	mutex_unlock(&ts->dev_mutex);
+
+	return ret;
+}
+
+static ssize_t sreset_store(struct device *dev, struct device_attribute *attr,
+				const char *buf, size_t count)
+{
+	int ret;
+	struct i2c_client *client = to_i2c_client(dev);
+	struct max11871_data *ts = i2c_get_clientdata(client);
+
+	mutex_lock(&ts->dev_mutex);
+	ret = max11871_sw_reset(ts);
+	mutex_unlock(&ts->dev_mutex);
+	if (ret < 0)
+		dev_err(&client->dev, "Failed to do soft reset.");
+
+	return count;
+}
+
+static ssize_t command_store(struct device *dev, struct device_attribute *attr,
+				const char *buf, size_t count)
+{
+	int ret;
+	struct i2c_client *client = to_i2c_client(dev);
+	struct max11871_data *ts = i2c_get_clientdata(client);
+	u16 buffer[MAX11871_MAX_CMD_LEN];
+	char scan_buf[5];
+	int i;
+
+	count--; /* ignore carriage return */
+	if ((count % 4) != 0) {
+		dev_err(&client->dev, "words not properly defined");
+		return -EINVAL;
+	}
+	if ((count / 4) > MAX11871_MAX_CMD_LEN) {
+		dev_err(&client->dev, "command too long");
+		return -EINVAL;
+	}
+	scan_buf[4] = '\0';
+	for (i = 0; i < count; i += 4) {
+		memcpy(scan_buf, &buf[i], 4);
+		ret = sscanf(scan_buf, "%hx", &buffer[i / 4]);
+		if (ret != 1) {
+			dev_err(&client->dev, "bad word %s", scan_buf);
+			return -EINVAL;
+		}
+	}
+
+	mutex_lock(&ts->dev_mutex);
+	ret = max11871_send_cmd(ts, buffer, count / 4);
+	mutex_unlock(&ts->dev_mutex);
+	if (ret < 0)
+		dev_err(&client->dev, "MTP command failed");
+
+	return ++count;
+}
+
+static ssize_t hreset_store(struct device *dev, struct device_attribute *attr,
+			const char *buf, size_t count)
+{
+	struct i2c_client *client = to_i2c_client(dev);
+	struct max11871_data *ts = i2c_get_clientdata(client);
+	struct max11871_platform_data *pdata = client->dev.platform_data;
+
+	mutex_lock(&ts->dev_mutex);
+
+	ts->addr_pointer = 0;
+	pdata->power(0);
+	pdata->power(1);
+
+	max11871_wait_sys_status(ts);
+	mutex_unlock(&ts->dev_mutex);
+
+	return count;
+}
+
+static DEVICE_ATTR(irq_count, S_IRUGO|S_IWUSR, irq_count_show,
+		irq_count_store);
+static DEVICE_ATTR(panel_params, S_IRUGO|S_IWUSR, panel_params_show,
+		panel_params_store);
+static DEVICE_ATTR(fw_ver, S_IRUGO, fw_ver_show, NULL);
+static DEVICE_ATTR(sreset, S_IWUSR, NULL, sreset_store);
+static DEVICE_ATTR(command, S_IWUSR, NULL, command_store);
+static DEVICE_ATTR(hreset, S_IWUSR, NULL, hreset_store);
+
+static struct attribute *max11871_attributes[] = {
+	&dev_attr_irq_count.attr,
+	&dev_attr_panel_params.attr,
+	&dev_attr_fw_ver.attr,
+	&dev_attr_sreset.attr,
+	&dev_attr_command.attr,
+	&dev_attr_hreset.attr,
+	NULL
+};
+
 static int __devinit max11871_probe(struct i2c_client *client,
 					const struct i2c_device_id *id)
 {
@@ -1062,7 +1255,8 @@ static int __devinit max11871_probe(struct i2c_client *client,
 	ts = kzalloc(sizeof(*ts), GFP_KERNEL);
 	if (!ts) {
 		dev_err(dev, "fail to kzalloc max11871_data!\n");
-		return -ENOMEM;
+		ret = -ENOMEM;
+		goto out_free_gpio;
 	}
 	ts->client = client;
 	i2c_set_clientdata(client, ts);
@@ -1132,6 +1326,11 @@ static int __devinit max11871_probe(struct i2c_client *client,
 #endif
 	register_early_suspend(&ts->early_suspend);
 
+	/* create debug sysfs files */
+	ret = sysfs_create_files(&client->dev.kobj, max11871_attributes);
+	if (ret)
+		dev_warn(&client->dev, "sysfs can not create files %d\n", ret);
+
 	ret = request_firmware_nowait(THIS_MODULE, FW_ACTION_HOTPLUG,
 			"max11871.bin", dev, GFP_KERNEL, ts,
 			max11871_update_fw);
@@ -1146,18 +1345,25 @@ out_unresigter_input:
 	input_unregister_device(ts->input_dev);
 out_free_ts:
 	kfree(ts);
+out_free_gpio:
+	gpio_free(pdata->gpio_irq);
+	gpio_free(pdata->gpio_rst);
 	return ret;
 }
 
 static int max11871_remove(struct i2c_client *client)
 {
 	struct max11871_data *ts = i2c_get_clientdata(client);
+	struct max11871_platform_data *pdata = client->dev.platform_data;
 
 	free_irq(client->irq, ts);
 
 	unregister_early_suspend(&ts->early_suspend);
 	input_unregister_device(ts->input_dev);
+	sysfs_remove_files(&client->dev.kobj, max11871_attributes);
 	kfree(ts);
+	gpio_free(pdata->gpio_irq);
+	gpio_free(pdata->gpio_rst);
 	return 0;
 }
 

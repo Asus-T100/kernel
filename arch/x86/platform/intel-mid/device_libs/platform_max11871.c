@@ -51,14 +51,43 @@ static int max11871_power(int on)
 static int max11871_board_init(void)
 {
 	int ret = 0;
-	int gpio = max11871_pdata.gpio_irq;
 
-	ret = gpio_request(gpio, "max11871_irq");
+	ret = gpio_request(max11871_pdata.gpio_irq, "max11871_irq");
 	if (ret < 0) {
-		pr_err("%s: failed to request GPIO %d\n", __func__, gpio);
+		pr_err("%s: failed to request GPIO %d\n",
+			__func__, max11871_pdata.gpio_irq);
 		return ret;
 	}
-	return gpio_direction_input(gpio);
+
+	ret = gpio_direction_input(max11871_pdata.gpio_irq);
+	if (ret < 0) {
+		pr_err("%s: failed to set GPIO direction %d\n",
+			__func__, max11871_pdata.gpio_irq);
+		goto out_free_irq;
+	}
+
+	ret = gpio_request(max11871_pdata.gpio_rst, "max11871_rst");
+	if (ret < 0) {
+		pr_err("%s: failed to request GPIO %d\n",
+			__func__, max11871_pdata.gpio_rst);
+		goto out_free_irq;
+	}
+
+	ret = gpio_direction_output(max11871_pdata.gpio_rst, 0);
+	if (ret < 0) {
+		pr_err("%s: failed to set GPIO direction %d\n",
+			 __func__, max11871_pdata.gpio_rst);
+		goto out_free_rst;
+	}
+
+	return ret;
+
+out_free_rst:
+	gpio_free(max11871_pdata.gpio_rst);
+out_free_irq:
+	gpio_free(max11871_pdata.gpio_irq);
+
+	return ret;
 }
 
 static ssize_t max11871_virtual_keys_show(struct kobject *obj,
