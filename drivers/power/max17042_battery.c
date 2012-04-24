@@ -1287,6 +1287,45 @@ static void set_soc_intr_thresholds(struct max17042_chip *chip, int off)
 				"SOC threshold write to maxim fail:%d", ret);
 }
 
+static int max17042_get_batt_health(void)
+{
+	struct max17042_chip *chip = i2c_get_clientdata(max17042_client);
+	int vavg, temp, ret;
+
+	ret = read_batt_pack_temp(chip, &temp);
+	if (ret < 0) {
+		dev_err(&chip->client->dev,
+			"battery pack temp read fail:%d", ret);
+		return POWER_SUPPLY_HEALTH_UNSPEC_FAILURE;
+	}
+	if ((temp < chip->pdata->temp_min_lim) ||
+			(temp > chip->pdata->temp_max_lim)) {
+		dev_info(&chip->client->dev,
+			"Battery Over Temp condition Detected:%d\n", temp);
+		return POWER_SUPPLY_HEALTH_OVERHEAT;
+	}
+
+	ret = max17042_read_reg(chip->client, MAX17042_AvgVCELL);
+	if (ret < 0) {
+		dev_err(&chip->client->dev, "Vavg read fail:%d", ret);
+		return POWER_SUPPLY_HEALTH_UNSPEC_FAILURE;
+	}
+	/* get the voltage to milli volts */
+	vavg = ((ret >> 3) * MAX17042_VOLT_CONV_FCTR) / 1000;
+	if (vavg < chip->pdata->volt_min_lim) {
+		dev_info(&chip->client->dev,
+			"Low Battery condition Detected:%d\n", vavg);
+		return POWER_SUPPLY_HEALTH_DEAD;
+	}
+	if (vavg > chip->pdata->volt_max_lim) {
+		dev_info(&chip->client->dev,
+			"Battery Over Voltage condition Detected:%d\n", vavg);
+		return POWER_SUPPLY_HEALTH_OVERVOLTAGE;
+	}
+
+	return POWER_SUPPLY_HEALTH_GOOD;
+}
+
 static void max17042_evt_worker(struct work_struct *work)
 {
 	struct max17042_chip *chip = container_of(work,
@@ -1302,12 +1341,13 @@ static void max17042_evt_worker(struct work_struct *work)
 	/* get the battery health */
 	if (chip->pdata->battery_health)
 		health = chip->pdata->battery_health();
+	else
+		health = max17042_get_batt_health();
 
 	mutex_lock(&chip->batt_lock);
 	if (chip->pdata->battery_status)
 		chip->status = status;
-	if (chip->pdata->battery_health)
-		chip->health = health;
+	chip->health = health;
 	mutex_unlock(&chip->batt_lock);
 
 	/* Init maxim chip if it is not already initialized */

@@ -76,6 +76,12 @@ struct max17042_platform_data {
 	bool is_lowbatt_shutdown;
 	int technology;
 
+	/* battery safety thresholds */
+	int temp_min_lim;	/* in degrees centigrade */
+	int temp_max_lim;	/* in degrees centigrade */
+	int volt_min_lim;	/* milli volts */
+	int volt_max_lim;	/* milli volts */
+
 	int (*current_sense_enabled)(void);
 	int (*battery_present)(void);
 	int (*battery_health)(void);
