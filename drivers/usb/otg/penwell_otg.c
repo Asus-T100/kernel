@@ -2160,6 +2160,35 @@ static void penwell_otg_check_wakeup_event(struct penwell_otg *pnw)
 		penwell_update_transceiver();
 }
 
+static void penwell_otg_start_ulpi_poll(void)
+{
+	struct penwell_otg		*pnw = the_transceiver;
+	int				retval = 0;
+
+	retval = penwell_otg_ulpi_write(&pnw->iotg, 0x16, 0x5a);
+	if (retval)
+		dev_err(pnw->dev, "ulpi write in init failed\n");
+
+	schedule_delayed_work(&pnw->ulpi_poll_work, HZ);
+}
+
+static void penwell_otg_continue_ulpi_poll(void)
+{
+	struct penwell_otg		*pnw = the_transceiver;
+
+	schedule_delayed_work(&pnw->ulpi_poll_work, HZ);
+}
+
+static void penwell_otg_stop_ulpi_poll(void)
+{
+	struct penwell_otg		*pnw = the_transceiver;
+
+	/* we have to use this version because this function can
+	 * be called in irq handler */
+	__cancel_delayed_work(&pnw->ulpi_poll_work);
+}
+
+
 static int penwell_otg_iotg_notify(struct notifier_block *nb,
 				unsigned long action, void *data)
 {
@@ -2207,6 +2236,7 @@ static int penwell_otg_iotg_notify(struct notifier_block *nb,
 			iotg->hsm.b_bus_suspend = 1;
 			flag = 1;
 		} else {
+			penwell_otg_stop_ulpi_poll();
 			if (iotg->hsm.a_bus_suspend == 0) {
 				iotg->hsm.a_bus_suspend = 1;
 				flag = 1;
@@ -2222,6 +2252,7 @@ static int penwell_otg_iotg_notify(struct notifier_block *nb,
 			flag = 1;
 		} else {
 			/* in B_PERIPHERAL state */
+			penwell_otg_start_ulpi_poll();
 			iotg->hsm.a_bus_suspend = 0;
 			flag = 0;
 		}
@@ -2340,25 +2371,6 @@ static void penwell_otg_hnp_poll_work(struct work_struct *work)
 		dev_dbg(pnw->dev, "host_request_flag = 0\n");
 		penwell_otg_continue_hnp_poll(&pnw->iotg);
 	}
-}
-
-static void penwell_otg_start_ulpi_poll(void)
-{
-	struct penwell_otg		*pnw = the_transceiver;
-	int				retval = 0;
-
-	retval = penwell_otg_ulpi_write(&pnw->iotg, 0x16, 0x5a);
-	if (retval)
-		dev_err(pnw->dev, "ulpi write in init failed\n");
-
-	schedule_delayed_work(&pnw->ulpi_poll_work, HZ);
-}
-
-static void penwell_otg_continue_ulpi_poll(void)
-{
-	struct penwell_otg		*pnw = the_transceiver;
-
-	schedule_delayed_work(&pnw->ulpi_poll_work, HZ);
 }
 
 static void penwell_otg_ulpi_poll_work(struct work_struct *work)
