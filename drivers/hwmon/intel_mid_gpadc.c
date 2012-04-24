@@ -880,7 +880,7 @@ static void __exit msic_gpadc_module_exit(void)
 	ipc_driver_unregister(&msic_gpadc_driver);
 }
 
-module_init(msic_gpadc_module_init);
+rootfs_initcall(msic_gpadc_module_init);
 module_exit(msic_gpadc_module_exit);
 
 MODULE_AUTHOR("Jenny TC <jenny.tc@intel.com>");
