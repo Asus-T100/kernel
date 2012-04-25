@@ -86,11 +86,10 @@ static u32 gi_l5f3_set_pgammactl[] = {0x06040cfa, 0x24211f1e, 0x2e2f2d21,
 static u32 gi_l5f3_set_ngammactl[] = {0x0f040cfb, 0x2d2f2e2e, 0x1f212421,
 	0x0000061e, 0x00000000};
 static u32 gi_l5f3_set_miectl1[] = {0x108080c0};
-static u32 gi_l5f3_set_bcmode[] = {0x000011c1};
+static u32 gi_l5f3_set_bcmode[] = {0x000013c1};
 static u32 gi_l5f3_set_wrmiectl2[] = {0x000008c2, 0x0000df01, 0x00003f01};
 static u32 gi_l5f3_set_wrblctl[] = {0x201000c3};
 static u32 gi_l5f3_passwd1_off[] = {0x00a5a5f0};
-
 
 static u32 gi_l5f3_set_full_brightness[] = {0x0000ff51};
 static u32 gi_l5f3_turn_on_backlight[] = {0x00002453};
@@ -390,6 +389,8 @@ static int mdfld_dsi_gi_sony_panel_reset(struct mdfld_dsi_config *dsi_config,
 	struct drm_device *dev;
 	int ret = 0;
 	static bool b_gpio_required[PSB_NUM_PIPE] = {0};
+	struct mdfld_dsi_pkg_sender *sender =
+		mdfld_dsi_get_pkg_sender(dsi_config);
 	regs = &dsi_config->regs;
 	ctx = &dsi_config->dsi_hw_context;
 	dev = dsi_config->dev;
@@ -418,6 +419,20 @@ static int mdfld_dsi_gi_sony_panel_reset(struct mdfld_dsi_config *dsi_config,
 			PSB_DEBUG_ENTRY(
 				"FW has initialized the panel, skip reset during boot up\n.");
 			psb_enable_vblank(dev, dsi_config->pipe);
+
+			mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_passwd1_on, 4, 0);
+			mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_miectl1, 4, 0);
+			mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_bcmode, 4, 0);
+			mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_wrmiectl2, 4, 0);
+			mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_wrblctl, 4, 0);
+			mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_passwd1_off, 4, 0);
+			mdfld_dsi_send_mcs_long_hs(sender, gi_sony_select_CABC_mode, 4, 0);
+			mdfld_dsi_send_mcs_long_hs(sender, gi_sony_enable_CABC_bl_off, 4, 0);
+			/*set display on*/
+			mdfld_dsi_send_mcs_long_hs(sender, gi_sony_set_display_on, 4, 0);
+			msleep(21);
+			mdfld_dsi_send_mcs_long_hs(sender, gi_sony_enable_CABC_bl_on, 4, 0);
+
 			goto fun_exit;
 		}
 	}
