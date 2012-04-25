@@ -1210,7 +1210,7 @@ void mdfld_dsi_dpi_controller_init(struct mdfld_dsi_config * dsi_config, int pip
 	PSB_DEBUG_ENTRY("Init DPI interface on pipe %d...\n", pipe);
 
 	/*un-ready device*/
-	REG_WRITE((MIPIA_DEVICE_READY_REG + reg_offset), 0x00000000);
+	REG_FLD_MOD(DEVICE_READY_REG + reg_offset, 0, 0, 0);
 	
 	/*init dsi adapter before kicking off*/
 	REG_WRITE((MIPIA_CONTROL_REG + reg_offset), 0x00000018);
@@ -1344,8 +1344,12 @@ void mdfld_dsi_dpi_controller_init(struct mdfld_dsi_config * dsi_config, int pip
 	REG_WRITE((MIPIA_CLK_LANE_SWITCH_TIME_CNT_REG + reg_offset), (0xa << 16) | 0x14);
 #endif
 
+#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
+	dsi_lvds_set_bridge_reset_state(0);	/* Pull High Reset */
+#endif
+
 	/*set device ready*/
-	REG_WRITE((MIPIA_DEVICE_READY_REG + reg_offset), 0x00000001);
+	REG_FLD_MOD((DEVICE_READY_REG + reg_offset), 1, 0, 0);
 }
 void mdfld_dsi_dpi_set_color_mode(struct mdfld_dsi_config *dsi_config , bool on)
 {
@@ -2420,8 +2424,6 @@ void mdfld_dsi_dpi_mode_set(struct drm_encoder *encoder,
 	PSB_DEBUG_ENTRY("set mode %dx%d on pipe %d",
 			mode->hdisplay, mode->vdisplay, pipe);
 
-	PSB_DEBUG_ENTRY("[DISPLAY] %s\n", __func__);
-
 	if (pipe) {
 		pipeconf_reg = PIPECCONF;
 		dspcntr_reg = DSPCCNTR;
@@ -2448,7 +2450,7 @@ void mdfld_dsi_dpi_mode_set(struct drm_encoder *encoder,
 	    int timeout = 0;
 
 	    dsi_lvds_set_bridge_reset_state(0);  /*Pull High Reset */
-	    dsi_lvds_toshiba_bridge_panel_on();
+	    dsi_lvds_toshiba_bridge_panel_on(dev);
 	    udelay(100);
 	    /* Now start the DSI clock */
 	    REG_WRITE(MRST_DPLL_A, 0x00);  /*0xF014 */
@@ -2469,24 +2471,9 @@ void mdfld_dsi_dpi_mode_set(struct drm_encoder *encoder,
 	    mdfld_mipi_config(dsi_config, pipe);
 	    mdfld_set_pipe_timing(dsi_config, pipe);
 
-	    REG_WRITE(DSPABASE, 0x00);  /*0x70184 */
-
-	    REG_WRITE(DSPASTRIDE, (mode->hdisplay * 4));  /*0x70188 */
-
-	    REG_WRITE(DSPASIZE, ((mode->vdisplay - 1) << 16) | (mode->hdisplay - 1));  /*0x70190 */
-
-	    REG_WRITE(DSPACNTR, 0x98000000);  /*0x70180 */
-
-	    REG_WRITE(DSPASURF, 0x00);  /*0x7019C */
-
 	    REG_WRITE(VGACNTRL, 0x80000000);  /*0x71400 */
-
 	    REG_WRITE(DEVICE_READY_REG, 0x00000001);  /*0xB000 */
-
-	    if (dev_priv->platform_rev_id == MDFLD_PNW_A0)
-		    REG_WRITE(mipi_reg, 0x80810000); /*0x61190 */
-	    else
-		    REG_WRITE(mipi_reg, 0x80010000); /*0x61190 */
+	    REG_WRITE(mipi_reg, 0x80010000); /*0x61190 */
 	}
 #else
 	/*set up mipi port FIXME: do at init time */
@@ -2499,7 +2486,8 @@ void mdfld_dsi_dpi_mode_set(struct drm_encoder *encoder,
 
 	if (get_panel_type(dev, pipe) == TMD_VID) {
 #ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
-		dsi_lvds_configure_lvds_bridge(dev);  /*Configure MIPI Bridge and Panel */
+		/*Configure MIPI Bridge and Panel */
+		dsi_lvds_configure_lvds_bridge(dev);
 		dev_priv->dpi_panel_on = true;
 #else
 		/*Pull High Reset*/

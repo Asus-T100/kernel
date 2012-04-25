@@ -62,7 +62,7 @@ extern struct i2c_client *cmi_lcd_i2c_client;
 void dsi_lvds_set_bridge_reset_state(int state);
 void dsi_lvds_configure_lvds_bridge(struct drm_device *dev);
 void dsi_lvds_toshiba_bridge_panel_off(void);
-void dsi_lvds_toshiba_bridge_panel_on(void);
+void dsi_lvds_toshiba_bridge_panel_on(struct drm_device *dev);
 void dsi_lvds_init_lvds_bridge(struct drm_device *dev);
 void dsi_lvds_deinit_lvds_bridge(struct drm_device *dev);
 void dsi_lvds_bridge_get_display_params(struct drm_display_mode *mode);

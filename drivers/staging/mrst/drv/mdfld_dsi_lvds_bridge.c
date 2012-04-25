@@ -26,6 +26,7 @@
 #include "mdfld_output.h"
 #include "mdfld_dsi_pkg_sender.h"
 #include "mdfld_dsi_lvds_bridge.h"
+#include "psb_drv.h"
 #include <asm/intel_scu_ipc.h>
 
 #define CONFIG_LVDS_HARD_RESET
@@ -42,7 +43,151 @@
 #define GPIO_MIPI_LCD_STBYB	-1
 #define GPIO_MIPI_LCD_COLOR_EN	-1
 
+/* DSI D-PHY Layer Registers */
+#define D0W_DPHYCONTTX		0x0004
+#define CLW_DPHYCONTRX		0x0020
+#define D0W_DPHYCONTRX		0x0024
+#define D1W_DPHYCONTRX		0x0028
+#define D2W_DPHYCONTRX		0x002C
+#define D3W_DPHYCONTRX		0x0030
+#define COM_DPHYCONTRX		0x0038
+#define CLW_CNTRL		0x0040
+#define D0W_CNTRL		0x0044
+#define D1W_CNTRL		0x0048
+#define D2W_CNTRL		0x004C
+#define D3W_CNTRL		0x0050
+#define DFTMODE_CNTRL		0x0054
+
+/* DSI PPI Layer Registers */
+#define PPI_STARTPPI		0x0104
+#define PPI_BUSYPPI		0x0108
+#define PPI_LINEINITCNT		0x0110
+#define PPI_LPTXTIMECNT		0x0114
+#define PPI_LANEENABLE		0x0134
+#define PPI_TX_RX_TA		0x013C
+#define PPI_CLS_ATMR		0x0140
+#define PPI_D0S_ATMR		0x0144
+#define PPI_D1S_ATMR		0x0148
+#define PPI_D2S_ATMR		0x014C
+#define PPI_D3S_ATMR		0x0150
+#define PPI_D0S_CLRSIPOCOUNT	0x0164
+#define PPI_D1S_CLRSIPOCOUNT	0x0168
+#define PPI_D2S_CLRSIPOCOUNT	0x016C
+#define PPI_D3S_CLRSIPOCOUNT	0x0170
+#define CLS_PRE			0x0180
+#define D0S_PRE			0x0184
+#define D1S_PRE			0x0188
+#define D2S_PRE			0x018C
+#define D3S_PRE			0x0190
+#define CLS_PREP		0x01A0
+#define D0S_PREP		0x01A4
+#define D1S_PREP		0x01A8
+#define D2S_PREP		0x01AC
+#define D3S_PREP		0x01B0
+#define CLS_ZERO		0x01C0
+#define D0S_ZERO		0x01C4
+#define D1S_ZERO		0x01C8
+#define D2S_ZERO		0x01CC
+#define D3S_ZERO		0x01D0
+#define PPI_CLRFLG		0x01E0
+#define PPI_CLRSIPO		0x01E4
+#define HSTIMEOUT		0x01F0
+#define HSTIMEOUTENABLE		0x01F4
+
+/* DSI Protocol Layer Registers */
+#define DSI_STARTDSI		0x0204
+#define DSI_BUSYDSI		0x0208
+#define DSI_LANEENABLE		0x0210
+#define DSI_LANESTATUS0		0x0214
+#define DSI_LANESTATUS1		0x0218
+#define DSI_INTSTATUS		0x0220
+#define DSI_INTMASK		0x0224
+#define DSI_INTCLR		0x0228
+#define DSI_LPTXTO		0x0230
+
+/* DSI General Registers */
+#define DSIERRCNT		0x0300
+
+/* DSI Application Layer Registers */
+#define APLCTRL			0x0400
+#define RDPKTLN			0x0404
+
+/* Video Path Registers */
+#define VPCTRL			0x0450
+#define HTIM1			0x0454
+#define HTIM2			0x0458
+#define VTIM1			0x045C
+#define VTIM2			0x0460
+#define VFUEN			0x0464
+
+/* LVDS Registers */
+#define LVMX0003		0x0480
+#define LVMX0407		0x0484
+#define LVMX0811		0x0488
+#define LVMX1215		0x048C
+#define LVMX1619		0x0490
+#define LVMX2023		0x0494
+#define LVMX2427		0x0498
+#define LVCFG			0x049C
+#define LVPHY0			0x04A0
+#define LVPHY1			0x04A4
+
+/* System Registers */
+#define SYSSTAT			0x0500
+#define SYSRST			0x0504
+
+/* GPIO Registers */
+#define GPIOC			0x0520
+#define GPIOO			0x0524
+#define GPIOI			0x0528
+
+/* I2C Registers */
+#define I2CTIMCTRL		0x0540
+#define I2CMADDR		0x0544
+#define WDATAQ			0x0548
+#define RDATAQ			0x054C
+
+/* Chip/Rev Registers */
+#define IDREG			0x0580
+
+/* Input muxing for registers LVMX0003...LVMX2427 */
+enum {
+	INPUT_R0,	/* 0 */
+	INPUT_R1,
+	INPUT_R2,
+	INPUT_R3,
+	INPUT_R4,
+	INPUT_R5,
+	INPUT_R6,
+	INPUT_R7,
+	INPUT_G0,	/* 8 */
+	INPUT_G1,
+	INPUT_G2,
+	INPUT_G3,
+	INPUT_G4,
+	INPUT_G5,
+	INPUT_G6,
+	INPUT_G7,
+	INPUT_B0,	/* 16 */
+	INPUT_B1,
+	INPUT_B2,
+	INPUT_B3,
+	INPUT_B4,
+	INPUT_B5,
+	INPUT_B6,
+	INPUT_B7,
+	INPUT_HSYNC,	/* 24 */
+	INPUT_VSYNC,
+	INPUT_DE,
+	LOGIC_0,
+	/* 28...31 undefined */
+};
+
+#define INPUT_MUX(lvmx03, lvmx02, lvmx01, lvmx00)		\
+	(FLD_VAL(lvmx03, 29, 24) | FLD_VAL(lvmx02, 20, 16) |	\
+	FLD_VAL(lvmx01, 12, 8) | FLD_VAL(lvmx00, 4, 0))
 struct i2c_client *cmi_lcd_i2c_client;
+static struct i2c_client *tc35876x_client;
 
 struct cmi_lcd_data {
 	bool enabled;
@@ -58,6 +203,151 @@ struct dsi_lvds_bridge_instance {
 	struct work_struct test_work;
 } *dsi_lvds_inst;
 
+/**
+ * tc35876x_regw - Write DSI-LVDS bridge register using I2C
+ * @client: struct i2c_client to use
+ * @reg: register address
+ * @value: value to write
+ *
+ * Returns 0 on success, or a negative error value.
+ */
+static int tc35876x_regw(struct i2c_client *client, u16 reg, u32 value)
+{
+	int r;
+	u8 tx_data[] = {
+		/* NOTE: Register address big-endian, data little-endian. */
+		(reg >> 8) & 0xff,
+		reg & 0xff,
+		value & 0xff,
+		(value >> 8) & 0xff,
+		(value >> 16) & 0xff,
+		(value >> 24) & 0xff,
+	};
+	struct i2c_msg msgs[] = {
+		{
+			.addr = client->addr,
+			.flags = 0,
+			.buf = tx_data,
+			.len = ARRAY_SIZE(tx_data),
+		},
+	};
+
+	r = i2c_transfer(client->adapter, msgs, ARRAY_SIZE(msgs));
+	if (r < 0) {
+		dev_err(&client->dev, "%s: reg 0x%04x val 0x%08x error %d\n",
+			__func__, reg, value, r);
+		return r;
+	}
+
+	if (r < ARRAY_SIZE(msgs)) {
+		dev_err(&client->dev, "%s: reg 0x%04x val 0x%08x msgs %d\n",
+			__func__, reg, value, r);
+		return -EAGAIN;
+	}
+
+	return 0;
+}
+
+/**
+ * tc35876x_regr - Read DSI-LVDS bridge register using I2C
+ * @client: struct i2c_client to use
+ * @reg: register address
+ * @value: pointer for storing the value
+ *
+ * Returns 0 on success, or a negative error value.
+ */
+static int tc35876x_regr(struct i2c_client *client, u16 reg, u32 *value)
+{
+	int r;
+	u8 tx_data[] = {
+		(reg >> 8) & 0xff,
+		reg & 0xff,
+	};
+	u8 rx_data[4];
+	struct i2c_msg msgs[] = {
+		{
+			.addr = client->addr,
+			.flags = 0,
+			.buf = tx_data,
+			.len = ARRAY_SIZE(tx_data),
+		},
+		{
+			.addr = client->addr,
+			.flags = I2C_M_RD,
+			.buf = rx_data,
+			.len = ARRAY_SIZE(rx_data),
+		 },
+	};
+
+	r = i2c_transfer(client->adapter, msgs, ARRAY_SIZE(msgs));
+	if (r < 0) {
+		dev_err(&client->dev, "%s: reg 0x%04x error %d\n", __func__,
+			reg, r);
+		return r;
+	}
+
+	if (r < ARRAY_SIZE(msgs)) {
+		dev_err(&client->dev, "%s: reg 0x%04x msgs %d\n", __func__,
+			reg, r);
+		return -EAGAIN;
+	}
+
+	*value = rx_data[0] << 24 | rx_data[1] << 16 |
+		rx_data[2] << 8 | rx_data[3];
+
+	dev_dbg(&client->dev, "%s: reg 0x%04x value 0x%08x\n", __func__,
+		reg, *value);
+
+	return 0;
+}
+static int tc35876x_bridge_probe(struct i2c_client *client,
+				const struct i2c_device_id *id)
+{
+	dev_info(&client->dev, "%s\n", __func__);
+
+	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
+		dev_err(&client->dev, "%s: i2c_check_functionality() failed\n",
+			__func__);
+		return -ENODEV;
+	}
+
+	gpio_request(GPIO_MIPI_BRIDGE_RESET, "tc35876x bridge reset");
+	gpio_direction_output(GPIO_MIPI_BRIDGE_RESET, 0);
+
+	gpio_request(GPIO_MIPI_LCD_BL_EN, "tc35876x panel bl en");
+	gpio_direction_output(GPIO_MIPI_LCD_BL_EN, 0);
+
+	tc35876x_client = client;
+
+	return 0;
+}
+
+static int tc35876x_bridge_remove(struct i2c_client *client)
+{
+	dev_dbg(&client->dev, "%s\n", __func__);
+
+	gpio_free(GPIO_MIPI_BRIDGE_RESET);
+	gpio_free(GPIO_MIPI_LCD_BL_EN);
+
+	tc35876x_client = NULL;
+
+	return 0;
+}
+
+
+static const struct i2c_device_id tc35876x_bridge_id[] = {
+	{ "i2c_disp_brig", 0 },
+	{ }
+};
+MODULE_DEVICE_TABLE(i2c, tc35876x_bridge_id);
+static struct i2c_driver tc35876x_bridge_i2c_driver = {
+	.driver = {
+		.name = "i2c_disp_brig",
+	},
+	.id_table = tc35876x_bridge_id,
+	.probe = tc35876x_bridge_probe,
+	.remove = __devexit_p(tc35876x_bridge_remove),
+};
 
 static int DSI_I2C_ByteRead(u16 reg, int count);
 static int DSI_I2C_ByteWrite(u16 reg, u32 data, int count);
@@ -147,59 +437,93 @@ void dsi_lvds_set_bridge_reset_state(int state)
 \* ************************************************************************* */
 void dsi_lvds_configure_lvds_bridge(struct drm_device *dev)
 {
+	struct i2c_client *i2c = tc35876x_client;
+	u32 id = 0;
+	u32 ppi_lptxtimecnt;
+	u32 txtagocnt;
+	u32 txtasurecnt;
+
 	if (lvds_disp_init) {
-		printk(KERN_ALERT "[DISPLAY ] %s is already initialized\n", __func__);
+		printk(KERN_ALERT "[DISPLAY] %s is already initialized\n",
+				__func__);
 		return;
 	}
 
 	printk(KERN_INFO "[DISPLAY ]%s: Enter\n", __func__);
 
-	DSI_I2C_ByteWrite(0x013C, 0x00050006, 6);  /*PPI_TX_RX_TA, BTA parameters */
-	DSI_I2C_ByteRead(0x013C, 4);
-	DSI_I2C_ByteWrite(0x0114, 0x00000004, 6);  /*PPI_LPTXTIMCNT */
-	DSI_I2C_ByteWrite(0x0164, 0x00000001, 6);  /*PPI_D0S_CLRSIPOCOUNT */
-	DSI_I2C_ByteWrite(0x0168, 0x00000001, 6);  /*PPI_D1S_CLRSIPOCOUNT */
-	DSI_I2C_ByteWrite(0x016c, 0x00000001, 6);  /*PPI_D2S_CLRSIPOCOUNT */
-	DSI_I2C_ByteWrite(0x0170, 0x00000001, 6);  /*PPI_D3S_CLRSIPOCOUNT */
-	/*Enabling MIPI & PPI lanes, Enable 4 lanes */
-	DSI_I2C_ByteWrite(0x0134, 0x0000001F, 6);  /*PPI_LANEENABLE */
-	DSI_I2C_ByteWrite(0x0210, 0x0000001F, 6);  /*DSI_LANEENABLE */
-	DSI_I2C_ByteWrite(0x0104, 0x00000001, 6);  /*PPI_SARTPPI */
-	DSI_I2C_ByteWrite(0x0204, 0x00000001, 6);  /*DSI_SARTPPI */
+	tc35876x_regr(i2c, IDREG, &id);
+	printk(KERN_INFO "[DISPLAY] tc35876x ID 0x%08x\n", id);
 
-	/*Setting LVDS output frequency */
-	DSI_I2C_ByteWrite(0x04A0, 0x00048006, 6);  /*LVDS PHY Register 0 (LVPHY0) */
+	ppi_lptxtimecnt = 4;
+	txtagocnt = (5 * ppi_lptxtimecnt - 3) / 4;
+	txtasurecnt = 3 * ppi_lptxtimecnt / 2;
 
-	/*Calculating video panel control settings */
-	/*Setting video panel control register */
-	DSI_I2C_ByteWrite(0x0450, 0x00000120, 6);  /*VPCTRL, Video Path Control, VTGen=ON */
+	tc35876x_regw(i2c, PPI_TX_RX_TA, FLD_VAL(txtagocnt, 26, 16) |
+		FLD_VAL(txtasurecnt, 10, 0));
+	tc35876x_regw(i2c, PPI_LPTXTIMECNT, FLD_VAL(ppi_lptxtimecnt, 10, 0));
 
-	/*Setting display timing registers */
-	DSI_I2C_ByteWrite(0x0454, 0x00280028, 6);  /*HTIM1, HBPR=100, HPW=10 */
+	tc35876x_regw(i2c, PPI_D0S_CLRSIPOCOUNT, FLD_VAL(1, 5, 0));
+	tc35876x_regw(i2c, PPI_D1S_CLRSIPOCOUNT, FLD_VAL(1, 5, 0));
+	tc35876x_regw(i2c, PPI_D2S_CLRSIPOCOUNT, FLD_VAL(1, 5, 0));
+	tc35876x_regw(i2c, PPI_D3S_CLRSIPOCOUNT, FLD_VAL(1, 5, 0));
 
-	/* value = ((hsync_start - hdisplay)<<16 | hdisplay) */
-	DSI_I2C_ByteWrite(0x0458, ((1360 - 1280)<<16 | 1280), 6);  /*HTIM2, HFPR=190, HDISPR=1024 */
-	DSI_I2C_ByteWrite(0x045c, 0x00080007, 6);  /*VTIM1, VBPR=8, VPW=7 */
+	/* Enabling MIPI & PPI lanes, Enable 4 lanes */
+	tc35876x_regw(i2c, PPI_LANEENABLE,
+		BIT4 | BIT3 | BIT2 | BIT1 | BIT0);
+	tc35876x_regw(i2c, DSI_LANEENABLE,
+		BIT4 | BIT3 | BIT2 | BIT1 | BIT0);
+	tc35876x_regw(i2c, PPI_STARTPPI, BIT0);
+	tc35876x_regw(i2c, DSI_STARTDSI, BIT0);
 
-	/* value = ((vsync_start - vdisplay)<<16 | vdisplay */
-	DSI_I2C_ByteWrite(0x0460, ((808 - 8)<<16 | 800), 6);  /*VTIM2, VFPR=8, VDISPR=800 */
-	DSI_I2C_ByteWrite(0x0464, 0x00000001, 6);  /*VFUEN */
+	/* Setting LVDS output frequency */
+	tc35876x_regw(i2c, LVPHY0, FLD_VAL(1, 20, 16) |
+		FLD_VAL(2, 15, 14) | FLD_VAL(6, 4, 0)); /* 0x00048006 */
 
-	/*Setting LVDS bit arrangement */
-	DSI_I2C_ByteWrite(0x0480, 0x05040302, 6);  /*LVMX0003 */
-	DSI_I2C_ByteWrite(0x0484, 0x0A070106, 6);  /*LVMX0407 */
-	DSI_I2C_ByteWrite(0x0488, 0x09080C0B, 6);  /*LVMX0811 */
-	DSI_I2C_ByteWrite(0x048C, 0x120F0E0D, 6);  /*LVMX1215 */
-	DSI_I2C_ByteWrite(0x0490, 0x14131110, 6);  /*LVMX1619 */
-	DSI_I2C_ByteWrite(0x0494, 0x1B171615, 6);  /*LVMX2023 */
-	DSI_I2C_ByteWrite(0x0498, 0x001A1918, 6);  /*LVMX2427 */
-	DSI_I2C_ByteWrite(0x049c, 0x00000001, 6); /*LVCFG */
+	/* Setting video panel control register,0x00000120 VTGen=ON ?!?!? */
+	tc35876x_regw(i2c, VPCTRL, BIT(8) | BIT(5));
 
+	/* Horizontal back porch and horizontal pulse width. 0x00280028 */
+	tc35876x_regw(i2c, HTIM1, FLD_VAL(40, 24, 16) | FLD_VAL(40, 8, 0));
 
-	DSI_I2C_ByteWrite(0x0288, 0xFFFFFFFF, 6); /*DSI_INTCLR */
+	/* Horizontal front porch and horizontal active video size. 0x00500500*/
+	tc35876x_regw(i2c, HTIM2, FLD_VAL(80, 24, 16) | FLD_VAL(1280, 10, 0));
+
+	/* Vertical back porch and vertical sync pulse width. 0x000e000a */
+	tc35876x_regw(i2c, VTIM1, FLD_VAL(14, 23, 16) | FLD_VAL(10, 7, 0));
+
+	/* Vertical front porch and vertical display size. 0x000e0320 */
+	tc35876x_regw(i2c, VTIM2, FLD_VAL(14, 23, 16) | FLD_VAL(800, 10, 0));
+
+	/* Set above HTIM1, HTIM2, VTIM1, and VTIM2 at next VSYNC. */
+	tc35876x_regw(i2c, VFUEN, BIT0);
+
+	/* Soft reset LCD controller. */
+	tc35876x_regw(i2c, SYSRST, BIT2);
+
+	/* LVDS-TX input muxing */
+	tc35876x_regw(i2c, LVMX0003,
+		INPUT_MUX(INPUT_R5, INPUT_R4, INPUT_R3, INPUT_R2));
+	tc35876x_regw(i2c, LVMX0407,
+		INPUT_MUX(INPUT_G2, INPUT_R7, INPUT_R1, INPUT_R6));
+	tc35876x_regw(i2c, LVMX0811,
+		INPUT_MUX(INPUT_G1, INPUT_G0, INPUT_G4, INPUT_G3));
+	tc35876x_regw(i2c, LVMX1215,
+		INPUT_MUX(INPUT_B2, INPUT_G7, INPUT_G6, INPUT_G5));
+	tc35876x_regw(i2c, LVMX1619,
+		INPUT_MUX(INPUT_B4, INPUT_B3, INPUT_B1, INPUT_B0));
+	tc35876x_regw(i2c, LVMX2023,
+		INPUT_MUX(LOGIC_0,  INPUT_B7, INPUT_B6, INPUT_B5));
+	tc35876x_regw(i2c, LVMX2427,
+		INPUT_MUX(INPUT_R0, INPUT_DE, INPUT_VSYNC, INPUT_HSYNC));
+
+	/* Enable LVDS transmitter. */
+	tc35876x_regw(i2c, LVCFG, BIT0);
+
+	/* Clear notifications. Don't write reserved bits. Was write 0xffffffff
+	 * to 0x0288, must be in error?! */
+	tc35876x_regw(i2c, DSI_INTCLR, FLD_MASK(31, 30) | FLD_MASK(22, 0));
 
 	lvds_disp_init = 1;
-
 	printk(KERN_INFO "[DISPLAY]%s: Exit\n", __func__);
 
 }
@@ -226,8 +550,10 @@ void dsi_lvds_toshiba_bridge_panel_off(void)
  *
  * DESCRIPTION:  This function uses GPIO to turn ON panel.
  \* ************************************************************************* */
-void dsi_lvds_toshiba_bridge_panel_on(void)
+void dsi_lvds_toshiba_bridge_panel_on(struct drm_device *dev)
 {
+	struct drm_psb_private *dev_priv = dev->dev_private;
+
 	printk(KERN_INFO "[DISPLAY ] %s\n", __func__);
 
 	if (gpio_direction_output(GPIO_MIPI_LCD_VADD, 1))
@@ -283,6 +609,9 @@ void dsi_lvds_toshiba_bridge_panel_on(void)
 
 	if (gpio_direction_output(GPIO_MIPI_LCD_BL_EN, 1))
 		gpio_set_value_cansleep(GPIO_MIPI_LCD_BL_EN, 1);
+
+	mdfld_dsi_brightness_control(dev_priv->dev, 0,
+			dev_priv->brightness_adjusted);
 }
 
 /* ************************************************************************* *\
@@ -704,7 +1033,7 @@ static int __init dsi_lvds_bridge_init(void)
 	if (ret)
 		pr_err("%s: add LCD I2C	driver faild!\n", __func__);
 
-	ret = i2c_add_driver(&dsi_lvds_bridge_i2c_driver);
+	ret = i2c_add_driver(&tc35876x_bridge_i2c_driver);
 
 	printk(KERN_INFO "[DISPLAY] %s: Exit, ret = %d\n", __func__, ret);
 
@@ -722,9 +1051,10 @@ static void __exit dsi_lvds_bridge_exit(void)
 {
 	printk(KERN_INFO "[DISPLAY] %s\n", __func__);
 
-	misc_deregister(&dsi_lvds_bridge_dev);
+	i2c_del_driver(&tc35876x_bridge_i2c_driver);
 
-	i2c_del_driver(&dsi_lvds_bridge_i2c_driver);
+	if (cmi_lcd_i2c_client)
+		i2c_del_driver(&cmi_lcd_i2c_driver);
 }
 
 

@@ -124,6 +124,7 @@ int psb_set_brightness(struct backlight_device *bd)
 			 */
 			adjusted_level = level * dev_priv->blc_adj2;
 			adjusted_level = adjusted_level / BLC_ADJUSTMENT_MAX;
+			dev_priv->brightness_adjusted = adjusted_level;
 
 #ifndef CONFIG_MDFLD_DSI_DPU
 			if(!(dev_priv->dsr_fb_update & MDFLD_DSR_MIPI_CONTROL) && 

@@ -1610,6 +1610,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	hdmi_state = 0;
 	dev_priv->bhdmiconnected = false;
 	dev_priv->dpms_on_off = false;
+	dev_priv->brightness_adjusted = 0;
 
 #ifdef CONFIG_MDFD_VIDEO_DECODE
 	ret = psb_ttm_global_init(dev_priv);
