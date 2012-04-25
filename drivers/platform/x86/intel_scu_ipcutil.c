@@ -35,19 +35,6 @@
 
 #define MAX_FW_SIZE 264192
 
-/* ioctl commnds */
-#define INTEL_SCU_IPC_REGISTER_READ	0
-#define INTEL_SCU_IPC_REGISTER_WRITE	1
-#define INTEL_SCU_IPC_REGISTER_UPDATE	2
-#define INTEL_SCU_IPC_FW_UPDATE		0xA2
-#define INTEL_SCU_IPC_MEDFIELD_FW_UPDATE	0xA3
-#define INTEL_SCU_IPC_FW_REVISION_GET	0xB0
-#define INTEL_SCU_IPC_READ_RR_FROM_OSNIB	0xC1
-#define INTEL_SCU_IPC_WRITE_RR_TO_OSNIB	0xC2
-#define INTEL_SCU_IPC_READ_VBATTCRIT	0xC4
-#define INTEL_SCU_IPC_WRITE_ALARM_FLAG_TO_OSNIB 0xC5
-#define INTEL_SCU_IPC_OSC_CLK_CNTL 0xC6
-
 #define OSHOB_PMIT_OFFSET		0x0000002c
 #define OSNIB_RR_OFFSET			OSNIB_OFFSET
 #define OSNIB_WD_OFFSET			(OSNIB_OFFSET + 1)
@@ -65,23 +52,6 @@
 #define PMIT_RESETIRQ2_OFFSET		15
 
 #define DUMP_OSNIB
-
-struct scu_ipc_data {
-	u32     count;  /* No. of registers */
-	u16     addr[5]; /* Register addresses */
-	u8      data[5]; /* Register data */
-	u8      mask; /* Valid for read-modify-write */
-};
-
-struct scu_ipc_version {
-	u32     count;  /* length of version info */
-	u8      data[16]; /* version data */
-};
-
-struct osc_clk_t {
-	unsigned int id; /* clock id */
-	unsigned int khz; /* clock frequency */
-};
 
 /* Mode for Audio clock */
 static DEFINE_MUTEX(osc_clk0_lock);
