@@ -296,6 +296,7 @@ static enum power_supply_property max17042_battery_props[] = {
 	POWER_SUPPLY_PROP_CHARGE_NOW,
 	POWER_SUPPLY_PROP_CHARGE_FULL,
 	POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN,
+	POWER_SUPPLY_PROP_CHARGE_COUNTER,
 };
 
 static int max17042_write_reg(struct i2c_client *client, u8 reg, u16 value)
@@ -525,6 +526,12 @@ static int max17042_get_property(struct power_supply *psy,
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_FULL:
 		ret = max17042_read_reg(chip->client, MAX17042_FullCAP);
+		if (ret < 0)
+			goto ps_prop_read_err;
+		val->intval = ret * MAX17042_CHRG_CONV_FCTR;
+		break;
+	case POWER_SUPPLY_PROP_CHARGE_COUNTER:
+		ret = max17042_read_reg(chip->client, MAX17042_QH);
 		if (ret < 0)
 			goto ps_prop_read_err;
 		val->intval = ret * MAX17042_CHRG_CONV_FCTR;
