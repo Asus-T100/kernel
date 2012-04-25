@@ -194,9 +194,13 @@ static int ehci_pci_setup(struct usb_hcd *hcd)
 #endif
 			force_otg_hc_mode = 1;
 
+#ifdef CONFIG_BOARD_REDRIDGE
+			hcd->power_budget = 500;
+#else
 			/* For Penwell, Power budget limit is 200mA */
 			if (pdev->device == 0x0829 || pdev->device == 0xE006)
 				hcd->power_budget = 200;
+#endif
 
 			hcd->has_sram = 1;
 			/*
