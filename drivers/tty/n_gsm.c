@@ -3054,8 +3054,11 @@ static int gsmtty_write(struct tty_struct *tty, const unsigned char *buf,
 	struct gsm_dlci *dlci = tty->driver_data;
 	int sent;
 
-	if (dlci->state != DLCI_OPEN)
+	if (dlci->state == DLCI_OPENING)
 		return -EAGAIN;
+
+	if (dlci->state != DLCI_OPEN)
+		return -ENXIO;
 
 	/* Stuff the bytes into the fifo queue */
 	sent = kfifo_in_locked(dlci->fifo, buf, len, &dlci->lock);
