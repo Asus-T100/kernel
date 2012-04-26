@@ -3933,9 +3933,9 @@ int atomisp_acc_set_arg(struct atomisp_device *isp,
 		pgnr = DIV_ROUND_UP(size, PAGE_SIZE);
 
 		frame_ptr = hrt_isp_css_mm_alloc_user_ptr(size,
-					(unsigned int __force)fw_arg->value,
-					pgnr,
-					type != SH_CSS_ACC_ARG_PTR_NOFLUSH);
+				(unsigned int __force)fw_arg->value,
+				pgnr,
+				(int)type != SH_CSS_ACC_ARG_PTR_NOFLUSH);
 
 		if (IS_ERR_OR_NULL(frame_ptr)) {
 			v4l2_err(&atomisp_dev, "%s: Failed to allocate frame "
@@ -4052,7 +4052,7 @@ int atomisp_acc_start(struct atomisp_device *isp, unsigned int *handle)
 	}
 
 	/* Initialize the interrupt here if it's a standalone binary */
-	if (fw->header.type == ATOMISP_ACC_STANDALONE)
+	if ((int)fw->header.type == ATOMISP_ACC_STANDALONE)
 		INIT_COMPLETION(isp->acc_fw_complete);
 
 out:
@@ -4078,7 +4078,7 @@ int atomisp_acc_wait(struct atomisp_device *isp, unsigned int *handle)
 		goto out;
 	}
 
-	if (fw->header.type != ATOMISP_ACC_STANDALONE) {
+	if ((int)fw->header.type != ATOMISP_ACC_STANDALONE) {
 		ret = -EINVAL;
 		goto out;
 	}
