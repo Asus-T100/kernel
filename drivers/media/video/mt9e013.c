@@ -807,6 +807,14 @@ static long mt9e013_s_exposure(struct v4l2_subdev *sd,
 	fine_itg = exposure->integration_time[1];
 	gain = exposure->gain[0];
 
+/*
+ * we should not accept the invalid value below.
+ */
+	if (fine_itg == 0 || gain == 0) {
+		struct i2c_client *client = v4l2_get_subdevdata(sd);
+		v4l2_err(client, "%s: invalid value\n", __func__);
+		return -EINVAL;
+	}
 	return mt9e013_set_exposure(sd, coarse_itg, fine_itg, gain);
 }
 
@@ -1795,6 +1803,9 @@ static int mt9e013_s_mbus_fmt(struct v4l2_subdev *sd,
 	dev->fps = mt9e013_res[dev->fmt_idx].fps;
 	dev->pixels_per_line = mt9e013_res[dev->fmt_idx].pixels_per_line;
 	dev->lines_per_frame = mt9e013_res[dev->fmt_idx].lines_per_frame;
+	dev->coarse_itg = 0;
+	dev->fine_itg = 0;
+	dev->gain = 0;
 
 	ret = mt9e013_get_intg_factor(client, mt9e013_info, mt9e013_def_reg);
 	mutex_unlock(&dev->input_lock);
@@ -1802,11 +1813,6 @@ static int mt9e013_s_mbus_fmt(struct v4l2_subdev *sd,
 		v4l2_err(sd, "failed to get integration_factor\n");
 		return -EINVAL;
 	}
-
-	/* restore exposure, gain settings */
-	if (dev->coarse_itg)
-		mt9e013_set_exposure(sd, dev->coarse_itg, dev->fine_itg,
-				     dev->gain);
 
 	return 0;
 }
