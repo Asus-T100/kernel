@@ -1002,8 +1002,6 @@ int topaz_upload_fw(struct drm_device *dev, enum drm_pnw_topaz_codec codec, uint
 		     & ~(MTX_DMA_BURSTSIZE_BYTES - 1)) / 4;
 
 	data_location = cur_codec_fw->data_location;
-	data_location = data_location & (~(MTX_DMA_BURSTSIZE_BYTES - 1));
-
 	PSB_DEBUG_GENERAL("TOPAZ: data_size round up to %d\n"
 			  "data_location round up to 0x%08x\n",
 			  data_size, data_location);
