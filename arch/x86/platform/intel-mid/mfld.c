@@ -20,7 +20,7 @@
 #include <linux/module.h>
 #include <linux/notifier.h>
 #include <linux/intel_mid_pm.h>
-#include <linux/usb/penwell_otg.h>
+#include <linux/power_supply.h>
 #include <linux/intel_pmic_gpio.h>
 #include <linux/lnw_gpio.h>
 #include <linux/gpio.h>
@@ -41,38 +41,11 @@
 #include <asm/reboot.h>
 
 
-#define MSIC_POWER_SRC_STAT 0x192
-#define MSIC_POWER_BATT (1 << 0)
-#define MSIC_POWER_USB  (1 << 1)
-
-static bool check_charger_conn(void)
-{
-	int ret;
-	struct otg_bc_cap cap;
-	u8 data;
-
-	ret = intel_scu_ipc_ioread8(MSIC_POWER_SRC_STAT, &data);
-	if (ret)
-		return false;
-
-	if (!((data & MSIC_POWER_BATT) && (data & MSIC_POWER_USB)))
-		return false;
-
-	ret = penwell_otg_query_charging_cap(&cap);
-	if (ret)
-		return false;
-
-	if (cap.chrg_type == CHRG_UNKNOWN)
-		return false;
-
-	return true;
-}
-
 void intel_mid_power_off(void)
 {
 #ifdef CONFIG_INTEL_MID_OSIP
-	bool charger_conn = check_charger_conn();
-	if (!get_force_shutdown_occured() && charger_conn) {
+	if (!get_force_shutdown_occured() &&
+	power_supply_is_system_supplied()) {
 		/*
 		 * Do a cold reset to let bootloader bring up the
 		 * platform into acting dead mode to continue
