@@ -3,8 +3,10 @@
  * Chip is combined proximity and ambient light sensor.
  *
  * Copyright (C) 2010 Nokia Corporation and/or its subsidiary(-ies).
- *
  * Contact: Samu Onkalo <samu.p.onkalo@nokia.com>
+ *
+ * Copyright (C) 2012 Intel Corporation
+ * Contact: Leo Yan <leo.yan@intel.com>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -115,6 +117,8 @@
 #define APDS_PDIODE_IR	       0x2
 
 #define APDS990X_LUX_OUTPUT_SCALE 10
+#define APDS990X_CH1_CH0_ABN_RATIO 1229
+#define APDS990X_CH1_CH0_MAX_RATIO 2253
 
 #define APDS_POWER_DOWN        (0)
 #define APDS_POWER_ON          (1)
@@ -462,6 +466,28 @@ static int apds990x_get_lux(struct apds990x_chip *chip, int clear, int ir)
 {
 	int iac, iac1, iac2; /* IR adjusted counts */
 	u32 lpc; /* Lux per count */
+	int ratio, irfactor;
+
+	if (clear == 0)
+		return 0;
+	/* If CH1/CH0 > 0.3 that means an abnormal incandescent light source
+	 * is detected and is very close to the sensor, we need to reduce the
+	 * IR factor to get the correct lux value
+	 * Formulas:
+	 * ratio = CH1/CH0
+	 * IR Factor = 1 - (6/11 * ratio) when 0.3 < ratio < 0.55
+	 * IR Factor = 0 when ratio >= 0.55
+	 */
+	ratio = (ir * APDS_PARAM_SCALE) / clear;
+	if (ratio > APDS990X_CH1_CH0_ABN_RATIO) {
+		if (ratio >= APDS990X_CH1_CH0_MAX_RATIO)
+			irfactor = 0;
+		else
+			irfactor = APDS_PARAM_SCALE - 6 * ratio / 11;
+
+		ir = ir * irfactor / APDS_PARAM_SCALE;
+		chip->lux_ir = ir;
+	}
 
 	/* Formulas:
 	 * iac1 = CF1 * CLEAR_CH - IRF1 * IR_CH
