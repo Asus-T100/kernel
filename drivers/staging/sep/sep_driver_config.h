@@ -241,6 +241,9 @@ held by the proccess (struct file) */
 /* bit that lock access to the poll  - after send_command */
 #define SEP_WORKING_LOCK_BIT                                  1
 
+/* bit that lock access to RPMB */
+#define SEP_RPMB_ACCESS_LOCK_BIT                              2
+
 /* the token that defines the static pool address address */
 #define SEP_STATIC_POOL_VAL_TOKEN                             0xABBAABBA
 

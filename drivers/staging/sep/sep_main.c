@@ -56,6 +56,10 @@
 #include <asm/current.h>
 #include <linux/ioport.h>
 #include <linux/io.h>
+#include <linux/workqueue.h>
+#include <linux/blkdev.h>
+#include <linux/mmc/core.h>
+#include <linux/mmc/card.h>
 #include <linux/interrupt.h>
 #include <linux/pagemap.h>
 #include <asm/cacheflush.h>
@@ -63,11 +67,15 @@
 #include <linux/delay.h>
 #include <linux/jiffies.h>
 #include <linux/async.h>
+#include <linux/kernel.h>
 
 #include "sep_driver_hw_defs.h"
 #include "sep_driver_config.h"
 #include "sep_driver_api.h"
 #include "sep_dev.h"
+
+#define DRVNAME	"sep_sec"
+#define EMMC_BLK_NAME	"mmcblk0rpmb"
 
 /*
  * Let's not spend cycles iterating over message
@@ -75,8 +83,10 @@
  */
 #ifdef DEBUG
 #define sep_dump_message(sep)	_sep_dump_message(sep)
+#define sep_dump_emmc(sep, start_loc)	_sep_dump_emmc(sep, start_loc)
 #else
 #define sep_dump_message(sep)
+#define sep_dump_emmc(sep, start_loc)
 #endif
 
 /**
@@ -87,6 +97,416 @@
 
 struct sep_device *sep_dev;
 
+/**
+ * sep_dump_message - dump the message that is pending
+ * @sep: SEP device
+ * This will only print dump if DEBUG is set; it does
+ * follow kernel debug print enabling
+ */
+void _sep_dump_message(struct sep_device *sep)
+{
+	int count;
+	u32 *p = sep->shared_addr;
+	for (count = 0; count < 20 * 4; count += 4)
+		dev_dbg(&sep->pdev->dev,
+			"[PID%d] Word %d of the message is %x\n",
+				current->pid, count/4, *p++);
+}
+
+/**
+ * sep_dump_emmc - dump the message that is pending
+ * @sep: SEP device
+ * This will only print dump if DEBUG is set; it does
+ * follow kernel debug print enabling
+ */
+void _sep_dump_emmc(struct sep_device *sep, void *start_loc)
+{
+	int count;
+	u32 *p = start_loc;
+	for (count = 0; count < 20 * 4; count += 4)
+		dev_dbg(&sep->pdev->dev,
+			"[PID%d] Word %d of the message is %.8x\n",
+				current->pid, count/4, *p++);
+}
+
+static int emmc_match(struct device *dev, void *data)
+{
+	if (strcmp(dev_name(dev), data) == 0)
+		return 1;
+	return 0;
+}
+
+static int mmc_blk_rpmb_req_handle(struct mmc_ioc_rpmb_req *req)
+{
+	struct device *emmc = NULL;
+
+	if (!req)
+		return -EINVAL;
+
+	emmc = class_find_device(&block_class, NULL, EMMC_BLK_NAME, emmc_match);
+	if (!emmc) {
+		pr_err("%s: eMMC card is not registered yet. Try it later\n",
+				__func__);
+		return -ENODEV;
+	}
+
+	return mmc_rpmb_req_handle(emmc, req);
+}
+
+static inline int is_correct_rpmb_opcodes(struct sep_device *sep,
+		u32 main_opcode, u32 sub_opcode)
+{
+	int ret = ((main_opcode == SEP_RPMB_CREATE_ENTRY_COMMAND) ||
+			(main_opcode == SEP_RPMB_UPDATE_ENTRY_COMMAND) ||
+			(main_opcode == SEP_RPMB_READ_ENTRY_COMMAND) ||
+			(main_opcode == SEP_RPMB_READ_COMMAND) ||
+			(main_opcode == SEP_RPMB_WRITE_COMMAND) ||
+			(main_opcode == SEP_RPMB_DELETE_ALL_ENTRIES_COMMAND)) &&
+			((sub_opcode == RQ_READ_IN_PROG) ||
+			(sub_opcode == RQ_WRITE_IN_PROG) ||
+			(sub_opcode == RQ_GET_WRITE_CTR));
+
+	dev_dbg(&sep->pdev->dev,
+		"[PID%d] opcodes: "
+		"main=0x%.8x, sub=0x%.8x %s a valid rpmb command\n",
+		current->pid, main_opcode, sub_opcode, (ret) ? "is" : "is NOT");
+
+	return ret;
+}
+
+/**
+ *	rpmb_process_request
+ *	@data: pointer to sep_device
+ *	Process rpmb requests (runs as kernel workqueue so that
+ *	it can be put to sleep
+ */
+static void rpmb_process_request(struct work_struct *work)
+{
+	struct sep_device *sep = container_of(work,
+			struct sep_device, rpmb_work);
+	int res;
+	unsigned long lock_irq_flag;
+
+	/*
+	 * Non data field of printk block; used for emmc
+	 * parameters from the sep; one of these is needed
+	 * for each iteration with the EMMC
+	 */
+	struct sep_non_data_field *sep_emmc_block;
+	struct sep_non_data_field *sep_emmc_resp_block;
+
+	/* Message pool head; used for messages between driver and sep */
+	struct sep_msgarea_hdr *msg_hdr_area;
+
+	/* Pointer to data to be exchanged */
+	struct sep_message_top_from_sep *sep_incomming_msg_area;
+	struct sep_message_top_to_sep *sep_outgoing_msg_area;
+
+
+	/* Pointer to total number of iterations */
+	u32 *total_iter_ptr_from_sep;
+	u32 *total_iter_ptr_to_sep;
+
+	/* structure to pass to the eMMC driver's rpmb API */
+	struct mmc_ioc_rpmb_req my_request_block;
+
+	int i;
+	u32 *tmp;
+
+	pr_debug("sep rpmb_process_request started\n");
+	if (work == 0) {
+		pr_debug("rpmb process; null data for work queue process\n");
+		return;
+	}
+
+	dev_dbg(&sep->pdev->dev, "[PID%d] rpmb process has sep dev\n",
+		current->pid);
+
+	dev_dbg(&sep->pdev->dev, "[PID%d] rpmb process message dump:\n",
+		current->pid);
+	sep_dump_message(sep);
+
+	/* point to message area (start of shared area) */
+	msg_hdr_area = (struct sep_msgarea_hdr *)sep->shared_addr;
+	dev_dbg(&sep->pdev->dev, "[PID%d] rpmb msg area start %p\n",
+		current->pid, msg_hdr_area);
+
+	dev_dbg(&sep->pdev->dev, "[PID%d] rpmb data area start %p\n",
+		current->pid, (u8 *)(sep->shared_addr + DATA_START_OFFSET));
+
+	/* point to total iterations */
+	total_iter_ptr_from_sep = (u32 *)(sep->shared_addr
+			+ SEP_ITERATION_OFFSET);
+	total_iter_ptr_to_sep = (u32 *)(sep->shared_addr
+			+ SEP_ITERATION_RESP_OFFSET);
+
+	dev_dbg(&sep->pdev->dev, "[PID%d] rpmb msg total iteration loc: %p"
+		" value: %.8x\n",
+		current->pid,
+		total_iter_ptr_from_sep,
+		*total_iter_ptr_from_sep);
+
+	/* point to non data fields (sep emmc block) */
+	sep_emmc_block = (struct sep_non_data_field *)(sep->shared_addr +
+		SEP_NONDATA_OFFSET);
+	sep_emmc_resp_block = (struct sep_non_data_field *)(sep->shared_addr +
+		SEP_NONDATA_RESP_OFFSET);
+
+	dev_dbg(&sep->pdev->dev, "[PID%d] rpmb emmc blk %p\n",
+		current->pid, sep_emmc_block);
+
+	/* What do we want to do? */
+	sep_incomming_msg_area = (struct sep_message_top_from_sep *)
+		(sep->shared_addr + MSG_TOP_SIZE);
+	sep_outgoing_msg_area = (struct sep_message_top_to_sep *)
+		(sep->shared_addr + MSG_TOP_SIZE);
+	dev_dbg(&sep->pdev->dev, "[PID%d] rpmb command is %.8x\n",
+		current->pid, sep_incomming_msg_area->rpmb_command);
+
+	/* Check the command word */
+	if (!is_correct_rpmb_opcodes(sep, msg_hdr_area->opcode,
+			sep_incomming_msg_area->rpmb_command)) {
+		dev_dbg(&sep->pdev->dev,
+			"[PID%d] incorrect rpmb opcodes: "
+			"main_opcode=0x%.8x, sub_opcode=0x%.8x\n",
+			current->pid, msg_hdr_area->opcode,
+			sep_incomming_msg_area->rpmb_command);
+		return;
+	}
+
+	dev_dbg(&sep->pdev->dev, "[PID%d] rpmb doing operation\n",
+		current->pid);
+
+	/* initialize counts and pointers */
+	sep->rpmb_iterations = 0;
+	sep->current_data_pointer = (u8 *)(sep->shared_addr +
+		DATA_START_OFFSET);
+	sep->current_emmc_block = sep_emmc_block;
+	sep->current_emmc_resp_block = sep_emmc_resp_block;
+
+	/* Iterate */
+	while (sep->rpmb_iterations < *total_iter_ptr_from_sep) {
+		dev_dbg(&sep->pdev->dev, "[PID%d] rpmb iter %.8x\n",
+			current->pid, sep->rpmb_iterations);
+
+		dev_dbg(&sep->pdev->dev, "[PID%d] emmc block dump\n",
+			current->pid);
+		sep_dump_emmc(sep, (void *)sep->current_emmc_block);
+
+		dev_dbg(&sep->pdev->dev, "req_resp=%.8x, result=%.8x, "
+		"bc=%.8x, addr=%.8x, wc=%.8x\n",
+		sep->current_emmc_block->req_resp,
+		sep->current_emmc_block->result,
+		sep->current_emmc_block->bc,
+		sep->current_emmc_block->addr,
+		sep->current_emmc_block->wc);
+
+		/* fill in the emmc operation block */
+		my_request_block.type =
+			sep->current_emmc_block->req_resp;
+		my_request_block.result =
+			&sep->current_emmc_block->result;
+		my_request_block.blk_cnt =
+			sep->current_emmc_block->bc;
+		my_request_block.addr =
+			sep->current_emmc_block->addr;
+		my_request_block.wc =
+			&sep->current_emmc_block->wc;
+		my_request_block.nonce =
+			sep->current_emmc_block->nonce;
+		my_request_block.data =
+			sep->current_data_pointer;
+		my_request_block.mac =
+			sep->current_emmc_block->mac;
+
+		tmp = (u32 *)my_request_block.mac;
+		for (i = 0; i < 4; i++)
+			dev_dbg(&sep->pdev->dev,
+				"[PID%d] Word %d of MAC is %.8x\n",
+					current->pid, i, *tmp++);
+
+		/* Call the emmc operation */
+		res = mmc_blk_rpmb_req_handle(&my_request_block);
+
+		/*
+		 * Fill in the response emmc block
+		 * Please note that result, nonce, wc, and mac are
+		 * passed by reference. Therefore, those will be
+		 * copied from the input emmc block
+		 */
+
+		memcpy(sep->current_emmc_resp_block->mac,
+			my_request_block.mac,
+			sizeof(sep->current_emmc_resp_block->mac));
+
+		memcpy(sep->current_emmc_resp_block->nonce,
+			my_request_block.nonce,
+			sizeof(sep->current_emmc_resp_block->nonce));
+
+		memcpy(&sep->current_emmc_resp_block->wc,
+			(my_request_block.wc),
+			sizeof(sep->current_emmc_resp_block->wc));
+
+		sep->current_emmc_resp_block->addr =
+			my_request_block.addr;
+
+		sep->current_emmc_resp_block->bc =
+			my_request_block.blk_cnt;
+
+		memcpy(&sep->current_emmc_resp_block->result,
+			(my_request_block.result),
+			sizeof(sep->current_emmc_resp_block->result));
+
+		sep->current_emmc_resp_block->req_resp =
+			my_request_block.type;
+
+		/* Debug print the results */
+		dev_dbg(&sep->pdev->dev, "response:req_resp=%.8x, "
+		"result=%.8x, bc=%.8x, addr=%.8x, wc=%.8x\n",
+		my_request_block.type, *(my_request_block.result),
+		my_request_block.blk_cnt, my_request_block.addr,
+		*(my_request_block.wc));
+
+		dev_dbg(&sep->pdev->dev, "Copied to emmc resp NDF:req_resp=%.8x, "
+				"result=%.8x, bc=%.8x, addr=%.8x, wc=%.8x\n",
+				sep->current_emmc_resp_block->req_resp,
+				sep->current_emmc_resp_block->result,
+				sep->current_emmc_resp_block->bc,
+				sep->current_emmc_resp_block->addr,
+				sep->current_emmc_resp_block->wc);
+
+		if (res || sep->current_emmc_resp_block->result) {
+			dev_warn(&sep->pdev->dev,
+					"[PID%d] rpmb error on emmc ret=0x%.8x, NDF result=0x%.8x\n",
+					current->pid, res,
+					sep->current_emmc_resp_block->result);
+
+			if (sep_incomming_msg_area->rpmb_command ==
+				RQ_READ_IN_PROG) {
+
+				sep_outgoing_msg_area->rpmb_command =
+					RSP_READ_FAILED;
+				dev_warn(&sep->pdev->dev,
+					"emmc read failure\n");
+
+			} else if (sep_incomming_msg_area->
+				rpmb_command == RQ_WRITE_IN_PROG) {
+
+				sep_outgoing_msg_area->rpmb_command =
+					RSP_WRITE_FAILED;
+				dev_warn(&sep->pdev->dev,
+					"emmc write failure\n");
+
+			} else if (sep_incomming_msg_area->
+				rpmb_command == RQ_GET_WRITE_CTR) {
+
+				sep_outgoing_msg_area->rpmb_command =
+					RSP_WRITE_CTR_FAILED;
+				dev_warn(&sep->pdev->dev,
+					"emmc write ctr failure\n");
+
+			} else {
+				dev_warn(&sep->pdev->dev,
+					"emmc unknown failure\n");
+				sep_outgoing_msg_area->rpmb_command =
+					RSP_WRITE_CTR_FAILED;
+			}
+
+			sep_outgoing_msg_area->emmc_result =
+				(sep->current_emmc_resp_block->result != 0) ?
+				sep->current_emmc_resp_block->result : res;
+
+			dev_warn(&sep->pdev->dev,
+				"[PID%d] outgoing msg dump\n",
+				current->pid);
+			sep_dump_message(sep);
+
+			/* Update counter */
+			spin_lock_irqsave(&sep->snd_rply_lck,
+				lock_irq_flag);
+			sep->send_ct++;
+			spin_unlock_irqrestore(&sep->snd_rply_lck,
+				lock_irq_flag);
+
+			dev_dbg(&sep->pdev->dev,
+				"[PID%d] rpmb send_ct %lx "
+				"reply_ct %lx\n",
+				current->pid, sep->send_ct,
+				sep->reply_ct);
+
+			/* Send interrupt to SEP */
+			sep_write_reg(sep,
+				HW_HOST_HOST_SEP_GPR0_REG_ADDR, 0x2);
+
+			/* Bail out; this is error */
+			return;
+		}
+
+		/* bump up iteration */
+		sep->rpmb_iterations += 1;
+		sep->current_data_pointer +=
+			my_request_block.blk_cnt *
+			DATA_BLOCK_SIZE_IN_EMMC_RPMB_FRAME;
+		sep->current_emmc_block += 1;
+		sep->current_emmc_resp_block += 1;
+	}
+
+	/* complete - send completion back to sep and quit */
+
+	*total_iter_ptr_to_sep = sep->rpmb_iterations;
+
+	if (sep_incomming_msg_area->rpmb_command ==
+		RQ_READ_IN_PROG) {
+
+		sep_outgoing_msg_area->rpmb_command =
+			RSP_READ_COMPLETE;
+		dev_warn(&sep->pdev->dev,
+			"emmc read completed\n");
+
+	} else if (sep_incomming_msg_area->
+		rpmb_command == RQ_WRITE_IN_PROG) {
+
+		sep_outgoing_msg_area->rpmb_command =
+			RSP_WRITE_COMPLETE;
+		dev_warn(&sep->pdev->dev,
+			"emmc write completed\n");
+
+	} else if (sep_incomming_msg_area->
+		rpmb_command == RQ_GET_WRITE_CTR) {
+
+		sep_outgoing_msg_area->rpmb_command =
+			RSP_WRITE_CTR;
+		dev_warn(&sep->pdev->dev,
+			"emmc write ctr complete\n");
+
+	} else {
+		dev_warn(&sep->pdev->dev,
+			"emmc unknown complete\n");
+		sep_outgoing_msg_area->rpmb_command =
+			RSP_WRITE_CTR;
+	}
+
+	sep_outgoing_msg_area->emmc_result = 0;
+
+	dev_dbg(&sep->pdev->dev,
+		"[PID%d] emmc finished: outgoing msg dump\n",
+		current->pid);
+	sep_dump_message(sep);
+
+	spin_lock_irqsave(&sep->snd_rply_lck, lock_irq_flag);
+	sep->send_ct++;
+	spin_unlock_irqrestore(&sep->snd_rply_lck, lock_irq_flag);
+
+	dev_dbg(&sep->pdev->dev,
+		"[PID%d] rpmb send_ct %lx reply_ct %lx\n",
+		current->pid, sep->send_ct, sep->reply_ct);
+
+	/* Send interrupt to SEP */
+
+	sep_write_reg(sep, HW_HOST_HOST_SEP_GPR0_REG_ADDR, 0x2);
+
+	return;
+}
 
 /**
  * sep_queue_status_remove - Removes transaction from status queue
@@ -312,22 +732,6 @@ static inline int sep_check_transaction_owner(struct sep_device *sep)
 
 	/* We own the transaction */
 	return 0;
-}
-
-/**
- * sep_dump_message - dump the message that is pending
- * @sep: SEP device
- * This will only print dump if DEBUG is set; it does
- * follow kernel debug print enabling
- */
-void _sep_dump_message(struct sep_device *sep)
-{
-	int count;
-	u32 *p = sep->shared_addr;
-	for (count = 0; count < 40 * 4; count += 4)
-		dev_dbg(&sep->pdev->dev,
-			"[PID%d] Word %d of the message is %x\n",
-				current->pid, count/4, *p++);
 }
 
 /**
@@ -753,7 +1157,9 @@ static unsigned int sep_poll(struct file *filp, poll_table *wait)
 
 	spin_lock_irqsave(&sep->snd_rply_lck, lock_irq_flag);
 
-	if (sep->send_ct == sep->reply_ct) {
+	if ((sep->send_ct == sep->reply_ct) &&
+			(test_bit(SEP_RPMB_ACCESS_LOCK_BIT,
+		    &sep->in_use_flags) == 0)) {
 		spin_unlock_irqrestore(&sep->snd_rply_lck, lock_irq_flag);
 		retval = sep_read_reg(sep, HW_HOST_SEP_HOST_GPR2_REG_ADDR);
 		dev_dbg(&sep->pdev->dev,
@@ -2873,6 +3279,8 @@ static irqreturn_t sep_inthandler(int irq, void *dev_id)
 	u32 reg_val, reg_val2 = 0;
 	struct sep_device *sep = dev_id;
 	irqreturn_t int_error = IRQ_HANDLED;
+	struct sep_msgarea_hdr *msg_hdr_area;
+	struct sep_message_top_from_sep *emmc_msg_area;
 
 	/* Are we in power save? */
 #if defined(CONFIG_PM_RUNTIME) && defined(SEP_ENABLE_RUNTIME_PM)
@@ -2890,17 +3298,9 @@ static irqreturn_t sep_inthandler(int irq, void *dev_id)
 	/* Read the IRR register to check if this is SEP interrupt */
 	reg_val = sep_read_reg(sep, HW_HOST_IRR_REG_ADDR);
 
-	dev_dbg(&sep->pdev->dev, "sep int: IRR REG val: %x\n", reg_val);
+	dev_dbg(&sep->pdev->dev, "sep int: IRR REG val: %.8x\n", reg_val);
 
 	if (reg_val & (0x1 << 13)) {
-
-		/* Lock and update the counter of reply messages */
-		spin_lock_irqsave(&sep->snd_rply_lck, lock_irq_flag);
-		sep->reply_ct++;
-		spin_unlock_irqrestore(&sep->snd_rply_lck, lock_irq_flag);
-
-		dev_dbg(&sep->pdev->dev, "sep int: send_ct %lx reply_ct %lx\n",
-					sep->send_ct, sep->reply_ct);
 
 		/* Is this printf or daemon request? */
 		reg_val2 = sep_read_reg(sep, HW_HOST_SEP_HOST_GPR2_REG_ADDR);
@@ -2911,12 +3311,59 @@ static irqreturn_t sep_inthandler(int irq, void *dev_id)
 
 		if ((reg_val2 >> 30) & 0x1) {
 			dev_dbg(&sep->pdev->dev, "int: printf request\n");
+			queue_work(sep->rpmb_workqueue, &sep->rpmb_work);
 		} else if (reg_val2 >> 31) {
 			dev_dbg(&sep->pdev->dev, "int: daemon request\n");
 		} else {
 			dev_dbg(&sep->pdev->dev, "int: SEP reply\n");
-			wake_up(&sep->event_interrupt);
+			/* Check if this is emmc request (special case) */
+
+			dev_dbg(&sep->pdev->dev, "int: msg is\n");
+			sep_dump_message(sep);
+
+			msg_hdr_area = (struct sep_msgarea_hdr *)
+				sep->shared_addr;
+			emmc_msg_area = (struct sep_message_top_from_sep *)
+				(sep->shared_addr + MSG_TOP_SIZE);
+
+			dev_dbg(&sep->pdev->dev, "int: opcode is "
+				"%.8x rpmb cmd is %.8x sep_rsult is %.8x\n",
+				msg_hdr_area->opcode,
+				emmc_msg_area->rpmb_command,
+				emmc_msg_area->sep_result);
+
+			if (is_correct_rpmb_opcodes(sep, msg_hdr_area->opcode,
+					emmc_msg_area->rpmb_command) &&
+				(emmc_msg_area->sep_result == 0)) {
+
+				dev_dbg(&sep->pdev->dev,
+					"int: rpmb submit process\n");
+
+				set_bit(SEP_WORKING_LOCK_BIT,
+					&sep->in_use_flags);
+				set_bit(SEP_RPMB_ACCESS_LOCK_BIT,
+					&sep->in_use_flags);
+
+				/* initiate rpmb handling work queue */
+				queue_work(sep->rpmb_workqueue,
+						&sep->rpmb_work);
+			} else {
+				/* Normal return */
+				clear_bit(SEP_RPMB_ACCESS_LOCK_BIT,
+						&sep->in_use_flags);
+				wake_up(&sep->event_interrupt);
+			}
 		}
+		/* Lock and update the counter of reply messages */
+		/* Have to increment reply_ct after setting the other lock bits
+		 * to avoid false return result of poll().
+		 */
+		spin_lock_irqsave(&sep->snd_rply_lck, lock_irq_flag);
+		sep->reply_ct++;
+		spin_unlock_irqrestore(&sep->snd_rply_lck, lock_irq_flag);
+
+		dev_dbg(&sep->pdev->dev, "sep int: send_ct %lx reply_ct %lx\n",
+					sep->send_ct, sep->reply_ct);
 	} else {
 		dev_dbg(&sep->pdev->dev, "int: not SEP interrupt\n");
 		int_error = IRQ_NONE;
@@ -3763,6 +4210,7 @@ static int __devinit sep_probe(struct pci_dev *pdev,
 
 	dev_dbg(&sep->pdev->dev, "sep probe: PCI obtained, "
 		"device being prepared\n");
+	dev_dbg(&sep->pdev->dev, "revision is %d\n", sep->pdev->revision);
 
 	/* Set up our register area */
 	sep->reg_physical_addr = pci_resource_start(sep->pdev, 0);
@@ -3829,6 +4277,15 @@ static int __devinit sep_probe(struct pci_dev *pdev,
 	if (error)
 		goto end_function_free_irq;
 
+	/* Create the rpmb workqueue */
+	sep->rpmb_workqueue = create_workqueue(DRVNAME "-ewq");
+	if (unlikely(!sep->rpmb_workqueue)) {
+		dev_err(&sep->pdev->dev, "Unable to create rpmb workqueue");
+		error = -EFAULT;
+		goto end_function_free_irq;
+	}
+	INIT_WORK(&sep->rpmb_work, rpmb_process_request);
+
 	/* Finally magic up the device nodes */
 	/* Register driver with the fs */
 	error = sep_register_driver_with_fs(sep);
@@ -3847,6 +4304,7 @@ static int __devinit sep_probe(struct pci_dev *pdev,
 		return 0;
 	}
 
+	destroy_workqueue(sep->rpmb_workqueue);
 
 end_function_free_irq:
 	free_irq(pdev->irq, sep);
@@ -3881,6 +4339,9 @@ end_function:
 static void sep_remove(struct pci_dev *pdev)
 {
 	struct sep_device *sep = sep_dev;
+
+	/* Destroy rpmb workqueue */
+	destroy_workqueue(sep->rpmb_workqueue);
 
 	/* Unregister from fs */
 	misc_deregister(&sep->miscdev_sep);

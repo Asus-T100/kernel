@@ -42,6 +42,81 @@
 #define SEP_DRIVER_POWERON		1
 #define SEP_DRIVER_POWEROFF		2
 
+/**
+ * Structures for RPMB EMMC access
+ */
+
+#define SEP_RPMB_READ_COMMAND                0x0bc2
+#define SEP_RPMB_WRITE_COMMAND               0x0bc3
+#define SEP_RPMB_CREATE_ENTRY_COMMAND        0x0bc4
+#define SEP_RPMB_UPDATE_ENTRY_COMMAND        0x0bc5
+#define SEP_RPMB_READ_ENTRY_COMMAND          0x0bc6
+#define SEP_RPMB_DELETE_ALL_ENTRIES_COMMAND  0x0bc7
+
+#define RQ_READ_IN_PROG 0x1001
+#define RSP_READ_COMPLETE 0x1002
+#define RSP_READ_FAILED 0x1003
+#define RQ_READ_TRANS_END 0x1004
+
+#define RQ_WRITE_IN_PROG 0x2001
+#define RSP_WRITE_COMPLETE 0x2002
+#define RSP_WRITE_FAILED 0x2003
+#define RQ_WRITE_TRANS_END 0x2004
+
+#define RQ_GET_WRITE_CTR 0x3001
+#define RSP_WRITE_CTR 0x3002
+#define RSP_WRITE_CTR_FAILED 0x3003
+#define RQ_MAIN_TRANS_END 0x4001
+
+#define DATA_BLOCK_SIZE_IN_EMMC_RPMB_FRAME 256
+
+struct sep_message_top_to_sep {
+	u32	rpmb_command; /* Command / Respond with Firmware */
+	u32	job_id;
+	u32	data_size;
+	u32	emmc_result;
+	u32	reserve[2];
+};
+
+struct sep_message_top_from_sep {
+	u32	sep_result;
+	u32	rpmb_command; /* Command / Respond with Firmware */
+	u32	data_size;
+	u32	emmc_result;
+	u32	reserve[2];
+};
+
+/* Note that data buffer immediately follows */
+
+struct sep_non_data_field {
+	u8	mac[32];
+	u8	nonce[16];
+	u32	wc;
+	u16	addr;
+	u16	bc;
+	u16	result;
+	u16	req_resp;
+};
+
+/* work queue structures */
+struct rpmb_work_struct {
+	struct work_struct work;
+	void (*callback)(void *);
+	void *data;
+	};
+
+
+#define MAX_NO_ITERATIONS 15
+#define MSG_TOP_SIZE sizeof(struct sep_msgarea_hdr)
+#define DATA_START_OFFSET (MSG_TOP_SIZE + \
+	sizeof(struct sep_message_top_from_sep))
+#define SEP_ITERATION_OFFSET 5888
+#define SEP_NONDATA_OFFSET (SEP_ITERATION_OFFSET + sizeof(u32))
+#define SEP_NONDATA_SIZE 60
+#define SEP_ITERATION_RESP_OFFSET (SEP_NONDATA_OFFSET + \
+	(SEP_NONDATA_SIZE * MAX_NO_ITERATIONS))
+#define SEP_NONDATA_RESP_OFFSET (SEP_ITERATION_RESP_OFFSET + sizeof(u32))
+
 /*
   structure that represents DCB
 */

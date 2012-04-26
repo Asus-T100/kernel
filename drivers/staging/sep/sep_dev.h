@@ -88,6 +88,20 @@ struct sep_device {
 	unsigned long send_ct;
 	/* counter for the messages from sep */
 	unsigned long reply_ct;
+
+	/* Counter for RPMB iterations */
+	u32 rpmb_iterations;
+
+	/* Workqueue for RPMB */
+	struct workqueue_struct *rpmb_workqueue;
+	struct work_struct	rpmb_work;
+
+	/* Current rpmb data pointer */
+	u8 *current_data_pointer;
+
+	/* Current emmc (non data) block pointer */
+	struct sep_non_data_field *current_emmc_block;
+	struct sep_non_data_field *current_emmc_resp_block;
 };
 
 extern struct sep_device *sep_dev;
