@@ -428,7 +428,7 @@ static enum dwc_otg_state do_charger_detection(struct dwc_otg2 *otg)
 static enum dwc_otg_state do_connector_id_status(struct dwc_otg2 *otg)
 {
 	u32 events = 0, user_events = 0;
-	u32 otg_mask = 0, user_mask = 0;
+	u32 otg_mask = 0, user_mask = 0, phyval;
 	enum dwc_otg_state state = DWC_STATE_INVALID;
 
 	otg_dbg(otg, "\n");
@@ -443,6 +443,15 @@ static enum dwc_otg_state do_connector_id_status(struct dwc_otg2 *otg)
 	otg_write(otg, OEVT, 0xffffffff);
 	otg_write(otg, OEVTEN, OEVT_CONN_ID_STS_CHNG_EVNT);
 	otg_write(otg, OCTL, OCTL_PERI_MODE);
+
+	/* This is a hardware workaround.
+	 * xHCI RxDetect state is not work well when USB3
+	 * PHY under P3 state. So force PHY change to P2 when
+	 * xHCI want to perform receiver detection.
+	 */
+	phyval = otg_read(otg, GUSB3PIPECTL0);
+	phyval |= GUSB3PIPE_DISRXDETP3;
+	otg_write(otg, GUSB3PIPECTL0, phyval);
 
 	msleep(60);
 

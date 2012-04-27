@@ -91,6 +91,7 @@ struct dwc_device_par {
 
 #define GUSB3PIPECTL0                           0xc2c0
 #define GUSB3PIPECTL_SUS_EN                     0x20000
+#define GUSB3PIPE_DISRXDETP3                    (1 << 28)
 
 #define GHWPARAMS6				0xc158
 #define GHWPARAMS6_SRP_SUPPORT_ENABLED		0x0400
