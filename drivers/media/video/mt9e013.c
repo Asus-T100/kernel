@@ -79,7 +79,8 @@ static struct mt9e013_resolution mt9e013_res_preview[] = {
 		 .regs =	mt9e013_PREVIEW_30fps	,
 		 .bin_factor_x =	2,
 		 .bin_factor_y =	2,
-		 .skip_frames = 1,
+		 .skip_frames = 0, /*change skip num from 1 to 0 after 3A init
+				     param invalid issue fixed*/
 	},
 	{
 		 .desc =	"WIDE_PREVIEW_30fps"	,
