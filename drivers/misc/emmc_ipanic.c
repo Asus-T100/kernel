@@ -926,8 +926,16 @@ static int emmc_panic_partition_notify(struct notifier_block *nb,
 		/*notify to add the panic device */
 		emmc_panic_notify_remove();
 		break;
+	case BUS_NOTIFY_BIND_DRIVER:
+	case BUS_NOTIFY_UNBOUND_DRIVER:
+		/* Nothing to do here, but we don't want
+		 * these actions to generate error messages,
+		 * so we need to catch them
+		 */
+		break;
 	default:
-		printk(KERN_EMERG "Incorrect action on %s\n", dev_name(dev));
+		printk(KERN_ERR "Unknown action (%lu) on %s\n",
+		       action, dev_name(dev));
 		return 0;
 	}
 	return 1;
