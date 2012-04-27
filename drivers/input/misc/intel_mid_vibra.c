@@ -58,11 +58,13 @@ static void vibra_enable(struct vibra_info *info)
 static void vibra_disable(struct vibra_info *info)
 {
 
-	pr_debug("Disable gpio\n");
-	gpio_set_value(PWM_ENABLE_GPIO, 0);
-	gpio_set_value(VIBRA_ENABLE_GPIO, 0);
-	info->enabled = false;
-	intel_sst_pwm_suspend(true);
+	if (info->enabled) {
+		pr_debug("Disable gpio\n");
+		gpio_set_value(PWM_ENABLE_GPIO, 0);
+		gpio_set_value(VIBRA_ENABLE_GPIO, 0);
+		info->enabled = false;
+		intel_sst_pwm_suspend(true);
+	}
 }
 
 
@@ -164,6 +166,7 @@ static int __init intel_mid_vibra_probe(struct platform_device *pdev)
 
 	info->dev = &pdev->dev;
 	info->name = "intel_mid:vibrator";
+	info->enabled = false;
 
 	mutex_init(&info->lock);
 
