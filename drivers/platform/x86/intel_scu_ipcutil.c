@@ -359,10 +359,10 @@ EXPORT_SYMBOL_GPL(intel_scu_ipc_read_oshob);
 int intel_scu_ipc_read_osnib(u8 *data, int len, int offset)
 {
 	int i, ret = 0;
-	u32 oshob_base;
-	u8 *ptr;
-	void __iomem *oshob_addr;
-	void __iomem *osnibr_addr;
+	u32 oshob_base, posnibw;
+	u8 *ptr, check = 0;
+	void __iomem *oshob_addr, *osnibr_addr, *osnibw_addr;
+
 	ret = intel_scu_ipc_command(IPCMSG_GET_HOBADDR,
 		0, NULL, 0, &oshob_base, 1);
 	if (ret < 0) {
@@ -377,6 +377,21 @@ int intel_scu_ipc_read_osnib(u8 *data, int len, int offset)
 		goto exit;
 	}
 	osnibr_addr = oshob_addr + OSNIB_OFFSET;
+	/* Make a chksum verification for osnib */
+	for (i = 0; i < OSNIB_SIZE; i++)
+		check += readb(osnibr_addr + i);
+	if (check) {
+		pr_err("WARNING!!! osnib chksum verification faild, reset all osnib data!\n");
+		posnibw = readl(oshob_addr + POSNIBW_OFFSET);
+		osnibw_addr = ioremap_nocache(posnibw, OSNIB_SIZE);
+		if (osnibw_addr) {
+			for (i = 0; i < OSNIB_SIZE; i++)
+				writeb(0, osnibw_addr + i);
+			intel_scu_ipc_raw_cmd(IPCMSG_WRITE_OSNIB,
+				0, NULL, 0, NULL, 0, 0, 0xFFFFFFFF);
+			iounmap(osnibw_addr);
+		}
+	}
 
 	ptr = data;
 	for (i = 0; i < len; i++) {
@@ -398,7 +413,7 @@ int intel_scu_ipc_write_osnib(u8 *data, int len, int offset)
 	int ret = 0;
 	u32 posnibw, oshob_base;
 	u8 osnib_data[OSNIB_SIZE];
-	u8 chksum = 0;
+	u8 check = 0, chksum = 0;
 	void __iomem *oshob_addr, *osnibw_addr, *osnibr_addr;
 
 	ret = intel_scu_ipc_command(IPCMSG_GET_HOBADDR, 0, NULL, 0,
@@ -421,15 +436,20 @@ int intel_scu_ipc_write_osnib(u8 *data, int len, int offset)
 
 	/*Dump osnib data for generate chksum */
 	osnibr_addr = oshob_addr + OSNIB_OFFSET;
-	for (i = 0; i < OSNIB_SIZE; i++)
+	for (i = 0; i < OSNIB_SIZE; i++) {
 		osnib_data[i] = readb(osnibr_addr + i);
-
+		check += osnib_data[i];
+	}
 	memcpy(osnib_data + offset, data, len);
 
-	/* generate chksum */
-	for (i = 0; i < OSNIB_SIZE - 1; i++)
-		chksum += osnib_data[i];
-	osnib_data[OSNIB_SIZE - 1] = ~chksum + 1;
+	if (check) {
+		pr_err("WARNING!!! OSNIB data chksum verification FAILED!\n");
+	} else {
+		/* generate chksum */
+		for (i = 0; i < OSNIB_SIZE - 1; i++)
+			chksum += osnib_data[i];
+		osnib_data[OSNIB_SIZE - 1] = ~chksum + 1;
+	}
 
 	posnibw = readl(oshob_addr + POSNIBW_OFFSET);
 	if (posnibw == 0) { /* workaround here for BZ 2914 */
