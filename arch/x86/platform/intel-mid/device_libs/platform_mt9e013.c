@@ -38,13 +38,10 @@ static int mt9e013_gpio_ctrl(struct v4l2_subdev *sd, int flag)
 		camera_reset = ret;
 	}
 
-	if (flag) {
-		gpio_set_value(camera_reset, 0);
-		msleep(20);
+	if (flag)
 		gpio_set_value(camera_reset, 1);
-	} else {
+	else
 		gpio_set_value(camera_reset, 0);
-	}
 
 	return 0;
 }

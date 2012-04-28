@@ -1714,6 +1714,14 @@ static int mt9e013_s_config(struct v4l2_subdev *sd,
 
 	mutex_lock(&dev->input_lock);
 
+	/*
+	 * The initial state of physical power is unknown
+	 * so first power down it to make it to a known
+	 * state, and then start the power up sequence
+	 */
+	power_down(sd);
+	msleep(20);
+
 	ret = mt9e013_s_power(sd, 1);
 	if (ret) {
 		v4l2_err(client, "mt9e013 power-up err.\n");
