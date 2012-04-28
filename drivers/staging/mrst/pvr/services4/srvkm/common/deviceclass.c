@@ -1998,35 +1998,13 @@ PVRSRV_ERROR PVRSRVGetDCFrontBufferKM(IMG_HANDLE	hDeviceKM,
 
 	psDCInfo = DCDeviceHandleToDCInfo(hDeviceKM);
 	psSwapChain = psDCInfo->psDCSwapChainCur;
-
-	eError = psDCInfo->psFuncTable->pfnGetDCFrontBuffer(psDCInfo->hExtDevice,
-			pui32FlipChainID,
-			&frontBuffer);
-	if (eError != PVRSRV_OK || *pui32FlipChainID == 0)
-	{
-		goto Exit;
-	}
-
-	if (psDCInfo->psDCSwapChainCur
-			&& psDCInfo->psDCSwapChainCur->ui32SwapChainID == *pui32FlipChainID)
-	{
-		psSwapChain = psDCInfo->psDCSwapChainCur;
-	}
-	else
-	{
-		psSwapChain = psDCInfo->psDCSwapChainShared;
-		while (psSwapChain
-				&& psSwapChain->ui32SwapChainID != *pui32FlipChainID)
-		{
-			psSwapChain = psSwapChain->psNext;
-		}
-	}
-
 	if (psSwapChain == IMG_NULL)
 	{
 		PVR_DPF((PVR_DBG_ERROR,"PVRSRVGetDCFrontBufferKM: No Swap Chain is in used"));
 		goto Exit;
 	}
+
+	frontBuffer = psSwapChain->psLastFlipBuffer->sDeviceClassBuffer.hExtBuffer;
 
 	for (bufIndex = 0; bufIndex < psSwapChain->ui32BufferCount; bufIndex++)
 	{
