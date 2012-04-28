@@ -828,6 +828,10 @@ static void mdfld_hdmi_dpms(struct drm_encoder *encoder, int mode)
 		REG_WRITE(hdmi_priv->hdmib_reg,
 				hdmib | HDMIB_PORT_EN);
 
+		if (!dev_priv->bDVIport)
+			mdfld_hdmi_set_avi_infoframe(dev, &output->base,
+					hdmi_priv->current_mode);
+
 		if (dev_priv->mdfld_had_event_callbacks
 			&& !dev_priv->bDVIport
 			&& (hdmip_enabled == 0))
