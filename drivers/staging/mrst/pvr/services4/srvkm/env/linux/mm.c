@@ -41,6 +41,7 @@
 #include <linux/slab.h>
 #include <linux/highmem.h>
 #include <linux/sched.h>
+#include <linux/genalloc.h>
 
 #include "img_defs.h"
 #include "services.h"
@@ -186,6 +187,51 @@ static DEBUG_LINUX_MEM_AREA_REC *DebugLinuxMemAreaRecordFind(LinuxMemArea *psLin
 static IMG_VOID DebugLinuxMemAreaRecordRemove(LinuxMemArea *psLinuxMemArea);
 #endif
 
+/*
+ We assume the total area space for PVRSRV_HAP_WRITECOMBINE is fewer than 4MB.
+If it's more than 4MB, it fails over to vmalloc automatically.
+ */
+#define POOL_SIZE	(4*1024*1024)
+static struct gen_pool *pvrsrv_pool_writecombine;
+static char *pool_start;
+
+static void init_pvr_pool(void)
+{
+	pgprot_t PGProtFlags;
+	int ret = -1;
+
+	pvrsrv_pool_writecombine = gen_pool_create(12, -1);
+	if (!pvrsrv_pool_writecombine) {
+		printk(KERN_ERR "%s: create pvrsrv_pool failed\n",
+				__func__);
+		return ;
+	}
+	PGProtFlags = PGPROT_WC(PAGE_KERNEL);
+	pool_start = __vmalloc(POOL_SIZE, GFP_KERNEL | __GFP_HIGHMEM,
+			PGProtFlags);
+
+	if (!pool_start) {
+		printk(KERN_ERR "%s:No vm space to create POOL\n",
+				__func__);
+		gen_pool_destroy(pvrsrv_pool_writecombine);
+		pvrsrv_pool_writecombine = NULL;
+		return ;
+	} else {
+		ret = gen_pool_add(pvrsrv_pool_writecombine,
+				pool_start, POOL_SIZE, -1);
+		if (ret) {
+			printk(KERN_ERR "%s:could not remainder pool\n",
+					__func__);
+			gen_pool_destroy(pvrsrv_pool_writecombine);
+			pvrsrv_pool_writecombine = NULL;
+			vfree(pool_start);
+			pool_start = NULL;
+			return ;
+			}
+		}
+	return ;
+}
+
 PVRSRV_ERROR
 LinuxMMInit(IMG_VOID)
 {
@@ -235,7 +281,8 @@ LinuxMMInit(IMG_VOID)
         return PVRSRV_ERROR_OUT_OF_MEMORY;
     }
 
-    return PVRSRV_OK;
+	init_pvr_pool();
+	return PVRSRV_OK;
 }
 
 #if defined(DEBUG_LINUX_MEM_AREAS)
@@ -583,7 +630,7 @@ LinuxMemArea *
 NewVMallocLinuxMemArea(IMG_UINT32 ui32Bytes, IMG_UINT32 ui32AreaFlags)
 {
     LinuxMemArea *psLinuxMemArea;
-    IMG_VOID *pvCpuVAddr;
+	IMG_VOID *pvCpuVAddr = NULL;
 
     psLinuxMemArea = LinuxMemAreaStructAlloc();
     if(!psLinuxMemArea)
@@ -591,7 +638,20 @@ NewVMallocLinuxMemArea(IMG_UINT32 ui32Bytes, IMG_UINT32 ui32AreaFlags)
         goto failed;
     }
 
-    pvCpuVAddr = VMallocWrapper(ui32Bytes, ui32AreaFlags);
+	psLinuxMemArea->bfromPool = IMG_FALSE;
+	if (pvrsrv_pool_writecombine && ui32Bytes <= 128*1024) {
+		if ((ui32AreaFlags & PVRSRV_HAP_CACHETYPE_MASK) ==
+				PVRSRV_HAP_WRITECOMBINE) {
+			pvCpuVAddr = gen_pool_alloc(pvrsrv_pool_writecombine,
+					PAGE_ALIGN(ui32Bytes));
+			if (pvCpuVAddr)
+				psLinuxMemArea->bfromPool = IMG_TRUE;
+	    }
+	}
+
+	if (!pvCpuVAddr)
+		pvCpuVAddr = VMallocWrapper(ui32Bytes, ui32AreaFlags);
+
     if(!pvCpuVAddr)
     {
         goto failed;
@@ -644,7 +704,12 @@ FreeVMallocLinuxMemArea(LinuxMemArea *psLinuxMemArea)
 
     PVR_DPF((PVR_DBG_MESSAGE,"%s: pvCpuVAddr: %p",
              __FUNCTION__, psLinuxMemArea->uData.sVmalloc.pvVmallocAddress));
-    VFreeWrapper(psLinuxMemArea->uData.sVmalloc.pvVmallocAddress);
+	if (psLinuxMemArea->bfromPool) {
+		gen_pool_free(pvrsrv_pool_writecombine,
+				psLinuxMemArea->uData.sVmalloc.pvVmallocAddress,
+				PAGE_ALIGN(psLinuxMemArea->ui32ByteSize));
+	} else
+		VFreeWrapper(psLinuxMemArea->uData.sVmalloc.pvVmallocAddress);
 
     LinuxMemAreaStructFree(psLinuxMemArea);
 }

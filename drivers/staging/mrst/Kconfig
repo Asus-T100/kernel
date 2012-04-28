@@ -12,6 +12,7 @@ config DRM_INTEL_MID
         select FB_CFB_FILLRECT
         select FB_CFB_IMAGEBLIT
         select DRM_KMS_HELPER
+        select GENERIC_ALLOCATOR
         select DRM_TTM
 	help
 	  xxxxxxxxxxxxxxxxxxxxxxxxxx

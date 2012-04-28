@@ -149,6 +149,7 @@ struct _LinuxMemArea {
 
     IMG_BOOL bNeedsCacheInvalidate;
 
+    IMG_BOOL bfromPool;
 
     struct list_head	sMMapItem;
 
