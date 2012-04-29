@@ -2485,6 +2485,10 @@ int drm_mode_connector_property_set_ioctl(struct drm_device *dev,
 				found = 1;
 				break;
 			}
+			if(property == connector->dev->mode_config.scaling_mode_property) {
+				found = 1;
+				break;
+			}
 		}
 		if (!found) {
 			goto out;
