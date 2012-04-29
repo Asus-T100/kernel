@@ -649,12 +649,19 @@ static int mdfld_intel_set_scaling_property(struct drm_crtc *crtc, int x, int y,
 	struct drm_framebuffer *fb = crtc->fb;
 	struct drm_display_mode *adjusted_mode = & psb_intel_crtc->saved_adjusted_mode;
 	uint64_t scalingType = psb_intel_crtc->scaling_type;
+	uint64_t scalingStep = psb_intel_crtc->scaling_step;
+	static uint64_t lastScalingStep = -1;
+	static int landscape = -1, last_landscape =-1;
+	static int last_src_image_hor = 0, last_src_image_vert = 0;
+	static int horScalingCount = 0;
+	static int vertScalingCount = 0;
 	int pipesrc_reg = PIPEASRC;
 	int dspsize_reg = DSPASIZE;
 	int dsppos_reg = DSPAPOS;
 	int sprite_pos_x = 0, sprite_pos_y = 0;
 	int sprite_width = 0, sprite_height = 0;
 	int src_image_hor = 0, src_image_vert = 0;
+	int hValue=-1, vValue=-1;
 
 	switch (pipe) {
         case 0:
@@ -685,6 +692,25 @@ static int mdfld_intel_set_scaling_property(struct drm_crtc *crtc, int x, int y,
 		 */
 		sprite_width = MIN(fb->width, adjusted_mode->hdisplay);
 		sprite_height = MIN(fb->height, adjusted_mode->vdisplay);
+
+		PSB_DEBUG_ENTRY("fb->width:%d,fb->height:%d,adjusted_mode->hdisplay:%d,adjusted_mode->vdisplay:%d\n", fb->width,fb->height,adjusted_mode->hdisplay,adjusted_mode->vdisplay);
+
+		if ((last_src_image_hor == 0) && (last_src_image_vert == 0)) {
+			last_src_image_hor = adjusted_mode->hdisplay;
+			last_src_image_vert = adjusted_mode->vdisplay;
+		}
+
+		hValue = (scalingStep&0xF0)>>4;
+		vValue = (scalingStep&0xF00)>>8;
+
+		PSB_DEBUG_ENTRY("last_src_image_hor %d, last_src_image_vert %d \n", last_src_image_hor, last_src_image_vert);
+
+		if((last_src_image_hor != adjusted_mode->hdisplay)
+			&&(last_src_image_vert != adjusted_mode->vdisplay)){
+			psb_intel_crtc->scaling_step =0;
+			scalingStep =0;
+		}
+		PSB_DEBUG_ENTRY("scalingType %llu, scalingStep ox%x, hValue %d, vValue %d \n", scalingType, scalingStep, hValue, vValue);
 
 		switch (scalingType) {
 		case DRM_MODE_SCALE_NONE:
@@ -794,12 +820,79 @@ static int mdfld_intel_set_scaling_property(struct drm_crtc *crtc, int x, int y,
 			break;
 		}
 
-		PSB_DEBUG_ENTRY("Sprite position: (%d, %d)\n", sprite_pos_x,
+		if (scalingStep != 0)
+		{
+			u32 sprite_pos, sprite_size, src_size;
+
+			if(fb->width > fb->height)
+				landscape = 0;
+			if(fb->width < fb->height)
+				landscape = 1;
+
+			if ((last_landscape == -1)
+				||(last_landscape == landscape))
+			{
+				horScalingCount = hValue;
+				vertScalingCount = vValue;
+
+				PSB_DEBUG_ENTRY("Before: Sprite position: (%d, %d)\n", sprite_pos_x,
+					sprite_pos_y);
+				PSB_DEBUG_ENTRY("Before: Sprite size: %d x %d\n", sprite_width,
+					sprite_height);
+				PSB_DEBUG_ENTRY("Before: Pipe source image size: %d x %d\n",
+					src_image_hor, src_image_vert);
+				PSB_DEBUG_ENTRY("hValue %d, vValue %d \n", hValue, vValue);
+				if (!((fb->width < fb->height) &&(scalingType == DRM_MODE_SCALE_ASPECT)))
+				{
+					if (hValue !=0) {
+						sprite_pos_x = sprite_pos_x + (adjusted_mode->hdisplay* hValue)/100;
+						src_image_hor = src_image_hor + (adjusted_mode->hdisplay*hValue*2)/100;
+					}
+				}
+
+				if (vValue!=0) {
+					sprite_pos_y = sprite_pos_y + (adjusted_mode->vdisplay*vValue)/100;
+					src_image_vert = src_image_vert + (adjusted_mode->vdisplay*vValue*2)/100;
+				}
+
+				if ((hValue == -1)||(vValue==-1))
+					psb_intel_crtc->scaling_step = 0;
+
+				last_landscape = landscape;
+			}
+
+			if (last_landscape != landscape) {
+				if (!((fb->width < fb->height) &&(scalingType == DRM_MODE_SCALE_ASPECT))){
+					sprite_pos_x = sprite_pos_x + (adjusted_mode->hdisplay* horScalingCount)/100;
+					src_image_hor = src_image_hor + (adjusted_mode->hdisplay*horScalingCount*2)/100;
+				}
+
+				sprite_pos_y = sprite_pos_y + (adjusted_mode->vdisplay*vertScalingCount)/100;
+				src_image_vert = src_image_vert + (adjusted_mode->vdisplay*vertScalingCount*2)/100;
+
+				last_landscape = landscape;
+			}
+		}
+
+		if(scalingStep == 0) {
+			horScalingCount = 0;
+			vertScalingCount = 0;
+			last_landscape = -1;
+			hValue =-1;
+			vValue =-1;
+		}
+
+		last_src_image_hor = adjusted_mode->hdisplay;
+		last_src_image_vert = adjusted_mode->vdisplay;
+
+		PSB_DEBUG_ENTRY("After: Sprite position: (%d, %d)\n", sprite_pos_x,
 				sprite_pos_y);
-		PSB_DEBUG_ENTRY("Sprite size: %d x %d\n", sprite_width,
+		PSB_DEBUG_ENTRY("After: Sprite size: %d x %d\n", sprite_width,
 				sprite_height);
-		PSB_DEBUG_ENTRY("Pipe source image size: %d x %d\n",
+		PSB_DEBUG_ENTRY("After: Pipe source image size: %d x %d\n",
 				src_image_hor, src_image_vert);
+		PSB_DEBUG_ENTRY(" Adjust mode size: %d x %d\n",
+				adjusted_mode->hdisplay, adjusted_mode->vdisplay);
 
 		REG_WRITE(dsppos_reg, (sprite_pos_y << 16) | sprite_pos_x);
 		REG_WRITE(dspsize_reg, ((sprite_height - 1) << 16) |
@@ -1981,7 +2074,18 @@ static int mdfld_crtc_mode_set(struct drm_crtc *crtc,
 		drm_connector_property_get_value(&psb_intel_output->base,
 			dev->mode_config.scaling_mode_property, &scalingType);
 
-	psb_intel_crtc->scaling_type = scalingType;
+	if ((scalingType == DRM_MODE_SCALE_NO_SCALE)
+		||(scalingType < DRM_MODE_SCALE_NO_SCALE))
+	{
+		psb_intel_crtc->scaling_type = scalingType;
+		psb_intel_crtc->scaling_step = 0;
+	}
+	else
+	{
+		psb_intel_crtc->scaling_step = scalingType;
+		if (drm_connector_property_set_value(&psb_intel_output->base,dev->mode_config.scaling_mode_property,psb_intel_crtc->scaling_type))
+			return -EINVAL;
+	}
 
 	if (scalingType == DRM_MODE_SCALE_NO_SCALE) {
 		/*Moorestown doesn't have register support for centering so we need to

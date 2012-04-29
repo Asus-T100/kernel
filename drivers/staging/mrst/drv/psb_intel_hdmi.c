@@ -1328,6 +1328,10 @@ mdfld_hdmi_edid_detect(struct drm_connector *connector)
 	int i = 0;
 	int ret = 0;
 	int monitor_number = sizeof(mdfld_hdmi_edid) / sizeof(struct hdmi_edid_info);
+	static u8 last_mfg_id[2] = {0,0};
+	static u8 last_prod_code[2] = {0,0};
+	static u32 last_serial = 0; /* FIXME: byte order */
+	int hdmi_change = 0;
 
 	PSB_DEBUG_ENTRY("\n");
 
@@ -1356,6 +1360,29 @@ mdfld_hdmi_edid_detect(struct drm_connector *connector)
 			hdmi_priv->has_hdmi_sink = drm_detect_hdmi_monitor(edid);
 			mdfld_hdmi_create_eeld_packet(connector);
 		}
+
+		if(hdmi_change == 0)
+		{
+			if (!(((edid->mfg_id[0] == last_mfg_id[0])&&(edid->mfg_id[1] == last_mfg_id[1]))
+				&&((edid->prod_code[0] == last_prod_code[0])&&(edid->prod_code[1] == last_prod_code[1]))
+				&&(edid->serial == last_serial))) {
+				hdmi_change = 1;
+			}
+				last_mfg_id[0] = edid->mfg_id[0];
+				last_mfg_id[1] = edid->mfg_id[1];
+				last_prod_code[0] = edid->prod_code[0];
+				last_prod_code[1] = edid->prod_code[1];
+				last_serial = edid->serial;
+		}
+		if (hdmi_change ==1) {
+			drm_connector_property_set_value(connector,dev->mode_config.scaling_mode_property,DRM_MODE_SCALE_ASPECT);
+		}
+
+		DRM_INFO("hdmi_change =%d", hdmi_change);
+		DRM_INFO("mfg_id: 0x%x,0x%x", edid->mfg_id[0],edid->mfg_id[1]);
+		DRM_INFO("prod_code: 0x%x,0x%x", edid->prod_code[0],edid->prod_code[1]);
+		DRM_INFO("serial: 0x%x", edid->serial);
+
 		drm_mode_connector_update_edid_property(connector, edid);
 		kfree(edid);
 		dev_priv->hdmi_done_reading_edid = true;
@@ -1563,24 +1590,8 @@ static int mdfld_hdmi_set_property(struct drm_connector *connector,
 		if (!pPsbCrtc)
 			goto set_prop_error;
 
-		switch (value) {
-		case DRM_MODE_SCALE_FULLSCREEN:
-			break;
-		case DRM_MODE_SCALE_CENTER:
-			break;
-		case DRM_MODE_SCALE_NO_SCALE:
-			break;
-		case DRM_MODE_SCALE_ASPECT:
-			break;
-		default:
-			goto set_prop_error;
-		}
-
 		if (drm_connector_property_get_value(connector, property, &curValue))
 			goto set_prop_error;
-
-		if (curValue == value)
-			goto set_prop_done;
 
 		if (drm_connector_property_set_value(connector, property, value))
 			goto set_prop_error;
@@ -1592,7 +1603,8 @@ static int mdfld_hdmi_set_property(struct drm_connector *connector,
 
 		if (pPsbCrtc->saved_mode.hdisplay != 0 &&
 		    pPsbCrtc->saved_mode.vdisplay != 0) {
-			if (bTransitionFromToCentered || bTransitionFromToAspect) {
+			if (bTransitionFromToCentered || bTransitionFromToAspect
+				||(value > DRM_MODE_SCALE_NO_SCALE) || (value == DRM_MODE_SCALE_FULLSCREEN)){
 				if (!drm_crtc_helper_set_mode(pEncoder->crtc, &pPsbCrtc->saved_mode,
 					    pEncoder->crtc->x, pEncoder->crtc->y, pEncoder->crtc->fb))
 					goto set_prop_error;

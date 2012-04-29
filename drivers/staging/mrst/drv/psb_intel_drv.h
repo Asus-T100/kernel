@@ -194,6 +194,7 @@ struct psb_intel_crtc {
 
 	/* crtc scaling type */
 	u32 scaling_type;
+	u32 scaling_step;
 
 /*FIXME: Workaround to avoid MRST block.*/
 #ifndef CONFIG_X86_MDFLD
