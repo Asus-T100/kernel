@@ -504,6 +504,7 @@ static int pm_genpd_poweroff(struct generic_pm_domain *genpd)
 	}
 
 	genpd->status = GPD_STATE_POWER_OFF;
+	genpd->power_off_time = ktime_get();
 
 	list_for_each_entry(link, &genpd->slave_links, slave_node) {
 		genpd_sd_counter_dec(link->master);
