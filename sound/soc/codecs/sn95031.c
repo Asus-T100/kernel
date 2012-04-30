@@ -79,13 +79,14 @@ void sn95031_configure_pll(struct snd_soc_codec *codec, int operation)
 	struct sn95031_priv *sn95031_ctx;
 	sn95031_ctx = snd_soc_codec_get_drvdata(codec);
 
+
 	if (sn95031_ctx->pll_state == PLL_ENABLE_PENDING
 			&& operation == SN95031_ENABLE_PLL) {
 		pr_debug("setting PLL to 0x%x\n", sn95031_ctx->clk_src);
-		snd_soc_write(codec, SN95031_AUDPLLCTRL, 0x20);
-		udelay(1000);
 		/* PLL takes few msec to stabilize
 		Refer sec2.3 MFLD Audio Interface Doc-rev0.7 */
+		snd_soc_write(codec, SN95031_AUDPLLCTRL, 0);
+		udelay(1000);
 		snd_soc_write(codec, SN95031_AUDPLLCTRL,
 					(sn95031_ctx->clk_src)<<2);
 		udelay(1000);
@@ -96,9 +97,9 @@ void sn95031_configure_pll(struct snd_soc_codec *codec, int operation)
 		sn95031_ctx->pll_state = PLL_ENABLED;
 	} else if (operation == SN95031_DISABLE_PLL) {
 		pr_debug("disabling PLL\n");
+		snd_soc_write(codec, SN95031_AUDPLLCTRL, 0);
 		sn95031_ctx->clk_src = SN95031_INVALID;
 		sn95031_ctx->pll_state = PLL_DISABLED;
-		snd_soc_write(codec, SN95031_AUDPLLCTRL, 0);
 	} else {
 		pr_debug("PLL configure state: op=0x%x, state=0x%x\n",
 				operation, sn95031_ctx->pll_state);
