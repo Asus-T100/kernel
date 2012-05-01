@@ -1590,6 +1590,7 @@ static void msic_batt_temp_charging(struct work_struct *work)
 		 * status register are not related.
 		 */
 		reset_wdt_timer(mbi);
+		power_supply_changed(&mbi->usb);
 		dev_dbg(msic_dev, "Charger Watchdog timer reset for 60sec\n");
 		goto lbl_sched_work;
 	}
