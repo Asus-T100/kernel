@@ -1372,14 +1372,6 @@ static int msic_batt_do_charging(struct msic_power_module_info *mbi,
 		return -EIO;
 	}
 
-	mutex_lock(&mbi->batt_lock);
-	if (is_maint_mode)
-		mbi->batt_props.status = POWER_SUPPLY_STATUS_FULL;
-	else
-		mbi->batt_props.status = POWER_SUPPLY_STATUS_CHARGING;
-	mutex_unlock(&mbi->batt_lock);
-
-	power_supply_changed(&mbi->usb);
 	return 0;
 }
 
@@ -1781,12 +1773,22 @@ static void msic_batt_temp_charging(struct work_struct *work)
 	/* enable charging here */
 	dev_info(msic_dev, "Enable Charging\n");
 	ret = msic_batt_do_charging(mbi, &charge_param, is_maint_chrg);
-	dump_registers(MSIC_CHRG_REG_DUMP_EVENT);
-	if (ret) {
+	/* update battery status */
+	mutex_lock(&mbi->batt_lock);
+	if (ret < 0 && !is_chrg_enbl) {
 		dev_warn(msic_dev, "msic_batt_do_charging failed\n");
-		goto lbl_sched_work;
+		mbi->batt_props.status = POWER_SUPPLY_STATUS_NOT_CHARGING;
+	} else {
+		if (is_maint_chrg)
+			mbi->batt_props.status = POWER_SUPPLY_STATUS_FULL;
+		else
+			mbi->batt_props.status = POWER_SUPPLY_STATUS_CHARGING;
+		is_chrg_enbl = true;
 	}
-	is_chrg_enbl = true;
+	mutex_unlock(&mbi->batt_lock);
+
+	dump_registers(MSIC_CHRG_REG_DUMP_EVENT);
+	power_supply_changed(&mbi->usb);
 
 lbl_sched_work:
 	/* Schedule the work after 30 Seconds */
