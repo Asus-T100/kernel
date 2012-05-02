@@ -43,7 +43,13 @@
 #include <media/v4l2-chip-ident.h>
 #include <asm/intel_scu_ipc.h>
 
-#include "mt9e013.h"
+#if defined(CONFIG_VIDEO_MT9E013_LEXINGTON)
+#include "mt9e013_lexington.h"
+#elif defined(CONFIG_VIDEO_MT9E013_ENZO)
+#include "mt9e013_enzo.h"
+#else /* CONFIG_VIDEO_MT9E013_BLACKBAY */
+#include "mt9e013_blackbay.h"
+#endif
 
 #define to_mt9e013_sensor(sd) container_of(sd, struct mt9e013_device, sd)
 
@@ -54,309 +60,6 @@
 /* divides a by b using half up rounding and div/0 prevention
  * (result is 0 if b == 0) */
 #define divsave_rounded(a, b)	(((b) != 0) ? (((a)+((b)>>1))/(b)) : (-1))
-
-struct sensor_mode_data {
-	unsigned int coarse_integration_time_min;
-	unsigned int coarse_integration_time_max_margin;
-	unsigned int fine_integration_time_min;
-	unsigned int fine_integration_time_max_margin;
-	unsigned int fine_integration_time_def;
-	unsigned int frame_length_lines;
-	unsigned int line_length_pck;
-	unsigned int read_mode;
-	int vt_pix_clk_freq_mhz;
-};
-
-static struct mt9e013_resolution mt9e013_res_preview[] = {
-	{
-		 .desc =	"PREVIEW_30fps"	,
-		 .width =	820	,
-		 .height =	616	,
-		 .fps =		30	,
-		 .used =	0	,
-		 .pixels_per_line = 0x1020, /* consistent with regs arrays */
-		 .lines_per_frame = 0x060E, /* consistent with regs arrays */
-		 .regs =	mt9e013_PREVIEW_30fps	,
-		 .bin_factor_x =	2,
-		 .bin_factor_y =	2,
-		 .skip_frames = 0, /*change skip num from 1 to 0 after 3A init
-				     param invalid issue fixed*/
-	},
-	{
-		 .desc =	"WIDE_PREVIEW_30fps"	,
-		 .width =	1640	,
-		 .height =	956	,
-		 .fps =		30	,
-		 .used =	0	,
-		 .pixels_per_line = 0x1020, /* consistent with regs arrays */
-		 .lines_per_frame = 0x060E, /* consistent with regs arrays */
-		 .regs =	mt9e013_WIDE_PREVIEW_30fps	,
-		 .bin_factor_x =	1,
-		 .bin_factor_y =	1,
-		 .skip_frames = 1,
-	},
-
-};
-
-#define N_RES_PREVIEW (ARRAY_SIZE(mt9e013_res_preview))
-
-static struct mt9e013_resolution mt9e013_res_still_low_fps[] = {
-	{
-		 .desc =	"STILL_2M_3fps"	,
-		 .width =	1640	,
-		 .height =	1232	,
-		 .fps =		3	,
-		 .used =	0	,
-		 .pixels_per_line = 0x1F40, /* consistent with regs arrays */
-		 .lines_per_frame = 0x1F40, /* consistent with regs arrays */
-		 .regs =	mt9e013_STILL_2M_3fps	,
-		 .bin_factor_x =	1,
-		 .bin_factor_y =	1,
-		 .skip_frames = 1,
-	},
-	{
-		 .desc =	"STILL_6M_3fps"	,
-		 .width =	3280	,
-		 .height =	1848	,
-		 .fps =		3	,
-		 .used =	0	,
-		 .pixels_per_line = 0x1F40, /* consistent with regs arrays */
-		 .lines_per_frame = 0x1F40, /* consistent with regs arrays */
-		 .regs =	mt9e013_STILL_6M_3fps	,
-		 .bin_factor_x =	0,
-		 .bin_factor_y =	0,
-		 .skip_frames = 1,
-	},
-	{
-		 .desc =	"STILL_8M_3fps"	,
-		 .width =	3280	,
-		 .height =	2464	,
-		 .fps =		3	,
-		 .used =	0	,
-		 .pixels_per_line = 0x1F40, /* consistent with regs arrays */
-		 .lines_per_frame = 0x1F40, /* consistent with regs arrays */
-		 .regs =	mt9e013_STILL_8M_3fps	,
-		 .bin_factor_x =	0,
-		 .bin_factor_y =	0,
-		 .skip_frames = 1,
-	},
-};
-
-#define N_RES_STILL_LOW_FPS (ARRAY_SIZE(mt9e013_res_still_low_fps))
-
-static struct mt9e013_resolution mt9e013_res_still_high_fps[] = {
-	{
-		 .desc =	"STILL_2M_15fps"	,
-		 .width =	1640	,
-		 .height =	1232	,
-		 .fps =		15	,
-		 .used =	0	,
-		 .pixels_per_line = 0x1020, /* consistent with regs arrays */
-		 .lines_per_frame = 0x0C1C, /* consistent with regs arrays */
-		 .regs =	mt9e013_STILL_2M_15fps	,
-		 .bin_factor_x =	1,
-		 .bin_factor_y =	1,
-		 .skip_frames = 1,
-	},
-	{
-		 .desc =	"STILL_6M_15fps"	,
-		 .width =	3280	,
-		 .height =	1848	,
-		 .fps =		15	,
-		 .used =	0	,
-		 .pixels_per_line = 0x1258, /* consistent with regs arrays */
-		 .lines_per_frame = 0x0AA4, /* consistent with regs arrays */
-		 .regs =	mt9e013_STILL_6M_15fps	,
-		 .bin_factor_x =	0,
-		 .bin_factor_y =	0,
-		 .skip_frames = 1,
-	},
-	{
-		 .desc =	"STILL_8M_15fps"	,
-		 .width =	3280	,
-		 .height =	2464	,
-		 .fps =		15	,
-		 .used =	0	,
-		 .pixels_per_line = 0x1258, /* consistent with regs arrays */
-		 .lines_per_frame = 0x0AA4, /* consistent with regs arrays */
-		 .regs =	mt9e013_STILL_8M_15fps	,
-		 .bin_factor_x =	0,
-		 .bin_factor_y =	0,
-		 .skip_frames = 1,
-	},
-};
-
-#define N_RES_STILL_HIGH_FPS (ARRAY_SIZE(mt9e013_res_still_high_fps))
-
-static struct mt9e013_resolution mt9e013_res_video_low_fps[] = {
-	{
-		 .desc =	"QCIF_strong_dvs_30fps"	,
-		 .width =	216	,
-		 .height =	176	,
-		 .fps =		30	,
-		 .used =	0	,
-		 .pixels_per_line = 0x1020, /* consistent with regs arrays */
-		 .lines_per_frame = 0x060E, /* consistent with regs arrays */
-		 .regs =	mt9e013_QCIF_strong_dvs_30fps	,
-		 .bin_factor_x =	2,
-		 .bin_factor_y =	2,
-		 .skip_frames = 1,
-	},
-	{
-		 .desc =	"QVGA_strong_dvs_30fps"	,
-		 .width =	408	,
-		 .height =	308	,
-		 .fps =		30	,
-		 .used =	0	,
-		 .pixels_per_line = 0x1020, /* consistent with regs arrays */
-		 .lines_per_frame = 0x060E, /* consistent with regs arrays */
-		 .regs =	mt9e013_QVGA_strong_dvs_30fps	,
-		 .bin_factor_x =	2,
-		 .bin_factor_y =	2,
-		 .skip_frames = 1,
-	},
-	{
-		 .desc =	"VGA_strong_dvs_30fps"	,
-		 .width =	820	,
-		 .height =	616	,
-		 .fps =		30	,
-		 .used =	0	,
-		 .pixels_per_line = 0x1020, /* consistent with regs arrays */
-		 .lines_per_frame = 0x060E, /* consistent with regs arrays */
-		 .regs =	mt9e013_VGA_strong_dvs_30fps	,
-		 .bin_factor_x =	2,
-		 .bin_factor_y =	2,
-		 .skip_frames = 1,
-	},
-	{
-		 .desc =	"WVGA_strong_dvs_30fps"	,
-		 .width =	1640	,
-		 .height =	1024	,
-		 .fps =		30	,
-		 .used =	0	,
-		 .pixels_per_line = 0x1020, /* consistent with regs arrays */
-		 .lines_per_frame = 0x060E, /* consistent with regs arrays */
-		 .regs =	mt9e013_WVGA_strong_dvs_30fps	,
-		 .bin_factor_x =	1,
-		 .bin_factor_y =	1,
-		 .skip_frames = 1,
-	},
-	{
-		 .desc =	"720p_strong_dvs_30fps"	,
-		 .width =	1568	,
-		 .height =	880	,
-		 .fps =		30	,
-		 .used =	0	,
-		 .pixels_per_line = 0x1836, /* consistent with regs arrays */
-		 .lines_per_frame = 0x408, /* consistent with regs arrays */
-		 .regs =	mt9e013_720p_strong_dvs_30fps_low_fps	,
-		 .bin_factor_x =	1,
-		 .bin_factor_y =	1,
-		 .skip_frames = 1,
-	},
-	{
-		 .desc =	"1080p_strong_dvs_30fps",
-		 .width =	2336,
-		 .height =	1308,
-		 .fps =		30,
-		 .used =	0,
-		 .pixels_per_line = 0x113A, /* consistent with regs arrays */
-		 .lines_per_frame = 0x05AB, /* consistent with regs arrays */
-		 .regs =	mt9e013_1080p_strong_dvs_30fps,
-		 .bin_factor_x =	0,
-		 .bin_factor_y =	0,
-		 .skip_frames = 1,
-	},
-
-};
-
-#define N_RES_VIDEO_LOW_FPS (ARRAY_SIZE(mt9e013_res_video_low_fps))
-
-static struct mt9e013_resolution mt9e013_res_video_high_fps[] = {
-	{
-		 .desc =	"QCIF_strong_dvs_30fps"	,
-		 .width =	216	,
-		 .height =	176	,
-		 .fps =		30	,
-		 .used =	0	,
-		 .pixels_per_line = 0x1020, /* consistent with regs arrays */
-		 .lines_per_frame = 0x060E, /* consistent with regs arrays */
-		 .regs =	mt9e013_QCIF_strong_dvs_30fps	,
-		 .bin_factor_x =	2,
-		 .bin_factor_y =	2,
-		 .skip_frames = 1,
-	},
-	{
-		 .desc =	"QVGA_strong_dvs_30fps"	,
-		 .width =	408	,
-		 .height =	308	,
-		 .fps =		30	,
-		 .used =	0	,
-		 .pixels_per_line = 0x1020, /* consistent with regs arrays */
-		 .lines_per_frame = 0x060E, /* consistent with regs arrays */
-		 .regs =	mt9e013_QVGA_strong_dvs_30fps	,
-		 .bin_factor_x =	2,
-		 .bin_factor_y =	2,
-		 .skip_frames = 1,
-	},
-	{
-		 .desc =	"VGA_strong_dvs_30fps"	,
-		 .width =	820	,
-		 .height =	616	,
-		 .fps =		30	,
-		 .used =	0	,
-		 .pixels_per_line = 0x1020, /* consistent with regs arrays */
-		 .lines_per_frame = 0x060E, /* consistent with regs arrays */
-		 .regs =	mt9e013_VGA_strong_dvs_30fps	,
-		 .bin_factor_x =	2,
-		 .bin_factor_y =	2,
-		 .skip_frames = 1,
-	},
-	{
-		 .desc =	"WVGA_strong_dvs_30fps"	,
-		 .width =	1640	,
-		 .height =	1024	,
-		 .fps =		30	,
-		 .used =	0	,
-		 .pixels_per_line = 0x1020, /* consistent with regs arrays */
-		 .lines_per_frame = 0x060E, /* consistent with regs arrays */
-		 .regs =	mt9e013_WVGA_strong_dvs_30fps	,
-		 .bin_factor_x =	1,
-		 .bin_factor_y =	1,
-		 .skip_frames = 1,
-	},
-	{
-		 .desc =	"720p_strong_dvs_30fps"	,
-		 .width =	1568	,
-		 .height =	880	,
-		 .fps =		30	,
-		 .used =	0	,
-		 .pixels_per_line = 0x1020, /* consistent with regs arrays */
-		 .lines_per_frame = 0x060E, /* consistent with regs arrays */
-		 .regs =	mt9e013_720p_strong_dvs_30fps	,
-		 .bin_factor_x =	1,
-		 .bin_factor_y =	1,
-		 .skip_frames = 1,
-	},
-	{
-		 .desc =	"1080p_strong_dvs_30fps",
-		 .width =	2336,
-		 .height =	1308,
-		 .fps =		30,
-		 .used =	0,
-		 .pixels_per_line = 0x113A, /* consistent with regs arrays */
-		 .lines_per_frame = 0x05AB, /* consistent with regs arrays */
-		 .regs =	mt9e013_1080p_strong_dvs_30fps,
-		 .bin_factor_x =	0,
-		 .bin_factor_y =	0,
-		 .skip_frames = 1,
-	},
-};
-
-#define N_RES_VIDEO_HIGH_FPS (ARRAY_SIZE(mt9e013_res_video_high_fps))
-
-static struct mt9e013_resolution *mt9e013_res = mt9e013_res_preview;
-static int N_RES = N_RES_PREVIEW;
 
 static int
 mt9e013_read_reg(struct i2c_client *client, u16 len, u16 reg, u16 *val)
@@ -808,9 +511,7 @@ static long mt9e013_s_exposure(struct v4l2_subdev *sd,
 	fine_itg = exposure->integration_time[1];
 	gain = exposure->gain[0];
 
-/*
- * we should not accept the invalid value below.
- */
+	/* we should not accept the invalid value below */
 	if (fine_itg == 0 || gain == 0) {
 		struct i2c_client *client = v4l2_get_subdevdata(sd);
 		v4l2_err(client, "%s: invalid value\n", __func__);
@@ -1228,9 +929,10 @@ static int mt9e013_g_chip_ident(struct v4l2_subdev *sd,
 	return 0;
 }
 
-static int mt9e013_get_intg_factor(struct i2c_client *client,
-								   struct camera_mipi_info *info,
-								   const struct mt9e013_reg *reglist)
+static int
+mt9e013_get_intg_factor(struct i2c_client *client,
+			struct camera_mipi_info *info,
+			const struct mt9e013_reg *reglist)
 {
 	unsigned int	vt_pix_clk_div;
 	unsigned int	vt_sys_clk_div;
@@ -1289,7 +991,7 @@ static int mt9e013_get_intg_factor(struct i2c_client *client,
 	read_mode = data[0];
 
 	vt_pix_clk_freq_mhz = divsave_rounded(ext_clk_freq_mhz*pll_multiplier,
-								pre_pll_clk_div*vt_sys_clk_div*vt_pix_clk_div);
+				pre_pll_clk_div*vt_sys_clk_div*vt_pix_clk_div);
 
 	for (; next->type != MT9E013_TOK_TERM; next++) {
 		if (next->type == MT9E013_16BIT) {
@@ -1305,7 +1007,8 @@ static int mt9e013_get_intg_factor(struct i2c_client *client,
 		return -EINVAL;
 
 	buf.coarse_integration_time_min = coarse_integration_time_min;
-	buf.coarse_integration_time_max_margin = coarse_integration_time_max_margin;
+	buf.coarse_integration_time_max_margin =
+					coarse_integration_time_max_margin;
 	buf.fine_integration_time_min = fine_integration_time_min;
 	buf.fine_integration_time_max_margin = fine_integration_time_max_margin;
 	buf.vt_pix_clk_freq_mhz = vt_pix_clk_freq_mhz;
@@ -1666,7 +1369,8 @@ static int mt9e013_s_ctrl(struct v4l2_subdev *sd, struct v4l2_control *ctrl)
  * res->width/height smaller than w/h wouldn't be considered.
  * Returns the value of gap or -1 if fail.
  */
-static int distance(struct mt9e013_resolution const *res, const u32 w, const u32 h, const s32 m)
+static int distance(struct mt9e013_resolution const *res, const u32 w,
+		    const u32 h, const s32 m)
 {
 	u32 w_ratio = ((res->width<<13)/w);
 	u32 h_ratio = ((res->height<<13)/h);
@@ -1680,6 +1384,12 @@ static int distance(struct mt9e013_resolution const *res, const u32 w, const u32
 
 
 /*
+ * Tune this value so that the DVS resolutions get selected properly,
+ * but make sure 16:9 does not match 4:3
+ */
+#define LARGEST_ALLOWED_RATIO_MISMATCH 140
+
+/*
  * Returns the nearest higher resolution index.
  * @w: width
  * @h: height
@@ -1689,7 +1399,6 @@ static int distance(struct mt9e013_resolution const *res, const u32 w, const u32
  * matching only. if no match can be found again, -1 is
  * returned.
  */
-#define LARGEST_ALLOWED_RATIO_MISMATCH 140   /* tune this value so that the DVS resolutions get selected properly, but make sure 16:9 does not match 4:3*/
 static int nearest_resolution_index(int w, int h)
 {
 	int i, j;
@@ -1698,6 +1407,16 @@ static int nearest_resolution_index(int w, int h)
 	int min_dist = INT_MAX;
 	struct mt9e013_resolution *tmp_res = NULL;
 	s32 m = LARGEST_ALLOWED_RATIO_MISMATCH;
+
+#ifdef CONFIG_VIDEO_MT9E013_ENZO
+	/*
+	 * For 1080p or 1088p resolutions, we must select index 6.
+	 * This is an exception. If we let algorithm to run, this case
+	 * will fail.
+	 */
+	if (h == 1080 || h == 1088)
+		return 6;
+#endif
 
 	for (j = 0; j < 2; ++j) {
 		for (i = 0; i < N_RES; i++) {
@@ -1740,16 +1459,18 @@ static int mt9e013_try_mbus_fmt(struct v4l2_subdev *sd,
 	if (!fmt)
 		return -EINVAL;
 
-	if ((fmt->width > MT9E013_RES_WIDTH_MAX) || (fmt->height > MT9E013_RES_HEIGHT_MAX)) {
+	if (fmt->width > MT9E013_RES_WIDTH_MAX ||
+	    fmt->height > MT9E013_RES_HEIGHT_MAX) {
 		fmt->width = MT9E013_RES_WIDTH_MAX;
 		fmt->height = MT9E013_RES_HEIGHT_MAX;
 	} else {
 		idx = nearest_resolution_index(fmt->width, fmt->height);
 
 		/*
-		 * nearest_resolution_index() doesn't return smaller resolutions.
-		 * If it fails, it means the requested resolution is higher than we
-		 * can support. Fallback to highest possible resolution in this case.
+		 * nearest_resolution_index() doesn't return smaller
+		 * resolutions. If it fails, it means the requested
+		 * resolution is higher than we can support.
+		 * Fallback to highest possible resolution in this case.
 		 */
 		if (idx == -1)
 			idx = N_RES - 1;
@@ -1886,8 +1607,10 @@ static int mt9e013_s_stream(struct v4l2_subdev *sd, int enable)
 				{MT9E013_TOK_TERM, {0}, 0}
 			};
 
-			mt9e013_stream_enable[1].val = (MT9E013_MAX_FOCUS_POS - dev->focus) + 1;
-			mt9e013_stream_enable[3].val = (MT9E013_MAX_FOCUS_POS - dev->focus);
+			mt9e013_stream_enable[1].val =
+					MT9E013_MAX_FOCUS_POS - dev->focus + 1;
+			mt9e013_stream_enable[3].val =
+					MT9E013_MAX_FOCUS_POS - dev->focus;
 
 			ret = mt9e013_write_reg_array(client, mt9e013_stream_enable);
 		} else {
@@ -1946,8 +1669,11 @@ static int mt9e013_enum_frameintervals(struct v4l2_subdev *sd,
 	if (index >= N_RES)
 		return -EINVAL;
 
-	/* since the isp will donwscale the resolution to the right size, find the nearest one that will allow the isp to do so
-	 * important to ensure that the resolution requested is padded correctly by the requester, which is the atomisp driver in this case.
+	/*
+	 * Since the isp will donwscale the resolution to the right size,
+	 * find the nearest one that will allow the isp to do so important
+	 * to ensure that the resolution requested is padded correctly by
+	 * the requester, which is the atomisp driver in this case.
 	 */
 	index = nearest_resolution_index(fival->width, fival->height);
 
@@ -2128,24 +1854,12 @@ mt9e013_s_parm(struct v4l2_subdev *sd, struct v4l2_streamparm *param)
 	mutex_lock(&dev->input_lock);
 	switch (dev->run_mode) {
 	case CI_MODE_VIDEO:
-		if (dev->platform_data->low_fps &&
-		    dev->platform_data->low_fps()) {
-			mt9e013_res = mt9e013_res_video_low_fps;
-			N_RES = N_RES_VIDEO_LOW_FPS;
-		} else {
-			mt9e013_res = mt9e013_res_video_high_fps;
-			N_RES = N_RES_VIDEO_HIGH_FPS;
-		}
+		mt9e013_res = mt9e013_res_video;
+		N_RES = N_RES_VIDEO;
 		break;
 	case CI_MODE_STILL_CAPTURE:
-		if (dev->platform_data->low_fps &&
-		    dev->platform_data->low_fps()) {
-			mt9e013_res = mt9e013_res_still_low_fps;
-			N_RES = N_RES_STILL_LOW_FPS;
-		} else {
-			mt9e013_res = mt9e013_res_still_high_fps;
-			N_RES = N_RES_STILL_HIGH_FPS;
-		}
+		mt9e013_res = mt9e013_res_still;
+		N_RES = N_RES_STILL;
 		break;
 	default:
 		mt9e013_res = mt9e013_res_preview;

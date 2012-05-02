@@ -321,16 +321,8 @@ config VIDEO_KS0127
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called ks0127.
-config VIDEO_MT9E013
-	tristate "Micron mt9e013 sensor support"
-	depends on I2C && VIDEO_V4L2
-	---help---
-	  This is a Video4Linux2 sensor-level driver for the Micron
-	  mt0v011 1.3 Mpixel camera.
 
-	  9me013 is 8MP RAW sensor.
-
-	  It currently only works with the atomisp driver.
+source "drivers/media/video/mt9e013/Kconfig"
 
 config VIDEO_LC898211
 	tristate "LC898211 IC driver for Semco HVCA actuator/EEPROM modules"
