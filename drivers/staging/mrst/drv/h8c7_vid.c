@@ -66,6 +66,7 @@ static u32 h8c7_gamma_g[] = {0x3d3e3be1, 0x33323131, 0x0b070346, 0x110e100d,
 	0x3e3b1710, 0x3231313d, 0x07034633, 0x0e100d0b, 0x00171011};
 static u32 h8c7_gamma_b[] = {0x070601e2, 0x1f322a2d, 0x0e0c0540, 0x13121411,
 	0x0601180f, 0x322a2d07, 0x0c05401f, 0x1214110e, 0x00180f13};
+static u32 h8c7_enter_set_cabc[] = {0x1e001fc9, 0x0000001e, 0x00003e01};
 
 static u32 h8c7_mcs_protect_on[] = {0x000000b9};
 static u32 h8c7_set_address_mode[] = {0x00000036};
@@ -197,6 +198,11 @@ static void mdfld_h8c7_dpi_ic_init(struct mdfld_dsi_config *dsi_config, int pipe
 		cpu_relax();
 
 	mdfld_dsi_send_gen_long_lp(sender, h8c7_gamma_b, 36, 0);
+	wait_timeout = jiffies + (HZ / 100);
+	while (time_before_eq(jiffies, wait_timeout))
+		cpu_relax();
+
+	mdfld_dsi_send_mcs_long_lp(sender, h8c7_enter_set_cabc, 10, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
@@ -434,15 +440,6 @@ int mdfld_dsi_h8c7_set_brightness(struct mdfld_dsi_config *dsi_config,
 		mdfld_dsi_get_pkg_sender(dsi_config);
 	int duty_val = 0;
 	unsigned long wait_timeout;
-
-	/*
-	 * FIXME: need to check the CABA setting about brightness adjustment
-	 * range.
-	 */
-	if (level < MIN_BRIGHTNESS_LEVEL || level > MAX_BRIGHTNESS_LEVEL) {
-		PSB_DEBUG_ENTRY("Invalid brightness level: %d\n", level);
-		return -EINVAL;
-	}
 
 	if (!sender) {
 		DRM_ERROR("Failed to get DSI packet sender\n");
