@@ -35,6 +35,17 @@
 
 #include "lc898211.h"
 
+
+/*
+ * HACK: make driver to work with current 8-bit 3A while a correct 10-bit
+ * is coming. This is intended for test only. It does not guarantee accurate
+ * 3A work.
+ */
+#define LC898211_CONV_8_TO_10BIT
+
+/* Enable debug messages for development purpose */
+#define LC898211_DEBUG
+
 #define to_lc898211_dev(sd) container_of(sd, struct lc898211_dev, sd)
 
 static int
@@ -251,6 +262,18 @@ static int lc898211_t_focus_abs(struct v4l2_subdev *sd, s32 value)
 		return ret;
 	}
 
+#ifdef LC898211_DEBUG
+	{
+		s16 target;
+		lc898211_read_reg(client, LC898211_16BIT,
+				  LC898211_REG16_STMVEND, &target);
+		target = be16_to_cpu(target);
+		target /= (1 << 6);
+
+		printk(KERN_INFO "%s: focus: cur:%d read:%d applied:%d\n",
+		       __func__, focus, value, target);
+	}
+#endif
 	return 0;
 }
 
@@ -325,6 +348,18 @@ static int lc898211_t_focus_rel(struct v4l2_subdev *sd, s32 value)
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	s16 focus;
 	int ret;
+#ifdef LC898211_CONV_8_TO_10BIT
+	int rate = dev->af_tun.focus_abs_min - dev->af_tun.focus_abs_max;
+	s32 old_value = value;
+
+	rate /= 256;
+	value *= rate;
+	value <<= 1; /* Random hack to make 3A work better */
+#ifdef LC898211_DEBUG
+	printk(KERN_INFO "%s: rate:%d old_value:%d new_value:%d\n",
+	       __func__, rate, old_value, value);
+#endif
+#endif
 
 	ret = __lc898211_q_focus_abs(sd, &focus);
 	if (ret < 0) {
@@ -336,6 +371,11 @@ static int lc898211_t_focus_rel(struct v4l2_subdev *sd, s32 value)
 		/* Normalizing focus value */
 		focus >>= 6;
 	}
+
+#ifdef LC898211_DEBUG
+	printk(KERN_INFO "%s: cur_focus:%d requesting:%d\n",
+	       __func__, focus, focus + value);
+#endif
 
 	return lc898211_t_focus_abs(sd, focus + value);
 }
@@ -409,6 +449,17 @@ static int lc898211_q_focus_abs(struct v4l2_subdev *sd, s32 *value)
 	ret = __lc898211_q_focus_abs(sd, &focus);
 	if (ret < 0)
 		return ret;
+
+#ifdef LC898211_CONV_8_TO_10BIT
+	{
+		struct lc898211_dev *dev = to_lc898211_dev(sd);
+		int rate =  dev->af_tun.focus_abs_min -
+			    dev->af_tun.focus_abs_max;
+		rate = rate / 255;
+		focus -= dev->af_tun.focus_abs_max;
+		focus *= rate;
+	}
+#endif
 
 	*value = focus;
 
@@ -925,6 +976,11 @@ static int lc898211_probe(struct i2c_client *client,
 		goto err;
 	}
 
+#ifdef LC898211_DEBUG
+	printk(KERN_INFO "%s: min %d max %d inf %d macro %d\n", __func__,
+	       dev->af_tun.focus_abs_min, dev->af_tun.focus_abs_max,
+	       dev->af_tun.inf_pos, dev->af_tun.mac_pos);
+#endif
 	lc898211_power_down(&dev->sd);
 
 	v4l2_info(client, "LC898211 actuator successfully initialized\n");
