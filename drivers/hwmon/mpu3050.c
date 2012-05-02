@@ -578,9 +578,10 @@ static void mpu_early_suspend(struct early_suspend *h)
 {
 	struct mpu_data *mpu = container_of(h, struct mpu_data, es);
 
+	disable_irq(mpu->client->irq);
+
 	mutex_lock(&mpu->lock);
 	mpu_disable(mpu);
-	disable_irq(mpu->client->irq);
 	mutex_unlock(&mpu->lock);
 }
 
@@ -588,8 +589,9 @@ static void mpu_late_resume(struct early_suspend *h)
 {
 	struct mpu_data *mpu = container_of(h, struct mpu_data, es);
 
-	mutex_lock(&mpu->lock);
 	enable_irq(mpu->client->irq);
+
+	mutex_lock(&mpu->lock);
 	if (mpu->enabled)
 		mpu_enable(mpu);
 	mutex_unlock(&mpu->lock);
