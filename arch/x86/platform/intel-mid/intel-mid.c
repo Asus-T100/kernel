@@ -286,6 +286,22 @@ static void intel_mid_reboot(void)
 		intel_scu_ipc_simple_command(IPCMSG_COLD_RESET, 0);
 }
 
+static void intel_mid_emergency_reboot(char *cmd)
+{
+	/* Change system state to poll IPC status until IPC not busy*/
+	system_state = SYSTEM_RESTART;
+
+	while (intel_scu_ipc_check_status())
+		udelay(10);
+
+	if (force_cold_boot)
+		intel_scu_ipc_raw_cmd(IPCMSG_COLD_BOOT,
+			0, NULL, 0, NULL, 0, 0, 0);
+	else
+		intel_scu_ipc_raw_cmd(IPCMSG_COLD_RESET,
+			0, NULL, 0, NULL, 0, 0, 0);
+}
+
 /*
  * Moorestown specific x86_init function overrides and early setup
  * calls.
@@ -314,7 +330,8 @@ void __init x86_intel_mid_early_setup(void)
 
 	/* Moorestown specific power_off/restart method */
 	pm_power_off = intel_mid_power_off;
-	machine_ops.emergency_restart  = intel_mid_reboot;
+	machine_ops.restart = intel_mid_reboot;
+	machine_ops.emergency_restart  = intel_mid_emergency_reboot;
 
 	/* Avoid searching for BIOS MP tables */
 	x86_init.mpparse.find_smp_config = x86_init_noop;
