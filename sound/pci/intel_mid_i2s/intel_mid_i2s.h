@@ -22,6 +22,13 @@
 #include <linux/intel_mid_i2s_common.h>
 #include <linux/intel_mid_i2s_if.h>
 
+#ifdef CONFIG_X86_MRFLD
+#define __MRFL_SPECIFIC__
+
+/* For temporary MRFL work-around */
+/* To Be Removed when fixed */
+#define __MRFL_SPECIFIC_TMP__
+#endif /* CONFIG_X86_MRFLD */
 
 /*
  * Main Defines
@@ -41,6 +48,25 @@
 #define CLV_SSP0_DEVICE_ID	0x08F1
 #define CLV_SSP1_DEVICE_ID	0x08E8
 #define CLV_LPE_DMA_DEVICE_ID	0x08F0
+
+/* Merrifield */
+#define MRFL_SSP_DEVICE_ID      0x1193
+#define MRFL_LPE_DMA_DEVICE_ID  0x119B
+
+#ifdef __MRFL_SPECIFIC_TMP__
+/* FIXME: use of MRFL_SSPx_REG_BASE_ADDRESS should be
+ * avoided by PCI table reorganization which allow to
+ * determine SSP # from PCI info */
+#define MRFL_SSP0_REG_BASE_ADDRESS	(0xff2a0000)
+#define MRFL_SSP1_REG_BASE_ADDRESS	(0xff2a1000)
+#define MRFL_SSP2_REG_BASE_ADDRESS	(0xff2a2000)
+
+/* FIXME: use of fixed addresses should be
+ * replaced by a call to SST driver that will
+ * take care to access LPE Shim registers */
+#define MRFL_LPE_SHIM_REG_BASE_ADDRESS	(0xff340000)
+#define MRFL_LPE_SHIM_REG_SIZE		(0xE8)
+#endif /* __MRFL_SPECIFIC_TMP__ */
 
 /* SSP PCI device definitions */
 #define MRST_SSP_BAR	0
@@ -113,6 +139,9 @@ DEFINE_REG(LPE_IPCD, 0x40)	/* IPC SST-IA */
 DEFINE_REG(LPE_ISRD, 0x20)	/* dummy register for*/
 				/* shim workaround   */
 DEFINE_REG(LPE_CLKCTL, 0x78)
+#ifdef __MRFL_SPECIFIC__
+DEFINE_REG(LPE_CHICKEN_BITS, 0x88)
+#endif /* __MRFL_SPECIFIC__ */
 
 /* LPE_ISRX fields definitions */
 DEFINE_FIELD(LPE_ISRX, IAPIS_SSP0, 0x01, 3);
@@ -135,6 +164,24 @@ DEFINE_REG(SSTSA, 0x30)	/* SSP Tx Timeslot Active */
 DEFINE_REG(SSRSA, 0x34)	/* SSP Rx Timeslot Active */
 DEFINE_REG(SSTSS, 0x38)
 DEFINE_REG(SSACD, 0x3C)
+
+#ifdef __MRFL_SPECIFIC__
+DEFINE_REG(SSCR2, 0x40)
+DEFINE_REG(SSFS, 0x44)
+DEFINE_REG(FRAME_CNT0, 0x48)
+DEFINE_REG(FRAME_CNT1, 0x4C)
+DEFINE_REG(FRAME_CNT2, 0x50)
+DEFINE_REG(FRAME_CNT3, 0x54)
+DEFINE_REG(FRAME_CNT4, 0x58)
+DEFINE_REG(FRAME_CNT5, 0x5C)
+DEFINE_REG(FRAME_CNT6, 0x60)
+DEFINE_REG(FRAME_CNT7, 0x64)
+DEFINE_REG(SFIFOL, 0x68)
+DEFINE_REG(SFIFOTT, 0x6C)
+DEFINE_REG(SSCR3, 0x70)
+DEFINE_REG(SSCR4, 0x74)
+DEFINE_REG(SSCR5, 0x78)
+#endif /* __MRFL_SPECIFIC__ */
 
 /* SSP SSCR0 fields definitions */
 DEFINE_FIELD(SSCR0, DSS, 0x0F, 0);	/* Data Size Select [4..16] */
@@ -221,6 +268,16 @@ DEFINE_FIELD(SSSR, TFS, 0x1, 5);	/* Transmit FIFO Service Request */
 DEFINE_FIELD(SSSR, BSY, 0x1, 4);	/* SSP Busy */
 DEFINE_FIELD(SSSR, RNE, 0x1, 3);	/* Receive FIFO not empty */
 DEFINE_FIELD(SSSR, TNF, 0x1, 2);	/* Transmit FIFO not Full */
+
+#ifdef __MRFL_SPECIFIC__
+/* SSP SFIFOL fields definitions */
+DEFINE_FIELD(SFIFOL, RFL, 0xFFFF, 16)	/* Receive FIFO Level */
+DEFINE_FIELD(SFIFOL, TFL, 0xFFFF, 0)	/* Transmit FIFO Level */
+
+/* SSP SFIFOL fields definitions */
+DEFINE_FIELD(SFIFOTT, RFT, 0xFFFF, 16)	/* Receive FIFO Trigger Threshold */
+DEFINE_FIELD(SFIFOTT, TFT, 0xFFFF, 0)	/* Transmit FIFO Trigger Threshold */
+#endif /* __MRFL_SPECIFIC__ */
 
 
 /*

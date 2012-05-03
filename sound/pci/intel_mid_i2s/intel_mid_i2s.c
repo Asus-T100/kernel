@@ -30,6 +30,10 @@
 #include <linux/device.h>
 #include <linux/lnw_gpio.h>
 #include <linux/interrupt.h>
+#ifdef __MRFL_SPECIFIC__
+#include <linux/io.h>
+#endif
+
 #include <linux/intel_mid_i2s_common.h>
 #include <linux/intel_mid_i2s_if.h>
 #include "intel_mid_i2s.h"
@@ -40,7 +44,18 @@ MODULE_DESCRIPTION("Intel MID I2S/PCM SSP Driver");
 MODULE_LICENSE("GPL");
 MODULE_VERSION("1.0.4");
 
+
 #define CLOCK_19200_KHZ			19200000
+
+
+#ifdef __MRFL_SPECIFIC_TMP__
+/* FIXME: use of lpeshim_base_address should be
+ * avoided and replaced by a call to SST driver that will
+ * take care to access LPE Shim registers */
+
+/* LPE Shim registers base address (needed for HW IRQ acknowledge) */
+static void __iomem *lpeshim_base_address;
+#endif /* __MRFL_SPECIFIC_TMP__ */
 
 /*
  * Currently this limit to ONE modem on platform
@@ -67,6 +82,7 @@ static DEFINE_PCI_DEVICE_TABLE(pci_ids) = {
 	{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, MFLD_SSP0_DEVICE_ID) },
 	{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, CLV_SSP1_DEVICE_ID) },
 	{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, CLV_SSP0_DEVICE_ID) },
+	{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, MRFL_SSP_DEVICE_ID) },
 	{ 0, }, /* terminate list */
 };
 
@@ -1633,7 +1649,25 @@ static void ssp1_dump_registers(struct intel_mid_i2s_hdl *drv_data)
 	dev_dbg(ddbg, "dump SSTSS=0x%08X\n", status);
 	status = read_SSACD(reg);
 	dev_dbg(ddbg, "dump SSACD=0x%08X\n", status);
+
+#ifdef __MRFL_SPECIFIC__
+	status = read_SSCR2(reg);
+	dev_dbg(ddbg, "dump SSCR2=0x%08X\n", status);
+	status = read_SSFS(reg);
+	dev_dbg(ddbg, "dump SSFS=0x%08X\n", status);
+	status = read_SFIFOL(reg);
+	dev_dbg(ddbg, "dump SFIFOL=0x%08X\n", status);
+	status = read_SFIFOTT(reg);
+	dev_dbg(ddbg, "dump SFIFOTT=0x%08X\n", status);
+	status = read_SSCR3(reg);
+	dev_dbg(ddbg, "dump SSCR3=0x%08X\n", status);
+	status = read_SSCR4(reg);
+	dev_dbg(ddbg, "dump SSCR4=0x%08X\n", status);
+	status = read_SSCR5(reg);
+	dev_dbg(ddbg, "dump SSCR5=0x%08X\n", status);
+#endif /* __MRFL_SPECIFIC__ */
 }
+
 
 /**
  * i2s_irq(): function that handles the SSP Interrupts (errors)
@@ -1659,6 +1693,10 @@ static irqreturn_t i2s_irq(int irq, void *dev_id)
 	u32			 sssr_masked	= 0;
 	/* SSSR bits that need to be cleared after event handling */
 	u32			 sssr_clr_mask	= 0;
+#ifdef __MRFL_SPECIFIC__
+	/* SSSR register content */
+	u32			 isrx		= 0;
+#endif /* __MRFL_SPECIFIC__ */
 
 #ifdef CONFIG_PM_SLEEP
 	if (ddbg->power.is_prepared)
@@ -1727,6 +1765,17 @@ static irqreturn_t i2s_irq(int irq, void *dev_id)
 	/* Clear sticky bits */
 	write_SSSR((sssr & sssr_clr_mask), reg);
 
+#ifdef __MRFL_SPECIFIC_TMP__
+	/* FIXME: use of fixed addresses should be
+	 * replaced by a call to SST driver that will
+	 * take care to access LPE Shim registers */
+
+	/* Clear LPE sticky bits depending on SSP instance */
+	isrx = LPE_ISRX_IAPIS_SSP0_MASK << (LPE_ISRX_IAPIS_SSP0_SHIFT
+					+ drv_data->device_instance);
+	write_LPE_ISRX(isrx, lpeshim_base_address);
+#endif /* __MRFL_SPECIFIC_TMP__ */
+
 i2s_irq_return:
 	return irq_status;
 }
@@ -1776,7 +1825,13 @@ irqreturn_t i2s_irq_handle_RFS(struct intel_mid_i2s_hdl *drv_data, u32 sssr)
 		/* Schedule irq thread for final treatment
 		 * in i2s_irq_deferred */
 		set_bit(I2S_PORT_COMPLETE_READ, &drv_data->flags);
+#ifndef __MRFL_SPECIFIC_TMP__
 		irq_status = IRQ_WAKE_THREAD;
+#else /* __MRFL_SPECIFIC_TMP__ */
+		/* FIXME:
+		 * remove when threaded irq will work on MRFL kernel */
+		irq_status = i2s_irq_deferred(drv_data->irq, (void *)drv_data);
+#endif /* __MRFL_SPECIFIC_TMP__ */
 	}
 
 i2s_irq_handle_RFS_return:
@@ -1829,7 +1884,13 @@ irqreturn_t i2s_irq_handle_TFS(struct intel_mid_i2s_hdl *drv_data, u32 sssr)
 		/* Schedule irq thread for final treatment
 		 * in i2s_irq_deferred */
 		set_bit(I2S_PORT_COMPLETE_WRITE, &drv_data->flags);
+#ifndef __MRFL_SPECIFIC_TMP__
 		irq_status = IRQ_WAKE_THREAD;
+#else /* __MRFL_SPECIFIC_TMP__ */
+		/* FIXME:
+		 * remove when threaded irq will work on MRFL kernel */
+		irq_status = i2s_irq_deferred(drv_data->irq, (void *)drv_data);
+#endif /* __MRFL_SPECIFIC_TMP__*/
 	}
 
 i2s_irq_handle_TFS_return:
@@ -2244,6 +2305,9 @@ static void set_ssp_i2s_hw(struct intel_mid_i2s_hdl *drv_data,
 	u32 sssr = 0;
 	u32 ssacd = 0;
 	u32 sscr0_scr;
+#ifdef __MRFL_SPECIFIC__
+	u32 sfifott = 0;
+#endif /* __MRFL_SPECIFIC__ */
 	u8 frame_rate_divider;
 
 	/* Get the SSP Settings */
@@ -2363,6 +2427,14 @@ static void set_ssp_i2s_hw(struct intel_mid_i2s_hdl *drv_data,
 	     | (SSSR_PINT_MASK << SSSR_PINT_SHIFT)
 	     | (SSSR_ROR_MASK << SSSR_ROR_SHIFT);
 
+#ifdef __MRFL_SPECIFIC__
+	sfifott = replace_SFIFOTT_RFT(sfifott,
+			SSCR1_RxTresh(ps_settings->ssp_rx_fifo_threshold));
+	sfifott = replace_SFIFOTT_TFT(sfifott,
+			SSCR1_TxTresh(ps_settings->ssp_tx_fifo_threshold));
+	dev_dbg(ddbg, "WRITE SFIFOTT: 0x%08X\n", sfifott);
+#endif /* __MRFL_SPECIFIC__ */
+
 	/* disable SSP */
 	clear_SSCR0_reg(reg, SSE);
 	dev_dbg(ddbg, "WRITE SSCR0 DISABLE\n");
@@ -2379,6 +2451,9 @@ static void set_ssp_i2s_hw(struct intel_mid_i2s_hdl *drv_data,
 	write_SSTSA(sstsa, reg);
 	write_SSRSA(ssrsa, reg);
 	write_SSACD(ssacd, reg);
+#ifdef __MRFL_SPECIFIC__
+	write_SFIFOTT(sfifott, reg);
+#endif /* __MRFL_SPECIFIC__ */
 
 	/* set the time out for the reception */
 	write_SSTO(0, reg);
@@ -2448,6 +2523,24 @@ intel_mid_i2s_find_usage(struct pci_dev *pdev,
 		}
 	}
 #endif
+#ifdef __MRFL_SPECIFIC_TMP__
+	/* FIXME: will be remove when correct ADID generated in PCI table */
+	if (*usage == SSP_USAGE_UNASSIGNED) {
+		dev_warn(&(pdev->dev), "Incorrect ADID: MRFL WA => assign 1\n");
+
+		switch (drv_data->paddr) {
+		case MRFL_SSP0_REG_BASE_ADDRESS:
+			*usage	= SSP_USAGE_MODEM;
+			break;
+		case MRFL_SSP1_REG_BASE_ADDRESS:
+			*usage	= SSP_USAGE_BLUETOOTH_FM;
+			break;
+		case MRFL_SSP2_REG_BASE_ADDRESS:
+			/* Won't probe : no usage */
+			break;
+		}
+	}
+#endif /* __MRFL_SPECIFIC_TMP__ */
 
 	if (*usage == SSP_USAGE_UNASSIGNED) {
 		dev_info((&pdev->dev),
@@ -2474,6 +2567,28 @@ intel_mid_i2s_find_usage(struct pci_dev *pdev,
 	case CLV_SSP1_DEVICE_ID:
 		drv_data->device_instance = SSP1_INSTANCE;
 		break;
+
+	case MRFL_SSP_DEVICE_ID:
+#ifdef __MRFL_SPECIFIC_TMP__
+		/* FIXME: use of MRFL_SSPx_REG_BASE_ADDRESS should be
+		 * avoided by PCI table reorganization which allow to
+		 * determine SSP # from PCI info */
+
+		/* Get device instance using register base address */
+		switch (drv_data->paddr) {
+		case MRFL_SSP0_REG_BASE_ADDRESS:
+			drv_data->device_instance = SSP0_INSTANCE;
+			break;
+		case MRFL_SSP1_REG_BASE_ADDRESS:
+			drv_data->device_instance = SSP1_INSTANCE;
+			break;
+		case MRFL_SSP2_REG_BASE_ADDRESS:
+			drv_data->device_instance = SSP2_INSTANCE;
+			break;
+		}
+		break;
+#endif /* __MRFL_SPECIFIC_TMP__ */
+
 	default:
 		dev_err(&(pdev->dev),
 			"Can not determine device instance (PCI ID:%04x)\n",
@@ -2481,10 +2596,6 @@ intel_mid_i2s_find_usage(struct pci_dev *pdev,
 		status = -ENODEV;
 		goto err_find_usage;
 	}
-
-	status = pci_enable_device(pdev);
-	if (status)
-		dev_err((&pdev->dev), "Can not enable device.Err=%d\n", status);
 
 err_find_usage:
 	return status;
@@ -2515,20 +2626,25 @@ static int intel_mid_i2s_probe(struct pci_dev *pdev,
 	}
 	dev_info((&pdev->dev), "Detected PCI SSP (ID: %04x:%04x)\n",
 				pdev->vendor, pdev->device);
-	status = intel_mid_i2s_find_usage(pdev, drv_data, &usage, &ssp_fs_pin);
-	if (status)
+
+	/* Enable device */
+	status = pci_enable_device(pdev);
+	if (status) {
+		dev_err((&pdev->dev), "Can not enable device.Err=%d\n", status);
 		goto err_i2s_probe0;
+	}
 
 	mutex_init(&drv_data->mutex);
 	drv_data->pdev = pdev;
-	drv_data->usage = usage;
+
 	/*
 	 * Get basic io resource and map it for SSP1 [BAR=0]
 	 */
 	if ((pdev->device == MFLD_SSP0_DEVICE_ID) ||
 	    (pdev->device == MFLD_SSP1_DEVICE_ID) ||
 	    (pdev->device == CLV_SSP0_DEVICE_ID) ||
-	    (pdev->device == CLV_SSP1_DEVICE_ID)) {
+	    (pdev->device == CLV_SSP1_DEVICE_ID) ||
+	    (pdev->device == MRFL_SSP_DEVICE_ID)) {
 		drv_data->paddr = pci_resource_start(pdev, MRST_SSP_BAR);
 		drv_data->iolen = pci_resource_len(pdev, MRST_SSP_BAR);
 		status = pci_request_region(pdev, MRST_SSP_BAR,
@@ -2559,6 +2675,13 @@ static int intel_mid_i2s_probe(struct pci_dev *pdev,
 
 	dev_dbg(&(pdev->dev), "ioaddr = : %p\n", drv_data->ioaddr);
 
+	/* Find SSP usage */
+	status = intel_mid_i2s_find_usage(pdev, drv_data, &usage, &ssp_fs_pin);
+	if (status)
+		goto err_i2s_probe3;
+
+	drv_data->usage = usage;
+
 	/* prepare for DMA channel allocation */
 	/* get the pci_dev structure pointer */
 	switch (pdev->device) {
@@ -2573,6 +2696,12 @@ static int intel_mid_i2s_probe(struct pci_dev *pdev,
 	case CLV_SSP1_DEVICE_ID:
 		drv_data->dmac1 = pci_get_device(PCI_VENDOR_ID_INTEL,
 						 CLV_LPE_DMA_DEVICE_ID,
+						 NULL);
+	break;
+
+	case MRFL_SSP_DEVICE_ID:
+		drv_data->dmac1 = pci_get_device(PCI_VENDOR_ID_INTEL,
+						 MRFL_LPE_DMA_DEVICE_ID,
 						 NULL);
 	break;
 
@@ -2603,6 +2732,7 @@ static int intel_mid_i2s_probe(struct pci_dev *pdev,
 		  | (SSCR1_TTE_MASK << SSCR1_TTE_SHIFT),
 		  drv_data->ioaddr);
 
+#ifndef __MRFL_SPECIFIC__ /* WA not required for MRFL */
 	/*
 	 * Switch the SSP_FS pin from GPIO Input Mode
 	 * to functional Mode
@@ -2624,19 +2754,31 @@ static int intel_mid_i2s_probe(struct pci_dev *pdev,
 	dev_dbg(&pdev->dev, "SET GPIO_A0N %d to %d Mode\n",
 		ssp_fs_pin.ssp_fs_gpio_mapping,
 		ssp_fs_pin.ssp_fs_mode);
+#endif /* __MRFL_SPECIFIC__ */
 
 
 	/* Attach to IRQ */
 	drv_data->irq = pdev->irq;
 
+#ifndef __MRFL_SPECIFIC_TMP__
 	dev_dbg(&(pdev->dev), "attaching to IRQ: %04x\n", pdev->irq);
 
 	status = request_threaded_irq(drv_data->irq,
-				      i2s_irq,
-				      i2s_irq_deferred,
-				      IRQF_SHARED,
-				      "i2s ssp",
-				      drv_data);
+					  i2s_irq,
+					  i2s_irq_deferred,
+					  IRQF_SHARED,
+					  "i2s ssp",
+					  drv_data);
+#else /* __MRFL_SPECIFIC_TMP__ */
+	/* FIXME: remove when threaded irq will work on MRFL kernel */
+	dev_info(&(pdev->dev), "attaching to IRQ: %04x\n", pdev->irq);
+
+	status = request_irq(drv_data->irq,
+					  i2s_irq,
+					  IRQF_SHARED,
+					  "i2s ssp",
+					  drv_data);
+#endif /* __MRFL_SPECIFIC_TMP__ */
 
 	if (status < 0)	{
 		dev_err(&pdev->dev, "can not get IRQ. status err=%d\n", status);
@@ -2710,6 +2852,15 @@ static int __init intel_mid_i2s_init(void)
 {
 	clear_bit(MODEM_FND, &modem_found_and_i2s_setup_ok);
 
+#ifdef __MRFL_SPECIFIC_TMP__
+	/* FIXME: use of MRFL_LPE_SHIM_REG_BASE_ADDRESS should be
+	 * avoided and replaced by a call to SST driver that will
+	 * take care to access LPE Shim registers */
+
+	lpeshim_base_address = ioremap(MRFL_LPE_SHIM_REG_BASE_ADDRESS,
+					MRFL_LPE_SHIM_REG_SIZE);
+#endif /* __MRFL_SPECIFIC_TMP__ */
+
 	return pci_register_driver(&intel_mid_i2s_driver);
 }
 
@@ -2721,6 +2872,3 @@ static void __exit intel_mid_i2s_exit(void)
 
 module_init_async(intel_mid_i2s_init);
 module_exit(intel_mid_i2s_exit);
-
-
-
