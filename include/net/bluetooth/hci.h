@@ -30,6 +30,10 @@
 #define HCI_MAX_EVENT_SIZE	260
 #define HCI_MAX_FRAME_SIZE	(HCI_MAX_ACL_SIZE + 4)
 
+/* HCI dev name management */
+#define HCI_NAME_MAX			20
+#define HCI_NAME_MSEC_DELAY		50
+
 /* HCI dev events */
 #define HCI_DEV_REG			1
 #define HCI_DEV_UNREG			2

@@ -9,6 +9,8 @@
 #include <net/bluetooth/bluetooth.h>
 #include <net/bluetooth/hci_core.h>
 
+static atomic_t hci_name[HCI_NAME_MAX];
+
 static struct class *bt_class;
 
 struct dentry *bt_debugfs;
@@ -88,8 +90,18 @@ static struct device_type bt_link = {
 
 static void add_conn(struct work_struct *work)
 {
-	struct hci_conn *conn = container_of(work, struct hci_conn, work_add);
+	struct hci_conn *conn = container_of(work, struct hci_conn,
+								work_add.work);
 	struct hci_dev *hdev = conn->hdev;
+
+	if (conn->handle < HCI_NAME_MAX &&
+					atomic_read(&hci_name[conn->handle])) {
+		queue_delayed_work(conn->hdev->workqueue, &conn->work_add,
+					msecs_to_jiffies(HCI_NAME_MSEC_DELAY));
+		return;
+	}
+	if (conn->handle < HCI_NAME_MAX)
+		atomic_set(&hci_name[conn->handle], 1);
 
 	dev_set_name(&conn->dev, "%s:%d", hdev->name, conn->handle);
 
@@ -97,6 +109,8 @@ static void add_conn(struct work_struct *work)
 
 	if (device_add(&conn->dev) < 0) {
 		BT_ERR("Failed to register connection device");
+		if (conn->handle < HCI_NAME_MAX)
+			atomic_set(&hci_name[conn->handle], 0);
 		return;
 	}
 
@@ -135,6 +149,8 @@ static void del_conn(struct work_struct *work)
 	put_device(&conn->dev);
 
 	hci_dev_put(hdev);
+	if (conn->handle < HCI_NAME_MAX)
+		atomic_set(&hci_name[conn->handle], 0);
 }
 
 void hci_conn_init_sysfs(struct hci_conn *conn)
@@ -149,7 +165,7 @@ void hci_conn_init_sysfs(struct hci_conn *conn)
 
 	device_initialize(&conn->dev);
 
-	INIT_WORK(&conn->work_add, add_conn);
+	INIT_DELAYED_WORK(&conn->work_add, add_conn);
 	INIT_WORK(&conn->work_del, del_conn);
 }
 
@@ -157,7 +173,8 @@ void hci_conn_add_sysfs(struct hci_conn *conn)
 {
 	BT_DBG("conn %p", conn);
 
-	queue_work(conn->hdev->workqueue, &conn->work_add);
+	queue_delayed_work(conn->hdev->workqueue, &conn->work_add,
+					msecs_to_jiffies(HCI_NAME_MSEC_DELAY));
 }
 
 void hci_conn_del_sysfs(struct hci_conn *conn)
@@ -590,11 +607,15 @@ void hci_unregister_sysfs(struct hci_dev *hdev)
 
 int __init bt_sysfs_init(void)
 {
+	int i;
+
 	bt_debugfs = debugfs_create_dir("bluetooth", NULL);
 
 	bt_class = class_create(THIS_MODULE, "bluetooth");
 	if (IS_ERR(bt_class))
 		return PTR_ERR(bt_class);
+	for (i = 0; i < HCI_NAME_MAX; i++)
+		atomic_set(&hci_name[i], 0);
 
 	return 0;
 }
