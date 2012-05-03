@@ -168,7 +168,11 @@ static int mipi_hdmi_vsync_check(struct drm_device *dev, uint32_t pipe)
 	unsigned long irqflags;
 
 	spin_lock_irqsave(&dev_priv->irqmask_lock, irqflags);
+#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
+	if (dev_priv->bhdmiconnected && dev_priv->dpi_panel_on) {
+#else
 	if (dev_priv->bhdmiconnected && dsi_config->dsi_hw_context.panel_on) {
+#endif
 		if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, OSPM_UHB_ONLY_IF_ON)) {
 			pipea_stat = REG_READ(psb_pipestat(0));
 			pipeb_stat = REG_READ(psb_pipestat(1));
