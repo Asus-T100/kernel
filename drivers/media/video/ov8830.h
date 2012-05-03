@@ -143,6 +143,8 @@ struct drv201_device {
 #define OV8830_X_OUTPUT_SIZE	0x034C
 #define OV8830_Y_OUTPUT_SIZE	0x034E
 
+#define OV8830_TIMING_X_INC		0x3814
+#define OV8830_TIMING_Y_INC		0x3815
 
 /*
  * focal length bits definition:

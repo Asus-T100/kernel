@@ -44,6 +44,8 @@
 
 #include "ov8830.h"
 
+#define OV8830_BIN_FACTOR_MAX	2
+
 #define to_ov8830_sensor(sd) container_of(sd, struct ov8830_device, sd)
 
 #define HOME_POS 255
@@ -2163,6 +2165,30 @@ static int ov8830_g_fnumber_range(struct v4l2_subdev *sd, s32 *val)
 	return 0;
 }
 
+static int ov8830_g_bin_factor_x(struct v4l2_subdev *sd, s32 *val)
+{
+	struct ov8830_device *dev = to_ov8830_sensor(sd);
+	int r = ov8830_get_register(sd, OV8830_TIMING_X_INC,
+		ov8830_res[dev->fmt_idx].regs);
+
+	if (r < 0)
+		return r;
+
+	return fls((r >> 4) + (r & 0xF)) - 2;
+}
+
+static int ov8830_g_bin_factor_y(struct v4l2_subdev *sd, s32 *val)
+{
+	struct ov8830_device *dev = to_ov8830_sensor(sd);
+	int r = ov8830_get_register(sd, OV8830_TIMING_Y_INC,
+		ov8830_res[dev->fmt_idx].regs);
+
+	if (r < 0)
+		return r;
+
+	return fls((r >> 4) + (r & 0xF)) - 2;
+}
+
 static struct ov8830_control ov8830_controls[] = {
 	{
 		.qc = {
@@ -2279,7 +2305,33 @@ static struct ov8830_control ov8830_controls[] = {
 			.flags = 0,
 		},
 		.query = ov8830_g_fnumber_range,
-	}
+	},
+	{
+		.qc = {
+			.id = V4L2_CID_BIN_FACTOR_HORZ,
+			.type = V4L2_CTRL_TYPE_INTEGER,
+			.name = "horizontal binning factor",
+			.minimum = 0,
+			.maximum = OV8830_BIN_FACTOR_MAX,
+			.step = 1,
+			.default_value = 0,
+			.flags = V4L2_CTRL_FLAG_READ_ONLY,
+		},
+		.query = ov8830_g_bin_factor_x,
+	},
+	{
+		.qc = {
+			.id = V4L2_CID_BIN_FACTOR_VERT,
+			.type = V4L2_CTRL_TYPE_INTEGER,
+			.name = "vertical binning factor",
+			.minimum = 0,
+			.maximum = OV8830_BIN_FACTOR_MAX,
+			.step = 1,
+			.default_value = 0,
+			.flags = V4L2_CTRL_FLAG_READ_ONLY,
+		},
+		.query = ov8830_g_bin_factor_y,
+	},
 };
 #define N_CONTROLS (ARRAY_SIZE(ov8830_controls))
 
