@@ -57,25 +57,21 @@
 #define MISENSOR_TOK_POLL	0xfc00	/* token indicating poll instruction */
 #define MISENSOR_TOK_RMW	0x0010  /* RMW operation */
 #define MISENSOR_TOK_MASK	0xfff0
-#define MISENSOR_FLIP_EN	(1<<1)	/* enable vert_flip */
-#define MISENSOR_MIRROR_EN	(1<<0)	/* enable horz_mirror */
 #define MISENSOR_AWB_STEADY	(1<<0)	/* awb steady */
 #define MISENSOR_AE_READY	(1<<3)	/* ae status ready */
 
 /* mask to set sensor read_mode via misensor_rmw_reg */
 #define MISENSOR_R_MODE_MASK	0x0330
 /* mask to set sensor vert_flip and horz_mirror */
-#define MISENSOR_F_M_MASK	0x0003
+#define MISENSOR_VFLIP_MASK	0x0002
+#define MISENSOR_HFLIP_MASK	0x0001
+#define MISENSOR_FLIP_EN	1
+#define MISENSOR_FLIP_DIS	0
 
 /* bits set to set sensor read_mode via misensor_rmw_reg */
 #define MISENSOR_SKIPPING_SET	0x0011
 #define MISENSOR_SUMMING_SET	0x0033
 #define MISENSOR_NORMAL_SET	0x0000
-
-/* bits set to set sensor vert_flip and horz_mirror */
-#define MISENSOR_F_M_EN	(MISENSOR_FLIP_EN | MISENSOR_MIRROR_EN)
-#define MISENSOR_F_EN		MISENSOR_FLIP_EN
-#define MISENSOR_F_M_DIS	(MISENSOR_FLIP_EN & MISENSOR_MIRROR_EN)
 
 /* sensor register that control sensor read-mode and mirror */
 #define MISENSOR_READ_MODE	0xC834

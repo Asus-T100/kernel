@@ -816,6 +816,36 @@ static int mt9m114_g_fnumber_range(struct v4l2_subdev *sd, s32 * val)
 	return 0;
 }
 
+/* Horizontal flip the image. */
+static int mt9m114_g_hflip(struct v4l2_subdev *sd, s32 * val)
+{
+	struct i2c_client *c = v4l2_get_subdevdata(sd);
+	int ret;
+	u32 data;
+	ret = mt9m114_read_reg(c, MISENSOR_16BIT,
+			(u32)MISENSOR_READ_MODE, &data);
+	if (ret)
+		return ret;
+	*val = !!(data & MISENSOR_HFLIP_MASK);
+
+	return 0;
+}
+
+static int mt9m114_g_vflip(struct v4l2_subdev *sd, s32 * val)
+{
+	struct i2c_client *c = v4l2_get_subdevdata(sd);
+	int ret;
+	u32 data;
+
+	ret = mt9m114_read_reg(c, MISENSOR_16BIT,
+			(u32)MISENSOR_READ_MODE, &data);
+	if (ret)
+		return ret;
+	*val = !!(data & MISENSOR_VFLIP_MASK);
+
+	return 0;
+}
+
 static int mt9m114_s_freq(struct v4l2_subdev *sd, s32  val)
 {
 	struct i2c_client *c = v4l2_get_subdevdata(sd);
@@ -855,6 +885,7 @@ static struct mt9m114_control mt9m114_controls[] = {
 			.step = 1,
 			.default_value = 0,
 		},
+		.query = mt9m114_g_vflip,
 		.tweak = mt9m114_t_vflip,
 	},
 	{
@@ -867,6 +898,7 @@ static struct mt9m114_control mt9m114_controls[] = {
 			.step = 1,
 			.default_value = 0,
 		},
+		.query = mt9m114_g_hflip,
 		.tweak = mt9m114_t_hflip,
 	},
 	{
@@ -1025,7 +1057,6 @@ static int mt9m114_t_hflip(struct v4l2_subdev *sd, int value)
 	struct i2c_client *c = v4l2_get_subdevdata(sd);
 	struct mt9m114_device *dev = to_mt9m114_sensor(sd);
 	int err;
-
 	/* set for direct mode */
 	err = mt9m114_write_reg(c, MISENSOR_16BIT, 0x098E, 0xC850);
 	if (value) {
@@ -1036,9 +1067,8 @@ static int mt9m114_t_hflip(struct v4l2_subdev *sd, int value)
 		err += misensor_rmw_reg(c, MISENSOR_8BIT, 0xC888, 0x01, 0x01);
 		err += misensor_rmw_reg(c, MISENSOR_8BIT, 0xC889, 0x01, 0x01);
 
-		/* enable vert_flip and horz_mirror */
 		err += misensor_rmw_reg(c, MISENSOR_16BIT, MISENSOR_READ_MODE,
-					MISENSOR_F_M_MASK, MISENSOR_F_M_EN);
+					MISENSOR_HFLIP_MASK, MISENSOR_FLIP_EN);
 
 		dev->bpat = MT9M114_BPAT_GRGRBGBG;
 	} else {
@@ -1049,9 +1079,8 @@ static int mt9m114_t_hflip(struct v4l2_subdev *sd, int value)
 		err += misensor_rmw_reg(c, MISENSOR_8BIT, 0xC888, 0x01, 0x00);
 		err += misensor_rmw_reg(c, MISENSOR_8BIT, 0xC889, 0x01, 0x00);
 
-		/* enable vert_flip and disable horz_mirror */
 		err += misensor_rmw_reg(c, MISENSOR_16BIT, MISENSOR_READ_MODE,
-					MISENSOR_F_M_MASK, MISENSOR_F_EN);
+					MISENSOR_HFLIP_MASK, MISENSOR_FLIP_DIS);
 
 		dev->bpat = MT9M114_BPAT_BGBGGRGR;
 	}
@@ -1067,7 +1096,6 @@ static int mt9m114_t_vflip(struct v4l2_subdev *sd, int value)
 {
 	struct i2c_client *c = v4l2_get_subdevdata(sd);
 	int err;
-
 	/* set for direct mode */
 	err = mt9m114_write_reg(c, MISENSOR_16BIT, 0x098E, 0xC850);
 	if (value >= 1) {
@@ -1078,9 +1106,8 @@ static int mt9m114_t_vflip(struct v4l2_subdev *sd, int value)
 		err += misensor_rmw_reg(c, MISENSOR_8BIT, 0xC888, 0x02, 0x01);
 		err += misensor_rmw_reg(c, MISENSOR_8BIT, 0xC889, 0x02, 0x01);
 
-		/* disable vert_flip and horz_mirror */
 		err += misensor_rmw_reg(c, MISENSOR_16BIT, MISENSOR_READ_MODE,
-					MISENSOR_F_M_MASK, MISENSOR_F_M_DIS);
+					MISENSOR_VFLIP_MASK, MISENSOR_FLIP_EN);
 	} else {
 		/* disable H flip - ctx A */
 		err += misensor_rmw_reg(c, MISENSOR_8BIT, 0xC850, 0x02, 0x00);
@@ -1089,9 +1116,8 @@ static int mt9m114_t_vflip(struct v4l2_subdev *sd, int value)
 		err += misensor_rmw_reg(c, MISENSOR_8BIT, 0xC888, 0x02, 0x00);
 		err += misensor_rmw_reg(c, MISENSOR_8BIT, 0xC889, 0x02, 0x00);
 
-		/* enable vert_flip and disable horz_mirror */
 		err += misensor_rmw_reg(c, MISENSOR_16BIT, MISENSOR_READ_MODE,
-					MISENSOR_F_M_MASK, MISENSOR_F_EN);
+					MISENSOR_VFLIP_MASK, MISENSOR_FLIP_DIS);
 	}
 
 	err += mt9m114_write_reg(c, MISENSOR_8BIT, 0x8404, 0x06);
