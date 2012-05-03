@@ -28,7 +28,9 @@
 enum intel_mid_i2s_ssp_usage {
 	SSP_USAGE_UNASSIGNED = 0x00,
 	SSP_USAGE_BLUETOOTH_FM = 0x01,
-	SSP_USAGE_MODEM = 0x02
+	SSP_USAGE_MODEM = 0x02,
+
+	SSP_USAGE_COUNT = 0x03
 };
 
 enum intel_mid_i2s_ssp_cmd {
@@ -39,7 +41,10 @@ enum intel_mid_i2s_ssp_cmd {
 	SSP_CMD_ALLOC_TX = 0x04,
 	SSP_CMD_FREE_TX = 0x05,
 	SSP_CMD_ALLOC_RX = 0x06,
-	SSP_CMD_FREE_RX = 0x07
+	SSP_CMD_FREE_RX = 0x07,
+	SSP_CMD_ABORT = 0x08,
+
+	SSP_CMD_COUNT = 0x09
 };
 
 struct intel_mid_i2s_lli {

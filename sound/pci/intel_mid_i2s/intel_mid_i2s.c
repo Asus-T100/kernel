@@ -99,6 +99,15 @@ static struct pci_driver intel_mid_i2s_driver = {
 };
 
 /*
+ * Local functions declaration
+ */
+static inline void i2s_enable(struct intel_mid_i2s_hdl *drv_data);
+static inline void i2s_disable(struct intel_mid_i2s_hdl *drv_data);
+
+static void i2s_finalize_read(struct intel_mid_i2s_hdl *drv_data);
+static void i2s_finalize_write(struct intel_mid_i2s_hdl *drv_data);
+
+/*
  * POWER MANAGEMENT FUNCTIONS
  */
 
@@ -974,7 +983,7 @@ void intel_mid_i2s_close(struct intel_mid_i2s_hdl *drv_data)
 
 	reg = drv_data->ioaddr;
 	dev_dbg(&drv_data->pdev->dev, "Stopping the SSP\n");
-	clear_SSCR0_reg(reg, SSE);
+	i2s_disable(drv_data);
 	put_device(&drv_data->pdev->dev);
 	write_SSCR0(0, reg);
 
@@ -992,6 +1001,28 @@ EXPORT_SYMBOL_GPL(intel_mid_i2s_close);
 /*
  * INTERNAL FUNCTIONS
  */
+
+/**
+ * i2s_enable -  enable SSP device
+ * @drv_data : pointer to driver data
+ *
+ * Writes SSP register to enable the device
+ */
+static inline void i2s_enable(struct intel_mid_i2s_hdl *drv_data)
+{
+	set_SSCR0_reg(drv_data->ioaddr, SSE);
+}
+
+/**
+ * i2s_disable -  disable SSP device
+ * @drv_data : pointer to driver data
+ *
+ * Writes SSP register to disable the device
+ */
+static inline void i2s_disable(struct intel_mid_i2s_hdl *drv_data)
+{
+	clear_SSCR0_reg(drv_data->ioaddr, SSE);
+}
 
 /**
  * check_device -  return if the device is the usage we want (usage =*data)
@@ -1333,16 +1364,38 @@ int intel_mid_i2s_command(struct intel_mid_i2s_hdl *drv_data,
 	/* actions */
 	switch (cmd) {
 
+	case SSP_CMD_ABORT:
+		/* Abort write */
+		if (test_and_clear_bit(I2S_PORT_WRITE_BUSY, &drv_data->flags)) {
+			dev_dbg(&(drv_data->pdev->dev),
+					"%s : abort write", __func__);
+
+			clear_bit(I2S_PORT_COMPLETE_WRITE, &drv_data->flags);
+			i2s_finalize_write(drv_data);
+		}
+
+		/* Abort read */
+		if (test_and_clear_bit(I2S_PORT_READ_BUSY, &drv_data->flags)) {
+			dev_dbg(&(drv_data->pdev->dev),
+					"%s: abort read", __func__);
+
+			clear_bit(I2S_PORT_COMPLETE_READ, &drv_data->flags);
+			i2s_finalize_read(drv_data);
+		}
+
+		i2s_disable(drv_data);
+		break;
+
 	case SSP_CMD_SET_HW_CONFIG:
 		set_ssp_i2s_hw(drv_data, hw_ssp_settings);
 		break;
 
 	case SSP_CMD_ENABLE_SSP:
-		set_SSCR0_reg(reg, SSE);
+		i2s_enable(drv_data);
 		break;
 
 	case SSP_CMD_DISABLE_SSP:
-		clear_SSCR0_reg(reg, SSE);
+		i2s_disable(drv_data);
 		break;
 
 	case SSP_CMD_ALLOC_TX:
@@ -1914,30 +1967,11 @@ static irqreturn_t i2s_irq_deferred(int irq, void *dev_id)
 				 __func__);
 		}
 
-		/* Reset read param:
-		 *   must be done before call to the callback
-		 *   where a read can be rearmed */
-		drv_data->read_len	= 0;
-		drv_data->read_ptr.cpu	= NULL;
-
 		dev_dbg(&(drv_data->pdev->dev),
 			 "%s: read complete",
 			 __func__);
 
-		/* Do not change order sequence:
-		 * READ_BUSY clear, then test PORT_CLOSING
-		 * wakeup for close() function
-		 */
-		clear_bit(I2S_PORT_READ_BUSY, &drv_data->flags);
-		if (!test_bit(I2S_PORT_CLOSING, &drv_data->flags)) {
-			if (drv_data->read_callback != NULL)
-				(void)drv_data->read_callback
-						(drv_data->read_param);
-			else
-				dev_warn(&drv_data->pdev->dev,
-					 "%s: no callback set",
-					 __func__);
-		}
+		i2s_finalize_read(drv_data);
 
 	/* Finalize writing without DMA */
 	} else
@@ -1950,29 +1984,11 @@ static irqreturn_t i2s_irq_deferred(int irq, void *dev_id)
 				 __func__);
 		}
 
-		/* Reset write param:
-		 *   must be done before call to the callback
-		 *   where a write can be rearmed */
-		drv_data->write_len	= 0;
-		drv_data->write_ptr.cpu	= NULL;
-
 		dev_dbg(&(drv_data->pdev->dev),
 			"%s : write complete",
 			__func__);
 
-		/* Do not change order sequence:
-		 * WRITE_BUSY clear, then test PORT_CLOSING
-		 * wakeup for close() function
-		 */
-		clear_bit(I2S_PORT_WRITE_BUSY, &drv_data->flags);
-		if (!test_bit(I2S_PORT_CLOSING, &drv_data->flags)) {
-			if (drv_data->write_callback != NULL)
-				(void)drv_data->write_callback
-						(drv_data->write_param);
-			else
-				dev_warn(&drv_data->pdev->dev,
-					 "i2s_irq_deferred: no callback set");
-		}
+		i2s_finalize_write(drv_data);
 
 	/* Error */
 	} else {
@@ -1988,6 +2004,59 @@ static irqreturn_t i2s_irq_deferred(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
+static void i2s_finalize_read(struct intel_mid_i2s_hdl *drv_data)
+{
+	/* Mask Rx fifo overrun irq */
+	change_SSCR0_reg(drv_data->ioaddr, RIM, SSP_RX_FIFO_OVER_INT_DISABLE);
+
+	/* Reset read param:
+	 *   must be done before call to the callback
+	 *   where a read can be rearmed */
+	drv_data->read_len	= 0;
+	drv_data->read_ptr.cpu	= NULL;
+
+	/* Do not change order sequence:
+	 * READ_BUSY clear, then test PORT_CLOSING
+	 * wakeup for close() function
+	 */
+	clear_bit(I2S_PORT_READ_BUSY, &drv_data->flags);
+	if (!test_bit(I2S_PORT_CLOSING, &drv_data->flags)) {
+		if (drv_data->read_callback != NULL)
+			(void)drv_data->read_callback
+					(drv_data->read_param);
+		else
+			dev_warn(&drv_data->pdev->dev,
+				 "%s: no callback set",
+				 __func__);
+	}
+}
+
+static void i2s_finalize_write(struct intel_mid_i2s_hdl *drv_data)
+{
+	/* Mask Tx fifo underrun irq */
+	change_SSCR0_reg(drv_data->ioaddr, TIM, SSP_TX_FIFO_UNDER_INT_DISABLE);
+
+	/* Reset write param:
+	 *   must be done before call to the callback
+	 *   where a write can be rearmed */
+	drv_data->write_len	= 0;
+	drv_data->write_ptr.cpu	= NULL;
+
+	/* Do not change order sequence:
+	 * WRITE_BUSY clear, then test PORT_CLOSING
+	 * wakeup for close() function
+	 */
+	clear_bit(I2S_PORT_WRITE_BUSY, &drv_data->flags);
+	if (!test_bit(I2S_PORT_CLOSING, &drv_data->flags)) {
+		if (drv_data->write_callback != NULL)
+			(void)drv_data->write_callback
+					(drv_data->write_param);
+		else
+			dev_warn(&drv_data->pdev->dev,
+				 "%s: no callback set",
+				 __func__);
+	}
+}
 
 /**
  * calculate_sspsp_psp - separate function that calculate sspsp register
@@ -2436,7 +2505,7 @@ static void set_ssp_i2s_hw(struct intel_mid_i2s_hdl *drv_data,
 #endif /* __MRFL_SPECIFIC__ */
 
 	/* disable SSP */
-	clear_SSCR0_reg(reg, SSE);
+	i2s_disable(drv_data);
 	dev_dbg(ddbg, "WRITE SSCR0 DISABLE\n");
 
 	/* Clear status */
@@ -2707,8 +2776,8 @@ static int intel_mid_i2s_probe(struct pci_dev *pdev,
 
 	default:
 		dev_err(&pdev->dev,
-			 "Don't know dma device ID for this SSP PCDID=%x\n",
-			 pdev->device);
+			"Don't know dma device ID for this SSP PCDID=%x\n",
+			pdev->device);
 		goto err_i2s_probe3;
 	}
 
