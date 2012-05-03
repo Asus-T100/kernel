@@ -24,211 +24,203 @@
 
 
 /*
- * Defines
+ * Main Defines
  */
 #define DRIVER_NAME "I2S SSP Driver"
 
-#define MRST_SSP0_DEVICE_ID	0x0815	/* FOR MRST */
-#define MFLD_SSP0_DEVICE_ID	0x0832	/* FOR MFLD */
-#define MFLD_SSP1_DEVICE_ID	0x0825	/* FOR MFLD */
-#define CLV_SSP0_DEVICE_ID	0x08F1	/* For Cloverview support */
-#define CLV_SSP1_DEVICE_ID	0x08E8	/* For Cloverview support */
+/* Moorestone */
+#define MRST_SSP0_DEVICE_ID     0x0815
+#define MRST_LPE_DMA_DEVICE_ID  0x0814
 
-#define MRST_LPE_DMA_DEVICE_ID	0x0814
-#define MFLD_LPE_DMA_DEVICE_ID	0x0830
+/* Medfield */
+#define MFLD_SSP0_DEVICE_ID     0x0832
+#define MFLD_SSP1_DEVICE_ID     0x0825
+#define MFLD_LPE_DMA_DEVICE_ID  0x0830
+
+/* Cloverview */
+#define CLV_SSP0_DEVICE_ID	0x08F1
+#define CLV_SSP1_DEVICE_ID	0x08E8
 #define CLV_LPE_DMA_DEVICE_ID	0x08F0
 
-/* SSP1 PCI device Base Address Register */
+/* SSP PCI device definitions */
 #define MRST_SSP_BAR	0
 #define MRST_LPE_BAR	1
-#define DMA1C_DEVICE_INSTANCE_SSP0 0
-#define DMA1C_DEVICE_INSTANCE_SSP1 1
-#define OFFSET_SSCR0	0x00
-#define OFFSET_SSCR1	0x04
-#define OFFSET_SSSR		0x08
-#define OFFSET_SSITR	0x0c
-#define OFFSET_SSDR		0x10
-#define OFFSET_SSTO		0x28
-#define OFFSET_SSPSP	0x2c
-#define OFFSET_SSTSA	0x30	/* SSP Tx Timeslot Active */
-#define OFFSET_SSRSA	0x34	/* SSP Rx Timeslot Active */
-/* SST register map */
-#define OFFSET_LPE_CSR			0x00
-#define OFFSET_LPE_PISR			0x08
-#define OFFSET_LPE_PIMR			0x10
-#define OFFSET_LPE_ISRX			0x18
-#define OFFSET_LPE_IMRX			0x28
-#define OFFSET_LPE_IPCX			0x38	/* IPC IA-SST */
-#define OFFSET_LPE_IPCD			0x40	/* IPC SST-IA */
-#define OFFSET_LPE_ISRD			0x20	/* dummy register for*/
-						/* shim workaround   */
-#define OFFSET_LPE_SHIM_SIZE	0X44
 
+#define SSP0_INSTANCE	0
+#define SSP1_INSTANCE	1
+#define SSP2_INSTANCE	2
+
+/* SSP mode */
 #define SSP_IN_MASTER_MODE		0x0
 #define SSP_IN_SLAVE_MODE		0x1
 
+/* SSP state */
+#define SSP_OFF 0
+#define SSP_ON  1
+
+
 /*
- *	Macros
+ *	Macros: Register definitions
  */
-#define DEFINE_SSP_REG(reg, off) \
-static inline u32 read_##reg(void *p) { return __raw_readl(p + (off)); } \
-static inline void write_##reg(u32 v, void *p) { __raw_writel(v, p + (off)); }
-DEFINE_SSP_REG(SSCR0, 0x00)
-DEFINE_SSP_REG(SSCR1, 0x04)
-DEFINE_SSP_REG(SSSR, 0x08)
-DEFINE_SSP_REG(SSITR, 0x0c)
-DEFINE_SSP_REG(SSDR, 0x10)
-DEFINE_SSP_REG(SSTO, 0x28)
-DEFINE_SSP_REG(SSPSP, 0x2c)
-DEFINE_SSP_REG(SSTSA, 0x30)
-DEFINE_SSP_REG(SSRSA, 0x34)
-DEFINE_SSP_REG(SSTSS, 0x38)
-DEFINE_SSP_REG(SSACD, 0x3C)
-DEFINE_SSP_REG(I2CCTRL, 0x00);
-DEFINE_SSP_REG(I2CDATA, 0x04);
+#define DEFINE_REG(reg, offset) \
+	const u8 OFFSET_ ## reg = offset; \
+	static inline u32 read_ ## reg(void *p) \
+		{ return __raw_readl(p + (OFFSET_ ## reg)); } \
+	static inline void write_ ## reg(u32 v, void *p) \
+		{ __raw_writel(v, p + (OFFSET_ ## reg)); }
+
 /*
- * Langwell SSP serial port register definitions
+ *	Macros: Registers field definitions
  */
-#define SSCR0_DSS_MASK   0x0F	/* Data Size Select [4..16] */
-#define SSCR0_DSS_SHIFT  0
-#define SSCR0_FRF_MASK   0x03	/* FRame Format */
-#define SSCR0_FRF_SHIFT  4
-#define SSCR0_ECS_MASK   0x01	/* External clock select */
-#define SSCR0_ECS_SHIFT  6
-#define SSCR0_SSE_MASK   0x01	/* Synchronous Serial Port Enable */
-#define SSCR0_SSE_SHIFT  7
-#define SSCR0_SCR_MASK   0xFFF	/* Not implemented */
-#define SSCR0_SCR_SHIFT  8
-#define SSCR0_EDSS_MASK  0x1	/* Extended data size select */
-#define SSCR0_EDSS_SHIFT 20
-#define SSCR0_NCS_MASK   0x1	/* Network clock select */
-#define SSCR0_NCS_SHIFT  21
-#define SSCR0_RIM_MASK   0x1	/* Receive FIFO overrrun int mask */
-#define SSCR0_RIM_SHIFT  22
-#define SSCR0_TIM_MASK   0x1	/* Transmit FIFO underrun int mask */
-#define SSCR0_TIM_SHIFT  23
-#define SSCR0_FRDC_MASK  0x7	/* Frame Rate Divider Control */
-#define SSCR0_FRDC_SHIFT 24
-#define SSCR0_ACS_MASK   0x1	/* Audio clock select */
-#define SSCR0_ACS_SHIFT  30
-#define SSCR0_MOD_MASK   0x1	/* Mode (normal or network) */
-#define SSCR0_MOD_SHIFT  31
+#define DEFINE_FIELD(reg, field, mask, shift) \
+	const u32 reg ## _ ## field ## _MASK = (u32)(mask);  \
+	const u8  reg ## _ ## field ## _SHIFT = (u8)(shift);  \
+							\
+	static inline u32 extract_ ## reg ## _ ## field \
+				(u32 reg_value) { \
+		return  ((reg_value) >> reg ## _ ## field ## _SHIFT) \
+				& reg ## _ ## field ## _MASK; \
+	} \
+	  \
+	static inline u32 replace_ ## reg ## _ ## field \
+				(u32 reg_value, u32 field_value) { \
+		return  (((field_value) & reg ## _ ## field ## _MASK) \
+			<< reg ## _ ## field ## _SHIFT) \
+			| ((reg_value) & ~(reg ## _ ## field ## _MASK \
+			<< reg ## _ ## field ## _SHIFT)); \
+	} \
+	  \
+	static inline u32 set_ ## reg ## _ ## field \
+				(u32 reg_value) { \
+		return  ((reg ## _ ## field ## _MASK) \
+			<< reg ## _ ## field ## _SHIFT) \
+			| ((reg_value) & ~(reg ## _ ## field ## _MASK \
+			<< reg ## _ ## field ## _SHIFT)); \
+	}
+
+
+/*
+ * LPE registers definitions
+ * -------------------------
+ */
+DEFINE_REG(LPE_CSR, 0x00)
+DEFINE_REG(LPE_PISR, 0x08)
+DEFINE_REG(LPE_PIMR, 0x10)
+DEFINE_REG(LPE_ISRX, 0x18)
+DEFINE_REG(LPE_IMRX, 0x28)
+DEFINE_REG(LPE_IPCX, 0x38)	/* IPC IA-SST */
+DEFINE_REG(LPE_IPCD, 0x40)	/* IPC SST-IA */
+DEFINE_REG(LPE_ISRD, 0x20)	/* dummy register for*/
+				/* shim workaround   */
+DEFINE_REG(LPE_CLKCTL, 0x78)
+
+/* LPE_ISRX fields definitions */
+DEFINE_FIELD(LPE_ISRX, IAPIS_SSP0, 0x01, 3);
+DEFINE_FIELD(LPE_ISRX, IAPIS_SSP1, 0x01, 4);
+DEFINE_FIELD(LPE_ISRX, IAPIS_SSP2, 0x01, 5);
+
+
+/*
+ * SSP registers definitions
+ * -------------------------
+ */
+DEFINE_REG(SSCR0, 0x00)
+DEFINE_REG(SSCR1, 0x04)
+DEFINE_REG(SSSR, 0x08)
+DEFINE_REG(SSITR, 0x0C)
+DEFINE_REG(SSDR, 0x10)
+DEFINE_REG(SSTO, 0x28)
+DEFINE_REG(SSPSP, 0x2C)
+DEFINE_REG(SSTSA, 0x30)	/* SSP Tx Timeslot Active */
+DEFINE_REG(SSRSA, 0x34)	/* SSP Rx Timeslot Active */
+DEFINE_REG(SSTSS, 0x38)
+DEFINE_REG(SSACD, 0x3C)
+
+/* SSP SSCR0 fields definitions */
+DEFINE_FIELD(SSCR0, DSS, 0x0F, 0);	/* Data Size Select [4..16] */
+DEFINE_FIELD(SSCR0, FRF, 0x03, 4);	/* Frame Format */
+DEFINE_FIELD(SSCR0, ECS, 0x01, 6);	/* External clock select */
+DEFINE_FIELD(SSCR0, SSE, 0x01, 7);	/* Synchronous Serial Port Enable */
+DEFINE_FIELD(SSCR0, SCR, 0xFFF, 8);	/* Not implemented */
+DEFINE_FIELD(SSCR0, EDSS, 0x1, 20);	/* Extended data size select */
+DEFINE_FIELD(SSCR0, NCS, 0x1, 21);	/* Network clock select */
+DEFINE_FIELD(SSCR0, RIM, 0x1, 22);	/* Receive FIFO overrrun int mask */
+DEFINE_FIELD(SSCR0, TIM, 0x1, 23);	/* Transmit FIFO underrun int mask */
+DEFINE_FIELD(SSCR0, FRDC, 0x7, 24);	/* Frame Rate Divider Control */
+DEFINE_FIELD(SSCR0, ACS, 0x1, 30);	/* Audio clock select */
+DEFINE_FIELD(SSCR0, MOD, 0x1, 31);	/* Mode (normal or network) */
 
 #define SSCR0_DataSize(x)     ((x) - 1)	/* Data Size Select [4..16] */
 #define SSCR0_SlotsPerFrm(x)  ((x) - 1)	/* Time slots per frame */
 #define SSCR0_SerClkDiv(x)    ((x) - 1)	/* Divisor [1..4096],... */
-					 /*...not implemented on Langwell */
-#define SSCR1_TTELP_MASK     0x1	/* TXD Tristate Enable on Last Phase */
-#define SSCR1_TTELP_SHIFT    31
-#define SSCR1_TTE_MASK	     0x1	/* TXD Tristate Enable */
-#define SSCR1_TTE_SHIFT      30
-#define SSCR1_EBCEI_MASK     0x1	/* Enable Bit Count Error Interrupt */
-#define SSCR1_EBCEI_SHIFT    29
-#define SSCR1_SCFR_MASK      0x1	/* Slave Clock Running */
-#define SSCR1_SCFR_SHIFT     28
-#define SSCR1_ECRA_MASK      0x1	/* Enable Clock Request A */
-#define SSCR1_ECRA_SHIFT     27
-#define SSCR1_ECRB_MASK      0x1	/* Enable Clock Request B */
-#define SSCR1_ECRB_SHIFT     26
-#define SSCR1_SCLKDIR_MASK   0x1	/* SSPCLK Direction */
-#define SSCR1_SCLKDIR_SHIFT  25
-#define SSCR1_SFRMDIR_MASK   0x1	/* SSPFRM Direction */
-#define SSCR1_SFRMDIR_SHIFT  24
-#define SSCR1_RWOT_MASK      0x1	/* Receive without Transmit */
-#define SSCR1_RWOT_SHIFT     23
-#define SSCR1_TRAIL_MASK     0x1	/* Trailing Byte */
-#define SSCR1_TRAIL_SHIFT    22
-#define SSCR1_TSRE_MASK      0x1	/* DMA Transmit Service Request Enable*/
-#define SSCR1_TSRE_SHIFT     21
-#define SSCR1_RSRE_MASK      0x1	/* DMA Receive Service Request Enable */
-#define SSCR1_RSRE_SHIFT     20
-#define SSCR1_TINTE_MASK     0x1	/* Receiver Time-out Interrupt Enable */
-#define SSCR1_TINTE_SHIFT    19
-#define SSCR1_PINTE_MASK     0x1	/* Periph. Trailing Byte Int. Enable */
-#define SSCR1_PINTE_SHIFT    18
-#define SSCR1_IFS_MASK       0x1	/* Invert Frame Signal */
-#define SSCR1_IFS_SHIFT      16
-#define SSCR1_STFR_MASK      0x1	/* Select FIFO for EFWR: test mode */
-#define SSCR1_STFR_SHIFT     15
-#define SSCR1_EFWR_MASK      0x1	/* Enable FIFO Write/Read: test mode */
-#define SSCR1_EFWR_SHIFT     14
-#define SSCR1_RFT_MASK       0xF	/* Receive FIFO Trigger Threshold */
-#define SSCR1_RFT_SHIFT      10
-#define SSCR1_TFT_MASK       0xF	/* Transmit FIFO Trigger Threshold */
-#define SSCR1_TFT_SHIFT      6
-#define SSCR1_MWDS_MASK      0x1	/* Microwire Transmit Data Size */
-#define SSCR1_MWDS_SHIFT     5
-#define SSCR1_SPH_MASK       0x1	/* Motorola SPI SSPSCLK phase setting */
-#define SSCR1_SPH_SHIFT      4
-#define SSCR1_SPO_MASK       0x1	/* Motorola SPI SSPSCLK polarity */
-#define SSCR1_SPO_SHIFT      3
-#define SSCR1_LBM_MASK       0x1	/* Loopback mode: test mode */
-#define SSCR1_LBM_SHIFT      2
-#define SSCR1_TIE_MASK       0x1	/* Transmit FIFO Interrupt Enable */
-#define SSCR1_TIE_SHIFT      1
-#define SSCR1_RIE_MASK       0x1	/* Receive FIFO Interrupt Enable */
-#define SSCR1_RIE_SHIFT      0
+					/*...not implemented on Langwell */
+
+/* SSP SSCR1 fields definitions */
+DEFINE_FIELD(SSCR1, TTELP, 0x1, 31);	/* TXD Tristate Enable on Last Phase */
+DEFINE_FIELD(SSCR1, TTE, 0x1, 30);	/* TXD Tristate Enable */
+DEFINE_FIELD(SSCR1, EBCEI, 0x1, 29);	/* Enable Bit Count Error Interrupt */
+DEFINE_FIELD(SSCR1, SCFR, 0x1, 28);	/* Slave Clock Running */
+DEFINE_FIELD(SSCR1, ECRA, 0x1, 27);	/* Enable Clock Request A */
+DEFINE_FIELD(SSCR1, ECRB, 0x1, 26);	/* Enable Clock Request B */
+DEFINE_FIELD(SSCR1, SCLKDIR, 0x1, 25);	/* SSPCLK Direction */
+DEFINE_FIELD(SSCR1, SFRMDIR, 0x1, 24);	/* SSPFRM Direction */
+DEFINE_FIELD(SSCR1, RWOT, 0x1, 23);	/* Receive without Transmit */
+DEFINE_FIELD(SSCR1, TRAIL, 0x1, 22);	/* Trailing Byte */
+DEFINE_FIELD(SSCR1, TSRE, 0x1, 21);	/* DMA Tx Service Request Enable */
+DEFINE_FIELD(SSCR1, RSRE, 0x1, 20);	/* DMA Rx Service Request Enable */
+DEFINE_FIELD(SSCR1, TINTE, 0x1, 19);	/* Receiver Timeout Interrupt Enable */
+DEFINE_FIELD(SSCR1, PINTE, 0x1, 18);	/* Periph. Trailing Byte Int. Enable */
+DEFINE_FIELD(SSCR1, IFS, 0x1, 16);	/* Invert Frame Signal */
+DEFINE_FIELD(SSCR1, STFR, 0x1, 15);	/* Select FIFO for EFWR: test mode */
+DEFINE_FIELD(SSCR1, EFWR, 0x1, 14);	/* Enable FIFO Write/Read: test mode */
+DEFINE_FIELD(SSCR1, RFT, 0xF, 10);	/* Receive FIFO Trigger Threshold */
+DEFINE_FIELD(SSCR1, TFT, 0xF, 6);	/* Transmit FIFO Trigger Threshold */
+DEFINE_FIELD(SSCR1, MWDS, 0x1, 5);	/* Microwire Transmit Data Size */
+DEFINE_FIELD(SSCR1, SPH, 0x1, 4);	/* Motorola SPI SSPSCLK phase setting*/
+DEFINE_FIELD(SSCR1, SPO, 0x1, 3);	/* Motorola SPI SSPSCLK polarity */
+DEFINE_FIELD(SSCR1, LBM, 0x1, 2);	/* Loopback mode: test mode */
+DEFINE_FIELD(SSCR1, TIE, 0x1, 1);	/* Transmit FIFO Interrupt Enable */
+DEFINE_FIELD(SSCR1, RIE, 0x1, 0);	/* Receive FIFO Interrupt Enable */
 
 #define SSCR1_RxTresh(x) ((x) - 1)	/* level [1..16] */
 #define SSCR1_TxTresh(x) ((x) - 1)	/* level [1..16] */
 
-#define SSPSP_FSRT_MASK      0x1	/* Frame Sync Relative Timing Bit */
-#define SSPSP_FSRT_SHIFT     25
-#define SSPSP_DMYSTOP_MASK   0x3	/* Dummy Stop in Number of SSPSCLKs:T4*/
-#define SSPSP_DMYSTOP_SHIFT  23
-#define SSPSP_SFRMWDTH_MASK  0x3F	/* Serial Frame width : T6 */
-#define SSPSP_SFRMWDTH_SHIFT 16
-#define SSPSP_SFRMDLY_MASK   0x7F	/* Serial Fr. Delay in 1/2SSPSCLKs:T5 */
-#define SSPSP_SFRMDLY_SHIFT  9
-#define SSPSP_DMYSTRT_MASK   0x3	/* Dummy Start in Number of SSPSCLKs..*/
-#define SSPSP_DMYSTRT_SHIFT  7	    /*...after STRTDLY, T2 (master mode only) */
-#define SSPSP_STRTDLY_MASK   0x7	/* Start Delay, T1 (master mode only) */
-#define SSPSP_STRTDLY_SHIFT  4
-#define SSPSP_ETDS_MASK      0x1	/* End of Transfer Data State */
-#define SSPSP_ETDS_SHIFT     3
-#define SSPSP_SFRMP_MASK     0x1	/* Serial Frame Polarity */
-#define SSPSP_SFRMP_SHIFT    2
-#define SSPSP_SCMODE_MASK    0x3	/* Serial bit-rate Clock Mode */
-#define SSPSP_SCMODE_SHIFT   0
+/* SSP SSPSP fields definitions */
+DEFINE_FIELD(SSPSP, FSRT, 0x1, 25);	/* Frame Sync Relative Timing Bit */
+DEFINE_FIELD(SSPSP, DMYSTOP, 0x3, 23);	/* Dummy Stop in Num of SSPSCLKs:T4 */
+DEFINE_FIELD(SSPSP, SFRMWDTH, 0x3F, 16);/* Serial Frame width : T6 */
+DEFINE_FIELD(SSPSP, SFRMDLY, 0x7F, 9);	/* Serial Fr Delay in 1/2SSPSCLKs:T5 */
+DEFINE_FIELD(SSPSP, DMYSTRT, 0x3, 7);	/* Dummy Start in Number of SSPSCLK */
+					/* after STRTDLY, T2 */
+					/*(master mode only) */
+DEFINE_FIELD(SSPSP, STRTDLY, 0x7, 4);	/* Start Delay, T1 (master mode only)*/
+DEFINE_FIELD(SSPSP, ETDS, 0x1, 3);	/* End of Transfer Data State */
+DEFINE_FIELD(SSPSP, SFRMP, 0x1, 2);	/* Serial Frame Polarity */
+DEFINE_FIELD(SSPSP, SCMODE, 0x3, 0);	/* Serial bit-rate Clock Mode */
 
-#define SSTSA_TTSA_MASK      0xFF
-#define SSTSA_TTSA_SHIFT     0
+/* SSP SSTSA fields definitions */
+DEFINE_FIELD(SSTSA, TTSA, 0xFF, 0);	/*  */
 
-#define SSRSA_RTSA_MASK      0xFF
-#define SSRSA_RTSA_SHIFT     0
+/* SSP SSRSA fields definitions */
+DEFINE_FIELD(SSRSA, RTSA, 0xFF, 0);	/*  */
 
-#define SSSR_BCE_MASK   0x1	/* Bit Count Error: Read/Write 1 to Clear */
-#define SSSR_BCE_SHIFT  23
-#define SSSR_CSS_MASK   0x1	/* Clock Synchronization Status */
-#define SSSR_CSS_SHIFT  22
-#define SSSR_TUR_MASK   0x1	/* Transmit FIFO UnderRun: Rd/Wr 1 to Clear */
-#define SSSR_TUR_SHIFT  21
-#define SSSR_EOC_MASK   0x1	/* End Of Chain: Read/Write 1 to Clear */
-#define SSSR_EOC_SHIFT  20
-#define SSSR_TINT_MASK  0x1	/* Receiver Time-out Interrupt:... */
-#define SSSR_TINT_SHIFT 19	/* ...Read/Write 1 to Clear */
-#define SSSR_PINT_MASK  0x1	/* Peripheral Trailing Byte Interrupt:... */
-#define SSSR_PINT_SHIFT 18	/* ...Read/Write 1 to Clear */
-#define SSSR_RFL_MASK   0xF	/* Receive FIFO Level */
-#define SSSR_RFL_SHIFT  12
-#define SSSR_TFL_MASK   0xF	/* Transmit FIFO Level */
-#define SSSR_TFL_SHIFT  8
-#define SSSR_ROR_MASK   0x1	/* Receive FIFO Overrun: Read/Write 1 to Clear*/
-#define SSSR_ROR_SHIFT  7
-#define SSSR_RFS_MASK   0x1	/* Receive FIFO Service Request */
-#define SSSR_RFS_SHIFT  6
-#define SSSR_TFS_MASK   0x1	/* Transmit FIFO Service Request */
-#define SSSR_TFS_SHIFT  5
-#define SSSR_BSY_MASK   0x1	/* SSP Busy */
-#define SSSR_BSY_SHIFT  4
-#define SSSR_RNE_MASK   0x1	/* Receive FIFO not empty */
-#define SSSR_RNE_SHIFT  3
-#define SSSR_TNF_MASK   0x1	/* Transmit FIFO not Full */
-#define SSSR_TNF_SHIFT  2
-
-
-#define SSP_OFF 0
-#define SSP_ON  1
+/* SSP SSSR fields definitions */
+DEFINE_FIELD(SSSR, BCE, 0x1, 23);	/* Bit Count Error: RW 1 to Clear */
+DEFINE_FIELD(SSSR, CSS, 0x1, 22);	/* Clock Synchronization Status */
+DEFINE_FIELD(SSSR, TUR, 0x1, 21);	/* Tx FIFO UnderRun: RW 1 to Clear */
+DEFINE_FIELD(SSSR, EOC, 0x1, 20);	/* End Of Chain: RW 1 to Clear */
+DEFINE_FIELD(SSSR, TINT, 0x1, 19);	/* Receiver Time-out Interrupt: */
+					/* Read/Write 1 to Clear */
+DEFINE_FIELD(SSSR, PINT, 0x1, 18);	/* Periph. Trailing Byte Interrupt: */
+					/* Read/Write 1 to Clear */
+DEFINE_FIELD(SSSR, RFL, 0xF, 12);	/* Receive FIFO Level */
+DEFINE_FIELD(SSSR, TFL, 0xF, 8);	/* Transmit FIFO Level */
+DEFINE_FIELD(SSSR, ROR, 0x1, 7);	/* Rx FIFO Overrun: RW 1 to Clear */
+DEFINE_FIELD(SSSR, RFS, 0x1, 6);	/* Receive FIFO Service Request */
+DEFINE_FIELD(SSSR, TFS, 0x1, 5);	/* Transmit FIFO Service Request */
+DEFINE_FIELD(SSSR, BSY, 0x1, 4);	/* SSP Busy */
+DEFINE_FIELD(SSSR, RNE, 0x1, 3);	/* Receive FIFO not empty */
+DEFINE_FIELD(SSSR, TNF, 0x1, 2);	/* Transmit FIFO not Full */
 
 
 /*
@@ -509,7 +501,6 @@ static int intel_mid_i2s_resume(struct device *dev);
 /*
  * These define will clarify source code when accessing SSCRx registers
  */
-
 #define SSCR0_reg(regbit, value)					\
 	(((value) & SSCR0_##regbit##_MASK) << SSCR0_##regbit##_SHIFT)
 
@@ -665,7 +656,7 @@ enum mrst_ssp_timeslot {
 };
 
 static u8
-  ssp_ssacd[SSP_FRM_FREQ_SIZE][SSP_BIT_PER_SAMPLE_SIZE][SSP_TIMESLOT_SIZE] = {
+ssp_ssacd[SSP_FRM_FREQ_SIZE][SSP_BIT_PER_SAMPLE_SIZE][SSP_TIMESLOT_SIZE] = {
 
 	[SSP_FRM_FREQ_UNDEFINED][SSP_BIT_PER_SAMPLE_8][SSP_TIMESLOT_1] = SSP_SSACD_NOT_AVAILABLE,
 	[SSP_FRM_FREQ_UNDEFINED][SSP_BIT_PER_SAMPLE_8][SSP_TIMESLOT_2] = SSP_SSACD_NOT_AVAILABLE,

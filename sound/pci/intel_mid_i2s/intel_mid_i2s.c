@@ -29,16 +29,16 @@
 #include <linux/async.h>
 #include <linux/device.h>
 #include <linux/lnw_gpio.h>
+#include <linux/interrupt.h>
 #include <linux/intel_mid_i2s_common.h>
 #include <linux/intel_mid_i2s_if.h>
 #include "intel_mid_i2s.h"
 
-#include <linux/interrupt.h>
 
 MODULE_AUTHOR("Louis LE GALL <louis.le.gall intel.com>");
 MODULE_DESCRIPTION("Intel MID I2S/PCM SSP Driver");
 MODULE_LICENSE("GPL");
-MODULE_VERSION("1.0.3");
+MODULE_VERSION("1.0.4");
 
 #define CLOCK_19200_KHZ			19200000
 
@@ -773,7 +773,8 @@ static int wr_req_cpu(struct intel_mid_i2s_hdl *drv_data,
 		      size_t			len,
 		      void			*param)
 {
-	dev_dbg(&drv_data->pdev->dev, "%s() - ENTER", __func__);
+	dev_dbg(&drv_data->pdev->dev, "%s() - ENTER (src=0x%08x, len=%d"
+		, __func__, (u32)source, len);
 
 	/* Initiate write */
 	drv_data->mask_sr |= ((SSSR_TFS_MASK << SSSR_TFS_SHIFT) |
@@ -1606,9 +1607,12 @@ EXPORT_SYMBOL_GPL(intel_mid_i2s_command);
 static void ssp1_dump_registers(struct intel_mid_i2s_hdl *drv_data)
 {
 	u32 irq_status;
+	u32 status;
+
 	void __iomem *reg = drv_data->ioaddr;
 	struct device *ddbg = &(drv_data->pdev->dev);
-	u32 status;
+	dev_dbg(ddbg, "Dump - Base Address = 0x%08X\n", (u32)reg);
+
 	irq_status = read_SSSR(reg);
 	dev_dbg(ddbg, "dump SSSR=0x%08X\n", irq_status);
 	status = read_SSCR0(reg);
@@ -1836,6 +1840,8 @@ static irqreturn_t i2s_irq_deferred(int irq, void *dev_id)
 {
 	/* Locals */
 	struct intel_mid_i2s_hdl *drv_data = dev_id;
+
+	dev_dbg(&(drv_data->pdev->dev), "%s", __func__);
 
 	/* Finalize reading without DMA */
 	if ((drv_data->current_settings.ssp_rx_dma != SSP_RX_DMA_ENABLE) &&
@@ -2459,17 +2465,18 @@ intel_mid_i2s_find_usage(struct pci_dev *pdev,
 
 	/* Init the driver data structure fields*/
 	switch (pdev->device) {
-	case MFLD_SSP1_DEVICE_ID:
-	case CLV_SSP1_DEVICE_ID:
-		drv_data->device_instance = DMA1C_DEVICE_INSTANCE_SSP1;
-		break;
 	case MFLD_SSP0_DEVICE_ID:
 	case CLV_SSP0_DEVICE_ID:
-		drv_data->device_instance = DMA1C_DEVICE_INSTANCE_SSP0;
+		drv_data->device_instance = SSP0_INSTANCE;
+		break;
+
+	case MFLD_SSP1_DEVICE_ID:
+	case CLV_SSP1_DEVICE_ID:
+		drv_data->device_instance = SSP1_INSTANCE;
 		break;
 	default:
 		dev_err(&(pdev->dev),
-			"Can not determine dma device instance (PCI ID:%04x)\n",
+			"Can not determine device instance (PCI ID:%04x)\n",
 			pdev->device);
 		status = -ENODEV;
 		goto err_find_usage;
@@ -2518,16 +2525,14 @@ static int intel_mid_i2s_probe(struct pci_dev *pdev,
 	/*
 	 * Get basic io resource and map it for SSP1 [BAR=0]
 	 */
-	if ((pdev->device == MFLD_SSP1_DEVICE_ID) ||
-	    (pdev->device == MFLD_SSP0_DEVICE_ID) ||
-	    (pdev->device == CLV_SSP1_DEVICE_ID) ||
-	    (pdev->device == CLV_SSP0_DEVICE_ID)) {
+	if ((pdev->device == MFLD_SSP0_DEVICE_ID) ||
+	    (pdev->device == MFLD_SSP1_DEVICE_ID) ||
+	    (pdev->device == CLV_SSP0_DEVICE_ID) ||
+	    (pdev->device == CLV_SSP1_DEVICE_ID)) {
 		drv_data->paddr = pci_resource_start(pdev, MRST_SSP_BAR);
 		drv_data->iolen = pci_resource_len(pdev, MRST_SSP_BAR);
 		status = pci_request_region(pdev, MRST_SSP_BAR,
-							dev_name(&pdev->dev));
-		/* map bus memory into CPU space */
-		drv_data->ioaddr = pci_ioremap_bar(pdev, MRST_SSP_BAR);
+						dev_name(&pdev->dev));
 	} else {
 		dev_err(&pdev->dev,
 			"Don't know which BAR to use for this SSP PCDID=%x\n",
@@ -2535,35 +2540,43 @@ static int intel_mid_i2s_probe(struct pci_dev *pdev,
 		status = -ENODEV;
 		goto err_i2s_probe1;
 	}
+
 	dev_dbg(&(pdev->dev), "paddr = : %x\n", (unsigned int) drv_data->paddr);
 	dev_dbg(&(pdev->dev), "iolen = : %d\n", drv_data->iolen);
+
 	if (status) {
 		dev_err((&pdev->dev), "Can't request region. err=%d\n", status);
 		goto err_i2s_probe1;
 	}
+
+	/* map bus memory into CPU space */
+	drv_data->ioaddr = pci_ioremap_bar(pdev, MRST_SSP_BAR);
 	if (!drv_data->ioaddr) {
 		dev_err((&pdev->dev), "ioremap_nocache error\n");
 		status = -ENOMEM;
 		goto err_i2s_probe2;
 	}
+
 	dev_dbg(&(pdev->dev), "ioaddr = : %p\n", drv_data->ioaddr);
 
-	/* Check the SSP, if SSP3, then another DMA is used (GPDMA..) */
-	if ((pdev->device == MFLD_SSP1_DEVICE_ID) ||
-		(pdev->device == MFLD_SSP0_DEVICE_ID)) {
-		/* prepare for DMA channel allocation */
-		/* get the pci_dev structure pointer */
+	/* prepare for DMA channel allocation */
+	/* get the pci_dev structure pointer */
+	switch (pdev->device) {
+	case MFLD_SSP0_DEVICE_ID:
+	case MFLD_SSP1_DEVICE_ID:
 		drv_data->dmac1 = pci_get_device(PCI_VENDOR_ID_INTEL,
-						MFLD_LPE_DMA_DEVICE_ID,
-						NULL);
-	} else if ((pdev->device == CLV_SSP1_DEVICE_ID) ||
-		(pdev->device == CLV_SSP0_DEVICE_ID)) {
-		/* prepare for DMA channel allocation */
-		/* get the pci_dev structure pointer */
+						 MFLD_LPE_DMA_DEVICE_ID,
+						 NULL);
+	break;
+
+	case CLV_SSP0_DEVICE_ID:
+	case CLV_SSP1_DEVICE_ID:
 		drv_data->dmac1 = pci_get_device(PCI_VENDOR_ID_INTEL,
-						CLV_LPE_DMA_DEVICE_ID,
-						NULL);
-	} else {
+						 CLV_LPE_DMA_DEVICE_ID,
+						 NULL);
+	break;
+
+	default:
 		dev_err(&pdev->dev,
 			 "Don't know dma device ID for this SSP PCDID=%x\n",
 			 pdev->device);
@@ -2696,6 +2709,7 @@ leave:
 static int __init intel_mid_i2s_init(void)
 {
 	clear_bit(MODEM_FND, &modem_found_and_i2s_setup_ok);
+
 	return pci_register_driver(&intel_mid_i2s_driver);
 }
 
