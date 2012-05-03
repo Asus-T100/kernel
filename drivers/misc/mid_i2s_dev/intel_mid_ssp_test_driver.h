@@ -174,6 +174,8 @@ struct ssp_test_driver {
 	struct slots_buf rx;
 	struct slots_buf tx;
 	struct miscdevice *dev;
+	bool   tx_dma_chnl_allocated;
+	bool   rx_dma_chnl_allocated;
 };
 
 #endif /*BT_PCM_SSP1_H_*/

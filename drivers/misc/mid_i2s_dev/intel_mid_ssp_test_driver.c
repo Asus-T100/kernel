@@ -27,6 +27,7 @@
 #include <linux/intel_mid_ssp_test_user.h>
 #include "intel_mid_ssp_test_driver.h"
 
+
 /* The device receiving the ioctls */
 static struct miscdevice ssp_miscdev;
 static struct ssp_test_driver ssp_test_driver_data;
@@ -46,6 +47,15 @@ enum test_device selected_device = BLUETOOTH;
 
 /* debug */
 static int bt_verbose = 1;
+
+/* OPERATION TIMEOUT */
+/* This driver is used for loopback tests that last for 20ms with default */
+/* KTS settings (stereo channel, 8 bits samples, 8kHz) */
+/* Here we define a 10 seconds timeout on operation completion */
+/* that is largely enough to ensure all tests have enough time */
+/* to terminate before it happens */
+#define OPERATION_TIMEOUT	(10 * HZ)
+
 
 /*****************************************************************************/
 /*                 utilities                                                 */
@@ -76,7 +86,6 @@ static void free_slots_buf_dma(struct slots_buf *sb, int order)
 {
 	DENTER();
 
-	wait_event_interruptible(sb->wait, !sb->dma_running);
 	free_pages((unsigned long) sb->buffer, order);
 	sb->buffer = NULL;
 
@@ -302,13 +311,24 @@ static ssize_t ssp_test_read(struct file *file, char __user *buf, size_t count,
 	 * Do not wait for interrupt, we get the data manually in
 	 * logs (brute method).
 	 */
-	c = wait_event_interruptible(sb->wait, !sb->dma_running);
+	c = wait_event_interruptible_timeout(sb->wait, !sb->dma_running,
+					     OPERATION_TIMEOUT);
 
-	if (c) {
+	if (c == -ERESTARTSYS) {
+		/* Signal interruption occured */
 		DLEAVE(c);
 		return c;
 	}
 
+	if (c == 0) {
+		/* Timeout occured */
+		dev_warn(TEST_DEV, "read: Timeout occured\n");
+		intel_mid_i2s_command(handle_ssp1, SSP_CMD_ABORT, NULL);
+	}
+
+	intel_mid_i2s_command(handle_ssp1, SSP_CMD_DISABLE_SSP, NULL);
+
+	/* Read ended correctly */
 	dev_dbg(TEST_DEV, "read(r=%d,w=%d): copy_to_user(%d) %d bytes to %p\n",
 		sb->num_read, sb->num_write, sb->num_read, BT_PCM_SLOT_SIZE,
 		&sb->buffer[IDX_NUM_BYTE(sb->num_read)]);
@@ -340,6 +360,7 @@ static ssize_t ssp_test_write(struct file *file, const char __user *buffer,
 	const char *p;
 	int nb_slots = 0;
 	int i;
+	int c;
 	unsigned long missing;
 
 	DENTER();
@@ -377,20 +398,25 @@ static ssize_t ssp_test_write(struct file *file, const char __user *buffer,
 	}
 
 	for (i = 0; i < nb_slots; i++) {
-		int c;
-
 		if (bt_verbose > 1 && !buffer_free(sb_tx))
 			dev_dbg(TEST_DEV, "speech: sleeping in write()\n");
 
 		/* sleep if no space for writing data now */
-		c = wait_event_interruptible(sb_tx->wait, buffer_free(sb_tx));
-
-		/* TODO added during DEBUG */
-		wait_event_interruptible(sb_tx->wait, !sb_tx->dma_running);
-
-		if (c) {
+		c = wait_event_interruptible_timeout(sb_tx->wait,
+						     buffer_free(sb_tx) &&
+						     !sb_tx->dma_running,
+						     OPERATION_TIMEOUT);
+		if (c == -ERESTARTSYS) {
+			/* Signal interruption occured */
 			DLEAVE(c);
 			return c;
+		}
+
+		if (c == 0) {
+			/* Timeout occured */
+			dev_warn(TEST_DEV, "write: Timeout occured\n");
+			intel_mid_i2s_command(handle_ssp1, SSP_CMD_ABORT, NULL);
+			break;
 		}
 
 		dev_dbg(TEST_DEV, "write(r=%d,w=%d): copy_from_user %d bytes "
@@ -427,7 +453,13 @@ static ssize_t ssp_test_write(struct file *file, const char __user *buffer,
 		retval += BT_PCM_SLOT_SIZE;
 	} /* for (i=0; i<nb_slots; i++) */
 
-	wait_event_interruptible(sb_tx->wait, !sb_tx->dma_running);
+	c = wait_event_interruptible_timeout(sb_tx->wait, !sb_tx->dma_running,
+					     OPERATION_TIMEOUT);
+	if (c == 0) {
+		/* Timeout occured */
+		dev_warn(TEST_DEV, "write: Timeout occured\n");
+		intel_mid_i2s_command(handle_ssp1, SSP_CMD_ABORT, NULL);
+	}
 
 	spin_lock_bh(&sb_tx->lock);
 
@@ -758,15 +790,17 @@ static int ssp_test_open(struct inode *inode, struct file *file)
 	status = intel_mid_i2s_set_wr_cb(handle_ssp1,
 					 ssp_test_write_dma_req_complete);
 
-	if (intel_mid_i2s_command(handle_ssp1, SSP_CMD_ALLOC_TX, NULL)) {
-		dev_err(TEST_DEV, "FCT %s Can not alloc TX DMA Channel\n",
+	if (!intel_mid_i2s_command(handle_ssp1, SSP_CMD_ALLOC_TX, NULL)) {
+		ssp_test_driver_data.tx_dma_chnl_allocated = 1;
+	} else {
+		dev_warn(TEST_DEV, "FCT %s Can not alloc TX DMA Channel\n",
 			__func__);
-		return -EBUSY;
 	}
-	if (intel_mid_i2s_command(handle_ssp1, SSP_CMD_ALLOC_RX, NULL)) {
-		dev_err(TEST_DEV, "FCT %s Can not alloc RX DMA Channel\n",
+	if (!intel_mid_i2s_command(handle_ssp1, SSP_CMD_ALLOC_RX, NULL)) {
+		ssp_test_driver_data.rx_dma_chnl_allocated = 1;
+	} else {
+		dev_warn(TEST_DEV, "FCT %s Can not alloc RX DMA Channel\n",
 			__func__);
-		return -EBUSY;
 	}
 
 out:
@@ -783,19 +817,26 @@ static int ssp_test_release(struct inode *inode, struct file *file)
 	ssp_test_driver_data.written = 0;
 	spin_unlock_bh(&ssp_test_driver_data.lock);
 
-	/* order 1 => 4K requested */
-	free_slots_buf_dma(&ssp_test_driver_data.rx, BUFSIZE_ORDER);
-	free_slots_buf_dma(&ssp_test_driver_data.tx, BUFSIZE_ORDER);
-
 	/* Set the Read Callback */
 	intel_mid_i2s_set_rd_cb(handle_ssp1, NULL);
 	/* Set the Write Callback */
 	intel_mid_i2s_set_wr_cb(handle_ssp1, NULL);
 
 	/* Free SSP reserved DMA channel */
-	intel_mid_i2s_command(handle_ssp1, SSP_CMD_FREE_TX, NULL);
-	intel_mid_i2s_command(handle_ssp1, SSP_CMD_FREE_RX, NULL);
+	if (ssp_test_driver_data.tx_dma_chnl_allocated) {
+		intel_mid_i2s_command(handle_ssp1, SSP_CMD_FREE_TX, NULL);
+		ssp_test_driver_data.tx_dma_chnl_allocated = 0;
+	}
+	if (ssp_test_driver_data.rx_dma_chnl_allocated) {
+		intel_mid_i2s_command(handle_ssp1, SSP_CMD_FREE_RX, NULL);
+		ssp_test_driver_data.rx_dma_chnl_allocated = 0;
+	}
+
 	dev_dbg(TEST_DEV, "FCT %s DMA Channels released\n", __func__);
+
+	/* order 1 => 4K requested */
+	free_slots_buf_dma(&ssp_test_driver_data.rx, BUFSIZE_ORDER);
+	free_slots_buf_dma(&ssp_test_driver_data.tx, BUFSIZE_ORDER);
 
 	/* we can close the ssp */
 	intel_mid_i2s_close(handle_ssp1);
@@ -840,6 +881,8 @@ static int __init ssp_test_init(void)
 	init_waitqueue_head(&ssp_test_driver_data.tx.wait);
 
 	ssp_test_driver_data.opened = 0;
+	ssp_test_driver_data.tx_dma_chnl_allocated = 0;
+	ssp_test_driver_data.rx_dma_chnl_allocated = 0;
 
 out:
 	return ret;
