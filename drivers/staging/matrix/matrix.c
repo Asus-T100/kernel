@@ -164,10 +164,10 @@ static struct mtx_size_info xhg_buf_info;
 			ptr_lut->member##_##state =  \
 				(struct_init structure*)&ptr_lut_ops[offset]; \
 			offset += lut_info.state##_##type##_size; \
+			if (mem) \
+				IO_REMAP_MEMORY(state); \
 		} else \
 			ptr_lut->member##_##state = NULL; \
-		if (mem) \
-			IO_REMAP_MEMORY(state); \
 	} while (0)
 
 #define BOOK_MARK_EXCHANGE_BUFFER(state, type, cu, cl, mem) \
