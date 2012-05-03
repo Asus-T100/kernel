@@ -43,6 +43,7 @@ mdfld_auo_dsi_controller_init(struct mdfld_dsi_config *dsi_config,
 	struct mdfld_dsi_hw_context *hw_ctx =
 		&dsi_config->dsi_hw_context;
 	struct drm_device *dev = dsi_config->dev;
+	struct drm_psb_private *dev_priv = dev->dev_private;
 	struct mdfld_dsi_hw_registers *regs = &dsi_config->regs;
 	int lane_count = dsi_config->lane_count;
 
@@ -62,7 +63,10 @@ mdfld_auo_dsi_controller_init(struct mdfld_dsi_config *dsi_config,
 	hw_ctx->clk_lane_switch_time_cnt = 0xa0014;
 	hw_ctx->dphy_param = 0x150c3408;
 	hw_ctx->dbi_bw_ctrl = 0x820;
-	hw_ctx->mipi = 0x810000;
+	if (dev_priv->platform_rev_id == MDFLD_PNW_A0)
+		hw_ctx->mipi = PASS_FROM_SPHY_TO_AFE | SEL_FLOPPED_HSTX;
+	else
+		hw_ctx->mipi = PASS_FROM_SPHY_TO_AFE;
 
 	/*set up func_prg*/
 	hw_ctx->dsi_func_prg = (0xa000 | lane_count);

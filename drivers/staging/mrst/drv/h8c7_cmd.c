@@ -251,6 +251,8 @@ mdfld_h8c7_dci_controller_init(struct mdfld_dsi_config *dsi_config,
 {
 
 	struct mdfld_dsi_hw_context *hw_ctx = &dsi_config->dsi_hw_context;
+	struct drm_device *dev = dsi_config->dev;
+	struct drm_psb_private *dev_priv = dev->dev_private;
 	int lane_count = dsi_config->lane_count;
 	PSB_DEBUG_ENTRY("%s: initializing dsi controller on pipe %d\n",
 			__func__, pipe);
@@ -269,7 +271,12 @@ mdfld_h8c7_dci_controller_init(struct mdfld_dsi_config *dsi_config,
 	hw_ctx->dbi_bw_ctrl = 0x820;
 
 	hw_ctx->dphy_param = 0x150c3408;
-	hw_ctx->mipi = 0x810008;
+	if (dev_priv->platform_rev_id == MDFLD_PNW_A0)
+		hw_ctx->mipi = PASS_FROM_SPHY_TO_AFE | SEL_FLOPPED_HSTX
+				| TE_TRIGGER_GPIO_PIN;
+	else
+		hw_ctx->mipi = PASS_FROM_SPHY_TO_AFE |
+				 TE_TRIGGER_GPIO_PIN;
 
 	/*set up func_prg*/
 	hw_ctx->dsi_func_prg = (0xa000 | lane_count);
@@ -1230,6 +1237,7 @@ int mdfld_h8c7_cmd_power_on(struct drm_encoder *encoder)
 	struct mdfld_dsi_hw_registers *regs = NULL;
 	struct mdfld_dsi_hw_context *ctx = NULL;
 	struct drm_device *dev = encoder->dev;
+	struct drm_psb_private *dev_priv = dev->dev_private;
 	int err = 0;
 	struct mdfld_dsi_pkg_sender *sender =
 		mdfld_dsi_get_pkg_sender(dsi_config);
@@ -1249,7 +1257,11 @@ int mdfld_h8c7_cmd_power_on(struct drm_encoder *encoder)
 
 	/* set low power output hold */
 	msleep(5);
-	REG_WRITE(regs->mipi_reg, 0x810000); // ctx->mipi);
+	if (dev_priv->platform_rev_id == MDFLD_PNW_A0)
+		REG_WRITE(regs->mipi_reg,
+			 PASS_FROM_SPHY_TO_AFE | SEL_FLOPPED_HSTX);
+	else
+		REG_WRITE(regs->mipi_reg, PASS_FROM_SPHY_TO_AFE);
 	msleep(30);
 	/* D-PHY parameter */
 	REG_WRITE(regs->dphy_param_reg, ctx->dphy_param);
