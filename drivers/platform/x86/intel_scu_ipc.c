@@ -222,7 +222,7 @@ int intel_scu_ipc_check_status(void)
 	int loop_count = 3000000;
 	int i;
 
-	if (ipcdev.ioc) {
+	if (ipcdev.ioc && (system_state == SYSTEM_RUNNING)) {
 		if (0 == wait_for_completion_timeout(
 				&ipcdev.cmd_complete, 3 * HZ))
 			ret = -ETIMEDOUT;
