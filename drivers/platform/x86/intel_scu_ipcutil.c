@@ -51,6 +51,9 @@
 #define PMIT_RESETIRQ1_OFFSET		14
 #define PMIT_RESETIRQ2_OFFSET		15
 
+#define OSHOB_SCU_TRACE_OFFSET		0x00
+#define OSHOB_IA_TRACE_OFFSET		0x04
+
 #define DUMP_OSNIB
 
 /* Mode for Audio clock */
@@ -494,6 +497,37 @@ static int intel_scu_ipc_read_osnib_resetirq2(u8 *rirq2)
 }
 #endif
 
+/*
+ * This reads the WD from the OSNIB
+ */
+#ifdef DUMP_OSNIB
+static int intel_scu_ipc_read_osnib_wd(u8 *rirq2)
+{
+	return intel_scu_ipc_read_oshob(rirq2, 1, OSNIB_WD_OFFSET);
+}
+#endif
+
+/*
+ * This reads the ALARM from the OSNIB
+ */
+#ifdef DUMP_OSNIB
+static int intel_scu_ipc_read_osnib_alarm(u8 *rirq2)
+{
+	return intel_scu_ipc_read_oshob(rirq2, 1, OSNIB_ALARM_OFFSET);
+
+}
+#endif
+
+/*
+ * This reads the WAKESRC from the OSNIB
+ */
+#ifdef DUMP_OSNIB
+static int intel_scu_ipc_read_osnib_wakesrc(u8 *rirq2)
+{
+	return intel_scu_ipc_read_oshob(rirq2, 1, OSNIB_WAKESRC_OFFSET);
+}
+#endif
+
 static const struct file_operations scu_ipc_fops = {
 	.unlocked_ioctl = scu_ipc_ioctl,
 };
@@ -507,8 +541,8 @@ static struct miscdevice scu_ipcutil = {
 static int __init ipc_module_init(void)
 {
 #ifdef DUMP_OSNIB
-	u8 rr, resetirq1, resetirq2, *ptr;
-	u32 pmit;
+	u8 rr, resetirq1, resetirq2, wd, alarm, wakesrc, *ptr;
+	u32 pmit, scu_trace, ia_trace;
 #endif
 
 #ifdef DUMP_OSNIB
@@ -524,14 +558,23 @@ static int __init ipc_module_init(void)
 		iounmap(ptr);
 	}
 
+	/* Dumping OSHOB content */
+	intel_scu_ipc_read_oshob(&scu_trace, 4, OSHOB_SCU_TRACE_OFFSET);
+	intel_scu_ipc_read_oshob(&ia_trace, 4, OSHOB_IA_TRACE_OFFSET);
+	pr_warn("[BOOT] SCU_TR=0x%08x IA_TR=0x%08x (oshob)\n",
+		scu_trace, ia_trace);
 	/* Dumping OSNIB content */
 	intel_scu_ipc_read_osnib_rr(&rr);
 	intel_scu_ipc_read_osnib_resetirq1(&resetirq1);
 	intel_scu_ipc_read_osnib_resetirq2(&resetirq2);
-	pr_warn("[BOOT] RR=0x%02x (osnib)\n", rr);
-	pr_warn("[BOOT] RESETIRQ1=0x%02x RESETIRQ2=0x%02x "
+	intel_scu_ipc_read_osnib_wd(&wd);
+	intel_scu_ipc_read_osnib_alarm(&alarm);
+	intel_scu_ipc_read_osnib_wakesrc(&wakesrc);
+	pr_warn("[BOOT] RR=0x%02x WD=0x%02x ALARM=0x%02x (osnib)\n",
+		rr, wd, alarm);
+	pr_warn("[BOOT] WAKESRC=0x%02x RESETIRQ1=0x%02x RESETIRQ2=0x%02x "
 		"(osnib)\n",
-		resetirq1, resetirq2);
+		wakesrc, resetirq1, resetirq2);
 #endif
 
 	return misc_register(&scu_ipcutil);
