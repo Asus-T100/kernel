@@ -41,11 +41,13 @@
 #include "psb_intel_hdmi.h"
 #include "mdfld_ti_tpd.h"
 #include "mdfld_dsi_dpi.h"
+#include "mdfld_dsi_lvds_bridge.h"
 #ifdef CONFIG_GFX_RTPM
 #include <linux/pm_runtime.h>
 #endif
 
 #include <linux/earlysuspend.h>
+#include <linux/atomic.h>
 
 #undef OSPM_GFX_DPK
 #define SCU_CMD_VPROG2  0xe3
@@ -2584,3 +2586,49 @@ int psb_runtime_idle(struct device *dev)
 		else
 			return 0;
 }
+
+#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
+DEFINE_MUTEX(vadd_mutex);
+static int i2c_access_count;
+
+/* use access count to mark status of i2c bus 2, and make sure avdd is turned on
+ * when accessing this i2c. when accaccess count reaches 1, then turn on lvds
+ * panel's avdd
+ */
+void vlcm_vadd_get()
+{
+	mutex_lock(&vadd_mutex);
+	++i2c_access_count;
+	if (i2c_access_count == 1) {
+		if (gpio_direction_output(GPIO_MIPI_LCD_VADD, 1)) {
+			pr_err("%s: faild to pull high VADD\n", __func__);
+			goto unlock;
+		}
+		msleep(260);
+	}
+unlock:
+	mutex_unlock(&vadd_mutex);
+}
+
+/* decrease reference count, and turn vadd off when count reaches 0
+ */
+void vlcm_vadd_put()
+{
+	mutex_lock(&vadd_mutex);
+	if (i2c_access_count == 0) {
+		pr_warn("%s: i2c_access_count is 0\n", __func__);
+		goto unlock;
+	}
+
+	--i2c_access_count;
+	if (i2c_access_count > 0)
+		goto unlock;
+	/* i2c_access_count == 0 */
+	if (gpio_direction_output(GPIO_MIPI_LCD_VADD, 0)) {
+		pr_err("%s: faild to pull low VADD\n",
+				__func__);
+	}
+unlock:
+	mutex_unlock(&vadd_mutex);
+}
+#endif

@@ -28,15 +28,11 @@
 #include "mdfld_dsi_lvds_bridge.h"
 #include "psb_drv.h"
 #include <asm/intel_scu_ipc.h>
+#include "psb_powermgmt.h"
 
 #define CONFIG_LVDS_HARD_RESET
 #ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
 
-/*GPIO Pins */
-#define GPIO_MIPI_BRIDGE_RESET	115
-
-#define GPIO_MIPI_LCD_BL_EN	112  /* DV1.0 GP_CORE_016 (+96 = GPIO number), 6S6P_BL_EN */
-#define GPIO_MIPI_LCD_VADD	110
 /* All these pins removed on DV1.0 */
 #define GPIO_MIPI_LCD_BIAS_EN	-1
 #define GPIO_MIPI_PANEL_RESET	-1
@@ -541,8 +537,8 @@ void dsi_lvds_toshiba_bridge_panel_off(void)
 		gpio_set_value_cansleep(GPIO_MIPI_LCD_BL_EN, 0);
 	mdelay(1);
 
-	if (gpio_direction_output(GPIO_MIPI_LCD_VADD, 0))
-		gpio_set_value_cansleep(GPIO_MIPI_LCD_VADD, 0);
+	/* try to turn vadd off */
+	vlcm_vadd_put();
 }
 
 /* ************************************************************************* *\
@@ -556,9 +552,8 @@ void dsi_lvds_toshiba_bridge_panel_on(struct drm_device *dev)
 
 	printk(KERN_INFO "[DISPLAY ] %s\n", __func__);
 
-	if (gpio_direction_output(GPIO_MIPI_LCD_VADD, 1))
-		gpio_set_value_cansleep(GPIO_MIPI_LCD_VADD, 1);
-	msleep(260);
+	/* get vadd count, and make sure vadd is on */
+	vlcm_vadd_get();
 
 	if (cmi_lcd_i2c_client) {
 		int ret;
@@ -1060,5 +1055,4 @@ static void __exit dsi_lvds_bridge_exit(void)
 
 module_init(dsi_lvds_bridge_init);
 module_exit(dsi_lvds_bridge_exit);
-
 #endif

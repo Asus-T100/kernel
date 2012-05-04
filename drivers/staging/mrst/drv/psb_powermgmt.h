@@ -127,5 +127,9 @@ void ospm_runtime_pm_forbid(struct drm_device * dev);
 void acquire_ospm_lock(void);
 void release_ospm_lock(void);
 
+#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
+extern void vlcm_vadd_get(void);
+extern void vlcm_vadd_put(void);
+#endif
 
 #endif /*_PSB_POWERMGMT_H_*/

@@ -25,6 +25,12 @@
 #ifndef __MDFLD_DSI_LVDS_BRIDGE_H__
 #define __MDFLD_DSI_LVDS_BRIDGE_H__
 
+/*GPIO Pins */
+#define GPIO_MIPI_BRIDGE_RESET	115
+
+#define GPIO_MIPI_LCD_BL_EN	112
+#define GPIO_MIPI_LCD_VADD	110
+
 #define GPIOPWMCTRL	0x38F
 #define PWM0CLKDIV0	0x62 /* low byte */
 #define PWM0CLKDIV1	0x61 /* high byte */
