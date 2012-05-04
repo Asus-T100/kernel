@@ -30,6 +30,16 @@
 #endif
 #include <hmm/hmm.h>
 
+enum hrt_userptr_type {
+	HRT_USR_PTR = 0,
+#ifdef CONFIG_ION
+	HRT_USR_ION,
+#endif
+};
+
+void hrt_isp_css_mm_set_user_ptr(unsigned int userptr,
+				unsigned int num_pages, enum hrt_userptr_type);
+
 int hrt_isp_css_mm_set(void *virt_addr, int c, size_t bytes);
 
 /* Allocate memory, returns a virtual address */

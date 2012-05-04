@@ -31,6 +31,10 @@
 #include <linux/list.h>
 #include <linux/errno.h>
 
+#ifdef CONFIG_ION
+#include <linux/ion.h>
+#endif
+
 #include "hmm/hmm_common.h"
 #include "hmm/hmm_bo_dev.h"
 #include "hmm/hmm_bo.h"
@@ -65,7 +69,27 @@ int hmm_bo_device_init(struct hmm_bo_device *bdev,
 	INIT_LIST_HEAD(&bdev->active_bo_list);
 
 	spin_lock_init(&bdev->list_lock);
+#ifdef CONFIG_ION
+	/*
+	 * TODO:
+	 * ion driver global variable and heap mask
+	 * should be changed when mrfld ion is ready
+	 */
+	if (!mrfld_ion_driver)
+		goto vm_init_err;
 
+	bdev->iclient = ion_client_create(mrfld_ion_driver,
+					  ION_HEAP_TYPE_SYSTEM_CONTIG |
+					  ION_HEAP_TYPE_SYSTEM |
+					  ION_HEAP_TYPE_CARVEOUT,
+					  "atomisp");
+	if (IS_ERR_OR_NULL(bdev->iclient)) {
+		ret = PTR_ERR(bdev->iclient);
+		if (!bdev->iclient)
+			ret = -EINVAL;
+		goto vm_init_err;
+	}
+#endif
 	bdev->flag = HMM_BO_DEVICE_INITED;
 
 	return 0;
@@ -101,6 +125,10 @@ void hmm_bo_device_exit(struct hmm_bo_device *bdev)
 
 	isp_mmu_exit(&bdev->mmu);
 	hmm_vm_clean(&bdev->vaddr_space);
+#ifdef CONFIG_ION
+	if (bdev->iclient != NULL)
+		ion_client_destroy(bdev->iclient);
+#endif
 }
 
 int hmm_bo_device_inited(struct hmm_bo_device *bdev)

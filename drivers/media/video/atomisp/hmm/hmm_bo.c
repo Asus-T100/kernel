@@ -45,6 +45,10 @@
 #include "hmm/hmm_bo_dev.h"
 #include "hmm/hmm_common.h"
 #include "atomisp_internal.h"
+#ifdef CONFIG_ION
+#include <linux/ion.h>
+#include <linux/scatterlist.h>
+#endif
 
 static unsigned int order_to_nr(unsigned int order)
 {
@@ -578,7 +582,77 @@ static int get_pfnmap_pages(struct task_struct *tsk, struct mm_struct *mm,
 
 	return __get_pfnmap_pages(tsk, mm, start, nr_pages, flags, pages, vmas);
 }
+#ifdef CONFIG_ION
+static int alloc_ion_pages(struct hmm_buffer_object *bo,
+			     unsigned int shared_fd)
+{
+	struct scatterlist *tmp;
+	struct page_block *pgblk;
+	int ret, i, page_nr = 0;
 
+	bo->pages = atomisp_kernel_malloc(sizeof(struct page *) * bo->pgnr);
+	if (unlikely(!bo->pages)) {
+		v4l2_err(&atomisp_dev, "out of memory for bo->pages...\n");
+		return -ENOMEM;
+	}
+
+	bo->ihandle = ion_import_fd(bo->bdev->iclient, shared_fd);
+	if (IS_ERR_OR_NULL(bo->ihandle)) {
+		v4l2_err(&atomisp_dev, "invalid shared fd to ion.\n");
+		ret = PTR_ERR(bo->ihandle);
+		if (!bo->ihandle)
+			ret = -EINVAL;
+		goto error;
+	}
+
+	tmp = ion_map_dma(bo->bdev->iclient, bo->ihandle);
+	if (IS_ERR_OR_NULL(tmp)) {
+		v4l2_err(&atomisp_dev, "ion map_dma error.\n");
+		ret = PTR_ERR(tmp);
+		if (!tmp)
+			ret = -EINVAL;
+		goto error;
+	}
+
+	do {
+		bo->pages[page_nr++] = sg_page(tmp);
+		tmp = sg_next(tmp);
+	} while (tmp && (page_nr < bo->pgnr));
+
+	if (page_nr != bo->pgnr) {
+		v4l2_err(&atomisp_dev,
+			 "get_ion_pages err: bo->pgnr = %d, "
+			 "pgnr actually pinned = %d.\n",
+			 bo->pgnr, page_nr);
+		ret = -EINVAL;
+		goto error_unmap;
+	}
+
+	pgblk = atomisp_kernel_malloc(sizeof(*pgblk) * bo->pgnr);
+	if (unlikely(!pgblk)) {
+		v4l2_err(&atomisp_dev, "out of memory for pgblk\n");
+		ret = -ENOMEM;
+		goto error_unmap;
+	}
+
+	for (i = 0; i < bo->pgnr; i++) {
+		pgblk->pages = bo->pages[i];
+		pgblk->order = 0;
+
+		list_add_tail(&pgblk->list, &bo->pgblocks);
+		pgblk++;
+	}
+
+	return 0;
+error_unmap:
+	ion_unmap_dma(bo->bdev->iclient, bo->ihandle);
+error:
+	atomisp_kernel_free(bo->pages);
+	return ret;
+
+
+}
+#endif
 /*
  * Convert user space virtual address into pages list
  */
@@ -661,6 +735,23 @@ out_of_mem:
 
 	return -ENOMEM;
 }
+#ifdef CONFIG_ION
+static void free_ion_pages(struct hmm_buffer_object *bo)
+{
+	struct page_block *head = list_first_entry(&bo->pgblocks,
+						   struct page_block, list);
+
+	atomisp_kernel_free(head);
+	atomisp_kernel_free(bo->pages);
+
+	/*
+	 * All items on list were freed by free_bo_page_blocks(). We're safe
+	 * to initialize list head again.
+	 */
+	INIT_LIST_HEAD(&bo->pgblocks);
+	ion_unmap_dma(bo->bdev->iclient, bo->ihandle);
+}
+#endif
 
 static void free_user_pages(struct hmm_buffer_object *bo)
 {
@@ -717,6 +808,14 @@ int hmm_bo_alloc_pages(struct hmm_buffer_object *bo,
 		ret = alloc_private_pages(bo, from_highmem, cached);
 	else if (type == HMM_BO_USER)
 		ret = alloc_user_pages(bo, userptr, cached);
+#ifdef CONFIG_ION
+	else if (type == HMM_BO_ION)
+		/*
+		 * TODO:
+		 * Add cache flag when ION support it
+		 */
+		ret = alloc_ion_pages(bo, userptr);
+#endif
 	else {
 		v4l2_err(&atomisp_dev, "invalid buffer type.\n");
 		ret = -EINVAL;
@@ -762,6 +861,10 @@ void hmm_bo_free_pages(struct hmm_buffer_object *bo)
 		free_private_pages(bo);
 	else if (bo->type == HMM_BO_USER)
 		free_user_pages(bo);
+#ifdef CONFIG_ION
+	else if (bo->type == HMM_BO_ION)
+		free_ion_pages(bo);
+#endif
 	else
 		v4l2_err(&atomisp_dev, "invalid buffer type.\n");
 	mutex_unlock(&bo->mutex);

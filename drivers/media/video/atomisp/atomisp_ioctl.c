@@ -28,6 +28,7 @@
 #include <css/sh_css_debug.h>
 
 #include "bufferclass_video_linux.h"
+#include "hrt/hive_isp_css_mm_hrt.h"
 
 /* for v4l2_capability */
 static const char *DRIVER = "atomisp";	/* max size 15 */
@@ -986,16 +987,22 @@ static int atomisp_qbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 				goto error;
 			break;
 		}
+#ifdef CONFIG_ION
+		hrt_isp_css_mm_set_user_ptr(userptr, pgnr,
+			buf->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_ION
+				? HRT_USR_ION : HRT_USR_PTR);
+#else
+		hrt_isp_css_mm_set_user_ptr(userptr, pgnr, HRT_USR_PTR);
+#endif
 
-		hrt_isp_css_mm_set_user_ptr(userptr, pgnr);
 		if (!pipe->is_main)
 			ret = sh_css_frame_allocate_from_info(&handle,
 								&vf_info);
 		else
 			ret = sh_css_frame_allocate_from_info(&handle,
 								&out_info);
+		hrt_isp_css_mm_set_user_ptr(0, 0, HRT_USR_PTR);
 
-		hrt_isp_css_mm_set_user_ptr(0, 0);
 		if (ret != sh_css_success) {
 			v4l2_err(&atomisp_dev, "Error to allocate frame\n");
 			return -ENOMEM;

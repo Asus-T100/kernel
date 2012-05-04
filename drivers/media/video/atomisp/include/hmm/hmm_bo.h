@@ -70,12 +70,17 @@ struct hmm_bo_device;
  *	pages are allocated by other component. currently: video driver.
  *	HMM_BO_USER:
  *	pages are allocated in user space process.
+ *	HMM_BO_ION:
+ *	pages are allocated through ION.
  *
  */
 enum hmm_bo_type {
 	HMM_BO_PRIVATE,
 	HMM_BO_SHARE,
 	HMM_BO_USER,
+#ifdef CONFIG_ION
+	HMM_BO_ION,
+#endif
 };
 
 #define	HMM_BO_VM_ALLOCED	0x1
@@ -106,6 +111,9 @@ struct hmm_buffer_object {
 	int			from_highmem;
 	int			mmap_count;
 	struct hmm_vm_node	*vm_node;
+#ifdef CONFIG_ION
+	struct ion_handle	*ihandle;
+#endif
 	int			status;
 	int         mem_type;
 
