@@ -43,7 +43,7 @@
 
 void intel_mid_power_off(void)
 {
-#ifdef CONFIG_INTEL_MID_OSIP
+#if defined(CONFIG_INTEL_MID_OSIP) && !defined(CONFIG_BOARD_REDRIDGE)
 	if (!get_force_shutdown_occured() &&
 	power_supply_is_system_supplied()) {
 		/*
