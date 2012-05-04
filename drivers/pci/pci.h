@@ -314,4 +314,9 @@ static inline int pci_dev_specific_reset(struct pci_dev *dev, int probe)
 }
 #endif
 
+#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
+extern void vlcm_vadd_get(void);
+extern void vlcm_vadd_put(void);
+#endif
+
 #endif /* DRIVERS_PCI_H */

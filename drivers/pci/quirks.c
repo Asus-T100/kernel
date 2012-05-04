@@ -1425,6 +1425,24 @@ DECLARE_PCI_FIXUP_SUSPEND(PCI_VENDOR_ID_INTEL,	PCI_DEVICE_ID_INTEL_ICH6_1,	asus_
 DECLARE_PCI_FIXUP_RESUME(PCI_VENDOR_ID_INTEL,	PCI_DEVICE_ID_INTEL_ICH6_1,	asus_hides_smbus_lpc_ich6_resume);
 DECLARE_PCI_FIXUP_RESUME_EARLY(PCI_VENDOR_ID_INTEL,	PCI_DEVICE_ID_INTEL_ICH6_1,	asus_hides_smbus_lpc_ich6_resume_early);
 
+#if CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
+static void tc35876x_lvds_panel_fixup_suspend(struct pci_dev *dev)
+{
+	vlcm_vadd_put();
+}
+DECLARE_PCI_FIXUP_SUSPEND(PCI_VENDOR_ID_INTEL,
+		0x082E,
+		tc35876x_lvds_panel_fixup_suspend);
+
+static void tc35876x_lvds_panel_fixup_resume(struct pci_dev *dev)
+{
+	vlcm_vadd_get();
+}
+DECLARE_PCI_FIXUP_RESUME_EARLY(PCI_VENDOR_ID_INTEL,
+		0x082E,
+		tc35876x_lvds_panel_fixup_resume);
+#endif
+
 /*
  * SiS 96x south bridge: BIOS typically hides SMBus device...
  */
