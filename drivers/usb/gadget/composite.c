@@ -737,6 +737,11 @@ static int set_config(struct usb_composite_dev *cdev,
 	unsigned		power = gadget_is_otg(gadget) ? 8 : 100;
 	int			tmp;
 
+#if defined(CONFIG_USB_GADGET_SUSPEND_VBUS_DRAW)
+	if (power < CONFIG_USB_GADGET_SUSPEND_VBUS_DRAW)
+		power = CONFIG_USB_GADGET_SUSPEND_VBUS_DRAW;
+#endif
+
 	if (cdev->config)
 		reset_config(cdev);
 
