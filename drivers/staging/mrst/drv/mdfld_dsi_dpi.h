@@ -87,4 +87,12 @@ extern void mdfld_dsi_dpi_controller_init(struct mdfld_dsi_config *dsi_config,
 extern void mid_enable_pipe_event(struct drm_psb_private *dev_priv, int pipe);
 extern void psb_enable_pipestat(struct drm_psb_private *dev_priv, int pipe,
 				u32 mask);
+
+#if defined(CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY) || \
+	defined(CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE)
+void dsi_set_pipe_plane_enable_state(struct drm_device *dev,
+		int state,
+		int pipe);
+#endif
+
 #endif /*__MDFLD_DSI_DPI_H__*/

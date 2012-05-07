@@ -726,6 +726,7 @@ void dsi_set_pipe_plane_enable_state(struct drm_device *dev, int state, int pipe
 
 	if (state) {
 		int retry;
+
 		/*Set up pipe */
 		REG_WRITE(pipeconf_reg, pipeconf);
 
@@ -736,7 +737,6 @@ void dsi_set_pipe_plane_enable_state(struct drm_device *dev, int state, int pipe
 
 		if (!retry)
 			printk(KERN_ALERT "Fatal Error: Failed to enable pipe\n");
-
 
 		/*Set up display plane */
 		REG_WRITE(dspcntr_reg, dspcntr);
@@ -754,6 +754,11 @@ void dsi_set_pipe_plane_enable_state(struct drm_device *dev, int state, int pipe
 		/* Disable display plane */
 		REG_FLD_MOD(dspcntr_reg, 0, 31, 31);
 
+		/* Set DSPBSURF to systemBuffer temporary to
+		 * avoid hdmi display last picture*/
+		REG_WRITE(DSPASURF, dev_priv->init_screen_start);
+		REG_WRITE(DSPALINOFF, dev_priv->init_screen_offset);
+
 		/* Flush the plane changes ??? posted write? */
 		REG_WRITE(dspbase_reg, REG_READ(dspbase_reg));
 		REG_READ(dspbase_reg);
@@ -762,14 +767,6 @@ void dsi_set_pipe_plane_enable_state(struct drm_device *dev, int state, int pipe
 		REG_WRITE(pipeconf_reg, 0);
 		mdfld_wait_for_PIPEA_DISABLE(dev, pipe);
 		mdfld_wait_for_DPI_CTRL_FIFO(dev, pipe);
-
-		/* Put DSI lanes to ULPS to disable pipe */
-		REG_FLD_MOD(device_ready_reg, 2, 2, 1);
-		REG_READ(device_ready_reg); /* posted write? */
-
-		/* LP Hold */
-		REG_FLD_MOD(dspcntr_reg, 0, 16, 16);
-		REG_READ(dspcntr_reg); /* posted write? */
 	}
 }
 

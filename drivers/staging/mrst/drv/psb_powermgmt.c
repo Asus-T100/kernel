@@ -1048,6 +1048,7 @@ static int mdfld_restore_display_registers(struct drm_device *dev, int pipe)
 	u32 dpll = 0;
 	u32 timeout = 0;
 	u32 reg_offset = 0;
+	u32 temp = 0, device_ready_reg = 0;
 
 	/* regester */
 	u32 dpll_reg = MRST_DPLL_A;
@@ -1330,28 +1331,30 @@ static int mdfld_restore_display_registers(struct drm_device *dev, int pipe)
     else
 	msleep(20);
 
-#if 0 /* revisit it later and check if we want to enter/exit from ULPS */
-        /* LP Hold Release */
-        temp = REG_READ(mipi_reg);
-        temp |= LP_OUTPUT_HOLD_RELEASE;
-        REG_WRITE(mipi_reg, temp);
-        mdelay(1);
+#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
+	device_ready_reg = DEVICE_READY_REG + reg_offset;
+	/* LP Hold Release */
+	temp = REG_READ(mipi_reg);
+	temp |= LP_OUTPUT_HOLD_RELEASE;
+	REG_WRITE(mipi_reg, temp);
+	mdelay(1);
 
 
-        /* Set DSI host to exit from Utra Low Power State */
-        temp = REG_READ(device_ready_reg);
-        temp &= ~ULPS_MASK;
-        temp |= 0x3;
-        temp |= EXIT_ULPS_DEV_READY;
-        REG_WRITE(device_ready_reg, temp);
-        mdelay(1);
+	/* Set DSI host to exit from Utra Low Power State */
+	temp = REG_READ(device_ready_reg);
+	temp &= ~ULPS_MASK;
+	temp |= 0x3;
+	temp |= EXIT_ULPS_DEV_READY;
+	REG_WRITE(device_ready_reg, temp);
+	mdelay(1);
 
-        temp = REG_READ(device_ready_reg);
-        temp &= ~ULPS_MASK;
-        temp |= EXITING_ULPS;
-        REG_WRITE(device_ready_reg, temp);
-        mdelay(1);
+	temp = REG_READ(device_ready_reg);
+	temp &= ~ULPS_MASK;
+	temp |= EXITING_ULPS;
+	REG_WRITE(device_ready_reg, temp);
+	mdelay(1);
 #endif
+
 	/*enable the pipe*/
 	PSB_WVDC32(pipeconf_val, pipeconf_reg);
 
@@ -1436,6 +1439,8 @@ void ospm_suspend_display(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv = dev->dev_private;
 	int pp_stat, ret=0;
+	u32 temp = 0, device_ready_reg = 0;
+	u32 mipi_reg = 0, reg_offset = 0;
 
 #ifdef OSPM_GFX_DPK
 	printk(KERN_ALERT "%s\n", __func__);
@@ -1473,7 +1478,9 @@ void ospm_suspend_display(struct drm_device *dev)
 		dev_priv->saveGL3_USE_WRT_INVAL = PSB_RVDC32(MDFLD_GL3_USE_WRT_INVAL);
 #endif
 
-#if 0 /* revisit it later and check if we want to enter/exit from ULPS */
+#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
+		device_ready_reg = DEVICE_READY_REG + reg_offset;
+		mipi_reg = MIPI;
 		/* Put the panel in ULPS mode for S0ix. */
 		temp = REG_READ(device_ready_reg);
 		temp &= ~ULPS_MASK;
@@ -1572,10 +1579,6 @@ void ospm_resume_display(struct pci_dev *pdev)
 	struct drm_device *dev = pci_get_drvdata(pdev);
 	struct drm_psb_private *dev_priv = dev->dev_private;
 	struct psb_gtt *pg = dev_priv->pg;
-#if (defined(CONFIG_SND_INTELMID_HDMI_AUDIO) || \
-		defined(CONFIG_SND_INTELMID_HDMI_AUDIO_MODULE))
-	char *uevent_string = NULL;
-#endif
 
 #ifdef OSPM_GFX_DPK
 	printk(KERN_ALERT "%s\n", __func__);
@@ -1763,6 +1766,114 @@ static bool ospm_resume_pci(struct pci_dev *pdev)
 }
 #endif
 
+#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
+static void dsi_lvds_panel_get_hdmi_audio_status(void)
+{
+#if (defined(CONFIG_SND_INTELMID_HDMI_AUDIO) || \
+		defined(CONFIG_SND_INTELMID_HDMI_AUDIO_MODULE))
+	struct drm_psb_private *dev_priv = gpDrmDevice->dev_private;
+	struct snd_intel_had_interface *had_interface = dev_priv->had_interface;
+	pm_event_t hdmi_audio_event;
+
+	if (dev_priv->had_pvt_data && hdmi_state) {
+		hdmi_audio_event.event = 0;
+		dev_priv->hdmi_audio_busy =
+			had_interface->suspend(dev_priv->had_pvt_data,
+					hdmi_audio_event);
+	}
+#endif
+}
+
+static void gfx_redridge_early_suspend(struct drm_device *dev)
+{
+	struct drm_psb_private *dev_priv = dev ? dev->dev_private : NULL;
+	struct drm_encoder *encoder = NULL;
+	struct drm_crtc *crtc = NULL;
+	struct drm_encoder_helper_funcs *enc_funcs;
+
+	if (!dev || !dev_priv) {
+		pr_err("%s: dev pointor is NULL\n", __func__);
+		return;
+	}
+
+	if (dev_priv->encoder0 && (dev_priv->panel_desc & DISPLAY_A)) {
+		if (dev_priv->bhdmiconnected)
+			dsi_lvds_panel_get_hdmi_audio_status();
+		if (dev_priv->hdmi_audio_busy) {
+			pr_debug("%s: hdmi audio busy\n", __func__);
+			dsi_lvds_toshiba_bridge_panel_off();
+			dsi_set_pipe_plane_enable_state(dev, 0, 0);
+		} else {
+			mdfld_dsi_dpi_set_power(&dev_priv->encoder0->base,
+					false);
+		}
+	}
+
+	if (dev_priv->encoder2 && (dev_priv->panel_desc & DISPLAY_C))
+		mdfld_dsi_dpi_set_power(&dev_priv->encoder2->base, false);
+
+	list_for_each_entry(encoder, &dev->mode_config.encoder_list, head) {
+		enc_funcs = encoder->helper_private;
+		if (encoder->encoder_type == DRM_MODE_ENCODER_TMDS
+				&& drm_helper_encoder_in_use(encoder)) {
+			if (enc_funcs && enc_funcs->save)
+				enc_funcs->save(encoder);
+		}
+	}
+}
+
+static void gfx_redridge_late_resume(struct drm_device *dev)
+{
+	struct drm_psb_private *dev_priv = dev ? dev->dev_private : NULL;
+	struct drm_encoder *encoder = NULL;
+	struct drm_crtc *crtc = NULL;
+	struct drm_encoder_helper_funcs *enc_funcs;
+
+	if (!dev || !dev_priv) {
+		pr_err("%s: dev pointor is NULL\n", __func__);
+		return;
+	}
+
+	if (dev_priv->encoder0 && (dev_priv->panel_desc & DISPLAY_A)) {
+		if (dev_priv->hdmi_audio_busy) {
+			pr_debug("%s: hdmi audio busy\n", __func__);
+			dsi_lvds_toshiba_bridge_panel_on(dev);
+			dsi_set_pipe_plane_enable_state(dev, 1, 0);
+			dev_priv->hdmi_audio_busy = 0;
+		} else {
+			encoder = &dev_priv->encoder0->base;
+			crtc = encoder->crtc;
+			if (crtc)
+				mdfld_dsi_dpi_mode_set(
+						encoder,
+						&crtc->mode,
+						&crtc->hwmode);
+			mdfld_dsi_dpi_set_power(encoder, true);
+		}
+	}
+	if (dev_priv->encoder2 && (dev_priv->panel_desc & DISPLAY_C)) {
+		encoder = &dev_priv->encoder2->base;
+		crtc = encoder->crtc;
+		if (crtc)
+			mdfld_dsi_dpi_mode_set(
+					encoder,
+					&crtc->mode,
+					&crtc->hwmode);
+		mdfld_dsi_dpi_set_power(encoder, true);
+	}
+	list_for_each_entry(encoder,
+			&dev->mode_config.encoder_list,
+			head) {
+		enc_funcs = encoder->helper_private;
+		if (encoder->encoder_type == DRM_MODE_ENCODER_TMDS
+				&& drm_helper_encoder_in_use(encoder)) {
+			if (enc_funcs && enc_funcs->restore)
+				enc_funcs->restore(encoder);
+		}
+	}
+}
+#endif
+
 static void gfx_early_suspend(struct early_suspend *h)
 {
 	struct drm_psb_private* dev_priv = gpDrmDevice->dev_private;
@@ -1787,24 +1898,18 @@ static void gfx_early_suspend(struct early_suspend *h)
 			(dev_priv->panel_id == AUO_SC1_VID) ||
 			/* SC1 setting */
 			(dev_priv->panel_id == AUO_SC1_CMD)) {
-#if defined(CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY) || defined(CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE)
-			if (dev_priv->encoder0 &&
-				(dev_priv->panel_desc & DISPLAY_A))
-				mdfld_dsi_dpi_set_power(
-					dev_priv->encoder0, false);
-			if (dev_priv->encoder2 &&
-				(dev_priv->panel_desc & DISPLAY_C))
-				mdfld_dsi_dpi_set_power(
-					dev_priv->encoder2, false);
+#if defined(CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY) || \
+			defined(CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE)
+			gfx_redridge_early_suspend(dev);
 #else
-				list_for_each_entry(encoder,
+			list_for_each_entry(encoder,
 					&dev->mode_config.encoder_list,
 					head) {
-					enc_funcs = encoder->helper_private;
-					if (!drm_helper_encoder_in_use(encoder))
-						continue;
-					if (enc_funcs && enc_funcs->save)
-						enc_funcs->save(encoder);
+				enc_funcs = encoder->helper_private;
+				if (!drm_helper_encoder_in_use(encoder))
+					continue;
+				if (enc_funcs && enc_funcs->save)
+					enc_funcs->save(encoder);
 			}
 #endif
 		} else if (dev_priv->panel_id == TPO_CMD) {
@@ -1864,37 +1969,20 @@ static void gfx_late_resume(struct early_suspend *h)
 				(dev_priv->panel_id == AUO_SC1_VID) ||
 				/* SC1 setting */
 				(dev_priv->panel_id == AUO_SC1_CMD)) {
-				if (get_panel_type(dev, 0) == TMD_VID) {
-					if (dev_priv->encoder0 &&
-							(dev_priv->panel_desc & DISPLAY_A)) {
-						encoder = &dev_priv->encoder0->base;
-						crtc = encoder->crtc;
-						if (crtc)
-							mdfld_dsi_dpi_mode_set(encoder,
-									&crtc->mode, &crtc->hwmode);
-						mdfld_dsi_dpi_set_power(encoder, true);
-					}
-					if (dev_priv->encoder2 &&
-							(dev_priv->panel_desc & DISPLAY_C)) {
-						encoder = &dev_priv->encoder2->base;
-						crtc = encoder->crtc;
-						if (crtc)
-							mdfld_dsi_dpi_mode_set(encoder,
-									&crtc->mode, &crtc->hwmode);
-						mdfld_dsi_dpi_set_power(
-								dev_priv->encoder2, true);
-					}
-				} else {
-					list_for_each_entry(encoder,
-							&dev->mode_config.encoder_list,
-							head) {
-						enc_funcs = encoder->helper_private;
-						if (!drm_helper_encoder_in_use(encoder))
-							continue;
-						if (enc_funcs && enc_funcs->restore)
-							enc_funcs->restore(encoder);
-					}
+#if defined(CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY) || \
+				defined(CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE)
+				gfx_redridge_late_resume(dev);
+#else
+				list_for_each_entry(encoder,
+						&dev->mode_config.encoder_list,
+						head) {
+					enc_funcs = encoder->helper_private;
+					if (!drm_helper_encoder_in_use(encoder))
+						continue;
+					if (enc_funcs && enc_funcs->restore)
+						enc_funcs->restore(encoder);
 				}
+#endif
 			} else if (dev_priv->panel_id == TPO_CMD) {
 				if (dev_priv->encoder0 &&
 					(dev_priv->panel_desc & DISPLAY_A))
@@ -1940,9 +2028,15 @@ int ospm_power_suspend(struct pci_dev *pdev, pm_message_t state)
         int videoenc_access_count;
         int videodec_access_count;
         int display_access_count;
+	struct drm_psb_private *dev_priv = gpDrmDevice->dev_private;
+
+#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
+	if (dev_priv->hdmi_audio_busy)
+		return -EBUSY;
+#endif
+
 #if (defined(CONFIG_SND_INTELMID_HDMI_AUDIO) || \
 		defined(CONFIG_SND_INTELMID_HDMI_AUDIO_MODULE))
-	struct drm_psb_private *dev_priv = gpDrmDevice->dev_private;
 	struct snd_intel_had_interface *had_interface = dev_priv->had_interface;
 	int hdmi_audio_busy = 0;
 	pm_event_t hdmi_audio_event;
@@ -2552,13 +2646,18 @@ int psb_runtime_resume(struct device *dev)
 
 int psb_runtime_idle(struct device *dev)
 {
+	struct drm_psb_private *dev_priv = gpDrmDevice->dev_private;
+
+#if (defined(CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE))
+	if (dev_priv->hdmi_audio_busy)
+		return -EBUSY;
+#endif
+
 #if (defined(CONFIG_SND_INTELMID_HDMI_AUDIO) || \
 		defined(CONFIG_SND_INTELMID_HDMI_AUDIO_MODULE))
-	struct drm_psb_private* dev_priv = gpDrmDevice->dev_private;
 	struct snd_intel_had_interface *had_interface = dev_priv->had_interface;
 	int hdmi_audio_busy = 0;
 	pm_event_t hdmi_audio_event;
-	char *uevent_string = NULL;
 
 	if (dev_priv->had_pvt_data && hdmi_state) {
 		hdmi_audio_event.event = 0;
@@ -2575,7 +2674,6 @@ int psb_runtime_idle(struct device *dev)
 	defined(CONFIG_SND_INTELMID_HDMI_AUDIO_MODULE))
 		|| hdmi_audio_busy
 #endif
-
 #if 0   /* FIXME: video driver support for Linux Runtime PM */
 		|| (msvdx_hw_busy == 1)
 		|| (topaz_hw_busy == 1))
