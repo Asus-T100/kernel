@@ -137,33 +137,30 @@ static int mip_issigned;
 static int mip_dbg_error;
 static char mip_cmd[MIP_CMD_LEN];
 
-static char *mip_msg_format[] = {
-	"data[%d]: %#x\n",
-	"len: %d\n",
-	"offset: %#x\n",
-	"issigned: %d\n",
-	"error: %d\n",
-};
-
-static int mip_generic_show(char *buf, int type, int *data)
+static ssize_t mip_generic_show(char *buf, int type, int *data)
 {
-	int i, buf_size;
-	int ret = 0;
+	int i;
+	ssize_t ret = 0;
 
 	switch (type) {
 	case MIP_DBG_DATA:
 		for (i = 0; i < valid_data_nr; i++) {
-			buf_size = PAGE_SIZE - ret;
-			ret += snprintf(buf + ret, buf_size,
-					mip_msg_format[type],
+			ret += snprintf(buf + ret, PAGE_SIZE - ret,
+					"data[%d]: %#x\n",
 					i, mip_data[i]);
 		}
 		break;
 	case MIP_DBG_LEN:
+		ret = snprintf(buf, PAGE_SIZE, "len: %d\n", *data);
+		break;
 	case MIP_DBG_OFFSET:
+		ret = snprintf(buf, PAGE_SIZE, "offset: %#x\n", *data);
+		break;
 	case MIP_DBG_ISSIGNED:
+		ret = snprintf(buf, PAGE_SIZE, "issigned: %d\n", *data);
+		break;
 	case MIP_DBG_ERROR:
-		ret = snprintf(buf, PAGE_SIZE, mip_msg_format[type], *data);
+		ret = snprintf(buf, PAGE_SIZE, "error: %d\n", *data);
 		break;
 	default:
 		break;
