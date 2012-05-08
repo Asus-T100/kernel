@@ -1960,6 +1960,10 @@ static int handle_tx_event(struct xhci_hcd *xhci,
 
 	/* Endpoint ID is 1 based, our index is zero based */
 	ep_index = TRB_TO_EP_ID(le32_to_cpu(event->flags)) - 1;
+	if (ep_index == -1) {
+		xhci_err(xhci, "ERROR event endpoint index should start from one\n ");
+		return -EINVAL;
+	}
 	ep = &xdev->eps[ep_index];
 	ep_ring = xhci_dma_to_transfer_ring(ep, le64_to_cpu(event->buffer));
 	ep_ctx = xhci_get_ep_ctx(xhci, xdev->out_ctx, ep_index);
