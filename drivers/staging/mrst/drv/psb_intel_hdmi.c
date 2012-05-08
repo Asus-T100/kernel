@@ -879,6 +879,8 @@ static void mdfld_hdmi_encoder_restore(struct drm_encoder *encoder)
 	int dspbase_reg = MRST_DSPBBASE;
 	int dspbsurf_reg = DSPBSURF;
 	int dspblinoff_reg = DSPBLINOFF;
+	int dspbsize_reg = DSPBSIZE;
+	int dspbstride_reg = DSPBSTRIDE;
 	struct drm_device *dev = encoder->dev;
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *)dev->dev_private;
@@ -899,6 +901,12 @@ static void mdfld_hdmi_encoder_restore(struct drm_encoder *encoder)
 	/*Set DSPBSURF to systemBuffer temporary to avoid hdmi display last picture*/
 	REG_WRITE(dspbsurf_reg, dev_priv->init_screen_start);
 	REG_WRITE(dspblinoff_reg, dev_priv->init_screen_offset);
+	/* FIXME: this restore to init screen need to be replaced
+	* by flushing from upper layer. */
+#ifndef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
+	REG_WRITE(dspbsize_reg, dev_priv->init_screen_size);
+	REG_WRITE(dspbstride_reg, dev_priv->init_screen_stride);
+#endif
 
 	/*Restore pipe B plane to turn on HDMI screen
 	in late_resume*/

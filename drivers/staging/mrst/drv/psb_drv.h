@@ -1097,6 +1097,8 @@ struct drm_psb_private {
 	/* fix Lock screen flip in resume issue */
 	unsigned long init_screen_start;
 	unsigned long init_screen_offset;
+	unsigned long init_screen_size;
+	unsigned long init_screen_stride;
 
 	/* gamma and csc setting lock*/
 	struct mutex gamma_csc_lock;

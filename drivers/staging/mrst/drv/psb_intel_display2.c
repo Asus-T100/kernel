@@ -1825,6 +1825,8 @@ static int mdfld_crtc_dsi_mode_set(struct drm_crtc *crtc,
 				__func__, ctx->dsplinoff, ctx->dspsurf);
 		dev_priv->init_screen_start = ctx->dspsurf;
 		dev_priv->init_screen_offset = ctx->dsplinoff;
+		dev_priv->init_screen_size = ctx->dspsize;
+		dev_priv->init_screen_stride = ctx->dspstride;
 		init_flag = 0;
 	}
 
