@@ -852,6 +852,11 @@ static int msic_usb_get_property(struct power_supply *psy,
 	struct msic_power_module_info *mbi =
 	    container_of(psy, struct msic_power_module_info, usb);
 	int retval = 0;
+	int err_event;
+
+	mutex_lock(&mbi->event_lock);
+	err_event = mbi->msic_chr_err;
+	mutex_unlock(&mbi->event_lock);
 
 	mutex_lock(&mbi->usb_chrg_lock);
 
@@ -860,7 +865,9 @@ static int msic_usb_get_property(struct power_supply *psy,
 		val->intval = mbi->usb_chrg_props.charger_present;
 		break;
 	case POWER_SUPPLY_PROP_ONLINE:
-		if (mbi->batt_props.status != POWER_SUPPLY_STATUS_NOT_CHARGING)
+		if (mbi->batt_props.status != POWER_SUPPLY_STATUS_NOT_CHARGING
+				|| (err_event != MSIC_CHRG_ERROR_NONE &&
+					err_event != MSIC_CHRG_ERROR_WEAKVIN))
 			val->intval = mbi->usb_chrg_props.charger_present;
 		else
 			val->intval = 0;
@@ -1565,6 +1572,10 @@ static void msic_batt_temp_charging(struct work_struct *work)
 			mutex_lock(&mbi->batt_lock);
 			mbi->batt_props.health = POWER_SUPPLY_HEALTH_OVERHEAT;
 			mutex_unlock(&mbi->batt_lock);
+
+			mutex_lock(&mbi->event_lock);
+			mbi->msic_chr_err = MSIC_CHRG_ERROR_OVERHEAT;
+			mutex_unlock(&mbi->event_lock);
 		}
 		/* set battery charging status */
 		if (mbi->batt_props.status !=
@@ -1576,10 +1587,16 @@ static void msic_batt_temp_charging(struct work_struct *work)
 		}
 
 		if (vbus_voltage < WEAKVIN_VOLTAGE_LEVEL) {
+			dev_warn(msic_dev, "vbus_volt:%d less than"
+					"WEAKVIN threshold", vbus_voltage);
 			mutex_lock(&mbi->usb_chrg_lock);
 				mbi->usb_chrg_props.charger_health =
 						POWER_SUPPLY_HEALTH_DEAD;
 			mutex_unlock(&mbi->usb_chrg_lock);
+
+			mutex_lock(&mbi->event_lock);
+			mbi->msic_chr_err = MSIC_CHRG_ERROR_WEAKVIN;
+			mutex_unlock(&mbi->event_lock);
 		}
 
 		iprev = -1;
@@ -1788,6 +1805,11 @@ static void update_charger_health(struct msic_power_module_info *mbi)
 
 		mbi->usb_chrg_props.charger_health = POWER_SUPPLY_HEALTH_GOOD;
 
+		mutex_lock(&mbi->event_lock);
+		if (mbi->msic_chr_err == MSIC_CHRG_ERROR_WEAKVIN)
+			mbi->msic_chr_err = MSIC_CHRG_ERROR_NONE;
+		mutex_unlock(&mbi->event_lock);
+
 	} else if (mbi->batt_props.health ==
 			POWER_SUPPLY_HEALTH_UNSPEC_FAILURE){
 
@@ -1880,6 +1902,11 @@ static void update_battery_health(struct msic_power_module_info *mbi)
 
 			mbi->batt_props.health = POWER_SUPPLY_HEALTH_GOOD;
 			dev_dbg(msic_dev, "Setting battery-health, power-supply good");
+
+			mutex_lock(&mbi->event_lock);
+			if (mbi->msic_chr_err == MSIC_CHRG_ERROR_OVERHEAT)
+				mbi->msic_chr_err = MSIC_CHRG_ERROR_NONE;
+			mutex_unlock(&mbi->event_lock);
 		} else if (mbi->batt_props.health ==
 				POWER_SUPPLY_HEALTH_UNSPEC_FAILURE){
 
@@ -1930,6 +1957,10 @@ static void msic_batt_disconn(struct work_struct *work)
 	case MSIC_CHRG_ERROR_CHRTMR_EXPIRY:
 		dev_info(msic_dev, "Stopping charging due to "
 				"charge-timer expiry");
+		break;
+	case MSIC_CHRG_ERROR_USER_DISABLE:
+		dev_info(msic_dev, "Stopping charging due to "
+				"user-disable event");
 		break;
 	default:
 		dev_warn(msic_dev, "Stopping charging due to "
@@ -2331,7 +2362,7 @@ static ssize_t set_chrg_enable(struct device *dev,
 	/* No need to process if same value given
 	 * or charging stopped due to an error */
 	if (value == mbi->usr_chrg_enbl ||
-			mbi->msic_chr_err != MSIC_CHRG_ERROR_NONE) {
+			mbi->msic_chr_err == MSIC_CHRG_ERROR_CHRTMR_EXPIRY) {
 		mutex_unlock(&mbi->event_lock);
 		return -EIO;
 	}
@@ -2341,6 +2372,10 @@ static ssize_t set_chrg_enable(struct device *dev,
 
 	if (!value && (chr_mode != BATT_CHARGING_MODE_NONE)) {
 		dev_dbg(msic_dev, "User App charger disable !\n");
+		mutex_lock(&mbi->event_lock);
+		mbi->msic_chr_err = MSIC_CHRG_ERROR_USER_DISABLE;
+		mutex_unlock(&mbi->event_lock);
+
 		/* Disable charger before setting the usr_chrg_enbl */
 		msic_event_handler(mbi, USBCHRG_EVENT_SUSPEND, NULL);
 
@@ -2353,6 +2388,7 @@ static ssize_t set_chrg_enable(struct device *dev,
 
 		/* enable usr_chrg_enbl before checking charger connection */
 		mutex_lock(&mbi->event_lock);
+		mbi->msic_chr_err = MSIC_CHRG_ERROR_NONE;
 		mbi->usr_chrg_enbl = value;
 		mutex_unlock(&mbi->event_lock);
 

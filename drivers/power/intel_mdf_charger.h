@@ -359,6 +359,9 @@ enum {
 enum {
 	MSIC_CHRG_ERROR_NONE = 0,
 	MSIC_CHRG_ERROR_CHRTMR_EXPIRY,
+	MSIC_CHRG_ERROR_USER_DISABLE,
+	MSIC_CHRG_ERROR_OVERHEAT,
+	MSIC_CHRG_ERROR_WEAKVIN,
 };
 
 /* Battery Thresholds info which need to get from SMIP area */
