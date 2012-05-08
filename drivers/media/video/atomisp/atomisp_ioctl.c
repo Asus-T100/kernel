@@ -1196,9 +1196,6 @@ int atomisp_streamoff(struct file *file, void *fh,
 		ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
 				       video, s_stream, 0);
 
-	if (isp->flash)
-		ret += v4l2_subdev_call(isp->flash, core, s_power, 0);
-
 	isp->sw_contex.sensor_streaming = false;
 
 #ifdef PUNIT_CAMERA_BUSY
