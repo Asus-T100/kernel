@@ -903,10 +903,12 @@ static int dwc3_gadget_ep_queue(struct usb_ep *ep, struct usb_request *request,
 	dev_vdbg(dwc->dev, "queing request %p to %s length %d\n",
 			request, ep->name, request->length);
 
-	/* workaround here to pad bulk-IN buffer to MaxPacketSize */
-	if (dep->number == 2)
-		if (request->length < 1024)
-			request->length = 1024;
+	/* pad bulk-IN buffer to MaxPacketSize per databook requirement*/
+	if (dep->number == 2) {
+		int size = dep->desc->wMaxPacketSize;
+		if (request->length % size)
+			request->length = (request->length / size + 1) * size;
+	}
 
 	spin_lock_irqsave(&dwc->lock, flags);
 	ret = __dwc3_gadget_ep_queue(dep, req);
