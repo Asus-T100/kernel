@@ -459,16 +459,6 @@ static int config_buf(struct usb_configuration *config,
 			continue;
 		status = usb_descriptor_fillbuf(next, len,
 			(const struct usb_descriptor_header **) descriptors);
-#ifdef CONFIG_USB_GADGET_DWC3
-		/* workaround for issue of memcpy between DDR and SRAM */
-		*((u8 *)next + 7) = 0x50;
-		*((u8 *)next + 11) = 0x82;
-		*((u8 *)next + 12) = 0x2;
-		*((u8 *)next + 23) = 0x5;
-		*((u8 *)next + 24) = 0x1;
-		*((u8 *)next + 25) = 0x2;
-		*((u8 *)next + 31) = 0xF;
-#endif
 		if (status < 0)
 			return status;
 		len -= status;
@@ -784,6 +774,11 @@ static int set_config(struct usb_composite_dev *cdev,
 		case USB_SPEED_LOW:	speed = "low"; break;
 		case USB_SPEED_FULL:	speed = "full"; break;
 		case USB_SPEED_HIGH:	speed = "high"; break;
+#ifdef CONFIG_USB_GADGET_DWC3
+		case USB_SPEED_SUPER:
+			speed = "super";
+			break;
+#endif
 		default:		speed = "?"; break;
 		} ; speed; }), number, c ? c->label : "unconfigured");
 

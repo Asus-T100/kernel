@@ -164,6 +164,20 @@ int usb_interface_id(struct usb_configuration *, struct usb_function *);
  * @hs: descriptor to use for high speed operation
  * @fs: descriptor to use for full or low speed operation
  */
+#ifdef CONFIG_USB_GADGET_DWC3
+static inline struct usb_endpoint_descriptor *
+ep_choose_ss(struct usb_gadget *g, struct usb_endpoint_descriptor *ss,
+		struct usb_endpoint_descriptor *hs,
+		struct usb_endpoint_descriptor *fs)
+{
+	if (gadget_is_superspeed(g) && g->speed == USB_SPEED_SUPER)
+		return ss;
+	if (gadget_is_dualspeed(g) && g->speed == USB_SPEED_HIGH)
+		return hs;
+	return fs;
+}
+#endif
+
 static inline struct usb_endpoint_descriptor *
 ep_choose(struct usb_gadget *g, struct usb_endpoint_descriptor *hs,
 		struct usb_endpoint_descriptor *fs)
