@@ -64,16 +64,25 @@
 #define TABLE_LENGTH	24
 #define TEMP_INTERVAL	5
 
+/* Default _max 85 C */
+#define DEFAULT_MAX_TEMP	85
+
 #define PMIC_DIE_SENSOR		3
 #define PMIC_DIE_ADC_MIN	559
 #define PMIC_DIE_ADC_MAX	1004
 #define PMIC_DIE_TEMP_MIN	-40
 #define PMIC_DIE_TEMP_MAX	150
 
-/* Convert adc_val to die temperature (in milli degree celsius) */
+/*
+ * Convert adc_val to die temperature (in milli degree celsius)
+ * This formula and the constants are defined in the PMIC Spec.
+ */
 #define TO_PMIC_DIE_TEMP(adc_val)	(368 * adc_val - 219560)
 
-/* Convert temperature in Celsius to ADC Code */
+/*
+ * Convert temperature in Celsius to ADC Code
+ * This formula and the constants are defined in the PMIC Spec.
+ */
 #define TO_PMIC_DIE_ADC(temp)	DIV_ROUND_CLOSEST((2717 * temp + 596630), 1000)
 
 
@@ -257,6 +266,64 @@ static int temp_to_adc(int direct, int temp, int *adc_val)
 	return 0;
 }
 
+/**
+ * set_tmax - sets the given 'adc_val' to the 'alert_reg'
+ * @alert_reg: register address
+ * @adc_val: ADC value to be programmed
+ *
+ * Not protected. Calling function should handle synchronization.
+ * Can sleep
+ */
+static int set_tmax(int alert_reg, int adc_val)
+{
+	int ret;
+
+	/* Set bits[0:1] of alert_reg_h to bits[8:9] of 'adc_val' */
+	ret = intel_scu_ipc_update_register(alert_reg, (adc_val >> 8), 0x03);
+	if (ret)
+		return ret;
+
+	/* Extract bits[0:7] of 'adc_val' and write them into alert_reg_l */
+	return intel_scu_ipc_iowrite8(alert_reg + 1, adc_val & 0xFF);
+}
+
+/**
+ * program_tmax - programs a default _max value for each sensor
+ * @dev: device pointer
+ *
+ * Can sleep
+ */
+static int program_tmax(struct device *dev)
+{
+	int i, ret;
+	int pmic_die_val, adc_val;
+
+	ret = temp_to_adc(0, DEFAULT_MAX_TEMP, &adc_val);
+	if (ret)
+		return ret;
+
+	ret = temp_to_adc(1, DEFAULT_MAX_TEMP, &pmic_die_val);
+	if (ret)
+		return ret;
+
+	for (i = 0; i < PMIC_THERMAL_SENSORS - 1; i++) {
+		ret = set_tmax(alert_regs_h[i], adc_val);
+		if (ret)
+			goto exit_err;
+	}
+
+	/* Set _max for pmic die sensor */
+	ret = set_tmax(alert_regs_h[i], pmic_die_val);
+	if (ret)
+		goto exit_err;
+
+	return ret;
+
+exit_err:
+	dev_err(dev, "set_tmax for channel %d failed:%d\n", i, ret);
+	return ret;
+}
+
 static ssize_t store_tmax_hyst(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t count)
 {
@@ -314,7 +381,6 @@ static ssize_t store_tmax(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t count)
 {
 	int ret, adc_val;
-	uint8_t h;
 	unsigned long temp;
 	struct sensor_device_attribute_2 *s_attr =
 					to_sensor_dev_attr_2(attr);
@@ -338,17 +404,7 @@ static ssize_t store_tmax(struct device *dev,
 	if (ret)
 		goto exit;
 
-	ret =  intel_scu_ipc_ioread8(alert_reg, &h);
-	if (ret)
-		goto exit;
-
-	/* Set bits[0:1] of alert_reg_h to bits[8:9] of 'adc_val' */
-	ret = intel_scu_ipc_iowrite8(alert_reg, h | (adc_val >> 8));
-	if (ret)
-		goto exit;
-
-	/* Extract bits[0:7] of 'adc_val' and write them into alert_reg_l */
-	ret = intel_scu_ipc_iowrite8(alert_reg + 1, adc_val & 0xFF);
+	ret =  set_tmax(alert_reg, adc_val);
 	if (ret)
 		goto exit;
 
@@ -512,6 +568,13 @@ static int mrfl_thermal_probe(struct platform_device *pdev)
 
 	tdata->pdev = pdev;
 	platform_set_drvdata(pdev, tdata);
+
+	/* Program a default _max value for each sensor */
+	ret = program_tmax(&pdev->dev);
+	if (ret) {
+		dev_err(&pdev->dev, "Programming _max failed:%d\n", ret);
+		goto exit_free;
+	}
 
 	/* Creating a sysfs group with thermal_attr_gr attributes */
 	ret = sysfs_create_group(&pdev->dev.kobj, &thermal_attr_gr);
