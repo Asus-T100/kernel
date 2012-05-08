@@ -8,11 +8,14 @@
 #include <linux/sched.h>
 #include <linux/freezer.h>
 #include <linux/kthread.h>
+#include <linux/version.h>
 
 #include <linux/usb.h>
 #include <linux/usb/hcd.h>
 #include <linux/usb/gadget.h>
 #include <linux/usb/dwc_otg3.h>
+
+#define VERSION "2.10a"
 
 static int otg_id = -1;
 static struct mutex lock;
@@ -20,6 +23,16 @@ static const char driver_name[] = "dwc_otg3";
 static void __devexit dwc_otg_remove(struct pci_dev *pdev);
 static struct dwc_device_par *platform_par;
 static struct dwc_otg2 *the_transceiver;
+
+static struct {
+
+		int hibernate;
+
+} otg_params = {
+
+		.hibernate = 0,
+
+};
 
 static void print_debug_regs(struct dwc_otg2 *otg)
 {
@@ -61,11 +74,13 @@ static void print_debug_regs(struct dwc_otg2 *otg)
 /* Caller must hold otg->lock */
 static void wakeup_main_thread(struct dwc_otg2 *otg)
 {
+	if (!otg->main_thread)
+		return;
+
 	otg_dbg(otg, "\n");
-	/* Tell the command thread that something has happened */
+	/* Tell the main thread that something has happened */
 	otg->main_wakeup_needed = 1;
-	if (otg->main_thread)
-		wake_up_interruptible(&otg->main_wq);
+	wake_up_interruptible(&otg->main_wq);
 }
 
 static int sleep_main_thread_timeout(struct dwc_otg2 *otg, int msecs)
@@ -74,7 +89,7 @@ static int sleep_main_thread_timeout(struct dwc_otg2 *otg, int msecs)
 	int rc = msecs;
 
 	if (otg->state == DWC_STATE_EXIT) {
-		otg_dbg(otg, "Main thread exited\n");
+		otg_dbg(otg, "Main thread exiting\n");
 		rc = -EINTR;
 		goto done;
 	}
@@ -91,12 +106,12 @@ static int sleep_main_thread_timeout(struct dwc_otg2 *otg, int msecs)
 	}
 
 	jiffies = msecs_to_jiffies(msecs);
-	rc = wait_event_interruptible_timeout(otg->main_wq,
+	rc = wait_event_freezable_timeout(otg->main_wq,
 					otg->main_wakeup_needed,
 					jiffies);
 
 	if (otg->state == DWC_STATE_EXIT) {
-		otg_dbg(otg, "Main thread exited\n");
+		otg_dbg(otg, "Main thread exiting\n");
 		rc = -EINTR;
 		goto done;
 	}
@@ -318,7 +333,6 @@ static int start_host(struct dwc_otg2 *otg)
 
 	/* Power the port only for A-host */
 	if (otg->state == DWC_STATE_A_HOST) {
-		set_sus_phy(otg, 1);
 
 		/* Spin osts xhciPrtPwr bit until it becomes 1 */
 		osts = otg_read(otg, OSTS);
@@ -359,7 +373,6 @@ static void start_peripheral(struct dwc_otg2 *otg)
 {
 	struct usb_gadget *gadget;
 
-	print_debug_regs(otg);
 	otg_dbg(otg, "\n");
 
 	gadget = otg->otg.gadget;
@@ -372,7 +385,6 @@ static void start_peripheral(struct dwc_otg2 *otg)
 		otg_err(otg, "Failed to start peripheral.");
 
 	gadget->ops->start_device(gadget);
-	print_debug_regs(otg);
 }
 
 static void stop_peripheral(struct dwc_otg2 *otg)
@@ -382,10 +394,8 @@ static void stop_peripheral(struct dwc_otg2 *otg)
 	if (!gadget)
 		return;
 
-	print_debug_regs(otg);
 	otg_dbg(otg, "\n");
 	gadget->ops->stop_device(gadget);
-	print_debug_regs(otg);
 }
 
 static enum usb_charger_type get_charger_type(struct dwc_otg2 *otg)
@@ -423,6 +433,24 @@ static enum dwc_otg_state do_charger_detection(struct dwc_otg2 *otg)
 	return DWC_STATE_INIT;
 
 	return state;
+}
+
+static int init_b_device(struct dwc_otg2 *otg)
+{
+	otg_dbg(otg, "\n");
+
+	if (!set_peri_mode(otg, PERI_MODE_PERIPHERAL))
+		otg_err(otg, "Failed to start peripheral.");
+
+	return DWC_STATE_B_PERIPHERAL;
+}
+
+static int init_a_device(struct dwc_otg2 *otg)
+{
+	otg_write(otg, OCFG, 0);
+	otg_write(otg, OCTL, 0);
+
+	return DWC_STATE_A_HOST;
 }
 
 static enum dwc_otg_state do_connector_id_status(struct dwc_otg2 *otg)
@@ -484,34 +512,44 @@ static enum dwc_otg_state do_connector_id_status(struct dwc_otg2 *otg)
 	if (events & (OEVT_B_DEV_VBUS_CHNG_EVNT | \
 				OEVT_B_DEV_SES_VLD_DET_EVNT)) {
 		otg_dbg(otg, "events is vbus valid\n");
-		state = DWC_STATE_B_PERIPHERAL;
+		state = init_b_device(otg);
 	}
 
 	if (events & OEVT_CONN_ID_STS_CHNG_EVNT) {
 		otg_dbg(otg, "events is id change\n");
-		state = DWC_STATE_A_HOST;
+		state = init_a_device(otg);
 	}
 
 #ifdef SUPPORT_USER_ID_CHANGE_EVENTS
 	if (user_events & USER_ID_A_CHANGE_EVENT) {
 		otg_dbg(otg, "events is user id A change\n");
-		state = DWC_STATE_A_HOST;
+		state = init_a_device(otg);
 	}
 
 	if (user_events & USER_ID_B_CHANGE_EVENT) {
 		otg_dbg(otg, "events is user id B change\n");
-		state = DWC_STATE_B_PERIPHERAL;
+		state = init_b_device(otg);
 	}
 #endif
+
+	/** TODO: This is a workaround for latest hibernation-enabled bitfiles
+     ** which have problems before initializing SRP.*/
+	mdelay(50);
 
 	return state;
 }
 
 static void reset_hw(struct dwc_otg2 *otg)
 {
+	u32 gctl = 0;
 	otg_dbg(otg, "\n");
 	otg_write(otg, OEVTEN, 0);
 	otg_write(otg, OCTL, 0);
+	gctl = otg_read(otg, GCTL);
+	gctl |= GCTL_PRT_CAP_DIR_OTG << GCTL_PRT_CAP_DIR_SHIFT;
+	if (otg_params.hibernate)
+		gctl |= GCTL_GBL_HIBERNATION_EN;
+	otg_write(otg, GCTL, gctl);
 }
 
 static enum dwc_otg_state do_a_host(struct dwc_otg2 *otg)
@@ -574,6 +612,7 @@ static int do_b_peripheral(struct dwc_otg2 *otg)
 	user_mask = USER_ID_A_CHANGE_EVENT;
 #endif
 
+again:
 	rc = sleep_until_event(otg,
 			otg_mask, 0, user_mask,
 			&otg_events, NULL, &user_events, 0);
@@ -587,14 +626,16 @@ static int do_b_peripheral(struct dwc_otg2 *otg)
 
 	if (otg_events & OEVT_B_DEV_VBUS_CHNG_EVNT) {
 		otg_dbg(otg, "OEVT_B_DEV_VBUS_CHNG_EVNT!\n");
-		return DWC_STATE_CHARGER_DETECTION;
-	}
 
-	if (otg_events & OEVT_B_DEV_SES_VLD_DET_EVNT) {
-		otg_dbg(otg, "OEVT_B_DEV_SES_VLD_DET_EVNT!\n");
-		return DWC_STATE_CHARGER_DETECTION;
-	}
+		/* TODO Until ADP supported in hibernate */
+		if (otg_params.hibernate)
+			goto again;
 
+		if ((otg_events & ~OEVT_B_SES_VLD_EVT))
+			return DWC_STATE_CHARGER_DETECTION;
+		else
+			goto again;
+	}
 #ifdef SUPPORT_USER_ID_CHANGE_EVENTS
 	if (user_events & USER_ID_A_CHANGE_EVENT) {
 		otg_dbg(otg, "USER_ID_A_CHANGE_EVENT\n");
@@ -680,6 +721,7 @@ int otg_main_thread(void *data)
 		otg->state = next;
 	}
 
+	otg->main_thread = NULL;
 	otg_dbg(otg, "OTG main thread exiting....\n");
 
 	return 0;
@@ -702,7 +744,7 @@ static void stop_main_thread(struct dwc_otg2 *otg)
 	if (otg->main_thread) {
 		otg_dbg(otg, "Stopping OTG main thread\n");
 		otg->state = DWC_STATE_EXIT;
-		wake_up_process(otg->main_thread);
+		wakeup_main_thread(otg);
 	}
 	mutex_unlock(&lock);
 }
@@ -1006,7 +1048,7 @@ static int dwc_otg_probe(struct pci_dev *pdev,
 	spin_lock_init(&otg->lock);
 	init_waitqueue_head(&otg->main_wq);
 
-	otg_dbg(otg, "\n");
+	otg_dbg(otg, "Version: %s\n", VERSION);
 	retval = otg_set_transceiver(&otg->otg);
 	if (retval) {
 		otg_err(otg, "can't register transceiver, err: %d\n",
@@ -1154,4 +1196,4 @@ module_exit(dwc_otg_exit);
 MODULE_AUTHOR("Synopsys, Inc");
 MODULE_DESCRIPTION("Synopsys DWC USB 3.0 with OTG 2.0/3.0");
 MODULE_LICENSE("Dual BSD/GPL");
-MODULE_VERSION("2.00a");
+MODULE_VERSION(VERSION);

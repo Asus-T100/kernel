@@ -98,6 +98,14 @@ struct dwc_device_par {
 #define GHWPARAMS6_HNP_SUPPORT_ENABLED		0x0800
 #define GHWPARAMS6_ADP_SUPPORT_ENABLED		0x1000
 
+#define GCTL 0xc110
+#define GCTL_PRT_CAP_DIR 0x3000
+#define GCTL_PRT_CAP_DIR_SHIFT 12
+#define GCTL_PRT_CAP_DIR_HOST 1
+#define GCTL_PRT_CAP_DIR_DEV 2
+#define GCTL_PRT_CAP_DIR_OTG 3
+#define GCTL_GBL_HIBERNATION_EN 0x2
+
 #define OCFG					0xcc00
 #define OCFG_SRP_CAP				0x01
 #define OCFG_SRP_CAP_SHIFT			0
@@ -268,7 +276,6 @@ enum dwc_otg_state {
 	DWC_STATE_B_SENSE,
 	DWC_STATE_B_PROBE,
 	DWC_STATE_B_PERIPHERAL,
-	DWC_STATE_B_SRP_INIT,
 	DWC_STATE_B_HNP_INIT,
 
 	/* B-Host states */
@@ -282,7 +289,6 @@ enum dwc_otg_state {
 	DWC_STATE_EXIT,
 	DWC_STATE_TERMINATED
 };
-
 
 /** The main structure to keep track of OTG driver state. */
 struct dwc_otg2 {
@@ -323,6 +329,8 @@ struct dwc_otg2 {
 #define USER_RSP_EVENT 0x10
 	/** Host release event */
 #define PCD_RECEIVED_HOST_RELEASE_EVENT 0x20
+	/** Initial SRP */
+#define INITIAL_SRP 0x40
 
 #ifdef SUPPORT_USER_ID_CHANGE_EVENTS
 	/** User space ID switch event */
