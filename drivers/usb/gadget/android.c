@@ -1052,18 +1052,9 @@ static ssize_t enable_store(struct device *pdev, struct device_attribute *attr,
 			if (f->disable)
 				f->disable(f);
 		}
-//mgross======
-//		usb_gadget_disconnect(cdev->gadget);
-//		usb_remove_config(cdev, &android_config_driver);
-//		/* Cancel pending control requests */
-//		usb_ep_dequeue(cdev->gadget->ep0, cdev->req);
-//		usb_remove_config(cdev, &android_config_driver);
-//
-//		/* notify uplevel to correct status */
-//		schedule_work(&dev->work);
-//
-//>>>>>>> usb/android gadget: notify uplevel when function disabled via sysfs interface
 		dev->enabled = false;
+		/* notify uplevel to correct status */
+		schedule_work(&dev->work);
 	} else if (!enabled && !dev->enabled) {
 		usb_gadget_disconnect(cdev->gadget);
 		dev->enabled = false;

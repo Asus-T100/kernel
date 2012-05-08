@@ -455,12 +455,6 @@ config USB_LANGWELL
 	   dynamically linked module called "langwell_udc" and force all
 	   gadget drivers to also be dynamically linked.
 
-config USB_LANGWELL
-	tristate
-	depends on USB_GADGET_LANGWELL
-	default USB_GADGET
-	select USB_GADGET_SELECTED
-
 config USB_GADGET_EG20T
 	tristate "Intel EG20T PCH/OKI SEMICONDUCTOR IOH(ML7213/ML7831) UDC"
 
