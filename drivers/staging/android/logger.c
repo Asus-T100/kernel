@@ -82,7 +82,7 @@ static struct logger_entry *get_entry_header(struct logger_log *log,
  *
  * Caller needs to hold log->mutex.
  */
-static __u32 get_entry_msg_len(struct logger_log *log, size_t off)
+__u32 get_entry_msg_len(struct logger_log *log, size_t off)
 {
 	struct logger_entry scratch;
 	struct logger_entry *entry;

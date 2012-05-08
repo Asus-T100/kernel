@@ -93,7 +93,7 @@ void do_read_log(struct logger_log *log,
 			struct logger_reader *reader,
 			char *buf,
 			size_t count);
-__u32 get_entry_len(struct logger_log *log, size_t off);
+__u32 get_entry_msg_len(struct logger_log *log, size_t off);
 struct logger_log *get_log_from_minor(int minor);
 struct logger_log **get_log_list(void);
 
