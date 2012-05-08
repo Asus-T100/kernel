@@ -1009,9 +1009,12 @@ struct mdfld_dsi_encoder *mdfld_dsi_dbi_init(struct drm_device *dev,
 	}
 
 	/*init DSI controller*/
-	if (p_funcs->dsi_controller_init)
-		p_funcs->dsi_controller_init(dsi_config, pipe, true);
-
+	if (p_funcs->dsi_controller_init) {
+		if (get_panel_type(dev, pipe) == AUO_SC1_CMD)
+			p_funcs->dsi_controller_init(dsi_config, pipe, false);
+		else
+			p_funcs->dsi_controller_init(dsi_config, pipe, true);
+	}
 	if (dsi_connector->status == connector_status_connected) {
 		if (pipe == 0)
 			dev_priv->panel_desc |= DISPLAY_A;
@@ -1070,7 +1073,7 @@ struct mdfld_dsi_encoder *mdfld_dsi_dbi_init(struct drm_device *dev,
 
 	dev_priv->dsr_fb_update = 0;
 	dev_priv->b_dsr_enable = false;
-	dev_priv->b_async_flip_enable = true;
+	dev_priv->b_async_flip_enable = false;
 	dev_priv->exit_idle = mdfld_dsi_dbi_exit_dsr;
 	dev_priv->async_flip_update_fb = mdfld_dsi_dbi_async_flip_fb_update;
 	dev_priv->async_check_fifo_empty = mdfld_dsi_dbi_async_check_fifo_empty;

@@ -741,6 +741,10 @@ static int psbfb_mmap(struct fb_info *info, struct vm_area_struct *vma)
 
 	}
 
+	if ((is_panel_vid_or_cmd(dev) == MDFLD_DSI_ENCODER_DBI) &&
+			dev_priv->exit_idle)
+		dev_priv->exit_idle(dev, MDFLD_DSR_2D_3D, NULL, true);
+
 	return 0;
 }
 

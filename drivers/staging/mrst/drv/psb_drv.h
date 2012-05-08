@@ -445,6 +445,9 @@ struct drm_psb_private {
 	int te_pipe;
 	struct work_struct reset_panel_work;
 	bool is_in_panel_reset;
+
+	int dsi_init_done;
+
 	/*
 	 *TTM Glue.
 	 */

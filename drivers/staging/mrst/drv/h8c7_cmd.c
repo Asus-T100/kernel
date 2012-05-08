@@ -1459,7 +1459,7 @@ void h8c7_cmd_init(struct drm_device *dev, struct panel_funcs *p_funcs)
 	p_funcs->power_off = mdfld_dsi_h8c7_cmd_power_off;
 	p_funcs->set_brightness = mdfld_dsi_h8c7_cmd_set_brightness;
 	p_funcs->disp_control_init = mdfld_h8c7_disp_control_init;
-	p_funcs->esd_detection = mdfld_h8c7_cmd_esd_detection;
+	p_funcs->esd_detection = NULL;
 	p_funcs->get_reset_delay_time = mdfld_h8c7_cmd_get_reset_delay_time;
 
 }

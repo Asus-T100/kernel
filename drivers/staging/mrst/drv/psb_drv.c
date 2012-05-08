@@ -653,7 +653,8 @@ static void mdfld_error_detect_correct_timer_func(unsigned long data)
 				printk(KERN_ALERT"ESD\n");
 				schedule_work(&dev_priv->reset_panel_work);
 			}
-		}
+		} else
+			return ;
 	}
 	spin_lock_irqsave(&(dev_priv->error_detect_correct_lock), flags);
 	if (!timer_pending(error_handle_timer)) {
@@ -2075,6 +2076,8 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 		drm_helper_initial_config(dev);
 #endif
 	}
+
+	dev_priv->dsi_init_done = 1;
 
 	/*must be after mrst_get_fuse_settings()*/
 	ret = psb_backlight_init(dev);

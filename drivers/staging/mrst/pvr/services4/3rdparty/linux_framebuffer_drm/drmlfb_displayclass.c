@@ -1223,7 +1223,7 @@ static IMG_BOOL ProcessFlip2(IMG_HANDLE hCmdCookie,
 	 */
 	if (!dev_priv->um_start) {
 		dev_priv->um_start = true;
-
+		dev_priv->b_async_flip_enable = true;
 		if (dev_priv->b_dsr_enable_config)
 			dev_priv->b_dsr_enable = true;
 	}
@@ -1340,7 +1340,7 @@ static IMG_BOOL ProcessFlip(IMG_HANDLE  hCmdCookie,
 	psFlipItem = &psSwapChain->psVSyncFlips[psSwapChain->ulInsertIndex];
 	if (!dev_priv->um_start) {
 		dev_priv->um_start = true;
-
+		dev_priv->b_async_flip_enable = true;
 		if (dev_priv->b_dsr_enable_config)
 			dev_priv->b_dsr_enable = true;
 	}

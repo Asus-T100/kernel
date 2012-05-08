@@ -1164,6 +1164,10 @@ static void mdfld_crtc_dpms(struct drm_crtc *crtc, int mode)
 	}
 #endif
 
+	if (get_panel_type(dev, pipe) == AUO_SC1_CMD &&
+		!dev_priv->dsi_init_done)
+		return;
+
 	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
 				       OSPM_UHB_FORCE_POWER_ON))
 		return;
@@ -1931,6 +1935,10 @@ static int mdfld_crtc_mode_set(struct drm_crtc *crtc,
 	struct mdfld_dsi_hw_context *ctx;
 
 	PSB_DEBUG_ENTRY("pipe = 0x%x\n", pipe);
+
+	if (get_panel_type(dev, pipe) == AUO_SC1_CMD &&
+		!dev_priv->dsi_init_done)
+		return;
 
 	if (pipe == 0)   //h8c7_cmd
 		dsi_config = dev_priv->dsi_configs[0];

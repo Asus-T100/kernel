@@ -413,7 +413,12 @@ static int mdfld_auo_dsi_dbi_power_on(struct drm_encoder *encoder)
 	struct panel_funcs *p_funcs = dbi_output->p_funcs;
 	struct mdfld_dsi_hw_registers *regs = NULL;
 	struct mdfld_dsi_hw_context *ctx = NULL;
+	struct drm_device *dev = encoder->dev;
+	struct drm_psb_private *dev_priv = dev->dev_private;
 	int err = 0;
+
+	if (!dev_priv->dsi_init_done)
+		return 0;
 
 	if (!dsi_config)
 		return -EINVAL;
@@ -459,7 +464,12 @@ static int mdfld_auo_dsi_dbi_power_off(struct drm_encoder *encoder)
 		mdfld_dsi_encoder_get_config(dsi_encoder);
 	struct panel_funcs *p_funcs = dbi_output->p_funcs;
 	struct mdfld_dsi_hw_context *ctx;
+	struct drm_device *dev = encoder->dev;
+	struct drm_psb_private *dev_priv = dev->dev_private;
 	int err = 0;
+
+	if (!dev_priv->dsi_init_done)
+		return 0;
 
 	if (!dsi_config)
 		return -EINVAL;
@@ -660,26 +670,6 @@ static void mdfld_auo_dsi_dbi_commit(struct drm_encoder *encoder)
 	rect.height = 480;
 #endif
 
-	if (dbi_output->channel_num == 1) {
-		dev_priv->dsr_fb_update |= MDFLD_DSR_2D_3D_2;
-#ifdef CONFIG_MDFLD_DSI_DPU
-		/* if dpu enabled report a fullscreen damage */
-		mdfld_dbi_dpu_report_damage(dev, MDFLD_PLANEC, &rect);
-#endif
-	} else {
-		dev_priv->dsr_fb_update |= MDFLD_DSR_2D_3D_0;
-
-#ifdef CONFIG_MDFLD_DSI_DPU
-		mdfld_dbi_dpu_report_damage(dev, MDFLD_PLANEA, &rect);
-		/* start dpu timer */
-		if (dev_priv->platform_rev_id == MDFLD_PNW_A0)
-			mdfld_dbi_dpu_timer_start(dev_priv->dbi_dpu_info);
-#else
-		if (dev_priv->platform_rev_id == MDFLD_PNW_A0)
-			mdfld_dbi_dsr_timer_start(dev_priv->dbi_dsr_info);
-#endif
-	}
-
 	dbi_output->mode_flags |= MODE_SETTING_ENCODER_DONE;
 }
 
@@ -703,7 +693,7 @@ static void mdfld_auo_dsi_dbi_dpms(struct drm_encoder *encoder, int mode)
 		if (bdispoff)
 			mdfld_dsi_dbi_exit_dsr(dev, MDFLD_DSR_2D_3D, 0, 0);
 
-		mdfld_dsi_dbi_set_power(encoder, true);
+		mdfld_auo_dsi_dbi_set_power(encoder, true);
 
 		if (gbgfxsuspended)
 			gbgfxsuspended = false;
@@ -716,7 +706,7 @@ static void mdfld_auo_dsi_dbi_dpms(struct drm_encoder *encoder, int mode)
 		 * turn rpm on since we still have a lot of CRTC turnning
 		 * on work to do.
 		 */
-		mdfld_dsi_dbi_set_power(encoder, false);
+		mdfld_auo_dsi_dbi_set_power(encoder, false);
 		bdispoff = true;
 		gbdispstatus = false;
 	}
@@ -724,7 +714,13 @@ static void mdfld_auo_dsi_dbi_dpms(struct drm_encoder *encoder, int mode)
 
 void mdfld_auo_dsi_dbi_save(struct drm_encoder *encoder)
 {
+	struct drm_device *dev = encoder->dev;
+	struct drm_psb_private *dev_priv = dev->dev_private;
+
 	if (!encoder)
+		return;
+
+	if (!dev_priv->dsi_init_done)
 		return;
 
 	/*turn off*/
@@ -735,8 +731,13 @@ void mdfld_auo_dsi_dbi_restore(struct drm_encoder *encoder)
 {
 	struct mdfld_dsi_encoder *dsi_encoder = NULL;
 	struct mdfld_dsi_config *dsi_config = NULL;
+	struct drm_device *dev = encoder->dev;
+	struct drm_psb_private *dev_priv = dev->dev_private;
 
 	if (!encoder)
+		return;
+
+	if (!dev_priv->dsi_init_done)
 		return;
 
 	dsi_encoder = MDFLD_DSI_ENCODER(encoder);
@@ -758,6 +759,7 @@ static void auo_dsi_dbi_update_fb(struct mdfld_dsi_dbi_output *dbi_output,
 	struct mdfld_dsi_pkg_sender *sender =
 		mdfld_dsi_encoder_get_pkg_sender(&dbi_output->base);
 	struct drm_device *dev = dbi_output->dev;
+	struct drm_psb_private *dev_priv = dev->dev_private;
 	struct drm_crtc *crtc = dbi_output->base.base.crtc;
 	struct psb_intel_crtc *psb_crtc =
 		(crtc) ? to_psb_intel_crtc(crtc) : NULL;
@@ -766,6 +768,9 @@ static void auo_dsi_dbi_update_fb(struct mdfld_dsi_dbi_output *dbi_output,
 	u32 pipeconf_reg = PIPEACONF;
 	u32 dsplinoff_reg = DSPALINOFF;
 	u32 dspsurf_reg = DSPASURF;
+
+	if (!dev_priv->dsi_init_done)
+		return;
 
 	/* if mode setting on-going, back off */
 	if ((dbi_output->mode_flags & MODE_SETTING_ON_GOING) ||
@@ -907,6 +912,8 @@ static int mdfld_auo_dsi_panel_reset(struct mdfld_dsi_config *dsi_config,
 		}
 
 		b_gpio_required[dsi_config->pipe] = true;
+
+		goto fun_exit;
 	}
 
 	if (b_gpio_required[dsi_config->pipe]) {
