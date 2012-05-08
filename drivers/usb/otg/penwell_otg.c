@@ -4555,9 +4555,12 @@ static int penwell_otg_resume_noirq(struct device *dev)
 		break;
 	}
 
-	update_hsm();
 
-	penwell_update_transceiver();
+	/* We didn't disable otgsc interrupt, to prevent intr from happening
+	* before penwell_otg_resume, intr is disabled here, and can be enabled
+	* by penwell_otg_resume
+	*/
+	penwell_otg_intr(0);
 
 	dev_dbg(pnw->dev, "%s <---\n", __func__);
 	return ret;
@@ -4595,6 +4598,15 @@ static int penwell_otg_resume(struct device *dev)
 	spin_lock(&pnw->notify_lock);
 	pnw->queue_stop = 0;
 	spin_unlock(&pnw->notify_lock);
+
+	penwell_otg_intr(1);
+
+	/* If a plugging in or pluggout event happens during D3,
+	* we will miss the interrupt, so check OTGSC here to check
+	* if any ID change and update hsm correspondingly
+	*/
+	update_hsm();
+	penwell_update_transceiver();
 
 	dev_dbg(pnw->dev, "%s <---\n", __func__);
 	return ret;
