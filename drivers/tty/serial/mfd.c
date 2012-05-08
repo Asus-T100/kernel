@@ -605,9 +605,8 @@ static void hsu_dma_rx_tasklet(unsigned long data)
 		chan_writel(chan, HSU_CH_CR, 0x3);
 
 		if (dmarx_need_timer()) {
-			chan->rx_timer.expires =
-					jiffies + HSU_DMA_TIMEOUT_CHECK_FREQ;
-			add_timer(&chan->rx_timer);
+			mod_timer(&chan->rx_timer,
+				jiffies + HSU_DMA_TIMEOUT_CHECK_FREQ);
 			runtime_suspend_delay(up);
 		}
 
