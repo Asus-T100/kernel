@@ -619,7 +619,7 @@ static irqreturn_t pmu_sc_irq(int irq, void *ignored)
 	 * let the waiting set_power_state()
 	 * release scu_ready_sem
 	 */
-	if (mid_pmu_cxt->interactive_cmd_sent) {
+	if (unlikely(mid_pmu_cxt->interactive_cmd_sent)) {
 		mid_pmu_cxt->interactive_cmd_sent = false;
 
 		/* unblock set_power_state() */
@@ -1260,10 +1260,6 @@ int __ref pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t state)
 	 * get blocked, until pmu_sc_irq() releases */
 	down(&mid_pmu_cxt->scu_ready_sem);
 
-	/* dont proceed if shutdown in progress */
-	if (unlikely(mid_pmu_cxt->shutdown_started))
-		goto unlock;
-
 	/*get LSS index corresponding to pdev, its position in
 	 *32 bit register and its register numer*/
 	status =
@@ -1415,22 +1411,6 @@ int __ref pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t state)
 
 unlock:
 	up(&mid_pmu_cxt->scu_ready_sem);
-
-	/*
-	* Device shutdown is called we still could
-	* recieve set_power_state from drivers.
-	* wait for shutdown to complete.
-	*/
-	if (unlikely(mid_pmu_cxt->shutdown_started)) {
-		WARN(1,
-		"%s: received after device shutdown from %04x %04X %s %20s:\n",
-		__func__, pdev->vendor, pdev->device, dev_name(&pdev->dev),
-		dev_driver_string(&pdev->dev));
-
-		/* wait for shutdown/power_off */
-		while (true)
-			msleep(100);
-	}
 
 	return status;
 }
