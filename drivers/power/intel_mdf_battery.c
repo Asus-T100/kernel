@@ -134,6 +134,14 @@ static ssize_t get_is_power_supply_conn(struct device *device,
 			struct device_attribute *attr, char *buf);
 static DEVICE_ATTR(power_supply_conn, S_IRUGO, get_is_power_supply_conn, NULL);
 
+/* Sysfs Entry for disabling/enabling Charger Safety Timer */
+static ssize_t set_disable_safety_timer(struct device *device,
+		struct device_attribute *attr, const char *buf, size_t count);
+static ssize_t get_disable_safety_timer(struct device *device,
+		struct device_attribute *attr, char *buf);
+static DEVICE_ATTR(disable_safety_timer, S_IRUGO | S_IWUSR,
+		get_disable_safety_timer, set_disable_safety_timer);
+
 /*
  * msic usb properties
  */
@@ -2177,6 +2185,7 @@ static irqreturn_t msic_battery_thread_handler(int id, void *dev)
 	u32 tmp;
 	unsigned char intr_stat;
 	u32 log_intr;
+	bool disable_chr_tmr;
 
 	/* We have only one concurrent fifo reader
 	 * and only one concurrent writer, we are not
@@ -2212,6 +2221,7 @@ static irqreturn_t msic_battery_thread_handler(int id, void *dev)
 
 	mutex_lock(&mbi->event_lock);
 	tmp = mbi->charging_mode;
+	disable_chr_tmr = mbi->disable_safety_tmr;
 	mutex_unlock(&mbi->event_lock);
 
 	dump_registers(MSIC_CHRG_REG_DUMP_INT | MSIC_CHRG_REG_DUMP_EVENT);
@@ -2220,8 +2230,10 @@ static irqreturn_t msic_battery_thread_handler(int id, void *dev)
 	if (data[1] & MSIC_BATT_CHR_CHRCMPLT_MASK)
 		dev_dbg(msic_dev, "CHRG COMPLT\n");
 
+
 	if ((data[0] & MSIC_BATT_CHR_TIMEEXP_MASK) &&
-			(tmp == BATT_CHARGING_MODE_NORMAL)) {
+			(tmp == BATT_CHARGING_MODE_NORMAL) &&
+			!disable_chr_tmr) {
 		dev_dbg(msic_dev, "force suspend event\n");
 
 		/* Note the error-event, so that we don't restart charging */
@@ -2436,6 +2448,57 @@ static ssize_t get_is_power_supply_conn(struct device *dev,
 {
 	return sprintf(buf, "%d\n", !(intel_msic_is_current_sense_enabled()));
 }
+
+/*
+ * set_disable_safety_timer - sysfs set api for disable_safety_tmr
+ * Parameter as defined by sysfs interface
+ * Context: can sleep
+ */
+static ssize_t set_disable_safety_timer(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct platform_device *pdev =
+	    container_of(dev, struct platform_device, dev);
+	struct msic_power_module_info *mbi = platform_get_drvdata(pdev);
+	unsigned long value;
+
+	if (strict_strtoul(buf, 10, &value))
+		return -EINVAL;
+
+	/* Allow only 0 or 1 for writing */
+	if (value > 1)
+		return -EINVAL;
+
+	mutex_lock(&mbi->event_lock);
+	if (value)
+		mbi->disable_safety_tmr = true;
+	else
+		mbi->disable_safety_tmr = false;
+	mutex_unlock(&mbi->event_lock);
+
+	return count;
+}
+
+/*
+ * get_disable_safety_timer - sysfs get api for disable_safety_tmr
+ * Parameter as defined by sysfs interface
+ * Context: can sleep
+ */
+static ssize_t get_disable_safety_timer(struct device *dev,
+			       struct device_attribute *attr, char *buf)
+{
+	struct platform_device *pdev =
+	    container_of(dev, struct platform_device, dev);
+	struct msic_power_module_info *mbi = platform_get_drvdata(pdev);
+	unsigned int val;
+
+	mutex_lock(&mbi->event_lock);
+	val = mbi->disable_safety_tmr;
+	mutex_unlock(&mbi->event_lock);
+
+	return sprintf(buf, "%d\n", val);
+}
+
 /**
  * sfi_table_invalid_batt - default battery SFI table values  to be
  * used in case of invalid battery
@@ -2792,6 +2855,11 @@ static int msic_battery_probe(struct ipc_device *ipcdev)
 	retval = device_create_file(&ipcdev->dev, &dev_attr_power_supply_conn);
 	if (retval)
 		goto sysfs2_create_failed;
+	retval = device_create_file(&ipcdev->dev,
+			&dev_attr_disable_safety_timer);
+	if (retval)
+		goto  sysfs3_create_failed;
+
 	/* Register with OTG */
 	otg_handle = penwell_otg_register_bc_callback(msic_charger_callback,
 						      (void *)mbi);
@@ -2880,6 +2948,8 @@ static int msic_battery_probe(struct ipc_device *ipcdev)
 requestirq_failed:
 	penwell_otg_unregister_bc_callback(otg_handle);
 otg_failed:
+	device_remove_file(&ipcdev->dev, &dev_attr_disable_safety_timer);
+sysfs3_create_failed:
 	device_remove_file(&ipcdev->dev, &dev_attr_power_supply_conn);
 sysfs2_create_failed:
 	device_remove_file(&ipcdev->dev, &dev_attr_charge_enable);
@@ -2928,6 +2998,8 @@ static int msic_battery_remove(struct ipc_device *ipcdev)
 			iounmap(mbi->msic_intr_iomap);
 		device_remove_file(&ipcdev->dev, &dev_attr_charge_enable);
 		device_remove_file(&ipcdev->dev, &dev_attr_power_supply_conn);
+		device_remove_file(&ipcdev->dev,
+				&dev_attr_disable_safety_timer);
 		power_supply_unregister(&mbi->usb);
 		wake_lock_destroy(&mbi->wakelock);
 

@@ -483,6 +483,7 @@ struct msic_power_module_info {
 	int usr_chrg_enbl;	/* User Charge Enable or Disable */
 	int refresh_charger;	/* Refresh charger parameters */
 	int msic_chr_err;	/* Type of error event */
+	bool disable_safety_tmr; /* Charge Safety timer Disable/Enable */
 
 	/* Worker to monitor status and faults */
 	struct delayed_work chr_status_monitor;
