@@ -429,14 +429,9 @@ ssize_t logger_aio_write(struct kiocb *iocb, const struct iovec *iov,
 	header.tid = current->pid;
 	header.sec = now.tv_sec;
 	header.nsec = now.tv_nsec;
-<<<<<<< HEAD
 	header.euid = current_euid();
 	header.len = min_t(size_t, iocb->ki_left, LOGGER_ENTRY_MAX_PAYLOAD);
 	header.hdr_size = sizeof(struct logger_entry);
-=======
-	header.len = min_t(size_t, iocb->ki_left,
-					LOGGER_ENTRY_MAX_PAYLOAD);
->>>>>>> [LOG] fix ordering of overall logs including kernel
 
 	/* null writes succeed, return zero */
 	if (unlikely(!header.len))
