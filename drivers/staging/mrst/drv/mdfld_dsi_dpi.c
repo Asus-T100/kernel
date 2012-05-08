@@ -881,8 +881,7 @@ static void mdfld_dsi_lvds_set_power(struct drm_encoder *encoder, bool on)
 
 		/* For DPMS case, just turn on/off panel */
 		if (dev_priv->dpms_on_off)
-			/*dsi_lvds_toshiba_bridge_panel_on();*/
-			mdfld_dsi_dpi_turn_on(dpi_output, pipe);
+			dsi_lvds_toshiba_bridge_panel_on(dev);
 		else
 			mdfld_dsi_configure_up(dsi_encoder, pipe);
 
@@ -890,8 +889,7 @@ static void mdfld_dsi_lvds_set_power(struct drm_encoder *encoder, bool on)
 		break;
 	case false:
 		if (dev_priv->dpms_on_off && dev_priv->dpi_panel_on) {
-			/*dsi_lvds_toshiba_bridge_panel_off();*/
-			mdfld_dsi_dpi_shut_down(dpi_output, pipe);
+			dsi_lvds_toshiba_bridge_panel_off();
 			last_ospm_suspend = false;
 		} else if (!dev_priv->dpms_on_off && !last_ospm_suspend) {
 			mdfld_dsi_configure_down(dsi_encoder, pipe);
