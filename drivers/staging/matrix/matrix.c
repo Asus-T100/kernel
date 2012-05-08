@@ -35,7 +35,6 @@
 
 #define NAME "matrix"
 #define DRIVER_VERSION "2.5"
-
 static int matrix_major_number;
 static bool instantiated;
 static bool mem_alloc_status;
@@ -191,25 +190,53 @@ static struct mtx_size_info xhg_buf_info;
 	do { \
 		unsigned long msr_loop = 0; \
 		for (lut_loop = 0; lut_loop < max_msr_loop; \
-					lut_loop++) { \
-			if (ptr_lut->msrs_##state[lut_loop].operation == \
-					    READ_OP) { \
-				rdmsr(ptr_lut->msrs_##state[lut_loop]. \
-				      ecx_address, \
-					  ptr_xc_buff_all->xhg_buf_##state. \
-				      ptr_msr_buff[msr_loop].eax_LSB, \
-					  ptr_xc_buff_all->xhg_buf_##state. \
-				      ptr_msr_buff[msr_loop].edx_MSB); \
+				lut_loop++) { \
+			unsigned int cpu;   \
+			u32 *lo_rd, *high_rd, lo_wr, high_wr; \
+			u32 msr_no; \
+			cpu = (unsigned int) ptr_lut->msrs_##state[lut_loop]\
+			.n_cpu; \
+			msr_no = ptr_lut->msrs_##state[lut_loop]. \
+						ecx_address;  \
+			lo_rd = (u32 *)&(ptr_xc_buff_all->xhg_buf_##state. \
+					ptr_msr_buff[msr_loop].eax_LSB); \
+			high_rd = (u32 *) &(ptr_xc_buff_all->xhg_buf_##state. \
+					ptr_msr_buff[msr_loop].edx_MSB);   \
+			lo_wr = (ptr_lut->msrs_##state[lut_loop].eax_LSB); \
+			high_wr = (ptr_lut->msrs_##state[lut_loop].edx_MSB);   \
+			switch (ptr_lut->msrs_##state[lut_loop].operation) { \
+			case READ_OP:   \
+			{ \
+				rdmsr_on_cpu(cpu, msr_no, lo_rd, high_rd);    \
 				msr_loop++; \
-			} else if (ptr_lut->msrs_##state[lut_loop]. \
-						   operation == WRITE_OP) { \
-				wrmsr(ptr_lut->msrs_##state[lut_loop]. \
-				      ecx_address, \
-					  ptr_lut->msrs_##state[lut_loop]. \
-				      eax_LSB, \
-					  ptr_lut->msrs_##state[lut_loop]. \
-				      edx_MSB); \
-			} else { \
+				break;  \
+			} \
+			case WRITE_OP:  \
+			{	\
+				wrmsr_on_cpu(cpu, msr_no, lo_wr, high_wr); \
+				break;  \
+			}	\
+			case SET_BITS_OP:   \
+			{ \
+				u32 eax_LSB, edx_MSB; \
+				rdmsr_on_cpu(cpu, msr_no, \
+						&eax_LSB, &edx_MSB); \
+				wrmsr_on_cpu(cpu, msr_no, \
+						(eax_LSB | lo_wr), \
+						(edx_MSB | high_wr)); \
+				break;  \
+			} \
+			case RESET_BITS_OP:   \
+			{ \
+				u32 eax_LSB, edx_MSB; \
+				rdmsr_on_cpu(cpu, msr_no, \
+						&eax_LSB, &edx_MSB); \
+				wrmsr_on_cpu(cpu, msr_no, \
+						(eax_LSB & ~(lo_wr)), \
+						(edx_MSB & ~(high_wr))); \
+				break;  \
+			} \
+			default: \
 				dev_dbg(matrix_device, \
 					"Error in MSR_OP value..\n"); \
 				goto label; \
@@ -308,7 +335,7 @@ static int matrix_open(struct inode *in, struct file *filp)
  */
 static unsigned long platform_pci_read32(unsigned long address)
 {
-	unsigned long read_value = 0;
+	u32 read_value = 0;
 	struct pci_dev *pci_root = pci_get_bus_and_slot(0, PCI_DEVFN(0, 0));
 	pci_write_config_dword(pci_root, MTX_PCI_MSG_CTRL_REG, address);
 	pci_read_config_dword(pci_root, MTX_PCI_MSG_DATA_REG, &read_value);
@@ -457,7 +484,7 @@ static int initialize_memory(unsigned long ptr_data)
 {
 	if (mem_alloc_status) {
 		dev_dbg(matrix_device,
-		"Initialization of Memory is already done..\n");
+			"Initialization of Memory is already done..\n");
 		return -EPERM;
 	}
 	/* pointer to kernel buffer that stores captured info */
@@ -561,53 +588,48 @@ static int poll_scan(unsigned long poll_loop)
 		   ptr_xc_buff_all->poll_time_stamp[poll_loop - 1]) : 0;
 
 	if (NULL != ptr_lut->msrs_poll) {
-		for (lut_loop = 0; lut_loop < max_msr_loop;
-			lut_loop++) {
-			if (ptr_lut->msrs_poll[lut_loop].operation ==
-			    READ_OP) {
-				rdmsr(ptr_lut->msrs_poll[lut_loop].
-				      ecx_address,
-				      ptr_xc_buff_all->xhg_buf_poll.
-				      ptr_msr_buff[msr_base_addr +
-						   msr_loop].eax_LSB,
-				      ptr_xc_buff_all->xhg_buf_poll.
-				      ptr_msr_buff[msr_base_addr +
-						   msr_loop].edx_MSB);
+		for (lut_loop = 0; lut_loop < max_msr_loop; lut_loop++) {
+			if (ptr_lut->msrs_poll[lut_loop].operation == READ_OP) {
+				rdmsr_on_cpu(ptr_lut->msrs_poll[lut_loop].n_cpu,
+					ptr_lut->
+					msrs_poll[lut_loop].ecx_address,
+					(u32 *) &(ptr_xc_buff_all->xhg_buf_poll.
+					ptr_msr_buff[msr_base_addr +
+					msr_loop].eax_LSB),
+					(u32 *) &(ptr_xc_buff_all->xhg_buf_poll.
+					ptr_msr_buff[msr_base_addr +
+							 msr_loop].edx_MSB));
 				msr_loop++;
-			} else if (ptr_lut->msrs_poll[lut_loop].
-				   operation == WRITE_OP) {
-				wrmsr(ptr_lut->msrs_poll[lut_loop].
-				      ecx_address,
-				      ptr_lut->msrs_poll[lut_loop].
-				      eax_LSB,
-				      ptr_lut->msrs_poll[lut_loop].
-				      edx_MSB);
+			} else if (ptr_lut->msrs_poll[lut_loop].operation ==
+				   WRITE_OP) {
+				wrmsr_on_cpu(ptr_lut->msrs_poll[lut_loop].n_cpu,
+					ptr_lut->
+					msrs_poll[lut_loop].ecx_address,
+					ptr_lut->
+					msrs_poll[lut_loop].eax_LSB,
+					ptr_lut->
+					msrs_poll[lut_loop].edx_MSB);
 			} else {
-				dev_dbg(matrix_device, "Error in MSR_OP value..\n");
+				dev_dbg(matrix_device,
+					"Error in MSR_OP value..\n");
 				goto ERROR;
 			}
 		}
 	}
 
 	if (NULL != ptr_lut->mmap_poll) {
-		for (lut_loop = 0; lut_loop < max_mem_loop;
-			lut_loop++) {
+		for (lut_loop = 0; lut_loop < max_mem_loop; lut_loop++) {
 			writel(ptr_lut->mmap_poll[lut_loop].ctrl_data,
-			       ptr_lut->mmap_poll[lut_loop].
-			       ctrl_remap_address);
-			if (ptr_lut->mmap_poll[lut_loop].
-				data_size != 0) {
+			       ptr_lut->mmap_poll[lut_loop].ctrl_remap_address);
+			if (ptr_lut->mmap_poll[lut_loop].data_size != 0) {
 				memcpy(&ptr_xc_buff_all->xhg_buf_poll.
-				       ptr_mem_buff[mem_base_addr +
-						    mem_loop],
+				       ptr_mem_buff[mem_base_addr + mem_loop],
 				       ptr_lut->mmap_poll[lut_loop].
 				       data_remap_address,
-				       ptr_lut->mmap_poll[lut_loop].
-				       data_size *
+				       ptr_lut->mmap_poll[lut_loop].data_size *
 				       sizeof(unsigned long));
 				mem_loop +=
-				    ptr_lut->mmap_poll[lut_loop].
-				    data_size;
+				    ptr_lut->mmap_poll[lut_loop].data_size;
 				if (mem_loop > max_mem_loop) {
 					dev_dbg(matrix_device,
 						"A(%04d) [0x%40lu]of [0x%40lu]\n",
@@ -620,13 +642,11 @@ static int poll_scan(unsigned long poll_loop)
 	}
 
 	/* Get the status of power islands in the North Complex */
-	io_pm_lower_status =
-	    inl(io_pm_status_reg + PWR_STS_NORTH_CMPLX_LOWER);
+	io_pm_lower_status = inl(io_pm_status_reg + PWR_STS_NORTH_CMPLX_LOWER);
 	io_pm_upper_status =
 	    inl(io_base_pwr_address + PWR_STS_NORTH_CMPLX_UPPER);
-	memcpy(&ptr_xc_buff_all->xhg_buf_poll.
-	       ptr_pci_ops_buff[2 * poll_loop], &io_pm_lower_status,
-	       sizeof(unsigned long));
+	memcpy(&ptr_xc_buff_all->xhg_buf_poll.ptr_pci_ops_buff[2 * poll_loop],
+	       &io_pm_lower_status, sizeof(unsigned long));
 	memcpy(&ptr_xc_buff_all->
 	       xhg_buf_poll.ptr_pci_ops_buff[2 * poll_loop + 1],
 	       &io_pm_upper_status, sizeof(unsigned long));
@@ -634,33 +654,28 @@ static int poll_scan(unsigned long poll_loop)
 	/* SCU IO */
 	if (0 != ptr_lut->scu_poll.length) {
 		int status;
-		unsigned long offset =
-		    (ptr_lut->scu_poll.length * poll_loop);
+		unsigned long offset = (ptr_lut->scu_poll.length * poll_loop);
 		for (lut_loop = 0; lut_loop < ptr_lut->scu_poll.length;
 		     lut_loop++) {
 			status =
-			    intel_scu_ipc_ioread8(ptr_lut->
-						  scu_poll.address
+			    intel_scu_ipc_ioread8(ptr_lut->scu_poll.address
 						  [lut_loop],
-						  &ptr_lut->
-						  scu_poll.drv_data
+						  &ptr_lut->scu_poll.drv_data
 						  [offset + lut_loop]);
 			if (status == 0) {
 				dev_dbg(matrix_device,
 					"IPC failed for reg: %lu addr: %c ..\n",
-					ptr_lut->
-					scu_poll.address[lut_loop],
-					ptr_lut->
-					scu_poll.drv_data[offset +
-							  lut_loop]);
+					ptr_lut->scu_poll.address[lut_loop],
+					ptr_lut->scu_poll.drv_data[offset +
+								   lut_loop]);
 				goto ERROR;
 			}
 		}
 	}
 	cfg_db_base_addr = (poll_loop * max_cfg_db_loop);
 	for (lut_loop = 0; lut_loop < max_cfg_db_loop; lut_loop++) {
-		ptr_xc_buff_all->xhg_buf_poll.
-		    ptr_cfg_db_buff[cfg_db_base_addr + lut_loop] =
+		ptr_xc_buff_all->xhg_buf_poll.ptr_cfg_db_buff[cfg_db_base_addr +
+							      lut_loop] =
 		    platform_pci_read32(ptr_lut->cfg_db_poll[lut_loop]);
 	}
 	return 0;
@@ -678,8 +693,7 @@ static int transfer_data(unsigned long ptr_data)
 
 	struct xchange_buffer_all xbuf_all;
 	if (!mem_alloc_status) {
-		dev_dbg(matrix_device,
-			"Memory allocation is not done..\n");
+		dev_dbg(matrix_device, "Memory allocation is not done..\n");
 		return -EFAULT;
 	}
 	if ((struct xchange_buffer_all *)ptr_data == NULL) {
@@ -792,7 +806,8 @@ static int ioctl_mtx_msr(unsigned long ptr_data)
 		vfree(buffer);
 		return 0;
 	default:
-		dev_dbg(matrix_device, "There is a problem in MSR Operation..\n");
+		dev_dbg(matrix_device,
+			"There is a problem in MSR Operation..\n");
 		goto ERROR;
 	}
 	if (copy_to_user
@@ -886,23 +901,15 @@ static void read_gmch_gen_pur_regs(unsigned long *data, unsigned long *clks,
 				   unsigned long read_mask)
 {
 	if (!(data || clks))
-		return ;
-	data[0] =
-	    platform_pci_read32(MTX_GMCH_PMON_GP_CTR0_L | read_mask);
-	data[1] =
-	    platform_pci_read32(MTX_GMCH_PMON_GP_CTR0_H | read_mask);
-	data[2] =
-	    platform_pci_read32(MTX_GMCH_PMON_GP_CTR1_L | read_mask);
-	data[3] =
-	    platform_pci_read32(MTX_GMCH_PMON_GP_CTR1_H | read_mask);
-	data[4] =
-	    platform_pci_read32(MTX_GMCH_PMON_GP_CTR2_L | read_mask);
-	data[5] =
-	    platform_pci_read32(MTX_GMCH_PMON_GP_CTR2_H | read_mask);
-	data[6] =
-	    platform_pci_read32(MTX_GMCH_PMON_GP_CTR3_L | read_mask);
-	data[7] =
-		    platform_pci_read32(MTX_GMCH_PMON_GP_CTR3_H | read_mask);
+		return;
+	data[0] = platform_pci_read32(MTX_GMCH_PMON_GP_CTR0_L | read_mask);
+	data[1] = platform_pci_read32(MTX_GMCH_PMON_GP_CTR0_H | read_mask);
+	data[2] = platform_pci_read32(MTX_GMCH_PMON_GP_CTR1_L | read_mask);
+	data[3] = platform_pci_read32(MTX_GMCH_PMON_GP_CTR1_H | read_mask);
+	data[4] = platform_pci_read32(MTX_GMCH_PMON_GP_CTR2_L | read_mask);
+	data[5] = platform_pci_read32(MTX_GMCH_PMON_GP_CTR2_H | read_mask);
+	data[6] = platform_pci_read32(MTX_GMCH_PMON_GP_CTR3_L | read_mask);
+	data[7] = platform_pci_read32(MTX_GMCH_PMON_GP_CTR3_H | read_mask);
 	clks[0] = platform_pci_read32(MTX_GMCH_PMON_FIXED_CTR0 | read_mask);
 }
 
@@ -1006,8 +1013,8 @@ static int ioctl_gmch(unsigned long ioctl_request, unsigned long ptr_data)
 	}
 
 	/* read gmch counters */
-	read_gmch_gen_pur_regs(gmch_drv.data, &gmch_drv.
-		core_clks, gmch_drv.read_mask);
+	read_gmch_gen_pur_regs(gmch_drv.data, &gmch_drv.core_clks,
+			       gmch_drv.read_mask);
 	GET_TIME_STAMP(gmch_drv.time_stamp);
 
 	/* reset gmch counters */
@@ -1021,6 +1028,39 @@ static int ioctl_gmch(unsigned long ioctl_request, unsigned long ptr_data)
 	    ((struct gmch_container *)ptr_data,
 	     &gmch_drv, sizeof(struct gmch_container)) > 0) {
 		dev_dbg(matrix_device, "file : %s ,function : %s ,line %i\n",
+			__FILE__, __func__, __LINE__);
+		return -EFAULT;
+	}
+	return 0;
+}
+
+/*
+ * The following function reads/writes to an MSR with
+ * inputs given by the user. The two primary use cases of
+ * this  function are: a) Request to read IA32_PERF_STATUS MSR from ring3.
+ * b) Debugging from user space. There could be other users of this in the
+ * future.
+ */
+static int operate_on_msr(unsigned long ptr_data)
+{
+	struct mtx_msr data_msr;
+	if (copy_from_user
+	    (&data_msr, (struct mtx_msr *)ptr_data,
+	     sizeof(struct mtx_msr)) > 0) {
+		dev_dbg(matrix_device, "file : %s ,function : %s ,line %i\n",
+			__FILE__, __func__, __LINE__);
+		return -EFAULT;
+	}
+	if (data_msr.operation == READ_OP)
+		rdmsr(data_msr.ecx_address, data_msr.eax_LSB, data_msr.edx_MSB);
+	else if (data_msr.operation == WRITE_OP)
+		wrmsr(data_msr.ecx_address, data_msr.eax_LSB, data_msr.edx_MSB);
+	else
+		return -EFAULT;
+	if (copy_to_user((struct mtx_msr *)ptr_data, &data_msr,
+			 sizeof(struct mtx_msr)) > 0) {
+		dev_dbg(matrix_device,
+			"file : %s ,function : %s ,line %i\n",
 			__FILE__, __func__, __LINE__);
 		return -EFAULT;
 	}
@@ -1046,6 +1086,8 @@ static long matrix_ioctl(struct file
 		return initialize_memory(ptr_data);
 	case IOCTL_FREE_MEMORY:
 		return free_memory();
+	case IOCTL_OPERATE_ON_MSR:
+		return operate_on_msr(ptr_data);
 	case IOCTL_INIT_SCAN:
 		return data_scan(request);
 	case IOCTL_TERM_SCAN:

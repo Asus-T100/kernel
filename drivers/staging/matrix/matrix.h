@@ -10,6 +10,8 @@ enum IOCtlType {
 	POLL_OS = 0x00000008,
 	POLL_DRV = 0x00000010,
 	POLL_TRACE = 0x00000020,
+	SET_BITS_OP = 0x00000040,
+	RESET_BITS_OP = 0x00000080,
 };
 
 #define MAX_GMCH_CTRL_REGS 4
@@ -199,6 +201,7 @@ struct mtx_size_info {
 #define IOCTL_VERSION_INFO _IOW(0xF8, 0x00000100, char *)
 #define IOCTL_COPY_TO_USER _IOW(0xF8, 0x00000200, struct xchange_buffer_all *)
 #define IOCTL_READ_CONFIG_DB _IOW(0xF8, 0x00000400, unsigned long *)
+#define IOCTL_OPERATE_ON_MSR _IOW(0xF8, 0x00100000, struct mtx_msr *)
 
 #define IOCTL_MSR _IOW(0xF8, 0x10000000, struct mtx_msr_container *)
 #define IOCTL_SRAM _IOW(0xF8, 0x20000000, struct memory_map *)
