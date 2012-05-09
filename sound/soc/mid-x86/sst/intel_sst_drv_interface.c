@@ -146,10 +146,9 @@ int sst_stalled(void)
 void free_stream_context(unsigned int str_id)
 {
 	struct stream_info *stream;
-
-	if (!sst_validate_strid(str_id)) {
+	stream = get_stream_info(str_id);
+	if (stream) {
 		/* str_id is valid, so stream is alloacted */
-		stream = &sst_drv_ctx->streams[str_id];
 		if (sst_free_stream(str_id))
 			sst_clean_stream(&sst_drv_ctx->streams[str_id]);
 		if (stream->ops == STREAM_OPS_PLAYBACK ||
@@ -447,9 +446,9 @@ static int sst_close_pcm_stream(unsigned int str_id)
 	struct stream_info *stream;
 
 	pr_debug("stream free called\n");
-	if (sst_validate_strid(str_id))
+	stream = get_stream_info(str_id);
+	if (!stream)
 		return -EINVAL;
-	stream = &sst_drv_ctx->streams[str_id];
 	free_stream_context(str_id);
 	stream->pcm_substream = NULL;
 	stream->status = STREAM_UN_INIT;
@@ -458,6 +457,16 @@ static int sst_close_pcm_stream(unsigned int str_id)
 	pr_debug("will call runtime put now\n");
 	pm_runtime_put(&sst_drv_ctx->pci->dev);
 	return 0;
+}
+
+int sst_send_sync_msg(int ipc, int str_id)
+{
+	struct ipc_post *msg = NULL;
+
+	if (sst_create_short_msg(&msg))
+		return -ENOMEM;
+	sst_fill_header(&msg->header, ipc, 0, str_id);
+	return sst_sync_post_message(msg);
 }
 
 /*
@@ -476,9 +485,7 @@ static int sst_device_control(int cmd, void *arg)
 
 	switch (cmd) {
 	case SST_SND_PAUSE:
-	case SST_SND_RESUME:
-	case SST_SND_DROP:
-	case SST_SND_START: {
+	case SST_SND_RESUME: {
 		struct mad_ops_wq *work = kzalloc(sizeof(*work), GFP_ATOMIC);
 		if (!work)
 			return -ENOMEM;
@@ -488,6 +495,32 @@ static int sst_device_control(int cmd, void *arg)
 		queue_work(sst_drv_ctx->mad_wq, &work->wq);
 		break;
 	}
+	case SST_SND_START: {
+		struct stream_info *str_info;
+		int ipc;
+		str_id = *(int *)arg;
+		str_info = get_stream_info(str_id);
+		if (!str_info)
+			return -EINVAL;
+		ipc = IPC_IA_START_STREAM;
+		str_info->prev = str_info->status;
+		str_info->status = STREAM_RUNNING;
+		retval = sst_send_sync_msg(ipc, str_id);
+		break;
+	}
+	case SST_SND_DROP: {
+		struct stream_info *str_info;
+		int ipc;
+		str_id = *(int *)arg;
+		str_info = get_stream_info(str_id);
+		if (!str_info)
+			return -EINVAL;
+		ipc = IPC_IA_DROP_STREAM;
+		str_info->prev = STREAM_UN_INIT;
+		str_info->status = STREAM_INIT;
+		retval = sst_send_sync_msg(ipc, str_id);
+		break;
+	}
 	case SST_SND_STREAM_INIT: {
 		struct pcm_stream_info *str_info;
 		struct stream_info *stream;
@@ -495,11 +528,11 @@ static int sst_device_control(int cmd, void *arg)
 		pr_debug("stream init called\n");
 		str_info = (struct pcm_stream_info *)arg;
 		str_id = str_info->str_id;
-		retval = sst_validate_strid(str_id);
-		if (retval)
+		stream = get_stream_info(str_id);
+		if (!stream) {
+			retval = -EINVAL;
 			break;
-
-		stream = &sst_drv_ctx->streams[str_id];
+		}
 		pr_debug("setting the period ptrs\n");
 		stream->pcm_substream = str_info->mad_substream;
 		stream->period_elapsed = str_info->period_elapsed;
@@ -517,10 +550,11 @@ static int sst_device_control(int cmd, void *arg)
 
 		stream_info = (struct pcm_stream_info *)arg;
 		str_id = stream_info->str_id;
-		retval = sst_validate_strid(str_id);
-		if (retval)
+		stream = get_stream_info(str_id);
+		if (!stream) {
+			retval = -EINVAL;
 			break;
-		stream = &sst_drv_ctx->streams[str_id];
+		}
 
 		if (!stream->pcm_substream)
 			break;

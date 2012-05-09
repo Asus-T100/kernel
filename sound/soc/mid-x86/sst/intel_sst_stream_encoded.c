@@ -57,11 +57,10 @@ int sst_get_stream_params(int str_id,
 	struct snd_sst_fw_get_stream_params *fw_params;
 
 	pr_debug("get_stream for %d\n", str_id);
-	retval = sst_validate_strid(str_id);
-	if (retval)
-		return retval;
+	str_info = get_stream_info(str_id);
+	if (!str_info)
+		return -EINVAL;
 
-	str_info = &sst_drv_ctx->streams[str_id];
 	if (str_info->status != STREAM_UN_INIT) {
 		if (str_info->ctrl_blk.on == true) {
 			pr_err("control path in use\n");
@@ -130,11 +129,10 @@ int sst_set_stream_param(int str_id, struct sst_stream_params *str_param)
 		pr_err("Invalid operation\n");
 		return -EINVAL;
 	}
-	retval = sst_validate_strid(str_id);
-	if (retval)
-		return retval;
+	str_info = get_stream_info(str_id);
+	if (!str_info)
+		return -EINVAL;
 	pr_debug("set_stream for %d\n", str_id);
-	str_info =  &sst_drv_ctx->streams[str_id];
 	if (sst_drv_ctx->streams[str_id].status == STREAM_INIT) {
 		if (str_info->ctrl_blk.on == true) {
 			pr_err("control path in use\n");
@@ -549,18 +547,16 @@ static int sst_create_sg_list(struct stream_info *stream,
  */
 int sst_play_frame(int str_id)
 {
-	int retval = 0;
 	struct ipc_post *msg = NULL;
 	struct sst_frame_info sg_list = {0};
 	struct sst_stream_bufs *kbufs = NULL, *_kbufs;
 	struct stream_info *stream;
 
 	pr_debug("play frame for %d\n", str_id);
-	retval = sst_validate_strid(str_id);
-	if (retval)
-		return retval;
+	stream = get_stream_info(str_id);
+	if (!stream)
+		return -EINVAL;
 
-	stream = &sst_drv_ctx->streams[str_id];
 	/* clear prev sent buffers */
 	list_for_each_entry_safe(kbufs, _kbufs, &stream->bufs, node) {
 		if (kbufs->in_use == true) {
@@ -631,7 +627,6 @@ int sst_play_frame(int str_id)
  */
 int sst_capture_frame(int str_id)
 {
-	int retval = 0;
 	struct ipc_post *msg = NULL;
 	struct sst_frame_info sg_list = {0};
 	struct sst_stream_bufs *kbufs = NULL, *_kbufs;
@@ -639,10 +634,9 @@ int sst_capture_frame(int str_id)
 
 
 	pr_debug("capture frame for %d\n", str_id);
-	retval = sst_validate_strid(str_id);
-	if (retval)
-		return retval;
-	stream = &sst_drv_ctx->streams[str_id];
+	stream = get_stream_info(str_id);
+	if (!stream)
+		return -EINVAL;
 	/* clear prev sent buffers */
 	list_for_each_entry_safe(kbufs, _kbufs, &stream->bufs, node) {
 		if (kbufs->in_use == true) {
@@ -1033,11 +1027,10 @@ int sst_decode(int str_id, struct snd_sst_dbufs *dbufs)
 
 	pr_debug("Powering_down_PMIC...\n");
 
-	retval = sst_validate_strid(str_id);
-	if (retval)
-		return retval;
+	str_info = get_stream_info(str_id);
+	if (!str_info)
+		return -EINVAL;
 
-	str_info = &sst_drv_ctx->streams[str_id];
 	if (str_info->status != STREAM_INIT) {
 		pr_err("invalid stream state = %d\n",
 			       str_info->status);

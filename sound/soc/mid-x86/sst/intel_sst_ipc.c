@@ -31,6 +31,7 @@
 #include <linux/pci.h>
 #include <linux/firmware.h>
 #include <linux/sched.h>
+#include <linux/delay.h>
 #include <sound/intel_sst_ioctl.h>
 #include "../sst_platform.h"
 #include "intel_sst_fw_ipc.h"
@@ -179,6 +180,44 @@ void sst_post_message(struct work_struct *work)
 	kfree(msg);
 }
 
+/* use this for trigger ops to post syncronous msgs
+ */
+int sst_sync_post_message(struct ipc_post *msg)
+{
+	union ipc_header header;
+	unsigned int loop_count = 0;
+	int retval = 0;
+
+	pr_debug("sst: sync post message called\n");
+	spin_lock(&sst_drv_ctx->list_spin_lock);
+
+	/* check busy bit */
+	header.full = sst_shim_read(sst_drv_ctx->shim, SST_IPCX);
+	while (header.part.busy) {
+		if (loop_count > 10) {
+			pr_err("busy wait failed, cant send this msg\n");
+			retval = -EBUSY;
+			goto out;
+		}
+		usleep_range(5000, 5000);
+		loop_count++;
+		header.full = sst_shim_read(sst_drv_ctx->shim, SST_IPCX);
+	};
+	pr_debug("sst: Post message: header = %x\n", msg->header.full);
+	pr_debug("sst: size: = %x\n", msg->header.part.data);
+	if (msg->header.part.large)
+		memcpy_toio(sst_drv_ctx->mailbox + SST_MAILBOX_SEND,
+			msg->mailbox_data, msg->header.part.data);
+
+	sst_shim_write(sst_drv_ctx->shim, SST_IPCX, msg->header.full);
+
+out:
+	spin_unlock(&sst_drv_ctx->list_spin_lock);
+	kfree(msg->mailbox_data);
+	kfree(msg);
+	return retval;
+}
+
 /*
  * sst_clear_interrupt - clear the SST FW interrupt
  *
@@ -276,12 +315,12 @@ void sst_process_message(struct work_struct *work)
 		if (sst_drv_ctx->pci_id == SST_MRST_PCI_ID) {
 			struct stream_info *stream ;
 
-			if (sst_validate_strid(str_id)) {
+			stream = get_stream_info(str_id);
+			if (!stream) {
 				pr_err("strid %d invalid\n", str_id);
 				break;
 			}
 			/* call sst_play_frame */
-			stream = &sst_drv_ctx->streams[str_id];
 			pr_debug("sst_play_frames for %d\n",
 					msg->header.part.str_id);
 			mutex_lock(&sst_drv_ctx->streams[str_id].lock);
@@ -295,11 +334,11 @@ void sst_process_message(struct work_struct *work)
 		if (sst_drv_ctx->pci_id == SST_MRST_PCI_ID) {
 			struct stream_info *stream;
 			/* call sst_capture_frame */
-			if (sst_validate_strid(str_id)) {
+			stream = get_stream_info(str_id);
+			if (!stream) {
 				pr_err("str id %d invalid\n", str_id);
 				break;
 			}
-			stream = &sst_drv_ctx->streams[str_id];
 			pr_debug("sst_capture_frames for %d\n",
 					msg->header.part.str_id);
 			mutex_lock(&stream->lock);
@@ -546,11 +585,11 @@ void sst_process_reply(struct work_struct *work)
 		break;
 
 	case IPC_IA_GET_STREAM_PARAMS:
-		if (sst_validate_strid(str_id)) {
+		str_info = get_stream_info(str_id);
+		if (!str_info) {
 			pr_err("stream id %d invalid\n", str_id);
 			break;
 		}
-		str_info = &sst_drv_ctx->streams[str_id];
 		if (msg->header.part.large) {
 			pr_debug("Get stream large success\n");
 			memcpy_fromio(str_info->ctrl_blk.data,
@@ -569,11 +608,11 @@ void sst_process_reply(struct work_struct *work)
 		}
 		break;
 	case IPC_IA_DECODE_FRAMES:
-		if (sst_validate_strid(str_id)) {
+		str_info = get_stream_info(str_id);
+		if (!str_info) {
 			pr_err("stream id %d invalid\n", str_id);
 			break;
 		}
-		str_info = &sst_drv_ctx->streams[str_id];
 		if (msg->header.part.large) {
 			pr_debug("Msg succeeded %x\n",
 				       msg->header.part.msg_id);
@@ -593,11 +632,11 @@ void sst_process_reply(struct work_struct *work)
 		}
 		break;
 	case IPC_IA_DRAIN_STREAM:
-		if (sst_validate_strid(str_id)) {
+		str_info = get_stream_info(str_id);
+		if (!str_info) {
 			pr_err("stream id %d invalid\n", str_id);
 			break;
 		}
-		str_info = &sst_drv_ctx->streams[str_id];
 		if (!msg->header.part.data) {
 			pr_debug("Msg succeeded %x\n",
 					msg->header.part.msg_id);
@@ -618,11 +657,11 @@ void sst_process_reply(struct work_struct *work)
 		break;
 
 	case IPC_IA_DROP_STREAM:
-		if (sst_validate_strid(str_id)) {
+		str_info = get_stream_info(str_id);
+		if (!str_info) {
 			pr_err("str id %d invalid\n", str_id);
 			break;
 		}
-		str_info = &sst_drv_ctx->streams[str_id];
 		if (msg->header.part.large) {
 			struct snd_sst_drop_response *drop_resp =
 				(struct snd_sst_drop_response *)msg->mailbox;
@@ -661,7 +700,11 @@ void sst_process_reply(struct work_struct *work)
 	case IPC_IA_PAUSE_STREAM:
 	case IPC_IA_RESUME_STREAM:
 	case IPC_IA_SET_STREAM_PARAMS:
-		str_info = &sst_drv_ctx->streams[str_id];
+		str_info = get_stream_info(str_id);
+		if (!str_info) {
+			pr_err(" stream id %d invalid\n", str_id);
+			break;
+		}
 		if (!msg->header.part.data) {
 			pr_debug("Msg succeeded %x\n",
 					msg->header.part.msg_id);
@@ -671,10 +714,6 @@ void sst_process_reply(struct work_struct *work)
 					msg->header.part.msg_id,
 					msg->header.part.data);
 			str_info->ctrl_blk.ret_code = -msg->header.part.data;
-		}
-		if (sst_validate_strid(str_id)) {
-			pr_err(" stream id %d invalid\n", str_id);
-			break;
 		}
 
 		if (str_info->ctrl_blk.on == true) {

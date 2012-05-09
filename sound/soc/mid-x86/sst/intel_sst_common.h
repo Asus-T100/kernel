@@ -492,7 +492,7 @@ int sst_get_vol(struct snd_sst_vol *set_vol);
 int sst_set_vol(struct snd_sst_vol *set_vol);
 int sst_set_mute(struct snd_sst_mute *set_mute);
 
-
+int sst_sync_post_message(struct ipc_post *msg);
 void sst_post_message(struct work_struct *work);
 void sst_process_message(struct work_struct *work);
 void sst_process_reply(struct work_struct *work);
@@ -651,7 +651,12 @@ sst_set_fw_state_locked(struct intel_sst_drv *sst_drv_ctx, int sst_state)
 	sst_drv_ctx->sst_state = sst_state;
 	mutex_unlock(&sst_drv_ctx->sst_lock);
 }
-
+static inline struct stream_info *get_stream_info(int str_id)
+{
+	if (sst_validate_strid(str_id))
+		return NULL;
+	return &sst_drv_ctx->streams[str_id];
+}
 int register_sst(struct device *);
 int unregister_sst(struct device *);
 #endif /* __INTEL_SST_COMMON_H__ */

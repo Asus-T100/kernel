@@ -349,15 +349,13 @@ int sst_get_fw_info(struct snd_sst_fw_info *info)
 */
 int sst_start_stream(int str_id)
 {
-	int retval = 0;
 	struct ipc_post *msg = NULL;
 	struct stream_info *str_info;
 
 	pr_debug("sst_start_stream for %d\n", str_id);
-	retval = sst_validate_strid(str_id);
-	if (retval)
-		return retval;
-	str_info = &sst_drv_ctx->streams[str_id];
+	str_info = get_stream_info(str_id);
+	if (!str_info)
+		return -EINVAL;
 	if (str_info->status != STREAM_INIT)
 		return -EBADRQC;
 	if (sst_create_short_msg(&msg))
@@ -368,7 +366,7 @@ int sst_start_stream(int str_id)
 	list_add_tail(&msg->node, &sst_drv_ctx->ipc_dispatch_list);
 	spin_unlock(&sst_drv_ctx->list_spin_lock);
 	sst_post_message(&sst_drv_ctx->ipc_post_msg_wq);
-	return retval;
+	return 0;
 }
 
 /*
@@ -385,10 +383,9 @@ int sst_pause_stream(int str_id)
 	struct stream_info *str_info;
 
 	pr_debug("SST DBG:sst_pause_stream for %d\n", str_id);
-	retval = sst_validate_strid(str_id);
-	if (retval)
-		return retval;
-	str_info = &sst_drv_ctx->streams[str_id];
+	str_info = get_stream_info(str_id);
+	if (!str_info)
+		return -EINVAL;
 	if (str_info->status == STREAM_PAUSED)
 		return 0;
 	if (str_info->status == STREAM_RUNNING ||
@@ -443,10 +440,9 @@ int sst_resume_stream(int str_id)
 	struct stream_info *str_info;
 
 	pr_debug("SST DBG:sst_resume_stream for %d\n", str_id);
-	retval = sst_validate_strid(str_id);
-	if (retval)
-		return retval;
-	str_info = &sst_drv_ctx->streams[str_id];
+	str_info = get_stream_info(str_id);
+	if (!str_info)
+		return -EINVAL;
 	if (str_info->status == STREAM_RUNNING)
 			return 0;
 	if (str_info->status == STREAM_PAUSED) {
@@ -504,10 +500,9 @@ int sst_drop_stream(int str_id)
 	struct stream_info *str_info;
 
 	pr_debug("SST DBG:sst_drop_stream for %d\n", str_id);
-	retval = sst_validate_strid(str_id);
-	if (retval)
-		return retval;
-	str_info = &sst_drv_ctx->streams[str_id];
+	str_info = get_stream_info(str_id);
+	if (!str_info)
+		return -EINVAL;
 
 	mutex_lock(&str_info->lock);
 	if (str_info->status != STREAM_UN_INIT &&
@@ -562,10 +557,9 @@ int sst_drain_stream(int str_id)
 	struct stream_info *str_info;
 
 	pr_debug("SST DBG:sst_drain_stream for %d\n", str_id);
-	retval = sst_validate_strid(str_id);
-	if (retval)
-		return retval;
-	str_info = &sst_drv_ctx->streams[str_id];
+	str_info = get_stream_info(str_id);
+	if (!str_info)
+		return -EINVAL;
 
 	if (str_info->status != STREAM_RUNNING &&
 		str_info->status != STREAM_INIT &&
@@ -609,10 +603,9 @@ int sst_free_stream(int str_id)
 	struct stream_info *str_info;
 
 	pr_debug("SST DBG:sst_free_stream for %d\n", str_id);
-	retval = sst_validate_strid(str_id);
-	if (retval)
-		return retval;
-	str_info = &sst_drv_ctx->streams[str_id];
+	str_info = get_stream_info(str_id);
+	if (!str_info)
+		return -EINVAL;
 
 	mutex_lock(&str_info->lock);
 	if (str_info->status != STREAM_UN_INIT) {
