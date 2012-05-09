@@ -71,6 +71,9 @@
 #define IPC_SET_SUB_LOAD_THRES  0x00
 #define IPC_SET_SUB_DISABLE     0x01
 #define IPC_SET_SUB_KEEPALIVE   0x02
+#ifdef CONFIG_DEBUG_FS
+#define SECURITY_WATCHDOG_ADDRESS 0xff108194
+#endif
 
 #define WDIOC_SETTIMERTIMEOUT     _IOW(WATCHDOG_IOCTL_BASE, 11, int)
 #define WDIOC_GETTIMERTIMEOUT     _IOW(WATCHDOG_IOCTL_BASE, 12, int)
@@ -80,6 +83,7 @@ static struct intel_scu_watchdog_dev watchdog_device;
 static struct wake_lock watchdog_wake_lock;
 static DECLARE_WAIT_QUEUE_HEAD(read_wq);
 static unsigned char osnib_reset = OSNIB_WRITE_VALUE;
+
 
 /* The read function (intel_scu_read) waits for the warning_flag to */
 /* be set by the watchdog interrupt handler. */
@@ -249,7 +253,7 @@ static int watchdog_set_timeouts(int timer_threshold, int warning_pretimeout,
 /* Keep alive  */
 static int watchdog_keepalive(void)
 {
-int ret;
+	int ret;
 
 	pr_err(PFX "%s\n", __func__);
 
@@ -271,7 +275,7 @@ int ret;
 /* stops the timer */
 static int intel_scu_stop(void)
 {
-int ret;
+	int ret;
 
 	pr_err(PFX "%s\n", __func__);
 
@@ -291,7 +295,7 @@ err:
 /* tasklet */
 static void watchdog_interrupt_tasklet_body(unsigned long data)
 {
-int ret;
+	int ret = 0;
 
 	pr_warn(PFX "interrupt tasklet body start\n");
 
@@ -360,7 +364,7 @@ static irqreturn_t watchdog_warning_interrupt(int irq, void *dev_id)
 /* Program and starts the timer */
 static int watchdog_config_and_start(u32 newtimeout, u32 newpretimeout)
 {
-int ret;
+	int ret;
 
 	timeout = newtimeout;
 	pre_timeout = newpretimeout;
@@ -387,7 +391,7 @@ int ret;
 /* Open */
 static int intel_scu_open(struct inode *inode, struct file *file)
 {
-int ret;
+	int ret;
 
 	/* Set flag to indicate that watchdog device is open */
 	if (test_and_set_bit(0, &watchdog_device.driver_open))
@@ -476,8 +480,8 @@ static ssize_t intel_scu_write(struct file *file, char const *data, size_t len,
 static ssize_t intel_scu_read(struct file *file, char __user *user_data,
 			     size_t len, loff_t *user_ppos)
 {
-int ret;
-const u8 *buf = "0";
+	int ret;
+	const u8 *buf = "0";
 
 	/* we wait for the next interrupt; if more than one */
 	/* interrupt has occurred since the last read, we */
@@ -504,11 +508,10 @@ const u8 *buf = "0";
 /* Poll */
 static unsigned int intel_scu_poll(struct file *file, poll_table *wait)
 {
-unsigned int mask;
+	unsigned int mask = 0;
 
 	poll_wait(file, &read_wq, wait);
 
-	mask = 0;
 	if (warning_flag == 1)
 		mask |= POLLIN | POLLRDNORM;
 
@@ -519,10 +522,10 @@ unsigned int mask;
 static long intel_scu_ioctl(struct file *file, unsigned int cmd,
 			    unsigned long arg)
 {
-void __user *argp = (void __user *)arg;
-u32 __user *p = argp;
-u32 val;
-int options;
+	void __user *argp = (void __user *)arg;
+	u32 __user *p = argp;
+	u32 val;
+	int options;
 
 	static const struct watchdog_info ident = {
 		.options = WDIOF_SETTIMEOUT | WDIOF_KEEPALIVEPING,
@@ -619,7 +622,7 @@ static int reboot_notifier(struct notifier_block *this,
 			   unsigned long code,
 			   void *another_unused)
 {
-int ret;
+	int ret;
 
 	if (code == SYS_RESTART || code == SYS_HALT || code == SYS_POWER_OFF) {
 		pr_warn(PFX "Reboot notifier\n");
@@ -634,6 +637,78 @@ int ret;
 	}
 	return NOTIFY_DONE;
 }
+
+#ifdef CONFIG_DEBUG_FS
+/* This code triggers a Security Watchdog */
+int open_security(struct inode *i, struct file *f)
+{
+	int ret = 0;
+	u64 *ptr;
+	u32 value;
+
+	ptr = ioremap_nocache(SECURITY_WATCHDOG_ADDRESS, sizeof(u32));
+	if (!ptr) {
+		pr_err(PFX "cannot open secwd's debugfile\n");
+		ret = -ENODEV;
+		goto error;
+	}
+	value = readl(ptr);
+
+	pr_err(PFX "%s: This code should never be reached!!!\n", __func__);
+
+error:
+	return ret;
+}
+
+static const struct file_operations security_watchdog_fops = {
+	.open = open_security,
+};
+
+static int remove_debugfs_entries(void)
+{
+struct intel_scu_watchdog_dev *dev = &watchdog_device;
+
+	/* /sys/kernel/debug/watchdog */
+	debugfs_remove_recursive(dev->dfs_wd);
+
+	return 0;
+}
+
+static int create_debugfs_entries(void)
+{
+	struct intel_scu_watchdog_dev *dev = &watchdog_device;
+
+	/* /sys/kernel/debug/watchdog */
+	dev->dfs_wd = debugfs_create_dir("watchdog", NULL);
+	if (!dev->dfs_wd) {
+		pr_err(PFX "%s: Error, cannot create main dir\n", __func__);
+		goto error;
+	}
+
+	/* /sys/kernel/debug/watchdog/security_watchdog */
+	dev->dfs_secwd = debugfs_create_dir("security_watchdog", dev->dfs_wd);
+	if (!dev->dfs_secwd) {
+		pr_err(PFX "%s: Error, cannot create sec dir\n", __func__);
+		goto error;
+	}
+
+	/* /sys/kernel/debug/watchdog/security_watchdog/trigger */
+	dev->dfs_secwd_trigger = debugfs_create_file("trigger",
+				    S_IFREG | S_IRUGO | S_IWUSR | S_IWGRP,
+				    dev->dfs_secwd, NULL,
+				    &security_watchdog_fops);
+
+	if (!dev->dfs_secwd_trigger) {
+		pr_err(PFX "%s: Error, cannot create sec file\n", __func__);
+		goto error;
+	}
+
+	return 0;
+error:
+	remove_debugfs_entries();
+	return 1;
+}
+#endif
 
 /* Kernel Interfaces */
 static const struct file_operations intel_scu_fops = {
@@ -650,7 +725,7 @@ static const struct file_operations intel_scu_fops = {
 /* Init code */
 static int __init intel_scu_watchdog_init(void)
 {
-	int ret;
+	int ret = 0;
 
 	/* Check timeouts boot parameter */
 	if (check_timeouts()) {
@@ -756,6 +831,10 @@ static int __init intel_scu_watchdog_init(void)
 			pr_debug(PFX "cant disable timer\n");
 	}
 
+#ifdef CONFIG_DEBUG_FS
+	create_debugfs_entries();
+#endif
+
 	watchdog_device.started = false;
 
 	return 0;
@@ -775,9 +854,15 @@ error_stop_timer:
 	return ret;
 }
 
+
 static void __exit intel_scu_watchdog_exit(void)
 {
 	int ret = 0;
+
+#ifdef CONFIG_DEBUG_FS
+	remove_debugfs_entries();
+#endif
+
 #ifdef CONFIG_INTEL_SCU_SOFT_LOCKUP
 	del_timer_sync(&softlock_timer);
 #endif
@@ -800,7 +885,7 @@ module_exit(intel_scu_watchdog_exit);
 
 MODULE_AUTHOR("Intel Corporation");
 MODULE_AUTHOR("mark.a.allyn@intel.com");
-MODULE_AUTHOR("yannx.puech@intel.com");
+MODULE_AUTHOR("yann.puech@intel.com");
 MODULE_DESCRIPTION("Intel SCU Watchdog Device Driver");
 MODULE_LICENSE("GPL");
 MODULE_ALIAS_MISCDEV(WATCHDOG_MINOR);

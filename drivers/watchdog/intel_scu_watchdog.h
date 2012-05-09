@@ -25,6 +25,10 @@
 #ifndef __INTEL_SCU_WATCHDOG_H
 #define __INTEL_SCU_WATCHDOG_H
 
+#ifdef CONFIG_DEBUG_FS
+#include <linux/debugfs.h>
+#endif
+
 #define PFX "intel_scu_watchdog: "
 #define WDT_VER "0.3"
 
@@ -60,6 +64,11 @@ struct intel_scu_watchdog_dev {
 	struct notifier_block reboot_notifier;
 	struct miscdevice miscdev;
 	struct tasklet_struct interrupt_tasklet;
+#ifdef CONFIG_DEBUG_FS
+	struct dentry *dfs_wd;
+	struct dentry *dfs_secwd;
+	struct dentry *dfs_secwd_trigger;
+#endif
 };
 
 #endif /* __INTEL_SCU_WATCHDOG_H */
