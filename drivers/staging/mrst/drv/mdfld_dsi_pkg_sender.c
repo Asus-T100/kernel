@@ -54,6 +54,7 @@ const char * dsi_errors[] = {
 	"TX Checksum Error",
 	"TX DSI Data Type Not Recognised",
 	"TX DSI VC ID invalid",
+
 	"High Contention",
 	"Low contention",
 	"DPI FIFO Under run",
@@ -117,6 +118,7 @@ static int handle_dsi_error(struct mdfld_dsi_pkg_sender *sender, u32 mask)
 {
 	u32 intr_stat_reg = sender->mipi_intr_stat_reg;
 	struct drm_device *dev = sender->dev;
+	struct drm_psb_private *dev_priv = dev->dev_private;
 
 	PSB_DEBUG_ENTRY("Handling error 0x%08x\n", mask);
 
@@ -133,7 +135,12 @@ static int handle_dsi_error(struct mdfld_dsi_pkg_sender *sender, u32 mask)
 	case BIT9:
 	case BIT10:
 	case BIT11:
+		PSB_DEBUG_ENTRY("No Action required\n");
+		break;
 	case BIT12:
+		PSB_DEBUG_ENTRY("TXFALSE control error\n");
+		REG_WRITE(0xb004, BIT12);
+		break;
 	case BIT13:
 		PSB_DEBUG_ENTRY("No Action required\n");
 		break;
@@ -145,16 +152,44 @@ static int handle_dsi_error(struct mdfld_dsi_pkg_sender *sender, u32 mask)
 		PSB_DEBUG_ENTRY("No Action required\n");
 		break;
 	case BIT16:
+		PSB_DEBUG_ENTRY("TX DSI data type not recognised error\n");
+		/*REG_WRITE(0xb05c, REG_READ(0xb05c) | 0x8);*/
+		REG_WRITE(0xb004, BIT16);
 		break;
 	case BIT17:
 		break;
 	case BIT18:
+		{
+			int count = 0;
+			PSB_DEBUG_ENTRY("single high contention event\n");
+			REG_WRITE(0xb05c, REG_READ(0xb05c)|0x30);
+			while ((REG_READ(0xb004)&0x40000) == 0x40000) {
+				count++;
+			if (count == 2)
+				REG_WRITE(0xb004, BIT18);
+			if (count == 3) {
+				printk(KERN_ALERT
+						"persistent high contention error detected\n");
+				if (dev_priv->dbi_panel_on) {
+					/*Enzo asked no to do panel
+					 *  reset panel right now
+					*/
+					/*schedule_work(
+					 * &dev_priv->reset_panel_work);
+					 * */
+				}
+				break;
+			}
+			}
+		}
+		break;
 	case BIT19:
-		PSB_DEBUG_ENTRY("High/Low contention detected\n");
+		PSB_DEBUG_ENTRY("Low contention detected\n");
 		/*wait for contention recovery time*/
 		/*mdelay(10);*/
 		/*wait for all fifo empty*/
-		if(0) wait_for_all_fifos_empty(sender);
+		if (0)
+			wait_for_all_fifos_empty(sender);
 		break;
 	case BIT20:
 		PSB_DEBUG_ENTRY("No Action required\n");

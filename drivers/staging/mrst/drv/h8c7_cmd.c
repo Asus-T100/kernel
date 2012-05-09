@@ -71,8 +71,8 @@ static u32 h8c7_gamma_b[] = {0x070601e2, 0x1f322a2d, 0x0e0c0540, 0x13121411,
 	0x0601180f, 0x322a2d07, 0x0c05401f, 0x1214110e, 0x00180f13};
 static u32 h8c7_enter_set_cabc[] = {0x1e001fc9, 0x0000001e, 0x00003e01};
 
-static u32 h8c7_mcs_clumn_addr[] = {0x0200002a,0xcf};
-static u32 h8c7_mcs_page_addr[] = {0x0400002b,0xff};
+static u32 h8c7_mcs_clumn_addr[] = {0x0200002a, 0xcf};
+static u32 h8c7_mcs_page_addr[] = {0x0400002b, 0xff};
 
 static u32 h8c7_mcs_protect_on[] = {0x000000b9};
 static u32 h8c7_set_address_mode[] = {0x00000036};
@@ -98,7 +98,8 @@ static int mdfld_mipi_panel_gpio_parse(struct sfi_table_header *table)
 	return 0;
 }
 
-static void mdfld_h8c7_dci_ic_init(struct mdfld_dsi_config *dsi_config, int pipe)
+static void mdfld_h8c7_dci_ic_init(
+		struct mdfld_dsi_config *dsi_config, int pipe)
 {
 
 	struct mdfld_dsi_pkg_sender *sender
@@ -246,7 +247,7 @@ static void mdfld_h8c7_dci_ic_init(struct mdfld_dsi_config *dsi_config, int pipe
 
 
 static void
-mdfld_h8c7_dci_controller_init(struct mdfld_dsi_config *dsi_config,
+mdfld_h8c7_dsi_controller_init(struct mdfld_dsi_config *dsi_config,
 				int pipe, int update)
 {
 
@@ -317,15 +318,15 @@ struct drm_display_mode *h8c7_cmd_get_config_mode(struct drm_device *dev)
 				((ti->vblank_hi << 8) | ti->vblank_lo);
 		mode->clock = ti->pixel_clock * 10;
 
-		printk(KERN_ALERT"===hdisplay is %d\n", mode->hdisplay);
-		printk(KERN_ALERT"===vdisplay is %d\n", mode->vdisplay);
-		printk(KERN_ALERT"===HSS is %d\n", mode->hsync_start);
-		printk(KERN_ALERT"===HSE is %d\n", mode->hsync_end);
-		printk(KERN_ALERT"===htotal is %d\n", mode->htotal);
-		printk(KERN_ALERT"===VSS is %d\n", mode->vsync_start);
-		printk(KERN_ALERT"===VSE is %d\n", mode->vsync_end);
-		printk(KERN_ALERT"===vtotal is %d\n", mode->vtotal);
-		printk(KERN_ALERT"===clock is %d\n", mode->clock);
+		printk(KERN_ALERT"hdisplay is %d\n", mode->hdisplay);
+		printk(KERN_ALERT"vdisplay is %d\n", mode->vdisplay);
+		printk(KERN_ALERT"HSS is %d\n", mode->hsync_start);
+		printk(KERN_ALERT"HSE is %d\n", mode->hsync_end);
+		printk(KERN_ALERT"htotal is %d\n", mode->htotal);
+		printk(KERN_ALERT"VSS is %d\n", mode->vsync_start);
+		printk(KERN_ALERT"VSE is %d\n", mode->vsync_end);
+		printk(KERN_ALERT"vtotal is %d\n", mode->vtotal);
+		printk(KERN_ALERT"clock is %d\n", mode->clock);
 
 	} else {
 		mode->htotal = 920;
@@ -411,7 +412,7 @@ int mdfld_dsi_h8c7_cmd_power_on(struct mdfld_dsi_config *dsi_config)
 	msleep(120);
 
 
-	param[0] = 0x00; //0x03;
+	param[0] = 0x00;
 	param[1] = 0x00;
 	param[2] = 0x00;
 	err = mdfld_dsi_send_dcs(sender,
@@ -425,7 +426,7 @@ int mdfld_dsi_h8c7_cmd_power_on(struct mdfld_dsi_config *dsi_config)
 		goto power_err;
 	}
 
-	param[0] = 0x24; //0x28;
+	param[0] = 0x24;
 	param[1] = 0x00;
 	param[2] = 0x00;
 	err = mdfld_dsi_send_dcs(sender,
@@ -468,7 +469,7 @@ int mdfld_dsi_h8c7_cmd_power_on(struct mdfld_dsi_config *dsi_config)
 	}
 	msleep(21);
 
-	param[0] = 0x24;//0x2c;
+	param[0] = 0x24;
 	param[1] = 0x00;
 	param[2] = 0x00;
 	err = mdfld_dsi_send_dcs(sender,
@@ -551,6 +552,74 @@ power_err:
 	return err;
 }
 
+static void mdfld_h8c7_dsi_control_config(struct drm_device *dev)
+{
+	struct mdfld_dsi_hw_registers *regs = NULL;
+	struct mdfld_dsi_hw_context *ctx = NULL;
+	struct mdfld_dsi_config *dsi_config = NULL;
+	struct drm_psb_private *dev_priv = dev->dev_private;
+	int mipi_pipe = dev_priv->cur_pipe;
+	if (mipi_pipe)
+		dsi_config = dev_priv->dsi_configs[1];
+	else
+		dsi_config = dev_priv->dsi_configs[0];
+	regs = &dsi_config->regs;
+	ctx = &dsi_config->dsi_hw_context;
+	/* set low power output hold */
+	REG_WRITE(regs->mipi_reg, ctx->mipi);
+	msleep(30);
+	/* D-PHY parameter */
+	REG_WRITE(regs->dphy_param_reg, ctx->dphy_param);
+	/* Configure DSI controller */
+
+	REG_WRITE(regs->mipi_control_reg, ctx->mipi_control);
+	REG_WRITE(regs->intr_en_reg, ctx->intr_en);
+	REG_WRITE(regs->hs_tx_timeout_reg, ctx->hs_tx_timeout);
+	REG_WRITE(regs->lp_rx_timeout_reg, ctx->lp_rx_timeout);
+	REG_WRITE(regs->turn_around_timeout_reg, ctx->turn_around_timeout);
+	REG_WRITE(regs->device_reset_timer_reg, ctx->device_reset_timer);
+	REG_WRITE(regs->high_low_switch_count_reg, ctx->high_low_switch_count);
+	REG_WRITE(regs->init_count_reg, ctx->init_count);
+	REG_WRITE(regs->eot_disable_reg, ctx->eot_disable);
+	REG_WRITE(regs->lp_byteclk_reg, ctx->lp_byteclk);
+	REG_WRITE(regs->clk_lane_switch_time_cnt_reg,
+			ctx->clk_lane_switch_time_cnt);
+	REG_WRITE(regs->dsi_func_prg_reg, ctx->dsi_func_prg);
+	REG_WRITE(regs->dbi_bw_ctrl_reg, ctx->dbi_bw_ctrl);
+
+}
+
+void mdfld_h8c7_disp_control_init(struct drm_device *dev)
+{
+	struct mdfld_dsi_hw_registers *regs = NULL;
+	struct mdfld_dsi_config *dsi_config = NULL;
+	struct drm_display_mode *fixed_mode =
+			h8c7_cmd_get_config_mode(dev);
+	struct drm_psb_private *dev_priv = dev->dev_private;
+	int mipi_pipe = dev_priv->cur_pipe;
+	if (mipi_pipe)
+		dsi_config = dev_priv->dsi_configs[1];
+	else
+		dsi_config = dev_priv->dsi_configs[0];
+	regs = &dsi_config->regs;
+	mdfld_h8c7_dsi_control_config(dev);
+
+	REG_WRITE(0x70184, 0);
+	REG_WRITE(0x70188, fixed_mode->hdisplay*4);
+	REG_WRITE(0x7018c, 0);
+	REG_WRITE(0x70190,
+		((fixed_mode->vdisplay - 1)<<16) | (fixed_mode->hdisplay - 1));
+	REG_WRITE(0x70180, 0x98000000);
+
+	REG_WRITE(0x71400, 0x80000000);
+	REG_WRITE(0x6001c,
+		((fixed_mode->hdisplay - 1)<<16) | (fixed_mode->vdisplay - 1));
+	msleep(30);
+	/* Enable DSI Controller */
+	REG_WRITE(regs->device_ready_reg, BIT0);
+	msleep(30);
+}
+
 int mdfld_h8c7_dsi_dbi_power_on(struct drm_encoder *encoder)
 {
 	struct mdfld_dsi_encoder *dsi_encoder = MDFLD_DSI_ENCODER(encoder);
@@ -576,28 +645,7 @@ int mdfld_h8c7_dsi_dbi_power_on(struct drm_encoder *encoder)
 					OSPM_UHB_FORCE_POWER_ON))
 		return -EAGAIN;
 
-	/* HW-Reset */
-
-	/* set low power output hold */
-	REG_WRITE(regs->mipi_reg, ctx->mipi);
-	/* D-PHY parameter */
-	REG_WRITE(regs->dphy_param_reg, ctx->dphy_param);
-
-	/* Configure DSI controller */
-	REG_WRITE(regs->mipi_control_reg, ctx->mipi_control);
-	REG_WRITE(regs->intr_en_reg, ctx->intr_en);
-	REG_WRITE(regs->hs_tx_timeout_reg, ctx->hs_tx_timeout);
-	REG_WRITE(regs->lp_rx_timeout_reg, ctx->lp_rx_timeout);
-	REG_WRITE(regs->turn_around_timeout_reg, ctx->turn_around_timeout);
-	REG_WRITE(regs->device_reset_timer_reg, ctx->device_reset_timer);
-	REG_WRITE(regs->high_low_switch_count_reg, ctx->high_low_switch_count);
-	REG_WRITE(regs->init_count_reg, ctx->init_count);
-	REG_WRITE(regs->eot_disable_reg, ctx->eot_disable);
-	REG_WRITE(regs->lp_byteclk_reg, ctx->lp_byteclk);
-	REG_WRITE(regs->clk_lane_switch_time_cnt_reg,
-			ctx->clk_lane_switch_time_cnt);
-	REG_WRITE(regs->dsi_func_prg_reg, ctx->dsi_func_prg);
-	REG_WRITE(regs->dbi_bw_ctrl_reg, ctx->dbi_bw_ctrl);
+	mdfld_h8c7_dsi_control_config(dev);
 
 	/* Enable DSI Controller */
 	REG_WRITE(regs->device_ready_reg, BIT0);
@@ -619,7 +667,6 @@ power_on_err:
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 	return err;
 }
-//--------------------------------- add below
 /*
  * Power off sequence for video mode MIPI panel.
  * NOTE: do NOT modify this function
@@ -745,6 +792,10 @@ static int mdfld_h8c7_dsi_dbi_set_power(struct drm_encoder *encoder, bool on)
 
 		dsi_config->dsi_hw_context.panel_on = 0;
 	}
+	if (dev_priv->dbi_panel_on)
+		mdfld_error_detect_correct_timer_start(dev);
+	else
+		mdfld_error_detect_correct_timer_end(dev);
 
 out_err:
 	mutex_unlock(&dsi_config->context_lock);
@@ -771,6 +822,7 @@ static void mdfld_h8c7_dsi_dbi_mode_set(struct drm_encoder *encoder,
 		mdfld_dsi_encoder_get_config(dsi_encoder);
 	struct mdfld_dsi_connector *dsi_connector = dsi_config->connector;
 	int pipe = dsi_connector->pipe;
+	u32 reg_offset = pipe ? MIPIC_REG_OFFSET : 0;
 	struct mdfld_dsi_pkg_sender *sender =
 		mdfld_dsi_get_pkg_sender(dsi_config);
 	u8 param[8];
@@ -836,7 +888,8 @@ static void mdfld_h8c7_dsi_dbi_mode_set(struct drm_encoder *encoder,
 
 out_err:
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
-
+	REG_WRITE((MIPIA_EOT_DISABLE_REG + reg_offset), 0x00000008);
+	/*0xB05C */
 	if (err)
 		DRM_ERROR("mode set failed\n");
 	else
@@ -968,32 +1021,33 @@ void mdfld_h8c7_dsi_dbi_restore(struct drm_encoder *encoder)
 /*
  * Update the DBI MIPI Panel Frame Buffer.
  */
-void mdfld_dsi_dbi_CB_ready (struct drm_device *dev, u32 mipi_command_address_reg, u32 gen_fifo_stat_reg)
+void mdfld_dsi_dbi_CB_ready(struct drm_device *dev,
+		u32 mipi_command_address_reg, u32 gen_fifo_stat_reg)
 {
 	u32 DBI_CB_time_out_count = 0;
 
 	/* Check MIPI Adatper command registers */
-	for (DBI_CB_time_out_count = 0; DBI_CB_time_out_count < DBI_CB_TIME_OUT; DBI_CB_time_out_count++)
-	{
+	for (DBI_CB_time_out_count = 0; DBI_CB_time_out_count <
+		DBI_CB_TIME_OUT; DBI_CB_time_out_count++){
 		if (!(REG_READ(mipi_command_address_reg) & BIT0))
 			break;
 	}
 
 	if (DBI_CB_time_out_count == DBI_CB_TIME_OUT)
-		DRM_ERROR("Timeout waiting for DBI COMMAND status. \n");
+		DRM_ERROR("Timeout waiting for DBI COMMAND status\n");
 
 	if (!gen_fifo_stat_reg)
 		return;
 
 	/* Check and make sure the MIPI DBI BUFFER is empty. */
-	for (DBI_CB_time_out_count = 0; DBI_CB_time_out_count < DBI_CB_TIME_OUT; DBI_CB_time_out_count++)
-	{
+	for (DBI_CB_time_out_count = 0; DBI_CB_time_out_count <
+		DBI_CB_TIME_OUT; DBI_CB_time_out_count++){
 		if (REG_READ(gen_fifo_stat_reg) & DBI_FIFO_EMPTY)
 			break;
 	}
 
 	if (DBI_CB_time_out_count == DBI_CB_TIME_OUT)
-		DRM_ERROR("Timeout waiting for DBI FIFO empty. \n");
+		DRM_ERROR("Timeout waiting for DBI FIFO empty\n");
 }
 
 static void h8c7_dsi_dbi_update_fb(struct mdfld_dsi_dbi_output *dbi_output,
@@ -1016,8 +1070,7 @@ static void h8c7_dsi_dbi_update_fb(struct mdfld_dsi_dbi_output *dbi_output,
 	if ((dbi_output->mode_flags & MODE_SETTING_ON_GOING) ||
 			(psb_crtc &&
 			 (psb_crtc->mode_flags & MODE_SETTING_ON_GOING)) ||
-			!(dbi_output->mode_flags & MODE_SETTING_ENCODER_DONE))
-	{
+			!(dbi_output->mode_flags & MODE_SETTING_ENCODER_DONE)) {
 		return;
 	}
 
@@ -1053,7 +1106,7 @@ static void h8c7_dsi_dbi_update_fb(struct mdfld_dsi_dbi_output *dbi_output,
 			   0,
 			   CMD_DATA_SRC_PIPE,
 			   MDFLD_DSI_SEND_PACKAGE);
-//	mdfld_dsi_gen_fifo_ready(dev, GEN_FIFO_STAT_REG, DBI_FIFO_EMPTY);
+/*	mdfld_dsi_gen_fifo_ready(dev, GEN_FIFO_STAT_REG, DBI_FIFO_EMPTY);*/
 	dbi_output->dsr_fb_update_done = true;
 	mdfld_dsi_cmds_kick_out(sender);
 
@@ -1099,7 +1152,7 @@ int mdfld_dsi_h8c7_cmd_detect(struct mdfld_dsi_config *dsi_config,
 
 #ifndef CONFIG_DRM_DPMS
 	PSB_DEBUG_ENTRY("ifndef CONFIG_DRM_DPMS....\n");
-		//if (ctx->pll_bypass_mode)
+		/*if (ctx->pll_bypass_mode)*/
 	     {
 			REG_WRITE(regs->dpll_reg, dpll);
 			if (ctx->cck_div)
@@ -1170,7 +1223,8 @@ int mdfld_dsi_h8c7_cmd_panel_reset(struct mdfld_dsi_config *dsi_config,
 	dev = dsi_config->dev;
 
 	if (IS_CTP(dev)) {
-		sfi_table_parse(SFI_SIG_GPIO, NULL, NULL, mdfld_mipi_panel_gpio_parse);
+		sfi_table_parse(SFI_SIG_GPIO,
+				NULL, NULL, mdfld_mipi_panel_gpio_parse);
 		gpio_mipi_panel_reset = mdfld_mipi_panel_gpio_reset;
 	}
 
@@ -1243,9 +1297,8 @@ int mdfld_h8c7_cmd_power_on(struct drm_encoder *encoder)
 		mdfld_dsi_get_pkg_sender(dsi_config);
 	u8 param[4];
 
-	struct drm_display_mode *fixed_mode = h8c7_cmd_get_config_mode(dev);  //h8c7_cmd
+	struct drm_display_mode *fixed_mode = h8c7_cmd_get_config_mode(dev);
 
-	printk(KERN_ALERT"%s\n",__func__);
 	PSB_DEBUG_ENTRY("\n");
 
 	regs = &dsi_config->regs;
@@ -1287,14 +1340,15 @@ int mdfld_h8c7_cmd_power_on(struct drm_encoder *encoder)
 	REG_WRITE(0x70184, 0);
 	REG_WRITE(0x70188, fixed_mode->hdisplay*4);
 	REG_WRITE(0x7018c, 0);
-	REG_WRITE(0x70190, ((fixed_mode->vdisplay - 1)<<16) | (fixed_mode->hdisplay - 1));  //h8c7_cmd
+	REG_WRITE(0x70190,
+		((fixed_mode->vdisplay - 1)<<16) | (fixed_mode->hdisplay - 1));
 	REG_WRITE(0x70180, 0x98000000);
 
 	REG_WRITE(0x71400, 0x80000000);
 
 	REG_WRITE(0x7019c, 0);
-	REG_WRITE(0x6001c, ((fixed_mode->hdisplay - 1)<<16) | (fixed_mode->vdisplay - 1));
-
+	REG_WRITE(0x6001c,
+		((fixed_mode->hdisplay-1)<<16)|(fixed_mode->vdisplay-1));
 	msleep(30);
 	/* Enable DSI Controller */
 	REG_WRITE(regs->device_ready_reg, BIT0);
@@ -1338,13 +1392,31 @@ int mdfld_h8c7_cmd_power_on(struct drm_encoder *encoder)
 
 	msleep(50);
 
-	// mdfld_dbi_dsr_timer_start(dev_priv->dbi_dsr_info);   //h8c7_cmd disable timer
+	/* mdfld_dbi_dsr_timer_start(dev_priv->dbi_dsr_info);*/
 
 power_err:
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 	return err;
 }
 
+static bool mdfld_h8c7_cmd_esd_detection(struct mdfld_dsi_config *dsi_config)
+{
+	int ret;
+	u32 data = 0;
+	ret = mdfld_dsi_get_power_mode(dsi_config,
+				 &data,
+				 MDFLD_DSI_LP_TRANSMISSION);
+	if ((ret == 1) && ((data & 0x14) != 0x14))
+		return true;
+	return false;
+}
+static void mdfld_h8c7_cmd_get_reset_delay_time(
+		int *pdelay_between_dispaly_island_off_on,
+		int *pdelay_after_reset_gpio_toggle)
+{
+	*pdelay_between_dispaly_island_off_on = 1200;
+	*pdelay_after_reset_gpio_toggle = 300;
+}
 
 /* TPO DBI encoder helper funcs */
 static const struct drm_encoder_helper_funcs h8c7_dsi_dbi_helper_funcs = {
@@ -1378,11 +1450,14 @@ void h8c7_cmd_init(struct drm_device *dev, struct panel_funcs *p_funcs)
 	p_funcs->get_panel_info = h8c7_cmd_get_panel_info;
 	p_funcs->reset = mdfld_dsi_h8c7_cmd_panel_reset;
 	p_funcs->drv_ic_init = mdfld_h8c7_dci_ic_init;
-	p_funcs->dsi_controller_init = mdfld_h8c7_dci_controller_init;
+	p_funcs->dsi_controller_init = mdfld_h8c7_dsi_controller_init;
 	p_funcs->detect = mdfld_dsi_h8c7_cmd_detect;
-	//p_funcs->get_panel_power_state = mdfld_h8c7_cmd_get_power_state;
+	/*p_funcs->get_panel_power_state = mdfld_h8c7_cmd_get_power_state;*/
 	p_funcs->power_on = mdfld_dsi_h8c7_cmd_power_on;
 	p_funcs->power_off = mdfld_dsi_h8c7_cmd_power_off;
 	p_funcs->set_brightness = mdfld_dsi_h8c7_cmd_set_brightness;
+	p_funcs->disp_control_init = mdfld_h8c7_disp_control_init;
+	p_funcs->esd_detection = mdfld_h8c7_cmd_esd_detection;
+	p_funcs->get_reset_delay_time = mdfld_h8c7_cmd_get_reset_delay_time;
 
 }

@@ -1877,7 +1877,7 @@ static void gfx_redridge_late_resume(struct drm_device *dev)
 
 static void gfx_early_suspend(struct early_suspend *h)
 {
-	struct drm_psb_private* dev_priv = gpDrmDevice->dev_private;
+	struct drm_psb_private *dev_priv = gpDrmDevice->dev_private;
 	struct drm_device *dev = dev_priv->dev;
 	struct drm_encoder *encoder;
 	struct drm_encoder_helper_funcs *enc_funcs;
@@ -1886,8 +1886,14 @@ static void gfx_early_suspend(struct early_suspend *h)
 	printk(KERN_ALERT "\n   gfx_early_suspend\n");
 #endif
 
-    if (dev_priv->pvr_screen_event_handler)
-        dev_priv->pvr_screen_event_handler(dev, 0);
+	if (h) {
+		while (dev_priv->is_in_panel_reset) {
+			mdelay(100);
+			printk(KERN_ALERT "===power key wait\n");
+		}
+	}
+	if (dev_priv->pvr_screen_event_handler)
+		dev_priv->pvr_screen_event_handler(dev, 0);
 	/*Display off*/
 	if (IS_MDFLD(gpDrmDevice)) {
 		if ((dev_priv->panel_id == TMD_VID) ||
@@ -1936,85 +1942,94 @@ static void gfx_early_suspend(struct early_suspend *h)
 #endif
 
 }
-
-static void gfx_late_resume(struct early_suspend *h)
+static void resume_data_back()
 {
-	struct drm_psb_private* dev_priv = gpDrmDevice->dev_private;
+	pm_runtime_forbid(&gpDrmDevice->pdev->dev);
+	mutex_lock(&g_ospm_mutex);
+	ospm_resume_pci(gpDrmDevice->pdev);
+	ospm_resume_display(gpDrmDevice->pdev);
+	psb_irq_preinstall_islands(gpDrmDevice, OSPM_DISPLAY_ISLAND);
+	psb_irq_postinstall_islands(gpDrmDevice, OSPM_DISPLAY_ISLAND);
+	mutex_unlock(&g_ospm_mutex);
+}
+static void restore_panel_controll_back(struct drm_psb_private *dev_priv)
+{
 	struct drm_device *dev = dev_priv->dev;
 	struct drm_encoder *encoder;
 	struct drm_encoder_helper_funcs *enc_funcs;
 	struct drm_crtc *crtc = NULL;
 	u32 dspcntr_val;
 
-#ifdef OSPM_GFX_DPK
-	printk(KERN_ALERT "\ngfx_late_resume\n");
-#endif
-
-	if(IS_MDFLD(gpDrmDevice)){
-
-#ifdef CONFIG_GFX_RTPM
-		pm_runtime_forbid(&gpDrmDevice->pdev->dev);
-		mutex_lock(&g_ospm_mutex);
-		ospm_resume_pci(gpDrmDevice->pdev);
-		ospm_resume_display(gpDrmDevice->pdev);
-		psb_irq_preinstall_islands(gpDrmDevice, OSPM_DISPLAY_ISLAND);
-		psb_irq_postinstall_islands(gpDrmDevice, OSPM_DISPLAY_ISLAND);
-		mutex_unlock(&g_ospm_mutex);
-#endif
-		if (IS_MDFLD(gpDrmDevice)) {
-			if ((dev_priv->panel_id == TMD_VID) ||
-				(dev_priv->panel_id == H8C7_VID) ||
-				(dev_priv->panel_id == TMD_6X10_VID) ||
-				(dev_priv->panel_id == GI_SONY_VID) ||
-				(dev_priv->panel_id == GI_SONY_CMD) ||
-				(dev_priv->panel_id == H8C7_CMD) ||
-				(dev_priv->panel_id == AUO_SC1_VID) ||
-				/* SC1 setting */
-				(dev_priv->panel_id == AUO_SC1_CMD)) {
+	if (IS_MDFLD(gpDrmDevice)) {
+		if ((dev_priv->panel_id == TMD_VID) ||
+			(dev_priv->panel_id == H8C7_VID) ||
+			(dev_priv->panel_id == TMD_6X10_VID) ||
+			(dev_priv->panel_id == GI_SONY_VID) ||
+			(dev_priv->panel_id == GI_SONY_CMD) ||
+			(dev_priv->panel_id == H8C7_CMD) ||
+			(dev_priv->panel_id == AUO_SC1_VID) ||
+			/* SC1 setting */
+			(dev_priv->panel_id == AUO_SC1_CMD)) {
 #if defined(CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY) || \
-				defined(CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE)
-				gfx_redridge_late_resume(dev);
+			defined(CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE)
+			gfx_redridge_late_resume(dev);
 #else
-				list_for_each_entry(encoder,
-						&dev->mode_config.encoder_list,
-						head) {
-					enc_funcs = encoder->helper_private;
-					if (!drm_helper_encoder_in_use(encoder))
-						continue;
-					if (enc_funcs && enc_funcs->restore)
-						enc_funcs->restore(encoder);
-				}
-#endif
-			} else if (dev_priv->panel_id == TPO_CMD) {
-				if (dev_priv->encoder0 &&
-					(dev_priv->panel_desc & DISPLAY_A))
-					mdfld_dsi_dbi_set_power(
-						&dev_priv->encoder0->base, true);
-				if (dev_priv->encoder2 &&
-					(dev_priv->panel_desc & DISPLAY_C))
-					mdfld_dsi_dbi_set_power(
-						&dev_priv->encoder2->base, true);
-			} else {
-				printk(KERN_ALERT "%s invalid panel\n",
-					__func__);
+			list_for_each_entry(encoder,
+					&dev->mode_config.encoder_list,
+					head) {
+				enc_funcs = encoder->helper_private;
+				if (!drm_helper_encoder_in_use(encoder))
+					continue;
+				if (enc_funcs && enc_funcs->restore)
+					enc_funcs->restore(encoder);
 			}
+#endif
+		} else if (dev_priv->panel_id == TPO_CMD) {
+			if (dev_priv->encoder0 &&
+				(dev_priv->panel_desc & DISPLAY_A))
+				mdfld_dsi_dbi_set_power(
+					&dev_priv->encoder0->base, true);
+			if (dev_priv->encoder2 &&
+				(dev_priv->panel_desc & DISPLAY_C))
+				mdfld_dsi_dbi_set_power(
+					&dev_priv->encoder2->base, true);
+		} else {
+			printk(KERN_ALERT "%s invalid panel\n",
+				__func__);
 		}
 
 		if (dev_priv->panel_desc & DISPLAY_B) {
 			dspcntr_val = PSB_RVDC32(DSPBCNTR);
 			/* comply the status with HDMI DPMS */
 			if (DISP_PLANEB_STATUS == DISPLAY_PLANE_DISABLE)
-				PSB_WVDC32(dspcntr_val & ~DISPLAY_PLANE_ENABLE, DSPBCNTR);
+				PSB_WVDC32(dspcntr_val
+					& ~DISPLAY_PLANE_ENABLE, DSPBCNTR);
 			else
-				PSB_WVDC32(dspcntr_val | DISPLAY_PLANE_ENABLE, DSPBCNTR);
+				PSB_WVDC32(dspcntr_val
+					| DISPLAY_PLANE_ENABLE, DSPBCNTR);
 		}
-        if (dev_priv->pvr_screen_event_handler)
-            dev_priv->pvr_screen_event_handler(dev, 1);
+		if (dev_priv->pvr_screen_event_handler)
+			dev_priv->pvr_screen_event_handler(dev, 1);
 		gbdispstatus = true;
 
 		if (lastFailedBrightness > 0)
 			psb_set_brightness(NULL);
 	}
+
+}
+static void gfx_late_resume(struct early_suspend *h)
+{
+	struct drm_psb_private *dev_priv = gpDrmDevice->dev_private;
+#ifdef OSPM_GFX_DPK
+	printk(KERN_ALERT "\ngfx_late_resume\n");
+#endif
+
+	if (IS_MDFLD(gpDrmDevice)) {
+#ifdef CONFIG_GFX_RTPM
+		resume_data_back();
+#endif
+	}
+	restore_panel_controll_back(dev_priv);
 }
 
 /*
@@ -2025,11 +2040,11 @@ static void gfx_late_resume(struct early_suspend *h)
  */
 int ospm_power_suspend(struct pci_dev *pdev, pm_message_t state)
 {
-        int ret = 0;
-        int graphics_access_count;
-        int videoenc_access_count;
-        int videodec_access_count;
-        int display_access_count;
+	int ret = 0;
+	int graphics_access_count;
+	int videoenc_access_count;
+	int videodec_access_count;
+	int display_access_count;
 	struct drm_psb_private *dev_priv = gpDrmDevice->dev_private;
 
 #ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
@@ -2732,3 +2747,74 @@ unlock:
 	mutex_unlock(&vadd_mutex);
 }
 #endif
+void mdfld_reset_panel_handler_work(struct work_struct *work)
+{
+	struct drm_psb_private *dev_priv =
+		container_of(work, struct drm_psb_private, reset_panel_work);
+	int mipi_pipe = dev_priv->cur_pipe;
+	struct drm_device *dev = dev_priv->dev;
+	struct mdfld_dsi_config *dsi_config = NULL;
+
+	struct mdfld_dsi_dbi_output *dbi_output = NULL;
+	struct panel_funcs *p_funcs  = NULL;
+	int delay_between_dispaly_island_off_on = 20;
+	int delay_after_reset_gpio_toggle = 20;
+
+	/*if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
+	*				OSPM_UHB_FORCE_POWER_ON))
+	*	return -EAGAIN;
+	*/
+	dev_priv->is_in_panel_reset = true;
+	if (!dev_priv->is_mipi_on)
+		goto reset_error;
+
+	if (mipi_pipe == 0) {
+		dbi_output = dev_priv->dbi_output;
+		dsi_config = dev_priv->dsi_configs[0];
+	} else {
+		dbi_output = dev_priv->dbi_output2;
+		dsi_config = dev_priv->dsi_configs[1];
+	}
+	if (!dbi_output) {
+		printk(KERN_ALERT "%s invalid dbi_output\n",
+						__func__);
+		goto reset_error;
+	}
+	p_funcs = dbi_output->p_funcs;
+	if (p_funcs) {
+		gfx_early_suspend(NULL);
+		if (p_funcs->get_reset_delay_time)
+			p_funcs->get_reset_delay_time(
+					&delay_between_dispaly_island_off_on,
+					&delay_after_reset_gpio_toggle);
+		mdelay(delay_between_dispaly_island_off_on);
+
+		if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
+						OSPM_UHB_FORCE_POWER_ON))
+			goto reset_error;
+
+		if (p_funcs->reset)
+			p_funcs->reset(dsi_config, RESET_FROM_OSPM_RESUME);
+
+		mdelay(delay_after_reset_gpio_toggle);
+		if (p_funcs->disp_control_init)
+			p_funcs->disp_control_init(dev);
+
+		if (IS_MDFLD(gpDrmDevice))
+			resume_data_back();
+
+		if (p_funcs->drv_ic_init)
+			p_funcs->drv_ic_init(dsi_config, mipi_pipe);
+
+		restore_panel_controll_back(dev_priv);
+		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+		printk(KERN_ALERT"End panel reset!!!\n");
+	} else {
+		printk(KERN_ALERT "%s invalid panel init\n",
+								__func__);
+	}
+reset_error:
+	dev_priv->is_in_panel_reset = false;
+	/*ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);*/
+}
+

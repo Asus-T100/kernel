@@ -107,6 +107,10 @@ struct panel_funcs {
 	int (*power_on)(struct mdfld_dsi_config *dsi_config);
 	int (*power_off)(struct mdfld_dsi_config *dsi_config);
 	int (*set_brightness)(struct mdfld_dsi_config *dsi_config, int level);
+	void (*disp_control_init)(struct drm_device *);
+	bool (*esd_detection)(struct mdfld_dsi_config *dsi_config);
+	void (*get_reset_delay_time)(int *pdelay_between_dispaly_island_off_on,
+			int *pdelay_after_reset_gpio_toggle);
 };
 
 void mdfld_output_init(struct drm_device* dev);

@@ -114,6 +114,7 @@ void init_panel(struct drm_device* dev, int mipi_pipe, enum panel_type p_type)
 	struct panel_funcs * p_vid_funcs = NULL;
 	int ret = 0;
 
+	dev_priv->cur_pipe = mipi_pipe;
 	p_cmd_funcs = kzalloc(sizeof(struct panel_funcs), GFP_KERNEL);
 	p_vid_funcs = kzalloc(sizeof(struct panel_funcs), GFP_KERNEL);
 	

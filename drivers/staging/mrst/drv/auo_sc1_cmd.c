@@ -570,6 +570,10 @@ static int mdfld_auo_dsi_dbi_set_power(struct drm_encoder *encoder, bool on)
 		dsi_config->dsi_hw_context.panel_on = 0;
 	}
 
+	if (dev_priv->dbi_panel_on)
+		mdfld_error_detect_correct_timer_start(dev);
+	else
+		mdfld_error_detect_correct_timer_end(dev);
 out_err:
 	mutex_unlock(&dsi_config->context_lock);
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
@@ -595,6 +599,7 @@ static void mdfld_auo_dsi_dbi_mode_set(struct drm_encoder *encoder,
 	struct mdfld_dsi_connector *dsi_connector = dsi_config->connector;
 	int pipe = dsi_connector->pipe;
 	int err = 0;
+	u32 reg_offset = pipe ? MIPIC_REG_OFFSET : 0;
 
 	PSB_DEBUG_ENTRY("type %s\n", (pipe == 2) ? "MIPI2" : "MIPI");
 	PSB_DEBUG_ENTRY("h %d v %d\n", mode->hdisplay, mode->vdisplay);
@@ -609,7 +614,7 @@ static void mdfld_auo_dsi_dbi_mode_set(struct drm_encoder *encoder,
 		DRM_ERROR("mode set failed\n");
 	else
 		PSB_DEBUG_ENTRY("mode set done successfully\n");
-
+	REG_WRITE((MIPIA_EOT_DISABLE_REG+reg_offset), 0x00000008);/*0xB05C */
 	return;
 }
 
@@ -931,6 +936,24 @@ err:
 	return 0;
 }
 
+static bool mdfld_auo_esd_detection(struct mdfld_dsi_config *dsi_config)
+{
+	int ret;
+	u32 data = 0;
+	ret = mdfld_dsi_get_power_mode(dsi_config,
+				 &data,
+				 MDFLD_DSI_LP_TRANSMISSION);
+	if ((ret == 1) && ((data & 0x14) != 0x14))
+		return true;
+	return false;
+}
+static void mdfld_auo_get_reset_delay_time(
+		int *pdelay_between_dispaly_island_off_on,
+		int *pdelay_after_reset_gpio_toggle)
+{
+	*pdelay_between_dispaly_island_off_on = 20;
+	*pdelay_after_reset_gpio_toggle = 20;
+}
 /* TPO DBI encoder helper funcs */
 static const struct drm_encoder_helper_funcs auo_dsi_dbi_helper_funcs = {
 	.save = mdfld_auo_dsi_dbi_save,
@@ -961,4 +984,6 @@ void auo_sc1_cmd_init(struct drm_device *dev, struct panel_funcs *p_funcs)
 	p_funcs->set_brightness = mdfld_auo_dsi_cmd_set_brightness;
 	p_funcs->power_on = __mdfld_auo_dsi_power_on;
 	p_funcs->power_off = __mdfld_auo_dsi_power_off;
+	p_funcs->esd_detection = mdfld_auo_esd_detection;
+	p_funcs->get_reset_delay_time = mdfld_auo_get_reset_delay_time;
 }
