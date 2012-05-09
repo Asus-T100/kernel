@@ -295,7 +295,8 @@ MRST_ERROR MRSTLFBUninstallVSyncISR(MRSTLFB_DEVINFO *psDevInfo);
 void MRSTLFBEnableVSyncInterrupt(MRSTLFB_DEVINFO *psDevInfo);
 void MRSTLFBDisableVSyncInterrupt(MRSTLFB_DEVINFO *psDevInfo);
 
-void MRSTLFBFlipToSurface(MRSTLFB_DEVINFO *psDevInfo,  unsigned long uiAddr);
+IMG_BOOL MRSTLFBFlipToSurface(MRSTLFB_DEVINFO *psDevInfo,
+		  unsigned long uiAddr);
 void MRSTLFBSavePlaneConfig(MRSTLFB_DEVINFO *psDevInfo);
 void MRSTLFBRestorePlaneConfig(MRSTLFB_DEVINFO *psDevInfo);
 

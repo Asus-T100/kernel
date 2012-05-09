@@ -133,7 +133,8 @@ MRST_ERROR MRSTLFBUninstallVSyncISR(MRSTLFB_DEVINFO	*psDevInfo)
 #endif
 
 
-void MRSTLFBFlipToSurface(MRSTLFB_DEVINFO *psDevInfo,  unsigned long uiAddr)
+IMG_BOOL  MRSTLFBFlipToSurface(MRSTLFB_DEVINFO *psDevInfo,
+		unsigned long uiAddr)
 {
     int dspbase = (psDevInfo->ui32MainPipe == 0 ? DSPABASE : DSPBBASE);
     int dspsurf = (psDevInfo->ui32MainPipe == 0 ? DSPASURF : DSPBSURF);
@@ -158,8 +159,10 @@ void MRSTLFBFlipToSurface(MRSTLFB_DEVINFO *psDevInfo,  unsigned long uiAddr)
 				dspsurf = DSPASURF;
 				MRSTLFBVSyncWriteReg(psDevInfo, dspsurf, uiAddr);
 				if (dev_priv->b_async_flip_enable &&
-						 dev_priv->async_flip_update_fb)
-					dev_priv->async_flip_update_fb(dev, 0);
+						dev_priv->async_flip_update_fb)
+					if (dev_priv->async_flip_update_fb(
+						dev, 0)	== IMG_FALSE)
+						return IMG_FALSE;
 			}
 #if defined(CONFIG_MDFD_DUAL_MIPI)
 			if (psCurrentSwapChain->ui32SwapChainPropertyFlag
@@ -168,7 +171,9 @@ void MRSTLFBFlipToSurface(MRSTLFB_DEVINFO *psDevInfo,  unsigned long uiAddr)
 				MRSTLFBVSyncWriteReg(psDevInfo, dspsurf, uiAddr);
 				if (dev_priv->b_async_flip_enable &&
 						 dev_priv->async_flip_update_fb)
-					dev_priv->async_flip_update_fb(dev, 2);
+					if (dev_priv->async_flip_update_fb(
+						 dev, 2) == IMG_FALSE)
+						return IMG_FALSE;
 			}
 #endif
 #ifdef CONFIG_MDFD_HDMI
@@ -191,6 +196,7 @@ void MRSTLFBFlipToSurface(MRSTLFB_DEVINFO *psDevInfo,  unsigned long uiAddr)
         }
         ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
     }
+	return IMG_TRUE;
 }
 
 void MRSTLFBSavePlaneConfig(MRSTLFB_DEVINFO *psDevInfo)

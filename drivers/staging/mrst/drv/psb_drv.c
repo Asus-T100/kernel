@@ -1801,6 +1801,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	mutex_init(&dev_priv->gamma_csc_lock);
 
 	spin_lock_init(&dev_priv->reloc_lock);
+	spin_lock_init(&dev_priv->dsr_lock);
 
 	DRM_INIT_WAITQUEUE(&dev_priv->rel_mapped_queue);
 

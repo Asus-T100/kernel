@@ -64,7 +64,8 @@ static void SetAnchorPtr(MRSTLFB_DEVINFO *psDevInfo)
 	gpvAnchor = (void*)psDevInfo;
 }
 
-static void MRSTLFBFlip(MRSTLFB_DEVINFO *psDevInfo, MRSTLFB_BUFFER *psBuffer)
+static IMG_BOOL MRSTLFBFlip(MRSTLFB_DEVINFO *psDevInfo,
+				 MRSTLFB_BUFFER *psBuffer)
 {
 	unsigned long ulAddr = (unsigned long)psBuffer->sDevVAddr.uiAddr;
 	struct fb_info *psLINFBInfo;
@@ -73,7 +74,10 @@ static void MRSTLFBFlip(MRSTLFB_DEVINFO *psDevInfo, MRSTLFB_BUFFER *psBuffer)
 	if (!psDevInfo->bSuspended && !psDevInfo->bLeaveVT)
 	{
 		MRSTLFBRestorePlaneConfig(psDevInfo);
-		MRSTLFBFlipToSurface(psDevInfo, ulAddr);
+		if (MRSTLFBFlipToSurface(psDevInfo, ulAddr) == IMG_FALSE) {
+			DRM_INFO("returning false from MRSTLFBFlip");
+			return IMG_FALSE;
+		}
 	}
 
 	psDevInfo->ulLastFlipAddr = ulAddr;
@@ -86,6 +90,7 @@ static void MRSTLFBFlip(MRSTLFB_DEVINFO *psDevInfo, MRSTLFB_BUFFER *psBuffer)
 		memset(psDevInfo->sSystemBuffer.sCPUVAddr, 0, psDevInfo->sSystemBuffer.ui32BufferSize);
 		FirstCleanFlag = 0;
 	}
+	return IMG_TRUE;
 }
 
 static void MRSTLFBFlipOverlay(MRSTLFB_DEVINFO *psDevInfo,
@@ -151,7 +156,7 @@ static void MRSTLFBFlipSprite(MRSTLFB_DEVINFO *psDevInfo,
 	}
 }
 
-static void MRSTLFBFlipContexts(MRSTLFB_DEVINFO *psDevInfo,
+static IMG_BOOL MRSTLFBFlipContexts(MRSTLFB_DEVINFO *psDevInfo,
 			struct mdfld_plane_contexts *psContexts)
 {
 	struct intel_sprite_context *psSpriteContext;
@@ -161,7 +166,7 @@ static void MRSTLFBFlipContexts(MRSTLFB_DEVINFO *psDevInfo,
 	int i;
 
 	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, MRST_FALSE))
-		return;
+		return IMG_FALSE;
 	dev = psDevInfo->psDrmDevice;
 	dev_priv =
 		(struct drm_psb_private *)psDevInfo->psDrmDevice->dev_private;
@@ -182,10 +187,13 @@ static void MRSTLFBFlipContexts(MRSTLFB_DEVINFO *psDevInfo,
 		}
 	}
 
-	if (dev_priv->b_async_flip_enable && dev_priv->async_flip_update_fb)
-		dev_priv->async_flip_update_fb(dev, 0);
+	if (dev_priv->b_async_flip_enable && dev_priv->async_flip_update_fb) {
+		if (dev_priv->async_flip_update_fb(dev, 0) == IMG_FALSE)
+			return IMG_FALSE;
+	}
 
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+	return IMG_TRUE;
 }
 
 static void MRSTLFBRestoreLastFlip(MRSTLFB_DEVINFO *psDevInfo)
@@ -205,12 +213,13 @@ static void MRSTLFBClearSavedFlip(MRSTLFB_DEVINFO *psDevInfo)
 }
 
 
-static void FlushInternalVSyncQueue(MRSTLFB_SWAPCHAIN *psSwapChain, MRST_BOOL bFlip)
+static IMG_BOOL FlushInternalVSyncQueue(MRSTLFB_SWAPCHAIN *psSwapChain,
+			 MRST_BOOL bFlip)
 {
 	MRSTLFB_VSYNC_FLIP_ITEM *psFlipItem;
 	unsigned long            ulMaxIndex;
 	unsigned long            i;
-
+	IMG_BOOL                 ret = IMG_TRUE;
 
 	psFlipItem = &psSwapChain->psVSyncFlips[psSwapChain->ulRemoveIndex];
 	ulMaxIndex = psSwapChain->ulSwapChainLength - 1;
@@ -227,11 +236,20 @@ static void FlushInternalVSyncQueue(MRSTLFB_SWAPCHAIN *psSwapChain, MRST_BOOL bF
 		if (psFlipItem->bFlipped == MRST_FALSE && bFlip)
 		{
 			if (psFlipItem->psBuffer)
-				MRSTLFBFlip(psSwapChain->psDevInfo,
+				ret = MRSTLFBFlip(
+					psSwapChain->psDevInfo,
 					psFlipItem->psBuffer);
 			else
-				MRSTLFBFlipContexts(psSwapChain->psDevInfo,
+				ret = MRSTLFBFlipContexts(
+					psSwapChain->psDevInfo,
 					&psFlipItem->sPlaneContexts);
+			if (ret == IMG_FALSE) {
+				DRM_INFO(
+						"%s failed call to DRMLFBFlipBuffer2 - value %d",
+						__func__, ret);
+				return ret;
+			}
+
 		}
 
 		if(psFlipItem->bCmdCompleted == MRST_FALSE)
@@ -260,6 +278,8 @@ static void FlushInternalVSyncQueue(MRSTLFB_SWAPCHAIN *psSwapChain, MRST_BOOL bF
 
 	psSwapChain->ulInsertIndex = 0;
 	psSwapChain->ulRemoveIndex = 0;
+
+	return IMG_TRUE;
 }
 
 static int DRMLFBFifoEmpty(MRSTLFB_DEVINFO *psDevInfo)
@@ -271,27 +291,44 @@ static int DRMLFBFifoEmpty(MRSTLFB_DEVINFO *psDevInfo)
 	return dev_priv->async_check_fifo_empty(dev);
 }
 
-static void DRMLFBFlipBuffer(MRSTLFB_DEVINFO *psDevInfo, MRSTLFB_SWAPCHAIN *psSwapChain, MRSTLFB_BUFFER *psBuffer)
+static IMG_BOOL DRMLFBFlipBuffer(MRSTLFB_DEVINFO *psDevInfo,
+		 MRSTLFB_SWAPCHAIN *psSwapChain,
+		 MRSTLFB_BUFFER *psBuffer)
 {
+	IMG_BOOL ret = IMG_TRUE;
 	if(psSwapChain != NULL)
 	{
 		if(psDevInfo->psCurrentSwapChain != NULL)
 		{
-
 			if(psDevInfo->psCurrentSwapChain != psSwapChain)
-				FlushInternalVSyncQueue(psDevInfo->psCurrentSwapChain, MRST_FALSE);
+				ret = FlushInternalVSyncQueue(
+				psDevInfo->psCurrentSwapChain, MRST_FALSE);
+			if (ret == IMG_FALSE) {
+				DRM_INFO(
+				"returning false in %s from "
+				 "FlushInternalVSyncQueue in DRMLFBFlipBuffer");
+				return ret;
+			}
 		}
 		psDevInfo->psCurrentSwapChain = psSwapChain;
 		psDevInfo->psCurrentBuffer = psBuffer;
 	}
 
-	MRSTLFBFlip(psDevInfo, psBuffer);
+	ret = MRSTLFBFlip(psDevInfo, psBuffer);
+	if (ret != IMG_TRUE)
+		DRM_INFO(
+		"returning %d from MRSTLFBFlip in DRMLFBFlipBuffer", ret);
+
+	return ret;
+
 }
 
-static void DRMLFBFlipBuffer2(MRSTLFB_DEVINFO *psDevInfo,
+static IMG_BOOL DRMLFBFlipBuffer2(MRSTLFB_DEVINFO *psDevInfo,
 			MRSTLFB_SWAPCHAIN *psSwapChain,
 			struct mdfld_plane_contexts *psContexts)
 {
+	IMG_BOOL ret = IMG_TRUE;
+
 	if (!psSwapChain)
 		goto flip_out;
 
@@ -301,11 +338,22 @@ static void DRMLFBFlipBuffer2(MRSTLFB_DEVINFO *psDevInfo,
 		goto flip_out;
 	}
 
-	if (psDevInfo->psCurrentSwapChain != psSwapChain)
-		FlushInternalVSyncQueue(psDevInfo->psCurrentSwapChain,
+	if (psDevInfo->psCurrentSwapChain != psSwapChain) {
+		ret = FlushInternalVSyncQueue(psDevInfo->psCurrentSwapChain,
 					MRST_FALSE);
+		if (ret == IMG_FALSE) {
+			DRM_INFO("leaving with error from DRMLFBFlipBuffer2");
+			return ret;
+		}
+	}
+
 flip_out:
-	MRSTLFBFlipContexts(psDevInfo, psContexts);
+	ret = MRSTLFBFlipContexts(psDevInfo, psContexts);
+	if (ret != IMG_TRUE)
+		DRM_INFO(
+		"Returning %d from MRSTLFBFlipContexts in "
+		"DRMLFBFlipBuffer2", ret);
+	return ret;
 }
 
 static void SetFlushStateNoLock(MRSTLFB_DEVINFO* psDevInfo,
@@ -1207,7 +1255,15 @@ static IMG_BOOL ProcessFlip2(IMG_HANDLE hCmdCookie,
 		psDevInfo->bFlushCommands) {
 #endif
 		/* update sprite plane context*/
-		DRMLFBFlipBuffer2(psDevInfo, psSwapChain, psPlaneContexts);
+		if (DRMLFBFlipBuffer2(
+			psDevInfo,
+			 psSwapChain, psPlaneContexts) == IMG_FALSE) {
+			DRM_ERROR("%s DRMLFBFlipBuffer2 failed", __func__);
+			psSwapChain->psPVRJTable->pfnPVRSRVCmdComplete(
+					hCmdCookie,
+					IMG_TRUE);
+			goto ExitErrorUnlock;
+		}
 		psSwapChain->psPVRJTable->pfnPVRSRVCmdComplete(hCmdCookie,
 								IMG_TRUE);
 #if defined(MRST_USING_INTERRUPTS)
@@ -1248,8 +1304,15 @@ static IMG_BOOL ProcessFlip2(IMG_HANDLE hCmdCookie,
 
 		if (psSwapChain->ulInsertIndex == psSwapChain->ulRemoveIndex) {
 			/*update sprite plane context*/
-			DRMLFBFlipBuffer2(psDevInfo, psSwapChain,
-				psPlaneContexts);
+			if (DRMLFBFlipBuffer2(
+				psDevInfo,
+				 psSwapChain, psPlaneContexts) == IMG_FALSE) {
+				psFlipItem->bFlipped = MRST_FALSE;
+				psSwapChain->psPVRJTable->pfnPVRSRVCmdComplete(
+						hCmdCookie,
+						IMG_TRUE);
+				goto ExitErrorUnlock;
+			}
 			psFlipItem->bFlipped = MRST_TRUE;
 		} else {
 			psFlipItem->bFlipped = MRST_FALSE;
@@ -1270,7 +1333,7 @@ static IMG_BOOL ProcessFlip2(IMG_HANDLE hCmdCookie,
 
 		goto ExitTrueUnlock;
 	}
-
+ExitErrorUnlock:
 	spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
 	return IMG_FALSE;
 ExitTrueUnlock:
@@ -1294,6 +1357,7 @@ static IMG_BOOL ProcessFlip(IMG_HANDLE  hCmdCookie,
 	unsigned long irqflags;
 	struct drm_device *dev;
 	struct drm_psb_private *dev_priv;
+	int   retry = 1000;
 
 	if(!hCmdCookie || !pvData)
 		return IMG_FALSE;
@@ -1313,8 +1377,14 @@ static IMG_BOOL ProcessFlip(IMG_HANDLE  hCmdCookie,
 	psSwapChain = (MRSTLFB_SWAPCHAIN*) psFlipCmd->hExtSwapChain;
 
 	if (dev_priv->b_async_flip_enable && dev_priv->async_flip_update_fb) {
-		while (!DRMLFBFifoEmpty(psDevInfo))
+		while (!DRMLFBFifoEmpty(psDevInfo) && retry) {
 			usleep_range(500, 1000);
+			retry--;
+		}
+		if (!retry) {
+			DRM_ERROR("FIFO never emptied\n");
+			return IMG_FALSE;
+		}
 	}
 
 	if (!psBuffer)
@@ -1327,9 +1397,14 @@ static IMG_BOOL ProcessFlip(IMG_HANDLE  hCmdCookie,
     if(!drm_psb_3D_vblank || psFlipCmd->ui32SwapInterval == 0 || psDevInfo->bFlushCommands)
 	{
 #endif
-		DRMLFBFlipBuffer(psDevInfo, psSwapChain, psBuffer);
-
-
+		if (DRMLFBFlipBuffer(
+			psDevInfo, psSwapChain, psBuffer) == IMG_FALSE) {
+			DRM_ERROR("%s failed call to DRMLFBFlipBuffer",
+					__func__);
+			psSwapChain->psPVRJTable->pfnPVRSRVCmdComplete(
+					hCmdCookie, IMG_TRUE);
+			goto ExitErrorUnlock;
+		}
 
 		psSwapChain->psPVRJTable->pfnPVRSRVCmdComplete(hCmdCookie, IMG_TRUE);
 
@@ -1367,8 +1442,15 @@ static IMG_BOOL ProcessFlip(IMG_HANDLE  hCmdCookie,
 
 		if(psSwapChain->ulInsertIndex == psSwapChain->ulRemoveIndex)
 		{
-
-			DRMLFBFlipBuffer(psDevInfo, psSwapChain, psBuffer);
+			if (DRMLFBFlipBuffer(psDevInfo,
+				 psSwapChain, psBuffer) == IMG_FALSE) {
+				DRM_ERROR("%s DRMFLBFlipBuffer failed",
+						__func__);
+				psFlipItem->bFlipped = MRST_FALSE;
+				psSwapChain->psPVRJTable->pfnPVRSRVCmdComplete(
+						hCmdCookie, IMG_TRUE);
+				goto ExitErrorUnlock;
+			}
 
 			psFlipItem->bFlipped = MRST_TRUE;
 		}
@@ -1390,7 +1472,7 @@ static IMG_BOOL ProcessFlip(IMG_HANDLE  hCmdCookie,
 
 		goto ExitTrueUnlock;
 	}
-
+ExitErrorUnlock:
 	spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
 	return IMG_FALSE;
 
