@@ -15,7 +15,8 @@ struct gsm_config {
 	unsigned int mtu;
 	unsigned int k;
 	unsigned int i;
-	unsigned int unused[8];		/* Padding for expansion without
+	unsigned int clocal;
+	unsigned int unused[7];		/* Padding for expansion without
 					   breaking stuff */
 };
 

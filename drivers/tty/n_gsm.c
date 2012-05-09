@@ -252,6 +252,7 @@ struct gsm_mux {
 	u8 ftype;		/* UI or UIH */
 	int t1, t2;		/* Timers in 1/100th of a sec */
 	int n2;			/* Retry count */
+	int clocal;		/* CLOCAL default state */
 
 	/* Statistics (not currently exposed) */
 	unsigned long bad_fcs;
@@ -653,6 +654,7 @@ static struct gsm_msg *gsm_data_alloc(struct gsm_mux *gsm, u8 addr, int len,
 								GFP_ATOMIC);
 	if (m == NULL)
 		return NULL;
+
 	m->data = m->buffer + HDR_LEN - 1;	/* Allow for FCS */
 	m->len = len;
 	m->addr = addr;
@@ -2217,6 +2219,7 @@ struct gsm_mux *gsm_alloc_mux(void)
 	gsm->encoding = 1;
 	gsm->mru = 64;	/* Default to encoding 1 so these should be 64 */
 	gsm->mtu = 64;
+	gsm->clocal = 1; /* Ignore CD (DV flags in MSC)*/
 	gsm->dead = 1;	/* Avoid early tty opens */
 
 	return gsm;
@@ -2634,6 +2637,7 @@ static int gsmld_config(struct tty_struct *tty, struct gsm_mux *gsm,
 	gsm->encoding = c->encapsulation;
 	gsm->adaption = c->adaption;
 	gsm->n2 = c->n2;
+	gsm->clocal = c->clocal;
 
 	if (c->i == 1)
 		gsm->ftype = UIH;
@@ -2677,6 +2681,7 @@ static int gsmld_ioctl(struct tty_struct *tty, struct file *file,
 		pr_debug("Ftype %d i %d\n", gsm->ftype, c.i);
 		c.mru = gsm->mru;
 		c.mtu = gsm->mtu;
+		c.clocal = gsm->clocal;
 		c.k = 0;
 		if (copy_to_user((void *)arg, &c, sizeof(c)))
 			return -EFAULT;
@@ -2990,8 +2995,10 @@ static int gsmtty_open(struct tty_struct *tty, struct file *filp)
 	struct gsm_mux *gsm;
 	struct gsm_dlci *dlci;
 	struct tty_port *port;
+	struct ktermios save;
 	unsigned int line = tty->index;
 	unsigned int mux = line >> 6;
+	int t;
 
 	line = line & 0x3F;
 
@@ -3021,12 +3028,33 @@ static int gsmtty_open(struct tty_struct *tty, struct file *filp)
 	kref_get(&dlci->gsm->ref);
 	tty_port_tty_set(port, tty);
 
+	/* Perform a change to the CLOCAL state and call into the driver
+	   layer to make it visible. All done with the termios mutex */
+	if (gsm->clocal) {
+		mutex_lock(&tty->termios_mutex);
+		save = *tty->termios;
+		tty->termios->c_cflag |= CLOCAL;
+		if (tty->ops->set_termios)
+			tty->ops->set_termios(tty, &save);
+		mutex_unlock(&tty->termios_mutex);
+	}
+
 	dlci->modem_rx = 0;
 	/* We could in theory open and close before we wait - eg if we get
 	   a DM straight back. This is ok as that will have caused a hangup */
 	set_bit(ASYNCB_INITIALIZED, &port->flags);
 	/* Start sending off SABM messages */
 	gsm_dlci_begin_open(dlci);
+
+	/* Wait for UA */
+	if (!(filp->f_flags & O_NONBLOCK)) {
+		t = wait_event_timeout(gsm->event,
+					dlci->state == DLCI_OPEN,
+					gsm->n2 * gsm->t1 * HZ / 100);
+		if (!t)
+			return -ENXIO;
+	}
+
 	/* And wait for virtual carrier */
 	return tty_port_block_til_ready(port, tty, filp);
 }
@@ -3046,6 +3074,13 @@ static void gsmtty_close(struct tty_struct *tty, struct file *filp)
 		return;
 	}
 	gsm_dlci_begin_close(dlci);
+
+	/* Wait for UA */
+	if (!(filp->f_flags & O_NONBLOCK))
+		wait_event_timeout(gsm->event,
+					dlci->state == DLCI_CLOSED,
+					gsm->n2 * gsm->t1 * HZ / 100);
+
 	tty_port_close_end(&dlci->port, tty);
 	tty_port_tty_set(&dlci->port, NULL);
 	kref_put(&dlci->ref, gsm_dlci_free);
