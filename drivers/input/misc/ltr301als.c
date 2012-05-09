@@ -84,6 +84,8 @@
 #define CH1_COEFF_RANGE1	13363
 #define CH0_COEFF_RANGE2	16900
 #define CH1_COEFF_RANGE2	1690
+#define CH0_COEFF_RANGE3	16900
+#define CH1_COEFF_RANGE3	-490
 
 #define RATIO_RANGE0		45
 #define RATIO_RANGE1		64
@@ -194,11 +196,17 @@ static int ltr301_get_lux(struct ltr301_chip *chip)
 	} else if (ratio < RATIO_RANGE2) {
 		ch0_coeff = CH0_COEFF_RANGE2;
 		ch1_coeff = CH1_COEFF_RANGE2;
+	} else {
+		ch0_coeff = CH0_COEFF_RANGE3;
+		ch1_coeff = CH1_COEFF_RANGE3;
 	}
 
 	chip->ch0 = ch0;
 	/* ch_coeff are x10000, compensate for window loss while scaling down */
 	lux = ((ch0 * ch0_coeff) - (ch1 * ch1_coeff)) / (100 * chip->opacity);
+
+	dev_dbg(&chip->client->dev, "%s:ch0=%d, ch1=%d, lux=%d\n",
+						__func__, ch0, ch1, lux);
 
 	return lux;
 }
