@@ -53,3 +53,27 @@ config SND_MFLD_MONO_SPEAKER_SUPPORT
           Say Y if you have device with mono speaker. If you say N support for stereo speakers
           will be enabled.
           If unsure select "N".
+
+
+config SND_MFLD_COMMS_MACHINE
+	tristate "Audio Comms SOC Machine Audio driver for Intel Medfield MID platform"
+        depends on EXPERIMENTAL && SND_INTEL_MID_I2S
+        select SND_SOC_WL1273_UART
+        select SND_SOC_IFX1130_MODEM_CODEC
+        select SND_SOC_ES305
+        select SND_SOC_SSP
+	help
+	  Say Y here to include support for ALSA SSP soundcard.
+	  To compile this driver as a module, choose M here: the module
+	  will be called snd-alsa-ssp.ko
+	  This is a sound card driver for TI LNW1273 BT/FM Board
+	  This ALSA driver offers:
+          - BT device with 1 capture and 1 playback substreams,
+          for BT SCO voice memp record and playback
+          - FM device with 1 capture substream.
+          - VOIP device with 1 capture and 1 playback substreams
+          - IFX Modem device with 1 capture and 1 playback substreams,
+          for audio/tone/alert mixing during Voice Call and Voice Call record
+
+config SND_SOC_SSP
+	tristate
