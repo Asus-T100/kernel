@@ -3139,6 +3139,10 @@ static void penwell_otg_work(struct work_struct *work)
 			/* allow D3 and D0i3 in A_WAIT_BCON */
 			pm_runtime_put(pnw->dev);
 			wake_unlock(&pnw->wake_lock);
+			/* at least give some time to USB HOST to enumerate
+			* devices before trying to suspend the system*/
+			wake_lock_timeout(&pnw->wake_lock, 5 * HZ);
+
 			iotg->otg.state = OTG_STATE_A_WAIT_BCON;
 		}
 		break;
