@@ -405,5 +405,13 @@ config MPILIB_EXTRA
 	  which is used by IMA/EVM digital signature extension.
 	  This code in unnecessary for RSA digital signature verification,
 	  and can be compiled if needed.
+config SIGNATURE
+	tristate
+	depends on KEYS && CRYPTO
+	select CRYPTO_SHA1
+	select MPILIB
+	help
+	  Digital signature verification. Currently only RSA is supported.
+	  Implementation is done using GnuPG MPI library
 
 endmenu
