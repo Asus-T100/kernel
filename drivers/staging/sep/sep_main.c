@@ -40,6 +40,7 @@
 /* #define SEP_PERF_DEBUG */
 
 #include <linux/init.h>
+#include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/miscdevice.h>
 #include <linux/fs.h>
@@ -52,6 +53,7 @@
 #include <linux/wait.h>
 #include <linux/pci.h>
 #include <linux/pm_runtime.h>
+#include <linux/slab.h>
 #include <linux/ioctl.h>
 #include <asm/current.h>
 #include <linux/ioport.h>
@@ -67,12 +69,20 @@
 #include <linux/delay.h>
 #include <linux/jiffies.h>
 #include <linux/async.h>
-#include <linux/kernel.h>
+#include <linux/crypto.h>
+#include <crypto/internal/hash.h>
+#include <crypto/scatterwalk.h>
+#include <crypto/sha.h>
+#include <crypto/md5.h>
+#include <crypto/aes.h>
+#include <crypto/des.h>
+#include <crypto/hash.h>
 
 #include "sep_driver_hw_defs.h"
 #include "sep_driver_config.h"
 #include "sep_driver_api.h"
 #include "sep_dev.h"
+#include "sep_crypto.h"
 
 #define DRVNAME	"sep_sec"
 #define EMMC_BLK_NAME	"mmcblk0rpmb"
@@ -515,9 +525,11 @@ static void rpmb_process_request(struct work_struct *work)
  *
  * This function will removes information about transaction from the queue.
  */
-static inline void sep_queue_status_remove(struct sep_device *sep,
+inline void sep_queue_status_remove(struct sep_device *sep,
 				      struct sep_queue_info **queue_elem)
 {
+	unsigned long lck_flags;
+
 	dev_dbg(&sep->pdev->dev, "[PID%d] sep_queue_status_remove\n",
 		current->pid);
 
@@ -527,10 +539,10 @@ static inline void sep_queue_status_remove(struct sep_device *sep,
 		return;
 	}
 
-	down_write(&sep->sep_queue_lock);
+	spin_lock_irqsave(&sep->sep_queue_lock, lck_flags);
 	list_del(&(*queue_elem)->list);
 	sep->sep_queue_num--;
-	up_write(&sep->sep_queue_lock);
+	spin_unlock_irqrestore(&sep->sep_queue_lock, lck_flags);
 
 	kfree(*queue_elem);
 	*queue_elem = NULL;
@@ -552,13 +564,14 @@ static inline void sep_queue_status_remove(struct sep_device *sep,
  * This function adds information about about transaction started to the status
  * queue.
  */
-static inline struct sep_queue_info *sep_queue_status_add(
+inline struct sep_queue_info *sep_queue_status_add(
 						struct sep_device *sep,
 						u32 opcode,
 						u32 size,
 						u32 pid,
 						u8 *name, size_t name_len)
 {
+	unsigned long lck_flags;
 	struct sep_queue_info *my_elem = NULL;
 
 	my_elem = kzalloc(sizeof(struct sep_queue_info), GFP_KERNEL);
@@ -577,12 +590,12 @@ static inline struct sep_queue_info *sep_queue_status_add(
 
 	memcpy(&my_elem->data.name, name, name_len);
 
-	down_write(&sep->sep_queue_lock);
+	spin_lock_irqsave(&sep->sep_queue_lock, lck_flags);
 
 	list_add_tail(&my_elem->list, &sep->sep_queue_status);
 	sep->sep_queue_num++;
 
-	up_write(&sep->sep_queue_lock);
+	spin_unlock_irqrestore(&sep->sep_queue_lock, lck_flags);
 
 	return my_elem;
 }
@@ -636,6 +649,7 @@ static int sep_allocate_dmatables_region(struct sep_device *sep,
 	if (*dmatables_region) {
 		memcpy(tmp_region, *dmatables_region, dma_ctx->dmatables_len);
 		kfree(*dmatables_region);
+		*dmatables_region = NULL;
 	}
 
 	*dmatables_region = tmp_region;
@@ -649,7 +663,7 @@ static int sep_allocate_dmatables_region(struct sep_device *sep,
  *	sep_wait_transaction - Used for synchronizing transactions
  *	@sep: SEP device
  */
-static int sep_wait_transaction(struct sep_device *sep)
+int sep_wait_transaction(struct sep_device *sep)
 {
 	int error = 0;
 	DEFINE_WAIT(wait);
@@ -830,7 +844,7 @@ static int sep_open(struct inode *inode, struct file *filp)
  *
  * Handles the request to  free DMA table for synchronic actions
  */
-static int sep_free_dma_table_data_handler(struct sep_device *sep,
+int sep_free_dma_table_data_handler(struct sep_device *sep,
 					   struct sep_dma_context **dma_ctx)
 {
 	int count;
@@ -911,6 +925,25 @@ static int sep_free_dma_table_data_handler(struct sep_device *sep,
 				page_cache_release(dma->out_page_array[count]);
 			}
 			kfree(dma->out_page_array);
+		}
+
+		/**
+		 * Note that here we use in_map_num_entries because we
+		 * don't have a page array; the page array is generated
+		 * only in the lock_user_pages, which is not called
+		 * for kernel crypto, which is what the sg (scatter gather
+		 * is used for exclusively
+		 */
+		if (dma->src_sg) {
+			dma_unmap_sg(&sep->pdev->dev, dma->src_sg,
+				dma->in_map_num_entries, DMA_TO_DEVICE);
+			dma->src_sg = NULL;
+		}
+
+		if (dma->dst_sg) {
+			dma_unmap_sg(&sep->pdev->dev, dma->dst_sg,
+				dma->in_map_num_entries, DMA_FROM_DEVICE);
+			dma->dst_sg = NULL;
 		}
 
 		/* Reset all the values */
@@ -1021,7 +1054,7 @@ static int sep_release(struct inode *inode, struct file *filp)
 	dev_dbg(&sep->pdev->dev, "[PID%d] release\n", current->pid);
 
 	sep_end_transaction_handler(sep, dma_ctx, call_status,
-				    my_queue_elem);
+		my_queue_elem);
 
 	kfree(filp->private_data);
 
@@ -1094,7 +1127,7 @@ static int sep_mmap(struct file *filp, struct vm_area_struct *vma)
 end_function_with_error:
 	/* Clear our transaction */
 	sep_end_transaction_handler(sep, NULL, call_status,
-				    my_queue_elem);
+		my_queue_elem);
 
 end_function:
 	return error;
@@ -1255,7 +1288,7 @@ static unsigned long sep_set_time(struct sep_device *sep)
  *
  * Note that this function does fall under the ioctl lock
  */
-static int sep_send_command_handler(struct sep_device *sep)
+int sep_send_command_handler(struct sep_device *sep)
 {
 	unsigned long lock_irq_flag;
 	u32 *msg_pool;
@@ -1321,6 +1354,235 @@ static int sep_send_command_handler(struct sep_device *sep)
 
 end_function:
 	return error;
+}
+
+/**
+ *	sep_crypto_dma -
+ *	@sep: pointer to struct sep_device
+ *	@sg: pointer to struct scatterlist
+ *	@direction:
+ *	@dma_maps: pointer to place a pointer to array of dma maps
+ *	 This is filled in; anything previous there will be lost
+ *	 The structure for dma maps is sep_dma_map
+ *	@returns number of dma maps on success; negative on error
+ *
+ *	This creates the dma table from the scatterlist
+ *	It is used only for kernel crypto as it works with scatterlists
+ *	representation of data buffers
+ *
+ */
+static int sep_crypto_dma(
+	struct sep_device *sep,
+	struct scatterlist *sg,
+	struct sep_dma_map **dma_maps,
+	enum dma_data_direction direction)
+{
+	struct scatterlist *temp_sg;
+
+	u32 count_segment;
+	u32 count_mapped;
+	struct sep_dma_map *sep_dma;
+	int ct1;
+
+	if (sg->length == 0)
+		return 0;
+
+	/* Count the segments */
+	temp_sg = sg;
+	count_segment = 0;
+	while (temp_sg) {
+		count_segment += 1;
+		temp_sg = scatterwalk_sg_next(temp_sg);
+	}
+	dev_dbg(&sep->pdev->dev,
+		"There are (hex) %x segments in sg\n", count_segment);
+
+	/* DMA map segments */
+	count_mapped = dma_map_sg(&sep->pdev->dev, sg,
+		count_segment, direction);
+
+	dev_dbg(&sep->pdev->dev,
+		"There are (hex) %x maps in sg\n", count_mapped);
+
+	if (count_mapped == 0) {
+		dev_dbg(&sep->pdev->dev, "Cannot dma_map_sg\n");
+		return -ENOMEM;
+	}
+
+	sep_dma = kmalloc(sizeof(struct sep_dma_map) *
+		count_mapped, GFP_ATOMIC);
+
+	if (sep_dma == NULL) {
+		dev_dbg(&sep->pdev->dev, "Cannot allocate dma_maps\n");
+		return -ENOMEM;
+	}
+
+	for_each_sg(sg, temp_sg, count_mapped, ct1) {
+		sep_dma[ct1].dma_addr = sg_dma_address(temp_sg);
+		sep_dma[ct1].size = sg_dma_len(temp_sg);
+		dev_dbg(&sep->pdev->dev, "(all hex) map %x dma %lx len %lx\n",
+			ct1, (unsigned long)sep_dma[ct1].dma_addr,
+			(unsigned long)sep_dma[ct1].size);
+		}
+
+	*dma_maps = sep_dma;
+	return count_mapped;
+
+}
+
+/**
+ *	sep_crypto_lli -
+ *	@sep: pointer to struct sep_device
+ *	@sg: pointer to struct scatterlist
+ *	@data_size: total data size
+ *	@direction:
+ *	@dma_maps: pointer to place a pointer to array of dma maps
+ *	 This is filled in; anything previous there will be lost
+ *	 The structure for dma maps is sep_dma_map
+ *	@lli_maps: pointer to place a pointer to array of lli maps
+ *	 This is filled in; anything previous there will be lost
+ *	 The structure for dma maps is sep_dma_map
+ *	@returns number of dma maps on success; negative on error
+ *
+ *	This creates the LLI table from the scatterlist
+ *	It is only used for kernel crypto as it works exclusively
+ *	with scatterlists (struct scatterlist) representation of
+ *	data buffers
+ */
+static int sep_crypto_lli(
+	struct sep_device *sep,
+	struct scatterlist *sg,
+	struct sep_dma_map **maps,
+	struct sep_lli_entry **llis,
+	u32 data_size,
+	enum dma_data_direction direction)
+{
+
+	int ct1;
+	struct sep_lli_entry *sep_lli;
+	struct sep_dma_map *sep_map;
+
+	int nbr_ents;
+
+	nbr_ents = sep_crypto_dma(sep, sg, maps, direction);
+	if (nbr_ents <= 0) {
+		dev_dbg(&sep->pdev->dev, "crypto_dma failed %x\n",
+			nbr_ents);
+		return nbr_ents;
+	}
+
+	sep_map = *maps;
+
+	sep_lli = kmalloc(sizeof(struct sep_lli_entry) * nbr_ents, GFP_ATOMIC);
+
+	if (sep_lli == NULL) {
+		dev_dbg(&sep->pdev->dev, "Cannot allocate lli_maps\n");
+
+		kfree(*maps);
+		*maps = NULL;
+		return -ENOMEM;
+	}
+
+	for (ct1 = 0; ct1 < nbr_ents; ct1 += 1) {
+		sep_lli[ct1].bus_address = (u32)sep_map[ct1].dma_addr;
+
+		/* Maximum for page is total data size */
+		if (sep_map[ct1].size > data_size)
+			sep_map[ct1].size = data_size;
+
+		sep_lli[ct1].block_size = (u32)sep_map[ct1].size;
+	}
+
+	*llis = sep_lli;
+	return nbr_ents;
+}
+
+/**
+ *	sep_lock_kernel_pages - map kernel pages for DMA
+ *	@sep: pointer to struct sep_device
+ *	@kernel_virt_addr: address of data buffer in kernel
+ *	@data_size: size of data
+ *	@lli_array_ptr: lli array
+ *	@in_out_flag: input into device or output from device
+ *
+ *	This function locks all the physical pages of the kernel virtual buffer
+ *	and construct a basic lli  array, where each entry holds the physical
+ *	page address and the size that application data holds in this page
+ *	This function is used only during kernel crypto mod calls from within
+ *	the kernel (when ioctl is not used)
+ *
+ *	This is used only for kernel crypto. Kernel pages
+ *	are handled differently as they are done via
+ *	scatter gather lists (struct scatterlist)
+ */
+static int sep_lock_kernel_pages(struct sep_device *sep,
+	unsigned long kernel_virt_addr,
+	u32 data_size,
+	struct sep_lli_entry **lli_array_ptr,
+	int in_out_flag,
+	struct sep_dma_context *dma_ctx)
+
+{
+	u32 num_pages;
+	struct scatterlist *sg;
+
+	/* Array of lli */
+	struct sep_lli_entry *lli_array;
+	/* Map array */
+	struct sep_dma_map *map_array;
+
+	enum dma_data_direction direction;
+
+	lli_array = NULL;
+	map_array = NULL;
+
+	if (in_out_flag == SEP_DRIVER_IN_FLAG) {
+		direction = DMA_TO_DEVICE;
+		sg = dma_ctx->src_sg;
+	} else {
+		direction = DMA_FROM_DEVICE;
+		sg = dma_ctx->dst_sg;
+	}
+
+	num_pages = sep_crypto_lli(sep, sg, &map_array, &lli_array,
+		data_size, direction);
+
+	if (num_pages <= 0) {
+		dev_dbg(&sep->pdev->dev, "sep_crypto_lli returned error %x\n",
+			num_pages);
+		return -ENOMEM;
+	}
+
+	/* Put mapped kernel sg into kernel resource array */
+
+	/* Set output params acording to the in_out flag */
+	if (in_out_flag == SEP_DRIVER_IN_FLAG) {
+		*lli_array_ptr = lli_array;
+		dma_ctx->dma_res_arr[dma_ctx->nr_dcb_creat].in_num_pages =
+								num_pages;
+		dma_ctx->dma_res_arr[dma_ctx->nr_dcb_creat].in_page_array =
+								NULL;
+		dma_ctx->dma_res_arr[dma_ctx->nr_dcb_creat].in_map_array =
+								map_array;
+		dma_ctx->dma_res_arr[dma_ctx->nr_dcb_creat].in_map_num_entries =
+								num_pages;
+		dma_ctx->dma_res_arr[dma_ctx->nr_dcb_creat].src_sg =
+			dma_ctx->src_sg;
+	} else {
+		*lli_array_ptr = lli_array;
+		dma_ctx->dma_res_arr[dma_ctx->nr_dcb_creat].out_num_pages =
+								num_pages;
+		dma_ctx->dma_res_arr[dma_ctx->nr_dcb_creat].out_page_array =
+								NULL;
+		dma_ctx->dma_res_arr[dma_ctx->nr_dcb_creat].out_map_array =
+								map_array;
+		dma_ctx->dma_res_arr[dma_ctx->nr_dcb_creat].
+					out_map_num_entries = num_pages;
+		dma_ctx->dma_res_arr[dma_ctx->nr_dcb_creat].dst_sg =
+			dma_ctx->dst_sg;
+	}
+
+	return 0;
 }
 
 /**
@@ -1510,6 +1772,7 @@ static int sep_lock_user_pages(struct sep_device *sep,
 								map_array;
 		dma_ctx->dma_res_arr[dma_ctx->nr_dcb_creat].in_map_num_entries =
 								num_pages;
+		dma_ctx->dma_res_arr[dma_ctx->nr_dcb_creat].src_sg = NULL;
 	} else {
 		*lli_array_ptr = lli_array;
 		dma_ctx->dma_res_arr[dma_ctx->nr_dcb_creat].out_num_pages =
@@ -1520,6 +1783,7 @@ static int sep_lock_user_pages(struct sep_device *sep,
 								map_array;
 		dma_ctx->dma_res_arr[dma_ctx->nr_dcb_creat].
 					out_map_num_entries = num_pages;
+		dma_ctx->dma_res_arr[dma_ctx->nr_dcb_creat].dst_sg = NULL;
 	}
 	goto end_function;
 
@@ -1894,8 +2158,14 @@ static void sep_debug_print_lli_tables(struct sep_device *sep,
 	unsigned long table_count = 1;
 	unsigned long entries_count = 0;
 
+	return;
 	dev_dbg(&sep->pdev->dev, "[PID%d] sep_debug_print_lli_tables start\n",
 					current->pid);
+	if (num_table_entries == 0) {
+		dev_dbg(&sep->pdev->dev, "[PID%d] no table to print\n",
+			current->pid);
+		return;
+	}
 
 	while ((unsigned long) lli_table_ptr->bus_address != 0xffffffff) {
 		dev_dbg(&sep->pdev->dev,
@@ -2068,7 +2338,7 @@ int sep_prepare_input_dma_table(struct sep_device *sep,
 					current->pid, data_size);
 
 	dev_dbg(&sep->pdev->dev, "[PID%d] block_size is (hex) %x\n",
-					block_size, current->pid);
+					current->pid, block_size);
 
 	/* Initialize the pages pointers */
 	dma_ctx->dma_res_arr[dma_ctx->nr_dcb_creat].in_page_array = NULL;
@@ -2098,7 +2368,9 @@ int sep_prepare_input_dma_table(struct sep_device *sep,
 
 	/* Check if the pages are in Kernel Virtual Address layout */
 	if (is_kva == true)
-		return -ENODEV;
+		error = sep_lock_kernel_pages(sep, app_virt_addr,
+			data_size, &lli_array_ptr, SEP_DRIVER_IN_FLAG,
+			dma_ctx);
 	else
 		/*
 		 * Lock the pages of the user buffer
@@ -2227,8 +2499,10 @@ update_dcb_counter:
 end_function_error:
 	/* Free all the allocated resources */
 	kfree(dma_ctx->dma_res_arr[dma_ctx->nr_dcb_creat].in_map_array);
+	dma_ctx->dma_res_arr[dma_ctx->nr_dcb_creat].in_map_array = NULL;
 	kfree(lli_array_ptr);
 	kfree(dma_ctx->dma_res_arr[dma_ctx->nr_dcb_creat].in_page_array);
+	dma_ctx->dma_res_arr[dma_ctx->nr_dcb_creat].in_page_array = NULL;
 
 end_function:
 	return error;
@@ -2361,6 +2635,12 @@ static int sep_construct_dma_tables_from_lli(
 
 		/* Update the number of the lli tables created */
 		dma_ctx->num_lli_tables_created += 2;
+
+		dev_dbg(&sep->pdev->dev, "[PID%d] num_lli_tables_created"
+			" (hex) %x. current_in_entry(%x)"
+			" sep_in_lli_entries(%x)\n", current->pid,
+			dma_ctx->num_lli_tables_created, current_in_entry,
+			sep_in_lli_entries);
 
 		dev_dbg(&sep->pdev->dev, "[PID%d] num_lli_tables_created"
 			" (hex) %x. current_in_entry(%x)"
@@ -2569,6 +2849,9 @@ int sep_prepare_input_output_dma_table(struct sep_device *sep,
 	dev_dbg(&sep->pdev->dev, "[PID%d] prep in out dma table\n",
 		current->pid);
 
+	dev_dbg(&sep->pdev->dev, "[PID%d] prep in out dma table\n",
+		current->pid);
+
 	if (data_size == 0) {
 		/* Prepare empty table for input and output */
 		if (dmatables_region) {
@@ -2598,8 +2881,33 @@ int sep_prepare_input_output_dma_table(struct sep_device *sep,
 
 	/* Lock the pages of the buffer and translate them to pages */
 	if (is_kva == true) {
-		error = -ENODEV;
-		goto end_function;
+		dev_dbg(&sep->pdev->dev, "[PID%d] Locking kernel input pages\n",
+						current->pid);
+		error = sep_lock_kernel_pages(sep, app_virt_in_addr,
+				data_size, &lli_in_array, SEP_DRIVER_IN_FLAG,
+				dma_ctx);
+		if (error) {
+			dev_warn(&sep->pdev->dev,
+				"[PID%d] sep_lock_kernel_pages for input "
+				"virtual buffer failed\n", current->pid);
+
+			goto end_function;
+		}
+
+		dev_dbg(&sep->pdev->dev, "[PID%d] Locking kernel output pages\n",
+						current->pid);
+		error = sep_lock_kernel_pages(sep, app_virt_out_addr,
+				data_size, &lli_out_array, SEP_DRIVER_OUT_FLAG,
+				dma_ctx);
+
+		if (error) {
+			dev_warn(&sep->pdev->dev,
+				"[PID%d] sep_lock_kernel_pages for output "
+				"virtual buffer failed\n", current->pid);
+
+			goto end_function_free_lli_in;
+		}
+
 	}
 
 	else {
@@ -2699,13 +3007,17 @@ update_dcb_counter:
 
 end_function_with_error:
 	kfree(dma_ctx->dma_res_arr[dma_ctx->nr_dcb_creat].out_map_array);
+	dma_ctx->dma_res_arr[dma_ctx->nr_dcb_creat].out_map_array = NULL;
 	kfree(dma_ctx->dma_res_arr[dma_ctx->nr_dcb_creat].out_page_array);
+	dma_ctx->dma_res_arr[dma_ctx->nr_dcb_creat].out_page_array = NULL;
 	kfree(lli_out_array);
 
 
 end_function_free_lli_in:
 	kfree(dma_ctx->dma_res_arr[dma_ctx->nr_dcb_creat].in_map_array);
+	dma_ctx->dma_res_arr[dma_ctx->nr_dcb_creat].in_map_array = NULL;
 	kfree(dma_ctx->dma_res_arr[dma_ctx->nr_dcb_creat].in_page_array);
+	dma_ctx->dma_res_arr[dma_ctx->nr_dcb_creat].in_page_array = NULL;
 	kfree(lli_in_array);
 
 end_function:
@@ -2742,7 +3054,9 @@ int sep_prepare_input_output_dma_table_in_dcb(struct sep_device *sep,
 	bool	secure_dma,
 	struct sep_dcblock *dcb_region,
 	void **dmatables_region,
-	struct sep_dma_context **dma_ctx)
+	struct sep_dma_context **dma_ctx,
+	struct scatterlist *src_sg,
+	struct scatterlist *dst_sg)
 {
 	int error = 0;
 	/* Size of tail */
@@ -2759,6 +3073,33 @@ int sep_prepare_input_output_dma_table_in_dcb(struct sep_device *sep,
 	u32  out_first_num_entries = 0;
 	/* Data in the first input/output table */
 	u32  first_data_size = 0;
+
+	dev_dbg(&sep->pdev->dev, "[PID%d] app_in_address %lx\n",
+		current->pid, app_in_address);
+
+	dev_dbg(&sep->pdev->dev, "[PID%d] app_out_address %lx\n",
+		current->pid, app_out_address);
+
+	dev_dbg(&sep->pdev->dev, "[PID%d] data_in_size %x\n",
+		current->pid, data_in_size);
+
+	dev_dbg(&sep->pdev->dev, "[PID%d] block_size %x\n",
+		current->pid, block_size);
+
+	dev_dbg(&sep->pdev->dev, "[PID%d] tail_block_size %x\n",
+		current->pid, tail_block_size);
+
+	dev_dbg(&sep->pdev->dev, "[PID%d] isapplet %x\n",
+		current->pid, isapplet);
+
+	dev_dbg(&sep->pdev->dev, "[PID%d] is_kva %x\n",
+		current->pid, is_kva);
+
+	dev_dbg(&sep->pdev->dev, "[PID%d] src_sg %p\n",
+		current->pid, src_sg);
+
+	dev_dbg(&sep->pdev->dev, "[PID%d] dst_sg %p\n",
+		current->pid, dst_sg);
 
 	if (!dma_ctx) {
 		dev_warn(&sep->pdev->dev, "[PID%d] no DMA context pointer\n",
@@ -2786,6 +3127,10 @@ int sep_prepare_input_output_dma_table_in_dcb(struct sep_device *sep,
 	}
 
 	(*dma_ctx)->secure_dma = secure_dma;
+
+	/* these are for kernel crypto only */
+	(*dma_ctx)->src_sg = src_sg;
+	(*dma_ctx)->dst_sg = dst_sg;
 
 	if ((*dma_ctx)->nr_dcb_creat == SEP_MAX_NUM_SYNC_DMA_OPS) {
 		/* No more DCBs to allocate */
@@ -2937,6 +3282,7 @@ int sep_prepare_input_output_dma_table_in_dcb(struct sep_device *sep,
 
 end_function_error:
 	kfree(*dma_ctx);
+	*dma_ctx = NULL;
 
 end_function:
 	return error;
@@ -3058,8 +3404,7 @@ static int sep_prepare_dcb_handler(struct sep_device *sep, unsigned long arg,
 
 	if (!command_args.app_in_address) {
 		dev_warn(&sep->pdev->dev,
-			"[PID%d] prepare dcb has null input address\n",
-			current->pid);
+			"[PID%d] null app_in_address\n", current->pid);
 		error = -EINVAL;
 		goto end_function;
 	}
@@ -3070,7 +3415,7 @@ static int sep_prepare_dcb_handler(struct sep_device *sep, unsigned long arg,
 			command_args.data_in_size, command_args.block_size,
 			command_args.tail_block_size,
 			command_args.is_applet, false,
-			secure_dma, NULL, NULL, dma_ctx);
+			secure_dma, NULL, NULL, dma_ctx, NULL, NULL);
 
 end_function:
 	return error;
@@ -3090,7 +3435,8 @@ static int sep_free_dcb_handler(struct sep_device *sep,
 	int error;
 
 	if (!dma_ctx || !(*dma_ctx)) {
-		dev_dbg(&sep->pdev->dev, "[PID%d] no dma context defined, nothing to free\n",
+		dev_dbg(&sep->pdev->dev,
+			"[PID%d] no dma context defined, nothing to free\n",
 			current->pid);
 		return error;
 	}
@@ -3261,9 +3607,6 @@ static long sep_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 	}
 
 end_function:
-	dev_dbg(&sep->pdev->dev, "[PID%d] ioctl end\n", current->pid);
-	dev_dbg(&sep->pdev->dev, "[PID%d] SEP_DRIVER_INSERT_SHARE_ADDR_CMD %x\n",
-		SEP_DRIVER_INSERT_SHARE_ADDR_CMD);
 
 	return error;
 }
@@ -3301,6 +3644,20 @@ static irqreturn_t sep_inthandler(int irq, void *dev_id)
 	dev_dbg(&sep->pdev->dev, "sep int: IRR REG val: %.8x\n", reg_val);
 
 	if (reg_val & (0x1 << 13)) {
+
+		/* Lock and update the counter of reply messages */
+		spin_lock_irqsave(&sep->snd_rply_lck, lock_irq_flag);
+		sep->reply_ct++;
+		spin_unlock_irqrestore(&sep->snd_rply_lck, lock_irq_flag);
+
+		dev_dbg(&sep->pdev->dev, "sep int: send_ct %lx reply_ct %lx\n",
+					sep->send_ct, sep->reply_ct);
+
+		/* Is this a kernel client request */
+		if (sep->in_kernel) {
+			tasklet_schedule(&sep->finish_tasklet);
+			goto finished_interrupt;
+		}
 
 		/* Is this printf or daemon request? */
 		reg_val2 = sep_read_reg(sep, HW_HOST_SEP_HOST_GPR2_REG_ADDR);
@@ -3354,20 +3711,14 @@ static irqreturn_t sep_inthandler(int irq, void *dev_id)
 				wake_up(&sep->event_interrupt);
 			}
 		}
-		/* Lock and update the counter of reply messages */
-		/* Have to increment reply_ct after setting the other lock bits
-		 * to avoid false return result of poll().
-		 */
-		spin_lock_irqsave(&sep->snd_rply_lck, lock_irq_flag);
-		sep->reply_ct++;
-		spin_unlock_irqrestore(&sep->snd_rply_lck, lock_irq_flag);
-
 		dev_dbg(&sep->pdev->dev, "sep int: send_ct %lx reply_ct %lx\n",
 					sep->send_ct, sep->reply_ct);
 	} else {
 		dev_dbg(&sep->pdev->dev, "int: not SEP interrupt\n");
 		int_error = IRQ_NONE;
 	}
+
+finished_interrupt:
 
 	if (int_error == IRQ_HANDLED)
 		sep_write_reg(sep, HW_HOST_ICR_REG_ADDR, reg_val);
@@ -3425,7 +3776,7 @@ static int sep_reconfig_shared_area(struct sep_device *sep)
  *	@dmatables_region: MLLI/DMA tables copy
  *	@dma_ctx: DMA context for current transaction
  */
-static ssize_t sep_activate_dcb_dmatables_context(struct sep_device *sep,
+ssize_t sep_activate_dcb_dmatables_context(struct sep_device *sep,
 					struct sep_dcblock **dcb_region,
 					void **dmatables_region,
 					struct sep_dma_context *dma_ctx)
@@ -3481,6 +3832,24 @@ static ssize_t sep_activate_dcb_dmatables_context(struct sep_device *sep,
 	memcpy(dcbregion_free_start,
 	       *dcb_region,
 	       dma_ctx->nr_dcb_creat * sizeof(struct sep_dcblock));
+
+	/* Print the tables */
+	dev_dbg(&sep->pdev->dev, "activate: input table\n");
+	sep_debug_print_lli_tables(sep,
+		(struct sep_lli_entry *)sep_shared_area_bus_to_virt(sep,
+		(*dcb_region)->input_mlli_address),
+		(*dcb_region)->input_mlli_num_entries,
+		(*dcb_region)->input_mlli_data_size);
+
+	dev_dbg(&sep->pdev->dev, "activate: output table\n");
+	sep_debug_print_lli_tables(sep,
+		(struct sep_lli_entry *)sep_shared_area_bus_to_virt(sep,
+		(*dcb_region)->output_mlli_address),
+		(*dcb_region)->output_mlli_num_entries,
+		(*dcb_region)->output_mlli_data_size);
+
+	dev_dbg(&sep->pdev->dev,
+		 "[PID%d] printing activated tables\n", current->pid);
 
 end_function:
 	kfree(*dmatables_region);
@@ -3563,7 +3932,9 @@ static ssize_t sep_create_dcb_dmatables_context(struct sep_device *sep,
 				dcb_args[i].is_applet,
 				false, secure_dma,
 				*dcb_region, dmatables_region,
-				dma_ctx);
+				dma_ctx,
+				NULL,
+				NULL);
 		if (error) {
 			dev_warn(&sep->pdev->dev,
 				 "[PID%d] dma table creation failed\n",
@@ -3577,6 +3948,85 @@ static ssize_t sep_create_dcb_dmatables_context(struct sep_device *sep,
 
 end_function:
 	kfree(dcb_args);
+	return error;
+
+}
+
+/**
+ *	sep_create_dcb_dmatables_context_kernel - Creates DCB & MLLI/DMA table context
+ *      for kernel crypto
+ *	@sep: SEP device
+ *	@dcb_region: DCB region buf to create for current transaction
+ *	@dmatables_region: MLLI/DMA tables buf to create for current transaction
+ *	@dma_ctx: DMA context buf to create for current transaction
+ *	@user_dcb_args: User arguments for DCB/MLLI creation
+ *	@num_dcbs: Number of DCBs to create
+ *	This does that same thing as sep_create_dcb_dmatables_context
+ *	except that it is used only for the kernel crypto operation. It is
+ *	separate because there is no user data involved; the dcb data structure
+ *	is specific for kernel crypto (build_dcb_struct_kernel)
+ */
+int sep_create_dcb_dmatables_context_kernel(struct sep_device *sep,
+			struct sep_dcblock **dcb_region,
+			void **dmatables_region,
+			struct sep_dma_context **dma_ctx,
+			const struct build_dcb_struct_kernel *dcb_data,
+			const u32 num_dcbs)
+{
+	int error = 0;
+	int i = 0;
+
+	dev_dbg(&sep->pdev->dev, "[PID%d] creating dcb/dma region\n",
+		current->pid);
+
+	if (!dcb_region || !dma_ctx || !dmatables_region || !dcb_data) {
+		error = -EINVAL;
+		goto end_function;
+	}
+
+	if (SEP_MAX_NUM_SYNC_DMA_OPS < num_dcbs) {
+		dev_warn(&sep->pdev->dev,
+			 "[PID%d] invalid number of dcbs 0x%08X\n",
+			 current->pid, num_dcbs);
+		error = -EINVAL;
+		goto end_function;
+	}
+
+	dev_dbg(&sep->pdev->dev, "[PID%d] num_dcbs is %d\n",
+		current->pid, num_dcbs);
+
+	/* Allocate thread-specific memory for DCB */
+	*dcb_region = kzalloc(num_dcbs * sizeof(struct sep_dcblock),
+			      GFP_KERNEL);
+	if (!(*dcb_region)) {
+		error = -ENOMEM;
+		goto end_function;
+	}
+
+	/* Prepare DCB and MLLI table into the allocated regions */
+	for (i = 0; i < num_dcbs; i++) {
+		error = sep_prepare_input_output_dma_table_in_dcb(sep,
+				(unsigned long)dcb_data->app_in_address,
+				(unsigned long)dcb_data->app_out_address,
+				dcb_data->data_in_size,
+				dcb_data->block_size,
+				dcb_data->tail_block_size,
+				dcb_data->is_applet,
+				true,
+				false,
+				*dcb_region, dmatables_region,
+				dma_ctx,
+				dcb_data->src_sg,
+				dcb_data->dst_sg);
+		if (error) {
+			dev_warn(&sep->pdev->dev,
+				 "[PID%d] dma table creation failed\n",
+				 current->pid);
+			goto end_function;
+		}
+	}
+
+end_function:
 	return error;
 
 }
@@ -3747,7 +4197,7 @@ end_function_error:
 
 	/* End the transaction, wakeup pending ones */
 	error_tmp = sep_end_transaction_handler(sep, dma_ctx, call_status,
-						my_queue_elem);
+		my_queue_elem);
 	if (error_tmp)
 		dev_warn(&sep->pdev->dev,
 			 "[PID%d] ending transaction failed\n",
@@ -4072,13 +4522,14 @@ sep_sysfs_read(struct file *filp, struct kobject *kobj,
 		struct bin_attribute *attr,
 		char *buf, loff_t pos, size_t count)
 {
+	unsigned long lck_flags;
 	size_t nleft = count;
 	struct sep_device *sep = sep_dev;
 	struct sep_queue_info *queue_elem = NULL;
 	u32 queue_num = 0;
 	u32 i = 1;
 
-	down_read(&sep->sep_queue_lock);
+	spin_lock_irqsave(&sep->sep_queue_lock, lck_flags);
 
 	queue_num = sep->sep_queue_num;
 	if (queue_num > SEP_DOUBLEBUF_USERS_LIMIT)
@@ -4087,7 +4538,7 @@ sep_sysfs_read(struct file *filp, struct kobject *kobj,
 
 	if (count < sizeof(queue_num)
 			+ (queue_num * sizeof(struct sep_queue_data))) {
-		up_read(&sep->sep_queue_lock);
+		spin_unlock_irqrestore(&sep->sep_queue_lock, lck_flags);
 		return -EINVAL;
 	}
 
@@ -4103,7 +4554,7 @@ sep_sysfs_read(struct file *filp, struct kobject *kobj,
 		nleft -= sizeof(queue_elem->data);
 		buf += sizeof(queue_elem->data);
 	}
-	up_read(&sep->sep_queue_lock);
+	spin_unlock_irqrestore(&sep->sep_queue_lock, lck_flags);
 
 	return count - nleft;
 }
@@ -4203,7 +4654,7 @@ static int __devinit sep_probe(struct pci_dev *pdev,
 	init_waitqueue_head(&sep->event_transactions);
 	init_waitqueue_head(&sep->event_interrupt);
 	spin_lock_init(&sep->snd_rply_lck);
-	init_rwsem(&sep->sep_queue_lock);
+	spin_lock_init(&sep->sep_queue_lock);
 	sema_init(&sep->sep_doublebuf, SEP_DOUBLEBUF_USERS_LIMIT);
 
 	INIT_LIST_HEAD(&sep->sep_queue_status);
@@ -4286,24 +4737,38 @@ static int __devinit sep_probe(struct pci_dev *pdev,
 	}
 	INIT_WORK(&sep->rpmb_work, rpmb_process_request);
 
+	sep->in_use = 1;
+
 	/* Finally magic up the device nodes */
 	/* Register driver with the fs */
 	error = sep_register_driver_with_fs(sep);
-	if (error == 0) {
-		sep->in_use = 0; /* through touching the device */
-#ifdef SEP_ENABLE_RUNTIME_PM
-		pm_runtime_put_noidle(&sep->pdev->dev);
-		pm_runtime_allow(&sep->pdev->dev);
-		pm_runtime_set_autosuspend_delay(&sep->pdev->dev,
-			SUSPEND_DELAY);
-		pm_runtime_use_autosuspend(&sep->pdev->dev);
-		pm_runtime_mark_last_busy(&sep->pdev->dev);
-		sep->power_save_setup = 1;
-#endif
-		/* Success */
-		return 0;
+
+	if (error) {
+		dev_dbg(&sep->pdev->dev, "error registering dev file\n");
+		goto end_function_free_irq;
 	}
 
+	sep->in_use = 0; /* through touching the device */
+#ifdef SEP_ENABLE_RUNTIME_PM
+	pm_runtime_put_noidle(&sep->pdev->dev);
+	pm_runtime_allow(&sep->pdev->dev);
+	pm_runtime_set_autosuspend_delay(&sep->pdev->dev,
+		SUSPEND_DELAY);
+	pm_runtime_use_autosuspend(&sep->pdev->dev);
+	pm_runtime_mark_last_busy(&sep->pdev->dev);
+	sep->power_save_setup = 1;
+#endif
+	/* register kernel crypto driver */
+#if defined(CONFIG_ENABLE_SEP_KERNEL_CRYPTO)
+	error = sep_crypto_setup();
+	if (error) {
+		dev_dbg(&sep->pdev->dev, "crypto setup fail\n");
+		goto end_function_free_workqueue;
+	}
+#endif
+	goto end_function;
+
+end_function_free_workqueue:
 	destroy_workqueue(sep->rpmb_workqueue);
 
 end_function_free_irq:
@@ -4345,6 +4810,9 @@ static void sep_remove(struct pci_dev *pdev)
 
 	/* Unregister from fs */
 	misc_deregister(&sep->miscdev_sep);
+
+	/* Unregister from kernel crypto */
+	sep_crypto_takedown();
 
 	/* Free the irq */
 	free_irq(sep->pdev->irq, sep);
@@ -4451,8 +4919,13 @@ static int sep_pm_runtime_resume(struct device *dev)
 
 	dev_dbg(&sep->pdev->dev, "pm runtime resume called\n");
 
-	/* Wait until the SCU boot is ready */
-
+	/**
+	 * Wait until the SCU boot is ready
+	 * This is done by iterating SCU_DELAY_ITERATION (10
+	 * microseconds each) up to SCU_DELAY_MAX (50) times.
+	 * This bit can be set in a random time that is less
+	 * than 500 microseconds after each power resume
+	 */
 	retval2 = 0;
 	delay_count = 0;
 	while ((!retval2) && (delay_count < SCU_DELAY_MAX)) {

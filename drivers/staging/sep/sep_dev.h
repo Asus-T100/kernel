@@ -71,8 +71,7 @@ struct sep_device {
 
 	struct list_head sep_queue_status;
 	u32 sep_queue_num;
-	struct rw_semaphore sep_queue_lock;
-
+	spinlock_t sep_queue_lock;
 
 	/* Is this in use? */
 	u32 in_use;
@@ -102,6 +101,16 @@ struct sep_device {
 	/* Current emmc (non data) block pointer */
 	struct sep_non_data_field *current_emmc_block;
 	struct sep_non_data_field *current_emmc_resp_block;
+
+	/* The following are used for kernel crypto client requests */
+	u32 in_kernel; /* Set for kernel client request */
+	struct tasklet_struct	finish_tasklet;
+	enum type_of_request current_request;
+	enum hash_stage	current_hash_stage;
+	struct ahash_request	*current_hash_req;
+	struct ablkcipher_request *current_cypher_req;
+	struct sep_system_ctx *sctx;
+	struct workqueue_struct	*workqueue;
 };
 
 extern struct sep_device *sep_dev;

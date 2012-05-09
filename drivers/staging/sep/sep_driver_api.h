@@ -117,6 +117,31 @@ struct rpmb_work_struct {
 	(SEP_NONDATA_SIZE * MAX_NO_ITERATIONS))
 #define SEP_NONDATA_RESP_OFFSET (SEP_ITERATION_RESP_OFFSET + sizeof(u32))
 
+
+/* Following enums are used only for kernel crypto api */
+enum type_of_request {
+	NO_REQUEST,
+	AES_CBC,
+	AES_ECB,
+	DES_CBC,
+	DES_ECB,
+	DES3_ECB,
+	DES3_CBC,
+	SHA1,
+	MD5,
+	SHA224,
+	SHA256
+	};
+
+enum hash_stage {
+	HASH_INIT,
+	HASH_UPDATE,
+	HASH_FINISH,
+	HASH_DIGEST,
+	HASH_FINUP_DATA,
+	HASH_FINUP_FINISH
+};
+
 /*
   structure that represents DCB
 */
@@ -160,6 +185,30 @@ struct build_dcb_struct {
 
 	/* which application calls the driver DX or applet */
 	u32  is_applet;
+};
+
+/*
+	command structure for building dcb block for kernel crypto
+*/
+struct build_dcb_struct_kernel {
+	/* address value of the data in */
+	void *app_in_address;
+	/* size of data in */
+	ssize_t  data_in_size;
+	/* address of the data out */
+	void *app_out_address;
+	/* the size of the block of the operation - if needed,
+	every table will be modulo this parameter */
+	u32  block_size;
+	/* the size of the block of the operation - if needed,
+	every table will be modulo this parameter */
+	u32  tail_block_size;
+
+	/* which application calls the driver DX or applet */
+	u32  is_applet;
+
+	struct scatterlist *src_sg;
+	struct scatterlist *dst_sg;
 };
 
 /**
@@ -265,6 +314,9 @@ struct sep_dma_context {
 	/* secure dma use (for imr memory restriced area in output */
 	bool secure_dma;
 	struct sep_dma_resource dma_res_arr[SEP_MAX_NUM_SYNC_DMA_OPS];
+	/* Scatter gather for kernel crypto */
+	struct scatterlist *src_sg;
+	struct scatterlist *dst_sg;
 };
 
 /*
@@ -278,6 +330,123 @@ struct sep_private_data {
 };
 
 
+/* Functions used by sep_crypto */
+
+/**
+ * sep_queue_status_remove - Removes transaction from status queue
+ * @sep: SEP device
+ * @sep_queue_info: pointer to status queue
+ *
+ * This function will removes information about transaction from the queue.
+ */
+inline void sep_queue_status_remove(struct sep_device *sep,
+				      struct sep_queue_info **queue_elem);
+/**
+ * sep_queue_status_add - Adds transaction to status queue
+ * @sep: SEP device
+ * @opcode: transaction opcode
+ * @size: input data size
+ * @pid: pid of current process
+ * @name: current process name
+ * @name_len: length of name (current process)
+ *
+ * This function adds information about about transaction started to the status
+ * queue.
+ */
+inline struct sep_queue_info *sep_queue_status_add(
+						struct sep_device *sep,
+						u32 opcode,
+						u32 size,
+						u32 pid,
+						u8 *name, size_t name_len);
+
+/**
+ *	sep_create_dcb_dmatables_context_kernel - Creates DCB & MLLI/DMA table context
+ *      for kernel crypto
+ *	@sep: SEP device
+ *	@dcb_region: DCB region buf to create for current transaction
+ *	@dmatables_region: MLLI/DMA tables buf to create for current transaction
+ *	@dma_ctx: DMA context buf to create for current transaction
+ *	@user_dcb_args: User arguments for DCB/MLLI creation
+ *	@num_dcbs: Number of DCBs to create
+ */
+int sep_create_dcb_dmatables_context_kernel(struct sep_device *sep,
+			struct sep_dcblock **dcb_region,
+			void **dmatables_region,
+			struct sep_dma_context **dma_ctx,
+			const struct build_dcb_struct_kernel *dcb_data,
+			const u32 num_dcbs);
+
+/**
+ *	sep_activate_dcb_dmatables_context - Takes DCB & DMA tables
+ *						contexts into use
+ *	@sep: SEP device
+ *	@dcb_region: DCB region copy
+ *	@dmatables_region: MLLI/DMA tables copy
+ *	@dma_ctx: DMA context for current transaction
+ */
+ssize_t sep_activate_dcb_dmatables_context(struct sep_device *sep,
+					struct sep_dcblock **dcb_region,
+					void **dmatables_region,
+					struct sep_dma_context *dma_ctx);
+
+/**
+ * sep_prepare_input_output_dma_table_in_dcb - prepare control blocks
+ * @app_in_address: unsigned long; for data buffer in (user space)
+ * @app_out_address: unsigned long; for data buffer out (user space)
+ * @data_in_size: u32; for size of data
+ * @block_size: u32; for block size
+ * @tail_block_size: u32; for size of tail block
+ * @isapplet: bool; to indicate external app
+ * @is_kva: bool; kernel buffer; only used for kernel crypto module
+ * @secure_dma; indicates whether this is secure_dma using IMR
+ *
+ * This function prepares the linked DMA tables and puts the
+ * address for the linked list of tables inta a DCB (data control
+ * block) the address of which is known by the SEP hardware
+ * Note that all bus addresses that are passed to the SEP
+ * are in 32 bit format; the SEP is a 32 bit device
+ */
+int sep_prepare_input_output_dma_table_in_dcb(struct sep_device *sep,
+	unsigned long  app_in_address,
+	unsigned long  app_out_address,
+	u32  data_in_size,
+	u32  block_size,
+	u32  tail_block_size,
+	bool isapplet,
+	bool	is_kva,
+	bool    secure_dma,
+	struct sep_dcblock *dcb_region,
+	void **dmatables_region,
+	struct sep_dma_context **dma_ctx,
+	struct scatterlist *src_sg,
+	struct scatterlist *dst_sg);
+
+/**
+ * sep_free_dma_table_data_handler - free DMA table
+ * @sep: pointere to struct sep_device
+ * @dma_ctx: dma context
+ *
+ * Handles the request to  free DMA table for synchronic actions
+ */
+int sep_free_dma_table_data_handler(struct sep_device *sep,
+					   struct sep_dma_context **dma_ctx);
+/**
+ * sep_send_command_handler - kick off a command
+ * @sep: SEP being signalled
+ *
+ * This function raises interrupt to SEP that signals that is has a new
+ * command from the host
+ *
+ * Note that this function does fall under the ioctl lock
+ */
+int sep_send_command_handler(struct sep_device *sep);
+
+/**
+ *	sep_wait_transaction - Used for synchronizing transactions
+ *	@sep: SEP device
+ */
+int sep_wait_transaction(struct sep_device *sep);
 
 /**
  * IOCTL command defines
