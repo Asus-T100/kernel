@@ -69,6 +69,13 @@
 static int debug;
 module_param(debug, int, 0600);
 
+#define GSMDBG_VERBOSE_PACKET_REPORT(x) ((x) &  1)
+#define GSMDBG_FORCE_CARRIER(x)         ((x) &  2)
+#define GSMDBG_DATA_FULL_REPORT(x)      ((x) &  4)
+#define GSMDBG_DLCI_STREAM_REPORT(x)    ((x) &  8)
+#define GSMDBG_DLCI_DATA_REPORT(x)      ((x) & 16)
+#define GSMDBG_DATA_LEN_REPORT(x)       ((x) & 32)
+
 /* unit is 1/100 second according to 27.010 spec */
 #define T1	254
 #define T2	255
@@ -448,7 +455,7 @@ static u8 gsm_encode_modem(const struct gsm_dlci *dlci)
 static void gsm_print_packet(const char *hdr, int addr, int cr,
 					u8 control, const u8 *data, int dlen)
 {
-	if (!(debug & 1))
+	if (!GSMDBG_VERBOSE_PACKET_REPORT(debug))
 		return;
 
 	pr_info("%s %d) %c: ", hdr, addr, "RC"[cr]);
@@ -1417,7 +1424,7 @@ static int gsm_control_wait(struct gsm_mux *gsm, struct gsm_control *control)
 static void gsm_dlci_close(struct gsm_dlci *dlci)
 {
 	del_timer(&dlci->t1);
-	if (debug & 8)
+	if (GSMDBG_DLCI_STREAM_REPORT(debug))
 		pr_debug("DLCI %d goes closed.\n", dlci->addr);
 	dlci->state = DLCI_CLOSED;
 	if (dlci->addr != 0) {
@@ -1448,7 +1455,7 @@ static void gsm_dlci_open(struct gsm_dlci *dlci)
 	del_timer(&dlci->t1);
 	/* This will let a tty open continue */
 	dlci->state = DLCI_OPEN;
-	if (debug & 8)
+	if (GSMDBG_DLCI_STREAM_REPORT(debug))
 		pr_debug("DLCI %d goes open.\n", dlci->addr);
 	wake_up(&dlci->gsm->event);
 }
@@ -1552,7 +1559,7 @@ static void gsm_dlci_data(struct gsm_dlci *dlci, u8 *data, int clen)
 	unsigned int modem = 0;
 	int len = clen;
 
-	if (debug & 16)
+	if (GSMDBG_DLCI_DATA_REPORT(debug))
 		pr_debug("%s: %d bytes for tty %p\n", __func__, len, tty);
 
 	if (tty) {
@@ -1743,7 +1750,7 @@ static void gsm_queue(struct gsm_mux *gsm)
 	}
 	if (gsm->fcs != GOOD_FCS) {
 		gsm->bad_fcs++;
-		if (debug & 4)
+		if (GSMDBG_DATA_FULL_REPORT(debug))
 			pr_debug("BAD FCS %02x\n", gsm->fcs);
 		return;
 	}
@@ -2239,9 +2246,12 @@ static int gsmld_output(struct gsm_mux *gsm, u8 *data, int len)
 		set_bit(TTY_DO_WRITE_WAKEUP, &gsm->tty->flags);
 		return -ENOSPC;
 	}
-	if (debug & 4)
+	if (GSMDBG_DATA_FULL_REPORT(debug))
 		print_hex_dump_bytes(__func__, DUMP_PREFIX_OFFSET,
 				     data, len);
+	else if (GSMDBG_DATA_LEN_REPORT(debug))
+		printk(KERN_ERR "n_gsm: >> %d bytes\n", len);
+
 	gsm->tty->ops->write(gsm->tty, data, len);
 	return len;
 }
@@ -2307,9 +2317,11 @@ static void gsmld_receive_buf(struct tty_struct *tty, const unsigned char *cp,
 	char buf[64];
 	char flags;
 
-	if (debug & 4)
+	if (GSMDBG_DATA_FULL_REPORT(debug))
 		print_hex_dump_bytes(__func__, DUMP_PREFIX_OFFSET,
 				     cp, count);
+	else if (GSMDBG_DATA_LEN_REPORT(debug))
+		printk(KERN_ERR "n_gsm: << %d bytes\n", count);
 
 	for (i = count, dp = cp, f = fp; i; i--, dp++) {
 		flags = *f++;
@@ -2948,7 +2960,7 @@ static int gsm_carrier_raised(struct tty_port *port)
 	/* Not yet open so no carrier info */
 	if (dlci->state != DLCI_OPEN)
 		return 0;
-	if (debug & 2)
+	if (GSMDBG_FORCE_CARRIER(debug))
 		return 1;
 	return dlci->modem_rx & TIOCM_CD;
 }
