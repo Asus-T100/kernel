@@ -173,8 +173,16 @@ mdfld_dsi_pr2_dsi_controller_init(struct mdfld_dsi_config *dsi_config,
 	hw_ctx->eot_disable = 0x0;
 	hw_ctx->lp_byteclk = 0x4;
 	hw_ctx->clk_lane_switch_time_cnt = 0xa0014;
-	hw_ctx->dphy_param = 0x150a600f;
 
+	/*420Mbps DSI data rate*/
+	hw_ctx->dphy_param = 0x160D3610;
+
+	/*400Mbps bypass mode DSI data rate*/
+	if (hw_ctx->pll_bypass_mode && hw_ctx->cck_div)
+		hw_ctx->dphy_param = 0x150C340F;
+	/*800Mbps bypass mode DSI data rate*/
+	if (hw_ctx->pll_bypass_mode && !hw_ctx->cck_div)
+		hw_ctx->dphy_param = 0x2A18681F;
 	/*setup video mode format*/
 	hw_ctx->video_mode_format = 0xf;
 

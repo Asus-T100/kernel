@@ -1490,6 +1490,7 @@ static void mdfld_crtc_dpms(struct drm_crtc *crtc, int mode)
 #define MDFLD_DSIPLL_M_MAX_100	    140
 #define MDFLD_DSIPLL_P1_MIN_100	    3
 #define MDFLD_DSIPLL_P1_MAX_100	    9
+#define VCO_MAX                     3200000
 
 static const struct mrst_limit_t mdfld_limits[] = {
 	{			/* MDFLD_LIMT_DPLL_19 */
@@ -1611,6 +1612,12 @@ static void mdfld_clock(int refclk, struct mrst_clock_t *clock)
 	clock->dot = (refclk * clock->m) / clock->p1;
 }
 
+/** Derive the vco clock for the given refclk and divisors for 8xx chips. */
+static int mdfld_vco_clock(int refclk, struct mrst_clock_t *clock)
+{
+	return refclk * clock->m;
+}
+
 /**
  * Returns a set of divisors for the desired target clock with the given refclk,
  * or FALSE.  Divisor values are the actual divisors for
@@ -1622,6 +1629,7 @@ mdfldFindBestPLL(struct drm_crtc *crtc, int target, int refclk,
 	struct mrst_clock_t clock;
 	const struct mrst_limit_t *limit = mdfld_limit(crtc);
 	int err = target;
+	int vco_clock;
 
 	memset(best_clock, 0, sizeof(*best_clock));
 
@@ -1634,9 +1642,10 @@ mdfldFindBestPLL(struct drm_crtc *crtc, int target, int refclk,
 			int this_err;
 
 			mdfld_clock(refclk, &clock);
+			vco_clock = mdfld_vco_clock(refclk, &clock);
 
 			this_err = abs(clock.dot - target);
-			if (this_err < err) {
+			if (this_err <= err && vco_clock < VCO_MAX) {
 				*best_clock = clock;
 				err = this_err;
 			}
