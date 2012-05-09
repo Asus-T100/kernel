@@ -275,7 +275,8 @@ typedef enum {
 	IMG_VIDEO_GET_HDMI_STATE,
 	IMG_VIDEO_SET_HDMI_STATE,
 	PNW_VIDEO_QUERY_ENTRY,
-	IMG_DISPLAY_SET_WIDI_EXT_STATE
+	IMG_DISPLAY_SET_WIDI_EXT_STATE,
+	IMG_VIDEO_IED_STATE
 } lnc_getparam_key_t;
 
 struct drm_lnc_video_getparam_arg {

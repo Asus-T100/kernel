@@ -168,6 +168,10 @@ enum panel_type {
 
 #define MRST_MSVDX_OFFSET	0x90000	/*MSVDX Base offset */
 #define PSB_MSVDX_OFFSET	0x50000	/*MSVDX Base offset */
+
+#define PSB_IED_DRM_CNTL_STATUS		0x2208
+#define IED_DRM_VLD			(1<<0)
+
 /* MSVDX MMIO region is 0x50000 - 0x57fff ==> 32KB */
 #define PSB_MSVDX_SIZE		0x10000
 

@@ -859,7 +859,6 @@ loop: /* just for coding style check */
 						    FW_VA_HW_PANIC_FIRST_MB_NUM);
 			last_mb = MEMIO_READ_FIELD(buf,
 						   FW_VA_HW_PANIC_FAULT_MB_NUM);
-			printk("jiangfei debug: fence in panic message is %d.\n", fence);
 			PSB_DEBUG_MSVDX("MSVDX_DEBUG: PANIC MESSAGE fence is %d.\n", MEMIO_READ_FIELD(buf, FW_VA_HW_PANIC_FENCE_VALUE));
 			PSB_DEBUG_MSVDX("MSVDX_DEBUG: PANIC MESSAGE first mb num is %d.\n", MEMIO_READ_FIELD(buf, FW_VA_HW_PANIC_FIRST_MB_NUM));
 			PSB_DEBUG_MSVDX("MSVDX_DEBUG: PANIC MESSAGE fault mb num is %d.\n", MEMIO_READ_FIELD(buf, FW_VA_HW_PANIC_FAULT_MB_NUM));
@@ -1545,6 +1544,29 @@ int lnc_video_getparam(struct drm_device *dev, void *data,
 					((unsigned long)arg->value),
 					&i, sizeof(i));
 		break;
+		case IMG_VIDEO_IED_STATE:
+		if (IS_MDFLD(dev)) {
+			int ied_enable;
+			/* VXD must be power on during query IED register */
+			if (!ospm_power_using_hw_begin(OSPM_VIDEO_DEC_ISLAND,
+					OSPM_UHB_FORCE_POWER_ON))
+				return -EBUSY;
+			/* wrong spec, IED should be located in pci device 2 */
+			if (REG_READ(PSB_IED_DRM_CNTL_STATUS) & IED_DRM_VLD)
+				ied_enable = 1;
+			else
+				ied_enable = 0;
+			PSB_DEBUG_GENERAL("ied_enable is %d.\n", ied_enable);
+			ospm_power_using_hw_end(OSPM_VIDEO_DEC_ISLAND);
+
+			ret = copy_to_user((void __user *)
+					((unsigned long)arg->value),
+					&ied_enable, sizeof(ied_enable));
+		} else { /* Moorestown should not call it */
+			DRM_ERROR("IMG_VIDEO_IED_EANBLE error.\n");
+			return -EFAULT;
+		}
+		break;
 
 	default:
 		ret = -EFAULT;
@@ -1643,3 +1665,4 @@ int psb_msvdx_check_reset_fw(struct drm_device *dev)
 
 	return 0;
 }
+
