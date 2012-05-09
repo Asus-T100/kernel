@@ -415,8 +415,13 @@ static void mid_pipe_event_handler(struct drm_device *dev, uint32_t pipe)
 	}
 
 	if (pipe_stat_val & PIPE_TE_STATUS) {
-		dev_priv->te_pipe = pipe;
-		schedule_work(&dev_priv->te_work);
+		if (dev_priv->b_async_flip_enable) {
+			if (dev_priv->psb_vsync_handler != NULL)
+				(*dev_priv->psb_vsync_handler)(dev, pipe);
+		} else {
+			dev_priv->te_pipe = pipe;
+			schedule_work(&dev_priv->te_work);
+		}
 	}
 
 	if (pipe_stat_val & PIPE_HDMI_AUDIO_UNDERRUN_STATUS) {
@@ -1090,7 +1095,6 @@ int mdfld_enable_te(struct drm_device *dev, int pipe)
 
 	mid_enable_pipe_event(dev_priv, pipe);
 	psb_enable_pipestat(dev_priv, pipe, PIPE_TE_ENABLE);
-
 	spin_unlock_irqrestore(&dev_priv->irqmask_lock, irqflags);
 
 	return 0;

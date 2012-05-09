@@ -1291,9 +1291,6 @@ static int mdfld_restore_display_registers(struct drm_device *dev, int pipe)
 		/*set up pipe related registers*/
 		PSB_WVDC32(mipi_val, mipi_reg);
 
-		/* setup MIPI adapter + MIPI IP registers */
-		mdfld_dsi_controller_init(dsi_config, pipe);
-
 		if(in_atomic() || in_interrupt())
 			mdelay(20);
 		else

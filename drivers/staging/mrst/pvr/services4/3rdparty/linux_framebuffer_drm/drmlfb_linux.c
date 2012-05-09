@@ -64,7 +64,6 @@
 
 
 extern int fb_idx;
-
 void *MRSTLFBAllocKernelMem(unsigned long ulSize)
 {
 	return kmalloc(ulSize, GFP_KERNEL);
@@ -158,12 +157,18 @@ void MRSTLFBFlipToSurface(MRSTLFB_DEVINFO *psDevInfo,  unsigned long uiAddr)
 					& PVRSRV_SWAPCHAIN_ATTACHED_PLANE_A) {
 				dspsurf = DSPASURF;
 				MRSTLFBVSyncWriteReg(psDevInfo, dspsurf, uiAddr);
+				if (dev_priv->b_async_flip_enable &&
+						 dev_priv->async_flip_update_fb)
+					dev_priv->async_flip_update_fb(dev, 0);
 			}
 #if defined(CONFIG_MDFD_DUAL_MIPI)
 			if (psCurrentSwapChain->ui32SwapChainPropertyFlag
 					& PVRSRV_SWAPCHAIN_ATTACHED_PLANE_C) {
 				dspsurf = DSPCSURF;
 				MRSTLFBVSyncWriteReg(psDevInfo, dspsurf, uiAddr);
+				if (dev_priv->b_async_flip_enable &&
+						 dev_priv->async_flip_update_fb)
+					dev_priv->async_flip_update_fb(dev, 2);
 			}
 #endif
 #ifdef CONFIG_MDFD_HDMI

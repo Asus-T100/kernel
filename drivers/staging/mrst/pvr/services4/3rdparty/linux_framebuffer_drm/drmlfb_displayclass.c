@@ -154,10 +154,15 @@ static void MRSTLFBFlipContexts(MRSTLFB_DEVINFO *psDevInfo,
 {
 	struct intel_sprite_context *psSpriteContext;
 	struct intel_overlay_context *psOverlayContext;
+	struct drm_psb_private *dev_priv;
+	struct drm_device *dev;
 	int i;
 
 	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, MRST_FALSE))
 		return;
+	dev = psDevInfo->psDrmDevice;
+	dev_priv =
+		(struct drm_psb_private *)psDevInfo->psDrmDevice->dev_private;
 
 	/*flip all active sprite planes*/
 	for (i = 0; i < INTEL_SPRITE_PLANE_NUM; i++) {
@@ -174,6 +179,9 @@ static void MRSTLFBFlipContexts(MRSTLFB_DEVINFO *psDevInfo,
 			MRSTLFBFlipOverlay(psDevInfo, psOverlayContext);
 		}
 	}
+
+	if (dev_priv->b_async_flip_enable && dev_priv->async_flip_update_fb)
+		dev_priv->async_flip_update_fb(dev, 0);
 
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 }
@@ -250,6 +258,15 @@ static void FlushInternalVSyncQueue(MRSTLFB_SWAPCHAIN *psSwapChain, MRST_BOOL bF
 
 	psSwapChain->ulInsertIndex = 0;
 	psSwapChain->ulRemoveIndex = 0;
+}
+
+static int DRMLFBFifoEmpty(MRSTLFB_DEVINFO *psDevInfo)
+{
+	struct drm_device *dev = psDevInfo->psDrmDevice;
+	struct drm_psb_private *dev_priv =
+	(struct drm_psb_private *) psDevInfo->psDrmDevice->dev_private;
+
+	return dev_priv->async_check_fifo_empty(dev);
 }
 
 static void DRMLFBFlipBuffer(MRSTLFB_DEVINFO *psDevInfo, MRSTLFB_SWAPCHAIN *psSwapChain, MRSTLFB_BUFFER *psBuffer)
@@ -1258,6 +1275,11 @@ static IMG_BOOL ProcessFlip(IMG_HANDLE  hCmdCookie,
 		psDevInfo->psDrmDevice->dev_private;
 	psBuffer = (MRSTLFB_BUFFER*)psFlipCmd->hExtBuffer;
 	psSwapChain = (MRSTLFB_SWAPCHAIN*) psFlipCmd->hExtSwapChain;
+
+	if (dev_priv->b_async_flip_enable && dev_priv->async_flip_update_fb) {
+		while (!DRMLFBFifoEmpty(psDevInfo))
+			usleep_range(500, 1000);
+	}
 
 	if (!psBuffer)
 		return ProcessFlip2(hCmdCookie, ui32DataSize, pvData);

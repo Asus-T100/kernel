@@ -1234,6 +1234,33 @@ void mdfld_dsi_cmds_kick_out(struct mdfld_dsi_pkg_sender * sender)
 	process_pkg_list(sender);
 }
 
+int mdfld_dsi_check_fifo_empty(struct mdfld_dsi_pkg_sender *sender)
+{
+	struct mdfld_dsi_pkg dsi_pkg = { 0 };
+	u32 cb_phy = sender->dbi_cb_phy;
+	struct drm_device *dev = sender->dev;
+	u32 index = 0;
+	u8 *cb = (u8 *)sender->dbi_cb_addr;
+	unsigned long flags;
+	int retry;
+	u8 *dst = NULL;
+	u8 *pSendparam = NULL;
+	int err = 0;
+
+	if (!sender) {
+		DRM_ERROR("Invalid parameter\n");
+		return -EINVAL;
+	}
+
+	if (!sender->dbi_pkg_support) {
+		DRM_ERROR("No DBI pkg sending on this sender\n");
+		return -ENOTSUPP;
+	}
+
+	return REG_READ(sender->mipi_gen_fifo_stat_reg) & BIT27;
+}
+
+
 int mdfld_dsi_send_dcs(struct mdfld_dsi_pkg_sender * sender,
 			u8 dcs, u8 * param, u32 param_num, u8 data_src,
 			int delay)
@@ -1280,6 +1307,12 @@ int mdfld_dsi_send_dcs(struct mdfld_dsi_pkg_sender * sender,
 			return 0;
 		}
 
+		/*wait for generic fifo*/
+		if (REG_READ(HS_LS_DBI_ENABLE_REG) & BIT0)
+			wait_for_lp_fifos_empty(sender);
+		else
+			wait_for_hs_fifos_empty(sender);
+
 		*(cb + (index++)) = write_mem_start;
 
 		REG_WRITE(sender->mipi_cmd_len_reg, 1);
@@ -1290,12 +1323,6 @@ int mdfld_dsi_send_dcs(struct mdfld_dsi_pkg_sender * sender,
 			udelay(1);
 			retry--;
 		}
-
-		/*wait for this frame done*/
-		if (REG_READ(HS_LS_DBI_ENABLE_REG) & BIT0)
-			wait_for_lp_fifos_empty(sender);
-		else
-			wait_for_hs_fifos_empty(sender);
 
 		spin_unlock(&sender->lock);
 		return 0;

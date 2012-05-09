@@ -1021,6 +1021,7 @@ struct drm_psb_private {
 	struct mutex dsr_mutex;
 	bool b_dsr_enable_config;
 	bool b_dsr_enable;
+	bool b_async_flip_enable;
 	bool dsr_fb_update_done_0;
 	bool dsr_fb_update_done_2;
 	uint32_t dsr_fb_update;
@@ -1028,7 +1029,8 @@ struct drm_psb_private {
 	bool b_is_in_idle;
 	void (*exit_idle)(struct drm_device *dev, u32 update_src, void *p_surfaceAddr, bool check_hw_on_only);
 	bool b_vblank_enable;
-
+	void (*async_flip_update_fb)(struct drm_device *dev, int pipe);
+	int (*async_check_fifo_empty)(struct drm_device *dev);
 
 	/*
 	 * DSR TIMER

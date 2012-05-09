@@ -156,6 +156,7 @@ struct mdfld_dsi_pkg_sender {
 
 extern int mdfld_dsi_pkg_sender_init(struct mdfld_dsi_connector * dsi_connector, int pipe);
 extern void mdfld_dsi_pkg_sender_destroy(struct mdfld_dsi_pkg_sender * sender);
+extern int mdfld_dsi_check_fifo_empty(struct mdfld_dsi_pkg_sender *sender);
 extern int mdfld_dsi_send_dcs(struct mdfld_dsi_pkg_sender * sender,
 			u8 dcs, u8 * param, u32 param_num, u8 data_src, int delay);
 extern int mdfld_dsi_send_mcs_short_hs(struct mdfld_dsi_pkg_sender * sender,

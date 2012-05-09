@@ -573,6 +573,66 @@ static void mdfld_dbi_output_exit_dsr (struct mdfld_dsi_dbi_output * dbi_output,
 	/*clean IN_DSR flag*/
 	dbi_output->mode_flags &= ~MODE_SETTING_IN_DSR;
 }
+int mdfld_dsi_dbi_async_check_fifo_empty(struct drm_device *dev)
+{
+	struct drm_psb_private *dev_priv = dev->dev_private;
+	struct mdfld_dbi_dsr_info *dsr_info = dev_priv->dbi_dsr_info;
+	struct mdfld_dsi_dbi_output **dbi_outputs = NULL;
+	struct mdfld_dsi_dbi_output *dbi_output = NULL;
+	struct mdfld_dsi_pkg_sender *sender = NULL;
+	u32 reg = 0;
+	int err = 0;
+
+	dbi_outputs = dsr_info->dbi_outputs;
+	dbi_output = 0 ? dbi_outputs[1] : dbi_outputs[0];
+	if (!dbi_output)
+		return;
+
+	sender = mdfld_dsi_encoder_get_pkg_sender(&dbi_output->base);
+
+	err = mdfld_dsi_check_fifo_empty(sender);
+	return err;
+}
+/*
+* use hw te to update fb
+*/
+void mdfld_dsi_dbi_async_flip_fb_update(struct drm_device *dev, int pipe)
+{
+	struct drm_psb_private *dev_priv = dev->dev_private;
+	struct mdfld_dbi_dsr_info *dsr_info = dev_priv->dbi_dsr_info;
+	struct mdfld_dsi_dbi_output **dbi_outputs = NULL;
+	struct mdfld_dsi_dbi_output *dbi_output = NULL;
+	struct mdfld_dsi_pkg_sender *sender = NULL;
+	u32 reg = 0;
+
+	u32 dpll_reg = MRST_DPLL_A;
+	u32 dspcntr_reg = DSPACNTR;
+	u32 pipeconf_reg = PIPEACONF;
+	u32 dsplinoff_reg = DSPALINOFF;
+	u32 dspsurf_reg = DSPASURF;
+
+	dbi_outputs = dsr_info->dbi_outputs;
+	dbi_output = pipe ? dbi_outputs[1] : dbi_outputs[0];
+	if (!dbi_output)
+		return;
+
+	sender = mdfld_dsi_encoder_get_pkg_sender(&dbi_output->base);
+
+	/* refresh plane changes */
+	REG_WRITE(dsplinoff_reg, REG_READ(dsplinoff_reg));
+	REG_WRITE(dspsurf_reg, REG_READ(dspsurf_reg));
+	REG_READ(dspsurf_reg);
+
+	mdfld_dsi_send_dcs(sender,
+			   write_mem_start,
+			   NULL,
+			   0,
+			   CMD_DATA_SRC_PIPE,
+			   MDFLD_DSI_SEND_PACKAGE);
+	mdfld_dsi_cmds_kick_out(sender);
+
+	return;
+}
 
 /**
  * Exit from DSR 
@@ -1010,7 +1070,10 @@ struct mdfld_dsi_encoder *mdfld_dsi_dbi_init(struct drm_device *dev,
 
 	dev_priv->dsr_fb_update = 0;
 	dev_priv->b_dsr_enable = false;
+	dev_priv->b_async_flip_enable = true;
 	dev_priv->exit_idle = mdfld_dsi_dbi_exit_dsr;
+	dev_priv->async_flip_update_fb = mdfld_dsi_dbi_async_flip_fb_update;
+	dev_priv->async_check_fifo_empty = mdfld_dsi_dbi_async_check_fifo_empty;
 #if defined(CONFIG_MDFLD_DSI_DPU) || defined(CONFIG_MDFLD_DSI_DSR)
 	dev_priv->b_dsr_enable_config = true;
 #endif /*CONFIG_MDFLD_DSI_DSR*/

@@ -64,9 +64,10 @@ mdfld_auo_dsi_controller_init(struct mdfld_dsi_config *dsi_config,
 	hw_ctx->dphy_param = 0x150c3408;
 	hw_ctx->dbi_bw_ctrl = 0x820;
 	if (dev_priv->platform_rev_id == MDFLD_PNW_A0)
-		hw_ctx->mipi = PASS_FROM_SPHY_TO_AFE | SEL_FLOPPED_HSTX;
+		hw_ctx->mipi = PASS_FROM_SPHY_TO_AFE | SEL_FLOPPED_HSTX
+				| TE_TRIGGER_GPIO_PIN;
 	else
-		hw_ctx->mipi = PASS_FROM_SPHY_TO_AFE;
+		hw_ctx->mipi = PASS_FROM_SPHY_TO_AFE | TE_TRIGGER_GPIO_PIN;
 
 	/*set up func_prg*/
 	hw_ctx->dsi_func_prg = (0xa000 | lane_count);
@@ -108,7 +109,7 @@ static struct drm_display_mode *auo_cmd_get_config_mode(struct drm_device* dev)
 		(struct drm_psb_private *)dev->dev_private;
 	struct mrst_timing_info *ti = &dev_priv->gct_data.DTD;
 	struct mrst_vbt *pVBT = &dev_priv->vbt_data;
-	bool use_gct = (pVBT->Size > 0) ? true : false ;
+	bool use_gct = false ;
 
 	PSB_DEBUG_ENTRY("\n");
 
