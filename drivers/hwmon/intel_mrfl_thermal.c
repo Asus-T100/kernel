@@ -69,7 +69,7 @@
 #define THERM_ALRT	(1 << 2)
 
 /* ADC to Temperature conversion table length */
-#define TABLE_LENGTH	24
+#define TABLE_LENGTH	34
 #define TEMP_INTERVAL	5
 
 /* Default _max 85 C */
@@ -117,10 +117,14 @@ static const int alert_regs_h[] = { 0xB6, 0xB8, 0xBA, 0xC0 };
  * Row 1: Temperature (in degree celsius)
  */
 static const int adc_code[2][TABLE_LENGTH] = {
-	{977, 961, 941, 917, 887, 853, 813, 769, 720, 669, 615, 561, 508, 456,
-		407, 357, 315, 277, 243, 212, 186, 162, 140, 107},
-	{-20, -15, -10, -5, 0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60,
-		65, 70, 75, 80, 85, 90, 100},
+	{952, 932, 906, 877, 843, 804, 761, 714, 665, 614,
+	563, 512, 462, 415, 370, 329, 291, 257, 226, 199,
+	174, 153, 135, 119, 104, 92, 81, 72, 64, 56,
+	50, 45, 40, 36},
+	{-40, -35, -30, -25, -20, -15, -10, -5, 0, 5,
+	10, 15, 20, 25, 30, 35, 40, 45, 50, 55,
+	60, 65, 70, 75, 80, 85, 90, 95, 100, 105,
+	110, 115, 120, 125},
 	};
 
 static DEFINE_MUTEX(thrm_update_lock);
