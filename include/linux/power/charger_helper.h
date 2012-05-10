@@ -127,12 +127,19 @@ struct charger_helper_charger {
 	int term_cur;
 	int term_volt;
 
-	int (*enable_charger) (enum charger_type chrg_type);
+	/* callback function for enable/disable charging */
+	int (*enable_charging) (enum charger_type chrg_type);
+	int (*disable_charging) (enum charger_type chrg_type);
+
+	/* callback function for enable/disable charger. */
 	int (*disable_charger) (enum charger_type chrg_type);
-	int (*set_chrg_params) (int tempzone_id, int chrcc, int chrcv);
+
+	int (*set_ccmA_cvmV) (int chrcc_mA, int chrcv_mV);
+	int (*set_ilimmA)(int ilim_mA);
 	int (*reset_wdt) (void);
-	 bool(*is_battery_charging) (void);
-	 bool(*is_exception_recovered) (enum ch_source_type, int health);
+	bool(*is_battery_charging) (void);
+	bool(*is_charger_online) (void);
+	bool(*is_exception_recovered) (enum ch_source_type, int health);
 
 	int (*get_battery_temperature) (void);
 	int (*get_battery_avg_current) (void);
@@ -140,15 +147,6 @@ struct charger_helper_charger {
 	unsigned int (*get_charger_voltage) (void);
 
 	void (*charger_callback) (int);
-
-	/* OTG register callback methods */
-	void *(*otg_register_callback) (int (*cb)
-					 (void*, int, struct otg_bc_cap *),
-					void*);
-	int (*otg_query_cap) (struct otg_bc_cap *cap);
-
-	/* TODO: AC adapter callback */
-
 };
 
 int charger_helper_get_property(void *handle, enum ch_source_type type,
@@ -159,3 +157,5 @@ void charger_helper_report_exception(void *handle,
 void charger_helper_report_battery_full(void *handle);
 void *charger_helper_register_charger(struct charger_helper_charger *charger);
 void charger_helper_unregister_charger(void *handle);
+void charger_helper_charger_port_changed(void *handle,
+			struct power_supply_charger_cap *cap);

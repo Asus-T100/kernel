@@ -67,7 +67,7 @@ struct health_node {
 struct charger_context {
 	struct list_head chrgr_hlth_lst;
 	struct list_head batt_hlth_lst;
-	struct otg_bc_cap usb_charger_cap;
+	struct power_supply_charger_cap cap;
 	uint8_t charger_type;
 	uint8_t usb_charger_type;
 	uint8_t charger_mode;
@@ -80,7 +80,6 @@ struct charger_context {
 struct ch_context {
 
 	struct charger_helper_charger *charger;
-	void *otg_handle;
 
 	struct delayed_work usb_chrgr_work;
 	struct delayed_work excep_work;
@@ -122,8 +121,8 @@ static int get_health(struct ch_context *chc, int health_src)
 
 	health_list =
 	    (health_src ==
-	     CH_SOURCE_TYPE_BATTERY) ? &chc->chrgr_cxt.batt_hlth_lst : &chc->
-	    chrgr_cxt.chrgr_hlth_lst;
+	     CH_SOURCE_TYPE_BATTERY) ? &chc->chrgr_cxt.
+	    batt_hlth_lst : &chc->chrgr_cxt.chrgr_hlth_lst;
 
 	/*return last reported health status */
 	mutex_lock(&chc->excep_lock);
@@ -153,7 +152,7 @@ static bool get_charger_online_property(struct ch_context *chc)
 
 	/* return true if vsys supported or battery is charging */
 
-	return is_vsys_supported(chc) || chc->charger->is_battery_charging;
+	return is_vsys_supported(chc) || chc->charger->is_battery_charging();
 }
 
 static int get_battery_status(struct ch_context *chc)
@@ -283,8 +282,8 @@ static void __recover_exception(int reported_exception,
 
 	health_list =
 	    (exception_src ==
-	     CH_SOURCE_TYPE_BATTERY) ? &chc->chrgr_cxt.batt_hlth_lst : &chc->
-	    chrgr_cxt.chrgr_hlth_lst;
+	     CH_SOURCE_TYPE_BATTERY) ? &chc->chrgr_cxt.
+	    batt_hlth_lst : &chc->chrgr_cxt.chrgr_hlth_lst;
 
 	mutex_lock(&chc->excep_lock);
 	/*remove reported health from health list */
@@ -311,8 +310,8 @@ static void __report_health(int health, enum ch_source_type health_src,
 
 	health_list =
 	    (health_src ==
-	     CH_SOURCE_TYPE_BATTERY) ? &chc->chrgr_cxt.batt_hlth_lst : &chc->
-	    chrgr_cxt.chrgr_hlth_lst;
+	     CH_SOURCE_TYPE_BATTERY) ? &chc->chrgr_cxt.
+	    batt_hlth_lst : &chc->chrgr_cxt.chrgr_hlth_lst;
 
 	mutex_lock(&chc->excep_lock);
 
@@ -323,7 +322,7 @@ static void __report_health(int health, enum ch_source_type health_src,
 	tmp = kzalloc(sizeof(struct health_node), GFP_KERNEL);
 	if (!tmp) {
 		pr_err("%s:%d Error in allocating memory\n",
-				__FILE__, __LINE__);
+		       __FILE__, __LINE__);
 		mutex_unlock(&chc->excep_lock);
 		return;
 	}
@@ -339,10 +338,6 @@ void charger_helper_report_exception(void *handle,
 {
 
 	struct ch_context *chc = (struct ch_context *)handle;
-
-	/* API expect only exceptions */
-	if (!is_exception(exception))
-		return;
 
 	if (is_recover)
 		__recover_exception(exception, exception_src, chc);
@@ -377,8 +372,8 @@ static bool poll_exception_recover(int type, struct list_head *health_list,
 		tmp = list_entry(pos, struct health_node, hlth_lst);
 		if (!is_exception(tmp->health_status))
 			continue;
-		if (chc->charger->
-		    is_exception_recovered(type, tmp->health_status)) {
+		if (chc->
+		    charger->is_exception_recovered(type, tmp->health_status)) {
 			list_del(pos);
 			kfree(tmp);
 			is_recvd = true;
@@ -416,7 +411,7 @@ static void recover_exception_worker(struct work_struct *work)
 				      chc->charger->excp_recv_delay * HZ);
 	else
 		pr_debug("%s:%s:No pending exceptions.Exception recover"
-		"thread stopped\n", __FILE__, __func__);
+			 "thread stopped\n", __FILE__, __func__);
 
 }
 
@@ -427,7 +422,7 @@ static int get_tempzone(struct batt_charging_profile batt_chrg_profile,
 	int i = 0;
 	int temp_range_cnt = batt_chrg_profile.temp_mon_ranges;
 
-	if (temp < batt_chrg_profile.temp_mon_range[0].temp_low_lim
+	if (temp < batt_chrg_profile.temp_low_lim
 	    || temp >
 	    batt_chrg_profile.temp_mon_range[temp_range_cnt - 1].temp_up_lim)
 		return -EINVAL;
@@ -451,13 +446,13 @@ static int do_charging(struct ch_context *chc)
 {
 
 	int charger_mode, charger_type, charger_cur;
-	int temp, tzone, chrg_mA, i, ret = 0, tempmon_mA, chrg_mV;
+	int temp, tzone, chrg_mA, ret = 0, tempmon_mA, chrg_mV;
 
 	mutex_lock(&chc->chrgr_cxt_lock);
 
 	charger_mode = chc->chrgr_cxt.charger_mode;
 	charger_type = chc->chrgr_cxt.charger_type;
-	charger_cur = chc->chrgr_cxt.usb_charger_cap.mA;
+	charger_cur = chc->chrgr_cxt.cap.mA;
 
 	mutex_unlock(&chc->chrgr_cxt_lock);
 
@@ -467,8 +462,8 @@ static int do_charging(struct ch_context *chc)
 		 */
 
 		/*FIXME: update charger parameters only
-		* if tempzone is changed
-		*/
+		 * if tempzone is changed
+		 */
 		temp = chc->charger->get_battery_temperature();
 		tzone = get_tempzone(chc->batt_chrg_profile, temp);
 		tempmon_mA =
@@ -479,49 +474,26 @@ static int do_charging(struct ch_context *chc)
 
 		if (charger_mode == CHARGER_MODE_MAINTENANCE)
 			chrg_mV =
-			    chc->batt_chrg_profile.
-			    temp_mon_range[tzone].maint_chrg_vol_ul;
+			    chc->batt_chrg_profile.temp_mon_range[tzone].
+			    maint_chrg_vol_ul;
 		else
 			chrg_mV =
-			    chc->batt_chrg_profile.
-			    temp_mon_range[tzone].full_chrg_vol;
+			    chc->batt_chrg_profile.temp_mon_range[tzone].
+			    full_chrg_vol;
 
-		chc->charger->set_chrg_params(tzone, chrg_mA, chrg_mV);
-		pr_debug("%s:%s POLL_TEMP_MON: Charge params updated: Tempzone=%d"
-			"current=%dmA voltage=%dmV\n",
-		     __FILE__, __func__, tzone, chrg_mA, chrg_mV);
+		chc->charger->set_ccmA_cvmV(chrg_mA, chrg_mV);
+		pr_debug
+		    ("%s:%s POLL_TEMP_MON: Charge params updated: Tempzone=%d"
+		     "current=%dmA voltage=%dmV\n", __FILE__, __func__, tzone,
+		     chrg_mA, chrg_mV);
 
-	} else {
-		/* Program charger with charger current and voltage
-		 *  for different temperature ranges
-		 */
-		for (i = 0; i < chc->batt_chrg_profile.temp_mon_ranges; ++i) {
-			tempmon_mA =
-			    chc->batt_chrg_profile.
-			    temp_mon_range[i].full_chrg_cur;
-			chrg_mA =
-			    get_chrg_mA(tempmon_mA, charger_cur,
-					chc->usr_chrg_mA, chc->charger->flags);
-
-			if (charger_mode == CHARGER_MODE_MAINTENANCE)
-				chrg_mV =
-				    chc->batt_chrg_profile.
-				    temp_mon_range[i].maint_chrg_vol_ul;
-			else
-				chrg_mV =
-				    chc->batt_chrg_profile.
-				    temp_mon_range[i].full_chrg_vol;
-			chc->charger->set_chrg_params(i, chrg_mA, chrg_mV);
-			pr_debug("%s:%s Charge params set for  Tempzone %d."
-				"Current=%dmA Voltage=%dmV\n",
-			     __FILE__, __func__, i, chrg_mA, chrg_mV);
-		}
 	}
 
 	mutex_lock(&chc->chrgr_cxt_lock);
 	/*enable charger if not enabled already */
 	if (!chc->chrgr_cxt.charger_enabled) {
-		ret = chc->charger->enable_charger(chc->chrgr_cxt.charger_type);
+		ret =
+		    chc->charger->enable_charging(chc->chrgr_cxt.charger_type);
 		if (!ret) {
 			chc->chrgr_cxt.charger_enabled = true;
 			pr_debug("%s:%s Charger enabled\n", __FILE__, __func__);
@@ -561,13 +533,14 @@ static int stop_charging(struct ch_context *chc)
 }
 
 static void update_charger_info(enum charger_type chrgr_type,
-				struct ch_context *chc, void *arg, int event)
+				struct ch_context *chc,
+				struct power_supply_charger_cap cap, int event)
 {
 
 	dev_warn(chc->charger->dev, "%s:%d\n", __func__, __LINE__);
 	switch (event) {
-	case EVENT_DISCONN:
-	case EVENT_SUSPEND:
+	case POWER_SUPPLY_CHARGER_EVENT_DISCONNECT:
+	case POWER_SUPPLY_CHARGER_EVENT_SUSPEND:
 		pr_debug("%s:%s Charger DISCONN/SUSPEND event(%d)\n", __FILE__,
 			 __func__, event);
 
@@ -580,45 +553,22 @@ static void update_charger_info(enum charger_type chrgr_type,
 		memcpy(chc->chrgr_cxt.charger_vendor, "Unknown",
 		       sizeof("Unknown"));
 
-		chc->chrgr_cxt.charger_present = (event == EVENT_SUSPEND);
+		chc->chrgr_cxt.charger_present =
+		    (event == POWER_SUPPLY_CHARGER_EVENT_SUSPEND);
 		if (chrgr_type == CHARGER_USB)
 			chc->chrgr_cxt.usb_charger_type = POWER_SUPPLY_TYPE_USB;
 
 		mutex_unlock(&chc->chrgr_cxt_lock);
 		break;
-	case EVENT_CONNECT:
-	case EVENT_UPDATE:
-	case EVENT_RESUME:
+	case POWER_SUPPLY_CHARGER_EVENT_CONNECT:
+	case POWER_SUPPLY_CHARGER_EVENT_UPDATE:
+	case POWER_SUPPLY_CHARGER_EVENT_RESUME:
 		pr_debug("%s:%s Charger CONNECT/UPDATE/RESUME event(%d)\n",
 			 __FILE__, __func__, event);
 		mutex_lock(&chc->chrgr_cxt_lock);
-		if (chrgr_type == CHARGER_USB) {
-			struct otg_bc_cap *cap = (struct otg_bc_cap *)arg;
-
+		if (chrgr_type == CHARGER_USB)
 			chc->chrgr_cxt.charger_type = CHARGER_USB;
-
-			/*FIXME: Replace with generic CHARGER NAME */
-
-			if (cap->chrg_type == USB_CHRGR_CDP)
-				chc->chrgr_cxt.usb_charger_type =
-				    POWER_SUPPLY_TYPE_USB_CDP;
-			else if (cap->chrg_type == USB_CHRGR_DCP)
-				chc->chrgr_cxt.usb_charger_type =
-				    POWER_SUPPLY_TYPE_USB_DCP;
-			else if (cap->chrg_type == USB_CHRGR_SDP)
-				chc->chrgr_cxt.usb_charger_type =
-				    POWER_SUPPLY_TYPE_USB;
-			else if (cap->chrg_type == USB_CHRGR_ACA)
-				chc->chrgr_cxt.usb_charger_type =
-				    POWER_SUPPLY_TYPE_USB_ACA;
-			else {
-				pr_warning("%s:%s unknown Charger type(%d)\n",
-					   __FILE__, __func__, cap->chrg_type);
-				chc->chrgr_cxt.usb_charger_type =
-				    POWER_SUPPLY_TYPE_USB;
-				goto update_charger_info_exit;
-			}
-		} else if (chrgr_type == CHARGER_AC)
+		 else if (chrgr_type == CHARGER_AC)
 			chc->chrgr_cxt.charger_type = POWER_SUPPLY_TYPE_MAINS;
 
 		chc->chrgr_cxt.charger_present = true;
@@ -640,18 +590,17 @@ static void update_charger_info(enum charger_type chrgr_type,
 
 	return;
 
-update_charger_info_exit:
-	mutex_unlock(&chc->chrgr_cxt_lock);
 }
 
 static int charger_event_handler(enum charger_type chrgr_type,
-				 struct ch_context *chc, int event, void *arg)
+				 struct ch_context *chc, int event,
+				 struct power_supply_charger_cap cap)
 {
 
 	pr_debug("%s:%s\n", __FILE__, __func__);
 
 	/* Update charger info */
-	update_charger_info(chrgr_type, chc, arg, event);
+	update_charger_info(chrgr_type, chc, cap, event);
 
 	/* check for valid battery condition */
 	if (chc->charger->invalid_battery) {
@@ -661,27 +610,20 @@ static int charger_event_handler(enum charger_type chrgr_type,
 
 	switch (event) {
 
-	case EVENT_CONNECT:
+	case POWER_SUPPLY_CHARGER_EVENT_CONNECT:
 		/*FIXME:PM policy to be decide by charger driver */
 		pm_runtime_get_sync(chc->charger->dev);
-	case EVENT_RESUME:
-	case EVENT_UPDATE:
-		if (chrgr_type == CHARGER_USB) {
-			mutex_lock(&chc->chrgr_cxt_lock);
-			memcpy((void *)&chc->chrgr_cxt.usb_charger_cap,
-			       arg, sizeof(struct otg_bc_cap));
-			mutex_unlock(&chc->chrgr_cxt_lock);
-		}
-		/*else TODO */
-
+	case POWER_SUPPLY_CHARGER_EVENT_RESUME:
+	case POWER_SUPPLY_CHARGER_EVENT_UPDATE:
 		/* if POLL_TEMP_MON is not set we use h/w temp mon.
-		*  So we do onetime charging register configuration
+		* So we do onetime charging register configuration
 		*/
+		chc->charger->set_ilimmA(cap.mA);
 		if (!(chc->charger->flags & POLL_TEMP_MON))
 			do_charging(chc);
 		/*start charger thread if POLL_TEMP_MON or POLL_CHRG_FULL_DET
-		* or POLL_WDT_RESET set
-		*/
+		 * or POLL_WDT_RESET set
+		 */
 		if ((chc->charger->flags & POLL_TEMP_MON)
 		    || (chc->charger->flags & POLL_CHRG_FULL_DET)
 		    || (chc->charger->flags & POLL_WDT_RESET))
@@ -693,12 +635,16 @@ static int charger_event_handler(enum charger_type chrgr_type,
 
 		break;
 
-	case EVENT_DISCONN:
+	case POWER_SUPPLY_CHARGER_EVENT_DISCONNECT:
 		/*FIXME:PM policy to be decide by charger driver */
 		pm_runtime_put_sync(chc->charger->dev);
-	case EVENT_SUSPEND:
+	case POWER_SUPPLY_CHARGER_EVENT_SUSPEND:
 		cancel_delayed_work_sync(&chc->chrg_work);
 		stop_charging(chc);
+		/*disable charger*/
+		mutex_lock(&chc->chrgr_cxt_lock);
+		chc->charger->disable_charger(chc->chrgr_cxt.charger_type);
+		mutex_unlock(&chc->chrgr_cxt_lock);
 		break;
 	default:
 		pr_warning("%s:%s Invalid Charger Event(%d)\n",
@@ -761,12 +707,12 @@ static void charger_worker(struct work_struct *work)
 		temp = chc->charger->get_battery_temperature();
 		tzone = get_tempzone(chc->batt_chrg_profile, temp);
 		if (chc->charger->get_battery_voltage() <=
-		    chc->batt_chrg_profile.temp_mon_range[tzone].
-		    maint_chrg_vol_ll)
+		    chc->batt_chrg_profile.
+		    temp_mon_range[tzone].maint_chrg_vol_ll)
 			do_charging(chc);
 		else if (chc->charger->get_battery_voltage() >=
-			 chc->batt_chrg_profile.
-			 temp_mon_range[tzone].maint_chrg_vol_ul)
+			 chc->batt_chrg_profile.temp_mon_range[tzone].
+			 maint_chrg_vol_ul)
 			stop_charging(chc);
 	}
 
@@ -781,74 +727,25 @@ static void charger_worker(struct work_struct *work)
 
 static void usb_charger_callback_worker(struct work_struct *work)
 {
-	struct otg_bc_cap cap;
 	struct ch_context *chc = container_of(work, struct ch_context,
 					      usb_chrgr_work.work);
-	chc->charger->otg_query_cap(&cap);
-	charger_event_handler(CHARGER_USB, chc, cap.current_event,
-			      (void *)&cap);
+	charger_event_handler(CHARGER_USB, chc, chc->chrgr_cxt.cap.chrg_evt,
+			      chc->chrgr_cxt.cap);
 }
 
-static int usb_charger_callback(void *arg, int event, struct otg_bc_cap *cap)
+void charger_helper_charger_port_changed(void *handle,
+					 struct power_supply_charger_cap *cap)
 {
-	struct ch_context *chc = (struct ch_context *)arg;
+	struct ch_context *chc = (struct ch_context *)handle;
+
+	mutex_lock(&chc->chrgr_cxt_lock);
+	memcpy(&chc->chrgr_cxt.cap, cap,
+	       sizeof(struct power_supply_charger_cap));
+	mutex_unlock(&chc->chrgr_cxt_lock);
 
 	schedule_delayed_work(&chc->usb_chrgr_work, 0);
-	return 0;
 }
-/* FIXME: Remove this functions. Enabled for testing till
- * SFI charge profile is available
- * */
 
-static int populate_batt_chrg_profile
-	(struct batt_charging_profile *chrg_profile)
-{
-
-	memcpy(chrg_profile->batt_id, "UNKNOWN", sizeof("UNKNOWN"));
-	chrg_profile->voltage_max = 4200;
-	chrg_profile->capacity = 1500;
-	chrg_profile->battery_type = 2;	/* POWER_SUPPLY_TECHNOLOGY_LION */
-	chrg_profile->temp_mon_ranges = 4;
-
-	chrg_profile->temp_mon_range[0].temp_low_lim = 45;
-	chrg_profile->temp_mon_range[0].temp_up_lim = 60;
-	chrg_profile->temp_mon_range[0].rbatt = 120;
-	chrg_profile->temp_mon_range[0].full_chrg_cur = 950;
-	chrg_profile->temp_mon_range[0].full_chrg_vol = 4100;
-	chrg_profile->temp_mon_range[0].maint_chrg_cur = 950;
-	chrg_profile->temp_mon_range[0].maint_chrg_vol_ll = 4000;
-	chrg_profile->temp_mon_range[0].maint_chrg_vol_ul = 4050;
-
-	chrg_profile->temp_mon_range[1].temp_low_lim = 10;
-	chrg_profile->temp_mon_range[1].temp_up_lim = 45;
-	chrg_profile->temp_mon_range[1].rbatt = 120;
-	chrg_profile->temp_mon_range[1].full_chrg_cur = 950;
-	chrg_profile->temp_mon_range[1].full_chrg_vol = 4200;
-	chrg_profile->temp_mon_range[1].maint_chrg_cur = 950;
-	chrg_profile->temp_mon_range[1].maint_chrg_vol_ll = 4100;
-	chrg_profile->temp_mon_range[1].maint_chrg_vol_ul = 4150;
-
-	chrg_profile->temp_mon_range[2].temp_low_lim = 0;
-	chrg_profile->temp_mon_range[2].temp_up_lim = 10;
-	chrg_profile->temp_mon_range[2].rbatt = 120;
-	chrg_profile->temp_mon_range[2].full_chrg_cur = 950;
-	chrg_profile->temp_mon_range[2].full_chrg_vol = 4100;
-	chrg_profile->temp_mon_range[2].maint_chrg_cur = 950;
-	chrg_profile->temp_mon_range[2].maint_chrg_vol_ll = 4000;
-	chrg_profile->temp_mon_range[2].maint_chrg_vol_ul = 4050;
-
-	chrg_profile->temp_mon_range[3].temp_low_lim = -10;
-	chrg_profile->temp_mon_range[3].temp_up_lim = 0;
-	chrg_profile->temp_mon_range[3].rbatt = 120;
-	chrg_profile->temp_mon_range[3].full_chrg_cur = 950;
-	chrg_profile->temp_mon_range[3].full_chrg_vol = 3900;
-	chrg_profile->temp_mon_range[3].maint_chrg_cur = 950;
-	chrg_profile->temp_mon_range[3].maint_chrg_vol_ll = 3950;
-	chrg_profile->temp_mon_range[3].maint_chrg_vol_ul = 3950;
-
-	return 0;
-
-}
 
 void *charger_helper_register_charger(struct charger_helper_charger *charger)
 {
@@ -862,30 +759,29 @@ void *charger_helper_register_charger(struct charger_helper_charger *charger)
 	    && !(charger->flags & AC_ADAPT_SUPPORTED))
 		return NULL;
 
-	if (!charger->enable_charger || !charger->disable_charger
-	    || !charger->set_chrg_params || !charger->charger_callback)
+	if (!charger->enable_charging || !charger->disable_charging
+	    || !charger->set_ilimmA || !charger->charger_callback)
 		return NULL;
 
 	if ((charger->flags & POLL_WDT_RESET) && !charger->reset_wdt)
 		return NULL;
-	if ((charger->flags & USB_CHRGR_SUPPORTED)
-	    && (!charger->otg_register_callback || !charger->otg_query_cap))
+	if ((charger->flags & POLL_EXCP_RECVR)
+	    && !charger->is_exception_recovered)
 		return NULL;
 	chc = kzalloc(sizeof(struct ch_context), GFP_KERNEL);
 	if (!chc) {
 		pr_err("%s:%d Error in allocating memory\n",
-				__FILE__, __LINE__);
+		       __FILE__, __LINE__);
 		return NULL;
 	}
 
 	chc->charger = charger;
 
 	if (get_batt_charging_profile(&chc->batt_chrg_profile)) {
-		pr_err("%s:%d Error in reading battery charge profile."
-		"Using default charger profile for testing\n",
+		pr_err("%s:%d Unable to find battery profile"
+			       "Invalid battery detected\n",
 				__FILE__, __LINE__);
-		/*FIXME: return NULL if failure */
-		populate_batt_chrg_profile(&chc->batt_chrg_profile);
+		charger->invalid_battery = true;
 	}
 
 	if (charger->flags & POLL_TEMP_MON || charger->flags & POLL_WDT_RESET
@@ -897,14 +793,9 @@ void *charger_helper_register_charger(struct charger_helper_charger *charger)
 	if (charger->flags & POLL_EXCP_RECVR)
 		INIT_DELAYED_WORK(&chc->excep_work, recover_exception_worker);
 
-	if (charger->flags & USB_CHRGR_SUPPORTED) {
-
+	if (charger->flags & USB_CHRGR_SUPPORTED)
 		INIT_DELAYED_WORK(&chc->usb_chrgr_work,
 				  usb_charger_callback_worker);
-		chc->otg_handle =
-		    chc->charger->otg_register_callback(usb_charger_callback,
-							(void *)chc);
-	}
 
 	INIT_LIST_HEAD(&chc->chrgr_cxt.chrgr_hlth_lst);
 	INIT_LIST_HEAD(&chc->chrgr_cxt.batt_hlth_lst);

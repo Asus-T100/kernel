@@ -22,6 +22,7 @@
  * Author: Jenny TC <jenny.tc@intel.com>
  */
 #include <linux/module.h>
+#include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/err.h>
 #include <linux/interrupt.h>
@@ -32,18 +33,21 @@
 #include <linux/param.h>
 #include <linux/device.h>
 #include <linux/platform_device.h>
+#include <linux/usb/otg.h>
 #include <linux/power_supply.h>
+#include <linux/wakelock.h>
+#include <linux/power/charger_helper.h>
+#include <linux/power_supply.h>
+#include <asm/intel_basincove_gpadc.h>
+#include <asm/intel_scu_ipc.h>
 #include <linux/io.h>
+#include <linux/power/intel_mid_powersupply.h>
 #include <linux/sched.h>
 #include <linux/pm_runtime.h>
 #include <linux/sfi.h>
-#include <linux/wakelock.h>
 #include <linux/async.h>
 #include <linux/reboot.h>
-#include <linux/power/intel_mid_powersupply.h>
-/*TODO remove this below header file once tangier_otg.h is available*/
-#include <linux/usb/penwell_otg.h>
-#include <asm/intel_basincove_gpadc.h>
+
 #include "basin_cove_charger.h"
 
 #define CHARGER_PS_NAME "bcove_charger"
@@ -51,8 +55,12 @@
 
 #define DEVICE_NAME "bc_charger"
 
-static struct device *bc_chrgr_dev;
-static void *otg_handle;
+#define BQ24260_NAME "bq24260"
+#define PMIC_SRAM_INTR_ADDR 0xFFFFF616
+
+static DEFINE_MUTEX(pmic_lock);
+
+static struct bc_chrgr_drv_context chc;
 
 /*
  * Basin Cove Charger power supply  properties
@@ -62,75 +70,585 @@ static enum power_supply_property bc_chrgr_ps_props[] = {
 	POWER_SUPPLY_PROP_PRESENT,
 	POWER_SUPPLY_PROP_ONLINE,
 	POWER_SUPPLY_PROP_HEALTH,
-	POWER_SUPPLY_PROP_VOLTAGE_NOW,
 	POWER_SUPPLY_PROP_MODEL_NAME,
 	POWER_SUPPLY_PROP_MANUFACTURER,
 };
 
-/*FIXME: Remove this IPC call stubs */
-static int intel_scu_ipc_update_register(u16 addr, u8 bits, u8 mask)
+
+u16 bcove_inlmt[][2] = {
+	{ 100, CHGRCTRL1_FUSB_INLMT_100_MASK},
+	{ 150, CHGRCTRL1_FUSB_INLMT_150_MASK},
+	{ 500, CHGRCTRL1_FUSB_INLMT_500_MASK},
+	{ 900, CHGRCTRL1_FUSB_INLMT_900_MASK},
+	{ 1500, CHGRCTRL1_FUSB_INLMT_1500_MASK},
+};
+
+
+/*external charger specific definitions */
+static int bq24260_disable_charging(u8 dev_addr);
+static int bq24260_enable_charging(u8 dev_addr);
+static int bq24260_handle_irq(u8 dev_addr);
+static int bq24260_cc_to_reg(int cc, u8 *reg_val);
+static int bq24260_cv_to_reg(int cv, u8 *reg_val);
+
+u16 bq24260_cc[][2] = {
+
+	{500, 0x00},
+	{600, BQ24260_ICHRG_100mA},
+	{700, BQ24260_ICHRG_200mA},
+	{800, BQ24260_ICHRG_100mA | BQ24260_ICHRG_200mA},
+	{900, BQ24260_ICHRG_400mA},
+	{1000, BQ24260_ICHRG_400mA | BQ24260_ICHRG_100mA},
+	{1100, BQ24260_ICHRG_400mA | BQ24260_ICHRG_200mA},
+	{1200, BQ24260_ICHRG_400mA | BQ24260_ICHRG_200mA | BQ24260_ICHRG_100mA},
+	{1300, BQ24260_ICHRG_800mA},
+	{1400, BQ24260_ICHRG_800mA | BQ24260_ICHRG_100mA},
+	{1500, BQ24260_ICHRG_800mA | BQ24260_ICHRG_200mA},
+};
+
+u16 bq24260_cv[][2] = {
+
+	{3500, 0x00},
+	{3600, BQ24260_VBREG_20mV | BQ24260_VBREG_80mV},
+	{3700, BQ24260_VBREG_160mV | BQ24260_VBREG_40mV},
+	{3800,
+	 BQ24260_VBREG_160mV | BQ24260_VBREG_80mV | BQ24260_VBREG_40mV |
+	 BQ24260_VBREG_20mV},
+	{3900, BQ24260_VBREG_320mV | BQ24260_VBREG_80mV},
+	{4000, BQ24260_VBREG_320mV | BQ24260_VBREG_160mV | BQ24260_VBREG_20mV},
+	{4040,
+	 BQ24260_VBREG_320mV | BQ24260_VBREG_160mV | BQ24260_VBREG_40mV |
+	 BQ24260_VBREG_20mV},
+	{4060, BQ24260_VBREG_320mV | BQ24260_VBREG_160mV | BQ24260_VBREG_80mV},
+	{4100,
+	 BQ24260_VBREG_320mV | BQ24260_VBREG_160mV | BQ24260_VBREG_80mV |
+	 BQ24260_VBREG_40mV},
+	{4140, BQ24260_VBREG_640mV},
+	{4160, BQ24260_VBREG_640mV | BQ24260_VBREG_20mV},
+	{4200, BQ24260_VBREG_640mV | BQ24260_VBREG_40mV | BQ24260_VBREG_20mV},
+};
+
+
+struct ext_charger bq24260_chrgr = {
+	.enable_charging = bq24260_enable_charging,
+	.disable_charging = bq24260_disable_charging,
+	.handle_irq = bq24260_handle_irq,
+	.cc_to_reg = bq24260_cc_to_reg,
+	.cv_to_reg = bq24260_cv_to_reg,
+};
+/* Generic function definitions */
+static int lookup_regval(u16 tbl[][2], size_t size, u16 in_val, u8 *out_val)
 {
-	return 0;
-}
-
-/*FIXME: Remove this IPC call stub */
-static int intel_scu_ipc_ioread8(u16 addr, u8 *data)
-{
-	return 0;
-}
-
-/*TODO : Implement the function for adc value to temp conversion*/
-static int adc_to_temp(uint16_t adc_val, int *tp)
-{
-
-	return 0;
-
-}
-static int bc_enable_charger(void)
-{
-	return intel_scu_ipc_update_register(CHGRCTRL0_ADDR, EXTCHRDIS_ENABLE,
-					     CHGRCTRL0_EXTCHRDIS_MASK);
-
-}
-
-static int bc_disbale_charger(void)
-{
-	return intel_scu_ipc_update_register(CHGRCTRL0_ADDR, ~EXTCHRDIS_ENABLE,
-					     CHGRCTRL0_EXTCHRDIS_MASK);
-
-}
-
-static int bc_set_chrgr_current_limit(int cur_inlmt)
-{
-	int inlmt_mask;
-
-	if (cur_inlmt <= 100)
-		inlmt_mask = CHGRCTRL1_FUSB_INLMT_100_MASK;
-	else if (cur_inlmt <= 150)
-		inlmt_mask = CHGRCTRL1_FUSB_INLMT_150_MASK;
-	else if (cur_inlmt <= 500)
-		inlmt_mask = CHGRCTRL1_FUSB_INLMT_500_MASK;
-	else if (cur_inlmt <= 900)
-		inlmt_mask = CHGRCTRL1_FUSB_INLMT_900_MASK;
-	else if (cur_inlmt <= 1500)
-		inlmt_mask = CHGRCTRL1_FUSB_INLMT_1500_MASK;
-	else
+	int i;
+	for (i = 0; i < size; ++i)
+		if (in_val < tbl[i][0])
+			break;
+	if (i == 0)
 		return -EINVAL;
-	return intel_scu_ipc_update_register(CHGRCTRL1_ADDR, 0xFF, inlmt_mask);
+
+	*out_val = (u8)tbl[i-1][1];
+	return 0;
+}
+
+static int interpolate_y(int dx1x0, int dy1y0, int dxx0, int y0)
+{
+	return y0 + DIV_ROUND_CLOSEST((dxx0 * dy1y0), dx1x0);
+}
+
+static int interpolate_x(int dy1y0, int dx1x0, int dyy0, int x0)
+{
+	return x0 + DIV_ROUND_CLOSEST((dyy0 * dx1x0), dy1y0);
+}
+
+#define is_valid_temp(tmp)\
+	(!(tmp > adc_tbl[0].temp ||\
+		tmp < adc_tbl[ARRAY_SIZE(adc_tbl) - 1].temp))
+
+#define is_valid_adc_code(val)\
+	(!(val < adc_tbl[0].adc_val ||\
+		val > adc_tbl[ARRAY_SIZE(adc_tbl) - 1].adc_val))
+
+#define ADC_TO_TEMP 1
+#define TEMP_TO_ADC 0
+
+#define CONVERT_ADC_TO_TEMP(adc_val, temp)\
+	adc_temp_conv(adc_val, temp, ADC_TO_TEMP)
+
+#define CONVERT_TEMP_TO_ADC(temp, adc_val)\
+	adc_temp_conv(temp, adc_val, TEMP_TO_ADC)
+
+static int adc_temp_conv(int in_val, int *out_val, int conv)
+{
+	int tbl_row_cnt = ARRAY_SIZE(adc_tbl), i;
+
+	if (conv == ADC_TO_TEMP) {
+		if (!is_valid_adc_code(in_val))
+			return -ERANGE;
+
+		for (i = 0; i < tbl_row_cnt; ++i)
+			if (in_val < adc_tbl[i].adc_val)
+				break;
+
+		*out_val =
+		    interpolate_y((adc_tbl[i].adc_val - adc_tbl[i - 1].adc_val),
+				  (adc_tbl[i].temp - adc_tbl[i - 1].temp),
+				  (in_val - adc_tbl[i - 1].adc_val),
+				  adc_tbl[i - 1].temp);
+	} else {
+		if (!is_valid_temp(in_val))
+			return -ERANGE;
+
+		for (i = 0; i < tbl_row_cnt; ++i)
+			if (in_val > adc_tbl[i].temp)
+				break;
+		*out_val =
+		    interpolate_x((adc_tbl[i].temp - adc_tbl[i - 1].temp),
+				  (adc_tbl[i].adc_val - adc_tbl[i - 1].adc_val),
+				  (in_val - adc_tbl[i - 1].temp),
+				  adc_tbl[i - 1].adc_val);
+	}
+	return 0;
+}
+
+/* PMIC External charger function definitions */
+static int __bcove_extchrgr_read(u8 dev_id, u8 offset, u8 *data)
+{
+	int ret = 0;
+
+	ret = intel_scu_ipc_iowrite8(I2COVRDADDR_ADDR, dev_id);
+	if (unlikely(ret))
+		return ret;
+
+	ret = intel_scu_ipc_iowrite8(I2COVROFFSET_ADDR, offset);
+	if (unlikely(ret))
+		return ret;
+
+	atomic_set(&chc.i2c_rw, 0);
+
+	ret = intel_scu_ipc_iowrite8(I2COVRCTRL_ADDR, I2COVRCTRL_I2C_RD);
+	if (unlikely(ret))
+		return ret;
+
+	ret = wait_event_timeout(chc.i2c_wait,
+				 (atomic_read(&chc.i2c_rw) == I2C_RD), HZ);
+	if (unlikely(!ret)) {
+		dev_err(chc.dev, "External I2C read timed out:%d\n", ret);
+		return  -ETIMEDOUT;
+	}
+
+	return intel_scu_ipc_ioread8(I2COVRRDDATA_ADDR, data);
+}
+
+static inline int bcove_extchrgr_read(u8 dev_id, u8 offset, u8 *data)
+{
+	int ret;
+	mutex_lock(&pmic_lock);
+	ret = __bcove_extchrgr_read(dev_id, offset, data);
+	mutex_unlock(&pmic_lock);
+	return ret;
+}
+
+static int __bcove_extchrgr_write(u8 dev_id, u8 offset, u8 data)
+{
+	int ret = 0;
+
+
+	ret = intel_scu_ipc_iowrite8(I2COVRDADDR_ADDR, dev_id);
+	if (unlikely(ret))
+		return ret;
+
+	ret = intel_scu_ipc_iowrite8(I2COVROFFSET_ADDR, offset);
+	if (unlikely(ret))
+		return ret;
+
+	ret = intel_scu_ipc_iowrite8(I2COVRWRDATA_ADDR, data);
+	if (unlikely(ret))
+		return ret;
+
+	atomic_set(&chc.i2c_rw, 0);
+
+	ret = intel_scu_ipc_iowrite8(I2COVRCTRL_ADDR, I2COVRCTRL_I2C_WR);
+	if (unlikely(ret))
+		return ret;
+
+	ret = wait_event_timeout(chc.i2c_wait,
+				 (atomic_read(&chc.i2c_rw) == I2C_WR), HZ);
+	if (unlikely(!ret)) {
+		dev_err(chc.dev, "External I2C write timed out:%d\n", ret);
+		return -ETIMEDOUT;
+	}
+	return ret;
+}
+
+static inline int bcove_extchrgr_write(u8 dev_id, u8 offset, u8 data)
+{
+	int ret;
+	mutex_lock(&pmic_lock);
+	ret = __bcove_extchrgr_write(dev_id, offset, data);
+	mutex_unlock(&pmic_lock);
+	return ret;
+}
+
+static int bcove_ext_chrgr_update_reg(u8 dev_id, u8 offset, u8 mask, u8 value)
+{
+	u8 data;
+	int ret;
+	mutex_lock(&pmic_lock);
+	ret = __bcove_extchrgr_read(dev_id, offset, &data);
+	if (ret)
+		goto exit;
+	data = (data & mask) | value;
+
+	ret = __bcove_extchrgr_write(dev_id, offset, data);
+exit:
+	mutex_unlock(&pmic_lock);
+	return ret;
+}
+
+static int __bcove_write_tt(u8 addr, u8 data)
+{
+	int ret;
+	ret = intel_scu_ipc_iowrite8(CHRTTADDR_ADDR, addr);
+	if (unlikely(ret))
+		return ret;
+	return intel_scu_ipc_iowrite8(CHRTTDATA_ADDR, data);
+}
+
+static inline int bcove_write_tt(u8 addr, u8 data)
+{
+	int ret;
+	mutex_lock(&pmic_lock);
+	ret = __bcove_write_tt(addr, data);
+	mutex_unlock(&pmic_lock);
+	return ret;
+}
+
+static int __bcove_read_tt(u8 addr, u8 *data)
+{
+	int ret;
+	ret = intel_scu_ipc_iowrite8(CHRTTADDR_ADDR, addr);
+	if (ret)
+		return ret;
+	usleep_range(2000, 3000);
+	return intel_scu_ipc_ioread8(CHRTTDATA_ADDR, data);
+}
+
+static inline int bcove_read_tt(u8 addr, u8 *data)
+{
+	int ret;
+	mutex_lock(&pmic_lock);
+	ret = __bcove_read_tt(addr, data);
+	mutex_unlock(&pmic_lock);
+	return ret;
+}
+
+static int bcove_update_tt(u8 addr, u8 mask, u8 data)
+{
+	u8 tdata;
+	int ret;
+	mutex_lock(&pmic_lock);
+	ret = __bcove_read_tt(addr, &data);
+	if (unlikely(ret))
+		goto exit;
+	tdata = (tdata & mask) | data;
+	ret = __bcove_write_tt(addr, data);
+exit:
+	mutex_unlock(&pmic_lock);
+	return ret;
+}
+
+
+/* External charger specific definitions */
+static int bq24260_cc_to_reg(int cc, u8 *reg_val)
+{
+	return lookup_regval(bq24260_cc, ARRAY_SIZE(bq24260_cc), cc, reg_val);
+}
+static int bq24260_cv_to_reg(int cv, u8 *reg_val)
+{
+	return lookup_regval(bq24260_cv, ARRAY_SIZE(bq24260_cv), cv, reg_val);
+}
+
+static int bq24260_disable_charging(u8 dev_addr)
+{
+	return bcove_ext_chrgr_update_reg(dev_addr,
+					  BQ24260_CTRL_ADDR, BQ24260_CE_MASK,
+					  BQ24260_CE_DISABLE);
+}
+
+static int bq24260_enable_charging(u8 dev_addr)
+{
+
+	return bcove_ext_chrgr_update_reg(dev_addr,
+					  BQ24260_CTRL_ADDR, BQ24260_CE_MASK,
+					  BQ24260_CE_ENABLE);
+}
+
+static void bq24260_fault_recovered(void)
+{
+
+	dev_dbg(chc.dev, "%s:%d\n", __func__, __LINE__);
+	charger_helper_report_exception(chc.ch_handle,
+					CH_SOURCE_TYPE_CHARGER,
+					POWER_SUPPLY_HEALTH_GOOD, false);
+
+	/* BQ24261 reports only the OVP exception for battery. If fault
+	 *  bit is not set then recover exception
+	 */
+
+	charger_helper_report_exception(chc.ch_handle,
+					CH_SOURCE_TYPE_BATTERY,
+					POWER_SUPPLY_HEALTH_OVERVOLTAGE, true);
+}
+
+static int bq24260_handle_irq(u8 dev_addr)
+{
+	u8 stat_reg;
+	static bool prev_fault_stat;
+	int ret = 0;
+
+	dev_dbg(chc.dev, "%s:%d\n", __func__, __LINE__);
+
+	ret = bcove_extchrgr_read(dev_addr, BQ24260_STAT_CTRL0_ADDR,
+						&stat_reg);
+	if (ret)
+		return ret;
+
+	/* If fault was set previously and it's not set now,
+	 *  then recover excpetions
+	 */
+
+	if (prev_fault_stat && !(stat_reg & BQ24260_FAULT_MASK)) {
+		bq24260_fault_recovered();
+		prev_fault_stat = false;
+		return 0;
+	}
+
+	switch (stat_reg & BQ24260_STAT_MASK) {
+	case BQ24260_STAT_READY:
+		dev_info(chc.dev, "BQ24261: Charger Status: Ready\n");
+		break;
+	case BQ24260_STAT_CHRG_PRGRSS:
+		dev_info(chc.dev, "BQ24261: Charger Status: Charge Progress\n");
+		break;
+	case BQ24260_STAT_CHRG_DONE:
+		charger_helper_report_battery_full(chc.ch_handle);
+		dev_info(chc.dev, "BQ24261: Charger Status: Charge Done\n");
+		break;
+	case BQ24260_STAT_FAULT:
+		prev_fault_stat = true;
+		dev_err(chc.dev, "BQ24261: Charger Status: Charge Faut\n");
+		break;
+	}
+
+	if (stat_reg & BQ24260_FAULT_MASK) {
+		switch (stat_reg & BQ24260_FAULT_MASK) {
+		case BQ24260_VOVP:
+			charger_helper_report_exception(chc.ch_handle,
+						CH_SOURCE_TYPE_CHARGER,
+						POWER_SUPPLY_HEALTH_OVERVOLTAGE,
+						0);
+			dev_err(chc.dev, "BQ24261: Charger OVP Fault\n");
+			break;
+
+		case BQ24260_LOW_SUPPLY:
+			charger_helper_report_exception(chc.ch_handle,
+						CH_SOURCE_TYPE_CHARGER,
+						POWER_SUPPLY_HEALTH_DEAD,
+						0);
+			dev_err(chc.dev, "BQ24261: Charger Low Supply Fault\n");
+			break;
+
+		case BQ24260_THERMAL_SHUTDOWN:
+			charger_helper_report_exception(chc.ch_handle,
+						CH_SOURCE_TYPE_CHARGER,
+						POWER_SUPPLY_HEALTH_OVERHEAT,
+						0);
+			dev_err(chc.dev, "BQ24261: Charger Low Supply Fault\n");
+			break;
+
+			/* This shouldn't happen since the battery
+			 * temperature event is handled by PMIC
+			 */
+		case BQ24260_BATT_TEMP_FAULT:
+			dev_err(chc.dev,
+				"BQ24261: Battery Temperature Fault\n");
+			break;
+
+		case BQ24260_TIMER_FAULT:
+			charger_helper_report_exception(chc.ch_handle,
+					CH_SOURCE_TYPE_BATTERY,
+					POWER_SUPPLY_HEALTH_UNSPEC_FAILURE,
+					0);
+			dev_err(chc.dev, "BQ24261: Charger Timer Fault\n");
+			break;
+
+		case BQ24260_BATT_OVP:
+			charger_helper_report_exception(chc.ch_handle,
+						CH_SOURCE_TYPE_BATTERY,
+						POWER_SUPPLY_HEALTH_OVERVOLTAGE,
+						0);
+			dev_err(chc.dev,
+				"BQ24261: Battery Over Voltage Fault\n");
+			break;
+		case BQ24260_NO_BATTERY:
+			dev_err(chc.dev, "BQ24261: No Battery Connected\n");
+			break;
+
+		}
+	}
+
+	if (stat_reg & BQ24260_BOOST_MASK)
+		dev_err(chc.dev, "BQ24261: Boot Mode\n");
+
+	return 0;
+}
+
+/* External Charger I2C communication APIs */
+static void bcove_bat_zone_changed(void)
+{
+	u8 data = 0;
+	int retval;
+	static int prev_zone;
+	int cur_zone;
+
+	retval = intel_scu_ipc_ioread8(THRMBATZONE_ADDR, &data);
+	if (retval) {
+		dev_err(chc.dev, "Error in reading battery zone\n");
+		return;
+	}
+
+	cur_zone = data & THRMBATZONE_MASK;
+	dev_info(chc.dev, "Thermal Zone changed. Current zone is %d\n",
+		 (data & THRMBATZONE_MASK));
+
+	/* if current zone and previous zone are same and if they are
+	 *  the top and bottom zones then report OVERHEAT
+	 */
+	if ((prev_zone == cur_zone) && ((prev_zone == BCOVE_BZONE_LOW) ||
+					(prev_zone == BCOVE_BZONE_HIGH)))
+		charger_helper_report_exception(chc.ch_handle,
+						CH_SOURCE_TYPE_CHARGER,
+						POWER_SUPPLY_HEALTH_OVERHEAT,
+						0);
+	prev_zone = cur_zone;
+}
+
+static void bcove_extchrgr_read_complete(bool stat)
+{
+	if (unlikely(!stat))
+		return;
+
+	atomic_set(&chc.i2c_rw, I2C_RD);
+	wake_up(&chc.i2c_wait);
+
+}
+
+static void bcove_extchrgr_write_complete(bool stat)
+{
+
+	if (unlikely(!stat))
+		return;
+
+	atomic_set(&chc.i2c_rw, I2C_WR);
+	wake_up(&chc.i2c_wait);
+
+}
+
+
+static void bcove_battery_overheat_handler(bool stat)
+{
+	if (stat)
+		charger_helper_report_exception(chc.ch_handle,
+						CH_SOURCE_TYPE_BATTERY,
+						POWER_SUPPLY_HEALTH_OVERHEAT,
+						false);
+	else
+		charger_helper_report_exception(chc.ch_handle,
+						CH_SOURCE_TYPE_BATTERY,
+						POWER_SUPPLY_HEALTH_OVERHEAT,
+						true);
+}
+
+static void bcove_handle_ext_chrgr_irq(bool stat)
+{
+	int ret;
+	dev_dbg(chc.dev, "%s:%d stat=%d\n", __func__, __LINE__, stat);
+	if (stat) {
+		ret = chc.ext_chrgr->handle_irq(chc.ext_chrgr_addr);
+		if (ret)
+			dev_err(chc.dev,
+				"Error in handling external charger irq\n");
+	}
+}
+
+
+
+/*charger framework callback functions */
+static int disable_charger(enum charger_type chrg_type)
+{
+	dev_dbg(chc.dev, "%s\n", __func__);
+	return intel_scu_ipc_update_register(CHGRCTRL0_ADDR, EXTCHRDIS_DISABLE,
+				      CHGRCTRL0_EXTCHRDIS_MASK);
+}
+
+static int enable_charging(enum charger_type chrg_type)
+{
+	dev_dbg(chc.dev, "%s\n", __func__);
+
+	intel_scu_ipc_update_register(CHGRCTRL0_ADDR, EXTCHRDIS_ENABLE,
+				      CHGRCTRL0_EXTCHRDIS_MASK);
+	return chc.ext_chrgr->enable_charging(chc.ext_chrgr_addr);
+
+}
+
+static int disable_charging(enum charger_type chrg_type)
+{
+	dev_dbg(chc.dev, "%s\n", __func__);
+	return chc.ext_chrgr->disable_charging(chc.ext_chrgr_addr);
+}
+
+static int bc_set_ilimmA(int ilim_mA)
+{
+	u8 mask;
+	int ret;
+
+	ret = lookup_regval(bcove_inlmt, ARRAY_SIZE(bcove_inlmt),
+			ilim_mA, &mask);
+	if (unlikely(ret))
+		return ret;
+
+	return intel_scu_ipc_update_register(CHGRCTRL1_ADDR, 0xFF, mask);
+}
+
+static void charger_callback(int charger_type)
+{
+	chc.psy.type = charger_type;
+	power_supply_changed(&chc.psy);
+}
+
+static bool is_battery_charging(void)
+{
+	u8 data = 0;
+
+	/* report not charging if IPC read is failing */
+	if (intel_scu_ipc_ioread8(SCHGRIRQ0_ADDR, &data))
+		return false;
+	return !(data & SCHGIRQ0_SCHG_INTB);
 }
 
 /**
- * mrfl_read_adc_regs - read ADC value of specified sensors
+ * bcove_read_adc_val - read ADC value of specified sensors
  * @channel: channel of the sensor to be sampled
  * @sensor_val: pointer to the charger property to hold sampled value
- * @chrgr_drv_cxt :  battery info pointer
+ * @chc :  battery info pointer
  *
  * Returns 0 if success
  */
 
-static int mrfl_read_adc_regs(int channel, int *sensor_val,
-	struct bc_chrgr_drv_context *chrgr_drv_cxt)
+static int bcove_read_adc_val(int channel, int *sensor_val,
+			      struct bc_chrgr_drv_context *chc)
 {
+
 	int ret, adc_val;
 	struct gpadc_result *adc_res;
 	adc_res = kzalloc(sizeof(struct gpadc_result), GFP_KERNEL);
@@ -138,19 +656,17 @@ static int mrfl_read_adc_regs(int channel, int *sensor_val,
 		return -ENOMEM;
 	ret = intel_basincove_gpadc_sample(channel, adc_res);
 	if (ret) {
-		dev_err(&chrgr_drv_cxt->pdev->dev,
-			"gpadc_sample failed:%d\n", ret);
+		dev_err(chc->dev, "gpadc_sample failed:%d\n", ret);
 		goto exit;
 	}
 
 	adc_val = GPADC_RSL(channel, adc_res);
 	switch (channel) {
 	case GPADC_BATTEMP0:
-		ret = adc_to_temp(adc_val, sensor_val);
+		ret = CONVERT_ADC_TO_TEMP(adc_val, sensor_val);
 		break;
 	default:
-		dev_err(&chrgr_drv_cxt->pdev->dev,
-			"invalid sensor%d", channel);
+		dev_err(chc->dev, "invalid sensor%d", channel);
 		ret = -EINVAL;
 	}
 exit:
@@ -172,274 +688,261 @@ static int bc_chrgr_ps_get_property(struct power_supply *psy,
 				    enum power_supply_property psp,
 				    union power_supply_propval *val)
 {
-	struct bc_chrgr_drv_context *chrgr_drv_cxt =
-	    container_of(psy, struct bc_chrgr_drv_context, bc_chrgr_ps);
-	int retval = 0;
-	mutex_lock(&chrgr_drv_cxt->bc_chrgr_lock);
+	struct bc_chrgr_drv_context *chc =
+	    container_of(psy, struct bc_chrgr_drv_context, psy);
 
-	switch (psp) {
-	case POWER_SUPPLY_PROP_PRESENT:
-		val->intval = chrgr_drv_cxt->chrgr_props_cxt.charger_present;
-		break;
-	case POWER_SUPPLY_PROP_ONLINE:
-		if (chrgr_drv_cxt->chrgr_props_cxt.charging_mode !=
-		    POWER_SUPPLY_STATUS_NOT_CHARGING)
-			val->intval =
-			    chrgr_drv_cxt->chrgr_props_cxt.charger_present;
-		else
-			val->intval = 0;
-		break;
-	case POWER_SUPPLY_PROP_HEALTH:
-		val->intval = chrgr_drv_cxt->chrgr_props_cxt.charger_health;
-		break;
-	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
-		/*from hardcoded value since no adc channel for vbus_volt*/
-		val->intval = chrgr_drv_cxt->chrgr_props_cxt.vbus_vol * 1000;
-		break;
-	case POWER_SUPPLY_PROP_MODEL_NAME:
-		val->strval = chrgr_drv_cxt->chrgr_props_cxt.charger_model;
-		break;
-	case POWER_SUPPLY_PROP_MANUFACTURER:
-		val->strval = chrgr_drv_cxt->chrgr_props_cxt.charger_vender;
-		break;
-	default:
-		mutex_unlock(&chrgr_drv_cxt->bc_chrgr_lock);
+	if (!chc->ch_handle)
 		return -EINVAL;
-	}
 
-	mutex_unlock(&chrgr_drv_cxt->bc_chrgr_lock);
-	return retval;
-}
-
-
-
-/**
- * init_batt_props_context - initialize battery properties
- * @chrgr_drv_cxt: basin cove charger driver structure
- * init_batt_props function initializes the
- * battery properties.
- */
-static void init_batt_props_context(struct bc_chrgr_drv_context *chrgr_drv_cxt)
-{
-	unsigned char data;
-	int retval;
-
-	chrgr_drv_cxt->batt_props_cxt.status = POWER_SUPPLY_STATUS_DISCHARGING;
-	chrgr_drv_cxt->batt_props_cxt.health = POWER_SUPPLY_HEALTH_GOOD;
-	chrgr_drv_cxt->batt_props_cxt.present = BATT_NOT_PRESENT;
-	/*TODO: remove the default assignment: Assumed as battery present*/
-	chrgr_drv_cxt->current_sense_enabled = 1;
-
-	/*read specific to determine the status*/
-	retval = intel_scu_ipc_ioread8(SCHGRIRQ1_ADDR, &data);
-	if (retval)
-		dev_crit(bc_chrgr_dev, "PMIC IPC read access to SCHGRIRQ1_ADDR failed\n");
-	/* determine battery Presence */
-	else if (data & BATT_CHR_BATTDET_MASK)
-		chrgr_drv_cxt->batt_props_cxt.present = BATT_PRESENT;
-}
-
-static void init_charger_ps_context(struct bc_chrgr_drv_context *chrgr_drv_cxt)
-{
-	chrgr_drv_cxt->bc_chrgr_ps.name = CHARGER_PS_NAME;
-	chrgr_drv_cxt->bc_chrgr_ps.type = POWER_SUPPLY_TYPE_USB;
-	chrgr_drv_cxt->bc_chrgr_ps.properties = bc_chrgr_ps_props;
-	chrgr_drv_cxt->bc_chrgr_ps.num_properties =
-	    ARRAY_SIZE(bc_chrgr_ps_props);
-	chrgr_drv_cxt->bc_chrgr_ps.get_property = bc_chrgr_ps_get_property;
-
-	chrgr_drv_cxt->chrgr_props_cxt.charger_present = CHARGER_NOT_PRESENT;
-	chrgr_drv_cxt->chrgr_props_cxt.charger_health =
-	    POWER_SUPPLY_HEALTH_UNKNOWN;
-	memcpy(chrgr_drv_cxt->chrgr_props_cxt.charger_model, "Unknown",
-	       sizeof("Unknown"));
-	memcpy(chrgr_drv_cxt->chrgr_props_cxt.charger_vender, "Unknown",
-	       sizeof("Unknown"));
-	/*Vbus_volt hardcoded.Not reading from ADC since no channel available*/
-	chrgr_drv_cxt->chrgr_props_cxt.vbus_vol = 4200;
-}
-
-
-static void populate_invalid_chrg_profile
-	(struct batt_charging_profile *chrg_profile)
-{
-
-	/*
-	 * In case of invalid battery we manually set
-	 * the battery parameters and limit the battery from
-	 * charging, so platform will be in discharging mode
-	 */
-
-	memcpy(chrg_profile->batt_id, "UNKNOWN", sizeof("UNKNOWN"));
-	chrg_profile->temp_mon_ranges = 0;
-
-}
-
-static void populate_default_battery_config(
-		struct plat_battery_config *batt_config)
-{
-
-	/*TODO: Get battery configuration from platfrom layer.Using default
-	   hardcoded values till this is done */
-	batt_config->vbatt_sh_min = BATT_DEAD_CUTOFF_VOLT;
-	batt_config->vbatt_crit = BATT_CRIT_CUTOFF_VOLT;
-	batt_config->temp_high = MSIC_BATT_TEMP_MAX;
-	batt_config->temp_low = MSIC_BATT_TEMP_MIN;
-	batt_config->itc = 50;
-
-	return 0;
-}
-
-
-/*TO BE FIXED : event handler stub*/
-static int pmic_bc_event_handler(void *arg, int event, struct otg_bc_cap *cap)
-{
-	return 0;
-}
-/*TO BE REMOVED : chargin cap query - OTG function stub*/
-static int tangier_otg_query_charging_cap(struct otg_bc_cap *cap)
-{
-	return 0;
-}
-/*TO BE REMOVED : OTG callback register/unregister function stub*/
-static void *tangier_otg_register_bc_callback(
-int (*cb)(void *, int, struct otg_bc_cap *), void *arg)
-{
-	struct penwell_otg *temp_ptr = kzalloc(sizeof(struct penwell_otg),
-					GFP_KERNEL);
-	if (!temp_ptr)
-		dev_err(bc_chrgr_dev, "%s(): memory allocation failed\n",
-		__func__);
-	return temp_ptr;
-}
-
-static int tangier_otg_unregister_bc_callback(void *handle)
-{
-	kfree(handle);
-	return 0;
-}
-
-static void bc_chrg_callback_worker(struct work_struct *work)
-{
-	int retval;
-	struct otg_bc_cap cap;
-	struct bc_chrgr_drv_context *chrgr_drv_cxt =
-		container_of(work, struct bc_chrgr_drv_context,
-		chrg_callback_dwrk.work);
-	retval = tangier_otg_query_charging_cap(&cap);
-	if (retval)
-		dev_err(bc_chrgr_dev, "%s(): Failed to get otg capabalities\n",
-		__func__);
-	else {
-		retval = pmic_bc_event_handler(chrgr_drv_cxt,
-						cap.current_event, &cap);
-		if (retval)
-			dev_err(bc_chrgr_dev, "%s(): Event handler failed\n",
-			__func__);
-	}
-}
-
-/* bc_charger_callback - callback for USB OTG*/
-static int bc_charger_callback(void *arg, int event,
-					struct otg_bc_cap *cap)
-{
-	struct bc_chrgr_drv_context *chrgr_drv_cxt =
-		(struct bc_chrgr_drv_context *)arg;
-	schedule_delayed_work(&chrgr_drv_cxt->chrg_callback_dwrk, 0);
-	return 0;
+	return charger_helper_get_property(chc->ch_handle,
+					   CH_SOURCE_TYPE_CHARGER, psp, val);
 }
 
 /* Exported Functions to use with Fuel Gauge driver */
 
-bool bc_is_current_sense_enabled(void)
-{
-	struct platform_device *pdev = container_of(bc_chrgr_dev,
-					struct platform_device, dev);
-	struct bc_chrgr_drv_context *chrgr_drv_cxt = platform_get_drvdata(pdev);
-	bool val;
-	/* check if basincove  charger is ready */
-	if (!power_supply_get_by_name(CHARGER_PS_NAME))
-		return -EAGAIN;
-
-	mutex_lock(&chrgr_drv_cxt->batt_lock);
-	val = chrgr_drv_cxt->current_sense_enabled;
-	mutex_unlock(&chrgr_drv_cxt->batt_lock);
-
-	return val;
-}
-EXPORT_SYMBOL(bc_is_current_sense_enabled);
-
-bool bc_check_battery_present(void)
-{
-	struct platform_device *pdev = container_of(bc_chrgr_dev,
-					struct platform_device, dev);
-	struct bc_chrgr_drv_context *chrgr_drv_cxt = platform_get_drvdata(pdev);
-	bool val;
-	/* check if basincove  charger is ready */
-	if (!power_supply_get_by_name(CHARGER_PS_NAME))
-		return -EAGAIN;
-
-	mutex_lock(&chrgr_drv_cxt->batt_lock);
-	val = chrgr_drv_cxt->batt_props_cxt.present;
-	mutex_unlock(&chrgr_drv_cxt->batt_lock);
-
-	return val;
-}
-EXPORT_SYMBOL(bc_check_battery_present);
-
 int bc_check_battery_health(void)
 {
-	struct platform_device *pdev = container_of(bc_chrgr_dev,
-					struct platform_device, dev);
-	struct bc_chrgr_drv_context *chrgr_drv_cxt = platform_get_drvdata(pdev);
-	unsigned int val;
+	union power_supply_propval val;
+	int retval;
 	/* check if basincove  charger is ready */
-	if (!power_supply_get_by_name(CHARGER_PS_NAME))
-		return -EAGAIN;
+	if (!chc.ch_handle) {
+		dev_err(chc.dev, "Invalid charger helper handle\n");
+		return -EINVAL;
+	}
 
-	mutex_lock(&chrgr_drv_cxt->batt_lock);
-	val = chrgr_drv_cxt->batt_props_cxt.health;
-	mutex_unlock(&chrgr_drv_cxt->batt_lock);
+	retval =
+	    charger_helper_get_property(chc.ch_handle,
+					CH_SOURCE_TYPE_BATTERY,
+					POWER_SUPPLY_PROP_HEALTH, &val);
+	if (retval)
+		return retval;
 
-	return val;
+	return val.intval;
 }
 EXPORT_SYMBOL(bc_check_battery_health);
 
 int bc_check_battery_status(void)
 {
-	struct platform_device *pdev = container_of(bc_chrgr_dev,
-					struct platform_device, dev);
-	struct bc_chrgr_drv_context *chrgr_drv_cxt = platform_get_drvdata(pdev);
-	unsigned int val;
-	/* check if basincove  charger is ready */
-	if (!power_supply_get_by_name(CHARGER_PS_NAME))
-		return -EAGAIN;
+	union power_supply_propval val;
+	int retval;
 
-	mutex_lock(&chrgr_drv_cxt->batt_lock);
-	val = chrgr_drv_cxt->batt_props_cxt.status;
-	mutex_unlock(&chrgr_drv_cxt->batt_lock);
+	if (chc.ch_handle)
+		return -ENODEV;
 
-	return val;
+	retval = charger_helper_get_property(chc.ch_handle,
+					     CH_SOURCE_TYPE_BATTERY,
+					     POWER_SUPPLY_PROP_STATUS, &val);
+	if (retval)
+		return retval;
+
+	return val.intval;
 }
 EXPORT_SYMBOL(bc_check_battery_status);
 
-
 int bc_get_battery_pack_temp(int *temp)
 {
-	struct platform_device *pdev = container_of(bc_chrgr_dev,
-					struct platform_device, dev);
-	struct bc_chrgr_drv_context *chrgr_drv_cxt = platform_get_drvdata(pdev);
 
-	if (!chrgr_drv_cxt->current_sense_enabled)
-		return -ENODEV;
 	/* check if basincove  charger is ready */
 	if (!power_supply_get_by_name(CHARGER_PS_NAME))
 		return -EAGAIN;
 
-	return mrfl_read_adc_regs(GPADC_BATTEMP0, temp, chrgr_drv_cxt);
+	if (!chc.current_sense_enabled)
+		return -ENODEV;
+	return bcove_read_adc_val(GPADC_BATTEMP0, temp, &chc);
 }
 EXPORT_SYMBOL(bc_get_battery_pack_temp);
 
+void handle_interrupt(u8 int_reg, u8 stat_reg, struct interrupt_info int_info[],
+		      int int_info_size)
+{
+	int i;
+	bool int_stat;
+	char *log_msg;
+
+
+	for (i = 0; i < int_info_size; ++i) {
+
+		/*continue if interrupt register bit is not set */
+		if (!(int_reg & int_info[i].int_reg_mask))
+			continue;
+
+		/*log message if interrupt bit is set */
+		if (int_info[i].log_msg_int_reg_true)
+			dev_err(chc.dev, "%s",
+				int_info[i].log_msg_int_reg_true);
+
+		/* interrupt bit is set.call int handler. */
+		if (int_info[i].int_handle)
+			int_info[i].int_handle();
+
+		/* continue if stat_reg_mask is zero which
+		 *  means ignore status register
+		 */
+		if (!(int_info[i].stat_reg_mask))
+			continue;
+
+		dev_dbg(chc.dev,
+			"stat_reg=%X int_info[i].stat_reg_mask=%X",
+			stat_reg, int_info[i].stat_reg_mask);
+
+		/* check if the interrupt status is true */
+		int_stat = (stat_reg & int_info[i].stat_reg_mask);
+
+		/* log message */
+		log_msg = int_stat ? int_info[i].log_msg_stat_true :
+		    int_info[i].log_msg_stat_false;
+
+		if (log_msg)
+			dev_err(chc.dev, "%s", log_msg);
+
+		/*call status handler function */
+		if (int_info[i].stat_handle)
+			int_info[i].stat_handle(int_stat);
+
+	}
+}
+
+static irqreturn_t bc_thread_handler(int id, void *data)
+{
+	struct bc_chrgr_drv_context *chc = data;
+	u8 chgrirq0_stat, chgrirq0_int;
+
+	if (intel_scu_ipc_ioread8(SCHGRIRQ0_ADDR, &chgrirq0_stat)) {
+		dev_err(chc->dev,
+			"%s(): Error in reading SCHGRIRQ0_ADDR\n", __func__);
+		goto end;
+	}
+
+	/* read interrupt register */
+	chgrirq0_int = readb(chc->pmic_intr_iomap);
+	dev_dbg(chc->dev, "SCHGRIQ0=%X chgrirq0%X\n",
+		chgrirq0_stat, chgrirq0_int);
+
+	handle_interrupt(chgrirq0_int, chgrirq0_stat, chgrirq0_info,
+			 ARRAY_SIZE(chgrirq0_info));
+end:
+	/*clear first level IRQ */
+	intel_scu_ipc_update_register(IRQLVL1_ADDR, 0xFF, IRQLVL1_CHRGR_MASK);
+	return IRQ_HANDLED;
+
+}
+
+static int bcove_init(void)
+{
+	struct batt_charging_profile bcprof;
+	int ret, i;
+	u8 addr_tzone, addr_cv, addr_cc, reg_val;
+	u16 adc_val;
+	memset(&bcprof, 0x00, sizeof(bcprof));
+
+	if (!get_batt_charging_profile(&bcprof))
+		return -EINVAL;
+
+
+	ret = intel_scu_ipc_update_register(CHGRCTRL0_ADDR, SWCONTROL_ENABLE,
+					    CHGRCTRL0_SWCONTROL_MASK);
+	if (ret)
+		return ret;
+
+	/*Configure Temp Zone, CC and CV */
+	addr_tzone = THRMNZ4H_ADDR;
+
+	/*Ignore Emegency Charging Zones */
+	addr_cc = TT_CHRCCHOTVAL_ADDR;
+	addr_cv = TT_CHRCVHOTVAL_ADDR;
+
+	/* TODO: Check if tempmon range < 4 */
+	for (i = 0; i < bcprof.temp_mon_ranges; ++i) {
+
+		ret =
+		    CONVERT_TEMP_TO_ADC(bcprof.temp_mon_range[i].temp_up_lim,
+					(int *)&adc_val);
+		if (unlikely(ret))
+			return ret;
+		ret = bcove_update_tt(addr_tzone, 0x03, adc_val >> 8);
+		if (unlikely(ret))
+			return ret;
+
+		ret = bcove_write_tt((addr_tzone + 1),
+					       (adc_val & 0xFF));
+		if (unlikely(ret))
+			return ret;
+
+		addr_tzone -= 2;
+
+		ret = chc.ext_chrgr->cc_to_reg(bcprof.temp_mon_range[i].
+					     full_chrg_cur, &reg_val);
+		if (ret)
+			return ret;
+		ret = bcove_write_tt(addr_cc, reg_val);
+		if (unlikely(ret))
+			return ret;
+		addr_cc--;
+
+		ret = chc.ext_chrgr->cv_to_reg(bcprof.temp_mon_range[i].
+					     full_chrg_cur, &reg_val);
+		if (ret)
+			return ret;
+
+		ret = bcove_write_tt(addr_cv, reg_val);
+		if (unlikely(ret))
+			return ret;
+		addr_cc--;
+
+		/* Write lowest temp limit */
+		if (i == (bcprof.temp_mon_ranges - 1)) {
+			ret =
+			    CONVERT_TEMP_TO_ADC(bcprof.temp_mon_range[i].
+						temp_up_lim, (int *)&adc_val);
+			if (unlikely(ret))
+				return ret;
+			ret = bcove_update_tt(addr_tzone, 0x03, adc_val >> 8);
+			if (unlikely(ret))
+				return ret;
+
+			ret = bcove_write_tt((addr_tzone + 1),
+						       (adc_val & 0xFF));
+		}
+
+	}
+	return ret;
+
+}
+
+static int otg_handle_notification(struct notifier_block *nb,
+				   unsigned long event, void *data)
+{
+	charger_helper_charger_port_changed(chc.ch_handle,
+					    (struct power_supply_charger_cap *)
+					    data);
+	return NOTIFY_OK;
+
+}
+
+static struct bc_chrgr_drv_context chc = {
+
+	.psy = {
+		.name = CHARGER_PS_NAME,
+		.type = POWER_SUPPLY_TYPE_USB,
+		.properties = bc_chrgr_ps_props,
+		.num_properties = ARRAY_SIZE(bc_chrgr_ps_props),
+		.get_property = bc_chrgr_ps_get_property,
+
+		},
+
+	.ch_charger = {
+		       .flags = USB_CHRGR_SUPPORTED | USB_VSYS_SUPPORTED,
+		       .enable_charging = enable_charging,
+		       .disable_charging = disable_charging,
+		       .disable_charger  = disable_charger,
+		       .set_ilimmA = bc_set_ilimmA,
+		       .is_battery_charging = is_battery_charging,
+		       .charger_callback = charger_callback,
+		       },
+	.otg_nb = {
+		   .notifier_call = otg_handle_notification,
+		   }
+};
 
 /**
  * bc_charger_probe - basin cove charger probe function
@@ -452,111 +955,85 @@ EXPORT_SYMBOL(bc_get_battery_pack_temp);
  */
 static int bc_chrgr_probe(struct platform_device *pdev)
 {
-	struct bc_chrgr_drv_context *chrgr_drv_cxt = NULL;
 	int retval = 0;
-
-	chrgr_drv_cxt =
-	    kzalloc(sizeof(struct bc_chrgr_drv_context), GFP_KERNEL);
-	if (!chrgr_drv_cxt) {
-		dev_err(&pdev->dev, "%s(): memory allocation failed\n",
-			__func__);
+	struct batt_charging_profile bcprof;
+	if (!pdev)
 		return -ENOMEM;
-	}
-	chrgr_drv_cxt->chrg_profile =
-	    kzalloc(sizeof(struct batt_charging_profile), GFP_KERNEL);
-	if (!chrgr_drv_cxt->chrg_profile) {
+	chc.dev = &pdev->dev;
+	chc.irq = platform_get_irq(pdev, 0);
+	platform_set_drvdata(pdev, &chc);
 
-		dev_err(&pdev->dev, "%s(): memory allocation failed: Unable to"
-			"allocate memory for battery profile\n", __func__);
+	/*FIXME: Make charger selection dynamic */
+	chc.ext_chrgr = &bq24260_chrgr;
+
+	/* Read Charger I2C slave Address */
+	retval = bcove_read_tt(TT_I2CDADDR_ADDR, &chc.ext_chrgr_addr);
+	if (unlikely(retval))
+		return retval;
+
+	if (!get_batt_charging_profile(&bcprof))
+		chc.invalid_batt = true;
+	else {
+		retval = bcove_init();
+		if (retval) {
+			dev_err(chc.dev, "Error in Initializing PMIC\n");
+			return retval;
+		}
+	}
+
+	/*register with charger helper */
+	chc.ch_charger.dev = &pdev->dev;
+	chc.ch_charger.invalid_battery = chc.invalid_batt;
+	chc.ch_handle = charger_helper_register_charger(&chc.ch_charger);
+
+	if (!chc.ch_handle) {
+		dev_err(&pdev->dev, "Error in charger_helper_register\n");
+		return -EIO;
+	}
+	chc.pmic_intr_iomap = ioremap_nocache(PMIC_SRAM_INTR_ADDR, 8);
+	if (!chc.pmic_intr_iomap) {
+		dev_err(&pdev->dev, "ioremap Failed\n");
 		retval = -ENOMEM;
-		goto chrg_profile_alloc_failed;
+		goto ioremap_failed;
 	}
-
-	chrgr_drv_cxt->batt_config =
-	    kzalloc(sizeof(struct plat_battery_config), GFP_KERNEL);
-	if (!chrgr_drv_cxt->batt_config) {
-
-		dev_err(&pdev->dev, "%s(): memory allocation failed: Unable to"
-			"allocate memory for battery configuration\n",
-			__func__);
-		retval = -ENOMEM;
-		goto batt_config_alloc_failed;
-	}
-
-	chrgr_drv_cxt->pdev = pdev;
-	chrgr_drv_cxt->irq = platform_get_irq(pdev, 0);
-	platform_set_drvdata(pdev, chrgr_drv_cxt);
-	bc_chrgr_dev = &pdev->dev;
-
-	/* Initialize work for otg callback worker*/
-	INIT_DELAYED_WORK(&chrgr_drv_cxt->chrg_callback_dwrk,
-				bc_chrg_callback_worker);
-
-	if (get_batt_charging_profile(chrgr_drv_cxt->chrg_profile)) {
-		dev_err(&pdev->dev, "%s() :Failed to get battery properties\n",
-			__func__);
-		populate_invalid_chrg_profile(chrgr_drv_cxt->chrg_profile);
-		chrgr_drv_cxt->invalid_batt = true;
-	}
-
-	if (get_batt_config(chrgr_drv_cxt->batt_config)) {
-		dev_err(&pdev->dev, "%s() :Failed to get battery settings\n",
-			__func__);
-		populate_default_battery_config(chrgr_drv_cxt->batt_config);
-	}
-
-	init_charger_ps_context(chrgr_drv_cxt);
-	init_batt_props_context(chrgr_drv_cxt);
-
-	/*TODO: Interrupt tree mapping */
-	/*TODO: Register IRQ handler */
-
-	/* initialize mutexes */
-	mutex_init(&chrgr_drv_cxt->bc_chrgr_lock);
-	mutex_init(&chrgr_drv_cxt->batt_lock);
-
-	retval = power_supply_register(&pdev->dev, &chrgr_drv_cxt->bc_chrgr_ps);
+	/* register interrupt */
+	retval = request_threaded_irq(chc.irq, NULL,
+				      bc_thread_handler, 0, DRIVER_NAME, &chc);
 	if (retval) {
-		dev_err(&pdev->dev,
-			"%s(): failed to register basin cove charger"
-			"device with power supply subsystem\n", __func__);
-		goto ps_reg_failed;
+		dev_err(&pdev->dev, "Error in request_threaded_irq(irq(%d)\n",
+			chc.irq);
+		goto req_irq_failed;
 	}
 
-	/*register OTG callback handle-	callback register function not
-	implemented yet so a stub with temporary return type as
-	integer is provided above*/
-	otg_handle = tangier_otg_register_bc_callback(bc_charger_callback,
-					(void *)chrgr_drv_cxt);
+	retval = power_supply_register(&pdev->dev, &chc.psy);
+	if (retval)
+		goto psy_reg_failed;
 
-	if (!otg_handle) {
-		dev_err(&pdev->dev, "battery: OTG Registration failed\n");
-		retval = PTR_ERR(otg_handle);
+	chc.transceiver = otg_get_transceiver();
+	if (!chc.transceiver) {
+		dev_err(chc.dev, "failure to get otg transceiver\n");
 		goto otg_reg_failed;
 	}
-	/* Enable SWCONTROL bit to handle USB events from SW */
-	retval = intel_scu_ipc_update_register(CHGRCTRL0_ADDR, SWCONTROL_ENABLE,
-					       CHGRCTRL0_SWCONTROL_MASK);
+	retval = otg_register_notifier(chc.transceiver, &chc.otg_nb);
 	if (retval) {
-
-		dev_err(&pdev->dev, "%s(): failed to set SWCONTROL bit"
-			"Continuing in HW charging mode\n", __func__);
+		dev_err(chc.dev, "failure to register otg notifier\n");
+		goto otg_reg_failed;
 	}
-	return retval;
+
+	return 0;
+
 otg_reg_failed:
-	power_supply_unregister(&chrgr_drv_cxt->bc_chrgr_ps);
-ps_reg_failed:
-	kfree(chrgr_drv_cxt->batt_config);
-batt_config_alloc_failed:
-	kfree(chrgr_drv_cxt->chrg_profile);
-chrg_profile_alloc_failed:
-	kfree(chrgr_drv_cxt);
-
+	power_supply_unregister(&chc.psy);
+psy_reg_failed:
+	free_irq(chc.irq, &chc);
+req_irq_failed:
+	iounmap(chc.pmic_intr_iomap);
+ioremap_failed:
+	charger_helper_unregister_charger(chc.ch_handle);
 	return retval;
-
 }
 
-static void bc_chrgr_do_exit_ops(struct bc_chrgr_drv_context *chrgr_drv_cxt)
+static void bc_chrgr_do_exit_ops(struct bc_chrgr_drv_context *chc)
 {
 	/*TODO:
 	 * If charger is connected send IPC message to SCU to continue charging
@@ -575,19 +1052,21 @@ static void bc_chrgr_do_exit_ops(struct bc_chrgr_drv_context *chrgr_drv_cxt)
  */
 static int bc_chrgr_remove(struct platform_device *pdev)
 {
-	struct bc_chrgr_drv_context *chrgr_drv_cxt = platform_get_drvdata(pdev);
+	struct bc_chrgr_drv_context *chc = platform_get_drvdata(pdev);
 
-	if (chrgr_drv_cxt) {
-		bc_chrgr_do_exit_ops(chrgr_drv_cxt);
-		tangier_otg_unregister_bc_callback(otg_handle);
-		power_supply_unregister(&chrgr_drv_cxt->bc_chrgr_ps);
+	if (chc) {
+		bc_chrgr_do_exit_ops(chc);
+		if (chc->transceiver) {
+			otg_unregister_notifier(chc->transceiver, &chc->otg_nb);
+			otg_put_transceiver(chc->transceiver);
+		}
 
-		kfree(chrgr_drv_cxt->chrg_profile);
-		kfree(chrgr_drv_cxt->batt_config);
-		mutex_destroy(&chrgr_drv_cxt->bc_chrgr_lock);
-		kfree(chrgr_drv_cxt);
+		free_irq(chc->irq, chc);
+		charger_helper_unregister_charger(chc->ch_handle);
+		power_supply_unregister(&chc->psy);
+		iounmap(chc->pmic_intr_iomap);
+
 	}
-
 	return 0;
 }
 
@@ -686,6 +1165,7 @@ static void __exit bc_chrgr_exit(void)
 
 	platform_driver_unregister(&bc_chrgr_driver);
 }
+
 /* Defer init call so that dependant drivers will be loaded. Using  async
  * for parallel driver initialization */
 late_initcall_async(bc_chrgr_init);

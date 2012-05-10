@@ -227,6 +227,7 @@ config CHARGER_SMB347
 config INTEL_MID_BASIN_COVE_CHARGER
         tristate "Charger driver for Basin Cove PMIC on Intel MID"
         depends on INTEL_SCU_IPC
+	select CHARGER_HELPER
         help
 	  Say Y here to enable the Basin Cove charger driver on Intel MID
 	  platforms.

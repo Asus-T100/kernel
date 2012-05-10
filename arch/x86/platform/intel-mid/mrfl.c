@@ -87,17 +87,18 @@ static int __init sfi_parse_batt(struct sfi_table_header *table)
 	totentrs = SFI_GET_NUM_ENTRIES(sb, struct batt_charging_profile);
 	if (totentrs) {
 		batt_chrg_profile = kzalloc(
-			sizeof(struct batt_charging_profile), GFP_KERNEL);
+			sizeof(*batt_chrg_profile), GFP_KERNEL);
 		if (!batt_chrg_profile) {
 			pr_info("%s(): Error in kzalloc\n", __func__);
 			return -ENOMEM;
 		}
 		pentry = (struct batt_charging_profile *)sb->pentry;
 		totlen = totentrs * sizeof(*pentry);
-		if (totlen <= sizeof(batt_chrg_profile))
+		if (totlen <= sizeof(*batt_chrg_profile))
 			memcpy(batt_chrg_profile, pentry, totlen);
 		else {
-			pr_err("%s: Error in copying batt charge profile\n");
+			pr_err("%s: Error in copying batt charge profile\n",
+							__func__);
 			kfree(batt_chrg_profile);
 			return -ENOMEM;
 		}

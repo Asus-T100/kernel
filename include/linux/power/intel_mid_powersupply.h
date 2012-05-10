@@ -31,12 +31,11 @@
 
 #define BATT_STRING_MAX		8
 #define BATTID_STR_LEN		8
-#define BATT_PROF_MAX_TEMP_NR_RNG	6
+#define BATT_PROF_MAX_TEMP_NR_RNG 4
 /* Temperature Monitoring Table */
 
 struct temp_mon_table {
 	short int temp_up_lim;
-	short int temp_low_lim;
 	short int rbatt;
 	short int full_chrg_vol;
 	short int full_chrg_cur;
@@ -49,11 +48,15 @@ struct temp_mon_table {
 /* FIXME: make the batt_chargig profile generic */
 struct batt_charging_profile {
 	char batt_id[BATTID_STR_LEN];
-	unsigned short int voltage_max;
-	unsigned int capacity;
-	u8 battery_type;
-	u8 temp_mon_ranges;
+	u16 low_batt_mV;
+	u16 chrg_term_mA;
+	u16 disch_tmp_ul;
+	u16 disch_tmp_ll;
+	u16 voltage_max;
+	u16 battery_type;
+	u16 temp_mon_ranges;
 	struct temp_mon_table temp_mon_range[BATT_PROF_MAX_TEMP_NR_RNG];
+	short int temp_low_lim;
 } __packed;
 
 /* Battery Configuration info */
