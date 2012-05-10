@@ -91,12 +91,6 @@ enum hmm_bo_type {
 #define	HMM_BO_MEM_TYPE_USER     0x1
 #define	HMM_BO_MEM_TYPE_PFN      0x2
 
-struct page_block {
-	struct list_head	list;
-	struct page		*pages;
-	int			order;
-};
-
 struct hmm_buffer_object {
 	struct hmm_bo_device	*bdev;
 	struct list_head	list;
@@ -105,7 +99,6 @@ struct hmm_buffer_object {
 	/* mutex protecting this BO */
 	struct mutex		mutex;
 	enum hmm_bo_type	type;
-	struct list_head	pgblocks;
 	struct page		**pages;	/* physical pages */
 	unsigned int		pgnr;	/* page number */
 	int			from_highmem;
