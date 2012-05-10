@@ -250,7 +250,8 @@ static void __cpuinit intel_mid_arch_setup(void)
 		__intel_mid_cpu_chip = INTEL_MID_CPU_CHIP_LINCROFT;
 	else if (boot_cpu_data.x86 == 6 && boot_cpu_data.x86_model == 0x35)
 		__intel_mid_cpu_chip = INTEL_MID_CPU_CHIP_CLOVERVIEW;
-	else if (boot_cpu_data.x86 == 6 && boot_cpu_data.x86_model == 0x3C)
+	else if (boot_cpu_data.x86 == 6 && (boot_cpu_data.x86_model == 0x3C ||
+					boot_cpu_data.x86_model == 0x4A))
 		__intel_mid_cpu_chip = INTEL_MID_CPU_CHIP_TANGIER;
 	else {
 		pr_err("Unknown Moorestown CPU (%d:%d), default to Lincroft\n",
