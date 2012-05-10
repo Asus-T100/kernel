@@ -18,6 +18,7 @@
 
 enum {
 	IPC_SCU = 0,
+	IPC_PSH,
 	IPC_BUS_NR,
 };
 

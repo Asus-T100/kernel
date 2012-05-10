@@ -2453,6 +2453,7 @@ CONFIG_INTEL_MID_UMIP=y
 CONFIG_CLKSRC_I8253=y
 # CONFIG_GPS is not set
 
+CONFIG_INTEL_PSH_IPC=y
 #
 # Altera FPGA firmware download module
 #

@@ -652,6 +652,20 @@ void intel_scu_devices_destroy(int bus_id)
 }
 EXPORT_SYMBOL_GPL(intel_scu_devices_destroy);
 
+void intel_psh_devices_create(int bus_id)
+{
+	if (bus_id == IPC_PSH)
+		ipc_register_devices(bus_id);
+}
+EXPORT_SYMBOL_GPL(intel_psh_devices_create);
+
+void intel_psh_devices_destroy(int bus_id)
+{
+	if (bus_id == IPC_PSH)
+		ipc_remove_devices(bus_id);
+}
+EXPORT_SYMBOL_GPL(intel_psh_devices_destroy);
+
 void __init install_ipc_irq_resource(struct ipc_device *ipcdev, int irq)
 {
 	/* Single threaded */
