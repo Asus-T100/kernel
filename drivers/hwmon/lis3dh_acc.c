@@ -74,6 +74,13 @@
 #define SENSITIVITY_8G		4	/**	mg/LSB	*/
 #define SENSITIVITY_16G		12	/**	mg/LSB	*/
 
+/* Accelerometer Sensor Full Scale */
+#define LIS3DH_ACC_FS_MASK		0x30
+#define LIS3DH_ACC_G_2G		0x00
+#define LIS3DH_ACC_G_4G		0x10
+#define LIS3DH_ACC_G_8G		0x20
+#define LIS3DH_ACC_G_16G		0x30
+
 /* Accelerometer Sensor Operating Mode */
 #define LIS3DH_ACC_ENABLE	0x01
 #define LIS3DH_ACC_DISABLE	0x00
@@ -355,18 +362,23 @@ int lis3dh_acc_update_g_range(struct lis3dh_acc_data *acc, u8 new_g_range)
 	u8 init_val;
 	u8 new_val;
 	u8 mask = LIS3DH_ACC_FS_MASK | HIGH_RESOLUTION;
+	u8 fs_bits = 0;
 
 	switch (new_g_range) {
-	case LIS3DH_ACC_G_2G:
+	case 2:
+		fs_bits = LIS3DH_ACC_G_2G;
 		sensitivity = SENSITIVITY_2G;
 		break;
-	case LIS3DH_ACC_G_4G:
+	case 4:
+		fs_bits = LIS3DH_ACC_G_4G;
 		sensitivity = SENSITIVITY_4G;
 		break;
-	case LIS3DH_ACC_G_8G:
+	case 8:
+		fs_bits = LIS3DH_ACC_G_8G;
 		sensitivity = SENSITIVITY_8G;
 		break;
-	case LIS3DH_ACC_G_16G:
+	case 16:
+		fs_bits = LIS3DH_ACC_G_16G;
 		sensitivity = SENSITIVITY_16G;
 		break;
 	default:
@@ -382,7 +394,7 @@ int lis3dh_acc_update_g_range(struct lis3dh_acc_data *acc, u8 new_g_range)
 		goto error;
 	init_val = buf;
 	acc->resume_state[RES_CTRL_REG4] = init_val;
-	new_val = new_g_range | HIGH_RESOLUTION;
+	new_val = fs_bits | HIGH_RESOLUTION;
 	updated_val = ((mask & new_val) | ((~mask) & init_val));
 	buf = updated_val;
 	err = lis3dh_acc_i2c_write(acc, CTRL_REG4, &buf, 1);
@@ -640,24 +652,10 @@ static ssize_t attr_get_range(struct device *dev,
 {
 	char val;
 	struct lis3dh_acc_data *acc = dev_get_drvdata(dev);
-	char range = 2;
+	char range;
 
 	mutex_lock(&acc->lock);
-	val = acc->pdata->g_range ;
-	switch (val) {
-	case LIS3DH_ACC_G_2G:
-		range = 2;
-		break;
-	case LIS3DH_ACC_G_4G:
-		range = 4;
-		break;
-	case LIS3DH_ACC_G_8G:
-		range = 8;
-		break;
-	case LIS3DH_ACC_G_16G:
-		range = 16;
-		break;
-	}
+	range = acc->pdata->g_range ;
 	mutex_unlock(&acc->lock);
 	return sprintf(buf, "%d\n", range);
 }
@@ -672,9 +670,13 @@ static ssize_t attr_set_range(struct device *dev,
 	if (strict_strtoul(buf, 10, &val))
 		return -EINVAL;
 
+	if (val != 2 && val != 4 && val != 8 && val != 16)
+		return -EINVAL;
+
+
 	mutex_lock(&acc->lock);
-	acc->pdata->g_range = val;
-	lis3dh_acc_update_g_range(acc, val);
+	acc->pdata->g_range = (u8) val;
+	lis3dh_acc_update_g_range(acc, acc->pdata->g_range);
 	mutex_unlock(&acc->lock);
 
 	return size;

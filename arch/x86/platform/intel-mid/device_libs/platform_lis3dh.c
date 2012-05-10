@@ -21,6 +21,7 @@ void *lis3dh_platform_data(void *info)
 	static struct lis3dh_acc_platform_data lis3dh_pdata;
 
 	lis3dh_pdata.poll_interval = 200;
+	lis3dh_pdata.g_range = 2;
 	lis3dh_pdata.negate_x = 1;
 	lis3dh_pdata.negate_y = 0;
 	lis3dh_pdata.negate_z = 0;

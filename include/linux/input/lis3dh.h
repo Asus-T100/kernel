@@ -61,13 +61,6 @@ Revision 1-0-7 26/11/2010
 /*   Accelerometer defines section              */
 /************************************************/
 
-/* Accelerometer Sensor Full Scale */
-#define LIS3DH_ACC_FS_MASK		0x30
-#define LIS3DH_ACC_G_2G		0x00
-#define LIS3DH_ACC_G_4G		0x10
-#define LIS3DH_ACC_G_8G		0x20
-#define LIS3DH_ACC_G_16G		0x30
-
 /* supported accelerometer model */
 enum acc_model {
 	MODEL_LIS3DH,

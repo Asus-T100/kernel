@@ -21,6 +21,7 @@ void *lsm303dlhc_accel_platform_data(void *info)
 	static struct lis3dh_acc_platform_data accel;
 
 	accel.poll_interval = 200;
+	accel.g_range = 2;
 	accel.negate_x = 1;
 	accel.negate_y = 0;
 	accel.negate_z = 0;
