@@ -557,12 +557,13 @@ ret:
  */
 static irqreturn_t pmu_sc_irq(int irq, void *ignored)
 {
-	u8 status = IRQ_NONE;
+	int status;
+	irqreturn_t ret = IRQ_NONE;
 	int wake_source;
 
 	/* check if interrup pending bit is set, if not ignore interrupt */
 	if (unlikely(!pmu_interrupt_pending())) {
-		pmu_log_pmu_irq(status, mid_pmu_cxt->interactive_cmd_sent);
+		pmu_log_pmu_irq(PMU_FAILED, mid_pmu_cxt->interactive_cmd_sent);
 		goto ret_no_clear;
 	}
 
@@ -574,7 +575,6 @@ static irqreturn_t pmu_sc_irq(int irq, void *ignored)
 	switch (status) {
 	case INVALID_INT:
 		pmu_log_pmu_irq(status, mid_pmu_cxt->interactive_cmd_sent);
-		status = IRQ_NONE;
 		goto ret_no_clear;
 
 	case CMD_COMPLETE_INT:
@@ -624,9 +624,9 @@ static irqreturn_t pmu_sc_irq(int irq, void *ignored)
 		up(&mid_pmu_cxt->scu_ready_sem);
 	}
 
-	status = IRQ_HANDLED;
+	ret = IRQ_HANDLED;
 ret_no_clear:
-	return status;
+	return ret;
 }
 
 void pmu_set_s0ix_complete(void)
@@ -636,16 +636,16 @@ void pmu_set_s0ix_complete(void)
 }
 EXPORT_SYMBOL(pmu_set_s0ix_complete);
 
-bool pmu_is_s0i3_in_progress(void)
+bool pmu_is_s0ix_in_progress(void)
 {
 	bool state = false;
 
-	if (pmu_initialized && mid_pmu_cxt->s0ix_entered == MID_S0I3_STATE)
+	if (pmu_initialized && mid_pmu_cxt->s0ix_entered)
 		state = true;
 
 	return state;
 }
-EXPORT_SYMBOL(pmu_is_s0i3_in_progress);
+EXPORT_SYMBOL(pmu_is_s0ix_in_progress);
 
 static inline u32 find_index_in_hash(struct pci_dev *pdev, int *found)
 {

@@ -70,7 +70,7 @@ static void clv_pmu_wakeup(void)
 {
 
 	/* Wakeup allother CPU's */
-	if (mid_pmu_cxt->s0ix_entered == MID_S0I3_STATE)
+	if (mid_pmu_cxt->s0ix_entered)
 		apic->send_IPI_allbutself(RESCHEDULE_VECTOR);
 }
 

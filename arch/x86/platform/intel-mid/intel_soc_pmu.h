@@ -367,7 +367,7 @@ extern struct platform_pmu_ops *pmu_ops;
 extern u32 get_s0ix_val_set_pm_ssc(int);
 
 #ifdef LOG_PMU_EVENTS
-extern void pmu_log_pmu_irq(u8 status, bool interactive_cmd_sent);
+extern void pmu_log_pmu_irq(int status, bool interactive_cmd_sent);
 extern void pmu_log_command(u32 command, struct pmu_ss_states *pm_ssc);
 extern void pmu_dump_logs(void);
 #endif

@@ -112,7 +112,7 @@ extern pci_power_t pmu_pci_choose_state(struct pci_dev *pdev);
 
 extern void pmu_power_off(void);
 extern void pmu_set_s0ix_complete(void);
-extern bool pmu_is_s0i3_in_progress(void);
+extern bool pmu_is_s0ix_in_progress(void);
 extern int pmu_nc_set_power_state
 	(int islands, int state_type, int reg_type);
 extern int mid_nc_read32(u32 cmd, u32 *data);

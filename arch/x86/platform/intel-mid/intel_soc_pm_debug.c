@@ -54,7 +54,7 @@ static void pmu_log_timestamp(struct timespec *ts)
 	}
 }
 
-void pmu_log_pmu_irq(u8 status, bool interactive_cmd_sent)
+void pmu_log_pmu_irq(int status, bool interactive_cmd_sent)
 {
 	struct mid_pmu_pmu_irq_log *log =
 		&mid_pmu_cxt->pmu_irq_log[mid_pmu_cxt->pmu_irq_log_idx];
@@ -209,7 +209,7 @@ void pmu_dump_logs(void)
 	pmu_dump_ipc_irq_log();
 }
 #else
-void pmu_log_pmu_irq(u8 status, bool interactive_cmd_sent) {}
+void pmu_log_pmu_irq(int status, bool interactive_cmd_sent) {}
 void pmu_log_command(u32 command, struct pmu_ss_states *pm_ssc) {}
 void pmu_dump_logs(void) {}
 #endif /* LOG_PMU_EVENTS */
