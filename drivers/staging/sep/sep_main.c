@@ -3160,20 +3160,15 @@ int sep_prepare_input_output_dma_table_in_dcb(struct sep_device *sep,
 	dcb_table_ptr->tail_data_size = 0;
 	dcb_table_ptr->out_vr_tail_pt = 0;
 
-	if (isapplet == true) {
+	if ((isapplet == true) && (is_kva == false)) {
 
 		/* Check if there is enough data for DMA operation */
 		if (data_in_size < SEP_DRIVER_MIN_DATA_SIZE_PER_TABLE) {
-			if (is_kva == true) {
-				error = -ENODEV;
+			if (copy_from_user(dcb_table_ptr->tail_data,
+				(void __user *)app_in_address,
+				data_in_size)) {
+				error = -EFAULT;
 				goto end_function_error;
-			} else {
-				if (copy_from_user(dcb_table_ptr->tail_data,
-					(void __user *)app_in_address,
-					data_in_size)) {
-					error = -EFAULT;
-					goto end_function_error;
-				}
 			}
 
 			dcb_table_ptr->tail_data_size = data_in_size;
@@ -3203,17 +3198,12 @@ int sep_prepare_input_output_dma_table_in_dcb(struct sep_device *sep,
 			}
 		}
 		if (tail_size) {
-			if (is_kva == true) {
-				error = -ENODEV;
+			/* We have tail data - copy it to DCB */
+			if (copy_from_user(dcb_table_ptr->tail_data,
+				(void *)(app_in_address +
+				data_in_size - tail_size), tail_size)) {
+				error = -EFAULT;
 				goto end_function_error;
-			} else {
-				/* We have tail data - copy it to DCB */
-				if (copy_from_user(dcb_table_ptr->tail_data,
-					(void *)(app_in_address +
-					data_in_size - tail_size), tail_size)) {
-					error = -EFAULT;
-					goto end_function_error;
-				}
 			}
 			if (app_out_address)
 				/*
