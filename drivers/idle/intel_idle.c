@@ -302,7 +302,7 @@ static void enter_s0ix_state(u32 eax, int s0ix_state,
 		 s0ix_state) {
 		s0ix_entered = mid_s0ix_enter(s0ix_state);
 		if (!s0ix_entered) {
-			if (pmu_is_s0i3_in_progress()) {
+			if (pmu_is_s0ix_in_progress()) {
 				atomic_dec(&nr_cpus_in_c6);
 				eax = C4_HINT;
 			}
@@ -362,11 +362,11 @@ static int soc_s0ix_idle(struct cpuidle_device *dev,
 	int cpu = smp_processor_id();
 	int s0ix_state   = 0;
 
-	/* Check if s0i3 is already in progress,
+	/* Check if s0ix is already in progress,
 	 * This is required to demote C6 while S0ix
 	 * is in progress
 	 */
-	if (unlikely(pmu_is_s0i3_in_progress())) {
+	if (unlikely(pmu_is_s0ix_in_progress())) {
 		dev->last_state = &dev->states[C4_STATE_IDX];
 		return intel_idle(dev, &dev->states[C4_STATE_IDX]);
 	}
