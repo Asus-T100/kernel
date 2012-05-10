@@ -119,7 +119,7 @@ static struct mtx_size_info xhg_buf_info;
 			count < ptr_lut->mem_##state##_length; count++) { \
 			ptr_lut->mmap_##state[count].ctrl_remap_address = \
 				ioremap_nocache(ptr_lut-> \
-					mmap_init[count].ctrl_addr, \
+					mmap_##state[count].ctrl_addr, \
 					sizeof(unsigned long)); \
 			ptr_lut->mmap_##state[count].data_remap_address = \
 				ioremap_nocache(ptr_lut-> \
