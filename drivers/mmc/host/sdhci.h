@@ -275,6 +275,7 @@ struct sdhci_ops {
 	int	(*set_uhs_signaling)(struct sdhci_host *host, unsigned int uhs);
 	void	(*hw_reset)(struct sdhci_host *host);
 	int		(*power_up_host)(struct sdhci_host *host);
+	int    (*get_cd)(struct sdhci_host *host);
 };
 
 #ifdef CONFIG_MMC_SDHCI_IO_ACCESSORS

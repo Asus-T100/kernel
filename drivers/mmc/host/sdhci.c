@@ -2122,6 +2122,20 @@ static void sdhci_enable_preset_value(struct mmc_host *mmc, bool enable)
 	sdhci_runtime_pm_put(host);
 }
 
+static int sdhci_get_cd(struct mmc_host *mmc)
+{
+	struct sdhci_host *host = mmc_priv(mmc);
+	int present = -EOPNOTSUPP;
+
+	if (host->ops->get_cd) {
+		sdhci_runtime_pm_get(host);
+		present = host->ops->get_cd(host);
+		sdhci_runtime_pm_put(host);
+	}
+
+	return present;
+}
+
 static const struct mmc_host_ops sdhci_ops = {
 	.request	= sdhci_request,
 	.set_ios	= sdhci_set_ios,
@@ -2131,6 +2145,7 @@ static const struct mmc_host_ops sdhci_ops = {
 	.start_signal_voltage_switch	= sdhci_start_signal_voltage_switch,
 	.execute_tuning			= sdhci_execute_tuning,
 	.enable_preset_value		= sdhci_enable_preset_value,
+	.get_cd		= sdhci_get_cd,
 };
 
 /*****************************************************************************\
@@ -2145,6 +2160,8 @@ static void sdhci_tasklet_card(unsigned long param)
 	unsigned long flags;
 
 	host = (struct sdhci_host*)param;
+
+	cancel_delayed_work(&host->mmc->detect);
 
 	spin_lock_irqsave(&host->lock, flags);
 
@@ -2165,7 +2182,7 @@ static void sdhci_tasklet_card(unsigned long param)
 
 	spin_unlock_irqrestore(&host->lock, flags);
 
-	mmc_detect_change(host->mmc, msecs_to_jiffies(200));
+	mmc_detect_change(host->mmc, msecs_to_jiffies(500));
 }
 
 static void sdhci_tasklet_finish(unsigned long param)
@@ -2196,7 +2213,7 @@ static void sdhci_tasklet_finish(unsigned long param)
 	 * upon error conditions.
 	 */
 	if (!(host->flags & SDHCI_DEVICE_DEAD) &&
-	    ((mrq->cmd && mrq->cmd->error) ||
+	    ((mrq->cmd && mrq->cmd->error && mrq->cmd->error != -ENOMEDIUM) ||
 		 (mrq->data && (mrq->data->error ||
 		  (mrq->data->stop && mrq->data->stop->error))) ||
 		   (host->quirks & SDHCI_QUIRK_RESET_AFTER_REQUEST))) {

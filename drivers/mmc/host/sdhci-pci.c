@@ -1259,11 +1259,27 @@ static int sdhci_pci_power_up_host(struct sdhci_host *host)
 #define sdhci_pci_power_up_host	NULL
 #endif
 
+static int sdhci_pci_get_cd(struct sdhci_host *host)
+{
+	bool present;
+
+	/* If nonremovable or polling, assume that the card is always present */
+	if ((host->mmc->caps & MMC_CAP_NONREMOVABLE) ||
+			(host->quirks & SDHCI_QUIRK_BROKEN_CARD_DETECTION))
+		present = true;
+	else
+		present = sdhci_readl(host, SDHCI_PRESENT_STATE) &
+			SDHCI_CARD_PRESENT;
+
+	return present;
+}
+
 static struct sdhci_ops sdhci_pci_ops = {
 	.enable_dma	= sdhci_pci_enable_dma,
 	.platform_8bit_width	= sdhci_pci_8bit_width,
 	.hw_reset		= sdhci_pci_hw_reset,
 	.power_up_host	= sdhci_pci_power_up_host,
+	.get_cd		= sdhci_pci_get_cd,
 };
 
 /*****************************************************************************\
