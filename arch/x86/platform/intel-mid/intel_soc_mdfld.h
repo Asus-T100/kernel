@@ -25,7 +25,7 @@
 #define ISP_SUB_CLASS		0x80
 #define C6_OFFLOAD_REG_ADDR	0xffd01ffc
 #define PMU_MISC_SET_TIMEOUT	50 /* 50usec timeout */
-#define PMU_C6OFFLOAD_ACCESS_TIMEOUT 500 /* 500usecs timeout */
+#define PMU_C6OFFLOAD_ACCESS_TIMEOUT 1500 /* 1.5msecs timeout */
 
 #define GFX_LSS_INDEX			1
 #define PMU_SDIO0_LSS_00		0

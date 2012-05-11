@@ -34,13 +34,10 @@ static int clv_pmu_init(void)
 	return 0;
 }
 
-static u32 clv_pmu_enter(int s0ix_state)
+static bool clv_pmu_enter(int s0ix_state)
 {
-	u32 s0ix_value = 0;
+	u32 s0ix_value;
 	int num_retry = PMU_MISC_SET_TIMEOUT;
-
-	if (unlikely(need_resched()))
-		return s0ix_value;
 
 	s0ix_value = get_s0ix_val_set_pm_ssc(s0ix_state);
 
@@ -58,7 +55,7 @@ static u32 clv_pmu_enter(int s0ix_state)
 
 	mid_pmu_cxt->s0ix_entered = s0ix_state;
 
-	return s0ix_value;
+	return true;
 }
 
 static void clv_pmu_remove(void)

@@ -338,7 +338,7 @@ struct mid_pmu_dev {
 struct platform_pmu_ops {
 	int (*init)(void);
 	void (*prepare)(int);
-	u32 (*enter)(int);
+	bool (*enter)(int);
 	void (*wakeup)(void);
 	void (*remove)(void);
 	pci_power_t (*pci_choose_state) (int);

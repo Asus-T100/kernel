@@ -511,13 +511,11 @@ static void pmu_prepare_wake(int s0ix_state)
 	writel(cur_pmsss.pmu2_states[1], &mid_pmu_cxt->pmu_reg->pm_wssc[1]);
 	writel(cur_pmsss.pmu2_states[2], &mid_pmu_cxt->pmu_reg->pm_wssc[2]);
 	writel(cur_pmsss.pmu2_states[3], &mid_pmu_cxt->pmu_reg->pm_wssc[3]);
-
 }
 
 int mid_s0ix_enter(int s0ix_state)
 {
 	int ret = 0;
-	u32 s0ix_value;
 
 	if (unlikely(!pmu_ops || !pmu_ops->enter))
 		goto ret;
@@ -536,16 +534,16 @@ int mid_s0ix_enter(int s0ix_state)
 
 	pmu_prepare_wake(s0ix_state);
 
-	/* entry function for pmu driver ops */
-	s0ix_value = pmu_ops->enter(s0ix_state);
-	if (!s0ix_value) {
+	/* no need to proceed if schedule pending */
+	if (unlikely(need_resched())) {
 		pmu_stat_clear();
 		up(&mid_pmu_cxt->scu_ready_sem);
-		pr_debug("mid_pmu_cxt->scu_read_sem is up\n");
 		goto ret;
 	}
 
-	ret = s0ix_state;
+	/* entry function for pmu driver ops */
+	if (pmu_ops->enter(s0ix_state))
+		ret = s0ix_state;
 
 ret:
 	return ret;

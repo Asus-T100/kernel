@@ -50,7 +50,7 @@ static inline void set_c6offload_bit(void)
 	wrmsr(MSR_C6OFFLOAD_CTL_REG, msr_low, msr_high);
 }
 
-static u32 mfld_pmu_enter(int s0ix_state)
+static bool mfld_pmu_enter(int s0ix_state)
 {
 	u32 s0ix_value;
 	u32 ssw_val;
@@ -59,11 +59,6 @@ static u32 mfld_pmu_enter(int s0ix_state)
 	s0ix_value = get_s0ix_val_set_pm_ssc(s0ix_state);
 
 	clear_c6offload_bit();
-
-	if (unlikely(need_resched())) {
-		s0ix_value = 0;
-		return s0ix_value;
-	}
 
 	/* issue a command to SCU */
 	writel(s0ix_value, &mid_pmu_cxt->pmu_reg->pm_cmd);
@@ -101,11 +96,11 @@ static u32 mfld_pmu_enter(int s0ix_state)
 		if (unlikely(!num_retry)) {
 			WARN(1, "mid_pmu: error cpu offload bit not set.\n");
 			pmu_stat_clear();
-			s0ix_value = 0;
+			return false;
 		}
 	}
 
-	return s0ix_value;
+	return true;
 }
 
 static void mfld_pmu_wakeup(void)
