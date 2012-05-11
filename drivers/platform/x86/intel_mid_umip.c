@@ -23,14 +23,87 @@
 #include <linux/init.h>
 #include <asm/intel_scu_ipc.h>
 #include <linux/platform_device.h>
+#include <asm/intel-mid.h>
 
-#define USB_HOST_ENABLE_TIMEOUT_INFINITE      0x3F
-#define USB_HOST_ENABLE_TIMEOUT_THREE         0x1B
-#define USB_HOST_ENABLE_TIMEOUT_ZERO          0X00
-#define USB_ENABLE_UMIP_OFFSET                0x400
-#define MAX_USB_TIMEOUT_LEN			14
-#define MAX_NUM_TIMEOUTS			3
-#define ERROR_MSG				"Could not read right value"
+#define USB_HOST_ENABLE_TIMEOUT_INFINITE    0x3F
+#define USB_HOST_ENABLE_TIMEOUT_THREE       0x1B
+#define USB_HOST_ENABLE_TIMEOUT_ZERO        0X00
+#define USB_ENABLE_UMIP_OFFSET              0x400
+#define MAX_USB_TIMEOUT_LEN                 14
+#define MAX_NUM_TIMEOUTS                    3
+#define FACTORY_UMIP_OFFSET                 0xE00
+#define FACTORY_BIT_OFFSET                  0
+
+static struct platform_device *umip_mid_pdev;
+
+/*
+	The "current Factory UMIP" shows the current value of
+	the variable.
+*/
+
+static ssize_t Factory_UMIP_show(struct device *dev,
+				struct device_attribute *attr, char *buffer)
+{
+	int ret;
+	u8 data_read;
+
+	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_PENWELL) {
+		ret = intel_scu_ipc_read_mip(&data_read,
+						1,
+						FACTORY_UMIP_OFFSET,
+						0);
+		if (ret) {
+			pr_err("Could not read to UMIP for Factory\n");
+			return -EBUSY;
+		}
+	}
+
+	return sprintf(buffer, "%d\n",
+				(data_read >> FACTORY_BIT_OFFSET) & 0x01);
+}
+
+ssize_t Factory_UMIP_store(struct device *dev,
+					struct device_attribute *attr,
+					const char *buffer, size_t count)
+{
+	int ret = 0;
+	u8 data_write;
+	u8 yes;
+	u8 no;
+	bool bv;
+
+	if (strlen(buffer) != 2) {
+		pr_err("The length must be 1\n");
+		ret = -EINVAL;
+		goto error;
+	}
+
+	ret = strtobool(buffer, &bv);
+	if (ret) {
+		pr_err("Not expected value [Y|y|1|N|n|0]\n");
+		goto error;
+	}
+
+	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_PENWELL) {
+		ret = intel_scu_ipc_read_mip(&data_write,
+						1,
+						FACTORY_UMIP_OFFSET,
+						0);
+		data_write &= ~(1 << FACTORY_BIT_OFFSET);
+		data_write |= bv;
+
+		ret = intel_scu_ipc_write_umip(&data_write, 1, FACTORY_UMIP_OFFSET);
+		if (ret) {
+			pr_err("Could not write to UMIP for Factory\n");
+			goto error;
+		}
+	}
+
+	return count;
+
+error:
+	return ret;
+}
 
 struct usb_timeout {
 	char name[MAX_USB_TIMEOUT_LEN];
@@ -44,7 +117,6 @@ static struct
 	 {"zeroseconds", USB_HOST_ENABLE_TIMEOUT_ZERO}
 };
 
-static struct platform_device *umip_mid_pdev;
 /*
 	 The "availabe usb host enable timeouts" file where a static variable
 	 is read from and written to.
@@ -75,7 +147,7 @@ static ssize_t usb_host_enable_timeout_show(struct device *dev,
 					USB_ENABLE_UMIP_OFFSET,
 					0);
 	if (ret_ipc)
-		pr_err("Could not write to UMIP USB Host Enable\n");
+		pr_err("Could not read to UMIP USB Host Enable\n");
 
 	for (i = 0; i < MAX_NUM_TIMEOUTS; i++) {
 		if (data_read ==
@@ -87,7 +159,7 @@ static ssize_t usb_host_enable_timeout_show(struct device *dev,
 	}
 
 	if (i == MAX_NUM_TIMEOUTS)
-		return sprintf(buffer, "%s\n", ERROR_MSG);
+		return sprintf(buffer, "%s\n", "Could not read right value");
 	else
 		return sprintf(buffer, "%s\n", &timeout);
 }
@@ -132,6 +204,8 @@ ssize_t usb_host_enable_timeout_store(struct device *dev,
 }
 
 /* Attach the sysfs write method */
+DEVICE_ATTR(Factory_UMIP, S_IRUGO|S_IWUSR,
+		Factory_UMIP_show, Factory_UMIP_store);
 DEVICE_ATTR(available_timeouts, S_IRUGO,
 		available_usb_host_enable_timeouts_show, NULL);
 DEVICE_ATTR(current_timeout, S_IRUGO|S_IWUSR,
@@ -139,6 +213,7 @@ DEVICE_ATTR(current_timeout, S_IRUGO|S_IWUSR,
 
 /* Attribute Descriptor */
 static struct attribute *umip_mid_attrs[] = {
+		&dev_attr_Factory_UMIP.attr,
 		&dev_attr_available_timeouts.attr,
 		&dev_attr_current_timeout.attr,
 		NULL
