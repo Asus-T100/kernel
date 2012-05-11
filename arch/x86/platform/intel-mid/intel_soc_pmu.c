@@ -383,19 +383,31 @@ static void log_wakeup_irq(void)
 {
 	unsigned int irr = 0, vector = 0;
 	int offset = 0, irq = 0;
+	struct irq_desc *desc;
+	const char *act_name;
+
 	for (offset = (FIRST_EXTERNAL_VECTOR/32);
 	offset < (NR_VECTORS/32); offset++) {
 		irr = apic_read(APIC_IRR + (offset * 0x10));
-			while (irr) {
-				vector = __ffs(irr);
-				irr &= ~(1 << vector);
-				irq = __this_cpu_read(
-				vector_irq[vector + (offset * 32)]);
-				if (irq < 0)
-					continue;
+		while (irr) {
+			vector = __ffs(irr);
+			irr &= ~(1 << vector);
+			irq = __this_cpu_read(
+					vector_irq[vector + (offset * 32)]);
+			if (irq < 0)
+				continue;
 			pr_info("wakeup from  IRQ %d\n", irq);
+
+			desc = irq_to_desc(irq);
+
+			if ((desc) && (desc->action)) {
+				act_name = desc->action->name;
+				pr_info("IRQ %d,action name:%s\n",
+					irq,
+					(act_name) ? (act_name) : "no action");
 			}
 		}
+	}
 	return;
 }
 
