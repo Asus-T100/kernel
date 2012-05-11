@@ -476,6 +476,7 @@ static const struct snd_kcontrol_new sn95031_snd_controls[] = {
 	SOC_ENUM("Jack Debounce Time", sn95031_jack_debounce_enum),
 	SOC_ENUM_EXT("DAC Mode", sn95031_dac_mode_enum,
 			sn95031_get_dac_mode, sn95031_set_dac_mode),
+	SOC_SINGLE("HSMIXER register", SN95031_HSMIXER, 0, 127, 0)
 };
 
 /* DAPM widgets */
