@@ -916,7 +916,7 @@ static int __init logger_console_init(void)
 	INIT_WORK(&write_console_wq, write_console);
 
 	printk(KERN_INFO "register logcat console\n");
-	register_console(&logger_console);
+	//register_console(&logger_console);
 	return 0;
 }
 
