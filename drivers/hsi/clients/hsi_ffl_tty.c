@@ -1314,7 +1314,12 @@ static void ffl_start_rx(struct hsi_client *cl)
 	spin_lock_irqsave(&ctx->lock, flags);
 	_ffl_ctx_set_state(ctx, ACTIVE);
 #ifdef USE_WAKE_POST_BOOT_HANDSHAKE
-	wake_up(&main_ctx->reset.modem_awake_event);
+	/**
+	* Excute only if not in flashing mode
+	* <=> if !(tx_ctx->data_len<(FFL_DATA_LENGTH - 4))
+	*/
+	if (!(ctx->data_len < (FFL_DATA_LENGTH - 4)))
+		wake_up(&main_ctx->reset.modem_awake_event);
 #endif
 	spin_unlock_irqrestore(&ctx->lock, flags);
 }
@@ -2032,17 +2037,23 @@ static int ffl_tty_port_activate(struct tty_port *port, struct tty_struct *tty)
 	spin_unlock_irqrestore(&tx_ctx->lock, flags);
 
 #ifdef USE_WAKE_POST_BOOT_HANDSHAKE
-	/* Wait for the modem post boot WAKE handshake before continuing */
-	hsi_start_tx(ctx->client);
-	wait_event_interruptible_timeout(ctx->reset.modem_awake_event,
-					 ffl_modem_is_awake(rx_ctx),
+	/**
+	* Execute only if not in flashing mode
+	* <=> if !(tx_ctx->data_len<(FFL_DATA_LENGTH - 4))
+	*/
+	if (!(tx_ctx->data_len < (FFL_DATA_LENGTH - 4))) {
+		/* Wait for modem post boot WAKE handshake before continuing */
+		hsi_start_tx(ctx->client);
+		wait_event_interruptible_timeout(ctx->reset.modem_awake_event,
+						 ffl_modem_is_awake(rx_ctx),
 					 POST_BOOT_HANDSHAKE_TIMEOUT_JIFFIES);
-	err = !ffl_modem_is_awake(rx_ctx);
-	hsi_stop_tx(ctx->client);
-	if (unlikely(err)) {
-		pr_err(DRVNAME ": Modem wakeup failed (-EXDEV)");
-		hsi_release_port(ctx->client);
-		return -EXDEV;
+		err = !ffl_modem_is_awake(rx_ctx);
+		hsi_stop_tx(ctx->client);
+		if (unlikely(err)) {
+			pr_err(DRVNAME ": Modem wakeup failed (-EXDEV)");
+			hsi_release_port(ctx->client);
+			return -EXDEV;
+		}
 	}
 #endif
 
