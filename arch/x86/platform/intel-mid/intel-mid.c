@@ -280,10 +280,13 @@ static void intel_mid_reboot(void)
 		pr_debug("intel_scu_fw_update: IFWI upgrade failed...\n");
 		BUG();
 	}
-	if (force_cold_boot)
+	if (force_cold_boot) {
+		pr_info("Immediate COLD BOOT\n");
 		intel_scu_ipc_simple_command(IPCMSG_COLD_BOOT, 0);
-	else
+	} else {
+		pr_info("Immediate COLD RESET\n");
 		intel_scu_ipc_simple_command(IPCMSG_COLD_RESET, 0);
+	}
 }
 
 static void intel_mid_emergency_reboot(char *cmd)
