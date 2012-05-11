@@ -194,7 +194,8 @@ void *max17042_platform_data(void *info)
 	platform_data.battery_status = smb347_get_charging_status;
 #endif
 #ifdef CONFIG_CHARGER_BQ24192 /* clovertrail */
-	platform_data.battery_status = bq24192_query_battery_status;
+	platform_data.battery_status = ctp_query_battery_status;
+	platform_data.battery_pack_temp = ctp_get_battery_pack_temp;
 #endif
 
 	return &platform_data;

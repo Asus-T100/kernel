@@ -22,33 +22,60 @@
 #ifndef __BQ24192_CHARGER_H_
 #define __BQ24192_CHARGER_H_
 
-#define SFI_TEMP_NR_RNG	4
+#define CLT_SFI_TEMP_NR_RNG	4
 #define BATTID_STR_LEN	8
 #define RANGE	25
+/* User limits for sysfs charge enable/disable */
+#define USER_SET_CHRG_DISABLE	0
+#define USER_SET_CHRG_LMT1	1
+#define USER_SET_CHRG_LMT2	2
+#define USER_SET_CHRG_LMT3	3
+#define USER_SET_CHRG_NOLMT	4
+
+#define INPUT_CHRG_CURR_0	0
+#define INPUT_CHRG_CURR_100	100
+#define INPUT_CHRG_CURR_500	500
+#define INPUT_CHRG_CURR_950	950
+#define INPUT_CHRG_CURR_1500	1500
+
 enum bq24192_bat_chrg_mode {
 	BATT_CHRG_FULL = 0,
 	BATT_CHRG_NORMAL = 1,
-	BATT_CHRG_MAINT
+	BATT_CHRG_MAINT = 2,
+	BATT_CHRG_NONE = 3
 };
 
-struct bq24192_platform_data {
-	bool slave_mode;
-	unsigned int vHigh;
-	unsigned int vLow;
-	int fc_dcp_curr;
-	int fc_sdp_curr;
-	int maint_chrg_curr;
-	bool sfi_tabl_present;
-};
 
 /*********************************************************************
-SFI table entries Structures
-*********************************************************************/
+ * SFI table entries Structures
+ ********************************************************************/
+/*********************************************************************
+ *		Platform Data Section
+ *********************************************************************/
+/* Battery Thresholds info which need to get from SMIP area */
+struct ctp_batt_safety_thresholds {
+	u8 smip_rev;
+	u8 fpo;		/* fixed implementation options */
+	u8 fpo1;	/* fixed implementation options1 */
+	u8 rsys;	/* System Resistance for Fuel gauging */
+
+	/* Minimum voltage necessary to
+	 * be able to safely shut down */
+	short int vbatt_sh_min;
+
+	/* Voltage at which the battery driver
+	 * should report the LEVEL as CRITICAL */
+	short int vbatt_crit;
+
+	short int itc;		/* Charge termination current */
+	short int temp_high;	/* Safe Temp Upper Limit */
+	short int temp_low;	/* Safe Temp lower Limit */
+	u8 brd_id;		/* Unique Board ID */
+} __packed;
 
 /* Parameters defining the range */
-struct temp_mon_table {
+struct ctp_temp_mon_table {
 	short int temp_up_lim;
-	short int temp_low_lim;
 	short int rbatt;
 	short int full_chrg_vol;
 	short int full_chrg_cur;
@@ -57,16 +84,31 @@ struct temp_mon_table {
 	short int maint_chrg_cur;
 } __packed;
 
-struct clt_batt_sfi_prop {
+struct ctp_batt_sfi_prop {
 	char batt_id[BATTID_STR_LEN];
 	unsigned short int voltage_max;
 	unsigned int capacity;
 	u8 battery_type;
 	u8 temp_mon_ranges;
-	struct temp_mon_table temp_mon_range[SFI_TEMP_NR_RNG];
+	struct ctp_temp_mon_table temp_mon_range[CLT_SFI_TEMP_NR_RNG];
+	short int temp_low_lim;
+} __packed;
+
+struct bq24192_platform_data {
+	bool slave_mode;
+	unsigned int vHigh;
+	unsigned int vLow;
+	int fc_dcp_curr;
+	int fc_sdp_curr;
+	int maint_chrg_curr;
+	u8  temp_mon_ranges;
+	struct ctp_temp_mon_table temp_mon_range[CLT_SFI_TEMP_NR_RNG];
+	short int temp_low_lim;
+	bool sfi_tabl_present;
 };
+
 int bq24192_slave_mode_enable_charging(int volt, int cur, int ilim);
 int bq24192_slave_mode_disable_charging(void);
-extern int bq24192_query_battery_status(void);
-
+extern int ctp_query_battery_status(void);
+extern int ctp_get_battery_pack_temp(int *temp);
 #endif /* __BQ24192_CHARGER_H_ */

@@ -35,12 +35,45 @@ void *bq24192_platform_data(void *info)
 		platform_data.sfi_tabl_present = true;
 	else
 		platform_data.sfi_tabl_present = false;
-	platform_data.vHigh = 4176;
-	platform_data.vLow = 4076;
-	platform_data.fc_dcp_curr = 1500;
-	platform_data.fc_sdp_curr = 500;
-	platform_data.maint_chrg_curr = 500;
+	/* FIXME: Curren IFW has bug where OEM0 block exists but parameters
+	 * are all invalid hence overriding the parameter to false and
+	 * and will be remove once IFW has hte corretc support */
 	platform_data.sfi_tabl_present = false;
+
+	/* define the temperature ranges. These values are currently hardcoded
+	 * based upon medfield values and will change as per battery prop.
+	 * For final solution these must get populated in sfi table.
+	 */
+	platform_data.temp_mon_ranges = 4;
+	platform_data.temp_mon_range[0].temp_up_lim = 60;
+	platform_data.temp_mon_range[0].full_chrg_vol = 4100;
+	platform_data.temp_mon_range[0].full_chrg_cur = 1500;
+	platform_data.temp_mon_range[0].maint_chrg_vol_ll = 4000;
+	platform_data.temp_mon_range[0].maint_chrg_vol_ul = 4050;
+	platform_data.temp_mon_range[0].maint_chrg_cur = 950;
+
+	platform_data.temp_mon_range[1].temp_up_lim = 45;
+	platform_data.temp_mon_range[1].full_chrg_vol = 4200;
+	platform_data.temp_mon_range[1].full_chrg_cur = 1500;
+	platform_data.temp_mon_range[1].maint_chrg_vol_ll = 4126;
+	platform_data.temp_mon_range[1].maint_chrg_vol_ul = 4200;
+	platform_data.temp_mon_range[1].maint_chrg_cur = 950;
+
+	platform_data.temp_mon_range[2].temp_up_lim = 10;
+	platform_data.temp_mon_range[2].full_chrg_vol = 4200;
+	platform_data.temp_mon_range[2].full_chrg_cur = 1500;
+	platform_data.temp_mon_range[2].maint_chrg_vol_ll = 4126;
+	platform_data.temp_mon_range[2].maint_chrg_vol_ul = 4200;
+	platform_data.temp_mon_range[2].maint_chrg_cur = 950;
+
+	platform_data.temp_mon_range[3].temp_up_lim = 0;
+	platform_data.temp_mon_range[3].full_chrg_vol = 3950;
+	platform_data.temp_mon_range[3].full_chrg_cur = 950;
+	platform_data.temp_mon_range[3].maint_chrg_vol_ll = 3900;
+	platform_data.temp_mon_range[3].maint_chrg_vol_ul = 3950;
+	platform_data.temp_mon_range[3].maint_chrg_cur = 950;
+
+	platform_data.temp_low_lim = -10;
 	platform_data.slave_mode = 0;
 	return &platform_data;
 }
