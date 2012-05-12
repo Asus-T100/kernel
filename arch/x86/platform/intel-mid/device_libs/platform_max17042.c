@@ -180,7 +180,7 @@ void *max17042_platform_data(void *info)
 	platform_data.temp_min_lim = 0;
 	platform_data.temp_max_lim = 60;
 	platform_data.volt_min_lim = 3200;
-	platform_data.volt_max_lim = 4500;
+	platform_data.volt_max_lim = 4300;
 	platform_data.restore_config_data = mfld_fg_restore_config_data;
 	platform_data.save_config_data = mfld_fg_save_config_data;
 #endif
