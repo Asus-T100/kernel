@@ -52,13 +52,21 @@
 #define THRMIRQ		0x04
 #define MTHRMIRQ	0x0F
 #define STHRMIRQ	0xB2
+#define IRQLVL1		0x01
+#define MIRQLVL1	0x0C
 #define IRQ_MASK_ALL	0x0F
+
+/* PMIC SRAM base address and offset for Thermal register */
+#define PMIC_SRAM_BASE_ADDR	0xFFFFF610
+#define PMIC_SRAM_THRM_OFFSET	0x03
+#define IOMAP_SIZE		0x04
 
 #define PMICALRT	(1 << 3)
 #define SYS2ALRT	(1 << 2)
 #define SYS1ALRT	(1 << 1)
 #define SYS0ALRT	(1 << 0)
 #define THERM_EN	(1 << 0)
+#define THERM_ALRT	(1 << 2)
 
 /* ADC to Temperature conversion table length */
 #define TABLE_LENGTH	24
@@ -85,6 +93,8 @@
  */
 #define TO_PMIC_DIE_ADC(temp)	DIV_ROUND_CLOSEST((2717 * temp + 596630), 1000)
 
+/* 'enum' of Thermal sensors */
+enum thermal_sensors { SYS0, SYS1, SYS2, PMIC_DIE, _COUNT };
 
 /* ADC channels for the sensors. Order: SYS0 SYS1 SYS2 PMIC_DIE */
 static const int adc_channels[] = { GPADC_SYSTEMP0, GPADC_SYSTEMP1,
@@ -119,6 +129,7 @@ struct thermal_data {
 	struct device *hwmon_dev;
 	struct platform_device *pdev;
 	struct gpadc_result *adc_res;
+	void *thrm_addr;
 	unsigned int irq;
 };
 
@@ -496,6 +507,73 @@ ipc_fail:
 	return ret;
 }
 
+static irqreturn_t thermal_intrpt(int irq, void *dev_data)
+{
+	int ret, sensor, event_type;
+	uint8_t irq_status;
+	unsigned int irq_data;
+	struct thermal_data *tdata = (struct thermal_data *)dev_data;
+
+	if (!tdata)
+		return IRQ_NONE;
+
+	mutex_lock(&thrm_update_lock);
+
+	irq_data = ioread8(tdata->thrm_addr + PMIC_SRAM_THRM_OFFSET);
+
+	ret = intel_scu_ipc_ioread8(STHRMIRQ, &irq_status);
+	if (ret)
+		goto ipc_fail;
+
+	dev_dbg(tdata->hwmon_dev, "STHRMIRQ: %.2x\n", irq_status);
+
+	/*
+	 * -1 for invalid interrupt
+	 * 1 for LOW to HIGH temperature alert
+	 * 0 for HIGH to LOW temperature alert
+	 */
+	event_type = -1;
+
+	/* Check which interrupt occured and for what event */
+	if (irq_data & PMICALRT) {
+		event_type = !!(irq_status & PMICALRT);
+		sensor = PMIC_DIE;
+	} else if (irq_data & SYS2ALRT) {
+		event_type = !!(irq_status & SYS2ALRT);
+		sensor = SYS2;
+	} else if (irq_data & SYS1ALRT) {
+		event_type = !!(irq_status & SYS1ALRT);
+		sensor = SYS1;
+	} else if (irq_data & SYS0ALRT) {
+		event_type = !!(irq_status & SYS0ALRT);
+		sensor = SYS0;
+	} else {
+		dev_err(&tdata->pdev->dev, "Invalid Interrupt\n");
+		ret = IRQ_HANDLED;
+		goto ipc_fail;
+	}
+
+	if (event_type != -1) {
+		dev_info(tdata->hwmon_dev,
+				"%s interrupt for thermal sensor %d\n",
+				event_type ? "HIGH" : "LOW", sensor);
+	}
+
+	/* Notify using UEvent */
+	kobject_uevent(&tdata->hwmon_dev->kobj, KOBJ_CHANGE);
+
+	/* Unmask Thermal Interrupt in the mask register */
+	ret = intel_scu_ipc_update_register(MIRQLVL1, 0xFF, THERM_ALRT);
+	if (ret)
+		goto ipc_fail;
+
+	ret = IRQ_HANDLED;
+
+ipc_fail:
+	mutex_unlock(&thrm_update_lock);
+	return ret;
+}
+
 static SENSOR_DEVICE_ATTR_2(temp1_input, S_IRUGO,
 				show_temp, NULL, 0, 0);
 static SENSOR_DEVICE_ATTR_2(temp1_max, S_IRUGO | S_IWUSR,
@@ -567,6 +645,7 @@ static int mrfl_thermal_probe(struct platform_device *pdev)
 	}
 
 	tdata->pdev = pdev;
+	tdata->irq = platform_get_irq(pdev, 0);
 	platform_set_drvdata(pdev, tdata);
 
 	/* Program a default _max value for each sensor */
@@ -592,15 +671,37 @@ static int mrfl_thermal_probe(struct platform_device *pdev)
 		goto exit_sysfs;
 	}
 
+	tdata->thrm_addr = ioremap_nocache(PMIC_SRAM_BASE_ADDR, IOMAP_SIZE);
+	if (!tdata->thrm_addr) {
+		ret = -ENOMEM;
+		dev_err(&pdev->dev, "ioremap_nocache failed\n");
+		goto exit_hwmon;
+	}
+
+	/* Register for Interrupt Handler */
+	ret = request_threaded_irq(tdata->irq, NULL, thermal_intrpt,
+						IRQF_TRIGGER_RISING,
+						DRIVER_NAME, tdata);
+	if (ret) {
+		dev_err(&pdev->dev, "request_threaded_irq failed:%d\n", ret);
+		goto exit_ioremap;
+	}
+
 	/* Enable Thermal Monitoring */
 	ret = enable_tm();
 	if (ret) {
-		dev_err(&pdev->dev, "Enabling TM failed.\n");
-		goto exit_sysfs;
+		dev_err(&pdev->dev, "Enabling TM failed:%d\n", ret);
+		goto exit_irq;
 	}
 
 	return 0;
 
+exit_irq:
+	free_irq(tdata->irq, tdata);
+exit_ioremap:
+	iounmap(tdata->thrm_addr);
+exit_hwmon:
+	hwmon_device_unregister(tdata->hwmon_dev);
 exit_sysfs:
 	sysfs_remove_group(&pdev->dev.kobj, &thermal_attr_gr);
 exit_free:
@@ -626,6 +727,8 @@ static int mrfl_thermal_remove(struct platform_device *pdev)
 	struct thermal_data *tdata = platform_get_drvdata(pdev);
 
 	if (tdata) {
+		free_irq(tdata->irq, tdata);
+		iounmap(tdata->thrm_addr);
 		hwmon_device_unregister(tdata->hwmon_dev);
 		sysfs_remove_group(&pdev->dev.kobj, &thermal_attr_gr);
 		kfree(tdata->adc_res);
