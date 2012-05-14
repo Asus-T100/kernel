@@ -17,7 +17,6 @@
 #include <linux/platform_device.h>
 #include <linux/rtc.h>
 #include <linux/suspend.h>
-#include <linux/syscalls.h> /* sys_sync */
 #include <linux/wakelock.h>
 
 #ifndef CREATE_TRACE_POINTS
@@ -288,7 +287,6 @@ static void suspend(struct work_struct *work)
 	}
 
 	entry_event_num = current_event_num;
-	sys_sync();
 	if (debug_mask & DEBUG_SUSPEND)
 		pr_info("suspend: enter suspend\n");
 	getnstimeofday(&ts_entry);
