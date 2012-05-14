@@ -413,15 +413,19 @@ void dsi_lvds_set_bridge_reset_state(int state)
 	if (state) {
 		if (gpio_direction_output(GPIO_MIPI_BRIDGE_RESET, 0))
 			gpio_set_value_cansleep(GPIO_MIPI_BRIDGE_RESET, 0);
-		msleep(10);
+		/* FIXME:
+		 * per spec, the min period of reset signal is 50 nano secs,
+		 * but no detailed description. Here delay 1ms for safe.
+		 */
+		mdelay(1);
 	} else {
 
 		if (gpio_direction_output(GPIO_MIPI_BRIDGE_RESET, 0))
 			gpio_set_value_cansleep(GPIO_MIPI_BRIDGE_RESET, 0);  /*Pull MIPI Bridge reset pin to Low */
-		msleep(20);
+		mdelay(1);
 		if (gpio_direction_output(GPIO_MIPI_BRIDGE_RESET, 1))
 			gpio_set_value_cansleep(GPIO_MIPI_BRIDGE_RESET, 1);  /*Pull MIPI Bridge reset pin to High */
-		msleep(40);
+		mdelay(1);
 	}
 }
 
@@ -677,7 +681,9 @@ void dsi_lvds_bridge_get_display_params(struct drm_display_mode *mode)
 	mode->vsync_start = mode->vdisplay + 14;
 	mode->vsync_end = mode->vsync_start + 10;
 	mode->vtotal = mode->vsync_end + 14;
-	mode->clock = 33324;
+	mode->vrefresh = 60;
+	mode->clock = mode->vrefresh * mode->htotal * mode->vtotal / 1000;
+
 	printk(KERN_INFO "[DISPLAY]: hdisplay(w) is %d\n", mode->hdisplay);
 	printk(KERN_INFO "[DISPLAY]: vdisplay(h) is %d\n", mode->vdisplay);
 	printk(KERN_INFO "[DISPLAY]: HSS is %d\n", mode->hsync_start);

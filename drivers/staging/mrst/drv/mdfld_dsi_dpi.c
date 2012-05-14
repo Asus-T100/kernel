@@ -1332,15 +1332,11 @@ void mdfld_dsi_dpi_controller_init(struct mdfld_dsi_config * dsi_config, int pip
 	
 	/*TODO: figure out how to setup these registers*/
 #ifdef	CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
-	REG_WRITE((MIPIA_DPHY_PARAM_REG + reg_offset), 0x2A0c6008);
+	REG_WRITE((MIPIA_DPHY_PARAM_REG + reg_offset), 0x150C340F);
 #else
 	REG_WRITE((MIPIA_DPHY_PARAM_REG + reg_offset), 0x150c3408);
 #endif
 	REG_WRITE((MIPIA_CLK_LANE_SWITCH_TIME_CNT_REG + reg_offset), (0xa << 16) | 0x14);
-#endif
-
-#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
-	dsi_lvds_set_bridge_reset_state(0);	/* Pull High Reset */
 #endif
 
 	/*set device ready*/
@@ -2305,7 +2301,6 @@ static void mdfld_mipi_config(struct mdfld_dsi_config *dsi_config, int pipe)
 	REG_WRITE((MIPIA_DPHY_PARAM_REG + reg_offset),
 				0x150A600F);  /*0xB080 */
 
-
 	REG_WRITE((MIPIA_VIDEO_MODE_FORMAT_REG + reg_offset),
 				0x0000000F);  /*0xB058 */
 
@@ -2409,6 +2404,12 @@ void mdfld_dsi_dpi_mode_set(struct drm_encoder *encoder,
 	u32 pipeconf = dev_priv->pipeconf;
 	u32 dspcntr = dev_priv->dspcntr;
 	u32 mipi = MIPI_PORT_EN | PASS_FROM_SPHY_TO_AFE;
+	int retry = 0;
+
+#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
+	struct mdfld_dsi_hw_context *ctx = NULL;
+	ctx = &dsi_config->dsi_hw_context;
+#endif
 
 	/* The bit defination changed from PNW_A0 -> B0 and forward,
 	* Only for PNW_A0 that we need to set FLOPPED_HSTX
@@ -2442,33 +2443,44 @@ void mdfld_dsi_dpi_mode_set(struct drm_encoder *encoder,
 	/* The following logic is required to do reset the bridge and configure. */
 	/* This also start DSI clock at 200MHz */
 	{
-	    int timeout = 0;
+		int timeout = 0;
+		u32 val = 0;
 
-	    dsi_lvds_set_bridge_reset_state(0);  /*Pull High Reset */
-	    dsi_lvds_toshiba_bridge_panel_on(dev);
-	    udelay(100);
-	    /* Now start the DSI clock */
-	    REG_WRITE(MRST_DPLL_A, 0x00);  /*0xF014 */
-	    REG_WRITE(MRST_FPA0, 0xC1);  /*0xF040 */
-	    REG_WRITE(MRST_DPLL_A, 0x00800000);  /*0xF014 */
-	    udelay(500);
-	    REG_WRITE(MRST_DPLL_A, 0x80800000);  /*0xF014 */
-	    /*Wait for DSI PLL to lock */
-	    while ((timeout < 20000) && !(REG_READ(pipeconf_reg) & PIPECONF_DSIPLL_LOCK)) {
-		udelay(150);
-		timeout++;
-	    }
-	    if (timeout == 20000)
-		printk(KERN_ALERT "[DISPLAY] DSI PLL Locked timeout\n");
-	    REG_WRITE((MIPIA_DPHY_PARAM_REG + reg_offset), 0x2A0c6008);  /*0xB080 */
+		if (ctx == NULL) {
+			pr_err("%s: hw contex is NULL!!\n", __func__);
+			goto mode_set_err;
+		}
 
-	    mipi_set_properties(dsi_config, pipe);
-	    mdfld_mipi_config(dsi_config, pipe);
-	    mdfld_set_pipe_timing(dsi_config, pipe);
+		dsi_lvds_set_bridge_reset_state(0);  /*Pull High Reset */
+		dsi_lvds_toshiba_bridge_panel_on(dev);
 
-	    REG_WRITE(VGACNTRL, 0x80000000);  /*0x71400 */
-	    REG_WRITE(DEVICE_READY_REG, 0x00000001);  /*0xB000 */
-	    REG_WRITE(mipi_reg, 0x80010000); /*0x61190 */
+		/* Now start the DSI clock */
+		REG_WRITE(MRST_DPLL_A, 0x0);
+		REG_WRITE(MRST_FPA0, 0x0);
+		REG_WRITE(MRST_FPA0, ctx->fp);
+		REG_WRITE(MRST_DPLL_A, ((ctx->dpll) & ~BIT30));
+
+		/* per spec of display controller, before enable VCO, need wait
+		 * 0.5us, here wait 1us */
+		udelay(1);
+		val = REG_READ(MRST_DPLL_A);
+		REG_WRITE(MRST_DPLL_A, (val | BIT31));
+
+		/*Wait for DSI PLL to lock */
+		while ((timeout < 20000) &&
+			!(REG_READ(pipeconf_reg) & PIPECONF_DSIPLL_LOCK)) {
+			udelay(3);
+			timeout++;
+		}
+
+		if (timeout == 20000)
+			pr_warn("%s: DSI PLL Locked timeout\n", __func__);
+
+		mipi_set_properties(dsi_config, pipe);
+		mdfld_set_pipe_timing(dsi_config, pipe);
+
+		/* enable mipi port */
+		REG_WRITE(mipi_reg, 0x80010000);
 	}
 #else
 	/*set up mipi port FIXME: do at init time */
@@ -2499,15 +2511,19 @@ void mdfld_dsi_dpi_mode_set(struct drm_encoder *encoder,
 	REG_WRITE(pipeconf_reg, pipeconf);
 	REG_READ(pipeconf_reg);
 
+	/*Wait for pipe enabling*/
+	retry = 10000;
+	while (--retry && !(REG_READ(pipeconf_reg) & BIT30))
+		udelay(3);
+
+	if (!retry) {
+		pr_err("%s: failed to enable pipe!!\n", __func__);
+		goto mode_set_err;
+	}
+
 	/*set up display plane*/
 	REG_WRITE(dspcntr_reg, dspcntr);
 	REG_READ(dspcntr_reg);
-
-	msleep(20); /* FIXME: this should wait for vblank */
-
-	PSB_DEBUG_ENTRY("State %x, power %d\n",
-			REG_READ(MIPIA_INTR_STAT_REG + reg_offset),
-			dpi_output->panel_on);
 
 	if (get_panel_type(dev, pipe) == TMD_VID) {
 #ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
@@ -2525,6 +2541,7 @@ void mdfld_dsi_dpi_mode_set(struct drm_encoder *encoder,
 	dsi_debug_MIPI_reg(dev);
 #endif
 
+mode_set_err:
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 #else
 	/**

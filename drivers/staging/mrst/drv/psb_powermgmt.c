@@ -1220,6 +1220,7 @@ static int mdfld_restore_display_registers(struct drm_device *dev, int pipe)
 	/*make sure VGA plane is off. it initializes to on after reset!*/
 	PSB_WVDC32(0x80000000, VGACNTRL);
 
+#ifndef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
 	dpll = PSB_RVDC32(dpll_reg);
 
 	if (!(dpll & DPLL_VCO_ENABLE)) {
@@ -1261,6 +1262,7 @@ static int mdfld_restore_display_registers(struct drm_device *dev, int pipe)
 			return -EINVAL;
 		}
 	}
+#endif
 
 	/* Restore mode */
 	PSB_WVDC32(htot_val, htot_reg);
@@ -1288,6 +1290,7 @@ static int mdfld_restore_display_registers(struct drm_device *dev, int pipe)
 		PSB_WVDC32(dev_priv->saveHDMIB_CONTROL, HDMIB_CONTROL);
 
 	} else {
+#ifndef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
 		/*set up pipe related registers*/
 		PSB_WVDC32(mipi_val, mipi_reg);
 
@@ -1296,6 +1299,7 @@ static int mdfld_restore_display_registers(struct drm_device *dev, int pipe)
 		else
 			msleep(20);
 
+#endif
 		/*TODO: remove MIPI restore code later*/
 		/*dsi_config->dvr_ic_inited = 0;*/
 		/*mdfld_dsi_tmd_drv_ic_init(dsi_config, pipe);*/
@@ -1941,6 +1945,7 @@ static void gfx_late_resume(struct early_suspend *h)
 	struct drm_encoder_helper_funcs *enc_funcs;
 	struct drm_crtc *crtc = NULL;
 	u32 dspcntr_val;
+
 #ifdef OSPM_GFX_DPK
 	printk(KERN_ALERT "\ngfx_late_resume\n");
 #endif

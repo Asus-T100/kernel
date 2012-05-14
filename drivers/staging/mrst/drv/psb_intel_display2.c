@@ -2303,6 +2303,11 @@ static int mdfld_crtc_mode_set(struct drm_crtc *crtc,
 		timeout ++;
 	}
 
+#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
+	ctx->dpll = dpll;
+	ctx->fp = fp;
+#endif
+
 	if (is_mipi) {
 		if (get_panel_type(dev, pipe) == GI_SONY_CMD)
 			mdfld_gi_sony_power_on(mipi_encoder);
