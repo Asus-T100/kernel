@@ -556,7 +556,7 @@ static snd_pcm_uframes_t sst_platform_pcm_pointer
 		pr_err("sst: error code = %d\n", ret_val);
 		return ret_val;
 	}
-	substream->runtime->delay = stream->stream_info.pcm_delay;
+	substream->runtime->soc_delay = stream->stream_info.pcm_delay;
 	return stream->stream_info.buffer_ptr;
 }
 
