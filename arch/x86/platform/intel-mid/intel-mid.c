@@ -804,15 +804,20 @@ static int __init sfi_parse_devs(struct sfi_table_header *table)
 			 * so we have to enable them one by one here
 			 */
 			ioapic = mp_find_ioapic(irq);
-			irq_attr.ioapic = ioapic;
-			irq_attr.ioapic_pin = irq;
-			irq_attr.trigger = 1;
+			if (ioapic >= 0) {
+
+				irq_attr.ioapic = ioapic;
+				irq_attr.ioapic_pin = irq;
+				irq_attr.trigger = 1;
 #ifdef CONFIG_X86_MRFLD
-			irq_attr.polarity = 0; /* Active high */
+				irq_attr.polarity = 0; /* Active high */
 #else
-			irq_attr.polarity = 1; /* Active low */
+				irq_attr.polarity = 1; /* Active low */
 #endif
-			io_apic_set_pci_routing(NULL, irq, &irq_attr);
+				io_apic_set_pci_routing(NULL, irq, &irq_attr);
+			} else
+				printk(KERN_INFO, "APIC entry not found for: name=%s, irq=%d, ioapic=%d",
+					pentry->name, irq, ioapic);
 		}
 
 		dev = get_device_id(pentry->type, pentry->name);
