@@ -494,6 +494,7 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 		pm_runtime_put_noidle(&pci->dev);
 	}
 	register_sst(&pci->dev);
+	sst_debugfs_init(sst_drv_ctx);
 	pr_info("%s successfully done!\n", __func__);
 	return ret;
 
@@ -543,6 +544,7 @@ do_free_drv_ctx:
 */
 static void __devexit intel_sst_remove(struct pci_dev *pci)
 {
+	sst_debugfs_exit(sst_drv_ctx);
 	pm_runtime_get_noresume(&pci->dev);
 	pm_runtime_forbid(&pci->dev);
 	unregister_sst(&pci->dev);

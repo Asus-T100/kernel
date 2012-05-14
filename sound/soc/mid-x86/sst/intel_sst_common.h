@@ -31,7 +31,7 @@
 #include <linux/dmaengine.h>
 #include <linux/intel_mid_dma.h>
 
-#define SST_DRIVER_VERSION "2.0.04"
+#define SST_DRIVER_VERSION "3.0.8"
 #define SST_VERSION_NUM 0x2004
 
 /* driver names */
@@ -339,6 +339,14 @@ struct sst_sg_list {
 	int list_len;
 };
 
+
+#ifdef CONFIG_DEBUG_FS
+struct sst_debugfs {
+	struct dentry *root;
+	int runtime_pm_status;
+};
+#endif
+
 #define PCI_DMAC_MFLD_ID 0x0830
 #define PCI_DMAC_CLV_ID 0x08F0
 #define SST_MAX_DMA_LEN (4095*4)
@@ -442,6 +450,9 @@ struct intel_sst_drv {
 	struct dma_async_tx_descriptor *desc;
 	struct sst_sg_list fw_sg_list, library_list;
 	struct intel_sst_ops	*ops;
+#ifdef CONFIG_DEBUG_FS
+	struct sst_debugfs debugfs;
+#endif
 };
 
 extern struct intel_sst_drv *sst_drv_ctx;
@@ -662,4 +673,17 @@ static inline struct stream_info *get_stream_info(int str_id)
 }
 int register_sst(struct device *);
 int unregister_sst(struct device *);
+
+#ifdef CONFIG_DEBUG_FS
+void sst_debugfs_init(struct intel_sst_drv *sst);
+void sst_debugfs_exit(struct intel_sst_drv *sst);
+#else
+static inline void sst_debugfs_init(struct intel_sst_drv *sst)
+{
+}
+
+static inline void sst_debugfs_exit(struct intel_sst_drv *sst)
+{
+}
+#endif /* CONFIG_DEBUG_FS */
 #endif /* __INTEL_SST_COMMON_H__ */

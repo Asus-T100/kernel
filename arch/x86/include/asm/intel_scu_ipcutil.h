@@ -50,6 +50,7 @@ enum clk0_mode {
 	CLK0_VIBRA1 = 0x8,
 	CLK0_VIBRA2 = 0x10,
 	CLK0_MSIC = 0x20,
+	CLK0_DEBUG = 0x100,
 	CLK0_QUERY = 0x1000,
 };
 
