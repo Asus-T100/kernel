@@ -3543,8 +3543,13 @@ io_apic_setup_irq_pin(unsigned int irq, int node, struct io_apic_irq_attr *attr)
 int io_apic_setup_irq_pin_once(unsigned int irq, int node,
 			       struct io_apic_irq_attr *attr)
 {
-	unsigned int id = attr->ioapic, pin = attr->ioapic_pin;
+	int id = attr->ioapic, pin = attr->ioapic_pin;
 	int ret;
+
+	if ((id < 0) || (pin < 0)) {
+		pr_debug("INVALID ID/PIN. id=%d, pin=%d\n", id, pin);
+		return -EINVAL;
+	}
 
 	/* Avoid redundant programming */
 	if (test_bit(pin, ioapics[id].pin_programmed)) {
