@@ -299,7 +299,7 @@ static void langwell_udc_notify_otg(unsigned long event)
 				event, dev->iotg);
 }
 #else
-static inline void langwell_udc_notify_otg(unsigned long event);
+static inline void langwell_udc_notify_otg(unsigned long event)
 {
 	return ;
 }
