@@ -386,7 +386,7 @@ config X86_INTEL_CE
 
 config X86_INTEL_MID
 	bool "Intel MID platform support"
-	depends on X86_32
+	depends on (X86_32 || X86_64)
 	depends on X86_EXTENDED_PLATFORM
 	---help---
 	  Select to build a kernel capable of supporting Intel MID platform
@@ -1990,7 +1990,7 @@ config PCI
 
 choice
 	prompt "PCI access mode"
-	depends on X86_32 && PCI
+	depends on (X86_32 || X86_64) && PCI
 	default PCI_GOANY
 	---help---
 	  On PCI systems, the BIOS can be used to detect the PCI devices and
@@ -2053,7 +2053,7 @@ config PCI_DOMAINS
 
 config PCI_MMCONFIG
 	bool "Support mmconfig PCI config space access"
-	depends on X86_64 && PCI && ACPI
+	depends on X86_64 && PCI && (ACPI || SFI)
 
 config PCI_CNB20LE_QUIRK
 	bool "Read CNB20LE Host Bridge Windows" if EXPERT
