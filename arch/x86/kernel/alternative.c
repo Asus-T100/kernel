@@ -536,7 +536,14 @@ void __init alternative_instructions(void)
 	 * patching.
 	 */
 
+	/* FIXME:
+	 * The 64bit version of MRFLD_VP panics in apply_alternatives.
+	 * Since it is optional, turn it off for now.
+	 * Need to go back and find out what's broken here.
+	 */
+#if !defined(CONFIG_64BIT) || !defined(CONFIG_BOARD_MRFLD_VP)
 	apply_alternatives(__alt_instructions, __alt_instructions_end);
+#endif
 
 	/* switch to patch-once-at-boottime-only mode and free the
 	 * tables in case we know the number of CPUs will never ever
