@@ -9,7 +9,7 @@
 #include <net/bluetooth/bluetooth.h>
 #include <net/bluetooth/hci_core.h>
 
-static atomic_t hci_name[HCI_NAME_MAX];
+static atomic_t hci_dev_sem[HCI_DEV_SEM_MAX];
 
 static struct class *bt_class;
 
@@ -94,14 +94,14 @@ static void add_conn(struct work_struct *work)
 								work_add.work);
 	struct hci_dev *hdev = conn->hdev;
 
-	if (conn->handle < HCI_NAME_MAX &&
-					atomic_read(&hci_name[conn->handle])) {
+	if (conn->handle < HCI_DEV_SEM_MAX &&
+				atomic_read(&hci_dev_sem[conn->handle])) {
 		queue_delayed_work(conn->hdev->workqueue, &conn->work_add,
-					msecs_to_jiffies(HCI_NAME_MSEC_DELAY));
+				msecs_to_jiffies(HCI_DEV_SEM_MSEC_DELAY));
 		return;
 	}
-	if (conn->handle < HCI_NAME_MAX)
-		atomic_set(&hci_name[conn->handle], 1);
+	if (conn->handle < HCI_DEV_SEM_MAX)
+		atomic_set(&hci_dev_sem[conn->handle], 1);
 
 	dev_set_name(&conn->dev, "%s:%d", hdev->name, conn->handle);
 
@@ -109,8 +109,8 @@ static void add_conn(struct work_struct *work)
 
 	if (device_add(&conn->dev) < 0) {
 		BT_ERR("Failed to register connection device");
-		if (conn->handle < HCI_NAME_MAX)
-			atomic_set(&hci_name[conn->handle], 0);
+		if (conn->handle < HCI_DEV_SEM_MAX)
+			atomic_set(&hci_dev_sem[conn->handle], 0);
 		return;
 	}
 
@@ -149,8 +149,8 @@ static void del_conn(struct work_struct *work)
 	put_device(&conn->dev);
 
 	hci_dev_put(hdev);
-	if (conn->handle < HCI_NAME_MAX)
-		atomic_set(&hci_name[conn->handle], 0);
+	if (conn->handle < HCI_DEV_SEM_MAX)
+		atomic_set(&hci_dev_sem[conn->handle], 0);
 }
 
 void hci_conn_init_sysfs(struct hci_conn *conn)
@@ -174,7 +174,7 @@ void hci_conn_add_sysfs(struct hci_conn *conn)
 	BT_DBG("conn %p", conn);
 
 	queue_delayed_work(conn->hdev->workqueue, &conn->work_add,
-					msecs_to_jiffies(HCI_NAME_MSEC_DELAY));
+				msecs_to_jiffies(HCI_DEV_SEM_MSEC_DELAY));
 }
 
 void hci_conn_del_sysfs(struct hci_conn *conn)
@@ -614,8 +614,8 @@ int __init bt_sysfs_init(void)
 	bt_class = class_create(THIS_MODULE, "bluetooth");
 	if (IS_ERR(bt_class))
 		return PTR_ERR(bt_class);
-	for (i = 0; i < HCI_NAME_MAX; i++)
-		atomic_set(&hci_name[i], 0);
+	for (i = 0; i < HCI_DEV_SEM_MAX; i++)
+		atomic_set(&hci_dev_sem[i], 0);
 
 	return 0;
 }
