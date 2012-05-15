@@ -58,6 +58,7 @@ extern int drm_psb_enable_gamma;
 extern int drm_psb_adjust_contrast;
 extern int drm_psb_adjust_brightness;
 extern int drm_psb_enable_color_conversion;
+extern u32 DISP_PLANEB_STATUS;
 
 extern struct ttm_bo_driver psb_ttm_bo_driver;
 

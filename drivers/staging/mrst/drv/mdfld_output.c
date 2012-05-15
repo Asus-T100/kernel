@@ -220,6 +220,7 @@ void init_panel(struct drm_device* dev, int mipi_pipe, enum panel_type p_type)
 		p_vid_funcs = NULL;
 		p_cmd_funcs = NULL;
 		break;
+#ifdef CONFIG_MDFD_HDMI
 	case HDMI:
 		kfree(p_vid_funcs);
 		kfree(p_cmd_funcs);
@@ -230,6 +231,7 @@ void init_panel(struct drm_device* dev, int mipi_pipe, enum panel_type p_type)
 		mdfld_hdmi_init(dev, &dev_priv->mode_dev);
 		/*hdmi_output_init(dev);*/
 		break;
+#endif
 	default:
 		kfree(p_vid_funcs);
 		kfree(p_cmd_funcs);

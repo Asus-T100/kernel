@@ -169,7 +169,6 @@ gfx-y += $(DRMDRVDIR)/psb_bl.o \
 	  $(DRMDRVDIR)/psb_drv.o \
 	  $(DRMDRVDIR)/psb_fb.o \
 	  $(DRMDRVDIR)/psb_gtt.o \
-	  $(DRMDRVDIR)/psb_hotplug.o \
 	  $(DRMDRVDIR)/psb_intel_bios.o \
 	  $(DRMDRVDIR)/psb_intel_opregion.o \
 	  $(DRMDRVDIR)/psb_intel_display.o \
@@ -177,13 +176,7 @@ gfx-y += $(DRMDRVDIR)/psb_bl.o \
 	  $(DRMDRVDIR)/psb_intel_lvds.o \
 	  $(DRMDRVDIR)/psb_intel_modes.o \
 	  $(DRMDRVDIR)/psb_intel_sdvo.o \
-	  $(DRMDRVDIR)/mdfld_hdmi_audio.o \
-	  $(DRMDRVDIR)/mdfld_msic.o \
-	  $(DRMDRVDIR)/mdfld_ti_tpd.o \
 	  $(DRMDRVDIR)/mdfld_csc.o \
-	  $(DRMDRVDIR)/mdfld_intel_hdcp.o \
-	  $(DRMDRVDIR)/psb_intel_hdmi.o \
-	  $(DRMDRVDIR)/psb_intel_hdmi_i2c.o \
 	  $(DRMDRVDIR)/psb_reset.o \
 	  $(DRMDRVDIR)/psb_schedule.o \
 	  $(DRMDRVDIR)/psb_sgx.o \
@@ -210,6 +203,15 @@ gfx-y += $(DRMDRVDIR)/psb_bl.o \
 	  $(DRMDRVDIR)/mdfld_dsi_pkg_sender.o \
 	  $(DRMDRVDIR)/psb_powermgmt.o \
 	  $(DRMDRVDIR)/psb_irq.o
+
+gfx-$(CONFIG_MDFD_HDMI) += $(DRMDRVDIR)/mdfld_msic.o \
+	  $(DRMDRVDIR)/psb_hotplug.o \
+	  $(DRMDRVDIR)/mdfld_intel_hdcp.o \
+	  $(DRMDRVDIR)/mdfld_ti_tpd.o \
+	  $(DRMDRVDIR)/psb_intel_hdmi.o \
+	  $(DRMDRVDIR)/psb_intel_hdmi_i2c.o
+
+gfx-$(CONFIG_SND_INTELMID_HDMI_AUDIO) += $(DRMDRVDIR)/mdfld_hdmi_audio.o
 
 gfx-y +=  $(IMGVDIR)/psb_ttm_glue.o 
 

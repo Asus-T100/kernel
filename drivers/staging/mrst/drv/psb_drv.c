@@ -66,7 +66,9 @@
 
 #include "bufferclass_video_linux.h"
 
+#ifdef CONFIG_MDFD_HDMI
 #include "mdfld_hdcp.h"
+#endif
 #include "mdfld_csc.h"
 
 int drm_psb_debug;
@@ -98,7 +100,7 @@ int drm_psb_te_timer_delay = (DRM_HZ / 40);
 static int PanelID = GCT_DETECT;
 char HDMI_EDID[HDMI_MONITOR_NAME_LENGTH];
 int hdmi_state;
-extern u32 DISP_PLANEB_STATUS;
+u32 DISP_PLANEB_STATUS = ~DISPLAY_PLANE_ENABLE;
 
 static int psb_probe(struct pci_dev *pdev, const struct pci_device_id *ent);
 
@@ -468,6 +470,7 @@ static int psb_dpu_dsr_off_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv);
 static int psb_disp_ioctl(struct drm_device *dev, void *data,
 			 struct drm_file *file_priv);
+#ifdef CONFIG_MDFD_HDMI
 static int psb_query_hdcp_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv);
 static int psb_validate_hdcp_ksv_ioctl(struct drm_device *dev, void *data,
@@ -478,9 +481,10 @@ static int psb_enable_hdcp_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv);
 static int psb_disable_hdcp_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv);
-static int psb_set_csc_ioctl(struct drm_device *dev, void *data,
-				 struct drm_file *file_priv);
 static int psb_get_hdcp_link_status_ioctl(struct drm_device *dev, void *data,
+				 struct drm_file *file_priv);
+#endif
+static int psb_set_csc_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv);
 static int psb_csc_gamma_setting_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv);
@@ -581,15 +585,19 @@ static struct drm_ioctl_desc psb_ioctls[] = {
 	DRM_AUTH),
 	PSB_IOCTL_DEF(DRM_IOCRL_PSB_DPU_DSR_OFF, psb_dpu_dsr_off_ioctl,
 	DRM_AUTH),
+#ifdef CONFIG_MDFD_HDMI
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_HDMI_FB_CMD, psb_disp_ioctl, 0),
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_QUERY_HDCP, psb_query_hdcp_ioctl, DRM_AUTH),
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_VALIDATE_HDCP_KSV, psb_validate_hdcp_ksv_ioctl, DRM_AUTH),
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_GET_HDCP_STATUS, psb_get_hdcp_status_ioctl, DRM_AUTH),
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_ENABLE_HDCP, psb_enable_hdcp_ioctl, DRM_AUTH),
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_DISABLE_HDCP, psb_disable_hdcp_ioctl, DRM_AUTH),
+#endif
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_CSC_GAMMA_SETTING, psb_csc_gamma_setting_ioctl, DRM_AUTH),
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_SET_CSC, psb_set_csc_ioctl, DRM_AUTH),
+#ifdef CONFIG_MDFD_HDMI
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_GET_HDCP_LINK_STATUS, psb_get_hdcp_link_status_ioctl, DRM_AUTH)
+#endif
 };
 
 static void get_ci_info(struct drm_psb_private *dev_priv)
@@ -1691,18 +1699,28 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	if (IS_CTP(dev)) {
 		dev_priv->num_pipe = 2;
 	} else if (IS_MDFLD(dev)) {
-		dev_priv->num_pipe = 3;
+		dev_priv->num_pipe = 1;
+#ifdef CONFIG_MDFD_DUAL_MIPI
+		dev_priv->num_pipe++;
+#endif
+#ifdef CONFIG_MDFD_HDMI
+		dev_priv->num_pipe++;
+#endif
 	} else if (IS_MRST(dev))
 		dev_priv->num_pipe = 1;
 	else
 		dev_priv->num_pipe = 2;
 
+#ifdef CONFIG_MDFD_HDMI
 	atomic_set(&dev_priv->hotplug_wq_done, 1);
+#endif
 
 	/*init DPST umcomm to NULL*/
 	dev_priv->psb_dpst_state = NULL;
+#ifdef CONFIG_MDFD_HDMI
 	dev_priv->psb_hotplug_state = NULL;
 	dev_priv->hdmi_done_reading_edid = false;
+#endif
 	dev_priv->um_start = false;
 	dev_priv->b_vblank_enable = false;
 
@@ -2021,6 +2039,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	if (ret)
 		return ret;
 
+#ifdef CONFIG_MDFD_HDMI
 	/* initialize HDMI Hotplug interrupt forwarding
 	* notifications for user mode
 	*/
@@ -2036,6 +2055,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 
 		dev_priv->psb_hotplug_state = psb_hotplug_init(kobj);
 	}
+#endif
 
 	/* Post OSPM init */
 	 if (IS_MDFLD(dev))
@@ -2361,7 +2381,7 @@ exit:
 	return ret;
 }
 
-
+#ifdef CONFIG_MDFD_HDMI
 static int psb_query_hdcp_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv)
 {
@@ -2436,14 +2456,6 @@ static int psb_disable_hdcp_ioctl(struct drm_device *dev, void *data,
 	return ret;
 }
 
-static int psb_set_csc_ioctl(struct drm_device *dev, void *data,
-				 struct drm_file *file_priv)
-{
-    struct drm_psb_csc_matrix *csc_matrix = data;
-    csc_program_DC(dev, csc_matrix->matrix, csc_matrix->pipe);
-    return 0;
-}
-
 static int psb_get_hdcp_link_status_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv)
 {
@@ -2451,6 +2463,15 @@ static int psb_get_hdcp_link_status_ioctl(struct drm_device *dev, void *data,
 	*arg = hdcp_get_link_status();
 
 	return 0;
+}
+#endif
+
+static int psb_set_csc_ioctl(struct drm_device *dev, void *data,
+				 struct drm_file *file_priv)
+{
+    struct drm_psb_csc_matrix *csc_matrix = data;
+    csc_program_DC(dev, csc_matrix->matrix, csc_matrix->pipe);
+    return 0;
 }
 
 static int psb_dc_state_ioctl(struct drm_device *dev, void * data,

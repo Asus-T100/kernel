@@ -46,8 +46,6 @@
 #include <asm/intel_scu_ipc.h>
 #endif
 
-u32 DISP_PLANEB_STATUS = ~DISPLAY_PLANE_ENABLE;
-
 /* FIXME_MDFLD HDMI EDID supports */
 char EDID_Samsung[EDID_LENGTH + HDMI_CEA_EDID_BLOCK_SIZE] =
 {
