@@ -118,19 +118,33 @@ enum {
 extern int mfld_board_type(void);
 
 /*
-    MSIC Pin, Pin#, ID,     CDK     Aava     BKB      BKB      BKB   BKB  BKB
-    --------  ----- ---   (Fab-B) FF-Proto Pr2Proto Pr2Volume PR2PnP PR3 PR3PnP
-    GPIO0LV0  L13   BID_0    0       0        1        1        0     1    0
-    GPIO0LV1  H12   BID_1    1       1        0        0        0     0    0
-    GPIO0LV2  K13   BID_2    0       1        1        1        0     1    0
-    GPIO0LV3  J11   BID_3    0       0        0        0        1     0    1
-    GPIO0LV4  K14   FAB_ID0  1       x        1        0        0     1    1
-    GPIO0LV5  J15   FAB_ID1  0       0        0        1        0     1    0
+    MSIC Pin, Pin#, ID,     CDK     BKB      BKB      BKB    BKB   BKB
+    --------  ----- ---   (Fab-B) Pr2Proto Pr2Volume PR2PnP  PR3  PR3PnP
+    GPIO0LV0  L13   BID_0    0       1        1        0      1     0
+    GPIO0LV1  H12   BID_1    1       0        0        0      0     0
+    GPIO0LV2  K13   BID_2    0       1        1        0      1     0
+    GPIO0LV3  J11   BID_3    0       0        0        1      0     1
+    GPIO0LV4  K14   FAB_ID0  1       1        0        0      1     1
+    GPIO0LV5  J15   FAB_ID1  0       0        1        0      1     0
+
+
+    MSIC Pin, Pin#, ID,     Aava     RR    RR    RR    Joki
+    --------  ----- ---   FF-Proto  DV10  DV20  DV21   EV20
+    GPIO0LV0  L13   BID_0    0       1     1     1      0
+    GPIO0LV1  H12   BID_1    1       0     0     0      1
+    GPIO0LV2  K13   BID_2    1       1     1     1      1
+    GPIO0LV3  J11   BID_3    0       0     0     0      0
+    GPIO0LV4  K14   FAB_ID0  x       0     1     0      1
+    GPIO0LV5  J15   FAB_ID1  0       1     0     0      0
+
+
  */
+
 enum {
 	MFLD_BID_UNKNOWN     = 0,
 	MFLD_BID_CDK         = 0x12,
 	MFLD_BID_AAVA        = 0x06,
+	MFLD_BID_JOKI_EV20   = 0x16,
 	MFLD_BID_PR2_PROTO   = 0x15,
 	MFLD_BID_PR2_PNP     = 0x08,
 	MFLD_BID_PR2_VOLUME  = 0x25,
@@ -138,6 +152,7 @@ enum {
 	MFLD_BID_PR3_PNP     = 0x18,
 	MFLD_BID_RR_DV10     = 0x25,
 	MFLD_BID_RR_DV20     = 0x15,
+	MFLD_BID_RR_DV21     = 0x05,
 	MFLD_BID_LEX   = 0xe0000025,
 	CLVT_BID_VV          = 0x08,
 	CLVT_BID_PR0         = 0x04

@@ -157,18 +157,14 @@ static int board_id_proc_show(struct seq_file *m, void *v)
 	char *bid;
 
 	switch (board_id) {
-	case MFLD_BID_CDK:
-		bid = "cdk";        break;
-	case MFLD_BID_AAVA:
-		bid = "aava";       break;
-	case MFLD_BID_PR2_PROTO:
-	case MFLD_BID_PR2_PNP:
-		bid = "pr2_proto";  break;
-	case MFLD_BID_PR2_VOLUME:
-		bid = "pr2_volume"; break;
-	case MFLD_BID_PR3:
-	case MFLD_BID_PR3_PNP:
-		bid = "pr3";        break;
+	case MFLD_BID_JOKI_EV20:
+		bid = "joki_ev20"; break;
+	case MFLD_BID_RR_DV10:
+		bid = "redridge_dv10"; break;
+	case MFLD_BID_RR_DV20:
+		bid = "redridge_dv20";  break;
+	case MFLD_BID_RR_DV21:
+		bid = "redridge_dv21"; break;
 	default:
 		bid = "unknown";    break;
 	}
