@@ -1001,7 +1001,7 @@ static int smb347_hw_init(struct smb347_charger *smb)
 				goto fail;
 			}
 
-			dev_dbg(&smb->client->dev,
+			dev_info(&smb->client->dev,
 				"registered to OTG notifications\n");
 		}
 		break;
@@ -1140,6 +1140,8 @@ static irqreturn_t smb347_interrupt(int irq, void *data)
 		if ((irqstat_c & IRQSTAT_C_TERMINATION_STAT) &&
 						smb->pdata->show_battery)
 			power_supply_changed(&smb->battery);
+		dev_info(&smb->client->dev,
+			"[Charge Terminated] Going to HW Maintenance mode\n");
 		ret = IRQ_HANDLED;
 	}
 
@@ -1155,6 +1157,12 @@ static irqreturn_t smb347_interrupt(int irq, void *data)
 			if (smb->pdata->use_usb)
 				power_supply_changed(&smb->usb);
 		}
+
+		if (smb->mains_online || smb->usb_online)
+			dev_info(&smb->client->dev, "Charger connected\n");
+		else
+			dev_info(&smb->client->dev, "Charger disconnected\n");
+
 		ret = IRQ_HANDLED;
 	}
 
@@ -1167,6 +1175,7 @@ static irqreturn_t smb347_interrupt(int irq, void *data)
 	 */
 	if (irqstat_f & IRQSTAT_F_OTG_UV_IRQ) {
 		smb->otg_battery_uv = !!(irqstat_f & IRQSTAT_F_OTG_UV_STAT);
+		dev_info(&smb->client->dev, "Vbatt is below OTG UVLO\n");
 		ret = IRQ_HANDLED;
 	}
 
