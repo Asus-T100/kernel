@@ -1,6 +1,7 @@
 config VIDEO_ATOMISP
 	tristate "Medfield Penwell Image Signal Processor Driver"
 	depends on VIDEO_V4L2
+	depends on !64BIT
 	select VIDEOBUF_VMALLOC
 
 	---help---
