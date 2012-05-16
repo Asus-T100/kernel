@@ -103,8 +103,13 @@
 /* Model multiplying and dividing factors for Max17050
  * chip to be added later as needed
  */
+#ifdef CONFIG_BOARD_REDRIDGE
+#define MAX17042_MODEL_MUL_FACTOR(a)	(a)
+#define MAX17042_MODEL_DIV_FACTOR(a)	(a)
+#else
 #define MAX17042_MODEL_MUL_FACTOR(a)	((a * 10) / 7)
 #define MAX17042_MODEL_DIV_FACTOR(a)	((a * 7) / 10)
+#endif
 
 #define CONSTANT_TEMP_IN_POWER_SUPPLY	350
 #define POWER_SUPPLY_VOLT_MIN_THRESHOLD	3500000
@@ -1196,7 +1201,9 @@ static void max17042_restore_conf_data(struct max17042_chip *chip)
 						(val & STATUS_POR_BIT)) {
 				dev_info(&chip->client->dev,
 					"config data needs to be loaded\n");
-
+#ifdef CONFIG_BOARD_REDRIDGE
+				reset_max17042(chip);
+#endif
 				retval = init_max17042_chip(chip);
 				if (retval < 0) {
 					dev_err(&chip->client->dev,
