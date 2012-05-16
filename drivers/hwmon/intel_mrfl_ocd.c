@@ -33,7 +33,7 @@
 
 #include <linux/module.h>
 #include <linux/init.h>
-#include <linux/platform_device.h>
+#include <linux/ipc_device.h>
 #include <linux/pm.h>
 #include <linux/slab.h>
 #include <linux/hwmon-sysfs.h>
@@ -43,7 +43,7 @@
 
 #include <asm/intel_scu_ipc.h>
 
-#define DRIVER_NAME "mrfl_ocd"
+#define DRIVER_NAME "bcove_bcu"
 #define DEVICE_NAME "mrfl_pmic_bcu"
 
 /* Configuration registers that monitor the voltage drop */
@@ -93,7 +93,7 @@ static const unsigned long curr_thresholds[NUM_THRESHOLDS] = {
 
 struct ocd_info {
 	struct device *dev;
-	struct platform_device *pdev;
+	struct ipc_device *ipcdev;
 };
 
 static void enable_volt_trip_points(void)
@@ -346,32 +346,32 @@ static struct attribute_group mrfl_ocd_gr = {
 	.attrs = mrfl_ocd_attrs
 };
 
-static int mrfl_ocd_probe(struct platform_device *pdev)
+static int mrfl_ocd_probe(struct ipc_device *ipcdev)
 {
 	int ret;
 	struct ocd_info *cinfo = kzalloc(sizeof(struct ocd_info), GFP_KERNEL);
 
 	if (!cinfo) {
-		dev_err(&pdev->dev, "kzalloc failed\n");
+		dev_err(&ipcdev->dev, "kzalloc failed\n");
 		return -ENOMEM;
 	}
 
-	cinfo->pdev = pdev;
-	platform_set_drvdata(pdev, cinfo);
+	cinfo->ipcdev = ipcdev;
+	ipc_set_drvdata(ipcdev, cinfo);
 
 	/* Creating a sysfs group with mrfl_ocd_gr attributes */
-	ret = sysfs_create_group(&pdev->dev.kobj, &mrfl_ocd_gr);
+	ret = sysfs_create_group(&ipcdev->dev.kobj, &mrfl_ocd_gr);
 	if (ret) {
-		dev_err(&pdev->dev, "sysfs create group failed\n");
+		dev_err(&ipcdev->dev, "sysfs create group failed\n");
 		goto exit_free;
 	}
 
 	/* Registering with hwmon class */
-	cinfo->dev = hwmon_device_register(&pdev->dev);
+	cinfo->dev = hwmon_device_register(&ipcdev->dev);
 	if (IS_ERR(cinfo->dev)) {
 		ret = PTR_ERR(cinfo->dev);
 		cinfo->dev = NULL;
-		dev_err(&pdev->dev, "hwmon_dev_regs failed\n");
+		dev_err(&ipcdev->dev, "hwmon_dev_regs failed\n");
 		goto exit_sysfs;
 	}
 
@@ -381,7 +381,7 @@ static int mrfl_ocd_probe(struct platform_device *pdev)
 	return 0;
 
 exit_sysfs:
-	sysfs_remove_group(&pdev->dev.kobj, &mrfl_ocd_gr);
+	sysfs_remove_group(&ipcdev->dev.kobj, &mrfl_ocd_gr);
 exit_free:
 	kfree(cinfo);
 	return ret;
@@ -399,13 +399,13 @@ static int mrfl_ocd_suspend(struct device *dev)
 	return 0;
 }
 
-static int mrfl_ocd_remove(struct platform_device *pdev)
+static int mrfl_ocd_remove(struct ipc_device *ipcdev)
 {
-	struct ocd_info *cinfo = platform_get_drvdata(pdev);
+	struct ocd_info *cinfo = ipc_get_drvdata(ipcdev);
 
 	if (cinfo) {
 		hwmon_device_unregister(cinfo->dev);
-		sysfs_remove_group(&pdev->dev.kobj, &mrfl_ocd_gr);
+		sysfs_remove_group(&ipcdev->dev.kobj, &mrfl_ocd_gr);
 		kfree(cinfo);
 	}
 	return 0;
@@ -414,17 +414,13 @@ static int mrfl_ocd_remove(struct platform_device *pdev)
 /*********************************************************************
  *		Driver initialisation and finalization
  *********************************************************************/
-static const struct platform_device_id ocd_id_table[] = {
-	{ DEVICE_NAME, 1 },
-	{ },
-};
 
 static const struct dev_pm_ops mrfl_ocd_pm_ops = {
 	.suspend = mrfl_ocd_suspend,
 	.resume = mrfl_ocd_resume,
 };
 
-static struct platform_driver mrfl_over_curr_detect_driver = {
+static struct ipc_driver mrfl_over_curr_detect_driver = {
 	.driver = {
 		.name = DRIVER_NAME,
 		.owner = THIS_MODULE,
@@ -432,35 +428,16 @@ static struct platform_driver mrfl_over_curr_detect_driver = {
 		},
 	.probe = mrfl_ocd_probe,
 	.remove = __devexit_p(mrfl_ocd_remove),
-	.id_table = ocd_id_table,
 };
 
 static int __init mrfl_ocd_module_init(void)
 {
-	int ret;
-	struct platform_device *pdev;
-
-	/*
-	 * FIXME: When platform specific initialization support is
-	 * available, the 'device_alloc' and 'device_add' calls will
-	 * be removed.
-	 */
-	pdev = platform_device_alloc(DEVICE_NAME, 0);
-	if (!pdev)
-		return PTR_ERR(pdev);
-
-	ret = platform_device_add(pdev);
-	if (ret) {
-		kfree(pdev);
-		return ret;
-	}
-
-	return platform_driver_register(&mrfl_over_curr_detect_driver);
+	return ipc_driver_register(&mrfl_over_curr_detect_driver);
 }
 
 static void __exit mrfl_ocd_module_exit(void)
 {
-	platform_driver_unregister(&mrfl_over_curr_detect_driver);
+	ipc_driver_unregister(&mrfl_over_curr_detect_driver);
 }
 
 module_init(mrfl_ocd_module_init);
