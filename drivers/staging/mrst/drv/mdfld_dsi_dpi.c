@@ -1510,7 +1510,7 @@ static int __dpi_panel_power_on(struct mdfld_dsi_config *dsi_config,
 	struct mdfld_dsi_hw_context *ctx;
 	struct drm_psb_private *dev_priv;
 	struct drm_device *dev;
-	int retry;
+	int retry, reset_count = 10;
 	int i;
 	int err = 0;
 
@@ -1525,7 +1525,8 @@ static int __dpi_panel_power_on(struct mdfld_dsi_config *dsi_config,
 	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
 					OSPM_UHB_FORCE_POWER_ON))
 		return -EAGAIN;
-
+reset_recovery:
+	--reset_count;
 	/*HW-Reset*/
 	if (p_funcs && p_funcs->reset)
 		p_funcs->reset(dsi_config, RESET_FROM_OSPM_RESUME);
@@ -1649,15 +1650,26 @@ static int __dpi_panel_power_on(struct mdfld_dsi_config *dsi_config,
 	/*set low power output hold*/
 	REG_WRITE(regs->mipi_reg, (ctx->mipi | BIT16));
 
-/* FIXME JLIU7 */
-#if 1
 	/**
 	 * Different panel may have different ways to have
 	 * drvIC initialized. Support it!
 	 */
-	if (p_funcs && p_funcs->drv_ic_init)
-		p_funcs->drv_ic_init(dsi_config, 0);
-#endif
+	if (p_funcs && p_funcs->drv_ic_init) {
+		if (p_funcs->drv_ic_init(dsi_config, 0)) {
+			if (!reset_count) {
+				err = -EAGAIN;
+				goto power_on_err;
+			}
+			pmu_nc_set_power_state(OSPM_MIPI_ISLAND,
+					OSPM_ISLAND_DOWN, OSPM_REG_TYPE);
+
+			pmu_nc_set_power_state(OSPM_MIPI_ISLAND,
+					OSPM_ISLAND_UP, OSPM_REG_TYPE);
+
+			DRM_ERROR("Failed to init dsi controller, reset it!\n");
+			goto reset_recovery;
+		}
+	}
 
 	/**
 	 * Different panel may have different ways to have
@@ -1687,17 +1699,19 @@ static int __dpi_panel_power_on(struct mdfld_dsi_config *dsi_config,
 	REG_WRITE(regs->pipestat_reg, ctx->pipestat |
 			PIPE_VBLANK_INTERRUPT_ENABLE);
 
-	/*Wait for pipe enabling*/
-	retry = 10000;
-	while (--retry && !(REG_READ(regs->pipeconf_reg) & BIT30))
-		udelay(3);
+	/*Wait for pipe enabling,when timing generator
+	is wroking */
+	if (REG_READ(regs->mipi_reg) & BIT31) {
+		retry = 10000;
+		while (--retry && !(REG_READ(regs->pipeconf_reg) & BIT30))
+			udelay(3);
 
-	if (!retry) {
-		DRM_ERROR("Failed to enable pipe\n");
-		err = -EAGAIN;
-		goto power_on_err;
+		if (!retry) {
+			DRM_ERROR("Failed to enable pipe\n");
+			err = -EAGAIN;
+			goto power_on_err;
+		}
 	}
-
 	/*enable plane*/
 	val = ctx->dspcntr | BIT31;
 
@@ -1733,7 +1747,6 @@ static int __dpi_panel_power_off(struct mdfld_dsi_config *dsi_config,
 	int pipe0_enabled;
 	int pipe2_enabled;
 	int err = 0;
-
 	if (!dsi_config)
 		return -EINVAL;
 
@@ -1780,16 +1793,22 @@ static int __dpi_panel_power_off(struct mdfld_dsi_config *dsi_config,
 	ctx->pipeconf = val;
 	REG_WRITE(regs->pipeconf_reg, (val & ~BIT31));
 
-	/*wait for pipe disabling*/
-	retry = 100000;
-	while (--retry && (REG_READ(regs->pipeconf_reg) & BIT30))
-		udelay(5);
+	/*wait for pipe disabling,
+	pipe synchronization plus , only avaiable when
+	timer generator is working*/
+	if (REG_READ(regs->mipi_reg) & BIT31) {
+		retry = 100000;
+		while (--retry && (REG_READ(regs->pipeconf_reg) & BIT30))
+			udelay(5);
 
-	if (!retry) {
-		DRM_ERROR("Failed to disable pipe\n");
-		err = -EAGAIN;
-		goto power_off_err;
+		if (!retry) {
+			DRM_ERROR("Failed to disable pipe\n");
+			err = -EAGAIN;
+			goto power_off_err;
+		}
 	}
+	/*Disable MIPI port*/
+	REG_WRITE(regs->mipi_reg, (REG_READ(regs->mipi_reg) & ~BIT31));
 
 	/**
 	 * Different panel may have different ways to have
@@ -1802,9 +1821,6 @@ static int __dpi_panel_power_off(struct mdfld_dsi_config *dsi_config,
 			goto power_off_err;
 		}
 	}
-
-	/*Disable MIPI port*/
-	REG_WRITE(regs->mipi_reg, (REG_READ(regs->mipi_reg) & ~BIT31));
 
 	/*clear Low power output hold*/
 	REG_WRITE(regs->mipi_reg, (REG_READ(regs->mipi_reg) & ~BIT16));

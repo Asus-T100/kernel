@@ -81,7 +81,7 @@ static u32 pr2_backlight_control_1[] = {0x0f0f01b8, 0xc8c8ffff, 0x18180f0f,
 					0x02009090, 0x5A371D0c, 0x00FFBE87};
 static u32 pr2_backlight_control_2[] = {0x00cc01b9, 0x00000018};
 
-void mdfld_dsi_pr2_ic_init(struct mdfld_dsi_config *dsi_config, int pipe)
+int mdfld_dsi_pr2_ic_init(struct mdfld_dsi_config *dsi_config, int pipe)
 {
 	struct mdfld_dsi_pkg_sender *sender
 			= mdfld_dsi_get_pkg_sender(dsi_config);
@@ -89,10 +89,11 @@ void mdfld_dsi_pr2_ic_init(struct mdfld_dsi_config *dsi_config, int pipe)
 
 	if (!sender) {
 		DRM_ERROR("Cannot get sender\n");
-		return;
+		return -EINVAL;
 	}
 
 	printk(KERN_ALERT "[DISPLAY TRK] Enter %s\n", __func__);
+	sender->status = MDFLD_DSI_PKG_SENDER_FREE;
 
 	/*wait for 5ms*/
 	wait_timeout = jiffies + (HZ / 200);
@@ -100,35 +101,118 @@ void mdfld_dsi_pr2_ic_init(struct mdfld_dsi_config *dsi_config, int pipe)
 		cpu_relax();
 
 	mdfld_dsi_send_gen_long_lp(sender, pr2_mcs_protect_off, 4, 0);
-	mdfld_dsi_send_gen_long_lp(sender, pr2_pixel_format, 4, 0);
-	mdfld_dsi_send_gen_long_lp(sender, pr2_dsi_control, 4, 0);
-	mdfld_dsi_send_gen_long_lp(sender, pr2_panel_driving, 8, 0);
-	mdfld_dsi_send_gen_long_lp(sender, pr2_v_timing, 8, 0);
-	mdfld_dsi_send_gen_long_lp(sender, pr2_control, 4, 0);
-	mdfld_dsi_send_gen_long_lp(sender, pr2_test_mode_0, 4, 0);
-	mdfld_dsi_send_gen_long_lp(sender, pr2_h_timing, 16, 0);
-	mdfld_dsi_send_gen_long_lp(sender, pr2_can_skip, 4, 0);
-	mdfld_dsi_send_gen_long_lp(sender, pr2_gamma_set_a, 16, 0);
-	mdfld_dsi_send_gen_long_lp(sender, pr2_gamma_set_b, 16, 0);
-	mdfld_dsi_send_gen_long_lp(sender, pr2_gamma_set_c, 16, 0);
-	mdfld_dsi_send_gen_long_lp(sender, pr2_charge_pump_setting, 8, 0);
-	mdfld_dsi_send_gen_long_lp(sender, pr2_test_mode_1, 8, 0);
-	mdfld_dsi_send_gen_long_lp(sender, pr2_source_amplifiers, 4, 0);
-	mdfld_dsi_send_gen_long_lp(sender, pr2_power_supply_circuit, 4, 0);
-	mdfld_dsi_send_gen_long_lp(sender, pr2_vreg_setting, 4, 0);
-	mdfld_dsi_send_gen_long_lp(sender, pr2_test_mode_2, 4, 0);
-	mdfld_dsi_send_gen_long_lp(sender, pr2_timing_control_0, 12, 0);
-	mdfld_dsi_send_gen_long_lp(sender, pr2_timing_control_1, 8, 0);
-	mdfld_dsi_send_gen_long_lp(sender, pr2_timing_control_2, 4, 0);
-	mdfld_dsi_send_gen_long_lp(sender, pr2_white_balance, 8, 0);
-	mdfld_dsi_send_gen_long_lp(sender, pr2_vcs_setting, 4, 0);
-	mdfld_dsi_send_gen_long_lp(sender, pr2_vcom_dc_setting, 4, 0);
-	mdfld_dsi_send_gen_long_lp(sender, pr2_test_mode_3, 8, 0);
-	mdfld_dsi_send_gen_long_lp(sender, pr2_mcs_protect_on, 4, 0);
-	mdfld_dsi_send_mcs_long_lp(sender, pr2_set_address_mode, 4, 0);
-	mdfld_dsi_send_mcs_long_lp(sender, pr2_set_pixel_format, 4, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
 
-	/* Now In Sleep Mode */
+	mdfld_dsi_send_gen_long_lp(sender, pr2_pixel_format, 4, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
+	mdfld_dsi_send_gen_long_lp(sender, pr2_dsi_control, 4, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
+	mdfld_dsi_send_gen_long_lp(sender, pr2_panel_driving, 8, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
+	mdfld_dsi_send_gen_long_lp(sender, pr2_v_timing, 8, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
+	mdfld_dsi_send_gen_long_lp(sender, pr2_control, 4, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
+	mdfld_dsi_send_gen_long_lp(sender, pr2_test_mode_0, 4, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
+	mdfld_dsi_send_gen_long_lp(sender, pr2_h_timing, 16, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
+	mdfld_dsi_send_gen_long_lp(sender, pr2_can_skip, 4, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
+	mdfld_dsi_send_gen_long_lp(sender, pr2_gamma_set_a, 16, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
+	mdfld_dsi_send_gen_long_lp(sender, pr2_gamma_set_b, 16, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
+	mdfld_dsi_send_gen_long_lp(sender, pr2_gamma_set_c, 16, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
+	mdfld_dsi_send_gen_long_lp(sender, pr2_charge_pump_setting, 8, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
+	mdfld_dsi_send_gen_long_lp(sender, pr2_test_mode_1, 8, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
+	mdfld_dsi_send_gen_long_lp(sender, pr2_source_amplifiers, 4, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
+	mdfld_dsi_send_gen_long_lp(sender, pr2_power_supply_circuit, 4, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
+	mdfld_dsi_send_gen_long_lp(sender, pr2_vreg_setting, 4, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
+	mdfld_dsi_send_gen_long_lp(sender, pr2_test_mode_2, 4, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
+	mdfld_dsi_send_gen_long_lp(sender, pr2_timing_control_0, 12, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
+	mdfld_dsi_send_gen_long_lp(sender, pr2_timing_control_1, 8, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
+	mdfld_dsi_send_gen_long_lp(sender, pr2_timing_control_2, 4, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
+	mdfld_dsi_send_gen_long_lp(sender, pr2_white_balance, 8, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
+	mdfld_dsi_send_gen_long_lp(sender, pr2_vcs_setting, 4, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
+	mdfld_dsi_send_gen_long_lp(sender, pr2_vcom_dc_setting, 4, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
+	mdfld_dsi_send_gen_long_lp(sender, pr2_test_mode_3, 8, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
+	mdfld_dsi_send_gen_long_lp(sender, pr2_mcs_protect_on, 4, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
+	mdfld_dsi_send_mcs_long_lp(sender, pr2_set_address_mode, 4, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
+	mdfld_dsi_send_mcs_long_lp(sender, pr2_set_pixel_format, 4, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
+	return 0;
 }
 
 static void

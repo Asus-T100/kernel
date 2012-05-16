@@ -85,6 +85,7 @@ static inline int wait_for_gen_fifo_empty(struct mdfld_dsi_pkg_sender * sender,
 	}
 
 	DRM_ERROR("fifo is NOT empty 0x%08x\n", REG_READ(gen_fifo_stat_reg));
+	sender->status = MDFLD_DSI_CONTROL_ABNORMAL;
 	return -EIO;
 }
 
@@ -485,6 +486,7 @@ static int send_dpi_spk_pkg(struct mdfld_dsi_pkg_sender *sender,
 	u32 dpi_control_reg = sender->mipi_dpi_control_reg;
 	u32 intr_stat_reg = sender->mipi_intr_stat_reg;
 	u32 dpi_control_val = 0;
+	u32 dpi_control_current_setting = 0;
 	struct mdfld_dsi_dpi_spk_pkg *spk_pkg = &pkg->pkg.spk_pkg;
 	int retry = 10000;
 
@@ -498,19 +500,26 @@ static int send_dpi_spk_pkg(struct mdfld_dsi_pkg_sender *sender,
 
 	/*clean spk packet sent interrupt*/
 	REG_WRITE(intr_stat_reg, BIT30);
+	dpi_control_current_setting =
+		REG_READ(dpi_control_reg);
 
 	/*send out spk packet*/
-	REG_WRITE(dpi_control_reg, dpi_control_val);
+	if (dpi_control_current_setting != dpi_control_val) {
+		REG_WRITE(dpi_control_reg, dpi_control_val);
 
-	/*wait for spk packet sent interrupt*/
-	while (--retry && !(REG_READ(intr_stat_reg) & BIT30))
-		udelay(3);
+		/*wait for spk packet sent interrupt*/
+		while (--retry && !(REG_READ(intr_stat_reg) & BIT30))
+			udelay(3);
 
-	if (!retry) {
-		DRM_ERROR("Fail to send SPK Packet 0x%x\n", spk_pkg->cmd);
-		return -EINVAL;
-	}
-
+		if (!retry) {
+			DRM_ERROR("Fail to send SPK Packet 0x%x\n",
+				 spk_pkg->cmd);
+			return -EINVAL;
+		}
+	} else
+		/*For SHUT_DOWN and TURN_ON, it is better called by
+		symmetrical. so skip duplicate called*/
+		printk(KERN_WARNING "skip duplicate setting of DPI control\n");
 	return 0;
 }
 
@@ -575,7 +584,8 @@ static int send_pkg_done(struct mdfld_dsi_pkg_sender * sender,
 	else if (unlikely(cmd == exit_sleep_mode))
 		sender->panel_mode &= ~MDFLD_DSI_PANEL_MODE_SLEEP;
 
-	sender->status = MDFLD_DSI_PKG_SENDER_FREE;
+	if (sender->status != MDFLD_DSI_CONTROL_ABNORMAL)
+		sender->status = MDFLD_DSI_PKG_SENDER_FREE;
 
 	/*after sending pkg done, free the data buffer for mcs long pkg*/
 	if (pkg->pkg_type == MDFLD_DSI_PKG_MCS_LONG_WRITE ||

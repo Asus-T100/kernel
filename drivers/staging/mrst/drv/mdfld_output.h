@@ -98,7 +98,7 @@ struct panel_funcs {
 	void (*update_fb)(struct mdfld_dsi_dbi_output*, int);
 	int (*get_panel_info)(struct drm_device *, int, struct panel_info *);
 	int (*reset)(struct mdfld_dsi_config *dsi_config, int reset_from);
-	void (*drv_ic_init)(struct mdfld_dsi_config *dsi_config, int pipe);
+	int (*drv_ic_init)(struct mdfld_dsi_config *dsi_config, int pipe);
 	int (*detect)(struct mdfld_dsi_config *dsi_config, int pipe);
 	void (*dsi_controller_init)(struct mdfld_dsi_config *dsi_config,
 				int pipe, int update);
