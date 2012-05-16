@@ -1878,13 +1878,7 @@ irqreturn_t i2s_irq_handle_RFS(struct intel_mid_i2s_hdl *drv_data, u32 sssr)
 		/* Schedule irq thread for final treatment
 		 * in i2s_irq_deferred */
 		set_bit(I2S_PORT_COMPLETE_READ, &drv_data->flags);
-#ifndef __MRFL_SPECIFIC_TMP__
 		irq_status = IRQ_WAKE_THREAD;
-#else /* __MRFL_SPECIFIC_TMP__ */
-		/* FIXME:
-		 * remove when threaded irq will work on MRFL kernel */
-		irq_status = i2s_irq_deferred(drv_data->irq, (void *)drv_data);
-#endif /* __MRFL_SPECIFIC_TMP__ */
 	}
 
 i2s_irq_handle_RFS_return:
@@ -1937,13 +1931,7 @@ irqreturn_t i2s_irq_handle_TFS(struct intel_mid_i2s_hdl *drv_data, u32 sssr)
 		/* Schedule irq thread for final treatment
 		 * in i2s_irq_deferred */
 		set_bit(I2S_PORT_COMPLETE_WRITE, &drv_data->flags);
-#ifndef __MRFL_SPECIFIC_TMP__
 		irq_status = IRQ_WAKE_THREAD;
-#else /* __MRFL_SPECIFIC_TMP__ */
-		/* FIXME:
-		 * remove when threaded irq will work on MRFL kernel */
-		irq_status = i2s_irq_deferred(drv_data->irq, (void *)drv_data);
-#endif /* __MRFL_SPECIFIC_TMP__*/
 	}
 
 i2s_irq_handle_TFS_return:
@@ -2828,8 +2816,6 @@ static int intel_mid_i2s_probe(struct pci_dev *pdev,
 
 	/* Attach to IRQ */
 	drv_data->irq = pdev->irq;
-
-#ifndef __MRFL_SPECIFIC_TMP__
 	dev_dbg(&(pdev->dev), "attaching to IRQ: %04x\n", pdev->irq);
 
 	status = request_threaded_irq(drv_data->irq,
@@ -2838,16 +2824,6 @@ static int intel_mid_i2s_probe(struct pci_dev *pdev,
 					  IRQF_SHARED,
 					  "i2s ssp",
 					  drv_data);
-#else /* __MRFL_SPECIFIC_TMP__ */
-	/* FIXME: remove when threaded irq will work on MRFL kernel */
-	dev_info(&(pdev->dev), "attaching to IRQ: %04x\n", pdev->irq);
-
-	status = request_irq(drv_data->irq,
-					  i2s_irq,
-					  IRQF_SHARED,
-					  "i2s ssp",
-					  drv_data);
-#endif /* __MRFL_SPECIFIC_TMP__ */
 
 	if (status < 0)	{
 		dev_err(&pdev->dev, "can not get IRQ. status err=%d\n", status);
