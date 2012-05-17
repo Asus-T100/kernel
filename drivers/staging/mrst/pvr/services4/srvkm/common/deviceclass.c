@@ -1663,6 +1663,12 @@ PVRSRV_ERROR PVRSRVSwapToDCBuffer2KM(IMG_HANDLE	hDeviceKM,
 		{
 			for(i = 0; i < ui32NumMemSyncInfos; i++)
 			{
+				if(psSwapChain->ppsLastSyncInfos[j] == IMG_NULL)
+				{
+					ui32NumUniqueSyncInfos--;
+					continue;
+				}
+
 				if(psSwapChain->ppsLastSyncInfos[j] == ppsSyncInfos[i])
 				{
 					psSwapChain->ppsLastSyncInfos[j] = IMG_NULL;
