@@ -112,103 +112,99 @@ static int mdfld_gi_l5f3_dpi_ic_init(struct mdfld_dsi_config *dsi_config,
 	PSB_DEBUG_ENTRY("\n");
 	sender->status = MDFLD_DSI_PKG_SENDER_FREE;
 
-	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_set_column_add, 8, 0);
+	mdfld_dsi_send_mcs_long_lp(sender, gi_l5f3_set_column_add, 8, 0);
 	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
 		return -EIO;
 
-	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_set_row_add, 8, 0);
+	mdfld_dsi_send_mcs_long_lp(sender, gi_l5f3_set_row_add, 8, 0);
 	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
 		return -EIO;
 
-	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_set_address_mode, 4, 0);
+	mdfld_dsi_send_mcs_long_lp(sender, gi_l5f3_set_address_mode, 4, 0);
 	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
 		return -EIO;
 
-	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_set_pixel_format, 4, 0);
+	mdfld_dsi_send_mcs_long_lp(sender, gi_l5f3_set_pixel_format, 4, 0);
 	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
 		return -EIO;
 
-	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_set_te_scanline, 4, 0);
+	mdfld_dsi_send_mcs_long_lp(sender, gi_l5f3_set_te_scanline, 4, 0);
 	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
 		return -EIO;
 
-	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_set_tear_on, 4, 0);
+	mdfld_dsi_send_mcs_long_lp(sender, gi_l5f3_set_tear_on, 4, 0);
 	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
 		return -EIO;
 
-	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_passwd1_on, 4, 0);
+	mdfld_dsi_send_gen_long_lp(sender, gi_l5f3_passwd1_on, 4, 0);
 	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
 		return -EIO;
 
-	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_disctl, 20, 0);
+	mdfld_dsi_send_gen_long_lp(sender, gi_l5f3_set_disctl, 20, 0);
 	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
 		return -EIO;
 
-	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_pwrctl, 16, 0);
+	mdfld_dsi_send_gen_long_lp(sender, gi_l5f3_set_pwrctl, 16, 0);
 	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
 		return -EIO;
 
-	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_vcmctl, 16, 0);
+	mdfld_dsi_send_gen_long_lp(sender, gi_l5f3_set_vcmctl, 16, 0);
 	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
 		return -EIO;
 
-	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_srcctl, 12, 0);
+	mdfld_dsi_send_gen_long_lp(sender, gi_l5f3_set_srcctl, 12, 0);
 	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
 		return -EIO;
 
-	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_ifctl, 8, 0);
+	mdfld_dsi_send_gen_long_lp(sender, gi_l5f3_set_ifctl, 8, 0);
 	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
 		return -EIO;
 
-	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_panelctl, 4, 0);
+	mdfld_dsi_send_gen_long_lp(sender, gi_l5f3_set_panelctl, 4, 0);
 	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
 		return -EIO;
 
-	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_gammasel, 4, 0);
+	mdfld_dsi_send_gen_long_lp(sender, gi_l5f3_set_gammasel, 4, 0);
 	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
 		return -EIO;
 
-	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_pgammactl, 20, 0);
+	mdfld_dsi_send_gen_long_lp(sender, gi_l5f3_set_pgammactl, 20, 0);
 	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
 		return -EIO;
 
-	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_ngammactl, 20, 0);
+	mdfld_dsi_send_gen_long_lp(sender, gi_l5f3_set_ngammactl, 20, 0);
 	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
 		return -EIO;
 
-	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_miectl1, 4, 0);
+	mdfld_dsi_send_gen_long_lp(sender, gi_l5f3_set_miectl1, 4, 0);
 	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
 		return -EIO;
 
-	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_bcmode, 4, 0);
+	mdfld_dsi_send_gen_long_lp(sender, gi_l5f3_set_bcmode, 4, 0);
 	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
 		return -EIO;
 
-	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_wrmiectl2, 4, 0);
+	mdfld_dsi_send_gen_long_lp(sender, gi_l5f3_set_wrmiectl2, 4, 0);
 	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
 		return -EIO;
 
-	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_set_wrblctl, 4, 0);
+	mdfld_dsi_send_gen_long_lp(sender, gi_l5f3_set_wrblctl, 4, 0);
 	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
 		return -EIO;
 
-	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_passwd1_off, 4, 0);
+	mdfld_dsi_send_gen_long_lp(sender, gi_l5f3_passwd1_off, 4, 0);
 	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
 		return -EIO;
 
-	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_set_full_brightness, 4, 0);
+	mdfld_dsi_send_mcs_long_lp(sender, gi_l5f3_turn_on_backlight, 4, 0);
 	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
 		return -EIO;
 
-	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_turn_on_backlight, 4, 0);
+	mdfld_dsi_send_mcs_long_lp(sender, gi_l5f3_disable_cabc, 4, 0);
 	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
 		return -EIO;
 
-	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_disable_cabc, 4, 0);
-	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
-		return -EIO;
-
-	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_exit_sleep_mode, 4, 0);
+	mdfld_dsi_send_mcs_long_lp(sender, gi_l5f3_exit_sleep_mode, 4, 0);
 	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
 		return -EIO;
 
