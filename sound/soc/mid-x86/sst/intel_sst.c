@@ -227,13 +227,16 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 	sst_drv_ctx->mad_wq = create_singlethread_workqueue("sst_mad_wq");
 	if (!sst_drv_ctx->mad_wq)
 		goto do_free_drv_ctx;
-	sst_drv_ctx->post_msg_wq = create_workqueue("sst_post_msg_wq");
+	sst_drv_ctx->post_msg_wq =
+		create_singlethread_workqueue("sst_post_msg_wq");
 	if (!sst_drv_ctx->post_msg_wq)
 		goto free_mad_wq;
-	sst_drv_ctx->process_msg_wq = create_workqueue("sst_process_msg_wqq");
+	sst_drv_ctx->process_msg_wq =
+		create_singlethread_workqueue("sst_process_msg_wqq");
 	if (!sst_drv_ctx->process_msg_wq)
 		goto free_post_msg_wq;
-	sst_drv_ctx->process_reply_wq = create_workqueue("sst_proces_reply_wq");
+	sst_drv_ctx->process_reply_wq =
+		create_singlethread_workqueue("sst_proces_reply_wq");
 	if (!sst_drv_ctx->process_reply_wq)
 		goto free_process_msg_wq;
 
