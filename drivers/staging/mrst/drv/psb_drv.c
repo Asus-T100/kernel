@@ -2340,7 +2340,15 @@ static int psb_disp_ioctl(struct drm_device *dev, void *data,
 
 			ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
                 }
+
+		/* If data=1, then force setting plane status. */
+		if (dp_ctrl->u.data == 1)
+			DISP_PLANEB_STATUS = DISPLAY_PLANE_DISABLE;
 	} else if (dp_ctrl->cmd == DRM_PSB_DISP_PLANEB_ENABLE) {
+		/* If data=1, then force setting plane status. */
+		if (dp_ctrl->u.data == 1)
+			DISP_PLANEB_STATUS = DISPLAY_PLANE_ENABLE;
+
                 if (DISP_PLANEB_STATUS == DISPLAY_PLANE_DISABLE)
                         ret = -1;
                 else {
