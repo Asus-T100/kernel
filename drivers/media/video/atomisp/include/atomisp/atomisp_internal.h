@@ -23,6 +23,7 @@
 #ifndef ATOMISP_INTERNAL_H_
 #define ATOMISP_INTERNAL_H_
 
+#include <linux/pm_qos_params.h>
 #include <media/v4l2-dev.h>
 #include <media/v4l2-device.h>
 #include <media/v4l2-subdev.h>
@@ -83,6 +84,16 @@
 
 #define ATOMISP_WDT_TIMEOUT		(4 * MSEC_PER_SEC) /* msecs */
 #define ATOMISP_WDT_MAX_TIMEOUTS	5
+
+/*
+ * Define how fast CPU should be able to serve ISP interrupts.
+ * The bigger the value, the higher risk that the ISP is not
+ * triggered sufficiently fast for it to process image during
+ * vertical blanking time, increasing risk of dropped frames.
+ * 1000 us is a reasonable value considering that the processing
+ * time is typically ~2000 us.
+ */
+#define ATOMISP_MAX_ISR_LATENCY	1000
 
 int atomisp_video_init(struct atomisp_video_pipe *video, const char *name);
 void atomisp_video_unregister(struct atomisp_video_pipe *video);
@@ -241,6 +252,8 @@ struct atomisp_device {
 	struct atomisp_platform_data *pdata;
 	const struct firmware *firmware;
 	struct timer_list wdt;
+
+	struct pm_qos_request_list pm_qos;
 
 	struct sh_css_acc_fw *acc_fw[ATOMISP_ACC_FW_MAX];
 	unsigned int acc_fw_handle;

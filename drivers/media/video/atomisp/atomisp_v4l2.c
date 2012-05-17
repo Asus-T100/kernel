@@ -20,6 +20,7 @@
  * 02110-1301, USA.
  *
  */
+#include <linux/pm_qos_params.h>
 #include <linux/async.h>
 #include "atomisp_ioctl.h"
 #include "atomisp_cmd.h"
@@ -307,6 +308,8 @@ static int atomisp_runtime_suspend(struct device *dev)
 
 	/*Turn off the ISP d-phy*/
 	ret = atomisp_ospm_dphy_down(isp);
+	if (!ret)
+		pm_qos_update_request(&isp->pm_qos, PM_QOS_DEFAULT_VALUE);
 
 	return ret;
 }
@@ -317,6 +320,7 @@ static int atomisp_runtime_resume(struct device *dev)
 		dev_get_drvdata(dev);
 	int ret;
 
+	pm_qos_update_request(&isp->pm_qos, ATOMISP_MAX_ISR_LATENCY);
 	if (isp->sw_contex.power_state == ATOM_ISP_POWER_DOWN) {
 		/*Turn on ISP d-phy */
 		ret = atomisp_ospm_dphy_up(isp);
@@ -362,6 +366,8 @@ static int atomisp_suspend(struct device *dev)
 	if (ret)
 		v4l2_err(&atomisp_dev,
 			    "fail to power off ISP\n");
+	else
+		pm_qos_update_request(&isp->pm_qos, PM_QOS_DEFAULT_VALUE);
 
 	return ret;
 }
@@ -371,6 +377,8 @@ static int atomisp_resume(struct device *dev)
 	struct atomisp_device *isp = (struct atomisp_device *)
 		dev_get_drvdata(dev);
 	int ret;
+
+	pm_qos_update_request(&isp->pm_qos, ATOMISP_MAX_ISR_LATENCY);
 
 	/*Turn on ISP d-phy */
 	ret = atomisp_ospm_dphy_up(isp);
@@ -869,6 +877,8 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 
 	atomisp_msi_irq_init(isp, dev);
 
+	pm_qos_add_request(&isp->pm_qos, PM_QOS_CPU_DMA_LATENCY,
+			   PM_QOS_DEFAULT_VALUE);
 	/*
 	 * fixing me!
 	 * MRFLD VP does not implement
@@ -911,6 +921,7 @@ static void __devexit atomisp_pci_remove(struct pci_dev *dev)
 
 	pm_runtime_forbid(&dev->dev);
 	pm_runtime_get_noresume(&dev->dev);
+	pm_qos_remove_request(&isp->pm_qos);
 
 	atomisp_msi_irq_uninit(isp, dev);
 	free_irq(dev->irq, isp);
