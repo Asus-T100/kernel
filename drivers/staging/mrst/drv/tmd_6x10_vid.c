@@ -479,24 +479,27 @@ static int mdfld_dsi_pr2_set_brightness(struct mdfld_dsi_config *dsi_config,
 	/*update duty value*/
 	pr2_backlight_control_2[0] =  (0x0000001b9 | (duty_val << 16));
 
-	if (level < 50) {
-		pr2_backlight_control_1[0] = 0x0f0f00b8;
-	} else if (level < 66) {
-		/* Case 10% */
-		pr2_backlight_control_1[0] = 0x070701b8;
-		pr2_backlight_control_1[1] = 0xe4e4ffff;
-	} else if (level < 82) {
-		/* Case 20% */
-		pr2_backlight_control_1[0] = 0x0b0b01b8;
-		pr2_backlight_control_1[1] = 0xd4d4ffff;
-	} else {
-		/* Case 30% */
-		pr2_backlight_control_1[0] = 0x0f0f01b8;
-		pr2_backlight_control_1[1] = 0xc8c8ffff;
+	if (drm_psb_enable_pr2_cabc) {
+		if (level < 50) {
+			pr2_backlight_control_1[0] = 0x0f0f00b8;
+			PSB_DEBUG_ENTRY("brightness too low, cabc disable,\n");
+		} else if (level < 66) {
+			/* Case 10% */
+			pr2_backlight_control_1[0] = 0x070701b8;
+			pr2_backlight_control_1[1] = 0xe4e4ffff;
+		} else if (level < 82) {
+			/* Case 20% */
+			pr2_backlight_control_1[0] = 0x0b0b01b8;
+			pr2_backlight_control_1[1] = 0xd4d4ffff;
+		} else {
+			/* Case 30% */
+			pr2_backlight_control_1[0] = 0x0f0f01b8;
+			pr2_backlight_control_1[1] = 0xc8c8ffff;
+		}
+
+		mdfld_dsi_send_gen_long_hs(sender,
+				pr2_backlight_control_1, 24, 0);
 	}
-
-	mdfld_dsi_send_gen_long_hs(sender, pr2_backlight_control_1, 24, 0);
-
 	mdfld_dsi_send_gen_long_hs(sender, pr2_backlight_control_2, 8, 0);
 
 	mdfld_dsi_send_gen_long_hs(sender, pr2_mcs_protect_on, 4, 0);
