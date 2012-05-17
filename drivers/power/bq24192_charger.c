@@ -362,14 +362,12 @@ static int __init ctp_sfi_table_populate(struct sfi_table_header *table)
 		pentry = (struct ctp_batt_sfi_prop *)sb->pentry;
 		totlen = totentrs * sizeof(*pentry);
 		memcpy(ctp_sfi_table, pentry, totlen);
-		chip->pdata->sfi_tabl_present = true;
 		if (ctp_sfi_table->temp_mon_ranges != CLT_SFI_TEMP_NR_RNG)
 			dev_warn(&chip->client->dev, "SFI: temperature monitoring range"
 				"doesn't match with its Array elements size\n");
 	} else {
 		dev_warn(&chip->client->dev, "Invalid battery detected\n");
 		ctp_sfi_table_invalid_batt(ctp_sfi_table);
-		chip->pdata->sfi_tabl_present = false;
 	}
 	return 0;
 }
@@ -511,7 +509,7 @@ static int ctp_sfi_temp_range_lookup(int adc_temp)
 		max_range = chip->pdata->temp_mon_ranges;
 	}
 
-	for (i = 0; i < max_range; i++) {
+	for (i = max_range-1; i >= 0; i--) {
 		if (adc_temp <= temp_mon_tabl[i].temp_up_lim &&
 			adc_temp > temp_low_lim) {
 			idx = i;
