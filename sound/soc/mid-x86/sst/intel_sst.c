@@ -598,6 +598,10 @@ static int intel_sst_runtime_suspend(struct device *dev)
 	mutex_unlock(&sst_drv_ctx->sst_lock);
 	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID)
 		vibra_pwm_configure(false);
+
+	flush_workqueue(sst_drv_ctx->post_msg_wq);
+	flush_workqueue(sst_drv_ctx->process_msg_wq);
+	flush_workqueue(sst_drv_ctx->process_reply_wq);
 	return 0;
 }
 
