@@ -162,3 +162,5 @@ extern void usb_notify_remove_device(struct usb_device *udev);
 extern void usb_notify_add_bus(struct usb_bus *ubus);
 extern void usb_notify_remove_bus(struct usb_bus *ubus);
 
+/* uevent notify stuff */
+extern void usb_notify_warning(struct usb_device *udev, int error);
