@@ -214,6 +214,69 @@ static IMG_VOID QueueDumpCmdComplete(COMMAND_COMPLETE_DATA *psCmdCompleteData,
 }
 
 
+static IMG_VOID QueueDumpCommand(SYS_DATA *psSysData)
+{
+	PVRSRV_QUEUE_INFO	*psQueue;
+	PVRSRV_COMMAND		*psCommand;
+	PVRSRV_SYNC_OBJECT	*psSyncWalker;
+	PVRSRV_SYNC_OBJECT	*psSyncEnd;
+	PVRSRV_SYNC_DATA	*psSyncData;
+	IMG_UINT32		start;
+
+	psQueue = psSysData->psQueueList;
+
+	while (psQueue)
+	{
+		start = psQueue->ui32ReadOffset;
+
+		PVR_LOG(("Queue Size:%d  ProcessID:0X%X", psQueue->ui32QueueSize, psQueue->ui32ProcessID));
+
+		while (start != psQueue->ui32WriteOffset)
+		{
+			psCommand = (PVRSRV_COMMAND *)((unsigned int)psQueue->pvLinQueueKM + start);
+
+			PVR_LOG(("CmdType:%d CmdSize:%d SrcCnt:%d DstCnt:%d", psCommand->CommandType,
+				psCommand->uCmdSize, psCommand->ui32SrcSyncCount, psCommand->ui32DstSyncCount));
+
+			psSyncWalker = psCommand->psDstSync;
+			psSyncEnd = psSyncWalker + psCommand->ui32DstSyncCount;
+			while (psSyncWalker < psSyncEnd)
+			{
+				psSyncData = psSyncWalker->psKernelSyncInfoKM->psSyncData;
+				PVR_LOG(("\tDst Sync Object: Write[%X](%X:%X) Read[%X](%X:%X) Read2[%X](%X:%X)",
+					psSyncWalker->psKernelSyncInfoKM->sWriteOpsCompleteDevVAddr.uiAddr,
+					psSyncData->ui32WriteOpsComplete, psSyncData->ui32WriteOpsPending,
+					psSyncWalker->psKernelSyncInfoKM->sReadOpsCompleteDevVAddr.uiAddr,
+					psSyncData->ui32ReadOpsComplete,  psSyncData->ui32ReadOpsPending,
+					psSyncWalker->psKernelSyncInfoKM->sReadOps2CompleteDevVAddr.uiAddr,
+					psSyncData->ui32ReadOps2Complete, psSyncData->ui32ReadOps2Pending));
+				psSyncWalker++;
+			}
+
+			psSyncWalker = psCommand->psSrcSync;
+			psSyncEnd = psSyncWalker + psCommand->ui32SrcSyncCount;
+			while (psSyncWalker < psSyncEnd)
+			{
+				psSyncData = psSyncWalker->psKernelSyncInfoKM->psSyncData;
+				PVR_LOG(("\tSrc Sync Object: Write[%X](%X:%X) Read[%X](%X:%X) Read2[%X](%X:%X)",
+					psSyncWalker->psKernelSyncInfoKM->sWriteOpsCompleteDevVAddr.uiAddr,
+					psSyncData->ui32WriteOpsComplete, psSyncData->ui32WriteOpsPending,
+					psSyncWalker->psKernelSyncInfoKM->sReadOpsCompleteDevVAddr.uiAddr,
+					psSyncData->ui32ReadOpsComplete,  psSyncData->ui32ReadOpsPending,
+					psSyncWalker->psKernelSyncInfoKM->sReadOps2CompleteDevVAddr.uiAddr,
+					psSyncData->ui32ReadOps2Complete, psSyncData->ui32ReadOps2Pending));
+				psSyncWalker++;
+			}
+
+			start += psCommand->uCmdSize;
+			start &= (psQueue->ui32QueueSize - 1);
+		}
+
+		psQueue = psQueue->psNextKM;
+	}
+}
+
+
 static IMG_VOID QueueDumpDebugInfo_ForEachCb(PVRSRV_DEVICE_NODE *psDeviceNode)
 {
 	if (psDeviceNode->sDevId.eDeviceClass == PVRSRV_DEVICE_CLASS_DISPLAY)
@@ -224,6 +287,7 @@ static IMG_VOID QueueDumpDebugInfo_ForEachCb(PVRSRV_DEVICE_NODE *psDeviceNode)
 		PCOMMAND_COMPLETE_DATA	psCmdCompleteData;
 
 		SysAcquireData(&psSysData);
+
 
 		psDeviceCommandData = psSysData->apsDeviceCommandData[psDeviceNode->sDevId.ui32DeviceIndex];
 
@@ -263,6 +327,7 @@ IMG_VOID QueueDumpDebugInfo(IMG_VOID)
 {
 	SYS_DATA	*psSysData;
 	SysAcquireData(&psSysData);
+	QueueDumpCommand(psSysData);
 	List_PVRSRV_DEVICE_NODE_ForEach(psSysData->psDeviceNodeList, &QueueDumpDebugInfo_ForEachCb);
 }
 
