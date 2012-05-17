@@ -362,7 +362,7 @@ void dsi_lvds_suspend_lvds_bridge(struct drm_device *dev)
 
 	if (gpio_direction_output(GPIO_MIPI_BRIDGE_RESET, 0))
 		gpio_set_value_cansleep(GPIO_MIPI_BRIDGE_RESET, 0);
-	msleep(10);
+	usleep_range(500, 1000);
 
 	lvds_suspend_state = true;
 }
@@ -388,15 +388,15 @@ void dsi_lvds_resume_lvds_bridge(struct drm_device *dev)
 	/* RESET */
 	if (gpio_direction_output(GPIO_MIPI_BRIDGE_RESET, 1))
 		gpio_set_value_cansleep(GPIO_MIPI_BRIDGE_RESET, 1);
-	msleep(20);
+	usleep_range(500, 1000);
 
 	if (gpio_direction_output(GPIO_MIPI_BRIDGE_RESET, 0))
 		gpio_set_value_cansleep(GPIO_MIPI_BRIDGE_RESET, 0);
-	msleep(20);
+	usleep_range(500, 1000);
 
 	if (gpio_direction_output(GPIO_MIPI_BRIDGE_RESET, 1))
 		gpio_set_value_cansleep(GPIO_MIPI_BRIDGE_RESET, 1);
-	msleep(20);
+	usleep_range(500, 1000);
 
 	lvds_suspend_state = false;
 }
@@ -415,17 +415,17 @@ void dsi_lvds_set_bridge_reset_state(int state)
 			gpio_set_value_cansleep(GPIO_MIPI_BRIDGE_RESET, 0);
 		/* FIXME:
 		 * per spec, the min period of reset signal is 50 nano secs,
-		 * but no detailed description. Here delay 1ms for safe.
+		 * but no detailed description. Here wait 0.5~1ms for safe.
 		 */
-		mdelay(1);
+		usleep_range(500, 1000);
 	} else {
 
 		if (gpio_direction_output(GPIO_MIPI_BRIDGE_RESET, 0))
 			gpio_set_value_cansleep(GPIO_MIPI_BRIDGE_RESET, 0);  /*Pull MIPI Bridge reset pin to Low */
-		mdelay(1);
+		usleep_range(500, 1000);
 		if (gpio_direction_output(GPIO_MIPI_BRIDGE_RESET, 1))
 			gpio_set_value_cansleep(GPIO_MIPI_BRIDGE_RESET, 1);  /*Pull MIPI Bridge reset pin to High */
-		mdelay(1);
+		usleep_range(500, 1000);
 	}
 }
 
@@ -539,7 +539,7 @@ void dsi_lvds_toshiba_bridge_panel_off(void)
 
 	if (gpio_direction_output(GPIO_MIPI_LCD_BL_EN, 0))
 		gpio_set_value_cansleep(GPIO_MIPI_LCD_BL_EN, 0);
-	mdelay(1);
+	usleep_range(1000, 2000);
 
 	/* try to turn vadd off */
 	vlcm_vadd_put();
