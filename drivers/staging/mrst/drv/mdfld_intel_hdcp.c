@@ -1158,6 +1158,7 @@ int hdcp_get_link_status(void)
             while((status.frame_count&HDCP_NEXT_RI_FRAME) == HDCP_NEXT_RI_FRAME)
             {
                 status.value = REG_READ(MDFLD_HDCP_STATUS_REG);
+                ret = status.cipher_ri_match_status;     // Don't forget to return state
             }
         }
     }
