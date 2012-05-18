@@ -755,32 +755,11 @@ void dlp_tty_tx_stop(unsigned long param)
 }
 
 /**
- * dlp_tty_tx_timeout - timer function for tx timeout hangup request
- * @param: a reference to the channel to consider
+ * dlp_tty_hsi_tx_timeout_cb - Called when we have an HSI TX timeout
+ * @ch_ctx : Channel context ref
  */
-static void dlp_tty_tx_timeout(unsigned long int param)
+static void dlp_tty_hsi_tx_timeout_cb(struct dlp_channel *ch_ctx)
 {
-	struct dlp_channel *ch_ctx = (struct dlp_channel *)param;
-
-	PROLOG();
-
-	CRITICAL("Tx timeout");
-
-	ch_ctx->hangup.cause |= DLP_MODEM_HU_TIMEOUT;
-	queue_work(dlp_drv.tx_hangup_wq, &ch_ctx->hangup.work);
-
-	EPILOG();
-}
-
-/**
- * dlp_tty_do_tx_hangup - initiate a hangup (TX timeout, modem reset or core dump)
- * @work: a reference to work queue element
- *
- * Required since port shutdown calls a mutex that might sleep
- */
-static void dlp_tty_do_tx_hangup(struct work_struct *work)
-{
-	struct dlp_channel *ch_ctx = DLP_CHANNEL_CTX(DLP_CHANNEL_TTY);
 	struct dlp_tty_context *tty_ctx = ch_ctx->ch_data;
 	struct tty_struct *tty;
 
@@ -1508,11 +1487,9 @@ struct dlp_channel *dlp_tty_ctx_create(unsigned int index, struct device *dev)
 	init_waitqueue_head(&ch_ctx->tx_empty_event);
 
 	/* Hangup context */
-	dlp_hangup_ctx_init(ch_ctx,
-			dlp_tty_do_tx_hangup,
-			dlp_tty_tx_timeout,
-			ch_ctx);
+	dlp_ctrl_hangup_ctx_init(ch_ctx, dlp_tty_hsi_tx_timeout_cb);
 
+	/* Register the Reset & Coredump CB */
 	ch_ctx->modem_coredump_cb = dlp_tty_mdm_coredump_cb;
 	ch_ctx->modem_reset_cb = dlp_tty_mdm_reset_cb;
 
@@ -1576,7 +1553,7 @@ int dlp_tty_ctx_delete(struct dlp_channel *ch_ctx)
 	PROLOG();
 
 	/* Clear the hangup context */
-	dlp_hangup_ctx_deinit(ch_ctx);
+	dlp_ctrl_hangup_ctx_deinit(ch_ctx);
 
 	/* Unregister device */
 	tty_unregister_device(tty_ctx->tty_drv, 0);

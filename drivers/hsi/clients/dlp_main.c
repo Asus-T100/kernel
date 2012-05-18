@@ -70,30 +70,40 @@ static int dlp_proc_show(struct seq_file *m, void *v)
 	for (i = 0; i < DLP_CHANNEL_COUNT; i++) {
 		ch_ctx = dlp_drv.channels[i];
 
-		seq_printf(m, "\nChannel: %d\n", ch_ctx->hsi_channel);
-		seq_printf(m, "-------------\n");
-		seq_printf(m, " pdu_size  : %d\n", ch_ctx->pdu_size);
-		seq_printf(m, " credits   : %d\n", ch_ctx->credits);
+		if (ch_ctx->dump_status) {
+			ch_ctx->dump_status(ch_ctx, m);
+		}
+		else {
+			/* No relevant info for CTRL/FLASHING
+			 * channel that need to be dumped */
+			if ((ch_ctx->hsi_channel != DLP_CHANNEL_CTRL) &&
+				(ch_ctx->hsi_channel != DLP_CHANNEL_FLASH)) {
+				seq_printf(m, "\nChannel: %d\n", ch_ctx->hsi_channel);
+				seq_printf(m, "-------------\n");
+				seq_printf(m, " pdu_size  : %d\n", ch_ctx->pdu_size);
+				seq_printf(m, " credits   : %d\n", ch_ctx->credits);
 
-		read_lock_irqsave(&ch_ctx->rx.lock, flags);
-		seq_printf(m, " RX ctx:\n");
-		seq_printf(m, "   wait_max: %d\n", ch_ctx->rx.wait_max);
-		seq_printf(m, "   ctrl_max: %d\n", ch_ctx->rx.ctrl_max);
-		seq_printf(m, "   all_len : %d\n", ch_ctx->rx.all_len);
-		seq_printf(m, "   ctrl_len: %d\n", ch_ctx->rx.ctrl_len);
-		seq_printf(m, "   wait_len: %d\n", ch_ctx->rx.wait_len);
-		seq_printf(m, "   seq_num : %d\n", ch_ctx->rx.seq_num);
-		read_unlock_irqrestore(&ch_ctx->rx.lock, flags);
+				read_lock_irqsave(&ch_ctx->rx.lock, flags);
+				seq_printf(m, " RX ctx:\n");
+				seq_printf(m, "   wait_max: %d\n", ch_ctx->rx.wait_max);
+				seq_printf(m, "   ctrl_max: %d\n", ch_ctx->rx.ctrl_max);
+				seq_printf(m, "   all_len : %d\n", ch_ctx->rx.all_len);
+				seq_printf(m, "   ctrl_len: %d\n", ch_ctx->rx.ctrl_len);
+				seq_printf(m, "   wait_len: %d\n", ch_ctx->rx.wait_len);
+				seq_printf(m, "   seq_num : %d\n", ch_ctx->rx.seq_num);
+				read_unlock_irqrestore(&ch_ctx->rx.lock, flags);
 
-		read_lock_irqsave(&ch_ctx->tx.lock, flags);
-		seq_printf(m, " TX ctx:\n");
-		seq_printf(m, "   wait_max: %d\n", ch_ctx->tx.wait_max);
-		seq_printf(m, "   ctrl_max: %d\n", ch_ctx->tx.ctrl_max);
-		seq_printf(m, "   all_len : %d\n", ch_ctx->tx.all_len);
-		seq_printf(m, "   ctrl_len: %d\n", ch_ctx->tx.ctrl_len);
-		seq_printf(m, "   wait_len: %d\n", ch_ctx->tx.wait_len);
-		seq_printf(m, "   seq_num : %d\n", ch_ctx->tx.seq_num);
-		read_unlock_irqrestore(&ch_ctx->tx.lock, flags);
+				read_lock_irqsave(&ch_ctx->tx.lock, flags);
+				seq_printf(m, " TX ctx:\n");
+				seq_printf(m, "   wait_max: %d\n", ch_ctx->tx.wait_max);
+				seq_printf(m, "   ctrl_max: %d\n", ch_ctx->tx.ctrl_max);
+				seq_printf(m, "   all_len : %d\n", ch_ctx->tx.all_len);
+				seq_printf(m, "   ctrl_len: %d\n", ch_ctx->tx.ctrl_len);
+				seq_printf(m, "   wait_len: %d\n", ch_ctx->tx.wait_len);
+				seq_printf(m, "   seq_num : %d\n", ch_ctx->tx.seq_num);
+				read_unlock_irqrestore(&ch_ctx->tx.lock, flags);
+			}
+		}
 	}
 
 	return 0;
@@ -1213,10 +1223,12 @@ int dlp_hsi_controller_push(struct dlp_xfer_ctx *xfer_ctx, struct hsi_msg *pdu)
 	dlp_pdu_set_header(xfer_ctx, pdu);
 
 	/* Dump the PDU */
+#if 0
 	if (pdu->ttype == HSI_MSG_WRITE) {
 		/* dlp_pdu_dump(pdu, 0);
 		dlp_dbg_dump_pdu(pdu, 16, 160, 0); */
 	}
+#endif
 
 	err = hsi_async(pdu->cl, pdu);
 	if (!err) {
@@ -1479,9 +1491,9 @@ void dlp_restore_rx_callbacks(hsi_client_cb *start_rx_cb,
 *	 - Update the HSI client configuration (Use IPC/Flashing config)
 *	 - Claim the HSI client again
 *
-* @param value : ON/OFF to activate/deactivate the flashing mode
+* @param flashing: ON/OFF to activate/deactivate the flashing mode
 */
-int dlp_set_flashing_mode(int value)
+int dlp_set_flashing_mode(int flashing)
 {
 	int ret;
 
@@ -1493,7 +1505,7 @@ int dlp_set_flashing_mode(int value)
 	/* Flush everything */
 	hsi_flush(dlp_drv.client);
 
-	if (value) {
+	if (flashing) {
 		/* Set the Boot/Flashing configs */
 		dlp_drv.client->tx_cfg = dlp_drv.flash_tx_cfg;
 		dlp_drv.client->rx_cfg = dlp_drv.flash_rx_cfg;
@@ -1587,68 +1599,6 @@ static void dlp_increase_pdus_pool(struct work_struct *work)
 	EPILOG("%s pdu's pool created (hsi_channel: %d)",
 	       (xfer_ctx->ttype == HSI_MSG_WRITE ? "TX" : "RX"),
 	       xfer_ctx->channel->hsi_channel);
-}
-
-/****************************************************************************
- *
- * Hangup/Reset management
- *
- ***************************************************************************/
-/*
-* dlp_hangup_ctx_init - Initialises the given hangup context
-*
-* @param ch_ctx : Channel context to consider
-* @param work_func : Work callback
-* @param timeout_func : Timeout callback
-* @param data : Timeout callback user data
-*/
-void dlp_hangup_ctx_init(struct dlp_channel *ch_ctx,
-		void (*work_func)(struct work_struct *work),
-		void (*timeout_func)(unsigned long int param),
-		void *data)
-{
-	PROLOG();
-
-	/* Init values */
-	ch_ctx->hangup.cause = 0;
-	ch_ctx->hangup.last_cause = 0;
-
-	/* Worker function */
-	INIT_WORK(&ch_ctx->hangup.work, work_func);
-
-	/* TX Timeout timer */
-	init_timer(&ch_ctx->hangup.timer);
-	ch_ctx->hangup.timer.function = timeout_func;
-	ch_ctx->hangup.timer.data = (unsigned long int)data;
-
-	EPILOG();
-}
-
-/**
- * dlp_hangup_ctx_deinit - Clears a hangup context
- * @hangup_ctx: a reference to the considered hangup context
- */
-void dlp_hangup_ctx_deinit(struct dlp_channel *ch_ctx)
-{
-	struct dlp_xfer_ctx *xfer_ctx = &ch_ctx->tx;
-	unsigned long flags;
-	int is_hunging_up;
-
-	PROLOG();
-
-	write_lock_irqsave(&xfer_ctx->lock, flags);
-	is_hunging_up = (ch_ctx->hangup.cause);
-	write_unlock_irqrestore(&xfer_ctx->lock, flags);
-
-	/* No need to wait for the end of the calling work! */
-	if (!is_hunging_up) {
-		if (del_timer_sync(&ch_ctx->hangup.timer))
-			cancel_work_sync(&ch_ctx->hangup.work);
-		else
-			flush_work(&ch_ctx->hangup.work);
-	}
-
-	EPILOG();
 }
 
 /****************************************************************************
@@ -2000,4 +1950,4 @@ MODULE_AUTHOR("Olivier Stoltz Douchet <olivierx.stoltz-douchet@intel.com>");
 MODULE_AUTHOR("Faouaz Tenoutit <faouazx.tenoutit@intel.com>");
 MODULE_DESCRIPTION("LTE protocol driver over HSI for IMC modems");
 MODULE_LICENSE("GPL");
-MODULE_VERSION("1.2-HSI-LTE");
+MODULE_VERSION("1.3-HSI-LTE");

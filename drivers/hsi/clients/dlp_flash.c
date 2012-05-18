@@ -197,7 +197,7 @@ static int dlp_flash_push_rx_pdu(struct dlp_channel *ch_ctx)
 
 free_msg:
 	/* Free the msg */
-	dlp_pdu_free(rx_msg, DLP_CTRL_PDU_SIZE);
+	dlp_pdu_free(rx_msg, DLP_FLASH_PDU_SIZE);
 
 out:
 	EPILOG();
@@ -471,14 +471,17 @@ static ssize_t dlp_flash_dev_write(struct file *filp,
 
 	PROLOG("count: %d", count);
 
-	/* A modem reset is need only the FIST write */
+	/* Need to perform a modem reset only the FIRST write
+	 * We need this reset to be done in the write function
+	 * because the duration between the reset & the data
+	 * write should be less that 120ms ! */
 	if (!flash_ctx->reset_done) {
 		flash_ctx->reset_done = 1;
 		dlp_ctrl_modem_reset(ch_ctx);
 	}
 
 	/* Allocate a new TX msg */
-	tx_msg = dlp_pdu_alloc(DLP_CHANNEL_CTRL,
+	tx_msg = dlp_pdu_alloc(ch_ctx->hsi_channel,
 			       HSI_MSG_WRITE,
 			       count,
 			       1,
@@ -692,14 +695,16 @@ int dlp_flash_ctx_delete(struct dlp_channel *ch_ctx)
 
 static int dlp_flash_set_flashing_mode(const char *val, struct kernel_param *kp)
 {
-	long value;
+	long flashing;
 
-	if (strict_strtol(val, 16, &value) < 0)
+	PROLOG("%s", val);
+
+	if (strict_strtol(val, 16, &flashing) < 0) {
+		EPILOG();
 		return -EINVAL;
+	}
 
-	PROLOG();
-
-	dlp_set_flashing_mode(value);
+	dlp_set_flashing_mode(flashing);
 
 	EPILOG();
 	return 0;

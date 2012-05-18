@@ -227,17 +227,15 @@ struct dlp_xfer_ctx {
 };
 
 /**
- * struct dlp_ctrl_hangup_ctx - Hangup management context
+ * struct dlp_hangup_ctx - Hangup management context
  * @cause: Current cause of the hangup
  * @last_cause: Previous cause of the hangup
  * @timer: TX timeout timner
- * @work: TX timeout deferred work
  */
 struct dlp_hangup_ctx {
 	unsigned int cause;
 	unsigned int last_cause;
 	struct timer_list timer;
-	struct work_struct work;
 };
 
 /**
@@ -269,12 +267,16 @@ struct dlp_channel {
 	/* Hangup management */
 	struct dlp_hangup_ctx hangup;
 
-	/* Reset & Coredump callbacks */
+	/* Reset, TX Timeout & Coredump callbacks */
 	void (*modem_coredump_cb) (struct dlp_channel *ch_ctx);
 	void (*modem_reset_cb) (struct dlp_channel *ch_ctx);
+	void (*modem_tx_timeout_cb) (struct dlp_channel *ch_ctx);
 
 	/* Credits callback */
-	void (*credits_available_cb) (struct dlp_channel *ch_ctx);
+	void (*credits_available_cb)(struct dlp_channel *ch_ctx);
+
+	/* Debug */
+	int (*dump_status)(struct dlp_channel *ch_ctx, struct seq_file *m);
 
 	/* Channel sepecific data */
 	void *ch_data;
@@ -487,19 +489,6 @@ void dlp_restore_rx_callbacks(hsi_client_cb *start_rx_cb,
 
 /****************************************************************************
  *
- * Hangup/Reset management
- *
- ***************************************************************************/
-
-void dlp_hangup_ctx_init(struct dlp_channel *ch_ctx,
-		void (*work_func)(struct work_struct *work),
-		void (*timeout_func)(unsigned long int param),
-		void *data);
-
-void dlp_hangup_ctx_deinit(struct dlp_channel *ch_ctx);
-
-/****************************************************************************
- *
  * RX/TX xfer contexts
  *
  ***************************************************************************/
@@ -547,6 +536,11 @@ inline unsigned int dlp_ctrl_modem_is_ready(void);
 int dlp_ctrl_open_channel(struct dlp_channel *ch_ctx);
 
 int dlp_ctrl_close_channel(struct dlp_channel *ch_ctx);
+
+void dlp_ctrl_hangup_ctx_init(struct dlp_channel *ch_ctx,
+		void (*timeout_func)(struct dlp_channel *ch_ctx));
+
+void dlp_ctrl_hangup_ctx_deinit(struct dlp_channel *ch_ctx);
 
 /****************************************************************************
  *

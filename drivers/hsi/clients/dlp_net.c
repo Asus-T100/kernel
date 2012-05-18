@@ -163,7 +163,10 @@ static __be16 dlp_net_type_trans(const char *buffer)
 	case 6:
 		return htons(ETH_P_IPV6);
 	default:
-		CRITICAL("Invalid IP frame header");
+		CRITICAL("Invalid IP frame header (0x%x)", (*buffer) >> 4);
+
+		/* Dump the invalid PDU data */
+		dlp_dbg_dump_data_as_word((u32 *)buffer, 160, 16, 1, 0);
 	}
 
 	return htons(0);
@@ -237,9 +240,6 @@ static void dlp_net_complete_rx(struct hsi_msg *pdu)
 
 	ret = 0;
 
-	/* Dump the first 160 bytes */
-	dlp_dbg_dump_pdu(pdu, 16, 160, 0);
-
 	/* Pop the CTRL queue */
 	write_lock_irqsave(&xfer_ctx->lock, flags);
 	dlp_hsi_controller_pop(xfer_ctx);
@@ -253,6 +253,9 @@ static void dlp_net_complete_rx(struct hsi_msg *pdu)
 	if (!dlp_pdu_header_valid(pdu)) {
 		CRITICAL("Invalid PDU signature (0x%x)", (*ptr));
 		ret = -EINVAL;
+
+		/* Dump the first 160 bytes */
+		dlp_dbg_dump_pdu(pdu, 16, 160, 1);
 		goto out;
 	}
 
@@ -330,38 +333,18 @@ out:
 }
 
 /**
- * dlp_net_hangup_timer_cb - timer function for tx timeout hangup request
- * @param: a reference to the channel to consider
+ * dlp_net_hsi_tx_timeout - Called when we have an HSI TX timeout
+ * @ch_ctx : Channel context ref
  */
-static void dlp_net_hangup_timer_cb(unsigned long int param)
+static void dlp_net_hsi_tx_timeout(struct dlp_channel *ch_ctx)
 {
-	struct dlp_channel *ch_ctx = (struct dlp_channel *)param;
-
-	PROLOG();
-
-	CRITICAL("Hangup (Timeout) !");
-
-	ch_ctx->hangup.cause |= DLP_MODEM_HU_TIMEOUT;
-	queue_work(dlp_drv.tx_hangup_wq, &ch_ctx->hangup.work);
-
-	EPILOG();
-}
-
-/**
- * dlp_net_hsi_tx_timeout - work queue function called from hangup timer
- * @work: a reference to work queue element
- *
- */
-static void dlp_net_hsi_tx_timeout(struct work_struct *work)
-{
-/*
-	struct dlp_channel *ch_ctx = DLP_CHANNEL_CTX(DLP_CHANNEL_TTY);
 	struct dlp_net_context *net_ctx = ch_ctx->ch_data;
-*/
 
-	/* FIXME : Stop the NETIF ? */
+	/* Stop the NET IF */
+	if (!netif_queue_stopped(net_ctx->ndev))
+		netif_stop_queue(net_ctx->ndev);
 
-	CRITICAL("HSI TX timeout");
+	/* Need to reset the net link or not ? */
 }
 
 /*
@@ -772,11 +755,9 @@ struct dlp_channel *dlp_net_ctx_create(unsigned int index, struct device *dev)
 	init_waitqueue_head(&ch_ctx->tx_empty_event);
 
 	/* Hangup context */
-	dlp_hangup_ctx_init(ch_ctx,
-			dlp_net_hsi_tx_timeout,
-			dlp_net_hangup_timer_cb,
-			ch_ctx);
+	dlp_ctrl_hangup_ctx_init(ch_ctx, dlp_net_hsi_tx_timeout);
 
+	/* Register the Credits, Reset & Coredump CB */
 	ch_ctx->modem_coredump_cb = dlp_net_mdm_coredump_cb;
 	ch_ctx->modem_reset_cb = dlp_net_mdm_reset_cb;
 	ch_ctx->credits_available_cb = dlp_net_credits_available_cb;
@@ -811,7 +792,7 @@ int dlp_net_ctx_delete(struct dlp_channel *ch_ctx)
 	struct dlp_net_context *net_ctx = ch_ctx->ch_data;
 
 	/* Clear the hangup context */
-	dlp_hangup_ctx_deinit(ch_ctx);
+	dlp_ctrl_hangup_ctx_deinit(ch_ctx);
 
 	/* Unregister the net device */
 	unregister_netdev(net_ctx->ndev);
