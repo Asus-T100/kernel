@@ -113,7 +113,7 @@
 
 #define CONSTANT_TEMP_IN_POWER_SUPPLY	350
 #define POWER_SUPPLY_VOLT_MIN_THRESHOLD	3500000
-#define BATTERY_VOLT_MIN_THRESHOLD	3600000
+#define BATTERY_VOLT_MIN_THRESHOLD	3400000
 
 #define CYCLES_ROLLOVER_CUTOFF		0x00FF
 #define MAX17042_DEF_RO_LRNCFG		0x0076
@@ -126,6 +126,10 @@
 #define MAX17042_DEF_VEMPTY_VAL		0x7D5A
 
 #define MAX17042_SIGN_INDICATOR		0x8000
+
+#define SHUTDOWN_DEF_FG_MASK_BIT	(1 << 0)
+#define SHUTDOWN_OCV_MASK_BIT		(1 << 1)
+#define SHUTDOWN_LOWBATT_MASK_BIT	(1 << 2)
 
 #define BYTE_VALUE			1
 #define WORD_VALUE			0
@@ -265,7 +269,21 @@ struct max17042_chip {
 	struct work_struct	evt_worker;
 
 	bool plat_rebooting;
+	/*
+	 * user space can disable default shutdown
+	 * methods set by platform.
+	 */
+	int	disable_shdwn_methods;
 };
+
+/* Sysfs entry for disable shutdown methods from user space */
+static ssize_t override_shutdown_methods(struct device *device,
+			       struct device_attribute *attr, const char *buf,
+			       size_t count);
+static ssize_t get_shutdown_methods(struct device *device,
+			       struct device_attribute *attr, char *buf);
+static DEVICE_ATTR(disable_shutdown_methods, S_IRUGO | S_IWUSR,
+	get_shutdown_methods, override_shutdown_methods);
 
 #ifdef CONFIG_DEBUG_FS
 static struct dentry *max17042_dbgfs_root;
@@ -618,23 +636,33 @@ static int max17042_get_property(struct power_supply *psy,
 			else
 				batt_vmin = BATTERY_VOLT_MIN_THRESHOLD;
 
-			if (chip->pdata->enable_current_sense &&
-					(volt_ocv <= batt_vmin)) {
-				val->intval = 0;
+			if (volt_ocv <= batt_vmin) {
+				/* if user disables OCV shutdown method
+				 * report 1% capcity so that platform
+				 * will not get shutdown.
+				 */
+				if (chip->disable_shdwn_methods &
+						SHUTDOWN_OCV_MASK_BIT)
+					val->intval = 1;
+				else
+					val->intval = 0;
 				break;
 			}
 
-			if (!chip->pdata->enable_current_sense &&
-				volt_ocv <= POWER_SUPPLY_VOLT_MIN_THRESHOLD) {
-				val->intval = 0;
-				break;
-			}
 		}
 
 		/* Check for LOW Battery Shutdown mechanism is enabled */
 		if (chip->pdata->is_lowbatt_shutdown &&
 			(chip->health == POWER_SUPPLY_HEALTH_DEAD)) {
-			val->intval = 0;
+			/* if user disables LOWBATT INT shutdown method
+			 * report 1% capcity so that platform
+			 * will not get shutdown.
+			 */
+			if (chip->disable_shdwn_methods &
+					SHUTDOWN_LOWBATT_MASK_BIT)
+				val->intval = 1;
+			else
+				val->intval = 0;
 			break;
 		}
 
@@ -655,6 +683,14 @@ static int max17042_get_property(struct power_supply *psy,
 
 		if (val->intval > 100)
 			val->intval = 100;
+
+		/* if user disables default FG shutdown method
+		 * report 1% capcity so that platform
+		 * will not get shutdown.
+		 */
+		if ((val->intval == 0) && (chip->disable_shdwn_methods &
+				SHUTDOWN_DEF_FG_MASK_BIT))
+			val->intval = 1;
 		break;
 	default:
 		mutex_unlock(&chip->batt_lock);
@@ -1482,6 +1518,44 @@ static inline void max17042_remove_debugfs(struct max17042_chip *chip)
 {
 }
 #endif
+/**
+ * override_shutdown_methods - sysfs to set disable_shdwn_methods
+ * Parameter as define by sysfs interface
+ * Context: can sleep
+ *
+ */
+static ssize_t override_shutdown_methods(struct device *dev,
+			       struct device_attribute *attr, const char *buf,
+			       size_t count)
+{
+	struct max17042_chip *chip = dev_get_drvdata(dev);
+	unsigned long value;
+
+	if (strict_strtoul(buf, 10, &value))
+		return -EINVAL;
+
+	if (value > (SHUTDOWN_DEF_FG_MASK_BIT |
+			SHUTDOWN_OCV_MASK_BIT |
+			SHUTDOWN_LOWBATT_MASK_BIT))
+		return -EINVAL;
+
+	chip->disable_shdwn_methods = value;
+	return count;
+}
+
+/**
+ * get_shutdown_methods - sysfs get disable_shdwn_methods
+ * Parameter as define by sysfs interface
+ * Context: can sleep
+ *
+ */
+static ssize_t get_shutdown_methods(struct device *dev,
+			       struct device_attribute *attr, char *buf)
+{
+	struct max17042_chip *chip = dev_get_drvdata(dev);
+
+	return sprintf(buf, "%d\n", chip->disable_shdwn_methods);
+}
 
 static int __devinit max17042_probe(struct i2c_client *client,
 			const struct i2c_device_id *id)
@@ -1633,6 +1707,12 @@ static int __devinit max17042_probe(struct i2c_client *client,
 	/* Create debugfs for maxim registers */
 	max17042_create_debugfs(chip);
 
+	/* create sysfs file to disable shutdown methods */
+	ret = device_create_file(&client->dev,
+			&dev_attr_disable_shutdown_methods);
+	if (ret)
+		dev_warn(&client->dev, "cannot create sysfs entry\n");
+
 	/* Register reboot notifier callback */
 	register_reboot_notifier(&max17042_reboot_notifier_block);
 
@@ -1644,6 +1724,7 @@ static int __devexit max17042_remove(struct i2c_client *client)
 	struct max17042_chip *chip = i2c_get_clientdata(client);
 
 	unregister_reboot_notifier(&max17042_reboot_notifier_block);
+	device_remove_file(&client->dev, &dev_attr_disable_shutdown_methods);
 	max17042_remove_debugfs(chip);
 	if (client->irq > 0)
 		free_irq(client->irq, chip);
