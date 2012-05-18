@@ -129,6 +129,7 @@ obj-$(CONFIG_MSIC_GPADC)	+= intel_mid_gpadc.o
 obj-$(CONFIG_BASINCOVE_GPADC)   += intel_basincove_gpadc.o
 obj-$(CONFIG_MID_PWM)		+= intel_mid_pwm.o
 obj-$(CONFIG_SENSORS_MID_CURRENT)	+= intel_mid_ocd.o
+obj-$(CONFIG_SENSORS_MID_VDD)	+= intel_mid_vdd.o
 obj-$(CONFIG_SENSORS_LSM303_MAG)   += lsm303dlhc_compass.o
 
 # PMBus drivers

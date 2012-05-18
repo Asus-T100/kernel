@@ -37,8 +37,7 @@
 #include "device_libs/platform_msic_gpio.h"
 #include "device_libs/platform_clvs_audio.h"
 #include "device_libs/platform_msic_power_btn.h"
-#include "device_libs/platform_msic_ocd.h"
-
+#include "device_libs/platform_msic_vdd.h"
 /*
  * I2C devices
  */
@@ -105,7 +104,7 @@ struct devs_id __initconst device_ids[] = {
 					&ipc_device_handler},
 	{"msic_power_btn", SFI_DEV_TYPE_IPC, 1, &msic_power_btn_platform_data,
 					&ipc_device_handler},
-	{"msic_ocd", SFI_DEV_TYPE_IPC, 1, &msic_ocd_platform_data,
+	{"msic_ocd", SFI_DEV_TYPE_IPC, 1, &msic_vdd_platform_data,
 					&ipc_device_handler},
 	{"msic_gpio", SFI_DEV_TYPE_IPC, 1, &msic_gpio_platform_data,
 					&ipc_device_handler},

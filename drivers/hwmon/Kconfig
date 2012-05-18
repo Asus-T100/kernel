@@ -1476,6 +1476,13 @@ config SENSORS_MID_CURRENT
 	  Say Y here to enable Over Current Detection driver on Intel Medfield
 	  Platform.
 
+config SENSORS_MID_VDD
+	tristate "Voltage drop detection driver for Intel Clovertrail plus platform"
+        depends on INTEL_SCU_IPC
+        help
+	  Say Y here to enable Voltage drop detection driver on Intel Clovertrail plus
+	  Platform.
+
 if ACPI
 
 comment "ACPI drivers"
