@@ -87,6 +87,7 @@
 #define ARASAN_CLK_STABLE			(1<<1)
 #define ARASAN_CLK_ENABLE			(1<<0)
 
+#define ARASAN_ALL_TX_EMPTY			(ARASAN_ANY_CHANNEL<<24)
 #define ARASAN_TX_EMPTY(c)			(1<<((c)+24))
 #define ARASAN_ANY_RX_NOT_EMPTY			(ARASAN_ANY_CHANNEL<<8)
 #define ARASAN_RX_NOT_EMPTY(c)			(1<<((c)+8))

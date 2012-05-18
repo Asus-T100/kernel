@@ -80,8 +80,8 @@
 #define HSI_RESETDONE_RETRIES	20	/* => max 200 ms waiting for reset */
 #define HSI_BASE_FREQUENCY	200000	/* in KHz */
 
-#define CAWAKE_POLL_JIFFIES (usecs_to_jiffies(100000)) /* 100 ms */
-#define IDLE_TO_SUSPEND_DELAY 100 /* 100 ms */
+#define IDLE_POLL_JIFFIES (usecs_to_jiffies(10000)) /* 10 ms */
+#define IDLE_TO_SUSPEND_DELAY 10 /* 10 ms */
 #define HSI_CLOCK_SETUP_DELAY_WAIT 200 /* 200 us is the max time */
 
 #define TX_THRESHOLD_HALF
@@ -276,7 +276,8 @@ struct intel_xfer_ctx {
  * @irq: interrupt line index of the HSI controller
  * @isr_tasklet: first-level high priority interrupt handling tasklet
  * @fwd_tasklet: second level response forwarding tasklet
- * @cawake_poll: timer for polling the falling edge status of the CAWAKE line
+ * @tx_idle_poll: timer for polling the TX side idleness
+ * @rx_idle_poll: timer for polling the RX side idleness
  * @sw_lock: spinlock for accessing software FIFO
  * @hw_lock: spinlock for accessing hardware FIFO
  * @tx_queue: channel-indexed array of FIFO of messages awaiting transmission
@@ -306,7 +307,7 @@ struct intel_xfer_ctx {
  * @arb_cfg: current arbiter priority configuration register
  * @sz_cfg: current program1 configuration register
  * @ip_freq: HSI controller IP frequency in kHz
- * @brk_us_delay: minimal BREAK sequence delay in us
+ * @brk_us_delay: Minimal BREAK sequence delay in us
  * @ip_resumed: event signalling that the IP has actually been resumed
  * @stay_awake: Android wake lock for preventing entering low power mode
  * @dir: debugfs HSI root directory
@@ -322,7 +323,9 @@ struct intel_controller {
 	/* Dual-level interrupt tasklets */
 	struct tasklet_struct	 isr_tasklet;
 	struct tasklet_struct	 fwd_tasklet;
-	struct timer_list	 cawake_poll;
+	/* Timers for polling TX and RX states */
+	struct timer_list	 tx_idle_poll;
+	struct timer_list	 rx_idle_poll;
 	/* Queues and registers access locks */
 	spinlock_t		 sw_lock;
 	spinlock_t		 hw_lock;
@@ -563,29 +566,9 @@ static void assert_acwake(struct intel_controller *intel_hsi, int mode)
 static int deassert_acwake(struct intel_controller *intel_hsi)
 	__acquires(&intel_hsi->hw_lock) __releases(&intel_hsi->hw_lock)
 {
-	void __iomem	*ctrl = intel_hsi->ctrl_io;
 	unsigned long flags;
-	int do_sleep, i;
 
-	/* Wait for READY signal assertion prior de-asserting the WAKE signal
-	 * in synchronised mode only !!! */
 	spin_lock_irqsave(&intel_hsi->hw_lock, flags);
-	if ((intel_hsi->prg_cfg & ARASAN_TX_FRAME_MODE) ||
-	     (unlikely(intel_hsi->suspend_state != DEVICE_READY)))
-		goto do_deassert_acwake;
-
-	/* Timeout after 10 ms whilst waiting for ready line to rise back */
-	spin_unlock_irqrestore(&intel_hsi->hw_lock, flags);
-	i = 0;
-	while ((!(ioread32(ARASAN_HSI_HSI_STATUS(ctrl)) & ARASAN_RX_READY)) &&
-	       (i < 100)) {
-		/* Wait for 10 us */
-		udelay(10);
-		i++;
-	}
-	spin_lock_irqsave(&intel_hsi->hw_lock, flags);
-
-do_deassert_acwake:
 	/* The deassert AC wake function is also used in the release function
 	 * so that it can be called more times than expected should some
 	 * stop_tx calls happen simultaneously. This makes the code cleaner and
@@ -597,13 +580,56 @@ do_deassert_acwake:
 	}
 
 	--intel_hsi->tx_state;
+	if (intel_hsi->tx_state == TX_SLEEPING)
+		if (mod_timer(&intel_hsi->tx_idle_poll,
+		    jiffies + IDLE_POLL_JIFFIES))
+			pm_runtime_put(intel_hsi->pdev);
+
+	spin_unlock_irqrestore(&intel_hsi->hw_lock, flags);
+
+	return 1;
+}
+
+/**
+ * tx_idle_poll - polling the TX FIFO emptiness
+ * @param: hidden Intel HSI controller reference
+ *
+ * This polling timer is activated whenever tx_state is sleeping, and
+ * re-activated until all internal TX FIFO are empty.
+ */
+static void tx_idle_poll(unsigned long param)
+	__acquires(&intel_hsi->hw_lock) __releases(&intel_hsi->hw_lock)
+{
+	struct intel_controller *intel_hsi = (struct intel_controller *) param;
+	unsigned long flags;
+	int do_sleep;
 #ifndef PREVENT_ACWAKE_TOGGLING
-	do_sleep = (intel_hsi->tx_state == TX_SLEEPING);
+	void __iomem *ctrl = intel_hsi->ctrl_io;
+#endif
+
+	spin_lock_irqsave(&intel_hsi->hw_lock, flags);
+
+#ifndef PREVENT_ACWAKE_TOGGLING
+	if (intel_hsi->tx_state != TX_SLEEPING) {
+		/* This timer has been called when tx_state == 0, if no longer
+		 * to 0, then the pm_runtime_put has still to be taken */
+		do_sleep = 1;
+		goto tx_poll_out;
+	}
+
+	/* Prevent TX side sleep and ACWAKE de-assertion until not empty */
+	do_sleep = ((ioread32(ARASAN_HSI_HSI_STATUS(ctrl)) & ARASAN_ALL_TX_EMPTY) ==
+		     ARASAN_ALL_TX_EMPTY);
+
 	if (do_sleep) {
 		intel_hsi->prg_cfg &= ~ARASAN_TX_ENABLE;
 		if (likely(intel_hsi->suspend_state == DEVICE_READY))
 			iowrite32(intel_hsi->prg_cfg, ARASAN_HSI_PROGRAM(ctrl));
+	} else {
+		mod_timer(&intel_hsi->tx_idle_poll,
+			  jiffies + IDLE_POLL_JIFFIES);
 	}
+tx_poll_out:
 #else
 	do_sleep = 0;
 #endif
@@ -611,18 +637,16 @@ do_deassert_acwake:
 
 	if (do_sleep)
 		pm_runtime_put(intel_hsi->pdev);
-
-	return 1;
 }
 
 /**
- * cawake_poll - polling the CAWAKE line status
+ * rx_idle_poll - polling the RX FIFO emptiness and CAWAKE line status
  * @param: hidden Intel HSI controller reference
  *
- * This polling timer is activated on CAWAKE rising interrupt, and re-activated
+ * This polling timer is activated on CAWAKE interrupt, and re-activated
  * until the CAWAKE is low and all internal RX FIFO are empty.
  */
-static void cawake_poll(unsigned long param)
+static void rx_idle_poll(unsigned long param)
 	__acquires(&intel_hsi->hw_lock) __releases(&intel_hsi->hw_lock)
 {
 	struct intel_controller *intel_hsi = (struct intel_controller *) param;
@@ -649,8 +673,8 @@ static void cawake_poll(unsigned long param)
 	 * hardware FIFO is not empty */
 	if (ioread32(ARASAN_HSI_HSI_STATUS(ctrl)) &
 	    (ARASAN_RX_WAKE|ARASAN_ANY_RX_NOT_EMPTY))
-		mod_timer(&intel_hsi->cawake_poll,
-			  jiffies + CAWAKE_POLL_JIFFIES);
+		mod_timer(&intel_hsi->rx_idle_poll,
+			  jiffies + IDLE_POLL_JIFFIES);
 	else {
 		intel_hsi->irq_cfg |= ARASAN_IRQ_RX_WAKE;
 		hsi_enable_interrupt(ctrl, intel_hsi->irq_cfg);
@@ -684,8 +708,8 @@ static int has_enabled_acready(struct intel_controller *intel_hsi)
 	intel_hsi->prg_cfg |= ARASAN_RX_ENABLE;
 	if ((do_wakeup) && (intel_hsi->suspend_state == DEVICE_READY)) {
 		iowrite32(intel_hsi->prg_cfg, ARASAN_HSI_PROGRAM(ctrl));
-		mod_timer(&intel_hsi->cawake_poll,
-			  jiffies + CAWAKE_POLL_JIFFIES);
+		mod_timer(&intel_hsi->rx_idle_poll,
+			  jiffies + IDLE_POLL_JIFFIES);
 	}
 	intel_hsi->rx_state = RX_READY;
 	spin_unlock_irqrestore(&intel_hsi->hw_lock, flags);
@@ -728,8 +752,8 @@ static int has_disabled_acready(struct intel_controller *intel_hsi)
 #endif
 		intel_hsi->rx_state = RX_SLEEPING;
 	} else {
-		mod_timer(&intel_hsi->cawake_poll,
-			  jiffies + CAWAKE_POLL_JIFFIES);
+		mod_timer(&intel_hsi->rx_idle_poll,
+			  jiffies + IDLE_POLL_JIFFIES);
 		intel_hsi->irq_status &= ~ARASAN_IRQ_RX_WAKE;
 		intel_hsi->rx_state = RX_READY;
 	}
@@ -770,7 +794,7 @@ static void force_disable_acready(struct intel_controller *intel_hsi)
 	/* Prevent the ACREADY change because of the CAWAKE toggling.
 	 * The CAWAKE event interrupt shall be re-enabled whenever the
 	 * RX fifo is no longer empty */
-	del_timer(&intel_hsi->cawake_poll);
+	del_timer(&intel_hsi->rx_idle_poll);
 	intel_hsi->irq_status	&= ~ARASAN_IRQ_RX_WAKE;
 	intel_hsi->irq_cfg	&= ~ARASAN_IRQ_RX_WAKE;
 	if (likely(intel_hsi->suspend_state == DEVICE_READY)) {
@@ -962,10 +986,10 @@ static int hsi_ctrl_set_cfg(struct intel_controller *intel_hsi)
 	iowrite32(intel_hsi->rx_fifo_cfg, ARASAN_HSI_DMA_RX_FIFO_SIZE(ctrl));
 	iowrite32(RX_THRESHOLD, ARASAN_HSI_DMA_RX_FIFO_THRESHOLD(ctrl));
 
-	/* Start the CAWAKE poll mechanism if RX is enabled */
+	/* Start the RX idle poll mechanism if RX is enabled */
 	if (intel_hsi->prg_cfg & ARASAN_RX_ENABLE)
-		mod_timer(&intel_hsi->cawake_poll,
-			  jiffies + CAWAKE_POLL_JIFFIES);
+		mod_timer(&intel_hsi->rx_idle_poll,
+			  jiffies + IDLE_POLL_JIFFIES);
 
 	/* Enable then signal interrupts */
 	hsi_enable_interrupt(ctrl, intel_hsi->irq_cfg);
@@ -1286,10 +1310,15 @@ static void hsi_ctrl_clean_reset(struct intel_controller *intel_hsi)
 	/* Deassert ACWAKE and ACREADY as shutting down */
 	while (deassert_acwake(intel_hsi))
 		;
+
+	/* Remove the TX idle poll timer */
+	if (del_timer_sync(&intel_hsi->tx_idle_poll))
+		pm_runtime_put(intel_hsi->pdev);
+
 	force_disable_acready(intel_hsi);
 
-	/* Remove the CAWAKE poll timer */
-	del_timer_sync(&intel_hsi->cawake_poll);
+	/* Remove the RX idle poll timer */
+	del_timer_sync(&intel_hsi->rx_idle_poll);
 
 	/* Disable (and flush) all tasklets */
 	tasklet_disable(&intel_hsi->isr_tasklet);
@@ -3093,9 +3122,13 @@ static int hsi_controller_init(struct intel_controller *intel_hsi)
 	tasklet_init(&intel_hsi->fwd_tasklet, hsi_fwd_tasklet,
 		     (unsigned long) intel_hsi);
 
-	init_timer(&intel_hsi->cawake_poll);
-	intel_hsi->cawake_poll.data = (unsigned long) intel_hsi;
-	intel_hsi->cawake_poll.function = cawake_poll;
+	init_timer(&intel_hsi->tx_idle_poll);
+	intel_hsi->tx_idle_poll.data = (unsigned long) intel_hsi;
+	intel_hsi->tx_idle_poll.function = tx_idle_poll;
+
+	init_timer(&intel_hsi->rx_idle_poll);
+	intel_hsi->rx_idle_poll.data = (unsigned long) intel_hsi;
+	intel_hsi->rx_idle_poll.function = rx_idle_poll;
 
 	err = request_irq(intel_hsi->irq, hsi_isr,
 			  IRQF_TRIGGER_RISING | IRQF_NO_SUSPEND,
