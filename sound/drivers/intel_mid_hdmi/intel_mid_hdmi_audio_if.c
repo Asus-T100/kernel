@@ -104,14 +104,16 @@ int hdmi_audio_suspend(void *haddata, hdmi_audio_event_t event)
 	int caps, retval = 0;
 	struct had_pvt_data *had_stream;
 	unsigned long flag_irqs;
+	struct snd_pcm_substream *substream;
 	struct snd_intelhad *intelhaddata = (struct snd_intelhad *)haddata;
 
 	pr_debug("Enter:%s", __func__);
 
 	had_stream = intelhaddata->private_data;
+	substream = intelhaddata->stream_info.had_substream;
 
 	spin_lock_irqsave(&intelhaddata->had_spinlock, flag_irqs);
-	if (had_stream->stream_status > HAD_RUNNING_SILENCE) {
+	if ((had_stream->stream_status > HAD_RUNNING_SILENCE) || substream) {
 		spin_unlock_irqrestore(&intelhaddata->had_spinlock, flag_irqs);
 		pr_err("audio stream is active\n");
 		return -EAGAIN;

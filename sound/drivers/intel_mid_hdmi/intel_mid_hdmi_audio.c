@@ -381,6 +381,12 @@ int snd_intelhad_prog_buffer(struct snd_intelhad *intelhaddata,
 	struct snd_pcm_substream *substream;
 
 	substream = intelhaddata->stream_info.had_substream;
+
+	if (!substream) {
+		pr_err("substream is NULL\n");
+		dump_stack();
+		return 0;
+	}
 	ring_buf_addr = substream->runtime->dma_addr;
 	ring_buf_size = snd_pcm_lib_buffer_bytes(substream);
 	intelhaddata->stream_info.ring_buf_size = ring_buf_size;
@@ -670,6 +676,7 @@ static int snd_intelhad_close(struct snd_pcm_substream *substream)
 	intelhaddata->stream_info.buffer_rendered = 0;
 	intelhaddata->stream_info.buffer_ptr = 0;
 	intelhaddata->stream_info.str_id = 0;
+	intelhaddata->stream_info.had_substream = NULL;
 
 	/* Check if following drv_status modification is required - VA */
 	if (intelhaddata->drv_status != HAD_DRV_DISCONNECTED)
