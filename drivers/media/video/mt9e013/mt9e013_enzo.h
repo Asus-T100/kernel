@@ -278,30 +278,6 @@ static struct mt9e013_reg const mt9e013_WIDE_PREVIEW_30fps[] = {
 	{MT9E013_TOK_TERM, {0}, 0}
 };
 
-static struct mt9e013_reg const mt9e013_PREVIEW1640_30fps[] = {
-	/*	PREVIEW 1640 */
-	GROUPED_PARAMETER_HOLD_ENABLE,
-	/* Frame size & Timing Configuration*/
-	{MT9E013_16BIT, {0x0340},	0x060E	}, /*	FRAME_LENGTH_LINES	1550 */
-	{MT9E013_16BIT, {0x0342},	0x1020	}, /*	LINE_LENGTH_PCK	4128 */
-	{MT9E013_16BIT, {0x0344},	0x0000	}, /*	X_ADDR_START	0 */
-	{MT9E013_16BIT, {0x0346},	0x00D0	}, /*	Y_ADDR_START	208 */
-	{MT9E013_16BIT, {0x0348},	0x0CCD	}, /*	X_ADDR_END	3277 */
-	{MT9E013_16BIT, {0x034A},	0x08CD	}, /*	Y_ADDR_END	2253 */
-	{MT9E013_16BIT, {0x034C},	0x0668	}, /*	X_OUTPUT_SIZE	1640 */
-	{MT9E013_16BIT, {0x034E},	0x0400	}, /*	Y_OUTPUT_SIZE	1024 */
-	{MT9E013_16BIT, {0x3040},	0x44C3	}, /*	READ_MODE	0 1 1 0 0 1 0 3 3 */
-	{MT9E013_16BIT | MT9E013_RMW, {0x306E}, 0x0010, 0x1}, /* DATAPATH_SELECT_TRUE_BAYER */
-	/* Initial integration time */
-	{MT9E013_16BIT, {0x3010},	0x0130	}, /*	FINE_CORRECTION	304 */
-	{MT9E013_16BIT, {0X3012},	0x0573	}, /*	COARSE_INTEGRATION_TIME	1395 */
-	{MT9E013_16BIT, {0X3014},	0x0846	}, /*	FINE_INTEGRATION_TIME	2118 */
-	/* Scaler configuration */
-	{MT9E013_16BIT, {0x0400},	0x0000	}, /*	SCALE_MODE	0 */
-	{MT9E013_16BIT, {0x0404},	0x0010	}, /*	SCALE_M	16 */
-	{MT9E013_TOK_TERM, {0}, 0}
-};
-
 /*****************************video************************/
 static struct mt9e013_reg const mt9e013_1080p_strong_dvs_30fps[] = {
 	/*	1080p strong dvs */
@@ -351,6 +327,30 @@ static struct mt9e013_reg const mt9e013_720p_strong_dvs_30fps[] = {
 	{MT9E013_TOK_TERM, {0}, 0}
 };
 
+static struct mt9e013_reg const mt9e013_3RD_PARTY_PREVIEW1024_30fps[] = {
+	/*	PREVIEW 1024x576 special 'preview' mode to support 3rd party apps*/
+	GROUPED_PARAMETER_HOLD_ENABLE,
+	/* Frame size & Timing Configuration*/
+	{MT9E013_16BIT, {0x0340},	0x060E	}, /*	FRAME_LENGTH_LINES	1550 */
+	{MT9E013_16BIT, {0x0342},	0x1020	}, /*	LINE_LENGTH_PCK	4128 */
+	{MT9E013_16BIT, {0x0344},	0x0000	}, /*	X_ADDR_START	0 */
+	{MT9E013_16BIT, {0x0346},	0x0000	}, /*	Y_ADDR_START	0 */
+	{MT9E013_16BIT, {0x0348},	0x0CCF	}, /*	X_ADDR_END	3279 */
+	{MT9E013_16BIT, {0x034A},	0x099F	}, /*	Y_ADDR_END	2463 */
+	{MT9E013_16BIT, {0x034C},	0x0668	}, /*	X_OUTPUT_SIZE	1050 */
+	{MT9E013_16BIT, {0x034E},	0x0400	}, /*	Y_OUTPUT_SIZE	778 */
+	{MT9E013_16BIT, {0x3040},	0x44C3	}, /*	READ_MODE	0 1 1 0 0 1 0 3 3 */
+	{MT9E013_16BIT | MT9E013_RMW, {0x306E}, 0x0010, 0x1}, /* DATAPATH_SELECT_TRUE_BAYER */
+	/* Initial integration time */
+	{MT9E013_16BIT, {0x3010},	0x0130	}, /*	FINE_CORRECTION	304 */
+	{MT9E013_16BIT, {0X3012},	0x0573	}, /*	COARSE_INTEGRATION_TIME	1395 */
+	{MT9E013_16BIT, {0X3014},	0x0846	}, /*	FINE_INTEGRATION_TIME	2118 */
+	/* Scaler configuration */
+	{MT9E013_16BIT, {0x0400},	0x0000	}, /*	SCALE_MODE	2 */
+	{MT9E013_16BIT, {0x0404},	0x0010	}, /*	SCALE_M	25 */
+	{MT9E013_TOK_TERM, {0}, 0}
+};
+
 static struct mt9e013_reg const mt9e013_WVGA_strong_dvs_30fps[] = {
 	/*	WVGA strong dvs */
 	GROUPED_PARAMETER_HOLD_ENABLE,
@@ -361,17 +361,17 @@ static struct mt9e013_reg const mt9e013_WVGA_strong_dvs_30fps[] = {
 	{MT9E013_16BIT, {0x0346},	0x00D0	}, /*	Y_ADDR_START	208 */
 	{MT9E013_16BIT, {0x0348},	0x0CCD	}, /*	X_ADDR_END	3277 */
 	{MT9E013_16BIT, {0x034A},	0x08CD	}, /*	Y_ADDR_END	2253 */
-	{MT9E013_16BIT, {0x034C},	0x0668	}, /*	X_OUTPUT_SIZE	1640 */
-	{MT9E013_16BIT, {0x034E},	0x0400	}, /*	Y_OUTPUT_SIZE	1024 */
-	{MT9E013_16BIT, {0x3040},	0x44C3	}, /*	READ_MODE	0 1 1 0 0 1 0 3 3 */
+	{MT9E013_16BIT, {0x034C},	0x03F0	}, /*	X_OUTPUT_SIZE	1008 */
+	{MT9E013_16BIT, {0x034E},	0x0276	}, /*	Y_OUTPUT_SIZE	630 */
+	{MT9E013_16BIT, {0x3040},	0x04C3	}, /*	READ_MODE	0 0 0 0 0 1 0 3 3 */
 	{MT9E013_16BIT | MT9E013_RMW, {0x306E}, 0x0010, 0x1}, /* DATAPATH_SELECT_TRUE_BAYER */
 	/* Initial integration time */
 	{MT9E013_16BIT, {0x3010},	0x0130	}, /*	FINE_CORRECTION	304 */
 	{MT9E013_16BIT, {0X3012},	0x0573	}, /*	COARSE_INTEGRATION_TIME	1395 */
 	{MT9E013_16BIT, {0X3014},	0x0846	}, /*	FINE_INTEGRATION_TIME	2118 */
 	/* Scaler configuration */
-	{MT9E013_16BIT, {0x0400},	0x0000	}, /*	SCALE_MODE	0 */
-	{MT9E013_16BIT, {0x0404},	0x0010	}, /*	SCALE_M	16 */
+	{MT9E013_16BIT, {0x0400},	0x0002	}, /*	SCALE_MODE	2 */
+	{MT9E013_16BIT, {0x0404},	0x001A	}, /*	SCALE_M	26 */
 	{MT9E013_TOK_TERM, {0}, 0}
 };
 
@@ -601,7 +601,7 @@ static struct mt9e013_resolution mt9e013_res_preview[] = {
 		 .regs =	mt9e013_PREVIEW_30fps	,
 		 .bin_factor_x =	2,
 		 .bin_factor_y =	2,
-		 .skip_frames = 1,
+		 .skip_frames = 0,
 	},
 	{
 		 .desc =	"WIDE_PREVIEW_30fps"	,
@@ -614,21 +614,8 @@ static struct mt9e013_resolution mt9e013_res_preview[] = {
 		 .regs =	mt9e013_WIDE_PREVIEW_30fps	,
 		 .bin_factor_x =	2,
 		 .bin_factor_y =	2,
-		 .skip_frames = 1,
+		 .skip_frames = 0
 	},
-	{
-		 .desc =	"mt9e013_PREVIEW1640_30fps"	,
-		 .width =	1640	,
-		 .height =	1232	,
-		 .fps =		30	,
-		 .used =	0	,
-		 .pixels_per_line = 0x1020, /* consistent with regs arrays */
-		 .lines_per_frame = 0x060E, /* consistent with regs arrays */
-		 .regs =	mt9e013_PREVIEW_30fps	,
-		 .bin_factor_x =	2,
-		 .bin_factor_y =	2,
-		 .skip_frames = 1,
-	}
 };
 
 #define N_RES_PREVIEW (ARRAY_SIZE(mt9e013_res_preview))
@@ -689,7 +676,7 @@ static struct mt9e013_resolution mt9e013_res_video[] = {
 		 .regs =	mt9e013_QCIF_strong_dvs_30fps	,
 		 .bin_factor_x =	2,
 		 .bin_factor_y =	2,
-		 .skip_frames = 1,
+		 .skip_frames = 0,
 	},
 	{
 		 .desc =	"QVGA_strong_dvs_30fps"	,
@@ -702,7 +689,7 @@ static struct mt9e013_resolution mt9e013_res_video[] = {
 		 .regs =	mt9e013_QVGA_strong_dvs_30fps	,
 		 .bin_factor_x =	2,
 		 .bin_factor_y =	2,
-		 .skip_frames = 1,
+		 .skip_frames = 0,
 	},
 	{
 		 .desc =	"VGA_strong_dvs_30fps"	,
@@ -715,12 +702,12 @@ static struct mt9e013_resolution mt9e013_res_video[] = {
 		 .regs =	mt9e013_VGA_strong_dvs_30fps	,
 		 .bin_factor_x =	2,
 		 .bin_factor_y =	2,
-		 .skip_frames = 1,
+		 .skip_frames = 0,
 	},
 	{
 		 .desc =	"WVGA_strong_dvs_30fps"	,
-		 .width =	1640	,
-		 .height =	1024	,
+		 .width =	1008	,
+		 .height =	630	,
 		 .fps =		30	,
 		 .used =	0	,
 		 .pixels_per_line = 0x1020, /* consistent with regs arrays */
@@ -728,7 +715,20 @@ static struct mt9e013_resolution mt9e013_res_video[] = {
 		 .regs =	mt9e013_WVGA_strong_dvs_30fps	,
 		 .bin_factor_x =	1,
 		 .bin_factor_y =	1,
-		 .skip_frames = 1,
+		 .skip_frames = 0,
+	},
+	{
+		 .desc =	"3RD_PARTY_PREVIEW1024_30fps"	,
+		 .width =	1050	,
+		 .height =	778	,
+		 .fps =		30	,
+		 .used =	0	,
+		 .pixels_per_line = 0x1020, /* consistent with regs arrays */
+		 .lines_per_frame = 0x060E, /* consistent with regs arrays */
+		 .regs =	mt9e013_3RD_PARTY_PREVIEW1024_30fps	,
+		 .bin_factor_x =	2,
+		 .bin_factor_y =	2,
+		 .skip_frames = 0,
 	},
 	{
 		 .desc =	"720p_strong_dvs_30fps"	,
@@ -741,7 +741,7 @@ static struct mt9e013_resolution mt9e013_res_video[] = {
 		 .regs =	mt9e013_720p_strong_dvs_30fps	,
 		 .bin_factor_x =	1,
 		 .bin_factor_y =	1,
-		 .skip_frames = 1,
+		 .skip_frames = 0,
 	},
 	{
 		 .desc =	"1080p_strong_dvs_30fps",
@@ -754,7 +754,7 @@ static struct mt9e013_resolution mt9e013_res_video[] = {
 		 .regs =	mt9e013_1080p_strong_dvs_30fps,
 		 .bin_factor_x =	0,
 		 .bin_factor_y =	0,
-		 .skip_frames = 1,
+		 .skip_frames = 0,
 	},
 	{
 		 .desc =	"enzofullhd_strong_dvs_30fps",
@@ -767,7 +767,7 @@ static struct mt9e013_resolution mt9e013_res_video[] = {
 		 .regs =	enzofullhd_strong_dvs_30fps	,
 		 .bin_factor_x =	1,
 		 .bin_factor_y =	1,
-		 .skip_frames = 1,
+		 .skip_frames = 0,
 	},
 };
 
