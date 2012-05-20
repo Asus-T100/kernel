@@ -399,7 +399,7 @@ static MRST_ERROR UnblankDisplay(MRSTLFB_DEVINFO *psDevInfo)
 {
 	int res;
 
-	console_trylock();
+	console_lock();
 	res = fb_blank(psDevInfo->psLINFBInfo, 0);
 	console_unlock();
 	if (res != 0)
