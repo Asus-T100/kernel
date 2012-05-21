@@ -2306,8 +2306,10 @@ static int mdfld_crtc_mode_set(struct drm_crtc *crtc,
 	}
 
 #ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
-	ctx->dpll = dpll;
-	ctx->fp = fp;
+	if (pipe == 0 && ctx != NULL) {
+		ctx->dpll = dpll;
+		ctx->fp = fp;
+	}
 #endif
 
 	if (is_mipi) {

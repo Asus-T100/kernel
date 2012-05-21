@@ -1220,7 +1220,6 @@ static int mdfld_restore_display_registers(struct drm_device *dev, int pipe)
 	/*make sure VGA plane is off. it initializes to on after reset!*/
 	PSB_WVDC32(0x80000000, VGACNTRL);
 
-#ifndef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
 	dpll = PSB_RVDC32(dpll_reg);
 
 	if (!(dpll & DPLL_VCO_ENABLE)) {
@@ -1262,7 +1261,6 @@ static int mdfld_restore_display_registers(struct drm_device *dev, int pipe)
 			return -EINVAL;
 		}
 	}
-#endif
 
 	/* Restore mode */
 	PSB_WVDC32(htot_val, htot_reg);

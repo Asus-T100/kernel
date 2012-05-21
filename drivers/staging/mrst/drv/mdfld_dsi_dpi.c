@@ -2473,8 +2473,15 @@ void mdfld_dsi_dpi_mode_set(struct drm_encoder *encoder,
 		/* Now start the DSI clock */
 		REG_WRITE(MRST_DPLL_A, 0x0);
 		REG_WRITE(MRST_FPA0, 0x0);
-		REG_WRITE(MRST_FPA0, ctx->fp);
-		REG_WRITE(MRST_DPLL_A, ((ctx->dpll) & ~BIT30));
+		if (ctx != NULL) {
+			REG_WRITE(MRST_FPA0, ctx->fp);
+			REG_WRITE(MRST_DPLL_A, ((ctx->dpll) & ~BIT30));
+		} else {
+			pr_err("no dsi context, using hardcoded DPLL value\n");
+			/* using hardcode DPLL */
+			REG_WRITE(MRST_FPA0, 0xC1);
+			REG_WRITE(MRST_DPLL_A, 0x00800000);
+		}
 
 		/* per spec of display controller, before enable VCO, need wait
 		 * 0.5us, here wait 1us */
