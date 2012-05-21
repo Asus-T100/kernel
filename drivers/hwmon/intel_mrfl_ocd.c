@@ -66,10 +66,16 @@
 /* IRQ registers */
 #define BCUIRQ			0x05
 #define MBCUIRQ			0x10
+#define IRQLVL1			0x01
+#define MIRQLVL1		0x0C
 
 /* Status registers */
 #define S_BCUINT		0x3B
 #define S_BCUCTRL		0x49
+
+/* PMIC SRAM address for BCU register */
+#define PMIC_SRAM_BCU_ADDR	0xFFFFF614
+#define IOMAP_LEN		4
 
 #define NUM_VOLT_LEVELS		3
 #define NUM_CURR_LEVELS		2
@@ -78,8 +84,18 @@
 #define VWARN_EN		(1 << 3)
 #define VCRIT_SHUTDOWN		(1 << 4)
 
+#define BCU_ALERT		(1 << 3)
+#define VWARN1_IRQ		(1 << 0)
+#define VWARN2_IRQ		(1 << 1)
+#define VCRIT_IRQ		(1 << 2)
+#define GSMPULSE_IRQ		(1 << 3)
+#define TXPWRTH_IRQ		(1 << 4)
+
 /* Number of configurable thresholds for current and voltage */
 #define NUM_THRESHOLDS		8
+
+/* 'enum' of BCU events */
+enum bcu_events { WARN1, WARN2, CRIT, GSMPULSE, TXPWRTH, UNKNOWN, __COUNT };
 
 static DEFINE_MUTEX(ocd_update_lock);
 
@@ -94,6 +110,8 @@ static const unsigned long curr_thresholds[NUM_THRESHOLDS] = {
 struct ocd_info {
 	struct device *dev;
 	struct ipc_device *ipcdev;
+	void *bcu_intr_addr;
+	int irq;
 };
 
 static void enable_volt_trip_points(void)
@@ -316,6 +334,60 @@ static ssize_t show_crit_shutdown(struct device *dev,
 	return ret ? ret : sprintf(buf, "%d\n", flag);
 }
 
+static irqreturn_t ocd_intrpt(int irq, void *dev_data)
+{
+	int ret, event;
+	unsigned int irq_data;
+	uint8_t irq_status;
+	struct ocd_info *cinfo = (struct ocd_info *)dev_data;
+
+	if (!cinfo)
+		return IRQ_NONE;
+
+	mutex_lock(&ocd_update_lock);
+
+	irq_data = ioread8(cinfo->bcu_intr_addr);
+
+	ret = intel_scu_ipc_ioread8(S_BCUINT, &irq_status);
+	if (ret)
+		goto ipc_fail;
+
+	dev_dbg(cinfo->dev, "S_BCUINT: %.2x\n", irq_status);
+
+	if (irq_data & VWARN1_IRQ) {
+		event = WARN1;
+	} else if (irq_data & VWARN2_IRQ) {
+		event = WARN2;
+	} else if (irq_data & VCRIT_IRQ) {
+		event = CRIT;
+	} else if (irq_data & GSMPULSE_IRQ) {
+		event = GSMPULSE;
+	} else if (irq_data & TXPWRTH_IRQ) {
+		event = TXPWRTH;
+	} else {
+		event = UNKNOWN;
+		ret = IRQ_HANDLED;
+		dev_err(cinfo->dev, "Invalid Interrupt\n");
+		goto ipc_fail;
+	}
+
+	dev_info(cinfo->dev, "BCU Event %d has occured\n", event);
+
+	/* Notify using UEvent */
+	kobject_uevent(&cinfo->dev->kobj, KOBJ_CHANGE);
+
+	/* Unmask BCU Interrupt in the mask register */
+	ret = intel_scu_ipc_update_register(MIRQLVL1, 0xFF, BCU_ALERT);
+	if (ret)
+		goto ipc_fail;
+
+	ret = IRQ_HANDLED;
+
+ipc_fail:
+	mutex_unlock(&ocd_update_lock);
+	return ret;
+}
+
 static SENSOR_DEVICE_ATTR_2(volt_warn1, S_IRUGO | S_IWUSR,
 				show_volt_thres, store_volt_thres, 0, 0);
 static SENSOR_DEVICE_ATTR_2(volt_warn2, S_IRUGO | S_IWUSR,
@@ -357,6 +429,7 @@ static int mrfl_ocd_probe(struct ipc_device *ipcdev)
 	}
 
 	cinfo->ipcdev = ipcdev;
+	cinfo->irq = ipc_get_irq(ipcdev, 0);
 	ipc_set_drvdata(ipcdev, cinfo);
 
 	/* Creating a sysfs group with mrfl_ocd_gr attributes */
@@ -375,11 +448,31 @@ static int mrfl_ocd_probe(struct ipc_device *ipcdev)
 		goto exit_sysfs;
 	}
 
+	cinfo->bcu_intr_addr = ioremap_nocache(PMIC_SRAM_BCU_ADDR, IOMAP_LEN);
+	if (ret) {
+		ret = -ENOMEM;
+		dev_err(&ipcdev->dev, "ioremap_nocache failed\n");
+		goto exit_hwmon;
+	}
+
+	/* Register for Interrupt Handler */
+	ret = request_threaded_irq(cinfo->irq, NULL, ocd_intrpt,
+						IRQF_TRIGGER_RISING,
+						DRIVER_NAME, cinfo);
+	if (ret) {
+		dev_err(&ipcdev->dev, "request_threaded_irq failed:%d\n", ret);
+		goto exit_ioremap;
+	}
+
 	enable_volt_trip_points();
 	enable_current_trip_points();
 
 	return 0;
 
+exit_ioremap:
+	iounmap(cinfo->bcu_intr_addr);
+exit_hwmon:
+	hwmon_device_unregister(cinfo->dev);
 exit_sysfs:
 	sysfs_remove_group(&ipcdev->dev.kobj, &mrfl_ocd_gr);
 exit_free:
@@ -404,6 +497,8 @@ static int mrfl_ocd_remove(struct ipc_device *ipcdev)
 	struct ocd_info *cinfo = ipc_get_drvdata(ipcdev);
 
 	if (cinfo) {
+		free_irq(cinfo->irq, cinfo);
+		iounmap(cinfo->bcu_intr_addr);
 		hwmon_device_unregister(cinfo->dev);
 		sysfs_remove_group(&ipcdev->dev.kobj, &mrfl_ocd_gr);
 		kfree(cinfo);
