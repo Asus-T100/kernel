@@ -34,8 +34,8 @@ enum had_caps_list {
 	HAD_GET_AUDIO_STATUS,
 	HAD_SET_ENABLE_AUDIO,
 	HAD_SET_DISABLE_AUDIO,
-        HAD_SET_ENABLE_AUDIO_INT,
-        HAD_SET_DISABLE_AUDIO_INT,
+	HAD_SET_ENABLE_AUDIO_INT,
+	HAD_SET_DISABLE_AUDIO_INT,
 	OTHERS_TBD,
 };
 
@@ -46,6 +46,8 @@ enum had_event_type {
 	HAD_EVENT_PM_CHANGING,
 	HAD_EVENT_AUDIO_BUFFER_DONE,
 	HAD_EVENT_AUDIO_BUFFER_UNDERRUN,
+	HAD_EVENT_QUERY_IS_AUDIO_BUSY,
+	HAD_EVENT_QUERY_IS_AUDIO_SUSPENDED,
 };
 
 /**
@@ -65,14 +67,15 @@ struct hdmi_audio_query_set_ops{
 	int (*hdmi_audio_set_caps)(enum had_caps_list set_element , void *capabilties);
 };
 
-typedef struct pm_event {
-	int event;
-} pm_event_t;
-struct snd_intel_had_interface {
-        const char *name;
-        int (*suspend) (void *had_data, pm_event_t event);
-        int (*resume) (void *had_data);
+typedef struct hdmi_audio_event {
+	int type;
+} hdmi_audio_event_t;
 
+struct snd_intel_had_interface {
+	const char *name;
+	int (*query) (void *had_data, hdmi_audio_event_t event);
+	int (*suspend) (void *had_data, hdmi_audio_event_t event);
+	int (*resume) (void *had_data);
 };
 
 extern int intel_hdmi_audio_query_capabilities (had_event_call_back audio_callbacks, struct hdmi_audio_registers_ops *reg_ops,struct hdmi_audio_query_set_ops *query_ops);

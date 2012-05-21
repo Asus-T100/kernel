@@ -801,6 +801,7 @@ struct drm_psb_get_pipe_from_crtc_id_arg {
 #define DRM_PSB_DISP_PLANEB_DISABLE  4
 #define DRM_PSB_DISP_PLANEB_ENABLE  5
 #define DRM_PSB_HDMI_OSPM_ISLAND_DOWN 6
+#define DRM_PSB_HDMI_NOTIFY_HOTPLUG_TO_AUDIO 7
 
 /*csc gamma setting*/
 typedef enum {

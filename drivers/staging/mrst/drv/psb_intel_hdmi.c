@@ -1981,7 +1981,7 @@ static void mdfld_hdmi_connector_dpms(struct drm_connector *connector, int mode)
 	struct drm_device * dev = connector->dev;
 	struct drm_psb_private * dev_priv = dev->dev_private;
 	int hdmi_audio_busy = 0;
-	pm_event_t hdmi_audio_event;
+	hdmi_audio_event_t hdmi_audio_event;
 	u32 dspcntr_val;
 #ifdef CONFIG_PM_RUNTIME
 	bool panel_on, panel_on2;
@@ -1993,7 +1993,7 @@ static void mdfld_hdmi_connector_dpms(struct drm_connector *connector, int mode)
 
 	/*first, execute dpms*/
 	/* using suspend to judge whether hdmi audio is playing */
-	hdmi_audio_event.event = 0;
+	hdmi_audio_event.type = 0;
 	if (dev_priv->had_interface && dev_priv->had_pvt_data)
 		hdmi_audio_busy =
 			dev_priv->had_interface->suspend(dev_priv->had_pvt_data,

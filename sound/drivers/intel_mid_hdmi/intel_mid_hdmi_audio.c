@@ -1252,6 +1252,7 @@ static struct snd_kcontrol_new had_control_iec958 = {
 
 static struct snd_intel_had_interface had_interface = {
 	.name =         "hdmi-audio",
+	.query =        hdmi_audio_query,
 	.suspend =      hdmi_audio_suspend,
 	.resume =       hdmi_audio_resume,
 };

@@ -1772,12 +1772,12 @@ static void dsi_lvds_panel_get_hdmi_audio_status(void)
 		defined(CONFIG_SND_INTELMID_HDMI_AUDIO_MODULE))
 	struct drm_psb_private *dev_priv = gpDrmDevice->dev_private;
 	struct snd_intel_had_interface *had_interface = dev_priv->had_interface;
-	pm_event_t hdmi_audio_event;
+	hdmi_audio_event_t hdmi_audio_event;
 
 	if (dev_priv->had_pvt_data && hdmi_state) {
-		hdmi_audio_event.event = 0;
+		hdmi_audio_event.type = HAD_EVENT_QUERY_IS_AUDIO_BUSY;
 		dev_priv->hdmi_audio_busy =
-			had_interface->suspend(dev_priv->had_pvt_data,
+			had_interface->query(dev_priv->had_pvt_data,
 					hdmi_audio_event);
 	}
 #endif
@@ -2055,8 +2055,8 @@ int ospm_power_suspend(struct pci_dev *pdev, pm_message_t state)
 #if (defined(CONFIG_SND_INTELMID_HDMI_AUDIO) || \
 		defined(CONFIG_SND_INTELMID_HDMI_AUDIO_MODULE))
 	struct snd_intel_had_interface *had_interface = dev_priv->had_interface;
-	int hdmi_audio_busy = 0;
-	pm_event_t hdmi_audio_event;
+	bool hdmi_audio_suspend = false;
+	hdmi_audio_event_t hdmi_audio_event;
 #endif
 	if(gbSuspendInProgress || gbResumeInProgress)
         {
@@ -2077,10 +2077,10 @@ int ospm_power_suspend(struct pci_dev *pdev, pm_message_t state)
 #if (defined(CONFIG_SND_INTELMID_HDMI_AUDIO) || \
 		defined(CONFIG_SND_INTELMID_HDMI_AUDIO_MODULE))
 		if (dev_priv->had_pvt_data && hdmi_state) {
-			hdmi_audio_event.event = 0;
-			hdmi_audio_busy =
-				had_interface->suspend(dev_priv->had_pvt_data,
+			hdmi_audio_event.type = 0;
+			ret = had_interface->suspend(dev_priv->had_pvt_data,
 							hdmi_audio_event);
+			hdmi_audio_suspend = (ret == 0) ? true : false;
 		}
 #endif
 
@@ -2090,7 +2090,7 @@ int ospm_power_suspend(struct pci_dev *pdev, pm_message_t state)
 			|| display_access_count
 #if (defined(CONFIG_SND_INTELMID_HDMI_AUDIO) || \
 		defined(CONFIG_SND_INTELMID_HDMI_AUDIO_MODULE))
-			|| hdmi_audio_busy
+			|| !hdmi_audio_suspend
 #endif
 		)
                         ret = -EBUSY;
@@ -2674,12 +2674,12 @@ int psb_runtime_idle(struct device *dev)
 		defined(CONFIG_SND_INTELMID_HDMI_AUDIO_MODULE))
 	struct snd_intel_had_interface *had_interface = dev_priv->had_interface;
 	int hdmi_audio_busy = 0;
-	pm_event_t hdmi_audio_event;
+	hdmi_audio_event_t hdmi_audio_event;
 
 	if (dev_priv->had_pvt_data && hdmi_state) {
-		hdmi_audio_event.event = 0;
+		hdmi_audio_event.type = HAD_EVENT_QUERY_IS_AUDIO_BUSY;
 		hdmi_audio_busy =
-			had_interface->suspend(dev_priv->had_pvt_data,
+			had_interface->query(dev_priv->had_pvt_data,
 					hdmi_audio_event);
 	}
 #endif

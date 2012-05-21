@@ -2431,7 +2431,26 @@ static int psb_disp_ioctl(struct drm_device *dev, void *data,
 			DISP_PLANEB_STATUS = ~DISPLAY_PLANE_ENABLE;
 			release_ospm_lock();
 		}
+	} else if (dp_ctrl->cmd == DRM_PSB_HDMI_NOTIFY_HOTPLUG_TO_AUDIO) {
+		if (dp_ctrl->u.data == 0) {
+			/* notify audio with HDMI unplug event */
+			if (dev_priv->mdfld_had_event_callbacks
+					&& !dev_priv->bDVIport) {
+				DRM_INFO("HDMI plug out to audio driver\n");
+				(*dev_priv->mdfld_had_event_callbacks)
+				(HAD_EVENT_HOT_UNPLUG, dev_priv->had_pvt_data);
+			}
+		} else {
+			/* notify audio with HDMI plug event */
+			if (dev_priv->mdfld_had_event_callbacks
+					&& !dev_priv->bDVIport) {
+				DRM_INFO("HDMI plug in to audio driver\n");
+				(*dev_priv->mdfld_had_event_callbacks)
+				(HAD_EVENT_HOT_PLUG, dev_priv->had_pvt_data);
+			}
+		}
 	}
+
 exit:
 	return ret;
 }
