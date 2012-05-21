@@ -680,7 +680,7 @@ static int __devinit mpu_probe(struct i2c_client *client,
 	}
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
-	mpu->es.level = EARLY_SUSPEND_LEVEL_DISABLE_FB + 10;
+	mpu->es.level = EARLY_SUSPEND_LEVEL_DISABLE_FB - 10;
 	mpu->es.suspend = mpu_early_suspend;
 	mpu->es.resume = mpu_late_resume;
 	register_early_suspend(&mpu->es);

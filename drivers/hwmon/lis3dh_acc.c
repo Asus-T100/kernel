@@ -1210,7 +1210,7 @@ static int lis3dh_acc_probe(struct i2c_client *client,
 	lis3dh_acc_disable(acc);
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
-	acc->es.level = EARLY_SUSPEND_LEVEL_DISABLE_FB + 10;
+	acc->es.level = EARLY_SUSPEND_LEVEL_DISABLE_FB - 10;
 	acc->es.suspend = lis3dh_early_suspend;
 	acc->es.resume = lis3dh_late_resume;
 	register_early_suspend(&acc->es);
