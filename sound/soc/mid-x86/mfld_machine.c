@@ -81,14 +81,11 @@ static int mfld_get_headset_state(struct snd_soc_jack *jack)
 	jack_type = snd_soc_jack_get_type(jack, micbias);
 	pr_debug("jack type detected = %d, micbias = %d\n", jack_type, micbias);
 
-	if (mfld_board_id() == MFLD_BID_PR3) {
-		if ((jack_type != SND_JACK_HEADSET) &&
-		    (jack_type != SND_JACK_HEADPHONE))
-			hs_gpio = gpio_get_value(MFLD_GPIO_HEADSET_DET_PIN);
-		if (!hs_gpio) {
-			jack_type = SND_JACK_HEADPHONE;
-			pr_debug("GPIO says there is a headphone, reporting it\n");
-		}
+	if ((jack_type != SND_JACK_HEADSET) && (jack_type != SND_JACK_HEADPHONE))
+		hs_gpio = gpio_get_value(MFLD_GPIO_HEADSET_DET_PIN);
+	if (!hs_gpio) {
+		jack_type = SND_JACK_HEADPHONE;
+		pr_debug("GPIO says there is a headphone, reporting it\n");
 	}
 
 	if (jack_type == SND_JACK_HEADSET)
@@ -144,12 +141,10 @@ void mfld_jack_wq(struct work_struct *work)
 			snd_soc_update_bits(jack->codec, SN95031_ACCDETMASK,
 							BIT(1)|BIT(0), 0);
 	} else if (intr_id & SN95031_JACK_REMOVED) {
-		if (mfld_board_id() == MFLD_BID_PR3) {
-			if (!gpio_get_value(MFLD_GPIO_HEADSET_DET_PIN)) {
-				pr_debug("remove interrupt, "
-					"but GPIO says inserted\n");
-				return;
-			}
+		if (!gpio_get_value(MFLD_GPIO_HEADSET_DET_PIN)) {
+			pr_debug("remove interrupt, "
+				"but GPIO says inserted\n");
+			return;
 		}
 		pr_debug("reporting jack as removed\n");
 		snd_soc_update_bits(jack->codec, SN95031_BTNCTRL2, BIT(0), 0);
@@ -717,13 +712,11 @@ static int __devinit snd_mfld_mc_probe(struct ipc_device *ipcdev)
 	}
 	INIT_DELAYED_WORK(&ctx->jack_work.work, mfld_jack_wq);
 
-	if (mfld_board_id() == MFLD_BID_PR3) {
-		ret_val = gpio_request_one(MFLD_GPIO_HEADSET_DET_PIN,
-					   GPIOF_DIR_IN, "headset_detect_gpio");
-		if (ret_val) {
-			pr_err("Headset detect GPIO alloc fail:%d\n", ret_val);
-			goto unalloc;
-		}
+	ret_val = gpio_request_one(MFLD_GPIO_HEADSET_DET_PIN, GPIOF_DIR_IN,
+				   "headset_detect_gpio");
+	if (ret_val) {
+		pr_err("Headset detect GPIO alloc fail:%d\n", ret_val);
+		goto unalloc;
 	}
 
 	ctx->int_base = ioremap_nocache(irq_mem->start, resource_size(irq_mem));
@@ -776,8 +769,7 @@ static int __devexit snd_mfld_mc_remove(struct ipc_device *ipcdev)
 	cancel_delayed_work(&ctx->jack_work.work);
 	intel_mid_gpadc_free(ctx->audio_adc_handle);
 	kfree(ctx);
-	if (mfld_board_id() == MFLD_BID_PR3)
-		gpio_free(MFLD_GPIO_HEADSET_DET_PIN);
+	gpio_free(MFLD_GPIO_HEADSET_DET_PIN);
 	snd_soc_card_set_drvdata(soc_card, NULL);
 	snd_soc_unregister_card(soc_card);
 	ipc_set_drvdata(ipcdev, NULL);
