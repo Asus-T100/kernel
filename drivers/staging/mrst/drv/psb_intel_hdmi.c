@@ -784,8 +784,11 @@ static void mdfld_hdmi_dpms(struct drm_encoder *encoder, int mode)
 		(struct drm_psb_private *)dev->dev_private;
 	struct psb_intel_output *output = enc_to_psb_intel_output(encoder);
 	struct mid_intel_hdmi_priv *hdmi_priv = output->dev_priv;
+	int dspcntr_reg = DSPBCNTR;
+	int dspbase_reg = MRST_DSPBBASE;
 	u32 hdmip_enabled = 0;
 	u32 hdmib, hdmi_phy_misc;
+	u32 temp;
 
 	PSB_DEBUG_ENTRY("%s\n", mode == DRM_MODE_DPMS_ON ?
 		"on" : "off");
@@ -806,6 +809,19 @@ static void mdfld_hdmi_dpms(struct drm_encoder *encoder, int mode)
 	hdmi_phy_misc = REG_READ(HDMIPHYMISCCTL);
 	hdmip_enabled = REG_READ(hdmi_priv->hdmib_reg) & HDMIB_PORT_EN;
 	PSB_DEBUG_ENTRY("hdmip_enabled is %x\n", hdmip_enabled);
+
+	if (dev_priv->early_suspended == true) {
+		/*Use Disable pipeB plane to turn off HDMI screen
+		  in early_suspend  */
+		temp = REG_READ(dspcntr_reg);
+		if ((temp & DISPLAY_PLANE_ENABLE) != 0) {
+			REG_WRITE(dspcntr_reg,
+					temp & ~DISPLAY_PLANE_ENABLE);
+			/* Flush the plane changes */
+			REG_WRITE(dspbase_reg, REG_READ(dspbase_reg));
+
+		}
+	}
 
 	if (mode != DRM_MODE_DPMS_ON) {
 		if (dev_priv->mdfld_had_event_callbacks

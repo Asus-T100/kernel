@@ -1317,6 +1317,45 @@ bool mrst_get_vbt_data(struct drm_psb_private *dev_priv)
 }
 
 #ifdef CONFIG_MDFD_HDMI
+#define HDMI_HOTPLUG_DELAY (2*HZ)
+static void hdmi_hotplug_timer_func(unsigned long data)
+{
+	struct drm_device *dev = (struct drm_device *)data;
+
+	PSB_DEBUG_ENTRY("\n");
+	ospm_runtime_pm_allow(dev);
+}
+
+static int hdmi_hotplug_timer_init(struct drm_device *dev)
+{
+	struct drm_psb_private *dev_priv = dev->dev_private;
+	struct timer_list *hdmi_timer = &dev_priv->hdmi_timer;
+
+	PSB_DEBUG_ENTRY("\n");
+
+	init_timer(hdmi_timer);
+
+	hdmi_timer->data = (unsigned long)dev;
+	hdmi_timer->function = hdmi_hotplug_timer_func;
+	hdmi_timer->expires = jiffies + HDMI_HOTPLUG_DELAY;
+
+	PSB_DEBUG_ENTRY("successfully\n");
+
+	return 0;
+}
+
+void hdmi_hotplug_timer_start(struct drm_device *dev)
+{
+	struct drm_psb_private *dev_priv = dev->dev_private;
+	struct timer_list *hdmi_timer = &dev_priv->hdmi_timer;
+
+	PSB_DEBUG_ENTRY("\n");
+	if (!timer_pending(hdmi_timer)) {
+		hdmi_timer->expires = jiffies + HDMI_HOTPLUG_DELAY;
+		add_timer(hdmi_timer);
+	}
+}
+
 void hdmi_do_hotplug_wq(struct work_struct *work)
 {
 	u8 data = 0;
@@ -1387,6 +1426,9 @@ void hdmi_do_hotplug_wq(struct work_struct *work)
 		hdmi_state = 1;
 		uevent_string = "HOTPLUG_IN=1";
 		psb_sysfs_uevent(dev_priv->dev, uevent_string);
+
+		ospm_runtime_pm_forbid(dev);
+		hdmi_hotplug_timer_start(dev);
 	} else {
 		DRM_INFO("%s: HDMI unplugged\n", __func__);
 		hdmi_state = 0;
@@ -2065,6 +2107,11 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	/*enable runtime pm at last*/
 	pm_runtime_put_noidle(&dev->pdev->dev);
 #endif
+
+#ifdef CONFIG_MDFD_HDMI
+	hdmi_hotplug_timer_init(dev);
+#endif
+
 	// GL3
 #ifdef CONFIG_MDFD_GL3
 	if (drm_psb_gl3_enable)

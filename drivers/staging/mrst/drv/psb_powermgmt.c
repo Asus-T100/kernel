@@ -1932,6 +1932,7 @@ static void gfx_early_suspend(struct early_suspend *h)
 
 	gbdispstatus = false;
 
+	dev_priv->early_suspended = true;
 #ifdef CONFIG_GFX_RTPM
 #ifdef OSPM_GFX_DPK
 	printk(KERN_ALERT " allow GFX runtime_pm\n");
@@ -2022,6 +2023,7 @@ static void gfx_late_resume(struct early_suspend *h)
 	printk(KERN_ALERT "\ngfx_late_resume\n");
 #endif
 
+	dev_priv->early_suspended = false;
 	if (IS_MDFLD(gpDrmDevice)) {
 #ifdef CONFIG_GFX_RTPM
 		resume_data_back();
