@@ -755,6 +755,12 @@ typedef struct drm_psb_msvdx_decode_status {
 #define DRM_PSB_CSC_GAMMA_SETTING 0x29
 #define DRM_PSB_SET_CSC         0x2a
 
+/* Do not use IOCTL between 0x40 and 0x4F */
+/* These will be reserved for OEM to use */
+/* OEM IOCTLs */
+#define DRM_OEM_RESERVED_START 		0x40
+#define DRM_OEM_RESERVED_END		0x4F
+
 #define DRM_PSB_DSR_ENABLE	0xfffffffe
 #define DRM_PSB_DSR_DISABLE	0xffffffff
 
