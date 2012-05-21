@@ -1463,6 +1463,21 @@ static int turn_otg_vbus(struct bq24192_chip *chip, bool votg_on)
 	int ret = 0;
 
 	if (votg_on) {
+			/*
+			 * Disable WD timer to make sure the WD timer doesn't
+			 * expire and put the charger chip into default state
+			 * which will bring down the VBUS. The issue will arise
+			 * only when the host mode cable is plugged in before
+			 * USB charging cable (SDP/DCP/CDP/ACA).
+			 */
+			ret = program_wdt_timer(chip,
+					CHRG_TIMER_EXP_CNTL_WDTDISABLE);
+			if (ret < 0) {
+				dev_warn(&chip->client->dev,
+					"I2C write failed:%s\n", __func__);
+				goto i2c_write_fail;
+			}
+
 			/* Configure the charger in OTG mode */
 			ret = bq24192_reg_read_modify(chip->client,
 					BQ24192_POWER_ON_CFG_REG,
