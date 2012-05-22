@@ -2177,7 +2177,6 @@ sh_css_hrt_s2m_send_frame(unsigned short *data,
 
 	sh_css_hrt_s2m_start_frame(ch_id, fmt_type);
 	for (i = 0; i < height; i++) {
-		printk(KERN_ALERT "!!! SENDING LINE %d.\n", i);
 		if ((type == sh_css_mipi_data_type_yuv420) &&
 		    (i & 1) == 1) {
 			sh_css_hrt_s2m_send_line(data, 2 * width,
@@ -2192,11 +2191,8 @@ sh_css_hrt_s2m_send_frame(unsigned short *data,
 							   two_ppc, type);
 			data += width;
 		}
-		printk(KERN_ALERT "!!! FINISH SENDING LINE %d.\n", i);
 	}
-	printk(KERN_ALERT "!!! SENDING END .\n");
 	sh_css_hrt_s2m_end_frame(marker_cycles);
-	printk(KERN_ALERT "!!! FINISH SENDING END .\n");
 }
 
 #if defined(SYSTEM_hive_isp_css_2400_system)
