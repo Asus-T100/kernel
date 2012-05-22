@@ -80,6 +80,7 @@ struct hsu_dma_chan {
 #define CMD_WB	2
 #define CMD_TX	3
 #define CMD_RX_STOP	4
+#define CMD_TX_STOP	5
 
 /* to record the pin wakeup states */
 #define PM_WAKEUP	1
@@ -561,10 +562,18 @@ static void serial_hsu_stop_tx(struct uart_port *port)
 	struct uart_hsu_port *up =
 		container_of(port, struct uart_hsu_port, port);
 	struct hsu_dma_chan *txc = up->txc;
+	unsigned long flags;
 
 	pm_runtime_get(up->dev);
 	if (up->use_dma) {
-		chan_writel(txc, HSU_CH_CR, 0x0);
+		if (!hsu_port_is_active(up)) {
+			spin_lock_irqsave(&up->qlock, flags);
+			insert_q(up, CMD_TX_STOP, 0, 0);
+			spin_unlock_irqrestore(&up->qlock, flags);
+			schedule_work(&up->qwork);
+		} else {
+			chan_writel(txc, HSU_CH_CR, 0x0);
+		}
 		up->dma_tx_on = 0;
 	} else if (up->ier & UART_IER_THRI) {
 		up->ier &= ~UART_IER_THRI;
@@ -1761,6 +1770,9 @@ static void qwork(struct work_struct *work)
 			break;
 		case CMD_RX_STOP:
 			chan_writel(up->rxc, HSU_CH_CR, 0x2);
+			break;
+		case CMD_TX_STOP:
+			chan_writel(up->txc, HSU_CH_CR, 0x0);
 			break;
 		default:
 			dev_err(up->dev, "wrong queue cmd type!\n");
