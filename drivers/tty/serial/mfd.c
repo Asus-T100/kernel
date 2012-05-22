@@ -95,6 +95,7 @@ struct uart_hsu_port {
 	int			index;
 	struct device		*dev;
 
+	unsigned int		tx_addr;
 	struct hsu_dma_chan	*txc;
 	struct hsu_dma_chan	*rxc;
 	struct hsu_dma_buffer	txbuf;
@@ -470,13 +471,22 @@ void hsu_dma_tx(struct uart_hsu_port *up)
 	if (up->dma_tx_on)
 		return;
 
-	/* Update the circ buf info */
-	xmit->tail += dbuf->ofs;
-	xmit->tail &= UART_XMIT_SIZE - 1;
+	if (dbuf->ofs) {
+		u32 real = chan_readl(up->txc, HSU_CH_D0SAR) - up->tx_addr;
 
-	up->port.icount.tx += dbuf->ofs;
-	dbuf->ofs = 0;
+		/* we found in flow control case, TX irq came without sending
+		 * all TX buffer
+		 */
+		if (real < dbuf->ofs)
+			dbuf->ofs = real; /* adjust to real chars sent */
 
+		/* Update the circ buf info */
+		xmit->tail += dbuf->ofs;
+		xmit->tail &= UART_XMIT_SIZE - 1;
+
+		up->port.icount.tx += dbuf->ofs;
+		dbuf->ofs = 0;
+	}
 	/* Disable the channel */
 	chan_writel(up->txc, HSU_CH_CR, 0x0);
 
@@ -490,14 +500,14 @@ void hsu_dma_tx(struct uart_hsu_port *up)
 		dbuf->ofs = count;
 
 		/* Reprogram the channel */
-		chan_writel(up->txc, HSU_CH_D0SAR, dbuf->dma_addr + xmit->tail);
+		up->tx_addr = dbuf->dma_addr + xmit->tail;
+		chan_writel(up->txc, HSU_CH_D0SAR, up->tx_addr);
 		chan_writel(up->txc, HSU_CH_D0TSR, count);
 
 		/* Reenable the channel */
 		chan_writel(up->txc, HSU_CH_DCR, 0x1
 						 | (0x1 << 8)
-						 | (0x1 << 16)
-						 | (0x1 << 24));
+						 | (0x1 << 16));
 		up->dma_tx_on = 1;
 		chan_writel(up->txc, HSU_CH_CR, 0x1);
 	}
