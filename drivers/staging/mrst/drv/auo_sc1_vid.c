@@ -58,7 +58,7 @@ static u32 sc1_set_display_on[] = {0x00000029};
 static u32 sc1_set_display_off[] = {0x00000028};
 static u32 sc1_enter_low_power_mode[] = {0x000001b1};
 
-void mdfld_dsi_sc1_ic_init(struct mdfld_dsi_config *dsi_config, int pipe)
+int mdfld_dsi_sc1_ic_init(struct mdfld_dsi_config *dsi_config, int pipe)
 {
 	struct mdfld_dsi_pkg_sender *sender
 			= mdfld_dsi_get_pkg_sender(dsi_config);
@@ -66,7 +66,7 @@ void mdfld_dsi_sc1_ic_init(struct mdfld_dsi_config *dsi_config, int pipe)
 
 	if (!sender) {
 		DRM_ERROR("Cannot get sender\n");
-		return;
+		return -EINVAL;
 	}
 
 	/*wait for 5ms*/
@@ -74,6 +74,7 @@ void mdfld_dsi_sc1_ic_init(struct mdfld_dsi_config *dsi_config, int pipe)
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 
+	return 0;
 	/* Now In Sleep Mode */
 }
 

@@ -98,7 +98,7 @@ static int mdfld_mipi_panel_gpio_parse(struct sfi_table_header *table)
 	return 0;
 }
 
-static void mdfld_h8c7_dci_ic_init(
+static int  mdfld_h8c7_dci_ic_init(
 		struct mdfld_dsi_config *dsi_config, int pipe)
 {
 
@@ -108,7 +108,7 @@ static void mdfld_h8c7_dci_ic_init(
 
 	if (!sender) {
 		DRM_ERROR("Cannot get sender\n");
-		return;
+		return -EINVAL;
 	}
 
 	PSB_DEBUG_ENTRY("\n");
@@ -243,6 +243,8 @@ static void mdfld_h8c7_dci_ic_init(
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
+
+	return 0;
 }
 
 

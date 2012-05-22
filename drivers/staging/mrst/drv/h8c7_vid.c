@@ -78,7 +78,7 @@ static u32 h8c7_enter_sleep_mode[] = {0x00000010};
 #define MIN_BRIGHTNESS_LEVEL 54
 #define MAX_BRIGHTNESS_LEVEL 100
 
-static void mdfld_h8c7_dpi_ic_init(struct mdfld_dsi_config *dsi_config, int pipe)
+static int mdfld_h8c7_dpi_ic_init(struct mdfld_dsi_config *dsi_config, int pipe)
 {
 	struct mdfld_dsi_pkg_sender *sender
 			= mdfld_dsi_get_pkg_sender(dsi_config);
@@ -86,142 +86,195 @@ static void mdfld_h8c7_dpi_ic_init(struct mdfld_dsi_config *dsi_config, int pipe
 
 	if (!sender) {
 		DRM_ERROR("Cannot get sender\n");
-		return;
+		return -EINVAL;
 	}
 
 	PSB_DEBUG_ENTRY("\n");
+	sender->status = MDFLD_DSI_PKG_SENDER_FREE;
 
 	/*wait for 5ms*/
 	wait_timeout = jiffies + (HZ / 200);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
 
 	/* sleep out and wait for 150ms. */
 	mdfld_dsi_send_mcs_long_lp(sender, h8c7_exit_sleep_mode, 4, 0);
 	wait_timeout = jiffies + (3 * HZ / 20);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
 
 	/* set password and wait for 10ms. */
 	mdfld_dsi_send_gen_long_lp(sender, h8c7_mcs_protect_off, 4, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
 
 	/* set TE on and wait for 10ms. */
 	mdfld_dsi_send_mcs_long_lp(sender, h8c7_set_tear_on, 4, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
 
 	/* set backlight to full brightness and wait for 10ms. */
 	mdfld_dsi_send_mcs_long_lp(sender, h8c7_set_full_brightness, 4, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
 
 	/* set backlight on and wait for 10ms. */
 	mdfld_dsi_send_mcs_long_lp(sender, h8c7_turn_on_backlight, 4, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
 
 	/* disalble CABC and wait for 10ms. */
 	mdfld_dsi_send_mcs_long_lp(sender, h8c7_disable_cabc, 4, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
 
 	mdfld_dsi_send_gen_long_lp(sender, h8c7_ic_bias_current, 8, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
 
 	mdfld_dsi_send_gen_long_lp(sender, h8c7_set_power, 16, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
 
 	mdfld_dsi_send_gen_long_lp(sender, h8c7_set_disp_reg, 16, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
 
 	mdfld_dsi_send_gen_long_lp(sender, h8c7_set_command_cyc, 24, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
 
 	mdfld_dsi_send_gen_long_lp(sender, h8c7_set_mipi_ctrl, 4, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
 
 	mdfld_dsi_send_gen_long_lp(sender, h8c7_video_mode, 4, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
 
 	mdfld_dsi_send_gen_long_lp(sender, h8c7_set_blanking_opt_2, 4, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
 
 	mdfld_dsi_send_gen_long_lp(sender, h8c7_set_panel, 4, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
 
 	mdfld_dsi_send_gen_long_lp(sender, h8c7_set_eq_func_ltps, 4, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
 
 	mdfld_dsi_send_gen_long_lp(sender, h8c7_set_ltps_ctrl_output, 24, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
 
 	mdfld_dsi_send_gen_long_lp(sender, h8c7_set_video_cyc, 24, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
 
 	mdfld_dsi_send_gen_long_lp(sender, h8c7_gamma_r, 36, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
 
 	mdfld_dsi_send_gen_long_lp(sender, h8c7_gamma_g, 36, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
 
 	mdfld_dsi_send_gen_long_lp(sender, h8c7_gamma_b, 36, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
 
 	mdfld_dsi_send_mcs_long_lp(sender, h8c7_enter_set_cabc, 10, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
 
 	/* disable password and wait for 10ms. */
 	mdfld_dsi_send_gen_long_lp(sender, h8c7_mcs_protect_on, 4, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
 
 	mdfld_dsi_send_mcs_long_lp(sender, h8c7_set_address_mode, 4, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
 
 	mdfld_dsi_send_mcs_long_lp(sender, h8c7_set_pixel_format, 4, 0);
 	wait_timeout = jiffies + (HZ / 100);
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
+	return 0;
 }
 
 static void

@@ -107,7 +107,7 @@ static u32 gi_l5f3_exit_sleep_mode[] = {0x00000011};
 static u32 gi_l5f3_set_display_on[] = {0x00000029};
 
 /* FIXME Optimize the delay time after PO.  */
-static void mdfld_gi_l5f3_dbi_ic_init(struct mdfld_dsi_config *dsi_config,
+static int mdfld_gi_l5f3_dbi_ic_init(struct mdfld_dsi_config *dsi_config,
 		int pipe)
 {
 	struct mdfld_dsi_pkg_sender *sender
@@ -115,7 +115,7 @@ static void mdfld_gi_l5f3_dbi_ic_init(struct mdfld_dsi_config *dsi_config,
 
 	if (!sender) {
 		DRM_ERROR("Cannot get sender\n");
-		return;
+		return -EINVAL;
 	}
 
 	PSB_DEBUG_ENTRY("\n");
@@ -210,6 +210,8 @@ static void mdfld_gi_l5f3_dbi_ic_init(struct mdfld_dsi_config *dsi_config,
 	mdfld_ms_delay(MSLEEP, 5);
 
 	dsi_config->drv_ic_inited = 1;
+
+	return 0;
 }
 
 static void
