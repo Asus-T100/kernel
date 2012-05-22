@@ -935,7 +935,7 @@ static inline void dma_chan_irq(struct hsu_dma_chan *chan)
 	 */
 	int_sts = chan_readl(chan, HSU_CH_SR);
 
-	if (!up->use_dma || !up->running)
+	if (!up->use_dma || !up->running || !hsu_port_is_active(up))
 		goto exit;
 
 	/* Rx channel */
