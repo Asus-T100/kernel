@@ -88,6 +88,7 @@
 #define CFG_FAULT_IRQ_DCIN_UV			BIT(2)
 #define CFG_FAULT_IRQ_OTG_UV			BIT(5)
 #define CFG_STATUS_IRQ				0x0d
+#define CFG_STATUS_IRQ_CHARGE_TIMEOUT		BIT(7)
 #define CFG_STATUS_IRQ_TERMINATION_OR_TAPER	BIT(4)
 #define CFG_ADDRESS				0x0e
 
@@ -106,6 +107,9 @@
 #define IRQSTAT_C_TERMINATION_STAT		BIT(0)
 #define IRQSTAT_C_TERMINATION_IRQ		BIT(1)
 #define IRQSTAT_C_TAPER_IRQ			BIT(3)
+#define IRQSTAT_D				0x38
+#define IRQSTAT_D_CHARGE_TIMEOUT_STAT		BIT(2)
+#define IRQSTAT_D_CHARGE_TIMEOUT_IRQ		BIT(3)
 #define IRQSTAT_E				0x39
 #define IRQSTAT_E_USBIN_UV_STAT			BIT(0)
 #define IRQSTAT_E_USBIN_UV_IRQ			BIT(1)
@@ -121,8 +125,10 @@
 #define STAT_B					0x3c
 #define STAT_C					0x3d
 #define STAT_C_CHG_ENABLED			BIT(0)
+#define STAT_C_HOLDOFF_STAT			BIT(3)
 #define STAT_C_CHG_MASK				0x06
 #define STAT_C_CHG_SHIFT			1
+#define STAT_C_CHG_TERM				BIT(5)
 #define STAT_C_CHARGER_ERROR			BIT(6)
 #define STAT_E					0x3f
 
@@ -1089,7 +1095,7 @@ fail:
 static irqreturn_t smb347_interrupt(int irq, void *data)
 {
 	struct smb347_charger *smb = data;
-	int stat_c, irqstat_e, irqstat_c, irqstat_f;
+	int stat_c, irqstat_c, irqstat_d, irqstat_e, irqstat_f;
 	irqreturn_t ret = IRQ_NONE;
 
 	stat_c = smb347_read(smb, STAT_C);
@@ -1101,6 +1107,12 @@ static irqreturn_t smb347_interrupt(int irq, void *data)
 	irqstat_c = smb347_read(smb, IRQSTAT_C);
 	if (irqstat_c < 0) {
 		dev_warn(&smb->client->dev, "reading IRQSTAT_C failed\n");
+		return IRQ_NONE;
+	}
+
+	irqstat_d = smb347_read(smb, IRQSTAT_D);
+	if (irqstat_d < 0) {
+		dev_warn(&smb->client->dev, "reading IRQSTAT_D failed\n");
 		return IRQ_NONE;
 	}
 
@@ -1117,14 +1129,13 @@ static irqreturn_t smb347_interrupt(int irq, void *data)
 	}
 
 	/*
-	 * If we get charger error we report the error back to user and
-	 * disable charging.
+	 * If we get charger error we report the error back to user.
+	 * If the error is recovered charging will resume again.
 	 */
 	if (stat_c & STAT_C_CHARGER_ERROR) {
 		dev_err(&smb->client->dev,
-			"error in charger, disabling charging\n");
+			"charging stopped due to charger error\n");
 
-		smb347_charging_disable(smb);
 		if (smb->pdata->show_battery)
 			power_supply_changed(&smb->battery);
 
@@ -1142,6 +1153,21 @@ static irqreturn_t smb347_interrupt(int irq, void *data)
 			power_supply_changed(&smb->battery);
 		dev_info(&smb->client->dev,
 			"[Charge Terminated] Going to HW Maintenance mode\n");
+		ret = IRQ_HANDLED;
+	}
+
+	/*
+	 * If we got a complete charger timeout int that means the charge
+	 * full is not detected with in charge timeout value.
+	 */
+	if (irqstat_d & IRQSTAT_D_CHARGE_TIMEOUT_IRQ) {
+		dev_info(&smb->client->dev,
+			"[Charge Timeout]:Total Charge Timeout INT recieved\n");
+		if (irqstat_d & IRQSTAT_D_CHARGE_TIMEOUT_STAT)
+			dev_info(&smb->client->dev,
+				"[Charge Timeout]:charging stopped\n");
+		if (smb->pdata->show_battery)
+			power_supply_changed(&smb->battery);
 		ret = IRQ_HANDLED;
 	}
 
@@ -1206,8 +1232,9 @@ static int smb347_irq_set(struct smb347_charger *smb, bool enable)
 		if (ret < 0)
 			goto fail;
 
-		ret = smb347_write(smb, CFG_STATUS_IRQ,
-				   CFG_STATUS_IRQ_TERMINATION_OR_TAPER);
+		val = CFG_STATUS_IRQ_CHARGE_TIMEOUT |
+			CFG_STATUS_IRQ_TERMINATION_OR_TAPER;
+		ret = smb347_write(smb, CFG_STATUS_IRQ, val);
 		if (ret < 0)
 			goto fail;
 
@@ -1338,19 +1365,50 @@ static int smb347_usb_get_property(struct power_supply *psy,
 
 int smb347_get_charging_status(void)
 {
+	int ret, status;
+
 	if (!smb347_dev)
 		return -EINVAL;
 
 	if (!smb347_is_online(smb347_dev))
 		return POWER_SUPPLY_STATUS_DISCHARGING;
 
-	if (smb347_charging_status(smb347_dev))
-		return POWER_SUPPLY_STATUS_CHARGING;
-	else
-		return POWER_SUPPLY_STATUS_FULL;
+	ret = smb347_read(smb347_dev, STAT_C);
+	if (ret < 0)
+		return ret;
 
+	dev_info(&smb347_dev->client->dev,
+			"Charging Status: STAT_C:0x%x\n", ret);
+
+	if ((ret & STAT_C_CHARGER_ERROR) ||
+		(ret & STAT_C_HOLDOFF_STAT)) {
+		/* set to NOT CHARGING upon charger error
+		 * or charging has stopped.
+		 */
+		status = POWER_SUPPLY_STATUS_NOT_CHARGING;
+	} else {
+		if ((ret & STAT_C_CHG_MASK) >> STAT_C_CHG_SHIFT) {
+			/* set to charging if battery is in pre-charge,
+			 * fast charge or taper charging mode.
+			 */
+			status = POWER_SUPPLY_STATUS_CHARGING;
+		} else if (ret & STAT_C_CHG_TERM) {
+			/* set the status to FULL if battery is not in pre
+			 * charge, fast charge or taper charging mode AND
+			 * charging is terminated at least once.
+			 */
+			status = POWER_SUPPLY_STATUS_FULL;
+		} else {
+			/* in this case no charger error or termination
+			 * occured but charging is not in progress!!!
+			 */
+			status = POWER_SUPPLY_STATUS_NOT_CHARGING;
+		}
+	}
+
+	return status;
 }
-EXPORT_SYMBOL_GPL(smb347_usb_get_property);
+EXPORT_SYMBOL_GPL(smb347_get_charging_status);
 
 static enum power_supply_property smb347_usb_properties[] = {
 	POWER_SUPPLY_PROP_ONLINE,
@@ -1371,14 +1429,10 @@ static int smb347_battery_get_property(struct power_supply *psy,
 
 	switch (prop) {
 	case POWER_SUPPLY_PROP_STATUS:
-		if (!smb347_is_online(smb)) {
-			val->intval = POWER_SUPPLY_STATUS_DISCHARGING;
-			break;
-		}
-		if (smb347_charging_status(smb))
-			val->intval = POWER_SUPPLY_STATUS_CHARGING;
-		else
-			val->intval = POWER_SUPPLY_STATUS_FULL;
+		ret = smb347_get_charging_status();
+		if (ret < 0)
+			return ret;
+		val->intval = ret;
 		break;
 
 	case POWER_SUPPLY_PROP_CHARGE_TYPE:
