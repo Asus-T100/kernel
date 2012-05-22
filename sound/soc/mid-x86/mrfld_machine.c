@@ -514,7 +514,7 @@ const struct dev_pm_ops snd_mrfld_mc_pm_ops = {
 static struct ipc_driver snd_mrfld_mc_driver = {
 	.driver = {
 		.owner = THIS_MODULE,
-		.name = "mrfld_cs42173",
+		.name = "mrfld_cs42l73",
 		.pm   = &snd_mrfld_mc_pm_ops,
 	},
 	.probe = snd_mrfld_mc_probe,

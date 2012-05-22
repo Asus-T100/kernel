@@ -64,7 +64,7 @@ static void __init vp_board_init(void)
 }
 
 struct devs_id __initconst device_ids[] = {
-	{"mrfld_cs42173", SFI_DEV_TYPE_IPC, 1, &mrfld_audio_platform_data},
+	{"mrfld_cs42l73", SFI_DEV_TYPE_IPC, 1, &mrfld_audio_platform_data},
 	{},
 };
 
