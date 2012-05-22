@@ -878,7 +878,8 @@ static int __init logger_init(void)
 			goto out;
 		ret = init_pti(log_list[i]);
 		if (unlikely(ret))
-			goto out;
+			printk(KERN_ERR "logger: failed to init pti for %s, ignoring\n",
+			       log_list[i]->misc.name);
 	}
 
 	ret = init_log_kernel_bottom();
