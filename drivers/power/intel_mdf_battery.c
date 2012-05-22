@@ -1437,7 +1437,16 @@ static int check_charge_full(struct msic_power_module_info *mbi,
 	/* convert to milli amps */
 	cur_avg /= 1000;
 
-	if ((volt_now > (vref - VBATT_FULL_DET_MARGIN)) &&
+	/*
+	 * charge full is detected (1)when Vbatt > Vfull and could
+	 * be discharging, this can happen  when temperature zone
+	 * transition happens. (2) when Vbatt is close to Vfull and
+	 * the charge current is with in the termination range.
+	 */
+	if ((volt_now > vref) && (volt_prev > vref) &&
+			(cur_avg <= FULL_CURRENT_AVG_HIGH)) {
+		is_full = true;
+	} else if ((volt_now > (vref - VBATT_FULL_DET_MARGIN)) &&
 		(volt_prev > (vref - VBATT_FULL_DET_MARGIN))) {
 		if (cur_avg >= FULL_CURRENT_AVG_LOW  &&
 				cur_avg <= FULL_CURRENT_AVG_HIGH)
