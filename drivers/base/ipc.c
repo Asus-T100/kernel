@@ -616,6 +616,8 @@ int ipc_new_device(struct ipc_board_info *info)
 	if (info->num_res)
 		ipc_device_add_resources(ipcdev, info->res, info->num_res);
 
+	mutex_lock(&ipc_bus_lock[ipcdev->bus_id]);
+
 	/**
 	 * If the device driver is probed before IPC controller is initilized,
 	 * just add it to the ipc_board_list, and process it after controller
@@ -623,12 +625,15 @@ int ipc_new_device(struct ipc_board_info *info)
 	 */
 	if (bus_init_done[info->bus_id] == 0) {
 		list_add_tail(&ipcdev->entry, &ipc_device_list[info->bus_id]);
-		return 0;
+		ret = 0;
+	} else {
+		ret = ipc_device_add(ipcdev);
+		if (ret == 0)
+			list_add_tail(&ipcdev->entry,
+					&ipc_device_list[info->bus_id]);
 	}
 
-	ret = ipc_device_add(ipcdev);
-	if (ret == 0)
-		list_add_tail(&ipcdev->entry, &ipc_device_list[info->bus_id]);
+	mutex_unlock(&ipc_bus_lock[ipcdev->bus_id]);
 
 	return ret;
 }
@@ -637,7 +642,10 @@ EXPORT_SYMBOL_GPL(ipc_new_device);
 void ipc_device_add_to_list(struct ipc_device *ipcdev)
 {
 	int bus_id = ipcdev->bus_id;
+
+	mutex_lock(&ipc_bus_lock[bus_id]);
 	list_add_tail(&ipcdev->entry, &ipc_device_list[bus_id]);
+	mutex_unlock(&ipc_bus_lock[bus_id]);
 }
 EXPORT_SYMBOL_GPL(ipc_device_add_to_list);
 
