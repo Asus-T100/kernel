@@ -590,14 +590,15 @@ static int mdfld_dsi_pr2_panel_reset(struct mdfld_dsi_config *dsi_config,
 		gpio_direction_output(gpio_mipi_panel_reset, 0);
 		gpio_set_value_cansleep(gpio_mipi_panel_reset, 0);
 
-		/*reset low level width 11ms*/
-		mdelay(10);
+		/* HW reset need minmum 3ms */
+		usleep_range(3000, 4000);
 
 		gpio_direction_output(gpio_mipi_panel_reset, 1);
 		gpio_set_value_cansleep(gpio_mipi_panel_reset, 1);
 
-		/*reset time 5ms*/
-		mdelay(5);
+		/* HW reset need min. 3ms, and before sending IC init sequence,
+		 * need wait 7ms, so here total wait time is 10ms */
+		usleep_range(10000, 11000);
 	} else {
 		PSB_DEBUG_ENTRY("pr2 panel reset fail.!");
 	}
