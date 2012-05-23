@@ -78,7 +78,6 @@ struct a1026_platform_data {
 	void (*free_resources) (struct i2c_client *client);
 	void (*reset) (bool state);
 	void (*wakeup) (bool state);
-	char firmware_name[128];
 };
 
 

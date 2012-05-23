@@ -35,7 +35,6 @@ static int audience_request_resources(struct i2c_client *client)
 		dev_err(&client->dev, "Set GPIO Direction fails %d\n", ret);
 		goto err_wake;
 	}
-
 	ret = gpio_request(pdata->gpio_a1026_reset, AUDIENCE_RESET_GPIO);
 	if (ret) {
 		dev_err(&client->dev,
@@ -48,8 +47,6 @@ static int audience_request_resources(struct i2c_client *client)
 		dev_err(&client->dev, "Set GPIO Direction fails %d\n", ret);
 		goto err_reset;
 	}
-	sprintf(pdata->firmware_name, "%s", "vpimg_es305b.bin");
-
 	return 0;
 err_reset:
 	gpio_free(pdata->gpio_a1026_reset);

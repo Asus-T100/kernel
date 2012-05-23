@@ -25,10 +25,14 @@
 #include <linux/a1026.h>
 #include <linux/i2c.h>
 
-#define DEBUG			(0)
-#define ENABLE_DIAG_IOCTLS	(0)
-#define ES305_I2C_CMD_FIFO_SIZE	(128) /* Max cmd length on es305 side is 252 */
-#define ES305_HARD_RESET_PERIOD (100) /* delay (in us) in order to wait for stable power supplies & for stable system clock */
+#define FIRMWARE_NAME_MAX_LENGTH	64
+#define DEBUG				0
+#define ENABLE_DIAG_IOCTLS		0
+/* Max cmd length on es305 side is 252 */
+#define ES305_I2C_CMD_FIFO_SIZE		128
+/* delay (in us) in order to wait for stable power supplies &
+ * for stable system clock */
+#define ES305_HARD_RESET_PERIOD		100
 /*
  * This driver is based on the eS305-UG-APIGINTEL-V0 2.pdf spec
  * for the eS305 Voice Processor
@@ -164,7 +168,7 @@ set_suspend_err:
 	return rc;
 }
 
-static ssize_t es305_bootup_init(struct vp_ctxt *vp)
+static ssize_t es305_bootup_init(struct vp_ctxt *vp, const char * firmware_name)
 {
 	int rc, pass = 0;
 	int remaining;
@@ -173,10 +177,10 @@ static ssize_t es305_bootup_init(struct vp_ctxt *vp)
 	const u8 *index;
 	u8 buf[2];
 	const struct firmware *fw_entry;
-	char *firmware_name = vp->pdata->firmware_name;
 
 	if (firmware_name == NULL || firmware_name[0] == '\0')
 		firmware_name = "vpimg.bin";
+	dev_dbg(&vp->i2c_dev->dev, "firmware file: %s\n", firmware_name);
 
 	if (request_firmware(&fw_entry, firmware_name, &vp->i2c_dev->dev)) {
 		dev_err(&vp->i2c_dev->dev, "Firmware not available\n");
@@ -502,6 +506,7 @@ static long es305_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	struct vp_ctxt *the_vp;
 	int rc;
+	char firmware_name[FIRMWARE_NAME_MAX_LENGTH];
 
 	pr_debug("-> %s\n", __func__);
 
@@ -515,7 +520,14 @@ static long es305_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	switch (cmd) {
 	case A1026_BOOTUP_INIT:
 		mutex_lock(&the_vp->mutex);
-		rc = es305_bootup_init(the_vp);
+		rc = strncpy_from_user(firmware_name,
+			(const char * __user) arg,
+			FIRMWARE_NAME_MAX_LENGTH);
+		if (rc == FIRMWARE_NAME_MAX_LENGTH)
+			rc = -ERANGE;
+		if (rc < 0)
+			break;
+		rc = es305_bootup_init(the_vp, firmware_name);
 		mutex_unlock(&the_vp->mutex);
 		break;
 	case A1026_SUSPEND:
