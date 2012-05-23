@@ -95,11 +95,6 @@ int mdfld_dsi_pr2_ic_init(struct mdfld_dsi_config *dsi_config, int pipe)
 	printk(KERN_ALERT "[DISPLAY TRK] Enter %s\n", __func__);
 	sender->status = MDFLD_DSI_PKG_SENDER_FREE;
 
-	/*wait for 5ms*/
-	wait_timeout = jiffies + (HZ / 200);
-	while (time_before_eq(jiffies, wait_timeout))
-		cpu_relax();
-
 	mdfld_dsi_send_gen_long_lp(sender, pr2_mcs_protect_off, 4, 0);
 	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
 		return -EIO;
