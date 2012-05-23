@@ -4009,6 +4009,75 @@ static int ov8830_grouphold_launch(struct v4l2_subdev *sd)
 				group | OV8830_GROUP_ACCESS_DELAY_LAUNCH);
 }
 
+/*
+ * Read EEPROM data from the le24l042cs chip and store
+ * it into a kmalloced buffer. On error return NULL.
+ * The caller must kfree the buffer when no more needed.
+ * @size: set to the size of the returned EEPROM data.
+ */
+static void *le24l042cs_read(struct i2c_client *client, int *size)
+{
+	static const unsigned int LE24L042CS_I2C_ADDR = 0xA0 >> 1;
+	static const unsigned int LE24L042CS_EEPROM_SIZE = 512;
+	static const unsigned int MAX_READ_SIZE = OV8830_MAX_WRITE_BUF_SIZE;
+	struct i2c_msg msg[2];
+	int addr;
+	char *buffer;
+
+	buffer = kmalloc(LE24L042CS_EEPROM_SIZE, GFP_KERNEL);
+	if (!buffer)
+		return NULL;
+
+	memset(msg, 0, sizeof(msg));
+	for (addr = 0; addr < LE24L042CS_EEPROM_SIZE; addr += MAX_READ_SIZE) {
+		unsigned int i2c_addr = LE24L042CS_I2C_ADDR;
+		unsigned char addr_buf;
+		int r;
+
+		i2c_addr |= (addr >> 8) & 1;
+		addr_buf = addr & 0xFF;
+
+		msg[0].addr = i2c_addr;
+		msg[0].flags = 0;
+		msg[0].len = 1;
+		msg[0].buf = &addr_buf;
+
+		msg[1].addr = i2c_addr;
+		msg[1].flags = I2C_M_RD;
+		msg[1].len = min(MAX_READ_SIZE, LE24L042CS_EEPROM_SIZE - addr);
+		msg[1].buf = &buffer[addr];
+
+		r = i2c_transfer(client->adapter, msg, ARRAY_SIZE(msg));
+		if (r != ARRAY_SIZE(msg)) {
+			kfree(buffer);
+			dev_err(&client->dev, "read failed at 0x%03x\n", addr);
+			return NULL;
+		}
+	}
+
+	if (size)
+		*size = LE24L042CS_EEPROM_SIZE;
+	return buffer;
+}
+
+static int ov8830_g_priv_int_data(struct v4l2_subdev *sd,
+				  struct v4l2_private_int_data *priv)
+{
+	int size, r = 0;
+	void *b = le24l042cs_read(v4l2_get_subdevdata(sd), &size);
+
+	if (!b)
+		return -EIO;
+
+	if (copy_to_user(priv->data, b, min(priv->size, size)))
+		r = -EFAULT;
+
+	priv->size = size;
+	kfree(b);
+
+	return r;
+}
+
 static int ov8830_set_exposure(struct v4l2_subdev *sd, int exposure, int gain)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
@@ -4066,6 +4135,8 @@ static long ov8830_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
 	switch (cmd) {
 	case ATOMISP_IOC_S_EXPOSURE:
 		return ov8830_s_exposure(sd, (struct atomisp_exposure *)arg);
+	case ATOMISP_IOC_G_SENSOR_PRIV_INT_DATA:
+		return ov8830_g_priv_int_data(sd, arg);
 	default:
 		return -EINVAL;
 	}
