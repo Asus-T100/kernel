@@ -545,8 +545,8 @@ static int mdfld_hdmi_set_avi_infoframe(struct drm_device *dev,
 		REG_WRITE(VIDEO_DIP_DATA, 0x0);
 
 	/* Wait for 2 VSyncs. */
-	mdelay(20); /* msleep(20); */
-	mdelay(20); /* msleep(20); */
+	mdelay(20);
+	mdelay(20);
 	/* psb_intel_wait_for_vblank(dev); */
 	/* Wait for 3 HSync. */
 	/* Disable the DIP type . */
@@ -614,7 +614,6 @@ static void mdfld_hdmi_mode_set(struct drm_encoder *encoder,
 		REG_WRITE(AUDIO_DIP_CTL, 0x0);
 	} else {
 		hdmib |= (HDMIB_NULL_PACKET | HDMI_AUDIO_ENABLE);
-		mdfld_hdmi_set_avi_infoframe(dev, &output->base, adjusted_mode);
 	}
 
 	vic = mdfld_hdmi_timing_get_vic(adjusted_mode);
@@ -776,7 +775,6 @@ static bool mdfld_hdmi_mode_fixup(struct drm_encoder *encoder,
 #endif
 	return true;
 }
-
 
 static void mdfld_hdmi_dpms(struct drm_encoder *encoder, int mode)
 {
@@ -1395,10 +1393,6 @@ mdfld_hdmi_edid_detect(struct drm_connector *connector)
 	int i = 0;
 	int ret = 0;
 	int monitor_number = sizeof(mdfld_hdmi_edid) / sizeof(struct hdmi_edid_info);
-	static u8 last_mfg_id[2] = {0,0};
-	static u8 last_prod_code[2] = {0,0};
-	static u32 last_serial = 0; /* FIXME: byte order */
-	int hdmi_change = 0;
 
 	PSB_DEBUG_ENTRY("\n");
 
@@ -1427,29 +1421,6 @@ mdfld_hdmi_edid_detect(struct drm_connector *connector)
 			hdmi_priv->has_hdmi_sink = drm_detect_hdmi_monitor(edid);
 			mdfld_hdmi_create_eeld_packet(connector);
 		}
-
-		if(hdmi_change == 0)
-		{
-			if (!(((edid->mfg_id[0] == last_mfg_id[0])&&(edid->mfg_id[1] == last_mfg_id[1]))
-				&&((edid->prod_code[0] == last_prod_code[0])&&(edid->prod_code[1] == last_prod_code[1]))
-				&&(edid->serial == last_serial))) {
-				hdmi_change = 1;
-			}
-				last_mfg_id[0] = edid->mfg_id[0];
-				last_mfg_id[1] = edid->mfg_id[1];
-				last_prod_code[0] = edid->prod_code[0];
-				last_prod_code[1] = edid->prod_code[1];
-				last_serial = edid->serial;
-		}
-		if (hdmi_change ==1) {
-			drm_connector_property_set_value(connector,dev->mode_config.scaling_mode_property,DRM_MODE_SCALE_ASPECT);
-		}
-
-		DRM_INFO("hdmi_change =%d", hdmi_change);
-		DRM_INFO("mfg_id: 0x%x,0x%x", edid->mfg_id[0],edid->mfg_id[1]);
-		DRM_INFO("prod_code: 0x%x,0x%x", edid->prod_code[0],edid->prod_code[1]);
-		DRM_INFO("serial: 0x%x", edid->serial);
-
 		drm_mode_connector_update_edid_property(connector, edid);
 		kfree(edid);
 		dev_priv->hdmi_done_reading_edid = true;
@@ -1509,6 +1480,7 @@ mdfld_hdmi_edid_detect(struct drm_connector *connector)
 	PSB_DEBUG_ENTRY("is DVI port ? %s", dev_priv->bDVIport ? "yes" : "no");
 	return status;
 }
+
 void hdmi_unplug_prepare(struct drm_psb_private *dev_priv)
 {
 	int wait_count = 0;
@@ -1657,8 +1629,24 @@ static int mdfld_hdmi_set_property(struct drm_connector *connector,
 		if (!pPsbCrtc)
 			goto set_prop_error;
 
+		switch (value) {
+		case DRM_MODE_SCALE_FULLSCREEN:
+			break;
+		case DRM_MODE_SCALE_CENTER:
+			break;
+		case DRM_MODE_SCALE_NO_SCALE:
+			break;
+		case DRM_MODE_SCALE_ASPECT:
+			break;
+		default:
+			goto set_prop_error;
+		}
+
 		if (drm_connector_property_get_value(connector, property, &curValue))
 			goto set_prop_error;
+
+		if (curValue == value)
+			goto set_prop_done;
 
 		if (drm_connector_property_set_value(connector, property, value))
 			goto set_prop_error;
@@ -1670,8 +1658,8 @@ static int mdfld_hdmi_set_property(struct drm_connector *connector,
 
 		if (pPsbCrtc->saved_mode.hdisplay != 0 &&
 		    pPsbCrtc->saved_mode.vdisplay != 0) {
-			if (bTransitionFromToCentered || bTransitionFromToAspect
-				||(value > DRM_MODE_SCALE_NO_SCALE) || (value == DRM_MODE_SCALE_FULLSCREEN)){
+			if (bTransitionFromToCentered ||
+					bTransitionFromToAspect) {
 				if (!drm_crtc_helper_set_mode(pEncoder->crtc, &pPsbCrtc->saved_mode,
 					    pEncoder->crtc->x, pEncoder->crtc->y, pEncoder->crtc->fb))
 					goto set_prop_error;
@@ -1726,17 +1714,12 @@ int mdfld_add_eedid_video_block_modes(struct drm_connector *connector, struct ed
 {
     struct drm_device *dev = connector->dev;
     int i, j, modes = 0;
-    char *edid_ext = NULL;
-    u32 quirks = 0;
-    struct detailed_timing *timing;
-    extention_block_cea_t eb;
-    unsigned char *c = eb.data;
+    extention_block_cea_t *edid_ext = NULL;
+    unsigned char *c = NULL;
     int vic;
     mdfld_hdmi_timing_t *p_video_mode;
-    struct detailed_timing * vblock_timings;
     struct drm_display_mode *mode;
     int block_type, payload_size;
-    int start_offset, end_offset;
 
     if (edid->version == 1 && edid->revision < 3)
         return 0;
@@ -1745,33 +1728,36 @@ int mdfld_add_eedid_video_block_modes(struct drm_connector *connector, struct ed
 
     /* Find CEA extension */
     for (i = 0; i < edid->extensions; i++) {
-        edid_ext = (char *)edid + EDID_LENGTH * (i + 1);
+	edid_ext = (extention_block_cea_t *)((char *)edid +
+		EDID_LENGTH * (i + 1));
 
-        /* Extended EDID BLOCK */
-        if (edid_ext[0] == 0x02) {
-            memset(&eb, 0, sizeof(extention_block_cea_t));
+	/* Extended EDID BLOCK */
+	if (edid_ext->tag == 0x02) {
+	    PSB_DEBUG_ENTRY("CEA tag = %X, revision = %X, "
+		    "content_offset = %X, flags = %X\n",
+		    edid_ext->tag,
+		    edid_ext->revision,
+		    edid_ext->content_offset,
+		    edid_ext->flags);
 
-            if (edid_ext != NULL)
-                memcpy(&eb, edid_ext, sizeof(extention_block_cea_t));
-
-            printk("CEA tag = %X, revision = %X, content_offset = %X, flags = %X\n", eb.tag, eb.revision, eb.content_offset, eb.flags);
-
-            /*
+	    /*
              * Short descriptors section exists when:
              * - offset is not 4
              * - CEA extension version is 3
              */
-            if ((eb.content_offset != 4) && (eb.revision >= 3)) {
-
-                c = eb.data;
+	    if ((edid_ext->content_offset != 4) && (edid_ext->revision >= 3)) {
+		c = edid_ext->data;
                 /* All area before detailed descriptors should be filled
                  * TODO: Shall we change this to safer check?
                  */
-                while (c < ((unsigned char *)&eb + eb.content_offset)) {
-                    block_type = (*c & 0xE0) >> 5;
+		while (c < ((unsigned char *)edid_ext +
+			    edid_ext->content_offset)) {
+		    block_type = (*c & 0xE0) >> 5;
                     payload_size = *c & 0x1F;
 
-                    printk("block_type: %d, payload_size: %d\n", block_type, payload_size);
+		    PSB_DEBUG_ENTRY("block_type: %d, payload_size: %d\n",
+				    block_type, payload_size);
+
                     /* Simple block types */
                     switch (block_type) {
                         case 0:
@@ -1782,7 +1768,7 @@ int mdfld_add_eedid_video_block_modes(struct drm_connector *connector, struct ed
                             for (j = 1; j < payload_size+1; j++) {
                                 vic = *(c + j) & 0x7F;
 
-                                printk("vic: %d\n", vic);
+				PSB_DEBUG_ENTRY("vic: %d\n", vic);
                                 if (vic == 34 || vic == 32 || vic == 33 ||
 				    vic == 1 || vic == 2 || vic == 3 ||
 				    vic == 4 || vic == 19) {
@@ -1814,8 +1800,10 @@ int mdfld_add_eedid_video_block_modes(struct drm_connector *connector, struct ed
                                     mode->width_mm = 1600;
                                     mode->height_mm = 900;
 
-                                    printk("VIDEO TIMING. hdisplay = %d, vdisplay = %d.\n",
-                                            mode->hdisplay, mode->vdisplay);
+				    PSB_DEBUG_ENTRY("VIDEO TIMING. hdisplay = "
+						    "%d, vdisplay = %d.\n",
+						    mode->hdisplay,
+						    mode->vdisplay);
 
                                     drm_mode_probed_add(connector, mode);
                                     modes++;
