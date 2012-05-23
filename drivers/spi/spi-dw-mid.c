@@ -1,5 +1,5 @@
 /*
- * spi-dw-mid.c - special handling for DW core on Intel MID platform
+ * Special handling for DW core on Intel MID platform
  *
  * Copyright (c) 2009, Intel Corporation.
  *
@@ -23,7 +23,7 @@
 #include <linux/slab.h>
 #include <linux/spi/spi.h>
 
-#include "dw_spi.h"
+#include "spi-dw.h"
 
 #ifdef CONFIG_SPI_DW_MID_DMA
 #include <linux/intel_mid_dma.h>
@@ -36,11 +36,12 @@ struct mid_dma {
 
 static bool mid_spi_dma_chan_filter(struct dma_chan *chan, void *param)
 {
-	struct spi_dw *dws = param;
+	struct dw_spi *dws = param;
+
 	return dws->dmac && (&dws->dmac->dev == chan->device->dev);
 }
 
-static int mid_spi_dma_init(struct spi_dw *dws)
+static int mid_spi_dma_init(struct dw_spi *dws)
 {
 	struct mid_dma *dw_dma = dws->dma_priv;
 	struct intel_mid_dma_slave *rxs, *txs;
@@ -85,7 +86,7 @@ err_exit:
 
 }
 
-static void mid_spi_dma_exit(struct spi_dw *dws)
+static void mid_spi_dma_exit(struct dw_spi *dws)
 {
 	dma_release_channel(dws->txchan);
 	dma_release_channel(dws->rxchan);
@@ -96,16 +97,16 @@ static void mid_spi_dma_exit(struct spi_dw *dws)
  * callback for rx/tx channel will each increment it by 1.
  * Reaching 2 means the whole spi transaction is done.
  */
-static void spi_dw_dma_done(void *arg)
+static void dw_spi_dma_done(void *arg)
 {
-	struct spi_dw *dws = arg;
+	struct dw_spi *dws = arg;
 
 	if (++dws->dma_chan_done != 2)
 		return;
-	complete(&dws->xfer.complete);
+	dw_spi_xfer_done(dws);
 }
 
-static int mid_spi_dma_transfer(struct spi_dw *dws)
+static int mid_spi_dma_transfer(struct dw_spi *dws, int cs_change)
 {
 	struct dma_async_tx_descriptor *txdesc = NULL, *rxdesc = NULL;
 	struct dma_chan *txchan, *rxchan;
@@ -113,17 +114,17 @@ static int mid_spi_dma_transfer(struct spi_dw *dws)
 	u16 dma_ctrl = 0;
 
 	/* 1. setup DMA related registers */
-
-	spi_dw_disable(dws);
-	dw_writew(dws, dmardlr, 0xf);
-	dw_writew(dws, dmatdlr, 0x10);
-	if (dws->xfer.tx_dma)
-		dma_ctrl |= 0x2;
-	if (dws->xfer.rx_dma)
-		dma_ctrl |= 0x1;
-	dw_writew(dws, dmacr, dma_ctrl);
-	spi_dw_enable(dws);
-
+	if (cs_change) {
+		spi_enable_chip(dws, 0);
+		dw_writew(dws, dmardlr, 0xf);
+		dw_writew(dws, dmatdlr, 0x10);
+		if (dws->tx_dma)
+			dma_ctrl |= 0x2;
+		if (dws->rx_dma)
+			dma_ctrl |= 0x1;
+		dw_writew(dws, dmacr, dma_ctrl);
+		spi_enable_chip(dws, 1);
+	}
 
 	dws->dma_chan_done = 0;
 	txchan = dws->txchan;
@@ -140,15 +141,15 @@ static int mid_spi_dma_transfer(struct spi_dw *dws)
 				       (unsigned long) &txconf);
 
 	memset(&dws->tx_sgl, 0, sizeof(dws->tx_sgl));
-	dws->tx_sgl.dma_address = dws->xfer.tx_dma;
-	dws->tx_sgl.length = dws->xfer.len;
+	dws->tx_sgl.dma_address = dws->tx_dma;
+	dws->tx_sgl.length = dws->len;
 
 	txdesc = txchan->device->device_prep_slave_sg(txchan,
 				&dws->tx_sgl,
 				1,
 				DMA_TO_DEVICE,
 				DMA_PREP_INTERRUPT | DMA_COMPL_SKIP_DEST_UNMAP);
-	txdesc->callback = spi_dw_dma_done;
+	txdesc->callback = dw_spi_dma_done;
 	txdesc->callback_param = dws;
 
 	/* 3. Prepare the RX dma transfer */
@@ -162,15 +163,15 @@ static int mid_spi_dma_transfer(struct spi_dw *dws)
 				       (unsigned long) &rxconf);
 
 	memset(&dws->rx_sgl, 0, sizeof(dws->rx_sgl));
-	dws->rx_sgl.dma_address = dws->xfer.rx_dma;
-	dws->rx_sgl.length = dws->xfer.len;
+	dws->rx_sgl.dma_address = dws->rx_dma;
+	dws->rx_sgl.length = dws->len;
 
 	rxdesc = rxchan->device->device_prep_slave_sg(rxchan,
 				&dws->rx_sgl,
 				1,
 				DMA_FROM_DEVICE,
 				DMA_PREP_INTERRUPT | DMA_COMPL_SKIP_DEST_UNMAP);
-	rxdesc->callback = spi_dw_dma_done;
+	rxdesc->callback = dw_spi_dma_done;
 	rxdesc->callback_param = dws;
 
 	/* rx must be started before tx due to spi instinct */
@@ -179,7 +180,7 @@ static int mid_spi_dma_transfer(struct spi_dw *dws)
 	return 0;
 }
 
-static struct spi_dw_dma_ops mid_dma_ops = {
+static struct dw_spi_dma_ops mid_dma_ops = {
 	.dma_init	= mid_spi_dma_init,
 	.dma_exit	= mid_spi_dma_exit,
 	.dma_transfer	= mid_spi_dma_transfer,
@@ -187,6 +188,7 @@ static struct spi_dw_dma_ops mid_dma_ops = {
 #endif
 
 /* Some specific info for SPI0 controller on Moorestown */
+
 /* HW info for MRST CLk Control Unit, one 32b reg */
 #define MRST_SPI_CLK_BASE	100000000	/* 100m */
 #define MRST_CLK_SPI0_REG	0xff11d86c
@@ -196,7 +198,7 @@ static struct spi_dw_dma_ops mid_dma_ops = {
 #define CLK_SPI_CDIV_MASK	0x00000e00
 #define CLK_SPI_DISABLE_OFFSET	8
 
-int spi_dw_mid_init(struct spi_dw *dws)
+int dw_spi_mid_init(struct dw_spi *dws)
 {
 	u32 *clk_reg, clk_cdiv;
 
@@ -209,7 +211,7 @@ int spi_dw_mid_init(struct spi_dw *dws)
 	dws->max_freq = MRST_SPI_CLK_BASE / (clk_cdiv + 1);
 	iounmap(clk_reg);
 
-	dws->num_cs = 4;
+	dws->num_cs = 16;
 	dws->fifo_len = 40;	/* FIFO has 40 words buffer */
 
 #ifdef CONFIG_SPI_DW_MID_DMA
