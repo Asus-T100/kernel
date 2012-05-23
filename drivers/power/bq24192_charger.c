@@ -207,7 +207,7 @@
 #define CLT_FULL_CURRENT_AVG_HIGH	50
 
 #define CLT_BATT_VMIN_THRESHOLD_DEF	3600	/* 3600mV */
-#define CLT_BATT_TEMP_MAX_DEF	60	/* 60 degrees */
+#define CLT_BATT_TEMP_MAX_DEF	45	/* 45 degrees */
 #define CLT_BATT_TEMP_MIN_DEF	0
 #define CLT_BATT_CRIT_CUTOFF_VOLT_DEF	3700	/* 3700 mV */
 
@@ -302,7 +302,8 @@ static int const ctp_bptherm_curve_data[CLT_BPTHERM_CURVE_MAX_SAMPLES]
 static enum power_supply_property bq24192_usb_props[] = {
 	POWER_SUPPLY_PROP_PRESENT,
 	POWER_SUPPLY_PROP_ONLINE,
-	POWER_SUPPLY_PROP_TYPE
+	POWER_SUPPLY_PROP_TYPE,
+	POWER_SUPPLY_PROP_HEALTH
 };
 
 /************************************************************************
@@ -530,12 +531,11 @@ static void ctp_get_batt_temp_thresholds(short int *temp_high,
 	short int temp_low_lim;
 
 	*temp_high = *temp_low = 0;
-	if (!chip->pdata->sfi_tabl_present) {
+	if (chip->pdata->sfi_tabl_present) {
 		if (ctp_sfi_table->temp_mon_ranges < CLT_SFI_TEMP_NR_RNG)
 			max_range = ctp_sfi_table->temp_mon_ranges;
 		else
 			max_range = CLT_SFI_TEMP_NR_RNG;
-		temp_mon_tabl = &ctp_sfi_table->temp_mon_range[0];
 		temp_mon_tabl = &ctp_sfi_table->temp_mon_range[0];
 	} else {
 		temp_mon_tabl = &chip->pdata->temp_mon_range[0];
@@ -547,6 +547,14 @@ static void ctp_get_batt_temp_thresholds(short int *temp_high,
 		if (*temp_high < temp_mon_tabl[i].temp_up_lim)
 			*temp_high = temp_mon_tabl[i].temp_up_lim;
 	}
+
+	/*
+	 * FIXME Presently the battery can be charged maximum till 45 deg
+	 * hence assigning the maximum tempertaure limit to 45 deg
+	 * This value will be taken from the SFI once it is supported
+	 */
+	if (*temp_high > CLT_BATT_TEMP_MAX_DEF)
+		*temp_high = CLT_BATT_TEMP_MAX_DEF;
 
 	*temp_low = temp_low_lim;
 }
@@ -808,6 +816,86 @@ int ctp_query_battery_status(void)
 	return chip->batt_status;
 }
 EXPORT_SYMBOL(ctp_query_battery_status);
+
+/**
+ * ctp_get_charger_health - to get the charger health status
+ *
+ * Returns charger health status
+ */
+int ctp_get_charger_health(void)
+{
+	int ret;
+	struct bq24192_chip *chip =
+		i2c_get_clientdata(bq24192_client);
+
+	dev_dbg(&chip->client->dev, "%s\n", __func__);
+
+	ret = bq24192_read_reg(chip->client, BQ24192_FAULT_STAT_REG);
+	if (ret < 0) {
+		dev_warn(&chip->client->dev,
+			"read reg failed %s\n", __func__);
+		return POWER_SUPPLY_HEALTH_UNKNOWN;
+	}
+
+	if ((ret & FAULT_STAT_OTG_FLT) ||
+		((ret & FAULT_STAT_CHRG_IN_FLT) == FAULT_STAT_CHRG_IN_FLT))
+		return POWER_SUPPLY_HEALTH_OVERVOLTAGE;
+
+	/* Check if the WeakVIN condition occured */
+	ret = bq24192_read_reg(chip->client, BQ24192_SYSTEM_STAT_REG);
+	if (ret < 0) {
+		dev_warn(&chip->client->dev,
+			"read reg failed %s\n", __func__);
+		return POWER_SUPPLY_HEALTH_UNKNOWN;
+	}
+
+	if (ret & SYSTEM_STAT_DPM)
+		return POWER_SUPPLY_HEALTH_DEAD;
+
+	return POWER_SUPPLY_HEALTH_GOOD;
+}
+
+/**
+ * ctp_get_battery_health - to get the battery health status
+ *
+ * Returns battery health status
+ */
+int ctp_get_battery_health(void)
+{
+	int batt_temp, ret;
+	struct bq24192_chip *chip =
+		i2c_get_clientdata(bq24192_client);
+
+	dev_dbg(&chip->client->dev, "+%s\n", __func__);
+	/* Get the battery pack temperature */
+	ret = ctp_get_battery_pack_temp(&batt_temp);
+	if (ret < 0) {
+		dev_err(&chip->client->dev,
+			"battery pack temp read fail:%d", ret);
+		return POWER_SUPPLY_HEALTH_UNSPEC_FAILURE;
+	}
+
+	if ((batt_temp > chip->batt_thrshlds.temp_high) ||
+			(batt_temp < chip->batt_thrshlds.temp_low)) {
+		dev_err(&chip->client->dev, "Battery over heat\n");
+		return POWER_SUPPLY_HEALTH_OVERHEAT;
+	}
+
+	/* Check if battery OVP condition occured */
+	ret = bq24192_read_reg(chip->client, BQ24192_FAULT_STAT_REG);
+	if (ret < 0) {
+		dev_warn(&chip->client->dev,
+			"read reg failed %s\n", __func__);
+		return POWER_SUPPLY_HEALTH_UNKNOWN;
+	}
+
+	if (ret & FAULT_STAT_BATT_FLT)
+		return POWER_SUPPLY_HEALTH_OVERVOLTAGE;
+
+	dev_dbg(&chip->client->dev, "-%s\n", __func__);
+	return POWER_SUPPLY_HEALTH_GOOD;
+}
+EXPORT_SYMBOL(ctp_get_battery_health);
 
 /***********************************************************************/
 
@@ -1086,8 +1174,8 @@ static bool bq24192_is_chrg_terminated(struct bq24192_chip *chip)
 		goto is_chrg_term_exit;
 	}
 
-	if (((ret&SYSTEM_STAT_CHRG_MASK) == SYSTEM_STAT_CHRG_DONE) ||
-	    ((ret&SYSTEM_STAT_CHRG_MASK) == SYSTEM_STAT_NOT_CHRG))
+	if (((ret & SYSTEM_STAT_CHRG_MASK) == SYSTEM_STAT_CHRG_DONE) ||
+		((ret & SYSTEM_STAT_CHRG_MASK) == SYSTEM_STAT_NOT_CHRG))
 		is_chrg_term = true;
 is_chrg_term_exit:
 	return is_chrg_term;
@@ -1882,6 +1970,9 @@ static int bq24192_usb_get_property(struct power_supply *psy,
 		break;
 	case POWER_SUPPLY_CHARGE_CURRENT_LIMIT:
 		val->intval = chip->chrg_cur_cntl;
+		break;
+	case POWER_SUPPLY_PROP_HEALTH:
+		val->intval = ctp_get_charger_health();
 		break;
 	default:
 		mutex_unlock(&chip->event_lock);
