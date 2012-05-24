@@ -23,6 +23,10 @@
 #ifndef ATOMISP_INTERNAL_H_
 #define ATOMISP_INTERNAL_H_
 
+#ifdef CONFIG_BOARD_CTP
+#include <linux/intel_mid_pm.h>
+#endif
+
 #include <linux/pm_qos_params.h>
 #include <media/v4l2-dev.h>
 #include <media/v4l2-device.h>
@@ -93,7 +97,11 @@
  * 1000 us is a reasonable value considering that the processing
  * time is typically ~2000 us.
  */
+#ifdef CONFIG_BOARD_CTP
+#define ATOMISP_MAX_ISR_LATENCY	CSTATE_EXIT_LATENCY_C1
+#else
 #define ATOMISP_MAX_ISR_LATENCY	1000
+#endif
 
 int atomisp_video_init(struct atomisp_video_pipe *video, const char *name);
 void atomisp_video_unregister(struct atomisp_video_pipe *video);
