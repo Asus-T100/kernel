@@ -131,7 +131,7 @@ static inline const char *pci_power_name(pci_power_t state)
 {
 	return pci_power_names[1 + (int) state];
 }
-#ifdef CONFIG_INTEL_MID_POWER
+#ifdef CONFIG_ATOM_SOC_POWER
 /* On intel mid, the pci delay are already handled by SCU.
    No need to wait more */
 #define PCI_PM_D2_DELAY	0
