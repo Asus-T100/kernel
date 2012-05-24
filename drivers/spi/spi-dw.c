@@ -22,6 +22,7 @@
 #include <linux/highmem.h>
 #include <linux/delay.h>
 #include <linux/slab.h>
+#include <linux/pm_runtime.h>
 #include <linux/spi/spi.h>
 
 #include "spi-dw.h"
@@ -562,19 +563,16 @@ static void pump_messages(struct work_struct *work)
 		container_of(work, struct dw_spi, pump_messages);
 	unsigned long flags;
 
+	pm_runtime_get_sync(dws->parent_dev);
+
 	/* Lock queue and check for queue work */
 	spin_lock_irqsave(&dws->lock, flags);
-	if (list_empty(&dws->queue) || dws->run == QUEUE_STOPPED) {
-		dws->busy = 0;
-		spin_unlock_irqrestore(&dws->lock, flags);
-		return;
-	}
+	if (list_empty(&dws->queue) || dws->run == QUEUE_STOPPED)
+		goto exit;
 
 	/* Make sure we are not already running a message */
-	if (dws->cur_msg) {
-		spin_unlock_irqrestore(&dws->lock, flags);
-		return;
-	}
+	if (dws->cur_msg)
+		goto exit;
 
 	/* Extract head of queue */
 	dws->cur_msg = list_entry(dws->queue.next, struct spi_message, queue);
@@ -590,8 +588,9 @@ static void pump_messages(struct work_struct *work)
 	/* Mark as busy and launch transfers */
 	tasklet_schedule(&dws->pump_transfers);
 
-	dws->busy = 1;
+exit:
 	spin_unlock_irqrestore(&dws->lock, flags);
+	pm_runtime_put_sync(dws->parent_dev);
 }
 
 /* spi_device use this to queue in their spi_msg */
@@ -602,29 +601,13 @@ static int dw_spi_transfer(struct spi_device *spi, struct spi_message *msg)
 
 	spin_lock_irqsave(&dws->lock, flags);
 
-	if (dws->run == QUEUE_STOPPED) {
-		spin_unlock_irqrestore(&dws->lock, flags);
-		return -ESHUTDOWN;
-	}
-
 	msg->actual_length = 0;
 	msg->status = -EINPROGRESS;
 	msg->state = START_STATE;
 
 	list_add_tail(&msg->queue, &dws->queue);
 
-	if (dws->run == QUEUE_RUNNING && !dws->busy) {
-
-		if (dws->cur_transfer || dws->cur_msg)
-			queue_work(dws->workqueue,
-					&dws->pump_messages);
-		else {
-			/* If no other data transaction in air, just go */
-			spin_unlock_irqrestore(&dws->lock, flags);
-			pump_messages(&dws->pump_messages);
-			return 0;
-		}
-	}
+	queue_work(dws->workqueue, &dws->pump_messages);
 
 	spin_unlock_irqrestore(&dws->lock, flags);
 	return 0;
@@ -703,13 +686,12 @@ static void dw_spi_cleanup(struct spi_device *spi)
 	kfree(chip);
 }
 
-static int __devinit init_queue(struct dw_spi *dws)
+static int __devinit dw_spi_init_queue(struct dw_spi *dws)
 {
 	INIT_LIST_HEAD(&dws->queue);
 	spin_lock_init(&dws->lock);
 
 	dws->run = QUEUE_STOPPED;
-	dws->busy = 0;
 
 	tasklet_init(&dws->pump_transfers,
 			pump_transfers,	(unsigned long)dws);
@@ -723,13 +705,13 @@ static int __devinit init_queue(struct dw_spi *dws)
 	return 0;
 }
 
-static int start_queue(struct dw_spi *dws)
+static int dw_spi_start_queue(struct dw_spi *dws)
 {
 	unsigned long flags;
 
 	spin_lock_irqsave(&dws->lock, flags);
 
-	if (dws->run == QUEUE_RUNNING || dws->busy) {
+	if (dws->run == QUEUE_RUNNING) {
 		spin_unlock_irqrestore(&dws->lock, flags);
 		return -EBUSY;
 	}
@@ -746,32 +728,26 @@ static int start_queue(struct dw_spi *dws)
 	return 0;
 }
 
-static int stop_queue(struct dw_spi *dws)
+int dw_spi_stop_queue(struct dw_spi *dws)
 {
 	unsigned long flags;
-	unsigned limit = 50;
 	int status = 0;
 
 	spin_lock_irqsave(&dws->lock, flags);
 	dws->run = QUEUE_STOPPED;
-	while ((!list_empty(&dws->queue) || dws->busy) && limit--) {
-		spin_unlock_irqrestore(&dws->lock, flags);
-		usleep_range(5000, 10000);
-		spin_lock_irqsave(&dws->lock, flags);
-	}
-
-	if (!list_empty(&dws->queue) || dws->busy)
+	if (!list_empty(&dws->queue))
 		status = -EBUSY;
 	spin_unlock_irqrestore(&dws->lock, flags);
 
 	return status;
 }
+EXPORT_SYMBOL_GPL(dw_spi_stop_queue);
 
-static int destroy_queue(struct dw_spi *dws)
+static int dw_spi_destroy_queue(struct dw_spi *dws)
 {
 	int status;
 
-	status = stop_queue(dws);
+	status = dw_spi_stop_queue(dws);
 	if (status != 0)
 		return status;
 	destroy_workqueue(dws->workqueue);
@@ -779,7 +755,7 @@ static int destroy_queue(struct dw_spi *dws)
 }
 
 /* Restart the controller, disable all interrupts, clean rx fifo */
-static void spi_hw_init(struct dw_spi *dws)
+static void dw_spi_hw_init(struct dw_spi *dws)
 {
 	spi_enable_chip(dws, 0);
 	spi_mask_intr(dws, 0xff);
@@ -838,7 +814,7 @@ int __devinit dw_spi_add_host(struct dw_spi *dws)
 	master->transfer = dw_spi_transfer;
 
 	/* Basic HW init */
-	spi_hw_init(dws);
+	dw_spi_hw_init(dws);
 
 	if (dws->dma_ops && dws->dma_ops->dma_init) {
 		ret = dws->dma_ops->dma_init(dws);
@@ -849,12 +825,12 @@ int __devinit dw_spi_add_host(struct dw_spi *dws)
 	}
 
 	/* Initial and start queue */
-	ret = init_queue(dws);
+	ret = dw_spi_init_queue(dws);
 	if (ret) {
 		dev_err(&master->dev, "problem initializing queue\n");
 		goto err_diable_hw;
 	}
-	ret = start_queue(dws);
+	ret = dw_spi_start_queue(dws);
 	if (ret) {
 		dev_err(&master->dev, "problem starting queue\n");
 		goto err_diable_hw;
@@ -871,7 +847,7 @@ int __devinit dw_spi_add_host(struct dw_spi *dws)
 	return 0;
 
 err_queue_alloc:
-	destroy_queue(dws);
+	dw_spi_destroy_queue(dws);
 	if (dws->dma_ops && dws->dma_ops->dma_exit)
 		dws->dma_ops->dma_exit(dws);
 err_diable_hw:
@@ -893,7 +869,7 @@ void __devexit dw_spi_remove_host(struct dw_spi *dws)
 	mrst_spi_debugfs_remove(dws);
 
 	/* Remove the queue */
-	status = destroy_queue(dws);
+	status = dw_spi_destroy_queue(dws);
 	if (status != 0)
 		dev_err(&dws->master->dev, "dw_spi_remove: workqueue will not "
 			"complete, message memory not freed\n");
@@ -914,7 +890,7 @@ int dw_spi_suspend_host(struct dw_spi *dws)
 {
 	int ret = 0;
 
-	ret = stop_queue(dws);
+	ret = dw_spi_stop_queue(dws);
 	if (ret)
 		return ret;
 	spi_enable_chip(dws, 0);
@@ -927,8 +903,8 @@ int dw_spi_resume_host(struct dw_spi *dws)
 {
 	int ret;
 
-	spi_hw_init(dws);
-	ret = start_queue(dws);
+	dw_spi_hw_init(dws);
+	ret = dw_spi_start_queue(dws);
 	if (ret)
 		dev_err(&dws->master->dev, "fail to start queue (%d)\n", ret);
 	return ret;
