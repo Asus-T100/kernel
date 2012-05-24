@@ -80,11 +80,9 @@ static int __devinit spi_pci_probe(struct pci_dev *pdev,
 	 * Specific handling for Intel MID paltforms, like dma setup,
 	 * clock rate, FIFO depth.
 	 */
-	if (pdev->device == 0x0800) {
-		ret = dw_spi_mid_init(dws);
-		if (ret)
-			goto err_unmap;
-	}
+	ret = dw_spi_mid_init(dws);
+	if (ret)
+		goto err_unmap;
 
 	ret = dw_spi_add_host(dws);
 	if (ret)
@@ -199,8 +197,10 @@ static int spi_dw_pci_runtime_idle(struct device *dev)
 #endif
 
 static const struct pci_device_id pci_ids[] __devinitdata = {
-	/* Intel Medfield platform SPI controller 0 */
+	/* Intel Medfield platform SPI controller 1 */
 	{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x0800) },
+	/* Intel Cloverview platform SPI controller 1 */
+	{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x08E1) },
 	{},
 };
 
