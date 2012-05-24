@@ -976,14 +976,6 @@ int usb_remove_config(struct usb_composite_dev *cdev,
 {
 	unsigned long flags;
 
-	/* As connection is disconnected here,
-	* if there's no request on ep0IN, no more request completion
-	* will happen on ep0IN.
-	* otherwise, there's one request on ep0IN, let's wait until
-	* it's completed! 50 ms should be more than enough.
-	*/
-	msleep(50);
-
 	spin_lock_irqsave(&cdev->lock, flags);
 
 	if (cdev->config == config)
