@@ -128,6 +128,9 @@
 #define FM_CORE_READY	2
 #define FM_ST_REGISTER_TIMEOUT   msecs_to_jiffies(6000)	/* 6 sec */
 
+/* timeout for read() */
+#define FM_READ_TIMEOUT (10*HZ)
+
 /* List of error codes returned by the FM driver */
 enum {
 	FM_CHR_DRV_ERR_FAILURE = -1,	/* check struct */
@@ -829,9 +832,9 @@ static ssize_t fm_chr_read(struct file *fil, char __user *data, size_t size,
 	/* Wait till the data is available */
 	if (!wait_event_interruptible_timeout(fm_chr_dev->fm_data_q,
 					      !skb_queue_empty
-					      (&fm_chr_dev->rx_q), 500)) {
+					      (&fm_chr_dev->rx_q), FM_READ_TIMEOUT)) {
 
-		FM_CHR_DRV_ERR(" Read timed out ");
+		FM_CHR_DRV_DBG(" Read timed out ");
 		return -EAGAIN;
 	}
 	FM_CHR_DRV_VER(" Completed Read wait ");
