@@ -46,6 +46,10 @@
 #include <linux/genhd.h>
 #include "emmc_ipanic.h"
 
+static unsigned int ipanic_part_number;
+module_param(ipanic_part_number, uint, 0);
+MODULE_PARM_DESC(ipanic_part_number, "IPanic dump partition on mmcblk0");
+
 #ifdef CONFIG_ANDROID_LOGGER
 #include "../staging/android/logger.h"
 static unsigned char *logcat_name[LOGCAT_BUFF_COUNT] = {
@@ -56,11 +60,15 @@ static unsigned char *logcat_name[LOGCAT_BUFF_COUNT] = {
 };
 #endif
 
+/*
+ * The part_number will be filled in driver init.
+ */
+
 static struct mmc_emergency_info emmc_info = {
 	.init = mmc_emergency_init,
 	.write = mmc_emergency_write,
 	.emmc_disk_name = "mmcblk0",
-	.part_number = EMMC_PANIC_PART_NUM,
+	.part_number = 0,
 	.name = "emmc_ipanic",
 	.disk_device = NULL
 };
@@ -965,11 +973,17 @@ int __init emmc_ipanic_init(void)
 	/*initialization of drv_ctx */
 	memset(&drv_ctx, 0, sizeof(drv_ctx));
 	drv_ctx.emmc = &emmc_info;
+	if (!ipanic_part_number)
+		emmc_info.part_number = EMMC_PANIC_PART_NUM;
+	else
+		emmc_info.part_number = ipanic_part_number;
+
 	drv_ctx.ipanic_proc_entry_name = ipanic_proc_entry_name;
 	drv_ctx.bounce = (void *)__get_free_page(GFP_KERNEL);
 
 	INIT_WORK(&proc_removal_work, emmc_ipanic_remove_proc_work);
-	printk(KERN_INFO "Android kernel panic handler initialized!\n");
+	printk(KERN_INFO "Android kernel panic handler initialized on partition %sp%d!\n",
+		emmc_info.emmc_disk_name, emmc_info.part_number);
 	return 0;
 }
 
