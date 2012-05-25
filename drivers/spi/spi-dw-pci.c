@@ -72,7 +72,7 @@ static int __devinit spi_pci_probe(struct pci_dev *pdev,
 	}
 
 	dws->parent_dev = &pdev->dev;
-	dws->bus_num = 0;
+	dws->bus_num = ent->driver_data;
 	dws->num_cs = 4;
 	dws->irq = pdev->irq;
 
@@ -80,7 +80,7 @@ static int __devinit spi_pci_probe(struct pci_dev *pdev,
 	 * Specific handling for Intel MID paltforms, like dma setup,
 	 * clock rate, FIFO depth.
 	 */
-	ret = dw_spi_mid_init(dws);
+	ret = dw_spi_mid_init(dws, ent->driver_data);
 	if (ret)
 		goto err_unmap;
 
@@ -205,9 +205,11 @@ static int spi_dw_pci_runtime_idle(struct device *dev)
 
 static const struct pci_device_id pci_ids[] __devinitdata = {
 	/* Intel Medfield platform SPI controller 1 */
-	{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x0800) },
+	{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x0800), .driver_data = 0 },
 	/* Intel Cloverview platform SPI controller 1 */
-	{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x08E1) },
+	{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x08E1), .driver_data = 0 },
+	/* Intel EVx platform SPI controller 1 */
+	{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x0812), .driver_data = 2 },
 	{},
 };
 
