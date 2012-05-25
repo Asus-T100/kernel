@@ -275,7 +275,7 @@ static int osip_reboot_notifier_call(struct notifier_block *notifier,
 			pr_err("%s cannot write reboot reason in OSNIB\n",
 				__func__);
 		ret = NOTIFY_OK;
-	} else if (0 == strncmp(cmd, "android", 8)) {
+	} else {
 		pr_warn("[SHTDWN] %s, restoring OSIP and rebooting into "
 			"Android\n", __func__);
 		ret_ipc = intel_scu_ipc_write_osnib_rr(SIGNED_MOS_ATTR);
@@ -284,8 +284,6 @@ static int osip_reboot_notifier_call(struct notifier_block *notifier,
 				 __func__);
 		access_osip_record(osip_restore, (void *)0);
 		ret = NOTIFY_OK;
-	} else {
-		pr_warn("[SHTDWN] %s, rebooting\n", __func__);
 	}
 	return ret;
 }
