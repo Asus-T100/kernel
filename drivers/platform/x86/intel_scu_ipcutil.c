@@ -518,9 +518,9 @@ static int intel_scu_ipc_read_osnib_resetirq2(u8 *rirq2)
  * This reads the WD from the OSNIB
  */
 #ifdef DUMP_OSNIB
-static int intel_scu_ipc_read_osnib_wd(u8 *rirq2)
+static int intel_scu_ipc_read_osnib_wd(u8 *wd)
 {
-	return intel_scu_ipc_read_oshob(rirq2, 1, OSNIB_WD_OFFSET);
+	return intel_scu_ipc_read_osnib(wd, 1, OSNIB_WD_OFFSET);
 }
 #endif
 
@@ -528,9 +528,9 @@ static int intel_scu_ipc_read_osnib_wd(u8 *rirq2)
  * This reads the ALARM from the OSNIB
  */
 #ifdef DUMP_OSNIB
-static int intel_scu_ipc_read_osnib_alarm(u8 *rirq2)
+static int intel_scu_ipc_read_osnib_alarm(u8 *alarm)
 {
-	return intel_scu_ipc_read_oshob(rirq2, 1, OSNIB_ALARM_OFFSET);
+	return intel_scu_ipc_read_osnib(alarm, 1, OSNIB_ALARM_OFFSET);
 
 }
 #endif
@@ -539,9 +539,9 @@ static int intel_scu_ipc_read_osnib_alarm(u8 *rirq2)
  * This reads the WAKESRC from the OSNIB
  */
 #ifdef DUMP_OSNIB
-static int intel_scu_ipc_read_osnib_wakesrc(u8 *rirq2)
+static int intel_scu_ipc_read_osnib_wakesrc(u8 *wakesrc)
 {
-	return intel_scu_ipc_read_oshob(rirq2, 1, OSNIB_WAKESRC_OFFSET);
+	return intel_scu_ipc_read_osnib(wakesrc, 1, OSNIB_WAKESRC_OFFSET);
 }
 #endif
 
