@@ -1381,7 +1381,7 @@ static int do_modem_power(const char *val, struct kernel_param *kp)
  * - Set the EXT1P35VREN field to low  during 20ms (V1P35CNT_W PMIC register)
  * - set the EXT1P35VREN field to high during 10ms (V1P35CNT_W PMIC register)
  */
-static int dp_modem_cold_reset(const char *val, struct kernel_param *kp)
+static int do_modem_cold_reset(const char *val, struct kernel_param *kp)
 {
 	long do_reset;
 	int ret = 0;
@@ -1398,8 +1398,10 @@ static int dp_modem_cold_reset(const char *val, struct kernel_param *kp)
 	WARNING("Modem cold reset requested !");
 
 	/* Need to do something ? */
-	if (!do_reset)
+	if (!do_reset) {
+        ret = -EINVAL;
 		goto out;
+    }
 
 	/* Read the current registre value */
 	ret = intel_scu_ipc_readv(&addr, &def_value, 2);
@@ -1446,11 +1448,9 @@ static int dp_modem_cold_reset(const char *val, struct kernel_param *kp)
 	}
 
  exit_modem_cold_reset:
-	/* Cold reset failed => Do a modem reset */
-	if (ret) {
-		CRITICAL("Cold reset failed => Doing a modem reset");
+	/* Do a reset modem to perform a complete modem reset */
+	if (ret != -EINVAL)
 		ret = do_modem_reset(val, kp);
-	}
 
  out:
 	EPILOG();
@@ -1509,7 +1509,7 @@ static int get_hangup_reasons(char *val, struct kernel_param *kp)
 	return sprintf(val, "%lud", hangup_reasons);
 }
 
-module_param_call(cold_reset_modem, dp_modem_cold_reset, NULL, NULL, 0644);
+module_param_call(cold_reset_modem, do_modem_cold_reset, NULL, NULL, 0644);
 module_param_call(reset_modem, do_modem_reset, get_modem_reset, NULL, 0644);
 module_param_call(power_modem, do_modem_power, NULL, NULL, 0644);
 module_param_call(hangup_reasons, clear_hangup_reasons, get_hangup_reasons,
