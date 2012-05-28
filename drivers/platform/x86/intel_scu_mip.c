@@ -30,12 +30,6 @@ static int read_mip(u8 *data, int len, int offset, int issigned)
 	int ret;
 	u32 sptr, dptr, cmd, cmdid, data_off;
 
-	if (!intel_mip_base)
-		return -ENODEV;
-
-	if (offset + len > IPC_MIP_MAX_ADDR)
-		return -EINVAL;
-
 	dptr = offset;
 	sptr = (len + 3) / 4;
 
@@ -59,6 +53,17 @@ int intel_scu_ipc_read_mip(u8 *data, int len, int offset, int issigned)
 {
 	int ret;
 
+	/* Only SMIP read for Cloverview is supported */
+	if ((intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_CLOVERVIEW)
+			&& (issigned != 1))
+		return -EINVAL;
+
+	if (!intel_mip_base)
+		return -ENODEV;
+
+	if (offset + len > IPC_MIP_MAX_ADDR)
+		return -EINVAL;
+
 	intel_scu_ipc_lock();
 	ret = read_mip(data, len, offset, issigned);
 	intel_scu_ipc_unlock();
@@ -73,6 +78,10 @@ int intel_scu_ipc_write_umip(u8 *data, int len, int offset)
 	int len_align = 0;
 	u32 dptr, sptr, cmd;
 	u8 *buf = NULL;
+
+	/* Cloverview don't need UMIP access through IPC */
+	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_CLOVERVIEW)
+		return -EINVAL;
 
 	if (!intel_mip_base)
 		return -ENODEV;
@@ -377,7 +386,8 @@ static struct ipc_driver mip_driver = {
 
 static int __init mip_module_init(void)
 {
-	if (intel_mid_identify_cpu() != INTEL_MID_CPU_CHIP_PENWELL)
+	if ((intel_mid_identify_cpu() != INTEL_MID_CPU_CHIP_PENWELL)
+		&& (intel_mid_identify_cpu() != INTEL_MID_CPU_CHIP_CLOVERVIEW))
 		return -EINVAL;
 
 	return ipc_driver_register(&mip_driver);
