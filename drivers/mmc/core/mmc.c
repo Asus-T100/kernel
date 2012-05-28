@@ -341,6 +341,13 @@ static int mmc_read_ext_csd(struct mmc_card *card, u8 *ext_csd)
 
 		card->ext_csd.rel_sectors = ext_csd[EXT_CSD_REL_WR_SEC_C];
 
+		card->rpmb_max_w_blks = card->ext_csd.rel_sectors;
+
+		if (card->rpmb_max_w_blks > RPMB_AVALIABLE_SECTORS)
+			card->rpmb_max_w_blks = RPMB_AVALIABLE_SECTORS;
+
+		card->rpmb_max_r_blks = RPMB_AVALIABLE_SECTORS;
+
 		/*
 		 * There are two boot regions of equal size, defined in
 		 * multiples of 128K.
@@ -455,17 +462,6 @@ static int mmc_read_ext_csd(struct mmc_card *card, u8 *ext_csd)
 		card->erased_byte = 0xFF;
 	else
 		card->erased_byte = 0x0;
-	/*
-	 * If use legacy relaible write, then the blk counts must not
-	 * big than the relaible write sectors
-	 */
-	if (!(card->ext_csd.rel_param & EXT_CSD_WR_REL_PARAM_EN)) {
-		if (card->ext_csd.rel_sectors < RPMB_AVALIABLE_SECTORS)
-			card->rpmb_max_req = card->ext_csd.rel_sectors;
-		else
-			card->rpmb_max_req = RPMB_AVALIABLE_SECTORS;
-	} else
-			card->rpmb_max_req = RPMB_AVALIABLE_SECTORS;
 out:
 	return err;
 }
@@ -572,6 +568,8 @@ MMC_DEV_ATTR(tacc_clks, "%d\n", card->csd.tacc_clks);
 MMC_DEV_ATTR(r2w_factor, "%d\n", card->csd.r2w_factor);
 MMC_DEV_ATTR(sec_erase_mult, "%d\n", card->ext_csd.sec_erase_mult);
 MMC_DEV_ATTR(sec_trim_en, "%d\n", card->sec_trim_en);
+MMC_DEV_ATTR(rpmb_max_w_blks, "%d\n", card->rpmb_max_w_blks);
+MMC_DEV_ATTR(rpmb_max_r_blks, "%d\n", card->rpmb_max_r_blks);
 
 static struct attribute *mmc_std_attrs[] = {
 	&dev_attr_rel_set.attr,
@@ -605,6 +603,8 @@ static struct attribute *mmc_std_attrs[] = {
 	&dev_attr_r2w_factor.attr,
 	&dev_attr_sec_erase_mult.attr,
 	&dev_attr_sec_trim_en.attr,
+	&dev_attr_rpmb_max_w_blks.attr,
+	&dev_attr_rpmb_max_r_blks.attr,
 	NULL,
 };
 

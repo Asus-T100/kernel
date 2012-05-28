@@ -240,7 +240,8 @@ struct mmc_card {
 
 	struct dentry		*debugfs_root;
 
-	unsigned int		rpmb_max_req;
+	int	rpmb_max_w_blks; /* Maximum writing block counts to RPMB */
+	int	rpmb_max_r_blks; /* Maximum reading block counts to RPMB */
 };
 
 /*
@@ -441,5 +442,6 @@ extern void mmc_fixup_device(struct mmc_card *card,
 
 extern int mmc_rpmb_req_handle(struct device *emmc,
 		struct mmc_ioc_rpmb_req *req);
+extern int mmc_rpmb_max_req_blkcnt(struct device *emmc, int write);
 
 #endif /* LINUX_MMC_CARD_H */

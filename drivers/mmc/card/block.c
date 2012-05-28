@@ -919,6 +919,44 @@ int mmc_rpmb_req_handle(struct device *emmc, struct mmc_ioc_rpmb_req *req)
 }
 EXPORT_SYMBOL_GPL(mmc_rpmb_req_handle);
 
+int mmc_rpmb_max_req_blkcnt(struct device *emmc, int write)
+{
+	int ret = -ENODEV;
+	struct gendisk *disk	= NULL;
+	struct mmc_blk_data *md = NULL;
+	struct mmc_card *card = NULL;
+
+	if (!emmc)
+		return -EINVAL;
+
+	disk = dev_to_disk(emmc);
+	if (!disk) {
+		pr_err("%s: NO eMMC disk found. Try it later\n",
+				__func__);
+		return ret;
+	}
+
+	md = mmc_blk_get(disk);
+	if (!md) {
+		pr_err("%s: NO eMMC block data. Try it later\n",
+				__func__);
+		return ret;
+	}
+
+	card = md->queue.card;
+	if (card && mmc_card_mmc(card)) {
+		if (write)
+			ret = card->rpmb_max_w_blks;
+		else
+			ret = card->rpmb_max_r_blks;
+	}
+
+	mmc_blk_put(md);
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(mmc_rpmb_max_req_blkcnt);
+
 static int mmc_blk_issue_discard_rq(struct mmc_queue *mq, struct request *req)
 {
 	struct mmc_blk_data *md = mq->data;
