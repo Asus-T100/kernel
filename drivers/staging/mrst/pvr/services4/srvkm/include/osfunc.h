@@ -1,26 +1,26 @@
 /**********************************************************************
  *
  * Copyright (C) Imagination Technologies Ltd. All rights reserved.
- *
+ * 
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
  * version 2, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope it will be useful but, except
- * as otherwise stated in writing, without any warranty; without even the
- * implied warranty of merchantability or fitness for a particular purpose.
+ * 
+ * This program is distributed in the hope it will be useful but, except 
+ * as otherwise stated in writing, without any warranty; without even the 
+ * implied warranty of merchantability or fitness for a particular purpose. 
  * See the GNU General Public License for more details.
- *
+ * 
  * You should have received a copy of the GNU General Public License along with
  * this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
- *
+ * 
  * The full GNU General Public License is included in this distribution in
  * the file called "COPYING".
  *
  * Contact Information:
  * Imagination Technologies Ltd. <gpl-support@imgtec.com>
- * Home Park Estate, Kings Langley, Herts, WD4 8LZ, UK
+ * Home Park Estate, Kings Langley, Herts, WD4 8LZ, UK 
  *
  ******************************************************************************/
 
@@ -46,7 +46,7 @@ extern "C" {
 #endif
 
 
-
+	
 	#define PVRSRV_PAGEABLE_SELECT		PVRSRV_OS_PAGEABLE_HEAP
 
 #define KERNEL_ID			0xffffffffL
@@ -59,9 +59,9 @@ extern "C" {
 #define HOST_PAGEMASK			(HOST_PAGESIZE()-1)
 #define HOST_PAGEALIGN(addr)	(((addr) + HOST_PAGEMASK) & ~HOST_PAGEMASK)
 
-#define PVRSRV_OS_HEAP_MASK			0xf
-#define PVRSRV_OS_PAGEABLE_HEAP		0x1
-#define PVRSRV_OS_NON_PAGEABLE_HEAP	0x2
+#define PVRSRV_OS_HEAP_MASK			0xf 
+#define PVRSRV_OS_PAGEABLE_HEAP		0x1 
+#define PVRSRV_OS_NON_PAGEABLE_HEAP	0x2 
 
 
 IMG_UINT32 OSClockus(IMG_VOID);
@@ -99,7 +99,7 @@ IMG_BOOL OSInvalidateCPUCacheRangeKM(IMG_HANDLE hOSMemHandle,
 									 IMG_VOID *pvRangeAddrStart,
 									 IMG_UINT32 ui32Length);
 
-#else
+#else 
 
 #ifdef INLINE_IS_PRAGMA
 #pragma inline(OSFlushCPUCacheKM)
@@ -150,19 +150,19 @@ static INLINE IMG_BOOL OSInvalidateCPUCacheRangeKM(IMG_HANDLE hOSMemHandle,
 	return IMG_FALSE;
 }
 
-#endif
+#endif 
 
 #if defined(__linux__)
 PVRSRV_ERROR OSRegisterDiscontigMem(IMG_SYS_PHYADDR *pBasePAddr,
-									IMG_VOID *pvCpuVAddr,
+									IMG_VOID *pvCpuVAddr, 
 									IMG_SIZE_T ui32Bytes,
-									IMG_UINT32 ui32Flags,
+									IMG_UINT32 ui32Flags, 
 									IMG_HANDLE *phOSMemHandle);
 PVRSRV_ERROR OSUnRegisterDiscontigMem(IMG_VOID *pvCpuVAddr,
 									IMG_SIZE_T ui32Bytes,
 									IMG_UINT32 ui32Flags,
 									IMG_HANDLE hOSMemHandle);
-#else
+#else	
 #ifdef INLINE_IS_PRAGMA
 #pragma inline(OSRegisterDiscontigMem)
 #endif
@@ -196,7 +196,7 @@ static INLINE PVRSRV_ERROR OSUnRegisterDiscontigMem(IMG_VOID *pvCpuVAddr,
 
 	return PVRSRV_ERROR_NOT_SUPPORTED;
 }
-#endif
+#endif	
 
 
 #if defined(__linux__)
@@ -205,15 +205,15 @@ static INLINE PVRSRV_ERROR OSUnRegisterDiscontigMem(IMG_VOID *pvCpuVAddr,
 #endif
 static INLINE PVRSRV_ERROR OSReserveDiscontigPhys(IMG_SYS_PHYADDR *pBasePAddr, IMG_SIZE_T ui32Bytes, IMG_UINT32 ui32Flags, IMG_VOID **ppvCpuVAddr, IMG_HANDLE *phOSMemHandle)
 {
-#if defined(__linux__)
+#if defined(__linux__)	
 	*ppvCpuVAddr = IMG_NULL;
-	return OSRegisterDiscontigMem(pBasePAddr, *ppvCpuVAddr, ui32Bytes, ui32Flags, phOSMemHandle);
+	return OSRegisterDiscontigMem(pBasePAddr, *ppvCpuVAddr, ui32Bytes, ui32Flags, phOSMemHandle);	
 #else
 	extern IMG_CPU_PHYADDR SysSysPAddrToCpuPAddr(IMG_SYS_PHYADDR SysPAddr);
 
-
+	
 	return OSReservePhys(SysSysPAddrToCpuPAddr(pBasePAddr[0]), ui32Bytes, ui32Flags, ppvCpuVAddr, phOSMemHandle);
-#endif
+#endif	
 }
 
 static INLINE PVRSRV_ERROR OSUnReserveDiscontigPhys(IMG_VOID *pvCpuVAddr, IMG_SIZE_T ui32Bytes, IMG_UINT32 ui32Flags, IMG_HANDLE hOSMemHandle)
@@ -221,10 +221,10 @@ static INLINE PVRSRV_ERROR OSUnReserveDiscontigPhys(IMG_VOID *pvCpuVAddr, IMG_SI
 #if defined(__linux__)
 	OSUnRegisterDiscontigMem(pvCpuVAddr, ui32Bytes, ui32Flags, hOSMemHandle);
 #endif
-
+	
 	return PVRSRV_OK;
 }
-#else
+#else	
 
 
 #ifdef INLINE_IS_PRAGMA
@@ -253,7 +253,7 @@ static INLINE PVRSRV_ERROR OSUnReserveDiscontigPhys(IMG_VOID *pvCpuVAddr, IMG_SI
 
 	return PVRSRV_ERROR_NOT_SUPPORTED;
 }
-#endif
+#endif	
 
 PVRSRV_ERROR OSRegisterMem(IMG_CPU_PHYADDR BasePAddr,
 							IMG_VOID *pvCpuVAddr,
@@ -317,20 +317,20 @@ PVRSRV_ERROR OSFreePages(IMG_UINT32 ui32Flags, IMG_SIZE_T ui32Size, IMG_PVOID pv
 	#define OSAllocPages(flags, size, pageSize, privdata, privdatalength, linAddr, pageAlloc) \
 		(PVR_TRACE(("OSAllocPages(" #flags ", " #size ", " #pageSize ", " #linAddr ", " #pageAlloc "): (size = 0x%lx)", size)), \
 			OSAllocPages_Impl(flags, size, pageSize, linAddr, privdata, privdatalength, pageAlloc))
-
+		
 	#define OSFreeMem(flags, size, linAddr, blockAlloc) \
 		(PVR_TRACE(("OSFreeMem(" #flags ", " #size ", " #linAddr ", " #blockAlloc "): (pointer = 0x%X)", linAddr)), \
 			OSFreeMem_Debug_Wrapper(flags, size, linAddr, blockAlloc, __FILE__, __LINE__))
 #else
 	#define OSAllocMem(flags, size, linAddr, blockAlloc, logString) \
 		OSAllocMem_Debug_Wrapper(flags, size, linAddr, blockAlloc, __FILE__, __LINE__)
-
+	
 	#define OSAllocPages OSAllocPages_Impl
-
+	
 	#define OSFreeMem(flags, size, linAddr, blockAlloc) \
 			OSFreeMem_Debug_Wrapper(flags, size, linAddr, blockAlloc, __FILE__, __LINE__)
 #endif
-
+ 
 #ifdef PVRSRV_DEBUG_OS_MEMORY
 
 	PVRSRV_ERROR OSAllocMem_Debug_Wrapper(IMG_UINT32 ui32Flags,
@@ -339,7 +339,7 @@ PVRSRV_ERROR OSFreePages(IMG_UINT32 ui32Flags, IMG_SIZE_T ui32Size, IMG_PVOID pv
 										IMG_HANDLE *phBlockAlloc,
 										IMG_CHAR *pszFilename,
 										IMG_UINT32 ui32Line);
-
+	
 	PVRSRV_ERROR OSFreeMem_Debug_Wrapper(IMG_UINT32 ui32Flags,
 									 IMG_UINT32 ui32Size,
 									 IMG_PVOID pvCpuVAddr,
@@ -349,7 +349,7 @@ PVRSRV_ERROR OSFreePages(IMG_UINT32 ui32Flags, IMG_SIZE_T ui32Size, IMG_PVOID pv
 
 
 	typedef struct
-	{
+	{	
 		IMG_UINT8 sGuardRegionBefore[8];
 		IMG_CHAR sFileName[128];
 		IMG_UINT32 uLineNo;
@@ -360,25 +360,25 @@ PVRSRV_ERROR OSFreePages(IMG_UINT32 ui32Flags, IMG_SIZE_T ui32Size, IMG_PVOID pv
 			isAllocated = 0x260511AA
 		} eValid;
 	} OSMEM_DEBUG_INFO;
-
-	#define TEST_BUFFER_PADDING_STATUS (sizeof(OSMEM_DEBUG_INFO))
-	#define TEST_BUFFER_PADDING_AFTER  (8)
+	
+	#define TEST_BUFFER_PADDING_STATUS (sizeof(OSMEM_DEBUG_INFO)) 
+	#define TEST_BUFFER_PADDING_AFTER  (8) 
 	#define TEST_BUFFER_PADDING (TEST_BUFFER_PADDING_STATUS + TEST_BUFFER_PADDING_AFTER)
 #else
 	#define OSAllocMem_Debug_Wrapper OSAllocMem_Debug_Linux_Memory_Allocations
 	#define OSFreeMem_Debug_Wrapper OSFreeMem_Debug_Linux_Memory_Allocations
 #endif
-
+ 
 #if defined(__linux__) && defined(DEBUG_LINUX_MEMORY_ALLOCATIONS)
 	PVRSRV_ERROR OSAllocMem_Impl(IMG_UINT32 ui32Flags, IMG_SIZE_T ui32Size, IMG_PVOID *ppvLinAddr, IMG_HANDLE *phBlockAlloc, IMG_CHAR *pszFilename, IMG_UINT32 ui32Line);
 	PVRSRV_ERROR OSFreeMem_Impl(IMG_UINT32 ui32Flags, IMG_SIZE_T ui32Size, IMG_PVOID pvLinAddr, IMG_HANDLE hBlockAlloc, IMG_CHAR *pszFilename, IMG_UINT32 ui32Line);
-
+	
 	#define OSAllocMem_Debug_Linux_Memory_Allocations OSAllocMem_Impl
 	#define OSFreeMem_Debug_Linux_Memory_Allocations OSFreeMem_Impl
 #else
 	PVRSRV_ERROR OSAllocMem_Impl(IMG_UINT32 ui32Flags, IMG_SIZE_T ui32Size, IMG_PVOID *ppvLinAddr, IMG_HANDLE *phBlockAlloc);
 	PVRSRV_ERROR OSFreeMem_Impl(IMG_UINT32 ui32Flags, IMG_SIZE_T ui32Size, IMG_PVOID pvLinAddr, IMG_HANDLE hBlockAlloc);
-
+	
 	#define OSAllocMem_Debug_Linux_Memory_Allocations(flags, size, addr, blockAlloc, file, line) \
 		OSAllocMem_Impl(flags, size, addr, blockAlloc)
 	#define OSFreeMem_Debug_Linux_Memory_Allocations(flags, size, addr, blockAlloc, file, line) \
@@ -441,7 +441,7 @@ PVRSRV_ERROR OSEventObjectOpenKM(PVRSRV_EVENTOBJECT *psEventObject,
 											IMG_HANDLE *phOSEvent);
 PVRSRV_ERROR OSEventObjectCloseKM(PVRSRV_EVENTOBJECT *psEventObject,
 											IMG_HANDLE hOSEventKM);
-#endif
+#endif 
 
 
 PVRSRV_ERROR OSBaseAllocContigMemory(IMG_SIZE_T ui32Size, IMG_CPU_VIRTADDR *pLinAddr, IMG_CPU_PHYADDR *pPhysAddr);
@@ -479,12 +479,12 @@ IMG_VOID OSBreakResourceLock(PVRSRV_RESOURCE *psResource, IMG_UINT32 ui32ID);
 PVRSRV_ERROR OSPowerLockWrap(IMG_BOOL bTryLock);
 
 IMG_VOID OSPowerLockUnwrap(IMG_VOID);
-#endif
+#endif 
 
-
+ 
 IMG_VOID OSWaitus(IMG_UINT32 ui32Timeus);
 
-
+ 
 IMG_VOID OSSleepms(IMG_UINT32 ui32Timems);
 
 IMG_HANDLE OSFuncHighResTimerCreate(IMG_VOID);
@@ -549,8 +549,8 @@ PVRSRV_ERROR OSCopyToUser(IMG_PVOID pvProcess, IMG_VOID *pvDest, IMG_VOID *pvSrc
 PVRSRV_ERROR OSCopyFromUser(IMG_PVOID pvProcess, IMG_VOID *pvDest, IMG_VOID *pvSrc, IMG_SIZE_T ui32Bytes);
 
 #if defined(__linux__)
-PVRSRV_ERROR OSAcquirePhysPageAddr(IMG_VOID* pvCPUVAddr,
-									IMG_SIZE_T ui32Bytes,
+PVRSRV_ERROR OSAcquirePhysPageAddr(IMG_VOID* pvCPUVAddr, 
+									IMG_SIZE_T ui32Bytes, 
 									IMG_SYS_PHYADDR *psSysPAddr,
 									IMG_HANDLE *phOSWrapMem);
 PVRSRV_ERROR OSReleasePhysPageAddr(IMG_HANDLE hOSWrapMem);
@@ -558,8 +558,8 @@ PVRSRV_ERROR OSReleasePhysPageAddr(IMG_HANDLE hOSWrapMem);
 #ifdef INLINE_IS_PRAGMA
 #pragma inline(OSAcquirePhysPageAddr)
 #endif
-static INLINE PVRSRV_ERROR OSAcquirePhysPageAddr(IMG_VOID* pvCPUVAddr,
-												IMG_SIZE_T ui32Bytes,
+static INLINE PVRSRV_ERROR OSAcquirePhysPageAddr(IMG_VOID* pvCPUVAddr, 
+												IMG_SIZE_T ui32Bytes, 
 												IMG_SYS_PHYADDR *psSysPAddr,
 												IMG_HANDLE *phOSWrapMem)
 {
@@ -567,7 +567,7 @@ static INLINE PVRSRV_ERROR OSAcquirePhysPageAddr(IMG_VOID* pvCPUVAddr,
 	PVR_UNREFERENCED_PARAMETER(ui32Bytes);
 	PVR_UNREFERENCED_PARAMETER(psSysPAddr);
 	PVR_UNREFERENCED_PARAMETER(phOSWrapMem);
-	return PVRSRV_OK;
+	return PVRSRV_OK;	
 }
 #ifdef INLINE_IS_PRAGMA
 #pragma inline(OSReleasePhysPageAddr)
@@ -575,10 +575,10 @@ static INLINE PVRSRV_ERROR OSAcquirePhysPageAddr(IMG_VOID* pvCPUVAddr,
 static INLINE PVRSRV_ERROR OSReleasePhysPageAddr(IMG_HANDLE hOSWrapMem)
 {
 	PVR_UNREFERENCED_PARAMETER(hOSWrapMem);
-	return PVRSRV_OK;
+	return PVRSRV_OK;	
 }
 #endif
-
+									
 #if defined(__linux__) && defined(__KERNEL__)
 
 #define	OS_SUPPORTS_IN_LISR
@@ -599,7 +599,7 @@ static inline IMG_VOID OSMemoryBarrier(IMG_VOID)
 	mb();
 }
 
-#else
+#else 
 
 #ifdef INLINE_IS_PRAGMA
 #pragma inline(OSWriteMemoryBarrier)
@@ -611,11 +611,38 @@ static INLINE IMG_VOID OSWriteMemoryBarrier(IMG_VOID) { }
 #endif
 static INLINE IMG_VOID OSMemoryBarrier(IMG_VOID) { }
 
+#endif 
+
+PVRSRV_ERROR OSAtomicAlloc(IMG_PVOID *ppvRefCount);
+IMG_VOID OSAtomicFree(IMG_PVOID pvRefCount);
+IMG_VOID OSAtomicInc(IMG_PVOID pvRefCount);
+IMG_BOOL OSAtomicDecAndTest(IMG_PVOID pvRefCount);
+IMG_UINT32 OSAtomicRead(IMG_PVOID pvRefCount);
+
+PVRSRV_ERROR OSTimeCreateWithUSOffset(IMG_PVOID *pvRet, IMG_UINT32 ui32MSOffset);
+IMG_BOOL OSTimeHasTimePassed(IMG_PVOID pvData);
+IMG_VOID OSTimeDestroy(IMG_PVOID pvData);
+
+#if defined(__linux__)
+IMG_VOID OSReleaseBridgeLock(IMG_VOID);
+IMG_VOID OSReacquireBridgeLock(IMG_VOID);
+#else
+
+#ifdef INLINE_IS_PRAGMA
+#pragma inline(OSReleaseBridgeLock)
+#endif
+static INLINE IMG_VOID OSReleaseBridgeLock(IMG_VOID) { }
+
+#ifdef INLINE_IS_PRAGMA
+#pragma inline(OSReacquireBridgeLock)
+#endif
+static INLINE IMG_VOID OSReacquireBridgeLock(IMG_VOID) { }
+
 #endif
 
 #if defined (__cplusplus)
 }
 #endif
 
-#endif
+#endif 
 

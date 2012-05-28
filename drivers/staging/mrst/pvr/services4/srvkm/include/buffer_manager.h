@@ -1,26 +1,26 @@
 /**********************************************************************
  *
  * Copyright (C) Imagination Technologies Ltd. All rights reserved.
- *
+ * 
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
  * version 2, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope it will be useful but, except
- * as otherwise stated in writing, without any warranty; without even the
- * implied warranty of merchantability or fitness for a particular purpose.
+ * 
+ * This program is distributed in the hope it will be useful but, except 
+ * as otherwise stated in writing, without any warranty; without even the 
+ * implied warranty of merchantability or fitness for a particular purpose. 
  * See the GNU General Public License for more details.
- *
+ * 
  * You should have received a copy of the GNU General Public License along with
  * this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
- *
+ * 
  * The full GNU General Public License is included in this distribution in
  * the file called "COPYING".
  *
  * Contact Information:
  * Imagination Technologies Ltd. <gpl-support@imgtec.com>
- * Home Park Estate, Kings Langley, Herts, WD4 8LZ, UK
+ * Home Park Estate, Kings Langley, Herts, WD4 8LZ, UK 
  *
  ******************************************************************************/
 
@@ -41,16 +41,16 @@ struct _BM_MAPPING_
 {
 	enum
 	{
-		hm_wrapped = 1,
-		hm_wrapped_scatter,
-		hm_wrapped_virtaddr,
-		hm_wrapped_scatter_virtaddr,
-		hm_env,
-		hm_contiguous
+		hm_wrapped = 1,		
+		hm_wrapped_scatter,	
+		hm_wrapped_virtaddr, 
+		hm_wrapped_scatter_virtaddr, 
+		hm_env,				
+		hm_contiguous		
 	} eCpuMemoryOrigin;
 
-	BM_HEAP				*pBMHeap;
-	RA_ARENA			*pArena;
+	BM_HEAP				*pBMHeap;	
+	RA_ARENA			*pArena;	
 
 	IMG_CPU_VIRTADDR	CpuVAddr;
 	IMG_CPU_PHYADDR		CpuPAddr;
@@ -83,10 +83,10 @@ struct _BM_HEAP_
 	DEV_ARENA_DESCRIPTOR	sDevArena;
 	MMU_HEAP				*pMMUHeap;
 	PDUMP_MMU_ATTRIB 		*psMMUAttrib;
-
+	
 	struct _BM_HEAP_ 		*psNext;
 	struct _BM_HEAP_ 		**ppsThis;
-
+	
 	IMG_UINT32 				ui32XTileStride;
 };
 
@@ -94,30 +94,40 @@ struct _BM_CONTEXT_
 {
 	MMU_CONTEXT	*psMMUContext;
 
-
+	
 	 BM_HEAP *psBMHeap;
 
-
+	
 	 BM_HEAP *psBMSharedHeap;
 
 	PVRSRV_DEVICE_NODE *psDeviceNode;
 
-
+	
 	HASH_TABLE *pBufferHash;
 
-
+	
 	IMG_HANDLE hResItem;
 
 	IMG_UINT32 ui32RefCount;
 
-
+	
 
 	struct _BM_CONTEXT_ *psNext;
 	struct _BM_CONTEXT_ **ppsThis;
 };
 
+typedef struct _XPROC_DATA_{
+	IMG_UINT32 ui32RefCount;
+	IMG_UINT32 ui32AllocFlags;
+	IMG_UINT32 ui32Size;
+	IMG_UINT32 ui32PageSize;
+    RA_ARENA *psArena;
+    IMG_SYS_PHYADDR sSysPAddr;
+	IMG_VOID *pvCpuVAddr;
+	IMG_HANDLE hOSMemHandle;
+} XPROC_DATA;
 
-
+extern XPROC_DATA gXProcWorkaroundShareData[];
 typedef IMG_VOID *BM_HANDLE;
 
 #define BP_POOL_MASK         0x7
@@ -209,6 +219,25 @@ IMG_VOID BM_FreeExport(BM_HANDLE hBuf, IMG_UINT32 ui32Flags);
 PVRSRV_ERROR BM_XProcWorkaroundSetShareIndex(IMG_UINT32 ui32Index);
 PVRSRV_ERROR BM_XProcWorkaroundUnsetShareIndex(IMG_UINT32 ui32Index);
 PVRSRV_ERROR BM_XProcWorkaroundFindNewBufferAndSetShareIndex(IMG_UINT32 *pui32Index);
+
+#if defined(PVRSRV_REFCOUNT_DEBUG)
+IMG_VOID _BM_XProcIndexAcquireDebug(const IMG_CHAR *pszFile, IMG_INT iLine, IMG_UINT32 ui32Index);
+IMG_VOID _BM_XProcIndexReleaseDebug(const IMG_CHAR *pszFile, IMG_INT iLine, IMG_UINT32 ui32Index);
+
+#define BM_XProcIndexAcquire(x...) \
+	_BM_XProcIndexAcquireDebug(__FILE__, __LINE__, x)
+#define BM_XProcIndexRelease(x...) \
+	_BM_XProcIndexReleaseDebug(__FILE__, __LINE__, x)
+
+#else
+IMG_VOID _BM_XProcIndexAcquire(IMG_UINT32 ui32Index);
+IMG_VOID _BM_XProcIndexRelease(IMG_UINT32 ui32Index);
+
+#define BM_XProcIndexAcquire(x...) \
+	_BM_XProcIndexAcquire( x)
+#define BM_XProcIndexRelease(x...) \
+	_BM_XProcIndexRelease( x)
+#endif
 
 
 #if defined(__cplusplus)

@@ -1,26 +1,26 @@
 /**********************************************************************
  *
  * Copyright (C) Imagination Technologies Ltd. All rights reserved.
- *
+ * 
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
  * version 2, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope it will be useful but, except
- * as otherwise stated in writing, without any warranty; without even the
- * implied warranty of merchantability or fitness for a particular purpose.
+ * 
+ * This program is distributed in the hope it will be useful but, except 
+ * as otherwise stated in writing, without any warranty; without even the 
+ * implied warranty of merchantability or fitness for a particular purpose. 
  * See the GNU General Public License for more details.
- *
+ * 
  * You should have received a copy of the GNU General Public License along with
  * this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
- *
+ * 
  * The full GNU General Public License is included in this distribution in
  * the file called "COPYING".
  *
  * Contact Information:
  * Imagination Technologies Ltd. <gpl-support@imgtec.com>
- * Home Park Estate, Kings Langley, Herts, WD4 8LZ, UK
+ * Home Park Estate, Kings Langley, Herts, WD4 8LZ, UK 
  *
  ******************************************************************************/
 
@@ -135,7 +135,7 @@ typedef struct _SGX_BRIDGE_INIT_INFO_
 #endif
 #endif
 
-#if defined(FIX_HW_BRN_31542)
+#if defined(FIX_HW_BRN_31542) || defined(FIX_HW_BRN_36513)
 #if defined (SUPPORT_SID_INTERFACE)
 	IMG_SID hKernelClearClipWAVDMStreamMemInfo;
 	IMG_SID hKernelClearClipWAIndexStreamMemInfo;
@@ -157,7 +157,7 @@ typedef struct _SGX_BRIDGE_INIT_INFO_
 #endif
 #endif
 
-#if defined(SGX_FEATURE_VDM_CONTEXT_SWITCH) && defined(FIX_HW_BRN_31425)
+#if defined(SGX_FEATURE_VDM_CONTEXT_SWITCH) && defined(FIX_HW_BRN_31559)
 	IMG_HANDLE	hKernelVDMSnapShotBufferMemInfo;
 	IMG_HANDLE	hKernelVDMCtrlStreamBufferMemInfo;
 #endif
@@ -170,13 +170,6 @@ typedef struct _SGX_BRIDGE_INIT_INFO_
 	IMG_SID		hKernelEDMStatusBufferMemInfo;
 #else
 	IMG_HANDLE	hKernelEDMStatusBufferMemInfo;
-#endif
-#endif
-#if defined(SGX_FEATURE_OVERLAPPED_SPM)
-#if defined (SUPPORT_SID_INTERFACE)
-	IMG_SID		hKernelTmpRgnHeaderMemInfo;
-#else
-	IMG_HANDLE hKernelTmpRgnHeaderMemInfo;
 #endif
 #endif
 
@@ -192,7 +185,7 @@ typedef struct _SGX_BRIDGE_INIT_INFO_
 	IMG_UINT32 ui32MasterClkGateStatusMask;
 	IMG_UINT32 ui32MasterClkGateStatus2Reg;
 	IMG_UINT32 ui32MasterClkGateStatus2Mask;
-#endif
+#endif 
 
 	IMG_UINT32 ui32CacheControl;
 
@@ -222,7 +215,7 @@ typedef struct _SGX_DEVICE_SYNC_LIST_
 
 	struct _SGX_DEVICE_SYNC_LIST_	*psNext;
 
-
+	
 	IMG_UINT32			ui32NumSyncObjects;
 #if defined (SUPPORT_SID_INTERFACE)
 	IMG_SID				ahSyncHandles[1];
@@ -259,7 +252,7 @@ typedef struct _SGX_CCB_KICK_
 	IMG_HANDLE	hKernelHWSyncListMemInfo;
 #endif
 
-
+	
 #if defined (SUPPORT_SID_INTERFACE)
 	IMG_SID		*pahDstSyncHandles;
 #else
@@ -288,11 +281,11 @@ typedef struct _SGX_CCB_KICK_
 #endif
 	IMG_BOOL	bLastInScene;
 
-
+	
 	IMG_UINT32	ui32CCBOffset;
 
 #if defined(SUPPORT_SGX_GENERALISED_SYNCOBJECTS)
-
+	
 	IMG_UINT32	ui32NumTASrcSyncs;
 #if defined (SUPPORT_SID_INTERFACE)
 	IMG_SID		ahTASrcKernelSyncInfo[SGX_MAX_TA_SRC_SYNCS];
@@ -312,16 +305,16 @@ typedef struct _SGX_CCB_KICK_
 	IMG_HANDLE	ah3DSrcKernelSyncInfo[SGX_MAX_3D_SRC_SYNCS];
 #endif
 #else
-
+	
 	IMG_UINT32	ui32NumSrcSyncs;
 #if defined (SUPPORT_SID_INTERFACE)
-	IMG_SID		ahSrcKernelSyncInfo[SGX_MAX_SRC_SYNCS];
+	IMG_SID		ahSrcKernelSyncInfo[SGX_MAX_SRC_SYNCS_TA];
 #else
-	IMG_HANDLE	ahSrcKernelSyncInfo[SGX_MAX_SRC_SYNCS];
+	IMG_HANDLE	ahSrcKernelSyncInfo[SGX_MAX_SRC_SYNCS_TA];
 #endif
 #endif
 
-
+	
 	IMG_BOOL	bTADependency;
 #if defined (SUPPORT_SID_INTERFACE)
 	IMG_SID		hTA3DSyncInfo;
@@ -349,9 +342,9 @@ typedef struct _SGX_CCB_KICK_
 
 typedef struct _SGX_CLIENT_INFO_
 {
-	IMG_UINT32					ui32ProcessID;
-	IMG_VOID					*pvProcess;
-	PVRSRV_MISC_INFO			sMiscInfo;
+	IMG_UINT32					ui32ProcessID;			
+	IMG_VOID					*pvProcess;				
+	PVRSRV_MISC_INFO			sMiscInfo;				
 
 	IMG_UINT32					asDevData[SGX_MAX_DEV_DATA];
 
@@ -436,24 +429,24 @@ typedef struct _PVRSRV_2D_SGX_KICK_
 #if defined (SUPPORT_SID_INTERFACE)
 	IMG_SID			ahSrcSyncInfo[SGX_MAX_2D_SRC_SYNC_OPS];
 
-
+	
 	IMG_SID	 		hDstSyncInfo;
 
-
+	
 	IMG_SID			hTASyncInfo;
 
-
+	
 	IMG_SID			h3DSyncInfo;
 #else
 	IMG_HANDLE		ahSrcSyncInfo[SGX_MAX_2D_SRC_SYNC_OPS];
 
-
+	
 	IMG_HANDLE 		hDstSyncInfo;
 
-
+	
 	IMG_HANDLE		hTASyncInfo;
 
-
+	
 	IMG_HANDLE		h3DSyncInfo;
 #endif
 
@@ -463,8 +456,8 @@ typedef struct _PVRSRV_2D_SGX_KICK_
 #endif
 	IMG_HANDLE		hDevMemContext;
 } PVRSRV_2D_SGX_KICK, *PPVRSRV_2D_SGX_KICK;
-#endif
-#endif
+#endif	
+#endif	
 
 
-#endif
+#endif 

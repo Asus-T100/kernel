@@ -1,26 +1,26 @@
 /**********************************************************************
  *
  * Copyright (C) Imagination Technologies Ltd. All rights reserved.
- *
+ * 
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
  * version 2, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope it will be useful but, except
- * as otherwise stated in writing, without any warranty; without even the
- * implied warranty of merchantability or fitness for a particular purpose.
+ * 
+ * This program is distributed in the hope it will be useful but, except 
+ * as otherwise stated in writing, without any warranty; without even the 
+ * implied warranty of merchantability or fitness for a particular purpose. 
  * See the GNU General Public License for more details.
- *
+ * 
  * You should have received a copy of the GNU General Public License along with
  * this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
- *
+ * 
  * The full GNU General Public License is included in this distribution in
  * the file called "COPYING".
  *
  * Contact Information:
  * Imagination Technologies Ltd. <gpl-support@imgtec.com>
- * Home Park Estate, Kings Langley, Herts, WD4 8LZ, UK
+ * Home Park Estate, Kings Langley, Herts, WD4 8LZ, UK 
  *
  ******************************************************************************/
 
@@ -38,7 +38,7 @@
 #include <linux/hardirq.h>
 #include <linux/module.h>
 #include <linux/spinlock.h>
-#include <linux/string.h>
+#include <linux/string.h>			
 #include <stdarg.h>
 #include "img_types.h"
 #include "servicesext.h"
@@ -68,7 +68,7 @@ static IMG_BOOL BAppend(IMG_CHAR *pszBuf, IMG_UINT32 ui32BufSiz,
 IMG_UINT32 gPVRDebugLevel =
 	(DBGPRIV_FATAL | DBGPRIV_ERROR | DBGPRIV_WARNING);
 
-#endif
+#endif 
 
 #define	PVR_MAX_MSG_LEN PVR_MAX_DEBUG_MESSAGE_LEN
 
@@ -83,14 +83,14 @@ static PVRSRV_LINUX_MUTEX gsDebugMutexNonIRQ;
 #endif
 
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,39))
-
+ 
 static spinlock_t gsDebugLockIRQ = __SPIN_LOCK_UNLOCKED();
 #else
 static DEFINE_SPINLOCK(gsDebugLockIRQ);
 #endif
 
 #if !defined(PVR_DEBUG_ALWAYS_USE_SPINLOCK)
-#if !defined (USE_SPIN_LOCK)
+#if !defined (USE_SPIN_LOCK)  
 #define	USE_SPIN_LOCK (in_interrupt() || !preemptible())
 #endif
 #endif
@@ -158,7 +158,7 @@ static IMG_BOOL VBAppend(IMG_CHAR *pszBuf, IMG_UINT32 ui32BufSiz, const IMG_CHAR
 	i32Len = vsnprintf(&pszBuf[ui32Used], ui32Space, pszFormat, VArgs);
 	pszBuf[ui32BufSiz - 1] = 0;
 
-
+	
 	return (i32Len < 0 || i32Len >= (IMG_INT32)ui32Space) ? IMG_TRUE : IMG_FALSE;
 }
 
@@ -206,7 +206,7 @@ IMG_VOID PVRSRVDebugAssertFail(const IMG_CHAR* pszFile, IMG_UINT32 uLine)
 	BUG();
 }
 
-#endif
+#endif 
 
 #if defined(PVRSRV_NEED_PVR_TRACE)
 
@@ -239,7 +239,7 @@ IMG_VOID PVRSRVTrace(const IMG_CHAR* pszFormat, ...)
 	va_end(VArgs);
 }
 
-#endif
+#endif 
 
 #if defined(PVRSRV_NEED_PVR_DPF)
 
@@ -285,7 +285,7 @@ IMG_VOID PVRSRVDebugPrintf	(
 
 		GetBufferLock(&ulLockFlags);
 
-
+		
 		if (bTrace == IMG_FALSE)
 		{
 			switch(ui32DebugLevel)
@@ -333,21 +333,21 @@ IMG_VOID PVRSRVDebugPrintf	(
 		}
 		else
 		{
-
+			
 			if (bTrace == IMG_FALSE)
 			{
 #ifdef DEBUG_LOG_PATH_TRUNCATE
-
+				
 				static IMG_CHAR szFileNameRewrite[PVR_MAX_FILEPATH_LEN];
 
    				IMG_CHAR* pszTruncIter;
 				IMG_CHAR* pszTruncBackInter;
 
-
+				
 				if (strlen(pszFullFileName) > strlen(DEBUG_LOG_PATH_TRUNCATE)+1)
 					pszFileName = pszFullFileName + strlen(DEBUG_LOG_PATH_TRUNCATE)+1;
 
-
+				
 				strncpy(szFileNameRewrite, pszFileName,PVR_MAX_FILEPATH_LEN);
 
 				if(strlen(szFileNameRewrite) == PVR_MAX_FILEPATH_LEN-1) {
@@ -359,7 +359,7 @@ IMG_VOID PVRSRVDebugPrintf	(
 				while(*pszTruncIter++ != 0)
 				{
 					IMG_CHAR* pszNextStartPoint;
-
+					
 					if(
 					   !( ( *pszTruncIter == '/' && (pszTruncIter-4 >= szFileNameRewrite) ) &&
 						 ( *(pszTruncIter-1) == '.') &&
@@ -367,7 +367,7 @@ IMG_VOID PVRSRVDebugPrintf	(
 						 ( *(pszTruncIter-3) == '/') )
 					   ) continue;
 
-
+					
 					pszTruncBackInter = pszTruncIter - 3;
 					while(*(--pszTruncBackInter) != '/')
 					{
@@ -375,19 +375,19 @@ IMG_VOID PVRSRVDebugPrintf	(
 					}
 					pszNextStartPoint = pszTruncBackInter;
 
-
+					
 					while(*pszTruncIter != 0)
 					{
 						*pszTruncBackInter++ = *pszTruncIter++;
 					}
 					*pszTruncBackInter = 0;
 
-
+					
 					pszTruncIter = pszNextStartPoint;
 				}
 
 				pszFileName = szFileNameRewrite;
-
+				
 				if(*pszFileName == '/') pszFileName++;
 #endif
 
@@ -398,7 +398,7 @@ IMG_VOID PVRSRVDebugPrintf	(
 				{
 					pszFileName = pszLeafName;
 		       	}
-#endif
+#endif 
 
 				if (BAppend(pszBuf, ui32BufSiz, " [%u, %s]", ui32Line, pszFileName))
 				{
@@ -421,7 +421,7 @@ IMG_VOID PVRSRVDebugPrintf	(
 	}
 }
 
-#endif
+#endif 
 
 #if defined(DEBUG)
 
@@ -450,4 +450,4 @@ void ProcSeqShowDebugLevel(struct seq_file *sfile,void* el)
 	seq_printf(sfile, "%u\n", gPVRDebugLevel);
 }
 
-#endif
+#endif 

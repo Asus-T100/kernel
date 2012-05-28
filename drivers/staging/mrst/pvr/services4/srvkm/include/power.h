@@ -1,26 +1,26 @@
 /**********************************************************************
  *
  * Copyright (C) Imagination Technologies Ltd. All rights reserved.
- *
+ * 
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
  * version 2, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope it will be useful but, except
- * as otherwise stated in writing, without any warranty; without even the
- * implied warranty of merchantability or fitness for a particular purpose.
+ * 
+ * This program is distributed in the hope it will be useful but, except 
+ * as otherwise stated in writing, without any warranty; without even the 
+ * implied warranty of merchantability or fitness for a particular purpose. 
  * See the GNU General Public License for more details.
- *
+ * 
  * You should have received a copy of the GNU General Public License along with
  * this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
- *
+ * 
  * The full GNU General Public License is included in this distribution in
  * the file called "COPYING".
  *
  * Contact Information:
  * Imagination Technologies Ltd. <gpl-support@imgtec.com>
- * Home Park Estate, Kings Langley, Herts, WD4 8LZ, UK
+ * Home Park Estate, Kings Langley, Herts, WD4 8LZ, UK 
  *
  ******************************************************************************/
 
@@ -32,7 +32,7 @@ extern "C" {
 #endif
 
 
-
+ 
 typedef struct _PVRSRV_POWER_DEV_TAG_
 {
 	PFN_PRE_POWER					pfnPrePower;
@@ -50,11 +50,11 @@ typedef struct _PVRSRV_POWER_DEV_TAG_
 
 typedef enum _PVRSRV_INIT_SERVER_STATE_
 {
-	PVRSRV_INIT_SERVER_Unspecified		= -1,
-	PVRSRV_INIT_SERVER_RUNNING			= 0,
-	PVRSRV_INIT_SERVER_RAN				= 1,
-	PVRSRV_INIT_SERVER_SUCCESSFUL		= 2,
-	PVRSRV_INIT_SERVER_NUM				= 3,
+	PVRSRV_INIT_SERVER_Unspecified		= -1,	
+	PVRSRV_INIT_SERVER_RUNNING			= 0,	
+	PVRSRV_INIT_SERVER_RAN				= 1,	
+	PVRSRV_INIT_SERVER_SUCCESSFUL		= 2,	
+	PVRSRV_INIT_SERVER_NUM				= 3,	
 	PVRSRV_INIT_SERVER_FORCE_I32 = 0x7fffffff
 
 } PVRSRV_INIT_SERVER_STATE, *PPVRSRV_INIT_SERVER_STATE;
@@ -116,5 +116,5 @@ IMG_VOID PVRSRVDevicePostClockSpeedChange(IMG_UINT32	ui32DeviceIndex,
 #if defined (__cplusplus)
 }
 #endif
-#endif
+#endif 
 

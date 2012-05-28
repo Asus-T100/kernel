@@ -1,26 +1,26 @@
 /**********************************************************************
  *
  * Copyright (C) Imagination Technologies Ltd. All rights reserved.
- *
+ * 
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
  * version 2, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope it will be useful but, except
- * as otherwise stated in writing, without any warranty; without even the
- * implied warranty of merchantability or fitness for a particular purpose.
+ * 
+ * This program is distributed in the hope it will be useful but, except 
+ * as otherwise stated in writing, without any warranty; without even the 
+ * implied warranty of merchantability or fitness for a particular purpose. 
  * See the GNU General Public License for more details.
- *
+ * 
  * You should have received a copy of the GNU General Public License along with
  * this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
- *
+ * 
  * The full GNU General Public License is included in this distribution in
  * the file called "COPYING".
  *
  * Contact Information:
  * Imagination Technologies Ltd. <gpl-support@imgtec.com>
- * Home Park Estate, Kings Langley, Herts, WD4 8LZ, UK
+ * Home Park Estate, Kings Langley, Herts, WD4 8LZ, UK 
  *
  ******************************************************************************/
 
@@ -77,15 +77,15 @@ pvr_pat_entry(u64 pat, IMG_UINT index)
 static IMG_VOID
 PVRLinuxX86PATProbe(IMG_VOID)
 {
-
-	if (cpu_has_pat)
+	
+	if (cpu_has_pat)	 
 	{
 		u64 pat;
 		IMG_UINT pat_index;
 		IMG_UINT pat_entry;
 
 		PVR_TRACE(("%s: PAT available", __FUNCTION__));
-
+		
 		rdmsrl(MSR_IA32_CR_PAT, pat);
 		PVR_TRACE(("%s: Top 32 bits of PAT: 0x%.8x", __FUNCTION__, (IMG_UINT)(pat >> 32)));
 		PVR_TRACE(("%s: Bottom 32 bits of PAT: 0x%.8x", __FUNCTION__, (IMG_UINT)(pat)));
@@ -110,21 +110,21 @@ PVRLinuxX86PATProbe(IMG_VOID)
 	{
 		PVR_TRACE(("%s: Write combining not available", __FUNCTION__));
 	}
-#else
+#else	
 	PVR_TRACE(("%s: Write combining disabled in driver build", __FUNCTION__));
-#endif
-#endif
+#endif	
+#endif	
 }
 
 pgprot_t
 pvr_pgprot_writecombine(pgprot_t prot)
 {
-
-
+    
+     
     return (g_write_combining_available) ?
 		__pgprot((pgprot_val(prot) & ~_PAGE_CACHE_MASK) | _PAGE_CACHE_WC) : pgprot_noncached(prot);
 }
-#endif
+#endif	
 
 IMG_VOID
 PVRLinuxMUtilsInit(IMG_VOID)

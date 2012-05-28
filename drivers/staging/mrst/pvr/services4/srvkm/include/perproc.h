@@ -1,26 +1,26 @@
 /**********************************************************************
  *
  * Copyright (C) Imagination Technologies Ltd. All rights reserved.
- *
+ * 
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
  * version 2, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope it will be useful but, except
- * as otherwise stated in writing, without any warranty; without even the
- * implied warranty of merchantability or fitness for a particular purpose.
+ * 
+ * This program is distributed in the hope it will be useful but, except 
+ * as otherwise stated in writing, without any warranty; without even the 
+ * implied warranty of merchantability or fitness for a particular purpose. 
  * See the GNU General Public License for more details.
- *
+ * 
  * You should have received a copy of the GNU General Public License along with
  * this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
- *
+ * 
  * The full GNU General Public License is included in this distribution in
  * the file called "COPYING".
  *
  * Contact Information:
  * Imagination Technologies Ltd. <gpl-support@imgtec.com>
- * Home Park Estate, Kings Langley, Herts, WD4 8LZ, UK
+ * Home Park Estate, Kings Langley, Herts, WD4 8LZ, UK 
  *
  ******************************************************************************/
 
@@ -48,27 +48,27 @@ typedef struct _PVRSRV_PER_PROCESS_DATA_
 #endif
 	PVRSRV_HANDLE_BASE 	*psHandleBase;
 #if defined (SUPPORT_SID_INTERFACE)
-
+	
 	IMG_BOOL		bHandlesBatched;
 #else
 #if defined (PVR_SECURE_HANDLES)
-
+	
 	IMG_BOOL		bHandlesBatched;
-#endif
-#endif
+#endif  
+#endif 
 	IMG_UINT32		ui32RefCount;
 
-
+	
 	IMG_BOOL		bInitProcess;
 #if defined(PDUMP)
-
+	
 	IMG_BOOL		bPDumpPersistent;
 #if defined(SUPPORT_PDUMP_MULTI_PROCESS)
-
+	
 	IMG_BOOL		bPDumpActive;
+#endif 
 #endif
-#endif
-
+	
 	IMG_HANDLE		hOsPrivateData;
 } PVRSRV_PER_PROCESS_DATA;
 
@@ -122,5 +122,5 @@ IMG_HANDLE PVRSRVFindPerProcessPrivateData(IMG_VOID)
 }
 #endif
 
-#endif
+#endif 
 

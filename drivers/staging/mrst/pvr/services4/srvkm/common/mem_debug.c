@@ -1,26 +1,26 @@
 /**********************************************************************
  *
  * Copyright (C) Imagination Technologies Ltd. All rights reserved.
- *
+ * 
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
  * version 2, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope it will be useful but, except
- * as otherwise stated in writing, without any warranty; without even the
- * implied warranty of merchantability or fitness for a particular purpose.
+ * 
+ * This program is distributed in the hope it will be useful but, except 
+ * as otherwise stated in writing, without any warranty; without even the 
+ * implied warranty of merchantability or fitness for a particular purpose. 
  * See the GNU General Public License for more details.
- *
+ * 
  * You should have received a copy of the GNU General Public License along with
  * this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
- *
+ * 
  * The full GNU General Public License is included in this distribution in
  * the file called "COPYING".
  *
  * Contact Information:
  * Imagination Technologies Ltd. <gpl-support@imgtec.com>
- * Home Park Estate, Kings Langley, Herts, WD4 8LZ, UK
+ * Home Park Estate, Kings Langley, Herts, WD4 8LZ, UK 
  *
  ******************************************************************************/
 
@@ -39,9 +39,7 @@ extern "C"
 
 #define STOP_ON_ERROR 0
 
-
-
-
+	
 
 
 
@@ -60,13 +58,13 @@ extern "C"
 		return IMG_TRUE;
 	}
 
-
+	
 
 	IMG_VOID OSCheckMemDebug(IMG_PVOID pvCpuVAddr, IMG_SIZE_T uSize, const IMG_CHAR *pszFileName, const IMG_UINT32 uLine)
 	{
 		OSMEM_DEBUG_INFO const *psInfo = (OSMEM_DEBUG_INFO *)((IMG_UINT32)pvCpuVAddr - TEST_BUFFER_PADDING_STATUS);
 
-
+		
 		if (pvCpuVAddr == IMG_NULL)
 		{
 			PVR_DPF((PVR_DBG_ERROR, "Pointer 0x%X : null pointer"
@@ -77,7 +75,7 @@ extern "C"
 			while (STOP_ON_ERROR);
 		}
 
-
+		
 		if (((IMG_UINT32)pvCpuVAddr&3) != 0)
 		{
 			PVR_DPF((PVR_DBG_ERROR, "Pointer 0x%X : invalid alignment"
@@ -88,7 +86,7 @@ extern "C"
 			while (STOP_ON_ERROR);
 		}
 
-
+		
 		if (!MemCheck((IMG_PVOID)psInfo->sGuardRegionBefore, 0xB1, sizeof(psInfo->sGuardRegionBefore)))
 		{
 			PVR_DPF((PVR_DBG_ERROR, "Pointer 0x%X : guard region before overwritten"
@@ -99,7 +97,7 @@ extern "C"
 			while (STOP_ON_ERROR);
 		}
 
-
+		
 		if (uSize != psInfo->uSize)
 		{
 			PVR_DPF((PVR_DBG_WARNING, "Pointer 0x%X : supplied size was different to stored size (0x%X != 0x%X)"
@@ -110,7 +108,7 @@ extern "C"
 			while (STOP_ON_ERROR);
 		}
 
-
+		
 		if ((0x01234567 ^ psInfo->uSizeParityCheck) != psInfo->uSize)
 		{
 			PVR_DPF((PVR_DBG_WARNING, "Pointer 0x%X : stored size parity error (0x%X != 0x%X)"
@@ -122,11 +120,11 @@ extern "C"
 		}
 		else
 		{
-
+			
 			uSize = psInfo->uSize;
 		}
 
-
+		
 		if (uSize)
 		{
 			if (!MemCheck((IMG_VOID*)((IMG_UINT32)pvCpuVAddr + uSize), 0xB2, TEST_BUFFER_PADDING_AFTER))
@@ -139,7 +137,7 @@ extern "C"
 			}
 		}
 
-
+		
 		if (psInfo->eValid != isAllocated)
 		{
 			PVR_DPF((PVR_DBG_ERROR, "Pointer 0x%X : not allocated (freed? %d)"
@@ -155,7 +153,7 @@ extern "C"
 	{
 		IMG_SIZE_T i = 0;
 
-		for (; i < 128; i++)
+		for (; i < 128; i++) 
 		{
 			*pDest = *pSrc;
 			if (*pSrc == '\0') break;
@@ -187,11 +185,10 @@ extern "C"
 			return eError;
 		}
 
-
 		OSMemSet((IMG_CHAR *)(*ppvCpuVAddr) + TEST_BUFFER_PADDING_STATUS, 0xBB, ui32Size);
 		OSMemSet((IMG_CHAR *)(*ppvCpuVAddr) + ui32Size + TEST_BUFFER_PADDING_STATUS, 0xB2, TEST_BUFFER_PADDING_AFTER);
 
-
+		
 		psInfo = (OSMEM_DEBUG_INFO *)(*ppvCpuVAddr);
 
 		OSMemSet(psInfo->sGuardRegionBefore, 0xB1, sizeof(psInfo->sGuardRegionBefore));
@@ -201,11 +198,11 @@ extern "C"
 		psInfo->uSize = ui32Size;
 		psInfo->uSizeParityCheck = 0x01234567 ^ ui32Size;
 
-
+		
 		*ppvCpuVAddr = (IMG_PVOID) ((IMG_UINT32)*ppvCpuVAddr)+TEST_BUFFER_PADDING_STATUS;
 
 #ifdef PVRSRV_LOG_MEMORY_ALLOCS
-
+		
 		PVR_TRACE(("Allocated pointer (after debug info): 0x%X from %s:%d", *ppvCpuVAddr, pszFilename, ui32Line));
 #endif
 
@@ -221,16 +218,16 @@ extern "C"
 	{
 		OSMEM_DEBUG_INFO *psInfo;
 
-
+		
 		OSCheckMemDebug(pvCpuVAddr, ui32Size, pszFilename, ui32Line);
 
+		
+		OSMemSet(pvCpuVAddr, 0xBF, ui32Size + TEST_BUFFER_PADDING_AFTER);  
 
-		OSMemSet(pvCpuVAddr, 0xBF, ui32Size + TEST_BUFFER_PADDING_AFTER);
-
-
+		
 		psInfo = (OSMEM_DEBUG_INFO *)((IMG_UINT32) pvCpuVAddr - TEST_BUFFER_PADDING_STATUS);
 
-
+		
 		psInfo->uSize = 0;
 		psInfo->uSizeParityCheck = 0;
 		psInfo->eValid = isFree;
@@ -245,6 +242,6 @@ extern "C"
 }
 #endif
 
-#endif
+#endif 
 
-#endif
+#endif 

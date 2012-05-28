@@ -1,26 +1,26 @@
 /**********************************************************************
  *
  * Copyright (C) Imagination Technologies Ltd. All rights reserved.
- *
+ * 
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
  * version 2, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope it will be useful but, except
- * as otherwise stated in writing, without any warranty; without even the
- * implied warranty of merchantability or fitness for a particular purpose.
+ * 
+ * This program is distributed in the hope it will be useful but, except 
+ * as otherwise stated in writing, without any warranty; without even the 
+ * implied warranty of merchantability or fitness for a particular purpose. 
  * See the GNU General Public License for more details.
- *
+ * 
  * You should have received a copy of the GNU General Public License along with
  * this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
- *
+ * 
  * The full GNU General Public License is included in this distribution in
  * the file called "COPYING".
  *
  * Contact Information:
  * Imagination Technologies Ltd. <gpl-support@imgtec.com>
- * Home Park Estate, Kings Langley, Herts, WD4 8LZ, UK
+ * Home Park Estate, Kings Langley, Herts, WD4 8LZ, UK 
  *
  ******************************************************************************/
 
@@ -41,38 +41,38 @@
 
 struct _BUCKET_
 {
-
+	
 	struct _BUCKET_ *pNext;
 
-
+	
 	IMG_UINTPTR_T v;
 
-
-	IMG_UINTPTR_T k[];
+	
+	IMG_UINTPTR_T k[];		 
 };
 typedef struct _BUCKET_ BUCKET;
 
 struct _HASH_TABLE_
 {
-
+	
 	BUCKET **ppBucketTable;
 
-
+	
 	IMG_UINT32 uSize;
 
-
+	
 	IMG_UINT32 uCount;
 
-
+	
 	IMG_UINT32 uMinimumSize;
 
-
+	
 	IMG_UINT32 uKeySize;
 
-
+	
 	HASH_FUNC *pfnHashFunc;
 
-
+	
 	HASH_KEY_COMP *pfnKeyComp;
 };
 
@@ -141,7 +141,7 @@ _ChainInsert (HASH_TABLE *pHash, BUCKET *pBucket, BUCKET **ppBucketTable, IMG_UI
 		return PVRSRV_ERROR_INVALID_PARAMS;
 	}
 
-	uIndex = KEY_TO_INDEX(pHash, pBucket->k, uSize);
+	uIndex = KEY_TO_INDEX(pHash, pBucket->k, uSize);	 
 	pBucket->pNext = ppBucketTable[uIndex];
 	ppBucketTable[uIndex] = pBucket;
 
@@ -202,7 +202,7 @@ _Resize (HASH_TABLE *pHash, IMG_UINT32 uNewSize)
 		}
 
         OSFreeMem (PVRSRV_PAGEABLE_SELECT, sizeof(BUCKET *)*pHash->uSize, pHash->ppBucketTable, IMG_NULL);
-
+        
         pHash->ppBucketTable = ppNewTable;
         pHash->uSize = uNewSize;
     }
@@ -240,7 +240,7 @@ HASH_TABLE * HASH_Create_Extended (IMG_UINT32 uInitialLen, IMG_SIZE_T uKeySize, 
 	if (pHash->ppBucketTable == IMG_NULL)
     {
 		OSFreeMem(PVRSRV_PAGEABLE_SELECT, sizeof(HASH_TABLE), pHash, IMG_NULL);
-
+		
 		return IMG_NULL;
     }
 
@@ -271,7 +271,7 @@ HASH_Delete (HASH_TABLE *pHash)
 		OSFreeMem(PVRSRV_PAGEABLE_SELECT, sizeof(BUCKET *)*pHash->uSize, pHash->ppBucketTable, IMG_NULL);
 		pHash->ppBucketTable = IMG_NULL;
 		OSFreeMem(PVRSRV_PAGEABLE_SELECT, sizeof(HASH_TABLE), pHash, IMG_NULL);
-
+		
     }
 }
 
@@ -301,7 +301,7 @@ HASH_Insert_Extended (HASH_TABLE *pHash, IMG_VOID *pKey, IMG_UINTPTR_T v)
 	}
 
 	pBucket->v = v;
-
+	 
 	OSMemCopy(pBucket->k, pKey, pHash->uKeySize);
 	if (_ChainInsert (pHash, pBucket, pHash->ppBucketTable, pHash->uSize) != PVRSRV_OK)
 	{
@@ -313,10 +313,10 @@ HASH_Insert_Extended (HASH_TABLE *pHash, IMG_VOID *pKey, IMG_UINTPTR_T v)
 
 	pHash->uCount++;
 
-
+	
 	if (pHash->uCount << 1 > pHash->uSize)
     {
-
+        
 
         _Resize (pHash, pHash->uSize << 1);
     }
@@ -356,7 +356,7 @@ HASH_Remove_Extended(HASH_TABLE *pHash, IMG_VOID *pKey)
 
 	for (ppBucket = &(pHash->ppBucketTable[uIndex]); *ppBucket != IMG_NULL; ppBucket = &((*ppBucket)->pNext))
 	{
-
+		 
 		if (KEY_COMPARE(pHash, (*ppBucket)->k, pKey))
 		{
 			BUCKET *pBucket = *ppBucket;
@@ -364,15 +364,15 @@ HASH_Remove_Extended(HASH_TABLE *pHash, IMG_VOID *pKey)
 			(*ppBucket) = pBucket->pNext;
 
 			OSFreeMem(PVRSRV_PAGEABLE_SELECT, sizeof(BUCKET) + pHash->uKeySize, pBucket, IMG_NULL);
-
+			
 
 			pHash->uCount--;
 
-
+			
 			if (pHash->uSize > (pHash->uCount << 2) &&
                 pHash->uSize > pHash->uMinimumSize)
             {
-
+                
 
 				_Resize (pHash,
                          PRIVATE_MAX (pHash->uSize >> 1,
@@ -421,7 +421,7 @@ HASH_Retrieve_Extended (HASH_TABLE *pHash, IMG_VOID *pKey)
 
 	for (ppBucket = &(pHash->ppBucketTable[uIndex]); *ppBucket != IMG_NULL; ppBucket = &((*ppBucket)->pNext))
 	{
-
+		 
 		if (KEY_COMPARE(pHash, (*ppBucket)->k, pKey))
 		{
 			BUCKET *pBucket = *ppBucket;
@@ -459,10 +459,10 @@ HASH_Iterate(HASH_TABLE *pHash, HASH_pfnCallback pfnCallback)
 		{
 			PVRSRV_ERROR eError;
 			BUCKET *pNextBucket = pBucket->pNext;
-
+			
 			eError = pfnCallback((IMG_UINTPTR_T) ((IMG_VOID *) *(pBucket->k)), (IMG_UINTPTR_T) pBucket->v);
 
-
+			
 			if (eError != PVRSRV_OK)
 				return eError;
 

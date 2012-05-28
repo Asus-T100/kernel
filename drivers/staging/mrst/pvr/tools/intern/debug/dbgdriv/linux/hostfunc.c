@@ -1,26 +1,26 @@
 /**********************************************************************
  *
  * Copyright (C) Imagination Technologies Ltd. All rights reserved.
- *
+ * 
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
  * version 2, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope it will be useful but, except
- * as otherwise stated in writing, without any warranty; without even the
- * implied warranty of merchantability or fitness for a particular purpose.
+ * 
+ * This program is distributed in the hope it will be useful but, except 
+ * as otherwise stated in writing, without any warranty; without even the 
+ * implied warranty of merchantability or fitness for a particular purpose. 
  * See the GNU General Public License for more details.
- *
+ * 
  * You should have received a copy of the GNU General Public License along with
  * this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
- *
+ * 
  * The full GNU General Public License is included in this distribution in
  * the file called "COPYING".
  *
  * Contact Information:
  * Imagination Technologies Ltd. <gpl-support@imgtec.com>
- * Home Park Estate, Kings Langley, Herts, WD4 8LZ, UK
+ * Home Park Estate, Kings Langley, Herts, WD4 8LZ, UK 
  *
  ******************************************************************************/
 
@@ -46,7 +46,7 @@
 #include <linux/wait.h>
 #include <linux/jiffies.h>
 #include <linux/delay.h>
-#endif
+#endif	
 
 #include "img_types.h"
 #include "pvr_debug.h"
@@ -79,7 +79,7 @@ void PVRSRVDebugPrintf	(
 	{
 		pszFileName = pszLeafName;
 	}
-#endif
+#endif 
 
 	bTrace = (IMG_BOOL)(ui32DebugLevel & DBGPRIV_CALLTRACE) ? IMG_TRUE : IMG_FALSE;
 
@@ -90,13 +90,13 @@ void PVRSRVDebugPrintf	(
 		char *szBufferEnd = szBuffer;
 		char *szBufferLimit = szBuffer + sizeof(szBuffer) - 1;
 
-
+		
 		*szBufferLimit = '\0';
 
 		snprintf(szBufferEnd, szBufferLimit - szBufferEnd, "PVR_K:");
 		szBufferEnd += strlen(szBufferEnd);
 
-
+		
 		if (bTrace == IMG_FALSE)
 		{
 			switch(ui32DebugLevel)
@@ -142,10 +142,10 @@ void PVRSRVDebugPrintf	(
 		va_end (vaArgs);
 		szBufferEnd += strlen(szBufferEnd);
 
-
+ 		
  		if (bTrace == IMG_FALSE)
 		{
-			snprintf(szBufferEnd, szBufferLimit - szBufferEnd,
+			snprintf(szBufferEnd, szBufferLimit - szBufferEnd, 
 			         " [%d, %s]", (int)ui32Line, pszFileName);
 			szBufferEnd += strlen(szBufferEnd);
 		}
@@ -153,7 +153,7 @@ void PVRSRVDebugPrintf	(
 		printk(KERN_INFO "%s\r\n", szBuffer);
 	}
 }
-#endif
+#endif	
 
 IMG_VOID HostMemSet(IMG_VOID *pvDest, IMG_UINT8 ui8Value, IMG_UINT32 ui32Size)
 {
@@ -179,7 +179,7 @@ IMG_VOID HostMemCopy(IMG_VOID *pvDst, IMG_VOID *pvSrc, IMG_UINT32 ui32Size)
 
 IMG_UINT32 HostReadRegistryDWORDFromString(char *pcKey, char *pcValueName, IMG_UINT32 *pui32Data)
 {
-
+    
 	return 0;
 }
 
@@ -205,18 +205,18 @@ IMG_VOID HostNonPageablePageFree(IMG_VOID * pvBase)
 
 IMG_VOID * HostMapKrnBufIntoUser(IMG_VOID * pvKrnAddr, IMG_UINT32 ui32Size, IMG_VOID **ppvMdl)
 {
-
+    
 	return IMG_NULL;
 }
 
 IMG_VOID HostUnMapKrnBufFromUser(IMG_VOID * pvUserAddr, IMG_VOID * pvMdl, IMG_VOID * pvProcess)
 {
-
+    
 }
 
 IMG_VOID HostCreateRegDeclStreams(IMG_VOID)
 {
-
+    
 }
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,37))
@@ -294,12 +294,12 @@ IMG_VOID HostWaitForEvent(DBG_EVENT eEvent)
 	switch(eEvent)
 	{
 		case DBG_EVENT_STREAM_DATA:
-
+			
 			wait_event_interruptible_timeout(sStreamDataEvent, iStreamData != 0, EVENT_WAIT_TIMEOUT_JIFFIES);
 			iStreamData = 0;
 			break;
 		default:
-
+			
 			msleep_interruptible(EVENT_WAIT_TIMEOUT_MS);
 			break;
 	}
@@ -321,4 +321,4 @@ IMG_VOID HostSignalEvent(DBG_EVENT eEvent)
 IMG_VOID HostDestroyEventObjects(IMG_VOID)
 {
 }
-#endif
+#endif	

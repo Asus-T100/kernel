@@ -1,26 +1,26 @@
 /**********************************************************************
  *
  * Copyright (C) Imagination Technologies Ltd. All rights reserved.
- *
+ * 
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
  * version 2, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope it will be useful but, except
- * as otherwise stated in writing, without any warranty; without even the
- * implied warranty of merchantability or fitness for a particular purpose.
+ * 
+ * This program is distributed in the hope it will be useful but, except 
+ * as otherwise stated in writing, without any warranty; without even the 
+ * implied warranty of merchantability or fitness for a particular purpose. 
  * See the GNU General Public License for more details.
- *
+ * 
  * You should have received a copy of the GNU General Public License along with
  * this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
- *
+ * 
  * The full GNU General Public License is included in this distribution in
  * the file called "COPYING".
  *
  * Contact Information:
  * Imagination Technologies Ltd. <gpl-support@imgtec.com>
- * Home Park Estate, Kings Langley, Herts, WD4 8LZ, UK
+ * Home Park Estate, Kings Langley, Herts, WD4 8LZ, UK 
  *
  ******************************************************************************/
 
@@ -108,7 +108,10 @@
 	#define SGX_FEATURE_EXTENDED_PERF_COUNTERS
 	#define SGX_FEATURE_EDM_VERTEX_PDSADDR_FULL_RANGE
 	#if defined(SUPPORT_SGX_LOW_LATENCY_SCHEDULING)
-		#define SGX_FEATURE_SW_VDM_CONTEXT_SWITCH
+		#if defined(SGX_FEATURE_MP)
+		#define SGX_FEATURE_MASTER_VDM_CONTEXT_SWITCH
+		#define SGX_FEATURE_SLAVE_VDM_CONTEXT_SWITCH
+		#endif
 		#define SGX_FEATURE_SW_ISP_CONTEXT_SWITCH
 	#endif
 #else
@@ -133,8 +136,8 @@
 	#define SGX_FEATURE_MAX_TA_RENDER_TARGETS				(512)
 	#define SGX_FEATURE_SECONDARY_REQUIRES_USE_KICK
 	#define SGX_FEATURE_WRITEBACK_DCU
-
-
+	
+	
 	#define SGX_FEATURE_BIF_WIDE_TILING_AND_4K_ADDRESS
 	#define SGX_FEATURE_MULTI_EVENT_KICK
 	#define SGX_FEATURE_EDM_VERTEX_PDSADDR_FULL_RANGE
@@ -219,7 +222,7 @@
 #if defined(SGX_FEATURE_MP_CORE_COUNT_TA) && defined(SGX_FEATURE_MP_CORE_COUNT_3D)
 #if (SGX_FEATURE_MP_CORE_COUNT_TA > SGX_FEATURE_MP_CORE_COUNT_3D)
 #error Number of TA cores larger than number of 3D cores not supported in current driver
-#endif
+#endif 
 #else
 #if defined(SGX_FEATURE_MP_CORE_COUNT)
 #define SGX_FEATURE_MP_CORE_COUNT_TA		(SGX_FEATURE_MP_CORE_COUNT)
@@ -228,13 +231,13 @@
 #error Either SGX_FEATURE_MP_CORE_COUNT or \
 both SGX_FEATURE_MP_CORE_COUNT_TA and SGX_FEATURE_MP_CORE_COUNT_3D \
 must be defined when SGX_FEATURE_MP is defined
-#endif
-#endif
+#endif 
+#endif 
 #else
 #define SGX_FEATURE_MP_CORE_COUNT		(1)
 #define SGX_FEATURE_MP_CORE_COUNT_TA	(1)
 #define SGX_FEATURE_MP_CORE_COUNT_3D	(1)
-#endif
+#endif 
 
 #if defined(SUPPORT_SGX_LOW_LATENCY_SCHEDULING) && !defined(SUPPORT_SGX_PRIORITY_SCHEDULING)
 #define SUPPORT_SGX_PRIORITY_SCHEDULING
