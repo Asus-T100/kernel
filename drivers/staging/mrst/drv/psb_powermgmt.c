@@ -1997,16 +1997,6 @@ static void restore_panel_controll_back(struct drm_psb_private *dev_priv)
 				__func__);
 		}
 
-		if (dev_priv->panel_desc & DISPLAY_B) {
-			dspcntr_val = PSB_RVDC32(DSPBCNTR);
-			/* comply the status with HDMI DPMS */
-			if (DISP_PLANEB_STATUS == DISPLAY_PLANE_DISABLE)
-				PSB_WVDC32(dspcntr_val
-					& ~DISPLAY_PLANE_ENABLE, DSPBCNTR);
-			else
-				PSB_WVDC32(dspcntr_val
-					| DISPLAY_PLANE_ENABLE, DSPBCNTR);
-		}
 		if (dev_priv->pvr_screen_event_handler)
 			dev_priv->pvr_screen_event_handler(dev, 1);
 		gbdispstatus = true;

@@ -928,6 +928,10 @@ struct mid_intel_hdmi_priv {
 	bool is_hardcode_edid;
 	struct drm_display_mode *current_mode;
 	bool need_encoder_restore;
+
+	/* for hdmi encoder restore work queue */
+	struct delayed_work enc_work;
+	void *data;
 };
 
 struct hdmi_edid_info {

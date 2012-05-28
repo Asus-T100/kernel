@@ -41,6 +41,7 @@
 #include <linux/pm_runtime.h>
 #include <linux/intel_mid_pm.h>
 #include "mdfld_ti_tpd.h"
+#include <linux/workqueue.h>
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,34))
 #include <asm/intel_scu_ipc.h>
@@ -860,12 +861,13 @@ static void mdfld_hdmi_dpms(struct drm_encoder *encoder, int mode)
 
 static void mdfld_hdmi_encoder_save(struct drm_encoder *encoder)
 {
-	int dspcntr_reg = DSPBCNTR;
-	int dspbase_reg = MRST_DSPBBASE;
 	struct drm_device *dev = encoder->dev;
 	struct psb_intel_output *output = enc_to_psb_intel_output(encoder);
 	struct mid_intel_hdmi_priv *hdmi_priv = output->dev_priv;
-	u32 temp;
+	int dspcntr_reg = DSPBCNTR;
+	int dspbsurf_reg = DSPBSURF;
+	u32 dspbcntr_val;
+
 	PSB_DEBUG_ENTRY("\n");
 
 	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
@@ -876,71 +878,114 @@ static void mdfld_hdmi_encoder_save(struct drm_encoder *encoder)
 
 	/*Use Disable pipeB plane to turn off HDMI screen
 	 in early_suspend  */
-	temp = REG_READ(dspcntr_reg);
-	if ((temp & DISPLAY_PLANE_ENABLE) != 0) {
+	dspbcntr_val = REG_READ(dspcntr_reg);
+	if ((dspbcntr_val & DISPLAY_PLANE_ENABLE) != 0) {
 		REG_WRITE(dspcntr_reg,
-				temp & ~DISPLAY_PLANE_ENABLE);
+				dspbcntr_val & ~DISPLAY_PLANE_ENABLE);
 		/* Flush the plane changes */
-		REG_WRITE(dspbase_reg, REG_READ(dspbase_reg));
+		REG_WRITE(dspbsurf_reg, REG_READ(dspbsurf_reg));
 	}
 
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 }
 
-static void mdfld_hdmi_encoder_restore(struct drm_encoder *encoder)
+void mdfld_hdmi_encoder_restore_wq(struct work_struct *work)
 {
+	struct mid_intel_hdmi_priv *hdmi_priv =
+		container_of(work, struct mid_intel_hdmi_priv, enc_work.work);
+	struct drm_encoder *encoder;
+	struct drm_device *dev = NULL;
+	struct drm_psb_private *dev_priv = NULL;
+	struct psb_intel_output *output = NULL;
 	int dspcntr_reg = DSPBCNTR;
-	int dspbase_reg = MRST_DSPBBASE;
 	int dspbsurf_reg = DSPBSURF;
-	int dspblinoff_reg = DSPBLINOFF;
-	int dspbsize_reg = DSPBSIZE;
-	int dspbstride_reg = DSPBSTRIDE;
-	struct drm_device *dev = encoder->dev;
-	struct drm_psb_private *dev_priv =
-		(struct drm_psb_private *)dev->dev_private;
-	struct psb_intel_output *output = enc_to_psb_intel_output(encoder);
-	struct mid_intel_hdmi_priv *hdmi_priv = output->dev_priv;
-	u32 temp;
+	u32 dspcntr_val = 0;
+
 	PSB_DEBUG_ENTRY("\n");
 
-	if(unlikely(!(hdmi_priv->need_encoder_restore)))
+	if (unlikely(!hdmi_priv))
 		return;
 
-	hdmi_priv->need_encoder_restore = false;
+	encoder = (struct drm_encoder *)hdmi_priv->data;
+	if (unlikely(!encoder))
+		return;
+
+	dev = (struct drm_device *)encoder->dev;
+	if (unlikely(!dev))
+		return;
+
+	dev_priv = dev->dev_private;
+	if (unlikely(!dev_priv))
+		return;
+
+	output = enc_to_psb_intel_output(encoder);
+	if (unlikely(!output))
+		return;
+
+	if (!drm_helper_encoder_in_use(encoder))
+		return;
+
+	if (unlikely(!hdmi_priv->need_encoder_restore))
+		return;
 
 	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
 				OSPM_UHB_FORCE_POWER_ON))
-		return ;
+		return;
 
-	/*Set DSPBSURF to systemBuffer temporary to avoid hdmi display last picture*/
-	REG_WRITE(dspbsurf_reg, dev_priv->init_screen_start);
-	REG_WRITE(dspblinoff_reg, dev_priv->init_screen_offset);
-	/* FIXME: this restore to init screen need to be replaced
-	* by flushing from upper layer. */
-#ifndef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
-	REG_WRITE(dspbsize_reg, dev_priv->init_screen_size);
-	REG_WRITE(dspbstride_reg, dev_priv->init_screen_stride);
-#endif
-
-	/*Restore pipe B plane to turn on HDMI screen
-	in late_resume*/
-	temp = REG_READ(dspcntr_reg);
-	if ((temp & DISPLAY_PLANE_ENABLE) == 0) {
-		REG_WRITE(dspcntr_reg,
-				temp | DISPLAY_PLANE_ENABLE);
-		/* Flush the plane changes */
-		REG_WRITE(dspbase_reg, REG_READ(dspbase_reg));
+	if (!dev_priv->bhdmiconnected ||
+			!(dev_priv->panel_desc & DISPLAY_B)) {
+		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+		return;
 	}
+
+	/* Restore pipe B plane to turn on HDMI screen */
+	dspcntr_val = REG_READ(dspcntr_reg);
+	if ((dspcntr_val & DISPLAY_PLANE_ENABLE) == 0 &&
+			(DISP_PLANEB_STATUS != DISPLAY_PLANE_DISABLE)) {
+		REG_WRITE(dspcntr_reg,
+				dspcntr_val | DISPLAY_PLANE_ENABLE);
+		/* Flush the plane changes */
+		REG_WRITE(dspbsurf_reg, REG_READ(dspbsurf_reg));
+	}
+
 	/*restore avi infomation*/
 	if (!dev_priv->bDVIport)
 		mdfld_hdmi_set_avi_infoframe(dev,
-			 &output->base, hdmi_priv->current_mode);
+				&output->base, hdmi_priv->current_mode);
 	else {
 		REG_WRITE(VIDEO_DIP_CTL, 0x0);
 		REG_WRITE(AUDIO_DIP_CTL, 0x0);
 	}
 
+	hdmi_priv->need_encoder_restore = false;
+
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+
+	PSB_DEBUG_ENTRY("successfully\n");
+}
+
+static void mdfld_hdmi_encoder_restore(struct drm_encoder *encoder)
+{
+	unsigned long delay = 0;
+	struct drm_device *dev = NULL;
+	struct psb_intel_output *output = NULL;
+	struct mid_intel_hdmi_priv *hdmi_priv = NULL;
+
+	if (unlikely(!encoder))
+		return;
+
+	output = enc_to_psb_intel_output(encoder);
+	if (unlikely(!output))
+		return;
+
+	hdmi_priv = output->dev_priv;
+	if (unlikely(!hdmi_priv))
+		return;
+
+	hdmi_priv->data = (void *)encoder;
+
+	delay = HZ/5;
+	schedule_delayed_work(&hdmi_priv->enc_work, delay);
 }
 
 
@@ -2171,6 +2216,9 @@ void mdfld_hdmi_init(struct drm_device *dev,
 		intel_scu_ipc_iowrite8(MSIC_VHDMICNT, VHDMI_ON | VHDMI_DB_30MS);
 	} else if (IS_CTP(dev))
 		mdfld_ti_tpd_init(hdmi_priv);
+
+	/* initialize hdmi encoder restore delayed work */
+	INIT_DELAYED_WORK(&hdmi_priv->enc_work, mdfld_hdmi_encoder_restore_wq);
 
 	drm_sysfs_connector_add(connector);
 	return;
