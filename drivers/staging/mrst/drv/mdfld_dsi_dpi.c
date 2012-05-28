@@ -1781,6 +1781,13 @@ static int __dpi_panel_power_off(struct mdfld_dsi_config *dsi_config,
 	for (i = 0; i < 256; i++)
 		ctx->palette[i] = REG_READ(regs->palette_reg + (i<<2));
 
+	/*
+	 * Couldn't disable the pipe until DRM_WAIT_ON signaled by last
+	 * vblank event when playing video, otherwise the last vblank event
+	 * will lost when pipe disabled before vblank interrupt coming sometimes.
+	 */
+	mutex_lock(&dev->mode_config.mutex);
+
 	/*Disable panel*/
 	val = ctx->dspcntr;
 	val &= ~(PIPEACONF_COLOR_MATRIX_ENABLE | PIPEACONF_GAMMA);
@@ -1792,6 +1799,8 @@ static int __dpi_panel_power_off(struct mdfld_dsi_config *dsi_config,
 	val = REG_READ(regs->pipeconf_reg);
 	ctx->pipeconf = val;
 	REG_WRITE(regs->pipeconf_reg, (val & ~BIT31));
+
+	mutex_unlock(&dev->mode_config.mutex);
 
 	/*wait for pipe disabling,
 	pipe synchronization plus , only avaiable when
