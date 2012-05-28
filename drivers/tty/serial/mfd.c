@@ -728,6 +728,8 @@ static void serial_hsu_stop_rx(struct uart_port *port)
 			chan_writel(up->rxc, HSU_CH_CR, 0x2);
 		}
 		up->dma_rx_on = 0;
+		if (dmarx_need_timer())
+			del_timer_sync(&up->rxc->rx_timer);
 	} else {
 		up->ier &= ~UART_IER_RLSI;
 		up->port.read_status_mask &= ~UART_LSR_DR;
@@ -1739,11 +1741,9 @@ static void hsu_dma_rx_timeout(unsigned long data)
 	count = chan_readl(chan, HSU_CH_D0SAR) - dbuf->dma_addr;
 
 	if (!count) {
-		if (dmarx_need_timer()) {
+		if (dmarx_need_timer())
 			mod_timer(&chan->rx_timer,
 				jiffies + HSU_DMA_TIMEOUT_CHECK_FREQ);
-			runtime_suspend_delay(up);
-		}
 		goto exit;
 	}
 
@@ -2010,6 +2010,9 @@ static int hsu_runtime_suspend(struct device *dev)
 	if (!allow_for_suspend(up))
 		return hsu_runtime_idle(dev);
 
+	if (dmarx_need_timer())
+		del_timer_sync(&up->rxc->rx_timer);
+
 	chan_writel(up->rxc, HSU_CH_CR, 0x2);
 	disable_irq(up->port.irq);
 	if (up->index == 1) {
@@ -2020,6 +2023,8 @@ static int hsu_runtime_suspend(struct device *dev)
 		}
 		memcpy(up3->reg_shadow + 1, up3->port.membase + 1,
 			HSU_PORT_REG_LENGTH - 1);
+		if (dmarx_need_timer())
+			del_timer_sync(&up3->rxc->rx_timer);
 	}
 	memcpy(up->reg_shadow + 1, up->port.membase + 1, HSU_PORT_REG_LENGTH - 1);
 	if (up->running)
@@ -2041,13 +2046,22 @@ static int hsu_runtime_resume(struct device *dev)
 
 		if (up3->running)
 			intel_mid_hsu_resume(up3->index);
-		if (up3->dma_rx_on)
+		if (up3->dma_rx_on) {
 			dma_rx_on = 1;
+			if (dmarx_need_timer())
+				mod_timer(&up3->rxc->rx_timer,
+					jiffies + HSU_DMA_TIMEOUT_CHECK_FREQ);
+		}
 	}
 
 	enable_irq(up->port.irq);
 	if (up->dma_rx_on || dma_rx_on)
 		chan_writel(up->rxc, HSU_CH_CR, 0x3);
+
+	if (up->dma_rx_on && dmarx_need_timer())
+		mod_timer(&up->rxc->rx_timer,
+			jiffies + HSU_DMA_TIMEOUT_CHECK_FREQ);
+
 	return 0;
 }
 #endif
