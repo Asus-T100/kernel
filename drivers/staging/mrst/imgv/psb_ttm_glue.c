@@ -146,8 +146,7 @@ int psb_release(struct inode *inode, struct file *filp)
 		MRST_MSG_WRITE32(0x1, 0x4, (ui32_reg_value | (0x1 << 7)));
 	}
 
-	if (IS_MRST(dev_priv->dev))
-		schedule_delayed_work(&dev_priv->scheduler.msvdx_suspend_wq, 10);
+	schedule_delayed_work(&dev_priv->scheduler.msvdx_suspend_wq, msecs_to_jiffies(10));
 #endif
 	ret = drm_release(inode, filp);
 
