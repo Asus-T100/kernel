@@ -1441,6 +1441,16 @@ config MSIC_GPADC
         help
 	  Say Y here to enable MSIC GPADC driver on Intel Medfield Platform
 
+config SENSORS_PSH
+        tristate "Intel PSH"
+        depends on INTEL_PSH_IPC && INTEL_SCU_IPC_UTIL
+        help
+	  Say Y here to enable PSH driver on Intel Merrifield Platform, and
+	  this driver depends on PSH IPC and SCU IPC driver.
+
+          This driver can also be built as a module. If so, the module
+          will be called psh.
+
 config BASINCOVE_GPADC
         tristate "BASINCOVE GPADC driver for Intel Merrifield platform"
         depends on INTEL_SCU_IPC

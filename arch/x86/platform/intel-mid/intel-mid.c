@@ -735,6 +735,31 @@ static int __init intel_scu_ipc_subdev_init(void)
 postcore_initcall(intel_scu_ipc_subdev_init);
 #endif
 
+#ifdef CONFIG_INTEL_PSH_IPC
+static int __init intel_psh_ipc_subdev_init(void)
+{
+	int i, ret;
+	static struct ipc_board_info info[] __initdata = {
+		[0] = {
+			.name = "psh",
+			.bus_id = IPC_PSH,
+			.id = -1,
+		},
+	};
+
+	for (i = 0; i < ARRAY_SIZE(info); i++) {
+		ret = ipc_new_device(&info[i]);
+		if (ret) {
+			pr_err("Fail to create ipc device: %s\n", info[i].name);
+			return -EINVAL;
+		}
+	}
+
+	return 0;
+}
+device_initcall(intel_psh_ipc_subdev_init);
+#endif
+
 static void __init sfi_handle_spi_dev(struct sfi_device_table_entry *pentry,
 					struct devs_id *dev)
 {
