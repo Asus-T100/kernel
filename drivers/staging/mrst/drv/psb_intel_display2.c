@@ -1223,7 +1223,6 @@ static void mdfld_crtc_dpms(struct drm_crtc *crtc, int mode)
 	case DRM_MODE_DPMS_SUSPEND:
 		/* Enable the DPLL */
 		temp = REG_READ(dpll_reg);
-
 		if ((temp & DPLL_VCO_ENABLE) == 0) {
 			/* When ungating power of DPLL, needs to wait 0.5us before enable the VCO */
 			if (temp & MDFLD_PWR_GATE_EN) {
@@ -1359,7 +1358,8 @@ static void mdfld_crtc_dpms(struct drm_crtc *crtc, int mode)
 				 * FIXME: better to move it into the MIPI
 				 * encoder DPMS off process.
 				 */
-				if (get_panel_type(dev, pipe) == AUO_SC1_CMD && pipe < sizeof(dev_priv->dsi_configs)/sizeof(*(dev_priv->dsi_configs))) {
+				if ((get_panel_type(dev, pipe) == AUO_SC1_CMD) &&
+						pipe < sizeof(dev_priv->dsi_configs)/sizeof(*(dev_priv->dsi_configs))) {
 					dsi_config =
 						dev_priv->dsi_configs[pipe];
 					regs = &dsi_config->regs;
@@ -1392,6 +1392,11 @@ static void mdfld_crtc_dpms(struct drm_crtc *crtc, int mode)
 			udelay(5000);
 		}
 #endif
+			}
+			if (get_panel_type(dev, pipe) == GI_SONY_CMD) {
+				/*reset the display island to switch DPI to DBI*/
+				ospm_power_island_down(OSPM_DISPLAY_ISLAND);
+				ospm_power_island_up(OSPM_DISPLAY_ISLAND);
 			}
 		}
 		break;

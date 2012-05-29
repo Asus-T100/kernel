@@ -624,11 +624,11 @@ void mdfld_dsi_dbi_async_flip_fb_update(struct drm_device *dev, int pipe)
 	REG_READ(dspsurf_reg);
 
 	mdfld_dsi_send_dcs(sender,
-			   write_mem_start,
-			   NULL,
-			   0,
-			   CMD_DATA_SRC_PIPE,
-			   MDFLD_DSI_SEND_PACKAGE);
+				write_mem_start,
+				NULL,
+				0,
+				CMD_DATA_SRC_PIPE,
+				MDFLD_DSI_SEND_PACKAGE);
 	mdfld_dsi_cmds_kick_out(sender);
 
 	return;

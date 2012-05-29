@@ -75,7 +75,7 @@ static void mdfld_ms_delay(enum delay_type d_type, int delay)
 static u32 gi_l5f3_set_column_add[] = {0x0100002a, 0x0000003f};
 static u32 gi_l5f3_set_row_add[] = {0x0100002b, 0x000000df};
 /* static u32 gi_l5f3_set_address_mode[] = {0x00004036}; */
-static u32 gi_l5f3_set_address_mode[] = {0x00000036};
+static u32 gi_l5f3_set_address_mode[] = {0x0000C036};
 static u32 gi_l5f3_set_pixel_format[] = {0x0000773a};
 static u32 gi_l5f3_set_te_scanline[] = {0x00000044};
 static u32 gi_l5f3_set_tear_on[] = {0x00000035};
@@ -238,12 +238,14 @@ mdfld_gi_sony_dsi_controller_init(struct mdfld_dsi_config *dsi_config,
 	hw_ctx->eot_disable = 0x0;
 	hw_ctx->lp_byteclk = 0x0;
 	hw_ctx->clk_lane_switch_time_cnt = 0xa0014;
-	hw_ctx->dphy_param = 0x120a2b07;
+	hw_ctx->dphy_param = 0x150a600f;
 	hw_ctx->dbi_bw_ctrl = 0x820;
+
 	if (dev_priv->platform_rev_id == MDFLD_PNW_A0)
-		hw_ctx->mipi = PASS_FROM_SPHY_TO_AFE | SEL_FLOPPED_HSTX;
+		hw_ctx->mipi = PASS_FROM_SPHY_TO_AFE |
+			SEL_FLOPPED_HSTX | TE_TRIGGER_GPIO_PIN;
 	else
-		hw_ctx->mipi = PASS_FROM_SPHY_TO_AFE;
+		hw_ctx->mipi = PASS_FROM_SPHY_TO_AFE | TE_TRIGGER_GPIO_PIN;
 
 	/*set up func_prg*/
 	hw_ctx->dsi_func_prg = (0xa000 | lane_count);
@@ -614,7 +616,6 @@ static int mdfld_gi_sony_dsi_dbi_power_on(struct drm_encoder *encoder)
 	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
 					OSPM_UHB_FORCE_POWER_ON))
 		return -EAGAIN;
-
 	/* HW-Reset */
 	if (p_funcs && p_funcs->reset)
 		p_funcs->reset(dsi_config, RESET_FROM_OSPM_RESUME);
@@ -643,6 +644,10 @@ static int mdfld_gi_sony_dsi_dbi_power_on(struct drm_encoder *encoder)
 	/* Enable DSI Controller */
 	REG_WRITE(regs->device_ready_reg, BIT0);
 
+	/*panel drvIC init*/
+	if (p_funcs->drv_ic_init)
+		p_funcs->drv_ic_init(dsi_config, 0);
+
 	/*
 	 * Different panel may have different ways to have
 	 * panel turned on. Support it!
@@ -654,7 +659,6 @@ static int mdfld_gi_sony_dsi_dbi_power_on(struct drm_encoder *encoder)
 			goto power_on_err;
 		}
 	}
-
 power_on_err:
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 	return err;
@@ -1101,12 +1105,8 @@ static void gi_sony_dsi_dbi_update_fb(struct mdfld_dsi_dbi_output *dbi_output,
 			   0,
 			   CMD_DATA_SRC_PIPE,
 			   MDFLD_DSI_SEND_PACKAGE);
-
-	mdfld_dsi_gen_fifo_ready(dev, GEN_FIFO_STAT_REG,
-			HS_CTRL_FIFO_EMPTY | HS_DATA_FIFO_EMPTY);
-	REG_WRITE(HS_GEN_CTRL_REG, (1 << WORD_COUNTS_POS) | GEN_READ_0);
-
 	dbi_output->dsr_fb_update_done = true;
+	mdfld_dsi_cmds_kick_out(sender);
 
 update_fb_out0:
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
@@ -1245,6 +1245,12 @@ static int mdfld_gi_sony_dsi_panel_reset(struct mdfld_dsi_config *dsi_config,
 {
 	static bool b_gpio_required[PSB_NUM_PIPE] = {0};
 	int ret = 0;
+	struct mdfld_dsi_hw_registers *regs = NULL;
+	struct drm_device *dev = dsi_config->dev;
+
+	PSB_DEBUG_ENTRY("\n");
+
+	regs = &dsi_config->regs;
 
 	if (reset_from == RESET_FROM_BOOT_UP) {
 		b_gpio_required[dsi_config->pipe] = false;
@@ -1262,21 +1268,17 @@ static int mdfld_gi_sony_dsi_panel_reset(struct mdfld_dsi_config *dsi_config,
 		}
 
 		b_gpio_required[dsi_config->pipe] = true;
-#if 0
-		/*
-		 * for get date from panel side is not easy, so here use
-		 * display side setting to judge wheather panel have enabled or
-		 * not by FW
-		 */
-		if ((REG_READ(regs->dpll_reg) & BIT31) &&
-				(REG_READ(regs->pipeconf_reg) & BIT30) &&
-				(REG_READ(regs->mipi_reg) & BIT31)) {
-			PSB_DEBUG_ENTRY("FW has initialized the panel, skip"
-					"reset during boot up\n.");
-			psb_enable_vblank(dev, dsi_config->pipe);
-			goto fun_exit;
+
+		/* if FW initialized in video mode , use power off/on,
+		display island to reset total display controller*/
+		if (!(REG_READ(regs->pipeconf_reg) & BIT26) &&
+			(REG_READ(regs->mipi_reg) & BIT31)) {
+				/*reset the display island
+				  to switch DPI to DBI*/
+				printk(KERN_INFO "power on/off to reset\n");
+				ospm_power_island_down(OSPM_DISPLAY_ISLAND);
+				ospm_power_island_up(OSPM_DISPLAY_ISLAND);
 		}
-#endif
 	}
 
 	if (b_gpio_required[dsi_config->pipe]) {
@@ -1407,7 +1409,7 @@ int mdfld_gi_sony_power_on(struct drm_encoder *encoder)
 
 	mdfld_ms_delay(MSLEEP, 50);
 
-	mdfld_dbi_dsr_timer_start(dev_priv->dbi_dsr_info);
+	/*mdfld_dbi_dsr_timer_start(dev_priv->dbi_dsr_info);*/
 power_err:
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 	return err;

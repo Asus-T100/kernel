@@ -3342,28 +3342,38 @@ static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 
 				PSB_WVDC32(arg->overlay.OVADD, OV_OVADD);
 
-				if (arg->overlay.b_wait_vblank)
-					overlay_wait_vblank(dev,
-							file_priv,
-							arg->overlay.OVADD);
+				if (is_panel_vid_or_cmd(dev) == MDFLD_DSI_ENCODER_DPI) {
+					if (arg->overlay.b_wait_vblank)
+						overlay_wait_vblank(dev,
+								file_priv,
+								arg->overlay.OVADD);
+				}
 
 				if (IS_MDFLD(dev)) {
-					if ((((arg->overlay.OVADD & OV_PIPE_SELECT) >> OV_PIPE_SELECT_POS) == OV_PIPE_A)
-					    && (!(dev_priv->dsr_fb_update & MDFLD_DSR_OVERLAY_0))) {
+					if (is_panel_vid_or_cmd(dev) == MDFLD_DSI_ENCODER_DBI) {
+						if ((((arg->overlay.OVADD & OV_PIPE_SELECT) >>
+							OV_PIPE_SELECT_POS) == OV_PIPE_A)) {
 #ifndef CONFIG_MDFLD_DSI_DPU
-						mdfld_dsi_dbi_exit_dsr(dev, MDFLD_DSR_OVERLAY_0, 0, 0);
+							mdfld_dsi_dbi_exit_dsr(dev, MDFLD_DSR_OVERLAY_0, 0, 0);
+							if (dev_priv->b_async_flip_enable &&
+									dev_priv->async_flip_update_fb)
+								dev_priv->async_flip_update_fb(dev, 0);
 #else
-						/*TODO: report overlay damage*/
+							/*TODO: report overlay damage*/
 #endif
-					}
+						}
 
-					if ((((arg->overlay.OVADD & OV_PIPE_SELECT) >> OV_PIPE_SELECT_POS) == OV_PIPE_C)
-					    && (!(dev_priv->dsr_fb_update & MDFLD_DSR_OVERLAY_2))) {
+						if ((((arg->overlay.OVADD & OV_PIPE_SELECT) >>
+							OV_PIPE_SELECT_POS) == OV_PIPE_C)) {
 #ifndef CONFIG_MDFLD_DSI_DPU
-						mdfld_dsi_dbi_exit_dsr(dev, MDFLD_DSR_OVERLAY_2, 0, 0);
+							mdfld_dsi_dbi_exit_dsr(dev, MDFLD_DSR_OVERLAY_2, 0, 0);
+							if (dev_priv->b_async_flip_enable &&
+									dev_priv->async_flip_update_fb)
+								dev_priv->async_flip_update_fb(dev, 2);
 #else
-						/*TODO: report overlay damage*/
+							/*TODO: report overlay damage*/
 #endif
+						}
 					}
 
 					if (arg->overlay.IEP_ENABLED) {

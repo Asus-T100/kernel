@@ -948,8 +948,7 @@ int psb_enable_vblank(struct drm_device *dev, int pipe)
 	PSB_DEBUG_ENTRY("\n");
 
 	if (IS_MDFLD(dev) && (dev_priv->platform_rev_id != MDFLD_PNW_A0) &&
-	    !is_panel_vid_or_cmd(dev) &&
-	    (get_panel_type(dev, pipe) != GI_SONY_CMD))
+	    !is_panel_vid_or_cmd(dev))
 		return mdfld_enable_te(dev, pipe);
 
 	if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, OSPM_UHB_ONLY_IF_ON)) {
@@ -985,8 +984,7 @@ void psb_disable_vblank(struct drm_device *dev, int pipe)
 	PSB_DEBUG_ENTRY("\n");
 
 	if (IS_MDFLD(dev) && (dev_priv->platform_rev_id != MDFLD_PNW_A0) &&
-	    !is_panel_vid_or_cmd(dev) &&
-	    (get_panel_type(dev, pipe) != GI_SONY_CMD))
+	    !is_panel_vid_or_cmd(dev))
 		mdfld_disable_te(dev, pipe);
 
 	dev_priv->b_vblank_enable = false;
