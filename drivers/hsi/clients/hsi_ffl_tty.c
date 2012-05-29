@@ -3071,6 +3071,12 @@ static int hangup_reasons(char *val, const struct kernel_param *kp)
   *
   * This callback performs a cold reset once a "1" is written into
   * the /sys/module/hsi_ffl_tty/parameters/cold_reset_modem sysFS file
+  *
+  *
+  * To do a modem cold reset we have to:
+  * - Set the RESET_BB_N to low (better SIM protection)
+  * - Set the EXT1P35VREN field to low  during 20ms (V1P35CNT_W PMIC register)
+  * - set the EXT1P35VREN field to high during 10ms (V1P35CNT_W PMIC register)
   */
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 36)
 static int modem_cold_reset(const char *val, struct kernel_param *kp)
@@ -3078,80 +3084,58 @@ static int modem_cold_reset(const char *val, struct kernel_param *kp)
 static int modem_cold_reset(const char *val, const struct kernel_param *kp)
 #endif
 {
-	int ret = 0;
-	int err;
-	u16 addr;
-	u8 data;
-	u8 def_value;
 	long request;
+	int err;
+	u16 addr = V1P35CNT_W;
+	u8 data, def_value;
+	struct ffl_ctx *ctx = ffl_drv.ctx[0]; /* Main context */
+	struct hsi_mid_platform_data *pd = ctx->client->device.platform_data;
 
 	if (strict_strtol(val, 10, &request) < 0)
 		return -EINVAL;
 
-	pr_debug(DRVNAME " - %s - start", __func__);
+	pr_info(DRVNAME " - %s (Modem cold reset requested !)", __func__);
 
-	/*
-	 * The modem cold boot is done by the following sequence:
-	 *  - Writes to PMIC register V1P35CNT_W to set EXT1P35VREN to low
-	 *    during 20ms
-	 *  - Writes to PMIC register V1P35CNT_W to set EXT1P35VREN to high
-	 *    during 10ms
-	 */
+	/* Set the reset_bb to low */
+	ctx->reset.ongoing = 1;
+	gpio_set_value(pd->gpio_mdm_rst_bbn, 0);
 
-	addr = V1P35CNT_W;
-	err = intel_scu_ipc_readv(&addr, &data, 2);
-	if (err != 0) {
+	/* Save the current register value */
+	err = intel_scu_ipc_readv(&addr, &def_value, 2);
+	if (err) {
 		pr_err(DRVNAME " - %s -  read error: %d", __func__, err);
-		ret = -EINVAL;
-		goto exit_modem_cold_reset;
+		goto out;
 	}
-	def_value = data;
 
-	addr = V1P35CNT_W;
+	/* Write the new register value (V1P35_OFF) */
 	data = (def_value & 0xf8) | V1P35_OFF;
 	err =  intel_scu_ipc_writev(&addr, &data, 1);
-	if (err != 0) {
+	if (err) {
 		pr_err(DRVNAME " - %s -  write error: %d", __func__, err);
-		ret = -EINVAL;
-		goto exit_modem_cold_reset;
+		goto out;
 	}
 	usleep_range(COLD_BOOT_DELAY_OFF, COLD_BOOT_DELAY_OFF);
 
-	addr = V1P35CNT_W;
+	/* Write the new register value (V1P35_ON) */
 	data = (def_value & 0xf8) | V1P35_ON;
 	err =  intel_scu_ipc_writev(&addr, &data, 1);
-	if (err != 0) {
+	if (err) {
 		pr_err(DRVNAME " - %s -  write error: %d", __func__, err);
-		ret = -EINVAL;
-		goto exit_modem_cold_reset;
+		goto out;
 	}
 	usleep_range(COLD_BOOT_DELAY_ON, COLD_BOOT_DELAY_ON);
 
-	addr = V1P35CNT_W;
-	err = intel_scu_ipc_readv(&addr, &data, 1);
-	if (err != 0) {
-		pr_err(DRVNAME " - %s -  read error: %d", __func__, err);
-		ret = -EINVAL;
-		goto exit_modem_cold_reset;
-	}
-
-	addr = V1P35CNT_W;
-	data = def_value;
-	err =  intel_scu_ipc_writev(&addr, &data, 1);
-	if (err != 0) {
+	/* Write back the initial register value */
+	err =  intel_scu_ipc_writev(&addr, &def_value, 1);
+	if (err) {
 		pr_err(DRVNAME " - %s -  write error: %d", __func__, err);
-		ret = -EINVAL;
-		goto exit_modem_cold_reset;
+	} else {
+		/* Perform a complete modem reset */
+		reset_modem(val, kp);
 	}
 
-exit_modem_cold_reset:
-	pr_debug(DRVNAME " - %s - end", __func__);
-
-	/* do a reset_modem to perform a complete modem reset */
-	if (ret != -EINVAL)
-		reset_modem(val, kp);
-
-	return ret;
+out:
+	return err;
 }
 
 /*
@@ -4127,4 +4111,3 @@ MODULE_AUTHOR("Olivier Stoltz Douchet <olivierx.stoltz-douchet@intel.com>");
 MODULE_DESCRIPTION("Fixed frame length protocol on HSI driver");
 MODULE_LICENSE("GPL");
 MODULE_VERSION("0.1-HSI-FFL");
-
