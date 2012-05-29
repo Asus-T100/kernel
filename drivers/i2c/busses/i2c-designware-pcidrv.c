@@ -54,6 +54,21 @@ enum dw_pci_ctl_id_t {
 	medfield_3,
 	medfield_4,
 	medfield_5,
+
+	cloverview_0,
+	cloverview_1,
+	cloverview_2,
+	cloverview_3,
+	cloverview_4,
+	cloverview_5,
+
+	merrifield_0,
+	merrifield_1,
+	merrifield_2,
+	merrifield_3,
+	merrifield_4,
+	merrifield_5,
+	merrifield_6,
 };
 
 struct dw_pci_controller {
@@ -62,11 +77,34 @@ struct dw_pci_controller {
 	u32 tx_fifo_depth;
 	u32 rx_fifo_depth;
 	u32 clk_khz;
+	int (*scl_cfg) (struct dw_i2c_dev *dev);
 };
 
 #define INTEL_MID_STD_CFG  (DW_IC_CON_MASTER |			\
 				DW_IC_CON_SLAVE_DISABLE |	\
 				DW_IC_CON_RESTART_EN)
+
+static int mfld_i2c_scl_cfg(struct dw_i2c_dev *dev)
+{
+	dw_writel(dev, PNW_SS_SCLK_HCNT, DW_IC_SS_SCL_HCNT);
+	dw_writel(dev, PNW_SS_SCLK_LCNT, DW_IC_SS_SCL_LCNT);
+
+	dw_writel(dev, PNW_FS_SCLK_HCNT, DW_IC_FS_SCL_HCNT);
+	dw_writel(dev, PNW_FS_SCLK_LCNT, DW_IC_FS_SCL_LCNT);
+
+	return 0;
+}
+
+static int ctp_i2c_scl_cfg(struct dw_i2c_dev *dev)
+{
+	dw_writel(dev, CLV_SS_SCLK_HCNT, DW_IC_SS_SCL_HCNT);
+	dw_writel(dev, CLV_SS_SCLK_LCNT, DW_IC_SS_SCL_LCNT);
+
+	dw_writel(dev, CLV_FS_SCLK_HCNT, DW_IC_FS_SCL_HCNT);
+	dw_writel(dev, CLV_FS_SCLK_LCNT, DW_IC_FS_SCL_LCNT);
+
+	return 0;
+}
 
 static struct  dw_pci_controller  dw_pci_controllers[] = {
 	[moorestown_0] = {
@@ -95,44 +133,150 @@ static struct  dw_pci_controller  dw_pci_controllers[] = {
 		.bus_cfg   = INTEL_MID_STD_CFG | DW_IC_CON_SPEED_FAST,
 		.tx_fifo_depth = 32,
 		.rx_fifo_depth = 32,
-		.clk_khz      = 25000,
+		.clk_khz      = 17000,
+		.scl_cfg = mfld_i2c_scl_cfg,
 	},
 	[medfield_1] = {
 		.bus_num     = 1,
-		.bus_cfg   = INTEL_MID_STD_CFG | DW_IC_CON_SPEED_FAST,
+		.bus_cfg   = INTEL_MID_STD_CFG | DW_IC_CON_SPEED_STD,
 		.tx_fifo_depth = 32,
 		.rx_fifo_depth = 32,
-		.clk_khz      = 25000,
+		.clk_khz      = 20500,
+		.scl_cfg = mfld_i2c_scl_cfg,
 	},
 	[medfield_2] = {
 		.bus_num     = 2,
 		.bus_cfg   = INTEL_MID_STD_CFG | DW_IC_CON_SPEED_FAST,
 		.tx_fifo_depth = 32,
 		.rx_fifo_depth = 32,
-		.clk_khz      = 25000,
+		.clk_khz      = 17000,
+		.scl_cfg = mfld_i2c_scl_cfg,
 	},
 	[medfield_3] = {
 		.bus_num     = 3,
 		.bus_cfg   = INTEL_MID_STD_CFG | DW_IC_CON_SPEED_STD,
 		.tx_fifo_depth = 32,
 		.rx_fifo_depth = 32,
-		.clk_khz      = 25000,
+		.clk_khz      = 20500,
+		.scl_cfg = mfld_i2c_scl_cfg,
 	},
 	[medfield_4] = {
 		.bus_num     = 4,
 		.bus_cfg   = INTEL_MID_STD_CFG | DW_IC_CON_SPEED_FAST,
 		.tx_fifo_depth = 32,
 		.rx_fifo_depth = 32,
-		.clk_khz      = 25000,
+		.clk_khz      = 17000,
+		.scl_cfg = mfld_i2c_scl_cfg,
 	},
 	[medfield_5] = {
 		.bus_num     = 5,
 		.bus_cfg   = INTEL_MID_STD_CFG | DW_IC_CON_SPEED_FAST,
 		.tx_fifo_depth = 32,
 		.rx_fifo_depth = 32,
-		.clk_khz      = 25000,
+		.clk_khz      = 17000,
+		.scl_cfg = mfld_i2c_scl_cfg,
+	},
+
+	[cloverview_0] = {
+		.bus_num     = 0,
+		.bus_cfg   = INTEL_MID_STD_CFG | DW_IC_CON_SPEED_FAST,
+		.tx_fifo_depth = 32,
+		.rx_fifo_depth = 32,
+		.clk_khz      = 17000,
+		.scl_cfg = ctp_i2c_scl_cfg,
+	},
+	[cloverview_1] = {
+		.bus_num     = 1,
+		.bus_cfg   = INTEL_MID_STD_CFG | DW_IC_CON_SPEED_FAST,
+		.tx_fifo_depth = 32,
+		.rx_fifo_depth = 32,
+		.clk_khz      = 17000,
+		.scl_cfg = ctp_i2c_scl_cfg,
+	},
+	[cloverview_2] = {
+		.bus_num     = 2,
+		.bus_cfg   = INTEL_MID_STD_CFG | DW_IC_CON_SPEED_FAST,
+		.tx_fifo_depth = 32,
+		.rx_fifo_depth = 32,
+		.clk_khz      = 17000,
+		.scl_cfg = ctp_i2c_scl_cfg,
+	},
+	[cloverview_3] = {
+		.bus_num     = 3,
+		.bus_cfg   = INTEL_MID_STD_CFG | DW_IC_CON_SPEED_STD,
+		.tx_fifo_depth = 32,
+		.rx_fifo_depth = 32,
+		.clk_khz      = 20500,
+		.scl_cfg = ctp_i2c_scl_cfg,
+	},
+	[cloverview_4] = {
+		.bus_num     = 4,
+		.bus_cfg   = INTEL_MID_STD_CFG | DW_IC_CON_SPEED_FAST,
+		.tx_fifo_depth = 32,
+		.rx_fifo_depth = 32,
+		.clk_khz      = 17000,
+		.scl_cfg = ctp_i2c_scl_cfg,
+	},
+	[cloverview_5] = {
+		.bus_num     = 5,
+		.bus_cfg   = INTEL_MID_STD_CFG | DW_IC_CON_SPEED_FAST,
+		.tx_fifo_depth = 32,
+		.rx_fifo_depth = 32,
+		.clk_khz      = 17000,
+		.scl_cfg = ctp_i2c_scl_cfg,
+	},
+
+	[merrifield_0] = {
+		.bus_num     = 0,
+		.bus_cfg   = INTEL_MID_STD_CFG | DW_IC_CON_SPEED_STD,
+		.tx_fifo_depth = 32,
+		.rx_fifo_depth = 32,
+		.clk_khz      = 17000,
+	},
+	[merrifield_1] = {
+		.bus_num     = 1,
+		.bus_cfg   = INTEL_MID_STD_CFG | DW_IC_CON_SPEED_STD,
+		.tx_fifo_depth = 32,
+		.rx_fifo_depth = 32,
+		.clk_khz      = 17000,
+	},
+	[merrifield_2] = {
+		.bus_num     = 2,
+		.bus_cfg   = INTEL_MID_STD_CFG | DW_IC_CON_SPEED_STD,
+		.tx_fifo_depth = 32,
+		.rx_fifo_depth = 32,
+		.clk_khz      = 17000,
+	},
+	[merrifield_3] = {
+		.bus_num     = 3,
+		.bus_cfg   = INTEL_MID_STD_CFG | DW_IC_CON_SPEED_STD,
+		.tx_fifo_depth = 32,
+		.rx_fifo_depth = 32,
+		.clk_khz      = 17000,
+	},
+	[merrifield_4] = {
+		.bus_num     = 4,
+		.bus_cfg   = INTEL_MID_STD_CFG | DW_IC_CON_SPEED_STD,
+		.tx_fifo_depth = 32,
+		.rx_fifo_depth = 32,
+		.clk_khz      = 17000,
+	},
+	[merrifield_5] = {
+		.bus_num     = 5,
+		.bus_cfg   = INTEL_MID_STD_CFG | DW_IC_CON_SPEED_STD,
+		.tx_fifo_depth = 32,
+		.rx_fifo_depth = 32,
+		.clk_khz      = 17000,
+	},
+	[merrifield_6] = {
+		.bus_num     = 6,
+		.bus_cfg   = INTEL_MID_STD_CFG | DW_IC_CON_SPEED_STD,
+		.tx_fifo_depth = 32,
+		.rx_fifo_depth = 32,
+		.clk_khz      = 17000,
 	},
 };
+
 static struct i2c_algorithm i2c_dw_algo = {
 	.master_xfer	= i2c_dw_xfer,
 	.functionality	= i2c_dw_func,
@@ -215,15 +359,20 @@ const struct pci_device_id *id)
 	unsigned long start, len;
 	void __iomem *base;
 	int r;
+	int bus_idx;
+	static int bus_num;
 	struct  dw_pci_controller *controller;
 
-	if (id->driver_data >= ARRAY_SIZE(dw_pci_controllers)) {
-		printk(KERN_ERR "dw_i2c_pci_probe: invalid driver data %ld\n",
-			id->driver_data);
+	bus_idx = id->driver_data + bus_num;
+	bus_num++;
+
+	if (bus_idx >= ARRAY_SIZE(dw_pci_controllers)) {
+		pr_err("i2c_dw_pci_probe: invalid bus index %d\n",
+			bus_idx);
 		return -EINVAL;
 	}
 
-	controller = &dw_pci_controllers[id->driver_data];
+	controller = &dw_pci_controllers[bus_idx];
 
 	r = pci_enable_device(pdev);
 	if (r) {
@@ -277,6 +426,7 @@ const struct pci_device_id *id)
 		I2C_FUNC_SMBUS_WORD_DATA |
 		I2C_FUNC_SMBUS_I2C_BLOCK;
 	dev->master_cfg =  controller->bus_cfg;
+	dev->get_scl_cfg = controller->scl_cfg;
 
 	pci_set_drvdata(pdev, dev);
 
@@ -348,25 +498,35 @@ static void __devexit i2c_dw_pci_remove(struct pci_dev *pdev)
 /* work with hotplug and coldplug */
 MODULE_ALIAS("i2c_designware-pci");
 
-static DEFINE_PCI_DEVICE_TABLE(i2_designware_pci_ids) = {
+static DEFINE_PCI_DEVICE_TABLE(i2c_designware_pci_ids) = {
 	/* Moorestown */
 	{ PCI_VDEVICE(INTEL, 0x0802), moorestown_0 },
-	{ PCI_VDEVICE(INTEL, 0x0803), moorestown_1 },
-	{ PCI_VDEVICE(INTEL, 0x0804), moorestown_2 },
+	{ PCI_VDEVICE(INTEL, 0x0803), moorestown_0 },
+	{ PCI_VDEVICE(INTEL, 0x0804), moorestown_0 },
 	/* Medfield */
-	{ PCI_VDEVICE(INTEL, 0x0817), medfield_3,},
-	{ PCI_VDEVICE(INTEL, 0x0818), medfield_4 },
-	{ PCI_VDEVICE(INTEL, 0x0819), medfield_5 },
+	{ PCI_VDEVICE(INTEL, 0x0817), medfield_0 },
+	{ PCI_VDEVICE(INTEL, 0x0818), medfield_0 },
+	{ PCI_VDEVICE(INTEL, 0x0819), medfield_0 },
 	{ PCI_VDEVICE(INTEL, 0x082C), medfield_0 },
-	{ PCI_VDEVICE(INTEL, 0x082D), medfield_1 },
-	{ PCI_VDEVICE(INTEL, 0x082E), medfield_2 },
+	{ PCI_VDEVICE(INTEL, 0x082D), medfield_0 },
+	{ PCI_VDEVICE(INTEL, 0x082E), medfield_0 },
+	/* Cloverview */
+	{ PCI_VDEVICE(INTEL, 0x08E2), cloverview_0 },
+	{ PCI_VDEVICE(INTEL, 0x08E3), cloverview_0 },
+	{ PCI_VDEVICE(INTEL, 0x08E4), cloverview_0 },
+	{ PCI_VDEVICE(INTEL, 0x08F4), cloverview_0 },
+	{ PCI_VDEVICE(INTEL, 0x08F5), cloverview_0 },
+	{ PCI_VDEVICE(INTEL, 0x08F6), cloverview_0 },
+	/* Merrifield */
+	{ PCI_VDEVICE(INTEL, 0x1195), merrifield_0 },
+	{ PCI_VDEVICE(INTEL, 0x1196), merrifield_0 },
 	{ 0,}
 };
-MODULE_DEVICE_TABLE(pci, i2_designware_pci_ids);
+MODULE_DEVICE_TABLE(pci, i2c_designware_pci_ids);
 
 static struct pci_driver dw_i2c_driver = {
 	.name		= DRIVER_NAME,
-	.id_table	= i2_designware_pci_ids,
+	.id_table	= i2c_designware_pci_ids,
 	.probe		= i2c_dw_pci_probe,
 	.remove		= __devexit_p(i2c_dw_pci_remove),
 	.driver         = {
