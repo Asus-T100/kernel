@@ -892,7 +892,8 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 			int entrypoint = pos->ctx_type & 0xff;
 
 			PSB_DEBUG_GENERAL("Video:commands for profile %d, entrypoint %d",
-					  (pos->ctx_type >> 8), (pos->ctx_type & 0xff));
+					(pos->ctx_type >> 8) & 0xff,
+					(pos->ctx_type & 0xff));
 
 			if (entrypoint == VAEntrypointEncSlice ||
 			    entrypoint == VAEntrypointEncPicture)

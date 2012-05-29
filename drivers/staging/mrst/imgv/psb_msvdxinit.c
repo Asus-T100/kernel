@@ -611,7 +611,8 @@ int psb_setup_fw(struct drm_device *dev)
 
         /* load error concealment firmware? */
         if (IS_MRST(dev) && dev_priv->last_msvdx_ctx &&
-            (dev_priv->last_msvdx_ctx->ctx_type >> 8) == VAProfileH264ConstrainedBaseline) {
+			(((dev_priv->last_msvdx_ctx->ctx_type >> 8) & 0xff) ==
+			VAProfileH264ConstrainedBaseline)) {
             ec_firmware = 1;
             PSB_DEBUG_INIT("MSVDX: load error concealment firmware\n");
         }

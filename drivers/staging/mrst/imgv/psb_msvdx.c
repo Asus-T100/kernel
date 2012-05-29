@@ -33,6 +33,8 @@
 	list_entry((ptr)->next, type, member)
 #endif
 
+static int ied_enabled;
+
 static int psb_msvdx_send(struct drm_device *dev, void *cmd,
 			  unsigned long cmd_size);
 
@@ -398,8 +400,11 @@ int psb_submit_video_cmdbuf(struct drm_device *dev,
 		if (IS_MRST(dev) && dev_priv->msvdx_ctx && dev_priv->last_msvdx_ctx) {
 			uint32_t from_profile, to_profile;
 
-			from_profile = dev_priv->last_msvdx_ctx->ctx_type >> 8;
-			to_profile = dev_priv->msvdx_ctx->ctx_type >> 8;
+			from_profile =
+				(dev_priv->last_msvdx_ctx->ctx_type >> 8) &
+				0xff;
+			to_profile =
+				(dev_priv->msvdx_ctx->ctx_type >> 8) & 0xff;
 
 			/* not the same profile, and one of them is H264 constrained BP
 			 * which needs Error Concealment firmware
@@ -1296,12 +1301,14 @@ int psb_check_msvdx_idle(struct drm_device *dev)
 int psb_remove_videoctx(struct drm_psb_private *dev_priv, struct file *filp)
 {
 	struct psb_video_ctx *pos, *n;
+	/* iterate to query all ctx to if there is DRM running*/
+	ied_enabled = 0;
 
 	list_for_each_entry_safe(pos, n, &dev_priv->video_ctx, head) {
 		if (pos->filp == filp) {
 			PSB_DEBUG_GENERAL("Video:remove context profile %d,"
 					  " entrypoint %d",
-					  (pos->ctx_type >> 8),
+					  (pos->ctx_type >> 8) & 0xff,
 					  (pos->ctx_type & 0xff));
 
 			/* if current ctx points to it, set to NULL */
@@ -1333,6 +1340,9 @@ int psb_remove_videoctx(struct drm_psb_private *dev_priv, struct file *filp)
 
 			list_del(&pos->head);
 			kfree(pos);
+		} else {
+			if (pos->ctx_type & VA_RT_FORMAT_PROTECTED)
+				ied_enabled = 1;
 		}
 	}
 	return 0;
@@ -1428,8 +1438,13 @@ int lnc_video_getparam(struct drm_device *dev, void *data,
 				 (ctx_type & 0xff)))
 			pnw_reset_fw_status(dev_priv->dev);
 
-		PSB_DEBUG_GENERAL("Video:add context profile %d, entrypoint %d",
-				  (ctx_type >> 8), (ctx_type & 0xff));
+		PSB_DEBUG_GENERAL("Video:add ctx profile %d, entry %d.\n",
+					((ctx_type >> 8) & 0xff),
+					(ctx_type & 0xff));
+		PSB_DEBUG_GENERAL("Video:add context protected 0x%x.\n",
+					(ctx_type & VA_RT_FORMAT_PROTECTED));
+		if (ctx_type & VA_RT_FORMAT_PROTECTED)
+			ied_enabled = 1;
 		break;
 
 	case IMG_VIDEO_RM_CONTEXT:
@@ -1546,6 +1561,10 @@ int lnc_video_getparam(struct drm_device *dev, void *data,
 		break;
 		case IMG_VIDEO_IED_STATE:
 		if (IS_MDFLD(dev)) {
+			/* query IED status by register is not safe */
+			/* need first power-on msvdx, while now only  */
+			/* schedule vxd suspend wq in interrupt handler */
+#if 0
 			int ied_enable;
 			/* VXD must be power on during query IED register */
 			if (!ospm_power_using_hw_begin(OSPM_VIDEO_DEC_ISLAND,
@@ -1558,10 +1577,10 @@ int lnc_video_getparam(struct drm_device *dev, void *data,
 				ied_enable = 0;
 			PSB_DEBUG_GENERAL("ied_enable is %d.\n", ied_enable);
 			ospm_power_using_hw_end(OSPM_VIDEO_DEC_ISLAND);
-
+#endif
 			ret = copy_to_user((void __user *)
 					((unsigned long)arg->value),
-					&ied_enable, sizeof(ied_enable));
+					&ied_enabled, sizeof(ied_enabled));
 		} else { /* Moorestown should not call it */
 			DRM_ERROR("IMG_VIDEO_IED_EANBLE error.\n");
 			return -EFAULT;
@@ -1639,8 +1658,8 @@ int psb_msvdx_check_reset_fw(struct drm_device *dev)
 	if (IS_MRST(dev) && dev_priv->msvdx_ctx && dev_priv->last_msvdx_ctx) {
 		uint32_t from_profile, to_profile;
 
-		from_profile = dev_priv->last_msvdx_ctx->ctx_type >> 8;
-		to_profile = dev_priv->msvdx_ctx->ctx_type >> 8;
+		from_profile = (dev_priv->last_msvdx_ctx->ctx_type >> 8) & 0xff;
+		to_profile = (dev_priv->msvdx_ctx->ctx_type >> 8) & 0xff;
 
 		/* not the same profile, and one of them is H264 constrained BP
 		 * which needs Error Concealment firmware

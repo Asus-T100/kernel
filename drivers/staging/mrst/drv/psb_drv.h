@@ -411,11 +411,12 @@ enum VAEntrypoint {
 	VAEntrypointEncPicture 	= 7	/* pictuer encode, JPEG, etc */
 };
 
+#define VA_RT_FORMAT_PROTECTED	0x80000000
 
 struct psb_video_ctx {
 	struct list_head head;
 	struct file *filp; /* DRM device file pointer */
-	int ctx_type; /* profile<<8|entrypoint */
+	int ctx_type; /* protect_flag | (profile<<8) & 0xff |entrypoint */
 	/* todo: more context specific data for multi-context support */
 };
 
