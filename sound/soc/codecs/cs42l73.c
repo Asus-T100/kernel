@@ -790,6 +790,8 @@ static int cs42l73_set_mclk(struct snd_soc_dai *dai, unsigned int freq)
 
 	/* MCLKX -> MCLK */
 	mclkx_coeff = cs42l73_get_mclkx_coeff(freq);
+	if (mclkx_coeff < 0)
+		return -EINVAL;
 
 	if (mclkx_coeff < 0)
 		return -EINVAL;
@@ -1134,34 +1136,19 @@ static struct snd_soc_dai_driver cs42l73_dai[] = {
 	 }
 };
 
+#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
 static int cs42l73_set_mic_bias(struct snd_soc_codec *codec, int state)
 {
 
 	mutex_lock(&codec->mutex);
 	switch (state) {
 	case MIC_BIAS_DISABLE:
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
 		/* FIXME, need to remove this eventaully */
 		snd_soc_dapm_disable_pin(&codec->dapm, "MIC1 Bias");
-#else
-		if (ctp_board_id() == CTP_BID_VV)
-			snd_soc_dapm_disable_pin(&codec->dapm, "MIC1 Bias");
-		else
-			snd_soc_dapm_disable_pin(&codec->dapm, "MIC2 Bias");
-#endif
 		break;
 
 	case MIC_BIAS_ENABLE:
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
 		snd_soc_dapm_force_enable_pin(&codec->dapm, "MIC1 Bias");
-#else
-		if (ctp_board_id() == CTP_BID_VV)
-			snd_soc_dapm_force_enable_pin(&codec->dapm,
-							"MIC1 Bias");
-		else
-			snd_soc_dapm_force_enable_pin(&codec->dapm,
-							"MIC2 Bias");
-#endif
 		break;
 	}
 	snd_soc_dapm_sync(&codec->dapm);
@@ -1169,18 +1156,17 @@ static int cs42l73_set_mic_bias(struct snd_soc_codec *codec, int state)
 
 	return 0;
 }
+#endif
 
-void cs42l73_bp_detection(struct snd_soc_codec *codec,
+int cs42l73_bp_detection(struct snd_soc_codec *codec,
 			   struct snd_soc_jack *jack,
 			   int plug_status)
 {
-	unsigned int status;
+	unsigned int status = 0;
 	unsigned int reg;
-	unsigned int mask = SND_JACK_BTN_0 | SND_JACK_HEADSET;
 
 	if (plug_status) {
 		pr_err("%s: Invalid interrupt\n", __func__);
-		return;
 	} else {
 		snd_soc_update_bits(codec, CS42L73_IM1, MIC2_SDET, MIC2_SDET);
 		reg = snd_soc_read(codec, CS42L73_IS1);
@@ -1192,47 +1178,32 @@ void cs42l73_bp_detection(struct snd_soc_codec *codec,
 			status = SND_JACK_HEADSET;
 		}
 	}
-	snd_soc_jack_report(jack, status, mask);
+	return status;
 }
 EXPORT_SYMBOL_GPL(cs42l73_bp_detection);
 
-void cs42l73_hp_detection(struct snd_soc_codec *codec,
+int cs42l73_hp_detection(struct snd_soc_codec *codec,
 			   struct snd_soc_jack *jack,
 			   int plug_status)
 {
 	unsigned int status = 0;
 	unsigned int micbias = 0;
-	int hs_status = 0;
 	unsigned int reg;
-	unsigned int mask = SND_JACK_BTN_0 | SND_JACK_HEADSET;
 
 	if (plug_status) {
-		pr_debug("%s: Jack removed - disable micbias\n", __func__);
-		cs42l73_set_mic_bias(codec, MIC_BIAS_DISABLE);
+		pr_debug("%s: Jack removed\n", __func__);
 	} else {
-		micbias = snd_soc_read(codec, CS42L73_PWRCTL2);
-		micbias &= 0xC0;
-		if (micbias) {
-			cs42l73_set_mic_bias(codec, MIC_BIAS_ENABLE);
-			hs_status = 1;
-		}
-
 		snd_soc_update_bits(codec, CS42L73_IM1, MIC2_SDET, MIC2_SDET);
 		reg = snd_soc_read(codec, CS42L73_IS1);
-
 		pr_debug("Mic detect = %x ISI =%x\n", micbias, reg);
-		if (hs_status) {
-			if ((reg & MIC2_SDET)) {
-				status = SND_JACK_HEADPHONE;
-				cs42l73_set_mic_bias(codec, MIC_BIAS_DISABLE);
-				pr_debug("Headphone detected\n");
-			} else {
-				status = SND_JACK_HEADSET;
-				pr_debug("Headset detected\n");
-			}
+		if ((reg & MIC2_SDET)) {
+			status = SND_JACK_HEADPHONE;
+			pr_debug("Headphone detected\n");
+		} else {
+			status = SND_JACK_HEADSET;
+			pr_debug("Headset detected\n");
 		}
 	}
-	snd_soc_jack_report(jack, status, mask);
 
 #ifdef CONFIG_SWITCH_MID
 	if (status) {
@@ -1246,6 +1217,7 @@ void cs42l73_hp_detection(struct snd_soc_codec *codec,
 #endif
 	pr_debug("Plug Status = %x\n", plug_status);
 	pr_debug("Jack Status = %x\n", status);
+	return status;
 
 }
 EXPORT_SYMBOL_GPL(cs42l73_hp_detection);

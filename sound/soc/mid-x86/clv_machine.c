@@ -31,6 +31,8 @@
 #include <linux/async.h>
 #include <linux/delay.h>
 #include <linux/ipc_device.h>
+#include <linux/wakelock.h>
+#include <linux/gpio.h>
 #include <asm/intel_scu_ipc.h>
 #include <asm/intel_scu_ipcutil.h>
 #include <sound/pcm.h>
@@ -38,7 +40,6 @@
 #include <sound/soc.h>
 #include <sound/jack.h>
 #include "../codecs/cs42l73.h"
-#include <linux/gpio.h>
 
 /* CDB42L73 Y1 (6.144 MHz) )oscillator =  MCLK1 */
 #define C42L73_DEFAULT_MCLK	19200000
@@ -64,7 +65,7 @@ static int vsp_mode_set(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
-static const char *vsp_mode_text[] = {"Master", "Slave"};
+static const char const *vsp_mode_text[] = {"Master", "Slave"};
 
 static const struct soc_enum vsp_mode_enum =
 	SOC_ENUM_SINGLE_EXT(ARRAY_SIZE(vsp_mode_text), vsp_mode_text);
@@ -144,160 +145,218 @@ struct clv_mc_private {
 	struct ipc_device *socdev;
 	void __iomem *int_base;
 	struct snd_soc_codec *codec;
+	/* Jack related */
+	struct delayed_work jack_work;
+	struct snd_soc_jack clv_jack;
+	atomic_t bpirq_flag;
+#ifdef CONFIG_HAS_WAKELOCK
+	struct wake_lock *jack_wake_lock;
+#endif
 };
 
-/* Headset jack */
-struct snd_soc_jack clv_jack;
 
-/* Headset jack detection gpios */
-static struct snd_soc_jack_gpio hs_jack_gpio = {
+/* Headset jack detection gpios func(s) */
+static int clv_soc_jack_gpio_detect(void);
+static int clv_soc_jack_gpio_detect_bp(void);
 
-	.gpio = CS42L73_HPSENSE_GPIO,
-	.name = "hsdet-gpio",
-	.report = SND_JACK_HEADSET,
-	.debounce_time = 400,
+#define HPDETECT_POLL_INTERVAL	msecs_to_jiffies(1000)	/* 1sec */
+
+
+static struct snd_soc_jack_gpio hs_gpio[] = {
+	{
+		.gpio = CS42L73_HPSENSE_GPIO,
+		.name = "cs-hsdet-gpio",
+		.report = SND_JACK_HEADSET,
+		.debounce_time = 100,
+		.jack_status_check = clv_soc_jack_gpio_detect,
+		.irq_flags = IRQF_TRIGGER_FALLING,
+	}, {
+		.gpio = CS42L73_BUTTON_GPIO,
+		.name = "cs-hsbutton-gpio",
+		.report = SND_JACK_HEADSET | SND_JACK_BTN_0,
+		.debounce_time = 100,
+		.jack_status_check = clv_soc_jack_gpio_detect_bp,
+		.irq_flags = IRQF_TRIGGER_FALLING,
+	},
 };
 
-static struct snd_soc_jack_gpio hs_button_gpio = {
-
-	.gpio = CS42L73_BUTTON_GPIO,
-	.name = "hsbutton-gpio",
-	.report = SND_JACK_BTN_0,
-	.debounce_time = 100,
-};
-
-static void clv_soc_jack_gpio_detect_bp(struct snd_soc_jack_gpio *gpio)
+static int set_mic_bias(struct snd_soc_jack *jack, int state)
 {
-	int enable;
+	struct snd_soc_codec *codec = jack->codec;
+	struct snd_soc_dapm_context *dapm = &codec->dapm;
+
+	mutex_lock(&codec->mutex);
+	switch (state) {
+	case MIC_BIAS_DISABLE:
+		if (ctp_board_id() == CTP_BID_VV)
+			snd_soc_dapm_disable_pin(dapm, "MIC1 Bias");
+		else
+			snd_soc_dapm_disable_pin(dapm, "MIC2 Bias");
+		break;
+	case MIC_BIAS_ENABLE:
+		if (ctp_board_id() == CTP_BID_VV)
+			snd_soc_dapm_force_enable_pin(dapm, "MIC1 Bias");
+		else
+			snd_soc_dapm_force_enable_pin(dapm, "MIC2 Bias");
+		break;
+	}
+	snd_soc_dapm_sync(&codec->dapm);
+	mutex_unlock(&codec->mutex);
+
+	return 0;
+}
+
+int clv_soc_jack_gpio_detect(void)
+{
+	struct snd_soc_jack_gpio *gpio = &hs_gpio[0];
+	int enable, status;
+	unsigned int irq;
 	struct snd_soc_jack *jack = gpio->jack;
 	struct snd_soc_codec *codec = jack->codec;
+	struct clv_mc_private *ctx =
+		container_of(jack, struct clv_mc_private, clv_jack);
 
-	enable = gpio_get_value(gpio->gpio);
-	if (gpio->invert)
-		enable = !enable;
-	pr_debug("%s: gpio->%d=0x%x\n", __func__, gpio->gpio, enable);
-	cs42l73_bp_detection(codec, jack, enable);
-}
-
-/* irq handler for button_press gpio pin */
-static irqreturn_t clv_gpio_handler_bp(int irq, void *data)
-{
-	struct snd_soc_jack_gpio *gpio = data;
-
-	schedule_delayed_work(&gpio->work,
-				msecs_to_jiffies(gpio->debounce_time));
-
-	return IRQ_HANDLED;
-}
-
-/* gpio work */
-static void clv_gpio_work_bp(struct work_struct *work)
-{
-	struct snd_soc_jack_gpio *gpio;
-
-	gpio = container_of(work, struct snd_soc_jack_gpio, work.work);
-	clv_soc_jack_gpio_detect_bp(gpio);
-}
-
-static void clv_soc_jack_gpio_detect(struct snd_soc_jack_gpio *gpio)
-{
-	int enable;
-	struct snd_soc_jack *jack = gpio->jack;
-	struct snd_soc_codec *codec = jack->codec;
+	/* Get Jack status */
+	gpio = &hs_gpio[0];
 	enable = gpio_get_value(gpio->gpio);
 	if (gpio->invert)
 		enable = !enable;
 	pr_debug("%s:gpio->%d=0x%d\n", __func__, gpio->gpio, enable);
-	cs42l73_hp_detection(codec, jack, enable);
-}
-
-/* irq handler for gpio pin */
-static irqreturn_t clv_gpio_handler(int irq, void *data)
-{
-	struct snd_soc_jack_gpio *gpio = data;
-
-	schedule_delayed_work(&gpio->work,
-				msecs_to_jiffies(gpio->debounce_time));
-
-	return IRQ_HANDLED;
-}
-
-/* gpio work */
-static void clv_gpio_work(struct work_struct *work)
-{
-	struct snd_soc_jack_gpio *gpio;
-
-	gpio = container_of(work, struct snd_soc_jack_gpio, work.work);
-	clv_soc_jack_gpio_detect(gpio);
-}
-
-/*
-	Add the INTn_CS42L73 -> GPIOxxx
-	INTn_CS42L73 is the L73's interrupt and requires
-	a different type of handling.
-*/
-int clv_soc_jack_add_gpio(struct snd_soc_jack *jack,
-			    struct snd_soc_jack_gpio *gpio)
-{
-	int ret;
-	struct snd_soc_codec *codec = jack->codec;
-
-	if (!gpio_is_valid(gpio->gpio)) {
-		pr_err("Invalid gpio %d\n", gpio->gpio);
-		ret = -EINVAL;
-		goto undo;
-	}
-
-	if (!gpio->name) {
-		pr_err("No name for gpio %d\n", gpio->gpio);
-		ret = -EINVAL;
-		goto undo;
-	}
-
-	ret = gpio_request(gpio->gpio, gpio->name);
-	if (ret)
-		goto undo;
-
-	ret = gpio_direction_input(gpio->gpio);
-	if (ret)
-		goto err;
-
-	if (gpio->gpio == CS42L73_HPSENSE_GPIO) {
-
-		INIT_DELAYED_WORK(&gpio->work, clv_gpio_work);
-		gpio->jack = jack;
-
-		ret = request_irq(gpio_to_irq(gpio->gpio), clv_gpio_handler,
-				IRQF_TRIGGER_FALLING, codec->name, gpio);
-	} else {
-		INIT_DELAYED_WORK(&gpio->work, clv_gpio_work_bp);
-		gpio->jack = jack;
-
-		ret = request_irq(gpio_to_irq(gpio->gpio), clv_gpio_handler_bp,
-				IRQF_TRIGGER_FALLING, codec->name, gpio);
-
-	}
-	if (ret)
-		goto err;
-
-#ifdef CONFIG_GPIO_SYSFS
-	/* Expose GPIO value over sysfs for diagnostic purposes */
-	gpio_export(gpio->gpio, false);
+	pr_debug("Current jack status = 0x%x\n", jack->status);
+	set_mic_bias(jack, MIC_BIAS_ENABLE);
+	status = cs42l73_hp_detection(codec, jack, enable);
+	if (!status) {
+		set_mic_bias(jack, MIC_BIAS_DISABLE);
+		/* Jack removed, Disable BP interrupts if not done already */
+		if (!atomic_dec_return(&ctx->bpirq_flag)) {
+			gpio = &hs_gpio[1];
+			irq = gpio_to_irq(gpio->gpio);
+			/* Disable Button_press interrupt if no Headset */
+			pr_debug("Disable %d interrupt line\n", irq);
+			disable_irq_nosync(irq);
+		} else {
+			atomic_inc(&ctx->bpirq_flag);
+		}
+	} else { /* If jack inserted, schedule delayed_wq */
+		schedule_delayed_work(&ctx->jack_work, HPDETECT_POLL_INTERVAL);
+#ifdef CONFIG_HAS_WAKELOCK
+		/*
+		 * Take wakelock for one second to give time for the detection
+		 * to finish. Jack detection is happening rarely so this doesn't
+		 * have big impact to power consumption.
+		 */
+		wake_lock_timeout(ctx->jack_wake_lock,
+				HPDETECT_POLL_INTERVAL + msecs_to_jiffies(50));
 #endif
-	/* Update initial jack status */
-	if (gpio->gpio == CS42L73_HPSENSE_GPIO)
-		clv_soc_jack_gpio_detect(gpio);
-
-	return 0;
-
-err:
-	gpio_free(gpio->gpio);
-undo:
-	snd_soc_jack_free_gpios(jack, 1, gpio);
-
-return ret;
+	}
+	return status;
 }
 
+/* Func to verify Jack status after HPDETECT_POLL_INTERVAL */
+static void headset_status_verify(struct work_struct *work)
+{
+	struct snd_soc_jack_gpio *gpio = &hs_gpio[0];
+	int enable, status;
+	unsigned int irq;
+	struct snd_soc_jack *jack = gpio->jack;
+	struct snd_soc_codec *codec = jack->codec;
+	unsigned int mask = SND_JACK_HEADSET;
+	struct clv_mc_private *ctx =
+		container_of(jack, struct clv_mc_private, clv_jack);
+
+	enable = gpio_get_value(gpio->gpio);
+	if (gpio->invert)
+		enable = !enable;
+	pr_debug("%s:gpio->%d=0x%d\n", __func__, gpio->gpio, enable);
+	pr_debug("Current jack status = 0x%x\n", jack->status);
+
+	status = cs42l73_hp_detection(codec, jack, enable);
+	gpio = &hs_gpio[1];
+	irq = gpio_to_irq(gpio->gpio);
+
+	/* Enable Button_press interrupt if HS is inserted
+	 * and interrupts are not already enabled
+	 */
+	if (status == SND_JACK_HEADSET) {
+		if (atomic_inc_return(&ctx->bpirq_flag) == 1) {
+			/* If BP intr not enabled */
+			pr_debug("Enable %d interrupt line\n", irq);
+			enable_irq(irq);
+		} else {
+			atomic_dec(&ctx->bpirq_flag);
+		}
+		/* else do nothing as interrupts are already enabled
+		 * This case occurs during slow insertion when
+		 * multiple plug-in events are reported
+		 */
+	} else {
+		set_mic_bias(jack, MIC_BIAS_DISABLE);
+		if (!atomic_dec_return(&ctx->bpirq_flag)) {
+			/* Disable Button_press interrupt if no Headset */
+			pr_debug("Disable %d interrupt line\n", irq);
+			disable_irq_nosync(irq);
+		} else {
+			atomic_inc(&ctx->bpirq_flag);
+		}
+
+	}
+
+	if (jack->status != status)
+		snd_soc_jack_report(jack, status, mask);
+
+	pr_debug("%s: status 0x%x\n", __func__, status);
+}
+
+int clv_soc_jack_gpio_detect_bp(void)
+{
+	struct snd_soc_jack_gpio *gpio = &hs_gpio[1];
+	int enable, hs_status, status;
+	unsigned int irq;
+	struct snd_soc_jack *jack = gpio->jack;
+	struct snd_soc_codec *codec = jack->codec;
+	struct clv_mc_private *ctx =
+		container_of(jack, struct clv_mc_private, clv_jack);
+
+	status = 0;
+	enable = gpio_get_value(gpio->gpio);
+	if (gpio->invert)
+		enable = !enable;
+	pr_debug("%s: gpio->%d=0x%x\n", __func__, gpio->gpio, enable);
+
+	/* Check for headset status before processing interrupt */
+	gpio = &hs_gpio[0];
+	hs_status = gpio_get_value(gpio->gpio);
+	if (gpio->invert)
+		hs_status = !hs_status;
+	pr_debug("%s: gpio->%d=0x%x\n", __func__, gpio->gpio, hs_status);
+	if (!hs_status) {/* HS present, process the interrupt */
+		if (!enable)
+			status = cs42l73_bp_detection(codec, jack, enable);
+		else {
+			status = jack->status;
+			pr_debug("%s:Invalid BP interrupt\n", __func__);
+		}
+	} else {
+		pr_debug("%s:Spurious BP interrupt : HS_status 0x%x\n",
+				__func__, hs_status);
+		/* Disbale BP interrupts, in case enabled */
+		if (!atomic_dec_return(&ctx->bpirq_flag)) {
+			set_mic_bias(jack, MIC_BIAS_DISABLE);
+			gpio = &hs_gpio[1];
+			irq = gpio_to_irq(gpio->gpio);
+			/* Disable Button_press interrupt if no Headset */
+			pr_debug("Disable %d interrupt line\n", irq);
+			disable_irq_nosync(irq);
+		} else {
+			atomic_inc(&ctx->bpirq_flag);
+		}
+
+	}
+
+	pr_debug("%s: status 0x%x\n", __func__, status);
+
+	return status;
+}
 
 static int clv_amp_event(struct snd_soc_dapm_widget *w,
 				struct snd_kcontrol *k, int event)
@@ -406,7 +465,9 @@ static int clv_init(struct snd_soc_pcm_runtime *runtime)
 	struct snd_soc_dapm_context *dapm = &codec->dapm;
 	int ret;
 	struct snd_soc_card *card = runtime->card;
-
+	struct snd_soc_jack_gpio *gpio = &hs_gpio[1];
+	struct clv_mc_private *ctx = snd_soc_card_get_drvdata(runtime->card);
+	unsigned int irq;
 
 	/* Set codec bias level */
 	clv_set_bias_level(card, SND_SOC_BIAS_OFF);
@@ -443,26 +504,28 @@ static int clv_init(struct snd_soc_pcm_runtime *runtime)
 	mutex_lock(&codec->mutex);
 	snd_soc_dapm_sync(dapm);
 	mutex_unlock(&codec->mutex);
+
+	/* Setup the HPDET timer */
+	INIT_DELAYED_WORK(&ctx->jack_work, headset_status_verify);
+
 	/* Headset and button jack detection */
 	ret = snd_soc_jack_new(codec, "Intel MID Audio Jack",
-			SND_JACK_HEADSET | SND_JACK_BTN_0 |
-			SND_JACK_BTN_1, &clv_jack);
+			SND_JACK_HEADSET | SND_JACK_BTN_0, &ctx->clv_jack);
 	if (ret) {
 		pr_err("jack creation failed\n");
 		return ret;
 	}
 
-	ret = clv_soc_jack_add_gpio(&clv_jack, &hs_jack_gpio);
+	ret = snd_soc_jack_add_gpios(&ctx->clv_jack, 2, hs_gpio);
 	if (ret) {
 		pr_err("adding jack GPIO failed\n");
 		return ret;
 	}
-
-	ret = clv_soc_jack_add_gpio(&clv_jack, &hs_button_gpio);
-	if (ret) {
-		pr_err("adding jack GPIO failed\n");
-		return ret;
-	}
+	irq = gpio_to_irq(gpio->gpio);
+	/* Disable Button_press interrupt if no Headset */
+	pr_err("Disable %d interrupt line\n", irq);
+	disable_irq_nosync(irq);
+	atomic_set(&ctx->bpirq_flag, 0);
 
 	return ret;
 }
@@ -573,18 +636,31 @@ static struct snd_soc_card snd_soc_card_clv = {
 static int snd_clv_mc_probe(struct ipc_device *ipcdev)
 {
 	int ret_val = 0;
-	struct clv_mc_private *mc_drv_ctx;
+	struct clv_mc_private *ctx;
 
 	pr_debug("In %s\n", __func__);
-	mc_drv_ctx = kzalloc(sizeof(*mc_drv_ctx), GFP_ATOMIC);
-	if (!mc_drv_ctx) {
+	ctx = kzalloc(sizeof(*ctx), GFP_ATOMIC);
+	if (!ctx) {
 		pr_err("allocation failed\n");
 		return -ENOMEM;
 	}
 
+#ifdef CONFIG_HAS_WAKELOCK
+	ctx->jack_wake_lock =
+		kzalloc(sizeof(*(ctx->jack_wake_lock)), GFP_ATOMIC);
+	if (!ctx->jack_wake_lock) {
+		pr_err("allocation failed for wake_lock\n");
+		kfree(ctx);
+		return -ENOMEM;
+	}
+	wake_lock_init(ctx->jack_wake_lock, WAKE_LOCK_SUSPEND,
+			"jack_detect");
+#endif
+
 	/* register the soc card */
 	snd_soc_card_clv.dev = &ipcdev->dev;
 	snd_soc_initialize_card_lists(&snd_soc_card_clv);
+	snd_soc_card_set_drvdata(&snd_soc_card_clv, ctx);
 	ret_val = snd_soc_register_card(&snd_soc_card_clv);
 	if (ret_val) {
 		pr_err("snd_soc_register_card failed %d\n", ret_val);
@@ -592,24 +668,36 @@ static int snd_clv_mc_probe(struct ipc_device *ipcdev)
 	}
 	vsp_mode = 1;
 	ipc_set_drvdata(ipcdev, &snd_soc_card_clv);
-	snd_soc_card_set_drvdata(&snd_soc_card_clv, mc_drv_ctx);
+
 	pr_debug("successfully exited probe\n");
 	return ret_val;
 
 unalloc:
-	kfree(mc_drv_ctx);
+#ifdef CONFIG_HAS_WAKELOCK
+	if (wake_lock_active(ctx->jack_wake_lock))
+		wake_unlock(ctx->jack_wake_lock);
+	wake_lock_destroy(ctx->jack_wake_lock);
+	kfree(ctx->jack_wake_lock);
+#endif
+	kfree(ctx);
 	return ret_val;
 }
 
 static int __devexit snd_clv_mc_remove(struct ipc_device *ipcdev)
 {
 	struct snd_soc_card *soc_card = ipc_get_drvdata(ipcdev);
-	struct mfld_mc_private *mc_drv_ctx = snd_soc_card_get_drvdata(soc_card);
+	struct clv_mc_private *ctx = snd_soc_card_get_drvdata(soc_card);
 
 	pr_debug("In %s\n", __func__);
-	kfree(mc_drv_ctx);
-	snd_soc_jack_free_gpios(&clv_jack, 1, &hs_jack_gpio);
-	snd_soc_jack_free_gpios(&clv_jack, 1, &hs_button_gpio);
+	cancel_delayed_work_sync(&ctx->jack_work);
+#ifdef CONFIG_HAS_WAKELOCK
+	if (wake_lock_active(ctx->jack_wake_lock))
+		wake_unlock(ctx->jack_wake_lock);
+	wake_lock_destroy(ctx->jack_wake_lock);
+	kfree(ctx->jack_wake_lock);
+#endif
+	snd_soc_jack_free_gpios(&ctx->clv_jack, 2, hs_gpio);
+	kfree(ctx);
 	snd_soc_card_set_drvdata(soc_card, NULL);
 	snd_soc_unregister_card(soc_card);
 	ipc_set_drvdata(ipcdev, NULL);

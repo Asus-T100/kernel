@@ -226,9 +226,9 @@
 #define CS42L73_MMCC(id)	(CS42L73_XSPMMCC + (id << 1))
 #define CS42L73_SPFS(id) ((id == CS42L73_ASP) ? CS42L73_ASPC : CS42L73_VXSPFS)
 
-extern void cs42l73_bp_detection(struct snd_soc_codec *codec,
+extern int cs42l73_bp_detection(struct snd_soc_codec *codec,
 				  struct snd_soc_jack *jack, int plug_status);
-extern void cs42l73_hp_detection(struct snd_soc_codec *codec,
+extern int cs42l73_hp_detection(struct snd_soc_codec *codec,
 				  struct snd_soc_jack *jack, int plug_status);
 
 extern void mid_headset_report(int state);
