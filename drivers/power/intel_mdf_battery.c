@@ -866,7 +866,11 @@ static int msic_usb_get_property(struct power_supply *psy,
 	err_event = mbi->msic_chr_err;
 	mutex_unlock(&mbi->event_lock);
 
-	mutex_lock(&mbi->usb_chrg_lock);
+	if (system_state != SYSTEM_RUNNING) {
+		if (!mutex_trylock(&mbi->usb_chrg_lock))
+			return -EBUSY;
+	} else
+		mutex_lock(&mbi->usb_chrg_lock);
 
 	switch (psp) {
 	case POWER_SUPPLY_PROP_PRESENT:
