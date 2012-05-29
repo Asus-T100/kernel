@@ -50,7 +50,7 @@
  *
  * This resets DSP in case of MRST platfroms
  */
-static int intel_sst_reset_dsp_mrst(void)
+int intel_sst_reset_dsp_mrst(void)
 {
 	union config_status_reg csr;
 
@@ -72,7 +72,7 @@ static int intel_sst_reset_dsp_mrst(void)
  *
  * This resets DSP in case of Medfield platfroms
  */
-static int intel_sst_reset_dsp_medfield(void)
+int intel_sst_reset_dsp_mfld(void)
 {
 	union config_status_reg csr;
 
@@ -90,7 +90,7 @@ static int intel_sst_reset_dsp_medfield(void)
  *
  * This starts the DSP in MRST platfroms
  */
-static int sst_start_mrst(void)
+int sst_start_mrst(void)
 {
 	union config_status_reg csr;
 
@@ -111,7 +111,7 @@ static int sst_start_mrst(void)
  *
  * This starts the DSP in MRST platfroms
  */
-static int sst_start_medfield(void)
+int sst_start_mfld(void)
 {
 	union config_status_reg csr;
 
@@ -130,6 +130,64 @@ static int sst_start_medfield(void)
 
 	return 0;
 }
+/**
+ * intel_sst_reset_dsp_mrfld - Resetting SST DSP
+ *
+ * This resets DSP in case of MRFLD platfroms
+ */
+#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
+int intel_sst_reset_dsp_mrfld(void)
+{
+	union config_status_reg_mrfld csr;
+
+	pr_debug("sst: Resetting the DSP in mrfld\n");
+
+	csr.full = sst_shim_read64(sst_drv_ctx->shim, SST_CSR);
+
+	pr_debug("value:0x%llx\n", csr.full);
+
+	csr.full |= 0x7;
+	sst_shim_write64(sst_drv_ctx->shim, SST_CSR, csr.full);
+	csr.full = sst_shim_read64(sst_drv_ctx->shim, SST_CSR);
+
+	pr_debug("value:0x%llx\n", csr.full);
+
+	csr.full &= ~(0x1);
+	sst_shim_write64(sst_drv_ctx->shim, SST_CSR, csr.full);
+	pr_debug("value:0x%llx\n", csr.full);
+
+	return 0;
+}
+
+/**
+ * sst_start_merrifield - Start the SST DSP processor
+ *
+ * This starts the DSP in MERRIFIELD platfroms
+ */
+int sst_start_mrfld(void)
+{
+	union config_status_reg_mrfld csr;
+
+	pr_debug("sst: Starting the DSP in mrfld LALALALA\n");
+
+	csr.full = sst_shim_read64(sst_drv_ctx->shim, SST_CSR);
+	pr_debug("value:0x%llx\n", csr.full);
+
+	csr.full |= 0x7;
+	sst_shim_write64(sst_drv_ctx->shim, SST_CSR, csr.full);
+
+	csr.full = sst_shim_read64(sst_drv_ctx->shim, SST_CSR);
+	pr_debug("value:0x%llx\n", csr.full);
+
+	csr.full &= ~(0x5);
+	sst_shim_write64(sst_drv_ctx->shim, SST_CSR, csr.full);
+
+	csr.full = sst_shim_read64(sst_drv_ctx->shim, SST_CSR);
+	pr_debug("sst: Starting the DSP_merrifield:%llx\n", csr.full);
+
+	return 0;
+}
+#endif
 
 /*
  * sst_fill_sglist - Fill the sg list
@@ -177,6 +235,75 @@ void sst_fill_sglist(unsigned long ram, struct dma_block_info *block,
 
 }
 
+#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
+static inline int sst_validate_fw_elf(const struct firmware *sst_fw)
+{
+	Elf32_Ehdr *elf;
+
+	BUG_ON(!sst_fw);
+
+	elf = (Elf32_Ehdr *)sst_fw->data;
+
+	if ((elf->e_ident[0] != 0x7F) || (elf->e_ident[1] != 'E') ||
+		(elf->e_ident[2] != 'L') || (elf->e_ident[3] != 'F')) {
+		pr_debug("ELF Header Not found!%d\n", sst_fw->size);
+		return -EINVAL;
+	}
+	pr_debug("Valid ELF Header...%d\n", sst_fw->size);
+	return 0;
+}
+
+void sst_download_fw_mrfld(const void *fw_in_mem)
+{
+	int data_size = 0, i = 0;
+
+	Elf32_Ehdr *elf;
+	Elf32_Phdr *pr;
+
+	BUG_ON(!fw_in_mem);
+
+	elf = (Elf32_Ehdr *)fw_in_mem;
+	pr = (Elf32_Phdr *) (fw_in_mem + elf->e_phoff);
+	pr_debug("sst_download_fw_mrfld.....\n");
+	while (i < elf->e_phnum) {
+		if (pr[i].p_type == PT_LOAD) {
+			if ((pr[i].p_paddr >= sst_drv_ctx->iram_base) &&
+				(pr[i].p_paddr < sst_drv_ctx->iram_end)) {
+				pr_debug("iccm copying\n");
+				/*work around-since only 4 byte copying
+				 *is only allowed for ICCM*/
+				data_size = pr[i].p_filesz %
+							SST_ICCM_BOUNDARY;
+				if (data_size)
+					pr[i].p_filesz +=
+						SST_ICCM_BOUNDARY - data_size;
+				memcpy_toio(sst_drv_ctx->iram +
+				pr[i].p_paddr - sst_drv_ctx->iram_base,
+					(void *)fw_in_mem + pr[i].p_offset,
+					pr[i].p_filesz);
+
+			} else if ((pr[i].p_paddr >= sst_drv_ctx->dram_base)
+			&& (pr[i].p_paddr < sst_drv_ctx->dram_end)) {
+				pr_debug("dccm copying\n");
+				memcpy_toio(sst_drv_ctx->dram +
+					pr[i].p_paddr -
+					sst_drv_ctx->dram_base,
+					(void *)fw_in_mem + pr[i].p_offset,
+					pr[i].p_filesz);
+			} else if ((pr[i].p_paddr >= sst_drv_ctx->ddr_base)
+				&& (pr[i].p_paddr < sst_drv_ctx->ddr_end)) {
+				pr_debug("ddr copying\n");
+				memcpy_toio(sst_drv_ctx->ddr +
+					pr[i].p_paddr -
+					sst_drv_ctx->ddr_base,
+					(void *)fw_in_mem + pr[i].p_offset,
+					pr[i].p_filesz);
+			}
+		}
+		i++;
+	}
+}
+#endif
 /**
  * sst_parse_module - Parse audio FW modules
  *
@@ -368,33 +495,46 @@ int sst_request_fw(void)
 	int retval = 0;
 	char name[20];
 
-	snprintf(name, sizeof(name), "%s%04x%s", "fw_sst_",
-					sst_drv_ctx->pci_id, ".bin");
+	if (!(sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID))
+		snprintf(name, sizeof(name), "%s%04x%s", "fw_sst_",
+				sst_drv_ctx->pci_id, ".bin");
+	else
+		snprintf(name, sizeof(name), "%s%04x", "fw_sst_",
+				sst_drv_ctx->pci_id);
 
-	pr_debug("Requesting %s FW now...\n", name);
+	pr_debug("Requesting FW %s now...\n", name);
 	retval = request_firmware(&sst_drv_ctx->fw, name,
 				 &sst_drv_ctx->pci->dev);
 	if (retval) {
 		pr_err("request fw failed %d\n", retval);
 		return retval;
 	}
-
+#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
+	if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID)
+		retval = sst_validate_fw_elf(sst_drv_ctx->fw);
+	if (retval != 0) {
+		pr_err("FW image invalid...\n");
+		goto end_release;
+	}
+#endif
 	sst_drv_ctx->fw_in_mem = kzalloc(sst_drv_ctx->fw->size, GFP_KERNEL);
 	if (!sst_drv_ctx->fw_in_mem) {
 		pr_err("%s unable to allocate memory\n", __func__);
 		retval = -ENOMEM;
 		goto end_release;
 	}
+
 	memcpy(sst_drv_ctx->fw_in_mem, sst_drv_ctx->fw->data,
 			sst_drv_ctx->fw->size);
-	retval = sst_parse_fw_image(sst_drv_ctx->fw_in_mem,
+	if (sst_drv_ctx->pci_id != SST_MRFLD_PCI_ID) {
+		retval = sst_parse_fw_image(sst_drv_ctx->fw_in_mem,
 					sst_drv_ctx->fw->size,
 					&sst_drv_ctx->fw_sg_list);
-	if (retval) {
-		kfree(sst_drv_ctx->fw_in_mem);
-		goto end_release;
+		if (retval) {
+			kfree(sst_drv_ctx->fw_in_mem);
+			goto end_release;
+		}
 	}
-
 end_release:
 	release_firmware(sst_drv_ctx->fw);
 	sst_drv_ctx->fw = NULL;
@@ -454,34 +594,34 @@ int sst_load_fw(const void *fw_in_mem, void *context)
 	pr_debug("load_fw called\n");
 	BUG_ON(!fw_in_mem);
 
-	if (sst_drv_ctx->pci_id == SST_MRST_PCI_ID)
-		ret_val = intel_sst_reset_dsp_mrst();
-	else if ((sst_drv_ctx->pci_id == SST_MFLD_PCI_ID) ||
-			(sst_drv_ctx->pci_id == SST_CLV_PCI_ID))
-		ret_val = intel_sst_reset_dsp_medfield();
+	ret_val = sst_drv_ctx->ops->reset();
 	if (ret_val)
 		return ret_val;
-
-	/* get a dmac channel */
-	sst_alloc_dma_chan(&sst_drv_ctx->dma);
-	 /* allocate desc for transfer and submit */
-	ret_val = sst_dma_firmware(&sst_drv_ctx->dma,
+#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
+	if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID)
+		sst_download_fw_mrfld(fw_in_mem);
+	else {
+#else
+	{
+#endif
+		/* get a dmac channel */
+		sst_alloc_dma_chan(&sst_drv_ctx->dma);
+		 /* allocate desc for transfer and submit */
+		ret_val = sst_dma_firmware(&sst_drv_ctx->dma,
 					&sst_drv_ctx->fw_sg_list);
-	if (ret_val)
-		goto free_dma;
+		if (ret_val)
+			goto free_dma;
+	}
 	sst_set_fw_state_locked(sst_drv_ctx, SST_FW_LOADED);
 	/* bring sst out of reset */
-	if (sst_drv_ctx->pci_id == SST_MRST_PCI_ID)
-		ret_val = sst_start_mrst();
-	else if ((sst_drv_ctx->pci_id == SST_MFLD_PCI_ID) ||
-			(sst_drv_ctx->pci_id == SST_CLV_PCI_ID))
-		ret_val = sst_start_medfield();
+	ret_val = sst_drv_ctx->ops->start();
 	if (ret_val)
 		goto free_dma;
 
 	pr_debug("fw loaded successful!!!\n");
 free_dma:
-	sst_dma_free_resources(&sst_drv_ctx->dma);
+	if (sst_drv_ctx->pci_id != SST_MRFLD_PCI_ID)
+		sst_dma_free_resources(&sst_drv_ctx->dma);
 	return ret_val;
 }
 
@@ -519,7 +659,7 @@ static int sst_download_library(const struct firmware *fw_lib,
 	spin_lock(&sst_drv_ctx->list_spin_lock);
 	list_add_tail(&msg->node, &sst_drv_ctx->ipc_dispatch_list);
 	spin_unlock(&sst_drv_ctx->list_spin_lock);
-	sst_post_message(&sst_drv_ctx->ipc_post_msg_wq);
+	sst_drv_ctx->ops->post_message(&sst_drv_ctx->ipc_post_msg_wq);
 	retval = sst_wait_timeout(sst_drv_ctx,
 				&sst_drv_ctx->alloc_block[i].ops_block);
 	if (retval) {
@@ -581,7 +721,7 @@ static int sst_download_library(const struct firmware *fw_lib,
 	spin_lock(&sst_drv_ctx->list_spin_lock);
 	list_add_tail(&msg->node, &sst_drv_ctx->ipc_dispatch_list);
 	spin_unlock(&sst_drv_ctx->list_spin_lock);
-	sst_post_message(&sst_drv_ctx->ipc_post_msg_wq);
+	sst_drv_ctx->ops->post_message(&sst_drv_ctx->ipc_post_msg_wq);
 	pr_debug("Waiting for FW response Download complete\n");
 	sst_drv_ctx->alloc_block[i].ops_block.condition = false;
 	retval = sst_wait_timeout(sst_drv_ctx,
@@ -743,4 +883,3 @@ wake_free:
 wake:
 	return error;
 }
-

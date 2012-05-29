@@ -1,4 +1,5 @@
 # IPC Devices
+obj-y							+= platform_mrfld_audio.o
 obj-y							+= platform_ipc.o
 obj-y							+= platform_msic_audio.o
 obj-y							+= platform_clvs_audio.o

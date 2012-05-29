@@ -55,6 +55,7 @@ int sst_get_stream_params(int str_id,
 	struct ipc_post *msg = NULL;
 	struct stream_info *str_info;
 	struct snd_sst_fw_get_stream_params *fw_params;
+	struct intel_sst_ops *ops = sst_drv_ctx->ops;
 
 	pr_debug("get_stream for %d\n", str_id);
 	str_info = get_stream_info(str_id);
@@ -86,7 +87,7 @@ int sst_get_stream_params(int str_id,
 		spin_lock(&sst_drv_ctx->list_spin_lock);
 		list_add_tail(&msg->node, &sst_drv_ctx->ipc_dispatch_list);
 		spin_unlock(&sst_drv_ctx->list_spin_lock);
-		sst_post_message(&sst_drv_ctx->ipc_post_msg_wq);
+		ops->post_message(&sst_drv_ctx->ipc_post_msg_wq);
 		retval = sst_wait_timeout(sst_drv_ctx, &str_info->ctrl_blk);
 		if (retval) {
 			get_params->codec_params.result = retval;
@@ -118,11 +119,12 @@ int sst_get_stream_params(int str_id,
  *
  * This function sets stream params during runtime
  */
-int sst_set_stream_param(int str_id, struct sst_stream_params *str_param)
+int sst_set_stream_param(int str_id, struct snd_sst_params *str_param)
 {
 	int retval = 0;
 	struct ipc_post *msg = NULL;
 	struct stream_info *str_info;
+	struct intel_sst_ops *ops;
 
 	BUG_ON(!str_param);
 	if (sst_drv_ctx->streams[str_id].ops != str_param->ops) {
@@ -133,6 +135,8 @@ int sst_set_stream_param(int str_id, struct sst_stream_params *str_param)
 	if (!str_info)
 		return -EINVAL;
 	pr_debug("set_stream for %d\n", str_id);
+
+	ops = sst_drv_ctx->ops;
 	if (sst_drv_ctx->streams[str_id].status == STREAM_INIT) {
 		if (str_info->ctrl_blk.on == true) {
 			pr_err("control path in use\n");
@@ -154,7 +158,7 @@ int sst_set_stream_param(int str_id, struct sst_stream_params *str_param)
 		spin_lock(&sst_drv_ctx->list_spin_lock);
 		list_add_tail(&msg->node, &sst_drv_ctx->ipc_dispatch_list);
 		spin_unlock(&sst_drv_ctx->list_spin_lock);
-		sst_post_message(&sst_drv_ctx->ipc_post_msg_wq);
+		ops->post_message(&sst_drv_ctx->ipc_post_msg_wq);
 		retval = sst_wait_timeout(sst_drv_ctx, &str_info->ctrl_blk);
 		if (retval < 0) {
 			retval = -EIO;
@@ -202,7 +206,7 @@ int sst_get_vol(struct snd_sst_vol *get_vol)
 	spin_lock(&sst_drv_ctx->list_spin_lock);
 	list_add_tail(&msg->node, &sst_drv_ctx->ipc_dispatch_list);
 	spin_unlock(&sst_drv_ctx->list_spin_lock);
-	sst_post_message(&sst_drv_ctx->ipc_post_msg_wq);
+	sst_drv_ctx->ops->post_message(&sst_drv_ctx->ipc_post_msg_wq);
 	retval = sst_wait_timeout(sst_drv_ctx, &sst_drv_ctx->vol_info_blk);
 	if (retval)
 		retval = -EIO;
@@ -248,7 +252,7 @@ int sst_set_vol(struct snd_sst_vol *set_vol)
 	spin_lock(&sst_drv_ctx->list_spin_lock);
 	list_add_tail(&msg->node, &sst_drv_ctx->ipc_dispatch_list);
 	spin_unlock(&sst_drv_ctx->list_spin_lock);
-	sst_post_message(&sst_drv_ctx->ipc_post_msg_wq);
+	sst_drv_ctx->ops->post_message(&sst_drv_ctx->ipc_post_msg_wq);
 	retval = sst_wait_timeout(sst_drv_ctx, &sst_drv_ctx->vol_info_blk);
 	if (retval) {
 		pr_err("error in set_vol = %d\n", retval);
@@ -290,7 +294,7 @@ int sst_set_mute(struct snd_sst_mute *set_mute)
 	spin_lock(&sst_drv_ctx->list_spin_lock);
 	list_add_tail(&msg->node, &sst_drv_ctx->ipc_dispatch_list);
 	spin_unlock(&sst_drv_ctx->list_spin_lock);
-	sst_post_message(&sst_drv_ctx->ipc_post_msg_wq);
+	sst_drv_ctx->ops->post_message(&sst_drv_ctx->ipc_post_msg_wq);
 	retval = sst_wait_timeout(sst_drv_ctx, &sst_drv_ctx->mute_info_blk);
 	if (retval) {
 		pr_err("error in set_mute = %d\n", retval);
@@ -365,7 +369,7 @@ static int sst_send_target(struct snd_sst_target_device *target)
 	spin_lock(&sst_drv_ctx->list_spin_lock);
 	list_add_tail(&msg->node, &sst_drv_ctx->ipc_dispatch_list);
 	spin_unlock(&sst_drv_ctx->list_spin_lock);
-	sst_post_message(&sst_drv_ctx->ipc_post_msg_wq);
+	sst_drv_ctx->ops->post_message(&sst_drv_ctx->ipc_post_msg_wq);
 	pr_debug("sst: message sent- waiting\n");
 	retval = sst_wait_timeout(sst_drv_ctx, &sst_drv_ctx->tgt_dev_blk);
 	if (retval)
@@ -551,12 +555,13 @@ int sst_play_frame(int str_id)
 	struct sst_frame_info sg_list = {0};
 	struct sst_stream_bufs *kbufs = NULL, *_kbufs;
 	struct stream_info *stream;
+	struct intel_sst_ops *ops;
 
 	pr_debug("play frame for %d\n", str_id);
 	stream = get_stream_info(str_id);
 	if (!stream)
 		return -EINVAL;
-
+	ops = sst_drv_ctx->ops;
 	/* clear prev sent buffers */
 	list_for_each_entry_safe(kbufs, _kbufs, &stream->bufs, node) {
 		if (kbufs->in_use == true) {
@@ -587,7 +592,7 @@ int sst_play_frame(int str_id)
 			list_add_tail(&msg->node,
 					&sst_drv_ctx->ipc_dispatch_list);
 			spin_unlock(&sst_drv_ctx->list_spin_lock);
-			sst_post_message(&sst_drv_ctx->ipc_post_msg_wq);
+			ops->post_message(&sst_drv_ctx->ipc_post_msg_wq);
 		} else if (stream->data_blk.on == true) {
 			pr_debug("user list empty.. wake\n");
 			/* unblock */
@@ -613,7 +618,7 @@ int sst_play_frame(int str_id)
 	spin_lock(&sst_drv_ctx->list_spin_lock);
 	list_add_tail(&msg->node, &sst_drv_ctx->ipc_dispatch_list);
 	spin_unlock(&sst_drv_ctx->list_spin_lock);
-	sst_post_message(&sst_drv_ctx->ipc_post_msg_wq);
+	sst_drv_ctx->ops->post_message(&sst_drv_ctx->ipc_post_msg_wq);
 	return 0;
 
 }
@@ -678,7 +683,7 @@ int sst_capture_frame(int str_id)
 	spin_lock(&sst_drv_ctx->list_spin_lock);
 	list_add_tail(&msg->node, &sst_drv_ctx->ipc_dispatch_list);
 	spin_unlock(&sst_drv_ctx->list_spin_lock);
-	sst_post_message(&sst_drv_ctx->ipc_post_msg_wq);
+	sst_drv_ctx->ops->post_message(&sst_drv_ctx->ipc_post_msg_wq);
 
 
 	/*update bytes recevied*/
@@ -826,7 +831,7 @@ static int sst_send_decode_mess(int str_id, struct stream_info *str_info,
 	str_info->data_blk.ret_code = 0;
 	str_info->data_blk.on = true;
 	str_info->data_blk.data = dec_info;
-	sst_post_message(&sst_drv_ctx->ipc_post_msg_wq);
+	sst_drv_ctx->ops->post_message(&sst_drv_ctx->ipc_post_msg_wq);
 	retval = sst_wait_interruptible(sst_drv_ctx, &str_info->data_blk);
 	return retval;
 }
