@@ -68,22 +68,25 @@ void psb_msvdx_flush_cmd_queue(struct drm_device *dev)
 	struct psb_msvdx_cmd_queue *msvdx_cmd;
 	struct list_head *list, *next;
 	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
-
+	unsigned long irq_flags;
+	spin_lock_irqsave(&msvdx_priv->msvdx_lock, irq_flags);
 	/*Flush the msvdx cmd queue and signal all fences in the queue */
 	list_for_each_safe(list, next, &msvdx_priv->msvdx_queue) {
 		msvdx_cmd =
 			list_entry(list, struct psb_msvdx_cmd_queue, head);
+		list_del(list);
 		PSB_DEBUG_GENERAL("MSVDXQUE: flushing sequence:0x%08x\n",
 				  msvdx_cmd->sequence);
 		msvdx_priv->msvdx_current_sequence = msvdx_cmd->sequence;
+		spin_unlock_irqrestore(&msvdx_priv->msvdx_lock, irq_flags);
 		psb_fence_error(dev, PSB_ENGINE_VIDEO,
-				msvdx_priv->msvdx_current_sequence,
+				msvdx_cmd->sequence,
 				_PSB_FENCE_TYPE_EXE, DRM_CMD_HANG);
-		list_del(list);
 		kfree(msvdx_cmd->cmd);
-		kfree(msvdx_cmd
-		     );
+		kfree(msvdx_cmd);
+		spin_lock_irqsave(&msvdx_priv->msvdx_lock, irq_flags);
 	}
+	spin_unlock_irqrestore(&msvdx_priv->msvdx_lock, irq_flags);
 }
 
 static void psb_msvdx_reset_wq(struct work_struct *work)
@@ -114,9 +117,7 @@ static void psb_msvdx_reset_wq(struct work_struct *work)
 	dev_priv->timer_available = 1;
 	spin_unlock_irqrestore(&dev_priv->watchdog_lock, irq_flags);
 
-	spin_lock_irqsave(&msvdx_priv->msvdx_lock, irq_flags);
 	psb_msvdx_flush_cmd_queue(scheduler->dev);
-	spin_unlock_irqrestore(&msvdx_priv->msvdx_lock, irq_flags);
 
 	psb_schedule_watchdog(dev_priv);
 	mutex_unlock(&msvdx_priv->msvdx_mutex);

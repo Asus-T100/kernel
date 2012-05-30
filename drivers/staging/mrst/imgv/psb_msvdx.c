@@ -44,26 +44,28 @@ static int psb_msvdx_dequeue_send(struct drm_device *dev)
 	struct psb_msvdx_cmd_queue *msvdx_cmd = NULL;
 	int ret = 0;
 	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
+	unsigned long irq_flags;
 
-	spin_lock(&msvdx_priv->msvdx_lock);
+	spin_lock_irqsave(&msvdx_priv->msvdx_lock, irq_flags);
 	if (list_empty(&msvdx_priv->msvdx_queue)) {
 		PSB_DEBUG_GENERAL("MSVDXQUE: msvdx list empty.\n");
 		msvdx_priv->msvdx_busy = 0;
-		spin_unlock(&msvdx_priv->msvdx_lock);
+		spin_unlock_irqrestore(&msvdx_priv->msvdx_lock, irq_flags);
 		return -EINVAL;
 	}
 
-	spin_unlock(&msvdx_priv->msvdx_lock);
-
 	msvdx_cmd = list_first_entry(&msvdx_priv->msvdx_queue,
 				     struct psb_msvdx_cmd_queue, head);
+	list_del(&msvdx_cmd->head);
+	spin_unlock_irqrestore(&msvdx_priv->msvdx_lock, irq_flags);
+
 	PSB_DEBUG_GENERAL("MSVDXQUE: Queue has id %08x\n", msvdx_cmd->sequence);
 	ret = psb_msvdx_send(dev, msvdx_cmd->cmd, msvdx_cmd->cmd_size);
 	if (ret) {
 		DRM_ERROR("MSVDXQUE: psb_msvdx_send failed\n");
 		ret = -EINVAL;
 	}
-	list_del(&msvdx_cmd->head);
+
 	kfree(msvdx_cmd->cmd);
 	kfree(msvdx_cmd);
 
@@ -1679,9 +1681,7 @@ int psb_msvdx_check_reset_fw(struct drm_device *dev)
 		msvdx_priv->msvdx_needs_reset &= ~MSVDX_RESET_NEEDS_REUPLOAD_FW;
 		ospm_power_island_down(OSPM_VIDEO_DEC_ISLAND);
 	}
-
 	spin_unlock_irqrestore(&msvdx_priv->msvdx_lock, irq_flags);
-
 	return 0;
 }
 
