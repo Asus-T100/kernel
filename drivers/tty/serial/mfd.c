@@ -2049,6 +2049,11 @@ static int hsu_runtime_idle(struct device *dev)
 		if (up->suspended)
 			/*need to set longer for S3 resuming*/
 			delay = 500;
+		else if (up->index == 0)
+			/* idle detection handled by wl12xx combo chip, the chip
+			 * is now asleep so no need for any additional delay.
+			 */
+			delay = 20;
 		else
 			delay = 100;
 	}
@@ -2062,8 +2067,10 @@ static int hsu_runtime_suspend(struct device *dev)
 	struct pci_dev *pdev = container_of(dev, struct pci_dev, dev);
 	struct uart_hsu_port *up = pci_get_drvdata(pdev);
 
-	if (!allow_for_suspend(up))
-		return hsu_runtime_idle(dev);
+	if (!allow_for_suspend(up)) {
+		pm_schedule_suspend(dev, 100);
+		return -EBUSY;
+	}
 
 	if (dmarx_need_timer())
 		del_timer_sync(&up->rxc->rx_timer);
