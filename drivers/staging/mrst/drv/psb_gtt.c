@@ -973,9 +973,9 @@ int psb_gtt_map_meminfo(struct drm_device *dev,
 	kmem = psKernelMemInfo->pvLinAddrKM;
 	pages = (size + PAGE_SIZE - 1) >> PAGE_SHIFT;
 
-	DRM_DEBUG("KerMemInfo size %d, cpuVadr %x, pages %d, osMemHdl %x\n",
-		  size, (unsigned int)kmem, pages,
-		  (int)(psKernelMemInfo->sMemBlk.hOSMemHandle));
+	DRM_DEBUG("KerMemInfo size %d, cpuVadr 0x%p, pages %d, osMemHdl 0x%p\n",
+		size, kmem, pages,
+		psKernelMemInfo->sMemBlk.hOSMemHandle);
 
 	if (!kmem)
 		DRM_DEBUG("kmem is NULL");

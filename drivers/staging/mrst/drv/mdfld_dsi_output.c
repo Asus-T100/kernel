@@ -446,8 +446,10 @@ static void mdfld_dsi_connector_restore(struct drm_connector * connector)
 }
 
 static enum drm_connector_status mdfld_dsi_connector_detect
-		(struct drm_connector *connector)
+		(struct drm_connector *connector, bool force)
 {
+	(void) force;           /*  unused parameter */
+
 	struct psb_intel_output *psb_output
 		= to_psb_intel_output(connector);
 	struct mdfld_dsi_connector *dsi_connector

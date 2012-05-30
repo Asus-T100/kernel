@@ -37,9 +37,6 @@
 #include "psb_intel_reg.h"
 #include "psb_powermgmt.h"
 
-#define DRM_MODE_ENCODER_MIPI  5
-/* #define DRM_MODE_CONNECTOR_MIPI		       13 */
-
 #define BRIGHTNESS_MAX_LEVEL 100
 #define BLC_POLARITY_NORMAL 0
 
@@ -1817,8 +1814,10 @@ static void mrst_dsi_mode_set(struct drm_encoder *encoder,
  * been set up if the MIPI was actually connected anyway.
  */
 static enum drm_connector_status mrst_dsi_detect(struct drm_connector
-						   *connector)
+						*connector, bool force)
 {
+	(void) force;		/*  unused parameter */
+
 	PSB_DEBUG_ENTRY("\n");
 
 	return connector_status_connected;

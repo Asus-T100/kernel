@@ -1491,7 +1491,7 @@ int MRSTLFBHandleChangeFB(struct drm_device* dev, struct psb_framebuffer *psbfb)
 	dev_priv = (struct drm_psb_private *)dev->dev_private;
 	pg = dev_priv->pg;
 
-	psDevInfo->sDisplayDim.ui32ByteStride = psbfb->base.pitch;
+	psDevInfo->sDisplayDim.ui32ByteStride = psbfb->base.pitches[0];
 	psDevInfo->sDisplayDim.ui32Width = psbfb->base.width;
 	psDevInfo->sDisplayDim.ui32Height = psbfb->base.height;
 
@@ -1509,9 +1509,8 @@ int MRSTLFBHandleChangeFB(struct drm_device* dev, struct psb_framebuffer *psbfb)
 		psDevInfo->sSystemBuffer.uSysAddr.psNonCont = MRSTLFBAllocKernelMem( sizeof( IMG_SYS_PHYADDR ) * psbfb->bo->ttm->num_pages);
 		for(i = 0;i < psbfb->bo->ttm->num_pages;++i)
 		{
-			struct page *p = ttm_tt_get_page( psbfb->bo->ttm, i);
+			struct page *p = psbfb->bo->ttm->pages[i];
 			psDevInfo->sSystemBuffer.uSysAddr.psNonCont[i].uiAddr = page_to_pfn(p) << PAGE_SHIFT;
-
 		}
 	}
 	else
@@ -1538,8 +1537,7 @@ int MRSTLFBHandleChangeFB(struct drm_device* dev, struct psb_framebuffer *psbfb)
 	if( !psDevInfo->sSystemBuffer.bIsContiguous )
 		MRSTLFBFreeKernelMem( psDevInfo->sSystemBuffer.uSysAddr.psNonCont );
 
-
-	psDevInfo->sDisplayDim.ui32ByteStride = psbfb->base.pitch;
+	psDevInfo->sDisplayDim.ui32ByteStride = psbfb->base.pitches[0];
 	psDevInfo->sDisplayDim.ui32Width = psbfb->base.width;
 	psDevInfo->sDisplayDim.ui32Height = psbfb->base.height;
 
@@ -1798,7 +1796,7 @@ static MRST_ERROR InitDev(MRSTLFB_DEVINFO *psDevInfo)
 
 	hdisplay = psDrmFB->width;
 	vdisplay = psDrmFB->height;
-	FBSize = psDrmFB->pitch * psDrmFB->height;
+	FBSize = psDrmFB->pitches[0] * psDrmFB->height;
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,35))
 	psLINFBInfo = (struct fb_info*)psPsbFBDev->psb_fb_helper.fbdev;

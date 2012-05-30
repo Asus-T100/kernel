@@ -1467,8 +1467,10 @@ void hdmi_unplug_prepare(struct drm_psb_private *dev_priv)
 }
 
 static enum drm_connector_status mdfld_hdmi_detect(struct drm_connector
-						   *connector)
+						*connector, bool force)
 {
+	(void) force;           /*  unused parameter */
+
 #ifdef CONFIG_X86_MDFLD
 	struct drm_device *dev = connector->dev;
 	struct drm_psb_private *dev_priv =
@@ -1729,7 +1731,7 @@ int mdfld_add_eedid_video_block_modes(struct drm_connector *connector, struct ed
 
                                     mode = drm_mode_create(dev);
                                     if (!mode)
-                                        return NULL;
+					return 0;
 
                                     mode->type = DRM_MODE_TYPE_DRIVER;
 
@@ -2132,7 +2134,9 @@ void mdfld_hdmi_init(struct drm_device *dev,
 	hdmi_priv->dev = dev;
 	hdmi_priv->edid_preferred_mode = NULL;
 	mdfld_hdcp_init(hdmi_priv);
+#if (defined CONFIG_SND_INTELMID_HDMI_AUDIO)
 	mdfld_hdmi_audio_init(hdmi_priv);
+#endif /* if (defined CONFIG_SND_INTELMID_HDMI_AUDIO) */
 
 	/* CTP has separate companion chip for HDMI. This is not required.
 	   To be fixed : enable HPD for CTP.

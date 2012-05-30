@@ -55,7 +55,11 @@
 
 struct mid_intel_hdmi_priv;
 extern void mdfld_hdcp_init(struct mid_intel_hdmi_priv *p_hdmi_priv);
+
+#if (defined CONFIG_SND_INTELMID_HDMI_AUDIO)
 extern void mdfld_hdmi_audio_init(struct mid_intel_hdmi_priv *p_hdmi_priv);
+#endif /* if (defined CONFIG_SND_INTELMID_HDMI_AUDIO) */
+
 extern void mdfld_msic_init(struct mid_intel_hdmi_priv *p_hdmi_priv);
 extern void mdfld_ti_tpd_init(struct mid_intel_hdmi_priv *p_hdmi_priv);
 //

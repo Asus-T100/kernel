@@ -1062,12 +1062,13 @@ void psb_intel_sdvo_set_hotplug(struct drm_connector *connector, int on)
 }
 
 static enum drm_connector_status psb_intel_sdvo_detect(struct drm_connector
-						   *connector)
+						*connector, bool force)
 {
 	u8 response[2];
 	u8 status;
 	struct psb_intel_output *psb_intel_output =
 					to_psb_intel_output(connector);
+	(void) force;           /*  unused parameter */
 
 	psb_intel_sdvo_write_cmd(psb_intel_output,
 				 SDVO_CMD_GET_ATTACHED_DISPLAYS,

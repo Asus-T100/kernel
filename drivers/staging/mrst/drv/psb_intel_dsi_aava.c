@@ -35,6 +35,7 @@
 #include <drm/drm.h>
 #include <drm/drm_crtc.h>
 #include <drm/drm_edid.h>
+#include <drm/drm_mode.h>
 
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,34))
 #include <asm/ipc_defs.h>
@@ -66,8 +67,6 @@
 						__func__ , ## args)
 
 #define BRIGHTNESS_MAX_LEVEL 100
-
-#define DRM_MODE_ENCODER_MIPI   5
 
 #define DBG_PRINTS 0
 
@@ -784,8 +783,10 @@ static void dsi_encoder_dpms(struct drm_encoder *encoder, int mode)
 
 /* Connector funcs */
 static enum drm_connector_status dsi_connector_detect(struct drm_connector
-								*connector)
+						*connector, bool force)
 {
+	(void) force;		/*  unused parameter */
+
 	DBG_TRACE("");
 	return connector_status_connected;
 }

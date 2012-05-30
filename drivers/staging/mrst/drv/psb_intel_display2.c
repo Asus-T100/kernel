@@ -965,7 +965,7 @@ int mdfld__intel_pipe_set_base(struct drm_crtc *crtc, int x, int y, struct drm_f
 
 	Start = mode_dev->bo_offset(dev, psbfb);
 	Size = mode_dev->bo_size(dev, psbfb);
-	Offset = y * crtc->fb->pitch + x * (crtc->fb->bits_per_pixel / 8);
+	Offset = y * crtc->fb->pitches[0] + x * (crtc->fb->bits_per_pixel / 8);
 
 	/* Try to attach/de-attach Plane B to an existing swap chain,
 	 * especially with another frame buffer inserted into GTT. */
@@ -977,7 +977,7 @@ int mdfld__intel_pipe_set_base(struct drm_crtc *crtc, int x, int y, struct drm_f
 		goto psb_intel_pipe_set_base_exit;
 	}
 
-	REG_WRITE(dspstride, crtc->fb->pitch);
+	REG_WRITE(dspstride, crtc->fb->pitches[0]);
 	dspcntr = REG_READ(dspcntr_reg);
 	dspcntr &= ~DISPPLANE_PIXFORMAT_MASK;
 
@@ -1769,7 +1769,7 @@ static int mdfld_crtc_dsi_mode_set(struct drm_crtc *crtc,
 	mode = adjusted_mode;
 	ctx = &dsi_config->dsi_hw_context;
 	fb_bpp = crtc->fb->bits_per_pixel;
-	fb_pitch = crtc->fb->pitch;
+	fb_pitch = crtc->fb->pitches[0];
 	fb_depth = crtc->fb->depth;
 	dev = crtc->dev;
 	dev_priv = (struct drm_psb_private *)dev->dev_private;
@@ -1910,8 +1910,6 @@ static int mdfld_crtc_mode_set(struct drm_crtc *crtc,
 	struct mrst_clock_t clock;
 	bool ok;
 	u32 dpll = 0, fp = 0;
-	/* One hot encoding for P1 = 8 */
-	u32 p1_post = 0x40;
 	bool is_crt = false, is_lvds = false, is_tv = false;
 	bool is_mipi = false, is_mipi2 = false, is_hdmi = false;
 	struct drm_mode_config *mode_config = &dev->mode_config;
@@ -1921,7 +1919,7 @@ static int mdfld_crtc_mode_set(struct drm_crtc *crtc,
 	struct drm_encoder *encoder;
 	struct drm_connector * connector;
 	int timeout = 0;
-	struct drm_encoder *mipi_encoder;
+	struct drm_encoder *mipi_encoder = NULL;
 
 	struct mdfld_dsi_hw_context *ctx;
 

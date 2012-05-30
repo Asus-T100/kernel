@@ -28,7 +28,7 @@
 #define _SYSCOMMON_H
 
 #include "sysconfig.h"
-#include "sysinfo.h"
+#include "pvrsysinfo.h"
 #include "servicesint.h"
 #include "queue.h"
 #include "power.h"

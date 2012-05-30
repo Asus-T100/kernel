@@ -758,6 +758,8 @@ int psb_setup_fw(struct drm_device *dev)
 	PSB_DEBUG_GENERAL("MSVDX: MSVDX_COMMS_AREA_ADDR = %08x\n",
 			  MSVDX_COMMS_AREA_ADDR);
 	if (IS_D0(dev)) {
+		uint32_t init_msg[FW_DEVA_INIT_SIZE];
+
 		/* send INIT cmd for RENDEC init */
 		PSB_WMSVDX32(DSIABLE_IDLE_GPIO_SIG | DSIABLE_Auto_CLOCK_GATING
 			     | RETURN_VDEB_DATA_IN_COMPLETION,
@@ -766,7 +768,6 @@ int psb_setup_fw(struct drm_device *dev)
 		 * at this stage, FW is uplaoded successfully, can send rendec
 		 * init message
 		 */
-		uint32_t init_msg[FW_DEVA_INIT_SIZE];
 
 		MEMIO_WRITE_FIELD(init_msg, FWRK_GENMSG_SIZE,
 				  FW_DEVA_INIT_SIZE);

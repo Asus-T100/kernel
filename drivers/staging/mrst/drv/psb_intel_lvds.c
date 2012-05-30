@@ -541,8 +541,10 @@ static void psb_intel_lvds_mode_set(struct drm_encoder *encoder,
  * been set up if the LVDS was actually connected anyway.
  */
 static enum drm_connector_status psb_intel_lvds_detect(struct drm_connector
-						   *connector)
+						*connector, bool force)
 {
+	(void) force;           /*  unused parameter */
+
 	return connector_status_connected;
 }
 

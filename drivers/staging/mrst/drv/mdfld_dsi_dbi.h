@@ -34,6 +34,7 @@
 #include <drm/drm.h>
 #include <drm/drm_crtc.h>
 #include <drm/drm_edid.h>
+#include <drm/drm_mode.h>
 
 #include "psb_drv.h"
 #include "psb_intel_drv.h"
@@ -42,8 +43,6 @@
 
 #include "mdfld_dsi_output.h"
 #include "mdfld_output.h"
-
-#define DRM_MODE_ENCODER_MIPI  5
 
 
 extern int enter_dsr;

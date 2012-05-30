@@ -18,8 +18,10 @@
 /*
  * Authors: Thomas Hellstrom <thomas-at-tungstengraphics.com>
  */
-#include "ttm/ttm_placement.h"
-#include "ttm/ttm_execbuf_util.h"
+#include <ttm/ttm_placement.h>
+#include <ttm/ttm_execbuf_util.h>
+#include <ttm/ttm_page_alloc.h>
+
 #include "psb_ttm_fence_api.h"
 #include <drm/drmP.h>
 #include "psb_drv.h"
@@ -27,15 +29,18 @@
 
 #define DRM_MEM_TTM       26
 
-struct drm_psb_ttm_backend {
-	struct ttm_backend base;
-	struct page **pages;
-	dma_addr_t *dma_addrs;
+/*  ttm removal of "backend" -- struct ttm_backend changed to struct ttm_tt.
+    Members now in struct ttm instead of struct ttm_backend:
+	pages
+	num_pages
+    */
+
+struct drm_psb_ttm_tt_s {
+	struct ttm_dma_tt ttm_dma;
 	unsigned int desired_tile_stride;
 	unsigned int hw_tile_stride;
 	int mem_type;
 	unsigned long offset;
-	unsigned long num_pages;
 };
 
 /*
@@ -220,86 +225,81 @@ static int psb_move(struct ttm_buffer_object *bo,
 	return 0;
 }
 
-static int drm_psb_tbe_populate(struct ttm_backend *backend,
-				unsigned long num_pages,
-				struct page **pages,
-				struct page *dummy_read_page,
-				dma_addr_t *dma_addrs)
+static int drm_psb_tbe_unbind(struct ttm_tt *ttm)
 {
-	int i;
-	struct drm_psb_ttm_backend *psb_be =
-		container_of(backend, struct drm_psb_ttm_backend, base);
+	struct ttm_dma_tt *ttm_dma;
+	struct ttm_bo_device *bdev;
+	struct drm_psb_private *dev_priv;
+	struct drm_psb_ttm_tt_s *psb_be;
+	struct psb_mmu_pd *pd;
 
-	psb_be->pages = pages;
-	psb_be->dma_addrs = dma_addrs; /* Not concretely implemented by TTM yet*/
-	return 0;
-}
-
-static int drm_psb_tbe_unbind(struct ttm_backend *backend)
-{
-	struct ttm_bo_device *bdev = backend->bdev;
-	struct drm_psb_private *dev_priv =
-		container_of(bdev, struct drm_psb_private, bdev);
-	struct drm_psb_ttm_backend *psb_be =
-		container_of(backend, struct drm_psb_ttm_backend, base);
-	struct psb_mmu_pd *pd = psb_mmu_get_default_pd(dev_priv->mmu);
-	/* struct ttm_mem_type_manager *man = &bdev->man[psb_be->mem_type]; */
+	ttm_dma = container_of(ttm, struct ttm_dma_tt, ttm);
+	psb_be = container_of(ttm_dma, struct drm_psb_ttm_tt_s, ttm_dma);
+	bdev = ttm->bdev;
+	dev_priv = container_of(bdev, struct drm_psb_private, bdev);
+	pd = psb_mmu_get_default_pd(dev_priv->mmu);
 
 	if (psb_be->mem_type == TTM_PL_TT) {
 		uint32_t gatt_p_offset =
 			(psb_be->offset - dev_priv->pg->mmu_gatt_start) >> PAGE_SHIFT;
 
 		(void) psb_gtt_remove_pages(dev_priv->pg, gatt_p_offset,
-					    psb_be->num_pages,
+					    ttm->num_pages,
 					    psb_be->desired_tile_stride,
 					    psb_be->hw_tile_stride, 0);
 	}
 
 	psb_mmu_remove_pages(pd, psb_be->offset,
-			     psb_be->num_pages,
+			     ttm->num_pages,
 			     psb_be->desired_tile_stride,
 			     psb_be->hw_tile_stride);
 
 	return 0;
 }
 
-static int drm_psb_tbe_bind(struct ttm_backend *backend,
+static int drm_psb_tbe_bind(struct ttm_tt *ttm,
 			    struct ttm_mem_reg *bo_mem)
 {
-	struct ttm_bo_device *bdev = backend->bdev;
-	struct drm_psb_private *dev_priv =
-		container_of(bdev, struct drm_psb_private, bdev);
-	struct drm_psb_ttm_backend *psb_be =
-		container_of(backend, struct drm_psb_ttm_backend, base);
-	struct psb_mmu_pd *pd = psb_mmu_get_default_pd(dev_priv->mmu);
-	struct ttm_mem_type_manager *man = &bdev->man[bo_mem->mem_type];
+	struct ttm_dma_tt *ttm_dma;
+	struct ttm_bo_device *bdev;
+	struct drm_psb_private *dev_priv;
+	struct drm_psb_ttm_tt_s *psb_be;
+	struct psb_mmu_pd *pd;
+	struct ttm_mem_type_manager *man;
 	int type;
-	int ret = 0;
+	int ret;
+
+	ttm_dma = container_of(ttm, struct ttm_dma_tt, ttm);
+	psb_be = container_of(ttm_dma, struct drm_psb_ttm_tt_s, ttm_dma);
+
+	bdev = ttm->bdev;
+	dev_priv = container_of(bdev, struct drm_psb_private, bdev);
+	pd = psb_mmu_get_default_pd(dev_priv->mmu);
+	man = &bdev->man[bo_mem->mem_type];
+	ret = 0;
 
 	psb_be->mem_type = bo_mem->mem_type;
-	psb_be->num_pages = bo_mem->num_pages;
+	ttm->num_pages = bo_mem->num_pages;
 	psb_be->desired_tile_stride = 0;
 	psb_be->hw_tile_stride = 0;
 	psb_be->offset = (bo_mem->start << PAGE_SHIFT) +
 			 man->gpu_offset;
-
-	type =
-		(bo_mem->
-		 placement & TTM_PL_FLAG_CACHED) ? PSB_MMU_CACHED_MEMORY : 0;
+	type = (bo_mem->placement & TTM_PL_FLAG_CACHED) ?
+		PSB_MMU_CACHED_MEMORY : 0;
 
 	if (psb_be->mem_type == TTM_PL_TT) {
 		uint32_t gatt_p_offset =
 			(psb_be->offset - dev_priv->pg->mmu_gatt_start) >> PAGE_SHIFT;
 
-		ret = psb_gtt_insert_pages(dev_priv->pg, psb_be->pages,
+		ret = psb_gtt_insert_pages(dev_priv->pg, ttm->pages,
 					   gatt_p_offset,
-					   psb_be->num_pages,
+					   ttm->num_pages,
 					   psb_be->desired_tile_stride,
 					   psb_be->hw_tile_stride, type);
 	}
 
-	ret = psb_mmu_insert_pages(pd, psb_be->pages,
-				   psb_be->offset, psb_be->num_pages,
+	ret = psb_mmu_insert_pages(pd, ttm->pages,
+				   psb_be->offset, ttm->num_pages,
 				   psb_be->desired_tile_stride,
 				   psb_be->hw_tile_stride, type);
 	if (ret)
@@ -307,48 +307,155 @@ static int drm_psb_tbe_bind(struct ttm_backend *backend,
 
 	return 0;
 out_err:
-	drm_psb_tbe_unbind(backend);
+	drm_psb_tbe_unbind(ttm);
 	return ret;
 
 }
 
-static void drm_psb_tbe_clear(struct ttm_backend *backend)
+static void drm_psb_tbe_destroy(struct ttm_tt *ttm)
 {
-	struct drm_psb_ttm_backend *psb_be =
-		container_of(backend, struct drm_psb_ttm_backend, base);
+	struct ttm_dma_tt *ttm_dma;
+	struct drm_psb_ttm_tt_s *psb_be;
 
-	psb_be->pages = NULL;
-	psb_be->dma_addrs = NULL;
-	return;
-}
+	ttm_dma = container_of(ttm, struct ttm_dma_tt, ttm);
+	psb_be = container_of(ttm_dma, struct drm_psb_ttm_tt_s, ttm_dma);
 
-static void drm_psb_tbe_destroy(struct ttm_backend *backend)
-{
-	struct drm_psb_ttm_backend *psb_be =
-		container_of(backend, struct drm_psb_ttm_backend, base);
-
-	if (backend)
+	ttm_dma_tt_fini(ttm_dma);
+	if (ttm)
 		kfree(psb_be);
 }
 
 static struct ttm_backend_func psb_ttm_backend = {
-	.populate = drm_psb_tbe_populate,
-	.clear = drm_psb_tbe_clear,
 	.bind = drm_psb_tbe_bind,
 	.unbind = drm_psb_tbe_unbind,
 	.destroy = drm_psb_tbe_destroy,
 };
 
-static struct ttm_backend *drm_psb_tbe_init(struct ttm_bo_device *bdev) {
-	struct drm_psb_ttm_backend *psb_be;
+static struct ttm_tt *drm_psb_ttm_tt_create(struct ttm_bo_device *bdev,
+	unsigned long size, uint32_t page_flags, struct page *dummy_read_page)
+{
+	struct drm_psb_ttm_tt_s *psb_be;
+	int rva;
+
+#if __OS_HAS_AGP && 0
+	if (this_is_an_agp_device)
+		return ttm_agp_tt_populate(ttm);
+#endif
 
 	psb_be = kzalloc(sizeof(*psb_be), GFP_KERNEL);
 	if (!psb_be)
 		return NULL;
-	psb_be->pages = NULL;
-	psb_be->base.func = &psb_ttm_backend;
-	psb_be->base.bdev = bdev;
-	return &psb_be->base;
+
+	psb_be->ttm_dma.ttm.func = &psb_ttm_backend;
+
+	rva = ttm_dma_tt_init(&psb_be->ttm_dma, bdev, size, page_flags,
+		dummy_read_page);
+	if (rva < 0) {
+		kfree(psb_be);
+		return NULL;
+	}
+
+	return &psb_be->ttm_dma.ttm;
+}
+
+static int drm_psb_ttm_tt_populate(struct ttm_tt *ttm)
+{
+	struct ttm_dma_tt *ttm_dma;
+	struct ttm_bo_device *bdev;
+	struct drm_psb_private *dev_priv;
+	struct drm_device *ddev;
+	unsigned i;
+	int r;
+
+	/*	The only use made of the structure pointed to
+		by ddev is reference to these members:
+			struct device *dev;
+			struct pci_dev *pdev;
+		*/
+	ttm_dma = (struct ttm_dma_tt *) ttm;
+
+	bdev = ttm->bdev;
+	dev_priv = container_of(bdev, struct drm_psb_private, bdev);
+	ddev = dev_priv->dev;
+
+	if (ttm->state != tt_unpopulated)
+		return 0;
+
+#if __OS_HAS_AGP && 0
+	if (this_is_an_agp_device)
+		return ttm_agp_tt_populate(ttm);
+#endif
+
+#ifdef CONFIG_SWIOTLB
+	if (swiotlb_nr_tbl())
+		return ttm_dma_populate(ttm_dma, ddev->dev);
+#endif
+
+	r = ttm_pool_populate(ttm);
+	if (r)
+		return r;
+
+	for (i = 0; i < ttm->num_pages; i++) {
+		ttm_dma->dma_address[i] = pci_map_page(ddev->pdev,
+						ttm->pages[i],
+						0, PAGE_SIZE,
+						PCI_DMA_BIDIRECTIONAL);
+		if (pci_dma_mapping_error(ddev->pdev,
+				ttm_dma->dma_address[i])) {
+			while (--i) {
+				pci_unmap_page(ddev->pdev,
+					ttm_dma->dma_address[i],
+					PAGE_SIZE, PCI_DMA_BIDIRECTIONAL);
+				ttm_dma->dma_address[i] = 0;
+			}
+			ttm_pool_unpopulate(ttm);
+			return -EFAULT;
+		}
+	}
+	return 0;
+}
+
+static void drm_psb_ttm_tt_unpopulate(struct ttm_tt *ttm)
+{
+	struct ttm_dma_tt *ttm_dma;
+	struct ttm_bo_device *bdev;
+	struct drm_psb_private *dev_priv;
+	struct drm_device *ddev;
+
+	unsigned i;
+
+	/*	The only use made of the structure pointed to
+		by ddev is reference to these members:
+			struct device *dev;
+			struct pci_dev *pdev;
+		*/
+	ttm_dma = (struct ttm_dma_tt *) ttm;
+	bdev = ttm->bdev;
+	dev_priv = container_of(bdev, struct drm_psb_private, bdev);
+	ddev = dev_priv->dev;
+
+#if __OS_HAS_AGP && 0
+	if (this_is_an_agp_device) {
+		ttm_agp_tt_unpopulate(ttm);
+		return;
+	}
+#endif
+
+#ifdef CONFIG_SWIOTLB
+	if (swiotlb_nr_tbl()) {
+		ttm_dma_unpopulate(ttm_dma, ddev->dev);
+		return;
+	}
+#endif
+
+	for (i = 0; i < ttm->num_pages; i++) {
+		if (ttm_dma->dma_address[i]) {
+			pci_unmap_page(ddev->pdev, ttm_dma->dma_address[i],
+				PAGE_SIZE, PCI_DMA_BIDIRECTIONAL);
+		}
+	}
+
+	ttm_pool_unpopulate(ttm);
 }
 
 static int psb_ttm_io_mem_reserve(struct ttm_bo_device *bdev, struct ttm_mem_reg *mem)
@@ -429,7 +536,9 @@ struct ttm_bo_driver psb_ttm_bo_driver = {
 		.num_mem_type_prio = ARRAY_SIZE(psb_mem_prios),
 		.num_mem_busy_prio = ARRAY_SIZE(psb_busy_prios),
 	*/
-	.create_ttm_backend_entry = &drm_psb_tbe_init,
+	.ttm_tt_create = &drm_psb_ttm_tt_create,
+	.ttm_tt_populate = &drm_psb_ttm_tt_populate,
+	.ttm_tt_unpopulate = &drm_psb_ttm_tt_unpopulate,
 	.invalidate_caches = &psb_invalidate_caches,
 	.init_mem_type = &psb_init_mem_type,
 	.evict_flags = &psb_evict_mask,
@@ -440,6 +549,28 @@ struct ttm_bo_driver psb_ttm_bo_driver = {
 	.sync_obj_flush = &ttm_fence_sync_obj_flush,
 	.sync_obj_unref = &ttm_fence_sync_obj_unref,
 	.sync_obj_ref = &ttm_fence_sync_obj_ref,
+
+#if 0
+	/* Begin -- Not currently used by this driver.
+	   These will only be dispatched if non-NULL. */
+
+	/* hook to notify driver about a driver move so it
+	 * can do tiling things */
+	/*  Only called if non-NULL */
+	void (*move_notify)(struct ttm_buffer_object *bo,
+			    struct ttm_mem_reg *new_mem);
+	/* notify the driver we are taking a fault on this BO
+	 * and have reserved it */
+	int (*fault_reserve_notify)(struct ttm_buffer_object *bo);
+
+	/**
+	 * notify the driver that we're about to swap out this bo
+	 */
+	void (*swap_notify) (struct ttm_buffer_object *bo);
+
+	/* End   -- Not currently used by this driver. */
+#endif
+
 	.io_mem_reserve = &psb_ttm_io_mem_reserve,
 	.io_mem_free = &psb_ttm_io_mem_free
 };

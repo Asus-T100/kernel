@@ -34,6 +34,7 @@
 #include <drm/drm.h>
 #include <drm/drm_crtc.h>
 #include <drm/drm_edid.h>
+#include <drm/drm_mode.h>
 
 #include "psb_drv.h"
 #include "psb_intel_drv.h"
@@ -42,8 +43,6 @@
 #include "mdfld_output.h"
 
 #include <asm/intel-mid.h>
-
-#define DRM_MODE_ENCODER_MIPI  5
 
 /*mdfld DSI controller registers*/
 #define MIPIA_DEVICE_READY_REG				0xb000
@@ -429,6 +428,10 @@ struct mdfld_dsi_config {
 		
 #define MDFLD_DSI_ENCODER(encoder) \
 		(container_of(encoder, struct mdfld_dsi_encoder, base))
+
+#define MDFLD_DSI_ENCODER_WITH_DRM_ENABLE(encoder) \
+		(container_of((struct drm_encoder *) encoder, \
+		struct mdfld_dsi_encoder, base))
 		
 static inline struct mdfld_dsi_config * 
 	mdfld_dsi_get_config(struct mdfld_dsi_connector * connector)

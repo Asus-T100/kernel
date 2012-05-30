@@ -45,9 +45,14 @@
 #ifdef CONFIG_GFX_RTPM
 #include <linux/pm_runtime.h>
 #endif
-
-#include <linux/earlysuspend.h>
 #include <linux/atomic.h>
+
+/*  SUPPORT_EARLY_SUSPEND --  FIXME -- rework.  */
+#define SUPPORT_EARLY_SUSPEND 0
+
+#if SUPPORT_EARLY_SUSPEND
+#include <linux/earlysuspend.h>
+#endif /* if SUPPORT_EARLY_SUSPEND */
 
 #undef OSPM_GFX_DPK
 #define SCU_CMD_VPROG2  0xe3
@@ -75,6 +80,8 @@ void release_ospm_lock(void)
 {
 	mutex_unlock(&g_ospm_mutex);
 }
+
+#if SUPPORT_EARLY_SUSPEND
 /*
  * gfx_early_suspend
  *
@@ -87,6 +94,7 @@ static struct early_suspend gfx_early_suspend_desc = {
         .suspend = gfx_early_suspend,
         .resume = gfx_late_resume,
 };
+#endif /* if SUPPORT_EARLY_SUSPEND */
 
 static int ospm_runtime_pm_topaz_suspend(struct drm_device *dev)
 {
@@ -359,7 +367,9 @@ void ospm_power_init(struct drm_device *dev)
 	atomic_set(&g_videoenc_access_count, 0);
 	atomic_set(&g_videodec_access_count, 0);
 
+#if SUPPORT_EARLY_SUSPEND
 	register_early_suspend(&gfx_early_suspend_desc);
+#endif /* if SUPPORT_EARLY_SUSPEND */
 
 #ifdef OSPM_STAT
 	dev_priv->graphics_state = PSB_PWR_STATE_ON;
@@ -378,7 +388,10 @@ void ospm_power_init(struct drm_device *dev)
  */
 void ospm_power_uninit(void)
 {
+#if SUPPORT_EARLY_SUSPEND
     unregister_early_suspend(&gfx_early_suspend_desc);
+#endif /* if SUPPORT_EARLY_SUSPEND */
+
     mutex_destroy(&g_ospm_mutex);
 #ifdef CONFIG_GFX_RTPM
 	pm_runtime_get_noresume(&gpDrmDevice->pdev->dev);
@@ -1048,7 +1061,6 @@ static int mdfld_restore_display_registers(struct drm_device *dev, int pipe)
 	u32 dpll = 0;
 	u32 timeout = 0;
 	u32 reg_offset = 0;
-	u32 temp = 0, device_ready_reg = 0;
 
 	/* regester */
 	u32 dpll_reg = MRST_DPLL_A;
@@ -1331,27 +1343,32 @@ static int mdfld_restore_display_registers(struct drm_device *dev, int pipe)
 	msleep(20);
 
 #ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
-	device_ready_reg = DEVICE_READY_REG + reg_offset;
-	/* LP Hold Release */
-	temp = REG_READ(mipi_reg);
-	temp |= LP_OUTPUT_HOLD_RELEASE;
-	REG_WRITE(mipi_reg, temp);
-	mdelay(1);
+	{
+		u32 temp = 0;
+		u32 device_ready_reg = 0;
+
+		device_ready_reg = DEVICE_READY_REG + reg_offset;
+		/* LP Hold Release */
+		temp = REG_READ(mipi_reg);
+		temp |= LP_OUTPUT_HOLD_RELEASE;
+		REG_WRITE(mipi_reg, temp);
+		mdelay(1);
 
 
-	/* Set DSI host to exit from Utra Low Power State */
-	temp = REG_READ(device_ready_reg);
-	temp &= ~ULPS_MASK;
-	temp |= 0x3;
-	temp |= EXIT_ULPS_DEV_READY;
-	REG_WRITE(device_ready_reg, temp);
-	mdelay(1);
+		/* Set DSI host to exit from Utra Low Power State */
+		temp = REG_READ(device_ready_reg);
+		temp &= ~ULPS_MASK;
+		temp |= 0x3;
+		temp |= EXIT_ULPS_DEV_READY;
+		REG_WRITE(device_ready_reg, temp);
+		mdelay(1);
 
-	temp = REG_READ(device_ready_reg);
-	temp &= ~ULPS_MASK;
-	temp |= EXITING_ULPS;
-	REG_WRITE(device_ready_reg, temp);
-	mdelay(1);
+		temp = REG_READ(device_ready_reg);
+		temp &= ~ULPS_MASK;
+		temp |= EXITING_ULPS;
+		REG_WRITE(device_ready_reg, temp);
+		mdelay(1);
+	}
 #endif
 
 	/*enable the pipe*/
@@ -1438,8 +1455,6 @@ void ospm_suspend_display(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv = dev->dev_private;
 	int pp_stat, ret=0;
-	u32 temp = 0, device_ready_reg = 0;
-	u32 mipi_reg = 0, reg_offset = 0;
 
 #ifdef OSPM_GFX_DPK
 	printk(KERN_ALERT "%s\n", __func__);
@@ -1478,19 +1493,26 @@ void ospm_suspend_display(struct drm_device *dev)
 #endif
 
 #ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
-		device_ready_reg = DEVICE_READY_REG + reg_offset;
-		mipi_reg = MIPI;
-		/* Put the panel in ULPS mode for S0ix. */
-		temp = REG_READ(device_ready_reg);
-		temp &= ~ULPS_MASK;
-		temp |= ENTERING_ULPS;
-		REG_WRITE(device_ready_reg, temp);
+		{
+			u32 temp = 0;
+			u32 device_ready_reg = 0;
+			u32 mipi_reg = 0;
+			u32 reg_offset = 0;
 
-		/* LP Hold */
-		temp = REG_READ(mipi_reg);
-		temp &= ~LP_OUTPUT_HOLD;
-		REG_WRITE(mipi_reg, temp);
-		mdelay(1);
+			device_ready_reg = DEVICE_READY_REG + reg_offset;
+			mipi_reg = MIPI;
+			/* Put the panel in ULPS mode for S0ix. */
+			temp = REG_READ(device_ready_reg);
+			temp &= ~ULPS_MASK;
+			temp |= ENTERING_ULPS;
+			REG_WRITE(device_ready_reg, temp);
+
+			/* LP Hold */
+			temp = REG_READ(mipi_reg);
+			temp &= ~LP_OUTPUT_HOLD;
+			REG_WRITE(mipi_reg, temp);
+			mdelay(1);
+		}
 #endif
 
 	} else {
@@ -1539,6 +1561,8 @@ void ospm_suspend_display(struct drm_device *dev)
 	ospm_power_island_down(OSPM_DISPLAY_ISLAND);
 }
 
+#if (defined(CONFIG_SND_INTELMID_HDMI_AUDIO) || \
+		defined(CONFIG_SND_INTELMID_HDMI_AUDIO_MODULE))
 /*
  * is_hdmi_plugged_out
  *
@@ -1566,6 +1590,7 @@ static bool is_hdmi_plugged_out(struct drm_device *dev)
 
 	return hdmi_plugged_out;
 }
+#endif
 
 /*
  * ospm_resume_display
@@ -1873,6 +1898,7 @@ static void gfx_redridge_late_resume(struct drm_device *dev)
 }
 #endif
 
+#if SUPPORT_EARLY_SUSPEND
 static void gfx_early_suspend(struct early_suspend *h)
 {
 	struct drm_psb_private *dev_priv = gpDrmDevice->dev_private;
@@ -1940,7 +1966,9 @@ static void gfx_early_suspend(struct early_suspend *h)
 #endif
 
 }
-static void resume_data_back()
+#endif /* if SUPPORT_EARLY_SUSPEND */
+
+static void resume_data_back(void)
 {
 	pm_runtime_forbid(&gpDrmDevice->pdev->dev);
 	mutex_lock(&g_ospm_mutex);
@@ -1955,7 +1983,6 @@ static void restore_panel_controll_back(struct drm_psb_private *dev_priv)
 	struct drm_device *dev = dev_priv->dev;
 	struct drm_encoder *encoder;
 	struct drm_encoder_helper_funcs *enc_funcs;
-	struct drm_crtc *crtc = NULL;
 	u32 dspcntr_val;
 
 	if (IS_MDFLD(gpDrmDevice)) {
@@ -2015,6 +2042,8 @@ static void restore_panel_controll_back(struct drm_psb_private *dev_priv)
 	}
 
 }
+
+#if SUPPORT_EARLY_SUSPEND
 static void gfx_late_resume(struct early_suspend *h)
 {
 	struct drm_psb_private *dev_priv = gpDrmDevice->dev_private;
@@ -2029,6 +2058,7 @@ static void gfx_late_resume(struct early_suspend *h)
 	}
 	restore_panel_controll_back(dev_priv);
 }
+#endif /* if SUPPORT_EARLY_SUSPEND */
 
 /*
  * ospm_power_suspend
@@ -2043,7 +2073,12 @@ int ospm_power_suspend(struct pci_dev *pdev, pm_message_t state)
 	int videoenc_access_count;
 	int videodec_access_count;
 	int display_access_count;
+
+#if ((defined CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE) \
+	|| (defined CONFIG_SND_INTELMID_HDMI_AUDIO) \
+	|| (defined CONFIG_SND_INTELMID_HDMI_AUDIO_MODULE))
 	struct drm_psb_private *dev_priv = gpDrmDevice->dev_private;
+#endif
 
 #ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
 	if (dev_priv->hdmi_audio_busy)
@@ -2661,7 +2696,11 @@ int psb_runtime_resume(struct device *dev)
 
 int psb_runtime_idle(struct device *dev)
 {
+#if ((defined CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE) \
+	|| (defined CONFIG_SND_INTELMID_HDMI_AUDIO) \
+	|| (defined CONFIG_SND_INTELMID_HDMI_AUDIO_MODULE))
 	struct drm_psb_private *dev_priv = gpDrmDevice->dev_private;
+#endif
 
 #if (defined(CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE))
 	if (dev_priv->hdmi_audio_busy)
@@ -2780,7 +2819,9 @@ void mdfld_reset_panel_handler_work(struct work_struct *work)
 	}
 	p_funcs = dbi_output->p_funcs;
 	if (p_funcs) {
+#if SUPPORT_EARLY_SUSPEND
 		gfx_early_suspend(NULL);
+#endif /* if SUPPORT_EARLY_SUSPEND */
 		if (p_funcs->get_reset_delay_time)
 			p_funcs->get_reset_delay_time(
 					&delay_between_dispaly_island_off_on,
