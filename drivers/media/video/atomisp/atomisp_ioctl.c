@@ -1773,6 +1773,16 @@ static long atomisp_vidioc_default(struct file *file, void *fh,
 	case ATOMISP_IOC_G_SENSOR_MODE_DATA:
 		return atomisp_get_sensor_mode_data(isp, arg);
 
+	case ATOMISP_IOC_G_MOTOR_PRIV_INT_DATA:
+		if (isp->inputs[isp->input_curr].motor)
+			return v4l2_subdev_call(
+					isp->inputs[isp->input_curr].motor,
+					core, ioctl, cmd, arg);
+		else
+			return v4l2_subdev_call(
+					isp->inputs[isp->input_curr].camera,
+					core, ioctl, cmd, arg);
+
 	case ATOMISP_IOC_S_EXPOSURE:
 	case ATOMISP_IOC_G_SENSOR_CALIBRATION_GROUP:
 	case ATOMISP_IOC_G_SENSOR_PRIV_INT_DATA:
