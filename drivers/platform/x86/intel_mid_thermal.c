@@ -48,16 +48,11 @@ static char *name[MSIC_THERMAL_SENSORS] = {
 	"skin0", "skin1", "msicdie"
 };
 
-/*
- *Skin sensors attributes
- *temp = temp*slope+intercept
- */
-#define BOTTOM_SKIN_SLOPE	806
-#define BOTTOM_SKIN_INTERCEPT   1800
-#define TOP_SKIN_SLOPE	        851
-#define TOP_SKIN_INTERCEPT      2800
+/*Skin sensors attributes*/
 #define SKIN0_INDX		0
 #define SKIN1_INDX		1
+#define BACKSKIN_CALIB_FACTOR	10000
+#define FRONTSKIN_CALIB_FACTOR	16000
 
 #else
 
@@ -249,17 +244,11 @@ static int mid_read_temp(struct thermal_zone_device *tzd, unsigned long *temp)
 
 #ifdef CONFIG_BOARD_CTP
 	if (ret == 0) {
-		if (indx == SKIN0_INDX) {
-			curr_temp = (curr_temp * TOP_SKIN_SLOPE) +
-				(TOP_SKIN_INTERCEPT * 1000);
-			(*temp) = curr_temp / 1000;
-		} else if (indx == SKIN1_INDX) {
-			curr_temp = (curr_temp * BOTTOM_SKIN_SLOPE) +
-				(BOTTOM_SKIN_INTERCEPT * 1000);
-			(*temp) = curr_temp / 1000;
-		} else {
-			*temp = curr_temp;
-		}
+		if (indx == SKIN0_INDX)
+			curr_temp = curr_temp - FRONTSKIN_CALIB_FACTOR;
+		else if (indx == SKIN1_INDX)
+			curr_temp = curr_temp - BACKSKIN_CALIB_FACTOR;
+		*temp = curr_temp;
 	}
 #else
 	if (ret == 0)
