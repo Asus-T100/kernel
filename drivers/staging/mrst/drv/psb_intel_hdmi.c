@@ -1950,11 +1950,11 @@ static int mdfld_hdmi_mode_valid(struct drm_connector *connector,
 	PSB_DEBUG_ENTRY("display info. hdisplay = %d, vdisplay = %d, vrefresh = %d.\n",
 			mode->hdisplay, mode->vdisplay, mode->vrefresh);
 
-	/* change the maximum clock to be 74.25mhz per DC spec */
-	if (IS_CTP(dev)) {
-		if (mode->clock > 165000)
-			return MODE_CLOCK_HIGH;
-	} else {
+	/*
+	 * HDMI dot clock is limitted up to 74.25 MHz per Penwell and CloverView
+	 * DC HAS spec.
+	 */
+	if (IS_MDFLD(dev)) {
 		if (mode->clock > 74250)
 			return MODE_CLOCK_HIGH;
 	}
