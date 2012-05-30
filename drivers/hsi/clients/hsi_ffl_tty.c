@@ -29,6 +29,9 @@
 /* Set the following to use the WAKE post boot handshake */
 #define USE_WAKE_POST_BOOT_HANDSHAKE
 
+/* Set the following to ignore the TTY_THROTTLE bit */
+#define IGNORE_TTY_THROTTLE
+
 #include <linux/log2.h>
 #include <linux/slab.h>
 #include <linux/sched.h>
@@ -1773,6 +1776,13 @@ static void _ffl_forward_tty(struct tty_struct		*tty,
 
 		while (frame->actual_len > 0) {
 
+#ifndef IGNORE_TTY_THROTTLE
+			/* In some rare race condition, we can't rely on
+			 * TTY_THROTTLE bit if low_latency is set.
+			 * The FFL can ignore this bit as
+			 * tty_insert_flip_string_fixed_flag will return 0
+			 * when no more space is left
+			 */
 			if (test_bit(TTY_THROTTLED, &tty->flags)) {
 				/* Initialised to 1 to prevent unexpected TTY
 				 * forwarding resume function schedule */
@@ -1780,7 +1790,7 @@ static void _ffl_forward_tty(struct tty_struct		*tty,
 				_ffl_fifo_wait_push_back(ctx, frame);
 				goto no_more_tty_insert;
 			}
-
+#endif
 			spin_unlock_irqrestore(&ctx->lock, *flags);
 
 			/* Copy the data to the flip buffers */
