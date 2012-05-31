@@ -4112,7 +4112,10 @@ int atomisp_acc_wait(struct atomisp_device *isp, unsigned int *handle)
 		goto out;
 	}
 
-	sh_css_acceleration_done(fw);
+	/*
+	 * Call the Terminate firmware to load the SP again
+	 */
+	sh_css_terminate_firmware();
 
 out:
 	mutex_unlock(&isp->isp_lock);

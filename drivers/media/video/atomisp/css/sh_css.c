@@ -1445,7 +1445,8 @@ sh_css_terminate_firmware(void)
 
 	if (!me->current_stage)
 		return;
-	firmware = (struct sh_css_acc_fw *)me->current_stage->firmware;
+	firmware = my_css.standalone_acc ? my_css.standalone_acc :
+				(struct sh_css_acc_fw *)me->current_stage->firmware;
 	if (!firmware)
 		return;
 
