@@ -217,6 +217,8 @@
 
 #define MAX_I2C_RETRIES		3
 
+#define MXT_ANTICALIB_TIMEOUT	(10 * HZ)
+
 struct mxt_info {
 	u8 family_id;
 	u8 variant_id;
@@ -266,6 +268,7 @@ struct mxt_data {
 	bool is_stopped;
 	u8 idle_acq_int;
 	u8 actv_acq_int;
+	struct delayed_work work;
 	char devname[I2C_NAME_SIZE];
 #ifdef CONFIG_HAS_EARLYSUSPEND
 	struct early_suspend esuspend;
@@ -1278,6 +1281,8 @@ static void mxt_start(struct mxt_data *data)
 			"skipping T7 write\n");
 
 	data->is_stopped = 0;
+
+	schedule_delayed_work(&data->work, MXT_ANTICALIB_TIMEOUT);
 }
 
 static void mxt_stop(struct mxt_data *data)
@@ -1301,6 +1306,23 @@ static void mxt_stop(struct mxt_data *data)
 			MXT_POWER_ACTVACQINT, 0);
 
 	data->is_stopped = 1;
+
+	cancel_delayed_work_sync(&data->work);
+}
+
+static void mxt_turnoff_anticalib(struct work_struct *work)
+{
+	struct mxt_data *data = container_of(to_delayed_work(work),
+					     struct mxt_data, work);
+	int i;
+	u8 antitouch[4] = { 0, 1, 0, 0 };
+
+	dev_info(&data->client->dev, "turn off anti calibration\n");
+
+	for (i = 0; i < sizeof(antitouch); i++) {
+		mxt_write_object(data, MXT_GEN_ACQUIRE_T8,
+				MXT_ACQUIRE_ATCHCALST + i, antitouch[i]);
+	}
 }
 
 static int mxt_input_open(struct input_dev *dev)
@@ -1349,6 +1371,7 @@ static int __devinit mxt_probe(struct i2c_client *client,
 	data->pdata = pdata;
 	data->irq = client->irq;
 	memcpy(data->devname, id->name, sizeof(data->devname));
+	INIT_DELAYED_WORK(&data->work, mxt_turnoff_anticalib);
 
 	if (pdata->init_platform_hw) {
 		error = pdata->init_platform_hw(client);
@@ -1437,6 +1460,7 @@ static int __devexit mxt_remove(struct i2c_client *client)
 	unregister_early_suspend(&data->esuspend);
 #endif
 
+	cancel_delayed_work_sync(&data->work);
 	sysfs_remove_group(&client->dev.kobj, &mxt_attr_group);
 	free_irq(data->irq, data);
 	input_unregister_device(data->input_dev);
