@@ -1485,6 +1485,31 @@ static int mt9e013_try_mbus_fmt(struct v4l2_subdev *sd,
 	return 0;
 }
 
+static int mt9e013_get_mbus_format_code(struct i2c_client *client)
+{
+	u16 reg;
+	/*
+	 * Get the order of color pixel readout.
+	 * Change with mirror and flip.
+	 */
+	if (mt9e013_read_reg(client, MT9E013_8BIT,
+			MT9E013_PIXEL_ORDER, &reg)) {
+		return -EIO;
+	}
+	switch (reg) {
+	case MT9E013_PIXEL_ORDER0:
+		return V4L2_MBUS_FMT_SGRBG10_1X10;
+	case MT9E013_PIXEL_ORDER1:
+		return V4L2_MBUS_FMT_SRGGB10_1X10;
+	case MT9E013_PIXEL_ORDER2:
+		return V4L2_MBUS_FMT_SBGGR10_1X10;
+	case MT9E013_PIXEL_ORDER3:
+		return V4L2_MBUS_FMT_SGBRG10_1X10;
+	default:
+		return -EINVAL;
+	}
+}
+
 static int mt9e013_s_mbus_fmt(struct v4l2_subdev *sd,
 			      struct v4l2_mbus_framefmt *fmt)
 {
@@ -1522,6 +1547,11 @@ static int mt9e013_s_mbus_fmt(struct v4l2_subdev *sd,
 		return -EINVAL;
 	}
 
+	fmt->code = mt9e013_get_mbus_format_code(client);
+	if (fmt->code < 0) {
+		mutex_unlock(&dev->input_lock);
+		return -EIO;
+	}
 	dev->fps = mt9e013_res[dev->fmt_idx].fps;
 	dev->pixels_per_line = mt9e013_res[dev->fmt_idx].pixels_per_line;
 	dev->lines_per_frame = mt9e013_res[dev->fmt_idx].lines_per_frame;
@@ -1543,15 +1573,16 @@ static int mt9e013_g_mbus_fmt(struct v4l2_subdev *sd,
 			      struct v4l2_mbus_framefmt *fmt)
 {
 	struct mt9e013_device *dev = to_mt9e013_sensor(sd);
+	struct i2c_client *client = v4l2_get_subdevdata(sd);
 
 	if (!fmt)
 		return -EINVAL;
 
 	fmt->width = mt9e013_res[dev->fmt_idx].width;
 	fmt->height = mt9e013_res[dev->fmt_idx].height;
-	fmt->code = V4L2_MBUS_FMT_SGRBG10_1X10;
+	fmt->code = mt9e013_get_mbus_format_code(client);
 
-	return 0;
+	return fmt->code < 0 ? fmt->code : 0;
 }
 
 static int mt9e013_detect(struct i2c_client *client, u16 *id, u8 *revision)
@@ -1692,8 +1723,10 @@ static int mt9e013_enum_frameintervals(struct v4l2_subdev *sd,
 static int mt9e013_enum_mbus_fmt(struct v4l2_subdev *sd, unsigned int index,
 				 enum v4l2_mbus_pixelcode *code)
 {
-	*code = V4L2_MBUS_FMT_SGRBG10_1X10;
-	return 0;
+	struct i2c_client *client = v4l2_get_subdevdata(sd);
+
+	*code = mt9e013_get_mbus_format_code(client);
+	return *code < 0 ? *code : 0;
 }
 
 static int mt9e013_s_config(struct v4l2_subdev *sd,
@@ -1775,11 +1808,13 @@ static int
 mt9e013_enum_mbus_code(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 		       struct v4l2_subdev_mbus_code_enum *code)
 {
+	struct i2c_client *client = v4l2_get_subdevdata(sd);
+
 	if (code->index >= MAX_FMTS)
 		return -EINVAL;
-	code->code = V4L2_MBUS_FMT_SGRBG10_1X10;
+	code->code = mt9e013_get_mbus_format_code(client);
 
-	return 0;
+	return code->code < 0 ? code->code : 0;
 }
 
 static int

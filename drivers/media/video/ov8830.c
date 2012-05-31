@@ -1702,7 +1702,7 @@ static int ov8830_try_mbus_fmt(struct v4l2_subdev *sd,
 		fmt->height = ov8830_res[idx].height;
 	}
 
-	fmt->code = V4L2_MBUS_FMT_SGRBG10_1X10;
+	fmt->code = V4L2_MBUS_FMT_SBGGR10_1X10;
 
 
 	return 0;
@@ -1777,7 +1777,7 @@ static int ov8830_g_mbus_fmt(struct v4l2_subdev *sd,
 
 	fmt->width = ov8830_res[dev->fmt_idx].width;
 	fmt->height = ov8830_res[dev->fmt_idx].height;
-	fmt->code = V4L2_MBUS_FMT_SGRBG10_1X10;
+	fmt->code = V4L2_MBUS_FMT_SBGGR10_1X10;
 
 	return 0;
 }
@@ -1892,7 +1892,7 @@ static int ov8830_enum_frameintervals(struct v4l2_subdev *sd,
 static int ov8830_enum_mbus_fmt(struct v4l2_subdev *sd, unsigned int index,
 				 enum v4l2_mbus_pixelcode *code)
 {
-	*code = V4L2_MBUS_FMT_SGRBG10_1X10;
+	*code = V4L2_MBUS_FMT_SBGGR10_1X10;
 	return 0;
 }
 
@@ -1967,7 +1967,7 @@ ov8830_enum_mbus_code(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 {
 	if (code->index >= MAX_FMTS)
 		return -EINVAL;
-	code->code = V4L2_MBUS_FMT_SGRBG10_1X10;
+	code->code = V4L2_MBUS_FMT_SBGGR10_1X10;
 
 	return 0;
 }
@@ -2213,7 +2213,7 @@ static int ov8830_probe(struct i2c_client *client,
 	dev->sd.flags |= V4L2_SUBDEV_FL_HAS_DEVNODE;
 	dev->pad.flags = MEDIA_PAD_FL_SOURCE;
 	dev->sd.entity.ops = &ov8830_entity_ops;
-	dev->format.code = V4L2_MBUS_FMT_SGRBG10_1X10;
+	dev->format.code = V4L2_MBUS_FMT_SBGGR10_1X10;
 
 	/* REVISIT: Do we need media controller? */
 	ret = media_entity_init(&dev->sd.entity, 1, &dev->pad, 0);
