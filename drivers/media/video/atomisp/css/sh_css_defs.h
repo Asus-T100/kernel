@@ -186,7 +186,7 @@
 
 /* As an optimization we use DMEM to store the 3A statistics for fixed
  * resolution primary binaries on the ASIC system (not on FPGA). */
-#define _S3ATBL_USE_DMEM(var_res)       (ISP_VEC_NELEMS != 64 || !(var_res))
+#define _S3ATBL_USE_DMEM(var_res)       (!(var_res))
 
 /* ********************************************************
  * Statistics for Digital Image Stabilization

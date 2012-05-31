@@ -672,6 +672,9 @@ struct sh_css_3a_config {
 	u0_16 ae_y_coef_r;	/* [gain] Weight of R for Y */
 	u0_16 ae_y_coef_g;	/* [gain] Weight of G for Y */
 	u0_16 ae_y_coef_b;	/* [gain] Weight of B for Y */
+	u0_16 awb_lg_high_raw;	/* [intensity] AWB level gate high for raw */
+	u0_16 awb_lg_low;	/* [intensity] AWB level gate low */
+	u0_16 awb_lg_high;	/* [intensity] AWB level gate high */
 	s0_15 af_fir1_coef[7];	/* [factor] AF FIR coefficients of fir1 */
 	s0_15 af_fir2_coef[7];	/* [factor] AF FIR coefficients of fir2 */
 };

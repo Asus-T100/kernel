@@ -83,6 +83,11 @@ struct sh_css_isp_params {
 	int ae_y_coef_g;
 	int ae_y_coef_b;
 
+	/* S3A (3A Support): AWB level gate */
+	int awb_lg_high_raw;
+	int awb_lg_low;
+	int awb_lg_high;
+
 	/* S3A (3A Support): af fir coefficients */
 	int af_fir1[7];
 	int af_fir2[7];

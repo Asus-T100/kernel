@@ -847,6 +847,9 @@ static const struct sh_css_3a_config default_3a_config = {
 	.ae_y_coef_r  = 25559,
 	.ae_y_coef_g  = 32768,
 	.ae_y_coef_b  = 7209,
+	.awb_lg_high_raw = 65535,
+	.awb_lg_low      = 0,
+	.awb_lg_high     = 65535,
 	.af_fir1_coef = {-3344, -6104, -19143, 19143, 6104, 3344, 0},
 	.af_fir2_coef = {1027, 0, -9219, 16384, -9219, 1027, 0}
 };
@@ -855,6 +858,9 @@ static const struct sh_css_3a_config disabled_3a_config = {
 	.ae_y_coef_r  = 25559,
 	.ae_y_coef_g  = 32768,
 	.ae_y_coef_b  = 7209,
+	.awb_lg_high_raw = 65535,
+	.awb_lg_low      = 0,
+	.awb_lg_high     = 65535,
 	.af_fir1_coef = {-6689, -12207, -32768, 32767, 12207, 6689, 0},
 	.af_fir2_coef = {2053, 0, -18437, 32767, -18437, 2053, 0}
 };
@@ -1161,7 +1167,8 @@ get_3a_stats_from_vmem(struct sh_css_3a_output *output)
 static void
 sh_css_process_3a(void)
 {
-	unsigned int i;
+	unsigned int i, raw_bit_depth = 10;
+
 	/* coefficients to calculate Y */
 	isp_parameters.ae_y_coef_r =
 	    uDIGIT_FITTING(s3a_config->ae_y_coef_r, 16, SH_CSS_AE_YCOEF_SHIFT);
@@ -1169,6 +1176,17 @@ sh_css_process_3a(void)
 	    uDIGIT_FITTING(s3a_config->ae_y_coef_g, 16, SH_CSS_AE_YCOEF_SHIFT);
 	isp_parameters.ae_y_coef_b =
 	    uDIGIT_FITTING(s3a_config->ae_y_coef_b, 16, SH_CSS_AE_YCOEF_SHIFT);
+
+	/* AWB level gate */
+	if (current_3a_binary)
+		raw_bit_depth
+		= current_3a_binary->in_frame_info.raw_bit_depth;
+	isp_parameters.awb_lg_high_raw =
+		uDIGIT_FITTING(s3a_config->awb_lg_high_raw, 16, raw_bit_depth);
+	isp_parameters.awb_lg_low =
+		uDIGIT_FITTING(s3a_config->awb_lg_low, 16, SH_CSS_BAYER_BITS);
+	isp_parameters.awb_lg_high =
+		uDIGIT_FITTING(s3a_config->awb_lg_high, 16, SH_CSS_BAYER_BITS);
 
 	/* af fir coefficients */
 	for (i = 0; i < 7; ++i) {

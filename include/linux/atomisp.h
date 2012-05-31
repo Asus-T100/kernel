@@ -129,6 +129,10 @@ struct atomisp_3a_config {
 	unsigned int ae_y_coef_r;	/* [gain] Weight of R for Y */
 	unsigned int ae_y_coef_g;	/* [gain] Weight of G for Y */
 	unsigned int ae_y_coef_b;	/* [gain] Weight of B for Y */
+	unsigned int awb_lg_high_raw;	/* [intensity]
+					   AWB level gate high for raw */
+	unsigned int awb_lg_low;	/* [intensity] AWB level gate low */
+	unsigned int awb_lg_high;	/* [intensity] AWB level gate high */
 	int af_fir1_coef[7];	/* [factor] AF FIR coefficients of fir1 */
 	int af_fir2_coef[7];	/* [factor] AF FIR coefficients of fir2 */
 };
