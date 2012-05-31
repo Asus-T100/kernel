@@ -1321,6 +1321,13 @@ static int do_modem_reset(const char *val, struct kernel_param *kp)
 
 	PROLOG();
 
+#ifdef CONFIG_ATOM_SOC_POWER
+	if (enable_standby) {
+		WARNING("Nothing to do standby_mode enabled");
+		return 0;
+	}
+#endif
+
 	if (strict_strtol(val, 16, &do_reset) < 0) {
 		EPILOG();
 		return -EINVAL;
@@ -1362,6 +1369,13 @@ static int do_modem_power(const char *val, struct kernel_param *kp)
 
 	PROLOG();
 
+#ifdef CONFIG_ATOM_SOC_POWER
+	if (enable_standby) {
+		WARNING("Nothing to do standby_mode enabled");
+		return 0;
+	}
+#endif
+
 	if (strict_strtol(val, 16, &do_power) < 0) {
 		EPILOG();
 		return -EINVAL;
@@ -1389,6 +1403,13 @@ static int do_modem_cold_reset(const char *val, struct kernel_param *kp)
 	u8 data, def_value;
 
 	PROLOG();
+
+#ifdef CONFIG_ATOM_SOC_POWER
+	if (enable_standby) {
+		WARNING("Nothing to do standby_mode enabled");
+		return 0;
+	}
+#endif
 
 	if (strict_strtol(val, 10, &do_reset) < 0) {
 		ret = -EINVAL;

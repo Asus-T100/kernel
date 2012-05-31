@@ -583,4 +583,8 @@ int dlp_flash_ctx_delete(struct dlp_channel *ch_ctx);
  ***************************************************************************/
 extern struct dlp_driver dlp_drv;
 
+#ifdef CONFIG_ATOM_SOC_POWER
+extern unsigned int enable_standby;
+#endif
+
 #endif /* _DLP_MAIN_H_ */

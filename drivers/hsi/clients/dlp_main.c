@@ -1905,6 +1905,19 @@ static int __init dlp_module_init(void)
 {
 	int err, debug_value;
 
+/*
+ * FIXME:: This is just a temporary W/A to allow PnP tests
+ *
+ * To activate this patch this param should be added to the
+ * kernel boot cmdline: intel_soc_pmu.enable_standby=1
+ */
+#ifdef CONFIG_ATOM_SOC_POWER
+	if (enable_standby) {
+		WARNING("eDLP protcol will not be registered");
+		return -EBUSY;
+	}
+#endif
+
 	/* Save the debug param value */
 	debug_value = dlp_drv.debug;
 
