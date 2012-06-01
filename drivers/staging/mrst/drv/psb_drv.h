@@ -160,6 +160,7 @@ enum panel_type {
 #define PSB_MEM_MMU_START       0x00000000
 #define PSB_MEM_RAR_START       0xD0000000
 #define PSB_MEM_TT_START        0xE0000000
+#define PSB_MEM_MMU_TILING_START       0xB0000000
 
 #define PSB_GL3_CACHE_CTL	0x2100
 #define PSB_GL3_CACHE_STAT	0x2108
@@ -380,6 +381,7 @@ struct psb_msvdx_cmd_queue {
 	void *cmd;
 	unsigned long cmd_size;
 	uint32_t sequence;
+	uint32_t msvdx_tile;
 };
 
 
@@ -417,7 +419,7 @@ enum VAEntrypoint {
 struct psb_video_ctx {
 	struct list_head head;
 	struct file *filp; /* DRM device file pointer */
-	int ctx_type; /* protect_flag | (profile<<8) & 0xff |entrypoint */
+	int ctx_type; /* (msvdx_tile&0xff)<<16|profile<<8|entrypoint */
 	/* todo: more context specific data for multi-context support */
 };
 
@@ -558,6 +560,7 @@ struct drm_psb_private {
 	int have_rar;
 	int have_tt;
 	int have_mem_mmu;
+	int have_mem_mmu_tiling;
 	struct mutex temp_mem;
 
 	/*
@@ -1556,6 +1559,8 @@ do {                                                \
 		     ((dev->pci_device & 0xffff) == 0x08c7) ||  \
 		     ((dev->pci_device & 0xffff) == 0x08c8))
 
+#define IS_MRFL(dev) ((dev->pci_device & 0xFFFC) == 0x1180)
+
 #define IS_CTP_NEED_WA(dev) ((dev->pci_device & 0xffff) == 0x08c8)
 
 #define IS_MDFLD(dev) (IS_CTP(dev) || IS_MDFLD_OLD(dev))
@@ -1567,6 +1572,8 @@ do {                                                \
 #define IS_D0(dev) (((dev)->pdev->revision >= 0xc) || \
 		(((dev)->pci_device & 0xffff) == 0x08c7) || \
 		(((dev)->pci_device & 0xffff) == 0x08c8))
+
+#define IS_MSVDX_MEM_TILE(dev) ((IS_MRFL(dev)))
 
 extern int drm_psb_ospm;
 extern int drm_psb_cpurelax;

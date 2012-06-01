@@ -38,6 +38,9 @@ static int ied_enabled;
 static int psb_msvdx_send(struct drm_device *dev, void *cmd,
 			  unsigned long cmd_size);
 
+static void psb_msvdx_set_tile(struct drm_device *dev,
+				unsigned long msvdx_tile);
+
 static int psb_msvdx_dequeue_send(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv = dev->dev_private;
@@ -60,6 +63,8 @@ static int psb_msvdx_dequeue_send(struct drm_device *dev)
 	spin_unlock_irqrestore(&msvdx_priv->msvdx_lock, irq_flags);
 
 	PSB_DEBUG_GENERAL("MSVDXQUE: Queue has id %08x\n", msvdx_cmd->sequence);
+	if (IS_MSVDX_MEM_TILE(dev) && drm_psb_msvdx_tiling)
+		psb_msvdx_set_tile(dev, msvdx_cmd->msvdx_tile);
 	ret = psb_msvdx_send(dev, msvdx_cmd->cmd, msvdx_cmd->cmd_size);
 	if (ret) {
 		DRM_ERROR("MSVDXQUE: psb_msvdx_send failed\n");
@@ -363,6 +368,11 @@ static int psb_msvdx_map_command(struct drm_device *dev,
 		*msvdx_cmd = cmd_copy;
 	} else {
 		PSB_DEBUG_GENERAL("MSVDXQUE:did NOT copy command\n");
+		if (IS_MSVDX_MEM_TILE(dev) && drm_psb_msvdx_tiling) {
+			unsigned long msvdx_tile =
+				((dev_priv->msvdx_ctx->ctx_type >> 16) & 0xff);
+			psb_msvdx_set_tile(dev, msvdx_tile);
+		}
 		ret = psb_msvdx_send(dev, cmd_start, cmd_size);
 		if (ret) {
 			DRM_ERROR("MSVDXQUE: psb_msvdx_send failed\n");
@@ -501,6 +511,8 @@ int psb_submit_video_cmdbuf(struct drm_device *dev,
 		msvdx_cmd->cmd = cmd;
 		msvdx_cmd->cmd_size = cmd_size;
 		msvdx_cmd->sequence = sequence;
+		msvdx_cmd->msvdx_tile =
+			((dev_priv->msvdx_ctx->ctx_type >> 16) & 0xff);
 		spin_lock_irqsave(&msvdx_priv->msvdx_lock, irq_flags);
 		list_add_tail(&msvdx_cmd->head, &msvdx_priv->msvdx_queue);
 		spin_unlock_irqrestore(&msvdx_priv->msvdx_lock, irq_flags);
@@ -1347,6 +1359,18 @@ int psb_remove_videoctx(struct drm_psb_private *dev_priv, struct file *filp)
 	return 0;
 }
 
+struct psb_video_ctx *psb_find_videoctx(struct drm_psb_private *dev_priv,
+					struct file *filp)
+{
+	struct psb_video_ctx *pos, *n;
+
+	list_for_each_entry_safe(pos, n, &dev_priv->video_ctx, head) {
+		if (pos->filp == filp)
+			return pos;
+	}
+	return NULL;
+}
+
 static int psb_entrypoint_number(struct drm_psb_private *dev_priv,
 		uint32_t entry_type)
 {
@@ -1448,6 +1472,24 @@ int lnc_video_getparam(struct drm_device *dev, void *data,
 
 	case IMG_VIDEO_RM_CONTEXT:
 		psb_remove_videoctx(dev_priv, file_priv->filp);
+		break;
+	case IMG_VIDEO_UPDATE_CONTEXT:
+		ret = copy_from_user(&ctx_type,
+				(void __user *)((unsigned long)arg->value),
+				sizeof(ctx_type));
+		video_ctx = psb_find_videoctx(dev_priv, file_priv->filp);
+		if (video_ctx) {
+			PSB_DEBUG_GENERAL(
+				"Video: update video ctx old value 0x%08x\n",
+				video_ctx->ctx_type);
+			video_ctx->ctx_type = ctx_type;
+			PSB_DEBUG_GENERAL(
+				"Video: update video ctx new value 0x%08x\n",
+				video_ctx->ctx_type);
+		} else
+			PSB_DEBUG_GENERAL(
+				"Video:fail to find context profile %d, entrypoint %d",
+				(ctx_type >> 8), (ctx_type & 0xff));
 		break;
 	case IMG_VIDEO_DECODE_STATUS:
 		if (msvdx_priv->host_be_opp_enabled) {
@@ -1682,3 +1724,37 @@ int psb_msvdx_check_reset_fw(struct drm_device *dev)
 	return 0;
 }
 
+static void psb_msvdx_set_tile(struct drm_device *dev, unsigned long msvdx_tile)
+{
+	struct drm_psb_private *dev_priv = dev->dev_private;
+	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
+	uint32_t cmd, msvdx_stride;
+	uint32_t start = msvdx_priv->tile_region_start0;
+	uint32_t end = msvdx_priv->tile_region_end0;
+
+	msvdx_stride = (msvdx_tile & 0xf);
+	/* Enable memory tiling */
+	cmd = ((start >> 20) + (((end >> 20) - 1) << 12) +
+				((0x8 | (msvdx_stride - 1)) << 24));
+	if (msvdx_stride) {
+		PSB_DEBUG_GENERAL("MSVDX: MMU Tiling register0 %08x\n", cmd);
+		PSB_DEBUG_GENERAL("       Region 0x%08x-0x%08x\n",
+					start, end);
+		PSB_WMSVDX32(cmd, MSVDX_MMU_TILE_BASE0);
+	}
+
+	start = msvdx_priv->tile_region_start1;
+	end = msvdx_priv->tile_region_end1;
+
+	msvdx_stride = (msvdx_tile >> 4);
+	/* Enable memory tiling */
+	PSB_WMSVDX32(0, MSVDX_MMU_TILE_BASE1);
+	cmd = ((start >> 20) + (((end >> 20) - 1) << 12) +
+				((0x8 | (msvdx_stride - 1)) << 24));
+	if (msvdx_stride) {
+		PSB_DEBUG_GENERAL("MSVDX: MMU Tiling register1 %08x\n", cmd);
+		PSB_DEBUG_GENERAL("       Region 0x%08x-0x%08x\n",
+					start, end);
+		PSB_WMSVDX32(cmd, MSVDX_MMU_TILE_BASE1);
+	}
+}

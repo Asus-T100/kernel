@@ -27,6 +27,7 @@
 extern int drm_msvdx_pmpolicy;
 extern int drm_msvdx_delay;
 extern int hdmi_state;
+extern int drm_psb_msvdx_tiling;
 
 typedef enum {
 	PSB_DMAC_BSWAP_NO_SWAP = 0x0,   //!< No byte swapping will be performed.
@@ -264,6 +265,8 @@ MSVDX_CORE_CR_MSVDX_MAN_CLK_ENABLE_CR_MTX_MAN_CLK_ENABLE_MASK)
 #define MSVDX_MMU_CONTROL0		(0x0680)
 #define MSVDX_MMU_STATUS		(0x068C)
 #define MSVDX_MMU_MEM_REQ		(0x06D0)
+#define MSVDX_MMU_TILE_BASE0		(0x06D4)
+#define MSVDX_MMU_TILE_BASE1		(0x06D8)
 #define MSVDX_MTX_RAM_BANK		(0x06F0)
 #define MSVDX_MTX_DEBUG			MSVDX_MTX_RAM_BANK
 #define MSVDX_MAN_CLK_ENABLE		(0x0620)
@@ -792,6 +795,14 @@ struct msvdx_private {
 	struct ttm_buffer_object *fw;
 	uint32_t is_load;
 	uint32_t mtx_mem_size;
+
+	/*
+	 *MSVDX tile regions
+	*/
+	uint32_t tile_region_start0;
+	uint32_t tile_region_end0;
+	uint32_t tile_region_start1;
+	uint32_t tile_region_end1;
 
 	/*
 	 *msvdx command queue

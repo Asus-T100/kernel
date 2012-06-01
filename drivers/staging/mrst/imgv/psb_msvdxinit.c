@@ -1192,6 +1192,19 @@ int psb_msvdx_init(struct drm_device *dev)
 		dev_priv->msvdx_private = msvdx_priv;
 		memset(msvdx_priv, 0, sizeof(struct msvdx_private));
 
+		msvdx_priv->tile_region_start0 =
+			dev_priv->bdev.man[DRM_PSB_MEM_MMU_TILING].gpu_offset;
+
+		msvdx_priv->tile_region_end0 = msvdx_priv->tile_region_start0 +
+		(dev_priv->bdev.man[DRM_PSB_MEM_MMU_TILING].size << PAGE_SHIFT);
+
+		msvdx_priv->tile_region_start1 =
+			dev_priv->bdev.man[TTM_PL_TT].gpu_offset;
+
+		msvdx_priv->tile_region_end1 = msvdx_priv->tile_region_start1 +
+		(dev_priv->bdev.man[TTM_PL_TT].size << PAGE_SHIFT);
+
+		drm_psb_msvdx_tiling = 0;
 		/* get device --> drm_device --> drm_psb_private --> msvdx_priv
 		 * for psb_msvdx_pmstate_show: msvdx_pmpolicy
 		 * if not pci_set_drvdata, can't get drm_device from device
@@ -1263,6 +1276,36 @@ int psb_msvdx_init(struct drm_device *dev)
 		/* Enable MMU by removing all bypass bits */
 		PSB_WMSVDX32(0, MSVDX_MMU_CONTROL0);
 	}
+#if 0
+	if (drm_psb_msvdx_tiling && IS_MSVDX_MEM_TILE(dev)) {
+		uint32_t tile_start =
+			dev_priv->bdev.man[DRM_PSB_MEM_MMU_TILING].gpu_offset;
+		uint32_t tile_end = tile_start +
+		(dev_priv->bdev.man[DRM_PSB_MEM_MMU_TILING].size << PAGE_SHIFT);
+
+		/* Enable memory tiling */
+		cmd = ((tile_start >> 20) + (((tile_end >> 20) - 1) << 12) +
+					((0x8 | 2) << 24)); /* 2k stride */
+
+		PSB_DEBUG_GENERAL("MSVDX: MMU Tiling register0 %08x\n", cmd);
+		PSB_DEBUG_GENERAL("       Region 0x%08x-0x%08x\n",
+					tile_start, tile_end);
+		PSB_WMSVDX32(cmd, MSVDX_MMU_TILE_BASE0);
+
+		tile_start =
+			dev_priv->bdev.man[TTM_PL_TT].gpu_offset;
+		tile_end = tile_start +
+		(dev_priv->bdev.man[TTM_PL_TT].size << PAGE_SHIFT);
+
+		cmd = ((tile_start >> 20) + (((tile_end >> 20) - 1) << 12) +
+					((0x8 | 2) << 24)); /* 2k stride */
+
+		PSB_DEBUG_GENERAL("MSVDX: MMU Tiling register1 %08x\n", cmd);
+		PSB_DEBUG_GENERAL("       Region 0x%08x-0x%08x\n",
+					tile_start, tile_end);
+		PSB_WMSVDX32(cmd, MSVDX_MMU_TILE_BASE1);
+	}
+#endif
 
 	/* move firmware loading to the place receiving first command buffer */
 

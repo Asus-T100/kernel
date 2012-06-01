@@ -103,6 +103,7 @@ static int PanelID = GCT_DETECT;
 char HDMI_EDID[HDMI_MONITOR_NAME_LENGTH];
 int hdmi_state;
 u32 DISP_PLANEB_STATUS = ~DISPLAY_PLANE_ENABLE;
+int drm_psb_msvdx_tiling;
 
 static int psb_probe(struct pci_dev *pdev, const struct pci_device_id *ent);
 
@@ -156,6 +157,7 @@ module_param_named(hdmi_state, hdmi_state, int, 0600);
 module_param_named(vblank_sync, drm_psb_3D_vblank, int, 0600);
 module_param_named(smart_vsync, drm_psb_smart_vsync, int, 0600);
 module_param_named(te_delay, drm_psb_te_timer_delay, int, 0600);
+module_param_named(msvdx_tiling_memory, drm_psb_msvdx_tiling, int, 0600);
 #ifndef MODULE
 /* Make ospm configurable via cmdline firstly, and others can be enabled if needed. */
 static int __init config_ospm(char *arg)
@@ -1572,9 +1574,21 @@ static int psb_do_init(struct drm_device *dev)
 		dev_priv->have_tt = 1;
 
 	/* MMU region managed by TTM */
-	tmp = PSB_MEM_RAR_START >> PAGE_SHIFT; /* MMU region size:MMU->RAR */
+	if (IS_MSVDX_MEM_TILE(dev))
+		tmp = PSB_MEM_MMU_TILING_START >> PAGE_SHIFT;
+	else
+		tmp =
+		PSB_MEM_RAR_START >> PAGE_SHIFT; /* MMU region size:MMU->RAR */
 	if (!ttm_bo_init_mm(bdev, DRM_PSB_MEM_MMU, tmp))
 		dev_priv->have_mem_mmu = 1;
+
+	if (IS_MSVDX_MEM_TILE(dev)) {
+		/* Create tiling MMU region managed by TTM */
+		tmp = (PSB_MEM_RAR_START -
+			PSB_MEM_MMU_TILING_START) >> PAGE_SHIFT;
+		if (!ttm_bo_init_mm(bdev, DRM_PSB_MEM_MMU_TILING, tmp))
+			dev_priv->have_mem_mmu_tiling = 1;
+	}
 
 	PSB_DEBUG_INIT("Init MSVDX\n");
 	psb_msvdx_init(dev);
