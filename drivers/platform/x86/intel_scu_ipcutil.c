@@ -207,6 +207,145 @@ static int scu_reg_access(u32 cmd, struct scu_ipc_data  *data)
 	return ret;
 }
 
+#define check_pmdb_sub_cmd(x)	(x == PMDB_SUB_CMD_R_OTPCTL || \
+		x == PMDB_SUB_CMD_R_WMDB || x == PMDB_SUB_CMD_W_WMDB || \
+		x == PMDB_SUB_CMD_R_OTPDB || x == PMDB_SUB_CMD_W_OTPDB)
+#define pmdb_sub_cmd_is_read(x)	(x == PMDB_SUB_CMD_R_OTPCTL || \
+		x == PMDB_SUB_CMD_R_WMDB || x == PMDB_SUB_CMD_R_OTPDB)
+
+static int check_pmdb_buffer(struct scu_ipc_pmdb_buffer *p_buf)
+{
+	int size;
+
+	switch (p_buf->sub) {
+	case PMDB_SUB_CMD_R_WMDB:
+	case PMDB_SUB_CMD_W_WMDB:
+		size = PMDB_WMDB_SIZE;
+		break;
+	case PMDB_SUB_CMD_R_OTPDB:
+	case PMDB_SUB_CMD_W_OTPDB:
+		size = PMDB_OTPDB_SIZE;
+		break;
+	case PMDB_SUB_CMD_R_OTPCTL:
+		size = PMDB_OTPCTL_SIZE;
+		break;
+	default:
+		size = 0;
+	}
+
+	return check_pmdb_sub_cmd(p_buf->sub) &&
+		(p_buf->count + p_buf->offset < size) &&
+		(p_buf->count % 4 == 0);
+}
+
+/**
+ *	scu_pmdb_access	-	access PMDB data through SCU IPC cmds
+ *	@p_buf: PMDB access buffer, it describe the data to write/read.
+ *		p_buf->sub - SCU IPC sub cmd of PMDB access,
+ *			this sub cmd distinguish different componet
+ *			in PMDB which to be accessd. (WMDB, OTPDB, OTPCTL)
+ *		p_buf->count - access data's count;
+ *		p_buf->offset - access data's offset for each component in PMDB;
+ *		p_buf->data - data to write/read.
+ *
+ *	Write/read data to/from PMDB.
+ *
+ */
+static int scu_pmdb_access(struct scu_ipc_pmdb_buffer *p_buf)
+{
+	int i, offset, ret = -EINVAL;
+	u8 *p_data;
+
+	if (!check_pmdb_buffer(p_buf)) {
+		pr_err("Invalid PMDB buffer!\n");
+		return -EINVAL;
+	}
+
+	/* 1. we use intel_scu_ipc_raw_cmd() IPC cmd interface
+	 *    to access PMDB data. Each call of intel_scu_ipc_raw_cmd()
+	 *    can only access at most PMDB_ACCESS_SIZE bytes' data.
+	 * 2. There are two kinds of pmdb sub commands, read command
+	 *    and write command. For read command, we must transport
+	 *    in and out buffer to intel_scu_ipc_raw_cmd(), because
+	 *    in buffer length is pass as access length which must
+	 *    be transported to SCU.
+	 */
+	p_data = p_buf->data;
+	offset = p_buf->offset;
+	for (i = 0; i < p_buf->count/PMDB_ACCESS_SIZE; i++) {
+		if (pmdb_sub_cmd_is_read(p_buf->sub))
+			ret = intel_scu_ipc_raw_cmd(IPCMSG_PMDB_CMD, p_buf->sub,
+					p_data, PMDB_ACCESS_SIZE,
+					(u32 *)p_data, PMDB_ACCESS_SIZE / 4,
+					offset, 0);
+		else
+			ret = intel_scu_ipc_raw_cmd(IPCMSG_PMDB_CMD, p_buf->sub,
+					p_data, PMDB_ACCESS_SIZE,
+					NULL, 0, offset, 0);
+		if (ret < 0) {
+			pr_err("intel_scu_ipc_raw_cmd failed!\n");
+			return ret;
+		}
+		offset += PMDB_ACCESS_SIZE;
+		p_data += PMDB_ACCESS_SIZE;
+	}
+	if (p_buf->count % PMDB_ACCESS_SIZE > 0) {
+		if (pmdb_sub_cmd_is_read(p_buf->sub))
+			ret = intel_scu_ipc_raw_cmd(IPCMSG_PMDB_CMD, p_buf->sub,
+					p_data,
+					p_buf->count % PMDB_ACCESS_SIZE,
+					(u32 *)p_data,
+					(p_buf->count % PMDB_ACCESS_SIZE) / 4,
+					offset, 0);
+		else
+			ret = intel_scu_ipc_raw_cmd(IPCMSG_PMDB_CMD, p_buf->sub,
+					p_data,
+					p_buf->count % PMDB_ACCESS_SIZE,
+					NULL, 0, offset, 0);
+		if (ret < 0) {
+			pr_err("intel_scu_ipc_raw_cmd failed!\n");
+			return ret;
+		}
+	}
+
+	return 0;
+}
+
+static int do_pmdb_user_buf_access(void __user *argp)
+{
+	int ret;
+	struct scu_ipc_pmdb_buffer *p_buf;
+
+	p_buf = kzalloc(sizeof(struct scu_ipc_pmdb_buffer), GFP_KERNEL);
+	if (p_buf == NULL) {
+		pr_err("failed to allocate memory for pmdb buffer!\n");
+		return -ENOMEM;
+	}
+
+	ret = copy_from_user(p_buf, argp, sizeof(struct scu_ipc_pmdb_buffer));
+	if (ret < 0) {
+		pr_err("copy from user failed!!\n");
+		goto err;
+	}
+
+	ret = scu_pmdb_access(p_buf);
+	if (ret < 0) {
+		pr_err("scu_pmdb_access error!\n");
+		goto err;
+	}
+
+	if (pmdb_sub_cmd_is_read(p_buf->sub)) {
+		ret = copy_to_user(argp + 3 * sizeof(u32),
+					p_buf->data, p_buf->count);
+		if (ret < 0)
+			pr_err("copy to user failed!!\n");
+	}
+
+err:
+	kfree(p_buf);
+	return ret;
+}
+
 /**
  *	scu_ipc_ioctl		-	control ioctls for the SCU
  *	@fp: file handle of the SCU device
@@ -360,6 +499,12 @@ static long scu_ipc_ioctl(struct file *fp, unsigned int cmd,
 		ret = intel_scu_ipc_osc_clk(osc_clk.id, osc_clk.khz);
 		if (ret)
 			pr_err("%s: failed to set osc clk\n", __func__);
+
+		break;
+	}
+	case INTEL_SCU_IPC_PMDB_ACCESS:
+	{
+		ret = do_pmdb_user_buf_access(argp);
 
 		break;
 	}

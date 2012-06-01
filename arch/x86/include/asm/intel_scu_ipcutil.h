@@ -16,6 +16,7 @@
 #define INTEL_SCU_IPC_READ_VBATTCRIT	0xC4
 #define INTEL_SCU_IPC_WRITE_ALARM_FLAG_TO_OSNIB	0xC5
 #define INTEL_SCU_IPC_OSC_CLK_CNTL	0xC6
+#define INTEL_SCU_IPC_PMDB_ACCESS       0xD0
 
 struct scu_ipc_data {
 	__u32	count;  /* No. of registers */
@@ -32,6 +33,27 @@ struct scu_ipc_version {
 struct osc_clk_t {
 	__u32	id; /* clock id */
 	__u32	khz; /* clock frequency */
+};
+
+/* PMDB buffer, cmd, and limits */
+#define PMDB_SIZE              512
+#define PMDB_WMDB_SIZE         76
+#define PMDB_OTPDB_SIZE        384
+#define PMDB_OTPCTL_SIZE       48
+#define PMDB_ACCESS_SIZE       16
+
+#define IPCMSG_PMDB_CMD        0xE0
+#define PMDB_SUB_CMD_R_WMDB    0
+#define PMDB_SUB_CMD_R_OTPDB   1
+#define PMDB_SUB_CMD_W_WMDB    2
+#define PMDB_SUB_CMD_W_OTPDB   3
+#define PMDB_SUB_CMD_R_OTPCTL  4
+
+struct scu_ipc_pmdb_buffer {
+	__u32	sub; /* sub cmd of SCU's PMDB IPC commands */
+	__u32	count; /* length of PMDB buffer */
+	__u32	offset; /* buffer start offset for each PMDB component */
+	__u8	data[PMDB_SIZE]; /* PMDB buffer */
 };
 
 
