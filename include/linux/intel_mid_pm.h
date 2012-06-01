@@ -115,8 +115,6 @@ extern void pmu_set_s0ix_complete(void);
 extern bool pmu_is_s0ix_in_progress(void);
 extern int pmu_nc_set_power_state
 	(int islands, int state_type, int reg_type);
-extern int mid_nc_read32(u32 cmd, u32 *data);
-extern int mid_nc_write32(u32 cmd, u32 data);
 extern int pmu_set_emmc_to_d0i0_atomic(void);
 
 #ifdef LOG_PMU_EVENTS
@@ -153,8 +151,6 @@ static inline void pmu_set_s0ix_complete(void) { return; }
 static inline bool pmu_is_s0ix_in_progress(void) { return false; };
 
 /*returns function not implemented*/
-static inline  int mid_nc_read32(u32 cmd, u32 *data) { return -ENOSYS; }
-static inline int mid_nc_write32(u32 cmd, u32 data) { return -ENOSYS; }
 static inline int pmu_set_devices_in_d0i0(void) { return 0; }
 static inline void pmu_log_ipc(u32 command) { return; };
 static inline void pmu_log_ipc_irq(void) { return; };

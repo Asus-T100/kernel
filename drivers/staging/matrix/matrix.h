@@ -208,4 +208,7 @@ struct mtx_size_info {
 #define IOCTL_GMCH_RESET _IOW(0xF8, 0x40000000, struct gmch_container *)
 #define IOCTL_GMCH _IOW(0xF8, 0x80000000, struct gmch_container *)
 
+#define platform_pci_read32	intel_mid_msgbus_read32_raw
+#define platform_pci_write32	intel_mid_msgbus_write32_raw
+
 #endif

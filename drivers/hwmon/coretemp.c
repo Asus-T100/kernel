@@ -83,7 +83,6 @@ MODULE_PARM_DESC(tjmax, "TjMax value in degrees Celsius");
 #define PUNIT_TEMP_REG		0xB1
 #define SOC_TJMAX		90
 #define SOC_CALIB_TEMP		84
-#define PCI_READ_COMMAND	0x10
 
 /*
  * Per-Core Temperature Data
@@ -138,17 +137,11 @@ static DEFINE_MUTEX(pdev_list_mutex);
 static ssize_t show_soc_temp(struct device *dev,
 			 struct device_attribute *devattr, char *buf)
 {
-	int cmd = (PCI_READ_COMMAND << 24) | (PUNIT_PORT << 16) |
-						(PUNIT_TEMP_REG << 8);
-	int temp, ret;
+	int temp;
 	u32 soc_temp_offset;
 
 	/* Read 32 bits of 0xB1 register */
-	ret = mid_nc_read32(cmd, &soc_temp_offset);
-	if (ret) {
-		dev_err(dev, "reading soc_temp failed: %d\n", ret);
-		return ret;
-	}
+	soc_temp_offset = intel_mid_msgbus_read32(PUNIT_PORT, PUNIT_TEMP_REG);
 
 	/* Lower 8 bits denote the temperature offset */
 	soc_temp_offset &= 0xFF;

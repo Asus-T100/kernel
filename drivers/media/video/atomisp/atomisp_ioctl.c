@@ -26,6 +26,7 @@
 #include "atomisp_fops.h"
 #include "css/sh_css.h"
 #include <css/sh_css_debug.h>
+#include <asm/intel-mid.h>
 
 #include "bufferclass_video_linux.h"
 #include "hrt/hive_isp_css_mm_hrt.h"
@@ -1132,9 +1133,9 @@ static int atomisp_streamon(struct file *file, void *fh,
 	 * GFX performance (freq) while camera is up to prevent peak
 	 * current issues. this is done by setting the camera busy bit.
 	 */
-	msg_ret = atomisp_msg_read32(isp, PUNIT_PORT, OR1);
+	msg_ret = intel_mid_msgbus_read32(PUNIT_PORT, OR1);
 	msg_ret |= 0x100;
-	atomisp_msg_write32(isp, PUNIT_PORT, OR1, msg_ret);
+	intel_mid_msgbus_write32(PUNIT_PORT, OR1, msg_ret);
 #endif
 
 	/*stream on sensor in work thread*/
@@ -1202,9 +1203,9 @@ int atomisp_streamoff(struct file *file, void *fh,
 
 #ifdef PUNIT_CAMERA_BUSY
 	/* Free camera_busy bit */
-	msg_ret = atomisp_msg_read32(isp, PUNIT_PORT, OR1);
+	msg_ret = intel_mid_msgbus_read32(PUNIT_PORT, OR1);
 	msg_ret &= ~0x100;
-	atomisp_msg_write32(isp, PUNIT_PORT, OR1, msg_ret);
+	intel_mid_msgbus_write32(PUNIT_PORT, OR1, msg_ret);
 #endif
 
 	/* ISP work around, need to reset isp */

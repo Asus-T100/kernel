@@ -156,45 +156,6 @@ struct atomisp_buffer {
 	struct atomisp_fmt		*fmt;
 };
 
-/*Message bus access functions*/
-static inline u32 atomisp_msg_read32(struct atomisp_device *isp,
-				     uint port, uint offset)
-{
-	int mcr;
-	uint32_t ret_val;
-	struct pci_dev *pci_root;
-
-	ret_val = 0;
-	mcr = (0x10<<24) | (port << 16) | (offset << 8);
-	if (isp == NULL)
-		pci_root = pci_get_bus_and_slot(0, 0);
-	else
-		pci_root = isp->hw_contex.pci_root;
-
-	pci_write_config_dword(pci_root, 0xD0, mcr);
-	pci_read_config_dword(pci_root, 0xD4, &ret_val);
-	if (isp == NULL)
-		pci_dev_put(pci_root);
-	return ret_val;
-}
-
-static inline void atomisp_msg_write32(struct atomisp_device *isp,
-				       uint port, uint offset, u32 value)
-{
-	int mcr;
-	struct pci_dev *pci_root;
-	mcr = (0x11<<24) | (port << 16) | (offset << 8) | 0xF0;
-
-	if (isp == NULL)
-		pci_root = pci_get_bus_and_slot(0, 0);
-	else
-		pci_root = isp->hw_contex.pci_root;
-	pci_write_config_dword(pci_root, 0xD4, value);
-	pci_write_config_dword(pci_root, 0xD0, mcr);
-	if (isp == NULL)
-		pci_dev_put(pci_root);
-}
-
 /*
  * supported V4L2 fmts and resolutions
  */

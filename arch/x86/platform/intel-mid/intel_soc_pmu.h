@@ -126,10 +126,6 @@
 #define APM_CMD                 0x0
 #define APM_STS                 0x04
 
-#define PCI_CMD_REG		0xD0
-#define PCI_DATA_REG		0xD4
-#define MSG_READ_CMD		0x10
-
 /* Size of command logging array */
 #define LOG_SIZE	5
 

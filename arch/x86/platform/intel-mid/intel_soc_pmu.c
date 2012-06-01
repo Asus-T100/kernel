@@ -1000,59 +1000,6 @@ unsigned int enable_standby __read_mostly;
 module_param(enable_standby, uint, 0000);
 #endif
 
-
-/*
- * APIs to communicate with pci root,
- * Returns zero on sucess.
- */
-int mid_nc_read32(u32 cmd, u32 *data)
-{
-	struct pci_dev *pci_root;
-	int ret;
-
-	mutex_lock(&pci_root_lock);
-	pci_root = pci_get_bus_and_slot(0, 0);
-
-	ret = pci_write_config_dword(pci_root, PCI_CMD_REG, cmd);
-	if (ret)
-		goto unlock;
-	/*
-	 * since we go to unlock with/without error, not
-	 * checking for it here
-	 */
-	pci_read_config_dword(pci_root, PCI_DATA_REG, data);
-
-unlock:
-	pci_dev_put(pci_root);
-	mutex_unlock(&pci_root_lock);
-
-	return ret;
-}
-EXPORT_SYMBOL(mid_nc_read32);
-
-/*Returns Zero on sucess*/
-int mid_nc_write32(u32 cmd, u32 data)
-{
-	struct pci_dev *pci_root;
-	int ret;
-
-	mutex_lock(&pci_root_lock);
-	pci_root = pci_get_bus_and_slot(0, 0);
-
-	ret = pci_write_config_dword(pci_root, PCI_DATA_REG, data);
-	if (ret)
-		goto unlock;
-
-	pci_write_config_dword(pci_root, PCI_CMD_REG, cmd);
-
-unlock:
-	pci_dev_put(pci_root);
-	mutex_unlock(&pci_root_lock);
-
-	return ret;
-}
-EXPORT_SYMBOL(mid_nc_write32);
-
 static int wait_for_nc_pmcmd_complete(int verify_mask, int state_type
 					, int reg_type)
 {
@@ -1648,7 +1595,6 @@ static int __devinit mid_pmu_probe(struct pci_dev *dev,
 {
 	int ret;
 	struct mrst_pmu_reg __iomem *pmu;
-	int cmd;
 	u32 data;
 
 #ifdef CONFIG_HAS_WAKELOCK
@@ -1677,21 +1623,10 @@ static int __devinit mid_pmu_probe(struct pci_dev *dev,
 	mid_pmu_cxt->pmu2_max_devs = PMU2_MAX_DEVS;
 	mid_pmu_cxt->ss_per_reg = 16;
 
-	/* Map the NC PM registers */
-	cmd = (MSG_READ_CMD << 24) | (OSPM_PUNIT_PORT << 16) |
-						(OSPM_APMBA << 8);
-	if (mid_nc_read32(cmd, &data)) {
-		ret = PMU_FAILED;
-		goto out_err1;
-	}
+	data = intel_mid_msgbus_read32(OSPM_PUNIT_PORT, OSPM_APMBA);
 	mid_pmu_cxt->apm_base = data & 0xffff;
 
-	cmd = (MSG_READ_CMD << 24) | (OSPM_PUNIT_PORT << 16) |
-						 (OSPM_OSPMBA << 8);
-	if (mid_nc_read32(cmd, &data)) {
-		ret = PMU_FAILED;
-		goto out_err1;
-	}
+	data = intel_mid_msgbus_read32(OSPM_PUNIT_PORT, OSPM_OSPMBA);
 	mid_pmu_cxt->ospm_base = data & 0xffff;
 
 	/* Map the memory of pmu1 PMU reg base */

@@ -418,16 +418,9 @@ no_frame_done:
 		complete(&isp->dis_state_complete);
 
 	/* Clear irq reg at PENWELL B0 */
-	if (IS_MRFLD) {
-		msg_ret = atomisp_msg_read32(isp, IUNIT_PORT_MRFLD, INTR_CTL);
-		msg_ret |=  (1 << INTR_IIR);
-		atomisp_msg_write32(isp, IUNIT_PORT_MRFLD, INTR_CTL, msg_ret);
-	} else {
-		msg_ret = atomisp_msg_read32(isp, IUNIT_PORT_MDFLD, INTR_CTL);
-		msg_ret |=  (1 << INTR_IIR);
-		atomisp_msg_write32(isp, IUNIT_PORT_MDFLD, INTR_CTL, msg_ret);
-	}
-
+	pci_read_config_dword(isp->pdev, PCI_INTERRUPT_CTRL, &msg_ret);
+	msg_ret |= 1 << INTR_IIR;
+	pci_write_config_dword(isp->pdev, PCI_INTERRUPT_CTRL, msg_ret);
 out:
 	spin_unlock_irqrestore(&isp->irq_lock, irqflags);
 	return IRQ_HANDLED;
@@ -514,7 +507,7 @@ static void set_term_en_count(struct atomisp_device *isp)
 		__intel_mid_cpu_chip == INTEL_MID_CPU_CHIP_PENWELL)
 		pwn_b0 = 1;
 
-	val = atomisp_msg_read32(isp, IUNITPHY_PORT, CSI_CONTROL);
+	val = intel_mid_msgbus_read32(IUNITPHY_PORT, CSI_CONTROL);
 
 	/* set TERM_EN_COUNT_1LANE to 0xf */
 	val &= ~TERM_EN_COUNT_1LANE_MASK;
@@ -526,7 +519,7 @@ static void set_term_en_count(struct atomisp_device *isp)
 	val |= 0xf << (pwn_b0 ? TERM_EN_COUNT_4LANE_PWN_B0_OFFSET :
 				TERM_EN_COUNT_4LANE_OFFSET);
 
-	atomisp_msg_write32(isp, IUNITPHY_PORT, CSI_CONTROL, val);
+	intel_mid_msgbus_write32(IUNITPHY_PORT, CSI_CONTROL, val);
 }
 static int atomisp_buffer_dequeue(struct atomisp_device *isp, int wait)
 {
@@ -4188,13 +4181,12 @@ int atomisp_save_iunit_reg(struct atomisp_device *isp)
 			      &isp->hw_contex.cg_dis);
 	pci_read_config_dword(dev, PCI_I_CONTROL,
 			      &isp->hw_contex.i_control);
-
-	isp->hw_contex.csi_rcomp_config = atomisp_msg_read32(isp, IUNITPHY_PORT,
-							     CSI_RCOMP);
-	isp->hw_contex.csi_afe_dly = atomisp_msg_read32(isp, IUNITPHY_PORT,
-							CSI_AFE);
-	isp->hw_contex.csi_control = atomisp_msg_read32(isp, IUNITPHY_PORT,
-							CSI_CONTROL);
+	isp->hw_contex.csi_rcomp_config = intel_mid_msgbus_read32(
+			IUNITPHY_PORT, CSI_RCOMP);
+	isp->hw_contex.csi_afe_dly = intel_mid_msgbus_read32(
+			IUNITPHY_PORT, CSI_AFE);
+	isp->hw_contex.csi_control = intel_mid_msgbus_read32(
+			IUNITPHY_PORT, CSI_CONTROL);
 
 	return 0;
 }
@@ -4216,11 +4208,11 @@ int atomisp_restore_iunit_reg(struct atomisp_device *isp)
 	pci_write_config_dword(dev, PCI_CG_DIS, isp->hw_contex.cg_dis);
 	pci_write_config_dword(dev, PCI_I_CONTROL, isp->hw_contex.i_control);
 
-	atomisp_msg_write32(isp, IUNITPHY_PORT, CSI_RCOMP,
+	intel_mid_msgbus_write32(IUNITPHY_PORT, CSI_RCOMP,
 			    isp->hw_contex.csi_rcomp_config);
-	atomisp_msg_write32(isp, IUNITPHY_PORT, CSI_AFE,
+	intel_mid_msgbus_write32(IUNITPHY_PORT, CSI_AFE,
 			    isp->hw_contex.csi_afe_dly);
-	atomisp_msg_write32(isp, IUNITPHY_PORT, CSI_CONTROL,
+	intel_mid_msgbus_write32(IUNITPHY_PORT, CSI_CONTROL,
 			    isp->hw_contex.csi_control);
 
 	return 0;
@@ -4253,9 +4245,9 @@ int atomisp_ospm_dphy_down(struct atomisp_device *isp)
 
 done:
 	/* power down DPHY */
-	pwr_cnt = atomisp_msg_read32(isp, IUNITPHY_PORT, CSI_CONTROL);
+	pwr_cnt = intel_mid_msgbus_read32(IUNITPHY_PORT, CSI_CONTROL);
 	pwr_cnt |= 0x300;
-	atomisp_msg_write32(isp, IUNITPHY_PORT, CSI_CONTROL, pwr_cnt);
+	intel_mid_msgbus_write32(IUNITPHY_PORT, CSI_CONTROL, pwr_cnt);
 	isp->sw_contex.power_state = ATOM_ISP_POWER_DOWN;
 
 	return 0;
@@ -4267,9 +4259,9 @@ int atomisp_ospm_dphy_up(struct atomisp_device *isp)
 	u32 pwr_cnt = 0;
 
 	/* power on DPHY */
-	pwr_cnt = atomisp_msg_read32(isp, IUNITPHY_PORT, CSI_CONTROL);
+	pwr_cnt = intel_mid_msgbus_read32(IUNITPHY_PORT, CSI_CONTROL);
 	pwr_cnt &= ~0x300;
-	atomisp_msg_write32(isp, IUNITPHY_PORT, CSI_CONTROL, pwr_cnt);
+	intel_mid_msgbus_write32(IUNITPHY_PORT, CSI_CONTROL, pwr_cnt);
 
 	isp->sw_contex.power_state = ATOM_ISP_POWER_UP;
 

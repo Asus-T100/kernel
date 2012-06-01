@@ -42,6 +42,7 @@
 #endif
 
 #include <asm/intel_scu_ipc.h>
+#include <asm/intel-mid.h>
 
 #include "mdfld_dsi_dbi.h"
 #ifdef CONFIG_MDFLD_DSI_DPU
@@ -739,8 +740,11 @@ static void get_imr_info(struct drm_psb_private *dev_priv)
 	u32 high, low, start, end;
 	int size = 0;
 
-	low = MDFLD_MSG_READ32(PNW_IMR_MSG_PORT, PNW_IMR4L_MSG_REGADDR);
-	high = MDFLD_MSG_READ32(PNW_IMR_MSG_PORT, PNW_IMR4H_MSG_REGADDR);
+	low = intel_mid_msgbus_read32(PNW_IMR_MSG_PORT,
+			PNW_IMR4L_MSG_REGADDR);
+	high = intel_mid_msgbus_read32(PNW_IMR_MSG_PORT,
+			PNW_IMR4H_MSG_REGADDR);
+
 	start = (low & PNW_IMR_ADDRESS_MASK) << PNW_IMR_ADDRESS_SHIFT;
 	end = (high & PNW_IMR_ADDRESS_MASK) << PNW_IMR_ADDRESS_SHIFT;
 	if (end > start)
@@ -821,15 +825,12 @@ static void psb_do_takedown(struct drm_device *dev)
 static void psb_get_core_freq(struct drm_device *dev)
 {
 	uint32_t clock;
-	struct pci_dev *pci_root = pci_get_bus_and_slot(0, 0);
 	struct drm_psb_private *dev_priv = (struct drm_psb_private *) dev->dev_private;
 
 	/*pci_write_config_dword(pci_root, 0xD4, 0x00C32004);*/
 	/*pci_write_config_dword(pci_root, 0xD0, 0xE0033000);*/
 
-	pci_write_config_dword(pci_root, 0xD0, 0xD0050300);
-	pci_read_config_dword(pci_root, 0xD4, &clock);
-	pci_dev_put(pci_root);
+	clock = intel_mid_msgbus_read32_raw(0xD00503F0);
 
 	switch (clock & 0x07) {
 	case 0:
@@ -856,12 +857,12 @@ static void psb_get_core_freq(struct drm_device *dev)
 	}
 }
 
-#define FB_REG06_MRST 0xD0810600
-#define FB_REG06_MDFLD 0x10810600
+#define FB_REG06_MRST 0xD08106F0
+#define FB_REG06_MDFLD 0x108106F0
 #define FB_TOPAZ_DISABLE BIT0
 #define FB_MIPI_DISABLE  BIT11
-#define FB_REG09_MRST 0xD0810900
-#define FB_REG09_MDFLD 0x10810900
+#define FB_REG09_MRST 0xD08109F0
+#define FB_REG09_MDFLD 0x108109F0
 #define FB_SKU_MASK  (BIT12|BIT13|BIT14)
 #define FB_SKU_SHIFT 12
 #define FB_SKU_100 0
@@ -878,16 +879,12 @@ static void psb_get_core_freq(struct drm_device *dev)
 void mrst_get_fuse_settings(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv = dev->dev_private;
-	struct pci_dev *pci_root = pci_get_bus_and_slot(0, 0);
 	uint32_t fuse_value = 0;
 	uint32_t fuse_value_tmp = 0;
 
-	if (IS_MDFLD(dev))
-		pci_write_config_dword(pci_root, 0xD0, FB_REG06_MDFLD);
-	else
-		pci_write_config_dword(pci_root, 0xD0, FB_REG06_MRST);
+	fuse_value = intel_mid_msgbus_read32_raw(IS_MDFLD(dev) ?
+			FB_REG06_MDFLD : FB_REG06_MRST);
 
-	pci_read_config_dword(pci_root, 0xD4, &fuse_value);
 	dev_priv->iLVDS_enable = fuse_value & FB_MIPI_DISABLE;
 
 	if (IS_MDFLD(dev)) {
@@ -916,14 +913,10 @@ void mrst_get_fuse_settings(struct drm_device *dev)
 	PSB_DEBUG_ENTRY("topaz is %s\n",
 			dev_priv->topaz_disabled ? "disabled" : "enabled");
 
-	if (IS_MDFLD(dev))
-		pci_write_config_dword(pci_root, 0xD0, FB_REG09_MDFLD);
-	else
-		pci_write_config_dword(pci_root, 0xD0, FB_REG09_MRST);
+	fuse_value = intel_mid_msgbus_read32_raw(IS_MDFLD(dev) ?
+			FB_REG09_MDFLD : FB_REG09_MRST);
 
-	pci_read_config_dword(pci_root, 0xD4, &fuse_value);
-
-	PSB_DEBUG_ENTRY("SKU values is 0x%x. \n", fuse_value);
+	PSB_DEBUG_ENTRY("SKU values is 0x%x.\n", fuse_value);
 	fuse_value_tmp = (fuse_value & FB_SKU_MASK) >> FB_SKU_SHIFT;
 
 	dev_priv->fuse_reg_value = fuse_value;

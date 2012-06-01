@@ -29,6 +29,7 @@
 #include <linux/device.h>
 #include <linux/version.h>
 #include <asm/intel_scu_ipc.h>
+#include <asm/intel-mid.h>
 #include <linux/kdev_t.h>
 #include <asm/paravirt.h>
 #include "matrix.h"
@@ -326,33 +327,6 @@ static int matrix_open(struct inode *in, struct file *filp)
 		instantiated = true;
 		return 0;
 	}
-}
-
-/**
- * platform_pci_read32 - for reading PCI space through config registers
- * of the platform.
- * @address : an address in the pci space
- */
-static unsigned long platform_pci_read32(unsigned long address)
-{
-	u32 read_value = 0;
-	struct pci_dev *pci_root = pci_get_bus_and_slot(0, PCI_DEVFN(0, 0));
-	pci_write_config_dword(pci_root, MTX_PCI_MSG_CTRL_REG, address);
-	pci_read_config_dword(pci_root, MTX_PCI_MSG_DATA_REG, &read_value);
-	return read_value;
-}
-
-/**
- * platform_pci_write32 - for writing into PCI space through config registers
- * of the platform.
- * @address : an address in the pci space
- * @data : data that has to wrriten
- */
-static void platform_pci_write32(unsigned long address, unsigned long data)
-{
-	struct pci_dev *pci_root = pci_get_bus_and_slot(0, PCI_DEVFN(0, 0));
-	pci_write_config_dword(pci_root, MTX_PCI_MSG_DATA_REG, data);
-	pci_write_config_dword(pci_root, MTX_PCI_MSG_CTRL_REG, address);
 }
 
 /**

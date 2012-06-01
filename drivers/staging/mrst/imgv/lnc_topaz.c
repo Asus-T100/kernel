@@ -36,6 +36,7 @@
 
 #include <linux/io.h>
 #include <linux/delay.h>
+#include <asm/intel-mid.h>
 
 #define TOPAZ_RM_MULTI_MTX_WRITE
 
@@ -137,8 +138,10 @@ static int lnc_submit_encode_cmdbuf(struct drm_device *dev,
 	 */
 	if (IS_MRST(dev)) {
 		uint32_t ui32_reg_value = 0;
-		ui32_reg_value = MRST_MSG_READ32(0x1, 0x4);
-		MRST_MSG_WRITE32(0x1, 0x4, (ui32_reg_value & (~(0x1 << 7))));
+		ui32_reg_value = intel_mid_msgbus_read32_raw((0xD0 << 24) |
+			(0x1 << 16) | (0x4 << 8) | 0xF0);
+		intel_mid_msgbus_write32_raw((0xE0 << 24) | (0x1 << 16) |
+			(0x4 << 8) | 0xF0, ui32_reg_value & (~(0x1 << 7)));
 	}
 
 	if (topaz_priv->topaz_fw_loaded == 0) {

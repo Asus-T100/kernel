@@ -24,6 +24,7 @@
 #include "psb_drv.h"
 #include "psb_ttm_userobj_api.h"
 #include <linux/io.h>
+#include <asm/intel-mid.h>
 #include "psb_msvdx.h"
 #include "bufferclass_video.h"
 
@@ -142,8 +143,10 @@ int psb_release(struct inode *inode, struct file *filp)
 		 *        re-enable DRAM Self Refresh Mode
 		 *        by setting DUNIT.DPMC0
 		 */
-		ui32_reg_value = MRST_MSG_READ32(0x1, 0x4);
-		MRST_MSG_WRITE32(0x1, 0x4, (ui32_reg_value | (0x1 << 7)));
+		ui32_reg_value = intel_mid_msgbus_read32_raw((0xD0 << 24) |
+			(0x1 << 16) | (0x4 << 8) | 0xF0);
+		intel_mid_msgbus_write32_raw((0xE0 << 24) | (0x1 << 16) |
+			(0x4 << 8) | 0xF0, ui32_reg_value | (0x1 << 7));
 	}
 
 	schedule_delayed_work(&dev_priv->scheduler.msvdx_suspend_wq, msecs_to_jiffies(10));
