@@ -1731,7 +1731,14 @@ static void bq24192_event_worker(struct work_struct *work)
 			dev_info(&chip->client->dev,
 				 "Unknown Charger type\n");
 		}
-		chip->batt_status = POWER_SUPPLY_STATUS_CHARGING;
+
+		/*
+		 * We update the battery charging status as per the type of
+		 * charger connected. If it is host mode cable connected then
+		 * battery status should be discharging
+		 */
+		if (chip->chrg_type != POWER_SUPPLY_TYPE_USB_HOST)
+			chip->batt_status = POWER_SUPPLY_STATUS_CHARGING;
 		chip->batt_mode = BATT_CHRG_NORMAL;
 		mutex_unlock(&chip->event_lock);
 		break;
