@@ -429,51 +429,51 @@ static void csc_XYZ (int *chrom, int64_t *M_csc)
 */
 static void csc_to_12bit_register_value (int64_t csc, u16 *reg_val)
 {
-      uint64_t temp_N = (uint64_t) -1;
-      uint64_t temp64 = 0;
-      u32 temp_32_1;
-      u32 temp_32_2;
-      bool sign = true;  /* true: positive, false: negative. */
-      u16 remain = 0;
-      u8 integer = 0;
+	uint64_t temp_N = (uint64_t) -1;
+	uint64_t temp64 = 0;
+	u32 temp_32_1;
+	u32 temp_32_2;
+	bool sign = true;  /* true: positive, false: negative. */
+	u16 remain = 0;
+	u8 integer = 0;
 
-      /*
-      * Convert the signed number to absolute value.
-      *
-      */
-      if (csc < 0) {
+	/*
+	 * Convert the signed number to absolute value.
+	 *
+	 */
+	if (csc < 0) {
 		sign = false;
 		temp64 = temp_N - ((uint64_t) csc) + 1;
 		temp_32_2 = (u32) temp64;
 		temp_32_1 = (u32) (temp64 >> 32);
-      } else {
+	} else {
 		temp64 = (uint64_t) csc;
 		temp_32_2 = (u32) temp64;
 		temp_32_1 = (u32) (temp64 >> 32);
-      }
+	}
 
-      /*
-      * Convert the absolute value to register value.
-      *
-      */
-      integer = temp_32_2 / 1000;
-      remain = temp_32_2 % 1000;
+	/*
+	 * Convert the absolute value to register value.
+	 *
+	 */
+	integer = temp_32_2 / 1000;
+	remain = temp_32_2 % 1000;
 
-      *reg_val = 0;
-      remain = (remain * 1024) / 1000;
-      *reg_val |= remain;
+	(*reg_val) = 0;
+	remain = (remain * 1024) / 1000;
+	(*reg_val) |= remain;
 
-      if (integer)
-		*reg_val |= BIT10;
+	if (integer)
+		(*reg_val) |= BIT10;
 
-      /* if negative values */
-      if (!sign) {
-		*reg_val = ~(*reg_val);
-		*reg_val++;
-		*reg_val &= 0xFFF;
-      }
+	/* if negative values */
+	if (!sign) {
+		(*reg_val) = ~(*reg_val);
+		(*reg_val)++;
+		(*reg_val) &= 0xFFF;
+	}
 
-      if (integer > 1)
+	if (integer > 1)
 		DRM_ERROR("Invalid parameters\n");
 }
 
