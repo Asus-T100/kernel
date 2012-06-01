@@ -364,6 +364,17 @@ static int mdfld_dsi_pr2_power_on(struct mdfld_dsi_config *dsi_config)
 		return -EINVAL;
 	}
 
+	/*send TURN_ON packet*/
+	err = mdfld_dsi_send_dpi_spk_pkg_hs(sender,
+			MDFLD_DSI_DPI_SPK_TURN_ON);
+	if (err) {
+		DRM_ERROR("Failed to send turn on packet\n");
+		return err;
+	}
+	/*According HW DSI spec, here need wait for 100ms. This is
+	 * not necessary as the code is anyway sleeping 141 ms later
+	 * in this function */
+
 	mdfld_dsi_send_gen_long_hs(sender, pr2_mcs_protect_off, 4, 0);
 	/*change power state*/
 	mdfld_dsi_send_mcs_long_hs(sender, pr2_exit_sleep_mode, 4, 0);
@@ -389,15 +400,6 @@ static int mdfld_dsi_pr2_power_on(struct mdfld_dsi_config *dsi_config)
 		printk(KERN_ALERT "enable pr2 cabc\n");
 	}
 
-	/*send TURN_ON packet*/
-	err = mdfld_dsi_send_dpi_spk_pkg_hs(sender,
-				MDFLD_DSI_DPI_SPK_TURN_ON);
-	if (err) {
-		DRM_ERROR("Failed to send turn on packet\n");
-		return err;
-	}
-	/*According HW DSI spec, here need wait for 100ms*/
-	msleep(100);
 	return 0;
 }
 
