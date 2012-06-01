@@ -162,7 +162,7 @@ static struct mtx_size_info xhg_buf_info;
 				goto label; \
 			} \
 			ptr_lut->member##_##state =  \
-				(struct_init structure*)&ptr_lut_ops[offset]; \
+			(struct_init structure*)&ptr_lut_ops[offset]; \
 			offset += lut_info.state##_##type##_size; \
 			if (mem) \
 				IO_REMAP_MEMORY(state); \
@@ -737,6 +737,8 @@ static int ioctl_mtx_msr(unsigned long ptr_data)
 {
 	struct mtx_msr_container mtx_msr_drv;
 	unsigned long *buffer = NULL;
+	int err = 0;
+
 	if ((struct mtx_msr_container *)ptr_data == NULL) {
 		dev_dbg(matrix_device, "file : %s ,function : %s ,line %i\n",
 			__FILE__, __func__, __LINE__);
@@ -764,14 +766,16 @@ static int ioctl_mtx_msr(unsigned long ptr_data)
 	}
 	switch (mtx_msr_drv.msrType1.operation) {
 	case WRITE_OP:
-		wrmsr(mtx_msr_drv.msrType1.ecx_address,
-		      mtx_msr_drv.msrType1.eax_LSB,
-		      mtx_msr_drv.msrType1.edx_MSB);
+		err = wrmsr_on_cpu(mtx_msr_drv.msrType1.n_cpu,
+				   mtx_msr_drv.msrType1.ecx_address,
+				   mtx_msr_drv.msrType1.eax_LSB,
+				   mtx_msr_drv.msrType1.edx_MSB);
 		break;
 	case READ_OP:
-		rdmsr(mtx_msr_drv.msrType1.ecx_address,
-		      mtx_msr_drv.msrType1.eax_LSB,
-		      mtx_msr_drv.msrType1.edx_MSB);
+		err = rdmsr_on_cpu(mtx_msr_drv.msrType1.n_cpu,
+				   mtx_msr_drv.msrType1.ecx_address,
+				 (u32 *) &mtx_msr_drv.msrType1.eax_LSB,
+				 (u32 *) &mtx_msr_drv.msrType1.edx_MSB);
 		break;
 	case ENABLE_OP:
 		wrmsrl(mtx_msr_drv.msrType1.ecx_address,
@@ -784,6 +788,8 @@ static int ioctl_mtx_msr(unsigned long ptr_data)
 			"There is a problem in MSR Operation..\n");
 		goto ERROR;
 	}
+	if (err != 0)
+		goto ERROR;
 	if (copy_to_user
 	    ((struct mtx_msr_container *)ptr_data, &mtx_msr_drv,
 	     sizeof(mtx_msr_drv)) > 0) {
