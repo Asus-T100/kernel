@@ -33,6 +33,7 @@
 #include <linux/io.h>
 #include <linux/pm_runtime.h>
 #include <linux/delay.h>
+#include <linux/semaphore.h>
 #include "i2c-designware-core.h"
 
 static char *abort_sources[] = {
@@ -76,6 +77,48 @@ void dw_writel(struct dw_i2c_dev *dev, u32 b, int offset)
 		b = swab32(b);
 
 	writel(b, dev->base + offset);
+}
+
+static void i2c_dw_dump(struct dw_i2c_dev *dev)
+{
+	u32 value;
+
+	dev_err(dev->dev, "===== REGISTER DUMP (i2c) =====\n");
+	value = dw_readl(dev, DW_IC_CON);
+	dev_err(dev->dev, "DW_IC_CON:               0x%x\n", value);
+	value = dw_readl(dev, DW_IC_TAR);
+	dev_err(dev->dev, "DW_IC_TAR:               0x%x\n", value);
+	value = dw_readl(dev, DW_IC_SS_SCL_HCNT);
+	dev_err(dev->dev, "DW_IC_SS_SCL_HCNT:       0x%x\n", value);
+	value = dw_readl(dev, DW_IC_SS_SCL_LCNT);
+	dev_err(dev->dev, "DW_IC_SS_SCL_LCNT:       0x%x\n", value);
+	value = dw_readl(dev, DW_IC_FS_SCL_HCNT);
+	dev_err(dev->dev, "DW_IC_FS_SCL_HCNT:       0x%x\n", value);
+	value = dw_readl(dev, DW_IC_FS_SCL_LCNT);
+	dev_err(dev->dev, "DW_IC_FS_SCL_LCNT:       0x%x\n", value);
+	value = dw_readl(dev, DW_IC_INTR_STAT);
+	dev_err(dev->dev, "DW_IC_INTR_STAT:         0x%x\n", value);
+	value = dw_readl(dev, DW_IC_INTR_MASK);
+	dev_err(dev->dev, "DW_IC_INTR_MASK:         0x%x\n", value);
+	value = dw_readl(dev, DW_IC_RAW_INTR_STAT);
+	dev_err(dev->dev, "DW_IC_RAW_INTR_STAT:     0x%x\n", value);
+	value = dw_readl(dev, DW_IC_RX_TL);
+	dev_err(dev->dev, "DW_IC_RX_TL:             0x%x\n", value);
+	value = dw_readl(dev, DW_IC_TX_TL);
+	dev_err(dev->dev, "DW_IC_TX_TL:             0x%x\n", value);
+	value = dw_readl(dev, DW_IC_ENABLE);
+	dev_err(dev->dev, "DW_IC_ENABLE:            0x%x\n", value);
+	value = dw_readl(dev, DW_IC_STATUS);
+	dev_err(dev->dev, "DW_IC_STATUS:            0x%x\n", value);
+	value = dw_readl(dev, DW_IC_TXFLR);
+	dev_err(dev->dev, "DW_IC_TXFLR:             0x%x\n", value);
+	value = dw_readl(dev, DW_IC_RXFLR);
+	dev_err(dev->dev, "DW_IC_RXFLR:             0x%x\n", value);
+	value = dw_readl(dev, DW_IC_TX_ABRT_SOURCE);
+	dev_err(dev->dev, "DW_IC_TX_ABRT_SOURCE:    0x%x\n", value);
+	value = dw_readl(dev, DW_IC_DATA_CMD);
+	dev_err(dev->dev, "DW_IC_DATA_CMD:          0x%x\n", value);
+	dev_err(dev->dev, "===============================\n");
 }
 
 static u32
@@ -266,13 +309,26 @@ i2c_dw_xfer_msg(struct dw_i2c_dev *dev)
 	struct i2c_msg *msgs = dev->msgs;
 	u32 intr_mask;
 	int tx_limit, rx_limit;
+	int cmd;
 	u32 addr = msgs[dev->msg_write_idx].addr;
 	u32 buf_len = dev->tx_buf_len;
 	u8 *buf = dev->tx_buf;
+	unsigned long flags;
 
 	intr_mask = DW_IC_INTR_DEFAULT_MASK;
 
+	raw_local_irq_save(flags);
+	/* if fifo only has one byte, it is not safe */
+	if ((dev->status & STATUS_WRITE_IN_PROGRESS) &&
+		(dw_readl(dev, DW_IC_TXFLR) < 1)) {
+		dev_err(dev->dev, "TX FIFO overrun, addr: 0x%x.\n", addr);
+		dev->msg_err = -EAGAIN;
+	}
+
 	for (; dev->msg_write_idx < dev->msgs_num; dev->msg_write_idx++) {
+		if (dev->msg_err)
+			break;
+
 		/*
 		 * if target address has changed, we need to
 		 * reprogram the target address in the i2c
@@ -302,11 +358,13 @@ i2c_dw_xfer_msg(struct dw_i2c_dev *dev)
 		rx_limit = dev->rx_fifo_depth - dw_readl(dev, DW_IC_RXFLR);
 
 		while (buf_len > 0 && tx_limit > 0 && rx_limit > 0) {
+			cmd = (dev->enable_stop	&& buf_len == 1) ?
+				DW_IC_CMD_STOP : 0;
 			if (msgs[dev->msg_write_idx].flags & I2C_M_RD) {
-				dw_writel(dev, 0x100, DW_IC_DATA_CMD);
+				dw_writel(dev, cmd | 0x100, DW_IC_DATA_CMD);
 				rx_limit--;
 			} else
-				dw_writel(dev, *buf++, DW_IC_DATA_CMD);
+				dw_writel(dev, cmd | *buf++, DW_IC_DATA_CMD);
 			tx_limit--; buf_len--;
 		}
 
@@ -320,6 +378,7 @@ i2c_dw_xfer_msg(struct dw_i2c_dev *dev)
 		} else
 			dev->status &= ~STATUS_WRITE_IN_PROGRESS;
 	}
+	raw_local_irq_restore(flags);
 
 	/*
 	 * If i2c_msg index search is completed, we don't need TX_EMPTY
@@ -404,7 +463,7 @@ i2c_dw_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 
 	dev_dbg(dev->dev, "%s: msgs: %d\n", __func__, num);
 
-	mutex_lock(&dev->lock);
+	down(&dev->lock);
 	pm_runtime_get_sync(dev->dev);
 
 	INIT_COMPLETION(dev->cmd_complete);
@@ -425,9 +484,10 @@ i2c_dw_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 	i2c_dw_xfer_init(dev);
 
 	/* wait for tx to complete */
-	ret = wait_for_completion_interruptible_timeout(&dev->cmd_complete, HZ);
+	ret = wait_for_completion_timeout(&dev->cmd_complete, HZ);
 	if (ret == 0) {
-		dev_err(dev->dev, "controller timed out\n");
+		dev_WARN(dev->dev, "controller timed out\n");
+		i2c_dw_dump(dev);
 		i2c_dw_init(dev);
 		ret = -ETIMEDOUT;
 		goto done;
@@ -455,8 +515,9 @@ i2c_dw_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 	ret = -EIO;
 
 done:
-	pm_runtime_put(dev->dev);
-	mutex_unlock(&dev->lock);
+	pm_runtime_mark_last_busy(dev->dev);
+	pm_runtime_put_autosuspend(dev->dev);
+	up(&dev->lock);
 
 	return ret;
 }

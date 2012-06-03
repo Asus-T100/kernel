@@ -39,6 +39,7 @@
 #include <linux/slab.h>
 #include <linux/pci.h>
 #include <linux/pm_runtime.h>
+#include <linux/semaphore.h>
 #include "i2c-designware-core.h"
 
 #define DRIVER_NAME "i2c-designware-pci"
@@ -77,6 +78,7 @@ struct dw_pci_controller {
 	u32 tx_fifo_depth;
 	u32 rx_fifo_depth;
 	u32 clk_khz;
+	int enable_stop;
 	int (*scl_cfg) (struct dw_i2c_dev *dev);
 };
 
@@ -232,6 +234,7 @@ static struct  dw_pci_controller  dw_pci_controllers[] = {
 		.tx_fifo_depth = 32,
 		.rx_fifo_depth = 32,
 		.clk_khz      = 17000,
+		.enable_stop = 1,
 	},
 	[merrifield_1] = {
 		.bus_num     = 1,
@@ -239,6 +242,7 @@ static struct  dw_pci_controller  dw_pci_controllers[] = {
 		.tx_fifo_depth = 32,
 		.rx_fifo_depth = 32,
 		.clk_khz      = 17000,
+		.enable_stop = 1,
 	},
 	[merrifield_2] = {
 		.bus_num     = 2,
@@ -246,6 +250,7 @@ static struct  dw_pci_controller  dw_pci_controllers[] = {
 		.tx_fifo_depth = 32,
 		.rx_fifo_depth = 32,
 		.clk_khz      = 17000,
+		.enable_stop = 1,
 	},
 	[merrifield_3] = {
 		.bus_num     = 3,
@@ -253,6 +258,7 @@ static struct  dw_pci_controller  dw_pci_controllers[] = {
 		.tx_fifo_depth = 32,
 		.rx_fifo_depth = 32,
 		.clk_khz      = 17000,
+		.enable_stop = 1,
 	},
 	[merrifield_4] = {
 		.bus_num     = 4,
@@ -260,6 +266,7 @@ static struct  dw_pci_controller  dw_pci_controllers[] = {
 		.tx_fifo_depth = 32,
 		.rx_fifo_depth = 32,
 		.clk_khz      = 17000,
+		.enable_stop = 1,
 	},
 	[merrifield_5] = {
 		.bus_num     = 5,
@@ -267,6 +274,7 @@ static struct  dw_pci_controller  dw_pci_controllers[] = {
 		.tx_fifo_depth = 32,
 		.rx_fifo_depth = 32,
 		.clk_khz      = 17000,
+		.enable_stop = 1,
 	},
 	[merrifield_6] = {
 		.bus_num     = 6,
@@ -274,6 +282,7 @@ static struct  dw_pci_controller  dw_pci_controllers[] = {
 		.tx_fifo_depth = 32,
 		.rx_fifo_depth = 32,
 		.clk_khz      = 17000,
+		.enable_stop = 1,
 	},
 };
 
@@ -286,9 +295,23 @@ static int i2c_dw_pci_suspend(struct device *dev)
 {
 	struct pci_dev *pdev = container_of(dev, struct pci_dev, dev);
 	struct dw_i2c_dev *i2c = pci_get_drvdata(pdev);
+
+	dev_dbg(dev, "suspend called\n");
+	if (down_trylock(&i2c->lock))
+		return -EBUSY;
+	i2c_dw_disable(i2c);
+	i2c->status &= ~STATUS_POWERON;
+
+	return 0;
+}
+
+static int i2c_dw_pci_runtime_suspend(struct device *dev)
+{
+	struct pci_dev *pdev = container_of(dev, struct pci_dev, dev);
+	struct dw_i2c_dev *i2c = pci_get_drvdata(pdev);
 	int err;
 
-
+	dev_dbg(dev, "runtime suspend called\n");
 	i2c_dw_disable(i2c);
 
 	err = pci_save_state(pdev);
@@ -310,40 +333,39 @@ static int i2c_dw_pci_resume(struct device *dev)
 {
 	struct pci_dev *pdev = container_of(dev, struct pci_dev, dev);
 	struct dw_i2c_dev *i2c = pci_get_drvdata(pdev);
+
+	dev_dbg(dev, "resume called\n");
+	i2c_dw_init(i2c);
+	i2c->status |= STATUS_POWERON;
+	up(&i2c->lock);
+
+	return 0;
+}
+
+static int i2c_dw_pci_runtime_resume(struct device *dev)
+{
+	struct pci_dev *pdev = container_of(dev, struct pci_dev, dev);
+	struct dw_i2c_dev *i2c = pci_get_drvdata(pdev);
 	int err;
-	u32 enabled;
 
-	enabled = i2c_dw_is_enabled(i2c);
-	if (enabled)
-		return 0;
-
+	dev_dbg(dev, "runtime resume called\n");
 	err = pci_set_power_state(pdev, PCI_D0);
 	if (err) {
 		dev_err(&pdev->dev, "pci_set_power_state() failed\n");
 		return err;
 	}
-
 	pci_restore_state(pdev);
-
 	i2c_dw_init(i2c);
+
 	return 0;
 }
 
-static int i2c_dw_pci_runtime_idle(struct device *dev)
-{
-	int err = pm_schedule_suspend(dev, 500);
-	dev_dbg(dev, "runtime_idle called\n");
-
-	if (err != 0)
-		return 0;
-	return -EBUSY;
-}
-
 static const struct dev_pm_ops i2c_dw_pm_ops = {
-	.resume         = i2c_dw_pci_resume,
-	.suspend        = i2c_dw_pci_suspend,
-	SET_RUNTIME_PM_OPS(i2c_dw_pci_suspend, i2c_dw_pci_resume,
-			   i2c_dw_pci_runtime_idle)
+	SET_SYSTEM_SLEEP_PM_OPS(i2c_dw_pci_suspend,
+				i2c_dw_pci_resume)
+	SET_RUNTIME_PM_OPS(i2c_dw_pci_runtime_suspend,
+			   i2c_dw_pci_runtime_resume,
+			   NULL)
 };
 
 static u32 i2c_dw_get_clk_rate_khz(struct dw_i2c_dev *dev)
@@ -413,7 +435,8 @@ const struct pci_device_id *id)
 	}
 
 	init_completion(&dev->cmd_complete);
-	mutex_init(&dev->lock);
+	sema_init(&dev->lock, 1);
+	dev->status = STATUS_IDLE;
 	dev->clk = NULL;
 	dev->controller = controller;
 	dev->get_clk_rate_khz = i2c_dw_get_clk_rate_khz;
@@ -427,6 +450,7 @@ const struct pci_device_id *id)
 		I2C_FUNC_SMBUS_I2C_BLOCK;
 	dev->master_cfg =  controller->bus_cfg;
 	dev->get_scl_cfg = controller->scl_cfg;
+	dev->enable_stop = controller->enable_stop;
 
 	pci_set_drvdata(pdev, dev);
 
@@ -462,6 +486,8 @@ const struct pci_device_id *id)
 
 	pm_runtime_put_noidle(&pdev->dev);
 	pm_runtime_allow(&pdev->dev);
+	pm_runtime_use_autosuspend(&pdev->dev);
+	pm_runtime_set_autosuspend_delay(&pdev->dev, 50);
 
 	return 0;
 

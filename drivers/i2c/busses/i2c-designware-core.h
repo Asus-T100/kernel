@@ -91,10 +91,13 @@
 
 #define DW_IC_ERR_TX_ABRT	0x1
 
+#define DW_IC_CMD_STOP		0x200
+
 /*
  * status codes
  */
-#define STATUS_IDLE			0x0
+#define STATUS_POWERON			0x0
+#define STATUS_IDLE			STATUS_POWERON
 #define STATUS_WRITE_IN_PROGRESS	0x1
 #define STATUS_READ_IN_PROGRESS		0x2
 
@@ -183,11 +186,12 @@ struct dw_i2c_dev {
 	struct device		*dev;
 	void __iomem		*base;
 	struct completion	cmd_complete;
-	struct mutex		lock;
+	struct semaphore	lock;
 	struct clk		*clk;
 	u32			(*get_clk_rate_khz) (struct dw_i2c_dev *dev);
 	int			(*get_scl_cfg) (struct dw_i2c_dev *dev);
 	struct dw_pci_controller *controller;
+	int			enable_stop;
 	int			cmd_err;
 	struct i2c_msg		*msgs;
 	int			msgs_num;
