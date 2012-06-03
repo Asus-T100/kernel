@@ -36,39 +36,38 @@
 #define MDFLD_DSI_READ_MAX_COUNT		10000
 
 const char * dsi_errors[] = {
-	"RX SOT Error",
-	"RX SOT Sync Error",
-	"RX EOT Sync Error",
-	"RX Escape Mode Entry Error",
-	"RX LP TX Sync Error",
-	"RX HS Receive Timeout Error",
-	"RX False Control Error",
-	"RX ECC Single Bit Error",
-	"RX ECC Multibit Error",
-	"RX Checksum Error",
-	"RX DSI Data Type Not Recognised",
-	"RX DSI VC ID Invalid",
-	"TX False Control Error",
-	"TX ECC Single Bit Error",
-	"TX ECC Multibit Error",
-	"TX Checksum Error",
-	"TX DSI Data Type Not Recognised",
-	"TX DSI VC ID invalid",
-
-	"High Contention",
-	"Low contention",
-	"DPI FIFO Under run",
-	"HS TX Timeout",
-	"LP RX Timeout",
-	"Turn Around ACK Timeout",
-	"ACK With No Error",
-	"RX Invalid TX Length",
-	"RX Prot Violation",
-	"HS Generic Write FIFO Full",
-	"LP Generic Write FIFO Full",
-	"Generic Read Data Avail",
-	"Special Packet Sent",
-	"Tearing Effect",
+	"[ 0:RX SOT Error]",
+	"[ 1:RX SOT Sync Error]",
+	"[ 2:RX EOT Sync Error]",
+	"[ 3:RX Escape Mode Entry Error]",
+	"[ 4:RX LP TX Sync Error",
+	"[ 5:RX HS Receive Timeout Error]",
+	"[ 6:RX False Control Error]",
+	"[ 7:RX ECC Single Bit Error]",
+	"[ 8:RX ECC Multibit Error]",
+	"[ 9:RX Checksum Error]",
+	"[10:RX DSI Data Type Not Recognised]",
+	"[11:RX DSI VC ID Invalid]",
+	"[12:TX False Control Error]",
+	"[13:TX ECC Single Bit Error]",
+	"[14:TX ECC Multibit Error]",
+	"[15:TX Checksum Error]",
+	"[16:TX DSI Data Type Not Recognised]",
+	"[17:TX DSI VC ID invalid]",
+	"[18:High Contention]",
+	"[19:Low contention]",
+	"[20:DPI FIFO Under run]",
+	"[21:HS TX Timeout]",
+	"[22:LP RX Timeout]",
+	"[23:Turn Around ACK Timeout]",
+	"[24:ACK With No Error]",
+	"[25:RX Invalid TX Length]",
+	"[26:RX Prot Violation]",
+	"[27:HS Generic Write FIFO Full]",
+	"[28:LP Generic Write FIFO Full]",
+	"[29:Generic Read Data Avail]",
+	"[30:Special Packet Sent]",
+	"[31:Tearing Effect]",
 };
 
 static inline int wait_for_gen_fifo_empty(struct mdfld_dsi_pkg_sender * sender,
@@ -115,138 +114,122 @@ static int wait_for_dpi_fifo_empty(struct mdfld_dsi_pkg_sender *sender)
 	return wait_for_gen_fifo_empty(sender, (BIT28));
 }
 
-static int handle_dsi_error(struct mdfld_dsi_pkg_sender *sender, u32 mask)
-{
-	u32 intr_stat_reg = sender->mipi_intr_stat_reg;
-	struct drm_device *dev = sender->dev;
-	struct drm_psb_private *dev_priv = dev->dev_private;
-
-	PSB_DEBUG_ENTRY("Handling error 0x%08x\n", mask);
-
-	switch(mask) {
-	case BIT0:
-	case BIT1:
-	case BIT2:
-	case BIT3:
-	case BIT4:
-	case BIT5:
-	case BIT6:
-	case BIT7:
-	case BIT8:
-	case BIT9:
-	case BIT10:
-	case BIT11:
-		PSB_DEBUG_ENTRY("No Action required\n");
-		break;
-	case BIT12:
-		PSB_DEBUG_ENTRY("TXFALSE control error\n");
-		REG_WRITE(0xb004, BIT12);
-		break;
-	case BIT13:
-		PSB_DEBUG_ENTRY("No Action required\n");
-		break;
-	case BIT14:
-		/*wait for all fifo empty*/
-		/*wait_for_all_fifos_empty(sender)*/;
-		break;
-	case BIT15:
-		PSB_DEBUG_ENTRY("No Action required\n");
-		break;
-	case BIT16:
-		PSB_DEBUG_ENTRY("TX DSI data type not recognised error\n");
-		/*REG_WRITE(0xb05c, REG_READ(0xb05c) | 0x8);*/
-		REG_WRITE(0xb004, BIT16);
-		break;
-	case BIT17:
-		break;
-	case BIT18:
-		{
-			int count = 0;
-			PSB_DEBUG_ENTRY("single high contention event\n");
-			REG_WRITE(0xb05c, REG_READ(0xb05c)|0x30);
-			while ((REG_READ(0xb004)&0x40000) == 0x40000) {
-				count++;
-			if (count == 2)
-				REG_WRITE(0xb004, BIT18);
-			if (count == 3) {
-				printk(KERN_ALERT
-						"persistent high contention error detected\n");
-				if (dev_priv->dbi_panel_on) {
-					/*Enzo asked no to do panel
-					 *  reset panel right now
-					*/
-					/*schedule_work(
-					 * &dev_priv->reset_panel_work);
-					 * */
-				}
-				break;
-			}
-			}
-		}
-		break;
-	case BIT19:
-		PSB_DEBUG_ENTRY("Low contention detected\n");
-		/*wait for contention recovery time*/
-		/*mdelay(10);*/
-		/*wait for all fifo empty*/
-		if (0)
-			wait_for_all_fifos_empty(sender);
-		break;
-	case BIT20:
-		PSB_DEBUG_ENTRY("No Action required\n");
-		break;
-	case BIT21:
-		/*wait for all fifo empty*/
-		/*wait_for_all_fifos_empty(sender);*/
-		break;
-	case BIT22:
-		break;
-	case BIT23:
-	case BIT24:
-	case BIT25:
-	case BIT26:
-	case BIT27:
-		PSB_DEBUG_ENTRY("HS Gen fifo full\n");
-		REG_WRITE(intr_stat_reg, mask);
-		wait_for_hs_fifos_empty(sender);
-		break;
-	case BIT28:
-		PSB_DEBUG_ENTRY("LP Gen fifo full\n");
-		REG_WRITE(intr_stat_reg, mask);
-		wait_for_lp_fifos_empty(sender);
-		break;
-	case BIT29:
-	case BIT30:
-	case BIT31:
-		PSB_DEBUG_ENTRY("No Action required\n");
-		break;
-	}
-
-	if(mask & REG_READ(intr_stat_reg)) {
-		PSB_DEBUG_ENTRY("Cannot clean interrupt 0x%08x\n", mask);
-	}
-
-	return 0;
-}
-
 static int dsi_error_handler(struct mdfld_dsi_pkg_sender * sender)
 {
 	struct drm_device * dev = sender->dev;
 	u32 intr_stat_reg = sender->mipi_intr_stat_reg;
-	u32 mask;
-	u32 intr_stat;
+
 	int i;
+	u32 mask;
 	int err = 0;
+	int count = 0;
+	u32 intr_stat;
 
 	intr_stat = REG_READ(intr_stat_reg);
+	if (!intr_stat)
+		return 0;
 
-	for(i=0; i<32; i++) {
+	for (i = 0; i < 32; i++) {
 		mask = (0x00000001UL) << i;
-		if(intr_stat & mask) {
-			PSB_DEBUG_ENTRY("[DSI]: %s\n", dsi_errors[i]);
-			err = handle_dsi_error(sender, mask);
-			if(err)
-				DRM_ERROR("Cannot handle error\n");
+		if (!(intr_stat & mask))
+			continue;
+
+		switch (mask) {
+		case BIT0:
+		case BIT1:
+		case BIT2:
+		case BIT3:
+		case BIT4:
+		case BIT5:
+		case BIT6:
+		case BIT7:
+		case BIT8:
+		case BIT9:
+		case BIT10:
+		case BIT11:
+		case BIT12:
+		case BIT13:
+			/*No Action required.*/
+			DRM_INFO("dsi status %s\n", dsi_errors[i]);
+			REG_WRITE(intr_stat_reg, mask);
+			break;
+		case BIT14:
+			DRM_INFO("dsi status %s\n", dsi_errors[i]);
+			break;
+		case BIT15:
+			/*No Action required.*/
+			DRM_INFO("dsi status %s\n", dsi_errors[i]);
+			REG_WRITE(intr_stat_reg, mask);
+			break;
+		case BIT16:
+			DRM_INFO("dsi status %s\n", dsi_errors[i]);
+			REG_WRITE(intr_stat_reg, mask);
+			break;
+		case BIT17:
+			/*No Action required.*/
+			DRM_INFO("dsi status %s\n", dsi_errors[i]);
+			REG_WRITE(intr_stat_reg, mask);
+			break;
+		case BIT18:
+			REG_WRITE(MIPIA_EOT_DISABLE_REG,
+				REG_READ(MIPIA_EOT_DISABLE_REG)|0x30);
+			while ((REG_READ(intr_stat_reg) & BIT18)) {
+				count++;
+				/*
+				* Per silicon feedback, if this bit cannot be
+				* cleared by 3 times, it should be a real
+				* High Contention error.
+				*/
+				if (count == 4) {
+					DRM_INFO("dsi status %s\n",
+						dsi_errors[i]);
+					break;
+				}
+				REG_WRITE(intr_stat_reg, mask);
+			}
+			break;
+		case BIT19:
+			DRM_INFO("dsi status %s\n", dsi_errors[i]);
+			break;
+		case BIT20:
+			/*No Action required.*/
+			DRM_INFO("dsi status %s\n", dsi_errors[i]);
+			REG_WRITE(intr_stat_reg, mask);
+			break;
+		case BIT21:
+			DRM_INFO("dsi status %s\n", dsi_errors[i]);
+			break;
+		case BIT22:
+			DRM_INFO("dsi status %s\n", dsi_errors[i]);
+			break;
+		case BIT23:
+		case BIT24:
+		case BIT25:
+		case BIT26:
+			/*No Action required.*/
+			DRM_INFO("dsi status %s\n", dsi_errors[i]);
+			REG_WRITE(intr_stat_reg, mask);
+			break;
+		case BIT27:
+			DRM_INFO("dsi status %s\n", dsi_errors[i]);
+			REG_WRITE(intr_stat_reg, mask);
+			wait_for_hs_fifos_empty(sender);
+			break;
+		case BIT28:
+			DRM_INFO("dsi status %s\n", dsi_errors[i]);
+			REG_WRITE(intr_stat_reg, mask);
+			wait_for_lp_fifos_empty(sender);
+			break;
+		case BIT29:
+			/*No Action required.*/
+			DRM_INFO("dsi status %s\n", dsi_errors[i]);
+			break;
+		case BIT30:
+			break;
+		case BIT31:
+			/*No Action required.*/
+			DRM_INFO("dsi status %s\n", dsi_errors[i]);
+			break;
 		}
 	}
 
@@ -669,6 +652,7 @@ static int send_pkg(struct mdfld_dsi_pkg_sender * sender,
 	err = do_send_pkg(sender, pkg);
 	if(err) {
 		DRM_ERROR("sent pkg failed\n");
+		dsi_error_handler(sender);
 		err = -EAGAIN;
 		goto send_pkg_err;
 	}
