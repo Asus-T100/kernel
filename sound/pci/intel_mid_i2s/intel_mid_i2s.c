@@ -986,6 +986,16 @@ void intel_mid_i2s_close(struct intel_mid_i2s_hdl *drv_data)
 	i2s_disable(drv_data);
 	put_device(&drv_data->pdev->dev);
 	write_SSCR0(0, reg);
+	/*
+	 * Set the SSP in SLAVE Mode and Enable TX tristate
+	 * to ensure that when leaving D0i3 the SSP does
+	 * not drive the FS and TX pins.
+	 *
+	 */
+	write_SSCR1((SSCR1_SFRMDIR_MASK << SSCR1_SFRMDIR_SHIFT)
+			| (SSCR1_SCLKDIR_MASK << SSCR1_SCLKDIR_SHIFT)
+			| (SSCR1_TTE_MASK << SSCR1_TTE_SHIFT),
+			reg);
 
 	dev_dbg(&(drv_data->pdev->dev), "SSP Stopped.\n");
 	clear_bit(I2S_PORT_CLOSING, &drv_data->flags);
