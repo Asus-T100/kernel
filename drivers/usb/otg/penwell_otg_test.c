@@ -131,7 +131,7 @@ pnwotg_test_probe(struct usb_interface *intf, const struct usb_device_id *id)
 	default:
 		dev_info(&intf->dev, "unknown test mode with PID 0x%04x",
 			id->idProduct);
-		usb_notify_warning(dev->udev, -EINVAL);
+		usb_notify_warning(dev->udev, USB_WARNING_NOT_SUPPORT);
 	}
 
 	return 0;
