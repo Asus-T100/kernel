@@ -238,6 +238,13 @@ static void android_disable(struct android_dev *dev)
 
 	if (dev->disable_depth++ == 0) {
 		usb_gadget_disconnect(cdev->gadget);
+
+		/* As connection is disconnected here,
+		* any flying request should be completed or potential
+		* request should be added within 50ms.
+		*/
+		msleep(50);
+
 		/* Cancel pending control requests */
 		usb_ep_dequeue(cdev->gadget->ep0, cdev->req);
 		usb_remove_config(cdev, &android_config_driver);
@@ -1053,20 +1060,6 @@ static ssize_t enable_store(struct device *pdev, struct device_attribute *attr,
 				f->disable(f);
 		}
 		dev->enabled = false;
-#if 0
-merge conflict with google upstream changes.
-		usb_gadget_disconnect(cdev->gadget);
-
-		/* As connection is disconnected here,
-		* any flying request should be completed or potential
-		* request should be added within 50ms.
-		*/
-		msleep(50);
-
-		/* Cancel pending control requests */
-		usb_ep_dequeue(cdev->gadget->ep0, cdev->req);
-		usb_remove_config(cdev, &android_config_driver);
-#endif
 		/* notify uplevel to correct status */
 		schedule_work(&dev->work);
 	} else if (!enabled && !dev->enabled) {
