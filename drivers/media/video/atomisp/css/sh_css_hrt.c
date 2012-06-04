@@ -2055,7 +2055,7 @@ sh_css_hrt_s2m_send_line2(unsigned short *data,
 	sh_css_streaming_to_mipi_send_sol();
 	for (i = 0; i < marker_cycles; i++)
 		sh_css_streaming_to_mipi_send_empty_token();
-#ifdef SYSTEM_hive_isp_css_2400_system
+
 	for (i = 0; i < width; i++, data++) {
 		/* for RGB in two_ppc, we only actually send 2 pixels per
 		 * clock in the even pixels (0, 2 etc). In the other cycles,
@@ -2083,9 +2083,12 @@ sh_css_hrt_s2m_send_line2(unsigned short *data,
 		} else {
 			sh_css_streaming_to_mipi_send_data_a(data[0]);
 		}
+#ifdef SYSTEM_hive_isp_css_2400_system
 		hrt_sleep();
+#endif
 	}
-#else
+
+#ifndef SYSTEM_hive_isp_css_2400_system
 	for (i = 0; i < width2; i++, data2++) {
 		/* for RGB in two_ppc, we only actually send 2 pixels per
 		 * clock in the even pixels (0, 2 etc). In the other cycles,
