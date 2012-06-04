@@ -42,6 +42,7 @@
 #define IPC_CMD_FW_UPDATE_GO     0x20FE
 
 #define MAX_FW_CHUNK	(128*1024)
+#define IFWX_CHUNK_SIZE	(96*1024)
 #define SRAM_ADDR	0xFFFC0000
 #define MAILBOX_ADDR	0xFFFE0000
 
@@ -59,6 +60,7 @@
 #define FUPH_HDR_SIZE    "RUPHS"
 #define FUPH		 "RUPH"
 #define MIP              "DMIP"
+#define IFWI		"IFW"
 #define LOWER_128K       "LOFW"
 #define UPPER_128K       "HIFW"
 #define UPDATE_DONE      "HLT$"
@@ -68,6 +70,7 @@
 #define SUCP		 "SuCP"
 #define VEDFW		 "VEDFW"
 
+#define MAX_LEN_IFW	4
 #define MAX_LEN_PSFW     7
 #define MAX_LEN_SSFW     6
 #define MAX_LEN_SUCP     6
@@ -159,6 +162,7 @@ struct fw_update_info {
 static struct fw_update_info fui;
 
 static struct misc_fw misc_fw_table[] = {
+	{ .fw_type = "IFW", .str_len  = MAX_LEN_IFW },
 	{ .fw_type = "PSFW1", .str_len  = MAX_LEN_PSFW },
 	{ .fw_type = "SSFW", .str_len  = MAX_LEN_SSFW  },
 	{ .fw_type = "PSFW2", .str_len  = MAX_LEN_PSFW  },
@@ -272,8 +276,23 @@ int helper_for_calc_offset_length(struct fw_ud *fw_ud_ptr, char *scu_req,
 	u32 max_chunk_cnt;
 	u32 fw_size;
 	u32 fw_offset;
+	u32 max_fw_chunk_size = MAX_FW_CHUNK;
 
-	if (!strncmp(fw_type, PSFW1, strlen(PSFW1))) {
+	if (!strncmp(fw_type, IFWI, strlen(IFWI))) {
+
+		if (strict_strtoul(scu_req + strlen(IFWI), 10,
+						&chunk_no) < 0)
+			return -EINVAL;
+
+		/* On CTP, IFWx starts from IFW1, not IFW0, thus adjust the
+		 * chunk_no to make '*offset' point to the correct address.
+		 * Besides, the size of each IFWx chunk is 96k, not 128k
+		 */
+		chunk_no = chunk_no - 1;
+		fw_size = fuph->ifwi_size;
+		fw_offset = fuph->mip_size;
+		max_fw_chunk_size = IFWX_CHUNK_SIZE;
+	} else if (!strncmp(fw_type, PSFW1, strlen(PSFW1))) {
 
 		if (strict_strtoul(scu_req + strlen(PSFW1), 10,
 						&chunk_no) < 0)
@@ -318,8 +337,8 @@ int helper_for_calc_offset_length(struct fw_ud *fw_ud_ptr, char *scu_req,
 	} else
 		return -EINVAL;
 
-	chunk_rem = fw_size % MAX_FW_CHUNK;
-	max_chunk_cnt = (fw_size/MAX_FW_CHUNK) + (chunk_rem ? 1 : 0);
+	chunk_rem = fw_size % max_fw_chunk_size;
+	max_chunk_cnt = (fw_size/max_fw_chunk_size) + (chunk_rem ? 1 : 0);
 
 	dev_dbg(fui.dev,
 		"str=%s,chunk_no=%lx, chunk_rem=%d,max_chunk_cnt=%d\n",
@@ -331,11 +350,10 @@ int helper_for_calc_offset_length(struct fw_ud *fw_ud_ptr, char *scu_req,
 	/* Note::Logic below will make sure, that we get right length if input
 	 is 128K or multiple. */
 	*len = (chunk_no == (max_chunk_cnt - 1)) ?
-		(chunk_rem ? chunk_rem : MAX_FW_CHUNK) : MAX_FW_CHUNK;
+		(chunk_rem ? chunk_rem : max_fw_chunk_size) : max_fw_chunk_size;
 
 	*offset = fw_ud_ptr->fw_file_data + fw_offset +
-		(fw_size/((max_chunk_cnt - chunk_no)
-		* MAX_FW_CHUNK))*MAX_FW_CHUNK;
+		chunk_no * max_fw_chunk_size;
 
 	return 0;
 }
