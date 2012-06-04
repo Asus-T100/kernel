@@ -335,7 +335,7 @@ static struct sk_buff *convert2_channel_4(struct sk_buff *ch8_skb)
 
 	if (chan4_mem == NULL) {
 		FM_CHR_DRV_ERR(" chan4_mem == NULL ");
-
+		kfree_skb(ch4_skb);
 		return ch8_skb;
 	}
 
@@ -478,7 +478,6 @@ static int convert2_channel_8(struct sk_buff *skb)
 	}
 
 	skb_trim(skb, chan8_index);
-
 	return 0;
 }
 
@@ -494,7 +493,6 @@ static long fm_rx_task(struct fmdrv_chr_ops *fm_chr_dev)
 
 	skb = NULL;
 	spin_lock_irqsave(&fm_chr_dev->lock, flags);
-
 
 	if (skb_queue_empty(&fm_chr_dev->rx_q)) {
 		FM_CHR_DRV_ERR(" Rx Queue empty ");
@@ -599,16 +597,14 @@ int fmc_prepare(struct fmdrv_chr_ops *fmdev)
 	unsigned long timeleft;
 	int ret = 0;
 
-	FM_CHR_DRV_TRACE();
-
 	if (test_bit(FM_CORE_READY, &fmdev->flag)) {
 		pr_info("(fmdrv): FM Core is already up");
 		goto exit;
 	}
 
-    /*[Soldel] - kernel bug while starting FM for the first time -Start*/
+
 	spin_lock_init(&fmdev->lock);
-	/*[Soldel] - kernel bug while starting FM for the first time -Stop*/
+
 
 	/* register channel ID & relevant details */
 	memset(&fm_st_proto, 0, sizeof(fm_st_proto));
@@ -665,10 +661,7 @@ int fmc_prepare(struct fmdrv_chr_ops *fmdev)
 		goto exit;
 	}
 
-	/* Initialize the wait queue and the Rx tasklets
-	SOLDEL Removed call init_waitqueue_head as this is
-	already done at open
-	init_waitqueue_head(&fmdev->fm_data_q); */
+	/* Initialize the Rx tasklets */
 	tasklet_init(&fmdev->rx_task, (void *)fm_rx_task,
 		     (unsigned long)fmdev);
 
@@ -807,9 +800,6 @@ static ssize_t fm_chr_write(struct file *fil, const char __user *data,
 		return FM_CHR_DRV_ERR_FAILURE;
 	}
 
-	/* SOLDEL Removed call init_waitqueue_head as this is
-	already done at open
-	init_waitqueue_head(&fm_chr_dev->fm_data_q); */
 
 
 	return size;
@@ -865,7 +855,7 @@ static ssize_t fm_chr_read(struct file *fil, char __user *data, size_t size,
 
 	/* Convert if the response packet is of Channel-8 type */
 	if (!skb->data[CHAN8_RESP_CMD_LEN_POS]) {
-		kfree(skb);
+		kfree_skb(skb);
 
 		return FM_CHR_DRV_ERR_FAILURE;
 	}
@@ -875,7 +865,7 @@ static ssize_t fm_chr_read(struct file *fil, char __user *data, size_t size,
 
 	if (ch4_skb == NULL) {
 		FM_CHR_DRV_ERR(" Converted SKB is NULL ");
-		kfree(skb);
+		kfree_skb(skb);
 
 		return FM_CHR_DRV_ERR_FAILURE;
 	}
@@ -904,19 +894,8 @@ static ssize_t fm_chr_read(struct file *fil, char __user *data, size_t size,
 	}
 
 	len = ch4_skb->len;
-	kfree(skb);
-	kfree(ch4_skb);
-
-	/* Clear the pending bit that was set when an interrupt packet had
-	 * arrived
-	 */
-	if (test_bit(SIGNAL_PENDING, &fm_chr_dev->state_flags)
-	    && skb_queue_empty(&fm_chr_dev->rx_q)) {
-		FM_CHR_DRV_DBG(" Sending signal ");
-
-		kill_fasync(&fm_chr_dev->fm_fasync, SIGIO, POLLIN);
-		clear_bit(SIGNAL_PENDING, &fm_chr_dev->state_flags);
-	}
+	kfree_skb(skb);
+	kfree_skb(ch4_skb);
 
 	return len;
 }
