@@ -1327,17 +1327,24 @@ static int sdhci_do_acquire_ownership(struct mmc_host *mmc)
 {
 	struct sdhci_host *host;
 	unsigned long t1, t2;
+	unsigned long flags;
 
 	host = mmc_priv(mmc);
 
 	if (!host->sram_addr)
 		return 0;
 
-	atomic_inc(&host->usage_cnt);
+	/* if host has sram_addr, dekker_lock is initialized */
+	spin_lock_irqsave(&host->dekker_lock, flags);
+
+	host->usage_cnt++;
 
 	/* If IA has already hold the eMMC mutex, then just exit */
-	if (readl(host->sram_addr + DEKKER_IA_REQ_OFFSET))
+	if (readl(host->sram_addr + DEKKER_IA_REQ_OFFSET)) {
+		spin_unlock_irqrestore(&host->dekker_lock, flags);
 		return 0;
+	}
+	spin_unlock_irqrestore(&host->dekker_lock, flags);
 
 	DBG("Acquire ownership - eMMC owner: %d, IA req: %d, SCU req: %d\n",
 		readl(host->sram_addr + DEKKER_EMMC_OWNER_OFFSET),
@@ -1423,13 +1430,17 @@ static int sdhci_acquire_ownership(struct mmc_host *mmc)
 static void sdhci_release_ownership(struct mmc_host *mmc)
 {
 	struct sdhci_host *host;
+	unsigned long flags;
 
 	host = mmc_priv(mmc);
 
 	if (!host->sram_addr)
 		return;
 
-	if (atomic_dec_and_test(&host->usage_cnt)) {
+	spin_lock_irqsave(&host->dekker_lock, flags);
+	BUG_ON(host->usage_cnt == 0);
+	host->usage_cnt--;
+	if (host->usage_cnt == 0) {
 		writel(DEKKER_OWNER_SCU,
 		       host->sram_addr + DEKKER_EMMC_OWNER_OFFSET);
 		writel(0, host->sram_addr + DEKKER_IA_REQ_OFFSET);
@@ -1439,6 +1450,7 @@ static void sdhci_release_ownership(struct mmc_host *mmc)
 		    readl(host->sram_addr + DEKKER_IA_REQ_OFFSET),
 		    readl(host->sram_addr + DEKKER_SCU_REQ_OFFSET));
 	}
+	spin_unlock_irqrestore(&host->dekker_lock, flags);
 }
 
 /*****************************************************************************\
