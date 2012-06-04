@@ -28,7 +28,7 @@ bootsrc		:= $(src)/../../../boot
 # How to compile the 16-bit code.  Note we always compile for -march=i386,
 # that way we can complain to the user if the CPU is insufficient.
 # Compile with _SETUP since this is similar to the boot-time setup code.
-KBUILD_CFLAGS	:= $(LINUXINCLUDE) -g -Os -D_SETUP -D_WAKEUP -D__KERNEL__ \
+KBUILD_CFLAGS	:= $(LINUXINCLUDE) -g -Os -D_SETUP -D_WAKEUP -D__KERNEL__ -mno-sse -mno-sse2 \
 		   -I$(srctree)/$(bootsrc) \
 		   $(cflags-y) \
 		   -Wall -Wstrict-prototypes \
