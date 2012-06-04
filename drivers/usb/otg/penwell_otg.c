@@ -1857,6 +1857,22 @@ void penwell_otg_phy_intr(bool on)
 	penwell_otg_msic_spi_access(false);
 }
 
+static penwell_otg_notify_warning(int warning_code)
+{
+	struct penwell_otg	*pnw = the_transceiver;
+	struct usb_hcd		*hcd;
+	int			err;
+
+	dev_dbg(pnw->dev, "%s ---> %d\n", __func__, warning_code);
+
+	if (pnw && pnw->iotg.otg.host && pnw->iotg.otg.host->root_hub)
+		usb_notify_warning(pnw->iotg.otg.host->root_hub, warning_code);
+	else
+		dev_dbg(pnw->dev, "no valid device for notification\n");
+
+	dev_dbg(pnw->dev, "%s <--- %d\n", __func__);
+}
+
 void penwell_otg_nsf_msg(unsigned long indicator)
 {
 	switch (indicator) {
@@ -3412,6 +3428,9 @@ static void penwell_otg_work(struct work_struct *work)
 		} else if (!hsm->a_vbus_vld) {
 			/* Move to A_VBUS_ERR state, over-current detected */
 
+			/* Notify user space for vbus invalid event */
+			penwell_otg_notify_warning(USB_WARNING_VBUS_INVALID);
+
 			/* Delete current timer and disable host function */
 			penwell_otg_del_timer(TA_WAIT_BCON_TMR);
 
@@ -3503,6 +3522,9 @@ static void penwell_otg_work(struct work_struct *work)
 			iotg->otg.state = OTG_STATE_A_IDLE;
 		} else if (!hsm->a_vbus_vld) {
 			/* Move to A_VBUS_ERR state */
+
+			/* Notify user space for vbus invalid event */
+			penwell_otg_notify_warning(USB_WARNING_VBUS_INVALID);
 
 			/* Delete current timer and clear flags */
 			if (hsm->test_device) {
