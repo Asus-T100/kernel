@@ -3003,7 +3003,9 @@ hub_port_init (struct usb_hub *hub, struct usb_device *udev, int port1,
 				dev_err(&udev->dev,
 					"device descriptor read/64, error %d\n",
 					r);
-				usb_notify_warning(udev, r);
+				if (r == -ETIMEDOUT)
+					usb_notify_warning(udev,
+						USB_WARNING_NO_RESPONSE);
 				retval = -EMSGSIZE;
 				continue;
 			}
