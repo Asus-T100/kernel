@@ -31,8 +31,8 @@
 /* Max cmd length on es305 side is 252 */
 #define ES305_I2C_CMD_FIFO_SIZE		128
 /* delay (in us) in order to wait for stable power supplies &
- * for stable system clock */
-#define ES305_HARD_RESET_PERIOD		100
+ * for stable system clock. Audience recommends at least 1ms. */
+#define ES305_HARD_RESET_PERIOD		1100
 /*
  * This driver is based on the eS305-UG-APIGINTEL-V0 2.pdf spec
  * for the eS305 Voice Processor
