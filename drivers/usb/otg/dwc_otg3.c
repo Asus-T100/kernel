@@ -14,6 +14,7 @@
 #include <linux/usb/hcd.h>
 #include <linux/usb/gadget.h>
 #include <linux/usb/dwc_otg3.h>
+#include <asm/intel_scu_ipc.h>
 
 #define VERSION "2.10a"
 
@@ -398,41 +399,472 @@ static void stop_peripheral(struct dwc_otg2 *otg)
 	gadget->ops->stop_device(gadget);
 }
 
+static int get_id(struct dwc_otg2 *otg)
+{
+	int ret, id = RID_UNKNOWN;
+	u8 idsts;
+
+	ret = intel_scu_ipc_ioread8(PMIC_USBIDSTS, &idsts);
+	if (ret) {
+		otg_err(otg, "Fail to read id\n");
+		return id;
+	}
+
+	if (idsts & USBIDSTS_ID_FLOAT_STS)
+		id = RID_FLOAT;
+	else if (idsts & USBIDSTS_ID_GND)
+		id = RID_GND;
+	else if (idsts & USBIDSTS_ID_RARBRC_STS(1))
+		id = RID_A;
+	else if (idsts & USBIDSTS_ID_RARBRC_STS(2))
+		id = RID_B;
+	else if (idsts & USBIDSTS_ID_RARBRC_STS(3))
+		id = RID_C;
+
+	return id;
+}
+
+#ifdef CONFIG_DWC_CHARGER_DETECION
+static int ulpi_read(struct dwc_otg2 *otg, const u8 reg, u8 *val)
+{
+	u32 val32 = 0, count = 200;
+
+
+	while (count) {
+		if (otg_read(otg, GUSB2PHYACC0) & GUSB2PHYACC0_VSTSBSY)
+			udelay(5);
+		else
+			break;
+
+		count--;
+	}
+
+	if (!count) {
+		otg_err(otg, "USB2 PHY always busy!!\n");
+		return -EBUSY;
+	}
+
+	count = 200;
+	val32 = GUSB2PHYACC0_NEWREGREQ | GUSB2PHYACC0_REGADDR(reg);
+	otg_write(otg, GUSB2PHYACC0, val32);
+
+	while (count) {
+		if (otg_read(otg, GUSB2PHYACC0) & GUSB2PHYACC0_VSTSDONE) {
+			*val = otg_read(otg, GUSB2PHYACC0) & \
+				   GUSB2PHYACC0_REGDATA_MASK;
+			otg_dbg(otg, "%s - reg 0x%x data 0x%x\n",\
+					__func__, reg, *val);
+			return 0;
+		}
+
+		count--;
+	}
+
+	otg_err(otg, "%s read PHY data failed.\n", __func__);
+
+	return -ETIMEDOUT;
+}
+
+
+static int ulpi_write(struct dwc_otg2 *otg, const u8 reg, const u8 val)
+{
+	u32 val32 = 0, count = 200;
+
+
+	while (count) {
+		if (otg_read(otg, GUSB2PHYACC0) & GUSB2PHYACC0_VSTSBSY)
+			udelay(5);
+		else
+			break;
+
+		count--;
+	}
+
+	if (!count) {
+		otg_err(otg, "USB2 PHY always busy!!\n");
+		return -EBUSY;
+	}
+
+	count = 200;
+	val32 = GUSB2PHYACC0_NEWREGREQ | GUSB2PHYACC0_REGADDR(reg)
+		| GUSB2PHYACC0_REGWR | GUSB2PHYACC0_REGDATA(val);
+
+	otg_write(otg, GUSB2PHYACC0, val32);
+
+	while (count) {
+		if (otg_read(otg, GUSB2PHYACC0) & GUSB2PHYACC0_VSTSDONE) {
+			otg_dbg(otg, "%s - reg 0x%x data 0x%x write done\n",\
+					__func__, reg, val);
+			return val;
+		}
+
+		count--;
+	}
+
+	otg_err(otg, "%s read PHY data failed.\n", __func__);
+
+	return -ETIMEDOUT;
+}
+
+static enum usb_charger_type aca_check(struct dwc_otg2 *otg)
+{
+	u8 rarbrc, vdat_det, chgd_serx_dm;
+	enum usb_charger_type type = CHRG_UNKNOWN;
+	int ret;
+
+	/*Enable VDAT_DET comparator.*/
+	ulpi_write(otg, TUSB1211_POWER_CONTROL_SET, PWCTRL_DP_VSRC_EN);
+
+	/*Wait >66.1ms (for TCHGD_SERX_DEB)*/
+	msleep(66);
+
+	/*Read decoded RID value ????*/
+	ret = intel_scu_ipc_ioread8(PMIC_USBIDSTS, &rarbrc);
+	if (ret)
+		otg_err(otg, "Fail to read decoded RID value\n");
+	rarbrc &= USBIDSTS_ID_RARBRC_STS(3);
+
+	ret = ulpi_read(otg, TUSB1211_POWER_CONTROL, &vdat_det);
+	if (ret < 0) {
+		otg_err(otg, "ULPI read error!\n");
+		return CHRG_UNKNOWN;
+	}
+	vdat_det &= PWCTRL_VDAT_DET;
+
+	ret = ulpi_read(otg, TUSB1211_VENDOR_SPECIFIC4, &chgd_serx_dm);
+	if (ret < 0) {
+		otg_err(otg, "ULPI read error!\n");
+		return CHRG_UNKNOWN;
+	}
+	chgd_serx_dm &= VS4_CHGD_SERX_DM;
+
+	/* If ID_RARBRC_STS==01 &&
+	 * (VDAT_DET==1 && CHGD_SERX_DM==0): ACA-Dock detected
+	 * If ID_RARBRC_STS==01 &&
+	 * (VDAT_DET==0 || CHGD_SERX_DM==1): ACA-A detected
+	 * If ID_RARBRC_STS==10: ACA-B detected
+	 * If ID_RARBRC_STS==11: ACA-C detected
+	 * If ID_RARBRC_STS==00: MHL detected
+	 * */
+	if (rarbrc & (vdat_det && !chgd_serx_dm)) {
+		/*ACA-Dock*/
+		type = CHRG_ACA_DOCK;
+	} else if (rarbrc && (!vdat_det || chgd_serx_dm)) {
+		/*ACA-A*/
+		type = CHRG_ACA_A;
+	} else if (rarbrc == 0x2) {
+		/*ACA-B*/
+		type = CHRG_ACA_B;
+	} else if (rarbrc == 0x3) {
+		/*ACA-C*/
+		type = CHRG_ACA_C;
+	} else if (!rarbrc) {
+		otg_dbg(otg, "detect MHL device\n");
+		type = CHRG_MHL;
+	}
+
+	/*Disable VDAT_DET comparator.*/
+	ulpi_write(otg, TUSB1211_POWER_CONTROL_CLR, PWCTRL_DP_VSRC_EN);
+
+	return type;
+}
+
 static enum usb_charger_type get_charger_type(struct dwc_otg2 *otg)
 {
-	return CHRG_SDP;
+	u8 val, vdat_det, chgd_serx_dm;
+	int ret, count = 0;
+	enum usb_charger_type type = CHRG_UNKNOWN;
+
+	/* PHY Enable: De-assert USBRST*/
+	ret = intel_scu_ipc_update_register(PMIC_USBPHYCTRL, \
+			PMIC_USBPHYCTRL_D0,  PMIC_USBPHYCTRL_D0);
+	if (ret)
+		otg_err(otg, "Fail to de-assert USBRST\n");
+
+	/* Wait 10ms (~5ms before PHY de-asserts DIR,
+	 * XXus for initial Link reg sync-up).*/
+	msleep(20);
+
+	/* ACA Enable: Enable ACA & ID detection logic.*/
+	ret = intel_scu_ipc_update_register(PMIC_USBIDCTRL, \
+			USBIDCTRL_ACA_DETEN_D1 | PMIC_USBPHYCTRL_D0, \
+			USBIDCTRL_ACA_DETEN_D1 | PMIC_USBPHYCTRL_D0);
+	if (ret)
+		otg_err(otg, "Fail to enable ACA&ID detection logic\n");
+
+	/* Enable DP/DM pulldowns (to ensure PHY RX comparators don't float) */
+	ulpi_write(otg, TUSB1211_OTG_CTRL_SET, OTGCTRL_DMPULLDOWN |
+						OTGCTRL_DPPULLDOWN);
+
+	/* DCD Enable: Change OPMODE to 01 (Non-driving),
+	 * TermSel to 0, &
+	 * XcvrSel to 01 (enable FS xcvr)
+	 */
+	ulpi_write(otg, TUSB1211_FUNC_CTRL_SET, \
+			FUNCCTRL_OPMODE(1) | FUNCCTRL_XCVRSELECT(1));
+	ulpi_write(otg, TUSB1211_FUNC_CTRL_CLR, \
+			FUNCCTRL_OPMODE(2) | FUNCCTRL_XCVRSELECT(2) \
+			| FUNCCTRL_TERMSELECT);
+
+	/*Disable DP pulldown (to allow weak Idp_src for DCD)*/
+	ulpi_write(otg, TUSB1211_OTG_CTRL_CLR, OTGCTRL_DPPULLDOWN);
+
+	/*Enable SW control*/
+	ulpi_write(otg, TUSB1211_POWER_CONTROL_SET, PWCTRL_SW_CONTROL);
+
+	/*Enable IDPSRC*/
+	ulpi_write(otg, TUSB1211_VENDOR_SPECIFIC3_SET, VS3_CHGD_IDP_SRC_EN);
+
+	do {
+		msleep(20);
+		count++;
+		/*Read DP logic level.*/
+		ret = ulpi_read(otg, TUSB1211_VENDOR_SPECIFIC4, &val);
+		if (ret < 0) {
+			otg_err(otg, "ULPI read error!\n");
+			continue;
+		}
+		if (count > 80) {
+			otg_err(otg, "ULPI read TUSB1211_VENDOR_SPECIFIC4 timeout!\n");
+			break;
+		}
+		val &= ~VS4_CHGD_SERX_DP;
+	} while (val != 0);
+
+	/*Disable DP pullup (Idp_src)*/
+	ulpi_write(otg, TUSB1211_VENDOR_SPECIFIC3_CLR, VS3_CHGD_IDP_SRC_EN);
+
+	/*Check ID pin state.*/
+	ret = intel_scu_ipc_ioread8(PMIC_USBIDCTRL, &val);
+	if (ret)
+		otg_err(otg, "Fail to enable ACA&ID detection logic\n");
+	val &= USBIDSTS_ID_FLOAT_STS;
+	if (!val) {
+		type = aca_check(otg);
+		goto cleanup;
+	}
+
+	/*Enable DP/DM pulldowns (to ensure PHY RX comparators don't float).*/
+	ulpi_write(otg, TUSB1211_OTG_CTRL_SET, \
+			OTGCTRL_DMPULLDOWN | OTGCTRL_DPPULLDOWN);
+
+	/*Read DP/DM logic level.*/
+	ret = ulpi_read(otg, TUSB1211_VENDOR_SPECIFIC4, &val);
+	if (ret < 0)
+		otg_err(otg, "ULPI read error!\n");
+
+	val &= VS4_CHGD_SERX_DP | VS4_CHGD_SERX_DM;
+
+	/*If '11': SE1 detected; goto 'Cleanup'.
+	 * Else: goto 'Pri Det Enable'.
+	 */
+	if (val == 3)
+		goto cleanup;
+
+	/*Pri Det Enable: Enable VDPSRC.*/
+	ulpi_write(otg, TUSB1211_POWER_CONTROL_SET, PWCTRL_DP_VSRC_EN);
+
+	/*Wait >106.1ms (40ms for BC Tvdpsrc_on, 66.1ms for TI CHGD_SERX_DEB).*/
+	msleep(107);
+
+	/*Pri Det Check: Check if DM > VDATREF.*/
+	ret = ulpi_read(otg, TUSB1211_POWER_CONTROL, &vdat_det);
+	if (ret < 0)
+		otg_err(otg, "ULPI read error!\n");
+
+	vdat_det &= PWCTRL_VDAT_DET;
+
+	ret = ulpi_read(otg, TUSB1211_VENDOR_SPECIFIC4, &chgd_serx_dm);
+	if (ret < 0)
+		otg_err(otg, "ULPI read error!\n");
+
+	chgd_serx_dm &= VS4_CHGD_SERX_DM;
+
+	if (vdat_det == 0 || chgd_serx_dm == 1)
+		type = CHRG_SDP;
+
+	/*Disable VDPSRC.*/
+	ulpi_write(otg, TUSB1211_POWER_CONTROL_CLR, PWCTRL_DP_VSRC_EN);
+
+	if (type == CHRG_SDP)
+		goto cleanup;
+
+	/*Sec Det Enable: Sec Det Enable*/
+	mdelay(1);
+
+	/*Swap DP & DM*/
+	ulpi_write(otg, TUSB1211_VENDOR_SPECIFIC1_CLR, VS1_DATAPOLARITY);
+
+	/*Enable 'VDMSRC'.*/
+	ulpi_write(otg, TUSB1211_POWER_CONTROL_SET, PWCTRL_DP_VSRC_EN);
+
+	/*Wait >73ms (40ms for BC Tvdmsrc_on, 33ms for TI TVDPSRC_DEB)*/
+	msleep(73);
+
+	/*Check if DP>VDATREF.*/
+	ret = ulpi_read(otg, TUSB1211_POWER_CONTROL, &val);
+	if (ret < 0)
+		otg_err(otg, "ULPI read error!\n");
+
+	val &= PWCTRL_VDAT_DET;
+
+	if (val)
+		type = CHRG_CDP;
+	else
+		type = CHRG_DCP;
+
+	/*Disable VDMSRC.*/
+	ulpi_write(otg, TUSB1211_POWER_CONTROL_CLR, PWCTRL_DP_VSRC_EN);
+
+	/*Swap DP & DM.*/
+	ulpi_write(otg, TUSB1211_VENDOR_SPECIFIC1_SET, VS1_DATAPOLARITY);
+
+cleanup:
+
+	/*If DCP detected, assert VDPSRC.*/
+	if (type == CHRG_DCP)
+		ulpi_write(otg, TUSB1211_POWER_CONTROL_SET, \
+				PWCTRL_SW_CONTROL | PWCTRL_DP_VSRC_EN);
+
+	return type;
+}
+
+static int is_self_powered_b_device(struct dwc_otg2 *otg)
+{
+	return get_id(otg) == RID_GND;
+}
+#endif
+
+static enum dwc_otg_state do_wait_vbus_raise(struct dwc_otg2 *otg)
+{
+	int ret;
+	u32 otg_events = 0;
+	u32 user_events = 0;
+	u32 otg_mask = 0;
+	u32 user_mask = 0;
+
+	otg_mask = OEVT_B_SES_VLD_EVT |
+				OEVT_CONN_ID_STS_CHNG_EVNT;
+
+	ret = sleep_until_event(otg, otg_mask, \
+			0, user_mask, &otg_events,\
+			NULL, &user_events, VBUS_TIMEOUT);
+	if (ret < 0)
+		return DWC_STATE_EXIT;
+
+	if (otg_events & OEVT_B_SES_VLD_EVT) {
+		otg_dbg(otg, "OEVT_B_SES_VLD_EVT\n");
+		return DWC_STATE_CHARGER_DETECTION;
+	}
+
+	if (otg_events & OEVT_CONN_ID_STS_CHNG_EVNT) {
+		otg_dbg(otg, "OEVT_CONN_ID_STS_CHNG_EVNT\n");
+		return DWC_STATE_INIT;
+	}
+
+	/* timeout*/
+	if (ret) {
+		if (get_id(otg) == RID_GND)
+			return DWC_STATE_A_HOST;
+	}
+
+	return DWC_STATE_INVALID;
+}
+
+static enum dwc_otg_state do_wait_vbus_fall(struct dwc_otg2 *otg)
+{
+	int ret;
+
+	u32 otg_events = 0;
+	u32 user_events = 0;
+	u32 otg_mask = 0;
+	u32 user_mask = 0;
+
+	otg_mask = OEVT_A_DEV_SESS_END_DET_EVNT;
+
+	ret = sleep_until_event(otg, otg_mask, \
+			0, user_mask, &otg_events,\
+			NULL, &user_events, VBUS_TIMEOUT);
+	if (ret < 0)
+		return DWC_STATE_EXIT;
+
+	if (otg_events & OEVT_A_DEV_SESS_END_DET_EVNT) {
+		otg_dbg(otg, "OEVT_A_DEV_SESS_END_DET_EVNT\n");
+		return DWC_STATE_INIT;
+	}
+
+	/* timeout*/
+	if (ret)
+		return DWC_STATE_CHARGER_DETECTION;
+
+	return DWC_STATE_INVALID;
+}
+
+static enum dwc_otg_state do_charging(struct dwc_otg2 *otg)
+{
+	int ret;
+	u32 otg_events = 0;
+	u32 user_events = 0;
+	u32 otg_mask = 0;
+	u32 user_mask = 0;
+
+	otg_mask = OEVT_A_DEV_SESS_END_DET_EVNT |
+			OEVT_CONN_ID_STS_CHNG_EVNT;
+
+	ret = sleep_until_event(otg, otg_mask, \
+			0, user_mask, &otg_events,\
+			NULL, &user_events, 0);
+	if (ret < 0)
+		return DWC_STATE_EXIT;
+
+	if (otg_events & OEVT_A_DEV_SESS_END_DET_EVNT) {
+		otg_dbg(otg, "OEVT_A_DEV_SESS_END_DET_EVNT\n");
+		return DWC_STATE_INIT;
+	}
+
+	if (otg_events & OEVT_CONN_ID_STS_CHNG_EVNT) {
+		otg_dbg(otg, "OEVT_CONN_ID_STS_CHNG_EVNT\n");
+		return DWC_STATE_WAIT_VBUS_FALL;
+	}
+
+	return DWC_STATE_INVALID;
 }
 
 static enum dwc_otg_state do_charger_detection(struct dwc_otg2 *otg)
 {
-	enum usb_charger_type charger = CHRG_UNKNOWN;
+#ifdef CONFIG_DWC_CHARGER_DETECION
 	enum dwc_otg_state state = DWC_STATE_INVALID;
+	enum usb_charger_type charger = CHRG_UNKNOWN;
 
 	charger = get_charger_type(otg);
 	switch (charger) {
 	case CHRG_SDP:
-		otg_dbg(otg, "Detect SDP\n");
+	case CHRG_CDP:
+	case CHRG_ACA_C:
 		state = DWC_STATE_B_PERIPHERAL;
 		break;
-	case CHRG_CDP:
-		otg_dbg(otg, "Detect CDP\n");
-		state = DWC_STATE_B_PERIPHERAL;
+	case CHRG_ACA_DOCK:
+	case CHRG_ACA_A:
+		state = DWC_STATE_A_HOST;
 		break;
 	case CHRG_DCP:
-		otg_dbg(otg, "Detect DCP\n");
-		break;
-	case CHRG_ACA:
-		otg_dbg(otg, "Detect ACA\n");
+	case CHRG_ACA_B:
+		state = DWC_STATE_CHARGING;
 		break;
 	case CHRG_UNKNOWN:
-		otg_dbg(otg, "Detect UNKNOW charger. Doubt that it is self-powered USB device\n");
-		break;
+	default:
+		if (is_self_powered_b_device(otg)) {
+			state = DWC_STATE_A_HOST;
+			break;
+		}
 	};
 
-	otg_dbg(otg, "Currently, haven't support charger detection.\n");
-	return DWC_STATE_INIT;
-
 	return state;
+#else
+	otg_dbg(otg, "Currently, haven't support charger detection.\n");
+
+	return DWC_STATE_INIT;
+#endif
 }
 
 static int init_b_device(struct dwc_otg2 *otg)
@@ -455,6 +887,7 @@ static int init_a_device(struct dwc_otg2 *otg)
 
 static enum dwc_otg_state do_connector_id_status(struct dwc_otg2 *otg)
 {
+	int ret;
 	u32 events = 0, user_events = 0;
 	u32 otg_mask = 0, user_mask = 0, phyval;
 	enum dwc_otg_state state = DWC_STATE_INVALID;
@@ -472,6 +905,14 @@ static enum dwc_otg_state do_connector_id_status(struct dwc_otg2 *otg)
 	otg_write(otg, OEVTEN, OEVT_CONN_ID_STS_CHNG_EVNT);
 	otg_write(otg, OCTL, OCTL_PERI_MODE);
 
+#ifdef CONFIG_DWC_CHARGER_DETECION
+	/* Force config to device mode as default */
+	gctl = otg_read(otg, GCTL);
+	gctl &= ~GCTL_PRT_CAP_DIR;
+	gctl |= GCTL_PRT_CAP_DIR_DEV;
+	otg_write(otg, GCTL, gctl);
+#endif
+
 	/* This is a hardware workaround.
 	 * xHCI RxDetect state is not work well when USB3
 	 * PHY under P3 state. So force PHY change to P2 when
@@ -484,40 +925,46 @@ static enum dwc_otg_state do_connector_id_status(struct dwc_otg2 *otg)
 	msleep(60);
 
 #ifndef SUPPORT_USER_ID_CHANGE_EVENTS
-	u32 osts, otg_events = 0;
-	osts = otg_read(otg, OSTS);
-	if (!(osts & OSTS_CONN_ID_STS)) {
-		otg_dbg(otg, "Connector ID is A\n");
-		state = DWC_STATE_A_HOST;
-	} else {
-		otg_dbg(otg, "Connector ID is B\n");
-		if (osts & OSTS_B_SES_VLD)
-			state = DWC_STATE_B_PERIPHERAL;
-		else
-			otg_dbg(otg, "B session invalied, so haven't connect HOST\n");
-	}
-
 	otg_mask = OEVT_CONN_ID_STS_CHNG_EVNT | \
-			   OEVT_B_DEV_VBUS_CHNG_EVNT | \
-			   OEVT_B_DEV_SES_VLD_DET_EVNT;
+			   OEVT_B_SES_VLD_EVT;
 #else
 	user_mask = USER_ID_B_CHANGE_EVENT | \
 				USER_ID_A_CHANGE_EVENT;
 #endif
 
-	sleep_until_event(otg, otg_mask, \
+#ifdef CONFIG_DWC_CHARGER_DETECION
+	ret = ulpi_read(otg, TUSB1211_VENDOR_ID_LO, &val);
+	if (ret < 0)
+		printk(KERN_ERR "ulpi read error!\n");
+	printk(KERN_ERR "Vendor ID low = 0x%x\n", val);
+	ret = ulpi_read(otg, TUSB1211_VENDOR_ID_HI, &val);
+	if (ret < 0)
+		printk(KERN_ERR "ulpi read error!\n");
+	printk(KERN_ERR "Vendor ID high = 0x%x\n", val);
+	ret = ulpi_read(otg, TUSB1211_PRODUCT_ID_LO, &val);
+	if (ret < 0)
+		printk(KERN_ERR "ulpi read error!\n");
+	printk(KERN_ERR "Product ID low = 0x%x\n", val);
+	ret = ulpi_read(otg, TUSB1211_PRODUCT_ID_HI, &val);
+	if (ret < 0)
+		printk(KERN_ERR "ulpi read error!\n");
+	printk(KERN_ERR "Product ID high = 0x%x\n", val);
+#endif
+
+	ret = sleep_until_event(otg, otg_mask, \
 			0, user_mask, &events,\
 			NULL, &user_events, 0);
+	if (ret < 0)
+		return DWC_STATE_EXIT;
 
-	if (events & (OEVT_B_DEV_VBUS_CHNG_EVNT | \
-				OEVT_B_DEV_SES_VLD_DET_EVNT)) {
-		otg_dbg(otg, "events is vbus valid\n");
-		state = init_b_device(otg);
+	if (events & OEVT_B_DEV_SES_VLD_DET_EVNT) {
+		otg_dbg(otg, "OEVT_B_DEV_SES_VLD_DET_EVNT\n");
+		state = DWC_STATE_CHARGER_DETECTION;
 	}
 
 	if (events & OEVT_CONN_ID_STS_CHNG_EVNT) {
-		otg_dbg(otg, "events is id change\n");
-		state = init_a_device(otg);
+		otg_dbg(otg, "OEVT_CONN_ID_STS_CHNG_EVNT\n");
+		state = DWC_STATE_WAIT_VBUS_RAISE;
 	}
 
 #ifdef SUPPORT_USER_ID_CHANGE_EVENTS
@@ -554,20 +1001,27 @@ static void reset_hw(struct dwc_otg2 *otg)
 
 static enum dwc_otg_state do_a_host(struct dwc_otg2 *otg)
 {
-	int rc = 0;
-	u32 otg_events = 0;
-	u32 user_events = 0;
-	u32 otg_mask = 0;
-	u32 user_mask = 0;
-	int ret = 0;
+	int rc = 0, id = RID_UNKNOWN;
+	u32 otg_events, user_events, otg_mask, user_mask;
 
 	set_sus_phy(otg, 0);
 	otg_write(otg, GCTL, 0x45801000);
 
-	ret = start_host(otg);
+	rc = start_host(otg);
+	if (rc < 0) {
+		otg_err(otg, "start_host failed!");
+		return DWC_STATE_INVALID;
+	}
+
+stay_host:
+	otg_events = 0;
+	user_events = 0;
+	otg_mask = 0;
+	user_mask = 0;
 
 #ifndef SUPPORT_USER_ID_CHANGE_EVENTS
-	otg_mask = OEVT_CONN_ID_STS_CHNG_EVNT;
+	otg_mask = OEVT_CONN_ID_STS_CHNG_EVNT |
+			OEVT_A_DEV_SESS_END_DET_EVNT;
 #else
 	user_mask = USER_ID_B_CHANGE_EVENT;
 #endif
@@ -579,9 +1033,18 @@ static enum dwc_otg_state do_a_host(struct dwc_otg2 *otg)
 		return DWC_STATE_EXIT;
 
 	/* Higher priority first */
+	if (otg_events & OEVT_A_DEV_SESS_END_DET_EVNT) {
+		otg_dbg(otg, "OEVT_A_DEV_SESS_END_DET_EVNT\n");
+		return DWC_STATE_INIT;
+	}
+
 	if (otg_events & OEVT_CONN_ID_STS_CHNG_EVNT) {
 		otg_dbg(otg, "OEVT_CONN_ID_STS_CHNG_EVNT\n");
-		return DWC_STATE_CHARGER_DETECTION;
+		id = get_id(otg);
+		if ((id != RID_A) && (id != RID_GND))
+			return DWC_STATE_WAIT_VBUS_FALL;
+		else
+			goto stay_host;
 	}
 
 #ifdef SUPPORT_USER_ID_CHANGE_EVENTS
@@ -598,44 +1061,42 @@ static enum dwc_otg_state do_a_host(struct dwc_otg2 *otg)
 
 static int do_b_peripheral(struct dwc_otg2 *otg)
 {
-	int rc = 0;
-	u32 otg_mask = 0;
-	u32 user_mask = 0;
-	u32 otg_events = 0;
-	u32 user_events = 0;
+	int rc = 0, id = RID_UNKNOWN;
+	u32 otg_mask, user_mask, otg_events, user_events;
+
+stay_device:
+	otg_mask = 0;
+	user_mask = 0;
+	otg_events = 0;
+	user_events = 0;
 
 #ifndef SUPPORT_USER_ID_CHANGE_EVENTS
 	otg_mask = OEVT_CONN_ID_STS_CHNG_EVNT \
-			| OEVT_B_DEV_VBUS_CHNG_EVNT \
-			| OEVT_B_DEV_SES_VLD_DET_EVNT;
+			| OEVT_A_DEV_SESS_END_DET_EVNT;
 #else
 	user_mask = USER_ID_A_CHANGE_EVENT;
 #endif
 
-again:
 	rc = sleep_until_event(otg,
 			otg_mask, 0, user_mask,
 			&otg_events, NULL, &user_events, 0);
 	if (rc < 0)
 		return DWC_STATE_EXIT;
 
+	if (otg_events & OEVT_A_DEV_SESS_END_DET_EVNT) {
+		otg_dbg(otg, "OEVT_A_DEV_SESS_END_DET_EVNT\n");
+		return DWC_STATE_INIT;
+	}
+
 	if (otg_events & OEVT_CONN_ID_STS_CHNG_EVNT) {
 		otg_dbg(otg, "OEVT_CONN_ID_STS_CHNG_EVNT\n");
-		return DWC_STATE_CHARGER_DETECTION;
-	}
-
-	if (otg_events & OEVT_B_DEV_VBUS_CHNG_EVNT) {
-		otg_dbg(otg, "OEVT_B_DEV_VBUS_CHNG_EVNT!\n");
-
-		/* TODO Until ADP supported in hibernate */
-		if (otg_params.hibernate)
-			goto again;
-
-		if ((otg_events & ~OEVT_B_SES_VLD_EVT))
-			return DWC_STATE_CHARGER_DETECTION;
+		id = get_id(otg);
+		if ((id != RID_C) && (id != RID_FLOAT))
+			return DWC_STATE_WAIT_VBUS_FALL;
 		else
-			goto again;
+			goto stay_device;
 	}
+
 #ifdef SUPPORT_USER_ID_CHANGE_EVENTS
 	if (user_events & USER_ID_A_CHANGE_EVENT) {
 		otg_dbg(otg, "USER_ID_A_CHANGE_EVENT\n");
@@ -690,6 +1151,18 @@ int otg_main_thread(void *data)
 		case DWC_STATE_CHARGER_DETECTION:
 			otg_dbg(otg, "DWC_STATE_CHARGER_DETECTION\n");
 			next = do_charger_detection(otg);
+			break;
+		case DWC_STATE_WAIT_VBUS_RAISE:
+			otg_dbg(otg, "DWC_STATE_WAIT_VBUS_RAISE\n");
+			next = do_wait_vbus_raise(otg);
+			break;
+		case DWC_STATE_WAIT_VBUS_FALL:
+			otg_dbg(otg, "DWC_STATE_WAIT_VBUS_FALL\n");
+			next = do_wait_vbus_fall(otg);
+			break;
+		case DWC_STATE_CHARGING:
+			otg_dbg(otg, "DWC_STATE_CHARGING\n");
+			next = do_charging(otg);
 			break;
 		case DWC_STATE_A_HOST:
 			otg_dbg(otg, "DWC_STATE_A_HOST\n");
@@ -855,7 +1328,7 @@ static int dwc_otg2_set_peripheral(struct otg_transceiver *x,
 	struct dwc_otg2 *otg;
 
 	if (!x) {
-		otg_err(otg, "otg is NULL!\n");
+		printk(KERN_ERR "otg is NULL!\n");
 		return -ENODEV;
 	}
 
@@ -879,7 +1352,7 @@ static int dwc_otg2_set_host(struct otg_transceiver *x, struct usb_bus *host)
 	struct dwc_otg2 *otg;
 
 	if (!x) {
-		otg_err(otg, "otg is NULL!\n");
+		printk(KERN_ERR "otg is NULL!\n");
 		return -ENODEV;
 	}
 
@@ -902,7 +1375,7 @@ static int dwc_otg2_received_host_release(struct otg_transceiver *x)
 	unsigned long flags;
 	struct dwc_otg2 *otg;
 	if (!x) {
-		otg_err(otg, "otg is NULL!\n");
+		printk(KERN_ERR "otg is NULL!\n");
 		return -ENODEV;
 	}
 
@@ -993,7 +1466,7 @@ static int dwc_otg_probe(struct pci_dev *pdev,
 	int retval;
 
 	if (pci_enable_device(pdev) < 0) {
-		otg_err(otg, "pci device enable failed\n");
+		printk(KERN_ERR "pci device enable failed\n");
 		return -ENODEV;
 	}
 
@@ -1156,7 +1629,6 @@ static void __devexit dwc_otg_remove(struct pci_dev *pdev)
 }
 
 
-#define PCI_DEVICE_ID_DWC 0x119E
 static DEFINE_PCI_DEVICE_TABLE(pci_ids) = {
 	{ PCI_DEVICE_CLASS(((PCI_CLASS_SERIAL_USB << 8) | 0x20), ~0),
 		.vendor = PCI_VENDOR_ID_INTEL,

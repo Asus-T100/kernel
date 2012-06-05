@@ -47,6 +47,7 @@ struct dwc_device_par {
 #define RSP_WRST_TIMEOUT 2000
 #define RSP_ACK_TIMEOUT 2000
 #define HNP_TIMEOUT	4000
+#define CONFIG_USB_DWC_OTG_XCEIV_DEBUG
 
 #ifdef CONFIG_USB_DWC_OTG_XCEIV_DEBUG
 #define DWC_OTG_DEBUG 1
@@ -88,6 +89,18 @@ struct dwc_device_par {
 
 #define GUSB2PHYCFG0				0xc200
 #define GUSB2PHYCFG_SUS_PHY                     0x40
+
+#define GUSB2PHYACC0	0xc280
+#define GUSB2PHYACC0_DISULPIDRVR  (1 << 26)
+#define GUSB2PHYACC0_NEWREGREQ  (1 << 25)
+#define GUSB2PHYACC0_VSTSDONE  (1 << 24)
+#define GUSB2PHYACC0_VSTSBSY  (1 << 23)
+#define GUSB2PHYACC0_REGWR  (1 << 22)
+#define GUSB2PHYACC0_REGADDR(v)  ((v & 0x3F) << 16)
+#define GUSB2PHYACC0_EXTREGADDR(v)  ((v & 0x3F) << 8)
+#define GUSB2PHYACC0_VCTRL  (0xFF << 8)
+#define GUSB2PHYACC0_REGDATA(v)  (v & 0xFF)
+#define GUSB2PHYACC0_REGDATA_MASK  0xFF
 
 #define GUSB3PIPECTL0                           0xc2c0
 #define GUSB3PIPECTL_SUS_EN                     0x20000
@@ -241,19 +254,27 @@ struct dwc_device_par {
 #define ADPEVTEN_ADP_PRB_EVNT_EN_SHIFT		28
 
 
+/* charger defined in BC 1.2 */
 enum usb_charger_type {
 	CHRG_UNKNOWN,
-	CHRG_SDP,   /* Standard Downstream Port */
-	CHRG_CDP,   /* Charging Downstream Port */
-	CHRG_DCP,   /* Dedicated Charging Port */
-	CHRG_ACA    /* Accessory Charger Adapter */
+	CHRG_SDP,	/* Standard Downstream Port */
+	CHRG_CDP,	/* Charging Downstream Port */
+	CHRG_DCP,	/* Dedicated Charging Port */
+	CHRG_ACA,	/* Accessory Charger Adapter */
+	CHRG_ACA_DOCK,	/* Accessory Charger Adapter - Dock */
+	CHRG_ACA_A,	/* Accessory Charger Adapter - RID_A */
+	CHRG_ACA_B,	/* Accessory Charger Adapter - RID_B */
+	CHRG_ACA_C,	/* Accessory Charger Adapter - RID_C */
+	CHRG_SE1,	/* SE1 (Apple)*/
+	CHRG_MHL	/* Moblie High-Definition Link */
 };
 
-#define ID_B        0x05
-#define ID_A        0x04
-#define ID_ACA_C    0x03
-#define ID_ACA_B    0x02
-#define ID_ACA_A    0x01
+#define RID_A		0x01
+#define RID_B		0x02
+#define RID_C		0x03
+#define RID_FLOAT	0x04
+#define RID_GND		0x05
+#define RID_UNKNOWN	0x00
 
 /** The states for the OTG driver */
 enum dwc_otg_state {
@@ -284,6 +305,13 @@ enum dwc_otg_state {
 	/* RSP */
 	DWC_STATE_B_RSP_INIT,
 	DWC_STATE_CHARGER_DETECTION,
+
+	/* VBUS */
+	DWC_STATE_WAIT_VBUS_RAISE,
+	DWC_STATE_WAIT_VBUS_FALL,
+
+	/* Charging*/
+	DWC_STATE_CHARGING,
 
 	/* Exit */
 	DWC_STATE_EXIT,
@@ -366,5 +394,127 @@ struct dwc_otg2 {
 		__rc;						\
 	})
 
+#define TUSB1211_VENDOR_ID_LO					0x00
+#define TUSB1211_VENDOR_ID_HI					0x01
+#define TUSB1211_PRODUCT_ID_LO					0x02
+#define TUSB1211_PRODUCT_ID_HI					0x03
+#define TUSB1211_FUNC_CTRL						0x04
+#define TUSB1211_FUNC_CTRL_SET					0x05
+#define TUSB1211_FUNC_CTRL_CLR					0x06
+#define TUSB1211_IFC_CTRL						0x07
+#define TUSB1211_IFC_CTRL_SET					0x08
+#define TUSB1211_IFC_CTRL_CLR					0x09
+#define TUSB1211_OTG_CTRL						0x0A
+#define TUSB1211_OTG_CTRL_SET					0x0B
+#define TUSB1211_OTG_CTRL_CLR					0x0C
+#define TUSB1211_USB_INT_EN_RISE				0x0D
+#define TUSB1211_USB_INT_EN_RISE_SET			0x0E
+#define TUSB1211_USB_INT_EN_RISE_CLR			0x0F
+#define TUSB1211_USB_INT_EN_FALL				0x10
+#define TUSB1211_USB_INT_EN_FALL_SET			0x11
+#define TUSB1211_USB_INT_EN_FALL_CLR			0x12
+#define TUSB1211_USB_INT_STS					0x13
+#define TUSB1211_USB_INT_LATCH					0x14
+#define TUSB1211_DEBUG							0x15
+#define TUSB1211_SCRATCH_REG					0x16
+#define TUSB1211_SCRATCH_REG_SET				0x17
+#define TUSB1211_SCRATCH_REG_CLR				0x18
+#define TUSB1211_ACCESS_EXT_REG_SET				0x2F
+
+#define TUSB1211_VENDOR_SPECIFIC1				0x3D
+#define TUSB1211_VENDOR_SPECIFIC1_SET			0x3E
+#define TUSB1211_VENDOR_SPECIFIC1_CLR			0x3F
+#define TUSB1211_POWER_CONTROL					0x3D
+#define TUSB1211_POWER_CONTROL_SET				0x3E
+#define TUSB1211_POWER_CONTROL_CLR				0x3F
+
+#define TUSB1211_VENDOR_SPECIFIC2				0x80
+#define TUSB1211_VENDOR_SPECIFIC2_SET			0x81
+#define TUSB1211_VENDOR_SPECIFIC2_CLR			0x82
+#define TUSB1211_VENDOR_SPECIFIC2_STS			0x83
+#define TUSB1211_VENDOR_SPECIFIC2_LATCH			0x84
+#define TUSB1211_VENDOR_SPECIFIC3				0x85
+#define TUSB1211_VENDOR_SPECIFIC3_SET			0x86
+#define TUSB1211_VENDOR_SPECIFIC3_CLR			0x87
+#define TUSB1211_VENDOR_SPECIFIC4				0x88
+#define TUSB1211_VENDOR_SPECIFIC4_SET			0x89
+#define TUSB1211_VENDOR_SPECIFIC4_CLR			0x8A
+#define TUSB1211_VENDOR_SPECIFIC5				0x8B
+#define TUSB1211_VENDOR_SPECIFIC5_SET			0x8C
+#define TUSB1211_VENDOR_SPECIFIC5_CLR			0x8D
+#define TUSB1211_VENDOR_SPECIFIC6				0x8E
+#define TUSB1211_VENDOR_SPECIFIC6_SET			0x8F
+#define TUSB1211_VENDOR_SPECIFIC6_CLR			0x90
+
+#define VS1_DATAPOLARITY						(1 << 6)
+#define VS1_ZHSDRV(v)					((v & 0x3) << 5)
+#define VS1_IHSTX(v)						 ((v & 0x7))
+
+#define VS2STS_VBUS_MNTR_STS					(1 << 7)
+#define VS2STS_REG3V3IN_MNTR_STS				(1 << 6)
+#define VS2STS_SVLDCONWKB_WDOG_STS				(1 << 5)
+#define VS2STS_ID_FLOAT_STS						(1 << 4)
+#define VS2STS_ID_RARBRC_STS(v)					((v & 0x3) << 2)
+#define VS2STS_BVALID_STS						(1 << 0)
+
+#define VS3_CHGD_IDP_SRC_EN						(1 << 6)
+#define VS3_IDPULLUP_WK_EN						(1 << 5)
+#define VS3_SW_USB_DET							(1 << 4)
+#define VS3_DATA_CONTACT_DET_EN					(1 << 3)
+#define VS3_REG3V3_VSEL(v)					   (v & 0x7)
+
+#define VS4_ACA_DET_EN							(1 << 6)
+#define VS4_RABUSIN_EN							(1 << 5)
+#define VS4_R1KSERIES							(1 << 4)
+#define VS4_PSW_OSOD							(1 << 3)
+#define VS4_PSW_CMOS							(1 << 2)
+#define VS4_CHGD_SERX_DP						(1 << 1)
+#define VS4_CHGD_SERX_DM						(1 << 0)
+
+#define VS5_AUTORESUME_WDOG_EN					(1 << 6)
+#define VS5_ID_FLOAT_EN							(1 << 5)
+#define VS5_ID_RES_EN							(1 << 4)
+#define VS5_SVLDCONWKB_WDOG_EN					(1 << 3)
+#define VS5_VBUS_MNTR_RISE_EN					(1 << 2)
+#define VS5_VBUS_MNTR_FALL_EN					(1 << 1)
+#define VS5_REG3V3IN_MNTR_EN					(1 << 0)
+
+#define OTGCTRL_USEEXTVBUS_INDICATOR			(1 << 7)
+#define OTGCTRL_DRVVBUSEXTERNAL					(1 << 6)
+#define OTGCTRL_DRVVBUS							(1 << 5)
+#define OTGCTRL_CHRGVBUS						(1 << 4)
+#define OTGCTRL_DISCHRGVBUS						(1 << 3)
+#define OTGCTRL_DMPULLDOWN						(1 << 2)
+#define OTGCTRL_DPPULLDOWN						(1 << 1)
+#define OTGCTRL_IDPULLUP						(1 << 0)
+
+#define FUNCCTRL_SUSPENDM						(1 << 6)
+#define FUNCCTRL_RESET							(1 << 5)
+#define FUNCCTRL_OPMODE(v)				((v & 0x3) << 3)
+#define FUNCCTRL_TERMSELECT						(1 << 2)
+#define FUNCCTRL_XCVRSELECT(v)					(v & 0x3)
+
+#define PWCTRL_HWDETECT							(1 << 7)
+#define PWCTRL_DP_VSRC_EN						(1 << 6)
+#define PWCTRL_VDAT_DET							(1 << 5)
+#define PWCTRL_DP_WKPU_EN						(1 << 4)
+#define PWCTRL_BVALID_FALL						(1 << 3)
+#define PWCTRL_BVALID_RISE						(1 << 2)
+#define PWCTRL_DET_COMP							(1 << 1)
+#define PWCTRL_SW_CONTROL						(1 << 0)
+
+#define PMIC_USBPHYCTRL				0x30
+#define USBPHYCTRL_D0			(1 << 0)
+#define PMIC_USBIDCTRL				0x19
+#define USBIDCTRL_ACA_DETEN_D1	(1 << 1)
+#define USBIDCTRL_USB_IDEN_D0	(1 << 0)
+#define PMIC_USBIDSTS				0x1A
+#define USBIDSTS_ID_GND			(1 << 0)
+#define USBIDSTS_ID_RARBRC_STS(v)	((v & 0x3)  << 1)
+#define USBIDSTS_ID_FLOAT_STS	(1 << 3)
+#define PMIC_USBPHYCTRL_D0		(1 << 0)
+
+#define VBUS_TIMEOUT	50
+#define PCI_DEVICE_ID_DWC 0x119E
 
 #endif /* __DWC_OTG_H__ */

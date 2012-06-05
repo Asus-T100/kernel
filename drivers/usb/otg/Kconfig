@@ -176,4 +176,11 @@ config USB_DWC_OTG_XCEIV
 	  this option will create the DWC OTG transceiver module and registers
 	  the xHCI and DWC as platform device.
 
+config DWC_CHARGER_DETECTION
+	bool "Charger detection support for DWC USB driver"
+	depends on USB_DWC_OTG_XCEIV
+	help
+	  Enable charger detection feature for Tangier soc. This feature implement
+	  in DWC USB driver.
+
 endif # USB || OTG
