@@ -1180,7 +1180,7 @@ static int lis3dh_acc_probe(struct i2c_client *client,
 		goto  out_power_off;
 	}
 
-	err = lis3dh_acc_update_odr(acc, 10);
+	err = lis3dh_acc_update_odr(acc, 3);
 	if (err < 0) {
 		dev_err(&client->dev, "update_odr failed\n");
 		goto  out_power_off;
