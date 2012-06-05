@@ -749,7 +749,19 @@ static int fb_blank_void(int blank_mode, struct fb_info *info)
 {
 	return 0;
 }
+static void psb_cfb_fillrect(struct fb_info *p, const struct fb_fillrect *rect)
+{
+	return ;
+}
 
+static void psb_cfb_copyarea(struct fb_info *p, const struct fb_copyarea *area)
+{
+	return ;
+}
+static void psb_cfb_imageblit(struct fb_info *p, const struct fb_image *image)
+{
+	return ;
+}
 static struct fb_ops psbfb_ops = {
 	.owner = THIS_MODULE,
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,35))
@@ -762,9 +774,9 @@ static struct fb_ops psbfb_ops = {
 	.fb_blank = fb_blank_void,
 #endif
 	.fb_setcolreg = psbfb_setcolreg,
-	.fb_fillrect = cfb_fillrect,
-	.fb_copyarea = cfb_copyarea,
-	.fb_imageblit = cfb_imageblit,
+	.fb_fillrect = psb_cfb_fillrect,
+	.fb_copyarea = psb_cfb_copyarea,
+	.fb_imageblit = psb_cfb_imageblit,
 	.fb_mmap = psbfb_mmap,
 };
 
