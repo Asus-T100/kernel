@@ -2,9 +2,8 @@
  *  mfld_machine_gi.c - ASoc Machine driver for Gilligan Island board
  *  based on Intel Medfield MID platform
  *
- *  Copyright (C) 2010 Intel Corp
+ *  Copyright (C) 2010-12 Intel Corp
  *  Author: Vinod Koul <vinod.koul@intel.com>
- *  Author: Harsha Priya <priya.harsha@intel.com>
  *  Author: Ramesh babu K V <ramesh.babu@intel.com>
  *  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
  *
@@ -75,7 +74,9 @@ static void mfld_jack_disable_mic_bias(struct snd_soc_codec *codec)
 
 static int mfld_get_headset_state(struct snd_soc_jack *jack)
 {
-	int micbias, jack_type;
+	int micbias, jack_type, gpio_state;
+	struct mfld_mc_private *ctx =
+			snd_soc_card_get_drvdata(jack->codec->card);
 
 	mfld_jack_enable_mic_bias(jack->codec);
 	micbias = mfld_jack_read_voltage(jack);
@@ -83,6 +84,13 @@ static int mfld_get_headset_state(struct snd_soc_jack *jack)
 	jack_type = snd_soc_jack_get_type(jack, micbias);
 	pr_debug("jack type detected = %d, micbias = %d\n", jack_type, micbias);
 
+	if (jack_type != SND_JACK_HEADSET && jack_type != SND_JACK_HEADPHONE) {
+		gpio_state = mfld_read_jack_gpio(ctx);
+		if (gpio_state == 0) {
+			jack_type = SND_JACK_HEADPHONE;
+			pr_debug("GPIO says there is a headphone, reporting it\n");
+		}
+	}
 	if (jack_type == SND_JACK_HEADSET)
 		/* enable btn press detection */
 		snd_soc_update_bits(jack->codec, SN95031_BTNCTRL2, BIT(0), 1);
@@ -127,6 +135,7 @@ void mfld_jack_wq(struct work_struct *work)
 	struct mfld_jack_work *jack_work = &ctx->jack_work;
 	struct snd_soc_jack *jack = jack_work->jack;
 	unsigned int voltage, status = 0, intr_id = jack_work->intr_id;
+	int gpio_state;
 
 	pr_debug("jack status in wq: 0x%x\n", intr_id);
 	if (intr_id & SN95031_JACK_INSERTED) {
@@ -136,6 +145,11 @@ void mfld_jack_wq(struct work_struct *work)
 			snd_soc_update_bits(jack->codec, SN95031_ACCDETMASK,
 							BIT(1)|BIT(0), 0);
 	} else if (intr_id & SN95031_JACK_REMOVED) {
+		gpio_state = mfld_read_jack_gpio(ctx);
+		if (gpio_state == 0) {
+			pr_debug("remove interrupt, but GPIO says inserted\n");
+			return;
+		}
 		pr_debug("reporting jack as removed\n");
 		snd_soc_update_bits(jack->codec, SN95031_BTNCTRL2, BIT(0), 0);
 		snd_soc_update_bits(jack->codec, SN95031_ACCDETMASK, BIT(2), 0);
@@ -675,11 +689,24 @@ static int __devinit snd_mfld_mc_probe(struct ipc_device *ipcdev)
 	}
 	INIT_DELAYED_WORK(&ctx->jack_work.work, mfld_jack_wq);
 
+	/* Store jack gpio pin number in ctx for future reference */
+	ctx->jack_gpio = get_gpio_by_name("audio_jack_gpio");
+	if (ctx->jack_gpio >= 0) {
+		pr_info("GPIO for jack det is %d\n", ctx->jack_gpio);
+		ret_val = gpio_request_one(ctx->jack_gpio,
+						GPIOF_DIR_IN,
+						"headset_detect_gpio");
+		if (ret_val) {
+			pr_err("Headset detect GPIO alloc fail:%d\n", ret_val);
+			goto free_gpadc;
+		}
+	}
+
 	ctx->int_base = ioremap_nocache(irq_mem->start, resource_size(irq_mem));
 	if (!ctx->int_base) {
 		pr_err("Mapping of cache failed\n");
 		ret_val = -ENOMEM;
-		goto unalloc;
+		goto free_gpio;
 	}
 	/* register for interrupt */
 	ret_val = request_threaded_irq(irq, snd_mfld_jack_intr_handler,
@@ -688,7 +715,7 @@ static int __devinit snd_mfld_mc_probe(struct ipc_device *ipcdev)
 			ipcdev->dev.driver->name, ctx);
 	if (ret_val) {
 		pr_err("cannot register IRQ\n");
-		goto unalloc;
+		goto free_gpio;
 	}
 	/* register the soc card */
 	snd_soc_card_mfld.dev = &ipcdev->dev;
@@ -705,6 +732,10 @@ static int __devinit snd_mfld_mc_probe(struct ipc_device *ipcdev)
 
 freeirq:
 	free_irq(irq, ctx);
+free_gpio:
+	gpio_free(ctx->jack_gpio);
+free_gpadc:
+	intel_mid_gpadc_free(ctx->audio_adc_handle);
 unalloc:
 	kfree(ctx);
 	return ret_val;
@@ -724,6 +755,8 @@ static int __devexit snd_mfld_mc_remove(struct ipc_device *ipcdev)
 #endif
 	cancel_delayed_work(&ctx->jack_work.work);
 	intel_mid_gpadc_free(ctx->audio_adc_handle);
+	if (ctx->jack_gpio >= 0)
+		gpio_free(ctx->jack_gpio);
 	kfree(ctx);
 	snd_soc_card_set_drvdata(soc_card, NULL);
 	snd_soc_unregister_card(soc_card);
