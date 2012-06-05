@@ -37,6 +37,8 @@
 #include <linux/sched.h>
 #include <linux/atomic.h>
 
+#define WATCHDOG_IPC_CMD 0xF8
+
 enum {
 	SCU_IPC_LINCROFT,
 	SCU_IPC_PENWELL,
@@ -311,7 +313,7 @@ EXPORT_SYMBOL_GPL(intel_scu_ipc_unlock);
  * @cmd: command
  * @sub: sub type
  * @in: input data
- * @inlen: input length in dwords
+ * @inlen: input length in bytes
  * @out: output data
  * @outlen: output length in dwords
  * @sptr: data writing to SPTR register
@@ -321,19 +323,39 @@ EXPORT_SYMBOL_GPL(intel_scu_ipc_unlock);
  * data copies under the lock but leave it for the caller to interpret
  * Note: This function should be called with the holding of ipclock
  */
-int intel_scu_ipc_raw_cmd(u32 cmd, u32 sub, u32 *in, u32 inlen, u32 *out,
+int intel_scu_ipc_raw_cmd(u32 cmd, u32 sub, u8 *in, u8 inlen, u32 *out,
 		u32 outlen, u32 dptr, u32 sptr)
 {
 	int i, err;
+	u32 wbuf[4];
 
 	if (ipcdev.pdev == NULL)
 		return -ENODEV;
 
+	if (inlen > 16)
+		return -EINVAL;
+
+	memcpy(wbuf, in, inlen);
+
 	writel(dptr, ipcdev.ipc_base + IPC_DPTR_ADDR);
 	writel(sptr, ipcdev.ipc_base + IPC_SPTR_ADDR);
 
-	for (i = 0; i < inlen; i++)
-		ipc_data_writel(*in++, 4 * i);
+	/**
+	 * SRAM controller don't support 8bit write, it only supports
+	 * 32bit write, so we have to write into the WBUF in 32bit,
+	 * and SCU FW will use the inlen to determine the actual input
+	 * data length in the WBUF.
+	 */
+	for (i = 0; i < ((inlen + 3) / 4); i++)
+		ipc_data_writel(wbuf[i], 4 * i);
+
+	/**
+	 * Watchdog IPC command is an exception here using double word
+	 * as the unit of input data size because of some historical
+	 * reasons and SCU FW is doing so.
+	 */
+	if ((cmd & 0xFF) == WATCHDOG_IPC_CMD)
+		inlen = (inlen + 3) / 4;
 
 	intel_scu_ipc_send_command((inlen << 16) | (sub << 12) | cmd);
 	err = intel_scu_ipc_check_status();
@@ -345,7 +367,7 @@ int intel_scu_ipc_raw_cmd(u32 cmd, u32 sub, u32 *in, u32 inlen, u32 *out,
 }
 EXPORT_SYMBOL_GPL(intel_scu_ipc_raw_cmd);
 
-int intel_scu_ipc_command(u32 cmd, u32 sub, u32 *in, u32 inlen,
+int intel_scu_ipc_command(u32 cmd, u32 sub, u8 *in, u8 inlen,
 		u32 *out, u32 outlen)
 {
 	int ret;

@@ -92,7 +92,7 @@ static int pwr_reg_rdwr(u16 *addr, u8 *data, u32 count, u32 cmd, u32 sub)
 			pr_err("IPC command not supported\n");
 	}
 
-	err = intel_scu_ipc_command(cmd, sub, (u32 *)wbuf, inlen,
+	err = intel_scu_ipc_command(cmd, sub, wbuf, inlen,
 			(u32 *)rbuf, outlen);
 
 	if (sub == IPC_CMD_PCNTRL_R) {

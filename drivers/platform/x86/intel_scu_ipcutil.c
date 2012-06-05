@@ -71,7 +71,7 @@ int intel_scu_ipc_osc_clk(u8 clk, unsigned int khz)
 	 */
 	unsigned int base_freq;
 	unsigned int div;
-	u8 ipc_wbuf[16];
+	u8 ipc_wbuf[2];
 	int ipc_ret;
 
 	if (clk > 3)
@@ -92,7 +92,7 @@ int intel_scu_ipc_osc_clk(u8 clk, unsigned int khz)
 	}
 
 	ipc_ret = intel_scu_ipc_command(IPCMSG_OSC_CLK, 0,
-					(u32 *)ipc_wbuf, 2, NULL, 0);
+					ipc_wbuf, 2, NULL, 0);
 	if (ipc_ret != 0)
 		pr_err("%s: failed to set osc clk(%d) output\n", __func__, clk);
 

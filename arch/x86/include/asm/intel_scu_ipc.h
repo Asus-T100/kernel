@@ -41,9 +41,9 @@ int intel_scu_ipc_check_status(void);
 int intel_scu_ipc_simple_command(int cmd, int sub);
 void intel_scu_ipc_lock(void);
 void intel_scu_ipc_unlock(void);
-int intel_scu_ipc_command(u32 cmd, u32 sub, u32 *in, u32 inlen,
+int intel_scu_ipc_command(u32 cmd, u32 sub, u8 *in, u8 inlen,
 		u32 *out, u32 outlen);
-int intel_scu_ipc_raw_cmd(u32 cmd, u32 sub, u32 *in, u32 inlen,
+int intel_scu_ipc_raw_cmd(u32 cmd, u32 sub, u8 *in, u8 inlen,
 		u32 *out, u32 outlen, u32 dptr, u32 sptr);
 
 /* I2C control api */
