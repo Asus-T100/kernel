@@ -5473,6 +5473,12 @@ static int penwell_otg_runtime_idle(struct device *dev)
 		dev_dbg(dev, "Keep in active\n");
 		dev_dbg(dev, "%s <---\n", __func__);
 		return -EBUSY;
+	case OTG_STATE_A_WAIT_BCON:
+	case OTG_STATE_A_HOST:
+		/* Schedule runtime_suspend without delay */
+		pm_schedule_suspend(dev, 0);
+		dev_dbg(dev, "%s <---\n", __func__);
+		return -EBUSY;
 	default:
 		break;
 	}
