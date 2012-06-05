@@ -1036,7 +1036,7 @@ struct drm_psb_private {
 	bool b_is_in_idle;
 	void (*exit_idle)(struct drm_device *dev, u32 update_src, void *p_surfaceAddr, bool check_hw_on_only);
 	bool b_vblank_enable;
-	int (*async_flip_update_fb)(struct drm_device *dev, int pipe);
+	void (*async_flip_update_fb)(struct drm_device *dev, int pipe);
 	int (*async_check_fifo_empty)(struct drm_device *dev);
 
 	/*

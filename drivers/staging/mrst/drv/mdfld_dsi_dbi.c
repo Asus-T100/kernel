@@ -412,43 +412,23 @@ void mdfld_dsi_dbi_enter_dsr (struct mdfld_dsi_dbi_output * dbi_output, int pipe
 {
 	u32 reg_val;
 	struct drm_device * dev = dbi_output->dev;
-	struct drm_psb_private *dev_priv = dev->dev_private;
+	struct drm_psb_private * dev_priv = dev->dev_private;
 	struct drm_crtc * crtc = dbi_output->base.base.crtc;
 	struct psb_intel_crtc * psb_crtc = (crtc) ? to_psb_intel_crtc(crtc) : NULL; 
-	struct mdfld_dsi_pkg_sender *sender = NULL;
-	struct panel_funcs *p_funcs  = NULL;
 	u32 dpll_reg = MRST_DPLL_A;
 	u32 pipeconf_reg = PIPEACONF;
 	u32 dspcntr_reg = DSPACNTR;
-	int retry;
 
-	printk(KERN_INFO "\ncommand mode enter dsr\n");
+	PSB_DEBUG_ENTRY("\n");
 	
 	if(!dbi_output)
 		return;
-
-	spin_lock(&dev_priv->dsr_lock);
-
+	
 	gdbi_output = dbi_output;
-	if ((dbi_output->mode_flags & MODE_SETTING_IN_DSR) ||
-		(dbi_output->mode_flags & MODE_SETTING_ON_GOING) ||
+	if((dbi_output->mode_flags & MODE_SETTING_ON_GOING) ||
 		(psb_crtc && psb_crtc->mode_flags & MODE_SETTING_ON_GOING)) 
-		goto fun_exit;
-
-	sender = mdfld_dsi_encoder_get_pkg_sender(&dbi_output->base);
-
-	retry = 100;
-	while (retry && !(REG_READ(sender->mipi_gen_fifo_stat_reg) & BIT27)) {
-		udelay(500);
-		retry--;
-	}
-
-	/*if DBI FIFO timeout, do not enter dsr*/
-	if (!retry) {
-		printk(KERN_INFO "can not enter dsr currently\n");
-		goto fun_exit ;
-	}
-
+		return;
+		
 	if(pipe == 2) {
 		dpll_reg = MRST_DPLL_A;
 		pipeconf_reg = PIPECCONF;
@@ -457,13 +437,9 @@ void mdfld_dsi_dbi_enter_dsr (struct mdfld_dsi_dbi_output * dbi_output, int pipe
 
 	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, OSPM_UHB_FORCE_POWER_ON)) {
 		DRM_ERROR("hw begin failed\n");
-		goto fun_exit;
+		return;
 	}
-
-	p_funcs = dbi_output->p_funcs;
-	if (p_funcs && (p_funcs->esd_detection))
-		mdfld_error_detect_correct_timer_end(dev);
-
+		
 	mdfld_disable_te(dev, pipe);
 
 	/*disable plane*/
@@ -502,8 +478,6 @@ void mdfld_dsi_dbi_enter_dsr (struct mdfld_dsi_dbi_output * dbi_output, int pipe
 		enter_dsr = 1;
 		//pm_schedule_suspend(&dev->pdev->dev, gfxrtdelay);
 	}
-fun_exit:
-	spin_unlock(&dev_priv->dsr_lock);
 }
 
 #ifndef CONFIG_MDFLD_DSI_DPU
@@ -513,7 +487,6 @@ static void mdfld_dbi_output_exit_dsr (struct mdfld_dsi_dbi_output * dbi_output,
 	struct drm_psb_private *dev_priv = dev->dev_private;
 	struct drm_crtc * crtc = dbi_output->base.base.crtc;
 	struct psb_intel_crtc * psb_crtc = (crtc) ? to_psb_intel_crtc(crtc) : NULL; 
-	struct panel_funcs *p_funcs  = NULL;
 	u32 reg_val;
 	u32 dpll_reg = MRST_DPLL_A;
 	u32 pipeconf_reg = PIPEACONF;
@@ -521,16 +494,13 @@ static void mdfld_dbi_output_exit_dsr (struct mdfld_dsi_dbi_output * dbi_output,
 	u32 dspsurf_reg = DSPASURF;
 	u32 reg_offset = 0;
 
-	printk(KERN_INFO "\ncommand mode exit dsr\n");
-
-	spin_lock(&dev_priv->dsr_lock);
+	PSB_DEBUG_ENTRY("\n");
 
 	/*if mode setting on-going, back off*/
-	if (!(dbi_output->mode_flags & MODE_SETTING_IN_DSR) ||
-		(dbi_output->mode_flags & MODE_SETTING_ON_GOING) ||
+	if((dbi_output->mode_flags & MODE_SETTING_ON_GOING) ||
 		(psb_crtc && psb_crtc->mode_flags & MODE_SETTING_ON_GOING)) 
-		goto fun_exit;
-
+		return;
+		
 	if(pipe == 2) {
 		dpll_reg = MRST_DPLL_A;
 		pipeconf_reg = PIPECCONF;
@@ -542,11 +512,11 @@ static void mdfld_dbi_output_exit_dsr (struct mdfld_dsi_dbi_output * dbi_output,
 	if (check_hw_on_only) {
 		if (!ospm_power_is_hw_on(OSPM_DISPLAY_ISLAND)) {
 			DRM_ERROR("hw begin failed\n");
-			goto fun_exit;
+			return;
 		}
 	} else if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, OSPM_UHB_FORCE_POWER_ON)) {
 		DRM_ERROR("hw begin failed\n");
-		goto fun_exit;
+		return;
 	}
 
 	/*enable DPLL*/
@@ -600,17 +570,8 @@ static void mdfld_dbi_output_exit_dsr (struct mdfld_dsi_dbi_output * dbi_output,
 
 	mdfld_enable_te(dev, pipe);
 
-	dev_priv->dsr_idle_count = 0;
-
-	p_funcs = dbi_output->p_funcs;
-
 	/*clean IN_DSR flag*/
 	dbi_output->mode_flags &= ~MODE_SETTING_IN_DSR;
-
-	if (p_funcs && (p_funcs->esd_detection))
-		mdfld_error_detect_correct_timer_start(dev);
-fun_exit:
-	spin_unlock(&dev_priv->dsr_lock);
 }
 int mdfld_dsi_dbi_async_check_fifo_empty(struct drm_device *dev)
 {
@@ -619,12 +580,13 @@ int mdfld_dsi_dbi_async_check_fifo_empty(struct drm_device *dev)
 	struct mdfld_dsi_dbi_output **dbi_outputs = NULL;
 	struct mdfld_dsi_dbi_output *dbi_output = NULL;
 	struct mdfld_dsi_pkg_sender *sender = NULL;
+	u32 reg = 0;
 	int err = 0;
 
 	dbi_outputs = dsr_info->dbi_outputs;
 	dbi_output = 0 ? dbi_outputs[1] : dbi_outputs[0];
 	if (!dbi_output)
-		return 0;
+		return;
 
 	sender = mdfld_dsi_encoder_get_pkg_sender(&dbi_output->base);
 
@@ -634,33 +596,25 @@ int mdfld_dsi_dbi_async_check_fifo_empty(struct drm_device *dev)
 /*
 * use hw te to update fb
 */
-int mdfld_dsi_dbi_async_flip_fb_update(struct drm_device *dev, int pipe)
+void mdfld_dsi_dbi_async_flip_fb_update(struct drm_device *dev, int pipe)
 {
 	struct drm_psb_private *dev_priv = dev->dev_private;
 	struct mdfld_dbi_dsr_info *dsr_info = dev_priv->dbi_dsr_info;
 	struct mdfld_dsi_dbi_output **dbi_outputs = NULL;
 	struct mdfld_dsi_dbi_output *dbi_output = NULL;
 	struct mdfld_dsi_pkg_sender *sender = NULL;
-	int ret = IMG_TRUE;
-	int err = 0;
+	u32 reg = 0;
 
+	u32 dpll_reg = MRST_DPLL_A;
+	u32 dspcntr_reg = DSPACNTR;
+	u32 pipeconf_reg = PIPEACONF;
 	u32 dsplinoff_reg = DSPALINOFF;
 	u32 dspsurf_reg = DSPASURF;
 
 	dbi_outputs = dsr_info->dbi_outputs;
 	dbi_output = pipe ? dbi_outputs[1] : dbi_outputs[0];
 	if (!dbi_output)
-		return IMG_FALSE;
-
-	if (!(spin_trylock(&dev_priv->dsr_lock))) {
-		printk(KERN_INFO "dsr lock busy\n");
-		return  IMG_TRUE;
-	}
-
-	if (dbi_output->mode_flags & MODE_SETTING_IN_DSR) {
-		ret = IMG_FALSE;
-		goto fun_exit;
-	}
+		return;
 
 	sender = mdfld_dsi_encoder_get_pkg_sender(&dbi_output->base);
 
@@ -669,23 +623,15 @@ int mdfld_dsi_dbi_async_flip_fb_update(struct drm_device *dev, int pipe)
 	REG_WRITE(dspsurf_reg, REG_READ(dspsurf_reg));
 	REG_READ(dspsurf_reg);
 
-	err = mdfld_dsi_send_dcs(sender,
+	mdfld_dsi_send_dcs(sender,
 			   write_mem_start,
 			   NULL,
 			   0,
 			   CMD_DATA_SRC_PIPE,
 			   MDFLD_DSI_SEND_PACKAGE);
+	mdfld_dsi_cmds_kick_out(sender);
 
-	if (err) {
-		DRM_ERROR(
-		"Error returned from mdfld_dsi_send_dcs: %d\n", ret);
-		ret = IMG_FALSE;
-		goto fun_exit;
-	}
-
-fun_exit:
-	spin_unlock(&dev_priv->dsr_lock);
-	return ret;
+	return;
 }
 
 /**
@@ -697,6 +643,8 @@ void mdfld_dsi_dbi_exit_dsr (struct drm_device *dev, u32 update_src, void *p_sur
 	struct mdfld_dbi_dsr_info * dsr_info = dev_priv->dbi_dsr_info;
 	struct mdfld_dsi_dbi_output ** dbi_output;
 	int i;
+	
+	PSB_DEBUG_ENTRY("\n");
 
 	dbi_output = dsr_info->dbi_outputs;
 
@@ -719,7 +667,7 @@ void mdfld_dsi_dbi_exit_dsr (struct drm_device *dev, u32 update_src, void *p_sur
 	}
 	
 	dev_priv->dsr_fb_update |= update_src;
-	dev_priv->dsr_idle_count = 0;
+
 	/*start timer if A0 board*/
 	if ((get_panel_type(dev, 0) == GI_SONY_CMD)||(get_panel_type(dev, 0) == H8C7_CMD))
 		;  /* mdfld_dbi_dsr_timer_start(dsr_info); */
@@ -780,7 +728,7 @@ void mdfld_dbi_update_panel (struct drm_device *dev, int pipe)
 	}
 
 	/*try to enter DSR*/
-	if (dbi_outputs[0]->dsr_idle_count > 50) {
+	if (dbi_outputs[0]->dsr_idle_count > 1) {
 		/* && dbi_outputs[1]->dsr_idle_count > 1) { */
 		for(i=0; i<dsr_info->dbi_output_num; i++) {
 			if (!mdfld_dbi_is_in_dsr(dev) && dbi_outputs[i] &&

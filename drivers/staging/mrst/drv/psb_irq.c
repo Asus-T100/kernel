@@ -292,60 +292,22 @@ void psb_te_timer_func(unsigned long data)
 	*/
 }
 
-void mdfld_async_flip_te_handler(struct drm_device *dev, uint32_t pipe)
-{
-	struct drm_psb_private *dev_priv =
-		(struct drm_psb_private *) dev->dev_private;
-	struct mdfld_dbi_dsr_info *dsr_info = dev_priv->dbi_dsr_info;
-	struct mdfld_dsi_dbi_output **dbi_outputs;
-	struct mdfld_dsi_dbi_output *dbi_output;
-	static unsigned long cnt;
-
-	int ret = 0;
-
-	if ((dev_priv->psb_vsync_handler != NULL)) {
-		ret = (*dev_priv->psb_vsync_handler)(dev, pipe);
-		if (ret) {
-			if (dev_priv->b_dsr_enable) {
-				if (dev_priv->dsr_idle_count > 50) {
-					dev_priv->te_pipe = pipe;
-					schedule_work(&dev_priv->te_work);
-				} else
-					dev_priv->dsr_idle_count++;
-			}
-		}
-	}
-
-}
 void mdfld_te_handler_work(struct work_struct *work)
 {
 	struct drm_psb_private *dev_priv =
 		container_of(work, struct drm_psb_private, te_work);
 	int pipe = dev_priv->te_pipe;
 	struct drm_device *dev = dev_priv->dev;
-	struct mdfld_dbi_dsr_info *dsr_info = dev_priv->dbi_dsr_info;
-	struct mdfld_dsi_dbi_output **dbi_outputs;
-	struct mdfld_dsi_dbi_output *dbi_output;
 
-	dbi_outputs = dsr_info->dbi_outputs;
-	dbi_output = pipe ? dbi_outputs[1] : dbi_outputs[0];
-
-	if (!dbi_output)
-		return ;
-
-	if (dev_priv->b_async_flip_enable) {
-		mdfld_dsi_dbi_enter_dsr(dbi_output, pipe);
-	} else {
 #ifdef CONFIG_MDFD_DSI_DPU
-		mdfld_dpu_update_panel(dev);
+	mdfld_dpu_update_panel(dev);
 #else
-		mdfld_dbi_update_panel(dev, pipe);
+	mdfld_dbi_update_panel(dev, pipe);
 #endif
-		drm_handle_vblank(dev, pipe);
+	drm_handle_vblank(dev, pipe);
 
-		if (dev_priv->psb_vsync_handler != NULL)
-			(*dev_priv->psb_vsync_handler)(dev, pipe);
-	}
+	if (dev_priv->psb_vsync_handler != NULL)
+		(*dev_priv->psb_vsync_handler)(dev, pipe);
 }
 /**
  * Display controller interrupt handler for pipe event.
@@ -454,7 +416,8 @@ static void mid_pipe_event_handler(struct drm_device *dev, uint32_t pipe)
 
 	if (pipe_stat_val & PIPE_TE_STATUS) {
 		if (dev_priv->b_async_flip_enable) {
-			mdfld_async_flip_te_handler(dev, pipe);
+			if (dev_priv->psb_vsync_handler != NULL)
+				(*dev_priv->psb_vsync_handler)(dev, pipe);
 		} else {
 			dev_priv->te_pipe = pipe;
 			schedule_work(&dev_priv->te_work);
