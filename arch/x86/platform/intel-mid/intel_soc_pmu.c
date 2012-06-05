@@ -665,7 +665,7 @@ static inline u32 find_index_in_hash(struct pci_dev *pdev, int *found)
 
 	/*assuming pdev pionter will not change from platfrom
 	 *boot to shutdown*/
-	h_index = jhash_1word((u32) pdev,
+	h_index = jhash_1word((u32) (long) pdev,
 		 MID_PCI_INDEX_HASH_INITVALUE) & MID_PCI_INDEX_HASH_MASK;
 
 	/* assume not found */
