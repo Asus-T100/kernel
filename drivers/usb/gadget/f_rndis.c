@@ -93,6 +93,7 @@ struct f_rndis {
 
 	struct rndis_ep_descs		fs;
 	struct rndis_ep_descs		hs;
+	struct rndis_ep_descs		ss;
 
 	struct usb_ep			*notify;
 	struct usb_endpoint_descriptor	*notify_desc;
@@ -284,6 +285,80 @@ static struct usb_descriptor_header *eth_hs_function[] = {
 	(struct usb_descriptor_header *) &rndis_data_intf,
 	(struct usb_descriptor_header *) &hs_in_desc,
 	(struct usb_descriptor_header *) &hs_out_desc,
+	NULL,
+};
+
+/* super speed support: */
+
+static struct usb_endpoint_descriptor ss_notify_desc = {
+	.bLength =		USB_DT_ENDPOINT_SIZE,
+	.bDescriptorType =	USB_DT_ENDPOINT,
+
+	.bEndpointAddress =	USB_DIR_IN,
+	.bmAttributes =		USB_ENDPOINT_XFER_INT,
+	.wMaxPacketSize =	cpu_to_le16(STATUS_BYTECOUNT),
+	.bInterval =		LOG2_STATUS_INTERVAL_MSEC + 4,
+};
+static struct usb_ss_ep_comp_descriptor ss_notify_comp_desc = {
+	.bLength =		sizeof(ss_notify_comp_desc),
+	.bDescriptorType =	USB_DT_SS_ENDPOINT_COMP,
+
+	.bMaxBurst =		0,
+	.bmAttributes =		0,
+	.wBytesPerInterval =	cpu_to_le16(STATUS_BYTECOUNT),
+};
+
+static struct usb_endpoint_descriptor ss_in_desc = {
+	.bLength =		USB_DT_ENDPOINT_SIZE,
+	.bDescriptorType =	USB_DT_ENDPOINT,
+
+	.bEndpointAddress =	USB_DIR_IN,
+	.bmAttributes =		USB_ENDPOINT_XFER_BULK,
+	.wMaxPacketSize =	cpu_to_le16(1024),
+};
+
+static struct usb_ss_ep_comp_descriptor ss_in_comp_desc = {
+	.bLength =		sizeof(ss_in_comp_desc),
+	.bDescriptorType =	USB_DT_SS_ENDPOINT_COMP,
+
+	.bMaxBurst =		15,
+	.bmAttributes =		0,
+	/* .wBytesPerInterval =	cpu_to_le16(2), */
+};
+
+static struct usb_endpoint_descriptor ss_out_desc = {
+	.bLength =		USB_DT_ENDPOINT_SIZE,
+	.bDescriptorType =	USB_DT_ENDPOINT,
+
+	.bEndpointAddress =	USB_DIR_OUT,
+	.bmAttributes =		USB_ENDPOINT_XFER_BULK,
+	.wMaxPacketSize =	cpu_to_le16(1024),
+};
+
+static struct usb_ss_ep_comp_descriptor ss_out_comp_desc = {
+	.bLength =		sizeof(ss_out_comp_desc),
+	.bDescriptorType =	USB_DT_SS_ENDPOINT_COMP,
+
+	.bMaxBurst =		15,
+	.bmAttributes =		0,
+};
+
+static struct usb_descriptor_header *eth_ss_function[] = {
+	(struct usb_descriptor_header *) &rndis_iad_descriptor,
+	/* control interface matches ACM, not Ethernet */
+	(struct usb_descriptor_header *) &rndis_control_intf,
+	(struct usb_descriptor_header *) &header_desc,
+	(struct usb_descriptor_header *) &call_mgmt_descriptor,
+	(struct usb_descriptor_header *) &rndis_acm_descriptor,
+	(struct usb_descriptor_header *) &rndis_union_desc,
+	(struct usb_descriptor_header *) &ss_notify_desc,
+	(struct usb_descriptor_header *) &ss_notify_comp_desc,
+	/* data interface has no altsetting */
+	(struct usb_descriptor_header *) &rndis_data_intf,
+	(struct usb_descriptor_header *) &ss_in_desc,
+	(struct usb_descriptor_header *) &ss_in_comp_desc,
+	(struct usb_descriptor_header *) &ss_out_desc,
+	(struct usb_descriptor_header *) &ss_out_comp_desc,
 	NULL,
 };
 
@@ -565,7 +640,8 @@ static int rndis_set_alt(struct usb_function *f, unsigned intf, unsigned alt)
 		} else {
 			VDBG(cdev, "init rndis ctrl %d\n", intf);
 		}
-		rndis->notify_desc = ep_choose(cdev->gadget,
+		rndis->notify_desc = ep_choose_ss(cdev->gadget,
+				rndis->ss.notify,
 				rndis->hs.notify,
 				rndis->fs.notify);
 		usb_ep_enable(rndis->notify, rndis->notify_desc);
@@ -582,10 +658,10 @@ static int rndis_set_alt(struct usb_function *f, unsigned intf, unsigned alt)
 		if (!rndis->port.in) {
 			DBG(cdev, "init rndis\n");
 		}
-		rndis->port.in = ep_choose(cdev->gadget,
-				rndis->hs.in, rndis->fs.in);
-		rndis->port.out = ep_choose(cdev->gadget,
-				rndis->hs.out, rndis->fs.out);
+		rndis->port.in = ep_choose_ss(cdev->gadget,
+				rndis->ss.in, rndis->hs.in, rndis->fs.in);
+		rndis->port.out = ep_choose_ss(cdev->gadget,
+				rndis->ss.out, rndis->hs.out, rndis->fs.out);
 
 		/* Avoid ZLPs; they can be troublesome. */
 		rndis->port.is_zlp_ok = false;
@@ -771,6 +847,28 @@ rndis_bind(struct usb_configuration *c, struct usb_function *f)
 				f->hs_descriptors, &hs_out_desc);
 		rndis->hs.notify = usb_find_endpoint(eth_hs_function,
 				f->hs_descriptors, &hs_notify_desc);
+	}
+
+	if (gadget_is_superspeed(c->cdev->gadget)) {
+		ss_in_desc.bEndpointAddress =
+				fs_in_desc.bEndpointAddress;
+		ss_out_desc.bEndpointAddress =
+				fs_out_desc.bEndpointAddress;
+		ss_notify_desc.bEndpointAddress =
+				fs_notify_desc.bEndpointAddress;
+
+		/* copy descriptors, and track endpoint copies */
+		f->ss_descriptors = usb_copy_descriptors(eth_ss_function);
+
+		if (!f->ss_descriptors)
+			goto fail;
+
+		rndis->ss.in = usb_find_endpoint(eth_ss_function,
+				f->ss_descriptors, &ss_in_desc);
+		rndis->ss.out = usb_find_endpoint(eth_ss_function,
+				f->ss_descriptors, &ss_out_desc);
+		rndis->ss.notify = usb_find_endpoint(eth_ss_function,
+				f->ss_descriptors, &ss_notify_desc);
 	}
 
 	rndis->port.open = rndis_open;

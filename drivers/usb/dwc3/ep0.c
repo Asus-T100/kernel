@@ -754,18 +754,27 @@ static void dwc3_ep0_do_control_data(struct dwc3 *dwc,
 			&& (event->endpoint_number == 0)) {
 		dwc3_map_buffer_to_dma(req);
 
-		WARN_ON(req->request.length > dep->endpoint.maxpacket);
+		if (req->request.length > dep->endpoint.maxpacket) {
+			req->request.length = (req->request.length /
+				dep->endpoint.maxpacket + 1) *
+				dep->endpoint.maxpacket;
 
-		dwc->ep0_bounced = true;
+			ret = dwc3_ep0_start_trans(dwc, event->endpoint_number,
+					req->request.dma, req->request.length,
+					DWC3_TRBCTL_CONTROL_DATA);
+		} else {
+			dwc->ep0_bounced = true;
 
-		/*
-		 * REVISIT in case request length is bigger than EP0
-		 * wMaxPacketSize, we will need two chained TRBs to handle
-		 * the transfer.
-		 */
-		ret = dwc3_ep0_start_trans(dwc, event->endpoint_number,
-				dwc->ep0_bounce_addr, dep->endpoint.maxpacket,
-				DWC3_TRBCTL_CONTROL_DATA);
+			/*
+			 * REVISIT in case request length is bigger than EP0
+			 * wMaxPacketSize, we will need two chained TRBs to
+			 * handle the transfer.
+			 */
+			ret = dwc3_ep0_start_trans(dwc, event->endpoint_number,
+					dwc->ep0_bounce_addr,
+					dep->endpoint.maxpacket,
+					DWC3_TRBCTL_CONTROL_DATA);
+		}
 	} else {
 		dwc3_map_buffer_to_dma(req);
 
@@ -811,7 +820,13 @@ static void dwc3_ep0_xfernotready(struct dwc3 *dwc,
 					dwc->ep0_next_event,
 					DWC3_EP0_NRDY_DATA);
 
-			dwc3_ep0_stall_and_restart(dwc);
+			/*
+			 * For full speed OUT transfer, an extra DATA
+			 * XferNotReady interuupt may be seen here.Just
+			 * ignore this invalid interrupt for now.
+			 *
+			 * dwc3_ep0_stall_and_restart(dwc);
+			 */
 			return;
 		}
 

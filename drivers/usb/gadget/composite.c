@@ -45,27 +45,30 @@ enum {
 	PRODUCT,
 	SERIAL,
 	CONFIG,
-	INTERFACE,
+	INTERFACE0,
+	INTERFACE1,
 };
 
-const char manufacturer_ljb[] = "ICS kernel with dwc_usb3";
-const char product_ljb[] = "Mass Storage Gadget";
-const char serial_ljb[] = "382046656272";
-const char config_ljb[] = "Self-powered";
-const char interface_ljb[] = "Mass Storage";
+const char manufacturer[] = "ICS kernel with dwc usb3 device";
+const char product[] = "Android Composite Gadget";
+const char serial[] = "382046656272";
+const char config[] = "Self-powered";
+const char interface0[] = "interface 0";
+const char interface1[] = "interface 1";
 
-static struct usb_string		fsg_strings_ljb[] = {
-	{MANUFACTURER,		manufacturer_ljb},
-	{PRODUCT,		product_ljb},
-	{SERIAL,		serial_ljb},
-	{CONFIG,		config_ljb},
-	{INTERFACE,		interface_ljb},
+static struct usb_string		usb_strings[] = {
+	{MANUFACTURER,		manufacturer},
+	{PRODUCT,		product},
+	{SERIAL,		serial},
+	{CONFIG,		config},
+	{INTERFACE0,		interface0},
+	{INTERFACE1,		interface1},
 	{}
 };
 
-struct usb_gadget_strings	fsg_stringtab_ljb = {
+struct usb_gadget_strings	usb_stringtab = {
 	.language	= 0x0409,		/* en-us */
-	.strings	= fsg_strings_ljb,
+	.strings	= usb_strings,
 };
 
 #endif
@@ -1319,7 +1322,7 @@ composite_setup(struct usb_gadget *gadget, const struct usb_ctrlrequest *ctrl)
 			value = get_string(cdev, req->buf,
 					w_index, w_value & 0xff);
 #else
-			value = usb_gadget_get_string(&fsg_stringtab_ljb,
+			value = usb_gadget_get_string(&usb_stringtab,
 					w_value & 0xff, req->buf);
 #endif
 			if (value >= 0)
