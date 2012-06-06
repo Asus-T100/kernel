@@ -138,6 +138,20 @@ config FSL_USB2_OTG
 	help
 	  Enable this to support Freescale USB OTG transceiver.
 
+config USB_PENWELL_OTG
+	tristate "Intel Penwell USB OTG dual-role support"
+	depends on USB && PCI && INTEL_SCU_IPC
+	select USB_OTG
+	select USB_OTG_UTILS
+	help
+	  Say Y here if you want to build Intel Penwell USB OTG
+	  transciever driver in kernel. This driver implements role
+	  switch between EHCI host driver and Penwell USB OTG
+	  client driver.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called penwell_otg.
+
 config USB_PENWELL_OTG_TEST
 	tristate "Intel Penwell USB OTG Test Mode support"
 	depends on USB
@@ -148,9 +162,6 @@ config USB_PENWELL_OTG_TEST
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called pnwotg_test.
-
-	  To compile this driver as a module, choose M here: the
-	  module will be called penwell_otg.
 
 config USB_DWC_OTG_XCEIV
 	tristate "Synopsys DWC OTG 3.0 for USB 3.0"

@@ -35,7 +35,7 @@ config X86_ACPI_CPUFREQ
 config X86_SFI_CPUFREQ
 	tristate "SFI Processor P-States driver"
 	select CPU_FREQ_TABLE
-	depends on X86_MRST
+	depends on SFI
 	help
 	  This driver adds a CPUFreq driver which utilizes the SFI
 	  Processor Performance States enumeration.

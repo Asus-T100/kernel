@@ -2,7 +2,6 @@
 obj-y	+= ce4100/
 obj-y	+= efi/
 obj-y	+= iris/
-obj-y	+= mfld/
 obj-y	+= olpc/
 obj-y	+= scx200/
 obj-y	+= sfi/

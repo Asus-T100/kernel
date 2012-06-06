@@ -1972,7 +1972,6 @@ config INTEL_ATOM_CLV_POWER
 	If you don't know what to do here, say N.
 endmenu
 
-
 menu "Bus options (PCI etc.)"
 
 config PCI
