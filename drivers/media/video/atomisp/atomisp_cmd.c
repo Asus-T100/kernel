@@ -3388,6 +3388,8 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 		isp->params.online_process = 1;
 
 	/* setting run mode to the sensor */
+	memset(&sensor_parm, 0, sizeof(sensor_parm));
+	sensor_parm.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 	sensor_parm.parm.capture.capturemode = isp->sw_contex.run_mode;
 	v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
 				video, s_parm, &sensor_parm);

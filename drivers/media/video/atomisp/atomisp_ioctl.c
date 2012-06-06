@@ -620,6 +620,8 @@ static int atomisp_enum_framesizes(struct file *file, void *fh,
 	}
 
 	/* setting run mode to the sensor */
+	memset(&sensor_parm, 0, sizeof(sensor_parm));
+	sensor_parm.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 	sensor_parm.parm.capture.capturemode = CI_MODE_STILL_CAPTURE;
 	v4l2_subdev_call(input->camera, video, s_parm, &sensor_parm);
 
