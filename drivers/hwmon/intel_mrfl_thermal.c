@@ -29,7 +29,7 @@
 
 #include <linux/module.h>
 #include <linux/init.h>
-#include <linux/platform_device.h>
+#include <linux/ipc_device.h>
 #include <linux/pm.h>
 #include <linux/slab.h>
 #include <linux/hwmon-sysfs.h>
@@ -40,7 +40,7 @@
 #include <asm/intel_scu_ipc.h>
 #include <asm/intel_basincove_gpadc.h>
 
-#define DRIVER_NAME "mrfl_thermal"
+#define DRIVER_NAME "bcove_thrm"
 #define DEVICE_NAME "mrfl_pmic_thermal"
 
 /* Number of Thermal sensors on the PMIC */
@@ -127,7 +127,7 @@ static DEFINE_MUTEX(thrm_update_lock);
 
 struct thermal_data {
 	struct device *hwmon_dev;
-	struct platform_device *pdev;
+	struct ipc_device *ipcdev;
 	struct gpadc_result *adc_res;
 	void *thrm_addr;
 	unsigned int irq;
@@ -548,7 +548,7 @@ static irqreturn_t thermal_intrpt(int irq, void *dev_data)
 		event_type = !!(irq_status & SYS0ALRT);
 		sensor = SYS0;
 	} else {
-		dev_err(&tdata->pdev->dev, "Invalid Interrupt\n");
+		dev_err(tdata->hwmon_dev, "Invalid Interrupt\n");
 		ret = IRQ_HANDLED;
 		goto ipc_fail;
 	}
@@ -626,55 +626,55 @@ static struct attribute_group thermal_attr_gr = {
 	.attrs = thermal_attrs
 };
 
-static int mrfl_thermal_probe(struct platform_device *pdev)
+static int mrfl_thermal_probe(struct ipc_device *ipcdev)
 {
 	int ret;
 	struct thermal_data *tdata;
 
 	tdata = kzalloc(sizeof(struct thermal_data), GFP_KERNEL);
 	if (!tdata) {
-		dev_err(&pdev->dev, "kzalloc failed\n");
+		dev_err(&ipcdev->dev, "kzalloc failed\n");
 		return -ENOMEM;
 	}
 
 	tdata->adc_res = kzalloc(sizeof(struct gpadc_result), GFP_KERNEL);
 	if (!tdata->adc_res) {
-		dev_err(&pdev->dev, "kzalloc failed\n");
+		dev_err(&ipcdev->dev, "kzalloc failed\n");
 		kfree(tdata);
 		return -ENOMEM;
 	}
 
-	tdata->pdev = pdev;
-	tdata->irq = platform_get_irq(pdev, 0);
-	platform_set_drvdata(pdev, tdata);
+	tdata->ipcdev = ipcdev;
+	tdata->irq = ipc_get_irq(ipcdev, 0);
+	ipc_set_drvdata(ipcdev, tdata);
 
 	/* Program a default _max value for each sensor */
-	ret = program_tmax(&pdev->dev);
+	ret = program_tmax(&ipcdev->dev);
 	if (ret) {
-		dev_err(&pdev->dev, "Programming _max failed:%d\n", ret);
+		dev_err(&ipcdev->dev, "Programming _max failed:%d\n", ret);
 		goto exit_free;
 	}
 
 	/* Creating a sysfs group with thermal_attr_gr attributes */
-	ret = sysfs_create_group(&pdev->dev.kobj, &thermal_attr_gr);
+	ret = sysfs_create_group(&ipcdev->dev.kobj, &thermal_attr_gr);
 	if (ret) {
-		dev_err(&pdev->dev, "sysfs create group failed\n");
+		dev_err(&ipcdev->dev, "sysfs create group failed\n");
 		goto exit_free;
 	}
 
 	/* Registering with hwmon class */
-	tdata->hwmon_dev = hwmon_device_register(&pdev->dev);
+	tdata->hwmon_dev = hwmon_device_register(&ipcdev->dev);
 	if (IS_ERR(tdata->hwmon_dev)) {
 		ret = PTR_ERR(tdata->hwmon_dev);
 		tdata->hwmon_dev = NULL;
-		dev_err(&pdev->dev, "hwmon_dev_regs failed\n");
+		dev_err(&ipcdev->dev, "hwmon_dev_regs failed\n");
 		goto exit_sysfs;
 	}
 
 	tdata->thrm_addr = ioremap_nocache(PMIC_SRAM_BASE_ADDR, IOMAP_SIZE);
 	if (!tdata->thrm_addr) {
 		ret = -ENOMEM;
-		dev_err(&pdev->dev, "ioremap_nocache failed\n");
+		dev_err(&ipcdev->dev, "ioremap_nocache failed\n");
 		goto exit_hwmon;
 	}
 
@@ -683,14 +683,14 @@ static int mrfl_thermal_probe(struct platform_device *pdev)
 						IRQF_TRIGGER_RISING,
 						DRIVER_NAME, tdata);
 	if (ret) {
-		dev_err(&pdev->dev, "request_threaded_irq failed:%d\n", ret);
+		dev_err(&ipcdev->dev, "request_threaded_irq failed:%d\n", ret);
 		goto exit_ioremap;
 	}
 
 	/* Enable Thermal Monitoring */
 	ret = enable_tm();
 	if (ret) {
-		dev_err(&pdev->dev, "Enabling TM failed:%d\n", ret);
+		dev_err(&ipcdev->dev, "Enabling TM failed:%d\n", ret);
 		goto exit_irq;
 	}
 
@@ -703,7 +703,7 @@ exit_ioremap:
 exit_hwmon:
 	hwmon_device_unregister(tdata->hwmon_dev);
 exit_sysfs:
-	sysfs_remove_group(&pdev->dev.kobj, &thermal_attr_gr);
+	sysfs_remove_group(&ipcdev->dev.kobj, &thermal_attr_gr);
 exit_free:
 	kfree(tdata->adc_res);
 	kfree(tdata);
@@ -722,15 +722,15 @@ static int mrfl_thermal_suspend(struct device *dev)
 	return 0;
 }
 
-static int mrfl_thermal_remove(struct platform_device *pdev)
+static int mrfl_thermal_remove(struct ipc_device *ipcdev)
 {
-	struct thermal_data *tdata = platform_get_drvdata(pdev);
+	struct thermal_data *tdata = ipc_get_drvdata(ipcdev);
 
 	if (tdata) {
 		free_irq(tdata->irq, tdata);
 		iounmap(tdata->thrm_addr);
 		hwmon_device_unregister(tdata->hwmon_dev);
-		sysfs_remove_group(&pdev->dev.kobj, &thermal_attr_gr);
+		sysfs_remove_group(&ipcdev->dev.kobj, &thermal_attr_gr);
 		kfree(tdata->adc_res);
 		kfree(tdata);
 	}
@@ -740,17 +740,13 @@ static int mrfl_thermal_remove(struct platform_device *pdev)
 /*********************************************************************
  *		Driver initialization and finalization
  *********************************************************************/
-static const struct platform_device_id thermal_id_table[] = {
-	{ DEVICE_NAME, 1 },
-	{ },
-};
 
 static const struct dev_pm_ops thermal_pm_ops = {
 	.suspend = mrfl_thermal_suspend,
 	.resume = mrfl_thermal_resume,
 };
 
-static struct platform_driver mrfl_thermal_driver = {
+static struct ipc_driver mrfl_thermal_driver = {
 	.driver = {
 		.name = DRIVER_NAME,
 		.owner = THIS_MODULE,
@@ -758,35 +754,16 @@ static struct platform_driver mrfl_thermal_driver = {
 		},
 	.probe = mrfl_thermal_probe,
 	.remove = __devexit_p(mrfl_thermal_remove),
-	.id_table = thermal_id_table,
 };
 
 static int __init mrfl_thermal_module_init(void)
 {
-	int ret;
-	struct platform_device *pdev;
-
-	/*
-	 * FIXME: When platform specific initialization support is
-	 * available, the 'device_alloc' and 'device_add' calls will
-	 * be removed.
-	 */
-	pdev = platform_device_alloc(DEVICE_NAME, 0);
-	if (!pdev)
-		return PTR_ERR(pdev);
-
-	ret = platform_device_add(pdev);
-	if (ret) {
-		kfree(pdev);
-		return ret;
-	}
-
-	return platform_driver_register(&mrfl_thermal_driver);
+	return ipc_driver_register(&mrfl_thermal_driver);
 }
 
 static void __exit mrfl_thermal_module_exit(void)
 {
-	platform_driver_unregister(&mrfl_thermal_driver);
+	ipc_driver_unregister(&mrfl_thermal_driver);
 }
 
 module_init(mrfl_thermal_module_init);
