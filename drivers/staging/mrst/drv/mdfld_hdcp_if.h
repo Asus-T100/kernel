@@ -48,6 +48,8 @@ typedef enum _cp_status {
     STATUS_DATA_ERROR                    = 0x00000004,
     STATUS_PENDING                       = 0x00000005,
     STATUS_INVALID_PARAMETER             = 0x00000006,
+    STATUS_TOO_MANY_DEVICES              = 0x00000007,
+    STATUS_BAD_TOPOLOGY                  = 0x00000008,
 } cp_status_t;
 
 // KSV

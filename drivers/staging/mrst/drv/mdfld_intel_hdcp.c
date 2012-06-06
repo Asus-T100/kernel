@@ -33,6 +33,8 @@
  */
 static struct mid_intel_hdmi_priv *hdmi_priv;
 
+// local functions
+static uint32_t hdcp_activate_repeater(cp_parameters_t* cp);
 void mdfld_hdcp_init(struct mid_intel_hdmi_priv *p_hdmi_priv)
 {
     hdmi_priv = p_hdmi_priv;
@@ -253,6 +255,7 @@ int hdcp_enable(int enable)
     mdfld_hdcp_receiver_ri_t receivers_ri;
     mdfld_hdcp_status_t status;
     mdfld_hdcp_rep_t hdcp_repeater;
+    cp_parameters_t cp;       // used for step 2 (repeater) authentication
     uint32_t max_retry = 0;
     sqword_t hw_an;
     static sqword_t hw_aksv = {{0}};	//read-once only after reset, subsequent read will return zero
@@ -262,7 +265,7 @@ int hdcp_enable(int enable)
     int ret = 0;
 
 
-    if(enable == 0)
+    if(enable == 0)  // disable HDCP
     {
         config.value = REG_READ(MDFLD_HDCP_CONFIG_REG);
         config.hdcp_config =  HDCP_Off;
@@ -323,7 +326,7 @@ int hdcp_enable(int enable)
         //Disable the port on which HDCP is enabled
         REG_WRITE(hdmi_priv->hdmib_reg, REG_READ(hdmi_priv->hdmib_reg) & ~HDMIB_HDCP_PORT);
     }
-    else
+    else // enable HDCP
     {
         //Generate An
         config.value = REG_READ(MDFLD_HDCP_CONFIG_REG);
@@ -811,6 +814,9 @@ static int hdcp_compute_transmitter_v(ksv_t *ksv_list, uint32_t ksv_list_entries
                 case 3:
                 hdcp_rep_ctrl_reg.repeater_control = HDCP_REPEATER_8BIT_TEXT_24BIT_MO_IP;
                 break;
+                case 4:
+                    hdcp_rep_ctrl_reg.repeater_control = HDCP_REPEATER_32BIT_MO_IP;
+                    break;
                 default:
                 // should never happen
                 ret = 0;
@@ -1003,7 +1009,8 @@ static uint32_t hdcp_activate_repeater(cp_parameters_t* cp)
         // check if max dev limit is exceeded
         if(b_status.max_devs_exceeded)
         {
-            ret = STATUS_INVALID_PARAMETER;
+            //ret = STATUS_INVALID_PARAMETER;
+            ret = STATUS_TOO_MANY_DEVICES;
             break;
         }
 
@@ -1011,7 +1018,8 @@ static uint32_t hdcp_activate_repeater(cp_parameters_t* cp)
         // more then seven levels of video repeater have been cascaded.
         if(b_status.max_cascade_exceeded)
         {
-            ret =  STATUS_INVALID_PARAMETER;
+            // ret =  STATUS_INVALID_PARAMETER;
+            ret =  STATUS_BAD_TOPOLOGY;
             break;
         }
 
@@ -1026,7 +1034,8 @@ static uint32_t hdcp_activate_repeater(cp_parameters_t* cp)
         
         if(device_count > get_max_device_supported)
         {
-            ret =  STATUS_INVALID_PARAMETER;
+            // ret =  STATUS_INVALID_PARAMETER;
+            ret = STATUS_TOO_MANY_DEVICES;
             break;
         }
 
@@ -1376,4 +1385,38 @@ uint32_t hdcp_set_cp_data(cp_parameters_t* cp)
     }
 
     return ret;
+}
+
+
+
+int hdcp_enable_repeater(int enable)
+{
+   cp_parameters_t cp;
+   int ret = STATUS_UNSUCCESSFUL;
+   if (enable) // enable repeater
+   {
+      hdcp_update_repeater_state(1);
+      // set some dummy data until we find the real stuff
+      cp.protect_type_mask = 0;
+      cp.level = 0;
+      cp.hdcp.ksv_list_length = 0;     // no keys to revoke
+      cp.hdcp.ksv_list = NULL;
+      cp.hdcp.perform_second_step = 1; // second step is for repeater
+      cp.hdcp.is_repeater = 1;            // yes, this is a repeater
+      ret = hdcp_activate_repeater(&cp);
+      return ret;
+   }
+   else
+   {
+      hdcp_update_repeater_state(0);
+   }
+
+   return 0;
+}
+
+int hdcp_repeater_present(void)
+{
+   int is_repeater =0;
+   hdcp_is_repeater(&is_repeater);
+   return is_repeater;
 }

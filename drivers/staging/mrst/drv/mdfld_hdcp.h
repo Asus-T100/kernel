@@ -197,4 +197,6 @@ int hdcp_is_enabled(void);
 int hdcp_enable(int enable);
 int read_hdcp_port(uint32_t read_request_type, uint8_t *buffer, int size);
 int hdcp_get_link_status(void);
+int hdcp_enable_repeater(int);
+int hdcp_repeater_present(void);
 #endif /* MDFLD_HDCP_H */

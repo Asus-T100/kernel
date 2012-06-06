@@ -758,6 +758,9 @@ typedef struct drm_psb_msvdx_decode_status {
 #define DRM_PSB_ENABLE_HDCP		0x27
 #define DRM_PSB_DISABLE_HDCP		0x28
 #define DRM_PSB_GET_HDCP_LINK_STATUS	0x2b
+#define DRM_PSB_ENABLE_HDCP_REPEATER		0x2c
+#define DRM_PSB_DISABLE_HDCP_REPEATER		0x2d
+#define DRM_PSB_HDCP_REPEATER_PRESENT		0x2e
 
 /* CSC IOCTLS */
 #define DRM_PSB_CSC_GAMMA_SETTING 0x29
@@ -768,6 +771,23 @@ typedef struct drm_psb_msvdx_decode_status {
 /* OEM IOCTLs */
 #define DRM_OEM_RESERVED_START 		0x40
 #define DRM_OEM_RESERVED_END		0x4F
+
+
+/*
+ * TTM execbuf extension.
+ */
+#define DRM_PSB_TTM_START      0x50
+#define DRM_PSB_TTM_END        0x5F
+#if defined(PDUMP)
+	#define DRM_PSB_CMDBUF		  (PVR_DRM_DBGDRV_CMD + 1)
+#else
+	#define DRM_PSB_CMDBUF		  (DRM_PSB_TTM_START)
+#endif
+#define DRM_PSB_SCENE_UNREF	  (DRM_PSB_CMDBUF + 1)
+#define DRM_PSB_PLACEMENT_OFFSET   (DRM_PSB_SCENE_UNREF + 1)
+
+
+
 
 #define DRM_PSB_DSR_ENABLE	0xfffffffe
 #define DRM_PSB_DSR_DISABLE	0xffffffff
