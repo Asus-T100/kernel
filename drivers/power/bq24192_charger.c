@@ -214,8 +214,24 @@
 #define BQ24192_INVALID_CURR -1
 #define BQ24192_INVALID_VOLT -1
 
+/* SMIP related definitions */
+/* No of Bytes to read from SMIP from SMIP sram base */
+#define NUM_SMIP_BYTES	100
+/* sram base address for smip accessing*/
+#define SMIP_SRAM_BASE_ADDR	0xFFFD8000
+#define SMIP_SRAM_OFFSET_ADDR	0x0
+#define SMIP_SRAM_MAX_ADDR	0x1000
+#define SMIP_SRAM_BATT_PROP_OFFSET_ADDR	0x13
+#define TEMP_MON_RANGES	4
+
+/* Signature comparision of SRAM data for supportted Battery Char's */
+#define SBCT_REV	0x16
+#define RSYS_MOHMS	0xAA
+
 static struct power_supply *fg_psy;
 static struct ctp_batt_sfi_prop *ctp_sfi_table;
+/* Battery properties structure */
+static struct ctp_smip_sram_batt_prop *ctp_smip_batt_prop;
 
 struct bq24192_chrg_regs {
 	u8 in_src;
@@ -253,6 +269,8 @@ struct bq24192_chip {
 	int curr_chrg;
 	int cached_chrg_cur_cntl;
 	struct power_supply_charger_cap cached_cap;
+	/* smip sram memory pointer */
+	void __iomem *intel_smip_base;
 };
 
 #ifdef CONFIG_DEBUG_FS
@@ -309,69 +327,6 @@ static enum power_supply_property bq24192_usb_props[] = {
 /************************************************************************
  * End of structure definition section
  ***********************************************************************/
-/*
- * sfi table parsing specific interfaces
- */
-
-/**
- * ctp_sfi_table_invalid_batt - default battery SFI table values  to be
- * used in case of invalid battery
- *
- * @sfi_table : sfi table pointer
- * Context: can sleep
- * Note: These interfaces will move to a common file and will be
- * independent of the platform
- */
-static void ctp_sfi_table_invalid_batt(struct ctp_batt_sfi_prop *sfi_table)
-{
-
-	/*
-	 * In case of invalid battery we manually set
-	 * the SFI parameters and limit the battery from
-	 * charging, so platform will be in discharging mode
-	 */
-	memcpy(ctp_sfi_table->batt_id, "UNKNOWN", sizeof("UNKNOWN"));
-	ctp_sfi_table->voltage_max = CLT_BATT_CHRVOLTAGE_SET_DEF;
-	ctp_sfi_table->capacity = CLT_BATT_DEFAULT_MAX_CAPACITY;
-	ctp_sfi_table->battery_type = POWER_SUPPLY_TECHNOLOGY_LION;
-	ctp_sfi_table->temp_mon_ranges = 0;
-
-}
-
-/**
- * ctp_sfi_table_populate - Simple Firmware Interface table Populate
- * @sfi_table: Simple Firmware Interface table structure
- *
- * SFI table has entries for the temperature limits
- * which is populated in a local structure
- */
-static int __init ctp_sfi_table_populate(struct sfi_table_header *table)
-{
-	struct sfi_table_simple *sb;
-	struct ctp_batt_sfi_prop *pentry;
-	struct bq24192_chip *chip = i2c_get_clientdata(bq24192_client);
-	int totentrs = 0, totlen = 0;
-
-	sb = (struct sfi_table_simple *)table;
-	if (!sb) {
-		dev_warn(&chip->client->dev, "SFI: Unable to map BATT signature\n");
-		return -ENODEV;
-	}
-
-	totentrs = SFI_GET_NUM_ENTRIES(sb, struct ctp_batt_sfi_prop);
-	if (totentrs) {
-		pentry = (struct ctp_batt_sfi_prop *)sb->pentry;
-		totlen = totentrs * sizeof(*pentry);
-		memcpy(ctp_sfi_table, pentry, totlen);
-		if (ctp_sfi_table->temp_mon_ranges != CLT_SFI_TEMP_NR_RNG)
-			dev_warn(&chip->client->dev, "SFI: temperature monitoring range"
-				"doesn't match with its Array elements size\n");
-	} else {
-		dev_warn(&chip->client->dev, "Invalid battery detected\n");
-		ctp_sfi_table_invalid_batt(ctp_sfi_table);
-	}
-	return 0;
-}
 
 /* Check for valid Temp ADC range */
 static bool ctp_is_valid_temp_adc(int adc_val)
@@ -2029,21 +1984,131 @@ static int bq24192_usb_property_is_writeable(struct power_supply *psy,
 }
 
 /**
+ * intel_sram_smip_read - SMIP SRAM Read functionality
+ * Pre cond: The calling function should acquire lock
+ * @data: out param
+ * @len: bytes to read
+ * @offset: sram offset
+ * @chip: charger driver device context
+ * @return: successfully read data/Invalid data
+ */
+static int intel_sram_smip_read(u8 *data, int len, int offset,
+					 struct bq24192_chip *chip)
+{
+	if (offset + len > SMIP_SRAM_MAX_ADDR)
+		return -EINVAL;
+
+	memcpy(data, chip->intel_smip_base + offset, len);
+		return 0;
+}
+
+/**
  * init_batt_thresholds - initialize battery thresholds
- * @chp: charger driver device context
+ * @chip: charger driver device context
  * Context: can sleep
  */
 static void init_batt_thresholds(struct bq24192_chip *chip)
 {
+	int ret;
+	int i;
+	u8 validate_smip_data[4];
 
 	chip->batt_thrshlds.vbatt_sh_min = CLT_BATT_VMIN_THRESHOLD_DEF;
 	chip->batt_thrshlds.vbatt_crit = CLT_BATT_CRIT_CUTOFF_VOLT_DEF;
 	chip->batt_thrshlds.temp_high = CLT_BATT_TEMP_MAX_DEF;
 	chip->batt_thrshlds.temp_low = CLT_BATT_TEMP_MIN_DEF;
-	/* Need to add SMIP related support to fetch this information.
-	 * This is currently not supported by FW and hence using hard
-	 * coded values
-	 */
+
+	mutex_lock(&chip->event_lock);
+	/* Read the Signature verification data form SRAM */
+	ret = intel_sram_smip_read((u8 *)validate_smip_data,
+					4,
+					SMIP_SRAM_OFFSET_ADDR, chip);
+	if (ret)
+		dev_warn(&chip->client->dev, "smip read failed\n");
+	mutex_unlock(&chip->event_lock);
+
+	dev_dbg(&chip->client->dev, "SBCT_REV: 0x%x RSYS_OHMS 0x%x",
+			validate_smip_data[0], validate_smip_data[3]);
+
+	/* Check for Valid SMIP data */
+	if ((validate_smip_data[0] == SBCT_REV) && (
+			validate_smip_data[3] == RSYS_MOHMS)) {
+		dev_dbg(&chip->client->dev,
+			"%s: Valid SMIP data\n", __func__);
+		mutex_lock(&chip->event_lock);
+		/* Read the threshold values from SRAM */
+		ret = intel_sram_smip_read((u8 *)&chip->batt_thrshlds,
+						sizeof(chip->batt_thrshlds),
+						SMIP_SRAM_OFFSET_ADDR, chip);
+		if (ret)
+			dev_warn(&chip->client->dev,
+				"%s:smip read failed\n", __func__);
+
+		/* Read the battery properties from SRAM */
+		ret = intel_sram_smip_read((u8 *)ctp_smip_batt_prop,
+				sizeof(struct ctp_smip_sram_batt_prop),
+				SMIP_SRAM_BATT_PROP_OFFSET_ADDR, chip);
+		if (ret)
+			dev_warn(&chip->client->dev,
+				 "%s: smip read failed\n", __func__);
+
+		mutex_unlock(&chip->event_lock);
+
+		/* Copy Battery properties from SRAM to local structure
+		 * The structure copying is required since the data
+		 * is programmed with various offsets and to match
+		 * the xml e.g.XML_vF2.07_PR0.2_CMI_DEV.xml
+		 */
+		if ((ctp_smip_batt_prop->b1idmin == 0x0) &&
+			 (ctp_smip_batt_prop->b1idmax == 0x0)) {
+			/*
+			* In case of invalid battery we manually set
+			* the SFI parameters and limit the battery from
+			* charging, so platform will be in discharging mode
+			*/
+			memcpy(ctp_sfi_table->batt_id,
+				"UNKNOWN", sizeof("UNKNOWN"));
+		}
+
+		ctp_sfi_table->voltage_max = ctp_smip_batt_prop->b1vmax;
+		ctp_sfi_table->capacity = ctp_smip_batt_prop->b1cap;
+		ctp_sfi_table->battery_type = ctp_smip_batt_prop->b1type;
+		ctp_sfi_table->temp_mon_ranges = TEMP_MON_RANGES;
+
+		for (i = 0; i < TEMP_MON_RANGES; i++) {
+			ctp_sfi_table->temp_mon_range[i].temp_up_lim =
+			ctp_smip_batt_prop->smip_sram_temp[i].b1tul;
+			ctp_sfi_table->temp_mon_range[i].full_chrg_vol =
+			ctp_smip_batt_prop->smip_sram_temp[i].b1tfcv;
+			ctp_sfi_table->temp_mon_range[i].full_chrg_cur =
+			ctp_smip_batt_prop->smip_sram_temp[i].b1tfci;
+			ctp_sfi_table->temp_mon_range[i].maint_chrg_vol_ll =
+			ctp_smip_batt_prop->smip_sram_temp[i].b1tmcvstar_lower;
+			ctp_sfi_table->temp_mon_range[i].maint_chrg_vol_ul =
+			ctp_smip_batt_prop->smip_sram_temp[i].b1tmcvstop_upper;
+			ctp_sfi_table->temp_mon_range[i].maint_chrg_cur =
+			ctp_smip_batt_prop->smip_sram_temp[i].b1tmci;
+		}
+
+		ctp_sfi_table->temp_low_lim = ctp_smip_batt_prop->b1t1ll;
+
+		dev_dbg(&chip->client->dev,
+			"%s: voltage_max:0x%x"
+			"battery capacity: 0x%x"
+			"battery_type: 0x%x"
+			"temp_low_lim: 0x%x\n", __func__,
+			ctp_sfi_table->voltage_max,
+			ctp_sfi_table->capacity,
+			ctp_sfi_table->battery_type,
+			ctp_sfi_table->temp_low_lim);
+
+		chip->pdata->sfi_tabl_present = true;
+	} else {
+		dev_dbg(&chip->client->dev,
+			"%s: No signature match	for SRAM Read\n ", __func__);
+		chip->pdata->sfi_tabl_present = false;
+	}
+
 	ctp_get_batt_temp_thresholds(&chip->batt_thrshlds.temp_high,
 		&chip->batt_thrshlds.temp_low);
 }
@@ -2193,7 +2258,6 @@ static int __devinit bq24192_probe(struct i2c_client *client,
 		}
 	}
 
-
 	ctp_sfi_table = kzalloc(sizeof(struct ctp_batt_sfi_prop), GFP_KERNEL);
 	if (!ctp_sfi_table) {
 		dev_err(&client->dev, "%s(): memory allocation failed\n",
@@ -2202,21 +2266,40 @@ static int __devinit bq24192_probe(struct i2c_client *client,
 		return -ENOMEM;
 	}
 
-	/* check for valid SFI table entry for OEM0 table */
-	if (sfi_table_parse(SFI_BATTPROP_TBL_ID, NULL, NULL,
-		ctp_sfi_table_populate)) {
-		chip->pdata->sfi_tabl_present = false;
-		ctp_sfi_table_invalid_batt(ctp_sfi_table);
-	}
-
 	/* Allocate ADC Channels */
 	chip->gpadc_handle =
 		intel_mid_gpadc_alloc(CLT_BATT_NUM_GPADC_SENSORS,
 				  CLT_GPADC_BPTHERM_CHNUM | CH_NEED_VCALIB |
 				  CH_NEED_VREF);
 	if (chip->gpadc_handle == NULL) {
-		dev_err(&client->dev, "ADC allocation failed : Check if ADC driver came up\n");
+		dev_err(&client->dev,
+		 "ADC allocation failed: Check if ADC driver came up\n");
 		return -1;
+	}
+
+	/* Allocate Memory for Battery Property structure */
+	ctp_smip_batt_prop =
+		kzalloc(sizeof(struct ctp_smip_sram_batt_prop), GFP_KERNEL);
+	if (!ctp_smip_batt_prop) {
+		dev_err(&chip->client->dev,
+		 "%s: memory allocation failed\n", __func__);
+		kfree(chip);
+		intel_mid_gpadc_free(chip->gpadc_handle);
+		kfree(ctp_sfi_table);
+		return -ENOMEM;
+	}
+
+	/* Memory map the SMIP SRAM Physical Base Address */
+	chip->intel_smip_base =
+		ioremap_nocache(SMIP_SRAM_BASE_ADDR, SMIP_SRAM_MAX_ADDR);
+	if (!chip->intel_smip_base) {
+		dev_err(&chip->client->dev,
+			 "%s: Memory map failed\n", __func__);
+		kfree(chip);
+		intel_mid_gpadc_free(chip->gpadc_handle);
+		kfree(ctp_sfi_table);
+		kfree(ctp_smip_batt_prop);
+		return -ENODEV;
 	}
 
 	init_batt_thresholds(chip);
@@ -2229,10 +2312,13 @@ static int __devinit bq24192_probe(struct i2c_client *client,
 	ret = bq24192_create_debugfs(chip);
 	if (ret < 0) {
 		dev_err(&client->dev, "debugfs create failed\n");
+		iounmap(chip->intel_smip_base);
 		power_supply_unregister(&chip->usb);
 		i2c_set_clientdata(client, NULL);
 		kfree(chip);
 		intel_mid_gpadc_free(chip->gpadc_handle);
+		kfree(ctp_sfi_table);
+		kfree(ctp_smip_batt_prop);
 		return ret;
 	}
 	/* start the status monitor worker */
@@ -2246,12 +2332,14 @@ static int __devexit bq24192_remove(struct i2c_client *client)
 {
 	struct bq24192_chip *chip = i2c_get_clientdata(client);
 
+	iounmap(chip->intel_smip_base);
 	bq24192_remove_debugfs(chip);
 	if (!chip->pdata->slave_mode)
 		power_supply_unregister(&chip->usb);
 	i2c_set_clientdata(client, NULL);
 	intel_mid_gpadc_free(chip->gpadc_handle);
 	kfree(ctp_sfi_table);
+	kfree(ctp_smip_batt_prop);
 	kfree(chip);
 	return 0;
 }

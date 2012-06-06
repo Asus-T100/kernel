@@ -107,6 +107,31 @@ struct bq24192_platform_data {
 	bool sfi_tabl_present;
 };
 
+/* SMIP SRAM Battery Temperature data */
+struct ctp_smip_sram_temp {
+	/* Temp range values */
+	short int b1tul;       /* Temp range upper limit */
+	u8 b1tpr;              /* Temp range pack resistance */
+	short int b1tfcv;      /* Temp range fast charge voltage upper */
+	short int b1tfci;      /* Temp range fast charge current limit */
+	short int b1tmcvstar_lower;    /*Temp range main charge voltage lower*/
+	short int b1tmcvstop_upper;    /*Temp range main charge voltage upper*/
+	short int b1tmci;      /* Temp range main charge current limit */
+} __packed;
+
+/* SMIP SRAM Battery property structure */
+struct ctp_smip_sram_batt_prop {
+	short int b1idmin;      /* Battery 1 id - min value (ohms) */
+	short int b1idmax;      /* Battery 1 id - max value (ohms) */
+	u8 b1type;              /* Battery 1 type */
+	short int b1cap;        /* Battery 1 capacity (mah) */
+	short int b1vmax;       /* Battery 1 max voltage (mv)*/
+	u8 b1safe_voltage;              /* Battery 1 charger safe voltage */
+	u8 b1safe_current;              /* Battery 1 charger safe current */
+	struct ctp_smip_sram_temp smip_sram_temp[CLT_SFI_TEMP_NR_RNG];
+	short int b1t1ll;       /* Temp range 1 lower limit */
+} __packed;
+
 int bq24192_slave_mode_enable_charging(int volt, int cur, int ilim);
 int bq24192_slave_mode_disable_charging(void);
 extern int ctp_query_battery_status(void);

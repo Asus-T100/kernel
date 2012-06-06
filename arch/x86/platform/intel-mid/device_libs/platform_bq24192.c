@@ -27,6 +27,7 @@ static bool msic_battery_check(void)
 		return true;
 	}
 }
+
 void *bq24192_platform_data(void *info)
 {
 	static struct bq24192_platform_data platform_data;
@@ -35,15 +36,8 @@ void *bq24192_platform_data(void *info)
 		platform_data.sfi_tabl_present = true;
 	else
 		platform_data.sfi_tabl_present = false;
-	/* FIXME: Curren IFW has bug where OEM0 block exists but parameters
-	 * are all invalid hence overriding the parameter to false and
-	 * and will be remove once IFW has hte corretc support */
-	platform_data.sfi_tabl_present = false;
 
-	/* define the temperature ranges. These values are currently hardcoded
-	 * based upon medfield values and will change as per battery prop.
-	 * For final solution these must get populated in sfi table.
-	 */
+	/* Define the temperature ranges */
 	platform_data.temp_mon_ranges = 4;
 	platform_data.temp_mon_range[0].temp_up_lim = 60;
 	platform_data.temp_mon_range[0].full_chrg_vol = 4100;
