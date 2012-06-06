@@ -2080,7 +2080,7 @@ int ospm_power_suspend(struct pci_dev *pdev, pm_message_t state)
 			|| display_access_count
 #if (defined(CONFIG_SND_INTELMID_HDMI_AUDIO) || \
 		defined(CONFIG_SND_INTELMID_HDMI_AUDIO_MODULE))
-			|| !hdmi_audio_suspend
+			|| ((!hdmi_audio_suspend) && hdmi_state)
 #endif
 		)
                         ret = -EBUSY;
