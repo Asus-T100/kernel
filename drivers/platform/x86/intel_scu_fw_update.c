@@ -28,6 +28,7 @@
 #include <linux/delay.h>
 #include <linux/ipc_device.h>
 #include <linux/fs.h>
+#include <linux/vmalloc.h>
 #include <asm/intel_scu_ipc.h>
 #include <linux/intel_mid_pm.h>
 
@@ -80,9 +81,9 @@
 #define FUPH_SUCP_OFFSET        0x18
 #define FUPH_VEDFW_OFFSET       0x1c
 
-#define MAX_BIN_SIZE	(4*1024*1024)
-#define DNX_SIZE	(128*1024)
-#define IFWI_SIZE	(3*1024*1024)
+#define DNX_MAX_SIZE	(128*1024)
+#define IFWI_MAX_SIZE	(3*1024*1024)
+#define FOTA_MEM_SIZE	(4*1024*1024)
 
 #define DNX_SIZE_OFFSET	0
 #define GP_FLAG_OFFSET	4
@@ -144,7 +145,11 @@ struct misc_fw {
 	u8 str_len;
 };
 
+/* lock used to prevent multiple calls to fw update sysfs interface */
+static DEFINE_MUTEX(fwud_lock);
+
 static char err_buf[50];
+static u8 *pending_data;
 
 struct fw_update_info {
 	struct device *dev;
@@ -160,6 +165,15 @@ static struct misc_fw misc_fw_table[] = {
 	{ .fw_type = "SuCP", .str_len  = MAX_LEN_SUCP  },
 	{ .fw_type = "VEDFW", .str_len  = MAX_LEN_VEDFW  }
 };
+
+static int alloc_fota_mem_early;
+
+int __init alloc_mem_fota_early_flag(char *p)
+{
+	alloc_fota_mem_early = 1;
+	return 0;
+}
+early_param("alloc_fota_mem_early", alloc_mem_fota_early_flag);
 
 /*
  * IA will wait in busy-state, and poll mailbox, to check
@@ -429,9 +443,6 @@ int intel_scu_ipc_medfw_upgrade(void)
 	void *offset;
 	enum mailbox_status mb_state;
 
-	if (!fw_ud_param)
-		return 0;
-
 	/* set all devices in d0i0 before IFWI upgrade */
 	if (unlikely(pmu_set_devices_in_d0i0())) {
 		pr_debug("pmu: failed to set all devices in d0i0...\n");
@@ -589,13 +600,6 @@ unmap_mb:
 unmap_sram:
 	iounmap(mfld_fw_upd.sram);
 out_unlock:
-	if (fui.fwud_pending) {
-		kfree(fui.fwud_pending->fw_file_data);
-		kfree(fui.fwud_pending->dnx_hdr);
-		kfree(fui.fwud_pending->dnx_file_data);
-		kfree(fui.fwud_pending);
-		fui.fwud_pending = NULL;
-	}
 	intel_scu_ipc_unlock();
 	return ret_val;
 }
@@ -611,31 +615,24 @@ static ssize_t write_dnx(struct file *file, struct kobject *kobj,
 {
 	int ret;
 
-	intel_scu_ipc_lock();
+	mutex_lock(&fwud_lock);
 
-	if (!fui.fwud_pending) {
-		fui.fwud_pending = kzalloc(sizeof(struct fw_ud), GFP_KERNEL);
-		if (NULL == fui.fwud_pending) {
+	if (!pending_data) {
+		pending_data = vmalloc(FOTA_MEM_SIZE);
+		if (NULL == pending_data) {
+			cur_err("alloc fota memory by sysfs failed\n");
 			ret = -ENOMEM;
-			cur_err("alloc fwud_pending memory failed");
 			goto end;
 		}
 	}
 
-	if (!fui.fwud_pending->dnx_file_data) {
-		fui.fwud_pending->dnx_file_data =
-					kmalloc(DNX_SIZE, GFP_KERNEL);
-		if (NULL == fui.fwud_pending->dnx_file_data) {
-			ret = -ENOMEM;
-			cur_err("alloc dnx_file_data memory failed.");
-			goto end;
-		}
-	}
+	fui.fwud_pending->dnx_file_data = pending_data + IFWI_MAX_SIZE;
 
-	if (off + count > MAX_BIN_SIZE) {
+	if (unlikely(off >= DNX_MAX_SIZE)) {
+		fui.fwud_pending->dnx_file_data = NULL;
 		cur_err("too large dnx binary stream!");
-		ret =  -EINVAL;
-		goto err;
+		ret = -EFBIG;
+		goto end;
 	}
 
 	memcpy(fui.fwud_pending->dnx_file_data + off, buf, count);
@@ -645,34 +642,12 @@ static ssize_t write_dnx(struct file *file, struct kobject *kobj,
 	else
 		fui.fwud_pending->dnx_size += count;
 
-	intel_scu_ipc_unlock();
+	mutex_unlock(&fwud_lock);
 	return count;
 
-err:
-	kfree(fui.fwud_pending->dnx_file_data);
-	fui.fwud_pending->dnx_size = 0;
 end:
-	intel_scu_ipc_unlock();
+	mutex_unlock(&fwud_lock);
 	return ret;
-}
-
-static ssize_t read_dnx(struct file *file, struct kobject *kobj,
-		struct bin_attribute *attr, char *buf,
-			loff_t off, size_t count)
-{
-	if (fui.fwud_pending && fui.fwud_pending->dnx_file_data) {
-		const size_t size = fui.fwud_pending->dnx_size;
-
-		if (off >= size)
-			return 0;
-
-		if (off + count > size)
-			count = size - off;
-
-		memcpy(buf, fui.fwud_pending->dnx_file_data + off, count);
-	}
-
-	return count;
 }
 
 /* Parses from the end of IFWI, and looks for UPH$,
@@ -686,8 +661,7 @@ static int find_fuph_header_len(unsigned int *len,
 	unsigned int cnt = 0;
 
 	if (!len || !file_data || !file_size) {
-		dev_err(fui.dev,
-			"find_fuph_header_len: Invalid inputs\n");
+		dev_err(fui.dev, "find_fuph_header_len: Invalid inputs\n");
 		return ret;
 	}
 
@@ -715,31 +689,24 @@ static ssize_t write_ifwi(struct file *file, struct kobject *kobj,
 {
 	int ret;
 
-	intel_scu_ipc_lock();
+	mutex_lock(&fwud_lock);
 
-	if (!fui.fwud_pending) {
-		fui.fwud_pending = kzalloc(sizeof(struct fw_ud), GFP_KERNEL);
-		if (NULL == fui.fwud_pending) {
+	if (!pending_data) {
+		pending_data = vmalloc(FOTA_MEM_SIZE);
+		if (NULL == pending_data) {
+			cur_err("alloc fota memory by sysfs failed\n");
 			ret = -ENOMEM;
-			cur_err("alloc fwud_pending memory failed");
 			goto end;
 		}
 	}
 
-	if (!fui.fwud_pending->fw_file_data) {
-		fui.fwud_pending->fw_file_data =
-					kmalloc(IFWI_SIZE, GFP_KERNEL);
-		if (NULL == fui.fwud_pending->fw_file_data) {
-			ret = -ENOMEM;
-			cur_err("alloc fw_file_data memory failed.");
-			goto end;
-		}
-	}
+	fui.fwud_pending->fw_file_data = pending_data;
 
-	if (off + count > MAX_BIN_SIZE) {
+	if (unlikely(off >= IFWI_MAX_SIZE)) {
+		fui.fwud_pending->fw_file_data = NULL;
 		cur_err("too large ifwi binary stream!\n");
-		ret = -EINVAL;
-		goto err;
+		ret = -EFBIG;
+		goto end;
 	}
 
 	memcpy(fui.fwud_pending->fw_file_data + off, buf, count);
@@ -749,119 +716,88 @@ static ssize_t write_ifwi(struct file *file, struct kobject *kobj,
 	else
 		fui.fwud_pending->fsize += count;
 
-	intel_scu_ipc_unlock();
+	mutex_unlock(&fwud_lock);
 	return count;
 
-err:
-	kfree(fui.fwud_pending->fw_file_data);
-	fui.fwud_pending->fsize = 0;
 end:
-	intel_scu_ipc_unlock();
+	mutex_unlock(&fwud_lock);
 	return ret;
 }
 
-static ssize_t read_ifwi(struct file *file, struct kobject *kobj,
-		struct bin_attribute *attr, char *buf,
-			loff_t off, size_t count)
+/*
+ * intel_scu_fw_prepare - prepare dnx_hdr and fuph
+ *
+ * This function will be invoked at reboot, when DNX and IFWI data are ready.
+ */
+static int intel_scu_fw_prepare(struct fw_ud *fwud_pending)
 {
-	if (fui.fwud_pending && fui.fwud_pending->fw_file_data) {
-		const size_t size = fui.fwud_pending->fsize;
-
-		if (off >= size)
-			return 0;
-
-		if (off + count > size)
-			count = size - off;
-
-		memcpy(buf, fui.fwud_pending->fw_file_data + off, count);
-	}
-
-	return count;
-}
-
-/* prepare dnx_hdr and fuph */
-int intel_scu_fw_prepare(struct fw_ud *fwud_pending)
-{
-	int ret;
 	unsigned int size;
 	unsigned int gpFlags = 0;
 	unsigned int xorcs;
 	unsigned char dnxSH[DNX_HDR_LEN] = { 0 };
 
+	mutex_lock(&fwud_lock);
+
 	size = fui.fwud_pending->dnx_size;
 
-	if (!fui.fwud_pending->dnx_hdr) {
-		fui.fwud_pending->dnx_hdr = kmalloc(DNX_HDR_LEN, GFP_KERNEL);
-		if (fui.fwud_pending->dnx_hdr == NULL) {
-			dev_err(fui.dev, "alloc dnx_hdr memory failed.");
-			ret = -ENOMEM;
-			goto end;
-		}
+	/* Set GPFlags parameter */
+	gpFlags = gpFlags | (GPF_BIT32 << 31);
+	xorcs = (size ^ gpFlags);
 
-		/* Set GPFlags parameter */
-		gpFlags = gpFlags | (GPF_BIT32 << 31);
-		xorcs = (size ^ gpFlags);
+	memcpy((dnxSH + DNX_SIZE_OFFSET), (unsigned char *)(&size), 4);
+	memcpy((dnxSH + GP_FLAG_OFFSET), (unsigned char *)(&gpFlags), 4);
+	memcpy((dnxSH + XOR_CHK_OFFSET), (unsigned char *)(&xorcs), 4);
 
-		memcpy((dnxSH + DNX_SIZE_OFFSET), (unsigned char *)(&size), 4);
-		memcpy((dnxSH + GP_FLAG_OFFSET),
-					(unsigned char *)(&gpFlags), 4);
-		memcpy((dnxSH + XOR_CHK_OFFSET), (unsigned char *)(&xorcs), 4);
+	/* assign the last DNX_HDR_LEN bytes memory to dnx header */
+	fui.fwud_pending->dnx_hdr = pending_data + FOTA_MEM_SIZE - DNX_HDR_LEN;
 
-		/* directly memcpy to dnx_hdr */
-		memcpy(fui.fwud_pending->dnx_hdr, dnxSH, DNX_HDR_LEN);
-	}
+	/* directly memcpy to dnx_hdr */
+	memcpy(fui.fwud_pending->dnx_hdr, dnxSH, DNX_HDR_LEN);
 
 	if (find_fuph_header_len(&(fui.fwud_pending->fuph_hdr_len),
 			fui.fwud_pending->fw_file_data,
 			fui.fwud_pending->fsize) < 0) {
 		pr_err("Error, with FUPH header\n");
-		ret = -EINVAL;
-		goto err_fuph_hdr;
+		mutex_unlock(&fwud_lock);
+		return -EINVAL;
 	}
 
-	pr_info("fupd_hdr_len=%d, fsize=%d, dnx_size=%d",
+	pr_debug("fupd_hdr_len=%d, fsize=%d, dnx_size=%d",
 			fui.fwud_pending->fuph_hdr_len,
 			fui.fwud_pending->fsize,
 			fui.fwud_pending->dnx_size);
 
+	mutex_unlock(&fwud_lock);
 	return 0;
-
-err_fuph_hdr:
-	kfree(fui.fwud_pending->dnx_hdr);
-	fui.fwud_pending->fuph_hdr_len = 0;
-end:
-	return ret;
 }
 
 int intel_scu_ipc_fw_update(void)
 {
 	int ret = 0;
 
-	if (!fui.fwud_pending) {
-		pr_info("Jump FW update process\n");
-		goto exit;
+	/* jump fw upgrade process when fota memory not allocated
+	 * or when user cancels update
+	 * or when one of dnx and ifwi is not written
+	 * or when failure happens in writing one of dnx and ifwi
+	 */
+	if (!pending_data || !fui.fwud_pending ||
+		!fui.fwud_pending->dnx_file_data ||
+		!fui.fwud_pending->fw_file_data) {
+		pr_info("Jump FW upgrade process\n");
+		goto end;
 	}
 
 	ret = intel_scu_fw_prepare(fui.fwud_pending);
 	if (ret) {
-		dev_err(fui.dev, "FW update failed in prepare\n");
-		goto error;
+		dev_err(fui.dev, "intel_scu_fw_prepare failed\n");
+		goto end;
 	}
 
 	ret = intel_scu_ipc_medfw_upgrade();
 	if (ret)
-		dev_err(fui.dev, "FW update failed in upgrading\n");
+		dev_err(fui.dev, "intel_scu_ipc_medfw_upgrade failed\n");
 
-error:
-	if (fui.fwud_pending) {
-		kfree(fui.fwud_pending->fw_file_data);
-		kfree(fui.fwud_pending->dnx_hdr);
-		kfree(fui.fwud_pending->dnx_file_data);
-		kfree(fui.fwud_pending);
-		fui.fwud_pending = NULL;
-	}
-
-exit:
+end:
 	return ret;
 }
 EXPORT_SYMBOL(intel_scu_ipc_fw_update);
@@ -893,6 +829,29 @@ static ssize_t intel_scu_ipc_show_last_error(struct device *dev,
 	return snprintf(buf, PAGE_SIZE, "%s\n", err_buf);
 }
 
+static ssize_t intel_scu_ipc_store_cancel_update(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t size)
+{
+	int value;
+
+	if (sscanf(buf, "%d", &value) != 1) {
+		cur_err("One argument is needed\n");
+		return -EINVAL;
+	}
+
+	if (value == 1) {
+		mutex_lock(&fwud_lock);
+		fui.fwud_pending->fw_file_data = NULL;
+		fui.fwud_pending->dnx_file_data = NULL;
+		mutex_unlock(&fwud_lock);
+	} else {
+		cur_err("input '1' to cancel fw upgrade\n");
+		return -EINVAL;
+	}
+
+	return size;
+}
+
 #define __BIN_ATTR(_name, _mode, _size, _read, _write) { \
 	.attr = {.name = __stringify(_name), .mode = _mode },	\
 	.size	= _size,					\
@@ -904,12 +863,15 @@ static ssize_t intel_scu_ipc_show_last_error(struct device *dev,
 struct bin_attribute bin_attr_##_name =	\
 		__BIN_ATTR(_name, _mode, _size, _read, _write)
 
+static DEVICE_ATTR(cancel_update, S_IWUSR, NULL,
+		intel_scu_ipc_store_cancel_update);
 static DEVICE_ATTR(fw_version, S_IRUGO, intel_scu_ipc_show_fw_version, NULL);
 static DEVICE_ATTR(last_error, S_IRUGO, intel_scu_ipc_show_last_error, NULL);
-static BIN_ATTR(dnx, S_IWUSR | S_IRUGO, MAX_BIN_SIZE, read_dnx, write_dnx);
-static BIN_ATTR(ifwi, S_IWUSR | S_IRUGO, MAX_BIN_SIZE, read_ifwi, write_ifwi);
+static BIN_ATTR(dnx, S_IWUSR, DNX_MAX_SIZE, NULL, write_dnx);
+static BIN_ATTR(ifwi, S_IWUSR, IFWI_MAX_SIZE, NULL, write_ifwi);
 
 static struct attribute *intel_fw_update_attrs[] = {
+	&dev_attr_cancel_update.attr,
 	&dev_attr_fw_version.attr,
 	&dev_attr_last_error.attr,
 	NULL,
@@ -963,14 +925,58 @@ static void intel_fw_update_sysfs_remove(struct ipc_device *ipcdev)
 
 static int __devinit fw_update_probe(struct ipc_device *ipcdev)
 {
+	int ret;
 	struct fw_update_info *fu_info = &fui;
+
 	fu_info->dev = &ipcdev->dev;
-	return intel_fw_update_sysfs_create(ipcdev);
+
+	fui.fwud_pending = kzalloc(sizeof(struct fw_ud), GFP_KERNEL);
+	if (NULL == fui.fwud_pending) {
+		ret = -ENOMEM;
+		dev_err(fui.dev, "alloc fwud_pending memory failed\n");
+		goto exit;
+	}
+
+	ret = intel_fw_update_sysfs_create(ipcdev);
+	if (ret) {
+		dev_err(fui.dev, "creating fw update sysfs failed\n");
+		goto err_free_fwud;
+	}
+
+	/* If alloc_fota_mem_early flag is set, allocate FOTA_MEM_SIZE
+	 * bytes memory.
+	 * reserve the first contiguous IFWI_MAX_SIZE bytes for IFWI,
+	 * the next contiguous DNX_MAX_SIZE bytes are reserved for DNX,
+	 * the last DNX_HDR_LEN bytes for DNX Header
+	 */
+	if (alloc_fota_mem_early) {
+		pending_data = vmalloc(FOTA_MEM_SIZE);
+		if (NULL == pending_data) {
+			ret = -ENOMEM;
+			dev_err(fui.dev, "early alloc fota memory failed\n");
+			goto err_sysfs;
+		}
+	}
+
+	return 0;
+
+err_sysfs:
+	intel_fw_update_sysfs_remove(ipcdev);
+err_free_fwud:
+	kfree(fui.fwud_pending);
+	fui.fwud_pending = NULL;
+exit:
+	return ret;
 }
 
 static int __devexit fw_update_remove(struct ipc_device *ipcdev)
 {
 	intel_fw_update_sysfs_remove(ipcdev);
+
+	vfree(pending_data);
+	pending_data = NULL;
+	kfree(fui.fwud_pending);
+	fui.fwud_pending = NULL;
 	return 0;
 }
 
