@@ -489,6 +489,21 @@ static void lis3dh_acc_report_values(struct lis3dh_acc_data *acc, int *xyz)
 	input_sync(acc->input_dev);
 }
 
+/* mutex lock must be held when calling this function */
+static void lis3dh_acc_launch_work(struct lis3dh_acc_data *acc)
+{
+	if (!acc->enabled)
+		return;
+	if (acc->pdata->poll_interval > 0) {
+		schedule_delayed_work(&acc->input_work,
+				msecs_to_jiffies(acc->pdata->poll_interval));
+	} else {
+		acc->report_cnt = LIS3DH_6D_REPORT_CNT;
+		schedule_delayed_work(&acc->input_work,
+				msecs_to_jiffies(acc->report_interval));
+	}
+}
+
 static int lis3dh_acc_get_int1_source(struct lis3dh_acc_data *acc)
 {
 	u8 data;
@@ -525,15 +540,7 @@ static irqreturn_t lis3dh_acc_isr1(int irq, void *data)
 
 	if (int1_stat & INT1_IA) {
 		dev_dbg(dev, "6d interrupt reported\n");
-
-		ret = lis3dh_acc_get_acceleration_data(acc, xyz);
-		if (ret < 0)
-			dev_err(dev, "get_acceleration_data failed\n");
-		else
-			lis3dh_acc_report_values(acc, xyz);
-		acc->report_cnt = LIS3DH_6D_REPORT_CNT;
-		schedule_delayed_work(&acc->input_work,
-			msecs_to_jiffies(acc->report_interval));
+		lis3dh_acc_launch_work(acc);
 	}
 
 out:
@@ -547,18 +554,9 @@ static int lis3dh_acc_enable(struct lis3dh_acc_data *acc)
 	lis3dh_acc_get_int1_source(acc);
 	lis3dh_acc_device_power_on(acc);
 	acc->enabled = 1;
-	if (acc->pdata->poll_interval > 0) {
-		schedule_delayed_work(&acc->input_work,
-				msecs_to_jiffies(acc->pdata->poll_interval));
-	} else {
-		/* simulate 6D interrupt here so that initial events would
-		 * be sent to userspace
-		 */
-		acc->report_cnt = LIS3DH_6D_REPORT_CNT;
-		schedule_delayed_work(&acc->input_work,
-				msecs_to_jiffies(acc->report_interval));
-	}
 
+	/* Send initial events to userspace */
+	lis3dh_acc_launch_work(acc);
 	return 0;
 }
 
@@ -637,10 +635,10 @@ static ssize_t attr_set_polling_rate(struct device *dev,
 
 	mutex_lock(&acc->lock);
 	acc->pdata->poll_interval = interval_ms;
-	if (acc->enabled) {
-		schedule_delayed_work(&acc->input_work,
-				msecs_to_jiffies(acc->pdata->poll_interval));
-	}
+
+	/* Send initial events to userspace */
+	if (acc->enabled)
+		lis3dh_acc_launch_work(acc);
 	mutex_unlock(&acc->lock);
 	return size;
 }
