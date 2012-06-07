@@ -516,13 +516,20 @@ static void create_debugfs_files(void)
 	/* /sys/kernel/debug/osip */
 	osip_dir = debugfs_create_dir("osip", NULL);
 	/* /sys/kernel/debug/osip/cmdline */
-	(void) debugfs_create_file("cmdline", S_IFREG | S_IRUGO | S_IWUSR | S_IWGRP,
-				   osip_dir, (void *)0, &osip_cmdline_fops);
-	/* /sys/kernel/debug/osip/cmdline_pos */
-	(void) debugfs_create_file("cmdline_pos", S_IFREG | S_IRUGO | S_IWUSR | S_IWGRP,
+	(void) debugfs_create_file("cmdline",
+				S_IFREG | S_IRUGO | S_IWUSR | S_IWGRP,
+				osip_dir, (void *)0, &osip_cmdline_fops);
+	/* /sys/kernel/debug/osip/cmdline_ros */
+	(void) debugfs_create_file("cmdline_ros",
+				S_IFREG | S_IRUGO | S_IWUSR | S_IWGRP,
 				osip_dir, (void *)1, &osip_cmdline_fops);
+	/* /sys/kernel/debug/osip/cmdline_pos */
+	(void) debugfs_create_file("cmdline_pos",
+				S_IFREG | S_IRUGO | S_IWUSR | S_IWGRP,
+				osip_dir, (void *)2, &osip_cmdline_fops);
 	/* /sys/kernel/debug/osip/decode */
-	(void) debugfs_create_file("decode", S_IFREG | S_IRUGO,
+	(void) debugfs_create_file("decode",
+				S_IFREG | S_IRUGO,
 				osip_dir, NULL, &osip_decode_fops);
 }
 static void remove_debugfs_files(void)
