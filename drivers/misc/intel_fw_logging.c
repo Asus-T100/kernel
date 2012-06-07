@@ -321,6 +321,9 @@ static int create_fwerr_log(char *output_buf, void __iomem *oshob_ptr)
 		return strlen(output_buf);
 	}
 
+	if (faberr_dwords[MAX_NUM_LOGDWORDS-1] != 0xDEADBEEF)
+		return 0;
+
 	num_flag_status = err_status_dw0.fields.flag_status_cnt;
 	/* num_err_logs indicates num of error_log/addr pairs */
 	num_err_logs = err_log_dw10.fields.num_err_logs * 2;
