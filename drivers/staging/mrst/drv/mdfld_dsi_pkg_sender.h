@@ -134,6 +134,9 @@ struct mdfld_dsi_pkg_sender {
 	u32 dbi_cb_phy;
 	void * dbi_cb_addr;
 
+	atomic64_t te_seq;
+	atomic64_t last_screen_update;
+
 	/*registers*/
 	u32 dpll_reg;
 	u32 dspcntr_reg;
@@ -189,6 +192,7 @@ extern int mdfld_dsi_send_dpi_spk_pkg_hs(struct mdfld_dsi_pkg_sender *sender,
 extern int mdfld_dsi_send_dpi_spk_pkg_lp(struct mdfld_dsi_pkg_sender *sender,
 				u32 spk_pkg);
 extern void mdfld_dsi_cmds_kick_out(struct mdfld_dsi_pkg_sender * sender);
+extern void mdfld_dsi_report_te(struct mdfld_dsi_pkg_sender *sender);
 
 /*read interfaces*/
 extern int mdfld_dsi_read_gen_hs(struct mdfld_dsi_pkg_sender *sender,

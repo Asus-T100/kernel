@@ -32,6 +32,7 @@
 #include "psb_powermgmt.h"
 
 #include "mdfld_dsi_dbi_dpu.h"
+#include "mdfld_dsi_pkg_sender.h"
 
 #ifdef CONFIG_MDFD_GL3
 #include "mdfld_gl3.h"
@@ -309,6 +310,25 @@ void mdfld_te_handler_work(struct work_struct *work)
 	if (dev_priv->psb_vsync_handler != NULL)
 		(*dev_priv->psb_vsync_handler)(dev, pipe);
 }
+
+static void update_te_counter(struct drm_device *dev, uint32_t pipe)
+{
+	struct mdfld_dsi_pkg_sender *sender;
+	struct mdfld_dsi_dbi_output **dbi_outputs;
+	struct mdfld_dsi_dbi_output *dbi_output;
+	struct drm_psb_private *dev_priv =
+		(struct drm_psb_private *)dev->dev_private;
+	struct mdfld_dbi_dsr_info *dsr_info = dev_priv->dbi_dsr_info;
+
+	if (!dsr_info)
+		return;
+
+	dbi_outputs = dsr_info->dbi_outputs;
+	dbi_output = pipe ? dbi_outputs[1] : dbi_outputs[0];
+	sender = mdfld_dsi_encoder_get_pkg_sender(&dbi_output->base);
+	mdfld_dsi_report_te(sender);
+}
+
 /**
  * Display controller interrupt handler for pipe event.
  *
@@ -326,6 +346,10 @@ static void mid_pipe_event_handler(struct drm_device *dev, uint32_t pipe)
 	uint32_t pipe_status;
 	uint32_t i = 0;
 	unsigned long irq_flags;
+	struct mdfld_dsi_pkg_sender *sender;
+	struct mdfld_dsi_dbi_output **dbi_outputs;
+	struct mdfld_dsi_dbi_output *dbi_output;
+	struct mdfld_dbi_dsr_info *dsr_info = dev_priv->dbi_dsr_info;
 
 	/* if pipe is HDMI, but hdmi is plugged out, should not handle
 	* HDMI reg any more here */
@@ -415,7 +439,12 @@ static void mid_pipe_event_handler(struct drm_device *dev, uint32_t pipe)
 	}
 
 	if (pipe_stat_val & PIPE_TE_STATUS) {
+		/*update te sequence on this pipe*/
+		update_te_counter(dev, pipe);
+
 		if (dev_priv->b_async_flip_enable) {
+			/*wake up all thread waiting for a vblank*/
+			drm_handle_vblank(dev, pipe);
 			if (dev_priv->psb_vsync_handler != NULL)
 				(*dev_priv->psb_vsync_handler)(dev, pipe);
 		} else {

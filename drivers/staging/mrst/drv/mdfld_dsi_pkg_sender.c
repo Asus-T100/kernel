@@ -1321,6 +1321,19 @@ int mdfld_dsi_send_dcs(struct mdfld_dsi_pkg_sender * sender,
 			return -EAGAIN;
 
 		/**
+		 * check the whether is there any write_mem_start already being
+		 * sent in this between current te_seq and next te.
+		 * if yes, simply reject the rest of write_mem_start because it
+		 * is unnecessary. otherwise, go ahead and kick of a
+		 * write_mem_start.
+		 */
+		if (atomic64_read(&sender->last_screen_update) ==
+			atomic64_read(&sender->te_seq)) {
+			spin_unlock(&sender->lock);
+			return 0;
+		}
+
+		/**
 		 * query whether DBI FIFO is empty,
 		 * if not wait it becoming empty
 		 */
@@ -1341,6 +1354,10 @@ int mdfld_dsi_send_dcs(struct mdfld_dsi_pkg_sender * sender,
 			wait_for_lp_fifos_empty(sender);
 		else
 			wait_for_hs_fifos_empty(sender);
+
+		/*record the last screen update timestamp*/
+		atomic64_set(&sender->last_screen_update,
+			atomic64_read(&sender->te_seq));
 
 		*(cb + (index++)) = write_mem_start;
 
@@ -1575,6 +1592,12 @@ int mdfld_dsi_wait_for_fifos_empty(struct mdfld_dsi_pkg_sender *sender)
 	return wait_for_all_fifos_empty(sender);
 }
 
+void mdfld_dsi_report_te(struct mdfld_dsi_pkg_sender *sender)
+{
+	if (sender)
+		atomic64_inc(&sender->te_seq);
+}
+
 int mdfld_dsi_pkg_sender_init(struct mdfld_dsi_connector * dsi_connector, int pipe)
 {
 	int ret;
@@ -1694,6 +1717,10 @@ int mdfld_dsi_pkg_sender_init(struct mdfld_dsi_connector * dsi_connector, int pi
 		/*append to free list*/
 		list_add_tail(&pkg->entry, &pkg_sender->free_list);
 	}
+
+	/*init te & screen update seqs*/
+	atomic64_set(&pkg_sender->te_seq, 0);
+	atomic64_set(&pkg_sender->last_screen_update, 0);
 
 	PSB_DEBUG_ENTRY("initialized\n");
 

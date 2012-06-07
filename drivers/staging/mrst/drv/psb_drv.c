@@ -636,8 +636,10 @@ static void mdfld_error_detect_correct_timer_func(unsigned long data)
 	struct timer_list *error_handle_timer =
 			&(dev_priv->error_detect_correct_timer);
 	unsigned long flags;
+
 	if (!dev_priv->dbi_panel_on)
 		return;
+
 	if (dev_priv->cur_pipe == 0) {
 		dbi_output = dev_priv->dbi_output;
 		dsi_config = dev_priv->dsi_configs[0];
@@ -645,6 +647,7 @@ static void mdfld_error_detect_correct_timer_func(unsigned long data)
 		dbi_output = dev_priv->dbi_output2;
 		dsi_config = dev_priv->dsi_configs[1];
 	}
+
 	if (dbi_output) {
 		p_funcs = dbi_output->p_funcs;
 		if (p_funcs && (p_funcs->esd_detection)
@@ -656,6 +659,7 @@ static void mdfld_error_detect_correct_timer_func(unsigned long data)
 		} else
 			return ;
 	}
+
 	spin_lock_irqsave(&(dev_priv->error_detect_correct_lock), flags);
 	if (!timer_pending(error_handle_timer)) {
 		error_handle_timer->expires = jiffies + ERROR_DETECT_DELAY;
@@ -3342,43 +3346,26 @@ static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 						return -EINVAL;
 					}
 				}
+				/*exit dsr before flipping overlay plane*/
+				if (dev_priv->b_dsr_enable)
+					dev_priv->exit_idle(dev,
+					MDFLD_DSR_2D_3D,
+					NULL,
+					true);
 
+				/*flip overlay*/
 				PSB_WVDC32(arg->overlay.OVADD, OV_OVADD);
 
-				if (is_panel_vid_or_cmd(dev) == MDFLD_DSI_ENCODER_DPI) {
-					if (arg->overlay.b_wait_vblank)
-						overlay_wait_vblank(dev,
-								file_priv,
-								arg->overlay.OVADD);
-				}
+				/*update on-panel frame buffer*/
+				if (dev_priv->b_async_flip_enable &&
+					dev_priv->async_flip_update_fb)
+					dev_priv->async_flip_update_fb(dev, 0);
+
+				overlay_wait_vblank(dev,
+					file_priv,
+					arg->overlay.OVADD);
 
 				if (IS_MDFLD(dev)) {
-					if (is_panel_vid_or_cmd(dev) == MDFLD_DSI_ENCODER_DBI) {
-						if ((((arg->overlay.OVADD & OV_PIPE_SELECT) >>
-							OV_PIPE_SELECT_POS) == OV_PIPE_A)) {
-#ifndef CONFIG_MDFLD_DSI_DPU
-							mdfld_dsi_dbi_exit_dsr(dev, MDFLD_DSR_OVERLAY_0, 0, 0);
-							if (dev_priv->b_async_flip_enable &&
-									dev_priv->async_flip_update_fb)
-								dev_priv->async_flip_update_fb(dev, 0);
-#else
-							/*TODO: report overlay damage*/
-#endif
-						}
-
-						if ((((arg->overlay.OVADD & OV_PIPE_SELECT) >>
-							OV_PIPE_SELECT_POS) == OV_PIPE_C)) {
-#ifndef CONFIG_MDFLD_DSI_DPU
-							mdfld_dsi_dbi_exit_dsr(dev, MDFLD_DSR_OVERLAY_2, 0, 0);
-							if (dev_priv->b_async_flip_enable &&
-									dev_priv->async_flip_update_fb)
-								dev_priv->async_flip_update_fb(dev, 2);
-#else
-							/*TODO: report overlay damage*/
-#endif
-						}
-					}
-
 					if (arg->overlay.IEP_ENABLED) {
 						/* VBLANK period */
 						iep_timeout = jiffies + HZ / 10;
