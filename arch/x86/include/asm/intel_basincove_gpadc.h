@@ -18,16 +18,7 @@
 #define MVIBATT		(1 << 5)
 #define MCCTICK		(1 << 7)
 
-#define GPADC_RSL(channel, res)		\
-	({				\
-		int order = -1;		\
-		int ch = channel;	\
-		do {			\
-			ch >>= 1;	\
-			order++;	\
-		} while (ch);		\
-		res->data[order];	\
-	})
+#define GPADC_RSL(channel, res) (res->data[ffs(channel)-1])
 
 struct intel_basincove_gpadc_platform_data {
 	unsigned long intr;
