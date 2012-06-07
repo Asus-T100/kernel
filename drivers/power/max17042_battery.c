@@ -274,6 +274,12 @@ struct max17042_chip {
 	 * methods set by platform.
 	 */
 	int	disable_shdwn_methods;
+
+	/*
+	 * user space can set this variable to report constant
+	 * batery temperature for conformence testing.
+	 */
+	bool	enable_fake_temp;
 };
 
 /* Sysfs entry for disable shutdown methods from user space */
@@ -284,6 +290,18 @@ static ssize_t get_shutdown_methods(struct device *device,
 			       struct device_attribute *attr, char *buf);
 static DEVICE_ATTR(disable_shutdown_methods, S_IRUGO | S_IWUSR,
 	get_shutdown_methods, override_shutdown_methods);
+
+/*
+ * Sysfs entry to report fake battery temperature. This
+ * interface is needed to support conformence testing
+ */
+static ssize_t set_fake_temp_enable(struct device *device,
+			       struct device_attribute *attr, const char *buf,
+			       size_t count);
+static ssize_t get_fake_temp_enable(struct device *device,
+			       struct device_attribute *attr, char *buf);
+static DEVICE_ATTR(enable_fake_temp, S_IRUGO | S_IWUSR,
+	get_fake_temp_enable, set_fake_temp_enable);
 
 #ifdef CONFIG_DEBUG_FS
 static struct dentry *max17042_dbgfs_root;
@@ -586,7 +604,8 @@ static int max17042_get_property(struct power_supply *psy,
 			val->intval = cur * MAX17042_CURR_CONV_FCTR;
 		break;
 	case POWER_SUPPLY_PROP_TEMP:
-		if (!chip->pdata->enable_current_sense) {
+		if (!chip->pdata->enable_current_sense ||
+				chip->enable_fake_temp) {
 			val->intval = CONSTANT_TEMP_IN_POWER_SUPPLY;
 			break;
 		}
@@ -1557,6 +1576,45 @@ static ssize_t get_shutdown_methods(struct device *dev,
 	return sprintf(buf, "%d\n", chip->disable_shdwn_methods);
 }
 
+/**
+ * set_fake_temp_enable - sysfs to set enable_fake_temp
+ * Parameter as define by sysfs interface
+ */
+static ssize_t set_fake_temp_enable(struct device *dev,
+			       struct device_attribute *attr, const char *buf,
+			       size_t count)
+{
+	struct max17042_chip *chip = dev_get_drvdata(dev);
+	unsigned long value;
+
+	if (strict_strtoul(buf, 10, &value))
+		return -EINVAL;
+
+	/* allow only 0 or 1 */
+	if (value > 1)
+		return -EINVAL;
+
+	if (value)
+		chip->enable_fake_temp = true;
+	else
+		chip->enable_fake_temp = false;
+
+	return count;
+}
+
+/**
+ * get_fake_temp_enable - sysfs get enable_fake_temp
+ * Parameter as define by sysfs interface
+ * Context: can sleep
+ */
+static ssize_t get_fake_temp_enable(struct device *dev,
+			       struct device_attribute *attr, char *buf)
+{
+	struct max17042_chip *chip = dev_get_drvdata(dev);
+
+	return sprintf(buf, "%d\n", chip->enable_fake_temp);
+}
+
 static int __devinit max17042_probe(struct i2c_client *client,
 			const struct i2c_device_id *id)
 {
@@ -1713,6 +1771,12 @@ static int __devinit max17042_probe(struct i2c_client *client,
 	if (ret)
 		dev_warn(&client->dev, "cannot create sysfs entry\n");
 
+	/* create sysfs file to enable fake battery temperature */
+	ret = device_create_file(&client->dev,
+			&dev_attr_enable_fake_temp);
+	if (ret)
+		dev_warn(&client->dev, "cannot create sysfs entry\n");
+
 	/* Register reboot notifier callback */
 	register_reboot_notifier(&max17042_reboot_notifier_block);
 
@@ -1725,6 +1789,7 @@ static int __devexit max17042_remove(struct i2c_client *client)
 
 	unregister_reboot_notifier(&max17042_reboot_notifier_block);
 	device_remove_file(&client->dev, &dev_attr_disable_shutdown_methods);
+	device_remove_file(&client->dev, &dev_attr_enable_fake_temp);
 	max17042_remove_debugfs(chip);
 	if (client->irq > 0)
 		free_irq(client->irq, chip);
