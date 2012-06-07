@@ -140,6 +140,7 @@ struct gsm_dlci {
 	struct kfifo *fifo;	/* Queue fifo for the DLCI */
 	struct kfifo _fifo;	/* For new fifo API porting only */
 	int adaption;		/* Adaption layer in use */
+	struct mutex rx_mutex;	/* Mutex when adaption change */
 	u32 modem_rx;		/* Our incoming virtual modem lines */
 	u32 modem_tx;		/* Our outgoing modem lines */
 	int dead;		/* Refuse re-open */
@@ -1646,6 +1647,7 @@ static struct gsm_dlci *gsm_dlci_alloc(struct gsm_mux *gsm, int addr)
 	struct gsm_dlci *dlci = kzalloc(sizeof(struct gsm_dlci), GFP_ATOMIC);
 	if (dlci == NULL)
 		return NULL;
+	mutex_init(&dlci->rx_mutex);
 	spin_lock_init(&dlci->lock);
 	kref_init(&dlci->ref);
 	dlci->fifo = &dlci->_fifo;
@@ -1826,7 +1828,10 @@ static void gsm_queue(struct gsm_mux *gsm)
 			gsm_command(gsm, address, DM|PF);
 			return;
 		}
+		/* We must prevent from changing adaption while receiving */
+		mutex_lock(&dlci->rx_mutex);
 		dlci->data(dlci, gsm->buf, gsm->len);
+		mutex_unlock(&dlci->rx_mutex);
 		break;
 	default:
 		goto invalid;
@@ -2850,9 +2855,11 @@ static void gsm_destroy_network(struct gsm_dlci *dlci)
 
 	pr_debug("destroy network interface");
 	if (dlci->net) {
+		mutex_lock(&dlci->rx_mutex);
 		netif_tx_disable(dlci->net);
 		mux_net = (struct gsm_mux_net *)netdev_priv(dlci->net);
 		kref_put(&mux_net->ref, net_free);
+		mutex_unlock(&dlci->rx_mutex);
 	}
 }
 
@@ -2901,6 +2908,8 @@ static int gsm_create_network(struct gsm_dlci *dlci, struct gsm_netconfig *nc)
 		free_netdev(net);
 		goto error_ret;
 	}
+
+	mutex_lock(&dlci->rx_mutex);
 	dlci->net = net;
 	dlci->adaption = nc->adaption;
 	dlci->data = gsm_mux_rx_netchar;
@@ -2908,6 +2917,7 @@ static int gsm_create_network(struct gsm_dlci *dlci, struct gsm_netconfig *nc)
 	mux_net = (struct gsm_mux_net *)netdev_priv(net);
 	mux_net->dlci = dlci;
 	kref_init(&mux_net->ref);
+	mutex_unlock(&dlci->rx_mutex);
 	strncpy(nc->if_name, net->name, IFNAMSIZ); /* return net name */
 	return net->ifindex;	/* return network index */
 
