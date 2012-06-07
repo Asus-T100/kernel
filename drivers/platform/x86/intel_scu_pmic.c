@@ -74,8 +74,15 @@ static int pwr_reg_rdwr(u16 *addr, u8 *data, u32 count, u32 cmd, u32 sub)
 		if (sub == IPC_CMD_PCNTRL_R) {
 			outlen = count > 0 ? ((count - 1) / 4) + 1 : 0;
 		} else if (sub == IPC_CMD_PCNTRL_W) {
+			if (count == 3)
+				inlen += 2;
+
 			for (i = 0; i < count; i++)
 				wbuf[inlen++] = data[i] & 0xff;
+
+			if (count == 3)
+				inlen -= 2;
+
 			outlen = 0;
 		} else if (sub == IPC_CMD_PCNTRL_M) {
 			wbuf[inlen++] = data[0] & 0xff;
@@ -122,12 +129,18 @@ EXPORT_SYMBOL(intel_scu_ipc_iowrite32);
 
 int intel_scu_ipc_readv(u16 *addr, u8 *data, int len)
 {
+	if (len < 1 || len > 8)
+		return -EINVAL;
+
 	return pwr_reg_rdwr(addr, data, len, IPCMSG_PCNTRL, IPC_CMD_PCNTRL_R);
 }
 EXPORT_SYMBOL(intel_scu_ipc_readv);
 
 int intel_scu_ipc_writev(u16 *addr, u8 *data, int len)
 {
+	if (len < 1 || len > 4)
+		return -EINVAL;
+
 	return pwr_reg_rdwr(addr, data, len, IPCMSG_PCNTRL, IPC_CMD_PCNTRL_W);
 }
 EXPORT_SYMBOL(intel_scu_ipc_writev);
