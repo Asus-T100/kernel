@@ -285,6 +285,7 @@ void mdfld_dsi_brightness_control (struct drm_device *dev, int pipe, int level)
 	int panel_duty_val = 0;
 	int ret = 0;
 
+#ifdef CONFIG_SUPPORT_HOST_PWM0
 	/* MSIC PWM duty cycle goes up to 0x63 = 99% */
 	#define BACKLIGHT_DUTY_FACTOR	0x63
 	#define PWM0DUTYCYCLE		0x67
@@ -299,7 +300,7 @@ void mdfld_dsi_brightness_control (struct drm_device *dev, int pipe, int level)
 		printk(KERN_ERR "[DISPLAY] %s: ipc write fail\n");
 		return;
 	}
-
+#endif
 	/* I won't pretend to understand this formula. The panel spec is quite
 	 * bad engrish.
 	 */

@@ -133,8 +133,10 @@ int psb_set_brightness(struct backlight_device *bd)
 				PSB_DEBUG_ENTRY("Out of DSR before set brightness to %d.\n",adjusted_level);
 			}
 #endif
-
-				mdfld_dsi_brightness_control(dev, 0, adjusted_level);
+			/* support the main panel brightness control */
+			mdfld_dsi_brightness_control(dev, 0, adjusted_level);
+			/* support the second panel brightness control */
+			if (dev_priv->panel_desc == DISPLAY_C)
 				mdfld_dsi_brightness_control(dev, 2, adjusted_level);
 		}
 		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);

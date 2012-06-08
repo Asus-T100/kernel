@@ -581,12 +581,12 @@ void dsi_lvds_toshiba_bridge_panel_on(struct drm_device *dev)
 					"i2c write failed (%d)\n", ret);
 		/* Set minimum brightness value - this is tunable */
 		ret = i2c_smbus_write_byte_data(cmi_lcd_i2c_client,
-				PANEL_PWM_MIN, 0x35);
+				PANEL_PWM_MIN, 0x1C);
 		if (ret < 0)
 			dev_err(&cmi_lcd_i2c_client->dev,
 					"i2c write failed (%d)\n", ret);
 
-		/*changing CABC PWM frequency to 5 Khz */
+		/* changing CABC PWM frequency to 5 Khz */
 		ret = i2c_smbus_write_byte_data(cmi_lcd_i2c_client,
 				PANEL_FREQ_DIVIDER_HI, 0xE0);
 		if (ret < 0)
@@ -598,9 +598,22 @@ void dsi_lvds_toshiba_bridge_panel_on(struct drm_device *dev)
 			dev_err(&cmi_lcd_i2c_client->dev,
 					"i2c write failed (%d)\n", ret);
 
-		/*PANEL_MODIFY_RGB to 0x00 to get rid of flicker*/
+		/* PANEL_MODIFY_RGB to 0x00 to get rid of flicker */
 		ret = i2c_smbus_write_byte_data(cmi_lcd_i2c_client,
 				PANEL_MODIFY_RGB, 0x00);
+		if (ret < 0)
+			dev_err(&cmi_lcd_i2c_client->dev,
+					"i2c write failed (%d)\n", ret);
+		/* Enable PWMO generate by internal frequency */
+		ret = i2c_smbus_write_byte_data(cmi_lcd_i2c_client,
+				PANEL_PWM_CONTROL, 0x01);
+		if (ret < 0)
+			dev_err(&cmi_lcd_i2c_client->dev,
+					"i2c write failed (%d)\n", ret);
+
+		/* Set maximum duty of PWMO by pwm_set */
+		ret = i2c_smbus_write_byte_data(cmi_lcd_i2c_client,
+				PANEL_PWM_REF, 0x00);
 		if (ret < 0)
 			dev_err(&cmi_lcd_i2c_client->dev,
 					"i2c write failed (%d)\n", ret);
@@ -1037,8 +1050,11 @@ static int __init dsi_lvds_bridge_init(void)
 	ret = i2c_add_driver(&tc35876x_bridge_i2c_driver);
 
 	printk(KERN_INFO "[DISPLAY] %s: Exit, ret = %d\n", __func__, ret);
-
+#ifdef CONFIG_SUPPORT_HOST_PWM0
+	/* Init the PWM0 of host, if the backlight brightness is controlled
+	* by internel pwm of the panel, ignore this operation */
 	mdfld_dsi_lvds_brightness_init();
+#endif
 	return 0;
 }
 
