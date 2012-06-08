@@ -696,10 +696,18 @@ int sst_free_stream(int str_id)
 	struct intel_sst_ops *ops;
 
 	pr_debug("SST DBG:sst_free_stream for %d\n", str_id);
+
+	mutex_lock(&sst_drv_ctx->sst_lock);
+	if (sst_drv_ctx->sst_state == SST_UN_INIT) {
+		mutex_unlock(&sst_drv_ctx->sst_lock);
+		return -ENODEV;
+	}
+	mutex_unlock(&sst_drv_ctx->sst_lock);
 	str_info = get_stream_info(str_id);
 	if (!str_info)
 		return -EINVAL;
 	ops = sst_drv_ctx->ops;
+
 	mutex_lock(&str_info->lock);
 	if (str_info->status != STREAM_UN_INIT) {
 		str_info->prev =  str_info->status;

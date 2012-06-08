@@ -581,6 +581,9 @@ static int sst_device_control(int cmd, void *arg)
 {
 	int retval = 0, str_id = 0;
 
+	if (sst_drv_ctx->sst_state == SST_UN_INIT) {
+		return 0;
+	}
 	switch (cmd) {
 	case SST_SND_PAUSE:
 	case SST_SND_RESUME: {

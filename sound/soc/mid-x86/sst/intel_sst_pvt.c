@@ -35,6 +35,8 @@
 #include <linux/fs.h>
 #include <linux/firmware.h>
 #include <linux/sched.h>
+#include <sound/asound.h>
+#include <sound/pcm.h>
 #include <sound/intel_sst_ioctl.h>
 #include "../sst_platform.h"
 #include "intel_sst_fw_ipc.h"
@@ -100,6 +102,43 @@ int sst_wait_interruptible(struct intel_sst_drv *sst_drv_ctx,
 
 }
 
+static void sst_do_recovery(struct intel_sst_drv *sst)
+{
+	int i;
+	struct ipc_post *m, *_m;
+	struct stream_info *str_info;
+	/*
+	 * settign firmware state as uninit so that the firmware will get
+	 * redownloaded on next request this is because firmare not responding
+	 * for 5 sec is equalant to some unrecoverable error of FW
+	 */
+	mutex_lock(&sst->sst_lock);
+	sst->sst_state = SST_UN_INIT;
+	pr_err("Audio: Intel SST engine encountered an unrecoverable error\n");
+	pr_err("Audio: trying to reset the dsp now\n");
+	pr_err("Audio: Registers-> IPCD %x, IPCX %x, IMR %x, ISR %x, CSR %x\n",
+		sst_shim_read(sst->shim, SST_IPCD), sst_shim_read(sst->shim, SST_IPCX),
+		sst_shim_read(sst->shim, SST_IMRX), sst_shim_read(sst->shim, SST_ISRX),
+		sst_shim_read(sst->shim, SST_CSR));
+	for (i = 1; i <= sst->max_streams; i++) {
+		pr_err("Audio: Stream %d, state %d\n", i, sst->streams[i].status);
+		if (sst->streams[i].status != STREAM_UN_INIT) {
+			str_info = &sst_drv_ctx->streams[i];
+			if (str_info->pcm_substream)
+				snd_pcm_stop(str_info->pcm_substream, SNDRV_PCM_STATE_SETUP);
+		}
+	}
+	dump_stack();
+	list_for_each_entry_safe(m, _m, &sst->ipc_dispatch_list, node) {
+		pr_err("pending msg header %#x\n", m->header.full);
+		list_del(&m->node);
+		kfree(m->mailbox_data);
+		kfree(m);
+	}
+
+	mutex_unlock(&sst->sst_lock);
+}
+
 /*
  * sst_wait_timeout - wait on event for timeout
  *
@@ -128,6 +167,7 @@ int sst_wait_timeout(struct intel_sst_drv *sst_drv_ctx, struct sst_block *block)
 	} else {
 		block->on = false;
 		pr_err("sst: Wait timed-out %x\n", block->condition);
+		sst_do_recovery(sst_drv_ctx);
 		/* settign firmware state as uninit so that the
 		firmware will get redownloaded on next request
 		this is because firmare not responding for 5 sec
