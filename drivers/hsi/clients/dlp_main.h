@@ -84,18 +84,23 @@
 #define DLP_BUGGY_PDU_SIZE	0xFFFFFFFFUL
 
 /* PDU size for TTY channel */
-#define DLP_TTY_PDU_LENGTH		4096	/* 1500 Bytes */
+#define DLP_TTY_PDU_SIZE		4096	/* 1500 Bytes */
+#define DLP_TTY_TX_PDU_SIZE		4096	/* 1500 Bytes */
+#define DLP_TTY_RX_PDU_SIZE		4096	/* 1500 Bytes */
 #define DLP_TTY_HEADER_LENGTH	16
-#define DLP_TTY_PAYLOAD_LENGTH	(DLP_TTY_PDU_LENGTH - DLP_TTY_HEADER_LENGTH)
+#define DLP_TTY_PAYLOAD_LENGTH	(DLP_TTY_PDU_SIZE - DLP_TTY_HEADER_LENGTH)
 
 /* PDU size for NET channels */
-#define DLP_NET_PDU_SIZE	4096	/* 15360: 15 KBytes */
+#define DLP_NET_RX_PDU_SIZE	4096	/* 15360: 15 KBytes */
+#define DLP_NET_TX_PDU_SIZE	4096	/* 15360: 15 KBytes */
 
 /* PDU size for CTRL channel */
-#define DLP_CTRL_PDU_SIZE	4	/* 4 Bytes */
+#define DLP_CTRL_TX_PDU_SIZE	4	/* 4 Bytes */
+#define DLP_CTRL_RX_PDU_SIZE	4	/* 4 Bytes */
 
 /* PDU size for Flashing channel */
-#define DLP_FLASH_PDU_SIZE	4	/* 4 Bytes */
+#define DLP_FLASH_TX_PDU_SIZE	4	/* 4 Bytes */
+#define DLP_FLASH_RX_PDU_SIZE	4	/* 4 Bytes */
 
 /* Alignment params */
 #define DLP_PACKET_ALIGN_AP		16
@@ -137,8 +142,8 @@
 /* RX and TX state machine definitions */
 enum {
 	IDLE,
-	ACTIVE,
-	TTY,
+	READY,
+	ACTIVE
 };
 
 /* DLP contexts */
@@ -152,6 +157,20 @@ enum {
 	DLP_CHANNEL_FLASH,	/* HSI Channel 0 */
 	DLP_CHANNEL_COUNT
 };
+
+/* DLP channel state */
+enum {
+	DLP_CH_STATE_CLOSED,	/* Default initial state (channel closed) */
+	DLP_CH_STATE_CLOSING,	/* Closing ... (waiting for CLOSE_CONN resp) */
+	DLP_CH_STATE_OPENING,	/* Opening ... (waiting for OPEN_CONN resp) */
+	DLP_CH_STATE_OPENED	/* Channel correctly opened (OPEN_CONN + ACK) */
+};
+
+#define DLP_CH_STATE_TO_STR(s) \
+	(s == DLP_CH_STATE_CLOSED	? "Closed" : \
+	(s == DLP_CH_STATE_CLOSING	? "Closing" : \
+	(s == DLP_CH_STATE_OPENING)	? "Opening" : \
+	(s == DLP_CH_STATE_OPENED)	? "Opened" : "Unknown"))
 
 /*  */
 #define DLP_GLOBAL_STATE_SZ		2
@@ -169,6 +188,7 @@ typedef void (*hsi_client_cb) (struct hsi_client *cl);
 
 /**
  * struct dlp_xfer_ctx - TX/RX transfer context
+ * @pdu_size: the xfer pdu size
  * @wait_pdus: head of the FIFO of TX/RX waiting pdus
  * @wait_len: current length of the TX/RX waiting pdus FIFO
  * @wait_max: maximal length of the TX/RX waiting pdus FIFO
@@ -189,9 +209,12 @@ typedef void (*hsi_client_cb) (struct hsi_client *cl);
  * @config: current updated HSI configuration
  * @complete_cb: xfer complete callback
  * @ttype: xfer type (RX/TX)
+ * @seq_num: The current xfer index
+ * @cmd_xfer_done: Used to wait for CTRL command completion (RX/TX)
  * @tty_stats: TTY stats
  */
 struct dlp_xfer_ctx {
+	unsigned int pdu_size;
 	struct list_head wait_pdus;
 	unsigned int wait_len;
 	unsigned int wait_max;
@@ -220,6 +243,7 @@ struct dlp_xfer_ctx {
 	unsigned int ttype;
 
 	unsigned int seq_num;
+	struct completion cmd_xfer_done;
 
 #ifdef CONFIG_HSI_DLP_TTY_STATS
 	struct hsi_dlp_stats tty_stats;
@@ -243,8 +267,10 @@ struct dlp_hangup_ctx {
  * @client: reference to this HSI client
  * @credits: credits value (nb of pdus that can be sent to the modem)
  * @credits_lock: credits lock
- * @pdu_size: the fixed pdu size
- * @ready: the channel is ready (TTY opened, NET IF configure)
+ * @use_flow_ctrl: specify if the flow control (CREDITS) is enabled
+ * @state: the current channel stated (Opened, Close, ...)
+ * @stop_tx_w: Work for making synchronous TX start request
+ * @stop_tx: Work for making synchronous TX stop request
  * @controller: reference to the controller bound to this context
  * @hsi_channel: the HSI channel number
  * @credits: the credits value
@@ -256,8 +282,10 @@ struct dlp_channel {
 	unsigned int hsi_channel;
 	unsigned int credits;
 	spinlock_t	 lock;
-	unsigned int pdu_size;
-	unsigned int ready;
+	unsigned int state;
+	unsigned int use_flow_ctrl;
+	struct work_struct start_tx_w;
+	struct work_struct stop_tx_w;
 
 	/* TX/RX contexts */
 	wait_queue_head_t tx_empty_event;
@@ -276,7 +304,7 @@ struct dlp_channel {
 	void (*credits_available_cb)(struct dlp_channel *ch_ctx);
 
 	/* Debug */
-	int (*dump_status)(struct dlp_channel *ch_ctx, struct seq_file *m);
+	void (*dump_state)(struct dlp_channel *ch_ctx, struct seq_file *m);
 
 	/* Channel sepecific data */
 	void *ch_data;
@@ -298,8 +326,7 @@ struct dlp_channel {
  * @flash_rx_cfg: HSI client configuration (Used for Boot/Flashing RX)
  * @start_rx_cb: HSI client start RX callback
  * @stop_rx_cb: HSI client stop RX callback
- *
- * @debug: Debug variable
+ * @debug: Dynamic debug variable
  */
 struct dlp_driver {
 	struct dlp_channel *channels[DLP_CHANNEL_COUNT];
@@ -309,10 +336,9 @@ struct dlp_driver {
 	struct device *controller;
 
 	/* Workqueue for tty buffer forwarding */
-	struct workqueue_struct *forwarding_wq;
-
-	struct workqueue_struct *recycle_wq;
-	struct workqueue_struct *tx_hangup_wq;
+	struct workqueue_struct *rx_wq;
+	struct workqueue_struct *tx_wq;
+	struct workqueue_struct *hangup_wq;
 
 	/* Modem readiness */
 	int modem_ready;
@@ -330,10 +356,10 @@ struct dlp_driver {
 	struct hsi_config flash_rx_cfg;
 
 	/* Platform data */
-
+	struct hsi_mid_platform_data *pd;
 
 	/* Debug variables */
-	int debug;
+	long debug;
 };
 
 /*
@@ -370,7 +396,7 @@ struct hsi_msg *dlp_pdu_alloc(unsigned int hsi_channel,
 			      xfer_complete_cb complete_cb,
 			      xfer_complete_cb destruct_cb);
 
-void dlp_pdu_free(struct hsi_msg *pdu, unsigned int pdu_size);
+void dlp_pdu_free(struct hsi_msg *pdu, unsigned int hsi_channel);
 
 void dlp_pdu_delete(struct dlp_xfer_ctx *xfer_ctx, struct hsi_msg *pdu);
 
@@ -397,6 +423,8 @@ unsigned char *dlp_pdu_data_ptr(struct hsi_msg *pdu, unsigned int offset);
  * State handling
  *
  ***************************************************************************/
+void dlp_dump_channel_state(struct dlp_channel *ch_ctx, struct seq_file *m);
+
 inline __must_check
 unsigned int dlp_ctx_get_state(struct dlp_xfer_ctx *xfer_ctx);
 
@@ -470,8 +498,10 @@ inline void dlp_hsi_controller_pop(struct dlp_xfer_ctx *xfer_ctx);
 int dlp_hsi_controller_push(struct dlp_xfer_ctx *xfer_ctx,
 		struct hsi_msg *pdu);
 
-void dlp_hsi_start_tx(struct dlp_xfer_ctx *xfer_ctx);
+void dlp_do_start_tx(struct work_struct *work);
+void dlp_do_stop_tx(struct work_struct *work);
 
+void dlp_start_tx(struct dlp_xfer_ctx *xfer_ctx);
 void dlp_stop_tx(struct dlp_xfer_ctx *xfer_ctx);
 
 inline void dlp_stop_rx(struct dlp_xfer_ctx *xfer_ctx,
@@ -493,7 +523,7 @@ void dlp_restore_rx_callbacks(hsi_client_cb *start_rx_cb,
  *
  ***************************************************************************/
 void dlp_xfer_ctx_init(struct dlp_channel *ch_ctx,
-		       struct dlp_xfer_ctx *xfer_ctx,
+		       unsigned int pdu_size,
 		       unsigned int delay,
 		       unsigned int wait_max,
 		       unsigned int ctrl_max,
@@ -536,6 +566,14 @@ inline unsigned int dlp_ctrl_modem_is_ready(void);
 int dlp_ctrl_open_channel(struct dlp_channel *ch_ctx);
 
 int dlp_ctrl_close_channel(struct dlp_channel *ch_ctx);
+
+int dlp_ctrl_send_nop(struct dlp_channel *ch_ctx);
+
+inline void
+dlp_ctrl_set_channel_state(struct dlp_channel *, unsigned char);
+
+inline unsigned char
+dlp_ctrl_get_channel_state(struct dlp_channel *ch_ctx);
 
 void dlp_ctrl_hangup_ctx_init(struct dlp_channel *ch_ctx,
 		void (*timeout_func)(struct dlp_channel *ch_ctx));
