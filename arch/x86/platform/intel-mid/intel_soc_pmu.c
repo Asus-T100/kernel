@@ -734,10 +734,6 @@ static int get_pci_to_pmu_index(struct pci_dev *pdev)
 	type = ss & LOG_SS_MASK;
 	ss = ss & LOG_ID_MASK;
 
-	/*FIXME:: remove this once IFWI fixes Audio DMA LSS to 9 */
-	if (ss == PMU_SC_DMA_LSS_16)
-		ss = PMU_AUDIO_DMA_LSS_09;
-
 	if ((base_class == PCI_BASE_CLASS_DISPLAY) && !sub_class)
 		index = 1;
 	else if ((base_class == PCI_BASE_CLASS_MULTIMEDIA) &&
