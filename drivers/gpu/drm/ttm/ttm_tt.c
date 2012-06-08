@@ -68,6 +68,7 @@ static void ttm_tt_free_user_pages(struct ttm_tt *ttm)
 	int write;
 	int dirty;
 	struct page *page;
+	struct page **pages_to_wb;
 	int i;
 	struct ttm_backend *be = ttm->be;
 
@@ -77,6 +78,27 @@ static void ttm_tt_free_user_pages(struct ttm_tt *ttm)
 
 	if (be)
 		be->func->clear(be);
+
+	pages_to_wb = kmalloc(ttm->num_pages * sizeof(struct page *),
+			GFP_KERNEL);
+
+	if (pages_to_wb && ttm->caching_state != tt_cached) {
+		int num_pages_wb = 0;
+
+		for (i = 0; i < ttm->num_pages; ++i) {
+			page = ttm->pages[i];
+			if (page == NULL)
+				continue;
+			pages_to_wb[num_pages_wb++] = page;
+		}
+
+		if (set_pages_array_wb(pages_to_wb, num_pages_wb))
+			printk(KERN_ERR TTM_PFX "Failed to set pages to wb\n");
+
+	} else {
+		printk(KERN_ERR TTM_PFX
+		       "Failed to allocate memory for set wb operation.\n");
+	}
 
 	for (i = 0; i < ttm->num_pages; ++i) {
 		page = ttm->pages[i];
@@ -98,6 +120,7 @@ static void ttm_tt_free_user_pages(struct ttm_tt *ttm)
 	ttm->state = tt_unpopulated;
 	ttm->first_himem_page = ttm->num_pages;
 	ttm->last_lomem_page = -1;
+	kfree(pages_to_wb);
 }
 
 static struct page *__ttm_tt_get_page(struct ttm_tt *ttm, int index)
