@@ -133,7 +133,8 @@ MRST_ERROR MRSTLFBUninstallVSyncISR(MRSTLFB_DEVINFO	*psDevInfo)
 #endif
 
 
-void MRSTLFBFlipToSurface(MRSTLFB_DEVINFO *psDevInfo,  unsigned long uiAddr)
+IMG_BOOL  MRSTLFBFlipToSurface(MRSTLFB_DEVINFO *psDevInfo,
+		unsigned long uiAddr)
 {
     int dspbase = (psDevInfo->ui32MainPipe == 0 ? DSPABASE : DSPBBASE);
     int dspsurf = (psDevInfo->ui32MainPipe == 0 ? DSPASURF : DSPBSURF);
@@ -147,20 +148,16 @@ void MRSTLFBFlipToSurface(MRSTLFB_DEVINFO *psDevInfo,  unsigned long uiAddr)
         if (IS_MRST(dev)) {
             MRSTLFBVSyncWriteReg(psDevInfo, dspsurf, uiAddr);
         } else if (IS_MDFLD(dev)) {
-		if (!dev_priv->um_start) {
-			dev_priv->um_start = true;
-			dev_priv->b_async_flip_enable = true;
-			if (dev_priv->b_dsr_enable_config)
-				dev_priv->b_dsr_enable = true;
-		}
 		if (psCurrentSwapChain != NULL) {
 			if (psCurrentSwapChain->ui32SwapChainPropertyFlag
 					& PVRSRV_SWAPCHAIN_ATTACHED_PLANE_A) {
 				dspsurf = DSPASURF;
 				MRSTLFBVSyncWriteReg(psDevInfo, dspsurf, uiAddr);
 				if (dev_priv->b_async_flip_enable &&
-						 dev_priv->async_flip_update_fb)
-					dev_priv->async_flip_update_fb(dev, 0);
+						dev_priv->async_flip_update_fb)
+					if (dev_priv->async_flip_update_fb(
+						dev, 0)	== IMG_FALSE)
+						return IMG_FALSE;
 			}
 #if defined(CONFIG_MDFD_DUAL_MIPI)
 			if (psCurrentSwapChain->ui32SwapChainPropertyFlag
@@ -169,7 +166,9 @@ void MRSTLFBFlipToSurface(MRSTLFB_DEVINFO *psDevInfo,  unsigned long uiAddr)
 				MRSTLFBVSyncWriteReg(psDevInfo, dspsurf, uiAddr);
 				if (dev_priv->b_async_flip_enable &&
 						 dev_priv->async_flip_update_fb)
-					dev_priv->async_flip_update_fb(dev, 2);
+					if (dev_priv->async_flip_update_fb(
+						 dev, 2) == IMG_FALSE)
+						return IMG_FALSE;
 			}
 #endif
 #ifdef CONFIG_MDFD_HDMI
@@ -192,6 +191,7 @@ void MRSTLFBFlipToSurface(MRSTLFB_DEVINFO *psDevInfo,  unsigned long uiAddr)
         }
         ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
     }
+	return IMG_TRUE;
 }
 
 int PVR_DRM_MAKENAME(DISPLAY_CONTROLLER, _Init)(struct drm_device unref__ *dev)

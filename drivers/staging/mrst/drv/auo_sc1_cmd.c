@@ -141,15 +141,6 @@ static struct drm_display_mode *auo_cmd_get_config_mode(struct drm_device* dev)
 				((ti->vblank_hi << 8) | ti->vblank_lo);
 		mode->clock = ti->pixel_clock * 10;
 
-		PSB_DEBUG_ENTRY("hdisplay is %d\n", mode->hdisplay);
-		PSB_DEBUG_ENTRY("vdisplay is %d\n", mode->vdisplay);
-		PSB_DEBUG_ENTRY("HSS is %d\n", mode->hsync_start);
-		PSB_DEBUG_ENTRY("HSE is %d\n", mode->hsync_end);
-		PSB_DEBUG_ENTRY("htotal is %d\n", mode->htotal);
-		PSB_DEBUG_ENTRY("VSS is %d\n", mode->vsync_start);
-		PSB_DEBUG_ENTRY("VSE is %d\n", mode->vsync_end);
-		PSB_DEBUG_ENTRY("vtotal is %d\n", mode->vtotal);
-		PSB_DEBUG_ENTRY("clock is %d\n", mode->clock);
 	} else {
 		mode->hdisplay = 540;
 		mode->vdisplay = 960;
@@ -163,8 +154,18 @@ static struct drm_display_mode *auo_cmd_get_config_mode(struct drm_device* dev)
 		mode->vtotal = mode->vsync_end + 4;
 		mode->vrefresh = 60;
 		mode->clock = mode->vrefresh * mode->vtotal *
-						mode->htotal / 1000;
+			mode->htotal / 1000;
 	}
+
+	PSB_DEBUG_ENTRY("hdisplay is %d\n", mode->hdisplay);
+	PSB_DEBUG_ENTRY("vdisplay is %d\n", mode->vdisplay);
+	PSB_DEBUG_ENTRY("HSS is %d\n", mode->hsync_start);
+	PSB_DEBUG_ENTRY("HSE is %d\n", mode->hsync_end);
+	PSB_DEBUG_ENTRY("htotal is %d\n", mode->htotal);
+	PSB_DEBUG_ENTRY("VSS is %d\n", mode->vsync_start);
+	PSB_DEBUG_ENTRY("VSE is %d\n", mode->vsync_end);
+	PSB_DEBUG_ENTRY("vtotal is %d\n", mode->vtotal);
+	PSB_DEBUG_ENTRY("clock is %d\n", mode->clock);
 
 	drm_mode_set_name(mode);
 	drm_mode_set_crtcinfo(mode, 0);

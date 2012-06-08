@@ -293,6 +293,49 @@ void psb_te_timer_func(unsigned long data)
 	*/
 }
 
+void mdfld_async_flip_te_handler(struct drm_device *dev, uint32_t pipe)
+{
+	struct drm_psb_private *dev_priv =
+		(struct drm_psb_private *) dev->dev_private;
+	struct mdfld_dbi_dsr_info *dsr_info = dev_priv->dbi_dsr_info;
+	struct mdfld_dsi_dbi_output **dbi_outputs;
+	struct mdfld_dsi_dbi_output *dbi_output;
+	static unsigned long cnt;
+	u32 damage_mask = 0;
+
+	int ret = 0;
+
+	/*wake up all thread waiting for a vblank*/
+	drm_handle_vblank(dev, pipe);
+
+	if (dev_priv->psb_vsync_handler != NULL)
+		ret = (*dev_priv->psb_vsync_handler)(dev, pipe);
+
+	dbi_outputs = dsr_info->dbi_outputs;
+	dbi_output = pipe ? dbi_outputs[1] : dbi_outputs[0];
+
+	if (!dbi_output)
+		return ;
+
+	if (dev_priv->b_dsr_enable) {
+		spin_lock(&dev_priv->dsr_lock);
+
+		if (pipe == 0)
+			damage_mask = dev_priv->dsr_fb_update & MDFLD_DSR_DAMAGE_MASK_0;
+		else if (pipe == 2)
+			damage_mask = dev_priv->dsr_fb_update & MDFLD_DSR_DAMAGE_MASK_2;
+
+		if (damage_mask)
+			dev_priv->dsr_idle_count = 0;
+		 else {
+			if (dev_priv->dsr_idle_count > 50)
+				mdfld_dsi_dbi_enter_dsr(dbi_output, pipe);
+			else
+				dev_priv->dsr_idle_count++;
+		}
+		spin_unlock(&dev_priv->dsr_lock);
+	}
+}
 void mdfld_te_handler_work(struct work_struct *work)
 {
 	struct drm_psb_private *dev_priv =
@@ -300,15 +343,20 @@ void mdfld_te_handler_work(struct work_struct *work)
 	int pipe = dev_priv->te_pipe;
 	struct drm_device *dev = dev_priv->dev;
 
-#ifdef CONFIG_MDFD_DSI_DPU
-	mdfld_dpu_update_panel(dev);
-#else
-	mdfld_dbi_update_panel(dev, pipe);
-#endif
-	drm_handle_vblank(dev, pipe);
 
-	if (dev_priv->psb_vsync_handler != NULL)
-		(*dev_priv->psb_vsync_handler)(dev, pipe);
+	if (dev_priv->b_async_flip_enable)
+		mdfld_async_flip_te_handler(dev, pipe);
+	else {
+#ifdef CONFIG_MDFD_DSI_DPU
+		mdfld_dpu_update_panel(dev);
+#else
+		mdfld_dbi_update_panel(dev, pipe);
+#endif
+		drm_handle_vblank(dev, pipe);
+
+		if (dev_priv->psb_vsync_handler != NULL)
+			(*dev_priv->psb_vsync_handler)(dev, pipe);
+	}
 }
 
 static void update_te_counter(struct drm_device *dev, uint32_t pipe)
@@ -441,16 +489,8 @@ static void mid_pipe_event_handler(struct drm_device *dev, uint32_t pipe)
 	if (pipe_stat_val & PIPE_TE_STATUS) {
 		/*update te sequence on this pipe*/
 		update_te_counter(dev, pipe);
-
-		if (dev_priv->b_async_flip_enable) {
-			/*wake up all thread waiting for a vblank*/
-			drm_handle_vblank(dev, pipe);
-			if (dev_priv->psb_vsync_handler != NULL)
-				(*dev_priv->psb_vsync_handler)(dev, pipe);
-		} else {
-			dev_priv->te_pipe = pipe;
-			schedule_work(&dev_priv->te_work);
-		}
+		dev_priv->te_pipe = pipe;
+		schedule_work(&dev_priv->te_work);
 	}
 
 	if (pipe_stat_val & PIPE_HDMI_AUDIO_UNDERRUN_STATUS) {
@@ -650,9 +690,6 @@ void psb_irq_preinstall_islands(struct drm_device *dev, int hw_islands)
 	unsigned long irqflags;
 
 	PSB_DEBUG_IRQ("\n");
-
-	if (dev_priv->b_dsr_enable)
-		dev_priv->exit_idle(dev, MDFLD_DSR_2D_3D, 0, true);
 
 	spin_lock_irqsave(&dev_priv->irqmask_lock, irqflags);
 

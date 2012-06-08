@@ -324,11 +324,13 @@ static int __send_short_pkg(struct mdfld_dsi_pkg_sender * sender,
 
 	if(pkg->transmission_type == MDFLD_DSI_HS_TRANSMISSION) {
 		/*wait for hs fifo empty*/
+		wait_for_dbi_fifo_empty(sender);
 		wait_for_hs_fifos_empty(sender);
 
 		/*send pkg*/
 		REG_WRITE(hs_gen_ctrl_reg, gen_ctrl_val);
 	} else if(pkg->transmission_type == MDFLD_DSI_LP_TRANSMISSION) {
+		wait_for_dbi_fifo_empty(sender);
 		wait_for_lp_fifos_empty(sender);
 
 		/*send pkg*/
@@ -372,6 +374,7 @@ static int __send_long_pkg(struct mdfld_dsi_pkg_sender * sender,
 
 	if(pkg->transmission_type == MDFLD_DSI_HS_TRANSMISSION) {
 		/*wait for hs ctrl and data fifos to be empty*/
+		wait_for_dbi_fifo_empty(sender);
 		wait_for_hs_fifos_empty(sender);
 
 		dword_count = long_pkg->len / 4;
@@ -398,6 +401,7 @@ static int __send_long_pkg(struct mdfld_dsi_pkg_sender * sender,
 		REG_WRITE(hs_gen_ctrl_reg, gen_ctrl_val);
 
 	} else if(pkg->transmission_type == MDFLD_DSI_LP_TRANSMISSION) {
+		wait_for_dbi_fifo_empty(sender);
 		wait_for_lp_fifos_empty(sender);
 
 		dword_count = long_pkg->len / 4;
@@ -752,17 +756,23 @@ static inline void pkg_sender_queue_pkg(struct mdfld_dsi_pkg_sender * sender,
 	spin_unlock_irqrestore(&sender->lock, flags);
 }
 
-static inline void process_pkg_list(struct mdfld_dsi_pkg_sender * sender)
+static inline int process_pkg_list(struct mdfld_dsi_pkg_sender *sender)
 {
 	struct mdfld_dsi_pkg * pkg;
 	unsigned long flags;
+	int ret = 0;
 
 	spin_lock_irqsave(&sender->lock, flags);
 
 	while(!list_empty(&sender->pkg_list)) {
 		pkg = list_first_entry(&sender->pkg_list, struct mdfld_dsi_pkg, entry);
 
-		send_pkg(sender, pkg);
+		ret = send_pkg(sender, pkg);
+
+		if (ret) {
+			DRM_INFO("Returning eror from process_pkg_lisgt");
+			goto errorunlock;
+		}
 
 		list_del_init(&pkg->entry);
 
@@ -770,6 +780,11 @@ static inline void process_pkg_list(struct mdfld_dsi_pkg_sender * sender)
 	}
 
 	spin_unlock_irqrestore(&sender->lock, flags);
+	return 0;
+
+errorunlock:
+	spin_unlock_irqrestore(&sender->lock, flags);
+	return ret;
 }
 
 static int mdfld_dsi_send_mcs_long(struct mdfld_dsi_pkg_sender * sender,
@@ -1258,23 +1273,14 @@ void dsi_controller_dpi_init(struct mdfld_dsi_config * dsi_config, int pipe)
 	REG_WRITE((MIPIA_DEVICE_READY_REG + reg_offset), 0x00000001);
 }
 
-void mdfld_dsi_cmds_kick_out(struct mdfld_dsi_pkg_sender * sender)
+int  mdfld_dsi_cmds_kick_out(struct mdfld_dsi_pkg_sender *sender)
 {
-	process_pkg_list(sender);
+	return process_pkg_list(sender);
 }
 
 int mdfld_dsi_check_fifo_empty(struct mdfld_dsi_pkg_sender *sender)
 {
-	struct mdfld_dsi_pkg dsi_pkg = { 0 };
-	u32 cb_phy = sender->dbi_cb_phy;
 	struct drm_device *dev = sender->dev;
-	u32 index = 0;
-	u8 *cb = (u8 *)sender->dbi_cb_addr;
-	unsigned long flags;
-	int retry;
-	u8 *dst = NULL;
-	u8 *pSendparam = NULL;
-	int err = 0;
 
 	if (!sender) {
 		DRM_ERROR("Invalid parameter\n");
@@ -1294,12 +1300,10 @@ int mdfld_dsi_send_dcs(struct mdfld_dsi_pkg_sender * sender,
 			u8 dcs, u8 * param, u32 param_num, u8 data_src,
 			int delay)
 {
-	struct mdfld_dsi_pkg dsi_pkg = { 0 };
 	u32 cb_phy = sender->dbi_cb_phy;
 	struct drm_device *dev = sender->dev;
 	u32 index = 0;
 	u8 *cb = (u8 *)sender->dbi_cb_addr;
-	unsigned long flags;
 	int retry;
 	u8 *dst = NULL;
 	u8 *pSendparam = NULL;
@@ -1317,8 +1321,7 @@ int mdfld_dsi_send_dcs(struct mdfld_dsi_pkg_sender * sender,
 
 	/*if dcs is write_mem_start, send it directly using DSI adapter interface*/
 	if (dcs == write_mem_start) {
-		if (!spin_trylock(&sender->lock))
-			return -EAGAIN;
+		spin_lock(&sender->lock);
 
 		/**
 		 * check the whether is there any write_mem_start already being
@@ -1345,6 +1348,7 @@ int mdfld_dsi_send_dcs(struct mdfld_dsi_pkg_sender * sender,
 
 		/*if DBI FIFO timeout, drop this frame*/
 		if (!retry) {
+			DRM_ERROR("DBI FIFO timeout, drop frame\n");
 			spin_unlock(&sender->lock);
 			return 0;
 		}

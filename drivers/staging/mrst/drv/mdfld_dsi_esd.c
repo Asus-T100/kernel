@@ -62,10 +62,22 @@ static int __esd_thread(void *data)
 		p_funcs = dbi_output->p_funcs;
 		if (p_funcs && (p_funcs->esd_detection)
 			&& dev_priv->dbi_panel_on) {
+			if (dev_priv->b_dsr_enable) {
+				dev_priv->exit_idle(dev,
+						MDFLD_DSR_2D_3D,
+						NULL,
+						0);
+				/*make sure, during esd no DSR again*/
+				dbi_output->mode_flags |= MODE_SETTING_ON_GOING;
+			}
 			if (p_funcs->esd_detection(dsi_config)) {
 				printk(KERN_ALERT"ESD\n");
 				schedule_work(&dev_priv->reset_panel_work);
 			}
+			if (dev_priv->b_dsr_enable) {
+				dbi_output->mode_flags &= ~MODE_SETTING_ON_GOING;
+			}
+
 		}
 esd_exit:
 		schedule_timeout_interruptible(

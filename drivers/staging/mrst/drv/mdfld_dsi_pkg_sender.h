@@ -191,7 +191,7 @@ extern int mdfld_dsi_send_dpi_spk_pkg_hs(struct mdfld_dsi_pkg_sender *sender,
 				u32 spk_pkg);
 extern int mdfld_dsi_send_dpi_spk_pkg_lp(struct mdfld_dsi_pkg_sender *sender,
 				u32 spk_pkg);
-extern void mdfld_dsi_cmds_kick_out(struct mdfld_dsi_pkg_sender * sender);
+extern int mdfld_dsi_cmds_kick_out(struct mdfld_dsi_pkg_sender *sender);
 extern void mdfld_dsi_report_te(struct mdfld_dsi_pkg_sender *sender);
 
 /*read interfaces*/

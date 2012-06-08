@@ -1728,6 +1728,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	mutex_init(&dev_priv->overlay_lock);
 
 	spin_lock_init(&dev_priv->reloc_lock);
+	spin_lock_init(&dev_priv->dsr_lock);
 
 	DRM_INIT_WAITQUEUE(&dev_priv->rel_mapped_queue);
 
@@ -3316,9 +3317,10 @@ static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 					dev_priv->async_flip_update_fb)
 					dev_priv->async_flip_update_fb(dev, 0);
 
-				overlay_wait_vblank(dev,
-					file_priv,
-					arg->overlay.OVADD);
+				if (arg->overlay.b_wait_vblank)
+					overlay_wait_vblank(dev,
+							file_priv,
+							arg->overlay.OVADD);
 
 				if (IS_MDFLD(dev)) {
 					if (arg->overlay.IEP_ENABLED) {

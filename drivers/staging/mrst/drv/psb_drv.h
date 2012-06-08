@@ -305,8 +305,8 @@ enum panel_type {
 #define MDFLD_DSR_OVERLAY_0 	BIT4
 #define MDFLD_DSR_OVERLAY_2 	BIT5
 #define MDFLD_DSR_MIPI_CONTROL	BIT6
-#define MDFLD_DSR_DAMAGE_MASK_0	(BIT0 | BIT2 | BIT4)
-#define MDFLD_DSR_DAMAGE_MASK_2	(BIT1 | BIT3 | BIT5)
+#define MDFLD_DSR_DAMAGE_MASK_0	(BIT0 | BIT2 | BIT4 | BIT6)
+#define MDFLD_DSR_DAMAGE_MASK_2	(BIT1 | BIT3 | BIT5 | BIT6)
 #define MDFLD_DSR_2D_3D 	(MDFLD_DSR_2D_3D_0 | MDFLD_DSR_2D_3D_2)
 
 #define MDFLD_DSR_RR 45
@@ -1040,6 +1040,7 @@ struct drm_psb_private {
 	struct mutex dsr_mutex;
 	bool b_dsr_enable_config;
 	bool b_dsr_enable;
+	bool b_dsr_enable_status;
 	bool b_async_flip_enable;
 	bool dsr_fb_update_done_0;
 	bool dsr_fb_update_done_2;
@@ -1048,7 +1049,7 @@ struct drm_psb_private {
 	bool b_is_in_idle;
 	void (*exit_idle)(struct drm_device *dev, u32 update_src, void *p_surfaceAddr, bool check_hw_on_only);
 	bool b_vblank_enable;
-	void (*async_flip_update_fb)(struct drm_device *dev, int pipe);
+	int (*async_flip_update_fb)(struct drm_device *dev, int pipe);
 	int (*async_check_fifo_empty)(struct drm_device *dev);
 
 	/*

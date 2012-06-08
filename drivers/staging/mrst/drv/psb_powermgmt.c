@@ -1919,6 +1919,14 @@ static void gfx_early_suspend(struct early_suspend *h)
 #ifdef OSPM_GFX_DPK
 	printk(KERN_ALERT "\n   gfx_early_suspend\n");
 #endif
+	dev_priv->b_dsr_enable_status = dev_priv->b_dsr_enable;
+	if (dev_priv->b_dsr_enable) {
+		dev_priv->exit_idle(dev,
+				MDFLD_DSR_2D_3D,
+				NULL,
+				0);
+		dev_priv->b_dsr_enable = false;
+	}
 
 	if (h) {
 		while (dev_priv->is_in_panel_reset) {
@@ -2059,6 +2067,7 @@ static void gfx_late_resume(struct early_suspend *h)
 #endif
 	}
 	restore_panel_controll_back(dev_priv);
+	dev_priv->b_dsr_enable = dev_priv->b_dsr_enable_status;
 }
 
 /*
