@@ -75,11 +75,13 @@ static void mdfld_ms_delay(enum delay_type d_type, int delay)
 static u32 gi_l5f3_set_column_add[] = {0x0100002a, 0x0000003f};
 static u32 gi_l5f3_set_row_add[] = {0x0100002b, 0x000000df};
 /* static u32 gi_l5f3_set_address_mode[] = {0x00004036}; */
-static u32 gi_l5f3_set_address_mode[] = {0x0000C036};
+static u32 gi_l5f3_set_address_mode[] = {0x0000D036};
 static u32 gi_l5f3_set_pixel_format[] = {0x0000773a};
 static u32 gi_l5f3_set_te_scanline[] = {0x00000044};
 static u32 gi_l5f3_set_tear_on[] = {0x00000035};
 static u32 gi_l5f3_passwd1_on[] = {0x005a5af0};
+static u32 gi_l5f3_passwd2_on[] = {0x005a5af1};
+static u32 gi_l5f3_dstb_on[] = {0x000001df};
 static u32 gi_l5f3_set_disctl[] = {0x0f4c3bf2, 0x08082020, 0x00080800,
 	0x4c000000, 0x20202020};
 static u32 gi_l5f3_set_pwrctl[] = {0x000007f4, 0x00000000, 0x05440000,
@@ -96,7 +98,7 @@ static u32 gi_l5f3_set_ngammactl[] = {0x0f040cfb, 0x2d2f2e2e, 0x1f212421,
 	0x0000061e, 0x00000000};
 static u32 gi_l5f3_set_miectl1[] = {0x108080c0};
 /* static u32 gi_l5f3_set_bcmode[] = {0x000011c1}; */
-static u32 gi_l5f3_set_bcmode[] = {0x000012c1};
+static u32 gi_l5f3_set_bcmode[] = {0x000013c1};
 static u32 gi_l5f3_set_wrmiectl2[] = {0x000008c2, 0x0000df01, 0x00003f01};
 static u32 gi_l5f3_set_wrblctl[] = {0x201000c3};
 static u32 gi_l5f3_passwd1_off[] = {0x00a5a5f0};
@@ -189,10 +191,6 @@ static int mdfld_gi_l5f3_dbi_ic_init(struct mdfld_dsi_config *dsi_config,
 	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_passwd1_off, 4, 0);
 	mdfld_ms_delay(MSLEEP, 5);
 
-	/* set backlight to full brightness and wait for 10ms. */
-	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_set_full_brightness, 16, 0);
-	mdfld_ms_delay(MSLEEP, 5);
-
 	/* set backlight on and wait for 10ms. */
 	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_turn_on_backlight, 4, 0);
 	mdfld_ms_delay(MSLEEP, 5);
@@ -204,10 +202,6 @@ static int mdfld_gi_l5f3_dbi_ic_init(struct mdfld_dsi_config *dsi_config,
 	/* sleep out and wait for 150ms. */
 	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_exit_sleep_mode, 4, 0);
 	mdfld_ms_delay(MSLEEP, 150);
-
-	/* set display on */
-	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_set_display_on, 4, 0);
-	mdfld_ms_delay(MSLEEP, 5);
 
 	dsi_config->drv_ic_inited = 1;
 
@@ -350,21 +344,13 @@ static bool mdfld_gi_sony_dsi_dbi_mode_fixup(struct drm_encoder *encoder,
 
 static int __mdfld_gi_sony_dsi_power_on(struct mdfld_dsi_config *dsi_config)
 {
+	struct drm_device *dev = dsi_config->dev;
+	struct drm_psb_private *dev_priv = dev->dev_private;
+	struct mdfld_dsi_hw_registers *regs =
+		&dsi_config->regs;
 	struct mdfld_dsi_pkg_sender *sender =
 		mdfld_dsi_get_pkg_sender(dsi_config);
 	u8 param[4];
-#if 0
-	u32 sc1_set_brightness_max[] = {0x0000ff51};
-	u32 sc1_select_CABC_mode[] = {0x00000355};
-	u32 sc1_enable_CABC_bl_on[] = {0x00002C53};
-	u32 sc1_enable_CABC_bl_off[] = {0x00002853};
-	u32 sc1_set_display_on[] = {0x00000029};
-	u32 sc1_set_display_off[] = {0x00000028};
-	u32 sc1_mcs_protect_on[] = {0x000003b0};
-	u32 sc1_mcs_protect_off[] = {0x000004b0};
-	u32 sc1_exit_sleep_mode[] = {0x00000011};
-	u32 sc1_set_te_on[] = {0x00000035};
-#endif
 	int err = 0;
 
 	PSB_DEBUG_ENTRY("Turn on video mode TMD panel...\n");
@@ -391,7 +377,20 @@ static int __mdfld_gi_sony_dsi_power_on(struct mdfld_dsi_config *dsi_config)
 		goto power_err;
 	}
 
-	msleep(120);
+	REG_WRITE(regs->dsplinoff_reg, dev_priv->init_screen_offset);
+	REG_WRITE(regs->dspsurf_reg, dev_priv->init_screen_start);
+
+	err = mdfld_dsi_send_dcs(sender,
+				   write_mem_start,
+				   NULL,
+				   0,
+				   CMD_DATA_SRC_PIPE,
+				   MDFLD_DSI_SEND_PACKAGE);
+	if (err) {
+		DRM_ERROR("%s - sent write_mem_start faild\n", __func__);
+		goto power_err;
+	}
+
 	/*param[0] = 0xff;
 	param[1] = 0x00;
 	param[2] = 0x00;
@@ -405,33 +404,50 @@ static int __mdfld_gi_sony_dsi_power_on(struct mdfld_dsi_config *dsi_config)
 		DRM_ERROR("%s - sent set_tear_on faild\n", __func__);
 		goto power_err;
 	}*/
+	if (drm_psb_enable_lex_cabc) {
 
-	param[0] = 0x03;
-	param[1] = 0x00;
-	param[2] = 0x00;
-	err = mdfld_dsi_send_dcs(sender,
-		 write_ctrl_cabc,
-		 param,
-		 3,
-		 CMD_DATA_SRC_SYSTEM_MEM,
-		 MDFLD_DSI_SEND_PACKAGE);
-	if (err) {
-		DRM_ERROR("%s - sent set_tear_on faild\n", __func__);
-		goto power_err;
-	}
+		param[0] = 0x03;
+		param[1] = 0x00;
+		param[2] = 0x00;
+		err = mdfld_dsi_send_dcs(sender,
+			 write_ctrl_cabc,
+			 param,
+			 3,
+			 CMD_DATA_SRC_SYSTEM_MEM,
+			 MDFLD_DSI_SEND_PACKAGE);
+		if (err) {
+			DRM_ERROR("%s - sent set_tear_on faild\n", __func__);
+			goto power_err;
+		}
 
-	param[0] = 0x28;
-	param[1] = 0x00;
-	param[2] = 0x00;
-	err = mdfld_dsi_send_dcs(sender,
-		 write_ctrl_display,
-		 param,
-		 3,
-		 CMD_DATA_SRC_SYSTEM_MEM,
-		 MDFLD_DSI_SEND_PACKAGE);
-	if (err) {
-		DRM_ERROR("%s - sent set_tear_on faild\n", __func__);
-		goto power_err;
+		param[0] = 0x28;
+		param[1] = 0x00;
+		param[2] = 0x00;
+		err = mdfld_dsi_send_dcs(sender,
+			 write_ctrl_display,
+			 param,
+			 3,
+			 CMD_DATA_SRC_SYSTEM_MEM,
+			 MDFLD_DSI_SEND_PACKAGE);
+		if (err) {
+			DRM_ERROR("%s - sent set_tear_on faild\n", __func__);
+			goto power_err;
+		}
+
+		param[0] = 0x2c;
+		param[1] = 0x00;
+		param[2] = 0x00;
+		err = mdfld_dsi_send_dcs(sender,
+			 write_ctrl_display,
+			 param,
+			 3,
+			 CMD_DATA_SRC_SYSTEM_MEM,
+			 MDFLD_DSI_SEND_PACKAGE);
+		if (err) {
+			DRM_ERROR("%s - sent set_tear_on faild\n", __func__);
+			goto power_err;
+		}
+
 	}
 
 	param[0] = 0x00;
@@ -462,20 +478,6 @@ static int __mdfld_gi_sony_dsi_power_on(struct mdfld_dsi_config *dsi_config)
 		goto power_err;
 	}
 	msleep(21);
-
-	param[0] = 0x2c;
-	param[1] = 0x00;
-	param[2] = 0x00;
-	err = mdfld_dsi_send_dcs(sender,
-		 write_ctrl_display,
-		 param,
-		 3,
-		 CMD_DATA_SRC_SYSTEM_MEM,
-		 MDFLD_DSI_SEND_PACKAGE);
-	if (err) {
-		DRM_ERROR("%s - sent set_tear_on faild\n", __func__);
-		goto power_err;
-	}
 
 	/*err = mdfld_dsi_send_dcs(sender,
 				   write_mem_start,
@@ -587,6 +589,13 @@ static int __mdfld_gi_sony_dsi_power_off(struct mdfld_dsi_config *dsi_config)
 		goto power_err;
 	}
 	msleep(120);
+
+	/* DSTB, deep standby sequenc */
+	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_passwd2_on, 4, 0);
+	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_dstb_on, 4, 0);
+	PSB_DEBUG_ENTRY("putting panel into deep sleep standby\n");
+
+	msleep(50);
 
 power_err:
 	return err;
@@ -1269,16 +1278,6 @@ static int mdfld_gi_sony_dsi_panel_reset(struct mdfld_dsi_config *dsi_config,
 
 		b_gpio_required[dsi_config->pipe] = true;
 
-		/* if FW initialized in video mode , use power off/on,
-		display island to reset total display controller*/
-		if (!(REG_READ(regs->pipeconf_reg) & BIT26) &&
-			(REG_READ(regs->mipi_reg) & BIT31)) {
-				/*reset the display island
-				  to switch DPI to DBI*/
-				printk(KERN_INFO "power on/off to reset\n");
-				ospm_power_island_down(OSPM_DISPLAY_ISLAND);
-				ospm_power_island_up(OSPM_DISPLAY_ISLAND);
-		}
 	}
 
 	if (b_gpio_required[dsi_config->pipe]) {
