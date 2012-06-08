@@ -45,7 +45,7 @@
 
 #include "dlp_main.h"
 
-#define DEBUG_TAG 0x2
+#define DEBUG_TAG 0x4
 #define DEBUG_VAR dlp_drv.debug
 
 #define IPC_TTYNAME				"tty"CONFIG_HSI_DLP_IPC_TTY_NAME
@@ -83,8 +83,6 @@ static void dlp_tty_modem_hangup(struct dlp_channel *ch_ctx, int reason)
 
 	PROLOG();
 
-	CRITICAL("TTY hangup (reason: %d)", reason);
-
 	ch_ctx->hangup.cause |= reason;
 	tty = tty_port_tty_get(&tty_ctx->tty_prt);
 	if (tty) {
@@ -106,8 +104,6 @@ static void dlp_tty_mdm_coredump_cb(struct dlp_channel *ch_ctx)
 {
 	PROLOG();
 
-	WARNING("Modem coredump");
-
 	dlp_tty_modem_hangup(ch_ctx, DLP_MODEM_HU_COREDUMP);
 
 	EPILOG();
@@ -123,8 +119,6 @@ static void dlp_tty_mdm_coredump_cb(struct dlp_channel *ch_ctx)
 static void dlp_tty_mdm_reset_cb(struct dlp_channel *ch_ctx)
 {
 	PROLOG();
-
-	WARNING("Modem reset");
 
 	dlp_tty_modem_hangup(ch_ctx, DLP_MODEM_HU_RESET);
 
@@ -304,7 +298,7 @@ no_more_tty_insert:
 		tty_schedule_flip(tty);
 	}
 
-	/* Push any available pdus to the CTRL */
+	/* Push any available pud to the CTRL */
 	ret = dlp_pop_recycled_push_ctrl(xfer_ctx);
 
 	/* Shoot again later if there is still pending data to serve or if
@@ -352,7 +346,7 @@ static void dlp_tty_rx_forward_retry(unsigned long param)
 	struct dlp_tty_context *tty_ctx = xfer_ctx->channel->ch_data;
 
 	PROLOG();
-	queue_work(dlp_drv.rx_wq, &tty_ctx->do_tty_forward);
+	queue_work(dlp_drv.forwarding_wq, &tty_ctx->do_tty_forward);
 	EPILOG();
 }
 
@@ -374,7 +368,7 @@ static void dlp_tty_rx_forward_resume(struct tty_struct *tty)
 
 	if (ch_ctx) {
 		struct dlp_tty_context *tty_ctx = ch_ctx->ch_data;
-		queue_work(dlp_drv.rx_wq, &tty_ctx->do_tty_forward);
+		queue_work(dlp_drv.forwarding_wq, &tty_ctx->do_tty_forward);
 	}
 
 	EPILOG();
@@ -484,7 +478,7 @@ static void dlp_tty_complete_rx(struct hsi_msg *pdu)
 
 	dlp_fifo_wait_push(xfer_ctx, pdu);
 
-	queue_work(dlp_drv.rx_wq, &tty_ctx->do_tty_forward);
+	queue_work(dlp_drv.forwarding_wq, &tty_ctx->do_tty_forward);
 	EPILOG();
 }
 
@@ -666,10 +660,6 @@ static void dlp_tty_port_shutdown(struct tty_port *port)
 	if (ret)
 		CRITICAL("dlp_ctrl_close_channel() failed !");
 
-	/* Flush the ACWAKE works */
-	flush_work_sync(&ch_ctx->start_tx_w);
-	flush_work_sync(&ch_ctx->stop_tx_w);
-
 	PDEBUG("tty port shut down");
 	EPILOG();
 }
@@ -793,7 +783,7 @@ static void dlp_tty_hangup(struct tty_struct *tty)
 	struct dlp_tty_context *tty_ctx =
 	    (((struct dlp_channel *)tty->driver_data))->ch_data;
 
-	CRITICAL("TTY hangup");
+	CRITICAL("tty hangup");
 
 	tty_port_hangup(&tty_ctx->tty_prt);
 }
@@ -891,14 +881,10 @@ int dlp_tty_do_write(struct dlp_xfer_ctx *xfer_ctx, unsigned char *buf,
 	pdu->status = HSI_STATUS_PENDING;
 	/* Do a start TX on new frames only and after having marked
 	 * the current frame as pending, e.g. don't touch ! */
-	if (offset == 0) {
-		dlp_start_tx(xfer_ctx);
-	} else {
+	if (offset == 0)
+		dlp_hsi_start_tx(xfer_ctx);
+	else
 		dlp_ctx_set_flag(xfer_ctx, TX_TTY_WRITE_PENDING_BIT);
-#ifdef CONFIG_HSI_DLP_TTY_STATS
-		xfer_ctx->tty_stats.overflow_cnt++;
-#endif
-	}
 
 	copied = min(avail, len);
 	updated_actual_len = pdu->actual_len + copied;
@@ -1038,7 +1024,6 @@ static int dlp_tty_ioctl(struct tty_struct *tty,
 {
 	struct dlp_channel *ch_ctx = (struct dlp_channel *)tty->driver_data;
 	struct work_struct *increase_pool = NULL;
-	static struct workqueue_struct *increase_pool_wq;
 	unsigned int data;
 #ifdef CONFIG_HSI_DLP_TTY_STATS
 	struct hsi_dlp_stats stats;
@@ -1072,7 +1057,6 @@ static int dlp_tty_ioctl(struct tty_struct *tty,
 			write_lock_irqsave(&ch_ctx->tx.lock, flags);
 			if (arg > ch_ctx->tx.wait_max)
 				increase_pool = &ch_ctx->tx.increase_pool;
-			increase_pool_wq = dlp_drv.tx_wq;
 			ch_ctx->tx.wait_max = arg;
 			write_unlock_irqrestore(&ch_ctx->tx.lock, flags);
 		} else {
@@ -1094,7 +1078,6 @@ static int dlp_tty_ioctl(struct tty_struct *tty,
 			write_lock_irqsave(&ch_ctx->rx.lock, flags);
 			if (arg > ch_ctx->rx.ctrl_max)
 				increase_pool = &ch_ctx->rx.increase_pool;
-			increase_pool_wq = dlp_drv.rx_wq;
 			ch_ctx->rx.wait_max = arg;
 			write_unlock_irqrestore(&ch_ctx->rx.lock, flags);
 		} else {
@@ -1116,7 +1099,6 @@ static int dlp_tty_ioctl(struct tty_struct *tty,
 			write_lock_irqsave(&ch_ctx->tx.lock, flags);
 			if (arg > ch_ctx->tx.ctrl_max)
 				increase_pool = &ch_ctx->tx.increase_pool;
-			increase_pool_wq = dlp_drv.tx_wq;
 			ch_ctx->tx.ctrl_max = arg;
 			write_unlock_irqrestore(&ch_ctx->tx.lock, flags);
 		} else {
@@ -1138,7 +1120,6 @@ static int dlp_tty_ioctl(struct tty_struct *tty,
 			write_lock_irqsave(&ch_ctx->rx.lock, flags);
 			if (arg > ch_ctx->rx.ctrl_max)
 				increase_pool = &ch_ctx->rx.increase_pool;
-			increase_pool_wq = dlp_drv.rx_wq;
 			ch_ctx->rx.ctrl_max = arg;
 			write_unlock_irqrestore(&ch_ctx->rx.lock, flags);
 		} else {
@@ -1262,8 +1243,7 @@ static int dlp_tty_ioctl(struct tty_struct *tty,
 		break;
 
 	case HSI_DLP_SET_TX_PDU_LEN:
-		if ((arg <= DLP_TTY_HEADER_LENGTH) ||
-			(arg > ch_ctx->tx.pdu_size))
+		if ((arg <= DLP_TTY_HEADER_LENGTH) || (arg > ch_ctx->pdu_size))
 			return -EINVAL;
 
 		write_lock_irqsave(&ch_ctx->tx.lock, flags);
@@ -1280,8 +1260,7 @@ static int dlp_tty_ioctl(struct tty_struct *tty,
 		break;
 
 	case HSI_DLP_SET_RX_PDU_LEN:
-		if ((arg <= DLP_TTY_HEADER_LENGTH) ||
-			(arg > ch_ctx->rx.pdu_size))
+		if ((arg <= DLP_TTY_HEADER_LENGTH) || (arg > ch_ctx->pdu_size))
 			return -EINVAL;
 		write_lock_irqsave(&ch_ctx->rx.lock, flags);
 		ch_ctx->rx.payload_len =
@@ -1394,7 +1373,7 @@ static int dlp_tty_ioctl(struct tty_struct *tty,
 	}
 
 	if (increase_pool)
-		(void)queue_work(increase_pool_wq, increase_pool);
+		(void)queue_work(dlp_drv.recycle_wq, increase_pool);
 
 	EPILOG();
 	return 0;
@@ -1499,7 +1478,8 @@ struct dlp_channel *dlp_tty_ctx_create(unsigned int index, struct device *dev)
 
 	ch_ctx->ch_data = tty_ctx;
 	ch_ctx->hsi_channel = index;
-	ch_ctx->use_flow_ctrl = 1; /* FIXME: Will be when done by the CP */
+	ch_ctx->credits = 0;
+	ch_ctx->pdu_size = DLP_TTY_PDU_LENGTH;
 	ch_ctx->rx.config = client->rx_cfg;
 	ch_ctx->tx.config = client->tx_cfg;
 
@@ -1512,21 +1492,17 @@ struct dlp_channel *dlp_tty_ctx_create(unsigned int index, struct device *dev)
 	/* Register the Reset & Coredump CB */
 	ch_ctx->modem_coredump_cb = dlp_tty_mdm_coredump_cb;
 	ch_ctx->modem_reset_cb = dlp_tty_mdm_reset_cb;
-	ch_ctx->dump_state = dlp_dump_channel_state;
 
 	/* TX & RX contexts */
-	dlp_xfer_ctx_init(ch_ctx,
-			  DLP_TTY_TX_PDU_SIZE, DLP_HSI_TX_DELAY,
+	dlp_xfer_ctx_init(ch_ctx, &ch_ctx->tx,
+			  DLP_HSI_TX_DELAY,
 			  DLP_HSI_TX_WAIT_FIFO, DLP_HSI_TX_CTRL_FIFO,
 			  dlp_tty_complete_tx, HSI_MSG_WRITE);
 
-	dlp_xfer_ctx_init(ch_ctx,
-			  DLP_TTY_RX_PDU_SIZE, DLP_HSI_RX_DELAY,
+	dlp_xfer_ctx_init(ch_ctx, &ch_ctx->rx,
+			  DLP_HSI_RX_DELAY,
 			  DLP_HSI_RX_WAIT_FIFO, DLP_HSI_RX_CTRL_FIFO,
 			  dlp_tty_complete_rx, HSI_MSG_READ);
-
-	INIT_WORK(&ch_ctx->start_tx_w, dlp_do_start_tx);
-	INIT_WORK(&ch_ctx->stop_tx_w, dlp_do_stop_tx);
 
 	INIT_WORK(&tty_ctx->do_tty_forward, dlp_do_tty_forward);
 
@@ -1546,8 +1522,8 @@ struct dlp_channel *dlp_tty_ctx_create(unsigned int index, struct device *dev)
 	tty_ctx->tty_drv = new_drv;
 
 	/* Allocate RX & TX FIFOs in background */
-	queue_work(dlp_drv.tx_wq, &ch_ctx->tx.increase_pool);
-	queue_work(dlp_drv.rx_wq, &ch_ctx->rx.increase_pool);
+	queue_work(dlp_drv.recycle_wq, &ch_ctx->tx.increase_pool);
+	queue_work(dlp_drv.recycle_wq, &ch_ctx->rx.increase_pool);
 
 	EPILOG();
 	return ch_ctx;

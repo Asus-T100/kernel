@@ -35,7 +35,7 @@
 #include "dlp_main.h"
 
 
-#define DEBUG_TAG 0x4
+#define DEBUG_TAG 0x8
 #define DEBUG_VAR dlp_drv.debug
 
 
@@ -134,32 +134,27 @@ static inline int dlp_flash_get_opened(struct dlp_channel *ch_ctx)
 }
 
 /*
-* @brief Called to destruct a fixed msg size (DLP_FLASH_PDU_SIZE)
+* @brief
 *
 * @param msg
 */
-static inline void dlp_flash_msg_destruct_fix(struct hsi_msg *msg)
+static inline void dlp_flash_free_msg(struct hsi_msg *msg)
+{
+	/* Delete the received msg */
+	dlp_pdu_free(msg, msg->sgt.sgl->length);
+}
+
+/*
+* @brief
+*
+* @param msg
+*/
+static void dlp_flash_msg_destruct(struct hsi_msg *msg)
 {
 	PROLOG("msg:0x%p", msg);
 
 	/* Delete the received msg */
-	dlp_pdu_free(msg, msg->channel);
-
-	EPILOG();
-}
-
-/*
-* @brief Called to destruct a variable msg size (_write function)
-*
-* @param msg
-*/
-static inline void dlp_flash_msg_destruct_var(struct hsi_msg *msg)
-{
-	PROLOG("msg:0x%p", msg);
-
-	/* Delete the received msg
-	 * (size is variable, so dont consider the default PDU size) */
-	dlp_pdu_free(msg, -1);
+	dlp_flash_free_msg(msg);
 
 	EPILOG();
 }
@@ -177,12 +172,11 @@ static int dlp_flash_push_rx_pdu(struct dlp_channel *ch_ctx)
 
 	/* Allocate a new RX msg */
 	rx_msg = dlp_pdu_alloc(ch_ctx->hsi_channel,
-				HSI_MSG_READ,
-				DLP_FLASH_RX_PDU_SIZE,
-				1,
-				ch_ctx,
-				dlp_flash_complete_rx,
-				dlp_flash_msg_destruct_fix);
+			       HSI_MSG_READ,
+			       DLP_FLASH_PDU_SIZE,
+			       1,
+			       ch_ctx,
+			       dlp_flash_complete_rx, dlp_flash_msg_destruct);
 
 	if (!rx_msg) {
 		CRITICAL("dlp_pdu_alloc(RX) failed");
@@ -203,7 +197,7 @@ static int dlp_flash_push_rx_pdu(struct dlp_channel *ch_ctx)
 
 free_msg:
 	/* Free the msg */
-	dlp_pdu_free(rx_msg, rx_msg->channel);
+	dlp_pdu_free(rx_msg, DLP_FLASH_PDU_SIZE);
 
 out:
 	EPILOG();
@@ -283,7 +277,7 @@ static void dlp_flash_complete_tx(struct hsi_msg *msg)
 	PROLOG("msg:0x%p", msg);
 
 	/* Delete the received msg */
-	dlp_pdu_free(msg, -1);
+	dlp_flash_free_msg(msg);
 
 	EPILOG();
 }
@@ -312,7 +306,7 @@ static void dlp_flash_complete_rx(struct hsi_msg *msg)
 					"FIFO will be empty", ret);
 
 			/* Delete the received msg */
-			dlp_pdu_free(msg, msg->channel);
+			dlp_flash_free_msg(msg);
 		}
 	} else {
 		/* Add the received msg to the RX queue */
@@ -443,14 +437,14 @@ static ssize_t dlp_flash_dev_read(struct file *filp,
 		available -= to_copy;
 
 		/* Data read => Queue the RX msg */
-		/* Push again the RX msg to the controller */
+		/* Push again the RX msg */
 		ret = hsi_async(msg->cl, msg);
 		if (ret) {
 			CRITICAL("hsi_async() failed, ret:%d ==> "
 					"FIFO will be empty", ret);
 
 			/* Delete the received msg */
-			dlp_pdu_free(msg, msg->channel);
+			dlp_flash_free_msg(msg);
 		}
 	}
 
@@ -488,12 +482,11 @@ static ssize_t dlp_flash_dev_write(struct file *filp,
 
 	/* Allocate a new TX msg */
 	tx_msg = dlp_pdu_alloc(ch_ctx->hsi_channel,
-				HSI_MSG_WRITE,
-				count,
-				1,
-				ch_ctx,
-				dlp_flash_complete_tx,
-				dlp_flash_msg_destruct_var);
+			       HSI_MSG_WRITE,
+			       count,
+			       1,
+			       ch_ctx,
+			       dlp_flash_complete_tx, dlp_flash_msg_destruct);
 
 	if (!tx_msg) {
 		CRITICAL("dlp_pdu_alloc(TX, len: %d) failed", count);
@@ -517,9 +510,7 @@ static ssize_t dlp_flash_dev_write(struct file *filp,
 	return ret;
 
 free_tx:
-	/* Delete the received msg
-	 * (size is variable, so dont consider the default PDU size) */
-	dlp_pdu_free(tx_msg, -1);
+	dlp_flash_free_msg(tx_msg);
 
 out:
 	EPILOG();
@@ -602,7 +593,8 @@ struct dlp_channel *dlp_flash_ctx_create(unsigned int index, struct device *dev)
 
 	/* Save params */
 	ch_ctx->ch_data = flash_ctx;
-	ch_ctx->hsi_channel = DLP_CHANNEL_CTRL; /* Same as ctrl channel (0) */
+	ch_ctx->hsi_channel = 0;
+	ch_ctx->pdu_size = DLP_FLASH_PDU_SIZE;
 	ch_ctx->rx.config = client->rx_cfg;
 	ch_ctx->tx.config = client->tx_cfg;
 
@@ -612,11 +604,11 @@ struct dlp_channel *dlp_flash_ctx_create(unsigned int index, struct device *dev)
 	INIT_LIST_HEAD(&flash_ctx->rx_msgs);
 
 	/* Init the RX/TX contexts */
-	dlp_xfer_ctx_init(ch_ctx,
-			  DLP_FLASH_TX_PDU_SIZE, 0, 0, 0, NULL, HSI_MSG_WRITE);
+	dlp_xfer_ctx_init(ch_ctx, &ch_ctx->tx,
+			  0, 0, 0, NULL, HSI_MSG_WRITE);
 
-	dlp_xfer_ctx_init(ch_ctx,
-			  DLP_FLASH_RX_PDU_SIZE, 0, 0, 0, NULL, HSI_MSG_READ);
+	dlp_xfer_ctx_init(ch_ctx, &ch_ctx->rx,
+			  0, 0, 0, NULL, HSI_MSG_READ);
 
 	/* Register the device */
 	ret = alloc_chrdev_region(&flash_ctx->tdev, 0, 1, FLASHING_DEVNAME);
