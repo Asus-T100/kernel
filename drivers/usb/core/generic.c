@@ -135,10 +135,12 @@ int usb_choose_configuration(struct usb_device *udev)
 			best = c;
 	}
 
-	if (insufficient_power > 0)
+	if (insufficient_power > 0) {
 		dev_info(&udev->dev, "rejected %d configuration%s "
 			"due to insufficient available bus power\n",
 			insufficient_power, plural(insufficient_power));
+		usb_notify_warning(udev, USB_WARNING_INSUFF_POWER);
+	}
 
 	if (best) {
 		i = best->desc.bConfigurationValue;
