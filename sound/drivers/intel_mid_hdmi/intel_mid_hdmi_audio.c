@@ -381,12 +381,12 @@ int snd_intelhad_prog_buffer(struct snd_intelhad *intelhaddata,
 	struct snd_pcm_substream *substream;
 
 	substream = intelhaddata->stream_info.had_substream;
-
 	if (!substream) {
 		pr_err("substream is NULL\n");
 		dump_stack();
 		return 0;
 	}
+
 	ring_buf_addr = substream->runtime->dma_addr;
 	ring_buf_size = snd_pcm_lib_buffer_bytes(substream);
 	intelhaddata->stream_info.ring_buf_size = ring_buf_size;
@@ -579,7 +579,8 @@ static int snd_intelhad_open(struct snd_pcm_substream *substream)
 		return -ENODEV;
 	}
 	if (had_stream->process_trigger != NO_TRIGGER) {
-		pr_err("%s:Yet to process some trigger\n", __func__);
+		pr_err("%s:Yet to process some trigger = %d\n", __func__,
+				had_stream->process_trigger);
 		return -EAGAIN;
 	}
 	runtime = substream->runtime;
@@ -807,7 +808,7 @@ int snd_intelhad_start_silence(struct snd_intelhad *intelhaddata)
 	intelhaddata->valid_buf_cnt = HAD_MAX_PERIODS;
 	intelhaddata->curr_buf = HAD_BUF_TYPE_C;
 	had_stream = intelhaddata->private_data;
-	had_stream->stream_status = HAD_RUNNING_SILENCE;
+	had_stream->stream_type = HAD_RUNNING_SILENCE;
 	spin_unlock_irqrestore(&intelhaddata->had_spinlock, flag_irqs);
 
 	had_read_modify(AUD_CONFIG, 1, BIT(0));
@@ -825,7 +826,7 @@ int snd_intelhad_stop_silence(struct snd_intelhad *intelhaddata)
 
 	spin_lock_irqsave(&intelhaddata->had_spinlock, flag_irqs);
 	had_stream = intelhaddata->private_data;
-	had_stream->stream_status = HAD_INIT;
+	had_stream->stream_type = HAD_INIT;
 	spin_unlock_irqrestore(&intelhaddata->had_spinlock, flag_irqs);
 
 	had_read_modify(AUD_CONFIG, 0, BIT(0));
@@ -907,16 +908,14 @@ static int snd_intelhad_pcm_trigger(struct snd_pcm_substream *substream,
 	switch (cmd) {
 	case SNDRV_PCM_TRIGGER_START:
 		pr_debug("Trigger Start\n");
-		stream->substream = substream;
-		stream->stream_status = STREAM_RUNNING;
 
 		/* Disable local INTRs till register prgmng is done */
 		if (had_get_hwstate(intelhaddata)) {
 			pr_err("_START: HDMI cable plugged-out\n");
-			snd_pcm_stop(substream, SNDRV_PCM_STATE_DISCONNECTED);
 			retval = -ENODEV;
 			break;
 		}
+		stream->stream_status = STREAM_RUNNING;
 
 		spin_lock_irqsave(&intelhaddata->had_spinlock, flag_irq);
 		had_stream->process_trigger = PRE_START;
@@ -931,22 +930,17 @@ static int snd_intelhad_pcm_trigger(struct snd_pcm_substream *substream,
 		intelhaddata->stream_info.str_id = 0;
 
 		/* Stop reporting BUFFER_DONE/UNDERRUN to above layers*/
-		had_stream->process_trigger = STOP_TRIGGER;
-		/* Send zero filled data */
-		if (had_stream->stream_status == HAD_RUNNING_DUMMY) {
-			had_stream->stream_status = HAD_INIT;
-			had_stream->process_trigger = NO_TRIGGER;
-			spin_unlock_irqrestore(&intelhaddata->had_spinlock,
-					flag_irq);
-			cancel_delayed_work(&intelhaddata->dummy_audio);
-		} else if (intelhaddata->drv_status != HAD_DRV_DISCONNECTED) {
+
+		if (intelhaddata->drv_status != HAD_DRV_DISCONNECTED) {
+			had_stream->process_trigger = STOP_TRIGGER;
 			spin_unlock_irqrestore(&intelhaddata->had_spinlock,
 					flag_irq);
 			if (!had_get_hwstate(intelhaddata))
 				snd_process_stop_trigger(intelhaddata);
-		} else
+		} else {
 			spin_unlock_irqrestore(&intelhaddata->had_spinlock,
 					flag_irq);
+		}
 		stream->stream_status = STREAM_DROPPED;
 		break;
 
@@ -1000,7 +994,6 @@ static int snd_intelhad_pcm_prepare(struct snd_pcm_substream *substream)
 	pr_debug("rate=%d\n", runtime->rate);
 	pr_debug("channels=%d\n", runtime->channels);
 
-	intelhaddata = snd_pcm_substream_chip(substream);
 	if (intelhaddata->stream_info.str_id) {
 		pr_debug("_prepare is called for existing str_id#%d\n",
 					intelhaddata->stream_info.str_id);
@@ -1120,32 +1113,6 @@ int hdmi_audio_mode_change(struct snd_pcm_substream *substream)
 
 out:
 	return retval;
-}
-
-void dummy_audio_play(struct work_struct *work)
-{
-	struct snd_intelhad *intelhaddata = had_data;
-	struct had_pvt_data *had_stream;
-	unsigned long flag_irqs;
-
-	spin_lock_irqsave(&intelhaddata->had_spinlock, flag_irqs);
-	if (intelhaddata->drv_status != HAD_DRV_DISCONNECTED) {
-		spin_unlock_irqrestore(&intelhaddata->had_spinlock, flag_irqs);
-		pr_debug("HDMI device still connected\n");
-		return;
-	}
-	had_stream = intelhaddata->private_data;
-
-	/* In case _STOP, silence data, return */
-	if (had_stream->stream_status < HAD_RUNNING_STREAM) {
-		spin_unlock_irqrestore(&intelhaddata->had_spinlock, flag_irqs);
-		pr_debug("HDMI device_flag is reset\n");
-		return;
-	}
-
-	spin_unlock_irqrestore(&intelhaddata->had_spinlock, flag_irqs);
-	had_event_handler(HAD_EVENT_AUDIO_BUFFER_DONE, intelhaddata);
-	schedule_delayed_work(&intelhaddata->dummy_audio, intelhaddata->timer);
 }
 
 /*PCM operations structure and the calls back for the same */
@@ -1368,9 +1335,6 @@ static int __devinit hdmi_audio_probe(struct platform_device *devptr)
 						intelhaddata));
 	if (retval < 0)
 		goto err;
-
-	/* Initialize dummy audio workqueue */
-	INIT_DELAYED_WORK(&intelhaddata->dummy_audio, dummy_audio_play);
 
 	/* Allocate memory for flat data */
 	intelhaddata->flat_data = kzalloc((MAX_SZ_ZERO_BUF), GFP_KERNEL);

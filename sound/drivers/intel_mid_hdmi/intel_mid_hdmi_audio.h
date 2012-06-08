@@ -98,7 +98,6 @@ enum had_status_stream {
 	HAD_INIT = 0,
 	HAD_RUNNING_SILENCE = 1,
 	HAD_RUNNING_STREAM = 2,
-	HAD_RUNNING_DUMMY = 3,
 };
 
 /**
@@ -425,12 +424,11 @@ struct ring_buf_info {
 struct had_stream_pvt {
 	enum had_stream_status		stream_status;
 	int				stream_ops;
-	struct snd_pcm_substream	*substream;
 	ssize_t				dbg_cum_bytes;
 };
 
 struct had_pvt_data {
-	enum had_status_stream		stream_status;
+	enum had_status_stream		stream_type;
 	enum had_process_trigger	process_trigger;
 };
 
@@ -470,8 +468,6 @@ struct snd_intelhad {
 	unsigned int	aes_bits;
 	int flag_underrun;
 	struct had_pvt_data *private_data;
-	/* Related to sending dummy data */
-	struct delayed_work dummy_audio;
 	unsigned long timer;
 	/*  Related to sending silence data */
 	char *flat_data;
