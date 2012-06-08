@@ -39,25 +39,11 @@
 #define SST_MRST_PCI_ID 0x080A
 #define SST_MFLD_PCI_ID 0x082F
 #define SST_CLV_PCI_ID	0x08E7
-#define SST_MRFLD_PCI_ID  0x119A
 #define PCI_ID_LENGTH 4
 #define SST_SUSPEND_DELAY 2000
 #define FW_CONTEXT_MEM (64*1024)
 #define MAX_TIMEDIVSOR  0xFF
 #define MAX_BASEUNIT 0x80
-#define SST_ICCM_BOUNDARY 4
-
-struct intel_sst_ops {
-	irqreturn_t (*interrupt) (int, void *);
-	void (*clear_interrupt) (void);
-	int (*start) (void);
-	int (*reset) (void);
-	void (*process_reply) (struct work_struct *work);
-	void (*post_message) (struct work_struct *work);
-	int (*sync_post_message) (struct ipc_post *msg);
-	void (*process_message) (struct work_struct *work);
-	int (*start_stream) (int);
-};
 
 enum sst_states {
 	SST_FW_LOADED = 1,
@@ -106,8 +92,6 @@ enum sst_ram_type {
 	SST_IRAM	= 1,
 	SST_DRAM	= 2,
 };
-
-
 /* SST shim registers to structure mapping  */
 union config_status_reg {
 	struct {
@@ -125,15 +109,6 @@ union config_status_reg {
 };
 
 union interrupt_reg {
-	struct {
-		u64 done_interrupt:1;
-		u64 busy_interrupt:1;
-		u64 rsvd:62;
-	} part;
-	u64 full;
-};
-
-union sst_imr_reg {
 	struct {
 		u32 done_interrupt:1;
 		u32 busy_interrupt:1;
@@ -179,45 +154,6 @@ union sst_pwmctrl_reg {
 	u32 full;
 };
 
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
-union config_status_reg_mrfld {
-	struct {
-		u64 lpe_reset:1;
-		u64 lpe_reset_vector:1;
-		u64 runstall:1;
-		u64 pwaitmode:1;
-		u64 clk_sel:3;
-		u64 rsvd2:1;
-		u64 sst_clk:3;
-		u64 xt_snoop:1;
-		u64 rsvd3:4;
-		u64 clk_sel1:6;
-		u64 clk_enable:3;
-		u64 rsvd4:6;
-		u64 slim0baseclk:1;
-		u64 rsvd:32;
-	} part;
-	u64 full;
-};
-
-union interrupt_reg_mrfld {
-	struct {
-		u64 done_interrupt:1;
-		u64 busy_interrupt:1;
-		u64 rsvd:62;
-	} part;
-	u64 full;
-};
-
-union sst_imr_reg_mrfld {
-	struct {
-		u64 done_interrupt:1;
-		u64 busy_interrupt:1;
-		u64 rsvd:62;
-	} part;
-	u64 full;
-};
-#endif
 
 struct sst_stream_bufs {
 	struct list_head	node;
@@ -379,9 +315,6 @@ struct ioctl_pvt_data {
 };
 
 struct sst_ipc_msg_wq {
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
-	union ipc_header_mrfld mrfld_header;
-#endif
 	union ipc_header	header;
 	char mailbox[SST_MAILBOX_SIZE];
 	struct work_struct	wq;
@@ -457,9 +390,6 @@ struct sst_sg_list {
 struct intel_sst_drv {
 	int			sst_state;
 	unsigned int		pci_id;
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
-	void __iomem		*ddr;
-#endif
 	void __iomem		*shim;
 	void __iomem		*mailbox;
 	void __iomem		*iram;
@@ -467,10 +397,6 @@ struct intel_sst_drv {
 	unsigned int		iram_base;
 	unsigned int		dram_base;
 	unsigned int		shim_phy_add;
-	unsigned int		iram_end;
-	unsigned int		dram_end;
-	unsigned int		ddr_end;
-	unsigned int		ddr_base;
 	struct list_head	ipc_dispatch_list;
 	struct work_struct	ipc_post_msg_wq;
 	struct sst_ipc_msg_wq	ipc_process_msg;
@@ -481,7 +407,7 @@ struct intel_sst_drv {
 	struct workqueue_struct *post_msg_wq;
 	struct workqueue_struct *process_msg_wq;
 	struct workqueue_struct *process_reply_wq;
-	unsigned int		tstamp;
+
 	struct stream_info streams[MAX_NUM_STREAMS+1]; /*str_id 0 is not used*/
 	struct stream_alloc_block alloc_block[MAX_ACTIVE_STREAM];
 	struct sst_block	tgt_dev_blk, fw_info_blk, ppp_params_blk,
@@ -520,7 +446,6 @@ struct intel_sst_drv {
 	struct mutex		mixer_ctrl_lock;
 	struct dma_async_tx_descriptor *desc;
 	struct sst_sg_list fw_sg_list, library_list;
-	struct intel_sst_ops	*ops;
 };
 
 extern struct intel_sst_drv *sst_drv_ctx;
@@ -543,18 +468,16 @@ int sst_alloc_stream(char *params, unsigned int stream_ops, u8 codec,
 						unsigned int session_id);
 int sst_alloc_stream_response(unsigned int str_id,
 				struct snd_sst_alloc_response *response);
-int sst_alloc_stream_response_mrfld(unsigned int str_id);
 int sst_stalled(void);
 int sst_pause_stream(int id);
 int sst_resume_stream(int id);
 int sst_drop_stream(int id);
 int sst_free_stream(int id);
-int sst_start_stream_mfld(int str_id);
-int sst_start_stream_mrfld(int str_id);
-int sst_play_frame(int str_id);
+int sst_start_stream(int streamID);
+int sst_play_frame(int streamID);
 int sst_pcm_play_frame(int str_id, struct sst_stream_bufs *sst_buf);
-int sst_capture_frame(int str_id);
-int sst_set_stream_param(int str_id, struct snd_sst_params *str_param);
+int sst_capture_frame(int streamID);
+int sst_set_stream_param(int streamID, struct sst_stream_params *str_param);
 int sst_target_device_select(struct snd_sst_target_device *target_device);
 int sst_decode(int str_id, struct snd_sst_dbufs *dbufs);
 int sst_get_decoded_bytes(int str_id, unsigned long long *bytes);
@@ -569,24 +492,10 @@ int sst_get_vol(struct snd_sst_vol *set_vol);
 int sst_set_vol(struct snd_sst_vol *set_vol);
 int sst_set_mute(struct snd_sst_mute *set_mute);
 
-
-int sst_sync_post_message_mfld(struct ipc_post *msg);
-void sst_post_message_mfld(struct work_struct *work);
-void sst_process_message_mfld(struct work_struct *work);
-void sst_process_reply_mfld(struct work_struct *work);
-int sst_start_mfld(void);
-int intel_sst_reset_dsp_mfld(void);
-void intel_sst_clear_intr_mfld(void);
-
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
-int sst_sync_post_message_mrfld(struct ipc_post *msg);
-void sst_post_message_mrfld(struct work_struct *work);
-void sst_process_message_mrfld(struct work_struct *work);
-void sst_process_reply_mrfld(struct work_struct *work);
-int sst_start_mrfld(void);
-int intel_sst_reset_dsp_mrfld(void);
-void intel_sst_clear_intr_mrfld(void);
-#endif
+int sst_sync_post_message(struct ipc_post *msg);
+void sst_post_message(struct work_struct *work);
+void sst_process_message(struct work_struct *work);
+void sst_process_reply(struct work_struct *work);
 void sst_process_mad_ops(struct work_struct *work);
 void sst_process_mad_jack_detection(struct work_struct *work);
 
@@ -605,6 +514,7 @@ ssize_t intel_sst_aio_write(struct kiocb *kiocb, const struct iovec *iov,
 			unsigned long nr_segs, loff_t  offset);
 ssize_t intel_sst_aio_read(struct kiocb *kiocb, const struct iovec *iov,
 			unsigned long nr_segs, loff_t offset);
+
 int sst_request_fw(void);
 int sst_load_fw(const void *fw_in_mem, void *context);
 int sst_load_library(struct snd_sst_lib_download *lib, u8 ops);
@@ -619,6 +529,7 @@ int sst_create_large_msg(struct ipc_post **arg);
 int sst_create_short_msg(struct ipc_post **arg);
 void sst_wake_up_alloc_block(struct intel_sst_drv *sst_drv_ctx,
 		u8 sst_id, int status, void *data);
+void sst_clear_interrupt(void);
 int sst_download_fw(void);
 void free_stream_context(unsigned int str_id);
 void sst_clean_stream(struct stream_info *stream);
@@ -647,19 +558,6 @@ static inline void sst_fill_header(union ipc_header *header,
 	header->part.data = 0;
 }
 
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
-static inline void sst_fill_header_mrfld(union ipc_header_mrfld *header,
-						int msg, int large, int str_id)
-{
-	header->f = 0;
-	header->p.header_high.part.msg_id = msg;
-	header->p.header_high.part.str_id = str_id;
-	header->p.header_high.part.large = large;
-	header->p.header_high.part.done = 0;
-	header->p.header_high.part.busy = 1;
-	header->p.header_high.part.result = 0;
-}
-#endif
 /*
  * sst_assign_pvt_id - assign a pvt id for stream
  *
@@ -741,27 +639,10 @@ static inline int sst_shim_write(void __iomem *addr, int offset, int value)
 	return 0;
 }
 
-static inline u32 sst_shim_read(void __iomem *addr, int offset)
+static inline int sst_shim_read(void __iomem *addr, int offset)
 {
-
 	return readl(addr + offset);
 }
-
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
-static inline int sst_shim_write64(void __iomem *addr, int offset, u64 value)
-{
-	memcpy_toio(addr + offset, &value, sizeof(value));
-	return 0;
-}
-
-static inline u64 sst_shim_read64(void __iomem *addr, int offset)
-{
-	u64 val;
-
-	memcpy_fromio(&val, addr + offset, sizeof(val));
-	return val;
-}
-#endif
 
 static inline void
 sst_set_fw_state_locked(struct intel_sst_drv *sst_drv_ctx, int sst_state)

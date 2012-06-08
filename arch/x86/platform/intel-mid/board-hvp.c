@@ -12,11 +12,8 @@
 
 #include <linux/init.h>
 #include <linux/kernel.h>
-#include <linux/sfi.h>
 #include <linux/spi/spi.h>
 #include <linux/spi/intel_mid_ssp_spi.h>
-#include <asm/intel-mid.h>
-#include "device_libs/platform_mrfld_audio.h"
 
 /* SSP5 debug port settings */
 #define SPI_MODALIAS		"spi_max3111"
@@ -62,10 +59,5 @@ static void __init vp_board_init(void)
 {
 	ssp_uart_init();
 }
-
-struct devs_id __initconst device_ids[] = {
-	{"mrfld_cs42173", SFI_DEV_TYPE_IPC, 1, &mrfld_audio_platform_data},
-	{},
-};
 
 arch_initcall(vp_board_init);

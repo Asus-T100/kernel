@@ -50,7 +50,7 @@ static int sst_send_ipc_msg_nowait(struct ipc_post **msg)
 	spin_lock(&sst_drv_ctx->list_spin_lock);
 	list_add_tail(&(*msg)->node, &sst_drv_ctx->ipc_dispatch_list);
 	spin_unlock(&sst_drv_ctx->list_spin_lock);
-	sst_drv_ctx->ops->post_message(&sst_drv_ctx->ipc_post_msg_wq);
+	sst_post_message(&sst_drv_ctx->ipc_post_msg_wq);
 	return  0;
 }
 
@@ -112,65 +112,6 @@ int sst_send_algo_param(struct snd_ppp_params *algo_params)
 	return sst_send_ipc_msg_nowait(&msg);
 }
 
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
-void sst_post_message_mrfld(struct work_struct *work)
-{
-	struct ipc_post *msg;
-	union ipc_header_mrfld header;
-	union  interrupt_reg_mrfld imr;
-	imr.full = 0;
-
-	/*To check if LPE is in stalled state.*/
-	/*retval = sst_stalled()/
-	if (retval < 0) {
-		pr_err("sst: in stalled state\n");
-		return;
-	}*/
-	pr_debug("sst: post message called\n");
-	spin_lock(&sst_drv_ctx->list_spin_lock);
-
-	/* check list */
-	if (list_empty(&sst_drv_ctx->ipc_dispatch_list)) {
-		/* list is empty, mask imr */
-		pr_debug("Empty msg queue... masking\n");
-
-		imr.full = sst_shim_read64(sst_drv_ctx->shim, SST_IMRX);
-		imr.part.done_interrupt = 1;
-		sst_shim_write64(sst_drv_ctx->shim, SST_IMRX, imr.full);
-		spin_unlock(&sst_drv_ctx->list_spin_lock);
-		return;
-	}
-
-	/* check busy bit */
-	header.f = sst_shim_read64(sst_drv_ctx->shim, SST_IPCX);
-	if (header.p.header_high.part.busy) {
-		/* busy, unmask */
-		pr_debug("sst: Busy not free... unmasking\n");
-		imr.full = sst_shim_read64(sst_drv_ctx->shim, SST_IMRX);
-		imr.part.done_interrupt = 0;
-		sst_shim_write64(sst_drv_ctx->shim, SST_IMRX, imr.full);
-		spin_unlock(&sst_drv_ctx->list_spin_lock);
-		return;
-	}
-	/* copy msg from list */
-	msg = list_entry(sst_drv_ctx->ipc_dispatch_list.next,
-			struct ipc_post, node);
-	list_del(&msg->node);
-	pr_debug("sst: Post message: header = %x\n",
-					msg->mrfld_header.p.header_high.full);
-	pr_debug("sst: size: = %x\n", msg->mrfld_header.p.header_low_payload);
-	if (msg->mrfld_header.p.header_high.part.large)
-		memcpy_toio(sst_drv_ctx->mailbox + SST_MAILBOX_SEND,
-		msg->mailbox_data, msg->mrfld_header.p.header_low_payload);
-	sst_shim_write64(sst_drv_ctx->shim, SST_IPCX, msg->mrfld_header.f);
-
-	spin_unlock(&sst_drv_ctx->list_spin_lock);
-
-	kfree(msg->mailbox_data);
-	kfree(msg);
-	return;
-}
-#endif
 /**
 * sst_post_message - Posts message to SST
 *
@@ -180,7 +121,7 @@ void sst_post_message_mrfld(struct work_struct *work)
 * wants to send an IPC message. This will post message only if
 * busy bit is free
 */
-void sst_post_message_mfld(struct work_struct *work)
+void sst_post_message(struct work_struct *work)
 {
 	struct ipc_post *msg;
 	union ipc_header header;
@@ -239,46 +180,9 @@ void sst_post_message_mfld(struct work_struct *work)
 	kfree(msg);
 }
 
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
-int sst_sync_post_message_mrfld(struct ipc_post *msg)
-{
-	union ipc_header_mrfld header;
-	unsigned int loop_count = 0;
-	int retval = 0;
-
-	pr_debug("sst: post message called\n");
-	spin_lock(&sst_drv_ctx->list_spin_lock);
-
-	/* check busy bit */
-	header.f = sst_shim_read64(sst_drv_ctx->shim, SST_IPCX);
-	while (header.p.header_high.part.busy) {
-		if (loop_count > 10) {
-			pr_err("sst: Busy wait failed, cant send this msg\n");
-			retval = -EBUSY;
-			goto out;
-		}
-		usleep_range(5000, 5000);
-		loop_count++;
-		header.f = sst_shim_read64(sst_drv_ctx->shim, SST_IPCX);
-	};
-	pr_debug("sst: Post message: header = %x\n",
-					msg->mrfld_header.p.header_high.full);
-	pr_debug("sst: size: = %x\n", msg->mrfld_header.p.header_low_payload);
-	if (msg->mrfld_header.p.header_high.part.large)
-		memcpy_toio(sst_drv_ctx->mailbox + SST_MAILBOX_SEND,
-		msg->mailbox_data, msg->mrfld_header.p.header_low_payload);
-	sst_shim_write64(sst_drv_ctx->shim, SST_IPCX, msg->mrfld_header.f);
-
-out:
-	spin_unlock(&sst_drv_ctx->list_spin_lock);
-	kfree(msg->mailbox_data);
-	kfree(msg);
-	return retval;
-}
-#endif
 /* use this for trigger ops to post syncronous msgs
  */
-int sst_sync_post_message_mfld(struct ipc_post *msg)
+int sst_sync_post_message(struct ipc_post *msg)
 {
 	union ipc_header header;
 	unsigned int loop_count = 0;
@@ -320,7 +224,7 @@ out:
  * This function clears the interrupt register after the interrupt
  * bottom half is complete allowing next interrupt to arrive
  */
-void intel_sst_clear_intr_mfld(void)
+void sst_clear_interrupt(void)
 {
 	union interrupt_reg isr;
 	union interrupt_reg imr;
@@ -341,33 +245,6 @@ void intel_sst_clear_intr_mfld(void)
 	imr.part.busy_interrupt = 0;
 	sst_shim_write(sst_drv_ctx->shim, SST_IMRX, imr.full);
 }
-
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
-void intel_sst_clear_intr_mrfld(void)
-{
-	union interrupt_reg_mrfld isr;
-	union interrupt_reg_mrfld imr;
-	union ipc_header_mrfld clear_ipc;
-
-	imr.full = sst_shim_read64(sst_drv_ctx->shim, SST_IMRX);
-	isr.full = sst_shim_read64(sst_drv_ctx->shim, SST_ISRX);
-
-	/*  write 1 to clear  */
-	isr.part.busy_interrupt = 1;
-	sst_shim_write64(sst_drv_ctx->shim, SST_ISRX, isr.full);
-
-	/* Set IA done bit */
-	clear_ipc.f = sst_shim_read64(sst_drv_ctx->shim, SST_IPCD);
-
-	clear_ipc.p.header_high.part.busy = 0;
-	clear_ipc.p.header_high.part.done = 1;
-	clear_ipc.p.header_high.part.result = IPC_ACK_SUCCESS;
-	sst_shim_write64(sst_drv_ctx->shim, SST_IPCD, clear_ipc.f);
-	/* un mask busy interrupt */
-	imr.part.busy_interrupt = 0;
-	sst_shim_write64(sst_drv_ctx->shim, SST_IMRX, imr.full);
-}
-#endif
 
 /*
  * process_fw_init - process the FW init msg
@@ -397,25 +274,23 @@ static int process_fw_init(struct sst_ipc_msg_wq *msg)
 	mutex_lock(&sst_drv_ctx->sst_lock);
 	sst_drv_ctx->lpe_stalled = 0;
 	mutex_unlock(&sst_drv_ctx->sst_lock);
-	if (sst_drv_ctx->pci_id != SST_MRFLD_PCI_ID) {
-		pr_debug("FW Version %02x.%02x.%02x\n", init->fw_version.major,
-				init->fw_version.minor, init->fw_version.build);
-		pr_debug("Build Type %x\n", init->fw_version.type);
-		pr_debug(" Build date %s Time %s\n",
-				init->build_info.date, init->build_info.time);
-	}
+	pr_debug("FW Version %02x.%02x.%02x\n", init->fw_version.major,
+			init->fw_version.minor, init->fw_version.build);
+	pr_debug("Build Type %x\n", init->fw_version.type);
+	pr_debug(" Build date %s Time %s\n",
+			init->build_info.date, init->build_info.time);
 	sst_wake_up_alloc_block(sst_drv_ctx, FW_DWNL_ID, retval, NULL);
 	return retval;
 }
 /**
-* sst_process_message_mfld - Processes message from SST
+* sst_process_message - Processes message from SST
 *
 * @work:	Pointer to work structure
 *
 * This function is scheduled by ISR
 * It take a msg from process_queue and does action based on msg
 */
-void sst_process_message_mfld(struct work_struct *work)
+void sst_process_message(struct work_struct *work)
 {
 	struct sst_ipc_msg_wq *msg =
 			container_of(work, struct sst_ipc_msg_wq, wq);
@@ -513,101 +388,9 @@ void sst_process_message_mfld(struct work_struct *work)
 		pr_err("Unhandled msg %x header %x\n",
 		msg->header.part.msg_id, msg->header.full);
 	}
-	sst_drv_ctx->ops->clear_interrupt();
+	sst_clear_interrupt();
 	return;
 }
-
-/**
-* sst_process_message - Processes message from SST
-*
-* @work:	Pointer to work structure
-*
-* This function is scheduled by ISR
-* It take a msg from process_queue and does action based on msg
-*/
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
-void sst_process_message_mrfld(struct work_struct *work)
-{
-	struct sst_ipc_msg_wq *msg =
-				container_of(work, struct sst_ipc_msg_wq, wq);
-
-	int str_id = msg->mrfld_header.p.header_high.part.str_id;
-	pr_debug("ProcesMsg:%d\n", msg->mrfld_header.p.header_high.part.msg_id);
-	switch (msg->mrfld_header.p.header_high.part.msg_id) {
-	case IPC_SST_BUF_UNDER_RUN:
-	case IPC_SST_BUF_OVER_RUN:
-		if (sst_validate_strid(str_id)) {
-			pr_err("stream id %d invalid\n", str_id);
-			break;
-		}
-		pr_err("Buffer under/overrun for %d\n",
-				msg->mrfld_header.p.header_high.part.str_id);
-		pr_err("Got Underrun & not to send data...ignore\n");
-		break;
-	case IPC_IA_FW_INIT_CMPLT: {
-		/* send next data to FW */
-		process_fw_init(msg);
-		break;
-	}
-	default:
-		/* Illegal case */
-		pr_err("Unhandled msg %x header %x\n",
-		msg->header.part.msg_id, msg->header.full);
-	}
-
-	sst_drv_ctx->ops->clear_interrupt();
-	return;
-}
-
-void sst_process_reply_mrfld(struct work_struct *work)
-{
-	struct sst_ipc_msg_wq *msg =
-			container_of(work, struct sst_ipc_msg_wq, wq);
-	int str_id = msg->mrfld_header.p.header_high.part.str_id;
-	struct stream_info *str_info;
-
-	pr_debug("Msg-reply:%d\n", msg->mrfld_header.p.header_high.part.msg_id);
-	switch (msg->mrfld_header.p.header_high.part.msg_id) {
-	case IPC_IA_ALLOC_STREAM: {
-		/* map to stream, call play */
-		if (msg->mrfld_header.p.header_high.part.result)
-			pr_err("error alloc stream\n");
-		sst_alloc_stream_response_mrfld(str_id);
-		break;
-	}
-	case IPC_IA_START_STREAM:
-		pr_debug("reply for START STREAM\n");
-		break;
-	case IPC_IA_FREE_STREAM:
-		str_info = &sst_drv_ctx->streams[str_id];
-		if (!msg->mrfld_header.p.header_high.part.result) {
-			pr_debug("Stream %d freed\n", str_id);
-		} else {
-			pr_err("Free for %d ret error %x\n",
-			str_id, msg->mrfld_header.p.header_high.part.result);
-		}
-		if (str_info->ctrl_blk.on == true) {
-			str_info->ctrl_blk.on = false;
-			str_info->ctrl_blk.condition = true;
-			wake_up(&sst_drv_ctx->wait_queue);
-		}
-		break;
-	case IPC_IA_DROP_STREAM:
-		pr_debug("Drop received...\n");
-		if (sst_validate_strid(str_id)) {
-			pr_err("str id %d invalid\n", str_id);
-			break;
-		}
-
-	default:
-		/* Illegal case */
-		pr_err("process reply:default\n");
-	}
-	sst_drv_ctx->ops->clear_interrupt();
-
-	return;
-}
-#endif
 
 /**
 * sst_process_reply - Processes reply message from SST
@@ -618,7 +401,7 @@ void sst_process_reply_mrfld(struct work_struct *work)
 * It take a reply msg from response_queue and
 * does action based on msg
 */
-void sst_process_reply_mfld(struct work_struct *work)
+void sst_process_reply(struct work_struct *work)
 {
 	struct sst_ipc_msg_wq *msg =
 			container_of(work, struct sst_ipc_msg_wq, wq);
@@ -1059,6 +842,6 @@ void sst_process_reply_mfld(struct work_struct *work)
 		/* Illegal case */
 		pr_err("process reply:default = %x\n", msg->header.full);
 	}
-	sst_drv_ctx->ops->clear_interrupt();
+	sst_clear_interrupt();
 	return;
 }

@@ -13,10 +13,6 @@ obj-$(CONFIG_SND_MFLD_MACHINE_GI) += snd-soc-mfld-machine-gi.o
 snd-soc-clv-machine-objs := clv_machine.o
 obj-$(CONFIG_SND_CLV_MACHINE) += snd-soc-clv-machine.o
 
-# Merrfield board
-snd-soc-mrfld-machine-objs := mrfld_machine.o
-obj-$(CONFIG_SND_MRFLD_MACHINE) += snd-soc-mrfld-machine.o
-
 # DSP driver
 obj-$(CONFIG_SND_INTEL_SST) += sst/
 

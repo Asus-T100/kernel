@@ -97,70 +97,6 @@ static struct miscdevice lpe_ctrl = {
 	.fops = &intel_sst_fops_cntrl
 };
 
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
-static irqreturn_t intel_sst_interrupt_mrfld(int irq, void *context)
-{
-	union interrupt_reg_mrfld isr;
-	union ipc_header_mrfld header;
-	union sst_imr_reg_mrfld imr;
-	struct intel_sst_drv *drv = (struct intel_sst_drv *) context;
-	unsigned int size = 0, str_id;
-	struct stream_info *stream ;
-
-	/* Do not handle interrupt in suspended state */
-	if (drv->sst_state == SST_SUSPENDED)
-		return IRQ_NONE;
-	/* Interrupt arrived, check src */
-	isr.full = sst_shim_read64(drv->shim, SST_ISRX);
-
-	if (isr.part.busy_interrupt) {
-		header.f = sst_shim_read64(drv->shim, SST_IPCD);
-		if (header.p.header_high.part.msg_id ==
-						IPC_SST_PERIOD_ELAPSED) {
-			sst_drv_ctx->ops->clear_interrupt();
-			str_id = header.p.header_high.part.str_id;
-			stream = &sst_drv_ctx->streams[str_id];
-			if (stream->period_elapsed)
-				stream->period_elapsed(stream->pcm_substream);
-			return IRQ_HANDLED;
-		}
-		if (header.p.header_high.part.large)
-			size = header.p.header_low_payload;
-		if (header.p.header_high.part.msg_id & REPLY_MSG) {
-			sst_drv_ctx->ipc_process_msg.mrfld_header = header;
-			memcpy_fromio(sst_drv_ctx->ipc_process_msg.mailbox,
-				drv->mailbox + SST_MAILBOX_RCV, size);
-			queue_work(sst_drv_ctx->process_msg_wq,
-					&sst_drv_ctx->ipc_process_msg.wq);
-		} else {
-			sst_drv_ctx->ipc_process_reply.mrfld_header = header;
-			memcpy_fromio(sst_drv_ctx->ipc_process_reply.mailbox,
-				drv->mailbox + SST_MAILBOX_RCV, size);
-			queue_work(sst_drv_ctx->process_reply_wq,
-					&sst_drv_ctx->ipc_process_reply.wq);
-		}
-		/*mask busy interrupt*/
-		imr.full = sst_shim_read64(drv->shim, SST_IMRX);
-		imr.part.busy_interrupt = 1;
-		sst_shim_write64(drv->shim, SST_IMRX, imr.full);
-		return IRQ_HANDLED;
-	} else if (isr.part.done_interrupt) {
-		/* Clear done bit */
-
-		header.f = sst_shim_read64(drv->shim, SST_IPCX);
-		header.p.header_high.part.done = 0;
-		sst_shim_write64(drv->shim, SST_IPCX, header.f);
-		/* write 1 to clear status register */;
-		isr.part.done_interrupt = 1;
-		sst_shim_write64(drv->shim, SST_ISRX, isr.full);
-		queue_work(sst_drv_ctx->post_msg_wq,
-			&sst_drv_ctx->ipc_post_msg.wq);
-		return IRQ_HANDLED;
-	} else
-		return IRQ_NONE;
-}
-#endif
-
 /**
 * intel_sst_interrupt - Interrupt service routine for SST
 *
@@ -171,7 +107,7 @@ static irqreturn_t intel_sst_interrupt_mrfld(int irq, void *context)
 * an interrupt. This will be result of write in IPC register
 * Source can be busy or done interrupt
 */
-static irqreturn_t intel_sst_intr_mfld(int irq, void *context)
+static irqreturn_t intel_sst_interrupt(int irq, void *context)
 {
 	union interrupt_reg isr;
 	union ipc_header header;
@@ -190,13 +126,14 @@ static irqreturn_t intel_sst_intr_mfld(int irq, void *context)
 	if (isr.part.busy_interrupt) {
 		header.full = sst_shim_read(drv->shim, SST_IPCD);
 		if (header.part.msg_id == IPC_SST_PERIOD_ELAPSED) {
-			sst_drv_ctx->ops->clear_interrupt();
+			sst_clear_interrupt();
 			str_id = header.part.str_id;
 			stream = &sst_drv_ctx->streams[str_id];
 			if (stream->period_elapsed)
 				stream->period_elapsed(stream->pcm_substream);
 			return IRQ_HANDLED;
 		}
+		pr_debug("received IPC %x\n", header.full);
 		if (header.part.large)
 			size = header.part.data;
 		if (header.part.msg_id & REPLY_MSG) {
@@ -224,6 +161,7 @@ static irqreturn_t intel_sst_intr_mfld(int irq, void *context)
 		sst_shim_write(sst_drv_ctx->shim, SST_IPCX, header.full);
 		/* write 1 to clear status register */;
 		isr.part.done_interrupt = 1;
+		/* dummy register for shim workaround */
 		sst_shim_write(sst_drv_ctx->shim, SST_ISRX, isr.full);
 		queue_work(sst_drv_ctx->post_msg_wq,
 			&sst_drv_ctx->ipc_post_msg.wq);
@@ -233,52 +171,6 @@ static irqreturn_t intel_sst_intr_mfld(int irq, void *context)
 
 }
 
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
-struct intel_sst_ops mrfld_ops = {
-	.interrupt = intel_sst_interrupt_mrfld,
-	.clear_interrupt = intel_sst_clear_intr_mrfld,
-	.start = sst_start_mrfld,
-	.reset = intel_sst_reset_dsp_mrfld,
-	.post_message = sst_post_message_mrfld,
-	.sync_post_message = sst_sync_post_message_mrfld,
-	.process_message = sst_process_message_mrfld,
-	.process_reply = sst_process_reply_mrfld,
-	.start_stream = sst_start_stream_mrfld,
-};
-#endif
-
-struct intel_sst_ops mfld_ops = {
-	.interrupt = intel_sst_intr_mfld,
-	.clear_interrupt = intel_sst_clear_intr_mfld,
-	.start = sst_start_mfld,
-	.reset = intel_sst_reset_dsp_mfld,
-	.post_message = sst_post_message_mfld,
-	.sync_post_message = sst_sync_post_message_mfld,
-	.process_message = sst_process_message_mfld,
-	.process_reply = sst_process_reply_mfld,
-	.start_stream = sst_start_stream_mfld,
-};
-
-static int sst_driver_ops(unsigned int pci_id)
-{
-
-	switch (pci_id) {
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
-	case SST_MRFLD_PCI_ID:
-		sst_drv_ctx->tstamp = SST_TIME_STAMP_MRFLD;
-		sst_drv_ctx->ops = &mrfld_ops;
-		return 0;
-#endif
-	case SST_CLV_PCI_ID:
-	case SST_MFLD_PCI_ID:
-		sst_drv_ctx->tstamp =  SST_TIME_STAMP;
-		sst_drv_ctx->ops = &mfld_ops;
-		return 0;
-	default:
-		pr_err("SST Driver capablities missing for pci_id: %x", pci_id);
-	return -EINVAL;
-	};
-}
 
 /*
 * intel_sst_probe - PCI probe function
@@ -293,7 +185,6 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 			const struct pci_device_id *pci_id)
 {
 	int i, ret = 0;
-	struct intel_sst_ops *ops;
 
 	pr_debug("Probe for DID %x\n", pci->device);
 	mutex_lock(&drv_ctx_lock);
@@ -313,8 +204,6 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 
 	sst_drv_ctx->pci_id = pci->device;
 
-	if (0 != sst_driver_ops(sst_drv_ctx->pci_id))
-		return -EINVAL;
 	mutex_init(&sst_drv_ctx->stream_lock);
 	mutex_init(&sst_drv_ctx->sst_lock);
 	mutex_init(&sst_drv_ctx->mixer_ctrl_lock);
@@ -328,12 +217,11 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 	sst_drv_ctx->pmic_port_instance = SST_DEFAULT_PMIC_PORT;
 	sst_drv_ctx->fw = NULL;
 	sst_drv_ctx->fw_in_mem = NULL;
-	ops = sst_drv_ctx->ops;
 
 	INIT_LIST_HEAD(&sst_drv_ctx->ipc_dispatch_list);
-	INIT_WORK(&sst_drv_ctx->ipc_post_msg.wq, ops->post_message);
-	INIT_WORK(&sst_drv_ctx->ipc_process_msg.wq, ops->process_message);
-	INIT_WORK(&sst_drv_ctx->ipc_process_reply.wq, ops->process_reply);
+	INIT_WORK(&sst_drv_ctx->ipc_post_msg.wq, sst_post_message);
+	INIT_WORK(&sst_drv_ctx->ipc_process_msg.wq, sst_process_message);
+	INIT_WORK(&sst_drv_ctx->ipc_process_reply.wq, sst_process_reply);
 	init_waitqueue_head(&sst_drv_ctx->wait_queue);
 
 	sst_drv_ctx->mad_wq = create_singlethread_workqueue("sst_mad_wq");
@@ -406,20 +294,6 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 		goto do_disable_device;
 	/* map registers */
 	/* SST Shim */
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
-	if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID) {
-		sst_drv_ctx->ddr_base = pci_resource_start(pci, 0);
-		sst_drv_ctx->ddr_end = pci_resource_end(pci, 0);
-
-		sst_drv_ctx->ddr = pci_ioremap_bar(pci, 0);
-		if (!sst_drv_ctx->ddr)
-			goto do_unmap_ddr;
-		pr_debug("sst: DDR Ptr %p\n", sst_drv_ctx->ddr);
-	} else {
-		sst_drv_ctx->ddr = NULL;
-	}
-#endif
-	/* SST Shim */
 	sst_drv_ctx->shim_phy_add = pci_resource_start(pci, 1);
 	sst_drv_ctx->shim = pci_ioremap_bar(pci, 1);
 	if (!sst_drv_ctx->shim)
@@ -433,7 +307,6 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 	pr_debug("SRAM Ptr %p\n", sst_drv_ctx->mailbox);
 
 	/* IRAM */
-	sst_drv_ctx->iram_end = pci_resource_end(pci, 3);
 	sst_drv_ctx->iram_base = pci_resource_start(pci, 3);
 	sst_drv_ctx->iram = pci_ioremap_bar(pci, 3);
 	if (!sst_drv_ctx->iram)
@@ -441,7 +314,6 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 	pr_debug("IRAM Ptr %p\n", sst_drv_ctx->iram);
 
 	/* DRAM */
-	sst_drv_ctx->dram_end = pci_resource_end(pci, 4);
 	sst_drv_ctx->dram_base = pci_resource_start(pci, 4);
 	sst_drv_ctx->dram = pci_ioremap_bar(pci, 4);
 	if (!sst_drv_ctx->dram)
@@ -450,7 +322,7 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 
 	sst_set_fw_state_locked(sst_drv_ctx, SST_UN_INIT);
 	/* Register the ISR */
-	ret = request_irq(pci->irq, sst_drv_ctx->ops->interrupt,
+	ret = request_irq(pci->irq, intel_sst_interrupt,
 		IRQF_SHARED, SST_DRV_NAME, sst_drv_ctx);
 	if (ret)
 		goto do_unmap_dram;
@@ -519,14 +391,10 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 		vibra_pwm_configure(true);
 	}
 
+	sst_drv_ctx->lpe_stalled = 0;
 	pci_set_drvdata(pci, sst_drv_ctx);
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
-	if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID) {
-		sst_drv_ctx->lpe_stalled = 0;
-		pm_runtime_allow(&pci->dev);
-		pm_runtime_put_noidle(&pci->dev);
-	}
-#endif
+	pm_runtime_allow(&pci->dev);
+	pm_runtime_put_noidle(&pci->dev);
 	register_sst(&pci->dev);
 	pr_info("%s successfully done!\n", __func__);
 	return ret;
@@ -543,11 +411,6 @@ do_unmap_sram:
 	iounmap(sst_drv_ctx->mailbox);
 do_unmap_shim:
 	iounmap(sst_drv_ctx->shim);
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
-do_unmap_ddr:
-	if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID)
-		iounmap(sst_drv_ctx->ddr);
-#endif
 do_release_regions:
 	pci_release_regions(pci);
 do_disable_device:
@@ -648,7 +511,7 @@ static void sst_save_dsp_context(void)
 	spin_lock(&sst_drv_ctx->list_spin_lock);
 	list_add_tail(&msg->node, &sst_drv_ctx->ipc_dispatch_list);
 	spin_unlock(&sst_drv_ctx->list_spin_lock);
-	sst_drv_ctx->ops->post_message(&sst_drv_ctx->ipc_post_msg_wq);
+	sst_post_message(&sst_drv_ctx->ipc_post_msg_wq);
 	/*wait for reply*/
 	if (sst_wait_timeout(sst_drv_ctx,
 				&sst_drv_ctx->alloc_block[0].ops_block))
@@ -660,6 +523,7 @@ static void sst_save_dsp_context(void)
 
 void intel_sst_pwm_suspend(unsigned int pwm_suspend)
 {
+
 	if (pwm_suspend) {
 		pr_debug("SST_SND_DEVICE_SUSPEND doing rtpm_put\n");
 		pm_runtime_put(&sst_drv_ctx->pci->dev);
@@ -738,7 +602,6 @@ static int intel_sst_runtime_suspend(struct device *dev)
 	flush_workqueue(sst_drv_ctx->post_msg_wq);
 	flush_workqueue(sst_drv_ctx->process_msg_wq);
 	flush_workqueue(sst_drv_ctx->process_reply_wq);
-
 	return 0;
 }
 
@@ -776,14 +639,11 @@ static int intel_sst_runtime_resume(struct device *dev)
 	}
 
 	sst_set_fw_state_locked(sst_drv_ctx, SST_UN_INIT);
-
 	return 0;
 }
 
 static int intel_sst_runtime_idle(struct device *dev)
 {
-	if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID)
-		return -EBUSY;
 	pr_debug("runtime_idle called\n");
 	if (!sst_drv_ctx->am_cnt && sst_drv_ctx->sst_state != SST_UN_INIT) {
 		pm_schedule_suspend(dev, SST_SUSPEND_DELAY);
@@ -791,8 +651,6 @@ static int intel_sst_runtime_idle(struct device *dev)
 	} else {
 		return 0;
 	}
-	return -EBUSY;
-
 }
 
 static const struct dev_pm_ops intel_sst_pm = {
@@ -808,7 +666,6 @@ static DEFINE_PCI_DEVICE_TABLE(intel_sst_ids) = {
 	{ PCI_VDEVICE(INTEL, SST_MRST_PCI_ID), 3},
 	{ PCI_VDEVICE(INTEL, SST_MFLD_PCI_ID), 5},
 	{ PCI_VDEVICE(INTEL, SST_CLV_PCI_ID), 3},
-	{ PCI_VDEVICE(INTEL, SST_MRFLD_PCI_ID), 3},
 	{ 0, }
 };
 MODULE_DEVICE_TABLE(pci, intel_sst_ids);

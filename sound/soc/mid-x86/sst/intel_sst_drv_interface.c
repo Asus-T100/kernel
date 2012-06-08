@@ -34,7 +34,6 @@
 #include <linux/firmware.h>
 #include <linux/pm_runtime.h>
 #include <sound/intel_sst_ioctl.h>
-#include <sound/pcm.h>
 #include "../sst_platform.h"
 #include "intel_sst_fw_ipc.h"
 #include "intel_sst_common.h"
@@ -69,7 +68,7 @@ static void sst_restore_fw_context(void)
 	spin_lock(&sst_drv_ctx->list_spin_lock);
 	list_add_tail(&msg->node, &sst_drv_ctx->ipc_dispatch_list);
 	spin_unlock(&sst_drv_ctx->list_spin_lock);
-	sst_drv_ctx->ops->post_message(&sst_drv_ctx->ipc_post_msg_wq);
+	sst_post_message(&sst_drv_ctx->ipc_post_msg_wq);
 	retval = sst_wait_timeout(sst_drv_ctx,
 				&sst_drv_ctx->alloc_block[0].ops_block);
 	sst_drv_ctx->alloc_block[0].sst_id = BLOCK_UNINIT;
@@ -87,8 +86,14 @@ int sst_download_fw(void)
 {
 	int retval;
 
+	char name[20];
+
 	if (sst_drv_ctx->sst_state != SST_START_INIT)
 		return -EAGAIN;
+
+	snprintf(name, sizeof(name), "%s%04x%s", "fw_sst_",
+					sst_drv_ctx->pci_id, ".bin");
+
 	if (!sst_drv_ctx->fw_in_mem) {
 		retval = sst_request_fw();
 		if (retval)
@@ -112,8 +117,8 @@ end_restore:
 	sst_drv_ctx->alloc_block[0].sst_id = BLOCK_UNINIT;
 	if (retval)
 		return retval;
-	if (sst_drv_ctx->pci_id != SST_MRFLD_PCI_ID)
-		sst_restore_fw_context();
+
+	sst_restore_fw_context();
 	sst_set_fw_state_locked(sst_drv_ctx, SST_FW_RUNNING);
 
 	return retval;
@@ -323,6 +328,7 @@ int sst_get_stream(struct sst_stream_params *str_param)
 		/*Send a messageif not sent already*/
 		sst_drv_ctx->cp_streams++;
 	}
+
 err:
 	return retval;
 }
@@ -369,7 +375,7 @@ void sst_process_mad_ops(struct work_struct *work)
 		break;
 	case SST_SND_START:
 		pr_debug("start stream\n");
-		retval = sst_drv_ctx->ops->start_stream(mad_ops->stream_id);
+		retval = sst_start_stream(mad_ops->stream_id);
 		break;
 	case SST_SND_STREAM_PROCESS:
 		pr_debug("play/capt frames...\n");
@@ -423,6 +429,7 @@ static int sst_open_pcm_stream(struct sst_stream_params *str_param)
 		str_info = &sst_drv_ctx->streams[retval];
 		str_info->src = MAD_DRV;
 	}
+
 	return retval;
 }
 
@@ -458,100 +465,8 @@ int sst_send_sync_msg(int ipc, int str_id)
 
 	if (sst_create_short_msg(&msg))
 		return -ENOMEM;
-	if (sst_drv_ctx->pci_id != SST_MRFLD_PCI_ID)
-		sst_fill_header(&msg->header, ipc, 0, str_id);
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
-	else
-		sst_fill_header_mrfld(&msg->mrfld_header, ipc, 0, str_id);
-#endif
-	return sst_drv_ctx->ops->sync_post_message(msg);
-}
-static inline int sst_calc_mfld_tstamp(struct pcm_stream_info *info,
-		int ops, struct snd_sst_tstamp *fw_tstamp)
-{
-	if (ops == STREAM_OPS_PLAYBACK)
-		info->buffer_ptr = fw_tstamp->samples_rendered;
-	else
-		info->buffer_ptr = fw_tstamp->samples_processed;
-	info->pcm_delay = fw_tstamp->pcm_delay;
-
-	pr_debug("Samples rendered = %llu, buffer ptr %llu\n",
-			fw_tstamp->samples_rendered, info->buffer_ptr);
-	pr_debug("pcm delay %llu\n", info->pcm_delay);
-	return 0;
-}
-
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
-static inline int sst_calc_mrfld_tstamp(struct pcm_stream_info *info,
-		struct snd_pcm_substream *substream,
-		struct snd_sst_tstamp_mrfld *fw_tstamp)
-{
-	size_t delay_bytes, delay_frames;
-	size_t buffer_sz;
-	size_t pointer_bytes, pointer_samples;
-
-	pr_debug("mrfld ring_buffer_counter %d in bytes\n",
-			fw_tstamp->ring_buffer_counter);
-	pr_debug("mrfld hardware_counter %d in bytes\n",
-			 fw_tstamp->hardware_counter);
-	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
-		delay_bytes = fw_tstamp->ring_buffer_counter -
-					fw_tstamp->hardware_counter;
-	else
-		delay_bytes = fw_tstamp->hardware_counter -
-					fw_tstamp->ring_buffer_counter;
-	delay_frames = bytes_to_frames(substream->runtime, delay_bytes);
-	buffer_sz = snd_pcm_lib_buffer_bytes(substream);
-	pointer_bytes = fw_tstamp->ring_buffer_counter % buffer_sz;
-	pointer_samples = bytes_to_samples(substream->runtime, pointer_bytes);
-
-	pr_debug("pcm delay %d in bytes\n", delay_bytes);
-
-	info->buffer_ptr = pointer_samples / substream->runtime->channels;
-
-	info->pcm_delay = delay_frames / substream->runtime->channels;
-	pr_debug("buffer ptr %llu pcm_delay rep: %llu\n",
-			info->buffer_ptr, info->pcm_delay);
-	return 0;
-}
-#endif
-
-static int sst_read_timestamp(struct pcm_stream_info *info)
-{
-	struct snd_sst_tstamp fw_tstamp = {0,};
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
-	struct snd_sst_tstamp_mrfld fw_tstamp_m = {0,};
-#endif
-	struct stream_info *stream;
-	struct snd_pcm_substream *substream;
-	unsigned int str_id;
-	int retval;
-
-	str_id = info->str_id;
-	retval = sst_validate_strid(str_id);
-	if (retval)
-		return retval;
-	stream = &sst_drv_ctx->streams[str_id];
-
-	if (!stream->pcm_substream)
-		return -EINVAL;
-	substream = stream->pcm_substream;
-
-	if (sst_drv_ctx->pci_id != SST_MRFLD_PCI_ID) {
-		memcpy_fromio(&fw_tstamp,
-			((void *)(sst_drv_ctx->mailbox + sst_drv_ctx->tstamp)
-				+ (str_id * sizeof(fw_tstamp))),
-			sizeof(fw_tstamp));
-		return sst_calc_mfld_tstamp(info, stream->ops, &fw_tstamp);
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
-	} else {
-		memcpy_fromio(&fw_tstamp_m,
-			((void *)(sst_drv_ctx->mailbox + sst_drv_ctx->tstamp)
-				+ (str_id * sizeof(fw_tstamp_m))),
-			sizeof(fw_tstamp_m));
-		return sst_calc_mrfld_tstamp(info, substream, &fw_tstamp_m);
-#endif
-	}
+	sst_fill_header(&msg->header, ipc, 0, str_id);
+	return sst_sync_post_message(msg);
 }
 
 /*
@@ -590,10 +505,7 @@ static int sst_device_control(int cmd, void *arg)
 		ipc = IPC_IA_START_STREAM;
 		str_info->prev = str_info->status;
 		str_info->status = STREAM_RUNNING;
-		if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID)
-			sst_drv_ctx->ops->start_stream(str_id);
-		else
-			retval = sst_send_sync_msg(ipc, str_id);
+		retval = sst_send_sync_msg(ipc, str_id);
 		break;
 	}
 	case SST_SND_DROP: {
@@ -627,18 +539,40 @@ static int sst_device_control(int cmd, void *arg)
 		stream->sfreq = str_info->sfreq;
 		stream->prev = stream->status;
 		stream->status = STREAM_INIT;
-		pr_debug("pcm_substream %p, period_elapsed %p, sfreq %d, status %d\n",
-				stream->pcm_substream, stream->period_elapsed, stream->sfreq, stream->status);
 		break;
 	}
 
 	case SST_SND_BUFFER_POINTER: {
 		struct pcm_stream_info *stream_info;
+		struct snd_sst_tstamp fw_tstamp = {0,};
+		struct stream_info *stream;
+
 
 		stream_info = (struct pcm_stream_info *)arg;
-		retval = sst_read_timestamp(stream_info);
-		pr_debug("pointer %llu, delay %llu\n",
-			stream_info->buffer_ptr, stream_info->pcm_delay);
+		str_id = stream_info->str_id;
+		stream = get_stream_info(str_id);
+		if (!stream) {
+			retval = -EINVAL;
+			break;
+		}
+
+		if (!stream->pcm_substream)
+			break;
+		memcpy_fromio(&fw_tstamp,
+			((void *)(sst_drv_ctx->mailbox + SST_TIME_STAMP)
+			+(str_id * sizeof(fw_tstamp))),
+			sizeof(fw_tstamp));
+
+		pr_debug("Pointer Query on strid = %d ops %d\n",
+						str_id, stream->ops);
+
+		if (stream->ops == STREAM_OPS_PLAYBACK)
+			stream_info->buffer_ptr = fw_tstamp.samples_rendered;
+		else
+			stream_info->buffer_ptr = fw_tstamp.samples_processed;
+		stream_info->pcm_delay = fw_tstamp.pcm_delay;
+		pr_debug("Samples rendered = %llu, buffer ptr %llu\n",
+			fw_tstamp.samples_rendered, stream_info->buffer_ptr);
 		break;
 	}
 	default:

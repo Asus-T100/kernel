@@ -97,19 +97,6 @@ struct snd_sst_mix_info {
 	__u16 reserved;
 };
 
-struct snd_pcm_params_mrfld {
-	__u16 codec;	/* codec type */
-	__u8 num_chan;	/* 1=Mono, 2=Stereo */
-	__u8 pcm_wd_sz;	/* 16/24 - bit*/
-	__u32 reserved;	/* Bitrate in bits per second */
-	__u32 sfreq;	/* Sampling rate in Hz */
-	__u8 use_offload_path;	/* 0-PCM using period elpased & ALSA interfaces
-				   1-PCM stream via compressed interface  */
-	__u8 reserved2;
-	__u16 reserved3;
-	__u8 channel_map[8];
-} __packed;
-
 /* PCM Parameters */
 struct snd_pcm_params {
 	__u16 codec;	/* codec type */
@@ -195,7 +182,7 @@ struct snd_ppp_params {
 	__u8			reserved;
 	__u32			size;	/*Size of parameters for all blocks*/
 	void			*params;
-} __packed;
+} __attribute__ ((packed));
 
 struct snd_sst_postproc_info {
 	__u32 src_min;		/* Supported SRC Min sampling freq */
@@ -218,7 +205,7 @@ struct snd_sst_prp_info {
 	__u8 volume_control;		/* 0=Not Supported, 1=Supported */
 	__u8 reserved1;			/* for 32 bit alignment */
 	__u16 reserved2;		/* for 32 bit alignment */
-} __packed;
+} __attribute__ ((packed));
 
 /*Pre / Post processing algorithms support*/
 struct snd_sst_ppp_info {
@@ -255,9 +242,6 @@ struct snd_sst_fw_info {
 /* Codec params struture */
 union  snd_sst_codec_params {
 	struct snd_pcm_params pcm_params;
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
-	struct snd_pcm_params_mrfld pcm_params_mrfld;
-#endif
 	struct snd_mp3_params mp3_params;
 	struct snd_aac_params aac_params;
 	struct snd_wma_params wma_params;
@@ -266,7 +250,7 @@ union  snd_sst_codec_params {
 
 struct snd_sst_stream_params {
 	union snd_sst_codec_params uc;
-} __packed;
+} __attribute__ ((packed));
 
 struct snd_sst_params {
 	__u32 result;
@@ -295,7 +279,7 @@ struct snd_sst_pmic_config {
 	__u32  sfreq;                /* Sampling rate in Hz */
 	__u16  num_chan;             /* Mono =1 or Stereo =2 */
 	__u16  pcm_wd_sz;            /* Number of bits per sample */
-} __packed;
+} __attribute__ ((packed));
 
 struct snd_sst_get_stream_params {
 	struct snd_sst_params codec_params;
@@ -352,14 +336,14 @@ struct snd_sst_slot_info {
 	__u8 device_mode;
 	__u8 reserved;
 	struct snd_sst_pmic_config pcm_params;
-} __packed;
+} __attribute__ ((packed));
 
 #define SST_MAX_TARGET_DEVICES 3
 /* Target device list structure */
 struct snd_sst_target_device  {
 	__u32 device_route;
 	struct snd_sst_slot_info devices[SST_MAX_TARGET_DEVICES];
-} __packed;
+} __attribute__ ((packed));
 
 struct snd_sst_driver_info {
 	__u32 version;	/* Version of the driver */
