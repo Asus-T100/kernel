@@ -72,6 +72,8 @@ void usb_notify_warning(struct usb_device *udev, int warning_code)
 	char *notsupport[2] = { "USB_WARNING=DEVICE_NOT_SUPPORT", NULL };
 	char *notrespond[2] = { "USB_WARNING=DEVICE_NOT_RESPONDING", NULL };
 	char *vbusinvalid[2] = { "USB_WARNING=VBUS_INVALID", NULL };
+	char *hubmaxtier[2] = { "USB_WARNING=HUB_MAX_TIER", NULL };
+	char *insuffpower[2] = { "USB_WARNING=INSUFF_POWER", NULL };
 	char **uevent_envp = NULL;
 
 	switch (warning_code) {
@@ -83,6 +85,12 @@ void usb_notify_warning(struct usb_device *udev, int warning_code)
 		break;
 	case USB_WARNING_VBUS_INVALID:
 		uevent_envp = vbusinvalid;
+		break;
+	case USB_WARNING_HUB_MAX_TIER:
+		uevent_envp = hubmaxtier;
+		break;
+	case USB_WARNING_INSUFF_POWER:
+		uevent_envp = insuffpower;
 		break;
 	default:
 		return;
