@@ -1231,13 +1231,13 @@ static int mdfld_restore_display_registers(struct drm_device *dev, int pipe)
 			dpll &= ~MDFLD_PWR_GATE_EN;
 			PSB_WVDC32(dpll, dpll_reg);
 			/* FIXME_MDFLD PO - change 500 to 1 after PO */
-			udelay(500);
+			usleep_range(500, 600);
 		}
 
 		PSB_WVDC32(fp_val, fp_reg);
 		PSB_WVDC32(dpll_val, dpll_reg);
 		/* FIXME_MDFLD PO - change 500 to 1 after PO */
-		udelay(500);
+		usleep_range(500, 600);
 
 		dpll_val |= DPLL_VCO_ENABLE;
 		PSB_WVDC32(dpll_val, dpll_reg);
@@ -1252,7 +1252,7 @@ static int mdfld_restore_display_registers(struct drm_device *dev, int pipe)
 		while ((pipe == 0) &&
 			(timeout < 20000) &&
 			!(PSB_RVDC32(pipeconf_reg) & PIPECONF_DSIPLL_LOCK)) {
-			udelay(150);
+			usleep_range(150, 350);
 			timeout++;
 		}
 
@@ -1292,10 +1292,7 @@ static int mdfld_restore_display_registers(struct drm_device *dev, int pipe)
 		/*set up pipe related registers*/
 		PSB_WVDC32(mipi_val, mipi_reg);
 
-		if(in_atomic() || in_interrupt())
-			mdelay(20);
-		else
-			msleep(20);
+		msleep(20);
 
 #endif
 		/*TODO: remove MIPI restore code later*/
@@ -1325,9 +1322,6 @@ static int mdfld_restore_display_registers(struct drm_device *dev, int pipe)
 	/*enable the plane*/
 	PSB_WVDC32(dspcntr_val, dspcntr_reg);
 
-    if(in_atomic() || in_interrupt())
-        mdelay(20);
-    else
 	msleep(20);
 
 #ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
@@ -1336,7 +1330,7 @@ static int mdfld_restore_display_registers(struct drm_device *dev, int pipe)
 	temp = REG_READ(mipi_reg);
 	temp |= LP_OUTPUT_HOLD_RELEASE;
 	REG_WRITE(mipi_reg, temp);
-	mdelay(1);
+	usleep_range(1000, 1200);
 
 
 	/* Set DSI host to exit from Utra Low Power State */
@@ -1345,13 +1339,13 @@ static int mdfld_restore_display_registers(struct drm_device *dev, int pipe)
 	temp |= 0x3;
 	temp |= EXIT_ULPS_DEV_READY;
 	REG_WRITE(device_ready_reg, temp);
-	mdelay(1);
+	usleep_range(1000, 1200);
 
 	temp = REG_READ(device_ready_reg);
 	temp &= ~ULPS_MASK;
 	temp |= EXITING_ULPS;
 	REG_WRITE(device_ready_reg, temp);
-	mdelay(1);
+	usleep_range(1000, 1200);
 #endif
 
 	/*enable the pipe*/
