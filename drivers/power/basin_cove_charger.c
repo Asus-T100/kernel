@@ -32,7 +32,7 @@
 #include <linux/kfifo.h>
 #include <linux/param.h>
 #include <linux/device.h>
-#include <linux/platform_device.h>
+#include <linux/ipc_device.h>
 #include <linux/usb/otg.h>
 #include <linux/power_supply.h>
 #include <linux/wakelock.h>
@@ -51,9 +51,7 @@
 #include "basin_cove_charger.h"
 
 #define CHARGER_PS_NAME "bcove_charger"
-#define DRIVER_NAME "bcove_charger"
-
-#define DEVICE_NAME "bc_charger"
+#define DRIVER_NAME "bcove_chrgr"
 
 #define BQ24260_NAME "bq24260"
 #define PMIC_SRAM_INTR_ADDR 0xFFFFF616
@@ -833,6 +831,7 @@ static int bcove_init(void)
 	int ret, i;
 	u8 addr_tzone, addr_cv, addr_cc, reg_val;
 	u16 adc_val;
+
 	memset(&bcprof, 0x00, sizeof(bcprof));
 
 	if (!get_batt_charging_profile(&bcprof))
@@ -946,22 +945,23 @@ static struct bc_chrgr_drv_context chc = {
 
 /**
  * bc_charger_probe - basin cove charger probe function
- * @pdev: basin cove platform device structure
+ * @ipcdev: basin cove ipc device structure
  * Context: can sleep
  *
  * basin cove charger driver initializes its internal data
  * structure and other  infrastructure components for it
  * to work as expected.
  */
-static int bc_chrgr_probe(struct platform_device *pdev)
+static int bc_chrgr_probe(struct ipc_device *ipcdev)
 {
 	int retval = 0;
 	struct batt_charging_profile bcprof;
-	if (!pdev)
+
+	if (!ipcdev)
 		return -ENOMEM;
-	chc.dev = &pdev->dev;
-	chc.irq = platform_get_irq(pdev, 0);
-	platform_set_drvdata(pdev, &chc);
+	chc.dev = &ipcdev->dev;
+	chc.irq = ipc_get_irq(ipcdev, 0);
+	ipc_set_drvdata(ipcdev, &chc);
 
 	/*FIXME: Make charger selection dynamic */
 	chc.ext_chrgr = &bq24260_chrgr;
@@ -982,17 +982,17 @@ static int bc_chrgr_probe(struct platform_device *pdev)
 	}
 
 	/*register with charger helper */
-	chc.ch_charger.dev = &pdev->dev;
+	chc.ch_charger.dev = &ipcdev->dev;
 	chc.ch_charger.invalid_battery = chc.invalid_batt;
 	chc.ch_handle = charger_helper_register_charger(&chc.ch_charger);
 
 	if (!chc.ch_handle) {
-		dev_err(&pdev->dev, "Error in charger_helper_register\n");
+		dev_err(&ipcdev->dev, "Error in charger_helper_register\n");
 		return -EIO;
 	}
 	chc.pmic_intr_iomap = ioremap_nocache(PMIC_SRAM_INTR_ADDR, 8);
 	if (!chc.pmic_intr_iomap) {
-		dev_err(&pdev->dev, "ioremap Failed\n");
+		dev_err(&ipcdev->dev, "ioremap Failed\n");
 		retval = -ENOMEM;
 		goto ioremap_failed;
 	}
@@ -1000,12 +1000,12 @@ static int bc_chrgr_probe(struct platform_device *pdev)
 	retval = request_threaded_irq(chc.irq, NULL,
 				      bc_thread_handler, 0, DRIVER_NAME, &chc);
 	if (retval) {
-		dev_err(&pdev->dev, "Error in request_threaded_irq(irq(%d)\n",
+		dev_err(&ipcdev->dev, "Error in request_threaded_irq(irq(%d)\n",
 			chc.irq);
 		goto req_irq_failed;
 	}
 
-	retval = power_supply_register(&pdev->dev, &chc.psy);
+	retval = power_supply_register(&ipcdev->dev, &chc.psy);
 	if (retval)
 		goto psy_reg_failed;
 
@@ -1043,16 +1043,16 @@ static void bc_chrgr_do_exit_ops(struct bc_chrgr_drv_context *chc)
 
 /**
  * bc_charger_remove - basin cove charger finalize
- * @pdev: basin cove charger platform  device structure
+ * @ipcdev: basin cove charger ipc device structure
  * Context: can sleep
  *
  * Basin cove charger finalizes its internal data structure and other
  * infrastructure components that it initialized in
  * bc_chrgr_probe.
  */
-static int bc_chrgr_remove(struct platform_device *pdev)
+static int bc_chrgr_remove(struct ipc_device *ipcdev)
 {
-	struct bc_chrgr_drv_context *chc = platform_get_drvdata(pdev);
+	struct bc_chrgr_drv_context *chc = ipc_get_drvdata(ipcdev);
 
 	if (chc) {
 		bc_chrgr_do_exit_ops(chc);
@@ -1115,10 +1115,6 @@ static int bc_chrgr_runtime_idle(struct device *dev)
  *		Driver initialisation and finalization
  *********************************************************************/
 
-static const struct platform_device_id bc_chrgr_id_table[] = {
-	{DEVICE_NAME, 1},
-};
-
 static const struct dev_pm_ops bc_chrgr_pm_ops = {
 	.suspend = bc_chrgr_suspend,
 	.resume = bc_chrgr_resume,
@@ -1127,7 +1123,7 @@ static const struct dev_pm_ops bc_chrgr_pm_ops = {
 	.runtime_idle = bc_chrgr_runtime_idle,
 };
 
-static struct platform_driver bc_chrgr_driver = {
+static struct ipc_driver bc_chrgr_driver = {
 	.driver = {
 		   .name = DRIVER_NAME,
 		   .owner = THIS_MODULE,
@@ -1135,27 +1131,12 @@ static struct platform_driver bc_chrgr_driver = {
 		   },
 	.probe = bc_chrgr_probe,
 	.remove = __devexit_p(bc_chrgr_remove),
-	.id_table = bc_chrgr_id_table,
 };
 
 static int __init bc_chrgr_init(void)
 {
 	int ret;
-	struct platform_device *pdev;
-
-	/*FIXME: move platfrom device registartion to platfrom layer
-	   once bc_charger device is populated in platform device list */
-
-	pdev = platform_device_alloc(DEVICE_NAME, 0);
-	if (!pdev)
-		return PTR_ERR(pdev);
-	ret = platform_device_add(pdev);
-	if (ret) {
-		kfree(pdev);
-		return ret;
-	}
-
-	ret = platform_driver_register(&bc_chrgr_driver);
+	ret = ipc_driver_register(&bc_chrgr_driver);
 
 	return ret;
 }
@@ -1163,7 +1144,7 @@ static int __init bc_chrgr_init(void)
 static void __exit bc_chrgr_exit(void)
 {
 
-	platform_driver_unregister(&bc_chrgr_driver);
+	ipc_driver_unregister(&bc_chrgr_driver);
 }
 
 /* Defer init call so that dependant drivers will be loaded. Using  async
