@@ -520,13 +520,11 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 	}
 
 	pci_set_drvdata(pci, sst_drv_ctx);
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
-	if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID) {
+	if (sst_drv_ctx->pci_id != SST_MRFLD_PCI_ID) {
 		sst_drv_ctx->lpe_stalled = 0;
 		pm_runtime_allow(&pci->dev);
 		pm_runtime_put_noidle(&pci->dev);
 	}
-#endif
 	register_sst(&pci->dev);
 	pr_info("%s successfully done!\n", __func__);
 	return ret;
