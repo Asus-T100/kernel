@@ -1467,7 +1467,8 @@ static int penwell_otg_charger_det_se1_clt(void)
 	if (retval)
 		return retval;
 
-	retval = penwell_otg_ulpi_read(iotg, ULPI_VS4, &data);
+	msleep(50);
+	retval = penwell_otg_ulpi_read(iotg, ULPI_DEBUG, &data);
 	if (retval) {
 		dev_warn(pnw->dev, "ULPI read failed, exit\n");
 		return -EBUSY;

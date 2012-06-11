@@ -178,6 +178,7 @@
 #	define TERMSELECT		BIT(2)
 #	define XCVRSELECT1		BIT(1)
 #	define XCVRSELECT0		BIT(0)
+#define ULPI_DEBUG		0x15
 #define MSIC_VS1		0x3b6
 #define MSIC_VS1SET		0x3a9
 #define MSIC_VS1CLR		0x3aa
