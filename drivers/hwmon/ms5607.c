@@ -446,7 +446,7 @@ static int __devinit ms5607_probe(struct i2c_client *client,
 	ms5607->enabled = 0;
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
-	ms5607->es.level = EARLY_SUSPEND_LEVEL_DISABLE_FB - 10;
+	ms5607->es.level = EARLY_SUSPEND_LEVEL_DISABLE_FB + 10;
 	ms5607->es.suspend = ms5607_early_suspend;
 	ms5607->es.resume = ms5607_late_resume;
 	register_early_suspend(&ms5607->es);

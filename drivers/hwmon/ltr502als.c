@@ -817,7 +817,7 @@ static int __init ltr502als_probe(struct i2c_client *client,
 	}
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
-	alsps->es.level = EARLY_SUSPEND_LEVEL_DISABLE_FB - 10;
+	alsps->es.level = EARLY_SUSPEND_LEVEL_DISABLE_FB + 10;
 	alsps->es.suspend = alsps_early_suspend;
 	alsps->es.resume = alsps_late_resume;
 #endif

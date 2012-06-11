@@ -425,7 +425,7 @@ hmc5883_probe(struct i2c_client *client, const struct i2c_device_id *id)
 	}
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
-	hmc5883->es.level = EARLY_SUSPEND_LEVEL_DISABLE_FB - 10;
+	hmc5883->es.level = EARLY_SUSPEND_LEVEL_DISABLE_FB + 10;
 	hmc5883->es.suspend = hmc5883_early_suspend;
 	hmc5883->es.resume = hmc5883_late_resume;
 	register_early_suspend(&hmc5883->es);
