@@ -1152,8 +1152,7 @@ static bool bq24192_is_chrg_terminated(struct bq24192_chip *chip)
 		goto is_chrg_term_exit;
 	}
 
-	if (((ret & SYSTEM_STAT_CHRG_MASK) == SYSTEM_STAT_CHRG_DONE) ||
-		((ret & SYSTEM_STAT_CHRG_MASK) == SYSTEM_STAT_NOT_CHRG))
+	if ((ret & SYSTEM_STAT_CHRG_MASK) == SYSTEM_STAT_NOT_CHRG)
 		is_chrg_term = true;
 is_chrg_term_exit:
 	return is_chrg_term;
@@ -1247,7 +1246,18 @@ static  bool bq24192_check_charge_full(struct bq24192_chip *chip, int vref)
 	bool is_full = false;
 	int volt_now;
 	int cur_avg;
+	int ret;
 
+	ret = bq24192_read_reg(chip->client, BQ24192_SYSTEM_STAT_REG);
+	if (ret < 0) {
+		dev_err(&chip->client->dev, "i2c read err:%d\n", ret);
+		return is_full;
+	}
+
+	if ((ret & SYSTEM_STAT_CHRG_MASK) == SYSTEM_STAT_CHRG_DONE) {
+		is_full = true;
+		return is_full;
+	}
 	/* Read voltage and current from FG driver */
 	volt_now = fg_chip_get_property(POWER_SUPPLY_PROP_VOLTAGE_NOW);
 	if (volt_now == -ENODEV || volt_now == -EINVAL) {
@@ -1271,15 +1281,12 @@ static  bool bq24192_check_charge_full(struct bq24192_chip *chip, int vref)
 	 * battery is fully charged
 	 */
 	if ((volt_now >= (vref - CLT_VBATT_FULL_DET_MARGIN)) &&
-	    (volt_prev >= (vref - CLT_VBATT_FULL_DET_MARGIN))) {
-		if (cur_avg >= CLT_FULL_CURRENT_AVG_LOW  &&
-				cur_avg <= CLT_FULL_CURRENT_AVG_HIGH)
+	    (volt_prev >= (vref - CLT_VBATT_FULL_DET_MARGIN))  &&
+		((cur_avg <= CLT_FULL_CURRENT_AVG_HIGH) &&
+		(cur_avg > CLT_FULL_CURRENT_AVG_LOW)))
 			is_full = true;
 		else
 			is_full = false;
-	} else {
-		is_full = false;
-	}
 
 	volt_prev = volt_now;
 
@@ -1403,7 +1410,12 @@ static void bq24192_maintenance_worker(struct work_struct *work)
 				goto sched_maint_work;
 			}
 			mutex_lock(&chip->event_lock);
-			chip->batt_mode = BATT_CHRG_FULL;
+			/*
+			 * This flag should be updated only when the battery
+			 * has reached full and charging has been terminated
+			 */
+			if ((is_chrg_full == true) && (is_chrg_term == true))
+				chip->batt_mode = BATT_CHRG_FULL;
 			mutex_unlock(&chip->event_lock);
 		} else if ((prev_temp_idx != idx) || (sysfs_stat == true)) {
 			/* If there is change in temperature zone
@@ -1519,7 +1531,12 @@ sched_maint_work:
 	else
 		battery_status = POWER_SUPPLY_STATUS_CHARGING;
 
-	if ((!chip->present || !chip->online) ||
+	/*
+	 * Update the UI per the current battery/charger status
+	 */
+	if (((is_chrg_term == true) && (is_chrg_full == false) &&
+		(chip->batt_mode == BATT_CHRG_NORMAL)) ||
+		((!chip->present) || (!chip->online)) ||
 	    (chip->chrg_type == POWER_SUPPLY_TYPE_USB_HOST))
 		battery_status = POWER_SUPPLY_STATUS_DISCHARGING;
 
