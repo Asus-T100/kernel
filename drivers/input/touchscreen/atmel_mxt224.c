@@ -174,6 +174,7 @@ struct mxt_data {
 #ifdef CONFIG_HAS_EARLYSUSPEND
 	u8                   T7[3];
 	struct early_suspend es;
+	bool                 suspended;
 #endif
 
 #ifdef DEBUG
@@ -1018,7 +1019,7 @@ static int mxt_write_block(struct i2c_client *client,
 		__le16	le_addr;
 		u8	data[I2C_MAX_BLKSZ];
 
-	} __packed i2c_block_transfer;
+	} i2c_block_transfer __packed;
 
 	struct mxt_data *mxt;
 	dev_dbg(&client->dev, "Writing %d bytes to %d...", length, addr);
@@ -1232,19 +1233,17 @@ void process_key_message(u8 *message, struct mxt_data *mxt)
 #define T37_TCH_DIAG_SZ 82
 #define MXT_XSIZE	18
 
-static int mxt_get_channel_data(struct mxt_data *mxt,
-				int *touch_ch, int *antitouch_ch)
+static void mxt_check_calibration(struct mxt_data *mxt)
 {
 	u8 data[T37_TCH_DIAG_SZ];
 	u16 t6addr, t37addr;
 	int i;
 	int xlimit = 0;
+	int touch_ch = 0, antitouch_ch = 0;
 	struct device *dev = &mxt->client->dev;
 	int ret;
 
 	memset(data, 0xff, sizeof(data));
-	*touch_ch = 0;
-	*antitouch_ch = 0;
 
 	t6addr = get_object_address(MXT_GEN_COMMANDPROCESSOR_T6,
 			0, mxt->object_table, mxt->device_info.num_objs);
@@ -1252,7 +1251,7 @@ static int mxt_get_channel_data(struct mxt_data *mxt,
 			     MXT_CMD_T6_TCH_DIAG);
 	if (ret < 0) {
 		dev_err(dev, "fail to set touch diagnostic command\n");
-		return ret;
+		return;
 	}
 
 	t37addr = get_object_address(MXT_DEBUG_DIAGNOSTIC_T37,
@@ -1267,41 +1266,22 @@ static int mxt_get_channel_data(struct mxt_data *mxt,
 		usleep_range(5000, 6000);
 		mxt_read_block(mxt->client, t37addr, 2, data);
 	}
-	if (i == 10) {
+	if (i == 10)
 		dev_err(dev, "fail to get calib diagnostic data\n");
-		ret = -EIO;
-		goto out;
-	}
 
 	mxt_read_block(mxt->client, t37addr, sizeof(data), data);
-	if (data[0] != MXT_CMD_T6_TCH_DIAG || data[1] != T37_PAGE_NUM0) {
-		ret = -EIO;
-		goto out;
+	if (data[0] == MXT_CMD_T6_TCH_DIAG && data[1] == T37_PAGE_NUM0) {
+		xlimit = MXT_XSIZE << 1;
+		for (i = 0; i < xlimit; i += 2) {
+			touch_ch += __sw_hweight16(*(u16 *)&data[2 + i]);
+			antitouch_ch += __sw_hweight16(*(u16 *)&data[42 + i]);
+		}
 	}
-
-	xlimit = MXT_XSIZE << 1;
-	for (i = 0; i < xlimit; i += 2) {
-		*touch_ch += __sw_hweight16(*(u16 *)&data[2 + i]);
-		*antitouch_ch += __sw_hweight16(*(u16 *)&data[42 + i]);
-	}
-	ret = 0;
-	dev_info(dev, "touch channel:%d, anti-touch channel:%d\n",
-		*touch_ch, *antitouch_ch);
-out:
 	mxt_write_byte(mxt->client,
-			t6addr + MXT_ADR_T6_DIAGNOSTIC, MXT_CMD_T6_PAGE_UP);
-	return ret;
-}
+		t6addr + MXT_ADR_T6_DIAGNOSTIC, MXT_CMD_T6_PAGE_UP);
 
-static void mxt_check_calibration(struct mxt_data *mxt)
-{
-	int touch_ch, antitouch_ch;
-	struct device *dev = &mxt->client->dev;
-	int ret;
-
-	ret = mxt_get_channel_data(mxt, &touch_ch, &antitouch_ch);
-	if (ret < 0)
-		return;
+	dev_dbg(dev, "touch channel:%d, anti-touch channel:%d\n",
+		 touch_ch, antitouch_ch);
 
 	if (touch_ch && antitouch_ch == 0) {
 		if (mxt->calibration_confirm == 1 &&
@@ -2435,6 +2415,7 @@ static int __devinit mxt_probe(struct i2c_client *client,
 	kfree(id_data);
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
+	mxt->suspended = FALSE;
 	mxt->T7[0] = 32;
 	mxt->T7[1] = 10;
 	mxt->T7[2] = 50;
@@ -2572,6 +2553,8 @@ void mxt_early_suspend(struct early_suspend *h)
 	}
 	report_mt(mxt_es);
 
+	mxt_es->suspended = TRUE;
+
 	mutex_unlock(&mxt_es->dev_mutex);
 }
 
@@ -2589,7 +2572,6 @@ void mxt_late_resume(struct early_suspend *h)
 {
 	int ret;
 	u16 addr;
-	int touch, antitouch;
 
 	enable_irq(mxt_es->irq);
 
@@ -2605,18 +2587,10 @@ void mxt_late_resume(struct early_suspend *h)
 		mxt_gpio_reset(mxt_es);
 	} else {
 		msleep(40);
-		mxt_get_channel_data(mxt_es, &touch, &antitouch);
-		if (touch > 0 && antitouch == 0) {
-			/*
-			 * If there is a finger on the screen, we won't do
-			 * calibration since that will cause the finger pressed
-			 * area on the touch panel acts wrong.
-			 */
-			dev_info(&mxt_es->client->dev, "no calibration now\n");
-		} else
-			mxt_calibrate(mxt_es);
+		mxt_calibrate(mxt_es);
 	}
 
+	mxt_es->suspended = FALSE;
 	mutex_unlock(&mxt_es->dev_mutex);
 }
 #endif
