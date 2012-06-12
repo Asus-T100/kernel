@@ -112,6 +112,9 @@
 #define CHRG_TIMER_EXP_CNTL_WDT40SEC		(1 << 4)
 #define CHRG_TIMER_EXP_CNTL_WDT80SEC		(2 << 4)
 #define CHRG_TIMER_EXP_CNTL_WDT160SEC		(3 << 4)
+#define WDTIMER_RESET_MASK			0x40
+#define CHRG_TIMER_EXP_CNTL_WDTIMER_LIMIT_0	(1<<4)
+#define CHRG_TIMER_EXP_CNTL_WDTIMER_LIMIT_1	(1<<5)
 /* Safety Timer Enable bit */
 #define CHRG_TIMER_EXP_CNTL_EN_TIMER		(1 << 3)
 /* Charge Timer uses 2bits(20 hrs) */
@@ -919,17 +922,45 @@ static u8 chrg_volt_to_reg(int volt)
 	return reg;
 }
 
-static int program_wdt_timer(struct bq24192_chip *chip, u8 val)
+/*
+ * chip->event_lock need to be acquired before calling this function
+ * to avoid the race condition
+ */
+static int program_timers(struct bq24192_chip *chip, bool wdt_enable,
+				bool sfttmr_enable)
 {
 	int ret;
 
-	/* program WDT timer value */
-	ret = bq24192_reg_multi_bitset(chip->client,
-					BQ24192_CHRG_TIMER_EXP_CNTL_REG,
-					val,
-					WDT_TIMER_BIT_POS, WDT_TIMER_BIT_LEN);
+	/* Read the timer control register */
+	ret = bq24192_read_reg(chip->client, BQ24192_CHRG_TIMER_EXP_CNTL_REG);
+	if (ret < 0) {
+		dev_warn(&chip->client->dev, "TIMER CTRL reg read failed\n");
+		return ret;
+	}
+
+	/* Enable/Disable the WD timer */
+	if (wdt_enable) {
+		/* Programming for 80Secs */
+		ret &= ~(CHRG_TIMER_EXP_CNTL_WDTIMER_LIMIT_0);
+		ret |=  (CHRG_TIMER_EXP_CNTL_WDTIMER_LIMIT_1);
+	} else {
+		ret &= ~(CHRG_TIMER_EXP_CNTL_WDTIMER_LIMIT_0 |
+			 CHRG_TIMER_EXP_CNTL_WDTIMER_LIMIT_1);
+	}
+
+	/* Enable/Disable the safety timer */
+	if (sfttmr_enable)
+		ret |= CHRG_TIMER_EXP_CNTL_EN_TIMER;
+	else
+		ret &= ~CHRG_TIMER_EXP_CNTL_EN_TIMER;
+
+
+	/* Program the TIMER CTRL register */
+	ret = bq24192_write_reg(chip->client,
+				BQ24192_CHRG_TIMER_EXP_CNTL_REG,
+				ret);
 	if (ret < 0)
-		dev_warn(&chip->client->dev, "I2C write failed:%s\n", __func__);
+		dev_warn(&chip->client->dev, "TIMER CTRL I2C write failed\n");
 
 	return ret;
 }
@@ -940,7 +971,7 @@ static int reset_wdt_timer(struct bq24192_chip *chip)
 
 	/* reset WDT timer */
 	ret = bq24192_reg_read_modify(chip->client, BQ24192_POWER_ON_CFG_REG,
-						BQ24192_POWER_ON_CFG_REG, true);
+						WDTIMER_RESET_MASK, true);
 	if (ret < 0)
 		dev_warn(&chip->client->dev, "I2C write failed:%s\n", __func__);
 
@@ -976,12 +1007,6 @@ static int enable_charging(struct bq24192_chip *chip,
 		goto i2c_write_failed;
 	}
 
-	/* disable WDT timer */
-	ret = program_wdt_timer(chip, CHRG_TIMER_EXP_CNTL_WDTDISABLE);
-	if (ret < 0) {
-		dev_warn(&chip->client->dev, "I2C write failed:%s\n", __func__);
-		goto i2c_write_failed;
-	}
 
 	/* enable charger */
 	ret = bq24192_reg_multi_bitset(chip->client, BQ24192_POWER_ON_CFG_REG,
@@ -1050,12 +1075,10 @@ static void set_up_charging(struct bq24192_chip *chip,
 	reg->chr_cur = chrg_cur_to_reg(chr_curr);
 	reg->chr_volt = chrg_volt_to_reg(chr_volt);
 
-	/* Disable the Charge termination */
-	ret = bq24192_reg_read_modify(chip->client,
-		BQ24192_CHRG_TIMER_EXP_CNTL_REG,
-			CHRG_TIMER_EXP_CNTL_EN_TERM, false);
+	/* Enable the WDT and Disable Safety timer */
+	ret = program_timers(chip, true, false);
 	if (ret < 0)
-		dev_warn(&chip->client->dev, "I2C write failed:%s\n", __func__);
+		dev_warn(&chip->client->dev, "TIMER enable failed\n");
 }
 
 /* check_batt_psy -check for whether power supply type is battery
@@ -1138,8 +1161,15 @@ is_chrg_term_exit:
 
 static void bq24192_monitor_worker(struct work_struct *work)
 {
+	int ret = 0;
 	struct bq24192_chip *chip = container_of(work,
 				struct bq24192_chip, stat_mon_wrkr.work);
+	dev_info(&chip->client->dev, "%s\n", __func__);
+	mutex_lock(&chip->event_lock);
+	ret = reset_wdt_timer(chip);
+	if (ret < 0)
+		dev_warn(&chip->client->dev, "WDT reset failed\n");
+	mutex_unlock(&chip->event_lock);
 	power_supply_changed(&chip->usb);
 	schedule_delayed_work(&chip->stat_mon_wrkr, STATUS_UPDATE_INTERVAL);
 }
@@ -1506,21 +1536,6 @@ static int turn_otg_vbus(struct bq24192_chip *chip, bool votg_on)
 	int ret = 0;
 
 	if (votg_on) {
-			/*
-			 * Disable WD timer to make sure the WD timer doesn't
-			 * expire and put the charger chip into default state
-			 * which will bring down the VBUS. The issue will arise
-			 * only when the host mode cable is plugged in before
-			 * USB charging cable (SDP/DCP/CDP/ACA).
-			 */
-			ret = program_wdt_timer(chip,
-					CHRG_TIMER_EXP_CNTL_WDTDISABLE);
-			if (ret < 0) {
-				dev_warn(&chip->client->dev,
-					"I2C write failed:%s\n", __func__);
-				goto i2c_write_fail;
-			}
-
 			/* Configure the charger in OTG mode */
 			ret = bq24192_reg_read_modify(chip->client,
 					BQ24192_POWER_ON_CFG_REG,
@@ -2117,8 +2132,8 @@ static void init_charger_regs(struct bq24192_chip *chip)
 {
 	int ret;
 
-	/* disable WDT timer */
-	ret = program_wdt_timer(chip, CHRG_TIMER_EXP_CNTL_WDTDISABLE);
+	/* Disable WDT and Safety timer */
+	ret = program_timers(chip, false, false);
 	if (ret < 0)
 		dev_warn(&chip->client->dev, "I2C write failed:%s\n", __func__);
 
@@ -2206,6 +2221,11 @@ static int __devinit bq24192_probe(struct i2c_client *client,
 		kfree(chip);
 		return -EIO;
 	}
+
+	/* Enable the WDT and Disable Safety timer */
+	ret = program_timers(chip, true, false);
+	if (ret < 0)
+		dev_warn(&chip->client->dev, "TIMER enable failed\n");
 
 	ret = device_create_file(&chip->client->dev,
 		&dev_attr_charge_current_limit);
