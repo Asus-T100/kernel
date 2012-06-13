@@ -1464,6 +1464,9 @@ static inline void wait_for_xmitr(struct uart_hsu_port *up)
 {
 	unsigned int status, tmout = 1000;
 
+	if (!hsu_port_is_active(up))
+		return;
+
 	/* Wait up to 1ms for the character to be sent. */
 	do {
 		status = serial_in(up, UART_LSR);
