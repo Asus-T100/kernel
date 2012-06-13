@@ -41,6 +41,7 @@
 #define SST_MAILBOX_SEND 0x0000
 #define SST_MAILBOX_RCV 0x0804
 #define SST_TIME_STAMP 0x1800
+#define SST_TIME_STAMP_MRFLD 0x800
 #define SST_RESERVED_OFFSET 0x1A00
 #define SST_CHEKPOINT_OFFSET 0x1C00
 #define REPLY_MSG 0x80
@@ -238,6 +239,31 @@ enum dbg_mem_data_type {
 	DATA_TYPE_U8,
 };
 
+union ipc_header_high {
+	struct {
+		u32  msg_id:8;	    /* Message ID - Max 256 Message Types */
+		u32  result:8;	    /* Result for large/short msg in Mailbox */
+		u32  sub_code:8;    /* Error sub code */
+		u32  str_id:4;	    /* Stream ID */
+		u32  large:1;	    /* Large Message if large = 1 */
+		u32  rsvd:1;	    /* Reserved */
+		u32  done:1;	    /* bit 62 - Done bit */
+		u32  busy:1;	    /* bit 63 - Busy bit */
+	} part;
+	u32 full;
+} __packed;
+
+/* IPC header */
+#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
+union ipc_header_mrfld {
+	struct {
+		u32 header_low_payload;
+		union ipc_header_high header_high;
+	} p;
+	u64 f;
+} __packed;
+#endif
+
 /* CAUTION NOTE: All IPC message body must be multiple of 32 bits.*/
 
 /* IPC Header */
@@ -285,6 +311,19 @@ struct snd_sst_tstamp {
 	u16	reserved;/* 32 bit alignment */
 	u64 pcm_delay;
 };
+
+#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
+struct snd_sst_tstamp_mrfld {
+	u32 ring_buffer_counter;	/* PB/CP: Bytes copied from/to DDR. */
+	u32 hardware_counter;	    /* PB/CP: Bytes DMAed to/from SSP. */
+	u32 frames_decoded;
+	u32 bytes_decoded;
+	u32 bytes_copied;
+	u32 sampling_frequency;
+	u32 left_channel_peak;
+	u32 right_channel_peak;
+};
+#endif
 
 /* Frame info to play or capture */
 struct sst_frame_info {
@@ -380,12 +419,29 @@ struct snd_sst_lib_download_info {
 	u8 pvt_id; /* Private ID */
 	u8 reserved;  /* for alignment */
 };
-
 /* Alloc stream params structure */
 struct snd_sst_alloc_params {
 	struct snd_sst_str_type str_type;
 	struct snd_sst_stream_params stream_params;
 };
+
+/* Additional params for Alloc struct*/
+struct snd_sst_alloc_params_ext {
+	struct sst_address_info  ring_buf_info[8];
+	u8 sg_count;
+	u8 reserved;
+	u16 reserved2;
+	u32 frag_size;
+} __packed;
+
+/* Alloc stream params structure */
+#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
+struct snd_sst_alloc_params_mrfld {
+	struct snd_sst_str_type str_type;
+	struct snd_sst_stream_params stream_params;
+	struct snd_sst_alloc_params_ext alloc_params;
+} __packed;
+#endif
 
 struct snd_sst_fw_get_stream_params {
 	struct snd_sst_stream_params codec_params;
@@ -414,6 +470,9 @@ struct snd_sst_control_routing {
 struct ipc_post {
 	struct list_head node;
 	union ipc_header header; /* driver specific */
+#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
+	union ipc_header_mrfld mrfld_header;
+#endif
 	char *mailbox_data;
 };
 

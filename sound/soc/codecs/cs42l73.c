@@ -1142,18 +1142,28 @@ static int cs42l73_set_mic_bias(struct snd_soc_codec *codec, int state)
 	mutex_lock(&codec->mutex);
 	switch (state) {
 	case MIC_BIAS_DISABLE:
+#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
+		/* FIXME, need to remove this eventaully */
+		snd_soc_dapm_disable_pin(&codec->dapm, "MIC1 Bias");
+#else
 		if (ctp_board_id() == CTP_BID_VV)
 			snd_soc_dapm_disable_pin(&codec->dapm, "MIC1 Bias");
 		else
 			snd_soc_dapm_disable_pin(&codec->dapm, "MIC2 Bias");
+#endif
 		break;
+
 	case MIC_BIAS_ENABLE:
+#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
+		snd_soc_dapm_force_enable_pin(&codec->dapm, "MIC1 Bias");
+#else
 		if (ctp_board_id() == CTP_BID_VV)
 			snd_soc_dapm_force_enable_pin(&codec->dapm,
 							"MIC1 Bias");
 		else
 			snd_soc_dapm_force_enable_pin(&codec->dapm,
 							"MIC2 Bias");
+#endif
 		break;
 	}
 	snd_soc_dapm_sync(&codec->dapm);

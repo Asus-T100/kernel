@@ -861,7 +861,7 @@ static int sst_send_algo_ipc(struct ipc_post **msg)
 	spin_lock(&sst_drv_ctx->list_spin_lock);
 	list_add_tail(&(*msg)->node, &sst_drv_ctx->ipc_dispatch_list);
 	spin_unlock(&sst_drv_ctx->list_spin_lock);
-	sst_post_message(&sst_drv_ctx->ipc_post_msg_wq);
+	sst_drv_ctx->ops->post_message(&sst_drv_ctx->ipc_post_msg_wq);
 	return sst_wait_timeout(sst_drv_ctx, &sst_drv_ctx->ppp_params_blk);
 }
 
@@ -1051,7 +1051,7 @@ long intel_sst_ioctl(struct file *file_ptr, unsigned int cmd, unsigned long arg)
 		break;
 
 	case _IOC_NR(SNDRV_SST_STREAM_SET_PARAMS): {
-		struct sst_stream_params str_param;
+		struct snd_sst_params str_param;
 
 		pr_debug("IOCTL_SET_PARAMS received!\n");
 		if (minor != STREAM_MODULE) {
@@ -1093,9 +1093,12 @@ long intel_sst_ioctl(struct file *file_ptr, unsigned int cmd, unsigned long arg)
 			/* Block the call for reply */
 			if (!retval) {
 				int sfreq = 0, word_size = 0, num_channel = 0;
-				sfreq =	str_param.sparams.sfreq;
-				word_size = str_param.sparams.pcm_wd_sz;
-				num_channel = str_param.sparams.num_chan;
+				struct snd_pcm_params *pcm;
+
+				pcm = &str_param.sparams.uc.pcm_params;
+				sfreq =	pcm->sfreq;
+				word_size = pcm->pcm_wd_sz;
+				num_channel = pcm->num_chan;
 			}
 		}
 		break;
@@ -1412,7 +1415,6 @@ free_iobufs:
 		unsigned long long __user *bytes =
 			(unsigned long long __user *)arg;
 		struct snd_sst_tstamp tstamp = {0};
-
 		pr_debug("STREAM_BYTES_DECODED received!\n");
 		if (minor != STREAM_MODULE) {
 			retval = -EINVAL;

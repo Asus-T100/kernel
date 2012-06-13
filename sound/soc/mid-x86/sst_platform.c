@@ -222,6 +222,7 @@ static void sst_fill_pcm_params(struct snd_pcm_substream *substream,
 	param->period_count = substream->runtime->period_size;
 	param->ring_buffer_addr = virt_to_phys(substream->dma_buffer.area);
 	pr_debug("period_cnt = %d\n", param->period_count);
+	pr_debug("buffer sz = %d\n",  param->ring_buffer_size);
 	pr_debug("sfreq= %d, wd_sz = %d\n", param->sfreq, param->pcm_wd_sz);
 }
 
@@ -233,6 +234,7 @@ static int sst_platform_alloc_stream(struct snd_pcm_substream *substream)
 	struct sst_stream_params str_params = {0};
 	int ret_val;
 
+	pr_debug("alloc str buf_ptr %llu\n", stream->stream_info.buffer_ptr);
 	/* set codec params and inform SST driver the same */
 	sst_fill_pcm_params(substream, &param);
 	substream->runtime->dma_area = substream->dma_buffer.area;
@@ -257,6 +259,7 @@ static int sst_platform_alloc_stream(struct snd_pcm_substream *substream)
 	stream->stream_info.str_id = ret_val;
 	pr_debug("platform allocated strid:  %d\n", stream->stream_info.str_id);
 
+	pr_debug("alloc str done buf_ptr %llu\n", stream->stream_info.buffer_ptr);
 	return ret_val;
 }
 
@@ -295,6 +298,8 @@ static int sst_platform_init_stream(struct snd_pcm_substream *substream)
 	stream->stream_info.mad_substream = substream;
 	stream->stream_info.buffer_ptr = 0;
 	stream->stream_info.sfreq = substream->runtime->rate;
+	pr_debug("pcm_substream %p, period_elapsed %p\n",
+			stream->stream_info.mad_substream, stream->stream_info.period_elapsed);
 	ret_val = stream->ops->device_control(
 			SST_SND_STREAM_INIT, &stream->stream_info);
 	if (ret_val)
@@ -337,6 +342,7 @@ static int sst_media_open(struct snd_pcm_substream *substream,
 	snd_pcm_hw_constraint_step(substream->runtime, 0,
 			   SNDRV_PCM_HW_PARAM_PERIODS, 2);
 
+	pr_debug("buf_ptr %llu\n", stream->stream_info.buffer_ptr);
 	return snd_pcm_hw_constraint_integer(runtime,
 			 SNDRV_PCM_HW_PARAM_PERIODS);
 out_ops:
@@ -369,6 +375,7 @@ static int sst_media_prepare(struct snd_pcm_substream *substream,
 	pr_debug("%s\n", __func__);
 
 	stream = substream->runtime->private_data;
+	pr_debug("Prepare buf_ptr %llu\n", stream->stream_info.buffer_ptr);
 	str_id = stream->stream_info.str_id;
 	if (stream->stream_info.str_id)
 		return ret_val;
@@ -383,6 +390,7 @@ static int sst_media_prepare(struct snd_pcm_substream *substream,
 	if (ret_val)
 		return ret_val;
 	substream->runtime->hw.info = SNDRV_PCM_INFO_BLOCK_TRANSFER;
+	pr_debug("prepare end buf_ptr %llu\n", stream->stream_info.buffer_ptr);
 	return ret_val;
 }
 
@@ -556,8 +564,8 @@ static snd_pcm_uframes_t sst_platform_pcm_pointer
 		pr_err("sst: error code = %d\n", ret_val);
 		return ret_val;
 	}
-	substream->runtime->soc_delay = stream->stream_info.pcm_delay;
-	return stream->stream_info.buffer_ptr;
+	substream->runtime->soc_delay = str_info->pcm_delay;
+	return str_info->buffer_ptr;
 }
 
 static struct snd_pcm_ops sst_platform_ops = {
@@ -585,7 +593,7 @@ static int sst_pcm_new(struct snd_soc_pcm_runtime *rtd)
 			dai->driver->capture.channels_min) {
 		retval =  snd_pcm_lib_preallocate_pages_for_all(pcm,
 			SNDRV_DMA_TYPE_CONTINUOUS,
-			snd_dma_continuous_data(GFP_KERNEL),
+			snd_dma_continuous_data(GFP_DMA),
 			SST_MAX_BUFFER, SST_MAX_BUFFER);
 		if (retval) {
 			pr_err("dma buffer allocationf fail\n");
