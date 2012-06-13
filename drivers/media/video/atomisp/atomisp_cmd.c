@@ -3064,7 +3064,7 @@ int atomisp_get_fmt(struct video_device *vdev, struct v4l2_format *f)
 
 /* This function looks up the closest available resolution. */
 int atomisp_try_fmt(struct video_device *vdev, struct v4l2_format *f,
-						bool *res_overflow)
+		    bool *upscaling)
 {
 	struct atomisp_device *isp = video_get_drvdata(vdev);
 	struct v4l2_mbus_framefmt snr_mbus_fmt;
@@ -3123,16 +3123,6 @@ int atomisp_try_fmt(struct video_device *vdev, struct v4l2_format *f,
 			f->fmt.pix.pixelformat = fmt->pixelformat;
 	}
 
-	if ((in_width < out_width) && (in_height < out_height)) {
-		out_width = in_width;
-		out_height = in_height;
-		/* Set the flag when resolution requested is
-		 * beyond the max value supported by sensor
-		 */
-		if (res_overflow != NULL)
-			*res_overflow = true;
-	}
-
 	/* app vs isp */
 	out_width = min_t(u32, out_width, ATOM_ISP_MAX_WIDTH);
 	out_height = min_t(u32, out_height, ATOM_ISP_MAX_HEIGHT);
@@ -3142,6 +3132,12 @@ int atomisp_try_fmt(struct video_device *vdev, struct v4l2_format *f,
 
 	out_width = out_width - out_width % ATOM_ISP_STEP_WIDTH;
 	out_height = out_height - out_height % ATOM_ISP_STEP_HEIGHT;
+
+	/* Enable upscaling when the resolution requested is
+	 * beyond the max value supported by sensor
+	 */
+	if (upscaling)
+		*upscaling = in_width < out_width && in_height < out_height;
 
 	f->fmt.pix.width = out_width;
 	f->fmt.pix.height = out_height;
@@ -3399,15 +3395,16 @@ static int atomisp_get_effective_resolution(struct atomisp_device *isp,
 	format = get_atomisp_format_bridge(pixelformat);
 	if (format == NULL)
 		return -EINVAL;
-	if (!isp->params.yuv_ds_en) {
+	if (!isp->params.yuv_ds_en && !isp->params.yuv_us_en) {
 		in_fmt->width = out_width;
 		in_fmt->height = out_height;
 		return 0;
 	}
 	no_padding_w = out_fmt->width - padding_w;
 	no_padding_h = out_fmt->height - padding_h;
-	/* enable YUV downscaling automatically */
-	if (no_padding_w > out_width || no_padding_h > out_height) {
+	/* Check if we need scaling */
+	if (no_padding_w > out_width || no_padding_h > out_height
+	    || isp->params.yuv_us_en) {
 		/* keep a right ratio of width and height*/
 		in_fmt->width = no_padding_w;
 		in_fmt->height = DIV_RND_UP(in_fmt->width * out_height,
@@ -3567,7 +3564,6 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 		     dvs_env_h = 0;
 	unsigned int padding_w = pad_w,
 		     padding_h = pad_h;
-	bool res_overflow = false;
 	struct v4l2_streamparm sensor_parm;
 	int ret;
 
@@ -3656,7 +3652,7 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 
 	/* get sensor resolution and format */
 	snr_fmt = *f;
-	ret = atomisp_try_fmt(vdev, &snr_fmt, &res_overflow);
+	ret = atomisp_try_fmt(vdev, &snr_fmt, &isp->params.yuv_us_en);
 	if (ret) {
 		v4l2_err(&atomisp_dev, "try sensor resolution and format error.\n");
 		return -EINVAL;
@@ -3677,24 +3673,6 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 		padding_w = 0;
 	} else
 		isp->sw_contex.bypass = false;
-
-	/* construct resolution supported by isp */
-	if (res_overflow) {
-		width -= padding_w;
-		height -= padding_h;
-		/* app vs isp */
-		width = min_t(u32, width, ATOM_ISP_MAX_WIDTH);
-		height = min_t(u32, height, ATOM_ISP_MAX_HEIGHT);
-
-		width = max_t(u32, width, ATOM_ISP_MIN_WIDTH);
-		height = max_t(u32, height, ATOM_ISP_MIN_HEIGHT);
-
-		width = width - width % ATOM_ISP_STEP_WIDTH;
-		height = height - height % ATOM_ISP_STEP_HEIGHT;
-
-		f->fmt.pix.width = width;
-		f->fmt.pix.height = height;
-	}
 
 	/* set dis envelop if video and dis are enabled */
 	atomisp_set_dis_envelop(isp, width, height, &dvs_env_w, &dvs_env_h);
