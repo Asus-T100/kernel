@@ -607,7 +607,7 @@ EXPORT_SYMBOL_GPL(intel_scu_ipc_medfw_upgrade);
 
 static void cur_err(const char *err_info)
 {
-	strncpy(err_buf, err_info, sizeof(err_buf));
+	strncpy(err_buf, err_info, sizeof(err_buf) - 1);
 }
 
 static ssize_t write_dnx(struct file *file, struct kobject *kobj,
