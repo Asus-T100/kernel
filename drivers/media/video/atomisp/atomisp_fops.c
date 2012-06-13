@@ -370,7 +370,8 @@ int atomisp_init_struct(struct atomisp_device *isp)
 	isp->params.xnr_en = 0;
 	isp->params.false_color = 0;
 	isp->params.online_process = 1;
-	isp->params.yuv_ds_en = 0;
+	isp->params.yuv_ds_en = false;
+	isp->params.yuv_us_en = false;
 	isp->params.vf_overlay = NULL;
 	isp->sw_contex.sensor_streaming = false;
 	isp->sw_contex.isp_streaming = false;

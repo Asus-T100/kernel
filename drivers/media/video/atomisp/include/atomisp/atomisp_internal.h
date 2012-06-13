@@ -169,7 +169,8 @@ struct atomisp_sw_contex {
 
 struct atomisp_css_params {
 	int online_process;
-	int yuv_ds_en;
+	bool yuv_ds_en;				/* Enable YUV downscaling */
+	bool yuv_us_en;				/* Enable YUV upscaling */
 	unsigned int color_effect;
 	bool gdc_cac_en;
 	bool macc_en;
