@@ -1078,7 +1078,8 @@ static void mdfld_crtc_dpms(struct drm_crtc *crtc, int mode)
 	}
 #endif
 
-	if (get_panel_type(dev, pipe) == AUO_SC1_CMD &&
+	if (((get_panel_type(dev, pipe) == AUO_SC1_CMD) ||
+		(get_panel_type(dev, pipe) == GI_SONY_CMD)) &&
 		!dev_priv->dsi_init_done)
 		return;
 
@@ -1310,11 +1311,6 @@ static void mdfld_crtc_dpms(struct drm_crtc *crtc, int mode)
 			udelay(5000);
 		}
 #endif
-			}
-			if (get_panel_type(dev, pipe) == GI_SONY_CMD) {
-				/*reset the display island to switch DPI to DBI*/
-				ospm_power_island_down(OSPM_DISPLAY_ISLAND);
-				ospm_power_island_up(OSPM_DISPLAY_ISLAND);
 			}
 		}
 		break;
@@ -1852,7 +1848,8 @@ static int mdfld_crtc_mode_set(struct drm_crtc *crtc,
 
 	PSB_DEBUG_ENTRY("pipe = 0x%x\n", pipe);
 
-	if (get_panel_type(dev, pipe) == AUO_SC1_CMD &&
+	if (((get_panel_type(dev, pipe) == AUO_SC1_CMD) ||
+		(get_panel_type(dev, pipe) == GI_SONY_CMD)) &&
 		!dev_priv->dsi_init_done)
 		return -EINVAL;
 

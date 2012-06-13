@@ -1022,7 +1022,7 @@ struct mdfld_dsi_encoder *mdfld_dsi_dbi_init(struct drm_device *dev,
 	pipe = dsi_connector->pipe;
 
 	/*panel hard-reset*/
-	if (p_funcs->reset) {
+	if (p_funcs->reset && (get_panel_type(dev, pipe) != GI_SONY_CMD)) {
 		/* ret = p_funcs->reset(dsi_config, pipe); */
 		ret = p_funcs->reset(dsi_config, RESET_FROM_BOOT_UP);
 		if (ret) {
@@ -1030,6 +1030,7 @@ struct mdfld_dsi_encoder *mdfld_dsi_dbi_init(struct drm_device *dev,
 			return NULL;
 		}
 	}
+
 
 /* FIXME JLIU7 */
 #if 0

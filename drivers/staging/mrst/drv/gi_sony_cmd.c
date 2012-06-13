@@ -613,9 +613,13 @@ static int mdfld_gi_sony_dsi_dbi_power_on(struct drm_encoder *encoder)
 	struct mdfld_dsi_hw_registers *regs = NULL;
 	struct mdfld_dsi_hw_context *ctx = NULL;
 	struct drm_device *dev = encoder->dev;
+	struct drm_psb_private *dev_priv = dev->dev_private;
 	int err = 0;
 
 	PSB_DEBUG_ENTRY("\n");
+
+	if (!dev_priv->dsi_init_done)
+		return err;
 
 	if (!dsi_config)
 		return -EINVAL;
@@ -669,6 +673,9 @@ static int mdfld_gi_sony_dsi_dbi_power_on(struct drm_encoder *encoder)
 			goto power_on_err;
 		}
 	}
+
+	if (p_funcs->set_brightness(dsi_config, ctx->lastbrightnesslevel))
+		DRM_ERROR("Failed to set panel brightness\n");
 power_on_err:
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 	return err;
@@ -688,10 +695,14 @@ static int mdfld_gi_sony_dsi_dbi_power_off(struct drm_encoder *encoder)
 	struct panel_funcs *p_funcs = dbi_output->p_funcs;
 	struct mdfld_dsi_hw_registers *regs;
 	struct mdfld_dsi_hw_context *ctx;
-	struct drm_device *dev;
+	struct drm_device *dev = encoder->dev;
+	struct drm_psb_private *dev_priv = dev->dev_private;
 	int err = 0;
 
 	PSB_DEBUG_ENTRY("\n");
+
+	if (!dev_priv->dsi_init_done)
+		return err;
 
 	if (!dsi_config)
 		return -EINVAL;
@@ -1072,6 +1083,7 @@ static void gi_sony_dsi_dbi_update_fb(struct mdfld_dsi_dbi_output *dbi_output,
 	struct mdfld_dsi_pkg_sender *sender =
 		mdfld_dsi_encoder_get_pkg_sender(&dbi_output->base);
 	struct drm_device *dev = dbi_output->dev;
+	struct drm_psb_private *dev_priv = dev->dev_private;
 	struct drm_crtc *crtc = dbi_output->base.base.crtc;
 	struct psb_intel_crtc *psb_crtc =
 		(crtc) ? to_psb_intel_crtc(crtc) : NULL;
@@ -1081,10 +1093,13 @@ static void gi_sony_dsi_dbi_update_fb(struct mdfld_dsi_dbi_output *dbi_output,
 	u32 dsplinoff_reg = DSPALINOFF;
 	u32 dspsurf_reg = DSPASURF;
 
+	if (!dev_priv->dsi_init_done)
+		return;
+
 	/* if mode setting on-going, back off */
 	if ((dbi_output->mode_flags & MODE_SETTING_ON_GOING) ||
 			(psb_crtc &&
-			 (psb_crtc->mode_flags & MODE_SETTING_ON_GOING)) ||
+			(psb_crtc->mode_flags & MODE_SETTING_ON_GOING)) ||
 			!(dbi_output->mode_flags & MODE_SETTING_ENCODER_DONE))
 		return;
 
@@ -1113,7 +1128,6 @@ static void gi_sony_dsi_dbi_update_fb(struct mdfld_dsi_dbi_output *dbi_output,
 	REG_WRITE(dspsurf_reg, REG_READ(dspsurf_reg));
 	REG_READ(dspsurf_reg);
 
-	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_set_address_mode, 4, 0);
 	mdfld_dsi_send_dcs(sender,
 			   write_mem_start,
 			   NULL,
@@ -1196,6 +1210,7 @@ static int mdfld_gi_sony_dsi_cmd_detect(struct mdfld_dsi_config *dsi_config,
 		status = MDFLD_DSI_PANEL_DISCONNECTED;
 	}
 
+	mdfld_enable_te(dev, pipe);
 	return 0;
 }
 
@@ -1259,15 +1274,12 @@ static int mdfld_gi_sony_dsi_panel_reset(struct mdfld_dsi_config *dsi_config,
 		int reset_from)
 {
 	static bool b_gpio_required[PSB_NUM_PIPE] = {0};
+	static bool first_reset = true;
 	int ret = 0;
-	struct mdfld_dsi_hw_registers *regs = NULL;
-	struct drm_device *dev = dsi_config->dev;
 
 	PSB_DEBUG_ENTRY("\n");
 
-	regs = &dsi_config->regs;
-
-	if (reset_from == RESET_FROM_BOOT_UP) {
+	if (first_reset) {
 		b_gpio_required[dsi_config->pipe] = false;
 		if (dsi_config->pipe) {
 			PSB_DEBUG_ENTRY("PR2 GPIO reset for MIPIC is"
@@ -1281,7 +1293,7 @@ static int mdfld_gi_sony_dsi_panel_reset(struct mdfld_dsi_config *dsi_config,
 					GPIO_MIPI_PANEL_RESET);
 			goto err;
 		}
-
+		first_reset = false;
 		b_gpio_required[dsi_config->pipe] = true;
 
 	}
