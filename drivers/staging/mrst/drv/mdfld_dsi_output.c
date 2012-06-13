@@ -32,8 +32,10 @@
 #include <asm/intel_scu_ipc.h>
 #include "mdfld_dsi_pkg_sender.h"
 #include <linux/pm_runtime.h>
+#include <linux/freezer.h>
 #include "psb_drv.h"
 #include "mdfld_dsi_lvds_bridge.h"
+#include "mdfld_dsi_esd.h"
 
 #define MDFLD_DSI_BRIGHTNESS_MAX_LEVEL 100
 
@@ -551,6 +553,8 @@ static void mdfld_dsi_connector_destroy(struct drm_connector * connector)
 	drm_connector_cleanup(connector);
 	
 	sender = dsi_connector->pkg_sender;
+
+	mdfld_dsi_error_detector_exit(dsi_connector);
 
 	mdfld_dsi_pkg_sender_destroy(sender);
 
@@ -1153,12 +1157,18 @@ int mdfld_dsi_output_init(struct drm_device *dev,
 		goto dsi_init_err0;
 	}
 
+	/*init panel error detector*/
+	if (mdfld_dsi_error_detector_init(dev, dsi_connector)) {
+		DRM_ERROR("Failed to init dsi_error detector");
+		goto dsi_init_err1;
+	}
+
 	/*create DBI & DPI encoders*/
 	if(p_cmd_funcs) {
 		encoder = mdfld_dsi_dbi_init(dev, dsi_connector, p_cmd_funcs);
 		if(!encoder) {
 			DRM_ERROR("Create DBI encoder failed\n");
-			goto dsi_init_err1;
+			goto dsi_init_err2;
 		}
 		encoder->private = dsi_config;
 		dsi_config->encoders[MDFLD_DSI_ENCODER_DBI] = encoder;
@@ -1174,7 +1184,7 @@ int mdfld_dsi_output_init(struct drm_device *dev,
 		encoder = mdfld_dsi_dpi_init(dev, dsi_connector, p_vid_funcs);
 		if(!encoder) {
 			DRM_ERROR("Create DPI encoder failed\n");
-			goto dsi_init_err1;
+			goto dsi_init_err2;
 		}
 		encoder->private = dsi_config;
 		dsi_config->encoders[MDFLD_DSI_ENCODER_DPI] = encoder;
@@ -1190,8 +1200,10 @@ int mdfld_dsi_output_init(struct drm_device *dev,
 
 	PSB_DEBUG_ENTRY("successfully\n");
 	return 0;
-	
+
 	/*TODO: add code to destroy outputs on error*/
+dsi_init_err2:
+	mdfld_dsi_error_detector_exit(dsi_connector);
 dsi_init_err1:
 	/*destroy sender*/
 	mdfld_dsi_pkg_sender_destroy(dsi_connector->pkg_sender);

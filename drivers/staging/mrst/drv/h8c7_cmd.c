@@ -29,6 +29,7 @@
 #include "mdfld_dsi_dpi.h"
 #include "mdfld_dsi_dbi.h"
 #include "mdfld_dsi_pkg_sender.h"
+#include "mdfld_dsi_esd.h"
 #include "psb_intel_drv.h"
 #include <linux/gpio.h>
 #include <linux/sfi.h>
@@ -729,6 +730,8 @@ static int mdfld_h8c7_dsi_dbi_set_power(struct drm_encoder *encoder, bool on)
 	struct mdfld_dsi_encoder *dsi_encoder = MDFLD_DSI_ENCODER(encoder);
 	struct mdfld_dsi_dbi_output *dbi_output =
 		MDFLD_DSI_DBI_OUTPUT(dsi_encoder);
+	struct mdfld_dsi_connector *dsi_connector =
+		mdfld_dsi_encoder_get_connector(dsi_encoder);
 	struct mdfld_dsi_config *dsi_config =
 		mdfld_dsi_encoder_get_config(dsi_encoder);
 	struct drm_device *dev = encoder->dev;
@@ -774,6 +777,8 @@ static int mdfld_h8c7_dsi_dbi_set_power(struct drm_encoder *encoder, bool on)
 		else
 			dev_priv->dbi_panel_on = true;
 
+		mdfld_dsi_error_detector_wakeup(dsi_connector);
+
 		mdfld_enable_te(dev, pipe);
 
 		dsi_config->dsi_hw_context.panel_on = 1;
@@ -799,11 +804,6 @@ static int mdfld_h8c7_dsi_dbi_set_power(struct drm_encoder *encoder, bool on)
 
 		dsi_config->dsi_hw_context.panel_on = 0;
 	}
-	if (dev_priv->dbi_panel_on)
-		mdfld_error_detect_correct_timer_start(dev);
-	else
-		mdfld_error_detect_correct_timer_end(dev);
-
 out_err:
 	mutex_unlock(&dsi_config->context_lock);
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
@@ -1410,6 +1410,9 @@ static bool mdfld_h8c7_cmd_esd_detection(struct mdfld_dsi_config *dsi_config)
 {
 	int ret;
 	u32 data = 0;
+
+	PSB_DEBUG_ENTRY("esd: %s\n", __func__);
+
 	ret = mdfld_dsi_get_power_mode(dsi_config,
 				 &data,
 				 MDFLD_DSI_LP_TRANSMISSION);
@@ -1464,7 +1467,7 @@ void h8c7_cmd_init(struct drm_device *dev, struct panel_funcs *p_funcs)
 	p_funcs->power_off = mdfld_dsi_h8c7_cmd_power_off;
 	p_funcs->set_brightness = mdfld_dsi_h8c7_cmd_set_brightness;
 	p_funcs->disp_control_init = mdfld_h8c7_disp_control_init;
-	p_funcs->esd_detection = NULL;
+	p_funcs->esd_detection = mdfld_h8c7_cmd_esd_detection;
 	p_funcs->get_reset_delay_time = mdfld_h8c7_cmd_get_reset_delay_time;
 
 }

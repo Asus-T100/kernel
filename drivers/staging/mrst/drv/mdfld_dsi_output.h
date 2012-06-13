@@ -210,8 +210,9 @@ struct mdfld_dsi_connector {
 	struct psb_intel_output base;
 	
 	int pipe;
-	void * private;
-	void * pkg_sender;
+	void *private;
+	void *pkg_sender;
+	void *err_detector;
 
 	/*connection status*/
 	enum drm_connector_status status;

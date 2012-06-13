@@ -32,6 +32,7 @@
 #include "mdfld_dsi_dbi.h"
 #include "mdfld_dsi_dbi_dpu.h"
 #include "mdfld_dsi_pkg_sender.h"
+#include "mdfld_dsi_esd.h"
 
 #define GPIO_MIPI_PANEL_RESET 128
 
@@ -730,6 +731,8 @@ static int mdfld_gi_sony_dsi_dbi_set_power(struct drm_encoder *encoder, bool on)
 	struct mdfld_dsi_encoder *dsi_encoder = MDFLD_DSI_ENCODER(encoder);
 	struct mdfld_dsi_dbi_output *dbi_output =
 		MDFLD_DSI_DBI_OUTPUT(dsi_encoder);
+	struct mdfld_dsi_connector *dsi_connector =
+		mdfld_dsi_encoder_get_connector(dsi_encoder);
 	struct mdfld_dsi_config *dsi_config =
 		mdfld_dsi_encoder_get_config(dsi_encoder);
 	struct drm_device *dev = encoder->dev;
@@ -776,6 +779,9 @@ static int mdfld_gi_sony_dsi_dbi_set_power(struct drm_encoder *encoder, bool on)
 			dev_priv->dbi_panel_on2 = true;
 		else
 			dev_priv->dbi_panel_on = true;
+
+		/*wake up error detector*/
+		mdfld_dsi_error_detector_wakeup(dsi_connector);
 
 		psb_enable_vblank(dev, pipe);
 

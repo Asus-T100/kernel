@@ -107,8 +107,6 @@ int drm_psb_msvdx_tiling;
 
 static int psb_probe(struct pci_dev *pdev, const struct pci_device_id *ent);
 
-#define ERROR_DETECT_DELAY (DRM_HZ*8)  /*8 seconds*/
-
 MODULE_PARM_DESC(debug, "Enable debug output");
 MODULE_PARM_DESC(no_fb, "Disable FBdev");
 MODULE_PARM_DESC(trap_pagefaults, "Error and reset on MMU pagefaults");
@@ -629,113 +627,6 @@ static void get_ci_info(struct drm_psb_private *dev_priv)
 
 	return;
 }
-
-static void mdfld_error_detect_correct_timer_func(unsigned long data)
-{
-	struct mdfld_dsi_dbi_output *dbi_output = NULL;
-	struct panel_funcs *p_funcs  = NULL;
-	struct mdfld_dsi_config *dsi_config;
-	struct drm_device *dev = (struct drm_device *)data;
-	struct drm_psb_private *dev_priv = dev->dev_private;
-
-	struct timer_list *error_handle_timer =
-			&(dev_priv->error_detect_correct_timer);
-	unsigned long flags;
-
-	if (!dev_priv->dbi_panel_on)
-		return;
-
-	if (dev_priv->cur_pipe == 0) {
-		dbi_output = dev_priv->dbi_output;
-		dsi_config = dev_priv->dsi_configs[0];
-	} else {
-		dbi_output = dev_priv->dbi_output2;
-		dsi_config = dev_priv->dsi_configs[1];
-	}
-
-	if (dbi_output) {
-		p_funcs = dbi_output->p_funcs;
-		if (p_funcs && (p_funcs->esd_detection)
-				&& dev_priv->dbi_panel_on) {
-			if (p_funcs->esd_detection(dsi_config)) {
-				printk(KERN_ALERT"ESD\n");
-				schedule_work(&dev_priv->reset_panel_work);
-			}
-		} else
-			return ;
-	}
-
-	spin_lock_irqsave(&(dev_priv->error_detect_correct_lock), flags);
-	if (!timer_pending(error_handle_timer)) {
-		error_handle_timer->expires = jiffies + ERROR_DETECT_DELAY;
-		add_timer(error_handle_timer);
-	}
-	spin_unlock_irqrestore(&(dev_priv->error_detect_correct_lock), flags);
-
-}
-
-static int mdfld_error_detect_correct_timer_init(struct drm_device *dev)
-{
-
-	struct drm_psb_private *dev_priv =
-		(struct drm_psb_private *) dev->dev_private;
-
-	struct timer_list *error_handle_timer =
-			&(dev_priv->error_detect_correct_timer);
-	unsigned long flags;
-
-	PSB_DEBUG_ENTRY("\n");
-
-	spin_lock_init(&(dev_priv->error_detect_correct_lock));
-	spin_lock_irqsave(&(dev_priv->error_detect_correct_lock), flags);
-
-	init_timer(error_handle_timer);
-
-	error_handle_timer->data = (unsigned long)dev;
-	error_handle_timer->function = mdfld_error_detect_correct_timer_func;
-	error_handle_timer->expires = jiffies + ERROR_DETECT_DELAY;
-
-	spin_unlock_irqrestore(&(dev_priv->error_detect_correct_lock), flags);
-
-	PSB_DEBUG_ENTRY("successfully\n");
-
-	return 0;
-}
-
-
-void mdfld_error_detect_correct_timer_start(struct drm_device *dev)
-{
-	struct drm_psb_private *dev_priv =
-		(struct drm_psb_private *) dev->dev_private;
-
-	struct timer_list *error_handle_timer =
-			&(dev_priv->error_detect_correct_timer);
-	unsigned long flags;
-	spin_lock_irqsave(&(dev_priv->error_detect_correct_lock), flags);
-	if (!timer_pending(error_handle_timer)) {
-		error_handle_timer->expires = jiffies + ERROR_DETECT_DELAY;
-		add_timer(error_handle_timer);
-	}
-	spin_unlock_irqrestore(&(dev_priv->error_detect_correct_lock), flags);
-}
-
-
-void mdfld_error_detect_correct_timer_end(struct drm_device *dev)
-{
-	struct drm_psb_private *dev_priv =
-		(struct drm_psb_private *) dev->dev_private;
-
-	struct timer_list *error_handle_timer =
-			&(dev_priv->error_detect_correct_timer);
-	unsigned long flags;
-	spin_lock_irqsave(&(dev_priv->error_detect_correct_lock), flags);
-	if (timer_pending(error_handle_timer)) {
-		error_handle_timer->expires = jiffies + ERROR_DETECT_DELAY;
-		del_timer(error_handle_timer);
-	}
-	spin_unlock_irqrestore(&(dev_priv->error_detect_correct_lock), flags);
-}
-
 
 static void get_imr_info(struct drm_psb_private *dev_priv)
 {
@@ -2027,7 +1918,6 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	if (ret)
 		return ret;
 
-	mdfld_error_detect_correct_timer_init(dev);
 	/**
 	 *  Init lid switch timer.
 	 *  NOTE: must do this after psb_intel_opregion_init

@@ -204,6 +204,7 @@ gfx-y += $(DRMDRVDIR)/psb_bl.o \
 	  $(DRMDRVDIR)/h8c7_cmd.o \
 	  $(DRMDRVDIR)/pyr_cmd.o \
 	  $(DRMDRVDIR)/mdfld_dsi_pkg_sender.o \
+	  $(DRMDRVDIR)/mdfld_dsi_esd.o \
 	  $(DRMDRVDIR)/psb_powermgmt.o \
 	  $(DRMDRVDIR)/psb_irq.o
 

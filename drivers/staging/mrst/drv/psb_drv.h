@@ -1052,12 +1052,6 @@ struct drm_psb_private {
 	int (*async_check_fifo_empty)(struct drm_device *dev);
 
 	/*
-	 * Error detect/correct TIMER
-	 */
-	spinlock_t error_detect_correct_lock;
-	struct timer_list error_detect_correct_timer;
-
-	/*
 	 * DSR TIMER
 	 */
 	spinlock_t dsr_lock;
@@ -1293,8 +1287,6 @@ extern int mdfld_irq_disable_hdmi_audio(struct drm_device *dev);
 extern void psb_te_timer_func(unsigned long data);
 extern void mdfld_te_handler_work(struct work_struct *te_work);
 extern void mdfld_reset_panel_handler_work(struct work_struct *work);
-extern void mdfld_error_detect_correct_timer_end(struct drm_device *dev);
-extern void mdfld_error_detect_correct_timer_start(struct drm_device *dev);
 /*
  *psb_fence.c
  */
