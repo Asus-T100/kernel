@@ -71,6 +71,47 @@ static int penwell_otg_ulpi_read(struct intel_mid_otg_xceiv *iotg,
 static int penwell_otg_ulpi_write(struct intel_mid_otg_xceiv *iotg,
 				u8 reg, u8 val);
 
+#ifdef CONFIG_PM_SLEEP
+#include <linux/suspend.h>
+DECLARE_WAIT_QUEUE_HEAD(stop_host_wait);
+atomic_t pnw_sys_suspended;
+
+static int pnw_sleep_pm_callback(struct notifier_block *nfb,
+			unsigned long action, void *ignored)
+{
+	switch (action) {
+	case PM_SUSPEND_PREPARE:
+		atomic_set(&pnw_sys_suspended, 1);
+		return NOTIFY_OK;
+	case PM_POST_SUSPEND:
+		atomic_set(&pnw_sys_suspended, 0);
+		return NOTIFY_OK;
+	}
+	return NOTIFY_DONE;
+}
+
+static struct notifier_block pnw_sleep_pm_notifier = {
+	.notifier_call = pnw_sleep_pm_callback,
+	.priority = 0
+};
+
+#define PNW_PM_RESUME_WAIT(a) \
+		while (atomic_read(&pnw_sys_suspended)) { \
+			wait_event_timeout(a, false, HZ/100); \
+		}
+#else
+
+#define PNW_PM_RESUME_WAIT(a)
+
+#endif
+
+#define PNW_STOP_HOST(pnw) do { \
+	if ((pnw)->iotg.stop_host) { \
+		PNW_PM_RESUME_WAIT(stop_host_wait); \
+		(pnw)->iotg.stop_host(&(pnw)->iotg); \
+	} \
+	} while (0)
+
 static inline int is_clovertrail(struct pci_dev *pdev)
 {
 	return (pdev->vendor == 0x8086 && pdev->device == 0xE006);
@@ -2956,11 +2997,8 @@ static void penwell_otg_work(struct work_struct *work)
 			hsm->a_srp_det = 0;
 
 			penwell_otg_HAAR(0);
-			if (iotg->stop_host)
-				iotg->stop_host(iotg);
-			else
-				dev_dbg(pnw->dev,
-					"host driver has been removed.\n");
+
+			PNW_STOP_HOST(pnw);
 
 			set_host_mode();
 			penwell_otg_phy_low_power(1);
@@ -2989,11 +3027,7 @@ static void penwell_otg_work(struct work_struct *work)
 			hsm->b_bus_req = 0;
 			penwell_otg_HAAR(0);
 
-			if (iotg->stop_host)
-				iotg->stop_host(iotg);
-			else
-				dev_dbg(pnw->dev,
-					"host driver has been removed.\n");
+			PNW_STOP_HOST(pnw);
 
 			set_client_mode();
 			penwell_otg_phy_low_power(1);
@@ -3021,11 +3055,7 @@ static void penwell_otg_work(struct work_struct *work)
 			penwell_otg_HAAR(0);
 			penwell_otg_nsf_msg(7);
 
-			if (iotg->stop_host)
-				iotg->stop_host(iotg);
-			else
-				dev_dbg(pnw->dev,
-					"host driver has been removed.\n");
+			PNW_STOP_HOST(pnw);
 
 			hsm->a_bus_suspend = 0;
 			hsm->b_bus_req = 0;
@@ -3059,11 +3089,7 @@ static void penwell_otg_work(struct work_struct *work)
 			/* Stop HNP polling */
 			iotg->stop_hnp_poll(iotg);
 
-			if (iotg->stop_host)
-				iotg->stop_host(iotg);
-			else
-				dev_dbg(pnw->dev,
-					"host driver has been removed.\n");
+			PNW_STOP_HOST(pnw);
 
 			set_host_mode();
 			penwell_otg_phy_low_power(1);
@@ -3091,11 +3117,7 @@ static void penwell_otg_work(struct work_struct *work)
 			/* Stop HNP polling */
 			iotg->stop_hnp_poll(iotg);
 
-			if (iotg->stop_host)
-				iotg->stop_host(iotg);
-			else
-				dev_dbg(pnw->dev,
-					"host driver has been removed.\n");
+			PNW_STOP_HOST(pnw);
 
 			set_client_mode();
 			penwell_otg_phy_low_power(1);
@@ -3111,12 +3133,7 @@ static void penwell_otg_work(struct work_struct *work)
 			/* Stop HNP polling */
 			iotg->stop_hnp_poll(iotg);
 
-			if (iotg->stop_host)
-				iotg->stop_host(iotg);
-			else
-				dev_dbg(pnw->dev,
-					"host driver has been removed.\n");
-
+			PNW_STOP_HOST(pnw);
 			hsm->a_bus_suspend = 0;
 
 			/* Clear HNP polling flag */
@@ -3292,11 +3309,7 @@ static void penwell_otg_work(struct work_struct *work)
 
 			hsm->b_bus_req = 0;
 
-			if (iotg->stop_host)
-				iotg->stop_host(iotg);
-			else
-				dev_dbg(pnw->dev,
-					"host driver has been removed.\n");
+			PNW_STOP_HOST(pnw);
 
 			/* Turn off VBUS */
 			otg_set_vbus(&iotg->otg, false);
@@ -3313,11 +3326,7 @@ static void penwell_otg_work(struct work_struct *work)
 			/* Delete current timer and disable host function */
 			penwell_otg_del_timer(TA_WAIT_BCON_TMR);
 
-			if (iotg->stop_host)
-				iotg->stop_host(iotg);
-			else
-				dev_dbg(pnw->dev,
-					"host driver has been removed.\n");
+			PNW_STOP_HOST(pnw);
 
 			/* Turn off VBUS and enter PHY low power mode */
 			otg_set_vbus(&iotg->otg, false);
@@ -3370,11 +3379,7 @@ static void penwell_otg_work(struct work_struct *work)
 
 			penwell_otg_phy_low_power(0);
 
-			if (iotg->stop_host)
-				iotg->stop_host(iotg);
-			else
-				dev_dbg(pnw->dev,
-					"host driver has been removed.\n");
+			PNW_STOP_HOST(pnw);
 
 			/* Turn off VBUS */
 			otg_set_vbus(&iotg->otg, false);
@@ -3394,11 +3399,7 @@ static void penwell_otg_work(struct work_struct *work)
 
 			penwell_otg_phy_low_power(0);
 
-			if (iotg->stop_host)
-				iotg->stop_host(iotg);
-			else
-				dev_dbg(pnw->dev,
-					"host driver has been removed.\n");
+			PNW_STOP_HOST(pnw);
 
 			/* Turn off VBUS */
 			otg_set_vbus(&iotg->otg, false);
@@ -3423,11 +3424,7 @@ static void penwell_otg_work(struct work_struct *work)
 			/* Stop HNP polling */
 			iotg->stop_hnp_poll(iotg);
 
-			if (iotg->stop_host)
-				iotg->stop_host(iotg);
-			else
-				dev_dbg(pnw->dev,
-					"host driver has been removed.\n");
+			PNW_STOP_HOST(pnw);
 
 			/* Turn off VBUS */
 			otg_set_vbus(&iotg->otg, false);
@@ -3483,11 +3480,7 @@ static void penwell_otg_work(struct work_struct *work)
 
 			penwell_otg_phy_low_power(0);
 
-			if (iotg->stop_host)
-				iotg->stop_host(iotg);
-			else
-				dev_dbg(pnw->dev,
-					"host driver has been removed.\n");
+			PNW_STOP_HOST(pnw);
 
 			/* Turn off VBUS */
 			otg_set_vbus(&iotg->otg, false);
@@ -3542,11 +3535,7 @@ static void penwell_otg_work(struct work_struct *work)
 			/* Stop HNP polling */
 			iotg->stop_hnp_poll(iotg);
 
-			if (iotg->stop_host)
-				iotg->stop_host(iotg);
-			else
-				dev_dbg(pnw->dev,
-					"host driver has been removed.\n");
+			PNW_STOP_HOST(pnw);
 
 			/* Turn off VBUS */
 			otg_set_vbus(&iotg->otg, false);
@@ -3561,11 +3550,7 @@ static void penwell_otg_work(struct work_struct *work)
 			/* Delete current timer and clear flags */
 			penwell_otg_del_timer(TA_AIDL_BDIS_TMR);
 
-			if (iotg->stop_host)
-				iotg->stop_host(iotg);
-			else
-				dev_dbg(pnw->dev,
-					"host driver has been removed.\n");
+			PNW_STOP_HOST(pnw);
 
 			/* Turn off VBUS */
 			otg_set_vbus(&iotg->otg, false);
@@ -3593,11 +3578,7 @@ static void penwell_otg_work(struct work_struct *work)
 			penwell_otg_del_timer(TA_AIDL_BDIS_TMR);
 			penwell_otg_phy_low_power(0);
 
-			if (iotg->stop_host)
-				iotg->stop_host(iotg);
-			else
-				dev_dbg(pnw->dev,
-					"host driver has been removed.\n");
+			PNW_STOP_HOST(pnw);
 
 			penwell_otg_phy_low_power(0);
 			hsm->b_bus_suspend = 0;
@@ -4381,6 +4362,11 @@ static int penwell_otg_probe(struct pci_dev *pdev,
 		retval = -EBUSY;
 		goto err;
 	}
+	if (register_pm_notifier(&pnw_sleep_pm_notifier)) {
+		dev_dbg(pnw->dev, "Fail to register PM notifier\n");
+		retval = -EBUSY;
+		goto err;
+	}
 
 #ifdef CONFIG_BOARD_CTP
 	/* Set up gpio for Clovertrail */
@@ -4611,10 +4597,7 @@ static int penwell_otg_suspend_noirq(struct device *dev)
 	case OTG_STATE_A_SUSPEND:
 		penwell_otg_del_timer(TA_AIDL_BDIS_TMR);
 		penwell_otg_HABA(0);
-		if (pnw->iotg.stop_host)
-			pnw->iotg.stop_host(&pnw->iotg);
-		else
-			dev_dbg(pnw->dev, "host driver has been removed.\n");
+		PNW_STOP_HOST(pnw);
 		iotg->hsm.a_srp_det = 0;
 
 		penwell_otg_phy_vbus_wakeup(false);
@@ -4640,10 +4623,7 @@ static int penwell_otg_suspend_noirq(struct device *dev)
 		/* Stop HNP polling */
 		iotg->stop_hnp_poll(iotg);
 
-		if (pnw->iotg.stop_host)
-			pnw->iotg.stop_host(&pnw->iotg);
-		else
-			dev_dbg(pnw->dev, "host driver has been stopped.\n");
+		PNW_STOP_HOST(pnw);
 		iotg->hsm.b_bus_req = 0;
 		iotg->otg.state = OTG_STATE_B_IDLE;
 		break;
@@ -4656,10 +4636,7 @@ static int penwell_otg_suspend_noirq(struct device *dev)
 
 		penwell_otg_HAAR(0);
 
-		if (pnw->iotg.stop_host)
-			pnw->iotg.stop_host(&pnw->iotg);
-		else
-			dev_dbg(pnw->dev, "host driver has been stopped.\n");
+		PNW_STOP_HOST(pnw);
 		iotg->hsm.b_bus_req = 0;
 		iotg->otg.state = OTG_STATE_B_IDLE;
 		break;
