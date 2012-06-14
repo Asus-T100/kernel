@@ -846,6 +846,7 @@ static int mdfld_save_display_registers (struct drm_device *dev, int pipe)
 	if (pipe != 1 && ((get_panel_type(dev, pipe) == TMD_VID) ||
 		(get_panel_type(dev, pipe) == TMD_6X10_VID) ||
 		(get_panel_type(dev, pipe) == H8C7_VID) ||
+		(get_panel_type(dev, pipe) == H8C7_CMD) ||
 		(get_panel_type(dev, pipe) == GI_SONY_VID) ||
 		/* SC1 setting */
 		(get_panel_type(dev, pipe) == AUO_SC1_VID)))
@@ -1109,6 +1110,7 @@ static int mdfld_restore_display_registers(struct drm_device *dev, int pipe)
 	if (pipe != 1 && ((get_panel_type(dev, pipe) == TMD_VID) ||
 		(get_panel_type(dev, pipe) == TMD_6X10_VID) ||
 		(get_panel_type(dev, pipe) == H8C7_VID) ||
+		(get_panel_type(dev, pipe) == H8C7_CMD) ||
 		(get_panel_type(dev, pipe) == GI_SONY_VID) ||
 		/* SC1 setting */
 		(get_panel_type(dev, pipe) == AUO_SC1_VID)))
@@ -1890,6 +1892,7 @@ static void gfx_early_suspend(struct early_suspend *h)
 	if (IS_MDFLD(gpDrmDevice)) {
 		if ((dev_priv->panel_id == TMD_VID) ||
 			(dev_priv->panel_id == H8C7_VID) ||
+			(dev_priv->panel_id == H8C7_CMD) ||
 			(dev_priv->panel_id == TMD_6X10_VID) ||
 			(dev_priv->panel_id == GI_SONY_VID) ||
 			(dev_priv->panel_id == GI_SONY_CMD) ||
@@ -1956,6 +1959,7 @@ static void restore_panel_controll_back(struct drm_psb_private *dev_priv)
 	if (IS_MDFLD(gpDrmDevice)) {
 		if ((dev_priv->panel_id == TMD_VID) ||
 			(dev_priv->panel_id == H8C7_VID) ||
+			(dev_priv->panel_id == H8C7_CMD) ||
 			(dev_priv->panel_id == TMD_6X10_VID) ||
 			(dev_priv->panel_id == GI_SONY_VID) ||
 			(dev_priv->panel_id == GI_SONY_CMD) ||
@@ -2000,6 +2004,7 @@ static void restore_panel_controll_back(struct drm_psb_private *dev_priv)
 	}
 
 }
+
 static void gfx_late_resume(struct early_suspend *h)
 {
 	struct drm_psb_private *dev_priv = gpDrmDevice->dev_private;

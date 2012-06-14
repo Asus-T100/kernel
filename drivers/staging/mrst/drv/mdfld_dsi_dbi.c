@@ -306,6 +306,7 @@ int mdfld_dsi_dbi_update_power(struct mdfld_dsi_dbi_output * dbi_output, int mod
 			DRM_ERROR("update area failed\n");
 			goto power_err;
 		}
+
 		/**
 		 * FIXME: remove this later
 		 */
@@ -727,8 +728,9 @@ void mdfld_dbi_update_panel (struct drm_device *dev, int pipe)
 		dbi_output->dsr_idle_count++;
 	}
 
-	/*try to enter DSR*/
-	if (dbi_outputs[0]->dsr_idle_count > 1) {
+	/*try to enter DSR in normal boot mode.*/
+	if ((dbi_outputs[0]->dsr_idle_count > 1) &&
+			(dev_priv->b_async_flip_enable)) {
 		/* && dbi_outputs[1]->dsr_idle_count > 1) { */
 		for(i=0; i<dsr_info->dbi_output_num; i++) {
 			if (!mdfld_dbi_is_in_dsr(dev) && dbi_outputs[i] &&
@@ -1040,7 +1042,7 @@ struct mdfld_dsi_encoder *mdfld_dsi_dbi_init(struct drm_device *dev,
 		DRM_ERROR("only support 2 DSI outputs\n");
 		goto out_err1;
 	}
-	
+
 	dbi_output->dev = dev;
 	dbi_output->p_funcs = p_funcs;
 

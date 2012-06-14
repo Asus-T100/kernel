@@ -951,6 +951,7 @@ void mdfld_disable_crtc (struct drm_device *dev, int pipe)
 	if (pipe != 1 && ((get_panel_type(dev, pipe) == TMD_VID) ||
 		(get_panel_type(dev, pipe) == TMD_6X10_VID) ||
 		(get_panel_type(dev, pipe) == H8C7_VID) ||
+		(get_panel_type(dev, pipe) == H8C7_CMD) ||
 		(get_panel_type(dev, pipe) == GI_SONY_VID) ||
 		/* SC1 setting */
 		(get_panel_type(dev, pipe) == AUO_SC1_VID)))
@@ -1064,6 +1065,7 @@ static void mdfld_crtc_dpms(struct drm_crtc *crtc, int mode)
 	if (pipe != 1 && ((get_panel_type(dev, pipe) == TMD_VID) ||
 		(get_panel_type(dev, pipe) == TMD_6X10_VID) ||
 		(get_panel_type(dev, pipe) == H8C7_VID) ||
+		(get_panel_type(dev, pipe) == H8C7_CMD) ||
 		(get_panel_type(dev, pipe) == GI_SONY_VID) ||
 		/* SC1 setting */
 		(get_panel_type(dev, pipe) == AUO_SC1_VID))) {
@@ -1689,6 +1691,9 @@ static int mdfld_crtc_dsi_mode_set(struct drm_crtc *crtc,
 	dev = crtc->dev;
 	dev_priv = (struct drm_psb_private *)dev->dev_private;
 
+	PSB_DEBUG_ENTRY("mode %dx%d, bpp %d, pitch %d", mode->crtc_hdisplay,
+			mode->crtc_vdisplay, fb_bpp, fb_pitch);
+
 	mutex_lock(&dsi_config->context_lock);
 
 	ctx->vgacntr = 0x80000000;
@@ -1863,6 +1868,7 @@ static int mdfld_crtc_mode_set(struct drm_crtc *crtc,
 	if (pipe != 1 && ((get_panel_type(dev, pipe) == TMD_VID) ||
 		(get_panel_type(dev, pipe) == TMD_6X10_VID) ||
 		(get_panel_type(dev, pipe) == H8C7_VID) ||
+		(get_panel_type(dev, pipe) == H8C7_CMD) ||
 		(get_panel_type(dev, pipe) == GI_SONY_VID) ||
 		/* SC1 setting */
 		(get_panel_type(dev, pipe) == AUO_SC1_VID))) {

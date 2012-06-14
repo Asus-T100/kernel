@@ -1456,6 +1456,7 @@ static int __dpi_exit_ulps_locked(struct mdfld_dsi_config *dsi_config)
 	REG_WRITE(regs->device_ready_reg, ctx->device_ready);
 	return 0;
 }
+
 static void mdfld_dsi_dpi_shut_down(struct mdfld_dsi_dpi_output *output, int pipe)
 {
 	struct drm_device *dev = output->dev;

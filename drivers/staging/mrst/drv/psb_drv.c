@@ -1086,10 +1086,10 @@ bool mrst_get_vbt_data(struct drm_psb_private *dev_priv)
 						"[GFX] H8C7 panel Detected.\n");
 					dev_priv->panel_id = H8C7_VID;
 					PanelID = H8C7_VID;
-					#ifdef CONFIG_SUPPORT_MIPI_H8C7_CMD_DISPLAY
-						dev_priv->panel_id = H8C7_CMD;
-						PanelID = H8C7_CMD;
-					#endif
+#ifdef CONFIG_SUPPORT_MIPI_H8C7_CMD_DISPLAY
+					dev_priv->panel_id = H8C7_CMD;
+					PanelID = H8C7_CMD;
+#endif
 
 				} else {
 					PSB_DEBUG_ENTRY(
