@@ -2288,12 +2288,15 @@ static int penwell_otg_iotg_notify(struct notifier_block *nb,
 	struct intel_mid_otg_xceiv	*iotg = data;
 	unsigned long			flags;
 	int				flag = 0;
+	struct pci_dev			*pdev;
 
 	if (iotg == NULL)
 		return NOTIFY_BAD;
 
 	if (pnw == NULL)
 		return NOTIFY_BAD;
+
+	pdev = to_pci_dev(pnw->dev);
 
 	switch (action) {
 	case MID_OTG_NOTIFY_CONNECT:
@@ -2344,7 +2347,8 @@ static int penwell_otg_iotg_notify(struct notifier_block *nb,
 			flag = 1;
 		} else {
 			/* in B_PERIPHERAL state */
-			penwell_otg_start_ulpi_poll();
+			if (!is_clovertrail(pdev))
+				penwell_otg_start_ulpi_poll();
 			iotg->hsm.a_bus_suspend = 0;
 			flag = 0;
 		}
