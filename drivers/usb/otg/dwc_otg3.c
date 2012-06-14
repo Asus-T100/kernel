@@ -1107,6 +1107,47 @@ stay_device:
 	return DWC_STATE_INVALID;
 }
 
+/* Charger driver may send ID change and VBus change event to OTG driver.
+ * This is like IRQ handler, just the event source is from charger driver.
+ * Because on Merrifield platform, the ID line and VBus line are connect to
+ * PMic which can make USB controller and PHY power off to save power.
+ */
+static int dwc_otg_handle_notification(struct notifier_block *nb,
+		unsigned long event, void *data)
+{
+	struct dwc_otg2		*otg = the_transceiver;
+	int state, val;
+	unsigned long flags;
+
+	if (((event == USB_EVENT_ID) || (event == USB_EVENT_VBUS))
+			&& !otg)
+		return NOTIFY_BAD;
+
+	val = *(int *)data;
+
+	spin_lock_irqsave(&otg->lock, flags);
+	switch (event) {
+	case USB_EVENT_ID:
+		otg->otg_events |= OEVT_CONN_ID_STS_CHNG_EVNT;
+		state = NOTIFY_OK;
+		break;
+	case USB_EVENT_VBUS:
+		if (val)
+			otg->otg_events |= OEVT_B_DEV_SES_VLD_DET_EVNT;
+		else
+			otg->otg_events |= OEVT_A_DEV_SESS_END_DET_EVNT;
+		state = NOTIFY_OK;
+		break;
+	default:
+		otg_dbg(otg, "DWC OTG Notify unknow notify message\n");
+		state = NOTIFY_DONE;
+	}
+	wakeup_main_thread(otg);
+	spin_unlock_irqrestore(&otg->lock, flags);
+
+	return state;
+}
+
 int otg_main_thread(void *data)
 {
 	struct dwc_otg2 *otg = (struct dwc_otg2 *)data;
@@ -1129,14 +1170,8 @@ int otg_main_thread(void *data)
 	set_freezable();
 	reset_hw(otg);
 
-#ifndef SUPPORT_USER_ID_CHANGE_EVENTS
-	if (request_irq(otg->irqnum, dwc_otg_irq, IRQF_SHARED,
-				driver_name, otg) != 0) {
-		otg_dbg(otg,
-			"request interrupt %d failed\n", otg->irqnum);
-		return -EINVAL;
-	}
-#endif
+	/* Register otg notifier to monitor ID and VBus change events */
+	otg_register_notifier(&otg->otg, &otg->nb);
 
 	otg_dbg(otg, "Thread running\n");
 	while (otg->state != DWC_STATE_TERMINATED) {
@@ -1587,6 +1622,7 @@ static int dwc_otg_probe(struct pci_dev *pdev,
 	otg->host = dwc_host;
 	otg->gadget = dwc_gadget;
 	otg->irqnum = pdev->irq;
+	otg->nb.notifier_call = dwc_otg_handle_notification;
 
 #ifdef SUPPORT_USER_ID_CHANGE_EVENTS
 	retval = device_create_file(&pdev->dev, &dev_attr_otg_id);

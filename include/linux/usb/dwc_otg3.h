@@ -371,6 +371,9 @@ struct dwc_otg2 {
 	enum dwc_otg_state state;
 	struct platform_device *host;
 	struct platform_device *gadget;
+
+	/* Notifier support charger detection */
+	struct notifier_block nb;
 };
 
 #define sleep_main_thread_until_condition_timeout(otg, condition, msecs) ({ \
