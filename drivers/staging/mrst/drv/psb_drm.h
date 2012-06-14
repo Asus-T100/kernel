@@ -693,12 +693,14 @@ struct drm_psb_getpageaddrs_arg {
 
 
 #define MAX_SLICES_PER_PICTURE 72
+struct  psb_msvdx_mb_region {
+	uint32_t start;
+	uint32_t end;
+};
+
 typedef struct drm_psb_msvdx_decode_status {
-	uint32_t fw_status;
-	uint32_t num_error_slice;
-	int32_t start_error_mb_list[MAX_SLICES_PER_PICTURE];
-	int32_t end_error_mb_list[MAX_SLICES_PER_PICTURE];
-	int32_t slice_missing_or_error[MAX_SLICES_PER_PICTURE];
+	uint32_t num_region;
+	struct psb_msvdx_mb_region mb_regions[MAX_SLICES_PER_PICTURE];
 } drm_psb_msvdx_decode_status_t;
 
 /* Controlling the kernel modesetting buffers */

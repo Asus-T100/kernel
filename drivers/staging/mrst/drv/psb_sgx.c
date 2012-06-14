@@ -809,7 +809,6 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 	struct psb_context *context;
 	unsigned num_buffers;
 
-	((struct msvdx_private*)dev_priv->msvdx_private)->tfile = tfile;
 	num_buffers = PSB_NUM_VALIDATE_BUFFERS;
 
 	ret = ttm_read_lock(&dev_priv->ttm_lock, true);
@@ -836,6 +835,7 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 	if (unlikely(ret != 0))
 		goto out_err0;
 
+	((struct msvdx_private *)dev_priv->msvdx_private)->tfile = tfile;
 
 	context = &dev_priv->context;
 	context->used_buffers = 0;
@@ -907,7 +907,7 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 
 	switch (arg->engine) {
 	case PSB_ENGINE_VIDEO:
-		if (arg->cmdbuf_size == (16 + 32)) {
+		if (IS_MRST(dev) && (arg->cmdbuf_size == (16 + 32))) {
 			/* Identify deblock msg cmdbuf */
 			/* according to cmdbuf_size */
 			struct ttm_bo_kmap_obj cmd_kmap;

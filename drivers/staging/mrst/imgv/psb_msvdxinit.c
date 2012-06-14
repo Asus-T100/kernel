@@ -24,6 +24,7 @@
 #include <drm/drm.h>
 #include "psb_drv.h"
 #include "psb_msvdx.h"
+#include "psb_msvdx_ec.h"
 #include <linux/firmware.h>
 
 #define MSVDX_REG (dev_priv->msvdx_reg)
@@ -587,6 +588,12 @@ int psb_setup_fw(struct drm_device *dev)
 		/* we should restore the state, if we power down/up
 		 * during EC */
 		PSB_WMSVDX32(0, MSVDX_EXT_FW_ERROR_STATE); /* EXT_FW_ERROR_STATE */
+		PSB_WMSVDX32(0, MSVDX_COMMS_MSG_COUNTER);
+		PSB_WMSVDX32(0, 0x2000 + 0xcc4); /* EXT_FW_ERROR_STATE */
+		PSB_WMSVDX32(0, 0x2000 + 0xcb0); /* EXT_FW_LAST_MBS */
+		PSB_WMSVDX32(0, 0x2000 + 0xcb4); /* EXT_FW_LAST_MBS */
+		PSB_WMSVDX32(0, 0x2000 + 0xcb8); /* EXT_FW_LAST_MBS */
+		PSB_WMSVDX32(0, 0x2000 + 0xcbc); /* EXT_FW_LAST_MBS */
 	}
 	/* read register bank size */
 	{
@@ -1056,6 +1063,7 @@ static void psb_msvdx_conceal_mb(char * ec_start, char * ref_start,
 
 static void psb_msvdx_error_concealment(struct work_struct *data)
 {
+#if 0
 	uint32_t i;
 	int ret;
 	struct msvdx_private *msvdx_priv = container_of(data, struct msvdx_private, ec_work);
@@ -1171,6 +1179,7 @@ static void psb_msvdx_error_concealment(struct work_struct *data)
 	if (ref_bo)
 		ttm_bo_unref(&ref_bo);
 
+#endif
 }
 
 int psb_msvdx_init(struct drm_device *dev)
@@ -1191,6 +1200,7 @@ int psb_msvdx_init(struct drm_device *dev)
 
 		dev_priv->msvdx_private = msvdx_priv;
 		memset(msvdx_priv, 0, sizeof(struct msvdx_private));
+		msvdx_priv->dev_priv = dev_priv;
 
 		msvdx_priv->tile_region_start0 =
 			dev_priv->bdev.man[DRM_PSB_MEM_MMU_TILING].gpu_offset;
@@ -1219,6 +1229,23 @@ int psb_msvdx_init(struct drm_device *dev)
 						    NULL,
 #endif
 						    "msvdx_pmstate");
+
+		msvdx_priv->msvdx_ec_ctx[0] =
+			kzalloc(sizeof(struct psb_msvdx_ec_ctx) *
+					PSB_MAX_EC_INSTANCE,
+					GFP_KERNEL);
+		if (msvdx_priv->msvdx_ec_ctx[0] == NULL)
+			DRM_ERROR("MSVDX:fail to allocate memory for ec ctx\n");
+		else {
+			int i;
+			for (i = 1; i < PSB_MAX_EC_INSTANCE; i++)
+				msvdx_priv->msvdx_ec_ctx[i] =
+					msvdx_priv->msvdx_ec_ctx[0] + i;
+			for (i = 0; i < PSB_MAX_EC_INSTANCE; i++)
+				msvdx_priv->msvdx_ec_ctx[i]->fence =
+						PSB_MSVDX_INVALID_FENCE;
+		}
+		INIT_WORK(&(msvdx_priv->ec_work), psb_msvdx_do_concealment);
 	}
 
 	msvdx_priv = dev_priv->msvdx_private;
@@ -1524,6 +1551,8 @@ int psb_msvdx_uninit(struct drm_device *dev)
 		     );
 	if (msvdx_priv->vec_local_mem_data)
 		kfree(msvdx_priv->vec_local_mem_data);
+
+	kfree(msvdx_priv->msvdx_ec_ctx[0]);
 
 	if (msvdx_priv) {
 		/* pci_set_drvdata(dev->pdev, NULL); */

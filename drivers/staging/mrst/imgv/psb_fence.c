@@ -98,6 +98,8 @@ int psb_fence_emit_sequence(struct ttm_fence_device *fdev,
 	case PSB_ENGINE_VIDEO:
 		spin_lock(&dev_priv->sequence_lock);
 		seq = dev_priv->sequence[fence_class]++;
+		/* cmds in one batch use different fence value */
+		seq <<= 4;
 		spin_unlock(&dev_priv->sequence_lock);
 		break;
 	case LNC_ENGINE_ENCODE:

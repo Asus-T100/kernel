@@ -103,9 +103,11 @@ int psb_release(struct inode *inode, struct file *filp)
 	struct psb_fpriv *psb_fp;
 	struct drm_psb_private *dev_priv;
 	struct msvdx_private *msvdx_priv;
-	int ret;
+	int ret, i;
+	struct psb_msvdx_ec_ctx *ec_ctx;
 	uint32_t ui32_reg_value = 0;
 	file_priv = (struct drm_file *) filp->private_data;
+	struct ttm_object_file *tfile = psb_fpriv(file_priv)->tfile;
 	psb_fp = psb_fpriv(file_priv);
 	dev_priv = psb_priv(file_priv->minor->dev);
 
@@ -114,11 +116,26 @@ int psb_release(struct inode *inode, struct file *filp)
 	msvdx_priv = (struct msvdx_private *)dev_priv->msvdx_private;
 
 	/*cleanup for msvdx*/
+	/*
 	if (msvdx_priv->tfile == psb_fpriv(file_priv)->tfile) {
 		msvdx_priv->fw_status = 0;
 		msvdx_priv->host_be_opp_enabled = 0;
 		msvdx_priv->deblock_enabled = 0;
 		memset(&msvdx_priv->frame_info, 0, sizeof(struct drm_psb_msvdx_frame_info) * MAX_DECODE_BUFFERS);
+	}
+	*/
+
+	for (i = 0; i < PSB_MAX_EC_INSTANCE; i++) {
+		if (msvdx_priv->msvdx_ec_ctx[i]->tfile == tfile)
+			break;
+	}
+
+	if (i < PSB_MAX_EC_INSTANCE) {
+		ec_ctx = msvdx_priv->msvdx_ec_ctx[i];
+		printk(KERN_DEBUG "remove ec ctx with tfile 0x%08x\n",
+		       ec_ctx->tfile);
+		ec_ctx->tfile = NULL;
+		ec_ctx->fence = PSB_MSVDX_INVALID_FENCE;
 	}
 
         /*this is used to cleanup bcd if app failed to call vaTerminate*/

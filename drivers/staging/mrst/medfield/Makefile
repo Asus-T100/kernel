@@ -229,6 +229,7 @@ gfx-$(CONFIG_MDFD_VIDEO_DECODE) += $(IMGVDIR)/lnc_topaz.o \
 	  $(IMGVDIR)/psb_msvdx.o \
 	  $(IMGVDIR)/msvdx_power.o \
 	  $(IMGVDIR)/psb_msvdxinit.o \
+	  $(IMGVDIR)/psb_msvdx_ec.o \
 	  $(IMGVDIR)/psb_ttm_glue.o \
 	  $(IMGVDIR)/psb_ttm_fence.o \
 	  $(IMGVDIR)/psb_ttm_fence_user.o \

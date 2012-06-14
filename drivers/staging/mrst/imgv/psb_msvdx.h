@@ -98,7 +98,6 @@ int psb_cmdbuf_video(struct drm_file *priv,
 int psb_msvdx_save_context(struct drm_device *dev);
 int psb_msvdx_restore_context(struct drm_device *dev);
 int psb_msvdx_check_reset_fw(struct drm_device *dev);
-
 bool
 psb_host_second_pass(struct drm_device *dev,
 		     uint32_t ui32OperatingModeCmd,
@@ -689,6 +688,8 @@ enum {
 
 	VA_MSGID_DEBLOCK_MFLD = FWRK_MSGID_HOST_EMULATED,
 	VA_MSGID_OOLD_MFLD,
+	VA_MSGID_TEST1_MFLD,
+	VA_MSGID_HOST_BE_OPP_MFLD,
 	/*! Sent by the DXVA firmware on the MTX to the host.
 	 */
 	VA_MSGID_CMD_COMPLETED = FWRK_MSGID_START_PSR_MTXHOST_MSG,
@@ -755,9 +756,13 @@ typedef struct {
 	uint32_t address_a0;
 	uint32_t address_a1;
 	uint32_t mb_param_address;
+	uint32_t ext_stride_a;
 	uint32_t address_b0;
 	uint32_t address_b1;
 	uint32_t rotation_flags;
+	/* additional msg outside of IMG msg */
+	uint32_t address_c0;
+	uint32_t address_c1;
 } FW_VA_DEBLOCK_MSG;
 
 typedef struct drm_psb_msvdx_frame_info {
@@ -772,7 +777,29 @@ typedef struct drm_psb_msvdx_frame_info {
 	drm_psb_msvdx_decode_status_t decode_status;
 } drm_psb_msvdx_frame_info_t;
 
-#define MAX_DECODE_BUFFERS 24
+#define MAX_DECODE_BUFFERS (24)
+#define PSB_MAX_EC_INSTANCE (4)
+#define PSB_MSVDX_INVALID_FENCE (0xffffffff)
+#define PSB_MSVDX_INVALID_OFFSET (0xffffffff)
+#define PSB_MSVDX_EC_ROLLBACK (9)
+
+struct psb_msvdx_ec_ctx {
+	struct ttm_object_file *tfile; /* protected by cmdbuf_mutex */
+	uint32_t context_id;
+	drm_psb_msvdx_frame_info_t frame_info[MAX_DECODE_BUFFERS];
+	drm_psb_msvdx_frame_info_t *cur_frame_info;
+	int frame_idx;
+
+	/* 12 render msg + 1 deblock msg
+	 * 12 * 20 + 1 * 48 = 288;
+	*/
+	unsigned char unfenced_cmd[300];
+	uint32_t cmd_size;
+	uint32_t deblock_cmd_offset;
+	uint32_t fence;
+	drm_psb_msvdx_decode_status_t decode_status;
+};
+
 /* MSVDX private structure */
 struct msvdx_private {
 	int msvdx_needs_reset;
@@ -784,6 +811,7 @@ struct msvdx_private {
 	uint32_t msvdx_current_sequence;
 	uint32_t msvdx_last_sequence;
 
+	struct drm_psb_private *dev_priv;
 	/*
 	 *MSVDX Rendec Memory
 	 */
@@ -834,7 +862,11 @@ struct msvdx_private {
 	uint32_t ref_pic_fence;
 	/*work for error concealment*/
 	struct work_struct ec_work;
-	struct ttm_object_file *tfile;
+	struct ttm_object_file *tfile; /* protected by cmdbuf_mutex */
+	struct psb_msvdx_ec_ctx *msvdx_ec_ctx[PSB_MAX_EC_INSTANCE];
+	struct psb_msvdx_ec_ctx *cur_msvdx_ec_ctx;
+	uint32_t deblock_cmd_offset;
+
 	struct drm_video_displaying_frameinfo displaying_frame;
 };
 
@@ -1404,6 +1436,10 @@ struct msvdx_private {
 #define FW_DXVA_OOLD_MMUPTD_SHIFT               (0)
 
 #define FW_VA_LAST_SLICE_OF_EXT_DMA                                         0x00001000
+
+struct psb_msvdx_ec_ctx *psb_msvdx_find_ec_ctx(
+			struct msvdx_private *msvdx_priv,
+			void *cmd);
 
 static inline void psb_msvdx_clearirq(struct drm_device *dev)
 {
