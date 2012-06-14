@@ -3459,7 +3459,8 @@ static void atomisp_set_dis_envelop(struct atomisp_device *isp,
 			    unsigned int *dvs_env_h)
 {
 	/* if subdev type is SOC camera,we do not need to set DVS */
-	if (isp->inputs[isp->input_curr].type == SOC_CAMERA)
+	if (isp->inputs[isp->input_curr].type == SOC_CAMERA ||
+	    isp->params.yuv_us_en)
 		isp->params.video_dis_en = 0;
 
 	if (isp->params.video_dis_en &&
