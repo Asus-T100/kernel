@@ -31,7 +31,7 @@
 #include <linux/usb.h>
 #include <linux/usb/hcd.h>
 
-#include <../core/usb.h>
+#include "../core/usb.h"
 
 struct pnwotg_test_dev {
 	struct usb_device	*udev;
