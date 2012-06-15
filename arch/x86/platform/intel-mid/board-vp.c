@@ -15,10 +15,32 @@
 #include <linux/spi/spi.h>
 #include <linux/spi/intel_mid_ssp_spi.h>
 
+#include <asm/intel-mid.h>
+
+#include "device_libs/platform_ipc.h"
+#include "device_libs/platform_mrfl_adc.h"
+
+/* I2C Devices */
+#include "device_libs/platform_max17042.h"
+
 /* SSP5 debug port settings */
 #define SPI_MODALIAS		"spi_max3111"
 #define SPI_MAX_SPEED_HZ	3125000
 #define SPI_IRQ			0xFF
+
+static void __init *no_platform_data(void *info)
+{
+	return NULL;
+}
+
+struct devs_id __initconst device_ids[] = {
+	{"bcove_adc", SFI_DEV_TYPE_IPC, 1, &mrfl_adc_platform_data, NULL},
+	{"bcove_bcu", SFI_DEV_TYPE_IPC, 1, &no_platform_data, NULL},
+	{"bcove_thrm", SFI_DEV_TYPE_IPC, 1, &no_platform_data, NULL},
+	{"bcove_chrgr", SFI_DEV_TYPE_IPC, 1, &no_platform_data, NULL},
+	{"max17050", SFI_DEV_TYPE_I2C, 1, &max17042_platform_data, NULL},
+	{},
+};
 
 static struct intel_mid_ssp_spi_chip chip = {
 		.burst_size = DFLT_FIFO_BURST_SIZE,
