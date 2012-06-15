@@ -622,6 +622,9 @@ static const struct snd_soc_dapm_widget sn95031_dapm_widgets[] = {
 			SND_SOC_NOPM, 0, 0, &sn95031_ihfsrc_mux_control),
 	SND_SOC_DAPM_MUX("Headset Playback Route",
 			SND_SOC_NOPM, 0, 0, &sn95031_hsdrv_mux_control),
+
+	/* Dummy widget to trigger VAUDA on/off */
+	SND_SOC_DAPM_MICBIAS("VirtBias", SND_SOC_NOPM, 0, 0),
 };
 
 static const struct snd_soc_dapm_route sn95031_audio_map[] = {
@@ -1185,8 +1188,6 @@ static int sn95031_codec_probe(struct snd_soc_codec *codec)
 	 */
 	snd_soc_update_bits(codec, SN95031_OCAUDIOMASK, BIT(0), BIT(0));
 
-	snd_soc_add_controls(codec, sn95031_snd_controls,
-			     ARRAY_SIZE(sn95031_snd_controls));
 
 	snd_soc_codec_set_drvdata(codec, sn95031_ctx);
 	return 0;
@@ -1210,12 +1211,15 @@ struct snd_soc_codec_driver sn95031_codec = {
 	.read		= sn95031_read,
 	.write		= sn95031_write,
 	.set_bias_level	= sn95031_set_vaud_bias,
+	.idle_bias_off	= true,
 	.set_params	= sn95031_codec_set_params,
 	.dapm_widgets	= sn95031_dapm_widgets,
 	.num_dapm_widgets	= ARRAY_SIZE(sn95031_dapm_widgets),
 	.dapm_routes	= sn95031_audio_map,
 	.num_dapm_routes	= ARRAY_SIZE(sn95031_audio_map),
 	.set_pll	= sn95031_codec_set_pll,
+	.controls	= sn95031_snd_controls,
+	.num_controls	= ARRAY_SIZE(sn95031_snd_controls),
 };
 
 static int __devinit sn95031_device_probe(struct platform_device *pdev)
@@ -1255,6 +1259,9 @@ static void __exit sn95031_exit(void)
 }
 module_exit(sn95031_exit);
 
+/*
+module_platform_driver(sn95031_codec_driver);
+*/
 MODULE_DESCRIPTION("ASoC TI SN95031 codec driver");
 MODULE_AUTHOR("Vinod Koul <vinod.koul@intel.com>");
 MODULE_AUTHOR("Harsha Priya <priya.harsha@intel.com>");
