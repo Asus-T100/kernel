@@ -1787,6 +1787,10 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	dev_priv->bhdmiconnected = false;
 	dev_priv->dpms_on_off = false;
 	dev_priv->brightness_adjusted = 0;
+	dev_priv->buf = kzalloc(PSB_REG_PRINT_SIZE * sizeof(char),
+				 GFP_KERNEL);
+	if (dev_priv->buf == NULL)
+		return -ENOMEM;
 
 #ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
 	dev_priv->hdmi_audio_busy = 0;
@@ -3851,7 +3855,8 @@ static int psb_display_register_read(char *buf, char **start, off_t offset, int 
 	/*do nothing*/
 	int len = dev_priv->count;
 	*eof = 1;
-	memcpy(buf, dev_priv->buf, dev_priv->count);
+	if (dev_priv->buf && dev_priv->count < PSB_REG_PRINT_SIZE)
+		memcpy(buf, dev_priv->buf, dev_priv->count);
 	return len - offset;
 }
 /*
@@ -3874,6 +3879,7 @@ static int psb_display_register_write(struct file *file, const char *buffer,
 	unsigned int  val = 0;
 	int  len = 0;
 	int  Offset = 0;
+	int  add_size = 0;
 
 	dev_priv->count = 0;
 	memset(buf, '\0', sizeof(buf));
@@ -3920,18 +3926,18 @@ static int psb_display_register_write(struct file *file, const char *buffer,
 	}
 	if (is_panel_vid_or_cmd(dev) == MDFLD_DSI_ENCODER_DBI) {
 #ifndef CONFIG_MDFLD_DSI_DPU
-		if (!(dev_priv->dsr_fb_update & MDFLD_DSR_MIPI_CONTROL) &&
-		    (dev_priv->dbi_panel_on || dev_priv->dbi_panel_on2))
-			mdfld_dsi_dbi_exit_dsr(dev, MDFLD_DSR_MIPI_CONTROL, 0, 0); //assume cursor move once
-
-		dsr_info = dev_priv->dbi_dsr_info;
-		dbi_outputs = dsr_info->dbi_outputs;
-		dbi_output = dbi_outputs[0];
-		/*make sure, during read no DSR again*/
-		dbi_output->mode_flags |= MODE_SETTING_ON_GOING;
+		if (dev_priv->b_dsr_enable) {
+			dev_priv->exit_idle(dev,
+					MDFLD_DSR_2D_3D,
+					NULL,
+					true);
+			dsr_info = dev_priv->dbi_dsr_info;
+			dbi_outputs = dsr_info->dbi_outputs;
+			dbi_output = dbi_outputs[0];
+			/*make sure, during read no DSR again*/
+			dbi_output->mode_flags |= MODE_SETTING_ON_GOING;
+		}
 #endif
-	PSB_WVDC32(0x30164, PSB_RVDC32(0x30164) | BIT16);
-	printk(KERN_ALERT "Overlay0x30164  0x%x\n", PSB_RVDC32(0x30164));
 	}
 	if (op == 'r') {
 		if (reg >= 0xa000) {
@@ -3941,6 +3947,9 @@ static int psb_display_register_write(struct file *file, const char *buffer,
 			reg_val = SGX_REG_READ(reg);
 			PSB_DEBUG_ENTRY("SGX Read :reg=0x%08x , val=0x%08x.\n", reg, reg_val);
 		}
+		add_size = sizeof("0xFFFFFFFF 0xFFFFFFFF\n");
+		if (dev_priv->buf &&
+			(dev_priv->count + add_size) < PSB_REG_PRINT_SIZE)
 			dev_priv->count = sprintf(dev_priv->buf, "%08x %08x\n", reg, reg_val);
 	}
 	if (op == 'w') {
@@ -3998,6 +4007,9 @@ static int psb_display_register_write(struct file *file, const char *buffer,
 					REG_READ(Offset + 0x8),
 					REG_READ(Offset + 0xc));
 
+			add_size = 5 * sizeof("0xFFFFFFFF ");
+			if (dev_priv->buf &&
+				(dev_priv->count + add_size) < PSB_REG_PRINT_SIZE)
 				dev_priv->count += sprintf(dev_priv->buf + dev_priv->count,
 					"%08x %08x %08x %08x %08x\n",
 					Offset,
@@ -4013,7 +4025,10 @@ static int psb_display_register_write(struct file *file, const char *buffer,
 					SGX_REG_READ(Offset + 0x8),
 					SGX_REG_READ(Offset + 0xc));
 
-				dev_priv->count += sprintf(dev_priv->buf + dev_priv->count,
+				add_size = 5 * sizeof("0xFFFFFFFF ");
+				if (dev_priv->buf &&
+					(dev_priv->count + add_size) < PSB_REG_PRINT_SIZE)
+					dev_priv->count += sprintf(dev_priv->buf + dev_priv->count,
 					"%08x %08x %08x %08x %08x\n",
 					Offset,
 					SGX_REG_READ(Offset + 0x0),
@@ -4026,7 +4041,8 @@ static int psb_display_register_write(struct file *file, const char *buffer,
 	}
 	if (is_panel_vid_or_cmd(dev) == MDFLD_DSI_ENCODER_DBI) {
 #ifndef CONFIG_MDFLD_DSI_DPU
-		dbi_output->mode_flags &= ~MODE_SETTING_ON_GOING;
+		if (dev_priv->b_dsr_enable)
+			dbi_output->mode_flags &= ~MODE_SETTING_ON_GOING;
 #endif
 	}
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
