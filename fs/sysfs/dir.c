@@ -660,6 +660,8 @@ int sysfs_create_dir(struct kobject * kobj)
 		parent_sd = kobj->parent->sd;
 	else
 		parent_sd = &sysfs_root;
+	if (!parent_sd)
+		return -ENOENT;
 
 	if (sysfs_ns_type(parent_sd))
 		ns = kobj->ktype->namespace(kobj);

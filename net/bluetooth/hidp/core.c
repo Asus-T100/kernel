@@ -696,9 +696,18 @@ static int hidp_session(void *arg)
 	struct sock *ctrl_sk = session->ctrl_sock->sk;
 	struct sock *intr_sk = session->intr_sock->sk;
 	struct sk_buff *skb;
+	int vendor = 0x0000, product = 0x0000;
 	wait_queue_t ctrl_wait, intr_wait;
 
 	BT_DBG("session %p", session);
+
+	if (session->hid) {
+		vendor  = session->hid->vendor;
+		product = session->hid->product;
+	} else if (session->input) {
+		vendor  = session->input->id.vendor;
+		product = session->input->id.product;
+	}
 
 	set_user_nice(current, -15);
 
@@ -946,8 +955,14 @@ static int hidp_setup_hid(struct hidp_session *session,
 	hid->hid_get_raw_report = hidp_get_raw_report;
 	hid->hid_output_raw_report = hidp_output_raw_report;
 
+	err = hid_add_device(session->hid);
+	if (err < 0)
+		goto failed;
+
 	return 0;
 
+failed:
+	hid_destroy_device(hid);
 fault:
 	kfree(session->rd_data);
 	session->rd_data = NULL;
@@ -1022,17 +1037,6 @@ int hidp_add_connection(struct hidp_connadd_req *req, struct socket *ctrl_sock, 
 
 	hidp_set_timer(session);
 
-	if (session->hid) {
-		vendor  = session->hid->vendor;
-		product = session->hid->product;
-	} else if (session->input) {
-		vendor  = session->input->id.vendor;
-		product = session->input->id.product;
-	} else {
-		vendor = 0x0000;
-		product = 0x0000;
-	}
-
 	session->task = kthread_run(hidp_session, session, "khidpd_%04x%04x",
 							vendor, product);
 	if (IS_ERR(session->task)) {
@@ -1043,14 +1047,6 @@ int hidp_add_connection(struct hidp_connadd_req *req, struct socket *ctrl_sock, 
 	while (session->waiting_for_startup) {
 		wait_event_interruptible(session->startup_queue,
 			!session->waiting_for_startup);
-	}
-
-	err = hid_add_device(session->hid);
-	if (err < 0) {
-		atomic_inc(&session->terminate);
-		wake_up_process(session->task);
-		up_write(&hidp_session_sem);
-		return err;
 	}
 
 	if (session->input) {
