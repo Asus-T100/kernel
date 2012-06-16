@@ -663,6 +663,13 @@ static ssize_t set_charge_current_limit(struct device *dev,
 	int chr_mode;
 	dev_info(&chip->client->dev, "+%s\n", __func__);
 
+	/* Check if the charger is present. If not just return */
+	if (!chip->present && !chip->online) {
+		dev_info(&chip->client->dev,
+				"%s: No Charger\n", __func__);
+		return -EINVAL;
+	}
+
 	if (kstrtoul(buf, 10, &value))
 		return -EINVAL;
 
