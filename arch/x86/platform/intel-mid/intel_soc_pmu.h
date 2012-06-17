@@ -36,6 +36,7 @@
 #include <linux/jhash.h>
 #include <linux/suspend.h>
 #include <linux/wakelock.h>
+#include <linux/nmi.h>
 #include <asm/apic.h>
 #include <asm/intel_scu_ipc.h>
 #include <linux/intel_mid_pm.h>

@@ -349,9 +349,9 @@ int _pmu2_wait_not_busy(void)
 
 static int _pmu2_wait_not_busy_yield(void)
 {
-	int pmu_busy_retry = 20;
+	int pmu_busy_retry = 50000; /* 500msec minimum */
 
-	/* wait 10ms that the latest pmu command finished */
+	/* wait for the latest pmu command finished */
 	do {
 		usleep_range(10, 500);
 
@@ -1177,7 +1177,8 @@ int __ref pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t state)
 	int pmu_num;
 	struct pmu_ss_states cur_pmssc;
 	int status = 0;
-	int retry_count = 3;
+	int retry_times = 0;
+	ktime_t calltime, delta, rettime;
 
 	/* Ignore callback from devices until we have initialized */
 	if (unlikely((!pmu_initialized)))
@@ -1246,90 +1247,66 @@ int __ref pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t state)
 	cur_pmssc.pmu2_states[2] &= ~IGNORE_SSS2;
 	cur_pmssc.pmu2_states[3] &= ~IGNORE_SSS3;
 
-	do {
-		/* Issue the pmu command to PMU 2
-		 * flag is needed to distinguish between
-		 * S0ix vs interactive command in pmu_sc_irq()
-		 */
-		status = pmu_issue_interactive_command(&cur_pmssc, false);
+	/* Issue the pmu command to PMU 2
+	 * flag is needed to distinguish between
+	 * S0ix vs interactive command in pmu_sc_irq()
+	 */
+	status = pmu_issue_interactive_command(&cur_pmssc, false);
 
-		if (unlikely(status != PMU_SUCCESS)) {
-			dev_dbg(&mid_pmu_cxt->pmu_dev->dev,
-				 "Failed to Issue a PM command to PMU2\n");
-			goto unlock;
-		}
+	if (unlikely(status != PMU_SUCCESS)) {
+		dev_dbg(&mid_pmu_cxt->pmu_dev->dev,
+			 "Failed to Issue a PM command to PMU2\n");
+		goto unlock;
+	}
 
-		/*
-		 * Wait for interactive command to complete.
-		 * If we dont wait, there is a possibility that
-		 * the driver may access the device before its
-		 * powered on in SCU.
-		 *
-		 */
-		status = _pmu2_wait_not_busy_yield();
-
-		if (likely(!status))
-			break;
+	calltime = ktime_get();
+retry:
+	/*
+	 * Wait for interactive command to complete.
+	 * If we dont wait, there is a possibility that
+	 * the driver may access the device before its
+	 * powered on in SCU.
+	 *
+	 */
+	status = _pmu2_wait_not_busy_yield();
+	if (unlikely(status)) {
+		rettime = ktime_get();
+		delta = ktime_sub(rettime, calltime);
+		retry_times++;
 
 		printk(KERN_CRIT "%s: D0ix transition failure:"
 				" %04x %04X %s %20s:\n", __func__,
 				pdev->vendor, pdev->device,
 				dev_name(&pdev->dev),
 				dev_driver_string(&pdev->dev));
+		printk(KERN_CRIT "interrupt pending = %d\n",
+				pmu_interrupt_pending());
 		printk(KERN_CRIT "pmu_busy_status = %d\n",
-		_pmu_read_status(PMU_BUSY_STATUS));
+				_pmu_read_status(PMU_BUSY_STATUS));
 		printk(KERN_CRIT "suspend_started = %d\n",
 				mid_pmu_cxt->suspend_started);
 		printk(KERN_CRIT "shutdown_started = %d\n",
 				mid_pmu_cxt->shutdown_started);
-		printk(KERN_CRIT "Retrying... attempt(%d):\n",
-				retry_count);
-	} while (--retry_count);
-
-	if (unlikely(status)) {
-		struct pmu_ss_states new_pmsss;
-		u32 post_transition_val;
-
-		/*
-		 * Check if the power transition
-		 * indeed happend, if yes continue, else BUG
-		 */
-		new_value &=
-			(D0I3_MASK << (sub_sys_pos * BITS_PER_LSS));
-		pmu_read_sss(&new_pmsss);
-		post_transition_val =
-			(new_pmsss.pmu2_states[sub_sys_index] &
-			(D0I3_MASK << (sub_sys_pos * BITS_PER_LSS)));
-
-		if (new_value != post_transition_val) {
-			printk(KERN_CRIT "%s: D0ix transition failure:"
-				" %04x %04X %s %20s:\n", __func__,
-				pdev->vendor, pdev->device,
-				dev_name(&pdev->dev),
-				dev_driver_string(&pdev->dev));
-			printk(KERN_CRIT "interrupt pending = %d\n",
-				pmu_interrupt_pending());
-			printk(KERN_CRIT "pmu_busy_status = %d\n",
-			_pmu_read_status(PMU_BUSY_STATUS));
-			printk(KERN_CRIT "suspend_started = %d\n",
-					mid_pmu_cxt->suspend_started);
-			printk(KERN_CRIT "shutdown_started = %d\n",
-					mid_pmu_cxt->shutdown_started);
-			printk(KERN_CRIT "interactive_cmd_sent = %d\n",
+		printk(KERN_CRIT "interactive_cmd_sent = %d\n",
 				(int)mid_pmu_cxt->interactive_cmd_sent);
-			printk(KERN_CRIT "camera_off = %d"
-			" display_off = %d\n", mid_pmu_cxt->camera_off,
-					mid_pmu_cxt->display_off);
-			printk(KERN_CRIT "s0ix_possible = 0x%x\n",
-					mid_pmu_cxt->s0ix_possible);
-			printk(KERN_CRIT "s0ix_entered = 0x%x\n",
-					mid_pmu_cxt->s0ix_entered);
-			printk(KERN_CRIT "pmu_current_state = %d\n",
-					mid_pmu_cxt->pmu_current_state);
-			pmu_dump_logs();
+		printk(KERN_CRIT "camera_off = %d display_off = %d\n",
+				mid_pmu_cxt->camera_off,
+				mid_pmu_cxt->display_off);
+		printk(KERN_CRIT "s0ix_possible = 0x%x\n",
+				mid_pmu_cxt->s0ix_possible);
+		printk(KERN_CRIT "s0ix_entered = 0x%x\n",
+				mid_pmu_cxt->s0ix_entered);
+		printk(KERN_CRIT "pmu_current_state = %d\n",
+				mid_pmu_cxt->pmu_current_state);
+		printk(KERN_CRIT "PMU is BUSY! retry_times[%d] total_delay[%lli]ms. Retry ...\n",
+				retry_times, (long long) ktime_to_ms(delta));
+		pmu_dump_logs();
 
+		trigger_all_cpu_backtrace();
+		if (retry_times < 60)
+			goto retry;
+		else
 			BUG();
-		}
 	}
 
 	pmu_set_s0ix_possible(state);
