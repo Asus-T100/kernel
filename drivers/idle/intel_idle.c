@@ -328,7 +328,7 @@ static void enter_s0ix_state(u32 eax, int s0ix_state,
 	__monitor((void *)&current_thread_info()->flags, 0, 0);
 	smp_mb();
 	if (!need_resched())
-		__mwait(C6_HINT, 1);
+		__mwait(eax, 1);
 
 	if (likely(eax == C6_HINT))
 		atomic_dec(&nr_cpus_in_c6);
