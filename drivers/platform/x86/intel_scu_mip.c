@@ -19,11 +19,91 @@
 #include <linux/fs.h>
 #include <linux/delay.h>
 #include <asm/intel_scu_ipc.h>
+#include <linux/blkdev.h>
+#include <linux/pagemap.h>
 
 #define IPC_MIP_BASE     0xFFFD8000	/* sram base address for mip accessing*/
 #define IPC_MIP_MAX_ADDR 0x1000
 
-static void __iomem *intel_mip_base;
+#define SECTOR_SIZE			512
+#define UMIP_TOTAL_CHKSUM_ENTRY		126
+#define UMIP_HEADER_HEADROOM_SECTOR	1
+#define UMIP_HEADER_SECTOR		0
+#define UMIP_HEADER_CHKSUM_ADDR		7
+#define UMIP_START_CHKSUM_ADDR		8
+#define UMIP_TOTAL_HEADER_SECTOR_NO	2
+
+#define UMIP_BLKDEVICE			"mmcblk0boot0"
+
+void __iomem *intel_mip_base;
+
+static int xorblock(u32 *buf, u32 size)
+{
+	u32 cs = 0;
+
+	size >>= 2;
+	while (size--)
+		cs ^= *buf++;
+
+	return cs;
+}
+
+static u8 dword_to_byte_chksum(u32 dw)
+{
+	int n = 0;
+	u32 cs = dw;
+	for (n = 0; n < 3; n++) {
+		dw >>= 8;
+		cs ^= dw;
+	}
+
+	return (u8)cs;
+}
+
+static u8 calc_checksum(void *_buf, int size)
+{
+	int i;
+	u8 checksum = 0, *buf = (u8 *)_buf;
+
+	for (i = 0; i < size; i++)
+		checksum = checksum ^ (buf[i]);
+
+	return checksum;
+}
+
+static int mmcblk0boot0_match(struct device *dev, void *data)
+{
+	if (strcmp(dev_name(dev), UMIP_BLKDEVICE) == 0)
+		return 1;
+
+	return 0;
+}
+
+static struct block_device *get_emmc_bdev(void)
+{
+	struct block_device *bdev;
+	struct device *emmc_disk;
+
+	emmc_disk = class_find_device(&block_class, NULL, NULL,
+					mmcblk0boot0_match);
+	if (emmc_disk == 0) {
+		pr_err("emmc not found!\n");
+		return NULL;
+	}
+
+	/* partition 0 means raw disk */
+	bdev = bdget_disk(dev_to_disk(emmc_disk), 0);
+	if (bdev == NULL) {
+		dev_err(emmc_disk, "unable to get disk\n");
+		return NULL;
+	}
+
+	/* Note: this bdev ref will be freed after first
+	 * bdev_get/bdev_put cycle
+	 */
+
+	return bdev;
+}
 
 static int read_mip(u8 *data, int len, int offset, int issigned)
 {
@@ -51,84 +131,229 @@ static int read_mip(u8 *data, int len, int offset, int issigned)
 
 int intel_scu_ipc_read_mip(u8 *data, int len, int offset, int issigned)
 {
-	int ret;
+	int ret = 0;
+	Sector sect;
+	struct block_device *bdev;
+	char *buffer = NULL;
+	int *holderId = NULL;
+	int sect_no, remainder;
 
-	/* Only SMIP read for Cloverview is supported */
 	if ((intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_CLOVERVIEW)
-			&& (issigned != 1))
-		return -EINVAL;
+			&& (issigned != 1)) { /* CTP read UMIP from eMMC */
 
-	if (!intel_mip_base)
-		return -ENODEV;
+		/* Opening the mmcblk0boot0 */
+		bdev = get_emmc_bdev();
+		if (bdev == NULL) {
+			pr_err("%s: get_emmc failed!\n", __func__);
+			return -ENODEV;
+		}
 
-	if (offset + len > IPC_MIP_MAX_ADDR)
-		return -EINVAL;
+		/* make sure the block device is open read only */
+		ret = blkdev_get(bdev, FMODE_READ, holderId);
+		if (ret < 0) {
+			pr_err("%s: blk_dev_get failed!\n", __func__);
+			return -ret;
+		}
 
-	intel_scu_ipc_lock();
-	ret = read_mip(data, len, offset, issigned);
-	intel_scu_ipc_unlock();
+		/* Get sector number of where data located */
+		sect_no = offset / SECTOR_SIZE;
+		remainder = offset % SECTOR_SIZE;
+		buffer = read_dev_sector(bdev, sect_no +
+					UMIP_HEADER_HEADROOM_SECTOR, &sect);
 
-	return ret;
+		/* Shouldn't need to access UMIP sector 0/1 */
+		if (sect_no < UMIP_TOTAL_HEADER_SECTOR_NO) {
+			pr_err("invalid umip offset\n");
+			ret = -EINVAL;
+			goto bd_put;
+		} else if (data == NULL || buffer == NULL) {
+			pr_err("buffer is empty\n");
+			ret = -ENODEV;
+			goto bd_put;
+		} else if (len > (SECTOR_SIZE - remainder)) {
+			pr_err("not enough data to read\n");
+			ret = -EINVAL;
+			goto bd_put;
+		}
+
+		memcpy(data, buffer + remainder, len);
+bd_put:
+		if (buffer)
+			put_dev_sector(sect);
+
+		blkdev_put(bdev, FMODE_READ);
+		return ret;
+	} else {
+
+		if (!intel_mip_base)
+			return -ENODEV;
+
+		if (offset + len > IPC_MIP_MAX_ADDR)
+			return -EINVAL;
+
+		intel_scu_ipc_lock();
+		ret = read_mip(data, len, offset, issigned);
+		intel_scu_ipc_unlock();
+
+		return ret;
+	}
 }
 EXPORT_SYMBOL(intel_scu_ipc_read_mip);
 
 int intel_scu_ipc_write_umip(u8 *data, int len, int offset)
 {
-	int ret, offset_align;
-	int len_align = 0;
+	int i, ret = 0, offset_align;
+	int remainder, len_align = 0;
 	u32 dptr, sptr, cmd;
-	u8 *buf = NULL;
+	u8 cs, tbl_cs = 0, *buf = NULL;
+	Sector sect;
+	struct block_device *bdev;
+	char *buffer = NULL;
+	int *holderId = NULL;
+	int sect_no;
+	u8 checksum;
 
-	/* Cloverview don't need UMIP access through IPC */
-	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_CLOVERVIEW)
-		return -EINVAL;
+	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_CLOVERVIEW) {
 
-	if (!intel_mip_base)
-		return -ENODEV;
-
-	if (offset + len > IPC_MIP_MAX_ADDR)
-		return -EINVAL;
-
-	intel_scu_ipc_lock();
-
-	offset_align = offset & (~0x3);
-	len_align = (len + (offset - offset_align) + 3) & (~0x3);
-
-	if (len != len_align) {
-		buf = kzalloc(len_align, GFP_KERNEL);
-		if (!buf) {
-			pr_err("Alloc memory failed\n");
-			ret = -ENOMEM;
-			goto fail;
+		/* Opening the mmcblk0boot0 */
+		bdev = get_emmc_bdev();
+		if (bdev == NULL) {
+			pr_err("%s: get_emmc failed!\n", __func__);
+			return -ENODEV;
 		}
-		ret = read_mip(buf, len_align, offset_align, 0);
-		if (ret)
-			goto fail;
-		memcpy(buf + offset - offset_align, data, len);
+
+		/* make sure the block device is open rw */
+		ret = blkdev_get(bdev, FMODE_READ|FMODE_WRITE, holderId);
+		if (ret < 0) {
+			pr_err("%s: blk_dev_get failed!\n", __func__);
+			return -ret;
+		}
+
+		/* get memmap of the UMIP header */
+		sect_no = offset / SECTOR_SIZE;
+		remainder = offset % SECTOR_SIZE;
+		buffer = read_dev_sector(bdev, sect_no +
+					UMIP_HEADER_HEADROOM_SECTOR, &sect);
+
+		/* Shouldn't need to access UMIP sector 0/1 */
+		if (sect_no < UMIP_TOTAL_HEADER_SECTOR_NO) {
+			pr_err("invalid umip offset\n");
+			ret = -EINVAL;
+			goto bd_put;
+		} else if (data == NULL || buffer == NULL) {
+			pr_err("buffer is empty\n");
+			ret = -ENODEV;
+			goto bd_put;
+		} else if (len > (SECTOR_SIZE - remainder)) {
+			pr_err("too much data to write\n");
+			ret = -EINVAL;
+			goto bd_put;
+		}
+
+		lock_page(sect.v);
+		memcpy(buffer + remainder, data, len);
+		checksum = calc_checksum(buffer, SECTOR_SIZE);
+
+		set_page_dirty(sect.v);
+		unlock_page(sect.v);
+		sync_blockdev(bdev);
+		put_dev_sector(sect);
+
+		/*
+		 * Updating the checksum, sector 0 (starting from UMIP
+		 * offset 0x08), we maintains 4 bytes for tracking each of
+		 * sector changes individually. For example, the dword at
+		 * offset 0x08 is used to checksum data integrity of sector
+		 * number 2, and so on so forth. It's worthnoting that only
+		 * the first byte in each 4 bytes stores checksum.
+		 * For detail, please check CTP FAS UMIP header definition
+		 */
+
+		buffer = read_dev_sector(bdev, UMIP_HEADER_SECTOR +
+					UMIP_HEADER_HEADROOM_SECTOR, &sect);
+
+		if (buffer == NULL) {
+			pr_err("buffer is empty\n");
+			ret = -ENODEV;
+			goto bd_put;
+		}
+
+		lock_page(sect.v);
+		memcpy(buffer + 4 * (sect_no - UMIP_TOTAL_HEADER_SECTOR_NO) +
+			UMIP_START_CHKSUM_ADDR, &checksum, 1/* one byte */);
+
+		/* Change UMIP prologue chksum to zero */
+		*(buffer + UMIP_HEADER_CHKSUM_ADDR) = 0;
+
+		for (i = 0; i < UMIP_TOTAL_CHKSUM_ENTRY; i++) {
+			tbl_cs ^= *(u8 *)(buffer + 4 * i +
+					UMIP_START_CHKSUM_ADDR);
+		}
+
+		/* Finish up with re-calcuating UMIP prologue checksum */
+		cs = dword_to_byte_chksum(xorblock((u32 *)buffer,
+							SECTOR_SIZE));
+
+		*(buffer + UMIP_HEADER_CHKSUM_ADDR) = tbl_cs ^ cs;
+
+		set_page_dirty(sect.v);
+		unlock_page(sect.v);
+		sync_blockdev(bdev);
+bd_put:
+		if (buffer)
+			put_dev_sector(sect);
+
+		blkdev_put(bdev, FMODE_READ|FMODE_WRITE);
+		return ret;
 	} else {
-		buf = data;
-	}
 
-	dptr = offset_align;
-	sptr = len_align / 4;
-	cmd = IPC_CMD_UMIP_WR << 12 | IPCMSG_MIP_ACCESS;
+		if (!intel_mip_base)
+			return -ENODEV;
 
-	memcpy(intel_mip_base, buf, len_align);
+		if (offset + len > IPC_MIP_MAX_ADDR)
+			return -EINVAL;
 
-	do {
-		ret = intel_scu_ipc_raw_cmd(cmd, 0, NULL, 0, NULL, 0,
-				dptr, sptr);
-		if (ret == -EIO)
-			msleep(20);
-	} while (ret == -EIO);
+		intel_scu_ipc_lock();
+
+		offset_align = offset & (~0x3);
+		len_align = (len + (offset - offset_align) + 3) & (~0x3);
+
+		if (len != len_align) {
+			buf = kzalloc(len_align, GFP_KERNEL);
+			if (!buf) {
+				pr_err("Alloc memory failed\n");
+				ret = -ENOMEM;
+				goto fail;
+			}
+			ret = read_mip(buf, len_align, offset_align, 0);
+			if (ret)
+				goto fail;
+			memcpy(buf + offset - offset_align, data, len);
+		} else {
+			buf = data;
+		}
+
+		dptr = offset_align;
+		sptr = len_align / 4;
+		cmd = IPC_CMD_UMIP_WR << 12 | IPCMSG_MIP_ACCESS;
+
+		memcpy(intel_mip_base, buf, len_align);
+
+		do {
+			ret = intel_scu_ipc_raw_cmd(cmd, 0, NULL, 0, NULL, 0,
+					dptr, sptr);
+			if (ret == -EIO)
+				msleep(20);
+		} while (ret == -EIO);
 
 fail:
-	if (buf && len_align != len)
-		kfree(buf);
+		if (buf && len_align != len)
+			kfree(buf);
 
-	intel_scu_ipc_unlock();
+		intel_scu_ipc_unlock();
 
-	return ret;
+		return ret;
+	}
 }
 EXPORT_SYMBOL(intel_scu_ipc_write_umip);
 

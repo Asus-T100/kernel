@@ -25,14 +25,15 @@
 #include <linux/platform_device.h>
 #include <asm/intel-mid.h>
 
-#define USB_HOST_ENABLE_TIMEOUT_INFINITE    0x3F
-#define USB_HOST_ENABLE_TIMEOUT_THREE       0x1B
-#define USB_HOST_ENABLE_TIMEOUT_ZERO        0X00
-#define USB_ENABLE_UMIP_OFFSET              0x400
-#define MAX_USB_TIMEOUT_LEN                 14
-#define MAX_NUM_TIMEOUTS                    3
-#define FACTORY_UMIP_OFFSET                 0xE00
-#define FACTORY_BIT_OFFSET                  0
+#define USB_HOST_ENABLE_TIMEOUT_INFINITE	0x3F
+#define USB_HOST_ENABLE_TIMEOUT_TEN		0X2D
+#define USB_HOST_ENABLE_TIMEOUT_THREE		0x1B
+#define USB_HOST_ENABLE_TIMEOUT_ZERO		0X00
+#define USB_ENABLE_UMIP_OFFSET			0x400
+#define MAX_USB_TIMEOUT_LEN			14
+#define MAX_NUM_TIMEOUTS			4
+#define FACTORY_UMIP_OFFSET                     0xE00
+#define FACTORY_BIT_OFFSET                      0
 
 static struct platform_device *umip_mid_pdev;
 
@@ -56,10 +57,12 @@ static ssize_t Factory_UMIP_show(struct device *dev,
 			pr_err("Could not read to UMIP for Factory\n");
 			return -EBUSY;
 		}
-	}
 
-	return sprintf(buffer, "%d\n",
+		return sprintf(buffer, "%d\n",
 				(data_read >> FACTORY_BIT_OFFSET) & 0x01);
+	} else {
+		return sprintf(buffer, "Not supported feature\n");
+	}
 }
 
 ssize_t Factory_UMIP_store(struct device *dev,
@@ -72,19 +75,20 @@ ssize_t Factory_UMIP_store(struct device *dev,
 	u8 no;
 	bool bv;
 
-	if (strlen(buffer) != 2) {
-		pr_err("The length must be 1\n");
-		ret = -EINVAL;
-		goto error;
-	}
-
-	ret = strtobool(buffer, &bv);
-	if (ret) {
-		pr_err("Not expected value [Y|y|1|N|n|0]\n");
-		goto error;
-	}
-
 	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_PENWELL) {
+
+		if (strlen(buffer) != 2) {
+			pr_err("The length must be 1\n");
+			ret = -EINVAL;
+			goto error;
+		}
+
+		ret = strtobool(buffer, &bv);
+		if (ret) {
+			pr_err("Not expected value [Y|y|1|N|n|0]\n");
+			goto error;
+		}
+
 		ret = intel_scu_ipc_read_mip(&data_write,
 						1,
 						FACTORY_UMIP_OFFSET,
@@ -97,10 +101,12 @@ ssize_t Factory_UMIP_store(struct device *dev,
 			pr_err("Could not write to UMIP for Factory\n");
 			goto error;
 		}
+
+		return count;
+	} else {
+		pr_err("Not supported feature\n");
+		ret = -EINVAL;
 	}
-
-	return count;
-
 error:
 	return ret;
 }
@@ -113,6 +119,7 @@ struct usb_timeout {
 static struct
 	usb_timeout available_usb_host_enable_timeouts[MAX_NUM_TIMEOUTS] = {
 	 {"infinite", USB_HOST_ENABLE_TIMEOUT_INFINITE},
+	 {"tenseconds", USB_HOST_ENABLE_TIMEOUT_TEN},
 	 {"3seconds", USB_HOST_ENABLE_TIMEOUT_THREE},
 	 {"zeroseconds", USB_HOST_ENABLE_TIMEOUT_ZERO}
 };
@@ -124,10 +131,18 @@ static struct
 static ssize_t available_usb_host_enable_timeouts_show(struct device *dev,
 				struct device_attribute *attr, char *buffer)
 {
-	return sprintf(buffer, "%s\t%s\t%s\n",
+	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_PENWELL ||
+		intel_mid_identify_cpu() ==
+				INTEL_MID_CPU_CHIP_CLOVERVIEW) {
+
+		return sprintf(buffer, "%s\t%s\t%s\t%s\n",
 				available_usb_host_enable_timeouts[0].name,
 				available_usb_host_enable_timeouts[1].name,
-				available_usb_host_enable_timeouts[2].name);
+				available_usb_host_enable_timeouts[2].name,
+				available_usb_host_enable_timeouts[3].name);
+	} else {
+		return sprintf(buffer, "Not supported feature\n");
+	}
 }
 
 /*
@@ -137,67 +152,88 @@ static ssize_t available_usb_host_enable_timeouts_show(struct device *dev,
 static ssize_t usb_host_enable_timeout_show(struct device *dev,
 				struct device_attribute *attr, char *buffer)
 {
-	int ret_ipc;
+	int ret;
 	u8 data_read;
 	int i = 0;
 	char timeout[MAX_USB_TIMEOUT_LEN];
 
-	ret_ipc = intel_scu_ipc_read_mip(&data_read,
-					1,
-					USB_ENABLE_UMIP_OFFSET,
-					0);
-	if (ret_ipc)
-		pr_err("Could not read to UMIP USB Host Enable\n");
+	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_PENWELL ||
+		intel_mid_identify_cpu() ==
+				INTEL_MID_CPU_CHIP_CLOVERVIEW) {
 
-	for (i = 0; i < MAX_NUM_TIMEOUTS; i++) {
-		if (data_read ==
-			available_usb_host_enable_timeouts[i].umip_value) {
-			strcpy(timeout,
-				available_usb_host_enable_timeouts[i].name);
-			break;
+		ret = intel_scu_ipc_read_mip(&data_read, 1,
+						USB_ENABLE_UMIP_OFFSET, 0);
+
+		if (ret) {
+			pr_err("UMIP USBHostEnable cannot be read\n");
+			return ret;
 		}
-	}
 
-	if (i == MAX_NUM_TIMEOUTS)
-		return sprintf(buffer, "%s\n", "Could not read right value");
-	else
-		return snprintf(buffer, sizeof(timeout), "%s\n", timeout);
+		for (i = 0; i < MAX_NUM_TIMEOUTS; i++) {
+			if (data_read ==
+			available_usb_host_enable_timeouts[i].umip_value) {
+				strcpy(timeout,
+				available_usb_host_enable_timeouts[i].name);
+				break;
+			}
+		}
+
+		if (i == MAX_NUM_TIMEOUTS)
+			return sprintf(buffer, "%s\n",
+					"Could not read right value");
+		else
+			return snprintf(buffer, sizeof(timeout),
+					"%s\n", timeout);
+	} else {
+		return sprintf(buffer, "%s\n", "Not supported feature");
+	}
 }
 
 ssize_t usb_host_enable_timeout_store(struct device *dev,
 					struct device_attribute *attr,
 					const char *buffer, size_t count)
 {
-	int ret_ipc, i, string_length;
+	int ret, i, string_length;
 	char timeout[MAX_USB_TIMEOUT_LEN];
 
-	string_length = strlen(buffer);
+	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_PENWELL ||
+		intel_mid_identify_cpu() ==
+				INTEL_MID_CPU_CHIP_CLOVERVIEW) {
 
-	if (string_length < MAX_USB_TIMEOUT_LEN) {
-		snprintf(timeout, sizeof(timeout), "%s", buffer);
-	} else {
-		pr_err("Invalid value written."
-		"Check the Availabe values that can be used\n");
-		return count;
-	}
+		string_length = strlen(buffer);
 
-	for (i = 0; i < MAX_NUM_TIMEOUTS; i++) {
-		if (strcmp(timeout, available_usb_host_enable_timeouts[i].name))
-			continue;
+		if (string_length < MAX_USB_TIMEOUT_LEN) {
+			sscanf(buffer, "%s", timeout);
+		} else {
+			pr_err("Invalid value written."\
+			"Check the Availabe values that can be used\n");
+			return -EINVAL;
+		}
 
-		ret_ipc = intel_scu_ipc_write_umip(
+		for (i = 0; i < MAX_NUM_TIMEOUTS; i++) {
+			if (!strcmp(timeout,
+				available_usb_host_enable_timeouts[i].name))
+					break;
+		}
+
+		if (i < MAX_NUM_TIMEOUTS) {
+
+			ret = intel_scu_ipc_write_umip(
 			&available_usb_host_enable_timeouts[i].umip_value,
 			1, USB_ENABLE_UMIP_OFFSET);
-		if (ret_ipc)
-			pr_err("Could not write to UMIP USB Host Enable\n");
 
-		break;
-	}
-
-	/* if i is equal to arr_len, that means there is no match */
-	if (i == MAX_NUM_TIMEOUTS) {
-		pr_err("Invalid value written."
-			"Check the Availabe values that can be used\n");
+			if (ret) {
+				pr_err("UMIP USBHostEnable not written\n");
+				return ret;
+			}
+		} else {
+			pr_err("Invalid value written."\
+			"Check the Available values that can be used\n");
+			count = -EINVAL;
+		}
+	} else {
+		pr_err("Not supported feature\n");
+		count = -EINVAL;
 	}
 
 	return count;
@@ -261,3 +297,5 @@ module_exit(intel_mid_umip_exit);
 MODULE_DESCRIPTION("intel mid usb umip programming");
 MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("Surya P Sahukar <surya.p.sahukar@intel.com");
+MODULE_AUTHOR("Hari K Kanigeri <hari.k.kanigeri@intel.com");
+MODULE_AUTHOR("Winson Yung <winson.w.yung@intel.com");
