@@ -245,8 +245,6 @@ static int  mdfld_h8c7_dci_ic_init(
 	while (time_before_eq(jiffies, wait_timeout))
 		cpu_relax();
 
-	dsi_config->drv_ic_inited = 1;
-
 	return 0;
 }
 
@@ -668,9 +666,6 @@ int mdfld_h8c7_dsi_dbi_power_on(struct drm_encoder *encoder)
 		}
 	}
 
-	if (p_funcs->set_brightness(dsi_config, ctx->lastbrightnesslevel))
-		DRM_ERROR("Failed to set panel brightness\n");
-
 power_on_err:
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 	return err;
@@ -991,7 +986,7 @@ static void mdfld_h8c7_dsi_dbi_dpms(struct drm_encoder *encoder, int mode)
 		if (bdispoff)
 			mdfld_dsi_dbi_exit_dsr(dev, MDFLD_DSR_2D_3D, 0, 0);
 
-		mdfld_h8c7_dsi_dbi_set_power(encoder, true);
+		mdfld_dsi_dbi_set_power(encoder, true);
 
 		if (gbgfxsuspended)
 			gbgfxsuspended = false;
@@ -1004,7 +999,7 @@ static void mdfld_h8c7_dsi_dbi_dpms(struct drm_encoder *encoder, int mode)
 		 * turn rpm on since we still have a lot of CRTC turnning
 		 * on work to do.
 		 */
-		mdfld_h8c7_dsi_dbi_set_power(encoder, false);
+		mdfld_dsi_dbi_set_power(encoder, false);
 		bdispoff = true;
 		gbdispstatus = false;
 	}
