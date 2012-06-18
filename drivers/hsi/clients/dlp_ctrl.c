@@ -1819,9 +1819,7 @@ static int get_modem_reset(char *val, struct kernel_param *kp)
 	if (!dlp_ctrl_have_control_context()) {
 		WARNING("Nothing to do (dlp protocol not registered)");
 	} else {
-		struct dlp_ctrl_context *ctrl_ctx;
-
-		ctrl_ctx = DLP_CTRL_CTX;
+		struct dlp_ctrl_context *ctrl_ctx = DLP_CTRL_CTX;
 		ret = sprintf(val, "%d", ctrl_ctx->reset.ongoing);
 	}
 
@@ -1870,7 +1868,7 @@ static int do_modem_power(const char *val, struct kernel_param *kp)
  */
 static int do_modem_cold_reset(const char *val, struct kernel_param *kp)
 {
-	struct dlp_ctrl_context *ctrl_ctx = DLP_CTRL_CTX;
+	struct dlp_ctrl_context *ctrl_ctx;
 	long do_reset;
 	int ret = 0;
 	u16 addr = V1P35CNT_W;
@@ -1897,6 +1895,7 @@ static int do_modem_cold_reset(const char *val, struct kernel_param *kp)
 	}
 
 	/* AP requested reset => just ignore */
+	ctrl_ctx = DLP_CTRL_CTX;
 	ctrl_ctx->reset.ongoing = 1;
 
 	/* Set the reset_bb to low */
