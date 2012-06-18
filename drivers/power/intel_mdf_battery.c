@@ -3040,7 +3040,7 @@ static int battery_reboot_notifier_callback(struct notifier_block *notifier,
 }
 
 #ifdef CONFIG_PM
-static int msic_battery_suspend(struct device *dev)
+static int msic_battery_prepare(struct device *dev)
 {
 	struct msic_power_module_info *mbi = dev_get_drvdata(dev);
 	int event;
@@ -3061,7 +3061,7 @@ static int msic_battery_suspend(struct device *dev)
 	return 0;
 }
 
-static int msic_battery_resume(struct device *dev)
+static void msic_battery_complete(struct device *dev)
 {
 	int retval = 0;
 	struct msic_power_module_info *mbi = dev_get_drvdata(dev);
@@ -3079,12 +3079,12 @@ static int msic_battery_resume(struct device *dev)
 			dev_warn(msic_dev, "check_charger_conn failed\n");
 	}
 
-	schedule_delayed_work(&mbi->chr_status_monitor, 0);
-	return retval;
+	schedule_delayed_work(&mbi->chr_status_monitor, msecs_to_jiffies(1000));
+	return;
 }
 #else
-#define msic_battery_suspend    NULL
-#define msic_battery_resume     NULL
+#define msic_battery_prepare	NULL
+#define msic_battery_complete	NULL
 #endif
 
 #ifdef CONFIG_PM_RUNTIME
@@ -3140,8 +3140,8 @@ static const struct ipc_device_id battery_id_table[] = {
 };
 
 static const struct dev_pm_ops msic_batt_pm_ops = {
-	.suspend = msic_battery_suspend,
-	.resume = msic_battery_resume,
+	.prepare = msic_battery_prepare,
+	.complete = msic_battery_complete,
 	.runtime_suspend = msic_runtime_suspend,
 	.runtime_resume = msic_runtime_resume,
 	.runtime_idle = msic_runtime_idle,
