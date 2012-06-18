@@ -38,12 +38,17 @@ enum atomisp_subdev_input_entity {
 #define ATOMISP_SUBDEV_PAD_SOURCE_MO		2 /* regular output */
 #define ATOMISP_SUBDEV_PADS_NUM			3
 
+struct atomisp_frame_info {
+	struct sh_css_frame_info *frame_info;	/* css_frame_info */
+	enum v4l2_buf_type type;
+};
+
 struct atomisp_video_pipe {
 	struct video_device vdev;
 	enum v4l2_buf_type type;
 	struct media_pad pad;
-	struct videobuf_queue capq;
-	struct videobuf_queue outq;
+	struct vb2_queue capq;
+	struct vb2_queue outq;
 	struct list_head activeq;
 	struct list_head activeq_out;
 	struct mutex mutex;
@@ -52,9 +57,16 @@ struct atomisp_video_pipe {
 	bool opened;
 	bool is_main;
 
+	wait_queue_head_t vb_queued;
+
 	struct atomisp_device *isp;
 	struct atomisp_fmt *out_fmt;
 	struct atomisp_video_pipe_format *format;
+
+	/* record css main output frame info for frame alloc */
+	struct atomisp_frame_info main_info;
+	/* record css main vf frame info for frame alloc */
+	struct atomisp_frame_info vf_info;
 };
 
 struct atomisp_sub_device {

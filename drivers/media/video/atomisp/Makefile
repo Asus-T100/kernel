@@ -25,7 +25,8 @@ atomisp-objs := \
 		atomisp_csi2.o \
 		atomisp_tpg.o \
 		atomisp_file.o \
-		atomisp_v4l2.o
+		atomisp_v4l2.o \
+		atomisp_mem_ops.o
 
 obj-$(CONFIG_VIDEO_ATOMISP) = atomisp.o
 

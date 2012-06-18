@@ -151,7 +151,7 @@ struct atomisp_fmt {
 };
 
 struct atomisp_buffer {
-	struct videobuf_buffer	vb;
+	struct vb2_buffer	vb;
 	struct sh_css_frame	*handle;
 	struct atomisp_fmt		*fmt;
 };

@@ -2,7 +2,8 @@ config VIDEO_ATOMISP
 	tristate "Medfield Penwell Image Signal Processor Driver"
 	depends on VIDEO_V4L2
 	depends on !64BIT
-	select VIDEOBUF_VMALLOC
+	select VIDEOBUF2_CORE
+	select VIDEOBUF2_MEMOPS
 
 	---help---
 	  Say Y here if your platform support camera imaging subsystem on

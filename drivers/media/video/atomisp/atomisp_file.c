@@ -28,6 +28,7 @@
 #include "atomisp_common.h"
 #include "atomisp_subdev.h"
 #include "atomisp_cmd.h"
+#include "atomisp_mem_ops.h"
 #include "atomisp_file.h"
 
 static int file_input_s_stream(struct v4l2_subdev *sd, int enable)
@@ -35,8 +36,9 @@ static int file_input_s_stream(struct v4l2_subdev *sd, int enable)
 	struct atomisp_file_device *file_dev = v4l2_get_subdevdata(sd);
 	struct atomisp_device *isp = file_dev->isp;
 	struct atomisp_video_pipe *out_pipe = &isp->isp_subdev.video_in;
+	struct vb2_buffer *vb = out_pipe->outq.bufs[0];
 	unsigned char *buf =
-		   videobuf_to_vmalloc(out_pipe->outq.bufs[0]);
+		   atomisp_vaddr(vb->planes[0].mem_priv);
 	int width = isp->input_format->out.width;
 	int height = isp->input_format->out.height;
 	unsigned short *data = (unsigned short *)buf;

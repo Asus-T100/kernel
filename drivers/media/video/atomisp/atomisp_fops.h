@@ -25,31 +25,9 @@
 #define	__ATOMISP_FCTRL_H__
 
 #include "atomisp_common.h"
-
-/*
- * Videobuf ops
- */
-int atomisp_buf_setup(struct videobuf_queue *vq,
-			unsigned int *count,
-			unsigned int *size);
-
-int atomisp_buf_prepare(struct videobuf_queue *vq,
-			  struct videobuf_buffer *vb,
-			  enum v4l2_field field);
-
-void atomisp_buf_queue(struct videobuf_queue *vq, struct videobuf_buffer *vb);
-
-void atomisp_buf_release(struct videobuf_queue *vq,
-			   struct videobuf_buffer *vb);
+#include "atomisp_mem_ops.h"
 
 int atomisp_init_struct(struct atomisp_device *isp);
-
-/*
- * Memory help functions for image frame and private parameters
- */
-
-int atomisp_videobuf_mmap_mapper(struct videobuf_queue *q,
-				     struct vm_area_struct *vma);
 
 int atomisp_file_mmap(struct file *file, struct vm_area_struct *vma);
 

@@ -24,6 +24,7 @@
 #include "atomisp_ioctl.h"
 #include "atomisp_cmd.h"
 #include "atomisp_fops.h"
+#include "atomisp_mem_ops.h"
 #include "hrt/css_receiver_ahb_defs.h"
 #include "css/sh_css_debug.h"
 #include "css/sh_css_hrt.h"
@@ -384,8 +385,8 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 
 			/* HACK: do we have a better way/place for it? */
 			if (isp->vb_capture)
-				isp->frame_status[isp->vb_capture->i] =
-								isp->fr_status;
+				isp->frame_status[isp->vb_capture->
+				    v4l2_buf.index] = isp->fr_status;
 
 			atomisp_buf_done(isp, 0);
 			ret = atomisp_buffer_dequeue(isp, 0);
@@ -438,7 +439,7 @@ out:
  * will return 1 when streaming off.
  */
 static int atomisp_buf_pre_dequeue(struct atomisp_video_pipe *pipe,
-				   struct videobuf_buffer **vb, int wait)
+				   struct vb2_buffer **vb, int wait)
 {
 	unsigned long flags;
 	struct atomisp_device *isp = pipe->isp;
@@ -454,7 +455,7 @@ static int atomisp_buf_pre_dequeue(struct atomisp_video_pipe *pipe,
 		complete(&isp->dis_state_complete);
 		mutex_unlock(&isp->isp_lock);
 
-		if (wait_event_interruptible(pipe->capq.wait,
+		if (wait_event_interruptible(pipe->vb_queued,
 					     (!list_empty(&pipe->activeq) &&
 					      !isp->sw_contex.updating_uptr) ||
 					     !isp->sw_contex.isp_streaming))
@@ -476,9 +477,8 @@ static int atomisp_buf_pre_dequeue(struct atomisp_video_pipe *pipe,
 	}
 
 	/*retrieve video buffer from activeq, keep video buffer on capq*/
-	*vb = list_entry(pipe->activeq.next, struct videobuf_buffer, queue);
-	list_del(&(*vb)->queue);
-	(*vb)->state = VIDEOBUF_ACTIVE;
+	*vb = list_entry(pipe->activeq.next, struct vb2_buffer, done_entry);
+	list_del(&(*vb)->done_entry);
 	spin_unlock_irqrestore(&pipe->irq_lock, flags);
 	return 0;
 }
@@ -538,7 +538,7 @@ static void set_term_en_count(struct atomisp_device *isp)
 }
 static int atomisp_buffer_dequeue(struct atomisp_device *isp, int wait)
 {
-	struct videobuf_vmalloc_memory *vmem;
+	struct atomisp_malloc_buf *buf;
 	struct atomisp_video_pipe *vf_pipe = NULL;
 	struct atomisp_video_pipe *mo_pipe = NULL;
 	int ret;
@@ -549,12 +549,14 @@ static int atomisp_buffer_dequeue(struct atomisp_device *isp, int wait)
 		if (ret)
 			return -EINVAL;
 
-		vmem = isp->vb_capture->priv;
-		if (vmem->vaddr == NULL)
+		buf = isp->vb_capture->planes[0].mem_priv;
+		if (buf == NULL || buf->vaddr == NULL) {
+			WARN(1, "%s: invalid main buffer address.", __func__);
 			return -EINVAL;
+		}
 
 		/*frame structure is stored in videobuf->priv->vaddr*/
-		isp->regular_output_frame = vmem->vaddr;
+		isp->regular_output_frame = buf->vaddr;
 	}
 
 	if (atomisp_is_viewfinder_support(isp) && !(isp->vb_preview)) {
@@ -563,8 +565,14 @@ static int atomisp_buffer_dequeue(struct atomisp_device *isp, int wait)
 		if (ret)
 			return -EINVAL;
 
-		vmem = isp->vb_preview->priv;
-		isp->vf_frame = vmem->vaddr;
+		buf = isp->vb_preview->planes[0].mem_priv;
+		if (buf == NULL || buf->vaddr == NULL) {
+			/* this should not happen except coding error */
+			WARN(1, "%s: invalid vf buffer address.", __func__);
+			return -EINVAL;
+		}
+
+		isp->vf_frame = buf->vaddr;
 	}
 	return 0;
 }
@@ -789,8 +797,8 @@ void atomisp_wdt_lock_dog(struct atomisp_device *isp)
 
 static void atomisp_buf_done(struct atomisp_device *isp, int error)
 {
-	struct videobuf_buffer *vb_capture;
-	struct videobuf_buffer *vb_preview;
+	struct vb2_buffer *vb_capture;
+	struct vb2_buffer *vb_preview;
 	struct atomisp_video_pipe *mo_pipe = &isp->isp_subdev.video_out_mo;
 	struct atomisp_video_pipe *vf_pipe = &isp->isp_subdev.video_out_vf;
 
@@ -807,27 +815,18 @@ static void atomisp_buf_done(struct atomisp_device *isp, int error)
 	spin_unlock_irqrestore(&vf_pipe->irq_lock, flags);
 
 	if (vb_capture) {
-		do_gettimeofday(&vb_capture->ts);
-		vb_capture->field_count++;
+		do_gettimeofday(&vb_capture->v4l2_buf.timestamp);
 		/*mark videobuffer done for dequeue*/
-		vb_capture->state = !error ? VIDEOBUF_DONE : VIDEOBUF_ERROR;
+		vb2_buffer_done(vb_capture, error ? VB2_BUF_STATE_ERROR :
+				VB2_BUF_STATE_DONE);
 	}
 
 	if (vb_preview) {
-		do_gettimeofday(&vb_preview->ts);
-		vb_preview->field_count++;
+		do_gettimeofday(&vb_preview->v4l2_buf.timestamp);
 		/*mark videobuffer done for dequeue*/
-		vb_preview->state = !error ? VIDEOBUF_DONE : VIDEOBUF_ERROR;
+		vb2_buffer_done(vb_preview, error ? VB2_BUF_STATE_ERROR :
+				VB2_BUF_STATE_DONE);
 	}
-
-	/*
-	 * Frame capture done, wake up any process block on
-	 * current active buffer
-	 */
-	if (vb_preview)
-		wake_up(&vb_preview->done);
-	if (vb_capture)
-		wake_up(&vb_capture->done);
 }
 
 void atomisp_work(struct work_struct *work)
@@ -1039,8 +1038,8 @@ void atomisp_work(struct work_struct *work)
 				 * HACK: do we have a better way/place
 				 * for it?
 				 */
-				isp->frame_status[isp->vb_capture->i] =
-							isp->fr_status;
+				isp->frame_status[isp->vb_capture->
+				    v4l2_buf.index] = isp->fr_status;
 
 				atomisp_buf_done(isp, 0);
 			}
@@ -3440,8 +3439,6 @@ done:
 			sizeof(struct v4l2_pix_format));
 	f->fmt.pix.priv = PAGE_ALIGN(pipe->format->out.width *
 				     pipe->format->out.height * 2);
-
-	pipe->capq.field = f->fmt.pix.field;
 
 	return 0;
 }

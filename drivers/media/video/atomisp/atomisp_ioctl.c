@@ -725,36 +725,6 @@ static int atomisp_enum_frameintervals(struct file *file, void *fh,
 
 	return 0;
 }
-/*
- * this function is used to free video buffer
- */
-static void atomisp_videobuf_free(struct videobuf_queue *q)
-{
-	int i;
-	struct videobuf_vmalloc_memory *vm_mem;
-
-	mutex_lock(&q->vb_lock);
-
-	if (!q) {
-		mutex_unlock(&q->vb_lock);
-		return;
-	}
-
-	for (i = 0; i < VIDEO_MAX_FRAME; i++) {
-		if (NULL == q->bufs[i])
-			continue;
-		vm_mem = q->bufs[i]->priv;
-
-		if (vm_mem && vm_mem->vaddr) {
-			sh_css_frame_free(vm_mem->vaddr);
-			vm_mem->vaddr = NULL;
-		}
-		kfree(q->bufs[i]);
-		q->bufs[i] = NULL;
-	}
-
-	mutex_unlock(&q->vb_lock);
-}
 
 /*
  * Initiate Memory Mapping or User Pointer I/O
@@ -766,26 +736,19 @@ int atomisp_reqbufs(struct file *file, void *fh,
 	struct atomisp_device *isp = video_get_drvdata(vdev);
 	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
 	struct sh_css_frame_info out_info, vf_info;
-	struct sh_css_frame *frame;
-	struct videobuf_vmalloc_memory *vm_mem;
-	int ret = 0, i = 0;
+	int ret = 0;
 
 	if (req->count == 0) {
-		atomisp_videobuf_free(&pipe->capq);
 		if ((!isp->isp_subdev.video_out_vf.opened) &&
 		(isp->vf_frame)) {
 			sh_css_frame_free(isp->vf_frame);
 			isp->vf_frame = NULL;
 		}
-		return 0;
+		goto done;
 	}
 
 	if ((!pipe->is_main) && (!atomisp_is_viewfinder_support(isp)))
 		return -EINVAL;
-
-	ret = videobuf_reqbufs(&pipe->capq, req);
-	if (ret)
-		return ret;
 
 	switch (isp->sw_contex.run_mode) {
 	case CI_MODE_STILL_CAPTURE:
@@ -819,46 +782,25 @@ int atomisp_reqbufs(struct file *file, void *fh,
 		return -EINVAL;
 	}
 
-	/*
-	 * for user pointer type, buffers are not really allcated here,
-	 * buffers are setup in QBUF operation through v4l2_buffer structure
-	 */
-	if (req->memory == V4L2_MEMORY_USERPTR)
-		return 0;
+	/* pipe->main_info.frame_info is void* type */
+	memcpy(pipe->main_info.frame_info, &out_info,
+	       sizeof(*pipe->main_info.frame_info));
+	memcpy(pipe->vf_info.frame_info, &vf_info,
+	       sizeof(*pipe->main_info.frame_info));
 
-	if (!pipe->is_main)
-		/*
-		 * Allocate the real frame here for preview node using our
-		 * memery management function
-		 */
-		for (i = 0; i < req->count; i++) {
-			if (sh_css_frame_allocate_from_info(&frame, &vf_info))
-				goto error;
-			vm_mem = pipe->capq.bufs[i]->priv;
-			vm_mem->vaddr = frame;
-		}
-	else
-		/*
-		 * Allocate the real frame here for capture node using our
-		 * memery management function
-		 */
-		for (i = 0; i < req->count; i++) {
-			if (sh_css_frame_allocate_from_info(&frame, &out_info))
-				goto error;
-			vm_mem = pipe->capq.bufs[i]->priv;
-			vm_mem->vaddr = frame;
-		}
+done:
+	ret = vb2_reqbufs(&pipe->capq, req);
+	if (ret)
+		goto error;
 
-	return ret;
+	return 0;
 
 error:
-	while (i--) {
-		vm_mem = pipe->capq.bufs[i]->priv;
-		sh_css_frame_free(vm_mem->vaddr);
+	if (isp->vf_frame) {
+		sh_css_frame_free(isp->vf_frame);
+		isp->vf_frame = NULL;
 	}
 
-	if (isp->vf_frame)
-		sh_css_frame_free(isp->vf_frame);
 	return -ENOMEM;
 }
 
@@ -870,12 +812,7 @@ static int atomisp_reqbufs_file(struct file *file, void *fh,
 	struct atomisp_device *isp = video_get_drvdata(vdev);
 	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
 
-	if (req->count == 0) {
-		atomisp_videobuf_free(&pipe->outq);
-		return 0;
-	}
-
-	ret = videobuf_reqbufs(&pipe->outq, req);
+	ret = vb2_reqbufs(&pipe->outq, req);
 	if (ret)
 		return ret;
 
@@ -896,7 +833,7 @@ static int atomisp_querybuf(struct file *file, void *fh,
 	struct video_device *vdev = video_devdata(file);
 	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
 
-	return videobuf_querybuf(&pipe->capq, buf);
+	return vb2_querybuf(&pipe->capq, buf);
 }
 
 static int atomisp_querybuf_file(struct file *file, void *fh,
@@ -905,7 +842,7 @@ static int atomisp_querybuf_file(struct file *file, void *fh,
 	struct video_device *vdev = video_devdata(file);
 	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
 
-	return videobuf_querybuf(&pipe->outq, buf);
+	return vb2_querybuf(&pipe->outq, buf);
 }
 
 /*
@@ -917,13 +854,6 @@ static int atomisp_qbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 	struct video_device *vdev = video_devdata(file);
 	struct atomisp_device *isp = video_get_drvdata(vdev);
 	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
-	unsigned long userptr = buf->m.userptr;
-	struct videobuf_buffer *vb;
-	struct videobuf_vmalloc_memory *vm_mem;
-	struct sh_css_frame_info out_info, vf_info;
-	struct sh_css_frame *handle = NULL;
-	u32 length;
-	u32 pgnr;
 	int ret = 0;
 
 	if ((!pipe->is_main) &&
@@ -937,19 +867,17 @@ static int atomisp_qbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 		return -EINVAL;
 	}
 
+	/* fixing me! */
+	/* There is bug in libcamera that field v4l2_buffer->length is not
+	 * initialized.
+	 */
+	buf->length = pipe->format->out.sizeimage;
+
 	/*
 	 * For userptr type frame, we convert user space address to physic
 	 * address and reprograme out page table properly
 	 */
 	if (buf->memory == V4L2_MEMORY_USERPTR) {
-		vb = pipe->capq.bufs[buf->index];
-		vm_mem = vb->priv;
-		if (!vm_mem)
-			return -EINVAL;
-
-		length = vb->bsize;
-		pgnr = (length + (PAGE_SIZE - 1)) >> PAGE_SHIFT;
-
 		/* We must stop to atomisp to remove the
 		* race condition when updating the new userptr. */
 		if (buf->flags & V4L2_BUF_FLAG_BUFFER_INVALID) {
@@ -959,82 +887,21 @@ static int atomisp_qbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 		/* Check whether need to start the atomisp_work */
 		if (buf->flags & V4L2_BUF_FLAG_BUFFER_VALID) {
 			isp->sw_contex.updating_uptr = false;
-			wake_up_interruptible_sync(&pipe->capq.wait);
+			wake_up_interruptible_sync(&pipe->vb_queued);
 			return 0;
 		}
-
-		if ((vb->baddr == userptr) && (vm_mem->vaddr))
-			goto done;
-
-		switch (isp->sw_contex.run_mode) {
-		case CI_MODE_STILL_CAPTURE:
-			if ((isp->main_format->out_sh_fmt !=
-				SH_CSS_FRAME_FORMAT_RAW) &&
-			sh_css_capture_get_viewfinder_frame_info(&vf_info))
-				goto error;
-
-			if (sh_css_capture_get_output_frame_info(&out_info))
-				goto error;
-			break;
-		case CI_MODE_VIDEO:
-			if (sh_css_video_get_viewfinder_frame_info(&vf_info))
-				goto error;
-			if (sh_css_video_get_output_frame_info(&out_info))
-				goto error;
-			break;
-		case CI_MODE_PREVIEW:
-			if (sh_css_preview_get_output_frame_info(&out_info))
-				goto error;
-			break;
-		}
-#ifdef CONFIG_ION
-		hrt_isp_css_mm_set_user_ptr(userptr, pgnr,
-			buf->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_ION
-				? HRT_USR_ION : HRT_USR_PTR);
-#else
-		hrt_isp_css_mm_set_user_ptr(userptr, pgnr, HRT_USR_PTR);
-#endif
-
-		if (!pipe->is_main)
-			ret = sh_css_frame_allocate_from_info(&handle,
-								&vf_info);
+		/*
+		 * setting for frame buf type.
+		 * current for ION type implementation
+		 */
+		if (pipe->is_main)
+			pipe->main_info.type = buf->type;
 		else
-			ret = sh_css_frame_allocate_from_info(&handle,
-								&out_info);
-		hrt_isp_css_mm_set_user_ptr(0, 0, HRT_USR_PTR);
-
-		if (ret != sh_css_success) {
-			v4l2_err(&atomisp_dev, "Error to allocate frame\n");
-			return -ENOMEM;
-		}
-
-		if (vm_mem->vaddr) {
-			mutex_lock(&pipe->capq.vb_lock);
-			sh_css_frame_free(vm_mem->vaddr);
-			vm_mem->vaddr = NULL;
-			vb->state = VIDEOBUF_NEEDS_INIT;
-			mutex_unlock(&pipe->capq.vb_lock);
-		}
-
-		vm_mem->vaddr = handle;
-
-		buf->flags &= ~V4L2_BUF_FLAG_MAPPED;
-		buf->flags |= V4L2_BUF_FLAG_QUEUED;
-		buf->flags &= ~V4L2_BUF_FLAG_DONE;
-
-	} else if (buf->memory == V4L2_MEMORY_MMAP) {
-		buf->flags |= V4L2_BUF_FLAG_MAPPED;
-		buf->flags |= V4L2_BUF_FLAG_QUEUED;
-		buf->flags &= ~V4L2_BUF_FLAG_DONE;
+			pipe->vf_info.type = buf->type;
 	}
 
-done:
-	ret = videobuf_qbuf(&pipe->capq, buf);
+	ret = vb2_qbuf(&pipe->capq, buf);
 	return ret;
-
-error:
-	v4l2_err(&atomisp_dev, "get_output_frame_info error\n");
-	return -EINVAL;
 }
 
 static int atomisp_qbuf_file(struct file *file, void *fh,
@@ -1060,7 +927,7 @@ static int atomisp_qbuf_file(struct file *file, void *fh,
 		return -EINVAL;
 	}
 
-	return videobuf_qbuf(&pipe->outq, buf);
+	return vb2_qbuf(&pipe->outq, buf);
 }
 
 /*
@@ -1083,7 +950,7 @@ static int atomisp_dqbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 		return -EINVAL;
 	}
 
-	ret = videobuf_dqbuf(&pipe->capq, buf, file->f_flags & O_NONBLOCK);
+	ret = vb2_dqbuf(&pipe->capq, buf, file->f_flags & O_NONBLOCK);
 	if (ret)
 		return ret;
 	buf->bytesused = pipe->format->out.sizeimage;
@@ -1100,49 +967,8 @@ static int atomisp_streamon(struct file *file, void *fh,
 {
 	struct video_device *vdev = video_devdata(file);
 	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
-	struct atomisp_device *isp = video_get_drvdata(vdev);
-	int ret;
-#ifdef PUNIT_CAMERA_BUSY
-	u32 msg_ret;
-#endif
 
-	if (type != V4L2_BUF_TYPE_VIDEO_CAPTURE) {
-		v4l2_err(&atomisp_dev,
-			    "unsupported v4l2 buf type\n");
-		return -EINVAL;
-	}
-
-	if (list_empty(&(pipe->capq.stream))) {
-		v4l2_err(&atomisp_dev,
-				"no buffer in the queue\n");
-		return -EINVAL;
-	}
-
-	ret = videobuf_streamon(&pipe->capq);
-	if (ret)
-		return ret;
-	isp->sw_contex.isp_streaming = true;
-
-	if (isp->sw_contex.work_queued)
-		goto done;
-
-#ifdef PUNIT_CAMERA_BUSY
-	/*
-	 * As per h/w architect and ECO 697611 we need to throttle the
-	 * GFX performance (freq) while camera is up to prevent peak
-	 * current issues. this is done by setting the camera busy bit.
-	 */
-	msg_ret = intel_mid_msgbus_read32(PUNIT_PORT, OR1);
-	msg_ret |= 0x100;
-	intel_mid_msgbus_write32(PUNIT_PORT, OR1, msg_ret);
-#endif
-
-	/*stream on sensor in work thread*/
-	queue_work(isp->work_queue, &isp->work);
-	isp->sw_contex.work_queued = true;
-
-done:
-	return 0;
+	return vb2_streamon(&pipe->capq, type);
 }
 
 /*This ioctl stop the capture or output process during streaming I/O.*/
@@ -1150,65 +976,9 @@ int atomisp_streamoff(struct file *file, void *fh,
 	enum v4l2_buf_type type)
 {
 	struct video_device *vdev = video_devdata(file);
-	struct atomisp_device *isp = video_get_drvdata(vdev);
 	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
-	struct atomisp_video_pipe *vf_pipe = NULL;
-	struct atomisp_video_pipe *mo_pipe = NULL;
-	int ret;
-	unsigned long flags;
-#ifdef PUNIT_CAMERA_BUSY
-	u32 msg_ret;
-#endif
 
-	if (type != V4L2_BUF_TYPE_VIDEO_CAPTURE) {
-		v4l2_err(&atomisp_dev,
-			    "unsupported v4l2 buf type\n");
-		return -EINVAL;
-	}
-
-	spin_lock_irqsave(&isp->irq_lock, flags);
-	isp->sw_contex.isp_streaming = false;
-	spin_unlock_irqrestore(&isp->irq_lock, flags);
-
-	/* cancel work queue*/
-	if (isp->sw_contex.work_queued) {
-		mo_pipe = &isp->isp_subdev.video_out_mo;
-		wake_up_interruptible(&mo_pipe->capq.wait);
-		if (atomisp_is_viewfinder_support(isp)) {
-			vf_pipe = &isp->isp_subdev.video_out_vf;
-			wake_up_interruptible(&vf_pipe->capq.wait);
-		}
-		cancel_work_sync(&isp->work);
-		isp->sw_contex.work_queued = false;
-	}
-
-	if (!IS_MRFLD)
-		atomisp_wdt_lock_dog(isp);
-
-	ret = videobuf_streamoff(&pipe->capq);
-	if (ret)
-		return ret;
-	/*stream off sensor, power off is called in senor driver*/
-	if (!pipe->is_main)
-		return 0;
-	if (!isp->sw_contex.file_input)
-		ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
-				       video, s_stream, 0);
-
-	isp->sw_contex.sensor_streaming = false;
-
-#ifdef PUNIT_CAMERA_BUSY
-	/* Free camera_busy bit */
-	msg_ret = intel_mid_msgbus_read32(PUNIT_PORT, OR1);
-	msg_ret &= ~0x100;
-	intel_mid_msgbus_write32(PUNIT_PORT, OR1, msg_ret);
-#endif
-
-	/* ISP work around, need to reset isp */
-	if (pipe->is_main && isp->sw_contex.power_state == ATOM_ISP_POWER_UP)
-		atomisp_reset(isp);
-
-	return ret;
+	return vb2_streamoff(&pipe->capq, type);
 }
 
 /*

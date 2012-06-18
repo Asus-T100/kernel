@@ -33,8 +33,8 @@
 #include <media/v4l2-subdev.h>
 #include <media/v4l2-common.h>
 #include <media/v4l2-ioctl.h>
-#include <media/videobuf-core.h>
-#include <media/videobuf-vmalloc.h>
+#include <media/videobuf2-core.h>
+#include <media/videobuf2-memops.h>
 #include <linux/firmware.h>
 #include <media/media-device.h>
 #include <linux/kernel.h>
@@ -318,8 +318,8 @@ struct atomisp_device {
 	enum atomisp_wdt_status wdt_status;
 	enum atomisp_frame_status fr_status;
 
-	struct videobuf_buffer *vb_capture;
-	struct videobuf_buffer *vb_preview;
+	struct vb2_buffer *vb_capture;
+	struct vb2_buffer *vb_preview;
 };
 
 #define v4l2_dev_to_atomisp_device(dev) \

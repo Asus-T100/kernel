@@ -57,121 +57,228 @@
  */
 extern void flush_acc_api_arguments(struct sh_css_acc_fw *fw);
 
-
 /*
- * Videobuf ops
+ * Videobuf2 ops
  */
-int atomisp_buf_setup(struct videobuf_queue *vq,
-		      unsigned int *count,
-		      unsigned int *size)
+static int atomisp_queue_setup(struct vb2_queue *vq, unsigned int *nbuffers,
+				unsigned int *nplanes, unsigned long sizes[],
+				void *alloc_ctxs[])
 {
-	struct atomisp_video_pipe *pipe = vq->priv_data;
-
-	*size = pipe->format->out.sizeimage;
-
-	return 0;
-}
-
-int atomisp_buf_prepare(struct videobuf_queue *vq,
-			struct videobuf_buffer *vb,
-			enum v4l2_field field)
-{
-	struct atomisp_video_pipe *pipe = vq->priv_data;
-
-	vb->size = pipe->format->out.sizeimage;
-	vb->width = pipe->format->out.width;
-	vb->height = pipe->format->out.height;
-	vb->field = field;
-	vb->state = VIDEOBUF_PREPARED;
-
-	return 0;
-}
-
-void atomisp_buf_queue(struct videobuf_queue *vq,
-		       struct videobuf_buffer *vb)
-{
-	struct atomisp_video_pipe *pipe = vq->priv_data;
-
-	list_add_tail(&vb->queue, &pipe->activeq);
-	vb->state = VIDEOBUF_QUEUED;
-}
-
-void atomisp_buf_release(struct videobuf_queue *vq,
-			 struct videobuf_buffer *vb)
-{
+	struct atomisp_video_pipe *pipe = vq->drv_priv;
+#ifdef MULTI_PLANE_SUPPORT
+	int i;
+#endif
 	/*
-	 * only set flag here. buffer free will done by req 0 buffer
+	 * if number of buffers < 1, driver cannot handle them, need to
+	 * set number of buffers afresh.
 	 */
-	vb->state = VIDEOBUF_NEEDS_INIT;
-}
+	*nbuffers = clamp((unsigned int)*nbuffers, (unsigned int)1,
+			  (unsigned int)VIDEO_MAX_FRAME);
+	/* currently only one plane gets supported */
+	*nplanes = 1;
+#ifdef MULTI_PLANE_SUPPORT
+	for (i = 0; i < *nplanes; i++) {
+		sizes[i] = pipe->format->out.sizeimage;
 
-static int atomisp_buf_setup_output(struct videobuf_queue *vq,
-				    unsigned int *count,
-				    unsigned int *size)
-{
-	struct atomisp_video_pipe *pipe = vq->priv_data;
+		/* alloc_ctxs is used to store allocator private data */
+		if (pipe->is_main)
+			alloc_ctxs[i] = &pipe->main_info;
+		else
+			alloc_ctxs[i] = &pipe->vf_info;
+	}
+#else
+	sizes[0] = pipe->format->out.sizeimage;
 
-	*size = pipe->out_fmt->imagesize;
-
+	/* alloc_ctxs is used to store allocator private data */
+	if (pipe->is_main)
+		alloc_ctxs[0] = &pipe->main_info;
+	else
+		alloc_ctxs[0] = &pipe->vf_info;
+#endif
 	return 0;
 }
 
-static int atomisp_buf_prepare_output(struct videobuf_queue *vq,
-				      struct videobuf_buffer *vb,
-				      enum v4l2_field field)
+static int atomisp_buf_init(struct vb2_buffer *vb)
 {
-	struct atomisp_video_pipe *pipe = vq->priv_data;
-
-	vb->size = pipe->out_fmt->imagesize;
-	vb->width = pipe->out_fmt->width;
-	vb->height = pipe->out_fmt->height;
-	vb->field = field;
-	vb->state = VIDEOBUF_PREPARED;
-
+	/* reserved */
 	return 0;
 }
 
-static void atomisp_buf_queue_output(struct videobuf_queue *vq,
-				     struct videobuf_buffer *vb)
+static void atomisp_buf_queue(struct vb2_buffer *vb)
 {
-	struct atomisp_video_pipe *pipe = vq->priv_data;
+	unsigned long flags;
+	struct vb2_queue *vq = vb->vb2_queue;
+	struct atomisp_video_pipe *pipe = vq->drv_priv;
 
-	list_add_tail(&vb->queue, &pipe->activeq_out);
-	vb->state = VIDEOBUF_QUEUED;
+	spin_lock_irqsave(&pipe->irq_lock, flags);
+	list_add_tail(&vb->done_entry, &pipe->activeq);
+	spin_unlock_irqrestore(&pipe->irq_lock, flags);
+	wake_up(&pipe->vb_queued);
 }
 
-static void atomisp_buf_release_output(struct videobuf_queue *vq,
-				       struct videobuf_buffer *vb)
+static int atomisp_start_streaming(struct vb2_queue *vq)
 {
-	videobuf_vmalloc_free(vb);
-	vb->state = VIDEOBUF_NEEDS_INIT;
+	struct atomisp_video_pipe *pipe = vq->drv_priv;
+	struct video_device *vdev = &pipe->vdev;
+	struct atomisp_device *isp = video_get_drvdata(vdev);
+#ifdef PUNIT_CAMERA_BUSY
+	u32 msg_ret;
+#endif
+
+	isp->sw_contex.isp_streaming = true;
+
+	if (isp->sw_contex.work_queued)
+		goto done;
+
+#ifdef PUNIT_CAMERA_BUSY
+	/*
+	 * As per h/w architect and ECO 697611 we need to throttle the
+	 * GFX performance (freq) while camera is up to prevent peak
+	 * current issues. this is done by setting the camera busy bit.
+	 */
+	msg_ret = intel_mid_msgbus_read32(PUNIT_PORT, OR1);
+	msg_ret |= 0x100;
+	intel_mid_msgbus_write32(PUNIT_PORT, OR1, msg_ret);
+#endif
+
+	/*stream on sensor in work thread*/
+	queue_work(isp->work_queue, &isp->work);
+	isp->sw_contex.work_queued = true;
+
+done:
+	return 0;
 }
 
-static struct videobuf_queue_ops videobuf_qops = {
-	.buf_setup	= atomisp_buf_setup,
-	.buf_prepare	= atomisp_buf_prepare,
+static int atomisp_stop_streaming(struct vb2_queue *vq)
+{
+	struct atomisp_video_pipe *pipe = vq->drv_priv;
+	struct video_device *vdev = &pipe->vdev;
+	struct atomisp_device *isp = video_get_drvdata(vdev);
+	struct atomisp_video_pipe *vf_pipe = NULL;
+	struct atomisp_video_pipe *mo_pipe = NULL;
+	int ret = 0;
+	unsigned long flags;
+#ifdef PUNIT_CAMERA_BUSY
+	u32 msg_ret;
+#endif
+	spin_lock_irqsave(&isp->irq_lock, flags);
+	isp->sw_contex.isp_streaming = false;
+	spin_unlock_irqrestore(&isp->irq_lock, flags);
+
+	/* cancel work queue*/
+	if (isp->sw_contex.work_queued) {
+		mo_pipe = &isp->isp_subdev.video_out_mo;
+		wake_up_interruptible(&mo_pipe->vb_queued);
+		if (atomisp_is_viewfinder_support(isp)) {
+			vf_pipe = &isp->isp_subdev.video_out_vf;
+			wake_up_interruptible(&vf_pipe->vb_queued);
+		}
+		cancel_work_sync(&isp->work);
+		isp->sw_contex.work_queued = false;
+
+		spin_lock_irqsave(&mo_pipe->irq_lock, flags);
+		INIT_LIST_HEAD(&mo_pipe->activeq);
+		spin_unlock_irqrestore(&mo_pipe->irq_lock, flags);
+		if (atomisp_is_viewfinder_support(isp)) {
+			vf_pipe = &isp->isp_subdev.video_out_vf;
+			spin_lock_irqsave(&vf_pipe->irq_lock, flags);
+			INIT_LIST_HEAD(&vf_pipe->activeq);
+			spin_unlock_irqrestore(&vf_pipe->irq_lock, flags);
+		}
+	}
+
+
+	if (!IS_MRFLD)
+		atomisp_wdt_lock_dog(isp);
+
+	/*stream off sensor, power off is called in senor driver*/
+	if (!pipe->is_main)
+		return 0;
+	if (!isp->sw_contex.file_input)
+		ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
+				       video, s_stream, 0);
+
+	isp->sw_contex.sensor_streaming = false;
+
+#ifdef PUNIT_CAMERA_BUSY
+	/* Free camera_busy bit */
+	msg_ret = intel_mid_msgbus_read32(PUNIT_PORT, OR1);
+	msg_ret &= ~0x100;
+	intel_mid_msgbus_write32(PUNIT_PORT, OR1, msg_ret);
+#endif
+
+	/* ISP work around, need to reset isp */
+	if (pipe->is_main && isp->sw_contex.power_state == ATOM_ISP_POWER_UP)
+		atomisp_reset(isp);
+
+	return ret;
+}
+
+static int atomisp_queue_setup_output(struct vb2_queue *vq,
+				      unsigned int *nbuffers,
+				      unsigned int *nplanes,
+				      unsigned long sizes[],
+				      void *alloc_ctxs[])
+{
+	struct atomisp_video_pipe *pipe = vq->drv_priv;
+#ifdef MULTI_PLANE_SUPPORT
+	int i;
+#endif
+	/*
+	 * if number of buffers < 1, driver cannot handle them, need to
+	 * set number of buffers afresh.
+	 */
+	*nbuffers = clamp((unsigned int)*nbuffers, (unsigned int)1,
+			  (unsigned int)VIDEO_MAX_FRAME);
+	/* currently only one plane gets supported */
+	*nplanes = 1;
+#ifdef MULTI_PLANE_SUPPORT
+	for (i = 0; i < *nplanes; i++)
+		sizes[i] = pipe->out_fmt->imagesize;
+#else
+		sizes[0] = pipe->out_fmt->imagesize;
+#endif
+	return 0;
+}
+
+static int atomisp_buf_init_output(struct vb2_buffer *vb)
+{
+	/* reserved */
+	return 0;
+}
+
+static void atomisp_buf_queue_output(struct vb2_buffer *vb)
+{
+
+}
+
+static struct vb2_ops vb2_qops = {
+	.queue_setup	= atomisp_queue_setup,
+	.buf_init	= atomisp_buf_init,
 	.buf_queue	= atomisp_buf_queue,
-	.buf_release	= atomisp_buf_release,
+	.start_streaming = atomisp_start_streaming,
+	.stop_streaming	= atomisp_stop_streaming,
 };
 
-static struct videobuf_queue_ops videobuf_qops_output = {
-	.buf_setup	= atomisp_buf_setup_output,
-	.buf_prepare	= atomisp_buf_prepare_output,
+static struct vb2_ops vb2_qops_output = {
+	.queue_setup	= atomisp_queue_setup_output,
+	.buf_init	= atomisp_buf_init_output,
 	.buf_queue	= atomisp_buf_queue_output,
-	.buf_release	= atomisp_buf_release_output,
 };
 
 static int atomisp_uninit_pipe(struct atomisp_video_pipe *pipe)
 {
-	if (pipe->format) {
-		kfree(pipe->format);
-		pipe->format = NULL;
-	}
+	kfree(pipe->format);
+	pipe->format = NULL;
 
-	if (pipe->out_fmt) {
-		kfree(pipe->out_fmt);
-		pipe->out_fmt = NULL;
-	}
+	kfree(pipe->out_fmt);
+	pipe->out_fmt = NULL;
+
+	kfree(pipe->main_info.frame_info);
+	pipe->main_info.frame_info = NULL;
+
+	kfree(pipe->vf_info.frame_info);
+	pipe->vf_info.frame_info = NULL;
 
 	pipe->opened = false;
 	return 0;
@@ -181,45 +288,55 @@ static int atomisp_init_pipe(struct atomisp_video_pipe *pipe)
 {
 
 	pipe->out_fmt = kzalloc(sizeof(struct atomisp_fmt), GFP_KERNEL);
-	if (pipe->out_fmt == NULL) {
-		v4l2_err(&atomisp_dev, "fail to allocte memory\n");
-		return -ENOMEM;
-	}
+	if (pipe->out_fmt == NULL)
+		goto nomem;
+
 
 	pipe->format =
 	kzalloc(sizeof(struct atomisp_video_pipe_format), GFP_KERNEL);
-	if (pipe->format == NULL) {
-		v4l2_err(&atomisp_dev, "failed to alloca memory\n");
-		kfree(pipe->out_fmt);
-		return -ENOMEM;
-	}
+	if (pipe->format == NULL)
+		goto nomem;
+
+	pipe->main_info.frame_info =
+	kzalloc(sizeof(*pipe->main_info.frame_info), GFP_KERNEL);
+	if (pipe->main_info.frame_info == NULL)
+		goto nomem;
+
+	/* pipe->vf_info.frame_info is void * */
+	pipe->vf_info.frame_info =
+	kzalloc(sizeof(*pipe->vf_info.frame_info), GFP_KERNEL);
+	if (pipe->vf_info.frame_info == NULL)
+		goto nomem;
 
 	/* init locks */
 	spin_lock_init(&pipe->irq_lock);
 	mutex_init(&pipe->mutex);
 
-	videobuf_queue_vmalloc_init(&pipe->capq, &videobuf_qops, NULL,
-				    &pipe->irq_lock,
-				    V4L2_BUF_TYPE_VIDEO_CAPTURE,
-				    V4L2_FIELD_NONE,
-				    sizeof(struct atomisp_buffer),
-				    pipe,
-				    NULL);	/* ext_lock: NULL */
+	atomisp_vb2_queue_init(&pipe->capq, &vb2_qops, pipe,
+				V4L2_MEMORY_USERPTR,
+				V4L2_BUF_TYPE_VIDEO_CAPTURE,
+				sizeof(struct atomisp_buffer),
+				VB2_MMAP | VB2_USERPTR);
 
-	videobuf_queue_vmalloc_init(&pipe->outq,
-				    &videobuf_qops_output, NULL,
-				    &pipe->irq_lock,
-				    V4L2_BUF_TYPE_VIDEO_OUTPUT,
-				    V4L2_FIELD_NONE,
-				    sizeof(struct atomisp_buffer),
-				    pipe,
-				    NULL);	/* ext_lock: NULL */
+	atomisp_vb2_queue_init(&pipe->outq,
+				&vb2_qops_output, pipe,
+				V4L2_MEMORY_MMAP,
+				V4L2_BUF_TYPE_VIDEO_OUTPUT,
+				sizeof(struct atomisp_buffer),
+				VB2_MMAP | VB2_USERPTR);
 
 	INIT_LIST_HEAD(&pipe->activeq);
 	INIT_LIST_HEAD(&pipe->activeq_out);
+	init_waitqueue_head(&pipe->vb_queued);
 	pipe->opened = true;
 
 	return 0;
+nomem:
+	kfree(pipe->out_fmt);
+	kfree(pipe->format);
+	kfree(pipe->main_info.frame_info);
+	kfree(pipe->vf_info.frame_info);
+	return -ENOMEM;
 }
 
 int atomisp_init_struct(struct atomisp_device *isp)
@@ -391,10 +508,8 @@ static int atomisp_release(struct file *file)
 	struct video_device *vdev = video_devdata(file);
 	struct atomisp_device *isp = video_get_drvdata(vdev);
 	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
-	struct v4l2_requestbuffers req;
 	int ret = 0;
 
-	req.count = 0;
 	if (isp == NULL)
 		return -EBADF;
 
@@ -408,15 +523,9 @@ static int atomisp_release(struct file *file)
 	if (pipe->opened == false)
 		goto done;
 
-	if (atomisp_reqbufs(file, NULL, &req))
-		goto error;
-
 	/* in case image buf is not freed */
-	if (pipe->capq.bufs[0]) {
-		mutex_lock(&pipe->capq.vb_lock);
-		videobuf_queue_cancel(&pipe->capq);
-		mutex_unlock(&pipe->capq.vb_lock);
-	}
+	if (pipe->capq.bufs[0])
+		vb2_queue_release(&pipe->capq);
 
 	if (pipe->format) {
 		kfree(pipe->format);
@@ -424,11 +533,8 @@ static int atomisp_release(struct file *file)
 		isp->main_format = NULL;
 	}
 
-	if (pipe->outq.bufs[0]) {
-		mutex_lock(&pipe->outq.vb_lock);
-		videobuf_queue_cancel(&pipe->outq);
-		mutex_unlock(&pipe->outq.vb_lock);
-	}
+	if (pipe->outq.bufs[0])
+		vb2_queue_release(&pipe->outq);
 
 	if (pipe->out_fmt) {
 		kfree(pipe->out_fmt);
@@ -494,99 +600,6 @@ done:
 	return 0;
 error:
 	mutex_unlock(&isp->input_lock);
-	return ret;
-}
-
-/*
- * Memory help functions for image frame and private parameters
- */
-static int do_isp_mm_remap(struct vm_area_struct *vma,
-		    void *isp_virt, u32 host_virt, u32 pgnr)
-{
-	u32 pfn;
-
-	while (pgnr) {
-		pfn = hmm_virt_to_phys(isp_virt) >> PAGE_SHIFT;
-		if (remap_pfn_range(vma, host_virt, pfn,
-				    PAGE_SIZE, PAGE_SHARED)) {
-			v4l2_err(&atomisp_dev,
-				    "remap_pfn_range err.\n");
-			return -EAGAIN;
-		}
-
-		isp_virt += PAGE_SIZE;
-		host_virt += PAGE_SIZE;
-		pgnr--;
-	}
-
-	return 0;
-}
-
-static int frame_mmap(const struct sh_css_frame *frame,
-	struct vm_area_struct *vma)
-{
-	void *isp_virt;
-	u32 host_virt;
-	u32 pgnr;
-
-	if (!frame) {
-		v4l2_err(&atomisp_dev,
-			    "%s: NULL frame pointer.\n", __func__);
-		return -EINVAL;
-	}
-
-	host_virt = vma->vm_start;
-	isp_virt = frame->data;
-	atomisp_get_frame_pgnr(frame, &pgnr);
-
-	if (do_isp_mm_remap(vma, isp_virt, host_virt, pgnr))
-		return -EAGAIN;
-
-	return 0;
-}
-
-int atomisp_videobuf_mmap_mapper(struct videobuf_queue *q,
-	struct vm_area_struct *vma)
-{
-	u32 offset = vma->vm_pgoff << PAGE_SHIFT;
-	int ret = -EINVAL, i;
-	struct videobuf_vmalloc_memory *vm_mem;
-	struct videobuf_mapping *map;
-
-	MAGIC_CHECK(q->int_ops->magic, MAGIC_QTYPE_OPS);
-	if (!(vma->vm_flags & VM_WRITE) || !(vma->vm_flags & VM_SHARED)) {
-		v4l2_err(&atomisp_dev, "map appl bug:"
-			    " PROT_WRITE and MAP_SHARED are required\n");
-		return -EINVAL;
-	}
-
-	mutex_lock(&q->vb_lock);
-	for (i = 0; i < VIDEO_MAX_FRAME; i++) {
-		struct videobuf_buffer *buf = q->bufs[i];
-		if (buf == NULL)
-			continue;
-
-		map = kzalloc(sizeof(struct videobuf_mapping), GFP_KERNEL);
-		if (map == NULL) {
-			mutex_unlock(&q->vb_lock);
-			return -ENOMEM;
-		}
-
-		buf->map = map;
-		map->q = q;
-
-		buf->baddr = vma->vm_start;
-
-		if (buf && buf->memory == V4L2_MEMORY_MMAP &&
-		    buf->boff == offset) {
-			vm_mem = buf->priv;
-			ret = frame_mmap(vm_mem->vaddr, vma);
-			vma->vm_flags |= VM_DONTEXPAND | VM_RESERVED;
-			break;
-		}
-	}
-	mutex_unlock(&q->vb_lock);
-
 	return ret;
 }
 
@@ -698,7 +711,7 @@ static int atomisp_mmap(struct file *file, struct vm_area_struct *vma)
 		return -EINVAL;
 	}
 
-	return atomisp_videobuf_mmap_mapper(&pipe->capq, vma);
+	return vb2_mmap(&pipe->capq, vma);
 }
 
 int atomisp_file_mmap(struct file *file, struct vm_area_struct *vma)
@@ -706,7 +719,7 @@ int atomisp_file_mmap(struct file *file, struct vm_area_struct *vma)
 	struct video_device *vdev = video_devdata(file);
 	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
 
-	return videobuf_mmap_mapper(&pipe->outq, vma);
+	return vb2_mmap(&pipe->outq, vma);
 }
 
 static unsigned int
@@ -715,10 +728,7 @@ atomisp_poll(struct file *file, struct poll_table_struct *pt)
 	struct video_device *vdev = video_devdata(file);
 	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
 
-	if (pipe->capq.streaming != 1)
-		return POLLERR;
-
-	return videobuf_poll_stream(file, &pipe->capq, pt);
+	return vb2_poll(&pipe->capq, file, pt);
 }
 
 const struct v4l2_file_operations atomisp_fops = {
