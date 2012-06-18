@@ -315,7 +315,8 @@ static int create_fwerr_log(char *output_buf, void __iomem *oshob_ptr)
 		sprintf(output_buf, "SCU error summary:\n");
 		strcat(output_buf, "===================\n");
 		for (count = 0; count < MAX_NUM_LOGDWORDS; count++) {
-			sprintf(temp, "DW%d:%x\n", count, faberr_dwords[count]);
+			sprintf(temp, "DW%d:0x%08x\n",
+					count, faberr_dwords[count]);
 			strcat(output_buf, temp);
 		}
 		return strlen(output_buf);
