@@ -710,12 +710,12 @@ static ssize_t intel_mid_gpadc_show_sample(struct device *dev,
 		if (adc_handle[hdc]) {
 			rq = adc_handle[hdc];
 			if (rq->count == 1)
-				used += sprintf(buf + used, "%d ",
-					sample_result[hdc][0]);
+				used += snprintf(buf + used, PAGE_SIZE - used,
+						"%d ", sample_result[hdc][0]);
 			else
-				used += sprintf(buf + used, "%d %d ",
-					sample_result[hdc][0],
-					sample_result[hdc][1]);
+				used += snprintf(buf + used, PAGE_SIZE - used,
+						"%d %d ", sample_result[hdc][0],
+						sample_result[hdc][1]);
 		}
 	}
 
@@ -742,7 +742,7 @@ static ssize_t intel_mid_gpadc_show_gsmpulse_sample(struct device *dev,
 	if (ret)
 		return 0;
 	else
-		return sprintf(buf, "%d %d", vol_val, cur_val);
+		return snprintf(buf, PAGE_SIZE, "%d %d", vol_val, cur_val);
 }
 
 static DEVICE_ATTR(alloc_channel, S_IWUSR, NULL,
