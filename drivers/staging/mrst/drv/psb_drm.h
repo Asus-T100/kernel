@@ -605,8 +605,10 @@ struct intel_sprite_context {
 #define INTEL_DISPLAY_PLANE_NUM		5
 
 struct mdfld_plane_contexts {
+	uint32_t active_primaries;
 	uint32_t active_sprites;
 	uint32_t active_overlays;
+	struct intel_sprite_context primary_contexts[INTEL_SPRITE_PLANE_NUM];
 	struct intel_sprite_context sprite_contexts[INTEL_SPRITE_PLANE_NUM];
 	struct intel_overlay_context overlay_contexts[INTEL_OVERLAY_PLANE_NUM];
 };

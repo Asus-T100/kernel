@@ -227,19 +227,8 @@ typedef struct MRSTLFB_DEVINFO_TAG
 
 	MRST_BOOL bLastFlipAddrValid;
 
-	uint32_t uPlaneACntr;
-	uint32_t uPlaneAPos;
-	uint32_t uPlaneASize;
-	uint32_t uPlaneAStride;
-	uint32_t uPlaneBCntr;
-	uint32_t uPlaneBPos;
-	uint32_t uPlaneBSize;
-	uint32_t uPlaneBStride;
-	uint32_t uPlaneCCntr;
-	uint32_t uPlaneCPos;
-	uint32_t uPlaneCSize;
-	uint32_t uPlaneCStride;
-    MRST_BOOL bScreenState;
+	MRST_BOOL bScreenState;
+
 	struct timer_list sFlipTimer;
 }  MRSTLFB_DEVINFO;
 
@@ -296,8 +285,6 @@ void MRSTLFBEnableVSyncInterrupt(MRSTLFB_DEVINFO *psDevInfo);
 void MRSTLFBDisableVSyncInterrupt(MRSTLFB_DEVINFO *psDevInfo);
 
 void MRSTLFBFlipToSurface(MRSTLFB_DEVINFO *psDevInfo,  unsigned long uiAddr);
-void MRSTLFBSavePlaneConfig(MRSTLFB_DEVINFO *psDevInfo);
-void MRSTLFBRestorePlaneConfig(MRSTLFB_DEVINFO *psDevInfo);
 
 void MRSTLFBSuspend(void);
 void MRSTLFBResume(void);

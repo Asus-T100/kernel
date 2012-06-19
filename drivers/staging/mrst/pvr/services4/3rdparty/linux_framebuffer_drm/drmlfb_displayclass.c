@@ -53,6 +53,7 @@ extern int drm_psb_3D_vblank;
 #define FLIP_TIMEOUT (HZ/4)
 
 static PFN_DC_GET_PVRJTABLE pfnGetPVRJTable = 0;
+static int FirstCleanFlag = 1;
 
 static MRSTLFB_DEVINFO * GetAnchorPtr(void)
 {
@@ -68,11 +69,9 @@ static void MRSTLFBFlip(MRSTLFB_DEVINFO *psDevInfo, MRSTLFB_BUFFER *psBuffer)
 {
 	unsigned long ulAddr = (unsigned long)psBuffer->sDevVAddr.uiAddr;
 	struct fb_info *psLINFBInfo;
-	static int FirstCleanFlag = 1;
 
 	if (!psDevInfo->bSuspended && !psDevInfo->bLeaveVT)
 	{
-		MRSTLFBRestorePlaneConfig(psDevInfo);
 		MRSTLFBFlipToSurface(psDevInfo, ulAddr);
 	}
 
@@ -83,7 +82,8 @@ static void MRSTLFBFlip(MRSTLFB_DEVINFO *psDevInfo, MRSTLFB_BUFFER *psBuffer)
 	psLINFBInfo->screen_base = psBuffer->sCPUVAddr;
 
 	if (FirstCleanFlag == 1) {
-		memset(psDevInfo->sSystemBuffer.sCPUVAddr, 0, psDevInfo->sSystemBuffer.ui32BufferSize);
+		memset(psDevInfo->sSystemBuffer.sCPUVAddr, 0,
+				psDevInfo->sSystemBuffer.ui32BufferSize);
 		FirstCleanFlag = 0;
 	}
 }
@@ -173,9 +173,54 @@ static void MRSTLFBFlipSprite(MRSTLFB_DEVINFO *psDevInfo,
 	}
 }
 
+static void MRSTLFBFlipPrimary(MRSTLFB_DEVINFO *psDevInfo,
+			struct intel_sprite_context *psContext)
+{
+	struct drm_device *dev;
+	struct drm_psb_private *dev_priv;
+	u32 reg_offset;
+	int pipe;
+
+	dev = psDevInfo->psDrmDevice;
+	dev_priv =
+		(struct drm_psb_private *)psDevInfo->psDrmDevice->dev_private;
+
+	if (psContext->index == 0) {
+		reg_offset = 0;
+		pipe = 0;
+	} else if (psContext->index == 1) {
+		reg_offset = 0x1000;
+		pipe = 1;
+	} else if (psContext->index == 2) {
+		reg_offset = 0x2000;
+		pipe = 2;
+	} else
+		return;
+
+	/*for HDMI only flip the surface address*/
+	if (pipe == 1)
+		psContext->update_mask &= SPRITE_UPDATE_SURFACE;
+
+	if ((psContext->update_mask & SPRITE_UPDATE_POSITION))
+		PSB_WVDC32(psContext->pos, DSPAPOS + reg_offset);
+	if ((psContext->update_mask & SPRITE_UPDATE_SIZE)) {
+		PSB_WVDC32(psContext->size, DSPASIZE + reg_offset);
+		PSB_WVDC32(psContext->stride, DSPASTRIDE + reg_offset);
+	}
+
+	if ((psContext->update_mask & SPRITE_UPDATE_CONTROL))
+		PSB_WVDC32(psContext->cntr, DSPACNTR + reg_offset);
+
+	if ((psContext->update_mask & SPRITE_UPDATE_SURFACE)) {
+		PSB_WVDC32(psContext->linoff, DSPALINOFF + reg_offset);
+		PSB_WVDC32(psContext->surf, DSPASURF + reg_offset);
+	}
+}
+
 static void MRSTLFBFlipContexts(MRSTLFB_DEVINFO *psDevInfo,
 			struct mdfld_plane_contexts *psContexts)
 {
+	struct intel_sprite_context *psPrimaryContext;
 	struct intel_sprite_context *psSpriteContext;
 	struct intel_overlay_context *psOverlayContext;
 	struct drm_psb_private *dev_priv;
@@ -187,6 +232,14 @@ static void MRSTLFBFlipContexts(MRSTLFB_DEVINFO *psDevInfo,
 	dev = psDevInfo->psDrmDevice;
 	dev_priv =
 		(struct drm_psb_private *)psDevInfo->psDrmDevice->dev_private;
+
+	/*flip all active primary planes*/
+	for (i = 0; i < INTEL_SPRITE_PLANE_NUM; i++) {
+		if (psContexts->active_primaries & (1 << i)) {
+			psPrimaryContext = &psContexts->primary_contexts[i];
+			MRSTLFBFlipPrimary(psDevInfo, psPrimaryContext);
+		}
+	}
 
 	/*flip all active sprite planes*/
 	for (i = 0; i < INTEL_SPRITE_PLANE_NUM; i++) {
@@ -1190,6 +1243,77 @@ MRSTLFBVSyncISR(struct drm_device *psDrmDevice, int iPipe)
 }
 #endif
 
+static IMG_BOOL updatePlaneContexts(MRSTLFB_SWAPCHAIN *psSwapChain,
+				DISPLAYCLASS_FLIP_COMMAND2 *psFlipCmd,
+				struct mdfld_plane_contexts *psPlaneContexts)
+{
+	int i;
+	PDC_MEM_INFO psMemInfo, psCurrentMemInfo;
+	MRSTLFB_BUFFER *psBuffer, *psCurrentBuffer;
+
+	if (!psSwapChain || !psFlipCmd || !psPlaneContexts) {
+		DRM_ERROR("Invalid parameters\n");
+		return IMG_FALSE;
+	}
+
+	if (!psPlaneContexts->active_primaries)
+		return IMG_TRUE;
+
+	/* if active_primaries, update plane surface address*/
+	psCurrentMemInfo = 0;
+
+	for (i = 0; i < psFlipCmd->ui32NumMemInfos; i++) {
+		psMemInfo = psFlipCmd->ppsMemInfos[i];
+
+		if (!psMemInfo)
+			continue;
+
+		if (psMemInfo->memType == PVRSRV_MEMTYPE_DEVICECLASS) {
+			psCurrentMemInfo = psMemInfo;
+			break;
+		}
+	}
+
+	if (!psCurrentMemInfo) {
+		DRM_ERROR("Failed to get FB MemInfo\n");
+		return IMG_FALSE;
+	}
+
+	/*get mrstlfb_buffer*/
+	psCurrentBuffer = 0;
+	for (i = 0; i < psSwapChain->ulBufferCount; i++) {
+		psBuffer = psSwapChain->ppsBuffer[i];
+
+		if (!psBuffer)
+			continue;
+
+		if (psBuffer->sCPUVAddr == psMemInfo->pvLinAddrKM) {
+			psCurrentBuffer = psBuffer;
+			break;
+		}
+	}
+
+	if (!psCurrentBuffer) {
+		DRM_ERROR("Failed to get FB Buffer\n");
+		return IMG_FALSE;
+	}
+
+	/*update primary context with fb surface address*/
+	for (i = 0; i < INTEL_SPRITE_PLANE_NUM; i++) {
+		if (!(psSwapChain->ui32SwapChainPropertyFlag & (1 << i))) {
+			psPlaneContexts->active_primaries &= ~(1 << i);
+			continue;
+		}
+
+		if (psPlaneContexts->active_primaries & (1 << i)) {
+			psPlaneContexts->primary_contexts[i].surf =
+				psCurrentBuffer->sDevVAddr.uiAddr;
+		}
+	}
+
+	return IMG_TRUE;
+}
+
 static IMG_BOOL ProcessFlip2(IMG_HANDLE hCmdCookie,
 			IMG_UINT32 ui32DataSize,
 			IMG_VOID *pvData)
@@ -1220,9 +1344,19 @@ static IMG_BOOL ProcessFlip2(IMG_HANDLE hCmdCookie,
 		return IMG_FALSE;
 	}
 
+	if (FirstCleanFlag == 1) {
+		memset(psDevInfo->sSystemBuffer.sCPUVAddr, 0,
+				psDevInfo->sSystemBuffer.ui32BufferSize);
+		FirstCleanFlag = 0;
+	}
+
 	psPlaneContexts = (struct mdfld_plane_contexts *)psFlipCmd->pvPrivData;
 
 	spin_lock_irqsave(&psDevInfo->sSwapChainLock, ulLockFlags);
+
+	/*update context*/
+	updatePlaneContexts(psSwapChain, psFlipCmd, psPlaneContexts);
+
 #if defined(MRST_USING_INTERRUPTS)
 	if (!drm_psb_3D_vblank || psFlipCmd->ui32SwapInterval == 0 ||
 		psDevInfo->bFlushCommands) {
@@ -1926,9 +2060,6 @@ MRST_ERROR MRSTLFBInit(struct drm_device * dev)
 			return (MRST_ERROR_INIT_FAILURE);
 		}
 
-		/*save default plane config*/
-		MRSTLFBSavePlaneConfig(psDevInfo);
-
 		if(MRSTLFBGetLibFuncAddr ("PVRGetDisplayClassJTable", &pfnGetPVRJTable) != MRST_OK)
 		{
 			return (MRST_ERROR_INIT_FAILURE);
@@ -2019,7 +2150,7 @@ MRST_ERROR MRSTLFBInit(struct drm_device * dev)
 
 
 	aui32SyncCountList[DC_FLIP_COMMAND][0] = 0;
-	aui32SyncCountList[DC_FLIP_COMMAND][1] = 2;
+	aui32SyncCountList[DC_FLIP_COMMAND][1] = 10;
 
 
 
