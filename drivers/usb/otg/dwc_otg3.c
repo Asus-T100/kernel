@@ -35,6 +35,7 @@ static struct {
 
 };
 
+#ifdef CONFIG_USB_DWC_OTG_XCEIV_DEBUG
 static void print_debug_regs(struct dwc_otg2 *otg)
 {
 	u32 usbcmd = otg_read(otg, 0x0000);
@@ -71,6 +72,7 @@ static void print_debug_regs(struct dwc_otg2 *otg)
 	otg_dbg(otg, "oevten = %08x\n", oevten);
 	otg_dbg(otg, "osts = %08x\n", osts);
 }
+#endif
 
 /* Caller must hold otg->lock */
 static void wakeup_main_thread(struct dwc_otg2 *otg)
@@ -478,6 +480,57 @@ static int dwc_otg_notify_charger_type(struct dwc_otg2 *otg,
 }
 
 #ifdef CONFIG_DWC_CHARGER_DETECION
+int otg_get_chr_status(struct otg_transceiver *_otg, void *data)
+{
+	unsigned long flags;
+	struct otg_bc_cap *cap = (struct otg_bc_cap *)data;
+	struct dwc_otg2 *otg = the_transceiver;
+
+	if (_otg == NULL)
+		return -ENODEV;
+
+	if (data == NULL)
+		return -EINVAL;
+
+	spin_lock_irqsave(&otg->lock, flags);
+	switch (otg->ctype) {
+	case CHRG_ACA_DOCK:
+	case CHRG_ACA_A:
+	case CHRG_ACA_B:
+	case CHRG_ACA_C:
+	case CHRG_DCP:
+	case CHRG_CDP:
+		cap->chrg_state = OTG_CHR_STATE_CONNECTED;
+		cap->chrg_type = otg->ctype;
+		cap->mA = 1500;
+		break;
+	case CHRG_SDP:
+		if ((otg->sdp_current == 100) ||
+				(otg->sdp_current == 500) ||
+				(otg->sdp_current == 900)) {
+			cap->chrg_state = OTG_CHR_STATE_CONNECTED;
+			cap->chrg_type = CHRG_SDP;
+			cap->mA = otg->sdp_current;
+		} else {
+			otg_err(otg, "SDP met invild case which current haven't set!\n");
+			cap->chrg_state = OTG_CHR_STATE_DISCONNECTED;
+			cap->chrg_type = CHRG_UNKNOWN;
+			cap->mA = 0;
+			return -EINVAL;
+		}
+		break;
+	default:
+		otg_err(otg, "Charger type is not valid to notify battery\n");
+		cap->chrg_state = OTG_CHR_STATE_DISCONNECTED;
+		cap->chrg_type = CHRG_UNKNOWN;
+		cap->mA = 0;
+	}
+	spin_unlock_irqrestore(&otg->lock, flags);
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(otg_get_chr_status);
+
 static int ulpi_read(struct dwc_otg2 *otg, const u8 reg, u8 *val)
 {
 	u32 val32 = 0, count = 200;
@@ -1022,6 +1075,10 @@ static enum dwc_otg_state do_connector_id_status(struct dwc_otg2 *otg)
 	u32 events = 0, user_events = 0;
 	u32 otg_mask = 0, user_mask = 0, phyval;
 	enum dwc_otg_state state = DWC_STATE_INVALID;
+#ifdef CONFIG_DWC_CHARGER_DETECION
+	u32 gctl;
+	u8 val = 0;
+#endif
 
 	otg_dbg(otg, "\n");
 	spin_lock_irqsave(&otg->lock, flags);

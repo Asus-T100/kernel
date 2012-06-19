@@ -47,7 +47,6 @@ struct dwc_device_par {
 #define RSP_WRST_TIMEOUT 2000
 #define RSP_ACK_TIMEOUT 2000
 #define HNP_TIMEOUT	4000
-#define CONFIG_USB_DWC_OTG_XCEIV_DEBUG
 
 #ifdef CONFIG_USB_DWC_OTG_XCEIV_DEBUG
 #define DWC_OTG_DEBUG 1
