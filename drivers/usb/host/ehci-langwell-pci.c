@@ -430,3 +430,57 @@ static void intel_mid_ehci_driver_unregister(struct pci_driver *host_driver)
 
 	otg_put_transceiver(otg);
 }
+
+#ifdef CONFIG_BOARD_CTP
+#include <linux/gpio.h>
+#include <asm/intel-mid.h>
+#define SPH_CS_N	51
+#define SPH_RST_N	169
+
+int cloverview_sph_gpio_init(void)
+{
+	int		retval = 0;
+	u32		board_id;
+
+	board_id = ctp_board_id();
+
+	/*Only ctp_pr0/pr1 phone need to do CS and PHY operation */
+	if (board_id == CTP_BID_PR0) {
+
+		if (gpio_is_valid(SPH_CS_N)) {
+			retval = gpio_request(SPH_CS_N, "SPH_CS_N");
+			if (retval < 0) {
+				printk(KERN_INFO "Request GPIO %d with error %d\n",
+				SPH_CS_N, retval);
+				retval = -ENODEV;
+				goto err;
+			} else {
+				gpio_direction_output(SPH_CS_N, 0);
+			}
+		} else {
+			retval = -ENODEV;
+			goto err;
+		}
+
+		if (gpio_is_valid(SPH_RST_N)) {
+			retval = gpio_request(SPH_RST_N, "SPH_RST_N");
+			if (retval < 0) {
+				printk(KERN_INFO "Request GPIO %d with error %d\n",
+				SPH_RST_N, retval);
+				retval = -ENODEV;
+				goto err;
+			} else	{
+				gpio_direction_output(SPH_RST_N, 0);
+				usleep_range(200, 500);
+				gpio_set_value(SPH_RST_N, 1);
+			}
+		} else {
+			retval = -ENODEV;
+			goto err;
+		}
+	}
+err:
+	return retval;
+}
+#endif
+

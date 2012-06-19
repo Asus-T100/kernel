@@ -1359,6 +1359,12 @@ static int __init ehci_hcd_init(void)
 		 sizeof(struct ehci_qh), sizeof(struct ehci_qtd),
 		 sizeof(struct ehci_itd), sizeof(struct ehci_sitd));
 
+#ifdef CONFIG_BOARD_CTP
+	retval = cloverview_sph_gpio_init();
+	if (retval < 0)
+		return retval;
+#endif
+
 #ifdef DEBUG
 	ehci_debug_root = debugfs_create_dir("ehci", usb_debug_root);
 	if (!ehci_debug_root) {
