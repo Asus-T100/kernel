@@ -229,6 +229,15 @@ static int ehci_pci_setup(struct usb_hcd *hcd)
 			ehci_info(ehci, "Detected SPH HC\n");
 			hcd->has_tt = 1;
 			ehci->has_hostpc = 1;
+
+			/* All need to bypass tll mode  */
+			temp = ehci_readl(ehci, hcd->regs + CLV_SPHCFG);
+			temp &= ~CLV_SPHCFG_ULPI1TYPE;
+			ehci_writel(ehci, temp, hcd->regs + CLV_SPHCFG);
+
+			temp = ehci_readl(ehci, hcd->regs + CLV_SPH_HOSTPC);
+			temp |= CLV_SPH_HOSTPC_PTS;
+			ehci_writel(ehci, temp, hcd->regs + CLV_SPH_HOSTPC);
 		}
 	}
 

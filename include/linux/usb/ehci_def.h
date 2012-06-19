@@ -176,6 +176,13 @@ struct ehci_regs {
 #define TXFILLTUNING	0x24		/* TX FIFO Tuning register */
 #define TXFIFO_DEFAULT	(8<<16)		/* FIFO burst threshold 8 */
 
+/* Cloverview SPH registers definition, used for bypass TLL mode
+*/
+#define CLV_SPH_HOSTPC		0xb4	/* SPH HOSTPC */
+#define CLV_SPH_HOSTPC_PTS	(1<<30)	/* SPH HOSTPC PTS */
+#define CLV_SPHCFG		0x400	/* SPHCFG (16bit) */
+#define CLV_SPHCFG_ULPI1TYPE	(1<<0)	/* SPHCFG ULPI1TYPE */
+
 /* Appendix C, Debug port ... intended for use with special "debug devices"
  * that can help if there's no serial console.  (nonstandard enumeration.)
  */
