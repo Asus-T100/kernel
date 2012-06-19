@@ -205,6 +205,13 @@ static unsigned int get_cur_freq_on_cpu(unsigned int cpu)
 	return cached_freq;
 }
 
+/*
+ * Since MSRs record the residency with 1MHz clock,
+ * then to compute the actual residency at maximum speed,
+ * the value should multiply (maximum clock / 1M ).
+ * For MFLD, maximum speed is 1597MHz, so the multiplier=1597
+ */
+#define MFLD_RESIDENCY_COUNT_MULTIPLIER (1597UL)
 /*C-states related data structures and fuctions for cpu load calculation*/
 
 /*  MSR counter stuff */
@@ -303,32 +310,16 @@ static u64 read_one_residency(int cpu, int msr_addr, u64 *prev)
 
 static unsigned int calc_cpu_load(struct per_cpu_t *pcpu, int cpu)
 {
-	struct sfi_cpufreq_data *data = per_cpu(drv_data, cpu);
-	struct sfi_processor_performance *perf;
 	int i = 0;
 	u64 prev;
 	int msr_addr;
 	u64 tsc;
-	u64 delta_tsc;
+	u64 delta_tsc, c0;
 	u64 m_delta, c_delta;
-	u64 c0 = 0;
 	bool is_first = false;
 	u64 cx_total = 0;
-	u32 clock_multiplier;
+	u32 clock_multiplier = MFLD_RESIDENCY_COUNT_MULTIPLIER;
 	u64 cpu_load = 0;
-
-
-	/*
-	 * Since MSRs report the time in uSec,
-	 * in order to compute the actual residency in terms of clock cycles,
-	 * the value should be multiplied by maximum_clock in Mhz units
-	 * as the MPERF runs at maximum_clock.
-	 * perf->states[0].core_frequency stores maximum frequency
-	 * supported by the cpu in Mhz.
-	 */
-	perf = data->sfi_data;
-	clock_multiplier = perf->states[0].core_frequency;
-
 	/*
 	 * Ensure updates are propagated.
 	 */
@@ -383,22 +374,16 @@ static unsigned int calc_cpu_load(struct per_cpu_t *pcpu, int cpu)
 	pcpu->tsc = tsc;
 
 	/*Actually, it is c0+c1 residency*/
-	if (delta_tsc > cx_total)
-		c0 = (delta_tsc - cx_total);
-
-	RESIDENCY(pcpu, MPERF) = c0;
-
+	RESIDENCY(pcpu, MPERF) = c0 = delta_tsc - cx_total;
 	/* cpu_load = 100*c0 / delta_tsc */
-	if (delta_tsc) {
-		cpu_load = c0 * 100;
-		do_div(cpu_load, delta_tsc);
-	}
+	cpu_load = c0 * 100;
+	do_div(cpu_load, delta_tsc);
 
 	return (unsigned int)cpu_load;
-}
 
-static unsigned int cpufreq_get_load(struct cpufreq_policy *policy,
-				unsigned int cpu)
+};
+
+unsigned int cpufreq_get_load(struct cpufreq_policy *policy, unsigned int cpu)
 {
 	struct per_cpu_t *pcpu = NULL;
 
