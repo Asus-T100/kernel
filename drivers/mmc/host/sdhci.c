@@ -1344,7 +1344,6 @@ static int sdhci_do_acquire_ownership(struct mmc_host *mmc)
 		spin_unlock_irqrestore(&host->dekker_lock, flags);
 		return 0;
 	}
-	spin_unlock_irqrestore(&host->dekker_lock, flags);
 
 	DBG("Acquire ownership - eMMC owner: %d, IA req: %d, SCU req: %d\n",
 		readl(host->sram_addr + DEKKER_EMMC_OWNER_OFFSET),
@@ -1365,7 +1364,10 @@ static int sdhci_do_acquire_ownership(struct mmc_host *mmc)
 					DEKKER_EMMC_OWNER_OFFSET) ==
 					DEKKER_OWNER_IA)
 					break;
+				spin_unlock_irqrestore(&host->dekker_lock,
+						flags);
 				msleep(10);
+				spin_lock_irqsave(&host->dekker_lock, flags);
 				t2--;
 			}
 			if (t2)
@@ -1380,6 +1382,7 @@ static int sdhci_do_acquire_ownership(struct mmc_host *mmc)
 		cpu_relax();
 	}
 
+	spin_unlock_irqrestore(&host->dekker_lock, flags);
 	/*
 	 * if the last owner is SCU, will do the re-config host controller
 	 * in the next
@@ -1398,6 +1401,8 @@ timeout:
 	/* Release eMMC mutex anyway */
 	writel(DEKKER_OWNER_SCU, host->sram_addr + DEKKER_EMMC_OWNER_OFFSET);
 	writel(0, host->sram_addr + DEKKER_IA_REQ_OFFSET);
+
+	spin_unlock_irqrestore(&host->dekker_lock, flags);
 
 	return -EBUSY;
 }
@@ -1467,9 +1472,9 @@ static void sdhci_request(struct mmc_host *mmc, struct mmc_request *mrq)
 
 	host = mmc_priv(mmc);
 
-	sdhci_acquire_ownership(host->mmc);
-
 	sdhci_runtime_pm_get(host);
+
+	sdhci_acquire_ownership(host->mmc);
 
 	spin_lock_irqsave(&host->lock, flags);
 
@@ -1697,11 +1702,11 @@ static void sdhci_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 {
 	struct sdhci_host *host = mmc_priv(mmc);
 
-	sdhci_acquire_ownership(mmc);
 	sdhci_runtime_pm_get(host);
+	sdhci_acquire_ownership(mmc);
 	sdhci_do_set_ios(host, ios);
-	sdhci_runtime_pm_put(host);
 	sdhci_release_ownership(mmc);
+	sdhci_runtime_pm_put(host);
 }
 
 static int sdhci_check_ro(struct sdhci_host *host)
@@ -2257,9 +2262,11 @@ static void sdhci_tasklet_finish(unsigned long param)
 	mmiowb();
 	spin_unlock_irqrestore(&host->lock, flags);
 
-	mmc_request_done(host->mmc, mrq);
-	sdhci_runtime_pm_put(host);
 	sdhci_release_ownership(host->mmc);
+
+	mmc_request_done(host->mmc, mrq);
+
+	sdhci_runtime_pm_put(host);
 }
 
 static void sdhci_timeout_timer(unsigned long data)
