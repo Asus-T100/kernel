@@ -17,6 +17,7 @@
 #include <linux/errno.h>
 #include <linux/ipc_device.h>
 #include <linux/fs.h>
+#include <linux/delay.h>
 #include <asm/intel_scu_ipc.h>
 
 #define IPC_MIP_BASE     0xFFFD8000	/* sram base address for mip accessing*/
@@ -44,6 +45,8 @@ static int read_mip(u8 *data, int len, int offset, int issigned)
 	do {
 		ret = intel_scu_ipc_raw_cmd(cmd, 0, NULL, 0, &data_off, 1,
 				dptr, sptr);
+		if (ret == -EIO)
+			msleep(20);
 	} while (ret == -EIO);
 
 	if (!ret)
@@ -101,10 +104,13 @@ int intel_scu_ipc_write_umip(u8 *data, int len, int offset)
 	sptr = len_align / 4;
 	cmd = IPC_CMD_UMIP_WR << 12 | IPCMSG_MIP_ACCESS;
 
+	memcpy(intel_mip_base, buf, len_align);
+
 	do {
-		memcpy(intel_mip_base, buf, len_align);
 		ret = intel_scu_ipc_raw_cmd(cmd, 0, NULL, 0, NULL, 0,
 				dptr, sptr);
+		if (ret == -EIO)
+			msleep(20);
 	} while (ret == -EIO);
 
 fail:
