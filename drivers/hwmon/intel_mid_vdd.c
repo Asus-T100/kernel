@@ -123,10 +123,6 @@ once IAFW support is available */
 #define MASK_BIT(bit)		(1 << bit)
 #define CLEAR_BIT(bit)		(~(1 << bit))
 
-/* defines timer values in msec for spurious interrupts */
-#define FIXED_TIME		6
-#define RESETTING_VALUE		6
-
 #define BCU_STATUS(data)	((data ^ 1) << 3)
 
 #define SET_ACTION_MASK(data, value, bit) (data | (value << bit))
@@ -135,7 +131,7 @@ once IAFW support is available */
 #define MSIC_VDD		0x24
 
 /* defines reading BCU registers from SRAM */
-#define MSIC_BCU_STAT		0xFFFF7FC8
+#define MSIC_BCU_STAT		0xFFFFEFC8
 #define	MSIC_BCU_LEN		1
 #define IRQ_FIFO_MAX		16
 #define IRQ_KFIFO_ELEMENT	1
@@ -146,10 +142,6 @@ enum { VWARNB_EVENT = 1, VWARNA_EVENT = 2, VCRIT_EVENT = 4};
 static DEFINE_MUTEX(vdd_update_lock);
 /* defining the fifo to store the interrupt value */
 static DEFINE_KFIFO(irq_fifo, u8, IRQ_FIFO_MAX);
-
-static struct timer_list masking_timer, spurious_timer;
-
-static int debouncing_time_after_timer_expired = RESETTING_VALUE;
 
 struct vdd_info {
 	unsigned int irq;
@@ -377,66 +369,22 @@ static ssize_t show_action_status(struct device *dev,
 	return sprintf(buf, "%x\n", action_status);
 }
 
-static void timer_platform_ready_tohandle(unsigned long data)
-{
-	int ret;
-	ret = intel_scu_ipc_update_register(MBCUIRQ, CLEAR_BIT(2), 0x04);
-	if (!timer_pending(&spurious_timer)) {
-		spurious_timer.expires = msecs_to_jiffies(RESETTING_VALUE);
-		add_timer(&spurious_timer);
-	}
-}
-
-static void timer_spurious_cleared(unsigned long data)
-{
-	int ret;
-	uint8_t irq_data, sticky_data;
-	ret = intel_scu_ipc_ioread8(SBCUIRQ, &irq_data);
-	if (!(irq_data & 4)) {
-		ret = intel_scu_ipc_ioread8(BCUDISCRIT_BEH, &sticky_data);
-		if (IS_STICKY(sticky_data)) {
-			mutex_lock(&vdd_update_lock);
-			ret = intel_scu_ipc_update_register(SBCUCTRL,
-				CLEAR_ASSERT(1), 0x02);
-			mutex_unlock(&vdd_update_lock);
-		}
-	}
-}
-
-
 static void handle_events(int flag, void *dev_data)
 {
 	uint8_t irq_data, sticky_data;
 	struct vdd_info *vinfo = (struct vdd_info *)dev_data;
 	int ret;
-
 	ret = intel_scu_ipc_ioread8(SBCUIRQ, &irq_data);
 	if (ret)
 		goto handle_ipc_fail;
 
 	if (flag & VCRIT_EVENT) {
 		dev_dbg(&vinfo->pdev->dev, "vdd VCRIT hits\n");
-		if (irq_data & SVCRIT) {
-			/* interrupt up for VCRIT */
-			if (!timer_pending(&spurious_timer)) {
-				/* increase the masking time for spurious
-				* interrupts and mask it for that time */
-				masking_timer.expires =
-					msecs_to_jiffies(FIXED_TIME +
-				debouncing_time_after_timer_expired);
-				debouncing_time_after_timer_expired +=
-					RESETTING_VALUE;
-			} else {
-				debouncing_time_after_timer_expired =
-					RESETTING_VALUE;
-				masking_timer.expires =
-					msecs_to_jiffies(FIXED_TIME);
-			}
-			ret = intel_scu_ipc_update_register(MBCUIRQ,
-				MASK_BIT(2), 0x04);
-			add_timer(&masking_timer);
-		} else {
-		/* interrupt cleared */
+		if (!(irq_data & SVCRIT)) {
+			/* interrupt up for VCRIT timers are removed as
+			as it is causing hang in system, it will be done in
+			BCU cleanup */
+			/* interrupt cleared */
 			ret = intel_scu_ipc_ioread8(BCUDISCRIT_BEH,
 				&sticky_data);
 			if (ret)
@@ -639,12 +587,6 @@ static int mid_vdd_probe(struct ipc_device *pdev)
 			ret);
 		goto vdd_error3;
 	}
-
-	/*initialize the timers */
-	init_timer(&masking_timer);
-	masking_timer.function  = timer_platform_ready_tohandle;
-	init_timer(&spurious_timer);
-	spurious_timer.function = timer_spurious_cleared;
 
 	/* unmasking all the interrupts */
 	ret = intel_scu_ipc_iowrite8(MBCUIRQ, UNMASK_MBCUIRQ);
