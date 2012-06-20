@@ -1488,6 +1488,32 @@ static inline void wait_for_xmitr(struct uart_hsu_port *up)
 	}
 }
 
+static inline int try_xmitr(struct uart_hsu_port *up)
+{
+	unsigned int status, tmout = 10000;
+
+	while (--tmout) {
+		status = serial_in_irq(up, UART_LSR);
+		if (status & UART_LSR_BI)
+			up->lsr_break_flag = UART_LSR_BI;
+		udelay(1);
+		if (status & BOTH_EMPTY)
+			break;
+	}
+	if (tmout == 0)
+		return 0;
+
+	if (up->port.flags & UPF_CONS_FLOW) {
+		tmout = 10000;
+		while (--tmout &&
+		       ((serial_in_irq(up, UART_MSR) & UART_MSR_CTS) == 0))
+			udelay(1);
+		if (tmout == 0)
+			return 0;
+	}
+	return 1;
+}
+
 static void serial_hsu_console_putchar(struct uart_port *port, int ch)
 {
 	struct uart_hsu_port *up =
@@ -1503,6 +1529,18 @@ static void serial_hsu_console_putchar(struct uart_port *port, int ch)
 #endif
 	wait_for_xmitr(up);
 	serial_out(up, UART_TX, ch);
+}
+
+static void serial_hsu_console_qchar(struct uart_port *port, int ch)
+{
+	struct uart_hsu_port *up =
+		container_of(port, struct uart_hsu_port, port);
+	unsigned long flags;
+
+	spin_lock_irqsave(&up->qlock, flags);
+	insert_q(up, CMD_WB, UART_TX, ch & 0xff);
+	spin_unlock_irqrestore(&up->qlock, flags);
+	schedule_work(&up->qwork);
 }
 
 /*
@@ -1523,8 +1561,13 @@ serial_hsu_console_write(struct console *co, const char *s, unsigned int count)
 	 */
 #ifdef CONFIG_PM_RUNTIME
 	if (up->dev->power.runtime_status == RPM_RESUMING ||
-			up->dev->power.runtime_status == RPM_SUSPENDING)
+			up->dev->power.runtime_status == RPM_SUSPENDING) {
+		spin_lock(&up->port.lock);
+		uart_console_write(&up->port, s, count,
+				serial_hsu_console_qchar);
+		spin_unlock(&up->port.lock);
 		return;
+	}
 #endif
 	pm_runtime_get(up->dev);
 	local_irq_save(flags);
@@ -1764,11 +1807,6 @@ static void qwork(struct work_struct *work)
 
 	pm_runtime_get_sync(up->dev);
 	spin_lock_irqsave(&up->qlock, flags);
-	if (!hsu_port_is_active(up)) { /* impossible */
-		dev_err(up->dev, "wrong pm status!\n");
-		spin_unlock_irqrestore(&up->qlock, flags);
-		return;
-	}
 	while (get_q(up, &cmd, &offset, &value)){
 		dev_dbg(up->dev, "qwork get cmd %d %d %d\n", cmd, offset, value);
 		switch (cmd) {
@@ -1776,6 +1814,16 @@ static void qwork(struct work_struct *work)
 			writel(value, up->port.membase + offset);
 			break;
 		case CMD_WB:
+			if (UART_TX == offset) {
+				while (!try_xmitr(up)) {
+					spin_unlock_irqrestore(&up->qlock,
+								flags);
+					pm_runtime_put(up->dev);
+					schedule();
+					pm_runtime_get_sync(up->dev);
+					spin_lock_irqsave(&up->qlock, flags);
+				}
+			}
 			writeb(value, up->port.membase + offset);
 			break;
 		case CMD_TX:
@@ -1977,6 +2025,10 @@ static int hsu_runtime_idle(struct device *dev)
 	struct uart_hsu_port *up_pair = NULL;
 	unsigned int delay = 0;
 
+#ifdef CONFIG_SERIAL_MFD_HSU_CONSOLE_PORT
+	if (up->index == CONFIG_SERIAL_MFD_HSU_CONSOLE_PORT)
+		delay = 100;
+#endif
 	if (up->index == 1)
 		up_pair = serial_hsu_ports[3];
 	if (system_state == SYSTEM_BOOTING) {
