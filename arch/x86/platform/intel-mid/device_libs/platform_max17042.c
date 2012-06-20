@@ -18,6 +18,7 @@
 #include <linux/power/intel_mdf_battery.h>
 #include <linux/power/smb347-charger.h>
 #include <linux/power/bq24192_charger.h>
+#include <linux/power/basin_cove_charger.h>
 #include <asm/intel-mid.h>
 #include <asm/delay.h>
 #include <asm/intel_scu_ipc.h>
@@ -200,5 +201,12 @@ void *max17042_platform_data(void *info)
 	platform_data.battery_pack_temp = ctp_get_battery_pack_temp;
 #endif
 
+#ifdef CONFIG_X86_MRFLD
+	platform_data.enable_current_sense = true;
+	platform_data.technology = POWER_SUPPLY_TECHNOLOGY_LION;
+	platform_data.battery_health = bc_check_battery_health;
+	platform_data.battery_status = bc_check_battery_status;
+	platform_data.battery_pack_temp = bc_get_battery_pack_temp;
+#endif
 	return &platform_data;
 }
