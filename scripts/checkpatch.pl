@@ -374,8 +374,21 @@ if ($tree && -f "$root/$removal") {
 }
 
 my @rawlines = ();
+my @comparelines = ();
 my @lines = ();
 my $vname;
+
+sub process_whitelist {
+	use File::Basename;
+	my $dirname = dirname($0);
+	open(FILE, '<', "$dirname/whitelist.txt") || die $!;
+	while (<FILE>) {
+		chomp;
+		push(@comparelines, $_);
+	}
+	close(FILE);
+}
+
 for my $filename (@ARGV) {
 	my $FILE;
 	if ($file) {
@@ -397,10 +410,12 @@ for my $filename (@ARGV) {
 		push(@rawlines, $_);
 	}
 	close($FILE);
+	process_whitelist();
 	if (!process($filename)) {
 		$exit = 1;
 	}
 	@rawlines = ();
+	@comparelines = ();
 	@lines = ();
 }
 
@@ -1418,6 +1433,7 @@ sub process {
 
 	sanitise_line_reset();
 	my $line;
+	my $skip = 0;
 	foreach my $rawline (@rawlines) {
 		$linenr++;
 		$line = $rawline;
@@ -1556,6 +1572,12 @@ sub process {
 			$realfile = $1;
 			$realfile =~ s@^([^/]*)/@@;
 			$in_commit_log = 0;
+			$skip = 0;
+			foreach my $compareline (@comparelines) {
+				if ($realfile =~ /$compareline/) {
+					$skip = 1;
+				}
+			}
 		} elsif ($line =~ /^\+\+\+\s+(\S+)/) {
 			$realfile = $1;
 			$realfile =~ s@^([^/]*)/@@;
@@ -1572,6 +1594,10 @@ sub process {
 				ERROR("MODIFIED_INCLUDE_ASM",
 				      "do not modify files in include/asm, change architecture specific files in include/asm-<architecture>\n" . "$here$rawline\n");
 			}
+			next;
+		}
+
+		if ($skip == 1) {
 			next;
 		}
 
