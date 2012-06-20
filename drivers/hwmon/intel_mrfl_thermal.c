@@ -75,23 +75,15 @@
 /* Default _max 85 C */
 #define DEFAULT_MAX_TEMP	85
 
+/* Constants defined in BasinCove PMIC spec */
 #define PMIC_DIE_SENSOR		3
-#define PMIC_DIE_ADC_MIN	559
-#define PMIC_DIE_ADC_MAX	1004
+#define PMIC_DIE_ADC_MIN	395
+#define PMIC_DIE_ADC_MAX	661
 #define PMIC_DIE_TEMP_MIN	-40
-#define PMIC_DIE_TEMP_MAX	150
-
-/*
- * Convert adc_val to die temperature (in milli degree celsius)
- * This formula and the constants are defined in the PMIC Spec.
- */
-#define TO_PMIC_DIE_TEMP(adc_val)	(368 * adc_val - 219560)
-
-/*
- * Convert temperature in Celsius to ADC Code
- * This formula and the constants are defined in the PMIC Spec.
- */
-#define TO_PMIC_DIE_ADC(temp)	DIV_ROUND_CLOSEST((2717 * temp + 596630), 1000)
+#define PMIC_DIE_TEMP_MAX	125
+#define ADC_VAL_27C		503
+#define ADC_COEFFICIENT		619
+#define TEMP_OFFSET		27000
 
 /* 'enum' of Thermal sensors */
 enum thermal_sensors { SYS0, SYS1, SYS2, PMIC_DIE, _COUNT };
@@ -136,6 +128,18 @@ struct thermal_data {
 	void *thrm_addr;
 	unsigned int irq;
 };
+
+static inline int adc_to_pmic_die_temp(unsigned int val)
+{
+	/* return temperature in mC */
+	return (val - ADC_VAL_27C) * ADC_COEFFICIENT + TEMP_OFFSET;
+}
+
+static inline int pmic_die_temp_to_adc(int temp)
+{
+	/* 'temp' is in C, convert to mC and then do calculations */
+	return ((temp * 1000) - TEMP_OFFSET) / ADC_COEFFICIENT + ADC_VAL_27C;
+}
 
 /**
  * find_adc_code - searches the ADC code using binary search
@@ -183,7 +187,7 @@ static int adc_to_temp(int direct, uint16_t adc_val, int *tp)
 		if (adc_val < PMIC_DIE_ADC_MIN || adc_val > PMIC_DIE_ADC_MAX)
 			return -EINVAL;
 
-		*tp = TO_PMIC_DIE_TEMP(adc_val);
+		*tp = adc_to_pmic_die_temp(adc_val);
 		return 0;
 	}
 
@@ -245,7 +249,7 @@ static int temp_to_adc(int direct, int temp, int *adc_val)
 		if (temp < PMIC_DIE_TEMP_MIN || temp > PMIC_DIE_TEMP_MAX)
 			return -EINVAL;
 
-		*adc_val = TO_PMIC_DIE_ADC(temp);
+		*adc_val = pmic_die_temp_to_adc(temp);
 		return 0;
 	}
 
