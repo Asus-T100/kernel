@@ -41,7 +41,7 @@
 
 #include "dlp_main.h"
 
-#define DEBUG_TAG 0x8
+#define DEBUG_TAG 0x3
 #define DEBUG_VAR dlp_drv.debug
 
 /* Defaut NET stack TX timeout delay (in milliseconds) */
@@ -109,6 +109,8 @@ static void dlp_net_mdm_coredump_cb(struct dlp_channel *ch_ctx)
 
 	PROLOG("%s", net_ctx->ndev->name);
 
+	WARNING("Modem coredump");
+
 	dlp_net_modem_hangup(ch_ctx, DLP_MODEM_HU_COREDUMP);
 
 	EPILOG();
@@ -124,6 +126,8 @@ static void dlp_net_mdm_coredump_cb(struct dlp_channel *ch_ctx)
 static void dlp_net_mdm_reset_cb(struct dlp_channel *ch_ctx)
 {
 	PROLOG();
+
+	WARNING("Modem reset");
 
 	dlp_net_modem_hangup(ch_ctx, DLP_MODEM_HU_RESET);
 
@@ -203,7 +207,7 @@ static void dlp_net_complete_tx(struct hsi_msg *pdu)
 	net_ctx->ndev->stats.tx_packets++;
 
 	/* Free the pdu */
-	dlp_pdu_free(pdu, pdu->sgt.sgl->length);
+	dlp_pdu_free(pdu, -1);
 
 	/* Decrease the CTRL fifo size */
 	write_lock_irqsave(&xfer_ctx->lock, flags);
@@ -419,18 +423,22 @@ int dlp_net_stop(struct net_device *dev)
 
 	dlp_ctx_set_state(tx_ctx, IDLE);
 
+	/* Flush the ACWAKE works */
+	flush_work_sync(&ch_ctx->start_tx_w);
+	flush_work_sync(&ch_ctx->stop_tx_w);
+
 	EPILOG();
 	return 0;
 }
 
 static void dlp_net_pdu_destructor(struct hsi_msg *pdu)
 {
-	struct dlp_xfer_ctx *xfer_ctx = pdu->context;
-	struct dlp_channel *ch_ctx = xfer_ctx->channel;
-
 	PROLOG();
 
-	dlp_pdu_free(pdu, ch_ctx->pdu_size);
+	if (pdu->ttype == HSI_MSG_WRITE)
+		dlp_pdu_free(pdu, -1);
+	else
+		dlp_pdu_free(pdu, pdu->channel);
 
 	EPILOG();
 }
@@ -598,7 +606,7 @@ static int dlp_net_start_xmit(struct sk_buff *skb, struct net_device *dev)
 
 	/* Write the padding entry (Check 4 bytes alignment) */
 	/*---------------------------------------------------*/
-	padding_len = ch_ctx->pdu_size - offset;
+	padding_len = ch_ctx->tx.pdu_size - offset;
 	padding_len = (padding_len / 4) * 4;
 	if (padding_len) {
 		sg = sg_next(sg);
@@ -684,7 +692,7 @@ void dlp_net_dev_setup(struct net_device *dev)
 	/*  dev->features = NETIF_F_SG | NETIF_F_NO_CSUM; FIXME: wget is KO */
 
 	dev->type = ARPHRD_NONE;
-	dev->mtu = DLP_NET_PDU_SIZE;	/* FIXME: check wget crash */
+	dev->mtu = DLP_NET_TX_PDU_SIZE;	/* FIXME: check wget crash */
 	dev->tx_queue_len = 10;
 	dev->flags = IFF_POINTOPOINT | IFF_NOARP | IFF_MULTICAST;
 
@@ -724,7 +732,7 @@ struct dlp_channel *dlp_net_ctx_create(unsigned int index, struct device *dev)
 	}
 
 	/* Allocate the padding buffer */
-	net_ctx->net_padd = dlp_buffer_alloc(DLP_NET_PDU_SIZE,
+	net_ctx->net_padd = dlp_buffer_alloc(DLP_NET_TX_PDU_SIZE,
 					     &net_ctx->net_padd_dma);
 
 	if (!net_ctx->net_padd) {
@@ -746,8 +754,7 @@ struct dlp_channel *dlp_net_ctx_create(unsigned int index, struct device *dev)
 
 	ch_ctx->ch_data = net_ctx;
 	ch_ctx->hsi_channel = index;
-	ch_ctx->credits = 0;
-	ch_ctx->pdu_size = DLP_NET_PDU_SIZE;
+	ch_ctx->use_flow_ctrl = 1;
 	ch_ctx->rx.config = client->rx_cfg;
 	ch_ctx->tx.config = client->tx_cfg;
 
@@ -761,19 +768,23 @@ struct dlp_channel *dlp_net_ctx_create(unsigned int index, struct device *dev)
 	ch_ctx->modem_coredump_cb = dlp_net_mdm_coredump_cb;
 	ch_ctx->modem_reset_cb = dlp_net_mdm_reset_cb;
 	ch_ctx->credits_available_cb = dlp_net_credits_available_cb;
+	ch_ctx->dump_state = dlp_dump_channel_state;
 
-	dlp_xfer_ctx_init(ch_ctx, &ch_ctx->tx,
-			  DLP_HSI_TX_DELAY,
+	dlp_xfer_ctx_init(ch_ctx,
+			  DLP_NET_TX_PDU_SIZE, DLP_HSI_TX_DELAY,
 			  DLP_HSI_TX_WAIT_FIFO, DLP_HSI_TX_CTRL_FIFO,
 			  dlp_net_complete_tx, HSI_MSG_WRITE);
 
-	dlp_xfer_ctx_init(ch_ctx, &ch_ctx->rx,
-			  DLP_HSI_RX_DELAY,
+	dlp_xfer_ctx_init(ch_ctx,
+			  DLP_NET_RX_PDU_SIZE, DLP_HSI_RX_DELAY,
 			  DLP_HSI_RX_WAIT_FIFO, DLP_HSI_RX_CTRL_FIFO,
 			  dlp_net_complete_rx, HSI_MSG_READ);
 
+	INIT_WORK(&ch_ctx->start_tx_w, dlp_do_start_tx);
+	INIT_WORK(&ch_ctx->stop_tx_w, dlp_do_stop_tx);
+
 	/* Allocate RX FIFOs in background */
-	queue_work(dlp_drv.recycle_wq, &ch_ctx->rx.increase_pool);
+	queue_work(dlp_drv.rx_wq, &ch_ctx->rx.increase_pool);
 
 	EPILOG();
 	return ch_ctx;
@@ -803,7 +814,7 @@ int dlp_net_ctx_delete(struct dlp_channel *ch_ctx)
 
 	/* Free the padding buffer */
 	dlp_buffer_free(net_ctx->net_padd,
-			net_ctx->net_padd_dma, DLP_NET_PDU_SIZE);
+			net_ctx->net_padd_dma, DLP_NET_TX_PDU_SIZE);
 
 	/* Free the ch_ctx */
 	free_netdev(net_ctx->ndev);

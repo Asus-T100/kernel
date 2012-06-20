@@ -44,7 +44,7 @@
 
 #include "dlp_main.h"
 
-#define DEBUG_TAG 0x2
+#define DEBUG_TAG 0x1
 #define DEBUG_VAR dlp_drv.debug
 
 /*
@@ -73,6 +73,7 @@
 #define DLP_CMD_RX_TIMOUT	     5000  /* 5 sec */
 
 #define DLP_ECHO_CMD_CHECKSUM	0xACAFFE
+#define DLP_NOP_CMD_CHECKSUM	0xE7E7EC
 
 #define DLP_CTRL_CMD_TO_STR(id) \
 	(id == DLP_CMD_BREAK		? "BREAK" :	\
@@ -80,7 +81,7 @@
 	(id == DLP_CMD_NOP)			? "NOP" : \
 	(id == DLP_CMD_CONF_CH)		? "CONF_CH" : \
 	(id == DLP_CMD_OPEN_CONN)	? "OPEN_CONN" : \
-	(id == DLP_CMD_CANCEL_CONN) ? "CANCEL_CONN" : \
+	(id == DLP_CMD_CLOSE_CONN)  ? "CLOSE_CONN" : \
 	(id == DLP_CMD_ACK)			? "ACK" : \
 	(id == DLP_CMD_NACK)		? "NACK" : \
 	(id == DLP_CMD_OPEN_CONN_OCTET)  ? "OPEN_CONN_OCTET" : \
@@ -89,16 +90,17 @@
 #define DLP_CTRL_CTX	(dlp_drv.channels[DLP_CHANNEL_CTRL]->ch_data)
 
 /* DLP commands list */
-#define DLP_CMD_BREAK				0x0
-#define DLP_CMD_ECHO				0x1
-#define DLP_CMD_NOP					0x4
-#define DLP_CMD_CONF_CH				0x5
-#define DLP_CMD_OPEN_CONN			0x7
-#define DLP_CMD_CANCEL_CONN			0xA
-#define DLP_CMD_ACK					0xB
-#define DLP_CMD_NACK				0xC
-#define DLP_CMD_OPEN_CONN_OCTET		0xE
-#define DLP_CMD_CREDITS				0xF
+#define DLP_CMD_BREAK				0x00
+#define DLP_CMD_ECHO				0x01
+#define DLP_CMD_NOP					0x04
+#define DLP_CMD_CONF_CH				0x05
+#define DLP_CMD_OPEN_CONN			0x07
+#define DLP_CMD_CLOSE_CONN			0x0A
+#define DLP_CMD_ACK					0x0B
+#define DLP_CMD_NACK				0x0C
+#define DLP_CMD_OPEN_CONN_OCTET		0x0E
+#define DLP_CMD_CREDITS				0x0F
+#define DLP_CMD_NONE				0xFF
 
 /* Flow control */
 enum {
@@ -183,8 +185,6 @@ struct dlp_ctrl_reset_ctx {
  * @hangup_work: Modem TX timeout work
  * @readiness_work: Modem readiness work
  * @response: Received response from the modem
- * @tx_done: Wait for the command TX (command request) to be sent
- * @rx_done: Wait for the command RX (command response) to be received
  * @start_rx_cb: HSI client start RX CB
  * @stop_rx_cb: HSI client stop RX CB
  * @gpio_mdm_rst_out: Modem RESET_OUT GPIO
@@ -203,10 +203,6 @@ struct dlp_ctrl_context {
 
 	/* Modem response */
 	struct dlp_command response;
-
-	/* Command RX/TX completion */
-	struct completion tx_done;
-	struct completion rx_done;
 
 	/* RX start/stop callbacks */
 	hsi_client_cb start_rx_cb;
@@ -242,15 +238,18 @@ struct dlp_ctrl_hsi_xfer {
 	int ttype;
 };
 
-#define DLP_CTRL_XFERS_LIST_ADD(ctrl_ctx, msg) dlp_ctrl_xfers_list_add(ctrl_ctx, msg)
-#define DLP_CTRL_XFERS_LIST_CLEAR(ctrl_ctx)	dlp_ctrl_xfers_list_clear(ctrl_ctx)
+#define DLP_CTRL_XFERS_LIST_ADD(ctrl_ctx, msg) \
+	dlp_ctrl_xfers_list_add(ctrl_ctx, msg)
+#define DLP_CTRL_XFERS_LIST_CLEAR(ctrl_ctx) \
+	dlp_ctrl_xfers_list_clear(ctrl_ctx)
 
 
 /*
  *
  *
  */
-void dlp_ctrl_xfers_list_add(struct dlp_ctrl_context *ctrl_ctx, struct hsi_msg *msg)
+void dlp_ctrl_xfers_list_add(struct dlp_ctrl_context *ctrl_ctx,
+		struct hsi_msg *msg)
 {
 	int malloc_flags = in_interrupt() ? GFP_ATOMIC : GFP_KERNEL;
 	unsigned long flags;
@@ -314,7 +313,7 @@ static int dlp_ctrl_xfers_list_clear(struct dlp_ctrl_context *ctrl_ctx)
 *
 * @return 0
 */
-static int dlp_ctrl_xfers_logs_dump(struct dlp_channel *ch_ctx,
+static void dlp_ctrl_xfers_logs_dump(struct dlp_channel *ch_ctx,
 		struct seq_file *m)
 {
 	struct dlp_ctrl_context *ctrl_ctx = ch_ctx->ch_data;
@@ -329,7 +328,8 @@ static int dlp_ctrl_xfers_logs_dump(struct dlp_channel *ch_ctx,
 
 	seq_printf(m, "\nChannel: %d\n", ch_ctx->hsi_channel);
 	seq_printf(m, "-------------\n");
-	seq_printf(m, " pdu_size  : %d\n\n", ch_ctx->pdu_size);
+	seq_printf(m, " TX pdu_size  : %d\n", ch_ctx->tx.pdu_size);
+	seq_printf(m, " RX xdu_size  : %d\n", ch_ctx->rx.pdu_size);
 
 	spin_lock_irqsave(&ctrl_ctx->debug_lock, flags);
 
@@ -338,28 +338,51 @@ static int dlp_ctrl_xfers_logs_dump(struct dlp_channel *ch_ctx,
 		xfer = list_entry(pos, struct dlp_ctrl_hsi_xfer, link);
 
 		/* Dump the xfer params */
-		switch(xfer->cmd_params.id) {
-		case DLP_CMD_BREAK: cmd_id = "BREAK          "; break;
-		case DLP_CMD_ECHO: cmd_id = "ECHO           "; break;
-		case DLP_CMD_NOP: cmd_id = "NOP            "; break;
-		case DLP_CMD_CONF_CH: cmd_id = "CONF_CH        "; break;
-		case DLP_CMD_OPEN_CONN: cmd_id = "OPEN_CONN      "; break;
-		case DLP_CMD_CANCEL_CONN: cmd_id = "CANCEL_CONN    "; break;
-		case DLP_CMD_ACK: cmd_id = "ACK            "; break;
-		case DLP_CMD_NACK: cmd_id = "NACK           "; break;
-		case DLP_CMD_OPEN_CONN_OCTET: cmd_id = "OPEN_CONN_OCTET"; break;
-		case DLP_CMD_CREDITS: cmd_id = "CREDITS        "; break;
-		default: cmd_id = "UNKNOWN";
+		switch (xfer->cmd_params.id) {
+		case DLP_CMD_BREAK:
+			cmd_id = "BREAK          ";
+			break;
+		case DLP_CMD_ECHO:
+			cmd_id = "ECHO           ";
+			break;
+		case DLP_CMD_NOP:
+			cmd_id = "NOP            ";
+			break;
+		case DLP_CMD_CONF_CH:
+			cmd_id = "CONF_CH        ";
+			break;
+		case DLP_CMD_OPEN_CONN:
+			cmd_id = "OPEN_CONN      ";
+			break;
+		case DLP_CMD_CLOSE_CONN:
+			cmd_id = "CLOSE_CONN    ";
+			break;
+		case DLP_CMD_ACK:
+			cmd_id = "ACK            ";
+			break;
+		case DLP_CMD_NACK:
+			cmd_id = "NACK           ";
+			break;
+		case DLP_CMD_OPEN_CONN_OCTET:
+			cmd_id = "OPEN_CONN_OCTET";
+			break;
+		case DLP_CMD_CREDITS:
+			cmd_id = "CREDITS        ";
+			break;
+		default:
+			cmd_id = "UNKNOWN";
 		}
 
 		t = xfer->timestamp;
 		nanosec_rem = do_div(t, 1000000000);
-		sprintf(buf, "\t%06d => CH_%d: %s [%s] params[0x%02X%02X%02X] @[%5lu.%06lu] status: %d\n",
+		sprintf(buf, "\t%06d => CH_%d: %s [%s] params[0x%02X%02X%02X]"
+				" @[%5lu.%06lu] status: %d\n",
 				++i,
 				xfer->cmd_params.channel,
 				(xfer->ttype == HSI_MSG_WRITE) ? "TX" : "RX",
 				cmd_id,
-				xfer->cmd_params.data1, xfer->cmd_params.data2, xfer->cmd_params.data3,
+				xfer->cmd_params.data1,
+				xfer->cmd_params.data2, xfer->cmd_params.data3,
 				(unsigned long)t,
 				nanosec_rem / 1000,
 				xfer->status);
@@ -368,15 +391,14 @@ static int dlp_ctrl_xfers_logs_dump(struct dlp_channel *ch_ctx,
 	}
 
 	if (ctrl_ctx->xfers_list_incomplete) {
-		seq_printf(m, "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1!!!!!!!!!!!!!!!");
-		seq_printf(m, "!!  INCOMPLETE LIST (due to memory allocation issue) !!");
-		seq_printf(m, "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+		seq_printf(m, "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1!!!!!!!!!!!!!!");
+		seq_printf(m, "! INCOMPLETE LIST (memory allocation issue) !");
+		seq_printf(m, "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
 	}
 
 	spin_unlock_irqrestore(&ctrl_ctx->debug_lock, flags);
 
 	EPILOG();
-	return 0;
 }
 
 #else /* #ifdef DLP_CTRL_IO_DEBUG */
@@ -403,7 +425,7 @@ static irqreturn_t dlp_ctrl_coredump_it(int irq, void *data)
 
 	/* Call registered channels */
 	for (i = 0; i < DLP_CHANNEL_COUNT; i++) {
-		ch_ctx = dlp_drv.channels[i];
+		ch_ctx = DLP_CHANNEL_CTX(i);
 		if (ch_ctx && ch_ctx->modem_coredump_cb)
 			ch_ctx->modem_coredump_cb(ch_ctx);
 	}
@@ -441,7 +463,7 @@ static irqreturn_t dlp_ctrl_reset_it(int irq, void *data)
 
 	/* Call registered channels */
 	for (i = 0; i < DLP_CHANNEL_COUNT; i++) {
-		ch_ctx = dlp_drv.channels[i];
+		ch_ctx = DLP_CHANNEL_CTX(i);
 		if (ch_ctx) {
 			/* Call any register callback */
 			if (ch_ctx->modem_reset_cb)
@@ -493,10 +515,9 @@ static void dlp_ctrl_handle_tx_timeout(struct work_struct *work)
 
 	/* Call any register TX timeout CB */
 	for (i = 0; i < DLP_CHANNEL_COUNT; i++) {
-		ch_ctx = dlp_drv.channels[i];
-		if ((ch_ctx) && (ch_ctx->modem_tx_timeout_cb)) {
+		ch_ctx = DLP_CHANNEL_CTX(i);
+		if ((ch_ctx) && (ch_ctx->modem_tx_timeout_cb))
 			ch_ctx->modem_tx_timeout_cb(ch_ctx);
-		}
 	}
 
 	EPILOG();
@@ -688,11 +709,28 @@ static inline int dlp_ctrl_send_hsi_msg(struct dlp_ctrl_context *ctrl_ctx,
 	ret = hsi_async(msg->cl, msg);
 
 	/* Need to keep a trace of the msg */
-	if (add_to_log) {
+	if (add_to_log)
 		DLP_CTRL_XFERS_LIST_ADD(ctrl_ctx, msg);
-	}
 
 	return ret;
+}
+
+
+/*
+ * This function will check if the CTRL channel ctx is created
+ *	(In some special cases (PnP tests for exp), the eDLP protocol will
+ *  not be registered and the CTRL channel is not initialized at all,
+ *  but the module_param are created
+ */
+static inline int dlp_ctrl_have_control_context(void)
+{
+	int have_ctrl = 0;
+	struct dlp_channel *ctrl_ch = DLP_CHANNEL_CTX(DLP_CHANNEL_CTRL);
+
+	if ((ctrl_ch) && (ctrl_ch->ch_data))
+		have_ctrl = 1;
+
+	return have_ctrl;
 }
 
 /****************************************************************************
@@ -754,7 +792,7 @@ static void dlp_ctrl_msg_destruct(struct hsi_msg *msg)
 	       DLP_CTRL_CMD_TO_STR(dlp_cmd->params.id), msg);
 
 	/* Delete the received msg */
-	dlp_pdu_free(msg, DLP_CTRL_PDU_SIZE);
+	dlp_pdu_free(msg, msg->channel);
 
 	/* Delete the command */
 	kfree(dlp_cmd);
@@ -775,7 +813,7 @@ static void dlp_ctrl_msg_destruct(struct hsi_msg *msg)
 static void dlp_ctrl_complete_tx(struct hsi_msg *msg)
 {
 	struct dlp_command *dlp_cmd = msg->context;
-	struct dlp_ctrl_context *ctrl_ctx = DLP_CTRL_CTX;
+	struct dlp_channel *ch_ctx = dlp_cmd->channel;
 
 	PROLOG("hsi_ch:%d, cmd:%s, msg:0x%p",
 	       dlp_cmd->params.channel,
@@ -784,10 +822,10 @@ static void dlp_ctrl_complete_tx(struct hsi_msg *msg)
 	dlp_cmd->status = (msg->status == HSI_STATUS_COMPLETED) ? 0 : -EIO;
 
 	/* Command done, notify the sender */
-	complete(&ctrl_ctx->tx_done);
+	complete(&ch_ctx->tx.cmd_xfer_done);
 
 	/* Delete the received msg */
-	dlp_pdu_free(msg, DLP_CTRL_PDU_SIZE);
+	dlp_pdu_free(msg, msg->channel);
 
 	EPILOG();
 }
@@ -809,7 +847,7 @@ static void dlp_ctrl_complete_tx_async(struct hsi_msg *msg)
 	       dlp_cmd->params.channel, msg);
 
 	/* Delete the received msg */
-	dlp_pdu_free(msg, DLP_CTRL_PDU_SIZE);
+	dlp_pdu_free(msg, msg->channel);
 
 	/* Delete the command */
 	kfree(dlp_cmd);
@@ -849,11 +887,12 @@ static void dlp_ctrl_complete_rx(struct hsi_msg *msg)
 		goto out;
 	}
 
-	ch_ctx = dlp_drv.channels[hsi_channel];
+	ch_ctx = DLP_CHANNEL_CTX(hsi_channel);
 
 	switch (params.id) {
 	case DLP_CMD_NOP:
-		PTRACE_NO_FUNC("NOP received => hsi_ch:%d, params: 0x%02X%02X%02X\n",
+		PTRACE_NO_FUNC("NOP received => hsi_ch:%d, "
+				"params: 0x%02X%02X%02X\n",
 				params.channel,
 				params.data1, params.data2, params.data3);
 		break;
@@ -884,11 +923,11 @@ static void dlp_ctrl_complete_rx(struct hsi_msg *msg)
 			response = DLP_CMD_ACK;
 
 			/* Check the requested PDU size */
-			if (ch_ctx->pdu_size != ret) {
+			if (ch_ctx->tx.pdu_size != ret) {
 				CRITICAL("Unexpected PDU size: %d => "
 						"Expected: %d (ch: %d)",
 						ret,
-						ch_ctx->pdu_size,
+						ch_ctx->tx.pdu_size,
 						ch_ctx->hsi_channel);
 
 				response = DLP_CMD_NACK;
@@ -904,7 +943,7 @@ static void dlp_ctrl_complete_rx(struct hsi_msg *msg)
 		       &params, sizeof(struct dlp_command_params));
 
 		/* Command done, notify the sender */
-		complete(&ctrl_ctx->rx_done);
+		complete(&ch_ctx->rx.cmd_xfer_done);
 		break;
 	}
 
@@ -926,14 +965,14 @@ static void dlp_ctrl_complete_rx(struct hsi_msg *msg)
 		/* Allocate a new TX msg */
 		tx_msg = dlp_pdu_alloc(DLP_CHANNEL_CTRL,
 				       HSI_MSG_WRITE,
-				       DLP_CTRL_PDU_SIZE,
+				       DLP_CTRL_TX_PDU_SIZE,
 				       1,
 				       dlp_cmd,
 				       dlp_ctrl_complete_tx_async,
 				       dlp_ctrl_msg_destruct);
 
 		if (!tx_msg) {
-			CRITICAL("dlp_pdu_alloc(TX) failed");
+			CRITICAL("TX alloc failed");
 
 			/* Delete the command */
 			kfree(dlp_cmd);
@@ -948,11 +987,12 @@ static void dlp_ctrl_complete_rx(struct hsi_msg *msg)
 		/* Send the TX HSI msg */
 		ret = dlp_ctrl_send_hsi_msg(ctrl_ctx, tx_msg, 1);
 		if (ret) {
-			CRITICAL("dlp_ctrl_send_hsi_msg(TX) failed ! (%s, ret:%d)",
-				 DLP_CTRL_CMD_TO_STR(dlp_cmd->params.id), ret);
+			CRITICAL("TX xfer failed ! (%s, ret:%d)",
+				DLP_CTRL_CMD_TO_STR(dlp_cmd->params.id),
+				ret);
 
 			/* Free the TX msg */
-			dlp_pdu_free(tx_msg, DLP_CTRL_PDU_SIZE);
+			dlp_pdu_free(tx_msg, msg->channel);
 
 			/* Delete the command */
 			kfree(dlp_cmd);
@@ -963,14 +1003,14 @@ push_rx:
 	/* Push the RX msg again for futur response */
 	ret = dlp_ctrl_send_hsi_msg(ctrl_ctx, msg, 0);
 	if (ret) {
-		CRITICAL("dlp_ctrl_send_hsi_msg() failed, ret:%d", ret);
+		CRITICAL("RX push failed, ret:%d", ret);
 
 		/* We have A BIG PROBLEM if the RX msg cant be  */
 		/* pushed again in the controller ==>           */
 		/* No response could be received (FIFO empty)   */
 
 		/* Delete the received msg */
-		dlp_pdu_free(msg, DLP_CTRL_PDU_SIZE);
+		dlp_pdu_free(msg, msg->channel);
 	}
 
 out:
@@ -983,6 +1023,8 @@ out:
  * @ch_ctx: a reference to the channel context to use
  * @id: the DLP command id
  * @response_id: the expected response id
+ * @interm_state: the intermidiate state (to be set when TX is OK)
+ * @final_state: the final state (to be set when RX (response) is OK)
  * @param1: the DLP command params
  * @param2: the DLP command params
  * @param3: the DLP command params
@@ -991,18 +1033,20 @@ out:
  * or the timeout expires
  */
 static int dlp_ctrl_cmd_send(struct dlp_channel *ch_ctx,
-			     unsigned char id,
-			     unsigned char response_id,
-			     unsigned char param1,
-			     unsigned char param2, unsigned char param3)
+				unsigned char id,
+				unsigned char response_id,
+				unsigned char interm_state,
+				unsigned char final_state,
+				unsigned char param1,
+				unsigned char param2, unsigned char param3)
 {
 	int ret = 0;
 	struct dlp_ctrl_context *ctrl_ctx = DLP_CTRL_CTX;
 	struct dlp_command *dlp_cmd;
 	struct hsi_msg *tx_msg = NULL;
 
-	PROLOG("cmd:%s, hsi_ch:%d",
-	       DLP_CTRL_CMD_TO_STR(id), ch_ctx->hsi_channel);
+	PROLOG("hsi_ch:%d, cmd:%s",
+	       ch_ctx->hsi_channel, DLP_CTRL_CMD_TO_STR(id));
 
 	/* Backup RX callback */
 	dlp_save_rx_callbacks(&ctrl_ctx->start_rx_cb, &ctrl_ctx->stop_rx_cb);
@@ -1018,7 +1062,7 @@ static int dlp_ctrl_cmd_send(struct dlp_channel *ch_ctx,
 	/* Allocate a new TX msg */
 	tx_msg = dlp_pdu_alloc(DLP_CHANNEL_CTRL,
 			       HSI_MSG_WRITE,
-			       DLP_CTRL_PDU_SIZE,
+			       DLP_CTRL_TX_PDU_SIZE,
 			       1,
 			       dlp_cmd,
 			       dlp_ctrl_complete_tx, dlp_ctrl_msg_destruct);
@@ -1043,7 +1087,7 @@ static int dlp_ctrl_cmd_send(struct dlp_channel *ch_ctx,
 	}
 
 	/* Wait for TX msg to be sent */
-	ret = wait_for_completion_timeout(&ctrl_ctx->tx_done,
+	ret = wait_for_completion_timeout(&ch_ctx->tx.cmd_xfer_done,
 					  msecs_to_jiffies(DLP_CMD_TX_TIMOUT));
 	if (ret == 0) {
 		CRITICAL("TX Timeout => %s, hsi_ch: %d",
@@ -1063,8 +1107,19 @@ static int dlp_ctrl_cmd_send(struct dlp_channel *ch_ctx,
 		goto out;
 	}
 
-	/* TX OK, Wait for the response */
-	ret = wait_for_completion_timeout(&ctrl_ctx->rx_done,
+	/* TX OK */
+   /* 1. Set the intermidiate channel state */
+	if (interm_state != -1)
+		dlp_ctrl_set_channel_state(ch_ctx, interm_state);
+
+	/* Wait for response ? */
+	if (response_id == DLP_CMD_NONE) {
+		ret = 0;
+		goto no_resp;
+	}
+
+	/* 2. Wait for the response */
+	ret = wait_for_completion_timeout(&ch_ctx->rx.cmd_xfer_done,
 					  msecs_to_jiffies(DLP_CMD_RX_TIMOUT));
 	if (ret == 0) {
 		CRITICAL("RX Timeout => %s, hsi_ch: %d",
@@ -1082,8 +1137,8 @@ static int dlp_ctrl_cmd_send(struct dlp_channel *ch_ctx,
 	    (ctrl_ctx->response.params.data2 != param2) ||
 	    (ctrl_ctx->response.params.data3 != param3)) {
 
-		CRITICAL("[%s] Unexpected response: 0x%X%X [%02X%02X%02X]"
-			 " => expected:  0x%X%X [%02X%02X%02X]",
+		CRITICAL("%s unexpected response [0x%X%X%02X%02X%02X]"
+			 " => expected [0x%X%X%02X%02X%02X]",
 			 DLP_CTRL_CMD_TO_STR(id),
 			 ctrl_ctx->response.params.id,
 			 ctrl_ctx->response.params.channel,
@@ -1096,6 +1151,11 @@ static int dlp_ctrl_cmd_send(struct dlp_channel *ch_ctx,
 		ret = -EIO;
 	}
 
+no_resp:
+	/* Response received & OK => set the new channel state */
+	if (final_state != -1)
+		dlp_ctrl_set_channel_state(ch_ctx, final_state);
+
 	/* Restore RX callback */
 	dlp_restore_rx_callbacks(&ctrl_ctx->start_rx_cb, &ctrl_ctx->stop_rx_cb);
 
@@ -1105,7 +1165,7 @@ static int dlp_ctrl_cmd_send(struct dlp_channel *ch_ctx,
 
 free_tx:
 	/* Free the TX msg */
-	dlp_pdu_free(tx_msg, DLP_CTRL_PDU_SIZE);
+	dlp_pdu_free(tx_msg, tx_msg->channel);
 
 free_cmd:
 	/* Free the DLP command */
@@ -1142,7 +1202,7 @@ static int dlp_ctrl_push_rx_pdu(struct dlp_channel *ch_ctx)
 	/* Allocate a new RX msg */
 	rx_msg = dlp_pdu_alloc(DLP_CHANNEL_CTRL,
 			       HSI_MSG_READ,
-			       DLP_CTRL_PDU_SIZE,
+			       DLP_CTRL_RX_PDU_SIZE,
 			       1,
 			       dlp_cmd,
 			       dlp_ctrl_complete_rx, dlp_ctrl_msg_destruct);
@@ -1166,7 +1226,7 @@ static int dlp_ctrl_push_rx_pdu(struct dlp_channel *ch_ctx)
 
 free_msg:
 	/* Free the msg */
-	dlp_pdu_free(rx_msg, DLP_CTRL_PDU_SIZE);
+	dlp_pdu_free(rx_msg, rx_msg->channel);
 
 free_cmd:
 	/* Delete the command */
@@ -1201,10 +1261,7 @@ static inline void dlp_ctrl_set_modem_readiness(unsigned int value)
 */
 static void dlp_ctrl_ipc_readiness(struct work_struct *work)
 {
-	struct dlp_channel *ch_ctx = DLP_CHANNEL_CTX(DLP_CHANNEL_CTRL);
-	struct dlp_ctrl_context	*ctrl_ctx = ch_ctx->ch_data;
-	unsigned char param1, param2, param3;
-	int ret = 0;
+	struct dlp_ctrl_context	*ctrl_ctx = DLP_CTRL_CTX;
 
 	PROLOG();
 
@@ -1214,6 +1271,12 @@ static void dlp_ctrl_ipc_readiness(struct work_struct *work)
 	/* Wait for RESET_OUT */
 	wait_for_completion(&ctrl_ctx->reset_done);
 
+#if 0
+	/* Even the ECHO cmd response is received the modem is not ready ! */
+	struct dlp_channel *ch_ctx = DLP_CHANNEL_CTX(DLP_CHANNEL_CTRL);
+	unsigned char param1, param2, param3;
+	int ret = 0;
+
 	/* Send ECHO continuously until the modem become ready */
 	param1 = PARAM1(DLP_ECHO_CMD_CHECKSUM);
 	param2 = PARAM2(DLP_ECHO_CMD_CHECKSUM);
@@ -1222,18 +1285,19 @@ static void dlp_ctrl_ipc_readiness(struct work_struct *work)
 	do {
 		ret = 0;
 		/* Send the ECHO command */
-#if 0	/* Not sent because even the response is received the
-		   modem is not ready !
-		*/
 		ret = dlp_ctrl_cmd_send(ch_ctx,
-				DLP_CMD_ECHO,
-				DLP_CMD_ECHO, param1, param2, param3);
-#endif
+				DLP_CMD_ECHO, DLP_CMD_ECHO,
+				-1, -1,
+				param1, param2, param3);
 		if (ret == 0) {
 			/* Set the modem state */
 			dlp_ctrl_set_modem_readiness(1);
 		}
 	} while (ret);
+#else
+	/* RESET_OUT received => The modem is ready */
+	dlp_ctrl_set_modem_readiness(1);
+#endif
 
 	EPILOG();
 }
@@ -1279,7 +1343,7 @@ void dlp_ctrl_modem_reset(struct dlp_channel *ch_ctx)
 /*
 * @brief Toggle gpios required to bring up modem power and start modem
 *
-* @param ch_ctx: IPC CTRL channel
+* @param ch_ctx : The channel context to consider
 */
 void dlp_ctrl_modem_power(struct dlp_channel *ch_ctx)
 {
@@ -1421,7 +1485,6 @@ struct dlp_channel *dlp_ctrl_ctx_create(unsigned int index, struct device *dev)
 	/* Save params */
 	ch_ctx->ch_data = ctrl_ctx;
 	ch_ctx->hsi_channel = index;
-	ch_ctx->pdu_size = DLP_CTRL_PDU_SIZE;
 	ch_ctx->rx.config = client->rx_cfg;
 	ch_ctx->tx.config = client->tx_cfg;
 
@@ -1431,21 +1494,17 @@ struct dlp_channel *dlp_ctrl_ctx_create(unsigned int index, struct device *dev)
 	INIT_WORK(&ctrl_ctx->hangup_work, dlp_ctrl_handle_tx_timeout);
 
 #ifdef DLP_CTRL_IO_DEBUG
-	ch_ctx->dump_status = dlp_ctrl_xfers_logs_dump;
+	ch_ctx->dump_state = dlp_ctrl_xfers_logs_dump;
 
 	INIT_LIST_HEAD(&ctrl_ctx->xfers_list);
 	spin_lock_init(&ctrl_ctx->debug_lock);
 #endif
 
-	/* Init the RX/TX contexts */
-	init_completion(&ctrl_ctx->rx_done);
-	init_completion(&ctrl_ctx->tx_done);
+	dlp_xfer_ctx_init(ch_ctx,
+			  DLP_CTRL_TX_PDU_SIZE, 0, 0, 0, NULL, HSI_MSG_WRITE);
 
-	dlp_xfer_ctx_init(ch_ctx, &ch_ctx->tx,
-			  0, 0, 0, NULL, HSI_MSG_WRITE);
-
-	dlp_xfer_ctx_init(ch_ctx, &ch_ctx->rx,
-			  0, 0, 0, NULL, HSI_MSG_READ);
+	dlp_xfer_ctx_init(ch_ctx,
+			  DLP_CTRL_RX_PDU_SIZE, 0, 0, 0, NULL, HSI_MSG_READ);
 
 	/* Configure GPIOs */
 	ctrl_ctx->gpio_mdm_rst_out = pd->gpio_mdm_rst_out;
@@ -1458,7 +1517,7 @@ struct dlp_channel *dlp_ctrl_ctx_create(unsigned int index, struct device *dev)
 		goto free_ctx;
 
 	/* Set ch_ctx, not yet done in the probe */
-	dlp_drv.channels[DLP_CHANNEL_CTRL] = ch_ctx;
+	DLP_CHANNEL_CTX(DLP_CHANNEL_CTRL) = ch_ctx;
 
 	/* Push RX pdus for CREDTIS/OPEN_CONN commands */
 	for (i = 0; i < DLP_CHANNEL_COUNT; i++)
@@ -1488,9 +1547,9 @@ out:
 /*
 * @brief Delete any resources allocated by dlp_ctrl_ctx_create
 *
-* @param ch_ctx : The IPC CTRL channel
+* @param ch_ctx : The channel context to consider
 *
-* @return
+* @return 0 when OK, error value otherwise
 */
 int dlp_ctrl_ctx_delete(struct dlp_channel *ch_ctx)
 {
@@ -1525,59 +1584,136 @@ int dlp_ctrl_ctx_delete(struct dlp_channel *ch_ctx)
 }
 
 /*
-* @brief Open the specified IPC channel for communication
+* @brief Open the specified channel for communication
 *	- Send the OPEN_CONN command to the modem
 *	- Return the operation status
 *
-* @param ch_ctx : The IPC Channel to consider
+* @param ch_ctx : The channel context to consider
 *
 * @return 0 when OK, error value otherwise
 */
 int dlp_ctrl_open_channel(struct dlp_channel *ch_ctx)
 {
 	int ret = 0;
-	unsigned char param1 = PARAM1(ch_ctx->pdu_size);
-	unsigned char param2 = PARAM2(ch_ctx->pdu_size);
+	unsigned char param1 = PARAM1(ch_ctx->tx.pdu_size);
+	unsigned char param2 = PARAM2(ch_ctx->tx.pdu_size);
 
-	PROLOG();
+	PROLOG("hsi_ch:%d", ch_ctx->hsi_channel);
 
 	/* Send the OPEN_CONN command */
 	ret = dlp_ctrl_cmd_send(ch_ctx,
-				DLP_CMD_OPEN_CONN,
-				DLP_CMD_ACK, param1, param2, 0);
+				DLP_CMD_OPEN_CONN, DLP_CMD_ACK,
+				DLP_CH_STATE_OPENING, DLP_CH_STATE_OPENED,
+				param1, param2, 0);
 
 	EPILOG();
 	return ret;
 }
 
 /*
-* @brief Close the specified IPC channel
-*	- Send the CANCEL_CONN command to the modem
+* @brief Close the specified channel
+*	- Send the CLOSE_CONN command to the modem
 *	- Return the operation status
 *
-* @param ch_ctx : The IPC Channel to consider
+* @param ch_ctx : The channel context to consider
 *
 * @return 0 when OK, error value otherwise
 */
 int dlp_ctrl_close_channel(struct dlp_channel *ch_ctx)
 {
-	int ret = 0;
+	int state, ret = 0;
 	unsigned long flags;
 	unsigned char param3 = PARAM1(DLP_DIR_TRANSMIT_AND_RECEIVE);
 
-	PROLOG();
+	PROLOG("hsi_ch:%d", ch_ctx->hsi_channel);
 
 	/* Reset the credits value */
 	spin_lock_irqsave(&ch_ctx->lock, flags);
 	ch_ctx->credits = 0;
 	spin_unlock_irqrestore(&ch_ctx->lock, flags);
 
-	/* Send the command */
-	ret = dlp_ctrl_cmd_send(ch_ctx,
-			DLP_CMD_CANCEL_CONN, DLP_CMD_ACK, 0, 0, param3);
+	/* Check if the channel was correctly opened */
+	state = dlp_ctrl_get_channel_state(ch_ctx);
+	if (state == DLP_CH_STATE_OPENED) {
+		/* Send the command */
+		ret = dlp_ctrl_cmd_send(ch_ctx,
+				DLP_CMD_CLOSE_CONN, DLP_CMD_ACK,
+				DLP_CH_STATE_CLOSING, DLP_CH_STATE_CLOSED,
+				0, 0, param3);
+	} else {
+		WARNING("Invalid channel%d state (%d)",
+				ch_ctx->hsi_channel, state);
+	}
 
 	EPILOG();
 	return ret;
+}
+
+/*
+* @brief Send the NOP command
+*
+* @param ch_ctx : The channel context to consider
+*
+* @return 0 when OK, error value otherwise
+*/
+int dlp_ctrl_send_nop(struct dlp_channel *ch_ctx)
+{
+#if 0
+	int ret;
+	unsigned char param1, param2, param3;
+
+	PROLOG("hsi_ch:%d", ch_ctx->hsi_channel);
+
+	param1 = PARAM1(DLP_NOP_CMD_CHECKSUM);
+	param2 = PARAM2(DLP_NOP_CMD_CHECKSUM);
+	param3 = PARAM3(DLP_NOP_CMD_CHECKSUM);
+
+	/* Send the ECHO command */
+	ret = dlp_ctrl_cmd_send(ch_ctx,
+			DLP_CMD_ECHO, DLP_CMD_ECHO,
+			-1, -1,
+			param1, param2, param3);
+
+	EPILOG();
+	return ret;
+#endif
+	return 0;
+}
+
+/*
+* @brief Get the current channel state
+*
+* @param ch_ctx : The channel context to consider
+*
+* @return the current channel state
+*/
+inline unsigned char dlp_ctrl_get_channel_state(struct dlp_channel *ch_ctx)
+{
+	unsigned long flags;
+	unsigned char state;
+
+	spin_lock_irqsave(&ch_ctx->lock, flags);
+	state = ch_ctx->state;
+	spin_unlock_irqrestore(&ch_ctx->lock, flags);
+
+	return state;
+}
+
+/*
+* @brief Set the given channel state
+*
+* @param ch_ctx : The channel context to consider
+* @param state : The new channel state to set
+*
+*/
+inline void dlp_ctrl_set_channel_state(struct dlp_channel *ch_ctx,
+				unsigned char state)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&ch_ctx->lock, flags);
+	ch_ctx->state = state;
+	spin_unlock_irqrestore(&ch_ctx->lock, flags);
 }
 
 /****************************************************************************
@@ -1651,12 +1787,10 @@ static int do_modem_reset(const char *val, struct kernel_param *kp)
 
 	PROLOG();
 
-#ifdef CONFIG_ATOM_SOC_POWER
-	if (enable_standby) {
-		WARNING("Nothing to do standby_mode enabled");
+	if (!dlp_ctrl_have_control_context()) {
+		WARNING("Nothing to do (dlp protocol not registered)");
 		return 0;
 	}
-#endif
 
 	if (strict_strtol(val, 16, &do_reset) < 0) {
 		EPILOG();
@@ -1664,7 +1798,7 @@ static int do_modem_reset(const char *val, struct kernel_param *kp)
 	}
 
 	if (do_reset)
-		dlp_ctrl_modem_reset(dlp_drv.channels[DLP_CHANNEL_CTRL]);
+		dlp_ctrl_modem_reset(DLP_CHANNEL_CTX(DLP_CHANNEL_CTRL));
 
 	EPILOG();
 	return 0;
@@ -1680,8 +1814,18 @@ static int do_modem_reset(const char *val, struct kernel_param *kp)
 */
 static int get_modem_reset(char *val, struct kernel_param *kp)
 {
-	struct dlp_ctrl_context *ctrl_ctx = DLP_CTRL_CTX;
-	return sprintf(val, "%d", ctrl_ctx->reset.ongoing);
+	int ret = 0;
+
+	if (!dlp_ctrl_have_control_context()) {
+		WARNING("Nothing to do (dlp protocol not registered)");
+	} else {
+		struct dlp_ctrl_context *ctrl_ctx;
+
+		ctrl_ctx = DLP_CTRL_CTX;
+		ret = sprintf(val, "%d", ctrl_ctx->reset.ongoing);
+	}
+
+	return ret;
 }
 
 /*
@@ -1699,12 +1843,10 @@ static int do_modem_power(const char *val, struct kernel_param *kp)
 
 	PROLOG();
 
-#ifdef CONFIG_ATOM_SOC_POWER
-	if (enable_standby) {
-		WARNING("Nothing to do standby_mode enabled");
+	if (!dlp_ctrl_have_control_context()) {
+		WARNING("Nothing to do (dlp protocol not registered)");
 		return 0;
 	}
-#endif
 
 	if (strict_strtol(val, 16, &do_power) < 0) {
 		EPILOG();
@@ -1712,7 +1854,7 @@ static int do_modem_power(const char *val, struct kernel_param *kp)
 	}
 
 	if (do_power)
-		dlp_ctrl_modem_power(dlp_drv.channels[DLP_CHANNEL_CTRL]);
+		dlp_ctrl_modem_power(DLP_CHANNEL_CTX(DLP_CHANNEL_CTRL));
 
 	EPILOG();
 	return 0;
@@ -1722,11 +1864,13 @@ static int do_modem_power(const char *val, struct kernel_param *kp)
  * Modem cold reset sysfs entries
  *
  * To do a modem cold reset we have to:
+ * - Set the RESET_BB_N to low (better SIM protection)
  * - Set the EXT1P35VREN field to low  during 20ms (V1P35CNT_W PMIC register)
  * - set the EXT1P35VREN field to high during 10ms (V1P35CNT_W PMIC register)
  */
 static int do_modem_cold_reset(const char *val, struct kernel_param *kp)
 {
+	struct dlp_ctrl_context *ctrl_ctx = DLP_CTRL_CTX;
 	long do_reset;
 	int ret = 0;
 	u16 addr = V1P35CNT_W;
@@ -1734,12 +1878,10 @@ static int do_modem_cold_reset(const char *val, struct kernel_param *kp)
 
 	PROLOG();
 
-#ifdef CONFIG_ATOM_SOC_POWER
-	if (enable_standby) {
-		WARNING("Nothing to do standby_mode enabled");
+	if (!dlp_ctrl_have_control_context()) {
+		WARNING("Nothing to do (dlp protocol not registered)");
 		return 0;
 	}
-#endif
 
 	if (strict_strtol(val, 10, &do_reset) < 0) {
 		ret = -EINVAL;
@@ -1750,16 +1892,21 @@ static int do_modem_cold_reset(const char *val, struct kernel_param *kp)
 
 	/* Need to do something ? */
 	if (!do_reset) {
-        ret = -EINVAL;
+		ret = -EINVAL;
 		goto out;
-    }
+	}
 
-	/* Read the current registre value */
+	/* AP requested reset => just ignore */
+	ctrl_ctx->reset.ongoing = 1;
+
+	/* Set the reset_bb to low */
+	gpio_set_value(ctrl_ctx->gpio_mdm_rst_bbn, 0);
+
+	/* Save the current registre value */
 	ret = intel_scu_ipc_readv(&addr, &def_value, 2);
 	if (ret) {
 		CRITICAL("intel_scu_ipc_readv() failed (ret: %d)", ret);
-		ret = -EINVAL;
-		goto exit_modem_cold_reset;
+		goto out;
 	}
 
 	/* Write the new registre value (V1P35_OFF) */
@@ -1767,8 +1914,7 @@ static int do_modem_cold_reset(const char *val, struct kernel_param *kp)
 	ret =  intel_scu_ipc_writev(&addr, &data, 1);
 	if (ret) {
 		CRITICAL("intel_scu_ipc_writev(OFF)  failed (ret: %d)", ret);
-		ret = -EINVAL;
-		goto exit_modem_cold_reset;
+		goto out;
 	}
 	usleep_range(COLD_BOOT_DELAY_OFF, COLD_BOOT_DELAY_OFF);
 
@@ -1777,31 +1923,18 @@ static int do_modem_cold_reset(const char *val, struct kernel_param *kp)
 	ret =  intel_scu_ipc_writev(&addr, &data, 1);
 	if (ret) {
 		CRITICAL("intel_scu_ipc_writev(ON) failed (ret: %d)", ret);
-		ret = -EINVAL;
-		goto exit_modem_cold_reset;
+		goto out;
 	}
 	usleep_range(COLD_BOOT_DELAY_ON, COLD_BOOT_DELAY_ON);
 
-	/* FIXME : Do we really need this read operation ??? */
-	ret = intel_scu_ipc_readv(&addr, &data, 1);
-	if (ret) {
-		CRITICAL("intel_scu_ipc_readv() failed (ret: %d)", ret);
-		ret = -EINVAL;
-		goto exit_modem_cold_reset;
-	}
-
-	/* Write back the old registre value */
-	data = def_value;
-	ret =  intel_scu_ipc_writev(&addr, &data, 1);
+	/* Write back the saved registre value */
+	ret =  intel_scu_ipc_writev(&addr, &def_value, 1);
 	if (ret) {
 		CRITICAL("intel_scu_ipc_writev() failed (ret: %d)", ret);
-		ret = -EINVAL;
+	} else {
+		/* Perform a warm reset to finish the reset process */
+		do_modem_reset(val, kp);
 	}
-
- exit_modem_cold_reset:
-	/* Do a reset modem to perform a complete modem reset */
-	if (ret != -EINVAL)
-		ret = do_modem_reset(val, kp);
 
  out:
 	EPILOG();
@@ -1822,6 +1955,11 @@ static int clear_hangup_reasons(const char *val, struct kernel_param *kp)
 	long reasons_to_clear;
 
 	PROLOG();
+
+	if (!dlp_ctrl_have_control_context()) {
+		WARNING("Nothing to do (dlp protocol not registered)");
+		return 0;
+	}
 
 	if (strict_strtol(val, 16, &reasons_to_clear) < 0)
 		return -EINVAL;
@@ -1854,6 +1992,12 @@ static int get_hangup_reasons(char *val, struct kernel_param *kp)
 	unsigned long hangup_reasons;
 
 	PROLOG();
+
+	if (!dlp_ctrl_have_control_context()) {
+		WARNING("Nothing to do (dlp protocol not registered)");
+		return 0;
+	}
+
 	hangup_reasons = dlp_ctrl_get_hangup_reasons();
 
 	EPILOG();

@@ -38,13 +38,13 @@
 
 #include "dlp_main.h"
 
-#define DEBUG_TAG 0x1
+#define DEBUG_TAG 0x0
 #define DEBUG_VAR dlp_drv.debug
 
 /* Forward declarations */
 static void dlp_pdu_destructor(struct hsi_msg *pdu);
 
-static inline void dlp_ctx_update_state(struct dlp_xfer_ctx *xfer_ctx);
+static inline void dlp_ctx_update_state_rx(struct dlp_xfer_ctx *xfer_ctx);
 
 static inline void dlp_fifo_recycled_push(struct dlp_xfer_ctx *xfer_ctx,
 					  struct hsi_msg *pdu);
@@ -55,7 +55,47 @@ static inline void dlp_fifo_recycled_push(struct dlp_xfer_ctx *xfer_ctx,
 struct dlp_driver dlp_drv;
 
 /* Module debug parameter */
-module_param_named(debug, dlp_drv.debug, int, S_IRUGO | S_IWUSR);
+module_param_named(debug, dlp_drv.debug, long, S_IRUGO | S_IWUSR);
+
+/*
+* @brief Dump information about the channel state
+*
+* @param ch_ctx : channel context to consider
+* @param m : seq file to consider
+*
+*/
+void dlp_dump_channel_state(struct dlp_channel *ch_ctx, struct seq_file *m)
+{
+	unsigned long flags;
+
+	seq_printf(m, "\nChannel: %d\n", ch_ctx->hsi_channel);
+	seq_printf(m, "-------------\n");
+	seq_printf(m, " state     : %s (%d)\n",
+			DLP_CH_STATE_TO_STR(ch_ctx->state), ch_ctx->state);
+	seq_printf(m, " credits   : %d\n", ch_ctx->credits);
+
+	read_lock_irqsave(&ch_ctx->rx.lock, flags);
+	seq_printf(m, " RX ctx:\n");
+	seq_printf(m, "   pdu_size: %d\n", ch_ctx->rx.pdu_size);
+	seq_printf(m, "   wait_max: %d\n", ch_ctx->rx.wait_max);
+	seq_printf(m, "   ctrl_max: %d\n", ch_ctx->rx.ctrl_max);
+	seq_printf(m, "   all_len : %d\n", ch_ctx->rx.all_len);
+	seq_printf(m, "   ctrl_len: %d\n", ch_ctx->rx.ctrl_len);
+	seq_printf(m, "   wait_len: %d\n", ch_ctx->rx.wait_len);
+	seq_printf(m, "   seq_num : %d\n", ch_ctx->rx.seq_num);
+	read_unlock_irqrestore(&ch_ctx->rx.lock, flags);
+
+	read_lock_irqsave(&ch_ctx->tx.lock, flags);
+	seq_printf(m, " TX ctx:\n");
+	seq_printf(m, "   pdu_size: %d\n", ch_ctx->tx.pdu_size);
+	seq_printf(m, "   wait_max: %d\n", ch_ctx->tx.wait_max);
+	seq_printf(m, "   ctrl_max: %d\n", ch_ctx->tx.ctrl_max);
+	seq_printf(m, "   all_len : %d\n", ch_ctx->tx.all_len);
+	seq_printf(m, "   ctrl_len: %d\n", ch_ctx->tx.ctrl_len);
+	seq_printf(m, "   wait_len: %d\n", ch_ctx->tx.wait_len);
+	seq_printf(m, "   seq_num : %d\n", ch_ctx->tx.seq_num);
+	read_unlock_irqrestore(&ch_ctx->tx.lock, flags);
+}
 
 /*
  *
@@ -64,46 +104,12 @@ module_param_named(debug, dlp_drv.debug, int, S_IRUGO | S_IWUSR);
 static int dlp_proc_show(struct seq_file *m, void *v)
 {
 	int i;
-	unsigned long flags;
 	struct dlp_channel *ch_ctx;
 
 	for (i = 0; i < DLP_CHANNEL_COUNT; i++) {
 		ch_ctx = dlp_drv.channels[i];
-
-		if (ch_ctx->dump_status) {
-			ch_ctx->dump_status(ch_ctx, m);
-		}
-		else {
-			/* No relevant info for CTRL/FLASHING
-			 * channel that need to be dumped */
-			if ((ch_ctx->hsi_channel != DLP_CHANNEL_CTRL) &&
-				(ch_ctx->hsi_channel != DLP_CHANNEL_FLASH)) {
-				seq_printf(m, "\nChannel: %d\n", ch_ctx->hsi_channel);
-				seq_printf(m, "-------------\n");
-				seq_printf(m, " pdu_size  : %d\n", ch_ctx->pdu_size);
-				seq_printf(m, " credits   : %d\n", ch_ctx->credits);
-
-				read_lock_irqsave(&ch_ctx->rx.lock, flags);
-				seq_printf(m, " RX ctx:\n");
-				seq_printf(m, "   wait_max: %d\n", ch_ctx->rx.wait_max);
-				seq_printf(m, "   ctrl_max: %d\n", ch_ctx->rx.ctrl_max);
-				seq_printf(m, "   all_len : %d\n", ch_ctx->rx.all_len);
-				seq_printf(m, "   ctrl_len: %d\n", ch_ctx->rx.ctrl_len);
-				seq_printf(m, "   wait_len: %d\n", ch_ctx->rx.wait_len);
-				seq_printf(m, "   seq_num : %d\n", ch_ctx->rx.seq_num);
-				read_unlock_irqrestore(&ch_ctx->rx.lock, flags);
-
-				read_lock_irqsave(&ch_ctx->tx.lock, flags);
-				seq_printf(m, " TX ctx:\n");
-				seq_printf(m, "   wait_max: %d\n", ch_ctx->tx.wait_max);
-				seq_printf(m, "   ctrl_max: %d\n", ch_ctx->tx.ctrl_max);
-				seq_printf(m, "   all_len : %d\n", ch_ctx->tx.all_len);
-				seq_printf(m, "   ctrl_len: %d\n", ch_ctx->tx.ctrl_len);
-				seq_printf(m, "   wait_len: %d\n", ch_ctx->tx.wait_len);
-				seq_printf(m, "   seq_num : %d\n", ch_ctx->tx.seq_num);
-				read_unlock_irqrestore(&ch_ctx->tx.lock, flags);
-			}
-		}
+		if (ch_ctx && ch_ctx->dump_state)
+			ch_ctx->dump_state(ch_ctx, m);
 	}
 
 	return 0;
@@ -158,8 +164,8 @@ void dlp_pdu_dump(struct hsi_msg *pdu, int as_string)
 	       pdu, (pdu->ttype == HSI_MSG_WRITE) ? "TX" : "RX", pdu->sgt.nents,
 	       pdu->status, pdu->channel, pdu->actual_len, pdu->break_frame);
 
-	/* Display as HEX */
-	if (pdu->sgt.sgl->length == DLP_CTRL_PDU_SIZE) {
+	/* Display as HEX (Only 1 word ?) */
+	if (pdu->sgt.sgl->length <= sizeof(u32)) {
 		PDEBUG("\n\t data[1-4]   : %08X", *(addr));
 	} else {
 		PDEBUG("\n\t data[1-4]   : %08X  %08X  %08X  %08X\n"
@@ -278,7 +284,8 @@ struct hsi_msg *dlp_pdu_alloc(unsigned int hsi_channel,
 	/* Allocate data buffer */
 	buffer = dlp_buffer_alloc(buffer_size, &sg_dma_address(new->sgt.sgl));
 	if (!buffer) {
-		CRITICAL("No more memory to allocate hsi_msg data buffer");
+		CRITICAL("Out of memory (hsi_msg buffer => size: %d)",
+				buffer_size);
 		goto fail;
 	}
 
@@ -305,22 +312,32 @@ out:
 /**
  * dlp_pdu_free - helper function to delete and free an existing pdu
  * @pdu: a reference to the pdu to delete
- * @pdu_size: the real pdu size (allocated size)
+ * @hsi_ch: the hsi channel context to consider or -1 if N/A
  *
  * This function shall only be called by the pool of pdu management routines.
  */
-void dlp_pdu_free(struct hsi_msg *pdu, unsigned int pdu_size)
+void dlp_pdu_free(struct hsi_msg *pdu, unsigned int hsi_ch)
 {
-	PROLOG("0x%p, %s, pdu_size: %d, sgl->length: %d",
-	       pdu, (pdu->ttype == HSI_MSG_WRITE) ? "TX" : "RX",
-	       pdu_size, pdu->sgt.sgl->length);
+	PROLOG("0x%p, %s, hsi_channel: %d, sgl->length: %d",
+			pdu, (pdu->ttype == HSI_MSG_WRITE) ? "TX" : "RX",
+			hsi_ch, pdu->sgt.sgl->length);
 
 	/* Revert to the real allocated size */
-	pdu->sgt.sgl->length = pdu_size;
+	if (hsi_ch != -1) {
+		int length;
+
+		if (pdu->ttype == HSI_MSG_WRITE)
+			length = DLP_CHANNEL_CTX(hsi_ch)->tx.pdu_size;
+		else
+			length = DLP_CHANNEL_CTX(hsi_ch)->rx.pdu_size;
+
+		pdu->sgt.sgl->length = length;
+	}
 
 	/* Free the data buffer */
 	dlp_buffer_free(sg_virt(pdu->sgt.sgl),
-			sg_dma_address(pdu->sgt.sgl), pdu_size);
+			sg_dma_address(pdu->sgt.sgl),
+			pdu->sgt.sgl->length);
 
 	hsi_free_msg(pdu);
 
@@ -340,13 +357,15 @@ void dlp_pdu_delete(struct dlp_xfer_ctx *xfer_ctx, struct hsi_msg *pdu)
 	int full;
 
 	PROLOG("all_len: %d, wait_max: %d, ctrl_max: %d, pdu [0x%p, %s]",
-	       xfer_ctx->all_len, xfer_ctx->wait_max, xfer_ctx->ctrl_max,
-	       pdu, (pdu->ttype == HSI_MSG_WRITE) ? "TX" : "RX");
+			xfer_ctx->all_len,
+			xfer_ctx->wait_max,
+			xfer_ctx->ctrl_max,
+			pdu, (pdu->ttype == HSI_MSG_WRITE) ? "TX" : "RX");
 
 	full = (xfer_ctx->all_len > xfer_ctx->wait_max + xfer_ctx->ctrl_max);
 
 	if (full) {
-		dlp_pdu_free(pdu, xfer_ctx->channel->pdu_size);
+		dlp_pdu_free(pdu, pdu->channel);
 
 		xfer_ctx->all_len--;
 	} else {
@@ -403,7 +422,7 @@ void dlp_pdu_recycle(struct dlp_xfer_ctx *xfer_ctx, struct hsi_msg *pdu)
 			dlp_fifo_recycled_push(xfer_ctx, new);
 	}
 
-	dlp_ctx_update_state(xfer_ctx);
+	dlp_ctx_update_state_rx(xfer_ctx);
 	EPILOG();
 }
 
@@ -470,6 +489,7 @@ inline unsigned int dlp_pdu_get_length(struct hsi_msg *pdu)
 void dlp_pdu_update(struct dlp_channel *ch_ctx, struct hsi_msg *pdu)
 {
 	struct scatterlist *sg = pdu->sgt.sgl;
+	int pdu_size;
 
 	/* Use a non null pdu length when an error occur to forward it to
 	 * the upper layers.
@@ -490,7 +510,12 @@ void dlp_pdu_update(struct dlp_channel *ch_ctx, struct hsi_msg *pdu)
 	}
 
 	/* If the decoded frame size is invalid, we have a big trouble */
-	if ((!pdu->actual_len) || (pdu->actual_len > ch_ctx->pdu_size)) {
+	if (pdu->ttype == HSI_MSG_WRITE)
+		pdu_size = ch_ctx->tx.pdu_size;
+	else
+		pdu_size = ch_ctx->rx.pdu_size;
+
+	if ((!pdu->actual_len) || (pdu->actual_len > pdu_size)) {
 		CRITICAL("Invalid pdu (0x%p) size (0x%X Bytes)", pdu,
 			 pdu->actual_len);
 
@@ -558,9 +583,11 @@ static void dlp_pdu_destructor(struct hsi_msg *pdu)
 	write_unlock_irqrestore(&xfer_ctx->lock, flags);
 
 	if (xfer_ctx->ttype == HSI_MSG_READ)
-		dlp_ctx_update_state(xfer_ctx);
+		dlp_ctx_update_state_rx(xfer_ctx);
 	else if (dlp_ctx_is_empty(xfer_ctx))
 		wake_up(&xfer_ctx->channel->tx_empty_event);
+	/* FIXME: TBD
+	 dlp_ctx_update_state_tx(xfer_ctx); */
 
 	EPILOG();
 }
@@ -746,8 +773,13 @@ int dlp_ctx_have_credits(struct dlp_xfer_ctx *xfer_ctx,
 	PROLOG();
 
 	spin_lock_irqsave(&ch_ctx->lock, flags);
-	if ((xfer_ctx->ttype == HSI_MSG_READ) ||
-		((xfer_ctx->ttype == HSI_MSG_WRITE) && (ch_ctx->credits))) {
+	if (ch_ctx->use_flow_ctrl) {
+		int ttype = xfer_ctx->ttype;
+		if ((ttype == HSI_MSG_READ) ||
+			((ttype == HSI_MSG_WRITE) && (ch_ctx->credits))) {
+			have_credits = 1;
+		}
+	} else {
 		have_credits = 1;
 	}
 	spin_unlock_irqrestore(&ch_ctx->lock, flags);
@@ -814,7 +846,7 @@ static inline void dlp_ctx_update_state_not_active(struct dlp_xfer_ctx
 	PROLOG();
 
 	if (!dlp_ctx_is_empty(xfer_ctx))
-		dlp_ctx_set_state(xfer_ctx, TTY);
+		dlp_ctx_set_state(xfer_ctx, READY);
 	else
 		dlp_ctx_set_state(xfer_ctx, IDLE);
 
@@ -822,14 +854,14 @@ static inline void dlp_ctx_update_state_not_active(struct dlp_xfer_ctx
 }
 
 /**
- * dlp_ctx_update_state - update the RX state machine upon recycling of a
+ * dlp_ctx_update_state_rx - update the RX state machine upon recycling of a
  *			  RX pdu
  * @xfer_ctx: a reference to the xfer RX context to consider
  *
  * This helper function updates the RX state in accordance with the status of
  * the RX FIFO, unless the RX is required active.
  */
-static inline void dlp_ctx_update_state(struct dlp_xfer_ctx *xfer_ctx)
+static inline void dlp_ctx_update_state_rx(struct dlp_xfer_ctx *xfer_ctx)
 {
 	PROLOG();
 
@@ -893,7 +925,7 @@ static void dlp_fifo_empty(struct list_head *fifo,
 		list_del_init(&pdu->link);
 
 		/* pdu free */
-		dlp_pdu_free(pdu, xfer_ctx->channel->pdu_size);
+		dlp_pdu_free(pdu, pdu->channel);
 	}
 
 	write_unlock_irqrestore(&xfer_ctx->lock, flags);
@@ -999,8 +1031,8 @@ inline void dlp_fifo_wait_push_back(struct dlp_xfer_ctx *xfer_ctx,
 }
 
 /**
- * dlp_pop_wait_push_ctrl - transfer the first TX pdu from the wait FIFO to
- *			    the controller FIFO
+ * dlp_pop_wait_push_ctrl - transfer a TX pdu from the wait FIFO to the
+ *              controller FIFO
  * @xfer_ctx: a reference to the TX context to consider
  * @check_pdu: to check if the pdu is being updated (marked as break pdu)
  *
@@ -1284,33 +1316,77 @@ inline void dlp_hsi_controller_pop(struct dlp_xfer_ctx *xfer_ctx)
 }
 
 /**
+ * dlp_do_start_tx - Making a synchronous HSI TX start request
+ * @work: a reference to work queue element
+ */
+void dlp_do_start_tx(struct work_struct *work)
+{
+	struct dlp_channel	*ch_ctx;
+	struct dlp_xfer_ctx	*xfer_ctx;
+	int	exit;
+
+	ch_ctx = container_of(work, struct dlp_channel, start_tx_w);
+	xfer_ctx = &ch_ctx->tx;
+
+	exit = !dlp_ctx_is_state(xfer_ctx, IDLE);
+	if (exit)
+		return;
+
+	exit = hsi_start_tx(dlp_drv.client);
+	if (exit) {
+		CRITICAL("hsi_start_tx() failed (err: %d)", exit);
+		return;
+	}
+
+	/* The HSI controller is ready, push as many frames as possible */
+	dlp_ctx_set_state(xfer_ctx, READY);
+	/* FIXME: TBD
+	 _dlp_pop_wait_push_ctrl(ctx, &flags); */
+}
+
+/**
+ * dlp_do_stop_tx - making a synchronous HSI TX stop request
+ * @work: a reference to work queue element
+ */
+void dlp_do_stop_tx(struct work_struct *work)
+{
+	struct dlp_channel	*ch_ctx;
+	struct dlp_xfer_ctx	*xfer_ctx;
+	int	exit;
+
+	ch_ctx = container_of(work, struct dlp_channel, start_tx_w);
+	xfer_ctx = &ch_ctx->tx;
+
+	exit = hsi_stop_tx(dlp_drv.client);
+	if (exit) {
+		CRITICAL("hsi_stop_tx() failed (err: %d)", exit);
+		dlp_ctx_set_state(xfer_ctx, READY);
+	}
+}
+
+/**
  * dlp_hsi_start_tx - update the TX state machine on every new transfer
  * @xfer_ctx: a reference to the TX context to consider
  *
  * This helper function updates the TX state if it is currently idle and
  * inform the HSI pduwork and attached controller.
  */
-void dlp_hsi_start_tx(struct dlp_xfer_ctx *xfer_ctx)
+void dlp_start_tx(struct dlp_xfer_ctx *xfer_ctx)
 {
 	PROLOG();
 
-	/* we found the case that we called hsi_port_shutdown and
-	 * stop_tx, while the tty want to flush data, in this case
-	 * just ignore the start_tx, and the code in ctl push already
-	 * ignore the flush and discard the packet.
-	 */
-	if (!hsi_port_claimed(dlp_drv.client))
-		return;
-
 	if (dlp_ctx_is_state(xfer_ctx, IDLE)) {
-		int ret;
+		/* int ret; */
 
 		dlp_ctx_set_state(xfer_ctx, ACTIVE);
 
+		/* FIXME: Temporary patch until enabling the TX synchronous mode
 		ret = hsi_start_tx(dlp_drv.client);
 		if (ret)
 			dlp_ctx_set_state(xfer_ctx, IDLE);
+		*/
 	} else {
+		dlp_ctx_set_state(xfer_ctx, READY);
 		del_timer(&xfer_ctx->timer);
 	}
 
@@ -1332,6 +1408,10 @@ void dlp_stop_tx(struct dlp_xfer_ctx *xfer_ctx)
 	if (dlp_ctx_is_state(xfer_ctx, ACTIVE)) {
 		dlp_ctx_set_state(xfer_ctx, IDLE);
 
+		/* Send the NOP command */
+		dlp_ctrl_send_nop(xfer_ctx->channel);
+
+		/* Stop the TX */
 		hsi_stop_tx(dlp_drv.client);
 	}
 
@@ -1534,7 +1614,7 @@ int dlp_set_flashing_mode(int flashing)
  * dlp_increase_pdus_pool - background work aimed at creating new pdus
  * @work: a reference to the work context
  *
- * This function is called as a background job (in the dlp_recycle_wq work
+ * This function is called as a background job (in the tx_w/rx_w work
  * queue) for performing the pdu resource allocation (which can then sleep).
  *
  * An error message is sent upon the failure of DLP_PDU_ALLOC_RETRY_MAX_CNT
@@ -1546,9 +1626,14 @@ static void dlp_increase_pdus_pool(struct work_struct *work)
 						     increase_pool);
 	struct hsi_msg *new;
 	unsigned long flags;
-	int retry;
+	int pdu_size, retry;
 
 	PROLOG();
+
+	if (xfer_ctx->ttype == HSI_MSG_WRITE)
+		pdu_size = xfer_ctx->channel->tx.pdu_size;
+	else
+		pdu_size = xfer_ctx->channel->rx.pdu_size;
 
 	read_lock_irqsave(&xfer_ctx->lock, flags);
 
@@ -1557,9 +1642,7 @@ static void dlp_increase_pdus_pool(struct work_struct *work)
 
 		retry = 0;
 		new = dlp_pdu_alloc(xfer_ctx->channel->hsi_channel,
-				    xfer_ctx->ttype,
-				    xfer_ctx->channel->pdu_size,
-				    1,
+				    xfer_ctx->ttype, pdu_size, 1,
 				    xfer_ctx,
 				    xfer_ctx->complete_cb, dlp_pdu_destructor);
 
@@ -1575,9 +1658,7 @@ static void dlp_increase_pdus_pool(struct work_struct *work)
 			schedule();
 
 			new = dlp_pdu_alloc(xfer_ctx->channel->hsi_channel,
-					    xfer_ctx->ttype,
-					    xfer_ctx->channel->pdu_size,
-					    1,
+					    xfer_ctx->ttype, pdu_size, 1,
 					    xfer_ctx,
 					    xfer_ctx->complete_cb,
 					    dlp_pdu_destructor);
@@ -1610,7 +1691,7 @@ static void dlp_increase_pdus_pool(struct work_struct *work)
 /**
  * dlp_xfer_ctx_init - initialise a TX or RX context after its creation
  * @ch_ctx: a reference to its related channel context
- * @xfer_ctx: a reference to the considered TX or RX context
+ * @pdu_size: the xfer context pdu size
  * @delay: the initial delay for the timer related to the TX or RX context
  * @wait_max: the maximal size of the wait FIFO for this context
  * @ctrl_max: the maximal size of the HSI controller FIFO for this context
@@ -1621,21 +1702,30 @@ static void dlp_increase_pdus_pool(struct work_struct *work)
  * created TX or RX context.
  */
 void dlp_xfer_ctx_init(struct dlp_channel *ch_ctx,
-		       struct dlp_xfer_ctx *xfer_ctx,
+		       unsigned int pdu_size,
 		       unsigned int delay,
 		       unsigned int wait_max,
 		       unsigned int ctrl_max,
 		       xfer_complete_cb complete_cb, unsigned int ttype)
 {
+	struct dlp_xfer_ctx *xfer_ctx;
+
 	PROLOG("delay: %d, wait_max: %d, ctrl_max: %d",
 	       delay, wait_max, ctrl_max);
+
+	if (ttype == HSI_MSG_WRITE)
+		xfer_ctx = &ch_ctx->tx;
+	else
+		xfer_ctx = &ch_ctx->rx;
 
 	INIT_LIST_HEAD(&xfer_ctx->wait_pdus);
 	INIT_LIST_HEAD(&xfer_ctx->recycled_pdus);
 
+	init_completion(&xfer_ctx->cmd_xfer_done);
 	init_timer(&xfer_ctx->timer);
 	rwlock_init(&xfer_ctx->lock);
 
+	xfer_ctx->pdu_size = pdu_size;
 	xfer_ctx->timer.data = (unsigned long)xfer_ctx;
 	xfer_ctx->delay = from_usecs(delay);
 	xfer_ctx->state = IDLE;
@@ -1879,28 +1969,28 @@ static int __init dlp_module_init(void)
 
 	PROLOG();
 
-	/* Create the workqueue for allocating pdus */
-	dlp_drv.recycle_wq = create_singlethread_workqueue(DRVNAME "-wq");
-	if (unlikely(!dlp_drv.recycle_wq)) {
-		CRITICAL("Unable to create pool-handling workqueue");
+	/* Create a single thread workqueue to serialize TX background tasks */
+	dlp_drv.tx_wq = alloc_workqueue(DRVNAME "-tx_wq", WQ_UNBOUND, 1);
+	if (!dlp_drv.tx_wq) {
+		CRITICAL("Unable to create TX side workqueue");
 		err = -EFAULT;
 		goto out;
 	}
 
-	/* Create the workqueue for tx hangup */
-	dlp_drv.tx_hangup_wq = create_singlethread_workqueue(DRVNAME "-hwq");
-	if (unlikely(!dlp_drv.tx_hangup_wq)) {
-		CRITICAL("Unable to create tx hangup workqueue");
+	/* Create a high priority workqueue for rx background tasks */
+	dlp_drv.rx_wq = alloc_workqueue(DRVNAME "-rx_wq", WQ_HIGHPRI, 1);
+	if (!dlp_drv.rx_wq) {
+		CRITICAL("Unable to create RX side workqueue");
 		err = -EFAULT;
-		goto del_wq;
+		goto no_rx_wq;
 	}
 
-	/* Create the workqueue for TTY line discipline buffer flush */
-	dlp_drv.forwarding_wq = create_singlethread_workqueue(DRVNAME "-hwq");
-	if (unlikely(!dlp_drv.forwarding_wq)) {
-		CRITICAL("Unable to create TTY forwarding workqueue");
+	/* Create a single thread workqueue for hangup background tasks */
+	dlp_drv.hangup_wq = alloc_workqueue(DRVNAME "-hup_wq", WQ_UNBOUND, 1);
+	if (unlikely(!dlp_drv.rx_wq)) {
+		CRITICAL("Unable to create Hangup workqueue");
 		err = -EFAULT;
-		goto del_2wq;
+		goto no_hu_wq;
 	}
 
 	/* Now, register the client */
@@ -1914,13 +2004,13 @@ static int __init dlp_module_init(void)
 	return 0;
 
 del_3wq:
-	destroy_workqueue(dlp_drv.forwarding_wq);
+	destroy_workqueue(dlp_drv.hangup_wq);
 
-del_2wq:
-	destroy_workqueue(dlp_drv.tx_hangup_wq);
+no_hu_wq:
+	destroy_workqueue(dlp_drv.rx_wq);
 
-del_wq:
-	destroy_workqueue(dlp_drv.recycle_wq);
+no_rx_wq:
+	destroy_workqueue(dlp_drv.tx_wq);
 
 out:
 	EPILOG("Failed");
@@ -1934,9 +2024,9 @@ static void __exit dlp_module_exit(void)
 {
 	PROLOG();
 
-	destroy_workqueue(dlp_drv.forwarding_wq);
-	destroy_workqueue(dlp_drv.recycle_wq);
-	destroy_workqueue(dlp_drv.tx_hangup_wq);
+	destroy_workqueue(dlp_drv.hangup_wq);
+	destroy_workqueue(dlp_drv.rx_wq);
+	destroy_workqueue(dlp_drv.rx_wq);
 
 	hsi_unregister_client_driver(&dlp_driver_setup);
 
@@ -1950,4 +2040,4 @@ MODULE_AUTHOR("Olivier Stoltz Douchet <olivierx.stoltz-douchet@intel.com>");
 MODULE_AUTHOR("Faouaz Tenoutit <faouazx.tenoutit@intel.com>");
 MODULE_DESCRIPTION("LTE protocol driver over HSI for IMC modems");
 MODULE_LICENSE("GPL");
-MODULE_VERSION("1.3-HSI-LTE");
+MODULE_VERSION("1.4-HSI-LTE");
