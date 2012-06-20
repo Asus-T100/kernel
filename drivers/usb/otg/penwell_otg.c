@@ -2737,8 +2737,8 @@ static void penwell_otg_work(struct work_struct *work)
 					penwell_otg_phy_intr(0);
 				}
 
-				/* SDP: set charger type */
-				penwell_otg_update_chrg_cap(CHRG_SDP, 0);
+				/* SDP: set charger type and 100mA by default */
+				penwell_otg_update_chrg_cap(CHRG_SDP, 100);
 
 				/* Clear HNP polling flag */
 				if (iotg->otg.gadget)
