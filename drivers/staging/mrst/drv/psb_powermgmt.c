@@ -1301,14 +1301,12 @@ static int mdfld_restore_display_registers(struct drm_device *dev, int pipe)
 		if (dpll & MDFLD_PWR_GATE_EN) {
 			dpll &= ~MDFLD_PWR_GATE_EN;
 			PSB_WVDC32(dpll, dpll_reg);
-			/* FIXME_MDFLD PO - change 500 to 1 after PO */
-			usleep_range(500, 600);
+			ndelay(500);
 		}
 
 		PSB_WVDC32(fp_val, fp_reg);
 		PSB_WVDC32(dpll_val, dpll_reg);
-		/* FIXME_MDFLD PO - change 500 to 1 after PO */
-		usleep_range(500, 600);
+		ndelay(500);
 
 		dpll_val |= DPLL_VCO_ENABLE;
 		PSB_WVDC32(dpll_val, dpll_reg);
@@ -1362,9 +1360,6 @@ static int mdfld_restore_display_registers(struct drm_device *dev, int pipe)
 #ifndef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
 		/*set up pipe related registers*/
 		PSB_WVDC32(mipi_val, mipi_reg);
-
-		msleep(20);
-
 #endif
 		/*TODO: remove MIPI restore code later*/
 		/*dsi_config->dvr_ic_inited = 0;*/
@@ -1391,16 +1386,12 @@ static int mdfld_restore_display_registers(struct drm_device *dev, int pipe)
 	/*enable the plane*/
 	PSB_WVDC32(dspcntr_val, dspcntr_reg);
 
-	msleep(20);
-
 #ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
 	device_ready_reg = DEVICE_READY_REG + reg_offset;
 	/* LP Hold Release */
 	temp = REG_READ(mipi_reg);
 	temp |= LP_OUTPUT_HOLD_RELEASE;
 	REG_WRITE(mipi_reg, temp);
-	usleep_range(1000, 1200);
-
 
 	/* Set DSI host to exit from Utra Low Power State */
 	temp = REG_READ(device_ready_reg);
@@ -1408,17 +1399,19 @@ static int mdfld_restore_display_registers(struct drm_device *dev, int pipe)
 	temp |= 0x3;
 	temp |= EXIT_ULPS_DEV_READY;
 	REG_WRITE(device_ready_reg, temp);
-	usleep_range(1000, 1200);
 
 	temp = REG_READ(device_ready_reg);
 	temp &= ~ULPS_MASK;
 	temp |= EXITING_ULPS;
 	REG_WRITE(device_ready_reg, temp);
-	usleep_range(1000, 1200);
 #endif
 
 	/*enable the pipe*/
 	PSB_WVDC32(pipeconf_val, pipeconf_reg);
+	if ((pipe == 0 && pipeconf_val & PIPEACONF_ENABLE) ||
+	    (pipe == 1 && pipeconf_val & PIPEBCONF_ENABLE))
+		/* Wait for the pipe enable to take effect. */
+		mdfldWaitForPipeEnable(dev, pipe);
 
 	if (pipe == 1)
 		return 0;
