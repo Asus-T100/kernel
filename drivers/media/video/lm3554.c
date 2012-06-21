@@ -78,10 +78,6 @@ struct lm3554 {
 	u8 torch_current;
 	u8 indicator_current;
 	u8 flash_current;
-	/* XXX: should go to the platform data */
-	u8 current_limit;
-	u8 envm_tx2;
-	u8 tx2_polarity;
 
 	struct timer_list flash_off_delay;
 	struct lm3554_platform_data *pdata;
@@ -161,7 +157,7 @@ static int lm3554_set_duration(struct lm3554 *flash)
 	u8 val;
 
 	val = (flash->timeout << LM3554_FLASH_TIMEOUT_SHIFT) |
-	      (flash->current_limit << LM3554_CURRENT_LIMIT_SHIFT);
+	      (flash->pdata->current_limit << LM3554_CURRENT_LIMIT_SHIFT);
 
 	return lm3554_write(flash, LM3554_FLASH_DURATION_REG, val);
 }
@@ -170,8 +166,8 @@ static int lm3554_set_config1(struct lm3554 *flash)
 {
 	u8 val;
 
-	val = (flash->envm_tx2 << LM3554_ENVM_TX2_SHIFT) |
-	      (flash->tx2_polarity << LM3554_TX2_POLARITY_SHIFT);
+	val = (flash->pdata->envm_tx2 << LM3554_ENVM_TX2_SHIFT) |
+	      (flash->pdata->tx2_polarity << LM3554_TX2_POLARITY_SHIFT);
 	return lm3554_write(flash, LM3554_CONFIG_REG_1, val);
 }
 
@@ -805,17 +801,6 @@ static int __devinit lm3554_probe(struct i2c_client *client,
 	}
 
 	flash->pdata = client->dev.platform_data;
-
-	/* Set to TX2 mode, then ENVM/TX2 pin is a power
-	 * amplifier sync input:
-	 * ENVM/TX pin asserted, flash forced into torch;
-	 * ENVM/TX pin desserted, flash set back;
-	 */
-	flash->envm_tx2 = 1;
-	flash->tx2_polarity = 0;
-
-	/* set peak current limit to be 1000mA */
-	flash->current_limit = 0;
 
 	v4l2_i2c_subdev_init(&flash->sd, client, &lm3554_ops);
 	flash->sd.internal_ops = &lm3554_internal_ops;

@@ -124,6 +124,10 @@ struct lm3554_platform_data {
 	int gpio_torch;
 	int gpio_strobe;
 	int gpio_reset;
+
+	unsigned int current_limit;
+	unsigned int envm_tx2;
+	unsigned int tx2_polarity;
 };
 
 #endif /* _LM3554_H_ */
