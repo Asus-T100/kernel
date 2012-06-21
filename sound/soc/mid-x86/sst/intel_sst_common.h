@@ -56,7 +56,6 @@ struct intel_sst_ops {
 	void (*post_message) (struct work_struct *work);
 	int (*sync_post_message) (struct ipc_post *msg);
 	void (*process_message) (struct work_struct *work);
-	int (*start_stream) (int);
 };
 
 enum sst_states {
@@ -179,7 +178,6 @@ union sst_pwmctrl_reg {
 	u32 full;
 };
 
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
 union config_status_reg_mrfld {
 	struct {
 		u64 lpe_reset:1;
@@ -217,26 +215,8 @@ union sst_imr_reg_mrfld {
 	} part;
 	u64 full;
 };
-#endif
 
-struct sst_stream_bufs {
-	struct list_head	node;
-	u32			size;
-	const char		*addr;
-	u32			data_copied;
-	bool			in_use;
-	u32			offset;
-};
-
-struct snd_sst_user_cap_list {
-	unsigned int iov_index; /* index of iov */
-	unsigned long iov_offset; /* offset in iov */
-	unsigned long offset; /* offset in kmem */
-	unsigned long size; /* size copied */
-	struct list_head node;
-};
-/*
-This structure is used to block a user/fw data call to another
+/*This structure is used to block a user/fw data call to another
 fw/user call
 */
 struct sst_block {
@@ -244,18 +224,6 @@ struct sst_block {
 	int	ret_code; /* ret code when block is released */
 	void	*data; /* data to be appsed for block if any */
 	bool	on;
-};
-
-enum snd_sst_buf_type {
-	SST_BUF_USER_STATIC = 1,
-	SST_BUF_USER_DYNAMIC,
-	SST_BUF_MMAP_STATIC,
-	SST_BUF_MMAP_DYNAMIC,
-};
-
-enum snd_src {
-	SST_DRV = 1,
-	MAD_DRV = 2
 };
 
 /**
@@ -268,27 +236,12 @@ enum snd_src {
  * @ops : stream operation pb/cp/drm...
  * @bufs: stream buffer list
  * @lock : stream mutex for protecting state
- * @pcm_lock : spinlock for pcm path only
- * @mmapped : is stream mmapped
- * @sg_index : current stream user buffer index
- * @cur_ptr : stream user buffer pointer
- * @buf_entry : current user buffer
  * @data_blk : stream block for data operations
  * @ctrl_blk : stream block for ctrl operations
- * @buf_type : stream user buffer type
  * @pcm_substream : PCM substream
  * @period_elapsed : PCM period elapsed callback
  * @sfreq : stream sampling freq
- * @decode_ibuf : Decoded i/p buffers pointer
- * @decode_obuf : Decoded o/p buffers pointer
- * @decode_isize : Decoded i/p buffers size
- * @decode_osize : Decoded o/p buffers size
- * @decode_ibuf_type : Decoded i/p buffer type
- * @decode_obuf_type : Decoded o/p buffer type
- * @idecode_alloc : Decode alloc index
- * @need_draining : stream set for drain
  * @str_type : stream type
- * @curr_bytes : current bytes decoded
  * @cumm_bytes : cummulative bytes decoded
  * @str_type : stream type
  * @src : stream source
@@ -298,33 +251,17 @@ enum snd_src {
 struct stream_info {
 	unsigned int		status;
 	unsigned int		prev;
-	u8			codec;
-	unsigned int		sst_id;
 	unsigned int		ops;
-	struct list_head	bufs;
 	struct mutex		lock; /* mutex */
-	spinlock_t          pcm_lock;
-	bool			mmapped;
-	unsigned int		sg_index; /*  current buf Index  */
-	unsigned char __user	*cur_ptr; /*  Current static bufs  */
-	struct snd_sst_buf_entry __user *buf_entry;
 	struct sst_block	data_blk; /* stream ops block */
 	struct sst_block	ctrl_blk; /* stream control cmd block */
-	enum snd_sst_buf_type   buf_type;
 	void			*pcm_substream;
 	void (*period_elapsed) (void *pcm_substream);
 	unsigned int		sfreq;
-	void			*decode_ibuf, *decode_obuf;
-	unsigned int		decode_isize, decode_osize;
-	u8 decode_ibuf_type, decode_obuf_type;
-	unsigned int		idecode_alloc;
-	unsigned int		need_draining;
-	unsigned int		str_type;
-	u32			curr_bytes;
 	u32			cumm_bytes;
-	u32			src;
-	enum sst_audio_device_type device;
-	u8			pcm_slot;
+	void			*compr_cb_param;
+	void			(*compr_cb) (void *compr_cb_param);
+	unsigned int		num_ch;
 };
 
 /*
@@ -379,16 +316,12 @@ struct ioctl_pvt_data {
 };
 
 struct sst_ipc_msg_wq {
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
 	union ipc_header_mrfld mrfld_header;
-#endif
 	union ipc_header	header;
 	char mailbox[SST_MAILBOX_SIZE];
 	struct work_struct	wq;
 };
 
-#define SST_MMAP_PAGES	(640*1024 / PAGE_SIZE)
-#define SST_MMAP_STEP	(40*1024 / PAGE_SIZE)
 
 struct sst_dma {
 	struct dma_chan *ch;
@@ -450,16 +383,12 @@ struct sst_sg_list {
  * @pmic_port_instance : active pmic port instance
  * @lpaudio_start : lpaudio status
  * @audio_start : audio status
- * @devt_d : pointer to /dev/lpe node
- * @devt_c : pointer to /dev/lpe_ctrl node
  * @max_streams : max streams allowed
  */
 struct intel_sst_drv {
 	int			sst_state;
 	unsigned int		pci_id;
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
 	void __iomem		*ddr;
-#endif
 	void __iomem		*shim;
 	void __iomem		*mailbox;
 	void __iomem		*iram;
@@ -484,32 +413,23 @@ struct intel_sst_drv {
 	unsigned int		tstamp;
 	struct stream_info streams[MAX_NUM_STREAMS+1]; /*str_id 0 is not used*/
 	struct stream_alloc_block alloc_block[MAX_ACTIVE_STREAM];
-	struct sst_block	tgt_dev_blk, fw_info_blk, ppp_params_blk,
-				vol_info_blk, mute_info_blk, hs_info_blk,
-				dma_info_blk;
+	struct sst_block	fw_info_blk, ppp_params_blk, dma_info_blk;
 	struct mutex		list_lock;/* mutex for IPC list locking */
 	spinlock_t		list_spin_lock; /* mutex for IPC list locking */
-	struct snd_pmic_ops	*scard_ops;
 	struct pci_dev		*pci;
-	void			*mmap_mem;
 	struct mutex            sst_lock;
 	struct mutex		stream_lock;
-	unsigned int		mmap_len;
-	unsigned int		unique_id;
+	unsigned int            unique_id;
 	unsigned int		stream_cnt;	/* total streams */
-	unsigned int		encoded_cnt;	/* enocded streams only */
 	unsigned int		am_cnt;
 	unsigned int		pb_streams;	/* pb streams active */
 	unsigned int		cp_streams;	/* cp streams active */
-	unsigned int		lpe_stalled; /* LPE is stalled or not */
-	unsigned int		pmic_port_instance; /*pmic port instance*/
-	unsigned int		lpaudio_start;
 	/* 1 - LPA stream(MP3 pb) in progress*/
 	unsigned int		audio_start;
-	dev_t			devt_d, devt_c;
 	unsigned int		max_streams;
 	unsigned int		*fw_cntx;
 	unsigned int		fw_cntx_size;
+	unsigned int		compressed_slot;
 	unsigned int		csr_value;
 	const struct firmware	*fw;
 
@@ -525,22 +445,10 @@ struct intel_sst_drv {
 
 extern struct intel_sst_drv *sst_drv_ctx;
 
-#define CHIP_REV_REG 0xff108000
-#define CHIP_REV_ADDR 0x78
-
 /* misc definitions */
 #define FW_DWNL_ID 0xFF
-#define LOOP1 0x11111111
-#define LOOP2 0x22222222
-#define LOOP3 0x33333333
-#define LOOP4 0x44444444
 
-#define SST_DEFAULT_PMIC_PORT 1 /*audio port*/
-/* NOTE: status will have +ve for good cases and -ve for error ones */
-#define MAX_STREAM_FIELD 255
-
-int sst_alloc_stream(char *params, unsigned int stream_ops, u8 codec,
-						unsigned int session_id);
+int sst_alloc_stream(char *params);
 int sst_alloc_stream_response(unsigned int str_id,
 				struct snd_sst_alloc_response *response);
 int sst_alloc_stream_response_mrfld(unsigned int str_id);
@@ -549,25 +457,16 @@ int sst_pause_stream(int id);
 int sst_resume_stream(int id);
 int sst_drop_stream(int id);
 int sst_free_stream(int id);
-int sst_start_stream_mfld(int str_id);
-int sst_start_stream_mrfld(int str_id);
-int sst_play_frame(int str_id);
-int sst_pcm_play_frame(int str_id, struct sst_stream_bufs *sst_buf);
-int sst_capture_frame(int str_id);
+int sst_start_stream(int str_id);
+
 int sst_set_stream_param(int str_id, struct snd_sst_params *str_param);
-int sst_target_device_select(struct snd_sst_target_device *target_device);
-int sst_decode(int str_id, struct snd_sst_dbufs *dbufs);
-int sst_get_decoded_bytes(int str_id, unsigned long long *bytes);
 int sst_get_fw_info(struct snd_sst_fw_info *info);
 int sst_get_stream_params(int str_id,
 		struct snd_sst_get_stream_params *get_params);
-int sst_get_stream(struct sst_stream_params *str_param);
-int sst_get_stream_allocated(struct sst_stream_params *str_param,
+int sst_get_stream(struct snd_sst_params *str_param);
+int sst_get_stream_allocated(struct snd_sst_params *str_param,
 				struct snd_sst_lib_download **lib_dnld);
 int sst_drain_stream(int str_id);
-int sst_get_vol(struct snd_sst_vol *set_vol);
-int sst_set_vol(struct snd_sst_vol *set_vol);
-int sst_set_mute(struct snd_sst_mute *set_mute);
 
 
 int sst_sync_post_message_mfld(struct ipc_post *msg);
@@ -578,7 +477,6 @@ int sst_start_mfld(void);
 int intel_sst_reset_dsp_mfld(void);
 void intel_sst_clear_intr_mfld(void);
 
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
 int sst_sync_post_message_mrfld(struct ipc_post *msg);
 void sst_post_message_mrfld(struct work_struct *work);
 void sst_process_message_mrfld(struct work_struct *work);
@@ -586,29 +484,17 @@ void sst_process_reply_mrfld(struct work_struct *work);
 int sst_start_mrfld(void);
 int intel_sst_reset_dsp_mrfld(void);
 void intel_sst_clear_intr_mrfld(void);
-#endif
 void sst_process_mad_ops(struct work_struct *work);
 void sst_process_mad_jack_detection(struct work_struct *work);
 
 long intel_sst_ioctl(struct file *file_ptr, unsigned int cmd,
 			unsigned long arg);
-int intel_sst_open(struct inode *i_node, struct file *file_ptr);
 int intel_sst_open_cntrl(struct inode *i_node, struct file *file_ptr);
-int intel_sst_release(struct inode *i_node, struct file *file_ptr);
 int intel_sst_release_cntrl(struct inode *i_node, struct file *file_ptr);
-int intel_sst_read(struct file *file_ptr, char __user *buf,
-			size_t count, loff_t *ppos);
-int intel_sst_write(struct file *file_ptr, const char __user *buf,
-			size_t count, loff_t *ppos);
-int intel_sst_mmap(struct file *fp, struct vm_area_struct *vma);
-ssize_t intel_sst_aio_write(struct kiocb *kiocb, const struct iovec *iov,
-			unsigned long nr_segs, loff_t  offset);
-ssize_t intel_sst_aio_read(struct kiocb *kiocb, const struct iovec *iov,
-			unsigned long nr_segs, loff_t offset);
+
 int sst_request_fw(void);
 int sst_load_fw(const void *fw_in_mem, void *context);
 int sst_load_library(struct snd_sst_lib_download *lib, u8 ops);
-int sst_spi_mode_enable(void);
 int sst_get_block_stream(struct intel_sst_drv *sst_drv_ctx);
 
 int sst_wait_interruptible(struct intel_sst_drv *sst_drv_ctx,
@@ -622,9 +508,16 @@ void sst_wake_up_alloc_block(struct intel_sst_drv *sst_drv_ctx,
 int sst_download_fw(void);
 void free_stream_context(unsigned int str_id);
 void sst_clean_stream(struct stream_info *stream);
+int intel_sst_register_compress(struct intel_sst_drv *sst);
+int intel_sst_remove_compress(struct intel_sst_drv *sst);
+void sst_cdev_fragment_elapsed(int str_id);
 int vibra_pwm_configure(unsigned int enable);
 int sst_send_algo_param(struct snd_ppp_params *algo_params);
-
+int sst_send_sync_msg(int ipc, int str_id);
+int sst_get_num_channel(struct snd_sst_params *str_param);
+int sst_get_wdsize(struct snd_sst_params *str_param);
+int sst_get_sfreq(struct snd_sst_params *str_param);
+int intel_sst_check_device(void);
 /*
  * sst_fill_header - inline to fill sst header
  *
@@ -647,7 +540,7 @@ static inline void sst_fill_header(union ipc_header *header,
 	header->part.data = 0;
 }
 
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
+
 static inline void sst_fill_header_mrfld(union ipc_header_mrfld *header,
 						int msg, int large, int str_id)
 {
@@ -659,9 +552,8 @@ static inline void sst_fill_header_mrfld(union ipc_header_mrfld *header,
 	header->p.header_high.part.busy = 1;
 	header->p.header_high.part.result = 0;
 }
-#endif
-/*
- * sst_assign_pvt_id - assign a pvt id for stream
+
+/* sst_assign_pvt_id - assign a pvt id for stream
  *
  * @sst_drv_ctx : driver context
  *
@@ -676,6 +568,7 @@ static inline unsigned int sst_assign_pvt_id(struct intel_sst_drv *sst_drv_ctx)
 	return sst_drv_ctx->unique_id;
 }
 
+
 /*
  * sst_init_stream - this function initialzes stream context
  *
@@ -689,14 +582,10 @@ static inline unsigned int sst_assign_pvt_id(struct intel_sst_drv *sst_drv_ctx)
  * this inline function initialzes stream context for allocated stream
  */
 static inline void sst_init_stream(struct stream_info *stream,
-		int codec, int sst_id, int ops, u8 slot,
-		enum sst_audio_device_type device)
+		int codec, int sst_id, int ops, u8 slot)
 {
 	stream->status = STREAM_INIT;
 	stream->prev = STREAM_UN_INIT;
-	stream->codec = codec;
-	stream->sst_id = sst_id;
-	stream->str_type = 0;
 	stream->ops = ops;
 	stream->data_blk.on = false;
 	stream->data_blk.condition = false;
@@ -706,12 +595,6 @@ static inline void sst_init_stream(struct stream_info *stream,
 	stream->ctrl_blk.condition = false;
 	stream->ctrl_blk.ret_code = 0;
 	stream->ctrl_blk.data = NULL;
-	stream->need_draining = false;
-	stream->decode_ibuf = NULL;
-	stream->decode_isize = 0;
-	stream->mmapped = false;
-	stream->pcm_slot = slot;
-	stream->device = device;
 }
 
 
@@ -747,7 +630,7 @@ static inline u32 sst_shim_read(void __iomem *addr, int offset)
 	return readl(addr + offset);
 }
 
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
+
 static inline int sst_shim_write64(void __iomem *addr, int offset, u64 value)
 {
 	memcpy_toio(addr + offset, &value, sizeof(value));
@@ -761,7 +644,7 @@ static inline u64 sst_shim_read64(void __iomem *addr, int offset)
 	memcpy_fromio(&val, addr + offset, sizeof(val));
 	return val;
 }
-#endif
+
 
 static inline void
 sst_set_fw_state_locked(struct intel_sst_drv *sst_drv_ctx, int sst_state)

@@ -118,25 +118,6 @@ end_restore:
 
 	return retval;
 }
-/*
- * sst_stalled - this function checks if the lpe is in stalled state
- */
-int sst_stalled(void)
-{
-	int retry = 1000;
-	int retval = -1;
-
-	while (retry) {
-		if (!sst_drv_ctx->lpe_stalled)
-			return 0;
-		/*wait for time and re-check*/
-		usleep_range(1000, 1500);
-
-		retry--;
-	}
-	pr_debug("in Stalled State\n");
-	return retval;
-}
 
 void free_stream_context(unsigned int str_id)
 {
@@ -146,8 +127,7 @@ void free_stream_context(unsigned int str_id)
 		/* str_id is valid, so stream is alloacted */
 		if (sst_free_stream(str_id))
 			sst_clean_stream(&sst_drv_ctx->streams[str_id]);
-		if (stream->ops == STREAM_OPS_PLAYBACK ||
-				stream->ops == STREAM_OPS_PLAYBACK_DRM)
+		if (stream->ops == STREAM_OPS_PLAYBACK)
 			sst_drv_ctx->pb_streams--;
 		else if (stream->ops == STREAM_OPS_CAPTURE)
 			sst_drv_ctx->cp_streams--;
@@ -159,10 +139,16 @@ void sst_send_lpe_mixer_algo_params(void)
 	struct snd_ppp_params algo_param;
 	struct snd_ppp_mixer_params mixer_param;
 	unsigned int input_mixer, stream_device_id;
+	int retval;
+
+	retval = intel_sst_check_device();
+	if (retval)
+		return retval;
 
 	mutex_lock(&sst_drv_ctx->mixer_ctrl_lock);
 	input_mixer = (sst_drv_ctx->device_input_mixer)
 				& SST_INPUT_STREAM_MIXED;
+	pr_debug("Input Mixer settings %d", input_mixer);
 	stream_device_id = sst_drv_ctx->device_input_mixer - input_mixer;
 	algo_param.algo_id = SST_CODEC_MIXER;
 	algo_param.str_id = stream_device_id;
@@ -178,7 +164,8 @@ void sst_send_lpe_mixer_algo_params(void)
 	pr_debug("Algo ID %d Str id %d Enable %d Size %d\n",
 			algo_param.algo_id, algo_param.str_id,
 			algo_param.enable, algo_param.size);
-	 sst_send_algo_param(&algo_param);
+	sst_send_algo_param(&algo_param);
+	pm_runtime_put(&sst_drv_ctx->pci->dev);
 }
 
 
@@ -192,7 +179,7 @@ void sst_send_lpe_mixer_algo_params(void)
  * This creates new stream id for a stream, in case lib is to be downloaded to
  * DSP, it downloads that
  */
-int sst_get_stream_allocated(struct sst_stream_params *str_param,
+int sst_get_stream_allocated(struct snd_sst_params *str_param,
 		struct snd_sst_lib_download **lib_dnld)
 {
 	int retval, str_id;
@@ -202,8 +189,8 @@ int sst_get_stream_allocated(struct sst_stream_params *str_param,
 		pr_debug("Sending LPE mixer algo Params\n");
 		sst_send_lpe_mixer_algo_params();
 	}
-	retval = sst_alloc_stream((char *) &str_param->sparams, str_param->ops,
-				str_param->codec, str_param->device_type);
+	retval = sst_alloc_stream((char *) str_param);
+
 	if (retval < 0) {
 		pr_err("sst_alloc_stream failed %d\n", retval);
 		return retval;
@@ -218,8 +205,8 @@ int sst_get_stream_allocated(struct sst_stream_params *str_param,
 				retval, str_info->ctrl_blk.ret_code);
 		if (retval == SST_ERR_STREAM_IN_USE) {
 			pr_err("sst:FW not in clean state, send free for:%d\n",
-					str_param->device_type);
-			sst_free_stream(str_param->device_type);
+					str_id);
+			sst_free_stream(str_id);
 		}
 		str_id = -str_info->ctrl_blk.ret_code; /*return error*/
 		if (str_id == 0)
@@ -236,19 +223,52 @@ int sst_get_stream_allocated(struct sst_stream_params *str_param,
  *
  * @str_param : stream params
  */
-static int sst_get_sfreq(struct sst_stream_params *str_param)
+int sst_get_sfreq(struct snd_sst_params *str_param)
 {
 	switch (str_param->codec) {
 	case SST_CODEC_TYPE_PCM:
-		return str_param->sparams.sfreq;
-	case SST_CODEC_TYPE_MP3:
-		return str_param->sparams.sfreq;
+		return str_param->sparams.uc.pcm_params.sfreq;
 	case SST_CODEC_TYPE_AAC:
-		return str_param->sparams.sfreq;
-	case SST_CODEC_TYPE_WMA9:
-		return str_param->sparams.sfreq;
-	default:
+		return str_param->sparams.uc.aac_params.externalsr;
+	case SST_CODEC_TYPE_MP3:
 		return 0;
+	default:
+		return -EINVAL;
+	}
+}
+
+/*
+ * sst_get_sfreq - this function returns the frequency of the stream
+ *
+ * @str_param : stream params
+ */
+int sst_get_num_channel(struct snd_sst_params *str_param)
+{
+	switch (str_param->codec) {
+	case SST_CODEC_TYPE_PCM:
+		return str_param->sparams.uc.pcm_params.num_chan;
+	case SST_CODEC_TYPE_MP3:
+		return str_param->sparams.uc.mp3_params.num_chan;
+	case SST_CODEC_TYPE_AAC:
+		return str_param->sparams.uc.aac_params.num_chan;
+	default:
+		return -EINVAL;
+	}
+}
+
+int sst_get_wdsize(struct snd_sst_params *str_param)
+{
+	switch (str_param->codec) {
+	case SST_CODEC_TYPE_PCM:
+		return str_param->sparams.uc.pcm_params.pcm_wd_sz;
+	case SST_CODEC_TYPE_MP3:
+		return str_param->sparams.uc.mp3_params.pcm_wd_sz;
+	case SST_CODEC_TYPE_AAC:
+		return str_param->sparams.uc.aac_params.pcm_wd_sz;
+	case SST_CODEC_TYPE_WMA9:
+		return str_param->sparams.uc.wma_params.pcm_wd_sz;
+	default:
+		return -EINVAL;
 	}
 }
 
@@ -257,7 +277,7 @@ static int sst_get_sfreq(struct sst_stream_params *str_param)
  *
  * @str_param : stream param
  */
-int sst_get_stream(struct sst_stream_params *str_param)
+int sst_get_stream(struct snd_sst_params *str_param)
 {
 	int i, retval;
 	struct stream_info *str_info;
@@ -314,8 +334,7 @@ int sst_get_stream(struct sst_stream_params *str_param)
 	str_info->sfreq = sst_get_sfreq(str_param);
 
 	/* power on the analog, if reqd */
-	if (str_param->ops == STREAM_OPS_PLAYBACK ||
-			str_param->ops == STREAM_OPS_PLAYBACK_DRM) {
+	if (str_param->ops == STREAM_OPS_PLAYBACK) {
 		/*Only if the playback is MP3 - Send a message*/
 		sst_drv_ctx->pb_streams++;
 	} else if (str_param->ops == STREAM_OPS_CAPTURE) {
@@ -327,10 +346,17 @@ err:
 	return retval;
 }
 
-static int sst_prepare_fw(void)
+/**
+* intel_sst_check_device - checks SST device
+*
+* This utility function checks the state of SST device and downlaods FW if
+* not done, or resumes the device if suspended
+*/
+int intel_sst_check_device(void)
 {
 	int retval = 0;
 
+	pm_runtime_get_sync(&sst_drv_ctx->pci->dev);
 	mutex_lock(&sst_drv_ctx->sst_lock);
 	if (sst_drv_ctx->sst_state == SST_UN_INIT) {
 		sst_drv_ctx->sst_state = SST_START_INIT;
@@ -341,11 +367,19 @@ static int sst_prepare_fw(void)
 		if (retval) {
 			pr_err("FW download fail %x\n", retval);
 			sst_set_fw_state_locked(sst_drv_ctx, SST_UN_INIT);
+			pm_runtime_put(&sst_drv_ctx->pci->dev);
 			return retval;
 		}
-	} else {
+	} else
 		mutex_unlock(&sst_drv_ctx->sst_lock);
+
+	mutex_lock(&sst_drv_ctx->sst_lock);
+	if (sst_drv_ctx->sst_state != SST_FW_RUNNING) {
+		mutex_unlock(&sst_drv_ctx->sst_lock);
+		pm_runtime_put(&sst_drv_ctx->pci->dev);
+		return -EAGAIN;
 	}
+	mutex_unlock(&sst_drv_ctx->sst_lock);
 	return retval;
 }
 
@@ -363,17 +397,6 @@ void sst_process_mad_ops(struct work_struct *work)
 	case SST_SND_RESUME:
 		retval = sst_resume_stream(mad_ops->stream_id);
 		break;
-	case SST_SND_DROP:
-		pr_debug("in mad_ops drop stream\n");
-		retval = sst_drop_stream(mad_ops->stream_id);
-		break;
-	case SST_SND_START:
-		pr_debug("start stream\n");
-		retval = sst_drv_ctx->ops->start_stream(mad_ops->stream_id);
-		break;
-	case SST_SND_STREAM_PROCESS:
-		pr_debug("play/capt frames...\n");
-		break;
 	default:
 		pr_err(" wrong control_ops reported\n");
 	}
@@ -384,6 +407,14 @@ void sst_process_mad_ops(struct work_struct *work)
 	return;
 }
 
+void sst_fill_compressed_slot(unsigned int device_type)
+{
+	if (device_type == SND_SST_DEVICE_HEADSET)
+		sst_drv_ctx->compressed_slot = 0x03;
+	else if (device_type == SND_SST_DEVICE_IHF)
+		sst_drv_ctx->compressed_slot = 0x0C;
+}
+
 /*
  * sst_open_pcm_stream - Open PCM interface
  *
@@ -392,7 +423,7 @@ void sst_process_mad_ops(struct work_struct *work)
  * This function is called by MID sound card driver to open
  * a new pcm interface
  */
-static int sst_open_pcm_stream(struct sst_stream_params *str_param)
+static int sst_open_pcm_stream(struct snd_sst_params *str_param)
 {
 	struct stream_info *str_info;
 	int retval;
@@ -401,27 +432,15 @@ static int sst_open_pcm_stream(struct sst_stream_params *str_param)
 		return -EINVAL;
 
 	pr_debug("open_pcm, doing rtpm_get\n");
-	pm_runtime_get_sync(&sst_drv_ctx->pci->dev);
 
-	retval = sst_prepare_fw();
-	if (retval) {
-		pr_err("Unable to download FW\n");
-		pm_runtime_put(&sst_drv_ctx->pci->dev);
+	retval = intel_sst_check_device();
+
+	if (retval)
 		return retval;
-	}
-
-	mutex_lock(&sst_drv_ctx->sst_lock);
-	if (sst_drv_ctx->sst_state != SST_FW_RUNNING) {
-		mutex_unlock(&sst_drv_ctx->sst_lock);
-		return -EAGAIN;
-	}
-	mutex_unlock(&sst_drv_ctx->sst_lock);
-
 	retval = sst_get_stream(str_param);
 	if (retval > 0) {
 		sst_drv_ctx->stream_cnt++;
 		str_info = &sst_drv_ctx->streams[retval];
-		str_info->src = MAD_DRV;
 	}
 	return retval;
 }
@@ -460,14 +479,13 @@ int sst_send_sync_msg(int ipc, int str_id)
 		return -ENOMEM;
 	if (sst_drv_ctx->pci_id != SST_MRFLD_PCI_ID)
 		sst_fill_header(&msg->header, ipc, 0, str_id);
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
 	else
 		sst_fill_header_mrfld(&msg->mrfld_header, ipc, 0, str_id);
-#endif
 	return sst_drv_ctx->ops->sync_post_message(msg);
 }
+
 static inline int sst_calc_mfld_tstamp(struct pcm_stream_info *info,
-		int ops, struct snd_sst_tstamp *fw_tstamp)
+		int ops, struct snd_sst_tstamp_mfld *fw_tstamp)
 {
 	if (ops == STREAM_OPS_PLAYBACK)
 		info->buffer_ptr = fw_tstamp->samples_rendered;
@@ -481,10 +499,10 @@ static inline int sst_calc_mfld_tstamp(struct pcm_stream_info *info,
 	return 0;
 }
 
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
-static inline int sst_calc_mrfld_tstamp(struct pcm_stream_info *info,
+
+static inline int sst_calc_tstamp(struct pcm_stream_info *info,
 		struct snd_pcm_substream *substream,
-		struct snd_sst_tstamp_mrfld *fw_tstamp)
+		struct snd_sst_tstamp *fw_tstamp)
 {
 	size_t delay_bytes, delay_frames;
 	size_t buffer_sz;
@@ -514,43 +532,38 @@ static inline int sst_calc_mrfld_tstamp(struct pcm_stream_info *info,
 			info->buffer_ptr, info->pcm_delay);
 	return 0;
 }
-#endif
+
 
 static int sst_read_timestamp(struct pcm_stream_info *info)
 {
-	struct snd_sst_tstamp fw_tstamp = {0,};
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
-	struct snd_sst_tstamp_mrfld fw_tstamp_m = {0,};
-#endif
+	struct snd_sst_tstamp_mfld fw_tstamp_mfld;
+	struct snd_sst_tstamp fw_tstamp;
+
 	struct stream_info *stream;
 	struct snd_pcm_substream *substream;
 	unsigned int str_id;
-	int retval;
 
 	str_id = info->str_id;
-	retval = sst_validate_strid(str_id);
-	if (retval)
-		return retval;
-	stream = &sst_drv_ctx->streams[str_id];
+	stream = get_stream_info(str_id);
+	if (!stream)
+		return -EINVAL;
 
 	if (!stream->pcm_substream)
 		return -EINVAL;
 	substream = stream->pcm_substream;
 
-	if (sst_drv_ctx->pci_id != SST_MRFLD_PCI_ID) {
+	if (sst_drv_ctx->pci_id == SST_MFLD_PCI_ID) {
+		memcpy_fromio(&fw_tstamp_mfld,
+			((void *)(sst_drv_ctx->mailbox + sst_drv_ctx->tstamp)
+				+ (str_id * sizeof(fw_tstamp_mfld))),
+			sizeof(fw_tstamp_mfld));
+		return sst_calc_mfld_tstamp(info, stream->ops, &fw_tstamp_mfld);
+	} else {
 		memcpy_fromio(&fw_tstamp,
 			((void *)(sst_drv_ctx->mailbox + sst_drv_ctx->tstamp)
 				+ (str_id * sizeof(fw_tstamp))),
 			sizeof(fw_tstamp));
-		return sst_calc_mfld_tstamp(info, stream->ops, &fw_tstamp);
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
-	} else {
-		memcpy_fromio(&fw_tstamp_m,
-			((void *)(sst_drv_ctx->mailbox + sst_drv_ctx->tstamp)
-				+ (str_id * sizeof(fw_tstamp_m))),
-			sizeof(fw_tstamp_m));
-		return sst_calc_mrfld_tstamp(info, substream, &fw_tstamp_m);
-#endif
+		return sst_calc_tstamp(info, substream, &fw_tstamp);
 	}
 }
 
@@ -590,8 +603,8 @@ static int sst_device_control(int cmd, void *arg)
 		ipc = IPC_IA_START_STREAM;
 		str_info->prev = str_info->status;
 		str_info->status = STREAM_RUNNING;
-		if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID)
-			sst_drv_ctx->ops->start_stream(str_id);
+		if (sst_drv_ctx->pci_id != SST_MFLD_PCI_ID)
+			sst_start_stream(str_id);
 		else
 			retval = sst_send_sync_msg(ipc, str_id);
 		break;
@@ -709,6 +722,7 @@ static int sst_set_generic_params(enum sst_controls cmd, void *arg)
 		mutex_lock(&sst_drv_ctx->mixer_ctrl_lock);
 		sst_drv_ctx->device_input_mixer = device_input_mixer;
 		mutex_unlock(&sst_drv_ctx->mixer_ctrl_lock);
+		sst_send_lpe_mixer_algo_params();
 		break;
 	}
 	default:

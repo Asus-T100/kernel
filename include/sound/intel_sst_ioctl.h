@@ -97,7 +97,7 @@ struct snd_sst_mix_info {
 	__u16 reserved;
 };
 
-struct snd_pcm_params_mrfld {
+struct snd_pcm_params {
 	__u16 codec;	/* codec type */
 	__u8 num_chan;	/* 1=Mono, 2=Stereo */
 	__u8 pcm_wd_sz;	/* 16/24 - bit*/
@@ -111,7 +111,7 @@ struct snd_pcm_params_mrfld {
 } __packed;
 
 /* PCM Parameters */
-struct snd_pcm_params {
+struct snd_pcm_params_mfld {
 	__u16 codec;	/* codec type */
 	__u8 num_chan;	/* 1=Mono, 2=Stereo */
 	__u8 pcm_wd_sz;	/* 16/24 - bit*/
@@ -127,11 +127,9 @@ struct snd_mp3_params {
 	__u16 codec;
 	__u8  num_chan;	/* 1=Mono, 2=Stereo	*/
 	__u8  pcm_wd_sz; /* 16/24 - bit*/
-	__u32 brate; /* Use the hard coded value. */
-	__u32 sfreq; /* Sampling freq eg. 8000, 441000, 48000 */
 	__u8  crc_check; /* crc_check - disable (0) or enable (1) */
-	__u8  op_align; /* op align 0- 16 bit, 1- MSB, 2 LSB*/
-	__u16 reserved;	/* Unused */
+	__u8  reserved1; /* unused*/
+	__u16 reserved2;	/* Unused */
 };
 
 #define AAC_BIT_STREAM_ADTS		0
@@ -143,28 +141,13 @@ struct snd_aac_params {
 	__u16 codec;
 	__u8 num_chan; /* 1=Mono, 2=Stereo*/
 	__u8 pcm_wd_sz; /* 16/24 - bit*/
-	__u32 brate;
-	__u32 sfreq; /* Sampling freq eg. 8000, 441000, 48000 */
-	__u32 aac_srate;	/* Plain AAC decoder operating sample rate */
-	__u8 mpg_id; /* 0=MPEG-2, 1=MPEG-4 */
+	__u8 bdownsample; /*SBR downsampling 0 - disable 1 -enabled AAC+ only */
 	__u8 bs_format; /* input bit stream format adts=0, adif=1, raw=2 */
-	__u8 aac_profile; /* 0=Main Profile, 1=LC profile, 3=SSR profile */
-	__u8 ext_chl; /* No.of external channels */
-	__u8 aot; /* Audio object type. 1=Main , 2=LC , 3=SSR, 4=SBR*/
-	__u8 op_align; /* output alignment 0=16 bit , 1=MSB, 2= LSB align */
-	__u8 brate_type; /* 0=CBR, 1=VBR */
-	__u8 crc_check; /* crc check 0= disable, 1=enable */
-	__s8 bit_stream_format[8]; /* input bit stream format adts/adif/raw */
-	__u8 jstereo; /* Joint stereo Flag */
-	__u8 sbr_present; /* 1 = SBR Present, 0 = SBR absent, for RAW */
-	__u8 downsample;       /* 1 = Downsampling ON, 0 = Downsampling OFF */
-	__u8 num_syntc_elems; /* 1- Mono/stereo, 0 - Dual Mono, 0 - for raw */
-	__s8 syntc_id[2]; /* 0 for ID_SCE(Dula Mono), -1 for raw */
-	__s8 syntc_tag[2]; /* raw - -1 and 0 -16 for rest of the streams */
-	__u8 pce_present; /* Flag. 1- present 0 - not present, for RAW */
-	__u8 sbr_type;		/* sbr_type: 0-plain aac, 1-aac-v1, 2-aac-v2 */
-	__u8 outchmode;  /*0- mono, 1-stereo, 2-dual mono 3-Parametric stereo */
-	__u8 ps_present;
+	__u16  reser2;
+	__u32 externalsr; /*sampling rate of basic AAC raw bit stream*/
+	__u8 sbr_signalling;/*disable/enable/set automode the SBR tool.AAC+*/
+	__u8 reser1;
+	__u16  reser3;
 };
 
 /* WMA Music Parameters Message */
@@ -179,7 +162,7 @@ struct snd_wma_params {
 	__u16 block_align;	/* packet size */
 	__u16 wma_encode_opt;/* Encoder option */
 	__u8 op_align;	/* op align 0- 16 bit, 1- MSB, 2 LSB */
-	__u8 pcm_src;	/* input pcm bit width */
+	__u8 reserved;	/* reserved */
 };
 
 /* Pre processing param structure */
@@ -255,12 +238,26 @@ struct snd_sst_fw_info {
 /* Codec params struture */
 union  snd_sst_codec_params {
 	struct snd_pcm_params pcm_params;
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
-	struct snd_pcm_params_mrfld pcm_params_mrfld;
-#endif
 	struct snd_mp3_params mp3_params;
 	struct snd_aac_params aac_params;
 	struct snd_wma_params wma_params;
+};
+
+
+/* Address and size info of a frame buffer in DDR */
+struct sst_address_info {
+	__u32 addr; /* Address at IA */
+	__u32 size; /* Size of the buffer */
+} __packed;
+
+/* Additional params for Alloc struct*/
+struct snd_sst_alloc_params_ext {
+	struct sst_address_info  ring_buf_info[8];
+	__u8 sg_count;
+	__u8 reserved;
+	__u16 reserved2;
+	__u32 frag_size;	/*Number of samples after which period elapsed
+				  message is sent valid only if path  = 0*/
 };
 
 
@@ -276,6 +273,7 @@ struct snd_sst_params {
 	__u8 stream_type;
 	__u8 device_type;
 	struct snd_sst_stream_params sparams;
+	struct snd_sst_alloc_params_ext aparams;
 };
 
 struct snd_sst_vol {
@@ -422,34 +420,17 @@ struct snd_sst_runtime_params {
 } __packed;
 
 /*IOCTL defined here */
-/*SST MMF IOCTLS only */
-#define SNDRV_SST_STREAM_SET_PARAMS _IOWR('L', 0x00, \
-					struct snd_sst_stream_params *)
-#define SNDRV_SST_STREAM_GET_PARAMS _IOWR('L', 0x01, \
-					struct snd_sst_get_stream_params *)
-#define SNDRV_SST_STREAM_GET_TSTAMP _IOWR('L', 0x02, __u64 *)
-#define	SNDRV_SST_STREAM_DECODE	_IOWR('L', 0x03, struct snd_sst_dbufs *)
-#define SNDRV_SST_STREAM_BYTES_DECODED _IOWR('L', 0x04, __u64 *)
-#define SNDRV_SST_STREAM_START	_IO('A', 0x42)
-#define SNDRV_SST_STREAM_DROP	_IO('A', 0x43)
-#define SNDRV_SST_STREAM_DRAIN	_IO('A', 0x44)
-#define SNDRV_SST_STREAM_PAUSE	_IOW('A', 0x45, int)
-#define SNDRV_SST_STREAM_RESUME _IO('A', 0x47)
-#define SNDRV_SST_MMAP_PLAY	_IOW('L', 0x05, struct snd_sst_mmap_buffs *)
-#define SNDRV_SST_MMAP_CAPTURE _IOW('L', 0x06, struct snd_sst_mmap_buffs *)
 /*SST common ioctls */
 #define SNDRV_SST_DRIVER_INFO	_IOR('L', 0x10, struct snd_sst_driver_info *)
-#define SNDRV_SST_SET_VOL	_IOW('L', 0x11, struct snd_sst_vol *)
-#define SNDRV_SST_GET_VOL	_IOW('L', 0x12, struct snd_sst_vol *)
-#define SNDRV_SST_MUTE		_IOW('L', 0x13, struct snd_sst_mute *)
+
 /*AM Ioctly only */
 #define SNDRV_SST_FW_INFO	_IOR('L', 0x20,  struct snd_sst_fw_info *)
-#define SNDRV_SST_SET_TARGET_DEVICE _IOW('L', 0x21, \
-					struct snd_sst_target_device *)
+
 /*DSP Ioctls on /dev/intel_sst_ctrl only*/
 #define SNDRV_SST_SET_ALGO	_IOW('L', 0x30,  struct snd_ppp_params *)
 #define SNDRV_SST_GET_ALGO	_IOWR('L', 0x31,  struct snd_ppp_params *)
 #define SNDRV_SST_TUNING_PARAMS	_IOW('L', 0x32,  struct snd_sst_tuning_params *)
-#define SNDRV_SST_SET_RUNTIME_PARAMS _IOW('L', 0x40,  struct snd_sst_tuning_params *)
+#define SNDRV_SST_SET_RUNTIME_PARAMS _IOW \
+			('L', 0x40, struct snd_sst_tuning_params *)
 
 #endif /* __INTEL_SST_IOCTL_H__ */

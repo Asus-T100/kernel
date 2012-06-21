@@ -37,6 +37,18 @@ void *clvs_audio_platform_data(void *info)
 		platform_device_put(pdev);
 		return NULL;
 	}
+	pdev = platform_device_alloc("compress-sst", -1);
+	if (!pdev) {
+		pr_err("failed to allocate compress-sst platform device\n");
+		return NULL;
+	}
+
+	ret = platform_device_add(pdev);
+	if (ret) {
+		pr_err("failed to add compress-sst platform device\n");
+		platform_device_put(pdev);
+		return NULL;
+	}
 
 	pdev = platform_device_alloc("intel_mid_vibra", -1);
 	if (!pdev) {

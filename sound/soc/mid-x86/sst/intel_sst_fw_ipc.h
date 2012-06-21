@@ -53,7 +53,6 @@
 #define IPC_IA_PREP_LIB_DNLD 0x01
 #define IPC_IA_LIB_DNLD_CMPLT 0x02
 
-#define IPC_IA_SET_PMIC_TYPE 0x03
 #define IPC_IA_GET_FW_VERSION 0x04
 #define IPC_IA_GET_FW_BUILD_INF 0x05
 #define IPC_IA_GET_FW_INFO 0x06
@@ -65,11 +64,6 @@
 #define IPC_IA_GET_CODEC_PARAMS 0x11
 #define IPC_IA_SET_PPP_PARAMS 0x12
 #define IPC_IA_GET_PPP_PARAMS 0x13
-#define IPC_IA_PLAY_FRAMES 0x14
-#define IPC_IA_CAPT_FRAMES 0x15
-#define IPC_IA_PLAY_VOICE 0x16
-#define IPC_IA_CAPT_VOICE 0x17
-#define IPC_IA_DECODE_FRAMES 0x18
 
 #define IPC_IA_ALG_PARAMS 0x1A
 #define IPC_IA_TUNING_PARAMS 0x1B
@@ -84,14 +78,8 @@
 #define IPC_IA_RESUME_STREAM 0x25
 #define IPC_IA_DROP_STREAM 0x26
 #define IPC_IA_DRAIN_STREAM 0x27 /* Short msg with str_id */
-#define IPC_IA_TARGET_DEV_SELECT 0x28
 #define IPC_IA_CONTROL_ROUTING 0x29
 
-#define IPC_IA_SET_STREAM_VOL 0x2A /*Vol for stream, pre mixer */
-#define IPC_IA_GET_STREAM_VOL 0x2B
-#define IPC_IA_SET_STREAM_MUTE 0x2C
-#define IPC_IA_GET_STREAM_MUTE 0x2D
-#define IPC_IA_ENABLE_RX_TIME_SLOT 0x2E /* Enable Rx time slot 0 or 1 */
 
 #define IPC_IA_START_STREAM 0x30 /* Short msg with str_id */
 
@@ -102,19 +90,16 @@
 
 /* L2I Firmware/Codec Download msgs */
 #define IPC_IA_FW_INIT_CMPLT 0x81
-#define IPC_IA_LPE_GETTING_STALLED 0x82
-#define IPC_IA_LPE_UNSTALLED 0x83
 
 /* L2I Codec Config/control msgs */
-#define IPC_SST_GET_PLAY_FRAMES 0x90 /* Request IA more data */
-#define IPC_SST_GET_CAPT_FRAMES 0x91 /* Request IA more data */
+#define IPC_SST_FRAGMENT_ELPASED 0x90 /* Request IA more data */
+
 #define IPC_SST_BUF_UNDER_RUN 0x92 /* PB Under run and stopped */
 #define IPC_SST_BUF_OVER_RUN 0x93 /* CAP Under run and stopped */
 #define IPC_SST_DRAIN_END 0x94 /* PB Drain complete and stopped */
 #define IPC_SST_CHNGE_SSP_PARAMS 0x95 /* PB SSP parameters changed */
 #define IPC_SST_STREAM_PROCESS_FATAL_ERR 0x96/* error in processing a stream */
 #define IPC_SST_PERIOD_ELAPSED 0x97 /* period elapsed */
-#define IPC_IA_TARGET_DEV_CHNGD 0x98 /* error in processing a stream */
 
 #define IPC_SST_ERROR_EVENT 0x99 /* Buffer over run occurred */
 /* L2S messages */
@@ -254,7 +239,6 @@ union ipc_header_high {
 } __packed;
 
 /* IPC header */
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
 union ipc_header_mrfld {
 	struct {
 		u32 header_low_payload;
@@ -262,7 +246,6 @@ union ipc_header_mrfld {
 	} p;
 	u64 f;
 } __packed;
-#endif
 
 /* CAUTION NOTE: All IPC message body must be multiple of 32 bits.*/
 
@@ -294,26 +277,21 @@ struct ipc_header_fw_init {
 	u8 debug_info; /* Debug info from Module ID in case of fail */
 } __packed;
 
-/* Address and size info of a frame buffer in DDR */
-struct sst_address_info {
-	u32 addr; /* Address at IA */
-	u32 size; /* Size of the buffer */
-} __packed;
 
 /* Time stamp */
-struct snd_sst_tstamp {
+struct snd_sst_tstamp_mfld {
 	u64 samples_processed;/* capture - data in DDR */
 	u64 samples_rendered;/* playback - data rendered */
 	u64 bytes_processed;/* bytes decoded or encoded */
 	u32 sampling_frequency;/* eg: 48000, 44100 */
-	u32 dma_base_address;/* DMA base address */
-	u16	dma_channel_no;/* DMA Channel used for the data transfer*/
-	u16	reserved;/* 32 bit alignment */
+	u32 reserved1;
+	u16 reserved2;
+	u16 reserved;/* 32 bit alignment */
 	u64 pcm_delay;
 };
 
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
-struct snd_sst_tstamp_mrfld {
+
+struct snd_sst_tstamp {
 	u32 ring_buffer_counter;	/* PB/CP: Bytes copied from/to DDR. */
 	u32 hardware_counter;	    /* PB/CP: Bytes DMAed to/from SSP. */
 	u32 frames_decoded;
@@ -323,36 +301,6 @@ struct snd_sst_tstamp_mrfld {
 	u32 left_channel_peak;
 	u32 right_channel_peak;
 };
-#endif
-
-/* Frame info to play or capture */
-struct sst_frame_info {
-	u16  num_entries; /* number of entries to follow */
-	u16  rsrvd;
-	struct sst_address_info  addr[MAX_NUM_SCATTER_BUFFERS];
-} __packed;
-
-/* Frames info for decode */
-struct snd_sst_decode_info {
-	unsigned long long input_bytes_consumed;
-	unsigned long long output_bytes_produced;
-	struct sst_frame_info frames_in;
-	struct sst_frame_info frames_out;
-} __packed;
-
-/* SST to IA print debug message*/
-struct ipc_sst_ia_print_params {
-	u32 string_size;/* Max value is 160 */
-	u8 prt_string[160];/* Null terminated Char string */
-} __packed;
-
-/* Voice data message  */
-struct snd_sst_voice_data {
-	u16 num_bytes;/* Number of valid voice data bytes */
-	u8  pcm_wd_size;/* 0=8 bit, 1=16 bit 2=32 bit */
-	u8  reserved;/* Reserved */
-	u8  voice_data_buf[0];/* Voice data buffer in bytes, little endian */
-} __packed;
 
 /* SST to IA memory read debug message  */
 struct ipc_sst_ia_dbg_mem_rw  {
@@ -419,29 +367,38 @@ struct snd_sst_lib_download_info {
 	u8 pvt_id; /* Private ID */
 	u8 reserved;  /* for alignment */
 };
+
+/* Codec params struture */
+union  snd_sst_codec_params_mfld {
+	struct snd_pcm_params_mfld pcm_params;
+	struct snd_mp3_params mp3_params;
+	struct snd_aac_params aac_params;
+	struct snd_wma_params wma_params;
+};
+
+struct snd_sst_stream_params_mfld {
+	union snd_sst_codec_params_mfld uc;
+} __packed;
+
+
+/* Alloc stream params structure */
+struct snd_sst_alloc_params_mfld {
+	struct snd_sst_str_type str_type;
+	struct snd_sst_stream_params_mfld stream_params;
+};
+
+struct snd_sst_fw_get_stream_params_mfld {
+	struct snd_sst_stream_params_mfld codec_params;
+	struct snd_sst_pmic_config pcm_params;
+};
+
 /* Alloc stream params structure */
 struct snd_sst_alloc_params {
 	struct snd_sst_str_type str_type;
 	struct snd_sst_stream_params stream_params;
-};
-
-/* Additional params for Alloc struct*/
-struct snd_sst_alloc_params_ext {
-	struct sst_address_info  ring_buf_info[8];
-	u8 sg_count;
-	u8 reserved;
-	u16 reserved2;
-	u32 frag_size;
-} __packed;
-
-/* Alloc stream params structure */
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
-struct snd_sst_alloc_params_mrfld {
-	struct snd_sst_str_type str_type;
-	struct snd_sst_stream_params stream_params;
 	struct snd_sst_alloc_params_ext alloc_params;
 } __packed;
-#endif
+
 
 struct snd_sst_fw_get_stream_params {
 	struct snd_sst_stream_params codec_params;
@@ -470,9 +427,7 @@ struct snd_sst_control_routing {
 struct ipc_post {
 	struct list_head node;
 	union ipc_header header; /* driver specific */
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
 	union ipc_header_mrfld mrfld_header;
-#endif
 	char *mailbox_data;
 };
 

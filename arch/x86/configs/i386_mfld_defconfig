@@ -2391,7 +2391,6 @@ CONFIG_MACH_NO_WESTBRIDGE=y
 # CONFIG_BCM_WIMAX is not set
 # CONFIG_FT1000 is not set
 CONFIG_SND_INTEL_SST=y
-
 #
 # Speakup console speech
 #

@@ -45,6 +45,8 @@ config SND_CLV_MACHINE
 	select SND_SOC_CS42L73
 	select SND_SST_PLATFORM
 	select SND_INTEL_SST
+	select SND_COMPRESS_SST
+	select SND_COMPRESS_OFFLOAD
 	default n
 	help
           This adds support for ASoC machine driver for Intel(R) MID Cloverview platform
@@ -53,7 +55,10 @@ config SND_CLV_MACHINE
           If unsure select "N".
 
 config SND_INTEL_SST
-	tristate
+       tristate
+
+config SND_COMPRESS_SST
+	tristate "Compressed framework driver for Intel(R) SST engine"
 
 config SND_SST_PLATFORM
 	tristate

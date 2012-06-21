@@ -135,7 +135,6 @@ int sst_start_mfld(void)
  *
  * This resets DSP in case of MRFLD platfroms
  */
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
 int intel_sst_reset_dsp_mrfld(void)
 {
 	union config_status_reg_mrfld csr;
@@ -187,7 +186,6 @@ int sst_start_mrfld(void)
 
 	return 0;
 }
-#endif
 
 /*
  * sst_fill_sglist - Fill the sg list
@@ -235,7 +233,6 @@ void sst_fill_sglist(unsigned long ram, struct dma_block_info *block,
 
 }
 
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
 static inline int sst_validate_fw_elf(const struct firmware *sst_fw)
 {
 	Elf32_Ehdr *elf;
@@ -303,7 +300,6 @@ void sst_download_fw_mrfld(const void *fw_in_mem)
 		i++;
 	}
 }
-#endif
 /**
  * sst_parse_module - Parse audio FW modules
  *
@@ -509,14 +505,12 @@ int sst_request_fw(void)
 		pr_err("request fw failed %d\n", retval);
 		return retval;
 	}
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
 	if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID)
 		retval = sst_validate_fw_elf(sst_drv_ctx->fw);
 	if (retval != 0) {
 		pr_err("FW image invalid...\n");
 		goto end_release;
 	}
-#endif
 	sst_drv_ctx->fw_in_mem = kzalloc(sst_drv_ctx->fw->size, GFP_KERNEL);
 	if (!sst_drv_ctx->fw_in_mem) {
 		pr_err("%s unable to allocate memory\n", __func__);
@@ -597,13 +591,9 @@ int sst_load_fw(const void *fw_in_mem, void *context)
 	ret_val = sst_drv_ctx->ops->reset();
 	if (ret_val)
 		return ret_val;
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
 	if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID)
 		sst_download_fw_mrfld(fw_in_mem);
 	else {
-#else
-	{
-#endif
 		/* get a dmac channel */
 		sst_alloc_dma_chan(&sst_drv_ctx->dma);
 		 /* allocate desc for transfer and submit */

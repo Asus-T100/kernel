@@ -27,12 +27,14 @@
 #ifndef __SST_PLATFORMDRV_H__
 #define __SST_PLATFORMDRV_H__
 
+
 enum sst_audio_device_type {
 	SND_SST_DEVICE_HEADSET = 1,
 	SND_SST_DEVICE_IHF,
 	SND_SST_DEVICE_VIBRA,
 	SND_SST_DEVICE_HAPTIC,
 	SND_SST_DEVICE_CAPTURE,
+	SND_SST_DEVICE_COMPRESSED_PLAYBACK,
 };
 
 enum snd_sst_input_stream {
@@ -41,6 +43,12 @@ enum snd_sst_input_stream {
 	SST_INPUT_STREAM_MIXED = 0xA,
 };
 
+enum sst_stream_ops {
+	STREAM_OPS_PLAYBACK = 0,        /* Decode */
+	STREAM_OPS_CAPTURE,             /* Encode */
+	STREAM_OPS_COMPRESSED_PATH,     /* Offload playback/capture */
+
+};
 enum snd_sst_stream_type {
 	SST_STREAM_DEVICE_HS = 32,
 	SST_STREAM_DEVICE_IHF = 33,
@@ -57,12 +65,9 @@ enum sst_controls {
 	SST_SND_BUFFER_POINTER =	0x1005,
 	SST_SND_STREAM_INIT =		0x1006,
 	SST_SND_START	 =		0x1007,
-	SST_SND_STREAM_PROCESS =	0x1008,
-	SST_CONTROL_BASE =		0x1009,
-	SST_VMIC_CHANNEL_SELECT =	0x1010,
-	SST_SET_RUNTIME_PARAMS =	0x1011,
-	SST_SET_ALGO_PARAMS =		0x1012,
-	SST_MAX_CONTROLS =		0x1012,
+	SST_SET_RUNTIME_PARAMS =	0x1008,
+	SST_SET_ALGO_PARAMS =		0x1009,
+	SST_MAX_CONTROLS =		0x1010,
 };
 
 struct pcm_stream_info {
@@ -74,35 +79,9 @@ struct pcm_stream_info {
 	int sfreq;
 };
 
-enum sst_stream_ops {
-	STREAM_OPS_PLAYBACK = 0,	/* Decode */
-	STREAM_OPS_CAPTURE,		/* Encode */
-	STREAM_OPS_PLAYBACK_DRM,	/* Play Audio/Voice */
-	STREAM_OPS_PLAYBACK_ALERT,	/* Play Audio/Voice */
-	STREAM_OPS_CAPTURE_VOICE_CALL,	/* CSV Voice recording */
-};
 
-/* PCM Parameters */
-struct sst_pcm_params {
-	u16 codec;	/* codec type */
-	u8 num_chan;	/* 1=Mono, 2=Stereo */
-	u8 pcm_wd_sz;	/* 16/24 - bit*/
-	u32 reserved;	/* Bitrate in bits per second */
-	u32 sfreq;	/* Sampling rate in Hz */
-	u32 ring_buffer_size;
-	u32 period_count;	/* period elapsed in samples*/
-	u32 ring_buffer_addr;
-};
 
-struct sst_stream_params {
-	u32 result;
-	u32 stream_id;
-	u8 codec;
-	u8 ops;
-	u8 stream_type;
-	u8 device_type;
-	struct sst_pcm_params sparams;
-};
+
 
 enum lpe_param_types_mixer {
 	SST_ALGO_PARAM_MIXER_STREAM_CFG = 0x801,
@@ -115,7 +94,7 @@ struct mad_ops_wq {
 };
 
 struct sst_ops {
-	int (*open) (struct sst_stream_params *str_param);
+	int (*open) (struct snd_sst_params *str_param);
 	int (*device_control) (int cmd, void *arg);
 	int (*set_generic_params) (enum sst_controls cmd, void *arg);
 	int (*close) (unsigned int str_id);
@@ -132,6 +111,8 @@ struct sst_device {
 	char *name;
 	struct device *dev;
 	struct sst_ops *ops;
+	struct platform_device *pdev;
+	unsigned int usage_count;
 };
 
 int sst_register_dsp(struct sst_device *sst);

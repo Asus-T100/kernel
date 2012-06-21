@@ -195,18 +195,12 @@ int sst_create_short_msg(struct ipc_post **arg)
  */
 void sst_clean_stream(struct stream_info *stream)
 {
-	struct sst_stream_bufs *bufs = NULL, *_bufs;
 	stream->status = STREAM_UN_INIT;
 	stream->prev = STREAM_UN_INIT;
 	mutex_lock(&stream->lock);
-	list_for_each_entry_safe(bufs, _bufs, &stream->bufs, node) {
-		list_del(&bufs->node);
-		kfree(bufs);
-	}
+	stream->cumm_bytes = 0;
 	mutex_unlock(&stream->lock);
 
-	if (stream->ops != STREAM_OPS_PLAYBACK_DRM)
-		kfree(stream->decode_ibuf);
 }
 
 /*

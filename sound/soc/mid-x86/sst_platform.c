@@ -210,36 +210,63 @@ static inline int sst_get_stream_status(struct sst_runtime_stream *stream)
 	return state;
 }
 
-static void sst_fill_pcm_params(struct snd_pcm_substream *substream,
-				struct sst_pcm_params *param)
+static void sst_fill_alloc_params(struct snd_pcm_substream *substream,
+				struct snd_sst_alloc_params_ext *alloc_param)
 {
-	param->codec = SST_CODEC_TYPE_PCM;
-	param->num_chan = (u8) substream->runtime->channels;
-	param->pcm_wd_sz = substream->runtime->sample_bits;
-	param->reserved = 0;
-	param->sfreq = substream->runtime->rate;
-	param->ring_buffer_size = snd_pcm_lib_buffer_bytes(substream);
-	param->period_count = substream->runtime->period_size;
-	param->ring_buffer_addr = virt_to_phys(substream->dma_buffer.area);
-	pr_debug("period_cnt = %d\n", param->period_count);
-	pr_debug("buffer sz = %d\n",  param->ring_buffer_size);
-	pr_debug("sfreq= %d, wd_sz = %d\n", param->sfreq, param->pcm_wd_sz);
+	unsigned int channels;
+	snd_pcm_uframes_t period_size;
+	ssize_t periodbytes;
+	ssize_t buffer_bytes = snd_pcm_lib_buffer_bytes(substream);
+	u32 buffer_addr = virt_to_phys(substream->dma_buffer.area);
+
+	channels = substream->runtime->channels;
+	period_size = substream->runtime->period_size;
+	periodbytes = samples_to_bytes(substream->runtime, period_size);
+	alloc_param->ring_buf_info[0].addr = buffer_addr;
+	alloc_param->ring_buf_info[0].size = buffer_bytes;
+	alloc_param->sg_count = 1;
+	alloc_param->reserved = 0;
+	alloc_param->reserved2 = 0;
+	alloc_param->frag_size = periodbytes * channels;
+
+	pr_debug("period_size = %d\n", alloc_param->frag_size);
+	pr_debug("ring_buf_addr = 0x%x\n", alloc_param->ring_buf_info[0].addr);
+}
+static void sst_fill_pcm_params(struct snd_pcm_substream *substream,
+				struct snd_sst_stream_params *param)
+{
+	param->uc.pcm_params.codec = SST_CODEC_TYPE_PCM;
+	param->uc.pcm_params.num_chan = (u8) substream->runtime->channels;
+	param->uc.pcm_params.pcm_wd_sz = substream->runtime->sample_bits;
+	param->uc.pcm_params.reserved = 0;
+	param->uc.pcm_params.sfreq = substream->runtime->rate;
+
+	/* PCM stream via ALSA interface */
+	param->uc.pcm_params.use_offload_path = 0;
+	param->uc.pcm_params.reserved2 = 0;
+	param->uc.pcm_params.reserved3 = 0;
+	memset(param->uc.pcm_params.channel_map, 0, sizeof(u8));
+	pr_debug("sfreq= %d, wd_sz = %d\n",
+	param->uc.pcm_params.sfreq, param->uc.pcm_params.pcm_wd_sz);
+
 }
 
 static int sst_platform_alloc_stream(struct snd_pcm_substream *substream)
 {
 	struct sst_runtime_stream *stream =
 			substream->runtime->private_data;
-	struct sst_pcm_params param = {0};
-	struct sst_stream_params str_params = {0};
+	struct snd_sst_stream_params param = {{{0,},},};
+	struct snd_sst_params str_params = {0};
+	struct snd_sst_alloc_params_ext alloc_params = {0};
 	int ret_val;
 
-	pr_debug("alloc str buf_ptr %llu\n", stream->stream_info.buffer_ptr);
 	/* set codec params and inform SST driver the same */
 	sst_fill_pcm_params(substream, &param);
+	sst_fill_alloc_params(substream, &alloc_params);
 	substream->runtime->dma_area = substream->dma_buffer.area;
 	str_params.sparams = param;
-	str_params.codec =  param.codec;
+	str_params.aparams = alloc_params;
+	str_params.codec =  param.uc.pcm_params.codec;
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
 		str_params.ops = STREAM_OPS_PLAYBACK;
 		str_params.device_type = substream->pcm->device + 1;
@@ -259,7 +286,6 @@ static int sst_platform_alloc_stream(struct snd_pcm_substream *substream)
 	stream->stream_info.str_id = ret_val;
 	pr_debug("platform allocated strid:  %d\n", stream->stream_info.str_id);
 
-	pr_debug("alloc str done buf_ptr %llu\n", stream->stream_info.buffer_ptr);
 	return ret_val;
 }
 
@@ -375,7 +401,6 @@ static int sst_media_prepare(struct snd_pcm_substream *substream,
 	pr_debug("%s\n", __func__);
 
 	stream = substream->runtime->private_data;
-	pr_debug("Prepare buf_ptr %llu\n", stream->stream_info.buffer_ptr);
 	str_id = stream->stream_info.str_id;
 	if (stream->stream_info.str_id)
 		return ret_val;
@@ -390,7 +415,6 @@ static int sst_media_prepare(struct snd_pcm_substream *substream,
 	if (ret_val)
 		return ret_val;
 	substream->runtime->hw.info = SNDRV_PCM_INFO_BLOCK_TRANSFER;
-	pr_debug("prepare end buf_ptr %llu\n", stream->stream_info.buffer_ptr);
 	return ret_val;
 }
 
@@ -479,6 +503,17 @@ static struct snd_soc_dai_driver sst_platform_dai[] = {
 		.formats = SNDRV_PCM_FMTBIT_S16_LE,
 	},
 },
+{
+	.name = "Virtual-cpu-dai",
+	.id = 5,
+	.playback = {
+		.channels_min = SST_STEREO,
+		.channels_max = SST_STEREO,
+		.rates = SNDRV_PCM_RATE_48000,
+		.formats = SNDRV_PCM_FMTBIT_S16_LE,
+	},
+},
+
 };
 
 static int sst_platform_open(struct snd_pcm_substream *substream)

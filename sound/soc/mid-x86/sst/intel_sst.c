@@ -64,19 +64,6 @@ MODULE_VERSION(SST_DRIVER_VERSION);
 struct intel_sst_drv *sst_drv_ctx;
 static struct mutex drv_ctx_lock;
 struct class *sst_class;
-
-/* fops Routines */
-static const struct file_operations intel_sst_fops = {
-	.owner = THIS_MODULE,
-	.open = intel_sst_open,
-	.release = intel_sst_release,
-	.read = intel_sst_read,
-	.write = intel_sst_write,
-	.unlocked_ioctl = intel_sst_ioctl,
-	.mmap = intel_sst_mmap,
-	.aio_read = intel_sst_aio_read,
-	.aio_write = intel_sst_aio_write,
-};
 static const struct file_operations intel_sst_fops_cntrl = {
 	.owner = THIS_MODULE,
 	.open = intel_sst_open_cntrl,
@@ -84,20 +71,12 @@ static const struct file_operations intel_sst_fops_cntrl = {
 	.unlocked_ioctl = intel_sst_ioctl,
 };
 
-static struct miscdevice lpe_dev = {
-	.minor = MISC_DYNAMIC_MINOR,/* dynamic allocation */
-	.name = "intel_sst",/* /dev/intel_sst */
-	.fops = &intel_sst_fops
-};
-
-
 static struct miscdevice lpe_ctrl = {
 	.minor = MISC_DYNAMIC_MINOR,/* dynamic allocation */
 	.name = "intel_sst_ctrl",/* /dev/intel_sst_ctrl */
 	.fops = &intel_sst_fops_cntrl
 };
 
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
 static irqreturn_t intel_sst_interrupt_mrfld(int irq, void *context)
 {
 	union interrupt_reg_mrfld isr;
@@ -159,7 +138,6 @@ static irqreturn_t intel_sst_interrupt_mrfld(int irq, void *context)
 	} else
 		return IRQ_NONE;
 }
-#endif
 
 /**
 * intel_sst_interrupt - Interrupt service routine for SST
@@ -233,7 +211,6 @@ static irqreturn_t intel_sst_intr_mfld(int irq, void *context)
 
 }
 
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
 struct intel_sst_ops mrfld_ops = {
 	.interrupt = intel_sst_interrupt_mrfld,
 	.clear_interrupt = intel_sst_clear_intr_mrfld,
@@ -243,9 +220,7 @@ struct intel_sst_ops mrfld_ops = {
 	.sync_post_message = sst_sync_post_message_mrfld,
 	.process_message = sst_process_message_mrfld,
 	.process_reply = sst_process_reply_mrfld,
-	.start_stream = sst_start_stream_mrfld,
 };
-#endif
 
 struct intel_sst_ops mfld_ops = {
 	.interrupt = intel_sst_intr_mfld,
@@ -256,19 +231,16 @@ struct intel_sst_ops mfld_ops = {
 	.sync_post_message = sst_sync_post_message_mfld,
 	.process_message = sst_process_message_mfld,
 	.process_reply = sst_process_reply_mfld,
-	.start_stream = sst_start_stream_mfld,
 };
 
 static int sst_driver_ops(unsigned int pci_id)
 {
 
 	switch (pci_id) {
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
 	case SST_MRFLD_PCI_ID:
 		sst_drv_ctx->tstamp = SST_TIME_STAMP_MRFLD;
 		sst_drv_ctx->ops = &mrfld_ops;
 		return 0;
-#endif
 	case SST_CLV_PCI_ID:
 	case SST_MFLD_PCI_ID:
 		sst_drv_ctx->tstamp =  SST_TIME_STAMP;
@@ -320,12 +292,9 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 	mutex_init(&sst_drv_ctx->mixer_ctrl_lock);
 
 	sst_drv_ctx->stream_cnt = 0;
-	sst_drv_ctx->encoded_cnt = 0;
 	sst_drv_ctx->am_cnt = 0;
 	sst_drv_ctx->pb_streams = 0;
 	sst_drv_ctx->cp_streams = 0;
-	sst_drv_ctx->unique_id = 0;
-	sst_drv_ctx->pmic_port_instance = SST_DEFAULT_PMIC_PORT;
 	sst_drv_ctx->fw = NULL;
 	sst_drv_ctx->fw_in_mem = NULL;
 	ops = sst_drv_ctx->ops;
@@ -363,32 +332,9 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 				sst_drv_ctx->max_streams);
 	for (i = 1; i <= sst_drv_ctx->max_streams; i++) {
 		struct stream_info *stream = &sst_drv_ctx->streams[i];
-		INIT_LIST_HEAD(&stream->bufs);
 		mutex_init(&stream->lock);
-		spin_lock_init(&stream->pcm_lock);
 	}
-	if (sst_drv_ctx->pci_id == SST_MRST_PCI_ID) {
-		sst_drv_ctx->mmap_mem = NULL;
-		sst_drv_ctx->mmap_len = SST_MMAP_PAGES * PAGE_SIZE;
-		while (sst_drv_ctx->mmap_len > 0) {
-			sst_drv_ctx->mmap_mem =
-				kzalloc(sst_drv_ctx->mmap_len, GFP_KERNEL);
-			if (sst_drv_ctx->mmap_mem) {
-				pr_debug("Got memory %p size 0x%x\n",
-					sst_drv_ctx->mmap_mem,
-					sst_drv_ctx->mmap_len);
-				break;
-			}
-			if (sst_drv_ctx->mmap_len < (SST_MMAP_STEP*PAGE_SIZE)) {
-				pr_err("mem alloc fail...abort!!\n");
-				ret = -ENOMEM;
-				goto free_process_reply_wq;
-			}
-			sst_drv_ctx->mmap_len -= (SST_MMAP_STEP * PAGE_SIZE);
-			pr_debug("mem alloc failed...trying %d\n",
-						sst_drv_ctx->mmap_len);
-		}
-	}
+
 	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID) {
 		sst_drv_ctx->device_input_mixer = SST_STREAM_DEVICE_IHF
 							| SST_INPUT_STREAM_PCM;
@@ -406,7 +352,7 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 		goto do_disable_device;
 	/* map registers */
 	/* SST Shim */
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
+
 	if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID) {
 		sst_drv_ctx->ddr_base = pci_resource_start(pci, 0);
 		sst_drv_ctx->ddr_end = pci_resource_end(pci, 0);
@@ -418,7 +364,7 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 	} else {
 		sst_drv_ctx->ddr = NULL;
 	}
-#endif
+
 	/* SST Shim */
 	sst_drv_ctx->shim_phy_add = pci_resource_start(pci, 1);
 	sst_drv_ctx->shim = pci_ioremap_bar(pci, 1);
@@ -456,6 +402,13 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 		goto do_unmap_dram;
 	pr_debug("Registered IRQ 0x%x\n", pci->irq);
 
+	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID) {
+		ret = intel_sst_register_compress(sst_drv_ctx);
+		if (ret) {
+			pr_err("couldn't register compress device\n");
+			goto do_free_irq;
+		}
+	}
 	/*Register LPE Control as misc driver*/
 	ret = misc_register(&lpe_ctrl);
 	if (ret) {
@@ -463,13 +416,7 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 		goto do_free_irq;
 	}
 
-	if (sst_drv_ctx->pci_id == SST_MRST_PCI_ID) {
-		ret = misc_register(&lpe_dev);
-		if (ret) {
-			pr_err("couldn't register LPE device\n");
-			goto do_free_misc;
-		}
-	} else if ((sst_drv_ctx->pci_id == SST_MFLD_PCI_ID) ||
+	if ((sst_drv_ctx->pci_id == SST_MFLD_PCI_ID) ||
 			(sst_drv_ctx->pci_id == SST_CLV_PCI_ID)) {
 		u32 csr;
 		u32 csr2;
@@ -521,7 +468,6 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 
 	pci_set_drvdata(pci, sst_drv_ctx);
 	if (sst_drv_ctx->pci_id != SST_MRFLD_PCI_ID) {
-		sst_drv_ctx->lpe_stalled = 0;
 		pm_runtime_allow(&pci->dev);
 		pm_runtime_put_noidle(&pci->dev);
 	}
@@ -541,18 +487,16 @@ do_unmap_sram:
 	iounmap(sst_drv_ctx->mailbox);
 do_unmap_shim:
 	iounmap(sst_drv_ctx->shim);
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
+
 do_unmap_ddr:
 	if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID)
 		iounmap(sst_drv_ctx->ddr);
-#endif
+
 do_release_regions:
 	pci_release_regions(pci);
 do_disable_device:
 	pci_disable_device(pci);
 do_free_mem:
-	kfree(sst_drv_ctx->mmap_mem);
-free_process_reply_wq:
 	destroy_workqueue(sst_drv_ctx->process_reply_wq);
 free_process_msg_wq:
 	destroy_workqueue(sst_drv_ctx->process_msg_wq);
@@ -583,17 +527,14 @@ static void __devexit intel_sst_remove(struct pci_dev *pci)
 	pci_dev_put(sst_drv_ctx->pci);
 	sst_set_fw_state_locked(sst_drv_ctx, SST_UN_INIT);
 	misc_deregister(&lpe_ctrl);
+	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID)
+		intel_sst_remove_compress(sst_drv_ctx);
 	free_irq(pci->irq, sst_drv_ctx);
 	iounmap(sst_drv_ctx->dram);
 	iounmap(sst_drv_ctx->iram);
 	iounmap(sst_drv_ctx->mailbox);
 	iounmap(sst_drv_ctx->shim);
-	if (sst_drv_ctx->pci_id == SST_MRST_PCI_ID) {
-		misc_deregister(&lpe_dev);
-		kfree(sst_drv_ctx->mmap_mem);
-	} else {
-		kfree(sst_drv_ctx->fw_cntx);
-	}
+	kfree(sst_drv_ctx->fw_cntx);
 	kfree(sst_drv_ctx->runtime_param.param.addr);
 	flush_scheduled_work();
 	destroy_workqueue(sst_drv_ctx->process_reply_wq);

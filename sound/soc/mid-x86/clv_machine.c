@@ -42,7 +42,7 @@
 
 /* CDB42L73 Y1 (6.144 MHz) )oscillator =  MCLK1 */
 #define C42L73_DEFAULT_MCLK	19200000
-#define CS42L73_HPSENSE_GPIO 	34
+#define CS42L73_HPSENSE_GPIO	34
 #define CS42L73_BUTTON_GPIO	32
 #define GPIO_AMP_ON 0x3d
 #define GPIO_AMP_OFF 0x0
@@ -516,6 +516,18 @@ struct snd_soc_dai_link clv_msic_dailink[] = {
 		.init = NULL,
 		.ignore_suspend = 1,
 		.ops = &clv_vsp_ops,
+	},
+
+	{
+		.name = "Cloverview Comp ASP",
+		.stream_name = "Compress-Audio",
+		.cpu_dai_name = "Virtual-cpu-dai",
+		.codec_dai_name = "cs42l73-asp",
+		.codec_name = "cs42l73.1-004a",
+		.platform_name = "sst-platform",
+		.init = NULL,
+		.ignore_suspend = 1,
+		.ops = &clv_asp_ops,
 	},
 };
 

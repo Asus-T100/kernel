@@ -39,36 +39,6 @@
 #include "intel_sst_common.h"
 
 /*
- * sst_check_device_type_clv - Check the medfield device type
- *
- * @device: Device to be checked
- * @num_ch: Number of channels queried
- * @pcm_slot: slot to be enabled for this device
- *
- * This checks the deivce against the map and calculates pcm_slot value
- */
-static int sst_check_device_type_clv(u32 device, u32 num_chan, u32 *pcm_slot)
-{
-	if (sst_drv_ctx->streams[device].status == STREAM_UN_INIT) {
-		if (device == SND_SST_DEVICE_HEADSET && num_chan == 2)
-			*pcm_slot = 0x03;
-		else if (device == SND_SST_DEVICE_CAPTURE && num_chan == 1)
-			*pcm_slot = 0x03;
-		else if (device == SND_SST_DEVICE_CAPTURE && num_chan == 2)
-			*pcm_slot = 0x03;
-		else {
-			pr_debug("No condition satisfied.. ret err\n");
-			return -EINVAL;
-		}
-	} else {
-		pr_debug("this stream state is not uni-init, is %d\n",
-					sst_drv_ctx->streams[device].status);
-		return -EBADRQC;
-	}
-	return 0;
-}
-
-/*
  * sst_check_device_type - Check the medfield device type
  *
  * @device: Device to be checked
@@ -107,6 +77,9 @@ static int sst_check_device_type(u32 device, u32 num_chan, u32 *pcm_slot)
 			*pcm_slot = 0x0F;
 		else if (device == SND_SST_DEVICE_CAPTURE && num_chan > 4)
 			*pcm_slot = 0x1F;
+		else if (device == SND_SST_DEVICE_COMPRESSED_PLAYBACK &&
+				(num_chan == 2 || num_chan == 1))
+			*pcm_slot = sst_drv_ctx->compressed_slot;
 		else {
 			pr_debug("No condition satisfied.. ret err\n");
 			return -EINVAL;
@@ -120,23 +93,6 @@ static int sst_check_device_type(u32 device, u32 num_chan, u32 *pcm_slot)
 	return 0;
 }
 
-/**
- * get_mrst_stream_id	-	gets a new stream id for use
- *
- * This functions searches the current streams and allocated an empty stream
- * lock stream_lock required to be held before calling this
- */
-static unsigned int get_mrst_stream_id(void)
-{
-	int i;
-
-	for (i = 1; i <= MAX_NUM_STREAMS_MRST; i++) {
-		if (sst_drv_ctx->streams[i].status == STREAM_UN_INIT)
-			return i;
-	}
-	pr_debug("Didn't find empty stream for mrst\n");
-	return -EBUSY;
-}
 
 /**
  * get_clv_stream_id   -       gets a new stream id for use
@@ -149,122 +105,24 @@ static unsigned int get_clv_stream_id(u32 device)
 	int str_id;
 	/*device id range starts from 1 */
 	pr_debug("device_id %d\n", device);
-	if (sst_drv_ctx->streams[device].status == STREAM_UN_INIT) {
-		if (device == SND_SST_DEVICE_HEADSET)
-			str_id = 1;
-		else if (device == SND_SST_DEVICE_CAPTURE)
-			str_id = 2;
-		else
-			return -EINVAL;
-		/*srr_id = 3 for encoded playback */
-	} else {
+	if (device == SND_SST_DEVICE_HEADSET)
+		str_id = 1;
+	else if (device == SND_SST_DEVICE_CAPTURE)
+		str_id = 2;
+	else if (device == SND_SST_DEVICE_COMPRESSED_PLAYBACK)
+		str_id = 3;
+	else
+		return -EINVAL;
+
+	if (sst_drv_ctx->streams[str_id].status != STREAM_UN_INIT) {
 		pr_debug("this stream state is not uni-init, is %d\n",
-					sst_drv_ctx->streams[device].status);
+					sst_drv_ctx->streams[str_id].status);
 		return -EBADRQC;
 	}
 	pr_debug("str_id %d\n", str_id);
 	return str_id;
 }
 
-/**
- * sst_alloc_stream_mrfld - Send msg for a new stream ID
- *
- * @params:	stream params
- * @stream_ops:	operation of stream PB/capture
- * @codec:	codec for stream
- * @device:	device stream to be allocated for
- *
- * This function is called by any function which wants to start
- * a new stream. This also check if a stream exists which is idle
- * it initializes idle stream id to this request
- */
-/* this will work only for PCM */
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
-int sst_alloc_stream_mrfld(char *params, unsigned int stream_ops,
-	       u8 codec, unsigned int device)
-{
-	struct ipc_post *msg = NULL;
-	struct snd_sst_alloc_params_mrfld alloc_param;
-	struct snd_pcm_params *pcm = (struct snd_pcm_params *)params;
-	struct snd_pcm_params_mrfld mrfld;
-	struct snd_sst_alloc_params_ext aparams;
-	struct stream_info *str_info;
-	int pcm_slot, str_id;
-
-	pr_debug("SST DBG:entering sst_alloc_stream_mrfld\n");
-
-	BUG_ON(!params);
-	/* we get the pcm params from the common structure
-	 * now we need to use this to clauclte mrfld pcm struct
-	 */
-
-	mrfld.codec = codec;
-	mrfld.num_chan = pcm->num_chan;
-	mrfld.pcm_wd_sz = pcm->pcm_wd_sz;
-	mrfld.reserved = 0;
-	mrfld.sfreq = pcm->sfreq;
-	mrfld.use_offload_path = 0;
-	mrfld.reserved2 = 0;
-	mrfld.reserved3 = 0;
-	mrfld.channel_map[0] = 0x3;
-	/*check the device type*/
-	if (sst_check_device_type_clv(device, pcm->num_chan, &pcm_slot))
-		return -EINVAL;
-	mutex_lock(&sst_drv_ctx->stream_lock);
-	str_id = get_clv_stream_id(device);
-	mutex_unlock(&sst_drv_ctx->stream_lock);
-	if (str_id <= 0)
-		return -EBUSY;
-	/*allocate device type context*/
-	sst_init_stream(&sst_drv_ctx->streams[str_id], codec,
-			str_id, stream_ops, pcm_slot, device);
-	/* send msg to FW to allocate a stream */
-	if (sst_create_large_msg(&msg))
-		return -ENOMEM;
-
-	sst_fill_header_mrfld(&msg->mrfld_header, IPC_IA_ALLOC_STREAM,
-								1, str_id);
-	msg->mrfld_header.p.header_low_payload =
-				sizeof(alloc_param) + sizeof(u64);
-	alloc_param.str_type.codec_type = codec;
-	alloc_param.str_type.str_type = SST_STREAM_TYPE_MUSIC;
-	alloc_param.str_type.operation = stream_ops;
-	alloc_param.str_type.protected_str = 0; /* non drm */
-	alloc_param.str_type.time_slots = pcm_slot;
-	alloc_param.str_type.result = alloc_param.str_type.reserved = 0;
-	memcpy(&alloc_param.stream_params, &mrfld,
-			sizeof(struct snd_sst_stream_params));
-	pr_debug("codec:%d,pcm_slot:%x\n", codec, pcm_slot);
-
-	aparams.ring_buf_info[0].addr = pcm->ring_buffer_addr;
-	aparams.ring_buf_info[0].size = pcm->ring_buffer_size;
-	aparams.sg_count = 1;
-	aparams.reserved = 0;
-	aparams.reserved2 = 0;
-	aparams.frag_size =
-		pcm->period_count * pcm->pcm_wd_sz * pcm->num_chan / 8;
-
-	memcpy(&alloc_param.alloc_params, &aparams,
-			sizeof(struct snd_sst_alloc_params_ext));
-
-	memcpy(msg->mailbox_data, &msg->mrfld_header.p.header_high.full,
-								sizeof(u32));
-	memcpy(msg->mailbox_data + sizeof(u32),
-			&msg->mrfld_header.p.header_low_payload, sizeof(u32));
-	memcpy(msg->mailbox_data + sizeof(u64), &alloc_param,
-			sizeof(alloc_param));
-	str_info = &sst_drv_ctx->streams[str_id];
-	str_info->ctrl_blk.condition = false;
-	str_info->ctrl_blk.ret_code = 0;
-	str_info->ctrl_blk.on = true;
-	spin_lock(&sst_drv_ctx->list_spin_lock);
-	list_add_tail(&msg->node, &sst_drv_ctx->ipc_dispatch_list);
-	spin_unlock(&sst_drv_ctx->list_spin_lock);
-	sst_drv_ctx->ops->post_message(&sst_drv_ctx->ipc_post_msg_wq);
-	pr_debug("SST DBG:alloc stream done\n");
-	return str_id;
-}
-#endif
 
 /**
  * sst_alloc_stream - Send msg for a new stream ID
@@ -278,69 +136,172 @@ int sst_alloc_stream_mrfld(char *params, unsigned int stream_ops,
  * a new stream. This also check if a stream exists which is idle
  * it initializes idle stream id to this request
  */
-int sst_alloc_stream_mfld(char *params, unsigned int stream_ops,
-	       u8 codec, unsigned int device)
+int sst_alloc_stream_clv(char *params)
 {
 	struct ipc_post *msg = NULL;
 	struct snd_sst_alloc_params alloc_param;
-	unsigned int pcm_slot = 0, num_ch;
+	unsigned int pcm_slot = 0x03, num_ch;
 	int str_id;
+	struct snd_sst_params *str_params;
 	struct snd_sst_stream_params *sparams;
+	struct snd_sst_alloc_params_ext *aparams;
 	struct stream_info *str_info;
+	unsigned int stream_ops, device;
+	u8 codec;
 
-	pr_debug("SST DBG:entering sst_alloc_stream\n");
-	pr_debug("SST DBG:%d %d %d\n", stream_ops, codec, device);
+	pr_debug("In %s\n", __func__);
 
 	BUG_ON(!params);
-	sparams = kzalloc(sizeof(*sparams), GFP_KERNEL);
-	if (!sparams) {
-		pr_err("Unable to allocate snd_sst_stream_params\n");
-		return -ENOMEM;
-	}
-	/* TODO: figure out type of codec - assuming PCM size here */
-	memcpy(&sparams->uc, params, sizeof(struct sst_pcm_params));
+	str_params = (struct snd_sst_params *)params;
+	stream_ops = str_params->ops;
+	codec = str_params->codec;
+	device = str_params->device_type;
+	sparams = &str_params->sparams;
+	aparams = &str_params->aparams;
+	num_ch = sst_get_num_channel(str_params);
 
-	num_ch = sparams->uc.pcm_params.num_chan;
-	/*check the device type*/
-	if (sst_drv_ctx->pci_id == SST_MFLD_PCI_ID) {
-		if (sst_check_device_type(device, num_ch, &pcm_slot))
-			return -EINVAL;
-		mutex_lock(&sst_drv_ctx->stream_lock);
-		str_id = device;
-		mutex_unlock(&sst_drv_ctx->stream_lock);
-		pr_debug("SST_DBG: slot %x\n", pcm_slot);
-	} else if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID) {
-		if (sst_check_device_type_clv(device, num_ch, &pcm_slot))
-			return -EINVAL;
-		mutex_lock(&sst_drv_ctx->stream_lock);
-		str_id = get_clv_stream_id(device);
-		mutex_unlock(&sst_drv_ctx->stream_lock);
-		if (str_id <= 0)
-			return -EBUSY;
-	} else {
-		mutex_lock(&sst_drv_ctx->stream_lock);
-		str_id = get_mrst_stream_id();
-		mutex_unlock(&sst_drv_ctx->stream_lock);
-		if (str_id <= 0)
-			return -EBUSY;
-	}
+	pr_debug("period_size = %d\n", aparams->frag_size);
+	pr_debug("ring_buf_addr = 0x%x\n", aparams->ring_buf_info[0].addr);
+	pr_debug("ring_buf_size = %d\n", aparams->ring_buf_info[0].size);
+	pr_debug("In alloc device_type=%d\n", str_params->device_type);
+	pr_debug("In alloc sg_count =%d\n", aparams->sg_count);
+
+	mutex_lock(&sst_drv_ctx->stream_lock);
+	str_id = get_clv_stream_id(device);
+	mutex_unlock(&sst_drv_ctx->stream_lock);
+	if (str_id <= 0)
+		return -EBUSY;
+
 	/*allocate device type context*/
 	sst_init_stream(&sst_drv_ctx->streams[str_id], codec,
-			str_id, stream_ops, pcm_slot, device);
+			str_id, stream_ops, pcm_slot);
 	/* send msg to FW to allocate a stream */
 	if (sst_create_large_msg(&msg))
 		return -ENOMEM;
 
-	sst_fill_header(&msg->header, IPC_IA_ALLOC_STREAM, 1, str_id);
-	msg->header.part.data = sizeof(alloc_param) + sizeof(u32);
 	alloc_param.str_type.codec_type = codec;
 	alloc_param.str_type.str_type = SST_STREAM_TYPE_MUSIC;
 	alloc_param.str_type.operation = stream_ops;
 	alloc_param.str_type.protected_str = 0; /* non drm */
 	alloc_param.str_type.time_slots = pcm_slot;
-	alloc_param.str_type.result = alloc_param.str_type.reserved = 0;
+	alloc_param.str_type.reserved = 0;
+	alloc_param.str_type.result = 0;
 	memcpy(&alloc_param.stream_params, sparams,
 			sizeof(struct snd_sst_stream_params));
+	memcpy(&alloc_param.alloc_params, aparams,
+			sizeof(struct snd_sst_alloc_params_ext));
+
+
+	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID) {
+		sst_fill_header(&msg->header, IPC_IA_ALLOC_STREAM, 1, str_id);
+		msg->header.part.data = sizeof(alloc_param) + sizeof(u32);
+		memcpy(msg->mailbox_data, &msg->header, sizeof(u32));
+		memcpy(msg->mailbox_data + sizeof(u32), &alloc_param,
+			sizeof(alloc_param));
+	} else {
+		sst_fill_header_mrfld(&msg->mrfld_header, IPC_IA_ALLOC_STREAM,
+								1, str_id);
+		msg->mrfld_header.p.header_low_payload =
+				sizeof(alloc_param) + sizeof(u64);
+		memcpy(msg->mailbox_data, &msg->mrfld_header.p.header_high.full,
+								sizeof(u32));
+		memcpy(msg->mailbox_data + sizeof(u32),
+			&msg->mrfld_header.p.header_low_payload, sizeof(u32));
+		memcpy(msg->mailbox_data + sizeof(u64), &alloc_param,
+			sizeof(alloc_param));
+	}
+	str_info = &sst_drv_ctx->streams[str_id];
+	str_info->ctrl_blk.condition = false;
+	str_info->ctrl_blk.ret_code = 0;
+	str_info->ctrl_blk.on = true;
+	str_info->num_ch = num_ch;
+	spin_lock(&sst_drv_ctx->list_spin_lock);
+	list_add_tail(&msg->node, &sst_drv_ctx->ipc_dispatch_list);
+	spin_unlock(&sst_drv_ctx->list_spin_lock);
+	sst_drv_ctx->ops->post_message(&sst_drv_ctx->ipc_post_msg_wq);
+	return str_id;
+}
+
+int sst_alloc_stream_mfld(char *params)
+{
+	struct ipc_post *msg = NULL;
+	struct snd_sst_alloc_params_mfld alloc_param;
+	struct snd_sst_params *str_params;
+	struct stream_info *str_info;
+	unsigned int stream_ops, device;
+	struct snd_sst_stream_params_mfld *sparams;
+	unsigned int pcm_slot = 0, num_ch, pcm_wd_sz, sfreq;
+	int str_id;
+	u8 codec;
+	u32 rb_size, rb_addr, period_count;
+
+	pr_debug("In %s\n", __func__);
+
+	BUG_ON(!params);
+	str_params = (struct snd_sst_params *)params;
+	stream_ops = str_params->ops;
+	codec = str_params->codec;
+	device = str_params->device_type;
+	num_ch = sst_get_num_channel(str_params);
+	sfreq = sst_get_sfreq(str_params);
+	pcm_wd_sz = sst_get_wdsize(str_params);
+	rb_size = str_params->aparams.ring_buf_info[0].size;
+	rb_addr = str_params->aparams.ring_buf_info[0].addr;
+	period_count = str_params->aparams.frag_size / 4;
+
+
+	pr_debug("period_size = %d\n", period_count);
+	pr_debug("ring_buf_addr = 0x%x\n", rb_addr);
+	pr_debug("ring_buf_size = %d\n", rb_size);
+	pr_debug("device_type=%d\n", device);
+	pr_debug("sfreq =%d\n", sfreq);
+	pr_debug("stream_ops%d codec%d device%d\n", stream_ops, codec, device);
+
+
+	sparams = kzalloc(sizeof(*sparams), GFP_KERNEL);
+	if (!sparams) {
+		pr_err("Unable to allocate snd_sst_stream_params\n");
+		return -ENOMEM;
+	}
+
+
+	sparams->uc.pcm_params.codec = codec;
+	sparams->uc.pcm_params.num_chan = num_ch;
+	sparams->uc.pcm_params.pcm_wd_sz = pcm_wd_sz;
+	sparams->uc.pcm_params.reserved = 0;
+	sparams->uc.pcm_params.sfreq = sfreq;
+	sparams->uc.pcm_params.ring_buffer_size = rb_size;
+	sparams->uc.pcm_params.period_count = period_count;
+	sparams->uc.pcm_params.ring_buffer_addr = rb_addr;
+
+
+
+	if (sst_check_device_type(device, num_ch, &pcm_slot))
+		return -EINVAL;
+	mutex_lock(&sst_drv_ctx->stream_lock);
+	str_id = device;
+	mutex_unlock(&sst_drv_ctx->stream_lock);
+	pr_debug("slot %x\n", pcm_slot);
+
+	/*allocate device type context*/
+	sst_init_stream(&sst_drv_ctx->streams[str_id], codec,
+			str_id, stream_ops, pcm_slot);
+	/* send msg to FW to allocate a stream */
+	if (sst_create_large_msg(&msg))
+		return -ENOMEM;
+
+	alloc_param.str_type.codec_type = codec;
+	alloc_param.str_type.str_type = SST_STREAM_TYPE_MUSIC;
+	alloc_param.str_type.operation = stream_ops;
+	alloc_param.str_type.protected_str = 0; /* non drm */
+	alloc_param.str_type.time_slots = pcm_slot;
+	alloc_param.str_type.reserved = 0;
+	alloc_param.str_type.result = 0;
+
+	sst_fill_header(&msg->header, IPC_IA_ALLOC_STREAM, 1, str_id);
+	msg->header.part.data = sizeof(alloc_param) + sizeof(u32);
+	memcpy(&alloc_param.stream_params, sparams,
+			sizeof(*sparams));
 	kfree(sparams);
 
 	memcpy(msg->mailbox_data, &msg->header, sizeof(u32));
@@ -354,21 +315,18 @@ int sst_alloc_stream_mfld(char *params, unsigned int stream_ops,
 	list_add_tail(&msg->node, &sst_drv_ctx->ipc_dispatch_list);
 	spin_unlock(&sst_drv_ctx->list_spin_lock);
 	sst_drv_ctx->ops->post_message(&sst_drv_ctx->ipc_post_msg_wq);
-	pr_debug("SST DBG:alloc stream done\n");
 	return str_id;
 }
 
-int sst_alloc_stream(char *params, unsigned int stream_ops,
-	       u8 codec, unsigned int device)
+
+
+int sst_alloc_stream(char *params)
 {
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
-	if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID)
-		return sst_alloc_stream_mrfld(params, stream_ops,
-							codec, device);
+
+	if (sst_drv_ctx->pci_id == SST_MFLD_PCI_ID)
+		return sst_alloc_stream_mfld(params);
 	else
-#endif
-		return sst_alloc_stream_mfld(params, stream_ops,
-							codec, device);
+		return sst_alloc_stream_clv(params);
 }
 
 /*
@@ -380,7 +338,6 @@ int sst_alloc_stream(char *params, unsigned int stream_ops,
  * This function is called by firmware as a response to stream allcoation
  * request
  */
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
 int sst_alloc_stream_response_mrfld(unsigned int str_id)
 {
 	int retval = 0;
@@ -401,7 +358,6 @@ int sst_alloc_stream_response_mrfld(unsigned int str_id)
 	}
 	return retval;
 }
-#endif
 /*
  * sst_alloc_stream_response - process alloc reply
  *
@@ -486,66 +442,47 @@ int sst_get_fw_info(struct snd_sst_fw_info *info)
 
 
 /**
-* sst_stream_stream_mrfld - Send msg for a pausing stream
+* sst_stream_stream - Send msg for a pausing stream
 * @str_id:	 stream ID
 *
 * This function is called by any function which wants to start
 * a stream.
 */
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
-int sst_start_stream_mrfld(int str_id)
-{
-	int retval = 0;
-	struct ipc_post *msg = NULL;
-	struct stream_info *str_info;
-
-	pr_debug("sst_start_stream_mrfld for %d\n", str_id);
-	str_info = get_stream_info(str_id);
-	if (!str_info)
-		return -EINVAL;
-	/*if (str_info->status != STREAM_INIT)
-		return -EBADRQC;*/
-
-	if (sst_create_large_msg(&msg))
-		return -ENOMEM;
-
-	sst_fill_header_mrfld(&msg->mrfld_header,
-				IPC_IA_START_STREAM, 1, str_id);
-	msg->mrfld_header.p.header_low_payload =
-				sizeof(*str_info) + sizeof(u64);
-	memcpy(msg->mailbox_data,
-			&msg->mrfld_header.p.header_high.full, sizeof(u32));
-	memcpy(msg->mailbox_data + sizeof(u32),
-			&msg->mrfld_header.p.header_low_payload, sizeof(u32));
-	memset(msg->mailbox_data + sizeof(u64), 0, sizeof(u32));
-
-	sst_drv_ctx->ops->sync_post_message(msg);
-	return retval;
-}
-#endif
-
-int sst_start_stream_mfld(int str_id)
+int sst_start_stream(int str_id)
 {
 	int retval = 0;
 	struct ipc_post *msg = NULL;
 	struct stream_info *str_info;
 
 	pr_debug("sst_start_stream for %d\n", str_id);
-
-	retval = sst_validate_strid(str_id);
-	if (retval)
-		return retval;
-	str_info = &sst_drv_ctx->streams[str_id];
-	if (str_info->status != STREAM_INIT)
+	str_info = get_stream_info(str_id);
+	if (!str_info)
+		return -EINVAL;
+	if (str_info->status != STREAM_RUNNING)
 		return -EBADRQC;
-	if (sst_create_short_msg(&msg))
+
+	if (sst_create_large_msg(&msg))
 		return -ENOMEM;
-	sst_fill_header(&msg->header, IPC_IA_START_STREAM, 0, str_id);
-	spin_lock(&sst_drv_ctx->list_spin_lock);
-	list_add_tail(&msg->node, &sst_drv_ctx->ipc_dispatch_list);
-	spin_unlock(&sst_drv_ctx->list_spin_lock);
-	sst_drv_ctx->ops->post_message(&sst_drv_ctx->ipc_post_msg_wq);
-	return 0;
+
+	if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID) {
+		sst_fill_header_mrfld(&msg->mrfld_header,
+				IPC_IA_START_STREAM, 1, str_id);
+		msg->mrfld_header.p.header_low_payload =
+				sizeof(u64) + sizeof(u64);
+		memcpy(msg->mailbox_data,
+			&msg->mrfld_header.p.header_high.full, sizeof(u32));
+		memcpy(msg->mailbox_data + sizeof(u32),
+			&msg->mrfld_header.p.header_low_payload, sizeof(u32));
+		memset(msg->mailbox_data + sizeof(u64), 0, sizeof(u32));
+	} else {
+		sst_fill_header(&msg->header, IPC_IA_START_STREAM, 1, str_id);
+		msg->header.part.data =  sizeof(u32) + sizeof(u32);
+		memcpy(msg->mailbox_data, &msg->header, sizeof(u32));
+		memset(msg->mailbox_data + sizeof(u32), 0, sizeof(u32));
+	}
+
+	sst_drv_ctx->ops->sync_post_message(msg);
+	return retval;
 }
 
 /*
@@ -678,57 +615,20 @@ int sst_resume_stream(int str_id)
 int sst_drop_stream(int str_id)
 {
 	int retval = 0;
-	struct ipc_post *msg = NULL;
-	struct sst_stream_bufs *bufs = NULL, *_bufs;
 	struct stream_info *str_info;
-	struct intel_sst_ops *ops;
 
 	pr_debug("SST DBG:sst_drop_stream for %d\n", str_id);
 	str_info = get_stream_info(str_id);
 	if (!str_info)
 		return -EINVAL;
-	ops = sst_drv_ctx->ops;
 
-	mutex_lock(&str_info->lock);
-	if (str_info->status != STREAM_UN_INIT &&
-		str_info->status != STREAM_DECODE) {
+	if (str_info->status != STREAM_UN_INIT) {
+
 		str_info->prev = STREAM_UN_INIT;
 		str_info->status = STREAM_INIT;
-		mutex_unlock(&str_info->lock);
-		if (sst_create_short_msg(&msg)) {
-			pr_err("SST ERR: mem allocation failed\n");
-			return -ENOMEM;
-		}
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
-		if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID)
-			sst_fill_header_mrfld(&msg->mrfld_header,
-						IPC_IA_DROP_STREAM, 0, str_id);
-		else
-#endif
-			sst_fill_header(&msg->header, IPC_IA_DROP_STREAM,
-								 0, str_id);
-		spin_lock(&sst_drv_ctx->list_spin_lock);
-		list_add_tail(&msg->node,
-				&sst_drv_ctx->ipc_dispatch_list);
-		spin_unlock(&sst_drv_ctx->list_spin_lock);
-		ops->post_message(&sst_drv_ctx->ipc_post_msg_wq);
-		if (str_info->src != MAD_DRV) {
-			mutex_lock(&str_info->lock);
-			list_for_each_entry_safe(bufs, _bufs,
-						&str_info->bufs, node) {
-				list_del(&bufs->node);
-				kfree(bufs);
-			}
-			mutex_unlock(&str_info->lock);
-		}
-		str_info->cumm_bytes += str_info->curr_bytes;
-		if (str_info->data_blk.on == true) {
-			str_info->data_blk.condition = true;
-			str_info->data_blk.ret_code = retval;
-			wake_up(&sst_drv_ctx->wait_queue);
-		}
+		str_info->cumm_bytes = 0;
+		sst_send_sync_msg(IPC_IA_DROP_STREAM, str_id);
 	} else {
-		mutex_unlock(&str_info->lock);
 		retval = -EBADRQC;
 		pr_debug("BADQRC for stream, state %x\n", str_info->status);
 	}
@@ -772,13 +672,12 @@ int sst_drain_stream(int str_id)
 		list_add_tail(&msg->node, &sst_drv_ctx->ipc_dispatch_list);
 		spin_unlock(&sst_drv_ctx->list_spin_lock);
 		ops->post_message(&sst_drv_ctx->ipc_post_msg_wq);
-	} else
-		str_info->need_draining = true;
-	str_info->data_blk.condition = false;
-	str_info->data_blk.ret_code = 0;
-	str_info->data_blk.on = true;
-	retval = sst_wait_interruptible(sst_drv_ctx, &str_info->data_blk);
-	str_info->need_draining = false;
+		str_info->data_blk.condition = false;
+		str_info->data_blk.ret_code = 0;
+		str_info->data_blk.on = true;
+		retval = sst_wait_interruptible(sst_drv_ctx,
+						&str_info->data_blk);
+	}
 	return retval;
 }
 
@@ -814,12 +713,10 @@ int sst_free_stream(int str_id)
 			pr_err("SST ERR: mem allocation failed\n");
 			return -ENOMEM;
 		}
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
 		if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID)
 			sst_fill_header_mrfld(&msg->mrfld_header,
 						IPC_IA_FREE_STREAM, 0, str_id);
 		else
-#endif
 			sst_fill_header(&msg->header, IPC_IA_FREE_STREAM,
 								 0, str_id);
 		spin_lock(&sst_drv_ctx->list_spin_lock);

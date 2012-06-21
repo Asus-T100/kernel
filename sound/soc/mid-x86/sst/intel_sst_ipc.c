@@ -112,7 +112,7 @@ int sst_send_algo_param(struct snd_ppp_params *algo_params)
 	return sst_send_ipc_msg_nowait(&msg);
 }
 
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
+
 void sst_post_message_mrfld(struct work_struct *work)
 {
 	struct ipc_post *msg;
@@ -120,12 +120,6 @@ void sst_post_message_mrfld(struct work_struct *work)
 	union  interrupt_reg_mrfld imr;
 	imr.full = 0;
 
-	/*To check if LPE is in stalled state.*/
-	/*retval = sst_stalled()/
-	if (retval < 0) {
-		pr_err("sst: in stalled state\n");
-		return;
-	}*/
 	pr_debug("sst: post message called\n");
 	spin_lock(&sst_drv_ctx->list_spin_lock);
 
@@ -170,7 +164,7 @@ void sst_post_message_mrfld(struct work_struct *work)
 	kfree(msg);
 	return;
 }
-#endif
+
 /**
 * sst_post_message - Posts message to SST
 *
@@ -185,15 +179,8 @@ void sst_post_message_mfld(struct work_struct *work)
 	struct ipc_post *msg;
 	union ipc_header header;
 	union  interrupt_reg imr;
-	int retval = 0;
 	imr.full = 0;
 
-	/*To check if LPE is in stalled state.*/
-	retval = sst_stalled();
-	if (retval < 0) {
-		pr_err("in stalled state\n");
-		return;
-	}
 	pr_debug("post message called\n");
 	spin_lock(&sst_drv_ctx->list_spin_lock);
 
@@ -239,7 +226,7 @@ void sst_post_message_mfld(struct work_struct *work)
 	kfree(msg);
 }
 
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
+
 int sst_sync_post_message_mrfld(struct ipc_post *msg)
 {
 	union ipc_header_mrfld header;
@@ -257,7 +244,7 @@ int sst_sync_post_message_mrfld(struct ipc_post *msg)
 			retval = -EBUSY;
 			goto out;
 		}
-		usleep_range(5000, 5000);
+		udelay(5000);
 		loop_count++;
 		header.f = sst_shim_read64(sst_drv_ctx->shim, SST_IPCX);
 	};
@@ -275,7 +262,7 @@ out:
 	kfree(msg);
 	return retval;
 }
-#endif
+
 /* use this for trigger ops to post syncronous msgs
  */
 int sst_sync_post_message_mfld(struct ipc_post *msg)
@@ -295,7 +282,7 @@ int sst_sync_post_message_mfld(struct ipc_post *msg)
 			retval = -EBUSY;
 			goto out;
 		}
-		usleep_range(5000, 5000);
+		udelay(5000);
 		loop_count++;
 		header.full = sst_shim_read(sst_drv_ctx->shim, SST_IPCX);
 	};
@@ -342,7 +329,7 @@ void intel_sst_clear_intr_mfld(void)
 	sst_shim_write(sst_drv_ctx->shim, SST_IMRX, imr.full);
 }
 
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
+
 void intel_sst_clear_intr_mrfld(void)
 {
 	union interrupt_reg_mrfld isr;
@@ -367,7 +354,7 @@ void intel_sst_clear_intr_mrfld(void)
 	imr.part.busy_interrupt = 0;
 	sst_shim_write64(sst_drv_ctx->shim, SST_IMRX, imr.full);
 }
-#endif
+
 
 /*
  * process_fw_init - process the FW init msg
@@ -395,7 +382,6 @@ static int process_fw_init(struct sst_ipc_msg_wq *msg)
 	if (sst_drv_ctx->runtime_param.param.addr)
 		sst_send_runtime_param(&(sst_drv_ctx->runtime_param.param));
 	mutex_lock(&sst_drv_ctx->sst_lock);
-	sst_drv_ctx->lpe_stalled = 0;
 	mutex_unlock(&sst_drv_ctx->sst_lock);
 	if (sst_drv_ctx->pci_id != SST_MRFLD_PCI_ID) {
 		pr_debug("FW Version %02x.%02x.%02x\n", init->fw_version.major,
@@ -436,50 +422,11 @@ void sst_process_message_mfld(struct work_struct *work)
 		pr_err("Got Underrun & not to send data...ignore\n");
 		break;
 
-	case IPC_SST_GET_PLAY_FRAMES:
-		if (sst_drv_ctx->pci_id == SST_MRST_PCI_ID) {
-			struct stream_info *stream ;
-
-			stream = get_stream_info(str_id);
-			if (!stream) {
-				pr_err("strid %d invalid\n", str_id);
-				break;
-			}
-			/* call sst_play_frame */
-			pr_debug("sst_play_frames for %d\n",
-					msg->header.part.str_id);
-			mutex_lock(&sst_drv_ctx->streams[str_id].lock);
-			sst_play_frame(msg->header.part.str_id);
-			mutex_unlock(&sst_drv_ctx->streams[str_id].lock);
-			break;
-		} else
-			pr_err("sst_play_frames for Penwell!!\n");
-
-	case IPC_SST_GET_CAPT_FRAMES:
-		if (sst_drv_ctx->pci_id == SST_MRST_PCI_ID) {
-			struct stream_info *stream;
-			/* call sst_capture_frame */
-			stream = get_stream_info(str_id);
-			if (!stream) {
-				pr_err("str id %d invalid\n", str_id);
-				break;
-			}
-			pr_debug("sst_capture_frames for %d\n",
-					msg->header.part.str_id);
-			mutex_lock(&stream->lock);
-			if (stream->mmapped == false &&
-					stream->src == SST_DRV) {
-				pr_debug("waking up block for copy.\n");
-				stream->data_blk.ret_code = 0;
-				stream->data_blk.condition = true;
-				stream->data_blk.on = false;
-				wake_up(&sst_drv_ctx->wait_queue);
-			} else
-				sst_capture_frame(msg->header.part.str_id);
-			mutex_unlock(&stream->lock);
-		} else
-			pr_err("sst_play_frames for Penwell!!\n");
+	case IPC_SST_FRAGMENT_ELPASED: {
+		pr_debug("IPC_SST_FRAGMENT_ELPASED for %d", str_id);
+		sst_cdev_fragment_elapsed(str_id);
 		break;
+	}
 
 	case IPC_IA_PRINT_STRING:
 		pr_debug("been asked to print something by fw\n");
@@ -502,12 +449,6 @@ void sst_process_message_mfld(struct work_struct *work)
 		pr_err("Dropping the stream\n");
 		sst_drop_stream(msg->header.part.str_id);
 		break;
-	case IPC_IA_LPE_GETTING_STALLED:
-		sst_drv_ctx->lpe_stalled = 1;
-		break;
-	case IPC_IA_LPE_UNSTALLED:
-		sst_drv_ctx->lpe_stalled = 0;
-		break;
 	default:
 		/* Illegal case */
 		pr_err("Unhandled msg %x header %x\n",
@@ -525,7 +466,7 @@ void sst_process_message_mfld(struct work_struct *work)
 * This function is scheduled by ISR
 * It take a msg from process_queue and does action based on msg
 */
-#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
+
 void sst_process_message_mrfld(struct work_struct *work)
 {
 	struct sst_ipc_msg_wq *msg =
@@ -607,7 +548,7 @@ void sst_process_reply_mrfld(struct work_struct *work)
 
 	return;
 }
-#endif
+
 
 /**
 * sst_process_reply - Processes reply message from SST
@@ -628,21 +569,6 @@ void sst_process_reply_mfld(struct work_struct *work)
 	pr_debug("sst: IPC process reply for %x\n", msg->header.full);
 
 	switch (msg->header.part.msg_id) {
-	case IPC_IA_TARGET_DEV_SELECT:
-		if (!msg->header.part.data) {
-			sst_drv_ctx->tgt_dev_blk.ret_code = 0;
-		} else {
-			pr_err(" Msg %x reply error %x\n",
-			msg->header.part.msg_id, msg->header.part.data);
-			sst_drv_ctx->tgt_dev_blk.ret_code =
-					-msg->header.part.data;
-		}
-
-		if (sst_drv_ctx->tgt_dev_blk.on == true) {
-				sst_drv_ctx->tgt_dev_blk.condition = true;
-				wake_up(&sst_drv_ctx->wait_queue);
-		}
-		break;
 	case IPC_IA_ALG_PARAMS: {
 		pr_debug("IPC_ALG_PARAMS response %x\n", msg->header.full);
 		pr_debug("data value %x\n", msg->header.part.data);
@@ -741,65 +667,6 @@ void sst_process_reply_mfld(struct work_struct *work)
 		}
 		break;
 	}
-	case IPC_IA_SET_STREAM_MUTE:
-		if (!msg->header.part.data) {
-			pr_debug("Msg succeeded %x\n",
-				       msg->header.part.msg_id);
-			sst_drv_ctx->mute_info_blk.ret_code = 0;
-		} else {
-			pr_err(" Msg %x reply error %x\n",
-			msg->header.part.msg_id, msg->header.part.data);
-			sst_drv_ctx->mute_info_blk.ret_code =
-					-msg->header.part.data;
-
-		}
-		if (sst_drv_ctx->mute_info_blk.on == true) {
-			sst_drv_ctx->mute_info_blk.on = false;
-			sst_drv_ctx->mute_info_blk.condition = true;
-			wake_up(&sst_drv_ctx->wait_queue);
-		}
-		break;
-	case IPC_IA_SET_STREAM_VOL:
-		if (!msg->header.part.data) {
-			pr_debug("Msg succeeded %x\n",
-				       msg->header.part.msg_id);
-			sst_drv_ctx->vol_info_blk.ret_code = 0;
-		} else {
-			pr_err(" Msg %x reply error %x\n",
-					msg->header.part.msg_id,
-			msg->header.part.data);
-			sst_drv_ctx->vol_info_blk.ret_code =
-					-msg->header.part.data;
-
-		}
-
-		if (sst_drv_ctx->vol_info_blk.on == true) {
-			sst_drv_ctx->vol_info_blk.on = false;
-			sst_drv_ctx->vol_info_blk.condition = true;
-			wake_up(&sst_drv_ctx->wait_queue);
-		}
-		break;
-	case IPC_IA_GET_STREAM_VOL:
-		if (msg->header.part.large) {
-			pr_debug("Large Msg Received Successfully\n");
-			pr_debug("Msg succeeded %x\n",
-				       msg->header.part.msg_id);
-			memcpy_fromio(sst_drv_ctx->vol_info_blk.data,
-				(void *) msg->mailbox,
-				sizeof(struct snd_sst_vol));
-			sst_drv_ctx->vol_info_blk.ret_code = 0;
-		} else {
-			pr_err("Msg %x reply error %x\n",
-			msg->header.part.msg_id, msg->header.part.data);
-			sst_drv_ctx->vol_info_blk.ret_code =
-					-msg->header.part.data;
-		}
-		if (sst_drv_ctx->vol_info_blk.on == true) {
-			sst_drv_ctx->vol_info_blk.on = false;
-			sst_drv_ctx->vol_info_blk.condition = true;
-			wake_up(&sst_drv_ctx->wait_queue);
-		}
-		break;
 
 	case IPC_IA_GET_STREAM_PARAMS:
 		str_info = get_stream_info(str_id);
@@ -821,30 +688,6 @@ void sst_process_reply_mfld(struct work_struct *work)
 		if (str_info->ctrl_blk.on == true) {
 			str_info->ctrl_blk.on = false;
 			str_info->ctrl_blk.condition = true;
-			wake_up(&sst_drv_ctx->wait_queue);
-		}
-		break;
-	case IPC_IA_DECODE_FRAMES:
-		str_info = get_stream_info(str_id);
-		if (!str_info) {
-			pr_err("stream id %d invalid\n", str_id);
-			break;
-		}
-		if (msg->header.part.large) {
-			pr_debug("Msg succeeded %x\n",
-				       msg->header.part.msg_id);
-			memcpy_fromio(str_info->data_blk.data,
-					((void *)(msg->mailbox)),
-					sizeof(struct snd_sst_decode_info));
-			str_info->data_blk.ret_code = 0;
-		} else {
-			pr_err("Msg %x reply error %x\n",
-				msg->header.part.msg_id, msg->header.part.data);
-			str_info->data_blk.ret_code = -msg->header.part.data;
-		}
-		if (str_info->data_blk.on == true) {
-			str_info->data_blk.on = false;
-			str_info->data_blk.condition = true;
 			wake_up(&sst_drv_ctx->wait_queue);
 		}
 		break;
@@ -884,8 +727,6 @@ void sst_process_reply_mfld(struct work_struct *work)
 				(struct snd_sst_drop_response *)msg->mailbox;
 
 			pr_debug("Drop ret bytes %x\n", drop_resp->bytes);
-
-			str_info->curr_bytes = drop_resp->bytes;
 			if (!drop_resp->result)
 				pr_debug("drop success for %d\n", str_id);
 			else
@@ -896,24 +737,6 @@ void sst_process_reply_mfld(struct work_struct *work)
 		}
 
 		break;
-	case IPC_IA_ENABLE_RX_TIME_SLOT:
-		if (!msg->header.part.data) {
-			pr_debug("RX_TIME_SLOT success\n");
-			sst_drv_ctx->hs_info_blk.ret_code = 0;
-		} else {
-			pr_err(" Msg %x reply error %x\n",
-				msg->header.part.msg_id,
-				msg->header.part.data);
-			sst_drv_ctx->hs_info_blk.ret_code =
-				-msg->header.part.data;
-		}
-		if (sst_drv_ctx->hs_info_blk.on == true) {
-			sst_drv_ctx->hs_info_blk.on = false;
-			sst_drv_ctx->hs_info_blk.condition = true;
-			wake_up(&sst_drv_ctx->wait_queue);
-		}
-		break;
-
 	case IPC_IA_PAUSE_STREAM:
 	case IPC_IA_RESUME_STREAM:
 	case IPC_IA_SET_STREAM_PARAMS:
@@ -964,15 +787,6 @@ void sst_process_reply_mfld(struct work_struct *work)
 		sst_alloc_stream_response(str_id, resp);
 		break;
 	}
-
-	case IPC_IA_PLAY_FRAMES:
-	case IPC_IA_CAPT_FRAMES:
-		if (sst_validate_strid(str_id)) {
-			pr_err("stream id %d invalid\n", str_id);
-			break;
-		}
-		pr_debug("Ack for play/capt frames received\n");
-		break;
 
 	case IPC_IA_PREP_LIB_DNLD: {
 		struct snd_sst_str_type *str_type =
@@ -1039,8 +853,6 @@ void sst_process_reply_mfld(struct work_struct *work)
 		pr_debug("Build date:%sTime:%s", build->date, build->time);
 		break;
 	}
-	case IPC_IA_SET_PMIC_TYPE:
-		break;
 	case IPC_IA_START_STREAM:
 		pr_debug("reply for START STREAM %x\n", msg->header.full);
 		break;
