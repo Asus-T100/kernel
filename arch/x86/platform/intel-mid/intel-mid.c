@@ -865,51 +865,7 @@ static int __init sfi_parse_oemb(struct sfi_table_header *table)
 
 	board_id = oemb->board_id | (oemb->board_fab << 4);
 
-	/* SPID support starts from version 4, D0 Penwell based products
-	 * will stay with old firmware, so we still have to use the
-	 * deprecating board_id to identify these hardware */
-	if (oemb->header.rev < 4) {
-		memset(spid.fru, 0, SPID_FRU_SIZE);
-		spid.customer_id = CUSTOMER_INTEL;
-		spid.vendor_id = VENDOR_INTEL;
-		spid.manufacturer_id = MANUFACTURER_INTEL_FAB1;
-		switch (board_id) {
-		case MFLD_BID_PR3:
-		     spid.platform_family_id = INTEL_MFLD_PHONE;
-		     spid.product_line_id = INTEL_MFLDP_BB15_ENG;
-		     spid.hardware_id = MFLDP_BB15_ENG_PR31;
-		     break;
-		case MFLD_BID_RR_DV10:
-		     spid.platform_family_id = INTEL_MFLD_TABLET;
-		     spid.product_line_id = INTEL_MFLDT_RR_ENG;
-		     spid.hardware_id = MFLDT_RR_ENG_DV10;
-		     break;
-		case MFLD_BID_RR_DV20:
-		     spid.platform_family_id = INTEL_MFLD_TABLET;
-		     spid.product_line_id = INTEL_MFLDT_RR_ENG;
-		     spid.hardware_id = MFLDT_RR_ENG_DV20;
-		     break;
-		case MFLD_BID_LEX:
-		     spid.platform_family_id = INTEL_MFLD_PHONE;
-		     spid.product_line_id = INTEL_MFLDP_LEX_ENG;
-		     spid.hardware_id = MFLDP_LEX_ENG_PR11;
-		     break;
-		case CLVT_BID_VV:
-		     spid.platform_family_id = INTEL_CLVTP_PHONE;
-		     spid.product_line_id = INTEL_CLVTPP_RHB_ENG;
-		     spid.hardware_id = CLVTPP_RHB_ENG_CCVVA;
-		     break;
-		case CLVT_BID_PR0:
-		     spid.platform_family_id = INTEL_CLVTP_PHONE;
-		     spid.product_line_id = INTEL_CLVTPP_RHB_ENG;
-		     spid.hardware_id = CLVTPP_RHB_ENG_PR01;
-		     break;
-		default:
-		     memset(&spid, 0xff, sizeof(struct sfi_soft_platform_id));
-		     break;
-		}
-	} else
-		memcpy(&spid, &oemb->spid, sizeof(struct sfi_soft_platform_id));
+	memcpy(&spid, &oemb->spid, sizeof(struct sfi_soft_platform_id));
 
 	snprintf(sig, (SFI_SIGNATURE_SIZE + 1), "%s",
 		oemb->header.sig);
