@@ -26,6 +26,7 @@
 
 #undef HAVE_REALLY_SLOW_DMA_CONTROLLER
 
+#include <linux/module.h>
 #include <sound/core.h>
 #include <asm/dma.h>
 

@@ -775,14 +775,15 @@ static int pxa_ssp_remove(struct snd_soc_dai *dai)
 
 #define PXA_SSP_RATES (SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_11025 |\
 			  SNDRV_PCM_RATE_16000 | SNDRV_PCM_RATE_22050 |	\
-			  SNDRV_PCM_RATE_44100 | SNDRV_PCM_RATE_48000 |	\
+			  SNDRV_PCM_RATE_32000 | SNDRV_PCM_RATE_44100 |	\
+			  SNDRV_PCM_RATE_48000 | SNDRV_PCM_RATE_64000 |	\
 			  SNDRV_PCM_RATE_88200 | SNDRV_PCM_RATE_96000)
 
 #define PXA_SSP_FORMATS (SNDRV_PCM_FMTBIT_S16_LE |\
 			    SNDRV_PCM_FMTBIT_S24_LE |	\
 			    SNDRV_PCM_FMTBIT_S32_LE)
 
-static struct snd_soc_dai_ops pxa_ssp_dai_ops = {
+static const struct snd_soc_dai_ops pxa_ssp_dai_ops = {
 	.startup	= pxa_ssp_startup,
 	.shutdown	= pxa_ssp_shutdown,
 	.trigger	= pxa_ssp_trigger,
@@ -836,17 +837,7 @@ static struct platform_driver asoc_ssp_driver = {
 	.remove = __devexit_p(asoc_ssp_remove),
 };
 
-static int __init pxa_ssp_init(void)
-{
-	return platform_driver_register(&asoc_ssp_driver);
-}
-module_init(pxa_ssp_init);
-
-static void __exit pxa_ssp_exit(void)
-{
-	platform_driver_unregister(&asoc_ssp_driver);
-}
-module_exit(pxa_ssp_exit);
+module_platform_driver(asoc_ssp_driver);
 
 /* Module information */
 MODULE_AUTHOR("Mark Brown <broonie@opensource.wolfsonmicro.com>");

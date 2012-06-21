@@ -19,6 +19,7 @@
  *
  */
 
+#include <linux/module.h>
 #include <sound/core.h>
 #include "seq_lock.h"
 

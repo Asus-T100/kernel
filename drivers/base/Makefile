@@ -19,8 +19,6 @@ obj-$(CONFIG_MODULES)	+= module.o
 endif
 obj-$(CONFIG_SYS_HYPERVISOR) += hypervisor.o
 
-obj-$(CONFIG_SYNC)	+= sync.o
-obj-$(CONFIG_SW_SYNC)	+= sw_sync.o
+obj-$(CONFIG_REGMAP)   += regmap/
 
 ccflags-$(CONFIG_DEBUG_DRIVER) := -DDEBUG
-
