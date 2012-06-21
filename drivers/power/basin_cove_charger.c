@@ -134,6 +134,9 @@ struct ext_charger bq24260_chrgr = {
 	.cc_to_reg = bq24260_cc_to_reg,
 	.cv_to_reg = bq24260_cv_to_reg,
 };
+
+static char *bcove_charger_power_supplied_to[] = {"max170xx_battery",};
+
 /* Generic function definitions */
 static int lookup_regval(u16 tbl[][2], size_t size, u16 in_val, u8 *out_val)
 {
@@ -724,7 +727,7 @@ int bc_check_battery_status(void)
 	union power_supply_propval val;
 	int retval;
 
-	if (chc.ch_handle)
+	if (!chc.ch_handle)
 		return -ENODEV;
 
 	retval = charger_helper_get_property(chc.ch_handle,
@@ -744,7 +747,7 @@ int bc_get_battery_pack_temp(int *temp)
 	if (!power_supply_get_by_name(CHARGER_PS_NAME))
 		return -EAGAIN;
 
-	if (!chc.current_sense_enabled)
+	if (chc.invalid_batt)
 		return -ENODEV;
 	return bcove_read_adc_val(GPADC_BATTEMP0, temp, &chc);
 }
@@ -926,7 +929,8 @@ static struct bc_chrgr_drv_context chc = {
 		.properties = bc_chrgr_ps_props,
 		.num_properties = ARRAY_SIZE(bc_chrgr_ps_props),
 		.get_property = bc_chrgr_ps_get_property,
-
+		.supplied_to = bcove_charger_power_supplied_to,
+		.num_supplicants = ARRAY_SIZE(bcove_charger_power_supplied_to),
 		},
 
 	.ch_charger = {
