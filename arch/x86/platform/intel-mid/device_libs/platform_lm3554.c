@@ -10,33 +10,32 @@
  * of the License.
  */
 
-#include <linux/gpio.h>
-#include <linux/delay.h>
-#include <linux/atomisp_platform.h>
-#include <asm/intel_scu_ipc.h>
+#include <linux/init.h>
+#include <linux/types.h>
 #include <asm/intel-mid.h>
-#include <media/v4l2-subdev.h>
-#include "platform_camera.h"
+
+#include <media/lm3554.h>
+
 #include "platform_lm3554.h"
 
-void *lm3554_platform_data(void *info)
+void *lm3554_platform_data_func(void *info)
 {
-	static struct camera_flash_platform_data lm3554_platform_data;
-	void *ret = &lm3554_platform_data;
+	static struct lm3554_platform_data platform_data;
+	void *ret = &platform_data;
 
-	lm3554_platform_data.gpio_reset  = get_gpio_by_name("GP_FLASH_RESET");
-	lm3554_platform_data.gpio_strobe = get_gpio_by_name("GP_FLASH_STROBE");
-	lm3554_platform_data.gpio_torch  = get_gpio_by_name("GP_FLASH_TORCH");
+	platform_data.gpio_reset  = get_gpio_by_name("GP_FLASH_RESET");
+	platform_data.gpio_strobe = get_gpio_by_name("GP_FLASH_STROBE");
+	platform_data.gpio_torch  = get_gpio_by_name("GP_FLASH_TORCH");
 
-	if (lm3554_platform_data.gpio_reset == -1) {
+	if (platform_data.gpio_reset == -1) {
 		pr_err("%s: Unable to find GP_FLASH_RESET\n", __func__);
 		ret = NULL;
 	}
-	if (lm3554_platform_data.gpio_strobe == -1) {
+	if (platform_data.gpio_strobe == -1) {
 		pr_err("%s: Unable to find GP_FLASH_STROBE\n", __func__);
 		ret = NULL;
 	}
-	if (lm3554_platform_data.gpio_torch == -1) {
+	if (platform_data.gpio_torch == -1) {
 		pr_err("%s: Unable to find GP_FLASH_TORCH\n", __func__);
 		ret = NULL;
 	}

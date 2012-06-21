@@ -18,19 +18,14 @@
  * 02110-1301, USA.
  *
  */
-#ifndef _lm3554_H_
-#define _lm3554_H_
+#ifndef _LM3554_H_
+#define _LM3554_H_
 
-#include <linux/kernel.h>
-#include <linux/types.h>
 #include <linux/videodev2.h>
-#include <linux/mutex.h>
 #include <media/v4l2-subdev.h>
-#include <media/v4l2-device.h>
-#include <linux/ioctl.h>
 
-#define LEDFLASH_LM3554_NAME    "lm3554"
-#define LEDFLASH_LM3554_ID      3554
+#define LM3554_NAME    "lm3554"
+#define LM3554_ID      3554
 
 #define	v4l2_queryctrl_entry_integer(_id, _name,\
 		_minimum, _maximum, _step, \
@@ -121,6 +116,15 @@
 #define LM3554_INDICATOR_STEP                2500
 #define LM3554_INDICATOR_DEFAULT_BRIGHTNESS \
 	LM3554_VALUE_TO_PERCENT(1, LM3554_INDICATOR_STEP)
+
+/*
+ * lm3554_platform_data - Flash controller platform data
+ */
+struct lm3554_platform_data {
+	int gpio_torch;
+	int gpio_strobe;
+	int gpio_reset;
+};
 
 #endif /* _LM3554_H_ */
 

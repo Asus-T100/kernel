@@ -92,12 +92,6 @@ struct camera_sensor_platform_data {
 	bool (*low_fps)(void);
 };
 
-struct camera_flash_platform_data {
-	int gpio_torch;
-	int gpio_strobe;
-	int gpio_reset;
-};
-
 struct camera_af_platform_data {
 	int (*power_ctrl)(struct v4l2_subdev *subdev, int flag);
 };

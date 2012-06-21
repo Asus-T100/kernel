@@ -12,5 +12,5 @@
 #ifndef _PLATFORM_LM3554_H_
 #define _PLATFORM_LM3554_H_
 
-extern void *lm3554_platform_data(void *info) __attribute__((weak));
+extern void *lm3554_platform_data_func(void *info) __attribute__((weak));
 #endif

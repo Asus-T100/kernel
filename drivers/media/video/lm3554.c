@@ -20,23 +20,16 @@
  */
 #include <linux/module.h>
 #include <linux/i2c.h>
-#include <linux/interrupt.h>
-#include <linux/sched.h>
 #include <linux/mutex.h>
 #include <linux/delay.h>
-#include <linux/input.h>
-#include <linux/device.h>
 #include <linux/gpio.h>
-#include <linux/pm_runtime.h>
 #include <linux/slab.h>
 
-#include <linux/videodev2.h>
+#include <media/lm3554.h>
+#include <media/v4l2-ctrls.h>
 #include <media/v4l2-device.h>
 
 #include <linux/atomisp.h>
-#include <linux/atomisp_platform.h>
-
-#include "lm3554.h"
 
 struct lm3554_ctrl_id {
 	struct v4l2_queryctrl qc;
@@ -91,7 +84,7 @@ struct lm3554 {
 	u8 tx2_polarity;
 
 	struct timer_list flash_off_delay;
-	struct camera_flash_platform_data *pdata;
+	struct lm3554_platform_data *pdata;
 };
 
 #define to_lm3554(p_sd)	container_of(p_sd, struct lm3554, sd)
@@ -190,7 +183,7 @@ static int lm3554_hw_reset(struct i2c_client *client)
 {
 	struct v4l2_subdev *sd = i2c_get_clientdata(client);
 	struct lm3554 *flash = to_lm3554(sd);
-	struct camera_flash_platform_data *pdata = flash->pdata;
+	struct lm3554_platform_data *pdata = flash->pdata;
 	int ret;
 
 	ret = gpio_request(pdata->gpio_reset, "flash reset");
@@ -211,7 +204,7 @@ static void lm3554_flash_off_delay(long unsigned int arg)
 {
 	struct v4l2_subdev *sd = i2c_get_clientdata((struct i2c_client *)arg);
 	struct lm3554 *flash = to_lm3554(sd);
-	struct camera_flash_platform_data *pdata = flash->pdata;
+	struct lm3554_platform_data *pdata = flash->pdata;
 
 	gpio_set_value(pdata->gpio_strobe, 0);
 }
@@ -221,7 +214,7 @@ static int lm3554_hw_strobe(struct i2c_client *client, bool strobe)
 	int ret, timer_pending;
 	struct v4l2_subdev *sd = i2c_get_clientdata(client);
 	struct lm3554 *flash = to_lm3554(sd);
-	struct camera_flash_platform_data *pdata = flash->pdata;
+	struct lm3554_platform_data *pdata = flash->pdata;
 
 	/*
 	 * An abnormal high flash current is observed when strobe off the
@@ -744,7 +737,7 @@ static int __devinit lm3554_gpio_init(struct i2c_client *client)
 {
 	struct v4l2_subdev *sd = i2c_get_clientdata(client);
 	struct lm3554 *flash = to_lm3554(sd);
-	struct camera_flash_platform_data *pdata = flash->pdata;
+	struct lm3554_platform_data *pdata = flash->pdata;
 	int ret;
 
 	ret = gpio_request(pdata->gpio_strobe, "flash");
@@ -776,7 +769,7 @@ static int __devexit lm3554_gpio_uninit(struct i2c_client *client)
 {
 	struct v4l2_subdev *sd = i2c_get_clientdata(client);
 	struct lm3554 *flash = to_lm3554(sd);
-	struct camera_flash_platform_data *pdata = flash->pdata;
+	struct lm3554_platform_data *pdata = flash->pdata;
 	int ret;
 
 	ret = gpio_direction_output(pdata->gpio_torch, 0);
@@ -882,7 +875,7 @@ fail:
 }
 
 static const struct i2c_device_id lm3554_id[] = {
-	{LEDFLASH_LM3554_NAME, 0},
+	{LM3554_NAME, 0},
 	{},
 };
 
@@ -896,7 +889,7 @@ static const struct dev_pm_ops lm3554_pm_ops = {
 static struct i2c_driver lm3554_driver = {
 	.driver = {
 		.owner = THIS_MODULE,
-		.name = LEDFLASH_LM3554_NAME,
+		.name = LM3554_NAME,
 		.pm   = &lm3554_pm_ops,
 	},
 	.probe = lm3554_probe,
