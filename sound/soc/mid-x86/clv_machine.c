@@ -3,6 +3,7 @@
  *
  *  Copyright (C) 2011-12 Intel Corp
  *  Author: KP Jeeja<jeeja.kp@intel.com>
+ *  Author: Vaibhav Agarwal <vaibhav.agarwal@intel.com>
  *  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -49,31 +50,6 @@
 #define GPIO_AMP_OFF 0x0
 #define GPIOHVCTL 0x70
 
-static unsigned int vsp_mode;
-
-static int vsp_mode_get(struct snd_kcontrol *kcontrol,
-	struct snd_ctl_elem_value *ucontrol)
-{
-	ucontrol->value.integer.value[0] = vsp_mode;
-	return 0;
-}
-
-static int vsp_mode_set(struct snd_kcontrol *kcontrol,
-	struct snd_ctl_elem_value *ucontrol)
-{
-	vsp_mode  = ucontrol->value.integer.value[0];
-	return 0;
-}
-
-static const char const *vsp_mode_text[] = {"Master", "Slave"};
-
-static const struct soc_enum vsp_mode_enum =
-	SOC_ENUM_SINGLE_EXT(ARRAY_SIZE(vsp_mode_text), vsp_mode_text);
-
-static const struct snd_kcontrol_new clv_controls[] = {
-	SOC_ENUM_EXT("VSP Mode", vsp_mode_enum, vsp_mode_get, vsp_mode_set),
-};
-
 static int clv_asp_hw_params(struct snd_pcm_substream *substream,
 	struct snd_pcm_hw_params *params)
 {
@@ -110,20 +86,11 @@ static int clv_vsp_hw_params(struct snd_pcm_substream *substream,
 	unsigned int fmt;
 	int ret , clk_source;
 
-	if (!vsp_mode) {
-		pr_debug("Master Mode selected\n");
-		/* CS42L73  Master Mode`*/
-		fmt = SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF
-			| SND_SOC_DAIFMT_CBM_CFM;
-		clk_source = SND_SOC_CLOCK_OUT;
-
-	} else {
-		pr_debug("Slave Mode selected\n");
-		/* CS42L73  Slave Mode`*/
-		fmt =   SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF
-			| SND_SOC_DAIFMT_CBS_CFS;
-		clk_source = SND_SOC_CLOCK_IN;
-	}
+	pr_debug("Slave Mode selected\n");
+	/* CS42L73  Master Mode`*/
+	fmt =   SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF
+		| SND_SOC_DAIFMT_CBS_CFS;
+	clk_source = SND_SOC_CLOCK_IN;
 
 	/* Set codec DAI configuration */
 	ret = snd_soc_dai_set_fmt(codec_dai, fmt);
@@ -399,7 +366,8 @@ static const struct snd_soc_dapm_route clv_audio_map[] = {
 
 /* Board specific codec bias level control */
 static int clv_set_bias_level(struct snd_soc_card *card,
-				enum snd_soc_bias_level level)
+		struct snd_soc_dapm_context *dapm,
+		enum snd_soc_bias_level level)
 {
 	switch (level) {
 	case SND_SOC_BIAS_ON:
@@ -426,6 +394,7 @@ static int clv_set_bias_level(struct snd_soc_card *card,
 }
 
 static int clv_set_bias_level_post(struct snd_soc_card *card,
+		struct snd_soc_dapm_context *dapm,
 		enum snd_soc_bias_level level)
 {
 	struct snd_soc_codec *codec;
@@ -470,8 +439,8 @@ static int clv_init(struct snd_soc_pcm_runtime *runtime)
 	unsigned int irq;
 
 	/* Set codec bias level */
-	clv_set_bias_level(card, SND_SOC_BIAS_OFF);
-
+	clv_set_bias_level(card, dapm, SND_SOC_BIAS_OFF);
+	card->dapm.idle_bias_off = true;
 
 	/* Add Jack specific widgets */
 	ret = snd_soc_dapm_new_controls(dapm, clv_dapm_widgets,
@@ -629,8 +598,6 @@ static struct snd_soc_card snd_soc_card_clv = {
 	.num_links = ARRAY_SIZE(clv_msic_dailink),
 	.set_bias_level = clv_set_bias_level,
 	.set_bias_level_post = clv_set_bias_level_post,
-	.controls = clv_controls,
-	.num_controls = ARRAY_SIZE(clv_controls),
 };
 
 static int snd_clv_mc_probe(struct ipc_device *ipcdev)
@@ -659,14 +626,12 @@ static int snd_clv_mc_probe(struct ipc_device *ipcdev)
 
 	/* register the soc card */
 	snd_soc_card_clv.dev = &ipcdev->dev;
-	snd_soc_initialize_card_lists(&snd_soc_card_clv);
 	snd_soc_card_set_drvdata(&snd_soc_card_clv, ctx);
 	ret_val = snd_soc_register_card(&snd_soc_card_clv);
 	if (ret_val) {
 		pr_err("snd_soc_register_card failed %d\n", ret_val);
 		goto unalloc;
 	}
-	vsp_mode = 1;
 	ipc_set_drvdata(ipcdev, &snd_soc_card_clv);
 
 	pr_debug("successfully exited probe\n");
