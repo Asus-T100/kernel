@@ -2301,8 +2301,8 @@ static irqreturn_t msic_battery_thread_handler(int id, void *dev)
 	}
 
 	/* Check charger Status bits */
-	if ((data[0] & ~(MSIC_BATT_CHR_TIMEEXP_MASK)) ||
-		(data[1] & ~(MSIC_BATT_CHR_CHRCMPLT_MASK))
+	if (((data[0] & ~(MSIC_BATT_CHR_TIMEEXP_MASK)) ||
+		(data[1] & ~(MSIC_BATT_CHR_CHRCMPLT_MASK)))
 			&& is_charger_fault()) {
 		mutex_lock(&mbi->batt_lock);
 		mbi->batt_props.status = POWER_SUPPLY_STATUS_NOT_CHARGING;
