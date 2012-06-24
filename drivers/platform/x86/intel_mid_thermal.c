@@ -352,7 +352,7 @@ static int mid_thermal_probe(struct ipc_device *ipcdev)
 	/* Register each sensor with the generic thermal framework*/
 	for (i = 0; i < MSIC_THERMAL_SENSORS; i++) {
 		ipcinfo->tzd[i] = thermal_zone_device_register(name[i],
-					0, initialize_sensor(i),
+					0, 0, initialize_sensor(i),
 					&tzd_ops, 0, 0, 0, 0);
 		if (IS_ERR(ipcinfo->tzd[i]))
 			goto reg_fail;
