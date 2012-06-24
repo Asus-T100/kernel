@@ -242,6 +242,52 @@ trip_point_temp_show(struct device *dev, struct device_attribute *attr,
 }
 
 static ssize_t
+trip_point_hyst_store(struct device *dev, struct device_attribute *attr,
+		     const char *buf, size_t count)
+{
+	struct thermal_zone_device *tz = to_thermal_zone(dev);
+	int trip, ret;
+	unsigned long temperature;
+
+	if (!tz->ops->set_trip_hyst)
+		return -EPERM;
+
+	if (!sscanf(attr->attr.name, "trip_point_%d_hyst", &trip))
+		return -EINVAL;
+
+	if (kstrtoul(buf, 10, &temperature))
+		return -EINVAL;
+
+	/*
+	 * We are not doing any check on the 'temperature' value
+	 * here. The driver implementing 'set_trip_hyst' has to
+	 * take care of this.
+	 */
+	ret = tz->ops->set_trip_hyst(tz, trip, temperature);
+
+	return ret ? ret : count;
+}
+
+static ssize_t
+trip_point_hyst_show(struct device *dev, struct device_attribute *attr,
+		     char *buf)
+{
+	struct thermal_zone_device *tz = to_thermal_zone(dev);
+	int trip, ret;
+	unsigned long temperature;
+
+	if (!tz->ops->get_trip_hyst)
+		return -EPERM;
+
+	if (!sscanf(attr->attr.name, "trip_point_%d_hyst", &trip))
+		return -EINVAL;
+
+	ret = tz->ops->get_trip_hyst(tz, trip, &temperature);
+
+	return ret ? ret : sprintf(buf, "%ld\n", temperature);
+}
+
+static ssize_t
 passive_store(struct device *dev, struct device_attribute *attr,
 		    const char *buf, size_t count)
 {
@@ -1055,6 +1101,29 @@ static int create_trip_temp_attr(struct thermal_zone_device *tz,
 }
 
 /**
+ * create_trip_hyst_attr - creates hysteresis attribute for a trip point
+ * @tz:		the thermal zone device
+ * @indx:	index into the trip_hyst_attrs array
+ */
+static int create_trip_hyst_attr(struct thermal_zone_device *tz, int indx)
+{
+	char attr_name[THERMAL_NAME_LENGTH];
+
+	snprintf(attr_name, THERMAL_NAME_LENGTH, "trip_point_%d_hyst", indx);
+
+	sysfs_attr_init(&tz->trip_hyst_attrs[indx].attr);
+	tz->trip_hyst_attrs[indx].attr.name = attr_name;
+	tz->trip_hyst_attrs[indx].attr.mode = S_IRUGO;
+	tz->trip_hyst_attrs[indx].show = trip_point_hyst_show;
+	if (tz->ops->set_trip_hyst) {
+		tz->trip_hyst_attrs[indx].attr.mode |= S_IWUSR;
+		tz->trip_hyst_attrs[indx].store = trip_point_hyst_store;
+	}
+
+	return device_create_file(&tz->device, &tz->trip_hyst_attrs[indx]);
+}
+
+/**
  * thermal_zone_device_register - register a new thermal zone device
  * @type:	the thermal zone device type
  * @trips:	the number of trip points the thermal zone support
@@ -1153,6 +1222,13 @@ struct thermal_zone_device *thermal_zone_device_register(char *type,
 						!!(flag & (1 << count)));
 		if (result)
 			goto unregister;
+
+		if (tz->ops->get_trip_hyst) {
+			result = create_trip_hyst_attr(tz, count);
+			if (result)
+				goto unregister;
+		}
+
 		tz->ops->get_trip_type(tz, count, &trip_type);
 		if (trip_type == THERMAL_TRIP_PASSIVE)
 			passive = 1;
@@ -1233,6 +1309,9 @@ void thermal_zone_device_unregister(struct thermal_zone_device *tz)
 	for (count = 0; count < tz->trips; count++) {
 		device_remove_file(&tz->device, &tz->trip_type_attrs[count]);
 		device_remove_file(&tz->device, &tz->trip_temp_attrs[count]);
+		if (tz->ops->get_trip_hyst)
+			device_remove_file(&tz->device,
+						&tz->trip_hyst_attrs[count]);
 	}
 
 	thermal_remove_hwmon_sysfs(tz);
