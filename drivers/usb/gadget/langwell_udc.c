@@ -1439,13 +1439,23 @@ static inline int can_pullup(struct langwell_udc *dev)
 static void langwell_udc_pullup(struct langwell_udc *dev, u32 on)
 {
 	u32 usbcmd;
+	u32 usbmode;
 
 	if (dev->stopped)
 		return;
 
+	usbmode = readl(&dev->op_regs->usbmode);
 	usbcmd = readl(&dev->op_regs->usbcmd);
 	if (!(usbcmd & CMD_RUNSTOP) && on) {
 		if (can_pullup(dev)) {
+			if (dev->sdis) {
+				usbmode |= MODE_SDIS;
+				dev_dbg(&dev->pdev->dev, "disable streaming mode\n");
+			} else {
+				usbmode &= ~MODE_SDIS;
+				dev_dbg(&dev->pdev->dev, "enable streaming mode\n");
+			}
+			writel(usbmode, &dev->op_regs->usbmode);
 			usbcmd |= CMD_RUNSTOP;
 			writel(usbcmd, &dev->op_regs->usbcmd);
 		}
@@ -2130,6 +2140,46 @@ static ssize_t show_langwell_udc(struct device *_dev,
 }
 static DEVICE_ATTR(langwell_udc, S_IRUGO, show_langwell_udc, NULL);
 
+static ssize_t
+show_sdis(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct langwell_udc	*udc = the_controller;
+	char			*next;
+	unsigned		size;
+	unsigned		t;
+
+	next = buf;
+	size = PAGE_SIZE;
+
+	t = scnprintf(next, size, "Stream mode %s",
+			(udc->sdis) ? "off" : "on");
+
+	size -= t;
+	next += t;
+
+	return PAGE_SIZE - size;
+}
+
+static ssize_t
+store_sdis(struct device *dev, struct device_attribute *attr,
+		const char *buf, size_t count)
+{
+	struct langwell_udc	*udc = the_controller;
+
+	if (count > 2)
+		return -1;
+
+	if (buf[0] == '0') {
+		udc->sdis = 0;
+		dev_dbg(&udc->pdev->dev, "enable Stream mode\n");
+	} else if (buf[0] == '1') {
+		udc->sdis = 1;
+		dev_dbg(&udc->pdev->dev, "disable Stream mode\n");
+	}
+
+	return count;
+}
+static DEVICE_ATTR(sdis, S_IRUGO | S_IWUSR | S_IWGRP, show_sdis, store_sdis);
 
 /* device "remote_wakeup" sysfs attribute file */
 static ssize_t store_remote_wakeup(struct device *_dev,
@@ -3490,6 +3540,7 @@ static void langwell_udc_remove(struct pci_dev *pdev)
 	device_unregister(&dev->gadget.dev);
 	device_remove_file(&pdev->dev, &dev_attr_langwell_udc);
 	device_remove_file(&pdev->dev, &dev_attr_remote_wakeup);
+	device_remove_file(&pdev->dev, &dev_attr_sdis);
 
 #ifndef	OTG_TRANSCEIVER
 	pci_set_drvdata(pdev, NULL);
@@ -3618,6 +3669,8 @@ static int langwell_udc_probe(struct pci_dev *pdev,
 	}
 	dev->got_irq = 1;
 #endif
+	/* default in streaming mode */
+	dev->sdis = 0;
 
 	/* set stopped bit */
 	dev->stopped = 1;
@@ -3767,6 +3820,10 @@ static int langwell_udc_probe(struct pci_dev *pdev,
 	if (retval)
 		goto error_attr1;
 
+	retval = device_create_file(&pdev->dev, &dev_attr_sdis);
+	if (retval)
+		goto error_attr2;
+
 #ifdef OTG_TRANSCEIVER
 	pm_runtime_put_sync(&pdev->dev);
 #else
@@ -3775,6 +3832,9 @@ static int langwell_udc_probe(struct pci_dev *pdev,
 
 	dev_vdbg(&dev->pdev->dev, "<--- %s()\n", __func__);
 	return 0;
+
+error_attr2:
+	device_remove_file(&pdev->dev, &dev_attr_remote_wakeup);
 
 error_attr1:
 	device_remove_file(&pdev->dev, &dev_attr_langwell_udc);

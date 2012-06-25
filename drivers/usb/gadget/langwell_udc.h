@@ -195,7 +195,8 @@ struct langwell_udc {
 				stopped:1,
 				lpm:1,		/* LPM capability */
 				has_sram:1,	/* SRAM caching */
-				got_sram:1;
+				got_sram:1,
+				sdis:1;		/* Streaming mode */
 
 	/* pci state used to access those endpoints */
 	struct pci_dev		*pdev;
