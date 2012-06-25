@@ -537,7 +537,6 @@ static void update_charger_info(enum charger_type chrgr_type,
 				struct power_supply_charger_cap cap, int event)
 {
 
-	dev_warn(chc->charger->dev, "%s:%d\n", __func__, __LINE__);
 	switch (event) {
 	case POWER_SUPPLY_CHARGER_EVENT_DISCONNECT:
 	case POWER_SUPPLY_CHARGER_EVENT_SUSPEND:
@@ -567,7 +566,8 @@ static void update_charger_info(enum charger_type chrgr_type,
 			 __FILE__, __func__, event);
 		mutex_lock(&chc->chrgr_cxt_lock);
 		if (chrgr_type == CHARGER_USB)
-			chc->chrgr_cxt.charger_type = CHARGER_USB;
+			chc->chrgr_cxt.usb_charger_type =
+				chc->chrgr_cxt.cap.chrg_type;
 		 else if (chrgr_type == CHARGER_AC)
 			chc->chrgr_cxt.charger_type = POWER_SUPPLY_TYPE_MAINS;
 
