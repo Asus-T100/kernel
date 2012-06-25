@@ -423,7 +423,7 @@ static irqreturn_t rmi4_irq_thread(int irq, void *data)
 	struct rmi4_fn *rfi;
 	struct rmi4_device_info	*rmi;
 	struct rmi4_data *pdata = data;
-	struct	i2c_client *client = pdata->i2c_client;
+	struct i2c_client *client = pdata->i2c_client;
 
 	/*
 	 * Get the interrupt status from the function $01
@@ -1047,7 +1047,7 @@ static int __devinit rmi4_probe(struct i2c_client *client,
 	}
 
 	/* Allocate and initialize the instance data for this client */
-	rmi4_data = kzalloc(sizeof(struct rmi4_data) * 2, GFP_KERNEL);
+	rmi4_data = kzalloc(sizeof(struct rmi4_data), GFP_KERNEL);
 	if (!rmi4_data) {
 		dev_err(&client->dev, "%s: no memory allocated\n", __func__);
 		return -ENOMEM;
@@ -1224,6 +1224,7 @@ void rmi4_late_resume(struct early_suspend *h)
 	int retval;
 	struct rmi4_data *pdata  = container_of(h, struct rmi4_data, es);
 	struct i2c_client *client = pdata->i2c_client;
+	unsigned char intr_status[4];
 
 	dev_dbg(&client->dev, "%s: late resume", __func__);
 	enable_irq(pdata->irq);
@@ -1231,6 +1232,11 @@ void rmi4_late_resume(struct early_suspend *h)
 			pdata->fn01_ctrl_base_addr, F01_CTRL0_SLEEP);
 	if (retval < 0)
 		dev_err(&client->dev, "clear F01_CTRL0_SLEEP failed\n");
+
+	/* Clear interrupts */
+	rmi4_i2c_block_read(pdata,
+			pdata->fn01_data_base_addr + 1,
+			intr_status, pdata->number_of_interrupt_register);
 }
 #endif
 
