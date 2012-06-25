@@ -30,17 +30,6 @@
 /* Set the following if wanting to schedule a later suspend on idle state */
 #define SCHEDULE_LATER_SUSPEND_ON_IDLE
 
-/* Set the following to disable the power management (for debugging) */
-#undef DISABLE_POWER_MANAGEMENT
-
-/* Set the following to prevent ACWAKE toggling (for debugging). This also
- * disbales power management */
-#ifdef CONFIG_HSI_DLP
-#define PREVENT_ACWAKE_TOGGLING
-#else
-#undef PREVENT_ACWAKE_TOGGLING
-#endif
-
 /* Set the following to allow software workaround of the DMA link listing */
 #define USE_SOFWARE_WORKAROUND_FOR_DMA_LLI
 
@@ -104,15 +93,6 @@
 #else
 #define RX_THRESHOLD		0xff
 #define NUM_RX_FIFO_DWORDS(x)		((3 * x) / 4)
-#endif
-
-#ifdef PREVENT_ACWAKE_TOGGLING
-#define ACWAKE_DEFAULT_STATUS	ARASAN_TX_ENABLE
-#ifndef DISABLE_POWER_MANAGEMENT
-#define DISABLE_POWER_MANAGEMENT
-#endif
-#else
-#define ACWAKE_DEFAULT_STATUS	ARASAN_TX_DISABLE
 #endif
 
 /* This maps each channel to a single bit in DMA and HSI channels busy fields */
@@ -373,6 +353,22 @@ struct intel_controller {
 #endif
 };
 
+/* Disable the following to deactivate the runtime power management
+ * (for debugging purpose only)
+ * Runtime PM is enabled by default
+ */
+static unsigned int runtime_pm = 1;
+module_param(runtime_pm, uint, 0644);
+
+/*
+ * Disable the following to prevent ACWAKE toggling (HSI PM)
+ * (for debugging purpose only)
+ * This also disbales runtime power management
+ * HSI PM is enabled by default
+ */
+static unsigned int hsi_pm = 1;
+module_param(hsi_pm, uint, 0644);
+
 /*
  * Helper functions
  */
@@ -531,23 +527,21 @@ static void hsi_pm_runtime_get(struct intel_controller *intel_hsi, int mode)
 static void assert_acwake(struct intel_controller *intel_hsi, int mode)
 	__acquires(&intel_hsi->hw_lock) __releases(&intel_hsi->hw_lock)
 {
-#ifndef PREVENT_ACWAKE_TOGGLING
-	void __iomem *ctrl = intel_hsi->ctrl_io;
-#endif
 	unsigned long flags;
-	int do_wakeup;
+	int do_wakeup = 0;
 
 	spin_lock_irqsave(&intel_hsi->hw_lock, flags);
-#ifndef PREVENT_ACWAKE_TOGGLING
-	do_wakeup = (intel_hsi->tx_state == TX_SLEEPING);
-	if (do_wakeup) {
-		intel_hsi->prg_cfg |= ARASAN_TX_ENABLE;
-		if (intel_hsi->suspend_state == DEVICE_READY)
-			iowrite32(intel_hsi->prg_cfg, ARASAN_HSI_PROGRAM(ctrl));
+	if (hsi_pm) {
+		void __iomem *ctrl = intel_hsi->ctrl_io;
+
+		do_wakeup = (intel_hsi->tx_state == TX_SLEEPING);
+		if (do_wakeup) {
+			intel_hsi->prg_cfg |= ARASAN_TX_ENABLE;
+			if (intel_hsi->suspend_state == DEVICE_READY)
+				iowrite32(intel_hsi->prg_cfg,
+						ARASAN_HSI_PROGRAM(ctrl));
+		}
 	}
-#else
-	do_wakeup = 0;
-#endif
 	intel_hsi->tx_state++;
 	spin_unlock_irqrestore(&intel_hsi->hw_lock, flags);
 
@@ -602,37 +596,36 @@ static void tx_idle_poll(unsigned long param)
 {
 	struct intel_controller *intel_hsi = (struct intel_controller *) param;
 	unsigned long flags;
-	int do_sleep;
-#ifndef PREVENT_ACWAKE_TOGGLING
-	void __iomem *ctrl = intel_hsi->ctrl_io;
-#endif
+	int do_sleep = 0;
 
 	spin_lock_irqsave(&intel_hsi->hw_lock, flags);
 
-#ifndef PREVENT_ACWAKE_TOGGLING
-	if (intel_hsi->tx_state != TX_SLEEPING) {
-		/* This timer has been called when tx_state == 0, if no longer
-		 * to 0, then the pm_runtime_put has still to be taken */
-		do_sleep = 1;
-		goto tx_poll_out;
-	}
+	if (hsi_pm) {
+		void __iomem *ctrl = intel_hsi->ctrl_io;
 
-	/* Prevent TX side sleep and ACWAKE de-assertion until not empty */
-	do_sleep = ((ioread32(ARASAN_HSI_HSI_STATUS(ctrl)) & ARASAN_ALL_TX_EMPTY) ==
-		     ARASAN_ALL_TX_EMPTY);
+		if (intel_hsi->tx_state != TX_SLEEPING) {
+			/* This timer has been called when tx_state == 0,
+			 * if no longer to 0, then the pm_runtime_put has
+			 * still to be taken */
+			do_sleep = 1;
+			goto tx_poll_out;
+		}
 
-	if (do_sleep) {
-		intel_hsi->prg_cfg &= ~ARASAN_TX_ENABLE;
-		if (likely(intel_hsi->suspend_state == DEVICE_READY))
-			iowrite32(intel_hsi->prg_cfg, ARASAN_HSI_PROGRAM(ctrl));
-	} else {
-		mod_timer(&intel_hsi->tx_idle_poll,
-			  jiffies + IDLE_POLL_JIFFIES);
+		/* Prevent TX sleep and ACWAKE de-assertion until not empty */
+		do_sleep = ((ioread32(ARASAN_HSI_HSI_STATUS(ctrl))
+			& ARASAN_ALL_TX_EMPTY) == ARASAN_ALL_TX_EMPTY);
+
+		if (do_sleep) {
+			intel_hsi->prg_cfg &= ~ARASAN_TX_ENABLE;
+			if (likely(intel_hsi->suspend_state == DEVICE_READY))
+				iowrite32(intel_hsi->prg_cfg,
+						ARASAN_HSI_PROGRAM(ctrl));
+		} else {
+			mod_timer(&intel_hsi->tx_idle_poll,
+					jiffies + IDLE_POLL_JIFFIES);
+		}
 	}
 tx_poll_out:
-#else
-	do_sleep = 0;
-#endif
 	spin_unlock_irqrestore(&intel_hsi->hw_lock, flags);
 
 	if (do_sleep)
@@ -965,14 +958,15 @@ static int hsi_ctrl_set_cfg(struct intel_controller *intel_hsi)
 	iowrite32(intel_hsi->clk_cfg, ARASAN_HSI_CLOCK_CONTROL(ctrl));
 
 	/* Configure the main controller parameters (except wake status) */
-#ifdef PREVENT_ACWAKE_TOGGLING
-	intel_hsi->prg_cfg |= ARASAN_TX_ENABLE;
-	iowrite32(intel_hsi->prg_cfg & ~ARASAN_RX_ENABLE,
-		  ARASAN_HSI_PROGRAM(ctrl));
-#else
-	iowrite32(intel_hsi->prg_cfg & ~(ARASAN_TX_ENABLE|ARASAN_RX_ENABLE),
-		  ARASAN_HSI_PROGRAM(ctrl));
-#endif
+	if (!hsi_pm) {
+		intel_hsi->prg_cfg |= ARASAN_TX_ENABLE;
+		iowrite32(intel_hsi->prg_cfg & ~ARASAN_RX_ENABLE,
+				ARASAN_HSI_PROGRAM(ctrl));
+	} else {
+		iowrite32(intel_hsi->prg_cfg &
+				~(ARASAN_TX_ENABLE|ARASAN_RX_ENABLE),
+				ARASAN_HSI_PROGRAM(ctrl));
+	}
 
 	/* Configure the number of HSI channels */
 	iowrite32(intel_hsi->sz_cfg, ARASAN_HSI_PROGRAM1(ctrl));
@@ -1058,6 +1052,7 @@ static int hsi_ctrl_suspend(struct intel_controller *intel_hsi)
 			     (ARASAN_RX_WAKE|ARASAN_ANY_RX_NOT_EMPTY))) {
 			/* ACWAKE rising edge will be detected by the ISR */
 			err = -EBUSY;
+			pr_info("HSI prevent suspend (RX wake or RX not empty)\n");
 			goto exit_ctrl_suspend;
 		}
 
@@ -1068,6 +1063,9 @@ static int hsi_ctrl_suspend(struct intel_controller *intel_hsi)
 		if ((intel_hsi->tx_state != TX_SLEEPING) ||
 		    (intel_hsi->rx_state != RX_SLEEPING)) {
 			err = -EBUSY;
+			pr_info("HSI prevent suspend (RX state: %d, TX state: %d)\n",
+					intel_hsi->tx_state,
+					intel_hsi->rx_state);
 			goto exit_ctrl_suspend;
 		}
 
@@ -1415,6 +1413,7 @@ static int hsi_debug_show(struct seq_file *m, void *p)
 	int ch;
 
 	hsi_pm_runtime_get(intel_hsi, HSI_PM_SYNC);
+	seq_printf(m, "PM (HSI, RT)\t\t: %d, %d\n", hsi_pm, runtime_pm);
 	seq_printf(m, "REVISION\t\t: 0x%08x\n",
 		ioread32(ARASAN_HSI_VERSION(ctrl)));
 	for (ch = 0; ch < DWAHB_CHAN_CNT; ch++) {
@@ -1534,24 +1533,18 @@ static int __init hsi_debug_add_ctrl(struct hsi_controller *hsi)
 	struct intel_controller *intel_hsi = hsi_controller_drvdata(hsi);
 	struct dentry *dir;
 
+	dir = debugfs_create_dir(dev_name(&hsi->device), NULL);
+	if (IS_ERR(dir))
+		return PTR_ERR(dir);
+
 	/* HSI controller */
-	intel_hsi->dir = debugfs_create_dir(dev_name(&hsi->device), NULL);
-	if (IS_ERR(intel_hsi->dir))
-		return PTR_ERR(intel_hsi->dir);
-	debugfs_create_file("regs", S_IRUGO, intel_hsi->dir, hsi,
-			    &hsi_regs_fops);
+	debugfs_create_file("regs_hsi", S_IRUGO, dir, hsi, &hsi_regs_fops);
 
 	/* HSI slave DMA */
-	dir = debugfs_create_dir("dma", intel_hsi->dir);
-	if (IS_ERR(dir))
-		goto rback;
-	debugfs_create_file("regs", S_IRUGO, dir, hsi, &hsi_dma_regs_fops);
+	debugfs_create_file("regs_dma", S_IRUGO, dir, hsi, &hsi_dma_regs_fops);
 
+	intel_hsi->dir = dir;
 	return 0;
-rback:
-	debugfs_remove_recursive(intel_hsi->dir);
-
-	return PTR_ERR(dir);
 }
 #endif /* CONFIG_DEBUG_FS */
 
@@ -3112,9 +3105,9 @@ static int hsi_controller_init(struct intel_controller *intel_hsi)
 #ifdef CONFIG_HAS_WAKELOCK
 	wake_lock_init(&intel_hsi->stay_awake, WAKE_LOCK_SUSPEND,
 		       "hsi_wakelock");
-#ifdef DISABLE_POWER_MANAGEMENT
-	wake_lock(&intel_hsi->stay_awake);
-#endif
+
+	if (!runtime_pm)
+		wake_lock(&intel_hsi->stay_awake);
 #endif
 
 	tasklet_init(&intel_hsi->isr_tasklet, hsi_isr_tasklet,
@@ -3138,9 +3131,9 @@ static int hsi_controller_init(struct intel_controller *intel_hsi)
 			intel_hsi->irq, err);
 
 #ifdef CONFIG_HAS_WAKELOCK
-#ifdef DISABLE_POWER_MANAGEMENT
-		wake_unlock(&intel_hsi->stay_awake);
-#endif
+		if (!runtime_pm)
+			wake_unlock(&intel_hsi->stay_awake);
+
 		wake_lock_destroy(&intel_hsi->stay_awake);
 #endif
 	}
@@ -3165,9 +3158,9 @@ static void hsi_controller_exit(struct intel_controller *intel_hsi)
 	tasklet_kill(&intel_hsi->fwd_tasklet);
 
 #ifdef CONFIG_HAS_WAKELOCK
-#ifdef DISABLE_POWER_MANAGEMENT
-	wake_unlock(&intel_hsi->stay_awake);
-#endif
+	if (!runtime_pm)
+		wake_unlock(&intel_hsi->stay_awake);
+
 	wake_lock_destroy(&intel_hsi->stay_awake);
 #endif
 }
@@ -3277,7 +3270,6 @@ static int hsi_pm_resume(struct device *dev)
 #define hsi_pm_resume  NULL
 #endif /* CONFIG_SUSPEND */
 
-#ifndef DISABLE_POWER_MANAGEMENT
 /**
  * hsi_rtpm_init - initialising the runtime power management
  * @intel_hsi: Intel HSI controller reference
@@ -3301,7 +3293,6 @@ static void hsi_rtpm_exit(struct intel_controller *intel_hsi)
 	pm_runtime_forbid(dev);
 	pm_runtime_get_noresume(dev);
 }
-#endif
 
 /**
  * hsi_add_controller - make and init intel_hsi controller
@@ -3365,9 +3356,9 @@ static int __init hsi_add_controller(struct hsi_controller *hsi,
 		goto fail_controller_register;
 
 	pci_set_drvdata(pdev, (void *)hsi);
-#ifndef DISABLE_POWER_MANAGEMENT
-	hsi_rtpm_init(intel_hsi);
-#endif
+
+	if (runtime_pm)
+		hsi_rtpm_init(intel_hsi);
 
 	return 0;
 
@@ -3402,9 +3393,9 @@ static void hsi_remove_controller(struct hsi_controller *hsi,
 	struct intel_controller *intel_hsi =
 		(struct intel_controller *)hsi_controller_drvdata(hsi);
 
-#ifndef DISABLE_POWER_MANAGEMENT
-	hsi_rtpm_exit(intel_hsi);
-#endif
+	if (runtime_pm)
+		hsi_rtpm_exit(intel_hsi);
+
 	pci_set_drvdata(pdev, NULL);
 	hsi_unregister_controller(hsi);
 #ifdef CONFIG_DEBUG_FS
@@ -3524,11 +3515,18 @@ static int __init intel_hsi_init(void)
  * compilation fails if OSPM is Disabled.
  */
 #ifdef CONFIG_ATOM_SOC_POWER
-	if (enable_standby)
+	if (enable_standby) {
+		pr_info("HSI controller driver not registered (enable_standby=1)\n");
 		return -EBUSY;
+	}
 #endif
 #endif
 	pr_info("init Intel HSI controller driver\n");
+
+	/* Disable the rtpm if the hsi_pm is disabled */
+	if (!hsi_pm)
+		runtime_pm = 0;
+
 	return pci_register_driver(&intel_hsi_driver);
 }
 module_init(intel_hsi_init);
