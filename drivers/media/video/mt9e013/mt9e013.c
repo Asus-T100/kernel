@@ -1570,7 +1570,7 @@ static int mt9e013_detect(struct i2c_client *client, u16 *id, u8 *revision)
 		return -ENODEV;
 	}
 
-	if (*id != MT9E013_ID) {
+	if (*id != MT9E013_ID && *id != MT9E013_ID2) {
 		v4l2_err(client,
 			"sensor ID error, sensor_id = 0x%x\n", *id);
 		return -ENODEV;

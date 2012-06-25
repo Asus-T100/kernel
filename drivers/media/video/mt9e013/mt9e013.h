@@ -38,6 +38,7 @@
 #define	MT9E013_NAME	"mt9e013"
 #define	MT9E013_ADDR	0x36
 #define MT9E013_ID	0x4b00
+#define MT9E013_ID2	0x4b01
 
 #define	LAST_REG_SETING		{0xffff, 0xff}
 #define	is_last_reg_setting(item) ((item).reg == 0xffff)
