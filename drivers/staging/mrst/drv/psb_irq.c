@@ -568,32 +568,55 @@ irqreturn_t psb_irq_handler(DRM_IRQ_ARGS)
 		when HW is already power-gated
 		- saftey check to avoid illegal HW access.
 	*/
-	if (dsp_int && ospm_power_is_hw_on(OSPM_DISPLAY_ISLAND)) {
-		psb_vdc_interrupt(dev, vdc_stat);
-		handled = 1;
+	if (dsp_int) {
+		if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
+			OSPM_UHB_ONLY_IF_ON)) {
+			psb_vdc_interrupt(dev, vdc_stat);
+			handled = 1;
+			ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+		} else
+			DRM_INFO("get dsp int while it's off\n");
 	}
 
 #ifdef CONFIG_MDFD_VIDEO_DECODE
-	if (msvdx_int && IS_MDFLD(dev)
-			  && ospm_power_is_hw_on(OSPM_VIDEO_DEC_ISLAND)) {
-		psb_msvdx_interrupt(dev);
-		handled = 1;
+	if (msvdx_int && IS_MDFLD(dev)) {
+		if (ospm_power_using_hw_begin(OSPM_VIDEO_DEC_ISLAND,
+			OSPM_UHB_ONLY_IF_ON)) {
+			psb_msvdx_interrupt(dev);
+			handled = 1;
+			ospm_power_using_hw_end(OSPM_VIDEO_DEC_ISLAND);
+		} else
+			DRM_INFO("get msvdx int while it's off\n");
+	}
+	if ((IS_MDFLD(dev) && topaz_int)) {
+		if (ospm_power_using_hw_begin(OSPM_VIDEO_ENC_ISLAND,
+			OSPM_UHB_ONLY_IF_ON)) {
+			pnw_topaz_interrupt(dev);
+			handled = 1;
+			ospm_power_using_hw_end(OSPM_VIDEO_ENC_ISLAND);
+		} else
+			DRM_INFO("get mdfld topaz int while it's off\n");
+	} else if (IS_MRST(dev) && topaz_int) {
+		if (ospm_power_using_hw_begin(OSPM_VIDEO_ENC_ISLAND,
+			OSPM_UHB_ONLY_IF_ON)) {
+			lnc_topaz_interrupt(dev);
+			handled = 1;
+			ospm_power_using_hw_end(OSPM_VIDEO_ENC_ISLAND);
+		} else
+			DRM_INFO("get mrst topaz int while it's off\n");
 	}
 
-	if ((IS_MDFLD(dev) && topaz_int
-			&& ospm_power_is_hw_on(OSPM_VIDEO_ENC_ISLAND))) {
-		pnw_topaz_interrupt(dev);
-		handled = 1;
-	} else if (IS_MRST(dev) && topaz_int &&
-		   ospm_power_is_hw_on(OSPM_VIDEO_ENC_ISLAND)) {
-		lnc_topaz_interrupt(dev);
-		handled = 1;
-	}
 #endif
-	if (sgx_int && ospm_power_is_hw_on(OSPM_GRAPHICS_ISLAND)) {
-		if (SYSPVRServiceSGXInterrupt(dev) != 0)
-			handled = 1;
+	if (sgx_int) {
+		if (ospm_power_using_hw_begin(OSPM_GRAPHICS_ISLAND,
+			OSPM_UHB_ONLY_IF_ON)) {
+			if (SYSPVRServiceSGXInterrupt(dev) != 0)
+					handled = 1;
+			ospm_power_using_hw_end(OSPM_GRAPHICS_ISLAND);
+		} else
+			DRM_INFO("get sgx int while it's off\n");
 	}
+
 
 #ifdef CONFIG_MDFD_GL3
 	if (gl3_int && ospm_power_is_hw_on(OSPM_GL3_CACHE_ISLAND)) {

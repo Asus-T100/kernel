@@ -511,8 +511,9 @@ static void mdfld_dbi_output_exit_dsr (struct mdfld_dsi_dbi_output * dbi_output,
 	}
 
 	if (check_hw_on_only) {
-		if (!ospm_power_is_hw_on(OSPM_DISPLAY_ISLAND)) {
-			DRM_ERROR("hw begin failed\n");
+		if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
+			OSPM_UHB_ONLY_IF_ON)) {
+			DRM_ERROR("display is in off state\n");
 			return;
 		}
 	} else if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, OSPM_UHB_FORCE_POWER_ON)) {
@@ -566,8 +567,7 @@ static void mdfld_dbi_output_exit_dsr (struct mdfld_dsi_dbi_output * dbi_output,
 		REG_WRITE(dspsurf_reg, *((u32 *)p_surfaceAddr));
 	}
 
-	if (!check_hw_on_only)
-		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 
 	mdfld_enable_te(dev, pipe);
 

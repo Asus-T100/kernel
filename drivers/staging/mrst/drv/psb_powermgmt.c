@@ -24,7 +24,8 @@
  * Authors:
  *    Benjamin Defnet <benjamin.r.defnet@intel.com>
  *    Rajesh Poornachandran <rajesh.poornachandran@intel.com>
- *
+ *    Yun(Mark) Tu <yun.tu@intel.com>
+ *    Zhouzhou(Scott) Fang <zhouzhou.fang@intel.com>
  */
 #include "psb_powermgmt.h"
 #include "psb_drv.h"
@@ -54,8 +55,33 @@
 
 struct drm_device *gpDrmDevice = NULL;
 static struct mutex g_ospm_mutex;
+
+/* Lock for graphics_access_count, since we treat gfx power
+** on/off as atomic operation
+*/
+static spinlock_t graphics_count_lock;
+
+/* Only indicate video/display suspending/resuming status, not including gfx,
+** since we put gfx resume/suspend in atomic operation, no need
+** resuming/suspending status anymore
+*/
+/* Lock strategy */
+/* For GFX(3D) engine:
+ * Since 3D driver will power on 3D engine in atomic context
+ * here use graphics_count_lock to protect race condition
+ * between process and atomic context, once 3D driver
+ * can make sure power on 3D engine only in process context
+ * we can use the same locks with other engines below.
+ * For other engines(display/enc/dec):
+ * we use both mutex lock and spin lock, for it
+ * need synchronization between atomic context and process context
+ * */
 static bool gbSuspendInProgress = false;
 static bool gbResumeInProgress = false;
+static bool gbEncSuspendInProgress;
+static bool gbDecSuspendInProgress;
+static bool pcihostSuspendInProgress;
+static bool gbSuspended; /* Indicate the host PCI suspened or not */
 static int g_hw_power_status_mask;
 static atomic_t g_display_access_count;
 static atomic_t g_graphics_access_count;
@@ -63,7 +89,6 @@ static atomic_t g_videoenc_access_count;
 static atomic_t g_videodec_access_count;
 extern u32 DISP_PLANEB_STATUS;
 
-static bool gbSuspended = false;
 bool gbgfxsuspended = false;
 
 void acquire_ospm_lock(void)
@@ -96,6 +121,7 @@ static int ospm_runtime_pm_topaz_suspend(struct drm_device *dev)
 	struct pnw_topaz_private *pnw_topaz_priv = dev_priv->topaz_private;
 	struct psb_video_ctx *pos, *n;
 	int encode_ctx = 0, encode_running = 0;
+	unsigned long flags;
 
 
 	list_for_each_entry_safe(pos, n, &dev_priv->video_ctx, head) {
@@ -114,23 +140,27 @@ static int ospm_runtime_pm_topaz_suspend(struct drm_device *dev)
 	if (!ospm_power_is_hw_on(OSPM_VIDEO_ENC_ISLAND))
 		goto out;
 
+	spin_lock_irqsave(&dev_priv->ospm_lock, flags);
+	gbEncSuspendInProgress = true;
+	spin_unlock_irqrestore(&dev_priv->ospm_lock, flags);
+
 	if (atomic_read(&g_videoenc_access_count)) {
 		ret = -1;
-		goto out;
+		goto out_spinlock;
 	}
 
 #ifdef CONFIG_MDFD_VIDEO_DECODE
 	if (IS_MRST(dev)) {
 		if (lnc_check_topaz_idle(dev)) {
 			ret = -2;
-			goto out;
+			goto out_spinlock;
 		}
 	}
 
 	if (IS_MDFLD(dev)) {
 		if (pnw_check_topaz_idle(dev)) {
 			ret = -2;
-			goto out;
+			goto out_spinlock;
 		}
 	}
 	psb_irq_uninstall_islands(gpDrmDevice, OSPM_VIDEO_ENC_ISLAND);
@@ -148,6 +178,12 @@ static int ospm_runtime_pm_topaz_suspend(struct drm_device *dev)
 	}
 #endif
 	ospm_power_island_down(OSPM_VIDEO_ENC_ISLAND);
+
+out_spinlock:
+	spin_lock_irqsave(&dev_priv->ospm_lock, flags);
+	gbEncSuspendInProgress = false;
+	spin_unlock_irqrestore(&dev_priv->ospm_lock, flags);
+
 out:
 	return ret;
 }
@@ -243,7 +279,6 @@ out:
 void ospm_apm_power_down_topaz(struct drm_device *dev)
 {
 	return; /* todo for OSPM */
-
 	mutex_lock(&g_ospm_mutex);
 
 	if (atomic_read(&g_videoenc_access_count))
@@ -264,18 +299,23 @@ void ospm_apm_power_down_msvdx(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv = dev->dev_private;
 	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
+	unsigned long flags;
 
 	mutex_lock(&g_ospm_mutex);
 	if (!ospm_power_is_hw_on(OSPM_VIDEO_DEC_ISLAND))
 		goto out;
 
+	spin_lock_irqsave(&dev_priv->ospm_lock, flags);
+	gbDecSuspendInProgress = true;
+	spin_unlock_irqrestore(&dev_priv->ospm_lock, flags);
+
 	if (atomic_read(&g_videodec_access_count))
-		goto out;
+		goto out_spinlock;
+
 #ifdef CONFIG_MDFD_VIDEO_DECODE
 	if (psb_check_msvdx_idle(dev))
-		goto out;
+		goto out_spinlock;
 
-	gbSuspendInProgress = true;
 	psb_msvdx_save_context(dev);
 #endif
 	ospm_power_island_down(OSPM_VIDEO_DEC_ISLAND);
@@ -283,8 +323,13 @@ void ospm_apm_power_down_msvdx(struct drm_device *dev)
 	/* Power off GL3 */
 	ospm_power_island_down(OSPM_GL3_CACHE_ISLAND);
 #endif
-	gbSuspendInProgress = false;
 	MSVDX_NEW_PMSTATE(dev, msvdx_priv, PSB_PMSTATE_POWERDOWN);
+
+out_spinlock:
+	spin_lock_irqsave(&dev_priv->ospm_lock, flags);
+	gbDecSuspendInProgress = false;
+	spin_unlock_irqrestore(&dev_priv->ospm_lock, flags);
+
 out:
 	mutex_unlock(&g_ospm_mutex);
 	return;
@@ -295,21 +340,28 @@ void ospm_apm_power_down_topaz(struct drm_device *dev)
 	struct drm_psb_private *dev_priv = dev->dev_private;
 	struct topaz_private *topaz_priv = dev_priv->topaz_private;
 	struct pnw_topaz_private *pnw_topaz_priv = dev_priv->topaz_private;
+	unsigned long flags;
 
 	mutex_lock(&g_ospm_mutex);
 
 	if (!ospm_power_is_hw_on(OSPM_VIDEO_ENC_ISLAND))
 		goto out;
+
+	spin_lock_irqsave(&dev_priv->ospm_lock, flags);
+	gbEncSuspendInProgress = true;
+	spin_unlock_irqrestore(&dev_priv->ospm_lock, flags);
+
 	if (atomic_read(&g_videoenc_access_count))
-		goto out;
+		goto out_spinlock;
+
 #ifdef CONFIG_MDFD_VIDEO_DECODE
 	if (IS_MRST(dev))
 		if (lnc_check_topaz_idle(dev))
-			goto out;
+			goto out_spinlock;
 	if (IS_MDFLD(dev))
 		if (pnw_check_topaz_idle(dev))
-			goto out;
-	gbSuspendInProgress = true;
+			goto out_spinlock;
+
 	if (IS_MRST(dev)) {
 		psb_irq_uninstall_islands(dev, OSPM_VIDEO_ENC_ISLAND);
         	lnc_topaz_save_mtx_state(dev);
@@ -329,7 +381,10 @@ void ospm_apm_power_down_topaz(struct drm_device *dev)
 		ospm_power_island_down(OSPM_GL3_CACHE_ISLAND);
 #endif
 
-	gbSuspendInProgress = false;
+out_spinlock:
+	spin_lock_irqsave(&dev_priv->ospm_lock, flags);
+	gbEncSuspendInProgress = false;
+	spin_unlock_irqrestore(&dev_priv->ospm_lock, flags);
 out:
 	mutex_unlock(&g_ospm_mutex);
 	return;
@@ -348,6 +403,7 @@ void ospm_power_init(struct drm_device *dev)
 	gpDrmDevice = dev;
 
 	mutex_init(&g_ospm_mutex);
+	spin_lock_init(&graphics_count_lock);
 	spin_lock_init(&dev_priv->ospm_lock);
 
 	spin_lock_irqsave(&dev_priv->ospm_lock, flags);
@@ -394,7 +450,10 @@ void ospm_post_init(struct drm_device *dev)
 	u32 dc_islands  = 0;
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *)dev->dev_private;
+	unsigned long flags;
+	u32 all_display_islands;
 
+	mutex_lock(&g_ospm_mutex);
 #ifndef CONFIG_MDFD_GL3
 	ospm_power_island_down(OSPM_GL3_CACHE_ISLAND);
 #endif
@@ -418,6 +477,8 @@ void ospm_post_init(struct drm_device *dev)
 		"%s dc_islands: %x to be powered OFF\n",
 		__func__, dc_islands);
 #endif
+
+	spin_lock_irqsave(&dev_priv->ospm_lock, flags);
 	/*
 	If pmu_nc_set_power_state fails then accessing HW
 	reg would result in a crash - IERR/Fabric error.
@@ -425,6 +486,15 @@ void ospm_post_init(struct drm_device *dev)
 	if (pmu_nc_set_power_state(dc_islands,
 		OSPM_ISLAND_DOWN, OSPM_REG_TYPE))
 		BUG();
+
+	all_display_islands = (OSPM_DISPLAY_A_ISLAND |
+	OSPM_DISPLAY_B_ISLAND |
+	OSPM_DISPLAY_C_ISLAND |
+	OSPM_MIPI_ISLAND);
+	if ((dc_islands & all_display_islands) == all_display_islands)
+		g_hw_power_status_mask &= ~OSPM_DISPLAY_ISLAND;
+
+	spin_unlock_irqrestore(&dev_priv->ospm_lock, flags);
 
 /* if HDMI is disabled in the kernel .config, then we want to
 disable these MSIC power rails permanently.  */
@@ -435,6 +505,7 @@ disable these MSIC power rails permanently.  */
 		intel_scu_ipc_iowrite8(MSIC_VCC330CNT, VCC330_OFF);
 	}
 #endif
+	mutex_unlock(&g_ospm_mutex);
 
 }
 
@@ -2035,6 +2106,7 @@ int ospm_power_suspend(struct pci_dev *pdev, pm_message_t state)
 	int videodec_access_count;
 	int display_access_count;
 	struct drm_psb_private *dev_priv = gpDrmDevice->dev_private;
+	unsigned long flags;
 
 #ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
 	if (dev_priv->hdmi_audio_busy)
@@ -2059,10 +2131,6 @@ int ospm_power_suspend(struct pci_dev *pdev, pm_message_t state)
 #endif
         mutex_lock(&g_ospm_mutex);
         if (!gbSuspended) {
-                graphics_access_count = atomic_read(&g_graphics_access_count);
-                videoenc_access_count = atomic_read(&g_videoenc_access_count);
-                videodec_access_count = atomic_read(&g_videodec_access_count);
-                display_access_count = atomic_read(&g_display_access_count);
 #if (defined(CONFIG_SND_INTELMID_HDMI_AUDIO) || \
 		defined(CONFIG_SND_INTELMID_HDMI_AUDIO_MODULE))
 		if (dev_priv->had_pvt_data && hdmi_state) {
@@ -2072,8 +2140,17 @@ int ospm_power_suspend(struct pci_dev *pdev, pm_message_t state)
 			hdmi_audio_suspend = (ret == 0) ? true : false;
 		}
 #endif
+		/* Turn on suspending first before check the access count */
+		spin_lock_irqsave(&dev_priv->ospm_lock, flags);
+		gbSuspendInProgress = true;
+		spin_unlock_irqrestore(&dev_priv->ospm_lock, flags);
 
-                if (graphics_access_count
+		graphics_access_count = atomic_read(&g_graphics_access_count);
+		videoenc_access_count = atomic_read(&g_videoenc_access_count);
+		videodec_access_count = atomic_read(&g_videodec_access_count);
+		display_access_count = atomic_read(&g_display_access_count);
+
+		if (graphics_access_count
 			|| videoenc_access_count
 			|| videodec_access_count
 			|| display_access_count
@@ -2084,11 +2161,7 @@ int ospm_power_suspend(struct pci_dev *pdev, pm_message_t state)
 		)
                         ret = -EBUSY;
                 if (!ret) {
-                        gbSuspendInProgress = true;
-
-                        //! may cause runtime resume during early suspend
-                        //psb_irq_uninstall_islands(gpDrmDevice, OSPM_DISPLAY_ISLAND);
-                        ospm_suspend_display(gpDrmDevice);
+			ospm_suspend_display(gpDrmDevice);
 #if 0   /* FIXME: video driver support for Linux Runtime PM */
 			/* FIXME: video driver support for Linux Runtime PM */
                         if (ospm_runtime_pm_msvdx_suspend(gpDrmDevice) != 0) {
@@ -2099,12 +2172,28 @@ int ospm_power_suspend(struct pci_dev *pdev, pm_message_t state)
                         if (ospm_runtime_pm_topaz_suspend(gpDrmDevice) != 0)
 				ret = -EBUSY;
 
-			if (!ret)
-				ospm_suspend_pci(pdev);
-                        gbSuspendInProgress = false;
+			if (!ret) {
+				/* When suspend, the gfx island may increase
+				** its access count, hence the PCI host
+				** shouldn't be power off
+				*/
+				spin_lock(&graphics_count_lock);
+				graphics_access_count =
+					atomic_read(&g_graphics_access_count);
+				if (!graphics_access_count) {
+					pcihostSuspendInProgress = true;
+					spin_unlock(&graphics_count_lock);
+					ospm_suspend_pci(pdev);
+					pcihostSuspendInProgress = false;
+				} else
+					spin_unlock(&graphics_count_lock);
+			}
                 } else {
                         printk(KERN_ALERT "ospm_power_suspend: device busy: graphics %d videoenc %d videodec %d display %d\n", graphics_access_count, videoenc_access_count, videodec_access_count, display_access_count);
                 }
+		spin_lock_irqsave(&dev_priv->ospm_lock, flags);
+		gbSuspendInProgress = false;
+		spin_unlock_irqrestore(&dev_priv->ospm_lock, flags);
         }
 
 
@@ -2253,10 +2342,15 @@ void ospm_power_island_down(int hw_islands)
 		reg would result in a crash - IERR/Fabric error.
 		*/
 		spin_lock_irqsave(&dev_priv->ospm_lock, flags);
+		/*last chance of canceling the power off*/
+		if (atomic_read(&g_display_access_count))
+			goto unlock;
+
 		g_hw_power_status_mask &= ~OSPM_DISPLAY_ISLAND;
 		if (pmu_nc_set_power_state(dc_islands,
 					   OSPM_ISLAND_DOWN, OSPM_REG_TYPE))
 			BUG();
+unlock:
 		spin_unlock_irqrestore(&dev_priv->ospm_lock, flags);
 
 		/* handle other islands */
@@ -2269,6 +2363,10 @@ void ospm_power_island_down(int hw_islands)
 			 __func__, gfx_islands);
 #endif
 		spin_lock_irqsave(&dev_priv->ospm_lock, flags);
+		/* both graphics and GL3 based on graphics_access count */
+		if (hw_islands &
+			(OSPM_GL3_CACHE_ISLAND | OSPM_GRAPHICS_ISLAND))
+			spin_lock(&graphics_count_lock);
 		if (gfx_islands & OSPM_GL3_CACHE_ISLAND) {
 #ifdef CONFIG_MDFD_GL3
 			/*
@@ -2287,17 +2385,34 @@ void ospm_power_island_down(int hw_islands)
 				__func__);
 #endif
 				gfx_islands &=  ~OSPM_GL3_CACHE_ISLAND;
-				if (!gfx_islands)
+				if (!gfx_islands) {
+					spin_unlock(&graphics_count_lock);
 					goto out;
+				}
 			}
 #endif
 		}
+		if (gfx_islands & OSPM_GRAPHICS_ISLAND) {
+			if (atomic_read(&g_graphics_access_count))
+				gfx_islands &=  ~OSPM_GRAPHICS_ISLAND;
+		}
+
+		if ((gfx_islands & OSPM_VIDEO_DEC_ISLAND) &&
+			atomic_read(&g_videodec_access_count))
+			gfx_islands &=  ~OSPM_VIDEO_DEC_ISLAND;
+
+		if ((gfx_islands & OSPM_VIDEO_ENC_ISLAND) &&
+			atomic_read(&g_videoenc_access_count))
+			gfx_islands &=  ~OSPM_VIDEO_ENC_ISLAND;
 
 		/*
 		If pmu_nc_set_power_state fails then accessing HW
 		reg would result in a crash - IERR/Fabric error.
 		*/
 		g_hw_power_status_mask &= ~gfx_islands;
+		if (hw_islands &
+			(OSPM_GL3_CACHE_ISLAND | OSPM_GRAPHICS_ISLAND))
+			spin_unlock(&graphics_count_lock);
 		if (pmu_nc_set_power_state(gfx_islands,
 			OSPM_ISLAND_DOWN, APM_REG_TYPE))
 			BUG();
@@ -2336,20 +2451,25 @@ bool ospm_power_is_hw_on(int hw_islands)
  * Otherwise, this will return false and the caller is expected to not
  * access the hw.
  *
- * NOTE *** If this is called from and interrupt handler or other atomic
- * context, then it will return false if we are in the middle of a
- * power state transition and the caller will be expected to handle that
- * even if force_on is set to true.
+ * NOTE:For gfx island, this function can supprot power on from off
+ * mode in atomic context. While for other island,this function
+ * doesn't support force_on in atomic context, as
+ * there may sleep when resuming these islands. If u have to
+ * resume in atomic context for these islands, u need revise ur
+ * logic and move the resume to a process context. return true if
+ * the island is on(no matter it's forced or already on) otherwise
+ * false is returned.
  */
 bool ospm_power_using_hw_begin(int hw_island, UHBUsage usage)
 {
-	bool ret = true;
-	bool island_is_off = false;
-	bool b_atomic = (in_interrupt() || in_atomic());
-	bool locked = true;
+	bool tmp, ret = true;
+	bool island_is_on = true;
 	struct pci_dev *pdev = gpDrmDevice->pdev;
 	IMG_UINT32 deviceID = 0;
 	bool force_on = usage ? true: false;
+	struct drm_psb_private *dev_priv =
+		(struct drm_psb_private *) gpDrmDevice->dev_private;
+	unsigned long flags;
 
 #ifdef CONFIG_GFX_RTPM
 	if(gbSuspendInProgress) {
@@ -2361,145 +2481,83 @@ bool ospm_power_using_hw_begin(int hw_island, UHBUsage usage)
 		pm_runtime_get(&pdev->dev);
 	}
 #endif
-	/*quick path, not 100% race safe, but should be enough comapre to current other code in this file */
+
+	/* Since gfx island power on/off can be atomic,
+	** so treat it in special way
+	*/
+	if (hw_island == OSPM_GRAPHICS_ISLAND) {
+		spin_lock(&graphics_count_lock);
+
+		island_is_on = ospm_power_is_hw_on(OSPM_GRAPHICS_ISLAND);
+
+		if (island_is_on)
+			goto increase_gfx_count;
+
+		if (!force_on && !island_is_on) {
+#ifdef CONFIG_GFX_RTPM
+			pm_runtime_put(&pdev->dev);
+#endif
+			goto unlock;
+		}
+
+		/* island_is_on == false and force_on == true case:
+		** Power on the island anyway, first power on pci host
+		** The PCI host should be already power on, if face bug()
+		** the caller need to redesign its logic, for put pci host
+		** to full funtional need sleep, it's forbidden
+		*/
+		if (gbSuspended || pcihostSuspendInProgress)
+			BUG();
+		psb_irq_preinstall_islands(gpDrmDevice, OSPM_GRAPHICS_ISLAND);
+		psb_irq_postinstall_islands(gpDrmDevice, OSPM_GRAPHICS_ISLAND);
+#ifdef CONFIG_MDFD_GL3
+		ospm_power_island_up(OSPM_GRAPHICS_ISLAND |
+				OSPM_GL3_CACHE_ISLAND);
+#else
+		ospm_power_island_up(OSPM_GRAPHICS_ISLAND);
+#endif
+		island_is_on = true;
+increase_gfx_count:
+		atomic_inc(&g_graphics_access_count);
+unlock:
+		spin_unlock(&graphics_count_lock);
+		return island_is_on;
+	}
+
+	/* Deal with other islands which may be in process context and
+	** atomic context. Only process context is allowed when in
+	** force_on == true case. In force_on == false cases,
+	** it may be in atomic or process context, so use spin_lock_irq
+	*/
 	if (!force_on) {
-		if (!ospm_power_is_hw_on(hw_island)) {
+		spin_lock_irqsave(&dev_priv->ospm_lock, flags);
+		island_is_on = ((g_hw_power_status_mask & hw_island)
+			== hw_island) ? true : false;
+
+		/* if island is off or another thread has been in
+		** suspend progress, we should return false to
+		** keep consistent, the caller should have dealt
+		** with return value properly
+		** Note: when in interrupt context, we should
+		** always return true, for it has triggerred interrupt.
+		*/
+		if ((!island_is_on) ||
+			((hw_island == OSPM_VIDEO_ENC_ISLAND) &&
+			gbEncSuspendInProgress ||
+			(hw_island == OSPM_VIDEO_DEC_ISLAND) &&
+			gbDecSuspendInProgress ||
+			(hw_island == OSPM_DISPLAY_ISLAND) &&
+			gbSuspendInProgress) && (!in_interrupt())) {
+			spin_unlock_irqrestore(&dev_priv->ospm_lock,
+				flags);
 #ifdef CONFIG_GFX_RTPM
 			pm_runtime_put(&pdev->dev);
 #endif
 			return false;
-        }
-		else {
-			locked = false;
-			goto increase_count;
-		}
-	}
-	if (!b_atomic)
-		mutex_lock(&g_ospm_mutex);
-
-	island_is_off = !ospm_power_is_hw_on(hw_island);
-
-	if (b_atomic && (gbSuspendInProgress || gbResumeInProgress || gbSuspended) && force_on && island_is_off)
-		ret = false;
-
-	if (ret && island_is_off && !force_on)
-		ret = false;
-
-	if (ret && island_is_off && force_on) {
-		gbResumeInProgress = true;
-
-		ret = ospm_resume_pci(pdev);
-
-		if (ret) {
-			switch(hw_island)
-			{
-			case OSPM_DISPLAY_ISLAND:
-				deviceID = gui32MRSTDisplayDeviceID;
-				ospm_resume_display(pdev);
-				psb_irq_preinstall_islands(gpDrmDevice, OSPM_DISPLAY_ISLAND);
-				psb_irq_postinstall_islands(gpDrmDevice, OSPM_DISPLAY_ISLAND);
-				break;
-			case OSPM_GRAPHICS_ISLAND:
-				deviceID = gui32SGXDeviceID;
-#ifdef CONFIG_MDFD_GL3
-				ospm_power_island_up(OSPM_GRAPHICS_ISLAND |
-						OSPM_GL3_CACHE_ISLAND);
-#else
-				ospm_power_island_up(OSPM_GRAPHICS_ISLAND);
-#endif
-				psb_irq_preinstall_islands(gpDrmDevice, OSPM_GRAPHICS_ISLAND);
-				psb_irq_postinstall_islands(gpDrmDevice, OSPM_GRAPHICS_ISLAND);
-				break;
-#if 1 /* for debugging video driver ospm */
-			case OSPM_VIDEO_DEC_ISLAND:
-				if(!ospm_power_is_hw_on(OSPM_DISPLAY_ISLAND)) {
-					/* printk(KERN_ALERT "%s power on display for video decode use\n", __func__); */
-					deviceID = gui32MRSTDisplayDeviceID;
-					ospm_resume_display(pdev);
-					psb_irq_preinstall_islands(gpDrmDevice, OSPM_DISPLAY_ISLAND);
-					psb_irq_postinstall_islands(gpDrmDevice, OSPM_DISPLAY_ISLAND);
-				}
-				else{
-					/* printk(KERN_ALERT "%s display is already on for video decode use\n", __func__);*/
-				}
-
-				if(!ospm_power_is_hw_on(OSPM_VIDEO_DEC_ISLAND)) {
-					/* printk(KERN_ALERT "%s power on video decode\n", __func__); */
-					deviceID = gui32MRSTMSVDXDeviceID;
-#ifdef CONFIG_MDFD_GL3
-					ospm_power_island_up(OSPM_GL3_CACHE_ISLAND | OSPM_VIDEO_DEC_ISLAND);
-					if (IS_D0(gpDrmDevice)) {
-						struct drm_psb_private *dev_priv =
-							(struct drm_psb_private *) gpDrmDevice->dev_private;
-						int ret;
-
-						ret = psb_wait_for_register(dev_priv, MSVDX_COMMS_SIGNATURE,
-									    MSVDX_COMMS_SIGNATURE_VALUE,
-									    0xffffffff);
-						if (ret)
-							DRM_ERROR("MSVDX: firmware fails to initialize.\n");
-					}
-#else
-					ospm_power_island_up(OSPM_VIDEO_DEC_ISLAND);
-#endif
-					ospm_runtime_pm_msvdx_resume(gpDrmDevice);
-					psb_irq_preinstall_islands(gpDrmDevice, OSPM_VIDEO_DEC_ISLAND);
-					psb_irq_postinstall_islands(gpDrmDevice, OSPM_VIDEO_DEC_ISLAND);
-				}
-				else{
-					/* printk(KERN_ALERT "%s video decode is already on\n", __func__); */
-				}
-
-				break;
-			case OSPM_VIDEO_ENC_ISLAND:
-				if (IS_MRST(gpDrmDevice) &&
-						(!ospm_power_is_hw_on(
-							OSPM_DISPLAY_ISLAND))) {
-					deviceID = gui32MRSTDisplayDeviceID;
-					ospm_resume_display(pdev);
-					psb_irq_preinstall_islands(gpDrmDevice, OSPM_DISPLAY_ISLAND);
-					psb_irq_postinstall_islands(gpDrmDevice, OSPM_DISPLAY_ISLAND);
-				}
-
-				if(!ospm_power_is_hw_on(OSPM_VIDEO_ENC_ISLAND)) {
-					/* printk(KERN_ALERT "%s power on video encode\n", __func__); */
-					deviceID = gui32MRSTTOPAZDeviceID;
-#ifdef CONFIG_MDFD_GL3
-					ospm_power_island_up(OSPM_VIDEO_ENC_ISLAND);
-					ospm_power_island_up(OSPM_GL3_CACHE_ISLAND);
-#else
-					ospm_power_island_up(OSPM_VIDEO_ENC_ISLAND);
-#endif
-					ospm_runtime_pm_topaz_resume(gpDrmDevice);
-					psb_irq_preinstall_islands(gpDrmDevice, OSPM_VIDEO_ENC_ISLAND);
-					psb_irq_postinstall_islands(gpDrmDevice, OSPM_VIDEO_ENC_ISLAND);
-				}
-				else{
-					/* printk(KERN_ALERT "%s video decode is already on\n", __func__); */
-				}
-#endif
-				break;
-			default:
-				printk(KERN_ALERT "%s unknown island !!!!\n",
-						__func__);
-				break;
-			}
-
 		}
 
-		if (!ret)
-			printk(KERN_ALERT "%s: %d failed\n",
-					__func__, hw_island);
-
-		gbResumeInProgress = false;
-	}
-increase_count:
-	if (ret) {
-		switch(hw_island)
-		{
-		case OSPM_GRAPHICS_ISLAND:
-			atomic_inc(&g_graphics_access_count);
-			break;
+		/* After sanity check can increase the access_count */
+		switch (hw_island) {
 		case OSPM_VIDEO_ENC_ISLAND:
 			atomic_inc(&g_videoenc_access_count);
 			break;
@@ -2511,15 +2569,184 @@ increase_count:
 			break;
 		}
 
+		spin_unlock_irqrestore(&dev_priv->ospm_lock, flags);
+		return true;
+	}
+	/* Actually we can remove the codes below for following
+	** mutex lock can keep race condition safe. These codes
+	** exist only for facilitating gfx misuse force_on display
+	** while taking spin lock. These codes can safely be removed
+	** once gfx doesn't force on engines when taking spinlock
+	*/
+	spin_lock_irqsave(&dev_priv->ospm_lock, flags);
+	island_is_on = ((g_hw_power_status_mask & hw_island)
+			== hw_island) ? true : false;
+	if (island_is_on && force_on &&
+		((hw_island == OSPM_VIDEO_ENC_ISLAND) &&
+			!gbEncSuspendInProgress ||
+			(hw_island == OSPM_VIDEO_DEC_ISLAND) &&
+			!gbDecSuspendInProgress ||
+			(hw_island == OSPM_DISPLAY_ISLAND) &&
+			!gbSuspendInProgress)) {
+		switch (hw_island) {
+		case OSPM_VIDEO_ENC_ISLAND:
+			atomic_inc(&g_videoenc_access_count);
+			break;
+		case OSPM_VIDEO_DEC_ISLAND:
+			atomic_inc(&g_videodec_access_count);
+			break;
+		case OSPM_DISPLAY_ISLAND:
+			atomic_inc(&g_display_access_count);
+			break;
+		}
+		spin_unlock_irqrestore(&dev_priv->ospm_lock, flags);
+		return true;
+	}
+	spin_unlock_irqrestore(&dev_priv->ospm_lock, flags);
+
+	/* Deal with force_on==true case. It must be process context */
+	BUG_ON(in_interrupt());
+	mutex_lock(&g_ospm_mutex);
+
+	/* Re-check the island status */
+	island_is_on = ospm_power_is_hw_on(hw_island);
+	if (island_is_on)
+		goto increase_count;
+
+	gbResumeInProgress = true;
+
+	/* Because gfx island may resume pci silently,
+	** so need sync with gfx
+	*/
+	ret = ospm_resume_pci(pdev);
+
+	if (ret) {
+		switch (hw_island) {
+		case OSPM_DISPLAY_ISLAND:
+			deviceID = gui32MRSTDisplayDeviceID;
+			ospm_resume_display(pdev);
+			psb_irq_preinstall_islands(gpDrmDevice,
+				OSPM_DISPLAY_ISLAND);
+			psb_irq_postinstall_islands(gpDrmDevice,
+				OSPM_DISPLAY_ISLAND);
+			break;
+#if 1 /* for debugging video driver ospm */
+		case OSPM_VIDEO_DEC_ISLAND:
+			if (!ospm_power_is_hw_on(OSPM_DISPLAY_ISLAND)) {
+				/* printk(KERN_ALERT "%s power on display
+				** for video decode use\n", __func__);
+				*/
+				deviceID = gui32MRSTDisplayDeviceID;
+				ospm_resume_display(pdev);
+				psb_irq_preinstall_islands(gpDrmDevice, OSPM_DISPLAY_ISLAND);
+				psb_irq_postinstall_islands(gpDrmDevice, OSPM_DISPLAY_ISLAND);
+			} else {
+				/* printk(KERN_ALERT
+				** "%s display is already on
+				** for video decode use\n", __func__);
+				*/
+			}
+
+		tmp = ospm_power_is_hw_on(OSPM_VIDEO_DEC_ISLAND);
+		if (!tmp) {
+			/* printk(KERN_ALERT "%s power on video decode\n",
+			** __func__);
+			*/
+			deviceID = gui32MRSTMSVDXDeviceID;
+#ifdef CONFIG_MDFD_GL3
+			ospm_power_island_up(OSPM_GL3_CACHE_ISLAND |
+				OSPM_VIDEO_DEC_ISLAND);
+			if (IS_D0(gpDrmDevice)) {
+				struct drm_psb_private *dev_priv =
+					(struct drm_psb_private *) gpDrmDevice->
+					dev_private;
+				int ret;
+
+				ret = psb_wait_for_register(dev_priv,
+					MSVDX_COMMS_SIGNATURE,
+					MSVDX_COMMS_SIGNATURE_VALUE,
+					0xffffffff);
+				if (ret)
+					printk(KERN_ERR "MSVDX:firmware fails to initialize.\n");
+			}
+#else
+			ospm_power_island_up(OSPM_VIDEO_DEC_ISLAND);
+#endif
+			ospm_runtime_pm_msvdx_resume(gpDrmDevice);
+			psb_irq_preinstall_islands(gpDrmDevice,
+				OSPM_VIDEO_DEC_ISLAND);
+			psb_irq_postinstall_islands(gpDrmDevice,
+				OSPM_VIDEO_DEC_ISLAND);
+		}
+
+			break;
+		case OSPM_VIDEO_ENC_ISLAND:
+			if (IS_MRST(gpDrmDevice) &&
+					(!ospm_power_is_hw_on(
+						OSPM_DISPLAY_ISLAND))) {
+				deviceID = gui32MRSTDisplayDeviceID;
+				ospm_resume_display(pdev);
+				psb_irq_preinstall_islands(gpDrmDevice,
+					OSPM_DISPLAY_ISLAND);
+				psb_irq_postinstall_islands(gpDrmDevice,
+					OSPM_DISPLAY_ISLAND);
+			}
+
+			tmp = ospm_power_is_hw_on(OSPM_VIDEO_ENC_ISLAND);
+			if (!tmp) {
+				/* printk(KERN_ALERT "%s power on video
+				** encode\n", __func__);
+				*/
+				deviceID = gui32MRSTTOPAZDeviceID;
+#ifdef CONFIG_MDFD_GL3
+				ospm_power_island_up(OSPM_VIDEO_ENC_ISLAND);
+				ospm_power_island_up(OSPM_GL3_CACHE_ISLAND);
+#else
+				ospm_power_island_up(OSPM_VIDEO_ENC_ISLAND);
+#endif
+				ospm_runtime_pm_topaz_resume(gpDrmDevice);
+				psb_irq_preinstall_islands(gpDrmDevice,
+					OSPM_VIDEO_ENC_ISLAND);
+				psb_irq_postinstall_islands(gpDrmDevice,
+					OSPM_VIDEO_ENC_ISLAND);
+#endif
+			}
+			break;
+		default:
+			printk(KERN_ALERT "%s unknown island !!!!\n",
+					__func__);
+			break;
+		}
+
+	}
+
+	if (!ret)
+		printk(KERN_ALERT "%s: %d failed\n",
+				__func__, hw_island);
+
+	gbResumeInProgress = false;
+
+increase_count:
+	if (ret) {
+		switch(hw_island)
+		{
+		case OSPM_VIDEO_ENC_ISLAND:
+			atomic_inc(&g_videoenc_access_count);
+			break;
+		case OSPM_VIDEO_DEC_ISLAND:
+			atomic_inc(&g_videodec_access_count);
+			break;
+		case OSPM_DISPLAY_ISLAND:
+			atomic_inc(&g_display_access_count);
+			break;
+		}
 	}
 #ifdef CONFIG_GFX_RTPM
 	else{
 		pm_runtime_put(&pdev->dev);
 	}
 #endif
-
-	if (!b_atomic && locked)
-		mutex_unlock(&g_ospm_mutex);
+	mutex_unlock(&g_ospm_mutex);
 
 	return ret;
 }

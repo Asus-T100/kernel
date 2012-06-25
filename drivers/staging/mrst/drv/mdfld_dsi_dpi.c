@@ -2620,8 +2620,9 @@ void mdfld_dsi_dpi_exit_idle(struct drm_device *dev,
 
 	/* PSB_DEBUG_ENTRY("\n"); */
 
-	if (!ospm_power_is_hw_on(OSPM_DISPLAY_ISLAND)) {
-		DRM_ERROR("hw begin failed\n");
+	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
+		OSPM_UHB_ONLY_IF_ON)) {
+		DRM_ERROR("display island is in off state\n");
 		return;
 	}
 
@@ -2641,6 +2642,7 @@ void mdfld_dsi_dpi_exit_idle(struct drm_device *dev,
 		dev_priv->dsr_idle_count = 0;
 	}
 	spin_unlock_irqrestore(&dev_priv->irqmask_lock, irqflags);
+	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 }
 
 /*
