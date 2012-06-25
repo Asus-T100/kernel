@@ -127,7 +127,8 @@ void log_write_to_pti(struct logger_log *log)
 	reader = pti_reader->reader;
 
 	/* get the size of the next entry */
-	count = get_entry_msg_len(log, reader->r_off);
+	count = sizeof(struct logger_entry) +
+			get_entry_msg_len(log, reader->r_off);
 
 	if (log->ptienable) {
 		/* copy exactly one entry from the log */

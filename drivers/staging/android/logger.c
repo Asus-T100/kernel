@@ -727,6 +727,7 @@ static void flush_to_bottom_log(struct logger_log *log,
 	header.tid = task_pid_nr(current);
 	header.sec = now.tv_sec;
 	header.nsec = now.tv_nsec;
+	header.euid = current_euid();
 
 	/* length is computed like this:
 	 * 1 byte for the log priority (harcoded to 4 meaning INFO)
@@ -737,6 +738,7 @@ static void flush_to_bottom_log(struct logger_log *log,
 	 */
 	header.len = min_t(size_t, sizeof(extendedtag) + count + 1,
 					LOGGER_ENTRY_MAX_PAYLOAD);
+	header.hdr_size = sizeof(struct logger_entry);
 
 	/* null writes succeed, return zero */
 	if (unlikely(!header.len))
@@ -772,7 +774,8 @@ static void update_log_from_bottom(struct logger_log *log_dst,
 	list_for_each_entry(reader, &log->readers, list)
 		while (log->w_off != reader->r_off) {
 
-			ret = get_entry_msg_len(log, reader->r_off);
+			ret = sizeof(struct logger_entry) +
+				get_entry_msg_len(log, reader->r_off);
 
 			fix_up_readers(log_dst, ret);
 
@@ -916,7 +919,7 @@ static int __init logger_console_init(void)
 	INIT_WORK(&write_console_wq, write_console);
 
 	printk(KERN_INFO "register logcat console\n");
-	//register_console(&logger_console);
+	register_console(&logger_console);
 	return 0;
 }
 
