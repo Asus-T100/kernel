@@ -138,17 +138,14 @@ struct ext_charger bq24260_chrgr = {
 static char *bcove_charger_power_supplied_to[] = {"max170xx_battery",};
 
 /* Generic function definitions */
-static int lookup_regval(u16 tbl[][2], size_t size, u16 in_val, u8 *out_val)
+static void lookup_regval(u16 tbl[][2], size_t size, u16 in_val, u8 *out_val)
 {
 	int i;
-	for (i = 0; i < size; ++i)
+	for (i = 1; i < size; ++i)
 		if (in_val < tbl[i][0])
 			break;
-	if (i == 0)
-		return -EINVAL;
 
 	*out_val = (u8)tbl[i-1][1];
-	return 0;
 }
 
 static int interpolate_y(int dx1x0, int dy1y0, int dxx0, int y0)
@@ -362,11 +359,19 @@ exit:
 /* External charger specific definitions */
 static int bq24260_cc_to_reg(int cc, u8 *reg_val)
 {
-	return lookup_regval(bq24260_cc, ARRAY_SIZE(bq24260_cc), cc, reg_val);
+	lookup_regval(bq24260_cc, ARRAY_SIZE(bq24260_cc), cc, reg_val);
+
+	/* Return 0 in all cases just to keep it
+	 * aligned with callback function prototype */
+	return 0;
 }
 static int bq24260_cv_to_reg(int cv, u8 *reg_val)
 {
-	return lookup_regval(bq24260_cv, ARRAY_SIZE(bq24260_cv), cv, reg_val);
+	lookup_regval(bq24260_cv, ARRAY_SIZE(bq24260_cv), cv, reg_val);
+
+	/* Return 0 in all cases just to keep it
+	 * aligned with callback function prototype */
+	return 0;
 }
 
 static int bq24260_disable_charging(u8 dev_addr)
@@ -611,12 +616,9 @@ static int disable_charging(enum charger_type chrg_type)
 static int bc_set_ilimmA(int ilim_mA)
 {
 	u8 mask;
-	int ret;
 
-	ret = lookup_regval(bcove_inlmt, ARRAY_SIZE(bcove_inlmt),
+	lookup_regval(bcove_inlmt, ARRAY_SIZE(bcove_inlmt),
 			ilim_mA, &mask);
-	if (unlikely(ret))
-		return ret;
 
 	return intel_scu_ipc_update_register(CHGRCTRL1_ADDR, 0xFF, mask);
 }
@@ -837,7 +839,7 @@ static int bcove_init(void)
 
 	memset(&bcprof, 0x00, sizeof(bcprof));
 
-	if (!get_batt_charging_profile(&bcprof))
+	if (get_batt_charging_profile(&bcprof) < 0)
 		return -EINVAL;
 
 
@@ -882,14 +884,14 @@ static int bcove_init(void)
 		addr_cc--;
 
 		ret = chc.ext_chrgr->cv_to_reg(bcprof.temp_mon_range[i].
-					     full_chrg_cur, &reg_val);
+					     full_chrg_vol, &reg_val);
 		if (ret)
 			return ret;
 
 		ret = bcove_write_tt(addr_cv, reg_val);
 		if (unlikely(ret))
 			return ret;
-		addr_cc--;
+		addr_cv--;
 
 		/* Write lowest temp limit */
 		if (i == (bcprof.temp_mon_ranges - 1)) {
@@ -1007,7 +1009,7 @@ static int bc_chrgr_probe(struct ipc_device *ipcdev)
 	if (unlikely(retval))
 		return retval;
 
-	if (!get_batt_charging_profile(&bcprof))
+	if (get_batt_charging_profile(&bcprof) < 0)
 		chc.invalid_batt = true;
 	else {
 		print_battery_profile(bcprof);
