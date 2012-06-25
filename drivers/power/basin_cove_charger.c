@@ -1005,6 +1005,8 @@ static int bc_chrgr_probe(struct ipc_device *ipcdev)
 		goto req_irq_failed;
 	}
 
+	init_waitqueue_head(&chc.i2c_wait);
+
 	retval = power_supply_register(&ipcdev->dev, &chc.psy);
 	if (retval)
 		goto psy_reg_failed;

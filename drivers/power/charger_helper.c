@@ -519,7 +519,7 @@ static int stop_charging(struct ch_context *chc)
 	mutex_unlock(&chc->chrgr_cxt_lock);
 
 	mutex_lock(&chc->chrgr_cxt_lock);
-	ret = chc->charger->disable_charger(charger_type);
+	ret = chc->charger->disable_charging(charger_type);
 	if (!ret) {
 		chc->chrgr_cxt.charger_enabled = false;
 		pr_debug("%s:%s Charger disabled\n", __FILE__, __func__);
