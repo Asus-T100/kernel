@@ -943,6 +943,38 @@ static struct bc_chrgr_drv_context chc = {
 		   }
 };
 
+static inline void print_battery_profile(struct batt_charging_profile bprof)
+{
+	int i;
+
+	dev_info(chc.dev, "ChrgProf: batt_id:%s\n", bprof.batt_id);
+	dev_info(chc.dev, "ChrgProf: low_batt_mV:%u\n", bprof.low_batt_mV);
+	dev_info(chc.dev, "ChrgProf: chrg_term_mA:%u\n", bprof.chrg_term_mA);
+	dev_info(chc.dev, "ChrgProf: disch_tmp_ul:%u\n", bprof.disch_tmp_ul);
+	dev_info(chc.dev, "ChrgProf: disch_tmp_ll:%u\n", bprof.disch_tmp_ll);
+	dev_info(chc.dev, "ChrgProf: voltage_max:%u\n", bprof.voltage_max);
+	dev_info(chc.dev, "ChrgProf: battery_type:%u\n", bprof.battery_type);
+	dev_info(chc.dev, "ChrgProf: temp_mon_ranges:%u\n",
+			bprof.temp_mon_ranges);
+
+	for (i = 0; i < bprof.temp_mon_ranges; ++i) {
+		dev_info(chc.dev, "ChrgProf: temp_up_lim[%d]:%u\n",
+				i, bprof.temp_mon_range[i].temp_up_lim);
+		dev_info(chc.dev, "ChrgProf: rbatt[%d]:%d\n",
+				i, bprof.temp_mon_range[i].rbatt);
+		dev_info(chc.dev, "ChrgProf: full_chrg_vol[%d]:%d\n",
+				i, bprof.temp_mon_range[i].full_chrg_vol);
+		dev_info(chc.dev, "ChrgProf: full_chrg_cur[%d]:%d\n",
+				i, bprof.temp_mon_range[i].full_chrg_cur);
+		dev_info(chc.dev, "ChrgProf: maint_chrgr_vol_ll[%d]:%d\n",
+				i, bprof.temp_mon_range[i].maint_chrg_vol_ll);
+		dev_info(chc.dev, "ChrgProf: maint_chrgr_vol_ul[%d]:%d\n",
+				i, bprof.temp_mon_range[i].maint_chrg_vol_ul);
+		dev_info(chc.dev, "ChrgProf: maint_chrg_cur[%d]:%d\n",
+				i, bprof.temp_mon_range[i].maint_chrg_cur);
+	}
+	dev_info(chc.dev, "ChrgProf: temp_low_lim:%d\n", bprof.temp_low_lim);
+}
 /**
  * bc_charger_probe - basin cove charger probe function
  * @ipcdev: basin cove ipc device structure
@@ -974,6 +1006,7 @@ static int bc_chrgr_probe(struct ipc_device *ipcdev)
 	if (!get_batt_charging_profile(&bcprof))
 		chc.invalid_batt = true;
 	else {
+		print_battery_profile(bcprof);
 		retval = bcove_init();
 		if (retval) {
 			dev_err(chc.dev, "Error in Initializing PMIC\n");
