@@ -399,11 +399,6 @@ static void mid_pipe_event_handler(struct drm_device *dev, uint32_t pipe)
 	struct mdfld_dsi_dbi_output *dbi_output;
 	struct mdfld_dbi_dsr_info *dsr_info = dev_priv->dbi_dsr_info;
 
-	/* if pipe is HDMI, but hdmi is plugged out, should not handle
-	* HDMI reg any more here */
-	if (pipe == 1 && !dev_priv->bhdmiconnected)
-		return;
-
 	spin_lock_irqsave(&dev_priv->irqmask_lock, irq_flags);
 
 	pipe_enable = dev_priv->pipestat[pipe];
@@ -436,6 +431,11 @@ static void mid_pipe_event_handler(struct drm_device *dev, uint32_t pipe)
 	if (i == WAIT_STATUS_CLEAR_LOOP_COUNT)
 		DRM_ERROR("%s, can't clear the status bits in pipe_stat_reg, its value = 0x%x. \n",
 			  __FUNCTION__, PSB_RVDC32(pipe_stat_reg));
+
+	/* if pipe is HDMI, but hdmi is plugged out, should not handle
+	* HDMI reg any more here */
+	if (pipe == 1 && !dev_priv->bhdmiconnected)
+		return;
 
 	if ((pipe_stat_val & PIPE_DPST_EVENT_STATUS) &&
 	    (dev_priv->psb_dpst_state != NULL)) {
