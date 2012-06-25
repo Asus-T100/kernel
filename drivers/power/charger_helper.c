@@ -738,10 +738,8 @@ void charger_helper_charger_port_changed(void *handle,
 {
 	struct ch_context *chc = (struct ch_context *)handle;
 
-	mutex_lock(&chc->chrgr_cxt_lock);
 	memcpy(&chc->chrgr_cxt.cap, cap,
 	       sizeof(struct power_supply_charger_cap));
-	mutex_unlock(&chc->chrgr_cxt_lock);
 
 	schedule_delayed_work(&chc->usb_chrgr_work, 0);
 }
