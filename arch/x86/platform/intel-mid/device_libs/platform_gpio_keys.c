@@ -42,7 +42,6 @@ static struct gpio_keys_button gpio_button[] = {
 
 static struct gpio_keys_platform_data gpio_keys = {
 	.buttons	= gpio_button,
-	.rep		= 1,
 	.nbuttons	= -1, /* will fill it after search */
 };
 
