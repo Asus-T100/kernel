@@ -381,6 +381,12 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 			/* Signal the upper layers that a frame
 			 * is done, only when it is a valid frame
 			 */
+
+			/* HACK: do we have a better way/place for it? */
+			if (isp->vb_capture)
+				isp->frame_status[isp->vb_capture->i] =
+								isp->fr_status;
+
 			atomisp_buf_done(isp, 0);
 			ret = atomisp_buffer_dequeue(isp, 0);
 			if (ret)
@@ -1010,11 +1016,24 @@ void atomisp_work(struct work_struct *work)
 
 		/* Frame done */
 		if (!timeout_flag && !isp->sw_contex.invalid_frame) {
-			/* HACK: do we have a better way/place for it? */
-			if (isp->vb_capture)
+			/*
+			 * buf_done and buffer_dequeue also are called
+			 * in atomisp_isr, so need to add the judgement
+			 * condition to avoid the conflict between the
+			 * two places of atomisp_isr and atomisp_work.
+			 */
+			if ((isp->vb_capture && isp->vb_preview)
+			    || (!atomisp_is_viewfinder_support(isp)
+				&& isp->vb_capture)) {
+				/*
+				 * HACK: do we have a better way/place
+				 * for it?
+				 */
 				isp->frame_status[isp->vb_capture->i] =
-								isp->fr_status;
-			atomisp_buf_done(isp, 0);
+							isp->fr_status;
+
+				atomisp_buf_done(isp, 0);
+			}
 		}
 	}
 
