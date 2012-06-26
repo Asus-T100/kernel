@@ -40,6 +40,7 @@
 #include <linux/sched.h>
 #include <linux/delay.h>
 #include <linux/gpio.h>
+#include <linux/wakelock.h>
 #include <asm/intel_mid_gpadc.h>
 #include <asm/intel_scu_ipc.h>
 
@@ -278,6 +279,8 @@ struct bq24192_chip {
 	struct power_supply_charger_cap cached_cap;
 	/* smip sram memory pointer */
 	void __iomem *intel_smip_base;
+	/* Wake lock to prevent platform from going to S3 when charging */
+	struct wake_lock wakelock;
 };
 
 #ifdef CONFIG_DEBUG_FS
@@ -1378,6 +1381,10 @@ static int bq24192_do_charging(int curr, int volt)
 			chip->curr_volt = volt;
 			chip->curr_chrg = chr_curr;
 		}
+
+		/* Prevent system from entering s3 while charger is connected */
+		if (!wake_lock_active(&chip->wakelock))
+			wake_lock(&chip->wakelock);
 	} else {
 		dev_info(&chip->client->dev, "Battery is full. Don't charge\n");
 	}
@@ -1939,6 +1946,9 @@ static void bq24192_event_worker(struct work_struct *work)
 				chip->votg = false;
 		}
 
+		/* release the wake lock when charger is unplugged */
+		if (wake_lock_active(&chip->wakelock))
+			wake_unlock(&chip->wakelock);
 		chip->batt_mode = BATT_CHRG_NORMAL;
 
 		/* Cache all the parameters */
@@ -2506,6 +2516,9 @@ static int __devinit bq24192_probe(struct i2c_client *client,
 	INIT_DELAYED_WORK(&chip->maint_chrg_wrkr, bq24192_maintenance_worker);
 	mutex_init(&chip->event_lock);
 
+	/* Initialize the wakelock */
+	wake_lock_init(&chip->wakelock, WAKE_LOCK_SUSPEND,
+						"ctp_charger_wakelock");
 	chip->chrg_cur_cntl = POWER_SUPPLY_CHARGE_CURRENT_LIMIT_NONE;
 	chip->batt_status = POWER_SUPPLY_STATUS_DISCHARGING;
 	chip->batt_mode = BATT_CHRG_NONE;
@@ -2614,6 +2627,7 @@ static int __devexit bq24192_remove(struct i2c_client *client)
 		power_supply_unregister(&chip->usb);
 	i2c_set_clientdata(client, NULL);
 	intel_mid_gpadc_free(chip->gpadc_handle);
+	wake_lock_destroy(&chip->wakelock);
 	kfree(ctp_sfi_table);
 	kfree(ctp_smip_batt_prop);
 	kfree(chip);
