@@ -394,6 +394,17 @@ struct intel_msic_gpio_pdata {
 };
 
 /**
+ * struct intel_msic_vdd_pdata - platform data for the MSIC VDD driver
+ * @msi: MSI number used for VDD interrupts
+ *
+ * The MSIC CTP driver converts @msi into an IRQ number and passes it to
+ * the VDD driver as %IORESOURCE_IRQ.
+ */
+struct intel_msic_vdd_pdata {
+	unsigned	msi;
+};
+
+/**
  * struct intel_msic_ocd_pdata - platform data for the MSIC OCD driver
  * @gpio: GPIO number used for OCD interrupts
  *

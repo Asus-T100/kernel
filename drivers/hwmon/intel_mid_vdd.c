@@ -44,10 +44,8 @@
 #include <asm/intel_scu_ipc.h>
 #include <linux/kfifo.h>
 
-/* BZ 37319- Change the driver name from msic_ocd to msic_vdd
-once IAFW support is available */
-#define DRIVER_NAME "msic_ocd"
-#define DEVICE_NAME "msic_ocd"
+#define DRIVER_NAME "msic_vdd"
+#define DEVICE_NAME "msic_vdd"
 
 /* BCU registers that control the behaviour of output signals */
 #define BCUDISA_BEH		0x10C
