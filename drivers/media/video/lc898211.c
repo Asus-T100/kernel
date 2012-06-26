@@ -692,53 +692,6 @@ static int lc898211_init_registers(struct v4l2_subdev *sd)
 	return 0;
 }
 
-static int lc898211_warmup(struct v4l2_subdev *sd)
-{
-	struct lc898211_dev *dev = to_lc898211_dev(sd);
-	struct i2c_client *client = v4l2_get_subdevdata(sd);
-	const int bottom_step = dev->af_tun.focus_abs_min /
-							LC898211_WARMUP_STEP;
-	const int top_step = dev->af_tun.focus_abs_max / LC898211_WARMUP_STEP;
-	int target_pos;
-	int i;
-	int ret;
-
-	/* Warmup bottom direction */
-	for (i = LC898211_WARMUP_POS_START; i <= LC898211_WARMUP_POS_END; i++) {
-		target_pos = i * bottom_step;
-		ret = lc898211_t_focus_abs(sd, target_pos);
-		if (ret < 0) {
-			v4l2_err(client, "%s: failed to warmup to bottom "
-					 "direction [%d / %d]\n", __func__,
-					 i, LC898211_WARMUP_POS_END);
-			return ret;
-		}
-		ret = lc898211_wait_focus(sd);
-		if (ret)
-			return ret;
-		usleep_range(1000, 1500);
-	}
-
-	/* Warmup top direction */
-	for (i = LC898211_WARMUP_POS_START; i <= LC898211_WARMUP_POS_END; i++) {
-		target_pos = i * top_step;
-		ret = lc898211_t_focus_abs(sd, target_pos);
-		if (ret < 0) {
-			v4l2_err(client, "%s: failed to warmup to top "
-					 "direction [%d / %d]\n", __func__,
-					 i, LC898211_WARMUP_POS_END);
-			return ret;
-		}
-		ret = lc898211_wait_focus(sd);
-		if (ret)
-			return ret;
-		if (i < LC898211_WARMUP_POS_END)
-			usleep_range(1000, 1500);
-	}
-
-	return 0;
-}
-
 static int lc898211_init(struct v4l2_subdev *sd, u32 val)
 {
 	struct lc898211_dev *dev = to_lc898211_dev(sd);
@@ -753,9 +706,6 @@ static int lc898211_init(struct v4l2_subdev *sd, u32 val)
 	if (ret)
 		goto out;
 	ret = lc898211_t_vcm_timing(sd, LC898211_VCM_SLEW_TIME_DEFAULT);
-	if (ret)
-		goto out;
-	ret = lc898211_warmup(sd);
 	if (ret)
 		goto out;
 
