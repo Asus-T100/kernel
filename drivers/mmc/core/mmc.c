@@ -445,7 +445,9 @@ static int mmc_read_ext_csd(struct mmc_card *card, u8 *ext_csd)
 
 	card->ext_csd.raw_erased_mem_count = ext_csd[EXT_CSD_ERASED_MEM_CONT];
 
-	if (card->ext_csd.rev >= 6) { /* eMMC v4.5 */
+	if (card->ext_csd.rev >= 6) { /* eMMC v4.5 or later */
+		card->ext_csd.feature_support |= MMC_DISCARD_FEATURE;
+
 		if ((ext_csd[EXT_CSD_DATA_SECTOR_SIZE] & 0x1) &&
 		(ext_csd[EXT_CSD_USE_NATIVE_SECTOR] & 0x1) &&
 		(ext_csd[EXT_CSD_NATIVE_SECTOR_SIZE] & 0x1) &&
