@@ -34,17 +34,30 @@
 #include <linux/slab.h>
 #include <linux/sched.h>
 #include <linux/hsi/hsi.h>
-#include <linux/proc_fs.h>
+#include <linux/debugfs.h>
 
 #include "dlp_main.h"
 
 #define DEBUG_TAG 0x0
 #define DEBUG_VAR dlp_drv.debug
 
+#define DLP_CH_STATE_TO_STR(s) \
+	((s == DLP_CH_STATE_CLOSED)  ? "Closed" : \
+	(s == DLP_CH_STATE_CLOSING) ? "Closing" : \
+	(s == DLP_CH_STATE_OPENING) ? "Opening" : \
+	(s == DLP_CH_STATE_OPENED)  ? "Opened" : "Unknown")
+
+#define DLP_CTX_STATE_TO_STR(state) \
+	((state == IDLE)  ? "IDLE" : \
+	(state == READY)  ? "READY" : \
+	(state == ACTIVE) ? "ACTIVE" : "UNKNOWN")
+
+
 /* Forward declarations */
 static void dlp_pdu_destructor(struct hsi_msg *pdu);
 
 static inline void dlp_ctx_update_state_rx(struct dlp_xfer_ctx *xfer_ctx);
+static inline void dlp_ctx_update_state_tx(struct dlp_xfer_ctx *xfer_ctx);
 
 static inline void dlp_fifo_recycled_push(struct dlp_xfer_ctx *xfer_ctx,
 					  struct hsi_msg *pdu);
@@ -73,27 +86,32 @@ void dlp_dump_channel_state(struct dlp_channel *ch_ctx, struct seq_file *m)
 	seq_printf(m, " state     : %s (%d)\n",
 			DLP_CH_STATE_TO_STR(ch_ctx->state), ch_ctx->state);
 	seq_printf(m, " credits   : %d\n", ch_ctx->credits);
+	seq_printf(m, " flow ctrl : %d\n", ch_ctx->use_flow_ctrl);
 
 	read_lock_irqsave(&ch_ctx->rx.lock, flags);
 	seq_printf(m, " RX ctx:\n");
-	seq_printf(m, "   pdu_size: %d\n", ch_ctx->rx.pdu_size);
+	seq_printf(m, "   state   : %s\n",
+			DLP_CTX_STATE_TO_STR(ch_ctx->rx.state));
+	seq_printf(m, "   seq_num : %d\n", ch_ctx->rx.seq_num);
 	seq_printf(m, "   wait_max: %d\n", ch_ctx->rx.wait_max);
 	seq_printf(m, "   ctrl_max: %d\n", ch_ctx->rx.ctrl_max);
 	seq_printf(m, "   all_len : %d\n", ch_ctx->rx.all_len);
 	seq_printf(m, "   ctrl_len: %d\n", ch_ctx->rx.ctrl_len);
 	seq_printf(m, "   wait_len: %d\n", ch_ctx->rx.wait_len);
-	seq_printf(m, "   seq_num : %d\n", ch_ctx->rx.seq_num);
+	seq_printf(m, "   pdu_size: %d\n", ch_ctx->rx.pdu_size);
 	read_unlock_irqrestore(&ch_ctx->rx.lock, flags);
 
 	read_lock_irqsave(&ch_ctx->tx.lock, flags);
 	seq_printf(m, " TX ctx:\n");
-	seq_printf(m, "   pdu_size: %d\n", ch_ctx->tx.pdu_size);
+	seq_printf(m, "   state   : %s\n",
+			DLP_CTX_STATE_TO_STR(ch_ctx->tx.state));
+	seq_printf(m, "   seq_num : %d\n", ch_ctx->tx.seq_num);
 	seq_printf(m, "   wait_max: %d\n", ch_ctx->tx.wait_max);
 	seq_printf(m, "   ctrl_max: %d\n", ch_ctx->tx.ctrl_max);
 	seq_printf(m, "   all_len : %d\n", ch_ctx->tx.all_len);
 	seq_printf(m, "   ctrl_len: %d\n", ch_ctx->tx.ctrl_len);
 	seq_printf(m, "   wait_len: %d\n", ch_ctx->tx.wait_len);
-	seq_printf(m, "   seq_num : %d\n", ch_ctx->tx.seq_num);
+	seq_printf(m, "   pdu_size: %d\n", ch_ctx->tx.pdu_size);
 	read_unlock_irqrestore(&ch_ctx->tx.lock, flags);
 }
 
@@ -103,13 +121,20 @@ void dlp_dump_channel_state(struct dlp_channel *ch_ctx, struct seq_file *m)
  */
 static int dlp_proc_show(struct seq_file *m, void *v)
 {
-	int i;
-	struct dlp_channel *ch_ctx;
+	struct dlp_channel *ch_ctx = (struct dlp_channel *)m->private;
 
-	for (i = 0; i < DLP_CHANNEL_COUNT; i++) {
-		ch_ctx = dlp_drv.channels[i];
-		if (ch_ctx && ch_ctx->dump_state)
+	if (ch_ctx) {
+		/* Dump the specified channel info */
+		if (ch_ctx->dump_state)
 			ch_ctx->dump_state(ch_ctx, m);
+	} else {
+		int i;
+		/* Dump All the channels info */
+		for (i = 0; i < DLP_CHANNEL_COUNT; i++) {
+			ch_ctx = dlp_drv.channels[i];
+			if (ch_ctx && ch_ctx->dump_state)
+				ch_ctx->dump_state(ch_ctx, m);
+		}
 	}
 
 	return 0;
@@ -117,7 +142,7 @@ static int dlp_proc_show(struct seq_file *m, void *v)
 
 static int dlp_proc_seq_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, dlp_proc_show, PDE(inode)->data);
+	return single_open(file, dlp_proc_show, inode->i_private);
 }
 
 static const struct file_operations dlp_proc_ops = {
@@ -126,6 +151,31 @@ static const struct file_operations dlp_proc_ops = {
 	.llseek = seq_lseek,
 	.release = seq_release
 };
+
+/**
+ * This function is creating some entries in the filesystem for debug purpose
+ */
+static void dlp_create_debug_fs(void)
+{
+	int i;
+	char entry[128];
+
+	dlp_drv.debug_dir = debugfs_create_dir(DRVNAME, NULL);
+	if (!dlp_drv.debug_dir)
+		return;
+
+	/* Add entry for each channel */
+	for (i = 0; i < DLP_CHANNEL_COUNT; i++) {
+		sprintf(entry, "ch%d", i);
+		debugfs_create_file(entry, S_IRUGO, dlp_drv.debug_dir,
+				DLP_CHANNEL_CTX(i), &dlp_proc_ops);
+	}
+
+	/* Add entry to dump all channels info */
+	debugfs_create_file("all", S_IRUGO, dlp_drv.debug_dir,
+				NULL, &dlp_proc_ops);
+}
+
 
 /**
  * from_usecs - translating usecs to jiffies
@@ -497,14 +547,10 @@ void dlp_pdu_update(struct dlp_channel *ch_ctx, struct hsi_msg *pdu)
 	if ((!pdu->break_frame) && (pdu->status == HSI_STATUS_COMPLETED)) {
 		pdu->actual_len = dlp_pdu_get_length(pdu);
 	} else {
-		CRITICAL("Invalid RX pdu (0x%p)"
-				" status [status: %d,"
-				" break_frame: %d,"
-				" actual_len: %d",
-				pdu,
-				pdu->status,
-				pdu->break_frame,
-				pdu->actual_len);
+		CRITICAL("Invalid pdu status (0x%p, hsi_ch: %d, "
+				"status: %d, break_frame: %d, actual_len: %d",
+				pdu, pdu->channel,
+				pdu->status, pdu->break_frame, pdu->actual_len);
 
 		pdu->actual_len = 1;
 	}
@@ -516,8 +562,8 @@ void dlp_pdu_update(struct dlp_channel *ch_ctx, struct hsi_msg *pdu)
 		pdu_size = ch_ctx->rx.pdu_size;
 
 	if ((!pdu->actual_len) || (pdu->actual_len > pdu_size)) {
-		CRITICAL("Invalid pdu (0x%p) size (0x%X Bytes)", pdu,
-			 pdu->actual_len);
+		CRITICAL("Invalid pdu size (0x%p, hsi_ch: %d, sz: 0x%X B)",
+			pdu, pdu->channel, pdu->actual_len);
 
 		pdu->status = HSI_STATUS_ERROR;
 		pdu->actual_len = 1;
@@ -584,10 +630,8 @@ static void dlp_pdu_destructor(struct hsi_msg *pdu)
 
 	if (xfer_ctx->ttype == HSI_MSG_READ)
 		dlp_ctx_update_state_rx(xfer_ctx);
-	else if (dlp_ctx_is_empty(xfer_ctx))
-		wake_up(&xfer_ctx->channel->tx_empty_event);
-	/* FIXME: TBD
-	 dlp_ctx_update_state_tx(xfer_ctx); */
+	else
+		dlp_ctx_update_state_tx(xfer_ctx);
 
 	EPILOG();
 }
@@ -608,29 +652,6 @@ static inline __must_check
 unsigned int _dlp_ctx_get_state(struct dlp_xfer_ctx *xfer_ctx)
 {
 	return xfer_ctx->state & DLP_GLOBAL_STATE_MASK;
-}
-
-/**
- * dlp_ctx_is_state - checks the global state of a state machine
- * @xfer_ctx: a reference to the state machine context
- * @state: the state to consider
- *
- * Returns a non-zero value if in the requested state.
- */
-static inline __must_check int dlp_ctx_is_state(struct dlp_xfer_ctx *xfer_ctx,
-						unsigned int state)
-{
-	int is_state;
-	unsigned long flags;
-#ifdef DEBUG
-	BUG_ON(state & ~DLP_GLOBAL_STATE_MASK);
-#endif
-
-	read_lock_irqsave(&xfer_ctx->lock, flags);
-	is_state = (_dlp_ctx_get_state(xfer_ctx) == state);
-	read_unlock_irqrestore(&xfer_ctx->lock, flags);
-
-	return is_state;
 }
 
 /**
@@ -750,7 +771,7 @@ int dlp_ctx_is_empty(struct dlp_xfer_ctx *xfer_ctx)
 	ret = ((xfer_ctx->wait_len == 0) && (xfer_ctx->ctrl_len == 0));
 	read_unlock_irqrestore(&xfer_ctx->lock, flags);
 
-	EPILOG();
+	EPILOG("empty: %d", ret);
 	return ret;
 }
 
@@ -865,8 +886,28 @@ static inline void dlp_ctx_update_state_rx(struct dlp_xfer_ctx *xfer_ctx)
 {
 	PROLOG();
 
-	if (!dlp_ctx_is_state(xfer_ctx, ACTIVE))
+	if (dlp_ctx_get_state(xfer_ctx) != ACTIVE)
 		dlp_ctx_update_state_not_active(xfer_ctx);
+
+	EPILOG();
+}
+
+/**
+ * dlp_ctx_update_state_tx - update the TX state and timers
+ * @xfer_ctx: a reference to the xfer TX context to consider
+ */
+static inline void dlp_ctx_update_state_tx(struct dlp_xfer_ctx *xfer_ctx)
+{
+	PROLOG();
+
+	if (xfer_ctx->ctrl_len <= 0) {
+		del_timer(&xfer_ctx->channel->hangup.timer);
+
+		if (xfer_ctx->wait_len == 0) {
+			/* wake_up(&main_ctx->tx_full_pipe_clean_event); */
+			mod_timer(&xfer_ctx->timer, jiffies + xfer_ctx->delay);
+		}
+	}
 
 	EPILOG();
 }
@@ -952,7 +993,7 @@ struct hsi_msg *dlp_fifo_wait_pop(struct dlp_xfer_ctx *xfer_ctx)
 	struct list_head *fifo = &xfer_ctx->wait_pdus;
 	struct hsi_msg *pdu = NULL;
 
-	PROLOG("wait_len: %d, pdu: 0x%p", xfer_ctx->wait_len, pdu);
+	PROLOG("wait_len: %d", xfer_ctx->wait_len);
 
 	/* Check if the list was not flushed */
 	if (list_empty(fifo))
@@ -1321,27 +1362,32 @@ inline void dlp_hsi_controller_pop(struct dlp_xfer_ctx *xfer_ctx)
  */
 void dlp_do_start_tx(struct work_struct *work)
 {
-	struct dlp_channel	*ch_ctx;
-	struct dlp_xfer_ctx	*xfer_ctx;
-	int	exit;
+	struct dlp_channel	*ch_ctx =
+		container_of(work, struct dlp_channel, start_tx_w);
+	struct dlp_xfer_ctx	*xfer_ctx = &ch_ctx->tx;
+	int ret;
 
-	ch_ctx = container_of(work, struct dlp_channel, start_tx_w);
-	xfer_ctx = &ch_ctx->tx;
+	PROLOG("hsi_ch: %d, state: %s",
+			ch_ctx->hsi_channel,
+			DLP_CTX_STATE_TO_STR(dlp_ctx_get_state(xfer_ctx)));
 
-	exit = !dlp_ctx_is_state(xfer_ctx, IDLE);
-	if (exit)
-		return;
+	if (dlp_ctx_get_state(xfer_ctx) != IDLE)
+		goto out;
 
-	exit = hsi_start_tx(dlp_drv.client);
-	if (exit) {
-		CRITICAL("hsi_start_tx() failed (err: %d)", exit);
-		return;
+	ret = hsi_start_tx(dlp_drv.client);
+	if (ret) {
+		CRITICAL("hsi_start_tx() failed (err: %d)", ret);
+		goto out;
 	}
 
+	dlp_ctx_set_state(xfer_ctx, ACTIVE);
+
 	/* The HSI controller is ready, push as many frames as possible */
-	dlp_ctx_set_state(xfer_ctx, READY);
-	/* FIXME: TBD
+	/* FIXME :  Really need to be done here ?
+	 * dlp_ctx_set_state(xfer_ctx, READY);
 	 _dlp_pop_wait_push_ctrl(ctx, &flags); */
+out:
+	EPILOG("state: %s", DLP_CTX_STATE_TO_STR(dlp_ctx_get_state(xfer_ctx)));
 }
 
 /**
@@ -1350,47 +1396,47 @@ void dlp_do_start_tx(struct work_struct *work)
  */
 void dlp_do_stop_tx(struct work_struct *work)
 {
-	struct dlp_channel	*ch_ctx;
-	struct dlp_xfer_ctx	*xfer_ctx;
-	int	exit;
+	int ret;
+	struct dlp_channel *ch_ctx =
+		container_of(work, struct dlp_channel, stop_tx_w);
 
-	ch_ctx = container_of(work, struct dlp_channel, start_tx_w);
-	xfer_ctx = &ch_ctx->tx;
+	PROLOG("hsi_ch: %d, state: %s",
+			ch_ctx->hsi_channel,
+			DLP_CTX_STATE_TO_STR(dlp_ctx_get_state(&ch_ctx->tx)));
 
-	exit = hsi_stop_tx(dlp_drv.client);
-	if (exit) {
-		CRITICAL("hsi_stop_tx() failed (err: %d)", exit);
-		dlp_ctx_set_state(xfer_ctx, READY);
+	/* Stop the TX */
+	ret = hsi_stop_tx(dlp_drv.client);
+	if (ret) {
+		CRITICAL("hsi_stop_tx() failed (err: %d)", ret);
+		dlp_ctx_set_state(&ch_ctx->tx, READY);
 	}
+
+	EPILOG("state: %s",
+			DLP_CTX_STATE_TO_STR(dlp_ctx_get_state(&ch_ctx->tx)));
 }
 
 /**
- * dlp_hsi_start_tx - update the TX state machine on every new transfer
+ * dlp_start_tx - update the TX state machine on every new transfer
  * @xfer_ctx: a reference to the TX context to consider
  *
  * This helper function updates the TX state if it is currently idle and
- * inform the HSI pduwork and attached controller.
+ * inform the HSI framework and attached controller.
  */
 void dlp_start_tx(struct dlp_xfer_ctx *xfer_ctx)
 {
-	PROLOG();
+	PROLOG("hsi_ch: %d, state: %s",
+			xfer_ctx->channel->hsi_channel,
+			DLP_CTX_STATE_TO_STR(dlp_ctx_get_state(xfer_ctx)));
 
-	if (dlp_ctx_is_state(xfer_ctx, IDLE)) {
-		/* int ret; */
-
-		dlp_ctx_set_state(xfer_ctx, ACTIVE);
-
-		/* FIXME: Temporary patch until enabling the TX synchronous mode
-		ret = hsi_start_tx(dlp_drv.client);
-		if (ret)
-			dlp_ctx_set_state(xfer_ctx, IDLE);
-		*/
+	if (dlp_ctx_get_state(xfer_ctx) == IDLE) {
+		/* Schedule the stop TX work */
+		queue_work(dlp_drv.tx_wq, &xfer_ctx->channel->start_tx_w);
 	} else {
 		dlp_ctx_set_state(xfer_ctx, READY);
 		del_timer(&xfer_ctx->timer);
 	}
 
-	EPILOG();
+	EPILOG("%s", DLP_CTX_STATE_TO_STR(dlp_ctx_get_state(xfer_ctx)));
 }
 
 /**
@@ -1403,19 +1449,22 @@ void dlp_start_tx(struct dlp_xfer_ctx *xfer_ctx)
  */
 void dlp_stop_tx(struct dlp_xfer_ctx *xfer_ctx)
 {
-	PROLOG();
+	PROLOG("hsi_ch: %d, state: %s",
+			xfer_ctx->channel->hsi_channel,
+			DLP_CTX_STATE_TO_STR(dlp_ctx_get_state(xfer_ctx)));
 
-	if (dlp_ctx_is_state(xfer_ctx, ACTIVE)) {
-		dlp_ctx_set_state(xfer_ctx, IDLE);
-
+	if (dlp_ctx_get_state(xfer_ctx) == ACTIVE) {
 		/* Send the NOP command */
 		dlp_ctrl_send_nop(xfer_ctx->channel);
 
-		/* Stop the TX */
-		hsi_stop_tx(dlp_drv.client);
+		/* Update the context state */
+		dlp_ctx_set_state(xfer_ctx, IDLE);
+
+		/* Schedule the stop TX work */
+		queue_work(dlp_drv.tx_wq, &xfer_ctx->channel->stop_tx_w);
 	}
 
-	EPILOG();
+	EPILOG("state: %s", DLP_CTX_STATE_TO_STR(dlp_ctx_get_state(xfer_ctx)));
 }
 
 /**
@@ -1429,11 +1478,13 @@ void dlp_stop_tx(struct dlp_xfer_ctx *xfer_ctx)
 inline void dlp_stop_rx(struct dlp_xfer_ctx *xfer_ctx,
 			struct dlp_channel *ch_ctx)
 {
-	PROLOG();
+	PROLOG("hsi_ch: %d, state: %s",
+			xfer_ctx->channel->hsi_channel,
+			DLP_CTX_STATE_TO_STR(dlp_ctx_get_state(xfer_ctx)));
 
 	dlp_ctx_update_state_not_active(xfer_ctx);
 
-	EPILOG();
+	EPILOG("state: %s", DLP_CTX_STATE_TO_STR(dlp_ctx_get_state(xfer_ctx)));
 }
 
 /**
@@ -1879,12 +1930,8 @@ static int __init dlp_driver_probe(struct device *dev)
 	/* FIXME : other channels ? */
 	hsi_client_set_drvdata(client, dlp_drv.channels[DLP_CHANNEL_TTY]);
 
-	/* Create /proc/hsi-dlp */
-	/* FIXME: Will be removed */
-	/*if (dlp_drv.debug) */
-	{
-		proc_create_data(DRVNAME, S_IRUGO, NULL, &dlp_proc_ops, NULL);
-	}
+	/* Create debugfs entries */
+	dlp_create_debug_fs();
 
 	EPILOG();
 	return 0;
@@ -2040,4 +2087,4 @@ MODULE_AUTHOR("Olivier Stoltz Douchet <olivierx.stoltz-douchet@intel.com>");
 MODULE_AUTHOR("Faouaz Tenoutit <faouazx.tenoutit@intel.com>");
 MODULE_DESCRIPTION("LTE protocol driver over HSI for IMC modems");
 MODULE_LICENSE("GPL");
-MODULE_VERSION("1.4-HSI-LTE");
+MODULE_VERSION("1.5-HSI-LTE");

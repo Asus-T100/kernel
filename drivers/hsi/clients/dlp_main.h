@@ -166,12 +166,6 @@ enum {
 	DLP_CH_STATE_OPENED	/* Channel correctly opened (OPEN_CONN + ACK) */
 };
 
-#define DLP_CH_STATE_TO_STR(s) \
-	(s == DLP_CH_STATE_CLOSED	? "Closed" : \
-	(s == DLP_CH_STATE_CLOSING	? "Closing" : \
-	(s == DLP_CH_STATE_OPENING)	? "Opening" : \
-	(s == DLP_CH_STATE_OPENED)	? "Opened" : "Unknown"))
-
 /*  */
 #define DLP_GLOBAL_STATE_SZ		2
 #define DLP_GLOBAL_STATE_MASK	((1<<DLP_GLOBAL_STATE_SZ)-1)
@@ -327,6 +321,7 @@ struct dlp_channel {
  * @start_rx_cb: HSI client start RX callback
  * @stop_rx_cb: HSI client stop RX callback
  * @debug: Dynamic debug variable
+ * @debug_dir: Debugfs directy entry (for debugging)
  */
 struct dlp_driver {
 	struct dlp_channel *channels[DLP_CHANNEL_COUNT];
@@ -360,6 +355,7 @@ struct dlp_driver {
 
 	/* Debug variables */
 	long debug;
+	struct dentry *debug_dir;
 };
 
 /*
