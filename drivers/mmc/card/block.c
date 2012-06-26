@@ -1016,8 +1016,7 @@ static int mmc_blk_issue_secdiscard_rq(struct mmc_queue *mq,
 	from = blk_rq_pos(req);
 	nr = blk_rq_sectors(req);
 
-	if (mmc_can_trim(card) && mmc_can_secure_trim(card) &&
-			!mmc_erase_group_aligned(card, from, nr))
+	if (mmc_can_trim(card) && !mmc_erase_group_aligned(card, from, nr))
 		arg = MMC_SECURE_TRIM1_ARG;
 	else
 		arg = MMC_SECURE_ERASE_ARG;
@@ -1828,14 +1827,6 @@ static const struct mmc_fixup blk_fixups[] =
 		  MMC_QUIRK_BLK_NO_CMD23),
 	MMC_FIXUP("MMC32G", 0x11, CID_OEMID_ANY, add_quirk_mmc,
 		  MMC_QUIRK_BLK_NO_CMD23),
-	/*
-	 * Some eMMC card has a large secure erase/trim timeout value,
-	 * which is beyond host allowed. But these operations couldn't
-	 * take that long. For such cards, give them a quirk
-	 */
-	MMC_FIXUP("016G4A", 0x11, CID_OEMID_ANY, add_quirk_mmc,
-			MMC_QUIRK_ALLOW_SEC_OPS),
-
 	END_FIXUP
 };
 

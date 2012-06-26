@@ -1738,13 +1738,17 @@ static int mmc_do_erase(struct mmc_card *card, unsigned int from,
 	memset(&cmd, 0, sizeof(struct mmc_command));
 	cmd.opcode = MMC_ERASE;
 	cmd.arg = arg;
-	cmd.flags = MMC_RSP_SPI_R1B | MMC_RSP_R1B | MMC_CMD_AC;
-	cmd.cmd_timeout_ms = mmc_erase_timeout(card, arg, qty);
-	/* in case erase/trim timeout too large for host */
-	if (card->host->max_discard_to &&
-			(card->quirks & MMC_QUIRK_ALLOW_SEC_OPS) &&
-			cmd.cmd_timeout_ms >= card->host->max_discard_to)
-		cmd.cmd_timeout_ms = card->host->max_discard_to - 1;
+	if (card->quirks & MMC_QUIRK_POLL_WAIT_BUSY) {
+		cmd.flags = MMC_RSP_SPI_R1 | MMC_RSP_R1 | MMC_CMD_AC;
+		if (card->host->max_discard_to)
+			cmd.cmd_timeout_ms = card->host->max_discard_to - 1;
+		else
+			cmd.cmd_timeout_ms = mmc_erase_timeout(card, arg, qty);
+	} else {
+		cmd.flags = MMC_RSP_SPI_R1B | MMC_RSP_R1B | MMC_CMD_AC;
+		cmd.cmd_timeout_ms = mmc_erase_timeout(card, arg, qty);
+	}
+
 	err = mmc_wait_for_cmd(card->host, &cmd, 0);
 	if (err) {
 		printk(KERN_ERR "mmc_erase: erase error %d, status %#x\n",
@@ -1753,7 +1757,8 @@ static int mmc_do_erase(struct mmc_card *card, unsigned int from,
 		goto out;
 	}
 
-	if (mmc_host_is_spi(card->host))
+	if (mmc_host_is_spi(card->host) &&
+			!(card->quirks & MMC_QUIRK_POLL_WAIT_BUSY))
 		goto out;
 
 	do {
@@ -1872,14 +1877,6 @@ int mmc_can_secure_erase_trim(struct mmc_card *card)
 }
 EXPORT_SYMBOL(mmc_can_secure_erase_trim);
 
-int mmc_can_secure_trim(struct mmc_card *card)
-{
-	if (card->sec_trim_en & SEC_TRIM_EN)
-		return 1;
-	return 0;
-}
-EXPORT_SYMBOL(mmc_can_secure_trim);
-
 int mmc_erase_group_aligned(struct mmc_card *card, unsigned int from,
 			    unsigned int nr)
 {
@@ -1896,7 +1893,7 @@ static unsigned int mmc_do_calc_max_discard(struct mmc_card *card,
 {
 	struct mmc_host *host = card->host;
 	unsigned int max_discard, x, y, qty = 0, max_qty, timeout;
-	unsigned int last_timeout = 0;
+	unsigned int last_timeout = 0, aligned_qty;
 
 	if (card->erase_shift)
 		max_qty = UINT_MAX >> card->erase_shift;
@@ -1923,23 +1920,21 @@ static unsigned int mmc_do_calc_max_discard(struct mmc_card *card,
 	if (!qty)
 		return 0;
 
-	if (qty == 1 && arg != MMC_SECURE_ERASE_ARG)
-		return 1;
+	if (arg & MMC_TRIM_ARGS) {
+		if (qty == 1)
+			/* don't want to use trim */
+			return 0;
+		aligned_qty = qty - 1;
+	} else
+		aligned_qty = qty;
 
 	/* Convert qty to sectors */
 	if (card->erase_shift)
-		max_discard = --qty << card->erase_shift;
+		max_discard = aligned_qty << card->erase_shift;
 	else if (mmc_card_sd(card))
 		max_discard = qty;
 	else
-		max_discard = --qty * card->erase_size;
-
-	/*
-	 * since SECURE_ERASE is erase group aligned, needn't --qty
-	 * Cannot be SD card if arg == MMC_SECURE_ERASE_ARG
-	 */
-	if (arg == MMC_SECURE_ERASE_ARG)
-		max_discard += card->erase_size;
+		max_discard = aligned_qty * card->erase_size;
 
 	return max_discard;
 }
@@ -1948,75 +1943,25 @@ unsigned int mmc_calc_max_discard(struct mmc_card *card)
 {
 	struct mmc_host *host = card->host;
 	unsigned int max_discard, max_trim;
-	unsigned int max_sec_discard, max_sec_trim;
 
 	if (!host->max_discard_to)
 		return UINT_MAX;
 
-	/*
-	 * calculate the max_discard for erase/sec_erase
-	 */
 	max_discard = mmc_do_calc_max_discard(card, MMC_ERASE_ARG);
-	if (mmc_can_secure_erase_trim(card)) {
-		max_sec_discard = mmc_do_calc_max_discard(card,
-				MMC_SECURE_ERASE_ARG);
-		if (max_sec_discard < card->erase_size) {
-			if (card->quirks & MMC_QUIRK_ALLOW_SEC_OPS) {
-				/* only allow one erase group */
-				if (card->erase_size < max_discard)
-					max_discard = card->erase_size;
-			} else {
-				/*
-				 * disable sec feature since sec trim
-				 * will need larger timeout then sec erase
-				 */
-				card->ext_csd.sec_feature_support &=
-					~EXT_CSD_SEC_ER_EN;
-				card->sec_trim_en &= ~SEC_TRIM_EN;
-			}
-		} else if (max_sec_discard < max_discard)
-			max_discard = max_sec_discard;
-	}
-	/*
-	 * calculate the max_discard for trim/sec_trim
-	 */
-	if (!mmc_can_trim(card)) {
-		/* erase group is the minimum erase unit */
-		if (max_discard < card->erase_size)
-			max_discard = 0;
-		goto out;
+	if (mmc_can_trim(card)) {
+		max_trim = mmc_do_calc_max_discard(card, MMC_TRIM_ARG);
+		if (max_trim == 0) {
+			/* use poll quirk */
+			card->quirks |= MMC_QUIRK_POLL_WAIT_BUSY;
+			max_trim = max_discard;
+		}
+	} else if (max_discard < card->erase_size) {
+		max_discard = 0;
 	}
 
-	max_trim = mmc_do_calc_max_discard(card, MMC_TRIM_ARG);
-	if (!max_trim) {
-		/* Cannot use trim, disable trim & sec trim */
-		card->ext_csd.sec_feature_support &=
-			~EXT_CSD_SEC_GB_CL_EN;
-		card->sec_trim_en &= ~SEC_TRIM_EN;
-		/* erase group is the minimum erase unit */
-		if (max_discard < card->erase_size)
-			max_discard = 0;
-		goto out;
-	}
+	if (mmc_can_secure_erase_trim(card) && max_discard != 0)
+		card->quirks |= MMC_QUIRK_POLL_WAIT_BUSY;
 
-	if (mmc_can_secure_erase_trim(card)) {
-		max_sec_trim = mmc_do_calc_max_discard(card,
-				MMC_SECURE_TRIM1_ARG);
-		if (max_sec_trim == 0 || max_sec_trim == 1) {
-			if (card->quirks & MMC_QUIRK_ALLOW_SEC_OPS) {
-				/* only allow one erase group */
-				if (card->erase_size < max_trim)
-					max_trim = card->erase_size;
-			} else
-				/* only discable sec trim */
-				card->sec_trim_en &= ~SEC_TRIM_EN;
-		} else if (max_sec_trim < max_trim)
-			max_trim = max_sec_trim;
-	}
-
-	if (max_trim < max_discard)
-		max_discard = max_trim;
-out:
 	pr_info("%s: calculated max. discard sectors %u for timeout %u ms\n",
 		 mmc_hostname(host), max_discard, host->max_discard_to);
 	return max_discard;
