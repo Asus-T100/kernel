@@ -89,45 +89,6 @@ lc898211_read_reg(struct i2c_client *client, u16 len, u8 reg, void *val)
 }
 
 static int
-lc898211_eep_read_reg(struct i2c_client *client, u16 len, u16 reg, void *val)
-{
-	return __lc898211_read_reg(client, LC898211_EEP_GET_ID(reg), len,
-				   (u8)reg, val);
-}
-
-static int
-lc898211_eep_read_reg_array(struct i2c_client *client, u16 size, u16 addr,
-			    void *data)
-{
-	u8 *buf = data;
-	u16 index = 0;
-	int ret = 0;
-
-	while (index < size) {
-		/*
-		 * Cannot read different pages in same I2C command.
-		 * One msg size should be limited by end of page.
-		 */
-		const int max_size = LC898211_EEP_PAGE_SIZE -
-				((addr + index) & ~LC898211_EEP_PAGE_MASK);
-		int msg_size = index + LC898211_MAX_I2C_MSG_LEN < size ?
-			       LC898211_MAX_I2C_MSG_LEN : size - index;
-
-		if (msg_size > max_size)
-			msg_size = max_size;
-
-		ret = lc898211_eep_read_reg(client, msg_size, addr + index,
-					    &buf[index]);
-		if (ret)
-			return ret;
-
-		index += msg_size;
-	}
-
-	return ret;
-}
-
-static int
 lc898211_i2c_write(struct i2c_client *client, u16 len, u8 *data)
 {
 	struct i2c_msg msg;
@@ -557,44 +518,33 @@ static int lc898211_s_ctrl(struct v4l2_subdev *sd, struct v4l2_control *ctrl)
 	return ret;
 }
 
-static int lc898211_get_eeprom_data(struct v4l2_subdev *sd)
-{
-	struct i2c_client *client = v4l2_get_subdevdata(sd);
-	struct lc898211_dev *dev = to_lc898211_dev(sd);
-
-	/* Cache EEPROM data */
-	return lc898211_eep_read_reg_array(client, LC898211_EEP_SIZE,
-					   LC898211_EEP_START_ADDR,
-					   dev->eeprom);
-}
-
 /*
  * Normalize AF tuning values in 2 steps:
- * 1: Values come in big enddian format
+ * 1: Values come in big endian format
  * 2: Values are s10 written in the most significant 10 bits of s16.
  */
-static void __normalize_af_tun_value(s16 *value)
+static void lc898211_get_af_tuning_value(unsigned char *buf, int offset,
+					 s16 *value)
 {
-	*value = (s16)be16_to_cpu(*value);
+	*value = (s16)be16_to_cpu(*(s16 *)&buf[offset]);
 	*value >>= 6;
 }
 
 static int lc898211_get_af_tuning(struct v4l2_subdev *sd)
 {
-	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	struct lc898211_dev *dev = to_lc898211_dev(sd);
-	int ret;
 
-	ret = lc898211_eep_read_reg_array(client, LC898211_EEP_AF_TUN_SIZE,
-					  LC898211_EEP_AF_TUN_START,
-					  &dev->af_tun);
-	if (ret < 0)
-		return ret;
+	if (!dev->eeprom_buf || dev->eeprom_size < LC898211_EEP_AF_TUN_END)
+		return -ENODEV;
 
-	__normalize_af_tun_value(&dev->af_tun.focus_abs_min);
-	__normalize_af_tun_value(&dev->af_tun.focus_abs_max);
-	__normalize_af_tun_value(&dev->af_tun.inf_pos);
-	__normalize_af_tun_value(&dev->af_tun.mac_pos);
+	lc898211_get_af_tuning_value(dev->eeprom_buf, LC898211_EEP_INF1,
+				     &dev->af_tun.focus_abs_min);
+	lc898211_get_af_tuning_value(dev->eeprom_buf, LC898211_EEP_MAC1,
+				     &dev->af_tun.focus_abs_max);
+	lc898211_get_af_tuning_value(dev->eeprom_buf, LC898211_EEP_INF2,
+				     &dev->af_tun.inf_pos);
+	lc898211_get_af_tuning_value(dev->eeprom_buf, LC898211_EEP_MAC2,
+				     &dev->af_tun.mac_pos);
 
 	return 0;
 }
@@ -607,19 +557,18 @@ static int lc898211_get_af_tuning(struct v4l2_subdev *sd)
  */
 static void *lc898211_eeprom_read(struct i2c_client *client, int *size)
 {
-	static const int LC898211_EEPROM_SIZE = 1024;
 	struct i2c_msg msg[2];
 	int addr;
 	char *buffer;
 
-	buffer = kmalloc(LC898211_EEPROM_SIZE, GFP_KERNEL);
+	buffer = kmalloc(LC898211_EEP_SIZE, GFP_KERNEL);
 	if (!buffer)
 		return NULL;
 
 	memset(msg, 0, sizeof(msg));
 	for (addr = 0;
-	     addr < LC898211_EEPROM_SIZE; addr += LC898211_MAX_I2C_MSG_LEN) {
-		unsigned int i2c_addr = LC898211_EEP_ID_BASE >> 1;
+	     addr < LC898211_EEP_SIZE; addr += LC898211_MAX_I2C_MSG_LEN) {
+		unsigned int i2c_addr = LC898211_EEP_ID_BASE;
 		unsigned char addr_buf;
 		int r;
 
@@ -634,7 +583,7 @@ static void *lc898211_eeprom_read(struct i2c_client *client, int *size)
 		msg[1].addr = i2c_addr;
 		msg[1].flags = I2C_M_RD;
 		msg[1].len = min(LC898211_MAX_I2C_MSG_LEN,
-				 LC898211_EEPROM_SIZE - addr);
+				 LC898211_EEP_SIZE - addr);
 		msg[1].buf = &buffer[addr];
 
 		r = i2c_transfer(client->adapter, msg, ARRAY_SIZE(msg));
@@ -646,7 +595,7 @@ static void *lc898211_eeprom_read(struct i2c_client *client, int *size)
 	}
 
 	if (size)
-		*size = LC898211_EEPROM_SIZE;
+		*size = LC898211_EEP_SIZE;
 	return buffer;
 }
 
@@ -658,8 +607,17 @@ static int lc898211_init_registers(struct v4l2_subdev *sd)
 	int i;
 
 	/* Read actuator initialization registers list from EEPROM */
-	for (i = 0, edata = &dev->eeprom[i]; i < LC898211_EEP_NUM_DATA;
-	     i++, edata++) {
+
+	if (!dev->eeprom_buf ||
+	    dev->eeprom_size <
+	    LC898211_EEP_NUM_DATA * sizeof(struct lc898211_eeprom_data) +
+	    LC898211_EEP_START_ADDR)
+		return -ENODEV;
+
+	edata = (struct lc898211_eeprom_data *)
+		(dev->eeprom_buf + LC898211_EEP_START_ADDR);
+
+	for (i = 0; i < LC898211_EEP_NUM_DATA; i++, edata++) {
 		int len;
 		int ret;
 		u8 dest_data[2];
@@ -687,13 +645,14 @@ static int lc898211_init_registers(struct v4l2_subdev *sd)
 			dest_data[1] = edata->data[1];
 			break;
 		case LC898211_EEP_DATA_INDIRECT_EEP:
-			ret = lc898211_eep_read_reg(client, len, edata->data[0],
-						    dest_data);
-			if (ret < 0) {
+			if (len > sizeof(dest_data) ||
+			    edata->data[0] + len > dev->eeprom_size) {
 				v4l2_err(client, "%s: error reading indirect "
 					 "data from EEPROM.\n", __func__);
-				return ret;
+				return -ENODEV;
 			}
+			memcpy(dest_data, &dev->eeprom_buf[edata->data[0]],
+			       len);
 			break;
 		case LC898211_EEP_DATA_INDIRECT_HVCA:
 			ret = lc898211_read_reg(client, len, edata->data[0],
@@ -902,13 +861,6 @@ static int lc898211_probe(struct i2c_client *client,
 	if (!dev->eeprom_buf) {
 		ret = -ENODEV;
 		v4l2_err(client, "%s: failed to read EEPROM\n",
-			 __func__);
-		goto err;
-	}
-
-	ret = lc898211_get_eeprom_data(&dev->sd);
-	if (ret) {
-		v4l2_err(client, "%s: failed to read EEPROM data\n",
 			 __func__);
 		goto err;
 	}

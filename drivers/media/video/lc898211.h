@@ -44,17 +44,11 @@
  * PAGE 2: 0xa2 <-> 0x200-0x2ff
  * PAGE 3: 0xa3 <-> 0x300-0x3ff
  */
-#define	LC898211_EEP_ID_BASE		0xa0
-#define LC898211_EEP_PAGE_SIZE		0x100
-#define LC898211_EEP_PAGE_MASK		(~(LC898211_EEP_PAGE_SIZE - 1))
-#define LC898211_EEP_ID(page)		((LC898211_EEP_ID_BASE | ((page) << 1)) >> 1)
-#define LC898211_EEP_GET_PAGE(addr)	(((addr) & 0x100) >> 8)
-#define LC898211_EEP_GET_ID(addr)	LC898211_EEP_ID(LC898211_EEP_GET_PAGE(addr))
+#define	LC898211_EEP_ID_BASE		(0xa0 >> 1)
+#define	LC898211_EEP_SIZE		1024
 
 #define LC898211_EEP_START_ADDR		0x030
 #define LC898211_EEP_END_ADDR		0x1bf
-#define LC898211_EEP_SIZE		(LC898211_EEP_END_ADDR - \
-					 LC898211_EEP_START_ADDR + 1)
 #define LC898211_EEP_ADDR_EOF		0xff
 #define LC898211_EEP_ADDR_DELAY		0xdd
 
@@ -65,18 +59,11 @@
 #define LC898211_EEP_DATA_MASK_OR	0x8
 #define LC898211_EEP_DATA_SIZE_MAX	2
 
-#define LC898211_EEP_INF1_H		0x20
-#define LC898211_EEP_INF1_L		0x21
-#define LC898211_EEP_MAC1_H		0x22
-#define LC898211_EEP_MAC1_L		0x23
-#define LC898211_EEP_INF2_H		0x24
-#define LC898211_EEP_INF2_L		0x25
-#define LC898211_EEP_MAC2_H		0x26
-#define LC898211_EEP_MAC2_L		0x27
-#define LC898211_EEP_AF_TUN_START	LC898211_EEP_INF1_H
-#define LC898211_EEP_AF_TUN_END		LC898211_EEP_MAC2_L
-#define LC898211_EEP_AF_TUN_SIZE	(LC898211_EEP_AF_TUN_END - \
-					 LC898211_EEP_AF_TUN_START + 1)
+#define LC898211_EEP_INF1		0x20
+#define LC898211_EEP_MAC1		0x22
+#define LC898211_EEP_INF2		0x24
+#define LC898211_EEP_MAC2		0x26
+#define LC898211_EEP_AF_TUN_END		0x28
 
 struct lc898211_eeprom_data {
 	u8 addr;
@@ -86,8 +73,9 @@ struct lc898211_eeprom_data {
 };
 
 #define LC898211_EEP_DATA_SIZE		sizeof(struct lc898211_eeprom_data)
-#define LC898211_EEP_NUM_DATA		(LC898211_EEP_SIZE /		\
-							LC898211_EEP_DATA_SIZE)
+#define LC898211_EEP_NUM_DATA		((LC898211_EEP_END_ADDR - \
+					  LC898211_EEP_START_ADDR + 1) / \
+					 LC898211_EEP_DATA_SIZE)
 
 struct lc898211_eeprom_af_tun {
 	s16 focus_abs_min;
@@ -139,7 +127,6 @@ struct lc898211_dev {
 	int power;
 
 	struct camera_sensor_platform_data *platform_data;
-	struct lc898211_eeprom_data eeprom[LC898211_EEP_NUM_DATA];
 	struct lc898211_eeprom_af_tun af_tun;
 	unsigned char *eeprom_buf;
 	__u32 eeprom_size;
