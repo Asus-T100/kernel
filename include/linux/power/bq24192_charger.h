@@ -37,6 +37,19 @@
 #define INPUT_CHRG_CURR_500	500
 #define INPUT_CHRG_CURR_950	950
 #define INPUT_CHRG_CURR_1500	1500
+/* Charger Master Temperature Control Register */
+#define MSIC_CHRTMPCTRL         0x18E
+/* Higher Temprature Values*/
+#define CHRTMPCTRL_TMPH_60      (3 << 6)
+#define CHRTMPCTRL_TMPH_55      (2 << 6)
+#define CHRTMPCTRL_TMPH_50      (1 << 6)
+#define CHRTMPCTRL_TMPH_45      (0 << 6)
+
+/* Lower Temprature Values*/
+#define CHRTMPCTRL_TMPL_15      (3 << 4)
+#define CHRTMPCTRL_TMPL_10      (2 << 4)
+#define CHRTMPCTRL_TMPL_05      (1 << 4)
+#define CHRTMPCTRL_TMPL_00      (0 << 4)
 
 enum bq24192_bat_chrg_mode {
 	BATT_CHRG_FULL = 0,

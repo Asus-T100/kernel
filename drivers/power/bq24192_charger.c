@@ -41,6 +41,7 @@
 #include <linux/delay.h>
 #include <linux/gpio.h>
 #include <asm/intel_mid_gpadc.h>
+#include <asm/intel_scu_ipc.h>
 
 #define DRV_NAME "bq24192_charger"
 #define DEV_NAME "bq24192"
@@ -505,14 +506,6 @@ static void ctp_get_batt_temp_thresholds(short int *temp_high,
 		if (*temp_high < temp_mon_tabl[i].temp_up_lim)
 			*temp_high = temp_mon_tabl[i].temp_up_lim;
 	}
-
-	/*
-	 * FIXME Presently the battery can be charged maximum till 45 deg
-	 * hence assigning the maximum tempertaure limit to 45 deg
-	 * This value will be taken from the SFI once it is supported
-	 */
-	if (*temp_high > CLT_BATT_TEMP_MAX_DEF)
-		*temp_high = CLT_BATT_TEMP_MAX_DEF;
 
 	*temp_low = temp_low_lim;
 }
@@ -1223,7 +1216,7 @@ static void set_up_charging(struct bq24192_chip *chip,
 		msleep(50);
 	} else
 		dev_warn(&chip->client->dev, "Charger IC not in Hi-Z mode\n");
-return;
+	return;
 
 i2c_error:
 	dev_err(&chip->client->dev, "%s: I2C Error Value %d\n", __func__, ret);
@@ -2211,6 +2204,57 @@ static int intel_sram_smip_read(u8 *data, int len, int offset,
 		return 0;
 }
 
+/*
+ * This function checks the safety temperature limit and return the
+ * appropriate value to program the Charger Master Temp Ctrl register
+ */
+static u8 ctp_get_safechrglimit(short int temp_high, short int temp_low)
+{
+	u8 sftmp = 0;
+
+	/* Get the higher temp values */
+	if (temp_high >= 60)
+		sftmp |= CHRTMPCTRL_TMPH_60;
+	else if (temp_high >= 55)
+		sftmp |= CHRTMPCTRL_TMPH_55;
+	else if (temp_high >= 50)
+		sftmp |= CHRTMPCTRL_TMPH_50;
+	else
+		sftmp |= CHRTMPCTRL_TMPH_45;
+
+	/* Get the lower temp values */
+	if (temp_low >= 15)
+		sftmp |= CHRTMPCTRL_TMPL_15;
+	else if (temp_low >= 10)
+		sftmp |= CHRTMPCTRL_TMPL_10;
+	else if (temp_low >= 5)
+		sftmp |= CHRTMPCTRL_TMPL_05;
+	else
+		sftmp |= CHRTMPCTRL_TMPL_00;
+
+	return sftmp;
+}
+/*
+ * This function programs the Charger Master Temperature Control
+ * register with the temp value passed as parameter
+ */
+static int ctp_set_safechrglimit(short int temp)
+{
+	int ret = 0;
+	unsigned short addr = MSIC_CHRTMPCTRL;
+
+	/*
+	 * Program the Charger Master Temperature control register
+	 * with the temperature given
+	 */
+	ret = intel_scu_ipc_iowrite8(addr, temp);
+	if (ret) {
+		dev_warn(&bq24192_client->dev,
+				"IPC Failed with %d error\n", ret);
+	}
+	return ret;
+}
+
 /**
  * init_batt_thresholds - initialize battery thresholds
  * @chip: charger driver device context
@@ -2221,6 +2265,7 @@ static void init_batt_thresholds(struct bq24192_chip *chip)
 	int ret;
 	int i;
 	u8 validate_smip_data[4];
+	u8 safetmp = 0;
 
 	chip->batt_thrshlds.vbatt_sh_min = CLT_BATT_VMIN_THRESHOLD_DEF;
 	chip->batt_thrshlds.vbatt_crit = CLT_BATT_CRIT_CUTOFF_VOLT_DEF;
@@ -2320,6 +2365,16 @@ static void init_batt_thresholds(struct bq24192_chip *chip)
 
 	ctp_get_batt_temp_thresholds(&chip->batt_thrshlds.temp_high,
 		&chip->batt_thrshlds.temp_low);
+	/*
+	 * Get the temperature limits to be programmed
+	 * for safe charging
+	 */
+	safetmp = ctp_get_safechrglimit(chip->batt_thrshlds.temp_high,
+						chip->batt_thrshlds.temp_low);
+	/* Program the Charger Master Temperature Control register */
+	ret = ctp_set_safechrglimit(safetmp);
+	if (ret)
+		dev_warn(&chip->client->dev, "Failed to set the SAFETEMP\n");
 }
 
 static void init_charger_regs(struct bq24192_chip *chip)
