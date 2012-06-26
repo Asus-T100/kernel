@@ -1318,6 +1318,20 @@ void hdmi_do_hotplug_wq(struct work_struct *work)
 			hdmi_hpd_connected = false;
 		else
 			hdmi_hpd_connected = true;
+
+		/* Pull up the HDMI_LS_OE GPIO pin to read HDMI EDID data. */
+		if (!gpio_request(CLV_HDMI_LS_OE_GPIO_PIN, "clv_hdmi_ls_oe") &&
+				gpio_is_valid(CLV_HDMI_LS_OE_GPIO_PIN)) {
+
+			if (hdmi_hpd_connected)
+				gpio_set_value(CLV_HDMI_LS_OE_GPIO_PIN, 1);
+			else
+				gpio_set_value(CLV_HDMI_LS_OE_GPIO_PIN, 0);
+
+			gpio_free(CLV_HDMI_LS_OE_GPIO_PIN);
+		} else
+			DRM_ERROR("%s: Failed to request gpio %d\n", __func__,
+					CLV_HDMI_LS_OE_GPIO_PIN);
 	}
 
 	if (hdmi_hpd_connected) {

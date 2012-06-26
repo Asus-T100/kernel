@@ -34,6 +34,7 @@
 
 #define TI_TPD_PCI_DEVICE_ID 0x901
 #define CLV_TI_HPD_GPIO_PIN 43
+#define CLV_HDMI_LS_OE_GPIO_PIN 91
 
 int ti_tpd_regsiter_driver(void);
 int ti_tpd_unregister_driver(void);

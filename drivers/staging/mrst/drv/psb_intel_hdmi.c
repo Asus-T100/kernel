@@ -2202,8 +2202,19 @@ void mdfld_hdmi_init(struct drm_device *dev,
 		/* Extend VHDMI switch de-bounce time, to avoid redundant MSIC
 		 * VREG/HDMI interrupt during HDMI cable plugged in/out. */
 		intel_scu_ipc_iowrite8(MSIC_VHDMICNT, VHDMI_ON | VHDMI_DB_30MS);
-	} else if (IS_CTP(dev))
+	} else if (IS_CTP(dev)) {
 		mdfld_ti_tpd_init(hdmi_priv);
+
+		/* Pull up the HDMI_LS_OE GPIO pin to read HDMI EDID data. */
+		if (!gpio_request(CLV_HDMI_LS_OE_GPIO_PIN, "clv_hdmi_ls_oe") &&
+				gpio_is_valid(CLV_HDMI_LS_OE_GPIO_PIN)) {
+			gpio_set_value(CLV_HDMI_LS_OE_GPIO_PIN, 1);
+
+			gpio_free(CLV_HDMI_LS_OE_GPIO_PIN);
+		} else
+			DRM_ERROR("%s: Failed to request gpio %d\n", __func__,
+					CLV_HDMI_LS_OE_GPIO_PIN);
+	}
 
 	/* initialize hdmi encoder restore delayed work */
 	INIT_DELAYED_WORK(&hdmi_priv->enc_work, mdfld_hdmi_encoder_restore_wq);
