@@ -477,7 +477,9 @@ static int adb_open(struct inode *ip, struct file *fp)
 	/* clear the error latch */
 	_adb_dev->error = 0;
 
+#if 0
 	adb_ready_callback();
+#endif
 
 	return 0;
 }
@@ -486,7 +488,9 @@ static int adb_release(struct inode *ip, struct file *fp)
 {
 	pr_info("adb_release\n");
 
+#if 0
 	adb_closed_callback();
+#endif
 
 	adb_unlock(&_adb_dev->open_excl);
 	return 0;

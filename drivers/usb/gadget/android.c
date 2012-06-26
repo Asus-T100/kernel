@@ -305,8 +305,10 @@ static void adb_android_function_disable(struct android_usb_function *f)
 
 static struct android_usb_function adb_function = {
 	.name		= "adb",
+#if 0
 	.enable		= adb_android_function_enable,
 	.disable	= adb_android_function_disable,
+#endif
 	.init		= adb_function_init,
 	.cleanup	= adb_function_cleanup,
 	.bind_config	= adb_function_bind_config,
