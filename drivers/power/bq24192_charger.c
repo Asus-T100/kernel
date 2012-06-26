@@ -232,6 +232,9 @@
 #define SBCT_REV	0x16
 #define RSYS_MOHMS	0xAA
 
+/* Max no. of tries to clear the charger from Hi-Z mode */
+#define MAX_TRY		5
+
 static struct power_supply *fg_psy;
 static struct ctp_batt_sfi_prop *ctp_sfi_table;
 /* Battery properties structure */
@@ -1167,7 +1170,7 @@ uptd_chrg_set_exit:
 static void set_up_charging(struct bq24192_chip *chip,
 		struct bq24192_chrg_regs *reg, int chr_curr, int chr_volt)
 {
-	int ret;
+	int ret, count;
 
 	dev_dbg(&chip->client->dev, "%s\n", __func__);
 
@@ -1187,35 +1190,41 @@ static void set_up_charging(struct bq24192_chip *chip,
 	 * Read the input src cntl register to see if the charger is in
 	 * Hi-Z mode. If yes then clear the Hi-Z bit to start the charging
 	 */
-	ret = bq24192_read_reg(chip->client, BQ24192_INPUT_SRC_CNTL_REG);
-	if (ret < 0) {
-		dev_warn(&chip->client->dev, "Input src cntl read failed\n");
-		goto i2c_error;
-	}
-
-	if (ret & INPUT_SRC_CNTL_EN_HIZ) {
-		dev_warn(&chip->client->dev, "Charger IC in Hi-Z mode\n");
-
-#ifdef DEBUG
-		bq24192_dump_registers(chip);
-#endif
-
-		/* Clear the Charger from Hi-Z mode */
-		ret &= ~INPUT_SRC_CNTL_EN_HIZ;
-
-		/* Write the values back */
-		ret = bq24192_write_reg(chip->client,
-					BQ24192_INPUT_SRC_CNTL_REG, ret);
+	for (count = 0 ; count < MAX_TRY; count++) {
+		ret = bq24192_read_reg(chip->client,
+						BQ24192_INPUT_SRC_CNTL_REG);
 		if (ret < 0) {
 			dev_warn(&chip->client->dev,
-					"Input src cntl write failed\n");
+					"Input src cntl read failed\n");
 			goto i2c_error;
 		}
 
-		/* WA for TI charger to settle down */
-		msleep(50);
-	} else
-		dev_warn(&chip->client->dev, "Charger IC not in Hi-Z mode\n");
+		if (ret & INPUT_SRC_CNTL_EN_HIZ) {
+			dev_warn(&chip->client->dev, "Charger IC in Hi-Z mode\n");
+
+#ifdef DEBUG
+			bq24192_dump_registers(chip);
+#endif
+
+			/* Clear the Charger from Hi-Z mode */
+			ret &= ~INPUT_SRC_CNTL_EN_HIZ;
+
+			/* Write the values back */
+			ret = bq24192_write_reg(chip->client,
+					BQ24192_INPUT_SRC_CNTL_REG, ret);
+			if (ret < 0) {
+				dev_warn(&chip->client->dev,
+						"Input src cntl write failed\n");
+				goto i2c_error;
+			}
+
+			/* Time in millisec for TI charger to settle down */
+			msleep(50);
+		} else {
+			dev_warn(&chip->client->dev,
+				"Charger IC not in Hi-Z mode\n");
+		}
+	}
 	return;
 
 i2c_error:
