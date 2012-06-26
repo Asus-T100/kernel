@@ -171,7 +171,7 @@ extern int mmc_wait_for_cmd(struct mmc_host *, struct mmc_command *, int);
 extern int mmc_app_cmd(struct mmc_host *, struct mmc_card *);
 extern int mmc_wait_for_app_cmd(struct mmc_host *, struct mmc_card *,
 	struct mmc_command *, int);
-extern int mmc_switch(struct mmc_card *, u8, u8, u8, unsigned int);
+extern int mmc_switch(struct mmc_card *, u8, u8, u8, unsigned int, int);
 
 extern int mmc_rpmb_partition_ops(struct mmc_core_rpmb_req *,
 		struct mmc_card *);
@@ -193,6 +193,7 @@ extern int mmc_can_erase(struct mmc_card *card);
 extern int mmc_can_trim(struct mmc_card *card);
 extern int mmc_can_secure_erase_trim(struct mmc_card *card);
 extern int mmc_can_secure_trim(struct mmc_card *card);
+extern int mmc_can_sanitize(struct mmc_card *card);
 extern int mmc_erase_group_aligned(struct mmc_card *card, unsigned int from,
 				   unsigned int nr);
 extern unsigned int mmc_calc_max_discard(struct mmc_card *card);

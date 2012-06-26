@@ -373,11 +373,16 @@ int mmc_spi_set_crc(struct mmc_host *host, int use_crc)
  *	@value: value to program into EXT_CSD register
  *	@timeout_ms: timeout (ms) for operation performed by register write,
  *                   timeout of zero implies maximum possible timeout
+ *	@check_busy: Set the 'R1B' flag or not. Some operations, such as
+ *                   Sanitize, may need long time to finish. And some
+ *                   host controller, such as the SDHCI host controller,
+ *                   only allows limited max timeout value. So, introduce
+ *                   this to skip the busy check for those operations.
  *
  *	Modifies the EXT_CSD register for selected card.
  */
 int mmc_switch(struct mmc_card *card, u8 set, u8 index, u8 value,
-	       unsigned int timeout_ms)
+	       unsigned int timeout_ms, int check_busy)
 {
 	int err;
 	struct mmc_command cmd = {0};
@@ -391,7 +396,10 @@ int mmc_switch(struct mmc_card *card, u8 set, u8 index, u8 value,
 		  (index << 16) |
 		  (value << 8) |
 		  set;
-	cmd.flags = MMC_RSP_SPI_R1B | MMC_RSP_R1B | MMC_CMD_AC;
+	if (check_busy)
+		cmd.flags = MMC_RSP_SPI_R1B | MMC_RSP_R1B | MMC_CMD_AC;
+	else
+		cmd.flags = MMC_RSP_SPI_R1 | MMC_RSP_R1 | MMC_CMD_AC;
 	cmd.cmd_timeout_ms = timeout_ms;
 
 	err = mmc_wait_for_cmd(card->host, &cmd, MMC_CMD_RETRIES);
