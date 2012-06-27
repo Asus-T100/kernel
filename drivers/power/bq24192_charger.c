@@ -220,13 +220,9 @@
 #define BQ24192_INVALID_VOLT -1
 
 /* SMIP related definitions */
-/* No of Bytes to read from SMIP from SMIP sram base */
-#define NUM_SMIP_BYTES	100
 /* sram base address for smip accessing*/
-#define SMIP_SRAM_BASE_ADDR	0xFFFD8000
-#define SMIP_SRAM_OFFSET_ADDR	0x0
-#define SMIP_SRAM_MAX_ADDR	0x1000
-#define SMIP_SRAM_BATT_PROP_OFFSET_ADDR	0x13
+#define SMIP_SRAM_OFFSET_ADDR	0x44d
+#define SMIP_SRAM_BATT_PROP_OFFSET_ADDR	0x460
 #define TEMP_MON_RANGES	4
 
 /* Signature comparision of SRAM data for supportted Battery Char's */
@@ -277,8 +273,6 @@ struct bq24192_chip {
 	int curr_chrg;
 	int cached_chrg_cur_cntl;
 	struct power_supply_charger_cap cached_cap;
-	/* smip sram memory pointer */
-	void __iomem *intel_smip_base;
 	/* Wake lock to prevent platform from going to S3 when charging */
 	struct wake_lock wakelock;
 };
@@ -2210,25 +2204,6 @@ static int bq24192_usb_property_is_writeable(struct power_supply *psy,
 	return 0;
 }
 
-/**
- * intel_sram_smip_read - SMIP SRAM Read functionality
- * Pre cond: The calling function should acquire lock
- * @data: out param
- * @len: bytes to read
- * @offset: sram offset
- * @chip: charger driver device context
- * @return: successfully read data/Invalid data
- */
-static int intel_sram_smip_read(u8 *data, int len, int offset,
-					 struct bq24192_chip *chip)
-{
-	if (offset + len > SMIP_SRAM_MAX_ADDR)
-		return -EINVAL;
-
-	memcpy(data, chip->intel_smip_base + offset, len);
-		return 0;
-}
-
 /*
  * This function checks the safety temperature limit and return the
  * appropriate value to program the Charger Master Temp Ctrl register
@@ -2297,14 +2272,12 @@ static void init_batt_thresholds(struct bq24192_chip *chip)
 	chip->batt_thrshlds.temp_high = CLT_BATT_TEMP_MAX_DEF;
 	chip->batt_thrshlds.temp_low = CLT_BATT_TEMP_MIN_DEF;
 
-	mutex_lock(&chip->event_lock);
 	/* Read the Signature verification data form SRAM */
-	ret = intel_sram_smip_read((u8 *)validate_smip_data,
+	ret = intel_scu_ipc_read_mip((u8 *)validate_smip_data,
 					4,
-					SMIP_SRAM_OFFSET_ADDR, chip);
+					SMIP_SRAM_OFFSET_ADDR, 1);
 	if (ret)
 		dev_warn(&chip->client->dev, "smip read failed\n");
-	mutex_unlock(&chip->event_lock);
 
 	dev_dbg(&chip->client->dev, "SBCT_REV: 0x%x RSYS_OHMS 0x%x",
 			validate_smip_data[0], validate_smip_data[3]);
@@ -2312,26 +2285,24 @@ static void init_batt_thresholds(struct bq24192_chip *chip)
 	/* Check for Valid SMIP data */
 	if ((validate_smip_data[0] == SBCT_REV) && (
 			validate_smip_data[3] == RSYS_MOHMS)) {
+
 		dev_dbg(&chip->client->dev,
 			"%s: Valid SMIP data\n", __func__);
-		mutex_lock(&chip->event_lock);
 		/* Read the threshold values from SRAM */
-		ret = intel_sram_smip_read((u8 *)&chip->batt_thrshlds,
+		ret = intel_scu_ipc_read_mip((u8 *)&chip->batt_thrshlds,
 						sizeof(chip->batt_thrshlds),
-						SMIP_SRAM_OFFSET_ADDR, chip);
+						SMIP_SRAM_OFFSET_ADDR, 1);
 		if (ret)
 			dev_warn(&chip->client->dev,
 				"%s:smip read failed\n", __func__);
 
 		/* Read the battery properties from SRAM */
-		ret = intel_sram_smip_read((u8 *)ctp_smip_batt_prop,
+		ret = intel_scu_ipc_read_mip((u8 *)ctp_smip_batt_prop,
 				sizeof(struct ctp_smip_sram_batt_prop),
-				SMIP_SRAM_BATT_PROP_OFFSET_ADDR, chip);
+				SMIP_SRAM_BATT_PROP_OFFSET_ADDR, 1);
 		if (ret)
 			dev_warn(&chip->client->dev,
 				 "%s: smip read failed\n", __func__);
-
-		mutex_unlock(&chip->event_lock);
 
 		/* Copy Battery properties from SRAM to local structure
 		 * The structure copying is required since the data
@@ -2586,19 +2557,6 @@ static int __devinit bq24192_probe(struct i2c_client *client,
 		return -ENOMEM;
 	}
 
-	/* Memory map the SMIP SRAM Physical Base Address */
-	chip->intel_smip_base =
-		ioremap_nocache(SMIP_SRAM_BASE_ADDR, SMIP_SRAM_MAX_ADDR);
-	if (!chip->intel_smip_base) {
-		dev_err(&chip->client->dev,
-			 "%s: Memory map failed\n", __func__);
-		kfree(chip);
-		intel_mid_gpadc_free(chip->gpadc_handle);
-		kfree(ctp_sfi_table);
-		kfree(ctp_smip_batt_prop);
-		return -ENODEV;
-	}
-
 	init_batt_thresholds(chip);
 
 	/* Init Runtime PM State */
@@ -2609,7 +2567,6 @@ static int __devinit bq24192_probe(struct i2c_client *client,
 	ret = bq24192_create_debugfs(chip);
 	if (ret < 0) {
 		dev_err(&client->dev, "debugfs create failed\n");
-		iounmap(chip->intel_smip_base);
 		power_supply_unregister(&chip->usb);
 		i2c_set_clientdata(client, NULL);
 		kfree(chip);
@@ -2627,7 +2584,6 @@ static int __devexit bq24192_remove(struct i2c_client *client)
 {
 	struct bq24192_chip *chip = i2c_get_clientdata(client);
 
-	iounmap(chip->intel_smip_base);
 	bq24192_remove_debugfs(chip);
 	if (!chip->pdata->slave_mode)
 		power_supply_unregister(&chip->usb);
