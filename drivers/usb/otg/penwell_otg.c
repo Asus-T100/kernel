@@ -1497,6 +1497,90 @@ static int penwell_otg_charger_det_dcd_clt(void)
 	return 0;
 }
 
+static int penwell_otg_charger_det_aca_clt(void)
+{
+	struct penwell_otg		*pnw = the_transceiver;
+	struct intel_mid_otg_xceiv	*iotg = &pnw->iotg;
+	int				retval;
+	u8				data;
+	u8				usb_vs2_sts = 0;
+	u8				usb_vs2_latch = 0;
+	u8				usb_vdat_det = 0;
+	u8				usb_vdm = 0;
+
+	retval = penwell_otg_ulpi_write(iotg, ULPI_PWRCTRLSET, DPVSRCEN);
+	if (retval)
+		return retval;
+
+	msleep(70);
+
+	retval = penwell_otg_ulpi_read(iotg, ULPI_VS2LATCH, &usb_vs2_latch);
+	dev_dbg(pnw->dev, "%s: usb_vs2_latch = 0x%x\n",
+			__func__, usb_vs2_latch);
+	if (retval) {
+		dev_warn(pnw->dev, "ULPI read failed, exit\n");
+		return retval;
+	}
+
+	retval = penwell_otg_ulpi_read(iotg, ULPI_VS2STS, &usb_vs2_sts);
+	dev_dbg(pnw->dev, "%s: usb_vs2_sts = 0x%x\n",
+			__func__, usb_vs2_sts);
+	if (retval) {
+		dev_warn(pnw->dev, "ULPI read failed, exit\n");
+		return retval;
+	}
+
+	retval = penwell_otg_ulpi_read(iotg, ULPI_PWRCTRL, &data);
+	usb_vdat_det = data & VDATDET;
+	if (retval) {
+		dev_warn(pnw->dev, "ULPI read failed, exit\n");
+		return retval;
+	}
+
+	retval = penwell_otg_ulpi_read(iotg, ULPI_VS4, &data);
+	usb_vdm = data & CHRG_SERX_DM;
+	if (retval) {
+		dev_warn(pnw->dev, "ULPI read failed, exit\n");
+		return retval;
+	}
+
+	retval = penwell_otg_ulpi_write(iotg, ULPI_PWRCTRLCLR, DPVSRCEN);
+	if (retval)
+		return retval;
+
+	if (usb_vs2_latch & IDRARBRC_MSK) {
+		switch (IDRARBRC_STS(usb_vs2_sts)) {
+		case IDRARBRC_A:
+			iotg->hsm.id = ID_ACA_A;
+			break;
+		case IDRARBRC_B:
+			iotg->hsm.id = ID_ACA_B;
+			dev_dbg(pnw->dev, "ACA-B detected\n");
+			break;
+		case IDRARBRC_C:
+			iotg->hsm.id = ID_ACA_C;
+			dev_dbg(pnw->dev, "ACA-C detected\n");
+			break;
+		default:
+			break;
+		}
+	}
+
+	if (iotg->hsm.id == ID_ACA_A) {
+		if (usb_vdat_det && !usb_vdm)
+			dev_dbg(pnw->dev, "ACA-Dock detected\n");
+		else if (!usb_vdat_det && usb_vdm)
+			dev_dbg(pnw->dev, "ACA-A detected\n");
+	}
+
+	if (iotg->hsm.id == ID_ACA_A || iotg->hsm.id == ID_ACA_B
+			|| iotg->hsm.id == ID_ACA_C) {
+		return CHRG_ACA;
+	}
+
+	return 0;
+}
+
 static int penwell_otg_charger_det_se1_clt(void)
 {
 	struct penwell_otg		*pnw = the_transceiver;
@@ -1620,12 +1704,7 @@ static int penwell_otg_charger_det_clean_clt(void)
 static int penwell_otg_charger_det_clt(void)
 {
 	struct penwell_otg		*pnw = the_transceiver;
-	struct intel_mid_otg_xceiv	*iotg = &pnw->iotg;
 	int				retval;
-	u8				data;
-	u8				usb_vs2_latch = 0;
-	u8				usb_vs2_sts = 0;
-	struct iotg_ulpi_access_ops	*ops;
 
 	dev_dbg(pnw->dev, "%s --->\n", __func__);
 
@@ -1637,35 +1716,11 @@ static int penwell_otg_charger_det_clt(void)
 	}
 
 	/* ACA Detection */
-	ops = &iotg->ulpi_ops;
-	ops->read(iotg, ULPI_VS2LATCH, &usb_vs2_latch);
-	dev_dbg(pnw->dev, "%s: usb_vs2_latch = 0x%x\n",
-			__func__, usb_vs2_latch);
-	if (usb_vs2_latch & IDRARBRC_MSK) {
-		ops->read(iotg, ULPI_VS2STS, &usb_vs2_sts);
-		dev_dbg(pnw->dev, "%s: usb_vs2_sts = 0x%x\n",
-				__func__, usb_vs2_sts);
-
-		switch (IDRARBRC_STS(usb_vs2_sts)) {
-		case IDRARBRC_A:
-			iotg->hsm.id = ID_ACA_A;
-			dev_dbg(pnw->dev, "ACA-A interrupt detected\n");
-			break;
-		case IDRARBRC_B:
-			iotg->hsm.id = ID_ACA_B;
-			dev_dbg(pnw->dev, "ACA-B interrupt detected\n");
-			break;
-		case IDRARBRC_C:
-			iotg->hsm.id = ID_ACA_C;
-			dev_dbg(pnw->dev, "ACA-C interrupt detected\n");
-			break;
-		default:
-			break;
-		}
-	}
-
-	if (iotg->hsm.id == ID_ACA_A || iotg->hsm.id == ID_ACA_B
-			|| iotg->hsm.id == ID_ACA_C) {
+	retval = penwell_otg_charger_det_aca_clt();
+	if (retval < 0) {
+		dev_warn(pnw->dev, "ACA Det failed, exit\n");
+		return CHRG_UNKNOWN;
+	} else if (retval == CHRG_ACA) {
 		dev_info(pnw->dev, "ACA detected\n");
 		return CHRG_ACA;
 	}
