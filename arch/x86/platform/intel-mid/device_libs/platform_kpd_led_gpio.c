@@ -31,14 +31,11 @@ static int __init intel_kpd_gpio_led_init(void)
 		return -ENOMEM;
 	}
 
-	/* Revert me:
-	 * Using hard coding here, will revert after
-	 * IAFW support for KPD LED GPIO is available
-	 */
 	ret = get_gpio_by_name("intel_kpd_led");
 	if (ret == -1) {
 		pr_err("Failed to get KPD LED gpio pin from SFI table\n");
-		pdata.gpio = 133; /* hard coding */
+		platform_device_put(pdev);
+		return ret;
 	} else
 		pdata.gpio = ret;
 
