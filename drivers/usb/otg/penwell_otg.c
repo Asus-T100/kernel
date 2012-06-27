@@ -70,6 +70,7 @@ static int penwell_otg_ulpi_read(struct intel_mid_otg_xceiv *iotg,
 				u8 reg, u8 *val);
 static int penwell_otg_ulpi_write(struct intel_mid_otg_xceiv *iotg,
 				u8 reg, u8 val);
+static void penwell_spi_reset_phy(void);
 
 #ifdef CONFIG_PM_SLEEP
 #include <linux/suspend.h>
@@ -2742,6 +2743,7 @@ static void penwell_otg_work(struct work_struct *work)
 						set_client_mode();
 						msleep(100);
 						penwell_otg_phy_low_power(0);
+						penwell_spi_reset_phy();
 					retval = penwell_otg_manual_chrg_det();
 					}
 				} else {
@@ -4318,6 +4320,17 @@ done:
 	dev_dbg(pnw->dev, "%s <---\n", __func__);
 
 	return retval;
+}
+
+static void penwell_spi_reset_phy(void)
+{
+	struct penwell_otg	*pnw = the_transceiver;
+
+	dev_dbg(pnw->dev, "Reset Phy over SPI\n");
+	penwell_otg_msic_spi_access(true);
+	penwell_otg_msic_write(MSIC_FUNCTRLSET, PHYRESET);
+	penwell_otg_msic_spi_access(false);
+	dev_dbg(pnw->dev, "Reset Phy over SPI Done\n");
 }
 
 static int penwell_otg_probe(struct pci_dev *pdev,
