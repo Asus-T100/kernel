@@ -475,31 +475,42 @@ out_unlock:
 static ssize_t es305_read(struct file *file, char __user *buff, size_t count,
 		loff_t *offp)
 {
-	u8 kbuf[4];
+	u8 *kbuf;
 	struct vp_ctxt *the_vp;
+	int rc;
+
+	kbuf = kmalloc(count, GFP_KERNEL);
+	if (!kbuf)
+		return -ENOMEM;
 
 	mutex_lock(&es305->mutex);
 
 	the_vp = file->private_data;
 	if (!the_vp) {
 		mutex_unlock(&es305->mutex);
-		return -EINVAL;
+		rc = -EINVAL;
+		goto out_kfree;
 	}
 
-	es305_i2c_read(kbuf, 4, the_vp);
+	es305_i2c_read(kbuf, count, the_vp);
 
 	mutex_unlock(&es305->mutex);
 #if DEBUG
 	{
 		int i;
-		for (i = 0; i < 4; i++)
+		for (i = 0; i < count; i++)
 			pr_debug("%s: kbuf %x\n", __func__, kbuf[i]);
 	}
 #endif
-	if (copy_to_user(buff, kbuf, 4))
-		return -EFAULT;
+	if (copy_to_user(buff, kbuf, count)) {
+		rc = -EFAULT;
+		goto out_kfree;
+	}
+	rc = count;
 
-	return 4;
+out_kfree:
+	kfree(kbuf);
+	return rc;
 }
 
 static long es305_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
