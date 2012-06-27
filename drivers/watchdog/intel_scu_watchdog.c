@@ -393,12 +393,16 @@ static int intel_scu_open(struct inode *inode, struct file *file)
 	int ret;
 
 	/* Set flag to indicate that watchdog device is open */
-	if (test_and_set_bit(0, &watchdog_device.driver_open))
+	if (test_and_set_bit(0, &watchdog_device.driver_open)) {
+		pr_err(PFX "watchdog device is busy\n");
 		return -EBUSY;
+	}
 
 	/* Check for reopen of driver. Reopens are not allowed */
-	if (watchdog_device.driver_closed)
+	if (watchdog_device.driver_closed) {
+		pr_err(PFX "watchdog device has been closed\n");
 		return -EPERM;
+	}
 
 	/* Let shared OSNIB (sram) know we are open */
 	/* To publish a proc and ioctl to do this and leave userland decide */
