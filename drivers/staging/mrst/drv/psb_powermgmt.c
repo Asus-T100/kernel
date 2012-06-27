@@ -1833,29 +1833,11 @@ static bool ospm_resume_pci(struct pci_dev *pdev)
 #endif
 
 #ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
-static void dsi_lvds_panel_get_hdmi_audio_status(void)
-{
-#if (defined(CONFIG_SND_INTELMID_HDMI_AUDIO) || \
-		defined(CONFIG_SND_INTELMID_HDMI_AUDIO_MODULE))
-	struct drm_psb_private *dev_priv = gpDrmDevice->dev_private;
-	struct snd_intel_had_interface *had_interface = dev_priv->had_interface;
-	hdmi_audio_event_t hdmi_audio_event;
-
-	if (dev_priv->had_pvt_data && hdmi_state) {
-		hdmi_audio_event.type = HAD_EVENT_QUERY_IS_AUDIO_BUSY;
-		dev_priv->hdmi_audio_busy =
-			had_interface->query(dev_priv->had_pvt_data,
-					hdmi_audio_event);
-	}
-#endif
-}
-
 static void gfx_redridge_early_suspend(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv = dev ? dev->dev_private : NULL;
 	struct drm_encoder *encoder = NULL;
-	struct drm_crtc *crtc = NULL;
-	struct drm_encoder_helper_funcs *enc_funcs;
+	struct drm_encoder_helper_funcs *enc_funcs = NULL;
 
 	if (!dev || !dev_priv) {
 		pr_err("%s: dev pointor is NULL\n", __func__);
@@ -1863,20 +1845,14 @@ static void gfx_redridge_early_suspend(struct drm_device *dev)
 	}
 
 	if (dev_priv->encoder0 && (dev_priv->panel_desc & DISPLAY_A)) {
-		if (dev_priv->bhdmiconnected)
-			dsi_lvds_panel_get_hdmi_audio_status();
-		if (dev_priv->hdmi_audio_busy) {
-			pr_debug("%s: hdmi audio busy\n", __func__);
-			dsi_lvds_toshiba_bridge_panel_off();
-			dsi_set_pipe_plane_enable_state(dev, 0, 0);
-		} else {
-			mdfld_dsi_dpi_set_power(&dev_priv->encoder0->base,
-					false);
-		}
+		encoder = &dev_priv->encoder0->base;
+		mdfld_dsi_dpi_set_power(encoder, false);
 	}
 
-	if (dev_priv->encoder2 && (dev_priv->panel_desc & DISPLAY_C))
-		mdfld_dsi_dpi_set_power(&dev_priv->encoder2->base, false);
+	if (dev_priv->encoder2 && (dev_priv->panel_desc & DISPLAY_C)) {
+		encoder = &dev_priv->encoder2->base;
+		mdfld_dsi_dpi_set_power(encoder, false);
+	}
 
 	list_for_each_entry(encoder, &dev->mode_config.encoder_list, head) {
 		enc_funcs = encoder->helper_private;
@@ -1901,21 +1877,14 @@ static void gfx_redridge_late_resume(struct drm_device *dev)
 	}
 
 	if (dev_priv->encoder0 && (dev_priv->panel_desc & DISPLAY_A)) {
-		if (dev_priv->hdmi_audio_busy) {
-			pr_debug("%s: hdmi audio busy\n", __func__);
-			dsi_lvds_toshiba_bridge_panel_on(dev);
-			dsi_set_pipe_plane_enable_state(dev, 1, 0);
-			dev_priv->hdmi_audio_busy = 0;
-		} else {
-			encoder = &dev_priv->encoder0->base;
-			crtc = encoder->crtc;
-			if (crtc)
-				mdfld_dsi_dpi_mode_set(
-						encoder,
-						&crtc->mode,
-						&crtc->hwmode);
-			mdfld_dsi_dpi_set_power(encoder, true);
-		}
+		encoder = &dev_priv->encoder0->base;
+		crtc = encoder->crtc;
+		if (crtc)
+			mdfld_dsi_dpi_mode_set(
+					encoder,
+					&crtc->mode,
+					&crtc->hwmode);
+		mdfld_dsi_dpi_set_power(encoder, true);
 	}
 	if (dev_priv->encoder2 && (dev_priv->panel_desc & DISPLAY_C)) {
 		encoder = &dev_priv->encoder2->base;
@@ -2107,11 +2076,6 @@ int ospm_power_suspend(struct pci_dev *pdev, pm_message_t state)
 	int display_access_count;
 	struct drm_psb_private *dev_priv = gpDrmDevice->dev_private;
 	unsigned long flags;
-
-#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
-	if (dev_priv->hdmi_audio_busy)
-		return -EBUSY;
-#endif
 
 #if (defined(CONFIG_SND_INTELMID_HDMI_AUDIO) || \
 		defined(CONFIG_SND_INTELMID_HDMI_AUDIO_MODULE))
@@ -2472,7 +2436,13 @@ bool ospm_power_using_hw_begin(int hw_island, UHBUsage usage)
 	unsigned long flags;
 
 #ifdef CONFIG_GFX_RTPM
-	if(gbSuspendInProgress) {
+	/* if system suspend is in progress, do NOT allow system resume. if
+	 * runtime_status is RPM_SUSPENDING, and here call pm_runtime_get will
+	 * call rpm_resume indirectly, it causes defferred_resume be set to
+	 * ture, so at the end of rpm_suspend(), rpm_resume() will be called.
+	 * it will block system from entering s0ix */
+	if (gbSuspendInProgress ||
+			pdev->dev.power.runtime_status == RPM_SUSPENDING) {
 #ifdef OSPM_GFX_DPK
 		printk(KERN_ALERT "%s Suspend In Progress, call pm_runtime_get_noresume\n", __func__);
 #endif
@@ -2880,11 +2850,6 @@ int psb_runtime_resume(struct device *dev)
 int psb_runtime_idle(struct device *dev)
 {
 	struct drm_psb_private *dev_priv = gpDrmDevice->dev_private;
-
-#if (defined(CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE))
-	if (dev_priv->hdmi_audio_busy)
-		return -EBUSY;
-#endif
 
 #if (defined(CONFIG_SND_INTELMID_HDMI_AUDIO) || \
 		defined(CONFIG_SND_INTELMID_HDMI_AUDIO_MODULE))

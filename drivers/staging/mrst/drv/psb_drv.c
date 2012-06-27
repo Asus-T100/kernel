@@ -1704,10 +1704,6 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	if (dev_priv->buf == NULL)
 		return -ENOMEM;
 
-#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
-	dev_priv->hdmi_audio_busy = 0;
-#endif
-
 #ifdef CONFIG_MDFD_VIDEO_DECODE
 	ret = psb_ttm_global_init(dev_priv);
 	if (unlikely(ret != 0))

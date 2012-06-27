@@ -1112,10 +1112,6 @@ struct drm_psb_private {
 	/* gamma and csc setting lock*/
 	struct mutex gamma_csc_lock;
 	int brightness_adjusted;
-
-#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
-	int hdmi_audio_busy;
-#endif
 };
 
 struct psb_fpriv {
