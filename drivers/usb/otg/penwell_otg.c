@@ -629,8 +629,9 @@ static int penwell_otg_set_vbus(struct otg_transceiver *otg, bool enabled)
 				POWER_SUPPLY_CHARGER_EVENT_CONNECT;
 			psc_cap =  pnw->psc_cap;
 			spin_unlock_irqrestore(&pnw->charger_lock, flags);
-		} else if (pnw->psc_cap.chrg_type ==
-					POWER_SUPPLY_TYPE_USB_ACA) {
+		} else if (pnw->iotg.hsm.id == ID_ACA_A
+				|| pnw->iotg.hsm.id == ID_ACA_B
+				|| pnw->iotg.hsm.id == ID_ACA_C) {
 			spin_lock_irqsave(&pnw->charger_lock, flags);
 			pnw->psc_cap.mA = CHRG_CURR_ACA;
 			pnw->psc_cap.chrg_type =
@@ -2938,11 +2939,9 @@ static void penwell_otg_work(struct work_struct *work)
 		} else if (hsm->id == ID_ACA_C) {
 			/* Make sure current limit updated */
 			penwell_otg_update_chrg_cap(CHRG_ACA, CHRG_CURR_ACA);
-#if 0
 		} else if (hsm->id == ID_B) {
 			if (iotg->otg.set_power)
-				iotg->otg.set_power(&iotg->otg, 100);
-#endif
+				iotg->otg.set_power(&iotg->otg, 500);
 		}
 		break;
 
@@ -3174,7 +3173,7 @@ static void penwell_otg_work(struct work_struct *work)
 			if (hsm->a_srp_det)
 				hsm->a_srp_det = 0;
 
-			hsm->b_conn = 1;
+			hsm->b_conn = 0;
 			hsm->hnp_poll_enable = 0;
 
 			if (iotg->start_host)
@@ -3518,6 +3517,9 @@ static void penwell_otg_work(struct work_struct *work)
 
 			/* Turn off VBUS */
 			otg_set_vbus(&iotg->otg, false);
+		} else if (hsm->id == ID_A) {
+			/* Turn on VBUS */
+			otg_set_vbus(&iotg->otg, true);
 		}
 		break;
 
