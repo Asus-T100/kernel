@@ -31,6 +31,13 @@
 #include <asm/intel-mid.h>
 #include "cs42l73.h"
 
+/* spec mentions this delay=15msec.
+ * however, minimal delay required=200msec
+ */
+static int pdn_delay = 200;
+module_param(pdn_delay, int, 0);
+MODULE_PARM_DESC(pdn_delay, "Codec PDN settling time (msecs)");
+
 struct sp_config {
 	u8 spc, mmcc, spfs;
 	u32 srate;
@@ -989,6 +996,7 @@ static int cs42l73_pcm_hw_params(struct snd_pcm_substream *substream,
 static int cs42l73_set_bias_level(struct snd_soc_codec *codec,
 				  enum snd_soc_bias_level level)
 {
+	pr_debug("%s:level=%d\n", __func__, level);
 
 	switch (level) {
 	case SND_SOC_BIAS_ON:
@@ -1015,6 +1023,7 @@ static int cs42l73_set_bias_level(struct snd_soc_codec *codec,
 
 	case SND_SOC_BIAS_OFF:
 		snd_soc_update_bits(codec, CS42L73_PWRCTL1, PDN, 1);
+		msleep(pdn_delay);
 		snd_soc_update_bits(codec, CS42L73_DMMCC, MCLKDIS, 1);
 		break;
 	}
@@ -1122,19 +1131,6 @@ static struct snd_soc_dai_driver cs42l73_dai[] = {
 		.symmetric_rates = 1,
 	 }
 };
-
-static int cs42l73_suspend(struct snd_soc_codec *codec, pm_message_t state)
-{
-	cs42l73_set_bias_level(codec, SND_SOC_BIAS_OFF);
-
-	return 0;
-}
-
-static int cs42l73_resume(struct snd_soc_codec *codec)
-{
-	cs42l73_set_bias_level(codec, SND_SOC_BIAS_STANDBY);
-	return 0;
-}
 
 static int cs42l73_set_mic_bias(struct snd_soc_codec *codec, int state)
 {
@@ -1308,8 +1304,6 @@ static int cs42l73_remove(struct snd_soc_codec *codec)
 static struct snd_soc_codec_driver soc_codec_dev_cs42l73 = {
 	.probe = cs42l73_probe,
 	.remove = cs42l73_remove,
-	.suspend = cs42l73_suspend,
-	.resume = cs42l73_resume,
 	.set_bias_level = cs42l73_set_bias_level,
 	.reg_cache_size = ARRAY_SIZE(cs42l73_reg),
 	.reg_cache_default = cs42l73_reg,

@@ -342,20 +342,59 @@ static const struct snd_soc_dapm_route clv_audio_map[] = {
 static int clv_set_bias_level(struct snd_soc_card *card,
 				enum snd_soc_bias_level level)
 {
-	struct snd_soc_codec *codec = card->rtd->codec;
+	switch (level) {
+	case SND_SOC_BIAS_ON:
+	case SND_SOC_BIAS_PREPARE:
+	case SND_SOC_BIAS_STANDBY:
+		if (card->dapm.bias_level == SND_SOC_BIAS_OFF)
+			intel_scu_ipc_set_osc_clk0(true, CLK0_MSIC);
+		card->dapm.bias_level = level;
+		break;
+	case SND_SOC_BIAS_OFF:
+		/* OSC clk will be turned OFF after processing
+		 * codec->dapm.bias_level = SND_SOC_BIAS_OFF.
+		 */
+		break;
+	default:
+		pr_err("%s: Invalid bias level=%d\n", __func__, level);
+		return -EINVAL;
+		break;
+	}
+	pr_debug("card(%s)->bias_level %u\n", card->name,
+			card->dapm.bias_level);
+
+	return 0;
+}
+
+static int clv_set_bias_level_post(struct snd_soc_card *card,
+		enum snd_soc_bias_level level)
+{
+	struct snd_soc_codec *codec;
+	/* we have only one codec in this machine */
+	codec = list_entry(card->codec_dev_list.next, struct snd_soc_codec,
+			card_list);
 
 	switch (level) {
 	case SND_SOC_BIAS_ON:
 	case SND_SOC_BIAS_PREPARE:
 	case SND_SOC_BIAS_STANDBY:
-		if (codec->dapm.bias_level == SND_SOC_BIAS_OFF)
-			intel_scu_ipc_set_osc_clk0(true, CLK0_MSIC);
+		/* Processing already done during set_bias_level()
+		 * callback. No action required here.
+		 */
 		break;
 	case SND_SOC_BIAS_OFF:
+		if (codec->dapm.bias_level != SND_SOC_BIAS_OFF)
+			break;
 		intel_scu_ipc_set_osc_clk0(false, CLK0_MSIC);
+		card->dapm.bias_level = level;
+		break;
+	default:
+		pr_err("%s: Invalid bias level=%d\n", __func__, level);
+		return -EINVAL;
+		break;
 	}
-	codec->dapm.bias_level = level;
-	pr_debug("codec->bias_level %u\n", card->dapm.bias_level);
+	pr_debug("%s:card(%s)->bias_level %u\n", __func__, card->name,
+			card->dapm.bias_level);
 
 	return 0;
 }
@@ -382,14 +421,24 @@ static int clv_init(struct snd_soc_pcm_runtime *runtime)
 	/* Set up Jack specific audio path audio_map */
 	snd_soc_dapm_add_routes(dapm, clv_audio_map,
 					ARRAY_SIZE(clv_audio_map));
+
+	/* Keep the voice call paths active during
+	suspend. Mark the end points ignore_suspend */
+	snd_soc_dapm_ignore_suspend(dapm, "EAROUT");
+	snd_soc_dapm_ignore_suspend(dapm, "HPOUTA");
+	snd_soc_dapm_ignore_suspend(dapm, "HPOUTB");
+	snd_soc_dapm_ignore_suspend(dapm, "VSPOUT");
+
 	/*In VV board SPKOUT is connected and SPKLINEOUT on PR board*/
 	/*In VV board MIC1 is connected  and MIC2 is PR boards */
 	if (ctp_board_id() == CTP_BID_VV) {
 		snd_soc_dapm_disable_pin(dapm, "MIC1");
 		snd_soc_dapm_disable_pin(dapm, "SPKOUT");
+		snd_soc_dapm_ignore_suspend(dapm, "SPKLINEOUT");
 	} else {
 		snd_soc_dapm_disable_pin(dapm, "MIC2");
 		snd_soc_dapm_disable_pin(dapm, "SPKLINEOUT");
+		snd_soc_dapm_ignore_suspend(dapm, "SPKOUT");
 	}
 	mutex_lock(&codec->mutex);
 	snd_soc_dapm_sync(dapm);
@@ -504,6 +553,7 @@ static struct snd_soc_card snd_soc_card_clv = {
 	.dai_link = clv_msic_dailink,
 	.num_links = ARRAY_SIZE(clv_msic_dailink),
 	.set_bias_level = clv_set_bias_level,
+	.set_bias_level_post = clv_set_bias_level_post,
 	.controls = clv_controls,
 	.num_controls = ARRAY_SIZE(clv_controls),
 };
