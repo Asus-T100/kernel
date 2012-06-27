@@ -131,6 +131,9 @@ struct gsm_dlci {
 #define DLCI_HANGUP		4	/*HANGUP received  */
 	struct kref ref;		/* freed from port or mux close */
 
+	spinlock_t gsmtty_lock;		/* Process multiple open of gsmtty */
+	int gsmtty_count;
+
 	/* Link layer */
 	spinlock_t lock;	/* Protects the internal state */
 	struct timer_list t1;	/* Retransmit timer for SABM and UA */
@@ -1649,6 +1652,7 @@ static struct gsm_dlci *gsm_dlci_alloc(struct gsm_mux *gsm, int addr)
 		return NULL;
 	mutex_init(&dlci->rx_mutex);
 	spin_lock_init(&dlci->lock);
+	spin_lock_init(&dlci->gsmtty_lock);
 	kref_init(&dlci->ref);
 	dlci->fifo = &dlci->_fifo;
 	if (kfifo_alloc(&dlci->_fifo, 4096, GFP_KERNEL) < 0) {
@@ -2999,6 +3003,38 @@ static const struct tty_port_operations gsm_port_ops = {
 	.dtr_rts = gsm_dtr_rts,
 };
 
+static void gsmtty_attach_dlci(struct tty_struct *tty, struct gsm_dlci *dlci)
+{
+	spin_lock(&dlci->gsmtty_lock);
+	dlci->gsmtty_count++;
+	tty->driver_data = dlci;
+	spin_unlock(&dlci->gsmtty_lock);
+	kref_get(&dlci->ref);
+	kref_get(&dlci->gsm->dlci[0]->ref);
+	kref_get(&dlci->gsm->ref);
+}
+
+static void gsmtty_detach_dlci(struct tty_struct *tty)
+{
+	struct gsm_dlci *dlci = tty->driver_data;
+	struct gsm_mux *gsm;
+	int has_open;
+
+	if (!dlci) {
+		WARN(1, "dlci shouldn't be NULL\n");
+		return;
+	}
+	spin_lock(&dlci->gsmtty_lock);
+	has_open = --dlci->gsmtty_count;
+	if (!has_open)
+		tty->driver_data = NULL;
+	spin_unlock(&dlci->gsmtty_lock);
+
+	gsm = dlci->gsm;
+	kref_put(&dlci->ref, gsm_dlci_free);
+	kref_put(&gsm->dlci[0]->ref, gsm_dlci_free);
+	gsm_release_mux(gsm);
+}
 
 static int gsmtty_open(struct tty_struct *tty, struct file *filp)
 {
@@ -3032,11 +3068,8 @@ static int gsmtty_open(struct tty_struct *tty, struct file *filp)
 		return -EACCES;
 	port = &dlci->port;
 	port->count++;
-	tty->driver_data = dlci;
-	kref_get(&dlci->ref);
-	kref_get(&dlci->gsm->dlci[0]->ref);
-	kref_get(&dlci->gsm->ref);
 	tty_port_tty_set(port, tty);
+	gsmtty_attach_dlci(tty, dlci);
 
 	/* Perform a change to the CLOCAL state and call into the driver
 	   layer to make it visible. All done with the termios mutex */
@@ -3079,8 +3112,7 @@ static void gsmtty_close(struct tty_struct *tty, struct file *filp)
 	gsm = dlci->gsm;
 	gsm_destroy_network(dlci);
 	if (tty_port_close_start(&dlci->port, tty, filp) == 0) {
-		kref_put(&dlci->ref, gsm_dlci_free);
-		gsm_release_mux(gsm);
+		gsmtty_detach_dlci(tty);
 		return;
 	}
 	gsm_dlci_begin_close(dlci);
@@ -3093,14 +3125,14 @@ static void gsmtty_close(struct tty_struct *tty, struct file *filp)
 
 	tty_port_close_end(&dlci->port, tty);
 	tty_port_tty_set(&dlci->port, NULL);
-	kref_put(&dlci->ref, gsm_dlci_free);
-	kref_put(&gsm->dlci[0]->ref, gsm_dlci_free);
-	gsm_release_mux(gsm);
+	gsmtty_detach_dlci(tty);
 }
 
 static void gsmtty_hangup(struct tty_struct *tty)
 {
 	struct gsm_dlci *dlci = tty->driver_data;
+	if (!dlci)
+		return;
 	tty_port_hangup(&dlci->port);
 	gsm_dlci_begin_close(dlci);
 }
