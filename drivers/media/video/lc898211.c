@@ -598,6 +598,58 @@ static int lc898211_get_af_tuning(struct v4l2_subdev *sd)
 
 	return 0;
 }
+
+/*
+ * Read EEPROM data from the EEPROM chip and store
+ * it into a kmalloced buffer. On error return NULL.
+ * The caller must kfree the buffer when no more needed.
+ * @size: set to the size of the returned EEPROM data.
+ */
+static void *lc898211_eeprom_read(struct i2c_client *client, int *size)
+{
+	static const int LC898211_EEPROM_SIZE = 1024;
+	struct i2c_msg msg[2];
+	int addr;
+	char *buffer;
+
+	buffer = kmalloc(LC898211_EEPROM_SIZE, GFP_KERNEL);
+	if (!buffer)
+		return NULL;
+
+	memset(msg, 0, sizeof(msg));
+	for (addr = 0;
+	     addr < LC898211_EEPROM_SIZE; addr += LC898211_MAX_I2C_MSG_LEN) {
+		unsigned int i2c_addr = LC898211_EEP_ID_BASE >> 1;
+		unsigned char addr_buf;
+		int r;
+
+		i2c_addr += addr >> 8;
+		addr_buf = addr & 0xFF;
+
+		msg[0].addr = i2c_addr;
+		msg[0].flags = 0;
+		msg[0].len = 1;
+		msg[0].buf = &addr_buf;
+
+		msg[1].addr = i2c_addr;
+		msg[1].flags = I2C_M_RD;
+		msg[1].len = min(LC898211_MAX_I2C_MSG_LEN,
+				 LC898211_EEPROM_SIZE - addr);
+		msg[1].buf = &buffer[addr];
+
+		r = i2c_transfer(client->adapter, msg, ARRAY_SIZE(msg));
+		if (r != ARRAY_SIZE(msg)) {
+			kfree(buffer);
+			dev_err(&client->dev, "read failed at 0x%03x\n", addr);
+			return NULL;
+		}
+	}
+
+	if (size)
+		*size = LC898211_EEPROM_SIZE;
+	return buffer;
+}
+
 static int lc898211_init_registers(struct v4l2_subdev *sd)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
@@ -777,29 +829,12 @@ static int lc898211_power_down(struct v4l2_subdev *sd)
 static int lc898211_g_priv_int_data(struct v4l2_subdev *sd,
 				    struct v4l2_private_int_data *priv)
 {
-	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	struct lc898211_dev *dev = to_lc898211_dev(sd);
-	u32 read_size = priv->size;
-	const int af_tun_size = sizeof(dev->af_tun);
-	int ret;
 
-	/* Return correct size */
-	priv->size = af_tun_size;
-
-	/* No need to copy data if size is 0 */
-	if (!read_size)
-		return 0;
-
-	/* Correct read_size value only if bigger than maximum */
-	if (read_size > af_tun_size)
-		read_size = af_tun_size;
-
-	ret = copy_to_user(priv->data, &dev->af_tun, read_size);
-	if (ret) {
-		v4l2_err(client, "%s: failed to copy EEPROM data to user\n",
-			 __func__);
+	if (copy_to_user(priv->data, dev->eeprom_buf,
+			 min(priv->size, dev->eeprom_size)))
 		return -EFAULT;
-	}
+	priv->size = dev->eeprom_size;
 
 	return 0;
 }
@@ -832,6 +867,7 @@ static int lc898211_remove(struct i2c_client *client)
 	struct v4l2_subdev *sd = i2c_get_clientdata(client);
 	struct lc898211_dev *dev = to_lc898211_dev(sd);
 
+	kfree(dev->eeprom_buf);
 	v4l2_device_unregister_subdev(sd);
 	kfree(dev);
 
@@ -861,6 +897,15 @@ static int lc898211_probe(struct i2c_client *client,
 			  __func__);
 
 	lc898211_power_up(&dev->sd);
+
+	dev->eeprom_buf = lc898211_eeprom_read(client, &dev->eeprom_size);
+	if (!dev->eeprom_buf) {
+		ret = -ENODEV;
+		v4l2_err(client, "%s: failed to read EEPROM\n",
+			 __func__);
+		goto err;
+	}
+
 	ret = lc898211_get_eeprom_data(&dev->sd);
 	if (ret) {
 		v4l2_err(client, "%s: failed to read EEPROM data\n",

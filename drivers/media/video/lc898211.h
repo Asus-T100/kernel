@@ -141,6 +141,8 @@ struct lc898211_dev {
 	struct camera_sensor_platform_data *platform_data;
 	struct lc898211_eeprom_data eeprom[LC898211_EEP_NUM_DATA];
 	struct lc898211_eeprom_af_tun af_tun;
+	unsigned char *eeprom_buf;
+	__u32 eeprom_size;
 };
 
 struct lc898211_control {
