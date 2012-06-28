@@ -4205,12 +4205,6 @@ static int penwell_otg_aca_enable(void)
 		if (retval)
 			goto done;
 	} else {
-
-		retval = penwell_otg_ulpi_write(iotg, ULPI_VS6SET,
-				ACA_RID_A_CFG);
-		if (retval)
-			goto done;
-
 		retval = penwell_otg_ulpi_write(iotg, ULPI_VS4SET,
 				ACADET);
 		if (retval)
