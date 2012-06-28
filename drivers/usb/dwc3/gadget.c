@@ -805,6 +805,10 @@ static int __dwc3_gadget_kick_transfer(struct dwc3_ep *dep, u16 cmd_param,
 		cmd = DWC3_DEPCMD_UPDATETRANSFER;
 
 	cmd |= DWC3_DEPCMD_PARAM(cmd_param);
+
+	if (start_new && dep->stream_capable && req->request.stream_id)
+		cmd |= DWC3_DEPCMD_PARAM(req->request.stream_id);
+
 	ret = dwc3_send_gadget_ep_cmd(dwc, dep->number, cmd, &params);
 	if (ret < 0) {
 		dev_dbg(dwc->dev, "failed to send STARTTRANSFER command\n");
@@ -1797,6 +1801,7 @@ static void dwc3_endpoint_interrupt(struct dwc3 *dwc,
 			break;
 		case DEPEVT_STREAMEVT_NOTFOUND:
 			/* FALLTHROUGH */
+			dep->flags |= DWC3_EP_PENDING_REQUEST;
 		default:
 			dev_dbg(dwc->dev, "Couldn't find suitable stream\n");
 		}

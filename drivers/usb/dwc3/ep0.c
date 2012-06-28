@@ -53,6 +53,8 @@
 #include "gadget.h"
 #include "io.h"
 
+#define DWC3_EP0_DELAYED_STATUS 999
+
 static int request_config;
 
 static void dwc3_ep0_inspect_setup(struct dwc3 *dwc,
@@ -607,6 +609,9 @@ static void dwc3_ep0_inspect_setup(struct dwc3 *dwc,
 		ret = dwc3_ep0_std_request(dwc, ctrl);
 	else
 		ret = dwc3_ep0_delegate_req(dwc, ctrl);
+
+	if (ret >= DWC3_EP0_DELAYED_STATUS)
+		request_config = 1;
 
 	if (ret >= 0)
 		return;
