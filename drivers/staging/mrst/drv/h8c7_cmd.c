@@ -56,7 +56,8 @@ static u32 h8c7_ic_bias_current[] = {0x826005bf, 0x00000000};
 static u32 h8c7_set_power[] = {0x44007cb1, 0x0d0d00a5, 0x3f3f1a12, 0x00007242};
 static u32 h8c7_set_power_dstb[] = {0x000101b1, 0x00000000, 0x00000000,
 	0x00000000};
-static u32 h8c7_set_disp_reg[] = {0x05c80fb2, 0x0084080f, 0x040f05ff, 0x00000020};
+static u32 h8c7_set_disp_reg[] = {0x05c80fb2, 0x0084040f,
+		0x040f05ff, 0x00000020};
 static u32 h8c7_set_command_cyc[] = {0x050000b4, 0x1605a000, 0x1603309d,
 	0x00030300, 0x0707061b, 0x00000000};
 static u32 h8c7_set_mipi_ctrl[] = {0x008312ba};
@@ -185,7 +186,11 @@ mdfld_h8c7_dsi_controller_init(struct mdfld_dsi_config *dsi_config,
 	hw_ctx->eot_disable = 0x0;
 	hw_ctx->lp_byteclk = 0x4;
 	hw_ctx->clk_lane_switch_time_cnt = 0xa0014;
-	hw_ctx->dbi_bw_ctrl = 0x820;
+	/*
+	 * HW team suggested 1390
+	 * for bandwidth setting
+	 */
+	hw_ctx->dbi_bw_ctrl = 1390;
 
 	hw_ctx->dphy_param = 0x150c3408;
 	/*set up func_prg*/
@@ -236,10 +241,14 @@ struct drm_display_mode *h8c7_cmd_get_config_mode(struct drm_device *dev)
 		mode->hsync_end = 824;
 		mode->vtotal = 1300;
 		mode->vdisplay = 1280;
-		mode->vsync_start = 1296;
-		mode->vsync_end = 1298;
+		/*
+		 * confirmed new vsync_start and vsync_end
+		 * from CMI
+		 */
+		mode->vsync_start = 1294;
+		mode->vsync_end = 1296;
 
-		mode->vrefresh = 40;
+		mode->vrefresh = 60;
 		mode->clock =  mode->vrefresh * mode->vtotal *
 				mode->htotal / 1000;
 	}
