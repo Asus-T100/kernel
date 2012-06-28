@@ -903,7 +903,7 @@ int ctp_get_charger_health(void)
 		return POWER_SUPPLY_HEALTH_UNKNOWN;
 	}
 
-	if (ret & SYSTEM_STAT_DPM)
+	if (!(ret & SYSTEM_STAT_PWR_GOOD))
 		return POWER_SUPPLY_HEALTH_DEAD;
 
 	return POWER_SUPPLY_HEALTH_GOOD;
@@ -1050,6 +1050,12 @@ static int program_timers(struct bq24192_chip *chip, bool wdt_enable,
 	else
 		ret &= ~CHRG_TIMER_EXP_CNTL_EN_TIMER;
 
+	/*
+	 * Disable the HW termination. If enabled, HW is terminating
+	 * the charging even with the charging current ~250-115mA. Terminating
+	 * the charging prematurely could potentially reduce the battery life.
+	 */
+	ret &= ~CHRG_TIMER_EXP_CNTL_EN_TERM;
 
 	/* Program the TIMER CTRL register */
 	ret = bq24192_write_reg(chip->client,
