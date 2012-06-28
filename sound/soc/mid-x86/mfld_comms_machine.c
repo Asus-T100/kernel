@@ -46,9 +46,9 @@ static const struct soc_enum ssp_master_mode_enum =
 static int get_ssp_master_mode(struct snd_kcontrol *kcontrol,
 	struct snd_ctl_elem_value *ucontrol)
 {
-	struct snd_soc_codec *codec =  snd_kcontrol_chip(kcontrol);
+	struct snd_soc_card *card =  snd_kcontrol_chip(kcontrol);
 	struct comms_mc_private *comms_ctx =
-				snd_soc_card_get_drvdata(codec->card);
+				snd_soc_card_get_drvdata(card);
 	ucontrol->value.integer.value[0] = comms_ctx->ssp_master_mode;
 	return 0;
 }
@@ -56,9 +56,9 @@ static int get_ssp_master_mode(struct snd_kcontrol *kcontrol,
 static int set_ssp_master_mode(struct snd_kcontrol *kcontrol,
 	struct snd_ctl_elem_value *ucontrol)
 {
-	struct snd_soc_codec *codec =  snd_kcontrol_chip(kcontrol);
+	struct snd_soc_card *card =  snd_kcontrol_chip(kcontrol);
 	struct comms_mc_private *comms_ctx =
-				snd_soc_card_get_drvdata(codec->card);
+				snd_soc_card_get_drvdata(card);
 
 	if (ucontrol->value.integer.value[0] == comms_ctx->ssp_master_mode)
 		return 0;
@@ -78,14 +78,14 @@ static const struct snd_kcontrol_new ssp_snd_controls[] = {
 
 static int mfld_comms_init(struct snd_soc_pcm_runtime *runtime)
 {
-	struct snd_soc_codec *codec = runtime->codec;
+	struct snd_soc_card *card = runtime->card;
 	struct comms_mc_private *comms_ctx =
-					snd_soc_card_get_drvdata(codec->card);
+					snd_soc_card_get_drvdata(card);
 	int ret_val;
 
 	comms_ctx->ssp_master_mode = false;
 
-	ret_val = snd_soc_add_controls(codec, ssp_snd_controls,
+	ret_val = snd_soc_add_card_controls(card, ssp_snd_controls,
 				ARRAY_SIZE(ssp_snd_controls));
 	if (ret_val)
 		pr_err("MFLD Comms Machine: Init failed %d",
