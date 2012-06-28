@@ -240,7 +240,6 @@ int get_final_state(unsigned long *eax)
 int get_target_platform_state(unsigned long *eax)
 {
 	int ret = 0;
-	int possible;
 
 	if (unlikely(!pmu_initialized))
 		goto ret;
@@ -255,9 +254,6 @@ int get_target_platform_state(unsigned long *eax)
 
 	if (nc_device_state())
 		goto ret;
-
-	possible = mid_pmu_cxt->s0ix_possible;
-	ret = possible;
 
 	ret = get_final_state(eax);
 
@@ -720,16 +716,6 @@ static int get_pci_to_pmu_index(struct pci_dev *pdev)
 
 	/* read the logical sub system id & cap if present */
 	pci_read_config_byte(pdev, pm + 4, &ss);
-
-	/*FIXME:: pci_table is wrong and put bad ss for HSU0 and HSU1 */
-	if (pdev->device == HSU0_PCI_ID || pdev->device == HSU1_PCI_ID)
-		ss = (LOG_SS_MASK | PMU_UART2_LSS_41);
-
-	/*FIXME:: HSI does not have an LSS listed in pci_table */
-	if (pdev->device == HSI_PCI_ID) {
-		dev_warn(&pdev->dev, "HSI pci pm config = 0x%x\n", ss);
-		ss = (LOG_SS_MASK | PMU_HSI_LSS_03);
-	}
 
 	type = ss & LOG_SS_MASK;
 	ss = ss & LOG_ID_MASK;
