@@ -138,7 +138,7 @@ static inline bool mmc_op_multi(u32 opcode)
 #define R1_CURRENT_STATE(x)	((x & 0x00001E00) >> 9)	/* sx, b (4 bits) */
 #define R1_READY_FOR_DATA	(1 << 8)	/* sx, a */
 #define R1_SWITCH_ERROR		(1 << 7)	/* sx, c */
-#define R1_URGENT_BKOPS		(1 << 6)	/* sx, a */
+#define R1_EXCEPTION_EVENT	(1 << 6)	/* sx, a */
 #define R1_APP_CMD		(1 << 5)	/* sr, c */
 
 #define R1_STATE_IDLE	0
@@ -271,6 +271,8 @@ struct _mmc_csd {
  * EXT_CSD fields
  */
 
+#define EXT_CSD_EXCEPTION_STATUS	54	/* RO */
+#define EXT_CSD_EXCEPTION_EVENTS_CTRL	56	/* R/W */
 #define EXT_CSD_DATA_SECTOR_SIZE	61	/* RO */
 #define EXT_CSD_USE_NATIVE_SECTOR	62	/* R/W */
 #define EXT_CSD_NATIVE_SECTOR_SIZE	63	/* RO */
@@ -306,6 +308,7 @@ struct _mmc_csd {
 #define EXT_CSD_SEC_ERASE_MULT		230	/* RO */
 #define EXT_CSD_SEC_FEATURE_SUPPORT	231	/* RO */
 #define EXT_CSD_TRIM_MULT		232	/* RO */
+#define EXT_CSD_BKOPS_STATUS		246	/* RO */
 #define EXT_CSD_BKOPS_SUPPORT		502	/* RO */
 #define EXT_CSD_HPI_FEATURES		503	/* RO */
 
@@ -356,5 +359,17 @@ struct _mmc_csd {
 #define MMC_SWITCH_MODE_SET_BITS	0x01	/* Set bits which are 1 in value */
 #define MMC_SWITCH_MODE_CLEAR_BITS	0x02	/* Clear bits which are 1 in value */
 #define MMC_SWITCH_MODE_WRITE_BYTE	0x03	/* Set target to value */
+
+/*
+ * BKOPS status level
+ */
+#define EXT_CSD_BKOPS_LEVEL_2		0x2
+/*
+ * EXCEPTION_EVENT_STATUS field (eMMC4.5)
+ */
+#define EXT_CSD_URGENT_BKOPS		BIT(0)
+#define EXT_CSD_DYNCAP_NEEDED		BIT(1)
+#define EXT_CSD_SYSPOOL_EXHAUSTED	BIT(2)
+#define EXT_CSD_PACKED_FAILURE		BIT(3)
 
 #endif /* LINUX_MMC_MMC_H */

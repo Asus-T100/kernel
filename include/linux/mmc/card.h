@@ -73,6 +73,8 @@ struct mmc_ext_csd {
 	bool			bkops_en;		/* BKOPS enable bit */
 	unsigned int		rpmb_size;		/* Units: half sector */
 	bool	large_sect_size_en;	/* eMMC4.5 Large Sector Size enabled */
+	u8			raw_exception_status;	/* 53 */
+	u8			exception_events_ctrl;	/* 56 */
 	u8			raw_partition_support;	/* 160 */
 	u8			raw_erased_mem_count;	/* 181 */
 	u8			raw_ext_csd_structure;	/* 194 */
@@ -88,6 +90,7 @@ struct mmc_ext_csd {
 	u8			raw_trim_mult;		/* 232 */
 	u8			raw_sectors[4];		/* 212 - 4 bytes */
 	u8			part_set_complete;	/* 155 */
+	u8			raw_bkops_status;	/* 246 */
 	unsigned int            feature_support;
 #define MMC_DISCARD_FEATURE	BIT(0)                  /* CMD38 feature */
 };
@@ -193,9 +196,9 @@ struct mmc_card {
 #define MMC_STATE_HIGHSPEED_DDR (1<<4)		/* card is in high speed mode */
 #define MMC_STATE_ULTRAHIGHSPEED (1<<5)		/* card is in ultra high speed mode */
 #define MMC_CARD_SDXC		(1<<6)		/* card is SDXC */
-#define MMC_STATE_NEED_BKOPS	(1<<7)		/* card need to do BKOPS */
+#define MMC_CARD_REMOVED	(1<<7)		/* card has been removed */
 #define MMC_STATE_DOING_BKOPS	(1<<8)		/* card is doing BKOPS */
-#define MMC_CARD_REMOVED	(1<<9)		/* card has been removed */
+#define MMC_STATE_CHECK_BKOPS	(1<<9)		/* card need to check BKOPS */
 
 	unsigned int		quirks; 	/* card quirks */
 #define MMC_QUIRK_LENIENT_FN0	(1<<0)		/* allow SDIO FN0 writes outside of the VS CCCR range */
@@ -344,8 +347,8 @@ static inline void __maybe_unused remove_quirk(struct mmc_card *card, int data)
 #define mmc_card_ext_capacity(c) ((c)->state & MMC_CARD_SDXC)
 #define mmc_card_removed(c)	((c) && ((c)->state & MMC_CARD_REMOVED))
 
-#define mmc_card_need_bkops(c)	((c)->state & MMC_STATE_NEED_BKOPS)
 #define mmc_card_doing_bkops(c)	((c)->state & MMC_STATE_DOING_BKOPS)
+#define mmc_card_check_bkops(c) ((c)->state & MMC_STATE_CHECK_BKOPS)
 
 #define mmc_card_set_present(c)	((c)->state |= MMC_STATE_PRESENT)
 #define mmc_card_set_readonly(c) ((c)->state |= MMC_STATE_READONLY)
@@ -356,11 +359,11 @@ static inline void __maybe_unused remove_quirk(struct mmc_card *card, int data)
 #define mmc_card_set_ext_capacity(c) ((c)->state |= MMC_CARD_SDXC)
 #define mmc_card_set_removed(c) ((c)->state |= MMC_CARD_REMOVED)
 
-#define mmc_card_set_need_bkops(c)	((c)->state |= MMC_STATE_NEED_BKOPS)
 #define mmc_card_set_doing_bkops(c)	((c)->state |= MMC_STATE_DOING_BKOPS)
+#define mmc_card_set_check_bkops(c) ((c)->state |= MMC_STATE_CHECK_BKOPS)
 
-#define mmc_card_clr_need_bkops(c)	((c)->state &= ~MMC_STATE_NEED_BKOPS)
 #define mmc_card_clr_doing_bkops(c)	((c)->state &= ~MMC_STATE_DOING_BKOPS)
+#define mmc_card_clr_check_bkops(c) ((c)->state &= ~MMC_STATE_CHECK_BKOPS)
 
 /*
  * Quirk add/remove for MMC products.

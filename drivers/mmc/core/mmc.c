@@ -416,6 +416,13 @@ static int mmc_read_ext_csd(struct mmc_card *card, u8 *ext_csd)
 	}
 
 	if (card->ext_csd.rev >= 5) {
+		/* check whether the eMMC card supports BKOPS */
+		if (ext_csd[EXT_CSD_BKOPS_SUPPORT] & 0x1) {
+			card->ext_csd.bkops = 1;
+			card->ext_csd.bkops_en =
+				ext_csd[EXT_CSD_BKOPS_EN];
+		}
+
 		/* check whether the eMMC card supports HPI */
 		if (ext_csd[EXT_CSD_HPI_FEATURES] & 0x1) {
 			card->ext_csd.hpi = 1;
@@ -431,13 +438,6 @@ static int mmc_read_ext_csd(struct mmc_card *card, u8 *ext_csd)
 				ext_csd[EXT_CSD_OUT_OF_INTERRUPT_TIME] * 10;
 		}
 
-		/* check whether the eMMC card supports BKOPS */
-		if (ext_csd[EXT_CSD_BKOPS_SUPPORT] & 0x1) {
-			card->ext_csd.bkops = 1;
-			card->ext_csd.bkops_en =
-				ext_csd[EXT_CSD_BKOPS_EN];
-		}
-
 		card->ext_csd.rel_set = ext_csd[EXT_CSD_WR_REL_SET];
 		card->ext_csd.rel_param = ext_csd[EXT_CSD_WR_REL_PARAM];
 		card->ext_csd.rst_n_function = ext_csd[EXT_CSD_RST_N_FUNCTION];
@@ -446,6 +446,9 @@ static int mmc_read_ext_csd(struct mmc_card *card, u8 *ext_csd)
 	card->ext_csd.raw_erased_mem_count = ext_csd[EXT_CSD_ERASED_MEM_CONT];
 
 	if (card->ext_csd.rev >= 6) { /* eMMC v4.5 or later */
+		card->ext_csd.exception_events_ctrl =
+			ext_csd[EXT_CSD_EXCEPTION_EVENTS_CTRL];
+
 		card->ext_csd.feature_support |= MMC_DISCARD_FEATURE;
 
 		if ((ext_csd[EXT_CSD_DATA_SECTOR_SIZE] & 0x1) &&
