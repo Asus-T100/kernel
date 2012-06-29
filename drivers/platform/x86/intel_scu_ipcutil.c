@@ -386,7 +386,6 @@ int intel_scu_ipc_read_osnib(u8 *data, int len, int offset)
 		ptr++;
 	}
 
-unmap_oshob_addr:
 	iounmap(oshob_addr);
 exit:
 	return ret;
