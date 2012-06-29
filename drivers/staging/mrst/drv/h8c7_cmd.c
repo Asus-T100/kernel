@@ -834,6 +834,7 @@ static int mdfld_h8c7_dsi_dbi_set_power(struct drm_encoder *encoder, bool on)
 
 		dsi_config->dsi_hw_context.panel_on = 0;
 		dbi_output->dbi_panel_on = 0;
+		dev_priv->dbi_panel_on = 0;
 	}
 out_err:
 	mutex_unlock(&dsi_config->context_lock);
