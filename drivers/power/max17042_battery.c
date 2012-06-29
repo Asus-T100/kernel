@@ -1256,7 +1256,7 @@ static void max17042_restore_conf_data(struct max17042_chip *chip)
 						(val & STATUS_POR_BIT)) {
 				dev_info(&chip->client->dev,
 					"config data needs to be loaded\n");
-#ifdef CONFIG_BOARD_REDRIDGE
+#ifdef CONFIG_BOARD_REDRIDGE || CONFIG_BOARD_CTP
 				reset_max17042(chip);
 #endif
 				retval = init_max17042_chip(chip);
