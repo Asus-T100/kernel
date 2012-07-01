@@ -696,8 +696,11 @@ int psb_mtx_send(struct drm_psb_private *dev_priv, const void *msg)
 	/* message would wrap, need to send a pad message */
 	if (widx + msg_num > buf_size) {
 		/* Shouldn't happen for a PAD message itself */
-		BUG_ON(MEMIO_READ_FIELD(msg, FWRK_GENMSG_ID)
-		       == FWRK_MSGID_PADDING);
+		if (MEMIO_READ_FIELD(msg, FWRK_GENMSG_ID)
+		       == FWRK_MSGID_PADDING)
+			DRM_INFO("MSVDX WARNING: should not wrap pad msg, "
+				"buf_size is %d, widx is %d, msg_num is %d.\n",
+				buf_size, widx, msg_num);
 
 		/* if the read pointer is at zero then we must wait for it to
 		 * change otherwise the write pointer will equal the read
