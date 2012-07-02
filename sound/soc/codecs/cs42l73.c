@@ -19,6 +19,7 @@
 #include <linux/delay.h>
 #include <linux/pm.h>
 #include <linux/i2c.h>
+#include <linux/regmap.h>
 #include <linux/slab.h>
 #include <sound/core.h>
 #include <sound/pcm.h>
@@ -44,37 +45,218 @@ struct sp_config {
 };
 struct  cs42l73_private {
 	struct sp_config config[3];
+	struct regmap *regmap;
 	u32 sysclk;
 	u8 mclksel;
 	u32 mclk;
 };
 
-static const u8 cs42l73_reg[] = {
-/*0*/ 0x00, 0x42, 0xA7, 0x30,
-/*4*/ 0x00, 0x00, 0xF1, 0xDF,
-/*8*/ 0x3F, 0x57, 0x53, 0x00,
-/*C*/ 0x00, 0x15, 0x00, 0x15,
-/*A*/ 0x00, 0x15, 0x00, 0x06,
-/*E*/ 0x00, 0x00, 0x00, 0x00,
-/*18*/ 0x00, 0x00, 0x00, 0x00,
-/*1C*/ 0x00, 0x00, 0x00, 0x00,
-/*20*/ 0x00, 0x00, 0x00, 0x00,
-/*24*/ 0x00, 0x00, 0x00, 0x7F,
-/*28*/ 0x00, 0x00, 0x3F, 0x00,
-/*2C*/ 0x00, 0x3F, 0x00, 0x00,
-/*30*/ 0x3F, 0x00, 0x00, 0x00,
-/*34*/ 0x18, 0x3F, 0x3F, 0x3F,
-/*38*/ 0x3F, 0x3F, 0x3F, 0x3F,
-/*3C*/ 0x3F, 0x3F, 0x3F, 0x3F,
-/*40*/ 0x3F, 0x3F, 0x3F, 0x3F,
-/*44*/ 0x3F, 0x3F, 0x3F, 0x3F,
-/*48*/ 0x3F, 0x3F, 0x3F, 0x3F,
-/*4C*/ 0x3F, 0x3F, 0x3F, 0x3F,
-/*50*/ 0x3F, 0x3F, 0x3F, 0x3F,
-/*54*/ 0x3F, 0xAA, 0x3F, 0x3F,
-/*58*/ 0x3F, 0x3F, 0x3F, 0x3F,
-/*5C*/ 0x3F, 0x3F, 0x00, 0x00,
+static const struct reg_default cs42l73_reg_defaults[] = {
+	{ 6, 0xF1 },	/* r06	- Power Ctl 1 */
+	{ 7, 0xDF },	/* r07	- Power Ctl 2 */
+	{ 8, 0x3F },	/* r08	- Power Ctl 3 */
+	{ 9, 0x50 },	/* r09	- Charge Pump Freq */
+	{ 10, 0x53 },	/* r0A	- Output Load MicBias Short Detect */
+	{ 11, 0x00 },	/* r0B	- DMIC Master Clock Ctl */
+	{ 12, 0x00 },	/* r0C	- Aux PCM Ctl */
+	{ 13, 0x15 },	/* r0D	- Aux PCM Master Clock Ctl */
+	{ 14, 0x00 },	/* r0E	- Audio PCM Ctl */
+	{ 15, 0x15 },	/* r0F	- Audio PCM Master Clock Ctl */
+	{ 16, 0x00 },	/* r10	- Voice PCM Ctl */
+	{ 17, 0x15 },	/* r11	- Voice PCM Master Clock Ctl */
+	{ 18, 0x00 },	/* r12	- Voice/Aux Sample Rate */
+	{ 19, 0x06 },	/* r13	- Misc I/O Path Ctl */
+	{ 20, 0x00 },	/* r14	- ADC Input Path Ctl */
+	{ 21, 0x00 },	/* r15	- MICA Preamp, PGA Volume */
+	{ 22, 0x00 },	/* r16	- MICB Preamp, PGA Volume */
+	{ 23, 0x00 },	/* r17	- Input Path A Digital Volume */
+	{ 24, 0x00 },	/* r18	- Input Path B Digital Volume */
+	{ 25, 0x00 },	/* r19	- Playback Digital Ctl */
+	{ 26, 0x00 },	/* r1A	- HP/LO Left Digital Volume */
+	{ 27, 0x00 },	/* r1B	- HP/LO Right Digital Volume */
+	{ 28, 0x00 },	/* r1C	- Speakerphone Digital Volume */
+	{ 29, 0x00 },	/* r1D	- Ear/SPKLO Digital Volume */
+	{ 30, 0x00 },	/* r1E	- HP Left Analog Volume */
+	{ 31, 0x00 },	/* r1F	- HP Right Analog Volume */
+	{ 32, 0x00 },	/* r20	- LO Left Analog Volume */
+	{ 33, 0x00 },	/* r21	- LO Right Analog Volume */
+	{ 34, 0x00 },	/* r22	- Stereo Input Path Advisory Volume */
+	{ 35, 0x00 },	/* r23	- Aux PCM Input Advisory Volume */
+	{ 36, 0x00 },	/* r24	- Audio PCM Input Advisory Volume */
+	{ 37, 0x00 },	/* r25	- Voice PCM Input Advisory Volume */
+	{ 38, 0x00 },	/* r26	- Limiter Attack Rate HP/LO */
+	{ 39, 0x7F },	/* r27	- Limter Ctl, Release Rate HP/LO */
+	{ 40, 0x00 },	/* r28	- Limter Threshold HP/LO */
+	{ 41, 0x00 },	/* r29	- Limiter Attack Rate Speakerphone */
+	{ 42, 0x3F },	/* r2A	- Limter Ctl, Release Rate Speakerphone */
+	{ 43, 0x00 },	/* r2B	- Limter Threshold Speakerphone */
+	{ 44, 0x00 },	/* r2C	- Limiter Attack Rate Ear/SPKLO */
+	{ 45, 0x3F },	/* r2D	- Limter Ctl, Release Rate Ear/SPKLO */
+	{ 46, 0x00 },	/* r2E	- Limter Threshold Ear/SPKLO */
+	{ 47, 0x00 },	/* r2F	- ALC Enable, Attack Rate Left/Right */
+	{ 48, 0x3F },	/* r30	- ALC Release Rate Left/Right */
+	{ 49, 0x00 },	/* r31	- ALC Threshold Left/Right */
+	{ 50, 0x00 },	/* r32	- Noise Gate Ctl Left/Right */
+	{ 51, 0x00 },	/* r33	- ALC/NG Misc Ctl */
+	{ 52, 0x18 },	/* r34	- Mixer Ctl */
+	{ 53, 0x3F },	/* r35	- HP/LO Left Mixer Input Path Volume */
+	{ 54, 0x3F },	/* r36	- HP/LO Right Mixer Input Path Volume */
+	{ 55, 0x3F },	/* r37	- HP/LO Left Mixer Aux PCM Volume */
+	{ 56, 0x3F },	/* r38	- HP/LO Right Mixer Aux PCM Volume */
+	{ 57, 0x3F },	/* r39	- HP/LO Left Mixer Audio PCM Volume */
+	{ 58, 0x3F },	/* r3A	- HP/LO Right Mixer Audio PCM Volume */
+	{ 59, 0x3F },	/* r3B	- HP/LO Left Mixer Voice PCM Mono Volume */
+	{ 60, 0x3F },	/* r3C	- HP/LO Right Mixer Voice PCM Mono Volume */
+	{ 61, 0x3F },	/* r3D	- Aux PCM Left Mixer Input Path Volume */
+	{ 62, 0x3F },	/* r3E	- Aux PCM Right Mixer Input Path Volume */
+	{ 63, 0x3F },	/* r3F	- Aux PCM Left Mixer Volume */
+	{ 64, 0x3F },	/* r40	- Aux PCM Left Mixer Volume */
+	{ 65, 0x3F },	/* r41	- Aux PCM Left Mixer Audio PCM L Volume */
+	{ 66, 0x3F },	/* r42	- Aux PCM Right Mixer Audio PCM R Volume */
+	{ 67, 0x3F },	/* r43	- Aux PCM Left Mixer Voice PCM Volume */
+	{ 68, 0x3F },	/* r44	- Aux PCM Right Mixer Voice PCM Volume */
+	{ 69, 0x3F },	/* r45	- Audio PCM Left Input Path Volume */
+	{ 70, 0x3F },	/* r46	- Audio PCM Right Input Path Volume */
+	{ 71, 0x3F },	/* r47	- Audio PCM Left Mixer Aux PCM L Volume */
+	{ 72, 0x3F },	/* r48	- Audio PCM Right Mixer Aux PCM R Volume */
+	{ 73, 0x3F },	/* r49	- Audio PCM Left Mixer Volume */
+	{ 74, 0x3F },	/* r4A	- Audio PCM Right Mixer Volume */
+	{ 75, 0x3F },	/* r4B	- Audio PCM Left Mixer Voice PCM Volume */
+	{ 76, 0x3F },	/* r4C	- Audio PCM Right Mixer Voice PCM Volume */
+	{ 77, 0x3F },	/* r4D	- Voice PCM Left Input Path Volume */
+	{ 78, 0x3F },	/* r4E	- Voice PCM Right Input Path Volume */
+	{ 79, 0x3F },	/* r4F	- Voice PCM Left Mixer Aux PCM L Volume */
+	{ 80, 0x3F },	/* r50	- Voice PCM Right Mixer Aux PCM R Volume */
+	{ 81, 0x3F },	/* r51	- Voice PCM Left Mixer Audio PCM L Volume */
+	{ 82, 0x3F },	/* r52	- Voice PCM Right Mixer Audio PCM R Volume */
+	{ 83, 0x3F },	/* r53	- Voice PCM Left Mixer Voice PCM Volume */
+	{ 84, 0x3F },	/* r54	- Voice PCM Right Mixer Voice PCM Volume */
+	{ 85, 0xAA },	/* r55	- Mono Mixer Ctl */
+	{ 86, 0x3F },	/* r56	- SPK Mono Mixer Input Path Volume */
+	{ 87, 0x3F },	/* r57	- SPK Mono Mixer Aux PCM Mono/L/R Volume */
+	{ 88, 0x3F },	/* r58	- SPK Mono Mixer Audio PCM Mono/L/R Volume */
+	{ 89, 0x3F },	/* r59	- SPK Mono Mixer Voice PCM Mono Volume */
+	{ 90, 0x3F },	/* r5A	- SPKLO Mono Mixer Input Path Mono Volume */
+	{ 91, 0x3F },	/* r5B	- SPKLO Mono Mixer Aux Mono/L/R Volume */
+	{ 92, 0x3F },	/* r5C	- SPKLO Mono Mixer Audio Mono/L/R Volume */
+	{ 93, 0x3F },	/* r5D	- SPKLO Mono Mixer Voice Mono Volume */
+	{ 94, 0x00 },	/* r5E	- Interrupt Mask 1 */
+	{ 95, 0x00 },	/* r5F	- Interrupt Mask 2 */
 };
+
+static bool cs42l73_volatile_register(struct device *dev, unsigned int reg)
+{
+	switch (reg) {
+	case CS42L73_IS1:
+	case CS42L73_IS2:
+		return true;
+	default:
+		return false;
+	}
+}
+
+static bool cs42l73_readable_register(struct device *dev, unsigned int reg)
+{
+	switch (reg) {
+	case CS42L73_DEVID_AB:
+	case CS42L73_DEVID_CD:
+	case CS42L73_DEVID_E:
+	case CS42L73_REVID:
+	case CS42L73_PWRCTL1:
+	case CS42L73_PWRCTL2:
+	case CS42L73_PWRCTL3:
+	case CS42L73_CPFCHC:
+	case CS42L73_OLMBMSDC:
+	case CS42L73_DMMCC:
+	case CS42L73_XSPC:
+	case CS42L73_XSPMMCC:
+	case CS42L73_ASPC:
+	case CS42L73_ASPMMCC:
+	case CS42L73_VSPC:
+	case CS42L73_VSPMMCC:
+	case CS42L73_VXSPFS:
+	case CS42L73_MIOPC:
+	case CS42L73_ADCIPC:
+	case CS42L73_MICAPREPGAAVOL:
+	case CS42L73_MICBPREPGABVOL:
+	case CS42L73_IPADVOL:
+	case CS42L73_IPBDVOL:
+	case CS42L73_PBDC:
+	case CS42L73_HLADVOL:
+	case CS42L73_HLBDVOL:
+	case CS42L73_SPKDVOL:
+	case CS42L73_ESLDVOL:
+	case CS42L73_HPAAVOL:
+	case CS42L73_HPBAVOL:
+	case CS42L73_LOAAVOL:
+	case CS42L73_LOBAVOL:
+	case CS42L73_STRINV:
+	case CS42L73_XSPINV:
+	case CS42L73_ASPINV:
+	case CS42L73_VSPINV:
+	case CS42L73_LIMARATEHL:
+	case CS42L73_LIMRRATEHL:
+	case CS42L73_LMAXHL:
+	case CS42L73_LIMARATESPK:
+	case CS42L73_LIMRRATESPK:
+	case CS42L73_LMAXSPK:
+	case CS42L73_LIMARATEESL:
+	case CS42L73_LIMRRATEESL:
+	case CS42L73_LMAXESL:
+	case CS42L73_ALCARATE:
+	case CS42L73_ALCRRATE:
+	case CS42L73_ALCMINMAX:
+	case CS42L73_NGCAB:
+	case CS42L73_ALCNGMC:
+	case CS42L73_MIXERCTL:
+	case CS42L73_HLAIPAA:
+	case CS42L73_HLBIPBA:
+	case CS42L73_HLAXSPAA:
+	case CS42L73_HLBXSPBA:
+	case CS42L73_HLAASPAA:
+	case CS42L73_HLBASPBA:
+	case CS42L73_HLAVSPMA:
+	case CS42L73_HLBVSPMA:
+	case CS42L73_XSPAIPAA:
+	case CS42L73_XSPBIPBA:
+	case CS42L73_XSPAXSPAA:
+	case CS42L73_XSPBXSPBA:
+	case CS42L73_XSPAASPAA:
+	case CS42L73_XSPAASPBA:
+	case CS42L73_XSPAVSPMA:
+	case CS42L73_XSPBVSPMA:
+	case CS42L73_ASPAIPAA:
+	case CS42L73_ASPBIPBA:
+	case CS42L73_ASPAXSPAA:
+	case CS42L73_ASPBXSPBA:
+	case CS42L73_ASPAASPAA:
+	case CS42L73_ASPBASPBA:
+	case CS42L73_ASPAVSPMA:
+	case CS42L73_ASPBVSPMA:
+	case CS42L73_VSPAIPAA:
+	case CS42L73_VSPBIPBA:
+	case CS42L73_VSPAXSPAA:
+	case CS42L73_VSPBXSPBA:
+	case CS42L73_VSPAASPAA:
+	case CS42L73_VSPBASPBA:
+	case CS42L73_VSPAVSPMA:
+	case CS42L73_VSPBVSPMA:
+	case CS42L73_MMIXCTL:
+	case CS42L73_SPKMIPMA:
+	case CS42L73_SPKMXSPA:
+	case CS42L73_SPKMASPA:
+	case CS42L73_SPKMVSPMA:
+	case CS42L73_ESLMIPMA:
+	case CS42L73_ESLMXSPA:
+	case CS42L73_ESLMASPA:
+	case CS42L73_ESLMVSPMA:
+	case CS42L73_IM1:
+	case CS42L73_IM2:
+		return true;
+	default:
+		return false;
+	}
+}
 
 static const unsigned int hpaloa_tlv[] = {
 	TLV_DB_RANGE_HEAD(2),
@@ -226,7 +408,6 @@ static const struct snd_kcontrol_new spklo_amp_ctl =
 static const struct snd_kcontrol_new ear_amp_ctl =
 	SOC_DAPM_SINGLE("Switch", CS42L73_PWRCTL3, 3, 1, 1);
 
-
 static const char * const loopback_text[] = {
 	"Enable", "Disable"};
 
@@ -261,37 +442,37 @@ static const struct snd_kcontrol_new hl_loopback_mux =
 
 static const struct snd_kcontrol_new cs42l73_snd_controls[] = {
 	SOC_DOUBLE_R_SX_TLV("Headphone Analog Playback Volume",
-			CS42L73_HPAAVOL, CS42L73_HPBAVOL, 7,
-			0xffffffC1, 0x0C, hpaloa_tlv),
+			CS42L73_HPAAVOL, CS42L73_HPBAVOL, 0,
+			0x41, 0x4B, hpaloa_tlv),
 
 	SOC_DOUBLE_R_SX_TLV("LineOut Analog Playback Volume", CS42L73_LOAAVOL,
-			CS42L73_LOBAVOL, 7, 0xffffffC1, 0x0C, hpaloa_tlv),
+			CS42L73_LOBAVOL, 0, 0x41, 0x4B, hpaloa_tlv),
 
 	SOC_DOUBLE_R_SX_TLV("Input PGA Analog Volume", CS42L73_MICAPREPGAAVOL,
-			CS42L73_MICBPREPGABVOL, 5, 0xffffff35,
-			0x34, micpga_tlv),
+			CS42L73_MICBPREPGABVOL, 5, 0x34,
+			0x24, micpga_tlv),
 
 	SOC_DOUBLE_R("MIC Preamp Switch", CS42L73_MICAPREPGAAVOL,
 			CS42L73_MICBPREPGABVOL, 6, 1, 1),
 
 	SOC_DOUBLE_R_SX_TLV("Input Path Digital Volume", CS42L73_IPADVOL,
-			CS42L73_IPBDVOL, 7, 0xffffffA0, 0xA0, ipd_tlv),
+			CS42L73_IPBDVOL, 0, 0xA0, 0x6C, ipd_tlv),
 
 	SOC_DOUBLE_R_SX_TLV("HL Digital Playback Volume",
-			CS42L73_HLADVOL, CS42L73_HLBDVOL, 7, 0xffffffE5,
-			0xE4, hl_tlv),
+			CS42L73_HLADVOL, CS42L73_HLBDVOL,
+			0, 0x34, 0xE4, hl_tlv),
 
 	SOC_SINGLE_TLV("ADC A Boost Volume",
 			CS42L73_ADCIPC, 2, 0x01, 1, adc_boost_tlv),
 
 	SOC_SINGLE_TLV("ADC B Boost Volume",
-			CS42L73_ADCIPC, 6, 0x01, 1, adc_boost_tlv),
+		       CS42L73_ADCIPC, 6, 0x01, 1, adc_boost_tlv),
 
-	SOC_SINGLE_TLV("Speakerphone Digital Playback Volume",
-			CS42L73_SPKDVOL, 0, 0xE4, 1, hl_tlv),
+	SOC_SINGLE_SX_TLV("Speakerphone Digital Playback Volume",
+			    CS42L73_SPKDVOL, 0, 0x34, 0xE4, hl_tlv),
 
-	SOC_SINGLE_TLV("Ear Speaker Digital Playback Volume",
-			CS42L73_ESLDVOL, 0, 0xE4, 1, hl_tlv),
+	SOC_SINGLE_SX_TLV("Ear Speaker Digital Playback Volume",
+			    CS42L73_ESLDVOL, 0, 0x34, 0xE4, hl_tlv),
 
 	SOC_DOUBLE_R("Headphone Analog Playback Switch", CS42L73_HPAAVOL,
 			CS42L73_HPBAVOL, 7, 1, 1),
@@ -427,22 +608,22 @@ static const struct snd_kcontrol_new cs42l73_snd_controls[] = {
 			attn_tlv),
 
 	SOC_SINGLE_TLV("SPK-IP Mono Volume",
-			CS42L73_SPKMIPMA, 0, 0x3E, 1, attn_tlv),
+			CS42L73_SPKMIPMA, 0, 0x3F, 1, attn_tlv),
 	SOC_SINGLE_TLV("SPK-XSP Mono Volume",
-			CS42L73_SPKMXSPA, 0, 0x3E, 1, attn_tlv),
+			CS42L73_SPKMXSPA, 0, 0x3F, 1, attn_tlv),
 	SOC_SINGLE_TLV("SPK-ASP Mono Volume",
-			CS42L73_SPKMASPA, 0, 0x3E, 1, attn_tlv),
+			CS42L73_SPKMASPA, 0, 0x3F, 1, attn_tlv),
 	SOC_SINGLE_TLV("SPK-VSP Mono Volume",
-			CS42L73_SPKMVSPMA, 0, 0x3E, 1, attn_tlv),
+			CS42L73_SPKMVSPMA, 0, 0x3F, 1, attn_tlv),
 
 	SOC_SINGLE_TLV("ESL-IP Mono Volume",
-			CS42L73_ESLMIPMA, 0, 0x3E, 1, attn_tlv),
+			CS42L73_ESLMIPMA, 0, 0x3F, 1, attn_tlv),
 	SOC_SINGLE_TLV("ESL-XSP Mono Volume",
-			CS42L73_ESLMXSPA, 0, 0x3E, 1, attn_tlv),
+			CS42L73_ESLMXSPA, 0, 0x3F, 1, attn_tlv),
 	SOC_SINGLE_TLV("ESL-ASP Mono Volume",
-			CS42L73_ESLMASPA, 0, 0x3E, 1, attn_tlv),
+			CS42L73_ESLMASPA, 0, 0x3F, 1, attn_tlv),
 	SOC_SINGLE_TLV("ESL-VSP Mono Volume",
-			CS42L73_ESLMVSPMA, 0, 0x3E, 1, attn_tlv),
+			CS42L73_ESLMVSPMA, 0, 0x3F, 1, attn_tlv),
 
 	SOC_ENUM("IP Digital Swap/Mono Select", ip_swap_enum),
 
@@ -460,11 +641,11 @@ static const struct snd_soc_dapm_widget cs42l73_dapm_widgets[] = {
 	SND_SOC_DAPM_INPUT("MIC2"),
 	SND_SOC_DAPM_SUPPLY("MIC2 Bias", CS42L73_PWRCTL2, 7, 1, NULL, 0),
 
-	SND_SOC_DAPM_AIF_OUT("XSPOUT", "XSP Capture",  0,
+	SND_SOC_DAPM_AIF_OUT("XSPOUT", NULL,  0,
 			CS42L73_PWRCTL2, 1, 1),
-	SND_SOC_DAPM_AIF_OUT("ASPOUT", "ASP Capture",  0,
+	SND_SOC_DAPM_AIF_OUT("ASPOUT", NULL,  0,
 			CS42L73_PWRCTL2, 3, 1),
-	SND_SOC_DAPM_AIF_OUT("VSPOUT", "VSP Capture",  0,
+	SND_SOC_DAPM_AIF_OUT("VSPOUT", NULL,  0,
 			CS42L73_PWRCTL2, 4, 1),
 
 	SND_SOC_DAPM_PGA("PGA Left", SND_SOC_NOPM, 0, 0, NULL, 0),
@@ -498,11 +679,11 @@ static const struct snd_soc_dapm_widget cs42l73_dapm_widgets[] = {
 	SND_SOC_DAPM_MIXER("VSPL Output Mixer", SND_SOC_NOPM, 0, 0, NULL, 0),
 	SND_SOC_DAPM_MIXER("VSPR Output Mixer", SND_SOC_NOPM, 0, 0, NULL, 0),
 
-	SND_SOC_DAPM_AIF_IN("XSPIN", "XSP Playback", 0,
+	SND_SOC_DAPM_AIF_IN("XSPIN", NULL, 0,
 				CS42L73_PWRCTL2, 0, 1),
-	SND_SOC_DAPM_AIF_IN("ASPIN", "ASP Playback", 0,
+	SND_SOC_DAPM_AIF_IN("ASPIN", NULL, 0,
 				CS42L73_PWRCTL2, 2, 1),
-	SND_SOC_DAPM_AIF_IN("VSPIN", "VSP Playback", 0,
+	SND_SOC_DAPM_AIF_IN("VSPIN", NULL, 0,
 				CS42L73_PWRCTL2, 4, 1),
 
 	SND_SOC_DAPM_MIXER("HL Left Mixer", SND_SOC_NOPM, 0, 0, NULL, 0),
@@ -527,15 +708,15 @@ static const struct snd_soc_dapm_widget cs42l73_dapm_widgets[] = {
 	SND_SOC_DAPM_PGA("SPK DAC", SND_SOC_NOPM, 0, 0, NULL, 0),
 	SND_SOC_DAPM_PGA("ESL DAC", SND_SOC_NOPM, 0, 0, NULL, 0),
 
-	SND_SOC_DAPM_SWITCH("HP Amp", SND_SOC_NOPM, 0, 0,
-				&hp_amp_ctl),
-	SND_SOC_DAPM_SWITCH("LO Amp", SND_SOC_NOPM, 0, 0,
-				&lo_amp_ctl),
-	SND_SOC_DAPM_SWITCH("SPK Amp", SND_SOC_NOPM, 0, 0,
+	SND_SOC_DAPM_SWITCH("HP Amp", CS42L73_PWRCTL3, 0, 1,
+			    &hp_amp_ctl),
+	SND_SOC_DAPM_SWITCH("LO Amp", CS42L73_PWRCTL3, 1, 1,
+			    &lo_amp_ctl),
+	SND_SOC_DAPM_SWITCH("SPK Amp", CS42L73_PWRCTL3, 2, 1,
 			    &spk_amp_ctl),
-	SND_SOC_DAPM_SWITCH("EAR Amp", SND_SOC_NOPM, 0, 0,
+	SND_SOC_DAPM_SWITCH("EAR Amp", CS42L73_PWRCTL3, 3, 1,
 			    &ear_amp_ctl),
-	SND_SOC_DAPM_SWITCH("SPKLO Amp", SND_SOC_NOPM, 0, 0,
+	SND_SOC_DAPM_SWITCH("SPKLO Amp", CS42L73_PWRCTL3, 4, 1,
 			    &spklo_amp_ctl),
 
 	SND_SOC_DAPM_OUTPUT("HPOUTA"),
@@ -620,13 +801,16 @@ static const struct snd_soc_dapm_route cs42l73_audio_map[] = {
 	{"HL Right Mixer", NULL, "HL Loopback"},
 	{"HL Loopback", "Enable", "Input Loopback Mixer"},
 
-
 	{"HL Left Mixer", NULL, "ASPIN"},
 	{"HL Right Mixer", NULL, "ASPIN"},
 	{"HL Left Mixer", NULL, "XSPIN"},
 	{"HL Right Mixer", NULL, "XSPIN"},
 	{"HL Left Mixer", NULL, "VSPIN"},
 	{"HL Right Mixer", NULL, "VSPIN"},
+
+	{"ASPIN", NULL, "ASP Playback"},
+	{"XSPIN", NULL, "XSP Playback"},
+	{"VSPIN", NULL, "VSP Playback"},
 
 	/* Capture Paths */
 	{"MIC1", NULL, "MIC1 Bias"},
@@ -683,6 +867,10 @@ static const struct snd_soc_dapm_route cs42l73_audio_map[] = {
 
 	{"ASPOUT", "ASP-ASP Volume", "ASPL Output Mixer"},
 	{"ASPOUT", "ASP-ASP Volume", "ASPR Output Mixer"},
+
+	{"ASP Capture", NULL, "ASPOUT"},
+	{"XSP Capture", NULL, "XSPOUT"},
+	{"VSP Capture", NULL, "VSPOUT"},
 };
 
 struct cs42l73_mclk_div {
@@ -805,7 +993,7 @@ static int cs42l73_set_mclk(struct snd_soc_dai *dai, unsigned int freq)
 	dmmcc = (priv->mclksel << 4) |
 		(cs42l73_mclkx_coeffs[mclkx_coeff].mclkdiv << 1);
 
-	snd_soc_update_bits(codec, CS42L73_DMMCC, dmmcc, dmmcc);
+	snd_soc_write(codec, CS42L73_DMMCC, dmmcc);
 
 	priv->sysclk = mclkx_coeff;
 	priv->mclk = mclk;
@@ -954,8 +1142,7 @@ static int cs42l73_pcm_hw_params(struct snd_pcm_substream *substream,
 				 struct snd_pcm_hw_params *params,
 				 struct snd_soc_dai *dai)
 {
-	struct snd_soc_pcm_runtime *rtd = substream->private_data;
-	struct snd_soc_codec *codec = rtd->codec;
+	struct snd_soc_codec *codec = dai->codec;
 	struct cs42l73_private *priv = snd_soc_codec_get_drvdata(codec);
 	int id = dai->id;
 	int mclk_coeff;
@@ -978,7 +1165,7 @@ static int cs42l73_pcm_hw_params(struct snd_pcm_substream *substream,
 		priv->config[id].mmcc &= 0xC0;
 		priv->config[id].mmcc |= cs42l73_mclk_coeffs[mclk_coeff].mmcc;
 		priv->config[id].spc &= 0xFC;
-		priv->config[id].spc &= MCK_SCLK_64FS;
+		priv->config[id].spc |= MCK_SCLK_MCLK;
 	} else {
 		/* CS42L73 Slave */
 		priv->config[id].spc &= 0xFC;
@@ -987,10 +1174,8 @@ static int cs42l73_pcm_hw_params(struct snd_pcm_substream *substream,
 	/* Update ASRCs */
 	priv->config[id].srate = srate;
 
-	snd_soc_update_bits(codec, CS42L73_SPC(id),
-				priv->config[id].spc, priv->config[id].spc);
-	snd_soc_update_bits(codec, CS42L73_MMCC(id),
-				priv->config[id].mmcc, priv->config[id].mmcc);
+	snd_soc_write(codec, CS42L73_SPC(id), priv->config[id].spc);
+	snd_soc_write(codec, CS42L73_MMCC(id), priv->config[id].mmcc);
 
 	cs42l73_update_asrc(codec, id, srate);
 
@@ -1000,29 +1185,22 @@ static int cs42l73_pcm_hw_params(struct snd_pcm_substream *substream,
 static int cs42l73_set_bias_level(struct snd_soc_codec *codec,
 				  enum snd_soc_bias_level level)
 {
-	pr_debug("%s:level=%d\n", __func__, level);
+	struct cs42l73_private *cs42l73 = snd_soc_codec_get_drvdata(codec);
 
 	switch (level) {
 	case SND_SOC_BIAS_ON:
-		snd_soc_update_bits(codec, CS42L73_DMMCC, MCLKDIS, 0);
-		snd_soc_update_bits(codec, CS42L73_PWRCTL1, PDN, 0);
 		break;
 
 	case SND_SOC_BIAS_PREPARE:
 		break;
 
 	case SND_SOC_BIAS_STANDBY:
-		/*
 		if (codec->dapm.bias_level == SND_SOC_BIAS_OFF) {
-			ret = snd_soc_cache_sync(codec);
-			if (ret < 0) {
-				dev_err(codec->dev,
-					"Failed to sync cache: %d\n", ret);
-				return ret;
-			}
+			regcache_cache_only(cs42l73->regmap, false);
+			regcache_sync(cs42l73->regmap);
+			snd_soc_update_bits(codec, CS42L73_DMMCC, MCLKDIS, 0);
+			snd_soc_update_bits(codec, CS42L73_PWRCTL1, PDN, 0);
 		}
-		*/
-		snd_soc_update_bits(codec, CS42L73_PWRCTL1, PDN, 1);
 		break;
 
 	case SND_SOC_BIAS_OFF:
@@ -1032,6 +1210,8 @@ static int cs42l73_set_bias_level(struct snd_soc_codec *codec,
 		break;
 	}
 	codec->dapm.bias_level = level;
+	pr_debug("codec(%s)->bias_level %u\n", codec->name,
+			codec->dapm.bias_level);
 	return 0;
 }
 
@@ -1225,11 +1405,11 @@ EXPORT_SYMBOL_GPL(cs42l73_hp_detection);
 static int cs42l73_probe(struct snd_soc_codec *codec)
 {
 	int ret;
-	unsigned int devid = 0;
-
 	struct cs42l73_private *cs42l73 = snd_soc_codec_get_drvdata(codec);
 
-	ret = snd_soc_codec_set_cache_io(codec, 8, 8, SND_SOC_I2C);
+	codec->control_data = cs42l73->regmap;
+
+	ret = snd_soc_codec_set_cache_io(codec, 8, 8, SND_SOC_REGMAP);
 	if (ret < 0) {
 		dev_err(codec->dev, "Failed to set cache I/O: %d\n", ret);
 		return ret;
@@ -1237,34 +1417,13 @@ static int cs42l73_probe(struct snd_soc_codec *codec)
 	cs42l73_set_bias_level(codec, SND_SOC_BIAS_OFF);
 	codec->dapm.idle_bias_off = 1;
 
-	/* initialize codec */
-	ret = snd_soc_read(codec, CS42L73_DEVID_AB);
-	devid = (ret & 0xFF) << 12;
 
-	ret = snd_soc_read(codec, CS42L73_DEVID_CD);
-	devid |= (ret & 0xFF) << 4;
+	regcache_cache_only(cs42l73->regmap, true);
 
-	ret = snd_soc_read(codec, CS42L73_DEVID_E);
-	devid |= (ret & 0xF0) >> 4;
-
-	if (devid != CS42L73_DEVID) {
-		dev_err(codec->dev,
-			"CS42L73 Device ID (%X). Expected %X\n",
-			devid, CS42L73_DEVID);
-		return ret;
-	}
-
-	ret = snd_soc_read(codec, CS42L73_REVID);
-	if (ret < 0) {
-		dev_err(codec->dev, "Get Revision ID failed\n");
-		return ret;
-	}
-	dev_info(codec->dev,
-		 "Cirrus Logic CS42L73, Revision: %02X\n", ret & 0xFF);
+	cs42l73_set_bias_level(codec, SND_SOC_BIAS_STANDBY);
 
 	cs42l73->mclksel = CS42L73_CLKID_MCLK1;	/* MCLK1 as master clk */
 	cs42l73->mclk = 0;
-	dev_err(codec->dev, "completed probe, testing read write\n");
 
 	return ret;
 }
@@ -1279,15 +1438,26 @@ static struct snd_soc_codec_driver soc_codec_dev_cs42l73 = {
 	.probe = cs42l73_probe,
 	.remove = cs42l73_remove,
 	.set_bias_level = cs42l73_set_bias_level,
-	.reg_cache_size = ARRAY_SIZE(cs42l73_reg),
-	.reg_cache_default = cs42l73_reg,
-	.reg_word_size = sizeof(u8),
+
 	.dapm_widgets = cs42l73_dapm_widgets,
 	.num_dapm_widgets = ARRAY_SIZE(cs42l73_dapm_widgets),
 	.dapm_routes = cs42l73_audio_map,
 	.num_dapm_routes = ARRAY_SIZE(cs42l73_audio_map),
+
 	.controls = cs42l73_snd_controls,
 	.num_controls = ARRAY_SIZE(cs42l73_snd_controls),
+};
+
+static struct regmap_config cs42l73_regmap = {
+	.reg_bits = 8,
+	.val_bits = 8,
+
+	.max_register = CS42L73_MAX_REGISTER,
+	.reg_defaults = cs42l73_reg_defaults,
+	.num_reg_defaults = ARRAY_SIZE(cs42l73_reg_defaults),
+	.volatile_reg = cs42l73_volatile_register,
+	.readable_reg = cs42l73_readable_register,
+	.cache_type = REGCACHE_RBTREE,
 };
 
 static __devinit int cs42l73_i2c_probe(struct i2c_client *i2c_client,
@@ -1295,6 +1465,8 @@ static __devinit int cs42l73_i2c_probe(struct i2c_client *i2c_client,
 {
 	struct cs42l73_private *cs42l73;
 	int ret;
+	unsigned int devid = 0;
+	unsigned int reg;
 
 	cs42l73 = devm_kzalloc(&i2c_client->dev, sizeof(struct cs42l73_private),
 			       GFP_KERNEL);
@@ -1305,21 +1477,62 @@ static __devinit int cs42l73_i2c_probe(struct i2c_client *i2c_client,
 
 	i2c_set_clientdata(i2c_client, cs42l73);
 
+	cs42l73->regmap = regmap_init_i2c(i2c_client, &cs42l73_regmap);
+	if (IS_ERR(cs42l73->regmap)) {
+		ret = PTR_ERR(cs42l73->regmap);
+		dev_err(&i2c_client->dev, "regmap_init() failed: %d\n", ret);
+		goto err;
+	}
+	/* initialize codec */
+	ret = regmap_read(cs42l73->regmap, CS42L73_DEVID_AB, &reg);
+	devid = (reg & 0xFF) << 12;
+
+	ret = regmap_read(cs42l73->regmap, CS42L73_DEVID_CD, &reg);
+	devid |= (reg & 0xFF) << 4;
+
+	ret = regmap_read(cs42l73->regmap, CS42L73_DEVID_E, &reg);
+	devid |= (reg & 0xF0) >> 4;
+
+
+	if (devid != CS42L73_DEVID) {
+		ret = -ENODEV;
+		dev_err(&i2c_client->dev,
+			"CS42L73 Device ID (%X). Expected %X\n",
+			devid, CS42L73_DEVID);
+		goto err_regmap;
+	}
+
+	ret = regmap_read(cs42l73->regmap, CS42L73_REVID, &reg);
+	if (ret < 0) {
+		dev_err(&i2c_client->dev, "Get Revision ID failed\n");
+		goto err_regmap;
+	}
+
+	dev_info(&i2c_client->dev,
+		 "Cirrus Logic CS42L73, Revision: %02X\n", reg & 0xFF);
+
+	regcache_cache_only(cs42l73->regmap, true);
+
 	ret =  snd_soc_register_codec(&i2c_client->dev,
 			&soc_codec_dev_cs42l73, cs42l73_dai,
 			ARRAY_SIZE(cs42l73_dai));
 	if (ret < 0)
-		kfree(cs42l73);
+		goto err_regmap;
+	return 0;
+
+err_regmap:
+	regmap_exit(cs42l73->regmap);
+
+err:
 	return ret;
 }
 
 static __devexit int cs42l73_i2c_remove(struct i2c_client *client)
 {
-	snd_soc_unregister_codec(&client->dev);
+	struct cs42l73_private *cs42l73 = i2c_get_clientdata(client);
 
-	/* No need for kfree(cs42l73), as it'll be automatically freed
-	 * once driver detach. Refer  devm_kzalloc() for details
-	 */
+	snd_soc_unregister_codec(&client->dev);
+	regmap_exit(cs42l73->regmap);
 
 	return 0;
 }
