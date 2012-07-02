@@ -430,7 +430,6 @@ static int sn95031_set_dac_mode(struct snd_kcontrol *kcontrol,
 		snd_soc_update_bits(codec, SN95031_SSR2, 0x10, 0x10);
 		snd_soc_update_bits(codec, SN95031_DACCONFIG, 0x10, 0);
 	}
-	snd_soc_dapm_sync(&codec->dapm);
 	sn95031_dac_mode = ucontrol->value.integer.value[0];
 	return 0;
 

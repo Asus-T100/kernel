@@ -366,9 +366,12 @@ static int mfld_speaker_init(struct snd_soc_pcm_runtime *runtime)
 {
 	struct snd_soc_dai *cpu_dai = runtime->cpu_dai;
 	struct snd_soc_dapm_context *dapm = &runtime->codec->dapm;
+	struct snd_soc_codec *codec = runtime->codec;
 
 	snd_soc_dapm_disable_pin(dapm, "IHFOUTR");
+	mutex_lock(&codec->mutex);
 	snd_soc_dapm_sync(dapm);
+	mutex_unlock(&codec->mutex);
 	return cpu_dai->driver->ops->set_tdm_slot(cpu_dai, 0, 0, 1, 0);
 }
 #endif
