@@ -21,6 +21,7 @@
 #include <linux/scatterlist.h>
 #include <linux/regulator/consumer.h>
 #include <linux/pm_runtime.h>
+#include <linux/nmi.h>
 
 #include <linux/leds.h>
 
@@ -1328,6 +1329,7 @@ static int sdhci_do_acquire_ownership(struct mmc_host *mmc)
 	struct sdhci_host *host;
 	unsigned long t1, t2;
 	unsigned long flags;
+	int retry_time = 6;
 
 	host = mmc_priv(mmc);
 
@@ -1350,9 +1352,11 @@ static int sdhci_do_acquire_ownership(struct mmc_host *mmc)
 		readl(host->sram_addr + DEKKER_IA_REQ_OFFSET),
 		readl(host->sram_addr + DEKKER_SCU_REQ_OFFSET));
 
+retry:
 	writel(1, host->sram_addr + DEKKER_IA_REQ_OFFSET);
 
-	t1 = jiffies + 10 * HZ;
+	/* t1 set to be 7s, and t2 set to be 5s */
+	t1 = jiffies + 7 * HZ;
 	t2 = 500;
 
 	while (readl(host->sram_addr + DEKKER_SCU_REQ_OFFSET)) {
@@ -1366,18 +1370,34 @@ static int sdhci_do_acquire_ownership(struct mmc_host *mmc)
 					break;
 				spin_unlock_irqrestore(&host->dekker_lock,
 						flags);
-				msleep(10);
+				/* sleep for about 10ms */
+				usleep_range(10000, 11000);
 				spin_lock_irqsave(&host->dekker_lock, flags);
 				t2--;
 			}
 			if (t2)
 				writel(1, host->sram_addr +
 						DEKKER_IA_REQ_OFFSET);
-			else
-				goto timeout;
+			else {
+				/*
+				 * If IA_REQ is 1 here, it means that another
+				 * thread in IA has acquire eMMC mutex
+				 * successfully. In this case, needn't to goto
+				 * timeout
+				 */
+				if (!readl(host->sram_addr +
+							DEKKER_IA_REQ_OFFSET)) {
+					pr_err("%s: goto timeout in t2 loop\n",
+							mmc_hostname(mmc));
+					goto timeout;
+				}
+			}
 		}
-		if (time_after(jiffies, t1))
+		if (time_after(jiffies, t1)) {
+			pr_err("%s: goto timeout in t1 loop\n",
+					mmc_hostname(mmc));
 			goto timeout;
+		}
 
 		cpu_relax();
 	}
@@ -1398,9 +1418,28 @@ timeout:
 		readl(host->sram_addr + DEKKER_IA_REQ_OFFSET),
 		readl(host->sram_addr + DEKKER_SCU_REQ_OFFSET));
 
-	/* Release eMMC mutex anyway */
-	writel(DEKKER_OWNER_SCU, host->sram_addr + DEKKER_EMMC_OWNER_OFFSET);
-	writel(0, host->sram_addr + DEKKER_IA_REQ_OFFSET);
+	/*
+	 * No matter how many IA threads are acquiring eMMC mutex, once a thread
+	 * has retried for 6 times, which means has been waiting for at least
+	 * 30s, we will stop IA.
+	 */
+	if (retry_time) {
+		pr_err("%s: eMMC driver start a retry...%d, dump registers:\n",
+				__func__, retry_time);
+		trigger_all_cpu_backtrace();
+		sdhci_dumpregs(host);
+		retry_time--;
+		goto retry;
+	} else {
+		pr_err("%s: Cannot get eMMC mutex finally, dump registers:\n",
+				__func__);
+		sdhci_dumpregs(host);
+		BUG_ON(1);
+	}
+	/*
+	 * Since we have a BUG_ON() before this, actually we cannot be here
+	 */
+	host->usage_cnt--;
 
 	spin_unlock_irqrestore(&host->dekker_lock, flags);
 
