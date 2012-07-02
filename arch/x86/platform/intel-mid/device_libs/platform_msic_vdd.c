@@ -40,17 +40,7 @@ static struct intel_ipc_dev_res ipc_msic_vdd_res[] __initdata = {
 
 void __init *msic_vdd_platform_data(void *info)
 {
-	struct io_apic_irq_attr irq_attr;
 	static struct intel_msic_vdd_pdata msic_vdd_pdata;
-	/* IAFW support for MSIC VDD is not available,
-	Its Workaround - Should be reverted, Refer BZ 34411 */
-	int ioapic = mp_find_ioapic(BCUIRQ);
-
-	irq_attr.ioapic = ioapic;
-	irq_attr.ioapic_pin = BCUIRQ;
-	irq_attr.trigger = 1;
-	irq_attr.polarity = 0;
-	io_apic_set_pci_routing(NULL, BCUIRQ, &irq_attr);
 
 	msic_vdd_pdata.msi = BCUIRQ;
 

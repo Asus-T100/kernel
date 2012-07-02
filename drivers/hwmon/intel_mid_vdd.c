@@ -114,15 +114,6 @@
 /* check whether bit is sticky or not by checking 3rd bit */
 #define IS_STICKY(data)		(data & 0x04)
 
-/* clear assert by writing 1 to appropiate bit of SBCUCTRL */
-#define CLEAR_ASSERT(bit)	(1 << bit)
-
-/* masking/clearing the bit */
-#define MASK_BIT(bit)		(1 << bit)
-#define CLEAR_BIT(bit)		(~(1 << bit))
-
-#define BCU_STATUS(data)	((data ^ 1) << 3)
-
 #define SET_ACTION_MASK(data, value, bit) (data | (value << bit))
 
 /* This macro is used in hardcoding of gpio */
@@ -236,7 +227,7 @@ mask_ipc_fail:
 	return sprintf(buf, "%x\n", assert_pin);
 }
 
-static ssize_t change_bcu_status(struct device *dev,
+static ssize_t store_bcu_status(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t count)
 {
 	int ret;
@@ -248,17 +239,18 @@ static ssize_t change_bcu_status(struct device *dev,
 		return -EINVAL;
 
 	mutex_lock(&vdd_update_lock);
-	/* bcu_enable = 0 means enable bcu */
+	/*bcu_enable = 1 means enable bcu, to do this it need to set 3rd
+	bit from right side so mask will be 0x08*/
 	ret = intel_scu_ipc_update_register(VWARNA_CFG,
-			BCU_STATUS(bcu_enable), 0x08);
+			(bcu_enable << 3), 0x08);
 	if (ret)
 		goto bcu_ipc_fail;
 	ret = intel_scu_ipc_update_register(VWARNB_CFG,
-			BCU_STATUS(bcu_enable), 0x08);
+			(bcu_enable << 3), 0x08);
 	if (ret)
 		goto bcu_ipc_fail;
 	ret = intel_scu_ipc_update_register(VCRIT_CFG,
-			BCU_STATUS(bcu_enable), 0x08);
+			(bcu_enable << 3), 0x08);
 	if (ret)
 		goto bcu_ipc_fail;
 
@@ -277,8 +269,8 @@ static ssize_t show_bcu_status(struct device *dev,
 	ret = intel_scu_ipc_ioread8(VWARNA_CFG, &data);
 	if (ret)
 		return ret;
-	/* if BCU is enabled set it to 0 else 1 */
-	bcu_enable = ((data >> 3) & 0x01) ^ 1;
+	/* if BCU is enabled then return value will be 1 else 0 */
+	bcu_enable = ((data >> 3) & 0x01);
 	return sprintf(buf, "%d\n", bcu_enable);
 }
 
@@ -382,36 +374,39 @@ static void handle_events(int flag, void *dev_data)
 			/* interrupt up for VCRIT timers are removed as
 			as it is causing hang in system, it will be done in
 			BCU cleanup */
-			/* interrupt cleared */
+			/*Vsys is above VCRIT level*/
 			ret = intel_scu_ipc_ioread8(BCUDISCRIT_BEH,
 				&sticky_data);
 			if (ret)
 				goto handle_ipc_fail;
 			if (IS_STICKY(sticky_data)) {
 				ret = intel_scu_ipc_update_register(SBCUCTRL,
-					CLEAR_ASSERT(1), SBCUCTRL_CLEAR_ASSERT);
+					(1 << 1), SBCUCTRL_CLEAR_ASSERT);
 				if (ret)
 					goto handle_ipc_fail;
 			}
 		}
+		kobject_uevent(&vinfo->pdev->dev.kobj, KOBJ_CHANGE);
 	}
 	if (flag & VWARNB_EVENT) {
 		dev_dbg(&vinfo->pdev->dev, "vdd VWARNB hits\n");
 		if (irq_data & SVWARNB) {
-			/*interrupt up for WARNB*/
+			/*Vsys is below WARNB level*/
 			ret = intel_scu_ipc_update_register(BCUDISB_BEH,
 				BCU_STICKY, BCU_STICKY_BIT);
 			if (ret)
 				goto handle_ipc_fail;
 		} else {
-			/*interrupt cleared*/
+			/*Vsys is above WARNB level*/
+			intel_scu_ipc_ioread8(BCUDISB_BEH, &sticky_data);
+
 			ret = intel_scu_ipc_update_register(BCUDISB_BEH,
 				~BCU_STICKY, BCU_STICKY_BIT);
 			if (ret)
 				goto handle_ipc_fail;
 			if (IS_STICKY(sticky_data)) {
 				ret = intel_scu_ipc_update_register(SBCUCTRL,
-					CLEAR_ASSERT(2), SBCUCTRL_STICKY_WARNB);
+					(1 << 2), SBCUCTRL_STICKY_WARNB);
 				if (ret)
 					goto handle_ipc_fail;
 			}
@@ -420,29 +415,31 @@ static void handle_events(int flag, void *dev_data)
 	if (flag & VWARNA_EVENT) {
 		dev_dbg(&vinfo->pdev->dev, "vdd VWARNA hits\n");
 		if (irq_data & SVWARNA) {
-			/*interrupt up for WARNA*/
+			/*Vsys is below WARNA level*/
 			ret = intel_scu_ipc_update_register(BCUDISA_BEH,
 				BCU_STICKY, BCU_STICKY_BIT);
 			if (ret)
 				goto handle_ipc_fail;
 		} else {
-		/*interrupt cleared*/
+			/*Vsys is above WARNA level*/
+			intel_scu_ipc_ioread8(BCUDISA_BEH, &sticky_data);
+
 			ret = intel_scu_ipc_update_register(BCUDISA_BEH,
 				~BCU_STICKY, BCU_STICKY_BIT);
 			if (ret)
 				goto handle_ipc_fail;
 			if (IS_STICKY(sticky_data)) {
 				ret = intel_scu_ipc_update_register(SBCUCTRL,
-					CLEAR_ASSERT(3), SBCUCTRL_STICKY_WARNA);
+					(1 << 3), SBCUCTRL_STICKY_WARNA);
 				if (ret)
 					goto handle_ipc_fail;
 			}
 		}
 	}
-	kobject_uevent(&vinfo->pdev->dev.kobj, KOBJ_CHANGE);
 	return;
 handle_ipc_fail:
-	kobject_uevent(&vinfo->pdev->dev.kobj, KOBJ_CHANGE);
+	if (flag & VCRIT_EVENT)
+		kobject_uevent(&vinfo->pdev->dev.kobj, KOBJ_CHANGE);
 	dev_warn(&vinfo->pdev->dev, "ipc read/write failed\n");
 	return;
 }
@@ -504,7 +501,7 @@ static SENSOR_DEVICE_ATTR_2(voltage_warn_crit, S_IRUGO | S_IWUSR,
 static SENSOR_DEVICE_ATTR_2(action_mask, S_IRUGO | S_IWUSR, show_action_mask,
 				store_action_mask, 0, 0);
 static SENSOR_DEVICE_ATTR_2(bcu_status, S_IRUGO | S_IWUSR, show_bcu_status,
-				change_bcu_status, 0, 0);
+				store_bcu_status, 0, 0);
 static SENSOR_DEVICE_ATTR_2(irq_status, S_IRUGO, show_irq_status,
 				NULL, 0, 0);
 static SENSOR_DEVICE_ATTR_2(action_status, S_IRUGO, show_action_status,
@@ -526,6 +523,51 @@ static struct attribute_group mid_vdd_gr = {
 	.attrs = mid_vdd_attrs
 };
 
+static int bcu_init_config(struct ipc_device *pdev, struct vdd_info *vinfo)
+{
+	int ret;
+
+	/* unmasking all the interrupts */
+	ret = intel_scu_ipc_iowrite8(MBCUIRQ, UNMASK_MBCUIRQ);
+	if (ret) {
+		dev_dbg(&pdev->dev, "vdd unmasking%d\n", ret);
+		goto vdd_init_error;
+	}
+
+	/* setting debounce and voltage threshold for WARNA */
+	ret = intel_scu_ipc_update_register(VWARNA_CFG,
+		DEBOUNCE | VWARNA_VOLT_THRES, FLAGS_THRES_REGS);
+	if (ret) {
+		dev_dbg(&pdev->dev,
+		"vdd update VWARNA_CFG debounce time failed:%d\n", ret);
+		goto vdd_init_ok;
+	}
+
+	/* setting debounce and voltage threshold for WARNB */
+	ret = intel_scu_ipc_update_register(VWARNB_CFG,
+		DEBOUNCE | VWARNB_VOLT_THRES, FLAGS_THRES_REGS);
+	if (ret) {
+		dev_dbg(&pdev->dev,
+		"vdd updating VWARNB_CFG debounce time failed:%d\n", ret);
+		goto vdd_init_ok;
+	}
+
+	/* setting debounce and voltage threshold for CRIT */
+	ret = intel_scu_ipc_update_register(VCRIT_CFG,
+		DEBOUNCE | VCRIT_VOLT_THRES, FLAGS_THRES_REGS);
+	if (ret) {
+		dev_dbg(&pdev->dev,
+		"vdd updating VCRIT_CFG debounce time failed:%d\n", ret);
+		goto vdd_init_ok;
+	}
+vdd_init_ok:
+	dev_dbg(&pdev->dev, "vdd : returning SUCCESS\n");
+	return 0;
+vdd_init_error:
+	free_irq(vinfo->irq, vinfo);
+	return ret;
+}
+
 static int mid_vdd_probe(struct ipc_device *pdev)
 {
 	int i, ret;
@@ -539,14 +581,9 @@ static int mid_vdd_probe(struct ipc_device *pdev)
 	vinfo->pdev = pdev;
 	vinfo->irq = ipc_get_irq(pdev, 0);
 
-	/* Revert me:
-	 * Using hard coding here, will revert after
-	 * IAFW support for BCU is available
-	 */
-	vinfo->irq = MSIC_VDD;
-
 	ipc_set_drvdata(pdev, vinfo);
 
+	dev_dbg(&pdev->dev, "IRQ value in BCU %x\n", vinfo->irq);
 	vinfo->bcu_intr_addr = ioremap(MSIC_BCU_STAT, MSIC_BCU_LEN);
 	if (!vinfo->bcu_intr_addr) {
 		dev_warn(&pdev->dev,
@@ -558,8 +595,9 @@ static int mid_vdd_probe(struct ipc_device *pdev)
 		vdd_set_bits(VWARNA_CFG + i, VCOMP_ENABLE);
 
 	/* Enable BCU output signals for all warning levels */
-	for (i = 0; i < NUM_BEH_REGS; i++)
-		vdd_set_bits(BCUDISA_BEH + i, BCU_OUT_EN);
+	vdd_set_bits(BCUDISA_BEH, BCU_OUT_EN);
+	vdd_set_bits(BCUDISB_BEH, BCU_OUT_EN);
+	vdd_set_bits(BCUDISCRIT_BEH, 0);
 
 	/* Creating a sysfs group with mid_vdd_gr attributes */
 	ret = sysfs_create_group(&pdev->dev.kobj, &mid_vdd_gr);
@@ -586,44 +624,9 @@ static int mid_vdd_probe(struct ipc_device *pdev)
 		goto vdd_error3;
 	}
 
-	/* unmasking all the interrupts */
-	ret = intel_scu_ipc_iowrite8(MBCUIRQ, UNMASK_MBCUIRQ);
-	if (ret) {
-		dev_dbg(&pdev->dev, "vdd unmasking%d\n", ret);
-		goto vdd_error4;
-	}
-
-	/* setting debounce and voltage threshold for WARNA */
-	ret = intel_scu_ipc_update_register(VWARNA_CFG,
-		DEBOUNCE | VWARNA_VOLT_THRES, FLAGS_THRES_REGS);
-	if (ret) {
-		dev_dbg(&pdev->dev,
-		"vdd update VWARNA_CFG debounce time failed:%d\n", ret);
-		goto vdd_ok;
-	}
-
-	/* setting debounce and voltage threshold for WARNB */
-	ret = intel_scu_ipc_update_register(VWARNB_CFG,
-		DEBOUNCE | VWARNB_VOLT_THRES, FLAGS_THRES_REGS);
-	if (ret) {
-		dev_dbg(&pdev->dev,
-		"vdd updating VWARNB_CFG debounce time failed:%d\n", ret);
-		goto vdd_ok;
-	}
-
-	/* setting debounce and voltage threshold for CRIT */
-	ret = intel_scu_ipc_update_register(VCRIT_CFG,
-		DEBOUNCE | VCRIT_VOLT_THRES, FLAGS_THRES_REGS);
-	if (ret) {
-		dev_dbg(&pdev->dev,
-		"vdd updating VCRIT_CFG debounce time failed:%d\n", ret);
-		goto vdd_ok;
-	}
-vdd_ok:
-	dev_dbg(&pdev->dev, "vdd Probe: returning SUCCESS\n");
-	return 0;
-vdd_error4:
-	free_irq(vinfo->irq, vinfo);
+	ret = bcu_init_config(pdev, vinfo);
+	if (!ret)
+		return ret;
 vdd_error3:
 	hwmon_device_unregister(vinfo->dev);
 vdd_error2:
