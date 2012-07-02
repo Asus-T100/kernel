@@ -232,6 +232,10 @@
 /* Max no. of tries to clear the charger from Hi-Z mode */
 #define MAX_TRY		5
 
+/* Master Charge control register */
+#define MSIC_CHRCRTL	0x188
+#define MSIC_CHRGENBL	0x40
+
 static struct power_supply *fg_psy;
 static struct ctp_batt_sfi_prop *ctp_sfi_table;
 /* Battery properties structure */
@@ -1226,6 +1230,7 @@ static void set_up_charging(struct bq24192_chip *chip,
 		} else {
 			dev_warn(&chip->client->dev,
 				"Charger IC not in Hi-Z mode\n");
+			break;
 		}
 	}
 	return;
@@ -2487,6 +2492,16 @@ static int __devinit bq24192_probe(struct i2c_client *client,
 	}
 	dev_info(&chip->client->dev, "request gpio %d for CHRG_OTG pin\n",
 			BQ24192_CHRG_OTG_GPIO);
+	/*
+	 * FIXME Clear the CHRDIS bit in MSIC_CHRCRTL register to enable
+	 * the charging. There is a bug in HW because of that charging gets
+	 * disabled when the platform boot with the SDP charger connected.
+	 */
+	ret = intel_scu_ipc_iowrite8(MSIC_CHRCRTL, MSIC_CHRGENBL);
+	if (ret) {
+		dev_warn(&bq24192_client->dev,
+				"IPC Failed with %d error\n", ret);
+	}
 
 	INIT_DELAYED_WORK(&chip->chrg_evt_wrkr, bq24192_event_worker);
 	INIT_DELAYED_WORK(&chip->stat_mon_wrkr, bq24192_monitor_worker);
