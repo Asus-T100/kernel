@@ -67,6 +67,7 @@ struct mfld_mc_private {
 	unsigned int mfld_jack_lp_flag;
 	unsigned int hs_switch;
 	unsigned int sn95031_lo_dac;
+	struct msic_audio_platform_data *pdata;
 #ifdef CONFIG_HAS_WAKELOCK
 	struct wake_lock *jack_wake_lock;
 #endif
