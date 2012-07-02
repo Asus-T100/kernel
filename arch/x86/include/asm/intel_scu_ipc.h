@@ -17,6 +17,7 @@
 #define IPCMSG_VRTC		0xFA	 /* Set vRTC device */
 #define IPCMSG_FW_UPDATE        0xFE /* Firmware update */
 #define IPCMSG_OSC_CLK		0xE6 /* Turn on/off osc clock */
+#define IPCMSG_S0IX_COUNTER	0xEB /* Get S0ix residency */
 
 #define IPC_CMD_UMIP_RD     0
 #define IPC_CMD_UMIP_WR     1

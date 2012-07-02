@@ -15,6 +15,7 @@
 #define INTEL_SCU_IPC_READ_VBATTCRIT	0xC4
 #define INTEL_SCU_IPC_WRITE_ALARM_FLAG_TO_OSNIB	0xC5
 #define INTEL_SCU_IPC_OSC_CLK_CNTL	0xC6
+#define INTEL_SCU_IPC_S0IX_RESIDENCY	0xD1
 
 struct scu_ipc_data {
 	__u32	count;  /* No. of registers */

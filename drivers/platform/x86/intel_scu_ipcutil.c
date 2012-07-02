@@ -48,6 +48,12 @@
 #define OSHOB_SCU_TRACE_OFFSET		0x00
 #define OSHOB_IA_TRACE_OFFSET		0x04
 
+#define IPC_RESIDENCY_CMD_ID_START	0
+#define IPC_RESIDENCY_CMD_ID_DUMP	2
+
+#define SRAM_ADDR_S0IX_RESIDENCY	0xFFFF71E0
+#define ALL_RESIDENCY_DATA_SIZE		12
+
 #define DUMP_OSNIB
 
 /* Mode for Audio clock */
@@ -209,11 +215,59 @@ static long scu_ipc_ioctl(struct file *fp, unsigned int cmd,
 	/* is getting fw version info, all others need to check to prevent */
 	/* arbitrary access to all sort of bit of the hardware exposed here*/
 
-	if (cmd != INTEL_SCU_IPC_FW_REVISION_GET && !capable(CAP_SYS_RAWIO))
+	if ((cmd != INTEL_SCU_IPC_FW_REVISION_GET ||
+		cmd != INTEL_SCU_IPC_S0IX_RESIDENCY) &&
+		!capable(CAP_SYS_RAWIO))
 		return -EPERM;
 
 	platform = intel_mid_identify_cpu();
 	switch (cmd) {
+	case INTEL_SCU_IPC_S0IX_RESIDENCY:
+	{
+		void __iomem *s0ix_residencies_addr;
+		u8 dump_results[ALL_RESIDENCY_DATA_SIZE] = {0};
+		u32 cmd_id;
+
+		if (copy_from_user(&cmd_id, argp, sizeof(u32))) {
+			pr_err("copy from user failed!!\n");
+			return -EFAULT;
+		}
+
+		/* Check get residency counter valid cmd range */
+
+		if (cmd_id < IPC_RESIDENCY_CMD_ID_START ||
+			cmd_id > IPC_RESIDENCY_CMD_ID_DUMP) {
+			pr_err("invalid si0x residency sub-cmd id!\n");
+			return -EINVAL;
+		}
+
+		ret = intel_scu_ipc_simple_command(IPCMSG_S0IX_COUNTER, cmd_id);
+
+		if (ret < 0) {
+			pr_err("ipc_get_s0ix_counter failed!\n");
+			return ret;
+		}
+
+		if (cmd_id == IPC_RESIDENCY_CMD_ID_DUMP) {
+			s0ix_residencies_addr = ioremap_nocache(
+				SRAM_ADDR_S0IX_RESIDENCY,
+				ALL_RESIDENCY_DATA_SIZE);
+
+			if (!s0ix_residencies_addr) {
+				pr_err("ioremap SRAM address failed!!\n");
+				return -EFAULT;
+			}
+
+			memcpy(&dump_results[0], s0ix_residencies_addr,
+				ALL_RESIDENCY_DATA_SIZE);
+
+			iounmap(s0ix_residencies_addr);
+			ret = copy_to_user(argp, &dump_results[0],
+					ALL_RESIDENCY_DATA_SIZE);
+		}
+
+		break;
+	}
 	case INTEL_SCU_IPC_READ_RR_FROM_OSNIB:
 	{
 		u8 reboot_reason;
