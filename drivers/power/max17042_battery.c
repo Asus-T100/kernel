@@ -338,6 +338,7 @@ static enum power_supply_property max17042_battery_props[] = {
 	POWER_SUPPLY_PROP_CHARGE_FULL,
 	POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN,
 	POWER_SUPPLY_PROP_CHARGE_COUNTER,
+	POWER_SUPPLY_PROP_MODEL_NAME,
 };
 
 static int max17042_write_reg(struct i2c_client *client, u8 reg, u16 value)
@@ -710,6 +711,9 @@ static int max17042_get_property(struct power_supply *psy,
 		if ((val->intval == 0) && (chip->disable_shdwn_methods &
 				SHUTDOWN_DEF_FG_MASK_BIT))
 			val->intval = 1;
+		break;
+	case POWER_SUPPLY_PROP_MODEL_NAME:
+		val->strval = chip->pdata->battid;
 		break;
 	default:
 		mutex_unlock(&chip->batt_lock);

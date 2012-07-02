@@ -68,6 +68,8 @@ struct max17042_config_data {
 	u16	cell_char_tbl[CELL_CHAR_TBL_SAMPLES];
 } __packed;
 
+#define BATTID_LEN 8
+
 struct max17042_platform_data {
 	bool enable_current_sense;
 	bool is_init_done;
@@ -75,6 +77,7 @@ struct max17042_platform_data {
 	bool is_capacity_shutdown;
 	bool is_lowbatt_shutdown;
 	int technology;
+	char battid[BATTID_LEN + 1];
 
 	/* battery safety thresholds */
 	int temp_min_lim;	/* in degrees centigrade */
