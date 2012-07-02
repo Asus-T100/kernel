@@ -1455,6 +1455,59 @@ serial_hsu_type(struct uart_port *port)
 	return up->name;
 }
 
+#ifdef CONFIG_CONSOLE_POLL
+static int serial_hsu_get_poll_char(struct uart_port *port)
+{
+	u8 lsr;
+	struct uart_hsu_port *up;
+	void __iomem	*base;
+
+	up = container_of(port, struct uart_hsu_port, port);
+	base = up->port.membase;
+
+	lsr = readb(base + UART_LSR);
+
+	if (!(lsr & UART_LSR_DR))
+		return NO_POLL_CHAR;
+
+	return readb(base + UART_RX);
+}
+
+#define HSU_POLL_TX_TIMEOUT	10000 /* 10 ms */
+static void hsu_poll_wait_for_xmit(void *base)
+{
+	u8 status;
+	unsigned int timeout = HSU_POLL_TX_TIMEOUT;
+
+	while (--timeout) {
+		status = readb(base + UART_LSR);
+		if (status & (UART_LSR_TEMT | UART_LSR_THRE))
+			break;
+		udelay(1);
+	}
+}
+
+static void serial_hsu_put_poll_char(struct uart_port *port,
+			unsigned char c)
+{
+	struct uart_hsu_port *up =
+		container_of(port, struct uart_hsu_port, port);
+	void __iomem	*base = up->port.membase;
+
+	/* save IER then disable interrupts */
+	u8 ier = readb(base + UART_IER);
+	writeb(0, base + UART_IER);
+
+	/* send the char */
+	hsu_poll_wait_for_xmit(base);
+	writeb(c, base + UART_TX);
+
+	/* wait for transmitter to be empty and restore IER */
+	hsu_poll_wait_for_xmit(base);
+	writeb(ier, base + UART_IER);
+}
+#endif
+
 #ifdef CONFIG_SERIAL_MFD_HSU_CONSOLE
 
 #define BOTH_EMPTY (UART_LSR_TEMT | UART_LSR_THRE)
@@ -1652,6 +1705,10 @@ struct uart_ops serial_hsu_pops = {
 	.request_port	= serial_hsu_request_port,
 	.config_port	= serial_hsu_config_port,
 	.verify_port	= serial_hsu_verify_port,
+#ifdef CONFIG_CONSOLE_POLL
+	.poll_get_char = serial_hsu_get_poll_char,
+	.poll_put_char = serial_hsu_put_poll_char,
+#endif
 };
 
 static struct uart_driver serial_hsu_reg = {
@@ -2254,7 +2311,9 @@ static struct pci_driver hsu_pci_driver = {
 	.id_table =	pci_ids,
 	.probe =	serial_hsu_probe,
 	.remove =	__devexit_p(serial_hsu_remove),
-#ifdef CONFIG_PM
+
+/* Disable PM only when kgdb(poll mode uart) is enabled */
+#if defined(CONFIG_PM) && !defined(CONFIG_CONSOLE_POLL)
 	.driver =	{
 		.pm =	&hsu_pm_ops
 	},
