@@ -58,6 +58,7 @@
 #include "mdfld_ti_tpd.h"
 #endif
 #include "psb_intel_hdmi.h"
+#include "otm_hdmi.h"
 
 /*IMG headers*/
 #include "pvr_drm_shared.h"
@@ -1679,10 +1680,6 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	else
 		dev_priv->num_pipe = 2;
 
-#ifdef CONFIG_MDFD_HDMI
-	atomic_set(&dev_priv->hotplug_wq_done, 1);
-#endif
-
 	/*init DPST umcomm to NULL*/
 	dev_priv->psb_dpst_state = NULL;
 #ifdef CONFIG_MDFD_HDMI
@@ -1796,6 +1793,9 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 		iowrite32(0x2aa, dev_priv->sgx_reg + 0x4020);
 	}
 #endif
+
+	/* setup hdmi driver */
+	android_hdmi_driver_setup(dev);
 
 	if (IS_MID(dev)) {
 		mrst_get_fuse_settings(dev);
@@ -2042,8 +2042,6 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 #endif
 
 #ifdef CONFIG_MDFD_HDMI
-	atomic_set(&dev_priv->hotplug_wq_done, 0);
-	INIT_WORK(&dev_priv->hdmi_hotplug_wq, hdmi_do_hotplug_wq);
 	INIT_WORK(&dev_priv->hdmi_audio_wq, hdmi_do_audio_wq);
 #endif
 
@@ -2357,16 +2355,16 @@ static int psb_disp_ioctl(struct drm_device *dev, void *data,
 	} else if (dp_ctrl->cmd == DRM_PSB_HDMI_NOTIFY_HOTPLUG_TO_AUDIO) {
 		if (dp_ctrl->u.data == 0) {
 			/* notify audio with HDMI unplug event */
-			if (dev_priv->mdfld_had_event_callbacks
-					&& !dev_priv->bDVIport) {
+			if (dev_priv->mdfld_had_event_callbacks &&
+				dev_priv->hdmi_priv->monitor_type == MONITOR_TYPE_HDMI) {
 				DRM_INFO("HDMI plug out to audio driver\n");
 				(*dev_priv->mdfld_had_event_callbacks)
 				(HAD_EVENT_HOT_UNPLUG, dev_priv->had_pvt_data);
 			}
 		} else {
 			/* notify audio with HDMI plug event */
-			if (dev_priv->mdfld_had_event_callbacks
-					&& !dev_priv->bDVIport) {
+			if (dev_priv->mdfld_had_event_callbacks &&
+				dev_priv->hdmi_priv->monitor_type == MONITOR_TYPE_HDMI) {
 				DRM_INFO("HDMI plug in to audio driver\n");
 				(*dev_priv->mdfld_had_event_callbacks)
 				(HAD_EVENT_HOT_PLUG, dev_priv->had_pvt_data);
@@ -2383,20 +2381,14 @@ static int psb_query_hdcp_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv)
 {
 	uint32_t *arg = data;
-	sqword_t hw_bksv;
-	int ret;
+	uint8_t bksv[5];
 
 	/* Attempting to read the BKSV value from the HDMI device.
 	 * A successful read of this data indicates that HDCP is
 	 * supported.  A value of zero would indicate that it's
 	 * not.
 	 */
-	ret = read_hdcp_port(RX_TYPE_BKSV_DATA, &hw_bksv.byte[0], HDCP_BKSV_BYTES);
-
-	if (ret)
-		*arg = 1;
-	else
-		*arg = 0;
+	*arg = android_query_hdmi_hdcp_sink(dev, bksv);
 
 	return 0;
 }
@@ -2405,57 +2397,42 @@ static int psb_validate_hdcp_ksv_ioctl(struct drm_device *dev, void *data,
 {
 	sqword_t *arg = data;
 	sqword_t hw_bksv;
-	int ret;
-
-	ret = read_hdcp_port(RX_TYPE_BKSV_DATA, &hw_bksv.byte[0], HDCP_BKSV_BYTES);
-
-	if (!ret)
-		ret = -1;
-	else {
+	if (android_query_hdmi_hdcp_sink(dev, (uint8_t *)&hw_bksv)) {
 		*arg = hw_bksv;
-		ret = 0;
+		return 0;
 	}
 
-	return ret;
+	return -1;
 }
 static int psb_get_hdcp_status_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv)
 {
 	uint32_t *arg = data;
-	*arg = hdcp_is_enabled();
+	*arg = android_check_hdmi_hdcp_enc_status(dev);
 
 	return 0;
 }
 static int psb_enable_hdcp_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv)
 {
-	int ret;
-	ret = hdcp_enable(1);
-
-	if (!ret)
-		return -1;
-	else
+	if (android_enable_hdmi_hdcp(dev))
 		return 0;
+	return -1;
 }
 static int psb_disable_hdcp_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv)
 {
-	int ret;
-	ret = hdcp_enable(0);
-
-	if (!ret)
-		return -1;
-	else
+	if (android_disable_hdmi_hdcp(dev))
 		return 0;
-
+	return -1;
 }
 static int psb_enable_hdcp_repeater_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv)
 {
 	int ret;
 	int *arg = data;
-
-	*arg = hdcp_enable_repeater(1);
+	/* HDCP repeater is not supported yet in OTM_HDMI code base */
+	*arg = 0; /* hdcp_enable_repeater(1); */
 
 	if (*arg)
 		return -1;
@@ -2467,9 +2444,9 @@ static int psb_disable_hdcp_repeater_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv)
 {
 	int ret;
-	ret = hdcp_enable_repeater(0);
+	ret = 0; /* hdcp_enable_repeater(0); */
 
-	if (!ret)
+	if (ret)
 		return -1;
 	else
 		return 0;
@@ -2479,15 +2456,15 @@ static int psb_get_hdcp_link_status_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv)
 {
 	uint32_t *arg = data;
-	*arg = hdcp_get_link_status();
-
+	*arg = android_check_hdmi_hdcp_link_status(dev);
 	return 0;
 }
 static int psb_hdcp_repeater_present_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv)
 {
 	uint32_t *arg = data;
-	*arg = hdcp_repeater_present();
+	/* HDCP repeater is not supported yet in OTM_HDMI code base. */
+	*arg = 0; /* hdcp_repeater_present(); */
 
 	return 0;
 }
@@ -4176,10 +4153,8 @@ static int __init psb_init(void)
 #ifdef CONFIG_MDFD_HDMI
 	if (gpDrmDevice) {
 		dev_priv = (struct drm_psb_private *)gpDrmDevice->dev_private;
-		if (dev_priv && IS_MDFLD_OLD(dev_priv->dev))
-			msic_regsiter_driver();
-		else if (dev_priv && IS_CTP(dev_priv->dev))
-			ti_tpd_regsiter_driver();
+		if (dev_priv)
+			otm_hdmi_hpd_init();
 	}
 #endif
 
@@ -4204,10 +4179,8 @@ static void __exit psb_exit(void)
 #ifdef CONFIG_MDFD_HDMI
 	if (gpDrmDevice) {
 		dev_priv = (struct drm_psb_private *)gpDrmDevice->dev_private;
-		if (dev_priv && IS_MDFLD_OLD(dev_priv->dev))
-			msic_unregister_driver();
-		else if (dev_priv && IS_CTP(dev_priv->dev))
-			ti_tpd_unregister_driver();
+		if (dev_priv)
+			otm_hdmi_hpd_deinit();
 	}
 #endif
 	drm_pci_exit(&driver, &psb_pci_driver);

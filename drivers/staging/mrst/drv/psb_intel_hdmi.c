@@ -43,9 +43,12 @@
 #include "mdfld_ti_tpd.h"
 #include <linux/workqueue.h>
 
+
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,34))
 #include <asm/intel_scu_ipc.h>
 #endif
+
+extern u32 DISP_PLANEB_STATUS;
 
 /* FIXME_MDFLD HDMI EDID supports */
 char EDID_Samsung[EDID_LENGTH + HDMI_CEA_EDID_BLOCK_SIZE] =
@@ -585,7 +588,7 @@ static void mdfld_hdmi_mode_set(struct drm_encoder *encoder,
 {
 	struct drm_device *dev = encoder->dev;
 	struct psb_intel_output *output = enc_to_psb_intel_output(encoder);
-	struct mid_intel_hdmi_priv *hdmi_priv = output->dev_priv;
+	struct android_hdmi_priv *hdmi_priv = output->dev_priv;
 	u32 hdmib, hdmi_phy_misc;
 	int vic = 0;
 	u32 hpolarity = 0, vpolarity = 0;
@@ -608,7 +611,7 @@ static void mdfld_hdmi_mode_set(struct drm_encoder *encoder,
 
 	hdmib = REG_READ(hdmi_priv->hdmib_reg) | HDMIB_PIPE_B_SELECT;
 
-	if (dev_priv->bDVIport) {
+	if (hdmi_priv->monitor_type == MONITOR_TYPE_DVI) {
 		hdmib &= ~(HDMIB_NULL_PACKET | HDMI_AUDIO_ENABLE) ;
 		REG_WRITE(VIDEO_DIP_CTL, 0x0);
 		REG_WRITE(AUDIO_DIP_CTL, 0x0);
@@ -662,17 +665,20 @@ static void mdfld_hdmi_mode_set(struct drm_encoder *encoder,
 	REG_WRITE(hdmi_priv->hdmib_reg, hdmib);
 	REG_READ(hdmi_priv->hdmib_reg);
 
+#ifdef REMOVE_FROM_DRV
 	/*save current set mode*/
 	if (hdmi_priv->current_mode)
 		drm_mode_destroy(dev,
-				hdmi_priv->current_mode);
+				 hdmi_priv->current_mode);
 	hdmi_priv->current_mode =
 		drm_mode_duplicate(dev, adjusted_mode);
+#endif
 
 #if (defined(CONFIG_SND_INTELMID_HDMI_AUDIO) || \
 		defined(CONFIG_SND_INTELMID_HDMI_AUDIO_MODULE))
 	/* Send MODE_CHANGE event to Audio driver */
-	if (dev_priv->mdfld_had_event_callbacks && !dev_priv->bDVIport)
+	if (dev_priv->mdfld_had_event_callbacks &&
+			hdmi_priv->monitor_type == MONITOR_TYPE_HDMI)
 		(*dev_priv->mdfld_had_event_callbacks)(event_type,
 				had_pvt_data);
 #endif
@@ -690,7 +696,7 @@ static bool mdfld_hdmi_mode_fixup(struct drm_encoder *encoder,
 		to_psb_intel_crtc(encoder->crtc);
 	struct psb_intel_output *output = enc_to_psb_intel_output(encoder);
 	struct drm_connector *connector = &output->base;
-	struct mid_intel_hdmi_priv *hdmi_priv = output->dev_priv;
+	struct android_hdmi_priv *hdmi_priv = output->dev_priv;
 	uint32_t adjusted_mode_id = 0;
 	struct drm_display_mode *temp_mode = NULL, *t = NULL;
 
@@ -782,9 +788,13 @@ static void mdfld_hdmi_dpms(struct drm_encoder *encoder, int mode)
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *)dev->dev_private;
 	struct psb_intel_output *output = enc_to_psb_intel_output(encoder);
-	struct mid_intel_hdmi_priv *hdmi_priv = output->dev_priv;
+
+	/* struct mid_intel_hdmi_priv *hdmi_priv = output->dev_priv; */
 	int dspcntr_reg = DSPBCNTR;
 	int dspbase_reg = MRST_DSPBBASE;
+
+	struct android_hdmi_priv *hdmi_priv = output->dev_priv;
+	/* Enable HDMI init and clone mode/ext mode through OTM HDMI */
 	u32 hdmip_enabled = 0;
 	u32 hdmib, hdmi_phy_misc;
 	u32 temp;
@@ -798,7 +808,7 @@ static void mdfld_hdmi_dpms(struct drm_encoder *encoder, int mode)
 
 	hdmib = REG_READ(hdmi_priv->hdmib_reg) | HDMIB_PIPE_B_SELECT;
 
-	if (dev_priv->bDVIport) {
+	if (hdmi_priv->monitor_type == MONITOR_TYPE_DVI) {
 		hdmib &= ~(HDMIB_NULL_PACKET | HDMI_AUDIO_ENABLE);
 		REG_WRITE(VIDEO_DIP_CTL, 0x0);
 		REG_WRITE(AUDIO_DIP_CTL, 0x0);
@@ -824,7 +834,7 @@ static void mdfld_hdmi_dpms(struct drm_encoder *encoder, int mode)
 
 	if (mode != DRM_MODE_DPMS_ON) {
 		if (dev_priv->mdfld_had_event_callbacks
-			&& !dev_priv->bDVIport
+			&& (hdmi_priv->monitor_type == MONITOR_TYPE_HDMI)
 			&& (hdmip_enabled != 0))
 			(*dev_priv->mdfld_had_event_callbacks)
 				(HAD_EVENT_HOT_UNPLUG, dev_priv->had_pvt_data);
@@ -841,18 +851,21 @@ static void mdfld_hdmi_dpms(struct drm_encoder *encoder, int mode)
 		REG_WRITE(hdmi_priv->hdmib_reg,
 				hdmib | HDMIB_PORT_EN);
 
-		if (!dev_priv->bDVIport)
+#ifdef REMOVE_FROM_DRV
+		if (hdmi_priv->monitor_type == MONITOR_TYPE_HDMI)
 			mdfld_hdmi_set_avi_infoframe(dev, &output->base,
 					hdmi_priv->current_mode);
-
+#endif
 		if (dev_priv->mdfld_had_event_callbacks
-			&& !dev_priv->bDVIport
+			&& (hdmi_priv->monitor_type == MONITOR_TYPE_HDMI)
 			&& (hdmip_enabled == 0))
 			(*dev_priv->mdfld_had_event_callbacks)
 				(HAD_EVENT_HOT_PLUG, dev_priv->had_pvt_data);
 	}
 	/* flush hdmi port register */
 	REG_WRITE(hdmi_priv->hdmib_reg, REG_READ(hdmi_priv->hdmib_reg));
+
+	android_hdmi_dpms(encoder, mode);
 
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 }
@@ -946,14 +959,16 @@ void mdfld_hdmi_encoder_restore_wq(struct work_struct *work)
 		REG_WRITE(dspbsurf_reg, REG_READ(dspbsurf_reg));
 	}
 
+#ifdef REMOVE_FROM_DRV
 	/*restore avi infomation*/
-	if (!dev_priv->bDVIport)
+	if (hdmi_priv->monitor_type == MONITOR_TYPE_HDMI)
 		mdfld_hdmi_set_avi_infoframe(dev,
 				&output->base, hdmi_priv->current_mode);
 	else {
 		REG_WRITE(VIDEO_DIP_CTL, 0x0);
 		REG_WRITE(AUDIO_DIP_CTL, 0x0);
 	}
+#endif
 
 	hdmi_priv->need_encoder_restore = false;
 
@@ -1471,13 +1486,6 @@ mdfld_hdmi_edid_detect(struct drm_connector *connector)
 		dev_priv->hdmi_done_reading_edid = true;
 		hdmi_priv->is_hardcode_edid = true;
 	}
-       /* Check whether it's DVI port or HDMI. */
-	if (isHDMI(connector))
-		dev_priv->bDVIport = false;
-	else
-		dev_priv->bDVIport = true;
-
-	PSB_DEBUG_ENTRY("is DVI port ? %s", dev_priv->bDVIport ? "yes" : "no");
 	return status;
 }
 
@@ -2095,28 +2103,28 @@ static void mdfld_hdmi_connector_dpms(struct drm_connector *connector, int mode)
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 }
 
-static const struct drm_encoder_helper_funcs mdfld_hdmi_helper_funcs = {
+const struct drm_encoder_helper_funcs mdfld_hdmi_helper_funcs = {
 	.dpms = mdfld_hdmi_dpms,
-	.save = mdfld_hdmi_encoder_save,
-	.restore = mdfld_hdmi_encoder_restore,
+	.save = android_hdmi_encoder_save,
+	.restore = android_hdmi_encoder_restore,
 	.mode_fixup = mdfld_hdmi_mode_fixup,
 	.prepare = psb_intel_encoder_prepare,
-	.mode_set = mdfld_hdmi_mode_set,
+	.mode_set = android_hdmi_enc_mode_set,
 	.commit = psb_intel_encoder_commit,
 };
 
-static const struct drm_connector_helper_funcs
+const struct drm_connector_helper_funcs
     mdfld_hdmi_connector_helper_funcs = {
-	.get_modes = mdfld_hdmi_get_modes,
-	.mode_valid = mdfld_hdmi_mode_valid,
+	.get_modes = android_hdmi_get_modes,
+	.mode_valid = android_hdmi_mode_valid,
 	.best_encoder = psb_intel_best_encoder,
 };
 
-static const struct drm_connector_funcs mdfld_hdmi_connector_funcs = {
+const struct drm_connector_funcs mdfld_hdmi_connector_funcs = {
 	.dpms = mdfld_hdmi_connector_dpms,
-	.save = mdfld_hdmi_connector_save,
-	.restore = mdfld_hdmi_connector_restore,
-	.detect = mdfld_hdmi_detect,
+	.save = android_hdmi_connector_save,
+	.restore = android_hdmi_connector_restore,
+	.detect = android_hdmi_detect,
 	.fill_modes = drm_helper_probe_single_connector_modes,
 	.set_property = mdfld_hdmi_set_property,
 	.destroy = psb_intel_lvds_destroy,
@@ -2125,70 +2133,11 @@ static const struct drm_connector_funcs mdfld_hdmi_connector_funcs = {
 void mdfld_hdmi_init(struct drm_device *dev,
 		    struct psb_intel_mode_device *mode_dev)
 {
-	struct psb_intel_output *psb_intel_output;
-	struct drm_connector *connector;
-	struct drm_encoder *encoder;
 	struct mid_intel_hdmi_priv *hdmi_priv;
 
-	PSB_DEBUG_ENTRY("\n");
+	android_hdmi_driver_init(dev, (void *)mode_dev);
 
-	psb_intel_output = kzalloc(sizeof(struct psb_intel_output) +
-			       sizeof(struct mid_intel_hdmi_priv), GFP_KERNEL);
-	if (!psb_intel_output)
-		return;
-
-	hdmi_priv = (struct mid_intel_hdmi_priv *)(psb_intel_output + 1);
-	psb_intel_output->mode_dev = mode_dev;
-	connector = &psb_intel_output->base;
-	encoder = &psb_intel_output->enc;
-	drm_connector_init(dev, &psb_intel_output->base,
-			   &mdfld_hdmi_connector_funcs,
-			   DRM_MODE_CONNECTOR_DVID);
-
-	drm_encoder_init(dev, &psb_intel_output->enc, &psb_intel_lvds_enc_funcs,
-			 DRM_MODE_ENCODER_TMDS);
-
-	drm_mode_connector_attach_encoder(&psb_intel_output->base,
-					  &psb_intel_output->enc);
-	psb_intel_output->type = INTEL_OUTPUT_HDMI;
-	/*FIXME: May need to get this somewhere, but CG code seems hard coded it*/
-	hdmi_priv->hdmib_reg = HDMIB_CONTROL;
-	hdmi_priv->has_hdmi_sink = false;
-	hdmi_priv->need_encoder_restore = false;
-	psb_intel_output->dev_priv = hdmi_priv;
-
-	drm_encoder_helper_add(encoder, &mdfld_hdmi_helper_funcs);
-	drm_connector_helper_add(connector,
-				 &mdfld_hdmi_connector_helper_funcs);
-	connector->display_info.subpixel_order = SubPixelHorizontalRGB;
-	connector->interlace_allowed = false;
-	connector->doublescan_allowed = false;
-
-	drm_connector_attach_property(connector, dev->mode_config.scaling_mode_property, DRM_MODE_SCALE_CENTER);
-
-	/* hard-coded the HDMI_I2C_ADAPTER_ID to be 8, Should get from GCT*/
-	psb_intel_output->hdmi_i2c_adapter = i2c_get_adapter(8);
-
-	if (psb_intel_output->hdmi_i2c_adapter) {
-		DRM_INFO("Enter mdfld_hdmi_init, i2c_adapter is availabe.\n");
-
-	} else {
-		printk(KERN_ALERT "No ddc adapter available!\n");
-	}
-
-	hdmi_priv->is_hdcp_supported = true;
-	hdmi_priv->hdmi_i2c_adapter = psb_intel_output->hdmi_i2c_adapter;
-	hdmi_priv->dev = dev;
-	hdmi_priv->edid_preferred_mode = NULL;
-	mdfld_hdcp_init(hdmi_priv);
-	mdfld_hdmi_audio_init(hdmi_priv);
-
-	/* CTP has separate companion chip for HDMI. This is not required.
-	   To be fixed : enable HPD for CTP.
-	 */
 	if (IS_MDFLD_OLD(dev)) {
-		mdfld_msic_init(hdmi_priv);
-
 		/* turn on HDMI power rails. These will be on in all non-S0iX
 		states so that HPD and connection status will work. VCC330 will
 		have ~1.7mW usage during idle states when the display is
@@ -2202,23 +2151,8 @@ void mdfld_hdmi_init(struct drm_device *dev,
 		/* Extend VHDMI switch de-bounce time, to avoid redundant MSIC
 		 * VREG/HDMI interrupt during HDMI cable plugged in/out. */
 		intel_scu_ipc_iowrite8(MSIC_VHDMICNT, VHDMI_ON | VHDMI_DB_30MS);
-	} else if (IS_CTP(dev)) {
+	} else if (IS_CTP(dev))
 		mdfld_ti_tpd_init(hdmi_priv);
 
-		/* Pull up the HDMI_LS_OE GPIO pin to read HDMI EDID data. */
-		if (!gpio_request(CLV_HDMI_LS_OE_GPIO_PIN, "clv_hdmi_ls_oe") &&
-				gpio_is_valid(CLV_HDMI_LS_OE_GPIO_PIN)) {
-			gpio_set_value(CLV_HDMI_LS_OE_GPIO_PIN, 1);
-
-			gpio_free(CLV_HDMI_LS_OE_GPIO_PIN);
-		} else
-			DRM_ERROR("%s: Failed to request gpio %d\n", __func__,
-					CLV_HDMI_LS_OE_GPIO_PIN);
-	}
-
-	/* initialize hdmi encoder restore delayed work */
-	INIT_DELAYED_WORK(&hdmi_priv->enc_work, mdfld_hdmi_encoder_restore_wq);
-
-	drm_sysfs_connector_add(connector);
 	return;
 }

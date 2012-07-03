@@ -36,9 +36,9 @@
 /*
  *
  */
-static struct mid_intel_hdmi_priv *hdmi_priv;
+static struct android_hdmi_priv *hdmi_priv;
 
-void mdfld_hdmi_audio_init(struct mid_intel_hdmi_priv *p_hdmi_priv)
+void mdfld_hdmi_audio_init(struct android_hdmi_priv *p_hdmi_priv)
 {
 	hdmi_priv = p_hdmi_priv;
 }
@@ -55,9 +55,8 @@ static int mdfld_hdmi_audio_write (uint32_t reg, uint32_t val)
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *) dev->dev_private;
 
-	if (dev_priv->bDVIport) {
+	if (hdmi_priv->monitor_type == MONITOR_TYPE_DVI)
 		return 0;
-	}
 
 	if (IS_HDMI_AUDIO_REG(reg))
 		REG_WRITE(reg, val);
@@ -79,9 +78,8 @@ static int mdfld_hdmi_audio_read (uint32_t reg, uint32_t *val)
 		(struct drm_psb_private *) dev->dev_private;
 	int ret = 0;
 
-	if (dev_priv->bDVIport) {
+	if (hdmi_priv->monitor_type == MONITOR_TYPE_DVI)
 		return 0;
-	}
 
 	if (IS_HDMI_AUDIO_REG(reg))
 		*val = REG_READ(reg);
@@ -156,8 +154,8 @@ static int mdfld_hdmi_audio_set_caps (enum had_caps_list set_element, void *capa
     case HAD_SET_ENABLE_AUDIO:
         hdmib = REG_READ(hdmi_priv->hdmib_reg);
 
-        if ((hdmib & HDMIB_PORT_EN) && hdmi_priv->has_hdmi_sink)
-            hdmib |= HDMI_AUDIO_ENABLE;
+	if (hdmib & HDMIB_PORT_EN)
+		hdmib |= HDMI_AUDIO_ENABLE;
 
         REG_WRITE(hdmi_priv->hdmib_reg, hdmib);
         REG_READ(hdmi_priv->hdmib_reg);

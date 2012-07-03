@@ -21,6 +21,8 @@ include_dirs := \
         -I$(INCDIR)/bc_video \
         -I$(INCDIR)/imgv \
         -I$(INCDIR)/bc_video \
+	-I$(INCDIR)/drv/otm_hdmi/os/android/include \
+	-I$(INCDIR)/drv/otm_hdmi/pil/include \
 	-Iinclude/linux \
 	-Iinclude/drm
 
@@ -103,6 +105,7 @@ ccflags-$(CONFIG_DRM_MID_DEBUG) += -DBUILD="\"debug\"" -DPVR_BUILD_TYPE="\"debug
 ccflags-$(CONFIG_PCI_MSI) += -DCONFIG_PCI_MSI
 ccflags-$(CONFIG_MDFD_GL3) += -DSUPPORT_EXTERNAL_SYSTEM_CACHE -DCONFIG_MDFD_GL3
 
+ccflags-y += -DHDMI_COMPLIANCE
 	
 ENVDIR = ../pvr/services4/srvkm/env/linux
 COMMONDIR = ../pvr/services4/srvkm/common
@@ -240,6 +243,9 @@ gfx-$(CONFIG_MDFLD_DSI_DPU) += $(DRMDRVDIR)/mdfld_dsi_dbi_dpu.o
 
 gfx-$(CONFIG_MDFD_GL3) += $(DRMDRVDIR)/mdfld_gl3.o
 
+obj-$(CONFIG_DRM_MDFLD) += ../drv/otm_hdmi/
+obj-$(CONFIG_DRM_CTP) += ../drv/otm_hdmi/
 obj-$(CONFIG_DRM_MDFLD) += gfx.o
+obj-$(CONFIG_DRM_CTP) += ../drv/otm_hdmi/
 obj-$(CONFIG_DRM_CTP) += gfx.o
 obj-$(CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE) += $(DRMDRVDIR)/mdfld_dsi_lvds_bridge.o

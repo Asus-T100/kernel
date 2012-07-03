@@ -1500,14 +1500,14 @@ void ospm_suspend_display(struct drm_device *dev)
 		if (dev_priv->panel_desc & DISPLAY_A)
 			mdfld_save_display_registers(dev, 0);
 		if (dev_priv->panel_desc & DISPLAY_B)
-			mdfld_save_display_registers(dev, 1);
+			android_hdmi_save_display_registers(dev);
 		if (dev_priv->panel_desc & DISPLAY_C)
 			mdfld_save_display_registers(dev, 2);
 
 		if (dev_priv->panel_desc & DISPLAY_A)
 			mdfld_disable_crtc(dev, 0);
 		if (dev_priv->panel_desc & DISPLAY_B)
-			mdfld_disable_crtc(dev, 1);
+			android_disable_hdmi(dev);
 		if (dev_priv->panel_desc & DISPLAY_C)
 			mdfld_disable_crtc(dev, 2);
 
@@ -1668,7 +1668,7 @@ void ospm_resume_display(struct pci_dev *pdev)
 		 * isn't turned on before suspending.
 		 */
 		if (dev_priv->panel_desc & DISPLAY_B) {
-			mdfld_restore_display_registers(dev, 1);
+			android_hdmi_restore_and_enable_display(dev);
 			/*devices connect status will be changed
 			 when system suspend,re-detect once here*/
 #if (defined(CONFIG_SND_INTELMID_HDMI_AUDIO) || \

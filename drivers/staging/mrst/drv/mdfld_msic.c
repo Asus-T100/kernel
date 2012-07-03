@@ -31,6 +31,7 @@
 #include <asm/intel_scu_ipc.h>
 #endif
 
+
 #define SRAM_MSIC_VRINT_ADDR 0xFFFF7FCB
 static u8 *sram_vreg_addr = 0;
 unsigned char vrint_dat;
@@ -40,9 +41,9 @@ static u8 hdmi_saved_status;
 /*
  *
  */
-static struct mid_intel_hdmi_priv *hdmi_priv;
+static struct android_hdmi_priv *hdmi_priv;
 
-void mdfld_msic_init(struct mid_intel_hdmi_priv *p_hdmi_priv)
+void mdfld_msic_init(struct android_hdmi_priv *p_hdmi_priv)
 {
 	hdmi_priv = p_hdmi_priv;
 }

@@ -1091,8 +1091,6 @@ struct drm_psb_private {
 	unsigned int flip_inited;
 	unsigned int head_fliped;
 	spinlock_t flip_lock;
-	/*whether is DVI port*/
-	bool bDVIport;
 
 	/*hdmi connected status */
 	bool bhdmiconnected;
@@ -1113,6 +1111,11 @@ struct drm_psb_private {
 	/* overlay setting lock*/
 	struct mutex overlay_lock;
 	int brightness_adjusted;
+
+	/*
+	 * HDMI info
+	 */
+	struct android_hdmi_priv *hdmi_priv;
 };
 
 struct psb_fpriv {

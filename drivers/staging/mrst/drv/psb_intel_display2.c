@@ -37,6 +37,8 @@
 
 #include "psb_intel_display.h"
 
+#include "android_hdmi.h"
+
 #ifdef MIN
 #undef MIN
 #endif
@@ -868,7 +870,10 @@ int mdfld__intel_pipe_set_base(struct drm_crtc *crtc, int x, int y, struct drm_f
 				       OSPM_UHB_FORCE_POWER_ON))
 		return 0;
 
-	mdfld_intel_set_scaling_property(crtc, x, y, pipe);
+	if (pipe == 1)
+		android_hdmi_set_scaling_property(crtc);
+	else
+		mdfld_intel_set_scaling_property(crtc, x, y, pipe);
 
 	Start = mode_dev->bo_offset(dev, psbfb);
 	Size = mode_dev->bo_size(dev, psbfb);
@@ -1857,6 +1862,13 @@ static int mdfld_crtc_mode_set(struct drm_crtc *crtc,
 		dsi_config = dev_priv->dsi_configs[1];
 	ctx = &dsi_config->dsi_hw_context;
 
+	if (pipe == 1) {
+		if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, true))
+			return 0;
+		android_hdmi_crtc_mode_set(crtc, mode, adjusted_mode,
+			x, y, old_fb);
+		goto mrst_crtc_mode_set_exit;
+	}
 
 #ifndef CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY
 #ifndef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE

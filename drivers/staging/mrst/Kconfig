@@ -106,6 +106,30 @@ config MDFD_HDMI
         help
           xxxxxx
 
+config MDFD_HDMI_GREENRIDGE
+	  bool "Greenridge HDMI support"
+	  depends on MDFD_HDMI
+	  help
+	    HDMI support for Greenridge.
+
+config MDFD_HDMI_REDRIDGE
+	  bool "Red Ridge HDMI support"
+	  depends on MDFD_HDMI
+	  help
+	    HDMI support for Red Ridge.
+
+config MDFD_HDMI_PR2
+	  bool "PR2 HDMI support"
+	  depends on MDFD_HDMI
+	  help
+	    HDMI support for PR2.
+
+config CTP_HDMI
+	  bool "CTP HDMI support"
+	  depends on MDFD_HDMI || DRM_CTP
+	  help
+	    HDMI support for CTP.
+
 config MDFD_GL3
 	bool "Enable GL3 Cache for GUNIT"
 	depends on DRM_MDFLD

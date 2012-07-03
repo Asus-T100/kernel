@@ -620,7 +620,7 @@ static bool psb_intel_crtc_mode_fixup(struct drm_crtc *crtc,
  * Return the pipe currently connected to the panel fitter,
  * or -1 if the panel fitter is not present or not in use
  */
-static int psb_intel_panel_fitter_pipe(struct drm_device *dev)
+int psb_intel_panel_fitter_pipe(struct drm_device *dev)
 {
 	u32 pfit_control;
 
