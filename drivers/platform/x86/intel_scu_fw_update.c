@@ -39,50 +39,53 @@
  * Below macros and structs apply for medfield firmware update
  */
 
-#define IPC_CMD_FW_UPDATE_GO     0x20FE
+#define IPC_CMD_FW_UPDATE_GO	0x20FE
 
-#define MAX_FW_CHUNK	(128*1024)
-#define IFWX_CHUNK_SIZE	(96*1024)
-#define SRAM_ADDR	0xFFFC0000
-#define MAILBOX_ADDR	0xFFFE0000
+#define MAX_FW_CHUNK		(128*1024)
+#define IFWX_CHUNK_SIZE		(96*1024)
 
-#define SCU_FLAG_OFFSET	8
-#define IA_FLAG_OFFSET	12
+#define SRAM_ADDR		0xFFFC0000
+#define MAILBOX_ADDR		0xFFFE0000
+
+#define SCU_FLAG_OFFSET		8
+#define IA_FLAG_OFFSET		12
 
 #define MIP_HEADER_OFFSET	0
 #define SUCP_OFFSET		0x1D8000
 #define VEDFW_OFFSET		0x1A6000
 
 #define DNX_HDR_LEN		24
-#define MIN_FUPH_HDR_LEN	32
+#define FUPH_HDR_LEN		36
 
-#define DNX_IMAGE        "DXBL"
-#define FUPH_HDR_SIZE    "RUPHS"
-#define FUPH		 "RUPH"
-#define MIP              "DMIP"
+#define DNX_IMAGE	"DXBL"
+#define FUPH_HDR_SIZE	"RUPHS"
+#define FUPH		"RUPH"
+#define MIP		"DMIP"
 #define IFWI		"IFW"
-#define LOWER_128K       "LOFW"
-#define UPPER_128K       "HIFW"
-#define UPDATE_DONE      "HLT$"
-#define PSFW1		 "PSFW1"
-#define PSFW2		 "PSFW2"
-#define SSFW		 "SSFW"
-#define SUCP		 "SuCP"
-#define VEDFW		 "VEDFW"
+#define LOWER_128K	"LOFW"
+#define UPPER_128K	"HIFW"
+#define PSFW1		"PSFW1"
+#define PSFW2		"PSFW2"
+#define SSFW		"SSFW"
+#define SUCP		"SuCP"
+#define VEDFW		"VEDFW"
+#define UPDATE_DONE	"HLT$"
+#define UPDATE_ABORT	"HLT0"
+#define UPDATE_ERROR	"ER"
 
 #define MAX_LEN_IFW	4
-#define MAX_LEN_PSFW     7
-#define MAX_LEN_SSFW     6
-#define MAX_LEN_SUCP     6
-#define MAX_LEN_VEDFW    7
+#define MAX_LEN_PSFW	7
+#define MAX_LEN_SSFW	6
+#define MAX_LEN_SUCP	6
+#define MAX_LEN_VEDFW	7
 
-#define FUPH_MIP_OFFSET         0x04
-#define FUPH_IFWI_OFFSET        0x08
-#define FUPH_PSFW1_OFFSET       0x0c
-#define FUPH_PSFW2_OFFSET       0x10
-#define FUPH_SSFW_OFFSET        0x14
-#define FUPH_SUCP_OFFSET        0x18
-#define FUPH_VEDFW_OFFSET       0x1c
+#define FUPH_MIP_OFFSET		0x04
+#define FUPH_IFWI_OFFSET	0x08
+#define FUPH_PSFW1_OFFSET	0x0c
+#define FUPH_PSFW2_OFFSET	0x10
+#define FUPH_SSFW_OFFSET	0x14
+#define FUPH_SUCP_OFFSET	0x18
+#define FUPH_VEDFW_OFFSET	0x1c
 
 #define DNX_MAX_SIZE	(128*1024)
 #define IFWI_MAX_SIZE	(3*1024*1024)
@@ -94,7 +97,6 @@
 
 #define GPF_BIT32	1
 #define FUPH_STR	"UPH$"
-#define FUPH_STR_LEN	4
 #define FUPH_MAX_LEN	36
 #define SKIP_BYTES	8
 
@@ -162,12 +164,12 @@ struct fw_update_info {
 static struct fw_update_info fui;
 
 static struct misc_fw misc_fw_table[] = {
-	{ .fw_type = "IFW", .str_len  = MAX_LEN_IFW },
-	{ .fw_type = "PSFW1", .str_len  = MAX_LEN_PSFW },
-	{ .fw_type = "SSFW", .str_len  = MAX_LEN_SSFW  },
-	{ .fw_type = "PSFW2", .str_len  = MAX_LEN_PSFW  },
-	{ .fw_type = "SuCP", .str_len  = MAX_LEN_SUCP  },
-	{ .fw_type = "VEDFW", .str_len  = MAX_LEN_VEDFW  }
+	{ .fw_type = IFWI, .str_len  = MAX_LEN_IFW },
+	{ .fw_type = PSFW1, .str_len  = MAX_LEN_PSFW },
+	{ .fw_type = SSFW, .str_len  = MAX_LEN_SSFW },
+	{ .fw_type = PSFW2, .str_len  = MAX_LEN_PSFW },
+	{ .fw_type = SUCP, .str_len  = MAX_LEN_SUCP },
+	{ .fw_type = VEDFW, .str_len  = MAX_LEN_VEDFW }
 };
 
 static int alloc_fota_mem_early;
@@ -250,14 +252,16 @@ static enum mailbox_status check_mb_status(struct mfld_fw_update *mfld_fw_upd)
 
 	memcpy_fromio(mfld_fw_upd->mb_status, mfld_fw_upd->mailbox, 8);
 
-	if (!strncmp(mfld_fw_upd->mb_status, "ER", 2) ||
-		!strncmp(mfld_fw_upd->mb_status, "HLT0", 4)) {
+	if (!strncmp(mfld_fw_upd->mb_status, UPDATE_ERROR,
+					sizeof(UPDATE_ERROR) - 1) ||
+		!strncmp(mfld_fw_upd->mb_status, UPDATE_ABORT,
+					sizeof(UPDATE_ABORT) - 1)) {
 		dev_dbg(fui.dev,
 			"mailbox error=%s\n", mfld_fw_upd->mb_status);
 		return MB_ERROR;
 	} else {
 		mb_state = (!strncmp(mfld_fw_upd->mb_status, UPDATE_DONE,
-				sizeof(UPDATE_DONE))) ? MB_DONE : MB_CONTINUE;
+			sizeof(UPDATE_DONE) - 1)) ? MB_DONE : MB_CONTINUE;
 		dev_dbg(fui.dev,
 			"mailbox pass=%s, mb_state=%d\n",
 			mfld_fw_upd->mb_status, mb_state);
@@ -512,7 +516,7 @@ int intel_scu_ipc_medfw_upgrade(void)
 	fuph.ssfw_size = (*((u32 *)(fuph_start + FUPH_SSFW_OFFSET)))*4;
 	fuph.sucp_size = (*((u32 *)(fuph_start + FUPH_SUCP_OFFSET)))*4;
 
-	if (fw_ud_param->fuph_hdr_len == (MIN_FUPH_HDR_LEN + 4)) {
+	if (fw_ud_param->fuph_hdr_len == FUPH_HDR_LEN) {
 		fuph.vedfw_size =
 				(*((u32 *)(fuph_start + FUPH_VEDFW_OFFSET)))*4;
 	} else
@@ -689,7 +693,7 @@ static int find_fuph_header_len(unsigned int *len,
 	temp = file_data + file_size - SKIP_BYTES;
 
 	while (cnt <= FUPH_MAX_LEN) {
-		if (!strncmp(temp, FUPH_STR, FUPH_STR_LEN)) {
+		if (!strncmp(temp, FUPH_STR, sizeof(FUPH_STR) - 1)) {
 			pr_info("Fuph_hdr_len=%d\n", cnt + SKIP_BYTES);
 			*len = cnt + SKIP_BYTES;
 			ret = 0;
