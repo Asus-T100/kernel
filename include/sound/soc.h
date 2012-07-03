@@ -456,6 +456,7 @@ struct snd_soc_jack_zone {
  * @name:         gpio name
  * @report:       value to report when jack detected
  * @invert:       report presence in low state
+ * @irq_flag:	  Interrupt flags for GPIO-Irq line
  * @debouce_time: debouce time in ms
  * @wake:	  enable as wake source
  * @jack_status_check: callback function which overrides the detection
@@ -470,6 +471,7 @@ struct snd_soc_jack_gpio {
 	int invert;
 	int debounce_time;
 	bool wake;
+	unsigned long irq_flags;
 
 	struct snd_soc_jack *jack;
 	struct delayed_work work;

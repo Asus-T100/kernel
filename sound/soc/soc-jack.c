@@ -321,10 +321,13 @@ int snd_soc_jack_add_gpios(struct snd_soc_jack *jack, int count,
 		INIT_DELAYED_WORK(&gpios[i].work, gpio_work);
 		gpios[i].jack = jack;
 
+		if (!gpios[i].irq_flags)
+			gpios[i].irq_flags =
+				IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING;
+
 		ret = request_any_context_irq(gpio_to_irq(gpios[i].gpio),
 					      gpio_handler,
-					      IRQF_TRIGGER_RISING |
-					      IRQF_TRIGGER_FALLING,
+					      gpios[i].irq_flags,
 					      gpios[i].name,
 					      &gpios[i]);
 		if (ret < 0)
