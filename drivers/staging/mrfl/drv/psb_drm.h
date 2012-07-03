@@ -63,11 +63,11 @@ static inline uint32_t psb_unsigned_to_ufixed(unsigned int a)
 }
 
 /*Status of the command sent to the gfx device.*/
-enum {
+enum drm_cmd_status {
 	DRM_CMD_SUCCESS,
 	DRM_CMD_FAILED,
 	DRM_CMD_HANG
-} drm_cmd_status_t;
+};
 
 struct drm_psb_scanout {
 	uint32_t buffer_id;	/* DRM buffer object ID */
@@ -143,6 +143,7 @@ struct drm_psb_reloc {
 #define PSB_ENGINE_2D 0
 #define PSB_ENGINE_VIDEO 1
 #define LNC_ENGINE_ENCODE 5
+#define VSP_ENGINE_VPP 6
 
 /*
  * For this fence class we have a couple of
@@ -155,7 +156,7 @@ struct drm_psb_reloc {
 #define _PSB_FENCE_TYPE_EXE         (1 << _PSB_FENCE_EXE_SHIFT)
 #define _PSB_FENCE_TYPE_FEEDBACK    (1 << _PSB_FENCE_FEEDBACK_SHIFT)
 
-#define PSB_NUM_ENGINES 6
+#define PSB_NUM_ENGINES 7
 
 #define PSB_FEEDBACK_OP_VISTEST (1 << 0)
 
@@ -213,7 +214,7 @@ struct psb_ttm_fence_rep {
 	uint32_t error;
 };
 
-struct {
+struct drm_psb_cmdbuf_arg {
 	uint64_t buffer_list;	/* List of buffers to validate */
 	uint64_t clip_rects;	/* See i915 counterpart */
 	uint64_t scene_arg;
@@ -251,14 +252,14 @@ struct {
 	uint32_t feedback_offset;
 	uint32_t feedback_breakpoints;
 	uint32_t feedback_size;
-} drm_psb_cmdbuf_arg_t;
+};
 
-struct {
+struct drm_psb_pageflip_arg_t {
 	uint32_t flip_offset;
 	uint32_t stride;
-} drm_psb_pageflip_arg_t;
+};
 
-enum {
+enum lnc_getparam_key_t {
 	LNC_VIDEO_DEVICE_INFO,
 	LNC_VIDEO_GETPARAM_RAR_INFO,
 	LNC_VIDEO_GETPARAM_CI_INFO,
@@ -271,8 +272,11 @@ enum {
 	IMG_VIDEO_SET_DISPLAYING_FRAME,
 	IMG_VIDEO_GET_DISPLAYING_FRAME,
 	IMG_VIDEO_GET_HDMI_STATE,
-	IMG_VIDEO_SET_HDMI_STATE
-} lnc_getparam_key_t;
+	IMG_VIDEO_SET_HDMI_STATE,
+	PNW_VIDEO_QUERY_ENTRY,
+	IMG_DISPLAY_SET_WIDI_EXT_STATE,
+	IMG_VIDEO_IED_STATE
+};
 
 struct drm_lnc_video_getparam_arg {
 	enum lnc_getparam_key_t key;
@@ -632,13 +636,13 @@ struct drm_psb_getpageaddrs_arg {
 };
 
 #define MAX_SLICES_PER_PICTURE 72
-struct {
+struct drm_psb_msvdx_decode_status_t {
 	uint32_t fw_status;
 	uint32_t num_error_slice;
 	int32_t start_error_mb_list[MAX_SLICES_PER_PICTURE];
 	int32_t end_error_mb_list[MAX_SLICES_PER_PICTURE];
 	int32_t slice_missing_or_error[MAX_SLICES_PER_PICTURE];
-} drm_psb_msvdx_decode_status_t;
+};
 
 /* Controlling the kernel modesetting buffers */
 
@@ -746,7 +750,7 @@ struct {
      *  These  are all possible  S3D surface modes that a  3D display
      *      could recognize.
      */
-enum {
+enum ovlmode_t {
 	OM_ERROR = -1,		/*  error occured               */
 	OM_NONE,		/*  no mode (or restore)        */
 	OM_LINEINTER,		/*  full line interleaved       */
@@ -757,31 +761,31 @@ enum {
 	OM_HALFSIDEBYSIDE,	/*  half side-by-side           */
 	OM_TOPBOTTOM,		/*  top-bottom mode             */
 	OM_HALFTOPBOTTOM	/*  half top-bottom mode        */
-} ovlmode_t;
+};
 
     /*****************************
      *  These  definitions follow  similar pixel formats  for HDMI in
      *      'psb_intel_hdmi.h'.
      */
-enum {
+enum ovlpixel_t {
 	OX_NONE,		/*  analagous to HDMI RGB       */
 	OX_NV12,		/*  12-bit planar format        */
 	OX_YUV422,		/*  16-bit packaed format       */
 	OX_YUV420,		/*  12-bit planar format        */
 	OX_FUTURE		/*  for future expansion        */
-} ovlpixel_t;
+};
 
     /*****************************
      *  These definitions  determine the destination pipe to use with
      *      the s3d overlay mode.
      */
-enum {
+enum ovlpipe_t {
 	OP_NONE,		/*  No pipe selection given     */
 	OP_PIPEA,		/*  select pipe A               */
 	OP_PIPEB,		/*  select pipe B               */
 	OP_PIPEC,		/*  select pipe C               */
 	OP_RESERVED		/*  future expansion            */
-} ovlpipe_t;
+};
 
     /*****************************
      *  These are bits  set to determine  which of the fields  in the
@@ -893,6 +897,11 @@ struct drm_psb_get_pipe_from_crtc_id_arg {
 };
 #define DRM_PSB_DISP_SAVE_HDMI_FB_HANDLE 1
 #define DRM_PSB_DISP_GET_HDMI_FB_HANDLE 2
+#define DRM_PSB_DISP_DEQUEUE_BUFFER 3
+#define DRM_PSB_DISP_PLANEB_DISABLE  4
+#define DRM_PSB_DISP_PLANEB_ENABLE  5
+#define DRM_PSB_HDMI_OSPM_ISLAND_DOWN 6
+
 struct drm_psb_disp_ctrl {
 	uint32_t cmd;
 	uint32_t data;

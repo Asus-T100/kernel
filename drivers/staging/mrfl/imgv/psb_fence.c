@@ -23,6 +23,7 @@
 #include "psb_drv.h"
 #include "psb_msvdx.h"
 #include "pnw_topaz.h"
+#include "vsp.h"
 
 static void psb_fence_poll(struct ttm_fence_device *fdev,
 			   uint32_t fence_class, uint32_t waiting_types)
@@ -48,6 +49,9 @@ static void psb_fence_poll(struct ttm_fence_device *fdev,
 			sequence = *((uint32_t *)
 				     ((struct pnw_topaz_private *)dev_priv->
 				      topaz_private)->topaz_sync_addr + 1);
+		break;
+	case VSP_ENGINE_VPP:
+		sequence = vsp_fence_poll(dev_priv);
 		break;
 	default:
 		break;
@@ -98,13 +102,22 @@ int psb_fence_emit_sequence(struct ttm_fence_device *fdev,
 		seq = dev_priv->sequence[fence_class]++;
 		spin_unlock(&dev_priv->sequence_lock);
 		break;
+	case VSP_ENGINE_VPP:
+		spin_lock(&dev_priv->sequence_lock);
+		seq = dev_priv->sequence[fence_class]++;
+		spin_unlock(&dev_priv->sequence_lock);
+		break;
 	default:
 		DRM_ERROR("Unexpected fence class\n");
 		return -EINVAL;
 	}
 
 	*sequence = seq;
+#ifdef CONFIG_BOARD_MRFLD_VP
+	*timeout_jiffies = jiffies + DRM_HZ * 3000;
+#else
 	*timeout_jiffies = jiffies + DRM_HZ * 3;
+#endif
 
 	return 0;
 }
@@ -141,6 +154,19 @@ static void psb_fence_lockup(struct ttm_fence_object *fence,
 		write_unlock(&fc->lock);
 
 		msvdx_priv->msvdx_needs_reset = 1;
+
+	} else if (fence->fence_class == VSP_ENGINE_VPP) {
+		struct vsp_private *vsp_priv = dev_priv->vsp_private;
+
+		DRM_ERROR("VSP timeout (probable lockup) detected,"
+			  " reset vsp\n");
+		write_lock(&fc->lock);
+		ttm_fence_handler(fence->fdev, fence->fence_class,
+				  fence->sequence, fence_types,
+				  -EBUSY);
+		write_unlock(&fc->lock);
+
+		vsp_priv->needs_reset = 1;
 	} else
 		DRM_ERROR("Unsupported fence class\n");
 }

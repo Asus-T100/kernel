@@ -25,6 +25,7 @@
 #include "psb_drv.h"
 #include "psb_msvdx.h"
 #include "pnw_topaz.h"
+#include "vsp.h"
 #include "psb_powermgmt.h"
 #include <linux/io.h>
 #include <linux/delay.h>
@@ -1391,6 +1392,10 @@ int psb_remove_videoctx(struct drm_psb_private *dev_priv, struct file *filp)
 			     || VAEntrypointEncPicture ==
 			     (pos->ctx_type & 0xff)))
 				pnw_reset_fw_status(dev_priv->dev);
+
+			if (IS_MRFLD(dev_priv->dev) &&
+			    (VAEntrypointVideoProc == (pos->ctx_type & 0xff)))
+				vsp_reset_fw_status(dev_priv->dev);
 
 			/* if current ctx points to it, set to NULL */
 			if (dev_priv->topaz_ctx == pos)

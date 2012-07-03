@@ -51,15 +51,34 @@ static void psb_powerdown_msvdx(struct work_struct *work)
 	mutex_unlock(&scheduler->msvdx_power_mutex);
 }
 
-int psb_scheduler_init(struct drm_device *dev, struct psb_scheduler *scheduler)
+static void psb_powerdown_vsp(struct work_struct *work)
+{
+	struct psb_scheduler *scheduler =
+		container_of(work, struct psb_scheduler, vsp_suspend_wq.work);
+
+	if (!mutex_trylock(&scheduler->vsp_power_mutex))
+		return;
+
+	psb_try_power_down_vsp(scheduler->dev);
+
+	mutex_unlock(&scheduler->vsp_power_mutex);
+}
+
+int psb_scheduler_init(struct drm_device *dev,
+		       struct psb_scheduler *scheduler)
 {
 	memset(scheduler, 0, sizeof(*scheduler));
 	scheduler->dev = dev;
 	mutex_init(&scheduler->topaz_power_mutex);
 	mutex_init(&scheduler->msvdx_power_mutex);
+	mutex_init(&scheduler->vsp_power_mutex);
 
-	INIT_DELAYED_WORK(&scheduler->topaz_suspend_wq, &psb_powerdown_topaz);
-	INIT_DELAYED_WORK(&scheduler->msvdx_suspend_wq, &psb_powerdown_msvdx);
+	INIT_DELAYED_WORK(&scheduler->topaz_suspend_wq,
+			  &psb_powerdown_topaz);
+	INIT_DELAYED_WORK(&scheduler->msvdx_suspend_wq,
+			  &psb_powerdown_msvdx);
+	INIT_DELAYED_WORK(&scheduler->vsp_suspend_wq,
+			  &psb_powerdown_vsp);
 
 	return 0;
 }

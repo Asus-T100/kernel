@@ -26,6 +26,7 @@
 #include "psb_reg.h"
 #include "psb_msvdx.h"
 #include "pnw_topaz.h"
+#include "vsp.h"
 #include "psb_intel_reg.h"
 #include "psb_powermgmt.h"
 
@@ -370,12 +371,6 @@ static void psb_vdc_interrupt(struct drm_device *dev, uint32_t vdc_stat)
 
 	if (vdc_stat & _MDFLD_PIPEC_EVENT_FLAG)
 		mid_pipe_event_handler(dev, 2);
-
-	if (vdc_stat & _MDFLD_MIPIA_FLAG)
-		/* mid_mipi_event_handler(dev, 0); */
-
-	if (vdc_stat & _MDFLD_MIPIC_FLAG)
-		/* mid_mipi_event_handler(dev, 2); */
 }
 
 irqreturn_t psb_irq_handler(DRM_IRQ_ARGS)
@@ -384,8 +379,8 @@ irqreturn_t psb_irq_handler(DRM_IRQ_ARGS)
 	struct drm_psb_private *dev_priv =
 	    (struct drm_psb_private *)dev->dev_private;
 
-	uint32_t vdc_stat, dsp_int = 0, sgx_int = 0, msvdx_int = 0, topaz_int =
-	    0;
+	uint32_t vdc_stat, dsp_int = 0, sgx_int = 0, msvdx_int = 0;
+	uint32_t topaz_int = 0, vsp_int = 0;
 	int handled = 0;
 	unsigned long irq_flags;
 
@@ -414,6 +409,11 @@ irqreturn_t psb_irq_handler(DRM_IRQ_ARGS)
 		topaz_int = 1;
 	}
 
+	if (vdc_stat & _TNG_IRQ_VSP_FLAG) {
+		PSB_DEBUG_IRQ("Got VSP interrupt\n");
+		vsp_int = 1;
+	}
+
 	vdc_stat &= dev_priv->vdc_irq_mask;
 	spin_unlock_irqrestore(&dev_priv->irqmask_lock, irq_flags);
 
@@ -430,6 +430,11 @@ irqreturn_t psb_irq_handler(DRM_IRQ_ARGS)
 
 	if ((IS_FLDS(dev) && topaz_int)) {
 		pnw_topaz_interrupt(dev);
+		handled = 1;
+	}
+
+	if (vsp_int) {
+		vsp_interrupt(dev);
 		handled = 1;
 	}
 
@@ -492,7 +497,11 @@ void psb_irq_preinstall_islands(struct drm_device *dev, int hw_islands)
 		if (IS_MID(dev) && ospm_power_is_hw_on(OSPM_VIDEO_ENC_ISLAND))
 			dev_priv->vdc_irq_mask |= _LNC_IRQ_TOPAZ_FLAG;
 
-	/*This register is safe even if display island is off */
+	if (hw_islands & OSPM_VIDEO_VPP_ISLAND)
+		if (IS_MID(dev))
+			dev_priv->vdc_irq_mask |= _TNG_IRQ_VSP_FLAG;
+
+	/*This register is safe even if display island is off*/
 	PSB_WVDC32(~dev_priv->vdc_irq_mask, PSB_INT_MASK_R);
 
 	spin_unlock_irqrestore(&dev_priv->irqmask_lock, irqflags);
@@ -586,9 +595,10 @@ int psb_irq_postinstall_islands(struct drm_device *dev, int hw_islands)
 			}
 
 	if (hw_islands & OSPM_VIDEO_DEC_ISLAND)
-		if (true
-		    /*powermgmt_is_hw_on(dev->pdev, PSB_VIDEO_DEC_ISLAND) */)
-			psb_msvdx_enableirq(dev);
+		psb_msvdx_enableirq(dev);
+
+	if (hw_islands & OSPM_VIDEO_VPP_ISLAND)
+		vsp_enableirq(dev);
 
 	spin_unlock_irqrestore(&dev_priv->irqmask_lock, irqflags);
 
@@ -644,7 +654,9 @@ void psb_irq_uninstall_islands(struct drm_device *dev, int hw_islands)
 			}
 		}
 		dev_priv->vdc_irq_mask &= _PSB_IRQ_SGX_FLAG |
-		    _PSB_IRQ_MSVDX_FLAG | _LNC_IRQ_TOPAZ_FLAG;
+					  _PSB_IRQ_MSVDX_FLAG |
+					  _LNC_IRQ_TOPAZ_FLAG |
+					  _TNG_IRQ_VSP_FLAG;
 	}
 	/*TODO: remove follwoing code */
 	if (hw_islands & OSPM_GRAPHICS_ISLAND)
@@ -656,7 +668,10 @@ void psb_irq_uninstall_islands(struct drm_device *dev, int hw_islands)
 	if ((hw_islands & OSPM_VIDEO_ENC_ISLAND) && IS_MID(dev))
 		dev_priv->vdc_irq_mask &= ~_LNC_IRQ_TOPAZ_FLAG;
 
-	/*These two registers are safe even if display island is off */
+	if ((hw_islands & OSPM_VIDEO_VPP_ISLAND) && IS_MID(dev))
+		dev_priv->vdc_irq_mask &= ~_TNG_IRQ_VSP_FLAG;
+
+	/*These two registers are safe even if display island is off*/
 	PSB_WVDC32(~dev_priv->vdc_irq_mask, PSB_INT_MASK_R);
 	PSB_WVDC32(dev_priv->vdc_irq_mask, PSB_INT_ENABLE_R);
 
@@ -674,6 +689,10 @@ void psb_irq_uninstall_islands(struct drm_device *dev, int hw_islands)
 	if (hw_islands & OSPM_VIDEO_DEC_ISLAND)
 		if (ospm_power_is_hw_on(OSPM_VIDEO_DEC_ISLAND))
 			psb_msvdx_disableirq(dev);
+
+	if (hw_islands & OSPM_VIDEO_VPP_ISLAND)
+		if (ospm_power_is_hw_on(OSPM_VIDEO_VPP_ISLAND))
+			vsp_disableirq(dev);
 
 	spin_unlock_irqrestore(&dev_priv->irqmask_lock, irqflags);
 }

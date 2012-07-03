@@ -29,43 +29,26 @@ enum psb_task_type {
 
 struct drm_psb_private;
 
-/*struct psb_scheduler_seq {
+/*
+struct psb_scheduler_seq {
 	uint32_t sequence;
 	int reported;
-};*/
+};
+*/
 
 struct psb_scheduler {
 	struct drm_device *dev;
-	/*struct psb_scheduler_seq seq[_PSB_ENGINE_TA_FENCE_TYPES];
-	   struct psb_hw_scene hs[PSB_NUM_HW_SCENES];
-	   struct mutex task_wq_mutex; */
 	struct mutex topaz_power_mutex;
 	struct mutex msvdx_power_mutex;
-	/*spinlock_t lock;
-	   struct list_head hw_scenes;
-	   struct list_head ta_queue;
-	   struct list_head raster_queue;
-	   struct list_head hp_raster_queue;
-	   struct list_head task_done_queue;
-	   struct psb_task *current_task[PSB_SCENE_NUM_ENGINES];
-	   struct psb_task *feedback_task;
-	   int ta_state;
-	   struct psb_hw_scene *pending_hw_scene;
-	   uint32_t pending_hw_scene_seq;
-	   struct delayed_work wq */ ;
+	struct mutex vsp_power_mutex;
+
 	struct delayed_work topaz_suspend_wq;
 	struct delayed_work msvdx_suspend_wq;
-	/*struct psb_scene_pool *pool;
-	   uint32_t idle_count;
-	   int idle;
-	   wait_queue_head_t idle_queue;
-	   unsigned long ta_end_jiffies;
-	   unsigned long total_ta_jiffies;
-	   unsigned long raster_end_jiffies;
-	   unsigned long total_raster_jiffies; */
+	struct delayed_work vsp_suspend_wq;
 };
 
-/*#define PSB_RF_FIRE_TA       (1 << 0)
+/*
+#define PSB_RF_FIRE_TA       (1 << 0)
 #define PSB_RF_OOM           (1 << 1)
 #define PSB_RF_OOM_REPLY     (1 << 2)
 #define PSB_RF_TERMINATE     (1 << 3)

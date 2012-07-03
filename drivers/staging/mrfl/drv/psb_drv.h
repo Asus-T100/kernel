@@ -94,6 +94,9 @@ enum panel_type {
 #define RTPM_PROC_ENTRY "rtpm"
 #define DSR_PROC_ENTRY "dsr"
 #define GFXPM_PROC_ENTRY "mrfld_gfx_pm"
+#define VSPPM_PROC_ENTRY "mrfld_vsp_pm"
+#define VEDPM_PROC_ENTRY "mrfld_ved_pm"
+#define VECPM_PROC_ENTRY "mrfld_vec_pm"
 #define BLC_PROC_ENTRY "mrst_blc"
 #define DISPLAY_PROC_ENTRY "display_status"
 
@@ -149,6 +152,9 @@ enum panel_type {
 /* MSVDX MMIO region is 0x50000 - 0x57fff ==> 32KB */
 #define PSB_MSVDX_SIZE		0x10000
 
+#define TNG_VSP_OFFSET		0x800000
+#define TNG_VSP_SIZE		0x400000
+
 #define LNC_TOPAZ_OFFSET	0xA0000
 #define PNW_TOPAZ_OFFSET	0xC0000
 #define LNC_TOPAZ_SIZE		0x10000
@@ -171,6 +177,17 @@ enum panel_type {
 #define PSB_PTE_CACHED		  0x0008	/* CPU cache coherent */
 
 /*
+ * VSP PTE's and PDE's
+ */
+
+#define VSP_PDE_MASK		  0x003FFFFF
+#define VSP_PDE_SHIFT		  24
+#define VSP_PTE_SHIFT		  8
+
+/* PTE / PDE valid */
+#define VSP_PTE_VALID		  (0x1 << VSP_PDE_SHIFT)
+
+/*
  *VDC registers and bits
  */
 #define PSB_MSVDX_CLOCKGATING	  0x2064
@@ -191,6 +208,7 @@ enum panel_type {
 #define _PSB_IRQ_SGX_FLAG	  (1<<18)
 #define _PSB_IRQ_MSVDX_FLAG	  (1<<19)
 #define _LNC_IRQ_TOPAZ_FLAG	  (1<<20)
+#define _TNG_IRQ_VSP_FLAG	  (1<<21)
 
 /* This flag includes all the display IRQ bits excepts the vblank irqs. */
 #define _MDFLD_DISP_ALL_IRQ_FLAG \
@@ -351,31 +369,41 @@ struct psb_msvdx_cmd_queue {
 
 /* Currently defined profiles */
 enum VAProfile {
-	VAProfileMPEG2Simple = 0,
-	VAProfileMPEG2Main = 1,
-	VAProfileMPEG4Simple = 2,
-	VAProfileMPEG4AdvancedSimple = 3,
-	VAProfileMPEG4Main = 4,
-	VAProfileH264Baseline = 5,
-	VAProfileH264Main = 6,
-	VAProfileH264High = 7,
-	VAProfileVC1Simple = 8,
-	VAProfileVC1Main = 9,
-	VAProfileVC1Advanced = 10,
-	VAProfileH263Baseline = 11,
-	VAProfileJPEGBaseline = 12,
-	VAProfileH264ConstrainedBaseline = 13
+	VAProfileMPEG2Simple		= 0,
+	VAProfileMPEG2Main		= 1,
+	VAProfileMPEG4Simple		= 2,
+	VAProfileMPEG4AdvancedSimple	= 3,
+	VAProfileMPEG4Main		= 4,
+	VAProfileH264Baseline		= 5,
+	VAProfileH264Main		= 6,
+	VAProfileH264High		= 7,
+	VAProfileVC1Simple		= 8,
+	VAProfileVC1Main		= 9,
+	VAProfileVC1Advanced		= 10,
+	VAProfileH263Baseline		= 11,
+	VAProfileJPEGBaseline           = 12,
+	VAProfileH264ConstrainedBaseline = 13,
+	VAProfileNone = 15, /* to be used for post-processing etc. */
+	VAProfileMax
 };
 
 /* Currently defined entrypoints */
 enum VAEntrypoint {
-	VAEntrypointVLD = 1,
-	VAEntrypointIZZ = 2,
-	VAEntrypointIDCT = 3,
-	VAEntrypointMoComp = 4,
-	VAEntrypointDeblocking = 5,
-	VAEntrypointEncSlice = 6,	/* slice level encode */
-	VAEntrypointEncPicture = 7	/* pictuer encode, JPEG, etc */
+	VAEntrypointVLD		= 1,
+	VAEntrypointIZZ		= 2,
+	VAEntrypointIDCT	= 3,
+	VAEntrypointMoComp	= 4,
+	VAEntrypointDeblocking	= 5,
+	VAEntrypointEncSlice	= 6,	/* slice level encode */
+	VAEntrypointEncPicture	= 7,	/* pictuer encode, JPEG, etc */
+	VAEntrypointVideoProc	= 10,	/* video pre/post processing */
+	VAEntrypointMax
+};
+
+/* MMU type */
+enum mmu_type_t {
+	IMG_MMU = 1,
+	VSP_MMU = 2
 };
 
 struct psb_video_ctx {
@@ -441,6 +469,10 @@ struct drm_psb_private {
 	struct psb_mmu_driver *mmu;
 	struct psb_mmu_pd *pf_pd;
 
+	/* VSP MMU */
+	struct psb_mmu_driver *vsp_mmu;
+	struct psb_mmu_pd *vsp_pf_pd;
+
 	uint8_t *vdc_reg;
 	uint32_t gatt_free_offset;
 
@@ -468,6 +500,12 @@ struct drm_psb_private {
 	uint8_t topaz_disabled;
 	uint32_t video_device_fuse;
 	atomic_t topaz_mmu_invaldc;
+
+	/*
+	 * VSP
+	 */
+	uint8_t *vsp_reg;
+	void *vsp_private;
 
 	/*
 	 *Fencing / irq.
@@ -1088,10 +1126,10 @@ extern int psb_getpageaddrs_ioctl(struct drm_device *dev, void *data,
  */
 
 extern struct psb_mmu_driver *psb_mmu_driver_init(uint8_t __iomem * registers,
-						  int trap_pagefaults,
-						  int invalid_type,
-						  struct drm_psb_private
-						  *dev_priv);
+		int trap_pagefaults,
+		int invalid_type,
+		struct drm_psb_private *dev_priv,
+		enum mmu_type_t mmu_type);
 extern void psb_mmu_driver_takedown(struct psb_mmu_driver *driver);
 extern struct psb_mmu_pd *psb_mmu_get_default_pd(struct psb_mmu_driver
 						 *driver);
@@ -1196,15 +1234,16 @@ extern void psb_fence_error(struct drm_device *dev,
 			    uint32_t sequence, uint32_t type, int error);
 extern int psb_ttm_fence_device_init(struct ttm_fence_device *fdev);
 
-/* MSVDX/Topaz stuff */
+/* MSVDX/Topaz/VSP stuff */
 extern int psb_remove_videoctx(struct drm_psb_private *dev_priv,
-			       struct file *filp);
+				struct file *filp);
 
 extern int lnc_video_frameskip(struct drm_device *dev, uint64_t user_pointer);
 extern int lnc_video_getparam(struct drm_device *dev, void *data,
 			      struct drm_file *file_priv);
 extern int psb_try_power_down_topaz(struct drm_device *dev);
 extern int psb_try_power_down_msvdx(struct drm_device *dev);
+extern int psb_try_power_down_vsp(struct drm_device *dev);
 
 /*
  * psb_opregion.c
@@ -1265,6 +1304,7 @@ struct backlight_device *psb_get_backlight_device(void);
 #define PSB_D_REG     (1 << 8)
 #define PSB_D_MSVDX   (1 << 9)
 #define PSB_D_TOPAZ   (1 << 10)
+#define VSP_D_LOG   (1 << 11)
 
 #ifndef DRM_DEBUG_CODE
 /* To enable debug printout, set drm_psb_debug in psb_drv.c
@@ -1301,6 +1341,8 @@ extern int drm_topaz_sbuswa;
 	PSB_DEBUG(PSB_D_MSVDX, _fmt, ##_arg)
 #define PSB_DEBUG_TOPAZ(_fmt, _arg...) \
 	PSB_DEBUG(PSB_D_TOPAZ, _fmt, ##_arg)
+#define VSP_DEBUG(_fmt, _arg...) \
+	PSB_DEBUG(VSP_D_LOG, "VSP: "_fmt, ##_arg)
 
 #if DRM_DEBUG_CODE
 #define PSB_DEBUG(_flag, _fmt, _arg...)					\

@@ -26,6 +26,7 @@
 #include "psb_msvdx.h"
 #include "lnc_topaz.h"
 #include "pnw_topaz.h"
+#include "vsp.h"
 #include "ttm/ttm_bo_api.h"
 #include "ttm/ttm_execbuf_util.h"
 #include "psb_ttm_userobj_api.h"
@@ -900,7 +901,14 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 		if (unlikely(ret != 0))
 			goto out_err4;
 		break;
+	case VSP_ENGINE_VPP:
+		ret = vsp_cmdbuf_vpp(file_priv, &context->validate_list,
+				     context->fence_types, arg,
+				     cmd_buffer, &fence_arg);
 
+		if (unlikely(ret != 0))
+			goto out_err4;
+		break;
 	default:
 		DRM_ERROR
 		    ("Unimplemented command submission mechanism (%x).\n",

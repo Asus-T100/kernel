@@ -29,6 +29,7 @@
 #include "psb_intel_reg.h"
 #include "psb_intel_bios.h"
 #include "psb_msvdx.h"
+#include "vsp.h"
 #include "lnc_topaz.h"
 #include "pnw_topaz.h"
 #include <drm/drm_pciids.h>
@@ -86,6 +87,9 @@ int drm_topaz_sbuswa;
 int drm_psb_ospm = 1;
 int drm_psb_dsr;
 int drm_psb_gfx_pm;
+int drm_psb_vsp_pm;
+int drm_psb_ved_pm;
+int drm_psb_vec_pm;
 int drm_psb_topaz_clockgating;
 int gfxrtdelay = 2 * 1000;
 int drm_psb_3D_vblank;
@@ -133,6 +137,9 @@ MODULE_PARM_DESC(smart_vsync, "Enable Smart Vsync for Display");
 MODULE_PARM_DESC(te_delay, "swap delay after TE interrpt");
 MODULE_PARM_DESC(cpu_relax, "replace udelay with cpu_relax for video");
 MODULE_PARM_DESC(udelay_divider, "divide the usec value of video udelay");
+MODULE_PARM_DESC(vsp_pm, "Power on/off the VSP");
+MODULE_PARM_DESC(ved_pm, "Power on/off the Msvdx");
+MODULE_PARM_DESC(vec_pm, "Power on/off the Topaz");
 
 module_param_named(debug, drm_psb_debug, int, 0600);
 module_param_named(psb_enable_pr2_cabc, drm_psb_enable_pr2_cabc, int, 0600);
@@ -147,6 +154,9 @@ module_param_named(topaz_sbuswa, drm_topaz_sbuswa, int, 0600);
 module_param_named(ospm, drm_psb_ospm, int, 0600);
 module_param_named(dsr, drm_psb_dsr, int, 0600);
 module_param_named(gfx_pm, drm_psb_gfx_pm, int, 0600);
+module_param_named(vsp_pm, drm_psb_vsp_pm, int, 0600);
+module_param_named(ved_pm, drm_psb_ved_pm, int, 0600);
+module_param_named(vec_pm, drm_psb_vec_pm, int, 0600);
 module_param_named(rtpm, gfxrtdelay, int, 0600);
 module_param_named(topaz_clockgating, drm_psb_topaz_clockgating, int, 0600);
 module_param_named(PanelID, PanelID, int, 0600);
@@ -155,6 +165,7 @@ module_param_named(hdmi_state, hdmi_state, int, 0600);
 module_param_named(vblank_sync, drm_psb_3D_vblank, int, 0600);
 module_param_named(smart_vsync, drm_psb_smart_vsync, int, 0600);
 module_param_named(te_delay, drm_psb_te_timer_delay, int, 0600);
+
 #ifndef MODULE
 /* Make ospm configurable via cmdline firstly,
 and others can be enabled if needed. */
@@ -758,6 +769,9 @@ static void psb_do_takedown(struct drm_device *dev)
 
 	psb_msvdx_uninit(dev);
 
+	if (IS_MRFLD(dev))
+		vsp_deinit(dev);
+
 	pnw_topaz_uninit(dev);
 }
 
@@ -1250,6 +1264,7 @@ static int psb_do_init(struct drm_device *dev)
 	dev_priv->sequence[PSB_ENGINE_2D] = 0;
 	dev_priv->sequence[PSB_ENGINE_VIDEO] = 1;
 	dev_priv->sequence[LNC_ENGINE_ENCODE] = 0;
+	dev_priv->sequence[VSP_ENGINE_VPP] = 1;
 
 	if (pg->mmu_gatt_start & 0x0FFFFFFF) {
 		DRM_ERROR("Gatt must be 256M aligned. This is a bug.\n");
@@ -1300,6 +1315,11 @@ static int psb_do_init(struct drm_device *dev)
 
 	PSB_DEBUG_INIT("Init MSVDX\n");
 	psb_msvdx_init(dev);
+
+	if (IS_MRFLD(dev)) {
+		VSP_DEBUG("Init VSP\n");
+		vsp_init(dev);
+	}
 
 	PSB_DEBUG_INIT("Init Topaz\n");
 	/* for sku100L and sku100M, VEC is disabled in fuses */
@@ -1357,6 +1377,32 @@ static int psb_driver_unload(struct drm_device *dev)
 			dev_priv->mmu = NULL;
 		}
 
+		if (dev_priv->vsp_mmu) {
+			struct psb_gtt *pg = dev_priv->pg;
+
+			down_read(&pg->sem);
+			psb_mmu_remove_pfn_sequence(
+				psb_mmu_get_default_pd
+				(dev_priv->vsp_mmu),
+				pg->mmu_gatt_start,
+				pg->vram_stolen_size >> PAGE_SHIFT);
+			if (pg->ci_stolen_size != 0)
+				psb_mmu_remove_pfn_sequence(
+					psb_mmu_get_default_pd
+					(dev_priv->vsp_mmu),
+					pg->ci_start,
+					pg->ci_stolen_size >> PAGE_SHIFT);
+			if (pg->rar_stolen_size != 0)
+				psb_mmu_remove_pfn_sequence(
+					psb_mmu_get_default_pd
+					(dev_priv->vsp_mmu),
+					pg->rar_start,
+					pg->rar_stolen_size >> PAGE_SHIFT);
+			up_read(&pg->sem);
+			psb_mmu_driver_takedown(dev_priv->vsp_mmu);
+			dev_priv->vsp_mmu = NULL;
+		}
+
 		if (IS_MRFLD(dev))
 			mrfld_gtt_takedown(dev_priv->pg, 1);
 		else
@@ -1382,6 +1428,13 @@ static int psb_driver_unload(struct drm_device *dev)
 		if (dev_priv->msvdx_reg) {
 			iounmap(dev_priv->msvdx_reg);
 			dev_priv->msvdx_reg = NULL;
+		}
+
+		if (IS_MRFLD(dev)) {
+			if (dev_priv->vsp_reg) {
+				iounmap(dev_priv->vsp_reg);
+				dev_priv->vsp_reg = NULL;
+			}
 		}
 
 		if (IS_TOPAZ(dev)) {
@@ -1489,6 +1542,14 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	if (!dev_priv->msvdx_reg)
 		goto out_err;
 
+	if (IS_MRFLD(dev)) {
+		dev_priv->vsp_reg =
+			ioremap(resource_start + TNG_VSP_OFFSET,
+				TNG_VSP_SIZE);
+		if (!dev_priv->vsp_reg)
+			goto out_err;
+	}
+
 	if (IS_TOPAZ(dev)) {
 		if (IS_FLDS(dev)) {
 			dev_priv->topaz_reg =
@@ -1573,8 +1634,14 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 
 	dev_priv->mmu = psb_mmu_driver_init((void *)0,
 					    drm_psb_trap_pagefaults, 0,
-					    dev_priv);
+					    dev_priv, IMG_MMU);
 	if (!dev_priv->mmu)
+		goto out_err;
+
+	dev_priv->vsp_mmu = psb_mmu_driver_init((void *)0,
+					    drm_psb_trap_pagefaults, 0,
+					    dev_priv, VSP_MMU);
+	if (!dev_priv->vsp_mmu)
 		goto out_err;
 
 	pg = dev_priv->pg;
@@ -1602,6 +1669,17 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 		up_read(&pg->sem);
 		if (ret)
 			goto out_err;
+
+		down_read(&pg->sem);
+		ret = psb_mmu_insert_pfn_sequence(
+			psb_mmu_get_default_pd
+			(dev_priv->vsp_mmu),
+			dev_priv->ci_region_start >> PAGE_SHIFT,
+			pg->mmu_gatt_start + pg->ci_start,
+			pg->ci_stolen_size >> PAGE_SHIFT, 0);
+		up_read(&pg->sem);
+		if (ret)
+			goto out_err;
 	}
 
 	/*
@@ -1621,6 +1699,16 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 		up_read(&pg->sem);
 		if (ret)
 			goto out_err;
+
+		down_read(&pg->sem);
+		ret = psb_mmu_insert_pfn_sequence(
+			psb_mmu_get_default_pd(dev_priv->vsp_mmu),
+			dev_priv->rar_region_start >> PAGE_SHIFT,
+			pg->mmu_gatt_start + pg->rar_start,
+			pg->rar_stolen_size >> PAGE_SHIFT, 0);
+		up_read(&pg->sem);
+		if (ret)
+			goto out_err;
 	}
 
 	dev_priv->pf_pd = psb_mmu_alloc_pd(dev_priv->mmu, 1, 0);
@@ -1629,6 +1717,9 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 
 	psb_mmu_set_pd_context(psb_mmu_get_default_pd(dev_priv->mmu), 0);
 	psb_mmu_set_pd_context(dev_priv->pf_pd, 1);
+
+	/* for vsp mmu */
+	psb_mmu_set_pd_context(psb_mmu_get_default_pd(dev_priv->vsp_mmu), 0);
 
 	spin_lock_init(&dev_priv->sequence_lock);
 
@@ -2996,7 +3087,7 @@ static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 	struct drm_psb_register_rw_arg *arg = data;
 	unsigned int iep_ble_status;
 	unsigned long iep_timeout;
-	UHBUsage usage =
+	enum UHBUsage usage =
 	    arg->b_force_hw_on ? OSPM_UHB_FORCE_POWER_ON : OSPM_UHB_ONLY_IF_ON;
 	uint32_t ovadd;
 
@@ -3552,12 +3643,148 @@ static int psb_gfx_pm_write(struct file *file, const char *buffer,
 		       drm_psb_gfx_pm);
 
 		for (i = 0; i < MRFLD_GFX_ALL_ISLANDS; i++) {
-			mrfld_set_power_state(i, POWER_ISLAND_DOWN);
+			mrfld_set_power_state(OSPM_DISPLAY_ISLAND,
+						i,
+						POWER_ISLAND_DOWN);
 			mdelay(1);
-			mrfld_set_power_state(i, POWER_ISLAND_UP);
+			mrfld_set_power_state(OSPM_DISPLAY_ISLAND,
+						i,
+						POWER_ISLAND_UP);
 		}
-
 	}
+	return 0;
+}
+
+static int psb_vsp_pm_read(char *buf, char **start, off_t offset, int request,
+			 int *eof, void *data)
+{
+	printk(KERN_ALERT "psb_vsp_pm_read: %d\n", drm_psb_vsp_pm);
+
+	return 0;
+}
+
+static int psb_vsp_pm_write(struct file *file, const char *buffer,
+			  unsigned long count, void *data)
+{
+	char buf[2];
+	if (count != sizeof(buf)) {
+		return -EINVAL;
+	} else {
+		if (copy_from_user(buf, buffer, count))
+			return -EINVAL;
+		if (buf[count-1] != '\n')
+			return -EINVAL;
+		drm_psb_vsp_pm = buf[0] - '0';
+	}
+
+	printk(KERN_ALERT  "\n drm_psb_vsp_pm=%x\n", drm_psb_vsp_pm);
+
+	if (drm_psb_gfx_pm == 0) {
+		printk(KERN_ALERT "\n Starting power off the VSP...\n");
+
+		mrfld_set_power_state(OSPM_VIDEO_VPP_ISLAND,
+					0,
+					POWER_ISLAND_DOWN);
+
+	} else if (drm_psb_gfx_pm == 1) {
+		printk(KERN_ALERT "\n Starting power on the VSP...\n");
+		mrfld_set_power_state(OSPM_VIDEO_VPP_ISLAND,
+					0,
+					POWER_ISLAND_UP);
+	} else {
+		printk(KERN_ALERT "\n Don't support this operation! %x\n",
+			drm_psb_vsp_pm);
+	}
+
+	return 0;
+}
+
+static int psb_ved_pm_read(char *buf, char **start, off_t offset, int request,
+			 int *eof, void *data)
+{
+	printk(KERN_ALERT "drm_psb_ved_pm: %d\n", drm_psb_ved_pm);
+
+	return 0;
+}
+
+static int psb_ved_pm_write(struct file *file, const char *buffer,
+			  unsigned long count, void *data)
+{
+	char buf[2];
+	if (count != sizeof(buf)) {
+		return -EINVAL;
+	} else {
+		if (copy_from_user(buf, buffer, count))
+			return -EINVAL;
+		if (buf[count-1] != '\n')
+			return -EINVAL;
+		drm_psb_ved_pm = buf[0] - '0';
+	}
+
+	printk(KERN_ALERT  "\n drm_psb_ved_pm=%x\n", drm_psb_ved_pm);
+
+	if (drm_psb_ved_pm == 0) {
+		printk(KERN_ALERT "\n Starting power off the VED...\n");
+
+		mrfld_set_power_state(OSPM_VIDEO_DEC_ISLAND,
+					0,
+					POWER_ISLAND_DOWN);
+
+	} else if (drm_psb_ved_pm == 1) {
+		printk(KERN_ALERT "\n Starting power on the VED...\n");
+		mrfld_set_power_state(OSPM_VIDEO_DEC_ISLAND,
+					0,
+					POWER_ISLAND_UP);
+	} else {
+		printk(KERN_ALERT "\n Don't support this operation! %x\n",
+			drm_psb_ved_pm);
+	}
+
+	return 0;
+}
+
+static int psb_vec_pm_read(char *buf, char **start, off_t offset, int request,
+			 int *eof, void *data)
+{
+	printk(KERN_ALERT "drm_psb_vec_pm: %d\n", drm_psb_vec_pm);
+
+	return 0;
+}
+
+static int psb_vec_pm_write(struct file *file, const char *buffer,
+			  unsigned long count, void *data)
+{
+	char buf[2];
+	if (count != sizeof(buf)) {
+		return -EINVAL;
+	} else {
+		if (copy_from_user(buf, buffer, count))
+			return -EINVAL;
+		if (buf[count-1] != '\n')
+			return -EINVAL;
+		drm_psb_vec_pm = buf[0] - '0';
+	}
+
+	printk(KERN_ALERT  "\n drm_psb_vec_pm=%x\n", drm_psb_vec_pm);
+
+	if (drm_psb_vec_pm == 0) {
+		printk(KERN_ALERT "\n Starting power off the VEC...\n");
+
+		mrfld_set_power_state(OSPM_VIDEO_ENC_ISLAND,
+					0,
+					POWER_ISLAND_DOWN);
+
+	} else if (drm_psb_vec_pm == 1) {
+		printk(KERN_ALERT "\n Starting power on the VEC...\n");
+		mrfld_set_power_state(OSPM_VIDEO_ENC_ISLAND,
+					0,
+					POWER_ISLAND_UP);
+	} else {
+		printk(KERN_ALERT "\n Don't support this operation! %x\n",
+			drm_psb_vec_pm);
+	}
+
+	return 0;
 }
 
 static int psb_dsr_read(char *buf, char **start, off_t offset, int request,
@@ -3871,16 +4098,27 @@ static int psb_proc_init(struct drm_minor *minor)
 	struct proc_dir_entry *rtpm;
 	struct proc_dir_entry *dsr;
 	struct proc_dir_entry *gfx_pm;
+	struct proc_dir_entry *vsp_pm;
+	struct proc_dir_entry *ved_pm;
+	struct proc_dir_entry *vec_pm;
 	struct proc_dir_entry *ent_display_status;
 	ent = create_proc_entry(OSPM_PROC_ENTRY, 0644, minor->proc_root);
 	rtpm = create_proc_entry(RTPM_PROC_ENTRY, 0644, minor->proc_root);
 	dsr = create_proc_entry(DSR_PROC_ENTRY, 0644, minor->proc_root);
 	gfx_pm = create_proc_entry(GFXPM_PROC_ENTRY, 0644, minor->proc_root);
+	vsp_pm = create_proc_entry(VSPPM_PROC_ENTRY, 0644, minor->proc_root);
+	ved_pm = create_proc_entry(VEDPM_PROC_ENTRY, 0644, minor->proc_root);
+	vec_pm = create_proc_entry(VECPM_PROC_ENTRY, 0644, minor->proc_root);
+
 	ent_display_status =
 	    create_proc_entry(DISPLAY_PROC_ENTRY, 0644, minor->proc_root);
 	ent1 =
 	    proc_create_data(BLC_PROC_ENTRY, 0, minor->proc_root,
 			     &psb_blc_proc_fops, minor);
+
+	drm_psb_vsp_pm = 0;
+	drm_psb_ved_pm = 0;
+	drm_psb_vec_pm = 0;
 
 	if (!ent || !ent1 || !rtpm || !ent_display_status || !dsr)
 		return -1;
@@ -3893,6 +4131,12 @@ static int psb_proc_init(struct drm_minor *minor)
 	dsr->write_proc = psb_dsr_write;
 	gfx_pm->read_proc = psb_gfx_pm_read;
 	gfx_pm->write_proc = psb_gfx_pm_write;
+	vsp_pm->read_proc = psb_vsp_pm_read;
+	vsp_pm->write_proc = psb_vsp_pm_write;
+	ved_pm->read_proc = psb_ved_pm_read;
+	ved_pm->write_proc = psb_ved_pm_write;
+	vec_pm->read_proc = psb_vec_pm_read;
+	vec_pm->write_proc = psb_vec_pm_write;
 	ent_display_status->write_proc = psb_display_register_write;
 	ent_display_status->read_proc = psb_display_register_read;
 	ent_display_status->data = (void *)minor;
@@ -3906,6 +4150,9 @@ static void psb_proc_cleanup(struct drm_minor *minor)
 	remove_proc_entry(BLC_PROC_ENTRY, minor->proc_root);
 	remove_proc_entry(DSR_PROC_ENTRY, minor->proc_root);
 	remove_proc_entry(GFXPM_PROC_ENTRY, minor->proc_root);
+	remove_proc_entry(VSPPM_PROC_ENTRY, minor->proc_root);
+	remove_proc_entry(VEDPM_PROC_ENTRY, minor->proc_root);
+	remove_proc_entry(VECPM_PROC_ENTRY, minor->proc_root);
 	return;
 }
 

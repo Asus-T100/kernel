@@ -8,6 +8,7 @@ ccflags-y += \
 	-I$(INCDIR)/interface \
 	-I$(INCDIR)/drv \
 	-I$(INCDIR)/imgv \
+	-I$(INCDIR)/vsp \
 	-Iinclude/linux \
 	-Iinclude/drm
 

@@ -241,6 +241,7 @@ static int drm_psb_tbe_unbind(struct ttm_backend *backend)
 	struct drm_psb_ttm_backend *psb_be =
 	    container_of(backend, struct drm_psb_ttm_backend, base);
 	struct psb_mmu_pd *pd = psb_mmu_get_default_pd(dev_priv->mmu);
+	struct psb_mmu_pd *vsp_pd = psb_mmu_get_default_pd(dev_priv->vsp_mmu);
 	/* struct ttm_mem_type_manager *man = &bdev->man[psb_be->mem_type]; */
 
 	if (psb_be->mem_type == TTM_PL_TT) {
@@ -259,6 +260,11 @@ static int drm_psb_tbe_unbind(struct ttm_backend *backend)
 			     psb_be->desired_tile_stride,
 			     psb_be->hw_tile_stride);
 
+	psb_mmu_remove_pages(vsp_pd, psb_be->offset,
+			     psb_be->num_pages,
+			     psb_be->desired_tile_stride,
+			     psb_be->hw_tile_stride);
+
 	return 0;
 }
 
@@ -271,6 +277,7 @@ static int drm_psb_tbe_bind(struct ttm_backend *backend,
 	struct drm_psb_ttm_backend *psb_be =
 	    container_of(backend, struct drm_psb_ttm_backend, base);
 	struct psb_mmu_pd *pd = psb_mmu_get_default_pd(dev_priv->mmu);
+	struct psb_mmu_pd *vsp_pd = psb_mmu_get_default_pd(dev_priv->vsp_mmu);
 	struct ttm_mem_type_manager *man = &bdev->man[bo_mem->mem_type];
 	int type;
 	int ret = 0;
@@ -298,6 +305,13 @@ static int drm_psb_tbe_bind(struct ttm_backend *backend,
 	}
 
 	ret = psb_mmu_insert_pages(pd, psb_be->pages,
+				   psb_be->offset, psb_be->num_pages,
+				   psb_be->desired_tile_stride,
+				   psb_be->hw_tile_stride, type);
+	if (ret)
+		goto out_err;
+
+	ret = psb_mmu_insert_pages(vsp_pd, psb_be->pages,
 				   psb_be->offset, psb_be->num_pages,
 				   psb_be->desired_tile_stride,
 				   psb_be->hw_tile_stride, type);

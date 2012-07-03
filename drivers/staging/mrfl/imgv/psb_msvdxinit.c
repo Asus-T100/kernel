@@ -915,8 +915,8 @@ static void psb_msvdx_error_concealment(struct work_struct *data)
 	int ret;
 	struct msvdx_private *msvdx_priv =
 	    container_of(data, struct msvdx_private, ec_work);
-	drm_psb_msvdx_frame_info_t *ec_frame = NULL;
-	drm_psb_msvdx_frame_info_t *ref_frame = NULL;
+	struct drm_psb_msvdx_frame_info_t *ec_frame = NULL;
+	struct drm_psb_msvdx_frame_info_t *ref_frame = NULL;
 	static struct ttm_bo_kmap_obj ec_kmap, ref_kmap;
 	struct ttm_buffer_object *ec_bo = NULL;
 	struct ttm_buffer_object *ref_bo = NULL;

@@ -38,6 +38,7 @@
 #define OSPM_GRAPHICS_ISLAND	APM_GRAPHICS_ISLAND
 #define OSPM_VIDEO_DEC_ISLAND	APM_VIDEO_DEC_ISLAND
 #define OSPM_VIDEO_ENC_ISLAND	APM_VIDEO_ENC_ISLAND
+#define OSPM_VIDEO_VPP_ISLAND   0x80
 #define OSPM_DISPLAY_ISLAND	0x40
 /*
 	As per TNG Punit HAS.
@@ -49,6 +50,8 @@
 #define VEC_SS_PM0		0x34
 #define VEC_SS_PM1		0x35
 #define DSP_SS_PM		0x36
+#define VSP_SS_PM0		0x37
+#define VSP_SS_PM1		0x38
 #define MIO_SS_PM		0x3b
 #define HDMIO_SS_PM		0x3c
 #define NC_PM_SSS		0x3f
@@ -74,9 +77,26 @@
 #define GFX_SDKCK_SSS		0xc000000
 #define GFX_RSCD_SSS		0x30000000
 #define GFX_SLC_LDO_SSS		0xc0000000
+/*
+	video sub-system
+
+	SSS--Subsystem Status (These bits read ONLY)
+	SSC--Subsystem Control
+	     00--i0,No clock gating or power gating
+	     01--i1,Clock gated
+	     10--i2,Soft reset
+	     11--D3,Power gated with no HW state retention
+ */
+#define VSP_SSC			0x3
+#define VED_SSC			0x3
+#define VEC_SSC			0x3
+#define VSP_SSS			0x3000000
+#define VED_SSS			0x3000000
+#define VEC_SSS			0x3000000
+
 
 #define PUNIT_PORT		0x04
-enum {
+enum MRFLD_GFX_ISLANDS {
 	MRFLD_GFX_DSPA = 0,
 	MRFLD_GFX_DSPB,
 	MRFLD_GFX_DSPC,
@@ -87,7 +107,7 @@ enum {
 	MRFLD_GFX_RSCD,
 	MRFLD_GFX_SLC_LDO,
 	MRFLD_GFX_ALL_ISLANDS,
-} MRFLD_GFX_ISLANDS;
+};
 
 #define POWER_ISLAND_DOWN 0
 #define POWER_ISLAND_UP 1
@@ -95,6 +115,7 @@ enum {
 #define OSPM_ALL_ISLANDS	((OSPM_GRAPHICS_ISLAND) |\
 				(OSPM_VIDEO_ENC_ISLAND) |\
 				(OSPM_VIDEO_DEC_ISLAND) |\
+				(OSPM_VIDEO_VPP_ISLAND) |\
 				(OSPM_DISPLAY_ISLAND))
 
 /* IPC message and command defines used to enable/disable mipi panel voltages */
@@ -112,10 +133,10 @@ extern bool gbgfxsuspended;
 extern int lastFailedBrightness;
 extern struct drm_device *gpDrmDevice;
 
-enum {
+enum UHBUsage {
 	OSPM_UHB_ONLY_IF_ON = 0,
 	OSPM_UHB_FORCE_POWER_ON,
-} UHBUsage;
+};
 
 struct mdfld_dsi_config;
 void mdfld_save_display(struct drm_device *dev);
@@ -126,6 +147,7 @@ void mdfld_dsi_dbi_set_power(struct drm_encoder *encoder, bool on);
 /* Use these functions to power down video HW for D0i3 purpose  */
 void ospm_apm_power_down_msvdx(struct drm_device *dev);
 void ospm_apm_power_down_topaz(struct drm_device *dev);
+void ospm_apm_power_down_vsp(struct drm_device *dev);
 
 void ospm_power_init(struct drm_device *dev);
 void ospm_post_init(struct drm_device *dev);
@@ -161,7 +183,7 @@ void mdfld_save_display(struct drm_device *dev);
 void ospm_power_island_down(int hw_islands);
 void ospm_power_island_up(int hw_islands);
 void ospm_suspend_graphics(void);
-int mrfld_set_power_state(enum MRFLD_GFX_ISLANDS islands, int state_type);
+int mrfld_set_power_state(int islands, int sub_islands, int state_type);
 /*
  * GFX-Runtime PM callbacks
  */

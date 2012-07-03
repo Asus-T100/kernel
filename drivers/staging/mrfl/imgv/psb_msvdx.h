@@ -30,23 +30,23 @@
 extern int drm_msvdx_pmpolicy;
 extern int drm_msvdx_delay;
 
-enum {
+enum DMAC_eBSwap {
 	/* No byte swapping will be performed */
 	PSB_DMAC_BSWAP_NO_SWAP = 0x0,
 	/* Byte order will be reversed. */
 	PSB_DMAC_BSWAP_REVERSE = 0x1,
 
-} DMAC_eBSwap;
+};
 
-enum {
+enum DMAC_eDir {
 	/* Data from memory to peripheral. */
 	PSB_DMAC_DIR_MEM_TO_PERIPH = 0x0,
 	/* Data from peripheral to memory. */
 	PSB_DMAC_DIR_PERIPH_TO_MEM = 0x1,
 
-} DMAC_eDir;
+};
 
-enum {
+enum DMAC_eAccDel {
 	/* Access delay zero clock cycles */
 	PSB_DMAC_ACC_DEL_0 = 0x0,
 	/* Access delay 256 clock cycles */
@@ -64,16 +64,16 @@ enum {
 	/* Access delay 1792 clock cycles */
 	PSB_DMAC_ACC_DEL_1792 = 0x7,
 
-} DMAC_eAccDel;
+};
 
-enum {
+enum DMAC_eIncr {
 	/* Static peripheral address. */
 	PSB_DMAC_INCR_OFF = 0,
 	/* Incrementing peripheral address. */
 	PSB_DMAC_INCR_ON = 1
-} DMAC_eIncr;
+};
 
-enum {
+enum DMAC_eBurst {
 	/* burst size of 0 */
 	PSB_DMAC_BURST_0 = 0x0,
 	/* burst size of 1 */
@@ -91,7 +91,7 @@ enum {
 	/* burst size of 7 */
 	PSB_DMAC_BURST_7 = 0x7,
 
-} DMAC_eBurst;
+};
 
 int psb_wait_for_register(struct drm_psb_private *dev_priv,
 			  uint32_t offset, uint32_t value, uint32_t enable);
@@ -166,19 +166,6 @@ psb_host_second_pass(struct drm_device *dev,
 	(0x01000000)
 #define MSVDX_CORE_CR_MSVDX_CONTROL_CR_MSVDX_VEC_RENDEC_DEC_SOFT_RESET_MASK \
 	(0x10000000)
-
-#define clk_enable_all	\
-(MSVDX_CORE_CR_MSVDX_MAN_CLK_ENABLE_CR_CORE_MAN_CLK_ENABLE_MASK	| \
-MSVDX_CORE_CR_MSVDX_MAN_CLK_ENABLE_CR_VDEB_PROCESS_MAN_CLK_ENABLE_MASK | \
-MSVDX_CORE_CR_MSVDX_MAN_CLK_ENABLE_CR_VDEB_ACCESS_MAN_CLK_ENABLE_MASK | \
-MSVDX_CORE_CR_MSVDX_MAN_CLK_ENABLE_CR_VDMC_MAN_CLK_ENABLE_MASK	 | \
-MSVDX_CORE_CR_MSVDX_MAN_CLK_ENABLE_CR_VEC_ENTDEC_MAN_CLK_ENABLE_MASK | \
-MSVDX_CORE_CR_MSVDX_MAN_CLK_ENABLE_CR_VEC_ITRANS_MAN_CLK_ENABLE_MASK | \
-MSVDX_CORE_CR_MSVDX_MAN_CLK_ENABLE_CR_MTX_MAN_CLK_ENABLE_MASK)
-
-#define clk_enable_minimal \
-(MSVDX_CORE_CR_MSVDX_MAN_CLK_ENABLE_CR_CORE_MAN_CLK_ENABLE_MASK | \
-MSVDX_CORE_CR_MSVDX_MAN_CLK_ENABLE_CR_MTX_MAN_CLK_ENABLE_MASK)
 
 #define clk_enable_auto	\
 (\
@@ -259,8 +246,8 @@ MSVDX_CORE_CR_MSVDX_MAN_CLK_ENABLE_CR_VEC_ITRANS_MAN_CLK_ENABLE_MASK | \
 MSVDX_CORE_CR_MSVDX_MAN_CLK_ENABLE_CR_MTX_MAN_CLK_ENABLE_MASK)
 
 #define clk_enable_minimal \
-	MSVDX_CORE_CR_MSVDX_MAN_CLK_ENABLE_CR_CORE_MAN_CLK_ENABLE_MASK | \
-	MSVDX_CORE_CR_MSVDX_MAN_CLK_ENABLE_CR_MTX_MAN_CLK_ENABLE_MASK
+(MSVDX_CORE_CR_MSVDX_MAN_CLK_ENABLE_CR_CORE_MAN_CLK_ENABLE_MASK | \
+MSVDX_CORE_CR_MSVDX_MAN_CLK_ENABLE_CR_MTX_MAN_CLK_ENABLE_MASK)
 
 /* MTX registers */
 #define MSVDX_MTX_ENABLE		(0x0000)
@@ -700,7 +687,7 @@ struct psb_msvdx_deblock_queue {
 	struct DEBLOCKPARAMS dbParams;
 };
 
-struct {
+struct FW_VA_DEBLOCK_MSG {
 	union {
 		struct {
 			uint32_t msg_size:8;
@@ -731,9 +718,9 @@ struct {
 	uint32_t address_b0;
 	uint32_t address_b1;
 	uint32_t rotation_flags;
-} FW_VA_DEBLOCK_MSG;
+};
 
-struct {
+struct drm_psb_msvdx_frame_info_t {
 	uint32_t handle;
 	uint32_t surface_id;
 	uint32_t fence;
@@ -743,7 +730,7 @@ struct {
 	uint32_t fw_status;
 	uint32_t size_mb;
 	struct drm_psb_msvdx_decode_status_t decode_status;
-} drm_psb_msvdx_frame_info_t;
+};
 
 #define MAX_DECODE_BUFFERS 24
 /* MSVDX private structure */

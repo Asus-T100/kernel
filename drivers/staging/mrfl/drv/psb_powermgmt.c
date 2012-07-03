@@ -31,6 +31,7 @@
 #include "psb_intel_reg.h"
 #include "psb_msvdx.h"
 #include "pnw_topaz.h"
+#include "vsp.h"
 #include <linux/mutex.h>
 #include "mdfld_dsi_dbi.h"
 #include "mdfld_dsi_dbi_dpu.h"
@@ -55,6 +56,7 @@ static atomic_t g_display_access_count;
 static atomic_t g_graphics_access_count;
 static atomic_t g_videoenc_access_count;
 static atomic_t g_videodec_access_count;
+static atomic_t g_videovsp_access_count;
 
 static bool gbSuspended;
 bool gbgfxsuspended;
@@ -190,6 +192,52 @@ static int ospm_runtime_pm_topaz_resume(struct drm_device *dev)
 	return 0;
 }
 
+static int ospm_runtime_pm_vsp_suspend(struct drm_device *dev)
+{
+	int ret = 0;
+	struct drm_psb_private *dev_priv = dev->dev_private;
+	struct vsp_private *vsp_priv = dev_priv->vsp_private;
+
+	/* whether the HW has been powered off */
+	if (!ospm_power_is_hw_on(OSPM_VIDEO_VPP_ISLAND))
+		goto out;
+
+	/* whether the HW is used */
+	if (atomic_read(&g_videovsp_access_count)) {
+		ret = -1;
+		goto out;
+	}
+
+	/* whether the HW is idle */
+	if (psb_check_vsp_idle(dev)) {
+		ret = -2;
+		goto out;
+	}
+
+	psb_vsp_save_context(dev);
+
+	ospm_power_island_down(OSPM_VIDEO_VPP_ISLAND);
+
+	/* update the PM state */
+	VSP_NEW_PMSTATE(dev, vsp_priv, PSB_PMSTATE_POWERDOWN);
+out:
+	return ret;
+}
+
+static int ospm_runtime_pm_vsp_resume(struct drm_device *dev)
+{
+	struct drm_psb_private *dev_priv = dev->dev_private;
+	struct vsp_private *vsp_priv = dev_priv->vsp_private;
+
+	/*printk(KERN_ALERT "%s\n", __func__);*/
+
+	psb_vsp_restore_context(dev);
+
+	VSP_NEW_PMSTATE(dev, vsp_priv, PSB_PMSTATE_POWERUP);
+
+	return 0;
+}
+
 #ifdef FIX_OSPM_POWER_DOWN
 void ospm_apm_power_down_msvdx(struct drm_device *dev)
 {
@@ -286,6 +334,42 @@ void ospm_apm_power_down_topaz(struct drm_device *dev)
 	mutex_unlock(&g_ospm_mutex);
 	return;
 }
+
+void ospm_apm_power_down_vsp(struct drm_device *dev)
+{
+
+	struct drm_psb_private *dev_priv = dev->dev_private;
+	struct vsp_private *vsp_priv = dev_priv->vsp_private;
+
+	mutex_lock(&g_ospm_mutex);
+
+	/* whether the HW has been powered off */
+	if (!ospm_power_is_hw_on(OSPM_VIDEO_VPP_ISLAND))
+		goto out;
+
+	/* whether the HW is used */
+	if (atomic_read(&g_videovsp_access_count))
+		goto out;
+
+	/* whether the HW is idle */
+	if (psb_check_vsp_idle(dev))
+		goto out;
+
+	gbSuspendInProgress = true;
+
+	/* The function should be implemented in vsp.c */
+	psb_vsp_save_context(dev);
+
+	ospm_power_island_down(OSPM_VIDEO_VPP_ISLAND);
+
+	/* update the PM state */
+	VSP_NEW_PMSTATE(dev, vsp_priv, PSB_PMSTATE_POWERDOWN);
+
+	gbSuspendInProgress = false;
+
+out:
+	mutex_unlock(&g_ospm_mutex);
+}
 #endif
 /*
  * ospm_power_init
@@ -306,6 +390,7 @@ void ospm_power_init(struct drm_device *dev)
 	atomic_set(&g_graphics_access_count, 0);
 	atomic_set(&g_videoenc_access_count, 0);
 	atomic_set(&g_videodec_access_count, 0);
+	atomic_set(&g_videovsp_access_count, 0);
 
 	register_early_suspend(&gfx_early_suspend_desc);
 
@@ -397,7 +482,9 @@ void ospm_post_init(struct drm_device *dev)
 		if (!(dev_priv->panel_desc))
 			dc_islands |= MRFLD_GFX_MIO;
 
-		mrfld_set_power_state(dc_islands, POWER_ISLAND_DOWN);
+		mrfld_set_power_state(OSPM_DISPLAY_ISLAND,
+					dc_islands,
+					POWER_ISLAND_DOWN);
 	}
 }
 
@@ -1398,6 +1485,7 @@ int ospm_power_suspend(struct pci_dev *pdev, pm_message_t state)
 	int videoenc_access_count;
 	int videodec_access_count;
 	int display_access_count;
+	int videovsp_access_count;
 	bool suspend_pci = true;
 
 	if (gbSuspendInProgress || gbResumeInProgress) {
@@ -1417,10 +1505,13 @@ int ospm_power_suspend(struct pci_dev *pdev, pm_message_t state)
 		videoenc_access_count = atomic_read(&g_videoenc_access_count);
 		videodec_access_count = atomic_read(&g_videodec_access_count);
 		display_access_count = atomic_read(&g_display_access_count);
+		videovsp_access_count = atomic_read(&g_videovsp_access_count);
 
 		if (graphics_access_count ||
-		    videoenc_access_count ||
-		    videodec_access_count || display_access_count)
+			videoenc_access_count ||
+			videodec_access_count ||
+			videovsp_access_count ||
+			display_access_count)
 			ret = -EBUSY;
 
 		if (!ret) {
@@ -1505,6 +1596,39 @@ void ospm_power_island_up(int hw_islands)
 		gfx_islands = hw_islands & ~OSPM_DISPLAY_ISLAND;
 	}
 
+	if (hw_islands & OSPM_VIDEO_VPP_ISLAND) {
+		if (mrfld_set_power_state(
+				OSPM_VIDEO_VPP_ISLAND,
+				0,
+				OSPM_ISLAND_UP))
+			BUG();
+
+		/* handle other islands */
+		gfx_islands = hw_islands & ~OSPM_VIDEO_VPP_ISLAND;
+	}
+
+	if (hw_islands & OSPM_VIDEO_DEC_ISLAND) {
+		if (mrfld_set_power_state(
+				OSPM_VIDEO_DEC_ISLAND,
+				0,
+				OSPM_ISLAND_UP))
+			BUG();
+
+		/* handle other islands */
+		gfx_islands = hw_islands & ~OSPM_VIDEO_DEC_ISLAND;
+	}
+
+	if (hw_islands & OSPM_VIDEO_ENC_ISLAND) {
+		if (mrfld_set_power_state(
+				OSPM_VIDEO_ENC_ISLAND,
+				0,
+				OSPM_ISLAND_UP))
+			BUG();
+
+		/* handle other islands */
+		gfx_islands = hw_islands & ~OSPM_VIDEO_ENC_ISLAND;
+	}
+
 	if (gfx_islands) {
 #ifdef OSPM_GFX_DPK
 		printk(KERN_ALERT "%s other hw_islands: %x\n",
@@ -1580,9 +1704,11 @@ static int wait_for_pm_cmd_complete(int verify_mask, int state_type,
 	pwr_mask = pwr_cnt;
 
 	if (state_type == POWER_ISLAND_DOWN)
-		pwr_mask |= verify_mask;
-	else if (state_type == POWER_ISLAND_UP)
+		/* pwr_mask |= verify_mask; */
 		pwr_mask &= ~verify_mask;
+	else if (state_type == POWER_ISLAND_UP)
+		/* pwr_mask &= ~verify_mask; */
+		pwr_mask |= verify_mask;
 	else {
 		printk(KERN_ALERT "ERROR: %s invalid power state: %d\n",
 		       __func__, state_type);
@@ -1624,96 +1750,128 @@ static int wait_for_pm_cmd_complete(int verify_mask, int state_type,
 	return 0;
 }
 
-int mrfld_set_power_state(enum MRFLD_GFX_ISLANDS islands, int state_type)
+int mrfld_set_power_state(int islands, int sub_islands, int state_type)
 {
 	struct drm_psb_private *dev_priv =
-	    (struct drm_psb_private *)gpDrmDevice->dev_private;
-	u32 pwr_cnt = 0;
-	u32 pwr_mask = 0;
-	u32 dsp_mask = 0;
-	u32 gfx_mask = 0;
-	u32 mio_mask = 0;
-	u32 hdmio_mask = 0;
+		(struct drm_psb_private *)gpDrmDevice->dev_private;
 	unsigned long flags;
 	int ret = 0;
 
 #ifdef OSPM_GFX_DPK
-	printk(KERN_ALERT "%s islands: 0x%x, state_type: %s\n",
-	       __func__, islands, state_type ? "on" : "off");
+	printk(KERN_ALERT "%s islands: 0x%x, sub_islands:0x%x,state_type:%s\n",
+			__func__, islands, sub_island,
+			state_type ? "on" : "off");
 #endif
 
 	spin_lock_irqsave(&dev_priv->ospm_lock, flags);
 
 	switch (islands) {
-	case MRFLD_GFX_DSPA:
-		dsp_mask |= DSPASSC;
+	case OSPM_DISPLAY_ISLAND: {
+		u32 pwr_cnt = 0;
+		u32 pwr_mask = 0;
+		u32 dsp_mask = 0;
+		u32 gfx_mask = 0;
+		u32 mio_mask = 0;
+		u32 hdmio_mask = 0;
+
+		switch (sub_islands) {
+		case MRFLD_GFX_DSPA:
+			dsp_mask |= DSPASSC;
+			break;
+		case MRFLD_GFX_DSPB:
+			dsp_mask |= DSPBSSC;
+			break;
+		case MRFLD_GFX_DSPC:
+			dsp_mask |= DSPCSSC;
+			break;
+		case MRFLD_GFX_MIO:
+			mio_mask |= MIOSSC;
+			break;
+		case MRFLD_GFX_HDMIO:
+			hdmio_mask |= HDMIOSSC;
+			break;
+		case MRFLD_GFX_SLC:
+			gfx_mask |= GFX_SLC_SSC;
+			break;
+		case MRFLD_GFX_SDKCK:
+			gfx_mask |= GFX_SDKCK_SSC;
+			break;
+		case MRFLD_GFX_RSCD:
+			gfx_mask |= GFX_RSCD_SSC;
+			break;
+		case MRFLD_GFX_SLC_LDO:
+			gfx_mask |= GFX_SLC_LDO_SSC;
+			break;
+		default:
+			spin_unlock_irqrestore(&dev_priv->ospm_lock, flags);
+			printk(KERN_ALERT "ERROR: %s invalid sub_islands: 0x%x\n",
+				__func__, sub_islands);
+
+			return -EINVAL;
+		}
+
+		if (!ret && dsp_mask) {
+			ret = wait_for_pm_cmd_complete(
+						dsp_mask,
+						state_type,
+						DSP_SS_PM);
+			if (ret)
+				goto unlock;
+		}
+
+		if (!ret && mio_mask) {
+			ret = wait_for_pm_cmd_complete(
+						mio_mask,
+						state_type,
+						MIO_SS_PM);
+			if (ret)
+				goto unlock;
+		}
+		if (!ret && hdmio_mask) {
+			ret = wait_for_pm_cmd_complete(
+						hdmio_mask,
+						state_type,
+						HDMIO_SS_PM);
+			if (ret)
+				goto unlock;
+		}
+		if (!ret && gfx_mask) {
+			ret = wait_for_pm_cmd_complete(
+						gfx_mask,
+						state_type,
+						GFX_SS_PM0);
+			if (ret)
+				goto unlock;
+		}
+	}
 		break;
-	case MRFLD_GFX_DSPB:
-		dsp_mask |= DSPBSSC;
+	case OSPM_VIDEO_VPP_ISLAND:
+		ret = wait_for_pm_cmd_complete(VSP_SSC, state_type, VSP_SS_PM0);
+		if (ret)
+			goto unlock;
 		break;
-	case MRFLD_GFX_DSPC:
-		dsp_mask |= DSPCSSC;
+	case OSPM_VIDEO_DEC_ISLAND:
+		ret = wait_for_pm_cmd_complete(VED_SSC, state_type, VED_SS_PM0);
+		if (ret)
+			goto unlock;
 		break;
-	case MRFLD_GFX_MIO:
-		mio_mask |= MIOSSC;
-		break;
-	case MRFLD_GFX_HDMIO:
-		hdmio_mask |= HDMIOSSC;
-		break;
-	case MRFLD_GFX_SLC:
-		gfx_mask |= GFX_SLC_SSC;
-		break;
-	case MRFLD_GFX_SDKCK:
-		gfx_mask |= GFX_SDKCK_SSC;
-		break;
-	case MRFLD_GFX_RSCD:
-		gfx_mask |= GFX_RSCD_SSC;
-		break;
-	case MRFLD_GFX_SLC_LDO:
-		gfx_mask |= GFX_SLC_LDO_SSC;
+	case OSPM_VIDEO_ENC_ISLAND:
+		ret = wait_for_pm_cmd_complete(VEC_SSC, state_type, VEC_SS_PM0);
+		if (ret)
+			goto unlock;
 		break;
 	default:
-		printk(KERN_ALERT "ERROR: %s invalid islands: 0x%x\n", __func__,
-		       islands);
-		ret = -EINVAL;
-		goto unlock;
+		spin_unlock_irqrestore(&dev_priv->ospm_lock, flags);
+		printk(KERN_ALERT "Could NOT support island: %x\n", islands);
+		return -EINVAL;
 	}
 
-	if (!ret && dsp_mask) {
-		ret = wait_for_pm_cmd_complete(dsp_mask, state_type, DSP_SS_PM);
-		if (ret)
-			printk(KERN_ALERT
-			       "ERROR: wait_for_pm_cmd_complete FAILED: ret: 0x%x\n",
-			       ret);
-	}
-
-	if (!ret && mio_mask) {
-		ret = wait_for_pm_cmd_complete(mio_mask, state_type, MIO_SS_PM);
-		if (ret)
-			printk(KERN_ALERT
-			       "ERROR: wait_for_pm_cmd_complete FAILED: ret: 0x%x\n",
-			       ret);
-	}
-	if (!ret && hdmio_mask) {
-		ret =
-		    wait_for_pm_cmd_complete(hdmio_mask, state_type,
-					     HDMIO_SS_PM);
-		if (ret)
-			printk(KERN_ALERT
-			       "ERROR: wait_for_pm_cmd_complete FAILED: ret: 0x%x\n",
-			       ret);
-	}
-	if (!ret && gfx_mask) {
-		ret =
-		    wait_for_pm_cmd_complete(gfx_mask, state_type, GFX_SS_PM0);
-		if (ret)
-			printk(KERN_ALERT
-			       "ERROR: wait_for_pm_cmd_complete FAILED: ret: 0x%x\n",
-			       ret);
-	}
-
- unlock:
+unlock:
 	spin_unlock_irqrestore(&dev_priv->ospm_lock, flags);
+	if (ret)
+		printk(KERN_ALERT "ERROR: wait_for_pm_cmd_complete FAILED!"
+			"ret=0x%x, island=%d, sub-island=%d, state=%d\n",
+			ret, islands, sub_islands, state_typeret);
 	return ret;
 }
 
@@ -1757,6 +1915,39 @@ void ospm_power_island_down(int hw_islands)
 		g_hw_power_status_mask &= ~OSPM_DISPLAY_ISLAND;
 		/* handle other islands */
 		gfx_islands = hw_islands & ~OSPM_DISPLAY_ISLAND;
+	}
+
+	if (hw_islands & OSPM_VIDEO_VPP_ISLAND) {
+		if (mrfld_set_power_state(
+				OSPM_VIDEO_VPP_ISLAND,
+				0,
+				OSPM_ISLAND_DOWN))
+			BUG();
+
+		/* handle other islands */
+		gfx_islands = hw_islands & ~OSPM_VIDEO_VPP_ISLAND;
+	}
+
+	if (hw_islands & OSPM_VIDEO_DEC_ISLAND) {
+		if (mrfld_set_power_state(
+				OSPM_VIDEO_DEC_ISLAND,
+				0,
+				OSPM_ISLAND_DOWN))
+			BUG();
+
+		/* handle other islands */
+		gfx_islands = hw_islands & ~OSPM_VIDEO_DEC_ISLAND;
+	}
+
+	if (hw_islands & OSPM_VIDEO_ENC_ISLAND) {
+		if (mrfld_set_power_state(
+				OSPM_VIDEO_ENC_ISLAND,
+				0,
+				OSPM_ISLAND_DOWN))
+			BUG();
+
+		/* handle other islands */
+		gfx_islands = hw_islands & ~OSPM_VIDEO_ENC_ISLAND;
 	}
 
 	if (gfx_islands) {
@@ -1858,79 +2049,91 @@ bool ospm_power_using_hw_begin(int hw_island, enum UHBUsage usage)
 		gbResumeInProgress = true;
 
 		ret = ospm_resume_pci(pdev);
-
-		if (ret) {
-			switch (hw_island) {
-			case OSPM_DISPLAY_ISLAND:
-				ospm_resume_display(pdev);
-				psb_irq_preinstall_islands(gpDrmDevice,
-					OSPM_DISPLAY_ISLAND);
-				psb_irq_postinstall_islands(gpDrmDevice,
-					OSPM_DISPLAY_ISLAND);
-				break;
-			case OSPM_GRAPHICS_ISLAND:
-				ospm_power_island_up(OSPM_GRAPHICS_ISLAND);
-				psb_irq_preinstall_islands(gpDrmDevice,
-					OSPM_GRAPHICS_ISLAND);
-				psb_irq_postinstall_islands(gpDrmDevice,
-					OSPM_GRAPHICS_ISLAND);
-				break;
-#if 1				/* for debugging video driver ospm */
-			case OSPM_VIDEO_DEC_ISLAND:
-				if (!ospm_power_is_hw_on(OSPM_DISPLAY_ISLAND)) {
-					ospm_resume_display(pdev);
-					psb_irq_preinstall_islands(gpDrmDevice,
-						OSPM_DISPLAY_ISLAND);
-					psb_irq_postinstall_islands(gpDrmDevice,
-						OSPM_DISPLAY_ISLAND);
-				}
-
-				if (!ospm_power_is_hw_on
-					(OSPM_VIDEO_DEC_ISLAND)) {
-					ospm_power_island_up
-					    (OSPM_VIDEO_DEC_ISLAND);
-					ospm_runtime_pm_msvdx_resume
-					    (gpDrmDevice);
-					psb_irq_preinstall_islands(gpDrmDevice,
-						OSPM_VIDEO_DEC_ISLAND);
-					psb_irq_postinstall_islands(gpDrmDevice,
-						OSPM_VIDEO_DEC_ISLAND);
-				}
-
-				break;
-			case OSPM_VIDEO_ENC_ISLAND:
-				if (!ospm_power_is_hw_on(OSPM_DISPLAY_ISLAND)) {
-					ospm_resume_display(pdev);
-					psb_irq_preinstall_islands(gpDrmDevice,
-						OSPM_DISPLAY_ISLAND);
-					psb_irq_postinstall_islands(gpDrmDevice,
-						OSPM_DISPLAY_ISLAND);
-				}
-
-				if (!ospm_power_is_hw_on
-					(OSPM_VIDEO_ENC_ISLAND)) {
-					ospm_power_island_up
-					    (OSPM_VIDEO_ENC_ISLAND);
-					ospm_runtime_pm_topaz_resume
-					    (gpDrmDevice);
-					psb_irq_preinstall_islands(gpDrmDevice,
-						OSPM_VIDEO_ENC_ISLAND);
-					psb_irq_postinstall_islands(gpDrmDevice,
-						OSPM_VIDEO_ENC_ISLAND);
-				}
-#endif
-				break;
-			default:
-				printk(KERN_ALERT "%s unknown island !!!!\n",
-				       __func__);
-				break;
-			}
-
+		if (!ret) {
+			printk(KERN_ALERT "%s: %d failed\n",
+				__func__, hw_island);
+			gbResumeInProgress = false;
+			goto increase_count;
 		}
 
-		if (!ret)
-			printk(KERN_ALERT "%s: %d failed\n",
-			       __func__, hw_island);
+		switch (hw_island) {
+		case OSPM_DISPLAY_ISLAND:
+			ospm_resume_display(pdev);
+			psb_irq_preinstall_islands(gpDrmDevice,
+						OSPM_DISPLAY_ISLAND);
+			psb_irq_postinstall_islands(gpDrmDevice,
+						OSPM_DISPLAY_ISLAND);
+			break;
+		case OSPM_GRAPHICS_ISLAND:
+			ospm_power_island_up(OSPM_GRAPHICS_ISLAND);
+			psb_irq_preinstall_islands(gpDrmDevice,
+						OSPM_GRAPHICS_ISLAND);
+			psb_irq_postinstall_islands(gpDrmDevice,
+						OSPM_GRAPHICS_ISLAND);
+			break;
+		case OSPM_VIDEO_DEC_ISLAND:
+			if (!ospm_power_is_hw_on(OSPM_DISPLAY_ISLAND)) {
+				ospm_resume_display(pdev);
+				psb_irq_preinstall_islands(gpDrmDevice,
+							OSPM_DISPLAY_ISLAND);
+				psb_irq_postinstall_islands(gpDrmDevice,
+							OSPM_DISPLAY_ISLAND);
+			}
+
+			if (!ospm_power_is_hw_on(OSPM_VIDEO_DEC_ISLAND)) {
+				ospm_power_island_up(OSPM_VIDEO_DEC_ISLAND);
+				ospm_runtime_pm_msvdx_resume(gpDrmDevice);
+				psb_irq_preinstall_islands(gpDrmDevice,
+							OSPM_VIDEO_DEC_ISLAND);
+				psb_irq_postinstall_islands(gpDrmDevice,
+							OSPM_VIDEO_DEC_ISLAND);
+			}
+
+			break;
+		case OSPM_VIDEO_ENC_ISLAND:
+			if (!ospm_power_is_hw_on(OSPM_DISPLAY_ISLAND)) {
+				ospm_resume_display(pdev);
+				psb_irq_preinstall_islands(gpDrmDevice,
+							OSPM_DISPLAY_ISLAND);
+				psb_irq_postinstall_islands(gpDrmDevice,
+							OSPM_DISPLAY_ISLAND);
+			}
+
+			if (!ospm_power_is_hw_on(OSPM_VIDEO_ENC_ISLAND)) {
+				ospm_power_island_up(OSPM_VIDEO_ENC_ISLAND);
+				ospm_runtime_pm_topaz_resume(gpDrmDevice);
+				psb_irq_preinstall_islands(gpDrmDevice,
+							OSPM_VIDEO_ENC_ISLAND);
+				psb_irq_postinstall_islands(gpDrmDevice,
+							OSPM_VIDEO_ENC_ISLAND);
+			}
+
+			break;
+		case OSPM_VIDEO_VPP_ISLAND:
+			if (!ospm_power_is_hw_on(OSPM_DISPLAY_ISLAND)) {
+				ospm_resume_display(pdev);
+				psb_irq_preinstall_islands(gpDrmDevice,
+						OSPM_DISPLAY_ISLAND);
+				psb_irq_postinstall_islands(gpDrmDevice,
+						OSPM_DISPLAY_ISLAND);
+			}
+
+			if (!ospm_power_is_hw_on(OSPM_VIDEO_VPP_ISLAND)) {
+				ospm_power_island_up(OSPM_VIDEO_VPP_ISLAND);
+				ospm_runtime_pm_vsp_resume(gpDrmDevice);
+				psb_irq_preinstall_islands(gpDrmDevice,
+						OSPM_VIDEO_VPP_ISLAND);
+				psb_irq_postinstall_islands(gpDrmDevice,
+						OSPM_VIDEO_VPP_ISLAND);
+			}
+
+			break;
+
+		default:
+			printk(KERN_ALERT "%s unknown island !!!!\n",
+			       __func__);
+			break;
+		}
 
 		gbResumeInProgress = false;
 	}
@@ -1948,6 +2151,9 @@ bool ospm_power_using_hw_begin(int hw_island, enum UHBUsage usage)
 			break;
 		case OSPM_DISPLAY_ISLAND:
 			atomic_inc(&g_display_access_count);
+			break;
+		case OSPM_VIDEO_VPP_ISLAND:
+			atomic_inc(&g_videovsp_access_count);
 			break;
 		}
 
@@ -1985,6 +2191,9 @@ void ospm_power_using_hw_end(int hw_island)
 	case OSPM_DISPLAY_ISLAND:
 		atomic_dec(&g_display_access_count);
 		break;
+	case OSPM_VIDEO_VPP_ISLAND:
+		atomic_dec(&g_videovsp_access_count);
+		break;
 	}
 
 #ifdef CONFIG_GFX_RTPM
@@ -1996,6 +2205,7 @@ void ospm_power_using_hw_end(int hw_island)
 	WARN_ON(atomic_read(&g_videoenc_access_count) < 0);
 	WARN_ON(atomic_read(&g_videodec_access_count) < 0);
 	WARN_ON(atomic_read(&g_display_access_count) < 0);
+	WARN_ON(atomic_read(&g_videovsp_access_count) < 0);
 }
 
 int ospm_runtime_pm_allow(struct drm_device *dev)
@@ -2060,14 +2270,16 @@ int psb_runtime_suspend(struct device *dev)
 	if (atomic_read(&g_graphics_access_count)
 	    || atomic_read(&g_videoenc_access_count)
 	    || (gbdispstatus == true)
+	    || atomic_read(&g_videovsp_access_count)
 	    || atomic_read(&g_videodec_access_count)
 	    || atomic_read(&g_display_access_count)) {
 #ifdef OSPM_GFX_DPK
-		printk(KERN_ALERT "GFX:%d VEC:%d VED:%d DC:%d DSR:%d\n",
-		       atomic_read(&g_graphics_access_count),
-		       atomic_read(&g_videoenc_access_count),
-		       atomic_read(&g_videodec_access_count),
-		       atomic_read(&g_display_access_count), gbdispstatus);
+		printk(KERN_ALERT "GFX:%d VEC:%d VED:%d VSP:%d DC:%d DSR:%d\n",
+			atomic_read(&g_graphics_access_count),
+			atomic_read(&g_videoenc_access_count),
+			atomic_read(&g_videodec_access_count),
+			atomic_read(&g_videovsp_access_count),
+			atomic_read(&g_display_access_count), gbdispstatus);
 #endif
 		return -EBUSY;
 	} else
@@ -2113,17 +2325,13 @@ int psb_runtime_idle(struct device *dev)
 	    || atomic_read(&g_videoenc_access_count)
 	    || atomic_read(&g_videodec_access_count)
 	    || atomic_read(&g_display_access_count)
+	    || atomic_read(&g_videovsp_access_count)
 	    || (gbdispstatus == true)
 #ifdef CONFIG_SND_INTELMID_HDMI_AUDIO
 	    || hdmi_audio_busy
 #endif
-#if 0	/* FIXME: video driver support for Linux Runtime PM */
-	    || (msvdx_hw_busy == 1)
-	    || (topaz_hw_busy == 1))
-#else
-	    )
-#endif
-	    return -EBUSY;
+	)
+		return -EBUSY;
 	else
-	return 0;
+		return 0;
 }

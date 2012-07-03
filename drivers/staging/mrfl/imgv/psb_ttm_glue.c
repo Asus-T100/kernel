@@ -108,7 +108,7 @@ int psb_release(struct inode *inode, struct file *filp)
 		msvdx_priv->host_be_opp_enabled = 0;
 		msvdx_priv->deblock_enabled = 0;
 		memset(&msvdx_priv->frame_info, 0,
-		       sizeof(struct drm_psb_msvdx_frame_info) *
+		       sizeof(struct drm_psb_msvdx_frame_info_t) *
 		       MAX_DECODE_BUFFERS);
 	}
 

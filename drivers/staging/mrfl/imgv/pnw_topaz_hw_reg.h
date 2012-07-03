@@ -1205,7 +1205,7 @@ enum drm_pnw_topaz_codec {
 	IMG_CODEC_NUM
 };
 
-enum {
+enum MTX_eWriteBackData {
 	/* !< Command word of command executed by MTX */
 	MTX_WRITEBACK_CMDWORD = 0,
 	/* !< Writeback value returned by command */
@@ -1215,7 +1215,7 @@ enum {
 	/* number of bits written out by this core */
 	MTX_WRITEBACK_BITSWRITTEN = 3,
 	MTX_WRITEBACK_DATASIZE
-} MTX_eWriteBackData;
+};
 
 /* pnw_topazinit.c */
 int pnw_topaz_reset(struct drm_psb_private *dev_priv);
