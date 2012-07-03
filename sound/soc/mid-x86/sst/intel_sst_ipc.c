@@ -244,7 +244,7 @@ int sst_sync_post_message_mrfld(struct ipc_post *msg)
 			retval = -EBUSY;
 			goto out;
 		}
-		udelay(5000);
+		udelay(500);
 		loop_count++;
 		header.f = sst_shim_read64(sst_drv_ctx->shim, SST_IPCX);
 	};
@@ -282,7 +282,7 @@ int sst_sync_post_message_mfld(struct ipc_post *msg)
 			retval = -EBUSY;
 			goto out;
 		}
-		udelay(5000);
+		udelay(500);
 		loop_count++;
 		header.full = sst_shim_read(sst_drv_ctx->shim, SST_IPCX);
 	};

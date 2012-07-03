@@ -49,6 +49,7 @@
 
 struct intel_sst_ops {
 	irqreturn_t (*interrupt) (int, void *);
+	irqreturn_t (*irq_thread) (int, void *);
 	void (*clear_interrupt) (void);
 	int (*start) (void);
 	int (*reset) (void);
