@@ -1948,6 +1948,8 @@ int atomisp_macc_table(struct atomisp_device *isp, int flag,
 	} else {
 		memcpy(macc_table, &arg->table,
 		       sizeof(struct sh_css_macc_table));
+		if (arg->color_effect == isp->params.color_effect)
+			sh_css_set_macc_table(macc_table);
 	}
 
 	return 0;
