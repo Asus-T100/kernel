@@ -593,7 +593,7 @@ static void bcove_handle_ext_chrgr_irq(bool stat)
 static int disable_charger(enum charger_type chrg_type)
 {
 	dev_dbg(chc.dev, "%s\n", __func__);
-	return intel_scu_ipc_update_register(CHGRCTRL0_ADDR, EXTCHRDIS_DISABLE,
+	return intel_scu_ipc_update_register(CHGRCTRL0_ADDR, EXTCHRDIS_ENABLE,
 				      CHGRCTRL0_EXTCHRDIS_MASK);
 }
 
@@ -601,7 +601,7 @@ static int enable_charging(enum charger_type chrg_type)
 {
 	dev_dbg(chc.dev, "%s\n", __func__);
 
-	intel_scu_ipc_update_register(CHGRCTRL0_ADDR, EXTCHRDIS_ENABLE,
+	intel_scu_ipc_update_register(CHGRCTRL0_ADDR, EXTCHRDIS_DISABLE,
 				      CHGRCTRL0_EXTCHRDIS_MASK);
 	return chc.ext_chrgr->enable_charging(chc.ext_chrgr_addr);
 
