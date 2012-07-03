@@ -1316,8 +1316,6 @@ void mdfld_dsi_dpi_controller_init(struct mdfld_dsi_config * dsi_config, int pip
 	REG_WRITE((MIPIA_VBP_COUNT_REG + reg_offset), dpi_timing.vbp_count & DSI_DPI_TIMING_MASK);
 	REG_WRITE((MIPIA_VFP_COUNT_REG + reg_offset), dpi_timing.vfp_count & DSI_DPI_TIMING_MASK);
 	
-	REG_WRITE((MIPIA_HIGH_LOW_SWITCH_COUNT_REG + reg_offset), 0x46);
-	
 	/*min: 7d0 max: 4e20*/
 	REG_WRITE((MIPIA_INIT_COUNT_REG + reg_offset), 0x000007d0);
 	
@@ -1328,15 +1326,18 @@ void mdfld_dsi_dpi_controller_init(struct mdfld_dsi_config * dsi_config, int pip
 	
 	REG_WRITE((MIPIA_EOT_DISABLE_REG + reg_offset), 0x00000000);
 	
-	REG_WRITE((MIPIA_LP_BYTECLK_REG + reg_offset), 0x00000004);
-	
 	/*TODO: figure out how to setup these registers*/
 #ifdef	CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
-	REG_WRITE((MIPIA_DPHY_PARAM_REG + reg_offset), 0x150C340F);
+	REG_WRITE((MIPIA_LP_BYTECLK_REG + reg_offset), 0x00000003);
+	REG_WRITE((MIPIA_DPHY_PARAM_REG + reg_offset), 0x160D3610);
+	REG_WRITE((MIPIA_CLK_LANE_SWITCH_TIME_CNT_REG + reg_offset), 0x18000B);
+	REG_WRITE((MIPIA_HIGH_LOW_SWITCH_COUNT_REG + reg_offset), 0x18);
 #else
+	REG_WRITE((MIPIA_LP_BYTECLK_REG + reg_offset), 0x00000004);
+	REG_WRITE((MIPIA_HIGH_LOW_SWITCH_COUNT_REG + reg_offset), 0x46);
 	REG_WRITE((MIPIA_DPHY_PARAM_REG + reg_offset), 0x150c3408);
-#endif
 	REG_WRITE((MIPIA_CLK_LANE_SWITCH_TIME_CNT_REG + reg_offset), (0xa << 16) | 0x14);
+#endif
 #endif
 
 	/*set device ready*/

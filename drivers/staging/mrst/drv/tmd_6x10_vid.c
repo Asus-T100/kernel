@@ -247,11 +247,11 @@ mdfld_dsi_pr2_dsi_controller_init(struct mdfld_dsi_config *dsi_config,
 	hw_ctx->lp_rx_timeout = 0xffffff;
 	hw_ctx->turn_around_timeout = 0x14;
 	hw_ctx->device_reset_timer = 0xff;
-	hw_ctx->high_low_switch_count = 0x25;
+	hw_ctx->high_low_switch_count = 0x17;
 	hw_ctx->init_count = 0xf0;
 	hw_ctx->eot_disable = 0x0;
-	hw_ctx->lp_byteclk = 0x4;
-	hw_ctx->clk_lane_switch_time_cnt = 0xa0014;
+	hw_ctx->lp_byteclk = 0x3;
+	hw_ctx->clk_lane_switch_time_cnt = 0x17000A;
 
 	/*420Mbps DSI data rate*/
 	hw_ctx->dphy_param = 0x160D3610;
