@@ -500,6 +500,7 @@ static void ctp_get_batt_temp_thresholds(short int *temp_high,
 		else
 			max_range = CLT_SFI_TEMP_NR_RNG;
 		temp_mon_tabl = &ctp_sfi_table->temp_mon_range[0];
+		temp_low_lim = ctp_sfi_table->temp_low_lim;
 	} else {
 		temp_mon_tabl = &chip->pdata->temp_mon_range[0];
 		max_range = chip->pdata->temp_mon_ranges;
