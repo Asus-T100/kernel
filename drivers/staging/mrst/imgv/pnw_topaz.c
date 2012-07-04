@@ -111,7 +111,7 @@ IMG_BOOL pnw_topaz_interrupt(IMG_VOID *pvData)
 	if (drm_topaz_pmpolicy != PSB_PMPOLICY_NOPM \
 			&& topaz_priv->topaz_busy == 0) {
 		PSB_DEBUG_IRQ("TOPAZ:Schedule a work to power down Topaz\n");
-		schedule_delayed_work(&dev_priv->scheduler.topaz_suspend_wq, 0);
+		schedule_delayed_work(&topaz_priv->topaz_suspend_wq, 0);
 	}
 
 	return IMG_TRUE;
@@ -815,7 +815,7 @@ void pnw_topaz_handle_timeout(struct ttm_fence_device *fdev)
 	pnw_topaz_flush_cmd_queue(topaz_priv);
 
 	/*Power down TopazSC to reset HW*/
-	schedule_delayed_work(&dev_priv->scheduler.topaz_suspend_wq, 0);
+	schedule_delayed_work(&topaz_priv->topaz_suspend_wq, 0);
 }
 
 
@@ -887,3 +887,14 @@ void pnw_topaz_disableirq(struct drm_device *dev)
 	/* PSB_WVDC32(ier, PSB_INT_ENABLE_R); /\* essential *\/ */
 }
 
+void psb_powerdown_topaz(struct work_struct *work)
+{
+	struct pnw_topaz_private *topaz_priv =
+		container_of(work, struct pnw_topaz_private,
+					topaz_suspend_wq.work);
+	struct drm_psb_private *dev_priv =
+		(struct drm_psb_private *)topaz_priv->dev->dev_private;
+
+	if (!dev_priv->topaz_disabled)
+		ospm_apm_power_down_topaz(topaz_priv->dev);
+}

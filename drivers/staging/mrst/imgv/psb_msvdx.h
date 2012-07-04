@@ -106,6 +106,7 @@ psb_host_second_pass(struct drm_device *dev,
 		     uint32_t FrameHeightInMbs,
 		     uint32_t ui32DeblockSourceY,
 		     uint32_t ui32DeblockSourceUV);
+void psb_powerdown_msvdx(struct work_struct *work);
 
 /*  Non-Optimal Invalidation is not default */
 #define MSVDX_DEVICE_NODE_FLAGS_MMU_NONOPT_INV	2
@@ -802,6 +803,7 @@ struct psb_msvdx_ec_ctx {
 
 /* MSVDX private structure */
 struct msvdx_private {
+	struct drm_device *dev;
 	int msvdx_needs_reset;
 
 	unsigned int pmstate;
@@ -868,6 +870,9 @@ struct msvdx_private {
 	uint32_t deblock_cmd_offset;
 
 	struct drm_video_displaying_frameinfo displaying_frame;
+
+	/* pm suspend wq */
+	struct delayed_work msvdx_suspend_wq;
 };
 
 #define REGISTER(__group__, __reg__ )  (__group__##_##__reg__##_OFFSET)
@@ -1454,22 +1459,38 @@ static inline void psb_msvdx_clearirq(struct drm_device *dev)
 	PSB_WMSVDX32(mtx_int, MSVDX_INTERRUPT_CLEAR);
 }
 
-
+/* following two functions also works for CLV and MFLD */
+/* PSB_INT_ENABLE_R is set in psb_irq_(un)install_islands */
 static inline void psb_msvdx_disableirq(struct drm_device *dev)
 {
-	/* nothing */
-}
-
-
-static inline void psb_msvdx_enableirq(struct drm_device *dev)
-{
 	struct drm_psb_private *dev_priv = dev->dev_private;
+	/*uint32_t ier = dev_priv->vdc_irq_mask & (~_PSB_IRQ_MSVDX_FLAG); */
+
 	unsigned long enables = 0;
 
 	PSB_DEBUG_IRQ("MSVDX: enable MSVDX MTX IRQ\n");
 	REGIO_WRITE_FIELD_LITE(enables, MSVDX_INTERRUPT_STATUS, CR_MTX_IRQ,
+			       0);
+	PSB_WMSVDX32(enables, MSVDX_HOST_INTERRUPT_ENABLE);
+
+	/* write in sysirq.c */
+	/* PSB_WVDC32(ier, PSB_INT_ENABLE_R); /\* essential *\/ */
+}
+
+static inline void psb_msvdx_enableirq(struct drm_device *dev)
+{
+	struct drm_psb_private *dev_priv = dev->dev_private;
+	/* uint32_t ier = dev_priv->vdc_irq_mask | _PSB_IRQ_MSVDX_FLAG; */
+	unsigned long enables = 0;
+
+	PSB_DEBUG_IRQ("MSVDX: enable MSVDX MTX IRQ\n");
+	/* Only enable the master core IRQ*/
+	REGIO_WRITE_FIELD_LITE(enables, MSVDX_INTERRUPT_STATUS, CR_MTX_IRQ,
 			       1);
 	PSB_WMSVDX32(enables, MSVDX_HOST_INTERRUPT_ENABLE);
+
+	/* write in sysirq.c */
+	/* PSB_WVDC32(ier, PSB_INT_ENABLE_R); /\* essential *\/ */
 }
 
 #define MSVDX_NEW_PMSTATE(drm_dev, msvdx_priv, new_state)		\

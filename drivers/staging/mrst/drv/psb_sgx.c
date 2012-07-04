@@ -818,15 +818,13 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 	if (arg->engine == PSB_ENGINE_VIDEO) {
 		if (IS_D0(dev))
 			psb_msvdx_check_reset_fw(dev);
-		if (!ospm_power_using_hw_begin(OSPM_VIDEO_DEC_ISLAND,
-					       OSPM_UHB_FORCE_POWER_ON))
+		if (!ospm_power_using_video_begin(OSPM_VIDEO_DEC_ISLAND))
 			return -EBUSY;
 	} else if (arg->engine == LNC_ENGINE_ENCODE) {
 		if (dev_priv->topaz_disabled)
 			return -ENODEV;
 
-		if (!ospm_power_using_hw_begin(OSPM_VIDEO_ENC_ISLAND,
-					       OSPM_UHB_FORCE_POWER_ON))
+		if (!ospm_power_using_video_begin(OSPM_VIDEO_ENC_ISLAND))
 			return -EBUSY;
 	}
 
@@ -977,10 +975,10 @@ out_err0:
 	ttm_read_unlock(&dev_priv->ttm_lock);
 
 	if (arg->engine == PSB_ENGINE_VIDEO)
-		ospm_power_using_hw_end(OSPM_VIDEO_DEC_ISLAND);
+		ospm_power_using_video_end(OSPM_VIDEO_DEC_ISLAND);
 
 	if (arg->engine == LNC_ENGINE_ENCODE)
-		ospm_power_using_hw_end(OSPM_VIDEO_ENC_ISLAND);
+		ospm_power_using_video_end(OSPM_VIDEO_ENC_ISLAND);
 
 	return ret;
 }

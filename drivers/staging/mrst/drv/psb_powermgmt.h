@@ -101,6 +101,9 @@ int ospm_power_resume(struct pci_dev *pdev);
 bool ospm_power_using_hw_begin(int hw_island, UHBUsage usage);
 void ospm_power_using_hw_end(int hw_island);
 
+bool ospm_power_using_video_begin(int hw_island);
+void ospm_power_using_video_end(int hw_island);
+
 /*
  * Use this function to do an instantaneous check for if the hw is on.
  * Only use this in cases where you know the g_state_change_mutex

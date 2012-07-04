@@ -23,7 +23,6 @@
 #include "psb_ttm_fence_api.h"
 #include <drm/drmP.h>
 #include "psb_drv.h"
-#include "psb_schedule.h"
 
 #define DRM_MEM_TTM       26
 

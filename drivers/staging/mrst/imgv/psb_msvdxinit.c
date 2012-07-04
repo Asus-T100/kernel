@@ -1201,6 +1201,7 @@ int psb_msvdx_init(struct drm_device *dev)
 		dev_priv->msvdx_private = msvdx_priv;
 		memset(msvdx_priv, 0, sizeof(struct msvdx_private));
 		msvdx_priv->dev_priv = dev_priv;
+		msvdx_priv->dev = dev;
 
 		msvdx_priv->tile_region_start0 =
 			dev_priv->bdev.man[DRM_PSB_MEM_MMU_TILING].gpu_offset;
@@ -1246,6 +1247,8 @@ int psb_msvdx_init(struct drm_device *dev)
 						PSB_MSVDX_INVALID_FENCE;
 		}
 		INIT_WORK(&(msvdx_priv->ec_work), psb_msvdx_do_concealment);
+		INIT_DELAYED_WORK(&msvdx_priv->msvdx_suspend_wq,
+					&psb_powerdown_msvdx);
 	}
 
 	msvdx_priv = dev_priv->msvdx_private;

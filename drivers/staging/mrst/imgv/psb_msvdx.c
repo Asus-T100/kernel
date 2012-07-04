@@ -1262,10 +1262,10 @@ done:
 	/* we get a frame/slice done, try to save some power*/
 	if (IS_D0(dev)) {
 		if (drm_msvdx_pmpolicy == PSB_PMPOLICY_POWERDOWN)
-			schedule_delayed_work(&dev_priv->scheduler.msvdx_suspend_wq, 0);
+			schedule_delayed_work(&msvdx_priv->msvdx_suspend_wq, 0);
 	} else {
 		if (drm_msvdx_pmpolicy != PSB_PMPOLICY_NOPM)
-			schedule_delayed_work(&dev_priv->scheduler.msvdx_suspend_wq, 0);
+			schedule_delayed_work(&msvdx_priv->msvdx_suspend_wq, 0);
 	}
 
 	DRM_MEMORYBARRIER();	/* TBD check this... */
@@ -1742,12 +1742,6 @@ int lnc_video_getparam(struct drm_device *dev, void *data,
 	return 0;
 }
 
-inline int psb_try_power_down_msvdx(struct drm_device *dev)
-{
-	ospm_apm_power_down_msvdx(dev);
-	return 0;
-}
-
 int psb_msvdx_save_context(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv =
@@ -1860,4 +1854,12 @@ static void psb_msvdx_set_tile(struct drm_device *dev, unsigned long msvdx_tile)
 					start, end);
 		PSB_WMSVDX32(cmd, MSVDX_MMU_TILE_BASE1);
 	}
+}
+
+void psb_powerdown_msvdx(struct work_struct *work)
+{
+	struct msvdx_private *msvdx_priv =
+		container_of(work, struct msvdx_private, msvdx_suspend_wq.work);
+
+	ospm_apm_power_down_msvdx(msvdx_priv->dev);
 }

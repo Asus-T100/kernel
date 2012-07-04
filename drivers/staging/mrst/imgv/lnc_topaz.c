@@ -100,10 +100,10 @@ IMG_BOOL lnc_topaz_interrupt(IMG_VOID *pvData)
 
 	topaz_priv->topaz_busy = 1;
 	lnc_topaz_dequeue_send(dev);
-
+/*
 	if (drm_topaz_pmpolicy != PSB_PMPOLICY_NOPM)
 		schedule_delayed_work(&dev_priv->scheduler.topaz_suspend_wq, 0);
-
+*/
 	return IMG_TRUE;
 }
 
@@ -684,12 +684,6 @@ void lnc_topaz_handle_timeout(struct ttm_fence_device *fdev)
 	struct topaz_private *topaz_priv = dev_priv->topaz_private;
 
 	lnc_topaz_flush_cmd_queue(topaz_priv);
-}
-
-inline int psb_try_power_down_topaz(struct drm_device *dev)
-{
-	ospm_apm_power_down_topaz(dev);
-	return 0;
 }
 
 void lnc_map_topaz_reg(struct drm_device *dev)

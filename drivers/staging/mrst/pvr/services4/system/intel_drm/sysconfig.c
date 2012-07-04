@@ -46,14 +46,6 @@
 #include "psb_powermgmt.h"
 #include "sys_pvr_drm_export.h"
 
-#ifndef PVR_MDFLD_SYS_MSVDX_AND_TOPAZ
-#define PVR_MDFLD_SYS_MSVDX_AND_TOPAZ
-#endif
-
-#if defined(PVR_MDFLD_SYS_MSVDX_AND_TOPAZ)
-#include "msvdx_power.h"
-#include "topaz_power.h"
-#endif
 #endif
 
 extern struct drm_device *gpDrmDevice;
@@ -484,37 +476,6 @@ PVRSRV_ERROR SysInitialise(IMG_VOID)
 		gpsSysData = IMG_NULL;
 		return eError;
 	}
-
-#ifdef CONFIG_MDFD_VIDEO_DECODE
-#if defined(PVR_MDFLD_SYS_MSVDX_AND_TOPAZ)
-
-	eError = PVRSRVRegisterDevice(gpsSysData, MSVDXRegisterDevice,
-				      DEVICE_MSVDX_INTERRUPT, &gui32MRSTMSVDXDeviceID);
-	if (eError != PVRSRV_OK)
-	{
-		PVR_DPF((PVR_DBG_ERROR,"SysInitialise: Failed to register MSVDXdevice!"));
-		SysDeinitialise(gpsSysData);
-		gpsSysData = IMG_NULL;
-		return eError;
-	}
-
-	if (IS_MDFLD(gpDrmDevice) && !dev_priv->topaz_disabled)
-	{
-
-		eError = PVRSRVRegisterDevice(gpsSysData, TOPAZRegisterDevice,
-					      DEVICE_TOPAZ_INTERRUPT, &gui32MRSTTOPAZDeviceID);
-		if (eError != PVRSRV_OK)
-		{
-			PVR_DPF((PVR_DBG_ERROR,"SysInitialise: Failed to register TOPAZdevice!"));
-			SysDeinitialise(gpsSysData);
-			gpsSysData = IMG_NULL;
-			return eError;
-		}
-	}
-#endif
-#endif
-
-
 
 	psDeviceNode = gpsSysData->psDeviceNodeList;
 

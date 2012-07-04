@@ -41,6 +41,9 @@
 #include "psb_irq.h"
 
 extern int drm_psb_smart_vsync;
+extern atomic_t g_videoenc_access_count;
+extern atomic_t g_videodec_access_count;
+
 /*
  * inline functions
  */
@@ -620,28 +623,28 @@ irqreturn_t psb_irq_handler(DRM_IRQ_ARGS)
 
 #ifdef CONFIG_MDFD_VIDEO_DECODE
 	if (msvdx_int && IS_MDFLD(dev)) {
-		if (ospm_power_using_hw_begin(OSPM_VIDEO_DEC_ISLAND,
-			OSPM_UHB_ONLY_IF_ON)) {
+		if (ospm_power_is_hw_on(OSPM_VIDEO_DEC_ISLAND)) {
+			atomic_inc(&g_videodec_access_count);
 			psb_msvdx_interrupt(dev);
 			handled = 1;
-			ospm_power_using_hw_end(OSPM_VIDEO_DEC_ISLAND);
+			atomic_dec(&g_videodec_access_count);
 		} else
 			DRM_INFO("get msvdx int while it's off\n");
 	}
 	if ((IS_MDFLD(dev) && topaz_int)) {
-		if (ospm_power_using_hw_begin(OSPM_VIDEO_ENC_ISLAND,
-			OSPM_UHB_ONLY_IF_ON)) {
+		if (ospm_power_is_hw_on(OSPM_VIDEO_ENC_ISLAND)) {
+			atomic_inc(&g_videoenc_access_count);
 			pnw_topaz_interrupt(dev);
 			handled = 1;
-			ospm_power_using_hw_end(OSPM_VIDEO_ENC_ISLAND);
+			atomic_dec(&g_videoenc_access_count);
 		} else
 			DRM_INFO("get mdfld topaz int while it's off\n");
 	} else if (IS_MRST(dev) && topaz_int) {
-		if (ospm_power_using_hw_begin(OSPM_VIDEO_ENC_ISLAND,
-			OSPM_UHB_ONLY_IF_ON)) {
+		if (ospm_power_is_hw_on(OSPM_VIDEO_ENC_ISLAND)) {
+			atomic_inc(&g_videoenc_access_count);
 			lnc_topaz_interrupt(dev);
 			handled = 1;
-			ospm_power_using_hw_end(OSPM_VIDEO_ENC_ISLAND);
+			atomic_dec(&g_videoenc_access_count);
 		} else
 			DRM_INFO("get mrst topaz int while it's off\n");
 	}

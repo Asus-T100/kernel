@@ -86,8 +86,7 @@ void psb_msvdx_do_concealment(struct work_struct *work)
 	uint32_t cmd_space = 0;
 	int ret = 0;
 
-	if (!ospm_power_using_hw_begin(OSPM_VIDEO_DEC_ISLAND,
-				       OSPM_UHB_FORCE_POWER_ON)) {
+	if (!ospm_power_using_video_begin(OSPM_VIDEO_DEC_ISLAND)) {
 		printk(KERN_ERR, "MSVDX: fail to power on ved for ec\n");
 		return;
 	}
@@ -324,7 +323,7 @@ ec_done:
 		MSVDX_CMDS_END_SLICE_PICTURE_OFFSET,
 		1, cmd_space);
 
-	ospm_power_using_hw_end(OSPM_VIDEO_DEC_ISLAND);
+	ospm_power_using_video_end(OSPM_VIDEO_DEC_ISLAND);
 
 	fault_region->num_region = 0;
 

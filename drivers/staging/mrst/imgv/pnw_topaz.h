@@ -87,6 +87,7 @@ struct pnw_topaz_codec_fw {
 };
 
 struct pnw_topaz_private {
+	struct drm_device *dev;
 	unsigned int pmstate;
 	struct sysfs_dirent *sysfs_pmstate;
 	int frame_skip;
@@ -132,6 +133,8 @@ struct pnw_topaz_private {
 	/*The data of MTX_CMDID_SW_NEW_CODEC command contains width and length.*/
 	uint16_t frame_w;
 	uint16_t frame_h;
+	/* topaz suspend work queue */
+	struct delayed_work topaz_suspend_wq;
 };
 
 /* external function declare */
@@ -168,6 +171,7 @@ extern void topaz_read_core_reg(struct drm_psb_private *dev_priv,
 				uint32_t core,
 				uint32_t reg,
 				uint32_t *ret_val);
+extern void psb_powerdown_topaz(struct work_struct *work);
 #define PNW_TOPAZ_NEW_PMSTATE(drm_dev, topaz_priv, new_state)		\
 do { \
 	topaz_priv->pmstate = new_state;				\

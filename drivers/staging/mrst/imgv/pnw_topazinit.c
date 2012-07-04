@@ -268,6 +268,9 @@ int pnw_topaz_init(struct drm_device *dev)
 
 
 	topaz_priv = dev_priv->topaz_private;
+	topaz_priv->dev = dev;
+	INIT_DELAYED_WORK(&topaz_priv->topaz_suspend_wq,
+			  &psb_powerdown_topaz);
 
 	/* # initialize comand topaz queueing [msvdx_queue] */
 	INIT_LIST_HEAD(&topaz_priv->topaz_queue);

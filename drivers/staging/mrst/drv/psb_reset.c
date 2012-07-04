@@ -95,7 +95,6 @@ static void psb_msvdx_reset_wq(struct work_struct *work)
 		container_of(work, struct drm_psb_private, msvdx_watchdog_wq);
 	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
 
-	struct psb_scheduler *scheduler = &dev_priv->scheduler;
 	unsigned long irq_flags;
 
 	mutex_lock(&msvdx_priv->msvdx_mutex);
@@ -109,7 +108,7 @@ static void psb_msvdx_reset_wq(struct work_struct *work)
 	("MSVDXFENCE: incremented msvdx_current_sequence to :%d\n",
 	 msvdx_priv->msvdx_current_sequence);
 
-	psb_fence_error(scheduler->dev, PSB_ENGINE_VIDEO,
+	psb_fence_error(msvdx_priv->dev, PSB_ENGINE_VIDEO,
 			msvdx_priv->msvdx_current_sequence,
 			_PSB_FENCE_TYPE_EXE, DRM_CMD_HANG);
 
@@ -117,7 +116,7 @@ static void psb_msvdx_reset_wq(struct work_struct *work)
 	dev_priv->timer_available = 1;
 	spin_unlock_irqrestore(&dev_priv->watchdog_lock, irq_flags);
 
-	psb_msvdx_flush_cmd_queue(scheduler->dev);
+	psb_msvdx_flush_cmd_queue(msvdx_priv->dev);
 
 	psb_schedule_watchdog(dev_priv);
 	mutex_unlock(&msvdx_priv->msvdx_mutex);

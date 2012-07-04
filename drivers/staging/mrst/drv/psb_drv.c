@@ -1736,12 +1736,6 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	dev_priv->chipset = chipset;
 	psb_set_uopt(&dev_priv->uopt);
 
-#ifdef CONFIG_MDFD_VIDEO_DECODE
-	PSB_DEBUG_GENERAL("Init watchdog and scheduler\n");
-	/* psb_watchdog_init(dev_priv); */
-	psb_scheduler_init(dev, &dev_priv->scheduler);
-#endif
-
 	PSB_DEBUG_INIT("Mapping MMIO\n");
 	resource_start = pci_resource_start(dev->pdev, PSB_MMIO_RESOURCE);
 

@@ -26,6 +26,7 @@
 #include <linux/io.h>
 #include <asm/intel-mid.h>
 #include "psb_msvdx.h"
+#include "pnw_topaz.h"
 #include "bufferclass_video.h"
 
 /*IMG Headers*/
@@ -155,7 +156,9 @@ int psb_release(struct inode *inode, struct file *filp)
 	psb_remove_videoctx(dev_priv, filp);
 
 	if (IS_MRST(dev_priv->dev)) {
+		/*
 		schedule_delayed_work(&dev_priv->scheduler.topaz_suspend_wq, 10);
+		*/
 		/* FIXME: workaround for HSD3469585
 		 *        re-enable DRAM Self Refresh Mode
 		 *        by setting DUNIT.DPMC0
@@ -164,9 +167,15 @@ int psb_release(struct inode *inode, struct file *filp)
 			(0x1 << 16) | (0x4 << 8) | 0xF0);
 		intel_mid_msgbus_write32_raw((0xE0 << 24) | (0x1 << 16) |
 			(0x4 << 8) | 0xF0, ui32_reg_value | (0x1 << 7));
+	} else if (IS_MDFLD(dev_priv->dev)) {
+		struct pnw_topaz_private *topaz_priv =
+			(struct pnw_topaz_private *)dev_priv->topaz_private;
+		schedule_delayed_work(&topaz_priv->topaz_suspend_wq,
+						msecs_to_jiffies(10));
 	}
 
-	schedule_delayed_work(&dev_priv->scheduler.msvdx_suspend_wq, msecs_to_jiffies(10));
+	schedule_delayed_work(&msvdx_priv->msvdx_suspend_wq,
+					msecs_to_jiffies(10));
 #endif
 	ret = drm_release(inode, filp);
 

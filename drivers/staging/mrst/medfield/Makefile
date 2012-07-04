@@ -181,7 +181,6 @@ gfx-y += $(DRMDRVDIR)/psb_bl.o \
 	  $(DRMDRVDIR)/psb_intel_sdvo.o \
 	  $(DRMDRVDIR)/mdfld_csc.o \
 	  $(DRMDRVDIR)/psb_reset.o \
-	  $(DRMDRVDIR)/psb_schedule.o \
 	  $(DRMDRVDIR)/psb_sgx.o \
 	  $(DRMDRVDIR)/psb_socket.o \
 	  $(DRMDRVDIR)/psb_pvr_glue.o \
@@ -220,7 +219,6 @@ gfx-$(CONFIG_SND_INTELMID_HDMI_AUDIO) += $(DRMDRVDIR)/mdfld_hdmi_audio.o
 gfx-y +=  $(IMGVDIR)/psb_ttm_glue.o 
 
 gfx-$(CONFIG_MDFD_VIDEO_DECODE) += $(IMGVDIR)/lnc_topaz.o \
-	  $(IMGVDIR)/topaz_power.o \
 	  $(IMGVDIR)/lnc_topazinit.o \
 	  $(IMGVDIR)/pnw_topaz.o \
 	  $(IMGVDIR)/pnw_topazinit.o \
@@ -228,7 +226,6 @@ gfx-$(CONFIG_MDFD_VIDEO_DECODE) += $(IMGVDIR)/lnc_topaz.o \
 	  $(IMGVDIR)/psb_fence.o \
 	  $(IMGVDIR)/psb_mmu.o \
 	  $(IMGVDIR)/psb_msvdx.o \
-	  $(IMGVDIR)/msvdx_power.o \
 	  $(IMGVDIR)/psb_msvdxinit.o \
 	  $(IMGVDIR)/psb_msvdx_ec.o \
 	  $(IMGVDIR)/psb_ttm_glue.o \
