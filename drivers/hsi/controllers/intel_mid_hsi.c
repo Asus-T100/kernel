@@ -2722,7 +2722,7 @@ static int hsi_dma_complete(struct intel_controller *intel_hsi,
 	} else
 #endif
 		intel_hsi->dma_ctx[lch]->ongoing->msg = NULL;
-	if ((msg) && (!msg->status != HSI_STATUS_ERROR))
+	if ((msg) && (msg->status != HSI_STATUS_ERROR))
 		msg->status = HSI_STATUS_COMPLETED;
 	spin_unlock_irqrestore(&intel_hsi->sw_lock, flags);
 
