@@ -1800,11 +1800,6 @@ MRST_ERROR MRSTLFBChangeSwapChainProperty(unsigned long *psSwapChainGTTOffset,
 		return eError;
 	}
 
-	if (psDevInfo->apsSwapChains == IMG_NULL) {
-		DRM_ERROR("No swap chain.\n");
-		return eError;
-	}
-
 	psDrmDevice = psDevInfo->psDrmDevice;
 	dev_priv = (struct drm_psb_private *)psDrmDevice->dev_private;
 	pg = dev_priv->pg;
@@ -1844,6 +1839,12 @@ MRST_ERROR MRSTLFBChangeSwapChainProperty(unsigned long *psSwapChainGTTOffset,
 	}
 
 	spin_lock_irqsave(&psDevInfo->sSwapChainLock, ulLockFlags);
+
+	if (psDevInfo->apsSwapChains == IMG_NULL) {
+		DRM_ERROR("No swap chain.\n");
+		spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
+		return eError;
+	}
 
 	ulCurrentSwapChainGTTOffset =
 		psDevInfo->apsSwapChains[ui32SwapChainID]->ulSwapChainGTTOffset;
