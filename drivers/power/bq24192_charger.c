@@ -230,7 +230,7 @@
 #define RSYS_MOHMS	0xAA
 
 /* Max no. of tries to clear the charger from Hi-Z mode */
-#define MAX_TRY		5
+#define MAX_TRY		3
 
 /* Master Charge control register */
 #define MSIC_CHRCRTL	0x188
@@ -1138,6 +1138,18 @@ static int stop_charging(struct bq24192_chip *chip)
 	if (ret < 0)
 		dev_warn(&chip->client->dev, "I2C write failed:%s\n", __func__);
 
+       /* This is a WA to set HiZ bit at reaching Charge full,
+	so that charging stops.  It is required as charging does not stop
+	when software based charging terminates charging */
+
+	ret = bq24192_write_reg(chip->client, BQ24192_INPUT_SRC_CNTL_REG,
+						INPUT_SRC_CNTL_EN_HIZ);
+	if (ret < 0)
+		dev_warn(&chip->client->dev, "I2C write failed:%s\n", __func__);
+	else
+		dev_info(&chip->client->dev, "Stop charge- HiZ set : %s\n",
+							__func__);
+
 	mutex_unlock(&chip->event_lock);
 	return ret;
 }
@@ -1227,7 +1239,7 @@ static void set_up_charging(struct bq24192_chip *chip,
 			}
 
 			/* Time in millisec for TI charger to settle down */
-			msleep(50);
+			msleep(150);
 		} else {
 			dev_warn(&chip->client->dev,
 				"Charger IC not in Hi-Z mode\n");
