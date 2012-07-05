@@ -483,7 +483,7 @@ static ssize_t dlp_flash_dev_write(struct file *filp,
 	 * write should be less that 120ms ! */
 	if (!flash_ctx->reset_done) {
 		flash_ctx->reset_done = 1;
-		dlp_ctrl_modem_reset(ch_ctx);
+		dlp_ctrl_modem_reset(ch_ctx, DLP_FLASH_POST_DELAY);
 	}
 
 	/* Allocate a new TX msg */

@@ -1368,7 +1368,7 @@ static int dlp_tty_ioctl(struct tty_struct *tty,
 #endif
 
 	case HSI_DLP_MODEM_RESET:
-		dlp_ctrl_modem_reset(ch_ctx);
+		dlp_ctrl_modem_reset(ch_ctx, DLP_NORMAL_POST_DELAY);
 		break;
 
 	case HSI_DLP_MODEM_STATE:

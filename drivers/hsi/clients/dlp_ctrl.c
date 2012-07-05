@@ -129,12 +129,6 @@ enum {
 #define COLD_BOOT_DELAY_OFF	20000	/* 20 ms (use of usleep_range) */
 #define COLD_BOOT_DELAY_ON	10000	/* 10 ms (use of usleep_range) */
 
-/* Delays for powering up/resetting the modem */
-#define DLP_DURATION_ON1	60	/* ON1 pulse delay: 60 us */
-#define DLP_DURATION_RST	1	/* RST_BBN pulse delay: 1 ms */
-#define DLP_POST_DELAY		200 /* Post seq. sleep duration: 200 ms */
-
-
 /**
  * struct dlp_command_params - DLP modem comamnd/response
  * @data1: Command data (byte1)
@@ -1312,11 +1306,12 @@ static void dlp_ctrl_ipc_readiness(struct work_struct *work)
 /**
  * dlp_ctrl_modem_reset - activity required to bring up modem
  * @ch_ctx: a reference to related channel context
+ * @guard_time: Guard time after resetting the modem (IPC vs Flashing)
  *
  * Toggle gpios required to bring up modem power and start modem.
  * This can be called after the modem has been started to reset it.
  */
-void dlp_ctrl_modem_reset(struct dlp_channel *ch_ctx)
+void dlp_ctrl_modem_reset(struct dlp_channel *ch_ctx, int guard_time)
 {
 	struct dlp_channel *ctrl_ch = DLP_CHANNEL_CTX(DLP_CHANNEL_CTRL);
 	struct dlp_ctrl_context	*ctrl_ctx = ctrl_ch->ch_data;
@@ -1335,7 +1330,7 @@ void dlp_ctrl_modem_reset(struct dlp_channel *ch_ctx)
 	mdelay(DLP_DURATION_RST);
 
 	gpio_set_value(ctrl_ctx->gpio_mdm_rst_bbn, 1);
-	msleep(DLP_POST_DELAY);
+	msleep(guard_time);
 
 	EPILOG();
 }
@@ -1361,7 +1356,7 @@ void dlp_ctrl_modem_power(struct dlp_channel *ch_ctx)
 	udelay(DLP_DURATION_ON1);
 
 	gpio_set_value(ctrl_ctx->gpio_mdm_pwr_on, 0);
-	msleep(DLP_POST_DELAY);
+	msleep(DLP_NORMAL_POST_DELAY);
 
 	EPILOG();
 }
@@ -1528,7 +1523,7 @@ struct dlp_channel *dlp_ctrl_ctx_create(unsigned int index, struct device *dev)
 
 	/* Power on & Reset the modem */
 	dlp_ctrl_modem_power(ch_ctx);
-	dlp_ctrl_modem_reset(ch_ctx);
+	dlp_ctrl_modem_reset(ch_ctx, DLP_NORMAL_POST_DELAY);
 
 	EPILOG();
 	return ch_ctx;
@@ -1798,7 +1793,8 @@ static int do_modem_reset(const char *val, struct kernel_param *kp)
 	}
 
 	if (do_reset)
-		dlp_ctrl_modem_reset(DLP_CHANNEL_CTX(DLP_CHANNEL_CTRL));
+		dlp_ctrl_modem_reset(DLP_CHANNEL_CTX(DLP_CHANNEL_CTRL),
+				DLP_NORMAL_POST_DELAY);
 
 	EPILOG();
 	return 0;
