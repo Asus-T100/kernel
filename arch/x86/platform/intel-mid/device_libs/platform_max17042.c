@@ -40,13 +40,23 @@ void max17042_i2c_reset_workaround(void)
 }
 EXPORT_SYMBOL(max17042_i2c_reset_workaround);
 
-static bool msic_battery_check(void)
+
+static bool msic_battery_check(char *battid)
 {
-	if (get_oem0_table() == NULL) {
+	struct sfi_table_simple *sb;
+	sb = (struct sfi_table_simple *)get_oem0_table();
+	if (sb == NULL) {
 		pr_info("invalid battery detected\n");
+		snprintf(battid, BATTID_LEN + 1 , "UNKNOWNB");
 		return false;
 	} else {
 		pr_info("valid battery detected\n");
+		/* First entry in OEM0 table is the BATTID. Read battid
+		 * if pentry is not NULL and header length is greater
+		 * than BATTID length*/
+		if (sb->pentry && sb->header.len >= BATTID_LEN)
+			snprintf(battid, BATTID_LEN + 1, "%s",
+						(char *)sb->pentry);
 		return true;
 	}
 	return false;
@@ -149,9 +159,10 @@ void *max17042_platform_data(void *info)
 
 	i2c_info->irq = intr + INTEL_MID_IRQ_OFFSET;
 
-	if (msic_battery_check()) {
+	if (msic_battery_check(platform_data.battid)) {
 		platform_data.enable_current_sense = true;
 		platform_data.technology = POWER_SUPPLY_TECHNOLOGY_LION;
+
 	} else {
 		platform_data.enable_current_sense = false;
 		platform_data.technology = POWER_SUPPLY_TECHNOLOGY_UNKNOWN;
