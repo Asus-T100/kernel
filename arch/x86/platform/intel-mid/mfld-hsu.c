@@ -128,6 +128,21 @@ static void hsu_port_disable(int port)
 	}
 }
 
+void intel_mid_hsu_set_rts(int port, int set)
+{
+	struct mfld_hsu_info *info = platform_hsu_info + port;
+
+	if (set) {
+		if (info->rts_gpio) {
+			gpio_direction_output(info->rts_gpio, 1);
+			lnw_gpio_set_alt(info->rts_gpio, LNW_GPIO);
+		}
+	} else {
+		if (info->rts_gpio)
+			lnw_gpio_set_alt(info->rts_gpio, info->rts_alt);
+	}
+}
+
 void intel_mid_hsu_suspend(int port)
 {
 	int ret;

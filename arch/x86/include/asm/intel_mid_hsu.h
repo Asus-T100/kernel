@@ -22,6 +22,7 @@ extern struct mfld_hsu_info *platform_hsu_info;
 extern unsigned char hsu_dma_enable;
 extern int hsu_rx_wa;
 void intel_mid_hsu_suspend(int port);
+void intel_mid_hsu_set_rts(int port, int set);
 void intel_mid_hsu_resume(int port);
 void intel_mid_hsu_switch(int port);
 int intel_mid_hsu_init(int port, struct device *dev, irq_handler_t wake_isr);

@@ -1793,7 +1793,10 @@ static void hsu_dma_rx_timeout(unsigned long data)
 		goto exit;
 	}
 
+	intel_mid_hsu_set_rts(up->index, 1);
+	udelay(100);
 	hsu_dma_rx(up, 0);
+	intel_mid_hsu_set_rts(up->index, 0);
 exit:
 	spin_unlock_irqrestore(&up->port.lock, flags);
 }
