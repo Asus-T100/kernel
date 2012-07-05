@@ -878,8 +878,7 @@ static int msic_usb_get_property(struct power_supply *psy,
 		break;
 	case POWER_SUPPLY_PROP_ONLINE:
 		if (mbi->batt_props.status != POWER_SUPPLY_STATUS_NOT_CHARGING
-				|| (err_event != MSIC_CHRG_ERROR_NONE &&
-					err_event != MSIC_CHRG_ERROR_WEAKVIN))
+				|| err_event != MSIC_CHRG_ERROR_WEAKVIN)
 			val->intval = mbi->usb_chrg_props.charger_present;
 		else
 			val->intval = 0;
@@ -994,7 +993,7 @@ static void msic_handle_exception(struct msic_power_module_info *mbi,
 			       __func__);
 		}
 		if (retval || (temp > batt_thrshlds->temp_high) ||
-			(temp < batt_thrshlds->temp_low))
+			(temp <= batt_thrshlds->temp_low))
 			health = POWER_SUPPLY_HEALTH_OVERHEAT;
 		exception = MSIC_EVENT_BATTOTP_EXCPT;
 		msic_log_exception_event(exception);
@@ -1578,7 +1577,7 @@ static void msic_batt_temp_charging(struct work_struct *work)
 				vbus_voltage < WEAKVIN_VOLTAGE_LEVEL) {
 
 		if ((adc_temp > batt_thrshlds->temp_high) ||
-			(adc_temp < batt_thrshlds->temp_low)) {
+			(adc_temp <= batt_thrshlds->temp_low)) {
 			dev_warn(msic_dev,
 					"TEMP RANGE DOES NOT EXIST FOR %d\n",
 						adc_temp);
@@ -1903,7 +1902,7 @@ static void update_battery_health(struct msic_power_module_info *mbi)
 		 * update BATT HEALTH */
 		if (mbi->chrint_mask & MSIC_BATT_CHR_BATTOTP_MASK) {
 			if ((temp > (batt_thrshlds->temp_high)) ||
-					(temp < (batt_thrshlds->temp_low))) {
+					(temp <= (batt_thrshlds->temp_low))) {
 				/* We report OVERHEAT in both cases*/
 				mbi->batt_props.health =
 					POWER_SUPPLY_HEALTH_OVERHEAT;
