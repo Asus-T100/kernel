@@ -279,6 +279,8 @@ static int ehci_reset (struct ehci_hcd *ehci)
 {
 	int	retval;
 	u32	command = ehci_readl(ehci, &ehci->regs->command);
+	int	port;
+	u32	temp;
 
 	/* If the EHCI debug controller is active, special care must be
 	 * taken before and after a host controller reset */
@@ -298,6 +300,19 @@ static int ehci_reset (struct ehci_hcd *ehci)
 			(u32 __iomem *)(((u8 *)ehci->regs) + USBMODE_EX));
 		ehci_writel(ehci, TXFIFO_DEFAULT,
 			(u32 __iomem *)(((u8 *)ehci->regs) + TXFILLTUNING));
+
+		/* FIXME: clear ASUS auto PHY low power mode, as we set it
+		 * manually */
+		port = HCS_N_PORTS(ehci->hcs_params);
+		while (port--) {
+			u32 __iomem	*hostpc_reg;
+
+			hostpc_reg = (u32 __iomem *)((u8 *) ehci->regs
+					+ HOSTPC0 + 4 * port);
+			temp = ehci_readl(ehci, hostpc_reg);
+			ehci_writel(ehci, temp & ~HOSTPC_ASUS, hostpc_reg);
+		}
+
 	}
 	if (retval)
 		return retval;

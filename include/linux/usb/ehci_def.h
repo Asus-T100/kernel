@@ -170,6 +170,7 @@ struct ehci_regs {
 #define HOSTPC0		0x84		/* HOSTPC extension */
 #define HOSTPC_PHCD	(1<<22)		/* Phy clock disable */
 #define HOSTPC_PSPD	(3<<25)		/* Port speed detection */
+#define HOSTPC_ASUS	(1<<0)		/* Auto PHY low power mode */
 #define USBMODE_EX	0xc8		/* USB Device mode extension */
 #define USBMODE_EX_VBPS	(1<<5)		/* VBus Power Select On */
 #define USBMODE_EX_HC	(3<<0)		/* host controller mode */
