@@ -404,6 +404,11 @@ struct otg_bc_cap {
 	unsigned int            current_event;
 };
 
+struct otg_bc_event {
+	struct list_head		node;
+	struct power_supply_charger_cap	cap;
+};
+
 /* Bus monitor action for b_ssend_srp/b_se0_srp */
 #define BUS_MON_STOP		0
 #define BUS_MON_START		1
@@ -435,6 +440,7 @@ struct penwell_otg {
 	struct workqueue_struct		*qwork;
 	struct workqueue_struct		*chrg_qwork;
 
+
 	struct timer_list		hsm_timer;
 	struct timer_list		hnp_poll_timer;
 	struct timer_list		bus_mon_timer;
@@ -452,6 +458,7 @@ struct penwell_otg {
 	struct adp_status		adp;
 
 	spinlock_t			charger_lock;
+	struct list_head		chrg_evt_queue;
 	struct otg_bc_cap		charging_cap;
 	struct power_supply_charger_cap psc_cap;
 	int (*bc_callback)(void *arg, int event, struct otg_bc_cap *cap);
