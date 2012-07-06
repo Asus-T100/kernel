@@ -97,8 +97,7 @@ static int is_valid_af(u8 rtc_intr)
 	char *p;
 	unsigned long vrtc_date, oshob_date;
 
-	if ((__intel_mid_cpu_chip == INTEL_MID_CPU_CHIP_PENWELL) ||
-	    (__intel_mid_cpu_chip == INTEL_MID_CPU_CHIP_CLOVERVIEW)) {
+	if (__intel_mid_cpu_chip == INTEL_MID_CPU_CHIP_PENWELL) {
 		if (rtc_intr & RTC_AF) {
 			p = (char *) &vrtc_date;
 			*(p+1) = vrtc_cmos_read(RTC_DAY_OF_MONTH);
@@ -283,8 +282,7 @@ static int mrst_set_alarm(struct device *dev, struct rtc_wkalrm *t)
 	vrtc_cmos_write(min, RTC_MINUTES_ALARM);
 	vrtc_cmos_write(sec, RTC_SECONDS_ALARM);
 
-	if ((__intel_mid_cpu_chip == INTEL_MID_CPU_CHIP_PENWELL) ||
-	    (__intel_mid_cpu_chip == INTEL_MID_CPU_CHIP_CLOVERVIEW)) {
+	if (__intel_mid_cpu_chip == INTEL_MID_CPU_CHIP_PENWELL) {
 		/* Support for date-field in Alarm using OSHOB
 		 * Since, vRTC doesn't have Alarm-registers for date-fields,
 		 * write date-fields into OSHOB for SCU to sync to MSIC-RTC */
@@ -490,8 +488,7 @@ vrtc_mrst_do_probe(struct device *dev, struct resource *iomem, int rtc_irq)
 	/* make RTC device wake capable from sleep */
 	device_init_wakeup(dev, true);
 
-	if ((__intel_mid_cpu_chip == INTEL_MID_CPU_CHIP_PENWELL) ||
-	    (__intel_mid_cpu_chip == INTEL_MID_CPU_CHIP_CLOVERVIEW)) {
+	if (__intel_mid_cpu_chip == INTEL_MID_CPU_CHIP_PENWELL) {
 		retval = intel_scu_ipc_command(IPCMSG_GET_HOBBASE, 0,
 				NULL, 0, &oshob_base, 1);
 		if (retval < 0) {
@@ -539,8 +536,7 @@ static void __devexit rtc_mrst_do_remove(struct device *dev)
 	if (is_valid_irq(mrst->irq))
 		free_irq(mrst->irq, mrst->rtc);
 
-	if ((__intel_mid_cpu_chip == INTEL_MID_CPU_CHIP_PENWELL) ||
-	    (__intel_mid_cpu_chip == INTEL_MID_CPU_CHIP_CLOVERVIEW)) {
+	if (__intel_mid_cpu_chip == INTEL_MID_CPU_CHIP_PENWELL) {
 		if (oshob_addr != NULL)
 			iounmap(oshob_addr);
 	}
