@@ -85,8 +85,7 @@
 	(id == DLP_CMD_ACK)			? "ACK" : \
 	(id == DLP_CMD_NACK)		? "NACK" : \
 	(id == DLP_CMD_OPEN_CONN_OCTET)  ? "OPEN_CONN_OCTET" : \
-	(id == DLP_CMD_CREDITS)		? "CREDITS" : \
-	(id == DLP_CMD_NONE) ?		"NONE" : "UNKNOWN"))
+	(id == DLP_CMD_CREDITS)		? "CREDITS" : "UNKNOWN"))
 
 #define DLP_CTRL_CTX	(dlp_drv.channels[DLP_CHANNEL_CTRL]->ch_data)
 
@@ -936,10 +935,6 @@ static void dlp_ctrl_complete_rx(struct hsi_msg *msg)
 		}
 		break;
 
-	case DLP_CMD_CLOSE_CONN:
-		response = DLP_CMD_ACK;
-		break;
-
 	default:
 		/* Save the modem response */
 		ctrl_ctx->response.status = (msg_complete ? 0 : -EIO);
@@ -1050,10 +1045,8 @@ static int dlp_ctrl_cmd_send(struct dlp_channel *ch_ctx,
 	struct dlp_command *dlp_cmd;
 	struct hsi_msg *tx_msg = NULL;
 
-	PROLOG("hsi_ch:%d, cmd:%s, resp:%s",
-				ch_ctx->hsi_channel,
-				DLP_CTRL_CMD_TO_STR(id),
-				DLP_CTRL_CMD_TO_STR(response_id));
+	PROLOG("hsi_ch:%d, cmd:%s",
+	       ch_ctx->hsi_channel, DLP_CTRL_CMD_TO_STR(id));
 
 	/* Backup RX callback */
 	dlp_save_rx_callbacks(&ctrl_ctx->start_rx_cb, &ctrl_ctx->stop_rx_cb);
@@ -1677,7 +1670,7 @@ int dlp_ctrl_send_nop(struct dlp_channel *ch_ctx)
 
 	/* Send the ECHO command */
 	ret = dlp_ctrl_cmd_send(ch_ctx,
-			DLP_CMD_NOP, DLP_CMD_NONE,
+			DLP_CMD_ECHO, DLP_CMD_ECHO,
 			-1, -1,
 			param1, param2, param3);
 
@@ -1796,7 +1789,6 @@ static int do_modem_reset(const char *val, struct kernel_param *kp)
 
 	if (!dlp_ctrl_have_control_context()) {
 		WARNING("Nothing to do (dlp protocol not registered)");
-		EPILOG();
 		return 0;
 	}
 
@@ -1824,16 +1816,11 @@ static int get_modem_reset(char *val, struct kernel_param *kp)
 {
 	int ret = 0;
 
-	PROLOG();
-
 	if (!dlp_ctrl_have_control_context()) {
 		WARNING("Nothing to do (dlp protocol not registered)");
-		EPILOG();
 	} else {
 		struct dlp_ctrl_context *ctrl_ctx = DLP_CTRL_CTX;
 		ret = sprintf(val, "%d", ctrl_ctx->reset.ongoing);
-
-		EPILOG("%d", ctrl_ctx->reset.ongoing);
 	}
 
 	return ret;
@@ -1856,7 +1843,6 @@ static int do_modem_power(const char *val, struct kernel_param *kp)
 
 	if (!dlp_ctrl_have_control_context()) {
 		WARNING("Nothing to do (dlp protocol not registered)");
-		EPILOG();
 		return 0;
 	}
 

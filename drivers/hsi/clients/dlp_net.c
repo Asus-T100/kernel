@@ -337,29 +337,10 @@ out:
 }
 
 /**
- * dlp_net_tx_stop - update the TX state machine after expiration of the TX active
- *		 timeout further to a no outstanding TX transaction status
- * @param: a hidden reference to the TX context to consider
- *
- * This helper function updates the TX state if it is currently active and
- * inform the HSI pduwork and attached controller.
- */
-void dlp_net_tx_stop(unsigned long param)
-{
-	struct dlp_xfer_ctx *xfer_ctx = (struct dlp_xfer_ctx *)param;
-
-	PROLOG();
-
-	dlp_stop_tx(xfer_ctx);
-
-	EPILOG();
-}
-
-/**
- * dlp_net_hsi_tx_timeout_cb - Called when we have an HSI TX timeout
+ * dlp_net_hsi_tx_timeout - Called when we have an HSI TX timeout
  * @ch_ctx : Channel context ref
  */
-static void dlp_net_hsi_tx_timeout_cb(struct dlp_channel *ch_ctx)
+static void dlp_net_hsi_tx_timeout(struct dlp_channel *ch_ctx)
 {
 	struct dlp_net_context *net_ctx = ch_ctx->ch_data;
 
@@ -781,7 +762,7 @@ struct dlp_channel *dlp_net_ctx_create(unsigned int index, struct device *dev)
 	init_waitqueue_head(&ch_ctx->tx_empty_event);
 
 	/* Hangup context */
-	dlp_ctrl_hangup_ctx_init(ch_ctx, dlp_net_hsi_tx_timeout_cb);
+	dlp_ctrl_hangup_ctx_init(ch_ctx, dlp_net_hsi_tx_timeout);
 
 	/* Register the Credits, Reset & Coredump CB */
 	ch_ctx->modem_coredump_cb = dlp_net_mdm_coredump_cb;
@@ -801,8 +782,6 @@ struct dlp_channel *dlp_net_ctx_create(unsigned int index, struct device *dev)
 
 	INIT_WORK(&ch_ctx->start_tx_w, dlp_do_start_tx);
 	INIT_WORK(&ch_ctx->stop_tx_w, dlp_do_stop_tx);
-
-	ch_ctx->tx.timer.function = dlp_net_tx_stop;
 
 	/* Allocate RX FIFOs in background */
 	queue_work(dlp_drv.rx_wq, &ch_ctx->rx.increase_pool);
