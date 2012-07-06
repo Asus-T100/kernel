@@ -1970,7 +1970,7 @@ PVRSRV_ERROR PVRSRVGetDCFrontBufferKM(IMG_HANDLE	hDeviceKM,
 	PVRSRV_DISPLAYCLASS_INFO *psDCInfo;
 	PVRSRV_DC_SWAPCHAIN *psSwapChain;
 	IMG_HANDLE frontBuffer;
-	IMG_UINT32 bufIndex;
+	IMG_UINT32 bufIndex, bFound = IMG_FALSE;
 
 	if(!hDeviceKM || !pui32BufferIndex || !pui32FlipChainID)
 	{
@@ -1990,7 +1990,7 @@ PVRSRV_ERROR PVRSRVGetDCFrontBufferKM(IMG_HANDLE	hDeviceKM,
 	psSwapChain = psDCInfo->psDCSwapChainCur;
 	if (psSwapChain == IMG_NULL)
 	{
-		PVR_DPF((PVR_DBG_ERROR,"PVRSRVGetDCFrontBufferKM: No Swap Chain is in used"));
+		PVR_DPF((PVR_DBG_WARNING,"PVRSRVGetDCFrontBufferKM: No Swap Chain is in used."));
 		goto Exit;
 	}
 
@@ -2001,11 +2001,14 @@ PVRSRV_ERROR PVRSRVGetDCFrontBufferKM(IMG_HANDLE	hDeviceKM,
 		if (frontBuffer ==
 				psSwapChain->asBuffer[bufIndex].sDeviceClassBuffer.hExtBuffer)
 		{
+			bFound = IMG_TRUE;
 			break;
 		}
 	}
 
-	if(bufIndex < psSwapChain->ui32BufferCount)
+
+Exit:
+	if(bFound)
 	{
 		*pui32BufferIndex = bufIndex;
 		*pui32FlipChainID = psSwapChain->ui32SwapChainID;
@@ -2015,8 +2018,6 @@ PVRSRV_ERROR PVRSRVGetDCFrontBufferKM(IMG_HANDLE	hDeviceKM,
 		*pui32BufferIndex = -1;
 		*pui32FlipChainID = 0;
 	}
-
-Exit:
 
 #if defined(SUPPORT_LMA)
 	PVRSRVPowerUnlock(KERNEL_ID);
