@@ -399,6 +399,10 @@ config HARDIRQS_SW_RESEND
 	bool
 	default y
 
+config INTEL_ATOM_SOC_DUMP
+	tristate "Intel Atom SoC register dump debugfs interface"
+	default n
+
 config X86_MRST
        bool "Moorestown MID platform"
 	depends on PCI
