@@ -1171,9 +1171,6 @@ int atomisp_streamoff(struct file *file, void *fh,
 	isp->sw_contex.isp_streaming = false;
 	spin_unlock_irqrestore(&isp->irq_lock, flags);
 
-	if (!IS_MRFLD)
-		atomisp_wdt_lock_dog(isp);
-
 	/* cancel work queue*/
 	if (isp->sw_contex.work_queued) {
 		mo_pipe = &isp->isp_subdev.video_out_mo;
@@ -1185,6 +1182,9 @@ int atomisp_streamoff(struct file *file, void *fh,
 		cancel_work_sync(&isp->work);
 		isp->sw_contex.work_queued = false;
 	}
+
+	if (!IS_MRFLD)
+		atomisp_wdt_lock_dog(isp);
 
 	ret = videobuf_streamoff(&pipe->capq);
 	if (ret)

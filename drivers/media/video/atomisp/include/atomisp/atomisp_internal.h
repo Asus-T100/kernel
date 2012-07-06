@@ -86,7 +86,7 @@
 
 #define ATOMISP_SC_TYPE_SIZE	2
 
-#define ATOMISP_WDT_TIMEOUT		(4 * MSEC_PER_SEC) /* msecs */
+#define ATOMISP_WDT_TIMEOUT		(2 * MSEC_PER_SEC) /* msecs */
 #define ATOMISP_WDT_MAX_TIMEOUTS	5
 
 /*
