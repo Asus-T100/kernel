@@ -1046,10 +1046,8 @@ static int mdfld_save_display_registers (struct drm_device *dev, int pipe)
 		palette_val[i] = PSB_RVDC32(palette_reg + (i<<2));
 
 	/*save color_coef (chrome) */
-	for (i = 0; i < 6; i++) {
+	for (i = 0; i < 6; i++)
 		color_coef[i] = PSB_RVDC32(color_coef_reg + (i<<2));
-		printk("0x%x ", color_coef[i]);
-	}
 
 
 	if (pipe == 1) {
@@ -1374,10 +1372,8 @@ static int mdfld_restore_display_registers(struct drm_device *dev, int pipe)
 	}
 
 	/*save color_coef (chrome) */
-	for (i = 0; i < 6; i++) {
+	for (i = 0; i < 6; i++)
 		PSB_WVDC32(color_coef[i], color_coef_reg + (i<<2));
-		printk("0x%x ", color_coef[i]);
-	}
 
 	/* restore palette (gamma) */
 	/*DRM_UDELAY(50000); */
