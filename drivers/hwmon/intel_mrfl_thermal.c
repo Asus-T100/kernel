@@ -32,10 +32,8 @@
 #include <linux/ipc_device.h>
 #include <linux/pm.h>
 #include <linux/slab.h>
-#include <linux/hwmon-sysfs.h>
-#include <linux/hwmon.h>
 #include <linux/interrupt.h>
-#include <linux/gpio.h>
+#include <linux/thermal.h>
 
 #include <asm/intel_scu_ipc.h>
 #include <asm/intel_basincove_gpadc.h>
@@ -121,10 +119,15 @@ static const int adc_code[2][TABLE_LENGTH] = {
 
 static DEFINE_MUTEX(thrm_update_lock);
 
+struct thermal_device_info {
+	int sensor_index;
+	/* If 'direct', no table lookup is required */
+	bool is_direct;
+};
+
 struct thermal_data {
-	struct device *hwmon_dev;
 	struct ipc_device *ipcdev;
-	struct gpadc_result *adc_res;
+	struct thermal_zone_device *tzd[PMIC_THERMAL_SENSORS];
 	void *thrm_addr;
 	unsigned int irq;
 };
@@ -175,7 +178,7 @@ static int find_adc_code(uint16_t val)
  *
  * Can sleep
  */
-static int adc_to_temp(int direct, uint16_t adc_val, int *tp)
+static int adc_to_temp(int direct, uint16_t adc_val, unsigned long *tp)
 {
 	int x0, x1, y0, y1;
 	int nr, dr;		/* Numerator & Denominator */
@@ -343,105 +346,87 @@ exit_err:
 	return ret;
 }
 
-static ssize_t store_tmax_hyst(struct device *dev,
-		struct device_attribute *attr, const char *buf, size_t count)
+static ssize_t store_trip_hyst(struct thermal_zone_device *tzd,
+				int trip, unsigned long hyst)
 {
 	int ret;
 	uint8_t data;
-	unsigned long hyst;
-	struct sensor_device_attribute_2 *s_attr =
-					to_sensor_dev_attr_2(attr);
+	struct thermal_device_info *td_info = tzd->devdata;
+	int alert_reg = alert_regs_h[td_info->sensor_index];
 
 	/* Hysteresis value is 5 bits wide */
-	if (strict_strtoul(buf, 10, &hyst) || hyst > 31)
+	if (hyst > 31)
 		return -EINVAL;
 
 	mutex_lock(&thrm_update_lock);
 
-	ret = intel_scu_ipc_ioread8(alert_regs_h[s_attr->nr], &data);
+	ret = intel_scu_ipc_ioread8(alert_reg, &data);
 	if (ret)
 		goto ipc_fail;
 
 	/* Set bits [2:6] to value of hyst */
 	data = (data & 0x83) | (hyst << 2);
 
-	ret = intel_scu_ipc_iowrite8(alert_regs_h[s_attr->nr], data);
-	if (ret)
-		goto ipc_fail;
-
-	ret = count;
+	ret = intel_scu_ipc_iowrite8(alert_reg, data);
 
 ipc_fail:
 	mutex_unlock(&thrm_update_lock);
 	return ret;
 }
 
-static ssize_t show_tmax_hyst(struct device *dev,
-				struct device_attribute *attr, char *buf)
+static ssize_t show_trip_hyst(struct thermal_zone_device *tzd,
+				int trip, unsigned long *hyst)
 {
 	int ret;
 	uint8_t data;
-	struct sensor_device_attribute_2 *s_attr =
-					to_sensor_dev_attr_2(attr);
+	struct thermal_device_info *td_info = tzd->devdata;
+	int alert_reg = alert_regs_h[td_info->sensor_index];
+
 	mutex_lock(&thrm_update_lock);
 
-	ret = intel_scu_ipc_ioread8(alert_regs_h[s_attr->nr], &data);
+	ret = intel_scu_ipc_ioread8(alert_reg, &data);
+	if (!ret)
+		*hyst = (data >> 2) & 0x1F; /* Extract bits[2:6] of data */
 
 	mutex_unlock(&thrm_update_lock);
 
-	if (ret)
-		return ret;
-
-	/* Read bits [2:6] of data and show */
-	return sprintf(buf, "%d\n", (data >> 2) & 0x1F);
+	return ret;
 }
 
-static ssize_t store_tmax(struct device *dev,
-		struct device_attribute *attr, const char *buf, size_t count)
+static ssize_t store_trip_temp(struct thermal_zone_device *tzd,
+				int trip, unsigned long trip_temp)
 {
 	int ret, adc_val;
-	unsigned long temp;
-	struct sensor_device_attribute_2 *s_attr =
-					to_sensor_dev_attr_2(attr);
-	int alert_reg = alert_regs_h[s_attr->nr];
-	int direct = (s_attr->nr == PMIC_DIE_SENSOR) ? 1 : 0;
+	struct thermal_device_info *td_info = tzd->devdata;
+	int alert_reg = alert_regs_h[td_info->sensor_index];
 
-	if (strict_strtoul(buf, 10, &temp))
-		return -EINVAL;
-
-	if (temp < 1000) {
-		dev_err(dev, "Temperature should be in mC\n");
+	if (trip_temp < 1000) {
+		dev_err(&tzd->device, "Temperature should be in mC\n");
 		return -EINVAL;
 	}
 
 	mutex_lock(&thrm_update_lock);
 
 	/* Convert from mC to C */
-	temp /= 1000;
+	trip_temp /= 1000;
 
-	ret = temp_to_adc(direct, (int)temp, &adc_val);
+	ret = temp_to_adc(td_info->is_direct, (int)trip_temp, &adc_val);
 	if (ret)
 		goto exit;
 
 	ret =  set_tmax(alert_reg, adc_val);
-	if (ret)
-		goto exit;
-
-	ret = count;
 exit:
 	mutex_unlock(&thrm_update_lock);
 	return ret;
 }
 
-static ssize_t show_tmax(struct device *dev,
-				struct device_attribute *attr, char *buf)
+static ssize_t show_trip_temp(struct thermal_zone_device *tzd,
+				int trip, unsigned long *trip_temp)
 {
-	int ret, temp, adc_val;
+	int ret, adc_val;
 	uint8_t l, h;
-	struct sensor_device_attribute_2 *s_attr =
-					to_sensor_dev_attr_2(attr);
-	int alert_reg = alert_regs_h[s_attr->nr];
-	int direct = (s_attr->nr == PMIC_DIE_SENSOR) ? 1 : 0;
+	struct thermal_device_info *td_info = tzd->devdata;
+	int alert_reg = alert_regs_h[td_info->sensor_index];
 
 	mutex_lock(&thrm_update_lock);
 
@@ -456,42 +441,49 @@ static ssize_t show_tmax(struct device *dev,
 	/* Concatenate 'h' and 'l' to get 10-bit ADC code */
 	adc_val = ((h & 0x03) << 8) | l;
 
-	ret = adc_to_temp(direct, adc_val, &temp);
-	if (ret)
-		goto exit;
-
-	ret = sprintf(buf, "%d\n", temp);
+	ret = adc_to_temp(td_info->is_direct, adc_val, trip_temp);
 exit:
 	mutex_unlock(&thrm_update_lock);
 	return ret;
 }
 
-static ssize_t show_temp(struct device *dev,
-				struct device_attribute *attr, char *buf)
+static ssize_t show_trip_type(struct thermal_zone_device *tzd,
+			int trip, enum thermal_trip_type *trip_type)
 {
-	int ret, temp, ch, adc_val;
-	struct thermal_data *tdata = dev_get_drvdata(dev);
-	struct sensor_device_attribute_2 *s_attr =
-					to_sensor_dev_attr_2(attr);
-	int direct = (s_attr->nr == PMIC_DIE_SENSOR) ? 1 : 0;
+	/* All are passive trip points */
+	*trip_type = THERMAL_TRIP_PASSIVE;
+
+	return 0;
+}
+
+static ssize_t show_temp(struct thermal_zone_device *tzd, unsigned long *temp)
+{
+	int ret, ch, adc_val;
+	struct gpadc_result *adc_res;
+	struct thermal_device_info *td_info = tzd->devdata;
 
 	mutex_lock(&thrm_update_lock);
 
-	ch = adc_channels[s_attr->nr];
+	ch = adc_channels[td_info->sensor_index];
 
-	ret = intel_basincove_gpadc_sample(ch, tdata->adc_res);
-	if (ret) {
-		dev_err(dev, "gpadc_sample failed:%d\n", ret);
+	adc_res = kzalloc(sizeof(struct gpadc_result), GFP_KERNEL);
+	if (!adc_res) {
+		ret = -ENOMEM;
 		goto exit;
 	}
 
-	adc_val = GPADC_RSL(ch, tdata->adc_res);
+	ret = intel_basincove_gpadc_sample(ch, adc_res);
+	if (ret) {
+		dev_err(&tzd->device, "gpadc_sample failed:%d\n", ret);
+		goto exit_free;
+	}
 
-	ret = adc_to_temp(direct, adc_val, &temp);
-	if (ret)
-		goto exit;
+	adc_val = GPADC_RSL(ch, adc_res);
 
-	ret = sprintf(buf, "%d\n", temp);
+	ret = adc_to_temp(td_info->is_direct, adc_val, temp);
+
+exit_free:
+	kfree(adc_res);
 exit:
 	mutex_unlock(&thrm_update_lock);
 	return ret;
@@ -515,6 +507,22 @@ ipc_fail:
 	return ret;
 }
 
+static struct thermal_device_info *initialize_sensor(int index)
+{
+	struct thermal_device_info *td_info =
+		kzalloc(sizeof(struct thermal_device_info), GFP_KERNEL);
+
+	if (!td_info)
+		return NULL;
+
+	td_info->sensor_index = index;
+
+	if (index == PMIC_DIE_SENSOR)
+		td_info->is_direct = true;
+
+	return td_info;
+}
+
 static irqreturn_t thermal_intrpt(int irq, void *dev_data)
 {
 	int ret, sensor, event_type;
@@ -533,7 +541,7 @@ static irqreturn_t thermal_intrpt(int irq, void *dev_data)
 	if (ret)
 		goto ipc_fail;
 
-	dev_dbg(tdata->hwmon_dev, "STHRMIRQ: %.2x\n", irq_status);
+	dev_dbg(&tdata->ipcdev->dev, "STHRMIRQ: %.2x\n", irq_status);
 
 	/*
 	 * -1 for invalid interrupt
@@ -556,19 +564,19 @@ static irqreturn_t thermal_intrpt(int irq, void *dev_data)
 		event_type = !!(irq_status & SYS0ALRT);
 		sensor = SYS0;
 	} else {
-		dev_err(tdata->hwmon_dev, "Invalid Interrupt\n");
+		dev_err(&tdata->ipcdev->dev, "Invalid Interrupt\n");
 		ret = IRQ_HANDLED;
 		goto ipc_fail;
 	}
 
 	if (event_type != -1) {
-		dev_info(tdata->hwmon_dev,
+		dev_info(&tdata->ipcdev->dev,
 				"%s interrupt for thermal sensor %d\n",
 				event_type ? "HIGH" : "LOW", sensor);
 	}
 
 	/* Notify using UEvent */
-	kobject_uevent(&tdata->hwmon_dev->kobj, KOBJ_CHANGE);
+	kobject_uevent(&tdata->ipcdev->dev.kobj, KOBJ_CHANGE);
 
 	/* Unmask Thermal Interrupt in the mask register */
 	ret = intel_scu_ipc_update_register(MIRQLVL1, 0xFF, THERM_ALRT);
@@ -582,73 +590,25 @@ ipc_fail:
 	return ret;
 }
 
-static SENSOR_DEVICE_ATTR_2(temp1_input, S_IRUGO,
-				show_temp, NULL, 0, 0);
-static SENSOR_DEVICE_ATTR_2(temp1_max, S_IRUGO | S_IWUSR,
-				show_tmax, store_tmax, 0, 0);
-static SENSOR_DEVICE_ATTR_2(temp1_max_hyst, S_IRUGO | S_IWUSR,
-				show_tmax_hyst, store_tmax_hyst, 0, 0);
-
-static SENSOR_DEVICE_ATTR_2(temp2_input, S_IRUGO,
-				show_temp, NULL, 1, 0);
-static SENSOR_DEVICE_ATTR_2(temp2_max, S_IRUGO | S_IWUSR,
-				show_tmax, store_tmax, 1, 0);
-static SENSOR_DEVICE_ATTR_2(temp2_max_hyst, S_IRUGO | S_IWUSR,
-				show_tmax_hyst, store_tmax_hyst, 1, 0);
-
-static SENSOR_DEVICE_ATTR_2(temp3_input, S_IRUGO,
-				show_temp, NULL, 2, 0);
-static SENSOR_DEVICE_ATTR_2(temp3_max, S_IRUGO | S_IWUSR,
-				show_tmax, store_tmax, 2, 0);
-static SENSOR_DEVICE_ATTR_2(temp3_max_hyst, S_IRUGO | S_IWUSR,
-				show_tmax_hyst, store_tmax_hyst, 2, 0);
-
-static SENSOR_DEVICE_ATTR_2(temp4_input, S_IRUGO,
-				show_temp, NULL, 3, 0);
-static SENSOR_DEVICE_ATTR_2(temp4_max, S_IRUGO | S_IWUSR,
-				show_tmax, store_tmax, 3, 0);
-static SENSOR_DEVICE_ATTR_2(temp4_max_hyst, S_IRUGO | S_IWUSR,
-				show_tmax_hyst, store_tmax_hyst, 3, 0);
-
-static struct attribute *thermal_attrs[] = {
-	&sensor_dev_attr_temp1_input.dev_attr.attr,
-	&sensor_dev_attr_temp1_max.dev_attr.attr,
-	&sensor_dev_attr_temp1_max_hyst.dev_attr.attr,
-
-	&sensor_dev_attr_temp2_input.dev_attr.attr,
-	&sensor_dev_attr_temp2_max.dev_attr.attr,
-	&sensor_dev_attr_temp2_max_hyst.dev_attr.attr,
-
-	&sensor_dev_attr_temp3_input.dev_attr.attr,
-	&sensor_dev_attr_temp3_max.dev_attr.attr,
-	&sensor_dev_attr_temp3_max_hyst.dev_attr.attr,
-
-	&sensor_dev_attr_temp4_input.dev_attr.attr,
-	&sensor_dev_attr_temp4_max.dev_attr.attr,
-	&sensor_dev_attr_temp4_max_hyst.dev_attr.attr,
-	NULL
-};
-
-static struct attribute_group thermal_attr_gr = {
-	.name = "mrfl_thermal",
-	.attrs = thermal_attrs
+static struct thermal_zone_device_ops tzd_ops = {
+	.get_temp = show_temp,
+	.get_trip_type = show_trip_type,
+	.get_trip_temp = show_trip_temp,
+	.set_trip_temp = store_trip_temp,
+	.get_trip_hyst = show_trip_hyst,
+	.set_trip_hyst = store_trip_hyst,
 };
 
 static int mrfl_thermal_probe(struct ipc_device *ipcdev)
 {
-	int ret;
+	int ret, i;
 	struct thermal_data *tdata;
+	static char *name[PMIC_THERMAL_SENSORS] = {
+			"SYSTHERM0", "SYSTHERM1", "SYSTHERM2", "PMICDIE" };
 
 	tdata = kzalloc(sizeof(struct thermal_data), GFP_KERNEL);
 	if (!tdata) {
 		dev_err(&ipcdev->dev, "kzalloc failed\n");
-		return -ENOMEM;
-	}
-
-	tdata->adc_res = kzalloc(sizeof(struct gpadc_result), GFP_KERNEL);
-	if (!tdata->adc_res) {
-		dev_err(&ipcdev->dev, "kzalloc failed\n");
-		kfree(tdata);
 		return -ENOMEM;
 	}
 
@@ -663,27 +623,25 @@ static int mrfl_thermal_probe(struct ipc_device *ipcdev)
 		goto exit_free;
 	}
 
-	/* Creating a sysfs group with thermal_attr_gr attributes */
-	ret = sysfs_create_group(&ipcdev->dev.kobj, &thermal_attr_gr);
-	if (ret) {
-		dev_err(&ipcdev->dev, "sysfs create group failed\n");
-		goto exit_free;
-	}
-
-	/* Registering with hwmon class */
-	tdata->hwmon_dev = hwmon_device_register(&ipcdev->dev);
-	if (IS_ERR(tdata->hwmon_dev)) {
-		ret = PTR_ERR(tdata->hwmon_dev);
-		tdata->hwmon_dev = NULL;
-		dev_err(&ipcdev->dev, "hwmon_dev_regs failed\n");
-		goto exit_sysfs;
+	/* Register each sensor with the generic thermal framework */
+	for (i = 0; i < PMIC_THERMAL_SENSORS; i++) {
+		tdata->tzd[i] = thermal_zone_device_register(name[i],
+					1, 1, initialize_sensor(i), &tzd_ops,
+					0, 0, 0, 0);
+		if (IS_ERR(tdata->tzd[i])) {
+			ret = PTR_ERR(tdata->tzd[i]);
+			dev_err(&ipcdev->dev,
+				"registering thermal sensor %s failed: %d\n",
+				name[i], ret);
+			goto exit_reg;
+		}
 	}
 
 	tdata->thrm_addr = ioremap_nocache(PMIC_SRAM_BASE_ADDR, IOMAP_SIZE);
 	if (!tdata->thrm_addr) {
 		ret = -ENOMEM;
 		dev_err(&ipcdev->dev, "ioremap_nocache failed\n");
-		goto exit_hwmon;
+		goto exit_reg;
 	}
 
 	/* Register for Interrupt Handler */
@@ -708,12 +666,10 @@ exit_irq:
 	free_irq(tdata->irq, tdata);
 exit_ioremap:
 	iounmap(tdata->thrm_addr);
-exit_hwmon:
-	hwmon_device_unregister(tdata->hwmon_dev);
-exit_sysfs:
-	sysfs_remove_group(&ipcdev->dev.kobj, &thermal_attr_gr);
+exit_reg:
+	while (--i >= 0)
+		thermal_zone_device_unregister(tdata->tzd[i]);
 exit_free:
-	kfree(tdata->adc_res);
 	kfree(tdata);
 	return ret;
 }
@@ -732,16 +688,18 @@ static int mrfl_thermal_suspend(struct device *dev)
 
 static int mrfl_thermal_remove(struct ipc_device *ipcdev)
 {
+	int i;
 	struct thermal_data *tdata = ipc_get_drvdata(ipcdev);
 
-	if (tdata) {
-		free_irq(tdata->irq, tdata);
-		iounmap(tdata->thrm_addr);
-		hwmon_device_unregister(tdata->hwmon_dev);
-		sysfs_remove_group(&ipcdev->dev.kobj, &thermal_attr_gr);
-		kfree(tdata->adc_res);
-		kfree(tdata);
-	}
+	if (!tdata)
+		return 0;
+
+	for (i = 0; i < PMIC_THERMAL_SENSORS; i++)
+		thermal_zone_device_unregister(tdata->tzd[i]);
+
+	free_irq(tdata->irq, tdata);
+	iounmap(tdata->thrm_addr);
+	kfree(tdata);
 	return 0;
 }
 
