@@ -1063,7 +1063,9 @@ EXPORT_SYMBOL(thermal_zone_device_update);
  */
 static int create_trip_type_attr(struct thermal_zone_device *tz, int indx)
 {
-	char attr_name[THERMAL_NAME_LENGTH];
+	char *attr_name = kzalloc(THERMAL_NAME_LENGTH, GFP_KERNEL);
+	if (!attr_name)
+		return -ENOMEM;
 
 	snprintf(attr_name, THERMAL_NAME_LENGTH, "trip_point_%d_type", indx);
 
@@ -1084,7 +1086,9 @@ static int create_trip_type_attr(struct thermal_zone_device *tz, int indx)
 static int create_trip_temp_attr(struct thermal_zone_device *tz,
 				int indx, int writeable)
 {
-	char attr_name[THERMAL_NAME_LENGTH];
+	char *attr_name = kzalloc(THERMAL_NAME_LENGTH, GFP_KERNEL);
+	if (!attr_name)
+		return -ENOMEM;
 
 	snprintf(attr_name, THERMAL_NAME_LENGTH, "trip_point_%d_temp", indx);
 
@@ -1107,7 +1111,9 @@ static int create_trip_temp_attr(struct thermal_zone_device *tz,
  */
 static int create_trip_hyst_attr(struct thermal_zone_device *tz, int indx)
 {
-	char attr_name[THERMAL_NAME_LENGTH];
+	char *attr_name = kzalloc(THERMAL_NAME_LENGTH, GFP_KERNEL);
+	if (!attr_name)
+		return -ENOMEM;
 
 	snprintf(attr_name, THERMAL_NAME_LENGTH, "trip_point_%d_hyst", indx);
 
