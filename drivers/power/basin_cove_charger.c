@@ -900,12 +900,14 @@ static int bcove_init(void)
 						temp_up_lim, (int *)&adc_val);
 			if (unlikely(ret))
 				return ret;
-			ret = bcove_update_tt(addr_tzone, 0x03, adc_val >> 8);
+
+			ret = intel_scu_ipc_update_register(addr_tzone,
+					(adc_val >> 8 & 0xFF), 0x03);
 			if (unlikely(ret))
 				return ret;
 
-			ret = bcove_write_tt((addr_tzone + 1),
-						       (adc_val & 0xFF));
+			ret = intel_scu_ipc_iowrite8(addr_tzone+1,
+							(adc_val & 0xFF));
 		}
 
 	}
