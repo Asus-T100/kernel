@@ -1849,7 +1849,7 @@ static int mdfld_crtc_mode_set(struct drm_crtc *crtc,
 
 	if (get_panel_type(dev, pipe) == AUO_SC1_CMD &&
 		!dev_priv->dsi_init_done)
-		return;
+		return -EINVAL;
 
 	if (pipe == 0)   //h8c7_cmd
 		dsi_config = dev_priv->dsi_configs[0];

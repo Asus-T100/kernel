@@ -3466,7 +3466,7 @@ end_function:
 static int sep_free_dcb_handler(struct sep_device *sep,
 				struct sep_dma_context **dma_ctx)
 {
-	int error;
+	int error = -EINVAL;
 
 	if (!dma_ctx || !(*dma_ctx)) {
 		dev_dbg(&sep->pdev->dev,
