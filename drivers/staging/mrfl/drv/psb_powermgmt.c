@@ -42,6 +42,7 @@
 #endif
 
 #include <linux/earlysuspend.h>
+#include <asm/intel-mid.h>
 
 #undef OSPM_GFX_DPK
 #define SCU_CMD_VPROG2  0xe3
@@ -1699,7 +1700,7 @@ static int wait_for_pm_cmd_complete(int verify_mask, int state_type,
 		return -EINVAL;
 	}
 	/* Request power state change */
-	pwr_cnt = MRFLD_MSG_READ32(dev_priv->pci_root, PUNIT_PORT, reg_type);
+	pwr_cnt = intel_mid_msgbus_read32(PUNIT_PORT, reg_type);
 
 	pwr_mask = pwr_cnt;
 
@@ -1723,15 +1724,13 @@ static int wait_for_pm_cmd_complete(int verify_mask, int state_type,
 #endif
 
 	if (pwr_mask != pwr_cnt)
-		MRFLD_MSG_WRITE32(dev_priv->pci_root, PUNIT_PORT, reg_type,
-				  pwr_mask);
+		intel_mid_msgbus_write32(PUNIT_PORT, reg_type, pwr_mask);
 	else
 		return 0;
 
 	/* Poll for new power state */
 	while (true) {
-		pwr_sts =
-		    MRFLD_MSG_READ32(dev_priv->pci_root, PUNIT_PORT, reg_type);
+		pwr_sts = intel_mid_msgbus_read32(PUNIT_PORT, reg_type);
 		if (state_type == POWER_ISLAND_DOWN) {
 			if ((pwr_sts & pwr_mask) == pwr_mask)
 				break;

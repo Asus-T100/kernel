@@ -31,6 +31,7 @@
 #include "psb_intel_reg.h"
 #include "psb_intel_display.h"
 #include "mrfld_clock.h"
+#include <asm/intel-mid.h>
 
 #define MRFLD_LIMT_DPLL_19	    0
 #define MRFLD_LIMT_DPLL_25	    1
@@ -335,19 +336,17 @@ void mrfld_setup_pll(struct drm_device *dev, int pipe, int clk)
 				clock.m, clock.p1, m_conv);
 	}
 
-	pll = MRFLD_MSG_READ32(dev_priv->pci_root, CCK_PORT, DSI_PLL_CTRL_REG);
+	pll = intel_mid_msgbus_read32(CCK_PORT, DSI_PLL_CTRL_REG);
 
 	if (pll & DPLL_VCO_ENABLE) {
 		pll &= ~DPLL_VCO_ENABLE;
-		MRFLD_MSG_WRITE32(dev_priv->pci_root, CCK_PORT,
-				  DSI_PLL_CTRL_REG, pll);
+		intel_mid_msgbus_write32(CCK_PORT, DSI_PLL_CTRL_REG, pll);
 	}
 
 	/* When ungating power of DPLL, needs to wait 0.5us before enable the VCO */
 	if (!(pll & _DSI_LDO_EN)) {
 		pll |= _DSI_LDO_EN;
-		MRFLD_MSG_WRITE32(dev_priv->pci_root, CCK_PORT,
-				  DSI_PLL_CTRL_REG, pll);
+		intel_mid_msgbus_write32(CCK_PORT, DSI_PLL_CTRL_REG, pll);
 		/* FIXME_MRFLD PO - change 500 to 1 after PO */
 		udelay(500);
 	}
@@ -355,7 +354,7 @@ void mrfld_setup_pll(struct drm_device *dev, int pipe, int clk)
 	/* Write the N1 & M1 parameters into DSI_PLL_DIV_REG */
 	fp = (clk_n / 2) << 16;
 	fp |= m_conv;
-	MRFLD_MSG_WRITE32(dev_priv->pci_root, CCK_PORT, DSI_PLL_DIV_REG, fp);
+	intel_mid_msgbus_write32(CCK_PORT, DSI_PLL_DIV_REG, fp);
 
 	pll = 0;
 
@@ -382,7 +381,7 @@ void mrfld_setup_pll(struct drm_device *dev, int pipe, int clk)
 	pll |= (1 << (clock.p1 - 2)) << 17;
 
 	pll |= DPLL_VCO_ENABLE;
-	MRFLD_MSG_WRITE32(dev_priv->pci_root, CCK_PORT, DSI_PLL_CTRL_REG, pll);
+	intel_mid_msgbus_write32(CCK_PORT, DSI_PLL_CTRL_REG, pll);
 
 	/* FIXME_MRFLD PO - change 500 to 5 after PO */
 	/* the lock time for PLL is 5us */

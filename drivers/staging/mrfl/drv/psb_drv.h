@@ -1361,68 +1361,6 @@ extern int drm_topaz_sbuswa;
  */
 #define DRM_DRIVER_PRIVATE_T struct drm_psb_private
 
-static inline u32 MRST_MSG_READ32(uint port, uint offset)
-{
-	int mcr = (0xD0 << 24) | (port << 16) | (offset << 8);
-	uint32_t ret_val = 0;
-	struct pci_dev *pci_root = pci_get_bus_and_slot(0, 0);
-	pci_write_config_dword(pci_root, 0xD0, mcr);
-	pci_read_config_dword(pci_root, 0xD4, &ret_val);
-	pci_dev_put(pci_root);
-	return ret_val;
-}
-
-static inline void MRST_MSG_WRITE32(uint port, uint offset, u32 value)
-{
-	int mcr = (0xE0 << 24) | (port << 16) | (offset << 8) | 0xF0;
-	struct pci_dev *pci_root = pci_get_bus_and_slot(0, 0);
-	pci_write_config_dword(pci_root, 0xD4, value);
-	pci_write_config_dword(pci_root, 0xD0, mcr);
-	pci_dev_put(pci_root);
-}
-
-static inline u32 MDFLD_MSG_READ32(uint port, uint offset)
-{
-	int mcr = (0x10 << 24) | (port << 16) | (offset << 8);
-	uint32_t ret_val = 0;
-	struct pci_dev *pci_root = pci_get_bus_and_slot(0, 0);
-	pci_write_config_dword(pci_root, 0xD0, mcr);
-	pci_read_config_dword(pci_root, 0xD4, &ret_val);
-	pci_dev_put(pci_root);
-	return ret_val;
-}
-
-static inline void MDFLD_MSG_WRITE32(uint port, uint offset, u32 value)
-{
-	int mcr = (0x11 << 24) | (port << 16) | (offset << 8) | 0xF0;
-	struct pci_dev *pci_root = pci_get_bus_and_slot(0, 0);
-	pci_write_config_dword(pci_root, 0xD4, value);
-	pci_write_config_dword(pci_root, 0xD0, mcr);
-	pci_dev_put(pci_root);
-}
-
-static inline u32 MRFLD_MSG_READ32(struct pci_dev *pci_root, uint port,
-				   uint offset)
-{
-	int mcr = (0x10 << 24) | (port << 16) | (offset << 8);
-	uint32_t ret_val = 0;
-/*      struct pci_dev *pci_root = pci_get_bus_and_slot(0, 0); */
-	pci_write_config_dword(pci_root, 0xD0, mcr);
-	pci_read_config_dword(pci_root, 0xD4, &ret_val);
-	pci_dev_put(pci_root);
-	return ret_val;
-}
-
-static inline void MRFLD_MSG_WRITE32(struct pci_dev *pci_root, uint port,
-				     uint offset, u32 value)
-{
-	int mcr = (0x11 << 24) | (port << 16) | (offset << 8) | 0xF0;
-/*      struct pci_dev *pci_root = pci_get_bus_and_slot(0, 0); */
-	pci_write_config_dword(pci_root, 0xD4, value);
-	pci_write_config_dword(pci_root, 0xD0, mcr);
-	pci_dev_put(pci_root);
-}
-
 static inline u32 MRFLD_EXT_MSG_READ32(struct pci_dev *pci_root, uint port,
 				       uint offset)
 {
