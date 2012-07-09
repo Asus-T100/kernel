@@ -477,16 +477,38 @@ void dlp_pdu_recycle(struct dlp_xfer_ctx *xfer_ctx, struct hsi_msg *pdu)
 }
 
 /**
- * dlp_pdu_check_header - Check the DLP header (Signature)
+ * dlp_pdu_header_check - Check the pdu header (Signature & Seq number)
+ * @xfer_ctx: a reference to the RX xfer context
  * @pdu: a reference to the considered pdu
  *
- * Returns TRUE if the PDU signature is invalid
+ * Returns 0 if the PDU (signature & seq number) is valid, an error otherwise
  */
-inline int dlp_pdu_header_valid(struct hsi_msg *pdu)
+inline int dlp_pdu_header_check(struct dlp_xfer_ctx *xfer_ctx,
+		struct hsi_msg *pdu)
 {
+	int ret;
 	u32 *header = sg_virt(pdu->sgt.sgl);
 
-	return ((header[0] & 0xFFFF0000) == DLP_HEADER_SIGNATURE);
+	/* Update the xfer context seq number */
+	xfer_ctx->seq_num++;
+
+	/* Check the PDU signature */
+	if (DLP_HEADER_SIGNATURE == (header[0] & 0xFFFF0000)) {
+		/* Check the seq number */
+		if (xfer_ctx->seq_num == (header[0] & 0x0000FFFF)) {
+			ret = 0;
+		} else {
+			CRITICAL("seq_num mismatch (AP: 0x%X, CP: 0x%X)",
+					xfer_ctx->seq_num,
+					header[0] & 0x0000FFFF);
+			ret = -ERANGE;
+		}
+	} else {
+		CRITICAL("Invalid PDU signature 0x%x", header[0]);
+		ret = -EINVAL;
+	}
+
+	return ret;
 }
 
 /**
@@ -919,17 +941,27 @@ static inline void dlp_ctx_update_state_tx(struct dlp_xfer_ctx *xfer_ctx)
  ***************************************************************************/
 
 /**
+ * dlp_fifo_head - get a reference to the first pdu of a FIFO or NULL
+ *			 if the FIFO is empty
+ * @fifo: a reference of the FIFO to consider
+ */
+static inline struct hsi_msg *dlp_fifo_head(struct list_head *fifo)
+{
+	struct hsi_msg *pdu = NULL;
+
+	/* Empty ? */
+	if (!list_empty(fifo))
+		pdu = list_entry(fifo->next, struct hsi_msg, link);
+
+	return pdu;
+}
+
+/**
  * dlp_fifo_tail - get a reference to the last pdu of a FIFO or NULL
  *			 if the FIFO is empty
- * @xfer_ctx: a reference to the xfer context (RX or TX) to consider
  * @fifo: a reference of the FIFO to consider
- *
- * Returns a reference to the last pdu of this FIFO or NULL if the FIFO is
- * empty.
  */
-inline __must_check struct hsi_msg *
-dlp_fifo_tail(struct dlp_xfer_ctx *xfer_ctx,
-			struct list_head *fifo)
+inline __must_check struct hsi_msg *dlp_fifo_tail(struct list_head *fifo)
 {
 	struct hsi_msg *pdu = NULL;
 
@@ -1072,70 +1104,96 @@ inline void dlp_fifo_wait_push_back(struct dlp_xfer_ctx *xfer_ctx,
 }
 
 /**
- * dlp_pop_wait_push_ctrl - transfer a TX pdu from the wait FIFO to the
+ * _dlp_from_wait_to_ctrl - transfer a TX pdu from the wait FIFO to the
  *              controller FIFO
  * @xfer_ctx: a reference to the TX context to consider
- * @check_pdu: to check if the pdu is being updated (marked as break pdu)
  *
  * This wrapper function is simply transferring the first pdu of the wait
  * FIFO.
  */
-void dlp_pop_wait_push_ctrl(struct dlp_xfer_ctx *xfer_ctx,
-			    unsigned int check_pdu)
+static int _dlp_from_wait_to_ctrl(struct dlp_xfer_ctx *xfer_ctx)
 {
-	int ok = 1;
 	unsigned long flags;
 	struct hsi_msg *pdu;
+	unsigned int actual_len;
+	int ret;
 
-	PROLOG("check_pdu: %d", check_pdu);
+	PROLOG();
 
 	write_lock_irqsave(&xfer_ctx->lock, flags);
 	pdu = dlp_fifo_wait_pop(xfer_ctx);
 	write_unlock_irqrestore(&xfer_ctx->lock, flags);
 
-	if (!pdu)
+	if (!pdu) {
+		ret = -ENOENT;
 		goto out;
+	}
 
-	if (check_pdu)
-		ok = !pdu->break_frame;
+	actual_len = pdu->actual_len;
 
-	if (ok) {
-		/* Note that no error is returned upon transfer failure,
-		 * in such cases, the pdu is simply returned back to the
-		 * wait FIFO, as nothing else can be done
-		 */
-		int ret;
-		unsigned int actual_len = pdu->actual_len;
-
-		/* */
-		ret = dlp_hsi_controller_push(xfer_ctx, pdu);
+	/* Push the PDU to the controller */
+	ret = dlp_hsi_controller_push(xfer_ctx, pdu);
+	if (ret) {
+		/* Push back the pdu to the wait FIFO */
+		dlp_fifo_wait_push_back(xfer_ctx, pdu);
+	} else {
+		read_lock_irqsave(&xfer_ctx->lock, flags);
+		ret = (xfer_ctx->ctrl_len > 0);
+		read_unlock_irqrestore(&xfer_ctx->lock, flags);
 		if (ret) {
-			if (ret == -EACCES) {	/* port released */
-
-				write_lock_irqsave(&xfer_ctx->lock, flags);
-				xfer_ctx->room -= dlp_pdu_room_in(pdu);
-
-				/* Recycle or Free the pdu */
-				dlp_pdu_delete(xfer_ctx, pdu);
-
-				write_unlock_irqrestore(&xfer_ctx->lock, flags);
-			} else {
-				/* Push back the pdu */
-				dlp_fifo_wait_push_back(xfer_ctx, pdu);
-			}
+			struct dlp_channel *ch_ctx  = xfer_ctx->channel;
+			mod_timer(&ch_ctx->hangup.timer,
+				  jiffies + usecs_to_jiffies(DLP_HANGUP_DELAY));
+			del_timer_sync(&xfer_ctx->timer);
+			dlp_ctx_set_state(xfer_ctx, ACTIVE);
 		}
+
+		ret = 0;
 #ifdef CONFIG_HSI_DLP_TTY_STATS
-		else {
-			xfer_ctx->tty_stats.data_sz += actual_len;
-			xfer_ctx->tty_stats.pdus_cnt++;
-		}
+		xfer_ctx->tty_stats.data_sz += actual_len;
+		xfer_ctx->tty_stats.pdus_cnt++;
 #endif
 	}
 
  out:
 	EPILOG();
+	return ret;
 }
 
+/**
+ * dlp_pop_wait_push_ctrl - transfer as many TX pdus as possible from the
+ *      wait FIFO to the controller FIFO, unless a pdu is being
+ *      updated (marked as not completed)
+ * @ctx: a reference to the FFL TX context to consider
+ */
+void dlp_pop_wait_push_ctrl(struct dlp_xfer_ctx *xfer_ctx)
+{
+	struct hsi_msg *pdu;
+	unsigned long flags;
+
+	PROLOG();
+
+	read_lock_irqsave(&xfer_ctx->lock, flags);
+	while (xfer_ctx->ctrl_len < xfer_ctx->ctrl_max) {
+		pdu = dlp_fifo_head(&xfer_ctx->wait_pdus);
+		read_unlock_irqrestore(&xfer_ctx->lock, flags);
+
+		if ((!pdu) ||
+			(pdu->status != HSI_STATUS_COMPLETED) ||
+			(_dlp_from_wait_to_ctrl(xfer_ctx))) {
+				read_lock_irqsave(&xfer_ctx->lock, flags);
+				break;
+			}
+
+		read_lock_irqsave(&xfer_ctx->lock, flags);
+	}
+
+	read_unlock_irqrestore(&xfer_ctx->lock, flags);
+
+	dlp_ctx_update_state_tx(xfer_ctx);
+
+	EPILOG();
+}
 /****************************************************************************
  *
  * Frame recycling helper functions
@@ -1286,10 +1344,11 @@ int dlp_hsi_controller_push(struct dlp_xfer_ctx *xfer_ctx, struct hsi_msg *pdu)
 	xfer_ctx->room -= lost_room;
 	xfer_ctx->ctrl_len++;
 
-	if (pdu->ttype == HSI_MSG_WRITE)
+	if (pdu->ttype == HSI_MSG_WRITE) {
 		xfer_ctx->channel->credits--;
+		xfer_ctx->seq_num++;
+	}
 
-	xfer_ctx->seq_num++;
 	write_unlock_irqrestore(&xfer_ctx->lock, flags);
 
 	/* Set the DLP signature + seq_num */
@@ -1317,12 +1376,13 @@ int dlp_hsi_controller_push(struct dlp_xfer_ctx *xfer_ctx, struct hsi_msg *pdu)
 		/* Failed to send pdu, set back counters values */
 		write_lock_irqsave(&xfer_ctx->lock, flags);
 
-		xfer_ctx->seq_num--;
 		xfer_ctx->room += lost_room;
 		xfer_ctx->ctrl_len--;
 
-		if (pdu->ttype == HSI_MSG_WRITE)
+		if (pdu->ttype == HSI_MSG_WRITE) {
 			xfer_ctx->channel->credits++;
+			xfer_ctx->seq_num--;
+		}
 
 		ctrl_len = xfer_ctx->ctrl_len;
 
@@ -1380,12 +1440,9 @@ void dlp_do_start_tx(struct work_struct *work)
 		goto out;
 	}
 
-	dlp_ctx_set_state(xfer_ctx, ACTIVE);
-
-	/* The HSI controller is ready, push as many frames as possible */
-	/* FIXME :  Really need to be done here ?
-	 * dlp_ctx_set_state(xfer_ctx, READY);
-	 _dlp_pop_wait_push_ctrl(ctx, &flags); */
+	/* The HSI controller is ready, push as many pdus as possible */
+	 dlp_ctx_set_state(xfer_ctx, READY);
+	 dlp_pop_wait_push_ctrl(xfer_ctx);
 out:
 	EPILOG("state: %s", DLP_CTX_STATE_TO_STR(dlp_ctx_get_state(xfer_ctx)));
 }
@@ -2087,4 +2144,4 @@ MODULE_AUTHOR("Olivier Stoltz Douchet <olivierx.stoltz-douchet@intel.com>");
 MODULE_AUTHOR("Faouaz Tenoutit <faouazx.tenoutit@intel.com>");
 MODULE_DESCRIPTION("LTE protocol driver over HSI for IMC modems");
 MODULE_LICENSE("GPL");
-MODULE_VERSION("1.5-HSI-LTE");
+MODULE_VERSION("1.6-HSI-LTE");

@@ -173,9 +173,6 @@ void dlp_dbg_dump_pdu(struct hsi_msg *pdu,
 
 	/* Check the PDU signature */
 	data = sg_virt(sg);
-	if (!dlp_pdu_header_valid(pdu))
-		is_corrupted = 1;
-
 	for (i = 0; i < pdu->sgt.nents; i++) {
 		data = sg_virt(sg);
 		len = sg->length;

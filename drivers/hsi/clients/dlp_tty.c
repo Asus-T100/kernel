@@ -83,7 +83,7 @@ static void dlp_tty_modem_hangup(struct dlp_channel *ch_ctx, int reason)
 
 	PROLOG();
 
-	CRITICAL("TTY hangup (reason: %d)", reason);
+	CRITICAL("TTY hangup (reason: 0x%X)", reason);
 
 	ch_ctx->hangup.cause |= reason;
 	tty = tty_port_tty_get(&tty_ctx->tty_prt);
@@ -152,7 +152,7 @@ unsigned char *dlp_tty_pdu_data_ptr(struct hsi_msg *pdu, unsigned int offset)
 
 /**
  * dlp_tty_pdu_set_length - write down the length information to the frame header
- * @frame_ptr: a pointer to the virtual base address of a frame
+ * @pdu: a reference to the considered pdu
  * @sz: the length information to encode in the header
  */
 inline void dlp_tty_pdu_set_length(struct hsi_msg *pdu, u32 sz)
@@ -391,7 +391,7 @@ static void dlp_tty_complete_tx(struct hsi_msg *pdu)
 {
 	struct dlp_xfer_ctx *xfer_ctx = pdu->context;
 	struct dlp_channel *ch_ctx = xfer_ctx->channel;
-	int pdu_available, wakeup = 0;
+	int wakeup;
 	unsigned long flags;
 
 	PROLOG();
@@ -410,41 +410,17 @@ static void dlp_tty_complete_tx(struct hsi_msg *pdu)
 	dlp_hsi_controller_pop(xfer_ctx);
 	write_unlock_irqrestore(&xfer_ctx->lock, flags);
 
-	read_lock_irqsave(&xfer_ctx->lock, flags);
-
-	/* Still have queued TX pdu ? */
-	if (xfer_ctx->ctrl_len) {
-		mod_timer(&ch_ctx->hangup.timer,
-			  jiffies + usecs_to_jiffies(DLP_HANGUP_DELAY));
-	} else {
-		del_timer(&ch_ctx->hangup.timer);
-	}
-
-	read_unlock_irqrestore(&xfer_ctx->lock, flags);
-
-	if (dlp_ctx_is_empty(xfer_ctx)) {
-		wake_up(&ch_ctx->tx_empty_event);
-		mod_timer(&xfer_ctx->timer, jiffies + xfer_ctx->delay);
-	} else {
-		del_timer(&xfer_ctx->timer);
-	}
-
-	read_lock_irqsave(&xfer_ctx->lock, flags);
-	pdu_available = (xfer_ctx->wait_len > 0);
-	read_unlock_irqrestore(&xfer_ctx->lock, flags);
-
-	if (pdu_available)
-		dlp_pop_wait_push_ctrl(xfer_ctx, 1);
+	/* Start new waiting pdus (if any) */
+	dlp_pop_wait_push_ctrl(xfer_ctx);
 
 	/* Wake-up the TTY write whenever the TX wait FIFO is half empty, and
 	 * not before, to prevent too many wakeups */
 	wakeup = ((dlp_ctx_has_flag(xfer_ctx, TX_TTY_WRITE_PENDING_BIT)) &&
 		  (xfer_ctx->wait_len <= xfer_ctx->wait_max / 2));
-	if (wakeup)
+	if (wakeup) {
 		dlp_ctx_clear_flag(xfer_ctx, TX_TTY_WRITE_PENDING_BIT);
-
-	if (wakeup)
 		dlp_tty_wakeup(ch_ctx);
+	}
 
 	EPILOG();
 }
@@ -461,11 +437,17 @@ static void dlp_tty_complete_rx(struct hsi_msg *pdu)
 	struct dlp_xfer_ctx *xfer_ctx = pdu->context;
 	struct dlp_tty_context *tty_ctx = xfer_ctx->channel->ch_data;
 	unsigned long flags;
+	int ret;
 
 	PROLOG();
 
-	/* Dump the PDU : Do it before or after the actual_len update ? */
-	/* dlp_pdu_dump(pdu, 1); */
+	/* Check the received PDU header & seq_num */
+	ret = dlp_pdu_header_check(xfer_ctx, pdu);
+	if (ret == -EINVAL) {
+		/* Dump the first 160 bytes */
+		dlp_dbg_dump_pdu(pdu, 16, 160, 1);
+		goto recycle;
+	}
 
 	/* Check and update the PDU len & status */
 	dlp_pdu_update(tty_ctx->ch_ctx, pdu);
@@ -485,6 +467,11 @@ static void dlp_tty_complete_rx(struct hsi_msg *pdu)
 	dlp_fifo_wait_push(xfer_ctx, pdu);
 
 	queue_work(dlp_drv.rx_wq, &tty_ctx->do_tty_forward);
+	return;
+
+recycle:
+	/* Recycle or free the pdu */
+	dlp_pdu_recycle(xfer_ctx, pdu);
 	EPILOG();
 }
 
@@ -865,7 +852,7 @@ int dlp_tty_do_write(struct dlp_xfer_ctx *xfer_ctx, unsigned char *buf,
 	}
 
 	read_lock_irqsave(&xfer_ctx->lock, flags);
-	pdu = dlp_fifo_tail(xfer_ctx, &xfer_ctx->wait_pdus);
+	pdu = dlp_fifo_tail(&xfer_ctx->wait_pdus);
 	if (pdu) {
 		offset = pdu->actual_len;
 		avail = xfer_ctx->payload_len - offset;
@@ -910,18 +897,12 @@ int dlp_tty_do_write(struct dlp_xfer_ctx *xfer_ctx, unsigned char *buf,
 		pdu->status = HSI_STATUS_COMPLETED;
 
 		write_lock_irqsave(&xfer_ctx->lock, flags);
-
 		xfer_ctx->buffered += copied;
 		xfer_ctx->room -= copied;
-
 		write_unlock_irqrestore(&xfer_ctx->lock, flags);
 
-		read_lock_irqsave(&xfer_ctx->lock, flags);
-		avail = (xfer_ctx->ctrl_len < xfer_ctx->ctrl_max);
-		read_unlock_irqrestore(&xfer_ctx->lock, flags);
-
-		if (avail)
-			dlp_pop_wait_push_ctrl(xfer_ctx, 0);
+		if (dlp_ctx_get_state(xfer_ctx) != IDLE)
+			dlp_pop_wait_push_ctrl(xfer_ctx);
 	} else {
 		/* ERROR frames have already been popped from the wait FIFO */
 		write_lock_irqsave(&xfer_ctx->lock, flags);

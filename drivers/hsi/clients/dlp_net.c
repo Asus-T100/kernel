@@ -234,7 +234,7 @@ static void dlp_net_complete_rx(struct hsi_msg *pdu)
 	struct dlp_xfer_ctx *xfer_ctx = pdu->context;
 	struct dlp_channel *ch_ctx = xfer_ctx->channel;
 	struct dlp_net_context *net_ctx = ch_ctx->ch_data;
-	unsigned int more_packets, data_size, ret, offset;
+	unsigned int more_packets, data_size, offset, ret = 0;
 	unsigned char *skb_data, *data_addr, *start_addr;
 	unsigned int *ptr;
 	unsigned long flags;
@@ -242,29 +242,22 @@ static void dlp_net_complete_rx(struct hsi_msg *pdu)
 	PROLOG("%s, pdu [0x%p, actual_len: %d, sgl->len: %d]",
 	       net_ctx->ndev->name, pdu, pdu->actual_len, pdu->sgt.sgl->length);
 
-	ret = 0;
-
 	/* Pop the CTRL queue */
 	write_lock_irqsave(&xfer_ctx->lock, flags);
 	dlp_hsi_controller_pop(xfer_ctx);
 	write_unlock_irqrestore(&xfer_ctx->lock, flags);
 
-	/* Get the data pointer */
-	ptr = sg_virt(pdu->sgt.sgl);
-
-	/* Read the header    */
-	/*--------------------*/
-	if (!dlp_pdu_header_valid(pdu)) {
-		CRITICAL("Invalid PDU signature (0x%x)", (*ptr));
-		ret = -EINVAL;
-
+	/* Check the received PDU header & seq_num */
+	ret = dlp_pdu_header_check(xfer_ctx, pdu);
+	if (ret == -EINVAL) {
 		/* Dump the first 160 bytes */
 		dlp_dbg_dump_pdu(pdu, 16, 160, 1);
-		goto out;
+		goto recycle;
 	}
 
 	/* Read packets desc  */
 	/*---------------------*/
+	ptr = sg_virt(pdu->sgt.sgl);
 	start_addr = (unsigned char *)ptr;	/* Skip the header */
 
 	do {
@@ -296,7 +289,7 @@ static void dlp_net_complete_rx(struct hsi_msg *pdu)
 				   " - packet dropped\n", data_size);
 
 			net_ctx->ndev->stats.rx_dropped++;
-			goto out;
+			goto recycle;
 		}
 
 		skb_data = skb_put(skb, data_size);
@@ -327,10 +320,8 @@ static void dlp_net_complete_rx(struct hsi_msg *pdu)
 		}
 	} while (more_packets);
 
-	ret = 0;
-
-out:
-	/* Recycle the RX pdu */
+recycle:
+	/* Recycle or free the pdu */
 	dlp_pdu_recycle(xfer_ctx, pdu);
 
 	EPILOG("%d", ret);

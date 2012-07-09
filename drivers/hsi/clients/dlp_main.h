@@ -409,7 +409,8 @@ void dlp_pdu_update(struct dlp_channel *ch_ctx, struct hsi_msg *pdu);
 inline void dlp_pdu_reset(struct dlp_xfer_ctx *xfer_ctx,
 			  struct hsi_msg *pdu, unsigned int length);
 
-int dlp_pdu_header_valid(struct hsi_msg *pdu);
+int dlp_pdu_header_check(struct dlp_xfer_ctx *xfer_ctx,
+		struct hsi_msg *pdu);
 
 inline void dlp_pdu_set_length(struct hsi_msg *pdu, u32 sz);
 
@@ -455,9 +456,7 @@ void dlp_ctx_update_status(struct dlp_xfer_ctx *xfer_ctx);
  * Generic FIFO handling
  *
  ***************************************************************************/
-inline __must_check
-struct hsi_msg *dlp_fifo_tail(struct dlp_xfer_ctx *xfer_ctx,
-				  struct list_head *fifo);
+inline __must_check struct hsi_msg *dlp_fifo_tail(struct list_head *fifo);
 
 inline void _dlp_fifo_pdu_push(struct hsi_msg *pdu, struct list_head *fifo);
 
@@ -477,8 +476,7 @@ inline void dlp_fifo_wait_push(struct dlp_xfer_ctx *xfer_ctx,
 inline void dlp_fifo_wait_push_back(struct dlp_xfer_ctx *xfer_ctx,
 				    struct hsi_msg *pdu);
 
-void dlp_pop_wait_push_ctrl(struct dlp_xfer_ctx *xfer_ctx,
-			    unsigned int check_pdu);
+void dlp_pop_wait_push_ctrl(struct dlp_xfer_ctx *xfer_ctx);
 
 /****************************************************************************
  *
