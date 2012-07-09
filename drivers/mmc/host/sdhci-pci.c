@@ -201,11 +201,10 @@ static int mfd_emmc_gpio_parse(struct sfi_table_header *table)
 }
 
 #ifdef CONFIG_PM_RUNTIME
-
 /*
- * MFLD SD card insert/remove handler
+ * SD card insert/remove handler
  * When removing a SD card, there may be still requests
- * transferring. But removing a SD card can cause MFLD
+ * transferring. But removing a SD card can cause SD
  * host controller reset its power register automatically
  * which causes host cannot generate interrupts for the
  * current transferring requests. That will trigger timeout
@@ -213,7 +212,7 @@ static int mfd_emmc_gpio_parse(struct sfi_table_header *table)
  * So before start to detect a card, finish the current
  * request first.
  */
-static irqreturn_t mfd_sd_cd(int irq, void *dev_id)
+static irqreturn_t intel_mid_sd_cd(int irq, void *dev_id)
 {
 	struct sdhci_pci_slot *slot = dev_id;
 	struct sdhci_host *host = slot->host;
@@ -226,11 +225,10 @@ static irqreturn_t mfd_sd_cd(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
-#define MFLD_SD_CD_PIN 69
 
-static int mfd_sd_probe_slot(struct sdhci_pci_slot *slot)
+static int intel_mid_sd_cd_init(struct sdhci_pci_slot *slot, int gpio)
 {
-	int err, irq, gpio = MFLD_SD_CD_PIN;
+	int err, irq;
 
 	slot->cd_gpio = -EINVAL;
 	slot->cd_irq = -EINVAL;
@@ -247,7 +245,7 @@ static int mfd_sd_probe_slot(struct sdhci_pci_slot *slot)
 	if (irq < 0)
 		goto out_free;
 
-	err = request_irq(irq, mfd_sd_cd, IRQF_TRIGGER_RISING |
+	err = request_irq(irq, intel_mid_sd_cd, IRQF_TRIGGER_RISING |
 			  IRQF_TRIGGER_FALLING, "sd_cd", slot);
 	if (err)
 		goto out_free;
@@ -265,22 +263,30 @@ out:
 	return 0;
 }
 
+static void intel_mid_sd_cd_free(struct sdhci_pci_slot *slot)
+{
+	if (slot->cd_irq >= 0)
+		free_irq(slot->cd_irq, slot);
+	gpio_free(slot->cd_gpio);
+}
+#else
+#define intel_mid_sd_cd_init	NULL
+#define intel_mid_sd_cd_free	NULL
+#endif
+
+#define MFLD_SD_CD_PIN 69
+static int mfd_sd_probe_slot(struct sdhci_pci_slot *slot)
+{
+	return intel_mid_sd_cd_init(slot, MFLD_SD_CD_PIN);
+}
+
 static void mfd_sd_remove_slot(struct sdhci_pci_slot *slot, int dead)
 {
 	if (slot->chip->pdev->device != PCI_DEVICE_ID_INTEL_MFD_SD)
 		return;
 
-	if (slot->cd_irq >= 0)
-		free_irq(slot->cd_irq, slot);
-	gpio_free(slot->cd_gpio);
+	intel_mid_sd_cd_free(slot);
 }
-
-#else
-
-#define mfd_sd_probe_slot	NULL
-#define mfd_sd_remove_slot	NULL
-
-#endif
 
 #define MFD_SDHCI_DEKKER_BASE	0xffff7fb0
 static void mfd_emmc_mutex_register(struct sdhci_pci_slot *slot)
@@ -434,6 +440,7 @@ static int intel_mrfl_mmc_probe(struct sdhci_pci_chip *chip)
 	return ret;
 }
 
+#define MRFLD_SD_CD_PIN 77
 static int intel_mrfl_mmc_probe_slot(struct sdhci_pci_slot *slot)
 {
 	if ((PCI_FUNC(slot->chip->pdev->devfn) == 0) ||
@@ -454,11 +461,16 @@ static int intel_mrfl_mmc_probe_slot(struct sdhci_pci_slot *slot)
 	slot->host->mmc->caps2 |= MMC_CAP2_BOOTPART_NOACC;
 #endif
 
+	if (PCI_FUNC(slot->chip->pdev->devfn) == 2) /* SD host controller */
+		intel_mid_sd_cd_init(slot, MRFLD_SD_CD_PIN);
+
 	return 0;
 }
 
 static void intel_mrfl_mmc_remove_slot(struct sdhci_pci_slot *slot, int dead)
 {
+	if (PCI_FUNC(slot->chip->pdev->devfn) == 2) /* SD host controller */
+		intel_mid_sd_cd_free(slot);
 }
 
 static const struct sdhci_pci_fixes sdhci_intel_mrfl_mmc = {
