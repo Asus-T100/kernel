@@ -415,6 +415,7 @@ static acpi_status __init find_mboard_resource(acpi_handle handle, u32 lvl,
 	return AE_OK;
 }
 
+#ifdef CONFIG_ACPI
 static int __init is_acpi_reserved(u64 start, u64 end, unsigned not_used)
 {
 	struct resource mcfg_res;
@@ -431,6 +432,7 @@ static int __init is_acpi_reserved(u64 start, u64 end, unsigned not_used)
 
 	return mcfg_res.flags;
 }
+#endif
 
 typedef int (*check_reserved_t)(u64 start, u64 end, unsigned type);
 
@@ -481,6 +483,7 @@ static void __init pci_mmcfg_reject_broken(int early)
 	list_for_each_entry(cfg, &pci_mmcfg_list, list) {
 		int valid = 0;
 
+#ifdef CONFIG_ACPI
 		if (!early && !acpi_disabled) {
 			valid = is_mmconf_reserved(is_acpi_reserved, cfg, 0);
 
@@ -492,6 +495,7 @@ static void __init pci_mmcfg_reject_broken(int early)
 				       "ACPI motherboard resources\n",
 				       &cfg->res);
 		}
+#endif
 
 		/* Don't try to do this check unless configuration
 		   type 1 is available. how about type 2 ?*/
