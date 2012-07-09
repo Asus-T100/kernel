@@ -1138,18 +1138,6 @@ static int stop_charging(struct bq24192_chip *chip)
 	if (ret < 0)
 		dev_warn(&chip->client->dev, "I2C write failed:%s\n", __func__);
 
-       /* This is a WA to set HiZ bit at reaching Charge full,
-	so that charging stops.  It is required as charging does not stop
-	when software based charging terminates charging */
-
-	ret = bq24192_write_reg(chip->client, BQ24192_INPUT_SRC_CNTL_REG,
-						INPUT_SRC_CNTL_EN_HIZ);
-	if (ret < 0)
-		dev_warn(&chip->client->dev, "I2C write failed:%s\n", __func__);
-	else
-		dev_info(&chip->client->dev, "Stop charge- HiZ set : %s\n",
-							__func__);
-
 	mutex_unlock(&chip->event_lock);
 	return ret;
 }
