@@ -59,25 +59,24 @@ int intel_mid_pwm(int id, int value)
 
 	mutex_lock(&pi->lock);
 	ret = intel_scu_ipc_iowrite8(msic_reg_pwmclkdiv1, 0x00);
-	if (ret)
+	if (ret) {
 		dev_err(pi->dev, "set MSIC_REG_PWMCLKDIV1 failed\n");
+		goto out;
+	}
 
-	ret = intel_scu_ipc_iowrite8(msic_reg_pwmclkdiv0, 0x03);
-	if (ret)
+	ret = intel_scu_ipc_iowrite8(msic_reg_pwmclkdiv0, value ? 0x03 : 0x00);
+	if (ret) {
 		dev_err(pi->dev, "set MSIC_REG_PWMCLKDIV0 failed\n");
+		goto out;
+	}
 
 	ret = intel_scu_ipc_iowrite8(msic_reg_pwmdutycyc, value);
 	if (ret)
 		dev_err(pi->dev, "set MSIC_REG_PWMDUTYCYCLE failed\n");
 
-	if (value == 0) {
-		ret = intel_scu_ipc_iowrite8(msic_reg_pwmclkdiv0, 0x00);
-		if (ret)
-			dev_err(pi->dev, "set MSIC_REG_PWMCLKDIV0 failed\n");
-	}
-
+out:
 	mutex_unlock(&pi->lock);
-	return 0;
+	return ret;
 }
 
 static int __devinit intel_mid_pwm_probe(struct ipc_device *ipcdev)
