@@ -326,7 +326,7 @@ extern const char * const x86_power_flags[32];
  */
 static __always_inline __pure bool __static_cpu_has(u16 bit)
 {
-#if __GNUC__ > 4 || __GNUC_MINOR__ >= 5
+#if (__GNUC__ > 4 || __GNUC_MINOR__ >= 5) && !defined(__INTEL_COMPILER)
 		asm goto("1: jmp %l[t_no]\n"
 			 "2:\n"
 			 ".section .altinstructions,\"a\"\n"

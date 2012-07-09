@@ -40,7 +40,9 @@
  * this in the preprocessor, but we can live with this because they're
  * unreleased.  Really, we need to have autoconf for the kernel.
  */
+#if !defined(__INTEL_COMPILER)
 #define unreachable() __builtin_unreachable()
+#endif
 
 /* Mark a function definition as prohibited from being cloned. */
 #define __noclone	__attribute__((__noclone__))
