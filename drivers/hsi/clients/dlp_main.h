@@ -558,8 +558,7 @@ inline void dlp_ctrl_set_reset_ongoing(int ongoing);
 
 inline int dlp_ctrl_get_hangup_reasons(void);
 
-inline void dlp_ctrl_set_hangup_reasons(unsigned int hsi_channel,
-		int hangup_reasons);
+inline void dlp_ctrl_set_hangup_reasons(unsigned int hsi_channel, int reason);
 
 inline unsigned int dlp_ctrl_modem_is_ready(void);
 

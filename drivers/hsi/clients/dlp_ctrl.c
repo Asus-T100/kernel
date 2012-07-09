@@ -1411,36 +1411,69 @@ inline int dlp_ctrl_get_reset_ongoing(void)
 /*
 * @brief Get the Modem hangup reasons value
 *
+* The returned value state if the TTY interface has hang up and why it has hangup.
+* For instance, a returned value of 5 is meaning that tty interface hang
+* up because of both a TX timeout and a modem core dump.
 */
 inline int dlp_ctrl_get_hangup_reasons(void)
 {
-	struct dlp_channel *ch_ctx = DLP_CHANNEL_CTX(DLP_CHANNEL_CTRL);
-	int hangup_reasons;
+	struct dlp_channel *ch_ctx;
+	int reset, timeout, coredump, i, cause, hup_reasons;
 	unsigned long flags;
 
-	spin_lock_irqsave(&ch_ctx->lock, flags);
-	hangup_reasons = ch_ctx->hangup.last_cause | ch_ctx->hangup.cause;
-	spin_unlock_irqrestore(&ch_ctx->lock, flags);
+	reset = 0;
+	timeout = 0;
+	coredump = 0;
+	hup_reasons = 0;
 
-	return hangup_reasons;
+	for (i = 0; i < DLP_CHANNEL_COUNT; i++) {
+		ch_ctx = DLP_CHANNEL_CTX(i);
+		if (ch_ctx)  {
+			/* Check for each channel, if there is a hangup reason */
+			read_lock_irqsave(&ch_ctx->tx.lock, flags);
+			cause = ch_ctx->hangup.cause;
+			read_unlock_irqrestore(&ch_ctx->tx.lock, flags);
+			if ((cause & DLP_MODEM_HU_TIMEOUT) == DLP_MODEM_HU_TIMEOUT)
+				timeout++;
+			if ((cause & DLP_MODEM_HU_RESET) == DLP_MODEM_HU_RESET)
+				reset++;
+			if ((cause & DLP_MODEM_HU_COREDUMP) == DLP_MODEM_HU_COREDUMP)
+				coredump++;
+		}
+	}
+
+	if (reset)
+		hup_reasons |= DLP_MODEM_HU_RESET;
+
+	if (timeout)
+		hup_reasons |= DLP_MODEM_HU_TIMEOUT;
+
+	if (coredump)
+		hup_reasons |= DLP_MODEM_HU_COREDUMP;
+
+	return hup_reasons;
 }
 
 /*
-* @brief
+* @brief  Clear the hangup reason the hangup reason if any
 *
-* @param hsi_channel
-* @param hangup_reasons
+* @param hsi_channel: HSI channel to consider
+* @param reason : hangup reason to set
 */
-inline void dlp_ctrl_set_hangup_reasons(unsigned int hsi_channel,
-		int hangup_reasons)
+inline void dlp_ctrl_set_hangup_reasons(unsigned int hsi_channel, int reason)
 {
-	struct dlp_channel *ch_ctx = DLP_CHANNEL_CTX(DLP_CHANNEL_CTRL);
+	struct dlp_channel *ch_ctx = DLP_CHANNEL_CTX(hsi_channel);
 	unsigned long flags;
 
-	spin_lock_irqsave(&ch_ctx->lock, flags);
-	ch_ctx->hangup.cause |= ((hsi_channel << 4) | hangup_reasons);
-	ch_ctx->hangup.last_cause |= ((hsi_channel << 4) | hangup_reasons);
-	spin_unlock_irqrestore(&ch_ctx->lock, flags);
+	if (ch_ctx) {
+		write_lock_irqsave(&ch_ctx->tx.lock, flags);
+		/* Save the old hangup reason */
+		ch_ctx->hangup.last_cause = ch_ctx->hangup.cause;
+
+		/* Set the new reason */
+		ch_ctx->hangup.cause = reason;
+		write_unlock_irqrestore(&ch_ctx->tx.lock, flags);
+	}
 }
 
 /*
@@ -1951,8 +1984,11 @@ static int do_modem_cold_reset(const char *val, struct kernel_param *kp)
 }
 
 /*
-* @brief Modem Hangup reasons module_param set function
-*	- This function is reseting the provided HUP reasons
+* @brief This function will clear the hangup reasons for the
+*  specified HSI channels (channel num is mapped on 4bits nibble)
+*
+*  for example to reset the HUP reasons for channel 0,1 and 3:
+*     echo 0x1011 > /sys/module/../parameters/hangup_reasons
 *
 * @param val
 * @param kp
@@ -1961,7 +1997,7 @@ static int do_modem_cold_reset(const char *val, struct kernel_param *kp)
 */
 static int clear_hangup_reasons(const char *val, struct kernel_param *kp)
 {
-	long reasons_to_clear;
+	long channels_list;
 
 	PROLOG();
 
@@ -1970,17 +2006,19 @@ static int clear_hangup_reasons(const char *val, struct kernel_param *kp)
 		return 0;
 	}
 
-	if (strict_strtol(val, 16, &reasons_to_clear) < 0)
+	if (strict_strtol(val, 16, &channels_list) < 0)
 		return -EINVAL;
 
-	if (reasons_to_clear) {
-		unsigned long flags;
-		struct dlp_channel *ch_ctx = DLP_CHANNEL_CTX(DLP_CHANNEL_CTRL);
+	if (channels_list) {
+		int channel, i;
 
-		spin_lock_irqsave(&ch_ctx->lock, flags);
-		ch_ctx->hangup.last_cause &= ~reasons_to_clear;
-		ch_ctx->hangup.cause &= ~reasons_to_clear;
-		spin_unlock_irqrestore(&ch_ctx->lock, flags);
+		for (i = 0; i < DLP_CHANNEL_COUNT; i++) {
+			channel = channels_list & 0xF;
+			if ((channel) && (channel < DLP_CHANNEL_COUNT)) {
+				dlp_ctrl_set_hangup_reasons(i, 0);
+			}
+			channels_list >>= 4;
+		}
 	}
 
 	EPILOG();
@@ -2010,7 +2048,7 @@ static int get_hangup_reasons(char *val, struct kernel_param *kp)
 	hangup_reasons = dlp_ctrl_get_hangup_reasons();
 
 	EPILOG();
-	return sprintf(val, "%lud", hangup_reasons);
+	return sprintf(val, "%lu", hangup_reasons);
 }
 
 module_param_call(cold_reset_modem, do_modem_cold_reset, NULL, NULL, 0644);
