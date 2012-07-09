@@ -52,6 +52,7 @@ static void bcove_handle_ext_chrgr_irq(bool);
 #define BCOVE_BZONE_HIGH 5
 
 #define IRQLVL1_ADDR			0x01
+#define IRQLVL1_MASK_ADDR		0x0c
 #define IRQLVL1_CHRGR_MASK		D5
 
 #define THRMZN0H_ADDR			0xCE
@@ -131,8 +132,8 @@ static void bcove_handle_ext_chrgr_irq(bool);
 #define I2COVRWRDATA_ADDR	0x5B
 #define I2COVRRDDATA_ADDR	0x5C
 
-#define I2COVRCTRL_I2C_RD D2
-#define I2COVRCTRL_I2C_WR D1
+#define I2COVRCTRL_I2C_RD D1
+#define I2COVRCTRL_I2C_WR D0
 
 #define CHRTTADDR_ADDR		0x56
 #define CHRTTDATA_ADDR		0x57

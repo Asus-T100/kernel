@@ -817,7 +817,7 @@ static irqreturn_t bc_thread_handler(int id, void *data)
 	}
 
 	/* read interrupt register */
-	chgrirq0_int = readb(chc->pmic_intr_iomap);
+	chgrirq0_int = ioread8(chc->pmic_intr_iomap);
 	dev_dbg(chc->dev, "SCHGRIQ0=%X chgrirq0%X\n",
 		chgrirq0_stat, chgrirq0_int);
 
@@ -825,7 +825,8 @@ static irqreturn_t bc_thread_handler(int id, void *data)
 			 ARRAY_SIZE(chgrirq0_info));
 end:
 	/*clear first level IRQ */
-	intel_scu_ipc_update_register(IRQLVL1_ADDR, 0xFF, IRQLVL1_CHRGR_MASK);
+	intel_scu_ipc_update_register(IRQLVL1_MASK_ADDR, 0x00,
+			IRQLVL1_CHRGR_MASK);
 	return IRQ_HANDLED;
 
 }
@@ -1037,6 +1038,18 @@ static int bc_chrgr_probe(struct ipc_device *ipcdev)
 		retval = -ENOMEM;
 		goto ioremap_failed;
 	}
+	/* unmask charger interrupts in second level IRQ register*/
+	retval = intel_scu_ipc_iowrite8(MCHGRIRQ0_ADDR, 0x00);
+	if (unlikely(retval))
+		goto unmask_irq_failed;
+
+	/* unmask IRQLVL1 register */
+	retval = intel_scu_ipc_update_register(IRQLVL1_MASK_ADDR, 0x00,
+			IRQLVL1_CHRGR_MASK);
+	if (unlikely(retval))
+		goto unmask_irq_failed;
+
+
 	/* register interrupt */
 	retval = request_threaded_irq(chc.irq, NULL,
 				      bc_thread_handler, 0, DRIVER_NAME, &chc);
@@ -1069,6 +1082,7 @@ otg_reg_failed:
 	power_supply_unregister(&chc.psy);
 psy_reg_failed:
 	free_irq(chc.irq, &chc);
+unmask_irq_failed:
 req_irq_failed:
 	iounmap(chc.pmic_intr_iomap);
 ioremap_failed:
