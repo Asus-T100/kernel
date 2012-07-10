@@ -414,6 +414,8 @@ static IMG_BOOL DRMLFBFlipBuffer2(MRSTLFB_DEVINFO *psDevInfo,
 			DRM_INFO("%s: returning %d from FlushInternalVSyncQueue\n", __func__, ret);
 			return ret;
 		}
+                psDevInfo->psCurrentSwapChain = psSwapChain;
+                psDevInfo->psCurrentBuffer = NULL;
 	}
 
 flip_out:
