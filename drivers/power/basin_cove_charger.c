@@ -377,7 +377,7 @@ static int bq24260_cv_to_reg(int cv, u8 *reg_val)
 static int bq24260_disable_charging(u8 dev_addr)
 {
 	return bcove_ext_chrgr_update_reg(dev_addr,
-					  BQ24260_CTRL_ADDR, BQ24260_CE_MASK,
+			BQ24260_CTRL_ADDR, (~BQ24260_CE_MASK & 0xFF),
 					  BQ24260_CE_DISABLE);
 }
 
@@ -385,7 +385,7 @@ static int bq24260_enable_charging(u8 dev_addr)
 {
 
 	return bcove_ext_chrgr_update_reg(dev_addr,
-					  BQ24260_CTRL_ADDR, BQ24260_CE_MASK,
+			BQ24260_CTRL_ADDR, (~BQ24260_CE_MASK & 0XFF),
 					  BQ24260_CE_ENABLE);
 }
 

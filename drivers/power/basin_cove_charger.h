@@ -223,7 +223,7 @@ static void bcove_handle_ext_chrgr_irq(bool);
 #define BQ24260_CE_MASK			D1
 
 #define BQ24260_CE_DISABLE		(0x01 << 1)
-#define BQ24260_CE_ENABLE		(~BQ24260_CE_MASK & 0xFF)
+#define BQ24260_CE_ENABLE		0x00
 
 
 #define BATT_STRING_MAX		8
@@ -254,7 +254,7 @@ static void bcove_handle_ext_chrgr_irq(bool);
 
 
 enum {
-	I2C_RD,
+	I2C_RD = 1,
 	I2C_WR
 };
 
