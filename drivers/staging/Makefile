@@ -71,5 +71,5 @@ obj-$(CONFIG_TOUCHSCREEN_SYNAPTICS_I2C_RMI4)	+= ste_rmi4/
 obj-$(CONFIG_DRM_PSB)		+= gma500/
 obj-$(CONFIG_INTEL_MEI)		+= mei/
 obj-$(CONFIG_MFD_NVEC)		+= nvec/
-obj-$(CONFIG_DRM_INTEL_MID)     += mrst/
+obj-$(CONFIG_DRM_INTEL_MID)     += intel_media/
 obj-$(CONFIG_TOOL_MATRIX)	+=matrix/

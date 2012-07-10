@@ -160,7 +160,7 @@ source "drivers/staging/mei/Kconfig"
 
 source "drivers/staging/nvec/Kconfig"
 
-source "drivers/staging/mrst/Kconfig"
+source "drivers/staging/intel_media/Kconfig"
 
 source "drivers/staging/matrix/Kconfig"
 

@@ -66,6 +66,7 @@ OTM_HDMI_TOP = .
 OTM_HDMI_INCDIR = $(srctree)/$(src)/$(OTM_HDMI_TOP)
 
 INCDIR=$(OTM_HDMI_INCDIR)/../..
+MEDIA_INCDIR=drivers/staging/intel_media
 
 include_dirs := \
 	-I$(INCDIR)/pvr/include4 \
@@ -82,9 +83,10 @@ include_dirs := \
         -I$(INCDIR)/pvr/services4/3rdparty/linux_framebuffer_drm \
         -I$(INCDIR)/ \
         -I$(INCDIR)/drv \
-        -I$(INCDIR)/bc_video \
+        -I$(MEDIA_INCDIR)/bc_video \
+        -I$(MEDIA_INCDIR)/common \
+        -I$(MEDIA_INCDIR)/video/common \
         -I$(INCDIR)/imgv \
-        -I$(INCDIR)/bc_video \
 	-Iinclude/linux \
 	-Iinclude/drm
 
