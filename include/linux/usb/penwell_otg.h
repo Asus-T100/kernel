@@ -437,6 +437,7 @@ struct penwell_otg {
 	struct work_struct		hnp_poll_work;
 	struct work_struct		psc_notify;
 	struct delayed_work		ulpi_poll_work;
+	struct delayed_work		ulpi_check_work;
 	struct workqueue_struct		*qwork;
 	struct workqueue_struct		*chrg_qwork;
 
@@ -469,6 +470,7 @@ struct penwell_otg {
 	struct cloverview_usb_otg_pdata *otg_pdata;
 
 	struct wake_lock		wake_lock;
+	spinlock_t			lock;
 };
 
 static inline

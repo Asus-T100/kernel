@@ -747,8 +747,11 @@ penwell_otg_ulpi_read(struct intel_mid_otg_xceiv *iotg, u8 reg, u8 *val)
 	struct penwell_otg	*pnw = the_transceiver;
 	u32			val32 = 0;
 	int			count;
+	unsigned long		flags;
 
 	dev_dbg(pnw->dev, "%s - addr 0x%x\n", __func__, reg);
+
+	spin_lock_irqsave(&pnw->lock, flags);
 
 	/* Port = 0 */
 	val32 = ULPI_RUN | reg << 16;
@@ -766,12 +769,14 @@ penwell_otg_ulpi_read(struct intel_mid_otg_xceiv *iotg, u8 reg, u8 *val)
 			*val = (u8)((val32 & ULPI_DATRD) >> 8);
 			dev_dbg(pnw->dev,
 				"%s - done data 0x%x\n", __func__, *val);
+			spin_unlock_irqrestore(&pnw->lock, flags);
 			return 0;
 		}
 	}
 
 	dev_warn(pnw->dev, "%s - timeout\n", __func__);
 
+	spin_unlock_irqrestore(&pnw->lock, flags);
 	return -ETIMEDOUT;
 
 }
@@ -782,9 +787,12 @@ penwell_otg_ulpi_write(struct intel_mid_otg_xceiv *iotg, u8 reg, u8 val)
 	struct penwell_otg	*pnw = the_transceiver;
 	u32			val32 = 0;
 	int			count;
+	unsigned long		flags;
 
 	dev_dbg(pnw->dev,
 		"%s - addr 0x%x - data 0x%x\n", __func__, reg, val);
+
+	spin_lock_irqsave(&pnw->lock, flags);
 
 	/* Port = 0 */
 	val32 = ULPI_RUN | ULPI_RW | reg << 16 | val;
@@ -801,6 +809,7 @@ penwell_otg_ulpi_write(struct intel_mid_otg_xceiv *iotg, u8 reg, u8 val)
 	dev_dbg(pnw->dev,
 		"%s - %s\n", __func__, count ? "complete" : "timeout");
 
+	spin_unlock_irqrestore(&pnw->lock, flags);
 	return count ? 0 : -ETIMEDOUT;
 }
 
@@ -1042,6 +1051,23 @@ static int penwell_otg_vusb330_low_power(int on)
 
 	return retval;
 }
+
+/* penwell_otg_id enables/disables id interrupt */
+static void penwell_otg_id(int on)
+{
+	struct penwell_otg	*pnw = the_transceiver;
+	u32			val;
+
+	val = readl(pnw->iotg.base + CI_OTGSC);
+	if (on) {
+		val = val | OTGSC_IDIE;
+		writel(val, pnw->iotg.base + CI_OTGSC);
+	} else {
+		val = val & ~OTGSC_IDIE;
+		writel(val, pnw->iotg.base + CI_OTGSC);
+	}
+}
+
 
 /* Enable/Disable OTG interrupt */
 static void penwell_otg_intr(int on)
@@ -2042,6 +2068,31 @@ static void reset_otg(void)
 	dev_dbg(pnw->dev, "reset done.\n");
 }
 
+static void pnw_phy_ctrl_rst(void)
+{
+	struct penwell_otg *pnw = the_transceiver;
+	unsigned long	flags;
+
+	spin_lock_irqsave(&pnw->lock, flags);
+
+	/* mask id intr before reset and delay for 4 ms
+	* before unmasking id intr to avoid wrongly
+	* detecting ID_A which is a side-effect of reset
+	* PHY
+	*/
+	penwell_otg_id(0);
+	gpio_direction_output(pnw->otg_pdata->gpio_reset, 0);
+	udelay(500);
+	gpio_set_value(pnw->otg_pdata->gpio_reset, 1);
+
+	reset_otg();
+
+	udelay(4000);
+	penwell_otg_id(1);
+
+	spin_unlock_irqrestore(&pnw->lock, flags);
+}
+
 static void set_host_mode(void)
 {
 	u32	val;
@@ -2292,10 +2343,9 @@ static irqreturn_t otg_irq(int irq, void *_dev)
 	struct intel_mid_otg_xceiv	*iotg = &pnw->iotg;
 
 #ifdef CONFIG_PM_RUNTIME
-	if (pnw->rt_resuming) {
-		pnw->rt_resuming++;
+	if (pnw->rt_resuming)
 		return IRQ_HANDLED;
-	} else if (pnw->dev->power.runtime_status == RPM_RESUMING)
+	else if (pnw->dev->power.runtime_status == RPM_RESUMING)
 		return IRQ_HANDLED;
 
 	/* If it's not active, resume device first before access regs */
@@ -2594,6 +2644,26 @@ static void penwell_otg_hnp_poll_work(struct work_struct *work)
 		penwell_otg_continue_hnp_poll(&pnw->iotg);
 	}
 }
+
+static void penwell_otg_ulpi_check_work(struct work_struct *work)
+{
+	struct penwell_otg		*pnw = the_transceiver;
+	struct intel_mid_otg_xceiv	*iotg = &pnw->iotg;
+	u8				data;
+
+	pm_runtime_get_sync(pnw->dev);
+
+	if (penwell_otg_ulpi_read(iotg, 0x16, &data)) {
+		dev_err(pnw->dev,
+				"%s: [ ULPI hang ] detected\n"
+				"reset PHY & ctrl to recover\n",
+				 __func__);
+		pnw_phy_ctrl_rst();
+	}
+
+	pm_runtime_put(pnw->dev);
+}
+
 
 static void penwell_otg_ulpi_poll_work(struct work_struct *work)
 {
@@ -3031,6 +3101,10 @@ static void penwell_otg_work(struct work_struct *work)
 			}
 
 			hsm->b_bus_req = 0;
+
+			if (is_clovertrail(pdev))
+				schedule_delayed_work(&pnw->ulpi_check_work,
+									HZ);
 
 			if (iotg->stop_peripheral)
 				iotg->stop_peripheral(iotg);
@@ -4427,6 +4501,7 @@ static int penwell_otg_probe(struct pci_dev *pdev,
 	INIT_WORK(&pnw->psc_notify, penwell_otg_psc_notify_work);
 	INIT_WORK(&pnw->hnp_poll_work, penwell_otg_hnp_poll_work);
 	INIT_DELAYED_WORK(&pnw->ulpi_poll_work, penwell_otg_ulpi_poll_work);
+	INIT_DELAYED_WORK(&pnw->ulpi_check_work, penwell_otg_ulpi_check_work);
 
 	/* OTG common part */
 	pnw->dev = &pdev->dev;
@@ -4455,6 +4530,7 @@ static int penwell_otg_probe(struct pci_dev *pdev,
 
 	spin_lock_init(&pnw->iotg.hnp_poll_lock);
 	spin_lock_init(&pnw->notify_lock);
+	spin_lock_init(&pnw->lock);
 
 	wake_lock_init(&pnw->wake_lock, WAKE_LOCK_SUSPEND, "pnw_wake_lock");
 
