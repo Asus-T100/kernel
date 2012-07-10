@@ -287,31 +287,32 @@ static struct mt9e013_reg const mt9e013_1080p_strong_dvs_30fps[] = {
 	/*	1080p strong dvs */
 	GROUPED_PARAMETER_HOLD_ENABLE,
 	/* Frame size & Timing Configuration*/
-	{MT9E013_16BIT, {0x0340},	0x05AB	}, /*	FRAME_LENGTH_LINES	1451 */
-	{MT9E013_16BIT, {0x0342},	0x113A	}, /*	LINE_LENGTH_PCK	4410 */
-	{MT9E013_16BIT, {0x0344},	0x01D8	}, /*	X_ADDR_START	472 */
-	{MT9E013_16BIT, {0x0346},	0x0242	}, /*	Y_ADDR_START	578 */
-	{MT9E013_16BIT, {0x0348},	0x0AF7	}, /*	X_ADDR_END	2807 */
-	{MT9E013_16BIT, {0x034A},	0x075D	}, /*	Y_ADDR_END	1885 */
-	{MT9E013_16BIT, {0x034C},	0x0920	}, /*	X_OUTPUT_SIZE	2336 */
-	{MT9E013_16BIT, {0x034E},	0x051C	}, /*	Y_OUTPUT_SIZE	1308 */
-	{MT9E013_16BIT, {0x3040},	0x0041	}, /*	READ_MODE	0 0 0 0 0 0 0 1 1  */
-	{MT9E013_16BIT | MT9E013_RMW, {0x306E}, 0x0010, 0x0}, /* DATAPATH_SELECT_TRUE_BAYER */
+	{MT9E013_16BIT, {0x0340}, 0x0606}, /* FRAME_LENGTH_LINES 1542 */
+	{MT9E013_16BIT, {0x0342}, 0x1036}, /* LINE_LENGTH_PCK 4150 */
+	{MT9E013_16BIT, {0x0344}, 0x01D8}, /* X_ADDR_START 472 */
+	{MT9E013_16BIT, {0x0346}, 0x0242}, /* Y_ADDR_START 578 */
+	{MT9E013_16BIT, {0x0348}, 0x0AF7}, /* X_ADDR_END 2807 */
+	{MT9E013_16BIT, {0x034A}, 0x075D}, /* Y_ADDR_END 1885 */
+	{MT9E013_16BIT, {0x034C}, 0x0920}, /* X_OUTPUT_SIZE 2336 */
+	{MT9E013_16BIT, {0x034E}, 0x051C}, /* Y_OUTPUT_SIZE 1308 */
+	{MT9E013_16BIT, {0x3040}, 0x0041}, /* READ_MODE	0 0 0 0 0 0 0 1 1 */
+	/* DATAPATH_SELECT_TRUE_BAYER */
+	{MT9E013_16BIT | MT9E013_RMW, {0x306E}, 0x0010, 0x0},
 	/* Initial integration time */
-	{MT9E013_16BIT, {0x3010},	0x0078	}, /*	FINE_CORRECTION	120 */
-	{MT9E013_16BIT, {0X3012},	0x05AB	}, /*	COARSE_INTEGRATION_TIME	1451 */
-	{MT9E013_16BIT, {0X3014},	0x0442	}, /*	FINE_INTEGRATION_TIME	1090 */
+	{MT9E013_16BIT, {0x3010}, 0x0078}, /* FINE_CORRECTION120 */
+	{MT9E013_16BIT, {0X3012}, 0x0605}, /* COARSE_INTEGRATION_TIME 1541 */
+	{MT9E013_16BIT, {0X3014}, 0x0442}, /* FINE_INTEGRATION_TIME 1090 */
 	/* Scaler configuration */
-	{MT9E013_16BIT, {0x0400},	0x0000	}, /*	SCALE_MODE	0 */
-	{MT9E013_16BIT, {0x0404},	0x0010	}, /*	SCALE_M	16 */
+	{MT9E013_16BIT, {0x0400}, 0x0000}, /* SCALE_MODE 0 */
+	{MT9E013_16BIT, {0x0404}, 0x0010}, /* SCALE_M 16 */
 	{MT9E013_TOK_TERM, {0}, 0}
 };
 
 static struct mt9e013_reg const mt9e013_720p_strong_dvs_30fps[] = {
 	/* 720p strong dvs */
 	GROUPED_PARAMETER_HOLD_ENABLE,
-	{MT9E013_16BIT, {0x0340}, 0x408}, /* FRAME_LENGTH_LINES	1032 */
-	{MT9E013_16BIT, {0x0342}, 0x1838}, /* LINE_LENGTH_PCK 6200 */
+	{MT9E013_16BIT, {0x0340}, 0x04E2}, /* FRAME_LENGTH_LINES 1250 */
+	{MT9E013_16BIT, {0x0342}, 0x1400}, /* LINE_LENGTH_PCK 5120 */
 	{MT9E013_16BIT, {0x0344}, 0x0048}, /* X_ADDR_START 72 */
 	{MT9E013_16BIT, {0x0346}, 0x0160}, /* Y_ADDR_START 352 */
 	{MT9E013_16BIT, {0x0348}, 0x0C89}, /* X_ADDR_END 3209 */
@@ -322,7 +323,7 @@ static struct mt9e013_reg const mt9e013_720p_strong_dvs_30fps[] = {
 	/* DATAPATH_SELECT_TRUE_BAYER */
 	{MT9E013_16BIT | MT9E013_RMW, {0x306E}, 0x0010, 0x1},
 	{MT9E013_16BIT, {0x3010}, 0x0130}, /* FINE_CORRECTION 304 */
-	{MT9E013_16BIT, {0x3012}, 0x0384}, /* COARSE_INTEGRATION_TIME 1395 */
+	{MT9E013_16BIT, {0x3012}, 0x0464}, /* COARSE_INTEGRATION_TIME 1124 */
 	{MT9E013_16BIT, {0X3014}, 0x0846}, /* FINE_INTEGRATION_TIME 2118 */
 	{MT9E013_16BIT, {0x0400}, 0x0002}, /* SCALE_MODE 2 */
 	{MT9E013_16BIT, {0x0404}, 0x0010}, /* SCALE_M 16 */
@@ -752,8 +753,8 @@ static struct mt9e013_resolution mt9e013_res_video[] = {
 		 .height =	880	,
 		 .fps =		30	,
 		 .used =	0	,
-		 .pixels_per_line = 0x1836, /* consistent with regs arrays */
-		 .lines_per_frame = 0x408, /* consistent with regs arrays */
+		 .pixels_per_line = 0x1400, /* consistent with regs arrays */
+		 .lines_per_frame = 0x04E2, /* consistent with regs arrays */
 		 .regs =	mt9e013_720p_strong_dvs_30fps	,
 		 .bin_factor_x =	1,
 		 .bin_factor_y =	1,
@@ -765,8 +766,8 @@ static struct mt9e013_resolution mt9e013_res_video[] = {
 		 .height =	1308,
 		 .fps =		30,
 		 .used =	0,
-		 .pixels_per_line = 0x113A, /* consistent with regs arrays */
-		 .lines_per_frame = 0x05AB, /* consistent with regs arrays */
+		 .pixels_per_line = 0x0606, /* consistent with regs arrays */
+		 .lines_per_frame = 0x1036, /* consistent with regs arrays */
 		 .regs =	mt9e013_1080p_strong_dvs_30fps,
 		 .bin_factor_x =	0,
 		 .bin_factor_y =	0,
