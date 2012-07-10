@@ -33,6 +33,41 @@ config WAKELOCK
 	  Enable wakelocks. When user space request a sleep state the
 	  sleep request will be delayed until no wake locks are held.
 
+if WAKELOCK
+menu "Tuning Suspend back-off parameters"
+#
+# Suspend back-off parameters
+#
+
+config SUSPEND_BACKOFF_THRESHOLD
+	int "Suspend back-off threshold"
+	range 0 2147483647
+	depends on HAS_WAKELOCK && WAKELOCK
+	default 2
+	help
+	  This parameter represents the number of wakeup from S3 where the
+	  the residency is less than SUSPEND_BACKOFF_RESIDENCY.
+
+config SUSPEND_BACKOFF_INTERVAL
+	int "Suspend back-off interval"
+	range 0 2147483647
+	depends on HAS_WAKELOCK && WAKELOCK
+	default 30000
+	help
+	  This is the delay in ms where a wake lock is held when the back-off
+	  mechanism is active.
+
+config SUSPEND_BACKOFF_RESIDENCY
+	int "Suspend back-off residency"
+	range 0 2147483647
+	depends on HAS_WAKELOCK && WAKELOCK
+	default 5
+	help
+	  This parameters is the residency threshold in second, used by the
+	  suspend back-off mechanism.
+endmenu
+endif
+
 config WAKELOCK_STAT
 	bool "Wake lock stats"
 	depends on WAKELOCK
