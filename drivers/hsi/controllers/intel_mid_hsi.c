@@ -1011,7 +1011,8 @@ static int hsi_ctrl_resume(struct intel_controller *intel_hsi)
 
 	spin_lock_irqsave(&intel_hsi->hw_lock, flags);
 	if (intel_hsi->suspend_state != DEVICE_READY) {
-		err = hsi_ctrl_set_cfg(intel_hsi);
+		if (hsi_ctrl_set_cfg(intel_hsi))
+			err = -EAGAIN;
 		intel_hsi->dma_resumed = 0;
 		intel_hsi->suspend_state--;
 	}
