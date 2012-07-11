@@ -1375,24 +1375,20 @@ static int dwc3_start_peripheral(struct usb_gadget *g)
 {
 	struct dwc3		*dwc = gadget_to_dwc(g);
 	unsigned long		flags;
-	int			irq;
 	int			ret;
 	u32			reg;
+
+	ret = request_irq(dwc->irq, dwc3_interrupt, IRQF_SHARED,
+			"dwc3", dwc);
+	if (ret) {
+		dev_err(dwc->dev, "failed to request irq #%d --> %d\n",
+				dwc->irq, ret);
+		return ret;
+	}
 
 	spin_lock_irqsave(&dwc->lock, flags);
 
 	dwc3_core_init(dwc);
-
-	irq = platform_get_irq(to_platform_device(dwc->dev), 0);
-
-	ret = request_irq(irq, dwc3_interrupt, IRQF_SHARED,
-			"dwc3", dwc);
-	if (ret) {
-		dev_err(dwc->dev, "failed to request irq #%d --> %d\n",
-				irq, ret);
-		spin_unlock_irqrestore(&dwc->lock, flags);
-		return ret;
-	}
 
 	/* Enable all but Start and End of Frame IRQs */
 	reg = (DWC3_DEVTEN_VNDRDEVTSTRCVEDEN |
