@@ -236,6 +236,9 @@
 #define MSIC_CHRCRTL	0x188
 #define MSIC_CHRGENBL	0x40
 
+/* charger interrupt pin */
+#define CHRG_INT_N	93
+
 static struct power_supply *fg_psy;
 static struct ctp_batt_sfi_prop *ctp_sfi_table;
 /* Battery properties structure */
@@ -2425,6 +2428,17 @@ static void init_charger_regs(struct bq24192_chip *chip)
 		dev_warn(&chip->client->dev, "I2C write failed:%s\n", __func__);
 }
 
+/* IRQ handler for charger Interrupts configured to GPIO pin */
+static irqreturn_t mask_gpio_irq(int irq, void *devid)
+{
+	struct bq24192_chip *chip = (struct bq24192_chip *)devid;
+	/**TODO: This hanlder will be used for charger Interrupts */
+	dev_dbg(&chip->client->dev,
+		"IRQ Handled for charger interrupt: %d\n", irq);
+
+	return IRQ_HANDLED;
+}
+
 static int __devinit bq24192_probe(struct i2c_client *client,
 			const struct i2c_device_id *id)
 {
@@ -2493,6 +2507,20 @@ static int __devinit bq24192_probe(struct i2c_client *client,
 	}
 	dev_info(&chip->client->dev, "request gpio %d for CHRG_OTG pin\n",
 			BQ24192_CHRG_OTG_GPIO);
+
+	/* Register a handler for Charger Interrupt gpio pin */
+	ret = request_irq(gpio_to_irq(CHRG_INT_N),
+			mask_gpio_irq, 0, "bq24192", chip);
+	if (ret) {
+		dev_warn(&bq24192_client->dev,
+		"failed to register charger irq for pin %d\n", CHRG_INT_N);
+	} else {
+		/* FIXME This will be reverted once MIP XML
+		changes are available */
+		free_irq(gpio_to_irq(CHRG_INT_N), chip);
+		dev_dbg(&bq24192_client->dev,
+			"registered charger irq for pin %d\n", CHRG_INT_N);
+	}
 	/*
 	 * FIXME Clear the CHRDIS bit in MSIC_CHRCRTL register to enable
 	 * the charging. There is a bug in HW because of that charging gets
