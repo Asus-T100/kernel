@@ -1346,6 +1346,11 @@ exit_clean_reset:
 	intel_hsi->err_status	 = 0;
 	intel_hsi->prg_cfg	 = ARASAN_RESET;
 	spin_unlock_irqrestore(&intel_hsi->hw_lock, flags);
+	pr_info("hsi_ctrl_clean_reset: hardware is reset\n");
+
+	/* Free all contexts to restart from scratch */
+	free_xfer_ctx(intel_hsi);
+	pr_info("hsi_ctrl_clean_reset: free_xfer_ctx is done\n");
 
 	/* Re-enable all tasklets */
 	tasklet_enable(&intel_hsi->fwd_tasklet);
@@ -1697,7 +1702,7 @@ static void do_hsi_start_dma(struct hsi_msg *msg, int lch,
 	__acquires(&intel_hsi->hw_lock) __releases(&intel_hsi->hw_lock)
 {
 	struct intel_dma_ctx *dma_ctx	= intel_hsi->dma_ctx[lch];
-	struct intel_dma_xfer *dma_xfer	= dma_ctx->ongoing;
+	struct intel_dma_xfer *dma_xfer;
 	struct intel_dma_lli_xfer *lli_xfer;
 	struct intel_dma_plain_xfer *plain_xfer;
 	void __iomem *ctrl		= intel_hsi->ctrl_io;
@@ -1709,6 +1714,16 @@ static void do_hsi_start_dma(struct hsi_msg *msg, int lch,
 	int nothing_to_do;
 
 	spin_lock_irqsave(&intel_hsi->hw_lock, flags);
+
+	if (unlikely(intel_hsi->prg_cfg & ARASAN_RESET))
+		goto do_start_dma_done;
+
+	dma_xfer = dma_ctx->ongoing;
+	if (unlikely(dma_xfer->msg != msg)) {
+		WARN(1, "dma_ctx->ongoing->msg is already freed!\n");
+		goto do_start_dma_done;
+	}
+
 	if (resuming)
 		nothing_to_do = ((intel_hsi->dma_resumed & mask) ||
 				 (msg->status != HSI_STATUS_PROCEEDING));
@@ -2255,6 +2270,7 @@ static void hsi_cleanup_dma(struct intel_controller *intel_hsi,
 		hsi_destruct_msg(msg, i, intel_hsi);
 		hsi_transfer(intel_hsi, tx_not_rx, hsi_channel, i);
 	}
+	pr_info("hsi_cleanup_dma done [%s]\n", dev_name(&cl->device));
 }
 
 /**
