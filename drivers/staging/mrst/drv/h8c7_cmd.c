@@ -191,8 +191,12 @@ mdfld_h8c7_dsi_controller_init(struct mdfld_dsi_config *dsi_config,
 	 * for bandwidth setting
 	 */
 	hw_ctx->dbi_bw_ctrl = 1390;
+	/*
+	 * fixed bug#30415/30418
+	 * LP/HS Exit timing did not meet the specification
+	 */
+	hw_ctx->dphy_param = 0x20124E1A;
 
-	hw_ctx->dphy_param = 0x150c3408;
 	/*set up func_prg*/
 	hw_ctx->dsi_func_prg = (0xa000 | lane_count);
 
