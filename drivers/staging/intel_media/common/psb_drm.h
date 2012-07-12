@@ -648,6 +648,7 @@ struct drm_psb_register_rw_arg {
 		uint32_t IEP_BLE_MINMAX;
 		uint32_t IEP_BSSCC_CONTROL;
 		uint32_t b_wait_vblank;
+		uint32_t b_wms;
 		uint32_t buffer_handle;
 	} overlay;
 

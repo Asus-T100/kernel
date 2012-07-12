@@ -3281,7 +3281,8 @@ static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 
 				/*update on-panel frame buffer*/
 				if (dev_priv->b_async_flip_enable &&
-					dev_priv->async_flip_update_fb)
+					dev_priv->async_flip_update_fb &&
+					arg->overlay.b_wms)
 					dev_priv->async_flip_update_fb(dev, 0);
 
 				/* when switch back from HDMI to local
