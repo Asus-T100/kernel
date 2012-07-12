@@ -1118,7 +1118,7 @@ IMG_VOID PVRSRVCommandCompleteKM(IMG_HANDLE	hCmdCookie,
 	
 	PVRSRVScheduleDeviceCallbacks();
 
-	if(bScheduleMISR)
+	if(bScheduleMISR || OSInAtomic(psSysData))
 	{
 		OSScheduleMISR(psSysData);
 	}
