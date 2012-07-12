@@ -759,7 +759,6 @@ static void dw_spi_hw_init(struct dw_spi *dws)
 {
 	spi_enable_chip(dws, 0);
 	spi_mask_intr(dws, 0xff);
-	spi_enable_chip(dws, 1);
 
 	/*
 	 * Try to detect the FIFO depth if not set by interface driver,
@@ -776,6 +775,8 @@ static void dw_spi_hw_init(struct dw_spi *dws)
 		dws->fifo_len = (fifo == 257) ? 0 : fifo;
 		dw_writew(dws, DW_SPI_TXFLTR, 0);
 	}
+
+	spi_enable_chip(dws, 1);
 }
 
 int __devinit dw_spi_add_host(struct dw_spi *dws)
