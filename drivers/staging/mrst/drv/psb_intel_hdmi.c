@@ -1578,19 +1578,6 @@ static enum drm_connector_status mdfld_hdmi_detect(struct drm_connector
 		PSB_DEBUG_ENTRY("%s: HPD disconnected data = 0x%x.\n", __func__,
 				data);
 		connect_status = connector_status_disconnected;
-
-		if (dev_priv->panel_desc & DISPLAY_B) {
-			hdmi_unplug_prepare(dev_priv);
-			/*
-			 * Clean up the HDMI connector attached encoder, to make
-			 * drm_crtc_helper_set_config() do mode setting
-			 *each time, especially when plug out HDMI from
-			 *a sink device and plug it
-			 * in to another one with different EDID.
-			 */
-			drm_helper_disable_unused_functions(dev);
-		}
-
 	}
 #else
 	connect_status =  mdfld_hdmi_edid_detect(connector);
