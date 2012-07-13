@@ -46,6 +46,12 @@
 #define OSPM_DISPLAY_C_ISLAND  0x100
 #define OSPM_MIPI_ISLAND       0x200
 
+#define C4_STATE_IDX	3
+#define C6_STATE_IDX	4
+#define S0I1_STATE_IDX  5
+#define LPMP3_STATE_IDX 6
+#define S0I3_STATE_IDX  7
+
 #define C4_HINT	(0x30)
 #define C6_HINT	(0x52)
 
@@ -104,6 +110,7 @@
 #define S0I1_POWER_USAGE       50
 #define S0I3_POWER_USAGE       31
 
+extern void pmu_s0ix_demotion_stat(int req_state, int grant_state);
 extern int get_target_platform_state(unsigned long *eax);
 extern int mid_s0ix_enter(int);
 extern int pmu_set_devices_in_d0i0(void);

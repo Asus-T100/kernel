@@ -20,6 +20,18 @@
 #include "intel_soc_pmu.h"
 #include "intel_soc_pm_debug.h"
 
+#define PMU_DEBUG_PRINT_STATS	(1U << 0)
+
+static int debug_mask;
+module_param_named(debug_mask, debug_mask, int, S_IRUGO | S_IWUSR | S_IWGRP);
+
+#define pr_pmu_log(debug_level_mask, args...) \
+	do { \
+		if (debug_mask & PMU_DEBUG_PRINT_##debug_level_mask) { \
+			pr_info(args); \
+		} \
+	} while (0)
+
 static struct island display_islands[] = {
 	{APM_REG_TYPE, APM_GRAPHICS_ISLAND, "GFX"},
 	{APM_REG_TYPE, APM_VIDEO_DEC_ISLAND, "Video Decoder"},
@@ -364,7 +376,6 @@ unlock:
 	return ret;
 }
 
-
 static void nc_device_state_show(struct seq_file *s, struct pci_dev *pdev)
 {
 	int off, i, islands_num, state;
@@ -613,6 +624,217 @@ static const struct file_operations pmu_sss_state_operations = {
 	.release	= single_release,
 };
 
+#ifdef CONFIG_PM_DEBUG
+static int pmu_stats_interval = PMU_LOG_INTERVAL_SECS;
+module_param_named(pmu_stats_interval, pmu_stats_interval,
+				int, S_IRUGO | S_IWUSR | S_IWGRP);
+
+static int mid_state_to_sys_state(int mid_state)
+{
+	int sys_state = 0;
+	switch (mid_state) {
+	case MID_S0I1_STATE:
+		sys_state = SYS_STATE_S0I1;
+		break;
+	case MID_LPMP3_STATE:
+		sys_state = SYS_STATE_S0I2;
+		break;
+	case MID_S0I3_STATE:
+		sys_state = SYS_STATE_S0I3;
+		break;
+	case MID_S3_STATE:
+		sys_state = SYS_STATE_S3;
+		break;
+
+	case C6_HINT:
+		sys_state = SYS_STATE_S0I0;
+	}
+
+	return sys_state;
+}
+
+void pmu_s0ix_demotion_stat(int req_state, int grant_state)
+{
+	struct pmu_ss_states cur_pmsss;
+	int i, req_sys_state, offset;
+	unsigned long status, sub_status;
+	unsigned long s0ix_target_sss_mask[4] = {
+				S0IX_TARGET_SSS0_MASK,
+				S0IX_TARGET_SSS1_MASK,
+				S0IX_TARGET_SSS2_MASK,
+				S0IX_TARGET_SSS3_MASK};
+
+	unsigned long s0ix_target_sss[4] = {
+				S0IX_TARGET_SSS0,
+				S0IX_TARGET_SSS1,
+				S0IX_TARGET_SSS2,
+				S0IX_TARGET_SSS3};
+
+	unsigned long lpmp3_target_sss_mask[4] = {
+				LPMP3_TARGET_SSS0_MASK,
+				LPMP3_TARGET_SSS1_MASK,
+				LPMP3_TARGET_SSS2_MASK,
+				LPMP3_TARGET_SSS3_MASK};
+
+	unsigned long lpmp3_target_sss[4] = {
+				LPMP3_TARGET_SSS0,
+				LPMP3_TARGET_SSS1,
+				LPMP3_TARGET_SSS2,
+				LPMP3_TARGET_SSS3};
+
+	req_sys_state = mid_state_to_sys_state(req_state);
+	if ((grant_state >= C4_STATE_IDX) && (grant_state <= S0I3_STATE_IDX))
+		mid_pmu_cxt->pmu_stats
+			[req_sys_state].demote_count
+				[grant_state-C4_STATE_IDX]++;
+
+	if (down_trylock(&mid_pmu_cxt->scu_ready_sem))
+		return;
+
+	pmu_read_sss(&cur_pmsss);
+	up(&mid_pmu_cxt->scu_ready_sem);
+
+	if (!mid_pmu_cxt->camera_off)
+		mid_pmu_cxt->pmu_stats[req_sys_state].camera_blocker_count++;
+
+	if (!mid_pmu_cxt->display_off)
+		mid_pmu_cxt->pmu_stats[req_sys_state].display_blocker_count++;
+
+	if (!mid_pmu_cxt->s0ix_possible) {
+		for (i = 0; i < 4; i++) {
+			unsigned int lss_per_register;
+			if (req_state == MID_LPMP3_STATE)
+				status = lpmp3_target_sss[i] ^
+					(cur_pmsss.pmu2_states[i] &
+						lpmp3_target_sss_mask[i]);
+			else
+				status = s0ix_target_sss[i] ^
+					(cur_pmsss.pmu2_states[i] &
+						s0ix_target_sss_mask[i]);
+			if (!status)
+				continue;
+
+			lss_per_register =
+				(sizeof(unsigned long)*8)/BITS_PER_LSS;
+
+			for (offset = 0; offset < lss_per_register; offset++) {
+				sub_status = status & SS_IDX_MASK;
+				if (sub_status) {
+					mid_pmu_cxt->pmu_stats[req_sys_state].
+						blocker_count
+						[offset + lss_per_register*i]++;
+				}
+
+				status >>= BITS_PER_LSS;
+			}
+		}
+	}
+}
+EXPORT_SYMBOL(pmu_s0ix_demotion_stat);
+
+static void pmu_log_s0ix_status(int type, char *typestr)
+{
+	unsigned long long t;
+	unsigned long time, remainder, init_2_now_time;
+
+	t = mid_pmu_cxt->pmu_stats[type].time;
+	remainder = do_div(t, NANO_SEC);
+
+	/* convert time in secs */
+	time = (unsigned long)t;
+
+	t =  cpu_clock(0);
+	t -= mid_pmu_cxt->pmu_init_time;
+	remainder = do_div(t, NANO_SEC);
+
+	init_2_now_time =  (unsigned long) t;
+
+	/* for calculating percentage residency */
+	t = (u64) time * 100;
+
+	/* take care of divide by zero */
+	if (init_2_now_time) {
+		remainder = do_div(t, init_2_now_time);
+		time = (unsigned long) t;
+
+		/* for getting 3 digit precision after
+		 * decimal dot */
+		remainder *= 1000;
+		t = (u64) remainder;
+		remainder = do_div(t, init_2_now_time);
+	} else
+		time = t = 0;
+
+	pr_pmu_log(STATS, "%s\t%5llu\t%9llu\t%9llu\t%5lu.%03lu\n", typestr,
+		mid_pmu_cxt->pmu_stats[type].count,
+		mid_pmu_cxt->pmu_stats[type].err_count[1],
+		mid_pmu_cxt->pmu_stats[type].err_count[2],
+		time, (unsigned long) t);
+}
+
+static void pmu_log_s0ix_demotion(int type, char *typestr)
+{
+	pr_pmu_log(STATS, "%s:\t%6d\t%6d\t%6d\t%6d\t%6d\n", typestr,
+			mid_pmu_cxt->pmu_stats[type].demote_count[0],
+			mid_pmu_cxt->pmu_stats[type].demote_count[1],
+			mid_pmu_cxt->pmu_stats[type].demote_count[2],
+			mid_pmu_cxt->pmu_stats[type].demote_count[3],
+			mid_pmu_cxt->pmu_stats[type].demote_count[4]);
+}
+
+static void pmu_log_s0ix_lss_blocked(int type, char *typestr)
+{
+	int i, block_count;
+
+	pr_pmu_log(STATS, "%s: Block Count\n", typestr);
+
+	block_count = mid_pmu_cxt->pmu_stats[type].display_blocker_count;
+	if (block_count)
+		pr_pmu_log(STATS, "\tDisplay blocked: %d times\n", block_count);
+
+	block_count = mid_pmu_cxt->pmu_stats[type].camera_blocker_count;
+	if (block_count)
+		pr_pmu_log(STATS, "\tCamera blocked: %d times\n", block_count);
+
+	pr_pmu_log(STATS, "\tLSS\t #blocked\n");
+	for  (i = 0; i < MAX_LSS_POSSIBLE; i++) {
+		block_count = mid_pmu_cxt->pmu_stats[type].blocker_count[i];
+		if (block_count)
+			pr_pmu_log(STATS, "\t%02d\t %6d\n", i, block_count);
+	}
+	pr_pmu_log(STATS, "\n");
+}
+
+static void pmu_log_stat(struct work_struct *work)
+{
+	pr_pmu_log(STATS, "\n----MID_PMU_STATS_LOG_BEGIN----\n");
+	pr_pmu_log(STATS, "\tcount\ts0ix_miss\tno_ack_c6\tresidency(%%)\n");
+	pmu_log_s0ix_status(SYS_STATE_S0I1, "s0i1");
+	pmu_log_s0ix_status(SYS_STATE_S0I2, "lpmp3");
+	pmu_log_s0ix_status(SYS_STATE_S0I3, "s0i3");
+	pmu_log_s0ix_status(SYS_STATE_S3, "s3");
+
+	pr_pmu_log(STATS, "\nFrom:\tTo\n");
+	pr_pmu_log(STATS, "\t    C4\t   C6\t  S0i1\t  Lmp3\t  S0i3\n");
+
+	/* storing C6 demotion info in S0I0 */
+	pmu_log_s0ix_demotion(SYS_STATE_S0I0, "  C6");
+
+	pmu_log_s0ix_demotion(SYS_STATE_S0I1, "s0i1");
+	pmu_log_s0ix_demotion(SYS_STATE_S0I2, "lmp3");
+	pmu_log_s0ix_demotion(SYS_STATE_S0I3, "s0i3");
+
+	pr_pmu_log(STATS, "\n");
+	pmu_log_s0ix_lss_blocked(SYS_STATE_S0I1, "s0i1");
+	pmu_log_s0ix_lss_blocked(SYS_STATE_S0I2, "lmp3");
+	pmu_log_s0ix_lss_blocked(SYS_STATE_S0I3, "s0i3");
+
+	pr_pmu_log(STATS, "\n----MID_PMU_STATS_LOG_END----\n");
+
+	schedule_delayed_work(&mid_pmu_cxt->log_work,
+			msecs_to_jiffies(pmu_stats_interval*1000));
+}
+#endif
 
 void pmu_stats_init(void)
 {
@@ -623,4 +845,20 @@ void pmu_stats_init(void)
 	/* /sys/kernel/debug/pmu_sss_states */
 	(void) debugfs_create_file("pmu_sss_states", S_IFREG | S_IRUGO,
 				NULL, NULL, &pmu_sss_state_operations);
+
+#ifdef CONFIG_PM_DEBUG
+	/* dynamic debug tracing in every 5 mins */
+	INIT_DELAYED_WORK_DEFERRABLE(&mid_pmu_cxt->log_work, pmu_log_stat);
+	schedule_delayed_work(&mid_pmu_cxt->log_work,
+				msecs_to_jiffies(pmu_stats_interval*1000));
+
+	debug_mask = PMU_DEBUG_PRINT_STATS;
+#endif
+}
+
+void pmu_stats_finish(void)
+{
+#ifdef CONFIG_PM_DEBUG
+	cancel_delayed_work_sync(&mid_pmu_cxt->log_work);
+#endif
 }

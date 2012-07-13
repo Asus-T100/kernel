@@ -36,6 +36,7 @@
 #include <linux/jhash.h>
 #include <linux/suspend.h>
 #include <linux/wakelock.h>
+#include <linux/workqueue.h>
 #include <linux/nmi.h>
 #include <asm/apic.h>
 #include <asm/intel_scu_ipc.h>
@@ -266,6 +267,8 @@ struct intel_mid_base_addr {
 	u32 __iomem *offload_reg;
 };
 
+#define MAX_PMU_LOG_STATES	(S0I3_STATE_IDX - C4_STATE_IDX + 1)
+
 struct mid_pmu_stats {
 	u64 err_count[3];
 	u64 count;
@@ -273,6 +276,10 @@ struct mid_pmu_stats {
 	u64 last_entry;
 	u64 last_try;
 	u64 first_entry;
+	u32 demote_count[MAX_PMU_LOG_STATES];
+	u32 display_blocker_count;
+	u32 camera_blocker_count;
+	u32 blocker_count[MAX_LSS_POSSIBLE];
 };
 
 struct mid_pmu_dev {
@@ -314,6 +321,7 @@ struct mid_pmu_dev {
 	struct semaphore scu_ready_sem;
 	struct completion set_mode_complete;
 	struct mid_pmu_stats pmu_stats[SYS_STATE_MAX];
+	struct delayed_work log_work;
 
 #ifdef LOG_PMU_EVENTS
 	struct mid_pmu_cmd_log cmd_log[LOG_SIZE];
@@ -346,6 +354,7 @@ extern struct platform_pmu_ops clv_pmu_ops;
 extern struct platform_pmu_ops *get_platform_ops(void);
 extern void mfld_s0ix_sram_save_cleanup(void);
 extern void pmu_stats_init(void);
+extern void pmu_stats_finish(void);
 extern void mfld_s0ix_sram_restore(u32 s0ix);
 extern void pmu_stat_error(u8 err_type);
 extern void pmu_stat_end(void);

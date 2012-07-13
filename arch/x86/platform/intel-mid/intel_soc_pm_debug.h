@@ -21,6 +21,7 @@
 #include <linux/intel_mid_pm.h>
 
 #define NANO_SEC 1000000000UL /* 10^9 in sec */
+#define PMU_LOG_INTERVAL_SECS	(60*5) /* 5 mins in secs */
 
 struct island {
 	int type;

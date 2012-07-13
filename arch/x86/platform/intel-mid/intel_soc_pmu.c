@@ -1838,8 +1838,10 @@ static void __exit mid_pci_cleanup(void)
 	/* registering PCI device */
 	pci_unregister_driver(&driver);
 
-	if (mid_pmu_cxt)
+	if (mid_pmu_cxt) {
+		pmu_stats_finish();
 		kfree(mid_pmu_cxt->ss_config);
+	}
 
 	kfree(mid_pmu_cxt);
 }
