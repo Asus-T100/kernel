@@ -311,6 +311,41 @@ static void pfit_landscape(int hsrc_sz, int vsrc_sz,
 }
 
 /*
+ * Panel fitter HW has rounding errors, it does not handle
+ * different source and destination width correctly. This
+ * workaround function fixes this limitation.
+ *
+ * The workaround values are experiment-based.
+ */
+static int pfit_pillarbox_wa(int src_height, int dst_height)
+{
+	if (src_height == 1024) {
+		switch (dst_height) {
+		case 720:
+			return 1;
+		case 768:
+			return 1;
+		case 1080:
+			return 0;
+		default:
+			return 0;
+		}
+	} else if (src_height == 1280) {
+		switch (dst_height) {
+		case 720:
+			return 1;
+		case 768:
+			return 0;
+		case 1080:
+			return 1;
+		default:
+			return 0;
+		}
+	} else
+		return 0;
+}
+
+/*
  * Description: programs hdmi pipe src and size of the input.
  *
  * @dev:		hdmi_device_t
@@ -331,6 +366,9 @@ otm_hdmi_ret_t ipil_hdmi_crtc_mode_set_program_dspregs(hdmi_device_t *dev,
 	int sprite_pos_x = 0, sprite_pos_y = 0;
 	int sprite_width = 0, sprite_height = 0;
 	int src_image_hor = 0, src_image_vert = 0;
+	int wa;
+
+	pr_debug("Enter %s\n", __func__);
 
 	/* NULL checks */
 	if (dev == NULL || mode == NULL || adjusted_mode == NULL) {
@@ -389,7 +427,9 @@ otm_hdmi_ret_t ipil_hdmi_crtc_mode_set_program_dspregs(hdmi_device_t *dev,
 		if ((adjusted_mode->width != fb_width) ||
 		    (adjusted_mode->height != fb_height)) {
 			if (fb_width > fb_height) {
-				pr_debug("[hdmi]: Landscape mode...\n");
+				/* Landscape mode */
+				pr_debug("Landscape mode...\n");
+
 				/* Landscape mode: program ratios is
 				 * used because 480p does not work with
 				 * auto */
@@ -405,60 +445,35 @@ otm_hdmi_ret_t ipil_hdmi_crtc_mode_set_program_dspregs(hdmi_device_t *dev,
 						IPIL_PFIT_SCALING_AUTO);
 			} else {
 				/* Portrait mode */
-				pr_debug("[hdmi]: Portrait mode...\n");
-				if (adjusted_mode->height == 768 &&
-					adjusted_mode->width == 1024) {
-					src_image_hor = adjusted_mode->width *
-							fb_height /
-							adjusted_mode->height;
-					src_image_vert = fb_height;
-					sprite_pos_x = (src_image_hor -
-								fb_width) / 2;
-					hdmi_write32(IPIL_PFIT_CONTROL,
-						IPIL_PFIT_ENABLE |
-						IPIL_PFIT_PIPE_SELECT_B |
-						IPIL_PFIT_SCALING_AUTO);
-				}
-				else {
-					/* Panel fitter HW has some limitations/bugs
-					 * which forces us to tweak the way we use
-					 * PILLARBOX mode.
-					 */
-#ifdef MFLD_HDMI_DV1
-					src_image_hor = max_t(int, fb_width,
-							      adjusted_mode->width) + 1;
-					src_image_vert = max_t(int, fb_height,
-							      adjusted_mode->height);
-					sprite_pos_x = (src_image_hor - fb_width) / 2;
-#endif
-					hdmi_write32(IPIL_PFIT_CONTROL,
-						     IPIL_PFIT_ENABLE |
-						     IPIL_PFIT_PIPE_SELECT_B |
-						     IPIL_PFIT_SCALING_PILLARBOX);
-				}
+				pr_debug("Portrait mode...\n");
+
+				/* Panel fitter HW has some limitations/bugs
+				 * which forces us to tweak the way we use
+				 * PILLARBOX mode.
+				 */
+				wa = pfit_pillarbox_wa(fb_height,
+							adjusted_mode->height);
+				pr_debug("wa = %d\n", wa);
+
+				src_image_hor = max_t(int, fb_width,
+						     adjusted_mode->width) + wa;
+				src_image_vert = max_t(int, fb_height,
+						      adjusted_mode->height);
+				sprite_pos_x = (src_image_hor - fb_width) / 2;
+				hdmi_write32(IPIL_PFIT_CONTROL,
+					     IPIL_PFIT_ENABLE |
+					     IPIL_PFIT_PIPE_SELECT_B |
+					     IPIL_PFIT_SCALING_PILLARBOX);
 			}
-		} else {
-			/* TODO: setting pfit_control to 0 is resulting in
-			 * tearing. Hence disabling this code. Need to
-			 * revisit later.
-			 */
-			/* hdmi_write32(IPIL_PFIT_CONTROL, 0); */
+		} else
 			hdmi_write32(IPIL_PFIT_CONTROL,
 					IPIL_PFIT_ENABLE |
 					IPIL_PFIT_PIPE_SELECT_B |
 					IPIL_PFIT_SCALING_AUTO);
-		}
 
 		break;
 
 	default:
-		/* Android will not change mode, however ,we have tools
-		to change HDMI timing so there is some cases frame
-		buffer no change ,but timing changed mode setting, in
-		this case. mode information for source size is not
-		right, so here use fb information for source/sprite
-		size*/
-
 		/* The defined sprite rectangle must always be
 		completely contained within the displayable area of the
 		screen image (frame buffer). */
@@ -489,6 +504,8 @@ otm_hdmi_ret_t ipil_hdmi_crtc_mode_set_program_dspregs(hdmi_device_t *dev,
 				 (sprite_width - 1));
 	hdmi_write32(IPIL_PIPEBSRC, ((src_image_hor - 1) << 16) |
 				(src_image_vert - 1));
+
+	pr_debug("Exit %s\n", __func__);
 
 	return OTM_HDMI_SUCCESS;
 }

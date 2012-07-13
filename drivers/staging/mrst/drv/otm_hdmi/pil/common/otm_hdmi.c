@@ -1399,6 +1399,8 @@ otm_hdmi_ret_t otm_hdmi_crtc_set_scaling(void *context,
 {
 	hdmi_context_t *ctx = (hdmi_context_t *)context;
 
+	pr_debug("Enter %s\n", __func__);
+
 	/* NULL checks */
 	if (context == NULL || mode == NULL || adjusted_mode == NULL) {
 		pr_debug("\ninvalid arguments\n");
@@ -1438,6 +1440,8 @@ otm_hdmi_ret_t otm_hdmi_crtc_mode_set(void *context, otm_hdmi_timing_t *mode,
 	otm_hdmi_ret_t rc = OTM_HDMI_SUCCESS;
 	hdmi_context_t *ctx = (hdmi_context_t *)context;
 	int scalingtype = ctx->scaling_type;
+
+	pr_debug("Enter %s\n", __func__);
 
 	/* NULL checks */
 	if (context == NULL || mode == NULL || adjusted_mode == NULL
@@ -1481,6 +1485,8 @@ otm_hdmi_ret_t otm_hdmi_crtc_mode_set(void *context, otm_hdmi_timing_t *mode,
 	rc = ipil_hdmi_crtc_mode_set_program_pipeconf(&ctx->dev);
 	if (rc != OTM_HDMI_SUCCESS)
 		pr_debug("\nfailed to program pipeconf\n");
+
+	pr_debug("Exit%s\n", __func__);
 
 	return rc;
 }

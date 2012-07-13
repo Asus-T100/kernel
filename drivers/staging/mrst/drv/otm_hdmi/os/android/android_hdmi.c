@@ -1279,6 +1279,8 @@ int android_hdmi_set_scaling_property(struct drm_crtc *crtc)
 		return -1;
 	}
 
+	pr_debug("Exit %s\n", __func__);
+
 	return 0;
 }
 
