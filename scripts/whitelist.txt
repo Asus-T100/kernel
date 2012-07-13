@@ -1,2 +1,0 @@
-#File or folder to skip from checkpatch.pl
-drivers/staging/mrfl/rgx
