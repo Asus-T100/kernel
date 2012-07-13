@@ -91,6 +91,8 @@
 
 /* Pre charge and termination current limit reg */
 #define BQ24192_PRECHRG_TERM_CUR_CNTL_REG	0x3
+#define BQ24192_TERM_CURR_LIMIT_128		0	/* 128mA */
+#define BQ24192_PRE_CHRG_CURR_256		(1 << 4)  /* 256mA */
 
 /* Charge voltage control reg */
 #define BQ24192_CHRG_VOLT_CNTL_REG	0x4
@@ -209,7 +211,7 @@
 
 #define CLT_VBATT_FULL_DET_MARGIN	50	/* 50mV */
 #define CLT_FULL_CURRENT_AVG_LOW	0
-#define CLT_FULL_CURRENT_AVG_HIGH	50
+#define CLT_FULL_CURRENT_AVG_HIGH	100
 
 #define CLT_BATT_VMIN_THRESHOLD_DEF	3600	/* 3600mV */
 #define CLT_BATT_TEMP_MAX_DEF	45	/* 45 degrees */
@@ -1053,11 +1055,12 @@ static int program_timers(struct bq24192_chip *chip, bool wdt_enable,
 		ret &= ~CHRG_TIMER_EXP_CNTL_EN_TIMER;
 
 	/*
-	 * Disable the HW termination. If enabled, HW is terminating
-	 * the charging even with the charging current ~250-115mA. Terminating
-	 * the charging prematurely could potentially reduce the battery life.
+	 * Enable the HW termination. When disabled the HW termination, battery
+	 * was taking too long to go from charging to full state. HW based
+	 * termination could cause the battery capacity to drop but it would
+	 * result in good battery life.
 	 */
-	ret &= ~CHRG_TIMER_EXP_CNTL_EN_TERM;
+	ret |= CHRG_TIMER_EXP_CNTL_EN_TERM;
 
 	/* Program the TIMER CTRL register */
 	ret = bq24192_write_reg(chip->client,
@@ -1117,6 +1120,14 @@ static int enable_charging(struct bq24192_chip *chip,
 	ret = bq24192_reg_multi_bitset(chip->client, BQ24192_POWER_ON_CFG_REG,
 						POWER_ON_CFG_CHRG_CFG_EN,
 					CHR_CFG_BIT_POS, CHR_CFG_BIT_LEN);
+	if (ret < 0)
+		dev_warn(&chip->client->dev, "I2C write failed:%s\n", __func__);
+
+	/* Program the pre-chrg & termination current limits */
+	ret = bq24192_write_reg(chip->client,
+				BQ24192_PRECHRG_TERM_CUR_CNTL_REG,
+				(BQ24192_PRE_CHRG_CURR_256 |
+				 BQ24192_TERM_CURR_LIMIT_128));
 	if (ret < 0)
 		dev_warn(&chip->client->dev, "I2C write failed:%s\n", __func__);
 
