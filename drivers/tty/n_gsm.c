@@ -968,6 +968,8 @@ static void gsm_dlci_data_kick(struct gsm_dlci *dlci)
 		return;
 
 	spin_lock_irqsave(&dlci->gsm->tx_lock, flags);
+	if (unlikely(dlci->gsm->dead))
+		goto out;
 	/* If we have nothing running then we need to fire up */
 	sweep = (dlci->gsm->tx_bytes < TX_THRESH_LO);
 	if (dlci->gsm->tx_bytes == 0) {
@@ -978,6 +980,7 @@ static void gsm_dlci_data_kick(struct gsm_dlci *dlci)
 	}
 	if (sweep)
 		gsm_dlci_data_sweep(dlci->gsm);
+out:
 	spin_unlock_irqrestore(&dlci->gsm->tx_lock, flags);
 }
 
@@ -2042,6 +2045,7 @@ void gsm_cleanup_mux(struct gsm_mux *gsm)
 	int t;
 	struct gsm_dlci *dlci;
 	struct gsm_msg *txq, *ntxq;
+	unsigned long flags;
 
 	gsm->dead = 1;
 
@@ -2077,10 +2081,12 @@ close_this_dlci:
 	for (i = NUM_DLCI-1; i >= 0; i--)
 		if (gsm->dlci[i])
 			gsm_dlci_release(gsm->dlci[i]);
+	spin_lock_irqsave(&gsm->tx_lock, flags);
 	/* Now wipe the queues */
 	list_for_each_entry_safe(txq, ntxq, &gsm->tx_list, list)
 		kfree(txq);
 	INIT_LIST_HEAD(&gsm->tx_list);
+	spin_unlock_irqrestore(&gsm->tx_lock, flags);
 }
 EXPORT_SYMBOL_GPL(gsm_cleanup_mux);
 
