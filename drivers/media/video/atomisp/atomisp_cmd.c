@@ -448,6 +448,12 @@ static int atomisp_buf_pre_dequeue(struct atomisp_video_pipe *pipe,
 		spin_unlock_irqrestore(&pipe->irq_lock, flags);
 		if (!wait)
 			return -EBUSY;
+
+		mutex_lock(&isp->isp_lock);
+		isp->sw_contex.buffer_underrun = true;
+		complete(&isp->dis_state_complete);
+		mutex_unlock(&isp->isp_lock);
+
 		if (wait_event_interruptible(pipe->capq.wait,
 					     (!list_empty(&pipe->activeq) &&
 					      !isp->sw_contex.updating_uptr) ||
@@ -459,6 +465,9 @@ static int atomisp_buf_pre_dequeue(struct atomisp_video_pipe *pipe,
 			spin_unlock_irqrestore(&pipe->irq_lock, flags);
 			return -EINVAL;
 		}
+
+		isp->sw_contex.buffer_underrun = false;
+
 	}
 
 	if (!isp->sw_contex.isp_streaming) {
@@ -833,6 +842,7 @@ void atomisp_work(struct work_struct *work)
 
 	isp->fr_status = ATOMISP_FRAME_STATUS_OK;
 	isp->sw_contex.error = false;
+	isp->sw_contex.buffer_underrun = false;
 	isp->sw_contex.invalid_frame = false;
 	INIT_COMPLETION(isp->wq_frame_complete);
 	isp->irq_infos = 0;
@@ -2008,9 +2018,20 @@ int atomisp_get_dis_stat(struct atomisp_device *isp,
 	if (!isp->params.video_dis_en)
 		return -EINVAL;
 
+	mutex_lock(&isp->isp_lock);
+	if (isp->sw_contex.buffer_underrun) {
+		mutex_unlock(&isp->isp_lock);
+		return -EAGAIN;
+	}
+
 	INIT_COMPLETION(isp->dis_state_complete);
+	mutex_unlock(&isp->isp_lock);
 
 	left = wait_for_completion_timeout(&isp->dis_state_complete, 1 * HZ);
+
+	/* recheck whether wakeup is caused of buffer underrun */
+	if (isp->sw_contex.buffer_underrun)
+		return -EAGAIN;
 
 	/* Timeout to get the statistics */
 	if (left == 0) {

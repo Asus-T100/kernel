@@ -154,6 +154,7 @@ struct atomisp_sw_contex {
 	bool work_queued;
 	bool sensor_streaming;
 	bool isp_streaming;
+	bool buffer_underrun;
 
 	bool error;
 	bool bypass;
