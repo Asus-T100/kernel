@@ -1,7 +1,7 @@
 /*
- * Power button driver for Medfield.
+ * Power button driver for Medfield/Cloverview/Merrifield.
  *
- * Copyright (C) 2010 Intel Corp
+ * Copyright (C) 2012 Intel Corp
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -25,33 +25,42 @@
 #include <linux/input.h>
 #include <linux/io.h>
 #include <asm/intel_scu_ipc.h>
+#include <asm/intel_mid_powerbtn.h>
 
-#define DRIVER_NAME "msic_power_btn"
-
-/* SRAM address for power button state */
-#if defined(CONFIG_BOARD_CTP) && defined(CONFIG_POWER_BUTTON_CLVP)
-#define MSIC_PB_STAT    0xffffefcb
-#elif defined(CONFIG_BOARD_CTP)
-#define MSIC_PB_STAT    0xffff7fcb
-#else
-#define MSIC_PB_STAT	0xffff7fd0
-#endif
-
-#define MSIC_PB_LEVEL (1 << 3) /* 1 - release, 0 - press */
 #define MSIC_PB_LEN	1
-
-/*
- * MSIC document ti_datasheet defines the 1st bit reg 0x21 is used to mask
- * power button interrupt
- */
-#define MSIC_IRQLVL1MSK	0x21
 #define MSIC_PWRBTNM	(1 << 0)
+
+#if defined(CONFIG_BOARD_MRFLD_VP)
+#define DRIVER_NAME	"bcove_power_btn"
+#else
+#define DRIVER_NAME	"msic_power_btn"
+#endif
 
 struct mfld_pb_priv {
 	struct input_dev *input;
 	int irq;
 	void __iomem *pb_stat;
+	u8 pb_level;
+	u8 irq_lvl1_mask;
+	u8 pb_irq;
+	u8 pb_irq_mask;
+	int (*irq_ack)(void *);
 };
+
+static inline int pb_clear_bits(u16 addr, u8 mask)
+{
+	return intel_scu_ipc_update_register(addr, 0, mask);
+}
+
+int pb_irq_ack(void *dev_id)
+{
+	struct mfld_pb_priv *priv = dev_id;
+
+	pb_clear_bits(priv->pb_irq, MSIC_PWRBTNM);
+	pb_clear_bits(priv->pb_irq_mask, MSIC_PWRBTNM);
+
+	return 0;
+}
 
 static irqreturn_t mfld_pb_isr(int irq, void *dev_id)
 {
@@ -61,13 +70,23 @@ static irqreturn_t mfld_pb_isr(int irq, void *dev_id)
 	pbstat = readb(priv->pb_stat);
 	dev_dbg(&priv->input->dev, "pbstat: 0x%x\n", pbstat);
 
-	input_event(priv->input, EV_KEY, KEY_POWER, !(pbstat & MSIC_PB_LEVEL));
+	input_event(priv->input, EV_KEY, KEY_POWER, !(pbstat & priv->pb_level));
 	input_sync(priv->input);
 
-	if (pbstat & MSIC_PB_LEVEL)
+	if (pbstat & priv->pb_level)
 		pr_info("[%s] power button released\n", DRIVER_NAME);
 	else
 		pr_info("[%s] power button pressed\n", DRIVER_NAME);
+
+	return IRQ_WAKE_THREAD;
+}
+
+static irqreturn_t msic_pb_irq(int irq, void *dev_id)
+{
+	struct mfld_pb_priv *priv = dev_id;
+
+	if (priv->irq_ack)
+		pb_clear_bits(priv->irq_lvl1_mask, MSIC_PWRBTNM);
 
 	return IRQ_HANDLED;
 }
@@ -78,7 +97,8 @@ static int __devinit mfld_pb_probe(struct ipc_device *ipcdev)
 	struct input_dev *input;
 	int ret;
 	int irq;
-	u8 value;
+	struct intel_msic_power_btn_platform_data *pdata =
+						ipcdev->dev.platform_data;
 
 	irq = ipc_get_irq(ipcdev, 0);
 	if (irq < 0)
@@ -101,13 +121,13 @@ static int __devinit mfld_pb_probe(struct ipc_device *ipcdev)
 
 	input_set_capability(input, EV_KEY, KEY_POWER);
 
-	priv->pb_stat = ioremap(MSIC_PB_STAT, MSIC_PB_LEN);
+	priv->pb_stat = ioremap(pdata->pbstat, MSIC_PB_LEN);
 	if (!priv->pb_stat) {
 		ret = -ENOMEM;
 		goto fail;
 	}
 
-	ret = request_irq(priv->irq, mfld_pb_isr,
+	ret = request_threaded_irq(priv->irq, mfld_pb_isr, msic_pb_irq,
 			  IRQF_NO_SUSPEND, DRIVER_NAME, priv);
 	if (ret) {
 		dev_err(&ipcdev->dev,
@@ -122,6 +142,18 @@ static int __devinit mfld_pb_probe(struct ipc_device *ipcdev)
 		goto out_free_irq;
 	}
 
+	priv->pb_level = pdata->pb_level;
+	priv->irq_lvl1_mask = pdata->irq_lvl1_mask;
+	/* Currently on MRFL, the PBIRQ and MPBIRQ needs to be unmasked */
+	if (pdata->irq_ack) {
+		priv->irq_ack = pdata->irq_ack;
+		priv->pb_irq = pdata->pb_irq;
+		priv->pb_irq_mask = pdata->pb_irq_mask;
+		priv->irq_ack(priv);
+	} else {
+		priv->irq_ack = NULL;
+	}
+
 	/* SCU firmware might send power button interrupts to IA core before
 	 * kernel boots and doesn't get EOI from IA core. The first bit of
 	 * MSIC reg 0x21 is kept masked, and SCU firmware doesn't send new
@@ -131,9 +163,7 @@ static int __devinit mfld_pb_probe(struct ipc_device *ipcdev)
 	 * initialization. The race happens rarely. So we needn't worry
 	 * about it.
 	 */
-	ret = intel_scu_ipc_ioread8(MSIC_IRQLVL1MSK, &value);
-	value &= ~MSIC_PWRBTNM;
-	ret = intel_scu_ipc_iowrite8(MSIC_IRQLVL1MSK, value);
+	pb_clear_bits(priv->irq_lvl1_mask, MSIC_PWRBTNM);
 
 	return 0;
 

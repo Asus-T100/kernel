@@ -15,6 +15,7 @@
 #include <linux/sfi.h>
 #include <linux/init.h>
 #include <asm/intel-mid.h>
+#include <asm/intel_mid_powerbtn.h>
 #include "platform_ipc.h"
 #include "platform_msic_power_btn.h"
 
@@ -36,9 +37,31 @@ static struct intel_ipc_dev_res ipc_msic_power_btn_res[] __initdata = {
 void __init *msic_power_btn_platform_data(void *info)
 {
 	struct sfi_device_table_entry *entry = info;
+	static struct intel_msic_power_btn_platform_data msic_power_btn_pdata;
+
+#if defined(CONFIG_BOARD_MRFLD_VP)
+	msic_power_btn_pdata.pbstat = 0xfffff61a;
+	msic_power_btn_pdata.pb_level = (1 << 4);
+	msic_power_btn_pdata.irq_lvl1_mask = 0x0c;
+	msic_power_btn_pdata.pb_irq = 0x02;
+	msic_power_btn_pdata.pb_irq_mask = 0x0d;
+	msic_power_btn_pdata.irq_ack = pb_irq_ack;
+#elif defined(CONFIG_BOARD_CTP) && defined(CONFIG_POWER_BUTTON_CLVP)
+	msic_power_btn_pdata.pbstat = 0xffffefcb;
+	msic_power_btn_pdata.pb_level = (1 << 3);
+	msic_power_btn_pdata.irq_lvl1_mask = 0x21;
+#elif defined(CONFIG_BOARD_CTP)
+	msic_power_btn_pdata.pbstat = 0xffff7fcb;
+	msic_power_btn_pdata.pb_level = (1 << 3);
+	msic_power_btn_pdata.irq_lvl1_mask = 0x21;
+#else
+	msic_power_btn_pdata.pbstat = 0xffff7fd0;
+	msic_power_btn_pdata.pb_level = (1 << 3);
+	msic_power_btn_pdata.irq_lvl1_mask = 0x21;
+#endif
 
 	handle_ipc_irq_res(entry->irq, ipc_msic_power_btn_res);
 
-	return NULL;
+	return &msic_power_btn_pdata;
 }
 
