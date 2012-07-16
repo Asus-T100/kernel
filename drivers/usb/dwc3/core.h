@@ -623,6 +623,8 @@ struct dwc3 {
 
 	struct dwc3_hwparams	hwparams;
 	struct dentry		*root;
+
+	u32			set_test_mode;
 };
 
 /* -------------------------------------------------------------------------- */

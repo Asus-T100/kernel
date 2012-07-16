@@ -351,6 +351,31 @@ static int dwc3_ep0_handle_status(struct dwc3 *dwc,
 	return 0;
 }
 
+static int dwc3_ep0_set_test_mode(struct dwc3 *dwc)
+{
+	u32	reg;
+	u32	mode = dwc->set_test_mode;
+
+	reg = dwc3_readl(dwc->regs, DWC3_DCTL);
+	reg &= ~DWC3_DCTL_TSTCTRL_MASK;
+
+	switch (mode) {
+	case TEST_J:
+	case TEST_K:
+	case TEST_SE0_NAK:
+	case TEST_PACKET:
+	case TEST_FORCE_EN:
+		reg |= mode << 1;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	dwc3_writel(dwc->regs, DWC3_DCTL, reg);
+
+	return 0;
+}
+
 static int dwc3_ep0_handle_feature(struct dwc3 *dwc,
 		struct usb_ctrlrequest *ctrl, int set)
 {
@@ -358,7 +383,6 @@ static int dwc3_ep0_handle_feature(struct dwc3 *dwc,
 	u32			recip;
 	u32			wValue;
 	u32			wIndex;
-	u32			reg;
 	int			ret;
 	u32			mode;
 
@@ -410,21 +434,8 @@ static int dwc3_ep0_handle_feature(struct dwc3 *dwc,
 				return -EINVAL;
 
 			mode = wIndex >> 8;
-			reg = dwc3_readl(dwc->regs, DWC3_DCTL);
-			reg &= ~DWC3_DCTL_TSTCTRL_MASK;
+			dwc->set_test_mode = mode;
 
-			switch (mode) {
-			case TEST_J:
-			case TEST_K:
-			case TEST_SE0_NAK:
-			case TEST_PACKET:
-			case TEST_FORCE_EN:
-				reg |= mode << 1;
-				break;
-			default:
-				return -EINVAL;
-			}
-			dwc3_writel(dwc->regs, DWC3_DCTL, reg);
 			break;
 		default:
 			return -EINVAL;
@@ -676,6 +687,7 @@ static void dwc3_ep0_complete_req(struct dwc3 *dwc,
 {
 	struct dwc3_request	*r;
 	struct dwc3_ep		*dep;
+	int			ret;
 
 	dep = dwc->eps[0];
 
@@ -683,6 +695,13 @@ static void dwc3_ep0_complete_req(struct dwc3 *dwc,
 		r = next_request(&dep->request_list);
 
 		dwc3_gadget_giveback(dep, r, 0);
+	}
+
+	if (dwc->set_test_mode) {
+		ret = dwc3_ep0_set_test_mode(dwc);
+		if (ret < 0)
+			dev_err(dwc->dev, "set test mode error\n");
+
 	}
 
 	dwc->ep0state = EP0_SETUP_PHASE;
