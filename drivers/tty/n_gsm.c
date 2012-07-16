@@ -2854,13 +2854,13 @@ static void gsm_destroy_network(struct gsm_dlci *dlci)
 	struct gsm_mux_net *mux_net;
 
 	pr_debug("destroy network interface");
+	mutex_lock(&dlci->rx_mutex);
 	if (dlci->net) {
-		mutex_lock(&dlci->rx_mutex);
 		netif_tx_disable(dlci->net);
 		mux_net = (struct gsm_mux_net *)netdev_priv(dlci->net);
 		kref_put(&mux_net->ref, net_free);
-		mutex_unlock(&dlci->rx_mutex);
 	}
+	mutex_unlock(&dlci->rx_mutex);
 }
 
 
