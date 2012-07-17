@@ -139,7 +139,7 @@
 
 #define BQ24192_SYSTEM_STAT_REG			0x8
 /* D6, D7 show VBUS status */
-#define SYSTEM_STAT_VBUS_UNKNOWN		(0 << 6)
+#define SYSTEM_STAT_VBUS_UNKNOWN		0
 #define SYSTEM_STAT_VBUS_HOST			(1 << 6)
 #define SYSTEM_STAT_VBUS_ADP			(2 << 6)
 #define SYSTEM_STAT_VBUS_OTG			(3 << 6)
@@ -209,7 +209,7 @@
 #define SFI_BATTPROP_TBL_ID	"OEM0"
 #define CLT_ADC_TIME_TO_LIVE	(HZ/8)	/* 125 ms */
 
-#define CLT_VBATT_FULL_DET_MARGIN	50	/* 50mV */
+#define CLT_VBATT_FULL_DET_MARGIN	25	/* 25mV */
 #define CLT_FULL_CURRENT_AVG_LOW	0
 #define CLT_FULL_CURRENT_AVG_HIGH	100
 
@@ -756,13 +756,6 @@ static ssize_t set_charge_current_limit(struct device *dev,
 		return -EINVAL;
 	}
 
-	/* Check if the charger is present. If not just return */
-	if (!chip->present && !chip->online) {
-		dev_info(&chip->client->dev,
-				"%s: No Charger\n", __func__);
-		return -EINVAL;
-	}
-
 	if (kstrtoul(buf, 10, &value))
 		return -EINVAL;
 
@@ -906,6 +899,9 @@ int ctp_get_charger_health(void)
 			"read reg failed %s\n", __func__);
 		return POWER_SUPPLY_HEALTH_UNKNOWN;
 	}
+
+	if ((ret & SYSTEM_STAT_VBUS_OTG) == SYSTEM_STAT_VBUS_UNKNOWN)
+		return POWER_SUPPLY_HEALTH_UNKNOWN;
 
 	if (!(ret & SYSTEM_STAT_PWR_GOOD))
 		return POWER_SUPPLY_HEALTH_DEAD;
@@ -1109,7 +1105,7 @@ static int enable_charging(struct bq24192_chip *chip,
 
 	/* set charge voltage reg */
 	ret = bq24192_write_reg(chip->client, BQ24192_CHRG_VOLT_CNTL_REG,
-								reg->chr_volt);
+				reg->chr_volt | CHRG_VOLT_CNTL_VRECHRG);
 	if (ret < 0) {
 		dev_warn(&chip->client->dev, "I2C write failed:%s\n", __func__);
 		goto i2c_write_failed;
@@ -1485,7 +1481,7 @@ static  bool bq24192_check_charge_full(struct bq24192_chip *chip, int vref)
  */
 static void bq24192_maintenance_worker(struct work_struct *work)
 {
-	int ret, batt_temp, battery_status, idx, vbatt = 0;
+	int ret, batt_temp, battery_status, idx = 0, vbatt = 0;
 	struct bq24192_chip *chip = container_of(work,
 				struct bq24192_chip, maint_chrg_wrkr.work);
 	short int cv = 0, usr_cc = -1;
@@ -1497,7 +1493,7 @@ static void bq24192_maintenance_worker(struct work_struct *work)
 
 	dev_dbg(&chip->client->dev, "+ %s\n", __func__);
 	/* Check if we have the charger present */
-	if (chip->present && chip->online) {
+	if (chip->present) {
 		dev_info(&chip->client->dev,
 			"Charger is present\n");
 	} else {
@@ -1526,8 +1522,31 @@ static void bq24192_maintenance_worker(struct work_struct *work)
 			dev_info(&chip->client->dev,
 				"batt temp:POWER_SUPPLY_HEALTH_OVERHEAT\n");
 		}
-		/* PMIC disables charging as it's hit the
-		 * critical temperature range */
+
+		/*
+		 * Read the Power-ON Cfg register to ensure charging disabled
+		 * If already disabled. No need to disable again
+		 */
+		ret = bq24192_read_reg(chip->client, BQ24192_POWER_ON_CFG_REG);
+		if (ret < 0) {
+			dev_warn(&chip->client->dev,
+					"%s I2C read failed\n", __func__);
+			goto sched_maint_work;
+		}
+
+		if (ret & POWER_ON_CFG_CHRG_CFG_EN) {
+			/*
+			 * The battery profile does not support -ve temperature
+			 * charging. Stop the charging explicitely
+			 */
+			ret = stop_charging(chip);
+			if (ret < 0) {
+				dev_warn(&chip->client->dev,
+						"Stop charging failed\n");
+			}
+		} else {
+			dev_warn(&chip->client->dev, "Already Stopped Charging\n");
+		}
 		goto sched_maint_work;
 	}
 
@@ -1725,10 +1744,17 @@ sched_maint_work:
 	 * Update the UI per the current battery/charger status
 	 */
 	if (((is_chrg_term == true) && (is_chrg_full == false) &&
-		(chip->batt_mode == BATT_CHRG_NORMAL)) ||
-		((!chip->present) || (!chip->online)) ||
-	    (chip->chrg_type == POWER_SUPPLY_TYPE_USB_HOST))
+		(chip->batt_mode == BATT_CHRG_NORMAL)) || (idx == -1))
+		battery_status = POWER_SUPPLY_STATUS_NOT_CHARGING;
+
+
+	if ((chip->chrg_type == POWER_SUPPLY_TYPE_USB_HOST))
 		battery_status = POWER_SUPPLY_STATUS_DISCHARGING;
+
+	if ((battery_status == POWER_SUPPLY_STATUS_FULL) ||
+		(battery_status == POWER_SUPPLY_STATUS_NOT_CHARGING) ||
+		(battery_status == POWER_SUPPLY_STATUS_DISCHARGING))
+		chip->online = 0;
 
 	mutex_lock(&chip->event_lock);
 	chip->batt_status = battery_status;
