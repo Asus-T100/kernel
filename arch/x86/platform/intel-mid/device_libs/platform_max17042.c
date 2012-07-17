@@ -153,6 +153,7 @@ void *max17042_platform_data(void *info)
 	struct i2c_board_info *i2c_info = (struct i2c_board_info *)info;
 #ifdef CONFIG_BOARD_CTP /* TODO: get rid of this... */
 	int intr = get_gpio_by_name("max17042");
+	intr = 94; /* TODO: remove this(workaorund for IAFW) */
 #else
 	int intr = get_gpio_by_name("max_fg_alert");
 #endif
