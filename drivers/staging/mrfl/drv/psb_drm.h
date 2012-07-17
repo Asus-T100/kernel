@@ -214,17 +214,11 @@ struct psb_ttm_fence_rep {
 	uint32_t error;
 };
 
-struct drm_psb_cmdbuf_arg {
+typedef struct drm_psb_cmdbuf_arg {
 	uint64_t buffer_list;	/* List of buffers to validate */
 	uint64_t clip_rects;	/* See i915 counterpart */
-	uint64_t scene_arg;
 	uint64_t fence_arg;
 
-	uint32_t ta_flags;
-
-	uint32_t ta_handle;	/* TA reg-value pairs */
-	uint32_t ta_offset;
-	uint32_t ta_size;
 
 	uint32_t oom_handle;
 	uint32_t oom_offset;
@@ -238,28 +232,18 @@ struct drm_psb_cmdbuf_arg {
 	uint32_t reloc_offset;
 	uint32_t num_relocs;
 
-	int32_t damage;		/* Damage front buffer with cliprects */
 	/* Not implemented yet */
 	uint32_t fence_flags;
 	uint32_t engine;
 
-	/*
-	 * Feedback;
-	 */
-
-	uint32_t feedback_ops;
-	uint32_t feedback_handle;
-	uint32_t feedback_offset;
-	uint32_t feedback_breakpoints;
-	uint32_t feedback_size;
-};
+} drm_psb_cmdbuf_arg_t;
 
 struct drm_psb_pageflip_arg_t {
 	uint32_t flip_offset;
 	uint32_t stride;
 };
 
-enum lnc_getparam_key_t {
+enum lnc_getparam_key {
 	LNC_VIDEO_DEVICE_INFO,
 	LNC_VIDEO_GETPARAM_RAR_INFO,
 	LNC_VIDEO_GETPARAM_CI_INFO,
@@ -279,7 +263,7 @@ enum lnc_getparam_key_t {
 };
 
 struct drm_lnc_video_getparam_arg {
-	enum lnc_getparam_key_t key;
+	enum lnc_getparam_key key;
 	uint64_t arg;		/* argument pointer */
 	uint64_t value;		/* feed back pointer */
 };

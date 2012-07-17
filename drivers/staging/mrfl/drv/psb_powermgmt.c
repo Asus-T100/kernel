@@ -1870,7 +1870,7 @@ unlock:
 	if (ret)
 		printk(KERN_ALERT "ERROR: wait_for_pm_cmd_complete FAILED!"
 			"ret=0x%x, island=%d, sub-island=%d, state=%d\n",
-			ret, islands, sub_islands, state_typeret);
+			ret, islands, sub_islands, state_type);
 	return ret;
 }
 

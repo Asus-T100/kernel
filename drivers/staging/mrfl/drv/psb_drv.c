@@ -633,6 +633,7 @@ static struct drm_ioctl_desc psb_ioctls[] = {
     /*****************************
      *  S3D OVERLAY IOCTLS
      */
+/*
 	PSB_IOCTL_DEF(DRM_IOCTL_OVL_S3D_ACQUIRE, psb_s3d_ovl_acquire_ioctl,
 		      DRM_AUTH),
 	PSB_IOCTL_DEF(DRM_IOCTL_OVL_S3D_RELEASE, psb_s3d_ovl_release_ioctl,
@@ -645,6 +646,7 @@ static struct drm_ioctl_desc psb_ioctls[] = {
 		      DRM_AUTH),
 
 	PSB_IOCTL_DEF(DRM_IOCTL_USER_PRINTK, user_printk_ioctl, DRM_AUTH)
+*/
 };
 
 static void get_ci_info(struct drm_psb_private *dev_priv)
