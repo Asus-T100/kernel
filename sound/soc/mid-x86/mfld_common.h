@@ -72,6 +72,10 @@ struct mfld_mc_private {
 	int jack_gpio;
 	int media_usage;
 	int voice_usage;
+	u8 jack_poll_retry;
+	long jack_poll_interval;
+	atomic_t hs_det_retry;
+	unsigned int jack_status;
 #ifdef CONFIG_HAS_WAKELOCK
 	struct wake_lock *jack_wake_lock;
 #endif
