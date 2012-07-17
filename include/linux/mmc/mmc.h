@@ -270,7 +270,7 @@ struct _mmc_csd {
 /*
  * EXT_CSD fields
  */
-
+#define EXT_CSD_POWER_OFF_NOTIFICATION	34	/* R/W */
 #define EXT_CSD_EXCEPTION_STATUS	54	/* RO */
 #define EXT_CSD_EXCEPTION_EVENTS_CTRL	56	/* R/W */
 #define EXT_CSD_DATA_SECTOR_SIZE	61	/* RO */
@@ -309,6 +309,7 @@ struct _mmc_csd {
 #define EXT_CSD_SEC_FEATURE_SUPPORT	231	/* RO */
 #define EXT_CSD_TRIM_MULT		232	/* RO */
 #define EXT_CSD_BKOPS_STATUS		246	/* RO */
+#define EXT_CSD_POWER_OFF_LONG_TIME	247	/* RO */
 #define EXT_CSD_BKOPS_SUPPORT		502	/* RO */
 #define EXT_CSD_HPI_FEATURES		503	/* RO */
 
@@ -351,6 +352,11 @@ struct _mmc_csd {
 #define EXT_CSD_RST_N_EN_MASK	0x3
 #define EXT_CSD_RST_N_ENABLED	1	/* RST_n is enabled on card */
 
+#define EXT_CSD_NO_POWER_NOTIFICATION	0
+#define EXT_CSD_POWER_ON		1
+#define EXT_CSD_POWER_OFF_SHORT	2
+#define EXT_CSD_POWER_OFF_LONG		3
+
 /*
  * MMC_SWITCH access modes
  */
@@ -359,6 +365,13 @@ struct _mmc_csd {
 #define MMC_SWITCH_MODE_SET_BITS	0x01	/* Set bits which are 1 in value */
 #define MMC_SWITCH_MODE_CLEAR_BITS	0x02	/* Clear bits which are 1 in value */
 #define MMC_SWITCH_MODE_WRITE_BYTE	0x03	/* Set target to value */
+
+/*
+ * MMC Power Off Notify type
+ */
+#define MMC_PW_OFF_NOTIFY_NONE		0
+#define MMC_PW_OFF_NOTIFY_SHORT		1
+#define MMC_PW_OFF_NOTIFY_LONG		2
 
 /*
  * BKOPS status level

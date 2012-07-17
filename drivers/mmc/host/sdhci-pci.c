@@ -461,6 +461,9 @@ static int intel_mrfl_mmc_probe_slot(struct sdhci_pci_slot *slot)
 	slot->host->mmc->caps2 |= MMC_CAP2_BOOTPART_NOACC;
 #endif
 
+	/* Enable eMMC v4.5 Power Off Notification feature */
+	slot->host->mmc->caps2 |= MMC_CAP2_POWEROFF_NOTIFY;
+
 	if (PCI_FUNC(slot->chip->pdev->devfn) == 2) /* SD host controller */
 		intel_mid_sd_cd_init(slot, MRFLD_SD_CD_PIN);
 

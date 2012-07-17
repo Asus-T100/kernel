@@ -451,6 +451,9 @@ static int mmc_read_ext_csd(struct mmc_card *card, u8 *ext_csd)
 
 		card->ext_csd.feature_support |= MMC_DISCARD_FEATURE;
 
+		card->ext_csd.power_off_longtime = 10 *
+			ext_csd[EXT_CSD_POWER_OFF_LONG_TIME];
+
 		if ((ext_csd[EXT_CSD_DATA_SECTOR_SIZE] & 0x1) &&
 		(ext_csd[EXT_CSD_USE_NATIVE_SECTOR] & 0x1) &&
 		(ext_csd[EXT_CSD_NATIVE_SECTOR_SIZE] & 0x1) &&
@@ -811,6 +814,26 @@ static int mmc_init_card(struct mmc_host *host, u32 ocr,
 	}
 
 	/*
+	 * If the host supports the power_off_notify capability then
+	 * set the notification byte in the ext_csd register of device
+	 */
+	if ((host->caps2 & MMC_CAP2_POWEROFF_NOTIFY) &&
+		(card->ext_csd.rev >= 6)) {
+		err = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
+				 EXT_CSD_POWER_OFF_NOTIFICATION,
+				 EXT_CSD_POWER_ON,
+				 card->ext_csd.generic_cmd6_time, 1);
+		if (err && err != -EBADMSG)
+			goto free_card;
+		/*
+		 * The err can be -EBADMSG or 0,
+		 * so check for success and update the flag
+		 */
+		if (!err)
+			card->poweroff_notify_state = MMC_POWERED_ON;
+	}
+
+	/*
 	 * Activate high speed (if supported)
 	 */
 	if ((card->ext_csd.hs_max_dtr != 0) &&
@@ -976,6 +999,41 @@ err:
 	return err;
 }
 
+static int mmc_poweroff_notify(struct mmc_host *host, int notify)
+{
+	struct mmc_card *card;
+	unsigned int timeout;
+	unsigned int notify_type = EXT_CSD_NO_POWER_NOTIFICATION;
+	int err;
+
+	card = host->card;
+
+	if (notify == MMC_PW_OFF_NOTIFY_SHORT) {
+		notify_type = EXT_CSD_POWER_OFF_SHORT;
+		timeout = card->ext_csd.generic_cmd6_time;
+	} else if (notify == MMC_PW_OFF_NOTIFY_LONG) {
+		notify_type = EXT_CSD_POWER_OFF_LONG;
+		timeout = card->ext_csd.power_off_longtime;
+	} else {
+		pr_info("%s: mmc_poweroff_notify called "
+			"with notify type %d\n", mmc_hostname(host), notify);
+		return -EINVAL;
+	}
+
+	err = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
+			 EXT_CSD_POWER_OFF_NOTIFICATION,
+			 notify_type, timeout, 1);
+
+	if (err)
+		pr_err("%s: Device failed to respond within %d "
+		       "poweroff timeout.\n", mmc_hostname(host), timeout);
+	else
+		card->poweroff_notify_state =
+					MMC_NO_POWER_NOTIFICATION;
+
+	return err;
+}
+
 /*
  * Host is being removed. Free up the current card.
  */
@@ -1030,16 +1088,25 @@ static void mmc_detect(struct mmc_host *host)
  */
 static int mmc_suspend(struct mmc_host *host)
 {
+	int err = 0;
+
 	BUG_ON(!host);
 	BUG_ON(!host->card);
 
 	mmc_claim_host(host);
-	if (!mmc_host_is_spi(host))
+
+	if (mmc_can_poweroff_notify(host->card))
+		err = mmc_poweroff_notify(host, MMC_PW_OFF_NOTIFY_SHORT);
+	else if (!mmc_host_is_spi(host))
 		mmc_deselect_cards(host);
-	host->card->state &= ~MMC_STATE_HIGHSPEED;
+
+	if (!err)
+		host->card->state &=
+			~(MMC_STATE_HIGHSPEED | MMC_STATE_HIGHSPEED_200);
+
 	mmc_release_host(host);
 
-	return 0;
+	return err;
 }
 
 /*
@@ -1066,7 +1133,8 @@ static int mmc_power_restore(struct mmc_host *host)
 {
 	int ret;
 
-	host->card->state &= ~MMC_STATE_HIGHSPEED;
+	host->card->state &= ~(MMC_STATE_HIGHSPEED | MMC_STATE_HIGHSPEED_200);
+	mmc_card_clr_sleep(host->card);
 	mmc_claim_host(host);
 	ret = mmc_init_card(host, host->ocr, host->card);
 	mmc_release_host(host);
@@ -1113,6 +1181,7 @@ static const struct mmc_bus_ops mmc_ops = {
 	.resume = NULL,
 	.power_restore = mmc_power_restore,
 	.alive = mmc_alive,
+	.poweroff_notify = mmc_poweroff_notify,
 };
 
 static const struct mmc_bus_ops mmc_ops_unsafe = {
@@ -1124,6 +1193,7 @@ static const struct mmc_bus_ops mmc_ops_unsafe = {
 	.resume = mmc_resume,
 	.power_restore = mmc_power_restore,
 	.alive = mmc_alive,
+	.poweroff_notify = mmc_poweroff_notify,
 };
 
 static void mmc_attach_bus_ops(struct mmc_host *host)

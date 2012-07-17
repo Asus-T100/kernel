@@ -2006,6 +2006,15 @@ int mmc_can_secure_erase_trim(struct mmc_card *card)
 }
 EXPORT_SYMBOL(mmc_can_secure_erase_trim);
 
+int mmc_can_poweroff_notify(const struct mmc_card *card)
+{
+	return card &&
+		mmc_card_mmc(card) &&
+		card->host->bus_ops->poweroff_notify &&
+		(card->poweroff_notify_state == MMC_POWERED_ON);
+}
+EXPORT_SYMBOL(mmc_can_poweroff_notify);
+
 int mmc_erase_group_aligned(struct mmc_card *card, unsigned int from,
 			    unsigned int nr)
 {
@@ -2358,6 +2367,15 @@ void mmc_stop_host(struct mmc_host *host)
 
 	mmc_bus_get(host);
 	if (host->bus_ops && !host->bus_dead) {
+		mmc_claim_host(host);
+		if (mmc_can_poweroff_notify(host->card)) {
+			int err = host->bus_ops->poweroff_notify(host,
+						MMC_PW_OFF_NOTIFY_LONG);
+			if (err)
+				pr_info("%s: error [%d] in poweroff notify\n",
+					mmc_hostname(host), err);
+		}
+		mmc_release_host(host);
 		if (host->bus_ops->remove)
 			host->bus_ops->remove(host);
 
@@ -2392,6 +2410,16 @@ int mmc_power_save_host(struct mmc_host *host)
 
 	if (host->bus_ops->power_save)
 		ret = host->bus_ops->power_save(host);
+
+	mmc_claim_host(host);
+	if (mmc_can_poweroff_notify(host->card)) {
+		int err = host->bus_ops->poweroff_notify(host,
+					MMC_PW_OFF_NOTIFY_SHORT);
+		if (err)
+			pr_info("%s: error [%d] in poweroff notify\n",
+				mmc_hostname(host), err);
+	}
+	mmc_release_host(host);
 
 	mmc_bus_put(host);
 
@@ -2431,8 +2459,11 @@ int mmc_card_awake(struct mmc_host *host)
 
 	mmc_bus_get(host);
 
-	if (host->bus_ops && !host->bus_dead && host->bus_ops->awake)
+	if (host->bus_ops && !host->bus_dead && host->bus_ops->awake) {
 		err = host->bus_ops->awake(host);
+		if (!err)
+			mmc_card_clr_sleep(host->card);
+	}
 
 	mmc_bus_put(host);
 
@@ -2446,8 +2477,11 @@ int mmc_card_sleep(struct mmc_host *host)
 
 	mmc_bus_get(host);
 
-	if (host->bus_ops && !host->bus_dead && host->bus_ops->awake)
+	if (host->bus_ops && !host->bus_dead && host->bus_ops->sleep) {
 		err = host->bus_ops->sleep(host);
+		if (!err)
+			mmc_card_set_sleep(host->card);
+	}
 
 	mmc_bus_put(host);
 
@@ -2588,6 +2622,16 @@ int mmc_pm_notify(struct notifier_block *notify_block,
 
 		if (!host->bus_ops || host->bus_ops->suspend)
 			break;
+
+		mmc_claim_host(host);
+		if (mmc_can_poweroff_notify(host->card)) {
+			int err = host->bus_ops->poweroff_notify(host,
+						MMC_PW_OFF_NOTIFY_SHORT);
+			if (err)
+				pr_info("%s: error [%d] in poweroff notify\n",
+					mmc_hostname(host), err);
+		}
+		mmc_release_host(host);
 
 		if (host->bus_ops->remove)
 			host->bus_ops->remove(host);
