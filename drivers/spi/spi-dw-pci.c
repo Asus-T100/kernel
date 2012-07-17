@@ -156,15 +156,9 @@ static int spi_dw_pci_runtime_suspend(struct device *dev)
 {
 	struct pci_dev *pdev = to_pci_dev(dev);
 	struct dw_spi_pci *dwpci = pci_get_drvdata(pdev);
-	int ret;
 
 	dev_dbg(dev, "PCI runtime suspend called\n");
-
-	ret = dw_spi_stop_queue(&dwpci->dws);
-	if (ret == 0)
-		spi_enable_chip(&dwpci->dws, 1);
-
-	return ret;
+	return dw_spi_suspend_host(&dwpci->dws);
 }
 
 static int spi_dw_pci_runtime_resume(struct device *dev)

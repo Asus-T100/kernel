@@ -734,9 +734,10 @@ int dw_spi_stop_queue(struct dw_spi *dws)
 	int status = 0;
 
 	spin_lock_irqsave(&dws->lock, flags);
-	dws->run = QUEUE_STOPPED;
 	if (!list_empty(&dws->queue))
 		status = -EBUSY;
+	else
+		dws->run = QUEUE_STOPPED;
 	spin_unlock_irqrestore(&dws->lock, flags);
 
 	return status;
