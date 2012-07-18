@@ -3052,6 +3052,7 @@ void mdfld_reset_panel_handler_work(struct work_struct *work)
 
 		restore_panel_controll_back(dev_priv);
 		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+		dev_priv->b_dsr_enable = dev_priv->b_dsr_enable_status;
 		printk(KERN_ALERT"End panel reset!!!\n");
 	} else {
 		printk(KERN_ALERT "%s invalid panel init\n",
