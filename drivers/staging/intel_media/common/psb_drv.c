@@ -2295,6 +2295,10 @@ static int psb_disp_ioctl(struct drm_device *dev, void *data,
 			ret = -1;
 		else {
 			if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, OSPM_UHB_ONLY_IF_ON)) {
+				/* If data=1, then force setting plane status. */
+				if (dp_ctrl->u.data == 1)
+					DISP_PLANEB_STATUS = DISPLAY_PLANE_DISABLE;
+
 				return -1;
 			}
 			/* Use Disable pipeB plane to turn off HDMI screen */
