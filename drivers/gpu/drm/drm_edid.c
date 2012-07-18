@@ -550,6 +550,7 @@ cea_for_each_detailed_block(u8 *ext, detailed_cb *cb, void *closure)
 		/* can't happen */
 		return;
 	case 1:
+	case 3:
 		/* have to infer how many blocks we have, check pixel clock */
 		for (i = 0; i < 6; i++)
 			if (det_base[18*i] || det_base[18*i+1])
