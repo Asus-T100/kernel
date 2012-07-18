@@ -482,4 +482,7 @@ extern void *penwell_otg_register_bc_callback(
 	int (*cb)(void *, int, struct otg_bc_cap *), void *arg);
 extern int penwell_otg_unregister_bc_callback(void *handler);
 
+extern int pnw_otg_ulpi_write(u8 reg, u8 val);
+extern int is_clovertrail(struct pci_dev *pdev);
+
 #endif /* __PENWELL_OTG_H__ */

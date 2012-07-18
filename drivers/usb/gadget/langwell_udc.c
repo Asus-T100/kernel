@@ -54,6 +54,9 @@
 
 #include "langwell_udc.h"
 
+#ifdef	OTG_TRANSCEIVER
+#include <linux/usb/penwell_otg.h>
+#endif
 
 #define	DRIVER_DESC	"Intel Langwell/Penwell USB Device Controller driver"
 #define	DRIVER_VERSION	"June 3, 2010"
@@ -1447,6 +1450,18 @@ static void langwell_udc_pullup(struct langwell_udc *dev, u32 on)
 			writel(usbcmd, &dev->op_regs->usbcmd);
 		}
 	} else if ((usbcmd & CMD_RUNSTOP) && !on) {
+
+#ifdef	OTG_TRANSCEIVER
+		/*BZ28614 WA:
+		* Tell PHY to transit to FS before clearing RS bit,
+		* this avoid PHY getting hang during the disconnect.
+		*/
+		if (is_clovertrail(dev->pdev)) {
+			if (pnw_otg_ulpi_write(ULPI_FUNCTRL, 0x65))
+				dev_err(&dev->pdev->dev,
+				"w/a 28614 ulpi write fail\n");
+		}
+#endif
 		usbcmd &= ~CMD_RUNSTOP;
 		writel(usbcmd, &dev->op_regs->usbcmd);
 	}

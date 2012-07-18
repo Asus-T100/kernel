@@ -112,10 +112,11 @@ static struct notifier_block pnw_sleep_pm_notifier = {
 	} \
 	} while (0)
 
-static inline int is_clovertrail(struct pci_dev *pdev)
+inline int is_clovertrail(struct pci_dev *pdev)
 {
 	return (pdev->vendor == 0x8086 && pdev->device == 0xE006);
 }
+EXPORT_SYMBOL_GPL(is_clovertrail);
 
 static const char *state_string(enum usb_otg_state state)
 {
@@ -804,6 +805,13 @@ penwell_otg_ulpi_write(struct intel_mid_otg_xceiv *iotg, u8 reg, u8 val)
 
 	return count ? 0 : -ETIMEDOUT;
 }
+
+int pnw_otg_ulpi_write(u8 reg, u8 val)
+{
+	return penwell_otg_ulpi_write(&the_transceiver->iotg,
+					reg, val);
+}
+EXPORT_SYMBOL_GPL(pnw_otg_ulpi_write);
 
 static enum msic_vendor penwell_otg_check_msic(void)
 {
