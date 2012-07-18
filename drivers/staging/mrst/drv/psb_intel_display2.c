@@ -71,10 +71,13 @@ void mdfldWaitForPipeDisable(struct drm_device *dev, int pipe)
 		if (!(temp & PIPEACONF_PIPE_STATE))
 			break;
 
-		udelay(20);
+		udelay(200);
 	}
 
-	PSB_DEBUG_ENTRY("cout = %d. \n", count);
+	if (count == COUNT_MAX)
+		DRM_ERROR("pipe %d fails to disable\n", pipe);
+
+	PSB_DEBUG_ENTRY("count = %d.\n", count);
 }
 
 void mdfldWaitForPipeEnable(struct drm_device *dev, int pipe)
@@ -102,10 +105,13 @@ void mdfldWaitForPipeEnable(struct drm_device *dev, int pipe)
 		if ((temp & PIPEACONF_PIPE_STATE))
 			break;
 
-		udelay(20);
+		udelay(200);
 	}
 
-	PSB_DEBUG_ENTRY("cout = %d. \n", count);
+	if (count == COUNT_MAX)
+		DRM_ERROR("pipe %d fails to enable\n", pipe);
+
+	PSB_DEBUG_ENTRY("count = %d.\n", count);
 }
 
 /*

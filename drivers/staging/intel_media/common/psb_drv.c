@@ -3027,6 +3027,27 @@ static int psb_dpu_dsr_off_ioctl(struct drm_device *dev, void *arg,
 	return 0;
 }
 
+static void wait_for_pipeb_finish(struct drm_device *dev,
+				  int pipenum)
+{
+	static int prev_pipe;
+	int tmp, i;
+
+	if (prev_pipe == 1 && pipenum == 0) {
+		/* switch from Pipe B to Pipe A */
+		for (i = 0; i < 1000; i++) {
+			tmp = REG_READ(PIPEBCONF);
+			if ((tmp >> 30) != 0x01)
+				break;
+			/* Pipe is not fully disabled */
+			usleep_range(100, 200);
+		}
+		if (i == 1000)
+			DRM_ERROR("Fail to wait pipe B\n");
+	}
+	prev_pipe = pipenum;
+}
+
 /*wait for vblank*/
 static void overlay_wait_vblank(struct drm_device *dev,
 				struct drm_file *file_priv,
@@ -3051,8 +3072,7 @@ static void overlay_wait_vblank(struct drm_device *dev,
 	 * the vblank waiting from being interrupted by randomly mode
 	 * setting & dpms from user space.
 	 */
-	if (!mutex_trylock(&dev->mode_config.mutex))
-		return;
+	mutex_lock(&dev->mode_config.mutex);
 
 	/*
 	 * FIXME: don't enable vblank in this way.
@@ -3069,7 +3089,10 @@ static void overlay_wait_vblank(struct drm_device *dev,
 	if (!psb_enable_vblank(dev, pipe)) {
 		dev_priv->b_is_in_idle = false;
 		dev_priv->dsr_idle_count = 0;
+		DRM_DEBUG("%s: start drm_wait_vblank()\n", __func__);
 		drm_wait_vblank(dev, (void *)&vblwait, file_priv);
+	} else {
+		DRM_DEBUG("%s: psb_enable_vblank() failed\n", __func__);
 	}
 
 	mutex_unlock(&dev->mode_config.mutex);
@@ -3291,6 +3314,11 @@ static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 				if (dev_priv->b_async_flip_enable &&
 					dev_priv->async_flip_update_fb)
 					dev_priv->async_flip_update_fb(dev, 0);
+
+				/* when switch back from HDMI to local
+				 * this ensures the Pipe B is fully disabled */
+				int pipenum = ((arg->overlay.OVADD >> 6) & 0x3) ? 1 : 0;
+				wait_for_pipeb_finish(dev, pipenum);
 
 				if (arg->overlay.b_wait_vblank)
 					overlay_wait_vblank(dev,

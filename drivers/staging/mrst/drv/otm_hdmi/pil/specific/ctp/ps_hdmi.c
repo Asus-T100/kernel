@@ -122,7 +122,7 @@ otm_hdmi_ret_t ps_hdmi_pci_dev_init(void *context, struct pci_dev *pdev)
 	}
 	ctx = (hdmi_context_t *)context;
 
-	pr_debug("\nget resource start\n");
+	pr_debug("get resource start\n");
 	result = pci_read_config_dword(pdev, 16, &vdc_start);
 	if (result != 0) {
 		rc = OTM_HDMI_ERR_FAILED;
@@ -130,7 +130,7 @@ otm_hdmi_ret_t ps_hdmi_pci_dev_init(void *context, struct pci_dev *pdev)
 	}
 	pci_address = vdc_start + PS_VDC_OFFSET;
 
-	pr_debug("\nmap IO region\n");
+	pr_debug("map IO region\n");
 	/* Map IO region and save its length */
 	ctx->io_length = PS_VDC_SIZE;
 	ctx->io_address = ioremap_cache(pci_address, ctx->io_length);
@@ -139,7 +139,7 @@ otm_hdmi_ret_t ps_hdmi_pci_dev_init(void *context, struct pci_dev *pdev)
 		goto exit;
 	}
 
-	pr_debug("\nget PCI dev revision\n");
+	pr_debug("get PCI dev revision\n");
 	result = pci_read_config_byte(pdev, 8, &pci_dev_revision);
 	if (result != 0) {
 		rc = OTM_HDMI_ERR_FAILED;

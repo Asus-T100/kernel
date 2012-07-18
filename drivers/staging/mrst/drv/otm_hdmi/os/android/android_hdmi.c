@@ -1972,16 +1972,6 @@ enum drm_connector_status android_hdmi_detect(struct drm_connector *connector)
 		dev_priv->bhdmiconnected = true;
 		return connector_status_connected;
 	} else {
-		/*
-		 * Clean up the HDMI connector attached encoder, to make
-		 * drm_crtc_helper_set_config() do mode setting each time,
-		 * especially when plug out and plug in HDMI.
-		 */
-#ifdef MFLD_HDMI_PR3
-		if (dev_priv->panel_desc & DISPLAY_B)
-			drm_helper_disable_unused_functions(dev);
-#endif
-
 #ifdef OTM_HDMI_HDCP_ENABLE
 #ifdef OTM_HDMI_HDCP_ALWAYS_ENC
 		if (otm_hdmi_hdcp_disable(hdmi_priv->context))
