@@ -471,6 +471,9 @@ int cloverview_sph_gpio_init(void)
 				goto err;
 			} else {
 				gpio_direction_output(SPH_CS_N, 0);
+
+				/* export CS_N sysfs interface */
+				gpio_export(SPH_CS_N, false);
 			}
 		} else {
 			retval = -ENODEV;
@@ -488,6 +491,9 @@ int cloverview_sph_gpio_init(void)
 				gpio_direction_output(SPH_RST_N, 0);
 				usleep_range(200, 500);
 				gpio_set_value(SPH_RST_N, 1);
+
+				/* export RST_N sysfs interface */
+				gpio_export(SPH_RST_N, false);
 			}
 		} else {
 			retval = -ENODEV;
