@@ -495,7 +495,7 @@ static void rpmb_process_request(struct work_struct *work)
 
 		sep_outgoing_msg_area->rpmb_command =
 			RSP_READ_COMPLETE;
-		dev_warn(&sep->pdev->dev,
+		dev_dbg(&sep->pdev->dev,
 			"emmc read completed\n");
 
 	} else if (sep_incomming_msg_area->
@@ -503,7 +503,7 @@ static void rpmb_process_request(struct work_struct *work)
 
 		sep_outgoing_msg_area->rpmb_command =
 			RSP_WRITE_COMPLETE;
-		dev_warn(&sep->pdev->dev,
+		dev_dbg(&sep->pdev->dev,
 			"emmc write completed\n");
 
 	} else if (sep_incomming_msg_area->
@@ -511,11 +511,11 @@ static void rpmb_process_request(struct work_struct *work)
 
 		sep_outgoing_msg_area->rpmb_command =
 			RSP_WRITE_CTR;
-		dev_warn(&sep->pdev->dev,
+		dev_dbg(&sep->pdev->dev,
 			"emmc write ctr complete\n");
 
 	} else {
-		dev_warn(&sep->pdev->dev,
+		dev_dbg(&sep->pdev->dev,
 			"emmc unknown complete\n");
 		sep_outgoing_msg_area->rpmb_command =
 			RSP_WRITE_CTR;
@@ -3466,7 +3466,7 @@ end_function:
 static int sep_free_dcb_handler(struct sep_device *sep,
 				struct sep_dma_context **dma_ctx)
 {
-	int error = -EINVAL;
+	int error = 0;
 
 	if (!dma_ctx || !(*dma_ctx)) {
 		dev_dbg(&sep->pdev->dev,
