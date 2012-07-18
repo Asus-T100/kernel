@@ -458,7 +458,12 @@ static int dwc_otg_notify_charger_type(struct dwc_otg2 *otg,
 		cap.mA = 1500;
 		break;
 	case CHRG_SDP:
+		/* Notify SDP current is 100ma before enumeration. */
+		if (otg->sdp_current == 0)
+			otg->sdp_current = 100;
+
 		if ((otg->sdp_current == 100) ||
+			(otg->sdp_current == 150) ||
 			(otg->sdp_current == 500) ||
 			(otg->sdp_current == 900)) {
 			cap.chrg_type = CHRG_SDP;
@@ -507,6 +512,7 @@ int otg_get_chr_status(struct otg_transceiver *_otg, void *data)
 	case CHRG_SDP:
 		if ((otg->sdp_current == 100) ||
 				(otg->sdp_current == 500) ||
+				(otg->sdp_current == 150) ||
 				(otg->sdp_current == 900)) {
 			cap->chrg_state = OTG_CHR_STATE_CONNECTED;
 			cap->chrg_type = CHRG_SDP;
@@ -863,6 +869,7 @@ static int dwc_otg_set_power(struct otg_transceiver *_otg,
 	struct dwc_otg2 *otg = the_transceiver;
 
 	if ((mA != 100) ||
+		(mA != 150) ||
 		(mA != 500) ||
 		(mA != 900)) {
 		otg_err(otg, "Device driver set invalid SDP current value!\n");
@@ -1205,13 +1212,15 @@ static enum dwc_otg_state do_a_host(struct dwc_otg2 *otg)
 	otg_write(otg, GCTL, 0x45801000);
 
 #ifdef CONFIG_DWC_CHARGER_DETECION
-	dwc_otg_enable_vbus(otg, 1);
+	if (otg->ctype != CHRG_ACA_DOCK) {
+		dwc_otg_enable_vbus(otg, 1);
 
-	/* meant receive vbus valid event*/
-	if (do_wait_vbus_raise(otg) !=
-			DWC_STATE_CHARGER_DETECTION) {
-		otg_err(otg, "Drive VBUS fail!\n");
-		return DWC_STATE_INVALID;
+		/* meant receive vbus valid event*/
+		if (do_wait_vbus_raise(otg) !=
+				DWC_STATE_CHARGER_DETECTION) {
+			otg_err(otg, "Drive VBUS fail!\n");
+			return DWC_STATE_INVALID;
+		}
 	}
 #endif
 
@@ -1249,6 +1258,7 @@ stay_host:
 	/* Higher priority first */
 	if (otg_events & OEVT_A_DEV_SESS_END_DET_EVNT) {
 		otg_dbg(otg, "OEVT_A_DEV_SESS_END_DET_EVNT\n");
+	if (otg->ctype != CHRG_ACA_DOCK)
 		dwc_otg_enable_vbus(otg, 0);
 
 		/* ACA-A or ACA-Dock plug out */
@@ -1267,7 +1277,8 @@ stay_host:
 		/* RID_A: ACA-A, ACA-Dock
 		 * RID_GND: B-Device */
 		if ((id != RID_A) && (id != RID_GND)) {
-			dwc_otg_enable_vbus(otg, 0);
+			if (otg->ctype != CHRG_ACA_DOCK)
+				dwc_otg_enable_vbus(otg, 0);
 			dwc_otg_notify_charger_type(otg,\
 					otg->ctype, OTG_CHR_STATE_DISCONNECTED);
 			spin_lock_irqsave(&otg->lock, flags);
