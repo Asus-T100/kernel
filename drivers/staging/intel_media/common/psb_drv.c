@@ -1508,6 +1508,15 @@ static int psb_do_init(struct drm_device *dev)
 
 	if (IS_MID(dev)) {
 		PSB_DEBUG_INIT("Init Topaz\n");
+
+		/*
+		 * Customer will boot droidboot, then boot the MOS kernel.
+		 * It is observed the video encode island is off during the
+		 * MOS kernel boot while the panel is not connected.
+		 * We need to power on it first, else will cause fabric error.
+		 */
+		ospm_power_island_up(OSPM_VIDEO_ENC_ISLAND);
+
 		/* for sku100L and sku100M, VEC is disabled in fuses */
 		if (IS_MDFLD(dev))
 			pnw_topaz_init(dev);
