@@ -2,6 +2,7 @@
 # Makefile for regulator drivers.
 #
 
+CFLAGS_pmic_avp.o			:= -Werror
 
 obj-$(CONFIG_REGULATOR) += core.o dummy.o
 obj-$(CONFIG_REGULATOR_FIXED_VOLTAGE) += fixed.o
@@ -43,5 +44,6 @@ obj-$(CONFIG_REGULATOR_ISL6271A) += isl6271a-regulator.o
 obj-$(CONFIG_REGULATOR_AB8500)	+= ab8500.o
 obj-$(CONFIG_REGULATOR_DB8500_PRCMU) += db8500-prcmu.o
 obj-$(CONFIG_REGULATOR_TPS65910) += tps65910-regulator.o
+obj-$(CONFIG_REGULATOR_PMIC_AVP) += pmic_avp.o
 
 ccflags-$(CONFIG_REGULATOR_DEBUG) += -DDEBUG
