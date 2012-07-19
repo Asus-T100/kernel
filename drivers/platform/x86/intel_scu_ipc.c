@@ -34,6 +34,8 @@
 #include <linux/ipc_device.h>
 #include <linux/kernel.h>
 #include <linux/bitops.h>
+#include <linux/sched.h>
+#include <linux/atomic.h>
 
 enum {
 	SCU_IPC_LINCROFT,
@@ -117,6 +119,7 @@ struct intel_ipc_controller {
 	int ioc;
 	struct completion cmd_complete;
 	int cmd;
+	atomic_t pending;
 };
 
 static struct intel_ipc_controller  ipcdev; /* Only one for now */
@@ -282,6 +285,8 @@ EXPORT_SYMBOL(intel_scu_ipc_simple_command);
 
 void intel_scu_ipc_lock(void)
 {
+	atomic_inc(&ipcdev.pending);
+
 	mutex_lock(&ipclock);
 
 	/* Prevent C-states beyond C6 */
@@ -295,6 +300,9 @@ void intel_scu_ipc_unlock(void)
 	pm_qos_update_request(qos, PM_QOS_DEFAULT_VALUE);
 
 	mutex_unlock(&ipclock);
+
+	if (!atomic_dec_and_test(&ipcdev.pending))
+		schedule();
 }
 EXPORT_SYMBOL_GPL(intel_scu_ipc_unlock);
 
@@ -443,6 +451,8 @@ static int ipc_probe(struct pci_dev *dev, const struct pci_device_id *id)
 		return -ENOMEM;
 
 	init_completion(&ipcdev.cmd_complete);
+
+	atomic_set(&ipcdev.pending, 0);
 
 	if (request_irq(dev->irq, ioc, IRQF_NO_SUSPEND, "intel_scu_ipc",
 				&ipcdev))
