@@ -23,6 +23,7 @@
 #include <linux/pm.h>
 #include <linux/usb/otg.h>
 #include <linux/notifier.h>
+#include <linux/wakelock.h>
 
 struct intel_mid_otg_xceiv;
 
@@ -132,6 +133,10 @@ struct intel_mid_otg_xceiv {
 
 	/* hnp poll lock */
 	spinlock_t			hnp_poll_lock;
+
+#ifdef CONFIG_USB_SUSPEND
+	struct wake_lock		wake_lock;
+#endif
 
 	/* start/stop USB Host function */
 	int	(*start_host)(struct intel_mid_otg_xceiv *iotg);

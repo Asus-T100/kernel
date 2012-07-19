@@ -19,6 +19,7 @@
 
 #include <linux/usb/otg.h>
 #include <linux/usb/intel_mid_otg.h>
+#include <linux/wakelock.h>
 
 static int usb_otg_suspend(struct usb_hcd *hcd)
 {
@@ -400,6 +401,10 @@ static int intel_mid_ehci_driver_register(struct pci_driver *host_driver)
 	iotg->resume_host = ehci_mid_resume_host;
 	iotg->resume_noirq_host = ehci_mid_resume_noirq_host;
 
+#ifdef CONFIG_USB_SUSPEND
+	wake_lock_init(&iotg->wake_lock, WAKE_LOCK_SUSPEND, "ehci_wake_lock");
+#endif
+
 	/* notify host driver is registered */
 	atomic_notifier_call_chain(&iotg->iotg_notifier,
 				MID_OTG_NOTIFY_HOSTADD, iotg);
@@ -423,6 +428,10 @@ static void intel_mid_ehci_driver_unregister(struct pci_driver *host_driver)
 	iotg->stop_host = NULL;
 	iotg->runtime_suspend_host = NULL;
 	iotg->runtime_resume_host = NULL;
+
+#ifdef CONFIG_USB_SUSPEND
+	wake_lock_destroy(&iotg->wake_lock);
+#endif
 
 	/* notify host driver is unregistered */
 	atomic_notifier_call_chain(&iotg->iotg_notifier,
