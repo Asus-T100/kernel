@@ -40,7 +40,6 @@
 #include <linux/hwmon.h>
 #include <linux/interrupt.h>
 #include <linux/gpio.h>
-
 #include <asm/intel_scu_ipc.h>
 
 #define DRIVER_NAME "bcove_bcu"
@@ -93,6 +92,24 @@
 
 /* Number of configurable thresholds for current and voltage */
 #define NUM_THRESHOLDS		8
+
+/* BCU real time status flags for corresponding input signals */
+#define SVWARN1			(1<<0)
+#define SVWARN2			(1<<1)
+#define SVCRIT			(1<<2)
+
+/* S_BCUCTRL register status bits */
+#define SBCUCTRL_CAMTORCH	(1<<3)
+#define SBCUCTRL_CAMFLDIS	(1<<2)
+#define SBCUCTRL_BCUDISW2       (1<<1)
+
+/* check whether bit is sticky or not by checking 5th bit */
+#define IS_STICKY(data)         (!!(data & 0x10))
+
+/* check whether signal asserted for VW1/VW2/VC */
+#define IS_ASSRT_ON_VW1(data)	(!!(data & 0x01))
+#define IS_ASSRT_ON_VW2(data)	(!!(data & 0x02))
+#define IS_ASSRT_ON_VC(data)	(!!(data & 0x04))
 
 /* 'enum' of BCU events */
 enum bcu_events { WARN1, WARN2, CRIT, GSMPULSE, TXPWRTH, UNKNOWN, __COUNT };
@@ -334,11 +351,108 @@ static ssize_t show_crit_shutdown(struct device *dev,
 	return ret ? ret : sprintf(buf, "%d\n", flag);
 }
 
-static irqreturn_t ocd_intrpt(int irq, void *dev_data)
+static void handle_VW1_event(int event, void *dev_data)
+{
+	uint8_t irq_status, beh_data;
+	struct ocd_info *cinfo = (struct ocd_info *)dev_data;
+	int ret;
+
+	dev_info(cinfo->dev, "EM:BCU: BCU Event %d has occured\n", event);
+	/* Notify using UEvent */
+	kobject_uevent(&cinfo->dev->kobj, KOBJ_CHANGE);
+
+	ret = intel_scu_ipc_ioread8(S_BCUINT, &irq_status);
+	if (ret)
+		goto ipc_fail;
+	dev_dbg(cinfo->dev, "EM:BCU: S_BCUINT: %x\n", irq_status);
+
+	/* If Vsys is below WARN1 level-No action required from driver */
+	if (!(irq_status & SVWARN1)) {
+		/* Vsys is above WARN1 level */
+		ret = intel_scu_ipc_ioread8(CAMTORCH_BEH, &beh_data);
+		if (ret)
+			goto ipc_fail;
+
+		if (IS_ASSRT_ON_VW1(beh_data) && IS_STICKY(beh_data)) {
+			ret = intel_scu_ipc_update_register(S_BCUCTRL,
+				0xFF, SBCUCTRL_CAMTORCH);
+			if (ret)
+				goto ipc_fail;
+		}
+	}
+	return;
+
+ipc_fail:
+	dev_err(&cinfo->dev, "EM:BCU: ipc read/write failed:func:%s()\n",
+								__func__);
+	return;
+}
+
+static void handle_VW2_event(int event, void *dev_data)
+{
+	uint8_t irq_status, beh_data;
+	struct ocd_info *cinfo = (struct ocd_info *)dev_data;
+	int ret;
+
+	dev_info(cinfo->dev, "EM:BCU: BCU Event %d has occured\n", event);
+	/* Notify using UEvent */
+	kobject_uevent(&cinfo->dev->kobj, KOBJ_CHANGE);
+
+	ret = intel_scu_ipc_ioread8(S_BCUINT, &irq_status);
+	if (ret)
+		goto ipc_fail;
+	dev_dbg(cinfo->dev, "EM:BCU: S_BCUINT: %x\n", irq_status);
+
+	/* If Vsys is below WARN2 level-No action required from driver */
+	if (!(irq_status & SVWARN2)) {
+		/* Vsys is above WARN2 level */
+		ret = intel_scu_ipc_ioread8(CAMFLDIS_BEH, &beh_data);
+		if (ret)
+			goto ipc_fail;
+
+		if (IS_ASSRT_ON_VW2(beh_data) && IS_STICKY(beh_data)) {
+			ret = intel_scu_ipc_update_register(S_BCUCTRL,
+						0xFF, SBCUCTRL_CAMFLDIS);
+			if (ret)
+				goto ipc_fail;
+		}
+
+		ret = intel_scu_ipc_ioread8(BCUDISW2_BEH, &beh_data);
+		if (ret)
+			goto ipc_fail;
+
+		if (IS_ASSRT_ON_VW2(beh_data) && IS_STICKY(beh_data)) {
+			ret = intel_scu_ipc_update_register(S_BCUCTRL,
+				0xFF, SBCUCTRL_BCUDISW2);
+			if (ret)
+				goto ipc_fail;
+		}
+	}
+	return;
+
+ipc_fail:
+	dev_err(&cinfo->dev, "EM:BCU: ipc read/write failed:func:%s()\n",
+								__func__);
+	return;
+}
+
+static void handle_VC_event(int event, void *dev_data)
+{
+	struct ocd_info *cinfo = (struct ocd_info *)dev_data;
+
+	dev_info(cinfo->dev, "EM:BCU: BCU Event %d has occured\n", event);
+	/* Notify using UEvent */
+	kobject_uevent(&cinfo->dev->kobj, KOBJ_CHANGE);
+
+	return;
+}
+
+
+
+static irqreturn_t ocd_intrpt_thread_handler(int irq, void *dev_data)
 {
 	int ret, event;
 	unsigned int irq_data;
-	uint8_t irq_status;
 	struct ocd_info *cinfo = (struct ocd_info *)dev_data;
 
 	if (!cinfo)
@@ -348,38 +462,37 @@ static irqreturn_t ocd_intrpt(int irq, void *dev_data)
 
 	irq_data = ioread8(cinfo->bcu_intr_addr);
 
-	ret = intel_scu_ipc_ioread8(S_BCUINT, &irq_status);
-	if (ret)
-		goto ipc_fail;
-
-	dev_dbg(cinfo->dev, "S_BCUINT: %.2x\n", irq_status);
-
+	/* we are not handling(no action taken) GSMPULSE_IRQ and
+						TXPWRTH_IRQ event */
 	if (irq_data & VWARN1_IRQ) {
 		event = WARN1;
+		handle_VW1_event(event, dev_data);
 	} else if (irq_data & VWARN2_IRQ) {
 		event = WARN2;
+		handle_VW2_event(event, dev_data);
 	} else if (irq_data & VCRIT_IRQ) {
 		event = CRIT;
+		handle_VC_event(event, dev_data);
 	} else if (irq_data & GSMPULSE_IRQ) {
 		event = GSMPULSE;
+		dev_info(cinfo->dev, "EM:BCU: BCU Event %d has occured\n",
+									event);
 	} else if (irq_data & TXPWRTH_IRQ) {
 		event = TXPWRTH;
+		dev_info(cinfo->dev, "EM:BCU: BCU Event %d has occured\n",
+									event);
 	} else {
 		event = UNKNOWN;
-		ret = IRQ_HANDLED;
-		dev_err(cinfo->dev, "Invalid Interrupt\n");
-		goto ipc_fail;
+		dev_err(cinfo->dev, "EM:BCU: Invalid Interrupt\n");
 	}
 
-	dev_info(cinfo->dev, "BCU Event %d has occured\n", event);
-
-	/* Notify using UEvent */
-	kobject_uevent(&cinfo->dev->kobj, KOBJ_CHANGE);
-
 	/* Unmask BCU Interrupt in the mask register */
-	ret = intel_scu_ipc_update_register(MIRQLVL1, 0xFF, BCU_ALERT);
-	if (ret)
+	ret = intel_scu_ipc_update_register(MIRQLVL1, 0x00, BCU_ALERT);
+	if (ret) {
+		dev_err(&cinfo->dev,
+			"EM:BCU: Unmasking of BCU failed:%d\n", ret);
 		goto ipc_fail;
+	}
 
 	ret = IRQ_HANDLED;
 
@@ -449,18 +562,37 @@ static int mrfl_ocd_probe(struct ipc_device *ipcdev)
 	}
 
 	cinfo->bcu_intr_addr = ioremap_nocache(PMIC_SRAM_BCU_ADDR, IOMAP_LEN);
-	if (ret) {
+	if (!cinfo->bcu_intr_addr) {
 		ret = -ENOMEM;
 		dev_err(&ipcdev->dev, "ioremap_nocache failed\n");
 		goto exit_hwmon;
 	}
 
+	/* Unmask 2nd level BCU Interrupts-VW1,VW2&VC in the mask register */
+	ret = intel_scu_ipc_update_register(MBCUIRQ,
+				0x00, VWARN1_IRQ | VWARN2_IRQ | VCRIT_IRQ);
+	if (ret) {
+		dev_err(&ipcdev->dev,
+			"EM:BCU: Unmasking of VW1 failed:%d\n", ret);
+		goto exit_ioremap;
+	}
+
+	/* Unmask 1st level BCU interrupt in the mask register */
+	ret = intel_scu_ipc_update_register(MIRQLVL1, 0x00, BCU_ALERT);
+	if (ret) {
+		dev_err(&ipcdev->dev,
+			"EM:BCU: Unmasking of BCU failed:%d\n", ret);
+		goto exit_ioremap;
+	}
+
 	/* Register for Interrupt Handler */
-	ret = request_threaded_irq(cinfo->irq, NULL, ocd_intrpt,
+	ret = request_threaded_irq(cinfo->irq, NULL,
+						ocd_intrpt_thread_handler,
 						IRQF_TRIGGER_RISING,
 						DRIVER_NAME, cinfo);
 	if (ret) {
-		dev_err(&ipcdev->dev, "request_threaded_irq failed:%d\n", ret);
+		dev_err(&ipcdev->dev,
+			"EM:BCU: request_threaded_irq failed:%d\n", ret);
 		goto exit_ioremap;
 	}
 
