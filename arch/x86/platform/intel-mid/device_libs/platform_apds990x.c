@@ -19,9 +19,25 @@
 void *apds990x_platform_data(void *info)
 {
 	static struct apds990x_platform_data platform_data = {
-		.pdrive = 0,
-		.ppcount = 1,
+		.cf = {
+			.cf1    = 4096,
+			.irf1   = 9134,
+			.cf2    = 2867,
+			.irf2   = 5816,
+			.df     = 52,
+			.ga	= 1966 * 9 / 2,
+		},
+		.pdrive         = 0,
+		.ppcount        = 1,
 	};
+
+	if (spid.product_line_id == INTEL_MFLDP_LEX_ENG) {
+		if (spid.hardware_id < MFLDP_LEX_PR21)
+			platform_data.cf.ga = 1966 / 2;
+		else
+			platform_data.cf.ga = 1966 * 4;
+	}
+
 	platform_data.gpio_number = get_gpio_by_name("AL-intr");
 
 	return &platform_data;
