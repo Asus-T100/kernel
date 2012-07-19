@@ -896,6 +896,14 @@ static irqreturn_t ehci_irq (struct usb_hcd *hcd)
 		if (hcd->state == HC_STATE_SUSPENDED)
 			usb_hcd_resume_root_hub(hcd);
 
+#ifdef CONFIG_USB_SUSPEND
+	/* add time-out wakelock */
+	if (hcd->wake_lock) {
+		wake_lock_timeout(hcd->wake_lock, 5 * HZ);
+		ehci_dbg(ehci, "add 5s wake_lock for connect change\n");
+	}
+#endif
+
 		/* get per-port change detect bits */
 		if (ehci->has_ppcd)
 			ppcd = status >> 16;
