@@ -37,8 +37,6 @@
 #include <linux/reboot.h>
 #include <linux/delay.h>
 #include <linux/notifier.h>
-#include <linux/miscdevice.h>
-#include <linux/atomic.h>
 
 /* Status register bits */
 #define STATUS_POR_BIT		(1 << 1)
@@ -320,94 +318,9 @@ static struct notifier_block max17042_reboot_notifier_block = {
 
 static void set_soc_intr_thresholds(struct max17042_chip *chip, int off);
 static void save_runtime_params(struct max17042_chip *chip);
-static void set_chip_config(struct max17042_chip *chip);
 static u16 fg_vfSoc;
 static struct max17042_config_data *fg_conf_data;
 static struct i2c_client *max17042_client;
-
-
-atomic_t fopen_count;
-
-static void update_runtime_params(struct max17042_chip *chip);
-
-static int dev_file_open(struct inode *i, struct file *f)
-{
-	if (atomic_read(&fopen_count))
-		return -EBUSY;
-	atomic_inc(&fopen_count);
-	return 0;
-}
-
-static int dev_file_close(struct inode *i, struct file *f)
-{
-	atomic_dec(&fopen_count);
-	return 0;
-}
-
-static ssize_t dev_file_read(struct file *f, char __user *buf,
-			size_t len, loff_t *off)
-{
-	struct max17042_chip *chip = i2c_get_clientdata(max17042_client);
-	int ret;
-
-	if (!chip->pdata->is_init_done) {
-		dev_err(&max17042_client->dev,
-			"MAX17042 is not initialized.\n");
-		return -ECANCELED;
-	}
-
-	update_runtime_params(chip);
-
-	if (sizeof(*fg_conf_data) > len)
-		return -EINVAL;
-
-	ret = copy_to_user(buf, fg_conf_data, sizeof(*fg_conf_data));
-	if (!ret)
-		return sizeof(*fg_conf_data);
-
-	return -EINVAL;
-}
-
-static ssize_t dev_file_write(struct file *f, const char __user *buf,
-			size_t len, loff_t *off)
-{
-	struct max17042_chip *chip = i2c_get_clientdata(max17042_client);
-
-	if (chip->pdata->is_init_done) {
-		dev_err(&max17042_client->dev, "Already initialized."
-					"So ignoring new set of data\n");
-		return -ECANCELED;
-	}
-
-	if (len > sizeof(*fg_conf_data))
-		return -EINVAL;
-
-	if (copy_from_user(fg_conf_data, buf, len))
-		return -EINVAL;
-
-	set_chip_config(chip);
-
-	if (chip->pdata->is_init_done)
-		dev_info(&max17042_client->dev,
-				"MAX17042 initialized successfully\n");
-
-	/* Return no. of bytes written */
-	return len;
-}
-
-static const struct file_operations helper_fops = {
-	.owner = THIS_MODULE,
-	.open = &dev_file_open,
-	.release = &dev_file_close,
-	.read = &dev_file_read,
-	.write = &dev_file_write,
-};
-
-static struct miscdevice fg_helper = {
-	.minor = MISC_DYNAMIC_MINOR,
-	.name = "maxim",
-	.fops = &helper_fops,
-};
 
 static enum power_supply_property max17042_battery_props[] = {
 	POWER_SUPPLY_PROP_PRESENT,
@@ -1122,8 +1035,14 @@ static void load_new_capacity_params(struct max17042_chip *chip, bool is_por)
 	max17042_write_reg(chip->client, MAX17042_RepSOC, fg_vfSoc);
 }
 
-static void update_runtime_params(struct max17042_chip *chip)
+static void save_runtime_params(struct max17042_chip *chip)
 {
+	int size, retval;
+
+	dev_dbg(&chip->client->dev, "%s\n", __func__);
+
+	if (!chip->pdata->save_config_data || !chip->pdata->is_init_done)
+		return ;
 
 	fg_conf_data->rcomp0 = max17042_read_reg(chip->client,
 							MAX17042_RCOMP0);
@@ -1160,18 +1079,6 @@ static void update_runtime_params(struct max17042_chip *chip)
 
 	/* Dump data before saving */
 	dump_fg_conf_data(chip);
-}
-
-static void save_runtime_params(struct max17042_chip *chip)
-{
-	int size, retval;
-
-	dev_dbg(&chip->client->dev, "%s\n", __func__);
-
-	if (!chip->pdata->save_config_data || !chip->pdata->is_init_done)
-		return ;
-
-	update_runtime_params(chip);
 
 	size = sizeof(*fg_conf_data) - sizeof(fg_conf_data->cell_char_tbl);
 	retval = chip->pdata->save_config_data(DRV_NAME, fg_conf_data, size);
@@ -1327,7 +1234,7 @@ static void reset_max17042(struct max17042_chip *chip)
 
 static void max17042_restore_conf_data(struct max17042_chip *chip)
 {
-	int retval = 0, size;
+	int retval = 0, val, size;
 
 	/* return if lock already acquired */
 	if (!mutex_trylock(&chip->init_lock))
@@ -1344,7 +1251,47 @@ static void max17042_restore_conf_data(struct max17042_chip *chip)
 		} else if (retval < 0) {	/* device not ready */
 			dev_warn(&chip->client->dev, "device not ready\n");
 		} else {			/* device ready */
-			set_chip_config(chip);
+			/* Dump data after restoring */
+			dump_fg_conf_data(chip);
+
+			val = max17042_read_reg(chip->client, MAX17042_STATUS);
+			dev_info(&chip->client->dev, "Status reg: %x\n", val);
+			if (!fg_conf_data->config_init ||
+						(val & STATUS_POR_BIT)) {
+				dev_info(&chip->client->dev,
+					"config data needs to be loaded\n");
+#ifdef CONFIG_BOARD_REDRIDGE || CONFIG_BOARD_CTP
+				reset_max17042(chip);
+#endif
+				retval = init_max17042_chip(chip);
+				if (retval < 0) {
+					dev_err(&chip->client->dev,
+						"maxim chip init failed\n");
+					reset_max17042(chip);
+					chip->pdata->save_config_data = NULL;
+				}
+				/* enable Alerts for SOCRep */
+				max17042_write_reg(chip->client,
+						MAX17042_MiscCFG, 0x0000);
+
+				/* disable the T-alert sticky bit */
+				max17042_reg_read_modify(chip->client,
+						MAX17042_CONFIG,
+						CONFIG_TSTICKY_BIT_SET, 0);
+
+				/* enable alert pin */
+				max17042_reg_read_modify(chip->client,
+						MAX17042_CONFIG,
+						CONFIG_ALRT_BIT_ENBL, 1);
+			}
+			chip->pdata->is_init_done = 1;
+
+			/* multiply with 1000 to align with
+			 * linux power supply sub system.
+			 */
+			chip->charge_full_des =
+					(fg_conf_data->design_cap / 2) * 1000;
+
 			/* mark the dirty byte in non-volatile memory */
 			if (!fg_conf_data->config_init && retval >= 0) {
 				fg_conf_data->config_init = 0x1;
@@ -1359,44 +1306,8 @@ static void max17042_restore_conf_data(struct max17042_chip *chip)
 		}
 	}
 
+
 	mutex_unlock(&chip->init_lock);
-}
-
-static void set_chip_config(struct max17042_chip *chip)
-{
-	int val, retval;
-
-	/* Dump data after restoring */
-	dump_fg_conf_data(chip);
-
-	val = max17042_read_reg(chip->client, MAX17042_STATUS);
-	dev_info(&chip->client->dev, "Status reg: %x\n", val);
-	if (!fg_conf_data->config_init || (val & STATUS_POR_BIT)) {
-		dev_info(&chip->client->dev, "Config data should be loaded\n");
-#ifdef CONFIG_BOARD_REDRIDGE
-		reset_max17042(chip);
-#endif
-		retval = init_max17042_chip(chip);
-		if (retval < 0) {
-			dev_err(&chip->client->dev, "maxim chip init failed\n");
-			reset_max17042(chip);
-			chip->pdata->save_config_data = NULL;
-		}
-		/* enable Alerts for SOCRep */
-		max17042_write_reg(chip->client, MAX17042_MiscCFG, 0x0000);
-
-		/* disable the T-alert sticky bit */
-		max17042_reg_read_modify(chip->client, MAX17042_CONFIG,
-						CONFIG_TSTICKY_BIT_SET, 0);
-
-		/* enable alert pin */
-		max17042_reg_read_modify(chip->client, MAX17042_CONFIG,
-						CONFIG_ALRT_BIT_ENBL, 1);
-	}
-	chip->pdata->is_init_done = 1;
-
-	/* multiply with 1000 to align with linux power supply sub system */
-	chip->charge_full_des = (fg_conf_data->design_cap / 2) * 1000;
 }
 
 static void max17042_init_worker(struct work_struct *work)
@@ -1521,8 +1432,8 @@ static void max17042_evt_worker(struct work_struct *work)
 		if (chip->pdata->is_lowbatt_shutdown_enabled)
 			chip->pdata->is_lowbatt_shutdown =
 				chip->pdata->is_lowbatt_shutdown_enabled();
-		if (!chip->pdata->file_sys_storage_enabled)
-			schedule_work(&chip->init_worker);
+
+		schedule_work(&chip->init_worker);
 	}
 
 	power_supply_changed(&chip->battery);
@@ -1741,9 +1652,6 @@ static int __devinit max17042_probe(struct i2c_client *client,
 	chip->client = client;
 	chip->pdata = client->dev.platform_data;
 
-	if (chip->pdata->file_sys_storage_enabled)
-		misc_register(&fg_helper);
-
 	i2c_set_clientdata(client, chip);
 	max17042_client = client;
 
@@ -1874,8 +1782,7 @@ static int __devinit max17042_probe(struct i2c_client *client,
 		dev_warn(&client->dev, "cannot create sysfs entry\n");
 
 	/* Register reboot notifier callback */
-	if (!chip->pdata->file_sys_storage_enabled)
-		register_reboot_notifier(&max17042_reboot_notifier_block);
+	register_reboot_notifier(&max17042_reboot_notifier_block);
 
 	return 0;
 }
@@ -1884,10 +1791,7 @@ static int __devexit max17042_remove(struct i2c_client *client)
 {
 	struct max17042_chip *chip = i2c_get_clientdata(client);
 
-	if (chip->pdata->file_sys_storage_enabled)
-		misc_deregister(&fg_helper);
-	else
-		unregister_reboot_notifier(&max17042_reboot_notifier_block);
+	unregister_reboot_notifier(&max17042_reboot_notifier_block);
 	device_remove_file(&client->dev, &dev_attr_disable_shutdown_methods);
 	device_remove_file(&client->dev, &dev_attr_enable_fake_temp);
 	max17042_remove_debugfs(chip);
