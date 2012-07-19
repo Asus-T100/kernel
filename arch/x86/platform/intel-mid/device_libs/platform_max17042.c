@@ -201,7 +201,8 @@ void *max17042_platform_data(void *info)
 #ifdef CONFIG_BOARD_CTP
 	platform_data.enable_current_sense = true;
 	platform_data.technology = POWER_SUPPLY_TECHNOLOGY_LION;
-	platform_data.file_sys_storage_enabled = 1;
+	platform_data.restore_config_data = ctp_fg_restore_config_data;
+	platform_data.save_config_data = ctp_fg_save_config_data;
 	platform_data.battery_health = ctp_get_battery_health;
 #endif
 #ifdef CONFIG_CHARGER_SMB347 /* redridge dv10 */
