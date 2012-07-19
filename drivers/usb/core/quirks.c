@@ -183,11 +183,14 @@ void usb_detect_quirks(struct usb_device *udev)
 				udev->quirks);
 
 	/* For the present, all devices default to USB-PERSIST enabled */
-#if 0		/* was: #ifdef CONFIG_PM */
+#ifdef CONFIG_PM	/* was: #ifdef CONFIG_PM */
+#if 0
 	/* Hubs are automatically enabled for USB-PERSIST */
 	if (udev->descriptor.bDeviceClass == USB_CLASS_HUB)
 		udev->persist_enabled = 1;
-
+#else
+	udev->persist_enabled = 0;
+#endif
 #else
 	/* In the absence of PM, we can safely enable USB-PERSIST
 	 * for all devices.  It will affect things like hub resets
