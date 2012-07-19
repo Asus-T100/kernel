@@ -156,7 +156,7 @@ int sst_start_mrfld(void)
  * returns error or 0 if list creation fails or pass.
   */
 
-void sst_fill_sglist(unsigned long ram, struct dma_block_info *block,
+int sst_fill_sglist(unsigned long ram, struct dma_block_info *block,
 		struct scatterlist **sg_src, struct scatterlist **sg_dst)
 {
 	u32 offset;
@@ -181,12 +181,15 @@ void sst_fill_sglist(unsigned long ram, struct dma_block_info *block,
 							SST_MAX_DMA_LEN);
 		}
 
+		if (!sg_src || !sg_dst)
+			return -ENOMEM;
 		sg_set_buf(*sg_src, (void *)src, len);
 		sg_set_buf(*sg_dst, (void *)dstn, len);
 		*sg_src = sg_next(*sg_src);
 		*sg_dst = sg_next(*sg_dst);
 	} while (offset > 0);
 
+	return 0;
 }
 
 static inline int sst_validate_fw_elf(const struct firmware *sst_fw)
@@ -271,7 +274,7 @@ static int sst_parse_module(struct fw_module_header *module,
 	struct dma_block_info *block;
 	u32 count;
 	unsigned long ram;
-	int sg_len = 0;
+	int retval, sg_len = 0;
 	struct scatterlist *sg_src, *sg_dst;
 
 	pr_debug("module sign %s size %x blocks %x type %x\n",
@@ -324,7 +327,14 @@ static int sst_parse_module(struct fw_module_header *module,
 		/*converting from physical to virtual because
 		scattergather list works on virtual pointers*/
 		ram = (int) phys_to_virt(ram);
-		sst_fill_sglist(ram, block, &sg_src, &sg_dst);
+		retval = sst_fill_sglist(ram, block, &sg_src, &sg_dst);
+		if (retval) {
+			kfree(sg_src);
+			kfree(sg_dst);
+			sg_src = NULL;
+			sg_dst = NULL;
+			return retval;
+		}
 		block = (void *)block + sizeof(*block) + block->size;
 	}
 	return 0;

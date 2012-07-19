@@ -291,7 +291,7 @@ static int __devinit intel_sst_compr_probe(struct platform_device *pdev)
 					THIS_MODULE, 0, &card);
 	if (ret) {
 		pr_err("failed to create the sound card\n");
-		return ret;
+		goto unreg_sst;
 	}
 	sst_compr.card = card;
 

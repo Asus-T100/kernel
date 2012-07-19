@@ -278,8 +278,10 @@ int sst_alloc_stream_mfld(char *params)
 
 
 
-	if (sst_check_device_type(device, num_ch, &pcm_slot))
+	if (sst_check_device_type(device, num_ch, &pcm_slot)) {
+		kfree(sparams);
 		return -EINVAL;
+	}
 	mutex_lock(&sst_drv_ctx->stream_lock);
 	str_id = device;
 	mutex_unlock(&sst_drv_ctx->stream_lock);
@@ -289,8 +291,10 @@ int sst_alloc_stream_mfld(char *params)
 	sst_init_stream(&sst_drv_ctx->streams[str_id], codec,
 			str_id, stream_ops, pcm_slot);
 	/* send msg to FW to allocate a stream */
-	if (sst_create_large_msg(&msg))
+	if (sst_create_large_msg(&msg)) {
+		kfree(sparams);
 		return -ENOMEM;
+	}
 
 	alloc_param.str_type.codec_type = codec;
 	alloc_param.str_type.str_type = SST_STREAM_TYPE_MUSIC;

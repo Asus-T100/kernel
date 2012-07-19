@@ -177,7 +177,7 @@ int clv_soc_jack_gpio_detect(void)
 {
 	struct snd_soc_jack_gpio *gpio = &hs_gpio[0];
 	int enable, status;
-	unsigned int irq;
+	int irq;
 	struct snd_soc_jack *jack = gpio->jack;
 	struct snd_soc_codec *codec = jack->codec;
 	struct clv_mc_private *ctx =
@@ -198,6 +198,10 @@ int clv_soc_jack_gpio_detect(void)
 		if (!atomic_dec_return(&ctx->bpirq_flag)) {
 			gpio = &hs_gpio[1];
 			irq = gpio_to_irq(gpio->gpio);
+			if (irq < 0) {
+				pr_err("%d:Failed to map gpio_to_irq\n", irq);
+				return status;
+			}
 			/* Disable Button_press interrupt if no Headset */
 			pr_debug("Disable %d interrupt line\n", irq);
 			disable_irq_nosync(irq);
@@ -223,8 +227,7 @@ int clv_soc_jack_gpio_detect(void)
 static void headset_status_verify(struct work_struct *work)
 {
 	struct snd_soc_jack_gpio *gpio = &hs_gpio[0];
-	int enable, status;
-	unsigned int irq;
+	int enable, status, irq;
 	struct snd_soc_jack *jack = gpio->jack;
 	struct snd_soc_codec *codec = jack->codec;
 	unsigned int mask = SND_JACK_HEADSET;
@@ -240,6 +243,10 @@ static void headset_status_verify(struct work_struct *work)
 	status = cs42l73_hp_detection(codec, jack, enable);
 	gpio = &hs_gpio[1];
 	irq = gpio_to_irq(gpio->gpio);
+	if (irq < 0) {
+		pr_err("%d:Failed to map gpio_to_irq\n", irq);
+		return;
+	}
 
 	/* Enable Button_press interrupt if HS is inserted
 	 * and interrupts are not already enabled
@@ -277,8 +284,7 @@ static void headset_status_verify(struct work_struct *work)
 int clv_soc_jack_gpio_detect_bp(void)
 {
 	struct snd_soc_jack_gpio *gpio = &hs_gpio[1];
-	int enable, hs_status, status;
-	unsigned int irq;
+	int enable, hs_status, status, irq;
 	struct snd_soc_jack *jack = gpio->jack;
 	struct snd_soc_codec *codec = jack->codec;
 	struct clv_mc_private *ctx =
@@ -311,6 +317,11 @@ int clv_soc_jack_gpio_detect_bp(void)
 			set_mic_bias(jack, MIC_BIAS_DISABLE);
 			gpio = &hs_gpio[1];
 			irq = gpio_to_irq(gpio->gpio);
+			if (irq < 0) {
+				pr_err("%d:Failed to map gpio_to_irq\n", irq);
+				return status;
+			}
+
 			/* Disable Button_press interrupt if no Headset */
 			pr_debug("Disable %d interrupt line\n", irq);
 			disable_irq_nosync(irq);
@@ -432,11 +443,10 @@ static int clv_init(struct snd_soc_pcm_runtime *runtime)
 {
 	struct snd_soc_codec *codec = runtime->codec;
 	struct snd_soc_dapm_context *dapm = &codec->dapm;
-	int ret;
+	int ret, irq;
 	struct snd_soc_card *card = runtime->card;
 	struct snd_soc_jack_gpio *gpio = &hs_gpio[1];
 	struct clv_mc_private *ctx = snd_soc_card_get_drvdata(runtime->card);
-	unsigned int irq;
 
 	/* Set codec bias level */
 	clv_set_bias_level(card, dapm, SND_SOC_BIAS_OFF);
@@ -491,6 +501,11 @@ static int clv_init(struct snd_soc_pcm_runtime *runtime)
 		return ret;
 	}
 	irq = gpio_to_irq(gpio->gpio);
+	if (irq < 0) {
+		pr_err("%d:Failed to map gpio_to_irq\n", irq);
+		return irq;
+	}
+
 	/* Disable Button_press interrupt if no Headset */
 	pr_err("Disable %d interrupt line\n", irq);
 	disable_irq_nosync(irq);
