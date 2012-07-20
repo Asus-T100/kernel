@@ -831,18 +831,11 @@ end:
 
 }
 
-static int bcove_init(void)
+static int bcove_init(struct batt_charging_profile bcprof)
 {
-	struct batt_charging_profile bcprof;
-	int ret, i;
+	int ret, i, temp_mon_ranges;
 	u8 addr_tzone, addr_cv, addr_cc, reg_val;
 	u16 adc_val;
-
-	memset(&bcprof, 0x00, sizeof(bcprof));
-
-	if (get_batt_charging_profile(&bcprof) < 0)
-		return -EINVAL;
-
 
 	ret = intel_scu_ipc_update_register(CHGRCTRL0_ADDR, SWCONTROL_ENABLE,
 					    CHGRCTRL0_SWCONTROL_MASK);
@@ -856,8 +849,10 @@ static int bcove_init(void)
 	addr_cc = TT_CHRCCHOTVAL_ADDR;
 	addr_cv = TT_CHRCVHOTVAL_ADDR;
 
-	/* TODO: Check if tempmon range < 4 */
-	for (i = 0; i < bcprof.temp_mon_ranges; ++i) {
+	temp_mon_ranges = min_t(u16, bcprof.temp_mon_ranges,
+				BATT_PROF_MAX_TEMP_NR_RNG);
+
+	for (i = 0; i < temp_mon_ranges; ++i) {
 
 		ret =
 		    CONVERT_TEMP_TO_ADC(bcprof.temp_mon_range[i].temp_up_lim,
@@ -954,23 +949,24 @@ static struct bc_chrgr_drv_context chc = {
 
 static inline void print_battery_profile(struct batt_charging_profile bprof)
 {
-	int i;
+	int i, temp_mon_ranges;
 
 	dev_info(chc.dev, "ChrgProf: batt_id:%s\n", bprof.batt_id);
-	dev_info(chc.dev, "ChrgProf: low_batt_mV:%u\n", bprof.low_batt_mV);
+	dev_info(chc.dev, "ChrgProf: battery_type:%u\n", bprof.battery_type);
+	dev_info(chc.dev, "ChrgProf: capacity:%u\n", bprof.capacity);
+	dev_info(chc.dev, "ChrgProf: voltage_max:%u\n", bprof.voltage_max);
 	dev_info(chc.dev, "ChrgProf: chrg_term_mA:%u\n", bprof.chrg_term_mA);
+	dev_info(chc.dev, "ChrgProf: low_batt_mV:%u\n", bprof.low_batt_mV);
 	dev_info(chc.dev, "ChrgProf: disch_tmp_ul:%u\n", bprof.disch_tmp_ul);
 	dev_info(chc.dev, "ChrgProf: disch_tmp_ll:%u\n", bprof.disch_tmp_ll);
-	dev_info(chc.dev, "ChrgProf: voltage_max:%u\n", bprof.voltage_max);
-	dev_info(chc.dev, "ChrgProf: battery_type:%u\n", bprof.battery_type);
 	dev_info(chc.dev, "ChrgProf: temp_mon_ranges:%u\n",
 			bprof.temp_mon_ranges);
+	temp_mon_ranges = min_t(u16, bprof.temp_mon_ranges,
+			BATT_PROF_MAX_TEMP_NR_RNG);
 
-	for (i = 0; i < bprof.temp_mon_ranges; ++i) {
-		dev_info(chc.dev, "ChrgProf: temp_up_lim[%d]:%u\n",
+	for (i = 0; i < temp_mon_ranges; ++i) {
+		dev_info(chc.dev, "ChrgProf: temp_up_lim[%d]:%d\n",
 				i, bprof.temp_mon_range[i].temp_up_lim);
-		dev_info(chc.dev, "ChrgProf: rbatt[%d]:%d\n",
-				i, bprof.temp_mon_range[i].rbatt);
 		dev_info(chc.dev, "ChrgProf: full_chrg_vol[%d]:%d\n",
 				i, bprof.temp_mon_range[i].full_chrg_vol);
 		dev_info(chc.dev, "ChrgProf: full_chrg_cur[%d]:%d\n",
@@ -1016,7 +1012,7 @@ static int bc_chrgr_probe(struct ipc_device *ipcdev)
 		chc.invalid_batt = true;
 	else {
 		print_battery_profile(bcprof);
-		retval = bcove_init();
+		retval = bcove_init(bcprof);
 		if (retval) {
 			dev_err(chc.dev, "Error in Initializing PMIC\n");
 			return retval;
