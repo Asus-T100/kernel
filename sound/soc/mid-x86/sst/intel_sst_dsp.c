@@ -335,11 +335,14 @@ static int sst_parse_module(struct fw_module_header *module,
 	sg_src = kzalloc(sizeof(*sg_src)*(sg_len), GFP_KERNEL);
 	if (NULL == sg_src)
 		return -ENOMEM;
+	sg_init_table(sg_src, sg_len);
 	sg_dst = kzalloc(sizeof(*sg_dst)*(sg_len), GFP_KERNEL);
 	if (NULL == sg_dst) {
 		kfree(sg_src);
 		return -ENOMEM;
 	}
+	sg_init_table(sg_dst, sg_len);
+
 	sg_list->src = sg_src;
 	sg_list->dst = sg_dst;
 	sg_list->list_len = sg_len;
