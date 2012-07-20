@@ -981,8 +981,15 @@ static PVRSRV_ERROR DestroyDCSwapChain(IMG_HANDLE hDevice,
 
 	psDevInfo->apsSwapChains[ psSwapChain->ui32SwapChainID -1] = NULL;
 
+	/*
+	 * Release the spin lock here, as FlushInternalVSyncQueue() may invoke
+	 * mutex_lock when freeing buffer.
+	 */
+	spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
 
 	FlushInternalVSyncQueue(psSwapChain, psDevInfo->ui32SwapChainNum == 0);
+
+	spin_lock_irqsave(&psDevInfo->sSwapChainLock, ulLockFlags);
 
 	if (psDevInfo->ui32SwapChainNum == 0)
 	{
