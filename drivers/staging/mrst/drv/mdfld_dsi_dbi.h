@@ -192,4 +192,6 @@ extern void mdfld_dbi_dsr_timer_start(struct mdfld_dbi_dsr_info * dsr_info);
 extern int mdfld_dsi_dbi_update_power(struct mdfld_dsi_dbi_output * dbi_output, int mode);
 extern void mdfld_dsi_controller_dbi_init(struct mdfld_dsi_config * dsi_config, int pipe);
 
+extern struct drm_encoder_helper_funcs dsi_dbi_encoder_generic_helper_funcs;
+
 #endif /*__MDFLD_DSI_DBI_H__*/
