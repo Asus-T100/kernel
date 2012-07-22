@@ -443,14 +443,17 @@ static bool hdcp_initiate_rep_auth(void)
 	return false;
 }
 
-static bool hdcp_stage3_schedule_ri_check(void)
+static bool hdcp_stage3_schedule_ri_check(bool first_check)
 {
 	int msg = HDCP_RI_CHECK;
 	unsigned int *msg_data = kmalloc(sizeof(unsigned int), GFP_KERNEL);
+	/* Do the first check immediately while adding some randomness  */
+	int ri_check_interval = (first_check) ? (20 + (jiffies % 10)) :
+				hdcp_context->ri_check_interval;
 	if (msg_data != NULL) {
 		*msg_data = hdcp_context->auth_count;
 		return wq_send_message_delayed(msg, (void *)msg_data,
-				hdcp_context->ri_check_interval);
+						ri_check_interval);
 	}
 	return false;
 }
@@ -689,7 +692,7 @@ static bool hdcp_start(void)
 	hdcp_context->is_phase3_valid = true;
 	/* Branch Periodic Ri Check */
 	pr_debug("hdcp: starting periodic Ri check\n");
-	if (hdcp_stage3_schedule_ri_check() == false)
+	if (hdcp_stage3_schedule_ri_check(true) == false)
 		return false;
 
 	return true;
@@ -751,7 +754,7 @@ static void hdcp_task_event_handler(struct work_struct *work)
 			break;
 
 		if (hdcp_stage3_ri_check() == false ||
-		    hdcp_stage3_schedule_ri_check() == false)
+		    hdcp_stage3_schedule_ri_check(false) == false)
 			reset_hdcp = true;
 		break;
 
