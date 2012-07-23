@@ -86,7 +86,7 @@ static void bcove_handle_ext_chrgr_irq(bool);
 #define MCHGIRQ0_MI2CWR_CMP_MASK	D1
 #define MCHGIRQ0_MCHG_INTB_MASK		D0
 
-#define SCHGRIRQ0_ADDR			0x13
+#define SCHGRIRQ0_ADDR			0x4E
 #define SCHGIRQ0_RSVD_MASK		D7
 #define SCHGIRQ0_SBAT_CRIT_MASK		D6
 #define SCHGIRQ0_SBAT1_ALRT_MASK	D5
