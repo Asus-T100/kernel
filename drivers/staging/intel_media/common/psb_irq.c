@@ -318,7 +318,7 @@ void mdfld_async_flip_te_handler(struct drm_device *dev, uint32_t pipe)
 		return ;
 
 	if (dev_priv->b_dsr_enable) {
-		spin_lock(&dev_priv->dsr_lock);
+		mutex_lock(&dev_priv->dsr_mutex);
 
 		if (pipe == 0)
 			damage_mask = dev_priv->dsr_fb_update & MDFLD_DSR_DAMAGE_MASK_0;
@@ -333,7 +333,7 @@ void mdfld_async_flip_te_handler(struct drm_device *dev, uint32_t pipe)
 			else
 				dev_priv->dsr_idle_count++;
 		}
-		spin_unlock(&dev_priv->dsr_lock);
+		mutex_unlock(&dev_priv->dsr_mutex);
 	}
 }
 void mdfld_te_handler_work(struct work_struct *work)

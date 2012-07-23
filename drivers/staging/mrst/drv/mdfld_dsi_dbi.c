@@ -692,7 +692,7 @@ void mdfld_dsi_dbi_exit_dsr (struct drm_device *dev, u32 update_src, void *p_sur
 	struct mdfld_dsi_dbi_output ** dbi_output;
 	int i;
 
-	spin_lock(&dev_priv->dsr_lock);
+	mutex_lock(&dev_priv->dsr_mutex);
 
 	dbi_output = dsr_info->dbi_outputs;
 
@@ -722,7 +722,7 @@ void mdfld_dsi_dbi_exit_dsr (struct drm_device *dev, u32 update_src, void *p_sur
 	else if (dev_priv->platform_rev_id == MDFLD_PNW_A0)
 		mdfld_dbi_dsr_timer_start(dsr_info);
 
-	spin_unlock(&dev_priv->dsr_lock);
+	mutex_unlock(&dev_priv->dsr_mutex);
 }
 
 static bool mdfld_dbi_is_in_dsr(struct drm_device * dev)
@@ -755,7 +755,7 @@ void mdfld_dbi_update_panel (struct drm_device *dev, int pipe)
 	if (!dbi_output)
 		return;
 
-	spin_lock(&dev_priv->dsr_lock);
+	mutex_lock(&dev_priv->dsr_mutex);
 
 	if (pipe == 0)
 		damage_mask = dev_priv->dsr_fb_update & MDFLD_DSR_DAMAGE_MASK_0;
@@ -800,8 +800,7 @@ void mdfld_dbi_update_panel (struct drm_device *dev, int pipe)
 #endif
 	}
 
-	spin_unlock(&dev_priv->dsr_lock);
-
+	mutex_unlock(&dev_priv->dsr_mutex);
 }
 
 /*timers for DSR*/
