@@ -90,6 +90,8 @@ struct camera_sensor_platform_data {
 	int (*power_ctrl)(struct v4l2_subdev *subdev, int flag);
 	int (*csi_cfg)(struct v4l2_subdev *subdev, int flag);
 	bool (*low_fps)(void);
+	int (*platform_init)(struct i2c_client *);
+	int (*platform_deinit)(void);
 };
 
 struct camera_af_platform_data {

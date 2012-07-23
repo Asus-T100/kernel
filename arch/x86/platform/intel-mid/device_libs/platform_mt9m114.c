@@ -19,13 +19,20 @@
 #include <asm/intel-mid.h>
 #include <asm/intel_scu_ipcutil.h>
 #include <media/v4l2-subdev.h>
+#include <linux/regulator/consumer.h>
 #include "platform_camera.h"
 #include "platform_mt9m114.h"
 #include "platform_mt9e013.h"
 
+
+#define VPROG1_VAL 2800000
 static int camera_reset;
 static int camera_power_down;
 static int camera_vprog1_on;
+
+
+static struct regulator *vprog1_reg;
+
 
 /*
  * MFLD PR2 secondary camera sensor - MT9M114 platform data
@@ -136,11 +143,35 @@ static int mt9m114_csi_configure(struct v4l2_subdev *sd, int flag)
 		ATOMISP_INPUT_FORMAT_YUV422_8, -1, flag);
 }
 
+static int mt9m114_platform_init(struct i2c_client *client)
+{
+	int ret;
+
+	vprog1_reg = regulator_get(&client->dev, "vprog1");
+	if (IS_ERR(vprog1_reg)) {
+		dev_err(&client->dev, "regulator_get failed\n");
+		return PTR_ERR(vprog1_reg);
+	}
+	ret = regulator_set_voltage(vprog1_reg, VPROG1_VAL, VPROG1_VAL);
+	if (ret) {
+		dev_err(&client->dev, "regulator voltage set failed\n");
+		regulator_put(vprog1_reg);
+	}
+	return ret;
+}
+
+static int mt9m114_platform_deinit(void)
+{
+	regulator_put(vprog1_reg);
+}
+
 static struct camera_sensor_platform_data mt9m114_sensor_platform_data = {
 	.gpio_ctrl	= mt9m114_gpio_ctrl,
 	.flisclk_ctrl	= mt9m114_flisclk_ctrl,
 	.power_ctrl	= mt9m114_power_ctrl,
 	.csi_cfg	= mt9m114_csi_configure,
+	.platform_init = mt9m114_platform_init,
+	.platform_deinit = mt9m114_platform_deinit,
 };
 
 void *mt9m114_platform_data(void *info)
