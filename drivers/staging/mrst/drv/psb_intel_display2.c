@@ -2056,13 +2056,6 @@ static int mdfld_crtc_mode_set(struct drm_crtc *crtc,
 			((adjusted_mode->crtc_vsync_end - 1) << 16));
 	}
 
-	/* Flush the plane changes */
-	{
-		struct drm_crtc_helper_funcs *crtc_funcs =
-		    crtc->helper_private;
-		crtc_funcs->mode_set_base(crtc, x, y, old_fb);
-	}
-
 	/* setup pipeconf */
 	*pipeconf = PIPEACONF_ENABLE;
 
@@ -2217,6 +2210,13 @@ static int mdfld_crtc_mode_set(struct drm_crtc *crtc,
 
 	REG_WRITE(dspcntr_reg, *dspcntr);
 	psb_intel_wait_for_vblank(dev);
+
+    /* Flush the plane changes */
+	{
+		struct drm_crtc_helper_funcs *crtc_funcs =
+		    crtc->helper_private;
+		crtc_funcs->mode_set_base(crtc, x, y, old_fb);
+	}
 
 mrst_crtc_mode_set_exit:
 
