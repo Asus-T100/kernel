@@ -20,7 +20,6 @@
 #include <linux/input.h>
 #include <linux/workqueue.h>
 #include <linux/slab.h>
-#include <linux/earlysuspend.h>
 
 #define REF_P_XL	0x08
 #define REF_P_L		0x09
@@ -130,7 +129,6 @@ struct lps331ap_data {
 	struct delayed_work input_work;
 
 	struct input_dev *input_dev;
-	struct early_suspend es;
 
 	int delay_ms;
 	int enabled;
@@ -415,31 +413,6 @@ static struct attribute_group lps331ap_attribute_group = {
 	.attrs = lps331ap_attributes
 };
 
-#ifdef CONFIG_HAS_EARLYSUSPEND
-static void lps331ap_early_suspend(struct early_suspend *h)
-{
-	struct lps331ap_data *lps331ap =
-		container_of(h, struct lps331ap_data, es);
-
-	mutex_lock(&lps331ap->lock);
-	lps331ap->need_resume = lps331ap->enabled;
-	if (lps331ap->enabled)
-		lps331ap_disable(lps331ap);
-	mutex_unlock(&lps331ap->lock);
-}
-
-static void lps331ap_late_resume(struct early_suspend *h)
-{
-	struct lps331ap_data *lps331ap =
-		container_of(h, struct lps331ap_data, es);
-
-	mutex_lock(&lps331ap->lock);
-	if (lps331ap->need_resume)
-		lps331ap_enable(lps331ap);
-	mutex_unlock(&lps331ap->lock);
-}
-#endif /* CONFIG_HAS_EARLYSUSPEND */
-
 static int __devinit lps331ap_probe(struct i2c_client *client,
 		const struct i2c_device_id *id)
 {
@@ -480,13 +453,6 @@ static int __devinit lps331ap_probe(struct i2c_client *client,
 
 	lps331ap->enabled = 0;
 
-#ifdef CONFIG_HAS_EARLYSUSPEND
-	lps331ap->es.level = EARLY_SUSPEND_LEVEL_DISABLE_FB + 10;
-	lps331ap->es.suspend = lps331ap_early_suspend;
-	lps331ap->es.resume = lps331ap_late_resume;
-	register_early_suspend(&lps331ap->es);
-#endif
-
 	err = sysfs_create_group(&client->dev.kobj, &lps331ap_attribute_group);
 	if (err) {
 		dev_err(&client->dev, "sysfs can not create group\n");
@@ -496,7 +462,6 @@ static int __devinit lps331ap_probe(struct i2c_client *client,
 	return 0;
 
 err_sysfs:
-	unregister_early_suspend(&lps331ap->es);
 	input_unregister_device(lps331ap->input_dev);
 err_input_init:
 fail_init:
@@ -510,29 +475,45 @@ static int __devexit lps331ap_remove(struct i2c_client *client)
 
 	sysfs_remove_group(&client->dev.kobj, &lps331ap_attribute_group);
 	cancel_delayed_work_sync(&lps331ap->input_work);
-	unregister_early_suspend(&lps331ap->es);
 	input_unregister_device(lps331ap->input_dev);
 	lps331ap_power_off(lps331ap);
 	kfree(lps331ap);
 	return 0;
 }
 
-#ifdef CONFIG_PM
+#ifdef CONFIG_PM_SLEEP
 static int lps331ap_suspend(struct device *dev)
 {
+	struct i2c_client *client = to_i2c_client(dev);
+	struct lps331ap_data *lps331ap = i2c_get_clientdata(client);
+
+	mutex_lock(&lps331ap->lock);
+	lps331ap->need_resume = lps331ap->enabled;
+	if (lps331ap->enabled)
+		lps331ap_disable(lps331ap);
+	mutex_unlock(&lps331ap->lock);
+
 	return 0;
 }
 
 static int lps331ap_resume(struct device *dev)
 {
+	struct i2c_client *client = to_i2c_client(dev);
+	struct lps331ap_data *lps331ap = i2c_get_clientdata(client);
+
+	mutex_lock(&lps331ap->lock);
+	if (lps331ap->need_resume)
+		lps331ap_enable(lps331ap);
+	mutex_unlock(&lps331ap->lock);
+
 	return 0;
 }
-#endif /* CONFIG_PM */
+#endif /* CONFIG_PM_SLEEP */
 
-	static const struct dev_pm_ops lps331ap_pm_ops = {
-		SET_SYSTEM_SLEEP_PM_OPS(lps331ap_suspend,
-				lps331ap_resume)
-	};
+static const struct dev_pm_ops lps331ap_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(lps331ap_suspend,
+			lps331ap_resume)
+};
 
 static const struct i2c_device_id lps331ap_id[] = {
 	{LPS331AP_DEVICE_NAME, 0},

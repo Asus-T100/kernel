@@ -18,7 +18,6 @@
 #include <linux/errno.h>
 #include <linux/delay.h>
 #include <linux/workqueue.h>
-#include <linux/earlysuspend.h>
 
 /* HMC5883 Internal Register Address (refer to HMC5883 Specifications) */
 #define HMC5883_REG_A			0
@@ -51,7 +50,6 @@ struct hmc5883_data {
 	int delay_ms;
 
 	int enabled;
-	struct early_suspend es;
 };
 
 static void hmc5883_put_idle(struct hmc5883_data *hmc5883)
@@ -93,26 +91,22 @@ static int hmc5883_disable(struct hmc5883_data *hmc5883)
 	return 0;
 }
 
-
-#ifdef CONFIG_HAS_EARLYSUSPEND
-static void hmc5883_early_suspend(struct early_suspend *h)
+#ifdef CONFIG_PM_SLEEP
+static int hmc5883_suspend(struct device *dev)
 {
-	struct hmc5883_data *hmc5883 = container_of(h, struct hmc5883_data, es);
-
-	dev_dbg(&hmc5883->client->dev, "enter %s\n", __func__);
+	struct hmc5883_data *hmc5883 = dev_get_drvdata(dev);
 
 	cancel_delayed_work_sync(&hmc5883->work);
 
 	mutex_lock(&hmc5883->lock);
 	hmc5883_stop_measure(hmc5883);
 	mutex_unlock(&hmc5883->lock);
+	return 0;
 }
 
-static void hmc5883_late_resume(struct early_suspend *h)
+static int hmc5883_resume(struct device *dev)
 {
-	struct hmc5883_data *hmc5883 = container_of(h, struct hmc5883_data, es);
-
-	dev_dbg(&hmc5883->client->dev, "enter %s\n", __func__);
+	struct hmc5883_data *hmc5883 = dev_get_drvdata(dev);
 
 	mutex_lock(&hmc5883->lock);
 
@@ -121,25 +115,14 @@ static void hmc5883_late_resume(struct early_suspend *h)
 		hmc5883_enable(hmc5883);
 
 	mutex_unlock(&hmc5883->lock);
-}
-#endif
-
-#ifdef CONFIG_PM
-static int hmc5883_suspend(struct device *dev)
-{
 	return 0;
 }
-
-static int hmc5883_resume(struct device *dev)
-{
-	return 0;
-}
-#endif
 
 static const struct dev_pm_ops hmc5883_pm_ops = {
 	SET_SYSTEM_SLEEP_PM_OPS(hmc5883_suspend,
 				hmc5883_resume)
 };
+#endif
 
 static int hmc5883_get_data_xyz(struct hmc5883_data *hmc5883, s16 data[])
 {
@@ -424,13 +407,6 @@ hmc5883_probe(struct i2c_client *client, const struct i2c_device_id *id)
 		goto out_free_input;
 	}
 
-#ifdef CONFIG_HAS_EARLYSUSPEND
-	hmc5883->es.level = EARLY_SUSPEND_LEVEL_DISABLE_FB + 10;
-	hmc5883->es.suspend = hmc5883_early_suspend;
-	hmc5883->es.resume = hmc5883_late_resume;
-	register_early_suspend(&hmc5883->es);
-#endif
-
 	return 0;
 
 out_free_input:
@@ -451,7 +427,6 @@ static int hmc5883_remove(struct i2c_client *client)
 
 	sysfs_remove_group(&client->dev.kobj, &hmc5883_attr_group);
 	input_unregister_device(hmc5883->input);
-	unregister_early_suspend(&hmc5883->es);
 
 	mutex_unlock(&hmc5883->lock);
 
@@ -469,7 +444,9 @@ static struct i2c_driver hmc5883_driver = {
 	.driver = {
 		.owner = THIS_MODULE,
 		.name	= "compass",
+#ifdef CONFIG_PM_SLEEP
 		.pm = &hmc5883_pm_ops,
+#endif
 	},
 	.class = I2C_CLASS_HWMON,
 	.id_table = hmc5883_id,

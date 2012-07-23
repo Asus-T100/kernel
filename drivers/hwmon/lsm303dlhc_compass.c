@@ -27,7 +27,6 @@
 #include <linux/err.h>
 #include <linux/mutex.h>
 #include <linux/sysfs.h>
-#include <linux/earlysuspend.h>
 #include <linux/workqueue.h>
 #include <linux/input.h>
 
@@ -65,7 +64,6 @@ struct lsm303cmp_driver_data {
 	 */
 	struct mutex lock;
 	struct delayed_work work;
-	struct early_suspend es;
 };
 
 static void lsm303cmp_disable(struct lsm303cmp_driver_data *drv_data)
@@ -200,47 +198,6 @@ static struct attribute_group lsm303cmp_attr_group = {
 	.name = DRIVER_NAME,
 	.attrs = lsm303cmp_attributes,
 };
-
-#ifdef CONFIG_HAS_EARLYSUSPEND
-/**
- * lsm303cmp_early_suspend - set lsm303cmp to power off mode.
- * @h: early_suspend structure.
- *
- * This function has no return value.
- *
- * This is a hook function called when system going to low power mode.
- */
-void lsm303cmp_early_suspend(struct early_suspend *h)
-{
-	struct lsm303cmp_driver_data *drv_data;
-
-	drv_data = container_of(h, struct lsm303cmp_driver_data, es);
-	mutex_lock(&drv_data->lock);
-	drv_data->need_resume = drv_data->enabled;
-	if (drv_data->enabled)
-		lsm303cmp_disable(drv_data);
-	mutex_unlock(&drv_data->lock);
-}
-
-/*
- * lsm303cmp_late_resume - set lsm303cmp to power on mode.
- * @h: early_suspend structure.
- *
- * This function has no return value.
- *
- * This is a hook function called when system resume from low power mode.
- */
-void lsm303cmp_late_resume(struct early_suspend *h)
-{
-	struct lsm303cmp_driver_data *drv_data;
-
-	drv_data = container_of(h, struct lsm303cmp_driver_data, es);
-	mutex_lock(&drv_data->lock);
-	if (drv_data->need_resume)
-		lsm303cmp_enable(drv_data);
-	mutex_unlock(&drv_data->lock);
-}
-#endif
 
 static void lsm303cmp_report_data(struct lsm303cmp_driver_data *drv_data,
 	s16 *xyz_data)
@@ -378,12 +335,6 @@ static int lsm303cmp_probe(struct i2c_client *client,
 		goto error_sysfs;
 	}
 
-#ifdef CONFIG_HAS_EARLYSUSPEND
-		lsm303cmp->es.level = EARLY_SUSPEND_LEVEL_DISABLE_FB + 10;
-		lsm303cmp->es.suspend = lsm303cmp_early_suspend;
-		lsm303cmp->es.resume = lsm303cmp_late_resume;
-		register_early_suspend(&lsm303cmp->es);
-#endif
 	return res;
 
 error_sysfs:
@@ -401,7 +352,6 @@ static int __devexit lsm303cmp_remove(struct i2c_client *client)
 	lsm303cmp = i2c_get_clientdata(client);
 	mutex_lock(&lsm303cmp->lock);
 	lsm303cmp_disable(lsm303cmp);
-	unregister_early_suspend(&lsm303cmp->es);
 	sysfs_remove_group(&client->dev.kobj, &lsm303cmp_attr_group);
 	input_unregister_device(lsm303cmp->input_device);
 
@@ -418,6 +368,38 @@ static int __devexit lsm303cmp_remove(struct i2c_client *client)
 	return 0;
 }
 
+#ifdef CONFIG_PM_SLEEP
+static int lsm303cmp_resume(struct device *dev)
+{
+	struct lsm303cmp_driver_data *drv_data = dev_get_drvdata(dev);
+
+	mutex_lock(&drv_data->lock);
+	if (drv_data->need_resume)
+		lsm303cmp_enable(drv_data);
+	mutex_unlock(&drv_data->lock);
+
+	return 0;
+}
+
+static int lsm303cmp_suspend(struct device *dev)
+{
+	struct lsm303cmp_driver_data *drv_data = dev_get_drvdata(dev);
+
+	mutex_lock(&drv_data->lock);
+	drv_data->need_resume = drv_data->enabled;
+	if (drv_data->enabled)
+		lsm303cmp_disable(drv_data);
+	mutex_unlock(&drv_data->lock);
+
+	return 0;
+}
+
+static const struct dev_pm_ops lsm303cmp_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(lsm303cmp_suspend,
+			lsm303cmp_resume)
+};
+#endif /* CONFIG_PM_SLEEP */
+
 static struct i2c_device_id lsm303cmp_id[2] = {
 	{ DRIVER_NAME, 0 },
 	{ },
@@ -427,6 +409,9 @@ static struct i2c_driver lsm303cmp_driver = {
 	.driver = {
 		.owner = THIS_MODULE,
 		.name	= DRIVER_NAME,
+#ifdef CONFIG_PM_SLEEP
+		.pm = &lsm303cmp_pm_ops,
+#endif /* CONFIG_PM_SLEEP */
 	},
 	.id_table = lsm303cmp_id,
 	.probe = lsm303cmp_probe,

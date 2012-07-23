@@ -59,7 +59,6 @@
 #include <linux/interrupt.h>
 #include <linux/slab.h>
 #include <linux/input/lis3dh.h>
-#include <linux/earlysuspend.h>
 
 #define	DEBUG	0
 #define DEBUG_DATA_LOG 0
@@ -223,7 +222,6 @@ struct lis3dh_acc_data {
 	int hw_working;
 	int enabled;
 	int need_resume;
-	struct early_suspend es;
 
 	u8 sensitivity;
 
@@ -1080,37 +1078,6 @@ static void lis3dh_init_resume_state(struct lis3dh_acc_data *acc)
 	acc->resume_state[RES_TT_TW] = 0x00;
 }
 
-#ifdef CONFIG_HAS_EARLYSUSPEND
-static void lis3dh_early_suspend(struct early_suspend *h)
-{
-	struct lis3dh_acc_data *acc = container_of(h,
-					struct lis3dh_acc_data, es);
-
-	dev_dbg(&acc->client->dev, "enter early_suspend\n");
-	disable_irq(acc->irq1);
-
-	mutex_lock(&acc->lock);
-	acc->need_resume = acc->enabled;
-	if (acc->enabled)
-		lis3dh_acc_disable(acc);
-	mutex_unlock(&acc->lock);
-}
-
-static void lis3dh_late_resume(struct early_suspend *h)
-{
-	struct lis3dh_acc_data *acc = container_of(h,
-					struct lis3dh_acc_data, es);
-
-	dev_dbg(&acc->client->dev, "enter late_resume\n");
-	enable_irq(acc->irq1);
-
-	mutex_lock(&acc->lock);
-	if (acc->need_resume)
-		lis3dh_acc_enable(acc);
-	mutex_unlock(&acc->lock);
-}
-#endif
-
 static int lis3dh_acc_probe(struct i2c_client *client,
 			    const struct i2c_device_id *id)
 {
@@ -1207,13 +1174,6 @@ static int lis3dh_acc_probe(struct i2c_client *client,
 
 	lis3dh_acc_disable(acc);
 
-#ifdef CONFIG_HAS_EARLYSUSPEND
-	acc->es.level = EARLY_SUSPEND_LEVEL_DISABLE_FB + 10;
-	acc->es.suspend = lis3dh_early_suspend;
-	acc->es.resume = lis3dh_late_resume;
-	register_early_suspend(&acc->es);
-#endif
-
 	mutex_unlock(&acc->lock);
 	dev_info(&client->dev, "successfully probed\n");
 
@@ -1249,7 +1209,6 @@ static int __devexit lis3dh_acc_remove(struct i2c_client *client)
 	lis3dh_acc_device_power_off(acc);
 
 	sysfs_remove_group(&client->dev.kobj, &lis3dh_attr_group);
-	unregister_early_suspend(&acc->es);
 
 	if (acc->pdata->exit)
 		acc->pdata->exit();
@@ -1262,19 +1221,40 @@ static int __devexit lis3dh_acc_remove(struct i2c_client *client)
 #ifdef CONFIG_PM_SLEEP
 static int lis3dh_acc_resume(struct device *dev)
 {
+	struct lis3dh_acc_data *acc = dev_get_drvdata(dev);
+
+	dev_dbg(&acc->client->dev, "enter resume\n");
+	enable_irq(acc->irq1);
+
+	mutex_lock(&acc->lock);
+	if (acc->need_resume)
+		lis3dh_acc_enable(acc);
+	mutex_unlock(&acc->lock);
+
 	return 0;
 }
 
 static int lis3dh_acc_suspend(struct device *dev)
 {
+	struct lis3dh_acc_data *acc = dev_get_drvdata(dev);
+
+	dev_dbg(&acc->client->dev, "enter suspend\n");
+	disable_irq(acc->irq1);
+
+	mutex_lock(&acc->lock);
+	acc->need_resume = acc->enabled;
+	if (acc->enabled)
+		lis3dh_acc_disable(acc);
+	mutex_unlock(&acc->lock);
+
 	return 0;
 }
-#endif /* CONFIG_PM_SLEEP */
 
 static const struct dev_pm_ops lis3dh_acc_pm_ops = {
 	SET_SYSTEM_SLEEP_PM_OPS(lis3dh_acc_suspend,
 			lis3dh_acc_resume)
 };
+#endif /* CONFIG_PM_SLEEP */
 
 static const struct i2c_device_id lis3dh_acc_id[]
 		= { { LIS3DH_ACC_DEV_NAME, 0 }, { "lsm303dl", 0 }, { }, };
@@ -1285,7 +1265,9 @@ static struct i2c_driver lis3dh_acc_driver = {
 	.driver = {
 		.owner = THIS_MODULE,
 		.name = LIS3DH_ACC_DEV_NAME,
+#ifdef CONFIG_PM_SLEEP
 		.pm = &lis3dh_acc_pm_ops,
+#endif /* CONFIG_PM_SLEEP */
 	},
 	.probe = lis3dh_acc_probe,
 	.remove = __devexit_p(lis3dh_acc_remove),

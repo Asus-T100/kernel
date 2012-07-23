@@ -25,7 +25,6 @@
 #include <linux/ms5607.h>
 #include <linux/delay.h>
 #include <linux/slab.h>
-#include <linux/earlysuspend.h>
 
 #define NAME	"baro"
 
@@ -55,7 +54,6 @@ struct ms5607_data {
 	struct workqueue_struct *workqueue;
 
 	struct input_dev *input_dev;
-	struct early_suspend es;
 
 	int enabled;
 	bool powered;
@@ -357,27 +355,6 @@ static struct attribute_group ms5607_attribute_group = {
 	.attrs = ms5607_attributes
 };
 
-#ifdef CONFIG_HAS_EARLYSUSPEND
-static void ms5607_early_suspend(struct early_suspend *h)
-{
-	struct ms5607_data *ms5607 = container_of(h, struct ms5607_data, es);
-
-	mutex_lock(&ms5607->lock);
-	if (ms5607->enabled)
-		ms5607_disable(ms5607);
-	mutex_unlock(&ms5607->lock);
-}
-static void ms5607_late_resume(struct early_suspend *h)
-{
-	struct ms5607_data *ms5607 = container_of(h, struct ms5607_data, es);
-
-	mutex_lock(&ms5607->lock);
-	if (ms5607->enabled)
-		ms5607_enable(ms5607);
-	mutex_unlock(&ms5607->lock);
-}
-#endif
-
 static int __devinit ms5607_probe(struct i2c_client *client,
 		const struct i2c_device_id *id)
 {
@@ -445,13 +422,6 @@ static int __devinit ms5607_probe(struct i2c_client *client,
 	ms5607_power_off(ms5607);
 	ms5607->enabled = 0;
 
-#ifdef CONFIG_HAS_EARLYSUSPEND
-	ms5607->es.level = EARLY_SUSPEND_LEVEL_DISABLE_FB + 10;
-	ms5607->es.suspend = ms5607_early_suspend;
-	ms5607->es.resume = ms5607_late_resume;
-	register_early_suspend(&ms5607->es);
-#endif
-
 	err = sysfs_create_group(&client->dev.kobj, &ms5607_attribute_group);
 	if (err) {
 		dev_err(&client->dev, "sysfs can not create group\n");
@@ -461,9 +431,6 @@ static int __devinit ms5607_probe(struct i2c_client *client,
 	return 0;
 
 err_sysfs:
-#ifdef CONFIG_HAS_EARLYSUSPEND
-	unregister_early_suspend(&ms5607->es);
-#endif
 	input_unregister_device(ms5607->input_dev);
 err_input_init:
 	destroy_workqueue(ms5607->workqueue);
@@ -486,9 +453,6 @@ static int __devexit ms5607_remove(struct i2c_client *client)
 	flush_workqueue(ms5607->workqueue);
 	destroy_workqueue(ms5607->workqueue);
 
-#ifdef CONFIG_HAS_EARLYSUSPEND
-	unregister_early_suspend(&ms5607->es);
-#endif
 	ms5607_power_off(ms5607);
 	if (ms5607->pdata->exit)
 		ms5607->pdata->exit();
@@ -499,23 +463,38 @@ static int __devexit ms5607_remove(struct i2c_client *client)
 	return 0;
 }
 
-#ifdef CONFIG_PM
+#ifdef CONFIG_PM_SLEEP
 static int ms5607_resume(struct device *dev)
 {
+	struct i2c_client *client = to_i2c_client(dev);
+	struct ms5607_data *ms5607 = i2c_get_clientdata(client);
+
+	mutex_lock(&ms5607->lock);
+	if (ms5607->enabled)
+		ms5607_enable(ms5607);
+	mutex_unlock(&ms5607->lock);
+
 	return 0;
 }
 
 static int ms5607_suspend(struct device *dev)
 {
+	struct i2c_client *client = to_i2c_client(dev);
+	struct ms5607_data *ms5607 = i2c_get_clientdata(client);
+
+	mutex_lock(&ms5607->lock);
+	if (ms5607->enabled)
+		ms5607_disable(ms5607);
+	mutex_unlock(&ms5607->lock);
+
 	return 0;
 }
-
-#endif /* CONFIG_PM */
 
 static const struct dev_pm_ops ms5607_pm_ops = {
 	SET_SYSTEM_SLEEP_PM_OPS(ms5607_suspend,
 			ms5607_resume)
 };
+#endif /* CONFIG_PM_SLEEP */
 
 static const struct i2c_device_id ms5607_id[] = {
 	{NAME, 0},
@@ -528,7 +507,9 @@ static struct i2c_driver ms5607_driver = {
 	.driver = {
 		.name = NAME,
 		.owner = THIS_MODULE,
+#ifdef CONFIG_PM_SLEEP
 		.pm = &ms5607_pm_ops,
+#endif
 	},
 	.probe = ms5607_probe,
 	.remove = __devexit_p(ms5607_remove),

@@ -25,7 +25,6 @@
 #include <linux/delay.h>
 #include <linux/interrupt.h>
 #include <linux/slab.h>
-#include <linux/earlysuspend.h>
 
 /*==== MPU REGISTER SET ====*/
 enum mpu_register {
@@ -260,7 +259,6 @@ struct mpu_data {
 	struct i2c_client	*client;
 	struct mutex		lock;
 	struct input_dev	*input_dev;
-	struct early_suspend	es;
 	int			poll_interval;
 	int			enabled;
 	int			gpio;
@@ -573,31 +571,6 @@ out:
 	return ret;
 }
 
-#ifdef CONFIG_HAS_EARLYSUSPEND
-static void mpu_early_suspend(struct early_suspend *h)
-{
-	struct mpu_data *mpu = container_of(h, struct mpu_data, es);
-
-	disable_irq(mpu->client->irq);
-
-	mutex_lock(&mpu->lock);
-	mpu_disable(mpu);
-	mutex_unlock(&mpu->lock);
-}
-
-static void mpu_late_resume(struct early_suspend *h)
-{
-	struct mpu_data *mpu = container_of(h, struct mpu_data, es);
-
-	enable_irq(mpu->client->irq);
-
-	mutex_lock(&mpu->lock);
-	if (mpu->enabled)
-		mpu_enable(mpu);
-	mutex_unlock(&mpu->lock);
-}
-#endif /* CONFIG_HAS_EARLYSUSPEND */
-
 static int __devinit mpu_setup_irq(struct mpu_data *mpu)
 {
 	struct i2c_client *client = mpu->client;
@@ -679,12 +652,6 @@ static int __devinit mpu_probe(struct i2c_client *client,
 		goto err_setup_irq;
 	}
 
-#ifdef CONFIG_HAS_EARLYSUSPEND
-	mpu->es.level = EARLY_SUSPEND_LEVEL_DISABLE_FB + 10;
-	mpu->es.suspend = mpu_early_suspend;
-	mpu->es.resume = mpu_late_resume;
-	register_early_suspend(&mpu->es);
-#endif
 	mpu->enabled = 0;
 	mpu_disable(mpu);
 
@@ -715,7 +682,6 @@ static int __devexit mpu_remove(struct i2c_client *client)
 	}
 
 	disable_irq(mpu->client->irq);
-	unregister_early_suspend(&mpu->es);
 	input_unregister_device(mpu->input_dev);
 	mpu_disable(mpu);
 	remove_sysfs_interfaces(&client->dev);
@@ -723,21 +689,37 @@ static int __devexit mpu_remove(struct i2c_client *client)
 	return 0;
 }
 
-#ifdef CONFIG_PM
+#ifdef CONFIG_PM_SLEEP
 static int mpu_resume(struct device *dev)
 {
+	struct mpu_data *mpu = dev_get_drvdata(dev);
+
+	enable_irq(mpu->client->irq);
+
+	mutex_lock(&mpu->lock);
+	if (mpu->enabled)
+		mpu_enable(mpu);
+	mutex_unlock(&mpu->lock);
 	return 0;
 }
 
 static int mpu_suspend(struct device *dev)
 {
+	struct mpu_data *mpu = dev_get_drvdata(dev);
+
+	disable_irq(mpu->client->irq);
+
+	mutex_lock(&mpu->lock);
+	mpu_disable(mpu);
+	mutex_unlock(&mpu->lock);
 	return 0;
 }
-#endif
 
 static const struct dev_pm_ops mpu_pm_ops = {
 	SET_SYSTEM_SLEEP_PM_OPS(mpu_suspend, mpu_resume)
 };
+#endif
+
 
 static const struct i2c_device_id mpu_id[] = {
 	{ MPU_NAME, 0 },
@@ -749,7 +731,9 @@ static struct i2c_driver mpu_driver = {
 	.driver = {
 		.owner = THIS_MODULE,
 		.name = MPU_NAME,
+#ifdef CONFIG_PM_SLEEP
 		.pm = &mpu_pm_ops,
+#endif
 	},
 	.probe = mpu_probe,
 	.remove = __devexit_p(mpu_remove),
