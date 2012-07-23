@@ -224,8 +224,7 @@ static int osip_reboot_notifier_call(struct notifier_block *notifier,
 
 	/* If system power off with charger connected, set the Reboot
 	   Reason to COS */
-	if (what != SYS_RESTART || !data) {
-		pr_err("%s(): invalid args\n", __func__);
+	if (what != SYS_RESTART) {
 		if (what == SYS_HALT || what == SYS_POWER_OFF) {
 			pr_info("%s(): sys power off ...\n", __func__);
 			if (power_supply_is_system_supplied()) {
@@ -255,7 +254,7 @@ static int osip_reboot_notifier_call(struct notifier_block *notifier,
 		return NOTIFY_DONE;
 	}
 
-	if (0 == strncmp(cmd, "recovery", 9)) {
+	if (data && 0 == strncmp(cmd, "recovery", 9)) {
 		pr_warn("[SHTDWN] %s, invalidating osip and rebooting into "
 			"Recovery\n", __func__);
 #ifdef DEBUG
@@ -267,7 +266,7 @@ static int osip_reboot_notifier_call(struct notifier_block *notifier,
 				__func__);
 		access_osip_record(osip_invalidate, (void *)0);
 		ret = NOTIFY_OK;
-	} else if (0 == strncmp(cmd, "bootloader", 11)) {
+	} else if (data && 0 == strncmp(cmd, "bootloader", 11)) {
 		pr_warn("[SHTDWN] %s, invalidating osip and rebooting into "
 			"Fastboot\n", __func__);
 		ret_ipc = intel_scu_ipc_write_osnib_rr(SIGNED_POS_ATTR);
