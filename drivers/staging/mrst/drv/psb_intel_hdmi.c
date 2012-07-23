@@ -2120,8 +2120,6 @@ const struct drm_connector_funcs mdfld_hdmi_connector_funcs = {
 void mdfld_hdmi_init(struct drm_device *dev,
 		    struct psb_intel_mode_device *mode_dev)
 {
-	struct mid_intel_hdmi_priv *hdmi_priv;
-
 	android_hdmi_driver_init(dev, (void *)mode_dev);
 
 	if (IS_MDFLD_OLD(dev)) {
@@ -2138,8 +2136,7 @@ void mdfld_hdmi_init(struct drm_device *dev,
 		/* Extend VHDMI switch de-bounce time, to avoid redundant MSIC
 		 * VREG/HDMI interrupt during HDMI cable plugged in/out. */
 		intel_scu_ipc_iowrite8(MSIC_VHDMICNT, VHDMI_ON | VHDMI_DB_30MS);
-	} else if (IS_CTP(dev))
-		mdfld_ti_tpd_init(hdmi_priv);
+	}
 
 	return;
 }
