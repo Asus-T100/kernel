@@ -1342,7 +1342,7 @@ int cs42l73_bp_detection(struct snd_soc_codec *codec,
 			   struct snd_soc_jack *jack,
 			   int plug_status)
 {
-	unsigned int status = 0;
+	int status = 0;
 	unsigned int reg;
 
 	if (plug_status) {
@@ -1366,7 +1366,7 @@ int cs42l73_hp_detection(struct snd_soc_codec *codec,
 			   struct snd_soc_jack *jack,
 			   int plug_status)
 {
-	unsigned int status = 0;
+	int status = 0;
 	unsigned int micbias = 0;
 	unsigned int reg;
 
@@ -1376,7 +1376,7 @@ int cs42l73_hp_detection(struct snd_soc_codec *codec,
 		snd_soc_update_bits(codec, CS42L73_IM1, MIC2_SDET, MIC2_SDET);
 		reg = snd_soc_read(codec, CS42L73_IS1);
 		pr_debug("Mic detect = %x ISI =%x\n", micbias, reg);
-		if ((reg & MIC2_SDET)) {
+		if (reg & MIC2_SDET) {
 			status = SND_JACK_HEADPHONE;
 			pr_debug("Headphone detected\n");
 		} else {
