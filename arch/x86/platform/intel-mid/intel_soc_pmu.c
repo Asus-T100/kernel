@@ -233,6 +233,8 @@ int get_final_state(unsigned long *eax)
 	else if ((ret <= *eax ||
 			(ret == MID_S0IX_STATE)))
 		ret = ret & *eax;
+	else
+		ret = 0;
 
 	return ret;
 }
