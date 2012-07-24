@@ -280,6 +280,7 @@ struct bq24192_chip {
 	 * to support extreme charging*/
 	int curr_volt;
 	int curr_chrg;
+	int input_curr;
 	int cached_chrg_cur_cntl;
 	struct power_supply_charger_cap cached_cap;
 	/* Wake lock to prevent platform from going to S3 when charging */
@@ -1196,6 +1197,7 @@ static void set_up_charging(struct bq24192_chip *chip,
 	reg->chr_cur = chrg_cur_to_reg(chr_curr);
 	reg->chr_volt = chrg_volt_to_reg(chr_volt);
 
+	chip->input_curr = reg->in_src;
 	/* Enable the WDT and Disable Safety timer */
 	ret = program_timers(chip, true, false);
 	if (ret < 0) {
@@ -1481,7 +1483,7 @@ static  bool bq24192_check_charge_full(struct bq24192_chip *chip, int vref)
  */
 static void bq24192_maintenance_worker(struct work_struct *work)
 {
-	int ret, batt_temp, battery_status, idx = 0, vbatt = 0;
+	int ret, batt_temp, battery_status, idx = 0, vbatt = 0, retval;
 	struct bq24192_chip *chip = container_of(work,
 				struct bq24192_chip, maint_chrg_wrkr.work);
 	short int cv = 0, usr_cc = -1;
@@ -1499,6 +1501,18 @@ static void bq24192_maintenance_worker(struct work_struct *work)
 	} else {
 		dev_info(&chip->client->dev,
 				"Charger is not present. Schedule worker\n");
+		goto sched_maint_work;
+	}
+
+	/*
+	 * FIXEME: Hw issue in TI charger. Hi-Z needs to be cleared continuously
+	 * as long as charger is connected
+	 */
+	retval = (chip->input_curr & ~INPUT_SRC_CNTL_EN_HIZ);
+	ret = bq24192_write_reg(chip->client,
+				BQ24192_INPUT_SRC_CNTL_REG, retval);
+	if (ret < 0) {
+		dev_warn(&chip->client->dev, "%s:I2C write fail\n", __func__);
 		goto sched_maint_work;
 	}
 
@@ -1958,7 +1972,7 @@ static void bq24192_event_worker(struct work_struct *work)
 		disconnected = 1;
 		pm_runtime_put_sync(&chip->client->dev);
 		/* Cancel the maintenance worker here */
-		cancel_delayed_work(&chip->maint_chrg_wrkr);
+		cancel_delayed_work_sync(&chip->maint_chrg_wrkr);
 	case POWER_SUPPLY_CHARGER_EVENT_SUSPEND:
 		dev_info(&chip->client->dev, "Disable charging\n");
 		ret = stop_charging(chip);
