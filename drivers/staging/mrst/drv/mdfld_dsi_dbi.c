@@ -715,7 +715,7 @@ void mdfld_dsi_dbi_exit_dsr (struct drm_device *dev, u32 update_src, void *p_sur
 			mdfld_dbi_output_exit_dsr(dbi_output[i], dbi_output[i]->channel_num ? 2 : 0, p_surfaceAddr, check_hw_on_only);
 		}
 	}
-	
+
 	dev_priv->dsr_fb_update |= update_src;
 	dev_priv->dsr_idle_count = 0;
 	/*start timer if A0 board*/
@@ -1022,24 +1022,6 @@ struct mdfld_dsi_encoder *mdfld_dsi_dbi_init(struct drm_device *dev,
 	dsi_config = mdfld_dsi_get_config(dsi_connector);
 	pipe = dsi_connector->pipe;
 
-	/*panel hard-reset*/
-	if (p_funcs->reset && (get_panel_type(dev, pipe) != GI_SONY_CMD)) {
-		/* ret = p_funcs->reset(dsi_config, pipe); */
-		ret = p_funcs->reset(dsi_config, RESET_FROM_BOOT_UP);
-		if (ret) {
-			DRM_ERROR("Panel %d hard-reset failed\n", pipe);
-			return NULL;
-		}
-	}
-
-
-/* FIXME JLIU7 */
-#if 0
-	/*panel drvIC init*/
-	if (p_funcs->drv_ic_init)
-		p_funcs->drv_ic_init(dsi_config, pipe);
-#endif
-
 	/*detect panel connection stauts*/
 	if (p_funcs->detect) {
 		ret = p_funcs->detect(dsi_config, pipe);
@@ -1117,6 +1099,7 @@ struct mdfld_dsi_encoder *mdfld_dsi_dbi_init(struct drm_device *dev,
 
 	/*attach to given connector*/
 	drm_mode_connector_attach_encoder(connector, encoder);
+	connector->encoder = encoder;
 
 	/*set possible crtcs and clones*/
 	if(dsi_connector->pipe) {
@@ -1133,6 +1116,7 @@ struct mdfld_dsi_encoder *mdfld_dsi_dbi_init(struct drm_device *dev,
 	dev_priv->exit_idle = mdfld_dsi_dbi_exit_dsr;
 	dev_priv->async_flip_update_fb = mdfld_dsi_dbi_async_flip_fb_update;
 	dev_priv->async_check_fifo_empty = mdfld_dsi_dbi_async_check_fifo_empty;
+
 #if defined(CONFIG_MDFLD_DSI_DPU) || defined(CONFIG_MDFLD_DSI_DSR)
 	dev_priv->b_dsr_enable_config = true;
 #endif /*CONFIG_MDFLD_DSI_DSR*/
@@ -1522,92 +1506,116 @@ power_off_err:
 }
 
 /* generic dbi function */
-static int mdfld_generic_dsi_dbi_set_power(struct drm_encoder *encoder, bool on)
+static
+int mdfld_generic_dsi_dbi_set_power(struct drm_encoder *encoder, bool on)
 {
 	int ret = 0;
-	struct mdfld_dsi_encoder *dsi_encoder = MDFLD_DSI_ENCODER(encoder);
-	struct mdfld_dsi_dbi_output *dbi_output =
-		MDFLD_DSI_DBI_OUTPUT(dsi_encoder);
-	struct mdfld_dsi_connector *dsi_connector =
-		mdfld_dsi_encoder_get_connector(dsi_encoder);
-	struct mdfld_dsi_config *dsi_config =
-		mdfld_dsi_encoder_get_config(dsi_encoder);
+	struct mdfld_dsi_encoder *dsi_encoder;
+	struct mdfld_dsi_dbi_output *dbi_output;
+	struct mdfld_dsi_connector *dsi_connector;
+	struct mdfld_dsi_config *dsi_config;
 	struct panel_funcs *p_funcs;
-	struct drm_device *dev = encoder->dev;
-	struct drm_psb_private *dev_priv = dev->dev_private;
-	u32 reg_offset = 0;
-	int pipe = (dbi_output->channel_num == 0) ? 0 : 2;
+	struct drm_device *dev;
+	struct drm_psb_private *dev_priv;
 
-	PSB_DEBUG_ENTRY("%s: pipe %d : %s, panel on: %s\n", __func__,
-			pipe, on ? "On" : "Off",
-			dsi_config->dsi_hw_context.panel_on ? "True" : "False");
+	if (!encoder) {
+		DRM_ERROR("Invalid encoder\n");
+		return -EINVAL;
+	}
 
+	PSB_DEBUG_ENTRY("%s\n", (on ? "on" : "off"));
+
+	dsi_encoder = MDFLD_DSI_ENCODER(encoder);
+	dbi_output = MDFLD_DSI_DBI_OUTPUT(dsi_encoder);
+	dsi_config = mdfld_dsi_encoder_get_config(dsi_encoder);
+	dsi_connector = mdfld_dsi_encoder_get_connector(dsi_encoder);
 	p_funcs = dbi_output->p_funcs;
+	dev = encoder->dev;
+	dev_priv = dev->dev_private;
 
 	mutex_lock(&dsi_config->context_lock);
 
-	if (on) {
+	if (dsi_connector->status != connector_status_connected)
+		goto set_power_err;
+
+	if (dbi_output->first_boot &&
+	    dsi_config->dsi_hw_context.panel_on) {
+		DRM_INFO("skip panle power setting for first boot! " \
+			 "panel is already powered on\n");
+		goto fun_exit;
+	}
+
+	switch (on) {
+	case true:
+		/* panel is already on */
 		if (dsi_config->dsi_hw_context.panel_on)
-			goto out_err;
+			goto fun_exit;
 
-		ret = __dbi_panel_power_on(dsi_config, p_funcs);
-		if (ret) {
-			DRM_ERROR("power on error\n");
-			goto out_err;
+		if (__dbi_panel_power_on(dsi_config, p_funcs)) {
+			DRM_ERROR("Faild to turn on panel\n");
+			goto set_power_err;
 		}
-
 		mdfld_dsi_error_detector_wakeup(dsi_connector);
 
 		dsi_config->dsi_hw_context.panel_on = 1;
-		dbi_output->dbi_panel_on = 1;
 		dev_priv->dbi_panel_on = 1;
-	} else {
+		dbi_output->dbi_panel_on = 1;
+		break;
+	case false:
 		if (!dsi_config->dsi_hw_context.panel_on &&
 		    !dbi_output->first_boot)
-			goto out_err;
+			goto fun_exit;
 
-		ret = __dbi_panel_power_off(dsi_config, p_funcs);
-		if (ret) {
-			DRM_ERROR("power on error\n");
-			goto out_err;
+		if (__dbi_panel_power_off(dsi_config, p_funcs)) {
+			DRM_ERROR("Faild to turn off panel\n");
+			goto set_power_err;
 		}
 
 		dsi_config->dsi_hw_context.panel_on = 0;
-		dbi_output->dbi_panel_on = 0;
 		dev_priv->dbi_panel_on = 0;
+		dbi_output->dbi_panel_on = 0;
+		break;
+	default:
+		break;
 	}
-out_err:
-	mutex_unlock(&dsi_config->context_lock);
-	if (ret)
-		DRM_ERROR("failed\n");
-	else
-		PSB_DEBUG_ENTRY("successfully\n");
 
+fun_exit:
+	mutex_unlock(&dsi_config->context_lock);
+	PSB_DEBUG_ENTRY("successfully\n");
 	return ret;
+
+set_power_err:
+	mutex_unlock(&dsi_config->context_lock);
+	PSB_DEBUG_ENTRY("unsuccessfully!\n");
+	return -EAGAIN;
 }
 
-static void mdfld_generic_dsi_dbi_mode_set(struct drm_encoder *encoder,
-				   struct drm_display_mode *mode,
-				   struct drm_display_mode *adjusted_mode)
+static
+void mdfld_generic_dsi_dbi_mode_set(struct drm_encoder *encoder,
+		struct drm_display_mode *mode,
+		struct drm_display_mode *adjusted_mode)
 {
 	return;
 }
 
-static void mdfld_generic_dsi_dbi_prepare(struct drm_encoder *encoder)
+static
+void mdfld_generic_dsi_dbi_prepare(struct drm_encoder *encoder)
 {
 	struct mdfld_dsi_encoder *dsi_encoder = MDFLD_DSI_ENCODER(encoder);
 	struct mdfld_dsi_dbi_output *dbi_output =
 		MDFLD_DSI_DBI_OUTPUT(dsi_encoder);
 
 	PSB_DEBUG_ENTRY("\n");
+
 	dbi_output->mode_flags |= MODE_SETTING_IN_ENCODER;
 	dbi_output->mode_flags &= ~MODE_SETTING_ENCODER_DONE;
 
-	/* mdfld_generic_dsi_dbi_set_power(encoder, false); */
+	mdfld_generic_dsi_dbi_set_power(encoder, false);
 	gbdispstatus = false;
 }
 
-static void mdfld_generic_dsi_dbi_commit(struct drm_encoder *encoder)
+static
+void mdfld_generic_dsi_dbi_commit(struct drm_encoder *encoder)
 {
 	struct mdfld_dsi_encoder *dsi_encoder =
 		MDFLD_DSI_ENCODER(encoder);
@@ -1618,59 +1626,56 @@ static void mdfld_generic_dsi_dbi_commit(struct drm_encoder *encoder)
 
 	PSB_DEBUG_ENTRY("\n");
 
-	/* mdfld_dsi_dbi_exit_dsr (dev, MDFLD_DSR_2D_3D, 0, 0); [SC1] */
-
 	mdfld_generic_dsi_dbi_set_power(encoder, true);
-
-	/* [SC1] */
-	if (gbgfxsuspended)
-		gbgfxsuspended = false;
-
 	gbdispstatus = true;
 
 	dbi_output->mode_flags &= ~MODE_SETTING_IN_ENCODER;
-
-
 	if (dbi_output->channel_num == 1)
 		dev_priv->dsr_fb_update |= MDFLD_DSR_2D_3D_2;
 	else
 		dev_priv->dsr_fb_update |= MDFLD_DSR_2D_3D_0;
-
 	dbi_output->mode_flags |= MODE_SETTING_ENCODER_DONE;
+
+	dbi_output->first_boot = false;
+	dbi_output->dbi_panel_on = 1;
+	dev_priv->dbi_panel_on = 1;
 }
 
-static void mdfld_generic_dsi_dbi_dpms(struct drm_encoder *encoder, int mode)
+static
+void mdfld_generic_dsi_dbi_dpms(struct drm_encoder *encoder, int mode)
 {
-	struct mdfld_dsi_encoder *dsi_encoder = MDFLD_DSI_ENCODER(encoder);
-	struct mdfld_dsi_dbi_output *dbi_output =
-		MDFLD_DSI_DBI_OUTPUT(dsi_encoder);
-	struct drm_device *dev = dbi_output->dev;
-	struct mdfld_dsi_config *dsi_config =
-		mdfld_dsi_encoder_get_config(dsi_encoder);
-	static bool bdispoff;
-	PSB_DEBUG_ENTRY("%s:\n", (mode == DRM_MODE_DPMS_ON ? "on" : "off"));
+	struct mdfld_dsi_encoder *dsi_encoder;
+	struct mdfld_dsi_dbi_output *dbi_output;
+	struct drm_device *dev;
+	struct mdfld_dsi_config *dsi_config;
+	struct drm_psb_private *dev_priv;
 
-	if (mode == DRM_MODE_DPMS_ON) {
-		mdfld_generic_dsi_dbi_set_power(encoder, true);
+	dsi_encoder = MDFLD_DSI_ENCODER(encoder);
+	dsi_config = mdfld_dsi_encoder_get_config(dsi_encoder);
+	dbi_output = MDFLD_DSI_DBI_OUTPUT(dsi_encoder);
+	dev = dsi_config->dev;
+	dev_priv = dev->dev_private;
 
-		if (gbgfxsuspended)
-			gbgfxsuspended = false;
+	PSB_DEBUG_ENTRY("%s\n", (mode == DRM_MODE_DPMS_ON ? "on" : "off"));
 
-		bdispoff = false;
-		gbdispstatus = true;
-	} else {
-		/*
-		 * I am not sure whether this is the perfect place to
-		 * turn rpm on since we still have a lot of CRTC turnning
-		 * on work to do.
-		 */
-		mdfld_generic_dsi_dbi_set_power(encoder, false);
-		bdispoff = true;
-		gbdispstatus = false;
+	if (!gbdispstatus) {
+		PSB_DEBUG_ENTRY("panel in suspend status, " \
+				"skip turn on/off from DMPS");
+		return;
 	}
+
+	mutex_lock(&dev_priv->dpms_mutex);
+
+	if (mode == DRM_MODE_DPMS_ON)
+		mdfld_generic_dsi_dbi_set_power(encoder, true);
+	else
+		mdfld_generic_dsi_dbi_set_power(encoder, false);
+
+	mutex_unlock(&dev_priv->dpms_mutex);
 }
 
-static void mdfld_generic_dsi_dbi_save(struct drm_encoder *encoder)
+static
+void mdfld_generic_dsi_dbi_save(struct drm_encoder *encoder)
 {
 	if (!encoder)
 		return;
@@ -1678,7 +1683,8 @@ static void mdfld_generic_dsi_dbi_save(struct drm_encoder *encoder)
 	mdfld_generic_dsi_dbi_set_power(encoder, false);
 }
 
-static void mdfld_generic_dsi_dbi_restore(struct drm_encoder *encoder)
+static
+void mdfld_generic_dsi_dbi_restore(struct drm_encoder *encoder)
 {
 	if (!encoder)
 		return;
@@ -1687,9 +1693,10 @@ static void mdfld_generic_dsi_dbi_restore(struct drm_encoder *encoder)
 	mdfld_generic_dsi_dbi_set_power(encoder, true);
 }
 
-static bool mdfld_generic_dsi_dbi_mode_fixup(struct drm_encoder *encoder,
-				     struct drm_display_mode *mode,
-				     struct drm_display_mode *adjusted_mode)
+static
+bool mdfld_generic_dsi_dbi_mode_fixup(struct drm_encoder *encoder,
+		struct drm_display_mode *mode,
+		struct drm_display_mode *adjusted_mode)
 {
 	struct drm_device *dev = encoder->dev;
 	struct mdfld_dsi_encoder *dsi_encoder = MDFLD_DSI_ENCODER(encoder);

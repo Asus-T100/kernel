@@ -534,7 +534,7 @@ int mdfld_dsi_h8c7_cmd_detect(struct mdfld_dsi_config *dsi_config,
 			dsi_config->dsi_hw_context.panel_on = 1;
 		else {
 			dsi_config->dsi_hw_context.panel_on = 0;
-			DRM_DEBUG("%s: panel not detected!", __func__);
+			DRM_INFO("%s: panel not detected!", __func__);
 		}
 
 		status = MDFLD_DSI_PANEL_CONNECTED;
@@ -545,6 +545,11 @@ int mdfld_dsi_h8c7_cmd_detect(struct mdfld_dsi_config *dsi_config,
 		status = MDFLD_DSI_PANEL_DISCONNECTED;
 	}
 
+	/*FIXME:
+	 * IFIW should also apply patch 53200 to avoid screen flash
+	 * otherwise, driver should do power off and on
+	 */
+	dsi_config->dsi_hw_context.panel_on = 0;
 	mutex_unlock(&dsi_config->context_lock);
 	return status;
 }
@@ -590,7 +595,7 @@ int mdfld_dsi_h8c7_cmd_panel_reset(struct mdfld_dsi_config *dsi_config,
 	ctx = &dsi_config->dsi_hw_context;
 	dev = dsi_config->dev;
 
-	PSB_DEBUG_ENTRY("%s\n", __func__);
+	PSB_DEBUG_ENTRY("\n");
 
 	if (IS_CTP(dev)) {
 		sfi_table_parse(SFI_SIG_GPIO,
@@ -702,7 +707,6 @@ void h8c7_cmd_init(struct drm_device *dev, struct panel_funcs *p_funcs)
 	p_funcs->drv_ic_init = mdfld_h8c7_dci_ic_init;
 	p_funcs->dsi_controller_init = mdfld_h8c7_dsi_controller_init;
 	p_funcs->detect = mdfld_dsi_h8c7_cmd_detect;
-	/*p_funcs->get_panel_power_state = mdfld_h8c7_cmd_get_power_state;*/
 	p_funcs->power_on = mdfld_dsi_h8c7_cmd_power_on;
 	p_funcs->power_off = mdfld_dsi_h8c7_cmd_power_off;
 	p_funcs->set_brightness = mdfld_dsi_h8c7_cmd_set_brightness;
