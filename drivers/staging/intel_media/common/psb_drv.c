@@ -1584,9 +1584,11 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	if (IS_CTP_NEED_WA(dev)) {
 		if (SGX_FEATURE_MP_CORE_COUNT == 2) {
 			iowrite32(0x1, dev_priv->sgx_reg + 0x4000);
+			iowrite32(0x5, dev_priv->sgx_reg + 0x4004);
 			iowrite32(0xa, dev_priv->sgx_reg + 0x4004);
 		} else if  (SGX_FEATURE_MP_CORE_COUNT == 1) {
 			iowrite32(0x0, dev_priv->sgx_reg + 0x4000);
+			iowrite32(0x1, dev_priv->sgx_reg + 0x4004);
 			iowrite32(0x2, dev_priv->sgx_reg + 0x4004);
 		}
 		iowrite32(0x2aa, dev_priv->sgx_reg + 0x4020);
