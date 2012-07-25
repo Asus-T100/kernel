@@ -1003,8 +1003,8 @@ sh_css_config_input_network(struct sh_css_pipeline *pipeline,
 			     width,
 			     height,
 			     vblank_cycles;
-		width  = binary->in_frame_info.width;
-		height = binary->in_frame_info.height;
+		width  = my_css.input_width;
+		height = my_css.input_height;
 		vblank_cycles = vblank_lines * (width + hblank_cycles);
 		sh_css_sp_configure_sync_gen(width, height, hblank_cycles,
 					     vblank_cycles);
