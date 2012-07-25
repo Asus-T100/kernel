@@ -71,7 +71,7 @@
 
 #define IDLE_POLL_JIFFIES (usecs_to_jiffies(10000)) /* 10 ms */
 #define IDLE_TO_SUSPEND_DELAY 10 /* 10 ms */
-#define HSI_CLOCK_SETUP_DELAY_WAIT 200 /* 200 us is the max time */
+#define HSI_CLOCK_SETUP_DELAY_WAIT 20000 /* 20 ms according to HW spec */
 
 #define TX_THRESHOLD_HALF
 #define RX_THRESHOLD_HALF
