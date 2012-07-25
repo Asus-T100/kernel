@@ -52,38 +52,6 @@ struct mrfld_mc_private {
 	struct ipc_device *socdev;
 	void __iomem *int_base;
 	struct snd_soc_codec *codec;
-	unsigned int vsp_mode;
-};
-
-
-static int vsp_mode_get(struct snd_kcontrol *kcontrol,
-	struct snd_ctl_elem_value *ucontrol)
-{
-	struct snd_soc_codec *codec =  snd_kcontrol_chip(kcontrol);
-	struct mrfld_mc_private *drv = snd_soc_card_get_drvdata(codec->card);
-
-	pr_debug("vsp_mode %d\n", drv->vsp_mode);
-	ucontrol->value.integer.value[0] = drv->vsp_mode;
-	return 0;
-}
-
-static int vsp_mode_set(struct snd_kcontrol *kcontrol,
-	struct snd_ctl_elem_value *ucontrol)
-{
-	struct snd_soc_codec *codec =  snd_kcontrol_chip(kcontrol);
-	struct mrfld_mc_private *drv = snd_soc_card_get_drvdata(codec->card);
-
-	drv->vsp_mode  = ucontrol->value.integer.value[0];
-	return 0;
-}
-
-static const char * const vsp_mode_text[] = {"Master", "Slave"};
-
-static const struct soc_enum vsp_mode_enum =
-	SOC_ENUM_SINGLE_EXT(ARRAY_SIZE(vsp_mode_text), vsp_mode_text);
-
-static const struct snd_kcontrol_new mrfld_controls[] = {
-	SOC_ENUM_EXT("VSP Mode", vsp_mode_enum, vsp_mode_get, vsp_mode_set),
 };
 
 static int mrfld_asp_hw_params(struct snd_pcm_substream *substream,
@@ -112,47 +80,6 @@ static int mrfld_asp_hw_params(struct snd_pcm_substream *substream,
 	}
 	return 0;
 
-}
-
-static int mrfld_vsp_hw_params(struct snd_pcm_substream *substream,
-	struct snd_pcm_hw_params *params)
-{
-	struct snd_soc_pcm_runtime *rtd = substream->private_data;
-	struct snd_soc_codec *codec = rtd->codec;
-	struct snd_soc_dai *codec_dai = rtd->codec_dai;
-	struct mrfld_mc_private *drv = snd_soc_card_get_drvdata(codec->card);
-	unsigned int fmt;
-	int ret , clk_source;
-
-	if (!drv->vsp_mode) {
-		pr_debug("Master Mode selected\n");
-		/* CS42L73  Master Mode`*/
-		fmt = SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF
-			| SND_SOC_DAIFMT_CBM_CFM;
-		clk_source = SND_SOC_CLOCK_OUT;
-
-	} else {
-		pr_debug("Slave Mode selected\n");
-		/* CS42L73  Slave Mode`*/
-		fmt =   SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF
-			| SND_SOC_DAIFMT_CBS_CFS;
-		clk_source = SND_SOC_CLOCK_IN;
-	}
-
-	/* Set codec DAI configuration */
-	ret = snd_soc_dai_set_fmt(codec_dai, fmt);
-	if (ret < 0) {
-		pr_err("can't set codec DAI configuration %d\n", ret);
-		return ret;
-	}
-
-	ret = snd_soc_dai_set_sysclk(codec_dai, CS42L73_CLKID_MCLK1,
-			C42L73_DEFAULT_MCLK, clk_source);
-	if (ret < 0) {
-		pr_err("can't set codec clock %d\n", ret);
-		return ret;
-	}
-	return 0;
 }
 
 /* Headset jack */
@@ -348,29 +275,69 @@ static const struct snd_soc_dapm_route mrfld_audio_map[] = {
 	{"Ext Spk", NULL, "SPKOUT"},
 };
 
+
 /* Board specific codec bias level control */
 static int mrfld_set_bias_level(struct snd_soc_card *card,
-				enum snd_soc_bias_level level)
+		struct snd_soc_dapm_context *dapm,
+		enum snd_soc_bias_level level)
 {
-	struct snd_soc_codec *codec = card->rtd->codec;
+	switch (level) {
+	case SND_SOC_BIAS_ON:
+	case SND_SOC_BIAS_PREPARE:
+	case SND_SOC_BIAS_STANDBY:
+		if (card->dapm.bias_level == SND_SOC_BIAS_OFF)
+			intel_scu_ipc_set_osc_clk0(true, CLK0_MSIC);
+		card->dapm.bias_level = level;
+		break;
+	case SND_SOC_BIAS_OFF:
+		/* OSC clk will be turned OFF after processing
+		 * codec->dapm.bias_level = SND_SOC_BIAS_OFF.
+		 */
+		break;
+	default:
+		pr_err("%s: Invalid bias level=%d\n", __func__, level);
+		return -EINVAL;
+		break;
+	}
+	pr_debug("card(%s)->bias_level %u\n", card->name,
+			card->dapm.bias_level);
+
+	return 0;
+}
+
+static int mrfld_set_bias_level_post(struct snd_soc_card *card,
+		struct snd_soc_dapm_context *dapm,
+		enum snd_soc_bias_level level)
+{
+	struct snd_soc_codec *codec;
+	/* we have only one codec in this machine */
+	codec = list_entry(card->codec_dev_list.next, struct snd_soc_codec,
+			card_list);
 
 	switch (level) {
 	case SND_SOC_BIAS_ON:
 	case SND_SOC_BIAS_PREPARE:
 	case SND_SOC_BIAS_STANDBY:
-		if (codec->dapm.bias_level == SND_SOC_BIAS_OFF)
-			intel_scu_ipc_set_osc_clk0(true, CLK0_MSIC);
+		/* Processing already done during set_bias_level()
+		 * callback. No action required here.
+		 */
 		break;
 	case SND_SOC_BIAS_OFF:
+		if (codec->dapm.bias_level != SND_SOC_BIAS_OFF)
+			break;
 		intel_scu_ipc_set_osc_clk0(false, CLK0_MSIC);
+		card->dapm.bias_level = level;
+		break;
+	default:
+		pr_err("%s: Invalid bias level=%d\n", __func__, level);
+		return -EINVAL;
 		break;
 	}
-	codec->dapm.bias_level = level;
-	pr_debug("codec->bias_level %u\n", card->dapm.bias_level);
+	pr_debug("%s:card(%s)->bias_level %u\n", __func__, card->name,
+			card->dapm.bias_level);
 
 	return 0;
 }
-
 
 static int mrfld_init(struct snd_soc_pcm_runtime *runtime)
 {
@@ -381,9 +348,8 @@ static int mrfld_init(struct snd_soc_pcm_runtime *runtime)
 
 
 	/* Set codec bias level */
-	mrfld_set_bias_level(card, SND_SOC_BIAS_OFF);
-
-
+	mrfld_set_bias_level(card, dapm, SND_SOC_BIAS_OFF);
+	card->dapm.idle_bias_off = true;
 	/* Add Jack specific widgets */
 	ret = snd_soc_dapm_new_controls(dapm, mrfld_dapm_widgets,
 					ARRAY_SIZE(mrfld_dapm_widgets));
@@ -445,10 +411,6 @@ static struct snd_soc_ops mrfld_asp_ops = {
 	.hw_params = mrfld_asp_hw_params,
 };
 
-static struct snd_soc_ops mrfld_vsp_ops = {
-	.hw_params = mrfld_vsp_hw_params,
-};
-
 struct snd_soc_dai_link mrfld_msic_dailink[] = {
 	{
 		.name = "Merrifield ASP",
@@ -460,17 +422,6 @@ struct snd_soc_dai_link mrfld_msic_dailink[] = {
 		.init = mrfld_init,
 		.ignore_suspend = 1,
 		.ops = &mrfld_asp_ops,
-	},
-	{
-		.name = "Merrifield VSP",
-		.stream_name = "Voice",
-		.cpu_dai_name = "Voice-cpu-dai",
-		.codec_dai_name = "cs42l73-vsp",
-		.codec_name = "cs42l73.1-004a",
-		.platform_name = "sst-platform",
-		.init = NULL,
-		.ignore_suspend = 1,
-		.ops = &mrfld_vsp_ops,
 	},
 };
 
@@ -508,8 +459,7 @@ static struct snd_soc_card snd_soc_card_mrfld = {
 	.dai_link = mrfld_msic_dailink,
 	.num_links = ARRAY_SIZE(mrfld_msic_dailink),
 	.set_bias_level = mrfld_set_bias_level,
-	.controls = mrfld_controls,
-	.num_controls = ARRAY_SIZE(mrfld_controls),
+	.set_bias_level_post = mrfld_set_bias_level_post,
 };
 
 static int snd_mrfld_mc_probe(struct ipc_device *ipcdev)
@@ -526,13 +476,11 @@ static int snd_mrfld_mc_probe(struct ipc_device *ipcdev)
 
 	/* register the soc card */
 	snd_soc_card_mrfld.dev = &ipcdev->dev;
-	snd_soc_initialize_card_lists(&snd_soc_card_mrfld);
 	ret_val = snd_soc_register_card(&snd_soc_card_mrfld);
 	if (ret_val) {
 		pr_err("snd_soc_register_card failed %d\n", ret_val);
 		goto unalloc;
 	}
-	drv->vsp_mode = 1;
 	ipc_set_drvdata(ipcdev, &snd_soc_card_mrfld);
 	snd_soc_card_set_drvdata(&snd_soc_card_mrfld, drv);
 	pr_debug("successfully exited probe\n");
