@@ -27,7 +27,6 @@
 #include <asm/intel-mid.h>
 #include "psb_msvdx.h"
 #include "pnw_topaz.h"
-#include "bufferclass_video.h"
 
 /*IMG Headers*/
 #include "private_data.h"
@@ -137,14 +136,6 @@ int psb_release(struct inode *inode, struct file *filp)
 		       ec_ctx->tfile);
 		ec_ctx->tfile = NULL;
 		ec_ctx->fence = PSB_MSVDX_INVALID_FENCE;
-	}
-
-	/*this is used to cleanup bcd if app failed to call vaTerminate*/
-	if (psb_fp->bcd_index >= 0 &&
-	    psb_fp->bcd_index < BC_VIDEO_DEVICE_MAX_ID &&
-	    bc_video_id_usage[psb_fp->bcd_index] == 1) {
-		bc_video_id_usage[psb_fp->bcd_index] = 0;
-		BC_DestroyBuffers(psb_fp->bcd_index);
 	}
 
 	ttm_object_file_release(&psb_fp->tfile);

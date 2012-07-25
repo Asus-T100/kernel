@@ -28,7 +28,6 @@
 #include <css/sh_css_debug.h>
 #include <asm/intel-mid.h>
 
-#include "bufferclass_video_linux.h"
 #include "hrt/hive_isp_css_mm_hrt.h"
 
 /* for v4l2_capability */
@@ -1816,22 +1815,8 @@ static long atomisp_vidioc_default(struct file *file, void *fh,
 		return atomisp_acc_destabilize(isp, arg);
 
 	case ATOMISP_IOC_CAMERA_BRIDGE:
-		/* here we convert the atomisp struct to a BC_Video struct.
-		 * We do this to avoid exporting the BC_Video struct in
-		 * atomisp.h which causes duplicate structure compilation
-		 * errors. */
-		/*
-		 * fixing me!
-		 * no BC_Camera_Bridge function defined in Merrifield.
-		 * so use CONFIG_X86_MRFLD to differentiate code for
-		 * merrifield and medfield to avoid compile error.
-		 */
-#ifndef CONFIG_X86_MRFLD
-			return BC_Camera_Bridge((BC_Video_ioctl_package *)arg,
-					(unsigned long) NULL);
-#else
-			return -EINVAL;
-#endif
+		return -EINVAL;
+
 	case ATOMISP_IOC_S_ISP_SHD_TAB:
 		return atomisp_set_shading_table(isp, arg);
 

@@ -22,7 +22,6 @@ include_dirs := \
 		-I$(DISPLAY_INCDIR) \
 		-I$(DISPLAY_INCDIR)/otm_hdmi/os/android/include \
 		-I$(DISPLAY_INCDIR)/otm_hdmi/pil/include \
-		-I$(INCDIR)/bc_video \
 		-I$(INCDIR)/video/decode \
 		-I$(INCDIR)/video/encode \
 		-I$(INCDIR)/video/common \
@@ -121,7 +120,6 @@ SYSCONFIGDIR = ../../../mrst/pvr/services4/system/intel_drm
 VIDEO_COMMON_DIR = ../../video/common
 DECODE_DIR = ../../video/decode
 ENCODE_DIR = ../../video/encode
-BUFFER_CLASS_DIR = ../../bc_video
 MEDIA_COMMON_DIR = ../../common
 
 gfx-y += $(ENVDIR)/osfunc.o \
@@ -244,9 +242,6 @@ gfx-$(CONFIG_MDFD_VIDEO_DECODE) += $(ENCODE_DIR)/lnc_topaz.o \
 		$(VIDEO_COMMON_DIR)/psb_ttm_fence.o \
 		$(VIDEO_COMMON_DIR)/psb_ttm_fence_user.o \
 		$(VIDEO_COMMON_DIR)/psb_ttm_placement_user.o
-
-gfx-$(CONFIG_MDFD_VIDEO_DECODE) += $(BUFFER_CLASS_DIR)/bufferclass_video.o \
-		$(BUFFER_CLASS_DIR)/bufferclass_video_linux.o
 
 gfx-$(CONFIG_MDFLD_DSI_DPU) += $(DISPLAYDIR)/mdfld_dsi_dbi_dpu.o
 

@@ -1112,117 +1112,6 @@ int psb_gtt_unmap_meminfo(struct drm_device *dev, IMG_HANDLE hKernelMemInfo)
 				(unsigned int)hKernelMemInfo);
 }
 
-static int psb_gtt_map_bcd(struct drm_device *dev,
-			uint32_t device_id,
-			uint32_t buffer_id,
-			uint32_t page_align,
-			uint32_t *offset)
-{
-	struct drm_psb_private *dev_priv
-		= (struct drm_psb_private *)dev->dev_private;
-	struct psb_gtt_mm *mm = dev_priv->gtt_mm;
-	struct psb_gtt *pg = dev_priv->pg;
-	uint32_t pages, offset_pages;
-	struct drm_mm_node *node;
-	u32 *pfn_list = 0;
-	struct psb_gtt_mem_mapping *mapping = NULL;
-	int ret;
-
-	/*get pages*/
-	ret = psb_get_bcd_pages(device_id, buffer_id, &pfn_list, &pages);
-	if (ret) {
-		DRM_DEBUG("get pages error\n");
-		return ret;
-	}
-
-	DRM_DEBUG("get %d pages\n", pages);
-
-	/*alloc memory in TT apeture*/
-	ret = psb_gtt_mm_alloc_mem(mm, pages, page_align, &node);
-	if (ret) {
-		DRM_DEBUG("alloc TT memory error\n");
-		goto failed_pages_alloc;
-	}
-
-	/*update psb_gtt_mm*/
-	ret = psb_gtt_add_node(mm,
-			       (u32)psb_get_tgid(),
-			       ((device_id << 16) | (buffer_id)),
-			       node,
-			       &mapping);
-	if (ret) {
-		DRM_DEBUG("add_node failed");
-		goto failed_add_node;
-	}
-
-	node = mapping->node;
-	offset_pages = node->start;
-
-	DRM_DEBUG("get free node for %d pages, offset %d pages",
-		  pages, offset_pages);
-
-	/*update gtt*/
-	psb_gtt_insert_pfn_list(pg, pfn_list,
-			     (unsigned)offset_pages,
-			     (unsigned)pages,
-			     0,
-			     0,
-			     0);
-
-	/*free pfn_list if allocated*/
-	kfree(pfn_list);
-
-	*offset = offset_pages;
-	return 0;
-
-failed_add_node:
-	psb_gtt_mm_free_mem(mm, node);
-failed_pages_alloc:
-	kfree(pfn_list);
-	return ret;
-}
-
-static int psb_gtt_unmap_bcd(struct drm_device *dev,
-			uint32_t device_id,
-			uint32_t buffer_id)
-{
-	return psb_gtt_unmap_common(dev,
-			psb_get_tgid(),
-			(device_id << 16) | buffer_id
-			);
-}
-
-static int psb_gtt_get_bcd_device_info(struct drm_device *dev,
-				uint32_t bcd_id,
-				uint32_t *buf_count,
-				uint32_t *buf_stride)
-{
-	int count;
-	int stride;
-
-	if (!buf_count || !buf_stride) {
-		DRM_ERROR("invalid parameters\n");
-		return -EINVAL;
-	}
-
-	count = psb_get_bcd_buffer_count(bcd_id);
-	if (count <= 0) {
-		DRM_ERROR("failed to get bcd %d buffer count\n", bcd_id);
-		return -EINVAL;
-	}
-
-	stride = psb_get_bcd_buffer_stride(bcd_id);
-	if (stride <= 0) {
-		DRM_ERROR("failed to get bcd %d buffer stride\n", bcd_id);
-		return -EINVAL;
-	}
-
-	*buf_count = count;
-	*buf_stride = stride;
-
-	return 0;
-}
-
 static int psb_gtt_map_vaddr(struct drm_device *dev,
 			uint32_t vaddr,
 			uint32_t size,
@@ -1324,22 +1213,12 @@ int psb_gtt_map_meminfo_ioctl(struct drm_device *dev, void *data,
 				arg->hKernelMemInfo,
 				page_align,
 				offset_pages);
-	case PSB_GTT_MAP_TYPE_BCD:
-		return psb_gtt_map_bcd(dev,
-				device_id, buffer_id,
-				page_align,
-				offset_pages);
 	case PSB_GTT_MAP_TYPE_VIRTUAL:
 		return psb_gtt_map_vaddr(dev,
 					vaddr,
 					size,
 					page_align,
 					offset_pages);
-	case PSB_GTT_MAP_TYPE_BCD_INFO:
-		return psb_gtt_get_bcd_device_info(dev,
-						device_id,
-						buffer_count,
-						buffer_stride);
 	default:
 		DRM_ERROR("unsupported buffer type %d\n", type);
 		return -EINVAL;
@@ -1363,8 +1242,6 @@ int psb_gtt_unmap_meminfo_ioctl(struct drm_device *dev, void *data,
 	switch (type) {
 	case PSB_GTT_MAP_TYPE_MEMINFO:
 		return psb_gtt_unmap_meminfo(dev, arg->hKernelMemInfo);
-	case PSB_GTT_MAP_TYPE_BCD:
-		return psb_gtt_unmap_bcd(dev, device_id, buffer_id);
 	case PSB_GTT_MAP_TYPE_VIRTUAL:
 		return psb_gtt_unmap_vaddr(dev, vaddr, size);
 	default:

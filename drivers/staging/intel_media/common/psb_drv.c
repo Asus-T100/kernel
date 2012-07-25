@@ -66,8 +66,6 @@
 #include "pvr_bridge.h"
 #include "linkage.h"
 
-#include "bufferclass_video_linux.h"
-
 #ifdef CONFIG_MDFD_HDMI
 #include "mdfld_hdcp.h"
 #endif
@@ -295,8 +293,6 @@ MODULE_DEVICE_TABLE(pci, pciidlist);
 		PVRSRV_BRIDGE_PACKAGE)
 #define PVR_DRM_DISP_IOCTL \
 	DRM_IO(DRM_COMMAND_BASE + PVR_DRM_DISP_CMD)
-#define PVR_DRM_BC_IOCTL \
-	DRM_IO(DRM_COMMAND_BASE + PVR_DRM_BC_CMD)
 #define PVR_DRM_IS_MASTER_IOCTL \
 	DRM_IO(DRM_COMMAND_BASE + PVR_DRM_IS_MASTER_CMD)
 #define PVR_DRM_UNPRIV_IOCTL \
@@ -384,9 +380,6 @@ MODULE_DEVICE_TABLE(pci, pciidlist);
 /* PSB video extension */
 #define DRM_LNC_VIDEO_GETPARAM		(DRM_PSB_FLIP + 1)
 
-/*BC_VIDEO ioctl*/
-#define DRM_BUFFER_CLASS_VIDEO      (DRM_LNC_VIDEO_GETPARAM + 1)    /*0x32*/
-
 #define DRM_IOCTL_PSB_TTM_PL_CREATE    \
 	DRM_IOWR(DRM_COMMAND_BASE + DRM_PSB_TTM_PL_CREATE,\
 		 union ttm_pl_create_arg)
@@ -423,11 +416,6 @@ MODULE_DEVICE_TABLE(pci, pciidlist);
 #define DRM_IOCTL_LNC_VIDEO_GETPARAM \
 	DRM_IOWR(DRM_COMMAND_BASE + DRM_LNC_VIDEO_GETPARAM, \
 		 struct drm_lnc_video_getparam_arg)
-
-/*bc_video ioctl*/
-#define DRM_IOCTL_BUFFER_CLASS_VIDEO \
-	DRM_IOWR(DRM_COMMAND_BASE + DRM_BUFFER_CLASS_VIDEO, \
-		BC_Video_ioctl_package)
 
 static int psb_vt_leave_ioctl(struct drm_device *dev, void *data,
 			      struct drm_file *file_priv);
@@ -537,7 +525,6 @@ static struct drm_ioctl_desc psb_ioctls[] = {
 	DRM_AUTH),
 	PSB_IOCTL_DEF(PVR_DRM_SRVKM_IOCTL, PVRSRV_BridgeDispatchKM, DRM_UNLOCKED),
 	PSB_IOCTL_DEF(PVR_DRM_DISP_IOCTL, PVRDRM_Dummy_ioctl, 0),
-	PSB_IOCTL_DEF(PVR_DRM_BC_IOCTL, PVRDRM_Dummy_ioctl, 0),
 	PSB_IOCTL_DEF(PVR_DRM_IS_MASTER_IOCTL, PVRDRMIsMaster, DRM_MASTER),
 	PSB_IOCTL_DEF(PVR_DRM_UNPRIV_IOCTL, PVRDRMUnprivCmd, DRM_UNLOCKED),
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_HIST_ENABLE,
@@ -586,8 +573,6 @@ static struct drm_ioctl_desc psb_ioctls[] = {
 	/*PSB_IOCTL_DEF(DRM_IOCTL_PSB_FLIP, psb_page_flip, DRM_AUTH),*/
 	PSB_IOCTL_DEF(DRM_IOCTL_LNC_VIDEO_GETPARAM,
 	lnc_video_getparam, DRM_AUTH | DRM_UNLOCKED),
-	PSB_IOCTL_DEF(DRM_IOCTL_BUFFER_CLASS_VIDEO,
-	BC_Video_Bridge, DRM_AUTH),
 #endif
 	PSB_IOCTL_DEF(DRM_IOCRL_PSB_DPU_QUERY, psb_dpu_query_ioctl,
 	DRM_AUTH),
@@ -4143,14 +4128,6 @@ static int __init psb_init(void)
 		return ret;
 	}
 
-#ifdef CONFIG_MDFD_VIDEO_DECODE
-	/*init for bc_video*/
-	ret = BC_Video_ModInit();
-	if (ret != 0) {
-		return ret;
-	}
-#endif
-
 #ifdef CONFIG_MDFD_HDMI
 	if (gpDrmDevice) {
 		dev_priv = (struct drm_psb_private *)gpDrmDevice->dev_private;
@@ -4167,14 +4144,6 @@ static void __exit psb_exit(void)
 	int ret;
 #ifdef CONFIG_MDFD_HDMI
 	struct drm_psb_private *dev_priv = NULL;
-#endif
-
-#ifdef CONFIG_MDFD_VIDEO_DECODE
-	/*cleanup for bc_video*/
-	ret = BC_Video_ModCleanup();
-	if (ret != 0) {
-		return;
-	}
 #endif
 
 #ifdef CONFIG_MDFD_HDMI

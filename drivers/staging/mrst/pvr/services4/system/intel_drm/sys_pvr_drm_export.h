@@ -47,9 +47,6 @@
 #define PVR_DRM_DISP_IOCTL \
 	DRM_IO(DRM_COMMAND_BASE + PVR_DRM_DISP_CMD)
 
-#define PVR_DRM_BC_IOCTL \
-	DRM_IO(DRM_COMMAND_BASE + PVR_DRM_BC_CMD)
-
 #define	PVR_DRM_IS_MASTER_IOCTL \
 	DRM_IO(DRM_COMMAND_BASE + PVR_DRM_IS_MASTER_CMD)
 
@@ -86,10 +83,6 @@ void SYSPVRSuspendUnlock(struct drm_device *dev);
 int SYSPVRPreSuspend(struct drm_device *dev);
 int SYSPVRPostSuspend(struct drm_device *dev);
 int SYSPVRResume(struct drm_device *dev);
-
-int BC_Video_ModInit(void);
-int BC_Video_ModCleanup(void);
-int BC_Video_Bridge(struct drm_device *dev, IMG_VOID *arg, struct drm_file *file_priv);
 
 #endif
 

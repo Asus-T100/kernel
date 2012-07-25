@@ -85,51 +85,6 @@ int psb_get_pages_by_mem_handle(IMG_HANDLE hOSMemHandle,
 	return 0;
 }
 
-int psb_get_bcd_pages(u32 device_id, u32 buffer_id, u32 **pfn_list, int *pages)
-{
-	BC_VIDEO_BUFFER *buffer;
-	u32 size;
-	u32 num_pages;
-	int is_contig;
-	int err;
-	u32 phys_addr;
-	u32 *pfns = 0;
-	int i;
-
-	if (!pfn_list || !pages)
-		return -EINVAL;
-
-	err = BCGetBuffer(device_id, buffer_id, &buffer);
-	if (err)
-		return err;
-
-	size = buffer->ulSize;
-	num_pages = (size + PAGE_SIZE - 1) / PAGE_SIZE;
-	is_contig = buffer->is_conti_addr;
-
-	/*allocate page list*/
-	pfns = kzalloc(num_pages * sizeof(u32), GFP_KERNEL);
-	if (!pfns) {
-		DRM_ERROR("No memory\n");
-		return -ENOMEM;
-	}
-
-	if (is_contig) {
-		phys_addr = (u32)buffer->psSysAddr[0].uiAddr;
-		for (i = 0; i < num_pages; i++)
-			pfns[i] = (phys_addr + i * PAGE_SIZE) >> PAGE_SHIFT;
-	} else {
-		for (i = 0; i < num_pages; i++) {
-			phys_addr = (u32)buffer->psSysAddr[i].uiAddr;
-			pfns[i] = phys_addr >> PAGE_SHIFT;
-		}
-	}
-
-	*pfn_list = pfns;
-	*pages = num_pages;
-
-	return 0;
-}
 
 int psb_get_vaddr_pages(u32 vaddr, u32 size, u32 **pfn_list, int *page_count)
 {
@@ -214,12 +169,3 @@ get_page_err:
 	return -EINVAL;
 }
 
-int psb_get_bcd_buffer_count(uint32_t bcd_id)
-{
-	return BCGetDeviceBufferCount(bcd_id);
-}
-
-int psb_get_bcd_buffer_stride(uint32_t bcd_id)
-{
-	return BCGetDeviceStride(bcd_id);
-}
