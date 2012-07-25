@@ -59,6 +59,14 @@ static int __esd_thread(void *data)
 		if (!dbi_output)
 			goto esd_exit;
 
+		mutex_lock(&dev_priv->dsr_mutex);
+		if (dbi_output->mode_flags & MODE_SETTING_IN_DSR) {
+			mutex_unlock(&dev_priv->dsr_mutex);
+			goto esd_exit;
+		} else {
+			mutex_unlock(&dev_priv->dsr_mutex);
+		}
+
 		p_funcs = dbi_output->p_funcs;
 		if (p_funcs && (p_funcs->esd_detection)
 			&& dev_priv->dbi_panel_on) {
