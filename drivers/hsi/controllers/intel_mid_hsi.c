@@ -2719,9 +2719,8 @@ static int hsi_dma_complete(struct intel_controller *intel_hsi,
 		lli_xfer->blk = sg_next(lli_xfer->blk);
 		blk_sz = HSI_BYTES_TO_FRAMES(lli_xfer->blk->length);
 		msg = NULL;
-	} else
+	}
 #endif
-		intel_hsi->dma_ctx[lch]->ongoing->msg = NULL;
 	if ((msg) && (msg->status != HSI_STATUS_ERROR))
 		msg->status = HSI_STATUS_COMPLETED;
 	spin_unlock_irqrestore(&intel_hsi->sw_lock, flags);
@@ -2751,8 +2750,13 @@ static int hsi_dma_complete(struct intel_controller *intel_hsi,
 	hsi_channel = msg->channel;
 
 	spin_lock_irqsave(&intel_hsi->sw_lock, flags);
-	list_del(&msg->link);
-	list_add_tail(&msg->link, &intel_hsi->fwd_queue);
+
+	if (likely(intel_hsi->dma_ctx[lch]->ongoing->msg != NULL)) {
+		intel_hsi->dma_ctx[lch]->ongoing->msg = NULL;
+		list_del(&msg->link);
+		list_add_tail(&msg->link, &intel_hsi->fwd_queue);
+	}
+
 	spin_unlock_irqrestore(&intel_hsi->sw_lock, flags);
 
 	hsi_transfer(intel_hsi, tx_not_rx, hsi_channel, lch);
