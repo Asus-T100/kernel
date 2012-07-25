@@ -735,7 +735,14 @@ static inline void pkg_sender_queue_pkg(struct mdfld_dsi_pkg_sender * sender,
 					struct mdfld_dsi_pkg * pkg,
 					int delay)
 {
-	spin_lock(&sender->lock);
+	unsigned long flags;
+
+	if (pkg->transmission_type == MDFLD_DSI_HS_TRANSMISSION)
+		wait_for_hs_fifos_empty(sender);
+	else if (pkg->transmission_type == MDFLD_DSI_LP_TRANSMISSION)
+		wait_for_lp_fifos_empty(sender);
+
+	spin_lock_irqsave(&sender->lock, flags);
 
 	if(!delay) {
 		send_pkg(sender, pkg);
@@ -746,15 +753,16 @@ static inline void pkg_sender_queue_pkg(struct mdfld_dsi_pkg_sender * sender,
 		list_add_tail(&pkg->entry, &sender->pkg_list);
 	}
 
-	spin_unlock(&sender->lock);
+	spin_unlock_irqrestore(&sender->lock, flags);
 }
 
 static inline int process_pkg_list(struct mdfld_dsi_pkg_sender *sender)
 {
 	struct mdfld_dsi_pkg * pkg;
+	unsigned long flags;
 	int ret = 0;
 
-	spin_lock(&sender->lock);
+	spin_lock_irqsave(&sender->lock, flags);
 
 	while(!list_empty(&sender->pkg_list)) {
 		pkg = list_first_entry(&sender->pkg_list, struct mdfld_dsi_pkg, entry);
@@ -771,11 +779,11 @@ static inline int process_pkg_list(struct mdfld_dsi_pkg_sender *sender)
 		pkg_sender_put_pkg_locked(sender, pkg);
 	}
 
-	spin_unlock(&sender->lock);
+	spin_unlock_irqrestore(&sender->lock, flags);
 	return 0;
 
 errorunlock:
-	spin_unlock(&sender->lock);
+	spin_unlock_irqrestore(&sender->lock, flags);
 	return ret;
 }
 
@@ -786,13 +794,14 @@ static int mdfld_dsi_send_mcs_long(struct mdfld_dsi_pkg_sender * sender,
 				   int delay)
 {
 	struct mdfld_dsi_pkg * pkg;
+	unsigned long flags;
 	u8 *pdata = NULL;
 
-	spin_lock(&sender->lock);
+	spin_lock_irqsave(&sender->lock, flags);
 
 	pkg = pkg_sender_get_pkg_locked(sender);
 
-	spin_unlock(&sender->lock);
+	spin_unlock_irqrestore(&sender->lock, flags);
 
 	if(!pkg) {
 		DRM_ERROR("No memory\n");
@@ -828,12 +837,13 @@ static int mdfld_dsi_send_mcs_short(struct mdfld_dsi_pkg_sender * sender,
 					int delay)
 {
 	struct mdfld_dsi_pkg * pkg;
+	unsigned long flags;
 
-	spin_lock(&sender->lock);
+	spin_lock_irqsave(&sender->lock, flags);
 
 	pkg = pkg_sender_get_pkg_locked(sender);
 
-	spin_unlock(&sender->lock);
+	spin_unlock_irqrestore(&sender->lock, flags);
 
 	if(!pkg) {
 		DRM_ERROR("No memory\n");
@@ -863,12 +873,13 @@ static int mdfld_dsi_send_gen_short(struct mdfld_dsi_pkg_sender * sender,
 					int delay)
 {
 	struct mdfld_dsi_pkg * pkg;
+	unsigned long flags;
 
-	spin_lock(&sender->lock);
+	spin_lock_irqsave(&sender->lock, flags);
 
 	pkg = pkg_sender_get_pkg_locked(sender);
 
-	spin_unlock(&sender->lock);
+	spin_unlock_irqrestore(&sender->lock,flags);
 
 	if(!pkg) {
 		DRM_ERROR("No memory\n");
@@ -909,13 +920,14 @@ static int mdfld_dsi_send_gen_long(struct mdfld_dsi_pkg_sender * sender,
 				   int delay)
 {
 	struct mdfld_dsi_pkg * pkg;
+	unsigned long flags;
 	u8 *pdata = NULL;
 
-	spin_lock(&sender->lock);
+	spin_lock_irqsave(&sender->lock, flags);
 
 	pkg = pkg_sender_get_pkg_locked(sender);
 
-	spin_unlock(&sender->lock);
+	spin_unlock_irqrestore(&sender->lock, flags);
 
 	if(!pkg) {
 		DRM_ERROR("No memory\n");
@@ -950,6 +962,7 @@ static int __read_panel_data(struct mdfld_dsi_pkg_sender *sender,
 				u32 *data,
 				u16 len)
 {
+	unsigned long flags;
 	struct drm_device *dev = sender->dev;
 	int i;
 	u32 gen_data_reg;
@@ -970,7 +983,7 @@ static int __read_panel_data(struct mdfld_dsi_pkg_sender *sender,
 	 * 2) polling read data avail interrupt
 	 * 3) read data
 	 */
-	spin_lock(&sender->lock);
+	spin_lock_irqsave(&sender->lock, flags);
 
 	/*Set the Max return pack size*/
 	wait_for_all_fifos_empty(sender);
@@ -992,7 +1005,7 @@ static int __read_panel_data(struct mdfld_dsi_pkg_sender *sender,
 		udelay(3);
 
 	if (!retry) {
-		spin_unlock(&sender->lock);
+		spin_unlock_irqrestore(&sender->lock, flags);
 		return -ETIMEDOUT;
 	}
 
@@ -1005,14 +1018,14 @@ static int __read_panel_data(struct mdfld_dsi_pkg_sender *sender,
 		gen_data_reg = sender->mipi_lp_gen_data_reg;
 	else {
 		DRM_ERROR("Unknown transmission");
-		spin_unlock(&sender->lock);
+		spin_unlock_irqrestore(&sender->lock, flags);
 		return -EINVAL;
 	}
 
 	for (i=0; i<len; i++)
 		*(data + i) = REG_READ(gen_data_reg);
 
-	spin_unlock(&sender->lock);
+	spin_unlock_irqrestore(&sender->lock, flags);
 
 	return len;
 }
@@ -1026,12 +1039,13 @@ static int mdfld_dsi_read_gen(struct mdfld_dsi_pkg_sender *sender,
 				u8 transmission)
 {
 	struct mdfld_dsi_pkg *pkg;
+	unsigned long flags;
 
-	spin_lock(&sender->lock);
+	spin_lock_irqsave(&sender->lock, flags);
 
 	pkg = pkg_sender_get_pkg_locked(sender);
 
-	spin_unlock(&sender->lock);
+	spin_unlock_irqrestore(&sender->lock,flags);
 
 	if (!pkg) {
 		DRM_ERROR("No memory\n");
@@ -1070,12 +1084,13 @@ static int mdfld_dsi_read_mcs(struct mdfld_dsi_pkg_sender *sender,
 				u8 transmission)
 {
 	struct mdfld_dsi_pkg *pkg;
+	unsigned long flags;
 
-	spin_lock(&sender->lock);
+	spin_lock_irqsave(&sender->lock, flags);
 
 	pkg = pkg_sender_get_pkg_locked(sender);
 
-	spin_unlock(&sender->lock);
+	spin_unlock_irqrestore(&sender->lock, flags);
 
 	if (!pkg) {
 		DRM_ERROR("No memory\n");
@@ -1098,12 +1113,13 @@ static int mdfld_dsi_send_dpi_spk_pkg(struct mdfld_dsi_pkg_sender *sender,
 				u8 transmission)
 {
 	struct mdfld_dsi_pkg *pkg;
+	unsigned long flags;
 
-	spin_lock(&sender->lock);
+	spin_lock_irqsave(&sender->lock, flags);
 
 	pkg = pkg_sender_get_pkg_locked(sender);
 
-	spin_unlock(&sender->lock);
+	spin_unlock_irqrestore(&sender->lock, flags);
 
 	if (!pkg) {
 		DRM_ERROR("No memory\n");
