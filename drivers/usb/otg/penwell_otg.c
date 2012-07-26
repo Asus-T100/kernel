@@ -470,18 +470,18 @@ static void penwell_otg_update_chrg_cap(enum usb_charger_type charger,
 		spin_unlock_irqrestore(&pnw->charger_lock, flags);
 	} else {
 		dev_dbg(pnw->dev, "clv charger_cap_update\n");
-		spin_lock_irqsave(&pnw->charger_lock, flags);
 
 		event = kzalloc(sizeof(*event), GFP_ATOMIC);
 		if (!event) {
 			dev_err(pnw->dev, "no memory for charging event");
-			spin_unlock_irqrestore(&pnw->charger_lock, flags);
 			return ;
 		}
 
 		event->cap.chrg_type = usb_chrg_to_power_supply_chrg(charger);
 		event->cap.mA = mA;
 		INIT_LIST_HEAD(&event->node);
+
+		spin_lock_irqsave(&pnw->charger_lock, flags);
 		list_add_tail(&event->node, &pnw->chrg_evt_queue);
 		spin_unlock_irqrestore(&pnw->charger_lock, flags);
 
@@ -517,25 +517,21 @@ static int penwell_otg_set_power(struct otg_transceiver *otg,
 	} else {
 		dev_dbg(pnw->dev, "clv charger_set_power\n");
 
-
-		spin_lock_irqsave(&pnw->charger_lock, flags);
-		if (pnw->psc_cap.chrg_type != POWER_SUPPLY_TYPE_USB) {
-			spin_unlock_irqrestore(&pnw->charger_lock, flags);
+		if (pnw->psc_cap.chrg_type != POWER_SUPPLY_TYPE_USB)
 			return 0;
-		}
 
 		event = kzalloc(sizeof(*event), GFP_ATOMIC);
 		if (!event) {
 			dev_err(pnw->dev, "no memory for charging event");
-			spin_unlock_irqrestore(&pnw->charger_lock, flags);
 			return -ENOMEM;
 		}
 
 		event->cap.chrg_type = POWER_SUPPLY_TYPE_USB;
 		event->cap.mA = mA;
 		INIT_LIST_HEAD(&event->node);
-		list_add_tail(&event->node, &pnw->chrg_evt_queue);
 
+		spin_lock_irqsave(&pnw->charger_lock, flags);
+		list_add_tail(&event->node, &pnw->chrg_evt_queue);
 		spin_unlock_irqrestore(&pnw->charger_lock, flags);
 
 		queue_work(pnw->chrg_qwork, &pnw->psc_notify);
@@ -2638,12 +2634,12 @@ static void penwell_otg_psc_notify_work(struct work_struct *work)
 	spin_lock_irqsave(&pnw->charger_lock, flags);
 	list_for_each_entry_safe(event, temp, &pnw->chrg_evt_queue, node) {
 		list_del(&event->node);
+		spin_unlock_irqrestore(&pnw->charger_lock, flags);
 
 		psc_cap.chrg_evt = check_psc_event(pnw->psc_cap, event->cap);
 
 		event->cap.chrg_evt = psc_cap.chrg_evt;
 		pnw->psc_cap = event->cap;
-		spin_unlock_irqrestore(&pnw->charger_lock, flags);
 
 		if (pnw->psc_cap.chrg_evt == -1)
 			dev_dbg(pnw->dev, "no need to notify\n");
