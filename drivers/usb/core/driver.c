@@ -1323,8 +1323,17 @@ int usb_resume(struct device *dev, pm_message_t msg)
 
 	/* For PM complete calls, all we do is rebind interfaces */
 	if (msg.event == PM_EVENT_ON) {
-		if (udev->state != USB_STATE_NOTATTACHED)
+		if (udev->state != USB_STATE_NOTATTACHED) {
 			do_unbind_rebind(udev, DO_REBIND);
+
+			/* Schedule a runtime suspend for devices enabled
+			 * runtime-pm expect Hubs
+			*/
+			if (udev->dev.power.runtime_auto &&
+				udev->descriptor.
+				bDeviceClass != USB_CLASS_HUB)
+					pm_schedule_suspend(dev, 0);
+		}
 		status = 0;
 
 	/* For all other calls, take the device back to full power and
