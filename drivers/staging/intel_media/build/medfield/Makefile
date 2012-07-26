@@ -201,17 +201,13 @@ gfx-y += $(DISPLAYDIR)/psb_bl.o \
 		$(DISPLAYDIR)/mdfld_dsi_dpi.o \
 		$(DISPLAYDIR)/mdfld_dsi_output.o \
 		$(DISPLAYDIR)/mdfld_output.o \
-		$(DISPLAYDIR)/tpo_cmd.o \
-		$(DISPLAYDIR)/tpo_vid.o \
 		$(DISPLAYDIR)/auo_sc1_vid.o \
 		$(DISPLAYDIR)/auo_sc1_cmd.o \
 		$(DISPLAYDIR)/gi_sony_vid.o \
 		$(DISPLAYDIR)/gi_sony_cmd.o \
-		$(DISPLAYDIR)/tmd_vid.o \
 		$(DISPLAYDIR)/tmd_6x10_vid.o \
 		$(DISPLAYDIR)/h8c7_vid.o \
 		$(DISPLAYDIR)/h8c7_cmd.o \
-		$(DISPLAYDIR)/pyr_cmd.o \
 		$(DISPLAYDIR)/mdfld_dsi_pkg_sender.o \
 		$(DISPLAYDIR)/mdfld_dsi_esd.o
 
@@ -247,7 +243,6 @@ gfx-$(CONFIG_MDFD_GL3) += $(MEDIA_COMMON_DIR)/mdfld_gl3.o
 
 obj-$(CONFIG_DRM_MDFLD) += gfx.o
 obj-$(CONFIG_DRM_CTP) += gfx.o
-obj-$(CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE) += $(DISPLAYDIR)/mdfld_dsi_lvds_bridge.o
 
 obj-$(CONFIG_DRM_MDFLD) += $(DISPLAYDIR)/otm_hdmi/
 obj-$(CONFIG_DRM_CTP) += $(DISPLAYDIR)/otm_hdmi/

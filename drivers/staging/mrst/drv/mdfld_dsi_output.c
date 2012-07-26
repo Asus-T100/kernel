@@ -34,7 +34,6 @@
 #include <linux/pm_runtime.h>
 #include <linux/freezer.h>
 #include "psb_drv.h"
-#include "mdfld_dsi_lvds_bridge.h"
 #include "mdfld_dsi_esd.h"
 
 #define MDFLD_DSI_BRIGHTNESS_MAX_LEVEL 100
@@ -206,21 +205,6 @@ void mdfld_dsi_gen_fifo_ready (struct drm_device *dev, u32 gen_fifo_stat_reg, u3
  */
 void mdfld_dsi_brightness_init(struct mdfld_dsi_config *dsi_config, int pipe)
 {
-#if defined(CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY) || defined(CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE)
-	int ret = 0;
-
-	PSB_DEBUG_ENTRY("[DISPLAY] %s\n", __func__);
-
-	//Program PWM Frequency to 300 Hz
-	//(19.2*1000*1000)/64000 = 300 Hz
-	ret |= intel_scu_ipc_iowrite8(0x62, 0x00);  //PWM0CLKDIV0 (Low Byte of Clock Divider)
-	ret |= intel_scu_ipc_iowrite8(0x61, 0xFA);  //PWM0CLKDIV1 (High Byte of Clock Divider)
-	if (ret) {
-		printk(KERN_ERR "[DISPLAY] %s: ipc write fail\n", __func__);
-		return;
-	}
-
-#else
 	struct mdfld_dsi_pkg_sender * sender = mdfld_dsi_get_pkg_sender(dsi_config);
 	struct drm_device * dev = sender->dev;
 	struct drm_psb_private * dev_priv = dev->dev_private;
@@ -271,7 +255,6 @@ void mdfld_dsi_brightness_init(struct mdfld_dsi_config *dsi_config, int pipe)
 				    UI_IMAGE,
 				    1,
 				    MDFLD_DSI_SEND_PACKAGE);
-#endif
 }
 
 /**
@@ -280,41 +263,6 @@ void mdfld_dsi_brightness_init(struct mdfld_dsi_config *dsi_config, int pipe)
  */
 void mdfld_dsi_brightness_control (struct drm_device *dev, int pipe, int level)
 {
-#if defined(CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY) || defined(CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE)
-	int duty_val = 0;
-	int panel_duty_val = 0;
-	int ret = 0;
-
-#ifdef CONFIG_SUPPORT_HOST_PWM0
-	/* MSIC PWM duty cycle goes up to 0x63 = 99% */
-	#define BACKLIGHT_DUTY_FACTOR	0x63
-	#define PWM0DUTYCYCLE		0x67
-
-	duty_val = level*BACKLIGHT_DUTY_FACTOR/MDFLD_DSI_BRIGHTNESS_MAX_LEVEL;
-
-	PSB_DEBUG_ENTRY("level is %d and duty = %x\n", level, duty_val);
-
-	ret = intel_scu_ipc_iowrite8(PWM0DUTYCYCLE, duty_val);
-
-	if (ret) {
-		printk(KERN_ERR "[DISPLAY] %s: ipc write fail\n");
-		return;
-	}
-#endif
-	/* I won't pretend to understand this formula. The panel spec is quite
-	 * bad engrish.
-	 */
-	panel_duty_val = (230 * (level - 100) / 100) + 255;
-
-	if (cmi_lcd_i2c_client) {
-		PSB_DEBUG_ENTRY("panel_duty_val = %d\n", panel_duty_val);
-		ret = i2c_smbus_write_byte_data(cmi_lcd_i2c_client,
-						PANEL_PWM_MAX, panel_duty_val);
-		if (ret < 0)
-			dev_err(&cmi_lcd_i2c_client->dev, "%s: i2c write failed\n",
-				__func__);
-	}
-#else
 	struct drm_psb_private *dev_priv;
 	struct mdfld_dsi_config * dsi_config;
 	struct mdfld_dsi_dpi_output *dpi_output;
@@ -372,7 +320,6 @@ void mdfld_dsi_brightness_control (struct drm_device *dev, int pipe, int level)
 set_brightness_out:
 	mutex_unlock(&dsi_config->context_lock);
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
-#endif
 }
 
 static int mdfld_dsi_get_panel_status(struct mdfld_dsi_config *dsi_config,
@@ -458,9 +405,6 @@ static enum drm_connector_status mdfld_dsi_connector_detect
 	struct drm_device *dev = connector->dev;
 
 	PSB_DEBUG_ENTRY("\n");
-
-	if (get_panel_type(dev, 0) == TMD_VID)
-		dsi_connector->status = connector_status_connected;
 
 	return dsi_connector->status;
 }
@@ -733,28 +677,11 @@ static int mdfld_dsi_get_default_config(struct drm_device *dev,
 	
 	config->bpp = 24;
 	config->type = is_panel_vid_or_cmd(dev);
-
-#if defined(CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY)
-	/* Gideon: changing lane count to 1 lane for toshiba panel*/
-	config->lane_count = 1;
-#elif defined(CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE)
-	config->lane_count = 4;
-#else
 	config->lane_count = 2;
 	config->lane_config = MDFLD_DSI_DATA_LANE_2_2;
-#endif /* CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY */
 
 	config->channel_num = 0;
-	/*NOTE: video mode is ignored when type is MDFLD_DSI_ENCODER_DBI*/
-	if (get_panel_type(dev, pipe) == TMD_VID) {
-#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
-		config->video_mode = MDFLD_DSI_VIDEO_NON_BURST_MODE_SYNC_EVENTS;
-#else
-		config->video_mode = MDFLD_DSI_VIDEO_NON_BURST_MODE_SYNC_PULSE;
-#endif
-	} else {
-		config->video_mode = MDFLD_DSI_VIDEO_BURST_MODE;
-	}
+	config->video_mode = MDFLD_DSI_VIDEO_BURST_MODE;
 	
 	return 0;
 }
@@ -934,27 +861,15 @@ mdfld_dsi_get_configuration_mode(struct mdfld_dsi_config * dsi_config, int pipe)
 		PSB_DEBUG_ENTRY("clock is %d\n", mode->clock);
 	} else {
 		if(dsi_config->type == MDFLD_DSI_ENCODER_DPI) { 
-			if (get_panel_type(dev, pipe) == TMD_VID) {
-				mode->hdisplay = 480;
-				mode->vdisplay = 854;
-				mode->hsync_start = 487;
-				mode->hsync_end = 490;
-				mode->htotal = 499;
-				mode->vsync_start = 861;
-				mode->vsync_end = 865;
-				mode->vtotal = 873;
-				mode->clock = 33264;
-			} else {
-				mode->hdisplay = 864;
-				mode->vdisplay = 480;
-				mode->hsync_start = 873;
-				mode->hsync_end = 876;
-				mode->htotal = 887;
-				mode->vsync_start = 487;
-				mode->vsync_end = 490;
-				mode->vtotal = 499;
-				mode->clock = 33264;
-			}
+			mode->hdisplay = 864;
+			mode->vdisplay = 480;
+			mode->hsync_start = 873;
+			mode->hsync_end = 876;
+			mode->htotal = 887;
+			mode->vsync_start = 487;
+			mode->vsync_end = 490;
+			mode->vtotal = 499;
+			mode->clock = 33264;
 		} else if(dsi_config->type == MDFLD_DSI_ENCODER_DBI) {
 			mode->hdisplay = 864;
 			mode->vdisplay = 480;

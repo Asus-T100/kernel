@@ -954,20 +954,16 @@ void mdfld_disable_crtc (struct drm_device *dev, int pipe)
 
 	PSB_DEBUG_ENTRY("pipe = %d\n", pipe);
 
-#ifndef CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY
 	/**
 	 * NOTE: this path only works for TMD panel now. update it to
 	 * support all MIPI panels later.
 	 */
-	if (pipe != 1 && ((get_panel_type(dev, pipe) == TMD_VID) ||
-		(get_panel_type(dev, pipe) == TMD_6X10_VID) ||
-		(get_panel_type(dev, pipe) == H8C7_VID) ||
-		(get_panel_type(dev, pipe) == H8C7_CMD) ||
-		(get_panel_type(dev, pipe) == GI_SONY_VID) ||
-		/* SC1 setting */
-		(get_panel_type(dev, pipe) == AUO_SC1_VID)))
+	if (pipe != 1 && ((get_panel_type(dev, pipe) == TMD_6X10_VID) ||
+			  (get_panel_type(dev, pipe) == H8C7_VID) ||
+			  (get_panel_type(dev, pipe) == H8C7_CMD) ||
+			  (get_panel_type(dev, pipe) == GI_SONY_VID) ||
+			  (get_panel_type(dev, pipe) == AUO_SC1_VID)))
 		return;
-#endif
 
 	switch (pipe) {
 	case 0:
@@ -1067,22 +1063,18 @@ static void mdfld_crtc_dpms(struct drm_crtc *crtc, int mode)
 
 	PSB_DEBUG_ENTRY("mode = %d, pipe = %d\n", mode, pipe);
 
-#ifndef CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY
 	/**
 	 * MIPI dpms
 	 * NOTE: this path only works for TMD panel now. update it to
 	 * support all MIPI panels later.
 	 */
-	if (pipe != 1 && ((get_panel_type(dev, pipe) == TMD_VID) ||
-		(get_panel_type(dev, pipe) == TMD_6X10_VID) ||
-		(get_panel_type(dev, pipe) == H8C7_VID) ||
-		(get_panel_type(dev, pipe) == H8C7_CMD) ||
-		(get_panel_type(dev, pipe) == GI_SONY_VID) ||
-		/* SC1 setting */
-		(get_panel_type(dev, pipe) == AUO_SC1_VID))) {
+	if (pipe != 1 && ((get_panel_type(dev, pipe) == TMD_6X10_VID) ||
+			  (get_panel_type(dev, pipe) == H8C7_VID) ||
+			  (get_panel_type(dev, pipe) == H8C7_CMD) ||
+			  (get_panel_type(dev, pipe) == GI_SONY_VID) ||
+			  (get_panel_type(dev, pipe) == AUO_SC1_VID))) {
 			return;
 	}
-#endif
 
 	if (((get_panel_type(dev, pipe) == AUO_SC1_CMD) ||
 		(get_panel_type(dev, pipe) == GI_SONY_CMD)) &&
@@ -1873,20 +1865,16 @@ static int mdfld_crtc_mode_set(struct drm_crtc *crtc,
 		goto mrst_crtc_mode_set_exit;
 	}
 
-#ifndef CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY
-#ifndef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
 	/**
 	 * MIPI panel mode setting
 	 * NOTE: this path only works for TMD panel now. update it to
 	 * support all MIPI panels later.
 	 */
-	if (pipe != 1 && ((get_panel_type(dev, pipe) == TMD_VID) ||
-		(get_panel_type(dev, pipe) == TMD_6X10_VID) ||
-		(get_panel_type(dev, pipe) == H8C7_VID) ||
-		(get_panel_type(dev, pipe) == H8C7_CMD) ||
-		(get_panel_type(dev, pipe) == GI_SONY_VID) ||
-		/* SC1 setting */
-		(get_panel_type(dev, pipe) == AUO_SC1_VID))) {
+	if (pipe != 1 && ((get_panel_type(dev, pipe) == TMD_6X10_VID) ||
+			  (get_panel_type(dev, pipe) == H8C7_VID) ||
+			  (get_panel_type(dev, pipe) == H8C7_CMD) ||
+			  (get_panel_type(dev, pipe) == GI_SONY_VID) ||
+			  (get_panel_type(dev, pipe) == AUO_SC1_VID))) {
 		if (pipe == 0)
 			dsi_config = dev_priv->dsi_configs[0];
 		else if (pipe == 2)
@@ -1896,8 +1884,6 @@ static int mdfld_crtc_mode_set(struct drm_crtc *crtc,
 		return mdfld_crtc_dsi_mode_set(crtc, dsi_config, mode,
 				adjusted_mode, x, y, old_fb);
 	 }
-#endif
-#endif
 
 	switch (pipe) {
 	case 0:
@@ -2192,13 +2178,6 @@ static int mdfld_crtc_mode_set(struct drm_crtc *crtc,
 		udelay(10);
 		timeout ++;
 	}
-
-#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
-	if (pipe == 0 && ctx != NULL) {
-		ctx->dpll = dpll;
-		ctx->fp = fp;
-	}
-#endif
 
 	if (is_mipi) {
 		if (get_panel_type(dev, pipe) == GI_SONY_CMD)

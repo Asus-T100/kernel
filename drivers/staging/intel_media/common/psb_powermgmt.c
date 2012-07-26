@@ -40,7 +40,6 @@
 #include "psb_intel_hdmi.h"
 #include "mdfld_ti_tpd.h"
 #include "mdfld_dsi_dpi.h"
-#include "mdfld_dsi_lvds_bridge.h"
 #ifdef CONFIG_GFX_RTPM
 #include <linux/pm_runtime.h>
 #endif
@@ -858,18 +857,12 @@ static int mdfld_save_display_registers (struct drm_device *dev, int pipe)
 	 * NOTE: only support TMD panel now, add support for other MIPI
 	 * panels later
 	 */
-#ifndef CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY
-#ifndef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
-	if (pipe != 1 && ((get_panel_type(dev, pipe) == TMD_VID) ||
-		(get_panel_type(dev, pipe) == TMD_6X10_VID) ||
-		(get_panel_type(dev, pipe) == H8C7_VID) ||
-		(get_panel_type(dev, pipe) == H8C7_CMD) ||
-		(get_panel_type(dev, pipe) == GI_SONY_VID) ||
-		/* SC1 setting */
-		(get_panel_type(dev, pipe) == AUO_SC1_VID)))
+	if (pipe != 1 && ((get_panel_type(dev, pipe) == TMD_6X10_VID) ||
+			  (get_panel_type(dev, pipe) == H8C7_VID) ||
+			  (get_panel_type(dev, pipe) == H8C7_CMD) ||
+			  (get_panel_type(dev, pipe) == GI_SONY_VID) ||
+			  (get_panel_type(dev, pipe) == AUO_SC1_VID)))
 		return 0;
-#endif
-#endif
 
 	switch (pipe) {
 	case 0:
@@ -1120,18 +1113,12 @@ static int mdfld_restore_display_registers(struct drm_device *dev, int pipe)
 	 * NOTE: only support TMD panel now, add support for other MIPI
 	 * panels later
 	 */
-#ifndef CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY
-#ifndef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
-	if (pipe != 1 && ((get_panel_type(dev, pipe) == TMD_VID) ||
-		(get_panel_type(dev, pipe) == TMD_6X10_VID) ||
-		(get_panel_type(dev, pipe) == H8C7_VID) ||
-		(get_panel_type(dev, pipe) == H8C7_CMD) ||
-		(get_panel_type(dev, pipe) == GI_SONY_VID) ||
-		/* SC1 setting */
-		(get_panel_type(dev, pipe) == AUO_SC1_VID)))
+	if (pipe != 1 && ((get_panel_type(dev, pipe) == TMD_6X10_VID) ||
+			  (get_panel_type(dev, pipe) == H8C7_VID) ||
+			  (get_panel_type(dev, pipe) == H8C7_CMD) ||
+			  (get_panel_type(dev, pipe) == GI_SONY_VID) ||
+			  (get_panel_type(dev, pipe) == AUO_SC1_VID)))
 		return 0;
-#endif
-#endif
 
 	switch (pipe) {
 	case 0:
@@ -1303,10 +1290,8 @@ static int mdfld_restore_display_registers(struct drm_device *dev, int pipe)
 		PSB_WVDC32(dev_priv->saveHDMIB_CONTROL, HDMIB_CONTROL);
 
 	} else {
-#ifndef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
 		/*set up pipe related registers*/
 		PSB_WVDC32(mipi_val, mipi_reg);
-#endif
 		/*TODO: remove MIPI restore code later*/
 		/*dsi_config->dvr_ic_inited = 0;*/
 		/*mdfld_dsi_tmd_drv_ic_init(dsi_config, pipe);*/
@@ -1331,26 +1316,6 @@ static int mdfld_restore_display_registers(struct drm_device *dev, int pipe)
 
 	/*enable the plane*/
 	PSB_WVDC32(dspcntr_val, dspcntr_reg);
-
-#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
-	device_ready_reg = DEVICE_READY_REG + reg_offset;
-	/* LP Hold Release */
-	temp = REG_READ(mipi_reg);
-	temp |= LP_OUTPUT_HOLD_RELEASE;
-	REG_WRITE(mipi_reg, temp);
-
-	/* Set DSI host to exit from Utra Low Power State */
-	temp = REG_READ(device_ready_reg);
-	temp &= ~ULPS_MASK;
-	temp |= 0x3;
-	temp |= EXIT_ULPS_DEV_READY;
-	REG_WRITE(device_ready_reg, temp);
-
-	temp = REG_READ(device_ready_reg);
-	temp &= ~ULPS_MASK;
-	temp |= EXITING_ULPS;
-	REG_WRITE(device_ready_reg, temp);
-#endif
 
 	/*enable the pipe*/
 	PSB_WVDC32(pipeconf_val, pipeconf_reg);
@@ -1479,22 +1444,6 @@ void ospm_suspend_display(struct drm_device *dev)
 #ifdef CONFIG_MDFD_GL3
 		dev_priv->saveGL3_CTL = PSB_RVDC32(MDFLD_GL3_CONTROL);
 		dev_priv->saveGL3_USE_WRT_INVAL = PSB_RVDC32(MDFLD_GL3_USE_WRT_INVAL);
-#endif
-
-#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
-		device_ready_reg = DEVICE_READY_REG + reg_offset;
-		mipi_reg = MIPI;
-		/* Put the panel in ULPS mode for S0ix. */
-		temp = REG_READ(device_ready_reg);
-		temp &= ~ULPS_MASK;
-		temp |= ENTERING_ULPS;
-		REG_WRITE(device_ready_reg, temp);
-
-		/* LP Hold */
-		temp = REG_READ(mipi_reg);
-		temp &= ~LP_OUTPUT_HOLD;
-		REG_WRITE(mipi_reg, temp);
-		mdelay(1);
 #endif
 
 	} else {
@@ -1769,83 +1718,6 @@ static bool ospm_resume_pci(struct pci_dev *pdev)
 	return !gbSuspended;
 }
 
-#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
-static void gfx_redridge_early_suspend(struct drm_device *dev)
-{
-	struct drm_psb_private *dev_priv = dev ? dev->dev_private : NULL;
-	struct drm_encoder *encoder = NULL;
-	struct drm_encoder_helper_funcs *enc_funcs = NULL;
-
-	if (!dev || !dev_priv) {
-		pr_err("%s: dev pointor is NULL\n", __func__);
-		return;
-	}
-
-	if (dev_priv->encoder0 && (dev_priv->panel_desc & DISPLAY_A)) {
-		encoder = &dev_priv->encoder0->base;
-		mdfld_dsi_dpi_set_power(encoder, false);
-	}
-
-	if (dev_priv->encoder2 && (dev_priv->panel_desc & DISPLAY_C)) {
-		encoder = &dev_priv->encoder2->base;
-		mdfld_dsi_dpi_set_power(encoder, false);
-	}
-
-	list_for_each_entry(encoder, &dev->mode_config.encoder_list, head) {
-		enc_funcs = encoder->helper_private;
-		if (encoder->encoder_type == DRM_MODE_ENCODER_TMDS
-				&& drm_helper_encoder_in_use(encoder)) {
-			if (enc_funcs && enc_funcs->save)
-				enc_funcs->save(encoder);
-		}
-	}
-}
-
-static void gfx_redridge_late_resume(struct drm_device *dev)
-{
-	struct drm_psb_private *dev_priv = dev ? dev->dev_private : NULL;
-	struct drm_encoder *encoder = NULL;
-	struct drm_crtc *crtc = NULL;
-	struct drm_encoder_helper_funcs *enc_funcs;
-
-	if (!dev || !dev_priv) {
-		pr_err("%s: dev pointor is NULL\n", __func__);
-		return;
-	}
-
-	if (dev_priv->encoder0 && (dev_priv->panel_desc & DISPLAY_A)) {
-		encoder = &dev_priv->encoder0->base;
-		crtc = encoder->crtc;
-		if (crtc)
-			mdfld_dsi_dpi_mode_set(
-					encoder,
-					&crtc->mode,
-					&crtc->hwmode);
-		mdfld_dsi_dpi_set_power(encoder, true);
-	}
-	if (dev_priv->encoder2 && (dev_priv->panel_desc & DISPLAY_C)) {
-		encoder = &dev_priv->encoder2->base;
-		crtc = encoder->crtc;
-		if (crtc)
-			mdfld_dsi_dpi_mode_set(
-					encoder,
-					&crtc->mode,
-					&crtc->hwmode);
-		mdfld_dsi_dpi_set_power(encoder, true);
-	}
-	list_for_each_entry(encoder,
-			&dev->mode_config.encoder_list,
-			head) {
-		enc_funcs = encoder->helper_private;
-		if (encoder->encoder_type == DRM_MODE_ENCODER_TMDS
-				&& drm_helper_encoder_in_use(encoder)) {
-			if (enc_funcs && enc_funcs->restore)
-				enc_funcs->restore(encoder);
-		}
-	}
-}
-#endif
-
 static void gfx_early_suspend(struct early_suspend *h)
 {
 	struct drm_psb_private *dev_priv = gpDrmDevice->dev_private;
@@ -1875,20 +1747,14 @@ static void gfx_early_suspend(struct early_suspend *h)
 		dev_priv->pvr_screen_event_handler(dev, 0);
 	/*Display off*/
 	if (IS_MDFLD(gpDrmDevice)) {
-		if ((dev_priv->panel_id == TMD_VID) ||
-			(dev_priv->panel_id == H8C7_VID) ||
-			(dev_priv->panel_id == H8C7_CMD) ||
-			(dev_priv->panel_id == TMD_6X10_VID) ||
-			(dev_priv->panel_id == GI_SONY_VID) ||
-			(dev_priv->panel_id == GI_SONY_CMD) ||
-			(dev_priv->panel_id == H8C7_CMD) ||
-			(dev_priv->panel_id == AUO_SC1_VID) ||
-			/* SC1 setting */
-			(dev_priv->panel_id == AUO_SC1_CMD)) {
-#if defined(CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY) || \
-			defined(CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE)
-			gfx_redridge_early_suspend(dev);
-#else
+		if ((dev_priv->panel_id == H8C7_VID) ||
+		    (dev_priv->panel_id == H8C7_CMD) ||
+		    (dev_priv->panel_id == TMD_6X10_VID) ||
+		    (dev_priv->panel_id == GI_SONY_VID) ||
+		    (dev_priv->panel_id == GI_SONY_CMD) ||
+		    (dev_priv->panel_id == H8C7_CMD) ||
+		    (dev_priv->panel_id == AUO_SC1_VID) ||
+		    (dev_priv->panel_id == AUO_SC1_CMD)) {
 			list_for_each_entry(encoder,
 					&dev->mode_config.encoder_list,
 					head) {
@@ -1898,16 +1764,6 @@ static void gfx_early_suspend(struct early_suspend *h)
 				if (enc_funcs && enc_funcs->save)
 					enc_funcs->save(encoder);
 			}
-#endif
-		} else if (dev_priv->panel_id == TPO_CMD) {
-			if (dev_priv->encoder0 &&
-				(dev_priv->panel_desc & DISPLAY_A))
-				mdfld_dsi_dbi_set_power(
-					&dev_priv->encoder0->base, false);
-			if (dev_priv->encoder2 &&
-				(dev_priv->panel_desc & DISPLAY_C))
-				mdfld_dsi_dbi_set_power(
-					&dev_priv->encoder2->base, false);
 		} else
 			printk(KERN_ALERT "panel type is not support currently\n");
 	}
@@ -1942,20 +1798,14 @@ static void restore_panel_controll_back(struct drm_psb_private *dev_priv)
 	u32 dspcntr_val;
 
 	if (IS_MDFLD(gpDrmDevice)) {
-		if ((dev_priv->panel_id == TMD_VID) ||
-			(dev_priv->panel_id == H8C7_VID) ||
-			(dev_priv->panel_id == H8C7_CMD) ||
-			(dev_priv->panel_id == TMD_6X10_VID) ||
-			(dev_priv->panel_id == GI_SONY_VID) ||
-			(dev_priv->panel_id == GI_SONY_CMD) ||
-			(dev_priv->panel_id == H8C7_CMD) ||
-			(dev_priv->panel_id == AUO_SC1_VID) ||
-			/* SC1 setting */
-			(dev_priv->panel_id == AUO_SC1_CMD)) {
-#if defined(CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY) || \
-			defined(CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE)
-			gfx_redridge_late_resume(dev);
-#else
+		if ((dev_priv->panel_id == H8C7_VID) ||
+		    (dev_priv->panel_id == H8C7_CMD) ||
+		    (dev_priv->panel_id == TMD_6X10_VID) ||
+		    (dev_priv->panel_id == GI_SONY_VID) ||
+		    (dev_priv->panel_id == GI_SONY_CMD) ||
+		    (dev_priv->panel_id == H8C7_CMD) ||
+		    (dev_priv->panel_id == AUO_SC1_VID) ||
+		    (dev_priv->panel_id == AUO_SC1_CMD)) {
 			list_for_each_entry(encoder,
 					&dev->mode_config.encoder_list,
 					head) {
@@ -1965,16 +1815,6 @@ static void restore_panel_controll_back(struct drm_psb_private *dev_priv)
 				if (enc_funcs && enc_funcs->restore)
 					enc_funcs->restore(encoder);
 			}
-#endif
-		} else if (dev_priv->panel_id == TPO_CMD) {
-			if (dev_priv->encoder0 &&
-				(dev_priv->panel_desc & DISPLAY_A))
-				mdfld_dsi_dbi_set_power(
-					&dev_priv->encoder0->base, true);
-			if (dev_priv->encoder2 &&
-				(dev_priv->panel_desc & DISPLAY_C))
-				mdfld_dsi_dbi_set_power(
-					&dev_priv->encoder2->base, true);
 		} else {
 			printk(KERN_ALERT "%s invalid panel\n",
 				__func__);
@@ -2906,51 +2746,6 @@ int psb_runtime_idle(struct device *dev)
 			return 0;
 }
 
-#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
-DEFINE_MUTEX(vadd_mutex);
-static int i2c_access_count;
-
-/* use access count to mark status of i2c bus 2, and make sure avdd is turned on
- * when accessing this i2c. when accaccess count reaches 1, then turn on lvds
- * panel's avdd
- */
-void vlcm_vadd_get()
-{
-	mutex_lock(&vadd_mutex);
-	++i2c_access_count;
-	if (i2c_access_count == 1) {
-		if (gpio_direction_output(GPIO_MIPI_LCD_VADD, 1)) {
-			pr_err("%s: faild to pull high VADD\n", __func__);
-			goto unlock;
-		}
-		msleep(260);
-	}
-unlock:
-	mutex_unlock(&vadd_mutex);
-}
-
-/* decrease reference count, and turn vadd off when count reaches 0
- */
-void vlcm_vadd_put()
-{
-	mutex_lock(&vadd_mutex);
-	if (i2c_access_count == 0) {
-		pr_warn("%s: i2c_access_count is 0\n", __func__);
-		goto unlock;
-	}
-
-	--i2c_access_count;
-	if (i2c_access_count > 0)
-		goto unlock;
-	/* i2c_access_count == 0 */
-	if (gpio_direction_output(GPIO_MIPI_LCD_VADD, 0)) {
-		pr_err("%s: faild to pull low VADD\n",
-				__func__);
-	}
-unlock:
-	mutex_unlock(&vadd_mutex);
-}
-#endif
 void mdfld_reset_panel_handler_work(struct work_struct *work)
 {
 	struct drm_psb_private *dev_priv =

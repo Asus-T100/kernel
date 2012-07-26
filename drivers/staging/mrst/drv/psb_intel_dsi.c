@@ -1994,19 +1994,8 @@ mrst_dsi_get_configuration_mode(struct drm_device *dev)
 
 	/* DPI MIPI display */
 	dev_priv->dpi = true;
-
-	/* FIXME hard coded 4 lanes for Himax HX8858-A, 2 lanes for NSC LM2550 */
-#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY
-	dev_priv->laneCount = 1;
-#else
-#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
-	dev_priv->laneCount = 4;
-#else
 	dev_priv->laneCount = 2;
-#endif
-#endif
 	dev_priv->bpp = 24;
-
 	dev_priv->videoModeFormat =  NON_BURST_MODE_SYNC_EVENTS;
 
 	drm_mode_set_name(mode);

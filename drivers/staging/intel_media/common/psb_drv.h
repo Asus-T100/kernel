@@ -70,10 +70,6 @@ enum {
 };
 
 enum panel_type {
-	TPO_CMD,
-	TPO_VID,
-	TMD_CMD,
-	TMD_VID,
 	TMD_6X10_VID,
 	H8C7_VID,
 	H8C7_CMD,
@@ -81,11 +77,6 @@ enum panel_type {
 	AUO_SC1_CMD,
 	GI_SONY_VID,
 	GI_SONY_CMD,
-	PYR_CMD,
-	PYR_VID,
-	TPO,
-	TMD,
-	PYR,
 	HDMI,
 	GCT_DETECT
 };

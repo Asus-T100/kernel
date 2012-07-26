@@ -1132,35 +1132,11 @@ bool mrst_get_vbt_data(struct drm_psb_private *dev_priv)
 					 */
 					dev_priv->panel_id = TMD_6X10_VID;
 					PanelID = TMD_6X10_VID;
-#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_DISPLAY
-					/*DIV5-MM-DISPLAY-NC-LCM_INIT-01*/
-					dev_priv->panel_id = TMD_VID;
-					PSB_DEBUG_ENTRY("TMD_VID Panel\n");
-#endif
 
 #ifdef CONFIG_SUPPORT_TMD_MIPI_600X1024_DISPLAY
 					dev_priv->panel_id = TMD_6X10_VID;
 					PSB_DEBUG_ENTRY("TMD_6X10_VID Panel\n");
 #endif
-
-#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
-					dev_priv->panel_id = TMD_VID;
-					PSB_DEBUG_ENTRY("TOSHIBA MIPI LVDS"
-							"BRIDGE Panel\n");
-#endif
-
-					break;
-				case PNW_GCT_NDX_TMD:
-					PSB_DEBUG_ENTRY("TMD Panel"
-							"Detected.\n");
-					dev_priv->panel_id = TMD_VID;
-					PanelID = TMD_VID;
-					break;
-				case PNW_GCT_NDX_TPO:
-					PSB_DEBUG_ENTRY("TPO Panel"
-							"Detected.\n");
-					dev_priv->panel_id = TPO_CMD;
-					PanelID = TPO_CMD;
 					break;
 				default:
 					PSB_DEBUG_ENTRY("No Panel type"
@@ -4061,19 +4037,7 @@ static __init int parse_panelid(char *arg)
 	if (!arg)
 		return -EINVAL;
 
-	if (!strcasecmp(arg, "TMD_CMD"))
-		PanelID = TMD_CMD;
-	else if (!strcasecmp(arg, "TPO_CMD"))
-		PanelID = TPO_CMD;
-	else if (!strcasecmp(arg, "PYR_CMD"))
-		PanelID = PYR_CMD;
-	else if (!strcasecmp(arg, "TMD_VID"))
-		PanelID = TMD_VID;
-	else if (!strcasecmp(arg, "TPO_VID"))
-		PanelID = TPO_VID;
-	else if (!strcasecmp(arg, "PYR_VID"))
-		PanelID = PYR_VID;
-	else if (!strcasecmp(arg, "H8C7_VID"))
+	if (!strcasecmp(arg, "H8C7_VID"))
 		PanelID = H8C7_VID;
 	else if (!strcasecmp(arg, "H8C7_CMD"))
 		PanelID = H8C7_CMD;
