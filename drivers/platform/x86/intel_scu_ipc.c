@@ -36,6 +36,7 @@
 #include <linux/bitops.h>
 #include <linux/sched.h>
 #include <linux/atomic.h>
+#include <linux/wakelock.h>
 
 #define WATCHDOG_IPC_CMD 0xF8
 
@@ -149,6 +150,8 @@ static char *ipc_err_sources[] = {
 #define I2C_DATA_ADDR		0x04
 
 static DEFINE_MUTEX(ipclock); /* lock used to prevent multiple call to SCU */
+
+static struct wake_lock ipc_wake_lock;
 
 /* PM Qos struct */
 static struct pm_qos_request_list *qos;
@@ -293,11 +296,17 @@ void intel_scu_ipc_lock(void)
 
 	/* Prevent C-states beyond C6 */
 	pm_qos_update_request(qos, CSTATE_EXIT_LATENCY_S0i1 - 1);
+
+	/* Prevent S3 */
+	wake_lock(&ipc_wake_lock);
 }
 EXPORT_SYMBOL_GPL(intel_scu_ipc_lock);
 
 void intel_scu_ipc_unlock(void)
 {
+	/* Re-enable S3 */
+	wake_unlock(&ipc_wake_lock);
+
 	/* Re-enable Deeper C-states beyond C6 */
 	pm_qos_update_request(qos, PM_QOS_DEFAULT_VALUE);
 
@@ -543,6 +552,7 @@ static int __init intel_scu_ipc_init(void)
 		return -ENOMEM;
 
 	pm_qos_add_request(qos, PM_QOS_CPU_DMA_LATENCY, PM_QOS_DEFAULT_VALUE);
+	wake_lock_init(&ipc_wake_lock, WAKE_LOCK_SUSPEND, "intel_scu_ipc");
 
 	return  pci_register_driver(&ipc_driver);
 }
