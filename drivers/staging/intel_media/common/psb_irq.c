@@ -1045,8 +1045,11 @@ int psb_enable_vblank(struct drm_device *dev, int pipe)
 		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 	}
 
-	if (!(reg_val & PIPEACONF_ENABLE))
-		return -EINVAL;
+	if (!(reg_val & PIPEACONF_ENABLE)) {
+		DRM_ERROR("%s: Pipe config hasn't been enabled for pipe %d\n",
+				__func__, pipe);
+		return 0;
+	}
 
 	dev_priv->b_vblank_enable = true;
 
