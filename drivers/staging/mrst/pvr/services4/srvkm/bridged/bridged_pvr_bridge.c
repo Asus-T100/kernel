@@ -3314,6 +3314,8 @@ PVRSRVSwapToDCBuffer2BW(IMG_UINT32 ui32BridgeID,
 	IMG_VOID *pvDispClassInfo;
 	IMG_VOID *pvSwapChain;
 	IMG_UINT32 i;
+	IMG_PVOID psSwapMemInfos[10];
+	IMG_PVOID psSwapSyncInfos[10];
 
 	PVRSRV_BRIDGE_ASSERT_CMD(ui32BridgeID, PVRSRV_BRIDGE_SWAP_DISPCLASS_TO_BUFFER2);
 
@@ -3348,11 +3350,37 @@ PVRSRVSwapToDCBuffer2BW(IMG_UINT32 ui32BridgeID,
 		return -EFAULT;
 	}
 
+	if(psSwapDispClassBufferIN->ui32NumMemInfos > 10)
+	{
+		PVR_DPF((PVR_DBG_ERROR, "PVRSRVSwapToDCBuffer2BW: Invalid NumMemInfos"));
+		return -EINVAL;
+	}
+
+	if(CopyFromUserWrapper(psPerProc,
+						   ui32BridgeID,
+						   &psSwapMemInfos[0],
+						   psSwapDispClassBufferIN->ppsKernelMemInfos,
+						   psSwapDispClassBufferIN->ui32NumMemInfos * (sizeof(IMG_HANDLE))) != PVRSRV_OK)
+	{
+		PVR_DPF((PVR_DBG_ERROR, "PVRSRVSwapToDCBuffer2BW: Failed to copy kernel mem infos"));
+		return -EFAULT;
+	}
+
 	if(!OSAccessOK(PVR_VERIFY_WRITE,
 				   psSwapDispClassBufferIN->ppsKernelSyncInfos,
 				   sizeof(IMG_HANDLE) * psSwapDispClassBufferIN->ui32NumMemInfos))
 	{
 		PVR_DPF((PVR_DBG_ERROR, "PVRSRVSwapToDCBuffer2BW: Access check failed for ppsKernelSyncInfos"));
+		return -EFAULT;
+	}
+
+	if(CopyFromUserWrapper(psPerProc,
+						   ui32BridgeID,
+						   &psSwapSyncInfos[0],
+						   psSwapDispClassBufferIN->ppsKernelSyncInfos,
+						   psSwapDispClassBufferIN->ui32NumMemInfos * (sizeof(IMG_HANDLE))) != PVRSRV_OK)
+	{
+		PVR_DPF((PVR_DBG_ERROR, "PVRSRVSwapToDCBuffer2BW: Failed to copy kernel sync infos"));
 		return -EFAULT;
 	}
 
@@ -3364,7 +3392,7 @@ PVRSRVSwapToDCBuffer2BW(IMG_UINT32 ui32BridgeID,
 		psRetOUT->eError =
 			PVRSRVLookupHandle(psPerProc->psHandleBase,
 							   (IMG_PVOID *)&psKernelMemInfo,
-							   psSwapDispClassBufferIN->ppsKernelMemInfos[i],
+							   psSwapMemInfos[i],
 							   PVRSRV_HANDLE_TYPE_MEM_INFO);
 		if(psRetOUT->eError != PVRSRV_OK)
 		{
@@ -3375,7 +3403,7 @@ PVRSRVSwapToDCBuffer2BW(IMG_UINT32 ui32BridgeID,
 		psRetOUT->eError =
 			PVRSRVLookupHandle(psPerProc->psHandleBase,
 							   (IMG_PVOID *)&psKernelSyncInfo,
-							   psSwapDispClassBufferIN->ppsKernelSyncInfos[i],
+							   psSwapSyncInfos[i],
 							   PVRSRV_HANDLE_TYPE_SYNC_INFO);
 		if(psRetOUT->eError != PVRSRV_OK)
 		{
@@ -3383,8 +3411,8 @@ PVRSRVSwapToDCBuffer2BW(IMG_UINT32 ui32BridgeID,
 			return 0;
 		}
 
-		psSwapDispClassBufferIN->ppsKernelMemInfos[i] = psKernelMemInfo;
-		psSwapDispClassBufferIN->ppsKernelSyncInfos[i] = psKernelSyncInfo;
+		psSwapMemInfos[i] = psKernelMemInfo;
+		psSwapSyncInfos[i] = psKernelSyncInfo;
 	}
 
 	if(psSwapDispClassBufferIN->ui32PrivDataLength > 0)
@@ -3416,8 +3444,8 @@ PVRSRVSwapToDCBuffer2BW(IMG_UINT32 ui32BridgeID,
 		PVRSRVSwapToDCBuffer2KM(pvDispClassInfo,
 								pvSwapChain,
 								psSwapDispClassBufferIN->ui32SwapInterval,
-								psSwapDispClassBufferIN->ppsKernelMemInfos,
-								psSwapDispClassBufferIN->ppsKernelSyncInfos,
+								(PVRSRV_KERNEL_MEM_INFO **)psSwapMemInfos,
+								(PVRSRV_KERNEL_SYNC_INFO **)psSwapSyncInfos,
 								psSwapDispClassBufferIN->ui32NumMemInfos,
 								pvPrivData,
 								psSwapDispClassBufferIN->ui32PrivDataLength);
