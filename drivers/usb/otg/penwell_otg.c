@@ -647,8 +647,9 @@ static int penwell_otg_set_vbus(struct otg_transceiver *otg, bool enabled)
 	struct penwell_otg		*pnw = the_transceiver;
 	u8				data;
 	unsigned long			flags;
-	int				retval;
+	int				retval = 0;
 	struct power_supply_charger_cap psc_cap;
+	struct otg_bc_event		*evt;
 
 	dev_dbg(pnw->dev, "%s ---> %s\n", __func__, enabled ? "on" : "off");
 
@@ -664,45 +665,45 @@ static int penwell_otg_set_vbus(struct otg_transceiver *otg, bool enabled)
 		else
 			penwell_otg_ulpi_write(&pnw->iotg,
 				ULPI_OTGCTRLCLR, DRVVBUS | DRVVBUS_EXTERNAL);
-		retval = 0;
+
+		evt = kzalloc(sizeof(*evt), GFP_KERNEL);
+		if (!evt) {
+			dev_err(pnw->dev, "no memory for charging event");
+			return -ENOMEM;
+		}
+
+		evt->cap.chrg_type = POWER_SUPPLY_TYPE_USB;
+		INIT_LIST_HEAD(&evt->node);
 
 		if (enabled) {
-			spin_lock_irqsave(&pnw->charger_lock, flags);
-			pnw->psc_cap.mA = 500;
-			pnw->psc_cap.chrg_type =
-				POWER_SUPPLY_TYPE_USB_HOST;
-			pnw->psc_cap.chrg_evt =
-				POWER_SUPPLY_CHARGER_EVENT_CONNECT;
-			psc_cap =  pnw->psc_cap;
-			spin_unlock_irqrestore(&pnw->charger_lock, flags);
+			evt->cap.chrg_type = POWER_SUPPLY_TYPE_USB_HOST;
+			evt->cap.mA = 500;
+			evt->cap.chrg_evt = POWER_SUPPLY_CHARGER_EVENT_CONNECT;
 		} else if (pnw->iotg.hsm.id == ID_ACA_A
 				|| pnw->iotg.hsm.id == ID_ACA_B
 				|| pnw->iotg.hsm.id == ID_ACA_C) {
-			spin_lock_irqsave(&pnw->charger_lock, flags);
-			pnw->psc_cap.mA = CHRG_CURR_ACA;
-			pnw->psc_cap.chrg_type =
-				POWER_SUPPLY_TYPE_USB_ACA;
-			pnw->psc_cap.chrg_evt =
-				POWER_SUPPLY_CHARGER_EVENT_CONNECT;
-			psc_cap =  pnw->psc_cap;
-			spin_unlock_irqrestore(&pnw->charger_lock, flags);
+			evt->cap.chrg_type = POWER_SUPPLY_TYPE_USB_ACA;
+			evt->cap.mA = CHRG_CURR_ACA;
+			evt->cap.chrg_evt = POWER_SUPPLY_CHARGER_EVENT_CONNECT;
 		} else {
-			spin_lock_irqsave(&pnw->charger_lock, flags);
-			pnw->psc_cap.mA = 0;
-			pnw->psc_cap.chrg_type =
-				POWER_SUPPLY_TYPE_BATTERY;
-			pnw->psc_cap.chrg_evt =
+			evt->cap.chrg_type = POWER_SUPPLY_TYPE_BATTERY;
+			evt->cap.mA = 0;
+			evt->cap.chrg_evt =
 				POWER_SUPPLY_CHARGER_EVENT_DISCONNECT;
-			psc_cap =  pnw->psc_cap;
-			spin_unlock_irqrestore(&pnw->charger_lock, flags);
 		}
 
 		dev_dbg(pnw->dev, "notify power_supply_charger_event\n");
-		dev_dbg(pnw->dev, "mA = %d\n", psc_cap.mA);
-		dev_dbg(pnw->dev, "event = %d\n", psc_cap.chrg_evt);
-		dev_dbg(pnw->dev, "type = %s\n", psc_string(psc_cap.chrg_type));
+		dev_dbg(pnw->dev, "mA = %d\n", evt->cap.mA);
+		dev_dbg(pnw->dev, "event = %d\n", evt->cap.chrg_evt);
+		dev_dbg(pnw->dev, "type = %s\n",
+				psc_string(evt->cap.chrg_type));
 
-		power_supply_charger_event(psc_cap);
+		spin_lock_irqsave(&pnw->charger_lock, flags);
+		list_add_tail(&evt->node, &pnw->chrg_evt_queue);
+		spin_unlock_irqrestore(&pnw->charger_lock, flags);
+
+		queue_work(pnw->chrg_qwork, &pnw->psc_notify);
+
 		goto done;
 	}
 
