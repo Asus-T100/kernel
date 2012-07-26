@@ -78,6 +78,8 @@ void *s3202_platform_data(void *info)
 	static struct rmi4_platform_data s3202_platform_data = {
 		.irq_type = IRQ_TYPE_EDGE_FALLING | IRQF_ONESHOT,
 		.swap_axes = true,
+		.regulator_en = true,
+		.regulator_name = "vemmc2",
 	};
 
 	s3202_platform_data.int_gpio_number = get_gpio_by_name("ts_int");
