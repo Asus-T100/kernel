@@ -1494,7 +1494,7 @@ static int penwell_otg_charger_det_dcd_clt(void)
 			return retval;
 		}
 
-		if (data & !CHRG_SERX_DP) {
+		if (!(data & CHRG_SERX_DP)) {
 			dev_info(pnw->dev, "Data contact detected!\n");
 			break;
 		}
