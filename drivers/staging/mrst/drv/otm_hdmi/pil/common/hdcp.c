@@ -427,7 +427,9 @@ static bool hdcp_rep_watch_dog(void)
 	unsigned int *auth_id = kmalloc(sizeof(unsigned int), GFP_KERNEL);
 	if (auth_id != NULL) {
 		*auth_id = hdcp_context->auth_id;
-		return wq_send_message_delayed(msg, (void *)auth_id, 5000);
+		/* set a watch dog timer for 5.2 secs, added additional
+		   0.2 seconds to be safe */
+		return wq_send_message_delayed(msg, (void *)auth_id, 5200);
 	} else
 		pr_debug("hdcp: %s failed to alloc mem\n", __func__);
 	return false;
