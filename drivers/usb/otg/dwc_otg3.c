@@ -1874,6 +1874,7 @@ static int dwc_otg_probe(struct pci_dev *pdev,
 	otg->otg.set_suspend	= dwc_otg2_set_suspend;
 	otg->otg.host_release   = dwc_otg2_received_host_release;
 	otg->otg.set_power	= dwc_otg_set_power;
+	ATOMIC_INIT_NOTIFIER_HEAD(&otg->otg.notifier);
 
 	otg->state = DWC_STATE_INIT;
 	spin_lock_init(&otg->lock);
