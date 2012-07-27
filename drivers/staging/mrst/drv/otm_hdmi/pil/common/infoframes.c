@@ -179,28 +179,19 @@ otm_hdmi_ret_t otm_hdmi_infoframes_set_avi(void *context,
 	ext = PD_ATTR_BOOL(ATTRS[OTM_HDMI_ATTR_ID_COLOR_SPACE_EXT]);
 	avi_pkt.data[2] =
 	    (ext ? 3 : (!pf ? 0 : ((mode->width <= 720) ? 0x01 : 0x02))) << 6;
+
 	/* Fill PAR for all supported modes
 	 * This is required for passing compliance tests
 	 */
-	switch (mode->metadata) {
-	case 1:	/* 640x480p60	*/
-	case 2:	/* 720x480p60	*/
-	case 17:/* 720x576p50	*/
-		/* Fall Through	*/
-		par = OTM_HDMI_PAR_4_3; break;
-	case 3:	/* 720x480p60	*/
-	case 4:	/* 1280x720p60	*/
-	case 16:/* 1920x1080p60	*/
-	case 18:/* 720x576p50	*/
-	case 19:/* 1280x720p50	*/
-	case 32:/* 1920x1080p24	*/
-	case 33:/* 1920x1080p25	*/
-	case 34:/* 1920x1080p30	*/
-		/* Fall Through */
-		par = OTM_HDMI_PAR_16_9; break;
-	default:
-		break;
-	}
+
+	if (mode->mode_info_flags & OTM_HDMI_PAR_16_9)
+		par = OTM_HDMI_PAR_16_9;
+	else if (mode->mode_info_flags & OTM_HDMI_PAR_4_3)
+		par = OTM_HDMI_PAR_4_3;
+
+	pr_debug("%s: Selecting PAR %d for mode vic %lu\n", __func__,
+		 par, mode->metadata);
+
 	avi_pkt.data[2] |= par << 4;
 	/* Fill FAR */
 	avi_pkt.data[2] |= PD_ATTR_UINT(ATTRS[OTM_HDMI_ATTR_ID_FAR]);

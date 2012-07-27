@@ -424,7 +424,7 @@ typedef enum {
 #define PD_WSS_WORKAROUND     0x00000800 /* PAL Wide Screen Signal workaround */
 #define PD_DTV_MODE           0x00000400 /* Digital Panel mode                */
 #define PD_SVBI               0x00000010 /* Software VBI supported timings    */
-#define PD_AR_16_BY_9         0x00000001 /* 16:9 aspect ratio                 */
+#define PD_AR_16_BY_9         OTM_HDMI_PAR_16_9 /* 16:9 aspect ratio          */
 
 /*
  * Description: report edid tool helper function

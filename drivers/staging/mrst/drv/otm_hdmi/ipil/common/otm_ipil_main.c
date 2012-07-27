@@ -769,8 +769,9 @@ otm_hdmi_ret_t ipil_hdmi_enc_mode_set(hdmi_device_t *dev,
 	hdmib &= ~IPIL_HDMIB_PORT_EN;
 
 	/* set output polarity */
-	phsync = adjusted_mode->mode_info_flags & IPIL_TIMING_FLAG_PHSYNC;
-	pvsync = adjusted_mode->mode_info_flags & IPIL_TIMING_FLAG_PVSYNC;
+	phsync = !!(adjusted_mode->mode_info_flags & PD_HSYNC_HIGH);
+	pvsync = !!(adjusted_mode->mode_info_flags & PD_VSYNC_HIGH);
+
 	pr_debug("enc_mode_set %dx%d (%c,%c)\n", adjusted_mode->width,
 						adjusted_mode->height,
 						phsync ? '+' : '-',

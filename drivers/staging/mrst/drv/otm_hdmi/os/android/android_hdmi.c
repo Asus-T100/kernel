@@ -91,19 +91,19 @@
 extern int hdmi_state;
 
 static const struct {
-	int width, height, htotal, vtotal, dclk, vrefr, vic;
+	int width, height, htotal, vtotal, dclk, vrefr, vic, par;
 } vic_formats[11] = {
-	{  640,  480,  800,  525,  25200, 60,  1 }, /* 640x480p60 4:3 */
-	{  720,  480,  858,  525,  27027, 60,  2 }, /* 720x480p60 4:3 */
-	{  720,  480,  858,  525,  27027, 60,  3 }, /* 720x480p60 16:9 */
-	{ 1280,  720, 1650,  750,  74250, 60,  4 }, /* 1280x720p60 16:9 */
-	{ 1920, 1080, 2200, 1125, 148500, 60, 16 }, /* 1920x1080p60 16:9 */
-	{  720,  576,  864,  625,  27000, 50, 17 }, /* 720x576p50 4:3 */
-	{  720,  576,  864,  625,  27000, 50, 18 }, /* 720x576p50 16:9 */
-	{ 1280,  720, 1980,  750,  74250, 50, 19 }, /* 1280x720p50 16:9 */
-	{ 1920, 1080, 2750, 1125,  74250, 24, 32 }, /* 1920x1080p24 16:9 */
-	{ 1920, 1080, 2640, 1125,  74250, 25, 33 }, /* 1920x1080p25 16:9 */
-	{ 1920, 1080, 2200, 1125,  74250, 30, 34 }, /* 1920x1080p30 16:9 */
+	{  640,  480,  800,  525,  25200, 60,  1 , OTM_HDMI_PAR_4_3  }, /* 640x480p60 4:3 */
+	{  720,  480,  858,  525,  27027, 60,  2 , OTM_HDMI_PAR_4_3  }, /* 720x480p60 4:3 */
+	{  720,  480,  858,  525,  27027, 60,  3 , OTM_HDMI_PAR_16_9 }, /* 720x480p60 16:9 */
+	{ 1280,  720, 1650,  750,  74250, 60,  4 , OTM_HDMI_PAR_16_9 }, /* 1280x720p60 16:9 */
+	{ 1920, 1080, 2200, 1125, 148500, 60, 16 , OTM_HDMI_PAR_16_9 }, /* 1920x1080p60 16:9 */
+	{  720,  576,  864,  625,  27000, 50, 17 , OTM_HDMI_PAR_4_3  }, /* 720x576p50 4:3 */
+	{  720,  576,  864,  625,  27000, 50, 18 , OTM_HDMI_PAR_16_9 }, /* 720x576p50 16:9 */
+	{ 1280,  720, 1980,  750,  74250, 50, 19 , OTM_HDMI_PAR_16_9 }, /* 1280x720p50 16:9 */
+	{ 1920, 1080, 2750, 1125,  74250, 24, 32 , OTM_HDMI_PAR_16_9 }, /* 1920x1080p24 16:9 */
+	{ 1920, 1080, 2640, 1125,  74250, 25, 33 , OTM_HDMI_PAR_16_9 }, /* 1920x1080p25 16:9 */
+	{ 1920, 1080, 2200, 1125,  74250, 30, 34 , OTM_HDMI_PAR_16_9 }, /* 1920x1080p30 16:9 */
 };
 
 /* Function declarations for interrupt routines */
@@ -800,6 +800,10 @@ static struct drm_display_mode
 	mode->flags |= (timings->mode_info_flags & PD_VSYNC_HIGH) ?
 		DRM_MODE_FLAG_PVSYNC : DRM_MODE_FLAG_NVSYNC;
 
+	/* Store aspect ratio information */
+	mode->flags |= (timings->mode_info_flags & OTM_HDMI_PAR_16_9) ?
+		DRM_MODE_FLAG_PAR16_9 : DRM_MODE_FLAG_PAR4_3;
+
 	return mode;
 }
 
@@ -1149,6 +1153,7 @@ static void __android_hdmi_drm_mode_to_otm_timing(otm_hdmi_timing_t *otm_mode,
 				struct drm_display_mode *drm_mode)
 {
 	uint8_t i = 0;
+	uint32_t par = OTM_HDMI_PAR_NO_DATA;
 
 	if (otm_mode == NULL || drm_mode == NULL)
 		return;
@@ -1179,8 +1184,24 @@ static void __android_hdmi_drm_mode_to_otm_timing(otm_hdmi_timing_t *otm_mode,
 						drm_mode->crtc_vsync_start;
 	otm_mode->vsync_end		= (unsigned short)
 						drm_mode->crtc_vsync_end;
-	otm_mode->mode_info_flags	= (unsigned long)
-						drm_mode->flags;
+
+	otm_mode->mode_info_flags = 0;
+	if (drm_mode->flags & DRM_MODE_FLAG_INTERLACE)
+		otm_mode->mode_info_flags |= PD_SCAN_INTERLACE;
+
+	if (drm_mode->flags & DRM_MODE_FLAG_PAR4_3) {
+		otm_mode->mode_info_flags |= OTM_HDMI_PAR_4_3;
+		par = OTM_HDMI_PAR_4_3;
+	} else if (drm_mode->flags & DRM_MODE_FLAG_PAR16_9) {
+		otm_mode->mode_info_flags |= OTM_HDMI_PAR_16_9;
+		par = OTM_HDMI_PAR_16_9;
+	}
+
+	if (drm_mode->flags & DRM_MODE_FLAG_PHSYNC)
+		otm_mode->mode_info_flags |= PD_HSYNC_HIGH;
+
+	if (drm_mode->flags & DRM_MODE_FLAG_PVSYNC)
+		otm_mode->mode_info_flags |= PD_VSYNC_HIGH;
 
 	otm_mode->metadata = 0;
 	for (i = 0; i < ARRAY_SIZE(vic_formats); i++) {
@@ -1189,7 +1210,8 @@ static void __android_hdmi_drm_mode_to_otm_timing(otm_hdmi_timing_t *otm_mode,
 		   otm_mode->htotal == vic_formats[i].htotal &&
 		   otm_mode->vtotal == vic_formats[i].vtotal &&
 		   (otm_mode->dclk == vic_formats[i].dclk ||
-		    otm_mode->dclk == __f5994(vic_formats[i].dclk))) {
+		    otm_mode->dclk == __f5994(vic_formats[i].dclk)) &&
+		    par == vic_formats[i].par) {
 			if (1 == cmdline_mode.specified &&
 			    1 == cmdline_mode.vic_specified) {
 				if (cmdline_mode.vic == vic_formats[i].vic) {
@@ -2008,27 +2030,31 @@ void android_hdmi_dpms(struct drm_encoder *encoder, int mode)
 	dev_priv = dev->dev_private;
 	hdmi_priv = dev_priv->hdmi_priv;
 
-	if (hdmi_priv->current_mode)
+	if (hdmi_priv->current_mode) {
 		__android_hdmi_drm_mode_to_otm_timing(&otm_mode,
 						      hdmi_priv->current_mode);
-	else
+
+		is_monitor_hdmi = otm_hdmi_is_monitor_hdmi(hdmi_priv->context);
+
+		if (mode == DRM_MODE_DPMS_ON) {
+			/* Enable AVI infoframes for HDMI mode */
+			if (is_monitor_hdmi) {
+				rc = otm_hdmi_infoframes_set_avi(hdmi_priv->context,
+								 &otm_mode);
+				if (rc != OTM_HDMI_SUCCESS)
+					pr_debug("%s: failed to program avi infoframe\n",
+						__func__);
+			} else { /* Disable all infoframes for DVI mode */
+				rc = otm_hdmi_disable_all_infoframes(hdmi_priv->context);
+				if (rc != OTM_HDMI_SUCCESS)
+					pr_debug("%s: failed to disable all infoframes\n",
+						__func__);
+			}
+		}
+	} else
 		pr_err("%s: No saved current mode found, unable to restore\n",
 		       __func__);
 
-	is_monitor_hdmi = otm_hdmi_is_monitor_hdmi(hdmi_priv->context);
-
-	if (mode == DRM_MODE_DPMS_ON) {
-		/* Enable AVI infoframes for HDMI mode */
-		if (is_monitor_hdmi) {
-			rc = otm_hdmi_infoframes_set_avi(hdmi_priv->context, &otm_mode);
-			if (rc != OTM_HDMI_SUCCESS)
-				pr_debug("\nfailed to program avi infoframe\n");
-		} else {/* Disable all inofoframes for DVI mode */
-			rc = otm_hdmi_disable_all_infoframes(hdmi_priv->context);
-			if (rc != OTM_HDMI_SUCCESS)
-				pr_debug("\nfailed to disable all infoframes\n");
-		}
-	}
 
 #ifdef OTM_HDMI_HDCP_ENABLE
 	otm_hdmi_hdcp_set_dpms(hdmi_priv->context, (mode == DRM_MODE_DPMS_ON));
