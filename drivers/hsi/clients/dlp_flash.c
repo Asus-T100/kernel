@@ -60,7 +60,6 @@
  * @read_wq: Read/Poll/Select wait event
  * @rx_msgs: RX messages queue
  * @ch_ctx: Flashing Channel context
- * @reset_done: Flag used to reset the modem when sending the first TX data
 */
 struct dlp_flash_ctx {
 	/* Char device registration */
@@ -80,7 +79,6 @@ struct dlp_flash_ctx {
 	struct list_head rx_msgs;
 
 	struct dlp_channel *ch_ctx;
-	int reset_done;
 };
 
 
@@ -106,9 +104,6 @@ static inline void dlp_flash_set_opened(struct dlp_channel *ch_ctx,
 
 	/* Set the open flag */
 	flash_ctx->opened = value;
-
-	/* Set the reset_done flag */
-	flash_ctx->reset_done = !value;
 
 	spin_unlock_irqrestore(&ch_ctx->lock, flags);
 }
@@ -472,19 +467,9 @@ static ssize_t dlp_flash_dev_write(struct file *filp,
 {
 	int ret;
 	struct dlp_channel *ch_ctx = filp->private_data;
-	struct dlp_flash_ctx *flash_ctx = ch_ctx->ch_data;
 	struct hsi_msg *tx_msg = NULL;
 
 	PROLOG("count: %d", count);
-
-	/* Need to perform a modem reset only the FIRST write
-	 * We need this reset to be done in the write function
-	 * because the duration between the reset & the data
-	 * write should be less that 120ms ! */
-	if (!flash_ctx->reset_done) {
-		flash_ctx->reset_done = 1;
-		dlp_ctrl_modem_reset(ch_ctx, DLP_FLASH_POST_DELAY);
-	}
 
 	/* Allocate a new TX msg */
 	tx_msg = dlp_pdu_alloc(ch_ctx->hsi_channel,

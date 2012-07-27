@@ -83,7 +83,7 @@ static void dlp_tty_modem_hangup(struct dlp_channel *ch_ctx, int reason)
 
 	PROLOG();
 
-	CRITICAL("TTY hangup (reason: 0x%X)", reason);
+	CRITICAL("TTY hangup reason: 0x%X", reason);
 
 	ch_ctx->hangup.cause |= reason;
 	tty = tty_port_tty_get(&tty_ctx->tty_prt);
@@ -1349,7 +1349,7 @@ static int dlp_tty_ioctl(struct tty_struct *tty,
 #endif
 
 	case HSI_DLP_MODEM_RESET:
-		dlp_ctrl_modem_reset(ch_ctx, DLP_NORMAL_POST_DELAY);
+		dlp_ctrl_normal_warm_reset(ch_ctx);
 		break;
 
 	case HSI_DLP_MODEM_STATE:

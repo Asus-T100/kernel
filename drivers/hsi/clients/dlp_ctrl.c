@@ -127,9 +127,6 @@ enum {
 #define V1P35_OFF	4
 #define V1P35_ON	6
 
-#define COLD_BOOT_DELAY_OFF	20000	/* 20 ms (use of usleep_range) */
-#define COLD_BOOT_DELAY_ON	10000	/* 10 ms (use of usleep_range) */
-
 /**
  * struct dlp_command_params - DLP modem comamnd/response
  * @data1: Command data (byte1)
@@ -435,17 +432,16 @@ static irqreturn_t dlp_ctrl_coredump_it(int irq, void *data)
  */
 static irqreturn_t dlp_ctrl_reset_it(int irq, void *data)
 {
-	int i, value;
+	int i, value, reset_ongoing;
 	struct dlp_channel *ch_ctx = data;
 	struct dlp_ctrl_context *ctrl_ctx = ch_ctx->ch_data;
 
 	PROLOG();
 
 	value = gpio_get_value(ctrl_ctx->gpio_mdm_rst_out);
-
-	CRITICAL("Modem RESET_OUT 0x%x, reset_ongoing: %d",
-			value, ctrl_ctx->reset.ongoing);
-	if (ctrl_ctx->reset.ongoing) {
+	reset_ongoing = dlp_ctrl_get_reset_ongoing();
+	CRITICAL("Modem RESET_OUT 0x%x, rst_ongoing: %d", value, reset_ongoing);
+	if (reset_ongoing) {
 		/* Rising EDGE (Reset done) ? */
 		if (value)
 			complete(&ctrl_ctx->reset_done);
@@ -454,7 +450,7 @@ static irqreturn_t dlp_ctrl_reset_it(int irq, void *data)
 	}
 
 	/* Unexpected reset received */
-	ctrl_ctx->reset.ongoing = 1;
+	dlp_ctrl_set_reset_ongoing(1);
 
 	/* Call registered channels */
 	for (i = 0; i < DLP_CHANNEL_COUNT; i++) {
@@ -1311,63 +1307,207 @@ static void dlp_ctrl_ipc_readiness(struct work_struct *work)
  ***************************************************************************/
 
 /**
- * dlp_ctrl_modem_reset - activity required to bring up modem
- * @ch_ctx: a reference to related channel context
- * @guard_time: Guard time after resetting the modem (IPC vs Flashing)
+ * Perform a modem cold boot sequence:
  *
- * Toggle gpios required to bring up modem power and start modem.
- * This can be called after the modem has been started to reset it.
+ *  - Set to HIGH the PWRDWN_N to switch ON the modem
+ *  - Set to HIGH the RESET_BB_N
+ *  - Do a pulse on ON1
+ *
+ * @ch_ctx: a reference to related channel context
  */
-void dlp_ctrl_modem_reset(struct dlp_channel *ch_ctx, int guard_time)
+void dlp_ctrl_cold_boot(struct dlp_channel *ch_ctx)
+{
+	struct dlp_ctrl_context *ctrl_ctx;
+	int ret = 0;
+	u16 addr = V1P35CNT_W;
+	u8 data, def_value;
+
+	PROLOG();
+
+	WARNING("Cold boot requested (ch: %d)", ch_ctx->hsi_channel);
+
+	if (!dlp_ctrl_have_control_context()) {
+		WARNING("Nothing to do (dlp protocol not registered)");
+		return;
+	}
+
+	/* Save the current registre value */
+	ret = intel_scu_ipc_readv(&addr, &def_value, 2);
+	if (ret) {
+		CRITICAL("intel_scu_ipc_readv() failed (ret: %d)", ret);
+		goto out;
+	}
+
+	/* Write the new registre value (V1P35_ON) */
+	data = (def_value & 0xf8) | V1P35_ON;
+	ret =  intel_scu_ipc_writev(&addr, &data, 1);
+	if (ret) {
+		CRITICAL("intel_scu_ipc_writev(ON) failed (ret: %d)", ret);
+		goto out;
+	}
+
+	/* Restore the saved registre value */
+	ret =  intel_scu_ipc_writev(&addr, &def_value, 1);
+	if (ret) {
+		CRITICAL("intel_scu_ipc_writev() failed (ret: %d)", ret);
+		goto out;
+	}
+
+	/* AP request => just ignore the modem reset */
+	ctrl_ctx = DLP_CTRL_CTX;
+	dlp_ctrl_set_reset_ongoing(1);
+
+	/* Toggle the RESET_BB_N */
+	gpio_set_value(ctrl_ctx->gpio_mdm_rst_bbn, 1);
+
+	/* Wait before doing the pulse on ON1 */
+	udelay(DLP_ON1_DELAY);
+
+	/* Do a pulse on ON1 */
+	gpio_set_value(ctrl_ctx->gpio_mdm_pwr_on, 1);
+	udelay(DLP_ON1_DURATION);
+	gpio_set_value(ctrl_ctx->gpio_mdm_pwr_on, 0);
+
+out:
+	EPILOG();
+}
+
+/**
+ * Perform a modem cold reset:
+ *
+ * - Set the RESET_BB_N to low (better SIM protection)
+ * - Set the EXT1P35VREN field to low  during 20ms (V1P35CNT_W PMIC register)
+ * - set the EXT1P35VREN field to high during 10ms (V1P35CNT_W PMIC register)
+ */
+int dlp_ctrl_cold_reset(struct dlp_channel *ch_ctx)
+{
+	struct dlp_ctrl_context *ctrl_ctx;
+	u16 addr = V1P35CNT_W;
+	u8 data, def_value;
+	int ret = 0;
+
+	PROLOG();
+
+	WARNING("Modem cold reset requested (ch: %d)", ch_ctx->hsi_channel);
+
+	if (!dlp_ctrl_have_control_context()) {
+		WARNING("Nothing to do (dlp protocol not registered)");
+		return 0;
+	}
+
+	/* Save the current registre value */
+	ret = intel_scu_ipc_readv(&addr, &def_value, 2);
+	if (ret) {
+		CRITICAL("intel_scu_ipc_readv() failed (ret: %d)", ret);
+		goto out;
+	}
+
+	/* AP requested reset => just ignore */
+	ctrl_ctx = DLP_CTRL_CTX;
+	dlp_ctrl_set_reset_ongoing(1);
+
+	/* Set the reset_bb to low */
+	gpio_set_value(ctrl_ctx->gpio_mdm_rst_bbn, 0);
+	udelay(DLP_WARM_RST_DURATION);
+
+	/* Write the new registre value (V1P35_OFF) */
+	data = (def_value & 0xF8) | V1P35_OFF;
+	ret =  intel_scu_ipc_writev(&addr, &data, 1);
+	if (ret) {
+		CRITICAL("intel_scu_ipc_writev(OFF)  failed (ret: %d)", ret);
+		goto out;
+	}
+	msleep(DLP_COLD_RST_OFF_DELAY);
+
+	/* Write the new registre value (V1P35_ON) */
+	data = (def_value & 0xF8) | V1P35_ON;
+	ret =  intel_scu_ipc_writev(&addr, &data, 1);
+	if (ret) {
+		CRITICAL("intel_scu_ipc_writev(ON) failed (ret: %d)", ret);
+		goto out;
+	}
+
+	/* Set the RESET_BB_N to high */
+	gpio_set_value(ctrl_ctx->gpio_mdm_rst_bbn, 1);
+
+	udelay(DLP_ON1_DELAY);
+
+	/* Write back the saved registre value */
+	ret =  intel_scu_ipc_writev(&addr, &def_value, 1);
+	if (ret) {
+		CRITICAL("intel_scu_ipc_writev() failed (ret: %d)", ret);
+		goto out;
+	}
+
+	/* Assert, wait & de-assert the ON1 */
+	gpio_set_value(ctrl_ctx->gpio_mdm_pwr_on, 1);
+	udelay(DLP_ON1_DURATION);
+	gpio_set_value(ctrl_ctx->gpio_mdm_pwr_on, 0);
+
+ out:
+	EPILOG();
+	return ret;
+}
+
+/**
+ *  Perform a normal modem warm reset sequence:
+ *
+ *  - Do a pulse on the RESET_BB_N
+ *
+ * @ch_ctx: a reference to related channel context
+ */
+void dlp_ctrl_normal_warm_reset(struct dlp_channel *ch_ctx)
 {
 	struct dlp_channel *ctrl_ch = DLP_CHANNEL_CTX(DLP_CHANNEL_CTRL);
 	struct dlp_ctrl_context	*ctrl_ctx = ctrl_ch->ch_data;
 
 	PROLOG();
 
-	WARNING("Modem reset requested !");
+	WARNING("Normal warm reset requested (ch: %d)", ch_ctx->hsi_channel);
 
 	/* Clear the xfers debug list */
 	DLP_CTRL_XFERS_LIST_CLEAR(ctrl_ctx);
 
 	/* AP requested reset => just ignore */
-	ctrl_ctx->reset.ongoing = 1;
+	dlp_ctrl_set_reset_ongoing(1);
 
 	gpio_set_value(ctrl_ctx->gpio_mdm_rst_bbn, 0);
-	mdelay(DLP_DURATION_RST);
-
+	udelay(DLP_WARM_RST_DURATION);
 	gpio_set_value(ctrl_ctx->gpio_mdm_rst_bbn, 1);
-	msleep(guard_time);
 
 	EPILOG();
 }
 
-/*
-* @brief Toggle gpios required to bring up modem power and start modem
-*
-* @param ch_ctx : The channel context to consider
-*/
-void dlp_ctrl_modem_power(struct dlp_channel *ch_ctx)
+/**
+ *  Perform a normal modem warm reset sequence:
+ *
+ *  - Do a pulse on the RESET_BB_N
+ *
+ * @ch_ctx: a reference to related channel context
+ */
+void dlp_ctrl_flashing_warm_reset(struct dlp_channel *ch_ctx)
 {
 	struct dlp_channel *ctrl_ch = DLP_CHANNEL_CTX(DLP_CHANNEL_CTRL);
 	struct dlp_ctrl_context	*ctrl_ctx = ctrl_ch->ch_data;
 
 	PROLOG();
 
-	WARNING("Modem power requested !");
+	WARNING("Flashing warm reset request (ch: %d)", ch_ctx->hsi_channel);
+
+	/* Clear the xfers debug list */
+	DLP_CTRL_XFERS_LIST_CLEAR(ctrl_ctx);
 
 	/* AP requested reset => just ignore */
-	ctrl_ctx->reset.ongoing = 1;
+	dlp_ctrl_set_reset_ongoing(1);
 
-	gpio_set_value(ctrl_ctx->gpio_mdm_pwr_on, 1);
-	udelay(DLP_DURATION_ON1);
+	gpio_set_value(ctrl_ctx->gpio_mdm_rst_bbn, 0);
+	udelay(DLP_WARM_RST_DURATION);
 
-	gpio_set_value(ctrl_ctx->gpio_mdm_pwr_on, 0);
-	msleep(DLP_NORMAL_POST_DELAY);
+	gpio_set_value(ctrl_ctx->gpio_mdm_rst_bbn, 1);
+	msleep(DLP_WARM_RST_FLASHING_DELAY);
 
 	EPILOG();
 }
-
 
 /*
 * @brief Return TRUE when the modem is ready:
@@ -1394,8 +1534,13 @@ inline unsigned int dlp_ctrl_modem_is_ready(void)
 */
 inline void dlp_ctrl_set_reset_ongoing(int ongoing)
 {
-	struct dlp_ctrl_context *ctrl_ctx = DLP_CTRL_CTX;
+	unsigned long flags;
+	struct dlp_channel *ch_ctx = DLP_CHANNEL_CTX(DLP_CHANNEL_CTRL);
+	struct dlp_ctrl_context *ctrl_ctx = ch_ctx->ch_data;
+
+	spin_lock_irqsave(&ch_ctx->lock, flags);
 	ctrl_ctx->reset.ongoing = ongoing;
+	spin_unlock_irqrestore(&ch_ctx->lock, flags);
 }
 
 /*
@@ -1404,14 +1549,22 @@ inline void dlp_ctrl_set_reset_ongoing(int ongoing)
 */
 inline int dlp_ctrl_get_reset_ongoing(void)
 {
-	struct dlp_ctrl_context *ctrl_ctx = DLP_CTRL_CTX;
-	return ctrl_ctx->reset.ongoing;
+	int reset_ongoing;
+	unsigned long flags;
+	struct dlp_channel *ch_ctx = DLP_CHANNEL_CTX(DLP_CHANNEL_CTRL);
+	struct dlp_ctrl_context *ctrl_ctx = ch_ctx->ch_data;
+
+	spin_lock_irqsave(&ch_ctx->lock, flags);
+	reset_ongoing = ctrl_ctx->reset.ongoing;
+	spin_unlock_irqrestore(&ch_ctx->lock, flags);
+
+	return reset_ongoing;
 }
 
 /*
 * @brief Get the Modem hangup reasons value
 *
-* The returned value state if the TTY interface has hang up and why it has hangup.
+* Returns if the TTY interface has hang up and why it has hangup.
 * For instance, a returned value of 5 is meaning that tty interface hang
 * up because of both a TX timeout and a modem core dump.
 */
@@ -1428,18 +1581,19 @@ inline int dlp_ctrl_get_hangup_reasons(void)
 
 	for (i = 0; i < DLP_CHANNEL_COUNT; i++) {
 		ch_ctx = DLP_CHANNEL_CTX(i);
-		if (ch_ctx)  {
-			/* Check for each channel, if there is a hangup reason */
-			read_lock_irqsave(&ch_ctx->tx.lock, flags);
-			cause = ch_ctx->hangup.cause;
-			read_unlock_irqrestore(&ch_ctx->tx.lock, flags);
-			if ((cause & DLP_MODEM_HU_TIMEOUT) == DLP_MODEM_HU_TIMEOUT)
-				timeout++;
-			if ((cause & DLP_MODEM_HU_RESET) == DLP_MODEM_HU_RESET)
-				reset++;
-			if ((cause & DLP_MODEM_HU_COREDUMP) == DLP_MODEM_HU_COREDUMP)
-				coredump++;
-		}
+		if (!ch_ctx)
+			continue;
+
+		/* Check the hangup reasons for each channel */
+		read_lock_irqsave(&ch_ctx->tx.lock, flags);
+		cause = ch_ctx->hangup.cause;
+		read_unlock_irqrestore(&ch_ctx->tx.lock, flags);
+		if ((cause & DLP_MODEM_HU_TIMEOUT) == DLP_MODEM_HU_TIMEOUT)
+			timeout++;
+		if ((cause & DLP_MODEM_HU_RESET) == DLP_MODEM_HU_RESET)
+			reset++;
+		if ((cause & DLP_MODEM_HU_COREDUMP) == DLP_MODEM_HU_COREDUMP)
+			coredump++;
 	}
 
 	if (reset)
@@ -1561,9 +1715,8 @@ struct dlp_channel *dlp_ctrl_ctx_create(unsigned int index, struct device *dev)
 	/* Start the modem readiness work */
 	queue_work(ctrl_ctx->wq, &ctrl_ctx->readiness_work);
 
-	/* Power on & Reset the modem */
-	dlp_ctrl_modem_power(ch_ctx);
-	dlp_ctrl_modem_reset(ch_ctx, DLP_NORMAL_POST_DELAY);
+	/* Modem cold boot sequence */
+	dlp_ctrl_cold_boot(ch_ctx);
 
 	EPILOG();
 	return ch_ctx;
@@ -1809,14 +1962,14 @@ void dlp_ctrl_hangup_ctx_deinit(struct dlp_channel *ch_ctx)
 
 /*
 * @brief Modem reset module_param set function
-*	- This function is performing a modem reset
+*	- This function is performing a modem normal warm reset
 *
 * @param val
 * @param kp
 *
 * @return 0
 */
-static int do_modem_reset(const char *val, struct kernel_param *kp)
+static int do_modem_normal_reset(const char *val, struct kernel_param *kp)
 {
 	long do_reset;
 
@@ -1828,14 +1981,46 @@ static int do_modem_reset(const char *val, struct kernel_param *kp)
 		return 0;
 	}
 
-	if (strict_strtol(val, 16, &do_reset) < 0) {
+	if (kstrtol(val, 16, &do_reset) < 0) {
 		EPILOG();
 		return -EINVAL;
 	}
 
 	if (do_reset)
-		dlp_ctrl_modem_reset(DLP_CHANNEL_CTX(DLP_CHANNEL_CTRL),
-				DLP_NORMAL_POST_DELAY);
+		dlp_ctrl_normal_warm_reset(DLP_CHANNEL_CTX(DLP_CHANNEL_CTRL));
+
+	EPILOG();
+	return 0;
+}
+
+/*
+* @brief Modem reset module_param set function
+*	- This function is performing a modem flashing warm reset
+*
+* @param val
+* @param kp
+*
+* @return 0
+*/
+static int do_modem_flashing_reset(const char *val, struct kernel_param *kp)
+{
+	long do_reset;
+
+	PROLOG();
+
+	if (!dlp_ctrl_have_control_context()) {
+		WARNING("Nothing to do (dlp protocol not registered)");
+		EPILOG();
+		return 0;
+	}
+
+	if (kstrtol(val, 16, &do_reset) < 0) {
+		EPILOG();
+		return -EINVAL;
+	}
+
+	if (do_reset)
+		dlp_ctrl_flashing_warm_reset(DLP_CHANNEL_CTX(DLP_CHANNEL_CTRL));
 
 	EPILOG();
 	return 0;
@@ -1860,125 +2045,41 @@ static int get_modem_reset(char *val, struct kernel_param *kp)
 		EPILOG();
 	} else {
 		struct dlp_ctrl_context *ctrl_ctx = DLP_CTRL_CTX;
-		ret = sprintf(val, "%d", ctrl_ctx->reset.ongoing);
+		int reset_ongoing = dlp_ctrl_get_reset_ongoing();
+		ret = sprintf(val, "%d", reset_ongoing);
 
-		EPILOG("%d", ctrl_ctx->reset.ongoing);
+		EPILOG("%d", reset_ongoing);
 	}
 
 	return ret;
 }
 
 /*
-* @brief Modem reset module_param set function
-*	- This function is performing a modem reset
+* @brief Modem cold reset module_param set function
+*	- This function is performing a modem cold reset
 *
 * @param val
 * @param kp
 *
 * @return 0
 */
-static int do_modem_power(const char *val, struct kernel_param *kp)
-{
-	long do_power;
-
-	PROLOG();
-
-	if (!dlp_ctrl_have_control_context()) {
-		WARNING("Nothing to do (dlp protocol not registered)");
-		EPILOG();
-		return 0;
-	}
-
-	if (strict_strtol(val, 16, &do_power) < 0) {
-		EPILOG();
-		return -EINVAL;
-	}
-
-	if (do_power)
-		dlp_ctrl_modem_power(DLP_CHANNEL_CTX(DLP_CHANNEL_CTRL));
-
-	EPILOG();
-	return 0;
-}
-
-/*
- * Modem cold reset sysfs entries
- *
- * To do a modem cold reset we have to:
- * - Set the RESET_BB_N to low (better SIM protection)
- * - Set the EXT1P35VREN field to low  during 20ms (V1P35CNT_W PMIC register)
- * - set the EXT1P35VREN field to high during 10ms (V1P35CNT_W PMIC register)
- */
 static int do_modem_cold_reset(const char *val, struct kernel_param *kp)
 {
-	struct dlp_ctrl_context *ctrl_ctx;
+	int ret = -EINVAL;
 	long do_reset;
-	int ret = 0;
-	u16 addr = V1P35CNT_W;
-	u8 data, def_value;
 
 	PROLOG();
 
-	if (!dlp_ctrl_have_control_context()) {
-		WARNING("Nothing to do (dlp protocol not registered)");
-		return 0;
-	}
-
-	if (strict_strtol(val, 10, &do_reset) < 0) {
-		ret = -EINVAL;
+	if (kstrtol(val, 10, &do_reset) < 0)
 		goto out;
-	}
-
-	WARNING("Modem cold reset requested !");
 
 	/* Need to do something ? */
-	if (!do_reset) {
-		ret = -EINVAL;
+	if (!do_reset)
 		goto out;
-	}
 
-	/* AP requested reset => just ignore */
-	ctrl_ctx = DLP_CTRL_CTX;
-	ctrl_ctx->reset.ongoing = 1;
+	ret = dlp_ctrl_cold_reset(DLP_CHANNEL_CTX(DLP_CHANNEL_CTRL));
 
-	/* Set the reset_bb to low */
-	gpio_set_value(ctrl_ctx->gpio_mdm_rst_bbn, 0);
-
-	/* Save the current registre value */
-	ret = intel_scu_ipc_readv(&addr, &def_value, 2);
-	if (ret) {
-		CRITICAL("intel_scu_ipc_readv() failed (ret: %d)", ret);
-		goto out;
-	}
-
-	/* Write the new registre value (V1P35_OFF) */
-	data = (def_value & 0xf8) | V1P35_OFF;
-	ret =  intel_scu_ipc_writev(&addr, &data, 1);
-	if (ret) {
-		CRITICAL("intel_scu_ipc_writev(OFF)  failed (ret: %d)", ret);
-		goto out;
-	}
-	usleep_range(COLD_BOOT_DELAY_OFF, COLD_BOOT_DELAY_OFF);
-
-	/* Write the new registre value (V1P35_ON) */
-	data = (def_value & 0xf8) | V1P35_ON;
-	ret =  intel_scu_ipc_writev(&addr, &data, 1);
-	if (ret) {
-		CRITICAL("intel_scu_ipc_writev(ON) failed (ret: %d)", ret);
-		goto out;
-	}
-	usleep_range(COLD_BOOT_DELAY_ON, COLD_BOOT_DELAY_ON);
-
-	/* Write back the saved registre value */
-	ret =  intel_scu_ipc_writev(&addr, &def_value, 1);
-	if (ret) {
-		CRITICAL("intel_scu_ipc_writev() failed (ret: %d)", ret);
-	} else {
-		/* Perform a warm reset to finish the reset process */
-		do_modem_reset(val, kp);
-	}
-
- out:
+out:
 	EPILOG();
 	return ret;
 }
@@ -2006,7 +2107,7 @@ static int clear_hangup_reasons(const char *val, struct kernel_param *kp)
 		return 0;
 	}
 
-	if (strict_strtol(val, 16, &channels_list) < 0)
+	if (kstrtol(val, 16, &channels_list) < 0)
 		return -EINVAL;
 
 	if (channels_list) {
@@ -2014,9 +2115,7 @@ static int clear_hangup_reasons(const char *val, struct kernel_param *kp)
 
 		for (i = 0; i < DLP_CHANNEL_COUNT; i++) {
 			channel = channels_list & 0xF;
-			if ((channel) && (channel < DLP_CHANNEL_COUNT)) {
-				dlp_ctrl_set_hangup_reasons(i, 0);
-			}
+			dlp_ctrl_set_hangup_reasons(i, 0);
 			channels_list >>= 4;
 		}
 	}
@@ -2052,8 +2151,10 @@ static int get_hangup_reasons(char *val, struct kernel_param *kp)
 }
 
 module_param_call(cold_reset_modem, do_modem_cold_reset, NULL, NULL, 0644);
-module_param_call(reset_modem, do_modem_reset, get_modem_reset, NULL, 0644);
-module_param_call(power_modem, do_modem_power, NULL, NULL, 0644);
+module_param_call(reset_modem, do_modem_normal_reset, get_modem_reset,
+		NULL, 0644);
+module_param_call(flashing_reset_modem, do_modem_flashing_reset, NULL,
+		NULL, 0644);
 module_param_call(hangup_reasons, clear_hangup_reasons, get_hangup_reasons,
-		  NULL, 0644);
+		NULL, 0644);
 

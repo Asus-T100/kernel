@@ -42,10 +42,13 @@
 #define DRVNAME				"hsi-dlp"
 
 /* Delays for powering up/resetting the modem */
-#define DLP_DURATION_ON1       60 /* ON1 pulse delay: 60 us */
-#define DLP_DURATION_RST        1 /* RST_BBN pulse delay: 1 ms */
-#define DLP_NORMAL_POST_DELAY 200 /* Post seq. sleep duration: 200 ms */
-#define DLP_FLASH_POST_DELAY   30 /* Post seq. sleep duration: 30 ms */
+#define DLP_ON1_DURATION   60 /* ON1 pulse duration (usec) */
+#define DLP_ON1_DELAY     200 /* ON1 wait duration (usec) */
+
+#define DLP_COLD_RST_OFF_DELAY       20 /* Cold reset wait duration (msec) */
+
+#define DLP_WARM_RST_DURATION        60 /* RESET_BB_N pulse delay (usec) */
+#define DLP_WARM_RST_FLASHING_DELAY  30 /* RESET_BB_N wait duration (msec) */
 
 /* Defaut TX timeout delay (in microseconds) */
 #define DLP_HANGUP_DELAY	1000000
@@ -548,9 +551,13 @@ struct dlp_channel *dlp_ctrl_ctx_create(unsigned int index,
 
 int dlp_ctrl_ctx_delete(struct dlp_channel *ch_ctx);
 
-void dlp_ctrl_modem_reset(struct dlp_channel *ch_ctx, int guard_time);
+void dlp_ctrl_cold_boot(struct dlp_channel *ch_ctx);
 
-void dlp_ctrl_modem_power(struct dlp_channel *ch_ctx);
+int dlp_ctrl_cold_reset(struct dlp_channel *ch_ctx);
+
+void dlp_ctrl_normal_warm_reset(struct dlp_channel *ch_ctx);
+
+void dlp_ctrl_flashing_warm_reset(struct dlp_channel *ch_ctx);
 
 inline int dlp_ctrl_get_reset_ongoing(void);
 
