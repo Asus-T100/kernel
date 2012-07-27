@@ -4910,7 +4910,13 @@ static int ov8830_s_config(struct v4l2_subdev *sd,
 		return -ENODEV;
 
 	dev->platform_data = pdata;
-
+	if (dev->platform_data->platform_init) {
+		ret = dev->platform_data->platform_init(client);
+		if (ret) {
+			v4l2_err(client, "ov8830 platform init err\n");
+			return ret;
+		}
+	}
 	ret = ov8830_s_power(sd, 1);
 	if (ret) {
 		v4l2_err(client, "ov8830 power-up err.\n");
@@ -5140,7 +5146,8 @@ static int ov8830_remove(struct i2c_client *client)
 {
 	struct v4l2_subdev *sd = i2c_get_clientdata(client);
 	struct ov8830_device *dev = to_ov8830_sensor(sd);
-
+	if (dev->platform_data->platform_deinit)
+		dev->platform_data->platform_deinit();
 	dev->platform_data->csi_cfg(sd, 0);
 	v4l2_device_unregister_subdev(sd);
 	kfree(dev);

@@ -1002,6 +1002,13 @@ mt9m114_s_config(struct v4l2_subdev *sd, int irq, void *platform_data)
 	dev->platform_data =
 	    (struct camera_sensor_platform_data *)platform_data;
 
+	if (dev->platform_data->platform_init) {
+		ret = dev->platform_data->platform_init(client);
+		if (ret) {
+			v4l2_err(client, "mt9m114 platform init err\n");
+			return ret;
+		}
+	}
 	ret = mt9m114_s_power(sd, 1);
 	if (ret) {
 		v4l2_err(client, "mt9m114 power-up err");
@@ -1386,11 +1393,11 @@ static int mt9m114_remove(struct i2c_client *client)
 
 	dev = container_of(sd, struct mt9m114_device, sd);
 	dev->platform_data->csi_cfg(sd, 0);
-
+	if (dev->platform_data->platform_deinit)
+		dev->platform_data->platform_deinit();
 	v4l2_device_unregister_subdev(sd);
 	media_entity_cleanup(&dev->sd.entity);
 	kfree(dev);
-
 	return 0;
 }
 
