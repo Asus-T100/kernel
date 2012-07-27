@@ -70,6 +70,9 @@ static int mt9m114_flisclk_ctrl(struct v4l2_subdev *sd, int flag)
 static int mt9e013_reset_value;
 static int mt9m114_power_ctrl(struct v4l2_subdev *sd, int flag)
 {
+#ifdef CONFIG_BOARD_CTP
+	int reg_err;
+#endif
 #ifndef CONFIG_BOARD_CTP
 	int ret;
 
@@ -106,7 +109,15 @@ static int mt9m114_power_ctrl(struct v4l2_subdev *sd, int flag)
 #endif
 		if (!camera_vprog1_on) {
 			camera_vprog1_on = 1;
+#ifdef CONFIG_BOARD_CTP
+			reg_err = regulator_enable(vprog1_reg);
+			if (reg_err) {
+				printk(KERN_ALERT, "Failed to enable regulator vprog1\n");
+				return reg_err;
+			}
+#else
 			intel_scu_ipc_msic_vprog1(1);
+#endif
 		}
 #ifndef CONFIG_BOARD_CTP
 #ifdef CONFIG_BOARD_REDRIDGE
@@ -119,7 +130,15 @@ static int mt9m114_power_ctrl(struct v4l2_subdev *sd, int flag)
 	} else {
 		if (camera_vprog1_on) {
 			camera_vprog1_on = 0;
+#ifdef CONFIG_BOARD_CTP
+			reg_err = regulator_disable(vprog1_reg);
+			if (reg_err) {
+				printk(KERN_ALERT, "Failed to disable regulator vprog1\n");
+				return reg_err;
+			}
+#else
 			intel_scu_ipc_msic_vprog1(0);
+#endif
 		}
 #ifndef CONFIG_BOARD_CTP
 #ifdef CONFIG_BOARD_REDRIDGE
@@ -170,8 +189,10 @@ static struct camera_sensor_platform_data mt9m114_sensor_platform_data = {
 	.flisclk_ctrl	= mt9m114_flisclk_ctrl,
 	.power_ctrl	= mt9m114_power_ctrl,
 	.csi_cfg	= mt9m114_csi_configure,
+#ifdef CONFIG_BOARD_CTP
 	.platform_init = mt9m114_platform_init,
 	.platform_deinit = mt9m114_platform_deinit,
+#endif
 };
 
 void *mt9m114_platform_data(void *info)
