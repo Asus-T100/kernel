@@ -56,6 +56,8 @@
 #define DRM_MODE_FLAG_PIXMUX	(1<<11)
 #define DRM_MODE_FLAG_DBLCLK	(1<<12)
 #define DRM_MODE_FLAG_CLKDIV2	(1<<13)
+#define DRM_MODE_FLAG_PAR16_9	(1<<14)
+#define DRM_MODE_FLAG_PAR4_3	(1<<15)
 
 /* DPMS flags */
 /* bit compatible with the xorg definitions. */
