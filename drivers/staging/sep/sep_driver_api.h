@@ -46,12 +46,7 @@
  * Structures for RPMB EMMC access
  */
 
-#define SEP_RPMB_READ_COMMAND                0x0bc2
-#define SEP_RPMB_WRITE_COMMAND               0x0bc3
-#define SEP_RPMB_CREATE_ENTRY_COMMAND        0x0bc4
-#define SEP_RPMB_UPDATE_ENTRY_COMMAND        0x0bc5
-#define SEP_RPMB_READ_ENTRY_COMMAND          0x0bc6
-#define SEP_RPMB_DELETE_ALL_ENTRIES_COMMAND  0x0bc7
+#define SEP_RPMB_COMMAND             0x0bc2
 
 #define RQ_READ_IN_PROG 0x1001
 #define RSP_READ_COMPLETE 0x1002

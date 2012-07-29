@@ -132,6 +132,9 @@ uint32_t get_imr_base(void)
 
 struct sep_device *sep_dev;
 
+static u32 g_sep_host_gpr2;
+#define SEP_TO_HOST_COUNTER_MASK         (0x3FFFFFFF)
+
 /**
  * sep_dump_message - dump the message that is pending
  * @sep: SEP device
@@ -191,15 +194,10 @@ static int mmc_blk_rpmb_req_handle(struct mmc_ioc_rpmb_req *req)
 static inline int is_correct_rpmb_opcodes(struct sep_device *sep,
 		u32 main_opcode, u32 sub_opcode)
 {
-	int ret = ((main_opcode == SEP_RPMB_CREATE_ENTRY_COMMAND) ||
-			(main_opcode == SEP_RPMB_UPDATE_ENTRY_COMMAND) ||
-			(main_opcode == SEP_RPMB_READ_ENTRY_COMMAND) ||
-			(main_opcode == SEP_RPMB_READ_COMMAND) ||
-			(main_opcode == SEP_RPMB_WRITE_COMMAND) ||
-			(main_opcode == SEP_RPMB_DELETE_ALL_ENTRIES_COMMAND)) &&
+	int ret = ((main_opcode == SEP_RPMB_COMMAND) &&
 			((sub_opcode == RQ_READ_IN_PROG) ||
 			(sub_opcode == RQ_WRITE_IN_PROG) ||
-			(sub_opcode == RQ_GET_WRITE_CTR));
+			(sub_opcode == RQ_GET_WRITE_CTR)));
 
 	dev_dbg(&sep->pdev->dev,
 		"[PID%d] opcodes: "
@@ -220,7 +218,6 @@ static void rpmb_process_request(struct work_struct *work)
 	struct sep_device *sep = container_of(work,
 			struct sep_device, rpmb_work);
 	int res;
-	unsigned long lock_irq_flag;
 
 	/*
 	 * Non data field of printk block; used for emmc
@@ -456,25 +453,7 @@ static void rpmb_process_request(struct work_struct *work)
 				current->pid);
 			sep_dump_message(sep);
 
-			/* Update counter */
-			spin_lock_irqsave(&sep->snd_rply_lck,
-				lock_irq_flag);
-			sep->send_ct++;
-			spin_unlock_irqrestore(&sep->snd_rply_lck,
-				lock_irq_flag);
-
-			dev_dbg(&sep->pdev->dev,
-				"[PID%d] rpmb send_ct %lx "
-				"reply_ct %lx\n",
-				current->pid, sep->send_ct,
-				sep->reply_ct);
-
-			/* Send interrupt to SEP */
-			sep_write_reg(sep,
-				HW_HOST_HOST_SEP_GPR0_REG_ADDR, 0x2);
-
-			/* Bail out; this is error */
-			return;
+			goto exit;
 		}
 
 		/* bump up iteration */
@@ -528,17 +507,12 @@ static void rpmb_process_request(struct work_struct *work)
 		current->pid);
 	sep_dump_message(sep);
 
-	spin_lock_irqsave(&sep->snd_rply_lck, lock_irq_flag);
-	sep->send_ct++;
-	spin_unlock_irqrestore(&sep->snd_rply_lck, lock_irq_flag);
-
-	dev_dbg(&sep->pdev->dev,
-		"[PID%d] rpmb send_ct %lx reply_ct %lx\n",
-		current->pid, sep->send_ct, sep->reply_ct);
+exit:
+	clear_bit(SEP_RPMB_ACCESS_LOCK_BIT,
+			&sep->in_use_flags);
 
 	/* Send interrupt to SEP */
-
-	sep_write_reg(sep, HW_HOST_HOST_SEP_GPR0_REG_ADDR, 0x2);
+	sep_write_reg(sep, HW_HOST_HOST_SEP_GPR2_REG_ADDR, g_sep_host_gpr2);
 
 	return;
 }
@@ -3679,17 +3653,18 @@ static irqreturn_t sep_inthandler(int irq, void *dev_id)
 
 	if (reg_val & (0x1 << 13)) {
 
-		/* Lock and update the counter of reply messages */
-		spin_lock_irqsave(&sep->snd_rply_lck, lock_irq_flag);
-		sep->reply_ct++;
-		spin_unlock_irqrestore(&sep->snd_rply_lck, lock_irq_flag);
-
-		dev_dbg(&sep->pdev->dev, "sep int: send_ct %lx reply_ct %lx\n",
-					sep->send_ct, sep->reply_ct);
-
 		/* Is this a kernel client request */
 		if (sep->in_kernel) {
 			tasklet_schedule(&sep->finish_tasklet);
+
+			/* Lock and update the counter of reply messages */
+			spin_lock_irqsave(&sep->snd_rply_lck, lock_irq_flag);
+			sep->reply_ct++;
+			spin_unlock_irqrestore(&sep->snd_rply_lck, \
+					lock_irq_flag);
+
+			dev_dbg(&sep->pdev->dev, "sep int: send_ct %lx reply_ct %lx\n",
+						sep->send_ct, sep->reply_ct);
 			goto finished_interrupt;
 		}
 
@@ -3702,11 +3677,9 @@ static irqreturn_t sep_inthandler(int irq, void *dev_id)
 
 		if ((reg_val2 >> 30) & 0x1) {
 			dev_dbg(&sep->pdev->dev, "int: printf request\n");
-			queue_work(sep->rpmb_workqueue, &sep->rpmb_work);
 		} else if (reg_val2 >> 31) {
-			dev_dbg(&sep->pdev->dev, "int: daemon request\n");
-		} else {
-			dev_dbg(&sep->pdev->dev, "int: SEP reply\n");
+			dev_dbg(&sep->pdev->dev, "int: sep request\n");
+
 			/* Check if this is emmc request (special case) */
 
 			dev_dbg(&sep->pdev->dev, "int: msg is\n");
@@ -3717,8 +3690,8 @@ static irqreturn_t sep_inthandler(int irq, void *dev_id)
 			emmc_msg_area = (struct sep_message_top_from_sep *)
 				(sep->shared_addr + MSG_TOP_SIZE);
 
-			dev_dbg(&sep->pdev->dev, "int: opcode is "
-				"%.8x rpmb cmd is %.8x sep_rsult is %.8x\n",
+			dev_dbg(&sep->pdev->dev, "int: opcode is " \
+				"%.8x rpmb cmd is %.8x sep_result is %.8x\n",
 				msg_hdr_area->opcode,
 				emmc_msg_area->rpmb_command,
 				emmc_msg_area->sep_result);
@@ -3735,18 +3708,30 @@ static irqreturn_t sep_inthandler(int irq, void *dev_id)
 				set_bit(SEP_RPMB_ACCESS_LOCK_BIT,
 					&sep->in_use_flags);
 
+				g_sep_host_gpr2 = reg_val2 \
+						& SEP_TO_HOST_COUNTER_MASK;
+
 				/* initiate rpmb handling work queue */
 				queue_work(sep->rpmb_workqueue,
 						&sep->rpmb_work);
 			} else {
-				/* Normal return */
-				clear_bit(SEP_RPMB_ACCESS_LOCK_BIT,
-						&sep->in_use_flags);
-				wake_up(&sep->event_interrupt);
+				dev_dbg(&sep->pdev->dev,
+						"int: unknown sep request\n");
 			}
-		}
-		dev_dbg(&sep->pdev->dev, "sep int: send_ct %lx reply_ct %lx\n",
+		} else {
+			dev_dbg(&sep->pdev->dev, "int: SEP reply\n");
+
+			/* Lock and update the counter of reply messages */
+			spin_lock_irqsave(&sep->snd_rply_lck, lock_irq_flag);
+			sep->reply_ct++;
+			spin_unlock_irqrestore(&sep->snd_rply_lck, \
+					lock_irq_flag);
+			dev_dbg(&sep->pdev->dev, "sep int: send_ct %lx reply_ct %lx\n",
 					sep->send_ct, sep->reply_ct);
+
+			/* Normal return */
+			wake_up(&sep->event_interrupt);
+		}
 	} else {
 		dev_dbg(&sep->pdev->dev, "int: not SEP interrupt\n");
 		int_error = IRQ_NONE;
@@ -4745,10 +4730,8 @@ static int __devinit sep_probe(struct pci_dev *pdev,
 	/* Set the IMR register - open only GPR 2 */
 	sep_write_reg(sep, HW_HOST_IMR_REG_ADDR, (~(0x1 << 13)));
 
-	/* Read send/receive counters from SEP */
-	sep->reply_ct = sep_read_reg(sep, HW_HOST_SEP_HOST_GPR2_REG_ADDR);
-	sep->reply_ct &= 0x3FFFFFFF;
-	sep->send_ct = sep->reply_ct;
+	/* Initialize send/receive counters */
+	sep->send_ct = sep->reply_ct = 0;
 
 	/* Get the interrupt line */
 	error = request_irq(pdev->irq, sep_inthandler, IRQF_SHARED,
@@ -4903,7 +4886,6 @@ static int sep_pci_resume(struct device *dev)
 	sep_write_reg(sep, HW_HOST_IMR_REG_ADDR, (~(0x1 << 13)));
 
 	/* Read send/receive counters from SEP */
-	sep->reply_ct = sep_read_reg(sep, HW_HOST_SEP_HOST_GPR2_REG_ADDR);
 	sep->reply_ct &= 0x3FFFFFFF;
 	sep->send_ct = sep->reply_ct;
 
@@ -4983,7 +4965,6 @@ static int sep_pm_runtime_resume(struct device *dev)
 	sep_write_reg(sep, HW_HOST_IMR_REG_ADDR, (~(0x1 << 13)));
 
 	/* Read send/receive counters from SEP */
-	sep->reply_ct = sep_read_reg(sep, HW_HOST_SEP_HOST_GPR2_REG_ADDR);
 	sep->reply_ct &= 0x3FFFFFFF;
 	sep->send_ct = sep->reply_ct;
 
