@@ -326,6 +326,8 @@ bool ips_hdcp_set_repeater(bool present)
 	repeater.value = hdmi_read32(MDFLD_HDCP_REP_REG);
 	repeater.present = present;
 	hdmi_write32(MDFLD_HDCP_REP_REG, repeater.value);
+	/* delay for hardware change of repeater status */
+	msleep(1);
 	return true;
 }
 
@@ -341,13 +343,8 @@ bool ips_hdcp_is_r0_ready(void)
 	struct ips_hdcp_status_reg_t status;
 	status.value = ips_hdcp_get_status();
 
-	if (status.ri_ready) {
-		/* Set Ri to 0 */
-		ips_hdcp_write_rx_ri(0);
-		/* Set Repeater to Not Present */
-		ips_hdcp_set_repeater(0);
+	if (status.ri_ready)
 		return true;
-	}
 	return false;
 }
 
@@ -371,6 +368,8 @@ bool ips_hdcp_does_ri_match(uint16_t rx_ri)
 	struct ips_hdcp_status_reg_t status;
 
 	ips_hdcp_write_rx_ri(rx_ri);
+	/* delay for hardware ri match to complete */
+	msleep(1);
 	status.value = ips_hdcp_get_status();
 	if (status.ri_match)
 		return true;
@@ -389,7 +388,6 @@ bool ips_hdcp_compute_tx_v(uint8_t *rep_ksv_list,
 	uint32_t lower_num_bytes_for_sha = 0, num_pad_bytes = 0, temp_data = 0;
 	uint32_t rem_text_data = 0, num_mo_bytes_left = M0, value = 0, i = 0;
 	uint8_t *buffer = NULL, *temp_buffer = NULL, *temp_data_ptr = NULL;
-	struct ips_hdcp_repeater_reg_t hdcp_rep_ctrl_reg;
 	struct sqword_t buffer_len;
 
 	/* Clear SHA hash generator for new V calculation and
@@ -397,9 +395,7 @@ bool ips_hdcp_compute_tx_v(uint8_t *rep_ksv_list,
 	 */
 	hdmi_write32(MDFLD_HDCP_SHA1_IN, 0);
 
-	hdcp_rep_ctrl_reg.value = hdmi_read32(MDFLD_HDCP_REP_REG);
-	hdcp_rep_ctrl_reg.control = HDCP_REPEATER_CTRL_IDLE;
-	hdmi_write32(MDFLD_HDCP_REP_REG, hdcp_rep_ctrl_reg.value);
+	ips_hdcp_set_repeater_control(HDCP_REPEATER_CTRL_IDLE);
 	if (!ips_hdcp_repeater_wait_for_idle())
 		return false;
 
@@ -461,9 +457,7 @@ bool ips_hdcp_compute_tx_v(uint8_t *rep_ksv_list,
 	/* 6. Write KSV's and bstatus into SHA */
 	temp_buffer = buffer;
 	for (i = 0; i < (HDCP_KSV_SIZE * num_devices + 2)/4; i++) {
-		hdcp_rep_ctrl_reg.value = hdmi_read32(MDFLD_HDCP_REP_REG);
-		hdcp_rep_ctrl_reg.control = HDCP_REPEATER_32BIT_TEXT_IP;
-		hdmi_write32(MDFLD_HDCP_REP_REG, hdcp_rep_ctrl_reg.value);
+		ips_hdcp_set_repeater_control(HDCP_REPEATER_32BIT_TEXT_IP);
 
 		/* As per HDCP spec sample SHA is in little endian format.
 		 * But the data fed to the cipher needs to be in big endian
@@ -490,25 +484,23 @@ bool ips_hdcp_compute_tx_v(uint8_t *rep_ksv_list,
 		if (false == ips_hdcp_repeater_wait_for_next_data())
 			goto exit;
 
-		hdcp_rep_ctrl_reg.value = hdmi_read32(MDFLD_HDCP_REP_REG);
 		switch (rem_text_data) {
 		case 1:
-			hdcp_rep_ctrl_reg.control =
-			HDCP_REPEATER_8BIT_TEXT_24BIT_MO_IP;
+			ips_hdcp_set_repeater_control(
+				HDCP_REPEATER_8BIT_TEXT_24BIT_MO_IP);
 			break;
 		case 2:
-			hdcp_rep_ctrl_reg.control =
-			HDCP_REPEATER_16BIT_TEXT_16BIT_MO_IP;
+			ips_hdcp_set_repeater_control(
+				HDCP_REPEATER_16BIT_TEXT_16BIT_MO_IP);
 			break;
 		case 3:
-			hdcp_rep_ctrl_reg.control =
-			HDCP_REPEATER_24BIT_TEXT_8BIT_MO_IP;
+			ips_hdcp_set_repeater_control(
+				HDCP_REPEATER_24BIT_TEXT_8BIT_MO_IP);
 			break;
 		default:
 			goto exit;
 		}
 
-		hdmi_write32(MDFLD_HDCP_REP_REG, hdcp_rep_ctrl_reg.value);
 		memcpy(&value, temp_buffer, 4);
 
 		/* Swap the text data in big endian format leaving the M0 data
@@ -530,9 +522,7 @@ bool ips_hdcp_compute_tx_v(uint8_t *rep_ksv_list,
 	if (false == ips_hdcp_repeater_wait_for_next_data())
 		goto exit;
 
-	hdcp_rep_ctrl_reg.value = hdmi_read32(MDFLD_HDCP_REP_REG);
-	hdcp_rep_ctrl_reg.control = HDCP_REPEATER_32BIT_MO_IP;
-	hdmi_write32(MDFLD_HDCP_REP_REG, hdcp_rep_ctrl_reg.value);
+	ips_hdcp_set_repeater_control(HDCP_REPEATER_32BIT_MO_IP);
 	hdmi_write32(MDFLD_HDCP_SHA1_IN, (uint32_t)temp_buffer);
 	temp_buffer += 4;
 	num_mo_bytes_left -= 4;
@@ -544,26 +534,24 @@ bool ips_hdcp_compute_tx_v(uint8_t *rep_ksv_list,
 		/* write 4 bytes of M0 */
 		if (false == ips_hdcp_repeater_wait_for_next_data())
 			goto exit;
-		hdcp_rep_ctrl_reg.value = hdmi_read32(MDFLD_HDCP_REP_REG);
 		switch (num_mo_bytes_left) {
 		case 1:
-			hdcp_rep_ctrl_reg.control =
-			HDCP_REPEATER_24BIT_TEXT_8BIT_MO_IP;
+			ips_hdcp_set_repeater_control(
+				HDCP_REPEATER_24BIT_TEXT_8BIT_MO_IP);
 			break;
 		case 2:
-			hdcp_rep_ctrl_reg.control =
-			HDCP_REPEATER_16BIT_TEXT_16BIT_MO_IP;
+			ips_hdcp_set_repeater_control(
+				HDCP_REPEATER_16BIT_TEXT_16BIT_MO_IP);
 			break;
 		case 3:
-			hdcp_rep_ctrl_reg.control =
-			HDCP_REPEATER_8BIT_TEXT_24BIT_MO_IP;
+			ips_hdcp_set_repeater_control(
+				HDCP_REPEATER_8BIT_TEXT_24BIT_MO_IP);
 			break;
 		default:
 			/* should never happen */
 			goto exit;
 		}
 
-		hdmi_write32(MDFLD_HDCP_REP_REG, hdcp_rep_ctrl_reg.value);
 		hdmi_write32(MDFLD_HDCP_SHA1_IN, (uint32_t)temp_buffer);
 		temp_buffer += 4;
 		num_mo_bytes_left = 0;
@@ -583,9 +571,7 @@ bool ips_hdcp_compute_tx_v(uint8_t *rep_ksv_list,
 		if (false == ips_hdcp_repeater_wait_for_next_data())
 			goto exit;
 
-		hdcp_rep_ctrl_reg.value = hdmi_read32(MDFLD_HDCP_REP_REG);
-		hdcp_rep_ctrl_reg.control = HDCP_REPEATER_32BIT_TEXT_IP;
-		hdmi_write32(MDFLD_HDCP_REP_REG, hdcp_rep_ctrl_reg.value);
+		ips_hdcp_set_repeater_control(HDCP_REPEATER_32BIT_TEXT_IP);
 		memcpy(&value, temp_buffer, 4);
 		/* Do the big endian conversion */
 		value = HDCP_CONVERT_ENDIANNESS(value);
@@ -605,7 +591,6 @@ bool ips_hdcp_compare_v(uint32_t *rep_prime_v)
 {
 	bool ret = false;
 	uint32_t i = 10, stat;
-	struct ips_hdcp_repeater_reg_t hdcp_rep_ctrl_reg;
 
 	/* Load V' */
 	hdmi_write32(MDFLD_HDCP_VPRIME_H0, *rep_prime_v);
@@ -624,9 +609,7 @@ bool ips_hdcp_compare_v(uint32_t *rep_prime_v)
 	/* Set HDCP_REP to do the comparison, start
 	 * transmitter's V calculation
 	 */
-	hdcp_rep_ctrl_reg.value = hdmi_read32(MDFLD_HDCP_REP_REG);
-	hdcp_rep_ctrl_reg.control = HDCP_REPEATER_COMPLETE_SHA1;
-	hdmi_write32(MDFLD_HDCP_REP_REG, hdcp_rep_ctrl_reg.value);
+	ips_hdcp_set_repeater_control(HDCP_REPEATER_COMPLETE_SHA1);
 
 	msleep(5);
 	do {
