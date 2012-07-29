@@ -77,6 +77,7 @@ struct max17042_platform_data {
 	bool is_capacity_shutdown;
 	bool is_lowbatt_shutdown;
 	int technology;
+	char battid[BATTID_LEN + 1];
 
 	/* battery safety thresholds */
 	int temp_min_lim;	/* in degrees centigrade */
