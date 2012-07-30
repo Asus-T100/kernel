@@ -557,8 +557,6 @@ static void bcove_bat_zone_changed(void)
 
 static void bcove_extchrgr_read_complete(bool stat)
 {
-	if (unlikely(!stat))
-		return;
 
 	atomic_set(&chc.i2c_rw, I2C_RD);
 	wake_up(&chc.i2c_wait);
@@ -567,9 +565,6 @@ static void bcove_extchrgr_read_complete(bool stat)
 
 static void bcove_extchrgr_write_complete(bool stat)
 {
-
-	if (unlikely(!stat))
-		return;
 
 	atomic_set(&chc.i2c_rw, I2C_WR);
 	wake_up(&chc.i2c_wait);
