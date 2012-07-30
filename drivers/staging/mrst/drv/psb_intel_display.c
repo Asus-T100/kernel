@@ -1486,7 +1486,7 @@ static void mdfld_crtc_dpms(struct drm_crtc *crtc, int mode)
 		dspcntr_reg = DSPBCNTR;
 		dspbase_reg = MRST_DSPBBASE;
 		pipeconf_reg = PIPEBCONF;
-		pipeconf = dev_priv->pipeconf1;
+		pipeconf = PIPEACONF_ENABLE;
 		dspcntr = dev_priv->dspcntr1;
 		if (IS_MDFLD(dev))
 			dpll_reg = MDFLD_DPLL_B;
@@ -1551,6 +1551,22 @@ static void mdfld_crtc_dpms(struct drm_crtc *crtc, int mode)
 			}
 		}
 
+		/* Enable the pipe */
+		temp = REG_READ(pipeconf_reg);
+		if ((temp & PIPEACONF_ENABLE) == 0) {
+			/* Enable Pipe */
+			temp |= PIPEACONF_ENABLE;
+			/* Enable Display/Overplay Planes */
+			temp &= ~PIPECONF_PLANE_OFF;
+			/* Enable Cursor Planes */
+			temp &= ~PIPECONF_CURSOR_OFF;
+			REG_WRITE(pipeconf_reg, temp);
+			REG_READ(pipeconf_reg);
+
+			/* Wait for for the pipe enable to take effect. */
+			mdfldWaitForPipeEnable(dev, pipe);
+		}
+
 		/* Enable the plane */
 		temp = REG_READ(dspcntr_reg);
 		if ((temp & DISPLAY_PLANE_ENABLE) == 0) {
@@ -1560,14 +1576,6 @@ static void mdfld_crtc_dpms(struct drm_crtc *crtc, int mode)
 			REG_WRITE(dspbase_reg, REG_READ(dspbase_reg));
 		}
 
-		/* Enable the pipe */
-		temp = REG_READ(pipeconf_reg);
-		if ((temp & PIPEACONF_ENABLE) == 0) {
-			REG_WRITE(pipeconf_reg, pipeconf);
-
-			/* Wait for for the pipe enable to take effect. */
-			mdfldWaitForPipeEnable(dev, pipe);
-		}
 
 		/*workaround for sighting 3741701 Random X blank display*/
 		/*perform w/a in video mode only on pipe A or C*/
