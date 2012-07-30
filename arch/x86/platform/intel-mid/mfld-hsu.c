@@ -93,16 +93,16 @@ static void hsu_port_enable(int port)
 		gpio_direction_input(info->rx_gpio);
 	}
 	if (info->tx_gpio) {
-		lnw_gpio_set_alt(info->tx_gpio, info->tx_alt);
 		gpio_direction_output(info->tx_gpio, 0);
+		lnw_gpio_set_alt(info->tx_gpio, info->tx_alt);
 	}
 	if (info->cts_gpio) {
 		lnw_gpio_set_alt(info->cts_gpio, info->cts_alt);
 		gpio_direction_input(info->cts_gpio);
 	}
 	if (info->rts_gpio) {
-		lnw_gpio_set_alt(info->rts_gpio, info->rts_alt);
 		gpio_direction_output(info->rts_gpio, 0);
+		lnw_gpio_set_alt(info->rts_gpio, info->rts_alt);
 	}
 }
 
@@ -149,8 +149,8 @@ void intel_mid_hsu_suspend(int port)
 	struct mfld_hsu_info *info = platform_hsu_info + port;
 
 	if (info->rts_gpio) {
-		lnw_gpio_set_alt(info->rts_gpio, LNW_GPIO);
 		gpio_direction_output(info->rts_gpio, 1);
+		lnw_gpio_set_alt(info->rts_gpio, LNW_GPIO);
 	}
 	if (info->wake_gpio) {
 		lnw_gpio_set_alt(info->wake_gpio, LNW_GPIO);

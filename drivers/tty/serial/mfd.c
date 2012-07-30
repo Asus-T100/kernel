@@ -956,13 +956,15 @@ static inline void dma_chan_irq(struct hsu_dma_chan *chan)
 	 */
 	int_sts = chan_readl(chan, HSU_CH_SR);
 
-	if (!up->use_dma || !up->running || !hsu_port_is_active(up))
+	if (!up->use_dma || !up->running)
 		goto exit;
 
 	/* Rx channel */
-	if (up->dma_rx_on && chan->dirt == DMA_FROM_DEVICE)
-		hsu_dma_rx(up, int_sts);
-
+	if (up->dma_rx_on && chan->dirt == DMA_FROM_DEVICE) {
+		if (up->dev->power.runtime_status == RPM_ACTIVE ||
+			up->dev->power.runtime_status == RPM_RESUMING)
+			hsu_dma_rx(up, int_sts);
+	}
 	/* Tx channel */
 	if (chan->dirt == DMA_TO_DEVICE) {
 		chan_writel(chan, HSU_CH_CR, 0x0);
@@ -2060,13 +2062,15 @@ static bool allow_for_suspend(struct uart_hsu_port *up)
 	}
 
 	if (up->use_dma) {
-		rx_count = chan_readl(chan, HSU_CH_D0SAR) - dbuf->dma_addr;
-		if (rx_count) {
-			dev_dbg(up->dev, "%s: rx cnt=%d\n",
-				__func__, rx_count);
-			return false;
+		if (up->dma_rx_on) {
+			rx_count = chan_readl(chan, HSU_CH_D0SAR) -
+				dbuf->dma_addr;
+			if (rx_count) {
+				dev_dbg(up->dev, "%s: rx cnt=%d\n",
+					__func__, rx_count);
+				return false;
+			}
 		}
-
 		if (up->dma_tx_on) {
 			dev_dbg(up->dev, "%s: dma_tx_on\n", __func__);
 			return false;
@@ -2127,30 +2131,46 @@ static int hsu_runtime_suspend(struct device *dev)
 	struct pci_dev *pdev = container_of(dev, struct pci_dev, dev);
 	struct uart_hsu_port *up = pci_get_drvdata(pdev);
 
+	if (dmarx_need_timer())
+		del_timer_sync(&up->rxc->rx_timer);
+
+	if (up->running)
+		intel_mid_hsu_suspend(up->index);
+
 	if (!allow_for_suspend(up)) {
+		if (up->use_dma && up->dma_rx_on)
+			hsu_dma_rx(up, 0);
+
+		if (up->running)
+			intel_mid_hsu_resume(up->index);
+
+		if (up->dma_rx_on && dmarx_need_timer())
+			mod_timer(&up->rxc->rx_timer,
+				jiffies + HSU_DMA_TIMEOUT_CHECK_FREQ);
+
 		pm_schedule_suspend(dev, 100);
 		return -EBUSY;
 	}
 
-	if (dmarx_need_timer())
-		del_timer_sync(&up->rxc->rx_timer);
-
-	chan_writel(up->rxc, HSU_CH_CR, 0x2);
-	disable_irq(up->port.irq);
 	if (up->index == 1) {
 		struct uart_hsu_port *up3 = serial_hsu_ports[3];
 		if (up3->running) {
 			intel_mid_hsu_suspend(up3->index);
 			clear_bit(PM_WAKEUP, &up3->pm_flags);
 		}
+	}
+
+	chan_writel(up->rxc, HSU_CH_CR, 0x2);
+	disable_irq(up->port.irq);
+
+	if (up->index == 1) {
+		struct uart_hsu_port *up3 = serial_hsu_ports[3];
 		memcpy(up3->reg_shadow + 1, up3->port.membase + 1,
 			HSU_PORT_REG_LENGTH - 1);
 		if (dmarx_need_timer())
 			del_timer_sync(&up3->rxc->rx_timer);
 	}
 	memcpy(up->reg_shadow + 1, up->port.membase + 1, HSU_PORT_REG_LENGTH - 1);
-	if (up->running)
-		intel_mid_hsu_suspend(up->index);
 
 	return 0;
 }
@@ -2161,13 +2181,9 @@ static int hsu_runtime_resume(struct device *dev)
 	struct uart_hsu_port *up = pci_get_drvdata(pdev);
 	int dma_rx_on = 0;
 
-	if (up->running)
-		intel_mid_hsu_resume(up->index);
 	if (up->index == 1) {
 		struct uart_hsu_port *up3 = serial_hsu_ports[3];
 
-		if (up3->running)
-			intel_mid_hsu_resume(up3->index);
 		if (up3->dma_rx_on) {
 			dma_rx_on = 1;
 			if (dmarx_need_timer())
@@ -2183,6 +2199,15 @@ static int hsu_runtime_resume(struct device *dev)
 	if (up->dma_rx_on && dmarx_need_timer())
 		mod_timer(&up->rxc->rx_timer,
 			jiffies + HSU_DMA_TIMEOUT_CHECK_FREQ);
+
+	if (up->running)
+		intel_mid_hsu_resume(up->index);
+
+	if (up->index == 1) {
+		struct uart_hsu_port *up3 = serial_hsu_ports[3];
+		if (up3->running)
+			intel_mid_hsu_resume(up3->index);
+	}
 
 	return 0;
 }
