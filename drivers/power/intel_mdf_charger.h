@@ -151,18 +151,22 @@
 
 
 /* ADC Channel Numbers */
-#define MSIC_BATT_SENSORS	3
+#define MSIC_BATT_SENSORS	4
+#define MSIC_BATT_PACK_VOL	0x0
 #define MSIC_BATT_PACK_TEMP	0x7
 #define MSIC_USB_VOLTAGE	0x5
 #define MSIC_BATTID		0x2
-#define MSIC_ADC_TEMP_IDX	0
-#define MSIC_ADC_USB_VOL_IDX	1
-#define MSIC_ADC_BATTID_IDX	2
+#define MSIC_ADC_VOL_IDX	0
+#define MSIC_ADC_TEMP_IDX	1
+#define MSIC_ADC_USB_VOL_IDX	2
+#define MSIC_ADC_BATTID_IDX	3
+
+/*convert adc_val to voltage mV */
+#define MSIC_ADC_TO_VOL(adc_val)	((4692 * (adc_val)) / 1000)
 
 /*MSIC battery temperature  attributes*/
 #define MSIC_BTP_ADC_MIN	107
 #define MSIC_BTP_ADC_MAX	977
-
 
 /* SRAM Addresses for INTR and OCV locations */
 #define MSIC_SRAM_INTR_ADDR		0xFFFF7FC3

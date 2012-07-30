@@ -603,6 +603,7 @@ static int mdf_multi_read_adc_regs(struct msic_power_module_info *mbi,
 	if (!is_ttl_valid(adc_ttl) || (sample_count > 1)) {
 		ret =
 		    intel_mid_gpadc_sample(mbi->adc_handle, sample_count,
+					   &adc_sensor_vals[MSIC_ADC_VOL_IDX],
 					   &adc_sensor_vals[MSIC_ADC_TEMP_IDX],
 					   &adc_sensor_vals
 						[MSIC_ADC_USB_VOL_IDX],
@@ -632,6 +633,9 @@ static int mdf_multi_read_adc_regs(struct msic_power_module_info *mbi,
 		}
 		*adc_val = temp_adc_val[sensor];
 		switch (sensor) {
+		case MSIC_ADC_VOL_IDX:
+			tmp = MSIC_ADC_TO_VOL(*adc_val);
+			break;
 		case MSIC_ADC_TEMP_IDX:
 			tmp = adc_to_temp(*adc_val);
 			break;
@@ -977,6 +981,7 @@ static void msic_handle_exception(struct msic_power_module_info *mbi,
 {
 	enum msic_event exception;
 	int temp, retval;
+	int msic_vbatt, fg_vbatt, fg_curr;
 	unsigned int health = POWER_SUPPLY_HEALTH_GOOD;
 
 	/* Battery Events */
@@ -1003,6 +1008,33 @@ static void msic_handle_exception(struct msic_power_module_info *mbi,
 		if (!mbi->usb_chrg_props.charger_present)
 			health = POWER_SUPPLY_HEALTH_DEAD;
 		exception = MSIC_EVENT_LOWBATT_EXCPT;
+
+		/* log Vbatt voltage from msic */
+		retval = mdf_read_adc_regs(MSIC_ADC_VOL_IDX, &msic_vbatt, mbi);
+		if (retval < 0)
+			dev_warn(msic_dev,
+				"[Low Batt]msic vbatt read error:%d\n", retval);
+		else
+			dev_info(msic_dev,
+				"[Low Batt] msic vbatt:%dmV\n", msic_vbatt);
+
+		/* read avg voltage from fuel gauge */
+		fg_vbatt = fg_chip_get_property(POWER_SUPPLY_PROP_VOLTAGE_AVG);
+		if (fg_vbatt < 0)
+			dev_warn(msic_dev,
+				"[Low Bat]Can't read voltage from FG\n");
+		else
+			dev_info(msic_dev,
+				"[Low Batt]fg vbatt avg:%dmV\n", fg_vbatt/1000);
+
+		/* read current from fuel gauge */
+		fg_curr = fg_chip_get_property(POWER_SUPPLY_PROP_CURRENT_NOW);
+		if (fg_curr == -ENODEV || fg_curr == -EINVAL)
+			dev_warn(msic_dev, "Can't read current from FG\n");
+		else
+			dev_info(msic_dev,
+				"[Low Batt] fg current:%dmA\n", fg_curr/1000);
+
 		msic_log_exception_event(exception);
 	}
 	if (CHRINT_reg_value & MSIC_BATT_CHR_TIMEEXP_MASK) {
@@ -2852,6 +2884,7 @@ static int msic_battery_probe(struct ipc_device *ipcdev)
 	/* Allocate ADC Channels */
 	mbi->adc_handle =
 	    intel_mid_gpadc_alloc(MSIC_BATT_SENSORS,
+				  MSIC_BATT_PACK_VOL | CH_NEED_VCALIB,
 				  MSIC_BATT_PACK_TEMP | CH_NEED_VCALIB |
 				  CH_NEED_VREF,
 				  MSIC_USB_VOLTAGE | CH_NEED_VCALIB,
