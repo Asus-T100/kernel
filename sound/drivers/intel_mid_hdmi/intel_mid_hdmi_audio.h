@@ -96,20 +96,7 @@ enum had_stream_status {
  * */
 enum had_status_stream {
 	HAD_INIT = 0,
-	HAD_RUNNING_SILENCE = 1,
-	HAD_RUNNING_STREAM = 2,
-};
-
-/**
- * enum had_process_trigger - Audio stream states
- * _START is processed in 2 halves.
- * _PRESTART & _START_TRIGGER
- * */
-enum had_process_trigger {
-	NO_TRIGGER = 0,
-	PRE_START = 1,
-	START_TRIGGER = 2,
-	STOP_TRIGGER = 3,
+	HAD_RUNNING_STREAM,
 };
 
 enum had_drv_status {
@@ -429,7 +416,6 @@ struct had_stream_pvt {
 
 struct had_pvt_data {
 	enum had_status_stream		stream_type;
-	enum had_process_trigger	process_trigger;
 };
 
 struct had_callback_ops {
@@ -482,9 +468,7 @@ int hdmi_audio_suspend(void *drv_data, hdmi_audio_event_t event);
 int hdmi_audio_resume(void *drv_data);
 int hdmi_audio_mode_change(struct snd_pcm_substream *substream);
 extern struct snd_pcm_ops snd_intelhad_playback_ops;
-int snd_intelhad_start_silence(struct snd_intelhad *intelhaddata);
-int snd_intelhad_stop_silence(struct snd_intelhad *intelhaddata);
-int snd_intelhad_configure_silence(struct snd_intelhad *intelhaddata);
+
 int snd_intelhad_init_audio_ctrl(struct snd_pcm_substream *substream,
 					struct snd_intelhad *intelhaddata,
 					int flag_silence);

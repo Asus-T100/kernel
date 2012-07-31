@@ -34,7 +34,6 @@
 #include <sound/core.h>
 #include "intel_mid_hdmi_audio.h"
 
-static int flag_en_allbufs;
 
 /**
  * hdmi_audio_query - hdmi audio query function
@@ -59,7 +58,7 @@ int hdmi_audio_query(void *haddata, hdmi_audio_event_t event)
 	case HAD_EVENT_QUERY_IS_AUDIO_BUSY:
 		spin_lock_irqsave(&intelhaddata->had_spinlock, flag_irqs);
 
-		if ((had_stream->stream_type > HAD_RUNNING_SILENCE) ||
+		if ((had_stream->stream_type == HAD_RUNNING_STREAM) ||
 			substream) {
 			spin_unlock_irqrestore(&intelhaddata->had_spinlock,
 						flag_irqs);
@@ -113,7 +112,7 @@ int hdmi_audio_suspend(void *haddata, hdmi_audio_event_t event)
 	substream = intelhaddata->stream_info.had_substream;
 
 	spin_lock_irqsave(&intelhaddata->had_spinlock, flag_irqs);
-	if ((had_stream->stream_type > HAD_RUNNING_SILENCE) || substream) {
+	if ((had_stream->stream_type == HAD_RUNNING_STREAM) || substream) {
 		spin_unlock_irqrestore(&intelhaddata->had_spinlock, flag_irqs);
 		pr_err("audio stream is active\n");
 		return -EAGAIN;
@@ -136,7 +135,6 @@ int hdmi_audio_suspend(void *haddata, hdmi_audio_event_t event)
 	caps = HDMI_AUDIO_UNDERRUN | HDMI_AUDIO_BUFFER_DONE;
 	had_set_caps(HAD_SET_DISABLE_AUDIO_INT, &caps);
 	had_set_caps(HAD_SET_DISABLE_AUDIO, NULL);
-	retval = snd_intelhad_stop_silence(intelhaddata);
 	pr_debug("Exit:%s", __func__);
 	return retval;
 }
@@ -181,8 +179,6 @@ int hdmi_audio_resume(void *haddata)
 	caps = HDMI_AUDIO_UNDERRUN | HDMI_AUDIO_BUFFER_DONE;
 	retval = had_set_caps(HAD_SET_ENABLE_AUDIO_INT, &caps);
 	retval = had_set_caps(HAD_SET_ENABLE_AUDIO, NULL);
-	retval = snd_intelhad_configure_silence(intelhaddata);
-	retval = snd_intelhad_start_silence(intelhaddata);
 	pr_debug("Exit:%s", __func__);
 	return retval;
 }
@@ -229,141 +225,6 @@ static inline int had_chk_intrmiss(struct snd_intelhad *intelhaddata,
 	return intr_count;
 }
 
-static inline int had_process_pre_start(struct snd_intelhad *intelhaddata,
-		enum intel_had_aud_buf_type buf_id)
-{
-	int retval = 0;
-	struct had_pvt_data *had_stream;
-	enum intel_had_aud_buf_type prg_start, prg_end;
-	enum intel_had_aud_buf_type inv_start;
-	unsigned long flag_irqs;
-
-
-	spin_lock_irqsave(&intelhaddata->had_spinlock, flag_irqs);
-	had_stream = intelhaddata->private_data;
-	/* Check for device state*/
-	if (intelhaddata->drv_status == HAD_DRV_DISCONNECTED) {
-		spin_unlock_irqrestore(&intelhaddata->had_spinlock, flag_irqs);
-		pr_err("%s:Cable plugged-out\n", __func__);
-		return retval;
-	}
-	spin_unlock_irqrestore(&intelhaddata->had_spinlock, flag_irqs);
-
-	if (intelhaddata->valid_buf_cnt-1 == buf_id) {
-		if (had_stream->stream_type == HAD_RUNNING_STREAM)
-			buf_id = HAD_BUF_TYPE_A;
-		else	/* Use only silence buffers C & D */
-			buf_id = HAD_BUF_TYPE_C;
-	} else
-		buf_id = buf_id + 1;
-
-	/* Program all buffers in case of Buf == A */
-	if (buf_id == HAD_BUF_TYPE_A) {
-		prg_start = buf_id + 1;
-		prg_end = HAD_BUF_TYPE_D;
-	} else {
-		prg_start = HAD_BUF_TYPE_A;
-		prg_end = buf_id - 1;
-	}
-	retval = snd_intelhad_prog_buffer(intelhaddata,
-			prg_start, prg_end);
-	/* Invalidate all buffs after buf_id */
-	inv_start = buf_id + 1;
-	if ((buf_id != HAD_BUF_TYPE_A) && (buf_id != HAD_BUF_TYPE_D))
-		snd_intelhad_invd_buffer(inv_start, HAD_BUF_TYPE_D);
-
-	/* Start reporting BUFFER_DONE/UNDERRUN to above layers*/
-	spin_lock_irqsave(&intelhaddata->had_spinlock, flag_irqs);
-	intelhaddata->curr_buf = buf_id;
-
-	if (buf_id != HAD_BUF_TYPE_A)
-		had_stream->process_trigger = START_TRIGGER;
-	else {
-		had_stream->stream_type = HAD_RUNNING_STREAM;
-		had_stream->process_trigger = NO_TRIGGER;
-	}
-	spin_unlock_irqrestore(&intelhaddata->had_spinlock, flag_irqs);
-
-	pr_debug("Processed %s, buf_id = %d\n", __func__, buf_id);
-
-	return retval;
-}
-
-static inline int had_process_start_trigger(struct snd_intelhad *intelhaddata)
-{
-	int retval = 0;
-	struct had_pvt_data *had_stream;
-	enum intel_had_aud_buf_type prg_start;
-	unsigned long flag_irqs;
-
-	had_stream = intelhaddata->private_data;
-	spin_lock_irqsave(&intelhaddata->had_spinlock, flag_irqs);
-	/* Check for device state*/
-	if (intelhaddata->drv_status == HAD_DRV_DISCONNECTED) {
-		had_stream->process_trigger = NO_TRIGGER;
-		spin_unlock_irqrestore(&intelhaddata->had_spinlock, flag_irqs);
-		pr_err("%s:Cable plugged-out\n", __func__);
-		return retval;
-	}
-
-	had_stream->stream_type = HAD_RUNNING_STREAM;
-	had_stream->process_trigger = NO_TRIGGER;
-	intelhaddata->curr_buf = HAD_BUF_TYPE_A;
-	prg_start = intelhaddata->buff_done;
-	spin_unlock_irqrestore(&intelhaddata->had_spinlock, flag_irqs);
-	retval = snd_intelhad_prog_buffer(intelhaddata,
-			prg_start, HAD_BUF_TYPE_D);
-
-	return retval;
-}
-
-static inline int had_process_stop_trigger(struct snd_intelhad *intelhaddata)
-{
-	int i, retval = 0;
-	struct had_pvt_data *had_stream;
-	enum intel_had_aud_buf_type buf_id;
-	u32 buf_addr;
-
-	had_stream = intelhaddata->private_data;
-
-	buf_id = intelhaddata->curr_buf;
-
-	/* All successive intr for Silence stream */
-	had_stream->stream_type = HAD_RUNNING_SILENCE;
-	had_stream->process_trigger = NO_TRIGGER;
-
-	/* If buf_id < HAD_BUF_TYPE_C, ignore */
-	if (buf_id < HAD_BUF_TYPE_C) {
-		intelhaddata->curr_buf = HAD_BUF_TYPE_C;
-		return retval;
-	}
-	if (buf_id == HAD_BUF_TYPE_C)
-		intelhaddata->curr_buf = HAD_BUF_TYPE_D;
-	else
-		intelhaddata->curr_buf = HAD_BUF_TYPE_C;
-
-	/* _STOP -> _START -> _STOP occured
-	 * invalidate Buff_A, Buff_B
-	 */
-	snd_intelhad_invd_buffer(HAD_BUF_TYPE_A, HAD_BUF_TYPE_B);
-	i = buf_id;
-	buf_addr = virt_to_phys(intelhaddata->flat_data);
-	/* Program the buf registers with addr and len */
-	had_write_register(AUD_BUF_A_ADDR + (i * HAD_REG_WIDTH),
-			buf_addr | BIT(0) | BIT(1));
-	had_write_register(AUD_BUF_A_LENGTH + (i * HAD_REG_WIDTH),
-			(MAX_SZ_ZERO_BUF));
-
-	intelhaddata->buf_info[i].buf_addr = buf_addr;
-	intelhaddata->buf_info[i].buf_size = MAX_SZ_ZERO_BUF;
-	intelhaddata->buf_info[i].is_valid = true;
-	pr_debug("buf[%d] addr=%#x  and size=%d\n", i,
-			intelhaddata->buf_info[i].buf_addr,
-			intelhaddata->buf_info[i].buf_size);
-
-	return retval;
-}
-
 int had_process_buffer_done(struct snd_intelhad *intelhaddata)
 {
 	int retval = 0;
@@ -375,7 +236,6 @@ int had_process_buffer_done(struct snd_intelhad *intelhaddata)
 	struct had_pvt_data *had_stream;
 	int intr_count;
 	enum had_status_stream		stream_type;
-	enum had_process_trigger	process_trigger;
 	unsigned long flag_irqs;
 
 	had_stream = intelhaddata->private_data;
@@ -393,7 +253,6 @@ int had_process_buffer_done(struct snd_intelhad *intelhaddata)
 	buff_done = intelhaddata->buff_done;
 	buf_size = intelhaddata->buf_info[buf_id].buf_size;
 	stream_type = had_stream->stream_type;
-	process_trigger = had_stream->process_trigger;
 
 	pr_debug("Enter:%s buf_id=%d", __func__, buf_id);
 
@@ -403,9 +262,7 @@ int had_process_buffer_done(struct snd_intelhad *intelhaddata)
 	 */
 
 	/* Check for any intr_miss in case of active playback */
-	if ((had_stream->stream_type == HAD_RUNNING_STREAM) &&
-			(had_stream->process_trigger == NO_TRIGGER) &&
-			!flag_en_allbufs) {
+	if (had_stream->stream_type == HAD_RUNNING_STREAM) {
 		spin_unlock_irqrestore(&intelhaddata->had_spinlock, flag_irqs);
 		intr_count = had_chk_intrmiss(intelhaddata, buf_id);
 		if (!intr_count || (intr_count > 3)) {
@@ -418,38 +275,10 @@ int had_process_buffer_done(struct snd_intelhad *intelhaddata)
 		spin_lock_irqsave(&intelhaddata->had_spinlock, flag_irqs);
 	}
 
-	/* Acknowledge _START trigger recieved */
-	if (had_stream->process_trigger == PRE_START) {
-		spin_unlock_irqrestore(&intelhaddata->had_spinlock, flag_irqs);
-		retval = had_process_pre_start(intelhaddata, buf_id);
-		return retval;
-	}
-
-	/* Program actual data buffer, in case _START trigger recieved */
-	if (had_stream->process_trigger == START_TRIGGER) {
-		spin_unlock_irqrestore(&intelhaddata->had_spinlock, flag_irqs);
-		retval = had_process_start_trigger(intelhaddata);
-		return retval;
-	}
-
-	/* Program Silence buffer, in case _STOP trigger recieved */
-	if (had_stream->process_trigger == STOP_TRIGGER) {
-		/* Process with spin_lock acquired
-		 * Can be optimized later
-		 */
-		retval = had_process_stop_trigger(intelhaddata);
-		spin_unlock_irqrestore(&intelhaddata->had_spinlock, flag_irqs);
-		pr_debug("Processed stop trigger in hanlder:bufid=%d\n",
-				buf_id);
-		return retval;
-	}
-
 	intelhaddata->buf_info[buf_id].is_valid = true;
 	if (intelhaddata->valid_buf_cnt-1 == buf_id) {
 		if (had_stream->stream_type >= HAD_RUNNING_STREAM)
 			intelhaddata->curr_buf = HAD_BUF_TYPE_A;
-		else	/* Use only silence buffers C & D */
-			intelhaddata->curr_buf = HAD_BUF_TYPE_C;
 	} else
 		intelhaddata->curr_buf = buf_id + 1;
 
@@ -460,12 +289,6 @@ int had_process_buffer_done(struct snd_intelhad *intelhaddata)
 		return retval;
 	}
 
-	if (flag_en_allbufs) {
-		pr_debug("Enabling Top half buffers after _PLUG\n");
-		retval = snd_intelhad_prog_buffer(intelhaddata,
-				HAD_BUF_TYPE_A, (buf_id-1));
-		flag_en_allbufs = 0;
-	}
 	/*Reprogram the registers with addr and length*/
 	had_write_register(AUD_BUF_A_LENGTH +
 			(buf_id * HAD_REG_WIDTH), buf_size);
@@ -497,7 +320,6 @@ int had_process_buffer_underrun(struct snd_intelhad *intelhaddata)
 	struct pcm_stream_info *stream;
 	struct had_pvt_data *had_stream;
 	enum had_status_stream stream_type;
-	enum had_process_trigger	process_trigger;
 	u32 hdmi_status;
 	unsigned long flag_irqs;
 	int drv_status;
@@ -508,18 +330,15 @@ int had_process_buffer_underrun(struct snd_intelhad *intelhaddata)
 	spin_lock_irqsave(&intelhaddata->had_spinlock, flag_irqs);
 	buf_id = intelhaddata->curr_buf;
 	stream_type = had_stream->stream_type;
-	process_trigger = had_stream->process_trigger;
 	intelhaddata->buff_done = buf_id;
 	drv_status = intelhaddata->drv_status;
 	if (stream_type == HAD_RUNNING_STREAM)
 		intelhaddata->curr_buf = HAD_BUF_TYPE_A;
-	else	/* Use only silence buffers C & D */
-		intelhaddata->curr_buf = HAD_BUF_TYPE_C;
 
 	spin_unlock_irqrestore(&intelhaddata->had_spinlock, flag_irqs);
 
-	pr_debug("Enter:%s buf_id=%d, stream_type=%d, process_trigger=%d\n",
-			__func__, buf_id, stream_type, process_trigger);
+	pr_debug("Enter:%s buf_id=%d, stream_type=%d\n",
+			__func__, buf_id, stream_type);
 
 	/* Handle Underrun interrupt within Audio Unit */
 	had_write_register(AUD_CONFIG, 0);
@@ -550,52 +369,9 @@ int had_process_buffer_underrun(struct snd_intelhad *intelhaddata)
 	}
 
 	if (stream_type == HAD_RUNNING_STREAM) {
-		if (process_trigger == NO_TRIGGER) {
-			/* Report UNDERRUN error to above layers */
-			intelhaddata->flag_underrun = 1;
-			stream->period_elapsed(stream->had_substream);
-			had_read_modify(AUD_CONFIG, 1, BIT(0));
-			retval = snd_intelhad_prog_buffer(intelhaddata,
-					HAD_BUF_TYPE_A, HAD_BUF_TYPE_D);
-		} else if (process_trigger == STOP_TRIGGER) {
-			spin_lock_irqsave(&intelhaddata->had_spinlock,
-					flag_irqs);
-			had_stream->process_trigger = NO_TRIGGER;
-			spin_unlock_irqrestore(&intelhaddata->had_spinlock,
-					flag_irqs);
-			/* Invalidate A & B */
-			snd_intelhad_invd_buffer(HAD_BUF_TYPE_A,
-					HAD_BUF_TYPE_B);
-			/* Start sending silence data */
-			retval = snd_intelhad_start_silence(intelhaddata);
-			return retval;
-		} else {
-			pr_err("%s:Should never come here\n", __func__);
-			pr_err("stream_type=%d,process_trigger=%d\n",
-					stream_type, process_trigger);
-			return retval;
-		}
-	} else if (stream_type == HAD_RUNNING_SILENCE) {
-		if (process_trigger < START_TRIGGER)
-			retval = snd_intelhad_start_silence(intelhaddata);
-		else if (process_trigger == START_TRIGGER) {
-			spin_lock_irqsave(&intelhaddata->had_spinlock,
-					flag_irqs);
-			intelhaddata->curr_buf = HAD_BUF_TYPE_A;
-			had_stream->process_trigger = NO_TRIGGER;
-			had_stream->stream_type = HAD_RUNNING_STREAM;
-			spin_unlock_irqrestore(&intelhaddata->had_spinlock,
-					flag_irqs);
-			had_read_modify(AUD_CONFIG, 1, BIT(0));
-			retval = snd_intelhad_prog_buffer(intelhaddata,
-				HAD_BUF_TYPE_A, HAD_BUF_TYPE_D);
-			/* Pre start already processed */
-		} else {
-			pr_err("%s:Should never come here\n", __func__);
-			pr_err("stream_type=%d,process_trigger=%d\n",
-					stream_type, process_trigger);
-			return retval;
-		}
+		/* Report UNDERRUN error to above layers */
+		intelhaddata->flag_underrun = 1;
+		stream->period_elapsed(stream->had_substream);
 	}
 
 	return retval;
@@ -636,14 +412,6 @@ int had_process_hot_plug(struct snd_intelhad *intelhaddata)
 		snd_pcm_stop(substream, SNDRV_PCM_STATE_SETUP);
 	}
 
-	/* Start sending silence data */
-	pr_debug("Start sending SILENCE\n");
-	caps = HDMI_AUDIO_UNDERRUN | HDMI_AUDIO_BUFFER_DONE;
-	retval = had_set_caps(HAD_SET_ENABLE_AUDIO_INT, &caps);
-	retval = had_set_caps(HAD_SET_ENABLE_AUDIO, NULL);
-
-	snd_intelhad_configure_silence(intelhaddata);
-	retval = snd_intelhad_start_silence(intelhaddata);
 	return retval;
 }
 
@@ -675,7 +443,6 @@ int had_process_hot_unplug(struct snd_intelhad *intelhaddata)
 	intelhaddata->drv_status = HAD_DRV_DISCONNECTED;
 	/* Report to above ALSA layer */
 	if (intelhaddata->stream_info.had_substream != NULL) {
-		had_stream->process_trigger = NO_TRIGGER;
 		spin_unlock_irqrestore(&intelhaddata->had_spinlock, flag_irqs);
 		pr_debug("%s: unlock -> sending pcm_stop -> lock\n", __func__);
 		snd_pcm_stop(intelhaddata->stream_info.had_substream,
