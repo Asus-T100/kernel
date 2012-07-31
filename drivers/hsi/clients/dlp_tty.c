@@ -72,6 +72,31 @@ struct dlp_tty_context {
 	struct work_struct	do_tty_forward;
 };
 
+
+/**
+ * Push as many RX PDUs  as possible to the controller FIFO
+ *
+ * @param ch_ctx : The channel context to consider
+ *
+ * @return 0 when OK, error value otherwise
+ */
+static int dlp_tty_push_rx_pdus(struct dlp_channel *ch_ctx)
+{
+	int ret = 0;
+	struct dlp_xfer_ctx *rx_ctx = &ch_ctx->rx;
+
+	PROLOG();
+
+	ret = dlp_pop_recycled_push_ctrl(rx_ctx);
+	if (ret == -EAGAIN) {
+		mod_timer(&rx_ctx->timer, jiffies + rx_ctx->delay);
+		ret = 0;
+	}
+
+	EPILOG();
+	return ret;
+}
+
 /*
  *
  *
@@ -575,7 +600,7 @@ static int dlp_tty_port_activate(struct tty_port *port, struct tty_struct *tty)
 	struct dlp_channel *ch_ctx;
 	struct dlp_xfer_ctx *tx_ctx;
 	struct dlp_xfer_ctx *rx_ctx;
-	int ret;
+	int ret = 0;
 
 	PROLOG();
 
@@ -589,22 +614,15 @@ static int dlp_tty_port_activate(struct tty_port *port, struct tty_struct *tty)
 	dlp_ctx_update_status(rx_ctx);
 
 	/* Configure the DLP channel */
-	if (tty->count == 1) {
-		ret = dlp_ctrl_open_channel(ch_ctx);
-		if (ret) {
-			CRITICAL("dlp_ctrl_open_channel() failed !");
-			goto out;
-		}
+	ret = dlp_ctrl_open_channel(ch_ctx);
+	if (ret) {
+		CRITICAL("dlp_ctrl_open_channel() failed !");
+		goto out;
 	}
 
-	/* Push all RX pdus */
-	ret = dlp_pop_recycled_push_ctrl(rx_ctx);
-	if (ret == -EAGAIN)
-		mod_timer(&rx_ctx->timer, jiffies + rx_ctx->delay);
+	PDEBUG("tty port activated");
 
 out:
-	PDEBUG("tty port activated (ret: %d)", ret);
-
 	EPILOG();
 	return ret;
 }
@@ -637,12 +655,12 @@ static void dlp_tty_port_shutdown(struct tty_port *port)
 	del_timer_sync(&ch_ctx->hangup.timer);
 
 	/* RX */
-	del_timer(&rx_ctx->timer);
+	del_timer_sync(&rx_ctx->timer);
 	dlp_tty_rx_fifo_wait_recycle(rx_ctx);
 	dlp_stop_rx(rx_ctx, ch_ctx);
 
 	/* TX */
-	del_timer(&tx_ctx->timer);
+	del_timer_sync(&tx_ctx->timer);
 	dlp_stop_tx(tx_ctx);
 	dlp_tty_tx_fifo_wait_recycle(tx_ctx);
 
@@ -698,6 +716,15 @@ static int dlp_tty_open(struct tty_struct *tty, struct file *filp)
 		ret = -ENODEV;
 		CRITICAL("Cannot find TTY context (%d)", ret);
 		goto out;
+	}
+
+	/* Needed only once */
+	if (tty->count == 1) {
+		/* Claim & Setup the HSI port */
+		dlp_hsi_port_claim();
+
+		/* Push RX pdus for ALL channels */
+		dlp_push_rx_pdus();
 	}
 
 	/* Open the TTY port (calls port->activate on first opening) */
@@ -811,13 +838,22 @@ static void dlp_tty_wait_until_sent(struct tty_struct *tty, int timeout)
 static void dlp_tty_close(struct tty_struct *tty, struct file *filp)
 {
 	struct dlp_channel *ch_ctx = (struct dlp_channel *)tty->driver_data;
+	int need_cleanup = (tty->count == 1);
 
 	PROLOG();
+
+	/* Flush everything */
+	if (need_cleanup)
+		hsi_flush(dlp_drv.client);
 
 	if (filp && ch_ctx) {
 		struct dlp_tty_context *tty_ctx = ch_ctx->ch_data;
 		tty_port_close(&tty_ctx->tty_prt, tty, filp);
 	}
+
+	/* Release the HSI port */
+	if (need_cleanup)
+		dlp_hsi_port_unclaim();
 
 	EPILOG();
 }
@@ -1490,9 +1526,10 @@ struct dlp_channel *dlp_tty_ctx_create(unsigned int index, struct device *dev)
 	/* Hangup context */
 	dlp_ctrl_hangup_ctx_init(ch_ctx, dlp_tty_hsi_tx_timeout_cb);
 
-	/* Register the Reset & Coredump CB */
+	/* Register the PDUs push, Reset & Coredump CB */
 	ch_ctx->modem_coredump_cb = dlp_tty_mdm_coredump_cb;
 	ch_ctx->modem_reset_cb = dlp_tty_mdm_reset_cb;
+	ch_ctx->push_rx_pdus = dlp_tty_push_rx_pdus;
 	ch_ctx->dump_state = dlp_dump_channel_state;
 
 	/* TX & RX contexts */

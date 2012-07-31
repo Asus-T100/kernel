@@ -174,7 +174,8 @@ struct dlp_ctrl_reset_ctx {
  *
  * @response: Modem response
  * @wq: Modem readiness/TX timeout worqueue
- * @hangup_work: Modem TX timeout work
+ * @hangup_work: Modem Reset/Coredump work
+ * @tx_timeout_work: Modem TX timeout work
  * @readiness_work: Modem readiness work
  * @response: Received response from the modem
  * @start_rx_cb: HSI client start RX CB
@@ -190,6 +191,7 @@ struct dlp_ctrl_context {
 	/* Modem readiness/TX timeout work & worqueue */
 	struct workqueue_struct *wq;
 	struct work_struct hangup_work;
+	struct work_struct tx_timeout_work;
 	struct work_struct readiness_work;
 	struct completion reset_done;
 
@@ -406,7 +408,6 @@ static void dlp_ctrl_xfers_logs_dump(struct dlp_channel *ch_ctx,
  */
 static irqreturn_t dlp_ctrl_coredump_it(int irq, void *data)
 {
-	int i;
 	struct dlp_channel *ch_ctx = data;
 	struct dlp_ctrl_context *ctrl_ctx = ch_ctx->ch_data;
 
@@ -415,12 +416,9 @@ static irqreturn_t dlp_ctrl_coredump_it(int irq, void *data)
 	CRITICAL("Modem CORE_DUMP 0x%x",
 			gpio_get_value(ctrl_ctx->gpio_fcdp_rb));
 
-	/* Call registered channels */
-	for (i = 0; i < DLP_CHANNEL_COUNT; i++) {
-		ch_ctx = DLP_CHANNEL_CTX(i);
-		if (ch_ctx && ch_ctx->modem_coredump_cb)
-			ch_ctx->modem_coredump_cb(ch_ctx);
-	}
+	/* Set the reason & launch the work to handle the hangup */
+	ch_ctx->hangup.cause |= DLP_MODEM_HU_COREDUMP;
+	queue_work(ctrl_ctx->wq, &ctrl_ctx->hangup_work);
 
 	EPILOG();
 	return IRQ_HANDLED;
@@ -432,7 +430,7 @@ static irqreturn_t dlp_ctrl_coredump_it(int irq, void *data)
  */
 static irqreturn_t dlp_ctrl_reset_it(int irq, void *data)
 {
-	int i, value, reset_ongoing;
+	int value, reset_ongoing;
 	struct dlp_channel *ch_ctx = data;
 	struct dlp_ctrl_context *ctrl_ctx = ch_ctx->ch_data;
 
@@ -440,8 +438,9 @@ static irqreturn_t dlp_ctrl_reset_it(int irq, void *data)
 
 	value = gpio_get_value(ctrl_ctx->gpio_mdm_rst_out);
 	reset_ongoing = dlp_ctrl_get_reset_ongoing();
-	CRITICAL("Modem RESET_OUT 0x%x, rst_ongoing: %d", value, reset_ongoing);
 	if (reset_ongoing) {
+		CRITICAL("Modem RESET_OUT 0x%x", value);
+
 		/* Rising EDGE (Reset done) ? */
 		if (value)
 			complete(&ctrl_ctx->reset_done);
@@ -449,21 +448,14 @@ static irqreturn_t dlp_ctrl_reset_it(int irq, void *data)
 		goto out;
 	}
 
+	CRITICAL("Unexpected modem RESET_OUT 0x%x", value);
+
 	/* Unexpected reset received */
 	dlp_ctrl_set_reset_ongoing(1);
 
-	/* Call registered channels */
-	for (i = 0; i < DLP_CHANNEL_COUNT; i++) {
-		ch_ctx = DLP_CHANNEL_CTX(i);
-		if (ch_ctx) {
-			/* Call any register callback */
-			if (ch_ctx->modem_reset_cb)
-				ch_ctx->modem_reset_cb(ch_ctx);
-
-			/* Reset the credits value */
-			ch_ctx->credits = 0;
-		}
-	}
+	/* Set the reason & launch the work to handle the hangup */
+	ch_ctx->hangup.cause |= DLP_MODEM_HU_RESET;
+	queue_work(ctrl_ctx->wq, &ctrl_ctx->hangup_work);
 
 out:
 	EPILOG();
@@ -471,7 +463,7 @@ out:
 }
 
 /**
- * dlp_net_hangup_timer_cb - timer function for tx timeout
+ * dlp_ctrl_hsi_tx_timout_cb - timer function for tx timeout
  * @param: a reference to the channel to consider
  *
  */
@@ -482,11 +474,9 @@ static void dlp_ctrl_hsi_tx_timout_cb(unsigned long int param)
 
 	PROLOG();
 
-	/* Set the hangup reason for this channel */
+	/* Set the reason & launch the work to handle the hangup */
 	ch_ctx->hangup.cause |= DLP_MODEM_HU_TIMEOUT;
-
-	/* Launch the work to handle the hangup */
-	queue_work(ctrl_ctx->wq, &ctrl_ctx->hangup_work);
+	queue_work(ctrl_ctx->wq, &ctrl_ctx->tx_timeout_work);
 
 	EPILOG();
 }
@@ -495,7 +485,7 @@ static void dlp_ctrl_hsi_tx_timout_cb(unsigned long int param)
  * dlp_ctrl_handle_tx_timeout - Manage the HSI TX timeout
  * @work: a reference to work queue element
  *
- * Required since port shutdown calls a mutex that might sleep
+ * Required since hsi_port->flush calls might sleep
  */
 static void dlp_ctrl_handle_tx_timeout(struct work_struct *work)
 {
@@ -509,6 +499,47 @@ static void dlp_ctrl_handle_tx_timeout(struct work_struct *work)
 		ch_ctx = DLP_CHANNEL_CTX(i);
 		if ((ch_ctx) && (ch_ctx->modem_tx_timeout_cb))
 			ch_ctx->modem_tx_timeout_cb(ch_ctx);
+	}
+
+	EPILOG();
+}
+
+/**
+ * This function handle the modem reset/coredump:
+ *   - Flush the current controller FIFOs
+ *   - Call each channel CB (to notify the upperlayer about the crash)
+ *   - Release the HSI port
+ *
+ * @work: a reference to work queue element
+ *
+ * Required since hsi_port->flush calls might sleep
+ */
+static void dlp_ctrl_handle_hangup(struct work_struct *work)
+{
+	struct dlp_channel *ch_ctx = DLP_CHANNEL_CTX(DLP_CHANNEL_CTRL);
+	int i, modem_rst = ch_ctx->hangup.cause;
+
+	PROLOG();
+
+	/* Check the hangup reason */
+	modem_rst = ((modem_rst & DLP_MODEM_HU_RESET) == DLP_MODEM_HU_RESET);
+
+	/* Call registered channels to notify
+	 * the upper layer about the modem reset */
+	for (i = 0; i < DLP_CHANNEL_COUNT; i++) {
+		ch_ctx = DLP_CHANNEL_CTX(i);
+		if (!ch_ctx)
+			continue;
+
+		/* call any register callback */
+		if (modem_rst) {
+			if (ch_ctx->modem_reset_cb)
+				ch_ctx->modem_reset_cb(ch_ctx);
+		} else if (ch_ctx->modem_coredump_cb)
+				ch_ctx->modem_coredump_cb(ch_ctx);
+
+		/* Reset the credits value */
+		ch_ctx->credits = 0;
 	}
 
 	EPILOG();
@@ -1268,37 +1299,31 @@ static void dlp_ctrl_ipc_readiness(struct work_struct *work)
 	/* Wait for RESET_OUT */
 	wait_for_completion(&ctrl_ctx->reset_done);
 
-#if 0
-	/* Even the ECHO cmd response is received the modem is not ready ! */
-	struct dlp_channel *ch_ctx = DLP_CHANNEL_CTX(DLP_CHANNEL_CTRL);
-	unsigned char param1, param2, param3;
-	int ret = 0;
-
-	/* Send ECHO continuously until the modem become ready */
-	param1 = PARAM1(DLP_ECHO_CMD_CHECKSUM);
-	param2 = PARAM2(DLP_ECHO_CMD_CHECKSUM);
-	param3 = PARAM3(DLP_ECHO_CMD_CHECKSUM);
-
-	do {
-		ret = 0;
-		/* Send the ECHO command */
-		ret = dlp_ctrl_cmd_send(ch_ctx,
-				DLP_CMD_ECHO, DLP_CMD_ECHO,
-				-1, -1,
-				param1, param2, param3);
-		if (ret == 0) {
-			/* Set the modem state */
-			dlp_ctrl_set_modem_readiness(1);
-		}
-	} while (ret);
-#else
 	/* RESET_OUT received => The modem is ready */
 	dlp_ctrl_set_modem_readiness(1);
-#endif
 
 	EPILOG();
 }
 
+
+/**
+*  Push RX PDUs in the controller FIFO for modem requests
+*
+ * @ch_ctx: a reference to related channel context
+*
+* @return 0 when OK, an error otherwise
+*/
+static int dlp_ctrl_push_rx_pdus(struct dlp_channel *ch_ctx)
+{
+	int i, ret = 0;
+
+	/* Push RX pdus for CREDTIS/OPEN_CONN/NOP commands */
+	for (i = 0; i < DLP_CHANNEL_COUNT; i++)
+		dlp_ctrl_push_rx_pdu(ch_ctx);
+
+	EPILOG();
+	return ret;
+}
 
 /****************************************************************************
  *
@@ -1324,7 +1349,7 @@ void dlp_ctrl_cold_boot(struct dlp_channel *ch_ctx)
 
 	PROLOG();
 
-	WARNING("Cold boot requested (ch: %d)", ch_ctx->hsi_channel);
+	WARNING("Cold boot requested by ch%d", ch_ctx->hsi_channel);
 
 	if (!dlp_ctrl_have_control_context()) {
 		WARNING("Nothing to do (dlp protocol not registered)");
@@ -1388,7 +1413,7 @@ int dlp_ctrl_cold_reset(struct dlp_channel *ch_ctx)
 
 	PROLOG();
 
-	WARNING("Modem cold reset requested (ch: %d)", ch_ctx->hsi_channel);
+	WARNING("Cold reset requested by ch%d", ch_ctx->hsi_channel);
 
 	if (!dlp_ctrl_have_control_context()) {
 		WARNING("Nothing to do (dlp protocol not registered)");
@@ -1463,7 +1488,7 @@ void dlp_ctrl_normal_warm_reset(struct dlp_channel *ch_ctx)
 
 	PROLOG();
 
-	WARNING("Normal warm reset requested (ch: %d)", ch_ctx->hsi_channel);
+	WARNING("Normal warm reset requested by ch%d", ch_ctx->hsi_channel);
 
 	/* Clear the xfers debug list */
 	DLP_CTRL_XFERS_LIST_CLEAR(ctrl_ctx);
@@ -1492,7 +1517,7 @@ void dlp_ctrl_flashing_warm_reset(struct dlp_channel *ch_ctx)
 
 	PROLOG();
 
-	WARNING("Flashing warm reset request (ch: %d)", ch_ctx->hsi_channel);
+	WARNING("Flashing warm reset requested by ch%d", ch_ctx->hsi_channel);
 
 	/* Clear the xfers debug list */
 	DLP_CTRL_XFERS_LIST_CLEAR(ctrl_ctx);
@@ -1640,7 +1665,6 @@ inline void dlp_ctrl_set_hangup_reasons(unsigned int hsi_channel, int reason)
 */
 struct dlp_channel *dlp_ctrl_ctx_create(unsigned int index, struct device *dev)
 {
-	int ret, i;
 	struct hsi_client *client = to_hsi_client(dev);
 	struct hsi_mid_platform_data *pd = client->device.platform_data;
 	struct dlp_channel *ch_ctx;
@@ -1680,7 +1704,8 @@ struct dlp_channel *dlp_ctrl_ctx_create(unsigned int index, struct device *dev)
 	spin_lock_init(&ch_ctx->lock);
 	init_completion(&ctrl_ctx->reset_done);
 	INIT_WORK(&ctrl_ctx->readiness_work, dlp_ctrl_ipc_readiness);
-	INIT_WORK(&ctrl_ctx->hangup_work, dlp_ctrl_handle_tx_timeout);
+	INIT_WORK(&ctrl_ctx->hangup_work, dlp_ctrl_handle_hangup);
+	INIT_WORK(&ctrl_ctx->tx_timeout_work, dlp_ctrl_handle_tx_timeout);
 
 #ifdef DLP_CTRL_IO_DEBUG
 	ch_ctx->dump_state = dlp_ctrl_xfers_logs_dump;
@@ -1688,6 +1713,9 @@ struct dlp_channel *dlp_ctrl_ctx_create(unsigned int index, struct device *dev)
 	INIT_LIST_HEAD(&ctrl_ctx->xfers_list);
 	spin_lock_init(&ctrl_ctx->debug_lock);
 #endif
+
+	/* Register PDUs push CB */
+	ch_ctx->push_rx_pdus = dlp_ctrl_push_rx_pdus;
 
 	dlp_xfer_ctx_init(ch_ctx,
 			  DLP_CTRL_TX_PDU_SIZE, 0, 0, 0, NULL, HSI_MSG_WRITE);
@@ -1701,18 +1729,15 @@ struct dlp_channel *dlp_ctrl_ctx_create(unsigned int index, struct device *dev)
 	ctrl_ctx->gpio_mdm_rst_bbn = pd->gpio_mdm_rst_bbn;
 	ctrl_ctx->gpio_fcdp_rb	   = pd->gpio_fcdp_rb;
 
-	ret = dlp_ctrl_setup_irq_gpio(ch_ctx, dev);
-	if (ret)
+	if (dlp_ctrl_setup_irq_gpio(ch_ctx, dev))
 		goto free_ctx;
 
 	/* Set ch_ctx, not yet done in the probe */
 	DLP_CHANNEL_CTX(DLP_CHANNEL_CTRL) = ch_ctx;
 
-	/* Push RX pdus for CREDTIS/OPEN_CONN commands */
-	for (i = 0; i < DLP_CHANNEL_COUNT; i++)
-		dlp_ctrl_push_rx_pdu(ch_ctx);
+	dlp_ctrl_push_rx_pdus(ch_ctx);
 
-	/* Start the modem readiness work */
+	/* Reset & Wait for the modem readiness flag */
 	queue_work(ctrl_ctx->wq, &ctrl_ctx->readiness_work);
 
 	/* Modem cold boot sequence */
@@ -1952,9 +1977,9 @@ void dlp_ctrl_hangup_ctx_deinit(struct dlp_channel *ch_ctx)
 	/* No need to wait for the end of the calling work! */
 	if (!is_hunging_up) {
 		if (del_timer_sync(&ch_ctx->hangup.timer))
-			cancel_work_sync(&ctrl_ctx->hangup_work);
+			cancel_work_sync(&ctrl_ctx->tx_timeout_work);
 		else
-			flush_work(&ctrl_ctx->hangup_work);
+			flush_work(&ctrl_ctx->tx_timeout_work);
 	}
 
 	EPILOG();
@@ -2044,7 +2069,6 @@ static int get_modem_reset(char *val, struct kernel_param *kp)
 		WARNING("Nothing to do (dlp protocol not registered)");
 		EPILOG();
 	} else {
-		struct dlp_ctrl_context *ctrl_ctx = DLP_CTRL_CTX;
 		int reset_ongoing = dlp_ctrl_get_reset_ongoing();
 		ret = sprintf(val, "%d", reset_ongoing);
 

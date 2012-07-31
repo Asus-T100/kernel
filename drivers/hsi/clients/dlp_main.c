@@ -495,14 +495,10 @@ inline int dlp_pdu_header_check(struct dlp_xfer_ctx *xfer_ctx,
 	/* Check the PDU signature */
 	if (DLP_HEADER_SIGNATURE == (header[0] & 0xFFFF0000)) {
 		/* Check the seq number */
-		if (xfer_ctx->seq_num == (header[0] & 0x0000FFFF)) {
+		if (xfer_ctx->seq_num == (header[0] & 0x0000FFFF))
 			ret = 0;
-		} else {
-			CRITICAL("seq_num mismatch (AP: 0x%X, CP: 0x%X)",
-					xfer_ctx->seq_num,
-					header[0] & 0x0000FFFF);
+		else
 			ret = -ERANGE;
-		}
 	} else {
 		CRITICAL("Invalid PDU signature 0x%x", header[0]);
 		ret = -EINVAL;
@@ -1308,6 +1304,30 @@ out:
  * HSI Controller
  *
  ***************************************************************************/
+
+/**
+ * For each channel,
+ * push as many RX PDUs as possible to the controller FIFO
+ *
+ * @return 0 when OK, error code otherwise
+ */
+int dlp_push_rx_pdus(void)
+{
+	int i, ret = 0;
+	struct dlp_channel *ch_ctx;
+
+	PROLOG();
+
+	for (i = 0; i < DLP_CHANNEL_COUNT; i++) {
+		ch_ctx = dlp_drv.channels[i];
+		if (ch_ctx && ch_ctx->push_rx_pdus)
+			ch_ctx->push_rx_pdus(ch_ctx);
+	}
+
+	EPILOG();
+	return ret;
+}
+
 
 /**
  * dlp_hsi_controller_push - push a pdu to the HSI controller FIFO

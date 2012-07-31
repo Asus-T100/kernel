@@ -306,6 +306,9 @@ struct dlp_channel {
 	/* Credits callback */
 	void (*credits_available_cb)(struct dlp_channel *ch_ctx);
 
+	/* Called to push any needed RX pdu */
+	int (*push_rx_pdus) (struct dlp_channel *ch_ctx);
+
 	/* Debug */
 	void (*dump_state)(struct dlp_channel *ch_ctx, struct seq_file *m);
 
@@ -495,6 +498,7 @@ __must_check int dlp_pop_recycled_push_ctrl(struct dlp_xfer_ctx *xfer_ctx);
  * HSI Controller
  *
  ***************************************************************************/
+int dlp_push_rx_pdus(void);
 
 inline void dlp_hsi_controller_pop(struct dlp_xfer_ctx *xfer_ctx);
 

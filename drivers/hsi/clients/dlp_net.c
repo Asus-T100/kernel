@@ -77,6 +77,32 @@ struct dlp_net_tx_params {
  *
  **/
 
+
+/**
+ * Push as many RX PDUs  as possible to the controller FIFO
+ *
+ * @param ch_ctx : The channel context to consider
+ *
+ * @return 0 when OK, error value otherwise
+ */
+static int dlp_net_push_rx_pdus(struct dlp_channel *ch_ctx)
+{
+	int ret = 0;
+
+	struct dlp_xfer_ctx *rx_ctx = &ch_ctx->rx;
+
+	PROLOG();
+
+	ret = dlp_pop_recycled_push_ctrl(rx_ctx);
+	if (ret == -EAGAIN) {
+		mod_timer(&rx_ctx->timer, jiffies + rx_ctx->delay);
+		ret = 0;
+	}
+
+	EPILOG();
+	return ret;
+}
+
 /*
  *
  *
@@ -375,7 +401,8 @@ int dlp_net_open(struct net_device *dev)
 
 	/* Check the modem readiness */
 	if (!dlp_ctrl_modem_is_ready()) {
-		CRITICAL("Unale to open NETWORK IF (Modem NOT ready) !");
+		CRITICAL("Unale to open NETIF%d (Modem NOT ready) !",
+				ch_ctx->hsi_channel);
 		ret = -EBUSY;
 		goto out;
 	}
@@ -778,6 +805,7 @@ struct dlp_channel *dlp_net_ctx_create(unsigned int index, struct device *dev)
 	ch_ctx->modem_coredump_cb = dlp_net_mdm_coredump_cb;
 	ch_ctx->modem_reset_cb = dlp_net_mdm_reset_cb;
 	ch_ctx->credits_available_cb = dlp_net_credits_available_cb;
+	ch_ctx->push_rx_pdus = dlp_net_push_rx_pdus;
 	ch_ctx->dump_state = dlp_dump_channel_state;
 
 	dlp_xfer_ctx_init(ch_ctx,
