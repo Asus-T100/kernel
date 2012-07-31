@@ -300,6 +300,7 @@ struct ext_charger {
 	int (*handle_irq) (u8 dev_addr);
 	int  (*cc_to_reg)(int cc, u8 *reg_val);
 	int  (*cv_to_reg)(int cv, u8 *reg_val);
+	bool (*is_batt_charging)(u8 dev_addr);
 };
 
 /*

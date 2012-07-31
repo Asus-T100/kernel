@@ -88,6 +88,7 @@ static int bq24260_enable_charging(u8 dev_addr);
 static int bq24260_handle_irq(u8 dev_addr);
 static int bq24260_cc_to_reg(int cc, u8 *reg_val);
 static int bq24260_cv_to_reg(int cv, u8 *reg_val);
+static bool bq24260_is_batt_charging(u8 dev_addr);
 
 u16 bq24260_cc[][2] = {
 
@@ -133,6 +134,7 @@ struct ext_charger bq24260_chrgr = {
 	.handle_irq = bq24260_handle_irq,
 	.cc_to_reg = bq24260_cc_to_reg,
 	.cv_to_reg = bq24260_cv_to_reg,
+	.is_batt_charging = bq24260_is_batt_charging,
 };
 
 static char *bcove_charger_power_supplied_to[] = {"max170xx_battery",};
@@ -275,7 +277,8 @@ static int __bcove_extchrgr_write(u8 dev_id, u8 offset, u8 data)
 		dev_err(chc.dev, "External I2C write timed out:%d\n", ret);
 		return -ETIMEDOUT;
 	}
-	return ret;
+
+	return 0;
 }
 
 static inline int bcove_extchrgr_write(u8 dev_id, u8 offset, u8 data)
@@ -372,6 +375,19 @@ static int bq24260_cv_to_reg(int cv, u8 *reg_val)
 	/* Return 0 in all cases just to keep it
 	 * aligned with callback function prototype */
 	return 0;
+}
+
+static bool bq24260_is_batt_charging(u8 dev_addr)
+{
+	u8 data;
+	bool stat = 0;
+	int ret =  bcove_extchrgr_read(dev_addr,
+				BQ24260_STAT_CTRL0_ADDR, &data);
+	if (!ret)
+		stat = ((data & BQ24260_STAT_MASK) == BQ24260_STAT_CHRG_PRGRSS);
+	else
+		dev_err(chc.dev, "BQ24261: Error in reading charger status. Reporting battery status as not charging\n");
+	return stat;
 }
 
 static int bq24260_disable_charging(u8 dev_addr)
@@ -631,12 +647,7 @@ static void charger_callback(int charger_type)
 
 static bool is_battery_charging(void)
 {
-	u8 data = 0;
-
-	/* report not charging if IPC read is failing */
-	if (intel_scu_ipc_ioread8(SCHGRIRQ0_ADDR, &data))
-		return false;
-	return !(data & SCHGIRQ0_SCHG_INTB);
+	return chc.ext_chrgr->is_batt_charging(chc.ext_chrgr_addr);
 }
 
 /**
