@@ -134,6 +134,7 @@ long gpsdrv_st_recv(void *arg, struct sk_buff *skb)
 {
 	struct gpsdrv_event_hdr gpsdrv_hdr = { 0x00, 0x0000 };
 	struct gpsdrv_data *hgps = (struct gpsdrv_data *) arg;
+	unsigned long flags;
 
 	/* SKB is NULL */
 	if (NULL == skb) {
@@ -175,7 +176,7 @@ long gpsdrv_st_recv(void *arg, struct sk_buff *skb)
 		skb_queue_tail(&hgps->rx_list, skb);
 		wake_up_interruptible(&hgps->gpsdrv_data_q);
 	} else {
-		spin_lock(&hgps->lock);
+		spin_lock_irqsave(&hgps->lock, flags);
 		/* The no. of Completed Packets is always 1
 		 * in case of Channel 9 as per spec. Forcing it to 1 for
 		 * precaution.
@@ -184,11 +185,11 @@ long gpsdrv_st_recv(void *arg, struct sk_buff *skb)
 		/* Check if Tx queue and Tx count not empty */
 		if (!skb_queue_empty(&hgps->tx_list)) {
 			/* Schedule the Tx-task let */
-			spin_unlock(&hgps->lock);
+			spin_unlock_irqrestore(&hgps->lock, flags);
 			GPSDRV_VER(" Scheduling tasklet to write");
 			tasklet_schedule(&hgps->gpsdrv_tx_tsklet);
 		} else {
-			spin_unlock(&hgps->lock);
+			spin_unlock_irqrestore(&hgps->lock, flags);
 		}
 
 		GPSDRV_VER(" Tx count = %x", hgps->tx_count);
@@ -520,6 +521,7 @@ ssize_t gpsdrv_write(struct file *file,
 	struct gpsdrv_event_hdr gpsdrv_hdr = { GPS_CH9_OP_WRITE, 0x0000 };
 	struct sk_buff *skb = NULL;
 	struct gpsdrv_data *hgps;
+	unsigned long flags;
 
 	GPSDRV_DBG(" Inside %s", __func__);
 	/* Validate input parameters */
@@ -574,14 +576,14 @@ ssize_t gpsdrv_write(struct file *file,
 	/* Check if data can be sent to GPS chip
 	 * If not, add it to queue and that can be sent later
 	 */
-	spin_lock(&hgps->lock);
+	spin_lock_irqsave(&hgps->lock, flags);
 	if (0 != hgps->tx_count) {
 		/* If TX Q is empty send current SKB;
 		 *  else, queue current SKB at end of tx_list queue and
 		 *  send first SKB in tx_list queue.
 		 */
 		hgps->tx_count--;
-		spin_unlock(&hgps->lock);
+		spin_unlock_irqrestore(&hgps->lock, flags);
 
 		GPSDRV_VER(" Tx count in gpsdrv_write = %x", hgps->tx_count);
 
@@ -593,7 +595,7 @@ ssize_t gpsdrv_write(struct file *file,
 		}
 	} else {
 		/* Add it to TX queue */
-		spin_unlock(&hgps->lock);
+		spin_unlock_irqrestore(&hgps->lock, flags);
 		GPSDRV_VER(" SKB added to Tx queue, Tx count = %x ",
 			hgps->tx_count);
 		skb_queue_tail(&hgps->tx_list, skb);
