@@ -399,7 +399,7 @@ int dlp_net_open(struct net_device *dev)
 
 	PROLOG("%s, hsi_ch:%d", dev->name, ch_ctx->hsi_channel);
 
-	/* Check the modem readiness */
+	/* Check & wait for modem readiness */
 	if (!dlp_ctrl_modem_is_ready()) {
 		CRITICAL("Unale to open NETIF%d (Modem NOT ready) !",
 				ch_ctx->hsi_channel);

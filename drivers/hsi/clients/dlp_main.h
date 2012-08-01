@@ -50,6 +50,8 @@
 #define DLP_WARM_RST_DURATION        60 /* RESET_BB_N pulse delay (usec) */
 #define DLP_WARM_RST_FLASHING_DELAY  30 /* RESET_BB_N wait duration (msec) */
 
+#define DLP_MODEM_READY_DELAY  60 /* Modem readiness wait duration (sec) */
+
 /* Defaut TX timeout delay (in microseconds) */
 #define DLP_HANGUP_DELAY	1000000
 

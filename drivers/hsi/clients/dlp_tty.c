@@ -696,7 +696,7 @@ static int dlp_tty_open(struct tty_struct *tty, struct file *filp)
 
 	PROLOG();
 
-	/* Check the modem readiness */
+	/* Check & wait for modem readiness */
 	if (!dlp_ctrl_modem_is_ready()) {
 		CRITICAL("Unale to open TTY (Modem NOT ready) !");
 		ret = -EBUSY;

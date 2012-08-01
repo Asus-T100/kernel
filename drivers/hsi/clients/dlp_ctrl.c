@@ -70,23 +70,10 @@
 #define MSB(b)    ((unsigned char) ((b) >> 4))
 
 #define DLP_CMD_TX_TIMOUT		 1000  /* 1 sec */
-#define DLP_CMD_RX_TIMOUT	     5000  /* 5 sec */
+#define DLP_CMD_RX_TIMOUT	     1000  /* 1 sec */
 
 #define DLP_ECHO_CMD_CHECKSUM	0xACAFFE
 #define DLP_NOP_CMD_CHECKSUM	0xE7E7EC
-
-#define DLP_CTRL_CMD_TO_STR(id) \
-	(id == DLP_CMD_BREAK		? "BREAK" :	\
-	(id == DLP_CMD_ECHO			? "ECHO" : \
-	(id == DLP_CMD_NOP)			? "NOP" : \
-	(id == DLP_CMD_CONF_CH)		? "CONF_CH" : \
-	(id == DLP_CMD_OPEN_CONN)	? "OPEN_CONN" : \
-	(id == DLP_CMD_CLOSE_CONN)  ? "CLOSE_CONN" : \
-	(id == DLP_CMD_ACK)			? "ACK" : \
-	(id == DLP_CMD_NACK)		? "NACK" : \
-	(id == DLP_CMD_OPEN_CONN_OCTET)  ? "OPEN_CONN_OCTET" : \
-	(id == DLP_CMD_CREDITS)		? "CREDITS" : \
-	(id == DLP_CMD_NONE) ?		"NONE" : "UNKNOWN"))
 
 #define DLP_CTRL_CTX	(dlp_drv.channels[DLP_CHANNEL_CTRL]->ch_data)
 
@@ -177,6 +164,8 @@ struct dlp_ctrl_reset_ctx {
  * @hangup_work: Modem Reset/Coredump work
  * @tx_timeout_work: Modem TX timeout work
  * @readiness_work: Modem readiness work
+ * @reset_done: Modem reset wait completion
+ * @ready_event: Modem readiness wait event
  * @response: Received response from the modem
  * @start_rx_cb: HSI client start RX CB
  * @stop_rx_cb: HSI client stop RX CB
@@ -194,6 +183,7 @@ struct dlp_ctrl_context {
 	struct work_struct tx_timeout_work;
 	struct work_struct readiness_work;
 	struct completion reset_done;
+	wait_queue_head_t ready_event;
 
 	/* Modem response */
 	struct dlp_command response;
@@ -809,9 +799,9 @@ static void dlp_ctrl_msg_destruct(struct hsi_msg *msg)
 {
 	struct dlp_command *dlp_cmd = msg->context;
 
-	PROLOG("hsi_ch:%d, cmd:%s, msg:0x%p",
+	PROLOG("hsi_ch:%d, cmd:0x%X, msg:0x%p",
 	       dlp_cmd->params.channel,
-	       DLP_CTRL_CMD_TO_STR(dlp_cmd->params.id), msg);
+	       dlp_cmd->params.id, msg);
 
 	/* Delete the received msg */
 	dlp_pdu_free(msg, msg->channel);
@@ -837,9 +827,9 @@ static void dlp_ctrl_complete_tx(struct hsi_msg *msg)
 	struct dlp_command *dlp_cmd = msg->context;
 	struct dlp_channel *ch_ctx = dlp_cmd->channel;
 
-	PROLOG("hsi_ch:%d, cmd:%s, msg:0x%p",
+	PROLOG("hsi_ch:%d, cmd:0x%X, msg:0x%p",
 	       dlp_cmd->params.channel,
-	       DLP_CTRL_CMD_TO_STR(dlp_cmd->params.id), msg);
+	       dlp_cmd->params.id, msg);
 
 	dlp_cmd->status = (msg->status == HSI_STATUS_COMPLETED) ? 0 : -EIO;
 
@@ -864,9 +854,9 @@ static void dlp_ctrl_complete_tx_async(struct hsi_msg *msg)
 {
 	struct dlp_command *dlp_cmd = msg->context;
 
-	PROLOG("cmd:%s, hsi_ch:%d, msg:0x%p",
-	       DLP_CTRL_CMD_TO_STR(dlp_cmd->params.id),
-	       dlp_cmd->params.channel, msg);
+	PROLOG("hsi_ch:%d, cmd:0x%X, msg:0x%p",
+			dlp_cmd->params.channel,
+			dlp_cmd->params.id, msg);
 
 	/* Delete the received msg */
 	dlp_pdu_free(msg, msg->channel);
@@ -894,10 +884,9 @@ static void dlp_ctrl_complete_rx(struct hsi_msg *msg)
 	response = -1;
 	msg_complete = (msg->status == HSI_STATUS_COMPLETED);
 
-	PROLOG("cmd:%s, hsi_ch:%d, params: 0x%02X%02X%02X, msg_status: %d",
-	       DLP_CTRL_CMD_TO_STR(params.id),
-	       params.channel,
-	       params.data1, params.data2, params.data3, msg->status);
+	PROLOG("hsi_ch:%d, cmd:0x%X, params: 0x%02X%02X%02X, msg_status: %d",
+			params.channel, params.id,
+			params.data1, params.data2, params.data3, msg->status);
 
 	/* Add the received msg to the xfers list */
 	DLP_CTRL_XFERS_LIST_ADD(ctrl_ctx, msg);
@@ -1013,9 +1002,8 @@ static void dlp_ctrl_complete_rx(struct hsi_msg *msg)
 		/* Send the TX HSI msg */
 		ret = dlp_ctrl_send_hsi_msg(ctrl_ctx, tx_msg, 1);
 		if (ret) {
-			CRITICAL("TX xfer failed ! (%s, ret:%d)",
-				DLP_CTRL_CMD_TO_STR(dlp_cmd->params.id),
-				ret);
+			CRITICAL("TX xfer failed ! (cmd:0x%X, ret:%d)",
+				dlp_cmd->params.id, ret);
 
 			/* Free the TX msg */
 			dlp_pdu_free(tx_msg, msg->channel);
@@ -1071,10 +1059,8 @@ static int dlp_ctrl_cmd_send(struct dlp_channel *ch_ctx,
 	struct dlp_command *dlp_cmd;
 	struct hsi_msg *tx_msg = NULL;
 
-	PROLOG("hsi_ch:%d, cmd:%s, resp:%s",
-				ch_ctx->hsi_channel,
-				DLP_CTRL_CMD_TO_STR(id),
-				DLP_CTRL_CMD_TO_STR(response_id));
+	PROLOG("hsi_ch:%d, cmd:0x%X, resp:0x%X",
+				ch_ctx->hsi_channel, id, response_id);
 
 	/* Backup RX callback */
 	dlp_save_rx_callbacks(&ctrl_ctx->start_rx_cb, &ctrl_ctx->stop_rx_cb);
@@ -1108,8 +1094,8 @@ static int dlp_ctrl_cmd_send(struct dlp_channel *ch_ctx,
 	/* Send the TX HSI msg */
 	ret = dlp_ctrl_send_hsi_msg(ctrl_ctx, tx_msg, 1);
 	if (ret) {
-		CRITICAL("dlp_ctrl_send_hsi_msg(TX) failed ! (%s, ret:%d)",
-			 DLP_CTRL_CMD_TO_STR(dlp_cmd->params.id), ret);
+		CRITICAL("Unable to send 0x%X cmd (ret:%d)",
+			dlp_cmd->params.id, ret);
 
 		goto free_tx;
 	}
@@ -1118,9 +1104,8 @@ static int dlp_ctrl_cmd_send(struct dlp_channel *ch_ctx,
 	ret = wait_for_completion_timeout(&ch_ctx->tx.cmd_xfer_done,
 					  msecs_to_jiffies(DLP_CMD_TX_TIMOUT));
 	if (ret == 0) {
-		CRITICAL("TX Timeout => %s, hsi_ch: %d",
-			 DLP_CTRL_CMD_TO_STR(dlp_cmd->params.id),
-			 dlp_cmd->params.channel);
+		CRITICAL("hsi_ch:%d, cmd:0x%X => TX timeout",
+			dlp_cmd->params.channel, dlp_cmd->params.id);
 
 		ret = -EIO;
 		goto out;
@@ -1128,8 +1113,7 @@ static int dlp_ctrl_cmd_send(struct dlp_channel *ch_ctx,
 
 	/* TX msg sent, check the status */
 	if (dlp_cmd->status) {
-		CRITICAL("Failed to send  %s",
-			 DLP_CTRL_CMD_TO_STR(dlp_cmd->params.id));
+		CRITICAL("Failed to send cmd:0x%X", dlp_cmd->params.id);
 
 		ret = -EIO;
 		goto out;
@@ -1150,9 +1134,8 @@ static int dlp_ctrl_cmd_send(struct dlp_channel *ch_ctx,
 	ret = wait_for_completion_timeout(&ch_ctx->rx.cmd_xfer_done,
 					  msecs_to_jiffies(DLP_CMD_RX_TIMOUT));
 	if (ret == 0) {
-		CRITICAL("RX Timeout => %s, hsi_ch: %d",
-			 DLP_CTRL_CMD_TO_STR(dlp_cmd->params.id),
-			 dlp_cmd->params.channel);
+		CRITICAL("hsi_ch:%d, cmd:0x%X => RX timeout",
+			dlp_cmd->params.channel, dlp_cmd->params.id);
 
 		ret = -EIO;
 		goto out;
@@ -1165,9 +1148,9 @@ static int dlp_ctrl_cmd_send(struct dlp_channel *ch_ctx,
 	    (ctrl_ctx->response.params.data2 != param2) ||
 	    (ctrl_ctx->response.params.data3 != param3)) {
 
-		CRITICAL("%s unexpected response [0x%X%X%02X%02X%02X]"
+		CRITICAL("cmd:0x%X unexpected response [0x%X%X%02X%02X%02X]"
 			 " => expected [0x%X%X%02X%02X%02X]",
-			 DLP_CTRL_CMD_TO_STR(id),
+			 id,
 			 ctrl_ctx->response.params.id,
 			 ctrl_ctx->response.params.channel,
 			 ctrl_ctx->response.params.data1,
@@ -1244,7 +1227,7 @@ static int dlp_ctrl_push_rx_pdu(struct dlp_channel *ch_ctx)
 	/* Send the RX HSI msg */
 	ret = dlp_ctrl_send_hsi_msg(ch_ctx->ch_data, rx_msg, 0);
 	if (ret) {
-		CRITICAL("dlp_ctrl_send_hsi_msg() failed, ret:%d", ret);
+		CRITICAL("RX push failed, ret:%d", ret);
 		ret = -EIO;
 		goto free_msg;
 	}
@@ -1268,17 +1251,43 @@ out:
 /*
 * @brief Set the modem readiness (READY/NOT READY) flag
 *
-* @param value
+* @param ready: Ready/Not ready
 */
-static inline void dlp_ctrl_set_modem_readiness(unsigned int value)
+static inline void
+dlp_ctrl_set_modem_readiness(struct dlp_ctrl_context *ctrl_ctx,
+							unsigned int ready)
 {
 	unsigned long flags;
 
+	/* Update the flag */
 	spin_lock_irqsave(&dlp_drv.lock, flags);
-	dlp_drv.modem_ready = value;
+	dlp_drv.modem_ready = ready;
 	spin_unlock_irqrestore(&dlp_drv.lock, flags);
+
+	/* Wakeup any waiting client for modem readiness */
+	if (ready)
+		wake_up(&ctrl_ctx->ready_event);
 }
 
+/*
+* @brief Get the modem readiness (READY/NOT READY) flag
+*
+* @param ctrl_ctx: the control channel context
+*
+* @return 0 or 1 for modem ready/not ready
+*/
+static inline int
+dlp_ctrl_get_modem_readiness(struct dlp_ctrl_context *ctrl_ctx)
+{
+	unsigned long flags;
+	int ready;
+
+	spin_lock_irqsave(&dlp_drv.lock, flags);
+	ready = dlp_drv.modem_ready;
+	spin_unlock_irqrestore(&dlp_drv.lock, flags);
+
+	return ready;
+}
 
 /*
 * @brief A deferred work that :
@@ -1293,14 +1302,14 @@ static void dlp_ctrl_ipc_readiness(struct work_struct *work)
 
 	PROLOG();
 
-	/* Set the modem readiness state */
-	dlp_ctrl_set_modem_readiness(0);
+	/* Reset the modem readiness state */
+	dlp_ctrl_set_modem_readiness(ctrl_ctx, 0);
 
 	/* Wait for RESET_OUT */
 	wait_for_completion(&ctrl_ctx->reset_done);
 
-	/* RESET_OUT received => The modem is ready */
-	dlp_ctrl_set_modem_readiness(1);
+	/* RESET_OUT received => Set the modem readiness flag */
+	dlp_ctrl_set_modem_readiness(ctrl_ctx, 1);
 
 	EPILOG();
 }
@@ -1543,14 +1552,20 @@ void dlp_ctrl_flashing_warm_reset(struct dlp_channel *ch_ctx)
 */
 inline unsigned int dlp_ctrl_modem_is_ready(void)
 {
-	unsigned long flags;
-	unsigned int value;
+	struct dlp_ctrl_context *ctrl_ctx = DLP_CTRL_CTX;
+	int ret, modem_ready = 1;
 
-	spin_lock_irqsave(&dlp_drv.lock, flags);
-	value = dlp_drv.modem_ready;
-	spin_unlock_irqrestore(&dlp_drv.lock, flags);
+	/* Wait for modem_ready flag */
+	ret = wait_event_timeout(ctrl_ctx->ready_event,
+					dlp_ctrl_get_modem_readiness(ctrl_ctx),
+					DLP_MODEM_READY_DELAY * HZ);
+	if (ret == 0) {
+		CRITICAL("Modem still not ready after %d sec !",
+				DLP_MODEM_READY_DELAY);
+		modem_ready = 0;
+	}
 
-	return value;
+	return modem_ready;
 }
 
 /*
@@ -1703,6 +1718,7 @@ struct dlp_channel *dlp_ctrl_ctx_create(unsigned int index, struct device *dev)
 
 	spin_lock_init(&ch_ctx->lock);
 	init_completion(&ctrl_ctx->reset_done);
+	init_waitqueue_head(&ctrl_ctx->ready_event);
 	INIT_WORK(&ctrl_ctx->readiness_work, dlp_ctrl_ipc_readiness);
 	INIT_WORK(&ctrl_ctx->hangup_work, dlp_ctrl_handle_hangup);
 	INIT_WORK(&ctrl_ctx->tx_timeout_work, dlp_ctrl_handle_tx_timeout);
