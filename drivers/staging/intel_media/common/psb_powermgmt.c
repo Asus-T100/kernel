@@ -600,198 +600,6 @@ static int save_display_registers(struct drm_device *dev)
 }
 
 /*
- * restore_display_registers
- *
- * Description: We are going to resume so restore display register state.
- */
-static int restore_display_registers(struct drm_device *dev)
-{
-	struct drm_psb_private *dev_priv = dev->dev_private;
-	struct drm_crtc *crtc;
-	struct drm_connector *connector;
-	unsigned long i, pp_stat;
-
-	/* Display arbitration + watermarks */
-	PSB_WVDC32(dev_priv->saveDSPARB, DSPARB);
-	PSB_WVDC32(dev_priv->saveDSPFW1, DSPFW1);
-	PSB_WVDC32(dev_priv->saveDSPFW2, DSPFW2);
-	PSB_WVDC32(dev_priv->saveDSPFW3, DSPFW3);
-	PSB_WVDC32(dev_priv->saveDSPFW4, DSPFW4);
-	PSB_WVDC32(dev_priv->saveDSPFW5, DSPFW5);
-	PSB_WVDC32(dev_priv->saveDSPFW6, DSPFW6);
-	PSB_WVDC32(dev_priv->saveCHICKENBIT, DSPCHICKENBIT);
-
-	/*make sure VGA plane is off. it initializes to on after reset!*/
-	PSB_WVDC32(0x80000000, VGACNTRL);
-
-	if (IS_MRST(dev)) {
-		/* set the plls */
-		PSB_WVDC32(dev_priv->saveFPA0, MRST_FPA0);
-		PSB_WVDC32(dev_priv->saveFPA1, MRST_FPA1);
-		/* Actually enable it */
-		PSB_WVDC32(dev_priv->saveDPLL_A, MRST_DPLL_A);
-		DRM_UDELAY(150);
-
-		/* Restore mode */
-		PSB_WVDC32(dev_priv->saveHTOTAL_A, HTOTAL_A);
-		PSB_WVDC32(dev_priv->saveHBLANK_A, HBLANK_A);
-		PSB_WVDC32(dev_priv->saveHSYNC_A, HSYNC_A);
-		PSB_WVDC32(dev_priv->saveVTOTAL_A, VTOTAL_A);
-		PSB_WVDC32(dev_priv->saveVBLANK_A, VBLANK_A);
-		PSB_WVDC32(dev_priv->saveVSYNC_A, VSYNC_A);
-		PSB_WVDC32(dev_priv->savePIPEASRC, PIPEASRC);
-		PSB_WVDC32(dev_priv->saveBCLRPAT_A, BCLRPAT_A);
-
-		/*restore performance mode*/
-		PSB_WVDC32(dev_priv->savePERF_MODE, MRST_PERF_MODE);
-
-		/*enable the pipe*/
-		if (dev_priv->iLVDS_enable)
-			PSB_WVDC32(dev_priv->savePIPEACONF, PIPEACONF);
-
-		/* Setup MIPI */
-		PSB_WVDC32(dev_priv->saveINTR_EN_REG, INTR_EN_REG);
-		PSB_WVDC32(dev_priv->saveDSI_FUNC_PRG_REG, DSI_FUNC_PRG_REG);
-		PSB_WVDC32(dev_priv->saveHS_TX_TIMEOUT_REG, HS_TX_TIMEOUT_REG);
-		PSB_WVDC32(dev_priv->saveLP_RX_TIMEOUT_REG, LP_RX_TIMEOUT_REG);
-		PSB_WVDC32(dev_priv->saveTURN_AROUND_TIMEOUT_REG,
-			TURN_AROUND_TIMEOUT_REG);
-		PSB_WVDC32(dev_priv->saveDEVICE_RESET_REG, DEVICE_RESET_REG);
-		PSB_WVDC32(dev_priv->saveDPI_RESOLUTION_REG,
-			DPI_RESOLUTION_REG);
-		PSB_WVDC32(dev_priv->saveHORIZ_SYNC_PAD_COUNT_REG,
-			HORIZ_SYNC_PAD_COUNT_REG);
-		PSB_WVDC32(dev_priv->saveHORIZ_BACK_PORCH_COUNT_REG,
-			HORIZ_BACK_PORCH_COUNT_REG);
-		PSB_WVDC32(dev_priv->saveHORIZ_FRONT_PORCH_COUNT_REG,
-			HORIZ_FRONT_PORCH_COUNT_REG);
-		PSB_WVDC32(dev_priv->saveHORIZ_ACTIVE_AREA_COUNT_REG,
-			HORIZ_ACTIVE_AREA_COUNT_REG);
-		PSB_WVDC32(dev_priv->saveVERT_SYNC_PAD_COUNT_REG,
-			VERT_SYNC_PAD_COUNT_REG);
-		PSB_WVDC32(dev_priv->saveVERT_BACK_PORCH_COUNT_REG,
-			VERT_BACK_PORCH_COUNT_REG);
-		PSB_WVDC32(dev_priv->saveVERT_FRONT_PORCH_COUNT_REG,
-			VERT_FRONT_PORCH_COUNT_REG);
-		PSB_WVDC32(dev_priv->saveHIGH_LOW_SWITCH_COUNT_REG,
-			HIGH_LOW_SWITCH_COUNT_REG);
-		PSB_WVDC32(dev_priv->saveINIT_COUNT_REG, INIT_COUNT_REG);
-		PSB_WVDC32(dev_priv->saveMAX_RET_PAK_REG, MAX_RET_PAK_REG);
-		PSB_WVDC32(dev_priv->saveVIDEO_FMT_REG, VIDEO_FMT_REG);
-		PSB_WVDC32(dev_priv->saveEOT_DISABLE_REG, EOT_DISABLE_REG);
-		PSB_WVDC32(dev_priv->saveLP_BYTECLK_REG, LP_BYTECLK_REG);
-		PSB_WVDC32(dev_priv->saveHS_LS_DBI_ENABLE_REG,
-			HS_LS_DBI_ENABLE_REG);
-		PSB_WVDC32(dev_priv->saveTXCLKESC_REG, TXCLKESC_REG);
-		PSB_WVDC32(dev_priv->saveDPHY_PARAM_REG, DPHY_PARAM_REG);
-		PSB_WVDC32(dev_priv->saveMIPI_CONTROL_REG, MIPI_CONTROL_REG);
-
-		/*set up the plane*/
-		PSB_WVDC32(dev_priv->saveDSPALINOFF, DSPALINOFF);
-		PSB_WVDC32(dev_priv->saveDSPASTRIDE, DSPASTRIDE);
-		PSB_WVDC32(dev_priv->saveDSPATILEOFF, DSPATILEOFF);
-
-		/* Enable the plane */
-		PSB_WVDC32(dev_priv->saveDSPACNTR, DSPACNTR);
-		PSB_WVDC32(dev_priv->saveDSPASURF, DSPASURF);
-
-		/*Enable Cursor A*/
-		PSB_WVDC32(dev_priv->saveDSPACURSOR_CTRL, CURACNTR);
-		PSB_WVDC32(dev_priv->saveDSPACURSOR_POS, CURAPOS);
-		PSB_WVDC32(dev_priv->saveDSPACURSOR_BASE, CURABASE);
-
-		/* restore palette (gamma) */
-		/*DRM_UDELAY(50000); */
-		for (i = 0; i < 256; i++)
-			PSB_WVDC32(dev_priv->save_palette_a[i], PALETTE_A + (i<<2));
-
-		if (dev_priv->iLVDS_enable) {
-			PSB_WVDC32(dev_priv->saveBLC_PWM_CTL2, BLC_PWM_CTL2);
-			PSB_WVDC32(dev_priv->saveLVDS, LVDS); /*port 61180h*/
-			PSB_WVDC32(dev_priv->savePFIT_CONTROL, PFIT_CONTROL);
-			PSB_WVDC32(dev_priv->savePFIT_PGM_RATIOS, PFIT_PGM_RATIOS);
-			PSB_WVDC32(dev_priv->savePFIT_AUTO_RATIOS, PFIT_AUTO_RATIOS);
-			PSB_WVDC32(dev_priv->saveBLC_PWM_CTL, BLC_PWM_CTL);
-			PSB_WVDC32(dev_priv->savePP_ON_DELAYS, LVDSPP_ON);
-			PSB_WVDC32(dev_priv->savePP_OFF_DELAYS, LVDSPP_OFF);
-			PSB_WVDC32(dev_priv->savePP_DIVISOR, PP_CYCLE);
-			PSB_WVDC32(dev_priv->savePP_CONTROL, PP_CONTROL);
-		} else {
-			PSB_WVDC32(MIPI_PORT_EN | MIPI_BORDER_EN, MIPI); /*force on port*/
-			PSB_WVDC32(1, DEVICE_READY_REG);/* force on to re-program */
-
-			if (dev_priv->saveDEVICE_READY_REG) {
-				if ((REG_READ(INTR_STAT_REG) & SPL_PKT_SENT)) {
-					REG_WRITE(INTR_STAT_REG, SPL_PKT_SENT);
-				}
-
-				/*send turn on packet*/
-				PSB_WVDC32(DPI_TURN_ON, DPI_CONTROL_REG);
-
-				/*wait for special packet sent interrupt*/
-				mrst_wait_for_INTR_PKT_SENT(dev);
-
-				msleep(100);
-			}
-
-			if (dev_priv->init_drvIC)
-				dev_priv->init_drvIC(dev);
-			PSB_WVDC32(dev_priv->saveMIPI, MIPI); /*port 61190h*/
-			PSB_WVDC32(dev_priv->saveDEVICE_READY_REG, DEVICE_READY_REG);
-			PSB_WVDC32(dev_priv->savePIPEACONF, PIPEACONF);
-			PSB_WVDC32(dev_priv->saveBLC_PWM_CTL2, BLC_PWM_CTL2);
-			PSB_WVDC32(dev_priv->saveBLC_PWM_CTL, BLC_PWM_CTL);
-		}
-
-
-		/*wait for cycle delay*/
-		do {
-			pp_stat = PSB_RVDC32(PP_STATUS);
-		} while (pp_stat & 0x08000000);
-
-		DRM_UDELAY(999);
-		/*wait for panel power up*/
-		do {
-			pp_stat = PSB_RVDC32(PP_STATUS);
-		} while (pp_stat & 0x10000000);
-
-		/* restore HW overlay */
-		PSB_WVDC32(dev_priv->saveOV_OVADD, OV_OVADD);
-		PSB_WVDC32(dev_priv->saveOV_OGAMC0, OV_OGAMC0);
-		PSB_WVDC32(dev_priv->saveOV_OGAMC1, OV_OGAMC1);
-		PSB_WVDC32(dev_priv->saveOV_OGAMC2, OV_OGAMC2);
-		PSB_WVDC32(dev_priv->saveOV_OGAMC3, OV_OGAMC3);
-		PSB_WVDC32(dev_priv->saveOV_OGAMC4, OV_OGAMC4);
-		PSB_WVDC32(dev_priv->saveOV_OGAMC5, OV_OGAMC5);
-
-		/* DPST registers */
-		PSB_WVDC32(dev_priv->saveHISTOGRAM_INT_CONTROL_REG, HISTOGRAM_INT_CONTROL);
-		PSB_WVDC32(dev_priv->saveHISTOGRAM_LOGIC_CONTROL_REG, HISTOGRAM_LOGIC_CONTROL);
-		PSB_WVDC32(dev_priv->savePWM_CONTROL_LOGIC, PWM_CONTROL_LOGIC);
-
-
-	} else { /*PSB*/
-		mutex_lock(&dev->mode_config.mutex);
-		list_for_each_entry(crtc, &dev->mode_config.crtc_list, head) {
-			if (drm_helper_crtc_in_use(crtc))
-				crtc->funcs->restore(crtc);
-		}
-
-		list_for_each_entry(connector, &dev->mode_config.connector_list, head) {
-			connector->funcs->restore(connector);
-		}
-		mutex_unlock(&dev->mode_config.mutex);
-	}
-
-
-	/*Interrupt state*/
-	/*
-	 * Handled in psb_irq.c
-	 */
-
-	return 0;
-}
-/*
  * mdfld_save_display_registers
  *
  * Description: We are going to suspend so save current display
@@ -1570,45 +1378,30 @@ void ospm_resume_display(struct pci_dev *pdev)
 	 */
 	/*psb_gtt_init(dev_priv->pg, 1);*/
 
-	if (IS_MDFLD(dev)) {
-		if (dev_priv->panel_desc & DISPLAY_C)
-			mdfld_restore_display_registers(dev, 2);
-		if (dev_priv->panel_desc & DISPLAY_A)
-			mdfld_restore_display_registers(dev, 0);
+	if (dev_priv->panel_desc & DISPLAY_C)
+		mdfld_restore_display_registers(dev, 2);
+	if (dev_priv->panel_desc & DISPLAY_A)
+		mdfld_restore_display_registers(dev, 0);
 
-		/*
-		 * Don't restore Display B registers during resuming, if HDMI
-		 * isn't turned on before suspending.
-		 */
-		if (dev_priv->panel_desc & DISPLAY_B) {
-			android_hdmi_restore_and_enable_display(dev);
-			/*devices connect status will be changed
-			 when system suspend,re-detect once here*/
+	/*
+	 * Don't restore Display B registers during resuming, if HDMI
+	 * isn't turned on before suspending.
+	 */
+	if (dev_priv->panel_desc & DISPLAY_B) {
+		android_hdmi_restore_and_enable_display(dev);
+		/*devices connect status will be changed
+		  when system suspend,re-detect once here*/
 #if (defined(CONFIG_SND_INTELMID_HDMI_AUDIO) || \
 		defined(CONFIG_SND_INTELMID_HDMI_AUDIO_MODULE))
-			if (!is_hdmi_plugged_out(dev)) {
-				PSB_DEBUG_ENTRY("resume hdmi_state %d", hdmi_state);
-				if (dev_priv->had_pvt_data && hdmi_state)
-					dev_priv->had_interface->
-						resume(dev_priv->had_pvt_data);
-			}
-#endif
+		if (!is_hdmi_plugged_out(dev)) {
+			PSB_DEBUG_ENTRY("resume hdmi_state %d", hdmi_state);
+			if (dev_priv->had_pvt_data && hdmi_state)
+				dev_priv->had_interface->
+					resume(dev_priv->had_pvt_data);
 		}
-		mdfld_restore_cursor_overlay_registers(dev);
-
-	} else {
-		if (!dev_priv->iLVDS_enable) {
-#ifdef CONFIG_X86_MDFLD
-			int ret = 0;
-			ret = intel_scu_ipc_simple_command(IPC_MSG_PANEL_ON_OFF, IPC_CMD_PANEL_ON);
-			if (ret)
-				printk(KERN_WARNING "IPC 0xE9 failed to turn on pnl pwr.  Error is: %x\n", ret);
-			msleep(2000); /* wait 2 seconds */
 #endif
-		}
-
-		restore_display_registers(dev);
 	}
+	mdfld_restore_cursor_overlay_registers(dev);
 }
 
 /*

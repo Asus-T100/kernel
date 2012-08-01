@@ -370,7 +370,7 @@ static int hdmi_ddc_read_write(bool read,
 #define android_hdmi_connector_funcs mdfld_hdmi_connector_funcs
 #define android_hdmi_connector_helper_funcs mdfld_hdmi_connector_helper_funcs
 #define android_hdmi_enc_helper_funcs mdfld_hdmi_helper_funcs
-#define android_hdmi_enc_funcs psb_intel_lvds_enc_funcs
+#define android_hdmi_enc_funcs intel_hdmi_enc_funcs
 
 /**
  * This function initializes the hdmi driver called during bootup

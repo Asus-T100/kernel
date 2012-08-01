@@ -321,19 +321,6 @@ enum panel_type {
 
 #define MAX_NUM 0xffffffff
 
-struct opregion_header;
-struct opregion_acpi;
-struct opregion_swsci;
-struct opregion_asle;
-
-struct psb_intel_opregion {
-	struct opregion_header *header;
-	struct opregion_acpi *acpi;
-	struct opregion_swsci *swsci;
-	struct opregion_asle *asle;
-	int enabled;
-};
-
 /*
  *User options.
  */
@@ -969,7 +956,6 @@ struct drm_psb_private {
 	 */
 	spinlock_t lid_lock;
 	struct timer_list lid_timer;
-	struct psb_intel_opregion opregion;
 	u32 *lid_state;
 	u32 lid_last_state;
 
@@ -1300,11 +1286,6 @@ extern int lnc_video_getparam(struct drm_device *dev, void *data,
 			      struct drm_file *file_priv);
 
 /*
- * psb_opregion.c
- */
-extern int psb_intel_opregion_init(struct drm_device *dev);
-
-/*
  *psb_fb.c
  */
 extern int psbfb_probed(struct drm_device *dev);
@@ -1323,8 +1304,6 @@ extern void *psbfb_vdc_reg(struct drm_device* dev);
 extern void psb_schedule_watchdog(struct drm_psb_private *dev_priv);
 extern void psb_watchdog_init(struct drm_psb_private *dev_priv);
 extern void psb_watchdog_takedown(struct drm_psb_private *dev_priv);
-extern void psb_lid_timer_init(struct drm_psb_private *dev_priv);
-extern void psb_lid_timer_takedown(struct drm_psb_private *dev_priv);
 extern void psb_print_pagefault(struct drm_psb_private *dev_priv);
 extern void mdfld_dsr_timer_init(struct drm_psb_private *dev_priv);
 extern void mdfld_dsr_timer_takedown(struct drm_psb_private *dev_priv);

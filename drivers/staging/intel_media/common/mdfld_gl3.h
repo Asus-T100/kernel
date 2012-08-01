@@ -31,7 +31,6 @@
 #include "psb_fb.h"
 #include "psb_reg.h"
 #include "psb_intel_reg.h"
-#include "psb_intel_bios.h"
 #include "psb_msvdx.h"
 #include "pnw_topaz.h"
 #include <drm/drm_pciids.h>

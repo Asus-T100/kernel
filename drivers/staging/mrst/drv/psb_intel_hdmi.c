@@ -2004,6 +2004,18 @@ static int mdfld_hdmi_mode_valid(struct drm_connector *connector,
 	return MODE_OK;
 }
 
+/* current intel driver doesn't take advantage of encoders
+   always give back the encoder for the connector
+*/
+static struct drm_encoder *
+mdfld_hdmi_best_encoder(struct drm_connector *connector)
+{
+	struct psb_intel_output *psb_intel_output =
+					to_psb_intel_output(connector);
+
+	return &psb_intel_output->enc;
+}
+
 static void mdfld_hdmi_connector_dpms(struct drm_connector *connector, int mode)
 {
 	struct drm_device * dev = connector->dev;
@@ -2090,21 +2102,56 @@ static void mdfld_hdmi_connector_dpms(struct drm_connector *connector, int mode)
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 }
 
+static void mdfld_hdmi_connector_destroy(struct drm_connector *connector)
+{
+	struct psb_intel_output *psb_intel_output =
+		to_psb_intel_output(connector);
+
+	drm_sysfs_connector_remove(connector);
+	drm_connector_cleanup(connector);
+	kfree(connector);
+}
+
+static void mdfld_hdmi_enc_destroy(struct drm_encoder *encoder)
+{
+	drm_encoder_cleanup(encoder);
+}
+
+static void mdfld_hdmi_encoder_prepare(struct drm_encoder *encoder)
+{
+	struct drm_encoder_helper_funcs *encoder_funcs =
+	    encoder->helper_private;
+	/* lvds has its own version of prepare see psb_intel_lvds_prepare */
+	encoder_funcs->dpms(encoder, DRM_MODE_DPMS_OFF);
+}
+
+static void mdfld_hdmi_encoder_commit(struct drm_encoder *encoder)
+{
+	struct drm_encoder_helper_funcs *encoder_funcs =
+	    encoder->helper_private;
+	/* lvds has its own version of commit see psb_intel_lvds_commit */
+	encoder_funcs->dpms(encoder, DRM_MODE_DPMS_ON);
+}
+
+const struct drm_encoder_funcs intel_hdmi_enc_funcs = {
+	.destroy = mdfld_hdmi_enc_destroy,
+};
+
 const struct drm_encoder_helper_funcs mdfld_hdmi_helper_funcs = {
 	.dpms = mdfld_hdmi_dpms,
 	.save = android_hdmi_encoder_save,
 	.restore = android_hdmi_encoder_restore,
 	.mode_fixup = mdfld_hdmi_mode_fixup,
-	.prepare = psb_intel_encoder_prepare,
+	.prepare = mdfld_hdmi_encoder_prepare,
 	.mode_set = android_hdmi_enc_mode_set,
-	.commit = psb_intel_encoder_commit,
+	.commit = mdfld_hdmi_encoder_commit,
 };
 
 const struct drm_connector_helper_funcs
     mdfld_hdmi_connector_helper_funcs = {
 	.get_modes = android_hdmi_get_modes,
 	.mode_valid = android_hdmi_mode_valid,
-	.best_encoder = psb_intel_best_encoder,
+	.best_encoder = mdfld_hdmi_best_encoder,
 };
 
 const struct drm_connector_funcs mdfld_hdmi_connector_funcs = {
@@ -2114,7 +2161,7 @@ const struct drm_connector_funcs mdfld_hdmi_connector_funcs = {
 	.detect = android_hdmi_detect,
 	.fill_modes = drm_helper_probe_single_connector_modes,
 	.set_property = mdfld_hdmi_set_property,
-	.destroy = psb_intel_lvds_destroy,
+	.destroy = mdfld_hdmi_connector_destroy,
 };
 
 void mdfld_hdmi_init(struct drm_device *dev,

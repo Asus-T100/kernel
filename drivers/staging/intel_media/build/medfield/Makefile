@@ -184,19 +184,11 @@ gfx-y += $(MEDIA_COMMON_DIR)/psb_drv.o \
 gfx-y += $(DISPLAYDIR)/psb_bl.o \
 		$(DISPLAYDIR)/psb_dpst.o \
 		$(DISPLAYDIR)/psb_fb.o \
-		$(DISPLAYDIR)/psb_intel_bios.o \
-		$(DISPLAYDIR)/psb_intel_opregion.o \
 		$(DISPLAYDIR)/psb_intel_display.o \
-		$(DISPLAYDIR)/psb_intel_i2c.o \
-		$(DISPLAYDIR)/psb_intel_lvds.o \
-		$(DISPLAYDIR)/psb_intel_modes.o \
-		$(DISPLAYDIR)/psb_intel_sdvo.o \
 		$(DISPLAYDIR)/mdfld_csc.o \
 		$(DISPLAYDIR)/psb_socket.o \
 		$(DISPLAYDIR)/psb_pvr_glue.o \
 		$(DISPLAYDIR)/psb_umevents.o \
-		$(DISPLAYDIR)/psb_intel_dsi.o \
-		$(DISPLAYDIR)/psb_intel_dsi_aava.o \
 		$(DISPLAYDIR)/mdfld_dsi_dbi.o \
 		$(DISPLAYDIR)/mdfld_dsi_dpi.o \
 		$(DISPLAYDIR)/mdfld_dsi_output.o \
@@ -215,8 +207,7 @@ gfx-$(CONFIG_MDFD_HDMI) += $(DISPLAYDIR)/mdfld_msic.o \
 		$(DISPLAYDIR)/psb_hotplug.o \
 		$(DISPLAYDIR)/mdfld_intel_hdcp.o \
 		$(DISPLAYDIR)/mdfld_ti_tpd.o \
-		$(DISPLAYDIR)/psb_intel_hdmi.o \
-		$(DISPLAYDIR)/psb_intel_hdmi_i2c.o
+		$(DISPLAYDIR)/psb_intel_hdmi.o
 
 gfx-$(CONFIG_SND_INTELMID_HDMI_AUDIO) += $(DISPLAYDIR)/mdfld_hdmi_audio.o
 

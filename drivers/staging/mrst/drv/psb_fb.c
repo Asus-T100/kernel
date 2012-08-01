@@ -1660,6 +1660,23 @@ static int psb_create_backlight_property(struct drm_device *dev)
 	return 0;
 }
 
+static int psb_intel_connector_clones(struct drm_device *dev, int type_mask)
+{
+	int index_mask = 0;
+	struct drm_connector *connector;
+	int entry = 0;
+
+	list_for_each_entry(connector, &dev->mode_config.connector_list,
+			    head) {
+		struct psb_intel_output *psb_intel_output =
+		    to_psb_intel_output(connector);
+		if (type_mask & (1 << psb_intel_output->type))
+			index_mask |= (1 << entry);
+		entry++;
+	}
+	return index_mask;
+}
+
 static void psb_setup_outputs(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv =
@@ -1672,20 +1689,7 @@ static void psb_setup_outputs(struct drm_device *dev)
 
 	psb_create_backlight_property(dev);
 
-	if (IS_MDFLD(dev)) {
-		mdfld_output_init(dev);
-	} else if (IS_MRST(dev)) {
-		if (dev_priv->iLVDS_enable)
-			/* Set up integrated LVDS for MRST */
-			mrst_lvds_init(dev, &dev_priv->mode_dev);
-		else {
-			/* Set up integrated MIPI for MRST */
-			mrst_dsi_init(dev, &dev_priv->mode_dev);
-		}
-	} else {
-		psb_intel_lvds_init(dev, &dev_priv->mode_dev);
-		psb_intel_sdvo_init(dev, SDVOB);
-	}
+	mdfld_output_init(dev);
 
 	list_for_each_entry(connector, &dev->mode_config.connector_list,
 			    head) {

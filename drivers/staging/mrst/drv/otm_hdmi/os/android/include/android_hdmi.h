@@ -272,7 +272,7 @@ struct android_hdmi_priv {
 	void *context;
 };
 
-extern const struct drm_encoder_funcs psb_intel_lvds_enc_funcs;
+extern const struct drm_encoder_funcs intel_hdmi_enc_funcs;
 extern const struct drm_encoder_helper_funcs mdfld_hdmi_helper_funcs;
 extern const struct drm_connector_funcs mdfld_hdmi_connector_funcs;
 extern const struct drm_connector_helper_funcs

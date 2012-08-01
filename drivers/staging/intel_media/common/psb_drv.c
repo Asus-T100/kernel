@@ -26,7 +26,6 @@
 #include "psb_fb.h"
 #include "psb_reg.h"
 #include "psb_intel_reg.h"
-#include "psb_intel_bios.h"
 #include "psb_msvdx.h"
 #include "pnw_topaz.h"
 #include <drm/drm_pciids.h>
@@ -703,41 +702,6 @@ static void psb_do_takedown(struct drm_device *dev)
 	if (IS_MDFLD(dev))
 		pnw_topaz_uninit(dev);
 #endif
-}
-
-static void psb_get_core_freq(struct drm_device *dev)
-{
-	uint32_t clock;
-	struct drm_psb_private *dev_priv = (struct drm_psb_private *) dev->dev_private;
-
-	/*pci_write_config_dword(pci_root, 0xD4, 0x00C32004);*/
-	/*pci_write_config_dword(pci_root, 0xD0, 0xE0033000);*/
-
-	clock = intel_mid_msgbus_read32_raw(0xD00503F0);
-
-	switch (clock & 0x07) {
-	case 0:
-		dev_priv->core_freq = 100;
-		break;
-	case 1:
-		dev_priv->core_freq = 133;
-		break;
-	case 2:
-		dev_priv->core_freq = 150;
-		break;
-	case 3:
-		dev_priv->core_freq = 178;
-		break;
-	case 4:
-		dev_priv->core_freq = 200;
-		break;
-	case 5:
-	case 6:
-	case 7:
-		dev_priv->core_freq = 266;
-	default:
-		dev_priv->core_freq = 0;
-	}
 }
 
 #define FB_REG06_MRST 0xD08106F0
@@ -1491,9 +1455,6 @@ static int psb_driver_unload(struct drm_device *dev)
 		psb_modeset_cleanup(dev);
 
 	if (dev_priv) {
-		if (IS_POULSBO(dev))
-			psb_lid_timer_takedown(dev_priv);
-
 		/* psb_watchdog_takedown(dev_priv); */
 		psb_do_takedown(dev);
 
@@ -1583,10 +1544,6 @@ static int psb_driver_unload(struct drm_device *dev)
 #endif
 		kfree(dev_priv);
 		dev->dev_private = NULL;
-
-		/*destory VBT data*/
-		if (IS_POULSBO(dev))
-			psb_intel_destory_bios(dev);
 	}
 
 	ospm_power_uninit();
@@ -1742,10 +1699,6 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 		mrst_get_fuse_settings(dev);
 		mrst_get_vbt_data(dev_priv);
 		mid_get_pci_revID(dev_priv);
-	} else {
-		psb_get_core_freq(dev);
-		psb_intel_opregion_init(dev);
-		psb_intel_init_bios(dev);
 	}
 
 #ifdef CONFIG_MDFD_GL3
@@ -1870,14 +1823,6 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	ret = psb_do_init(dev);
 	if (ret)
 		return ret;
-
-	/**
-	 *  Init lid switch timer.
-	 *  NOTE: must do this after psb_intel_opregion_init
-	 *  and psb_backlight_init
-	 */
-	if (IS_POULSBO(dev) && dev_priv->lid_state)
-		psb_lid_timer_init(dev_priv);
 
 	if (pci_enable_msi(dev->pdev)) {
 		DRM_ERROR("Enable MSI failed!\n");

@@ -25,7 +25,6 @@
 #include "psb_drv.h"
 #include "psb_intel_reg.h"
 #include "psb_intel_drv.h"
-#include "psb_intel_bios.h"
 #include "psb_powermgmt.h"
 #include "mdfld_dsi_dbi.h"
 
@@ -83,12 +82,6 @@ int psb_set_brightness(struct backlight_device *bd)
 	}
 
 	lastFailedBrightness = -1;
-
-	if (IS_POULSBO(dev)) {
-		psb_intel_lvds_set_brightness(dev, level);
-		psb_brightness = level;
-		return 0;
-	}
 
 	if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, OSPM_UHB_ONLY_IF_ON)) {
 		if (IS_MRST(dev)) {
@@ -170,69 +163,8 @@ static int device_backlight_init(struct drm_device *dev)
 	uint32_t blc_pwm_precision_factor;
 	struct drm_psb_private *dev_priv = (struct drm_psb_private *) dev->dev_private;
 
-	if (IS_MDFLD(dev)) {
-		dev_priv->blc_adj1 = BLC_ADJUSTMENT_MAX;
-		dev_priv->blc_adj2 = BLC_ADJUSTMENT_MAX;
-		return 0;
-	}
-
-	if (IS_MRST(dev)) {
-		dev_priv->blc_adj1 = BLC_ADJUSTMENT_MAX;
-		dev_priv->blc_adj2 = BLC_ADJUSTMENT_MAX;
-
-		/* this needs to come from VBT when available */
-		bl_max_freq = 256;
-		/* this needs to be set elsewhere */
-		blc_pol = BLC_POLARITY_NORMAL;
-		blc_pwm_precision_factor = BLC_PWM_PRECISION_FACTOR;
-
-		CoreClock = dev_priv->core_freq;
-	} else {
-		/* get bl_max_freq and pol from dev_priv*/
-		if (!dev_priv->lvds_bl) {
-			DRM_ERROR("Has no valid LVDS backlight info\n");
-			return 1;
-		}
-		bl_max_freq = dev_priv->lvds_bl->freq;
-		blc_pol = dev_priv->lvds_bl->pol;
-		blc_pwm_precision_factor = PSB_BLC_PWM_PRECISION_FACTOR;
-		blc_brightnesscmd = dev_priv->lvds_bl->brightnesscmd;
-		blc_type = dev_priv->lvds_bl->type;
-
-		CoreClock = dev_priv->core_freq;
-	} /*end if(IS_MRST(dev))*/
-
-	value = (CoreClock * MHz) / BLC_PWM_FREQ_CALC_CONSTANT;
-	value *= blc_pwm_precision_factor;
-	value /= bl_max_freq;
-	value /= blc_pwm_precision_factor;
-
-	if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, OSPM_UHB_ONLY_IF_ON)) {
-		if (IS_MRST(dev)) {
-			if (value >
-				(unsigned long long)MRST_BLC_MAX_PWM_REG_FREQ)
-				return 2;
-			else {
-				REG_WRITE(BLC_PWM_CTL2,
-					(0x80000000 | REG_READ(BLC_PWM_CTL2)));
-				REG_WRITE(BLC_PWM_CTL, value |
-				(value <<
-					MRST_BACKLIGHT_MODULATION_FREQ_SHIFT));
-			}
-		} else {
-			if (
-			 value > (unsigned long long)PSB_BLC_MAX_PWM_REG_FREQ ||
-			 value < (unsigned long long)PSB_BLC_MIN_PWM_REG_FREQ)
-				return 2;
-			else {
-				value &= PSB_BACKLIGHT_PWM_POLARITY_BIT_CLEAR;
-				REG_WRITE(BLC_PWM_CTL,
-					(value << PSB_BACKLIGHT_PWM_CTL_SHIFT) |
-					(value));
-			}
-		} /*end if(IS_MRST(dev))*/
-		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
-	}
+	dev_priv->blc_adj1 = BLC_ADJUSTMENT_MAX;
+	dev_priv->blc_adj2 = BLC_ADJUSTMENT_MAX;
 	return 0;
 }
 
