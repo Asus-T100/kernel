@@ -460,15 +460,17 @@ static int mmc_read_ext_csd(struct mmc_card *card, u8 *ext_csd)
 		(ext_csd[EXT_CSD_WR_REL_PARAM] & EXT_CSD_WR_REL_PARAM_EN)) {
 			printk(KERN_INFO "%s: Large sector size enabled.\n",
 				mmc_hostname(card->host));
-			card->ext_csd.large_sect_size_en = 1;
-		}
+			card->ext_csd.data_sector_size = 4096;
+		} else
+			card->ext_csd.data_sector_size = 512;
 
 		card->ext_csd.cache_size =
 			ext_csd[EXT_CSD_CACHE_SIZE + 0] << 0 |
 			ext_csd[EXT_CSD_CACHE_SIZE + 1] << 8 |
 			ext_csd[EXT_CSD_CACHE_SIZE + 2] << 16 |
 			ext_csd[EXT_CSD_CACHE_SIZE + 3] << 24;
-	}
+	} else
+		card->ext_csd.data_sector_size = 512;
 
 	if (ext_csd[EXT_CSD_ERASED_MEM_CONT])
 		card->erased_byte = 0xFF;
@@ -574,7 +576,6 @@ MMC_DEV_ATTR(trim_timeout, "%d\n", card->ext_csd.trim_timeout);
 MMC_DEV_ATTR(hc_erase_timeout, "%d\n", card->ext_csd.hc_erase_timeout);
 MMC_DEV_ATTR(sec_trim_mult, "%d\n", card->ext_csd.sec_trim_mult);
 MMC_DEV_ATTR(erase_group_def, "%d\n", card->ext_csd.erase_group_def);
-MMC_DEV_ATTR(large_sect_size_en, "%d\n", card->ext_csd.large_sect_size_en);
 MMC_DEV_ATTR(tacc_ns, "%d\n", card->csd.tacc_ns);
 MMC_DEV_ATTR(tacc_clks, "%d\n", card->csd.tacc_clks);
 MMC_DEV_ATTR(r2w_factor, "%d\n", card->csd.r2w_factor);
@@ -608,7 +609,6 @@ static struct attribute *mmc_std_attrs[] = {
 	&dev_attr_hc_erase_timeout.attr,
 	&dev_attr_sec_trim_mult.attr,
 	&dev_attr_erase_group_def.attr,
-	&dev_attr_large_sect_size_en.attr,
 	&dev_attr_tacc_ns.attr,
 	&dev_attr_tacc_clks.attr,
 	&dev_attr_r2w_factor.attr,

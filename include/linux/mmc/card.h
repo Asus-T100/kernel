@@ -73,10 +73,10 @@ struct mmc_ext_csd {
 	bool			hpi_en;			/* HPI enablebit */
 	bool			hpi;			/* HPI support bit */
 	unsigned int		hpi_cmd;		/* cmd used as HPI */
+	unsigned int		data_sector_size;	/* 512 bytes or 4KB */
 	bool			bkops; 			/* BKOPS support bit */
 	bool			bkops_en;		/* BKOPS enable bit */
 	unsigned int		rpmb_size;		/* Units: half sector */
-	bool	large_sect_size_en;	/* eMMC4.5 Large Sector Size enabled */
 	u8			raw_exception_status;	/* 53 */
 	u8			exception_events_ctrl;	/* 56 */
 	u8			raw_partition_support;	/* 160 */
