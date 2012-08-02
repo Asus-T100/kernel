@@ -239,21 +239,9 @@ struct android_hdmi_priv {
 	/* common */
 	struct drm_device *dev;
 
-	/* oaktrail specific */
-	/* PCI related parameters are not needed to be exposed.
-	 * Need to remove.
-	 */
-	void *regs;
-	int dpms_mode;
-	struct hdmi_i2c_dev *i2c_dev;
-
-
 	/*medfield specific */
 	u32 hdmib_reg;
 	u32 save_HDMIB;
-	/* Should set this when detect hotplug */
-	bool hdmi_device_connected;
-	struct mdfld_hdmi_i2c *i2c_bus;
 
 	/* EELD packet holder*/
 	hdmi_eeld_t eeld;
@@ -267,7 +255,6 @@ struct android_hdmi_priv {
 	void *data;
 
 	bool is_hdcp_supported;
-	struct i2c_adapter *hdmi_i2c_adapter;   /* for control functions */
 	int monitor_type;
 	void *context;
 };
@@ -279,12 +266,6 @@ extern const struct drm_connector_helper_funcs
 			mdfld_hdmi_connector_helper_funcs;
 
 extern int psb_intel_panel_fitter_pipe(struct drm_device *dev);
-
-#ifdef REMOVE_FROM_DRV
-extern void mdfld_hdmi_audio_init(struct android_hdmi_priv *p_hdmi_priv);
-
-extern void mdfld_msic_init(struct android_hdmi_priv *p_hdmi_priv);
-#endif
 
 #ifdef CONFIG_MDFD_HDMI
 

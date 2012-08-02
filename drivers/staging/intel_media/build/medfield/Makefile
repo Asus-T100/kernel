@@ -206,11 +206,8 @@ gfx-y += $(DISPLAYDIR)/psb_bl.o \
 		$(DISPLAYDIR)/mdfld_dsi_pkg_sender.o \
 		$(DISPLAYDIR)/mdfld_dsi_esd.o
 
-gfx-$(CONFIG_MDFD_HDMI) += $(DISPLAYDIR)/mdfld_msic.o \
-		$(DISPLAYDIR)/psb_hotplug.o \
-		$(DISPLAYDIR)/mdfld_intel_hdcp.o \
-		$(DISPLAYDIR)/mdfld_ti_tpd.o \
-		$(DISPLAYDIR)/psb_intel_hdmi.o
+gfx-$(CONFIG_MDFD_HDMI) += $(DISPLAYDIR)/psb_hotplug.o \
+		$(DISPLAYDIR)/psb_intel_hdmi.o \
 
 gfx-$(CONFIG_SND_INTELMID_HDMI_AUDIO) += $(DISPLAYDIR)/mdfld_hdmi_audio.o
 

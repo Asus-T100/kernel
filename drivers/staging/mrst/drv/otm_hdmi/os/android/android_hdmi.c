@@ -432,14 +432,6 @@ void android_hdmi_driver_init(struct drm_device *dev,
 	/* Disable polling */
 	connector->polled = 0;
 
-	psb_intel_output->hdmi_i2c_adapter =
-				i2c_get_adapter(OTM_HDMI_I2C_ADAPTER_NUM);
-
-	if (psb_intel_output->hdmi_i2c_adapter)
-		pr_debug("i2c_adapter is availabe.\n");
-	else
-		printk(KERN_ALERT "No ddc adapter available!\n");
-	hdmi_priv->hdmi_i2c_adapter = psb_intel_output->hdmi_i2c_adapter;
 #ifdef OTM_HDMI_HDCP_ENABLE
 	otm_hdmi_hdcp_init(hdmi_priv->context, &hdmi_ddc_read_write);
 #endif
@@ -1701,7 +1693,7 @@ void android_hdmi_encoder_restore(struct drm_encoder *encoder)
 {
 	unsigned long delay = 0;
 	struct psb_intel_output *output = NULL;
-	struct mid_intel_hdmi_priv *hdmi_priv = NULL;
+	struct android_hdmi_priv *hdmi_priv = NULL;
 
 	pr_debug("Entered %s\n", __func__);
 

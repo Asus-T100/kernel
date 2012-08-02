@@ -665,15 +665,6 @@ static void mdfld_hdmi_mode_set(struct drm_encoder *encoder,
 	REG_WRITE(hdmi_priv->hdmib_reg, hdmib);
 	REG_READ(hdmi_priv->hdmib_reg);
 
-#ifdef REMOVE_FROM_DRV
-	/*save current set mode*/
-	if (hdmi_priv->current_mode)
-		drm_mode_destroy(dev,
-				 hdmi_priv->current_mode);
-	hdmi_priv->current_mode =
-		drm_mode_duplicate(dev, adjusted_mode);
-#endif
-
 #if (defined(CONFIG_SND_INTELMID_HDMI_AUDIO) || \
 		defined(CONFIG_SND_INTELMID_HDMI_AUDIO_MODULE))
 	/* Send MODE_CHANGE event to Audio driver */
@@ -851,11 +842,6 @@ static void mdfld_hdmi_dpms(struct drm_encoder *encoder, int mode)
 		REG_WRITE(hdmi_priv->hdmib_reg,
 				hdmib | HDMIB_PORT_EN);
 
-#ifdef REMOVE_FROM_DRV
-		if (hdmi_priv->monitor_type == MONITOR_TYPE_HDMI)
-			mdfld_hdmi_set_avi_infoframe(dev, &output->base,
-					hdmi_priv->current_mode);
-#endif
 		if (dev_priv->mdfld_had_event_callbacks
 			&& (hdmi_priv->monitor_type == MONITOR_TYPE_HDMI)
 			&& (hdmip_enabled == 0))
@@ -958,17 +944,6 @@ void mdfld_hdmi_encoder_restore_wq(struct work_struct *work)
 		/* Flush the plane changes */
 		REG_WRITE(dspbsurf_reg, REG_READ(dspbsurf_reg));
 	}
-
-#ifdef REMOVE_FROM_DRV
-	/*restore avi infomation*/
-	if (hdmi_priv->monitor_type == MONITOR_TYPE_HDMI)
-		mdfld_hdmi_set_avi_infoframe(dev,
-				&output->base, hdmi_priv->current_mode);
-	else {
-		REG_WRITE(VIDEO_DIP_CTL, 0x0);
-		REG_WRITE(AUDIO_DIP_CTL, 0x0);
-	}
-#endif
 
 	hdmi_priv->need_encoder_restore = false;
 
