@@ -47,9 +47,10 @@
  */
 static int sst_send_ipc_msg_nowait(struct ipc_post **msg)
 {
-	spin_lock(&sst_drv_ctx->list_spin_lock);
+	unsigned long irq_flags;
+	spin_lock_irqsave(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 	list_add_tail(&(*msg)->node, &sst_drv_ctx->ipc_dispatch_list);
-	spin_unlock(&sst_drv_ctx->list_spin_lock);
+	spin_unlock_irqrestore(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 	sst_drv_ctx->ops->post_message(&sst_drv_ctx->ipc_post_msg_wq);
 	return  0;
 }
@@ -117,49 +118,37 @@ void sst_post_message_mrfld(struct work_struct *work)
 {
 	struct ipc_post *msg;
 	union ipc_header_mrfld header;
-	union  interrupt_reg_mrfld imr;
-	imr.full = 0;
+	unsigned long irq_flags;
 
 	pr_debug("sst: post message called\n");
-	spin_lock(&sst_drv_ctx->list_spin_lock);
-
+	spin_lock_irqsave(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 	/* check list */
 	if (list_empty(&sst_drv_ctx->ipc_dispatch_list)) {
-		/* list is empty, mask imr */
-		pr_debug("Empty msg queue... masking\n");
-
-		imr.full = sst_shim_read64(sst_drv_ctx->shim, SST_IMRX);
-		imr.part.done_interrupt = 1;
-		sst_shim_write64(sst_drv_ctx->shim, SST_IMRX, imr.full);
-		spin_unlock(&sst_drv_ctx->list_spin_lock);
+		/* queue is empty, nothing to send */
+		spin_unlock_irqrestore(&sst_drv_ctx->ipc_spin_lock, irq_flags);
+		pr_debug("Empty msg queue... NO Action\n");
 		return;
 	}
 
 	/* check busy bit */
 	header.f = sst_shim_read64(sst_drv_ctx->shim, SST_IPCX);
 	if (header.p.header_high.part.busy) {
-		/* busy, unmask */
-		pr_debug("sst: Busy not free... unmasking\n");
-		imr.full = sst_shim_read64(sst_drv_ctx->shim, SST_IMRX);
-		imr.part.done_interrupt = 0;
-		sst_shim_write64(sst_drv_ctx->shim, SST_IMRX, imr.full);
-		spin_unlock(&sst_drv_ctx->list_spin_lock);
+		spin_unlock_irqrestore(&sst_drv_ctx->ipc_spin_lock, irq_flags);
+		pr_debug("Busy not free... post later\n");
 		return;
 	}
 	/* copy msg from list */
 	msg = list_entry(sst_drv_ctx->ipc_dispatch_list.next,
 			struct ipc_post, node);
 	list_del(&msg->node);
-	pr_debug("sst: Post message: header = %x\n",
-					msg->mrfld_header.p.header_high.full);
 	pr_debug("sst: size: = %x\n", msg->mrfld_header.p.header_low_payload);
 	if (msg->mrfld_header.p.header_high.part.large)
 		memcpy_toio(sst_drv_ctx->mailbox + SST_MAILBOX_SEND,
 		msg->mailbox_data, msg->mrfld_header.p.header_low_payload);
 	sst_shim_write64(sst_drv_ctx->shim, SST_IPCX, msg->mrfld_header.f);
-
-	spin_unlock(&sst_drv_ctx->list_spin_lock);
-
+	spin_unlock_irqrestore(&sst_drv_ctx->ipc_spin_lock, irq_flags);
+	pr_debug("sst: Post message: header = %x\n",
+					msg->mrfld_header.p.header_high.full);
 	kfree(msg->mailbox_data);
 	kfree(msg);
 	return;
@@ -178,52 +167,42 @@ void sst_post_message_mfld(struct work_struct *work)
 {
 	struct ipc_post *msg;
 	union ipc_header header;
-	union  interrupt_reg imr;
-	imr.full = 0;
+	unsigned long irq_flags;
 
 	pr_debug("post message called\n");
-	spin_lock(&sst_drv_ctx->list_spin_lock);
 
+	spin_lock_irqsave(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 	/* check list */
 	if (list_empty(&sst_drv_ctx->ipc_dispatch_list)) {
-		/* list is empty, mask imr */
-		pr_debug("Empty msg queue... masking\n");
-		imr.full = readl(sst_drv_ctx->shim + SST_IMRX);
-		imr.part.done_interrupt = 1;
-		/* dummy register for shim workaround */
-		sst_shim_write(sst_drv_ctx->shim, SST_IMRX, imr.full);
-		spin_unlock(&sst_drv_ctx->list_spin_lock);
+		/* queue is empty, nothing to send */
+		spin_unlock_irqrestore(&sst_drv_ctx->ipc_spin_lock, irq_flags);
+		pr_debug("Empty msg queue... NO Action\n");
 		return;
 	}
 
 	/* check busy bit */
 	header.full = sst_shim_read(sst_drv_ctx->shim, SST_IPCX);
 	if (header.part.busy) {
-		/* busy, unmask */
-		pr_debug("Busy not free... unmasking\n");
-		imr.full = readl(sst_drv_ctx->shim + SST_IMRX);
-		imr.part.done_interrupt = 0;
-		/* dummy register for shim workaround */
-		sst_shim_write(sst_drv_ctx->shim, SST_IMRX, imr.full);
-		spin_unlock(&sst_drv_ctx->list_spin_lock);
+		spin_unlock_irqrestore(&sst_drv_ctx->ipc_spin_lock, irq_flags);
+		pr_debug("Busy not free... Post later\n");
 		return;
 	}
 	/* copy msg from list */
 	msg = list_entry(sst_drv_ctx->ipc_dispatch_list.next,
 			struct ipc_post, node);
 	list_del(&msg->node);
-	pr_debug("Post message: header = %x\n", msg->header.full);
 	pr_debug("size: = %x\n", msg->header.part.data);
 	if (msg->header.part.large)
 		memcpy_toio(sst_drv_ctx->mailbox + SST_MAILBOX_SEND,
 			msg->mailbox_data, msg->header.part.data);
-	/* dummy register for shim workaround */
 
 	sst_shim_write(sst_drv_ctx->shim, SST_IPCX, msg->header.full);
-	spin_unlock(&sst_drv_ctx->list_spin_lock);
+	spin_unlock_irqrestore(&sst_drv_ctx->ipc_spin_lock, irq_flags);
+	pr_debug("Posted message: header = %x\n", msg->header.full);
 
 	kfree(msg->mailbox_data);
 	kfree(msg);
+	return;
 }
 
 
@@ -232,9 +211,10 @@ int sst_sync_post_message_mrfld(struct ipc_post *msg)
 	union ipc_header_mrfld header;
 	unsigned int loop_count = 0;
 	int retval = 0;
+	unsigned long irq_flags;
 
 	pr_debug("sst: post message called\n");
-	spin_lock(&sst_drv_ctx->list_spin_lock);
+	spin_lock_irqsave(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 
 	/* check busy bit */
 	header.f = sst_shim_read64(sst_drv_ctx->shim, SST_IPCX);
@@ -257,7 +237,7 @@ int sst_sync_post_message_mrfld(struct ipc_post *msg)
 	sst_shim_write64(sst_drv_ctx->shim, SST_IPCX, msg->mrfld_header.f);
 
 out:
-	spin_unlock(&sst_drv_ctx->list_spin_lock);
+	spin_unlock_irqrestore(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 	kfree(msg->mailbox_data);
 	kfree(msg);
 	return retval;
@@ -270,9 +250,9 @@ int sst_sync_post_message_mfld(struct ipc_post *msg)
 	union ipc_header header;
 	unsigned int loop_count = 0;
 	int retval = 0;
-
+	unsigned long irq_flags;
 	pr_debug("sst: sync post message called\n");
-	spin_lock(&sst_drv_ctx->list_spin_lock);
+	spin_lock_irqsave(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 
 	/* check busy bit */
 	header.full = sst_shim_read(sst_drv_ctx->shim, SST_IPCX);
@@ -295,7 +275,7 @@ int sst_sync_post_message_mfld(struct ipc_post *msg)
 	sst_shim_write(sst_drv_ctx->shim, SST_IPCX, msg->header.full);
 
 out:
-	spin_unlock(&sst_drv_ctx->list_spin_lock);
+	spin_unlock_irqrestore(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 	kfree(msg->mailbox_data);
 	kfree(msg);
 	return retval;
@@ -312,7 +292,9 @@ void intel_sst_clear_intr_mfld(void)
 	union interrupt_reg isr;
 	union interrupt_reg imr;
 	union ipc_header clear_ipc;
+	unsigned long irq_flags;
 
+	spin_lock_irqsave(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 	imr.full = sst_shim_read(sst_drv_ctx->shim, SST_IMRX);
 	isr.full = sst_shim_read(sst_drv_ctx->shim, SST_ISRX);
 	/*  write 1 to clear  */;
@@ -327,6 +309,7 @@ void intel_sst_clear_intr_mfld(void)
 	/* un mask busy interrupt */
 	imr.part.busy_interrupt = 0;
 	sst_shim_write(sst_drv_ctx->shim, SST_IMRX, imr.full);
+	spin_unlock_irqrestore(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 }
 
 
@@ -335,7 +318,9 @@ void intel_sst_clear_intr_mrfld(void)
 	union interrupt_reg_mrfld isr;
 	union interrupt_reg_mrfld imr;
 	union ipc_header_mrfld clear_ipc;
+	unsigned long irq_flags;
 
+	spin_lock_irqsave(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 	imr.full = sst_shim_read64(sst_drv_ctx->shim, SST_IMRX);
 	isr.full = sst_shim_read64(sst_drv_ctx->shim, SST_ISRX);
 
@@ -353,6 +338,7 @@ void intel_sst_clear_intr_mrfld(void)
 	/* un mask busy interrupt */
 	imr.part.busy_interrupt = 0;
 	sst_shim_write64(sst_drv_ctx->shim, SST_IMRX, imr.full);
+	spin_unlock_irqrestore(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 }
 
 
@@ -403,12 +389,21 @@ static int process_fw_init(struct sst_ipc_msg_wq *msg)
 */
 void sst_process_message_mfld(struct work_struct *work)
 {
-	struct sst_ipc_msg_wq *msg =
-			container_of(work, struct sst_ipc_msg_wq, wq);
-	int str_id = msg->header.part.str_id;
+	struct sst_ipc_msg_wq *msg, *tmp;
+	int str_id;
 
+	/* copy the message before enabling interrupts */
+	tmp = container_of(work, struct sst_ipc_msg_wq, wq);
+	msg = kzalloc(sizeof(*msg), GFP_KERNEL);
+	if (NULL == msg) {
+		pr_err("%s:memory alloc failed. msg didn't processed\n", __func__);
+		return;
+	}
+	memcpy(msg, tmp, sizeof(*msg));
+	str_id = msg->header.part.str_id;
+
+	intel_sst_clear_intr_mfld();
 	pr_debug("IPC process for %x\n", msg->header.full);
-
 	/* based on msg in list call respective handler */
 	switch (msg->header.part.msg_id) {
 	case IPC_SST_BUF_UNDER_RUN:
@@ -454,7 +449,7 @@ void sst_process_message_mfld(struct work_struct *work)
 		pr_err("Unhandled msg %x header %x\n",
 		msg->header.part.msg_id, msg->header.full);
 	}
-	sst_drv_ctx->ops->clear_interrupt();
+	kfree(msg);
 	return;
 }
 
@@ -469,10 +464,20 @@ void sst_process_message_mfld(struct work_struct *work)
 
 void sst_process_message_mrfld(struct work_struct *work)
 {
-	struct sst_ipc_msg_wq *msg =
-				container_of(work, struct sst_ipc_msg_wq, wq);
+	struct sst_ipc_msg_wq *msg, *tmp;
+	int str_id;
 
-	int str_id = msg->mrfld_header.p.header_high.part.str_id;
+	/* copy the message before enabling interrupts */
+	tmp = container_of(work, struct sst_ipc_msg_wq, wq);
+	msg = kzalloc(sizeof(*msg), GFP_KERNEL);
+	if (NULL == msg) {
+		pr_err("%s:memory alloc failed. msg didn't processed\n", __func__);
+		return;
+	}
+	memcpy(msg, tmp, sizeof(*msg));
+	str_id = msg->mrfld_header.p.header_high.part.str_id;
+	intel_sst_clear_intr_mrfld();
+
 	pr_debug("ProcesMsg:%d\n", msg->mrfld_header.p.header_high.part.msg_id);
 	switch (msg->mrfld_header.p.header_high.part.msg_id) {
 	case IPC_SST_BUF_UNDER_RUN:
@@ -495,17 +500,26 @@ void sst_process_message_mrfld(struct work_struct *work)
 		pr_err("Unhandled msg %x header %x\n",
 		msg->header.part.msg_id, msg->header.full);
 	}
-
-	sst_drv_ctx->ops->clear_interrupt();
+	kfree(msg);
 	return;
 }
 
 void sst_process_reply_mrfld(struct work_struct *work)
 {
-	struct sst_ipc_msg_wq *msg =
-			container_of(work, struct sst_ipc_msg_wq, wq);
-	int str_id = msg->mrfld_header.p.header_high.part.str_id;
+	struct sst_ipc_msg_wq *msg, *tmp;
+	int str_id;
 	struct stream_info *str_info;
+
+	/* copy the message before enabling interrupts */
+	tmp = container_of(work, struct sst_ipc_msg_wq, wq);
+	msg = kzalloc(sizeof(*msg), GFP_KERNEL);
+	if (NULL == msg) {
+		pr_err("%s:memory alloc failed. msg didn't processed\n", __func__);
+		return;
+	}
+	memcpy(msg, tmp, sizeof(*msg));
+	str_id = msg->mrfld_header.p.header_high.part.str_id;
+	intel_sst_clear_intr_mrfld();
 
 	pr_debug("Msg-reply:%d\n", msg->mrfld_header.p.header_high.part.msg_id);
 	switch (msg->mrfld_header.p.header_high.part.msg_id) {
@@ -544,8 +558,7 @@ void sst_process_reply_mrfld(struct work_struct *work)
 		/* Illegal case */
 		pr_err("process reply:default\n");
 	}
-	sst_drv_ctx->ops->clear_interrupt();
-
+	kfree(msg);
 	return;
 }
 
@@ -561,10 +574,21 @@ void sst_process_reply_mrfld(struct work_struct *work)
 */
 void sst_process_reply_mfld(struct work_struct *work)
 {
-	struct sst_ipc_msg_wq *msg =
-			container_of(work, struct sst_ipc_msg_wq, wq);
-	int str_id = msg->header.part.str_id;
+	struct sst_ipc_msg_wq *msg, *tmp;
 	struct stream_info *str_info;
+	int str_id;
+
+	/* copy the message before enabling interrupts */
+	tmp = container_of(work, struct sst_ipc_msg_wq, wq);
+	msg = kzalloc(sizeof(*msg), GFP_KERNEL);
+	if (NULL == msg) {
+		pr_err("%s:memory alloc failed. reply didn't processed\n", __func__);
+		return;
+	}
+	memcpy(msg, tmp, sizeof(*msg));
+	str_id = msg->header.part.str_id;
+
+	intel_sst_clear_intr_mfld();
 
 	pr_debug("sst: IPC process reply for %x\n", msg->header.full);
 
@@ -871,6 +895,6 @@ void sst_process_reply_mfld(struct work_struct *work)
 		/* Illegal case */
 		pr_err("process reply:default = %x\n", msg->header.full);
 	}
-	sst_drv_ctx->ops->clear_interrupt();
+	kfree(msg);
 	return;
 }

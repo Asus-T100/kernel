@@ -44,6 +44,7 @@ static void sst_restore_fw_context(void)
 	struct snd_sst_ctxt_params fw_context;
 	struct ipc_post *msg = NULL;
 	int retval = 0;
+	unsigned long irq_flags;
 
 	pr_debug("restore_fw_context\n");
 	/*nothing to restore*/
@@ -66,9 +67,9 @@ static void sst_restore_fw_context(void)
 	memcpy(msg->mailbox_data, &msg->header, sizeof(u32));
 	memcpy(msg->mailbox_data + sizeof(u32),
 				&fw_context, sizeof(fw_context));
-	spin_lock(&sst_drv_ctx->list_spin_lock);
+	spin_lock_irqsave(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 	list_add_tail(&msg->node, &sst_drv_ctx->ipc_dispatch_list);
-	spin_unlock(&sst_drv_ctx->list_spin_lock);
+	spin_unlock_irqrestore(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 	sst_drv_ctx->ops->post_message(&sst_drv_ctx->ipc_post_msg_wq);
 	retval = sst_wait_timeout(sst_drv_ctx,
 				&sst_drv_ctx->alloc_block[0].ops_block);

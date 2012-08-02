@@ -42,6 +42,11 @@
 #include "intel_sst_fw_ipc.h"
 #include "intel_sst_common.h"
 
+#define SST_EXCE_DUMP_BASE	0xFFFF2c00
+#define SST_EXCE_DUMP_WORD 4
+#define SST_EXCE_DUMP_LEN 32
+#define SST_EXCE_DUMP_SIZE ((SST_EXCE_DUMP_LEN)*(SST_EXCE_DUMP_WORD))
+
 /*
  * sst_get_block_stream - get a new block stream
  *
@@ -102,24 +107,77 @@ int sst_wait_interruptible(struct intel_sst_drv *sst_drv_ctx,
 
 }
 
-static void sst_do_recovery(struct intel_sst_drv *sst)
+void dump_sst_shim(struct intel_sst_drv *sst)
 {
-	int i;
-	struct ipc_post *m, *_m;
+	unsigned long irq_flags;
+
+	spin_lock_irqsave(&sst->ipc_spin_lock, irq_flags);
+	pr_err("audio shim registers:\n"
+		"CSR: %#x\n"
+		"PISR: %#x\n"
+		"PIMR: %#x\n"
+		"ISRX: %#x\n"
+		"ISRD: %#x\n"
+		"IMRX: %#x\n"
+		"IMRD: %#x\n"
+		"IPCX: %#x\n"
+		"IPCD: %#x\n"
+		"ISRSC: %#x\n"
+		"ISRLPESC: %#x\n"
+		"IMRSC: %#x\n"
+		"IMRLPESC: %#x\n"
+		"IPCSC: %#x\n"
+		"IPCLPESC: %#x\n"
+		"CLKCTL: %#x\n"
+		"CSR2: %#x\n",
+		sst_shim_read(sst->shim, SST_CSR),
+		sst_shim_read(sst->shim, SST_PISR),
+		sst_shim_read(sst->shim, SST_PIMR),
+		sst_shim_read(sst->shim, SST_ISRX),
+		sst_shim_read(sst->shim, SST_ISRD),
+		sst_shim_read(sst->shim, SST_IMRX),
+		sst_shim_read(sst->shim, SST_IMRD),
+		sst_shim_read(sst->shim, SST_IPCX),
+		sst_shim_read(sst->shim, SST_IPCD),
+		sst_shim_read(sst->shim, SST_ISRSC),
+		sst_shim_read(sst->shim, SST_ISRLPESC),
+		sst_shim_read(sst->shim, SST_IMRSC),
+		sst_shim_read(sst->shim, SST_IMRLPESC),
+		sst_shim_read(sst->shim, SST_IPCSC),
+		sst_shim_read(sst->shim, SST_IPCLPESC),
+		sst_shim_read(sst->shim, SST_CLKCTL),
+		sst_shim_read(sst->shim, SST_CSR2));
+	spin_unlock_irqrestore(&sst->ipc_spin_lock, irq_flags);
+}
+
+static void dump_sst_crash_area(void)
+{
+	void __iomem *fw_dump_area;
+	u32 dump_word;
+	u8 i;
+
+	/* dump the firmware SRAM where the exception details are stored */
+	fw_dump_area = ioremap_nocache(SST_EXCE_DUMP_BASE, SST_EXCE_DUMP_SIZE);
+	pr_err("Firmware exception dump begins:\n");
+	pr_err("Exception start signature:%#x\n", readl(fw_dump_area + SST_EXCE_DUMP_WORD));
+	pr_err("EXCCAUSE:\t\t\t%#x\n", readl(fw_dump_area + SST_EXCE_DUMP_WORD*2));
+	pr_err("EXCVADDR:\t\t\t%#x\n", readl(fw_dump_area + (SST_EXCE_DUMP_WORD*3)));
+	pr_err("Firmware additional data:\n");
+
+	/* dump remaining FW debug data */
+	for (i = 1; i < (SST_EXCE_DUMP_LEN-4+1); i++) {
+		dump_word = readl(fw_dump_area + (SST_EXCE_DUMP_WORD*3)
+						+ (i*SST_EXCE_DUMP_WORD));
+		pr_err("Data[%d]=%#x\n", i, dump_word);
+	}
+	iounmap(fw_dump_area);
+	pr_err("Firmware exception dump ends\n");
+}
+
+static void sst_stream_recovery(struct intel_sst_drv *sst)
+{
 	struct stream_info *str_info;
-	/*
-	 * settign firmware state as uninit so that the firmware will get
-	 * redownloaded on next request this is because firmare not responding
-	 * for 5 sec is equalant to some unrecoverable error of FW
-	 */
-	mutex_lock(&sst->sst_lock);
-	sst->sst_state = SST_UN_INIT;
-	pr_err("Audio: Intel SST engine encountered an unrecoverable error\n");
-	pr_err("Audio: trying to reset the dsp now\n");
-	pr_err("Audio: Registers-> IPCD %x, IPCX %x, IMR %x, ISR %x, CSR %x\n",
-		sst_shim_read(sst->shim, SST_IPCD), sst_shim_read(sst->shim, SST_IPCX),
-		sst_shim_read(sst->shim, SST_IMRX), sst_shim_read(sst->shim, SST_ISRX),
-		sst_shim_read(sst->shim, SST_CSR));
+	u8 i;
 	for (i = 1; i <= sst->max_streams; i++) {
 		pr_err("Audio: Stream %d, state %d\n", i, sst->streams[i].status);
 		if (sst->streams[i].status != STREAM_UN_INIT) {
@@ -128,15 +186,41 @@ static void sst_do_recovery(struct intel_sst_drv *sst)
 				snd_pcm_stop(str_info->pcm_substream, SNDRV_PCM_STATE_SETUP);
 		}
 	}
+}
+
+static void sst_do_recovery(struct intel_sst_drv *sst)
+{
+	struct ipc_post *m, *_m;
+	unsigned long irq_flags;
+	/*
+	 * setting firmware state as uninit so that the firmware will get
+	 * redownloaded on next request.This is because firmare not responding
+	 * for 1 sec is equalant to some unrecoverable error of FW.
+	 */
+	pr_err("Audio: Intel SST engine encountered an unrecoverable error\n");
+	pr_err("Audio: trying to reset the dsp now\n");
+	mutex_lock(&sst->sst_lock);
+	sst->sst_state = SST_UN_INIT;
+#if 0
+	sst_stream_recovery(sst);
+#endif
+	mutex_unlock(&sst->sst_lock);
 	dump_stack();
+	dump_sst_shim(sst);
+	dump_sst_crash_area();
+
+	spin_lock_irqsave(&sst->ipc_spin_lock, irq_flags);
+	if (list_empty(&sst->ipc_dispatch_list))
+		pr_err("List is Empty\n");
+	spin_unlock_irqrestore(&sst->ipc_spin_lock, irq_flags);
 	list_for_each_entry_safe(m, _m, &sst->ipc_dispatch_list, node) {
 		pr_err("pending msg header %#x\n", m->header.full);
+#if 0
 		list_del(&m->node);
 		kfree(m->mailbox_data);
 		kfree(m);
+#endif
 	}
-
-	mutex_unlock(&sst->sst_lock);
 }
 
 /*

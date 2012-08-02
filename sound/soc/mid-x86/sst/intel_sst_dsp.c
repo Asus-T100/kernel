@@ -44,29 +44,6 @@
 #include "intel_sst_common.h"
 #include <linux/sched.h>
 
-
-/**
- * intel_sst_reset_dsp_mrst - Resetting SST DSP
- *
- * This resets DSP in case of MRST platfroms
- */
-int intel_sst_reset_dsp_mrst(void)
-{
-	union config_status_reg csr;
-
-	pr_debug("Resetting the DSP in mrst\n");
-	csr.full = sst_shim_read(sst_drv_ctx->shim, SST_CSR);
-	csr.full |= 0x382;
-	sst_shim_write(sst_drv_ctx->shim, SST_CSR, csr.full);
-	csr.full = sst_shim_read(sst_drv_ctx->shim, SST_CSR);
-	csr.part.strb_cntr_rst = 0;
-	csr.part.run_stall = 0x1;
-	csr.part.bypass = 0x7;
-	csr.part.sst_reset = 0x1;
-	sst_shim_write(sst_drv_ctx->shim, SST_CSR, csr.full);
-	return 0;
-}
-
 /**
  * intel_sst_reset_dsp_medfield - Resetting SST DSP
  *
@@ -80,27 +57,6 @@ int intel_sst_reset_dsp_mfld(void)
 	csr.full = sst_shim_read(sst_drv_ctx->shim, SST_CSR);
 	csr.full |= 0x382;
 	csr.part.run_stall = 0x1;
-	sst_shim_write(sst_drv_ctx->shim, SST_CSR, csr.full);
-
-	return 0;
-}
-
-/**
- * sst_start_mrst - Start the SST DSP processor
- *
- * This starts the DSP in MRST platfroms
- */
-int sst_start_mrst(void)
-{
-	union config_status_reg csr;
-
-	csr.full = sst_shim_read(sst_drv_ctx->shim, SST_CSR);
-	csr.part.bypass = 0;
-	sst_shim_write(sst_drv_ctx->shim, SST_CSR, csr.full);
-	csr.part.run_stall = 0;
-	csr.part.sst_reset = 0;
-	csr.part.strb_cntr_rst = 1;
-	pr_debug("Setting SST to execute_mrst 0x%x\n", csr.full);
 	sst_shim_write(sst_drv_ctx->shim, SST_CSR, csr.full);
 
 	return 0;
@@ -623,6 +579,8 @@ free_dma:
 static int sst_download_library(const struct firmware *fw_lib,
 				struct snd_sst_lib_download_info *lib)
 {
+	unsigned long irq_flags;
+
 	/* send IPC message and wait */
 	int i;
 	u8 pvt_id;
@@ -649,9 +607,9 @@ static int sst_download_library(const struct firmware *fw_lib,
 	/*str_type.pvt_id = pvt_id;*/
 	memcpy(msg->mailbox_data, &msg->header, sizeof(u32));
 	memcpy(msg->mailbox_data + sizeof(u32), &str_type, sizeof(str_type));
-	spin_lock(&sst_drv_ctx->list_spin_lock);
+	spin_lock_irqsave(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 	list_add_tail(&msg->node, &sst_drv_ctx->ipc_dispatch_list);
-	spin_unlock(&sst_drv_ctx->list_spin_lock);
+	spin_unlock_irqrestore(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 	sst_drv_ctx->ops->post_message(&sst_drv_ctx->ipc_post_msg_wq);
 	retval = sst_wait_timeout(sst_drv_ctx,
 				&sst_drv_ctx->alloc_block[i].ops_block);
@@ -711,9 +669,9 @@ static int sst_download_library(const struct firmware *fw_lib,
 	lib->pvt_id = pvt_id;
 	memcpy(msg->mailbox_data, &msg->header, sizeof(u32));
 	memcpy(msg->mailbox_data + sizeof(u32), lib, sizeof(*lib));
-	spin_lock(&sst_drv_ctx->list_spin_lock);
+	spin_lock_irqsave(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 	list_add_tail(&msg->node, &sst_drv_ctx->ipc_dispatch_list);
-	spin_unlock(&sst_drv_ctx->list_spin_lock);
+	spin_unlock_irqrestore(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 	sst_drv_ctx->ops->post_message(&sst_drv_ctx->ipc_post_msg_wq);
 	pr_debug("Waiting for FW response Download complete\n");
 	sst_drv_ctx->alloc_block[i].ops_block.condition = false;

@@ -72,7 +72,7 @@ enum sst_states {
 #define MAX_ACTIVE_STREAM	3
 #define MAX_ENC_STREAM		1
 #define MAX_AM_HANDLES		1
-#define SST_BLOCK_TIMEOUT	5000
+#define SST_BLOCK_TIMEOUT	1000
 #define BLOCK_UNINIT		-1
 #define RX_TIMESLOT_UNINIT	-1
 
@@ -81,13 +81,22 @@ enum sst_states {
 #define SST_PISR		0x08
 #define SST_PIMR		0x10
 #define SST_ISRX		0x18
+#define SST_ISRD		0x20
 #define SST_IMRX		0x28
+#define SST_IMRD		0x30
 #define SST_IPCX		0x38 /* IPC IA-SST */
 #define SST_IPCD		0x40 /* IPC SST-IA */
-#define SST_ISRD		0x20 /* dummy register for shim workaround */
-#define SST_SHIM_SIZE		0X44
+#define SST_ISRSC		0x48
+#define SST_ISRLPESC		0x50
+#define SST_IMRSC		0x58
+#define SST_IMRLPESC		0x60
+#define SST_IPCSC		0x68
+#define SST_IPCLPESC		0x70
 #define SST_CLKCTL		0x78
 #define SST_CSR2		0x80
+
+#define SST_ISRD		0x20 /* dummy register for shim workaround */
+#define SST_SHIM_SIZE		0x88
 #define SST_PWMCTRL             0x1000
 
 #define SPI_MODE_ENABLE_BASE_ADDR 0xffae4000
@@ -371,7 +380,7 @@ struct sst_sg_list {
  * @mute_info_blk : block structure for mute info block
  * @hs_info_blk : block structure for hs info block
  * @list_lock : sst driver list lock (deprecated)
- * @list_spin_lock : sst driver spin lock block
+ * @ipc_spin_lock : spin lock to handle audio shim access and ipc queue
  * @scard_ops : sst card ops
  * @pci : sst pci device struture
  * @sst_lock : sst device lock
@@ -416,7 +425,8 @@ struct intel_sst_drv {
 	struct stream_alloc_block alloc_block[MAX_ACTIVE_STREAM];
 	struct sst_block	fw_info_blk, ppp_params_blk, dma_info_blk;
 	struct mutex		list_lock;/* mutex for IPC list locking */
-	spinlock_t		list_spin_lock; /* mutex for IPC list locking */
+	spinlock_t		ipc_spin_lock; /* lock for Shim reg access and ipc queue */
+	struct snd_pmic_ops	*scard_ops;
 	struct pci_dev		*pci;
 	struct mutex            sst_lock;
 	struct mutex		stream_lock;

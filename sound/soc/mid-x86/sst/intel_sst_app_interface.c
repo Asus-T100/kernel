@@ -134,13 +134,15 @@ static int sst_create_algo_ipc(struct snd_ppp_params *algo_params,
  */
 static int sst_send_algo_ipc(struct ipc_post **msg)
 {
+	unsigned long irq_flags;
+
 	sst_drv_ctx->ppp_params_blk.condition = false;
 	sst_drv_ctx->ppp_params_blk.ret_code = 0;
 	sst_drv_ctx->ppp_params_blk.on = true;
 	sst_drv_ctx->ppp_params_blk.data = NULL;
-	spin_lock(&sst_drv_ctx->list_spin_lock);
+	spin_lock_irqsave(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 	list_add_tail(&(*msg)->node, &sst_drv_ctx->ipc_dispatch_list);
-	spin_unlock(&sst_drv_ctx->list_spin_lock);
+	spin_unlock_irqrestore(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 	sst_drv_ctx->ops->post_message(&sst_drv_ctx->ipc_post_msg_wq);
 	return sst_wait_timeout(sst_drv_ctx, &sst_drv_ctx->ppp_params_blk);
 }

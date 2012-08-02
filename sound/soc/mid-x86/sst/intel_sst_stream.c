@@ -147,6 +147,7 @@ int sst_alloc_stream_clv(char *params)
 	struct snd_sst_alloc_params_ext *aparams;
 	struct stream_info *str_info;
 	unsigned int stream_ops, device;
+	unsigned long irq_flags;
 	u8 codec;
 
 	pr_debug("In %s\n", __func__);
@@ -215,9 +216,9 @@ int sst_alloc_stream_clv(char *params)
 	str_info->ctrl_blk.ret_code = 0;
 	str_info->ctrl_blk.on = true;
 	str_info->num_ch = num_ch;
-	spin_lock(&sst_drv_ctx->list_spin_lock);
+	spin_lock_irqsave(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 	list_add_tail(&msg->node, &sst_drv_ctx->ipc_dispatch_list);
-	spin_unlock(&sst_drv_ctx->list_spin_lock);
+	spin_unlock_irqrestore(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 	sst_drv_ctx->ops->post_message(&sst_drv_ctx->ipc_post_msg_wq);
 	return str_id;
 }
@@ -234,6 +235,7 @@ int sst_alloc_stream_mfld(char *params)
 	int str_id;
 	u8 codec;
 	u32 rb_size, rb_addr, period_count;
+	unsigned long irq_flags;
 
 	pr_debug("In %s\n", __func__);
 
@@ -311,10 +313,11 @@ int sst_alloc_stream_mfld(char *params)
 	str_info->ctrl_blk.condition = false;
 	str_info->ctrl_blk.ret_code = 0;
 	str_info->ctrl_blk.on = true;
-	spin_lock(&sst_drv_ctx->list_spin_lock);
+	spin_lock_irqsave(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 	list_add_tail(&msg->node, &sst_drv_ctx->ipc_dispatch_list);
-	spin_unlock(&sst_drv_ctx->list_spin_lock);
+	spin_unlock_irqrestore(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 	sst_drv_ctx->ops->post_message(&sst_drv_ctx->ipc_post_msg_wq);
+	pr_debug("SST DBG:alloc stream done\n");
 	return str_id;
 }
 
@@ -415,6 +418,7 @@ int sst_get_fw_info(struct snd_sst_fw_info *info)
 {
 	int retval = 0;
 	struct ipc_post *msg = NULL;
+	unsigned long irq_flags;
 
 	pr_debug("sst_get_fw_info called\n");
 
@@ -428,9 +432,9 @@ int sst_get_fw_info(struct snd_sst_fw_info *info)
 	sst_drv_ctx->fw_info_blk.ret_code = 0;
 	sst_drv_ctx->fw_info_blk.on = true;
 	sst_drv_ctx->fw_info_blk.data = info;
-	spin_lock(&sst_drv_ctx->list_spin_lock);
+	spin_lock_irqsave(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 	list_add_tail(&msg->node, &sst_drv_ctx->ipc_dispatch_list);
-	spin_unlock(&sst_drv_ctx->list_spin_lock);
+	spin_unlock_irqrestore(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 	sst_drv_ctx->ops->post_message(&sst_drv_ctx->ipc_post_msg_wq);
 	retval = sst_wait_timeout(sst_drv_ctx, &sst_drv_ctx->fw_info_blk);
 	if (retval) {
@@ -498,6 +502,7 @@ int sst_pause_stream(int str_id)
 	struct ipc_post *msg = NULL;
 	struct stream_info *str_info;
 	struct intel_sst_ops *ops;
+	unsigned long irq_flags;
 
 	pr_debug("SST DBG:sst_pause_stream for %d\n", str_id);
 	str_info = get_stream_info(str_id);
@@ -521,10 +526,11 @@ int sst_pause_stream(int str_id)
 		str_info->ctrl_blk.condition = false;
 		str_info->ctrl_blk.ret_code = 0;
 		str_info->ctrl_blk.on = true;
-		spin_lock(&sst_drv_ctx->list_spin_lock);
+		spin_lock_irqsave(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 		list_add_tail(&msg->node,
 				&sst_drv_ctx->ipc_dispatch_list);
-		spin_unlock(&sst_drv_ctx->list_spin_lock);
+
+		spin_unlock_irqrestore(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 		ops->post_message(&sst_drv_ctx->ipc_post_msg_wq);
 		retval = sst_wait_timeout(sst_drv_ctx, &str_info->ctrl_blk);
 		if (retval == 0) {
@@ -557,6 +563,7 @@ int sst_resume_stream(int str_id)
 	struct ipc_post *msg = NULL;
 	struct stream_info *str_info;
 	struct intel_sst_ops *ops;
+	unsigned long irq_flags;
 
 	pr_debug("SST DBG:sst_resume_stream for %d\n", str_id);
 	str_info = get_stream_info(str_id);
@@ -578,10 +585,10 @@ int sst_resume_stream(int str_id)
 		str_info->ctrl_blk.condition = false;
 		str_info->ctrl_blk.ret_code = 0;
 		str_info->ctrl_blk.on = true;
-		spin_lock(&sst_drv_ctx->list_spin_lock);
+		spin_lock_irqsave(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 		list_add_tail(&msg->node,
 				&sst_drv_ctx->ipc_dispatch_list);
-		spin_unlock(&sst_drv_ctx->list_spin_lock);
+		spin_unlock_irqrestore(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 		ops->post_message(&sst_drv_ctx->ipc_post_msg_wq);
 		retval = sst_wait_timeout(sst_drv_ctx, &str_info->ctrl_blk);
 		if (!retval) {
@@ -648,6 +655,7 @@ int sst_drain_stream(int str_id)
 	struct ipc_post *msg = NULL;
 	struct stream_info *str_info;
 	struct intel_sst_ops *ops;
+	unsigned long irq_flags;
 
 	pr_debug("SST DBG:sst_drain_stream for %d\n", str_id);
 	str_info = get_stream_info(str_id);
@@ -668,9 +676,9 @@ int sst_drain_stream(int str_id)
 			return -ENOMEM;
 		}
 		sst_fill_header(&msg->header, IPC_IA_DRAIN_STREAM, 0, str_id);
-		spin_lock(&sst_drv_ctx->list_spin_lock);
+		spin_lock_irqsave(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 		list_add_tail(&msg->node, &sst_drv_ctx->ipc_dispatch_list);
-		spin_unlock(&sst_drv_ctx->list_spin_lock);
+		spin_unlock_irqrestore(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 		ops->post_message(&sst_drv_ctx->ipc_post_msg_wq);
 		str_info->data_blk.condition = false;
 		str_info->data_blk.ret_code = 0;
@@ -694,6 +702,7 @@ int sst_free_stream(int str_id)
 	struct ipc_post *msg = NULL;
 	struct stream_info *str_info;
 	struct intel_sst_ops *ops;
+	unsigned long irq_flags;
 
 	pr_debug("SST DBG:sst_free_stream for %d\n", str_id);
 
@@ -727,9 +736,9 @@ int sst_free_stream(int str_id)
 		else
 			sst_fill_header(&msg->header, IPC_IA_FREE_STREAM,
 								 0, str_id);
-		spin_lock(&sst_drv_ctx->list_spin_lock);
+		spin_lock_irqsave(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 		list_add_tail(&msg->node, &sst_drv_ctx->ipc_dispatch_list);
-		spin_unlock(&sst_drv_ctx->list_spin_lock);
+		spin_unlock_irqrestore(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 		if (str_info->data_blk.on == true) {
 			str_info->data_blk.condition = true;
 			str_info->data_blk.ret_code = 0;

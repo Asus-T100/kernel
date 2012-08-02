@@ -118,34 +118,36 @@ static irqreturn_t intel_sst_interrupt_mrfld(int irq, void *context)
 	union ipc_header_mrfld header;
 	union sst_imr_reg_mrfld imr;
 	struct intel_sst_drv *drv = (struct intel_sst_drv *) context;
-	unsigned int size = 0, str_id;
-	struct stream_info *stream ;
+	irqreturn_t retval = IRQ_NONE;
 
 	/* Do not handle interrupt in suspended state */
 	if (drv->sst_state == SST_SUSPENDED)
 		return IRQ_NONE;
 	/* Interrupt arrived, check src */
 	isr.full = sst_shim_read64(drv->shim, SST_ISRX);
-
-	if (isr.part.busy_interrupt) {
-		imr.full = sst_shim_read64(drv->shim, SST_IMRX);
-		imr.part.busy_interrupt = 1;
-		sst_shim_write64(drv->shim, SST_IMRX, imr.full);
-		return IRQ_WAKE_THREAD;
-	} else if (isr.part.done_interrupt) {
+	if (isr.part.done_interrupt) {
 		/* Clear done bit */
-
+		spin_lock(&sst_drv_ctx->ipc_spin_lock);
 		header.f = sst_shim_read64(drv->shim, SST_IPCX);
 		header.p.header_high.part.done = 0;
 		sst_shim_write64(drv->shim, SST_IPCX, header.f);
 		/* write 1 to clear status register */;
 		isr.part.done_interrupt = 1;
 		sst_shim_write64(drv->shim, SST_ISRX, isr.full);
+		spin_unlock(&sst_drv_ctx->ipc_spin_lock);
 		queue_work(sst_drv_ctx->post_msg_wq,
 			&sst_drv_ctx->ipc_post_msg.wq);
-		return IRQ_HANDLED;
-	} else
-		return IRQ_NONE;
+		retval = IRQ_HANDLED;
+	}
+	if (isr.part.busy_interrupt) {
+		spin_lock(&sst_drv_ctx->ipc_spin_lock);
+		imr.full = sst_shim_read64(drv->shim, SST_IMRX);
+		imr.part.busy_interrupt = 1;
+		sst_shim_write64(drv->shim, SST_IMRX, imr.full);
+		spin_unlock(&sst_drv_ctx->ipc_spin_lock);
+		retval = IRQ_WAKE_THREAD;
+	}
+	return retval;
 }
 
 static irqreturn_t intel_sst_irq_thread_mfld(int irq, void *context)
@@ -195,9 +197,9 @@ static irqreturn_t intel_sst_intr_mfld(int irq, void *context)
 {
 	union interrupt_reg isr, imr;
 	union ipc_header header;
+	irqreturn_t retval = IRQ_NONE;
+
 	struct intel_sst_drv *drv = (struct intel_sst_drv *) context;
-	unsigned int size = 0, str_id;
-	struct stream_info *stream ;
 
 	/* Do not handle interrupt in suspended state */
 	if (drv->sst_state == SST_SUSPENDED)
@@ -205,27 +207,30 @@ static irqreturn_t intel_sst_intr_mfld(int irq, void *context)
 
 	/* Interrupt arrived, check src */
 	isr.full = sst_shim_read(drv->shim, SST_ISRX);
-
-	if (isr.part.busy_interrupt) {
-		/* mask busy interrupt */
-		imr.full = sst_shim_read(drv->shim, SST_IMRX);
-		imr.part.busy_interrupt = 1;
-		sst_shim_write(sst_drv_ctx->shim, SST_IMRX, imr.full);
-		return IRQ_WAKE_THREAD;
-	} else if (isr.part.done_interrupt) {
+	if (isr.part.done_interrupt) {
 		/* Clear done bit */
+		spin_lock(&sst_drv_ctx->ipc_spin_lock);
 		header.full = sst_shim_read(drv->shim, SST_IPCX);
 		header.part.done = 0;
 		sst_shim_write(sst_drv_ctx->shim, SST_IPCX, header.full);
 		/* write 1 to clear status register */;
 		isr.part.done_interrupt = 1;
 		sst_shim_write(sst_drv_ctx->shim, SST_ISRX, isr.full);
+		spin_unlock(&sst_drv_ctx->ipc_spin_lock);
 		queue_work(sst_drv_ctx->post_msg_wq,
 			&sst_drv_ctx->ipc_post_msg.wq);
-		return IRQ_HANDLED;
-	} else
-		return IRQ_NONE;
-
+		retval = IRQ_HANDLED;
+	}
+	if (isr.part.busy_interrupt) {
+		/* mask busy interrupt */
+		spin_lock(&sst_drv_ctx->ipc_spin_lock);
+		imr.full = sst_shim_read(drv->shim, SST_IMRX);
+		imr.part.busy_interrupt = 1;
+		sst_shim_write(sst_drv_ctx->shim, SST_IMRX, imr.full);
+		spin_unlock(&sst_drv_ctx->ipc_spin_lock);
+		retval = IRQ_WAKE_THREAD;
+	}
+	return retval;
 }
 
 struct intel_sst_ops mrfld_ops = {
@@ -344,7 +349,7 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 		sst_drv_ctx->alloc_block[i].sst_id = BLOCK_UNINIT;
 		sst_drv_ctx->alloc_block[i].ops_block.condition = false;
 	}
-	spin_lock_init(&sst_drv_ctx->list_spin_lock);
+	spin_lock_init(&sst_drv_ctx->ipc_spin_lock);
 
 	sst_drv_ctx->max_streams = pci_id->driver_data;
 	pr_debug("Got drv data max stream %d\n",
@@ -580,6 +585,7 @@ static void sst_save_dsp_context(void)
 	struct snd_sst_ctxt_params fw_context;
 	unsigned int pvt_id;
 	struct ipc_post *msg = NULL;
+	unsigned long irq_flags;
 
 	/*check cpu type*/
 	if (sst_drv_ctx->pci_id == SST_MRST_PCI_ID)
@@ -604,9 +610,9 @@ static void sst_save_dsp_context(void)
 	memcpy(msg->mailbox_data, &msg->header, sizeof(u32));
 	memcpy(msg->mailbox_data + sizeof(u32),
 				&fw_context, sizeof(fw_context));
-	spin_lock(&sst_drv_ctx->list_spin_lock);
+	spin_lock_irqsave(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 	list_add_tail(&msg->node, &sst_drv_ctx->ipc_dispatch_list);
-	spin_unlock(&sst_drv_ctx->list_spin_lock);
+	spin_unlock_irqrestore(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 	sst_drv_ctx->ops->post_message(&sst_drv_ctx->ipc_post_msg_wq);
 	/*wait for reply*/
 	if (sst_wait_timeout(sst_drv_ctx,
