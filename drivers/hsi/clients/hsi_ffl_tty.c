@@ -2117,6 +2117,7 @@ static void ffl_tty_port_shutdown(struct tty_port *port)
 	/* Wait for hangup completion */
 	ffl_hangup_ctx_clear(&ctx->hangup);
 
+	pr_warn(DRVNAME ": port shutdown (flushing the HSI controller)");
 	hsi_flush(ctx->client);
 
 	del_timer_sync(&rx_ctx->timer);
@@ -2135,6 +2136,7 @@ static void ffl_tty_port_shutdown(struct tty_port *port)
 	flush_work_sync(&ctx->start_tx);
 	flush_work_sync(&ctx->stop_tx);
 
+	pr_warn(DRVNAME ": port shutdown (releasing the HSI controller)");
 	hsi_release_port(ctx->client);
 }
 

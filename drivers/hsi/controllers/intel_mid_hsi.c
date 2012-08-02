@@ -1306,6 +1306,12 @@ static void hsi_ctrl_clean_reset(struct intel_controller *intel_hsi)
 	/* Disable the interrupt line */
 	disable_irq(intel_hsi->irq);
 
+	/* Disable (and flush) all tasklets */
+	tasklet_disable(&intel_hsi->isr_tasklet);
+	tasklet_disable(&intel_hsi->fwd_tasklet);
+
+	pr_debug("hsi: clean reset requested !\n");
+
 	/* Deassert ACWAKE and ACREADY as shutting down */
 	while (deassert_acwake(intel_hsi))
 		;
@@ -1318,10 +1324,6 @@ static void hsi_ctrl_clean_reset(struct intel_controller *intel_hsi)
 
 	/* Remove the RX idle poll timer */
 	del_timer_sync(&intel_hsi->rx_idle_poll);
-
-	/* Disable (and flush) all tasklets */
-	tasklet_disable(&intel_hsi->isr_tasklet);
-	tasklet_disable(&intel_hsi->fwd_tasklet);
 
 	spin_lock_irqsave(&intel_hsi->hw_lock, flags);
 
@@ -1347,12 +1349,10 @@ exit_clean_reset:
 	intel_hsi->err_status	 = 0;
 	intel_hsi->prg_cfg	 = ARASAN_RESET;
 
-	spin_unlock_irqrestore(&intel_hsi->hw_lock, flags);
-	pr_info("hsi_ctrl_clean_reset: hardware is reset\n");
-
 	/* Free all contexts to restart from scratch */
 	free_xfer_ctx(intel_hsi);
-	pr_info("hsi_ctrl_clean_reset: free_xfer_ctx is done\n");
+
+	spin_unlock_irqrestore(&intel_hsi->hw_lock, flags);
 
 	/* Re-enable all tasklets */
 	tasklet_enable(&intel_hsi->fwd_tasklet);
@@ -1700,7 +1700,7 @@ static void do_hsi_start_dma(struct hsi_msg *msg, int lch,
 			     struct intel_controller *intel_hsi, int resuming)
 	__acquires(&intel_hsi->hw_lock) __releases(&intel_hsi->hw_lock)
 {
-	struct intel_dma_ctx *dma_ctx	= intel_hsi->dma_ctx[lch];
+	struct intel_dma_ctx *dma_ctx;
 	struct intel_dma_xfer *dma_xfer;
 	struct intel_dma_lli_xfer *lli_xfer;
 	struct intel_dma_plain_xfer *plain_xfer;
@@ -1713,9 +1713,13 @@ static void do_hsi_start_dma(struct hsi_msg *msg, int lch,
 	int nothing_to_do;
 
 	spin_lock_irqsave(&intel_hsi->hw_lock, flags);
-
-	if (unlikely(intel_hsi->prg_cfg & ARASAN_RESET))
+	dma_ctx = intel_hsi->dma_ctx[lch];
+	/* Check if the DMA IT was scheduled BUT not serverd just
+	   before the calling hsi_ctrl_clean_reset (SMP config) */
+	if (!dma_ctx) {
+		pr_debug("Transfer dropped (RESET requested) !");
 		goto do_start_dma_done;
+	}
 
 	dma_xfer = dma_ctx->ongoing;
 	if (unlikely(dma_xfer->msg != msg)) {
@@ -2269,7 +2273,6 @@ static void hsi_cleanup_dma(struct intel_controller *intel_hsi,
 		hsi_destruct_msg(msg, i, intel_hsi);
 		hsi_transfer(intel_hsi, tx_not_rx, hsi_channel, i);
 	}
-	pr_info("hsi_cleanup_dma done [%s]\n", dev_name(&cl->device));
 }
 
 /**
@@ -2726,7 +2729,14 @@ static int hsi_dma_complete(struct intel_controller *intel_hsi,
 
 	spin_lock_irqsave(&intel_hsi->sw_lock, flags);
 	dma_ctx = intel_hsi->dma_ctx[lch];
-	BUG_ON(!dma_ctx);
+	/* Check if the DMA IT was scheduled BUT not serverd just
+	   before the calling hsi_ctrl_clean_reset (SMP config) */
+	if (!dma_ctx) {
+		pr_debug("Interrupt ignored (RESET already done) !");
+
+		spin_unlock_irqrestore(&intel_hsi->sw_lock, flags);
+		return 0;
+	}
 
 	ongoing_xfer = dma_ctx->ongoing;
 
