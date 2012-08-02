@@ -286,6 +286,7 @@ static irqreturn_t __hdmi_irq_handler_bottomhalf(void *data)
 					/* Raw edid is ready in HDMI context */
 					edid_ready_in_hpd = 1;
 					kfree(edid);
+					pr_debug("Edid Read Success");
 				} else {
 					pr_err("Edid Read failed");
 					/* Retry in next get modes */
@@ -310,6 +311,7 @@ exit:
 			android_hdmi_hotplug_timer_start();
 		} else {
 			hdmi_state = 0;
+			edid_ready_in_hpd = 0;
 			uevent_string = "HOTPLUG_OUT=1";
 			psb_sysfs_uevent(hdmi_priv->dev, uevent_string);
 		}
@@ -976,8 +978,18 @@ int android_hdmi_get_modes(struct drm_connector *connector)
 	if (edid == NULL) {
 		pr_err("%s Edid Read failed -use default edid", __func__);
 		edid = (struct edid *)default_edid;
-	} else
+	} else {
+		edid_ready_in_hpd = 1;
+		if (drm_detect_hdmi_monitor(edid))
+			/* MONITOR_TYPE_HDMI */
+			hdmi_priv->monitor_type =
+					MONITOR_TYPE_HDMI;
+		else
+			/* MONITOR_TYPE_DVI */
+			hdmi_priv->monitor_type =
+					MONITOR_TYPE_DVI;
 		pr_debug("Edid Read Done in get modes\n");
+	}
 
 	/* Store raw edid into HDMI context */
 	otm_hdmi_set_raw_edid(hdmi_priv->context, (char *)edid);
