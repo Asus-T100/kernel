@@ -1342,12 +1342,11 @@ int android_hdmi_crtc_mode_set(struct drm_crtc *crtc,
 	struct drm_framebuffer *fb;
 	struct android_hdmi_priv *hdmi_priv;
 	struct drm_mode_config *mode_config;
-#ifdef MFLD_HDMI_PR3
 	struct psb_intel_output *psb_intel_output = NULL;
 	struct drm_encoder *encoder;
 	struct drm_connector *connector;
 	uint64_t scalingType = DRM_MODE_SCALE_CENTER;
-#endif
+
 	int pipe;
 	otm_hdmi_timing_t otm_mode, otm_adjusted_mode;
 	uint32_t clock_khz;
@@ -1388,7 +1387,6 @@ int android_hdmi_crtc_mode_set(struct drm_crtc *crtc,
 	__android_hdmi_drm_mode_to_otm_timing(&otm_adjusted_mode,
 						adjusted_mode);
 
-#ifdef MFLD_HDMI_PR3
 	list_for_each_entry(connector, &mode_config->connector_list, head) {
 		if (!connector)
 			continue;
@@ -1407,7 +1405,7 @@ int android_hdmi_crtc_mode_set(struct drm_crtc *crtc,
 	psb_intel_crtc->scaling_type = scalingType;
 
 	__android_hdmi_set_scaling_type(hdmi_priv->context, scalingType);
-#endif
+
 	/* Disable the VGA plane that we never use */
 	REG_WRITE(VGACNTRL, VGA_DISP_DISABLE);
 
@@ -1431,7 +1429,6 @@ int android_hdmi_crtc_mode_set(struct drm_crtc *crtc,
 
 	dev_priv->tmds_clock_khz = clock_khz;
 
-#ifdef MFLD_HDMI_PR3
 	/*
 	 * SW workaround for Compliance 7-29 ACR test on 576p@50
 	 * use the nominal pixel clock, instead of the actual clock
@@ -1439,7 +1436,6 @@ int android_hdmi_crtc_mode_set(struct drm_crtc *crtc,
 	if (otm_adjusted_mode.metadata == 17 ||
 			otm_adjusted_mode.metadata == 18)
 		dev_priv->tmds_clock_khz = otm_adjusted_mode.dclk;
-#endif
 
 	psb_intel_wait_for_vblank(dev);
 
@@ -2000,9 +1996,8 @@ enum drm_connector_status android_hdmi_detect(struct drm_connector *connector)
 					OSPM_ISLAND_UP, OSPM_REG_TYPE))
 			BUG();
 
-#ifdef MFLD_HDMI_PR3
 		dev_priv->panel_desc |= DISPLAY_B;
-#endif
+
 		dev_priv->bhdmiconnected = true;
 		return connector_status_connected;
 	} else {

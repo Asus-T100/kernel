@@ -195,12 +195,10 @@ ccflags-y += \
 	-I$(OTM_HDMI_INCDIR)/ipil/specific/mfld
 else ifeq ($(CONFIG_MDFD_HDMI_PR2),y)
 ccflags-y += \
-	-DMFLD_HDMI_PR3 \
 	-I$(OTM_HDMI_INCDIR)/pil/specific/mfld \
 	-I$(OTM_HDMI_INCDIR)/ipil/specific/mfld
 else ifeq ($(CONFIG_CTP_HDMI),y)
 ccflags-y += \
-	-DMFLD_HDMI_PR3 \
 	-I$(OTM_HDMI_INCDIR)/pil/specific/ctp \
 	-I$(OTM_HDMI_INCDIR)/ipil/specific/mfld
 endif
