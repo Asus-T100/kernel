@@ -903,13 +903,19 @@ loop: /* just for coding style check */
 				fault_region->mb_regions[reg_idx].end = end;
 			else {
 				reg_idx = fault_region->num_region++;
+				if (unlikely(reg_idx >=
+					MAX_SLICES_PER_PICTURE)) {
+					PSB_DEBUG_MSVDX(
+						"too many fault regions\n");
+					break;
+				}
 				fault_region->mb_regions[reg_idx].start = start;
 				fault_region->mb_regions[reg_idx].end = end;
 			}
 		} else {
-			reg_idx = fault_region->num_region++;
-			fault_region->mb_regions[reg_idx].start = start;
-			fault_region->mb_regions[reg_idx].end = end;
+			fault_region->num_region++;
+			fault_region->mb_regions[0].start = start;
+			fault_region->mb_regions[0].end = end;
 		}
 
 		break;
