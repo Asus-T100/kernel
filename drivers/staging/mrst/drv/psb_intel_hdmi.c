@@ -2163,27 +2163,3 @@ const struct drm_connector_funcs mdfld_hdmi_connector_funcs = {
 	.set_property = mdfld_hdmi_set_property,
 	.destroy = mdfld_hdmi_connector_destroy,
 };
-
-void mdfld_hdmi_init(struct drm_device *dev,
-		    struct psb_intel_mode_device *mode_dev)
-{
-	android_hdmi_driver_init(dev, (void *)mode_dev);
-
-	if (IS_MDFLD_OLD(dev)) {
-		/* turn on HDMI power rails. These will be on in all non-S0iX
-		states so that HPD and connection status will work. VCC330 will
-		have ~1.7mW usage during idle states when the display is
-		active.*/
-		intel_scu_ipc_iowrite8(MSIC_VCC330CNT, VCC330_ON);
-
-		/* MSIC documentation requires that there be a 500us delay
-		after enabling VCC330 before you can enable VHDMI */
-		usleep_range(500, 1000);
-
-		/* Extend VHDMI switch de-bounce time, to avoid redundant MSIC
-		 * VREG/HDMI interrupt during HDMI cable plugged in/out. */
-		intel_scu_ipc_iowrite8(MSIC_VHDMICNT, VHDMI_ON | VHDMI_DB_30MS);
-	}
-
-	return;
-}

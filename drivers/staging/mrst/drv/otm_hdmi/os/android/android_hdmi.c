@@ -393,6 +393,7 @@ void android_hdmi_driver_init(struct drm_device *dev,
 	struct psb_intel_output *psb_intel_output;
 	struct drm_connector *connector;
 	struct drm_encoder *encoder;
+	bool power_on = false;
 
 	pr_debug("Enter %s", __func__);
 
@@ -442,14 +443,18 @@ void android_hdmi_driver_init(struct drm_device *dev,
 #ifdef OTM_HDMI_HDCP_ENABLE
 	otm_hdmi_hdcp_init(hdmi_priv->context, &hdmi_ddc_read_write);
 #endif
+	/* Initialize the audio driver interface */
 	mdfld_hdmi_audio_init(hdmi_priv);
-	if (IS_MDFLD_OLD(dev))
-		mdfld_msic_init(hdmi_priv);
-
 	/* initialize hdmi encoder restore delayed work */
 	INIT_DELAYED_WORK(&hdmi_priv->enc_work, android_hdmi_encoder_restore_wq);
 
 	drm_sysfs_connector_add(connector);
+
+	/* Turn on power rails for HDMI */
+	power_on = otm_hdmi_power_rails_on();
+	if (!power_on)
+		pr_err("%s: Unable to power on HDMI rails\n", __func__);
+
 	pr_debug("Exit %s\n", __func__);
 }
 

@@ -225,8 +225,6 @@ extern void mrst_dsi_init(struct drm_device *dev,
 			   struct psb_intel_mode_device *mode_dev);
 extern void mid_dsi_init(struct drm_device *dev,
 		    struct psb_intel_mode_device *mode_dev, int dsi_num);
-extern void mdfld_hdmi_init(struct drm_device *dev,
-			   struct psb_intel_mode_device *mode_dev);
 extern void mdfld_wld_init(struct drm_device *dev);
 
 extern void psb_intel_crtc_load_lut(struct drm_crtc *crtc);

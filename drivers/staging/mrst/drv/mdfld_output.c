@@ -30,6 +30,7 @@
 #include "mdfld_dsi_dbi.h"
 #include "mdfld_dsi_dpi.h"
 #include "mdfld_dsi_output.h"
+#include "android_hdmi.h"
 
 #include "displays/tmd_6x10_vid.h"
 #include "displays/h8c7_vid.h"
@@ -167,7 +168,7 @@ void init_panel(struct drm_device* dev, int mipi_pipe, enum panel_type p_type)
 		p_cmd_funcs = NULL;
 		/*hdmi_init(dev);*/
 		PSB_DEBUG_ENTRY( "GFX: Initializing HDMI");
-		mdfld_hdmi_init(dev, &dev_priv->mode_dev);
+		android_hdmi_driver_init(dev, &dev_priv->mode_dev);
 		/*hdmi_output_init(dev);*/
 		break;
 #endif
