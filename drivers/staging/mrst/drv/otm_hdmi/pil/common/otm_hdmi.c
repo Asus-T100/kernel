@@ -685,17 +685,6 @@ void otm_hdmi_deinit(void *context)
 	mutex_destroy(&ctx->srv_sema);
 	mutex_destroy(&ctx->mute_sema);
 
-	/* Bring device to a known state */
-	ipil_hdmi_general_unit_disable(&ctx->dev);
-	ipil_hdmi_general_hdcp_clock_disable(&ctx->dev);
-	ipil_hdmi_general_5V_disable(&ctx->dev);
-	ipil_hdmi_general_audio_clock_disable(&ctx->dev);
-	ipil_hdmi_general_pixel_clock_disable(&ctx->dev);
-	ipil_hdmi_general_tdms_clock_disable(&ctx->dev);
-
-	/* Clearing audio information */
-	ipil_hdmi_audio_deinit(ctx);
-
 	/* Unmap IO region, Disable the PCI devices
 	 */
 	ps_hdmi_pci_dev_deinit(ctx);
@@ -838,30 +827,17 @@ otm_hdmi_ret_t otm_hdmi_device_init(void **context, struct pci_dev *pdev)
 
 	ipil_hdmi_set_hdmi_dev(&ctx->dev);
 
-	/* Decide on I2C HW acceleration */
-	ipil_hdmi_decide_I2C_HW(ctx);
-
 	/* Save the output mode as DTV or HDMT tx */
 	ctx->dtv = g_dtv;
 
 	/* Save the deep color enable flag */
 	ctx->dc = g_dc;
 
-	/* Explicitly disable 5V before enabling it later as transition from
-	 * off to on seems to be responsible to hot plug generation during
-	 * starup */
-	ipil_hdmi_general_5V_disable(&ctx->dev);
-
 	/* Save active GPIO number */
 	ctx->gpio = g_gpio;
 
 	/* Save context */
 	*context = ctx;
-
-	/* Setup all external clocks */
-	rc = ipil_hdmi_set_program_clocks(ctx, 27000);
-	if (rc != OTM_HDMI_SUCCESS)
-		goto exit;
 
 	/* Fill in static timing table */
 	n = __init_tx_modes(ctx->dev.id, g_video_modes, MAX_TIMINGS,
@@ -883,10 +859,6 @@ otm_hdmi_ret_t otm_hdmi_device_init(void **context, struct pci_dev *pdev)
 
 	/* Fill in advertised timings table */
 	otm_hdmi_edid_parse(ctx, OTM_HDMI_USE_EDID_NONE);
-
-	rc = ipil_hdmi_audio_init(ctx);
-	if (rc != OTM_HDMI_SUCCESS)
-		goto exit;
 
 exit:
 	/* Clean up if appropriate */

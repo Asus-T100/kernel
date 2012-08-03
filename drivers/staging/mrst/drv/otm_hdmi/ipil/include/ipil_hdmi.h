@@ -81,60 +81,12 @@
 
 otm_hdmi_ret_t ipil_hdmi_set_hdmi_dev(hdmi_device_t *dev);
 
-otm_hdmi_ret_t ipil_hdmi_decide_I2C_HW(hdmi_context_t *ctx);
-
-/*
- * Description: Enable/disable assertion of 5V signal
- */
-otm_hdmi_ret_t ipil_hdmi_general_5V_enable(hdmi_device_t *dev);
-otm_hdmi_ret_t ipil_hdmi_general_5V_disable(hdmi_device_t *dev);
-
-otm_hdmi_ret_t ipil_hdmi_set_program_clocks(hdmi_context_t *ctx,
-					unsigned int dclk);
-
-/*
- * Description: Initialize/Deinitialize audio
- */
-otm_hdmi_ret_t ipil_hdmi_audio_init(hdmi_context_t *ctx);
-otm_hdmi_ret_t ipil_hdmi_audio_deinit(hdmi_context_t *ctx);
-
-/* Description: Enable/disable HDCP clock. When HDCP clock is disabled
- * unencrypted data can still be transmitted
- */
-otm_hdmi_ret_t ipil_hdmi_general_hdcp_clock_enable(hdmi_device_t *dev);
-otm_hdmi_ret_t ipil_hdmi_general_hdcp_clock_disable(hdmi_device_t *dev);
-
-/*
- * Description: Enable/disable audio and infoframe handling logic. This is
- * useful when operating in DVI mode
- */
-otm_hdmi_ret_t ipil_hdmi_general_audio_clock_enable(hdmi_device_t *dev);
-otm_hdmi_ret_t ipil_hdmi_general_audio_clock_disable(hdmi_device_t *dev);
-
-/*
- * Description: Enable/disable pixel data path from VDC.
- */
-otm_hdmi_ret_t ipil_hdmi_general_pixel_clock_enable(hdmi_device_t *dev);
-otm_hdmi_ret_t ipil_hdmi_general_pixel_clock_disable(hdmi_device_t *dev);
-
-/*
- * Description: Enable/disable TDMS clock, i.e. output path from Tx is off and
- * hence unit is off.
- */
-otm_hdmi_ret_t ipil_hdmi_general_tdms_clock_enable(hdmi_device_t *dev);
-otm_hdmi_ret_t ipil_hdmi_general_tdms_clock_disable(hdmi_device_t *dev);
-
-/*
- * Description: Enable/disable HDMI unit
- */
-otm_hdmi_ret_t ipil_hdmi_general_unit_enable(hdmi_device_t *dev);
-otm_hdmi_ret_t ipil_hdmi_general_unit_disable(hdmi_device_t *dev);
-
 /*
  * Description: programs hdmi pipe src and size of the input.
  *
  * @dev:		hdmi_device_t
- * @scalingtype:	scaling type (FULL_SCREEN, CENTER, NO_SCALE etc.)
+ * @scalingtype		scaling type (FULL_SCREEN, CENTER, NO_SCALE etc.)
+
  * @mode:		mode requested
  * @adjusted_mode:	adjusted mode
  * @fb_width, fb_height:allocated frame buffer dimensions
