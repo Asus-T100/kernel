@@ -18,7 +18,7 @@
 #include <linux/mutex.h>
 #include <linux/rtc.h>
 #include <linux/syscalls.h> /* sys_sync */
-#include <linux/wakelock.h>
+#include <linux/pm_wakeup.h>
 #include <linux/workqueue.h>
 
 #include "power.h"
@@ -31,11 +31,15 @@ static int debug_mask = DEBUG_USER_STATE;
 module_param_named(debug_mask, debug_mask, int, S_IRUGO | S_IWUSR | S_IWGRP);
 
 static DEFINE_MUTEX(early_suspend_lock);
+static DEFINE_MUTEX(suspend_lock);
 static LIST_HEAD(early_suspend_handlers);
 static void early_suspend(struct work_struct *work);
 static void late_resume(struct work_struct *work);
+static void try_to_suspend(struct work_struct *work);
+static struct workqueue_struct *early_suspend_wq;
 static DECLARE_WORK(early_suspend_work, early_suspend);
 static DECLARE_WORK(late_resume_work, late_resume);
+static DECLARE_WORK(suspend_work, try_to_suspend);
 static DEFINE_SPINLOCK(state_lock);
 enum {
 	SUSPEND_REQUESTED = 0x1,
@@ -43,6 +47,40 @@ enum {
 	SUSPEND_REQUESTED_AND_SUSPENDED = SUSPEND_REQUESTED | SUSPENDED,
 };
 static int state;
+static int suspend_state;
+static struct wakeup_source *early_suspend_ws;
+
+void queue_up_early_suspend_work(struct work_struct *work)
+{
+	queue_work(early_suspend_wq, work);
+}
+
+static void try_to_suspend(struct work_struct *work)
+{
+	unsigned int initial_count;
+
+	if (!pm_get_wakeup_count(&initial_count, true))
+		goto queue_again;
+
+	mutex_lock(&suspend_lock);
+
+	if (!pm_save_wakeup_count(initial_count)) {
+		mutex_unlock(&suspend_lock);
+		goto queue_again;
+	}
+
+	if (suspend_state >= PM_SUSPEND_MAX)
+		hibernate();
+	else
+		pm_suspend(suspend_state);
+
+	mutex_unlock(&suspend_lock);
+
+	return;
+
+queue_again:
+	queue_up_early_suspend_work(&suspend_work);
+}
 
 void register_early_suspend(struct early_suspend *handler)
 {
@@ -106,7 +144,7 @@ static void early_suspend(struct work_struct *work)
 abort:
 	spin_lock_irqsave(&state_lock, irqflags);
 	if (state == SUSPEND_REQUESTED_AND_SUSPENDED)
-		wake_unlock(&main_wake_lock);
+		__pm_relax(early_suspend_ws);
 	spin_unlock_irqrestore(&state_lock, irqflags);
 }
 
@@ -144,7 +182,11 @@ void request_suspend_state(suspend_state_t new_state)
 {
 	unsigned long irqflags;
 	int old_sleep;
+	suspend_state_t prev_state;
 
+	mutex_lock(&suspend_lock);
+	prev_state = suspend_state;
+	mutex_unlock(&suspend_lock);
 	spin_lock_irqsave(&state_lock, irqflags);
 	old_sleep = state & SUSPEND_REQUESTED;
 	if (debug_mask & DEBUG_USER_STATE) {
@@ -155,24 +197,38 @@ void request_suspend_state(suspend_state_t new_state)
 		pr_info("request_suspend_state: %s (%d->%d) at %lld "
 			"(%d-%02d-%02d %02d:%02d:%02d.%09lu UTC)\n",
 			new_state != PM_SUSPEND_ON ? "sleep" : "wakeup",
-			requested_suspend_state, new_state,
+			prev_state, new_state,
 			ktime_to_ns(ktime_get()),
 			tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
 			tm.tm_hour, tm.tm_min, tm.tm_sec, ts.tv_nsec);
 	}
 	if (!old_sleep && new_state != PM_SUSPEND_ON) {
 		state |= SUSPEND_REQUESTED;
-		queue_work(suspend_work_queue, &early_suspend_work);
+		queue_up_early_suspend_work(&early_suspend_work);
 	} else if (old_sleep && new_state == PM_SUSPEND_ON) {
 		state &= ~SUSPEND_REQUESTED;
-		wake_lock(&main_wake_lock);
-		queue_work(suspend_work_queue, &late_resume_work);
+		__pm_stay_awake(early_suspend_ws);
+		queue_up_early_suspend_work(&late_resume_work);
 	}
-	requested_suspend_state = new_state;
 	spin_unlock_irqrestore(&state_lock, irqflags);
+	mutex_lock(&suspend_lock);
+	suspend_state = new_state;
+	mutex_unlock(&suspend_lock);
+	queue_up_early_suspend_work(&suspend_work);
 }
 
-suspend_state_t get_suspend_state(void)
+int __init early_suspend_init(void)
 {
-	return requested_suspend_state;
+	early_suspend_ws = wakeup_source_register("early_suspend");
+
+	if (!early_suspend_ws)
+		return -ENOMEM;
+
+	early_suspend_wq = alloc_ordered_workqueue("early_suspend", 0);
+
+	if (early_suspend_wq)
+		return 0;
+
+	wakeup_source_unregister(early_suspend_ws);
+	return -ENOMEM;
 }

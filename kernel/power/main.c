@@ -574,6 +574,7 @@ static int __init pm_init(void)
 	hibernate_image_size_init();
 	hibernate_reserved_size_init();
 	power_kobj = kobject_create_and_add("power", NULL);
+	early_suspend_init();
 	if (!power_kobj)
 		return -ENOMEM;
 	error = sysfs_create_group(power_kobj, &attr_group);
