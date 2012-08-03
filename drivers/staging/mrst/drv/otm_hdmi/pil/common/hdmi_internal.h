@@ -228,9 +228,6 @@ typedef struct {
 	bool mode_set;	/* mode switch completion indicator */
 	bool hdmi;	/* active transmission type */
 
-	void *hdcp;	/* HDCP library handle */
-	bool hdcp_1p1;	/* HDCP 1.1 support */
-
 	unsigned int irq_number;	/* IRQ number */
 	void *hpd_callback;	/* hot plug call back */
 	void *hpd_data;         /* Hotplug user data to be passed back in callback */
@@ -248,37 +245,22 @@ typedef struct {
 	struct mutex mute_sema;	/* to sync av mute operations */
 
 	bool phy_status;/* current HW PHY status */
-	bool ph2_active;/* indicates whether hdcp ph2 is in progress */
-	bool ph1_cancel;/* indicates need to cancel current phase 1 */
 	bool dtv;	/* TX vs DTV indicator */
 	bool dc;	/* Deep Color enable indicator */
 
-	struct timeval ph2_start;	/* start time of hdcp auth phase #2 */
-	struct timeval phy_time;	/* PHY enabling countdown reference */
-	struct timeval hpe_time;	/* last time of any hot plug event */
 	struct timeval hal_timer;	/* HAL polling timer */
 
 	packet_info_t pi_0;	/* data to be sent via 1st available slot */
 	packet_info_t pi_1;	/* data to be sent via 2nd available slot */
-	packet_info_t pi_avi;	/* data to be sent via AVI slot */
 
 	unsigned int gpio;	/* GPIO ID for I2C workaround */
-	unsigned char ksvs[635];	/* list of downstream ksvs */
-	bool ef_int_pend;	/* encrypted frame interrupt indicator
-					*/
-	bool usr_avi;	/* indicator for user-defn AVI */
 	int n_modes_tx;		/* number of static modes */
 	int n_modes_ref;	/* number of reference modes */
-
-	int mode_width;  /* selected mode width */
-	int mode_height; /* selected mode height */
 
 	audio_info_t audio_info;	/* hdmi audio unit information */
 	mute_source_t mute_source;	/* current mute sources list */
 
 	otm_hdmi_phy_info_t phy_info;	/* Current PHY electrical properties */
-	otm_hdmi_hdcp_info_t hdcp_info;	/* HDCP debug information */
-
 	int scaling_type; /* scaling type for HDMI display */
 } hdmi_context_t;
 

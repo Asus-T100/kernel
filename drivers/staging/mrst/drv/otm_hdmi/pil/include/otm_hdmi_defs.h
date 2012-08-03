@@ -811,27 +811,6 @@ typedef struct {
 } otm_hdmi_edid_block_t;
 
 /**
-    This data structure represents HDCP topology information
-*/
-typedef struct {
-	bool hdcp_1p1;	/* Sink supports HDCP 1.1 */
-	bool repeater;	/* Sink is a repeater */
-	bool max_cascade_exceeded; /* Maximum allowed depth exceeded */
-	unsigned int depth; /* Topology depth */
-	bool max_devs_exceeded;	/* Maximum allowed device
-						number exceeded */
-	unsigned int device_count; /* Number of devices connected
-						to the repeater */
-	unsigned char aksv[5]; /* AKSV */
-	unsigned char bksv[5]; /* BKSV read from connected sink */
-	unsigned long long an; /* An */
-	unsigned short ri; /* Ri */
-	unsigned short ri_prime; /* Ri' from Sink */
-	unsigned short pj; /* Pj */
-	unsigned short pj_prime; /* Pj' from Sink */
-} otm_hdmi_hdcp_info_t;
-
-/**
     This enumeration defines the command IDs for the HDMI audio commands.
     See #otm_hdmi_audio_ctrl_t.
 */
