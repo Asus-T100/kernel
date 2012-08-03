@@ -188,13 +188,6 @@ otm_hdmi_ret_t ips_hdmi_general_tdms_clock_disable(hdmi_device_t *dev)
 	return rc;
 }
 
-otm_hdmi_ret_t ips_hdmi_i2c_disable(hdmi_device_t *dev)
-{
-	/* TODO: TO BE IMPLEMENTED */
-	otm_hdmi_ret_t rc = OTM_HDMI_SUCCESS;
-	return rc;
-}
-
 otm_hdmi_ret_t ips_hdmi_disable_vid_infoframe(hdmi_device_t *dev,
 					unsigned int type)
 {

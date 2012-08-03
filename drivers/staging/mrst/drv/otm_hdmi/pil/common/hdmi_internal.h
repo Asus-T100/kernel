@@ -243,7 +243,6 @@ typedef struct {
 
 	struct mutex modes_sema;	/* protecting modes table sharing */
 	struct mutex exec_sema;	/* to sync pd entries execution */
-	struct mutex i2c_sema;	/* i2c access synchronization semaphore */
 	struct mutex hpd_sema;	/* semaphore to sync hot plug sensetive data */
 	struct mutex srv_sema;	/* semaphore to sync service and main threads */
 	struct mutex mute_sema;	/* to sync av mute operations */
@@ -253,7 +252,6 @@ typedef struct {
 	bool ph1_cancel;/* indicates need to cancel current phase 1 */
 	bool dtv;	/* TX vs DTV indicator */
 	bool dc;	/* Deep Color enable indicator */
-	bool hw_i2c;	/* I2C HW acceleration indicator */
 
 	struct timeval ph2_start;	/* start time of hdcp auth phase #2 */
 	struct timeval phy_time;	/* PHY enabling countdown reference */

@@ -180,11 +180,6 @@ otm_hdmi_ret_t ipil_hdmi_general_tdms_clock_disable(hdmi_device_t *dev)
 	return ips_hdmi_general_tdms_clock_disable(dev);
 }
 
-otm_hdmi_ret_t ipil_hdmi_i2c_disable(hdmi_device_t *dev)
-{
-	return ips_hdmi_i2c_disable(dev);
-}
-
 /*
  * Description: enable infoframes
  *

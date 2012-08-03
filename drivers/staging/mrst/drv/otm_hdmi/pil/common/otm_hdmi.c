@@ -649,9 +649,6 @@ static otm_hdmi_ret_t __hdmi_context_init(void *context, struct pci_dev *pdev)
 	/* Create server thread synchronization semaphore */
 	mutex_init(&ctx->srv_sema);
 
-	/* Create server thread synchronization semaphore */
-	mutex_init(&ctx->i2c_sema);
-
 	/* Create AV mute synchronization semaphore */
 	mutex_init(&ctx->mute_sema);
 
@@ -686,7 +683,6 @@ void otm_hdmi_deinit(void *context)
 	mutex_destroy(&ctx->exec_sema);
 	mutex_destroy(&ctx->hpd_sema);
 	mutex_destroy(&ctx->srv_sema);
-	mutex_destroy(&ctx->i2c_sema);
 	mutex_destroy(&ctx->mute_sema);
 
 	/* Bring device to a known state */
@@ -696,7 +692,6 @@ void otm_hdmi_deinit(void *context)
 	ipil_hdmi_general_audio_clock_disable(&ctx->dev);
 	ipil_hdmi_general_pixel_clock_disable(&ctx->dev);
 	ipil_hdmi_general_tdms_clock_disable(&ctx->dev);
-	ipil_hdmi_i2c_disable(&ctx->dev);
 
 	/* Clearing audio information */
 	ipil_hdmi_audio_deinit(ctx);
@@ -1432,13 +1427,6 @@ otm_hdmi_ret_t otm_hdmi_crtc_set_scaling(void *context,
  *
  * Returns:	OTM_HDMI_SUCCESS on success
  *		OTM_HDMI_ERR_INVAL on NULL input arguments
- */
-/*
- * TODO: Revisit scaling type enums:
- * 0 - scale_none
- * 1 - full screen
- * 2 - center
- * 3 - scale aspect
  */
 otm_hdmi_ret_t otm_hdmi_crtc_mode_set(void *context, otm_hdmi_timing_t *mode,
 			otm_hdmi_timing_t *adjusted_mode, int fb_width,

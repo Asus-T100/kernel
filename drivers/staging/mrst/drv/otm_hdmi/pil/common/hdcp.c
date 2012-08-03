@@ -905,7 +905,6 @@ bool otm_hdmi_hdcp_set_power_save(hdmi_context_t *hdmi_context,
 			pr_debug("hdcp: %s failed to alloc mem\n", __func__);
 		if (suspend == true)
 			/* Cleanup WorkQueue */
-			/* TODO: Needs Cosai Calls */
 			flush_workqueue(hdcp_context->hdcp_wq);
 	}
 
