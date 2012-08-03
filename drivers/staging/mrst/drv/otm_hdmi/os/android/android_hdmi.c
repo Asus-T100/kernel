@@ -106,6 +106,11 @@ static const struct {
 	{ 1920, 1080, 2200, 1125,  74250, 30, 34 , OTM_HDMI_PAR_16_9 }, /* 1920x1080p30 16:9 */
 };
 
+/* TEMP HACKS - Will go away with DPMS refactor */
+extern void mdfld_hdmi_dpms(struct drm_encoder *encoder, int mode);
+extern void mdfld_hdmi_connector_dpms(struct drm_connector *connector, int mode);
+/* END - TEMP HACKS - Will go away with DPMS refactor */
+
 /* Function declarations for interrupt routines */
 static irqreturn_t android_hdmi_irq_callback(int irq, void *data);
 static irqreturn_t __hdmi_irq_handler_bottomhalf(void *data);
@@ -128,13 +133,6 @@ static u32 debug_modes_count;
 #define OTM_HDMI_I2C_ADAPTER_NUM 8
 #define OTM_HDMI_PIPE_NUM 1
 #define OTM_HDMI_MAX_DDC_WRITE_SIZE 20
-
-#define SWITCH_DEV_HDMI_NAME "hdmi"
-#define SWITCH_DEV_DVI_NAME "dvi"
-
-#define WPT_IOBAR_OFFSET_BASE	   0x1F0000
-#define WPT_IOBAR_INDEX_REGISTER	0x2110
-#define WPT_IOBAR_DATA_REGISTER	 0x2114
 
 /* Default HDMI Edid - 640x480p 720x480p 1280x720p */
 static unsigned char default_edid[] = {
@@ -369,87 +367,6 @@ static int hdmi_ddc_read_write(bool read,
 }
 #endif
 
-#define android_hdmi_connector_funcs mdfld_hdmi_connector_funcs
-#define android_hdmi_connector_helper_funcs mdfld_hdmi_connector_helper_funcs
-#define android_hdmi_enc_helper_funcs mdfld_hdmi_helper_funcs
-#define android_hdmi_enc_funcs intel_hdmi_enc_funcs
-
-/**
- * This function initializes the hdmi driver called during bootup
- * @dev		: handle to drm_device
- * @mode_dev	: device mode
- *
- * Returns nothing
- *
- * This function initializes the hdmi driver called during bootup
- * which includes initializing drm_connector, drm_encoder, hdmi audio
- * and msic and collects all information reqd in hdmi private.
- */
-void android_hdmi_driver_init(struct drm_device *dev,
-				    void *mode_dev)
-{
-	struct drm_psb_private *dev_priv = dev->dev_private;
-	struct android_hdmi_priv *hdmi_priv = dev_priv->hdmi_priv;
-	struct psb_intel_output *psb_intel_output;
-	struct drm_connector *connector;
-	struct drm_encoder *encoder;
-	bool power_on = false;
-
-	pr_debug("Enter %s", __func__);
-
-	psb_intel_output = kzalloc(sizeof(struct psb_intel_output), GFP_KERNEL);
-	if (!psb_intel_output)
-		return;
-
-	psb_intel_output->mode_dev = mode_dev;
-	connector = &psb_intel_output->base;
-	encoder = &psb_intel_output->enc;
-	drm_connector_init(dev, &psb_intel_output->base,
-			   &android_hdmi_connector_funcs,
-			   DRM_MODE_CONNECTOR_DVID);
-
-	drm_encoder_init(dev, &psb_intel_output->enc, &android_hdmi_enc_funcs,
-			 DRM_MODE_ENCODER_TMDS);
-
-	drm_mode_connector_attach_encoder(&psb_intel_output->base,
-					  &psb_intel_output->enc);
-	psb_intel_output->type = INTEL_OUTPUT_HDMI;
-
-	psb_intel_output->dev_priv = hdmi_priv;
-
-	drm_encoder_helper_add(encoder, &android_hdmi_enc_helper_funcs);
-	drm_connector_helper_add(connector,
-				 &android_hdmi_connector_helper_funcs);
-
-	drm_connector_attach_property(connector,
-					dev->mode_config.scaling_mode_property,
-					DRM_MODE_SCALE_ASPECT);
-
-	connector->display_info.subpixel_order = SubPixelHorizontalRGB;
-	connector->interlace_allowed = false;
-	connector->doublescan_allowed = false;
-
-	/* Disable polling */
-	connector->polled = 0;
-
-#ifdef OTM_HDMI_HDCP_ENABLE
-	otm_hdmi_hdcp_init(hdmi_priv->context, &hdmi_ddc_read_write);
-#endif
-	/* Initialize the audio driver interface */
-	mdfld_hdmi_audio_init(hdmi_priv);
-	/* initialize hdmi encoder restore delayed work */
-	INIT_DELAYED_WORK(&hdmi_priv->enc_work, android_hdmi_encoder_restore_wq);
-
-	drm_sysfs_connector_add(connector);
-
-	/* Turn on power rails for HDMI */
-	power_on = otm_hdmi_power_rails_on();
-	if (!power_on)
-		pr_err("%s: Unable to power on HDMI rails\n", __func__);
-
-	pr_debug("Exit %s\n", __func__);
-}
-
 /**
  * IRQ interrupt bottomhalf handler callback.
  * @irq		: IRQ number
@@ -481,7 +398,7 @@ void android_hdmi_driver_setup(struct drm_device *dev)
 	struct android_hdmi_priv *hdmi_priv;
 	int ret;
 
-	pr_debug("Enter %s", __func__);
+	pr_info("Enter %s", __func__);
 
 	/* HDMI private data */
 	hdmi_priv = kzalloc(sizeof(struct android_hdmi_priv), GFP_KERNEL);
@@ -490,7 +407,7 @@ void android_hdmi_driver_setup(struct drm_device *dev)
 		goto out;
 	}
 
-	pr_debug("%s: Initialize the HDMI device", __func__);
+	pr_debug("%s: Initialize the HDMI device\n", __func__);
 	/* Initialize the HDMI context */
 	if (otm_hdmi_device_init(&(hdmi_priv->context), dev->pdev)) {
 		pr_err("failed to initialize hdmi device\n");
@@ -516,11 +433,13 @@ void android_hdmi_driver_setup(struct drm_device *dev)
 
 	/* Initialize the hotplug delay timer */
 	android_hdmi_hotplug_timer_init(dev);
-	pr_debug("Exit %s", __func__);
+	pr_info("%s: Done with driver setup\n", __func__);
+	pr_info("Exit %s\n", __func__);
 	return;
 free:
 	kfree(hdmi_priv);
 out:
+	pr_info("Exit %s\n", __func__);
 	return;
 }
 
@@ -1567,6 +1486,14 @@ void android_hdmi_restore_and_enable_display(struct drm_device *dev)
 					    data);
 }
 
+/**
+ * DRM encoder save helper routine
+ * @encoder      : handle to drm_encoder
+ *
+ * Returns nothing
+ * This helper routine is used by DRM during early suspend
+ * operation to simply disable active plane.
+ */
 void android_hdmi_encoder_save(struct drm_encoder *encoder)
 {
 	struct drm_device *dev = encoder->dev;
@@ -1689,6 +1616,17 @@ void android_hdmi_encoder_restore_wq(struct work_struct *work)
 	pr_debug("Exiting %s\n", __func__);
 }
 
+/**
+ * DRM encoder restore helper routine
+ * @encoder      : handle to drm_encoder
+ *
+ * Returns nothing
+ * This helper routine is used by DRM during late resume
+ * operation for restoring the pipe and enabling it. The
+ * operation itself is completed in a delayed workqueue
+ * item which ensures restore can be done once the system
+ * is resumed.
+ */
 void android_hdmi_encoder_restore(struct drm_encoder *encoder)
 {
 	unsigned long delay = 0;
@@ -1715,7 +1653,32 @@ void android_hdmi_encoder_restore(struct drm_encoder *encoder)
 	pr_debug("Exiting %s\n", __func__);
 }
 
+/**
+ * DRM encoder mode fixup helper routine
+ * @encoder      : handle to drm_encoder
+ * @mode         : proposed display mode
+ * @adjusted_mode: actual mode to be displayed by HW
+ *
+ * Returns boolean to indicate success/failure
+ * This routine can be used to make adjustments to actual
+ * mode parameters as required by underlying HW.
+ * This is currently not required.
+ */
+bool android_hdmi_mode_fixup(struct drm_encoder *encoder,
+			     struct drm_display_mode *mode,
+			     struct drm_display_mode *adjusted_mode)
+{
+	pr_debug("%s: Nothing be done here\n", __func__);
+	return true;
+}
 
+/**
+ * DRM connector save helper routine
+ * @connector       : handle to drm_connector
+ *
+ * Returns nothing.
+ * This routine is used to save connector state.
+ */
 void android_hdmi_connector_save(struct drm_connector *connector)
 {
 	struct drm_device *dev = connector->dev;
@@ -1734,6 +1697,13 @@ void android_hdmi_connector_save(struct drm_connector *connector)
 	pr_debug("Exiting %s\n", __func__);
 }
 
+/**
+ * DRM connector restore helper routine
+ * @connector       : handle to drm_connector
+ *
+ * Returns nothing.
+ * This routine is used to restore connector state.
+ */
 void android_hdmi_connector_restore(struct drm_connector *connector)
 {
 	struct drm_device *dev = connector->dev;
@@ -1754,7 +1724,7 @@ void android_hdmi_connector_restore(struct drm_connector *connector)
 
 /**
  * disable HDMI display
- * @dev:		drm device
+ * @dev:	drm device
  *
  * Returns:	none.
  */
@@ -1947,7 +1917,9 @@ bool android_check_hdmi_hdcp_link_status(struct drm_device *dev)
  * Returns:	connector_status_connected if hdmi/dvi is connected.
  *		connector_status_disconnected if hdmi/dvi is not connected.
  */
-enum drm_connector_status android_hdmi_detect(struct drm_connector *connector)
+enum drm_connector_status
+android_hdmi_detect(struct drm_connector *connector,
+		    bool force)
 {
 	struct drm_device *dev = NULL;
 	struct drm_psb_private *dev_priv = NULL;
@@ -2010,6 +1982,91 @@ enum drm_connector_status android_hdmi_detect(struct drm_connector *connector)
 	}
 }
 
+static int android_hdmi_set_property(struct drm_connector *connector,
+				     struct drm_property *property,
+				     uint64_t value)
+{
+	struct drm_encoder *pEncoder = connector->encoder;
+	struct psb_intel_crtc *pPsbCrtc = to_psb_intel_crtc(pEncoder->crtc);
+	bool bTransitionFromToCentered = false;
+	bool bTransitionFromToAspect = false;
+	uint64_t curValue;
+
+	pr_debug("Entered %s\n", __func__);
+	if (!strcmp(property->name, "scaling mode") && pEncoder) {
+		pr_debug("Property: scaling mode\n");
+	} else if (!strcmp(property->name, "DPMS") && pEncoder) {
+		pr_debug("Property: DPMS\n");
+	}
+	else {
+		pr_err("%s: Unable to handle property %s\n", __func__,
+		       property->name);
+		goto set_prop_error;
+	}
+
+	if (!strcmp(property->name, "scaling mode") && pEncoder) {
+
+		if (!pPsbCrtc)
+			goto set_prop_error;
+
+		switch (value) {
+		case DRM_MODE_SCALE_FULLSCREEN:
+			break;
+		case DRM_MODE_SCALE_CENTER:
+			break;
+		case DRM_MODE_SCALE_NO_SCALE:
+			break;
+		case DRM_MODE_SCALE_ASPECT:
+			break;
+		default:
+			goto set_prop_error;
+		}
+
+		if (drm_connector_property_get_value(connector, property,
+						     &curValue))
+			goto set_prop_error;
+
+		if (curValue == value)
+			goto set_prop_done;
+
+		if (drm_connector_property_set_value(connector, property,
+						     value))
+			goto set_prop_error;
+
+		bTransitionFromToCentered =
+			(curValue == DRM_MODE_SCALE_NO_SCALE) ||
+			(value == DRM_MODE_SCALE_NO_SCALE) ||
+			(curValue == DRM_MODE_SCALE_CENTER) ||
+			(value == DRM_MODE_SCALE_CENTER);
+
+		bTransitionFromToAspect = (curValue == DRM_MODE_SCALE_ASPECT) ||
+			(value == DRM_MODE_SCALE_ASPECT);
+
+		if (pPsbCrtc->saved_mode.hdisplay != 0 &&
+		    pPsbCrtc->saved_mode.vdisplay != 0) {
+			if (bTransitionFromToCentered ||
+					bTransitionFromToAspect) {
+				if (!drm_crtc_helper_set_mode(pEncoder->crtc,
+							      &pPsbCrtc->saved_mode,
+							      pEncoder->crtc->x,
+							      pEncoder->crtc->y,
+							      pEncoder->crtc->fb))
+					goto set_prop_error;
+			} else {
+				struct drm_encoder_helper_funcs *pEncHFuncs =
+					pEncoder->helper_private;
+				pEncHFuncs->mode_set(pEncoder,
+						     &pPsbCrtc->saved_mode,
+						     &pPsbCrtc->saved_adjusted_mode);
+			}
+		}
+	}
+set_prop_done:
+    return 0;
+set_prop_error:
+    return -1;
+}
+
 /**
  * hdmi helper function to manage power to the display (dpms)
  * @encoder:	hdmi encoder
@@ -2065,6 +2122,119 @@ void android_hdmi_dpms(struct drm_encoder *encoder, int mode)
 #endif
 	pr_debug("Exiting %s\n", __func__);
 }
+
+
+/* OS Adaptation Layer Function Pointers
+ * Functions required to be implemented by Linux DRM framework
+ */
+const struct drm_encoder_helper_funcs android_hdmi_enc_helper_funcs = {
+	.dpms = mdfld_hdmi_dpms,
+	.save = android_hdmi_encoder_save,
+	.restore = android_hdmi_encoder_restore,
+	.mode_fixup = android_hdmi_mode_fixup,
+	.prepare = mdfld_hdmi_encoder_prepare,
+	.mode_set = android_hdmi_enc_mode_set,
+	.commit = mdfld_hdmi_encoder_commit,
+};
+
+const struct drm_connector_helper_funcs
+    android_hdmi_connector_helper_funcs = {
+	.get_modes = android_hdmi_get_modes,
+	.mode_valid = android_hdmi_mode_valid,
+	.best_encoder = mdfld_hdmi_best_encoder,
+};
+
+const struct drm_connector_funcs android_hdmi_connector_funcs = {
+	.dpms = mdfld_hdmi_connector_dpms,
+	.save = android_hdmi_connector_save,
+	.restore = android_hdmi_connector_restore,
+	.detect = android_hdmi_detect,
+	.fill_modes = drm_helper_probe_single_connector_modes,
+	.set_property = android_hdmi_set_property,
+	.destroy = mdfld_hdmi_connector_destroy,
+};
+
+/* END - OS Adaptation Layer Function Pointers
+ * Functions required to be implemented by Linux DRM framework
+ */
+
+/**
+ * This function initializes the hdmi driver called during bootup
+ * @dev		: handle to drm_device
+ * @mode_dev	: device mode
+ *
+ * Returns nothing
+ *
+ * This function initializes the hdmi driver called during bootup
+ * which includes initializing drm_connector, drm_encoder, hdmi audio
+ * and msic and collects all information reqd in hdmi private.
+ */
+void android_hdmi_driver_init(struct drm_device *dev,
+				    void *mode_dev)
+{
+	struct drm_psb_private *dev_priv = dev->dev_private;
+	struct android_hdmi_priv *hdmi_priv = dev_priv->hdmi_priv;
+	struct psb_intel_output *psb_intel_output;
+	struct drm_connector *connector;
+	struct drm_encoder *encoder;
+	bool power_on = false;
+
+	pr_info("Enter %s", __func__);
+
+	psb_intel_output = kzalloc(sizeof(struct psb_intel_output), GFP_KERNEL);
+	if (!psb_intel_output)
+		return;
+
+	psb_intel_output->mode_dev = mode_dev;
+	connector = &psb_intel_output->base;
+	encoder = &psb_intel_output->enc;
+	drm_connector_init(dev, &psb_intel_output->base,
+			   &android_hdmi_connector_funcs,
+			   DRM_MODE_CONNECTOR_DVID);
+
+	drm_encoder_init(dev, &psb_intel_output->enc, &intel_hdmi_enc_funcs,
+			 DRM_MODE_ENCODER_TMDS);
+
+	drm_mode_connector_attach_encoder(&psb_intel_output->base,
+					  &psb_intel_output->enc);
+	psb_intel_output->type = INTEL_OUTPUT_HDMI;
+
+	psb_intel_output->dev_priv = hdmi_priv;
+
+	drm_encoder_helper_add(encoder, &android_hdmi_enc_helper_funcs);
+	drm_connector_helper_add(connector,
+				 &android_hdmi_connector_helper_funcs);
+
+	drm_connector_attach_property(connector,
+					dev->mode_config.scaling_mode_property,
+					DRM_MODE_SCALE_ASPECT);
+
+	connector->display_info.subpixel_order = SubPixelHorizontalRGB;
+	connector->interlace_allowed = false;
+	connector->doublescan_allowed = false;
+
+	/* Disable polling */
+	connector->polled = 0;
+
+#ifdef OTM_HDMI_HDCP_ENABLE
+	otm_hdmi_hdcp_init(hdmi_priv->context, &hdmi_ddc_read_write);
+#endif
+	/* Initialize the audio driver interface */
+	mdfld_hdmi_audio_init(hdmi_priv);
+	/* initialize hdmi encoder restore delayed work */
+	INIT_DELAYED_WORK(&hdmi_priv->enc_work, android_hdmi_encoder_restore_wq);
+
+	drm_sysfs_connector_add(connector);
+
+	/* Turn on power rails for HDMI */
+	power_on = otm_hdmi_power_rails_on();
+	if (!power_on)
+		pr_err("%s: Unable to power on HDMI rails\n", __func__);
+
+	pr_info("%s: Done with driver init\n", __func__);
+	pr_info("Exit %s\n", __func__);
+}
+
 
 /*
  *

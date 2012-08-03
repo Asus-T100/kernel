@@ -773,7 +773,7 @@ static bool mdfld_hdmi_mode_fixup(struct drm_encoder *encoder,
 	return true;
 }
 
-static void mdfld_hdmi_dpms(struct drm_encoder *encoder, int mode)
+void mdfld_hdmi_dpms(struct drm_encoder *encoder, int mode)
 {
 	struct drm_device *dev = encoder->dev;
 	struct drm_psb_private *dev_priv =
@@ -1576,76 +1576,6 @@ fun_exit:
 	return connect_status;
 }
 
-static int mdfld_hdmi_set_property(struct drm_connector *connector,
-				       struct drm_property *property,
-				       uint64_t value)
-{
-	struct drm_encoder *pEncoder = connector->encoder;
-
-	if (!strcmp(property->name, "scaling mode") && pEncoder) {
-		PSB_DEBUG_ENTRY("scaling mode \n");
-	} else if (!strcmp(property->name, "backlight") && pEncoder) {
-		PSB_DEBUG_ENTRY("backlight \n");
-	} else if (!strcmp(property->name, "DPMS") && pEncoder) {
-		PSB_DEBUG_ENTRY("DPMS \n");
-	}
-
-	if (!strcmp(property->name, "scaling mode") && pEncoder) {
-		struct psb_intel_crtc *pPsbCrtc = to_psb_intel_crtc(pEncoder->crtc);
-		bool bTransitionFromToCentered = false;
-		bool bTransitionFromToAspect = false;
-		uint64_t curValue;
-
-		if (!pPsbCrtc)
-			goto set_prop_error;
-
-		switch (value) {
-		case DRM_MODE_SCALE_FULLSCREEN:
-			break;
-		case DRM_MODE_SCALE_CENTER:
-			break;
-		case DRM_MODE_SCALE_NO_SCALE:
-			break;
-		case DRM_MODE_SCALE_ASPECT:
-			break;
-		default:
-			goto set_prop_error;
-		}
-
-		if (drm_connector_property_get_value(connector, property, &curValue))
-			goto set_prop_error;
-
-		if (curValue == value)
-			goto set_prop_done;
-
-		if (drm_connector_property_set_value(connector, property, value))
-			goto set_prop_error;
-
-		bTransitionFromToCentered = (curValue == DRM_MODE_SCALE_NO_SCALE) ||
-			(value == DRM_MODE_SCALE_NO_SCALE) || (curValue == DRM_MODE_SCALE_CENTER) || (value == DRM_MODE_SCALE_CENTER);
-		bTransitionFromToAspect = (curValue == DRM_MODE_SCALE_ASPECT) ||
-			(value == DRM_MODE_SCALE_ASPECT);
-
-		if (pPsbCrtc->saved_mode.hdisplay != 0 &&
-		    pPsbCrtc->saved_mode.vdisplay != 0) {
-			if (bTransitionFromToCentered ||
-					bTransitionFromToAspect) {
-				if (!drm_crtc_helper_set_mode(pEncoder->crtc, &pPsbCrtc->saved_mode,
-					    pEncoder->crtc->x, pEncoder->crtc->y, pEncoder->crtc->fb))
-					goto set_prop_error;
-			} else {
-				struct drm_encoder_helper_funcs *pEncHFuncs  = pEncoder->helper_private;
-				pEncHFuncs->mode_set(pEncoder, &pPsbCrtc->saved_mode,
-						     &pPsbCrtc->saved_adjusted_mode);
-			}
-		}
-	}
-set_prop_done:
-    return 0;
-set_prop_error:
-    return -1;
-}
-
 /**
  * Return the list of HDMI DDC modes if available.
  */
@@ -1982,7 +1912,7 @@ static int mdfld_hdmi_mode_valid(struct drm_connector *connector,
 /* current intel driver doesn't take advantage of encoders
    always give back the encoder for the connector
 */
-static struct drm_encoder *
+struct drm_encoder *
 mdfld_hdmi_best_encoder(struct drm_connector *connector)
 {
 	struct psb_intel_output *psb_intel_output =
@@ -1991,7 +1921,7 @@ mdfld_hdmi_best_encoder(struct drm_connector *connector)
 	return &psb_intel_output->enc;
 }
 
-static void mdfld_hdmi_connector_dpms(struct drm_connector *connector, int mode)
+void mdfld_hdmi_connector_dpms(struct drm_connector *connector, int mode)
 {
 	struct drm_device * dev = connector->dev;
 	struct drm_psb_private * dev_priv = dev->dev_private;
@@ -2077,7 +2007,7 @@ static void mdfld_hdmi_connector_dpms(struct drm_connector *connector, int mode)
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 }
 
-static void mdfld_hdmi_connector_destroy(struct drm_connector *connector)
+void mdfld_hdmi_connector_destroy(struct drm_connector *connector)
 {
 	struct psb_intel_output *psb_intel_output =
 		to_psb_intel_output(connector);
@@ -2087,12 +2017,12 @@ static void mdfld_hdmi_connector_destroy(struct drm_connector *connector)
 	kfree(connector);
 }
 
-static void mdfld_hdmi_enc_destroy(struct drm_encoder *encoder)
+void mdfld_hdmi_enc_destroy(struct drm_encoder *encoder)
 {
 	drm_encoder_cleanup(encoder);
 }
 
-static void mdfld_hdmi_encoder_prepare(struct drm_encoder *encoder)
+void mdfld_hdmi_encoder_prepare(struct drm_encoder *encoder)
 {
 	struct drm_encoder_helper_funcs *encoder_funcs =
 	    encoder->helper_private;
@@ -2100,7 +2030,7 @@ static void mdfld_hdmi_encoder_prepare(struct drm_encoder *encoder)
 	encoder_funcs->dpms(encoder, DRM_MODE_DPMS_OFF);
 }
 
-static void mdfld_hdmi_encoder_commit(struct drm_encoder *encoder)
+void mdfld_hdmi_encoder_commit(struct drm_encoder *encoder)
 {
 	struct drm_encoder_helper_funcs *encoder_funcs =
 	    encoder->helper_private;
@@ -2110,31 +2040,4 @@ static void mdfld_hdmi_encoder_commit(struct drm_encoder *encoder)
 
 const struct drm_encoder_funcs intel_hdmi_enc_funcs = {
 	.destroy = mdfld_hdmi_enc_destroy,
-};
-
-const struct drm_encoder_helper_funcs mdfld_hdmi_helper_funcs = {
-	.dpms = mdfld_hdmi_dpms,
-	.save = android_hdmi_encoder_save,
-	.restore = android_hdmi_encoder_restore,
-	.mode_fixup = mdfld_hdmi_mode_fixup,
-	.prepare = mdfld_hdmi_encoder_prepare,
-	.mode_set = android_hdmi_enc_mode_set,
-	.commit = mdfld_hdmi_encoder_commit,
-};
-
-const struct drm_connector_helper_funcs
-    mdfld_hdmi_connector_helper_funcs = {
-	.get_modes = android_hdmi_get_modes,
-	.mode_valid = android_hdmi_mode_valid,
-	.best_encoder = mdfld_hdmi_best_encoder,
-};
-
-const struct drm_connector_funcs mdfld_hdmi_connector_funcs = {
-	.dpms = mdfld_hdmi_connector_dpms,
-	.save = android_hdmi_connector_save,
-	.restore = android_hdmi_connector_restore,
-	.detect = android_hdmi_detect,
-	.fill_modes = drm_helper_probe_single_connector_modes,
-	.set_property = mdfld_hdmi_set_property,
-	.destroy = mdfld_hdmi_connector_destroy,
 };

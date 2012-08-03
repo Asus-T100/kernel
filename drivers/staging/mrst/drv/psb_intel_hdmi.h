@@ -60,6 +60,13 @@ extern void mdfld_hdcp_init(struct android_hdmi_priv *p_hdmi_priv);
 extern void mdfld_hdmi_audio_init(struct android_hdmi_priv *p_hdmi_priv);
 extern void mdfld_msic_init(struct android_hdmi_priv *p_hdmi_priv);
 extern void mdfld_ti_tpd_init(struct mid_intel_hdmi_priv *p_hdmi_priv);
+
+void mdfld_hdmi_connector_destroy(struct drm_connector *connector);
+void mdfld_hdmi_encoder_prepare(struct drm_encoder *encoder);
+void mdfld_hdmi_encoder_commit(struct drm_encoder *encoder);
+struct drm_encoder *
+mdfld_hdmi_best_encoder(struct drm_connector *connector);
+
 //
 // HDMI command types
 //
