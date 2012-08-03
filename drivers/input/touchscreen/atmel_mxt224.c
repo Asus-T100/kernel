@@ -1243,6 +1243,10 @@ static void mxt_check_calibration(struct mxt_data *mxt)
 	struct device *dev = &mxt->client->dev;
 	int ret;
 
+	/* only select some point to check calibration */
+	if (time_before(jiffies, mxt->timestamp + HZ / 25))
+		return;
+
 	memset(data, 0xff, sizeof(data));
 
 	t6addr = get_object_address(MXT_GEN_COMMANDPROCESSOR_T6,
@@ -1292,7 +1296,6 @@ static void mxt_check_calibration(struct mxt_data *mxt)
 		}
 		if (mxt->calibration_confirm < 2)
 			mxt->calibration_confirm = 1;
-		mxt->timestamp = jiffies;
 	} else if ((touch_ch - 25) <= antitouch_ch &&
 		   (touch_ch || antitouch_ch)) {
 		mxt->calibration_confirm = 0;
@@ -1300,6 +1303,7 @@ static void mxt_check_calibration(struct mxt_data *mxt)
 		 * don't need to manually start calibration here
 		 */
 	}
+	mxt->timestamp = jiffies;
 }
 
 static int process_message(u8 *message, u8 object, struct mxt_data *mxt)
@@ -2408,6 +2412,7 @@ static int __devinit mxt_probe(struct i2c_client *client,
 		}
 	}
 
+	mxt->timestamp = jiffies;
 	mutex_lock(&mxt->dev_mutex);
 	mxt_worker(mxt);
 	mutex_unlock(&mxt->dev_mutex);
@@ -2591,6 +2596,7 @@ void mxt_late_resume(struct early_suspend *h)
 	}
 
 	mxt_es->suspended = FALSE;
+	mxt_es->timestamp = jiffies;
 	mutex_unlock(&mxt_es->dev_mutex);
 }
 #endif
