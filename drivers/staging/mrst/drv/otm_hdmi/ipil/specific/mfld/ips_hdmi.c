@@ -75,6 +75,16 @@
 #include "ipil_internal.h"
 #include "mfld_utils.h"
 
+/**
+ * Description: disable video infoframe
+ *
+ * @dev:        hdmi_device_t
+ * @type:       type of infoframe packet
+ *
+ * Returns:     OTM_HDMI_ERR_NULL_ARG on NULL parameters
+ *              OTM_HDMI_ERR_INVAL on invalid packet type
+ *              OTM_HDMI_SUCCESS on success
+ */
 otm_hdmi_ret_t ips_hdmi_disable_vid_infoframe(hdmi_device_t *dev,
 					unsigned int type)
 {
@@ -117,7 +127,18 @@ otm_hdmi_ret_t ips_hdmi_disable_vid_infoframe(hdmi_device_t *dev,
 	return OTM_HDMI_SUCCESS;
 }
 
-/* TODO: REVISIT FOR OPTIMIZATION */
+/**
+ * Description: enable video infoframe
+ *
+ * @dev:        hdmi_device_t
+ * @type:       type of infoframe packet
+ * @pkt:        infoframe packet data
+ * @freq:       number of times packet needs to be sent
+ *
+ * Returns:     OTM_HDMI_ERR_NULL_ARG on NULL parameters
+ *              OTM_HDMI_ERR_INVAL on invalid packet type
+ *              OTM_HDMI_SUCCESS on success
+ */
 otm_hdmi_ret_t ips_hdmi_enable_vid_infoframe(hdmi_device_t *dev,
 		unsigned int type, otm_hdmi_packet_t *pkt, unsigned int freq)
 {
@@ -192,7 +213,7 @@ otm_hdmi_ret_t ips_hdmi_enable_vid_infoframe(hdmi_device_t *dev,
 	return rc;
 }
 
-/*
+/**
  * Description: disable all infoframes
  *
  * @dev:	hdmi_device
@@ -215,19 +236,6 @@ otm_hdmi_ret_t ips_hdmi_disable_all_infoframes(hdmi_device_t *dev)
 	return OTM_HDMI_SUCCESS;
 }
 
-/* TODO: revisit: mode into a .h file */
-#define IPS_DOT_MIN			19750
-#define IPS_DOT_MAX			120000
-/* Min/Max value based on DPLL parameter interface table
- * from Penwell Display HAS
- */
-#define IPS_DPLL_M_MIN_19		105
-#define IPS_DPLL_M_MAX_19		197
-#define IPS_DPLL_P1_MIN_19		2
-#define IPS_DPLL_P1_MAX_19		10
-#define IPS_LIMIT_DPLL_19		0
-#define IPS_VCO_SEL			(1 << 16)
-
 static const struct ipil_clock_limits_t ipil_clock_limits[] = {
 	{	/* CRYSTAL_19 */
 	 .dot = {.min = IPS_DOT_MIN, .max = IPS_DOT_MAX},
@@ -235,10 +243,6 @@ static const struct ipil_clock_limits_t ipil_clock_limits[] = {
 	 .p1 = {.min = IPS_DPLL_P1_MIN_19, .max = IPS_DPLL_P1_MAX_19},
 	 },
 };
-
-/* TODO: revisit: mode into a .h file */
-#define IPS_M_MIN	    21
-#define IPS_M_MAX	    197
 
 static const u32 ips_m_converts[] = {
 /* M configuration table from 9-bit LFSR table */
@@ -308,7 +312,7 @@ static bool __ips_hdmi_find_bestPll(int target, int refclk,
 	return err != target;
 }
 
-/*
+/**
  * Description: gets the best dpll clock value based on
  *		current timing mode clock.
  *
@@ -372,7 +376,7 @@ otm_hdmi_ret_t ips_hdmi_get_adjusted_clk(unsigned long clk,
 	return OTM_HDMI_SUCCESS;
 }
 
-/*
+/**
  * Description: save HDMI display registers
  *
  * @dev:	hdmi_device_t
@@ -419,7 +423,7 @@ void ips_hdmi_save_display_registers(hdmi_device_t *dev)
 	dev->reg_state.valid = true;
 }
 
-/*
+/**
  * Description:	saves HDMI data island packets
  *
  * @dev:	hdmi_device_t
@@ -468,7 +472,7 @@ void ips_hdmi_save_data_island(hdmi_device_t *dev)
 		dev->avi.valid = false;
 }
 
-/*
+/**
  * Description: disable HDMI display
  *
  * @dev:	hdmi_device_t
@@ -514,7 +518,7 @@ void ips_disable_hdmi(hdmi_device_t *dev)
 
 }
 
-/*
+/**
  * Description: restore HDMI display registers and enable display
  *
  * @dev:	hdmi_device_t
@@ -604,7 +608,7 @@ void ips_hdmi_restore_and_enable_display(hdmi_device_t *dev)
 	dev->reg_state.valid = false;
 }
 
-/*
+/**
  * Description: restore HDMI data island packets
  *
  * @dev:	hdmi_device_t
@@ -628,7 +632,7 @@ void ips_hdmi_restore_data_island(hdmi_device_t *dev)
 	}
 }
 
-/*
+/**
  * Description: destroys any saved HDMI data
  *
  * @dev:        hdmi_device_t

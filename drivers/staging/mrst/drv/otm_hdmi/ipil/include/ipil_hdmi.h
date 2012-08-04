@@ -79,9 +79,16 @@
 #define IPIL_PREFERRED_VDISPLAY IPS_PREFERRED_VDISPLAY
 #define IPIL_PREFERRED_REFRESH_RATE IPS_PREFERRED_REFRESH_RATE
 
+/**
+ * Description: pass hdmi device information to lower layer
+ * @dev:	hdmi_device_t
+ *
+ * Returns:	OTM_HDMI_SUCCESS on success
+ *		OTM_HDMI_ERR_NULL_ARG on bad argument
+ */
 otm_hdmi_ret_t ipil_hdmi_set_hdmi_dev(hdmi_device_t *dev);
 
-/*
+/**
  * Description: programs hdmi pipe src and size of the input.
  *
  * @dev:		hdmi_device_t
@@ -100,7 +107,7 @@ otm_hdmi_ret_t ipil_hdmi_crtc_mode_set_program_dspregs(hdmi_device_t *dev,
 					ipil_timings_t *adjusted_mode,
 					int fb_width, int fb_height);
 
-/*
+/**
  * Description: this is pre-modeset configuration. This can be
  *		resetting HDMI unit, disabling/enabling dpll etc
  *		on the need basis.
@@ -112,7 +119,7 @@ otm_hdmi_ret_t ipil_hdmi_crtc_mode_set_program_dspregs(hdmi_device_t *dev,
  */
 otm_hdmi_ret_t ipil_hdmi_crtc_mode_set_prepare(hdmi_device_t *dev);
 
-/*
+/**
  * Description: programs all the timing registers based on scaling type.
  *
  * @dev:		hdmi_device_t
@@ -128,7 +135,7 @@ otm_hdmi_ret_t ipil_hdmi_crtc_mode_set_program_timings(hdmi_device_t *dev,
 					otm_hdmi_timing_t *mode,
 					otm_hdmi_timing_t *adjusted_mode);
 
-/*
+/**
  * Description: programs dpll clocks, enables dpll and waits
  *		till it locks with DSI PLL
  *
@@ -141,7 +148,7 @@ otm_hdmi_ret_t ipil_hdmi_crtc_mode_set_program_timings(hdmi_device_t *dev,
 otm_hdmi_ret_t	ipil_hdmi_crtc_mode_set_program_dpll(hdmi_device_t *dev,
 							unsigned long dclk);
 
-/*
+/**
  * Description: configures the display plane register and enables
  *		pipeconf.
  *
@@ -152,17 +159,47 @@ otm_hdmi_ret_t	ipil_hdmi_crtc_mode_set_program_dpll(hdmi_device_t *dev,
  */
 otm_hdmi_ret_t ipil_hdmi_crtc_mode_set_program_pipeconf(hdmi_device_t *dev);
 
+/**
+ * Description: enable infoframes
+ *
+ * @dev:	hdmi_device_t
+ * @type:       type of infoframe packet
+ * @pkt:	infoframe packet data
+ * @freq:       number of times packet needs to be sent
+ *
+ * Returns:     OTM_HDMI_ERR_NULL_ARG on NULL parameters
+ *		OTM_HDMI_ERR_INVAL on invalid packet type
+ *		OTM_HDMI_SUCCESS on success
+ */
 otm_hdmi_ret_t ipil_hdmi_enable_infoframe(hdmi_device_t *dev,
 					unsigned int type,
 					otm_hdmi_packet_t *pkt,
 					unsigned int freq);
 
+/**
+ * Description: disable particular infoframe
+ *
+ * @dev:	hdmi_device_t
+ * @type:       type of infoframe packet
+ *
+ * Returns:     OTM_HDMI_ERR_NULL_ARG on NULL parameters
+ *		OTM_HDMI_ERR_INVAL on invalid packet type
+ *		OTM_HDMI_SUCCESS on success
+ */
 otm_hdmi_ret_t ipil_hdmi_disable_infoframe(hdmi_device_t *dev,
 					unsigned int type);
 
+/**
+ * Description: disable all infoframes
+ *
+ * @dev:	hdmi_device_t
+ *
+ * Returns:     OTM_HDMI_ERR_NULL_ARG on NULL parameters
+ *		OTM_HDMI_SUCCESS on success
+ */
 otm_hdmi_ret_t ipil_hdmi_disable_all_infoframes(hdmi_device_t *dev);
 
-/*
+/**
  * Description: encoder mode set function for hdmi. enables phy.
  *		set correct polarity for the current mode, sets
  *		correct panel fitting.
@@ -180,27 +217,27 @@ otm_hdmi_ret_t ipil_hdmi_enc_mode_set(hdmi_device_t *dev,
 					otm_hdmi_timing_t *mode,
 					otm_hdmi_timing_t *adjusted_mode,
 					bool is_monitor_hdmi);
-/*
+/**
  * Description: save HDMI display registers
  *
- * @dev:        hdmi_device_t
+ * @dev:	hdmi_device_t
  *
  * Returns: none
  */
 void ipil_hdmi_save_display_registers(hdmi_device_t *dev);
 void ipil_hdmi_save_data_island(hdmi_device_t *dev);
 
-/*
+/**
  * Description: restore HDMI display registers and enable display
  *
- * @dev:        hdmi_device_t
+ * @dev:	hdmi_device_t
  *
  * Returns: none
  */
 void ipil_hdmi_restore_and_enable_display(hdmi_device_t *dev);
 void ipil_hdmi_restore_data_island(hdmi_device_t *dev);
 
-/*
+/**
  * Description: destroys any saved HDMI data
  *
  * @dev:	hdmi_device_t
@@ -209,10 +246,10 @@ void ipil_hdmi_restore_data_island(hdmi_device_t *dev);
  */
 void ipil_hdmi_destroy_saved_data(hdmi_device_t *dev);
 
-/*
+/**
  * Description: disable HDMI display
  *
- * @dev:        hdmi_device_t
+ * @dev:	hdmi_device_t
  *
  * Returns: none
  */

@@ -75,6 +75,13 @@
 
 static hdmi_device_t *hdmi_dev;
 
+/**
+ * Description: pass hdmi device information to lower layer
+ * @dev:	hdmi_device_t
+ *
+ * Returns:	OTM_HDMI_SUCCESS on success
+ *		OTM_HDMI_ERR_NULL_ARG on bad argument
+ */
 otm_hdmi_ret_t ipil_hdmi_set_hdmi_dev(hdmi_device_t *dev)
 {
 	otm_hdmi_ret_t rc = OTM_HDMI_SUCCESS;
@@ -85,6 +92,12 @@ otm_hdmi_ret_t ipil_hdmi_set_hdmi_dev(hdmi_device_t *dev)
 	return rc;
 }
 
+/**
+ * Description: read 32 bit hdmi register
+ * @reg:	register address
+ *
+ * Returns:	register value
+ */
 uint32_t hdmi_read32(uint32_t reg)
 {
 	if (hdmi_dev)
@@ -93,16 +106,23 @@ uint32_t hdmi_read32(uint32_t reg)
 	return 0;
 }
 
+/**
+ * Description: write 32 bit value to hdmi register
+ * @reg:	register address
+ * @val:	value to be written
+ *
+ * Returns:	none
+ */
 void hdmi_write32(uint32_t reg, uint32_t val)
 {
 	if (hdmi_dev)
 		writel(val, (void *)(hdmi_dev->io_address + reg));
 }
 
-/*
+/**
  * Description: enable infoframes
  *
- * @dev:        hdmi_device_t
+ * @dev:	hdmi_device_t
  * @type:	type of infoframe packet
  * @pkt:	infoframe packet data
  * @freq:	number of times packet needs to be sent
@@ -133,10 +153,10 @@ otm_hdmi_ret_t ipil_hdmi_enable_infoframe(hdmi_device_t *dev,
 	return rc;
 }
 
-/*
+/**
  * Description: disable particular infoframe
  *
- * @dev:        hdmi_device_t
+ * @dev:	hdmi_device_t
  * @type:	type of infoframe packet
  *
  * Returns:     OTM_HDMI_ERR_NULL_ARG on NULL parameters
@@ -165,10 +185,10 @@ otm_hdmi_ret_t ipil_hdmi_disable_infoframe(hdmi_device_t *dev,
 	return rc;
 }
 
-/*
+/**
  * Description: disable all infoframes
  *
- * @dev:        hdmi_device_t
+ * @dev:	hdmi_device_t
  *
  * Returns:     OTM_HDMI_ERR_NULL_ARG on NULL parameters
  *		OTM_HDMI_SUCCESS on success
@@ -259,7 +279,7 @@ static int pfit_pillarbox_wa(int src_height, int dst_height)
 		return 0;
 }
 
-/*
+/**
  * Description: programs hdmi pipe src and size of the input.
  *
  * @dev:		hdmi_device_t
@@ -424,7 +444,7 @@ otm_hdmi_ret_t ipil_hdmi_crtc_mode_set_program_dspregs(hdmi_device_t *dev,
 	return OTM_HDMI_SUCCESS;
 }
 
-/*
+/**
  * Description: this is pre-modeset configuration. This can be
  *		resetting HDMI unit, disabling/enabling dpll etc
  *		on the need basis.
@@ -447,7 +467,7 @@ otm_hdmi_ret_t ipil_hdmi_crtc_mode_set_prepare(hdmi_device_t *dev)
 	return OTM_HDMI_SUCCESS;
 }
 
-/*
+/**
  * Description: programs all the timing registers based on scaling type.
  *
  * @dev:		hdmi_device_t
@@ -529,7 +549,7 @@ otm_hdmi_ret_t ipil_hdmi_crtc_mode_set_program_timings(hdmi_device_t *dev,
 	return OTM_HDMI_SUCCESS;
 }
 
-/*
+/**
  * Description: programs dpll clocks, enables dpll and waits
  *		till it locks with DSI PLL
  *
@@ -601,7 +621,7 @@ otm_hdmi_ret_t	ipil_hdmi_crtc_mode_set_program_dpll(hdmi_device_t *dev,
 	return OTM_HDMI_SUCCESS;
 }
 
-/*
+/**
  * Description: configures the display plane register and enables
  *		pipeconf.
  *
@@ -638,7 +658,7 @@ otm_hdmi_ret_t ipil_hdmi_crtc_mode_set_program_pipeconf(hdmi_device_t *dev)
 	return OTM_HDMI_SUCCESS;
 }
 
-/*
+/**
  * Description: encoder mode set function for hdmi. enables phy.
  *		set correct polarity for the current mode, sets
  *		correct panel fitting.
@@ -709,7 +729,7 @@ otm_hdmi_ret_t ipil_hdmi_enc_mode_set(hdmi_device_t *dev,
 	return OTM_HDMI_SUCCESS;
 }
 
-/*
+/**
  * Description: save HDMI display registers
  *
  * @dev:		hdmi_device_t
@@ -748,7 +768,7 @@ void ipil_hdmi_destroy_saved_data(hdmi_device_t *dev)
 		ips_hdmi_destroy_saved_data(dev);
 }
 
-/*
+/**
  * Description: disable HDMI display
  *
  * @dev:		hdmi_device_t
@@ -761,7 +781,7 @@ void ipil_disable_hdmi(hdmi_device_t *dev)
 		ips_disable_hdmi(dev);
 }
 
-/*
+/**
  * Description: restore HDMI display registers and enable display
  *
  * @dev:		hdmi_device_t
@@ -774,7 +794,7 @@ void ipil_hdmi_restore_and_enable_display(hdmi_device_t *dev)
 		ips_hdmi_restore_and_enable_display(dev);
 }
 
-/*
+/**
  * Description: restore HDMI data island packets
  *
  * @dev:		hdmi_device_t
