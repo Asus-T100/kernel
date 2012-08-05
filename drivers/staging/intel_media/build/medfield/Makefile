@@ -109,6 +109,7 @@ ccflags-$(CONFIG_DRM_MID_DEBUG) += -DBUILD="\"debug\"" -DPVR_BUILD_TYPE="\"debug
 ccflags-$(CONFIG_PCI_MSI) += -DCONFIG_PCI_MSI
 ccflags-$(CONFIG_MDFD_GL3) += -DSUPPORT_EXTERNAL_SYSTEM_CACHE -DCONFIG_MDFD_GL3
 
+ccflags-y += -DHDMI_COMPLIANCE
 
 ENVDIR = ../../../mrst/pvr/services4/srvkm/env/linux
 COMMONDIR = ../../../mrst/pvr/services4/srvkm/common
@@ -255,5 +256,4 @@ obj-$(CONFIG_DRM_CTP) += gfx.o
 obj-$(CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE) += $(DISPLAYDIR)/mdfld_dsi_lvds_bridge.o
 
 obj-$(CONFIG_DRM_MDFLD) += $(DISPLAYDIR)/otm_hdmi/
-obj-$(CONFIG_DRM_CTP) += $(DISPLAYDIR)/otm_hdmi/
 obj-$(CONFIG_DRM_CTP) += $(DISPLAYDIR)/otm_hdmi/
