@@ -1466,13 +1466,6 @@ static int psb_do_init(struct drm_device *dev)
 	tt_pages -= tt_start >> PAGE_SHIFT;
 	dev_priv->sizes.ta_mem_size = 0;
 
-	/* CI region managed by TTM */
-	tmp = dev_priv->ci_region_size >> PAGE_SHIFT; /* CI region size */
-	if (IS_MRST(dev) &&
-	    (dev_priv->ci_region_size != 0) &&
-	    !ttm_bo_init_mm(bdev, TTM_PL_CI, tmp))
-		dev_priv->have_camera = 1;
-
 	/* RAR region managed by TTM */
 	tmp = dev_priv->rar_region_size >> PAGE_SHIFT; /* RAR region size */
 	if ((dev_priv->rar_region_size != 0) &&
@@ -1506,25 +1499,23 @@ static int psb_do_init(struct drm_device *dev)
 	PSB_DEBUG_INIT("Init MSVDX\n");
 	psb_msvdx_init(dev);
 
-	if (IS_MID(dev)) {
-		PSB_DEBUG_INIT("Init Topaz\n");
+	PSB_DEBUG_INIT("Init Topaz\n");
 
-		/*
-		 * Customer will boot droidboot, then boot the MOS kernel.
-		 * It is observed the video encode island is off during the
-		 * MOS kernel boot while the panel is not connected.
-		 * We need to power on it first, else will cause fabric error.
-		 */
-		ospm_power_island_up(OSPM_VIDEO_ENC_ISLAND);
+	/*
+	 * Customer will boot droidboot, then boot the MOS kernel.
+	 * It is observed the video encode island is off during the
+	 * MOS kernel boot while the panel is not connected.
+	 * We need to power on it first, else will cause fabric error.
+	 */
+	ospm_power_island_up(OSPM_VIDEO_ENC_ISLAND);
 
-		/* for sku100L and sku100M, VEC is disabled in fuses */
-		if (IS_MDFLD(dev))
-			pnw_topaz_init(dev);
-		else if (!dev_priv->topaz_disabled)
-			lnc_topaz_init(dev);
-		else
-			ospm_power_island_down(OSPM_VIDEO_ENC_ISLAND);
-	}
+	/* for sku100L and sku100M, VEC is disabled in fuses */
+	if (IS_MDFLD(dev))
+		pnw_topaz_init(dev);
+	else if (!dev_priv->topaz_disabled)
+		lnc_topaz_init(dev);
+	else
+		ospm_power_island_down(OSPM_VIDEO_ENC_ISLAND);
 
 	return 0;
 out_err:
@@ -1663,13 +1654,6 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 
 	DRM_INFO("psb - %s\n", PSB_PACKAGE_VERSION);
 
-	if (IS_MDFLD(dev))
-		DRM_INFO("Run drivers on Medfield platform!\n");
-	else if (IS_MRST(dev))
-		DRM_INFO("Run drivers on Moorestown platform!\n");
-	else
-		DRM_INFO("Run drivers on Poulsbo platform!\n");
-
 	dev_priv = kzalloc(sizeof(*dev_priv), GFP_KERNEL);
 	if (dev_priv == NULL)
 		return -ENOMEM;
@@ -1746,13 +1730,8 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	resource_start = pci_resource_start(dev->pdev, PSB_MMIO_RESOURCE);
 
 #ifdef CONFIG_MDFD_VIDEO_DECODE
-	if (IS_MSVDX(dev)) /* Work around for medfield by Li */
-		dev_priv->msvdx_reg =
-			ioremap(resource_start + MRST_MSVDX_OFFSET,
-				PSB_MSVDX_SIZE);
-	else
-		dev_priv->msvdx_reg =
-			ioremap(resource_start + PSB_MSVDX_OFFSET,
+	dev_priv->msvdx_reg =
+		ioremap(resource_start + MRST_MSVDX_OFFSET,
 				PSB_MSVDX_SIZE);
 
 	if (!dev_priv->msvdx_reg)
@@ -1818,17 +1797,17 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 
 #ifdef CONFIG_MDFD_GL3
 	/* GL3 */
-	if (IS_MDFLD(dev) && dev_priv->platform_rev_id != MDFLD_PNW_A0)
+	if (IS_MDFLD(dev) && dev_priv->platform_rev_id != MDFLD_PNW_A0) {
 		dev_priv->gl3_reg =
 			ioremap(resource_start + MDFLD_GL3_OFFSET, MDFLD_GL3_SIZE);
+		if (!dev_priv->gl3_reg)
+			goto out_err;
+	}
 #endif
 
 	PSB_DEBUG_INIT("Init TTM fence and BO driver\n");
 
-	if (IS_MRST(dev))
-		get_ci_info(dev_priv);
-	if (IS_MDFLD(dev))
-		get_imr_info(dev_priv);
+	get_imr_info(dev_priv);
 
 	/* Init OSPM support */
 	ospm_power_init(dev);
@@ -1839,11 +1818,10 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 		goto out_err;
 
 	/* For VXD385 DE2.x firmware support 16bit fence value */
-	if (IS_MDFLD(dev) && IS_FW_UPDATED) {
-		dev_priv->fdev.fence_class[PSB_ENGINE_VIDEO].wrap_diff = (1 << 14);
-		dev_priv->fdev.fence_class[PSB_ENGINE_VIDEO].flush_diff = (1 << 13);
-		dev_priv->fdev.fence_class[PSB_ENGINE_VIDEO].sequence_mask = 0x0000ffff;
-	}
+	dev_priv->fdev.fence_class[PSB_ENGINE_VIDEO].wrap_diff = (1 << 14);
+	dev_priv->fdev.fence_class[PSB_ENGINE_VIDEO].flush_diff = (1 << 13);
+	dev_priv->fdev.fence_class[PSB_ENGINE_VIDEO].sequence_mask =
+								0x0000ffff;
 
 	dev_priv->has_fence_device = 1;
 
@@ -1948,15 +1926,12 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	if (IS_POULSBO(dev) && dev_priv->lid_state)
 		psb_lid_timer_init(dev_priv);
 
-	/*initialize the MSI for MRST*/
-	if (IS_MID(dev)) {
-		if (pci_enable_msi(dev->pdev)) {
-			DRM_ERROR("Enable MSI failed!\n");
-		} else {
-			PSB_DEBUG_INIT("Enabled MSI IRQ (%d)\n",
-				       dev->pdev->irq);
-			/* pci_write_config_word(pdev, 0x04, 0x07); */
-		}
+	if (pci_enable_msi(dev->pdev)) {
+		DRM_ERROR("Enable MSI failed!\n");
+	} else {
+		PSB_DEBUG_INIT("Enabled MSI IRQ (%d)\n",
+			       dev->pdev->irq);
+		/* pci_write_config_word(pdev, 0x04, 0x07); */
 	}
 
 	ret = drm_vblank_init(dev, dev_priv->num_pipe);
@@ -3608,20 +3583,7 @@ static long psb_unlocked_ioctl(struct file *filp, unsigned int cmd,
 	long ret;
 
 	DRM_DEBUG("cmd = %x, nr = %x\n", cmd, nr);
-	/*Simple (work around)Ugly hack to make runtime pm start only after X is initialized*/
-	/*This doesn't work with Medfield RT PM.*/
-#ifdef CONFIG_GFX_RTPM
-	if (IS_MRST(dev)) {
-		if (drm_psb_ospm && !runtime_allowed && !(dev_priv->is_lvds_on || dev_priv->is_mipi_on)) {
-			runtime_allowed++;
-		}
-		if ((runtime_allowed == 1) && (dev_priv->is_lvds_on || dev_priv->is_mipi_on)) {
-			runtime_allowed++;
-			pm_runtime_allow(&dev->pdev->dev);
-			dev_priv->rpm_enabled = 1;
-		}
-	}
-#endif
+
 	/*
 	 * The driver private ioctls and TTM ioctls should be
 	 * thread-safe.

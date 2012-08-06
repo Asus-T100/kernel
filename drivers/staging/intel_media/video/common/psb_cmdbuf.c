@@ -30,12 +30,9 @@
 #include "ttm/ttm_execbuf_util.h"
 #include "psb_ttm_userobj_api.h"
 #include "ttm/ttm_placement.h"
-#include "psb_sgx.h"
+#include "psb_cmdbuf.h"
 #include "psb_intel_reg.h"
 #include "psb_powermgmt.h"
-
-
-#ifdef CONFIG_MDFD_VIDEO_DECODE
 
 static inline int psb_same_page(unsigned long offset,
 				unsigned long offset2)
@@ -292,7 +289,6 @@ out_unlock:
 	return ret;
 }
 #endif
-
 
 static int psb_validate_buffer_list(struct drm_file *file_priv,
 				    uint32_t fence_class,
@@ -905,27 +901,6 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 
 	switch (arg->engine) {
 	case PSB_ENGINE_VIDEO:
-		if (IS_MRST(dev) && (arg->cmdbuf_size == (16 + 32))) {
-			/* Identify deblock msg cmdbuf */
-			/* according to cmdbuf_size */
-			struct ttm_bo_kmap_obj cmd_kmap;
-			struct ttm_buffer_object *deblock;
-			uint32_t *cmd;
-			bool is_iomem;
-
-			/* write regIO BO's address after deblcok msg */
-			ret = ttm_bo_kmap(cmd_buffer, 0, 1, &cmd_kmap);
-			if (unlikely(ret != 0))
-				goto out_err4;
-			cmd = (uint32_t *)(ttm_kmap_obj_virtual(&cmd_kmap,
-								&is_iomem) + 16);
-			deblock = ttm_buffer_object_lookup(tfile,
-							   (uint32_t)(*cmd));
-			*cmd = (uint32_t)deblock;
-			ttm_bo_unref(&deblock); /* FIXME Should move this to interrupt handler? */
-			ttm_bo_kunmap(&cmd_kmap);
-		}
-
 		ret = psb_cmdbuf_video(file_priv, &context->validate_list,
 				       context->fence_types, arg,
 				       cmd_buffer, &fence_arg);
@@ -1013,6 +988,3 @@ void psb_gl3_global_invalidation(struct drm_device *dev)
 #endif
 #endif
 }
-
-#endif  /* CONFIG_MDFD_VIDEO_DECODE */
-

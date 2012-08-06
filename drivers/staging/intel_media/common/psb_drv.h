@@ -169,7 +169,6 @@ enum panel_type {
  */
 
 #define MRST_MSVDX_OFFSET	0x90000	/*MSVDX Base offset */
-#define PSB_MSVDX_OFFSET	0x50000	/*MSVDX Base offset */
 
 #define PSB_IED_DRM_CNTL_STATUS		0x2208
 #define IED_DRM_VLD			(1<<0)
@@ -1227,7 +1226,7 @@ extern void psb_mmu_remove_pages(struct psb_mmu_pd *pd,
 				 uint32_t desired_tile_stride,
 				 uint32_t hw_tile_stride);
 /*
- *psb_sgx.c
+ *psb_cmdbuf.c
  */
 
 
@@ -1545,7 +1544,6 @@ do {                                                \
 			       ((dev)->pci_device == 0x8109)) */
 
 #define IS_MRST(dev) (((dev)->pci_device & 0xfff8) == 0x4100)
-#define IS_PENWELL(dev) 0 /* FIXME */
 
 /* Will revisit it after CLOVER TRAIL PO. */
 /* pciid: CLV A0 = 0X8C7, CLV B0 = 0X8C8-0X8CB, CLV+ A0/B0 0X8CC-0X8CF.*/
@@ -1561,7 +1559,6 @@ do {                                                \
 #define IS_MDFLD(dev) (IS_CTP(dev) || IS_MDFLD_OLD(dev))
 #define IS_MID(dev) (IS_MRST(dev) || IS_MDFLD(dev))
 
-#define IS_MSVDX(dev) (IS_MRST(dev) || IS_MDFLD(dev))
 #define IS_TOPAZ(dev) ((IS_MRST(dev) && (((dev)->pci_device & 0xfffc) != PCI_ID_TOPAZ_DISABLED)) || IS_MDFLD(dev))
 
 #define IS_D0(dev) (((dev)->pdev->revision >= 0xc) || \

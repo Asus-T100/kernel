@@ -179,7 +179,6 @@ gfx-y += $(FBDEVDIR)/drmlfb_displayclass.o \
 
 gfx-y += $(MEDIA_COMMON_DIR)/psb_drv.o \
 		$(MEDIA_COMMON_DIR)/psb_reset.o \
-		$(MEDIA_COMMON_DIR)/psb_sgx.o \
 		$(MEDIA_COMMON_DIR)/psb_powermgmt.o \
 		$(MEDIA_COMMON_DIR)/psb_irq.o \
 		$(MEDIA_COMMON_DIR)/psb_gtt.o \
@@ -233,11 +232,13 @@ gfx-$(CONFIG_MDFD_VIDEO_DECODE) += $(ENCODE_DIR)/lnc_topaz.o \
 		$(ENCODE_DIR)/lnc_topazinit.o \
 		$(ENCODE_DIR)/pnw_topaz.o \
 		$(ENCODE_DIR)/pnw_topazinit.o \
+		$(VIDEO_COMMON_DIR)/psb_cmdbuf.o \
 		$(VIDEO_COMMON_DIR)/psb_buffer.o \
 		$(VIDEO_COMMON_DIR)/psb_fence.o \
 		$(VIDEO_COMMON_DIR)/psb_mmu.o \
 		$(DECODE_DIR)/psb_msvdx.o \
 		$(DECODE_DIR)/psb_msvdxinit.o \
+		$(DECODE_DIR)/psb_msvdx_fw.o \
 		$(DECODE_DIR)/psb_msvdx_ec.o \
 		$(VIDEO_COMMON_DIR)/psb_ttm_glue.o \
 		$(VIDEO_COMMON_DIR)/psb_ttm_fence.o \

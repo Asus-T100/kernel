@@ -146,19 +146,15 @@ static int ospm_runtime_pm_msvdx_suspend(struct drm_device *dev)
 	}
 
 #ifdef CONFIG_MDFD_VIDEO_DECODE
-	if (IS_MDFLD(dev)) {
-		if (psb_check_msvdx_idle(dev)) {
-			ret = -2;
-			goto out;
-		}
+	if (psb_check_msvdx_idle(dev)) {
+		ret = -2;
+		goto out;
 	}
 	psb_irq_uninstall_islands(gpDrmDevice, OSPM_VIDEO_DEC_ISLAND);
 
-	if (IS_MDFLD(dev)) {
-		if (decode_running)
-			psb_msvdx_save_context(gpDrmDevice);
-		MSVDX_NEW_PMSTATE(dev, msvdx_priv, PSB_PMSTATE_POWERDOWN);
-	}
+	if (decode_running)
+		psb_msvdx_save_context(gpDrmDevice);
+	MSVDX_NEW_PMSTATE(dev, msvdx_priv, PSB_PMSTATE_POWERDOWN);
 #endif
 	ospm_power_island_down(OSPM_VIDEO_DEC_ISLAND);
 out:
@@ -2268,17 +2264,15 @@ static void ospm_power_island_down_video(int video_islands)
 		(struct drm_psb_private *) gpDrmDevice->dev_private;
 	unsigned long flags;
 	spin_lock_irqsave(&dev_priv->ospm_lock, flags);
-	if ((video_islands & OSPM_VIDEO_DEC_ISLAND) &&
-		atomic_read(&g_videodec_access_count)) {
+	if (video_islands & OSPM_VIDEO_DEC_ISLAND) {
 		if (pmu_nc_set_power_state(OSPM_VIDEO_DEC_ISLAND,
 				OSPM_ISLAND_DOWN, APM_REG_TYPE))
 			BUG();
 		g_hw_power_status_mask &= ~OSPM_VIDEO_DEC_ISLAND;
 	}
 
-	if ((video_islands & OSPM_VIDEO_ENC_ISLAND) &&
-		atomic_read(&g_videoenc_access_count)) {
-		if (pmu_nc_set_power_state(OSPM_VIDEO_DEC_ISLAND,
+	if (video_islands & OSPM_VIDEO_ENC_ISLAND) {
+		if (pmu_nc_set_power_state(OSPM_VIDEO_ENC_ISLAND,
 				OSPM_ISLAND_DOWN, APM_REG_TYPE))
 			BUG();
 		g_hw_power_status_mask &= ~OSPM_VIDEO_ENC_ISLAND;

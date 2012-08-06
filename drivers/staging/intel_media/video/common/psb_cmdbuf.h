@@ -18,8 +18,8 @@
  *    Eric Anholt <eric@anholt.net>
  *
  **/
-#ifndef _PSB_SGX_H_
-#define _PSB_SGX_H_
+#ifndef _PSB_CMDBUF_H_
+#define _PSB_CMDBUF_H_
 
 extern int psb_submit_video_cmdbuf(struct drm_device *dev,
 				   struct ttm_buffer_object *cmd_buffer,

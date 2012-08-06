@@ -78,13 +78,11 @@ void psb_msvdx_flush_cmd_queue(struct drm_device *dev)
 		PSB_DEBUG_GENERAL("MSVDXQUE: flushing sequence:0x%08x\n",
 				  msvdx_cmd->sequence);
 		msvdx_priv->msvdx_current_sequence = msvdx_cmd->sequence;
-		spin_unlock_irqrestore(&msvdx_priv->msvdx_lock, irq_flags);
 		psb_fence_error(dev, PSB_ENGINE_VIDEO,
 				msvdx_cmd->sequence,
 				_PSB_FENCE_TYPE_EXE, DRM_CMD_HANG);
 		kfree(msvdx_cmd->cmd);
 		kfree(msvdx_cmd);
-		spin_lock_irqsave(&msvdx_priv->msvdx_lock, irq_flags);
 	}
 	spin_unlock_irqrestore(&msvdx_priv->msvdx_lock, irq_flags);
 }

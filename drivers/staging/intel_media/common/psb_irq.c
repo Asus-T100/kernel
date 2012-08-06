@@ -619,7 +619,7 @@ irqreturn_t psb_irq_handler(DRM_IRQ_ARGS)
 	}
 
 #ifdef CONFIG_MDFD_VIDEO_DECODE
-	if (msvdx_int && IS_MDFLD(dev)) {
+	if (msvdx_int) {
 		if (ospm_power_is_hw_on(OSPM_VIDEO_DEC_ISLAND)) {
 			atomic_inc(&g_videodec_access_count);
 			psb_msvdx_interrupt(dev);
@@ -714,11 +714,11 @@ void psb_irq_preinstall_islands(struct drm_device *dev, int hw_islands)
 		dev_priv->vdc_irq_mask |= _MDFLD_GL3_IRQ_FLAG;
 #endif
 	if (hw_islands & OSPM_VIDEO_DEC_ISLAND)
-		if (IS_MID(dev) && ospm_power_is_hw_on(OSPM_VIDEO_DEC_ISLAND))
+		if (ospm_power_is_hw_on(OSPM_VIDEO_DEC_ISLAND))
 			dev_priv->vdc_irq_mask |= _PSB_IRQ_MSVDX_FLAG;
 
 	if (hw_islands & OSPM_VIDEO_ENC_ISLAND)
-		if (IS_MID(dev)  && ospm_power_is_hw_on(OSPM_VIDEO_ENC_ISLAND))
+		if (ospm_power_is_hw_on(OSPM_VIDEO_ENC_ISLAND))
 			dev_priv->vdc_irq_mask |= _LNC_IRQ_TOPAZ_FLAG;
 
 	/*This register is safe even if display island is off*/
@@ -805,7 +805,7 @@ int psb_irq_postinstall_islands(struct drm_device *dev, int hw_islands)
 	}
 
 #ifdef CONFIG_MDFD_VIDEO_DECODE
-	if (IS_MID(dev) && !dev_priv->topaz_disabled)
+	if (!dev_priv->topaz_disabled)
 		if (hw_islands & OSPM_VIDEO_ENC_ISLAND)
 			if (ospm_power_is_hw_on(OSPM_VIDEO_ENC_ISLAND)) {
 				if (IS_MRST(dev))
@@ -890,10 +890,10 @@ void psb_irq_uninstall_islands(struct drm_device *dev, int hw_islands)
 #endif
 	}
 
-	if ((hw_islands & OSPM_VIDEO_DEC_ISLAND) && IS_MID(dev))
+	if ((hw_islands & OSPM_VIDEO_DEC_ISLAND))
 		dev_priv->vdc_irq_mask &= ~_PSB_IRQ_MSVDX_FLAG;
 
-	if ((hw_islands & OSPM_VIDEO_ENC_ISLAND) && IS_MID(dev))
+	if ((hw_islands & OSPM_VIDEO_ENC_ISLAND))
 		dev_priv->vdc_irq_mask &= ~_LNC_IRQ_TOPAZ_FLAG;
 
 	/*These two registers are safe even if display island is off*/
@@ -906,7 +906,7 @@ void psb_irq_uninstall_islands(struct drm_device *dev, int hw_islands)
 	PSB_WVDC32(PSB_RVDC32(PSB_INT_IDENTITY_R), PSB_INT_IDENTITY_R);
 
 #ifdef CONFIG_MDFD_VIDEO_DECODE
-	if (IS_MID(dev) && !dev_priv->topaz_disabled)
+	if (!dev_priv->topaz_disabled)
 		if (hw_islands & OSPM_VIDEO_ENC_ISLAND)
 			if (ospm_power_is_hw_on(OSPM_VIDEO_ENC_ISLAND)) {
 				if (IS_MRST(dev))

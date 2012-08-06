@@ -115,9 +115,7 @@ bool gl3_exist(void)
 	struct drm_psb_private *dev_priv =
 		    (struct drm_psb_private *) gpDrmDevice->dev_private;
 
-	if (IS_MRST(gpDrmDevice))
-		return false;
-	else if (IS_MDFLD(gpDrmDevice) && dev_priv->platform_rev_id != MDFLD_PNW_A0)
+	if (IS_MDFLD(gpDrmDevice) && dev_priv->platform_rev_id != MDFLD_PNW_A0)
 		return true;
 	else
 		PSB_DEBUG_ENTRY("gl3 not supported in unknown platform");

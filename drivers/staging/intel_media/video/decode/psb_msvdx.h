@@ -70,22 +70,29 @@ typedef enum {
 	PSB_DMAC_BURST_7        = 0x7,      /* !< burst size of 7 */
 } DMAC_eBurst;
 
+/* psb_mmu.c */
+uint32_t psb_get_default_pd_addr(struct psb_mmu_driver *driver);
+
+/* psb_reset.c */
+void psb_msvdx_flush_cmd_queue(struct drm_device *dev);
+
+/* psb_msvdxinit.c */
 int psb_wait_for_register(struct drm_psb_private *dev_priv,
 			  uint32_t offset,
 			  uint32_t value,
 			  uint32_t enable);
-
-IMG_BOOL psb_msvdx_interrupt(IMG_VOID *pvData);
-
 int psb_msvdx_init(struct drm_device *dev);
 int psb_msvdx_uninit(struct drm_device *dev);
 int psb_msvdx_reset(struct drm_psb_private *dev_priv);
-uint32_t psb_get_default_pd_addr(struct psb_mmu_driver *driver);
+void psb_write_mtx_core_reg(struct drm_psb_private *dev_priv,
+			    const uint32_t core_reg, const uint32_t val);
+
+/* psb_msvdx.c */
+IMG_BOOL psb_msvdx_interrupt(IMG_VOID *pvData);
 int psb_mtx_send(struct drm_psb_private *dev_priv, const void *pvMsg);
-void psb_msvdx_flush_cmd_queue(struct drm_device *dev);
+
 void psb_msvdx_lockup(struct drm_psb_private *dev_priv,
 		      int *msvdx_lockup, int *msvdx_idle);
-int psb_setup_fw(struct drm_device *dev);
 int psb_check_msvdx_idle(struct drm_device *dev);
 int psb_wait_msvdx_idle(struct drm_device *dev);
 int psb_cmdbuf_video(struct drm_file *priv,
@@ -97,15 +104,10 @@ int psb_cmdbuf_video(struct drm_file *priv,
 int psb_msvdx_save_context(struct drm_device *dev);
 int psb_msvdx_restore_context(struct drm_device *dev);
 int psb_msvdx_check_reset_fw(struct drm_device *dev);
-bool
-psb_host_second_pass(struct drm_device *dev,
-		     uint32_t ui32OperatingModeCmd,
-		     void	 *pvParamBase,
-		     uint32_t PicWidthInMbs,
-		     uint32_t FrameHeightInMbs,
-		     uint32_t ui32DeblockSourceY,
-		     uint32_t ui32DeblockSourceUV);
 void psb_powerdown_msvdx(struct work_struct *work);
+
+/* psb_msvdx_fw.c */
+int psb_setup_fw(struct drm_device *dev);
 
 /*  Non-Optimal Invalidation is not default */
 #define MSVDX_DEVICE_NODE_FLAGS_MMU_NONOPT_INV	2
@@ -147,19 +149,6 @@ void psb_powerdown_msvdx(struct work_struct *work);
 	(0x01000000)
 #define MSVDX_CORE_CR_MSVDX_CONTROL_CR_MSVDX_VEC_RENDEC_DEC_SOFT_RESET_MASK \
 	(0x10000000)
-
-#define clk_enable_all	\
-(MSVDX_CORE_CR_MSVDX_MAN_CLK_ENABLE_CR_CORE_MAN_CLK_ENABLE_MASK	| \
-MSVDX_CORE_CR_MSVDX_MAN_CLK_ENABLE_CR_VDEB_PROCESS_MAN_CLK_ENABLE_MASK | \
-MSVDX_CORE_CR_MSVDX_MAN_CLK_ENABLE_CR_VDEB_ACCESS_MAN_CLK_ENABLE_MASK | \
-MSVDX_CORE_CR_MSVDX_MAN_CLK_ENABLE_CR_VDMC_MAN_CLK_ENABLE_MASK	 | \
-MSVDX_CORE_CR_MSVDX_MAN_CLK_ENABLE_CR_VEC_ENTDEC_MAN_CLK_ENABLE_MASK | \
-MSVDX_CORE_CR_MSVDX_MAN_CLK_ENABLE_CR_VEC_ITRANS_MAN_CLK_ENABLE_MASK | \
-MSVDX_CORE_CR_MSVDX_MAN_CLK_ENABLE_CR_MTX_MAN_CLK_ENABLE_MASK)
-
-#define clk_enable_minimal \
-(MSVDX_CORE_CR_MSVDX_MAN_CLK_ENABLE_CR_CORE_MAN_CLK_ENABLE_MASK | \
-MSVDX_CORE_CR_MSVDX_MAN_CLK_ENABLE_CR_MTX_MAN_CLK_ENABLE_MASK)
 
 #define clk_enable_auto	\
 (MSVDX_CORE_CR_MSVDX_MAN_CLK_ENABLE_CR_VDEB_PROCESS_AUTO_CLK_ENABLE_MASK	| \
@@ -701,17 +690,6 @@ enum {
 	VA_MSGID_CMD_HW_PANIC,
 };
 
-/* Deblock parameters */
-struct DEBLOCKPARAMS {
-	uint32_t handle;	/* struct ttm_buffer_object * of REGIO */
-	uint32_t buffer_size;
-	uint32_t ctxid;
-
-	uint32_t *pPicparams;
-	struct ttm_bo_kmap_obj *regio_kmap;	/* virtual of regio */
-	uint32_t pad[3];
-};
-
 /* HOST_BE_OPP parameters */
 struct HOST_BE_OPP_PARAMS {
 	uint32_t handle;	/* struct ttm_buffer_object * of REGIO */
@@ -719,11 +697,6 @@ struct HOST_BE_OPP_PARAMS {
 	uint32_t buffer_size;
 	uint32_t picture_width_mb;
 	uint32_t size_mb;
-};
-struct psb_msvdx_deblock_queue {
-
-	struct list_head head;
-	struct DEBLOCKPARAMS dbParams;
 };
 
 typedef struct {
@@ -842,8 +815,6 @@ struct msvdx_private {
 	void *msvdx_fw;
 	int msvdx_fw_size;
 
-	struct list_head deblock_queue; /* deblock parameter list */
-
 	uint32_t msvdx_hw_busy;
 
 	uint32_t *vec_local_mem_data;
@@ -854,7 +825,6 @@ struct msvdx_private {
 
 	drm_psb_msvdx_frame_info_t frame_info[MAX_DECODE_BUFFERS];
 	drm_psb_msvdx_decode_status_t decode_status;
-	uint32_t deblock_enabled;
 	uint32_t host_be_opp_enabled;
 
 	uint32_t ec_fence;
@@ -1501,5 +1471,3 @@ do {									\
 } while (0)
 
 #endif
-
-#define IS_FW_UPDATED 1

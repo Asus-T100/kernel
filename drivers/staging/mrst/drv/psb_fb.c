@@ -38,7 +38,6 @@
 #include "psb_intel_drv.h"
 #include "psb_ttm_userobj_api.h"
 #include "psb_fb.h"
-#include "psb_sgx.h"
 #include "psb_pvr_glue.h"
 
 #include "mdfld_dsi_dbi.h"

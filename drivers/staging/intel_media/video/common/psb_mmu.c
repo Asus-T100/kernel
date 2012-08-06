@@ -167,9 +167,7 @@ static void psb_mmu_flush_pd_locked(struct psb_mmu_driver *driver,
 	if (atomic_read(&driver->needs_tlbflush) || force) {
 		if (driver->dev_priv) {
 			atomic_set(&driver->dev_priv->msvdx_mmu_invaldc, 1);
-			if (IS_MSVDX(driver->dev_priv->dev))
-				atomic_set(\
-					   &driver->dev_priv->topaz_mmu_invaldc, 1);
+			atomic_set(&driver->dev_priv->topaz_mmu_invaldc, 1);
 		}
 	}
 	atomic_set(&driver->needs_tlbflush, 0);
@@ -188,8 +186,7 @@ void psb_mmu_flush(struct psb_mmu_driver *driver, int rc_prot)
 		down_write(&driver->sem);
 	if (driver->dev_priv) {
 		atomic_set(&driver->dev_priv->msvdx_mmu_invaldc, 1);
-		if (IS_MSVDX(driver->dev_priv->dev))
-			atomic_set(&driver->dev_priv->topaz_mmu_invaldc, 1);
+		atomic_set(&driver->dev_priv->topaz_mmu_invaldc, 1);
 	}
 	if (rc_prot)
 		up_write(&driver->sem);
@@ -261,18 +258,25 @@ struct psb_mmu_pd *psb_mmu_alloc_pd(struct psb_mmu_driver *driver,
 	}
 
 	v = kmap(pd->dummy_pt);
+	if (!v)
+		goto out_err4;
 	for (i = 0; i < (PAGE_SIZE / sizeof(uint32_t)); ++i)
 		v[i] = pd->invalid_pte;
 
 	kunmap(pd->dummy_pt);
 
 	v = kmap(pd->p);
+	if (!v)
+		goto out_err4;
 	for (i = 0; i < (PAGE_SIZE / sizeof(uint32_t)); ++i)
 		v[i] = pd->invalid_pde;
 
 	kunmap(pd->p);
 
-	clear_page(kmap(pd->dummy_page));
+	v = kmap(pd->dummy_page);
+	if (!v)
+		goto out_err4;
+	clear_page(v);
 	kunmap(pd->dummy_page);
 
 	pd->tables = vmalloc_user(sizeof(struct psb_mmu_pt *) * 1024);
