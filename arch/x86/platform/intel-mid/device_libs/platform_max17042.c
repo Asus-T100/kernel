@@ -26,17 +26,22 @@
 
 void max17042_i2c_reset_workaround(void)
 {
-/* toggle clock pin of I2C-1 to recover devices from abnormal status.
- * currently, only max17042 on I2C-1 needs such workaround */
-#define I2C_1_GPIO_PIN 27
-	lnw_gpio_set_alt(I2C_1_GPIO_PIN, LNW_GPIO);
-	gpio_direction_output(I2C_1_GPIO_PIN, 0);
-	gpio_set_value(I2C_1_GPIO_PIN, 1);
+/* toggle clock pin of I2C to recover devices from abnormal status.
+ * currently, only max17042 on I2C needs such workaround */
+#if defined(CONFIG_BATTERY_INTEL_MDF)
+#define I2C_GPIO_PIN 27
+#elif defined(CONFIG_BOARD_CTP)
+#define I2C_GPIO_PIN 29
+#elif defined(CONFIG_X86_MRFLD)
+#define I2C_GPIO_PIN 21
+#endif
+	lnw_gpio_set_alt(I2C_GPIO_PIN, LNW_GPIO);
+	gpio_direction_output(I2C_GPIO_PIN, 0);
+	gpio_set_value(I2C_GPIO_PIN, 1);
 	udelay(10);
-	gpio_set_value(I2C_1_GPIO_PIN, 0);
+	gpio_set_value(I2C_GPIO_PIN, 0);
 	udelay(10);
-	lnw_gpio_set_alt(I2C_1_GPIO_PIN, LNW_ALT_1);
-#undef I2C_1_GPIO_PIN
+	lnw_gpio_set_alt(I2C_GPIO_PIN, LNW_ALT_1);
 }
 EXPORT_SYMBOL(max17042_i2c_reset_workaround);
 
