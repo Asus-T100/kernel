@@ -188,11 +188,7 @@ ccflags-y += -DOTM_HDMI_UNIT_TEST
 ccflags-y += -DOTM_HDMI_HDCP_ENABLE
 #ccflags-y += -DOTM_HDMI_HDCP_ALWAYS_ENC
 
-ifeq ($(CONFIG_MDFD_HDMI_GREENRIDGE),y)
-ccflags-y += \
-	-I$(OTM_HDMI_INCDIR)/pil/specific/oktl \
-	-I$(OTM_HDMI_INCDIR)/ipil/specific/oktl-sdv
-else ifeq ($(CONFIG_MDFD_HDMI_REDRIDGE),y)
+ifeq ($(CONFIG_MDFD_HDMI_REDRIDGE),y)
 ccflags-y += \
 	-DMFLD_HDMI_DV1 \
 	-I$(OTM_HDMI_INCDIR)/pil/specific/mfld \
@@ -226,17 +222,8 @@ $(TARGET)-y += \
 # OS specific library
 $(TARGET)-y += \
 	$(OTM_HDMI_TOP)/os/android/android_hdmi.o
-ifneq ($(CONFIG_MDFD_HDMI_REDRIDGE),y)
-$(TARGET)-y += \
-	$(OTM_HDMI_TOP)/os/android/android_hdmi_sw_scale.o
-endif
 
-ifeq ($(CONFIG_MDFD_HDMI_GREENRIDGE),y)
-$(TARGET)-y += \
-	$(OTM_HDMI_TOP)/ipil/specific/oktl-sdv/ips_hdmi.o \
-	$(OTM_HDMI_TOP)/ipil/specific/oktl-sdv/ips_hdcp.o \
-	$(OTM_HDMI_TOP)/pil/specific/oktl/ps_hdmi.o
-else ifeq ($(CONFIG_MDFD_HDMI_REDRIDGE),y)
+ifeq ($(CONFIG_MDFD_HDMI_REDRIDGE),y)
 $(TARGET)-y += \
 	$(OTM_HDMI_TOP)/ipil/specific/mfld/ips_hdmi.o \
 	$(OTM_HDMI_TOP)/ipil/specific/mfld/ips_hdcp.o \
