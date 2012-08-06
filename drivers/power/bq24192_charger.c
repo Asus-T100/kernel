@@ -901,9 +901,6 @@ int ctp_get_charger_health(void)
 		return POWER_SUPPLY_HEALTH_UNKNOWN;
 	}
 
-	if ((ret & SYSTEM_STAT_VBUS_OTG) == SYSTEM_STAT_VBUS_UNKNOWN)
-		return POWER_SUPPLY_HEALTH_UNKNOWN;
-
 	if (!(ret & SYSTEM_STAT_PWR_GOOD))
 		return POWER_SUPPLY_HEALTH_DEAD;
 
@@ -1767,8 +1764,11 @@ sched_maint_work:
 
 	if ((battery_status == POWER_SUPPLY_STATUS_FULL) ||
 		(battery_status == POWER_SUPPLY_STATUS_NOT_CHARGING) ||
-		(battery_status == POWER_SUPPLY_STATUS_DISCHARGING))
+		(battery_status == POWER_SUPPLY_STATUS_DISCHARGING)) {
 		chip->online = 0;
+	} else {
+		chip->online = 1;
+	}
 
 	mutex_lock(&chip->event_lock);
 	chip->batt_status = battery_status;
@@ -2215,7 +2215,10 @@ static int bq24192_usb_get_property(struct power_supply *psy,
 		val->intval = chip->chrg_cur_cntl;
 		break;
 	case POWER_SUPPLY_PROP_HEALTH:
-		val->intval = ctp_get_charger_health();
+		if (chip->present)
+			val->intval = ctp_get_charger_health();
+		else
+			val->intval = 0;
 		break;
 	default:
 		mutex_unlock(&chip->event_lock);
