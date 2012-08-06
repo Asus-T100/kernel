@@ -53,10 +53,12 @@
 */
 
 #define OSFAB_ERR_OFFSET		0x38
+#define OSFAB_ERR_EXTENDED_OFFSET       0x84
 #define MAX_BUFFER_SIZE			1024
 #define FID_MSB_MAPPING			32
 #define MAX_FID_REG_LEN			32
 #define MAX_NUM_LOGDWORDS		12
+#define MAX_NUM_LOGDWORDS_EXTENDED      9
 #define FABERR_INDICATOR		0x15
 #define FWERR_INDICATOR			0x7
 #define UNDEFLVL1ERR_IND		0x11
@@ -284,7 +286,8 @@ static int create_fwerr_log(char *output_buf, void __iomem *oshob_ptr)
 	union error_log_dw10 err_log_dw10;
 	union flag_status_hilo flag_status;
 	union fabric_status_dw0 err_status_dw0;
-	u32 id, faberr_dwords[MAX_NUM_LOGDWORDS] = {0};
+	u32 id = FAB_ID_UNKNOWN;
+	u32 faberr_dwords[MAX_NUM_LOGDWORDS + MAX_NUM_LOGDWORDS_EXTENDED] = {0};
 	int count, num_flag_status, num_err_logs;
 	int prev_id = FAB_ID_UNKNOWN, offset = 0;
 	char temp[100];
@@ -294,6 +297,14 @@ static int create_fwerr_log(char *output_buf, void __iomem *oshob_ptr)
 	for (count = 0; count < MAX_NUM_LOGDWORDS; count++) {
 		faberr_dwords[count] = readl(fabric_err_dump_offset +
 						count * sizeof(u32));
+	}
+
+	/* Get 9 additional DWORDS */
+	fabric_err_dump_offset = oshob_ptr + OSFAB_ERR_EXTENDED_OFFSET;
+
+	for (count = 0; count < MAX_NUM_LOGDWORDS_EXTENDED; count++) {
+		faberr_dwords[count + MAX_NUM_LOGDWORDS] =
+			readl(fabric_err_dump_offset + sizeof(u32) * count);
 	}
 
 	err_status_dw0.data = faberr_dwords[0];
@@ -314,7 +325,9 @@ static int create_fwerr_log(char *output_buf, void __iomem *oshob_ptr)
 
 		sprintf(output_buf, "SCU error summary:\n");
 		strcat(output_buf, "===================\n");
-		for (count = 0; count < MAX_NUM_LOGDWORDS; count++) {
+		for (count = 0;
+			count < MAX_NUM_LOGDWORDS + MAX_NUM_LOGDWORDS_EXTENDED;
+			count++) {
 			sprintf(temp, "DW%d:0x%08x\n",
 					count, faberr_dwords[count]);
 			strcat(output_buf, temp);
