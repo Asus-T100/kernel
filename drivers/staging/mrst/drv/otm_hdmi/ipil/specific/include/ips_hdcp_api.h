@@ -68,23 +68,123 @@
 
 #include <linux/types.h>
 
-extern bool ips_hdcp_init(void);
-extern bool ips_hdcp_is_ready(void);
-extern void ips_hdcp_off(void);
+/**
+ * Description: initialize hdcp tx for authentication
+ *
+ * Returns:	true success else false
+ */
+bool ips_hdcp_init(void);
 
-extern void ips_hdcp_get_an(uint8_t *an);
-extern void ips_hdcp_get_aksv(uint8_t *aksv);
-extern bool ips_hdcp_set_bksv(uint8_t *bksv);
-extern bool ips_hdcp_is_r0_ready(void);
-extern bool ips_hdcp_set_repeater(bool present);
-extern bool ips_hdcp_start_authentication(void);
-extern bool ips_hdcp_enable_encryption(void);
-extern bool ips_hdcp_does_ri_match(uint16_t rx_ri);
-extern bool ips_hdcp_compute_tx_v(uint8_t *rep_ksv_list,
+/**
+ * Description: check whether hdcp hardware is ready
+ *
+ * Returns:	true if ready else false
+ */
+bool ips_hdcp_is_ready(void);
+
+/**
+ * Description: read an from hdcp tx
+ *
+ * @an		buffer to return an in
+ * @size	size of an buffer passed
+ *
+ * Returns:	true on succesful read else false
+ */
+void ips_hdcp_get_an(uint8_t *an);
+
+/**
+ * Description: read aksv from hdcp tx
+ *
+ * @aksv	buffer to return aksv
+ * @size	size of an buffer passed
+ *
+ * Returns:	true on succesful read else false
+ */
+void ips_hdcp_get_aksv(uint8_t *aksv);
+
+/**
+ * Description: set downstream bksv in hdcp tx
+ *
+ * @bksv	bksv from downstream device
+ *
+ * Returns:	true on succesful write else false
+ */
+bool ips_hdcp_set_bksv(uint8_t *bksv);
+
+/**
+ * Description: check if hdcp tx R0 is ready after starting authentication
+ *
+ * Returns:	true if r0 is ready else false
+ */
+bool ips_hdcp_is_r0_ready(void);
+
+/**
+ * Description: set repeater bit in hdcp tx if downstream is a repeater else
+ *		reset the bit
+ *
+ * @present	indicates whether downstream is repeater or not
+ *
+ * Returns:	true on succesful write else false
+ */
+bool ips_hdcp_set_repeater(bool present);
+
+/**
+ * Description: start first stage of authentication by writing an aksv
+ *
+ * Returns:	true on succesfully starting authentication else false
+ */
+bool ips_hdcp_start_authentication(void);
+
+/**
+ * Description: Enable encryption once r0 matches
+ *
+ * Returns:	true on enabling encryption else false
+ */
+bool ips_hdcp_enable_encryption(void);
+
+/**
+ * Description: check if hdcp tx & rx ri matches
+ *
+ * @rx_ri	ri of downstream device
+ *
+ * Returns:	true if ri matches else false
+ */
+bool ips_hdcp_does_ri_match(uint16_t rx_ri);
+
+/**
+ * Description: compute v for repeater authentication
+ *
+ * @rep_ksv_list	 ksv list from downstream repeater
+ * @rep_ksv_list_entries number of entries in the ksv list
+ * @topology_data	 bstatus value
+ *
+ * Returns:	true on successfully computing v else false
+ */
+bool ips_hdcp_compute_tx_v(uint8_t *rep_ksv_list,
 					  uint32_t rep_ksv_list_entries,
 					  uint16_t topology_data);
-extern bool ips_hdcp_compare_v(uint32_t *rep_prime_v);
-extern bool ips_hdcp_disable(void);
-extern bool ips_hdcp_device_can_authenticate(void);
+
+/**
+ * Description: compare hdcp tx & hdcp rx sha1 results
+ *
+ * @rep_prime_v sha1 value from downstream repeater
+ *
+ * Returns:	true if same else false
+ */
+bool ips_hdcp_compare_v(uint32_t *rep_prime_v);
+
+/**
+ * Description: disable hdcp
+ *
+ * Returns:	true on successfully disabling hdcp else false
+ */
+bool ips_hdcp_disable(void);
+
+/**
+ * Description: check whether hdcp tx can authenticate
+ *
+ * Returns:	true if device can authenticate else false
+ */
+bool ips_hdcp_device_can_authenticate(void);
 
 #endif /* IPS_HDCP_API_H */

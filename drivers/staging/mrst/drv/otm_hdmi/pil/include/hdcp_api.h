@@ -67,20 +67,104 @@
 #include <linux/types.h>
 #include "hdmi_internal.h"
 
-extern bool otm_hdmi_hdcp_set_hpd_state(hdmi_context_t *hdmi_context,
-						bool hpd);
-extern bool otm_hdmi_hdcp_set_power_save(hdmi_context_t *hdmi_context,
-						bool suspend);
-extern bool otm_hdmi_hdcp_set_dpms(hdmi_context_t *hdmi_context,
+/**
+ * Description: function to update HPD status
+ *
+ * @hdmi_context handle hdmi_context
+ * @hpd	 HPD high/low status
+ *
+ * Returns:	true on success
+ *		false on failure
+ */
+bool otm_hdmi_hdcp_set_hpd_state(hdmi_context_t *hdmi_context,
+					bool hpd);
+
+/**
+ * Description: function to update power save (suspend/resume) status
+ *
+ * @hdmi_context handle hdmi_context
+ * @suspend	suspend/resume status
+ *
+ * Returns:	true on success
+ *		false on failure
+ */
+bool otm_hdmi_hdcp_set_power_save(hdmi_context_t *hdmi_context,
+					bool suspend);
+
+/**
+ * Description: function to update display_power_on status
+ *
+ * @hdmi_context handle hdmi_context
+ * @display_power_on	display power on/off status
+ *
+ * Returns:	true on success
+ *		false on failure
+ */
+bool otm_hdmi_hdcp_set_dpms(hdmi_context_t *hdmi_context,
 					bool display_power_on);
-extern bool otm_hdmi_hdcp_enc_status(hdmi_context_t *hdmi_context);
-extern bool otm_hdmi_hdcp_link_status(hdmi_context_t *hdmi_context);
-extern bool otm_hdmi_hdcp_read_validate_bksv(hdmi_context_t *hdmi_context,
+
+/**
+ * Description: Function to check HDCP encryption status
+ *
+ * @hdmi_context handle hdmi_context
+ *
+ * Returns:	true if encrypting
+ *		else false
+ */
+bool otm_hdmi_hdcp_enc_status(hdmi_context_t *hdmi_context);
+
+/**
+ * Description: Function to check HDCP Phase3 Link status
+ *
+ * Returns:	true if link is verified Ri Matches
+ *		else false
+ */
+bool otm_hdmi_hdcp_link_status(hdmi_context_t *hdmi_context);
+
+/**
+ * Description: Function to read BKSV and validate
+ *
+ * @hdmi_context handle hdmi_context
+ * @bksv	 buffer to store bksv
+ *
+ * Returns:	true on success
+ *		false on failure
+ */
+bool otm_hdmi_hdcp_read_validate_bksv(hdmi_context_t *hdmi_context,
 					uint8_t *bksv);
-extern bool otm_hdmi_hdcp_enable(hdmi_context_t *hdmi_context,
+
+/**
+ * Description: function to enable HDCP
+ *
+ * @hdmi_context handle hdmi_context
+ * @refresh_rate vertical refresh rate of the video mode
+ *
+ * Returns:	true on success
+ *		false on failure
+ */
+bool otm_hdmi_hdcp_enable(hdmi_context_t *hdmi_context,
 					int refresh_rate);
-extern bool otm_hdmi_hdcp_disable(hdmi_context_t *hdmi_context);
-extern bool otm_hdmi_hdcp_init(hdmi_context_t *hdmi_context,
+
+/**
+ * Description: function to disable HDCP
+ *
+ * @hdmi_context handle hdmi_context
+ *
+ * Returns:	true on success
+ *		false on failure
+ */
+bool otm_hdmi_hdcp_disable(hdmi_context_t *hdmi_context);
+
+/**
+ * Description: hdcp init function
+ *
+ * @hdmi_context handle hdmi_context
+ * @ddc_rd_wr:  pointer to ddc read write function
+ *
+ * Returns:	true on success
+ *		false on failure
+ */
+bool otm_hdmi_hdcp_init(hdmi_context_t *hdmi_context,
 	int (*ddc_rd_wr)(bool, uint8_t, uint8_t, uint8_t *, int));
 
 #endif /* HDCP_API_H */

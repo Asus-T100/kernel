@@ -149,7 +149,4 @@ struct ipil_clock_limits_t {
 	struct ipil_range_t dot, m, p1;
 };
 
-void hdmi_write32(uint32_t reg, uint32_t val);
-uint32_t hdmi_read32(uint32_t reg);
-
 #endif /* __IPIL_INTERNAL_H */

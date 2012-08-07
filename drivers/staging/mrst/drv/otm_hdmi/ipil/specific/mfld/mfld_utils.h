@@ -64,8 +64,23 @@
 #ifndef IPS_API_H
 #define IPS_API_H
 
-extern uint32_t hdmi_read32(uint32_t reg);
-extern void hdmi_write32(uint32_t reg, uint32_t val);
-extern int intel_scu_ipc_iowrite8(u16 addr, u8 data);
+/**
+ * Description: read a 32 bit hdmi register
+ *
+ * @reg		register address
+ *
+ * Returns:	value in the hdmi register
+ */
+uint32_t hdmi_read32(uint32_t reg);
+
+/**
+ * Description: write into 32 bit hdmi register
+ *
+ * @reg		register address
+ * @val		value to be written
+ *
+ * Returns:	none
+ */
+void hdmi_write32(uint32_t reg, uint32_t val);
 
 #endif /* IPS_API_H */

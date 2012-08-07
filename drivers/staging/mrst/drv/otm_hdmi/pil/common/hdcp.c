@@ -142,6 +142,16 @@ static struct hdcp_context_t *hdcp_context;
 /* HDCP Main Event Handler */
 static void hdcp_task_event_handler(struct work_struct *work);
 
+/**
+ * Description: this function sends a message to the hdcp workqueue to be
+ *		processed with a delay
+ *
+ * @msg		message type
+ * @msg_data	any additional data accompanying the message
+ * @delay	amount of delay for before the message gets processed
+ *
+ * Returns:	true if message was successfully queued else false
+ */
 static bool wq_send_message_delayed(int msg,
 					void *msg_data,
 					unsigned long delay)
@@ -170,11 +180,25 @@ static bool wq_send_message_delayed(int msg,
 	return false;
 }
 
+/**
+ * Description: this function sends a message to the hdcp workqueue to be
+ *		processed without delay
+ *
+ * @msg		message type
+ * @msg_data	any additional data accompanying the message
+ *
+ * Returns:	true if message was successfully queued else false
+ */
 static bool wq_send_message(int msg, void *msg_data)
 {
 	return wq_send_message_delayed(msg, msg_data, 0);
 }
 
+/**
+ * Description: this function verifies all conditions to enable hdcp
+ *
+ * Returns:	true if hdcp can be enabled else false
+ */
 static bool hdcp_enable_condition_ready(void)
 {
 	if (hdcp_context != NULL &&
@@ -188,6 +212,15 @@ static bool hdcp_enable_condition_ready(void)
 	return false;
 }
 
+/**
+ * Description: this function reads data from downstream i2c hdcp device
+ *
+ * @offset	offset address on hdcp device
+ * @buffer	buffer to store data
+ * @size	size of buffer to be read
+ *
+ * Returns:	true on success else false
+ */
 static int hdcp_ddc_read(uint8_t offset, uint8_t *buffer, int size)
 {
 	if (hdcp_enable_condition_ready() == true ||
@@ -198,6 +231,15 @@ static int hdcp_ddc_read(uint8_t offset, uint8_t *buffer, int size)
 	return false;
 }
 
+/**
+ * Description: this function writes data to downstream i2c hdcp device
+ *
+ * @offset	offset address on hdcp device
+ * @buffer	data to be written
+ * @size	size of data to be written
+ *
+ * Returns:	true on success else false
+ */
 static int hdcp_ddc_write(uint8_t offset, uint8_t *buffer, int size)
 {
 	if (hdcp_enable_condition_ready() == true)
@@ -206,6 +248,14 @@ static int hdcp_ddc_write(uint8_t offset, uint8_t *buffer, int size)
 	return false;
 }
 
+/**
+ * Description: this function converts ksv byte buffer into 64 bit number
+ *
+ * @ksv		ksv value
+ * @size	size of the ksv
+ *
+ * Returns:	64bit value of the ksv
+ */
 static uint64_t hdcp_ksv_64val_conv(uint8_t *ksv, uint32_t size)
 {
 	int i = 0;
@@ -217,6 +267,16 @@ static uint64_t hdcp_ksv_64val_conv(uint8_t *ksv, uint32_t size)
 	return ksv64;
 }
 
+/**
+ * Description: this function validates a ksv value
+ *		1. 20 1's & 20 o's
+ *		2. SRM check: check for revoked keys
+ *
+ * @ksv		ksv value
+ * @size	size of the ksv
+ *
+ * Returns:	true if valid else false
+ */
 static bool hdcp_validate_ksv(uint8_t *ksv, uint32_t size)
 {
 	int i = 0, count = 0;
@@ -248,6 +308,14 @@ static bool hdcp_validate_ksv(uint8_t *ksv, uint32_t size)
 	return ret;
 }
 
+/**
+ * Description: this function reads aksv from local hdcp tx device
+ *
+ * @aksv	buffer to store aksv
+ * @size	size of the aksv buffer
+ *
+ * Returns:	true on success else false
+ */
 static bool hdcp_get_aksv(uint8_t *aksv, uint32_t size)
 {
 	bool ret = false;
@@ -258,6 +326,14 @@ static bool hdcp_get_aksv(uint8_t *aksv, uint32_t size)
 	return ret;
 }
 
+/**
+ * Description: this function reads bksv from downstream device
+ *
+ * @bksv	buffer to store bksv
+ * @size	size of the bksv buffer
+ *
+ * Returns:	true on success else false
+ */
 static bool hdcp_read_bksv(uint8_t *bksv, uint32_t size)
 {
 	bool ret = false;
@@ -271,6 +347,13 @@ static bool hdcp_read_bksv(uint8_t *bksv, uint32_t size)
 	return ret;
 }
 
+/**
+ * Description: this function reads bcaps from downstream device
+ *
+ * @bcaps	buffer to store bcaps
+ *
+ * Returns:	true on success else false
+ */
 static bool hdcp_read_bcaps(uint8_t *bcaps)
 {
 	bool ret = false;
@@ -282,6 +365,13 @@ static bool hdcp_read_bcaps(uint8_t *bcaps)
 	return ret;
 }
 
+/**
+ * Description: this function reads bstatus from downstream device
+ *
+ * @bstatus	buffer to store bstatus
+ *
+ * Returns:	true on success else false
+ */
 static bool hdcp_read_bstatus(uint16_t *bstatus)
 {
 	bool ret = false;
@@ -293,6 +383,13 @@ static bool hdcp_read_bstatus(uint16_t *bstatus)
 	return ret;
 }
 
+/**
+ * Description: this function reads ri from downstream device
+ *
+ * @rx_ri	buffer to store ri
+ *
+ * Returns:	true on success else false
+ */
 static bool hdcp_read_rx_ri(uint16_t *rx_ri)
 {
 	bool ret = false;
@@ -304,11 +401,26 @@ static bool hdcp_read_rx_ri(uint16_t *rx_ri)
 	return ret;
 }
 
+/**
+ * Description: this function reads r0 from downstream device
+ *
+ * @rx_r0	buffer to store r0
+ *
+ * Returns:	true on success else false
+ */
 static bool hdcp_read_rx_r0(uint16_t *rx_r0)
 {
 	return hdcp_read_rx_ri(rx_r0);
 }
 
+/**
+ * Description: this function reads all ksv's from downstream repeater
+ *
+ * @ksv_list	buffer to store ksv list
+ * @size	size of the ksv_list to read into the buffer
+ *
+ * Returns:	true on success else false
+ */
 static bool hdcp_read_rx_ksv_list(uint8_t *ksv_list, uint32_t size)
 {
 	bool ret = false;
@@ -321,6 +433,13 @@ static bool hdcp_read_rx_ksv_list(uint8_t *ksv_list, uint32_t size)
 	return ret;
 }
 
+/**
+ * Description: this function reads sha1 value from downstream device
+ *
+ * @v		buffer to store the sha1 value
+ *
+ * Returns:	true on success else false
+ */
 static bool hdcp_read_rx_v(uint8_t *v)
 {
 	bool ret = false;
@@ -341,6 +460,11 @@ static bool hdcp_read_rx_v(uint8_t *v)
 	return ret;
 }
 
+/**
+ * Description: this function performs ri match
+ *
+ * Returns:	true on match else false
+ */
 static bool hdcp_stage3_ri_check(void)
 {
 	uint16_t rx_ri = 0;
@@ -369,6 +493,16 @@ static bool hdcp_stage3_ri_check(void)
 	return false;
 }
 
+/**
+ * Description: this function sends an aksv to downstream device
+ *
+ * @an		AN value to send
+ * @an_size	size of an
+ * @aksv	AKSV value to send
+ * @aksv_size	size of aksv
+ *
+ * Returns:	true on success else false
+ */
 static bool hdcp_send_an_aksv(uint8_t *an, uint8_t an_size,
 			uint8_t *aksv, uint8_t aksv_size)
 {
@@ -387,6 +521,11 @@ static bool hdcp_send_an_aksv(uint8_t *an, uint8_t an_size,
 	return ret;
 }
 
+/**
+ * Description: this function resets hdcp state machine to initial state
+ *
+ * Returns:	none
+ */
 static void hdcp_reset(void)
 {
 	pr_debug("hdcp: reset\n");
@@ -408,6 +547,14 @@ static void hdcp_reset(void)
 	hdcp_context->is_phase3_valid = false;
 }
 
+/**
+ * Description: this function schedules repeater authentication
+ *
+ * @first	whether its first time schedule or not, delay for check is
+ *		varied between first and subsequent times
+ *
+ * Returns:	true on success else false
+ */
 static bool hdcp_rep_check(bool first)
 {
 	int msg = HDCP_REPEATER_CHECK;
@@ -421,6 +568,11 @@ static bool hdcp_rep_check(bool first)
 	return false;
 }
 
+/**
+ * Description: this function creates a watch dog timer for repeater auth
+ *
+ * Returns:	true on success else false
+ */
 static bool hdcp_rep_watch_dog(void)
 {
 	int msg = HDCP_REPEATER_WDT_EXPIRED;
@@ -435,6 +587,11 @@ static bool hdcp_rep_watch_dog(void)
 	return false;
 }
 
+/**
+ * Description: this function initiates repeater authentication
+ *
+ * Returns:	true on success else false
+ */
 static bool hdcp_initiate_rep_auth(void)
 {
 	pr_debug("hdcp: initiating repeater check\n");
@@ -449,6 +606,13 @@ static bool hdcp_initiate_rep_auth(void)
 	return false;
 }
 
+/**
+ * Description:	this function schedules ri check
+ *
+ * @first_check	whether its the first time, interval is varied if first time
+ *
+ * Returns:	true on success else false
+ */
 static bool hdcp_stage3_schedule_ri_check(bool first_check)
 {
 	int msg = HDCP_RI_CHECK;
@@ -464,7 +628,16 @@ static bool hdcp_stage3_schedule_ri_check(bool first_check)
 	return false;
 }
 
-static int hdcp_stage1_authentication(bool *is_repeater)
+/**
+ * Description: this function performs 1st stage HDCP authentication i.e.
+ *		exchanging keys and r0 match
+ *
+ * @is_repeater	variable to return type of downstream device, i.e. repeater
+ *		or not
+ *
+ * Returns:	true on successful authentication else false
+ */
+static bool hdcp_stage1_authentication(bool *is_repeater)
 {
 	uint8_t bksv[HDCP_KSV_SIZE], aksv[HDCP_KSV_SIZE], an[HDCP_AN_SIZE];
 	struct hdcp_rx_bstatus_t bstatus;
@@ -478,12 +651,13 @@ static int hdcp_stage1_authentication(bool *is_repeater)
 	pr_debug("hdcp: bksv: %02x%02x%02x%02x%02x\n",
 		bksv[0], bksv[1], bksv[2], bksv[3], bksv[4]);
 
-	/* Read An AKSV */
+	/* Read An */
 	if (ipil_hdcp_get_an(an, HDCP_AN_SIZE) == false)
 		return false;
 	pr_debug("hdcp: an: %02x%02x%02x%02x%02x%02x%02x%02x\n",
 		an[0], an[1], an[2], an[3], an[4], an[5], an[6], an[7]);
 
+	/* Read AKSV */
 	if (hdcp_get_aksv(aksv, HDCP_KSV_SIZE) == false)
 		return false;
 	pr_debug("hdcp: aksv: %02x%02x%02x%02x%02x\n",
@@ -495,21 +669,16 @@ static int hdcp_stage1_authentication(bool *is_repeater)
 		return false;
 	pr_debug("hdcp: sent an aksv\n");
 
-	/* Read BCAPS & BKSV */
+	/* Read BKSV */
 	if (hdcp_read_bksv(bksv, HDCP_KSV_SIZE) == false)
 		return false;
 	pr_debug("hdcp: bksv: %02x%02x%02x%02x%02x\n",
 			bksv[0], bksv[1], bksv[2], bksv[3], bksv[4]);
 
-	/* wait 20ms for i2c read for bksv to complete */
-	/* msleep(20); */
-
+	/* Read BCAPS */
 	if (hdcp_read_bcaps(&bcaps.value) == false)
 		return false;
 	pr_debug("hdcp: bcaps: %x\n", bcaps.value);
-
-	/* wait 20ms for i2c read for bcaps to complete */
-	/* msleep(20); */
 
 	/* Read BSTATUS */
 	if (hdcp_read_bstatus(&bstatus.value) == false)
@@ -523,13 +692,13 @@ static int hdcp_stage1_authentication(bool *is_repeater)
 	if (ipil_hdcp_set_repeater(bcaps.is_repeater) == false)
 		return false;
 
-	/* Write BKSV to Self */
+	/* Write BKSV to Self (hdcp tx) */
 	if (ipil_hdcp_set_bksv(bksv) == false)
 		return false;
 
 	pr_debug("hdcp: set repeater & bksv\n");
 
-	/* Start First Stage of Authenticatioin */
+	/* Start Authentication i.e. computations using hdcp keys */
 	if (ipil_hdcp_start_authentication() == false)
 		return false;
 
@@ -538,7 +707,7 @@ static int hdcp_stage1_authentication(bool *is_repeater)
 	/* Wait for 120ms before reading R0' */
 	msleep(120);
 
-	/* Check if R0 Ready */
+	/* Check if R0 Ready in hdcp tx */
 	retry = 20;
 	do {
 		if (ipil_hdcp_is_r0_ready() == true)
@@ -550,9 +719,9 @@ static int hdcp_stage1_authentication(bool *is_repeater)
 	if (retry == 0 && ipil_hdcp_is_r0_ready() == false)
 		return false;
 
-	pr_debug("hdcp: R0 ready\n");
+	pr_debug("hdcp: tx_r0 ready\n");
 
-	/* Read Ro' from Receiver */
+	/* Read Ro' from Receiver hdcp rx */
 	if (hdcp_read_rx_r0(&rx_r0) == false)
 		return false;
 	pr_debug("hdcp: rx_r0 = %04x\n", rx_r0);
@@ -572,7 +741,15 @@ static int hdcp_stage1_authentication(bool *is_repeater)
 	return true;
 }
 
-static int hdcp_stage2_repeater_authentication(void)
+/**
+ * Description: this function performs repeater authentication i.e. 2nd
+ *		stage HDCP authentication
+ *
+ * Returns:	true if repeater authentication is in progress or succesful
+ *		else false. If in progress repeater authentication would be
+ *		rescheduled
+ */
+static bool hdcp_stage2_repeater_authentication(void)
 {
 	uint8_t *rep_ksv_list = NULL;
 	uint32_t rep_prime_v[HDCP_V_H_SIZE] = {0};
@@ -597,7 +774,7 @@ static int hdcp_stage2_repeater_authentication(void)
 
 	/* Check if fifo ready */
 	if (!bcaps.ksv_fifo_ready) {
-		/* reschedule if not ready */
+		/* not ready: reschedule but return true */
 		pr_debug("hdcp: rescheduling repeater auth\n");
 		hdcp_rep_check(false);
 		return true;
@@ -620,7 +797,7 @@ static int hdcp_stage2_repeater_authentication(void)
 	if (bstatus.device_count > HDCP_MAX_DEVICES)
 		return false;
 
-	/* Read ksv list from repeater */
+	/* allocate memory for ksv_list */
 	rep_ksv_list = kzalloc(bstatus.device_count * HDCP_KSV_SIZE,
 				GFP_KERNEL);
 	if (!rep_ksv_list) {
@@ -628,6 +805,7 @@ static int hdcp_stage2_repeater_authentication(void)
 		return false;
 	}
 
+	/* Read ksv list from repeater */
 	if (hdcp_read_rx_ksv_list(rep_ksv_list,
 				  bstatus.device_count * HDCP_KSV_SIZE)
 				  == false) {
@@ -637,20 +815,20 @@ static int hdcp_stage2_repeater_authentication(void)
 
 	/* TODO: SRM check */
 
-	/* Compute tx(v) */
+	/* Compute tx sha1 (V) */
 	if (ipil_hdcp_compute_tx_v(rep_ksv_list, bstatus.device_count,
 				   bstatus.value) == false) {
 		pr_debug("hdcp: rep compute tx v failure\n");
 		goto exit;
 	}
 
-	/* Read rx(v') */
+	/* Read rx sha1 (V') */
 	if (hdcp_read_rx_v((uint8_t *)rep_prime_v) == false) {
 		pr_debug("hdcp: rep read rx v failure\n");
 		goto exit;
 	}
 
-	/* Verify SHA1 tx(v) = rx(v') */
+	/* Verify SHA1 tx(V) = rx(V') */
 	if (ipil_hdcp_compare_v(rep_prime_v) == false) {
 		pr_debug("hdcp: rep compare v failure\n");
 		goto exit;
@@ -665,6 +843,11 @@ exit:
 	return ret;
 }
 
+/**
+ * Description: Main function that initiates all stages of HDCP authentication
+ *
+ * Returns:	true on succesful authentication else false
+ */
 static bool hdcp_start(void)
 {
 	bool is_repeater = false;
@@ -678,6 +861,7 @@ static bool hdcp_start(void)
 	if (ipil_hdcp_is_ready() == false)
 		return false;
 
+	/* start 1st stage of hdcp authentication */
 	if (hdcp_stage1_authentication(&is_repeater) == false)
 		return false;
 
@@ -699,6 +883,12 @@ static bool hdcp_start(void)
 	return true;
 }
 
+/**
+ * Description: verify conditions necessary for re-authentication and
+ *		enable HDCP if favourable
+ *
+ * Returns:	none
+ */
 static void hdcp_retry_enable(void)
 {
 	int msg = HDCP_ENABLE;
@@ -710,6 +900,13 @@ static void hdcp_retry_enable(void)
 	}
 }
 
+/**
+ * Description: workqueue event handler to execute all hdcp tasks
+ *
+ * @work	work assigned from workqueue contains the task to be handled
+ *
+ * Returns:	none
+ */
 static void hdcp_task_event_handler(struct work_struct *work)
 {
 	struct delayed_work *delayed_work = to_delayed_work(work);
@@ -732,6 +929,8 @@ static void hdcp_task_event_handler(struct work_struct *work)
 	case HDCP_ENABLE:
 #ifndef OTM_HDMI_HDCP_ALWAYS_ENC
 		if (hdcp_enable_condition_ready() == false) {
+			/* if enable condition is not ready have to return
+			 * from hdcp_enable function immediately */
 			reset_hdcp = true;
 			break;
 		}
@@ -848,10 +1047,11 @@ EXIT_HDCP_HANDLER:
 	return;
 }
 
-/*
+/**
  * Description: function to update HPD status
  *
- * @hpdi	HPD high/low status
+ * @hdmi_context handle hdmi_context
+ * @hpd		 HPD high/low status
  *
  * Returns:	true on success
  *		false on failure
@@ -878,10 +1078,11 @@ bool otm_hdmi_hdcp_set_hpd_state(hdmi_context_t *hdmi_context,
 	return false;
 }
 
-/*
+/**
  * Description: function to update power save (suspend/resume) status
  *
- * @suspend	suspend/resume status
+ * @hdmi_context handle hdmi_context
+ * @suspend	 suspend/resume status
  *
  * Returns:	true on success
  *		false on failure
@@ -911,9 +1112,10 @@ bool otm_hdmi_hdcp_set_power_save(hdmi_context_t *hdmi_context,
 	return false;
 }
 
-/*
+/**
  * Description: function to update display_power_on status
  *
+ * @hdmi_context handle hdmi_context
  * @display_power_on	display power on/off status
  *
  * Returns:	true on success
@@ -950,8 +1152,10 @@ bool otm_hdmi_hdcp_set_dpms(hdmi_context_t *hdmi_context,
 #endif
 }
 
-/*
+/**
  * Description: Function to check HDCP encryption status
+ *
+ * @hdmi_context handle hdmi_context
  *
  * Returns:	true if encrypting
  *		else false
@@ -968,8 +1172,10 @@ bool otm_hdmi_hdcp_enc_status(hdmi_context_t *hdmi_context)
 	return false;	
 }
 
-/*
+/**
  * Description: Function to check HDCP Phase3 Link status
+ *
+ * @hdmi_context handle hdmi_context
  *
  * Returns:	true if link is verified Ri Matches
  *		else false
@@ -986,8 +1192,11 @@ bool otm_hdmi_hdcp_link_status(hdmi_context_t *hdmi_context)
 	return false;	
 }
 
-/*
- * Description: Function to read BKSV and validate
+/**
+ * Description: Function to read BKSV and validate it
+ *
+ * @hdmi_context handle hdmi_context
+ * @bksv	 buffer to store bksv
  *
  * Returns:	true on success
  *		false on failure
@@ -1013,8 +1222,11 @@ bool otm_hdmi_hdcp_read_validate_bksv(hdmi_context_t *hdmi_context,
 	return ret;
 }
 
-/*
+/**
  * Description: function to enable HDCP
+ *
+ * @hdmi_context handle hdmi_context
+ * @refresh_rate vertical refresh rate of the video mode
  *
  * Returns:	true on success
  *		false on failure
@@ -1039,6 +1251,8 @@ bool otm_hdmi_hdcp_enable(hdmi_context_t *hdmi_context,
 #endif
 
 	hdcp_context->is_required = true;
+
+	/* compute ri check interval based on refresh rate */
 	if (refresh_rate)
 		/* compute msec time for 128 frames per HDCP spec */
 		hdcp_context->ri_check_interval = ((128 * 1000) / refresh_rate);
@@ -1053,7 +1267,10 @@ bool otm_hdmi_hdcp_enable(hdmi_context_t *hdmi_context,
 #else
 	/* send message and wait for 1st stage authentication to complete */
 	if (wq_send_message(msg, NULL)) {
+		/* on any failure is_required flag will be reset */
 		while (hdcp_context->is_required) {
+			/* wait for phase1 to be enabled before
+			 * returning from this function */
 			if(hdcp_context->is_phase1_enabled)
 				return true;
 			msleep(1);
@@ -1064,8 +1281,10 @@ bool otm_hdmi_hdcp_enable(hdmi_context_t *hdmi_context,
 #endif
 }
 
-/*
+/**
  * Description: function to disable HDCP
+ *
+ * @hdmi_context handle hdmi_context
  *
  * Returns:	true on success
  *		false on failure
@@ -1082,6 +1301,7 @@ bool otm_hdmi_hdcp_disable(hdmi_context_t *hdmi_context)
 		return true;
 	}
 
+	/* send reset message */
 	wq_send_message(msg, NULL);
 
 	/* Cleanup WorkQueue */
@@ -1094,9 +1314,10 @@ bool otm_hdmi_hdcp_disable(hdmi_context_t *hdmi_context)
 	return true;
 }
 
-/*
+/**
  * Description: hdcp init function
  *
+ * @hdmi_context handle hdmi_context
  * @ddc_rd_wr:	pointer to ddc read write function
  *
  * Returns:	true on success
@@ -1113,8 +1334,10 @@ bool otm_hdmi_hdcp_init(hdmi_context_t *hdmi_context,
 		return false;
 	}
 
+	/* allocate hdcp context */
 	hdcp_context = kmalloc(sizeof(struct hdcp_context_t), GFP_KERNEL);
 
+	/* create hdcp workqueue to handle all hdcp tasks */
 	if (hdcp_context != NULL)
 		hdcp_context->hdcp_wq = create_workqueue("HDCP_WQ");
 
@@ -1123,6 +1346,7 @@ bool otm_hdmi_hdcp_init(hdmi_context_t *hdmi_context,
 		goto EXIT_INIT;
 	}
 
+	/* initialize hdcp context and hence hdcp state machine */
 	hdcp_context->is_required	= false;
 	hdcp_context->is_phase1_enabled	= false;
 	hdcp_context->is_phase2_enabled	= false;
@@ -1146,8 +1370,10 @@ bool otm_hdmi_hdcp_init(hdmi_context_t *hdmi_context,
 	hdcp_context->force_reset	= false;
 	hdcp_context->auth_id		= 0;
 
+	/* store i2c function pointer used for ddc read/write */
 	hdcp_context->ddc_read_write = ddc_rd_wr;
 
+	/* perform any hardware initializations */
 	if (ipil_hdcp_init() == true) {
 		pr_debug("hdcp: initialized\n");
 		return true;

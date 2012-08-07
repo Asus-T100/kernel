@@ -64,17 +64,6 @@
 #ifndef __MFLD_HDMI_REG_H
 #define __MFLD_HDMI_REG_H
 
-#define IPS_HDMI_OCP_STATUS			(1 << 2)
-#define IPS_HDMI_HPD_STATUS_BIT			(1 << 3)
-
-#define IPS_MSIC_VCC330CNT			0xd3
-#define IPS_VCC330_OFF				0x24
-#define IPS_VCC330_ON				0x37
-#define IPS_MSIC_VHDMICNT			0xde
-#define IPS_VHDMI_OFF				0x24
-#define IPS_VHDMI_ON				0xa4
-#define IPS_VHDMI_DB_30MS			0x60
-
 /* Video Data Island Packet Control */
 #define IPS_HDMI_VID_DIP_CTL_ADDR		(0x61170)
 

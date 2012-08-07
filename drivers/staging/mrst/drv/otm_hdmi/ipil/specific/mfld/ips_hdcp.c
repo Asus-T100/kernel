@@ -87,12 +87,28 @@ static uint8_t ips_hdcp_get_repeater_status(void);
 static int ips_hdcp_repeater_v_match_check(void);
 static bool ips_hdcp_repeater_is_busy(void) __attribute__((unused));
 static bool ips_hdcp_repeater_rdy_for_nxt_data(void);
+static bool ips_hdcp_repeater_is_idle(void);
+static bool ips_hdcp_repeater_wait_for_next_data(void);
+static bool ips_hdcp_repeater_wait_for_idle(void);
+static void ips_hdcp_off(void);
 
+/**
+ * Description: read register for hdcp status
+ *
+ * Returns:	value of hdcp status register
+ */
 static uint32_t ips_hdcp_get_status(void)
 {
 	return hdmi_read32(MDFLD_HDCP_STATUS_REG);
 }
 
+/**
+ * Description: enable hdcp on hdmi port
+ *
+ * @enable	enable or disable hdcp on hdmi port
+ *
+ * Returns:	none
+ */
 static void ips_hdcp_enable_port(bool enable)
 {
 	uint32_t hdmib_reg = hdmi_read32(MDFLD_HDMIB_CNTRL_REG);
@@ -103,6 +119,11 @@ static void ips_hdcp_enable_port(bool enable)
 	hdmi_write32(MDFLD_HDMIB_CNTRL_REG, hdmib_reg);
 }
 
+/**
+ * Description: generate an for new authentication
+ *
+ * Returns:	none
+ */
 static void ips_hdcp_capture_an(void)
 {
 	hdmi_write32(MDFLD_HDCP_INIT_REG, (uint32_t) jiffies);
@@ -110,6 +131,11 @@ static void ips_hdcp_capture_an(void)
 	hdmi_write32(MDFLD_HDCP_CONFIG_REG, HDCP_CAPTURE_AN);
 }
 
+/**
+ * Description: check if hdcp is enabled on hdmi port
+ *
+ * Returns:	true if enabled else false
+ */
 static bool ips_hdcp_is_hdcp_on(void)
 {
 	struct ips_hdcp_status_reg_t status;
@@ -121,6 +147,11 @@ static bool ips_hdcp_is_hdcp_on(void)
 	return false;
 }
 
+/**
+ * Description: check if an is ready for use
+ *
+ * Returns:	true if ready else false
+ */
 static bool ips_hdcp_is_an_ready(void)
 {
 	struct ips_hdcp_status_reg_t status;
@@ -132,6 +163,13 @@ static bool ips_hdcp_is_an_ready(void)
 	return false;
 }
 
+/**
+ * Description: read an from hdcp tx
+ *
+ * @an		buffer to copy the an into
+ *
+ * Returns:	none
+ */
 static void ips_hdcp_read_an(uint8_t *an)
 {
 	uint8_t i = 0;
@@ -143,11 +181,26 @@ static void ips_hdcp_read_an(uint8_t *an)
 		an[i] = temp.byte[i];
 }
 
+/**
+ * Description: write rx_ri into hdcp tx register
+ *
+ * @rx_ri	downstream device's ri value
+ *
+ * Returns:	none
+ */
 static void ips_hdcp_write_rx_ri(uint16_t rx_ri)
 {
 	hdmi_write32(MDFLD_HDCP_RECEIVER_RI_REG, rx_ri);
 }
 
+/**
+ * Description: set config value in hdcp tx configuration register
+ *
+ * @val		value to be written into the configuration register's
+ *		config bits
+ *
+ * Returns:	none
+ */
 static void ips_hdcp_set_config(int val)
 {
 	struct ips_hdcp_config_reg_t config;
@@ -156,6 +209,11 @@ static void ips_hdcp_set_config(int val)
 	hdmi_write32(MDFLD_HDCP_CONFIG_REG, config.value);
 }
 
+/**
+ * Description: read hdcp tx config bits
+ *
+ * Returns:	hdcp tx configuration register's config bits
+ */
 static int ips_hdcp_get_config(void)
 {
 	struct ips_hdcp_config_reg_t config;
@@ -163,6 +221,11 @@ static int ips_hdcp_get_config(void)
 	return config.hdcp_config;
 }
 
+/**
+ * Description: check whether hdcp configuration is set to encrypting
+ *
+ * Returns:	true if set to encrypting else false
+ */
 static bool ips_hdcp_config_is_encrypting(void)
 {
 	if (ips_hdcp_get_config() == HDCP_AUTHENTICATE_AND_ENCRYPT)
@@ -170,6 +233,11 @@ static bool ips_hdcp_config_is_encrypting(void)
 	return false;
 }
 
+/**
+ * Description: check whether hdcp is encrypting data
+ *
+ * Returns:	true if encrypting else false
+ */
 static bool ips_hdcp_is_encrypting(void)
 {
 	struct ips_hdcp_status_reg_t status;
@@ -181,6 +249,11 @@ static bool ips_hdcp_is_encrypting(void)
 	return false;
 }
 
+/**
+ * Description: get control bits of hdcp-tx repeater reguister
+ *
+ * Returns:	repeater control bits
+ */
 static uint8_t ips_hdcp_get_repeater_control(void)
 {
 	struct ips_hdcp_repeater_reg_t repeater;
@@ -188,6 +261,13 @@ static uint8_t ips_hdcp_get_repeater_control(void)
 	return repeater.control;
 }
 
+/**
+ * Description: set control bits of hdcp-tx repeater reguister
+ *
+ * @value	value of the control bits
+ *
+ * Returns:	none
+ */
 static void ips_hdcp_set_repeater_control(int value)
 {
 	struct ips_hdcp_repeater_reg_t repeater;
@@ -196,6 +276,11 @@ static void ips_hdcp_set_repeater_control(int value)
 	hdmi_write32(MDFLD_HDCP_REP_REG, repeater.value);
 }
 
+/**
+ * Description: get status bits of hdcp-tx repeater reguister
+ *
+ * Returns:	repeater status bits
+ */
 static uint8_t ips_hdcp_get_repeater_status(void)
 {
 	struct ips_hdcp_repeater_reg_t repeater;
@@ -203,6 +288,13 @@ static uint8_t ips_hdcp_get_repeater_status(void)
 	return repeater.status;
 }
 
+/**
+ * Description: check the status of SHA1 match
+ *
+ * Returns:	0	on error
+ *		1	on match
+ *		-1	if busy
+ */
 static int ips_hdcp_repeater_v_match_check(void)
 {
 	uint8_t status = ips_hdcp_get_repeater_status();
@@ -216,6 +308,11 @@ static int ips_hdcp_repeater_v_match_check(void)
 	}
 }
 
+/**
+ * Description: check if repeater is busy
+ *
+ * Returns:	true if busy else false
+ */
 static bool ips_hdcp_repeater_is_busy(void)
 {
 	uint8_t status = ips_hdcp_get_repeater_status();
@@ -224,6 +321,11 @@ static bool ips_hdcp_repeater_is_busy(void)
 	return false;
 }
 
+/**
+ * Description: check if repeater is ready for next data
+ *
+ * Returns:	true if ready else false
+ */
 static bool ips_hdcp_repeater_rdy_for_nxt_data(void)
 {
 	uint8_t status = ips_hdcp_get_repeater_status();
@@ -232,7 +334,12 @@ static bool ips_hdcp_repeater_rdy_for_nxt_data(void)
 	return false;
 }
 
-static bool ips_hdcp_repeater_rdy_for_idle(void)
+/**
+ * Description: check if repeater is idle
+ *
+ * Returns:	true if idle else false
+ */
+static bool ips_hdcp_repeater_is_idle(void)
 {
 	uint8_t status = ips_hdcp_get_repeater_status();
 	if (status == HDCP_REPEATER_STATUS_IDLE)
@@ -240,6 +347,11 @@ static bool ips_hdcp_repeater_rdy_for_idle(void)
 	return false;
 }
 
+/**
+ * Description: wait for hdcp repeater to be ready for next data
+ *
+ * Returns:	true if ready else false
+ */
 static bool ips_hdcp_repeater_wait_for_next_data(void)
 {
 	uint16_t i = 0;
@@ -250,16 +362,36 @@ static bool ips_hdcp_repeater_wait_for_next_data(void)
 	return false;
 }
 
+/**
+ * Description: wait for hdcp repeater to get into idle state
+ *
+ * Returns:	true if repeater is in idle state else false
+ */
 static bool ips_hdcp_repeater_wait_for_idle(void)
 {
 	uint16_t i = 0;
 	for (; i < HDCP_MAX_RETRY_STATUS; i++) {
-		if (ips_hdcp_repeater_rdy_for_idle())
+		if (ips_hdcp_repeater_is_idle())
 			return true;
 	}
 	return false;
 }
 
+/**
+ * Description: switch off hdcp by setting in the config register
+ *
+ * Returns:	none
+ */
+static void ips_hdcp_off(void)
+{
+	ips_hdcp_set_config(HDCP_Off);
+}
+
+/**
+ * Description: check whether hdcp hardware is ready
+ *
+ * Returns:	true if ready else false
+ */
 bool ips_hdcp_is_ready(void)
 {
 	struct ips_hdcp_status_reg_t status;
@@ -271,11 +403,13 @@ bool ips_hdcp_is_ready(void)
 	return false;
 }
 
-void ips_hdcp_off(void)
-{
-	ips_hdcp_set_config(HDCP_Off);
-}
-
+/**
+ * Description: read an from hdcp tx
+ *
+ * @an	  buffer to return an in
+ *
+ * Returns:	true on succesful read else false
+ */
 void ips_hdcp_get_an(uint8_t *an)
 {
 	bool ret = false;
@@ -287,6 +421,13 @@ void ips_hdcp_get_an(uint8_t *an)
 	ips_hdcp_read_an(an);
 }
 
+/**
+ * Description: read aksv from hdcp tx
+ *
+ * @aksv	buffer to return aksv
+ *
+ * Returns:	true on succesful read else false
+ */
 void ips_hdcp_get_aksv(uint8_t *aksv)
 {
 	static uint8_t save_aksv[HDCP_KSV_SIZE] = {0, 0, 0, 0, 0};
@@ -305,6 +446,13 @@ void ips_hdcp_get_aksv(uint8_t *aksv)
 		aksv[i] = save_aksv[i];
 }
 
+/**
+ * Description: set downstream bksv in hdcp tx
+ *
+ * @bksv	bksv from downstream device
+ *
+ * Returns:	true on succesful write else false
+ */
 bool ips_hdcp_set_bksv(uint8_t *bksv)
 {
 	uint8_t i = 0;
@@ -320,6 +468,14 @@ bool ips_hdcp_set_bksv(uint8_t *bksv)
 	return true;
 }
 
+/**
+ * Description: set repeater bit in hdcp tx if downstream is a repeater else
+ *		reset the bit
+ *
+ * @present	indicates whether downstream is repeater or not
+ *
+ * Returns:	true on succesful write else false
+ */
 bool ips_hdcp_set_repeater(bool present)
 {
 	struct ips_hdcp_repeater_reg_t repeater;
@@ -331,6 +487,11 @@ bool ips_hdcp_set_repeater(bool present)
 	return true;
 }
 
+/**
+ * Description: start first stage of authentication by writing an aksv
+ *
+ * Returns:	true on succesfully starting authentication else false
+ */
 bool ips_hdcp_start_authentication(void)
 {
 	ips_hdcp_enable_port(true);
@@ -338,6 +499,11 @@ bool ips_hdcp_start_authentication(void)
 	return true;
 }
 
+/**
+ * Description: check if hdcp tx R0 is ready after starting authentication
+ *
+ * Returns:	true if r0 is ready else false
+ */
 bool ips_hdcp_is_r0_ready(void)
 {
 	struct ips_hdcp_status_reg_t status;
@@ -348,6 +514,11 @@ bool ips_hdcp_is_r0_ready(void)
 	return false;
 }
 
+/**
+ * Description: Enable encryption once r0 matches
+ *
+ * Returns:	true on enabling encryption else false
+ */
 bool ips_hdcp_enable_encryption(void)
 {
 	struct ips_hdcp_status_reg_t status;
@@ -362,7 +533,13 @@ bool ips_hdcp_enable_encryption(void)
 	return false;
 }
 
-
+/**
+ * Description: check if hdcp tx & rx ri matches
+ *
+ * @rx_ri	ri of downstream device
+ *
+ * Returns:	true if ri matches else false
+ */
 bool ips_hdcp_does_ri_match(uint16_t rx_ri)
 {
 	struct ips_hdcp_status_reg_t status;
@@ -376,6 +553,15 @@ bool ips_hdcp_does_ri_match(uint16_t rx_ri)
 	return false;
 }
 
+/**
+ * Description: compute v for repeater authentication
+ *
+ * @rep_ksv_list	 ksv list from downstream repeater
+ * @rep_ksv_list_entries number of entries in the ksv list
+ * @topology_data	bstatus value
+ *
+ * Returns:	true on successfully computing v else false
+ */
 bool ips_hdcp_compute_tx_v(uint8_t *rep_ksv_list,
 				   uint32_t rep_ksv_list_entries,
 				   uint16_t topology_data)
@@ -587,6 +773,13 @@ exit:
 	return ret;
 }
 
+/**
+ * Description: compare hdcp tx & hdcp rx sha1 results
+ *
+ * @rep_prime_v sha1 value from downstream repeater
+ *
+ * Returns:	true if same else false
+ */
 bool ips_hdcp_compare_v(uint32_t *rep_prime_v)
 {
 	bool ret = false;
@@ -627,6 +820,11 @@ exit:
 	return ret;
 }
 
+/**
+ * Description: disable hdcp
+ *
+ * Returns:	true on successfully disabling hdcp else false
+ */
 bool ips_hdcp_disable(void)
 {
 	ips_hdcp_off();
@@ -639,11 +837,21 @@ bool ips_hdcp_disable(void)
 	return true;
 }
 
+/**
+ * Description: initialize hdcp tx for authentication
+ *
+ * Returns:	true success else false
+ */
 bool ips_hdcp_init(void)
 {
 	return true;
 }
 
+/**
+ * Description: check whether hdcp tx can authenticate
+ *
+ * Returns:	true if device can authenticate else false
+ */
 bool ips_hdcp_device_can_authenticate(void)
 {
 	return true;
