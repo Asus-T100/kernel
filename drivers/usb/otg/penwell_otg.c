@@ -1549,12 +1549,6 @@ static int penwell_otg_charger_det_aca_clt(void)
 	u8				usb_vdat_det = 0;
 	u8				usb_vdm = 0;
 
-	retval = penwell_otg_ulpi_write(iotg, ULPI_PWRCTRLSET, DPVSRCEN);
-	if (retval)
-		return retval;
-
-	msleep(70);
-
 	retval = penwell_otg_ulpi_read(iotg, ULPI_VS2LATCH, &usb_vs2_latch);
 	dev_dbg(pnw->dev, "%s: usb_vs2_latch = 0x%x\n",
 			__func__, usb_vs2_latch);
@@ -1571,24 +1565,6 @@ static int penwell_otg_charger_det_aca_clt(void)
 		return retval;
 	}
 
-	retval = penwell_otg_ulpi_read(iotg, ULPI_PWRCTRL, &data);
-	usb_vdat_det = data & VDATDET;
-	if (retval) {
-		dev_warn(pnw->dev, "ULPI read failed, exit\n");
-		return retval;
-	}
-
-	retval = penwell_otg_ulpi_read(iotg, ULPI_VS4, &data);
-	usb_vdm = data & CHRG_SERX_DM;
-	if (retval) {
-		dev_warn(pnw->dev, "ULPI read failed, exit\n");
-		return retval;
-	}
-
-	retval = penwell_otg_ulpi_write(iotg, ULPI_PWRCTRLCLR, DPVSRCEN);
-	if (retval)
-		return retval;
-
 	if (usb_vs2_latch & IDRARBRC_MSK) {
 		switch (IDRARBRC_STS(usb_vs2_sts)) {
 		case IDRARBRC_A:
@@ -1596,11 +1572,11 @@ static int penwell_otg_charger_det_aca_clt(void)
 			break;
 		case IDRARBRC_B:
 			iotg->hsm.id = ID_ACA_B;
-			dev_dbg(pnw->dev, "ACA-B detected\n");
+			dev_info(pnw->dev, "ACA-B detected\n");
 			break;
 		case IDRARBRC_C:
 			iotg->hsm.id = ID_ACA_C;
-			dev_dbg(pnw->dev, "ACA-C detected\n");
+			dev_info(pnw->dev, "ACA-C detected\n");
 			break;
 		default:
 			break;
@@ -1608,10 +1584,36 @@ static int penwell_otg_charger_det_aca_clt(void)
 	}
 
 	if (iotg->hsm.id == ID_ACA_A) {
+		retval = penwell_otg_ulpi_write(iotg,
+					ULPI_PWRCTRLSET, DPVSRCEN);
+		if (retval)
+			return retval;
+
+		msleep(70);
+
+		retval = penwell_otg_ulpi_read(iotg, ULPI_PWRCTRL, &data);
+		usb_vdat_det = data & VDATDET;
+		if (retval) {
+			dev_warn(pnw->dev, "ULPI read failed, exit\n");
+			return retval;
+		}
+
+		retval = penwell_otg_ulpi_read(iotg, ULPI_VS4, &data);
+		usb_vdm = data & CHRG_SERX_DM;
+		if (retval) {
+			dev_warn(pnw->dev, "ULPI read failed, exit\n");
+			return retval;
+		}
+
+		retval = penwell_otg_ulpi_write(iotg,
+					 ULPI_PWRCTRLCLR, DPVSRCEN);
+		if (retval)
+			return retval;
+
 		if (usb_vdat_det && !usb_vdm)
-			dev_dbg(pnw->dev, "ACA-Dock detected\n");
+			dev_info(pnw->dev, "ACA-Dock detected\n");
 		else if (!usb_vdat_det && usb_vdm)
-			dev_dbg(pnw->dev, "ACA-A detected\n");
+			dev_info(pnw->dev, "ACA-A detected\n");
 	}
 
 	if (iotg->hsm.id == ID_ACA_A || iotg->hsm.id == ID_ACA_B
