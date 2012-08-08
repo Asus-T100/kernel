@@ -33,6 +33,26 @@
 #define PNW_TOPAZ_BIAS_TABLE_MAX_SIZE (2 * 1024)
 /* #define TOPAZ_PDUMP */
 
+/* Max command buffer size */
+#define PNW_MAX_CMD_BUF_PAGE_NUM (2)
+/* One cmd set contains 4 words */
+#define PNW_TOPAZ_WORDS_PER_CMDSET (4)
+#define PNW_TOPAZ_POLL_DELAY (100)
+#define PNW_TOPAZ_POLL_RETRY (10000)
+
+#define TOPAZ_NEW_CODEC_CMD_BYTES (4 * 2)
+#define TOPAZ_COMMON_CMD_BYTES (4 * 3)
+#define TOPAZ_POWER_CMD_BYTES (0)
+/* Every WRITEREG command set contain 2 words.
+   The first word indicates register offset.
+   The second word indicates register value */
+#define TOPAZ_WRITEREG_BYTES_PER_SET (4 * 2)
+#define TOPAZ_WRITEREG_MAX_SETS \
+	(PNW_TOPAZ_BIAS_TABLE_MAX_SIZE / TOPAZ_WRITEREG_BYTES_PER_SET)
+
+/* in words */
+#define TOPAZ_CMD_FIFO_SIZE (32)
+
 #define PNW_IS_H264_ENC(codec) \
 	(codec == IMG_CODEC_H264_VBR || \
 	 codec == IMG_CODEC_H264_VCM || \
@@ -90,7 +110,6 @@ struct pnw_topaz_private {
 	struct drm_device *dev;
 	unsigned int pmstate;
 	struct sysfs_dirent *sysfs_pmstate;
-	int frame_skip;
 
 	/*Save content of MTX register, whole RAM and BIAS table*/
 	void *topaz_mtx_reg_state[MAX_TOPAZ_CORES];
@@ -104,7 +123,6 @@ struct pnw_topaz_private {
 	 *topaz command queue
 	 */
 	spinlock_t topaz_lock;
-	struct mutex topaz_mutex;
 	struct list_head topaz_queue;
 	int topaz_busy;		/* 0 means topaz is free */
 	int topaz_fw_loaded;
@@ -130,7 +148,7 @@ struct pnw_topaz_private {
 	uint32_t topaz_num_cores;
 
 	/*Before load firmware, need to set up jitter according to resolution*/
-	/*The data of MTX_CMDID_SW_NEW_CODEC command contains width and length.*/
+	/*The data of MTX_CMDID_SW_NEW_CODEC command contains width and length*/
 	uint16_t frame_w;
 	uint16_t frame_h;
 	/* topaz suspend work queue */

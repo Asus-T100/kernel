@@ -226,9 +226,7 @@ gfx-$(CONFIG_SND_INTELMID_HDMI_AUDIO) += $(DISPLAYDIR)/mdfld_hdmi_audio.o
 
 gfx-y +=  $(VIDEO_COMMON_DIR)/psb_ttm_glue.o
 
-gfx-$(CONFIG_MDFD_VIDEO_DECODE) += $(ENCODE_DIR)/lnc_topaz.o \
-		$(ENCODE_DIR)/lnc_topazinit.o \
-		$(ENCODE_DIR)/pnw_topaz.o \
+gfx-$(CONFIG_MDFD_VIDEO_DECODE) += $(ENCODE_DIR)/pnw_topaz.o \
 		$(ENCODE_DIR)/pnw_topazinit.o \
 		$(VIDEO_COMMON_DIR)/psb_cmdbuf.o \
 		$(VIDEO_COMMON_DIR)/psb_buffer.o \

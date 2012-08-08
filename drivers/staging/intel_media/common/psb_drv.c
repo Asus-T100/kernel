@@ -28,7 +28,6 @@
 #include "psb_intel_reg.h"
 #include "psb_intel_bios.h"
 #include "psb_msvdx.h"
-#include "lnc_topaz.h"
 #include "pnw_topaz.h"
 #include <drm/drm_pciids.h>
 #include "pvr_drm_shared.h"
@@ -703,8 +702,6 @@ static void psb_do_takedown(struct drm_device *dev)
 
 	if (IS_MDFLD(dev))
 		pnw_topaz_uninit(dev);
-	else if (!dev_priv->topaz_disabled)
-		lnc_topaz_uninit(dev);
 #endif
 }
 
@@ -1494,13 +1491,8 @@ static int psb_do_init(struct drm_device *dev)
 	 */
 	ospm_power_island_up(OSPM_VIDEO_ENC_ISLAND);
 
-	/* for sku100L and sku100M, VEC is disabled in fuses */
 	if (IS_MDFLD(dev))
 		pnw_topaz_init(dev);
-	else if (!dev_priv->topaz_disabled)
-		lnc_topaz_init(dev);
-	else
-		ospm_power_island_down(OSPM_VIDEO_ENC_ISLAND);
 
 	return 0;
 out_err:

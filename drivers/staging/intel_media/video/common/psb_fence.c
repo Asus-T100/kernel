@@ -23,7 +23,6 @@
 #include "psb_drv.h"
 #include "psb_msvdx.h"
 #include "pnw_topaz.h"
-#include "lnc_topaz.h"
 
 
 static void psb_fence_poll(struct ttm_fence_device *fdev,
@@ -50,9 +49,6 @@ static void psb_fence_poll(struct ttm_fence_device *fdev,
 		if (IS_MDFLD(dev))
 			sequence = *((uint32_t *)
 				     ((struct pnw_topaz_private *)dev_priv->topaz_private)->topaz_sync_addr + 1);
-		else
-			sequence = *((uint32_t *)
-				     ((struct topaz_private *)dev_priv->topaz_private)->topaz_sync_addr);
 		break;
 	default:
 		break;

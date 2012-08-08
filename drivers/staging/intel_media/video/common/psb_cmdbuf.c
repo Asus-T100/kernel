@@ -24,7 +24,6 @@
 #include "psb_drm.h"
 #include "psb_reg.h"
 #include "psb_msvdx.h"
-#include "lnc_topaz.h"
 #include "pnw_topaz.h"
 #include "ttm/ttm_bo_api.h"
 #include "ttm/ttm_execbuf_util.h"
@@ -909,12 +908,7 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 			goto out_err4;
 		break;
 	case LNC_ENGINE_ENCODE:
-		if (IS_MRST(dev))
-			ret = lnc_cmdbuf_video(file_priv, &context->validate_list,
-					       context->fence_types, arg,
-					       cmd_buffer, &fence_arg);
-		else
-			ret = pnw_cmdbuf_video(file_priv, &context->validate_list,
+		ret = pnw_cmdbuf_video(file_priv, &context->validate_list,
 					       context->fence_types, arg,
 					       cmd_buffer, &fence_arg);
 

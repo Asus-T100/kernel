@@ -31,11 +31,9 @@
 #include "psb_drv.h"
 #include "psb_intel_reg.h"
 #include "psb_msvdx.h"
-#include "lnc_topaz.h"
 #include "pnw_topaz.h"
 #include "mdfld_gl3.h"
 #include <linux/mutex.h>
-#include "lnc_topaz_hw_reg.h"
 #include "mdfld_dsi_dbi.h"
 #include "mdfld_dsi_dbi_dpu.h"
 #include <asm/intel_scu_ipc.h>
@@ -165,7 +163,6 @@ static int ospm_runtime_pm_topaz_suspend(struct drm_device *dev)
 {
 	int ret = 0;
 	struct drm_psb_private *dev_priv = dev->dev_private;
-	struct topaz_private *topaz_priv = dev_priv->topaz_private;
 	struct pnw_topaz_private *pnw_topaz_priv = dev_priv->topaz_private;
 	struct psb_video_ctx *pos, *n;
 	int encode_ctx = 0, encode_running = 0;
@@ -193,13 +190,6 @@ static int ospm_runtime_pm_topaz_suspend(struct drm_device *dev)
 	}
 
 #ifdef CONFIG_MDFD_VIDEO_DECODE
-	if (IS_MRST(dev)) {
-		if (lnc_check_topaz_idle(dev)) {
-			ret = -2;
-			goto out;
-		}
-	}
-
 	if (IS_MDFLD(dev)) {
 		if (pnw_check_topaz_idle(dev)) {
 			ret = -2;
@@ -207,11 +197,6 @@ static int ospm_runtime_pm_topaz_suspend(struct drm_device *dev)
 		}
 	}
 	psb_irq_uninstall_islands(gpDrmDevice, OSPM_VIDEO_ENC_ISLAND);
-	if (IS_MRST(dev)) {
-		if (encode_running)
-			lnc_topaz_save_mtx_state(gpDrmDevice);
-		TOPAZ_NEW_PMSTATE(dev, topaz_priv, PSB_PMSTATE_POWERDOWN);
-	}
 
 	if (IS_MDFLD(dev)) {
 		if (encode_running)
@@ -246,7 +231,6 @@ static int ospm_runtime_pm_msvdx_resume(struct drm_device *dev)
 static int ospm_runtime_pm_topaz_resume(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv = dev->dev_private;
-	struct topaz_private *topaz_priv = dev_priv->topaz_private;
 	struct pnw_topaz_private *pnw_topaz_priv = dev_priv->topaz_private;
 	struct psb_video_ctx *pos, *n;
 	int encode_ctx = 0, encode_running = 0;
@@ -273,14 +257,6 @@ static int ospm_runtime_pm_topaz_resume(struct drm_device *dev)
 		PSB_DEBUG_PM("Topaz: no encode running\n");
 
 #ifdef CONFIG_MDFD_VIDEO_DECODE
-	if (IS_MRST(dev)) {
-		if (encode_running) { /* has encode session running */
-			psb_irq_uninstall_islands(gpDrmDevice, OSPM_VIDEO_ENC_ISLAND);
-			lnc_topaz_restore_mtx_state(gpDrmDevice);
-		}
-		TOPAZ_NEW_PMSTATE(dev, topaz_priv, PSB_PMSTATE_POWERUP);
-	}
-
 	if (IS_MDFLD(dev)) {
 		if (encode_running) { /* has encode session running */
 			psb_irq_uninstall_islands(gpDrmDevice, OSPM_VIDEO_ENC_ISLAND);
@@ -326,7 +302,6 @@ out:
 void ospm_apm_power_down_topaz(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv = dev->dev_private;
-	struct topaz_private *topaz_priv = dev_priv->topaz_private;
 	struct pnw_topaz_private *pnw_topaz_priv = dev_priv->topaz_private;
 	unsigned long flags;
 
@@ -340,18 +315,9 @@ void ospm_apm_power_down_topaz(struct drm_device *dev)
 		goto out;
 
 #ifdef CONFIG_MDFD_VIDEO_DECODE
-	if (IS_MRST(dev))
-		if (lnc_check_topaz_idle(dev))
-			goto out;
 	if (IS_MDFLD(dev))
 		if (pnw_check_topaz_idle(dev))
 			goto out;
-
-	if (IS_MRST(dev)) {
-		psb_irq_uninstall_islands(dev, OSPM_VIDEO_ENC_ISLAND);
-		lnc_topaz_save_mtx_state(dev);
-		TOPAZ_NEW_PMSTATE(dev, topaz_priv, PSB_PMSTATE_POWERDOWN);
-	}
 	if (IS_MDFLD(dev)) {
 		psb_irq_uninstall_islands(dev, OSPM_VIDEO_ENC_ISLAND);
 		pnw_topaz_save_mtx_state(gpDrmDevice);

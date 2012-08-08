@@ -22,6 +22,10 @@
  * this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
  *
+ * Authors:
+ *      Shengquan(Austin) Yuan <shengquan.yuan@intel.com>
+ *      Elaine Wang <elaine.wang@intel.com>
+ *      Li Zeng <li.zeng@intel.com>
  **************************************************************************/
 
 /* include headers */
@@ -33,25 +37,49 @@
 #include "pnw_topaz.h"
 #include "psb_powermgmt.h"
 #include "pnw_topaz_hw_reg.h"
-#include "lnc_topaz.h"
 
 #include <linux/io.h>
 #include <linux/delay.h>
 
 #define TOPAZ_MAX_COMMAND_IN_QUEUE 0x1000
 /* #define SYNC_FOR_EACH_COMMAND */
+
+#define PNW_TOPAZ_CHECK_CMD_SIZE(cmd_size, cur_cmd_size, cur_cmd_id)\
+	do {\
+		if ((cmd_size) < (cur_cmd_size)) {\
+			DRM_ERROR("%s L%d cmd size(%d) of cmd id(%x)"\
+					" is not correct\n",\
+					__func__, __LINE__, cur_cmd_size,\
+					cur_cmd_id);\
+			return -EINVAL;\
+		} \
+	} while (0)
+
+#define PNW_TOPAZ_CHECK_CORE_ID(core_id)\
+	do {\
+		if ((core_id) >= TOPAZSC_NUM_CORES) {\
+			DRM_ERROR("%s L%d core_id(%d)"\
+					" is not correct\n",\
+					__func__, __LINE__,\
+					core_id);\
+			return -EINVAL;\
+		} \
+	} while (0)
+
+
+
 /* static function define */
 static int pnw_topaz_deliver_command(struct drm_device *dev,
 				     struct ttm_buffer_object *cmd_buffer,
-				     unsigned long cmd_offset,
-				     unsigned long cmd_size,
+				     u32 cmd_offset,
+				     u32 cmd_size,
 				     void **topaz_cmd, uint32_t sequence,
 				     int copy_cmd);
-static int pnw_topaz_send(struct drm_device *dev, void *cmd,
-			  unsigned long cmd_size, uint32_t sync_seq);
+static int pnw_topaz_send(struct drm_device *dev, unsigned char *cmd,
+			  u32 cmd_size, uint32_t sync_seq);
 static int pnw_topaz_dequeue_send(struct drm_device *dev);
 static int pnw_topaz_save_command(struct drm_device *dev, void *cmd,
-				  unsigned long cmd_size, uint32_t sequence);
+				  u32 cmd_size, uint32_t sequence);
 
 static void topaz_mtx_kick(struct drm_psb_private *dev_priv, uint32_t core_id,
 			   uint32_t kick_count);
@@ -120,7 +148,7 @@ IMG_BOOL pnw_topaz_interrupt(IMG_VOID *pvData)
 /* #define PSB_DEBUG_GENERAL DRM_ERROR */
 static int pnw_submit_encode_cmdbuf(struct drm_device *dev,
 				    struct ttm_buffer_object *cmd_buffer,
-				    unsigned long cmd_offset, unsigned long cmd_size,
+				    u32 cmd_offset, u32 cmd_size,
 				    struct ttm_fence_object *fence)
 {
 	struct drm_psb_private *dev_priv = dev->dev_private;
@@ -228,7 +256,7 @@ static int pnw_submit_encode_cmdbuf(struct drm_device *dev,
 }
 
 static int pnw_topaz_save_command(struct drm_device *dev, void *cmd,
-				  unsigned long cmd_size, uint32_t sequence)
+				  u32 cmd_size, uint32_t sequence)
 {
 	struct drm_psb_private *dev_priv = dev->dev_private;
 	struct pnw_topaz_cmd_queue *topaz_cmd;
@@ -241,7 +269,6 @@ static int pnw_topaz_save_command(struct drm_device *dev, void *cmd,
 	topaz_cmd = kzalloc(sizeof(struct pnw_topaz_cmd_queue),
 			    GFP_KERNEL);
 	if (topaz_cmd == NULL) {
-		mutex_unlock(&topaz_priv->topaz_mutex);
 		DRM_ERROR("TOPAZ: out of memory....\n");
 		return -ENOMEM;
 	}
@@ -325,7 +352,7 @@ int pnw_wait_on_sync(struct drm_psb_private *dev_priv,
 
 int pnw_topaz_deliver_command(struct drm_device *dev,
 			      struct ttm_buffer_object *cmd_buffer,
-			      unsigned long cmd_offset, unsigned long cmd_size,
+			      u32 cmd_offset, u32 cmd_size,
 			      void **topaz_cmd, uint32_t sequence,
 			      int copy_cmd)
 {
@@ -334,8 +361,19 @@ int pnw_topaz_deliver_command(struct drm_device *dev,
 	bool is_iomem;
 	int ret;
 	unsigned char *cmd_start, *tmp;
+	u16 num_pages;
 
-	ret = ttm_bo_kmap(cmd_buffer, cmd_offset >> PAGE_SHIFT, 2,
+	num_pages = ((cmd_buffer->num_pages < PNW_MAX_CMD_BUF_PAGE_NUM) ?
+		       cmd_buffer->num_pages : PNW_MAX_CMD_BUF_PAGE_NUM);
+	if (cmd_size > (num_pages << PAGE_SHIFT) ||
+			cmd_offset > (num_pages << PAGE_SHIFT) ||
+			(cmd_size + cmd_offset) > (num_pages << PAGE_SHIFT)
+			|| (cmd_size == 0)) {
+		DRM_ERROR("TOPAZ: %s invalid cmd_size(%d) or cmd_offset(%d)",
+				__func__, cmd_size, cmd_offset);
+		return -EINVAL;
+	}
+	ret = ttm_bo_kmap(cmd_buffer, cmd_offset >> PAGE_SHIFT, num_pages,
 			  &cmd_kmap);
 	if (ret) {
 		DRM_ERROR("TOPAZ: drm_bo_kmap failed: %d\n", ret);
@@ -363,7 +401,7 @@ int pnw_topaz_deliver_command(struct drm_device *dev,
 	}
 
 out:
-	PSB_DEBUG_GENERAL("TOPAZ:cmd_size(%ld), sequence(%d)"
+	PSB_DEBUG_GENERAL("TOPAZ:cmd_size(%d), sequence(%d)"
 			  " copy_cmd(%d)\n",
 			  cmd_size, sequence, copy_cmd);
 
@@ -384,7 +422,10 @@ int pnw_topaz_kick_null_cmd(struct drm_psb_private *dev_priv,
 	struct topaz_cmd_header cur_cmd_header;
 	int ret;
 
-	POLL_TOPAZ_FREE_FIFO_SPACE(4, 100, 10000, &cur_free_space);
+	POLL_TOPAZ_FREE_FIFO_SPACE(PNW_TOPAZ_WORDS_PER_CMDSET,
+			PNW_TOPAZ_POLL_DELAY,
+			PNW_TOPAZ_POLL_RETRY,
+			&cur_free_space);
 	if (ret) {
 		DRM_ERROR("TOPAZ: error -- ret(%d)\n", ret);
 		return ret;
@@ -454,37 +495,71 @@ static void pnw_topaz_save_bias_table(struct pnw_topaz_private *topaz_priv,
 	return;
 }
 
+static inline int pnw_topaz_write_reg(struct drm_psb_private *dev_priv,
+		u32 *p_command, u32 reg_cnt, u8 core_id)
+{
+	u32 reg_off, reg_val;
+	for (; reg_cnt > 0; reg_cnt--) {
+		reg_off = *p_command;
+		p_command++;
+		reg_val = *p_command;
+		p_command++;
+		if (reg_off > TOPAZ_BIASREG_MAX(core_id) ||
+				reg_off < TOPAZ_BIASREG_MIN(core_id)) {
+			DRM_ERROR("TOPAZ: Ignore write (0x%08x)" \
+					" to register 0x%08x\n",
+					reg_val, reg_off);
+			return -EINVAL;
+		} else
+			MM_WRITE32(0, reg_off, reg_val);
+	}
+	return 0;
+}
+
 
 int
-pnw_topaz_send(struct drm_device *dev, void *cmd,
-	       unsigned long cmd_size, uint32_t sync_seq)
+pnw_topaz_send(struct drm_device *dev, unsigned char *cmd,
+	       u32 cmd_size, uint32_t sync_seq)
 {
 	struct drm_psb_private *dev_priv = dev->dev_private;
 	int ret = 0;
-	unsigned char *command = (unsigned char *) cmd;
 	struct topaz_cmd_header *cur_cmd_header;
 	uint32_t cur_cmd_size = 4, cur_cmd_id, cur_free_space = 0;
 	uint32_t codec;
 	struct pnw_topaz_private *topaz_priv = dev_priv->topaz_private;
-	uint32_t reg_off, reg_val, reg_cnt;
+	uint32_t reg_cnt;
 	uint32_t *p_command;
 
 	PSB_DEBUG_GENERAL("TOPAZ: send the command in the buffer one by one\n");
 
-	while (cmd_size > 0) {
-		cur_cmd_header = (struct topaz_cmd_header *) command;
+	/* Command header(struct topaz_cmd_header) is 32 bit */
+	while (cmd_size >= sizeof(struct topaz_cmd_header)) {
+		cur_cmd_header = (struct topaz_cmd_header *) cmd;
+		PNW_TOPAZ_CHECK_CORE_ID(cur_cmd_header->core);
 		cur_cmd_id = cur_cmd_header->id;
-		PSB_DEBUG_GENERAL("TOPAZ: %s: \n", cmd_to_string(cur_cmd_id));
+		PSB_DEBUG_GENERAL("TOPAZ: %s:\n", cmd_to_string(cur_cmd_id));
 
 		switch (cur_cmd_id) {
 		case MTX_CMDID_SW_NEW_CODEC:
-			codec = *((uint32_t *) cmd + 1);
-			topaz_priv->frame_h = (uint16_t)
-					      ((*((uint32_t *) cmd + 2)) & 0xffff) ;
-			topaz_priv->frame_w = (uint16_t)
-					      (((*((uint32_t *) cmd + 2))
-						& 0xffff0000)  >> 16) ;
+			cur_cmd_size = sizeof(struct topaz_cmd_header)
+				+ TOPAZ_NEW_CODEC_CMD_BYTES;
+			PNW_TOPAZ_CHECK_CMD_SIZE(cmd_size,
+					cur_cmd_size, cur_cmd_id);
+			p_command = (uint32_t *)
+				(cmd + sizeof(struct topaz_cmd_header));
+			codec = *p_command;
 
+			if (codec >= PNW_TOPAZ_CODEC_NUM_MAX) {
+				DRM_ERROR("%s unknown video codec %d\n",
+						__func__, codec);
+				return -EINVAL;
+			}
+
+			p_command++;
+			topaz_priv->frame_h =
+				(u16)((*p_command) & 0xffff) ;
+			topaz_priv->frame_w =
+				 (u16)((*p_command >> 16) & 0xffff);
 			PSB_DEBUG_GENERAL("TOPAZ: setup new codec %s (%d),"
 					  " width %d, height %d\n",
 					  codec_to_string(codec), codec,
@@ -495,66 +570,64 @@ pnw_topaz_send(struct drm_device *dev, void *cmd,
 				return -EBUSY;
 			}
 			topaz_priv->topaz_cur_codec = codec;
-			cur_cmd_size = 3;
 			break;
 
 		case MTX_CMDID_SW_ENTER_LOWPOWER:
-			PSB_DEBUG_GENERAL("TOPAZ: enter lowpower.... \n");
-			PSB_DEBUG_GENERAL("XXX: implement it\n");
-			cur_cmd_size = 1;
+			PSB_DEBUG_GENERAL("TOPAZ: enter lowpower....\n");
+			cur_cmd_size = sizeof(struct topaz_cmd_header)
+				+ TOPAZ_POWER_CMD_BYTES;
+			PNW_TOPAZ_CHECK_CMD_SIZE(cmd_size,
+					cur_cmd_size, cur_cmd_id);
 			break;
 
 		case MTX_CMDID_SW_LEAVE_LOWPOWER:
-			PSB_DEBUG_GENERAL("TOPAZ: leave lowpower... \n");
-			PSB_DEBUG_GENERAL("XXX: implement it\n");
-			cur_cmd_size = 1;
+			PSB_DEBUG_GENERAL("TOPAZ: leave lowpower...\n");
+			cur_cmd_size = sizeof(struct topaz_cmd_header)
+				+ TOPAZ_POWER_CMD_BYTES;
+			PNW_TOPAZ_CHECK_CMD_SIZE(cmd_size,
+					cur_cmd_size, cur_cmd_id);
 			break;
 
 		case MTX_CMDID_SW_WRITEREG:
-			p_command = (uint32_t *)(command);
+			p_command = (uint32_t *)
+				(cmd + sizeof(struct topaz_cmd_header));
+			cur_cmd_size = sizeof(struct topaz_cmd_header)
+				+ sizeof(u32);
+			PNW_TOPAZ_CHECK_CMD_SIZE(cmd_size,
+					cur_cmd_size, cur_cmd_id);
+			reg_cnt = *p_command;
 			p_command++;
-			cur_cmd_size = *p_command;
-
+			PNW_TOPAZ_CHECK_CMD_SIZE(TOPAZ_WRITEREG_MAX_SETS,
+					reg_cnt, cur_cmd_id);
+			/* Reg_off and reg_val are stored in a pair of words*/
+			cur_cmd_size += (reg_cnt *
+					TOPAZ_WRITEREG_BYTES_PER_SET);
+			PNW_TOPAZ_CHECK_CMD_SIZE(cmd_size,
+					cur_cmd_size, cur_cmd_id);
 			if ((drm_topaz_pmpolicy != PSB_PMPOLICY_NOPM) &&
 				(!PNW_IS_JPEG_ENC(topaz_priv->topaz_cur_codec)))
 				pnw_topaz_save_bias_table(topaz_priv,
-						(const void *)command,
-						(cur_cmd_size * 2 + 2) * 4,
-						cur_cmd_header->core);
+					(const void *)cmd,
+					cur_cmd_size,
+					cur_cmd_header->core);
 
-			p_command++;
-			PSB_DEBUG_GENERAL("TOPAZ: Start to write"
-					  " %d Registers\n", cur_cmd_size);
-			if (cur_cmd_size > (cmd_size / 4)) {
-				DRM_ERROR("TOPAZ: Wrong number of write "
-					  "operations.Exceed command buffer."
-					  "(%d)\n", (int)(cmd_size / 4));
-				goto out;
-			}
+			PSB_DEBUG_GENERAL("TOPAZ: Start to write" \
+					" %d Registers\n", reg_cnt);
 
-			for (reg_cnt = 0; reg_cnt < cur_cmd_size; reg_cnt++) {
-				reg_off = *p_command;
-				p_command++;
-				reg_val = *p_command;
-				p_command++;
-				if (reg_off > TOPAZSC_REG_OFF_MAX)
-					DRM_ERROR("TOPAZ: Ignore write (0x%08x)"
-						  " to register 0x%08x\n",
-						  reg_val, reg_off);
-				else
-					MM_WRITE32(0, reg_off, reg_val);
-			}
-			/* Reg_off and reg_val are stored in a pair of words*/
-			cur_cmd_size *= 2;
-			/* Header size, 2 words */
-			cur_cmd_size += 2;
+			ret = pnw_topaz_write_reg(dev_priv,
+				p_command,
+				reg_cnt,
+				cur_cmd_header->core);
 			break;
 		case MTX_CMDID_PAD:
-			/*Ignore this command, which is used to skip
-			 * some commands in user space*/
-			cur_cmd_size = 4;
+			/* Ignore this command, which is used to skip
+			 * some commands in user space */
+			cur_cmd_size = sizeof(struct topaz_cmd_header);
+			cur_cmd_size += TOPAZ_COMMON_CMD_BYTES;
+			PNW_TOPAZ_CHECK_CMD_SIZE(cmd_size,
+					cur_cmd_size, cur_cmd_id);
 			break;
-			/* ordinary commmand */
+		/* ordinary commmand */
 		case MTX_CMDID_START_PIC:
 		case MTX_CMDID_DO_HEADER:
 		case MTX_CMDID_ENCODE_SLICE:
@@ -566,23 +639,31 @@ pnw_topaz_send(struct drm_device *dev, void *cmd,
 		case MTX_CMDID_NULL:
 			cur_cmd_header->seq = topaz_priv->topaz_cmd_count++;
 			cur_cmd_header->enable_interrupt = 0;
-			cur_cmd_size = 4;
+			cur_cmd_size = sizeof(struct topaz_cmd_header);
+			cur_cmd_size += TOPAZ_COMMON_CMD_BYTES;
+			PNW_TOPAZ_CHECK_CMD_SIZE(cmd_size,
+					cur_cmd_size, cur_cmd_id);
 			if (cur_free_space < cur_cmd_size) {
-				POLL_TOPAZ_FREE_FIFO_SPACE(4, 100, 10000,
-							   &cur_free_space);
+				POLL_TOPAZ_FREE_FIFO_SPACE(
+						PNW_TOPAZ_WORDS_PER_CMDSET,
+						PNW_TOPAZ_POLL_DELAY,
+						PNW_TOPAZ_POLL_RETRY,
+						&cur_free_space);
+
 				if (ret) {
 					DRM_ERROR("TOPAZ: error -- ret(%d)\n",
 						  ret);
 					goto out;
 				}
 			}
-
+			p_command = (uint32_t *)
+				(cmd + sizeof(struct topaz_cmd_header));
 			PSB_DEBUG_GENERAL("TOPAZ: free FIFO space %d\n",
 					  cur_free_space);
 			PSB_DEBUG_GENERAL("TOPAZ: write 4 words to FIFO:"
 					  "0x%08x,0x%08x,0x%08x,0x%08x\n",
 					  cur_cmd_header->val,
-					  *((uint32_t *)(command) + 1),
+					  p_command[0],
 					  TOPAZ_MTX_WB_OFFSET(
 						  topaz_priv->topaz_wb_offset,
 						  cur_cmd_header->core),
@@ -591,7 +672,7 @@ pnw_topaz_send(struct drm_device *dev, void *cmd,
 			TOPAZ_MULTICORE_WRITE32(TOPAZSC_CR_MULTICORE_CMD_FIFO_0,
 						cur_cmd_header->val);
 			TOPAZ_MULTICORE_WRITE32(TOPAZSC_CR_MULTICORE_CMD_FIFO_0,
-						*((uint32_t *)(command) + 1));
+						p_command[0]);
 			TOPAZ_MULTICORE_WRITE32(TOPAZSC_CR_MULTICORE_CMD_FIFO_0,
 						TOPAZ_MTX_WB_OFFSET(
 							topaz_priv->topaz_wb_offset,
@@ -615,9 +696,8 @@ pnw_topaz_send(struct drm_device *dev, void *cmd,
 			goto out;
 		}
 
-		/*cur_cmd_size indicate the number of words of current command*/
-		command += cur_cmd_size * 4;
-		cmd_size -= cur_cmd_size * 4;
+		cmd += cur_cmd_size;
+		cmd_size -= cur_cmd_size;
 	}
 #if PNW_TOPAZ_NO_IRQ
 	PSB_DEBUG_GENERAL("reset NULL writeback to 0xffffffff,"
@@ -731,7 +811,7 @@ int pnw_check_topaz_idle(struct drm_device *dev)
 	TOPAZ_MULTICORE_READ32(TOPAZSC_CR_MULTICORE_CMD_FIFO_1,
 			&reg_val);
 	reg_val &= MASK_TOPAZSC_CR_CMD_FIFO_SPACE;
-	if (reg_val != 32) {
+	if (reg_val != TOPAZ_CMD_FIFO_SIZE) {
 		PSB_DEBUG_GENERAL("TOPAZ: HW is busy. Free words in command"
 				"FIFO is %d.\n",
 				reg_val);
@@ -758,22 +838,6 @@ int pnw_video_get_core_num(struct drm_device *dev, uint64_t user_pointer)
 
 	return 0;
 
-}
-
-int pnw_video_frameskip(struct drm_device *dev, uint64_t user_pointer)
-{
-	struct drm_psb_private *dev_priv =
-		(struct drm_psb_private *)dev->dev_private;
-	struct pnw_topaz_private *topaz_priv = dev_priv->topaz_private;
-	int ret;
-
-	ret = copy_to_user((void __user *)((unsigned long)user_pointer),
-			   &topaz_priv->frame_skip, sizeof(topaz_priv->frame_skip));
-
-	if (ret)
-		return -EFAULT;
-
-	return 0;
 }
 
 static void pnw_topaz_flush_cmd_queue(struct pnw_topaz_private *topaz_priv)
@@ -803,12 +867,7 @@ void pnw_topaz_handle_timeout(struct ttm_fence_device *fdev)
 {
 	struct drm_psb_private *dev_priv =
 		container_of(fdev, struct drm_psb_private, fdev);
-	struct drm_device *dev =
-		container_of((void *)dev_priv, struct drm_device, dev_private);
 	struct pnw_topaz_private *topaz_priv = dev_priv->topaz_private;
-
-	if (IS_MRST(dev))
-		return  lnc_topaz_handle_timeout(fdev);
 
 	DRM_ERROR("TOPAZ: current codec is %s\n",
 			codec_to_string(topaz_priv->topaz_cur_codec));

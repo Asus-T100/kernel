@@ -26,7 +26,6 @@
 #include "psb_drv.h"
 #include "psb_reg.h"
 #include "psb_msvdx.h"
-#include "lnc_topaz.h"
 #include "pnw_topaz.h"
 #include "psb_intel_reg.h"
 #include "psb_powermgmt.h"
@@ -636,16 +635,7 @@ irqreturn_t psb_irq_handler(DRM_IRQ_ARGS)
 			atomic_dec(&g_videoenc_access_count);
 		} else
 			DRM_INFO("get mdfld topaz int while it's off\n");
-	} else if (IS_MRST(dev) && topaz_int) {
-		if (ospm_power_is_hw_on(OSPM_VIDEO_ENC_ISLAND)) {
-			atomic_inc(&g_videoenc_access_count);
-			lnc_topaz_interrupt(dev);
-			handled = 1;
-			atomic_dec(&g_videoenc_access_count);
-		} else
-			DRM_INFO("get mrst topaz int while it's off\n");
 	}
-
 #endif
 	if (sgx_int) {
 		if (ospm_power_using_hw_begin(OSPM_GRAPHICS_ISLAND,
@@ -808,8 +798,6 @@ int psb_irq_postinstall_islands(struct drm_device *dev, int hw_islands)
 	if (!dev_priv->topaz_disabled)
 		if (hw_islands & OSPM_VIDEO_ENC_ISLAND)
 			if (ospm_power_is_hw_on(OSPM_VIDEO_ENC_ISLAND)) {
-				if (IS_MRST(dev))
-					lnc_topaz_enableirq(dev);
 				if (IS_MDFLD(dev))
 					pnw_topaz_enableirq(dev);
 			}
@@ -909,8 +897,6 @@ void psb_irq_uninstall_islands(struct drm_device *dev, int hw_islands)
 	if (!dev_priv->topaz_disabled)
 		if (hw_islands & OSPM_VIDEO_ENC_ISLAND)
 			if (ospm_power_is_hw_on(OSPM_VIDEO_ENC_ISLAND)) {
-				if (IS_MRST(dev))
-					lnc_topaz_disableirq(dev);
 				if (IS_MDFLD(dev))
 					pnw_topaz_disableirq(dev);
 			}

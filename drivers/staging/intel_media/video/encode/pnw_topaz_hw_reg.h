@@ -21,10 +21,6 @@
 #ifndef _PNW_TOPAZ_HW_REG_H_
 #define _PNW_TOPAZ_HW_REG_H_
 
-#ifdef _LNC_TOPAZ_HW_REG_H_
-#error "lnc_topaz_hw_reg.h shouldn't be included"
-#endif
-
 #include "psb_drv.h"
 #include "img_types.h"
 #include "pnw_topaz.h"
@@ -57,7 +53,12 @@ do {                                   \
 /*! The number of TOPAZ cores present in the system */
 #define TOPAZSC_NUM_CORES 2
 
+/* The max RAM memory firmware will use */
+#define TOPAZ_MASTER_FW_MAX (22 * 1024)
+#define TOPAZ_SLAVE_FW_MAX (18 * 1024)
+
 #define TOPAZSC_REG_OFF_MAX (TOPAZSC_NUM_CORES * 0x10000 + 0x10000)
+#define TOPAZSC_REG_OFF_MIN (0x10000)
 #define REG_BASE_MTX                        0x04800000
 #define REG_BASE_HOST                       0x00000000
 
@@ -83,6 +84,18 @@ do {                                   \
 #define REG_OFFSET_TOPAZ_DEBLOCKER_HOST	0x00006000
 #define REG_OFFSET_TOPAZ_COMMS_HOST	0x00007000
 #define REG_OFFSET_TOPAZ_ESB_HOST	0x00008000
+
+#define MVEA_CR_SPE_PRED_VECTOR_BIAS_TABLE 0x037C
+#define MVEA_CR_IPE_LAMBDA_TABLE	0x01F0
+#define TOPAZ_BIASREG_MAX(core) \
+	(core * 0x10000 \
+	+ 0x10000 + REG_OFFSET_TOPAZ_MVEA_HOST \
+	+ MVEA_CR_SPE_PRED_VECTOR_BIAS_TABLE)
+
+#define TOPAZ_BIASREG_MIN(core) \
+	(core * 0x10000 \
+	+ 0x10000 + REG_OFFSET_TOPAZ_MVEA_HOST \
+	+ MVEA_CR_IPE_LAMBDA_TABLE)
 
 #define REG_SIZE_TOPAZ_MTX_HOST	0x00002000
 #define REG_SIZE_TOPAZ_TOPAZ_HOST	0x00001000
@@ -293,6 +306,10 @@ do {                                   \
 #define F_SHIFT_DMAC(basename) (SHIFT_DMAC_##basename)
 #define F_ENCODE_DMAC(val, basename)  \
 	(((val)<<(F_SHIFT_DMAC(basename)))&(F_MASK_DMAC(basename)))
+
+#define TOPAZ_CR_FIRMWARE_REG_1 (0x100)
+#define MTX_SCRATCHREG_TOMTX (2)
+#define TOPAZ_FIRMWARE_MAGIC (0xa5a5a5a5)
 
 /* Register CR_IMG_TOPAZ_INTENAB */
 #define TOPAZ_CR_IMG_TOPAZ_INTENAB  0x0008
@@ -1093,36 +1110,36 @@ do {                                   \
 
 /* **************** DMAC define **************** */
 enum  DMAC_eBSwap {
-	DMAC_BSWAP_NO_SWAP = 0x0,/* !< No byte swapping will be performed. */
-	DMAC_BSWAP_REVERSE = 0x1,/* !< Byte order will be reversed. */
+	DMAC_BSWAP_NO_SWAP = 0x0,/*  No byte swapping will be performed. */
+	DMAC_BSWAP_REVERSE = 0x1,/*  Byte order will be reversed. */
 };
 
 enum DMAC_ePW {
-	DMAC_PWIDTH_32_BIT = 0x0,/* !< Peripheral width 32-bit. */
-	DMAC_PWIDTH_16_BIT = 0x1,/* !< Peripheral width 16-bit. */
-	DMAC_PWIDTH_8_BIT = 0x2,/* !< Peripheral width 8-bit. */
+	DMAC_PWIDTH_32_BIT = 0x0,/*  Peripheral width 32-bit. */
+	DMAC_PWIDTH_16_BIT = 0x1,/*  Peripheral width 16-bit. */
+	DMAC_PWIDTH_8_BIT = 0x2,/*  Peripheral width 8-bit. */
 };
 
 enum DMAC_eAccDel {
-	DMAC_ACC_DEL_0 = 0x0,	/* !< Access delay zero clock cycles */
-	DMAC_ACC_DEL_256 = 0x1,	/* !< Access delay 256 clock cycles */
-	DMAC_ACC_DEL_512 = 0x2,	/* !< Access delay 512 clock cycles */
-	DMAC_ACC_DEL_768 = 0x3,	/* !< Access delay 768 clock cycles */
-	DMAC_ACC_DEL_1024 = 0x4,/* !< Access delay 1024 clock cycles */
-	DMAC_ACC_DEL_1280 = 0x5,/* !< Access delay 1280 clock cycles */
-	DMAC_ACC_DEL_1536 = 0x6,/* !< Access delay 1536 clock cycles */
-	DMAC_ACC_DEL_1792 = 0x7,/* !< Access delay 1792 clock cycles */
+	DMAC_ACC_DEL_0 = 0x0,	/*  Access delay zero clock cycles */
+	DMAC_ACC_DEL_256 = 0x1,	/*  Access delay 256 clock cycles */
+	DMAC_ACC_DEL_512 = 0x2,	/*  Access delay 512 clock cycles */
+	DMAC_ACC_DEL_768 = 0x3,	/*  Access delay 768 clock cycles */
+	DMAC_ACC_DEL_1024 = 0x4,/*  Access delay 1024 clock cycles */
+	DMAC_ACC_DEL_1280 = 0x5,/*  Access delay 1280 clock cycles */
+	DMAC_ACC_DEL_1536 = 0x6,/*  Access delay 1536 clock cycles */
+	DMAC_ACC_DEL_1792 = 0x7,/*  Access delay 1792 clock cycles */
 };
 
 enum  DMAC_eBurst {
-	DMAC_BURST_0 = 0x0,	/* !< burst size of 0 */
-	DMAC_BURST_1 = 0x1,	/* !< burst size of 1 */
-	DMAC_BURST_2 = 0x2,	/* !< burst size of 2 */
-	DMAC_BURST_3 = 0x3,	/* !< burst size of 3 */
-	DMAC_BURST_4 = 0x4,	/* !< burst size of 4 */
-	DMAC_BURST_5 = 0x5,	/* !< burst size of 5 */
-	DMAC_BURST_6 = 0x6,     /* !< burst size of 6 */
-	DMAC_BURST_7 = 0x7,	/* !< burst size of 7 */
+	DMAC_BURST_0 = 0x0,	/*  burst size of 0 */
+	DMAC_BURST_1 = 0x1,	/*  burst size of 1 */
+	DMAC_BURST_2 = 0x2,	/*  burst size of 2 */
+	DMAC_BURST_3 = 0x3,	/*  burst size of 3 */
+	DMAC_BURST_4 = 0x4,	/*  burst size of 4 */
+	DMAC_BURST_5 = 0x5,	/*  burst size of 5 */
+	DMAC_BURST_6 = 0x6,     /*  burst size of 6 */
+	DMAC_BURST_7 = 0x7,	/*  burst size of 7 */
 };
 
 /* commands for topaz,shared with user space driver */
@@ -1159,7 +1176,11 @@ struct topaz_cmd_header {
 	};
 };
 
-/* codecs topaz supports,shared with user space driver */
+/*
+ * codecs topaz supports,shared with user space driver.
+ * PNW_TOPAZ_CODEC_NUM_MAX should be modified if the number
+ * of codecs is changed
+ */
 enum drm_pnw_topaz_codec {
 	IMG_CODEC_JPEG = 0,
 	IMG_CODEC_H264_NO_RC,
@@ -1172,17 +1193,15 @@ enum drm_pnw_topaz_codec {
 	IMG_CODEC_MPEG4_VBR,
 	IMG_CODEC_MPEG4_CBR,
 	IMG_CODEC_H264_VCM,
-	IMG_CODEC_NUM
 };
 
 
 typedef enum {
-	MTX_WRITEBACK_CMDWORD = 0,  /* !< Command word of command executed by MTX */
-	MTX_WRITEBACK_VALUE = 1,        /* !< Writeback value returned by command */
-	MTX_WRITEBACK_FLAGSWORD_0 = 2,  /* !< Flags word indicating MTX status (see MTX writeback flags) */
-	MTX_WRITEBACK_BITSWRITTEN = 3,  /* !< number of bits written out by this core */
-	MTX_WRITEBACK_DATASIZE      /* !< End marker for enum */
-
+	MTX_WRITEBACK_CMDWORD = 0, /* Command word executed by MTX */
+	MTX_WRITEBACK_VALUE = 1, /* Writeback value returned by command */
+	MTX_WRITEBACK_FLAGSWORD_0 = 2, /* Flags word indicating MTX status */
+	MTX_WRITEBACK_BITSWRITTEN = 3, /* number of bits written out */
+	MTX_WRITEBACK_DATASIZE /* End marker for enum */
 } MTX_eWriteBackData;
 
 /* pnw_topazinit.c */
@@ -1192,14 +1211,6 @@ int pnw_topaz_setup_fw(struct drm_device *dev, enum drm_pnw_topaz_codec codec);
 int pnw_topaz_wait_for_register(struct drm_psb_private *dev_priv,
 				uint32_t addr, uint32_t value,
 				uint32_t enable);
-/*void topaz_write_mtx_mem(struct drm_psb_private *dev_priv,
-			 uint32_t byte_addr, uint32_t val);
-uint32_t topaz_read_mtx_mem(struct drm_psb_private *dev_priv,
-			    uint32_t byte_addr);
-void topaz_write_mtx_mem_multiple_setup(struct drm_psb_private *dev_priv,
-					uint32_t addr);
-void topaz_write_mtx_mem_multiple(struct drm_psb_private *dev_priv,
-				  uint32_t val);*/
 void pnw_topaz_mmu_flushcache(struct drm_psb_private *dev_priv);
 
 uint32_t psb_get_default_pd_addr(struct psb_mmu_driver *driver);
@@ -1212,8 +1223,6 @@ int pnw_topaz_kick_null_cmd(struct drm_psb_private *dev_priv,
 int pnw_wait_on_sync(struct drm_psb_private *dev_priv,
 		     uint32_t sync_seq,
 		     uint32_t *sync_p);
-
-int pnw_video_frameskip(struct drm_device *dev, uint64_t user_pointer);
 
 static inline char *cmd_to_string(int cmd_id)
 {
@@ -1247,7 +1256,7 @@ static inline char *cmd_to_string(int cmd_id)
 static inline char *codec_to_string(int codec)
 {
 	switch (codec) {
-	case IMG_CODEC_JPEG: /* Just guess, is JPEG firmware included in topaz_bin? */
+	case IMG_CODEC_JPEG:
 		return "JPEG";
 	case IMG_CODEC_H264_NO_RC:
 		return "H264_NO_RC";

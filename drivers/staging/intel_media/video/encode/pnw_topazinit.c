@@ -22,6 +22,10 @@
  * this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
  *
+ * Authors:
+ *      Shengquan(Austin) Yuan <shengquan.yuan@intel.com>
+ *      Elaine Wang <elaine.wang@intel.com>
+ *      Li Zeng <li.zeng@intel.com>
  **************************************************************************/
 
 /* NOTE: (READ BEFORE REFINE CODE)
@@ -48,6 +52,9 @@
 
 /* WARNING: this define is very important */
 #define RAM_SIZE (1024 * 24)
+#define MAX_TOPAZ_DATA_SIZE (12 * 4096)
+#define MAX_TOPAZ_TEXT_SIZE (12 * 4096)
+#define MAX_TOPAZ_RAM_SIZE (12 * 4096)
 
 #define	MEMORY_ONLY 0
 #define	MEM_AND_CACHE 1
@@ -274,8 +281,6 @@ int pnw_topaz_init(struct drm_device *dev)
 
 	/* # initialize comand topaz queueing [msvdx_queue] */
 	INIT_LIST_HEAD(&topaz_priv->topaz_queue);
-	/* # init mutex? CHECK: mutex usage [msvdx_mutex] */
-	mutex_init(&topaz_priv->topaz_mutex);
 	/* # spin lock init? CHECK spin lock usage [msvdx_lock] */
 	spin_lock_init(&topaz_priv->topaz_lock);
 
@@ -289,7 +294,7 @@ int pnw_topaz_init(struct drm_device *dev)
 	topaz_priv->topaz_cur_codec = 0;
 	topaz_priv->topaz_hw_busy = 1;
 	/* # gain write back structure,we may only need 32+4=40DW */
-	ret = ttm_buffer_object_create(bdev, 4096,
+	ret = ttm_buffer_object_create(bdev, PAGE_SIZE,
 				       ttm_bo_type_kernel,
 				       DRM_PSB_FLAG_MEM_MMU | TTM_PL_FLAG_NO_EVICT,
 				       0, 0, 0, NULL, &(topaz_priv->topaz_bo));
@@ -345,7 +350,7 @@ int pnw_topaz_init(struct drm_device *dev)
 		}
 
 		ret = ttm_buffer_object_create(bdev,
-					       12 * 4096,
+					       MAX_TOPAZ_RAM_SIZE,
 					       ttm_bo_type_kernel,
 					       DRM_PSB_FLAG_MEM_MMU |
 					       TTM_PL_FLAG_NO_EVICT,
@@ -417,22 +422,26 @@ int pnw_topaz_init(struct drm_device *dev)
 	PSB_DEBUG_GENERAL("TOPAZ: Reset MVEA successfully.\n");
 
 	/* create firmware storage */
-	for (n = 0; n < IMG_CODEC_NUM * 2; ++n) {
+	for (n = 0; n < PNW_TOPAZ_CODEC_NUM_MAX * 2; ++n) {
 		/* #.# malloc DRM object for fw storage */
-		ret = ttm_buffer_object_create(bdev, 12 * 4096,
+		ret = ttm_buffer_object_create(bdev, MAX_TOPAZ_TEXT_SIZE,
 					       ttm_bo_type_kernel,
-					       DRM_PSB_FLAG_MEM_MMU | TTM_PL_FLAG_NO_EVICT,
-					       0, 0, 0, NULL, &topaz_priv->topaz_fw[n].text);
+					       DRM_PSB_FLAG_MEM_MMU |
+					       TTM_PL_FLAG_NO_EVICT,
+					       0, 0, 0, NULL,
+					       &topaz_priv->topaz_fw[n].text);
 		if (ret) {
 			DRM_ERROR("Failed to allocate firmware.\n");
 			goto out;
 		}
 
 		/* #.# malloc DRM object for fw storage */
-		ret = ttm_buffer_object_create(bdev, 12 * 4096,
+		ret = ttm_buffer_object_create(bdev, MAX_TOPAZ_DATA_SIZE,
 					       ttm_bo_type_kernel,
-					       DRM_PSB_FLAG_MEM_MMU | TTM_PL_FLAG_NO_EVICT,
-					       0, 0, 0, NULL, &topaz_priv->topaz_fw[n].data);
+					       DRM_PSB_FLAG_MEM_MMU |
+					       TTM_PL_FLAG_NO_EVICT,
+					       0, 0, 0, NULL,
+					       &topaz_priv->topaz_fw[n].data);
 		if (ret) {
 			DRM_ERROR("Failed to allocate firmware.\n");
 			goto out;
@@ -450,7 +459,7 @@ int pnw_topaz_init(struct drm_device *dev)
 	return 0;
 
 out:
-	for (n = 0; n < IMG_CODEC_NUM * 2; ++n) {
+	for (n = 0; n < PNW_TOPAZ_CODEC_NUM_MAX * 2; ++n) {
 		if (topaz_priv->topaz_fw[n].text != NULL)
 			ttm_bo_unref(&topaz_priv->topaz_fw[n].text);
 		if (topaz_priv->topaz_fw[n].data != NULL)
@@ -500,7 +509,7 @@ int pnw_topaz_uninit(struct drm_device *dev)
 		kfree(topaz_priv->topaz_bias_table[n]);
 	}
 	/* # release firmware storage */
-	for (n = 0; n < IMG_CODEC_NUM * 2; ++n) {
+	for (n = 0; n < PNW_TOPAZ_CODEC_NUM_MAX * 2; ++n) {
 		if (topaz_priv->topaz_fw[n].text != NULL)
 			ttm_bo_unref(&topaz_priv->topaz_fw[n].text);
 		if (topaz_priv->topaz_fw[n].data != NULL)
@@ -578,7 +587,7 @@ int pnw_topaz_init_fw(struct drm_device *dev)
 	int ret = 0;
 	int n;
 	struct topazsc_fwinfo *cur_fw;
-	int cur_size, total_size;
+	size_t cur_size, total_size;
 	struct pnw_topaz_codec_fw *cur_codec;
 	struct ttm_buffer_object **cur_drm_obj;
 	struct ttm_bo_kmap_obj tmp_kmap;
@@ -591,17 +600,24 @@ int pnw_topaz_init_fw(struct drm_device *dev)
 	ret = request_firmware(&raw, FIRMWARE_NAME, &dev->pdev->dev);
 	if (ret != 0) {
 		DRM_ERROR("TOPAZ: request_firmware failed: %d\n", ret);
+		ret = -EINVAL;
 		return ret;
 	}
 
 	if ((NULL == raw) || (raw->size < sizeof(struct topazsc_fwinfo))) {
 		DRM_ERROR("TOPAZ: firmware file is not correct size.\n");
+		ret = -EINVAL;
 		goto out;
 	}
 
 	total_size = raw->size;
-	PSB_DEBUG_GENERAL("TOPAZ: opened firmware, size %d\n", raw->size);
+	PSB_DEBUG_GENERAL("TOPAZ: opened firmware, size %zu\n", raw->size);
 
+	if (total_size > (PNW_TOPAZ_CODEC_NUM_MAX * 2 *
+			(MAX_TOPAZ_DATA_SIZE + MAX_TOPAZ_TEXT_SIZE))) {
+		DRM_ERROR("%s firmwae size(%zu) isn't correct\n",
+				__func__, total_size);
+	}
 	ptr = (unsigned char *) raw->data;
 
 	if (!ptr) {
@@ -612,7 +628,7 @@ int pnw_topaz_init_fw(struct drm_device *dev)
 	/* # load fw from file */
 	PSB_DEBUG_GENERAL("TOPAZ: load firmware.....\n");
 	cur_fw = NULL;
-	for (n = 0; n < IMG_CODEC_NUM * 2; ++n) {
+	for (n = 0; n < PNW_TOPAZ_CODEC_NUM_MAX * 2; ++n) {
 		if (total_size < sizeof(struct topazsc_fwinfo)) {
 			PSB_DEBUG_GENERAL("TOPAZ: WARNING: Rearch end of "
 					  "firmware. Have loaded %d firmwares.",
@@ -622,6 +638,13 @@ int pnw_topaz_init_fw(struct drm_device *dev)
 
 		total_size -=  sizeof(struct topazsc_fwinfo);
 		cur_fw = (struct topazsc_fwinfo *) ptr;
+		if (cur_fw->codec > PNW_TOPAZ_CODEC_NUM_MAX * 2) {
+			DRM_ERROR("%s L%d unknown video codec(%d)",
+					__func__, __LINE__,
+					cur_fw->codec);
+			ret = -EINVAL;
+			goto out;
+		}
 
 		cur_codec = &topaz_priv->topaz_fw[cur_fw->codec];
 		cur_codec->ver = cur_fw->ver;
@@ -630,15 +653,20 @@ int pnw_topaz_init_fw(struct drm_device *dev)
 		cur_codec->data_size = cur_fw->data_size;
 		cur_codec->data_location = cur_fw->data_location;
 
+		if (total_size < (cur_fw->text_size + cur_fw->data_size) ||
+			       cur_fw->text_size > MAX_TOPAZ_TEXT_SIZE	||
+			       cur_fw->data_size > MAX_TOPAZ_DATA_SIZE) {
+			PSB_DEBUG_GENERAL("TOPAZ: WARNING: wrong size number" \
+					"of data(%d) or text(%d). Have loaded" \
+					" %d firmwares.", n,
+					  cur_fw->data_size,
+					  cur_fw->text_size);
+			ret = -EINVAL;
+			goto out;
+		}
+
 		total_size -= cur_fw->text_size;
 		total_size -= cur_fw->data_size;
-
-		if (total_size < 0) {
-			PSB_DEBUG_GENERAL("TOPAZ: WARNING: wrong size number "
-					  "of data or text. Have loaded"
-					  " %d firmwares.", n);
-			break;
-		}
 
 		PSB_DEBUG_GENERAL("TOPAZ: load firemware %s.\n",
 				  codec_to_string(cur_fw->codec / 2));
@@ -655,13 +683,25 @@ int pnw_topaz_init_fw(struct drm_device *dev)
 			PSB_DEBUG_GENERAL("drm_bo_kmap failed: %d\n", ret);
 			ttm_bo_unref(cur_drm_obj);
 			*cur_drm_obj = NULL;
+			ret = -EINVAL;
 			goto out;
 		}
 
-		PSB_DEBUG_GENERAL(" load codec %d, text_size: %d, "
+		if (cur_size > ((*cur_drm_obj)->num_pages << PAGE_SHIFT)) {
+			DRM_ERROR("%s L%d data size(%zu) is bigger than" \
+					" BO size(%lu pages)\n",
+					__func__, __LINE__,
+					cur_size,
+					(*cur_drm_obj)->num_pages);
+			ret = -EINVAL;
+			goto out;
+		}
+
+		PSB_DEBUG_GENERAL("\ttext_size: %d, "
 				  "data_size %d, data_location 08%x\n",
-				  cur_codec->codec / 2, cur_codec->text_size,
-				  cur_codec->data_size, cur_codec->data_location);
+				  cur_codec->text_size,
+				  cur_codec->data_size,
+				  cur_codec->data_location);
 		memcpy(ttm_kmap_obj_virtual(&tmp_kmap, &is_iomem), ptr,
 		       cur_size);
 
@@ -672,6 +712,16 @@ int pnw_topaz_init_fw(struct drm_device *dev)
 		cur_drm_obj = &cur_codec->data;
 		cur_size = cur_fw->data_size;
 
+		if (cur_size > ((*cur_drm_obj)->num_pages << PAGE_SHIFT)) {
+			DRM_ERROR("%s L%d data size(%zu) is bigger than" \
+					" BO size(%lu pages)\n",
+					__func__, __LINE__,
+					cur_size,
+					(*cur_drm_obj)->num_pages);
+			ret = -EINVAL;
+			goto out;
+		}
+
 		/* #.# fill DRM object with firmware data */
 		ret = ttm_bo_kmap(*cur_drm_obj, 0, (*cur_drm_obj)->num_pages,
 				  &tmp_kmap);
@@ -679,6 +729,7 @@ int pnw_topaz_init_fw(struct drm_device *dev)
 			PSB_DEBUG_GENERAL("drm_bo_kmap failed: %d\n", ret);
 			ttm_bo_unref(cur_drm_obj);
 			*cur_drm_obj = NULL;
+			ret = -EINVAL;
 			goto out;
 		}
 
@@ -702,7 +753,7 @@ out:
 		release_firmware(raw);
 	}
 
-	return -1;
+	return ret;
 }
 
 /* setup fw when start a new context */
@@ -720,7 +771,7 @@ int pnw_topaz_setup_fw(struct drm_device *dev, enum drm_pnw_topaz_codec codec)
 	if (topaz_priv->topaz_num_cores > MAX_TOPAZ_CORES) {
 		DRM_ERROR("TOPAZ: Invalid core nubmer %d\n",
 			  topaz_priv->topaz_num_cores);
-		return -1;
+		return -EINVAL;
 	}
 
 	PSB_DEBUG_GENERAL("TOPAZ: Set up mmu for all %d cores\n",
@@ -831,7 +882,9 @@ int pnw_topaz_setup_fw(struct drm_device *dev, enum drm_pnw_topaz_codec codec)
 
 		/* put the number of cores in use in the scratch register
 		 * so is is ready when the firmware wakes up. */
-		TOPAZ_WRITE32(0x100 + (2 << 2), 2, core_id);
+		TOPAZ_WRITE32(TOPAZ_CR_FIRMWARE_REG_1 +
+				(MTX_SCRATCHREG_TOMTX << 2),
+				topaz_priv->topaz_num_cores, core_id);
 
 		/* # turn on MTX */
 		topaz_set_mtx_target(dev_priv, core_id, 0);
@@ -862,11 +915,11 @@ int pnw_topaz_setup_fw(struct drm_device *dev, enum drm_pnw_topaz_codec codec)
 				  " %d!\n",
 				  codec);
 			pnw_error_dump_reg(dev_priv, core_id);
-			return -1;
+			return -EBUSY;
 		}
 
 		*(topaz_priv->topaz_sync_addr + MTX_WRITEBACK_VALUE)
-		= 0xa5a5a5a5;
+		= TOPAZ_FIRMWARE_MAGIC;
 		TOPAZ_WRITE32(TOPAZ_CR_IMG_TOPAZ_INTCLEAR,
 			      F_ENCODE(1, TOPAZ_CR_IMG_TOPAZ_INTCLR_MTX),
 			      core_id);
@@ -886,26 +939,29 @@ int pnw_topaz_setup_fw(struct drm_device *dev, enum drm_pnw_topaz_codec codec)
 
 	for (core_id = 0; core_id < topaz_priv->topaz_num_cores; core_id++) {
 		MVEA_WRITE32(MVEA_CR_BUFFER_SIDEBAND,
-			     F_ENCODE(CACHE_ONLY, MVEA_CR_ABOVE_PARAM_OUT_SBAND) |
-			     F_ENCODE(CACHE_ONLY, MVEA_CR_BELOW_PARAM_OUT_SBAND) |
-			     F_ENCODE(MEM_AND_CACHE, MVEA_CR_ABOVE_PIX_OUT_SBAND) |
-			     F_ENCODE(MEM_AND_CACHE, MVEA_CR_RECON_SBAND) |
-			     F_ENCODE(CACHE_ONLY, MVEA_CR_REF_SBAND) |
-			     F_ENCODE(CACHE_ONLY, MVEA_CR_ABOVE_PARAM_IN_SBAND) |
-			     F_ENCODE(CACHE_ONLY, MVEA_CR_BELOW_PARAM_IN_SBAND) |
-			     F_ENCODE(MEMORY_ONLY, MVEA_CR_CURR_PARAM_SBAND) |
-			     F_ENCODE(CACHE_ONLY, MVEA_CR_ABOVE_PIX_IN_SBAND) |
-			     F_ENCODE(MEMORY_ONLY, MVEA_CR_CURR_MB_SBAND),
-			     core_id);
+		     F_ENCODE(CACHE_ONLY, MVEA_CR_ABOVE_PARAM_OUT_SBAND) |
+		     F_ENCODE(CACHE_ONLY, MVEA_CR_BELOW_PARAM_OUT_SBAND) |
+		     F_ENCODE(MEM_AND_CACHE, MVEA_CR_ABOVE_PIX_OUT_SBAND) |
+		     F_ENCODE(MEM_AND_CACHE, MVEA_CR_RECON_SBAND) |
+		     F_ENCODE(CACHE_ONLY, MVEA_CR_REF_SBAND) |
+		     F_ENCODE(CACHE_ONLY, MVEA_CR_ABOVE_PARAM_IN_SBAND) |
+		     F_ENCODE(CACHE_ONLY, MVEA_CR_BELOW_PARAM_IN_SBAND) |
+		     F_ENCODE(MEMORY_ONLY, MVEA_CR_CURR_PARAM_SBAND) |
+		     F_ENCODE(CACHE_ONLY, MVEA_CR_ABOVE_PIX_IN_SBAND) |
+		     F_ENCODE(MEMORY_ONLY, MVEA_CR_CURR_MB_SBAND),
+		     core_id);
 		MVEA_WRITE32(MVEA_CR_IPE_JITTER_FACTOR, 3 - 1, core_id);
 
 		/*setup the jitter, base it on image size (using the height)*/
 		if (topaz_priv->frame_h >= 720)
-			MVEA_WRITE32(MVEA_CR_IPE_JITTER_FACTOR, 3 - 1, core_id);
+			MVEA_WRITE32(MVEA_CR_IPE_JITTER_FACTOR, 3 - 1,
+					core_id);
 		else if (topaz_priv->frame_w >= 480)
-			MVEA_WRITE32(MVEA_CR_IPE_JITTER_FACTOR, 2 - 1, core_id);
+			MVEA_WRITE32(MVEA_CR_IPE_JITTER_FACTOR, 2 - 1,
+					core_id);
 		else
-			MVEA_WRITE32(MVEA_CR_IPE_JITTER_FACTOR, 3 - 1, core_id);
+			MVEA_WRITE32(MVEA_CR_IPE_JITTER_FACTOR, 3 - 1,
+					core_id);
 	}
 
 	psb_irq_preinstall_islands(dev, OSPM_VIDEO_ENC_ISLAND);
@@ -926,9 +982,9 @@ int topaz_upload_fw(struct drm_device *dev, enum drm_pnw_topaz_codec codec, uint
 	struct pnw_topaz_private *topaz_priv = dev_priv->topaz_private;
 	int ret = 0;
 
-	if (codec >= IMG_CODEC_NUM) {
+	if (codec >= PNW_TOPAZ_CODEC_NUM_MAX) {
 		DRM_ERROR("TOPAZ: Invalid codec %d\n", codec);
-		return -1;
+		return -EINVAL;
 	}
 
 	/* # MTX reset */
@@ -939,7 +995,7 @@ int topaz_upload_fw(struct drm_device *dev, enum drm_pnw_topaz_codec codec, uint
 
 	/* # upload the master and slave firmware by DMA */
 	if (core_id == 0)
-		cur_codec_fw = &topaz_priv->topaz_fw[codec*2];
+		cur_codec_fw = &topaz_priv->topaz_fw[codec * 2];
 	else
 		cur_codec_fw = &topaz_priv->topaz_fw[codec*2 + 1];
 
@@ -1050,11 +1106,11 @@ int topaz_upload_fw(struct drm_device *dev, enum drm_pnw_topaz_codec codec, uint
 	 */
 	if (core_id == 0)
 		cur_mtx_data_size =
-			22 * 1024 - (cur_codec_fw->data_location - \
+			TOPAZ_MASTER_FW_MAX - (cur_codec_fw->data_location - \
 					MTX_DMA_MEMORY_BASE);
 	else
 		cur_mtx_data_size =
-			18 * 1024 - (cur_codec_fw->data_location - \
+			TOPAZ_SLAVE_FW_MAX - (cur_codec_fw->data_location - \
 					MTX_DMA_MEMORY_BASE);
 	topaz_priv->cur_mtx_data_size[core_id] = cur_mtx_data_size / 4;
 	PSB_DEBUG_GENERAL("TOPAZ: Need to save %d words data for core %d\n",
@@ -1064,7 +1120,7 @@ int topaz_upload_fw(struct drm_device *dev, enum drm_pnw_topaz_codec codec, uint
 }
 
 #else
-
+/* This function is only for debug */
 void topaz_mtx_upload_by_register(struct drm_device *dev, uint32_t mtx_mem,
 				  uint32_t addr, uint32_t size,
 				  struct ttm_buffer_object *buf,
@@ -1153,6 +1209,7 @@ void topaz_mtx_upload_by_register(struct drm_device *dev, uint32_t mtx_mem,
 	return;
 }
 
+/* This function is only for debug when DMA isn't working */
 int topaz_upload_fw(struct drm_device *dev, enum drm_pnw_topaz_codec codec,
 		    uint32_t core_id)
 {
@@ -1161,6 +1218,11 @@ int topaz_upload_fw(struct drm_device *dev, enum drm_pnw_topaz_codec codec,
 	uint32_t text_size, data_size;
 	uint32_t data_location;
 	struct pnw_topaz_private *topaz_priv = dev_priv->topaz_private;
+
+	if (codec >= PNW_TOPAZ_CODEC_NUM_MAX) {
+		DRM_ERROR("TOPAZ: Invalid codec %d\n", codec);
+		return -EINVAL;
+	}
 
 	/* # refer HLD document */
 	/* # MTX reset */
@@ -1437,7 +1499,8 @@ static void pnw_topaz_restore_bias_table(struct drm_psb_private *dev_priv,
 	struct pnw_topaz_private *topaz_priv = dev_priv->topaz_private;
 	u32 *p_command;
 	unsigned int reg_cnt, reg_off, reg_val;
-	int cur_cmd_size;
+	u32 cmd_cnt;
+	u32 max_cmd_cnt;
 
 	if (core >= MAX_TOPAZ_CORES ||
 			topaz_priv->topaz_bias_table[core] == NULL) {
@@ -1448,21 +1511,34 @@ static void pnw_topaz_restore_bias_table(struct drm_psb_private *dev_priv,
 		return;
 	}
 
-	p_command = (u32 *)(topaz_priv->topaz_bias_table[core]);
-	p_command++;
-	cur_cmd_size = *p_command;
+	/* First word is command header. Ignore */
+	p_command = (u32 *)(topaz_priv->topaz_bias_table[core]
+				+ sizeof(struct topaz_cmd_header));
+	/* Second word indicates how many register write command sets */
+	cmd_cnt = *p_command;
+	max_cmd_cnt = PNW_TOPAZ_BIAS_TABLE_MAX_SIZE -
+		sizeof(struct topaz_cmd_header);
+	max_cmd_cnt /= TOPAZ_WRITEREG_BYTES_PER_SET;
+	if (cmd_cnt > max_cmd_cnt) {
+		DRM_ERROR("%s the number of command sets(%d) is wrong\n",
+				__func__,
+				cmd_cnt);
+		return;
+	}
 	p_command++;
 
-	PSB_DEBUG_GENERAL("TOPAZ: Restore BIAS table(size %d) for core %c\n",
-			cur_cmd_size,
+	PSB_DEBUG_GENERAL("TOPAZ: Restore BIAS table(size %d) for core %d\n",
+			cmd_cnt,
 			core);
-	for (reg_cnt = 0; reg_cnt < cur_cmd_size; reg_cnt++) {
+
+	for (reg_cnt = 0; reg_cnt < cmd_cnt; reg_cnt++) {
 		reg_off = *p_command;
 		p_command++;
 		reg_val = *p_command;
 		p_command++;
 
-		if (reg_off > TOPAZSC_REG_OFF_MAX)
+		if (reg_off > TOPAZ_BIASREG_MAX(core) ||
+				reg_off < TOPAZ_BIASREG_MIN(core))
 			DRM_ERROR("TOPAZ: Ignore write (0x%08x)"
 					" to register 0x%08x\n",
 					reg_val, reg_off);
@@ -1480,7 +1556,7 @@ int pnw_topaz_restore_mtx_state(struct drm_device *dev)
 		(struct drm_psb_private *)dev->dev_private;
 	int32_t core_id;
 	uint32_t *mtx_reg_state;
-	int i, need_restore;
+	int i, need_restore = 0;
 	struct pnw_topaz_private *topaz_priv = dev_priv->topaz_private;
 	struct psb_video_ctx *pos, *n;
 
@@ -1851,6 +1927,12 @@ int pnw_topaz_save_mtx_state(struct drm_device *dev)
 		}
 
 		data_size = topaz_priv->cur_mtx_data_size[core];
+		if (data_size > (MAX_TOPAZ_RAM_SIZE / 4)) {
+			DRM_ERROR("TOPAZ: %s wrong data size %d!\n",
+					__func__, data_size);
+			data_size = MAX_TOPAZ_RAM_SIZE;
+		}
+
 		data_location = cur_codec_fw->data_location
 				& ~(MTX_DMA_BURSTSIZE_BYTES - 1);
 		if (0 != mtx_dma_read(dev, core,
@@ -1989,9 +2071,15 @@ int mtx_dma_write(struct drm_device *dev, uint32_t core_id)
 	data_location = cur_codec_fw->data_location;
 	data_location = data_location & (~(MTX_DMA_BURSTSIZE_BYTES - 1));
 
+	if (data_size > (MAX_TOPAZ_RAM_SIZE / 4)) {
+		DRM_ERROR("TOPAZ: %s wrong data size %d!\n",
+				__func__, data_size);
+		data_size = MAX_TOPAZ_RAM_SIZE;
+	}
+
 	PSB_DEBUG_GENERAL("TOPAZ: data_size round up to %d\n"
-			  "data_location round up to 0x%08x\n",
-			  data_size, data_location);
+			"data_location round up to 0x%08x\n",
+			data_size, data_location);
 	/* #.# fill the dst addr */
 	MTX_WRITE32(MTX_CR_MTX_SYSC_CDMAA,
 		    data_location, core_id);

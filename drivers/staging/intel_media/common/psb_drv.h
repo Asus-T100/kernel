@@ -1305,8 +1305,6 @@ extern int psb_ttm_fence_device_init(struct ttm_fence_device *fdev);
 /* MSVDX/Topaz stuff */
 extern int psb_remove_videoctx(struct drm_psb_private *dev_priv, struct file *filp);
 
-extern int lnc_video_frameskip(struct drm_device *dev,
-			       uint64_t user_pointer);
 extern int lnc_video_getparam(struct drm_device *dev, void *data,
 			      struct drm_file *file_priv);
 

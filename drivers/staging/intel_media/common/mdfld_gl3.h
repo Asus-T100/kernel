@@ -33,7 +33,6 @@
 #include "psb_intel_reg.h"
 #include "psb_intel_bios.h"
 #include "psb_msvdx.h"
-#include "lnc_topaz.h"
 #include "pnw_topaz.h"
 #include <drm/drm_pciids.h>
 #include "pvr_drm_shared.h"
