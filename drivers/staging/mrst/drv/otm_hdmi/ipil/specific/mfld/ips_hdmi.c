@@ -73,7 +73,7 @@
 #include "ips_hdmi.h"
 #include "mfld_hdmi_reg.h"
 #include "ipil_internal.h"
-#include "mfld_utils.h"
+#include "ipil_utils.h"
 
 /**
  * Description: disable video infoframe

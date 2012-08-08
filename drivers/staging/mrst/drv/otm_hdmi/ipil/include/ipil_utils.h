@@ -61,8 +61,8 @@
 
 */
 
-#ifndef IPS_API_H
-#define IPS_API_H
+#ifndef IPIL_UTILS_H
+#define IPIL_UTILS_H
 
 /**
  * Description: read a 32 bit hdmi register
@@ -83,4 +83,4 @@ uint32_t hdmi_read32(uint32_t reg);
  */
 void hdmi_write32(uint32_t reg, uint32_t val);
 
-#endif /* IPS_API_H */
+#endif /* IPIL_UTILS_H */
