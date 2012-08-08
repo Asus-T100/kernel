@@ -1354,9 +1354,6 @@ exit_clean_reset:
 	free_xfer_ctx(intel_hsi);
 	pr_info("hsi_ctrl_clean_reset: free_xfer_ctx is done\n");
 
-	/* Free all contexts to restart from scratch */
-	free_xfer_ctx(intel_hsi);
-
 	/* Re-enable all tasklets */
 	tasklet_enable(&intel_hsi->fwd_tasklet);
 	tasklet_enable(&intel_hsi->isr_tasklet);
