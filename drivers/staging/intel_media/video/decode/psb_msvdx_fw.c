@@ -24,6 +24,7 @@
 #include <drm/drm.h>
 #include "psb_drv.h"
 #include "psb_msvdx.h"
+#include "psb_msvdx_msg.h"
 #include "psb_msvdx_ec.h"
 #include <linux/firmware.h>
 
@@ -638,18 +639,14 @@ int psb_setup_fw(struct drm_device *dev)
 		 * at this stage, FW is uplaoded successfully, can send rendec
 		 * init message
 		 */
-		uint32_t init_msg[FW_DEVA_INIT_SIZE];
-
-		MEMIO_WRITE_FIELD(init_msg, FWRK_GENMSG_SIZE,
-				  FW_DEVA_INIT_SIZE);
-		MEMIO_WRITE_FIELD(init_msg, FWRK_GENMSG_ID,
-				  FW_DEVA_INIT_ID);
-
-		MEMIO_WRITE_FIELD(init_msg, FW_DEVA_INIT_RENDEC_ADDR0, msvdx_priv->base_addr0);
-		MEMIO_WRITE_FIELD(init_msg, FW_DEVA_INIT_RENDEC_ADDR1, msvdx_priv->base_addr1);
-		MEMIO_WRITE_FIELD(init_msg, FW_DEVA_INIT_RENDEC_SIZE0, RENDEC_A_SIZE / (4*1024));
-		MEMIO_WRITE_FIELD(init_msg, FW_DEVA_INIT_RENDEC_SIZE1, RENDEC_B_SIZE / (4*1024));
-		psb_mtx_send(dev_priv, init_msg);
+		struct fw_init_msg init_msg;
+		init_msg.header.bits.msg_size = sizeof(struct fw_init_msg);
+		init_msg.header.bits.msg_type = MTX_MSGID_INIT;
+		init_msg.rendec_addr0 = msvdx_priv->base_addr0;
+		init_msg.rendec_addr1 = msvdx_priv->base_addr1;
+		init_msg.rendec_size.bits.rendec_size0 = RENDEC_A_SIZE / (4*1024);
+		init_msg.rendec_size.bits.rendec_size1 = RENDEC_B_SIZE / (4*1024);
+		psb_mtx_send(dev_priv, (void *)&init_msg);
 	}
 
 #if 0
