@@ -1127,11 +1127,14 @@ static int mdfld_restore_display_registers(struct drm_device *dev, int pipe)
 
 	/*enable the pipe*/
 	PSB_WVDC32(pipeconf_val, pipeconf_reg);
-	if ((pipe == 0 && pipeconf_val & PIPEACONF_ENABLE) ||
-	    (pipe == 1 && pipeconf_val & PIPEBCONF_ENABLE))
-		/* Wait for the pipe enable to take effect. */
-		mdfldWaitForPipeEnable(dev, pipe);
 
+	/*only wait pipe enable when time generate */
+	if (REG_READ(mipi_reg) & BIT31) {
+		if ((pipe == 0 && pipeconf_val & PIPEACONF_ENABLE) ||
+		    (pipe == 1 && pipeconf_val & PIPEBCONF_ENABLE))
+			/* Wait for the pipe enable to take effect. */
+			mdfldWaitForPipeEnable(dev, pipe);
+	}
 	if (pipe == 1)
 		return 0;
 
