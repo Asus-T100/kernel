@@ -946,7 +946,7 @@ PVRSRV_ERROR PVRSRVProcessCommand(SYS_DATA			*psSysData,
 
 	if (psDeviceCommandData[psCommand->CommandType].pfnCmdProc((IMG_HANDLE)psCmdCompleteData,
 															   (IMG_UINT32)psCommand->uDataSize,
-															   psCommand->pvData) == IMG_FALSE)
+															   psCommand->pvData, bFlush) == IMG_FALSE)
 	{
 		
 

@@ -1481,7 +1481,7 @@ ExitTrueUnlock:
 
 static IMG_BOOL ProcessFlip(IMG_HANDLE  hCmdCookie,
                             IMG_UINT32  ui32DataSize,
-                            IMG_VOID   *pvData)
+                            IMG_VOID   *pvData, IMG_BOOL bFlush)
 {
 	DISPLAYCLASS_FLIP_COMMAND *psFlipCmd;
 	MRSTLFB_DEVINFO *psDevInfo;
@@ -1512,6 +1512,15 @@ static IMG_BOOL ProcessFlip(IMG_HANDLE  hCmdCookie,
 		psDevInfo->psDrmDevice->dev_private;
 	psBuffer = (MRSTLFB_BUFFER*)psFlipCmd->hExtBuffer;
 	psSwapChain = (MRSTLFB_SWAPCHAIN*) psFlipCmd->hExtSwapChain;
+
+	/* bFlush == true means hw recovery */
+	if (bFlush) {
+		spin_lock_irqsave(&psDevInfo->sSwapChainLock, ulLockFlags);
+		MRSTFBFlipComplete(psSwapChain, NULL, MRST_FALSE);
+		psSwapChain->psPVRJTable->pfnPVRSRVCmdComplete(hCmdCookie, IMG_TRUE);
+		spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
+		return IMG_TRUE;
+	}
 
 	if (!dev_priv->um_start) {
 		dev_priv->um_start = true;
