@@ -394,7 +394,6 @@ struct sst_sg_list {
  * @lpaudio_start : lpaudio status
  * @audio_start : audio status
  * @max_streams : max streams allowed
- * @qos		: PM Qos struct
  */
 struct intel_sst_drv {
 	int			sst_state;
@@ -453,7 +452,6 @@ struct intel_sst_drv {
 	struct dma_async_tx_descriptor *desc;
 	struct sst_sg_list fw_sg_list, library_list;
 	struct intel_sst_ops	*ops;
-	struct pm_qos_request_list *qos;
 };
 
 extern struct intel_sst_drv *sst_drv_ctx;
