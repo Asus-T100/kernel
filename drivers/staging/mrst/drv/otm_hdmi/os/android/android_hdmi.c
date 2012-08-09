@@ -72,6 +72,7 @@
 #include <linux/switch.h>
 #include "psb_intel_drv.h"
 #include "psb_intel_reg.h"
+#include "psb_intel_hdmi_reg.h"
 #include "psb_drv.h"
 
 #include "otm_hdmi_types.h"
@@ -107,7 +108,6 @@ static const struct {
 };
 
 /* TEMP HACKS - Will go away with DPMS refactor */
-extern void mdfld_hdmi_dpms(struct drm_encoder *encoder, int mode);
 extern void mdfld_hdmi_connector_dpms(struct drm_connector *connector, int mode);
 /* END - TEMP HACKS - Will go away with DPMS refactor */
 
@@ -2082,53 +2082,119 @@ void android_hdmi_dpms(struct drm_encoder *encoder, int mode)
 	otm_hdmi_timing_t otm_mode;
 	bool is_monitor_hdmi;
 	otm_hdmi_ret_t rc = OTM_HDMI_SUCCESS;
+	struct psb_intel_output *output;
+	int dspcntr_reg = DSPBCNTR;
+	int dspbase_reg = MRST_DSPBBASE;
+	u32 hdmip_enabled = 0;
+	u32 hdmib, hdmi_phy_misc;
+	u32 temp;
 
 	pr_debug("Entered %s\n", __func__);
 	if (encoder == NULL)
 		return;
 
+	pr_debug("%s\n", mode == DRM_MODE_DPMS_ON ? "on" : "off");
 	dev = encoder->dev;
-	dev_priv = dev->dev_private;
+	dev_priv = (struct drm_psb_private *)dev->dev_private;
 	hdmi_priv = dev_priv->hdmi_priv;
+	output = enc_to_psb_intel_output(encoder);
 
-	if (hdmi_priv->current_mode) {
-		__android_hdmi_drm_mode_to_otm_timing(&otm_mode,
-						      hdmi_priv->current_mode);
+	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
+			OSPM_UHB_FORCE_POWER_ON))
+		return;
+	hdmib = REG_READ(hdmi_priv->hdmib_reg) | HDMIB_PIPE_B_SELECT;
 
-		is_monitor_hdmi = otm_hdmi_is_monitor_hdmi(hdmi_priv->context);
+	is_monitor_hdmi = otm_hdmi_is_monitor_hdmi(hdmi_priv->context);
 
-		if (mode == DRM_MODE_DPMS_ON) {
-			/* Enable AVI infoframes for HDMI mode */
-			if (is_monitor_hdmi) {
-				rc = otm_hdmi_infoframes_set_avi(hdmi_priv->context,
-								 &otm_mode);
-				if (rc != OTM_HDMI_SUCCESS)
-					pr_debug("%s: failed to program avi infoframe\n",
-						__func__);
-			} else { /* Disable all infoframes for DVI mode */
-				rc = otm_hdmi_disable_all_infoframes(hdmi_priv->context);
-				if (rc != OTM_HDMI_SUCCESS)
-					pr_debug("%s: failed to disable all infoframes\n",
-						__func__);
-			}
+	if (is_monitor_hdmi)
+		hdmib |= (HDMIB_NULL_PACKET | HDMI_AUDIO_ENABLE);
+	else
+		hdmib &= ~(HDMIB_NULL_PACKET | HDMI_AUDIO_ENABLE);
+
+	hdmi_phy_misc = REG_READ(HDMIPHYMISCCTL);
+	hdmip_enabled = REG_READ(hdmi_priv->hdmib_reg) & HDMIB_PORT_EN;
+	pr_debug("hdmip_enabled is %x\n", hdmip_enabled);
+
+	if (dev_priv->early_suspended) {
+		/* Use Disable pipeB plane to turn off HDMI screen
+		  * in early_suspend
+		  */
+		temp = REG_READ(dspcntr_reg);
+		if ((temp & DISPLAY_PLANE_ENABLE) != 0) {
+			REG_WRITE(dspcntr_reg,
+				temp & ~DISPLAY_PLANE_ENABLE);
+			/* Flush the plane changes */
+			REG_WRITE(dspbase_reg, REG_READ(dspbase_reg));
 		}
-	} else
-		pr_err("%s: No saved current mode found, unable to restore\n",
-		       __func__);
+	}
 
+	if (mode != DRM_MODE_DPMS_ON) {
+		if (dev_priv->mdfld_had_event_callbacks
+			&& is_monitor_hdmi
+			&& (hdmip_enabled != 0)) {
+			(*dev_priv->mdfld_had_event_callbacks)
+			(HAD_EVENT_HOT_UNPLUG, dev_priv->had_pvt_data);
+		}
+
+		REG_WRITE(hdmi_priv->hdmib_reg,
+			hdmib & ~HDMIB_PORT_EN & ~HDMI_AUDIO_ENABLE);
+		psb_disable_pipestat(dev_priv, 1, PIPE_VBLANK_INTERRUPT_ENABLE);
+		REG_WRITE(HDMIPHYMISCCTL, hdmi_phy_misc | HDMI_PHY_POWER_DOWN);
+		rc = otm_hdmi_disable_all_infoframes(hdmi_priv->context);
+		if (rc != OTM_HDMI_SUCCESS)
+			pr_err("%s: failed to disable all infoframes\n",
+				__func__);
+
+	} else {
+		REG_WRITE(HDMIPHYMISCCTL, hdmi_phy_misc & ~HDMI_PHY_POWER_DOWN);
+		psb_enable_pipestat(dev_priv, 1, PIPE_VBLANK_INTERRUPT_ENABLE);
+		REG_WRITE(hdmi_priv->hdmib_reg, hdmib | HDMIB_PORT_EN);
+
+		if (dev_priv->mdfld_had_event_callbacks
+			&& is_monitor_hdmi
+			&& (hdmip_enabled == 0)) {
+			(*dev_priv->mdfld_had_event_callbacks)
+			(HAD_EVENT_HOT_PLUG, dev_priv->had_pvt_data);
+		}
+
+		if (hdmi_priv->current_mode)
+			__android_hdmi_drm_mode_to_otm_timing(&otm_mode,
+				hdmi_priv->current_mode);
+		else
+			pr_info("%s: No saved current mode found, unable to restore\n",
+				__func__);
+
+		if (is_monitor_hdmi) {
+			/* Enable AVI infoframes for HDMI mode */
+			rc = otm_hdmi_infoframes_set_avi(hdmi_priv->context,
+								&otm_mode);
+			if (rc != OTM_HDMI_SUCCESS)
+				pr_err("%s: failed to program avi infoframe\n",
+					__func__);
+		} else {
+			/* Disable all infoframes for DVI mode */
+			rc = otm_hdmi_disable_all_infoframes(hdmi_priv->context);
+			if (rc != OTM_HDMI_SUCCESS)
+				pr_err("%s: failed to disable all infoframes\n",
+					__func__);
+		}
+	}
 
 #ifdef OTM_HDMI_HDCP_ENABLE
-	otm_hdmi_hdcp_set_dpms(hdmi_priv->context, (mode == DRM_MODE_DPMS_ON));
+	otm_hdmi_hdcp_set_dpms(hdmi_priv->context,
+			(mode == DRM_MODE_DPMS_ON));
 #endif
+	/* flush hdmi port register */
+	REG_WRITE(hdmi_priv->hdmib_reg, REG_READ(hdmi_priv->hdmib_reg));
+	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 	pr_debug("Exiting %s\n", __func__);
 }
-
 
 /* OS Adaptation Layer Function Pointers
  * Functions required to be implemented by Linux DRM framework
  */
 const struct drm_encoder_helper_funcs android_hdmi_enc_helper_funcs = {
-	.dpms = mdfld_hdmi_dpms,
+	.dpms = android_hdmi_dpms,
 	.save = android_hdmi_encoder_save,
 	.restore = android_hdmi_encoder_restore,
 	.mode_fixup = android_hdmi_mode_fixup,
