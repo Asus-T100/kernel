@@ -1611,6 +1611,7 @@ IMG_VOID SGXDumpDebugInfo (PVRSRV_SGXDEV_INFO	*psDevInfo,
 
 
 #if defined(SYS_USING_INTERRUPTS) || defined(SUPPORT_HW_RECOVERY)
+extern void dump_nc_power_history(void);
 /*!
 *******************************************************************************
 
@@ -1646,6 +1647,7 @@ IMG_VOID HWRecoveryResetSGX (PVRSRV_DEVICE_NODE *psDeviceNode,
 	
 	PVR_UNREFERENCED_PARAMETER(ui32Component);
 
+	dump_nc_power_history();
 	/*
 		Ensure that hardware recovery is serialised with any power transitions.
 	*/
