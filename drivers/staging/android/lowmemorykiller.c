@@ -140,7 +140,7 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 		task_lock(p);
 		mm = p->mm;
 		sig = p->signal;
-		if (!mm || !sig) {
+		if (!mm || !sig || (p->flags & PF_EXITING)) {
 			task_unlock(p);
 			continue;
 		}
