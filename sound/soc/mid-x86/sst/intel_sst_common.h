@@ -178,16 +178,6 @@ union sst_pimr_reg {
 	u32 full;
 };
 
-union sst_pwmctrl_reg {
-	struct {
-		u32 pwmtd:8;
-		u32 pwmbu:22;
-		u32 pwmswupdate:1;
-		u32 pwmenable:1;
-	} part;
-	u32 full;
-};
-
 union config_status_reg_mrfld {
 	struct {
 		u64 lpe_reset:1;

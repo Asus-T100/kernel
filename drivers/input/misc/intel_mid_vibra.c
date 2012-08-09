@@ -31,40 +31,95 @@
 #include <linux/pci.h>
 #include <linux/delay.h>
 #include <linux/gpio.h>
-/* FIXME: remove once vibra becomes PCI driver */
-#include "../../../sound/soc/mid-x86/sst_platform.h"
+#include <linux/pm_runtime.h>
+#include <linux/lnw_gpio.h>
 
-#define VIBRA_ENABLE_GPIO 40
-#define PWM_ENABLE_GPIO 49
+#define INTEL_VIBRA_DRV_NAME "intel_vibra_driver"
+#define INTEL_VIBRA_CLV_PCI_ID 0x0905
 
-struct vibra_info {
-	struct mutex		lock;
-	struct device		*dev;
-	int			enabled;
-	void __iomem		*shim;
-	const char              *name;
+#define INTEL_VIBRA_ENABLE_GPIO 40
+#define INTEL_PWM_ENABLE_GPIO 49
+
+#define INTEL_VIBRA_MAX_TIMEDIVISOR  0xFF
+#define INTEL_VIBRA_MAX_BASEUNIT 0x80
+
+
+union sst_pwmctrl_reg {
+	struct {
+		u32 pwmtd:8;
+		u32 pwmbu:22;
+		u32 pwmswupdate:1;
+		u32 pwmenable:1;
+	} part;
+	u32 full;
 };
 
-/* Powers H-Bridge and enables audio clk */
+struct vibra_info {
+	int     enabled;
+	struct mutex	lock;
+	struct device	*dev;
+	void __iomem	*shim;
+	const char	*name;
+	struct pci_dev	*pci;
+	union sst_pwmctrl_reg   pwm;
+};
+
+static int vibra_pwm_configure(struct vibra_info *info, unsigned int enable)
+{
+	union sst_pwmctrl_reg pwmctrl;
+
+	if (enable) {
+		/*1. Enable the PWM by setting PWM enable bit to 1 */
+		pwmctrl.full = readl(info->shim);
+		pr_debug("Vibra:Read pwmctrl %x\n", readl(info->shim));
+		pwmctrl.part.pwmenable = 1;
+		writel(pwmctrl.full, info->shim);
+
+		/*2. Read the PWM register to make sure there is no pending
+		*update.
+		*/
+		pwmctrl.full = readl(info->shim);
+		pr_debug("Read pwmctrl %x\n", pwmctrl.full);
+
+		/*check pwnswupdate bit */
+		if (pwmctrl.part.pwmswupdate)
+			return -EBUSY;
+		/*Base unit == 1*/
+		pwmctrl.part.pwmswupdate = 0x1;
+		pwmctrl.part.pwmbu = info->pwm.part.pwmbu;
+		pwmctrl.part.pwmtd = info->pwm.part.pwmtd;
+		writel(pwmctrl.full,  info->shim);
+		pr_debug("Read pwmctrl %x\n", pwmctrl.full);
+	} else { /*disable PWM block */
+		   /*1. setting PWM enable bit to 0 */
+		pwmctrl.full = readl(info->shim);
+		pwmctrl.part.pwmenable = 0;
+		writel(pwmctrl.full,  info->shim);
+	}
+	return 0;
+}
+/* Enable's vibra driver */
 static void vibra_enable(struct vibra_info *info)
 {
 	pr_debug("Enable gpio\n");
-	intel_sst_pwm_suspend(false);
-	gpio_set_value(PWM_ENABLE_GPIO, 1);
-	gpio_set_value(VIBRA_ENABLE_GPIO, 1);
+	mutex_lock(&info->lock);
+	pm_runtime_get_sync(&info->pci->dev);
+	gpio_set_value(INTEL_PWM_ENABLE_GPIO, 1);
+	gpio_set_value(INTEL_VIBRA_ENABLE_GPIO, 1);
 	info->enabled = true;
+	mutex_unlock(&info->lock);
+
 }
 
 static void vibra_disable(struct vibra_info *info)
 {
-
-	if (info->enabled) {
-		pr_debug("Disable gpio\n");
-		gpio_set_value(PWM_ENABLE_GPIO, 0);
-		gpio_set_value(VIBRA_ENABLE_GPIO, 0);
-		info->enabled = false;
-		intel_sst_pwm_suspend(true);
-	}
+	pr_debug("Disable gpio\n");
+	mutex_lock(&info->lock);
+	gpio_set_value(INTEL_PWM_ENABLE_GPIO, 0);
+	gpio_set_value(INTEL_VIBRA_ENABLE_GPIO, 0);
+	info->enabled = false;
+	pm_runtime_put(&info->pci->dev);
+	mutex_unlock(&info->lock);
 }
 
 
@@ -75,8 +130,7 @@ static void vibra_disable(struct vibra_info *info)
 static ssize_t vibra_show_vibrator(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
-	struct platform_device *pdev = to_platform_device(dev);
-	struct vibra_info *info = platform_get_drvdata(pdev);
+	struct vibra_info *info = dev_get_drvdata(dev);
 
 	return sprintf(buf, "%d\n", info->enabled);
 
@@ -86,13 +140,13 @@ static ssize_t vibra_set_vibrator(struct device *dev,
 	struct device_attribute *attr, const char *buf, size_t len)
 {
 	long vibrator_enable;
+	struct vibra_info *info = dev_get_drvdata(dev);
 
-	struct platform_device *pdev = to_platform_device(dev);
-	struct vibra_info *info = platform_get_drvdata(pdev);
-
-	if (strict_strtol(buf, 0, &vibrator_enable))
+	if (kstrtol(buf, 0, &vibrator_enable))
 		return -EINVAL;
-	if (vibrator_enable == 0)
+	if (vibrator_enable == info->enabled)
+		return len;
+	else if (vibrator_enable == 0)
 		vibra_disable(info);
 	else if (vibrator_enable == 1)
 		vibra_enable(info);
@@ -101,9 +155,70 @@ static ssize_t vibra_set_vibrator(struct device *dev,
 	return len;
 }
 
+static ssize_t vibra_set_pwm_baseunit(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t len)
+{
+	unsigned long  pwm_base;
+	struct vibra_info *info = dev_get_drvdata(dev);
+
+	if (kstrtoul(buf, 0, &pwm_base))
+		return -EINVAL;
+
+	pr_debug("PWM value 0x%lx\n", pwm_base);
+	pwm_base = abs(pwm_base);
+
+	if (pwm_base < 0 || pwm_base > INTEL_VIBRA_MAX_BASEUNIT) {
+		pr_err("Supported value is out of Range\n");
+		return -EINVAL;
+	}
+	pr_debug("PWM value 0x%lx\n", pwm_base);
+	info->pwm.part.pwmbu = pwm_base;
+	return len;
+}
+
+static ssize_t vibra_show_pwm_baseunit(struct device *dev,
+	 struct device_attribute *attr, char *buf)
+{
+	struct vibra_info *info = dev_get_drvdata(dev);
+
+	return sprintf(buf, "0x%X\n", info->pwm.part.pwmbu);
+}
+
+static ssize_t vibra_set_pwm_ontime_div(struct device *dev,
+	 struct device_attribute *attr, const char *buf, size_t len)
+{
+	unsigned long  pwm_td;
+	struct vibra_info *info = dev_get_drvdata(dev);
+
+	if (kstrtoul(buf, 0, &pwm_td))
+		return -EINVAL;
+	pr_debug("PWM value 0x%lx\n", pwm_td);
+	pwm_td = abs(pwm_td);
+	if (pwm_td > INTEL_VIBRA_MAX_TIMEDIVISOR || pwm_td < 0) {
+		pr_err("Supported value is out of Range\n");
+		return -EINVAL;
+	}
+
+	info->pwm.part.pwmtd = pwm_td;
+
+	return len;
+}
+
+static ssize_t vibra_show_pwm_ontime_div(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	struct vibra_info *info = dev_get_drvdata(dev);
+
+	return sprintf(buf, "0x%X\n", info->pwm.part.pwmtd);
+}
+
 static struct device_attribute vibra_attrs[] = {
 	__ATTR(vibrator, S_IRUGO | S_IWUSR,
 	       vibra_show_vibrator, vibra_set_vibrator),
+	__ATTR(pwm_baseunit, S_IRUGO | S_IWUSR,
+	       vibra_show_pwm_baseunit, vibra_set_pwm_baseunit),
+	__ATTR(pwm_ontime_div, S_IRUGO | S_IWUSR,
+	       vibra_show_pwm_ontime_div, vibra_set_pwm_ontime_div),
 };
 
 static int vibra_register_sysfs(struct vibra_info *info)
@@ -133,116 +248,183 @@ static void vibra_unregister_sysfs(struct vibra_info *info)
 
 /*** Module ***/
 #if CONFIG_PM
-static int intel_mid_vibra_suspend(struct device *dev)
+static int intel_vibra_runtime_suspend(struct device *dev)
 {
-	struct platform_device *pdev = to_platform_device(dev);
-	struct vibra_info *info = platform_get_drvdata(pdev);
+	struct vibra_info *info = dev_get_drvdata(dev);
 
-	pr_debug("intel_mid_vibra_suspend called\n");
-
-	if (info->enabled)
-		vibra_disable(info);
-
+	pr_debug("In %s\n", __func__);
+	vibra_pwm_configure(info, false);
 	return 0;
 }
 
-static int intel_mid_vibra_resume(struct device *dev)
+static int intel_vibra_runtime_resume(struct device *dev)
 {
-	pr_debug("intel_mid_vibra_resume called\n");
+	struct vibra_info *info = dev_get_drvdata(dev);
+
+	pr_debug("In %s\n", __func__);
+	lnw_gpio_set_alt(INTEL_PWM_ENABLE_GPIO, LNW_ALT_2);
+	vibra_pwm_configure(info, true);
 	return 0;
 }
 
-static SIMPLE_DEV_PM_OPS(intel_mid_vibra_pm_ops,
-			 intel_mid_vibra_suspend, intel_mid_vibra_resume);
+static const struct dev_pm_ops intel_mid_vibra_pm_ops = {
+	.suspend = intel_vibra_runtime_suspend,
+	.resume = intel_vibra_runtime_resume,
+	.runtime_suspend = intel_vibra_runtime_suspend,
+	.runtime_resume = intel_vibra_runtime_resume,
+};
+
 #endif
 
-static int __init intel_mid_vibra_probe(struct platform_device *pdev)
+static int __devinit intel_mid_vibra_probe(struct pci_dev *pci,
+			const struct pci_device_id *pci_id)
 {
 	struct vibra_info *info;
 	int ret = 0;
-	info = kzalloc(sizeof(*info), GFP_KERNEL);
+
+	pr_debug("Probe for DID %x\n", pci->device);
+
+	info =  devm_kzalloc(&pci->dev, sizeof(*info), GFP_KERNEL);
 	if (!info)
 		return -ENOMEM;
 
-	info->dev = &pdev->dev;
-	info->name = "intel_mid:vibrator";
-	info->enabled = false;
-
-	mutex_init(&info->lock);
-
-	platform_set_drvdata(pdev, info);
-
-	if (vibra_register_sysfs(info) < 0) {
-		pr_err("could not register sysfs files\n");
+	ret = gpio_request_one(INTEL_VIBRA_ENABLE_GPIO, GPIOF_DIR_OUT,
+				 "VIBRA ENABLE");
+	if (ret != 0) {
+		pr_err("gpio_request(%d) fails:%d\n",
+			INTEL_VIBRA_ENABLE_GPIO, ret);
 		goto out;
 	}
 
-	ret = gpio_request(VIBRA_ENABLE_GPIO, "VIBRA ENABLE");
-	if (ret != 0) {
-		pr_err("gpio_request(%d) fails - %d\n", VIBRA_ENABLE_GPIO, ret);
-		goto goto_unregistesysfs;
-	}
-
-	gpio_direction_output(VIBRA_ENABLE_GPIO, 0);
-
-	ret = gpio_request(PWM_ENABLE_GPIO, "PWM ENABLE");
+	ret = gpio_request_one(INTEL_PWM_ENABLE_GPIO, GPIOF_DIR_OUT,
+				  "PWM ENABLE");
 
 	if (ret != 0) {
-		pr_err("gpio_request(%d) fails - %d\n", PWM_ENABLE_GPIO, ret);
-		goto goto_freegpio;
+		pr_err("gpio_request(%d) fails:%d\n",
+			INTEL_PWM_ENABLE_GPIO, ret);
+		goto do_freegpio_vibra_enable;
 	}
 
-	gpio_direction_output(PWM_ENABLE_GPIO, 0);
+	/* Init the device */
+	ret = pci_enable_device(pci);
+	if (ret) {
+		pr_err("device can't be enabled\n");
+		goto do_freegpio_pwm;
+	}
+	ret = pci_request_regions(pci, INTEL_VIBRA_DRV_NAME);
 
+	if (ret)
+		goto do_disable_device;
+	info->pci = pci_dev_get(pci);
+
+	/* vibra Shim */
+	info->shim =  pci_ioremap_bar(pci, 0);
+	if (!info->shim) {
+		pr_err("ioremap failed for vibra driver\n");
+		goto do_release_regions;
+	}
+
+	/*set default value to Max */
+	info->pwm.part.pwmbu = INTEL_VIBRA_MAX_BASEUNIT;
+	info->pwm.part.pwmtd = INTEL_VIBRA_MAX_TIMEDIVISOR;
+
+	info->dev = &pci->dev;
+	info->name = "intel_mid:vibrator";
+	mutex_init(&info->lock);
+
+	if (vibra_register_sysfs(info) < 0) {
+		pr_err("could not register sysfs files\n");
+		goto do_unmap_shim;
+	}
+	lnw_gpio_set_alt(INTEL_PWM_ENABLE_GPIO, LNW_ALT_2);
+	vibra_pwm_configure(info, true);
+
+	pci_set_drvdata(pci, info);
+	pm_runtime_allow(&pci->dev);
+	pm_runtime_put_noidle(&pci->dev);
 	return ret;
 
-goto_freegpio:
-	gpio_free(VIBRA_ENABLE_GPIO);
-goto_unregistesysfs:
-	vibra_unregister_sysfs(info);
+do_unmap_shim:
+	iounmap(info->shim);
+do_release_regions:
+	pci_release_regions(pci);
+do_disable_device:
+	pci_disable_device(pci);
+do_freegpio_pwm:
+	gpio_free(INTEL_PWM_ENABLE_GPIO);
+do_freegpio_vibra_enable:
+	gpio_free(INTEL_VIBRA_ENABLE_GPIO);
 out:
-	kfree(info);
 	return ret;
 }
 
-static int __exit intel_mid_vibra_remove(struct platform_device *pdev)
+static void __devexit intel_mid_vibra_remove(struct pci_dev *pci)
 {
-	struct vibra_info *info = platform_get_drvdata(pdev);
-	gpio_free(VIBRA_ENABLE_GPIO);
-	gpio_free(PWM_ENABLE_GPIO);
+	struct vibra_info *info = pci_get_drvdata(pci);
+	gpio_free(INTEL_VIBRA_ENABLE_GPIO);
+	gpio_free(INTEL_PWM_ENABLE_GPIO);
 	vibra_unregister_sysfs(info);
-	kfree(info);
-	return 0;
+	iounmap(info->shim);
+	pci_release_regions(pci);
+	pci_disable_device(pci);
+	pci_set_drvdata(pci, NULL);
 }
 
+/* PCI Routines */
+static DEFINE_PCI_DEVICE_TABLE(intel_vibra_ids) = {
+	{ PCI_VDEVICE(INTEL, INTEL_VIBRA_CLV_PCI_ID)},
+	{ 0, }
+};
+MODULE_DEVICE_TABLE(pci, intel_vibra_ids);
 
-static struct platform_driver intel_mid_vibra_driver = {
-	.driver		= {
-		.name	= "intel_mid_vibra",
-		.owner	= THIS_MODULE,
+static struct pci_driver vibra_driver = {
+	.name = INTEL_VIBRA_DRV_NAME,
+	.id_table = intel_vibra_ids,
+	.probe = intel_mid_vibra_probe,
+	.remove = __devexit_p(intel_mid_vibra_remove),
 #ifdef CONFIG_PM
-	.pm	= &intel_mid_vibra_pm_ops,
-#endif
+	.driver = {
+		.pm = &intel_mid_vibra_pm_ops,
 	},
-	.probe		= intel_mid_vibra_probe,
-	.remove	= __devexit_p(intel_mid_vibra_remove),
+#endif
 };
 
+/**
+* intel_mid_vibra_init - Module init function
+*
+* Registers with PCI
+* Registers with /dev
+* Init all data strutures
+*/
 static int __init intel_mid_vibra_init(void)
 {
-	pr_debug("intel_mid_vibra_init called\n");
-	return platform_driver_register(&intel_mid_vibra_driver);
-}
-module_init(intel_mid_vibra_init);
+	int ret = 0;
 
+	/* Register with PCI */
+	ret = pci_register_driver(&vibra_driver);
+	if (ret)
+		pr_err("PCI register failed\n");
+	return ret;
+}
+
+/**
+* intel_mid_vibra_exit - Module exit function
+*
+* Unregisters with PCI
+* Unregisters with /dev
+* Frees all data strutures
+*/
 static void __exit intel_mid_vibra_exit(void)
 {
-	pr_debug("intel_mid_vibra_exit called\n");
-	platform_driver_unregister(&intel_mid_vibra_driver);
+	pci_unregister_driver(&vibra_driver);
+	pr_debug("intel_mid_vibra driver exited\n");
+	return;
 }
+
+module_init(intel_mid_vibra_init);
 module_exit(intel_mid_vibra_exit);
 
-MODULE_ALIAS("platform:intel_mid_vibra");
+MODULE_ALIAS("pci:intel_mid_vibra");
 MODULE_DESCRIPTION("Intel(R) MID Vibra driver");
 MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("KP Jeeja <jeeja.kp@intel.com>");

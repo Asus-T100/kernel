@@ -59,7 +59,6 @@ MODULE_VERSION(SST_DRIVER_VERSION);
 #define CLV_I2S_3_FS_GPIO_PIN	13
 #define CLV_I2S_3_TXD_GPIO_PIN	74
 #define CLV_I2S_3_RXD_GPIO_PIN	75
-#define CLV_VIBRA_PWM_GPIO_PIN  49
 
 struct intel_sst_drv *sst_drv_ctx;
 static struct mutex drv_ctx_lock;
@@ -486,9 +485,7 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 		lnw_gpio_set_alt(CLV_I2S_3_FS_GPIO_PIN, LNW_ALT_2);
 		lnw_gpio_set_alt(CLV_I2S_3_TXD_GPIO_PIN, LNW_ALT_2);
 		lnw_gpio_set_alt(CLV_I2S_3_RXD_GPIO_PIN, LNW_ALT_2);
-		lnw_gpio_set_alt(CLV_VIBRA_PWM_GPIO_PIN, LNW_ALT_2);
 
-		vibra_pwm_configure(true);
 	}
 
 	pci_set_drvdata(pci, sst_drv_ctx);
@@ -623,52 +620,6 @@ static void sst_save_dsp_context(void)
 	return;
 }
 
-void intel_sst_pwm_suspend(unsigned int pwm_suspend)
-{
-	if (pwm_suspend) {
-		pr_debug("SST_SND_DEVICE_SUSPEND doing rtpm_put\n");
-		pm_runtime_put(&sst_drv_ctx->pci->dev);
-	} else	{
-		pr_debug("SST_SND_DEVICE_RESUME_SYNC\n");
-		pm_runtime_get_sync(&sst_drv_ctx->pci->dev);
-	}
-}
-EXPORT_SYMBOL(intel_sst_pwm_suspend);
-
-int vibra_pwm_configure(unsigned int enable)
-{
-	union sst_pwmctrl_reg pwmctrl;
-
-	if (enable) {
-
-		/*1. Enable the PWM by setting PWM enable bit to 1 */
-		pwmctrl.full = readl(sst_drv_ctx->shim + SST_PWMCTRL);
-		pr_debug("Vibra:Read pwmctrl %x\n", pwmctrl.full);
-		pwmctrl.part.pwmenable = 1;
-		writel(pwmctrl.full, sst_drv_ctx->shim + SST_PWMCTRL);
-
-		/*2. Read the PWM register to make sure there is no pending
-		update.*/
-		pwmctrl.full = readl(sst_drv_ctx->shim + SST_PWMCTRL);
-		pr_debug("Read pwmctrl %x\n", pwmctrl.full);
-
-		/*check pwnswupdate bit */
-		if (pwmctrl.part.pwmswupdate)
-			return -EBUSY;
-		/*Base unit == 1*/
-		pwmctrl.part.pwmswupdate = 0x1;
-		pwmctrl.part.pwmbu = MAX_BASEUNIT;
-		pwmctrl.part.pwmtd = MAX_TIMEDIVSOR;
-		writel(pwmctrl.full,  sst_drv_ctx->shim + SST_PWMCTRL);
-		pr_debug("Read pwmctrl %x\n", pwmctrl.full);
-	} else { /*disable PWM block */
-		   /*1. setting PWM enable bit to 0 */
-		pwmctrl.full = readl(sst_drv_ctx->shim + SST_PWMCTRL);
-		pwmctrl.part.pwmenable = 0;
-		writel(pwmctrl.full,  sst_drv_ctx->shim + SST_PWMCTRL);
-	}
-	return 0;
-}
 
 /*
  * The runtime_suspend/resume is pretty much similar to the legacy
@@ -697,8 +648,7 @@ static int intel_sst_runtime_suspend(struct device *dev)
 	sst_drv_ctx->sst_state = SST_SUSPENDED;
 	sst_shim_write(sst_drv_ctx->shim, SST_CSR, csr.full);
 	mutex_unlock(&sst_drv_ctx->sst_lock);
-	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID)
-		vibra_pwm_configure(false);
+
 
 	flush_workqueue(sst_drv_ctx->post_msg_wq);
 	flush_workqueue(sst_drv_ctx->process_msg_wq);
@@ -735,9 +685,7 @@ static int intel_sst_runtime_resume(struct device *dev)
 		lnw_gpio_set_alt(CLV_I2S_3_FS_GPIO_PIN, LNW_ALT_2);
 		lnw_gpio_set_alt(CLV_I2S_3_TXD_GPIO_PIN, LNW_ALT_2);
 		lnw_gpio_set_alt(CLV_I2S_3_RXD_GPIO_PIN, LNW_ALT_2);
-		lnw_gpio_set_alt(CLV_VIBRA_PWM_GPIO_PIN, LNW_ALT_2);
 
-		vibra_pwm_configure(true);
 	}
 
 	sst_set_fw_state_locked(sst_drv_ctx, SST_UN_INIT);
