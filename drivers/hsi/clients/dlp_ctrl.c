@@ -942,12 +942,16 @@ static void dlp_ctrl_complete_rx(struct hsi_msg *msg)
 						ch_ctx->hsi_channel);
 
 				response = DLP_CMD_NACK;
+				pr_info(DRVNAME ": open_conn for ch%d received\n",
+						params.channel);
 			}
 		}
 		break;
 
 	case DLP_CMD_CLOSE_CONN:
 		response = DLP_CMD_ACK;
+		pr_info(DRVNAME ": close_conn for ch%d received\n",
+				params.channel);
 		break;
 
 	default:

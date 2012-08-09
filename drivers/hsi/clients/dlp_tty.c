@@ -602,7 +602,7 @@ static int dlp_tty_port_activate(struct tty_port *port, struct tty_struct *tty)
 	struct dlp_xfer_ctx *rx_ctx;
 	int ret = 0;
 
-	PROLOG();
+	pr_debug(DRVNAME ": port activate requested\n");
 
 	/* Get the context reference stored in the TTY open() */
 	ch_ctx = (struct dlp_channel *)tty->driver_data;
@@ -615,15 +615,10 @@ static int dlp_tty_port_activate(struct tty_port *port, struct tty_struct *tty)
 
 	/* Configure the DLP channel */
 	ret = dlp_ctrl_open_channel(ch_ctx);
-	if (ret) {
+	if (ret)
 		CRITICAL("dlp_ctrl_open_channel() failed !");
-		goto out;
-	}
 
-	PDEBUG("tty port activated");
-
-out:
-	EPILOG();
+	pr_debug(DRVNAME ": port activate done (ret: %d)\n", ret);
 	return ret;
 }
 
@@ -641,7 +636,7 @@ static void dlp_tty_port_shutdown(struct tty_port *port)
 	struct dlp_xfer_ctx *rx_ctx;
 	int ret;
 
-	PROLOG();
+	pr_debug(DRVNAME ": port shutdown requested\n");
 
 	tty_ctx = container_of(port, struct dlp_tty_context, tty_prt);
 	ch_ctx = tty_ctx->ch_ctx;
@@ -675,8 +670,7 @@ static void dlp_tty_port_shutdown(struct tty_port *port)
 	flush_work_sync(&ch_ctx->start_tx_w);
 	flush_work_sync(&ch_ctx->stop_tx_w);
 
-	PDEBUG("tty port shut down");
-	EPILOG();
+	pr_debug(DRVNAME ": port shutdown done\n");
 }
 
 /**
@@ -694,7 +688,7 @@ static int dlp_tty_open(struct tty_struct *tty, struct file *filp)
 	struct dlp_tty_context *tty_ctx;
 	int ret;
 
-	PROLOG();
+	pr_debug(DRVNAME ": device open requested\n");
 
 	/* Check & wait for modem readiness */
 	if (!dlp_ctrl_modem_is_ready()) {
@@ -739,7 +733,7 @@ static int dlp_tty_open(struct tty_struct *tty, struct file *filp)
 	tty->flags |= (1 << TTY_NO_WRITE_SPLIT);
 
 out:
-	EPILOG();
+	pr_debug(DRVNAME ": device open done (ret: %d)\n", ret);
 	return ret;
 }
 
@@ -840,22 +834,20 @@ static void dlp_tty_close(struct tty_struct *tty, struct file *filp)
 	struct dlp_channel *ch_ctx = (struct dlp_channel *)tty->driver_data;
 	int need_cleanup = (tty->count == 1);
 
-	PROLOG();
-
-	/* Flush everything */
-	if (need_cleanup)
-		hsi_flush(dlp_drv.client);
+	pr_debug(DRVNAME ": TTY device close request\n");
 
 	if (filp && ch_ctx) {
 		struct dlp_tty_context *tty_ctx = ch_ctx->ch_data;
 		tty_port_close(&tty_ctx->tty_prt, tty, filp);
 	}
 
-	/* Release the HSI port */
-	if (need_cleanup)
+	/* Flush everything & Release the HSI port */
+	if (need_cleanup) {
+		hsi_flush(dlp_drv.client);
 		dlp_hsi_port_unclaim();
+	}
 
-	EPILOG();
+	pr_debug(DRVNAME ": TTY device close done\n");
 }
 
 /**
