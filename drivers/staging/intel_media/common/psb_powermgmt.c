@@ -1573,6 +1573,10 @@ static void gfx_early_suspend(struct early_suspend *h)
 	}
 	if (dev_priv->pvr_screen_event_handler)
 		dev_priv->pvr_screen_event_handler(dev, 0);
+
+	/* protect early_suspend with dpms and mode config */
+	mutex_lock(&dev->mode_config.mutex);
+
 	/*Display off*/
 	if (IS_MDFLD(gpDrmDevice)) {
 		if ((dev_priv->panel_id == H8C7_VID) ||
@@ -1596,9 +1600,12 @@ static void gfx_early_suspend(struct early_suspend *h)
 			printk(KERN_ALERT "panel type is not support currently\n");
 	}
 
+
 	gbdispstatus = false;
 
 	dev_priv->early_suspended = true;
+
+	mutex_unlock(&dev->mode_config.mutex);
 #ifdef CONFIG_GFX_RTPM
 #ifdef OSPM_GFX_DPK
 	printk(KERN_ALERT " allow GFX runtime_pm\n");
@@ -1661,9 +1668,12 @@ static void restore_panel_controll_back(struct drm_psb_private *dev_priv)
 static void gfx_late_resume(struct early_suspend *h)
 {
 	struct drm_psb_private *dev_priv = gpDrmDevice->dev_private;
+	struct drm_device *dev = dev_priv->dev;
 #ifdef OSPM_GFX_DPK
 	printk(KERN_ALERT "\ngfx_late_resume\n");
 #endif
+	/* protect early_suspend with dpms and mode config */
+	mutex_lock(&dev->mode_config.mutex);
 
 	dev_priv->early_suspended = false;
 	if (IS_MDFLD(gpDrmDevice)) {
@@ -1673,6 +1683,8 @@ static void gfx_late_resume(struct early_suspend *h)
 	}
 	restore_panel_controll_back(dev_priv);
 	dev_priv->b_dsr_enable = dev_priv->b_dsr_enable_status;
+
+	mutex_unlock(&dev->mode_config.mutex);
 }
 
 /*
