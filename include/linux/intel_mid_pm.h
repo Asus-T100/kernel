@@ -116,7 +116,11 @@
 #define S0I1_POWER_USAGE       50
 #define S0I3_POWER_USAGE       31
 
+#ifdef CONFIG_PM_DEBUG
 extern void pmu_s0ix_demotion_stat(int req_state, int grant_state);
+#else
+static inline void pmu_s0ix_demotion_stat(int req_state, int grant_state) { return; }
+#endif
 extern int get_target_platform_state(unsigned long *eax);
 extern int mid_s0ix_enter(int);
 extern int pmu_set_devices_in_d0i0(void);
