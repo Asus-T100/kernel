@@ -41,19 +41,23 @@
 #ifdef CONFIG_BOARD_CTP
 
 /* Number of thermal sensors */
-#define MSIC_THERMAL_SENSORS	3
-#define MSIC_DIE_INDEX		2
+#define MSIC_THERMAL_SENSORS	4
 
 static char *name[MSIC_THERMAL_SENSORS] = {
-	"skin0", "skin1", "msicdie"
+	"skin0", "skin1", "msicdie", "bptherm"
 };
 
 /*Skin sensors attributes*/
-#define SKIN0_INDX		0
-#define SKIN1_INDX		1
-#define BACKSKIN_CALIB_FACTOR	10000
-#define FRONTSKIN_CALIB_FACTOR	16000
-
+#define SKIN0_INDEX		0
+#define SKIN1_INDEX		1
+#define MSIC_DIE_INDEX		2
+#define BP_THERM_INDEX		3
+#define BACK_SKIN_SLOPE		723
+#define BACK_SKIN_INTERCEPT	7084
+#define FRONT_SKIN_SLOPE	446
+#define FRONT_SKIN_INTERCEPT	14050
+#define BPTHERM_SLOPE		788
+#define BPTHERM_INTERCEPT	5065
 #else
 
 /* Number of thermal sensors */
@@ -224,14 +228,14 @@ static int mid_read_temp(struct thermal_zone_device *tzd, unsigned long *temp)
 {
 	struct thermal_device_info *td_info = tzd->devdata;
 	int ret;
-	unsigned long curr_temp;
+	long curr_temp, bptherm_temp;
 	int sample_count = 1; /* No of times each channel must be sampled */
 	int indx = td_info->sensor_index; /* Required Index */
 	int val[MSIC_THERMAL_SENSORS];
 
 #ifdef CONFIG_BOARD_CTP
 	ret = intel_mid_gpadc_sample(therm_adc_handle, sample_count,
-					&val[0], &val[1], &val[2]);
+					&val[0], &val[1], &val[2], &val[3]);
 #else
 	ret = intel_mid_gpadc_sample(therm_adc_handle, sample_count,
 					&val[0], &val[1], &val[2], &val[3]);
@@ -244,10 +248,36 @@ static int mid_read_temp(struct thermal_zone_device *tzd, unsigned long *temp)
 
 #ifdef CONFIG_BOARD_CTP
 	if (ret == 0) {
-		if (indx == SKIN0_INDX)
-			curr_temp = curr_temp - FRONTSKIN_CALIB_FACTOR;
-		else if (indx == SKIN1_INDX)
-			curr_temp = curr_temp - BACKSKIN_CALIB_FACTOR;
+		switch (indx) {
+		case SKIN0_INDEX:
+		/*FrontSkin = 0.4459 * SYSTHERM0 + 14.05 */
+			curr_temp =
+				curr_temp * FRONT_SKIN_SLOPE +
+					FRONT_SKIN_INTERCEPT;
+			curr_temp = curr_temp / 1000;
+			break;
+		case SKIN1_INDEX:
+		/* BackSkin = max((.7231 * SYSTHERM0 + 7.084),
+		*	(.7884 * BPTHERM + 5.0655)) */
+			ret = adc_to_temp(td_info->direct,
+					val[BP_THERM_INDEX], &bptherm_temp);
+			if (ret != 0)
+				return ret;
+			curr_temp =
+				curr_temp * BACK_SKIN_SLOPE +
+					BACK_SKIN_INTERCEPT;
+			curr_temp = curr_temp / 1000;
+			bptherm_temp =
+				bptherm_temp * BPTHERM_SLOPE +
+					BPTHERM_INTERCEPT;
+			bptherm_temp = bptherm_temp / 1000;
+			curr_temp =
+				curr_temp > bptherm_temp ?
+					curr_temp : bptherm_temp;
+			break;
+		case BP_THERM_INDEX:
+			break;
+		}
 		*temp = curr_temp;
 	}
 #else
@@ -335,7 +365,8 @@ static int mid_thermal_probe(struct ipc_device *ipcdev)
 	therm_adc_handle = intel_mid_gpadc_alloc(MSIC_THERMAL_SENSORS,
 					0x04 | CH_NEED_VREF | CH_NEED_VCALIB,
 					0x04 | CH_NEED_VREF | CH_NEED_VCALIB,
-					0x03 | CH_NEED_VCALIB);
+					0x03 | CH_NEED_VCALIB,
+					0x09 | CH_NEED_VREF | CH_NEED_VCALIB);
 #else
 	/* Allocate ADC channels for all sensors */
 	therm_adc_handle = intel_mid_gpadc_alloc(MSIC_THERMAL_SENSORS,
