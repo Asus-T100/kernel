@@ -1360,6 +1360,13 @@ static void max17042_restore_conf_data(struct max17042_chip *chip)
 			}
 		}
 	}
+			if (chip->pdata->is_volt_shutdown_enabled)
+				chip->pdata->is_volt_shutdown =
+				chip->pdata->is_volt_shutdown_enabled();
+
+			if (chip->pdata->is_lowbatt_shutdown_enabled)
+				chip->pdata->is_lowbatt_shutdown =
+				chip->pdata->is_lowbatt_shutdown_enabled();
 
 	mutex_unlock(&chip->init_lock);
 }
@@ -1515,17 +1522,9 @@ static void max17042_evt_worker(struct work_struct *work)
 	mutex_unlock(&chip->batt_lock);
 
 	/* Init maxim chip if it is not already initialized */
-	if (!chip->pdata->is_init_done) {
-		if (chip->pdata->is_volt_shutdown_enabled)
-			chip->pdata->is_volt_shutdown =
-				chip->pdata->is_volt_shutdown_enabled();
-
-		if (chip->pdata->is_lowbatt_shutdown_enabled)
-			chip->pdata->is_lowbatt_shutdown =
-				chip->pdata->is_lowbatt_shutdown_enabled();
-		if (!chip->pdata->file_sys_storage_enabled)
-			schedule_work(&chip->init_worker);
-	}
+	if (!chip->pdata->is_init_done &&
+	!chip->pdata->file_sys_storage_enabled)
+		schedule_work(&chip->init_worker);
 
 	power_supply_changed(&chip->battery);
 	pm_runtime_put_sync(&chip->client->dev);
