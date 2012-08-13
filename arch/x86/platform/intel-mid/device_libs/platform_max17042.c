@@ -208,6 +208,8 @@ void *max17042_platform_data(void *info)
 	platform_data.restore_config_data = ctp_fg_restore_config_data;
 	platform_data.save_config_data = ctp_fg_save_config_data;
 	platform_data.battery_health = ctp_get_battery_health;
+	platform_data.is_volt_shutdown_enabled = ctp_is_volt_shutdown_enabled;
+	platform_data.get_vmin_threshold = ctp_get_vsys_min;
 #endif
 #ifdef CONFIG_CHARGER_SMB347 /* redridge dv10 */
 	platform_data.battery_status = smb347_get_charging_status;

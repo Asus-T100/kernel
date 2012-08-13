@@ -150,4 +150,6 @@ int bq24192_slave_mode_disable_charging(void);
 extern int ctp_query_battery_status(void);
 extern int ctp_get_battery_pack_temp(int *temp);
 extern int ctp_get_battery_health(void);
+extern bool ctp_is_volt_shutdown_enabled(void);
+extern int ctp_get_vsys_min(void);
 #endif /* __BQ24192_CHARGER_H_ */

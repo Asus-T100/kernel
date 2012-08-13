@@ -341,6 +341,9 @@ static enum power_supply_property bq24192_usb_props[] = {
 	POWER_SUPPLY_PROP_HEALTH
 };
 
+/* it will be used to store threshold voltage during sleep mode */
+static short int vbatt_sh_min;
+
 /************************************************************************
  * End of structure definition section
  ***********************************************************************/
@@ -2362,6 +2365,7 @@ static void init_batt_thresholds(struct bq24192_chip *chip)
 		if (ret)
 			dev_warn(&chip->client->dev,
 				"%s:smip read failed\n", __func__);
+		vbatt_sh_min = chip->batt_thrshlds.vbatt_sh_min;
 
 		/* Read the battery properties from SRAM */
 		ret = intel_scu_ipc_read_mip((u8 *)ctp_smip_batt_prop,
@@ -2496,6 +2500,24 @@ static irqreturn_t mask_gpio_irq(int irq, void *devid)
 
 	return IRQ_HANDLED;
 }
+
+bool ctp_is_volt_shutdown_enabled(void)
+{
+	/* FPO1 is reserved in case of CTP so we are returning true */
+	return true;
+}
+EXPORT_SYMBOL(ctp_is_volt_shutdown_enabled);
+
+int ctp_get_vsys_min(void)
+{
+	int ret;
+
+	if (vbatt_sh_min)
+		return vbatt_sh_min * 1000;
+
+	return CLT_BATT_VMIN_THRESHOLD_DEF * 1000;
+}
+EXPORT_SYMBOL(ctp_get_vsys_min);
 
 static int __devinit bq24192_probe(struct i2c_client *client,
 			const struct i2c_device_id *id)
