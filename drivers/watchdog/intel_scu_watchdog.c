@@ -932,6 +932,9 @@ static const struct file_operations intel_scu_fops = {
 	.write          = intel_scu_write,
 	.read		= intel_scu_read,
 	.unlocked_ioctl = intel_scu_ioctl,
+#ifdef CONFIG_COMPAT
+	.compat_ioctl	= intel_scu_ioctl,
+#endif
 	.open           = intel_scu_open,
 	.poll		= intel_scu_poll,
 	.release        = intel_scu_release,

@@ -516,7 +516,8 @@ out_kfree:
 static long es305_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	struct vp_ctxt *the_vp;
-	int rc;
+	/* rc to u32 for 32bit->64bit safety as return value */
+	u32 rc;
 	char firmware_name[FIRMWARE_NAME_MAX_LENGTH];
 
 	pr_debug("-> %s\n", __func__);
@@ -573,6 +574,9 @@ static const struct file_operations a1026_fops = {
 	.write = es305_write,
 	.read = es305_read,
 	.unlocked_ioctl = es305_ioctl,
+#ifdef CONFIG_COMPAT
+	.compat_ioctl   = es305_ioctl,
+#endif
 	.llseek = no_llseek,
 };
 

@@ -33,6 +33,10 @@
 #include <asm/intel-mid.h>
 #include <linux/pm_runtime.h>
 
+#ifdef CONFIG_COMPAT
+#include <linux/compat.h>
+#endif
+
 #define MAX_FW_SIZE 264192
 
 #define OSHOB_PMIT_OFFSET		0x0000002c
@@ -620,6 +624,9 @@ static int intel_scu_ipc_read_osnib_wakesrc(u8 *wakesrc)
 
 static const struct file_operations scu_ipc_fops = {
 	.unlocked_ioctl = scu_ipc_ioctl,
+#ifdef CONFIG_COMPAT
+	.compat_ioctl   = scu_ipc_ioctl,
+#endif
 };
 
 static struct miscdevice scu_ipcutil = {

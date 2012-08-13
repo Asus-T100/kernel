@@ -27,6 +27,10 @@
 #include <linux/uaccess.h>
 #include <linux/wakelock.h>
 
+#ifdef CONFIG_COMPAT
+#include <linux/compat.h>
+#endif
+
 #define ANDROID_ALARM_PRINT_INFO (1U << 0)
 #define ANDROID_ALARM_PRINT_IO (1U << 1)
 #define ANDROID_ALARM_PRINT_INT (1U << 2)
@@ -57,7 +61,8 @@ static struct alarm alarms[ANDROID_ALARM_TYPE_COUNT];
 
 static long alarm_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
-	int rv = 0;
+	/* Using u32 instead of int for 32bit uspace and 64bit kernel */
+	u32 rv = 0;
 	unsigned long flags;
 	struct timespec new_alarm_time;
 	struct timespec new_rtc_time;
@@ -248,6 +253,9 @@ static void alarm_triggered(struct alarm *alarm)
 static const struct file_operations alarm_fops = {
 	.owner = THIS_MODULE,
 	.unlocked_ioctl = alarm_ioctl,
+#ifdef CONFIG_COMPAT
+	.compat_ioctl   = alarm_ioctl,
+#endif
 	.open = alarm_open,
 	.release = alarm_release,
 };

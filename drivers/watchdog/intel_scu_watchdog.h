@@ -25,6 +25,10 @@
 #ifndef __INTEL_SCU_WATCHDOG_H
 #define __INTEL_SCU_WATCHDOG_H
 
+#ifdef CONFIG_COMPAT
+#include <linux/compat.h>
+#endif
+
 #ifdef CONFIG_DEBUG_FS
 #include <linux/debugfs.h>
 #endif

@@ -18,6 +18,11 @@
 
 #include <linux/ioctl.h>
 #include <linux/i2c.h>
+
+#ifdef CONFIG_COMPAT
+#include <linux/compat.h>
+#endif
+
 #define A1026_MAX_FW_SIZE	(128*1024)
 struct a1026img {
 	unsigned char *buf;
