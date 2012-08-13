@@ -33,6 +33,8 @@
 #include <linux/fs.h>
 #include <linux/firmware.h>
 #include <linux/pm_runtime.h>
+#include <linux/pm_qos_params.h>
+#include <linux/intel_mid_pm.h>
 #include <sound/intel_sst_ioctl.h>
 #include <sound/pcm.h>
 #include "../sst_platform.h"
@@ -97,7 +99,11 @@ int sst_download_fw(void)
 	}
 	sst_drv_ctx->alloc_block[0].sst_id = FW_DWNL_ID;
 	sst_drv_ctx->alloc_block[0].ops_block.condition = false;
+	/* Prevent C-states beyond C6 */
+	pm_qos_update_request(sst_drv_ctx->qos, CSTATE_EXIT_LATENCY_S0i1 - 1);
 	retval = sst_load_fw(sst_drv_ctx->fw_in_mem, NULL);
+	/* Re-enable Deeper C-states beyond C6 */
+	pm_qos_update_request(sst_drv_ctx->qos, PM_QOS_DEFAULT_VALUE);
 	if (retval)
 		goto end_restore;
 

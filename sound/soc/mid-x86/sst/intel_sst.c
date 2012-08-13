@@ -37,6 +37,7 @@
 #include <linux/firmware.h>
 #include <linux/miscdevice.h>
 #include <linux/pm_runtime.h>
+#include <linux/pm_qos_params.h>
 #include <linux/async.h>
 #include <linux/lnw_gpio.h>
 #include <linux/delay.h>
@@ -495,6 +496,12 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 	}
 	register_sst(&pci->dev);
 	sst_debugfs_init(sst_drv_ctx);
+	sst_drv_ctx->qos = kzalloc(sizeof(struct pm_qos_request_list),
+				GFP_KERNEL);
+	if (!sst_drv_ctx->qos)
+		goto do_free_misc;
+	pm_qos_add_request(sst_drv_ctx->qos, PM_QOS_CPU_DMA_LATENCY,
+				PM_QOS_DEFAULT_VALUE);
 	pr_info("%s successfully done!\n", __func__);
 	return ret;
 
@@ -566,6 +573,8 @@ static void __devexit intel_sst_remove(struct pci_dev *pci)
 	destroy_workqueue(sst_drv_ctx->post_msg_wq);
 	destroy_workqueue(sst_drv_ctx->mad_wq);
 	release_firmware(sst_drv_ctx->fw);
+	pm_qos_remove_request(sst_drv_ctx->qos);
+	kfree(sst_drv_ctx->qos);
 	sst_drv_ctx->fw = NULL;
 	kfree(sst_drv_ctx->fw_sg_list.src);
 	kfree(sst_drv_ctx->fw_sg_list.dst);

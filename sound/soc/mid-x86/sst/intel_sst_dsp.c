@@ -38,6 +38,8 @@
 #include <linux/firmware.h>
 #include <linux/dmaengine.h>
 #include <linux/intel_mid_dma.h>
+#include <linux/pm_qos_params.h>
+#include <linux/intel_mid_pm.h>
 #include <sound/intel_sst_ioctl.h>
 #include "../sst_platform.h"
 #include "intel_sst_fw_ipc.h"
@@ -832,7 +834,11 @@ int sst_load_library(struct snd_sst_lib_download *lib, u8 ops)
 
 	lib->mod_entry_pt = entry_point;
 	memcpy(&dload_info.dload_lib, lib, sizeof(*lib));
+	/* Prevent C-states beyond C6 */
+	pm_qos_update_request(sst_drv_ctx->qos, CSTATE_EXIT_LATENCY_S0i1 - 1);
 	error = sst_download_library(fw_lib, &dload_info);
+	/* Re-enable Deeper C-states beyond C6 */
+	pm_qos_update_request(sst_drv_ctx->qos, PM_QOS_DEFAULT_VALUE);
 	if (error)
 		goto wake_free;
 
