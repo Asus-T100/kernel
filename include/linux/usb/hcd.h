@@ -135,11 +135,6 @@ struct usb_hcd {
 	unsigned		has_sram:1;	/* Local SRAM for caching */
 	unsigned		sram_no_payload:1; /* sram not for payload */
 
-	/* Runtime-PM control field for host controller driver, set
-	*  rpm_control to 1 to let it work. */
-	unsigned		rpm_control:1;	/* runtime-PM control flag */
-	int			rpm_resume;	/* runtime-PM flow control */
-
 	int			irq;		/* irq allocated */
 	void __iomem		*regs;		/* device memory/io */
 	u64			rsrc_start;	/* memory/io resource start */

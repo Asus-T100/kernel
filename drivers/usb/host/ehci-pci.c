@@ -230,7 +230,7 @@ static int ehci_pci_setup(struct usb_hcd *hcd)
 			hcd->has_tt = 1;
 			ehci->has_hostpc = 1;
 
-			/* All need to bypass tll mode */
+			/* All need to bypass tll mode  */
 			temp = ehci_readl(ehci, hcd->regs + CLV_SPHCFG);
 			temp &= ~CLV_SPHCFG_ULPI1TYPE;
 			ehci_writel(ehci, temp, hcd->regs + CLV_SPHCFG);
@@ -238,13 +238,6 @@ static int ehci_pci_setup(struct usb_hcd *hcd)
 			temp = ehci_readl(ehci, hcd->regs + CLV_SPH_HOSTPC);
 			temp |= CLV_SPH_HOSTPC_PTS;
 			ehci_writel(ehci, temp, hcd->regs + CLV_SPH_HOSTPC);
-
-			device_set_wakeup_enable(&pdev->dev, true);
-
-			/* Set Runtime-PM flags for SPH */
-			hcd->rpm_control = 1;
-			hcd->rpm_resume = 0;
-			pm_runtime_set_active(&pdev->dev);
 		}
 	}
 
