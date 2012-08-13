@@ -693,10 +693,15 @@ void mdfld_dsi_dbi_exit_dsr (struct drm_device *dev, u32 update_src, void *p_sur
 	struct mdfld_dbi_dsr_info * dsr_info = dev_priv->dbi_dsr_info;
 	struct mdfld_dsi_dbi_output ** dbi_output;
 	int i;
+	int err = 0;
+	struct mdfld_dsi_pkg_sender *sender = NULL;
 
 	mutex_lock(&dev_priv->dsr_mutex);
 
 	dbi_output = dsr_info->dbi_outputs;
+
+	if (!dbi_output)
+		return;
 
 #ifdef CONFIG_PM_RUNTIME
 	 if(drm_psb_ospm && !enable_gfx_rtpm) {
@@ -718,6 +723,12 @@ void mdfld_dsi_dbi_exit_dsr (struct drm_device *dev, u32 update_src, void *p_sur
 
 	dev_priv->dsr_fb_update |= update_src;
 	dev_priv->dsr_idle_count = 0;
+
+	sender = mdfld_dsi_encoder_get_pkg_sender(&dbi_output[0]->base);
+	err = mdfld_dsi_status_check(sender);
+	if (err)
+		DRM_ERROR("exit DSR, DSI abnormal 0x%x\n");
+
 	/*start timer if A0 board*/
 	if ((get_panel_type(dev, 0) == GI_SONY_CMD)||(get_panel_type(dev, 0) == H8C7_CMD))
 		;  /* mdfld_dbi_dsr_timer_start(dsr_info); */

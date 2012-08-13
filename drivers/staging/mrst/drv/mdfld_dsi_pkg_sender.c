@@ -31,7 +31,7 @@
 #include "mdfld_dsi_dbi.h"
 #include "mdfld_dsi_dpi.h"
 
-#define MDFLD_DSI_DBI_FIFO_TIMEOUT		100
+#define MDFLD_DSI_DBI_FIFO_TIMEOUT		1000
 #define MDFLD_DSI_MAX_RETURN_PACKET_SIZE	512
 #define MDFLD_DSI_READ_MAX_COUNT		10000
 
@@ -198,9 +198,13 @@ static int dsi_error_handler(struct mdfld_dsi_pkg_sender * sender)
 			break;
 		case BIT21:
 			DRM_INFO("dsi status %s\n", dsi_errors[i]);
+			REG_WRITE(intr_stat_reg, mask);
+			err = wait_for_all_fifos_empty(sender);
 			break;
 		case BIT22:
 			DRM_INFO("dsi status %s\n", dsi_errors[i]);
+			REG_WRITE(intr_stat_reg, mask);
+			err = wait_for_all_fifos_empty(sender);
 			break;
 		case BIT23:
 		case BIT24:
@@ -213,12 +217,12 @@ static int dsi_error_handler(struct mdfld_dsi_pkg_sender * sender)
 		case BIT27:
 			DRM_INFO("dsi status %s\n", dsi_errors[i]);
 			REG_WRITE(intr_stat_reg, mask);
-			wait_for_hs_fifos_empty(sender);
+			err = wait_for_hs_fifos_empty(sender);
 			break;
 		case BIT28:
 			DRM_INFO("dsi status %s\n", dsi_errors[i]);
 			REG_WRITE(intr_stat_reg, mask);
-			wait_for_lp_fifos_empty(sender);
+			err = wait_for_lp_fifos_empty(sender);
 			break;
 		case BIT29:
 			/*No Action required.*/
@@ -1277,7 +1281,10 @@ int  mdfld_dsi_cmds_kick_out(struct mdfld_dsi_pkg_sender *sender)
 {
 	return process_pkg_list(sender);
 }
-
+int mdfld_dsi_status_check(struct mdfld_dsi_pkg_sender *sender)
+{
+	return dsi_error_handler(sender);
+}
 int mdfld_dsi_check_fifo_empty(struct mdfld_dsi_pkg_sender *sender)
 {
 	struct drm_device *dev = sender->dev;
