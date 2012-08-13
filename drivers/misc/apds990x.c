@@ -116,10 +116,6 @@
 #define APDS_PGAIN_1X	       0x0
 #define APDS_PDIODE_IR	       0x2
 
-#define APDS990X_LUX_OUTPUT_SCALE 10
-#define APDS990X_CH1_CH0_ABN_RATIO 1229
-#define APDS990X_CH1_CH0_MAX_RATIO 2253
-
 #define APDS_POWER_DOWN        (0)
 #define APDS_POWER_ON          (1)
 #define APDS_ALS_ENABLE        (1 << 1)
@@ -133,6 +129,11 @@
 #define PS_IOCTL_ENABLE   1
 #define ALS_DATA_READY    2
 #define ALS_IOCTL_ENABLE  3
+
+#define APDS_RATIO_INCAN	1638
+#define APDS_ALS_MAX_LUX	10000
+#define APDS_ALS_MIN_ADC	3
+#define APDS_ALS_INCAN_MIN_IR	8
 
 /* Reverse chip factors for threshold calculation */
 struct reverse_factors {
@@ -179,8 +180,8 @@ struct apds990x_chip {
 	u16	lux_clear;
 	u16	lux_ir;
 	u16	lux_calib;
-	u32	lux_thres_hi;
-	u32	lux_thres_lo;
+	u16	lux_thres_hi;
+	u16	lux_thres_lo;
 
 	u32	prox_thres;
 	u16	prox_data;
@@ -354,6 +355,8 @@ static inline int apds990x_set_atime(struct apds990x_chip *chip, u32 time_ms)
 	reg_value = 256 - ((time_ms * TIME_STEP_SCALER) / TIMESTEP);
 	/* Calculate max ADC value for given integration time */
 	chip->a_max_result = (u16)(256 - reg_value) * APDS990X_TIME_TO_ADC;
+	dev_info(&chip->client->dev,
+			"max ADC value = %d\n", chip->a_max_result);
 	return apds990x_write_byte(chip, APDS990X_ATIME, reg_value);
 }
 
@@ -376,13 +379,44 @@ static int apds990x_refresh_pthres(struct apds990x_chip *chip, int data)
 }
 
 /* Called always with mutex locked */
+static void apds990x_clear_to_athres(struct apds990x_chip *chip)
+{
+	u16 lo, hi;
+
+	/* The data register may float in very bright environment which causes
+	 * a lot of meaningless interrupt. To avoid that and reduce power
+	 * consumption, set interrupt trigger condition as 2% change of current
+	 * ADC value
+	 */
+	if (chip->lux_clear < APDS_ALS_MIN_ADC) {
+		lo = 0;
+		hi = APDS_ALS_MIN_ADC;
+	} else {
+		lo = chip->lux_clear * 98 / 100;
+		if (lo >= chip->a_max_result)
+			lo = chip->a_max_result * 98 / 100;
+
+		hi = chip->lux_clear * 102 / 100;
+		if (hi == chip->lux_clear)
+			hi += 1;
+		else if (hi >= chip->a_max_result)
+			hi = chip->a_max_result - 1;
+	}
+
+	chip->lux_thres_hi = hi;
+	chip->lux_thres_lo = lo;
+}
+
+/* Called always with mutex locked */
 static int apds990x_refresh_athres(struct apds990x_chip *chip)
 {
 	int ret;
-	ret = apds990x_write_word(chip, APDS990X_AILTL,
-			apds990x_lux_to_threshold(chip, chip->lux_thres_lo));
-	ret |= apds990x_write_word(chip, APDS990X_AIHTL,
-			apds990x_lux_to_threshold(chip, chip->lux_thres_hi));
+
+	ret = apds990x_write_word(chip, APDS990X_AILTL, chip->lux_thres_lo);
+	ret |= apds990x_write_word(chip, APDS990X_AIHTL, chip->lux_thres_hi);
+
+	dev_dbg(&chip->client->dev, "als threshold: %d, %d",
+			chip->lux_thres_lo, chip->lux_thres_hi);
 
 	return ret;
 }
@@ -453,8 +487,7 @@ static int apds990x_calc_again(struct apds990x_chip *chip)
 	if (ret < 0)
 		apds990x_force_a_refresh(chip);
 	else {
-		chip->lux_thres_lo = chip->lux_raw / APDS990X_LUX_OUTPUT_SCALE;
-		chip->lux_thres_hi = chip->lux_thres_lo + 1;
+		apds990x_clear_to_athres(chip);
 		apds990x_refresh_athres(chip);
 	}
 
@@ -464,47 +497,31 @@ static int apds990x_calc_again(struct apds990x_chip *chip)
 /* Called always with mutex locked */
 static int apds990x_get_lux(struct apds990x_chip *chip, int clear, int ir)
 {
-	int iac, iac1, iac2; /* IR adjusted counts */
+	int ret;
 	u32 lpc; /* Lux per count */
-	int ratio, irfactor;
+	int ratio, cf, irf, iac;
 
-	if (clear == 0)
+	if (clear < APDS_ALS_MIN_ADC)
 		return 0;
-	/* If CH1/CH0 > 0.3 that means an abnormal incandescent light source
-	 * is detected and is very close to the sensor, we need to reduce the
-	 * IR factor to get the correct lux value
-	 * Formulas:
-	 * ratio = CH1/CH0
-	 * IR Factor = 1 - (6/11 * ratio) when 0.3 < ratio < 0.55
-	 * IR Factor = 0 when ratio >= 0.55
-	 */
-	ratio = (ir * APDS_PARAM_SCALE) / clear;
-	if (ratio > APDS990X_CH1_CH0_ABN_RATIO) {
-		if (ratio >= APDS990X_CH1_CH0_MAX_RATIO)
-			irfactor = 0;
-		else
-			irfactor = APDS_PARAM_SCALE - 6 * ratio / 11;
 
-		ir = ir * irfactor / APDS_PARAM_SCALE;
-		chip->lux_ir = ir;
+	cf = chip->cf.cf1;
+	irf = chip->cf.irf1;
+
+	ratio = (ir * APDS_PARAM_SCALE) / clear;
+	if (ratio > APDS_RATIO_INCAN && ir > APDS_ALS_INCAN_MIN_IR) {
+		cf = chip->cf.cf2;
+		irf = chip->cf.irf2;
 	}
 
-	/* Formulas:
-	 * iac1 = CF1 * CLEAR_CH - IRF1 * IR_CH
-	 * iac2 = CF2 * CLEAR_CH - IRF2 * IR_CH
-	 */
-	iac1 = (chip->cf.cf1 * clear - chip->cf.irf1 * ir) / APDS_PARAM_SCALE;
-	iac2 = (chip->cf.cf2 * clear - chip->cf.irf2 * ir) / APDS_PARAM_SCALE;
-
-	iac = max(iac1, iac2);
+	iac = (cf * clear - irf * ir) / APDS_PARAM_SCALE;
 	iac = max(iac, 0);
-
-	lpc = APDS990X_LUX_OUTPUT_SCALE * (chip->cf.df * chip->cf.ga) /
+	lpc = (chip->cf.df * chip->cf.ga) /
 		(u32)(again[chip->again_meas] * (u32)chip->atime);
+	ret = (iac * lpc) / APDS_PARAM_SCALE;
 
-	dev_dbg(&chip->client->dev, "iac1=%d, iac2=%d, iac=%d, lpc=%u\n",
-			iac1, iac2, iac, lpc);
-	return (iac * lpc) / APDS_PARAM_SCALE;
+	dev_dbg(&chip->client->dev, "clear=%d,ir=%d,iac=%d,lpc=%u,ret=%d\n",
+					clear, ir, iac, lpc, ret);
+	return min(ret, APDS_ALS_MAX_LUX);
 }
 
 static int apds990x_ack_int(struct apds990x_chip *chip, u8 mode)
@@ -537,27 +554,19 @@ static void als_handle_irq(struct apds990x_chip *chip)
 	apds990x_read_word(chip, APDS990X_CDATAL, &chip->lux_clear);
 	apds990x_read_word(chip, APDS990X_IRDATAL, &chip->lux_ir);
 
-	/* Store used gain for calculations */
-	chip->again_meas = chip->again_next;
 	chip->lux_raw = apds990x_get_lux(chip, chip->lux_clear, chip->lux_ir);
+	apds990x_clear_to_athres(chip);
+	apds990x_refresh_athres(chip);
 
-	/* Check if result is valid */
-	if (apds990x_calc_again(chip) != 0) {
-		dev_dbg(&chip->client->dev, "ALS need to be measured again.");
-		return;
+	if (chip->lux != chip->lux_raw || chip->lux_wait_fresh_res == true) {
+		chip->lux_wait_fresh_res = false;
+		chip->lux = chip->lux_raw;
+
+		list_for_each_entry(client, &chip->als_list, list)
+			set_bit(ALS_DATA_READY, &client->status);
+
+		wake_up(&chip->als_wordq_head);
 	}
-
-	chip->lux = chip->lux_raw;
-	chip->lux_wait_fresh_res = false;
-
-	dev_dbg(&chip->client->dev,
-			"lux_clear=%u, lux_ir=%u, ambient=%u\n",
-			chip->lux_clear, chip->lux_ir, chip->lux);
-
-	list_for_each_entry(client, &chip->als_list, list)
-		set_bit(ALS_DATA_READY, &client->status);
-
-	wake_up(&chip->als_wordq_head);
 }
 
 /* mutex must be held when calling this function */
@@ -613,8 +622,8 @@ static int apds990x_configure(struct apds990x_chip *chip)
 	apds990x_write_byte(chip, APDS990X_PPCOUNT, chip->pdata->ppcount);
 
 	/* Start with relatively small gain */
-	chip->again_meas = 1;
-	chip->again_next = 1;
+	chip->again_meas = 0;
+	chip->again_next = 0;
 	apds990x_write_byte(chip, APDS990X_CONTROL,
 			(chip->pdrive << 6) |
 			(chip->pdiode << 4) |
@@ -663,12 +672,10 @@ static ssize_t apds990x_lux_show(struct device *dev,
 
 	mutex_lock(&chip->mutex);
 	result = (chip->lux * chip->lux_calib) / APDS_CALIB_SCALER;
-	if (result > (APDS_RANGE * APDS990X_LUX_OUTPUT_SCALE))
-		result = APDS_RANGE * APDS990X_LUX_OUTPUT_SCALE;
+	if (result > APDS_ALS_MAX_LUX)
+		result = APDS_ALS_MAX_LUX;
 
-	ret = sprintf(buf, "%d.%d\n",
-		result / APDS990X_LUX_OUTPUT_SCALE,
-		result % APDS990X_LUX_OUTPUT_SCALE);
+	ret = sprintf(buf, "%d\n", result);
 	mutex_unlock(&chip->mutex);
 	return ret;
 }
@@ -800,7 +807,7 @@ static ssize_t apds990x_lux_thresh_below_show(struct device *dev,
 	return sprintf(buf, "%d\n", chip->lux_thres_lo);
 }
 
-static ssize_t apds990x_set_lux_thresh(struct apds990x_chip *chip, u32 *target,
+static ssize_t apds990x_set_lux_thresh(struct apds990x_chip *chip, u16 *target,
 				const char *buf)
 {
 	int ret = 0;
@@ -813,7 +820,7 @@ static ssize_t apds990x_set_lux_thresh(struct apds990x_chip *chip, u32 *target,
 		return -EINVAL;
 
 	mutex_lock(&chip->mutex);
-	*target = thresh;
+	*target = (u16)thresh;
 	/*
 	 * Don't update values in HW if we are still waiting for
 	 * first interrupt to come after device handle open call.
@@ -981,10 +988,7 @@ als_read(struct file *filep, char __user *buffer, size_t size, loff_t *offset)
 
 	mutex_lock(&chip->mutex);
 	if (chip->alsps_switch & APDS_ALS_ENABLE) {
-		lux =
-		min((u32)((chip->lux * chip->lux_calib) / APDS_CALIB_SCALER),
-			(u32)(APDS_RANGE * APDS990X_LUX_OUTPUT_SCALE));
-
+		lux = min(chip->lux, APDS_ALS_MAX_LUX);
 		clear_bit(ALS_DATA_READY, &client->status);
 		if (copy_to_user(buffer, &lux, sizeof(lux)))
 			ret = -EFAULT;
@@ -1295,6 +1299,7 @@ static void apds990x_late_resume(struct early_suspend *h)
 	dev_dbg(&chip->client->dev, "enter %s\n", __func__);
 
 	mutex_lock(&chip->mutex);
+	chip->lux_wait_fresh_res = true;
 	apds990x_switch(chip, chip->alsps_switch);
 	mutex_unlock(&chip->mutex);
 }
@@ -1389,6 +1394,7 @@ static void apds990x_init_params(struct apds990x_chip *chip)
 	chip->lux_thres_hi = APDS_LUX_DEF_THRES_HI;
 	chip->lux_thres_lo = APDS_LUX_DEF_THRES_LO;
 	chip->lux_calib = APDS_LUX_NEUTRAL_CALIB_VALUE;
+	chip->lux_wait_fresh_res = true;
 
 	chip->prox_thres = APDS_PROX_DEF_THRES;
 	chip->pdrive = chip->pdata->pdrive;
