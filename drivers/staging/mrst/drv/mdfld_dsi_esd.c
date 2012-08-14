@@ -39,22 +39,18 @@ static int __esd_thread(void *data)
 	struct drm_device *dev = err_detector->dev;
 	struct drm_psb_private *dev_priv = dev->dev_private;
 
+	dsi_config = dev_priv->dsi_configs[0];
+	dbi_output = dev_priv->dbi_output;
+
 	set_freezable();
 
 	while (!kthread_should_stop()) {
 		wait_event_freezable(err_detector->esd_thread_wq,
-			((dev_priv->dbi_panel_on) || kthread_should_stop()));
+			((dsi_config->dsi_hw_context.panel_on) ||
+			 kthread_should_stop()));
 
 		PSB_DEBUG_ENTRY("%s: executed on %u\n", __func__,
 			jiffies_to_msecs(jiffies));
-
-		if (dev_priv->cur_pipe == 0) {
-			dbi_output = dev_priv->dbi_output;
-			dsi_config = dev_priv->dsi_configs[0];
-		} else {
-			dbi_output = dev_priv->dbi_output2;
-			dsi_config = dev_priv->dsi_configs[1];
-		}
 
 		if (!dbi_output)
 			goto esd_exit;
@@ -68,8 +64,9 @@ static int __esd_thread(void *data)
 		}
 
 		p_funcs = dbi_output->p_funcs;
-		if (p_funcs && (p_funcs->esd_detection)
-			&& dev_priv->dbi_panel_on) {
+		if (p_funcs &&
+		    p_funcs->esd_detection &&
+		    dsi_config->dsi_hw_context.panel_on) {
 			if (dev_priv->b_dsr_enable) {
 				dev_priv->exit_idle(dev,
 						MDFLD_DSR_2D_3D,

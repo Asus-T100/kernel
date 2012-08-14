@@ -335,8 +335,6 @@ static int __mdfld_gi_sony_dsi_power_on(struct mdfld_dsi_config *dsi_config)
 		return -EINVAL;
 	}
 
-	/* mdfld_dsi_send_gen_long_hs(sender, sc1_mcs_protect_off, 4, 0); */
-#if 1
 	param[0] = 0x00;
 	param[1] = 0x00;
 	param[2] = 0x00;
@@ -366,19 +364,6 @@ static int __mdfld_gi_sony_dsi_power_on(struct mdfld_dsi_config *dsi_config)
 		goto power_err;
 	}
 
-	/*param[0] = 0xff;
-	param[1] = 0x00;
-	param[2] = 0x00;
-	err = mdfld_dsi_send_dcs(sender,
-						 write_display_brightness,
-						 &param,
-						 3,
-						 CMD_DATA_SRC_SYSTEM_MEM,
-						 MDFLD_DSI_SEND_PACKAGE);
-	if (err) {
-		DRM_ERROR("%s - sent set_tear_on faild\n", __func__);
-		goto power_err;
-	}*/
 	if (drm_psb_enable_lex_cabc) {
 
 		param[0] = 0x03;
@@ -454,53 +439,8 @@ static int __mdfld_gi_sony_dsi_power_on(struct mdfld_dsi_config *dsi_config)
 	}
 	msleep(21);
 
-	/*err = mdfld_dsi_send_dcs(sender,
-				   write_mem_start,
-				   NULL,
-				   0,
-				   CMD_DATA_SRC_PIPE,
-				   MDFLD_DSI_SEND_PACKAGE);
-	if (err) {
-		DRM_ERROR("%s - sent write_mem_start faild\n", __func__);
-		goto power_err;
-	}*/
 power_err:
 	return err;
-#else
-
-	/* change power state */
-	mdfld_dsi_send_mcs_long_hs(sender, sc1_exit_sleep_mode, 4, 0);
-
-	msleep(120);
-
-	/* enable CABC with backlight off */
-	mdfld_dsi_send_mcs_long_hs(sender, sc1_set_brightness_max, 4, 0);
-	mdfld_dsi_send_mcs_long_hs(sender, sc1_select_CABC_mode, 4, 0);
-	mdfld_dsi_send_mcs_long_hs(sender, sc1_enable_CABC_bl_off, 4, 0);
-	mdfld_dsi_send_mcs_long_hs(sender, sc1_set_te_on, 4, 0);
-
-	err = mdfld_dsi_dbi_update_area(dbi_output, 0, 0, 539, 959);
-	if (err)
-		DRM_ERROR("update area failed\n");
-
-	/* set display on */
-	mdfld_dsi_send_mcs_long_hs(sender, sc1_set_display_on, 4, 0);
-
-	msleep(21);
-
-	/* enable BLON, CABC*/
-	mdfld_dsi_send_mcs_long_hs(sender, sc1_enable_CABC_bl_on, 4, 0);
-	/* mdfld_dsi_send_gen_long_hs(sender, sc1_mcs_protect_on, 4, 0); */
-
-	/* send TURN_ON packet */
-	/*err = mdfld_dsi_send_dpi_spk_pkg_hs(sender,
-				MDFLD_DSI_DPI_SPK_TURN_ON);
-	if (err) {
-		DRM_ERROR("Failed to send turn on packet\n");
-		return err;
-	}*/
-	return err;
-#endif
 }
 
 static int __mdfld_gi_sony_dsi_power_off(struct mdfld_dsi_config *dsi_config)
@@ -653,157 +593,6 @@ static int mdfld_gi_sony_dsi_dbi_power_on(struct drm_encoder *encoder)
 power_on_err:
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 	return err;
-}
-
-/*
- * Power off sequence for video mode MIPI panel.
- * NOTE: do NOT modify this function
- */
-static int mdfld_gi_sony_dsi_dbi_power_off(struct drm_encoder *encoder)
-{
-	struct mdfld_dsi_encoder *dsi_encoder = MDFLD_DSI_ENCODER(encoder);
-	struct mdfld_dsi_dbi_output *dbi_output =
-		MDFLD_DSI_DBI_OUTPUT(dsi_encoder);
-	struct mdfld_dsi_config *dsi_config =
-		mdfld_dsi_encoder_get_config(dsi_encoder);
-	struct panel_funcs *p_funcs = dbi_output->p_funcs;
-	struct mdfld_dsi_hw_registers *regs;
-	struct mdfld_dsi_hw_context *ctx;
-	struct drm_device *dev = encoder->dev;
-	struct drm_psb_private *dev_priv = dev->dev_private;
-	int err = 0;
-
-	PSB_DEBUG_ENTRY("\n");
-
-	if (!dev_priv->dsi_init_done)
-		return err;
-
-	if (!dsi_config)
-		return -EINVAL;
-
-	regs = &dsi_config->regs;
-	ctx = &dsi_config->dsi_hw_context;
-	dev = dsi_config->dev;
-
-	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
-					OSPM_UHB_FORCE_POWER_ON))
-		return -EAGAIN;
-
-	ctx->lastbrightnesslevel = psb_brightness;
-	if (p_funcs->set_brightness(dsi_config, 0))
-		DRM_ERROR("Failed to set panel brightness\n");
-
-	/*
-	 * Different panel may have different ways to have
-	 * panel turned off. Support it!
-	 */
-	if (p_funcs && p_funcs->power_off) {
-		if (p_funcs->power_off(dsi_config)) {
-			DRM_ERROR("Failed to power off panel\n");
-			err = -EAGAIN;
-			goto power_off_err;
-		}
-	}
-
-power_off_err:
-	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
-	return err;
-}
-
-static int mdfld_gi_sony_dsi_dbi_set_power(struct drm_encoder *encoder, bool on)
-{
-	int ret = 0;
-	struct mdfld_dsi_encoder *dsi_encoder = MDFLD_DSI_ENCODER(encoder);
-	struct mdfld_dsi_dbi_output *dbi_output =
-		MDFLD_DSI_DBI_OUTPUT(dsi_encoder);
-	struct mdfld_dsi_connector *dsi_connector =
-		mdfld_dsi_encoder_get_connector(dsi_encoder);
-	struct mdfld_dsi_config *dsi_config =
-		mdfld_dsi_encoder_get_config(dsi_encoder);
-	struct drm_device *dev = encoder->dev;
-	struct drm_psb_private *dev_priv = dev->dev_private;
-	u32 reg_offset = 0;
-	int pipe = (dbi_output->channel_num == 0) ? 0 : 2;
-
-	PSB_DEBUG_ENTRY("pipe %d : %s, panel on: %s\n", pipe, on ? "On" : "Off",
-			dbi_output->dbi_panel_on ? "True" : "False");
-
-	if (pipe == 2) {
-		if (on)
-			dev_priv->dual_mipi = true;
-		else
-			dev_priv->dual_mipi = false;
-
-		reg_offset = MIPIC_REG_OFFSET;
-	} else {
-		if (!on)
-			dev_priv->dual_mipi = false;
-	}
-
-	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
-				OSPM_UHB_FORCE_POWER_ON)) {
-		DRM_ERROR("hw begin failed\n");
-		return -EAGAIN;
-	}
-
-	mutex_lock(&dsi_config->context_lock);
-
-	if (on) {
-		if (dbi_output->dbi_panel_on)
-			goto out_err;
-
-		ret = mdfld_gi_sony_dsi_dbi_power_on(encoder);
-		if (ret) {
-			DRM_ERROR("power on error\n");
-			goto out_err;
-		}
-
-		dbi_output->dbi_panel_on = true;
-
-		if (pipe == 2)
-			dev_priv->dbi_panel_on2 = true;
-		else
-			dev_priv->dbi_panel_on = true;
-
-		/*wake up error detector*/
-		mdfld_dsi_error_detector_wakeup(dsi_connector);
-
-		psb_enable_vblank(dev, pipe);
-
-		dsi_config->dsi_hw_context.panel_on = 1;
-	} else {
-		if (!dbi_output->dbi_panel_on && !dbi_output->first_boot)
-			goto out_err;
-
-		dbi_output->dbi_panel_on = false;
-		dbi_output->first_boot = false;
-
-		if (pipe == 2)
-			dev_priv->dbi_panel_on2 = false;
-		else
-			dev_priv->dbi_panel_on = false;
-
-		psb_disable_vblank(dev, pipe);
-
-		ret = mdfld_gi_sony_dsi_dbi_power_off(encoder);
-		if (ret) {
-			DRM_ERROR("power on error\n");
-			goto out_err;
-		}
-
-		dsi_config->dsi_hw_context.panel_on = 0;
-	}
-
-out_err:
-	mutex_unlock(&dsi_config->context_lock);
-	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
-
-	if (ret)
-		DRM_ERROR("failed\n");
-	else
-		PSB_DEBUG_ENTRY("successfully\n");
-
-	return ret;
 }
 
 /*
@@ -967,24 +756,6 @@ mdfld_gi_sony_dsi_cmd_set_brightness(struct mdfld_dsi_config *dsi_config,
 	}
 
 	backlight_value = ((level * 0xff) / 100) & 0xff;
-
-	/*mdfld_dsi_send_mcs_short_hs(sender,
-				write_display_brightness,
-				(u8)backlight_value,
-				1,
-				MDFLD_DSI_SEND_PACKAGE);
-
-
-	if (level == 0)
-		backlight_value = 0;
-	else
-		backlight_value = dev_priv->mipi_ctrl_display;
-
-		mdfld_dsi_send_mcs_short_hs(sender,
-					write_ctrl_display,
-					(u8)backlight_value,
-					1,
-					MDFLD_DSI_SEND_PACKAGE);*/
 
 	param[0] = backlight_value;
 	param[1] = 0x00;
@@ -1164,15 +935,8 @@ power_err:
 	return err;
 }
 
-/* TPO DBI encoder funcs */
-static const struct drm_encoder_funcs gi_sony_dsi_dbi_encoder_funcs = {
-	.destroy = drm_encoder_cleanup,
-};
-
 void gi_sony_cmd_init(struct drm_device *dev, struct panel_funcs *p_funcs)
 {
-	p_funcs->encoder_funcs = &gi_sony_dsi_dbi_encoder_funcs;
-	p_funcs->encoder_helper_funcs = &dsi_dbi_encoder_generic_helper_funcs;
 	p_funcs->get_config_mode = &gi_sony_cmd_get_config_mode;
 	p_funcs->update_fb = gi_sony_dsi_dbi_update_fb;
 	p_funcs->get_panel_info = gi_sony_cmd_get_panel_info;

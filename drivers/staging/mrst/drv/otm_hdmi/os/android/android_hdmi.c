@@ -85,6 +85,7 @@
 #ifdef OTM_HDMI_HDCP_ENABLE
 #include "hdcp_api.h"
 #endif
+#include "mdfld_dsi_output.h"
 
 /* Include file for sending uevents */
 #include "psb_umevents.h"
@@ -2109,8 +2110,10 @@ void android_hdmi_connector_dpms(struct drm_connector *connector, int mode)
 	int hdmi_audio_busy = 0;
 	hdmi_audio_event_t hdmi_audio_event;
 	u32 dspcntr_val;
+
 #ifdef CONFIG_PM_RUNTIME
-	bool panel_on, panel_on2;
+	bool panel_on = false, panel_on2 = false;
+	struct mdfld_dsi_config **dsi_configs;
 #endif
 	pr_debug("Entered %s\n", __func__);
 	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
@@ -2151,22 +2154,21 @@ void android_hdmi_connector_dpms(struct drm_connector *connector, int mode)
 	}
 
 #ifdef CONFIG_PM_RUNTIME
-	if (is_panel_vid_or_cmd(dev)) {
-		/*DPI panel*/
-		panel_on = dev_priv->dpi_panel_on;
-		panel_on2 = dev_priv->dpi_panel_on2;
-	} else {
-		/*DBI panel*/
-		panel_on = dev_priv->dbi_panel_on;
-		panel_on2 = dev_priv->dbi_panel_on2;
-	}
+	dsi_configs = dev_priv->dsi_configs;
+
+	if (dsi_configs[0])
+		panel_on = dsi_configs[0]->dsi_hw_context.panel_on;
+	if (dsi_configs[1])
+		panel_on2 = dsi_configs[1]->dsi_hw_context.panel_on;
 
 	/*then check all display panels + monitors status*/
-	if (!panel_on && !panel_on2 && !(REG_READ(HDMIB_CONTROL)
-							& HDMIB_PORT_EN)) {
+	if (!panel_on &&
+	    !panel_on2 &&
+	    !(REG_READ(HDMIB_CONTROL) & HDMIB_PORT_EN)) {
 		/*request rpm idle*/
-		if (dev_priv->rpm_enabled)
+		if(dev_priv->rpm_enabled) {
 			pm_request_idle(&dev->pdev->dev);
+		}
 	}
 #endif
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);

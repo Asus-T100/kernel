@@ -368,23 +368,6 @@ int mdfld_dsi_get_diagnostic_result(struct mdfld_dsi_config *dsi_config,
 					  transmission);
 }
 
-/*
- * NOTE: this function was used by OSPM.
- * TODO: will be removed later, should work out display interfaces for OSPM
- */
-void mdfld_dsi_controller_init(struct mdfld_dsi_config * dsi_config, int pipe)
-{
-	if(!dsi_config || ((pipe != 0) && (pipe != 2))) {
-		DRM_ERROR("Invalid parameters\n");
-		return;
-	}
-
-	if(dsi_config->type)
-		mdfld_dsi_dpi_controller_init(dsi_config, pipe);
-	else
-		mdfld_dsi_controller_dbi_init(dsi_config, pipe);
-}
-
 static void mdfld_dsi_connector_save(struct drm_connector * connector)
 {
 	PSB_DEBUG_ENTRY("\n");
@@ -569,25 +552,21 @@ static int mdfld_dsi_connector_mode_valid(struct drm_connector * connector, stru
 
 static void mdfld_dsi_connector_dpms(struct drm_connector *connector, int mode)
 {
-#ifdef CONFIG_PM_RUNTIME
-	struct drm_device * dev = connector->dev;
-	struct drm_psb_private * dev_priv = dev->dev_private;
-	bool panel_on, panel_on1, panel_on2;
-#endif
 	/*first, execute dpms*/
 	drm_helper_connector_dpms(connector, mode);
 
 #ifdef CONFIG_PM_RUNTIME
-	if(is_panel_vid_or_cmd(dev)) {
-		/*DPI panel*/
-		panel_on = dev_priv->dpi_panel_on;
-		panel_on2 = dev_priv->dpi_panel_on2;
-	} else {
-		/*DBI panel*/
-		panel_on = dev_priv->dbi_panel_on;
-		panel_on2 = dev_priv->dbi_panel_on2;
-	}
+	struct drm_device *dev = connector->dev;
+	struct drm_psb_private *dev_priv = dev->dev_private;
+	struct mdfld_dsi_config **dsi_configs;
+	bool panel_on = false, panel_on1 = false, panel_on2 = false;
 
+	dsi_configs = dev_priv->dsi_configs;
+
+	if (dsi_configs[0])
+		panel_on = dsi_configs[0]->dsi_hw_context.panel_on;
+	if (dsi_configs[1])
+		panel_on = dsi_configs[1]->dsi_hw_context.panel_on;
 
 	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
 				OSPM_UHB_ONLY_IF_ON))
@@ -608,16 +587,6 @@ static void mdfld_dsi_connector_dpms(struct drm_connector *connector, int mode)
 		}
 	}
 
-	/**
-	 * if rpm wasn't enabled yet, try to allow it
-	 * FIXME: won't enable rpm for DPI since DPI
-	 * CRTC setting is a little messy now.
-	 * Enable it later!
-	 */
-#if 0 /* revist to check if we can enable rpm for DPI */
-	if(!dev_priv->rpm_enabled && !is_panel_vid_or_cmd(dev))
-		ospm_runtime_pm_allow(dev);
-#endif
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 #endif
 }
@@ -650,7 +619,7 @@ static struct drm_encoder * mdfld_dsi_connector_best_encoder(struct drm_connecto
 
 /*DSI connector funcs*/
 static const struct drm_connector_funcs mdfld_dsi_connector_funcs = {
-	.dpms = /*drm_helper_connector_dpms*/mdfld_dsi_connector_dpms,
+	.dpms = mdfld_dsi_connector_dpms,
 	.save = mdfld_dsi_connector_save,
 	.restore = mdfld_dsi_connector_restore,
 	.detect = mdfld_dsi_connector_detect,

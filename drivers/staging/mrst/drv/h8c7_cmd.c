@@ -336,6 +336,7 @@ int mdfld_dsi_h8c7_cmd_power_on(struct mdfld_dsi_config *dsi_config)
 		DRM_ERROR("%s - sent set_display_on faild\n", __func__);
 		goto power_err;
 	}
+
 power_err:
 	return err;
 }
@@ -685,21 +686,15 @@ static void mdfld_h8c7_cmd_get_reset_delay_time(
 	*pdelay_after_reset_gpio_toggle = 300;
 }
 
-/*PR2 panel DPI encoder funcs*/
-static const struct drm_encoder_funcs mdfld_h8c7_dpi_encoder_funcs = {
-	.destroy = drm_encoder_cleanup,
-};
-
 void h8c7_cmd_init(struct drm_device *dev, struct panel_funcs *p_funcs)
 {
 	if (!dev || !p_funcs) {
 		DRM_ERROR("Invalid parameters\n");
 		return;
 	}
+
 	PSB_DEBUG_ENTRY("\n");
 
-	p_funcs->encoder_funcs = &mdfld_h8c7_dpi_encoder_funcs;
-	p_funcs->encoder_helper_funcs = &dsi_dbi_encoder_generic_helper_funcs;
 	p_funcs->get_config_mode = h8c7_cmd_get_config_mode;
 	p_funcs->update_fb = h8c7_dsi_dbi_update_fb;
 	p_funcs->get_panel_info = h8c7_cmd_get_panel_info;

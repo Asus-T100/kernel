@@ -691,22 +691,6 @@ static int pr2_vid_get_panel_info(struct drm_device *dev,
 	return 0;
 }
 
-/*PR2 panel DPI encoder helper funcs*/
-static const
-struct drm_encoder_helper_funcs mdfld_pr2_dpi_encoder_helper_funcs = {
-	.save = mdfld_dsi_dpi_save,
-	.restore = mdfld_dsi_dpi_restore,
-	.dpms = mdfld_dsi_dpi_dpms,
-	.mode_fixup = mdfld_dsi_dpi_mode_fixup,
-	.prepare = mdfld_dsi_dpi_prepare,
-	.mode_set = mdfld_dsi_dpi_mode_set,
-	.commit = mdfld_dsi_dpi_commit,
-};
-
-/*PR2 panel DPI encoder funcs*/
-static const struct drm_encoder_funcs mdfld_pr2_dpi_encoder_funcs = {
-	.destroy = drm_encoder_cleanup,
-};
 
 void tmd_6x10_vid_init(struct drm_device *dev, struct panel_funcs *p_funcs)
 {
@@ -717,8 +701,6 @@ void tmd_6x10_vid_init(struct drm_device *dev, struct panel_funcs *p_funcs)
 
 	PSB_DEBUG_ENTRY("\n");
 
-	p_funcs->encoder_funcs = &mdfld_pr2_dpi_encoder_funcs;
-	p_funcs->encoder_helper_funcs = &mdfld_pr2_dpi_encoder_helper_funcs;
 	p_funcs->get_config_mode = &pr2_vid_get_config_mode;
 	p_funcs->update_fb = NULL;
 	p_funcs->get_panel_info = pr2_vid_get_panel_info;

@@ -26,7 +26,6 @@
 */
 
 #include <linux/init.h>
-#include "mdfld_output.h"
 #include "mdfld_dsi_dbi.h"
 #include "mdfld_dsi_dpi.h"
 #include "mdfld_dsi_output.h"
@@ -71,27 +70,6 @@ int is_panel_vid_or_cmd(struct drm_device *dev)
 		break;
 	}
 	return ret;
-}
-
-void mdfld_output_init(struct drm_device* dev)
-{
-	enum panel_type p_type1, p_type2;
-
-	/* MIPI panel 1 */
-	p_type1 = get_panel_type(dev, 0);
-	PSB_DEBUG_ENTRY( "[DISPLAY] %s: panel type is %d\n", __func__, p_type1);  //DIV5-MM-DISPLAY-NC-LCM_INIT-00
-	init_panel(dev, 0, p_type1);
-
-#ifdef CONFIG_MDFD_DUAL_MIPI
-	/* MIPI panel 2 */
-	p_type2 = get_panel_type(dev, 2);
-	init_panel(dev, 2, p_type2);
-#endif
-
-#ifdef CONFIG_MDFD_HDMI
-	/* HDMI panel */
-	init_panel(dev, 0, HDMI);
-#endif
 }
 
 void init_panel(struct drm_device* dev, int mipi_pipe, enum panel_type p_type)
@@ -187,3 +165,24 @@ void init_panel(struct drm_device* dev, int mipi_pipe, enum panel_type p_type)
 			kfree(p_vid_funcs);
 	}
 }
+
+void mdfld_output_init(struct drm_device *dev)
+{
+	enum panel_type p_type1, p_type2;
+
+	/* MIPI panel 1 */
+	p_type1 = get_panel_type(dev, 0);
+	init_panel(dev, 0, p_type1);
+
+#ifdef CONFIG_MDFD_DUAL_MIPI
+	/* MIPI panel 2 */
+	p_type2 = get_panel_type(dev, 2);
+	init_panel(dev, 2, p_type2);
+#endif
+
+#ifdef CONFIG_MDFD_HDMI
+	/* HDMI panel */
+	init_panel(dev, 0, HDMI);
+#endif
+}
+

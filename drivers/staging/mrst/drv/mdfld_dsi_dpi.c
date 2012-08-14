@@ -30,318 +30,11 @@
 #include "mdfld_dsi_pkg_sender.h"
 #include "psb_drv.h"
 #include "mdfld_csc.h"
+#include "psb_irq.h"
 
-/* Local functions */
-static void mdfld_dsi_dpi_shut_down(struct mdfld_dsi_dpi_output *output, int pipe);
-struct drm_encoder *gencoder;
-extern struct drm_device *gpDrmDevice;
-extern int drm_psb_enable_gamma;
-extern int drm_psb_enable_color_conversion;
-
-static void mdfld_wait_for_HS_DATA_FIFO(struct drm_device *dev, u32 pipe)
-{
-	u32 gen_fifo_stat_reg = MIPIA_GEN_FIFO_STAT_REG;
-	int timeout = 0;
-
-	if (pipe == 2)
-		gen_fifo_stat_reg += MIPIC_REG_OFFSET;
-
-	udelay(500);
-
-	/* This will time out after approximately 2+ seconds */
-	while ((timeout < 20000) &&
-		(REG_READ(gen_fifo_stat_reg) & DSI_FIFO_GEN_HS_DATA_FULL)) {
-		udelay(100);
-		timeout++;
-	}
-
-	if (timeout == 20000)
-		DRM_INFO("MIPI: HS Data FIFO was never cleared!\n");
-}
-
-static void mdfld_wait_for_HS_CTRL_FIFO(struct drm_device *dev, u32 pipe)
-{
-	u32 gen_fifo_stat_reg = MIPIA_GEN_FIFO_STAT_REG;
-	int timeout = 0;
-
-	if (pipe == 2)
-		gen_fifo_stat_reg += MIPIC_REG_OFFSET;
-
-	udelay(500);
-
-	/* This will time out after approximately 2+ seconds */
-	while ((timeout < 20000) &&
-		(REG_READ(gen_fifo_stat_reg) & DSI_FIFO_GEN_HS_CTRL_FULL)) {
-		udelay(100);
-		timeout++;
-	}
-	if (timeout == 20000)
-		DRM_INFO("MIPI: HS CMD FIFO was never cleared!\n");
-}
-
-static void mdfld_wait_for_PIPEA_DISABLE(struct drm_device *dev, u32 pipe)
-{
-	u32 pipeconf_reg = PIPEACONF;
-	int timeout = 0;
-
-	if (pipe == 2)
-		pipeconf_reg = PIPECCONF;
-
-	udelay(500);
-
-	/* This will time out after approximately 2+ seconds */
-	while ((timeout < 20000) && (REG_READ(pipeconf_reg) & 0x40000000)) {
-		udelay(100);
-		timeout++;
-	}
-
-	if (timeout == 20000)
-		DRM_INFO("MIPI: PIPE was not disabled!\n");
-}
-
-static void mdfld_wait_for_DPI_CTRL_FIFO(struct drm_device *dev, u32 pipe)
-{
-	u32 gen_fifo_stat_reg = MIPIA_GEN_FIFO_STAT_REG;
-	int timeout = 0;
-
-	if (pipe == 2)
-		gen_fifo_stat_reg += MIPIC_REG_OFFSET;
-
-	udelay(500);
-
-	/* This will time out after approximately 2+ seconds */
-	while ((timeout < 20000) && ((REG_READ(gen_fifo_stat_reg) & DPI_FIFO_EMPTY)
-		!= DPI_FIFO_EMPTY)) {
-		udelay(100);
-		timeout++;
-	}
-
-	if (timeout == 20000)
-		DRM_INFO("MIPI: DPI FIFO was never cleared!\n");
-}
-
-static void mdfld_wait_for_SPL_PKG_SENT(struct drm_device *dev, u32 pipe)
-{
-	u32 intr_stat_reg = MIPIA_INTR_STAT_REG;
-	int timeout = 0;
-
-	if (pipe == 2)
-		intr_stat_reg += MIPIC_REG_OFFSET;
-
-	udelay(500);
-
-	/* This will time out after approximately 2+ seconds */
-	while ((timeout < 20000) &&
-		(!(REG_READ(intr_stat_reg) & DSI_INTR_STATE_SPL_PKG_SENT))) {
-		udelay(100);
-		timeout++;
-	}
-
-	if (timeout == 20000)
-		DRM_INFO("MIPI: SPL_PKT was not sent successfully!\n");
-}
-
-/* ************************************************************************* *\
- * FUNCTION: mdfld_dsi_tpo_ic_init
- *
- * DESCRIPTION:  This function is called only by mrst_dsi_mode_set and
- *               restore_display_registers.  since this function does not
- *               acquire the mutex, it is important that the calling function
- *               does!
-\* ************************************************************************* */
-void mdfld_dsi_tpo_ic_init(struct mdfld_dsi_config *dsi_config, u32 pipe)
-{
-	struct drm_device *dev = dsi_config->dev;
-	u32 dcsChannelNumber = dsi_config->channel_num;
-	u32 gen_data_reg = MIPIA_HS_GEN_DATA_REG;
-	u32 gen_ctrl_reg = MIPIA_HS_GEN_CTRL_REG;
-	u32 gen_ctrl_val = GEN_LONG_WRITE;
-
-	DRM_INFO("Enter mrst init TPO MIPI display.\n");
-
-	if (pipe == 2) {
-		gen_data_reg = HS_GEN_DATA_REG + MIPIC_REG_OFFSET;
-		gen_ctrl_reg = HS_GEN_CTRL_REG + MIPIC_REG_OFFSET;
-	}
-
-	gen_ctrl_val |= dcsChannelNumber << DCS_CHANNEL_NUMBER_POS;
-
-	/* Flip page order */
-	mdfld_wait_for_HS_DATA_FIFO(dev, pipe);
-	REG_WRITE(gen_data_reg, 0x00008036);
-	mdfld_wait_for_HS_CTRL_FIFO(dev, pipe);
-	REG_WRITE(gen_ctrl_reg, gen_ctrl_val | (0x02 << WORD_COUNTS_POS));
-
-	/* 0xF0 */
-	mdfld_wait_for_HS_DATA_FIFO(dev, pipe);
-	REG_WRITE(gen_data_reg, 0x005a5af0);
-	mdfld_wait_for_HS_CTRL_FIFO(dev, pipe);
-	REG_WRITE(gen_ctrl_reg, gen_ctrl_val | (0x03 << WORD_COUNTS_POS));
-
-	/* Write protection key */
-	mdfld_wait_for_HS_DATA_FIFO(dev, pipe);
-	REG_WRITE(gen_data_reg, 0x005a5af1);
-	mdfld_wait_for_HS_CTRL_FIFO(dev, pipe);
-	REG_WRITE(gen_ctrl_reg, gen_ctrl_val | (0x03 << WORD_COUNTS_POS));
-
-	/* 0xFC */
-	mdfld_wait_for_HS_DATA_FIFO(dev, pipe);
-	REG_WRITE(gen_data_reg, 0x005a5afc);
-	mdfld_wait_for_HS_CTRL_FIFO(dev, pipe);
-	REG_WRITE(gen_ctrl_reg, gen_ctrl_val | (0x03 << WORD_COUNTS_POS));
-
-	/* 0xB7 */
-	mdfld_wait_for_HS_DATA_FIFO(dev, pipe);
-	REG_WRITE(gen_data_reg, 0x770000b7);
-	mdfld_wait_for_HS_DATA_FIFO(dev, pipe);
-	REG_WRITE(gen_data_reg, 0x00000044);
-	mdfld_wait_for_HS_CTRL_FIFO(dev, pipe);
-	REG_WRITE(gen_ctrl_reg, gen_ctrl_val | (0x05 << WORD_COUNTS_POS));
-
-	/* 0xB6 */
-	mdfld_wait_for_HS_DATA_FIFO(dev, pipe);
-	REG_WRITE(gen_data_reg, 0x000a0ab6);
-	mdfld_wait_for_HS_CTRL_FIFO(dev, pipe);
-	REG_WRITE(gen_ctrl_reg, gen_ctrl_val | (0x03 << WORD_COUNTS_POS));
-
-	/* 0xF2 */
-	mdfld_wait_for_HS_DATA_FIFO(dev, pipe);
-	REG_WRITE(gen_data_reg, 0x081010f2);
-	mdfld_wait_for_HS_DATA_FIFO(dev, pipe);
-	REG_WRITE(gen_data_reg, 0x4a070708);
-	mdfld_wait_for_HS_DATA_FIFO(dev, pipe);
-	REG_WRITE(gen_data_reg, 0x000000c5);
-	mdfld_wait_for_HS_CTRL_FIFO(dev, pipe);
-	REG_WRITE(gen_ctrl_reg, gen_ctrl_val | (0x09 << WORD_COUNTS_POS));
-
-	/* 0xF8 */
-	mdfld_wait_for_HS_DATA_FIFO(dev, pipe);
-	REG_WRITE(gen_data_reg, 0x024003f8);
-	mdfld_wait_for_HS_DATA_FIFO(dev, pipe);
-	REG_WRITE(gen_data_reg, 0x01030a04);
-	mdfld_wait_for_HS_DATA_FIFO(dev, pipe);
-	REG_WRITE(gen_data_reg, 0x0e020220);
-	mdfld_wait_for_HS_DATA_FIFO(dev, pipe);
-	REG_WRITE(gen_data_reg, 0x00000004);
-	mdfld_wait_for_HS_CTRL_FIFO(dev, pipe);
-	REG_WRITE(gen_ctrl_reg, gen_ctrl_val | (0x0d << WORD_COUNTS_POS));
-
-	/* 0xE2 */
-	mdfld_wait_for_HS_DATA_FIFO(dev, pipe);
-	REG_WRITE(gen_data_reg, 0x398fc3e2);
-	mdfld_wait_for_HS_DATA_FIFO(dev, pipe);
-	REG_WRITE(gen_data_reg, 0x0000916f);
-	mdfld_wait_for_HS_CTRL_FIFO(dev, pipe);
-	REG_WRITE(gen_ctrl_reg, gen_ctrl_val | (0x06 << WORD_COUNTS_POS));
-
-	/* 0xB0 */
-	mdfld_wait_for_HS_DATA_FIFO(dev, pipe);
-	REG_WRITE(gen_data_reg, 0x000000b0);
-	mdfld_wait_for_HS_CTRL_FIFO(dev, pipe);
-	REG_WRITE(gen_ctrl_reg, gen_ctrl_val | (0x02 << WORD_COUNTS_POS));
-
-	/* 0xF4 */
-	mdfld_wait_for_HS_DATA_FIFO(dev, pipe);
-	REG_WRITE(gen_data_reg, 0x240242f4);
-	mdfld_wait_for_HS_DATA_FIFO(dev, pipe);
-	REG_WRITE(gen_data_reg, 0x78ee2002);
-	mdfld_wait_for_HS_DATA_FIFO(dev, pipe);
-	REG_WRITE(gen_data_reg, 0x2a071050);
-	mdfld_wait_for_HS_DATA_FIFO(dev, pipe);
-	REG_WRITE(gen_data_reg, 0x507fee10);
-	mdfld_wait_for_HS_DATA_FIFO(dev, pipe);
-	REG_WRITE(gen_data_reg, 0x10300710);
-	mdfld_wait_for_HS_CTRL_FIFO(dev, pipe);
-	REG_WRITE(gen_ctrl_reg, gen_ctrl_val | (0x14 << WORD_COUNTS_POS));
-
-	/* 0xBA */
-	mdfld_wait_for_HS_DATA_FIFO(dev, pipe);
-	REG_WRITE(gen_data_reg, 0x19fe07ba);
-	mdfld_wait_for_HS_DATA_FIFO(dev, pipe);
-	REG_WRITE(gen_data_reg, 0x101c0a31);
-	mdfld_wait_for_HS_DATA_FIFO(dev, pipe);
-	REG_WRITE(gen_data_reg, 0x00000010);
-	mdfld_wait_for_HS_CTRL_FIFO(dev, pipe);
-	REG_WRITE(gen_ctrl_reg, gen_ctrl_val | (0x09 << WORD_COUNTS_POS));
-
-	/* 0xBB */
-	mdfld_wait_for_HS_DATA_FIFO(dev, pipe);
-	REG_WRITE(gen_data_reg, 0x28ff07bb);
-	mdfld_wait_for_HS_DATA_FIFO(dev, pipe);
-	REG_WRITE(gen_data_reg, 0x24280a31);
-	mdfld_wait_for_HS_DATA_FIFO(dev, pipe);
-	REG_WRITE(gen_data_reg, 0x00000034);
-	mdfld_wait_for_HS_CTRL_FIFO(dev, pipe);
-	REG_WRITE(gen_ctrl_reg, gen_ctrl_val | (0x09 << WORD_COUNTS_POS));
-
-	/* 0xFB */
-	mdfld_wait_for_HS_DATA_FIFO(dev, pipe);
-	REG_WRITE(gen_data_reg, 0x535d05fb);
-	mdfld_wait_for_HS_DATA_FIFO(dev, pipe);
-	REG_WRITE(gen_data_reg, 0x1b1a2130);
-	mdfld_wait_for_HS_DATA_FIFO(dev, pipe);
-	REG_WRITE(gen_data_reg, 0x221e180e);
-	mdfld_wait_for_HS_DATA_FIFO(dev, pipe);
-	REG_WRITE(gen_data_reg, 0x131d2120);
-	mdfld_wait_for_HS_DATA_FIFO(dev, pipe);
-	REG_WRITE(gen_data_reg, 0x535d0508);
-	mdfld_wait_for_HS_DATA_FIFO(dev, pipe);
-	REG_WRITE(gen_data_reg, 0x1c1a2131);
-	mdfld_wait_for_HS_DATA_FIFO(dev, pipe);
-	REG_WRITE(gen_data_reg, 0x231f160d);
-	mdfld_wait_for_HS_DATA_FIFO(dev, pipe);
-	REG_WRITE(gen_data_reg, 0x111b2220);
-	mdfld_wait_for_HS_DATA_FIFO(dev, pipe);
-	REG_WRITE(gen_data_reg, 0x535c2008);
-	mdfld_wait_for_HS_DATA_FIFO(dev, pipe);
-	REG_WRITE(gen_data_reg, 0x1f1d2433);
-	mdfld_wait_for_HS_DATA_FIFO(dev, pipe);
-	REG_WRITE(gen_data_reg, 0x2c251a10);
-	mdfld_wait_for_HS_DATA_FIFO(dev, pipe);
-	REG_WRITE(gen_data_reg, 0x2c34372d);
-	mdfld_wait_for_HS_DATA_FIFO(dev, pipe);
-	REG_WRITE(gen_data_reg, 0x00000023);
-	mdfld_wait_for_HS_CTRL_FIFO(dev, pipe);
-	REG_WRITE(gen_ctrl_reg, gen_ctrl_val | (0x31 << WORD_COUNTS_POS));
-
-	/* 0xFA */
-	mdfld_wait_for_HS_DATA_FIFO(dev, pipe);
-	REG_WRITE(gen_data_reg, 0x525c0bfa);
-	mdfld_wait_for_HS_DATA_FIFO(dev, pipe);
-	REG_WRITE(gen_data_reg, 0x1c1c232f);
-	mdfld_wait_for_HS_DATA_FIFO(dev, pipe);
-	REG_WRITE(gen_data_reg, 0x2623190e);
-	mdfld_wait_for_HS_DATA_FIFO(dev, pipe);
-	REG_WRITE(gen_data_reg, 0x18212625);
-	mdfld_wait_for_HS_DATA_FIFO(dev, pipe);
-	REG_WRITE(gen_data_reg, 0x545d0d0e);
-	mdfld_wait_for_HS_DATA_FIFO(dev, pipe);
-	REG_WRITE(gen_data_reg, 0x1e1d2333);
-	mdfld_wait_for_HS_DATA_FIFO(dev, pipe);
-	REG_WRITE(gen_data_reg, 0x26231a10);
-	mdfld_wait_for_HS_DATA_FIFO(dev, pipe);
-	REG_WRITE(gen_data_reg, 0x1a222725);
-	mdfld_wait_for_HS_DATA_FIFO(dev, pipe);
-	REG_WRITE(gen_data_reg, 0x545d280f);
-	mdfld_wait_for_HS_DATA_FIFO(dev, pipe);
-	REG_WRITE(gen_data_reg, 0x21202635);
-	mdfld_wait_for_HS_DATA_FIFO(dev, pipe);
-	REG_WRITE(gen_data_reg, 0x31292013);
-	mdfld_wait_for_HS_DATA_FIFO(dev, pipe);
-	REG_WRITE(gen_data_reg, 0x31393d33);
-	mdfld_wait_for_HS_DATA_FIFO(dev, pipe);
-	REG_WRITE(gen_data_reg, 0x00000029);
-	mdfld_wait_for_HS_CTRL_FIFO(dev, pipe);
-	REG_WRITE(gen_ctrl_reg, gen_ctrl_val | (0x31 << WORD_COUNTS_POS));
-
-	/* Set DM */
-	mdfld_wait_for_HS_DATA_FIFO(dev, pipe);
-	REG_WRITE(gen_data_reg, 0x000100f7);
-	mdfld_wait_for_HS_CTRL_FIFO(dev, pipe);
-	REG_WRITE(gen_ctrl_reg, gen_ctrl_val | (0x03 << WORD_COUNTS_POS));
-}
-
-static u16 mdfld_dsi_dpi_to_byte_clock_count(int pixel_clock_count, int num_lane, int bpp)
+static
+u16 mdfld_dsi_dpi_to_byte_clock_count(int pixel_clock_count,
+		int num_lane, int bpp)
 {
 	return (u16)((pixel_clock_count * bpp) / (num_lane * 8)); 
 }
@@ -381,16 +74,6 @@ int mdfld_dsi_dpi_timing_calculation(struct drm_display_mode *mode,
 	pclk_vsync = mode->vsync_end - mode->vsync_start;
 	pclk_vbp = mode->vtotal - mode->vsync_end;
 
-#ifdef MIPI_DEBUG_LOG
-	PSB_DEBUG_ENTRY("[DISPLAY] %s: pclk_hactive = %d\n", __func__, pclk_hactive);
-	PSB_DEBUG_ENTRY("[DISPLAY] %s: pclk_hfp = %d\n", __func__, pclk_hfp);
-	PSB_DEBUG_ENTRY("[DISPLAY] %s: pclk_hsync = %d\n", __func__, pclk_hsync);
-	PSB_DEBUG_ENTRY("[DISPLAY] %s: pclk_hbp = %d\n", __func__, pclk_hbp);
-	PSB_DEBUG_ENTRY("[DISPLAY] %s: pclk_vactive = %d\n", __func__, pclk_vactive);
-	PSB_DEBUG_ENTRY("[DISPLAY] %s: pclk_vfp = %d\n", __func__, pclk_vfp);
-	PSB_DEBUG_ENTRY("[DISPLAY] %s: pclk_vsync = %d\n", __func__, pclk_vsync);
-	PSB_DEBUG_ENTRY("[DISPLAY] %s: pclk_vbp = %d\n", __func__, pclk_vbp);
-#endif
 	/*
 	 * byte clock counts were calculated by following formula
 	 * bclock_count = pclk_count * bpp / num_lane / 8
@@ -413,87 +96,6 @@ int mdfld_dsi_dpi_timing_calculation(struct drm_display_mode *mode,
 	return 0; 
 }
 
-void mdfld_dsi_dpi_controller_init(struct mdfld_dsi_config * dsi_config, int pipe)
-{
-	struct drm_device * dev = dsi_config->dev;
-	u32 reg_offset = pipe ? MIPIC_REG_OFFSET : 0;
-	int lane_count = dsi_config->lane_count;
-	struct mdfld_dsi_dpi_timing dpi_timing;
-	struct drm_display_mode * mode = dsi_config->mode;
-	u32 val = 0;
-	
-	PSB_DEBUG_ENTRY("Init DPI interface on pipe %d...\n", pipe);
-
-	/*un-ready device*/
-	REG_FLD_MOD(DEVICE_READY_REG + reg_offset, 0, 0, 0);
-	
-	/*init dsi adapter before kicking off*/
-	REG_WRITE((MIPIA_CONTROL_REG + reg_offset), 0x00000018);
-	
-	/*enable all interrupts*/
-	REG_WRITE((MIPIA_INTR_EN_REG + reg_offset), 0xffffffff);
-	
-	/*set up func_prg*/
-	val |= lane_count;
-	val |= dsi_config->channel_num << DSI_DPI_VIRT_CHANNEL_OFFSET;
-		
-	switch(dsi_config->bpp) {
-	case 16:
-		val |= DSI_DPI_COLOR_FORMAT_RGB565;
-		break;
-	case 18:
-		val |= DSI_DPI_COLOR_FORMAT_RGB666;
-		break;
-	case 24:
-		val |= DSI_DPI_COLOR_FORMAT_RGB888;
-		break;
-	default:
-		DRM_ERROR("unsupported color format, bpp = %d\n", dsi_config->bpp);
-	}
-	REG_WRITE((MIPIA_DSI_FUNC_PRG_REG + reg_offset), val);
-	
-	REG_WRITE((MIPIA_HS_TX_TIMEOUT_REG + reg_offset), 
-			(mode->vtotal * mode->htotal * dsi_config->bpp / (8 * lane_count)) & DSI_HS_TX_TIMEOUT_MASK);
-	REG_WRITE((MIPIA_LP_RX_TIMEOUT_REG + reg_offset), 0xffff & DSI_LP_RX_TIMEOUT_MASK);
-	
-	/*max value: 20 clock cycles of txclkesc*/
-	REG_WRITE((MIPIA_TURN_AROUND_TIMEOUT_REG + reg_offset), 0x14 & DSI_TURN_AROUND_TIMEOUT_MASK);
-	
-	/*min 21 txclkesc, max: ffffh*/
-	REG_WRITE((MIPIA_DEVICE_RESET_TIMER_REG + reg_offset), 0xffff & DSI_RESET_TIMER_MASK);
-
-	REG_WRITE((MIPIA_DPI_RESOLUTION_REG + reg_offset), mode->vdisplay << 16 | mode->hdisplay);
-	
-	/*set DPI timing registers*/
-	mdfld_dsi_dpi_timing_calculation(mode, &dpi_timing, dsi_config->lane_count, dsi_config->bpp);
-	
-	REG_WRITE((MIPIA_HSYNC_COUNT_REG + reg_offset), dpi_timing.hsync_count & DSI_DPI_TIMING_MASK);
-	REG_WRITE((MIPIA_HBP_COUNT_REG + reg_offset), dpi_timing.hbp_count & DSI_DPI_TIMING_MASK);
-	REG_WRITE((MIPIA_HFP_COUNT_REG + reg_offset), dpi_timing.hfp_count & DSI_DPI_TIMING_MASK);
-	REG_WRITE((MIPIA_HACTIVE_COUNT_REG + reg_offset), dpi_timing.hactive_count & DSI_DPI_TIMING_MASK);
-	REG_WRITE((MIPIA_VSYNC_COUNT_REG + reg_offset), dpi_timing.vsync_count & DSI_DPI_TIMING_MASK);
-	REG_WRITE((MIPIA_VBP_COUNT_REG + reg_offset), dpi_timing.vbp_count & DSI_DPI_TIMING_MASK);
-	REG_WRITE((MIPIA_VFP_COUNT_REG + reg_offset), dpi_timing.vfp_count & DSI_DPI_TIMING_MASK);
-	
-	/*min: 7d0 max: 4e20*/
-	REG_WRITE((MIPIA_INIT_COUNT_REG + reg_offset), 0x000007d0);
-	
-	/*set up video mode*/
-	val = 0;
-	val = dsi_config->video_mode | DSI_DPI_COMPLETE_LAST_LINE;
-	REG_WRITE((MIPIA_VIDEO_MODE_FORMAT_REG + reg_offset), val);
-	
-	REG_WRITE((MIPIA_EOT_DISABLE_REG + reg_offset), 0x00000000);
-	
-	/*TODO: figure out how to setup these registers*/
-	REG_WRITE((MIPIA_LP_BYTECLK_REG + reg_offset), 0x00000004);
-	REG_WRITE((MIPIA_HIGH_LOW_SWITCH_COUNT_REG + reg_offset), 0x46);
-	REG_WRITE((MIPIA_DPHY_PARAM_REG + reg_offset), 0x150c3408);
-	REG_WRITE((MIPIA_CLK_LANE_SWITCH_TIME_CNT_REG + reg_offset), (0xa << 16) | 0x14);
-
-	/*set device ready*/
-	REG_FLD_MOD((DEVICE_READY_REG + reg_offset), 1, 0, 0);
-}
 void mdfld_dsi_dpi_set_color_mode(struct mdfld_dsi_config *dsi_config , bool on)
 {
 	struct mdfld_dsi_pkg_sender *sender =
@@ -521,44 +123,6 @@ void mdfld_dsi_dpi_set_color_mode(struct mdfld_dsi_config *dsi_config , bool on)
 	PSB_DEBUG_ENTRY("Turn  color mode %s successful.\n",
 			(on ? "on" : "off"));
 	return;
-}
-
-void mdfld_dsi_dpi_turn_on(struct mdfld_dsi_dpi_output * output, int pipe)
-{
-	struct drm_device * dev = output->dev;
-	/* struct drm_psb_private * dev_priv = dev->dev_private; */
-	u32 reg_offset = 0;
-	
-	PSB_DEBUG_ENTRY("pipe %d panel state %d\n", pipe, output->panel_on);
-	
-	if(output->panel_on) 
-		return;
-		
-	if(pipe) 
-		reg_offset = MIPIC_REG_OFFSET;
-
-	/* clear special packet sent bit */
-	if(REG_READ(MIPIA_INTR_STAT_REG + reg_offset) & DSI_INTR_STATE_SPL_PKG_SENT) {
-		REG_WRITE((MIPIA_INTR_STAT_REG + reg_offset), DSI_INTR_STATE_SPL_PKG_SENT);
-	}
-		
-	/*send turn on package*/
-	REG_WRITE((MIPIA_DPI_CONTROL_REG + reg_offset), DSI_DPI_CTRL_HS_TURN_ON);
-	
-	/*wait for SPL_PKG_SENT interrupt*/
-	mdfld_wait_for_SPL_PKG_SENT(dev, pipe);
-	
-	if(REG_READ(MIPIA_INTR_STAT_REG + reg_offset) & DSI_INTR_STATE_SPL_PKG_SENT) {
-		REG_WRITE((MIPIA_INTR_STAT_REG + reg_offset), DSI_INTR_STATE_SPL_PKG_SENT);
-	}
-
-	output->panel_on = 1;
-
-	/* FIXME the following is disabled to WA the X slow start issue for TMD panel */
-	/* if(pipe == 2) */
-	/* 	dev_priv->dpi_panel_on2 = true; */
-	/* else if (pipe == 0) */
-	/* 	dev_priv->dpi_panel_on = true; */
 }
 
 static int __dpi_enter_ulps_locked(struct mdfld_dsi_config *dsi_config)
@@ -607,48 +171,6 @@ static int __dpi_exit_ulps_locked(struct mdfld_dsi_config *dsi_config)
 	ctx->device_ready &= ~DSI_POWER_STATE_ULPS_MASK;
 	REG_WRITE(regs->device_ready_reg, ctx->device_ready);
 	return 0;
-}
-
-static void mdfld_dsi_dpi_shut_down(struct mdfld_dsi_dpi_output *output, int pipe)
-{
-	struct drm_device *dev = output->dev;
-	/* struct drm_psb_private * dev_priv = dev->dev_private; */
-	u32 reg_offset = 0;
-
-	PSB_DEBUG_ENTRY("pipe %d panel state %d\n", pipe, output->panel_on);
-
-	/*if output is on, or mode setting didn't happen, ignore this*/
-	if ((!output->panel_on) || output->first_boot) {
-		output->first_boot = 0;
-		return;
-	}
-
-	if (pipe)
-		reg_offset = MIPIC_REG_OFFSET;
-
-	/* Wait for dpi fifo to empty */
-	mdfld_wait_for_DPI_CTRL_FIFO(dev, pipe);
-
-	/* Clear the special packet interrupt bit if set */
-	if (REG_READ(MIPIA_INTR_STAT_REG + reg_offset) & DSI_INTR_STATE_SPL_PKG_SENT)
-		REG_WRITE((MIPIA_INTR_STAT_REG + reg_offset), DSI_INTR_STATE_SPL_PKG_SENT);
-
-	if (REG_READ(MIPIA_DPI_CONTROL_REG + reg_offset) == DSI_DPI_CTRL_HS_SHUTDOWN) {
-		PSB_DEBUG_ENTRY("try to send the same package again, abort!");
-		goto shutdown_out;
-	}
-
-	REG_WRITE((MIPIA_DPI_CONTROL_REG + reg_offset), DSI_DPI_CTRL_HS_SHUTDOWN);
-
-shutdown_out:
-	output->panel_on = 0;
-	output->first_boot = 0;
-
-	/* FIXME the following is disabled to WA the X slow start issue for TMD panel */
-	/* if(pipe == 2) */
-	/*	dev_priv->dpi_panel_on2 = false; */
-	/* else if (pipe == 0) */
-	/*	dev_priv->dpi_panel_on = false;	 */
 }
 
 /**
@@ -706,18 +228,6 @@ reset_recovery:
 			REG_WRITE(regs->fp_reg, 0x0);
 			REG_WRITE(regs->fp_reg, ctx->fp);
 			REG_WRITE(regs->dpll_reg, ((ctx->dpll) & ~BIT30));
-
-			/* FIXME WA for CTP PO */
-			#if 0
-			if (IS_CTP(dev)) {
-				REG_WRITE(regs->fp_reg, 0x179);
-				REG_WRITE(regs->dpll_reg, 0x100000);
-#ifdef CONFIG_SUPPORT_MIPI_H8C7_DISPLAY
-				REG_WRITE(regs->fp_reg, 0x100C1);
-				REG_WRITE(regs->dpll_reg, 0x800000);
-#endif
-			}
-			#endif
 
 			udelay(2);
 			val = REG_READ(regs->dpll_reg);
@@ -1193,6 +703,7 @@ void mdfld_dsi_dpi_set_power(struct drm_encoder *encoder, bool on)
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 }
 
+static
 void mdfld_dsi_dpi_dpms(struct drm_encoder *encoder, int mode)
 {
 	struct mdfld_dsi_encoder *dsi_encoder;
@@ -1223,6 +734,7 @@ void mdfld_dsi_dpi_dpms(struct drm_encoder *encoder, int mode)
 	mutex_unlock(&dev_priv->dpms_mutex);
 }
 
+static
 bool mdfld_dsi_dpi_mode_fixup(struct drm_encoder *encoder,
 				struct drm_display_mode *mode,
 				struct drm_display_mode *adjusted_mode)
@@ -1250,11 +762,13 @@ bool mdfld_dsi_dpi_mode_fixup(struct drm_encoder *encoder,
 	return true;
 }
 
+static
 void mdfld_dsi_dpi_prepare(struct drm_encoder *encoder)
 {
 	PSB_DEBUG_ENTRY("\n");
 }
 
+static
 void mdfld_dsi_dpi_commit(struct drm_encoder *encoder)
 {
 	struct mdfld_dsi_encoder *dsi_encoder;
@@ -1283,79 +797,6 @@ void mdfld_dsi_dpi_commit(struct drm_encoder *encoder)
 	/*Everything is ready, commit DSI hw context to HW*/
 	__mdfld_dsi_dpi_set_power(encoder, true);
 	dpi_output->first_boot = 0;
-}
-
-void dsi_debug_MIPI_reg(struct drm_device *dev)
-{
-	u32 temp_val = 0;
-
-	PSB_DEBUG_ENTRY("[DISPLAY] Enter %s\n", __func__);
-	temp_val = REG_READ(MIPI);
-	PSB_DEBUG_ENTRY("[DISPLAY] MIPI = %x\n", temp_val);
-
-	/* set the lane speed */
-	temp_val = REG_READ(MIPI_CONTROL_REG);
-	PSB_DEBUG_ENTRY("[DISPLAY] MIPI_CONTROL_REG = %x\n", temp_val);
-
-	/* Enable all the error interrupt */
-	temp_val = REG_READ(INTR_EN_REG);
-	PSB_DEBUG_ENTRY("[DISPLAY] INTR_EN_REG = %x\n", temp_val);
-	temp_val = REG_READ(TURN_AROUND_TIMEOUT_REG);
-	PSB_DEBUG_ENTRY("[DISPLAY] TURN_AROUND_TIMEOUT_REG = %x\n", temp_val);
-	temp_val = REG_READ(DEVICE_RESET_REG);
-	PSB_DEBUG_ENTRY("[DISPLAY] DEVICE_RESET_REG = %x\n", temp_val);
-	temp_val = REG_READ(INIT_COUNT_REG);
-	PSB_DEBUG_ENTRY("[DISPLAY] INIT_COUNT_REG = %x\n", temp_val);
-
-	temp_val = REG_READ(DSI_FUNC_PRG_REG);
-	PSB_DEBUG_ENTRY("[DISPLAY] DSI_FUNC_PRG_REG = %x\n", temp_val);
-
-	temp_val = REG_READ(DPI_RESOLUTION_REG);
-	PSB_DEBUG_ENTRY("[DISPLAY] DPI_RESOLUTION_REG = %x\n", temp_val);
-
-	temp_val = REG_READ(VERT_SYNC_PAD_COUNT_REG);
-	PSB_DEBUG_ENTRY("[DISPLAY] VERT_SYNC_PAD_COUNT_REG = %x\n", temp_val);
-	temp_val = REG_READ(VERT_BACK_PORCH_COUNT_REG);
-	PSB_DEBUG_ENTRY("[DISPLAY] VERT_BACK_PORCH_COUNT_REG = %x\n", temp_val);
-	temp_val = REG_READ(VERT_FRONT_PORCH_COUNT_REG);
-	PSB_DEBUG_ENTRY("[DISPLAY] VERT_FRONT_PORCH_COUNT_REG = %x\n", temp_val);
-
-	temp_val = REG_READ(HORIZ_SYNC_PAD_COUNT_REG);
-	PSB_DEBUG_ENTRY("[DISPLAY] HORIZ_SYNC_PAD_COUNT_REG = %x\n", temp_val);
-	temp_val = REG_READ(HORIZ_BACK_PORCH_COUNT_REG);
-	PSB_DEBUG_ENTRY("[DISPLAY] HORIZ_BACK_PORCH_COUNT_REG = %x\n", temp_val);
-	temp_val = REG_READ(HORIZ_FRONT_PORCH_COUNT_REG);
-	PSB_DEBUG_ENTRY("[DISPLAY] HORIZ_FRONT_PORCH_COUNT_REG = %x\n", temp_val);
-	temp_val = REG_READ(HORIZ_ACTIVE_AREA_COUNT_REG);
-	PSB_DEBUG_ENTRY("[DISPLAY] HORIZ_ACTIVE_AREA_COUNT_REG = %x\n", temp_val);
-
-	temp_val = REG_READ(VIDEO_FMT_REG);
-	PSB_DEBUG_ENTRY("[DISPLAY] VIDEO_FMT_REG = %x\n", temp_val);
-
-	temp_val = REG_READ(HS_TX_TIMEOUT_REG);
-	PSB_DEBUG_ENTRY("[DISPLAY] HS_TX_TIMEOUT_REG = %x\n", temp_val);
-	temp_val = REG_READ(LP_RX_TIMEOUT_REG);
-	PSB_DEBUG_ENTRY("[DISPLAY] LP_RX_TIMEOUT_REG = %x\n", temp_val);
-
-	temp_val = REG_READ(HIGH_LOW_SWITCH_COUNT_REG);
-	PSB_DEBUG_ENTRY("[DISPLAY] HIGH_LOW_SWITCH_COUNT_REG = %x\n", temp_val);
-
-	temp_val = REG_READ(EOT_DISABLE_REG);
-	PSB_DEBUG_ENTRY("[DISPLAY] EOT_DISABLE_REG = %x\n", temp_val);
-
-	temp_val = REG_READ(LP_BYTECLK_REG);
-	PSB_DEBUG_ENTRY("[DISPLAY] LP_BYTECLK_REG = %x\n", temp_val);
-	temp_val = REG_READ(MAX_RET_PAK_REG);
-	PSB_DEBUG_ENTRY("[DISPLAY] MAX_RET_PAK_REG = %x\n", temp_val);
-	temp_val = REG_READ(DPI_CONTROL_REG);
-	PSB_DEBUG_ENTRY("[DISPLAY] DPI_CONTROL_REG = %x\n", temp_val);
-	temp_val = REG_READ(DPHY_PARAM_REG);
-	PSB_DEBUG_ENTRY("[DISPLAY] DPHY_PARAM_REG = %x\n", temp_val);
-/*	temp_val = REG_READ(PIPEACONF);
-	PSB_DEBUG_ENTRY("[DISPLAY] PIPEACONF = %x\n", temp_val);
-	temp_val = REG_READ(DSPACNTR);
-	PSB_DEBUG_ENTRY("[DISPLAY] DSPACNTR = %x\n", temp_val);
-*/
 }
 
 /**
@@ -1403,46 +844,19 @@ static void __mdfld_dsi_dpi_set_timing(struct mdfld_dsi_config *config,
 	mutex_unlock(&config->context_lock);
 }
 
-
+static
 void mdfld_dsi_dpi_mode_set(struct drm_encoder *encoder,
 				   struct drm_display_mode *mode,
 				   struct drm_display_mode *adjusted_mode)
 {
 	struct mdfld_dsi_encoder *dsi_encoder = MDFLD_DSI_ENCODER(encoder);
-	struct mdfld_dsi_dpi_output *dpi_output =
-			MDFLD_DSI_DPI_OUTPUT(dsi_encoder);
 	struct mdfld_dsi_config *dsi_config =
-	mdfld_dsi_encoder_get_config(dsi_encoder);
-	struct drm_device *dev = dsi_config->dev;
-	struct drm_psb_private *dev_priv = dev->dev_private;
+		mdfld_dsi_encoder_get_config(dsi_encoder);
 	int pipe = mdfld_dsi_encoder_get_pipe(dsi_encoder);
 
-	u32 pipeconf_reg = PIPEACONF;
-	u32 dspcntr_reg = DSPACNTR;
-	u32 mipi_reg = MIPI;
-	u32 reg_offset = 0;
-	u32 pipeconf = dev_priv->pipeconf;
-	u32 dspcntr = dev_priv->dspcntr;
-	u32 mipi = MIPI_PORT_EN | PASS_FROM_SPHY_TO_AFE;
-	int retry = 0;
-
-	/* The bit defination changed from PNW_A0 -> B0 and forward,
-	* Only for PNW_A0 that we need to set FLOPPED_HSTX
-	* */
-	if (dev_priv->platform_rev_id == MDFLD_PNW_A0)
-		mipi |= SEL_FLOPPED_HSTX;
 
 	PSB_DEBUG_ENTRY("set mode %dx%d on pipe %d",
 			mode->hdisplay, mode->vdisplay, pipe);
-
-	if (pipe) {
-		pipeconf_reg = PIPECCONF;
-		dspcntr_reg = DSPCCNTR;
-		mipi_reg = MIPI_C;
-		reg_offset = MIPIC_REG_OFFSET;
-	} else {
-		mipi |= 2;
-	}
 
 	/**
 	 * if TMD panel call new power on/off sequences instead.
@@ -1451,27 +865,43 @@ void mdfld_dsi_dpi_mode_set(struct drm_encoder *encoder,
 	__mdfld_dsi_dpi_set_timing(dsi_config, mode, adjusted_mode);
 }
 
+static
 void mdfld_dsi_dpi_save(struct drm_encoder *encoder)
 {
-	printk(KERN_ALERT"%s\n", __func__);
-
 	if (!encoder)
 		return;
 
-	/*turn off*/
+	PSB_DEBUG_ENTRY("\n");
+
 	__mdfld_dsi_dpi_set_power(encoder, false);
 }
 
+static
 void mdfld_dsi_dpi_restore(struct drm_encoder *encoder)
 {
-	printk(KERN_ALERT"%s\n", __func__);
-
 	if (!encoder)
 		return;
 
-	/*turn on*/
+	PSB_DEBUG_ENTRY("\n");
+
 	__mdfld_dsi_dpi_set_power(encoder, true);
 }
+
+static const
+struct drm_encoder_helper_funcs dsi_dpi_generic_encoder_helper_funcs = {
+	.save = mdfld_dsi_dpi_save,
+	.restore = mdfld_dsi_dpi_restore,
+	.dpms = mdfld_dsi_dpi_dpms,
+	.mode_fixup = mdfld_dsi_dpi_mode_fixup,
+	.prepare = mdfld_dsi_dpi_prepare,
+	.mode_set = mdfld_dsi_dpi_mode_set,
+	.commit = mdfld_dsi_dpi_commit,
+};
+
+static const
+struct drm_encoder_funcs dsi_dpi_generic_encoder_funcs = {
+	.destroy = drm_encoder_cleanup,
+};
 
 /**
  * Exit from DSR
@@ -1619,10 +1049,10 @@ struct mdfld_dsi_encoder *mdfld_dsi_dpi_init(struct drm_device *dev,
 	encoder = &dpi_output->base.base;
 	drm_encoder_init(dev,
 			encoder,
-			p_funcs->encoder_funcs,
+			&dsi_dpi_generic_encoder_funcs,
 			DRM_MODE_ENCODER_MIPI);
 	drm_encoder_helper_add(encoder,
-				p_funcs->encoder_helper_funcs);
+			&dsi_dpi_generic_encoder_helper_funcs);
 	
 	/*attach to given connector*/
 	drm_mode_connector_attach_encoder(connector, encoder);

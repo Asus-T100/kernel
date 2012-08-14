@@ -625,9 +625,6 @@ struct drm_psb_private {
 	/* The DPI panel power on */
 	bool dpi_panel_on;
 
-	/* The DBI panel power on */
-	bool dbi_panel_on;
-
 	/* The DPI display */
 	bool dpi;
 
@@ -695,9 +692,6 @@ struct drm_psb_private {
 	 */
 	/* The DPI panel power on */
 	bool dpi_panel_on2;
-
-	/* The DBI panel power on */
-	bool dbi_panel_on2;
 
 	/* The DPI display */
 	bool dpi2;
@@ -1558,12 +1552,3 @@ do {                                            \
 } while (0)
 
 #endif
-
-#define FLD_MASK(start, end)	(((1 << ((start) - (end) + 1)) - 1) << (end))
-#define FLD_VAL(val, start, end) (((val) << (end)) & FLD_MASK(start, end))
-#define FLD_GET(val, start, end) (((val) & FLD_MASK(start, end)) >> (end))
-#define FLD_MOD(orig, val, start, end) \
-	(((orig) & ~FLD_MASK(start, end)) | FLD_VAL(val, start, end))
-
-#define REG_FLD_MOD(reg, val, start, end) \
-	REG_WRITE(reg, FLD_MOD(REG_READ(reg), val, start, end))

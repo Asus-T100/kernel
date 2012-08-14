@@ -2467,9 +2467,12 @@ EXPORT_SYMBOL(ospm_power_using_hw_end);
 int ospm_runtime_pm_allow(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv = dev->dev_private;
-	bool panel_on, panel_on2;
+	struct mdfld_dsi_config **dsi_configs;
+	bool panel_on = false, panel_on2 = false;
 
 	PSB_DEBUG_ENTRY("%s\n", __func__);
+
+	dsi_configs = dev_priv->dsi_configs;
 
 #ifdef OSPM_GFX_DPK
 	printk(KERN_ALERT "%s\n", __func__);
@@ -2477,15 +2480,10 @@ int ospm_runtime_pm_allow(struct drm_device *dev)
 	if (dev_priv->rpm_enabled)
 		return 0;
 
-	if (is_panel_vid_or_cmd(dev)) {
-		/*DPI panel*/
-		panel_on = dev_priv->dpi_panel_on;
-		panel_on2 = dev_priv->dpi_panel_on2;
-	} else {
-		/*DBI panel*/
-		panel_on = dev_priv->dbi_panel_on;
-		panel_on2 = dev_priv->dbi_panel_on2;
-	}
+	if (dsi_configs[0])
+		panel_on = dsi_configs[0]->dsi_hw_context.panel_on;
+	if (dsi_configs[1])
+		panel_on2 = dsi_configs[1]->dsi_hw_context.panel_on;
 
 #ifdef CONFIG_GFX_RTPM
 	if (panel_on && panel_on2) {

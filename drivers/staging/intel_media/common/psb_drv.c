@@ -1808,7 +1808,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 #endif
 
 	/* Post OSPM init */
-	 if (IS_MDFLD(dev))
+	if (IS_MDFLD(dev))
 		ospm_post_init(dev);
 
 #ifdef CONFIG_GFX_RTPM
@@ -2803,7 +2803,6 @@ static int psb_dpu_dsr_on_ioctl(struct drm_device *dev, void *arg,
 static int psb_dpu_dsr_off_ioctl(struct drm_device *dev, void *arg,
 				 struct drm_file *file_priv)
 {
-	static int pipe;
 #if defined(CONFIG_MDFLD_DSI_DPU)
 	struct drm_psb_drv_dsr_off_arg *dsr_off_arg = (struct drm_psb_drv_dsr_off_arg *) arg;
 	struct psb_drm_dpu_rect rect = dsr_off_arg->damage_rect;
@@ -2813,22 +2812,10 @@ static int psb_dpu_dsr_off_ioctl(struct drm_device *dev, void *arg,
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *)dev->dev_private;
 
-	pipe++;
-
-	if ((dev_priv->dsr_fb_update & MDFLD_DSR_2D_3D) != MDFLD_DSR_2D_3D) {
+	if ((dev_priv->dsr_fb_update & MDFLD_DSR_2D_3D) != MDFLD_DSR_2D_3D)
 		mdfld_dsi_dbi_exit_dsr(dev, MDFLD_DSR_2D_3D, 0, 0);
-	}
-
-	if (pipe > 0) {
-		pipe = 0;
-		if (gdbi_output && gbdispstatus == false) {
-			dev_priv->b_dsr_enable = true;
-			mdfld_dsi_dbi_enter_dsr(gdbi_output, 1);
-			mdfld_dsi_dbi_enter_dsr(gdbi_output, 2);
-		}
-	}
-
 #endif
+
 	return 0;
 }
 

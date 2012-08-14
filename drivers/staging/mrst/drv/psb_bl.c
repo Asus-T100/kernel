@@ -56,27 +56,41 @@ int lastFailedBrightness = -1;
 
 int psb_set_brightness(struct backlight_device *bd)
 {
-	struct drm_device *dev = (struct drm_device *)bl_get_data(psb_backlight_device);
-	struct drm_psb_private *dev_priv = (struct drm_psb_private *) dev->dev_private;
+	struct drm_device *dev;
+	struct drm_psb_private *dev_priv;
+	struct mdfld_dsi_config **dsi_configs;
 	int level;
 	u32 blc_pwm_ctl;
 	u32 max_pwm_blc;
+	bool panel_on1 = false, panel_on2 = false;
+
+	dev = (struct drm_device *)bl_get_data(psb_backlight_device);
+	dev_priv = (struct drm_psb_private *)dev->dev_private;
+	dsi_configs = dev_priv->dsi_configs;
+
+	if (dsi_configs[0])
+		panel_on1 = dsi_configs[0]->dsi_hw_context.panel_on;
+	if (dsi_configs[1])
+		panel_on2 = dsi_configs[1]->dsi_hw_context.panel_on;
 
 	if(bd != NULL)
 		level = bd->props.brightness;
 	else
 		level = lastFailedBrightness;
-    DRM_DEBUG_DRIVER("backlight level set to %d\n", level);
-	PSB_DEBUG_ENTRY( "[DISPLAY] %s: level is %d\n", __func__, level);  //DIV5-MM-DISPLAY-NC-LCM_INIT-00
+
+	PSB_DEBUG_ENTRY("[DISPLAY] %s: level is %d\n", __func__, level);
 
 	/* Perform value bounds checking */
 	if (level < BRIGHTNESS_MIN_LEVEL)
 		level = BRIGHTNESS_MIN_LEVEL;
 
 	if(!gbdispstatus){
-		PSB_DEBUG_ENTRY( "[DISPLAY]: already OFF ignoring brighness request \n");
-		//! there may exist concurrent racing, the gbdispstatus may haven't been set in gfx_late_resume yet.
-		//! record here, and we may call brightness setting at the end of gfx_late_resume
+		PSB_DEBUG_ENTRY("[DISPLAY]: already OFF ignoring brighness " \
+				"request\n");
+		/* there may exist concurrent racing, the gbdispstatus may
+		 * haven't been set in gfx_late_resume yet. record here, and
+		 * we may call brightness setting at the end of gfx_late_resume
+		 */
 		lastFailedBrightness = level;
 		return 0;
 	}
@@ -120,10 +134,16 @@ int psb_set_brightness(struct backlight_device *bd)
 			dev_priv->brightness_adjusted = adjusted_level;
 
 #ifndef CONFIG_MDFLD_DSI_DPU
-			if(!(dev_priv->dsr_fb_update & MDFLD_DSR_MIPI_CONTROL) && 
-				(dev_priv->dbi_panel_on || dev_priv->dbi_panel_on2)){
-				mdfld_dsi_dbi_exit_dsr(dev,MDFLD_DSR_MIPI_CONTROL, 0, 0);
-				PSB_DEBUG_ENTRY("Out of DSR before set brightness to %d.\n",adjusted_level);
+			if (!(dev_priv->dsr_fb_update & MDFLD_DSR_MIPI_CONTROL)
+			    && dev_priv->b_dsr_enable
+			    && !is_panel_vid_or_cmd(dev)
+			    && (panel_on1 || panel_on2)) {
+				dev_priv->exit_idle(dev,
+						MDFLD_DSR_MIPI_CONTROL,
+						0, 0);
+				PSB_DEBUG_ENTRY("Out of DSR before set " \
+						"brightness to %d.\n",
+						adjusted_level);
 			}
 #endif
 			/* support the main panel brightness control */

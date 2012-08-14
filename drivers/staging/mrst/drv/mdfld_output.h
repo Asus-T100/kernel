@@ -73,9 +73,6 @@ struct panel_info {
 /**
  *Panel specific callbacks.
  *
- *@encoder_funcs: a pointer to drm encoder functions
- *@encoder_helper_funcs: a pointer to helper functions of drm encoder which is
- *assigned to this panel.
  *@get_config_mode: return the fixed display mode of panel.
  *@update_fb: command mode panel only. update on-panel framebuffer.
  *@get_panel_info: return panel information. such as physical size.
@@ -92,8 +89,6 @@ struct panel_info {
  *call these callbacks to take the specific actions for the new panel.
  */
 struct panel_funcs {
-	const struct drm_encoder_funcs* encoder_funcs;
-	const struct drm_encoder_helper_funcs* encoder_helper_funcs;
 	struct drm_display_mode* (*get_config_mode)(struct drm_device*);
 	void (*update_fb)(struct mdfld_dsi_dbi_output*, int);
 	int (*get_panel_info)(struct drm_device *, int, struct panel_info *);
@@ -113,11 +108,10 @@ struct panel_funcs {
 			int *pdelay_after_reset_gpio_toggle);
 };
 
-void mdfld_output_init(struct drm_device* dev);
+extern void mdfld_output_init(struct drm_device *dev);
+extern enum panel_type get_panel_type(struct drm_device *dev, int pipe);
+extern int is_panel_vid_or_cmd(struct drm_device *dev);
 
-void init_panel(struct drm_device* dev, int mipi_pipe, enum panel_type p_type);
-enum panel_type get_panel_type(struct drm_device *dev, int pipe);
-int is_panel_vid_or_cmd(struct drm_device *dev);
 #endif
 
 
