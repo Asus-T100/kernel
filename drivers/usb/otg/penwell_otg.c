@@ -544,6 +544,35 @@ static int penwell_otg_set_power(struct otg_transceiver *otg,
 	return 0;
 }
 
+/* for Clovertrail only */
+int penwell_otg_query_power_supply_cap(struct power_supply_charger_cap *cap)
+{
+	struct penwell_otg	*pnw = the_transceiver;
+	unsigned long		flags;
+
+	dev_dbg(pnw->dev, "%s --->\n", __func__);
+
+	if (pnw == NULL)
+		return -ENODEV;
+
+	if (cap == NULL)
+		return -EINVAL;
+
+	if (!is_clovertrail(to_pci_dev(pnw->dev)))
+		return -ENODEV;
+
+	spin_lock_irqsave(&pnw->cap_lock, flags);
+	cap->chrg_evt = pnw->psc_cap.chrg_evt;
+	cap->chrg_type = pnw->psc_cap.chrg_type;
+	cap->mA = pnw->psc_cap.mA;
+	spin_unlock_irqrestore(&pnw->cap_lock, flags);
+
+	dev_dbg(pnw->dev, "%s <---\n", __func__);
+	return 0;
+}
+EXPORT_SYMBOL_GPL(penwell_otg_query_power_supply_cap);
+
+
 int penwell_otg_query_charging_cap(struct otg_bc_cap *cap)
 {
 	struct penwell_otg	*pnw = the_transceiver;
@@ -2705,6 +2734,7 @@ static void penwell_otg_psc_notify_work(struct work_struct *work)
 {
 	struct penwell_otg		*pnw = the_transceiver;
 	struct power_supply_charger_cap	psc_cap;
+	enum power_supply_charger_event chrg_event;
 	unsigned long			flags;
 	struct otg_bc_event		*event, *temp;
 
@@ -2713,21 +2743,25 @@ static void penwell_otg_psc_notify_work(struct work_struct *work)
 		list_del(&event->node);
 		spin_unlock_irqrestore(&pnw->charger_lock, flags);
 
-		psc_cap.chrg_evt = check_psc_event(pnw->psc_cap, event->cap);
-
-		event->cap.chrg_evt = psc_cap.chrg_evt;
-		pnw->psc_cap = event->cap;
-
-		if (pnw->psc_cap.chrg_evt == -1)
+		spin_lock_irqsave(&pnw->cap_lock, flags);
+		chrg_event = check_psc_event(pnw->psc_cap, event->cap);
+		if (chrg_event == -1)
 			dev_dbg(pnw->dev, "no need to notify\n");
 		else {
-			dev_dbg(pnw->dev, "notify power_supply event\n");
-			dev_dbg(pnw->dev, "mA = %d\n", pnw->psc_cap.mA);
-			dev_dbg(pnw->dev, "evt = %d\n", pnw->psc_cap.chrg_evt);
-			dev_dbg(pnw->dev, "type = %s\n",
-					psc_string(pnw->psc_cap.chrg_type));
+			pnw->psc_cap = event->cap;
+			pnw->psc_cap.chrg_evt = chrg_event;
+			psc_cap = pnw->psc_cap;
+		}
+		spin_unlock_irqrestore(&pnw->cap_lock, flags);
 
-			power_supply_charger_event(pnw->psc_cap);
+		if (chrg_event != -1) {
+			dev_dbg(pnw->dev, "notify power_supply event\n");
+			dev_dbg(pnw->dev, "mA = %d\n", psc_cap.mA);
+			dev_dbg(pnw->dev, "evt = %d\n", psc_cap.chrg_evt);
+			dev_dbg(pnw->dev, "type = %s\n",
+					psc_string(psc_cap.chrg_type));
+
+			power_supply_charger_event(psc_cap);
 		}
 
 		kfree(event);
@@ -4559,6 +4593,7 @@ static int penwell_otg_probe(struct pci_dev *pdev,
 
 	/* Battery Charging part */
 	spin_lock_init(&pnw->charger_lock);
+	spin_lock_init(&pnw->cap_lock);
 	pnw->charging_cap.mA = CHRG_CURR_DISCONN;
 	pnw->charging_cap.chrg_type = CHRG_UNKNOWN;
 	pnw->charging_cap.current_event = USBCHRG_EVENT_DISCONN;

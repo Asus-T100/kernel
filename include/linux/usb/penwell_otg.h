@@ -461,6 +461,7 @@ struct penwell_otg {
 	spinlock_t			charger_lock;
 	struct list_head		chrg_evt_queue;
 	struct otg_bc_cap		charging_cap;
+	spinlock_t			cap_lock;
 	struct power_supply_charger_cap psc_cap;
 	int (*bc_callback)(void *arg, int event, struct otg_bc_cap *cap);
 	void				*bc_arg;
@@ -480,6 +481,8 @@ struct penwell_otg *iotg_to_penwell(struct intel_mid_otg_xceiv *iotg)
 }
 
 extern int penwell_otg_query_charging_cap(struct otg_bc_cap *cap);
+extern int penwell_otg_query_power_supply_cap(
+			struct power_supply_charger_cap *cap);
 extern void *penwell_otg_register_bc_callback(
 	int (*cb)(void *, int, struct otg_bc_cap *), void *arg);
 extern int penwell_otg_unregister_bc_callback(void *handler);
