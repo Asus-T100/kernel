@@ -72,8 +72,6 @@ static int penwell_otg_ulpi_write(struct intel_mid_otg_xceiv *iotg,
 				u8 reg, u8 val);
 static void penwell_spi_reset_phy(void);
 
-static unsigned long long boot_up;
-
 #ifdef CONFIG_PM_SLEEP
 #include <linux/suspend.h>
 DECLARE_WAIT_QUEUE_HEAD(stop_host_wait);
@@ -2195,8 +2193,6 @@ static void init_hsm(void)
 		pm_runtime_get(pnw->dev);
 	}
 
-	boot_up = get_jiffies_64() + 2 * HZ;
-
 	penwell_otg_phy_low_power(1);
 }
 
@@ -2885,18 +2881,6 @@ static void penwell_otg_work(struct work_struct *work)
 					charger_type = retval;
 				}
 			} else {
-				/* If still in boot_up process, wait 2 second.
-				 * This is only a workaround, charger driver
-				 * will init later than otg driver and miss
-				 * the notification from usb, so usb driver
-				 * add 2 second delay to let power_supply to
-				 * be registered by charger driver */
-				if (time_before64(get_jiffies_64(), boot_up)) {
-					dev_warn(pnw->dev,
-						"Wait 2 second in boot up\n");
-					msleep(2000);
-				}
-
 				/* Clovertrail charger detection flow */
 				retval = penwell_otg_charger_det_clt();
 				if (retval < 0) {
