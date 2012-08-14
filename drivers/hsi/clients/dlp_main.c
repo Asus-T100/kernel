@@ -70,6 +70,9 @@ struct dlp_driver dlp_drv;
 /* Module debug parameter */
 module_param_named(debug, dlp_drv.debug, long, S_IRUGO | S_IWUSR);
 
+/* FIXME: Temporay patch waiting for modem FW update */
+module_param_named(flow_ctrl, dlp_drv.flow_ctrl, int, S_IRUGO | S_IWUSR);
+
 /*
 * @brief Dump information about the channel state
 *
@@ -253,7 +256,7 @@ void dlp_pdu_dump(struct hsi_msg *pdu, int as_string)
  *	- a reference to the newly allocated buffer
  *	- NULL if an error occured.
  */
-void *dlp_buffer_alloc(unsigned int buff_size, dma_addr_t * dma_addr)
+void *dlp_buffer_alloc(unsigned int buff_size, dma_addr_t *dma_addr)
 {
 	void *buff;
 	int flags = in_interrupt() ? GFP_ATOMIC : GFP_KERNEL;
@@ -497,10 +500,18 @@ inline int dlp_pdu_header_check(struct dlp_xfer_ctx *xfer_ctx,
 		/* Check the seq number */
 		if (xfer_ctx->seq_num == (header[0] & 0x0000FFFF))
 			ret = 0;
-		else
+		else {
+			pr_err(DRVNAME ": seq_num mismatch (AP: 0x%X, CP: 0x%X)\n",
+					xfer_ctx->seq_num,
+					header[0] & 0x0000FFFF);
+
+			/* Re-sync with the modem counter */
+			xfer_ctx->seq_num = (header[0] & 0x0000FFFF);
+
 			ret = -ERANGE;
+		}
 	} else {
-		CRITICAL("Invalid PDU signature 0x%x", header[0]);
+		pr_err(DRVNAME ": Invalid PDU signature 0x%x", header[0]);
 		ret = -EINVAL;
 	}
 
@@ -518,7 +529,7 @@ static inline void dlp_pdu_set_header(struct dlp_xfer_ctx *xfer_ctx,
 {
 	u32 *header = sg_virt(pdu->sgt.sgl);
 
-	header[0] = (DLP_HEADER_SIGNATURE | (xfer_ctx->seq_num & 0xFFFF));
+	header[0] = (DLP_HEADER_SIGNATURE | (xfer_ctx->seq_num & 0x0000FFFF));
 }
 
 /**
@@ -1481,6 +1492,9 @@ void dlp_do_stop_tx(struct work_struct *work)
 			ch_ctx->hsi_channel,
 			DLP_CTX_STATE_TO_STR(dlp_ctx_get_state(&ch_ctx->tx)));
 
+	/* Send the NOP command to avoid tailing bits issue */
+	dlp_ctrl_send_nop(ch_ctx);
+
 	/* Stop the TX */
 	ret = hsi_stop_tx(dlp_drv.client);
 	if (ret) {
@@ -1531,9 +1545,6 @@ void dlp_stop_tx(struct dlp_xfer_ctx *xfer_ctx)
 			DLP_CTX_STATE_TO_STR(dlp_ctx_get_state(xfer_ctx)));
 
 	if (dlp_ctx_get_state(xfer_ctx) == ACTIVE) {
-		/* Send the NOP command */
-		dlp_ctrl_send_nop(xfer_ctx->channel);
-
 		/* Update the context state */
 		dlp_ctx_set_state(xfer_ctx, IDLE);
 
@@ -2067,7 +2078,7 @@ static struct hsi_client_driver dlp_driver_setup = {
  */
 static int __init dlp_module_init(void)
 {
-	int err, debug_value;
+	int err, debug_value, flow_ctrl;
 
 /*
  * FIXME:: This is just a temporary W/A to allow PnP tests
@@ -2082,14 +2093,16 @@ static int __init dlp_module_init(void)
 	}
 #endif
 
-	/* Save the debug param value */
+	/* Save the module param value */
 	debug_value = dlp_drv.debug;
+	flow_ctrl = dlp_drv.flow_ctrl;
 
 	/* Initialization */
 	memset(&dlp_drv, 0, sizeof(struct dlp_driver));
 
-	/* Restore the debug param value */
+	/* Restore the module param value */
 	dlp_drv.debug = debug_value;
+	dlp_drv.flow_ctrl = flow_ctrl;
 
 	PROLOG();
 

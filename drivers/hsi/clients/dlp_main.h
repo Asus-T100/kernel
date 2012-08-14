@@ -148,7 +148,7 @@
 /*
  * Get a ref to the given channel context
  */
-#define DLP_CHANNEL_CTX(hsi_ch) dlp_drv.channels[hsi_ch]
+#define DLP_CHANNEL_CTX(hsi_ch) (dlp_drv.channels[hsi_ch])
 
 /* RX and TX state machine definitions */
 enum {
@@ -369,6 +369,8 @@ struct dlp_driver {
 
 	/* Debug variables */
 	long debug;
+	int flow_ctrl;
+
 	struct dentry *debug_dir;
 };
 

@@ -615,13 +615,13 @@ dlp_ctrl_setup_irq_gpio(struct dlp_channel *ch_ctx,
 
 	/* Configure the RESET_BB gpio */
 	ret = dlp_ctrl_configure_gpio(ctrl_ctx->gpio_mdm_rst_bbn,
-			1, 1, "RST_BB");
+			1, 0, "RST_BB");
 	if (ret)
 		goto free_ctx4;
 
 	/* Configure the ON gpio */
 	ret = dlp_ctrl_configure_gpio(ctrl_ctx->gpio_mdm_pwr_on,
-			1, 1, "ON");
+			1, 0, "ON");
 	if (ret)
 		goto free_ctx3;
 
@@ -672,13 +672,13 @@ dlp_ctrl_setup_irq_gpio(struct dlp_channel *ch_ctx,
 		goto free_all;
 	}
 
-	pr_info("dlp: GPIO (rst_bbn: %d, pwr_on: %d, rst_out: %d, fcdp_rb: %d)\n",
+	pr_info(DRVNAME ": GPIO (rst_bbn: %d, pwr_on: %d, rst_out: %d, fcdp_rb: %d)\n",
 			ctrl_ctx->gpio_mdm_rst_bbn,
 			ctrl_ctx->gpio_mdm_pwr_on,
 			ctrl_ctx->gpio_mdm_rst_out,
 			ctrl_ctx->gpio_fcdp_rb);
 
-	pr_info("dlp: IRQ  (rst_out: %d, fcdp_rb: %d)\n",
+	pr_info(DRVNAME ": IRQ  (rst_out: %d, fcdp_rb: %d)\n",
 			ctrl_ctx->reset.rst_irq, ctrl_ctx->reset.cd_irq);
 
 	EPILOG();
@@ -932,6 +932,8 @@ static void dlp_ctrl_complete_rx(struct hsi_msg *msg)
 		if (msg_complete) {
 			ret = ((params.data2 << 8) | params.data1);
 			response = DLP_CMD_ACK;
+			pr_info(DRVNAME ": ch%d open_conn received\n",
+					params.channel);
 
 			/* Check the requested PDU size */
 			if (ch_ctx->tx.pdu_size != ret) {
@@ -942,16 +944,13 @@ static void dlp_ctrl_complete_rx(struct hsi_msg *msg)
 						ch_ctx->hsi_channel);
 
 				response = DLP_CMD_NACK;
-				pr_info(DRVNAME ": open_conn for ch%d received\n",
-						params.channel);
 			}
 		}
 		break;
 
 	case DLP_CMD_CLOSE_CONN:
 		response = DLP_CMD_ACK;
-		pr_info(DRVNAME ": close_conn for ch%d received\n",
-				params.channel);
+		pr_info(DRVNAME ": ch%d close_conn received\n", params.channel);
 		break;
 
 	default:
@@ -1901,7 +1900,7 @@ int dlp_ctrl_send_nop(struct dlp_channel *ch_ctx)
 	param2 = PARAM2(DLP_NOP_CMD_CHECKSUM);
 	param3 = PARAM3(DLP_NOP_CMD_CHECKSUM);
 
-	/* Send the ECHO command */
+	/* Send the NOP command */
 	ret = dlp_ctrl_cmd_send(ch_ctx,
 			DLP_CMD_NOP, DLP_CMD_NONE,
 			-1, -1,

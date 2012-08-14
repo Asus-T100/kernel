@@ -1508,7 +1508,9 @@ struct dlp_channel *dlp_tty_ctx_create(unsigned int index, struct device *dev)
 
 	ch_ctx->ch_data = tty_ctx;
 	ch_ctx->hsi_channel = index;
-	ch_ctx->use_flow_ctrl = 1; /* FIXME: Will be when done by the CP */
+	/* Temporay test waiting for the modem FW */
+	if (dlp_drv.flow_ctrl)
+		ch_ctx->use_flow_ctrl = 1;
 	ch_ctx->rx.config = client->rx_cfg;
 	ch_ctx->tx.config = client->tx_cfg;
 
