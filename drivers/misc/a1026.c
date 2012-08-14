@@ -536,9 +536,8 @@ static long es305_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			FIRMWARE_NAME_MAX_LENGTH);
 		if (rc == FIRMWARE_NAME_MAX_LENGTH)
 			rc = -ERANGE;
-		if (rc < 0)
-			break;
-		rc = es305_bootup_init(the_vp, firmware_name);
+		if (rc >= 0)
+			rc = es305_bootup_init(the_vp, firmware_name);
 		mutex_unlock(&the_vp->mutex);
 		break;
 	case A1026_SUSPEND:
