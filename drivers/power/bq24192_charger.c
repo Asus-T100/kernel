@@ -1762,8 +1762,7 @@ sched_maint_work:
 	if ((chip->chrg_type == POWER_SUPPLY_TYPE_USB_HOST))
 		battery_status = POWER_SUPPLY_STATUS_DISCHARGING;
 
-	if ((battery_status == POWER_SUPPLY_STATUS_FULL) ||
-		(battery_status == POWER_SUPPLY_STATUS_NOT_CHARGING) ||
+	if ((battery_status == POWER_SUPPLY_STATUS_NOT_CHARGING) ||
 		(battery_status == POWER_SUPPLY_STATUS_DISCHARGING)) {
 		chip->online = 0;
 	} else {
