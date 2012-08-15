@@ -18,21 +18,21 @@
  * this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
  *
+ * Authors:
+ *    Fei Jiang <fei.jiang@intel.com>
+ *
  **************************************************************************/
 
 #include <drm/drmP.h>
 #include <drm/drm.h>
 #include "psb_drv.h"
 #include "psb_msvdx.h"
-#include "psb_msvdx_msg.h"
-#include "psb_msvdx_ec.h"
 #include <linux/firmware.h>
 
 #define UPLOAD_FW_BY_DMA 1
 #define STACKGUARDWORD          0x10101010
 #define MSVDX_MTX_DATA_LOCATION 0x82880000
 #define UNINITILISE_MEM 	0xcdcdcdcd
-#define FIRMWAREID		0x014d42ab
 
 /*MSVDX FW header*/
 struct msvdx_fw {
@@ -42,9 +42,35 @@ struct msvdx_fw {
 	uint32_t data_location;
 };
 
+int32_t psb_msvdx_alloc_fw_bo(struct drm_psb_private *dev_priv)
+{
+	uint32_t core_rev;
+	int32_t ret = 0;
+	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
+
+	core_rev = PSB_RMSVDX32(MSVDX_CORE_REV);
+
+	if ((core_rev & 0xffffff) < 0x020000)
+		msvdx_priv->mtx_mem_size = 16 * 1024;
+	else
+		msvdx_priv->mtx_mem_size = 40 * 1024;
+
+	PSB_DEBUG_INIT("MSVDX: MTX mem size is 0x%08x bytes, allocate firmware BO size 0x%08x\n", msvdx_priv->mtx_mem_size,
+		       msvdx_priv->mtx_mem_size + 4096);
+
+	ret = ttm_buffer_object_create(&dev_priv->bdev, msvdx_priv->mtx_mem_size + 4096, /* DMA may run over a page */
+				       ttm_bo_type_kernel,
+				       DRM_PSB_FLAG_MEM_MMU | TTM_PL_FLAG_NO_EVICT,
+				       0, 0, 0, NULL, &msvdx_priv->fw);
+	if (ret) {
+		DRM_ERROR("MSVDX: allocate firmware BO fail\n");
+	}
+	return ret;
+}
+
 #if UPLOAD_FW_BY_DMA
 
-static void psb_get_mtx_control_from_dash(struct drm_psb_private *dev_priv)
+static void msvdx_get_mtx_control_from_dash(struct drm_psb_private *dev_priv)
 {
 	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
 	int count = 0;
@@ -60,14 +86,13 @@ static void psb_get_mtx_control_from_dash(struct drm_psb_private *dev_priv)
 	} while (((reg_val & 0x18) != 0) && count < 50000);
 
 	if (count >= 50000)
-		PSB_DEBUG_GENERAL("TOPAZ: timeout in get_mtx_control_from_dash\n");
+		PSB_DEBUG_GENERAL("MAVDX: timeout in get_mtx_control_from_dash\n");
 
 	/* Save the access control register...*/
 	msvdx_priv->psb_dash_access_ctrl = PSB_RMSVDX32(MSVDX_MTX_RAM_ACCESS_CONTROL);
-
 }
 
-static void psb_release_mtx_control_from_dash(struct drm_psb_private *dev_priv)
+static void msvdx_release_mtx_control_from_dash(struct drm_psb_private *dev_priv)
 {
 	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
 
@@ -77,7 +102,7 @@ static void psb_release_mtx_control_from_dash(struct drm_psb_private *dev_priv)
 	PSB_WMSVDX32(0x4, MSVDX_MTX_DEBUG);
 }
 
-static void psb_upload_fw(struct drm_psb_private *dev_priv,
+static void msvdx_upload_fw(struct drm_psb_private *dev_priv,
 			  uint32_t address, const unsigned int words, int fw_sel)
 {
 	uint32_t reg_val = 0;
@@ -88,7 +113,7 @@ static void psb_upload_fw(struct drm_psb_private *dev_priv,
 	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
 
 	PSB_DEBUG_GENERAL("MSVDX: Upload firmware by DMA\n");
-	psb_get_mtx_control_from_dash(dev_priv);
+	msvdx_get_mtx_control_from_dash(dev_priv);
 
 	/* dma transfers to/from the mtx have to be 32-bit aligned and in multiples of 32 bits */
 	PSB_WMSVDX32(address, REGISTER(MTX_CORE, CR_MTX_SYSC_CDMAA));
@@ -137,7 +162,6 @@ static void psb_upload_fw(struct drm_psb_private *dev_priv,
 		return;
 	}
 
-
 	uCountReg = PSB_DMAC_VALUE_COUNT(PSB_DMAC_BSWAP_NO_SWAP,
 					 0,  /* 32 bits */
 					 PSB_DMAC_DIR_MEM_TO_PERIPH,
@@ -163,24 +187,24 @@ static void psb_upload_fw(struct drm_psb_private *dev_priv,
 				  REGISTER(DMAC, DMAC_IRQ_STAT) + dma_channel,
 				  DMAC_DMAC_IRQ_STAT_TRANSFER_FIN_MASK,
 				  DMAC_DMAC_IRQ_STAT_TRANSFER_FIN_MASK)) {
-		psb_release_mtx_control_from_dash(dev_priv);
+		msvdx_release_mtx_control_from_dash(dev_priv);
 		return;
 	}
 
 	/* Assert that the MTX DMA port is all done aswell */
 	if (psb_wait_for_register(dev_priv, REGISTER(MTX_CORE, CR_MTX_SYSC_CDMAS0), 1, 1)) {
-		psb_release_mtx_control_from_dash(dev_priv);
+		msvdx_release_mtx_control_from_dash(dev_priv);
 		return;
 	}
 
-	psb_release_mtx_control_from_dash(dev_priv);
+	msvdx_release_mtx_control_from_dash(dev_priv);
 
 	PSB_DEBUG_GENERAL("MSVDX: Upload done\n");
 }
 
 #else
 
-static void psb_upload_fw(struct drm_psb_private *dev_priv,
+static void msvdx_upload_fw(struct drm_psb_private *dev_priv,
 			  const uint32_t data_mem, uint32_t ram_bank_size,
 			  uint32_t address, const unsigned int words,
 			  const uint32_t * const data)
@@ -232,7 +256,7 @@ static void psb_upload_fw(struct drm_psb_private *dev_priv,
 
 #endif
 
-static int psb_verify_fw(struct drm_psb_private *dev_priv,
+static int msvdx_verify_fw(struct drm_psb_private *dev_priv,
 			 const uint32_t ram_bank_size,
 			 const uint32_t data_mem, uint32_t address,
 			 const uint32_t words, const uint32_t * const data)
@@ -368,7 +392,6 @@ static int msvdx_get_fw_bo(struct drm_device *dev,
 	return rc;
 }
 
-
 static uint32_t *msvdx_get_fw(struct drm_device *dev,
 			      const struct firmware **raw, uint8_t *name)
 {
@@ -434,62 +457,40 @@ int psb_setup_fw(struct drm_device *dev)
 	uint32_t ram_bank_size;
 	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
 	int ret = 0;
+	struct msvdx_fw *fw;
+	uint32_t *fw_ptr = NULL;
+	uint32_t *text_ptr = NULL;
+	uint32_t *data_ptr = NULL;
+	const struct firmware *raw = NULL;
+	int ec_firmware = 0;
 
 	/* todo : Assert the clock is on - if not turn it on to upload code */
 	PSB_DEBUG_GENERAL("MSVDX: psb_setup_fw\n");
 
 	PSB_WMSVDX32(clk_enable_all, MSVDX_MAN_CLK_ENABLE);
 
-	if (!IS_D0(dev)) {
-		/* Reset MTX */
-		PSB_WMSVDX32(MSVDX_MTX_SOFT_RESET_MTX_RESET_MASK,
-				MSVDX_MTX_SOFT_RESET);
-	}
-
-	/* Initialses Communication controll area to 0 */
-	/*
-	  if (psb_rev_id >= POULSBO_D1) {
-	  PSB_DEBUG_GENERAL("MSVDX: Detected Poulsbo D1"
-	  " or later revision.\n");
-	  PSB_WMSVDX32(MSVDX_DEVICE_NODE_FLAGS_DEFAULT_D1,
-	  MSVDX_COMMS_OFFSET_FLAGS);
-	  } else {
-	  PSB_DEBUG_GENERAL("MSVDX: Detected Poulsbo D0"
-	  " or earlier revision.\n");
-	  PSB_WMSVDX32(MSVDX_DEVICE_NODE_FLAGS_DEFAULT_D0,
-	  MSVDX_COMMS_OFFSET_FLAGS);
-	  }
-	*/
+	/* Reset MTX */
+	PSB_WMSVDX32(MSVDX_MTX_SOFT_RESET_MTX_RESET_MASK,
+			MSVDX_MTX_SOFT_RESET);
 
 	PSB_WMSVDX32(FIRMWAREID, MSVDX_COMMS_FIRMWARE_ID);
 
-	if (!IS_D0(dev)) {
-		PSB_WMSVDX32(0, MSVDX_COMMS_ERROR_TRIG);
-		PSB_WMSVDX32(199, MSVDX_MTX_SYSC_TIMERDIV); /* MTX_SYSC_TIMERDIV */
-		PSB_WMSVDX32(0, MSVDX_EXT_FW_ERROR_STATE); /* EXT_FW_ERROR_STATE */
-		PSB_WMSVDX32(0, MSVDX_COMMS_MSG_COUNTER);
-		PSB_WMSVDX32(0, MSVDX_COMMS_SIGNATURE);
-		PSB_WMSVDX32(0, MSVDX_COMMS_TO_HOST_RD_INDEX);
-		PSB_WMSVDX32(0, MSVDX_COMMS_TO_HOST_WRT_INDEX);
-		PSB_WMSVDX32(0, MSVDX_COMMS_TO_MTX_RD_INDEX);
-		PSB_WMSVDX32(0, MSVDX_COMMS_TO_MTX_WRT_INDEX);
-		PSB_WMSVDX32(0, MSVDX_COMMS_FW_STATUS);
-		PSB_WMSVDX32(DSIABLE_IDLE_GPIO_SIG
-			| DSIABLE_Auto_CLOCK_GATING
-			| RETURN_VDEB_DATA_IN_COMPLETION,
-				MSVDX_COMMS_OFFSET_FLAGS);
-		PSB_WMSVDX32(0, MSVDX_COMMS_SIGNATURE);
-	} else {
-		/* we should restore the state, if we power down/up
-		 * during EC */
-		PSB_WMSVDX32(0, MSVDX_EXT_FW_ERROR_STATE); /* EXT_FW_ERROR_STATE */
-		PSB_WMSVDX32(0, MSVDX_COMMS_MSG_COUNTER);
-		PSB_WMSVDX32(0, 0x2000 + 0xcc4); /* EXT_FW_ERROR_STATE */
-		PSB_WMSVDX32(0, 0x2000 + 0xcb0); /* EXT_FW_LAST_MBS */
-		PSB_WMSVDX32(0, 0x2000 + 0xcb4); /* EXT_FW_LAST_MBS */
-		PSB_WMSVDX32(0, 0x2000 + 0xcb8); /* EXT_FW_LAST_MBS */
-		PSB_WMSVDX32(0, 0x2000 + 0xcbc); /* EXT_FW_LAST_MBS */
-	}
+	PSB_WMSVDX32(0, MSVDX_COMMS_ERROR_TRIG);
+	PSB_WMSVDX32(199, MSVDX_MTX_SYSC_TIMERDIV); /* MTX_SYSC_TIMERDIV */
+	PSB_WMSVDX32(0, MSVDX_EXT_FW_ERROR_STATE); /* EXT_FW_ERROR_STATE */
+	PSB_WMSVDX32(0, MSVDX_COMMS_MSG_COUNTER);
+	PSB_WMSVDX32(0, MSVDX_COMMS_SIGNATURE);
+	PSB_WMSVDX32(0, MSVDX_COMMS_TO_HOST_RD_INDEX);
+	PSB_WMSVDX32(0, MSVDX_COMMS_TO_HOST_WRT_INDEX);
+	PSB_WMSVDX32(0, MSVDX_COMMS_TO_MTX_RD_INDEX);
+	PSB_WMSVDX32(0, MSVDX_COMMS_TO_MTX_WRT_INDEX);
+	PSB_WMSVDX32(0, MSVDX_COMMS_FW_STATUS);
+	PSB_WMSVDX32(DSIABLE_IDLE_GPIO_SIG
+		| DSIABLE_Auto_CLOCK_GATING
+		| RETURN_VDEB_DATA_IN_COMPLETION,
+			MSVDX_COMMS_OFFSET_FLAGS);
+	PSB_WMSVDX32(0, MSVDX_COMMS_SIGNATURE);
+
 	/* read register bank size */
 	{
 		uint32_t bank_size, reg;
@@ -503,22 +504,13 @@ int psb_setup_fw(struct drm_device *dev)
 	PSB_DEBUG_GENERAL("MSVDX: RAM bank size = %d bytes\n",
 			  ram_bank_size);
 
-    if (!IS_D0(dev)) {
-	struct msvdx_fw *fw;
-	uint32_t *fw_ptr = NULL;
-	uint32_t *text_ptr = NULL;
-	uint32_t *data_ptr = NULL;
-	const struct firmware *raw = NULL;
-	int ec_firmware = 0;
-
 	/* if FW already loaded from storage */
-	if (msvdx_priv->msvdx_fw)
+	if (msvdx_priv->msvdx_fw) {
 		fw_ptr = msvdx_priv->msvdx_fw;
-	else {
+	} else {
 		fw_ptr = msvdx_get_fw(dev, &raw, "msvdx_fw_mfld_DE2.0.bin");
 		PSB_DEBUG_GENERAL("MSVDX:load msvdx_fw_mfld_DE2.0.bin by udevd\n");
 	}
-
 	if (!fw_ptr) {
 		DRM_ERROR("MSVDX:load msvdx_fw.bin failed,is udevd running?\n");
 		ret = 1;
@@ -528,6 +520,11 @@ int psb_setup_fw(struct drm_device *dev)
 	if (!msvdx_priv->is_load) /* Load firmware into BO */
 		PSB_DEBUG_GENERAL("MSVDX:load msvdx_fw.bin by udevd into BO\n");
 	ret = msvdx_get_fw_bo(dev, &raw, "msvdx_fw_mfld_DE2.0.bin");
+	if (ret) {
+		DRM_ERROR("MSVDX: failed to call msvdx_get_fw_bo.\n");
+		ret = 1;
+		goto out;
+	}
 
 	fw = (struct msvdx_fw *) fw_ptr;
 
@@ -546,7 +543,7 @@ int psb_setup_fw(struct drm_device *dev)
 	}
 	*/
 	text_ptr =
-	(uint32_t *)((uint8_t *) fw_ptr + sizeof(struct msvdx_fw));
+		(uint32_t *)((uint8_t *) fw_ptr + sizeof(struct msvdx_fw));
 	data_ptr = text_ptr + fw->text_size;
 
 	if (fw->text_size == 2858)
@@ -577,14 +574,14 @@ int psb_setup_fw(struct drm_device *dev)
 	PSB_DEBUG_GENERAL("MSVDX: Uploading firmware\n");
 
 #if UPLOAD_FW_BY_DMA
-		psb_upload_fw(dev_priv, 0, msvdx_priv->mtx_mem_size / 4, ec_firmware);
+	msvdx_upload_fw(dev_priv, 0, msvdx_priv->mtx_mem_size / 4, ec_firmware);
 #else
-		psb_upload_fw(dev_priv, MTX_CORE_CODE_MEM, ram_bank_size,
-				PC_START_ADDRESS - MTX_CODE_BASE, fw->text_size,
-				text_ptr);
-		psb_upload_fw(dev_priv, MTX_CORE_DATA_MEM, ram_bank_size,
-				fw->data_location - MTX_DATA_BASE, fw->data_size,
-				data_ptr);
+	msvdx_upload_fw(dev_priv, MTX_CORE_CODE_MEM, ram_bank_size,
+			PC_START_ADDRESS - MTX_CODE_BASE, fw->text_size,
+			text_ptr);
+	msvdx_upload_fw(dev_priv, MTX_CORE_DATA_MEM, ram_bank_size,
+			fw->data_location - MTX_DATA_BASE, fw->data_size,
+			data_ptr);
 #endif
 
 #if 0
@@ -607,16 +604,13 @@ int psb_setup_fw(struct drm_device *dev)
 		ret = 1;
 		goto out;
 	}
-#else
-	(void)psb_verify_fw;
 #endif
 
-		/*	-- Set starting PC address	*/
-		psb_write_mtx_core_reg(dev_priv, MTX_PC, PC_START_ADDRESS);
+	/*	-- Set starting PC address	*/
+	psb_write_mtx_core_reg(dev_priv, MTX_PC, PC_START_ADDRESS);
 
-		/*	-- Turn on the thread	*/
-		PSB_WMSVDX32(MSVDX_MTX_ENABLE_MTX_ENABLE_MASK, MSVDX_MTX_ENABLE);
-	}
+	/*	-- Turn on the thread	*/
+	PSB_WMSVDX32(MSVDX_MTX_ENABLE_MTX_ENABLE_MASK, MSVDX_MTX_ENABLE);
 
 	/* Wait for the signature value to be written back */
 	ret = psb_wait_for_register(dev_priv, MSVDX_COMMS_SIGNATURE,
@@ -630,48 +624,7 @@ int psb_setup_fw(struct drm_device *dev)
 	PSB_DEBUG_GENERAL("MSVDX: MTX Initial indications OK\n");
 	PSB_DEBUG_GENERAL("MSVDX: MSVDX_COMMS_AREA_ADDR = %08x\n",
 			  MSVDX_COMMS_AREA_ADDR);
-	if (IS_D0(dev)) {
-		/* send INIT cmd for RENDEC init */
-		PSB_WMSVDX32(DSIABLE_IDLE_GPIO_SIG | DSIABLE_Auto_CLOCK_GATING
-			     | RETURN_VDEB_DATA_IN_COMPLETION,
-			     MSVDX_COMMS_OFFSET_FLAGS);
-		/*
-		 * at this stage, FW is uplaoded successfully, can send rendec
-		 * init message
-		 */
-		struct fw_init_msg init_msg;
-		init_msg.header.bits.msg_size = sizeof(struct fw_init_msg);
-		init_msg.header.bits.msg_type = MTX_MSGID_INIT;
-		init_msg.rendec_addr0 = msvdx_priv->base_addr0;
-		init_msg.rendec_addr1 = msvdx_priv->base_addr1;
-		init_msg.rendec_size.bits.rendec_size0 = RENDEC_A_SIZE / (4*1024);
-		init_msg.rendec_size.bits.rendec_size1 = RENDEC_B_SIZE / (4*1024);
-		psb_mtx_send(dev_priv, (void *)&init_msg);
-	}
 
-#if 0
-
-	/* Send test message */
-	{
-		uint32_t msg_buf[FW_VA_DEBUG_TEST2_SIZE >> 2];
-
-		MEMIO_WRITE_FIELD(msg_buf, FW_VA_DEBUG_TEST2_MSG_SIZE,
-				  FW_VA_DEBUG_TEST2_SIZE);
-		MEMIO_WRITE_FIELD(msg_buf, FW_VA_DEBUG_TEST2_ID,
-				  VA_MSGID_TEST2);
-
-		ret = psb_mtx_send(dev_priv, msg_buf);
-		if (ret) {
-			DRM_ERROR("psb: MSVDX sending fails.\n");
-			goto out;
-		}
-
-		/* Wait for Mtx to ack this message */
-		psb_poll_mtx_irq(dev_priv);
-
-	}
-#endif
 out:
-
 	return ret;
 }

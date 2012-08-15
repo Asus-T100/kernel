@@ -95,7 +95,7 @@ static void psb_msvdx_reset_wq(struct work_struct *work)
 	unsigned long irq_flags;
 
 	mutex_lock(&msvdx_priv->msvdx_mutex);
-	if (IS_D0(dev_priv->dev))
+	if (msvdx_priv->fw_loaded_by_punit)
 		msvdx_priv->msvdx_needs_reset |= MSVDX_RESET_NEEDS_REUPLOAD_FW |
 			MSVDX_RESET_NEEDS_INIT_FW;
 	else

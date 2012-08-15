@@ -1783,16 +1783,14 @@ void ospm_power_island_up(int hw_islands)
 		reg would result in a crash - IERR/Fabric error.
 		*/
 #ifdef CONFIG_MDFD_GL3
-		if (IS_D0(gpDrmDevice)) {
-			/*
-			 * GL3 power island needs to be on for MSVDX working.
-			 * We found this during enabling new MSVDX firmware
-			 * uploading mechanism(by PUNIT) for Penwell D0.
-			 */
-			if ((gfx_islands & OSPM_VIDEO_DEC_ISLAND) &&
-					!ospm_power_is_hw_on(OSPM_GL3_CACHE_ISLAND))
-				gfx_islands |= OSPM_GL3_CACHE_ISLAND;
-		}
+		/*
+		 * GL3 power island needs to be on for MSVDX working.
+		 * We found this during enabling new MSVDX firmware
+		 * uploading mechanism(by PUNIT) for Penwell D0.
+		 */
+		if ((gfx_islands & OSPM_VIDEO_DEC_ISLAND) &&
+				!ospm_power_is_hw_on(OSPM_GL3_CACHE_ISLAND))
+			gfx_islands |= OSPM_GL3_CACHE_ISLAND;
 #endif
 		spin_lock_irqsave(&dev_priv->ospm_lock, flags);
 		if (pmu_nc_set_power_state(gfx_islands,
@@ -2011,7 +2009,8 @@ bool ospm_power_using_video_begin(int video_island)
 	bool island_is_on = true;
 	struct pci_dev *pdev = gpDrmDevice->pdev;
 	struct drm_psb_private *dev_priv =
-		(struct drm_psb_private *) gpDrmDevice->dev_private;
+		(struct drm_psb_private *)gpDrmDevice->dev_private;
+	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
 
 	if (!(video_island & (OSPM_VIDEO_DEC_ISLAND | OSPM_VIDEO_ENC_ISLAND)))
 		return false;
@@ -2069,14 +2068,16 @@ bool ospm_power_using_video_begin(int video_island)
 			*/
 		}
 
+#ifdef CONFIG_MDFD_GL3
+		if (!ospm_power_is_hw_on(OSPM_GL3_CACHE_ISLAND))
+			ospm_power_island_up(OSPM_GL3_CACHE_ISLAND);
+#endif
 		if (!ospm_power_is_hw_on(OSPM_VIDEO_DEC_ISLAND)) {
 			/* printk(KERN_ALERT "%s power on video decode\n",
 			** __func__);
 			*/
-#ifdef CONFIG_MDFD_GL3
-			ospm_power_island_up(OSPM_GL3_CACHE_ISLAND |
-				OSPM_VIDEO_DEC_ISLAND);
-			if (IS_D0(gpDrmDevice)) {
+			ospm_power_island_up(OSPM_VIDEO_DEC_ISLAND);
+			if (msvdx_priv->fw_loaded_by_punit) {
 				int reg_ret;
 				reg_ret = psb_wait_for_register(dev_priv,
 					MSVDX_COMMS_SIGNATURE,
@@ -2085,9 +2086,6 @@ bool ospm_power_using_video_begin(int video_island)
 				if (reg_ret)
 					printk(KERN_ERR	"fw fails to init.\n");
 			}
-#else
-			ospm_power_island_up(OSPM_VIDEO_DEC_ISLAND);
-#endif
 			ospm_runtime_pm_msvdx_resume(gpDrmDevice);
 			psb_irq_preinstall_islands(gpDrmDevice,
 				OSPM_VIDEO_DEC_ISLAND);
@@ -2106,17 +2104,15 @@ bool ospm_power_using_video_begin(int video_island)
 			psb_irq_postinstall_islands(gpDrmDevice,
 				OSPM_DISPLAY_ISLAND);
 		}
-
+#ifdef CONFIG_MDFD_GL3
+		if (!ospm_power_is_hw_on(OSPM_GL3_CACHE_ISLAND))
+			ospm_power_island_up(OSPM_GL3_CACHE_ISLAND);
+#endif
 		if (!ospm_power_is_hw_on(OSPM_VIDEO_ENC_ISLAND)) {
 			/* printk(KERN_ALERT "%s power on video
 			** encode\n", __func__);
 			*/
-#ifdef CONFIG_MDFD_GL3
 			ospm_power_island_up(OSPM_VIDEO_ENC_ISLAND);
-			ospm_power_island_up(OSPM_GL3_CACHE_ISLAND);
-#else
-			ospm_power_island_up(OSPM_VIDEO_ENC_ISLAND);
-#endif
 			ospm_runtime_pm_topaz_resume(gpDrmDevice);
 			psb_irq_preinstall_islands(gpDrmDevice,
 				OSPM_VIDEO_ENC_ISLAND);

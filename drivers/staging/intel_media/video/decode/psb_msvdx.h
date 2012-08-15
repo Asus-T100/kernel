@@ -16,6 +16,9 @@
  * this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
  *
+ * Authors:
+ *    Fei Jiang <fei.jiang@intel.com>
+ *
  **************************************************************************/
 
 #ifndef _PSB_MSVDX_H_
@@ -28,6 +31,8 @@ extern int drm_msvdx_pmpolicy;
 extern int drm_msvdx_delay;
 extern int hdmi_state;
 extern int drm_psb_msvdx_tiling;
+
+#define FIRMWAREID		0x014d42ab
 
 typedef enum {
 	PSB_DMAC_BSWAP_NO_SWAP = 0x0,   /* !< No byte swapping will be performed. */
@@ -107,7 +112,9 @@ int psb_msvdx_check_reset_fw(struct drm_device *dev);
 void psb_powerdown_msvdx(struct work_struct *work);
 
 /* psb_msvdx_fw.c */
+int32_t psb_msvdx_alloc_fw_bo(struct drm_psb_private *dev_priv);
 int psb_setup_fw(struct drm_device *dev);
+int psb_setup_msvdx(struct drm_device *dev);
 
 /*  Non-Optimal Invalidation is not default */
 #define MSVDX_DEVICE_NODE_FLAGS_MMU_NONOPT_INV	2
@@ -686,6 +693,7 @@ struct msvdx_private {
 	struct mutex msvdx_mutex;
 	struct list_head msvdx_queue;
 	int msvdx_busy;
+	int msvdx_is_setup;
 	int msvdx_fw_loaded;
 	void *msvdx_fw;
 	int msvdx_fw_size;
@@ -697,6 +705,7 @@ struct msvdx_private {
 	uint32_t vec_local_mem_saved;
 	uint32_t psb_dash_access_ctrl;
 	uint32_t fw_status;
+	uint32_t fw_loaded_by_punit;
 
 	drm_psb_msvdx_frame_info_t frame_info[MAX_DECODE_BUFFERS];
 	drm_psb_msvdx_decode_status_t decode_status;

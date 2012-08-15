@@ -1506,10 +1506,6 @@ do {                                                \
 
 #define IS_TOPAZ(dev) ((IS_MRST(dev) && (((dev)->pci_device & 0xfffc) != PCI_ID_TOPAZ_DISABLED)) || IS_MDFLD(dev))
 
-#define IS_D0(dev) (((dev)->pdev->revision >= 0xc) || \
-		(((dev)->pci_device & 0xffff) == 0x08c7) || \
-		(((dev)->pci_device & 0xffff) == 0x08c8))
-
 #define IS_MSVDX_MEM_TILE(dev) ((IS_MRFL(dev)))
 
 extern int drm_psb_ospm;

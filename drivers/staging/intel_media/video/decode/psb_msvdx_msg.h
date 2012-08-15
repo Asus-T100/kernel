@@ -16,6 +16,9 @@
  * this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
  *
+ * Authors:
+ *    Fei Jiang <fei.jiang@intel.com>
+ *
  **************************************************************************/
 
 #ifndef _PSB_MSVDX_MSG_H_

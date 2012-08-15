@@ -17,6 +17,9 @@
  * this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
  *
+ * Authors:
+ *    Fei Jiang <fei.jiang@intel.com>
+ *
  **************************************************************************/
 
 #include <drm/drmP.h>
@@ -321,7 +324,7 @@ int psb_submit_video_cmdbuf(struct drm_device *dev,
 	if (msvdx_priv->msvdx_needs_reset) {
 		spin_unlock_irqrestore(&msvdx_priv->msvdx_lock, irq_flags);
 		PSB_DEBUG_GENERAL("MSVDX: will reset msvdx\n");
-		if (!IS_D0(dev)) {
+		if (!msvdx_priv->fw_loaded_by_punit) {
 			if (psb_msvdx_reset(dev_priv)) {
 				ret = -EBUSY;
 				DRM_ERROR("MSVDX: Reset failed\n");
@@ -345,10 +348,24 @@ int psb_submit_video_cmdbuf(struct drm_device *dev,
 		spin_lock_irqsave(&msvdx_priv->msvdx_lock, irq_flags);
 	}
 
-	if (!msvdx_priv->msvdx_fw_loaded) {
+	if (msvdx_priv->fw_loaded_by_punit && !msvdx_priv->msvdx_is_setup) {
+		spin_unlock_irqrestore(&msvdx_priv->msvdx_lock, irq_flags);
+		PSB_DEBUG_GENERAL("MSVDX:setup msvdx.\n");
+		ret = psb_setup_msvdx(dev);
+		if (ret) {
+			DRM_ERROR("MSVDX:fail to setup msvdx.\n");
+			/* FIXME: find a proper return value */
+			return -EFAULT;
+		}
+		msvdx_priv->msvdx_is_setup = 1;
+
+		PSB_DEBUG_GENERAL("MSVDX: setup msvdx successfully\n");
+		spin_lock_irqsave(&msvdx_priv->msvdx_lock, irq_flags);
+	}
+
+	if (!msvdx_priv->fw_loaded_by_punit && !msvdx_priv->msvdx_fw_loaded) {
 		spin_unlock_irqrestore(&msvdx_priv->msvdx_lock, irq_flags);
 		PSB_DEBUG_GENERAL("MSVDX:reload FW to MTX\n");
-
 		ret = psb_setup_fw(dev);
 		if (ret) {
 			DRM_ERROR("MSVDX:fail to load FW\n");
@@ -689,7 +706,7 @@ loop: /* just for coding style check */
 		fence = panic_msg->header.bits.msg_fence;
 		last_mb = panic_msg->mb.bits.last_mb;
 
-		if (IS_D0(dev))
+		if (msvdx_priv->fw_loaded_by_punit)
 			msvdx_priv->msvdx_needs_reset |= MSVDX_RESET_NEEDS_REUPLOAD_FW |
 				MSVDX_RESET_NEEDS_INIT_FW;
 		else
@@ -858,7 +875,7 @@ done:
 	}
 
 	/* we get a frame/slice done, try to save some power*/
-	if (IS_D0(dev)) {
+	if (msvdx_priv->fw_loaded_by_punit) {
 		if (drm_msvdx_pmpolicy == PSB_PMPOLICY_POWERDOWN)
 			schedule_delayed_work(&msvdx_priv->msvdx_suspend_wq, 0);
 	} else {
@@ -899,7 +916,7 @@ IMG_BOOL psb_msvdx_interrupt(IMG_VOID *pvData)
 	 * if HW/FW is totally hang, the lockup function will handle
 	 * the reseting
 	 */
-	if (!IS_D0(dev) &&
+	if (!msvdx_priv->fw_loaded_by_punit &&
 	    (msvdx_stat & MSVDX_INTERRUPT_STATUS_CR_MMU_FAULT_IRQ_MASK)) {
 		/*Ideally we should we should never get to this */
 		PSB_DEBUG_IRQ("MSVDX:MMU Fault:0x%x\n", msvdx_stat);
@@ -921,7 +938,7 @@ IMG_BOOL psb_msvdx_interrupt(IMG_VOID *pvData)
 			("MSVDX: msvdx_stat: 0x%x(MTX)\n", msvdx_stat);
 
 		/* Clear all interupt bits */
-		if (IS_D0(dev))
+		if (msvdx_priv->fw_loaded_by_punit)
 			PSB_WMSVDX32(MSVDX_INTERRUPT_STATUS_CR_MTX_IRQ_MASK,
 				     MSVDX_INTERRUPT_CLEAR);
 		else
@@ -978,7 +995,9 @@ int psb_check_msvdx_idle(struct drm_device *dev)
 	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
 	/* drm_psb_msvdx_frame_info_t *current_frame = NULL; */
 
-	if (msvdx_priv->msvdx_fw_loaded == 0)
+	if (msvdx_priv->fw_loaded_by_punit && msvdx_priv->msvdx_is_setup == 0)
+		return 0;
+	if (!msvdx_priv->fw_loaded_by_punit && msvdx_priv->msvdx_fw_loaded == 0)
 		return 0;
 
 	if (msvdx_priv->msvdx_busy) {
@@ -986,7 +1005,7 @@ int psb_check_msvdx_idle(struct drm_device *dev)
 		return -EBUSY;
 	}
 
-	if (IS_D0(dev)) {
+	if (msvdx_priv->fw_loaded_by_punit) {
 		PSB_DEBUG_MSVDX("   SIGNITURE is %x\n", PSB_RMSVDX32(MSVDX_COMMS_SIGNATURE));
 
 		if (!(PSB_RMSVDX32(MSVDX_COMMS_FW_STATUS) & MSVDX_FW_STATUS_HW_IDLE))
@@ -1331,7 +1350,7 @@ int psb_msvdx_save_context(struct drm_device *dev)
 	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
 	int offset = 0;
 
-	if (IS_D0(dev))
+	if (msvdx_priv->fw_loaded_by_punit)
 		msvdx_priv->msvdx_needs_reset = MSVDX_RESET_NEEDS_INIT_FW;
 	else
 		msvdx_priv->msvdx_needs_reset = 1;
@@ -1342,7 +1361,7 @@ int psb_msvdx_save_context(struct drm_device *dev)
 
 	msvdx_priv->vec_local_mem_saved = 1;
 
-	if (IS_D0(dev)) {
+	if (msvdx_priv->fw_loaded_by_punit) {
 		PSB_WMSVDX32(0, MSVDX_MTX_ENABLE);
 		psb_msvdx_reset(dev_priv);
 		PSB_WMSVDX32(0, MSVDX_MAN_CLK_ENABLE);

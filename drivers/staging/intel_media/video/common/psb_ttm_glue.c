@@ -125,17 +125,19 @@ int psb_release(struct inode *inode, struct file *filp)
 	}
 	*/
 
-	for (i = 0; i < PSB_MAX_EC_INSTANCE; i++) {
-		if (msvdx_priv->msvdx_ec_ctx[i]->tfile == tfile)
-			break;
-	}
+	if (msvdx_priv->msvdx_ec_ctx[0] != NULL) {
+		for (i = 0; i < PSB_MAX_EC_INSTANCE; i++) {
+			if (msvdx_priv->msvdx_ec_ctx[i]->tfile == tfile)
+				break;
+		}
 
-	if (i < PSB_MAX_EC_INSTANCE) {
-		ec_ctx = msvdx_priv->msvdx_ec_ctx[i];
-		printk(KERN_DEBUG "remove ec ctx with tfile 0x%08x\n",
-		       ec_ctx->tfile);
-		ec_ctx->tfile = NULL;
-		ec_ctx->fence = PSB_MSVDX_INVALID_FENCE;
+		if (i < PSB_MAX_EC_INSTANCE) {
+			ec_ctx = msvdx_priv->msvdx_ec_ctx[i];
+			printk(KERN_DEBUG "remove ec ctx with tfile 0x%08x\n",
+			       ec_ctx->tfile);
+			ec_ctx->tfile = NULL;
+			ec_ctx->fence = PSB_MSVDX_INVALID_FENCE;
+		}
 	}
 
 	ttm_object_file_release(&psb_fp->tfile);
@@ -164,7 +166,6 @@ int psb_release(struct inode *inode, struct file *filp)
 		schedule_delayed_work(&topaz_priv->topaz_suspend_wq,
 						msecs_to_jiffies(10));
 	}
-
 	schedule_delayed_work(&msvdx_priv->msvdx_suspend_wq,
 					msecs_to_jiffies(10));
 #endif

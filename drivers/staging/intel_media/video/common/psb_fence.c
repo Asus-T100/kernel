@@ -143,7 +143,7 @@ static void psb_fence_lockup(struct ttm_fence_object *fence,
 				  fence->sequence, fence_types, -EBUSY);
 		write_unlock(&fc->lock);
 
-		if (IS_D0(dev))
+		if (msvdx_priv->fw_loaded_by_punit)
 			msvdx_priv->msvdx_needs_reset |= MSVDX_RESET_NEEDS_REUPLOAD_FW |
 				MSVDX_RESET_NEEDS_INIT_FW;
 		else

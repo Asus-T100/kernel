@@ -1517,14 +1517,15 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 			 (dev_priv->mem_global_ref.object, PSB_OBJECT_HASH_ORDER);
 	if (unlikely(dev_priv->tdev == NULL))
 		goto out_err;
+	mutex_init(&dev_priv->cmdbuf_mutex);
+	INIT_LIST_HEAD(&dev_priv->context.validate_list);
+	INIT_LIST_HEAD(&dev_priv->context.kern_validate_list);
 #endif
 
 	mutex_init(&dev_priv->temp_mem);
-	mutex_init(&dev_priv->cmdbuf_mutex);
+
 	mutex_init(&dev_priv->reset_mutex);
 	mutex_init(&dev_priv->dpms_mutex);
-	INIT_LIST_HEAD(&dev_priv->context.validate_list);
-	INIT_LIST_HEAD(&dev_priv->context.kern_validate_list);
 
 	mutex_init(&dev_priv->dsr_mutex);
 	mutex_init(&dev_priv->gamma_csc_lock);
@@ -1546,7 +1547,6 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	dev_priv->msvdx_reg =
 		ioremap(resource_start + MRST_MSVDX_OFFSET,
 				PSB_MSVDX_SIZE);
-
 	if (!dev_priv->msvdx_reg)
 		goto out_err;
 
@@ -1562,8 +1562,8 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 		if (!dev_priv->topaz_reg)
 			goto out_err;
 	}
-
 #endif
+
 	dev_priv->vdc_reg =
 		ioremap(resource_start + PSB_VDC_OFFSET, PSB_VDC_SIZE);
 	if (!dev_priv->vdc_reg)
