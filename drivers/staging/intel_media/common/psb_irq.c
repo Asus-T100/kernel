@@ -179,19 +179,84 @@ static int mipi_hdmi_vsync_check(struct drm_device *dev, uint32_t pipe)
 			pipeb_cntr = REG_READ(DSPBCNTR);
 			pipe_surf[pipe] = REG_READ(DSPASURF);
 			ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
-		}
+		} else
+			return 1;
+
 		/* PSB_DEBUG_ENTRY("[vsync irq] pipe : 0x%x, regsurf: 0x%x !\n", pipe, pipe_surf[pipe]); */
 
 		if ((pipea_stat & PIPE_VBLANK_INTERRUPT_ENABLE)
-				&& (pipeb_ctl & HDMIB_PORT_EN)
-				&& (pipeb_cntr & DISPLAY_PLANE_ENABLE)
-				&& (pipeb_stat & PIPE_VBLANK_INTERRUPT_ENABLE)) {
+		    && (pipeb_ctl & HDMIB_PORT_EN)
+		    && (pipeb_cntr & DISPLAY_PLANE_ENABLE)
+		    && (pipeb_stat & PIPE_VBLANK_INTERRUPT_ENABLE)) {
 			if (pipe_surf[0] == pipe_surf[1]) {
 				pipe_surf[0] = MAX_NUM;
 				pipe_surf[1] = MAX_NUM;
 			} else {
 				spin_unlock_irqrestore(&dev_priv->irqmask_lock, irqflags);
 		/*PSB_DEBUG_ENTRY("Probable Display Buffer LOCK!\n");*/
+				return 0;
+			}
+		}
+	}
+	spin_unlock_irqrestore(&dev_priv->irqmask_lock, irqflags);
+
+	return 1;
+}
+
+/* Store value of surface to be presented over MIPI
+ * pipe_surface[0] records MIPI surface during time of MIPI
+ * vblank/TE interrupt handler. piper_surface[1] records MIPI
+ * surface value at the time of HDMI vblank handling.
+ */
+static int pipe_surface[2];
+
+/* Function to check if HDMI and MIPI are presenting the same buffer.
+ * If MIPI is faster than HDMI (different refresh rates), then throttle
+ * the MIPI buffers by simply dropping them.
+ * This function should be called from the local display's Vblank/TE
+ * interrupt handler. This version of function is required to handle
+ * the sync check on CTP, on which local display works on the TE interrupt
+ * handler.
+ */
+static int mipi_te_hdmi_vsync_check(struct drm_device *dev, uint32_t pipe)
+{
+	struct drm_psb_private *dev_priv =
+		(struct drm_psb_private *) dev->dev_private;
+	struct mdfld_dsi_config *dsi_config = dev_priv->dsi_configs[0];
+	int pipea_stat, pipeb_stat, pipeb_ctl, pipeb_cntr;
+	unsigned long irqflags;
+
+	spin_lock_irqsave(&dev_priv->irqmask_lock, irqflags);
+#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
+	if (dev_priv->bhdmiconnected && dev_priv->dpi_panel_on) {
+#else
+	if (dev_priv->bhdmiconnected && dsi_config->dsi_hw_context.panel_on) {
+#endif
+		if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
+					      OSPM_UHB_ONLY_IF_ON)) {
+			pipea_stat = REG_READ(psb_pipestat(0));
+			pipeb_stat = REG_READ(psb_pipestat(1));
+			pipeb_ctl = REG_READ(HDMIB_CONTROL);
+			pipeb_cntr = REG_READ(DSPBCNTR);
+			/* We read for pipe 0 here,
+			 * read for pipe 1 happens
+			 * in pipe 1 vblank handler
+			 */
+			pipe_surface[0] = REG_READ(DSPASURF);
+			ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+		} else
+			return 1;
+
+		if ((pipea_stat & PIPE_TE_ENABLE)
+		    && (pipeb_ctl & HDMIB_PORT_EN)
+		    && (pipeb_cntr & DISPLAY_PLANE_ENABLE)
+		    && (pipeb_stat & PIPE_VBLANK_INTERRUPT_ENABLE)) {
+			if (pipe_surface[0] == pipe_surface[1]) {
+				pipe_surface[0] = MAX_NUM;
+				pipe_surface[1] = MAX_NUM;
+			} else {
+				spin_unlock_irqrestore(&dev_priv->irqmask_lock,
+						       irqflags);
 				return 0;
 			}
 		}
@@ -241,6 +306,17 @@ static void mid_vblank_handler(struct drm_device *dev, uint32_t pipe)
 		psb_flip_hdmi(dev, pipe);*/
 	drm_handle_vblank(dev, pipe);
 
+	/* Record surface address to be flipped on MIPI, when HDMI vblank came
+	 * This information is later used in the MIPI vblank/TE handler to
+	 * ensure that MIPI and HDMI flush the same buffer using
+	 * mipi_te_hdmi_vsync_check() function.
+	 */
+	if (pipe == 1)
+		pipe_surface[pipe] = REG_READ(DSPASURF);
+
+	/* This sync check works only on MFLD and not on CTP, since
+	 * MIPI on CTP does uses the TE interrupt instead of Vblank interrupt
+	 */
 	if (mipi_hdmi_vsync_check(dev, pipe) && (dev_priv->psb_vsync_handler != NULL)) {
 		if ((*dev_priv->psb_vsync_handler)(dev, pipe)
 			&& dev_priv->b_vblank_enable)
@@ -302,6 +378,13 @@ void mdfld_async_flip_te_handler(struct drm_device *dev, uint32_t pipe)
 
 	/*wake up all thread waiting for a vblank*/
 	drm_handle_vblank(dev, pipe);
+
+	/* Prior to processing vsync, check if HDMI-MIPI are in sync.
+	 * In case, they arent, drop the current MIPI frame to ensure
+	 * both MIPI and HDMI flush the same buffer.
+	 */
+	if (!mipi_te_hdmi_vsync_check(dev, pipe))
+		return;
 
 	if (dev_priv->psb_vsync_handler != NULL)
 		ret = (*dev_priv->psb_vsync_handler)(dev, pipe);
