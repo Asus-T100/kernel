@@ -3100,7 +3100,7 @@ static void handle_trans_complete(struct langwell_udc *dev)
 			dev_vdbg(&dev->pdev->dev, "%s req status: %d\n",
 					epn->name, status);
 
-			if (status)
+			if (status == 1)
 				break;
 
 			/* write back status to req */
