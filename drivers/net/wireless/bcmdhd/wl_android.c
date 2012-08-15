@@ -21,7 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: wl_android.c 339108 2012-06-15 09:01:42Z $
+ * $Id: wl_android.c 347544 2012-07-27 05:02:38Z $
  */
 
 #include <linux/module.h>
@@ -67,13 +67,14 @@
 #define CMD_BTCOEXSCAN_STOP	"BTCOEXSCAN-STOP"
 #define CMD_BTCOEXMODE		"BTCOEXMODE"
 #define CMD_SETSUSPENDOPT	"SETSUSPENDOPT"
+#define CMD_SETSUSPENDMODE      "SETSUSPENDMODE"
 #define CMD_P2P_DEV_ADDR	"P2P_DEV_ADDR"
 #define CMD_SETFWPATH		"SETFWPATH"
 #define CMD_SETBAND		"SETBAND"
 #define CMD_GETBAND		"GETBAND"
 #define CMD_COUNTRY		"COUNTRY"
 #define CMD_P2P_SET_NOA		"P2P_SET_NOA"
-#if defined(SUPPORT_GET_NOA)
+#if !defined WL_ENABLE_P2P_IF
 #define CMD_P2P_GET_NOA		"P2P_GET_NOA"
 #endif
 #define CMD_P2P_SET_PS		"P2P_SET_PS"
@@ -113,8 +114,8 @@ typedef struct android_wifi_priv_cmd {
  * Extern function declarations (TODO: move them to dhd_linux.h)
  */
 void dhd_customer_gpio_wlan_ctrl(int onoff);
-uint dhd_dev_reset(struct net_device *dev, uint8 flag);
-void dhd_dev_init_ioctl(struct net_device *dev);
+int dhd_dev_reset(struct net_device *dev, uint8 flag);
+int dhd_dev_init_ioctl(struct net_device *dev);
 #ifdef WL_CFG80211
 int wl_cfg80211_get_p2p_dev_addr(struct net_device *net, struct ether_addr *p2pdev_addr);
 int wl_cfg80211_set_btcoex_dhcp(struct net_device *dev, char *command);
@@ -132,7 +133,7 @@ extern int dhd_os_check_if_up(void *dhdp);
 extern void *bcmsdh_get_drvdata(void);
 
 extern bool ap_fw_loaded;
-#ifdef CUSTOMER_HW2
+#if defined(CUSTOMER_HW2)
 extern char iface_name[IFNAMSIZ];
 #endif
 
@@ -204,12 +205,32 @@ static int wl_android_set_suspendopt(struct net_device *dev, char *command, int 
 	ret_now = net_os_set_suspend_disable(dev, suspend_flag);
 
 	if (ret_now != suspend_flag) {
-		if (!(ret = net_os_set_suspend(dev, ret_now)))
+		if (!(ret = net_os_set_suspend(dev, ret_now, 1)))
 			DHD_INFO(("%s: Suspend Flag %d -> %d\n",
 				__FUNCTION__, ret_now, suspend_flag));
 		else
 			DHD_ERROR(("%s: failed %d\n", __FUNCTION__, ret));
 	}
+	return ret;
+}
+
+static int wl_android_set_suspendmode(struct net_device *dev, char *command, int total_len)
+{
+	int ret = 0;
+
+#if !defined(CONFIG_HAS_EARLYSUSPEND) || !defined(DHD_USE_EARLYSUSPEND)
+	int suspend_flag;
+
+	suspend_flag = *(command + strlen(CMD_SETSUSPENDMODE) + 1) - '0';
+
+	if (suspend_flag != 0)
+		suspend_flag = 1;
+
+	if (!(ret = net_os_set_suspend(dev, suspend_flag, 0)))
+		DHD_INFO(("%s: Suspend Mode %d\n", __FUNCTION__, suspend_flag));
+	else
+		DHD_ERROR(("%s: failed %d\n", __FUNCTION__, ret));
+#endif
 	return ret;
 }
 
@@ -379,7 +400,10 @@ int wl_android_wifi_on(struct net_device *dev)
 		}
 		ret = dhd_dev_reset(dev, FALSE);
 		sdioh_start(NULL, 1);
-		dhd_dev_init_ioctl(dev);
+		if (!ret) {
+			if (dhd_dev_init_ioctl(dev) < 0)
+				ret = -EFAULT;
+		}
 		g_wifi_on = TRUE;
 	}
 
@@ -401,7 +425,7 @@ int wl_android_wifi_off(struct net_device *dev)
 
 	dhd_net_if_lock(dev);
 	if (g_wifi_on) {
-		dhd_dev_reset(dev, 1);
+		ret = dhd_dev_reset(dev, TRUE);
 		sdioh_stop(NULL);
 		dhd_customer_gpio_wlan_ctrl(WLAN_RESET_OFF);
 		g_wifi_on = FALSE;
@@ -429,6 +453,7 @@ static int wl_android_set_fwpath(struct net_device *net, char *command, int tota
 
 int wl_android_priv_cmd(struct net_device *net, struct ifreq *ifr, int cmd)
 {
+#define PRIVATE_COMMAND_MAX_LEN	4096
 	int ret = 0;
 	char *command = NULL;
 	int bytes_written = 0;
@@ -443,6 +468,11 @@ int wl_android_priv_cmd(struct net_device *net, struct ifreq *ifr, int cmd)
 	if (copy_from_user(&priv_cmd, ifr->ifr_data, sizeof(android_wifi_priv_cmd))) {
 		ret = -EFAULT;
 		goto exit;
+	}
+	if (priv_cmd.total_len > PRIVATE_COMMAND_MAX_LEN)
+	{
+		DHD_ERROR(("%s: too long priavte command\n", __FUNCTION__));
+		ret = -EINVAL;
 	}
 	command = kmalloc(priv_cmd.total_len, GFP_KERNEL);
 	if (!command)
@@ -460,11 +490,7 @@ int wl_android_priv_cmd(struct net_device *net, struct ifreq *ifr, int cmd)
 
 	if (strnicmp(command, CMD_START, strlen(CMD_START)) == 0) {
 		DHD_INFO(("%s, Received regular START command\n", __FUNCTION__));
-#ifdef SUPPORT_DEEP_SLEEP
-		sleep_never = 1;
-#else
 		bytes_written = wl_android_wifi_on(net);
-#endif /* SUPPORT_DEEP_SLEEP */
 	}
 	else if (strnicmp(command, CMD_SETFWPATH, strlen(CMD_SETFWPATH)) == 0) {
 		bytes_written = wl_android_set_fwpath(net, command, priv_cmd.total_len);
@@ -478,11 +504,7 @@ int wl_android_priv_cmd(struct net_device *net, struct ifreq *ifr, int cmd)
 	}
 
 	if (strnicmp(command, CMD_STOP, strlen(CMD_STOP)) == 0) {
-#ifdef SUPPORT_DEEP_SLEEP
-		sleep_never = 1;
-#else
 		bytes_written = wl_android_wifi_off(net);
-#endif /* SUPPORT_DEEP_SLEEP */
 	}
 	else if (strnicmp(command, CMD_SCAN_ACTIVE, strlen(CMD_SCAN_ACTIVE)) == 0) {
 		/* TBD: SCAN-ACTIVE */
@@ -519,18 +541,22 @@ int wl_android_priv_cmd(struct net_device *net, struct ifreq *ifr, int cmd)
 		/* TBD: BTCOEXSCAN-STOP */
 	}
 	else if (strnicmp(command, CMD_BTCOEXMODE, strlen(CMD_BTCOEXMODE)) == 0) {
+#ifdef PKT_FILTER_SUPPORT
 		uint mode = *(command + strlen(CMD_BTCOEXMODE) + 1) - '0';
-
 		if (mode == 1)
 			net_os_set_packet_filter(net, 0); /* DHCP starts */
 		else
 			net_os_set_packet_filter(net, 1); /* DHCP ends */
+#endif /* PKT_FILTER_SUPPORT */
 #ifdef WL_CFG80211
 		bytes_written = wl_cfg80211_set_btcoex_dhcp(net, command);
 #endif
 	}
 	else if (strnicmp(command, CMD_SETSUSPENDOPT, strlen(CMD_SETSUSPENDOPT)) == 0) {
 		bytes_written = wl_android_set_suspendopt(net, command, priv_cmd.total_len);
+	}
+	else if (strnicmp(command, CMD_SETSUSPENDMODE, strlen(CMD_SETSUSPENDMODE)) == 0) {
+		bytes_written = wl_android_set_suspendmode(net, command, priv_cmd.total_len);
 	}
 	else if (strnicmp(command, CMD_SETBAND, strlen(CMD_SETBAND)) == 0) {
 		uint band = *(command + strlen(CMD_SETBAND) + 1) - '0';
@@ -565,7 +591,7 @@ int wl_android_priv_cmd(struct net_device *net, struct ifreq *ifr, int cmd)
 		bytes_written = wl_cfg80211_set_p2p_noa(net, command + skip,
 			priv_cmd.total_len - skip);
 	}
-#if defined(SUPPORT_GET_NOA)
+#if !defined WL_ENABLE_P2P_IF
 	else if (strnicmp(command, CMD_P2P_GET_NOA, strlen(CMD_P2P_GET_NOA)) == 0) {
 		bytes_written = wl_cfg80211_get_p2p_noa(net, command, priv_cmd.total_len);
 	}
@@ -621,10 +647,11 @@ int wl_android_init(void)
 {
 	int ret = 0;
 
+	dhd_msg_level |= DHD_ERROR_VAL;
 #ifdef ENABLE_INSMOD_NO_FW_LOAD
 	dhd_download_fw_on_driverload = FALSE;
 #endif /* ENABLE_INSMOD_NO_FW_LOAD */
-#ifdef CUSTOMER_HW2
+#if defined(CUSTOMER_HW2)
 	if (!iface_name[0]) {
 		memset(iface_name, 0, IFNAMSIZ);
 		bcm_strncpy_s(iface_name, IFNAMSIZ, "wlan", IFNAMSIZ);
