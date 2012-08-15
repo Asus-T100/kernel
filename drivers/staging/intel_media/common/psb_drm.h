@@ -566,6 +566,10 @@ struct drm_psb_stolen_memory_arg {
 
 #define OVC_REGRWBITS_OVADD			(1 << 2)
 #define OVC_REGRWBITS_OGAM_ALL			(1 << 3)
+
+#define OV_REGRWBITS_WAIT_FLIP			(1 << 4)
+#define OVC_REGRWBITS_WAIT_FLIP			(1 << 5)
+
 /*sprite update fields*/
 #define SPRITE_UPDATE_SURFACE			(0x00000001UL)
 #define SPRITE_UPDATE_CONTROL			(0x00000002UL)

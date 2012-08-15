@@ -2831,6 +2831,27 @@ static void wait_for_pipeb_finish(struct drm_device *dev,
 	prev_pipe = pipenum;
 }
 
+/*wait for ovadd flip complete*/
+static void overlay_wait_flip(struct drm_device *dev)
+{
+	int retry;
+	struct drm_psb_private *dev_priv = psb_priv(dev);
+	/**
+	 * make sure overlay command buffer
+	 * was copied before updating the system
+	 * overlay command buffer.
+	 */
+	retry = 3000;
+	while (--retry) {
+		if (BIT31 & PSB_RVDC32(OV_DOVASTA))
+			break;
+		udelay(10);
+	}
+
+	if (!retry)
+		DRM_DEBUG("OVADD flip timeout!\n");
+}
+
 /*wait for vblank*/
 static void overlay_wait_vblank(struct drm_device *dev,
 				struct drm_file *file_priv,
@@ -3067,6 +3088,9 @@ static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 				PSB_WVDC32(arg->overlay.OGAMC1, OVC_OGAMC1);
 				PSB_WVDC32(arg->overlay.OGAMC0, OVC_OGAMC0);
 			}
+
+			if (arg->overlay_write_mask & OV_REGRWBITS_WAIT_FLIP)
+				overlay_wait_flip(dev);
 
 			if (arg->overlay_write_mask & OV_REGRWBITS_OVADD) {
 				if (arg->overlay.buffer_handle) {
