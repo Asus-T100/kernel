@@ -49,50 +49,12 @@ static int vsp_assign_fence(struct drm_file *priv,
 			    struct psb_ttm_fence_rep *fence_arg);
 static void check_invalid_cmd_type(unsigned int info);
 static void check_invalid_cmd_arg(unsigned int info);
-
-static inline struct vss_queue *get_cmd_queue(struct drm_psb_private *dev_priv)
-{
-	return (struct vss_queue *)(dev_priv->vsp_reg + SP1_SP_DMEM_IP +
-			     SP1_VSS_CMD_QUEUE_ADDR);
-}
-
-static inline struct vss_queue *get_ack_queue(struct drm_psb_private *dev_priv)
-{
-	return (struct vss_queue *)(dev_priv->vsp_reg + SP1_SP_DMEM_IP +
-			     SP1_VSS_ACK_QUEUE_ADDR);
-}
-
-static inline
-struct vss_command_t *get_cmd_ptr(struct drm_psb_private *dev_priv,
-					 unsigned int idx)
-{
-	struct vss_queue *cmd_queue;
-
-	cmd_queue = get_cmd_queue(dev_priv);
-	/* FIXME: the usage of cmd_queue->buffer is wrong,
-	 * but FW use it the same way
-	 */
-	return (struct vss_command_t *)(dev_priv->vsp_reg + SP1_SP_DMEM_IP +
-				 SP1_VSS_CMD_BUFFER_ADDR +
-				 cmd_queue->buffer +
-				 idx * sizeof(struct vss_command_t));
-}
-
-static inline
-struct vss_response_t *get_response_ptr(struct drm_psb_private *dev_priv,
-					       unsigned int idx)
-{
-	struct vss_queue *ack_queue;
-
-	ack_queue = get_ack_queue(dev_priv);
-	/* FIXME: the usage of ack_queue->buffer is wrong,
-	 * but FW use it the same way
-	 */
-	return (struct vss_response_t *)(dev_priv->vsp_reg + SP1_SP_DMEM_IP +
-				  SP1_VSS_ACK_BUFFER_ADDR +
-				  ack_queue->buffer +
-				  idx * sizeof(struct vss_response_t));
-}
+static int vsp_fence_surfaces(struct drm_file *priv,
+			      struct list_head *validate_list,
+			      uint32_t fence_type,
+			      struct drm_psb_cmdbuf_arg *arg,
+			      struct psb_ttm_fence_rep *fence_arg,
+			      struct ttm_buffer_object *pic_param_bo);
 
 bool vsp_interrupt(void *pvData)
 {
@@ -104,7 +66,6 @@ bool vsp_interrupt(void *pvData)
 	unsigned int idx;
 	unsigned int msg_num;
 	struct vss_response_t *msg;
-	unsigned long irq_flags;
 	unsigned long status;
 	bool ret;
 	uint32_t sequence;
@@ -122,7 +83,7 @@ bool vsp_interrupt(void *pvData)
 
 	/* read interrupt status */
 	IRQ_REG_READ32(VSP_IRQ_CTRL_IRQ_STATUS, &status);
-	VSP_DEBUG("irq status %x\n", status);
+	VSP_DEBUG("irq status %lx\n", status);
 	/* clear interrupt status */
 	if (!(status & (1 << VSP_SP1_IRQ_SHIFT))) {
 		DRM_ERROR("VSP: invalid irq\n");
@@ -131,7 +92,7 @@ bool vsp_interrupt(void *pvData)
 		IRQ_REG_WRITE32(VSP_IRQ_CTRL_IRQ_CLR, (1 << VSP_SP1_IRQ_SHIFT));
 	}
 
-	ack_queue = get_ack_queue(dev_priv);
+	ack_queue = &vsp_priv->ctrl->ack_queue;
 
 	sequence = vsp_priv->current_sequence;
 	spin_lock(&vsp_priv->lock);
@@ -149,7 +110,7 @@ bool vsp_interrupt(void *pvData)
 		/* FIXME: could remove idx here, but pls consider race
 		 * condition
 		 */
-		msg = get_response_ptr(dev_priv, (idx + rd) % ack_queue->size);
+		msg = vsp_priv->ctrl->ack_buffer + (idx + rd) % ack_queue->size;
 
 		switch (msg->type) {
 		case VssErrorResponse:
@@ -214,7 +175,6 @@ bool vsp_interrupt(void *pvData)
 		VSP_DEBUG("idx %d\n", idx);
 	}
 
-out:
 	spin_unlock(&vsp_priv->lock);
 	VSP_DEBUG("will leave interrupt\n");
 
@@ -240,6 +200,18 @@ int vsp_cmdbuf_vpp(struct drm_file *priv,
 	unsigned long cmd_page_offset = arg->cmdbuf_offset & ~PAGE_MASK;
 	struct ttm_bo_kmap_obj cmd_kmap;
 	bool is_iomem;
+
+	/* check command buffer parameter */
+	if ((arg->cmdbuf_offset > cmd_buffer->acc_size) ||
+	    (arg->cmdbuf_size > cmd_buffer->acc_size) ||
+	    (arg->cmdbuf_size + arg->cmdbuf_offset) > cmd_buffer->acc_size) {
+		DRM_ERROR("VSP: the size of cmdbuf is invalid!");
+		DRM_ERROR("VSP: offset=%x, size=%x,cmd_buffer size=%x\n",
+			  arg->cmdbuf_offset, arg->cmdbuf_size,
+			  cmd_buffer->acc_size);
+		ret = -EFAULT;
+		goto out;
+	}
 
 	VSP_DEBUG("map command first\n");
 	ret = ttm_bo_kmap(cmd_buffer, arg->cmdbuf_offset >> PAGE_SHIFT, 2,
@@ -284,8 +256,7 @@ int vsp_submit_cmdbuf(struct drm_device *dev,
 	unsigned long irq_flags;
 
 	/* FIXME: context checking? */
-	SET_MMU_PTD(psb_get_default_pd_addr(
-			    dev_priv->vsp_mmu) >> PAGE_TABLE_SHIFT);
+
 	if (vsp_priv->fw_loaded == 0) {
 		ret = vsp_init_fw(dev);
 		if (ret != 0) {
@@ -295,9 +266,7 @@ int vsp_submit_cmdbuf(struct drm_device *dev,
 	}
 
 	/* consider to invalidate/flush MMU */
-	spin_lock_irqsave(&vsp_priv->lock, irq_flags);
 	if (vsp_priv->needs_reset) {
-		spin_unlock_irqrestore(&vsp_priv->lock, irq_flags);
 		VSP_DEBUG("needs reset\n");
 
 		if (vsp_reset(dev_priv)) {
@@ -305,15 +274,12 @@ int vsp_submit_cmdbuf(struct drm_device *dev,
 			DRM_ERROR("VSP: failed to reset\n");
 			return ret;
 		}
-		spin_lock_irqsave(&vsp_priv->lock, irq_flags);
 	}
 
 	/* submit command to HW */
 	ret = vsp_send_command(dev, cmd_start, cmd_size);
 	if (ret != 0)
 		DRM_ERROR("VSP: failed to send command\n");
-
-	spin_unlock_irqrestore(&vsp_priv->lock, irq_flags);
 
 	return ret;
 }
@@ -323,6 +289,7 @@ int vsp_send_command(struct drm_device *dev,
 		     unsigned long cmd_size)
 {
 	struct drm_psb_private *dev_priv = dev->dev_private;
+	struct vsp_private *vsp_priv = dev_priv->vsp_private;
 	unsigned int rd, wr;
 	unsigned int remaining_space;
 	struct vss_queue *cmd_queue;
@@ -332,7 +299,7 @@ int vsp_send_command(struct drm_device *dev,
 	VSP_DEBUG("will send command here: cmd_start %p, cmd_size %ld\n",
 		  cmd_start, cmd_size);
 
-	cmd_queue = get_cmd_queue(dev_priv);
+	cmd_queue = &vsp_priv->ctrl->cmd_queue;
 	cur_cmd = (struct vss_command_t *)cmd_start;
 	while (cmd_size) {
 		rd = cmd_queue->rd;
@@ -374,14 +341,29 @@ int vsp_send_command(struct drm_device *dev,
 					goto out;
 				else
 					continue;
+			} else if (cur_cmd->type == VspSetContextCommand) {
+				VSP_DEBUG("set context and new vsp context\n");
+
+				VSP_DEBUG("set context base %x, size %x\n",
+					  cur_cmd->buffer, cur_cmd->size);
+				vsp_priv->ctrl->context_base = cur_cmd->buffer;
+				vsp_priv->ctrl->context_size = cur_cmd->size;
+
+				vsp_new_context(dev_priv->dev);
+
+				cur_cmd++;
+				cmd_size -= sizeof(*cur_cmd);
+				if (cmd_size == 0)
+					goto out;
+				else
+					continue;
 			}
 
 			VSP_DEBUG("command buffer %x\n", cur_cmd->buffer);
 
 			/* FIXME: could remove cmd_idx here */
-			cur_cell_cmd = get_cmd_ptr(
-				dev_priv,
-				(wr + cmd_idx) % cmd_queue->size);
+			cur_cell_cmd = vsp_priv->ctrl->cmd_buffer +
+				(wr + cmd_idx) % cmd_queue->size;
 			++cmd_idx;
 			memcpy(cur_cell_cmd, cur_cmd, sizeof(*cur_cmd));
 			/* cur_cell_cmd->sequence_number = sequence; */
@@ -394,7 +376,7 @@ int vsp_send_command(struct drm_device *dev,
 			VSP_DEBUG("cmd_size %ld\n", cmd_size);
 			if (cmd_size == 0)
 				goto out;
-			else if (cmd_size < 0) {
+			else if (cmd_size < sizeof(*cur_cmd)) {
 				DRM_ERROR("VSP: invalid command, "
 					  "current cmd_size %ld\n",
 					  cmd_size);
@@ -414,27 +396,16 @@ static int vsp_assign_fence(struct drm_file *priv,
 			    struct psb_ttm_fence_rep *fence_arg)
 {
 	struct ttm_object_file *tfile = BCVideoGetPriv(priv)->tfile;
-	struct psb_ttm_fence_rep local_fence_arg;
-	struct ttm_fence_object *fence = NULL;
-	struct ttm_bo_kmap_obj pic_param_kmap;
 	struct vss_command_t *cur_cmd;
 	unsigned int cmd_size = arg->cmdbuf_size;
 	int ret = 0;
-	struct VssProcPictureParameterBuffer *pic_param;
-	struct ttm_validate_buffer *pos, *next, *cur_valid_buf;
-	int found;
-	uint32_t surf_handler;
+	struct ttm_buffer_object *pic_param_bo;
 	int pic_param_num;
-	int idx;
-	struct ttm_buffer_object *pic_param_bo, *surf_bo;
-	int output_surf_num;
-	bool is_iomem;
-	struct list_head surf_list;
+	struct ttm_validate_buffer *pos, *next;
 
 	cur_cmd = (struct vss_command_t *)cmd_start;
 
 	pic_param_num = 0;
-	INIT_LIST_HEAD(&surf_list);
 	VSP_DEBUG("cmd size %d\n", cmd_size);
 	while (cmd_size) {
 		VSP_DEBUG("cmd type %d, buffer offset %x\n", cur_cmd->type,
@@ -468,99 +439,8 @@ static int vsp_assign_fence(struct drm_file *priv,
 	}
 
 	if (pic_param_num > 0) {
-		/* map pic param */
-		ret = ttm_bo_kmap(pic_param_bo, 0, pic_param_bo->num_pages,
-				  &pic_param_kmap);
-		if (ret) {
-			DRM_ERROR("VSP: ttm_bo_kmap failed: %d\n", ret);
-			goto out;
-		}
-
-		pic_param =
-			(struct VssProcPictureParameterBuffer *)
-			ttm_kmap_obj_virtual(&pic_param_kmap, &is_iomem);
-
-		output_surf_num = pic_param->num_output_pictures;
-		VSP_DEBUG("output surf num %d\n", output_surf_num);
-
-		/* create surface fence*/
-		for (idx = 0; idx < output_surf_num - 1; ++idx) {
-			found = 0;
-
-			surf_handler =
-				pic_param->output_picture[idx].surface_id;
-			VSP_DEBUG("handling surface id %x\n",
-				  surf_handler);
-			surf_bo = ttm_buffer_object_lookup(tfile,
-							   surf_handler);
-			if (surf_bo == NULL) {
-				DRM_ERROR("VSP: failed to find %x surface\n",
-					  surf_handler);
-				ret = -1;
-				goto out1;
-			}
-			VSP_DEBUG("find target surf_bo %lx\n", surf_bo->offset);
-
-			/* remove from original validate list */
-			list_for_each_entry_safe(pos, next,
-						 validate_list, head) {
-				VSP_DEBUG("pos offset %lx\n", pos->bo->offset);
-				if (surf_bo->offset ==  pos->bo->offset) {
-					VSP_DEBUG("will delete bo with "
-						  "offset %lx in list\n",
-						  pos->bo->offset);
-					VSP_DEBUG("will delete\n");
-					cur_valid_buf = pos;
-					list_del_init(&pos->head);
-					VSP_DEBUG("after delete\n");
-					found = 1;
-					break;
-				}
-			}
-
-			BUG_ON(!list_empty(&surf_list));
-			/* create fence */
-			if (found == 1) {
-				/* create right list */
-				list_add_tail(&cur_valid_buf->head,
-					      &surf_list);
-				psb_fence_or_sync(priv, VSP_ENGINE_VPP,
-						  fence_type,
-						  arg->fence_flags,
-						  &surf_list,
-						  &local_fence_arg,
-						  &fence);
-				list_del(&pos->head);
-			} else {
-				DRM_ERROR("VSP: failed to find %d bo: %x\n",
-					  idx, surf_handler);
-				ret = -1;
-				goto out1;
-			}
-
-			/* assign sequence number
-			 * FIXME: do we need fc lock for sequence read?
-			 */
-			VSP_DEBUG("fence sequence %x at "
-				  "output pic %d, surf handler %x\n",
-				  fence->sequence, idx,
-				  pic_param->output_picture[idx].surface_id);
-			pic_param->output_picture[idx].surface_id =
-				fence->sequence;
-			if (fence)
-				ttm_fence_object_unref(&fence);
-		}
-
-		/* just fence pic param if this is not end command */
-		/* only send last output fence_arg back */
-		psb_fence_or_sync(priv, VSP_ENGINE_VPP, fence_type,
-				  arg->fence_flags, validate_list,
-				  fence_arg, &fence);
-		VSP_DEBUG("fence sequence %x at output pic %d\n",
-			  fence->sequence, idx);
-		pic_param->output_picture[idx].surface_id = fence->sequence;
-		if (fence)
-			ttm_fence_object_unref(&fence);
+		ret = vsp_fence_surfaces(priv, validate_list, fence_type, arg,
+					 fence_arg, pic_param_bo);
 	} else {
 		/* unreserve these buffer */
 		list_for_each_entry_safe(pos, next, validate_list, head) {
@@ -572,14 +452,120 @@ static int vsp_assign_fence(struct drm_file *priv,
 	}
 
 	VSP_DEBUG("finished fencing\n");
-
-out1:
-	VSP_DEBUG("will unmap pic_param_kmap\n");
-	VSP_DEBUG("pic kmap virtual %p, page %p, bo offset %lx, type %x\n",
-		  pic_param_kmap.virtual, pic_param_kmap.page,
-		  pic_param_kmap.bo->offset, pic_param_kmap.bo_kmap_type);
-	ttm_bo_kunmap(&pic_param_kmap);
 out:
+	return ret;
+}
+
+int vsp_fence_surfaces(struct drm_file *priv,
+		       struct list_head *validate_list,
+		       uint32_t fence_type,
+		       struct drm_psb_cmdbuf_arg *arg,
+		       struct psb_ttm_fence_rep *fence_arg,
+		       struct ttm_buffer_object *pic_param_bo)
+{
+	struct ttm_bo_kmap_obj pic_param_kmap;
+	struct psb_ttm_fence_rep local_fence_arg;
+	bool is_iomem;
+	int ret = 0;
+	struct VssProcPictureParameterBuffer *pic_param;
+	int output_surf_num;
+	int idx;
+	int found;
+	uint32_t surf_handler;
+	struct ttm_buffer_object *surf_bo;
+	struct ttm_fence_object *fence = NULL;
+	struct list_head surf_list;
+	struct ttm_validate_buffer *pos, *next, *cur_valid_buf;
+	struct ttm_object_file *tfile = BCVideoGetPriv(priv)->tfile;
+
+	INIT_LIST_HEAD(&surf_list);
+
+	/* map pic param */
+	ret = ttm_bo_kmap(pic_param_bo, 0, pic_param_bo->num_pages,
+			  &pic_param_kmap);
+	if (ret) {
+		DRM_ERROR("VSP: ttm_bo_kmap failed: %d\n", ret);
+		goto out;
+	}
+
+	pic_param = (struct VssProcPictureParameterBuffer *)
+		ttm_kmap_obj_virtual(&pic_param_kmap, &is_iomem);
+
+	output_surf_num = pic_param->num_output_pictures;
+	VSP_DEBUG("output surf num %d\n", output_surf_num);
+
+	/* create surface fence*/
+	for (idx = 0; idx < output_surf_num - 1; ++idx) {
+		found = 0;
+
+		surf_handler = pic_param->output_picture[idx].surface_id;
+		VSP_DEBUG("handling surface id %x\n", surf_handler);
+
+		surf_bo = ttm_buffer_object_lookup(tfile, surf_handler);
+		if (surf_bo == NULL) {
+			DRM_ERROR("VSP: failed to find %x surface\n",
+				  surf_handler);
+			ret = -1;
+			goto out;
+		}
+		VSP_DEBUG("find target surf_bo %lx\n", surf_bo->offset);
+
+		/* remove from original validate list */
+		list_for_each_entry_safe(pos, next,
+					 validate_list, head) {
+			if (surf_bo->offset ==  pos->bo->offset) {
+				cur_valid_buf = pos;
+				list_del_init(&pos->head);
+				found = 1;
+				break;
+			}
+		}
+
+		BUG_ON(!list_empty(&surf_list));
+		/* create fence */
+		if (found == 1) {
+			/* create right list */
+			list_add_tail(&cur_valid_buf->head, &surf_list);
+			psb_fence_or_sync(priv, VSP_ENGINE_VPP,
+					  fence_type, arg->fence_flags,
+					  &surf_list, &local_fence_arg,
+					  &fence);
+			list_del(&pos->head);
+		} else {
+			DRM_ERROR("VSP: failed to find %d bo: %x\n",
+				  idx, surf_handler);
+			ret = -1;
+			goto out;
+		}
+
+		/* assign sequence number
+		 * FIXME: do we need fc lock for sequence read?
+		 */
+		if (fence) {
+			VSP_DEBUG("fence sequence %x,pic_idx %d,surf %x\n",
+				  fence->sequence, idx,
+				  pic_param->output_picture[idx].surface_id);
+
+			pic_param->output_picture[idx].surface_id =
+				fence->sequence;
+			ttm_fence_object_unref(&fence);
+		}
+	}
+
+	/* just fence pic param if this is not end command */
+	/* only send last output fence_arg back */
+	psb_fence_or_sync(priv, VSP_ENGINE_VPP, fence_type,
+			  arg->fence_flags, validate_list,
+			  fence_arg, &fence);
+	if (fence) {
+		VSP_DEBUG("fence sequence %x at output pic %d\n",
+			  fence->sequence, idx);
+		pic_param->output_picture[idx].surface_id = fence->sequence;
+		ttm_fence_object_unref(&fence);
+	}
+out:
+	ttm_bo_kunmap(&pic_param_kmap);
+
 	return ret;
 }
 
@@ -599,7 +585,7 @@ uint32_t vsp_fence_poll(struct drm_psb_private *dev_priv)
 	vsp_priv = dev_priv->vsp_private;
 	sequence = vsp_priv->current_sequence;
 
-	ack_queue = get_ack_queue(dev_priv);
+	ack_queue = &vsp_priv->ctrl->ack_queue;
 
 	spin_lock_irqsave(&vsp_priv->lock, irq_flags);
 
@@ -615,7 +601,7 @@ uint32_t vsp_fence_poll(struct drm_psb_private *dev_priv)
 	VSP_DEBUG("polling fence, and there're %d msgs\n", msg_num);
 
 	for (idx = 0; idx < msg_num; ++idx) {
-		msg = get_response_ptr(dev_priv, (idx + rd) % ack_queue->size);
+		msg = vsp_priv->ctrl->ack_buffer + (idx + rd) % ack_queue->size;
 
 		switch (msg->type) {
 		case VssErrorResponse:
@@ -656,26 +642,77 @@ uint32_t vsp_fence_poll(struct drm_psb_private *dev_priv)
 	return sequence;
 }
 
-void vsp_reset_fw_status(struct drm_device *dev)
+void vsp_new_context(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv = dev->dev_private;
 	struct vsp_private *vsp_priv = dev_priv->vsp_private;
+	unsigned int ctx_uninit_ack;
+	unsigned int ctx_init_req;
+	const int ctx_id = 0;
 
 	dev_priv = dev->dev_private;
 	if (dev_priv == NULL) {
-		DRM_ERROR("VSP: reset vsp fw status without ttm"
+		DRM_ERROR("VSP: drm driver is not initialized correctly\n");
+		return;
+	}
+
+	vsp_priv = dev_priv->vsp_private;
+	if (vsp_priv == NULL) {
+		DRM_ERROR("VSP: vsp driver is not initialized correctly\n");
+		return;
+	}
+
+	ctx_uninit_ack = vsp_priv->ctrl->context_uninit_ack;
+	ctx_init_req = vsp_priv->ctrl->context_init_req;
+
+	if (VSP_READ_FLAG(ctx_uninit_ack, ctx_id) !=
+	    VSP_READ_FLAG(ctx_init_req, ctx_id)) {
+		DRM_ERROR("VSP: context is not validated\n");
+		return;
+	}
+
+	VSP_REVERT_FLAG(ctx_init_req, ctx_id);
+	vsp_priv->ctrl->context_init_req = ctx_init_req;
+
+	return;
+}
+
+void vsp_rm_context(struct drm_device *dev)
+{
+	struct drm_psb_private *dev_priv = dev->dev_private;
+	struct vsp_private *vsp_priv = dev_priv->vsp_private;
+	unsigned int ctx_uninit_req;
+	unsigned int ctx_uninit_ack;
+	const int ctx_id = 0;
+
+	dev_priv = dev->dev_private;
+	if (dev_priv == NULL) {
+		DRM_ERROR("VSP: new vsp context, drm driver is not"
 			  " initialized correctly\n");
 		return;
 	}
 
 	vsp_priv = dev_priv->vsp_private;
 	if (vsp_priv == NULL) {
-		DRM_ERROR("VSP: reset vsp fw status without VSP driver"
+		DRM_ERROR("VSP: new vsp context, vsp driver is not"
 			  " initialized correctly\n");
 		return;
 	}
 
-	vsp_priv->needs_reset = 1;
+	if (vsp_priv->ctrl == NULL)
+		return;
+
+	ctx_uninit_req = vsp_priv->ctrl->context_uninit_req;
+	ctx_uninit_ack = vsp_priv->ctrl->context_uninit_ack;
+
+	if (VSP_READ_FLAG(ctx_uninit_req, ctx_id) ==
+	    VSP_READ_FLAG(ctx_uninit_ack, ctx_id)) {
+		DRM_ERROR("VSP: context invalid\n");
+		return;
+	}
+
+	VSP_REVERT_FLAG(ctx_uninit_ack, ctx_id);
+	vsp_priv->ctrl->context_uninit_ack = ctx_uninit_ack;
 
 	return;
 }
@@ -740,10 +777,6 @@ void check_invalid_cmd_type(unsigned int info)
 	case VssProcPictureCommand:
 		DRM_ERROR("VSP: Picture parameter command is received "
 			  "before pipeline command\n");
-		break;
-
-	case VssEndOfSequenceResponse:
-		DRM_ERROR("VSP: end of the sequence received\n");
 		break;
 
 	default:

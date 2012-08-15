@@ -31,7 +31,25 @@
 
 #include "vsp.h"
 
-static void vsp_enter_start_mode(struct drm_psb_private *dev_priv);
+#define FW_NAME "vsp_VPP.bin"
+#define FW_SZ (800 * 1024)
+
+#ifdef CONFIG_BOARD_MRFLD_VP
+#define VSP_RUNNING_ON_VP
+#endif
+
+static inline void vsp_enter_start_mode(struct drm_psb_private *dev_priv,
+					unsigned int processor);
+static inline void vsp_leave_start_mode(struct drm_psb_private *dev_priv,
+					unsigned int processor);
+static inline void vsp_kick(struct drm_psb_private *dev_priv,
+			    unsigned int processor);
+static inline void vsp_start_func(struct drm_psb_private *dev_priv,
+				  unsigned int pc, unsigned int processor);
+static inline unsigned int vsp_set_firmware(struct drm_psb_private *dev_priv,
+					    unsigned int processor);
+static inline unsigned int vsp_set_firmware_vp(struct drm_psb_private *dev_priv,
+					       unsigned int processor);
 
 static ssize_t psb_vsp_pmstate_show(struct device *dev,
 				      struct device_attribute *attr, char *buf)
@@ -64,7 +82,6 @@ int vsp_init(struct drm_device *dev)
 
 	memset(vsp_priv, 0, sizeof(*vsp_priv));
 
-#ifdef MRFL_VSP_POWER_MANAGEMENT
 	/* get device --> drm_device --> drm_psb_private --> vsp_priv
 	 * for psb_vsp_pmstate_show: vsp_pmpolicy
 	 * if not pci_set_drvdata, can't get drm_device from device
@@ -75,9 +92,8 @@ int vsp_init(struct drm_device *dev)
 		DRM_ERROR("TOPAZ: could not create sysfs file\n");
 
 	vsp_priv->sysfs_pmstate = sysfs_get_dirent(
-					    dev->pdev->dev.kobj.sd,
-					    "vsp_pmstate");
-#endif
+		dev->pdev->dev.kobj.sd, NULL,
+		"vsp_pmstate");
 
 	vsp_priv->fw_loaded = 0;
 	vsp_priv->needs_reset = 1;
@@ -88,105 +104,14 @@ int vsp_init(struct drm_device *dev)
 
 	VSP_DEBUG("allocate buffer for fw\n");
 	/* FIXME: assume 1 page, will modify to a proper value */
-	vsp_priv->ppc_vp0_fw_sz = 4096;
-	ret = ttm_buffer_object_create(bdev, vsp_priv->ppc_vp0_fw_sz,
+	vsp_priv->firmware_sz = FW_SZ;
+	ret = ttm_buffer_object_create(bdev, vsp_priv->firmware_sz,
 				       ttm_bo_type_kernel,
 				       DRM_PSB_FLAG_MEM_MMU |
 				       TTM_PL_FLAG_NO_EVICT,
-				       0, 0, 0, NULL, &vsp_priv->ppc_vp0_fw);
+				       0, 0, 0, NULL, &vsp_priv->firmware);
 	if (ret != 0) {
-		DRM_ERROR("VSP: failed to allocate VSP buffer "
-			  "for ppc_vp0_fw\n");
-		goto out_clean;
-	}
-
-	vsp_priv->ppc_vp1_fw_sz = 4096;
-	ret = ttm_buffer_object_create(bdev, vsp_priv->ppc_vp1_fw_sz,
-				       ttm_bo_type_kernel,
-				       DRM_PSB_FLAG_MEM_MMU |
-				       TTM_PL_FLAG_NO_EVICT,
-				       0, 0, 0, NULL,
-				       &vsp_priv->ppc_vp1_fw);
-	if (ret != 0) {
-		DRM_ERROR("VSP: failed to allocate VSP buffer "
-			  "for ppc_vp1_fw\n");
-		goto out_clean;
-	}
-
-	vsp_priv->vpp_chain_vp0_fw_sz = 4096;
-	ret = ttm_buffer_object_create(bdev, vsp_priv->vpp_chain_vp0_fw_sz,
-				       ttm_bo_type_kernel,
-				       DRM_PSB_FLAG_MEM_MMU |
-				       TTM_PL_FLAG_NO_EVICT,
-				       0, 0, 0, NULL,
-				       &vsp_priv->vpp_chain_vp0_fw);
-	if (ret != 0) {
-		DRM_ERROR("VSP: failed to allocate VSP buffer "
-			  "for vpp_chain_vp0_fw\n");
-		goto out_clean;
-	}
-
-	vsp_priv->vpp_chain_sp1_fw_sz = 4096;
-	ret = ttm_buffer_object_create(bdev, vsp_priv->vpp_chain_sp1_fw_sz,
-				       ttm_bo_type_kernel,
-				       DRM_PSB_FLAG_MEM_MMU |
-				       TTM_PL_FLAG_NO_EVICT,
-				       0, 0, 0, NULL,
-				       &vsp_priv->vpp_chain_sp1_fw);
-	if (ret != 0) {
-		DRM_ERROR("VSP: failed to allocate VSP buffer for "
-			  "vpp_chain_sp1_fw\n");
-		goto out_clean;
-	}
-
-	vsp_priv->vpp_chain_vp1_fw_sz = 4096;
-	ret = ttm_buffer_object_create(bdev, vsp_priv->vpp_chain_vp1_fw_sz,
-				       ttm_bo_type_kernel,
-				       DRM_PSB_FLAG_MEM_MMU |
-				       TTM_PL_FLAG_NO_EVICT,
-				       0, 0, 0, NULL,
-				       &vsp_priv->vpp_chain_vp1_fw);
-	if (ret != 0) {
-		DRM_ERROR("VSP: failed to allocate VSP buffer "
-			  "for vpp_chain_vp1_fw\n");
-		goto out_clean;
-	}
-
-	vsp_priv->memc_app_fw_sz = 4096;
-	ret = ttm_buffer_object_create(bdev, vsp_priv->memc_app_fw_sz,
-				       ttm_bo_type_kernel,
-				       DRM_PSB_FLAG_MEM_MMU |
-				       TTM_PL_FLAG_NO_EVICT,
-				       0, 0, 0, NULL,
-				       &vsp_priv->memc_app_fw);
-	if (ret != 0) {
-		DRM_ERROR("VSP: failed to allocate VSP buffer "
-			  "for memc_app_fw\n");
-		goto out_clean;
-	}
-
-	vsp_priv->proc_fw_sz = 4096;
-	ret = ttm_buffer_object_create(bdev, vsp_priv->proc_fw_sz,
-				       ttm_bo_type_kernel,
-				       DRM_PSB_FLAG_MEM_MMU |
-				       TTM_PL_FLAG_NO_EVICT,
-				       0, 0, 0, NULL, &vsp_priv->proc_fw);
-	if (ret != 0) {
-		DRM_ERROR("VSP: failed to allocate VSP buffer"
-			  " for proc_fw\n");
-		goto out_clean;
-	}
-
-	/* 1M for context */
-	vsp_priv->context_size = 8 * 1024 * 1024;
-	ret = ttm_buffer_object_create(bdev, vsp_priv->context_size,
-				       ttm_bo_type_kernel,
-				       DRM_PSB_FLAG_MEM_MMU |
-				       TTM_PL_FLAG_NO_EVICT,
-				       0, 0, 0, NULL,
-				       &vsp_priv->context_buf);
-	if (ret != 0) {
-		DRM_ERROR("VSP: failed to allocate VSP context buf\n");
+		DRM_ERROR("VSP: failed to allocate VSP buffer for firmware\n");
 		goto out_clean;
 	}
 
@@ -204,22 +129,8 @@ int vsp_deinit(struct drm_device *dev)
 	struct vsp_private *vsp_priv = dev_priv->vsp_private;
 
 	VSP_DEBUG("free VSP firmware/context buffer\n");
-	if (vsp_priv->context_buf)
-		ttm_bo_unref(&vsp_priv->context_buf);
-	if (vsp_priv->ppc_vp0_fw)
-		ttm_bo_unref(&vsp_priv->ppc_vp0_fw);
-	if (vsp_priv->ppc_vp1_fw)
-		ttm_bo_unref(&vsp_priv->ppc_vp1_fw);
-	if (vsp_priv->vpp_chain_vp0_fw)
-		ttm_bo_unref(&vsp_priv->vpp_chain_vp0_fw);
-	if (vsp_priv->vpp_chain_vp1_fw)
-		ttm_bo_unref(&vsp_priv->vpp_chain_vp1_fw);
-	if (vsp_priv->vpp_chain_sp1_fw)
-		ttm_bo_unref(&vsp_priv->vpp_chain_sp1_fw);
-	if (vsp_priv->memc_app_fw)
-		ttm_bo_unref(&vsp_priv->memc_app_fw);
-	if (vsp_priv->proc_fw)
-		ttm_bo_unref(&vsp_priv->proc_fw);
+	if (vsp_priv->firmware)
+		ttm_bo_unref(&vsp_priv->firmware);
 
 	device_remove_file(&dev->pdev->dev, &dev_attr_vsp_pmstate);
 	sysfs_put(vsp_priv->sysfs_pmstate);
@@ -233,7 +144,6 @@ int vsp_deinit(struct drm_device *dev)
 void vsp_enableirq(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv = dev->dev_private;
-	struct vsp_private *vsp_priv = dev_priv->vsp_private;
 	unsigned int mask;
 	unsigned int enable;
 	unsigned int clear;
@@ -257,7 +167,6 @@ void vsp_enableirq(struct drm_device *dev)
 void vsp_disableirq(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv = dev->dev_private;
-	struct vsp_private *vsp_priv = dev_priv->vsp_private;
 	unsigned int mask, enable;
 
 	VSP_DEBUG("will disable irq\n");
@@ -270,19 +179,129 @@ void vsp_disableirq(struct drm_device *dev)
 
 	IRQ_REG_WRITE32(VSP_IRQ_CTRL_IRQ_MASK, mask);
 	IRQ_REG_WRITE32(VSP_IRQ_CTRL_IRQ_ENB, enable);
+	return;
 }
 
 int vsp_init_fw(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv = dev->dev_private;
 	struct vsp_private *vsp_priv = dev_priv->vsp_private;
+	struct ttm_bo_device *bdev = &dev_priv->bdev;
+	int ret;
+	const struct firmware *raw;
+	unsigned char *ptr, *bo_ptr;
+	struct vsp_config *config;
+	struct ttm_bo_kmap_obj tmp_kmap;
+	bool is_iomem;
+	int i;
 
-	VSP_DEBUG("read fimware into buffer\n");
+	VSP_DEBUG("read firmware into buffer\n");
+
+	/* read firmware img */
+	ret = request_firmware(&raw, FW_NAME, &dev->pdev->dev);
+	if (ret < 0) {
+		DRM_ERROR("VSP: %s request_firmware failed: reason %d\n",
+			  FW_NAME, ret);
+		return -1;
+	}
+
+	if (raw->size < sizeof(struct vsp_config)) {
+		DRM_ERROR("VSP: %s is not a correct firmware (size %d)\n",
+			  FW_NAME, raw->size);
+		ret = -1;
+		goto out;
+	}
+
+	ptr = (void *)raw->data;
+	config = (struct vsp_config *)ptr;
+	/* get firmware configuration */
+	memcpy(&vsp_priv->config, ptr, sizeof(vsp_priv->config));
+	vsp_priv->ctrl = (struct vsp_data *)(dev_priv->vsp_reg +
+					     config->data_addr);
+
+	if (vsp_priv->config.magic_number != VSP_FIRMWARE_MAGIC_NUMBER) {
+		DRM_ERROR("VSP: failed to load correct vsp firmware\n"
+			  "FW magic number is wrong %x (should be %x)\n",
+			  vsp_priv->config.magic_number,
+			  VSP_FIRMWARE_MAGIC_NUMBER);
+		ret = -1;
+		goto out;
+	}
+
+	VSP_DEBUG("firmware configuration:\n");
+	VSP_DEBUG("magic number %x\n", config->magic_number);
+	VSP_DEBUG("num_programs %d\n", config->num_programs);
+	VSP_DEBUG("program offset:\n");
+	for (i = 0; i < VSP_MAX_PROGRAMS; ++i)
+		VSP_DEBUG("%x ", config->program_offset[i]);
+	VSP_DEBUG("\n");
+	VSP_DEBUG("program name offset:\n");
+	for (i = 0; i < VSP_MAX_PROGRAMS; ++i)
+		VSP_DEBUG("%x ", config->program_name_offset[i]);
+	VSP_DEBUG("\n");
+	VSP_DEBUG("programe name:\n");
+	for (i = 0; i < 256; ++i)
+		VSP_DEBUG("%c", config->string_table[i]);
+	VSP_DEBUG("\n");
+	VSP_DEBUG("boot processor %x\n", config->boot_processor);
+	VSP_DEBUG("api processor %x\n", config->api_processor);
+	VSP_DEBUG("boot program info:\n");
+	VSP_DEBUG("text_src %x\n", config->text_src);
+	VSP_DEBUG("data_src %x\n", config->data_src);
+	VSP_DEBUG("data_dst %x\n", config->data_dst);
+	VSP_DEBUG("data_size %x\n", config->data_size);
+	VSP_DEBUG("bss_dst %x\n", config->bss_dst);
+	VSP_DEBUG("bss_size %x\n", config->bss_size);
+	VSP_DEBUG("init_addr %x\n", config->init_addr);
+	VSP_DEBUG("main_addr %x\n", config->main_addr);
+	VSP_DEBUG("data_addr %x\n", config->data_addr);
+
+	/* load firmware to dmem */
+	if (raw->size > vsp_priv->firmware_sz) {
+		if (vsp_priv->firmware)
+			ttm_bo_unref(&vsp_priv->firmware);
+
+		VSP_DEBUG("allocate a new bo from size %d to size %d\n",
+			  vsp_priv->firmware_sz, raw->size);
+
+		vsp_priv->firmware_sz = raw->size;
+		ret = ttm_buffer_object_create(bdev, vsp_priv->firmware_sz,
+					       ttm_bo_type_kernel,
+					       DRM_PSB_FLAG_MEM_MMU |
+					       TTM_PL_FLAG_NO_EVICT,
+					       0, 0, 0, NULL,
+					       &vsp_priv->firmware);
+		if (ret != 0) {
+			DRM_ERROR("VSP: failed to allocate firmware buffer\n");
+			return -1;
+			goto out;
+		}
+	}
+
+	ret = ttm_bo_kmap(vsp_priv->firmware, 0,
+			  vsp_priv->firmware->num_pages, &tmp_kmap);
+	if (ret) {
+		DRM_ERROR("drm_bo_kmap failed: %d\n", ret);
+		ttm_bo_unref(&vsp_priv->firmware);
+		ttm_bo_kunmap(&tmp_kmap);
+		ret = -1;
+		goto out;
+	}
+
+	bo_ptr = ttm_kmap_obj_virtual(&tmp_kmap, &is_iomem);
+	VSP_DEBUG("vsp_config size %d, program_offset %d\n",
+		  sizeof(struct vsp_config),
+		  vsp_priv->config.program_offset[0]);
+	memcpy(bo_ptr, ptr, raw->size);
+
+	ttm_bo_kunmap(&tmp_kmap);
 
 	vsp_priv->fw_loaded = 1;
 	vsp_priv->needs_reset = 1;
+out:
+	release_firmware(raw);
 
-	return 0;
+	return ret;
 }
 
 int vsp_reset(struct drm_psb_private *dev_priv)
@@ -300,146 +319,155 @@ int vsp_reset(struct drm_psb_private *dev_priv)
 int vsp_setup_fw(struct drm_psb_private *dev_priv)
 {
 	struct vsp_private *vsp_priv = dev_priv->vsp_private;
-	/* only for csim on VP */
-	char *exe_prefix = "csim_executable=";
-	char *exe_file_name = "proc";
-	char *input;
-	unsigned int val;
-	int queue_num;
+	int ret;
 
 	VSP_DEBUG("clean HW before firmware uploaded\n");
-	VSP_DEBUG("FIXME: not sure if this is required before "
-		  "firmware upload every time\n");
-	/* clean ECA */
 
-	/* clean SP0 */
-	SP0_REG_WRITE32(SP0_CFG_PMEM_MASTER, 0);
-	SP0_REG_WRITE32(SP0_XMEM_MASTER, 0);
-
-	/* clean SP1 */
-	SP1_REG_WRITE32(SP1_CFG_PMEM_MASTER, 0);
-	SP1_REG_WRITE32(SP1_XMEM_MASTER, 0);
-
-	/* clean VP0 */
-	VP0_REG_WRITE32(VP0_CFG_PMEM_MASTER, 0);
-	VP0_REG_WRITE32(VP0_XD2MEM_MASTER, 0);
-	VP0_REG_WRITE32(VP0_XD2MEMW_MASTER, 0);
-	VP0_REG_WRITE32(VP0_XMEM_MASTER, 0);
-
-	/* clean VP1 */
-	VP1_REG_WRITE32(VP1_CFG_PMEM_MASTER, 0);
-	VP1_REG_WRITE32(VP1_XD2MEM_MASTER, 0);
-	VP1_REG_WRITE32(VP1_XD2MEMW_MASTER, 0);
-	VP1_REG_WRITE32(VP1_XMEM_MASTER, 0);
-
-	/* clean MEA */
-	MEA_REG_WRITE32(MEA_CFG_PMEM_MASTER, 0);
-	MEA_REG_WRITE32(MEA_XMEM_MASTER, 0);
-	MEA_REG_WRITE32(MEA_XD2MEM_MASTER, 0);
-
-	/* clean mmu */
 	SET_MMU_PTD(
 		psb_get_default_pd_addr(dev_priv->vsp_mmu) >> PAGE_TABLE_SHIFT);
+	SET_MMU_PTD(psb_get_default_pd_addr(dev_priv->vsp_mmu) >> PAGE_SHIFT);
 
 	VSP_DEBUG("setup firmware\n");
-
-	VSP_DEBUG("ppc_vp0_fw offset %lx\n", vsp_priv->ppc_vp0_fw->offset);
-	SP1_DMEM_WRITE32(SP1_PPC_VP0_ADDR, vsp_priv->ppc_vp0_fw->offset);
-
-	VSP_DEBUG("ppc_vp1_fw offset %lx\n", vsp_priv->ppc_vp1_fw->offset);
-	SP1_DMEM_WRITE32(SP1_PPC_VP1_ADDR, vsp_priv->ppc_vp1_fw->offset);
-
-	VSP_DEBUG("vpp_chain_vp0_fw offset %lx\n",
-		  vsp_priv->vpp_chain_vp0_fw->offset);
-	SP1_DMEM_WRITE32(SP1_VPP_CHAIN_VP0_ADDR,
-			 vsp_priv->vpp_chain_vp0_fw->offset);
-
-	VSP_DEBUG("vpp_chain_vp1_fw offset %lx\n",
-		  vsp_priv->vpp_chain_vp1_fw->offset);
-	SP1_DMEM_WRITE32(SP1_VPP_CHAIN_VP1_ADDR,
-			 vsp_priv->vpp_chain_vp1_fw->offset);
-
-	VSP_DEBUG("vpp_chain_vp1_fw offset %lx\n",
-		  vsp_priv->vpp_chain_sp1_fw->offset);
-	SP1_DMEM_WRITE32(SP1_VPP_CHAIN_SP1_ADDR,
-			 vsp_priv->vpp_chain_sp1_fw->offset);
-
-	VSP_DEBUG("memc_app_fw offset %lx\n",
-		  vsp_priv->memc_app_fw->offset);
-	SP1_DMEM_WRITE32(SP1_MEMC_APP_ADDR,
-			 vsp_priv->memc_app_fw->offset);
-
-	VSP_DEBUG("proc_fw offset %lx\n",
-		  vsp_priv->proc_fw->offset);
-	VSP_DEBUG("setup proc fw\n");
-
-	/* CSIM section on VP */
-	VSP_DEBUG("enter sp1 control mode\n");
-	vsp_enter_start_mode(dev_priv);
-
-	input = exe_prefix;
-	while (*input != '\0') {
-		SP1_REG_WRITE32(SP_STAT_AND_CTRL_REG, *input);
-		input++;
+#ifdef VSP_RUNNING_ON_VP
+	ret = vsp_set_firmware_vp(dev_priv, vsp_priv->config.boot_processor);
+#else
+	ret = vsp_set_firmware(dev_priv, vsp_priv->config.boot_processor);
+#endif
+	if (ret != 0) {
+		DRM_ERROR("VSP: failed to set firmware register\n");
+		return -1;
 	}
-	input = exe_file_name;
-	while (*input != '\0') {
-		SP1_REG_WRITE32(SP_STAT_AND_CTRL_REG, *input);
-		input++;
-	}
-	SP1_REG_WRITE32(SP_STAT_AND_CTRL_REG, '\0');
 
-	/* invalide loop cache */
-	SP1_REG_READ32(SP_LOOP_CACHE_INVALIDATE_REG, &val);
-	VSP_SET_FLAG(val, SP_LOOP_CACHE_INVALIDATE_REG_INVALIDATE_FLAG);
-	SP1_REG_WRITE32(SP_LOOP_CACHE_INVALIDATE_REG, val);
-	udelay(100);
-	VSP_CLEAR_FLAG(val, SP_LOOP_CACHE_INVALIDATE_REG_INVALIDATE_FLAG);
-	SP1_REG_WRITE32(SP_LOOP_CACHE_INVALIDATE_REG, val);
+	/* init fw */
+	vsp_start_func(dev_priv, vsp_priv->config.init_addr,
+		       vsp_priv->config.boot_processor);
+	vsp_kick(dev_priv, vsp_priv->config.boot_processor);
 
-	/* start sp */
-	SP1_REG_WRITE32(SP_BASE_ADDR_REG, SP_MAIN_ENTRY);
-	/* kick */
-	SP1_REG_READ32(SP_STAT_AND_CTRL_REG, &val);
-	VSP_SET_FLAG(val, SP_STAT_AND_CTRL_REG_RUN_FLAG);
-	SP1_REG_WRITE32(SP_STAT_AND_CTRL_REG, val);
+	/* wait it finished */
+	do {
+		udelay(10);
+	} while (!vsp_is_idle(dev_priv, vsp_priv->config.boot_processor));
 
-	SP1_REG_READ32(SP_STAT_AND_CTRL_REG, &val);
-	VSP_SET_FLAG(val, SP_STAT_AND_CTRL_REG_START_FLAG);
-	SP1_REG_WRITE32(SP_STAT_AND_CTRL_REG, val);
+	/* start fw */
+	vsp_start_func(dev_priv, vsp_priv->config.main_addr,
+		       vsp_priv->config.api_processor);
+	vsp_kick(dev_priv, vsp_priv->config.api_processor);
 
 	VSP_DEBUG("check number of queues\n");
-	SP1_DMEM_READ32(SP1_VSS_NUM_QUEUE_ADDR, &queue_num);
-	VSP_DEBUG("queue number is %d\n", queue_num);
-	BUG_ON(queue_num < 2);
-
-	VSP_DEBUG("setup context, base %lx\n",
-		  vsp_priv->context_buf->offset);
-	SP1_DMEM_WRITE32(SP1_CONTEXT_BASE_ADDR,
-			 vsp_priv->context_buf->offset);
-	SP1_DMEM_WRITE32(SP1_CONTEXT_SIZE_ADDR,
-			 vsp_priv->context_size);
+	VSP_DEBUG("queue number is %d\n",
+		  vsp_priv->ctrl->cmd_queue.size);
+	/* BUG_ON(vsp_priv->ctrl->cmd_queue.size < 2); */
 
 	/* enable irq */
 	psb_irq_preinstall_islands(dev_priv->dev, OSPM_VIDEO_VPP_ISLAND);
 	psb_irq_postinstall_islands(dev_priv->dev, OSPM_VIDEO_VPP_ISLAND);
 
-	SET_MMU_PTD(psb_get_default_pd_addr(dev_priv->vsp_mmu) >> PAGE_SHIFT);
-
 	return 0;
 }
 
-void vsp_enter_start_mode(struct drm_psb_private *dev_priv)
+void vsp_enter_start_mode(struct drm_psb_private *dev_priv,
+			  unsigned int processor)
 {
 	unsigned int val;
 
 	VSP_DEBUG("enter start mode\n");
 	val = 0;
-	SP1_REG_READ32(SP_STAT_AND_CTRL_REG, &val);
+	SP_REG_READ32(SP_STAT_AND_CTRL_REG, &val, processor);
 	VSP_SET_FLAG(val, SP_STAT_AND_CTRL_REG_START_FLAG);
 	VSP_CLEAR_FLAG(val, SP_STAT_AND_CTRL_REG_RUN_FLAG);
 	/* FIXME: program filename register for csim */
-	SP1_REG_WRITE32(SP_STAT_AND_CTRL_REG, val);
+	SP_REG_WRITE32(SP_STAT_AND_CTRL_REG, val, processor);
 
 	return;
+}
+
+void vsp_leave_start_mode(struct drm_psb_private *dev_priv,
+			  unsigned int processor)
+{
+	unsigned int val;
+
+	VSP_DEBUG("leave start mode\n");
+	val = 0;
+	SP_REG_READ32(SP_STAT_AND_CTRL_REG, &val, processor);
+	VSP_CLEAR_FLAG(val, SP_STAT_AND_CTRL_REG_START_FLAG);
+	VSP_CLEAR_FLAG(val, SP_STAT_AND_CTRL_REG_RUN_FLAG);
+
+	SP_REG_WRITE32(SP_STAT_AND_CTRL_REG, val, processor);
+
+	return;
+}
+
+void vsp_kick(struct drm_psb_private *dev_priv,
+	      unsigned int processor)
+{
+	unsigned int reg;
+
+	SP_REG_READ32(SP_STAT_AND_CTRL_REG, &reg, processor);
+	VSP_SET_FLAG(reg, SP_STAT_AND_CTRL_REG_RUN_FLAG);
+	VSP_SET_FLAG(reg, SP_STAT_AND_CTRL_REG_START_FLAG);
+	SP_REG_WRITE32(SP_STAT_AND_CTRL_REG, reg, processor);
+
+	return;
+}
+
+void vsp_start_func(struct drm_psb_private *dev_priv, unsigned int pc,
+		    unsigned int processor)
+{
+	SP_REG_WRITE32(SP_BASE_ADDR_REG, pc, processor);
+	return;
+}
+
+unsigned int vsp_set_firmware_vp(struct drm_psb_private *dev_priv,
+				 unsigned int processor)
+{
+	struct vsp_private *vsp_priv = dev_priv->vsp_private;
+	char *exe_prefix = "csim_executable=";
+	char *input;
+
+	VSP_DEBUG("set firmware address in config reg 2\n");
+	CONFIG_REG_WRITE32(VSP_CONFIG_REG_D2,
+			   vsp_priv->firmware->offset);
+
+	VSP_DEBUG("enter special mode\n");
+	/* CSIM section on VP */
+	VSP_DEBUG("enter sp1 control mode\n");
+
+	vsp_enter_start_mode(dev_priv, processor);
+
+	input = exe_prefix;
+	while (*input != '\0') {
+		SP_REG_WRITE32(SP_STAT_AND_CTRL_REG, *input, processor);
+		input++;
+	}
+	input = vsp_priv->config.string_table;
+	while (*input != '\0') {
+		SP_REG_WRITE32(SP_STAT_AND_CTRL_REG, *input, processor);
+		input++;
+	}
+	SP_REG_WRITE32(SP_STAT_AND_CTRL_REG, '\0', processor);
+
+	vsp_leave_start_mode(dev_priv, processor);
+
+	return 0;
+}
+
+unsigned int vsp_set_firmware(struct drm_psb_private *dev_priv,
+			      unsigned int processor)
+{
+	struct vsp_private *vsp_priv = dev_priv->vsp_private;
+
+	/* enable icache */
+	vsp_config_icache(dev_priv, processor);
+
+	/* set icache base address */
+	SP_REG_WRITE32(SP_CFG_PMEM_MASTER,
+		       vsp_priv->firmware->offset +
+		       vsp_priv->config.program_offset[0] +
+		       vsp_priv->config.text_src,
+		       processor);
+
+	CONFIG_REG_WRITE32(VSP_CONFIG_REG_D2,
+			   vsp_priv->firmware->offset);
+
+	return 0;
 }

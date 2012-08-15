@@ -1395,7 +1395,7 @@ int psb_remove_videoctx(struct drm_psb_private *dev_priv, struct file *filp)
 
 			if (IS_MRFLD(dev_priv->dev) &&
 			    (VAEntrypointVideoProc == (pos->ctx_type & 0xff)))
-				vsp_reset_fw_status(dev_priv->dev);
+				vsp_rm_context(dev_priv->dev);
 
 			/* if current ctx points to it, set to NULL */
 			if (dev_priv->topaz_ctx == pos)

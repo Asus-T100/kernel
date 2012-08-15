@@ -369,6 +369,8 @@ struct psb_msvdx_cmd_queue {
 
 /* Currently defined profiles */
 enum VAProfile {
+	/* to be used for post-processing etc. */
+	VAProfileNone			= -1,
 	VAProfileMPEG2Simple		= 0,
 	VAProfileMPEG2Main		= 1,
 	VAProfileMPEG4Simple		= 2,
@@ -383,7 +385,6 @@ enum VAProfile {
 	VAProfileH263Baseline		= 11,
 	VAProfileJPEGBaseline           = 12,
 	VAProfileH264ConstrainedBaseline = 13,
-	VAProfileNone = 15, /* to be used for post-processing etc. */
 	VAProfileMax
 };
 

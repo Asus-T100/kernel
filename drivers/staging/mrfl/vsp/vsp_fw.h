@@ -1,7 +1,11 @@
+/**
+ * file vsp.h
+ * Author: Binglin Chen <binglin.chen@intel.com>
+ *
+ */
+
 /**************************************************************************
  * Copyright (c) 2007, Intel Corporation.
- * All Rights Reserved.
- * Copyright (c) 2008, Tungsten Graphics Inc.  Cedar Park, TX., USA.
  * All Rights Reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
@@ -119,7 +123,8 @@ enum VssProcCommandType {
 	VssProcColorEnhancementParameterCommand = 0xFFFB,
 	VssProcFrcParameterCommand = 0xFFFA,
 	VssProcPictureCommand = 0xFFF9,
-	VspFencePictureParamCommand = 0xEBEC
+	VspFencePictureParamCommand = 0xEBEC,
+	VspSetContextCommand = 0xEBED
 };
 
 
@@ -130,6 +135,7 @@ enum VssProcCommandType {
  * The VSS will use its DMA to load data from the buffer into local memory.
  */
 struct vss_command_t {
+	unsigned int       context;
 	unsigned int       type;
 	unsigned int       buffer;
 	unsigned int       size;
@@ -138,6 +144,7 @@ struct vss_command_t {
 };
 
 struct vss_response_t {
+	unsigned int       context;
 	unsigned int       type;
 	unsigned int       buffer;
 	unsigned int       size;
@@ -177,6 +184,61 @@ enum vsp_format {
 	VSP_NV11,
 	VSP_NV16,
 	VSP_TYPE_ERROR
+};
+
+struct vsp_data {
+	unsigned int context_base;
+	unsigned int context_size;
+
+	unsigned int uninit_req;
+
+	unsigned int context_init_req;
+	unsigned int context_init_ack;
+	unsigned int context_uninit_req;
+	unsigned int context_uninit_ack;
+
+	struct vss_queue cmd_queue;
+	struct vss_queue ack_queue;
+
+	struct vss_command_t cmd_buffer[64];
+	struct vss_response_t ack_buffer[64];
+};
+
+#define VSP_FIRMWARE_MAGIC_NUMBER 0x45BF1833
+#define VSP_MAX_PROGRAMS 8
+
+enum vsp_processor {
+	vsp_sp0 = 0,
+	vsp_sp1 = 1
+};
+
+struct vsp_config {
+	unsigned int magic_number;
+	unsigned int num_programs;
+	/* array of program offsets */
+	unsigned int program_offset[VSP_MAX_PROGRAMS];
+	/* offsets in string table */
+	unsigned int program_name_offset[VSP_MAX_PROGRAMS];
+	char string_table[256];
+
+	unsigned int boot_processor;
+	unsigned int api_processor;
+
+	/* boot program info */
+	unsigned int text_src;
+	unsigned int data_src;
+	unsigned int data_dst;
+	unsigned int data_size;
+	unsigned int bss_dst;
+	unsigned int bss_size;
+
+	/* PC of init entry function */
+	unsigned int init_addr;
+	/* PC of main entry function */
+	unsigned int main_addr;
+
+	/* address of vsp_data struct in VSP subsystem */
+	unsigned int data_addr;
 };
 
 #endif
