@@ -823,6 +823,7 @@ struct drm_psb_private {
 	uint32_t saveDSPALINOFF;
 	uint32_t saveDSPBLINOFF;
 	uint32_t saveVED_CG_DIS;
+	uint32_t saveVEC_CG_DIS;
 	uint32_t savePERF_MODE;
 	uint32_t saveGL3_CTL;
 	uint32_t saveGL3_USE_WRT_INVAL;

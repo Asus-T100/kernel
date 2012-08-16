@@ -118,6 +118,20 @@ static int ospm_runtime_pm_msvdx_suspend(struct drm_device *dev)
 	int decode_ctx = 0, decode_running = 0;
 
 	PSB_DEBUG_PM("MSVDX: %s: enter in runtime pm.\n", __func__);
+
+	if (!ospm_power_is_hw_on(OSPM_VIDEO_DEC_ISLAND))
+		goto out;
+
+	if (atomic_read(&g_videodec_access_count)) {
+		ret = -1;
+		goto out;
+	}
+
+	if (psb_check_msvdx_idle(dev)) {
+		ret = -2;
+		goto out;
+	}
+
 	list_for_each_entry_safe(pos, n, &dev_priv->video_ctx, head) {
 		int entrypoint = pos->ctx_type & 0xff;
 		if (entrypoint == VAEntrypointVLD ||
@@ -134,19 +148,7 @@ static int ospm_runtime_pm_msvdx_suspend(struct drm_device *dev)
 	if (decode_ctx && dev_priv->msvdx_ctx)
 		decode_running = 1;
 
-	if (!ospm_power_is_hw_on(OSPM_VIDEO_DEC_ISLAND))
-		goto out;
-
-	if (atomic_read(&g_videodec_access_count)) {
-		ret = -1;
-		goto out;
-	}
-
 #ifdef CONFIG_MDFD_VIDEO_DECODE
-	if (psb_check_msvdx_idle(dev)) {
-		ret = -2;
-		goto out;
-	}
 	psb_irq_uninstall_islands(gpDrmDevice, OSPM_VIDEO_DEC_ISLAND);
 
 	if (decode_running)
@@ -154,6 +156,13 @@ static int ospm_runtime_pm_msvdx_suspend(struct drm_device *dev)
 	MSVDX_NEW_PMSTATE(dev, msvdx_priv, PSB_PMSTATE_POWERDOWN);
 #endif
 	ospm_power_island_down(OSPM_VIDEO_DEC_ISLAND);
+
+#ifdef CONFIG_MDFD_GL3
+	/* Power off GL3 */
+	if (IS_MDFLD(dev))
+		ospm_power_island_down(OSPM_GL3_CACHE_ISLAND);
+#endif
+
 out:
 	return ret;
 }
@@ -166,6 +175,21 @@ static int ospm_runtime_pm_topaz_suspend(struct drm_device *dev)
 	struct psb_video_ctx *pos, *n;
 	int encode_ctx = 0, encode_running = 0;
 	unsigned long flags;
+
+	if (!ospm_power_is_hw_on(OSPM_VIDEO_ENC_ISLAND))
+		goto out;
+
+	if (atomic_read(&g_videoenc_access_count)) {
+		ret = -1;
+		goto out;
+	}
+
+	if (IS_MDFLD(dev)) {
+		if (pnw_check_topaz_idle(dev)) {
+			ret = -2;
+			goto out;
+		}
+	}
 
 	list_for_each_entry_safe(pos, n, &dev_priv->video_ctx, head) {
 		int entrypoint = pos->ctx_type & 0xff;
@@ -180,21 +204,7 @@ static int ospm_runtime_pm_topaz_suspend(struct drm_device *dev)
 	if (encode_ctx && dev_priv->topaz_ctx)
 		encode_running = 1;
 
-	if (!ospm_power_is_hw_on(OSPM_VIDEO_ENC_ISLAND))
-		goto out;
-
-	if (atomic_read(&g_videoenc_access_count)) {
-		ret = -1;
-		goto out;
-	}
-
 #ifdef CONFIG_MDFD_VIDEO_DECODE
-	if (IS_MDFLD(dev)) {
-		if (pnw_check_topaz_idle(dev)) {
-			ret = -2;
-			goto out;
-		}
-	}
 	psb_irq_uninstall_islands(gpDrmDevice, OSPM_VIDEO_ENC_ISLAND);
 
 	if (IS_MDFLD(dev)) {
@@ -205,6 +215,12 @@ static int ospm_runtime_pm_topaz_suspend(struct drm_device *dev)
 	}
 #endif
 	ospm_power_island_down(OSPM_VIDEO_ENC_ISLAND);
+
+#ifdef CONFIG_MDFD_GL3
+	/* Power off GL3 */
+	if (IS_MDFLD(dev))
+		ospm_power_island_down(OSPM_GL3_CACHE_ISLAND);
+#endif
 
 out:
 	return ret;
@@ -1252,6 +1268,7 @@ void ospm_suspend_display(struct drm_device *dev)
 		/*save performance state*/
 		dev_priv->savePERF_MODE = PSB_RVDC32(MRST_PERF_MODE);
 		dev_priv->saveVED_CG_DIS = PSB_RVDC32(PSB_MSVDX_CLOCKGATING);
+		dev_priv->saveVEC_CG_DIS = PSB_RVDC32(PSB_TOPAZ_CLOCKGATING);
 #ifdef CONFIG_MDFD_GL3
 		dev_priv->saveGL3_CTL = PSB_RVDC32(MDFLD_GL3_CONTROL);
 		dev_priv->saveGL3_USE_WRT_INVAL = PSB_RVDC32(MDFLD_GL3_USE_WRT_INVAL);
@@ -1361,6 +1378,7 @@ void ospm_resume_display(struct pci_dev *pdev)
 		/*restore performance mode*/
 		PSB_WVDC32(dev_priv->savePERF_MODE, MRST_PERF_MODE);
 		PSB_WVDC32(dev_priv->saveVED_CG_DIS, PSB_MSVDX_CLOCKGATING);
+		PSB_WVDC32(dev_priv->saveVEC_CG_DIS, PSB_TOPAZ_CLOCKGATING);
 #ifdef CONFIG_MDFD_GL3
 		PSB_WVDC32(dev_priv->saveGL3_CTL, MDFLD_GL3_CONTROL);
 		PSB_WVDC32(dev_priv->saveGL3_USE_WRT_INVAL, MDFLD_GL3_USE_WRT_INVAL);
@@ -1508,8 +1526,22 @@ static bool ospm_resume_pci(struct pci_dev *pdev)
 
 	if (ret != 0)
 		printk(KERN_ALERT "ospm_resume_pci: pci_enable_device failed: %d\n", ret);
-	else
+	else {
+		if (IS_MDFLD(dev)) {
+			/*restore performance mode*/
+			PSB_WVDC32(dev_priv->savePERF_MODE, MRST_PERF_MODE);
+			PSB_WVDC32(dev_priv->saveVED_CG_DIS,
+					PSB_MSVDX_CLOCKGATING);
+			PSB_WVDC32(dev_priv->saveVEC_CG_DIS,
+					PSB_TOPAZ_CLOCKGATING);
+#ifdef CONFIG_MDFD_GL3
+			PSB_WVDC32(dev_priv->saveGL3_CTL, MDFLD_GL3_CONTROL);
+			PSB_WVDC32(dev_priv->saveGL3_USE_WRT_INVAL,
+					MDFLD_GL3_USE_WRT_INVAL);
+#endif
+		}
 		gbSuspended = false;
+	}
 
 	return !gbSuspended;
 }
