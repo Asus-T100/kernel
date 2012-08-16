@@ -63,17 +63,21 @@
 
 #include <linux/slab.h>
 #include <linux/types.h>
+#include <linux/pm_runtime.h>
+#include <linux/kernel.h>
+#include <linux/interrupt.h>
 #include <drm/drmP.h>
 #include <drm/drm.h>
 #include <drm/drm_crtc.h>
 #include <drm/drm_edid.h>
-#include <linux/kernel.h>
-#include <linux/interrupt.h>
-#include <linux/switch.h>
 #include "psb_intel_drv.h"
 #include "psb_intel_reg.h"
 #include "psb_intel_hdmi_reg.h"
 #include "psb_drv.h"
+#include "psb_intel_hdmi.h"
+#include "psb_powermgmt.h"
+#include "mdfld_output.h"
+#include "mdfld_hdmi_audio_if.h"
 
 #include "otm_hdmi_types.h"
 #include "otm_hdmi.h"
@@ -81,9 +85,6 @@
 #ifdef OTM_HDMI_HDCP_ENABLE
 #include "hdcp_api.h"
 #endif
-
-#include "psb_intel_hdmi.h"
-#include "psb_powermgmt.h"
 
 /* Include file for sending uevents */
 #include "psb_umevents.h"
@@ -106,10 +107,6 @@ static const struct {
 	{ 1920, 1080, 2640, 1125,  74250, 25, 33 , OTM_HDMI_PAR_16_9 }, /* 1920x1080p25 16:9 */
 	{ 1920, 1080, 2200, 1125,  74250, 30, 34 , OTM_HDMI_PAR_16_9 }, /* 1920x1080p30 16:9 */
 };
-
-/* TEMP HACKS - Will go away with DPMS refactor */
-extern void mdfld_hdmi_connector_dpms(struct drm_connector *connector, int mode);
-/* END - TEMP HACKS - Will go away with DPMS refactor */
 
 /* Function declarations for interrupt routines */
 static irqreturn_t android_hdmi_irq_callback(int irq, void *data);
@@ -2067,6 +2064,77 @@ set_prop_error:
     return -1;
 }
 
+void android_hdmi_connector_dpms(struct drm_connector *connector, int mode)
+{
+	struct drm_device *dev = connector->dev;
+	struct drm_psb_private *dev_priv = dev->dev_private;
+	int hdmi_audio_busy = 0;
+	hdmi_audio_event_t hdmi_audio_event;
+	u32 dspcntr_val;
+#ifdef CONFIG_PM_RUNTIME
+	bool panel_on, panel_on2;
+#endif
+	pr_debug("Entered %s\n", __func__);
+	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
+				OSPM_UHB_FORCE_POWER_ON))
+		return ;
+
+	/* Check HDMI Audio Status */
+	hdmi_audio_event.type = HAD_EVENT_QUERY_IS_AUDIO_BUSY;
+	if (dev_priv->had_interface && dev_priv->had_pvt_data)
+		hdmi_audio_busy =
+			dev_priv->had_interface->query
+					(dev_priv->had_pvt_data,
+					hdmi_audio_event);
+
+	pr_debug("[DPMS] audio busy: 0x%x\n", hdmi_audio_busy);
+
+	/* if hdmi audio is busy, just turn off hdmi display plane */
+	if (hdmi_audio_busy) {
+		dspcntr_val = PSB_RVDC32(DSPBCNTR);
+		connector->dpms = mode;
+
+		if (mode != DRM_MODE_DPMS_ON) {
+			REG_WRITE(DSPBCNTR, dspcntr_val &
+							~DISPLAY_PLANE_ENABLE);
+			DISP_PLANEB_STATUS = DISPLAY_PLANE_DISABLE;
+		} else {
+			REG_WRITE(DSPBCNTR, dspcntr_val |
+							DISPLAY_PLANE_ENABLE);
+			DISP_PLANEB_STATUS = DISPLAY_PLANE_ENABLE;
+		}
+	} else {
+		drm_helper_connector_dpms(connector, mode);
+
+		if (mode != DRM_MODE_DPMS_ON)
+			DISP_PLANEB_STATUS = DISPLAY_PLANE_DISABLE;
+		else
+			DISP_PLANEB_STATUS = DISPLAY_PLANE_ENABLE;
+	}
+
+#ifdef CONFIG_PM_RUNTIME
+	if (is_panel_vid_or_cmd(dev)) {
+		/*DPI panel*/
+		panel_on = dev_priv->dpi_panel_on;
+		panel_on2 = dev_priv->dpi_panel_on2;
+	} else {
+		/*DBI panel*/
+		panel_on = dev_priv->dbi_panel_on;
+		panel_on2 = dev_priv->dbi_panel_on2;
+	}
+
+	/*then check all display panels + monitors status*/
+	if (!panel_on && !panel_on2 && !(REG_READ(HDMIB_CONTROL)
+							& HDMIB_PORT_EN)) {
+		/*request rpm idle*/
+		if (dev_priv->rpm_enabled)
+			pm_request_idle(&dev->pdev->dev);
+	}
+#endif
+	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+	pr_debug("Exiting %s\n", __func__);
+}
+
 /**
  * hdmi helper function to manage power to the display (dpms)
  * @encoder:	hdmi encoder
@@ -2173,7 +2241,8 @@ void android_hdmi_dpms(struct drm_encoder *encoder, int mode)
 					__func__);
 		} else {
 			/* Disable all infoframes for DVI mode */
-			rc = otm_hdmi_disable_all_infoframes(hdmi_priv->context);
+			rc = otm_hdmi_disable_all_infoframes
+							(hdmi_priv->context);
 			if (rc != OTM_HDMI_SUCCESS)
 				pr_err("%s: failed to disable all infoframes\n",
 					__func__);
@@ -2211,7 +2280,7 @@ const struct drm_connector_helper_funcs
 };
 
 const struct drm_connector_funcs android_hdmi_connector_funcs = {
-	.dpms = mdfld_hdmi_connector_dpms,
+	.dpms = android_hdmi_connector_dpms,
 	.save = android_hdmi_connector_save,
 	.restore = android_hdmi_connector_restore,
 	.detect = android_hdmi_detect,

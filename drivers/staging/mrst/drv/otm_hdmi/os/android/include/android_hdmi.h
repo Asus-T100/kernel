@@ -504,6 +504,16 @@ enum drm_connector_status android_hdmi_detect(struct drm_connector
  */
 void android_hdmi_dpms(struct drm_encoder *encoder, int mode);
 
+/**
+ * Description: hdmi helper function to manage power to the connector (dpms)
+ *
+ * @connector: drm_connector
+ * @mode:	  dpms on or off
+ *
+ * Returns:	none
+ */
+void android_hdmi_connector_dpms(struct drm_connector *connector, int mode);
+
 #else /* CONFIG_MDFD_HDMI */
 
 static inline void android_hdmi_driver_init(struct drm_device *dev,
