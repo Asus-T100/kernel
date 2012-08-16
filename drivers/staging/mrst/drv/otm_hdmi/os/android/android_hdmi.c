@@ -203,6 +203,30 @@ static void android_hdmi_hotplug_timer_start(void)
 	}
 }
 
+static struct edid *drm_get_edid_retry(struct drm_connector *connector,
+				struct i2c_adapter *adapter, void *context)
+{
+#define N_EDID_READ_RETRIES 5
+	int retries = N_EDID_READ_RETRIES;
+	struct edid *edid = NULL;
+
+	do {
+		if (retries != N_EDID_READ_RETRIES) {
+			/* 50ms delay helps successfully read edid
+			 * on agilent HDMI analyzer*/
+			msleep(50);
+			/* check for hdmi status before retrying */
+			if (otm_hdmi_get_cable_status(context) == false)
+				break;
+			pr_debug("retrying edid read after delay\n");
+		}
+		edid = drm_get_edid(connector, adapter);
+	} while(edid == NULL && --retries &&
+			otm_hdmi_get_cable_status(context));
+
+	return edid;
+}
+
 /*store the state whether the edid is ready
  *in HPD (1) or not (0)*/
 static int edid_ready_in_hpd = 0;
@@ -220,17 +244,14 @@ static int edid_ready_in_hpd = 0;
 static irqreturn_t __hdmi_irq_handler_bottomhalf(void *data)
 {
 	struct android_hdmi_priv *hdmi_priv = data;
-	bool hpd = otm_hdmi_power_rails_on();
+	bool rails_on = otm_hdmi_power_rails_on();
+	static int processed_hdmi_status = -1;
 
 	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
 				       OSPM_UHB_FORCE_POWER_ON))
 		return IRQ_HANDLED;
 
-	if ((true == hpd) && (hdmi_priv != NULL)) {
-		/* Get monitor type. This is required to appropriately
-		 * issue switch class event to the user space depending
-		 * on the monitor type - HDMI or DVI.
-		 */
+	if ((true == rails_on) && (hdmi_priv != NULL)) {
 		struct drm_mode_config *mode_config = NULL;
 		struct edid *edid = NULL;
 		struct drm_connector *connector = NULL;
@@ -245,6 +266,23 @@ static irqreturn_t __hdmi_irq_handler_bottomhalf(void *data)
 
 		/* Check HDMI status, read EDID only if connected */
 		hdmi_status = otm_hdmi_get_cable_status(hdmi_priv->context);
+
+		/* if the cable status has not changed return */
+		if (hdmi_status == processed_hdmi_status) {
+			ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+			return IRQ_HANDLED;
+		}
+
+		if (hdmi_status) {
+			/* Debounce for atleast 60ms in order for the
+			* cable status to have stabilized
+			*/
+			msleep(60);
+			hdmi_status = otm_hdmi_get_cable_status(
+							hdmi_priv->context);
+		}
+		processed_hdmi_status = hdmi_status;
+
 #ifdef OTM_HDMI_HDCP_ENABLE
 		otm_hdmi_hdcp_set_hpd_state(hdmi_priv->context, hdmi_status);
 #endif
@@ -884,9 +922,10 @@ int android_hdmi_get_modes(struct drm_connector *connector)
 
 	adapter = i2c_get_adapter(OTM_HDMI_I2C_ADAPTER_NUM);
 
-	/* Read edid blocks from i2c device */
-	if (NULL != adapter)
-		edid = (struct edid *)drm_get_edid(connector, adapter);
+	/* Read edid blocks from i2c device if cable is connected */
+	if (NULL != adapter && otm_hdmi_get_cable_status(hdmi_priv->context))
+		edid = (struct edid *)drm_get_edid_retry(connector, adapter,
+							hdmi_priv->context);
 
 	if (edid == NULL) {
 		pr_err("%s Edid Read failed -use default edid", __func__);
@@ -1937,8 +1976,7 @@ android_hdmi_detect(struct drm_connector *connector,
 	pr_debug("%s: HPD connected data = 0x%x.\n", __func__, data);
 
 #ifdef OTM_HDMI_HDCP_ENABLE
-	otm_hdmi_hdcp_set_hpd_state(hdmi_priv->context,
-				(data & HPD_SIGNAL_STATUS));
+	otm_hdmi_hdcp_set_hpd_state(hdmi_priv->context, data);
 #endif
 
 	if (data) {

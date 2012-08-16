@@ -98,13 +98,21 @@ static hdmi_context_t *g_context;
  */
 static void __ps_gpio_configure_edid_read(void)
 {
-	if (ps_hdmi_get_cable_status(g_context))
-		gpio_set_value(PS_MSIC_LS_OE_GPIO_PIN, 1);
-	else
-		gpio_set_value(PS_MSIC_LS_OE_GPIO_PIN, 0);
+	static int old_pin_value  = -1;
+	int new_pin_value = gpio_get_value(PS_MSIC_HPD_GPIO_PIN);
 
-	pr_debug("%s: CTP_HDMI_LS_OE pin = %d\n", __func__,
-		 gpio_get_value(PS_MSIC_LS_OE_GPIO_PIN));
+	if (new_pin_value == old_pin_value)
+		return;
+
+	old_pin_value = new_pin_value;
+
+	if (new_pin_value == 0)
+		gpio_set_value(PS_MSIC_LS_OE_GPIO_PIN, 0);
+	else
+		gpio_set_value(PS_MSIC_LS_OE_GPIO_PIN, 1);
+
+	pr_debug("%s: CTP_HDMI_LS_OE pin = %d (%d)\n", __func__,
+		 gpio_get_value(PS_MSIC_LS_OE_GPIO_PIN), new_pin_value);
 }
 
 otm_hdmi_ret_t ps_hdmi_pci_dev_init(void *context, struct pci_dev *pdev)
@@ -226,6 +234,12 @@ bool ps_hdmi_get_cable_status(void *context)
 		return false;
 
 	/* Read HDMI cable status from GPIO */
+	/* For CTP, it is required that SW pull up or pull down the
+	 * LS_OE GPIO pin based on cable status. This is needed before
+	 * performing any EDID read operation on CTP.
+	 */
+	__ps_gpio_configure_edid_read();
+
 	if (gpio_get_value(PS_MSIC_HPD_GPIO_PIN) == 0)
 		return false;
 	else
@@ -247,11 +261,6 @@ irqreturn_t ps_hdmi_irq_handler(int irq, void *data)
 {
 	if (g_context == NULL)
 		return IRQ_HANDLED;
-
-	/* Handle CTP specific GPIO process
-	 * to enable EDID reads
-	 */
-	__ps_gpio_configure_edid_read();
 
 	return IRQ_WAKE_THREAD;
 }
