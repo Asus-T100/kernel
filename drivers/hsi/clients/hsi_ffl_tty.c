@@ -2117,6 +2117,9 @@ static void ffl_tty_port_shutdown(struct tty_port *port)
 	/* Wait for hangup completion */
 	ffl_hangup_ctx_clear(&ctx->hangup);
 
+	/* Flush any pending fw work */
+	flush_work_sync(&ctx->do_tty_forward);
+
 	pr_warn(DRVNAME ": port shutdown (flushing the HSI controller)");
 	hsi_flush(ctx->client);
 

@@ -1634,7 +1634,8 @@ static void hsi_try_prepare_dma(struct list_head *queue, int lch,
 	spin_lock_irqsave(&intel_hsi->sw_lock, flags);
 
 	/* If some DMA context is already ready, we are fine */
-	if (intel_hsi->dma_ctx[lch]->ready->msg)
+	if (!intel_hsi->dma_ctx[lch] ||
+		intel_hsi->dma_ctx[lch]->ready->msg)
 		goto all_dma_prepared;
 
 	ongoing_msg = intel_hsi->dma_ctx[lch]->ongoing->msg;
@@ -1832,6 +1833,11 @@ static void hsi_transfer(struct intel_controller *intel_hsi, int tx_not_rx,
 	msg->status = HSI_STATUS_PROCEEDING;
 
 	if (dma_channel >= 0) {
+		if (!intel_hsi->dma_ctx[dma_channel]) {
+			spin_unlock_irqrestore(&intel_hsi->sw_lock, flags);
+			return;
+		}
+
 		if (intel_hsi->dma_ctx[dma_channel]->ready->msg == NULL)
 			do_hsi_prepare_dma(msg, dma_channel, intel_hsi);
 
@@ -2084,7 +2090,7 @@ static int hsi_mid_async(struct hsi_msg *msg)
 	struct intel_controller *intel_hsi = hsi_port_drvdata(port);
 	struct list_head *queue;
 	u16 *queue_busy;
-	unsigned int hsi_channel, nents;
+	unsigned int hsi_channel, nents, sg_entries;
 	int dma_channel;
 	u8 dir;
 	int tx_not_rx, old_status, err;
@@ -2114,8 +2120,17 @@ static int hsi_mid_async(struct hsi_msg *msg)
 
 	nents = msg->sgt.nents;
 	if (dma_channel >= 0) {
-		if (nents > intel_hsi->dma_ctx[dma_channel]->sg_entries)
+		if (tx_not_rx)
+			sg_entries =
+				intel_hsi->tx_ctx[hsi_channel].dma.sg_entries;
+		else
+			sg_entries =
+				intel_hsi->rx_ctx[hsi_channel].dma.sg_entries;
+
+		if (nents > sg_entries) {
+			pr_err("hsi: Unsupported number of SG entries\n");
 			return -ENOSYS;
+		}
 
 		err = dma_map_sg(intel_hsi->pdev, msg->sgt.sgl, nents, dir);
 		if (err < 0)
