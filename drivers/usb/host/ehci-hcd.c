@@ -117,6 +117,20 @@ static unsigned int hird;
 module_param(hird, int, S_IRUGO);
 MODULE_PARM_DESC(hird, "host initiated resume duration, +1 for each 75us\n");
 
+/* CloverTrail USB SPH and Modem USB Switch Control Flag */
+static unsigned int use_sph = 1;
+module_param(use_sph, uint, S_IRUGO);
+MODULE_PARM_DESC(use_sph, "sph and modem usb switch control flag, default use sph\n");
+
+/*
+ * for external read access to <usb_sph>
+ */
+unsigned int sph_enabled(void)
+{
+	return use_sph;
+}
+EXPORT_SYMBOL_GPL(sph_enabled);
+
 #define	INTR_MASK (STS_IAA | STS_FATAL | STS_PCD | STS_ERR | STS_INT)
 
 /*-------------------------------------------------------------------------*/
@@ -1383,9 +1397,11 @@ static int __init ehci_hcd_init(void)
 		 sizeof(struct ehci_itd), sizeof(struct ehci_sitd));
 
 #ifdef CONFIG_BOARD_CTP
-	retval = cloverview_sph_gpio_init();
-	if (retval < 0)
-		return retval;
+	if (sph_enabled()) {
+		retval = cloverview_sph_gpio_init();
+		if (retval < 0)
+			return retval;
+	}
 #endif
 
 #ifdef DEBUG
@@ -1463,6 +1479,10 @@ clean0:
 	ehci_debug_root = NULL;
 err_debug:
 #endif
+#ifdef CONFIG_BOARD_CTP
+	if (sph_enabled())
+		cloverview_sph_gpio_cleanup();
+#endif
 	clear_bit(USB_EHCI_LOADED, &usb_hcds_loaded);
 	return retval;
 }
@@ -1487,6 +1507,10 @@ static void __exit ehci_hcd_cleanup(void)
 #endif
 #ifdef INTEL_MID_OTG_HOST_DRIVER
 	intel_mid_ehci_driver_unregister(&INTEL_MID_OTG_HOST_DRIVER);
+#endif
+#ifdef CONFIG_BOARD_CTP
+	if (sph_enabled())
+		cloverview_sph_gpio_cleanup();
 #endif
 #ifdef DEBUG
 	debugfs_remove(ehci_debug_root);

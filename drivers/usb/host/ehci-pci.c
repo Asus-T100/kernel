@@ -226,6 +226,12 @@ static int ehci_pci_setup(struct usb_hcd *hcd)
 			hcd->has_tt = 1;
 			ehci->has_hostpc = 1;
 		} else if (pdev->device == 0x08F2) {
+			/* Check SPH enabled or not */
+			if (!sph_enabled()) {
+				ehci_info(ehci, "USB SPH is disabled\n");
+				return -ENODEV;
+			}
+
 			ehci_info(ehci, "Detected SPH HC\n");
 			hcd->has_tt = 1;
 			ehci->has_hostpc = 1;

@@ -452,7 +452,7 @@ static void intel_mid_ehci_driver_unregister(struct pci_driver *host_driver)
 #define SPH_CS_N	51
 #define SPH_RST_N	169
 
-int cloverview_sph_gpio_init(void)
+static int cloverview_sph_gpio_init(void)
 {
 	int		retval = 0;
 	u32		board_id;
@@ -469,11 +469,6 @@ int cloverview_sph_gpio_init(void)
 				SPH_CS_N, retval);
 				retval = -ENODEV;
 				goto err;
-			} else {
-				gpio_direction_output(SPH_CS_N, 0);
-
-				/* export CS_N sysfs interface */
-				gpio_export(SPH_CS_N, false);
 			}
 		} else {
 			retval = -ENODEV;
@@ -486,22 +481,40 @@ int cloverview_sph_gpio_init(void)
 				printk(KERN_INFO "Request GPIO %d with error %d\n",
 				SPH_RST_N, retval);
 				retval = -ENODEV;
-				goto err;
-			} else	{
-				gpio_direction_output(SPH_RST_N, 0);
-				usleep_range(200, 500);
-				gpio_set_value(SPH_RST_N, 1);
-
-				/* export RST_N sysfs interface */
-				gpio_export(SPH_RST_N, false);
+				goto err1;
 			}
 		} else {
 			retval = -ENODEV;
-			goto err;
+			goto err1;
 		}
+
+		gpio_direction_output(SPH_CS_N, 0);
+
+		gpio_direction_output(SPH_RST_N, 0);
+		usleep_range(200, 500);
+		gpio_set_value(SPH_RST_N, 1);
 	}
+
+	return retval;
+
+err1:
+	gpio_free(SPH_CS_N);
 err:
 	return retval;
+}
+
+static void cloverview_sph_gpio_cleanup(void)
+{
+	u32		board_id;
+
+	board_id = ctp_board_id();
+
+	if (board_id == CTP_BID_PR0) {
+		if (gpio_is_valid(SPH_CS_N))
+			gpio_free(SPH_CS_N);
+		if (gpio_is_valid(SPH_RST_N))
+			gpio_free(SPH_RST_N);
+	}
 }
 #endif
 
