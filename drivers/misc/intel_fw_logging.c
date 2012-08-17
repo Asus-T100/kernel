@@ -323,7 +323,31 @@ static int create_fwerr_log(char *output_buf, void __iomem *oshob_ptr)
 		((err_status_dw0.data & 0xFFFF) == ECCERR_IND)) &&
 		(err_log_dw10.fields.reserved1 == FWERR_INDICATOR)) {
 
-		sprintf(output_buf, "SCU error summary:\n");
+		sprintf(output_buf, "HW WDT expired");
+
+		switch (err_status_dw0.data & 0xFFFF) {
+		case SWDTERR_IND:
+			strcat(output_buf,
+			" without facing any exception.\n\n");
+			break;
+		case MEMERR_IND:
+			strcat(output_buf,
+			" following a Memory Error exception.\n\n");
+			break;
+		case INSTERR_IND:
+			strcat(output_buf,
+			" following an Instruction Error exception.\n\n");
+			break;
+		case ECCERR_IND:
+			strcat(output_buf,
+			" following a SRAM ECC Error exception.\n\n");
+			break;
+		default:
+			strcat(output_buf,
+			".\n\n");
+			break;
+		}
+		strcat(output_buf, "HW WDT debug data:\n");
 		strcat(output_buf, "===================\n");
 		for (count = 0;
 			count < MAX_NUM_LOGDWORDS + MAX_NUM_LOGDWORDS_EXTENDED;
@@ -339,7 +363,9 @@ static int create_fwerr_log(char *output_buf, void __iomem *oshob_ptr)
 	/* num_err_logs indicates num of error_log/addr pairs */
 	num_err_logs = err_log_dw10.fields.num_err_logs * 2;
 
-	sprintf(output_buf, "SCU Fabric summary:\n");
+	sprintf(output_buf,
+		"HW WDT fired following a Fabric Error exception.\n\n");
+	strcat(output_buf, "Fabric Error debug data:\n");
 	strcat(output_buf, "===================\n");
 
 	for (count = 0; count < num_flag_status; count++) {
