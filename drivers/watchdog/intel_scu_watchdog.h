@@ -64,10 +64,14 @@ struct intel_scu_watchdog_dev {
 	struct notifier_block reboot_notifier;
 	struct miscdevice miscdev;
 	struct tasklet_struct interrupt_tasklet;
+	int reset_type;
 #ifdef CONFIG_DEBUG_FS
 	struct dentry *dfs_wd;
 	struct dentry *dfs_secwd;
 	struct dentry *dfs_secwd_trigger;
+	struct dentry *dfs_kwd;
+	struct dentry *dfs_kwd_trigger;
+	struct dentry *dfs_kwd_reset_type;
 #endif
 };
 
