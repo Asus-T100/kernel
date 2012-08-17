@@ -1089,9 +1089,6 @@ static int psb_entrypoint_number(struct drm_psb_private *dev_priv,
 	return count;
 }
 
-#ifdef HDMI_COMPLIANCE
-extern int otm_cmdline_set_vic_option(int vic);
-#endif
 int lnc_video_getparam(struct drm_device *dev, void *data,
 		       struct drm_file *file_priv)
 {
@@ -1280,11 +1277,6 @@ int lnc_video_getparam(struct drm_device *dev, void *data,
 		PSB_DEBUG_ENTRY("%s, set hdmi_state = %d\n",
 				 __func__, hdmi_state);
 		break;
-#ifdef HDMI_COMPLIANCE
-	case OTM_HDMI_SET_HDMI_MODE_VIC:
-		otm_cmdline_set_vic_option((int)arg->value);
-		break;
-#endif
 	case PNW_VIDEO_QUERY_ENTRY:
 		ret = copy_from_user(&handle,
 				(void __user *)((unsigned long)arg->arg),

@@ -111,8 +111,6 @@ ccflags-$(CONFIG_DRM_MID_DEBUG) += -DBUILD="\"debug\"" -DPVR_BUILD_TYPE="\"debug
 ccflags-$(CONFIG_PCI_MSI) += -DCONFIG_PCI_MSI
 ccflags-$(CONFIG_MDFD_GL3) += -DSUPPORT_EXTERNAL_SYSTEM_CACHE -DCONFIG_MDFD_GL3
 
-ccflags-y += -DHDMI_COMPLIANCE
-
 ENVDIR = ../../../mrst/pvr/services4/srvkm/env/linux
 COMMONDIR = ../../../mrst/pvr/services4/srvkm/common
 BRIDGEDDIR = ../../../mrst/pvr/services4/srvkm/bridged
