@@ -1399,10 +1399,6 @@ static int bq24192_do_charging(int curr, int volt)
 			chip->curr_volt = volt;
 			chip->curr_chrg = chr_curr;
 		}
-
-		/* Prevent system from entering s3 while charger is connected */
-		if (!wake_lock_active(&chip->wakelock))
-			wake_lock(&chip->wakelock);
 	} else {
 		dev_info(&chip->client->dev, "Battery is full. Don't charge\n");
 	}
@@ -1969,6 +1965,12 @@ static void bq24192_event_worker(struct work_struct *work)
 		}
 		chip->batt_mode = BATT_CHRG_NORMAL;
 		mutex_unlock(&chip->event_lock);
+		/*
+		 * Prevent system from entering s3 while charger is connected
+		 * or if any OTG device (mouse/keyboard) is connected.
+		 */
+		if (!wake_lock_active(&chip->wakelock))
+			wake_lock(&chip->wakelock);
 		break;
 	case POWER_SUPPLY_CHARGER_EVENT_DISCONNECT:
 		disconnected = 1;
