@@ -53,8 +53,11 @@
  */
 #define BQ24192_INPUT_SRC_CNTL_REG		0x0
 #define INPUT_SRC_CNTL_EN_HIZ			(1 << 7)
-/* set input voltage lim to 5V */
-#define INPUT_SRC_VOLT_LMT			(6 << 3)
+/*
+ * set input voltage lim to 4.68V. This will help in charger
+ * instability issue when duty cycle reaches 100%.
+ */
+#define INPUT_SRC_VOLT_LMT			(5 << 4)
 /* D0, D1, D2 represent the input current limit */
 #define INPUT_SRC_CUR_LMT0		0x0	/* 100mA */
 #define INPUT_SRC_CUR_LMT1		0x1	/* 150mA */
