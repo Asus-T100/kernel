@@ -204,7 +204,6 @@ void *max17042_platform_data(void *info)
 	platform_data.save_config_data = mfld_fg_save_config_data;
 #endif
 #ifdef CONFIG_BOARD_CTP
-	platform_data.enable_current_sense = true;
 	platform_data.technology = POWER_SUPPLY_TECHNOLOGY_LION;
 	platform_data.restore_config_data = ctp_fg_restore_config_data;
 	platform_data.save_config_data = ctp_fg_save_config_data;
