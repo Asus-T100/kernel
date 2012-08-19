@@ -127,6 +127,7 @@ static struct platform_device vemmc1_device = {
 /***********VEMMC2 REGUATOR platform data*************/
 static struct regulator_consumer_supply vemmc2_consumer[] = {
 	REGULATOR_SUPPLY("vemmc2", "2-0070"),
+	REGULATOR_SUPPLY("vemmc2", NULL),
 };
 
 static struct regulator_init_data vemmc2_data = {

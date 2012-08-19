@@ -33,6 +33,17 @@
 #include "psb_intel_drv.h"
 #include <linux/gpio.h>
 #include <linux/sfi.h>
+#include <linux/regulator/driver.h>
+#include <linux/regulator/intel_pmic.h>
+#include <linux/regulator/machine.h>
+
+struct h8c7_regulator_factory {
+	bool h8c7_mmc2_on;
+	struct regulator *regulator;
+};
+
+static struct h8c7_regulator_factory h8c7_regulator_status;
+
 
 /* ************************************************************************* *\
  * FUNCTION: mdfld_h8c7_dpi_ic_init
@@ -283,8 +294,40 @@ int mdfld_dsi_h8c7_cmd_power_on(struct mdfld_dsi_config *dsi_config)
 	u8 param[4];
 
 	int err = 0;
+	int enable_err, enabled = 0;
 
 	PSB_DEBUG_ENTRY("Turn on video mode TMD panel...\n");
+
+	if (!IS_ERR(h8c7_regulator_status.regulator)) {
+
+		if (!h8c7_regulator_status.h8c7_mmc2_on) {
+			PSB_DEBUG_ENTRY("Before power on, regulator is %d\n",
+			regulator_is_enabled(h8c7_regulator_status.regulator));
+			PSB_DEBUG_ENTRY("Begin to power on\n");
+			h8c7_regulator_status.h8c7_mmc2_on = true;
+		} else {
+			DRM_ERROR("power on several times without off\n");
+		}
+
+		enabled = regulator_is_enabled(h8c7_regulator_status.regulator);
+		enable_err = regulator_enable(h8c7_regulator_status.regulator);
+		if (enable_err < 0) {
+			regulator_put(h8c7_regulator_status.regulator);
+			DRM_ERROR("FATAL:enable h8c7 regulator error\n");
+		}
+
+		/* vemmc2 need 50ms delay due to stability
+		** If already enabled, no need to wait for this delay.
+		** This code isn't race proof but since in addition to
+		** this panel driver only touch driver is enabling this
+		** regulator and does it after this function has been
+		** finished, this code works well enough for now.
+		*/
+		if (!enabled)
+			msleep(50);
+		PSB_DEBUG_ENTRY("After power on, regulator is %d\n",
+			regulator_is_enabled(h8c7_regulator_status.regulator));
+	}
 
 	if (!sender) {
 		DRM_ERROR("Failed to get DSI packet sender\n");
@@ -414,6 +457,17 @@ static int mdfld_dsi_h8c7_cmd_power_off(struct mdfld_dsi_config *dsi_config)
 power_dstp_err:
 	mdfld_dsi_send_gen_long_lp(sender, h8c7_mcs_protect_on, 4, 0);
 power_err:
+	if (!IS_ERR(h8c7_regulator_status.regulator)) {
+		if (h8c7_regulator_status.h8c7_mmc2_on) {
+			h8c7_regulator_status.h8c7_mmc2_on = false;
+			PSB_DEBUG_GENERAL("Begin to power off\n");
+		} else
+			DRM_ERROR("power off several times without on\n");
+		regulator_disable(h8c7_regulator_status.regulator);
+		PSB_DEBUG_GENERAL("After power off, regulator is %d\n",
+			regulator_is_enabled(h8c7_regulator_status.regulator));
+	}
+
 	return err;
 }
 
@@ -660,6 +714,8 @@ err:
 
 void h8c7_cmd_init(struct drm_device *dev, struct panel_funcs *p_funcs)
 {
+	int ena_err;
+
 	if (!dev || !p_funcs) {
 		DRM_ERROR("Invalid parameters\n");
 		return;
@@ -677,4 +733,22 @@ void h8c7_cmd_init(struct drm_device *dev, struct panel_funcs *p_funcs)
 	p_funcs->power_on = mdfld_dsi_h8c7_cmd_power_on;
 	p_funcs->power_off = mdfld_dsi_h8c7_cmd_power_off;
 	p_funcs->set_brightness = mdfld_dsi_h8c7_cmd_set_brightness;
+
+	/* Please check the file pmic_avp.c for the correct regulator name */
+	h8c7_regulator_status.regulator = regulator_get(NULL, "vemmc2");
+	if (IS_ERR(h8c7_regulator_status.regulator)) {
+		DRM_ERROR("H8C7 device failed to get mmc regulator\n");
+		return ;
+	}
+
+	h8c7_regulator_status.h8c7_mmc2_on =
+		regulator_is_enabled(h8c7_regulator_status.regulator);
+
+	if (h8c7_regulator_status.h8c7_mmc2_on) {
+		ena_err = regulator_enable(h8c7_regulator_status.regulator);
+		if (ena_err < 0) {
+			regulator_put(h8c7_regulator_status.regulator);
+			DRM_ERROR("FATAL:enable h8c7 regulator error\n");
+		}
+	}
 }
