@@ -197,9 +197,12 @@ static int ehci_pci_setup(struct usb_hcd *hcd)
 #ifdef CONFIG_BOARD_REDRIDGE
 			hcd->power_budget = 500;
 #else
-			/* For Penwell, Power budget limit is 200mA */
-			if (pdev->device == 0x0829 || pdev->device == 0xE006)
+			/* For Penwell, Power budget limit is 200mA,
+			 * For Cloverview, Power budget limit is 500mA */
+			if (pdev->device == 0x0829)
 				hcd->power_budget = 200;
+			else if (pdev->device == 0xE006)
+				hcd->power_budget = 500;
 #endif
 
 			hcd->has_sram = 1;
