@@ -2121,6 +2121,24 @@ irqreturn_t usb_hcd_irq (int irq, void *__hcd)
 	 */
 	local_irq_save(flags);
 
+	/* Do Runtime-PM Operation if hcd->rpm_control == 1 */
+	if (hcd->rpm_control) {
+		struct device		*dev = hcd->self.controller;
+
+		if ((hcd->rpm_resume)
+			|| (dev->power.runtime_status == RPM_RESUMING)) {
+			return IRQ_HANDLED;
+		}
+
+		if (dev->power.runtime_status != RPM_ACTIVE) {
+			dev_dbg(hcd->self.controller,
+				"Wake up? Interrupt detected in suspended\n");
+			hcd->rpm_resume = 1;
+			pm_runtime_get(dev);
+			return IRQ_HANDLED;
+		}
+	}
+
 	if (unlikely(HCD_DEAD(hcd) || !HCD_HW_ACCESSIBLE(hcd))) {
 		rc = IRQ_NONE;
 	} else if (hcd->driver->irq(hcd) == IRQ_NONE) {

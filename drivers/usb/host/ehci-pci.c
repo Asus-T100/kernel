@@ -523,6 +523,7 @@ static int ehci_pci_suspend(struct usb_hcd *hcd, bool do_wakeup)
 	struct ehci_hcd		*ehci = hcd_to_ehci(hcd);
 	unsigned long		flags;
 	int			rc = 0;
+	int			port;
 
 	if (time_before(jiffies, ehci->next_statechange))
 		msleep(10);
@@ -541,6 +542,31 @@ static int ehci_pci_suspend(struct usb_hcd *hcd, bool do_wakeup)
 	spin_lock_irqsave (&ehci->lock, flags);
 	ehci_writel(ehci, 0, &ehci->regs->intr_enable);
 	(void)ehci_readl(ehci, &ehci->regs->intr_enable);
+
+	/* Set HOSTPC_PHCD if not set yet to let PHY enter low-power mode */
+	if (ehci->has_hostpc) {
+		spin_unlock_irqrestore(&ehci->lock, flags);
+		usleep_range(5000, 6000);
+		spin_lock_irqsave(&ehci->lock, flags);
+
+		port = HCS_N_PORTS(ehci->hcs_params);
+		while (port--) {
+			u32 __iomem	*hostpc_reg;
+			u32		temp;
+
+			hostpc_reg = (u32 __iomem *)((u8 *) ehci->regs
+					 + HOSTPC0 + 4 * port);
+			temp = ehci_readl(ehci, hostpc_reg);
+
+			if (!(temp & HOSTPC_PHCD))
+				ehci_writel(ehci, temp | HOSTPC_PHCD,
+						hostpc_reg);
+			temp = ehci_readl(ehci, hostpc_reg);
+			ehci_dbg(ehci, "Port %d PHY low-power mode %s\n",
+					port, (temp & HOSTPC_PHCD) ?
+					"succeeded" : "failed");
+		}
+	}
 
 	clear_bit(HCD_FLAG_HW_ACCESSIBLE, &hcd->flags);
 	spin_unlock_irqrestore (&ehci->lock, flags);
