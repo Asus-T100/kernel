@@ -1425,7 +1425,7 @@ void ospm_resume_display(struct pci_dev *pdev)
  * Description: Suspend the pci device saving state and disabling
  * as necessary.
  */
-static void ospm_suspend_pci(struct pci_dev *pdev)
+void ospm_suspend_pci(struct pci_dev *pdev)
 {
 	struct drm_device *dev = pci_get_drvdata(pdev);
 	struct drm_psb_private *dev_priv = dev->dev_private;
@@ -1761,6 +1761,8 @@ void ospm_power_island_up(int hw_islands)
 		reg would result in a crash - IERR/Fabric error.
 		*/
 		spin_lock_irqsave(&dev_priv->ospm_lock, flags);
+
+		PSB_DEBUG_ENTRY("power up display islands\n");
 		if (pmu_nc_set_power_state(dc_islands,
 			OSPM_ISLAND_UP, OSPM_REG_TYPE))
 			BUG();
@@ -1903,9 +1905,12 @@ void ospm_power_island_down(int hw_islands)
 		*/
 		spin_lock_irqsave(&dev_priv->ospm_lock, flags);
 		/*last chance of canceling the power off*/
-		if (atomic_read(&g_display_access_count))
-			goto unlock;
+		/*
+		 * if (atomic_read(&g_display_access_count))
+		 *	goto unlock;
+		 */
 
+		PSB_DEBUG_ENTRY("power off display island\n");
 		g_hw_power_status_mask &= ~OSPM_DISPLAY_ISLAND;
 		if (pmu_nc_set_power_state(dc_islands,
 					   OSPM_ISLAND_DOWN, OSPM_REG_TYPE))
@@ -1973,6 +1978,7 @@ unlock:
 			BUG();
 
 		spin_unlock_irqrestore(&dev_priv->ospm_lock, flags);
+		;
 	}
 }
 

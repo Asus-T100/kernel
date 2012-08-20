@@ -202,7 +202,8 @@ gfx-y += $(DISPLAYDIR)/psb_bl.o \
 		$(DISPLAYDIR)/h8c7_vid.o \
 		$(DISPLAYDIR)/h8c7_cmd.o \
 		$(DISPLAYDIR)/mdfld_dsi_pkg_sender.o \
-		$(DISPLAYDIR)/mdfld_dsi_esd.o
+		$(DISPLAYDIR)/mdfld_dsi_esd.o \
+		$(DISPLAYDIR)/mdfld_dsi_dbi_dsr.o
 
 gfx-$(CONFIG_MDFD_HDMI) += $(DISPLAYDIR)/psb_hotplug.o \
 		$(DISPLAYDIR)/psb_intel_hdmi.o \

@@ -27,6 +27,7 @@
 #include "mdfld_dsi_esd.h"
 #include "mdfld_dsi_dbi.h"
 #include "mdfld_dsi_pkg_sender.h"
+#include "mdfld_dsi_dbi_dsr.h"
 
 #define MDFLD_ESD_SLEEP_MSECS	8000
 
@@ -64,6 +65,8 @@ static int __esd_thread(void *data)
 	if (!dsi_config)
 		return -EINVAL;
 
+	return 0;
+
 	set_freezable();
 
 	while (!kthread_should_stop()) {
@@ -77,31 +80,18 @@ static int __esd_thread(void *data)
 			 !dbi_output->first_boot) ||
 			 kthread_should_stop()));
 
-		mutex_lock(&dev_priv->dsr_mutex);
-		if (dbi_output->mode_flags & MODE_SETTING_IN_DSR) {
-			mutex_unlock(&dev_priv->dsr_mutex);
-			goto esd_exit;
-		} else {
-			mutex_unlock(&dev_priv->dsr_mutex);
-		}
-
 		p_funcs = dbi_output->p_funcs;
-		if (dsi_config->dsi_hw_context.panel_on) {
-			if (dev_priv->b_dsr_enable) {
-				dev_priv->exit_idle(dev,
-						MDFLD_DSR_2D_3D,
-						NULL,
-						0);
-				/*make sure, during esd no DSR again*/
-				dbi_output->mode_flags |= MODE_SETTING_ON_GOING;
-			}
+		if (dsi_config->dsi_hw_context.panel_on &&
+			!mdfld_dsi_dsr_in_dsr(dsi_config)) {
+			/*forbid DSR during detection & resume*/
+			mdfld_dsi_dsr_forbid(dsi_config);
+
 			if (intel_dsi_dbi_esd_detection(dsi_config)) {
 				DRM_INFO("%s: error detected\n", __func__);
 				schedule_work(&dev_priv->reset_panel_work);
 			}
 
-			if (dev_priv->b_dsr_enable)
-				dbi_output->mode_flags &= ~MODE_SETTING_ON_GOING;
+			mdfld_dsi_dsr_allow(dsi_config);
 		}
 esd_exit:
 		schedule_timeout_interruptible(

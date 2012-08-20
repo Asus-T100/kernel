@@ -49,6 +49,8 @@
 
 #include "psb_drv.h"
 
+#include "mdfld_dsi_dbi_dsr.h"
+
 #if !defined(SUPPORT_DRI_DRM)
 #error "SUPPORT_DRI_DRM must be set"
 #endif
@@ -142,6 +144,8 @@ IMG_BOOL  MRSTLFBFlipToSurface(MRSTLFB_DEVINFO *psDevInfo,
     struct drm_psb_private *dev_priv =
         (struct drm_psb_private *) psDevInfo->psDrmDevice->dev_private;
     MRSTLFB_SWAPCHAIN *psCurrentSwapChain = psDevInfo->psCurrentSwapChain;
+	struct mdfld_dsi_config *dsi_config;
+	struct mdfld_dsi_hw_context *ctx;
 
     if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, false))
     {
@@ -153,22 +157,30 @@ IMG_BOOL  MRSTLFBFlipToSurface(MRSTLFB_DEVINFO *psDevInfo,
 					& PVRSRV_SWAPCHAIN_ATTACHED_PLANE_A) {
 				dspsurf = DSPASURF;
 				MRSTLFBVSyncWriteReg(psDevInfo, dspsurf, uiAddr);
-				if (dev_priv->b_async_flip_enable &&
-						dev_priv->async_flip_update_fb)
-					if (dev_priv->async_flip_update_fb(
-						dev, 0)	== IMG_FALSE)
-						return IMG_FALSE;
+
+				dsi_config = dev_priv->dsi_configs[0];
+				if (dsi_config) {
+					ctx = &dsi_config->dsi_hw_context;
+					ctx->dspsurf = uiAddr;
+				}
+
+				if (mdfld_dsi_dsr_update_panel_fb(dsi_config))
+					return IMG_FALSE;
 			}
 #if defined(CONFIG_MDFD_DUAL_MIPI)
 			if (psCurrentSwapChain->ui32SwapChainPropertyFlag
 					& PVRSRV_SWAPCHAIN_ATTACHED_PLANE_C) {
 				dspsurf = DSPCSURF;
 				MRSTLFBVSyncWriteReg(psDevInfo, dspsurf, uiAddr);
-				if (dev_priv->b_async_flip_enable &&
-						 dev_priv->async_flip_update_fb)
-					if (dev_priv->async_flip_update_fb(
-						 dev, 2) == IMG_FALSE)
-						return IMG_FALSE;
+
+				dsi_config = dev_priv->dsi_configs[1];
+				if (dsi_config) {
+					ctx = &dsi_config->dsi_hw_context;
+					ctx->dspsurf = uiAddr;
+				}
+
+				if (mdfld_dsi_dsr_update_panel_fb(dsi_config))
+					return IMG_FALSE;
 			}
 #endif
 #ifdef CONFIG_MDFD_HDMI

@@ -43,6 +43,7 @@
 #include "mdfld_dsi_dbi.h"
 #include "mdfld_dsi_output.h"
 #include "mdfld_output.h"
+#include "mdfld_dsi_dbi_dsr.h"
 
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,35))
 static int fill_fb_bitfield(struct fb_var_screeninfo *var, int depth)
@@ -740,9 +741,8 @@ static int psbfb_mmap(struct fb_info *info, struct vm_area_struct *vma)
 
 	}
 
-	if ((is_panel_vid_or_cmd(dev) == MDFLD_DSI_ENCODER_DBI) &&
-			dev_priv->exit_idle)
-		dev_priv->exit_idle(dev, MDFLD_DSR_2D_3D, NULL, true);
+	/*forbid dsr*/
+	mdfld_dsi_dsr_forbid(dev_priv->dsi_configs[0]);
 
 	return 0;
 }

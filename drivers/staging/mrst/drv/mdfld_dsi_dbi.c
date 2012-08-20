@@ -30,92 +30,13 @@
 #include "mdfld_dsi_pkg_sender.h"
 #include "mdfld_dsi_esd.h"
 #include "psb_powermgmt.h"
+#include "mdfld_dsi_dbi_dsr.h"
 
 /**
  * Enter DSR 
  */
 void mdfld_dsi_dbi_enter_dsr (struct mdfld_dsi_dbi_output * dbi_output, int pipe)
 {
-	u32 reg_val;
-	struct drm_device * dev = dbi_output->dev;
-	struct drm_crtc * crtc = dbi_output->base.base.crtc;
-	struct psb_intel_crtc * psb_crtc = (crtc) ? to_psb_intel_crtc(crtc) : NULL; 
-	struct mdfld_dsi_pkg_sender *sender = NULL;
-	u32 dpll_reg = MRST_DPLL_A;
-	u32 pipeconf_reg = PIPEACONF;
-	u32 dspcntr_reg = DSPACNTR;
-	int retry;
-
-	PSB_DEBUG_ENTRY("\n");
-	
-	if(!dbi_output)
-		return;
-
-	if ((dbi_output->mode_flags & MODE_SETTING_IN_DSR) ||
-		(dbi_output->mode_flags & MODE_SETTING_ON_GOING) ||
-		(psb_crtc && psb_crtc->mode_flags & MODE_SETTING_ON_GOING)) 
-		goto fun_exit;
-
-	sender = mdfld_dsi_encoder_get_pkg_sender(&dbi_output->base);
-
-	retry = 100;
-	while (retry && !(REG_READ(sender->mipi_gen_fifo_stat_reg) & BIT27)) {
-		udelay(500);
-		retry--;
-	}
-
-	/*if DBI FIFO timeout, do not enter dsr*/
-	if (!retry) {
-		printk(KERN_INFO "can not enter dsr currently\n");
-		goto fun_exit ;
-	}
-
-	if(pipe == 2) {
-		dpll_reg = MRST_DPLL_A;
-		pipeconf_reg = PIPECCONF;
-		dspcntr_reg = DSPCCNTR;
-	}
-
-	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, OSPM_UHB_FORCE_POWER_ON)) {
-		DRM_ERROR("hw begin failed\n");
-		goto fun_exit;
-	}
-
-	mdfld_disable_te(dev, pipe);
-
-	/*disable plane*/
-	reg_val = REG_READ(dspcntr_reg);
-	if(!(reg_val & DISPLAY_PLANE_ENABLE)) {
-		REG_WRITE(dspcntr_reg, reg_val & ~DISPLAY_PLANE_ENABLE);
-		REG_READ(dspcntr_reg);
-	}
-	
-	/*disable pipe*/
-	reg_val = REG_READ(pipeconf_reg);
-	if(!(reg_val & DISPLAY_PLANE_ENABLE)) {
-		reg_val &= ~DISPLAY_PLANE_ENABLE;
-		reg_val |= (PIPECONF_PLANE_OFF | PIPECONF_CURSOR_OFF);
-		REG_WRITE(pipeconf_reg, reg_val);
-		REG_READ(pipeconf_reg);
-		mdfldWaitForPipeDisable(dev, pipe);
-	}
-	
-	/*disable DPLL*/
-	reg_val = REG_READ(dpll_reg);
-	if(!(reg_val & DPLL_VCO_ENABLE)) {
-		reg_val &= ~DPLL_VCO_ENABLE;
-		REG_WRITE(dpll_reg, reg_val);
-		REG_READ(dpll_reg);
-		udelay(500);
-	}
-	
-	/*gate power of DSI DPLL*/
-	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
-	
-	/*update mode state to IN_DSR*/
-	dbi_output->mode_flags |= MODE_SETTING_IN_DSR;
-
-fun_exit:
 	return;
 }
 
@@ -125,103 +46,6 @@ static void mdfld_dbi_output_exit_dsr(struct mdfld_dsi_dbi_output *dbi_output,
 		void *p_surfaceAddr,
 		bool check_hw_on_only)
 {
-	struct drm_device * dev = dbi_output->dev;
-	struct drm_psb_private *dev_priv = dev->dev_private;
-	struct drm_crtc * crtc = dbi_output->base.base.crtc;
-	struct psb_intel_crtc * psb_crtc = (crtc) ? to_psb_intel_crtc(crtc) : NULL; 
-	struct panel_funcs *p_funcs  = NULL;
-	u32 reg_val;
-	u32 dpll_reg = MRST_DPLL_A;
-	u32 pipeconf_reg = PIPEACONF;
-	u32 dspcntr_reg = DSPACNTR;
-	u32 dspsurf_reg = DSPASURF;
-	u32 reg_offset = 0;
-
-	PSB_DEBUG_ENTRY("\n");
-
-
-	/*if mode setting on-going, back off*/
-	if (!(dbi_output->mode_flags & MODE_SETTING_IN_DSR) ||
-		(dbi_output->mode_flags & MODE_SETTING_ON_GOING) ||
-		(psb_crtc && psb_crtc->mode_flags & MODE_SETTING_ON_GOING)) 
-		goto fun_exit;
-
-	if(pipe == 2) {
-		dpll_reg = MRST_DPLL_A;
-		pipeconf_reg = PIPECCONF;
-		dspcntr_reg = DSPCCNTR;
-		dspsurf_reg = DSPCSURF;
-		reg_offset = MIPIC_REG_OFFSET;
-	}
-
-	if (check_hw_on_only) {
-		if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
-			OSPM_UHB_ONLY_IF_ON)) {
-			DRM_ERROR("display is in off state\n");
-			goto fun_exit;
-		}
-	} else if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, OSPM_UHB_FORCE_POWER_ON)) {
-		DRM_ERROR("hw begin failed\n");
-		goto fun_exit;
-	}
-
-	/*enable DPLL*/
-	reg_val = REG_READ(dpll_reg);
-	if(!(reg_val & DPLL_VCO_ENABLE)) {
-		
-		if(reg_val & MDFLD_PWR_GATE_EN) {
-			reg_val &= ~MDFLD_PWR_GATE_EN;
-			REG_WRITE(dpll_reg, reg_val);
-			REG_READ(dpll_reg);
-			udelay(500);
-		}
-		
-		reg_val |= DPLL_VCO_ENABLE;
-		REG_WRITE(dpll_reg, reg_val);
-		REG_READ(dpll_reg);
-		udelay(500);
-		
-		/*add timeout*/
-		while (!(REG_READ(pipeconf_reg) & PIPECONF_DSIPLL_LOCK)) {
-			cpu_relax();
-		}
-	}
-	
-	/*enable pipe*/
-	reg_val = REG_READ(pipeconf_reg);
-	if(!(reg_val & PIPEACONF_ENABLE)) {
-		reg_val |= PIPEACONF_ENABLE;
-		REG_WRITE(pipeconf_reg, reg_val);
-		REG_READ(pipeconf_reg);
-		udelay(500);
-		mdfldWaitForPipeEnable(dev, pipe);
-	}
-	
-	/*enable plane*/
-	reg_val = REG_READ(dspcntr_reg);
-	if(!(reg_val & DISPLAY_PLANE_ENABLE)) {
-		reg_val |= DISPLAY_PLANE_ENABLE;
-		REG_WRITE(dspcntr_reg, reg_val);
-		REG_READ(dspcntr_reg);
-		udelay(500);
-	}
-	
-	/* update the surface base address. */
-	if (p_surfaceAddr) {
-		REG_WRITE(dspsurf_reg, *((u32 *)p_surfaceAddr));
-	}
-
-	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
-
-	mdfld_enable_te(dev, pipe);
-
-	dev_priv->dsr_idle_count = 0;
-
-	p_funcs = dbi_output->p_funcs;
-
-	/*clean IN_DSR flag*/
-	dbi_output->mode_flags &= ~MODE_SETTING_IN_DSR;
-fun_exit:
 	return;
 }
 
@@ -250,105 +74,17 @@ int mdfld_dsi_dbi_async_check_fifo_empty(struct drm_device *dev)
  */
 int mdfld_dsi_dbi_async_flip_fb_update(struct drm_device *dev, int pipe)
 {
-	struct drm_psb_private *dev_priv = dev->dev_private;
-	struct mdfld_dbi_dsr_info *dsr_info = dev_priv->dbi_dsr_info;
-	struct mdfld_dsi_dbi_output **dbi_outputs = NULL;
-	struct mdfld_dsi_dbi_output *dbi_output = NULL;
-	struct mdfld_dsi_pkg_sender *sender = NULL;
-	int ret = IMG_TRUE;
-	int err = 0;
-	u32 damage_mask = 0;
-
-	u32 dsplinoff_reg = DSPALINOFF;
-	u32 dspsurf_reg = DSPASURF;
-
-	dbi_outputs = dsr_info->dbi_outputs;
-	dbi_output = pipe ? dbi_outputs[1] : dbi_outputs[0];
-	if (!dbi_output)
-		return IMG_FALSE;
-
-	if (dbi_output->mode_flags & MODE_SETTING_IN_DSR) {
-		DRM_ERROR("Display Controller in DSR\n");
-		ret = IMG_FALSE;
-		goto fun_exit;
-	}
-
-	if (pipe == 0)
-		damage_mask = dev_priv->dsr_fb_update & MDFLD_DSR_DAMAGE_MASK_0;
-	else if (pipe == 2)
-		damage_mask = dev_priv->dsr_fb_update & MDFLD_DSR_DAMAGE_MASK_2;
-
-	if (damage_mask) {
-		sender = mdfld_dsi_encoder_get_pkg_sender(&dbi_output->base);
-
-		/* refresh plane changes */
-		REG_WRITE(dsplinoff_reg, REG_READ(dsplinoff_reg));
-		REG_WRITE(dspsurf_reg, REG_READ(dspsurf_reg));
-		REG_READ(dspsurf_reg);
-
-		err = mdfld_dsi_send_dcs(sender,
-				write_mem_start,
-				NULL,
-				0,
-				CMD_DATA_SRC_PIPE,
-				MDFLD_DSI_SEND_PACKAGE);
-
-		if (err) {
-			DRM_ERROR(
-			"Error returned from mdfld_dsi_send_dcs: %d\n", ret);
-			ret = IMG_FALSE;
-			goto fun_exit;
-		}
-		dev_priv->dsr_fb_update &= ~damage_mask;
-	}
-fun_exit:
-	return ret;
+	return 0;
 }
 
 /**
- * Exit from DSR 
+ * Exit from DSR
  */
 void mdfld_dsi_dbi_exit_dsr(struct drm_device *dev,
 		u32 update_src,
 		void *p_surfaceAddr,
 		bool check_hw_on_only)
 {
-	struct drm_psb_private *dev_priv = dev->dev_private;
-	struct mdfld_dbi_dsr_info * dsr_info = dev_priv->dbi_dsr_info;
-	struct mdfld_dsi_dbi_output ** dbi_output;
-	int i;
-	int err = 0;
-	struct mdfld_dsi_pkg_sender *sender = NULL;
-
-	mutex_lock(&dev_priv->dsr_mutex);
-
-	dbi_output = dsr_info->dbi_outputs;
-
-	if (!dbi_output)
-		return;
-
-	/*for each output, exit dsr*/
-	for(i=0; i<dsr_info->dbi_output_num; i++) {
-		/*if panel has been turned off, skip*/
-		if (!dbi_output[i] || !dbi_output[i]->dbi_panel_on)
-			continue;
-		if(dbi_output[i]->mode_flags & MODE_SETTING_IN_DSR) {
-			mdfld_dbi_output_exit_dsr(dbi_output[i],
-					dbi_output[i]->channel_num ? 2 : 0,
-					p_surfaceAddr,
-					check_hw_on_only);
-		}
-	}
-
-	dev_priv->dsr_fb_update |= update_src;
-	dev_priv->dsr_idle_count = 0;
-
-	sender = mdfld_dsi_encoder_get_pkg_sender(&dbi_output[0]->base);
-	err = mdfld_dsi_status_check(sender);
-	if (err)
-		DRM_ERROR("exit DSR, DSI abnormal 0x%x\n");
-
-	mutex_unlock(&dev_priv->dsr_mutex);
 }
 
 static bool mdfld_dbi_is_in_dsr(struct drm_device * dev)
@@ -372,53 +108,33 @@ void mdfld_dbi_update_panel(struct drm_device *dev, int pipe)
 	struct mdfld_dbi_dsr_info *dsr_info = dev_priv->dbi_dsr_info;
 	struct mdfld_dsi_dbi_output **dbi_outputs;
 	struct mdfld_dsi_dbi_output *dbi_output;
+	struct mdfld_dsi_config *dsi_config;
+	struct mdfld_dsi_hw_context *ctx;
 	int i;
-	u32 damage_mask = 0;
+
+	if (!dsr_info)
+		return;
 
 	dbi_outputs = dsr_info->dbi_outputs;
 	dbi_output = pipe ? dbi_outputs[1] : dbi_outputs[0];
+	dsi_config = pipe ? dev_priv->dsi_configs[1] : dev_priv->dsi_configs[0];
 
-	if (!dbi_output)
+	if (!dbi_output || !dsi_config || (pipe == 1))
 		return;
 
-	mutex_lock(&dev_priv->dsr_mutex);
+	ctx = &dsi_config->dsi_hw_context;
 
-	if (pipe == 0)
-		damage_mask = dev_priv->dsr_fb_update & MDFLD_DSR_DAMAGE_MASK_0;
-	else if (pipe == 2)
-		damage_mask = dev_priv->dsr_fb_update & MDFLD_DSR_DAMAGE_MASK_2;
+	/*lock dsi config*/
+	mutex_lock(&dsi_config->context_lock);
 
 	/*if FB is damaged and panel is on update on-panel FB*/
-	if (damage_mask && dbi_output->dbi_panel_on) {
-		dbi_output->dsr_fb_update_done = false;
+	if (!ctx->panel_on)
+		goto update_out;
 
-		if (dbi_output->p_funcs->update_fb)
-			dbi_output->p_funcs->update_fb(dbi_output, pipe);
-
-		if (dev_priv->b_dsr_enable && dbi_output->dsr_fb_update_done)
-			dev_priv->dsr_fb_update &= ~damage_mask;
-
-		dbi_output->dsr_idle_count = 0;
-	} else {
-		dbi_output->dsr_idle_count++;
-	}
-
-	/*try to enter DSR in normal boot mode.*/
-	if ((dbi_outputs[0]->dsr_idle_count > 50) &&
-			(dev_priv->b_async_flip_enable)) {
-		/* && dbi_outputs[1]->dsr_idle_count > 1) { */
-		for (i = 0; i < dsr_info->dbi_output_num; i++) {
-			if (!mdfld_dbi_is_in_dsr(dev) && dbi_outputs[i] &&
-					!(dbi_outputs[i]->mode_flags &
-						MODE_SETTING_ON_GOING)) {
-				mdfld_dsi_dbi_enter_dsr(dbi_outputs[i],
-						dbi_outputs[i]->channel_num ?
-						2 : 0);
-			}
-		}
-	}
-
-	mutex_unlock(&dev_priv->dsr_mutex);
+	if (dbi_output->p_funcs && dbi_output->p_funcs->update_fb)
+		dbi_output->p_funcs->update_fb(dbi_output, pipe);
+update_out:
+	mutex_unlock(&dsi_config->context_lock);
 }
 
 int mdfld_dbi_dsr_init(struct drm_device *dev)
@@ -521,6 +237,8 @@ static int __dbi_panel_power_on(struct mdfld_dsi_config *dsi_config,
 	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
 					OSPM_UHB_FORCE_POWER_ON))
 		return -EAGAIN;
+
+	mdfld_dsi_dsr_forbid_locked(dsi_config);
 
 	/*after entering dstb mode, need reset*/
 	if (p_funcs && p_funcs->reset)
@@ -674,6 +392,7 @@ static int __dbi_panel_power_on(struct mdfld_dsi_config *dsi_config,
 			DRM_ERROR("Failed to set panel brightness\n");
 
 power_on_err:
+	mdfld_dsi_dsr_allow_locked(dsi_config);
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 	return err;
 }
@@ -716,6 +435,8 @@ static int __dbi_panel_power_off(struct mdfld_dsi_config *dsi_config,
 	/*Notify PVR module that screen is off*/
 	if (dev_priv->pvr_screen_event_handler)
 		dev_priv->pvr_screen_event_handler(dev, 0);
+
+	mdfld_dsi_dsr_forbid_locked(dsi_config);
 
 	/*Disable TE, don't need it anymore*/
 	mdfld_disable_te(dev, dsi_config->pipe);
@@ -768,6 +489,7 @@ static int __dbi_panel_power_off(struct mdfld_dsi_config *dsi_config,
 		REG_WRITE(regs->dpll_reg, BIT30);
 	}
 power_off_err:
+	mdfld_dsi_dsr_allow_locked(dsi_config);
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 	return err;
 }

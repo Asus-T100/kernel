@@ -41,6 +41,8 @@
 #include "psb_drv.h"
 #include "psb_fb.h"
 
+#include "mdfld_dsi_dbi_dsr.h"
+
 #if !defined(SUPPORT_DRI_DRM)
 #error "SUPPORT_DRI_DRM must be set"
 #endif
@@ -143,6 +145,8 @@ static void MRSTLFBFlipSprite(MRSTLFB_DEVINFO *psDevInfo,
 {
 	struct drm_device *dev;
 	struct drm_psb_private *dev_priv;
+	struct mdfld_dsi_config *dsi_config;
+	struct mdfld_dsi_hw_context *ctx;
 	u32 reg_offset;
 	int pipe;
 
@@ -153,11 +157,13 @@ static void MRSTLFBFlipSprite(MRSTLFB_DEVINFO *psDevInfo,
 	if (psContext->index == 0) {
 		reg_offset = 0;
 		pipe = 0;
+		dsi_config = dev_priv->dsi_configs[0];
 	} else if (psContext->index == 1) {
 		reg_offset = 0x1000;
 		pipe = 1;
 	} else if (psContext->index == 2) {
 		reg_offset = 0x2000;
+		dsi_config = dev_priv->dsi_configs[1];
 		pipe = 2;
 	} else
 		return;
@@ -176,6 +182,16 @@ static void MRSTLFBFlipSprite(MRSTLFB_DEVINFO *psDevInfo,
 		PSB_WVDC32(psContext->linoff, DSPALINOFF + reg_offset);
 		PSB_WVDC32(psContext->surf, DSPASURF + reg_offset);
 	}
+
+	if (dsi_config) {
+		ctx = &dsi_config->dsi_hw_context;
+		ctx->dsppos = psContext->pos;
+		ctx->dspsize = psContext->size;
+		ctx->dspstride = psContext->stride;
+		ctx->dspcntr = psContext->cntr;
+		ctx->dsplinoff = psContext->linoff;
+		ctx->dspsurf = psContext->surf;
+	}
 }
 
 static void MRSTLFBFlipPrimary(MRSTLFB_DEVINFO *psDevInfo,
@@ -183,6 +199,8 @@ static void MRSTLFBFlipPrimary(MRSTLFB_DEVINFO *psDevInfo,
 {
 	struct drm_device *dev;
 	struct drm_psb_private *dev_priv;
+	struct mdfld_dsi_config *dsi_config = 0;
+	struct mdfld_dsi_hw_context *ctx = 0;
 	u32 reg_offset;
 	int pipe;
 
@@ -193,11 +211,13 @@ static void MRSTLFBFlipPrimary(MRSTLFB_DEVINFO *psDevInfo,
 	if (psContext->index == 0) {
 		reg_offset = 0;
 		pipe = 0;
+		dsi_config = dev_priv->dsi_configs[0];
 	} else if (psContext->index == 1) {
 		reg_offset = 0x1000;
 		pipe = 1;
 	} else if (psContext->index == 2) {
 		reg_offset = 0x2000;
+		dsi_config = dev_priv->dsi_configs[1];
 		pipe = 2;
 	} else
 		return;
@@ -220,6 +240,16 @@ static void MRSTLFBFlipPrimary(MRSTLFB_DEVINFO *psDevInfo,
 		PSB_WVDC32(psContext->linoff, DSPALINOFF + reg_offset);
 		PSB_WVDC32(psContext->surf, DSPASURF + reg_offset);
 	}
+
+	if (dsi_config) {
+		ctx = &dsi_config->dsi_hw_context;
+		ctx->dsppos = psContext->pos;
+		ctx->dspsize = psContext->size;
+		ctx->dspstride = psContext->stride;
+		ctx->dspcntr = psContext->cntr;
+		ctx->dsplinoff = psContext->linoff;
+		ctx->dspsurf = psContext->surf;
+	}
 }
 
 static IMG_BOOL MRSTLFBFlipContexts(MRSTLFB_DEVINFO *psDevInfo,
@@ -230,10 +260,14 @@ static IMG_BOOL MRSTLFBFlipContexts(MRSTLFB_DEVINFO *psDevInfo,
 	struct intel_overlay_context *psOverlayContext;
 	struct drm_psb_private *dev_priv;
 	struct drm_device *dev;
+	IMG_BOOL ret = IMG_TRUE;
 	int i;
 
-	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, MRST_FALSE))
+	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, MRST_TRUE)) {
+		DRM_ERROR("mdfld_dsi_dsr: failed to hw_begin\n");
 		return IMG_FALSE;
+	}
+
 	dev = psDevInfo->psDrmDevice;
 	dev_priv =
 		(struct drm_psb_private *)psDevInfo->psDrmDevice->dev_private;
@@ -262,13 +296,13 @@ static IMG_BOOL MRSTLFBFlipContexts(MRSTLFB_DEVINFO *psDevInfo,
 		}
 	}
 
-	if (dev_priv->b_async_flip_enable && dev_priv->async_flip_update_fb) {
-		if (dev_priv->async_flip_update_fb(dev, 0) == IMG_FALSE)
-			return IMG_FALSE;
+	if (mdfld_dsi_dsr_update_panel_fb(dev_priv->dsi_configs[0])) {
+		DRM_ERROR("mdfld_dsi_dsr: failed to update panel fb\n");
+		ret = IMG_FALSE;
 	}
 
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
-	return IMG_TRUE;
+	return ret;
 }
 
 static void MRSTLFBRestoreLastFlip(MRSTLFB_DEVINFO *psDevInfo)
@@ -1377,6 +1411,7 @@ static IMG_BOOL ProcessFlip2(IMG_HANDLE hCmdCookie,
 	struct drm_psb_private *dev_priv;
 	MRSTLFB_DEVINFO *psDevInfo;
 	struct mdfld_plane_contexts *psPlaneContexts;
+	struct mdfld_dsi_config *dsi_config;
 
 	psFlipCmd = (DISPLAYCLASS_FLIP_COMMAND2 *)pvData;
 	psDevInfo = (MRSTLFB_DEVINFO *)psFlipCmd->hExtDevice;
@@ -1398,7 +1433,15 @@ static IMG_BOOL ProcessFlip2(IMG_HANDLE hCmdCookie,
 		FirstCleanFlag = 0;
 	}
 
+	dsi_config = dev_priv->dsi_configs[0];
+
 	psPlaneContexts = (struct mdfld_plane_contexts *)psFlipCmd->pvPrivData;
+
+	mutex_lock(&dsi_config->context_lock);
+	mdfld_dsi_dsr_forbid_locked(dsi_config);
+
+	if (dev_priv->exit_idle && (dsi_config->type == MDFLD_DSI_ENCODER_DPI))
+		dev_priv->exit_idle(dev, MDFLD_DSR_2D_3D, NULL, true);
 
 	spin_lock_irqsave(&psDevInfo->sSwapChainLock, ulLockFlags);
 
@@ -1472,10 +1515,14 @@ static IMG_BOOL ProcessFlip2(IMG_HANDLE hCmdCookie,
 	}
 ExitErrorUnlock:
 	spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
+	mdfld_dsi_dsr_allow_locked(dsi_config);
+	mutex_unlock(&dsi_config->context_lock);
 	return IMG_FALSE;
 ExitTrueUnlock:
 #endif
 	spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
+	mdfld_dsi_dsr_allow_locked(dsi_config);
+	mutex_unlock(&dsi_config->context_lock);
 	return IMG_TRUE;
 }
 
@@ -1494,7 +1541,7 @@ static IMG_BOOL ProcessFlip(IMG_HANDLE  hCmdCookie,
 	unsigned long irqflags;
 	struct drm_device *dev;
 	struct drm_psb_private *dev_priv;
-	int   retry = 60;
+	struct mdfld_dsi_config *dsi_config;
 
 	if(!hCmdCookie || !pvData)
 		return IMG_FALSE;
@@ -1542,22 +1589,16 @@ static IMG_BOOL ProcessFlip(IMG_HANDLE  hCmdCookie,
 		return IMG_TRUE;
 	}
 
-	if (dev_priv->b_dsr_enable)
-		dev_priv->exit_idle(dev, MDFLD_DSR_2D_3D, NULL, true);
-
-	if (dev_priv->b_async_flip_enable && dev_priv->async_flip_update_fb) {
-		while (!DRMLFBFifoEmpty(psDevInfo) && retry) {
-			usleep_range(500, 1000);
-			retry--;
-		}
-		if (!retry) {
-			DRM_ERROR("FIFO never emptied\n");
-			return IMG_FALSE;
-		}
-	}
-
 	if (!psBuffer)
 		return ProcessFlip2(hCmdCookie, ui32DataSize, pvData);
+
+	dsi_config = dev_priv->dsi_configs[0];
+
+	mutex_lock(&dsi_config->context_lock);
+	mdfld_dsi_dsr_forbid_locked(dsi_config);
+
+	if (dev_priv->exit_idle && (dsi_config->type == MDFLD_DSI_ENCODER_DPI))
+		dev_priv->exit_idle(dev, MDFLD_DSR_2D_3D, NULL, true);
 
 	spin_lock_irqsave(&psDevInfo->sSwapChainLock, ulLockFlags);
 
@@ -1629,11 +1670,15 @@ static IMG_BOOL ProcessFlip(IMG_HANDLE  hCmdCookie,
 	}
 ExitErrorUnlock:
 	spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
+	mdfld_dsi_dsr_allow_locked(dsi_config);
+	mutex_unlock(&dsi_config->context_lock);
 	return IMG_FALSE;
 
 ExitTrueUnlock:
 #endif
 	spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
+	mdfld_dsi_dsr_allow_locked(dsi_config);
+	mutex_unlock(&dsi_config->context_lock);
 	return IMG_TRUE;
 }
 

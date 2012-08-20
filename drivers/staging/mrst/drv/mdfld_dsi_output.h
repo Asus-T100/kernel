@@ -235,6 +235,10 @@ struct mdfld_dsi_hw_context {
 	u32 dspstride;
 	u32 dsplinoff;
 
+	/*overlay*/
+	u32 ovaadd;
+	u32 ovcadd;
+
 	/* gamma and csc */
 	u32 palette[256];
 	u32 color_coef[6];
@@ -320,6 +324,10 @@ struct mdfld_dsi_hw_registers {
 	u32 dsplinoff_reg;
 	u32 dsppos_reg;
 	u32 dspstride_reg;
+
+	/*overlay*/
+	u32 ovaadd_reg;
+	u32 ovcadd_reg;
 
 	/* csc */
 	u32 color_coef_reg;
@@ -423,6 +431,9 @@ struct mdfld_dsi_config {
 	int channel_num;
 	/*video mode configure*/
 	int video_mode;
+
+	/*dsr*/
+	void *dsr;
 };
 
 #define MDFLD_DSI_CONNECTOR(psb_output) \

@@ -32,6 +32,7 @@
 
 #include "mdfld_dsi_dbi_dpu.h"
 #include "mdfld_dsi_pkg_sender.h"
+#include "mdfld_dsi_dbi_dsr.h"
 
 #ifdef CONFIG_MDFD_GL3
 #include "mdfld_gl3.h"
@@ -421,20 +422,20 @@ void mdfld_te_handler_work(struct work_struct *work)
 	int pipe = dev_priv->te_pipe;
 	struct drm_device *dev = dev_priv->dev;
 
-
 	if (dev_priv->b_async_flip_enable)
-		mdfld_async_flip_te_handler(dev, pipe);
+		mdfld_dsi_dsr_report_te(dev_priv->dsi_configs[0]);
 	else {
 #ifdef CONFIG_MDFD_DSI_DPU
 		mdfld_dpu_update_panel(dev);
 #else
 		mdfld_dbi_update_panel(dev, pipe);
 #endif
-		drm_handle_vblank(dev, pipe);
-
-		if (dev_priv->psb_vsync_handler != NULL)
-			(*dev_priv->psb_vsync_handler)(dev, pipe);
 	}
+
+	drm_handle_vblank(dev, pipe);
+
+	if (dev_priv->psb_vsync_handler != NULL)
+		(*dev_priv->psb_vsync_handler)(dev, pipe);
 }
 
 static void update_te_counter(struct drm_device *dev, uint32_t pipe)

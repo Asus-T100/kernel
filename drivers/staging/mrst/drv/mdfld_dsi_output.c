@@ -35,6 +35,7 @@
 #include <linux/freezer.h>
 #include "psb_drv.h"
 #include "mdfld_dsi_esd.h"
+#include "mdfld_dsi_dbi_dsr.h"
 
 #define MDFLD_DSI_BRIGHTNESS_MAX_LEVEL 100
 
@@ -311,6 +312,8 @@ void mdfld_dsi_brightness_control (struct drm_device *dev, int pipe, int level)
 
 	mutex_lock(&dsi_config->context_lock);
 
+	mdfld_dsi_dsr_forbid_locked(dsi_config);
+
 	if (!dsi_config->dsi_hw_context.panel_on)
 		goto set_brightness_out;
 
@@ -318,6 +321,7 @@ void mdfld_dsi_brightness_control (struct drm_device *dev, int pipe, int level)
 		DRM_ERROR("Failed to set panel brightness\n");
 
 set_brightness_out:
+	mdfld_dsi_dsr_allow_locked(dsi_config);
 	mutex_unlock(&dsi_config->context_lock);
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 }
@@ -467,10 +471,13 @@ set_prop_error:
 
 static void mdfld_dsi_connector_destroy(struct drm_connector * connector)
 {
-	struct psb_intel_output * psb_output = to_psb_intel_output(connector);
-	struct mdfld_dsi_connector * dsi_connector = MDFLD_DSI_CONNECTOR(psb_output);
-	struct mdfld_dsi_pkg_sender * sender;
-	
+	struct psb_intel_output *psb_output = to_psb_intel_output(connector);
+	struct mdfld_dsi_connector *dsi_connector =
+		MDFLD_DSI_CONNECTOR(psb_output);
+	struct mdfld_dsi_config *dsi_config =
+		mdfld_dsi_get_config(dsi_connector);
+	struct mdfld_dsi_pkg_sender *sender;
+
 	PSB_DEBUG_ENTRY("\n");
 	
 	if(!dsi_connector) {
@@ -480,6 +487,8 @@ static void mdfld_dsi_connector_destroy(struct drm_connector * connector)
 	drm_sysfs_connector_remove(connector);
 	drm_connector_cleanup(connector);
 	
+	mdfld_dsi_dsr_destroy(dsi_config);
+
 	sender = dsi_connector->pkg_sender;
 
 	mdfld_dsi_error_detector_exit(dsi_connector);
@@ -671,6 +680,9 @@ static int mdfld_dsi_regs_init(struct mdfld_dsi_config *dsi_config,
 	regs->vgacntr_reg = VGACNTRL;
 	regs->dpll_reg = MRST_DPLL_A;
 	regs->fp_reg = MRST_FPA0;
+
+	regs->ovaadd_reg = OV_OVADD;
+	regs->ovcadd_reg = OVC_OVADD;
 
 	if (pipe == 0) {
 		regs->dspcntr_reg = DSPACNTR;
@@ -1082,6 +1094,10 @@ int mdfld_dsi_output_init(struct drm_device *dev,
 	}
 	
 	drm_sysfs_connector_add(connector);
+
+	/*init dsr*/
+	if (mdfld_dsi_dsr_init(dsi_config))
+		DRM_INFO("%s: Failed to initialize DSR\n", __func__);
 
 	PSB_DEBUG_ENTRY("successfully\n");
 	return 0;

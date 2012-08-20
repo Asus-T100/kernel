@@ -1254,6 +1254,7 @@ int mdfld_dsi_send_dcs(struct mdfld_dsi_pkg_sender * sender,
 		if (atomic64_read(&sender->last_screen_update) ==
 			atomic64_read(&sender->te_seq)) {
 			spin_unlock(&sender->lock);
+			DRM_INFO("reject write_mem_start\n");
 			return 0;
 		}
 
@@ -1266,7 +1267,6 @@ int mdfld_dsi_send_dcs(struct mdfld_dsi_pkg_sender * sender,
 			udelay(500);
 			retry--;
 		}
-
 		/*if DBI FIFO timeout, drop this frame*/
 		if (!retry) {
 			DRM_ERROR("DBI FIFO timeout, drop frame\n");
