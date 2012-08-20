@@ -161,8 +161,10 @@
 #define MSVDX_CORE_BASE	(0x600)
 
 void psb_msvdx_update_frame_info(struct msvdx_private *msvdx_priv,
+					struct ttm_object_file *tfile,
 					void *cmd);
 void psb_msvdx_backup_cmd(struct msvdx_private *msvdx_priv,
+				struct ttm_object_file *tfile,
 				void *cmd,
 				uint32_t cmd_size,
 				uint32_t deblock_cmd_offset);

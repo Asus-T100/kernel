@@ -71,11 +71,16 @@ static int psb_msvdx_dequeue_send(struct drm_device *dev)
 	if (IS_MSVDX_MEM_TILE(dev) && drm_psb_msvdx_tiling)
 		psb_msvdx_set_tile(dev, msvdx_cmd->msvdx_tile);
 
+	/* Seperate update frame and backup cmds because if a batch of cmds
+	 * doesn't have * host_be_opp message, no need to update frame info
+	 * but still need to backup cmds.
+	 * This case can happen if an batch of cmds is not the entire frame
+	*/
 	if (msvdx_cmd->host_be_opp_enabled) {
-		psb_msvdx_update_frame_info(msvdx_priv,
+		psb_msvdx_update_frame_info(msvdx_priv, msvdx_cmd->tfile,
 			msvdx_cmd->cmd + msvdx_cmd->deblock_cmd_offset);
 	}
-	psb_msvdx_backup_cmd(msvdx_priv,
+	psb_msvdx_backup_cmd(msvdx_priv, msvdx_cmd->tfile,
 			msvdx_cmd->cmd,
 			msvdx_cmd->cmd_size,
 			msvdx_cmd->deblock_cmd_offset);
@@ -266,6 +271,8 @@ static int psb_msvdx_map_command(struct drm_device *dev,
 		}
 	}
 
+	msvdx_priv->num_cmd = ((--sequence) & 0xf);
+
 	if (copy_cmd) {
 		PSB_DEBUG_GENERAL("MSVDXQUE:copying command\n");
 
@@ -286,9 +293,10 @@ static int psb_msvdx_map_command(struct drm_device *dev,
 		}
 		if (msvdx_priv->host_be_opp_enabled) {
 			psb_msvdx_update_frame_info(msvdx_priv,
+				msvdx_priv->tfile,
 				cmd_start + msvdx_priv->deblock_cmd_offset);
 		}
-		psb_msvdx_backup_cmd(msvdx_priv,
+		psb_msvdx_backup_cmd(msvdx_priv, msvdx_priv->tfile,
 				cmd_start,
 				cmd_size,
 				msvdx_priv->deblock_cmd_offset);
@@ -421,6 +429,8 @@ int psb_submit_video_cmdbuf(struct drm_device *dev,
 			msvdx_priv->deblock_cmd_offset;
 		msvdx_cmd->host_be_opp_enabled =
 			msvdx_priv->host_be_opp_enabled;
+		msvdx_cmd->tfile =
+			msvdx_priv->tfile;
 		spin_lock_irqsave(&msvdx_priv->msvdx_lock, irq_flags);
 		list_add_tail(&msvdx_cmd->head, &msvdx_priv->msvdx_queue);
 		spin_unlock_irqrestore(&msvdx_priv->msvdx_lock, irq_flags);

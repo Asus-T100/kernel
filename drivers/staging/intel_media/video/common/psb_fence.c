@@ -82,6 +82,7 @@ int psb_fence_emit_sequence(struct ttm_fence_device *fdev,
 {
 	struct drm_psb_private *dev_priv =
 		container_of(fdev, struct drm_psb_private, fdev);
+	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
 	uint32_t seq = 0;
 
 	if (!dev_priv)
@@ -96,6 +97,7 @@ int psb_fence_emit_sequence(struct ttm_fence_device *fdev,
 		seq = dev_priv->sequence[fence_class]++;
 		/* cmds in one batch use different fence value */
 		seq <<= 4;
+		seq += msvdx_priv->num_cmd;
 		spin_unlock(&dev_priv->sequence_lock);
 		break;
 	case LNC_ENGINE_ENCODE:

@@ -360,6 +360,7 @@ struct psb_msvdx_cmd_queue {
 	uint32_t msvdx_tile;
 	uint32_t host_be_opp_enabled;
 	uint32_t deblock_cmd_offset;
+	struct ttm_object_file *tfile;
 };
 
 

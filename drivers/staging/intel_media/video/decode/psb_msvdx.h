@@ -719,6 +719,7 @@ struct msvdx_private {
 	struct psb_msvdx_ec_ctx *msvdx_ec_ctx[PSB_MAX_EC_INSTANCE];
 	struct psb_msvdx_ec_ctx *cur_msvdx_ec_ctx;
 	uint32_t deblock_cmd_offset;
+	int num_cmd;
 
 	struct drm_video_displaying_frameinfo displaying_frame;
 
@@ -732,6 +733,7 @@ struct msvdx_private {
 
 struct psb_msvdx_ec_ctx *psb_msvdx_find_ec_ctx(
 			struct msvdx_private *msvdx_priv,
+			struct ttm_object_file *tfile,
 			void *cmd);
 
 static inline void psb_msvdx_clearirq(struct drm_device *dev)

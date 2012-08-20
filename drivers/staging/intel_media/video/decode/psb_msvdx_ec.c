@@ -347,6 +347,7 @@ ec_done:
 
 struct psb_msvdx_ec_ctx *psb_msvdx_find_ec_ctx(
 			struct msvdx_private *msvdx_priv,
+			struct ttm_object_file *tfile,
 			void *cmd)
 {
 	int i, free_idx;
@@ -355,7 +356,7 @@ struct psb_msvdx_ec_ctx *psb_msvdx_find_ec_ctx(
 
 	free_idx = -1;
 	for (i = 0; i < PSB_MAX_EC_INSTANCE; i++) {
-		if (msvdx_priv->msvdx_ec_ctx[i]->tfile == msvdx_priv->tfile)
+		if (msvdx_priv->msvdx_ec_ctx[i]->tfile == tfile)
 			break;
 		else if (free_idx < 0 &&
 			 msvdx_priv->msvdx_ec_ctx[i]->tfile == NULL)
@@ -366,10 +367,10 @@ struct psb_msvdx_ec_ctx *psb_msvdx_find_ec_ctx(
 		ec_ctx = msvdx_priv->msvdx_ec_ctx[i];
 	else if (free_idx >= 0 && cmd) {
 		PSB_DEBUG_MSVDX("acquire ec ctx idx %d for tfile 8x%08x\n",
-				free_idx, msvdx_priv->tfile);
+				free_idx, tfile);
 		ec_ctx = msvdx_priv->msvdx_ec_ctx[free_idx];
 		memset(ec_ctx, 0, sizeof(*ec_ctx));
-		ec_ctx->tfile = msvdx_priv->tfile;
+		ec_ctx->tfile = tfile;
 		ec_ctx->context_id = deblock_msg->mmu_context.bits.context;
 	} else {
 		PSB_DEBUG_MSVDX("Available ec ctx is not found\n");
@@ -379,6 +380,7 @@ struct psb_msvdx_ec_ctx *psb_msvdx_find_ec_ctx(
 }
 
 void psb_msvdx_update_frame_info(struct msvdx_private *msvdx_priv,
+					struct ttm_object_file *tfile,
 					void *cmd)
 {
 
@@ -392,7 +394,7 @@ void psb_msvdx_update_frame_info(struct msvdx_private *msvdx_priv,
 
 	PSB_DEBUG_MSVDX("update frame info for ved error concealment\n");
 
-	ec_ctx = psb_msvdx_find_ec_ctx(msvdx_priv, cmd);
+	ec_ctx = psb_msvdx_find_ec_ctx(msvdx_priv, tfile, cmd);
 
 	if (!ec_ctx)
 		return;
@@ -423,6 +425,7 @@ void psb_msvdx_update_frame_info(struct msvdx_private *msvdx_priv,
 }
 
 void psb_msvdx_backup_cmd(struct msvdx_private *msvdx_priv,
+				struct ttm_object_file *tfile,
 				void *cmd,
 				uint32_t cmd_size,
 				uint32_t deblock_cmd_offset)
@@ -433,7 +436,7 @@ void psb_msvdx_backup_cmd(struct msvdx_private *msvdx_priv,
 
 	PSB_DEBUG_MSVDX("backup cmd for ved error concealment\n");
 
-	ec_ctx = psb_msvdx_find_ec_ctx(msvdx_priv, NULL);
+	ec_ctx = psb_msvdx_find_ec_ctx(msvdx_priv, tfile, NULL);
 
 	if (!ec_ctx) {
 		PSB_DEBUG_MSVDX("this is not a ec ctx, abort backup cmd\n");
