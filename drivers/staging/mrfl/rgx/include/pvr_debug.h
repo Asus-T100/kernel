@@ -86,7 +86,7 @@ extern "C" {
 	{															\
 		if (!(EXPR))											\
 			PVRSRVDebugAssertFail(__FILE__, __LINE__, #EXPR);	\
-	} while (0)
+	} while (0);
 #endif
 
 #endif				/* defined(LINUX) && defined(__KERNEL__) */
