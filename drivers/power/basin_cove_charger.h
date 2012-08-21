@@ -63,8 +63,8 @@ static void bcove_handle_ext_chrgr_irq(bool);
 #define THRMZN2L_ADDR			0xD3
 #define THRMZN3H_ADDR			0xD4
 #define THRMZN3L_ADDR			0xD5
-#define THRMNZ4H_ADDR			0xD6
-#define THRMNZ4L_ADDR			0xD7
+#define THRMZN4H_ADDR			0xD6
+#define THRMZN4L_ADDR			0xD7
 
 #define CHGRIRQ0_ADDR			0x07
 #define CHGIRQ0_BZIRQ_MASK		D7
@@ -95,6 +95,14 @@ static void bcove_handle_ext_chrgr_irq(bool);
 #define SCHGIRQ0_SI2CRD_CMP_MASK	D2
 #define SCHGIRQ0_SI2CWR_CMP_MASK	D1
 #define SCHGIRQ0_SCHG_INTB	D0
+
+#define LOWBATTDET0_ADDR		0x2C
+#define LOWBATTDET1_ADDR		0x2D
+#define BATTDETCTRL_ADDR		0x2E
+#define VBUSDETCTRL_ADDR		0x50
+#define VDCINDETCTRL_ADDR		0x51
+#define CHRGRIRQ1_ADDR			0x08
+#define MCHGRIRQ1_ADDR			0x13
 
 #define CHGRCTRL0_ADDR			0x4B
 #define CHGRCTRL0_RSVD_MASK		(D7|D6|D5)
@@ -181,7 +189,7 @@ static void bcove_handle_ext_chrgr_irq(bool);
 #define TT_CHRCVEMRGHIVAL_ADDR		0X28
 #define TT_CHRCCEMRGLOWVAL_ADDR		0X29
 #define TT_CHRCCCOLDVAL_ADDR		0X2A
-#define TT_CHRCCOOLVAL_ADDR		0X2B
+#define TT_CHRCCCOOLVAL_ADDR		0X2B
 #define TT_CHRCCWARMVAL_ADDR		0X2C
 #define TT_CHRCCHOTVAL_ADDR		0X2D
 #define TT_CHRCCEMRGHIVAL_ADDR		0X2E
@@ -225,6 +233,11 @@ static void bcove_handle_ext_chrgr_irq(bool);
 #define BQ24260_CE_DISABLE		(0x01 << 1)
 #define BQ24260_CE_ENABLE		0x00
 
+#define BQ24260_BATT_VOL_CTRL_ADDR	0x02
+#define BQ24260_VENDOR_REV_ADDR		0x03
+#define BQ24260_TERM_FCC_ADDR		0x04
+#define BQ24260_VINDPM_DPPM_STATUS_ADDR	0x05
+#define BQ24260_ST_NTC_MON_ADDR		0x06
 
 #define BATT_STRING_MAX		8
 #define BATTID_STR_LEN		8

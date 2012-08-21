@@ -28,6 +28,8 @@
 #include <linux/interrupt.h>
 #include <linux/workqueue.h>
 #include <linux/jiffies.h>
+#include <linux/seq_file.h>
+#include <linux/debugfs.h>
 #include <linux/slab.h>
 #include <linux/kfifo.h>
 #include <linux/param.h>
@@ -138,6 +140,321 @@ struct ext_charger bq24260_chrgr = {
 };
 
 static char *bcove_charger_power_supplied_to[] = {"max170xx_battery",};
+
+#ifdef CONFIG_DEBUG_FS
+
+static int ext_chrgr_reg_open(struct inode *inode, struct file *file);
+static int pmic_chrgr_reg_open(struct inode *inode, struct file *file);
+static int pmic_chrgr_tt_reg_open(struct inode *inode, struct file *file);
+
+static inline int bcove_extchrgr_read(u8 dev_id, u8 offset, u8 *data);
+static inline int bcove_read_tt(u8 addr, u8 *data);
+
+static const struct file_operations ext_chrgr_reg_fops = {
+	.open = ext_chrgr_reg_open,
+	.read = seq_read,
+	.llseek = seq_lseek,
+	.release = single_release
+};
+
+static const struct file_operations pmic_chrgr_reg_fops = {
+	.open = pmic_chrgr_reg_open,
+	.read = seq_read,
+	.llseek = seq_lseek,
+	.release = single_release
+};
+
+static const struct file_operations pmic_chrgr_tt_reg_fops = {
+	.open = pmic_chrgr_tt_reg_open,
+	.read = seq_read,
+	.llseek = seq_lseek,
+	.release = single_release
+};
+
+static u8 basin_cove_regs[] = {
+	CHGRIRQ0_ADDR,
+	SCHGRIRQ0_ADDR,
+	MCHGRIRQ0_ADDR,
+	LOWBATTDET0_ADDR,
+	LOWBATTDET1_ADDR,
+	BATTDETCTRL_ADDR,
+	VBUSDETCTRL_ADDR,
+	VDCINDETCTRL_ADDR,
+	CHRGRIRQ1_ADDR,
+	SCHGRIRQ1_ADDR,
+	MCHGRIRQ1_ADDR,
+	CHGRCTRL0_ADDR,
+	CHGRCTRL1_ADDR,
+	CHGRSTATUS_ADDR,
+	THRMBATZONE_ADDR,
+	THRMZN0L_ADDR,
+	THRMZN0H_ADDR,
+	THRMZN1L_ADDR,
+	THRMZN1H_ADDR,
+	THRMZN2L_ADDR,
+	THRMZN2H_ADDR,
+	THRMZN3L_ADDR,
+	THRMZN3H_ADDR,
+	THRMZN4L_ADDR,
+	THRMZN4H_ADDR,
+};
+
+static u8 basin_cove_tt_regs[] = {
+	TT_I2CDADDR_ADDR,
+	TT_CHGRINIT0OS_ADDR,
+	TT_CHGRINIT1OS_ADDR,
+	TT_CHGRINIT2OS_ADDR,
+	TT_CHGRINIT3OS_ADDR,
+	TT_CHGRINIT4OS_ADDR,
+	TT_CHGRINIT5OS_ADDR,
+	TT_CHGRINIT6OS_ADDR,
+	TT_CHGRINIT7OS_ADDR,
+	TT_USBINPUTICCOS_ADDR,
+	TT_USBINPUTICCMASK_ADDR,
+	TT_CHRCVOS_ADDR,
+	TT_CHRCVMASK_ADDR,
+	TT_CHRCCOS_ADDR,
+	TT_CHRCCMASK_ADDR,
+	TT_LOWCHROS_ADDR,
+	TT_LOWCHRMASK_ADDR,
+	TT_WDOGRSTOS_ADDR,
+	TT_WDOGRSTMASK_ADDR,
+	TT_CHGRENOS_ADDR,
+	TT_CHGRENMASK_ADDR,
+	TT_CUSTOMFIELDEN_ADDR,
+	TT_CHGRINIT0VAL_ADDR,
+	TT_CHGRINIT1VAL_ADDR,
+	TT_CHGRINIT2VAL_ADDR,
+	TT_CHGRINIT3VAL_ADDR,
+	TT_CHGRINIT4VAL_ADDR,
+	TT_CHGRINIT5VAL_ADDR,
+	TT_CHGRINIT6VAL_ADDR,
+	TT_CHGRINIT7VAL_ADDR,
+	TT_USBINPUTICC100VAL_ADDR,
+	TT_USBINPUTICC150VAL_ADDR,
+	TT_USBINPUTICC500VAL_ADDR,
+	TT_USBINPUTICC900VAL_ADDR,
+	TT_USBINPUTICC1500VAL_ADDR,
+	TT_CHRCVEMRGLOWVAL_ADDR,
+	TT_CHRCVCOLDVAL_ADDR,
+	TT_CHRCVCOOLVAL_ADDR,
+	TT_CHRCVWARMVAL_ADDR,
+	TT_CHRCVHOTVAL_ADDR,
+	TT_CHRCVEMRGHIVAL_ADDR,
+	TT_CHRCCEMRGLOWVAL_ADDR,
+	TT_CHRCCCOLDVAL_ADDR,
+	TT_CHRCCCOOLVAL_ADDR,
+	TT_CHRCCWARMVAL_ADDR,
+	TT_CHRCCHOTVAL_ADDR,
+	TT_CHRCCEMRGHIVAL_ADDR,
+	TT_LOWCHRENVAL_ADDR,
+	TT_LOWCHRDISVAL_ADDR,
+};
+
+static u16 bq24260_regs[] = {
+	BQ24260_STAT_CTRL0_ADDR,
+	BQ24260_CTRL_ADDR,
+	BQ24260_BATT_VOL_CTRL_ADDR,
+	BQ24260_VENDOR_REV_ADDR,
+	BQ24260_TERM_FCC_ADDR,
+	BQ24260_VINDPM_DPPM_STATUS_ADDR,
+	BQ24260_ST_NTC_MON_ADDR,
+};
+
+struct dentry *charger_debug_dir;
+
+static int pmic_chrgr_tt_reg_show(struct seq_file *seq, void *unused)
+{
+	int ret;
+	u8 addr;
+	u8 val;
+
+	addr = *(u8 *)seq->private;
+
+	ret = bcove_read_tt(addr, &val);
+	if (ret != 0) {
+		dev_err(chc.dev,
+			"Error reading the register 0x%04x\n",
+			addr);
+		return -EIO;
+	}
+
+	seq_printf(seq, "0x%02x\n", val);
+
+	return 0;
+}
+
+static int pmic_chrgr_reg_show(struct seq_file *seq, void *unused)
+{
+	int ret;
+	u16 addr;
+	u8 val;
+
+	addr = *(u16 *)seq->private;
+
+	ret = intel_scu_ipc_ioread8(addr, &val);
+	if (ret != 0) {
+		dev_err(chc.dev,
+			"Error reading the register 0x%04x\n",
+			addr);
+		return -EIO;
+	}
+
+	seq_printf(seq, "0x%02x\n", val);
+
+	return 0;
+}
+
+static int ext_chrgr_reg_show(struct seq_file *seq, void *unused)
+{
+	int ret;
+	u8 addr;
+	u8 val;
+
+	addr = *(u8 *)seq->private;
+
+	ret = bcove_extchrgr_read(chc.ext_chrgr_addr, addr, &val);
+	if (ret != 0) {
+		dev_err(chc.dev,
+			"Error reading the register 0x%02x\n",
+			addr);
+		return -EIO;
+	}
+
+	seq_printf(seq, "0x%02x\n", val);
+
+	return 0;
+}
+
+static int pmic_chrgr_tt_reg_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, pmic_chrgr_tt_reg_show, inode->i_private);
+}
+
+static int pmic_chrgr_reg_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, pmic_chrgr_reg_show, inode->i_private);
+}
+
+static int ext_chrgr_reg_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, ext_chrgr_reg_show, inode->i_private);
+}
+
+static void bcove_debugfs_init(void)
+{
+	struct dentry *fentry;
+	struct dentry *ext_charger_dir;
+	struct dentry *pmic_regs_dir;
+	struct dentry *pmic_tt_regs_dir;
+
+	u32 reg_index;
+	u32 bq24260_reg_cnt = ARRAY_SIZE(bq24260_regs);
+	u32 pmic_reg_cnt = ARRAY_SIZE(basin_cove_regs);
+	u32 pmic_tt_reg_cnt = ARRAY_SIZE(basin_cove_tt_regs);
+	char name[6] = {0};
+
+	/* Creating a directory under debug fs for charger */
+	charger_debug_dir = debugfs_create_dir(CHARGER_PS_NAME , NULL) ;
+	if (charger_debug_dir == NULL)
+		goto debugfs_root_exit;
+
+	/* Create a directory for external charger registers */
+	ext_charger_dir = debugfs_create_dir("ext_chrgr_regs",
+			charger_debug_dir);
+
+	if (ext_charger_dir == NULL)
+		goto debugfs_err_exit;
+
+	for (reg_index = 0; reg_index < bq24260_reg_cnt; reg_index++) {
+
+		sprintf(name, "%02x",
+				bq24260_regs[reg_index]);
+
+		fentry = debugfs_create_file(name,
+				S_IRUGO,
+				ext_charger_dir,
+				&bq24260_regs[reg_index],
+				&ext_chrgr_reg_fops);
+
+		if (fentry == NULL)
+			goto debugfs_err_exit;
+	}
+
+	/* Create a directory for pmic charger registers */
+	pmic_regs_dir = debugfs_create_dir("pmic_chrgr_regs",
+			charger_debug_dir);
+
+	if (pmic_regs_dir == NULL)
+		goto debugfs_err_exit;
+
+	for (reg_index = 0; reg_index < pmic_reg_cnt; reg_index++) {
+
+		sprintf(name, "%04x",
+				basin_cove_regs[reg_index]);
+
+		fentry = debugfs_create_file(name,
+				S_IRUGO,
+				pmic_regs_dir,
+				&basin_cove_regs[reg_index],
+				&pmic_chrgr_reg_fops);
+
+		if (fentry == NULL)
+			goto debugfs_err_exit;
+	}
+
+	/* Create a directory for pmic tt charger registers */
+	pmic_tt_regs_dir = debugfs_create_dir("pmic_chrgr_tt_regs",
+			charger_debug_dir);
+
+	if (pmic_tt_regs_dir == NULL)
+		goto debugfs_err_exit;
+
+	for (reg_index = 0; reg_index < pmic_tt_reg_cnt; reg_index++) {
+
+		sprintf(name, "%04x",
+				basin_cove_tt_regs[reg_index]);
+
+		fentry = debugfs_create_file(name,
+				S_IRUGO,
+				pmic_tt_regs_dir,
+				&basin_cove_tt_regs[reg_index],
+				&pmic_chrgr_tt_reg_fops);
+
+		if (fentry == NULL)
+			goto debugfs_err_exit;
+	}
+
+	dev_info(chc.dev, "Debugfs created successfully!!");
+	return;
+
+debugfs_err_exit:
+	debugfs_remove_recursive(charger_debug_dir);
+debugfs_root_exit:
+	dev_err(chc.dev, "Error creating debugfs entry!!");
+	return;
+}
+
+static void bcove_debugfs_exit(void)
+{
+	if (charger_debug_dir != NULL)
+		debugfs_remove_recursive(charger_debug_dir);
+}
+
+#else
+
+static void bcove_debugfs_init(void)
+{
+	return;
+}
+
+static void bcove_debugfs_exit(void)
+{
+	return;
+}
+
+#endif
+
 
 /* Generic function definitions */
 static void lookup_regval(u16 tbl[][2], size_t size, u16 in_val, u8 *out_val)
@@ -849,7 +1166,7 @@ static int bcove_init(struct batt_charging_profile bcprof)
 		return ret;
 
 	/*Configure Temp Zone, CC and CV */
-	addr_tzone = THRMNZ4H_ADDR;
+	addr_tzone = THRMZN4H_ADDR;
 
 	/*Ignore Emegency Charging Zones */
 	addr_cc = TT_CHRCCHOTVAL_ADDR;
@@ -1078,6 +1395,8 @@ static int bc_chrgr_probe(struct ipc_device *ipcdev)
 		goto otg_reg_failed;
 	}
 
+	bcove_debugfs_init();
+
 	return 0;
 
 otg_reg_failed:
@@ -1126,6 +1445,9 @@ static int bc_chrgr_remove(struct ipc_device *ipcdev)
 		iounmap(chc->pmic_intr_iomap);
 
 	}
+
+	bcove_debugfs_exit();
+
 	return 0;
 }
 
