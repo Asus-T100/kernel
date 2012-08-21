@@ -2374,10 +2374,10 @@ static ssize_t set_chrg_enable(struct device *dev,
 	struct ipc_device *ipcdev =
 	    container_of(dev, struct ipc_device, dev);
 	struct msic_power_module_info *mbi = ipc_get_drvdata(ipcdev);
-	unsigned long value;
+	long value;
 	int retval, chr_mode;
 
-	if (strict_strtoul(buf, 10, &value))
+	if (kstrtol(buf, 10, &value))
 		return -EINVAL;
 
 	/* Allow only 0 to 4 for writing */
@@ -2385,10 +2385,15 @@ static ssize_t set_chrg_enable(struct device *dev,
 		return -EINVAL;
 
 	mutex_lock(&mbi->event_lock);
+
+	/*if same value is given, no neeid to do anything. Not an error  */
+	if (value == mbi->usr_chrg_enbl) {
+		mutex_unlock(&mbi->event_lock);
+		return count;
+	}
 	/* No need to process if same value given
 	 * or charging stopped due to an error */
-	if (value == mbi->usr_chrg_enbl ||
-			mbi->msic_chr_err == MSIC_CHRG_ERROR_CHRTMR_EXPIRY) {
+	if (mbi->msic_chr_err == MSIC_CHRG_ERROR_CHRTMR_EXPIRY) {
 		mutex_unlock(&mbi->event_lock);
 		return -EIO;
 	}
@@ -2443,7 +2448,7 @@ static ssize_t get_chrg_enable(struct device *dev,
 	struct ipc_device *ipcdev =
 	    container_of(dev, struct ipc_device, dev);
 	struct msic_power_module_info *mbi = ipc_get_drvdata(ipcdev);
-	unsigned int val;
+	int val;
 
 	mutex_lock(&mbi->event_lock);
 	val = mbi->usr_chrg_enbl;
