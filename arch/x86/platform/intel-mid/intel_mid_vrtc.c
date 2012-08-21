@@ -1,5 +1,5 @@
 /*
- * vrtc.c: Driver for virtual RTC device on Intel MID platform
+ * intel_mid_vrtc.c: Driver for virtual RTC device on Intel MID platform
  *
  * (C) Copyright 2009 Intel Corporation
  *
@@ -23,7 +23,7 @@
 #include <linux/sfi.h>
 #include <linux/platform_device.h>
 
-#include <asm/mrst.h>
+#include <asm/intel-mid.h>
 #include <asm/mrst-vrtc.h>
 #include <asm/time.h>
 #include <asm/fixmap.h>
@@ -108,7 +108,7 @@ int vrtc_set_mmss(unsigned long nowtime)
 	return 0;
 }
 
-void __init mrst_rtc_init(void)
+void __init intel_mid_rtc_init(void)
 {
 	unsigned long vrtc_paddr;
 
@@ -146,10 +146,10 @@ static struct platform_device vrtc_device = {
 };
 
 /* Register the RTC device if appropriate */
-static int __init mrst_device_create(void)
+static int __init intel_mid_device_create(void)
 {
 	/* No Moorestown, no device */
-	if (!mrst_identify_cpu())
+	if (!intel_mid_identify_cpu())
 		return -ENODEV;
 	/* No timer, no device */
 	if (!sfi_mrtc_num)
@@ -166,4 +166,4 @@ static int __init mrst_device_create(void)
 	return platform_device_register(&vrtc_device);
 }
 
-module_init(mrst_device_create);
+module_init(intel_mid_device_create);

@@ -12,7 +12,7 @@
 #include <asm/vsyscall.h>
 #include <asm/x86_init.h>
 #include <asm/time.h>
-#include <asm/mrst.h>
+#include <asm/intel-mid.h>
 
 #ifdef CONFIG_X86_32
 /*
@@ -244,7 +244,7 @@ static __init int add_rtc_cmos(void)
 		return 0;
 
 	/* Intel MID platforms don't have ioport rtc */
-	if (mrst_identify_cpu())
+	if (intel_mid_identify_cpu())
 		return -ENODEV;
 
 	platform_device_register(&rtc_device);

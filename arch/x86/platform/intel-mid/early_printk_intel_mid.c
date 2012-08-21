@@ -1,5 +1,5 @@
 /*
- * early_printk_mrst.c - early consoles for Intel MID platforms
+ * early_printk_intel_mid.c - early consoles for Intel MID platforms
  *
  * Copyright (c) 2008-2010, Intel Corporation
  *
@@ -27,7 +27,7 @@
 
 #include <asm/fixmap.h>
 #include <asm/pgtable.h>
-#include <asm/mrst.h>
+#include <asm/intel-mid.h>
 
 #define MRST_SPI_TIMEOUT		0x200000
 #define MRST_REGBASE_SPI0		0xff128000
@@ -155,7 +155,7 @@ void mrst_early_console_init(void)
 	spi0_cdiv = ((*pclk_spi0) & 0xe00) >> 9;
 	freq = 100000000 / (spi0_cdiv + 1);
 
-	if (mrst_identify_cpu() == MRST_CPU_CHIP_PENWELL)
+	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_PENWELL)
 		mrst_spi_paddr = MRST_REGBASE_SPI1;
 
 	pspi = (void *)set_fixmap_offset_nocache(FIX_EARLYCON_MEM_BASE,
@@ -222,7 +222,8 @@ static void early_mrst_spi_putc(char c)
 }
 
 /* Early SPI only uses polling mode */
-static void early_mrst_spi_write(struct console *con, const char *str, unsigned n)
+static void early_mrst_spi_write(struct console *con, const char *str,
+				 unsigned n)
 {
 	int i;
 
@@ -325,3 +326,16 @@ struct console early_hsu_console = {
 	.flags =	CON_PRINTBUFFER,
 	.index =	-1,
 };
+
+void hsu_early_printk(const char *fmt, ...)
+{
+	char buf[512];
+	int n;
+	va_list ap;
+
+	va_start(ap, fmt);
+	n = vscnprintf(buf, 512, fmt, ap);
+	va_end(ap);
+
+	early_hsu_console.write(&early_hsu_console, buf, n);
+}

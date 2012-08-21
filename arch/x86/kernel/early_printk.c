@@ -9,12 +9,12 @@
 #include <linux/errno.h>
 #include <asm/io.h>
 #include <asm/processor.h>
+#include <asm/intel-mid.h>
 #include <asm/fcntl.h>
 #include <asm/setup.h>
 #include <xen/hvc-console.h>
 #include <asm/pci-direct.h>
 #include <asm/fixmap.h>
-#include <asm/mrst.h>
 #include <asm/pgtable.h>
 #include <linux/usb/ehci_def.h>
 
