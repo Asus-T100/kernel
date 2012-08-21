@@ -71,6 +71,11 @@
  */
 #include "device_libs/platform_max3111.h"
 
+/*
+ * HSU devices
+ */
+#include "device_libs/platform_hsu.h"
+
 static void __init *no_platform_data(void *info)
 {
 	return NULL;
@@ -91,6 +96,7 @@ struct devs_id __initconst device_ids[] = {
 					&ipc_device_handler},
 	{"mpu3050", SFI_DEV_TYPE_I2C, 1, &mpu3050_platform_data, NULL},
 	{"i2c_disp_brig", SFI_DEV_TYPE_I2C, 0, &tc35876x_platform_data, NULL},
+	{"st_kim", SFI_DEV_TYPE_UART, 0, &hsu_dev_platform_data, NULL},
 
 	/* MSIC subdevices */
 	{"msic_battery", SFI_DEV_TYPE_IPC, 1, &msic_battery_platform_data,
