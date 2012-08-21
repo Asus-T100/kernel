@@ -233,6 +233,9 @@ int display_register(struct snd_intel_had_interface *driver, void * had_data)
 	dev_priv->had_pvt_data = had_data;
 	dev_priv->had_interface = driver;
 
+	if (hdmi_priv->monitor_type == MONITOR_TYPE_DVI)
+		return 0;
+
 	/* The Audio driver is loading now and we need to notify
 	 * it if there is an HDMI device attached */
 	DRM_INFO("display_register: Scheduling HDMI audio work queue\n");
