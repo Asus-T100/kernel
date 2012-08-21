@@ -2195,21 +2195,37 @@ static int psb_get_hdcp_status_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv)
 {
 	uint32_t *arg = data;
-	*arg = android_check_hdmi_hdcp_enc_status(dev);
+	if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
+				OSPM_UHB_FORCE_POWER_ON)) {
+		*arg = android_check_hdmi_hdcp_enc_status(dev);
+		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+	}
 
 	return 0;
 }
 static int psb_enable_hdcp_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv)
 {
-	if (android_enable_hdmi_hdcp(dev))
+	int ret;
+	if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
+				OSPM_UHB_FORCE_POWER_ON)) {
+		ret = android_enable_hdmi_hdcp(dev);
+		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+	}
+	if (ret)
 		return 0;
 	return -1;
 }
 static int psb_disable_hdcp_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv)
 {
-	if (android_disable_hdmi_hdcp(dev))
+	int ret;
+	if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
+				OSPM_UHB_FORCE_POWER_ON)) {
+		ret = android_disable_hdmi_hdcp(dev);
+		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+	}
+	if (ret)
 		return 0;
 	return -1;
 }
@@ -2243,7 +2259,11 @@ static int psb_get_hdcp_link_status_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv)
 {
 	uint32_t *arg = data;
-	*arg = android_check_hdmi_hdcp_link_status(dev);
+	if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
+				OSPM_UHB_FORCE_POWER_ON)) {
+		*arg = android_check_hdmi_hdcp_link_status(dev);
+		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+	}
 	return 0;
 }
 static int psb_hdcp_repeater_present_ioctl(struct drm_device *dev, void *data,
