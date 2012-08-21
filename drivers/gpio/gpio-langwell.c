@@ -35,6 +35,7 @@
 #include <linux/io.h>
 #include <linux/gpio.h>
 #include <linux/slab.h>
+#include <linux/lnw_gpio.h>
 #include <linux/pm_runtime.h>
 
 /*
@@ -67,6 +68,7 @@ struct lnw_gpio {
 	void				*reg_base;
 	spinlock_t			lock;
 	unsigned			irq_base;
+	int				wakeup;
 	struct pci_dev			*pdev;
 };
 
@@ -81,6 +83,47 @@ static void __iomem *gpio_reg(struct gpio_chip *chip, unsigned offset,
 	ptr = (void __iomem *)(lnw->reg_base + reg_type * nreg * 4 + reg * 4);
 	return ptr;
 }
+
+void lnw_gpio_set_alt(int gpio, int alt)
+{
+	struct lnw_gpio *lnw;
+	u32 __iomem *mem;
+	int reg;
+	int bit;
+	u32 value;
+	unsigned long flags;
+
+	/* use this trick to get memio */
+	lnw = irq_get_chip_data(gpio_to_irq(gpio));
+	if (!lnw) {
+		dev_err(lnw->chip.dev, "langwell_gpio: can not find pin %d\n",
+			gpio);
+		return;
+	}
+	if (gpio < lnw->chip.base || gpio >= lnw->chip.base + lnw->chip.ngpio) {
+		dev_err(lnw->chip.dev,
+			"langwell_gpio: wrong pin %d to config alt\n", gpio);
+		return;
+	}
+	if (lnw->irq_base + gpio - lnw->chip.base != gpio_to_irq(gpio)) {
+		dev_err(lnw->chip.dev,
+			"langwell_gpio: wrong chip data for pin %d\n", gpio);
+		return;
+	}
+	gpio -= lnw->chip.base;
+	reg = gpio / 16;
+	bit = gpio % 16;
+
+	mem = gpio_reg(&lnw->chip, 0, GAFR);
+	spin_lock_irqsave(&lnw->lock, flags);
+	value = readl(mem + reg);
+	value &= ~(3 << (bit * 2));
+	value |= (alt & 3) << (bit * 2);
+	writel(value, mem + reg);
+	spin_unlock_irqrestore(&lnw->lock, flags);
+	dev_dbg(lnw->chip.dev, "ALT: writing 0x%x to %p\n", value, mem + reg);
+}
+EXPORT_SYMBOL_GPL(lnw_gpio_set_alt);
 
 static void __iomem *gpio_reg_2bit(struct gpio_chip *chip, unsigned offset,
 				   enum GPIO_REG reg_type)
@@ -222,17 +265,48 @@ static void lnw_irq_mask(struct irq_data *d)
 {
 }
 
+static int lnw_irq_wake(struct irq_data *d, unsigned on)
+{
+	return 0;
+}
+
+static void lnw_irq_ack(struct irq_data *d)
+{
+}
+
+static void lnw_irq_shutdown(struct irq_data *d)
+{
+	struct lnw_gpio *lnw = irq_data_get_irq_chip_data(d);
+	u32 gpio = d->irq - lnw->irq_base;
+	unsigned long flags;
+	u32 value;
+	void __iomem *grer = gpio_reg(&lnw->chip, gpio, GRER);
+	void __iomem *gfer = gpio_reg(&lnw->chip, gpio, GFER);
+
+	spin_lock_irqsave(&lnw->lock, flags);
+	value = readl(grer) & (~BIT(gpio % 32));
+	writel(value, grer);
+	value = readl(gfer) & (~BIT(gpio % 32));
+	writel(value, gfer);
+	spin_unlock_irqrestore(&lnw->lock, flags);
+};
+
 static struct irq_chip lnw_irqchip = {
 	.name		= "LNW-GPIO",
 	.irq_mask	= lnw_irq_mask,
 	.irq_unmask	= lnw_irq_unmask,
 	.irq_set_type	= lnw_irq_type,
+	.irq_set_wake	= lnw_irq_wake,
+	.irq_ack	= lnw_irq_ack,
+	.irq_shutdown	= lnw_irq_shutdown,
 };
 
 static DEFINE_PCI_DEVICE_TABLE(lnw_gpio_ids) = {   /* pin number */
 	{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x080f), .driver_data = 64 },
 	{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x081f), .driver_data = 96 },
 	{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x081a), .driver_data = 96 },
+	{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x08eb), .driver_data = 96 },
+	{ PCI_DEVICE(PCI_VENDOR_ID_INTEL, 0x08f7), .driver_data = 96 },
 	{ 0, }
 };
 MODULE_DEVICE_TABLE(pci, lnw_gpio_ids);
@@ -252,6 +326,9 @@ static void lnw_irq_handler(unsigned irq, struct irq_desc *desc)
 		pending = readl(gedr);
 		while (pending) {
 			gpio = __ffs(pending);
+			if (!lnw->wakeup)
+				dev_info(&lnw->pdev->dev,
+				"wakeup source: gpio %d\n", base + gpio);
 			mask = BIT(gpio);
 			pending &= ~mask;
 			/* Clear before handling so we can't lose an edge */
@@ -264,6 +341,26 @@ static void lnw_irq_handler(unsigned irq, struct irq_desc *desc)
 }
 
 #ifdef CONFIG_PM
+static int lnw_gpio_suspend_noirq(struct device *dev)
+{
+	struct pci_dev *pdev = container_of(dev, struct pci_dev, dev);
+	struct lnw_gpio *lnw = pci_get_drvdata(pdev);
+
+	lnw->wakeup = 0;
+
+	return 0;
+}
+
+static int lnw_gpio_resume_noirq(struct device *dev)
+{
+	struct pci_dev *pdev = container_of(dev, struct pci_dev, dev);
+	struct lnw_gpio *lnw = pci_get_drvdata(pdev);
+
+	lnw->wakeup = 1;
+
+	return 0;
+}
+
 static int lnw_gpio_runtime_resume(struct device *dev)
 {
 	return 0;
@@ -285,12 +382,16 @@ static int lnw_gpio_runtime_idle(struct device *dev)
 }
 
 #else
+#define lnw_gpio_suspend_noirq		NULL
+#define lnw_gpio_resume_noirq		NULL
 #define lnw_gpio_runtime_suspend	NULL
 #define lnw_gpio_runtime_resume		NULL
 #define lnw_gpio_runtime_idle		NULL
 #endif
 
 static const struct dev_pm_ops lnw_gpio_pm_ops = {
+	.suspend_noirq = lnw_gpio_suspend_noirq,
+	.resume_noirq = lnw_gpio_resume_noirq,
 	.runtime_suspend = lnw_gpio_runtime_suspend,
 	.runtime_resume = lnw_gpio_runtime_resume,
 	.runtime_idle = lnw_gpio_runtime_idle,
@@ -346,6 +447,7 @@ static int __devinit lnw_gpio_probe(struct pci_dev *pdev,
 	}
 	lnw->reg_base = base;
 	lnw->irq_base = irq_base;
+	lnw->wakeup = 1;
 	lnw->chip.label = dev_name(&pdev->dev);
 	lnw->chip.request = lnw_gpio_request;
 	lnw->chip.direction_input = lnw_gpio_direction_input;
@@ -363,11 +465,18 @@ static int __devinit lnw_gpio_probe(struct pci_dev *pdev,
 		dev_err(&pdev->dev, "langwell gpiochip_add error %d\n", retval);
 		goto err5;
 	}
+	lnw->irq_base = irq_alloc_descs(-1, lnw->irq_base, lnw->chip.ngpio,
+					NUMA_NO_NODE);
+	if (lnw->irq_base < 0) {
+		dev_err(&pdev->dev, "langwell irq_alloc_desc failed %d\n",
+			lnw->irq_base);
+		goto err5;
+	}
 	irq_set_handler_data(pdev->irq, lnw);
 	irq_set_chained_handler(pdev->irq, lnw_irq_handler);
 	for (i = 0; i < lnw->chip.ngpio; i++) {
 		irq_set_chip_and_handler_name(i + lnw->irq_base, &lnw_irqchip,
-					      handle_simple_irq, "demux");
+					      handle_edge_irq, "demux");
 		irq_set_chip_data(i + lnw->irq_base, lnw);
 	}
 
@@ -482,4 +591,4 @@ static int __init lnw_gpio_init(void)
 	return ret;
 }
 
-device_initcall(lnw_gpio_init);
+fs_initcall(lnw_gpio_init);
