@@ -473,7 +473,7 @@ static int atomisp_buf_pre_dequeue(struct atomisp_video_pipe *pipe,
 
 	if (!isp->sw_contex.isp_streaming) {
 		spin_unlock_irqrestore(&pipe->irq_lock, flags);
-		return 1;
+		return -EINVAL;
 	}
 
 	/*retrieve video buffer from activeq, keep video buffer on capq*/
@@ -2011,6 +2011,13 @@ int atomisp_get_dis_stat(struct atomisp_device *isp,
 	    isp->params.dis_ver_proj_buf  == NULL)
 		return -EINVAL;
 
+	/* If the grid info in the argument differs from the current
+	   grid info, we tell the caller to reset the grid size and
+	   try again. */
+	if (memcmp(&stats->grid_info, &isp->params.curr_grid_info,
+		   sizeof(isp->params.curr_grid_info)) != 0)
+		return -EAGAIN;
+
 	/* isp needs to be streaming to get DIS statistics */
 	if (!isp->sw_contex.isp_streaming)
 		return -EINVAL;
@@ -2020,7 +2027,7 @@ int atomisp_get_dis_stat(struct atomisp_device *isp,
 	mutex_lock(&isp->isp_lock);
 	if (isp->sw_contex.buffer_underrun) {
 		mutex_unlock(&isp->isp_lock);
-		return -EAGAIN;
+		return -ENOBUFS;
 	}
 
 	INIT_COMPLETION(isp->dis_state_complete);
@@ -2030,7 +2037,7 @@ int atomisp_get_dis_stat(struct atomisp_device *isp,
 
 	/* recheck whether wakeup is caused of buffer underrun */
 	if (isp->sw_contex.buffer_underrun)
-		return -EAGAIN;
+		return -ENOBUFS;
 
 	/* Timeout to get the statistics */
 	if (left == 0) {
