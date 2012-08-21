@@ -140,8 +140,17 @@ int dwc3_gadget_ep0_queue(struct usb_ep *ep, struct usb_request *request,
 int __dwc3_gadget_ep_set_halt(struct dwc3_ep *dep, int value);
 int dwc3_send_gadget_ep_cmd(struct dwc3 *dwc, unsigned ep,
 		unsigned cmd, struct dwc3_gadget_ep_cmd_params *params);
+int dwc3_send_gadget_cmd(struct dwc3 *dwc, unsigned cmd, unsigned param);
 void dwc3_map_buffer_to_dma(struct dwc3_request *req);
 void dwc3_unmap_buffer_from_dma(struct dwc3_request *req);
+
+#ifdef CONFIG_PM_RUNTIME
+int dwc3_runtime_suspend(struct device *device);
+int dwc3_runtime_resume(struct device *device);
+#else
+#define dwc3_runtime_suspend NULL
+#define dwc3_runtime_resume NULL
+#endif
 
 /**
  * dwc3_gadget_ep_get_transfer_index - Gets transfer index from HW

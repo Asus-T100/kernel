@@ -385,6 +385,7 @@ static int dwc3_ep0_handle_feature(struct dwc3 *dwc,
 	u32			wIndex;
 	int			ret;
 	u32			mode;
+	u32			reg;
 
 	wValue = le16_to_cpu(ctrl->wValue);
 	wIndex = le16_to_cpu(ctrl->wIndex);
@@ -411,18 +412,14 @@ static int dwc3_ep0_handle_feature(struct dwc3 *dwc,
 		case USB_DEVICE_REMOTE_WAKEUP:
 			break;
 		case USB_DEVICE_U1_ENABLE:
-#if 0
 			reg = dwc3_readl(dwc->regs, DWC3_DCTL);
 			reg |= 0x400;
 			dwc3_writel(dwc->regs, DWC3_DCTL, reg);
-#endif
 			break;
 		case USB_DEVICE_U2_ENABLE:
-#if 0
 			reg = dwc3_readl(dwc->regs, DWC3_DCTL);
 			reg |= 0x1000;
 			dwc3_writel(dwc->regs, DWC3_DCTL, reg);
-#endif
 			break;
 		case USB_DEVICE_LTM_ENABLE:
 			break;

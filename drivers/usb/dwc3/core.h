@@ -65,6 +65,7 @@
 #define DWC3_DEVICE_EVENT_CONNECT_DONE		2
 #define DWC3_DEVICE_EVENT_LINK_STATUS_CHANGE	3
 #define DWC3_DEVICE_EVENT_WAKEUP		4
+#define DWC3_DEVICE_EVENT_HIBERNATION		5
 #define DWC3_DEVICE_EVENT_EOPF			6
 #define DWC3_DEVICE_EVENT_SOF			7
 #define DWC3_DEVICE_EVENT_ERRATIC_ERROR		9
@@ -162,6 +163,7 @@
 #define DWC3_GCTL_SCALEDOWN(n)	(n << 4)
 #define DWC3_GCTL_DISSCRAMBLE	(1 << 3)
 #define DWC3_GCTL_DSBLCLKGTNG	(1 << 0)
+#define DWC3_GCTL_GBLHIBERNATIONEN	(1 << 1)
 
 /* Global USB2 PHY Configuration Register */
 #define DWC3_GUSB2PHYCFG_PHYSOFTRST (1 << 31)
@@ -175,6 +177,10 @@
 #define DWC3_GHWPARAMS1_EN_PWROPT(n)	((n & (3 << 24)) >> 24)
 #define DWC3_GHWPARAMS1_EN_PWROPT_NO	0
 #define DWC3_GHWPARAMS1_EN_PWROPT_CLK	1
+#define DWC3_GHWPARAMS1_EN_PWROPT_HI	2
+
+/* Global HWPARAMS4 Register */
+#define DWC3_GHWPARAMS4_HIBER_SCRATCHBUFS(n)	((n & (15 << 13)) >> 13)
 
 /* Device Configuration Register */
 #define DWC3_DCFG_DEVADDR(addr)	((addr) << 3)
@@ -187,6 +193,8 @@
 #define DWC3_DCFG_LOWSPEED	(2 << 0)
 #define DWC3_DCFG_FULLSPEED1	(3 << 0)
 
+#define DWC3_DCFG_LPMCAP	(1 << 22)
+
 /* Device Control Register */
 #define DWC3_DCTL_RUN_STOP	(1 << 31)
 #define DWC3_DCTL_CSFTRST	(1 << 30)
@@ -196,6 +204,11 @@
 #define DWC3_DCTL_HIRD_THRES(n)	(((n) & DWC3_DCTL_HIRD_THRES_MASK) >> 24)
 
 #define DWC3_DCTL_APPL1RES	(1 << 23)
+
+#define DWC3_DCTL_KEEPCONNECT	(1 << 19)
+
+#define DWC3_DCTL_CRS		(1 << 17)
+#define DWC3_DCTL_CSS		(1 << 16)
 
 #define DWC3_DCTL_INITU2ENA	(1 << 12)
 #define DWC3_DCTL_ACCEPTU2ENA	(1 << 11)
@@ -221,6 +234,7 @@
 #define DWC3_DEVTEN_ERRTICERREN		(1 << 9)
 #define DWC3_DEVTEN_SOFEN		(1 << 7)
 #define DWC3_DEVTEN_EOPFEN		(1 << 6)
+#define DWC3_DEVTEN_HIBERNATIONEN	(1 << 5)
 #define DWC3_DEVTEN_WKUPEVTEN		(1 << 4)
 #define DWC3_DEVTEN_ULSTCNGEN		(1 << 3)
 #define DWC3_DEVTEN_CONNECTDONEEN	(1 << 2)
@@ -229,6 +243,9 @@
 
 /* Device Status Register */
 #define DWC3_DSTS_PWRUPREQ		(1 << 24)
+#define DWC3_DSTS_DCNRD			(1 << 29)
+#define DWC3_DSTS_RSS			(1 << 25)
+#define DWC3_DSTS_SSS			(1 << 24)
 #define DWC3_DSTS_COREIDLE		(1 << 23)
 #define DWC3_DSTS_DEVCTRLHLT		(1 << 22)
 
@@ -252,6 +269,8 @@
 #define DWC3_DGCMD_SET_LMP		0x01
 #define DWC3_DGCMD_SET_PERIODIC_PAR	0x02
 #define DWC3_DGCMD_XMIT_FUNCTION	0x03
+#define DWC3_DGCMD_SET_SCRATCH_ADDR_LO	0x04
+#define DWC3_DGCMD_SET_SCRATCH_ADDR_HI	0x05
 #define DWC3_DGCMD_SELECTED_FIFO_FLUSH	0x09
 #define DWC3_DGCMD_ALL_FIFO_FLUSH	0x0a
 #define DWC3_DGCMD_SET_ENDPOINT_NRDY	0x0c
@@ -273,7 +292,7 @@
 #define DWC3_DEPCMD_STARTTRANSFER	(0x06 << 0)
 #define DWC3_DEPCMD_CLEARSTALL		(0x05 << 0)
 #define DWC3_DEPCMD_SETSTALL		(0x04 << 0)
-#define DWC3_DEPCMD_GETSEQNUMBER	(0x03 << 0)
+#define DWC3_DEPCMD_GETSTATE		(0x03 << 0)
 #define DWC3_DEPCMD_SETTRANSFRESOURCE	(0x02 << 0)
 #define DWC3_DEPCMD_SETEPCONFIG		(0x01 << 0)
 
@@ -346,10 +365,12 @@ struct dwc3_ep {
 	dma_addr_t		trb_pool_dma;
 	u32			free_slot;
 	u32			busy_slot;
+	u32			status;
 	const struct usb_endpoint_descriptor *desc;
 	struct dwc3		*dwc;
 
 	unsigned		flags;
+	unsigned		flags_backup;
 #define DWC3_EP_ENABLED		(1 << 0)
 #define DWC3_EP_STALL		(1 << 1)
 #define DWC3_EP_WEDGE		(1 << 2)
@@ -407,13 +428,20 @@ enum dwc3_link_state {
 	DWC3_LINK_STATE_HRESET		= 0x09,
 	DWC3_LINK_STATE_CMPLY		= 0x0a,
 	DWC3_LINK_STATE_LPBK		= 0x0b,
-	DWC3_LINK_STATE_MASK		= 0x0f,
+	DWC3_LINK_STATE_HSRESET		= 0x0e,
+	DWC3_LINK_STATE_RESUME		= 0x0f,
 };
 
 enum dwc3_device_state {
 	DWC3_DEFAULT_STATE,
 	DWC3_ADDRESS_STATE,
 	DWC3_CONFIGURED_STATE,
+};
+
+enum dwc3_pm_state {
+	PM_DISCONNECTED	= 0,
+	PM_ACTIVE,
+	PM_SUSPENDED,
 };
 
 /**
@@ -536,6 +564,25 @@ struct dwc3_hwparams {
 	u32	hwparams8;
 };
 
+struct dwc3_hwregs {
+	u32	dctl;
+	u32	dcfg;
+	u32	devten;
+	u32	gctl;
+	u32	gusb3pipectl0;
+	u32	gusb2phycfg0;
+	u32	gevntadrlo;
+	u32	gevntadrhi;
+	u32	gevntsiz;
+};
+
+struct dwc3_hiber {
+#define SCRATCH_BUF_SIZE	0x1000
+	unsigned		enabled;
+	u8			scratch_buf_num;
+	void			*scratch_buf_addr;
+};
+
 /**
  * struct dwc3 - representation of our controller
  * @ctrl_req: usb control request which is used for ep0
@@ -625,6 +672,10 @@ struct dwc3 {
 	struct dentry		*root;
 
 	u32			set_test_mode;
+
+	enum dwc3_pm_state	pm_state;
+	struct dwc3_hwregs	hwregs;
+	struct dwc3_hiber	hibernation;
 };
 
 /* -------------------------------------------------------------------------- */

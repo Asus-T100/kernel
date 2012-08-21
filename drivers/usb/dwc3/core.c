@@ -380,9 +380,9 @@ static int __devinit dwc3_probe(struct platform_device *pdev)
 	dwc->dev	= &pdev->dev;
 	dwc->irq	= irq;
 
+	pm_runtime_set_active(&pdev->dev);
 	pm_runtime_enable(&pdev->dev);
-	pm_runtime_get_sync(&pdev->dev);
-	pm_runtime_forbid(&pdev->dev);
+	pm_runtime_set_suspended(&pdev->dev);
 
 	ret = dwc3_alloc_event_buffers(dwc, DWC3_EVENT_BUFFERS_NUM,
 			DWC3_EVENT_BUFFERS_SIZE);
@@ -405,8 +405,6 @@ static int __devinit dwc3_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "failed to initialize debugfs\n");
 		goto err5;
 	}
-
-	pm_runtime_allow(&pdev->dev);
 
 	return 0;
 
@@ -474,11 +472,17 @@ static const struct platform_device_id dwc3_id_table[] __devinitconst = {
 };
 MODULE_DEVICE_TABLE(platform, dwc3_id_table);
 
+static const struct dev_pm_ops dwc3_pm_ops = {
+	.runtime_suspend = dwc3_runtime_suspend,
+	.runtime_resume = dwc3_runtime_resume,
+};
+
 static struct platform_driver dwc3_driver = {
 	.probe		= dwc3_probe,
 	.remove		= __devexit_p(dwc3_remove),
 	.driver		= {
 		.name	= "dwc3-device",
+		.pm =	&dwc3_pm_ops
 	},
 	.id_table	= dwc3_id_table,
 };
