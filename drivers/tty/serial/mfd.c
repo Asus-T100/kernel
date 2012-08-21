@@ -1820,7 +1820,7 @@ static void qwork(struct work_struct *work)
 	struct uart_hsu_port *up =
 		container_of(work, struct uart_hsu_port, qwork);
 	unsigned long flags;
-	int cmd, offset, value;
+	int cmd, offset, value, count = 0;
 
 	pm_runtime_get_sync(up->dev);
 	spin_lock_irqsave(&up->qlock, flags);
@@ -1832,16 +1832,22 @@ static void qwork(struct work_struct *work)
 			break;
 		case CMD_WB:
 			if (UART_TX == offset) {
-				while (!try_xmitr(up)) {
+				/* for the console polling mode will take a long
+				   time to send out characters that queued
+				   during pm non-active statues. 140bytes on
+				   115200bps about 10ms to schedule.
+				*/
+				while (!try_xmitr(up) || count > 140) {
+					count = 0;
+
 					spin_unlock_irqrestore(&up->qlock,
 								flags);
-					pm_runtime_put(up->dev);
 					schedule();
-					pm_runtime_get_sync(up->dev);
 					spin_lock_irqsave(&up->qlock, flags);
 				}
 			}
 			writeb(value, up->port.membase + offset);
+			count++;
 			break;
 		case CMD_TX:
 			hsu_dma_tx(up);
