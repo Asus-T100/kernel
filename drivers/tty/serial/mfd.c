@@ -1208,6 +1208,13 @@ static void serial_hsu_shutdown(struct uart_port *port)
 	if (up->use_dma) {
 		struct hsu_dma_buffer *dbuf;
 
+		/* stop dma */
+		chan_writel(up->txc, HSU_CH_CR, 0x0);
+		up->dma_tx_on = 0;
+
+		chan_writel(up->rxc, HSU_CH_CR, 0x2);
+		up->dma_rx_on = 0;
+
 		/* Free and unmap rx dma buffer */
 		dbuf = &up->rxbuf;
 		dma_unmap_single(port->dev,
