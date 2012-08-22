@@ -69,6 +69,8 @@
 
 __cpuinitdata enum intel_mid_timer_options intel_mid_timer_options;
 
+struct kobject *spid_kobj;
+struct sfi_soft_platform_id spid;
 static u32 sfi_mtimer_usage[SFI_MTMR_MAX_NUM];
 static struct sfi_timer_table_entry sfi_mtimer_array[SFI_MTMR_MAX_NUM];
 enum intel_mid_cpu_type __intel_mid_cpu_chip;
@@ -642,9 +644,160 @@ static int __init sfi_parse_devs(struct sfi_table_header *table)
 	return 0;
 }
 
+static int __init sfi_parse_oemb(struct sfi_table_header *table)
+{
+	struct sfi_table_oemb *oemb;
+	u32 board_id;
+	u8 sig[SFI_SIGNATURE_SIZE + 1] = {'\0'};
+	u8 oem_id[SFI_OEM_ID_SIZE + 1] = {'\0'};
+	u8 oem_table_id[SFI_OEM_TABLE_ID_SIZE + 1] = {'\0'};
+
+	oemb = (struct sfi_table_oemb *) table;
+	if (!oemb) {
+		pr_err("%s: fail to read MFD Validation SFI OEMB Layout\n",
+			__func__);
+		return -ENODEV;
+	}
+
+	board_id = oemb->board_id | (oemb->board_fab << 4);
+
+	memcpy(&spid, &oemb->spid, sizeof(struct sfi_soft_platform_id));
+
+	snprintf(sig, (SFI_SIGNATURE_SIZE + 1), "%s",
+		oemb->header.sig);
+	snprintf(oem_id, (SFI_OEM_ID_SIZE + 1), "%s",
+		oemb->header.oem_id);
+	snprintf(oem_table_id, (SFI_OEM_TABLE_ID_SIZE + 1), "%s",
+		oemb->header.oem_table_id);
+	pr_info("MFLD Validation SFI OEMB Layout\n");
+	pr_info("\tOEMB signature               : %s\n"
+		"\tOEMB length                  : %d\n"
+		"\tOEMB revision                : %d\n"
+		"\tOEMB checksum                : 0x%X\n"
+		"\tOEMB oem_id                  : %s\n"
+		"\tOEMB oem_table_id            : %s\n"
+		"\tOEMB board_id                : 0x%02X\n"
+		"\tOEMB iafw version            : %03d.%03d\n"
+		"\tOEMB val_hooks version       : %03d.%03d\n"
+		"\tOEMB ia suppfw version       : %03d.%03d\n"
+		"\tOEMB scu runtime version     : %03d.%03d\n"
+		"\tOEMB ifwi version            : %03d.%03d\n"
+		"\tOEMB spid customer id        : %04x\n"
+		"\tOEMB spid vendor id          : %04x\n"
+		"\tOEMB spid manufacturer id    : %04x\n"
+		"\tOEMB spid platform family id : %04x\n"
+		"\tOEMB spid product line id    : %04x\n"
+		"\tOEMB spid hardware id        : %04x\n"
+		"\tOEMB spid fru[4..0]          : %02x %02x %02x %02x %02x\n"
+		"\tOEMB spid fru[9..5]          : %02x %02x %02x %02x %02x\n",
+		sig,
+		oemb->header.len,
+		oemb->header.rev,
+		oemb->header.csum,
+		oem_id,
+		oem_table_id,
+		board_id,
+		oemb->iafw_major_version,
+		oemb->iafw_main_version,
+		oemb->val_hooks_major_version,
+		oemb->val_hooks_minor_version,
+		oemb->ia_suppfw_major_version,
+		oemb->ia_suppfw_minor_version,
+		oemb->scu_runtime_major_version,
+		oemb->scu_runtime_minor_version,
+		oemb->ifwi_major_version,
+		oemb->ifwi_minor_version,
+		spid.customer_id,
+		spid.vendor_id,
+		spid.manufacturer_id,
+		spid.platform_family_id,
+		spid.product_line_id,
+		spid.hardware_id,
+		spid.fru[4], spid.fru[3], spid.fru[2], spid.fru[1],
+		spid.fru[0], spid.fru[9], spid.fru[8], spid.fru[7],
+		spid.fru[6], spid.fru[5]);
+	return 0;
+}
+
+static ssize_t customer_id_show(struct kobject *kobj,
+				struct kobj_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%04x\n", spid.customer_id);
+}
+spid_attr(customer_id);
+
+static ssize_t vendor_id_show(struct kobject *kobj, struct kobj_attribute *attr,
+			      char *buf)
+{
+	return sprintf(buf, "%04x\n", spid.vendor_id);
+}
+spid_attr(vendor_id);
+
+static ssize_t manufacturer_id_show(struct kobject *kobj,
+				    struct kobj_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%04x\n", spid.manufacturer_id);
+}
+spid_attr(manufacturer_id);
+
+static ssize_t platform_family_id_show(struct kobject *kobj,
+				       struct kobj_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%04x\n", spid.platform_family_id);
+}
+spid_attr(platform_family_id);
+
+static ssize_t product_line_id_show(struct kobject *kobj,
+				    struct kobj_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%04x\n", spid.product_line_id);
+}
+spid_attr(product_line_id);
+
+static ssize_t hardware_id_show(struct kobject *kobj,
+				struct kobj_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%04x\n", spid.hardware_id);
+}
+spid_attr(hardware_id);
+
+static ssize_t fru_show(struct kobject *kobj, struct kobj_attribute *attr,
+			char *buf)
+{
+	return sprintf(buf, "%02x\n%02x\n%02x\n%02x\n%02x\n"
+			    "%02x\n%02x\n%02x\n%02x\n%02x\n",
+		       spid.fru[0], spid.fru[1], spid.fru[2], spid.fru[3],
+		       spid.fru[4], spid.fru[5], spid.fru[6], spid.fru[7],
+		       spid.fru[8], spid.fru[9]);
+}
+spid_attr(fru);
+
+static struct attribute *spid_attrs[] = {
+	&customer_id_attr.attr,
+	&vendor_id_attr.attr,
+	&manufacturer_id_attr.attr,
+	&platform_family_id_attr.attr,
+	&product_line_id_attr.attr,
+	&hardware_id_attr.attr,
+	&fru_attr.attr,
+	NULL,
+};
+
+static struct attribute_group spid_attr_group = {
+	.attrs = spid_attrs,
+};
+
 static int __init intel_mid_platform_init(void)
 {
+	/* create sysfs entries for soft platform id */
+	spid_kobj = kobject_create_and_add("spid", NULL);
+	if (!spid_kobj)
+		pr_err("SPID: ENOMEM for spid_kobj\n");
+	if (sysfs_create_group(spid_kobj, &spid_attr_group))
+		pr_err("SPID: failed to create /sys/spid\n");
+
 	/* Get MFD Validation SFI OEMB Layout */
+	sfi_table_parse(SFI_SIG_OEMB, NULL, NULL, sfi_parse_oemb);
 	sfi_table_parse(SFI_SIG_GPIO, NULL, NULL, sfi_parse_gpio);
 	sfi_table_parse(SFI_SIG_DEVS, NULL, NULL, sfi_parse_devs);
 	return 0;

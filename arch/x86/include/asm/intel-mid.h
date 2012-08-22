@@ -15,6 +15,7 @@
 #include <linux/pci.h>
 #include <linux/platform_device.h>
 
+extern struct sfi_soft_platform_id spid;
 extern int intel_mid_pci_init(void);
 extern int get_gpio_by_name(const char *name);
 extern void intel_delayed_device_register(void *dev,
@@ -97,6 +98,246 @@ enum intel_mid_timer_options {
 };
 
 extern enum intel_mid_timer_options intel_mid_timer_options;
+
+#define spid_attr(_name) \
+static struct kobj_attribute _name##_attr = {	\
+	.attr   = {				\
+		.name = __stringify(_name),	\
+		.mode = 0444,			\
+	},					\
+	.show   = _name##_show,			\
+}
+
+/* Customer_ID table */
+enum {
+	CUSTOMER_INTEL,
+	CUSTOMER_AT,
+	CUSTOMER_OR,
+	CUSTOMER_TK,
+	CUSTOMER_RSVD,
+	CUSTOMER_UNKNOWN = 0xFFFF
+};
+
+/* Vendor_ID table */
+enum {
+	VENDOR_INTEL,
+	VENDOR_LN,
+	VENDOR_MO,
+	VENDOR_RSVD,
+	VENDOR_UNKNOWN = 0xFFFF
+};
+
+/* Manufacturer_ID table for Vendor_ID == VENDOR_INTEL */
+enum {
+	MANUFACTURER_FC1,
+	MANUFACTURER_FC2,
+	MANUFACTURER_FC3,
+	MANUFACTURER_RSVD,
+	MANUFACTURER_UNKNOWN = 0xFFFF
+};
+
+/* Platform_Family_ID table for Vendor_ID == VENDOR_INTEL */
+enum {
+	INTEL_MFLD_PHONE  = 0x0000,
+	INTEL_MFLD_TABLET = 0x8000,
+	INTEL_CLVTP_PHONE = 0x0002,
+	INTEL_CLVT_TABLET = 0x8002,
+	INTEL_MRFL_PHONE  = 0x0004,
+	INTEL_MRFL_TABLET = 0x8004,
+	INTEL_LFLD_PHONE  = 0x0006,
+	INTEL_LFLD_TABLET = 0x8006,
+	INTEL_PLATFORM_UNKNOWN = 0xFFFF
+};
+
+/* Product_Line_ID table for Platform_Family_ID == INTEL_MFLD_PHONE */
+enum {
+	INTEL_MFLDP_BB15_PRO = 0x0000,
+	INTEL_MFLDP_BB15_ENG = 0x8000,
+	INTEL_MFLDP_BB20_PRO = 0x0001,
+	INTEL_MFLDP_BB20_ENG = 0x8001,
+	INTEL_MFLDP_OR_PRO   = 0x0002,
+	INTEL_MFLDP_OR_ENG   = 0x8002,
+	INTEL_MFLDP_AT_PRO   = 0x0003,
+	INTEL_MFLDP_AT_ENG   = 0x8003,
+	INTEL_MFLDP_LEX_PRO  = 0x0004,
+	INTEL_MFLDP_LEX_ENG  = 0x8004,
+	INTEL_MFLDP_UNKNOWN  = 0xFFFF
+};
+
+/* Product_Line_ID table for Platform_Family_ID == INTEL_MFLD_TABLET */
+enum {
+	INTEL_MFLDT_RR_PRO  = 0x0000,
+	INTEL_MFLDT_RR_ENG  = 0x8000,
+	INTEL_MFLDT_JK_PRO  = 0x0001,
+	INTEL_MFLDT_JK_ENG  = 0x8001,
+	INTEL_MFLDT_UNKNOWN = 0xFFFF
+};
+
+/* Product_Line_ID table for Platform_Family_ID == INTEL_CLVTP_PHONE */
+enum {
+	INTEL_CLVTPP_RHB_PRO = 0x0000,
+	INTEL_CLVTPP_RHB_ENG = 0x8000,
+	INTEL_CLVTPP_UNKNOWN = 0xFFFF
+};
+
+/* Product_Line_ID table for Platform_Family_ID == INTEL_CLVT_TABLET */
+enum {
+	INTEL_CLVTT_TBD_PRO = 0x0000,
+	INTEL_CLVTT_TBD_ENG = 0x8000,
+	INTEL_CLVTT_UNKNOWN = 0xFFFF
+};
+
+/* Product_Line_ID table for Platform_Family_ID == INTEL_MRFL_PHONE */
+enum {
+	INTEL_MRFLP_TBD_PRO = 0x0000,
+	INTEL_MRFLP_TBD_ENG = 0x8000,
+	INTEL_MRFLP_UNKNOWN = 0xFFFF
+};
+
+/* Product_Line_ID table for Platform_Family_ID == INTEL_MRFL_TABLET */
+enum {
+	INTEL_MRFLT_TBD_PRO = 0x0000,
+	INTEL_MRFLT_TBD_ENG = 0x8000,
+	INTEL_MRFLT_UNKNOWN = 0xFFFF
+};
+
+/* Hardware_ID table for Product_Line_ID == INTEL_MFLDP_BB15 */
+enum {
+	MFLDP_BB15_PR20, /* CRAK C0 */
+	MFLDP_BB15_PR31, /* CRAK D0 */
+	MFLDP_BB15_PR32, /* CRAK D0 */
+	MFLDP_BB15_PR33, /* CRAK D1 - 1.6GHz */
+	MFLDP_BB15_PR34, /* CRAK D1 - 1.6GHz, alt eMMC, DDR2 */
+	MFLDP_BB15_PR35, /* CRAK D1 - 1.6GHz, alt eMMC, DDR2 */
+	MFLDP_BB15_PR36, /* CRAK D1 - 1.6GHz, alt eMMC, DDR2, MSIC C2 */
+	MFLDP_BB15_PR40, /* CRAK D1 - 2.0GHz */
+	MFLDP_BB15_PR2A,
+	MFLDP_BB15_PR3A,
+	MFLDP_BB15_PR3B,
+	MFLDP_BB15_4MVV,
+	MFLDP_BB15_4MSV,
+	MFLDP_BB15_ICDK,
+	MFLDP_BB15_RSVD,
+	MFLDP_BB15_UNKNOWN = 0xFFFF
+};
+
+/* Hardware_ID table for Product_Line_ID == INTEL_MFLDP_BB20 */
+enum {
+	MFLDP_BB20_TBD,
+	MFLDP_BB20_RSVD,
+	MFLDP_BB20_UNKNOWN = 0xFFFF
+};
+
+/* Hardware_ID table for Product_Line_ID == INTEL_MFLDP_OR */
+enum {
+	MFLDP_OR_NHDV1,    /* CRAK D0 - 1.6G */
+	MFLDP_OR_NHDV2,    /* CRAK D1 - 1.6G */
+	MFLDP_OR_NHDV3,    /* CRAK D1 - 1.6G */
+	MFLDP_OR_NHDV31R,  /* CRAK D1 - 1.6G */
+	MFLDP_OR_NHDV31A,  /* CAAK D1 - 1.6G */
+	MFLDP_OR_NHDV30F,  /* CRAK D1 - 2.0G */
+	MFLDP_OR_NHDV31A1, /* CAAK D1 - 2.0G */
+	MFLDP_OR_NHDV30D,  /* CRAK D2 - 1.6G */
+	MFLDP_OR_NHDV30G,  /* CRAK D2 - 2.0G */
+	MFLDP_OR_NHDV31A2, /* CAAK D2 - 1.6G */
+	MFLDP_OR_NHDV31A3, /* CAAK D2 - 2.0G */
+	MFLDP_OR_NHDV30E,  /* CRAK D1, Samsung eMMC for part quals */
+	MFLDP_OR_RSVD,
+	MFLDP_OR_UNKNOWN = 0xFFFF
+};
+
+/* Hardware_ID table for Product_Line_ID == INTEL_MFLDP_AT */
+enum {
+	MFLDP_AT_LA, /* CAAK D1 */
+	MFLDP_AT_LA_RSVD,
+	MFLDP_AT_LA_UNKNOWN = 0xFFFF
+};
+
+/* Hardware_ID table for Product_Line_ID == INTEL_MFLDP_LEX */
+enum {
+	MFLDP_LEX_PR11, /* RYS/PNW 1GHz CREK D1 */
+	MFLDP_LEX_PR1M, /* RYS/PNW 1GHz CREK D1 */
+	MFLDP_LEX_PR21, /* RYS/PNW 1GHz CSEK D1 */
+	MFLDP_LEX_PR2M, /* RYS/PNW 1GHz CSEK D1 */
+	MFLDP_LEX_PR30, /* RYS/PNW 1GHz CSEK D1 */
+	MFLDP_LEX_RSVD,
+	MFLDP_LEX_UNKNOWN = 0xFFFF
+};
+
+/* Hardware_ID table for Product_Line_ID == INTEL_MFLDT_RR */
+enum {
+	MFLDT_RR_DV10, /* CRAK D0 */
+	MFLDT_RR_DV15, /* CRAK D0/D1 */
+	MFLDT_RR_DV20, /* CRAK D1 */
+	MFLDT_RR_DV21, /* CRAK D1 */
+	MFLDT_RR_RSVD,
+	MFLDT_RR_UNKNOWN = 0xFFFF
+};
+
+/* Hardware_ID table for Product_Line_ID == INTEL_MFLDT_JK */
+enum {
+	MFLDT_JK_EV10, /* CRAK D0 */
+	MFLDT_JK_EV20, /* CRAK D0 */
+	MFLDT_JK_DV10, /* CRAK D1 */
+	MFLDT_JK_RSVD,
+	MFLDT_JK_UNKNOWN = 0xFFFF
+};
+
+/* Hardware_ID table for Product_Line_ID == INTEL_CLVTPP_RHB */
+enum {
+	CLVTPP_RHB_CCVV0,  /* Clover City VV0 FAB A CLV/CLV+ A0*/
+	CLVTPP_RHB_CCVV1,  /* Clover City VV1 FAB B CLV+ A0*/
+	CLVTPP_RHB_CCVV2,  /* Clover City VV2 FAB C CLV+ A0*/
+	CLVTPP_RHB_CLEV,   /* Clover Lake CRB EV */
+	CLVTPP_RHB_PR01,   /* RHB PR0.1 CLV A0 C-CLASS */
+	CLVTPP_RHB_PR02,   /* RHB PR0.2 CLV A0 C-CLASS */
+	CLVTPP_RHB_PMPR10, /* CLV+ A0 */
+	CLVTPP_RHB_CCPVV1, /* Clover City Pre-VV1 Fab B CLV+ A0 */
+	CLVTPP_RHB_PPR10,  /* RHB Pre-PR1.0 CLV A0 C- CLASS */
+	CLVTPP_RHB_MPR10,  /* RHB Macro PR1.0 CLV+ A0 */
+	CLVTPP_RHB_PR10,   /* RHB PR1.0 CLV+ A0 C-CLASS */
+	CLVTPP_RHB_MPR15,  /* RHB Macro PR1.5 CLV+ A0 */
+	CLVTPP_RHB_PR15,   /* RHB PR1.5 CLV+ A0 C-CLASS */
+	CLVTPP_RHB_MPR20,  /* RHB Macro PR2.0 CLV+ B0 */
+	CLVTPP_RHB_PR20,   /* RHB PR2.0 CLV+ B0 C-CLASS */
+	CLVTPP_RHB_MPR30,  /* RHB Macro PR3.0 CLV+ B0 */
+	CLVTPP_RHB_CCVV3,  /* Clover City VV3 FAB D CLV+ A0 */
+	CLVTPP_RHB_PR30,   /* RHB PR3.0 CLV+ B0 C-CLASS */
+	CLVTPP_RHB_DV1,    /* RHB Dv1 */
+	CLVTPP_RHB_RSVD,
+	CLVTPP_RHB_UNKNOWN = 0xFFFF
+};
+
+/* Hardware_ID table for Product_Line_ID == INTEL_CLVTT_TBD */
+enum {
+	CLVTT_TBD_CLEVA, /* Clover Lake EV - CRB - FAB A */
+	CLVTT_TBD_CLEVB, /* Clover Lake EV - CRB - FAB B */
+	CLVTT_TBD_CLEVC, /* Clover Lake EV - CRB - FAB C */
+	CLVTT_TBD_CLEVD, /* Clover Lake EV - CRB - FAB D */
+	CLVTT_TBD_RSVD,
+	CLVTT_TBD_UNKNOWN = 0xFFFF
+};
+
+/* Hardware_ID table for Product_Line_ID == INTEL_MRFLP_TBD */
+enum {
+	MRFLP_TBD_SRVVA, /* SilverRidge VV FAB A */
+	MRFLP_TBD_SRVVB, /* SilverRidge VV FAB B */
+	MRFLP_TBD_SRVVC, /* SilverRidge VV FAB C */
+	MRFLP_TBD_SRVVD, /* SilverRidge VV FAB D */
+	MRFLP_TBD_SRSVA, /* SilverRidge SV FAB A */
+	MRFLP_TBD_SRSVB, /* SilverRidge SV FAB B */
+	MRFLP_TBD_SRSVC, /* SilverRidge SV FAB C */
+	MRFLP_TBD_SRSVD, /* SilverRidge SV FAB D */
+	MRFLP_TBD_RSVD,
+	MRFLP_TBD_UNKNOWN = 0xFFFF
+};
+
+/* Hardware_ID table for Product_Line_ID == INTEL_MRFLT_TBD */
+enum {
+	MRFLT_TBD_TBD,
+	MRFLT_TBD_RSVD,
+	MRFLT_TBD_UNKNOWN = 0xFFFF
+};
 
 /*
  * Penwell uses spread spectrum clock, so the freq number is not exactly
