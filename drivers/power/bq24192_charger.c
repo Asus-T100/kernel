@@ -41,6 +41,7 @@
 #include <linux/delay.h>
 #include <linux/gpio.h>
 #include <linux/wakelock.h>
+#include <linux/usb/penwell_otg.h>
 #include <asm/intel_mid_gpadc.h>
 #include <asm/intel_scu_ipc.h>
 
@@ -2699,6 +2700,21 @@ static int __devinit bq24192_probe(struct i2c_client *client,
 		kfree(ctp_smip_batt_prop);
 		return ret;
 	}
+
+	/*
+	 * Query the OTG driver to check if it has already sent the charger
+	 * event. If yes, then we should start the charging. This would ensure
+	 * charger driver doesn't miss any usb event.
+	 */
+	ret = penwell_otg_query_power_supply_cap(&chip->cap);
+	if (ret < 0) {
+		dev_err(&chip->client->dev,
+					"OTG Query failed. OTGD not loaded\n");
+	} else {
+		dev_info(&chip->client->dev, "Schedule the event worker\n");
+		schedule_delayed_work(&chip->chrg_evt_wrkr, 0);
+	}
+
 	/* start the status monitor worker */
 	schedule_delayed_work(&chip->stat_mon_wrkr, 0);
 	return 0;
