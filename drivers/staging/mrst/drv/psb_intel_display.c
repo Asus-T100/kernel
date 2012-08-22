@@ -2680,8 +2680,6 @@ static int mdfld_crtc_mode_set(struct drm_crtc *crtc,
 	if (is_mipi) {
 		if (get_panel_type(dev, pipe) == GI_SONY_CMD)
 			mdfld_gi_sony_power_on(mipi_encoder);
-		else if (get_panel_type(dev, pipe) == H8C7_CMD)
-			mdfld_h8c7_cmd_power_on(mipi_encoder);
 
 		goto mrst_crtc_mode_set_exit;
 	}

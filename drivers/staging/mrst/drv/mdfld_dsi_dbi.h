@@ -98,5 +98,6 @@ extern int mdfld_dbi_dsr_init(struct drm_device *dev);
 extern struct mdfld_dsi_encoder *mdfld_dsi_dbi_init(struct drm_device *dev,
 		struct mdfld_dsi_connector *dsi_connector,
 		struct panel_funcs *p_funcs);
+extern void mdfld_reset_panel_handler_work(struct work_struct *work);
 
 #endif /*__MDFLD_DSI_DBI_H__*/

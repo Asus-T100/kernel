@@ -174,7 +174,6 @@ static int ospm_runtime_pm_topaz_suspend(struct drm_device *dev)
 	struct pnw_topaz_private *pnw_topaz_priv = dev_priv->topaz_private;
 	struct psb_video_ctx *pos, *n;
 	int encode_ctx = 0, encode_running = 0;
-	unsigned long flags;
 
 	if (!ospm_power_is_hw_on(OSPM_VIDEO_ENC_ISLAND))
 		goto out;
@@ -287,7 +286,6 @@ void ospm_apm_power_down_msvdx(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv = dev->dev_private;
 	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
-	unsigned long flags;
 
 	mutex_lock(&g_ospm_mutex);
 	if (!ospm_power_is_hw_on(OSPM_VIDEO_DEC_ISLAND))
@@ -318,7 +316,6 @@ void ospm_apm_power_down_topaz(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv = dev->dev_private;
 	struct pnw_topaz_private *pnw_topaz_priv = dev_priv->topaz_private;
-	unsigned long flags;
 
 	mutex_lock(&g_ospm_mutex);
 
@@ -881,7 +878,6 @@ static int mdfld_restore_display_registers(struct drm_device *dev, int pipe)
 	u32 dpll = 0;
 	u32 timeout = 0;
 	u32 reg_offset = 0;
-	u32 temp = 0, device_ready_reg = 0;
 
 	/* regester */
 	u32 dpll_reg = MRST_DPLL_A;
@@ -1234,8 +1230,6 @@ void ospm_suspend_display(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv = dev->dev_private;
 	int pp_stat, ret = 0;
-	u32 temp = 0, device_ready_reg = 0;
-	u32 mipi_reg = 0, reg_offset = 0;
 
 #ifdef OSPM_GFX_DPK
 	printk(KERN_ALERT "%s\n", __func__);
@@ -1553,9 +1547,8 @@ static void gfx_early_suspend(struct early_suspend *h)
 	struct drm_encoder *encoder;
 	struct drm_encoder_helper_funcs *enc_funcs;
 
-#ifdef OSPM_GFX_DPK
-	printk(KERN_ALERT "\n   gfx_early_suspend\n");
-#endif
+	PSB_DEBUG_ENTRY("\n");
+
 	dev_priv->b_dsr_enable_status = dev_priv->b_dsr_enable;
 	if (dev_priv->b_dsr_enable) {
 		dev_priv->exit_idle(dev,
@@ -1565,57 +1558,45 @@ static void gfx_early_suspend(struct early_suspend *h)
 		dev_priv->b_dsr_enable = false;
 	}
 
-	if (h) {
-		while (dev_priv->is_in_panel_reset) {
-			mdelay(100);
-			printk(KERN_ALERT "===power key wait\n");
-		}
-	}
-	if (dev_priv->pvr_screen_event_handler)
-		dev_priv->pvr_screen_event_handler(dev, 0);
-
 	/* protect early_suspend with dpms and mode config */
 	mutex_lock(&dev->mode_config.mutex);
 
-	/*Display off*/
-	if (IS_MDFLD(gpDrmDevice)) {
-		if ((dev_priv->panel_id == H8C7_VID) ||
-		    (dev_priv->panel_id == H8C7_CMD) ||
-		    (dev_priv->panel_id == TMD_6X10_VID) ||
-		    (dev_priv->panel_id == GI_SONY_VID) ||
-		    (dev_priv->panel_id == GI_SONY_CMD) ||
-		    (dev_priv->panel_id == H8C7_CMD) ||
-		    (dev_priv->panel_id == AUO_SC1_VID) ||
-		    (dev_priv->panel_id == AUO_SC1_CMD)) {
-			list_for_each_entry(encoder,
-					&dev->mode_config.encoder_list,
-					head) {
-				enc_funcs = encoder->helper_private;
-				if (!drm_helper_encoder_in_use(encoder))
-					continue;
-				if (enc_funcs && enc_funcs->save)
-					enc_funcs->save(encoder);
-			}
-		} else
-			printk(KERN_ALERT "panel type is not support currently\n");
+	list_for_each_entry(encoder,
+			&dev->mode_config.encoder_list,
+			head) {
+		enc_funcs = encoder->helper_private;
+		if (!drm_helper_encoder_in_use(encoder))
+			continue;
+		if (enc_funcs && enc_funcs->save)
+			enc_funcs->save(encoder);
 	}
 
 
 	gbdispstatus = false;
-
 	dev_priv->early_suspended = true;
 
 	mutex_unlock(&dev->mode_config.mutex);
+
 #ifdef CONFIG_GFX_RTPM
-#ifdef OSPM_GFX_DPK
-	printk(KERN_ALERT " allow GFX runtime_pm\n");
-#endif
 	pm_runtime_allow(&gpDrmDevice->pdev->dev);
 #endif
-
 }
-static void resume_data_back()
+
+static void gfx_late_resume(struct early_suspend *h)
 {
+	struct drm_psb_private *dev_priv = gpDrmDevice->dev_private;
+	struct drm_device *dev = dev_priv->dev;
+	struct drm_encoder *encoder;
+	struct drm_encoder_helper_funcs *enc_funcs;
+
+	PSB_DEBUG_ENTRY("\n");
+
+	/* protect early_suspend with dpms and mode config */
+	mutex_lock(&dev->mode_config.mutex);
+
+	dev_priv->early_suspended = false;
+
+#ifdef CONFIG_GFX_RTPM
 	pm_runtime_forbid(&gpDrmDevice->pdev->dev);
 	mutex_lock(&g_ospm_mutex);
 	ospm_resume_pci(gpDrmDevice->pdev);
@@ -1623,65 +1604,22 @@ static void resume_data_back()
 	psb_irq_preinstall_islands(gpDrmDevice, OSPM_DISPLAY_ISLAND);
 	psb_irq_postinstall_islands(gpDrmDevice, OSPM_DISPLAY_ISLAND);
 	mutex_unlock(&g_ospm_mutex);
-}
-static void restore_panel_controll_back(struct drm_psb_private *dev_priv)
-{
-	struct drm_device *dev = dev_priv->dev;
-	struct drm_encoder *encoder;
-	struct drm_encoder_helper_funcs *enc_funcs;
-	struct drm_crtc *crtc = NULL;
-	u32 dspcntr_val;
+#endif
 
-	if (IS_MDFLD(gpDrmDevice)) {
-		if ((dev_priv->panel_id == H8C7_VID) ||
-		    (dev_priv->panel_id == H8C7_CMD) ||
-		    (dev_priv->panel_id == TMD_6X10_VID) ||
-		    (dev_priv->panel_id == GI_SONY_VID) ||
-		    (dev_priv->panel_id == GI_SONY_CMD) ||
-		    (dev_priv->panel_id == H8C7_CMD) ||
-		    (dev_priv->panel_id == AUO_SC1_VID) ||
-		    (dev_priv->panel_id == AUO_SC1_CMD)) {
-			list_for_each_entry(encoder,
-					&dev->mode_config.encoder_list,
-					head) {
-				enc_funcs = encoder->helper_private;
-				if (!drm_helper_encoder_in_use(encoder))
-					continue;
-				if (enc_funcs && enc_funcs->restore)
-					enc_funcs->restore(encoder);
-			}
-		} else {
-			printk(KERN_ALERT "%s invalid panel\n",
-				__func__);
-		}
-
-		if (dev_priv->pvr_screen_event_handler)
-			dev_priv->pvr_screen_event_handler(dev, 1);
-		gbdispstatus = true;
-
-		if (lastFailedBrightness > 0)
-			psb_set_brightness(NULL);
+	list_for_each_entry(encoder,
+			&dev->mode_config.encoder_list,
+			head) {
+		enc_funcs = encoder->helper_private;
+		if (!drm_helper_encoder_in_use(encoder))
+			continue;
+		if (enc_funcs && enc_funcs->restore)
+			enc_funcs->restore(encoder);
 	}
 
-}
+	if (lastFailedBrightness > 0)
+		psb_set_brightness(NULL);
 
-static void gfx_late_resume(struct early_suspend *h)
-{
-	struct drm_psb_private *dev_priv = gpDrmDevice->dev_private;
-	struct drm_device *dev = dev_priv->dev;
-#ifdef OSPM_GFX_DPK
-	printk(KERN_ALERT "\ngfx_late_resume\n");
-#endif
-	/* protect early_suspend with dpms and mode config */
-	mutex_lock(&dev->mode_config.mutex);
-
-	dev_priv->early_suspended = false;
-	if (IS_MDFLD(gpDrmDevice)) {
-#ifdef CONFIG_GFX_RTPM
-		resume_data_back();
-#endif
-	}
-	restore_panel_controll_back(dev_priv);
+	gbdispstatus = true;
 	dev_priv->b_dsr_enable = dev_priv->b_dsr_enable_status;
 
 	mutex_unlock(&dev->mode_config.mutex);
@@ -2009,7 +1947,10 @@ unlock:
 				gfx_islands &=  ~OSPM_GL3_CACHE_ISLAND;
 				if (!gfx_islands) {
 					spin_unlock(&graphics_count_lock);
-					goto out;
+					spin_unlock_irqrestore(
+							&dev_priv->ospm_lock,
+							flags);
+					return;
 				}
 			}
 #endif
@@ -2030,7 +1971,7 @@ unlock:
 		if (pmu_nc_set_power_state(gfx_islands,
 			OSPM_ISLAND_DOWN, APM_REG_TYPE))
 			BUG();
-out:
+
 		spin_unlock_irqrestore(&dev_priv->ospm_lock, flags);
 	}
 }
@@ -2229,7 +2170,7 @@ out:
  */
 bool ospm_power_using_hw_begin(int hw_island, UHBUsage usage)
 {
-	bool tmp, ret = true;
+	bool ret = true;
 	bool island_is_on = true;
 	struct pci_dev *pdev = gpDrmDevice->pdev;
 	IMG_UINT32 deviceID = 0;
@@ -2317,9 +2258,10 @@ unlock:
 		** Note: when in interrupt context, we should
 		** always return true, for it has triggerred interrupt.
 		*/
-		if ((!island_is_on) ||
-			((hw_island == OSPM_DISPLAY_ISLAND) &&
-			gbSuspendInProgress) && (!in_interrupt())) {
+		if (!island_is_on ||
+		    ((hw_island == OSPM_DISPLAY_ISLAND) &&
+		      gbSuspendInProgress &&
+		      !in_interrupt())) {
 			spin_unlock_irqrestore(&dev_priv->ospm_lock,
 				flags);
 #ifdef CONFIG_GFX_RTPM
@@ -2443,7 +2385,7 @@ void ospm_power_using_video_end(int video_island)
 void ospm_power_using_hw_end(int hw_island)
 {
 	if (!(hw_island & (OSPM_GRAPHICS_ISLAND | OSPM_DISPLAY_ISLAND)))
-		return false;
+		return;
 
 	switch (hw_island) {
 	case OSPM_GRAPHICS_ISLAND:
@@ -2466,12 +2408,13 @@ EXPORT_SYMBOL(ospm_power_using_hw_end);
 
 int ospm_runtime_pm_allow(struct drm_device *dev)
 {
-	struct drm_psb_private *dev_priv = dev->dev_private;
+	struct drm_psb_private *dev_priv;
 	struct mdfld_dsi_config **dsi_configs;
 	bool panel_on = false, panel_on2 = false;
 
 	PSB_DEBUG_ENTRY("%s\n", __func__);
 
+	dev_priv = (struct drm_psb_private *)dev->dev_private;
 	dsi_configs = dev_priv->dsi_configs;
 
 #ifdef OSPM_GFX_DPK
@@ -2584,75 +2527,4 @@ int psb_runtime_idle(struct device *dev)
 			return 0;
 }
 
-void mdfld_reset_panel_handler_work(struct work_struct *work)
-{
-	struct drm_psb_private *dev_priv =
-		container_of(work, struct drm_psb_private, reset_panel_work);
-	int mipi_pipe = dev_priv->cur_pipe;
-	struct drm_device *dev = dev_priv->dev;
-	struct mdfld_dsi_config *dsi_config = NULL;
-
-	struct mdfld_dsi_dbi_output *dbi_output = NULL;
-	struct panel_funcs *p_funcs  = NULL;
-	int delay_between_dispaly_island_off_on = 20;
-	int delay_after_reset_gpio_toggle = 20;
-
-	/*if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
-	*				OSPM_UHB_FORCE_POWER_ON))
-	*	return -EAGAIN;
-	*/
-	dev_priv->is_in_panel_reset = true;
-	if (!dev_priv->is_mipi_on)
-		goto reset_error;
-
-	if (mipi_pipe == 0) {
-		dbi_output = dev_priv->dbi_output;
-		dsi_config = dev_priv->dsi_configs[0];
-	} else {
-		dbi_output = dev_priv->dbi_output2;
-		dsi_config = dev_priv->dsi_configs[1];
-	}
-	if (!dbi_output) {
-		printk(KERN_ALERT "%s invalid dbi_output\n",
-						__func__);
-		goto reset_error;
-	}
-	p_funcs = dbi_output->p_funcs;
-	if (p_funcs) {
-		gfx_early_suspend(NULL);
-		if (p_funcs->get_reset_delay_time)
-			p_funcs->get_reset_delay_time(
-					&delay_between_dispaly_island_off_on,
-					&delay_after_reset_gpio_toggle);
-		mdelay(delay_between_dispaly_island_off_on);
-
-		if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
-						OSPM_UHB_FORCE_POWER_ON))
-			goto reset_error;
-
-		if (p_funcs->reset)
-			p_funcs->reset(dsi_config, RESET_FROM_OSPM_RESUME);
-
-		mdelay(delay_after_reset_gpio_toggle);
-		if (p_funcs->disp_control_init)
-			p_funcs->disp_control_init(dev);
-
-		if (IS_MDFLD(gpDrmDevice))
-			resume_data_back();
-
-		if (p_funcs->drv_ic_init)
-			p_funcs->drv_ic_init(dsi_config, mipi_pipe);
-
-		restore_panel_controll_back(dev_priv);
-		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
-		dev_priv->b_dsr_enable = dev_priv->b_dsr_enable_status;
-		printk(KERN_ALERT"End panel reset!!!\n");
-	} else {
-		printk(KERN_ALERT "%s invalid panel init\n",
-								__func__);
-	}
-reset_error:
-	dev_priv->is_in_panel_reset = false;
-	/*ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);*/
-}
 

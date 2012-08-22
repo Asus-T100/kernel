@@ -26,8 +26,29 @@
 
 #include "mdfld_dsi_esd.h"
 #include "mdfld_dsi_dbi.h"
+#include "mdfld_dsi_pkg_sender.h"
 
 #define MDFLD_ESD_SLEEP_MSECS	8000
+
+/**
+ * esd detection
+ */
+static bool intel_dsi_dbi_esd_detection(struct mdfld_dsi_config *dsi_config)
+{
+	int ret;
+	u32 data = 0;
+
+	PSB_DEBUG_ENTRY("esd\n");
+
+	ret = mdfld_dsi_get_power_mode(dsi_config,
+			&data,
+			MDFLD_DSI_LP_TRANSMISSION);
+
+	if ((ret == 1) && ((data & 0x14) != 0x14))
+		return true;
+
+	return false;
+}
 
 static int __esd_thread(void *data)
 {
@@ -40,20 +61,21 @@ static int __esd_thread(void *data)
 	struct drm_psb_private *dev_priv = dev->dev_private;
 
 	dsi_config = dev_priv->dsi_configs[0];
-	dbi_output = dev_priv->dbi_output;
+	if (!dsi_config)
+		return -EINVAL;
 
 	set_freezable();
 
 	while (!kthread_should_stop()) {
-		wait_event_freezable(err_detector->esd_thread_wq,
-			((dsi_config->dsi_hw_context.panel_on) ||
-			 kthread_should_stop()));
-
-		PSB_DEBUG_ENTRY("%s: executed on %u\n", __func__,
-			jiffies_to_msecs(jiffies));
+		dbi_output = dev_priv->dbi_output;
 
 		if (!dbi_output)
 			goto esd_exit;
+
+		wait_event_freezable(err_detector->esd_thread_wq,
+			((dsi_config->dsi_hw_context.panel_on &&
+			 !dbi_output->first_boot) ||
+			 kthread_should_stop()));
 
 		mutex_lock(&dev_priv->dsr_mutex);
 		if (dbi_output->mode_flags & MODE_SETTING_IN_DSR) {
@@ -64,9 +86,7 @@ static int __esd_thread(void *data)
 		}
 
 		p_funcs = dbi_output->p_funcs;
-		if (p_funcs &&
-		    p_funcs->esd_detection &&
-		    dsi_config->dsi_hw_context.panel_on) {
+		if (dsi_config->dsi_hw_context.panel_on) {
 			if (dev_priv->b_dsr_enable) {
 				dev_priv->exit_idle(dev,
 						MDFLD_DSR_2D_3D,
@@ -75,21 +95,20 @@ static int __esd_thread(void *data)
 				/*make sure, during esd no DSR again*/
 				dbi_output->mode_flags |= MODE_SETTING_ON_GOING;
 			}
-			if (p_funcs->esd_detection(dsi_config)) {
-				printk(KERN_ALERT"ESD\n");
+			if (intel_dsi_dbi_esd_detection(dsi_config)) {
+				DRM_INFO("%s: error detected\n", __func__);
 				schedule_work(&dev_priv->reset_panel_work);
 			}
-			if (dev_priv->b_dsr_enable) {
-				dbi_output->mode_flags &= ~MODE_SETTING_ON_GOING;
-			}
 
+			if (dev_priv->b_dsr_enable)
+				dbi_output->mode_flags &= ~MODE_SETTING_ON_GOING;
 		}
 esd_exit:
 		schedule_timeout_interruptible(
 			msecs_to_jiffies(MDFLD_ESD_SLEEP_MSECS));
 	}
 
-	DRM_INFO("ESD exited\n");
+	DRM_INFO("%s: ESD exited\n", __func__);
 	return 0;
 }
 
@@ -108,10 +127,13 @@ void mdfld_dsi_error_detector_wakeup(struct mdfld_dsi_connector *dsi_connector)
 }
 
 /**
- * initialize DSI panel error detector
+ * @dev: DRM device
+ * @dsi_connector:
+ *
+ * Initialize DSI error detector
  */
 int mdfld_dsi_error_detector_init(struct drm_device *dev,
-	struct mdfld_dsi_connector *dsi_connector)
+		struct mdfld_dsi_connector *dsi_connector)
 {
 	struct mdfld_dsi_error_detector *err_detector;
 	const char *fmt = "%s";

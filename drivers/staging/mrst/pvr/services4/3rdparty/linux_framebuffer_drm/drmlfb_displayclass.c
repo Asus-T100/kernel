@@ -1204,7 +1204,7 @@ static PVRSRV_ERROR SwapToDCSystem(IMG_HANDLE hDevice,
 static MRST_BOOL MRSTLFBVSyncIHandler(MRSTLFB_DEVINFO *psDevInfo, int iPipe)
 {
 	MRST_BOOL bStatus = MRST_FALSE;
-	MRSTLFB_VSYNC_FLIP_ITEM *psFlipItem, *psLastItem;
+	MRSTLFB_VSYNC_FLIP_ITEM *psFlipItem;
 	unsigned long ulMaxIndex;
 	unsigned long ulLockFlags;
 	MRSTLFB_SWAPCHAIN *psSwapChain;
@@ -1528,6 +1528,20 @@ static IMG_BOOL ProcessFlip(IMG_HANDLE  hCmdCookie,
 		if (dev_priv->b_dsr_enable_config)
 			dev_priv->b_dsr_enable = true;
 	}
+
+	/*Screen is off, no need to send data*/
+	if (psDevInfo->bScreenState) {
+		spin_lock_irqsave(&psDevInfo->sSwapChainLock, ulLockFlags);
+
+		MRSTFBFlipComplete(psSwapChain, NULL, MRST_FALSE);
+		psSwapChain->psPVRJTable->pfnPVRSRVCmdComplete(hCmdCookie,
+				IMG_TRUE);
+
+		spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
+
+		return IMG_TRUE;
+	}
+
 	if (dev_priv->b_dsr_enable)
 		dev_priv->exit_idle(dev, MDFLD_DSR_2D_3D, NULL, true);
 
@@ -1964,21 +1978,21 @@ static int DRMLFBEnterVTHandler(struct drm_device *dev)
 static
 int MRSTLFBScreenEventHandler(struct drm_device* psDrmDevice, int state)
 {
-    MRSTLFB_DEVINFO *psDevInfo;
-    MRST_BOOL bScreenOFF;
+	MRSTLFB_DEVINFO *psDevInfo;
+	MRST_BOOL bScreenOFF;
 
-    psDevInfo = GetAnchorPtr();
+	psDevInfo = GetAnchorPtr();
 
-    bScreenOFF = (state == 0) ? MRST_TRUE: MRST_FALSE;
+	bScreenOFF = (state == 0) ? MRST_TRUE : MRST_FALSE;
 
-    if (bScreenOFF != psDevInfo->bScreenState)
-    {
-        DRM_INFO("Screen event:%d\n", bScreenOFF);
-        psDevInfo->bScreenState = bScreenOFF;
-        SetFlushState(psDevInfo, bScreenOFF);
-    }
+	if (bScreenOFF != psDevInfo->bScreenState) {
+		DRM_INFO("Screen event:%d\n", bScreenOFF);
+		del_timer(&psDevInfo->sFlipTimer);
+		psDevInfo->bScreenState = bScreenOFF;
+		SetFlushState(psDevInfo, bScreenOFF);
+	}
 
-    return 0;
+	return 0;
 }
 
 static MRST_ERROR MRSTLFBInstallScreenEvents(MRSTLFB_DEVINFO *psDevInfo, MRSTLFB_SCREEN_EVENT_PFN pScreenEventHandler)

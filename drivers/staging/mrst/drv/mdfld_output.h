@@ -80,7 +80,6 @@ struct panel_info {
  *@drv_ic_init: initialize panel driver IC and additional HW initialization.
  *@detect: return the panel physical connection status.
  *@dsi_controller_init: Initialize MIPI IP for this panel.
- *@get_panel_power_state: return panel power state.
  *@power_on: turn on panel. e.g. send a TURN_ON special packet.
  *@power_off: turn off panel. e.g. send a SHUT_DOWN special packet.
  *
@@ -97,15 +96,9 @@ struct panel_funcs {
 	int (*detect)(struct mdfld_dsi_config *dsi_config, int pipe);
 	void (*dsi_controller_init)(struct mdfld_dsi_config *dsi_config,
 				int pipe, int update);
-	int (*get_panel_power_state)(struct mdfld_dsi_config *dsi_config,
-				int pipe);
 	int (*power_on)(struct mdfld_dsi_config *dsi_config);
 	int (*power_off)(struct mdfld_dsi_config *dsi_config);
 	int (*set_brightness)(struct mdfld_dsi_config *dsi_config, int level);
-	void (*disp_control_init)(struct drm_device *);
-	bool (*esd_detection)(struct mdfld_dsi_config *dsi_config);
-	void (*get_reset_delay_time)(int *pdelay_between_dispaly_island_off_on,
-			int *pdelay_after_reset_gpio_toggle);
 };
 
 extern void mdfld_output_init(struct drm_device *dev);

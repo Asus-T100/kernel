@@ -598,26 +598,6 @@ err:
 	return 0;
 }
 
-static bool mdfld_auo_esd_detection(struct mdfld_dsi_config *dsi_config)
-{
-	int ret;
-	u32 data = 0;
-	ret = mdfld_dsi_get_power_mode(dsi_config,
-				 &data,
-				 MDFLD_DSI_LP_TRANSMISSION);
-	if ((ret == 1) && ((data & 0x14) != 0x14))
-		return true;
-	return false;
-}
-
-static void mdfld_auo_get_reset_delay_time(
-		int *pdelay_between_dispaly_island_off_on,
-		int *pdelay_after_reset_gpio_toggle)
-{
-	*pdelay_between_dispaly_island_off_on = 20;
-	*pdelay_after_reset_gpio_toggle = 20;
-}
-
 void auo_sc1_cmd_init(struct drm_device *dev, struct panel_funcs *p_funcs)
 {
 	p_funcs->get_config_mode = &auo_cmd_get_config_mode;
@@ -630,6 +610,4 @@ void auo_sc1_cmd_init(struct drm_device *dev, struct panel_funcs *p_funcs)
 	p_funcs->set_brightness = mdfld_auo_dsi_cmd_set_brightness;
 	p_funcs->power_on = __mdfld_auo_dsi_power_on;
 	p_funcs->power_off = __mdfld_auo_dsi_power_off;
-	p_funcs->esd_detection = mdfld_auo_esd_detection;
-	p_funcs->get_reset_delay_time = mdfld_auo_get_reset_delay_time;
 }

@@ -375,39 +375,6 @@ int mdfld_dsi_h8c7_detect(struct mdfld_dsi_config *dsi_config,
 	return status;
 }
 
-static int
-mdfld_h8c7_get_power_state(struct mdfld_dsi_config *dsi_config,
-				int pipe)
-{
-	struct mdfld_dsi_hw_registers *regs;
-	struct mdfld_dsi_hw_context *ctx;
-	struct drm_device *dev;
-	int	powerstatus = 0;
-
-	PSB_DEBUG_ENTRY("Getting power state...");
-
-	if (!dsi_config)
-		return -EINVAL;
-
-	regs = &dsi_config->regs;
-	ctx = &dsi_config->dsi_hw_context;
-	dev = dsi_config->dev;
-
-	/* for get date from panel side is not easy,
-	so here use display side setting to judge
-	wheather panel have enabled or not */
-	if ((REG_READ(regs->dpll_reg) & BIT31) &&
-		(REG_READ(regs->pipeconf_reg) & BIT30) &&
-		(REG_READ(regs->mipi_reg) & BIT31))
-		powerstatus = MDFLD_DSI_PANEL_POWER_ON;
-	else
-		powerstatus = MDFLD_DSI_PANEL_POWER_OFF;
-
-	PSB_DEBUG_ENTRY("Getting power state...%s",
-		powerstatus ? "OFF" : "ON");
-	return powerstatus;
-}
-
 static int mdfld_dsi_h8c7_power_on(struct mdfld_dsi_config *dsi_config)
 {
 	struct mdfld_dsi_pkg_sender *sender =
@@ -700,7 +667,6 @@ void h8c7_vid_init(struct drm_device *dev, struct panel_funcs *p_funcs)
 	p_funcs->drv_ic_init = mdfld_h8c7_dpi_ic_init;
 	p_funcs->dsi_controller_init = mdfld_h8c7_dpi_controller_init;
 	p_funcs->detect = mdfld_dsi_h8c7_detect;
-	p_funcs->get_panel_power_state = mdfld_h8c7_get_power_state;
 	p_funcs->power_on = mdfld_dsi_h8c7_power_on;
 	p_funcs->power_off = mdfld_dsi_h8c7_power_off;
 	p_funcs->set_brightness = mdfld_dsi_h8c7_set_brightness;

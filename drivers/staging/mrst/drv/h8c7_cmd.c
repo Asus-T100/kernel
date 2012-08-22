@@ -104,7 +104,7 @@ static int mdfld_mipi_panel_gpio_parse(struct sfi_table_header *table)
 	return 0;
 }
 
-static int  mdfld_h8c7_dci_ic_init(struct mdfld_dsi_config *dsi_config,
+static int  mdfld_h8c7_drv_ic_init(struct mdfld_dsi_config *dsi_config,
 				int pipe)
 {
 	struct mdfld_dsi_pkg_sender *sender
@@ -658,34 +658,6 @@ err:
 	return 0;
 }
 
-int mdfld_h8c7_cmd_power_on(struct drm_encoder *encoder)
-{
-	return 0;
-}
-
-static bool mdfld_h8c7_cmd_esd_detection(struct mdfld_dsi_config *dsi_config)
-{
-	int ret;
-	u32 data = 0;
-
-	PSB_DEBUG_ENTRY("esd: %s\n", __func__);
-
-	ret = mdfld_dsi_get_power_mode(dsi_config,
-				 &data,
-				 MDFLD_DSI_LP_TRANSMISSION);
-	if ((ret == 1) && ((data & 0x14) != 0x14))
-		return true;
-	return false;
-}
-
-static void mdfld_h8c7_cmd_get_reset_delay_time(
-		int *pdelay_between_dispaly_island_off_on,
-		int *pdelay_after_reset_gpio_toggle)
-{
-	*pdelay_between_dispaly_island_off_on = 1200;
-	*pdelay_after_reset_gpio_toggle = 300;
-}
-
 void h8c7_cmd_init(struct drm_device *dev, struct panel_funcs *p_funcs)
 {
 	if (!dev || !p_funcs) {
@@ -699,13 +671,10 @@ void h8c7_cmd_init(struct drm_device *dev, struct panel_funcs *p_funcs)
 	p_funcs->update_fb = h8c7_dsi_dbi_update_fb;
 	p_funcs->get_panel_info = h8c7_cmd_get_panel_info;
 	p_funcs->reset = mdfld_dsi_h8c7_cmd_panel_reset;
-	p_funcs->drv_ic_init = mdfld_h8c7_dci_ic_init;
+	p_funcs->drv_ic_init = mdfld_h8c7_drv_ic_init;
 	p_funcs->dsi_controller_init = mdfld_h8c7_dsi_controller_init;
 	p_funcs->detect = mdfld_dsi_h8c7_cmd_detect;
 	p_funcs->power_on = mdfld_dsi_h8c7_cmd_power_on;
 	p_funcs->power_off = mdfld_dsi_h8c7_cmd_power_off;
 	p_funcs->set_brightness = mdfld_dsi_h8c7_cmd_set_brightness;
-	p_funcs->disp_control_init = NULL;
-	p_funcs->esd_detection = mdfld_h8c7_cmd_esd_detection;
-	p_funcs->get_reset_delay_time = mdfld_h8c7_cmd_get_reset_delay_time;
 }

@@ -423,12 +423,11 @@ struct drm_psb_private {
 #ifdef CONFIG_MDFLD_DSI_DPU
 	void *dbi_dpu_info;
 #endif
-	void *dsi_configs[2];
+	struct mdfld_dsi_config *dsi_configs[2];
 
 	struct work_struct te_work;
 	int te_pipe;
 	struct work_struct reset_panel_work;
-	bool is_in_panel_reset;
 
 	int dsi_init_done;
 
@@ -977,19 +976,6 @@ struct drm_psb_private {
 	unsigned long gfx_off_cnt;
 #endif
 
-	/*to be removed later*/
-	/*int dri_page_flipping;
-	int current_page;
-	int pipe_active[3];
-	int saved_start[2];
-	int saved_offset[2];
-	int saved_stride[2];
-
-	int flip_start[2];
-	int flip_offset[2];
-	int flip_stride[2];*/
-
-
 	/*
 	 * Used for modifying backlight from
 	 * xrandr -- consider removing and using HAL instead
@@ -1001,7 +987,6 @@ struct drm_psb_private {
 	/*
 	 * DPST and Hotplug state
 	 */
-
 	struct dpst_state *psb_dpst_state;
 	struct hotplug_state *psb_hotplug_state;
 	pfn_vsync_handler psb_vsync_handler;
@@ -1258,11 +1243,8 @@ extern int mdfld_irq_enable_hdmi_audio(struct drm_device *dev);
 extern int mdfld_irq_disable_hdmi_audio(struct drm_device *dev);
 extern void psb_te_timer_func(unsigned long data);
 extern void mdfld_te_handler_work(struct work_struct *te_work);
-extern void mdfld_reset_panel_handler_work(struct work_struct *work);
-/*
- *psb_fence.c
- */
 
+/*psb_fence.c*/
 extern void psb_fence_handler(struct drm_device *dev, uint32_t class);
 
 extern int psb_fence_emit_sequence(struct ttm_fence_device *fdev,

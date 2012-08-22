@@ -29,6 +29,7 @@
 #include "mdfld_dsi_dbi_dpu.h"
 #include "mdfld_dsi_pkg_sender.h"
 #include "mdfld_dsi_esd.h"
+#include "psb_powermgmt.h"
 
 /**
  * Enter DSR 
@@ -37,11 +38,9 @@ void mdfld_dsi_dbi_enter_dsr (struct mdfld_dsi_dbi_output * dbi_output, int pipe
 {
 	u32 reg_val;
 	struct drm_device * dev = dbi_output->dev;
-	struct drm_psb_private *dev_priv = dev->dev_private;
 	struct drm_crtc * crtc = dbi_output->base.base.crtc;
 	struct psb_intel_crtc * psb_crtc = (crtc) ? to_psb_intel_crtc(crtc) : NULL; 
 	struct mdfld_dsi_pkg_sender *sender = NULL;
-	struct panel_funcs *p_funcs  = NULL;
 	u32 dpll_reg = MRST_DPLL_A;
 	u32 pipeconf_reg = PIPEACONF;
 	u32 dspcntr_reg = DSPACNTR;
@@ -489,6 +488,8 @@ static int __dbi_exit_ulps_locked(struct mdfld_dsi_config *dsi_config)
 	/*clear ULPS state*/
 	ctx->device_ready &= ~DSI_POWER_STATE_ULPS_MASK;
 	REG_WRITE(regs->device_ready_reg, ctx->device_ready);
+
+	DRM_INFO("%s: exited ULPS state\n", __func__);
 	return 0;
 }
 
@@ -504,12 +505,8 @@ static int __dbi_panel_power_on(struct mdfld_dsi_config *dsi_config,
 	struct mdfld_dsi_hw_context *ctx;
 	struct drm_psb_private *dev_priv;
 	struct drm_device *dev;
-	int retry, reset_count = 10;
-	int i;
+	int retry;
 	int err = 0;
-	struct mdfld_dsi_pkg_sender *sender =
-		mdfld_dsi_get_pkg_sender(dsi_config);
-		u8 param[4];
 
 	PSB_DEBUG_ENTRY("\n");
 
@@ -613,15 +610,11 @@ static int __dbi_panel_power_on(struct mdfld_dsi_config *dsi_config,
 		DRM_ERROR("Failed to exit ULPS\n");
 		goto power_on_err;
 	}
-
-	REG_WRITE(regs->device_ready_reg, ctx->device_ready | BIT0);
+	REG_WRITE(regs->device_ready_reg, (ctx->device_ready | BIT0));
 
 	/*Enable pipe*/
 	val = ctx->pipeconf;
-	val &= ~0x000c0000;
-	val |= BIT31;
-	val |= PIPEACONF_DSR;
-
+	val &= ~0x000c0000 | BIT31 | PIPEACONF_DSR;
 	REG_WRITE(regs->pipeconf_reg, val);
 
 	/*Wait for pipe enabling,when timing generator is working */
@@ -637,7 +630,6 @@ static int __dbi_panel_power_on(struct mdfld_dsi_config *dsi_config,
 
 	/*enable plane*/
 	val = ctx->dspcntr | BIT31;
-
 	REG_WRITE(regs->dspcntr_reg, val);
 
 	/*update MIPI port config*/
@@ -672,6 +664,10 @@ static int __dbi_panel_power_on(struct mdfld_dsi_config *dsi_config,
 			goto power_on_err;
 		}
 
+	/*Notify PVR module that screen is on*/
+	if (dev_priv->pvr_screen_event_handler)
+		dev_priv->pvr_screen_event_handler(dev, 1);
+
 	if (p_funcs && p_funcs->set_brightness)
 		if (p_funcs->set_brightness(dsi_config,
 					ctx->lastbrightnesslevel))
@@ -690,16 +686,14 @@ static int __dbi_panel_power_off(struct mdfld_dsi_config *dsi_config,
 			struct panel_funcs *p_funcs)
 {
 	u32 val = 0;
-	u32 tmp = 0;
 	struct mdfld_dsi_hw_registers *regs;
 	struct mdfld_dsi_hw_context *ctx;
 	struct drm_device *dev;
 	struct drm_psb_private *dev_priv;
-	int retry;
-	int i;
 	int pipe0_enabled;
 	int pipe2_enabled;
 	int err = 0;
+
 	if (!dsi_config)
 		return -EINVAL;
 
@@ -714,13 +708,17 @@ static int __dbi_panel_power_off(struct mdfld_dsi_config *dsi_config,
 					OSPM_UHB_FORCE_POWER_ON))
 		return -EAGAIN;
 
-	/*Disable TE, don't need it anymore*/
-	mdfld_disable_te(dev, dsi_config->pipe);
-
 	ctx->lastbrightnesslevel = psb_brightness;
 	if (p_funcs && p_funcs->set_brightness)
 		if (p_funcs->set_brightness(dsi_config, 0))
 			DRM_ERROR("Failed to set panel brightness\n");
+
+	/*Notify PVR module that screen is off*/
+	if (dev_priv->pvr_screen_event_handler)
+		dev_priv->pvr_screen_event_handler(dev, 0);
+
+	/*Disable TE, don't need it anymore*/
+	mdfld_disable_te(dev, dsi_config->pipe);
 
 	/**
 	 * Different panel may have different ways to have
@@ -740,22 +738,19 @@ static int __dbi_panel_power_off(struct mdfld_dsi_config *dsi_config,
 	ctx->pipestat = REG_READ(regs->pipestat_reg);
 	ctx->dspcntr = REG_READ(regs->dspcntr_reg);
 	ctx->dspstride = REG_READ(regs->dspstride_reg);
+	ctx->pipeconf = REG_READ(regs->pipeconf_reg);
 
 	/*Disable plane*/
 	val = ctx->dspcntr;
 	REG_WRITE(regs->dspcntr_reg, (val & ~BIT31));
 
-	tmp = REG_READ(regs->pipeconf_reg);
-	/*Disable overlay & cursor panel assigned to this pipe*/
-	REG_WRITE(regs->pipeconf_reg, (tmp | (0x000c0000)));
-
-	/*Disable pipe*/
-	val = REG_READ(regs->pipeconf_reg);
-	ctx->pipeconf = val;
-	REG_WRITE(regs->pipeconf_reg, (val & ~BIT31));
+	/*Disable pipe and overlay & cursor panel assigned to this pipe*/
+	val = ctx->pipeconf;
+	REG_WRITE(regs->pipeconf_reg, ((val | 0x000c0000) & ~BIT31));
 
 	/*Disable DSI controller*/
-	REG_WRITE(regs->device_ready_reg, (ctx->device_ready & ~BIT0));
+	val = ctx->device_ready;
+	REG_WRITE(regs->device_ready_reg, (val & ~BIT0));
 
 	/*enter ulps*/
 	if (__dbi_enter_ulps_locked(dsi_config)) {
@@ -1177,3 +1172,48 @@ out_err1:
 	return NULL;
 }
 
+void mdfld_reset_panel_handler_work(struct work_struct *work)
+{
+	struct drm_psb_private *dev_priv =
+		container_of(work, struct drm_psb_private, reset_panel_work);
+	struct mdfld_dsi_config *dsi_config = NULL;
+	struct mdfld_dsi_dbi_output *dbi_output = NULL;
+	struct panel_funcs *p_funcs  = NULL;
+
+	dbi_output = dev_priv->dbi_output;
+	dsi_config = dev_priv->dsi_configs[0];
+	if (!dsi_config || !dbi_output)
+		return;
+
+	/*disable ESD when HDMI connected*/
+	if (hdmi_state)
+		return;
+
+	PSB_DEBUG_ENTRY("\n");
+
+	p_funcs = dbi_output->p_funcs;
+	if (p_funcs) {
+		mutex_lock(&dsi_config->context_lock);
+
+		if (__dbi_panel_power_off(dsi_config, p_funcs)) {
+			mutex_unlock(&dsi_config->context_lock);
+			return;
+		}
+
+		acquire_ospm_lock();
+		ospm_power_island_down(OSPM_DISPLAY_A_ISLAND);
+		ospm_power_island_up(OSPM_DISPLAY_A_ISLAND);
+		release_ospm_lock();
+
+		if (__dbi_panel_power_on(dsi_config, p_funcs)) {
+			mutex_unlock(&dsi_config->context_lock);
+			return;
+		}
+
+		mutex_unlock(&dsi_config->context_lock);
+
+		DRM_INFO("%s: End panel reset\n", __func__);
+	} else {
+		DRM_INFO("%s invalid panel init\n", __func__);
+	}
+}

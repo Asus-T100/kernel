@@ -384,6 +384,10 @@ reset_recovery:
 
 	REG_WRITE(regs->dspcntr_reg, val);
 
+	/*Notify PVR module that screen is on*/
+	if (dev_priv->pvr_screen_event_handler)
+		dev_priv->pvr_screen_event_handler(dev, 1);
+
 	if (p_funcs->set_brightness(dsi_config, ctx->lastbrightnesslevel))
 		DRM_ERROR("Failed to set panel brightness\n");
 
@@ -425,6 +429,10 @@ static int __dpi_panel_power_off(struct mdfld_dsi_config *dsi_config,
 	ctx->lastbrightnesslevel = psb_brightness;
 	if (p_funcs->set_brightness(dsi_config, 0))
 		DRM_ERROR("Failed to set panel brightness\n");
+
+	/*Notify PVR module that screen is off*/
+	if (dev_priv->pvr_screen_event_handler)
+		dev_priv->pvr_screen_event_handler(dev, 0);
 
 	/*save the plane informaton, for it will updated*/
 	ctx->dspsurf = dev_priv->init_screen_start;
@@ -1028,21 +1036,6 @@ struct mdfld_dsi_encoder *mdfld_dsi_dpi_init(struct drm_device *dev,
 
 	/*get fixed mode*/
 	fixed_mode = dsi_config->fixed_mode;
-
-	/*detect power status of the connected panel*/
-	if (p_funcs->get_panel_power_state) {
-		ret = p_funcs->get_panel_power_state(dsi_config, pipe);
-		if (ret == MDFLD_DSI_PANEL_POWER_OFF)
-			dsi_config->dsi_hw_context.panel_on = 0;
-		else
-			dsi_config->dsi_hw_context.panel_on = 1;
-	} else {
-		/*use the default config*/
-		if (pipe == 0)
-			dsi_config->dsi_hw_context.panel_on = 1;
-		else
-			dsi_config->dsi_hw_context.panel_on = 0;
-	}
 
 	/*create drm encoder object*/
 	connector = &dsi_connector->base.base;
