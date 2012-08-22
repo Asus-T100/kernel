@@ -134,6 +134,9 @@
 #define APDS_ALS_MAX_LUX	10000
 #define APDS_ALS_MIN_ADC	3
 #define APDS_ALS_INCAN_MIN_IR	8
+#define APDS_ALS_GAIN_MASK	0x3
+#define APDS_ALS_WORK_GAIN	0
+#define APDS_ALS_INIT_GAIN	2
 
 /* Reverse chip factors for threshold calculation */
 struct reverse_factors {
@@ -547,6 +550,33 @@ static int apds990x_ack_int(struct apds990x_chip *chip, u8 mode)
 }
 
 /* mutex must be held when calling this function */
+static int als_update_gain(struct apds990x_chip *chip, u8 gain)
+{
+	u8 ctrl;
+	int ret;
+
+	if (chip->again_meas == gain)
+		return 0;
+	ret = apds990x_read_byte(chip, APDS990X_CONTROL, &ctrl);
+	if (ret < 0) {
+		dev_err(&chip->client->dev,
+			"%s: read control register failed!\n", __func__);
+		return ret;
+	}
+	ctrl &= ~APDS_ALS_GAIN_MASK;
+	ctrl |= (gain & APDS_ALS_GAIN_MASK);
+	ret = apds990x_write_byte(chip, APDS990X_CONTROL, ctrl);
+	if (ret < 0) {
+		dev_err(&chip->client->dev,
+			"%s: write control register failed!\n", __func__);
+		return ret;
+	}
+	chip->again_meas = gain;
+
+	return 0;
+}
+
+/* mutex must be held when calling this function */
 static void als_handle_irq(struct apds990x_chip *chip)
 {
 	struct alsps_client *client;
@@ -554,6 +584,12 @@ static void als_handle_irq(struct apds990x_chip *chip)
 	apds990x_read_word(chip, APDS990X_CDATAL, &chip->lux_clear);
 	apds990x_read_word(chip, APDS990X_IRDATAL, &chip->lux_ir);
 
+	if (chip->again_meas != APDS_ALS_WORK_GAIN) {
+		dev_info(&chip->client->dev, "again = %d\n", chip->again_meas);
+		chip->lux_wait_fresh_res = true;
+		als_update_gain(chip, APDS_ALS_WORK_GAIN);
+		return;
+	}
 	chip->lux_raw = apds990x_get_lux(chip, chip->lux_clear, chip->lux_ir);
 	apds990x_clear_to_athres(chip);
 	apds990x_refresh_athres(chip);
@@ -621,9 +657,9 @@ static int apds990x_configure(struct apds990x_chip *chip)
 
 	apds990x_write_byte(chip, APDS990X_PPCOUNT, chip->pdata->ppcount);
 
-	/* Start with relatively small gain */
-	chip->again_meas = 0;
-	chip->again_next = 0;
+	/* Start with relatively large gain to improve sensitivity */
+	chip->again_meas = APDS_ALS_INIT_GAIN;
+	chip->again_next = APDS_ALS_INIT_GAIN;
 	apds990x_write_byte(chip, APDS990X_CONTROL,
 			(chip->pdrive << 6) |
 			(chip->pdiode << 4) |
@@ -1125,6 +1161,7 @@ static void apds990x_mode(struct alsps_client *client, int mode)
 				chip->als_cnt++ > 0)
 			return;
 		/* always report first data when als power on */
+		als_update_gain(chip, APDS_ALS_INIT_GAIN);
 		apds990x_force_a_refresh(chip);
 		chip->alsps_switch |= APDS_ALS_ENABLE;
 		break;
