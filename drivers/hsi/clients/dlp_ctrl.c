@@ -1423,19 +1423,17 @@ int dlp_ctrl_cold_reset(struct dlp_channel *ch_ctx)
 	u8 data, def_value;
 	int ret = 0;
 
-	PROLOG();
-
-	WARNING("Cold reset requested by ch%d", ch_ctx->hsi_channel);
-
 	if (!dlp_ctrl_have_control_context()) {
-		WARNING("Nothing to do (dlp protocol not registered)");
-		return 0;
+		pr_warn(DRVNAME ": Cold reset ignored (protocol not registered)");
+		return -ENODEV;
 	}
+
+	pr_info(DRVNAME ": Cold reset requested by ch%d", ch_ctx->hsi_channel);
 
 	/* Save the current registre value */
 	ret = intel_scu_ipc_readv(&addr, &def_value, 2);
 	if (ret) {
-		CRITICAL("intel_scu_ipc_readv() failed (ret: %d)", ret);
+		pr_err(DRVNAME ": ipc_readv() failed (ret: %d)", ret);
 		goto out;
 	}
 
@@ -1451,7 +1449,7 @@ int dlp_ctrl_cold_reset(struct dlp_channel *ch_ctx)
 	data = (def_value & 0xF8) | V1P35_OFF;
 	ret =  intel_scu_ipc_writev(&addr, &data, 1);
 	if (ret) {
-		CRITICAL("intel_scu_ipc_writev(OFF)  failed (ret: %d)", ret);
+		pr_err(DRVNAME ": ipc_writev(OFF) failed (ret: %d)", ret);
 		goto out;
 	}
 	msleep(DLP_COLD_RST_OFF_DELAY);
@@ -1460,7 +1458,7 @@ int dlp_ctrl_cold_reset(struct dlp_channel *ch_ctx)
 	data = (def_value & 0xF8) | V1P35_ON;
 	ret =  intel_scu_ipc_writev(&addr, &data, 1);
 	if (ret) {
-		CRITICAL("intel_scu_ipc_writev(ON) failed (ret: %d)", ret);
+		pr_err(DRVNAME ": ipc_writev(ON) failed (ret: %d)", ret);
 		goto out;
 	}
 
@@ -1472,7 +1470,7 @@ int dlp_ctrl_cold_reset(struct dlp_channel *ch_ctx)
 	/* Write back the saved registre value */
 	ret =  intel_scu_ipc_writev(&addr, &def_value, 1);
 	if (ret) {
-		CRITICAL("intel_scu_ipc_writev() failed (ret: %d)", ret);
+		pr_err(DRVNAME ": ipc_writev() failed (ret: %d)", ret);
 		goto out;
 	}
 
@@ -1482,7 +1480,6 @@ int dlp_ctrl_cold_reset(struct dlp_channel *ch_ctx)
 	gpio_set_value(ctrl_ctx->gpio_mdm_pwr_on, 0);
 
  out:
-	EPILOG();
 	return ret;
 }
 
@@ -1493,14 +1490,19 @@ int dlp_ctrl_cold_reset(struct dlp_channel *ch_ctx)
  *
  * @ch_ctx: a reference to related channel context
  */
-void dlp_ctrl_normal_warm_reset(struct dlp_channel *ch_ctx)
+int dlp_ctrl_normal_warm_reset(struct dlp_channel *ch_ctx)
 {
 	struct dlp_channel *ctrl_ch = DLP_CHANNEL_CTX(DLP_CHANNEL_CTRL);
 	struct dlp_ctrl_context	*ctrl_ctx = ctrl_ch->ch_data;
+	int ret = 0;
 
-	PROLOG();
+	if (!dlp_ctrl_have_control_context()) {
+		pr_warn(DRVNAME ": Warm reset ignored (protocol not registered)");
+		return -ENODEV;
+	}
 
-	WARNING("Normal warm reset requested by ch%d", ch_ctx->hsi_channel);
+	pr_info(DRVNAME ": Normal warm reset requested by ch%d",
+			ch_ctx->hsi_channel);
 
 	/* Clear the xfers debug list */
 	DLP_CTRL_XFERS_LIST_CLEAR(ctrl_ctx);
@@ -1512,7 +1514,7 @@ void dlp_ctrl_normal_warm_reset(struct dlp_channel *ch_ctx)
 	udelay(DLP_WARM_RST_DURATION);
 	gpio_set_value(ctrl_ctx->gpio_mdm_rst_bbn, 1);
 
-	EPILOG();
+	return ret;
 }
 
 /**
@@ -1522,14 +1524,19 @@ void dlp_ctrl_normal_warm_reset(struct dlp_channel *ch_ctx)
  *
  * @ch_ctx: a reference to related channel context
  */
-void dlp_ctrl_flashing_warm_reset(struct dlp_channel *ch_ctx)
+int dlp_ctrl_flashing_warm_reset(struct dlp_channel *ch_ctx)
 {
 	struct dlp_channel *ctrl_ch = DLP_CHANNEL_CTX(DLP_CHANNEL_CTRL);
 	struct dlp_ctrl_context	*ctrl_ctx = ctrl_ch->ch_data;
+	int ret = 0;
 
-	PROLOG();
+	if (!dlp_ctrl_have_control_context()) {
+		pr_warn(DRVNAME ": Flashing reset ignored (protocol not registered)");
+		return -ENODEV;
+	}
 
-	WARNING("Flashing warm reset requested by ch%d", ch_ctx->hsi_channel);
+	pr_info(DRVNAME ": Flashing warm reset requested by ch%d",
+			ch_ctx->hsi_channel);
 
 	/* Clear the xfers debug list */
 	DLP_CTRL_XFERS_LIST_CLEAR(ctrl_ctx);
@@ -1543,7 +1550,60 @@ void dlp_ctrl_flashing_warm_reset(struct dlp_channel *ch_ctx)
 	gpio_set_value(ctrl_ctx->gpio_mdm_rst_bbn, 1);
 	msleep(DLP_WARM_RST_FLASHING_DELAY);
 
-	EPILOG();
+	return ret;
+}
+
+
+/**
+ *  Perform the modem switch OFF sequence:
+ *		- Set to low the ON1
+ *		- Write the PMIC reg
+ *
+ * @ch_ctx: a reference to related channel context
+ */
+static int dlp_ctrl_power_off(struct dlp_channel *ch_ctx)
+{
+	struct dlp_ctrl_context *ctrl_ctx;
+	u16 addr = V1P35CNT_W;
+	u8 data, def_value;
+	int ret = 0;
+
+	if (!dlp_ctrl_have_control_context()) {
+		pr_warn(DRVNAME ": Power off ignored (protocol not registered)");
+		return -ENODEV;
+	}
+
+	pr_info(DRVNAME ": Power OFF requested by ch%d", ch_ctx->hsi_channel);
+
+	/* AP requested reset => just ignore */
+	ctrl_ctx = DLP_CTRL_CTX;
+	dlp_ctrl_set_reset_ongoing(1);
+
+	/* Set to low the ON1 */
+	gpio_set_value(ctrl_ctx->gpio_mdm_pwr_on, 0);
+
+	/* Save the current registre value */
+	ret = intel_scu_ipc_readv(&addr, &def_value, 2);
+	if (ret) {
+		pr_err(DRVNAME ": ipc_readv() failed (ret: %d)", ret);
+		goto out;
+	}
+
+	/* Write the new registre value (V1P35_OFF) */
+	data = (def_value & 0xF8) | V1P35_OFF;
+	ret =  intel_scu_ipc_writev(&addr, &data, 1);
+	if (ret) {
+		pr_err(DRVNAME ": ipc_writev(OFF)  failed (ret: %d)", ret);
+		goto out;
+	}
+
+	/* Write back the saved registre value */
+	ret =  intel_scu_ipc_writev(&addr, &def_value, 1);
+	if (ret)
+		pr_err(DRVNAME ": ipc_writev() failed (ret: %d)", ret);
+
+ out:
+	return ret;
 }
 
 /*
@@ -2015,26 +2075,16 @@ void dlp_ctrl_hangup_ctx_deinit(struct dlp_channel *ch_ctx)
 */
 static int do_modem_normal_reset(const char *val, struct kernel_param *kp)
 {
-	long do_reset;
+	int do_reset;
 
-	PROLOG();
-
-	if (!dlp_ctrl_have_control_context()) {
-		WARNING("Nothing to do (dlp protocol not registered)");
-		EPILOG();
-		return 0;
-	}
-
-	if (kstrtol(val, 16, &do_reset) < 0) {
-		EPILOG();
+	if (kstrtoint(val, 10, &do_reset) < 0)
 		return -EINVAL;
-	}
 
-	if (do_reset)
-		dlp_ctrl_normal_warm_reset(DLP_CHANNEL_CTX(DLP_CHANNEL_CTRL));
+	/* Need to do something ? */
+	if (!do_reset)
+		return -EINVAL;
 
-	EPILOG();
-	return 0;
+	return dlp_ctrl_normal_warm_reset(DLP_CHANNEL_CTX(DLP_CHANNEL_CTRL));
 }
 
 /*
@@ -2048,26 +2098,16 @@ static int do_modem_normal_reset(const char *val, struct kernel_param *kp)
 */
 static int do_modem_flashing_reset(const char *val, struct kernel_param *kp)
 {
-	long do_reset;
+	int do_reset;
 
-	PROLOG();
-
-	if (!dlp_ctrl_have_control_context()) {
-		WARNING("Nothing to do (dlp protocol not registered)");
-		EPILOG();
-		return 0;
-	}
-
-	if (kstrtol(val, 16, &do_reset) < 0) {
-		EPILOG();
+	if (kstrtoint(val, 10, &do_reset) < 0)
 		return -EINVAL;
-	}
 
-	if (do_reset)
-		dlp_ctrl_flashing_warm_reset(DLP_CHANNEL_CTX(DLP_CHANNEL_CTRL));
+	/* Need to do something ? */
+	if (!do_reset)
+		return -EINVAL;
 
-	EPILOG();
-	return 0;
+	return dlp_ctrl_flashing_warm_reset(DLP_CHANNEL_CTX(DLP_CHANNEL_CTRL));
 }
 
 /*
@@ -2080,21 +2120,34 @@ static int do_modem_flashing_reset(const char *val, struct kernel_param *kp)
 */
 static int get_modem_reset(char *val, struct kernel_param *kp)
 {
-	int ret = 0;
-
-	PROLOG();
-
 	if (!dlp_ctrl_have_control_context()) {
-		WARNING("Nothing to do (dlp protocol not registered)");
-		EPILOG();
-	} else {
-		int reset_ongoing = dlp_ctrl_get_reset_ongoing();
-		ret = sprintf(val, "%d", reset_ongoing);
-
-		EPILOG("%d", reset_ongoing);
+		pr_warn(DRVNAME ": Cant read reset value (protocol not registered)");
+		return -ENODEV;
 	}
 
-	return ret;
+	return sprintf(val, "%d", dlp_ctrl_get_reset_ongoing());
+}
+
+/*
+* @brief Modem power OFF
+*
+* @param val
+* @param kp
+*
+* @return 0
+*/
+static int do_modem_power_off(const char *val, struct kernel_param *kp)
+{
+	int switch_off;
+
+	if (kstrtoint(val, 10, &switch_off) < 0)
+		return -EINVAL;
+
+	/* Need to do something ? */
+	if (!switch_off)
+		return -EINVAL;
+
+	return dlp_ctrl_power_off(DLP_CHANNEL_CTX(DLP_CHANNEL_CTRL));
 }
 
 /*
@@ -2108,23 +2161,16 @@ static int get_modem_reset(char *val, struct kernel_param *kp)
 */
 static int do_modem_cold_reset(const char *val, struct kernel_param *kp)
 {
-	int ret = -EINVAL;
-	long do_reset;
+	int do_reset;
 
-	PROLOG();
-
-	if (kstrtol(val, 10, &do_reset) < 0)
-		goto out;
+	if (kstrtoint(val, 10, &do_reset) < 0)
+		return -EINVAL;
 
 	/* Need to do something ? */
 	if (!do_reset)
-		goto out;
+		return -EINVAL;
 
-	ret = dlp_ctrl_cold_reset(DLP_CHANNEL_CTX(DLP_CHANNEL_CTRL));
-
-out:
-	EPILOG();
-	return ret;
+	return dlp_ctrl_cold_reset(DLP_CHANNEL_CTX(DLP_CHANNEL_CTRL));
 }
 
 /*
@@ -2143,11 +2189,9 @@ static int clear_hangup_reasons(const char *val, struct kernel_param *kp)
 {
 	long channels_list;
 
-	PROLOG();
-
 	if (!dlp_ctrl_have_control_context()) {
-		WARNING("Nothing to do (dlp protocol not registered)");
-		return 0;
+		pr_warn(DRVNAME ": Cant clear hangup reason (protocol not registered)");
+		return -ENODEV;
 	}
 
 	if (kstrtol(val, 16, &channels_list) < 0)
@@ -2163,7 +2207,6 @@ static int clear_hangup_reasons(const char *val, struct kernel_param *kp)
 		}
 	}
 
-	EPILOG();
 	return 0;
 }
 
@@ -2178,21 +2221,15 @@ static int clear_hangup_reasons(const char *val, struct kernel_param *kp)
 */
 static int get_hangup_reasons(char *val, struct kernel_param *kp)
 {
-	unsigned long hangup_reasons;
-
-	PROLOG();
-
 	if (!dlp_ctrl_have_control_context()) {
-		WARNING("Nothing to do (dlp protocol not registered)");
-		return 0;
+		pr_warn(DRVNAME ": Cant read hangup reason (protocol not registered)");
+		return -ENODEV;
 	}
 
-	hangup_reasons = dlp_ctrl_get_hangup_reasons();
-
-	EPILOG();
-	return sprintf(val, "%lu", hangup_reasons);
+	return sprintf(val, "%d", dlp_ctrl_get_hangup_reasons());
 }
 
+module_param_call(power_off_modem, do_modem_power_off, NULL, NULL, 0644);
 module_param_call(cold_reset_modem, do_modem_cold_reset, NULL, NULL, 0644);
 module_param_call(reset_modem, do_modem_normal_reset, get_modem_reset,
 		NULL, 0644);

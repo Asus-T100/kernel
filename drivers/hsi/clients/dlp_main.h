@@ -563,9 +563,9 @@ void dlp_ctrl_cold_boot(struct dlp_channel *ch_ctx);
 
 int dlp_ctrl_cold_reset(struct dlp_channel *ch_ctx);
 
-void dlp_ctrl_normal_warm_reset(struct dlp_channel *ch_ctx);
+int dlp_ctrl_normal_warm_reset(struct dlp_channel *ch_ctx);
 
-void dlp_ctrl_flashing_warm_reset(struct dlp_channel *ch_ctx);
+int dlp_ctrl_flashing_warm_reset(struct dlp_channel *ch_ctx);
 
 inline int dlp_ctrl_get_reset_ongoing(void);
 
