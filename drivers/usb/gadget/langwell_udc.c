@@ -639,6 +639,11 @@ static int langwell_ep_disable(struct usb_ep *_ep)
 		endptctrl &= ~EPCTRL_TXE;
 	else
 		endptctrl &= ~EPCTRL_RXE;
+	/* clear TXT bits, or this TXT bits value remains.
+	 * It affects afterward endpoint configuration
+	 */
+	endptctrl &= ~(USB_ENDPOINT_XFERTYPE_MASK << EPCTRL_TXT_SHIFT);
+
 	writel(endptctrl, &dev->op_regs->endptctrl[ep_num]);
 
 	/* nuke all pending requests (does flush) */
