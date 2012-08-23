@@ -866,7 +866,7 @@ static int ov8830_g_priv_int_data(struct v4l2_subdev *sd,
 	return r;
 }
 
-static int ov8830_set_exposure(struct v4l2_subdev *sd, int exposure, int gain)
+static int __ov8830_set_exposure(struct v4l2_subdev *sd, int exposure, int gain)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	struct ov8830_device *dev = to_ov8830_sensor(sd);
@@ -905,7 +905,20 @@ static int ov8830_set_exposure(struct v4l2_subdev *sd, int exposure, int gain)
 
 	dev->gain     = gain;
 	dev->exposure = exposure;
+
 out:
+	return ret;
+}
+
+static int ov8830_set_exposure(struct v4l2_subdev *sd, int exposure, int gain)
+{
+	struct ov8830_device *dev = to_ov8830_sensor(sd);
+	int ret;
+
+	mutex_lock(&dev->input_lock);
+	ret = __ov8830_set_exposure(sd, exposure, gain);
+	mutex_unlock(&dev->input_lock);
+
 	return ret;
 }
 
@@ -962,10 +975,12 @@ static int __ov8830_init(struct v4l2_subdev *sd, u32 val)
 
 static int ov8830_init(struct v4l2_subdev *sd, u32 val)
 {
+	struct ov8830_device *dev = to_ov8830_sensor(sd);
 	int ret = 0;
 
-	/* set inital registers */
+	mutex_lock(&dev->input_lock);
 	ret = __ov8830_init(sd, val);
+	mutex_unlock(&dev->input_lock);
 
 	return ret;
 }
@@ -1036,7 +1051,7 @@ static int power_down(struct v4l2_subdev *sd)
 	return ret;
 }
 
-static int ov8830_s_power(struct v4l2_subdev *sd, int on)
+static int __ov8830_s_power(struct v4l2_subdev *sd, int on)
 {
 	struct ov8830_device *dev = to_ov8830_sensor(sd);
 	int ret, r;
@@ -1059,6 +1074,16 @@ static int ov8830_s_power(struct v4l2_subdev *sd, int on)
 		ret = __ov8830_init(sd, 0);
 	}
 
+	return ret;
+}
+
+static int ov8830_s_power(struct v4l2_subdev *sd, int on)
+{
+	int ret;
+	struct ov8830_device *dev = to_ov8830_sensor(sd);
+	mutex_lock(&dev->input_lock);
+	ret = __ov8830_s_power(sd, on);
+	mutex_unlock(&dev->input_lock);
 	return ret;
 }
 
@@ -1393,12 +1418,15 @@ static struct ov8830_control *ov8830_find_control(u32 id)
 
 static int ov8830_queryctrl(struct v4l2_subdev *sd, struct v4l2_queryctrl *qc)
 {
+	struct ov8830_device *dev = to_ov8830_sensor(sd);
 	struct ov8830_control *ctrl = ov8830_find_control(qc->id);
 
 	if (ctrl == NULL)
 		return -EINVAL;
 
+	mutex_lock(&dev->input_lock);
 	*qc = ctrl->qc;
+	mutex_unlock(&dev->input_lock);
 
 	return 0;
 }
@@ -1406,7 +1434,9 @@ static int ov8830_queryctrl(struct v4l2_subdev *sd, struct v4l2_queryctrl *qc)
 /* ov8830 control set/get */
 static int ov8830_g_ctrl(struct v4l2_subdev *sd, struct v4l2_control *ctrl)
 {
+	struct ov8830_device *dev = to_ov8830_sensor(sd);
 	struct ov8830_control *s_ctrl;
+	int ret;
 
 	if (!ctrl)
 		return -EINVAL;
@@ -1415,17 +1445,27 @@ static int ov8830_g_ctrl(struct v4l2_subdev *sd, struct v4l2_control *ctrl)
 	if ((s_ctrl == NULL) || (s_ctrl->query == NULL))
 		return -EINVAL;
 
-	return s_ctrl->query(sd, &ctrl->value);
+	mutex_lock(&dev->input_lock);
+	ret = s_ctrl->query(sd, &ctrl->value);
+	mutex_unlock(&dev->input_lock);
+
+	return ret;
 }
 
 static int ov8830_s_ctrl(struct v4l2_subdev *sd, struct v4l2_control *ctrl)
 {
+	struct ov8830_device *dev = to_ov8830_sensor(sd);
 	struct ov8830_control *octrl = ov8830_find_control(ctrl->id);
+	int ret;
 
 	if ((octrl == NULL) || (octrl->tweak == NULL))
 		return -EINVAL;
 
-	return octrl->tweak(sd, ctrl->value);
+	mutex_lock(&dev->input_lock);
+	ret = octrl->tweak(sd, ctrl->value);
+	mutex_unlock(&dev->input_lock);
+
+	return ret;
 }
 
 /*
@@ -1550,18 +1590,23 @@ static int ov8830_s_mbus_fmt(struct v4l2_subdev *sd,
 		v4l2_err(sd, "try fmt fail\n");
 		return ret;
 	}
+
+	mutex_lock(&dev->input_lock);
 	dev->fmt_idx = get_resolution_index(fmt->width, fmt->height);
 
 	/* Sanity check */
 	if (unlikely(dev->fmt_idx == -1)) {
+		mutex_unlock(&dev->input_lock);
 		v4l2_err(sd, "get resolution fail\n");
 		return -EINVAL;
 	}
 
 	ov8830_def_reg = ov8830_res[dev->fmt_idx].regs;
 	ret = ov8830_write_reg_array(client, ov8830_def_reg);
-	if (ret)
+	if (ret) {
+		mutex_unlock(&dev->input_lock);
 		return -EINVAL;
+	}
 
 	dev->fps = ov8830_res[dev->fmt_idx].fps;
 	dev->pixels_per_line = ov8830_res[dev->fmt_idx].pixels_per_line;
@@ -1569,16 +1614,19 @@ static int ov8830_s_mbus_fmt(struct v4l2_subdev *sd,
 
 	ret = ov8830_get_intg_factor(sd, ov8830_info, ov8830_PLL192MHz);
 	if (ret) {
+		mutex_unlock(&dev->input_lock);
 		v4l2_err(sd, "failed to get integration_factor\n");
 		return -EINVAL;
 	}
 
 	/* restore exposure, gain settings */
 	if (dev->exposure) {
-		ret = ov8830_set_exposure(sd, dev->exposure, dev->gain);
+		ret = __ov8830_set_exposure(sd, dev->exposure, dev->gain);
 		if (ret)
 			v4l2_warn(sd, "failed to set exposure time\n");
 	}
+
+	mutex_unlock(&dev->input_lock);
 
 	return 0;
 }
@@ -1643,9 +1691,13 @@ static int ov8830_s_stream(struct v4l2_subdev *sd, int enable)
 {
 	struct ov8830_device *dev = to_ov8830_sensor(sd);
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
+	int ret;
 
-	int ret = ov8830_write_reg(client, OV8830_8BIT, 0x0100, enable ? 1 : 0);
+	mutex_lock(&dev->input_lock);
+
+	ret = ov8830_write_reg(client, OV8830_8BIT, 0x0100, enable ? 1 : 0);
 	if (ret != 0) {
+		mutex_unlock(&dev->input_lock);
 		v4l2_err(client, "failed to set streaming\n");
 		return ret;
 	}
@@ -1655,6 +1707,7 @@ static int ov8830_s_stream(struct v4l2_subdev *sd, int enable)
 	/* restore settings */
 	ov8830_res = ov8830_res_preview;
 	N_RES = N_RES_PREVIEW;
+	mutex_unlock(&dev->input_lock);
 
 	return 0;
 }
@@ -1723,15 +1776,21 @@ static int ov8830_s_config(struct v4l2_subdev *sd,
 		return -ENODEV;
 
 	dev->platform_data = pdata;
+
+	mutex_lock(&dev->input_lock);
+
 	if (dev->platform_data->platform_init) {
 		ret = dev->platform_data->platform_init(client);
 		if (ret) {
+			mutex_unlock(&dev->input_lock);
 			v4l2_err(client, "ov8830 platform init err\n");
 			return ret;
 		}
 	}
-	ret = ov8830_s_power(sd, 1);
+
+	ret = __ov8830_s_power(sd, 1);
 	if (ret) {
+		mutex_unlock(&dev->input_lock);
 		v4l2_err(client, "ov8830 power-up err.\n");
 		return ret;
 	}
@@ -1751,7 +1810,8 @@ static int ov8830_s_config(struct v4l2_subdev *sd,
 	dev->sensor_revision = sensor_revision;
 
 	/* power off sensor */
-	ret = ov8830_s_power(sd, 0);
+	ret = __ov8830_s_power(sd, 0);
+	mutex_unlock(&dev->input_lock);
 	if (ret) {
 		v4l2_err(client, "ov8830 power-down err.\n");
 		return ret;
@@ -1762,7 +1822,8 @@ static int ov8830_s_config(struct v4l2_subdev *sd,
 fail_detect:
 	dev->platform_data->csi_cfg(sd, 0);
 fail_csi_cfg:
-	ov8830_s_power(sd, 0);
+	__ov8830_s_power(sd, 0);
+	mutex_unlock(&dev->input_lock);
 	dev_err(&client->dev, "sensor power-gating failed\n");
 	return ret;
 }
@@ -1855,6 +1916,8 @@ ov8830_s_parm(struct v4l2_subdev *sd, struct v4l2_streamparm *param)
 
 	dev->run_mode = param->parm.capture.capturemode;
 
+	mutex_lock(&dev->input_lock);
+
 	switch (dev->run_mode) {
 	case CI_MODE_VIDEO:
 		ov8830_res = ov8830_res_video;
@@ -1868,6 +1931,9 @@ ov8830_s_parm(struct v4l2_subdev *sd, struct v4l2_streamparm *param)
 		ov8830_res = ov8830_res_preview;
 		N_RES = N_RES_PREVIEW;
 	}
+
+	mutex_unlock(&dev->input_lock);
+
 	return 0;
 }
 
@@ -1980,6 +2046,8 @@ static int ov8830_probe(struct i2c_client *client,
 		v4l2_err(client, "%s: out of memory\n", __func__);
 		return -ENOMEM;
 	}
+
+	mutex_init(&dev->input_lock);
 
 	dev->fmt_idx = 0;
 	v4l2_i2c_subdev_init(&(dev->sd), client, &ov8830_ops);

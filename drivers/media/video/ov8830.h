@@ -392,6 +392,7 @@ struct ov8830_device {
 	u8 fps;
 	int run_mode;
 	struct drv201_device drv201;
+	struct mutex input_lock; /* serialize sensor's ioctl */
 };
 
 /*
