@@ -194,6 +194,7 @@
 
 #define BQ24192_CHRG_OTG_GPIO		36
 #define MAINTENANCE_CHRG_JIFFIES	(HZ * 75) /* 75sec */
+#define INITIAL_THREAD_JIFFY		(HZ / 2)  /* 500msec */
 
 #define CLT_BPTHERM_CURVE_MAX_SAMPLES	23
 #define CLT_BPTHERM_CURVE_MAX_VALUES	4
@@ -1771,7 +1772,6 @@ sched_maint_work:
 	} else {
 		chip->online = 1;
 	}
-
 	mutex_lock(&chip->event_lock);
 	chip->batt_status = battery_status;
 	mutex_unlock(&chip->event_lock);
@@ -1965,7 +1965,8 @@ static void bq24192_event_worker(struct work_struct *work)
 		if (chip->chrg_type != POWER_SUPPLY_TYPE_USB_HOST) {
 			chip->batt_status = POWER_SUPPLY_STATUS_CHARGING;
 			/* Schedule the maintenance now */
-			schedule_delayed_work(&chip->maint_chrg_wrkr, 0);
+			schedule_delayed_work(&chip->maint_chrg_wrkr,
+							INITIAL_THREAD_JIFFY);
 		}
 		chip->batt_mode = BATT_CHRG_NORMAL;
 		mutex_unlock(&chip->event_lock);
