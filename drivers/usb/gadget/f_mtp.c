@@ -36,7 +36,8 @@
 #include <linux/usb/ch9.h>
 #include <linux/usb/f_mtp.h>
 
-#define MTP_BULK_BUFFER_SIZE       16384
+#define MTP_BULK_TX_BUFFER_SIZE       16384
+#define MTP_BULK_RX_BUFFER_SIZE       131072
 #define INTR_BUFFER_SIZE           28
 
 /* String IDs */
@@ -483,14 +484,14 @@ static int mtp_create_bulk_endpoints(struct mtp_dev *dev,
 
 	/* now allocate requests for our endpoints */
 	for (i = 0; i < TX_REQ_MAX; i++) {
-		req = mtp_request_new(dev->ep_in, MTP_BULK_BUFFER_SIZE);
+		req = mtp_request_new(dev->ep_in, MTP_BULK_TX_BUFFER_SIZE);
 		if (!req)
 			goto fail;
 		req->complete = mtp_complete_in;
 		mtp_req_put(dev, &dev->tx_idle, req);
 	}
 	for (i = 0; i < RX_REQ_MAX; i++) {
-		req = mtp_request_new(dev->ep_out, MTP_BULK_BUFFER_SIZE);
+		req = mtp_request_new(dev->ep_out, MTP_BULK_RX_BUFFER_SIZE);
 		if (!req)
 			goto fail;
 		req->complete = mtp_complete_out;
@@ -522,7 +523,7 @@ static ssize_t mtp_read(struct file *fp, char __user *buf,
 
 	DBG(cdev, "mtp_read(%d)\n", count);
 
-	if (count > MTP_BULK_BUFFER_SIZE)
+	if (count > MTP_BULK_RX_BUFFER_SIZE)
 		return -EINVAL;
 
 	/* we will block until we're online */
@@ -642,8 +643,8 @@ static ssize_t mtp_write(struct file *fp, const char __user *buf,
 			break;
 		}
 
-		if (count > MTP_BULK_BUFFER_SIZE)
-			xfer = MTP_BULK_BUFFER_SIZE;
+		if (count > MTP_BULK_TX_BUFFER_SIZE)
+			xfer = MTP_BULK_TX_BUFFER_SIZE;
 		else
 			xfer = count;
 		if (xfer && copy_from_user(req->buf, buf, xfer)) {
@@ -734,8 +735,8 @@ static void send_file_work(struct work_struct *data) {
 			break;
 		}
 
-		if (count > MTP_BULK_BUFFER_SIZE)
-			xfer = MTP_BULK_BUFFER_SIZE;
+		if (count > MTP_BULK_TX_BUFFER_SIZE)
+			xfer = MTP_BULK_TX_BUFFER_SIZE;
 		else
 			xfer = count;
 
@@ -809,8 +810,8 @@ static void receive_file_work(struct work_struct *data)
 			read_req = dev->rx_req[cur_buf];
 			cur_buf = (cur_buf + 1) % RX_REQ_MAX;
 
-			read_req->length = (count > MTP_BULK_BUFFER_SIZE
-					? MTP_BULK_BUFFER_SIZE : count);
+			read_req->length = (count > MTP_BULK_RX_BUFFER_SIZE
+					? MTP_BULK_RX_BUFFER_SIZE : count);
 			dev->rx_done = 0;
 			ret = usb_ep_queue(dev->ep_out, read_req, GFP_KERNEL);
 			if (ret < 0) {
