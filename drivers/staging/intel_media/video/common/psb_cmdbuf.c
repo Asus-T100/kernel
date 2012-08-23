@@ -321,7 +321,7 @@ static int psb_validate_buffer_list(struct drm_file *file_priv,
 					       fence_class,
 					       &cur_fence_type);
 		if (unlikely(ret != 0))
-			goto out_err;
+			goto out_unlock;
 
 		flags = item->req.pad64 | TTM_PL_FLAG_WC | TTM_PL_FLAG_UNCACHED;
 		placement.num_placement = 1;
@@ -360,6 +360,9 @@ static int psb_validate_buffer_list(struct drm_file *file_priv,
 	context->fence_types |= fence_types;
 
 	return 0;
+out_unlock:
+	spin_unlock(&bo->bdev->fence_lock);
+
 out_err:
 	/* spin_unlock(&bo->lock); */
 	item->ret = ret;
