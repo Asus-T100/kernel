@@ -1368,14 +1368,14 @@ void dlp_ctrl_cold_boot(struct dlp_channel *ch_ctx)
 		return;
 	}
 
-	/* Save the current registre value */
-	ret = intel_scu_ipc_readv(&addr, &def_value, 2);
+	/* Save the current register value */
+	ret = intel_scu_ipc_readv(&addr, &def_value, 1);
 	if (ret) {
 		CRITICAL("intel_scu_ipc_readv() failed (ret: %d)", ret);
 		goto out;
 	}
 
-	/* Write the new registre value (V1P35_ON) */
+	/* Write the new register value (V1P35_ON) */
 	data = (def_value & 0xf8) | V1P35_ON;
 	ret =  intel_scu_ipc_writev(&addr, &data, 1);
 	if (ret) {
@@ -1383,7 +1383,7 @@ void dlp_ctrl_cold_boot(struct dlp_channel *ch_ctx)
 		goto out;
 	}
 
-	/* Restore the saved registre value */
+	/* Restore the saved register value */
 	ret =  intel_scu_ipc_writev(&addr, &def_value, 1);
 	if (ret) {
 		CRITICAL("intel_scu_ipc_writev() failed (ret: %d)", ret);
@@ -1430,8 +1430,8 @@ int dlp_ctrl_cold_reset(struct dlp_channel *ch_ctx)
 
 	pr_info(DRVNAME ": Cold reset requested by ch%d", ch_ctx->hsi_channel);
 
-	/* Save the current registre value */
-	ret = intel_scu_ipc_readv(&addr, &def_value, 2);
+	/* Save the current register value */
+	ret = intel_scu_ipc_readv(&addr, &def_value, 1);
 	if (ret) {
 		pr_err(DRVNAME ": ipc_readv() failed (ret: %d)", ret);
 		goto out;
@@ -1445,7 +1445,7 @@ int dlp_ctrl_cold_reset(struct dlp_channel *ch_ctx)
 	gpio_set_value(ctrl_ctx->gpio_mdm_rst_bbn, 0);
 	udelay(DLP_WARM_RST_DURATION);
 
-	/* Write the new registre value (V1P35_OFF) */
+	/* Write the new register value (V1P35_OFF) */
 	data = (def_value & 0xF8) | V1P35_OFF;
 	ret =  intel_scu_ipc_writev(&addr, &data, 1);
 	if (ret) {
@@ -1454,7 +1454,7 @@ int dlp_ctrl_cold_reset(struct dlp_channel *ch_ctx)
 	}
 	msleep(DLP_COLD_RST_OFF_DELAY);
 
-	/* Write the new registre value (V1P35_ON) */
+	/* Write the new register value (V1P35_ON) */
 	data = (def_value & 0xF8) | V1P35_ON;
 	ret =  intel_scu_ipc_writev(&addr, &data, 1);
 	if (ret) {
@@ -1467,7 +1467,7 @@ int dlp_ctrl_cold_reset(struct dlp_channel *ch_ctx)
 
 	udelay(DLP_ON1_DELAY);
 
-	/* Write back the saved registre value */
+	/* Write back the saved register value */
 	ret =  intel_scu_ipc_writev(&addr, &def_value, 1);
 	if (ret) {
 		pr_err(DRVNAME ": ipc_writev() failed (ret: %d)", ret);
@@ -1582,14 +1582,14 @@ static int dlp_ctrl_power_off(struct dlp_channel *ch_ctx)
 	/* Set to low the ON1 */
 	gpio_set_value(ctrl_ctx->gpio_mdm_pwr_on, 0);
 
-	/* Save the current registre value */
-	ret = intel_scu_ipc_readv(&addr, &def_value, 2);
+	/* Save the current register value */
+	ret = intel_scu_ipc_readv(&addr, &def_value, 1);
 	if (ret) {
 		pr_err(DRVNAME ": ipc_readv() failed (ret: %d)", ret);
 		goto out;
 	}
 
-	/* Write the new registre value (V1P35_OFF) */
+	/* Write the new register value (V1P35_OFF) */
 	data = (def_value & 0xF8) | V1P35_OFF;
 	ret =  intel_scu_ipc_writev(&addr, &data, 1);
 	if (ret) {
@@ -1597,7 +1597,7 @@ static int dlp_ctrl_power_off(struct dlp_channel *ch_ctx)
 		goto out;
 	}
 
-	/* Write back the saved registre value */
+	/* Write back the saved register value */
 	ret =  intel_scu_ipc_writev(&addr, &def_value, 1);
 	if (ret)
 		pr_err(DRVNAME ": ipc_writev() failed (ret: %d)", ret);
