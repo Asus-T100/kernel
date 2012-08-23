@@ -1216,7 +1216,9 @@ static int ov8830_g_bin_factor_x(struct v4l2_subdev *sd, s32 *val)
 	if (r < 0)
 		return r;
 
-	return fls((r >> 4) + (r & 0xF)) - 2;
+	*val = fls((r >> 4) + (r & 0xF)) - 2;
+
+	return 0;
 }
 
 static int ov8830_g_bin_factor_y(struct v4l2_subdev *sd, s32 *val)
@@ -1228,7 +1230,9 @@ static int ov8830_g_bin_factor_y(struct v4l2_subdev *sd, s32 *val)
 	if (r < 0)
 		return r;
 
-	return fls((r >> 4) + (r & 0xF)) - 2;
+	*val = fls((r >> 4) + (r & 0xF)) - 2;
+
+	return 0;
 }
 
 static struct ov8830_control ov8830_controls[] = {
