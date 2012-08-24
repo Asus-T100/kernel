@@ -100,9 +100,9 @@ static const struct snd_pcm_hardware snd_intel_hadstream = {
 	.rate_max = HAD_MAX_RATE,
 	.channels_min = HAD_MIN_CHANNEL,
 	.channels_max = HAD_MAX_CHANNEL,
-	.buffer_bytes_max = HAD_MAX_PERIOD_BYTES,
+	.buffer_bytes_max = HAD_MAX_BUFFER,
 	.period_bytes_min = HAD_MIN_PERIOD_BYTES,
-	.period_bytes_max = HAD_MAX_BUFFER,
+	.period_bytes_max = HAD_MAX_PERIOD_BYTES,
 	.periods_min = HAD_MIN_PERIODS,
 	.periods_max = HAD_MAX_PERIODS,
 	.fifo_size = HAD_FIFO_SIZE,
@@ -324,8 +324,8 @@ static void snd_intelhad_prog_dip(struct snd_pcm_substream *substream,
 
 	frame2.fr2_regx.chnl_cnt = substream->runtime->channels - 1;
 
-	/* Set to stereo */
-	frame3.fr3_regx.chnl_alloc = 0;
+	/*TODO: Read from intelhaddata->eeld.speaker_allocation_block;*/
+	frame3.fr3_regx.chnl_alloc = CHANNEL_ALLOCATION;
 
 	/*Calculte the byte wide checksum for all valid DIP words*/
 	for (i = 0; i < BYTES_PER_WORD; i++)
@@ -756,7 +756,10 @@ static int snd_intelhad_pcm_trigger(struct snd_pcm_substream *substream,
 		spin_unlock_irqrestore(&intelhaddata->had_spinlock, flag_irq);
 
 		/* Enable Audio */
-		caps = HDMI_AUDIO_UNDERRUN | HDMI_AUDIO_BUFFER_DONE;
+		/* ToDo: Need to enable UNDERRUN interrupts as well
+		   caps = HDMI_AUDIO_UNDERRUN | HDMI_AUDIO_BUFFER_DONE;
+		   */
+		caps = HDMI_AUDIO_BUFFER_DONE;
 		retval = had_set_caps(HAD_SET_ENABLE_AUDIO_INT, &caps);
 		retval = had_set_caps(HAD_SET_ENABLE_AUDIO, NULL);
 		had_read_modify(AUD_CONFIG, 1, BIT(0));
@@ -776,7 +779,10 @@ static int snd_intelhad_pcm_trigger(struct snd_pcm_substream *substream,
 		had_stream->stream_type = HAD_INIT;
 		spin_unlock_irqrestore(&intelhaddata->had_spinlock, flag_irq);
 		/* Disable Audio */
-		caps = HDMI_AUDIO_UNDERRUN | HDMI_AUDIO_BUFFER_DONE;
+		/* ToDo: Need to disable UNDERRUN interrupts as well
+		   caps = HDMI_AUDIO_UNDERRUN | HDMI_AUDIO_BUFFER_DONE;
+		   */
+		caps = HDMI_AUDIO_BUFFER_DONE;
 		had_set_caps(HAD_SET_DISABLE_AUDIO_INT, &caps);
 		had_set_caps(HAD_SET_DISABLE_AUDIO, NULL);
 		had_read_modify(AUD_CONFIG, 0, BIT(0));
@@ -846,6 +852,8 @@ static int snd_intelhad_pcm_prepare(struct snd_pcm_substream *substream)
 		pr_err("querying display sampling freq failed %#x\n", retval);
 		goto prep_end;
 	}
+
+	had_get_caps(HAD_GET_ELD, &intelhaddata->eeld);
 
 	retval = snd_intelhad_prog_n(substream->runtime->rate, &n_param,
 								intelhaddata);
@@ -1148,10 +1156,13 @@ static int __devinit hdmi_audio_probe(struct platform_device *devptr)
 	/* setup the ops for palyabck */
 	snd_pcm_set_ops(pcm, SNDRV_PCM_STREAM_PLAYBACK,
 			    &snd_intelhad_playback_ops);
-	/* allocate dma pages for ALSA stream operations */
+	/* allocate dma pages for ALSA stream operations
+	 * memory allocated is based on size, not max value
+	 * thus using same argument for max & size
+	 */
 	retval = snd_pcm_lib_preallocate_pages_for_all(pcm,
 			SNDRV_DMA_TYPE_DEV, card->dev,
-			HAD_MIN_BUFFER, HAD_MAX_BUFFER);
+			HAD_MAX_BUFFER, HAD_MAX_BUFFER);
 	if (retval)
 		goto err;
 

@@ -41,11 +41,12 @@
 #define HAD_NUM_OF_RING_BUFS	4
 #define HAD_MIN_RATE		32000
 #define HAD_MAX_RATE		192000
-#define HAD_MAX_BUFFER		(64*1024)
+/* Assume 48KHz, 8channel, 25msec period */
+#define HAD_MAX_BUFFER		(150*1024)
 #define HAD_MIN_BUFFER		(32*1024)
 #define HAD_MAX_PERIODS		4
 #define HAD_MIN_PERIODS		4
-#define HAD_MAX_PERIOD_BYTES	HAD_MAX_BUFFER
+#define HAD_MAX_PERIOD_BYTES	(HAD_MAX_BUFFER/HAD_MIN_PERIODS)
 #define HAD_MIN_PERIOD_BYTES	256
 #define HAD_FIFO_SIZE		0 /* fifo not being used */
 
