@@ -20,22 +20,27 @@ void *apds990x_platform_data(void *info)
 {
 	static struct apds990x_platform_data platform_data = {
 		.cf = {
-			.cf1    = 4096,
-			.irf1   = 9134,
-			.cf2    = 2867,
-			.irf2   = 5816,
+			.cf1    = 7782,
+			.irf1   = 2456,
+			.cf2    = 1228,
+			.irf2   = 1638,
 			.df     = 52,
-			.ga	= 1966 * 9 / 2,
+			.ga     = 15728,
 		},
 		.pdrive         = 0,
 		.ppcount        = 1,
 	};
 
 	if (spid.product_line_id == INTEL_MFLDP_LEX_ENG) {
+		platform_data.cf.cf1    = 8602;
+		platform_data.cf.irf1   = 6552;
+		platform_data.cf.cf2    = 1064;
+		platform_data.cf.irf2   = 860;
+
 		if (spid.hardware_id < MFLDP_LEX_PR21)
-			platform_data.cf.ga = 1966 / 2;
+			platform_data.cf.ga = 1474;
 		else
-			platform_data.cf.ga = 1966 * 4;
+			platform_data.cf.ga = 11796;
 	}
 
 	platform_data.gpio_number = get_gpio_by_name("AL-intr");
