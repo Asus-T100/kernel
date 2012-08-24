@@ -98,6 +98,8 @@ struct ch_context {
 
 };
 
+static int stop_charging(struct ch_context *chc);
+
 static bool is_vsys_supported(struct ch_context *chc)
 {
 
@@ -466,6 +468,10 @@ static int do_charging(struct ch_context *chc)
 		 */
 		temp = chc->charger->get_battery_temperature();
 		tzone = get_tempzone(chc->batt_chrg_profile, temp);
+		if (tzone == -EINVAL) {
+			stop_charging(chc);
+			return tzone;
+		}
 		tempmon_mA =
 		    chc->batt_chrg_profile.temp_mon_range[tzone].full_chrg_cur;
 		chrg_mA =
@@ -706,7 +712,9 @@ static void charger_worker(struct work_struct *work)
 		/*FIXME: Is this algorithm  generic? */
 		temp = chc->charger->get_battery_temperature();
 		tzone = get_tempzone(chc->batt_chrg_profile, temp);
-		if (chc->charger->get_battery_voltage() <=
+		if (tzone == -EINVAL)
+			stop_charging(chc);
+		else if (chc->charger->get_battery_voltage() <=
 		    chc->batt_chrg_profile.
 		    temp_mon_range[tzone].maint_chrg_vol_ll)
 			do_charging(chc);
