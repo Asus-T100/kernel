@@ -13,4 +13,9 @@
 #define _PLATFORM_MAX3111_H_
 
 extern void *max3111_platform_data(void *info) __attribute__((weak));
+
+#ifdef CONFIG_X86_MRFLD
+extern void *max3111_vp_platform_data(void *info) __attribute__((weak));
+#endif /* CONFIG_X86_MRFL */
+
 #endif

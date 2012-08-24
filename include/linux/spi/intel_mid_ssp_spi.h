@@ -42,9 +42,18 @@
 #define MIN_EXIT_LATENCY 20
 
 /* SSP assignement configuration from PCI config */
+
+#if defined(CONFIG_X86_MRFLD)
+/* SSP ADID format for MRFLD */
+#define SSP_CFG_GET_MODE(ssp_cfg)	((ssp_cfg) & 0x03)
+#define SSP_CFG_GET_SPI_BUS_NB(ssp_cfg)	(((ssp_cfg) >> 2) & 0x07)
+#define SSP_CFG_IS_SPI_SLAVE(ssp_cfg)	((ssp_cfg) & 0x20)
+#else
 #define SSP_CFG_GET_MODE(ssp_cfg)	((ssp_cfg) & 0x07)
 #define SSP_CFG_GET_SPI_BUS_NB(ssp_cfg)	(((ssp_cfg) >> 3) & 0x07)
 #define SSP_CFG_IS_SPI_SLAVE(ssp_cfg)	((ssp_cfg) & 0x40)
+#endif /* CONFIG_X86_MDFLD */
+
 #define SSP_CFG_SPI_MODE_ID		1
 /* adid field offset is 6 inside the vendor specific capability */
 #define VNDR_CAPABILITY_ADID_OFFSET	6
