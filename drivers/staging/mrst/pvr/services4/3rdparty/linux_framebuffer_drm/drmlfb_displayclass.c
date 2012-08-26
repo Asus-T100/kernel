@@ -1203,8 +1203,8 @@ static PVRSRV_ERROR SwapToDCSystem(IMG_HANDLE hDevice,
 
 static MRST_BOOL MRSTLFBVSyncIHandler(MRSTLFB_DEVINFO *psDevInfo, int iPipe)
 {
-	MRST_BOOL bStatus = MRST_FALSE;
 	MRSTLFB_VSYNC_FLIP_ITEM *psFlipItem;
+	MRST_BOOL bStatus = MRST_TRUE;
 	unsigned long ulMaxIndex;
 	unsigned long ulLockFlags;
 	MRSTLFB_SWAPCHAIN *psSwapChain;
@@ -1271,10 +1271,10 @@ static MRST_BOOL MRSTLFBVSyncIHandler(MRSTLFB_DEVINFO *psDevInfo, int iPipe)
 
 		psFlipItem = &psSwapChain->psVSyncFlips[psSwapChain->ulRemoveIndex];
 	}
-	if (psSwapChain->ulRemoveIndex == psSwapChain->ulInsertIndex)
-		bStatus = MRST_TRUE;
-	else
+	if (psSwapChain->ulRemoveIndex != psSwapChain->ulInsertIndex) {
 		mod_timer(&psDevInfo->sFlipTimer, FLIP_TIMEOUT + jiffies);
+		bStatus = MRST_FALSE;
+	}
 ExitUnlock:
 	spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
 
