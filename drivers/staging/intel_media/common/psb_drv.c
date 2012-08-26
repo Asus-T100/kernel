@@ -72,6 +72,7 @@
 #include "mdfld_dsi_dbi_dsr.h"
 
 int drm_psb_debug;
+int psb_video_fabric_debug;
 int drm_psb_enable_pr2_cabc = 1;
 int drm_psb_enable_sc1_cabc = 1;  /* [SC1] change paremeter name */
 int drm_psb_enable_lex_cabc = 1;
@@ -104,6 +105,8 @@ int hdmi_state;
 u32 DISP_PLANEB_STATUS = ~DISPLAY_PLANE_ENABLE;
 int drm_psb_msvdx_tiling;
 
+int drm_psb_apm_base;
+
 static int psb_probe(struct pci_dev *pdev, const struct pci_device_id *ent);
 
 MODULE_PARM_DESC(debug, "Enable debug output");
@@ -130,6 +133,7 @@ MODULE_PARM_DESC(enable_color_conversion, "Enable display side color conversion"
 MODULE_PARM_DESC(enable_gamma, "Enable display side gamma");
 
 module_param_named(debug, drm_psb_debug, int, 0600);
+module_param_named(fabric_debug, psb_video_fabric_debug, int, 0600);
 module_param_named(psb_enable_pr2_cabc, drm_psb_enable_pr2_cabc, int, 0600);
 module_param_named(enable_color_conversion, drm_psb_enable_color_conversion, int, 0600);
 module_param_named(enable_gamma, drm_psb_enable_gamma, int, 0600);
@@ -1562,6 +1566,8 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 		if (!dev_priv->topaz_reg)
 			goto out_err;
 	}
+	drm_psb_apm_base =
+		intel_mid_msgbus_read32(OSPM_PUNIT_PORT, OSPM_APMBA) & 0xffff;
 #endif
 
 	dev_priv->vdc_reg =

@@ -49,6 +49,7 @@
 extern struct drm_device *gpDrmDevice;
 extern bool gbdispstatus;
 extern int drm_psb_debug;
+extern int psb_video_fabric_debug;
 extern int drm_psb_enable_pr2_cabc ;
 extern int drm_psb_enable_sc1_cabc; /* SC1 setting */
 extern int drm_psb_enable_lex_cabc;
@@ -1326,7 +1327,6 @@ struct backlight_device *psb_get_backlight_device(void);
 #define DRM_DEBUG_CODE 2
 #endif
 
-extern int drm_psb_debug;
 extern int drm_psb_no_fb;
 extern int drm_psb_disable_vsync;
 extern int drm_idle_check_interval;
@@ -1459,27 +1459,45 @@ static inline void SGX_REGISTER_WRITE(struct drm_device *dev, uint32_t reg,
   ioread32(dev_priv->sgx_reg + (_offs))
 #endif
 
-#define MSVDX_REG_DUMP 0
-#if MSVDX_REG_DUMP
+#define OSPM_PUNIT_PORT		0x04
+
+#define OSPM_APMBA		0x7a
+/* APM_STS register:
+ * 1:0- GPS, 3:2 - VDPS, 5:4 -VEPS, 7:6 -GL3, 9:8 -ISP, 11:10 - IPH */
+#define APM_STS			0x04
+
+/* OSPM_PM_SSS register:
+ * 1:0 - GFX, 3:2 - DPA, 5:4 - VED, 7:6 - VEC, 9:8 - GL3,
+ * 11:10 - IUNIT, 13:12 - Iunit PHY Cache
+ * 15:14 - Display B, 17:16 - Display C, 19:18 - MIPI
+ */
+#define OSPM_OSPMBA		0x78
+#define OSPM_PM_SSS		0x30
+
+extern int drm_psb_apm_base;
 
 #define PSB_WMSVDX32(_val, _offs) \
-do {                                                \
-	printk(KERN_INFO"MSVDX: write %08x to reg 0x%08x\n", \
-			(unsigned int)(_val),       \
-			(unsigned int)(_offs));     \
-  iowrite32(_val, dev_priv->msvdx_reg + (_offs));   \
+do {								\
+	if (psb_video_fabric_debug &&				\
+		((inl(drm_psb_apm_base + APM_STS) & 0xc) == 0xc))	\
+		panic("msvdx reg 0x%x write failed.\n",		\
+				(unsigned int)(_offs));		\
+	else							\
+		iowrite32(_val, dev_priv->msvdx_reg + (_offs));	\
 } while (0)
-#define PSB_RMSVDX32(_offs) \
-  ioread32(dev_priv->msvdx_reg + (_offs))
 
-#else
-
-#define PSB_WMSVDX32(_val, _offs) \
-  iowrite32(_val, dev_priv->msvdx_reg + (_offs))
-#define PSB_RMSVDX32(_offs) \
-  ioread32(dev_priv->msvdx_reg + (_offs))
-
-#endif
+static inline uint32_t PSB_RMSVDX32(uint32_t _offs)
+{
+	struct drm_psb_private *dev_priv =
+		(struct drm_psb_private *)gpDrmDevice->dev_private;
+	if (psb_video_fabric_debug &&
+			((inl(drm_psb_apm_base + APM_STS) & 0xc) == 0xc)) {
+		panic("msvdx reg 0x%x read failed.\n", (unsigned int)(_offs));
+		return 0;
+	} else {
+		return ioread32(dev_priv->msvdx_reg + (_offs));
+	}
+}
 
 #define PSB_ALPL(_val, _base)			\
   (((_val) >> (_base ## _ALIGNSHIFT)) << (_base ## _SHIFT))
