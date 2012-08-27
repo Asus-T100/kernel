@@ -61,6 +61,7 @@ static int sst_cdev_open(struct snd_sst_params *str_params,
 	} else {
 		pr_err("stream encountered error during alloc %d\n", str_id);
 		str_id = -EINVAL;
+		pm_runtime_put(&sst_drv_ctx->pci->dev);
 	}
 	return str_id;
 }
@@ -68,6 +69,11 @@ static int sst_cdev_open(struct snd_sst_params *str_params,
 static int sst_cdev_close(unsigned int str_id)
 {
 	int retval;
+	struct stream_info *stream;
+
+	stream = get_stream_info(str_id);
+	if (!stream)
+		return -EINVAL;
 	retval = sst_free_stream(str_id);
 	pm_runtime_put(&sst_drv_ctx->pci->dev);
 	return retval;

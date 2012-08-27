@@ -448,7 +448,8 @@ static int sst_open_pcm_stream(struct snd_sst_params *str_param)
 	if (retval > 0) {
 		sst_drv_ctx->stream_cnt++;
 		str_info = &sst_drv_ctx->streams[retval];
-	}
+	} else
+		pm_runtime_put(&sst_drv_ctx->pci->dev);
 	return retval;
 }
 
