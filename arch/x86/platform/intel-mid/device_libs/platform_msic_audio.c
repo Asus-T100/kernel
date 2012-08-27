@@ -18,6 +18,7 @@
 #include <linux/platform_device.h>
 #include <linux/mfd/intel_msic.h>
 #include <asm/intel-mid.h>
+#include <asm/intel_mid_remoteproc.h>
 #include "platform_msic.h"
 #include "platform_msic_audio.h"
 
@@ -31,6 +32,8 @@ void *msic_audio_platform_data(void *info)
 		pr_err("failed to create audio platform device\n");
 		return NULL;
 	}
+
+	register_rpmsg_service("rpmsg_msic_audio", RPROC_SCU, RP_MSIC_AUDIO);
 
 	return msic_generic_platform_data(info, INTEL_MSIC_BLOCK_AUDIO);
 }

@@ -17,10 +17,13 @@
 #include <linux/platform_device.h>
 #include <linux/mfd/intel_msic.h>
 #include <asm/intel-mid.h>
+#include <asm/intel_mid_remoteproc.h>
 #include "platform_msic.h"
 #include "platform_msic_thermal.h"
 
 void __init *msic_thermal_platform_data(void *info)
 {
+	register_rpmsg_service("rpmsg_msic_thermal", RPROC_SCU,
+				RP_MSIC_THERMAL);
 	return msic_generic_platform_data(info, INTEL_MSIC_BLOCK_THERMAL);
 }

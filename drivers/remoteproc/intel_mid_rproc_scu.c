@@ -1,0 +1,243 @@
+/*
+ * INTEL MID Remote Processor - SCU driver
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+#include <linux/kernel.h>
+#include <linux/module.h>
+#include <linux/err.h>
+#include <linux/platform_device.h>
+#include <linux/dma-mapping.h>
+#include <linux/remoteproc.h>
+#include <linux/delay.h>
+#include <linux/rpmsg.h>
+#include <linux/slab.h>
+#include <linux/virtio_ring.h>
+#include <linux/virtio_ids.h>
+
+#include <asm/intel_scu_ipc.h>
+#include <asm/intel_mid_remoteproc.h>
+#include <asm/scu_ipc_rpmsg.h>
+
+#include "intel_mid_rproc_core.h"
+#include "remoteproc_internal.h"
+
+static struct rpmsg_ns_list *nslist;
+
+/**
+ * scu_ipc_rpmsg_handle() - scu rproc specified ipc rpmsg handle
+ * @rx_buf: rx buffer to be add
+ * @tx_buf: tx buffer to be get
+ * @len: rx buffer length
+ */
+int scu_ipc_rpmsg_handle(void *rx_buf, void *tx_buf, u32 *len)
+{
+	struct rpmsg_hdr *tx_hdr, *tmp_hdr;
+	struct tx_ipc_msg *tx_msg;
+	struct rx_ipc_msg *tmp_msg;
+
+	*len = sizeof(struct rpmsg_hdr) + sizeof(struct rx_ipc_msg);
+
+	/* get tx_msg and send scu ipc command */
+	tx_hdr = (struct rpmsg_hdr *)tx_buf;
+	tx_msg = (struct tx_ipc_msg *)(tx_buf + sizeof(*tx_hdr));
+
+	tmp_hdr = (struct rpmsg_hdr *)rx_buf;
+	tmp_msg = (struct rx_ipc_msg *)tmp_hdr->data;
+
+	tmp_msg->status = intel_scu_ipc_command(tx_msg->cmd, tx_msg->sub,
+		(u32 *)tx_msg->in, tx_msg->inlen, tx_msg->out, tx_msg->outlen);
+
+	/* prepare rx buffer, switch src and dst */
+	tmp_hdr->src = tx_hdr->dst;
+	tmp_hdr->dst = tx_hdr->src;
+
+	tmp_hdr->flags = tx_hdr->flags;
+	tmp_hdr->len = sizeof(struct rx_ipc_msg);
+
+	return 0;
+}
+
+/* kick a virtqueue */
+static void intel_rproc_scu_kick(struct rproc *rproc, int vqid)
+{
+	int idx;
+	int ret;
+	struct intel_mid_rproc *iproc;
+	struct rproc_vdev *rvdev;
+	struct device *dev = rproc->dev;
+
+	iproc = (struct intel_mid_rproc *)rproc->priv;
+
+	/*
+	 * Remote processor virtqueue being kicked.
+	 * This part simulates remote processor handling messages.
+	 */
+	idx = find_vring_index(rproc, vqid, VIRTIO_ID_RPMSG);
+
+	switch (idx) {
+	case RX_VRING:
+		if (iproc->ns_enabled) {
+			list_for_each_entry_continue(iproc->ns_info,
+				&nslist->list, node) {
+				ret = intel_mid_rproc_ns_handle(iproc,
+						iproc->ns_info);
+				if (ret) {
+					dev_err(dev, "ns handle error\n");
+					return;
+				}
+				break;
+			}
+
+			intel_mid_rproc_vq_interrupt(rproc, vqid);
+		}
+		break;
+
+	case TX_VRING:
+		iproc->tx_vring.used->idx++;
+		intel_mid_rproc_vq_interrupt(rproc, vqid);
+
+		dev_dbg(dev, "remote processor got the message ...\n");
+		intel_mid_rproc_msg_handle(iproc);
+
+		/*
+		 * After remoteproc handles the message, it calls
+		 * the receive callback.
+		 * TODO: replace this part with real remote processor
+		 * operation.
+		 */
+		rvdev = find_rvdev(rproc, VIRTIO_ID_RPMSG);
+		intel_mid_rproc_vq_interrupt(rproc,
+			rvdev->vring[RX_VRING].notifyid);
+		break;
+
+	default:
+		dev_err(dev, "invalid vring index\n");
+		break;
+	}
+}
+
+/* power up the remote processor */
+static int intel_rproc_scu_start(struct rproc *rproc)
+{
+	return 0;
+}
+
+/* power off the remote processor */
+static int intel_rproc_scu_stop(struct rproc *rproc)
+{
+	return 0;
+}
+
+static struct rproc_ops intel_rproc_scu_ops = {
+	.start		= intel_rproc_scu_start,
+	.stop		= intel_rproc_scu_stop,
+	.kick		= intel_rproc_scu_kick,
+};
+
+static int __devinit intel_rproc_scu_probe(struct platform_device *pdev)
+{
+	struct intel_mid_rproc_pdata *pdata = pdev->dev.platform_data;
+	struct intel_mid_rproc *iproc;
+	struct rproc *rproc;
+	int ret;
+
+	ret = dma_set_coherent_mask(&pdev->dev, DMA_BIT_MASK(32));
+	if (ret) {
+		dev_err(pdev->dev.parent, "dma_set_coherent_mask: %d\n", ret);
+		return ret;
+	}
+
+	rproc = rproc_alloc(&pdev->dev, pdata->name, &intel_rproc_scu_ops,
+				pdata->firmware, sizeof(*iproc));
+	if (!rproc)
+		return -ENOMEM;
+
+	iproc = rproc->priv;
+	iproc->rproc = rproc;
+	nslist = pdata->nslist;
+
+	platform_set_drvdata(pdev, rproc);
+
+	ret = rproc_register(rproc);
+	if (ret)
+		goto free_rproc;
+
+	/*
+	 * Temporarily follow the rproc framework to load firmware
+	 * TODO: modify remoteproc code according to X86 architecture
+	 */
+	if (0 == wait_for_completion_timeout(&rproc->firmware_loading_complete,
+		RPROC_FW_LOADING_TIMEOUT)) {
+		dev_err(pdev->dev.parent, "fw loading not complete\n");
+		goto free_rproc;
+	}
+
+	/* Initialize intel_rproc_scu private data */
+	intel_mid_rproc_vring_init(rproc, &iproc->rx_vring, RX_VRING);
+	intel_mid_rproc_vring_init(rproc, &iproc->tx_vring, TX_VRING);
+	strncpy(iproc->name, pdev->id_entry->name, sizeof(iproc->name) - 1);
+	iproc->type = pdev->id_entry->driver_data;
+	iproc->r_vring_last_used = 0;
+	iproc->s_vring_last_used = 0;
+	iproc->ns_enabled = true;
+	iproc->rproc_rpmsg_handle = scu_ipc_rpmsg_handle;
+	iproc->ns_info = list_entry(&nslist->list,
+			struct rpmsg_ns_info, node);
+
+	return 0;
+
+free_rproc:
+	rproc_free(rproc);
+	return ret;
+}
+
+static int __devexit intel_rproc_scu_remove(struct platform_device *pdev)
+{
+	struct rproc *rproc = platform_get_drvdata(pdev);
+
+	if (nslist)
+		rpmsg_ns_del_list(nslist);
+
+	return rproc_unregister(rproc);
+}
+
+static const struct platform_device_id intel_rproc_scu_id_table[] = {
+	{ "intel_rproc_scu", RPROC_SCU },
+	{ },
+};
+
+static struct platform_driver intel_rproc_scu_driver = {
+	.probe = intel_rproc_scu_probe,
+	.remove = __devexit_p(intel_rproc_scu_remove),
+	.driver = {
+		.name = "intel_rproc_scu",
+		.owner = THIS_MODULE,
+	},
+	.id_table = intel_rproc_scu_id_table,
+};
+
+static int __init intel_rproc_scu_init(void)
+{
+	return platform_driver_register(&intel_rproc_scu_driver);
+}
+
+static void __exit intel_rproc_scu_exit(void)
+{
+	platform_driver_unregister(&intel_rproc_scu_driver);
+}
+
+subsys_initcall(intel_rproc_scu_init);
+module_exit(intel_rproc_scu_exit);
+
+MODULE_LICENSE("GPL v2");
+MODULE_AUTHOR("Ning Li<ning.li@intel.com>");
+MODULE_DESCRIPTION("INTEL MID Remoteproc Core driver");

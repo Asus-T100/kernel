@@ -18,6 +18,7 @@
 #include <linux/gpio.h>
 #include <linux/mfd/intel_msic.h>
 #include <asm/intel-mid.h>
+#include <asm/intel_mid_remoteproc.h>
 #include "platform_msic.h"
 #include "platform_msic_gpio.h"
 
@@ -32,6 +33,8 @@ void __init *msic_gpio_platform_data(void *info)
 
 	msic_gpio_pdata.gpio_base = gpio;
 	msic_pdata.gpio = &msic_gpio_pdata;
+
+	register_rpmsg_service("rpmsg_msic_gpio", RPROC_SCU, RP_MSIC_GPIO);
 
 	return msic_generic_platform_data(info, INTEL_MSIC_BLOCK_GPIO);
 }

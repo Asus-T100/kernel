@@ -46,6 +46,7 @@
 #include <asm/reboot.h>
 #include <asm/intel_mid_hsu.h>
 #include "intel_mid_weak_decls.h"
+#include "intel_mid_scu.h"
 
 /*
  * the clockevent devices on Moorestown/Medfield can be APBT or LAPIC clock,
@@ -857,6 +858,9 @@ static int __init intel_mid_platform_init(void)
 	sfi_table_parse(SFI_SIG_OEMB, NULL, NULL, sfi_parse_oemb);
 	sfi_table_parse(SFI_SIG_GPIO, NULL, NULL, sfi_parse_gpio);
 	sfi_table_parse(SFI_SIG_DEVS, NULL, NULL, sfi_parse_devs);
+
+	intel_mid_rproc_init();
+
 	return 0;
 }
 arch_initcall(intel_mid_platform_init);

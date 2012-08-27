@@ -18,6 +18,7 @@
 #include <linux/gpio.h>
 #include <linux/mfd/intel_msic.h>
 #include <asm/intel-mid.h>
+#include <asm/intel_mid_remoteproc.h>
 #include "platform_msic.h"
 #include "platform_msic_ocd.h"
 
@@ -33,6 +34,8 @@ void __init *msic_ocd_platform_data(void *info)
 
 	msic_ocd_pdata.gpio = gpio;
 	msic_pdata.ocd = &msic_ocd_pdata;
+
+	register_rpmsg_service("rpmsg_msic_ocd", RPROC_SCU, RP_MSIC_OCD);
 
 	return msic_generic_platform_data(info, INTEL_MSIC_BLOCK_OCD);
 }

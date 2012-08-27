@@ -17,6 +17,7 @@
 #include <linux/init.h>
 #include <linux/sfi.h>
 #include <asm/intel-mid.h>
+#include <asm/intel_mid_remoteproc.h>
 #include <linux/intel_pmic_gpio.h>
 #include "platform_pmic_gpio.h"
 
@@ -30,6 +31,8 @@ void __init *pmic_gpio_platform_data(void *info)
 	pmic_gpio_pdata.gpio_base = gpio_base;
 	pmic_gpio_pdata.irq_base = gpio_base + INTEL_MID_IRQ_OFFSET;
 	pmic_gpio_pdata.gpiointr = 0xffffeff8;
+
+	register_rpmsg_service("rpmsg_pmic_gpio", RPROC_SCU, RP_PMIC_GPIO);
 
 	return &pmic_gpio_pdata;
 }

@@ -16,10 +16,13 @@
 #include <linux/init.h>
 #include <linux/mfd/intel_msic.h>
 #include <asm/intel-mid.h>
+#include <asm/intel_mid_remoteproc.h>
 #include "platform_msic.h"
 #include "platform_msic_power_btn.h"
 
 void __init *msic_power_btn_platform_data(void *info)
 {
+	register_rpmsg_service("rpmsg_msic_power_btn", RPROC_SCU,
+				RP_MSIC_POWER_BTN);
 	return msic_generic_platform_data(info, INTEL_MSIC_BLOCK_POWER_BTN);
 }

@@ -17,10 +17,13 @@
 #include <linux/sfi.h>
 #include <linux/mfd/intel_msic.h>
 #include <asm/intel-mid.h>
+#include <asm/intel_mid_remoteproc.h>
 #include "platform_msic.h"
 #include "platform_msic_battery.h"
 
 void __init *msic_battery_platform_data(void *info)
 {
+	register_rpmsg_service("rpmsg_msic_battery", RPROC_SCU,
+				RP_MSIC_BATTERY);
 	return msic_generic_platform_data(info, INTEL_MSIC_BLOCK_BATTERY);
 }
