@@ -2,8 +2,8 @@
  *
  * Copyright (c)2012 Maxim Integrated Products, Inc.
  *
- * Driver Version: 3.0.1
- * Release Date: June 17, 2012
+ * Driver Version: 3.0.2
+ * Release Date: June 18, 2012
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -66,13 +66,15 @@ do {                                                                    \
 			&dev_attr_##a[ii]) < 0, , 0,                    \
 			"failed to create sysfs file [%s]",             \
 			dev_attr_##a##_name[ii]);                       \
+		ts->sysfs_created++;                                    \
 	}                                                               \
 } while (0)
-#define DEVFRA(n, a)                                                    \
-do {                                                                    \
-	int ii;                                                         \
-	for (ii = 0; ii < n; ii++)                                      \
-		device_remove_file(&client->dev, &dev_attr_##a[ii]);    \
+#define DEVFRA(n, a)                                                         \
+do {                                                                         \
+	int ii;                                                              \
+	for (ii = 0; ii < n; ii++)                                           \
+		if (ts->sysfs_created && ts->sysfs_created--)                \
+			device_remove_file(&client->dev, &dev_attr_##a[ii]); \
 } while (0)
 
 #define ENABLE_IRQ()                            \
@@ -153,6 +155,7 @@ struct data {
 	u8  have_touchcfg;
 	u16 config_id;
 	u16 controller_id;
+	u8  sysfs_created;
 };
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
@@ -779,7 +782,7 @@ static ssize_t fw_ver_show(struct device *dev, struct device_attribute *attr,
 static ssize_t driver_ver_show(struct device *dev,
 				struct device_attribute *attr, char *buf)
 {
-	return snprintf(buf, PAGE_SIZE, "3.0.1: June 17, 2012\n");
+	return snprintf(buf, PAGE_SIZE, "3.0.2: June 18, 2012\n");
 }
 
 static ssize_t debug_show(struct device *dev, struct device_attribute *attr,
@@ -848,21 +851,35 @@ static ssize_t report_read(struct file *file, struct kobject *kobj,
 	return count;
 }
 
-static DEVICE_ATTR(init,         0666, init_show,         init_store);
-static DEVICE_ATTR(hreset,       0222, NULL,              hreset_store);
-static DEVICE_ATTR(sreset,       0222, NULL,              sreset_store);
-static DEVICE_ATTR(irq_count,    0666, irq_count_show,    irq_count_store);
-static DEVICE_ATTR(dflt_cfg,     0666, dflt_cfg_show,     dflt_cfg_store);
-static DEVICE_ATTR(panel,        0666, panel_show,        panel_store);
-static DEVICE_ATTR(buttons,      0666, buttons_show,      buttons_store);
+static DEVICE_ATTR(init,         0644, init_show,         init_store);
+static DEVICE_ATTR(hreset,       0200, NULL,              hreset_store);
+static DEVICE_ATTR(sreset,       0200, NULL,              sreset_store);
+static DEVICE_ATTR(irq_count,    0644, irq_count_show,    irq_count_store);
+static DEVICE_ATTR(dflt_cfg,     0644, dflt_cfg_show,     dflt_cfg_store);
+static DEVICE_ATTR(panel,        0644, panel_show,        panel_store);
+static DEVICE_ATTR(buttons,      0644, buttons_show,      buttons_store);
 static DEVICE_ATTR(fw_ver,       0444, fw_ver_show,       NULL);
 static DEVICE_ATTR(driver_ver,   0444, driver_ver_show,   NULL);
-static DEVICE_ATTR(debug,        0666, debug_show,        debug_store);
-static DEVICE_ATTR(command,      0222, NULL,              command_store);
+static DEVICE_ATTR(debug,        0644, debug_show,        debug_store);
+static DEVICE_ATTR(command,      0200, NULL,              command_store);
 static struct bin_attribute dev_attr_report = {
 	.attr = {.name = "report", .mode = 0444}, .read = report_read};
 static struct device_attribute dev_attr_button[MAX11871_MAX_BUTTONS];
 static char                    dev_attr_button_name[MAX11871_MAX_BUTTONS][10];
+
+static struct device_attribute  *dev_attrs[] = {
+	&dev_attr_hreset,
+	&dev_attr_sreset,
+	&dev_attr_irq_count,
+	&dev_attr_dflt_cfg,
+	&dev_attr_panel,
+	&dev_attr_buttons,
+	&dev_attr_fw_ver,
+	&dev_attr_driver_ver,
+	&dev_attr_debug,
+	&dev_attr_command,
+	NULL
+};
 
 static void collect_chip_data(struct data *ts)
 {
@@ -1014,11 +1031,12 @@ static void check_fw_and_config(struct data *ts, u16 request_slept,
 				&ts->client->dev);
 	CHECK(ret || fw == NULL, , , "firmware request failed (%d,%p)", ret,
 		fw);
-	CHECK(fw->size != CONFIG(fw_image[j]).length, release_firmware(fw), ,
+	CHECK(fw->size < CONFIG(fw_image[j]).length, release_firmware(fw), ,
 		"firmware size %d is different from expected %d", fw->size,
 		CONFIG(fw_image[j]).length);
 	CHECK(device_fw_load(ts, fw, j), release_firmware(fw), , "firmware "
 		"download failed");
+	release_firmware(fw);
 	DEBUG(5, "(INIT): firmware download OK");
 
 	/* configure the chip */
@@ -1066,6 +1084,7 @@ static int device_init(struct i2c_client *client)
 {
 	struct data *ts = NULL;
 	struct max11871_pdata *pdata = client->dev.platform_data;
+	struct device_attribute  **dev_attr = dev_attrs;
 	const struct firmware *fw;
 	u16 request_slept = 0, panel_x, panel_y;
 	int ret;
@@ -1226,29 +1245,16 @@ static int device_init(struct i2c_client *client)
 #endif
 
 	/* set up debug interface */
-	CHECK(device_create_file(&client->dev, &dev_attr_hreset) < 0, , 0,
-		"failed to create sysfs file [hreset]");
-	CHECK(device_create_file(&client->dev, &dev_attr_sreset) < 0, , 0,
-		"failed to create sysfs file [sreset]");
-	CHECK(device_create_file(&client->dev, &dev_attr_irq_count) < 0, , 0,
-		"failed to create sysfs file [irq_count]");
-	CHECK(device_create_file(&client->dev, &dev_attr_dflt_cfg) < 0, , 0,
-		"failed to create sysfs file [dflt_cfg]");
-	CHECK(device_create_file(&client->dev, &dev_attr_panel) < 0, , 0,
-		"failed to create sysfs file [panel]");
-	CHECK(device_create_file(&client->dev, &dev_attr_buttons) < 0, , 0,
-		"failed to create sysfs file [buttons]");
-	DEVFCA(CONFIG(buttons), 0666, button_show, button_store, button);
-	CHECK(device_create_file(&client->dev, &dev_attr_fw_ver) < 0, , 0,
-		"failed to create sysfs file [fw_ver]");
-	CHECK(device_create_file(&client->dev, &dev_attr_driver_ver) < 0, , 0,
-		"failed to create sysfs file [driver_ver]");
-	CHECK(device_create_file(&client->dev, &dev_attr_debug) < 0, , 0,
-		"failed to create sysfs file [debug]");
-	CHECK(device_create_file(&client->dev, &dev_attr_command) < 0, , 0,
-		"failed to create sysfs file [command]");
+	while (*dev_attr) {
+		CHECK(device_create_file(&client->dev, *dev_attr) < 0,
+			, 0, "failed to create sysfs file [hreset]");
+		ts->sysfs_created++;
+		dev_attr++;
+	}
+	DEVFCA(CONFIG(buttons), 0644, button_show, button_store, button);
 	CHECK(device_create_bin_file(&client->dev, &dev_attr_report) < 0, , 0,
 		"failed to create sysfs file [report]");
+	ts->sysfs_created++;
 
 	PRINT("(INIT): Done");
 	return 0;
@@ -1258,22 +1264,22 @@ static int device_deinit(struct i2c_client *client)
 {
 	struct data *ts = i2c_get_clientdata(client);
 	struct max11871_pdata *pdata = client->dev.platform_data;
+	struct device_attribute  **dev_attr = dev_attrs;
+
+	if (ts == NULL)
+		return 0;
 
 	propagate_report(ts, -1, NULL);
 
 	init_state = 0;
-	device_remove_bin_file(&client->dev, &dev_attr_report);
-	device_remove_file(&client->dev, &dev_attr_command);
-	device_remove_file(&client->dev, &dev_attr_debug);
-	device_remove_file(&client->dev, &dev_attr_driver_ver);
-	device_remove_file(&client->dev, &dev_attr_fw_ver);
+	while (*dev_attr) {
+		if (ts->sysfs_created && ts->sysfs_created--)
+			device_remove_file(&client->dev, *dev_attr);
+		dev_attr++;
+	}
 	DEVFRA(ts->nbuttons_original, button);
-	device_remove_file(&client->dev, &dev_attr_buttons);
-	device_remove_file(&client->dev, &dev_attr_panel);
-	device_remove_file(&client->dev, &dev_attr_dflt_cfg);
-	device_remove_file(&client->dev, &dev_attr_irq_count);
-	device_remove_file(&client->dev, &dev_attr_sreset);
-	device_remove_file(&client->dev, &dev_attr_hreset);
+	if (ts->sysfs_created && ts->sysfs_created--)
+		device_remove_bin_file(&client->dev, &dev_attr_report);
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
 	if (ts->early_suspend_registered)
@@ -1723,5 +1729,5 @@ module_exit(max11871_exit);
 MODULE_AUTHOR("Maxim Integrated Products, Inc.");
 MODULE_DESCRIPTION("MAX11871 Touchscreen Driver");
 MODULE_LICENSE("GPL v2");
-MODULE_VERSION("3.0.1");
+MODULE_VERSION("3.0.2");
 
