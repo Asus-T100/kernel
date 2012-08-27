@@ -783,6 +783,60 @@ static inline void psb_msvdx_enableirq(struct drm_device *dev)
 	/* PSB_WVDC32(ier, PSB_INT_ENABLE_R); /\* essential *\/ */
 }
 
+static inline void psb_msvdx_mtx_set_clocks(struct drm_device *dev, uint32_t clock_state)
+{
+	struct drm_psb_private *dev_priv =
+		(struct drm_psb_private *)dev->dev_private;
+	uint32_t old_clock_state, reg_value = 0;
+	/* PSB_DEBUG_MSVDX("SetClocks to %x.\n", clock_state); */
+	old_clock_state = PSB_RMSVDX32(MSVDX_MAN_CLK_ENABLE);
+	if (old_clock_state == clock_state)
+		return;
+
+	if (clock_state == 0) {
+		/* Turn off clocks procedure */
+		if (old_clock_state) {
+			/* Turn off all the clocks except core */
+			PSB_WMSVDX32(MSVDX_CORE_CR_MSVDX_MAN_CLK_ENABLE_CR_CORE_MAN_CLK_ENABLE_MASK, MSVDX_MAN_CLK_ENABLE);
+
+			/* Make sure all the clocks are off except core */
+			reg_value = PSB_RMSVDX32(MSVDX_MAN_CLK_ENABLE);
+			BUG_ON(reg_value != MSVDX_CORE_CR_MSVDX_MAN_CLK_ENABLE_CR_CORE_MAN_CLK_ENABLE_MASK);
+
+			/* Turn off core clock */
+			PSB_WMSVDX32(0, MSVDX_MAN_CLK_ENABLE);
+		}
+	} else {
+		uint32_t clocks_en = clock_state;
+
+		/*Make sure that core clock is not accidentally turned off */
+		clocks_en |= MSVDX_CORE_CR_MSVDX_MAN_CLK_ENABLE_CR_CORE_MAN_CLK_ENABLE_MASK;
+
+		/* If all clocks were disable do the bring up procedure */
+		if (old_clock_state == 0) {
+			/* turn on core clock */
+			PSB_WMSVDX32(MSVDX_CORE_CR_MSVDX_MAN_CLK_ENABLE_CR_CORE_MAN_CLK_ENABLE_MASK, MSVDX_MAN_CLK_ENABLE);
+
+			/* Make sure it is on */
+			reg_value = PSB_RMSVDX32(MSVDX_MAN_CLK_ENABLE);
+			BUG_ON(reg_value != MSVDX_CORE_CR_MSVDX_MAN_CLK_ENABLE_CR_CORE_MAN_CLK_ENABLE_MASK);
+
+			/* turn on the other clocks as well */
+			PSB_WMSVDX32(clocks_en, MSVDX_MAN_CLK_ENABLE);
+
+			/* Make sure that they are on */
+			reg_value = PSB_RMSVDX32(MSVDX_MAN_CLK_ENABLE);
+			BUG_ON(reg_value != clocks_en);
+		} else {
+			PSB_WMSVDX32(clocks_en, MSVDX_MAN_CLK_ENABLE);
+
+			/* Make sure that they are on */
+			reg_value = PSB_RMSVDX32(MSVDX_MAN_CLK_ENABLE);
+			BUG_ON(reg_value != clocks_en);
+		}
+	}
+}
+
 #define MSVDX_NEW_PMSTATE(drm_dev, msvdx_priv, new_state)		\
 do {									\
 	msvdx_priv->pmstate = new_state;				\

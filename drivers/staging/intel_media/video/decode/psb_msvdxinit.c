@@ -123,7 +123,7 @@ static int msvdx_reset_internal_unused(struct drm_psb_private *dev_priv)
 		uint32_t core_rev;
 		/* Enable Clocks */
 		PSB_DEBUG_GENERAL("Enabling clocks\n");
-		PSB_WMSVDX32(clk_enable_all, MSVDX_MAN_CLK_ENABLE);
+		psb_msvdx_mtx_set_clocks(dev_priv->dev, clk_enable_all);
 
 		/* Always pause the MMU as the core may be still active
 		 * when resetting.  It is very bad to have memory
@@ -209,7 +209,7 @@ static int msvdx_reset_internal_unused(struct drm_psb_private *dev_priv)
 		int loop;
 		/* Enable Clocks */
 		PSB_DEBUG_GENERAL("Enabling clocks\n");
-		PSB_WMSVDX32(clk_enable_all, MSVDX_MAN_CLK_ENABLE);
+		psb_msvdx_mtx_set_clocks(dev_priv->dev, clk_enable_all);
 		/* Always pause the MMU as the core may be still active when resetting.  It is very bad to have memory
 		   activity at the same time as a reset - Very Very bad */
 		PSB_WMSVDX32(2, MSVDX_MMU_CONTROL0);
@@ -550,7 +550,7 @@ int psb_setup_msvdx(struct drm_device *dev)
 	/* todo : Assert the clock is on - if not turn it on to upload code */
 	PSB_DEBUG_GENERAL("MSVDX: psb_setup_fw\n");
 
-	PSB_WMSVDX32(clk_enable_all, MSVDX_MAN_CLK_ENABLE);
+	psb_msvdx_mtx_set_clocks(dev_priv->dev, clk_enable_all);
 
 	PSB_WMSVDX32(FIRMWAREID, MSVDX_COMMS_FIRMWARE_ID);
 
@@ -687,7 +687,7 @@ int psb_msvdx_init(struct drm_device *dev)
 
 	/* Enable Clocks */
 	PSB_DEBUG_INIT("Enabling clocks\n");
-	PSB_WMSVDX32(clk_enable_all, MSVDX_MAN_CLK_ENABLE);
+	psb_msvdx_mtx_set_clocks(dev_priv->dev, clk_enable_all);
 #if 0
 	msvdx_sw_rest(dev);
 #endif
@@ -759,7 +759,7 @@ int psb_msvdx_uninit(struct drm_device *dev)
 
 	/* PSB_WMSVDX32 (clk_enable_minimal, MSVDX_MAN_CLK_ENABLE); */
 	PSB_DEBUG_INIT("MSVDX:set the msvdx clock to 0\n");
-	PSB_WMSVDX32(0, MSVDX_MAN_CLK_ENABLE);
+	psb_msvdx_mtx_set_clocks(dev_priv->dev, 0);
 
 	if (NULL == msvdx_priv) {
 		DRM_ERROR("MSVDX: psb_msvdx_uninit: msvdx_priv is NULL!\n");

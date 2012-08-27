@@ -467,7 +467,7 @@ int psb_setup_fw(struct drm_device *dev)
 	/* todo : Assert the clock is on - if not turn it on to upload code */
 	PSB_DEBUG_GENERAL("MSVDX: psb_setup_fw\n");
 
-	PSB_WMSVDX32(clk_enable_all, MSVDX_MAN_CLK_ENABLE);
+	psb_msvdx_mtx_set_clocks(dev_priv->dev, clk_enable_all);
 
 	/* Reset MTX */
 	PSB_WMSVDX32(MSVDX_MTX_SOFT_RESET_MTX_RESET_MASK,
