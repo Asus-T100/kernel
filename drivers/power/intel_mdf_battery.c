@@ -1515,6 +1515,29 @@ static unsigned int sfi_temp_range_lookup(int adc_temp)
 	return i;
 }
 
+static bool weak_vbus_detect(int vbus_volt)
+{
+	static int vbus_volt_prev = -1;
+	bool flag = false;
+
+	/*
+	 * set weak vin condition only if the
+	 * vbus voltage goes below the WEAKVIN
+	 * threshold twice in a row.
+	 */
+	if ((vbus_volt_prev > 0) &&
+		(vbus_volt_prev < WEAKVIN_VOLTAGE_LEVEL) &&
+		(vbus_volt < WEAKVIN_VOLTAGE_LEVEL)) {
+		dev_warn(msic_dev,
+			"[weak vbus detected]vbus_volt:%d vbus_volt_prev:%d\n",
+						vbus_volt, vbus_volt_prev);
+		flag = true;
+	}
+
+	vbus_volt_prev = vbus_volt;
+	return flag;
+}
+
 /**
 * msic_batt_temp_charging - manages the charging based on temperature
 * @charge_param: charging parameter
@@ -1535,6 +1558,7 @@ static void msic_batt_temp_charging(struct work_struct *work)
 	    container_of(work, struct msic_power_module_info,
 			 connect_handler.work);
 	struct temp_mon_table *temp_mon = NULL;
+	bool is_weakvin;
 
 	memset(&charge_param, 0x0, sizeof(struct charge_params));
 	charge_param.vinilmt = mbi->ch_params.vinilmt;
@@ -1569,12 +1593,13 @@ static void msic_batt_temp_charging(struct work_struct *work)
 					" voltage:%s\n", __func__);
 		goto lbl_sched_work;
 	}
+	/* determine weak vbus condition */
+	is_weakvin = weak_vbus_detect(vbus_voltage);
 
 	/* change to fix buffer overflow issue */
 	if (i >= ((sfi_table->temp_mon_ranges < SFI_TEMP_NR_RNG) ?
 			sfi_table->temp_mon_ranges : SFI_TEMP_NR_RNG) ||
-							is_chrg_flt ||
-				vbus_voltage < WEAKVIN_VOLTAGE_LEVEL) {
+						is_chrg_flt || is_weakvin) {
 
 		if ((adc_temp > batt_thrshlds->temp_high) ||
 			(adc_temp <= batt_thrshlds->temp_low)) {
@@ -1598,7 +1623,7 @@ static void msic_batt_temp_charging(struct work_struct *work)
 			mutex_unlock(&mbi->batt_lock);
 		}
 
-		if (vbus_voltage < WEAKVIN_VOLTAGE_LEVEL) {
+		if (is_weakvin) {
 			dev_warn(msic_dev, "vbus_volt:%d less than"
 					"WEAKVIN threshold", vbus_voltage);
 			mutex_lock(&mbi->usb_chrg_lock);
