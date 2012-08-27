@@ -46,7 +46,7 @@
 #include "dlp_main.h"
 
 #define DEBUG_TAG 0x2
-#define DEBUG_VAR dlp_drv.debug
+#define DEBUG_VAR (dlp_drv.debug)
 
 #define IPC_TTYNAME				"tty"CONFIG_HSI_DLP_IPC_TTY_NAME
 
@@ -416,7 +416,7 @@ static void dlp_tty_complete_tx(struct hsi_msg *pdu)
 {
 	struct dlp_xfer_ctx *xfer_ctx = pdu->context;
 	struct dlp_channel *ch_ctx = xfer_ctx->channel;
-	int wakeup;
+	int wakeup, avail, pending;
 	unsigned long flags;
 
 	PROLOG();
@@ -424,15 +424,15 @@ static void dlp_tty_complete_tx(struct hsi_msg *pdu)
 	/* TX xfer done => Reset the "ongoing" flag */
 	dlp_ctrl_set_reset_ongoing(0);
 
-	/* Dump the PDU */
-	/* dlp_pdu_dump(pdu, 1); */
-
 	/* Recycle or Free the pdu */
 	write_lock_irqsave(&xfer_ctx->lock, flags);
 	dlp_pdu_delete(xfer_ctx, pdu);
 
 	/* Decrease the CTRL fifo size */
 	dlp_hsi_controller_pop(xfer_ctx);
+
+	/* Check the wait FIFO size */
+	avail = (xfer_ctx->wait_len <= xfer_ctx->wait_max / 2);
 	write_unlock_irqrestore(&xfer_ctx->lock, flags);
 
 	/* Start new waiting pdus (if any) */
@@ -440,8 +440,8 @@ static void dlp_tty_complete_tx(struct hsi_msg *pdu)
 
 	/* Wake-up the TTY write whenever the TX wait FIFO is half empty, and
 	 * not before, to prevent too many wakeups */
-	wakeup = ((dlp_ctx_has_flag(xfer_ctx, TX_TTY_WRITE_PENDING_BIT)) &&
-		  (xfer_ctx->wait_len <= xfer_ctx->wait_max / 2));
+	pending = dlp_ctx_has_flag(xfer_ctx, TX_TTY_WRITE_PENDING_BIT);
+	wakeup = (pending && avail);
 	if (wakeup) {
 		dlp_ctx_clear_flag(xfer_ctx, TX_TTY_WRITE_PENDING_BIT);
 		dlp_tty_wakeup(ch_ctx);
@@ -602,7 +602,7 @@ static int dlp_tty_port_activate(struct tty_port *port, struct tty_struct *tty)
 	struct dlp_xfer_ctx *rx_ctx;
 	int ret = 0;
 
-	pr_debug(DRVNAME ": port activate requested\n");
+	pr_debug(DRVNAME": port activate request\n");
 
 	/* Get the context reference stored in the TTY open() */
 	ch_ctx = (struct dlp_channel *)tty->driver_data;
@@ -636,7 +636,7 @@ static void dlp_tty_port_shutdown(struct tty_port *port)
 	struct dlp_xfer_ctx *rx_ctx;
 	int ret;
 
-	pr_debug(DRVNAME ": port shutdown requested\n");
+	pr_debug(DRVNAME": port shutdown request\n");
 
 	tty_ctx = container_of(port, struct dlp_tty_context, tty_prt);
 	ch_ctx = tty_ctx->ch_ctx;
@@ -688,7 +688,8 @@ static int dlp_tty_open(struct tty_struct *tty, struct file *filp)
 	struct dlp_tty_context *tty_ctx;
 	int ret;
 
-	pr_debug(DRVNAME ": device open requested\n");
+	pr_debug(DRVNAME": TTY device open request (%s, %d)\n",
+			current->comm, current->pid);
 
 	/* Check & wait for modem readiness */
 	if (!dlp_ctrl_modem_is_ready()) {
@@ -834,7 +835,8 @@ static void dlp_tty_close(struct tty_struct *tty, struct file *filp)
 	struct dlp_channel *ch_ctx = (struct dlp_channel *)tty->driver_data;
 	int need_cleanup = (tty->count == 1);
 
-	pr_debug(DRVNAME ": TTY device close request\n");
+	pr_debug(DRVNAME ": TTY device close request (%s, %d)\n",
+			current->comm, current->pid);
 
 	if (filp && ch_ctx) {
 		struct dlp_tty_context *tty_ctx = ch_ctx->ch_data;
@@ -875,7 +877,9 @@ int dlp_tty_do_write(struct dlp_xfer_ctx *xfer_ctx, unsigned char *buf,
 	copied = 0;
 
 	if (!dlp_ctx_have_credits(xfer_ctx, xfer_ctx->channel)) {
-		CRITICAL("No credits available (%d)", xfer_ctx->seq_num);
+		pr_warn(DRVNAME": ch%d out of credits (%d)\n",
+				xfer_ctx->channel->hsi_channel,
+				xfer_ctx->seq_num);
 		goto out;
 	}
 
@@ -1046,8 +1050,6 @@ static int dlp_tty_ioctl(struct tty_struct *tty,
 			 unsigned int cmd, unsigned long arg)
 {
 	struct dlp_channel *ch_ctx = (struct dlp_channel *)tty->driver_data;
-	struct work_struct *increase_pool = NULL;
-	static struct workqueue_struct *increase_pool_wq;
 	unsigned int data;
 #ifdef CONFIG_HSI_DLP_TTY_STATS
 	struct hsi_dlp_stats stats;
@@ -1076,41 +1078,11 @@ static int dlp_tty_ioctl(struct tty_struct *tty,
 		return put_user(data, (unsigned int __user *)arg);
 		break;
 
-	case HSI_DLP_SET_TX_WAIT_MAX:
-		if (arg > 0) {
-			write_lock_irqsave(&ch_ctx->tx.lock, flags);
-			if (arg > ch_ctx->tx.wait_max)
-				increase_pool = &ch_ctx->tx.increase_pool;
-			increase_pool_wq = dlp_drv.tx_wq;
-			ch_ctx->tx.wait_max = arg;
-			write_unlock_irqrestore(&ch_ctx->tx.lock, flags);
-		} else {
-			dev_dbg(&dlp_drv.client->device,
-				"Invalid TX wait FIFO size %li\n", arg);
-			return -EINVAL;
-		}
-		break;
-
 	case HSI_DLP_GET_TX_WAIT_MAX:
 		read_lock_irqsave(&ch_ctx->tx.lock, flags);
 		data = ch_ctx->tx.wait_max;
 		read_unlock_irqrestore(&ch_ctx->tx.lock, flags);
 		return put_user(data, (unsigned int __user *)arg);
-		break;
-
-	case HSI_DLP_SET_RX_WAIT_MAX:
-		if (arg > 0) {
-			write_lock_irqsave(&ch_ctx->rx.lock, flags);
-			if (arg > ch_ctx->rx.ctrl_max)
-				increase_pool = &ch_ctx->rx.increase_pool;
-			increase_pool_wq = dlp_drv.rx_wq;
-			ch_ctx->rx.wait_max = arg;
-			write_unlock_irqrestore(&ch_ctx->rx.lock, flags);
-		} else {
-			dev_dbg(&dlp_drv.client->device,
-				"Invalid RX wait FIFO size %li\n", arg);
-			return -EINVAL;
-		}
 		break;
 
 	case HSI_DLP_GET_RX_WAIT_MAX:
@@ -1120,41 +1092,11 @@ static int dlp_tty_ioctl(struct tty_struct *tty,
 		return put_user(data, (unsigned int __user *)arg);
 		break;
 
-	case HSI_DLP_SET_TX_CTRL_MAX:
-		if (arg > 0) {
-			write_lock_irqsave(&ch_ctx->tx.lock, flags);
-			if (arg > ch_ctx->tx.ctrl_max)
-				increase_pool = &ch_ctx->tx.increase_pool;
-			increase_pool_wq = dlp_drv.tx_wq;
-			ch_ctx->tx.ctrl_max = arg;
-			write_unlock_irqrestore(&ch_ctx->tx.lock, flags);
-		} else {
-			dev_dbg(&dlp_drv.client->device,
-				"Invalid TX controller FIFO size %li\n", arg);
-			return -EINVAL;
-		}
-		break;
-
 	case HSI_DLP_GET_TX_CTRL_MAX:
 		read_lock_irqsave(&ch_ctx->tx.lock, flags);
 		data = ch_ctx->tx.ctrl_max;
 		read_unlock_irqrestore(&ch_ctx->tx.lock, flags);
 		return put_user(data, (unsigned int __user *)arg);
-		break;
-
-	case HSI_DLP_SET_RX_CTRL_MAX:
-		if (arg > 0) {
-			write_lock_irqsave(&ch_ctx->rx.lock, flags);
-			if (arg > ch_ctx->rx.ctrl_max)
-				increase_pool = &ch_ctx->rx.increase_pool;
-			increase_pool_wq = dlp_drv.rx_wq;
-			ch_ctx->rx.ctrl_max = arg;
-			write_unlock_irqrestore(&ch_ctx->rx.lock, flags);
-		} else {
-			dev_dbg(&dlp_drv.client->device,
-				"Invalid RX controller FIFO size %li\n", arg);
-			return -EINVAL;
-		}
 		break;
 
 	case HSI_DLP_GET_RX_CTRL_MAX:
@@ -1402,9 +1344,6 @@ static int dlp_tty_ioctl(struct tty_struct *tty,
 		return -ENOIOCTLCMD;
 	}
 
-	if (increase_pool)
-		(void)queue_work(increase_pool_wq, increase_pool);
-
 	EPILOG();
 	return 0;
 }
@@ -1469,7 +1408,7 @@ struct dlp_channel *dlp_tty_ctx_create(unsigned int index, struct device *dev)
 	ch_ctx = kzalloc(sizeof(struct dlp_channel), GFP_KERNEL);
 	if (!ch_ctx) {
 		CRITICAL("Unable to allocate memory (ch_ctx)");
-		goto out;
+		return NULL;
 	}
 
 	/* Allocate the context private data */
@@ -1557,9 +1496,21 @@ struct dlp_channel *dlp_tty_ctx_create(unsigned int index, struct device *dev)
 	tty_ctx->ch_ctx = ch_ctx;
 	tty_ctx->tty_drv = new_drv;
 
-	/* Allocate RX & TX FIFOs in background */
-	queue_work(dlp_drv.tx_wq, &ch_ctx->tx.increase_pool);
-	queue_work(dlp_drv.rx_wq, &ch_ctx->rx.increase_pool);
+	/* Allocate TX FIFO */
+	ret = dlp_allocate_pdus_pool(ch_ctx, &ch_ctx->tx);
+	if (ret) {
+		pr_err(DRVNAME ": Cant allocate TX FIFO pdus for ch%d\n",
+				index);
+		goto cleanup;
+	}
+
+	/* Allocate RX FIFO */
+	ret = dlp_allocate_pdus_pool(ch_ctx, &ch_ctx->rx);
+	if (ret) {
+		pr_err(DRVNAME ": Cant allocate RX FIFO pdus for ch%d\n",
+				index);
+		goto cleanup;
+	}
 
 	EPILOG();
 	return ch_ctx;
@@ -1576,8 +1527,13 @@ free_ctx:
 free_ch:
 	kfree(ch_ctx);
 
-out:
-	EPILOG("Failed");
+	pr_err(DRVNAME": Failed to create context for ch%d", index);
+	return NULL;
+
+cleanup:
+	dlp_tty_ctx_delete(ch_ctx);
+
+	pr_err(DRVNAME": Failed to create context for ch%d", index);
 	return NULL;
 }
 

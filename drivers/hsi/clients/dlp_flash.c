@@ -36,7 +36,7 @@
 
 
 #define DEBUG_TAG 0x4
-#define DEBUG_VAR dlp_drv.debug
+#define DEBUG_VAR (dlp_drv.debug)
 
 
 #define FLASHING_DEVNAME	"tty"CONFIG_HSI_FLASHING_DEV_NAME
@@ -303,8 +303,8 @@ static void dlp_flash_complete_rx(struct hsi_msg *msg)
 		/* Push again the RX msg */
 		ret = hsi_async(msg->cl, msg);
 		if (ret) {
-			CRITICAL("hsi_async() failed, ret:%d ==> "
-					"FIFO will be empty", ret);
+			CRITICAL("hsi_async failed (%d) => FIFO will be empty",
+					ret);
 
 			/* Delete the received msg */
 			dlp_pdu_free(msg, msg->channel);
@@ -441,8 +441,8 @@ static ssize_t dlp_flash_dev_read(struct file *filp,
 		/* Push again the RX msg to the controller */
 		ret = hsi_async(msg->cl, msg);
 		if (ret) {
-			CRITICAL("hsi_async() failed, ret:%d ==> "
-					"FIFO will be empty", ret);
+			CRITICAL("hsi_async failed (%d) => FIFO will be empty",
+					ret);
 
 			/* Delete the received msg */
 			dlp_pdu_free(msg, msg->channel);
@@ -620,7 +620,7 @@ struct dlp_channel *dlp_flash_ctx_create(unsigned int index, struct device *dev)
 		goto unreg_reg;
 	}
 
-	flash_ctx->class = class_create(THIS_MODULE, DRVNAME);
+	flash_ctx->class = class_create(THIS_MODULE, DRVNAME"-flash");
 	if (IS_ERR(flash_ctx->class))
 		goto del_cdev;
 
@@ -692,7 +692,7 @@ static int dlp_flash_set_flashing_mode(const char *val, struct kernel_param *kp)
 
 	PROLOG("%s", val);
 
-	if (strict_strtol(val, 16, &flashing) < 0) {
+	if (kstrtol(val, 16, &flashing) < 0) {
 		EPILOG();
 		return -EINVAL;
 	}

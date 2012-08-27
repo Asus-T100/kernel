@@ -39,7 +39,7 @@
 #include "dlp_main.h"
 
 #define DEBUG_TAG 0x0
-#define DEBUG_VAR dlp_drv.debug
+#define DEBUG_VAR (dlp_drv.debug)
 
 #define DLP_CH_STATE_TO_STR(s) \
 	((s == DLP_CH_STATE_CLOSED)  ? "Closed" : \
@@ -83,6 +83,9 @@ module_param_named(flow_ctrl, dlp_drv.flow_ctrl, int, S_IRUGO | S_IWUSR);
 void dlp_dump_channel_state(struct dlp_channel *ch_ctx, struct seq_file *m)
 {
 	unsigned long flags;
+	struct list_head *curr;
+	struct hsi_msg *pdu;
+	int i;
 
 	seq_printf(m, "\nChannel: %d\n", ch_ctx->hsi_channel);
 	seq_printf(m, "-------------\n");
@@ -91,8 +94,9 @@ void dlp_dump_channel_state(struct dlp_channel *ch_ctx, struct seq_file *m)
 	seq_printf(m, " credits   : %d\n", ch_ctx->credits);
 	seq_printf(m, " flow ctrl : %d\n", ch_ctx->use_flow_ctrl);
 
+	/* Dump the RX context info */
+	seq_printf(m, "\n RX ctx:\n");
 	read_lock_irqsave(&ch_ctx->rx.lock, flags);
-	seq_printf(m, " RX ctx:\n");
 	seq_printf(m, "   state   : %s\n",
 			DLP_CTX_STATE_TO_STR(ch_ctx->rx.state));
 	seq_printf(m, "   seq_num : %d\n", ch_ctx->rx.seq_num);
@@ -102,10 +106,23 @@ void dlp_dump_channel_state(struct dlp_channel *ch_ctx, struct seq_file *m)
 	seq_printf(m, "   ctrl_len: %d\n", ch_ctx->rx.ctrl_len);
 	seq_printf(m, "   wait_len: %d\n", ch_ctx->rx.wait_len);
 	seq_printf(m, "   pdu_size: %d\n", ch_ctx->rx.pdu_size);
+	seq_printf(m, "   Recycled PDUs:\n");
+	i = 0;
+	list_for_each(curr, &ch_ctx->rx.recycled_pdus) {
+		pdu = list_entry(curr, struct hsi_msg, link);
+		seq_printf(m, "      %02d: 0x%p\n", ++i, pdu);
+	}
+	seq_printf(m, "   Waiting PDUs:\n");
+	i = 0;
+	list_for_each(curr, &ch_ctx->rx.wait_pdus) {
+		pdu = list_entry(curr, struct hsi_msg, link);
+		seq_printf(m, "      %02d: 0x%p\n", ++i, pdu);
+	}
 	read_unlock_irqrestore(&ch_ctx->rx.lock, flags);
 
+	/* Dump the TX context info */
+	seq_printf(m, "\n TX ctx:\n");
 	read_lock_irqsave(&ch_ctx->tx.lock, flags);
-	seq_printf(m, " TX ctx:\n");
 	seq_printf(m, "   state   : %s\n",
 			DLP_CTX_STATE_TO_STR(ch_ctx->tx.state));
 	seq_printf(m, "   seq_num : %d\n", ch_ctx->tx.seq_num);
@@ -115,6 +132,18 @@ void dlp_dump_channel_state(struct dlp_channel *ch_ctx, struct seq_file *m)
 	seq_printf(m, "   ctrl_len: %d\n", ch_ctx->tx.ctrl_len);
 	seq_printf(m, "   wait_len: %d\n", ch_ctx->tx.wait_len);
 	seq_printf(m, "   pdu_size: %d\n", ch_ctx->tx.pdu_size);
+	seq_printf(m, "   Recycled PDUs:\n");
+	i = 0;
+	list_for_each(curr, &ch_ctx->tx.recycled_pdus) {
+		pdu = list_entry(curr, struct hsi_msg, link);
+		seq_printf(m, "      %02d: 0x%p\n", ++i, pdu);
+	}
+	seq_printf(m, "   Waiting PDUs:\n");
+	i = 0;
+	list_for_each(curr, &ch_ctx->tx.wait_pdus) {
+		pdu = list_entry(curr, struct hsi_msg, link);
+		seq_printf(m, "      %02d: 0x%p\n", ++i, pdu);
+	}
 	read_unlock_irqrestore(&ch_ctx->tx.lock, flags);
 }
 
@@ -501,7 +530,8 @@ inline int dlp_pdu_header_check(struct dlp_xfer_ctx *xfer_ctx,
 		if (xfer_ctx->seq_num == (header[0] & 0x0000FFFF))
 			ret = 0;
 		else {
-			pr_err(DRVNAME ": seq_num mismatch (AP: 0x%X, CP: 0x%X)\n",
+			pr_err(DRVNAME": ch%d seq_num mismatch (AP:0x%X, CP:0x%X)\n",
+					xfer_ctx->channel->hsi_channel,
 					xfer_ctx->seq_num,
 					header[0] & 0x0000FFFF);
 
@@ -511,7 +541,7 @@ inline int dlp_pdu_header_check(struct dlp_xfer_ctx *xfer_ctx,
 			ret = -ERANGE;
 		}
 	} else {
-		pr_err(DRVNAME ": Invalid PDU signature 0x%x", header[0]);
+		pr_err(DRVNAME ": Invalid PDU signature 0x%x\n", header[0]);
 		ret = -EINVAL;
 	}
 
@@ -529,7 +559,7 @@ static inline void dlp_pdu_set_header(struct dlp_xfer_ctx *xfer_ctx,
 {
 	u32 *header = sg_virt(pdu->sgt.sgl);
 
-	header[0] = (DLP_HEADER_SIGNATURE | (xfer_ctx->seq_num & 0x0000FFFF));
+	header[0] = (DLP_HEADER_SIGNATURE | xfer_ctx->seq_num);
 }
 
 /**
@@ -1385,14 +1415,6 @@ int dlp_hsi_controller_push(struct dlp_xfer_ctx *xfer_ctx, struct hsi_msg *pdu)
 	/* Set the DLP signature + seq_num */
 	dlp_pdu_set_header(xfer_ctx, pdu);
 
-	/* Dump the PDU */
-#if 0
-	if (pdu->ttype == HSI_MSG_WRITE) {
-		/* dlp_pdu_dump(pdu, 0);
-		dlp_dbg_dump_pdu(pdu, 16, 160, 0); */
-	}
-#endif
-
 	err = hsi_async(pdu->cl, pdu);
 	if (!err) {
 		if ((pdu->ttype == HSI_MSG_WRITE) && (xfer_ctx->ctrl_len)) {
@@ -1750,75 +1772,56 @@ int dlp_set_flashing_mode(int flashing)
 }
 
 /**
- * dlp_increase_pdus_pool - background work aimed at creating new pdus
- * @work: a reference to the work context
+ * dlp_allocate_pdus_pool - Allocate PDU pool for RX/TX xfer context
  *
- * This function is called as a background job (in the tx_w/rx_w work
- * queue) for performing the pdu resource allocation (which can then sleep).
+ * @ch_ctx: a reference to the channel context
+ * @ch_ctx: a reference to the xfer context
  *
- * An error message is sent upon the failure of DLP_PDU_ALLOC_RETRY_MAX_CNT
- * allocation requests.
+ * Return 0 when OK, an error code otherwise
  */
-static void dlp_increase_pdus_pool(struct work_struct *work)
+int dlp_allocate_pdus_pool(struct dlp_channel *ch_ctx,
+						struct dlp_xfer_ctx *xfer_ctx)
 {
-	struct dlp_xfer_ctx *xfer_ctx = container_of(work, struct dlp_xfer_ctx,
-						     increase_pool);
-	struct hsi_msg *new;
-	unsigned long flags;
-	int pdu_size, retry;
+	struct list_head *fifo;
+	struct hsi_msg *pdu;
+	int ret, fifo_size = xfer_ctx->wait_max + xfer_ctx->ctrl_max;
 
-	PROLOG();
+	/* Allocate new PDUs */
+	while (xfer_ctx->all_len < fifo_size) {
+		pdu = dlp_pdu_alloc(xfer_ctx->channel->hsi_channel,
+					xfer_ctx->ttype, xfer_ctx->pdu_size, 1,
+					xfer_ctx,
+					xfer_ctx->complete_cb,
+					dlp_pdu_destructor);
 
-	if (xfer_ctx->ttype == HSI_MSG_WRITE)
-		pdu_size = xfer_ctx->channel->tx.pdu_size;
-	else
-		pdu_size = xfer_ctx->channel->rx.pdu_size;
-
-	read_lock_irqsave(&xfer_ctx->lock, flags);
-
-	while (xfer_ctx->all_len < (xfer_ctx->wait_max + xfer_ctx->ctrl_max)) {
-		read_unlock_irqrestore(&xfer_ctx->lock, flags);
-
-		retry = 0;
-		new = dlp_pdu_alloc(xfer_ctx->channel->hsi_channel,
-				    xfer_ctx->ttype, pdu_size, 1,
-				    xfer_ctx,
-				    xfer_ctx->complete_cb, dlp_pdu_destructor);
-
-		while (!new) {
-			++retry;
-			if (retry == DLP_PDU_ALLOC_RETRY_MAX_CNT) {
-				CRITICAL("Cannot allocate a pdu after "
-						"%d retries...", retry);
-				retry = 0;
-			}
-
-			/* No memory available: do something more urgent ! */
-			schedule();
-
-			new = dlp_pdu_alloc(xfer_ctx->channel->hsi_channel,
-					    xfer_ctx->ttype, pdu_size, 1,
-					    xfer_ctx,
-					    xfer_ctx->complete_cb,
-					    dlp_pdu_destructor);
+		if (!pdu) {
+			ret = -ENOMEM;
+			goto cleanup;
 		}
 
-		write_lock_irqsave(&xfer_ctx->lock, flags);
-		xfer_ctx->room += xfer_ctx->payload_len;
 		xfer_ctx->all_len++;
-
-		dlp_fifo_recycled_push(xfer_ctx, new);
-
-		write_unlock_irqrestore(&xfer_ctx->lock, flags);
-
-		read_lock_irqsave(&xfer_ctx->lock, flags);
+		xfer_ctx->room += xfer_ctx->payload_len;
+		dlp_fifo_recycled_push(xfer_ctx, pdu);
 	}
 
-	read_unlock_irqrestore(&xfer_ctx->lock, flags);
-
-	EPILOG("%s pdu's pool created (hsi_channel: %d)",
+	pr_debug(DRVNAME": %s pdu's pool created for ch%d)",
 	       (xfer_ctx->ttype == HSI_MSG_WRITE ? "TX" : "RX"),
 	       xfer_ctx->channel->hsi_channel);
+	return 0;
+
+cleanup:
+	/* Have some items ? */
+	fifo = &xfer_ctx->recycled_pdus;
+	if (list_empty(fifo))
+		return ret;
+
+	/* Delete the allocated PDUs */
+	while ((pdu = list_entry(fifo->next, struct hsi_msg, link))) {
+		list_del_init(&pdu->link);
+		dlp_pdu_free(pdu, pdu->channel);
+	}
+
+	return ret;
 }
 
 /****************************************************************************
@@ -1874,7 +1877,6 @@ void dlp_xfer_ctx_init(struct dlp_channel *ch_ctx,
 	xfer_ctx->payload_len = DLP_TTY_PAYLOAD_LENGTH;
 	xfer_ctx->ttype = ttype;
 	xfer_ctx->complete_cb = complete_cb;
-	INIT_WORK(&xfer_ctx->increase_pool, dlp_increase_pdus_pool);
 
 	EPILOG();
 }
@@ -1904,8 +1906,6 @@ void dlp_xfer_ctx_clear(struct dlp_xfer_ctx *xfer_ctx)
 	dlp_fifo_empty(&xfer_ctx->wait_pdus, xfer_ctx);
 	dlp_fifo_empty(&xfer_ctx->recycled_pdus, xfer_ctx);
 
-	flush_work(&xfer_ctx->increase_pool);
-
 	EPILOG();
 }
 
@@ -1923,17 +1923,19 @@ void dlp_xfer_ctx_clear(struct dlp_xfer_ctx *xfer_ctx)
  */
 static void dlp_driver_cleanup(void)
 {
-	int i = 0;
-	/* Contexts allocation functions */
+	int i;
+
+	/* Contexts release functions */
 	/* NOTE : this array should be aligned with the context enum
 	 *                defined in the .h file */
 	dlp_context_delete delete_funcs[DLP_CHANNEL_COUNT] = {
-		dlp_ctrl_ctx_delete,	/* CTRL */
 		dlp_tty_ctx_delete,		/* TTY  */
 		dlp_net_ctx_delete,		/* NET  */
 		dlp_net_ctx_delete,		/* NET  */
 		dlp_net_ctx_delete,		/* NET  */
-		dlp_flash_ctx_delete};	/* BOOT/FLASHING  */
+		dlp_flash_ctx_delete,   /* BOOT/FLASHING */
+		dlp_trace_ctx_delete,   /* TRACE */
+		dlp_ctrl_ctx_delete};	/* CTRL */
 
 	PROLOG();
 
@@ -1972,9 +1974,10 @@ static int __init dlp_driver_probe(struct device *dev)
 	dlp_context_create create_funcs[DLP_CHANNEL_COUNT] = {
 		dlp_ctrl_ctx_create,	/* CTRL */
 		dlp_tty_ctx_create,		/* TTY  */
-		dlp_net_ctx_create,		/* NET  */
-		dlp_net_ctx_create,		/* NET  */
-		dlp_net_ctx_create,		/* NET  */
+		dlp_net_ctx_create,		/* NET1  */
+		dlp_net_ctx_create,		/* NET2  */
+		dlp_net_ctx_create,		/* NET3  */
+		dlp_trace_ctx_create,   /* TRACE */
 		dlp_flash_ctx_create};	/* BOOT/FLASHING */
 
 	PROLOG();

@@ -45,7 +45,7 @@
 #include "dlp_main.h"
 
 #define DEBUG_TAG 0x1
-#define DEBUG_VAR dlp_drv.debug
+#define DEBUG_VAR (dlp_drv.debug)
 
 /*
  * When enabled, all the communication done on the channel0
@@ -1361,12 +1361,13 @@ void dlp_ctrl_cold_boot(struct dlp_channel *ch_ctx)
 
 	PROLOG();
 
-	WARNING("Cold boot requested by ch%d", ch_ctx->hsi_channel);
-
 	if (!dlp_ctrl_have_control_context()) {
 		WARNING("Nothing to do (dlp protocol not registered)");
 		return;
 	}
+
+	pr_warn(DRVNAME ": Cold boot requested by ch%d",
+			ch_ctx->hsi_channel);
 
 	/* Save the current register value */
 	ret = intel_scu_ipc_readv(&addr, &def_value, 1);

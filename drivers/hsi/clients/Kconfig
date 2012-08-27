@@ -135,15 +135,13 @@ config HSI_FLASHING_DEV_NAME
 
 	  If unsure, use the default value.
 
-config HSI_DLP_TTY_STATS
-	bool "Statistics to assess the performance of the protocol (TTY)"
-	default n
+config HSI_TRACE_DEV_NAME
+	string "The name for the Modem trace driver"
+	default "mdmTrace"
 	help
-	  If you say Y here, you will instanciate performance related counters
-	  for measuring the number of sent and received frames as well as their
-	  total actual length in bytes.
+	  Sets the name for the char device associated to this IMC trace protocol
 
-	  If not fine-tuning the HSI IMC LTE driver, say N.
+	  If unsure, use the default value.
 
 config HSI_DLP_NET_NAME
 	string "Base name for the network interfaces"
@@ -151,8 +149,6 @@ config HSI_DLP_NET_NAME
 	help
 	  Sets the base name for the NETWORK interfaces associated to this IMC
 	  modem protocol for LTE.
-	  The base name will be exported by the network interface used by the HSI
-	  eDLP protocol
 
 	  If unsure, use the default value.
 
@@ -166,6 +162,16 @@ config HSI_DLP_PDU_LENGTH
 	  4 bytes and 128 kiB (131072 bytes).
 
 	  Set to 4096 bytes by default.
+
+config HSI_DLP_TTY_STATS
+	bool "Statistics to assess the performance of the protocol (TTY)"
+	default n
+	help
+	  If you say Y here, you will instanciate performance related counters
+	  for measuring the number of sent and received frames as well as their
+	  total actual length in bytes.
+
+	  If not fine-tuning the HSI IMC LTE driver, say N.
 
 config HSI_DLP_HEADER_LENGTH
 	int "Fixed frame header length"

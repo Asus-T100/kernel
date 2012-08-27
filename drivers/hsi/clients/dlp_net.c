@@ -42,7 +42,7 @@
 #include "dlp_main.h"
 
 #define DEBUG_TAG 0x3
-#define DEBUG_VAR dlp_drv.debug
+#define DEBUG_VAR (dlp_drv.debug)
 
 /* Defaut NET stack TX timeout delay (in milliseconds) */
 #define DLP_NET_TX_DELAY		20000	/* 20 sec */
@@ -77,6 +77,11 @@ struct dlp_net_tx_params {
  *
  **/
 
+static inline int dlp_net_is_trace_channel(struct dlp_channel *ch_ctx)
+{
+	/* The channel 4 can be used for modem Trace or NET IF */
+	return (ch_ctx->hsi_channel == DLP_CHANNEL_NET3);
+}
 
 /**
  * Push as many RX PDUs  as possible to the controller FIFO
@@ -225,9 +230,6 @@ static void dlp_net_complete_tx(struct hsi_msg *pdu)
 	/* TX done, free the skb */
 	dev_kfree_skb(msg_param->skb);
 
-	/* Dump the PDU */
-	/* dlp_pdu_dump(pdu, 1); */
-
 	/* Update statistics */
 	net_ctx->ndev->stats.tx_bytes += pdu->actual_len;
 	net_ctx->ndev->stats.tx_packets++;
@@ -311,8 +313,8 @@ static void dlp_net_complete_rx(struct hsi_msg *pdu)
 		 */
 		skb = netdev_alloc_skb_ip_align(net_ctx->ndev, data_size);
 		if (!skb) {
-			CRITICAL("No more memory (data_size: %d)"
-				   " - packet dropped\n", data_size);
+			CRITICAL("Out of memory (size: %d) => packet dropped\n",
+					data_size);
 
 			net_ctx->ndev->stats.rx_dropped++;
 			goto recycle;
@@ -407,6 +409,36 @@ int dlp_net_open(struct net_device *dev)
 		goto out;
 	}
 
+	/* Is is a shared channel */
+	if (dlp_net_is_trace_channel(ch_ctx)) {
+		int state;
+
+		/* Check if the the channel is not already opened for Trace */
+		state = dlp_ctrl_get_channel_state(ch_ctx);
+		if (state != DLP_CH_STATE_CLOSED) {
+			pr_err(DRVNAME": Invalid channel state (%d)\n", state);
+			ret = -EBUSY;
+			goto out;
+		}
+
+		/* Allocate TX FIFO */
+		ret = dlp_allocate_pdus_pool(ch_ctx, &ch_ctx->tx);
+		if (ret) {
+			pr_err(DRVNAME ": Cant allocate RX FIFO pdus for ch%d\n",
+					ch_ctx->hsi_channel);
+			goto out;
+		}
+
+		/* Allocate RX FIFO */
+		ret = dlp_allocate_pdus_pool(ch_ctx, &ch_ctx->rx);
+		if (ret) {
+			pr_err(DRVNAME ": Cant allocate RX FIFO pdus for ch%d\n",
+					ch_ctx->hsi_channel);
+			goto out;
+		}
+	}
+
+	/* Open the channel */
 	ret = dlp_ctrl_open_channel(ch_ctx);
 	if (ret) {
 		CRITICAL("dlp_ctrl_open_channel() failed !");
@@ -758,7 +790,7 @@ struct dlp_channel *dlp_net_ctx_create(unsigned int index, struct device *dev)
 
 	if (!ndev) {
 		CRITICAL("alloc_netdev() failed !");
-		goto out;
+		return NULL;
 	}
 
 	/* Allocate the context private data */
@@ -775,7 +807,7 @@ struct dlp_channel *dlp_net_ctx_create(unsigned int index, struct device *dev)
 	if (!net_ctx->net_padd) {
 		CRITICAL("No more memory to allocate padding buffer");
 		ret = -ENOMEM;
-		goto free_dev;
+		goto free_ctx;
 	}
 
 	/* Register the net device */
@@ -783,7 +815,7 @@ struct dlp_channel *dlp_net_ctx_create(unsigned int index, struct device *dev)
 	if (ret) {
 		CRITICAL("register_netdev() for %s failed, error %d\n",
 			 ndev->name, ret);
-		goto free_dev;
+		goto free_buff;
 	}
 
 	net_ctx->ndev = ndev;
@@ -823,17 +855,44 @@ struct dlp_channel *dlp_net_ctx_create(unsigned int index, struct device *dev)
 
 	ch_ctx->tx.timer.function = dlp_net_tx_stop;
 
-	/* Allocate RX FIFOs in background */
-	queue_work(dlp_drv.rx_wq, &ch_ctx->rx.increase_pool);
+	if (!dlp_net_is_trace_channel(ch_ctx)) {
+		/* Allocate TX FIFO */
+		ret = dlp_allocate_pdus_pool(ch_ctx, &ch_ctx->tx);
+		if (ret) {
+			pr_err(DRVNAME ": Cant allocate RX FIFO pdus for ch%d\n",
+					index);
+			goto cleanup;
+		}
+
+		/* Allocate RX FIFO */
+		ret = dlp_allocate_pdus_pool(ch_ctx, &ch_ctx->rx);
+		if (ret) {
+			pr_err(DRVNAME ": Cant allocate RX FIFO pdus for ch%d\n",
+					index);
+			goto cleanup;
+		}
+	}
 
 	EPILOG();
 	return ch_ctx;
 
+free_buff:
+	dlp_buffer_free(net_ctx->net_padd,
+			net_ctx->net_padd_dma, DLP_NET_TX_PDU_SIZE);
+
+free_ctx:
+	kfree(net_ctx);
+
 free_dev:
 	free_netdev(ndev);
 
-out:
-	EPILOG("Failed");
+	pr_err(DRVNAME": Failed to create context for ch%d", index);
+	return NULL;
+
+cleanup:
+	dlp_net_ctx_delete(ch_ctx);
+
+	pr_err(DRVNAME": Failed to create context for ch%d", index);
 	return NULL;
 }
 

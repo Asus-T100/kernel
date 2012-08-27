@@ -113,6 +113,10 @@
 #define DLP_FLASH_TX_PDU_SIZE	4	/* 4 Bytes */
 #define DLP_FLASH_RX_PDU_SIZE	4	/* 4 Bytes */
 
+/* PDU size for Trace channel */
+#define DLP_TRACE_TX_PDU_SIZE	8192	/* 8 KBytes */
+#define DLP_TRACE_RX_PDU_SIZE	8192	/* 8 KBytes */
+
 /* Alignment params */
 #define DLP_PACKET_ALIGN_AP		16
 #define DLP_PACKET_ALIGN_CP		16
@@ -164,6 +168,7 @@ enum {
 	DLP_CHANNEL_NET1,	/* HSI Channel 2 */
 	DLP_CHANNEL_NET2,	/* HSI Channel 3 */
 	DLP_CHANNEL_NET3,	/* HSI Channel 4 */
+	DLP_CHANNEL_TRACE,	/* HSI Channel 4 */
 
 	DLP_CHANNEL_FLASH,	/* HSI Channel 0 */
 	DLP_CHANNEL_COUNT
@@ -210,7 +215,6 @@ typedef void (*hsi_client_cb) (struct hsi_client *cl);
  * @ch_num: HSI channel number
  * @payload_len: the fixed (maximal) size of a pdu payload in bytes
  * @all_len: total count of TX/RX pdus (including recycled ones)
- * @increase_pool: context of the increase pool work queue
  * @config: current updated HSI configuration
  * @complete_cb: xfer complete callback
  * @ttype: xfer type (RX/TX)
@@ -241,13 +245,12 @@ struct dlp_xfer_ctx {
 	unsigned int payload_len;
 	unsigned int all_len;
 
-	struct work_struct increase_pool;
 	struct hsi_config config;
 
 	xfer_complete_cb complete_cb;
 	unsigned int ttype;
 
-	unsigned int seq_num;
+	u16 seq_num;
 	struct completion cmd_xfer_done;
 
 #ifdef CONFIG_HSI_DLP_TTY_STATS
@@ -394,6 +397,9 @@ int dlp_set_flashing_mode(int on_off);
  * PDU handling
  *
  ***************************************************************************/
+int dlp_allocate_pdus_pool(struct dlp_channel *ch_ctx,
+						struct dlp_xfer_ctx *xfer_ctx);
+
 void *dlp_buffer_alloc(unsigned int buff_size, dma_addr_t *dma_addr);
 
 void dlp_buffer_free(void *buff, dma_addr_t dma_addr, unsigned int buff_size);
@@ -621,6 +627,16 @@ struct dlp_channel *dlp_flash_ctx_create(unsigned int index,
 		struct device *dev);
 
 int dlp_flash_ctx_delete(struct dlp_channel *ch_ctx);
+
+/****************************************************************************
+ *
+ * Modem Trace channel exported functions
+ *
+ ***************************************************************************/
+struct dlp_channel *dlp_trace_ctx_create(unsigned int index,
+		struct device *dev);
+
+int dlp_trace_ctx_delete(struct dlp_channel *ch_ctx);
 
 /****************************************************************************
  *

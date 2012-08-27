@@ -93,19 +93,9 @@ struct hsi_dlp_stats {
 #define HSI_DLP_GET_HANGUP_REASON	_IOR(HSI_DLP_MAGIC, 6, int)
 
 /*
- * HSI_DLP_SET_TX_WAIT_MAX	- set the maximal size of the TX waiting FIFO
- */
-#define HSI_DLP_SET_TX_WAIT_MAX		_IOW(HSI_DLP_MAGIC, 8, unsigned int)
-
-/*
  * HSI_DLP_GET_TX_WAIT_MAX	- get the maximal size of the TX waiting FIFO
  */
 #define HSI_DLP_GET_TX_WAIT_MAX		_IOR(HSI_DLP_MAGIC, 8, unsigned int)
-
-/*
- * HSI_DLP_SET_RX_WAIT_MAX	- set the maximal size of the RX waiting FIFO
- */
-#define HSI_DLP_SET_RX_WAIT_MAX		_IOW(HSI_DLP_MAGIC, 9, unsigned int)
 
 /*
  * HSI_DLP_GET_RX_WAIT_MAX	- get the maximal size of the RX waiting FIFO
@@ -113,19 +103,9 @@ struct hsi_dlp_stats {
 #define HSI_DLP_GET_RX_WAIT_MAX		_IOR(HSI_DLP_MAGIC, 9, unsigned int)
 
 /*
- * HSI_DLP_SET_TX_CTRL_MAX	- set the maximal size of the TX controller FIFO
- */
-#define HSI_DLP_SET_TX_CTRL_MAX		_IOW(HSI_DLP_MAGIC, 10, unsigned int)
-
-/*
  * HSI_DLP_GET_TX_CTRL_MAX	- get the maximal size of the TX controller FIFO
  */
 #define HSI_DLP_GET_TX_CTRL_MAX		_IOR(HSI_DLP_MAGIC, 10, unsigned int)
-
-/*
- * HSI_DLP_SET_RX_CTRL_MAX	- set the maximal size of the RX controller FIFO
- */
-#define HSI_DLP_SET_RX_CTRL_MAX		_IOW(HSI_DLP_MAGIC, 11, unsigned int)
 
 /*
  * HSI_DLP_GET_RX_CTRL_MAX	- get the maximal size of the RX controller FIFO
