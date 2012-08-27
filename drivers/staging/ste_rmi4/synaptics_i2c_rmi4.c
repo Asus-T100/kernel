@@ -1060,14 +1060,23 @@ static int __devinit rmi4_probe(struct i2c_client *client,
 		goto err_input;
 	}
 
-	if (platformdata->regulator_en) {
-		rmi4_data->regulator = regulator_get(&client->dev, "vdd");
+	if (platformdata->regulator_en && platformdata->regulator_name) {
+		rmi4_data->regulator = regulator_get(&client->dev,
+					platformdata->regulator_name);
 		if (IS_ERR(rmi4_data->regulator)) {
-			dev_err(&client->dev, "get regulator failed\n");
+			dev_err(&client->dev, "get regulator %s failed\n",
+					platformdata->regulator_name);
 			retval = PTR_ERR(rmi4_data->regulator);
 			goto err_regulator;
 		}
-		regulator_enable(rmi4_data->regulator);
+		retval = regulator_enable(rmi4_data->regulator);
+		if (retval < 0) {
+			dev_err(&client->dev,
+				"enable regulator %s failed with ret %d\n",
+				platformdata->regulator_name, retval);
+			regulator_put(rmi4_data->regulator);
+			goto err_regulator;
+		}
 	}
 
 	/*
@@ -1165,7 +1174,7 @@ err_query_dev:
 	gpio_free(rmi4_data->board->rst_gpio_number);
 	rmi4_free_funcs(rmi4_data);
 err_config_gpio:
-	if (platformdata->regulator_en) {
+	if (rmi4_data->regulator) {
 		regulator_disable(rmi4_data->regulator);
 		regulator_put(rmi4_data->regulator);
 	}
@@ -1194,7 +1203,7 @@ static int __devexit rmi4_remove(struct i2c_client *client)
 #ifdef CONFIG_HAS_EARLYSUSPEND
 	unregister_early_suspend(&rmi4_data->es);
 #endif
-	if (pdata->regulator_en) {
+	if (rmi4_data->regulator) {
 		regulator_disable(rmi4_data->regulator);
 		regulator_put(rmi4_data->regulator);
 	}
@@ -1217,6 +1226,9 @@ void rmi4_early_suspend(struct early_suspend *h)
 			pdata->fn01_ctrl_base_addr, F01_CTRL0_SLEEP);
 	if (retval < 0)
 		dev_err(&client->dev, "set F01_CTRL0_SLEEP failed\n");
+
+	if (pdata->regulator)
+		regulator_disable(pdata->regulator);
 }
 
 void rmi4_late_resume(struct early_suspend *h)
@@ -1227,6 +1239,13 @@ void rmi4_late_resume(struct early_suspend *h)
 	unsigned char intr_status[4];
 
 	dev_dbg(&client->dev, "%s: late resume", __func__);
+	if (pdata->regulator) {
+		/*need wait to stable if regulator first output*/
+		int needwait = !regulator_is_enabled(pdata->regulator);
+		regulator_enable(pdata->regulator);
+		if (needwait)
+			msleep(50);
+	}
 	enable_irq(pdata->irq);
 	retval = rmi4_i2c_clear_bits(pdata,
 			pdata->fn01_ctrl_base_addr, F01_CTRL0_SLEEP);
