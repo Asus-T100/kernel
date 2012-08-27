@@ -95,7 +95,7 @@ static void ttm_tt_free_user_pages(struct ttm_tt *ttm)
 		if (set_pages_array_wb(pages_to_wb, num_pages_wb))
 			printk(KERN_ERR TTM_PFX "Failed to set pages to wb\n");
 
-	} else {
+	} else if (NULL == pages_to_wb) {
 		printk(KERN_ERR TTM_PFX
 		       "Failed to allocate memory for set wb operation.\n");
 	}
