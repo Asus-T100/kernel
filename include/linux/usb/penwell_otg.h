@@ -24,6 +24,7 @@
 #include <linux/power_supply.h>
 #include <linux/wakelock.h>
 
+#define PMU_OTG_WAKE_SOURCE	6
 #define CI_USBCMD		0x30
 #	define USBCMD_RST		BIT(1)
 #	define USBCMD_RS		BIT(0)
@@ -441,6 +442,7 @@ struct penwell_otg {
 	struct work_struct		work;
 	struct work_struct		hnp_poll_work;
 	struct work_struct		psc_notify;
+	struct work_struct		uevent_work;
 	struct delayed_work		ulpi_poll_work;
 	struct delayed_work		ulpi_check_work;
 	struct delayed_work		sdp_check_work;

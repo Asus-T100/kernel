@@ -41,6 +41,7 @@
 #include <asm/intel_scu_ipc.h>
 #include <asm/intel-mid.h>
 #include "../core/usb.h"
+#include <linux/intel_mid_pm.h>
 
 #include <linux/usb/penwell_otg.h>
 
@@ -2749,6 +2750,14 @@ static void penwell_otg_ulpi_check_work(struct work_struct *work)
 	pm_runtime_put(pnw->dev);
 }
 
+static void penwell_otg_uevent_work(struct work_struct *work)
+{
+	struct penwell_otg	*pnw = the_transceiver;
+	char *uevent_envp[2] = { "USB_INTR=BOGUS", NULL };
+
+	printk(KERN_INFO"%s: send uevent USB_INTR=BOGUS\n", __func__);
+	kobject_uevent_env(&pnw->dev->kobj, KOBJ_CHANGE, uevent_envp);
+}
 
 static void penwell_otg_ulpi_poll_work(struct work_struct *work)
 {
@@ -4640,6 +4649,7 @@ static int penwell_otg_probe(struct pci_dev *pdev,
 	INIT_WORK(&pnw->work, penwell_otg_work);
 	INIT_WORK(&pnw->psc_notify, penwell_otg_psc_notify_work);
 	INIT_WORK(&pnw->hnp_poll_work, penwell_otg_hnp_poll_work);
+	INIT_WORK(&pnw->uevent_work, penwell_otg_uevent_work);
 	INIT_DELAYED_WORK(&pnw->ulpi_poll_work, penwell_otg_ulpi_poll_work);
 	INIT_DELAYED_WORK(&pnw->ulpi_check_work, penwell_otg_ulpi_check_work);
 	INIT_DELAYED_WORK(&pnw->sdp_check_work, penwell_otg_sdp_check_work);
@@ -5062,8 +5072,39 @@ static int penwell_otg_resume_noirq(struct device *dev)
 	struct penwell_otg	*pnw = the_transceiver;
 	struct intel_mid_otg_xceiv	*iotg = &pnw->iotg;
 	int			ret = 0;
+	u32			val;
 
 	dev_dbg(pnw->dev, "%s --->\n", __func__);
+
+	if (mid_pmu_is_wake_source(PMU_OTG_WAKE_SOURCE)) {
+		/* dump OTGSC register for wakeup event */
+		val = readl(pnw->iotg.base + CI_OTGSC);
+		dev_info(pnw->dev, "%s: CI_OTGSC=0x%x\n", __func__, val);
+		if (val & OTGSC_IDIS)
+			dev_info(pnw->dev, "%s: id change\n", __func__);
+		if (val & OTGSC_DPIS)
+			dev_info(pnw->dev, "%s: data pulse\n", __func__);
+		if (val & OTGSC_BSEIS)
+			dev_info(pnw->dev, "%s: b sess end\n", __func__);
+		if (val & OTGSC_BSVIS)
+			dev_info(pnw->dev, "%s: b sess valid\n", __func__);
+		if (val & OTGSC_ASVIS)
+			dev_info(pnw->dev, "%s: a sess valid\n", __func__);
+		if (val & OTGSC_AVVIS)
+			dev_info(pnw->dev, "%s: a vbus valid\n", __func__);
+
+		if (!(val & OTGSC_INTSTS_MASK)) {
+
+			static bool uevent_reported;
+			dev_info(pnw->dev,
+				 "%s: waking up from USB source, but not a OTG wakeup event\n",
+				 __func__);
+			if (!uevent_reported) {
+				queue_work(pnw->qwork, &pnw->uevent_work);
+				uevent_reported = true;
+			}
+		}
+	}
 
 	if (iotg->otg.state != OTG_STATE_A_WAIT_BCON &&
 		iotg->otg.state != OTG_STATE_A_HOST) {
