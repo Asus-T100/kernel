@@ -73,17 +73,34 @@ struct dwc_device_par {
 #ifdef DEBUG
 #define otg_write(o, reg, val)	do {					\
 		otg_dbg(o, "OTG_WRITE: reg=0x%05x, val=0x%08x\n", reg, val); \
+		if (otg->dev->power.runtime_status == RPM_SUSPENDED) { \
+			dump_stack(); printk(KERN_ERR \
+				"dwc otg_write: meet fabric error!\n"); } \
 		writel(val, ((void *)((o)->otg.io_priv)) + reg);	\
 	} while (0)
 
 #define otg_read(o, reg) ({						\
-		u32 __r = readl(((void *)((o)->otg.io_priv)) + reg);	\
+		u32 __r; \
+		if (otg->dev->power.runtime_status == RPM_SUSPENDED) { \
+			dump_stack(); printk(KERN_ERR \
+				"dwc otg_read: meet fabirc error!\n"); } \
+		__r = readl(((void *)((o)->otg.io_priv)) + reg);	\
 		otg_dbg(o, "OTG_READ: reg=0x%05x, val=0x%08x\n", reg, __r); \
 		__r;							\
 	})
 #else
-#define otg_write(o, reg, val)	writel(val, ((void *)((o)->otg.io_priv)) + reg)
-#define otg_read(o, reg)	readl(((void *)((o)->otg.io_priv)) + reg)
+#define otg_write(o, reg, val)	do { \
+	if (otg->dev->power.runtime_status == RPM_SUSPENDED) { \
+		dump_stack(); printk(KERN_ERR \
+		"dwc otg_write: meet fabric error!\n"); } \
+		writel(val, ((void *)((o)->otg.io_priv)) + reg); \
+	} while (0)
+#define otg_read(o, reg)	({ \
+	if (otg->dev->power.runtime_status == RPM_SUSPENDED) { \
+		dump_stack(); printk(KERN_ERR \
+		"dwc otg_read: meet fabirc error!\n"); } \
+		readl(((void *)((o)->otg.io_priv)) + reg); \
+	})
 #endif
 
 #define GUSB2PHYCFG0				0xc200

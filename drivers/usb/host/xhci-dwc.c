@@ -149,6 +149,33 @@ static const struct hc_driver xhci_dwc_hc_driver = {
 };
 
 
+static void dwc_set_host_mode(struct usb_hcd *hcd)
+{
+	u32 octl = 0;
+
+	writel(0x45801000, hcd->regs + GCTL);
+
+	octl = readl(hcd->regs + OCTL);
+	octl &= (~OCTL_PERI_MODE);
+	writel(octl, hcd->regs + OCTL);
+
+	msleep(20);
+}
+
+/* This is a hardware workaround.
+ * xHCI RxDetect state is not work well when USB3
+ * PHY under P3 state. So force PHY change to P2 when
+ * xHCI want to perform receiver detection.
+ */
+static void dwc_disable_ssphy_p3(struct usb_hcd *hcd)
+{
+	u32 phyval;
+
+	phyval = readl(hcd->regs + GUSB3PIPECTL0);
+	phyval |= GUSB3PIPE_DISRXDETP3;
+	writel(phyval, hcd->regs + GUSB3PIPECTL0);
+
+}
 
 static int xhci_start_host(struct usb_hcd *hcd)
 {
@@ -167,6 +194,9 @@ static int xhci_start_host(struct usb_hcd *hcd)
 	}
 
 	pm_runtime_get_sync(hcd->self.controller);
+
+	dwc_set_host_mode(hcd);
+	dwc_disable_ssphy_p3(hcd);
 
 	ret = usb_add_hcd(hcd, otg_irqnum, IRQF_DISABLED | IRQF_SHARED);
 	if (ret)

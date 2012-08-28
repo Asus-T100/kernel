@@ -221,6 +221,7 @@ static int sleep_until_event(struct dwc_otg2 *otg,
 	if (oevten)
 		otg_write(otg, OEVTEN, oevten);
 
+	pm_runtime_put_autosuspend(otg->dev);
 	/* Wait until it occurs, or timeout, or interrupt. */
 	if (timeout) {
 		otg_dbg(otg, "Waiting for event (timeout=%d)...\n", timeout);
@@ -233,6 +234,7 @@ static int sleep_until_event(struct dwc_otg2 *otg,
 				check_event(otg, otg_mask,
 					adp_mask, user_mask));
 	}
+	pm_runtime_get_sync(otg->dev);
 
 	/* Disable the events */
 	otg_write(otg, OEVTEN, 0);
@@ -248,6 +250,7 @@ done:
 	return rc;
 }
 
+#if 0
 static int handshake(struct dwc_otg2 *otg,
 		u32 reg, u32 mask, u32 done, u32 msec)
 {
@@ -265,6 +268,7 @@ static int handshake(struct dwc_otg2 *otg,
 
 	return 0;
 }
+#endif
 
 static int set_peri_mode(struct dwc_otg2 *otg, int mode)
 {
@@ -316,8 +320,7 @@ static void set_sus_phy(struct dwc_otg2 *otg, int bit)
 
 static int start_host(struct dwc_otg2 *otg)
 {
-	int ret = 0, flg;
-	u32 osts, octl;
+	int ret = 0;
 	struct usb_hcd *hcd = NULL;
 
 	otg_dbg(otg, "\n");
@@ -327,32 +330,9 @@ static int start_host(struct dwc_otg2 *otg)
 		return -ENODEV;
 	}
 
-	if (!set_peri_mode(otg, PERI_MODE_HOST))
-		otg_err(otg, "Failed to start host.");
-
 	/* Start host driver */
 	hcd = container_of(otg->otg.host, struct usb_hcd, self);
 	ret = hcd->driver->start_host(hcd);
-
-	/* Power the port only for A-host */
-	if (otg->state == DWC_STATE_A_HOST) {
-
-		/* Spin osts xhciPrtPwr bit until it becomes 1 */
-		osts = otg_read(otg, OSTS);
-		flg = handshake(otg, OSTS,
-				OSTS_XHCI_PRT_PWR,
-				OSTS_XHCI_PRT_PWR,
-				1000);
-		if (flg) {
-			otg_dbg(otg, "Port is powered by xhci-hcd\n");
-			/* Set port power control bit */
-			octl = otg_read(otg, OCTL);
-			octl |= OCTL_PRT_PWR_CTL;
-			otg_write(otg, OCTL, octl);
-		} else {
-			otg_dbg(otg, "Port is not powered by xhci-hcd\n");
-		}
-	}
 
 	return ret;
 }
@@ -383,9 +363,6 @@ static void start_peripheral(struct dwc_otg2 *otg)
 		otg_err(otg, "Haven't set gadget yet!\n");
 		return;
 	}
-
-	if (!set_peri_mode(otg, PERI_MODE_PERIPHERAL))
-		otg_err(otg, "Failed to start peripheral.");
 
 	gadget->ops->start_device(gadget);
 }
@@ -1080,7 +1057,7 @@ static enum dwc_otg_state do_connector_id_status(struct dwc_otg2 *otg)
 	int ret;
 	unsigned long flags;
 	u32 events = 0, user_events = 0;
-	u32 otg_mask = 0, user_mask = 0, phyval;
+	u32 otg_mask = 0, user_mask = 0;
 	enum dwc_otg_state state = DWC_STATE_INVALID;
 #ifdef CONFIG_DWC_CHARGER_DETECION
 	u32 gctl;
@@ -1112,15 +1089,6 @@ static enum dwc_otg_state do_connector_id_status(struct dwc_otg2 *otg)
 	gctl |= GCTL_PRT_CAP_DIR_DEV;
 	otg_write(otg, GCTL, gctl);
 #endif
-
-	/* This is a hardware workaround.
-	 * xHCI RxDetect state is not work well when USB3
-	 * PHY under P3 state. So force PHY change to P2 when
-	 * xHCI want to perform receiver detection.
-	 */
-	phyval = otg_read(otg, GUSB3PIPECTL0);
-	phyval |= GUSB3PIPE_DISRXDETP3;
-	otg_write(otg, GUSB3PIPECTL0, phyval);
 
 	msleep(60);
 
@@ -1189,6 +1157,7 @@ static enum dwc_otg_state do_connector_id_status(struct dwc_otg2 *otg)
 static void reset_hw(struct dwc_otg2 *otg)
 {
 	u32 gctl = 0;
+
 	otg_dbg(otg, "\n");
 	otg_write(otg, OEVTEN, 0);
 	otg_write(otg, OCTL, 0);
@@ -1207,10 +1176,6 @@ static enum dwc_otg_state do_a_host(struct dwc_otg2 *otg)
 	int id = RID_UNKNOWN;
 	unsigned long flags;
 #endif
-
-	set_sus_phy(otg, 0);
-	otg_write(otg, GCTL, 0x45801000);
-
 #ifdef CONFIG_DWC_CHARGER_DETECION
 	if (otg->ctype != CHRG_ACA_DOCK) {
 		dwc_otg_enable_vbus(otg, 1);
@@ -1489,6 +1454,7 @@ int otg_main_thread(void *data)
 	allow_signal(SIGKILL);
 	allow_signal(SIGUSR1);
 
+	pm_runtime_get_sync(otg->dev);
 	/* Allow the thread to be frozen */
 	set_freezable();
 	reset_hw(otg);
@@ -1551,6 +1517,7 @@ int otg_main_thread(void *data)
 		otg->state = next;
 	}
 
+	pm_runtime_put_autosuspend(otg->dev);
 	otg->main_thread = NULL;
 	otg_dbg(otg, "OTG main thread exiting....\n");
 
@@ -1957,6 +1924,15 @@ static int dwc_otg_probe(struct pci_dev *pdev,
 	}
 #endif
 
+	/* Don't let phy go to suspend mode, which
+	 * will cause FS/LS devices enum failed in host mode.
+	 */
+	set_sus_phy(otg, 0);
+
+	pm_runtime_set_autosuspend_delay(&pdev->dev, 100);
+	pm_runtime_allow(&pdev->dev);
+	pm_runtime_put_autosuspend(&pdev->dev);
+
 	return 0;
 exit:
 	if (the_transceiver)
@@ -1981,6 +1957,8 @@ static void __devexit dwc_otg_remove(struct pci_dev *pdev)
 		otg_err(otg, "free_irq\n");
 		free_irq(otg->irqnum, NULL);
 	}
+	pm_runtime_forbid(&pdev->dev);
+	pm_runtime_set_suspended(&pdev->dev);
 
 	pci_disable_device(pdev);
 	otg_set_transceiver(NULL);
@@ -1997,6 +1975,26 @@ static DEFINE_PCI_DEVICE_TABLE(pci_ids) = {
 	{ /* end: all zeroes */ }
 };
 
+
+static int dwc_otg_runtime_idle(struct device *dev)
+{
+	return 0;
+}
+static int dwc_otg_runtime_suspend(struct device *dev)
+{
+	return 0;
+}
+static int dwc_otg_runtime_resume(struct device *dev)
+{
+	return 0;
+}
+
+static const struct dev_pm_ops dwc_usb_otg_pm_ops = {
+	.runtime_suspend = dwc_otg_runtime_suspend,
+	.runtime_resume	= dwc_otg_runtime_resume,
+	.runtime_idle	= dwc_otg_runtime_idle,
+};
+
 static struct pci_driver dwc_otg_pci_driver = {
 	.name =		(char *) driver_name,
 	.id_table =	pci_ids,
@@ -2004,6 +2002,7 @@ static struct pci_driver dwc_otg_pci_driver = {
 	.remove =	dwc_otg_remove,
 	.driver = {
 		.name = (char *) driver_name,
+		.pm = &dwc_usb_otg_pm_ops,
 		.owner = THIS_MODULE,
 	},
 };
