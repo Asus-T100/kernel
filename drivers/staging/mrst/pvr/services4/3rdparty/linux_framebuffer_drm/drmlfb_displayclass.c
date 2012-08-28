@@ -1332,6 +1332,7 @@ static IMG_BOOL updatePlaneContexts(MRSTLFB_SWAPCHAIN *psSwapChain,
 	int i;
 	PDC_MEM_INFO psMemInfo, psCurrentMemInfo;
 	MRSTLFB_BUFFER *psBuffer, *psCurrentBuffer;
+	struct fb_info *psLINFBInfo;
 
 	if (!psSwapChain || !psFlipCmd || !psPlaneContexts) {
 		DRM_ERROR("Invalid parameters\n");
@@ -1371,6 +1372,8 @@ static IMG_BOOL updatePlaneContexts(MRSTLFB_SWAPCHAIN *psSwapChain,
 
 		if (psBuffer->sCPUVAddr == psMemInfo->pvLinAddrKM) {
 			psCurrentBuffer = psBuffer;
+			psLINFBInfo = psSwapChain->psDevInfo->psLINFBInfo;
+			psLINFBInfo->screen_base = psBuffer->sCPUVAddr;
 			break;
 		}
 	}
