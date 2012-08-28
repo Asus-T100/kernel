@@ -3845,24 +3845,6 @@ static struct pci_driver intel_hsi_driver = {
  */
 static int __init intel_hsi_init(void)
 {
-/* FIXME:: Do not register HSI Driver if cmdline parameter enable_stadby is 1
- * on CVT Platform. Currently HSI Modem 7060(BZ# 28529) is having a issue and
- * it will not go to Low Power Mode, so Standby will not work if HSI is enabled.
- * So we can choose between Standby/HSI based on enable_stadby 1/0.
-*/
-#ifdef CONFIG_BOARD_CTP
-/*
- * FIXME:: enable_standby has been define in mfld-pmu file so
- * compilation fails if OSPM is Disabled.
- */
-#ifdef CONFIG_ATOM_SOC_POWER
-	if (enable_standby) {
-		pr_info(DRVNAME ": Driver not registered (enable_standby=1)\n");
-		return -EBUSY;
-	}
-#endif
-#endif
-
 	/* Disable the rtpm if the hsi_pm is disabled */
 	if (!hsi_pm)
 		runtime_pm = 0;
