@@ -150,6 +150,20 @@ void dump_sst_shim(struct intel_sst_drv *sst)
 	spin_unlock_irqrestore(&sst->ipc_spin_lock, irq_flags);
 }
 
+void reset_sst_shim(struct intel_sst_drv *sst)
+{
+	pr_err("Resetting few Shim registers\n");
+	sst_shim_write(sst->shim, SST_IPCX, 0x0);
+	sst_shim_write(sst->shim, SST_IPCD, 0x0);
+	sst_shim_write(sst->shim, SST_ISRX, 0x0);
+	sst_shim_write(sst->shim, SST_ISRD, 0x0);
+	sst_shim_write(sst->shim, SST_IPCSC, 0x0);
+	sst_shim_write(sst->shim, SST_IPCLPESC, 0x0);
+	sst_shim_write(sst->shim, SST_ISRSC, 0x0);
+	sst_shim_write(sst->shim, SST_ISRLPESC, 0x0);
+	sst_shim_write(sst->shim, SST_PISR, 0x0);
+}
+
 static void dump_sst_crash_area(void)
 {
 	void __iomem *fw_dump_area;
@@ -207,6 +221,9 @@ static void sst_do_recovery(struct intel_sst_drv *sst)
 	mutex_unlock(&sst->sst_lock);
 	dump_stack();
 	dump_sst_shim(sst);
+#if 0
+	reset_sst_shim(sst);
+#endif
 	dump_sst_crash_area();
 
 	spin_lock_irqsave(&sst->ipc_spin_lock, irq_flags);
