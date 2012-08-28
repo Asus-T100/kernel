@@ -133,4 +133,6 @@ source "drivers/clocksource/Kconfig"
 source "drivers/extcon/Kconfig"
 
 source "drivers/gps/Kconfig"
+
+source "drivers/modem_control/Kconfig"
 endmenu
