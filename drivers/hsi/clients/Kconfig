@@ -15,7 +15,7 @@ config HSI_CHAR
 config HSI_FFL_TTY
 	tristate "Fixed frame length protocol on HSI"
 	default n
-	depends on HSI
+	depends on HSI && MDM_CTRL
 	help
 	  If you say Y here, you will enable the fixed frame length protocol
 	  driver over an HSI physical link.
@@ -101,7 +101,7 @@ endif
 config HSI_DLP
 	tristate "Data Link Protocol protocol on HSI for LTE IMC modems"
 	default n
-	depends on HSI
+	depends on HSI && MDM_CTRL
 	help
 	  If you say Y here, you will enable the DLP protocol for LTE IMC modem
 	  over an HSI physical link.
@@ -127,9 +127,9 @@ config HSI_FLASHING_DEV_NAME
 	string "Base name for the Boot/Flashing driver"
 	default "IFX"
 	help
-	  Sets the base name for the char device associated to this IMC Boot/Flashing protocol
-	  The base name will be appended to the char device interface used by the HSI
-	  flashing protocol
+	  Sets the base name for the char device associated to this IMC
+	  Boot/Flashing protocol. The base name will be appended to the char
+	  device interface used by the HSI flashing protocol
 
 	  If unsure, use the default value.
 
@@ -145,8 +145,8 @@ config HSI_DLP_NET_NAME
 	string "Base name for the network interfaces"
 	default "rmnet"
 	help
-	  Sets the base name for the NETWORK interfaces associated to this IMC
-	  modem protocol for LTE.
+	  The base name will be exported by the network interface used by the
+	  HSI eDLP protocol
 
 	  If unsure, use the default value.
 
