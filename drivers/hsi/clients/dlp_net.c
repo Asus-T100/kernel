@@ -101,47 +101,6 @@ static int dlp_net_push_rx_pdus(struct dlp_channel *ch_ctx)
 	return ret;
 }
 
-/*
- *
- *
- */
-static void dlp_net_modem_hangup(struct dlp_channel *ch_ctx, int reason)
-{
-	struct dlp_net_context *net_ctx = ch_ctx->ch_data;
-
-	ch_ctx->hangup.cause |= reason;
-
-	/* Stop the NET IF */
-	if (!netif_queue_stopped(net_ctx->ndev))
-		netif_stop_queue(net_ctx->ndev);
-}
-
-/**
- *	dlp_net_mdm_coredump_cb	-	Modem has signaled a core dump
- *	@irq: interrupt number
- *	@dev: our device pointer
- *
- *	The modem has indicated a core dump.
- */
-static void dlp_net_mdm_coredump_cb(struct dlp_channel *ch_ctx)
-{
-	pr_err(DRVNAME ": %s (Modem coredump)\n", __func__);
-	dlp_net_modem_hangup(ch_ctx, DLP_MODEM_HU_COREDUMP);
-}
-
-/**
- *	dlp_net_mdm_reset_cb	-	Modem has changed reset state
- *	@data: channel pointer
- *
- *	The modem has either entered or left reset state. Check the GPIO
- *	line to see which.
- */
-static void dlp_net_mdm_reset_cb(struct dlp_channel *ch_ctx)
-{
-	pr_err(DRVNAME ": %s (Modem reset)\n", __func__);
-	dlp_net_modem_hangup(ch_ctx, DLP_MODEM_HU_RESET);
-}
-
 /**
  *	dlp_net_credits_available_cb -	TX credits are available
  *	@data: channel pointer
@@ -794,8 +753,6 @@ struct dlp_channel *dlp_net_ctx_create(unsigned int ch_id,
 	dlp_ctrl_hangup_ctx_init(ch_ctx, dlp_net_hsi_tx_timeout_cb);
 
 	/* Register the Credits, Reset & Coredump CB */
-	ch_ctx->modem_coredump_cb = dlp_net_mdm_coredump_cb;
-	ch_ctx->modem_reset_cb = dlp_net_mdm_reset_cb;
 	ch_ctx->credits_available_cb = dlp_net_credits_available_cb;
 	ch_ctx->push_rx_pdus = dlp_net_push_rx_pdus;
 	ch_ctx->dump_state = dlp_dump_channel_state;
