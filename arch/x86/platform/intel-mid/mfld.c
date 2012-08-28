@@ -19,6 +19,7 @@
 #include <linux/irq.h>
 #include <linux/module.h>
 #include <linux/notifier.h>
+#include <linux/intel_mid_pm.h>
 #include <linux/intel_pmic_gpio.h>
 #include <linux/gpio.h>
 #include <linux/gpio_keys.h>
@@ -39,6 +40,7 @@
 
 void intel_mid_power_off(void)
 {
+	pmu_power_off();
 }
 
 unsigned long __init intel_mid_calibrate_tsc(void)
