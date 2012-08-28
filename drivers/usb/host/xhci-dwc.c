@@ -502,6 +502,7 @@ static int xhci_dwc_drv_probe(struct platform_device *pdev)
 	hcd->rpm_control = 1;
 	hcd->rpm_resume = 0;
 
+	platform_set_drvdata(pdev, hcd);
 	pm_runtime_enable(hcd->self.controller);
 
 	return retval;
@@ -542,14 +543,88 @@ static int dwc_hcd_runtime_idle(struct device *dev)
 {
 	return 0;
 }
+/* dwc_hcd_runtime_suspend and dwc_hcd_runtime_resume functions
+ * are refer to hcd_pci_runtime_suspend and hcd_pci_runtime_resume.
+ * Because the common runtime pm callback just support PCI device.
+ * So re-write them in here to support platform devices.
+ */
 static int dwc_hcd_runtime_suspend(struct device *dev)
 {
-	return 0;
+	struct platform_device		*pdev = to_platform_device(dev);
+	struct usb_hcd		*hcd = platform_get_drvdata(pdev);
+	struct xhci_hcd		*xhci = hcd_to_xhci(hcd);
+	int			retval = 0;
+	u32 data = 0;
+
+	if (!xhci) {
+		dev_dbg(dev, "%s: host already stop!\n", __func__);
+		return 0;
+	}
+
+	/* Root hub suspend should have stopped all downstream traffic,
+	 * and all bus master traffic.  And done so for both the interface
+	 * and the stub usb_device (which we check here).  But maybe it
+	 * didn't; writing sysfs power/state files ignores such rules...
+	 */
+	if (HCD_RH_RUNNING(hcd)) {
+		dev_warn(dev, "Root hub is not suspended\n");
+		return -EBUSY;
+	}
+	if (hcd->shared_hcd) {
+		hcd = hcd->shared_hcd;
+		if (HCD_RH_RUNNING(hcd)) {
+			dev_warn(dev, "Secondary root hub is not suspended\n");
+			return -EBUSY;
+		}
+	}
+
+	if (!HCD_DEAD(hcd)) {
+		/* Optimization: Don't suspend if a root-hub wakeup is
+		 * pending and it would cause the HCD to wake up anyway.
+		 */
+		if (HCD_WAKEUP_PENDING(hcd))
+			return -EBUSY;
+		if (hcd->shared_hcd &&
+				HCD_WAKEUP_PENDING(hcd->shared_hcd))
+			return -EBUSY;
+		if (hcd->state != HC_STATE_SUSPENDED ||
+				xhci->shared_hcd->state != HC_STATE_SUSPENDED)
+			retval = -EINVAL;
+
+		if (!retval) {
+			data = readl(hcd->regs + GCTL);
+			data |= GCTL_GBL_HIBERNATION_EN;
+			writel(data, hcd->regs + GCTL);
+			printk(KERN_ERR "set xhci hibernation enable!\n");
+			retval = xhci_suspend(xhci);
+		}
+
+		/* Check again in case wakeup raced with pci_suspend */
+		if ((retval == 0 && HCD_WAKEUP_PENDING(hcd)) ||
+				(retval == 0 && hcd->shared_hcd &&
+				 HCD_WAKEUP_PENDING(hcd->shared_hcd))) {
+			xhci_resume(xhci, false);
+			retval = -EBUSY;
+		}
+		if (retval)
+			return retval;
+	}
+
+	synchronize_irq(otg_irqnum);
+
+	return retval;
 }
 static int dwc_hcd_runtime_resume(struct device *dev)
 {
-	struct platform_device *pdev = to_platform_device(dev);
-	struct usb_hcd *hcd = platform_get_drvdata(pdev);
+	struct platform_device		*pdev = to_platform_device(dev);
+	struct usb_hcd		*hcd = platform_get_drvdata(pdev);
+	struct xhci_hcd		*xhci = hcd_to_xhci(hcd);
+	int			retval = 0;
+
+	if (!xhci) {
+		printk(KERN_ERR "%s: xHCI equal NULL, return\n", __func__);
+		return 0;
+	}
 
 	if (hcd->rpm_control) {
 		if (hcd->rpm_resume) {
@@ -559,7 +634,31 @@ static int dwc_hcd_runtime_resume(struct device *dev)
 		}
 	}
 
-	return 0;
+	if (HCD_RH_RUNNING(hcd) ||
+			(hcd->shared_hcd &&
+			 HCD_RH_RUNNING(hcd->shared_hcd))) {
+		dev_dbg(dev, "can't resume, not suspended!\n");
+		return 0;
+	}
+
+	clear_bit(HCD_FLAG_SAW_IRQ, &hcd->flags);
+	if (hcd->shared_hcd)
+		clear_bit(HCD_FLAG_SAW_IRQ, &hcd->shared_hcd->flags);
+
+	if (!HCD_DEAD(hcd)) {
+
+		retval = xhci_resume(xhci, false);
+		if (retval) {
+			dev_err(dev, "PCI post-resume error %d!\n", retval);
+			if (hcd->shared_hcd)
+				usb_hc_died(hcd->shared_hcd);
+			usb_hc_died(hcd);
+		}
+	}
+
+	dev_dbg(dev, "hcd_pci_runtime_resume: %d\n", retval);
+
+	return retval;
 }
 #else
 #define dwc_hcd_runtime_idle NULL
