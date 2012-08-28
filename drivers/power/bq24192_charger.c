@@ -703,6 +703,63 @@ static int bq24192_reg_multi_bitset(struct i2c_client *client, u8 reg,
 	return ret;
 }
 
+/*
+ * This function verifies if the bq24192i charger chip is in Hi-Z
+ * If yes, then clear the Hi-Z to resume the charger operations
+ */
+static int bq24192_clear_hiz(struct bq24192_chip *chip)
+{
+	int ret, count;
+
+	dev_dbg(&chip->client->dev, "%s\n", __func__);
+
+	mutex_lock(&chip->event_lock);
+
+	for (count = 0; count < MAX_TRY; count++) {
+		/*
+		 * Read the bq24192i REG00 register for charger Hi-Z mode.
+		 * If it is in Hi-Z, then clear the Hi-Z to resume the charging
+		 * operations.
+		 */
+		ret = bq24192_read_reg(chip->client,
+				BQ24192_INPUT_SRC_CNTL_REG);
+		if (ret < 0) {
+			dev_warn(&chip->client->dev,
+					"Input src cntl read failed\n");
+			goto i2c_error;
+		}
+
+		if (chip->input_curr & INPUT_SRC_CNTL_EN_HIZ) {
+			dev_warn(&chip->client->dev,
+						"Charger IC in Hi-Z mode\n");
+#ifdef DEBUG
+			bq24192_dump_registers(chip);
+#endif
+			/* Clear the Charger from Hi-Z mode */
+			ret &= ~INPUT_SRC_CNTL_EN_HIZ;
+
+			/* Write the values back */
+			ret = bq24192_write_reg(chip->client,
+					BQ24192_INPUT_SRC_CNTL_REG, ret);
+			if (ret < 0) {
+				dev_warn(&chip->client->dev,
+						"Input src cntl write failed\n");
+				goto i2c_error;
+			}
+			msleep(150);
+		} else {
+			dev_info(&chip->client->dev,
+						"Charger is not in Hi-Z\n");
+			break;
+		}
+	}
+	mutex_unlock(&chip->event_lock);
+	return ret;
+i2c_error:
+	mutex_unlock(&chip->event_lock);
+	dev_err(&chip->client->dev, "%s\n", __func__);
+	return ret;
+}
 /*****************************************************************************/
 /*
  * Extreme Charging Section: This section defines sysfs interfaces used
@@ -1154,6 +1211,18 @@ static int stop_charging(struct bq24192_chip *chip)
 	if (ret < 0)
 		dev_warn(&chip->client->dev, "I2C write failed:%s\n", __func__);
 
+	/*
+	 * While disabling the charging, program the input source control
+	 * register with minimum current ~100mA, so that in case Hi-Z clears
+	 * and the charger resumes the charging immediately, the charger should
+	 * not withdraw more than 100mA.
+	 */
+	ret = bq24192_write_reg(chip->client, BQ24192_INPUT_SRC_CNTL_REG,
+							INPUT_SRC_CUR_LMT0);
+	if (ret < 0) {
+			dev_warn(&chip->client->dev,
+						"Input src cntl write failed\n");
+	}
 	mutex_unlock(&chip->event_lock);
 	return ret;
 }
@@ -1208,48 +1277,6 @@ static void set_up_charging(struct bq24192_chip *chip,
 	if (ret < 0) {
 		dev_warn(&chip->client->dev, "TIMER enable failed\n");
 		goto i2c_error;
-	}
-
-	/*
-	 * WA for TI Charger HW issue.
-	 * Read the input src cntl register to see if the charger is in
-	 * Hi-Z mode. If yes then clear the Hi-Z bit to start the charging
-	 */
-	for (count = 0 ; count < MAX_TRY; count++) {
-		ret = bq24192_read_reg(chip->client,
-						BQ24192_INPUT_SRC_CNTL_REG);
-		if (ret < 0) {
-			dev_warn(&chip->client->dev,
-					"Input src cntl read failed\n");
-			goto i2c_error;
-		}
-
-		if (ret & INPUT_SRC_CNTL_EN_HIZ) {
-			dev_warn(&chip->client->dev, "Charger IC in Hi-Z mode\n");
-
-#ifdef DEBUG
-			bq24192_dump_registers(chip);
-#endif
-
-			/* Clear the Charger from Hi-Z mode */
-			ret &= ~INPUT_SRC_CNTL_EN_HIZ;
-
-			/* Write the values back */
-			ret = bq24192_write_reg(chip->client,
-					BQ24192_INPUT_SRC_CNTL_REG, ret);
-			if (ret < 0) {
-				dev_warn(&chip->client->dev,
-						"Input src cntl write failed\n");
-				goto i2c_error;
-			}
-
-			/* Time in millisec for TI charger to settle down */
-			msleep(150);
-		} else {
-			dev_warn(&chip->client->dev,
-				"Charger IC not in Hi-Z mode\n");
-			break;
-		}
 	}
 	return;
 
@@ -1509,6 +1536,12 @@ static void bq24192_maintenance_worker(struct work_struct *work)
 	 * FIXEME: Hw issue in TI charger. Hi-Z needs to be cleared continuously
 	 * as long as charger is connected
 	 */
+	ret = bq24192_clear_hiz(chip);
+	if (ret < 0) {
+		dev_warn(&chip->client->dev, "%s HiZ clr failed\n", __func__);
+		goto sched_maint_work;
+	}
+
 	retval = (chip->input_curr & ~INPUT_SRC_CNTL_EN_HIZ);
 	ret = bq24192_write_reg(chip->client,
 				BQ24192_INPUT_SRC_CNTL_REG, retval);
@@ -1890,6 +1923,13 @@ static void bq24192_event_worker(struct work_struct *work)
 				"Charger not attached, dnt resume charging\n");
 				break;
 			}
+		}
+
+		ret = bq24192_clear_hiz(chip);
+		if (ret < 0) {
+			dev_warn(&chip->client->dev, "%s Hi-Z clear failed\n",
+								__func__);
+			goto i2c_write_fail;
 		}
 
 		/* updating this because we have resumed charging */
