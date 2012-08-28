@@ -239,8 +239,7 @@ static long scu_ipc_ioctl(struct file *fp, unsigned int cmd,
 
 		/* Check get residency counter valid cmd range */
 
-		if (cmd_id < IPC_RESIDENCY_CMD_ID_START ||
-			cmd_id > IPC_RESIDENCY_CMD_ID_DUMP) {
+		if (cmd_id > IPC_RESIDENCY_CMD_ID_DUMP) {
 			pr_err("invalid si0x residency sub-cmd id!\n");
 			return -EINVAL;
 		}
