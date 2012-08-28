@@ -1457,30 +1457,39 @@ static void dlp_hsi_ehandler(struct hsi_client *cl, unsigned long event)
 }
 
 /*
-* @brief Used to deactivate the HSI client events callbacks
+* @brief This function is used to deactivate the HSI client RX callbacks
 *
-* @param event_cb : Events callback to set
+* @param start_rx_cb : Start RX callback backup function
+* @param stop_rx_cb : Stop RX callback backup function
 */
-void dlp_save_rx_callbacks(hsi_client_cb *event_cb)
+void dlp_save_rx_callbacks(hsi_client_cb *start_rx_cb,
+			   hsi_client_cb *stop_rx_cb)
 {
 	/* Save the current events CB */
-	(*event_cb) = dlp_drv.client->ehandler;
+	(*start_rx_cb) = dlp_drv.client->hsi_start_rx;
+	(*stop_rx_cb) = dlp_drv.client->hsi_stop_rx;
 
-	/* Unregister the events callback */
-	if (hsi_port_claimed(dlp_drv.client))
-		hsi_unregister_port_event(dlp_drv.client);
+	/* Set to NULL the CB pointer */
+	dlp_drv.client->hsi_start_rx = NULL;
+	dlp_drv.client->hsi_stop_rx = NULL;
 }
 
 /*
-* @brief Used to reactivate the HSI client events callbacks
+* @brief This function is used to reactivate the HSI client RX callbacks
 *
-* @param event_cb : Events callback to set
+* @param start_rx_cb : Start RX callback to set
+* @param stop_rx_cb : Stop RX callback to set
 */
-void dlp_restore_rx_callbacks(hsi_client_cb *event_cb)
+void dlp_restore_rx_callbacks(hsi_client_cb *start_rx_cb,
+			      hsi_client_cb *stop_rx_cb)
 {
-	/* Restore the events callback*/
-	if (hsi_port_claimed(dlp_drv.client))
-		hsi_register_port_event(dlp_drv.client, (*event_cb));
+	/* Restore the client CB */
+	dlp_drv.client->hsi_start_rx = (*start_rx_cb);
+	dlp_drv.client->hsi_stop_rx = (*stop_rx_cb);
+
+	/* Set to NULL the CB pointer */
+	start_rx_cb = NULL;
+	stop_rx_cb = NULL;
 }
 
 /*
@@ -1505,14 +1514,16 @@ int dlp_set_flashing_mode(int flashing)
 		dlp_drv.client->rx_cfg = dlp_drv.flash_rx_cfg;
 
 		/* Disable the HSI events cb */
-		dlp_save_rx_callbacks(&dlp_drv.ehandler);
+		dlp_save_rx_callbacks(&dlp_drv.start_rx_cb,
+				      &dlp_drv.stop_rx_cb);
 	} else {
 		/* Set IPC configs */
 		dlp_drv.client->tx_cfg = dlp_drv.ipc_tx_cfg;
 		dlp_drv.client->rx_cfg = dlp_drv.ipc_rx_cfg;
 
 		/* Restore the HSI events cb */
-		dlp_restore_rx_callbacks(&dlp_drv.ehandler);
+		dlp_restore_rx_callbacks(&dlp_drv.start_rx_cb,
+					 &dlp_drv.stop_rx_cb);
 	}
 
 	/* Claim the HSI port (to use for IPC) */
@@ -1805,19 +1816,6 @@ static struct hsi_client_driver dlp_driver_setup = {
 static int __init dlp_module_init(void)
 {
 	int err, debug_value, flow_ctrl;
-
-/*
- * FIXME:: This is just a temporary W/A to allow PnP tests
- *
- * To activate this patch this param should be added to the
- * kernel boot cmdline: intel_soc_pmu.enable_standby=1
- */
-#ifdef CONFIG_ATOM_SOC_POWER
-	if (enable_standby) {
-		pr_warn(DRVNAME ": eDLP protcol will not be registered\n");
-		return -EBUSY;
-	}
-#endif
 
 	/* Save the module param value */
 	debug_value = dlp_drv.debug;

@@ -529,14 +529,14 @@ struct dlp_channel *dlp_flash_ctx_create(unsigned int index, struct device *dev)
 	/* Allocate channel struct data */
 	ch_ctx = kzalloc(sizeof(struct dlp_channel), GFP_KERNEL);
 	if (!ch_ctx) {
-		pr_err(DRVNAME ": Unable to allocate memory (flash_ch_ctx)\n");
+		pr_err(DRVNAME ": Out of memory (flash_ch_ctx)\n");
 		goto out;
 	}
 
 	/* Allocate the context private data */
 	flash_ctx = kzalloc(sizeof(struct dlp_flash_ctx), GFP_KERNEL);
 	if (!flash_ctx) {
-		pr_err(DRVNAME ": Unable to allocate memory (flash_ctx)\n");
+		pr_err(DRVNAME ": Out of memory (flash_ctx)\n");
 		goto free_ch;
 	}
 
