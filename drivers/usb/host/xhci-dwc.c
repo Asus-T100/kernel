@@ -177,6 +177,31 @@ static void dwc_disable_ssphy_p3(struct usb_hcd *hcd)
 
 }
 
+static ssize_t
+show_pm_get(struct device *_dev, struct device_attribute *attr, char *buf)
+{
+	struct platform_device		*pdev = to_platform_device(_dev);
+	struct usb_hcd		*hcd = platform_get_drvdata(pdev);
+	printk(KERN_ERR "pm_runtime_put for xHCI device\n");
+
+	pm_runtime_put(hcd->self.controller);
+	return 0;
+
+}
+static ssize_t store_pm_get(struct device *_dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct platform_device		*pdev = to_platform_device(_dev);
+	struct usb_hcd		*hcd = platform_get_drvdata(pdev);
+	printk(KERN_ERR "pm_runtime_get for xHCI device\n");
+
+	pm_runtime_get(hcd->self.controller);
+	return count;
+
+}
+static DEVICE_ATTR(pm_get, S_IRUGO|S_IWUSR|S_IWGRP,\
+			show_pm_get, store_pm_get);
+
 static int xhci_start_host(struct usb_hcd *hcd)
 {
 	int ret = -EINVAL;
@@ -230,7 +255,13 @@ static int xhci_start_host(struct usb_hcd *hcd)
 		goto put_usb3_hcd;
 
 	pm_runtime_put(hcd->self.controller);
-	return 0;
+	ret = device_create_file(hcd->self.controller, &dev_attr_pm_get);
+	if (ret < 0) {
+		printk(KERN_ERR
+			"Can't register sysfs attribute: %d\n", ret);
+	}
+
+	return ret;
 
 put_usb3_hcd:
 	if (xhci->shared_hcd) {
@@ -288,6 +319,7 @@ static int xhci_stop_host(struct usb_hcd *hcd)
 	*((struct xhci_hcd **) hcd->hcd_priv) = NULL;
 
 	pm_runtime_put(hcd->self.controller);
+	device_remove_file(hcd->self.controller, &dev_attr_pm_get);
 	return 0;
 }
 
