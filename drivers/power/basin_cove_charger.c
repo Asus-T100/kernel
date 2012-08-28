@@ -502,9 +502,13 @@ static int adc_temp_conv(int in_val, int *out_val, int conv)
 		if (!is_valid_adc_code(in_val))
 			return -ERANGE;
 
-		for (i = 0; i < tbl_row_cnt; ++i)
-			if (in_val < adc_tbl[i].adc_val)
-				break;
+		if (in_val == adc_tbl[tbl_row_cnt-1].adc_val)
+			i = tbl_row_cnt - 1;
+		else {
+			for (i = 0; i < tbl_row_cnt; ++i)
+				if (in_val < adc_tbl[i].adc_val)
+					break;
+		}
 
 		*out_val =
 		    interpolate_y((adc_tbl[i].adc_val - adc_tbl[i - 1].adc_val),
@@ -515,9 +519,14 @@ static int adc_temp_conv(int in_val, int *out_val, int conv)
 		if (!is_valid_temp(in_val))
 			return -ERANGE;
 
-		for (i = 0; i < tbl_row_cnt; ++i)
-			if (in_val > adc_tbl[i].temp)
-				break;
+		if (in_val == adc_tbl[tbl_row_cnt-1].temp)
+			i = tbl_row_cnt - 1;
+		else {
+			for (i = 0; i < tbl_row_cnt; ++i)
+				if (in_val > adc_tbl[i].temp)
+					break;
+		}
+
 		*out_val =
 		    interpolate_x((adc_tbl[i].temp - adc_tbl[i - 1].temp),
 				  (adc_tbl[i].adc_val - adc_tbl[i - 1].adc_val),
