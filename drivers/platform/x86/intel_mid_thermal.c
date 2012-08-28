@@ -51,11 +51,11 @@ static char *name[MSIC_THERMAL_SENSORS] = {
 #define SKIN0_INDEX		0
 #define SKIN1_INDEX		1
 #define MSIC_DIE_INDEX		2
-#define BP_THERM_INDEX		3
-#define BACK_SKIN_SLOPE		723
-#define BACK_SKIN_INTERCEPT	7084
-#define FRONT_SKIN_SLOPE	446
-#define FRONT_SKIN_INTERCEPT	14050
+#define BPTHERM_INDEX		3
+#define SKIN1_SLOPE		723
+#define SKIN1_INTERCEPT		7084
+#define SKIN0_SLOPE		446
+#define SKIN0_INTERCEPT		14050
 #define BPTHERM_SLOPE		788
 #define BPTHERM_INTERCEPT	5065
 #else
@@ -63,11 +63,16 @@ static char *name[MSIC_THERMAL_SENSORS] = {
 /* Number of thermal sensors */
 #define MSIC_THERMAL_SENSORS	4
 #define MSIC_DIE_INDEX		3
+#define SKIN0_INDEX		0
+#define SKIN1_INDEX		1
+#define SKIN1_SLOPE		806
+#define SKIN1_INTERCEPT		1800
+#define SKIN0_SLOPE		851
+#define SKIN0_INTERCEPT		2800
 static char *name[MSIC_THERMAL_SENSORS] = {
 	"skin0", "skin1", "sys", "msicdie"
 };
 #endif
-
 
 /* MSIC die attributes */
 #define MSIC_DIE_ADC_MIN	488
@@ -75,6 +80,10 @@ static char *name[MSIC_THERMAL_SENSORS] = {
 
 /* Convert adc_val to die temperature (in milli degree celsius) */
 #define TO_MSIC_DIE_TEMP(adc_val)	(368 * adc_val - 219560)
+
+/* Convert Thermistor temperature to skin0/skin1 temperature */
+#define SKIN0_TEMP(temp) ((temp * SKIN0_SLOPE + SKIN0_INTERCEPT) / 1000)
+#define SKIN1_TEMP(temp) ((temp * SKIN1_SLOPE + SKIN1_INTERCEPT) / 1000)
 
 #define TABLE_LENGTH 24
 /*
@@ -228,62 +237,43 @@ static int mid_read_temp(struct thermal_zone_device *tzd, unsigned long *temp)
 {
 	struct thermal_device_info *td_info = tzd->devdata;
 	int ret;
-	long curr_temp, bptherm_temp;
+	long curr_temp, bp_temp = 0;
 	int sample_count = 1; /* No of times each channel must be sampled */
 	int indx = td_info->sensor_index; /* Required Index */
 	int val[MSIC_THERMAL_SENSORS];
 
-#ifdef CONFIG_BOARD_CTP
 	ret = intel_mid_gpadc_sample(therm_adc_handle, sample_count,
 					&val[0], &val[1], &val[2], &val[3]);
-#else
-	ret = intel_mid_gpadc_sample(therm_adc_handle, sample_count,
-					&val[0], &val[1], &val[2], &val[3]);
-#endif
 	if (ret)
 		return ret;
 
 	/* Convert ADC value to temperature */
 	ret = adc_to_temp(td_info->direct, val[indx], &curr_temp);
+	if (ret)
+		return ret;
 
+	switch (indx) {
+	case SKIN0_INDEX:
+		*temp = SKIN0_TEMP(curr_temp);
+		break;
+	case SKIN1_INDEX:
 #ifdef CONFIG_BOARD_CTP
-	if (ret == 0) {
-		switch (indx) {
-		case SKIN0_INDEX:
-		/*FrontSkin = 0.4459 * SYSTHERM0 + 14.05 */
-			curr_temp =
-				curr_temp * FRONT_SKIN_SLOPE +
-					FRONT_SKIN_INTERCEPT;
-			curr_temp = curr_temp / 1000;
-			break;
-		case SKIN1_INDEX:
-		/* BackSkin = max((.7231 * SYSTHERM0 + 7.084),
-		*	(.7884 * BPTHERM + 5.0655)) */
-			ret = adc_to_temp(td_info->direct,
-					val[BP_THERM_INDEX], &bptherm_temp);
-			if (ret != 0)
-				return ret;
-			curr_temp =
-				curr_temp * BACK_SKIN_SLOPE +
-					BACK_SKIN_INTERCEPT;
-			curr_temp = curr_temp / 1000;
-			bptherm_temp =
-				bptherm_temp * BPTHERM_SLOPE +
-					BPTHERM_INTERCEPT;
-			bptherm_temp = bptherm_temp / 1000;
-			curr_temp =
-				curr_temp > bptherm_temp ?
-					curr_temp : bptherm_temp;
-			break;
-		case BP_THERM_INDEX:
-			break;
-		}
+		ret = adc_to_temp(td_info->direct,
+					val[BPTHERM_INDEX], &bp_temp);
+		if (ret)
+			return ret;
+		bp_temp = (bp_temp * BPTHERM_SLOPE + BPTHERM_INTERCEPT) / 1000;
+#endif
+		*temp = SKIN1_TEMP(curr_temp);
+
+		/* Max(Back Skin Thermistor temp, BPTHERM value) */
+		if (bp_temp > *temp)
+			*temp = bp_temp;
+		break;
+	default:
 		*temp = curr_temp;
 	}
-#else
-	if (ret == 0)
-		*temp = curr_temp;
-#endif
+
 	return ret;
 }
 
@@ -371,7 +361,7 @@ static int mid_thermal_probe(struct ipc_device *ipcdev)
 	/* Allocate ADC channels for all sensors */
 	therm_adc_handle = intel_mid_gpadc_alloc(MSIC_THERMAL_SENSORS,
 					0x08 | CH_NEED_VREF | CH_NEED_VCALIB,
-					0x09 | CH_NEED_VREF | CH_NEED_VCALIB,
+					0x08 | CH_NEED_VREF | CH_NEED_VCALIB,
 					0x0A | CH_NEED_VREF | CH_NEED_VCALIB,
 					0x03 | CH_NEED_VCALIB);
 #endif
