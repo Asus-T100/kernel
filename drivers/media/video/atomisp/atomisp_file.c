@@ -148,6 +148,9 @@ static int file_input_try_mbus_fmt(struct v4l2_subdev *sd,
 	if (fmt == NULL)
 		return -EINVAL;
 
+	if (out_pipe->out_fmt == NULL)
+		return -EINVAL;
+
 	if ((fmt->width > out_pipe->out_fmt->width) ||
 	    (fmt->height > out_pipe->out_fmt->height))
 		return -EINVAL;
@@ -169,6 +172,9 @@ static int file_input_g_mbus_fmt(struct v4l2_subdev *sd,
 	if (fmt == NULL)
 		return -EINVAL;
 
+	if (out_pipe->out_fmt == NULL)
+		return -EINVAL;
+
 	fmt->width = out_pipe->out_fmt->width;
 	fmt->height = out_pipe->out_fmt->height;
 	fmt->code = V4L2_MBUS_FMT_SGRBG10_1X10;
@@ -186,6 +192,9 @@ static int file_input_s_mbus_fmt(struct v4l2_subdev *sd,
 	int ret;
 
 	if (fmt == NULL)
+		return -EINVAL;
+
+	if (out_pipe->out_fmt == NULL)
 		return -EINVAL;
 
 	ret = file_input_try_mbus_fmt(sd, fmt);

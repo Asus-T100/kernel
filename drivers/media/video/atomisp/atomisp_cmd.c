@@ -3353,7 +3353,12 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 
 	/* get sensor resolution and format */
 	snr_fmt = *f;
-	atomisp_try_fmt(vdev, &snr_fmt, &res_overflow);
+	ret = atomisp_try_fmt(vdev, &snr_fmt, &res_overflow);
+	if (ret) {
+		v4l2_err(&atomisp_dev, "try sensor resolution and format error.\n");
+		return -EINVAL;
+	}
+
 	width = snr_fmt.fmt.pix.width;
 	height = snr_fmt.fmt.pix.height;
 
