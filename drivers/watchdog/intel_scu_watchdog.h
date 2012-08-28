@@ -67,15 +67,21 @@ struct intel_scu_watchdog_dev {
 	struct sfi_timer_table_entry *timer6_tbl_ptr;
 	struct notifier_block reboot_notifier;
 	struct miscdevice miscdev;
+	bool shutdown_flag;
 	struct tasklet_struct interrupt_tasklet;
 	int reset_type;
+	int normal_wd_action;
+	int reboot_wd_action;
+	int shutdown_wd_action;
 #ifdef CONFIG_DEBUG_FS
+	bool panic_reboot_notifier;
 	struct dentry *dfs_wd;
 	struct dentry *dfs_secwd;
 	struct dentry *dfs_secwd_trigger;
 	struct dentry *dfs_kwd;
 	struct dentry *dfs_kwd_trigger;
 	struct dentry *dfs_kwd_reset_type;
+	struct dentry *dfs_kwd_panic_reboot;
 #endif
 };
 

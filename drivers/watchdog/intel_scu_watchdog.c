@@ -23,12 +23,13 @@
  */
 
 /* See Documentation/watchdog/intel-scu-watchdog.txt */
-
+/* #define DEBUG */
 #include <linux/compiler.h>
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/moduleparam.h>
 #include <linux/types.h>
+#include <linux/device.h>
 #include <linux/miscdevice.h>
 #include <linux/watchdog.h>
 #include <linux/fs.h>
@@ -71,14 +72,20 @@
 #define IPC_SET_SUB_LOAD_THRES  0x00
 #define IPC_SET_SUB_DISABLE     0x01
 #define IPC_SET_SUB_KEEPALIVE   0x02
-#define IPC_SET_SUB_SHUTDOWN    0x03
-#define IPC_SET_COLDRESET       0x04
-#define IPC_SET_COLDBOOT        0x05
-#define IPC_SET_DONOTHING       0x06
+#define IPC_SET_SUB_COLDOFF     0x03
+#define IPC_SET_SUB_COLDRESET   0x04
+#define IPC_SET_SUB_COLDBOOT    0x05
+#define IPC_SET_SUB_DONOTHING   0x06
+
+#define STRING_RESET_TYPE_MAX_LEN 11
+#define STRING_COLD_OFF "COLD_OFF"
+#define STRING_COLD_RESET "COLD_RESET"
+#define STRING_COLD_BOOT "COLD_BOOT"
 
 #ifdef CONFIG_DEBUG_FS
 #define SECURITY_WATCHDOG_ADDR_PNW 0xff108194
 #define SECURITY_WATCHDOG_ADDR_CLV 0xff108ffc
+#define STRING_NONE "NONE"
 #endif
 
 #define WDIOC_SETTIMERTIMEOUT     _IOW(WATCHDOG_IOCTL_BASE, 11, int)
@@ -86,7 +93,14 @@
 
 
 /* Statics */
-static struct intel_scu_watchdog_dev watchdog_device;
+#ifdef CONFIG_DEBUG_FS
+static struct intel_scu_watchdog_dev watchdog_device = {
+	.normal_wd_action = IPC_SET_SUB_COLDRESET,
+	.reboot_wd_action = IPC_SET_SUB_COLDRESET,
+	.shutdown_wd_action = IPC_SET_SUB_COLDOFF,
+	.panic_reboot_notifier = false
+};
+#endif
 static struct wake_lock watchdog_wake_lock;
 static DECLARE_WAIT_QUEUE_HEAD(read_wq);
 static unsigned char osnib_reset = OSNIB_WRITE_VALUE;
@@ -138,24 +152,6 @@ MODULE_PARM_DESC(timer_timeout,
 		"Time between timer interrupt and resetting the system");
 
 static bool reset_on_release = true;
-static bool kicking_active = true;
-#ifdef CONFIG_DEBUG_WATCHDOG
-module_param(reset_on_release, bool, S_IRUGO | S_IWUSR);
-MODULE_PARM_DESC(reset_on_release,
-		"A true means that the driver will reboot"
-		"the system immediately if the /dev/watchdog device is closed"
-		"A false means that when /dev/watchdog device is closed"
-		"the watchdog timer will be refreshed for one more interval"
-		"of length: timeout. At the end of this interval, the"
-		"watchdog timer will reset the system."
-		);
-
-module_param(kicking_active, bool, S_IRUGO | S_IWUSR);
-MODULE_PARM_DESC(kicking_active,
-		 "Deactivating the kicking will result in a cold reset"
-		 "after a while"
-		 );
-#endif
 
 #ifdef CONFIG_INTEL_SCU_SOFT_LOCKUP
 /*
@@ -219,9 +215,9 @@ static void dump_softlock_debug(unsigned long data)
 #endif /* CONFIG_INTEL_SCU_SOFT_LOCKUP */
 
 /* Check current timeouts */
-static int check_timeouts(void)
+static int check_timeouts(int pre_time, int timer_time, int timeout_time)
 {
-	if (timer_timeout+pre_timeout < timeout)
+	if (timer_time+pre_time < timeout_time)
 		return 0;
 
 	return -EINVAL;
@@ -254,18 +250,20 @@ static int watchdog_set_timeouts(int timer_threshold, int warning_pretimeout,
 	return ret;
 };
 
+/* Provisioning function for future enhancement : allow to fine tune timing
+   according to watchdog action settings */
+static int watchdog_set_appropriate_timeouts(void)
+{
+	pr_debug(PFX "Setting shutdown timeouts\n");
+	return watchdog_set_timeouts(timer_timeout, pre_timeout, timeout);
+}
+
 /* Keep alive  */
 static int watchdog_keepalive(void)
 {
 	int ret;
 
 	pr_err(PFX "%s\n", __func__);
-
-	if (unlikely(!kicking_active)) {
-		/* Close our eyes */
-		pr_err(PFX "Transparent kicking\n");
-		return 0;
-	}
 
 	/* Really kick it */
 	ret = intel_scu_ipc_command(IPC_SET_WATCHDOG_TIMER,
@@ -281,7 +279,7 @@ static int intel_scu_stop(void)
 {
 	int ret;
 
-	pr_err(PFX "%s\n", __func__);
+	pr_crit(PFX "%s\n", __func__);
 
 	ret = intel_scu_ipc_command(IPC_SET_WATCHDOG_TIMER,
 				    IPC_SET_SUB_DISABLE, NULL, 0, NULL, 0);
@@ -395,8 +393,6 @@ static int watchdog_config_and_start(u32 newtimeout, u32 newpretimeout)
 /* Open */
 static int intel_scu_open(struct inode *inode, struct file *file)
 {
-	int ret;
-
 	/* Set flag to indicate that watchdog device is open */
 	if (test_and_set_bit(0, &watchdog_device.driver_open)) {
 		pr_err(PFX "watchdog device is busy\n");
@@ -407,17 +403,6 @@ static int intel_scu_open(struct inode *inode, struct file *file)
 	if (watchdog_device.driver_closed) {
 		pr_err(PFX "watchdog device has been closed\n");
 		return -EPERM;
-	}
-
-	/* Let shared OSNIB (sram) know we are open */
-	/* To publish a proc and ioctl to do this and leave userland decide */
-	/* when it is sensible to do it (boot completed intent) */
-	ret = intel_scu_ipc_write_osnib(&osnib_reset,
-		OSNIB_WRITE_SIZE, OSNIB_WDOG_OFFSET);
-
-	if (ret != 0) {
-		pr_err(PFX "cannot write OSNIB\n");
-		return -EINVAL;
 	}
 
 	return nonseekable_open(inode, file);
@@ -471,6 +456,10 @@ static ssize_t intel_scu_write(struct file *file, char const *data, size_t len,
 			      loff_t *ppos)
 {
 	pr_debug(PFX "watchdog %s\n", __func__);
+
+	if (watchdog_device.shutdown_flag == true)
+		/* do nothing if we are shutting down */
+		return len;
 
 	if (watchdog_device.started) {
 		/* Watchdog already started, keep it alive */
@@ -610,7 +599,8 @@ static long intel_scu_ioctl(struct file *file, unsigned int cmd,
 			if (watchdog_device.started)
 				return -EBUSY;
 
-			if (check_timeouts()) {
+			if (check_timeouts(timer_timeout,
+						pre_timeout, timeout)) {
 				pr_warn(PFX "%s: Invalid thresholds\n",
 					__func__);
 				return -EINVAL;
@@ -625,6 +615,12 @@ static long intel_scu_ioctl(struct file *file, unsigned int cmd,
 	}
 }
 
+static int watchdog_set_reset_type(int reset_type)
+{
+	return intel_scu_ipc_command(IPC_SET_WATCHDOG_TIMER,
+				reset_type, NULL, 0, NULL, 0);
+}
+
 /* Reboot notifier */
 static int reboot_notifier(struct notifier_block *this,
 			   unsigned long code,
@@ -635,6 +631,30 @@ static int reboot_notifier(struct notifier_block *this,
 	if (code == SYS_RESTART || code == SYS_HALT || code == SYS_POWER_OFF) {
 		pr_warn(PFX "Reboot notifier\n");
 
+		if (watchdog_set_appropriate_timeouts())
+			pr_crit(PFX "reboot notifier cant set time\n");
+
+		switch (code) {
+		case SYS_RESTART:
+			ret = watchdog_set_reset_type(
+				watchdog_device.reboot_wd_action);
+			break;
+
+		case SYS_HALT:
+		case SYS_POWER_OFF:
+			ret = watchdog_set_reset_type(
+				watchdog_device.shutdown_wd_action);
+			break;
+		}
+		if (ret)
+			pr_err(PFX "%s: could not set reset type\n", __func__);
+
+#ifdef CONFIG_DEBUG_FS
+		/* debugfs entry to generate a BUG during
+		any shutdown/reboot call */
+		if (watchdog_device.panic_reboot_notifier)
+			BUG();
+#endif
 		/* Don't do instant reset on close */
 		reset_on_release = false;
 
@@ -643,24 +663,13 @@ static int reboot_notifier(struct notifier_block *this,
 			ret = watchdog_keepalive();
 			if (ret)
 				pr_warn(PFX "%s: no keep alive\n", __func__);
+
+			/* Don't allow any more keep-alives */
+			watchdog_device.shutdown_flag = true;
 		}
 	}
 	return NOTIFY_DONE;
 }
-
-static int watchdog_set_reset_type(int reset_type)
-{
-	int ret = 0;
-
-	watchdog_device.reset_type = reset_type;
-
-	ret = intel_scu_ipc_command(IPC_SET_WATCHDOG_TIMER,
-				watchdog_device.reset_type,
-				NULL, 0, NULL, 0);
-
-	return ret;
-}
-
 
 #ifdef CONFIG_DEBUG_FS
 /* This code triggers a Security Watchdog */
@@ -685,9 +694,10 @@ int open_security(struct inode *i, struct file *f)
 		ret = -ENODEV;
 		goto error;
 	}
-	value = readl(ptr);
+	value = readl(ptr); /* trigger */
 
-	pr_err(PFX "%s: This code should never be reached!!!\n", __func__);
+	pr_err(PFX "%s: This code should never be reached but it got %x\n",
+		__func__, (unsigned int)value);
 
 error:
 	return ret;
@@ -712,39 +722,64 @@ static int kwd_reset_type_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
-#define STRING_RESET_TYPE_MAX_LEN 11
-#define STRING_COLD_OFF "COLD_OFF"
-#define STRING_COLD_RESET "COLD_RESET"
-#define STRING_COLD_BOOT "COLD_BOOT"
-#define STRING_NONE "NONE"
+
+
 static ssize_t kwd_reset_type_read(struct file *file, char __user *buff,
 		size_t count, loff_t *ppos)
 {
 	ssize_t len = 0;
+	unsigned long res;
 
-	pr_debug(PFX "reading reset_type of %x\n", watchdog_device.reset_type);
+	pr_debug(PFX "reading reset_type of %x\n",
+			watchdog_device.normal_wd_action);
 
 	if (*ppos > 0)
 		return 0;
 
-	if (watchdog_device.reset_type == IPC_SET_SUB_SHUTDOWN) {
-		copy_to_user(buff, STRING_COLD_OFF "\n",
+	switch (watchdog_device.normal_wd_action) {
+	case IPC_SET_SUB_COLDOFF:
+		res = copy_to_user(buff, STRING_COLD_OFF "\n",
 					strlen(STRING_COLD_OFF)+2);
+		if (res) {
+			pr_err(PFX "%s: copy to user failed\n", __func__);
+			return -EINVAL;
+		}
+
 		len = strlen(STRING_COLD_OFF)+2;
-	} else if (watchdog_device.reset_type == IPC_SET_COLDRESET) {
-		copy_to_user(buff, STRING_COLD_RESET "\n",
+		break;
+	case IPC_SET_SUB_COLDRESET:
+		res = copy_to_user(buff, STRING_COLD_RESET "\n",
 					strlen(STRING_COLD_RESET)+2);
+		if (res) {
+			pr_err(PFX "%s: copy to user failed\n", __func__);
+			return -EINVAL;
+		}
+
 		len = strlen(STRING_COLD_RESET)+2;
-	} else if (watchdog_device.reset_type == IPC_SET_COLDBOOT) {
-		copy_to_user(buff, STRING_COLD_BOOT "\n",
+		break;
+	case IPC_SET_SUB_COLDBOOT:
+		res = copy_to_user(buff, STRING_COLD_BOOT "\n",
 					strlen(STRING_COLD_BOOT)+2);
+		if (res) {
+			pr_err(PFX "%s: copy to user failed\n", __func__);
+			return -EINVAL;
+		}
+
 		len = strlen(STRING_COLD_BOOT)+2;
-	} else if (watchdog_device.reset_type == IPC_SET_DONOTHING) {
-		copy_to_user(buff, STRING_NONE "\n",
+		break;
+	case IPC_SET_SUB_DONOTHING:
+		res = copy_to_user(buff, STRING_NONE "\n",
 					strlen(STRING_NONE)+2);
+		if (res) {
+			pr_err(PFX "%s: copy to user failed\n", __func__);
+			return -EINVAL;
+		}
+
 		len = strlen(STRING_NONE)+2;
-	} else
+		break;
+	default:
 		return -EINVAL;
+	}
 
 	*ppos += len;
 	return len+1;
@@ -754,6 +789,8 @@ static ssize_t kwd_reset_type_write(struct file *file, const char __user *buff,
 		size_t count, loff_t *ppos)
 {
 	char str[STRING_RESET_TYPE_MAX_LEN];
+	unsigned long res;
+	int ret;
 
 	if (count >= STRING_RESET_TYPE_MAX_LEN) {
 		pr_err(PFX "Invalid size%s\n", str);
@@ -761,20 +798,42 @@ static ssize_t kwd_reset_type_write(struct file *file, const char __user *buff,
 	}
 
 	memset(str, 0x00, STRING_RESET_TYPE_MAX_LEN);
-	copy_from_user(str, buff, min(count-1, STRING_RESET_TYPE_MAX_LEN-1));
+
+	res = copy_from_user((void *)str,
+		(void __user *)buff,
+		(unsigned long)min((unsigned long)(count-1),
+		(unsigned long)(STRING_RESET_TYPE_MAX_LEN-1)));
+
+	if (res) {
+		pr_err(PFX "%s: copy to user failed\n", __func__);
+		return -EINVAL;
+	}
 
 	pr_debug(PFX "writing reset_type of %s\n", str);
 
-	if (!strcmp(str, "COLD_OFF"))
-		watchdog_set_reset_type(IPC_SET_SUB_SHUTDOWN);
-	else if (!strcmp(str, "COLD_RESET"))
-		watchdog_set_reset_type(IPC_SET_COLDRESET);
-	else if (!strcmp(str, "COLD_BOOT"))
-		watchdog_set_reset_type(IPC_SET_COLDBOOT);
-	else if (!strcmp(str, "NONE"))
-		watchdog_set_reset_type(IPC_SET_DONOTHING);
-	else {
+	if (!strncmp(str, STRING_COLD_OFF, STRING_RESET_TYPE_MAX_LEN)) {
+		ret = watchdog_set_reset_type(IPC_SET_SUB_COLDOFF);
+
+	} else if (!strncmp(str, STRING_COLD_RESET,
+					STRING_RESET_TYPE_MAX_LEN)) {
+		ret = watchdog_set_reset_type(IPC_SET_SUB_COLDRESET);
+
+	} else if (!strncmp(str, STRING_COLD_BOOT,
+					STRING_RESET_TYPE_MAX_LEN)) {
+		ret = watchdog_set_reset_type(IPC_SET_SUB_COLDBOOT);
+
+	} else if (!strncmp(str, STRING_NONE,
+					STRING_RESET_TYPE_MAX_LEN)) {
+		ret = watchdog_set_reset_type(IPC_SET_SUB_DONOTHING);
+
+	} else {
 		pr_err(PFX "Invalid value\n");
+		return -EINVAL;
+	}
+
+	/* check return code of watchdog_set_reset_type */
+	if (ret) {
+		pr_err(PFX "%s: could not set reset type\n", __func__);
 		return -EINVAL;
 	}
 
@@ -786,6 +845,47 @@ static const struct file_operations kwd_reset_type_fops = {
 	.release	= kwd_reset_type_release,
 	.read		= kwd_reset_type_read,
 	.write		= kwd_reset_type_write,
+	.llseek		= no_llseek,
+};
+
+static ssize_t kwd_panic_reboot_read(struct file *file, char __user *buff,
+		size_t count, loff_t *ppos)
+{
+	# define RET_SIZE 3 /* prints only 2 chars : '0' or '1', plus '\n' */
+	char str[RET_SIZE];
+
+	int res;
+
+	if (*ppos > 0)
+		return 0;
+
+	strcpy(str, watchdog_device.panic_reboot_notifier ? "1\n" : "0\n");
+
+	res = copy_to_user(buff, str, RET_SIZE);
+	if (res) {
+		pr_err(PFX "%s: copy to user failed\n", __func__);
+		return -EINVAL;
+	}
+
+	*ppos += RET_SIZE-1;
+	return RET_SIZE-1;
+}
+
+
+static ssize_t kwd_panic_reboot_write(struct file *file,
+		const char __user *buff, size_t count, loff_t *ppos)
+{
+	/* whatever is written, simply set flag to TRUE */
+	watchdog_device.panic_reboot_notifier = true;
+
+	return count;
+}
+
+
+static const struct file_operations kwd_panic_reboot_fops = {
+	.open		= nonseekable_open,
+	.read		= kwd_panic_reboot_read,
+	.write		= kwd_panic_reboot_write,
 	.llseek		= no_llseek,
 };
 
@@ -859,71 +959,25 @@ static int create_debugfs_entries(void)
 		goto error;
 	}
 
+	/* /sys/kernel/debug/watchdog/panic_reboot_notifier */
+	dev->dfs_kwd_panic_reboot = debugfs_create_file("panic_reboot_notifier",
+					S_IFREG | S_IRUGO | S_IWUSR | S_IWGRP,
+					dev->dfs_wd, NULL,
+					&kwd_panic_reboot_fops);
+
+	if (!dev->dfs_kwd_panic_reboot) {
+		pr_err(PFX "%s: Error, cannot create kwd panic_reboot_notifier file\n",
+			__func__);
+		goto error;
+	}
+
+
 	return 0;
 error:
 	remove_debugfs_entries();
 	return 1;
 }
 #endif
-
-static ssize_t scu_watchdog_show(struct kobject *kobj,
-	struct attribute *attr, char *buf)
-{
-	pr_debug("showing reset_type of %x\n",
-		watchdog_device.reset_type);
-	if (watchdog_device.reset_type == IPC_SET_SUB_SHUTDOWN)
-		return sprintf(buf, "COLD_OFF\n");
-	else if (watchdog_device.reset_type == IPC_SET_COLDRESET)
-		return sprintf(buf, "COLD_RESET\n");
-	else if (watchdog_device.reset_type == IPC_SET_COLDBOOT)
-		return sprintf(buf, "COLD_BOOT\n");
-	else if (watchdog_device.reset_type == IPC_SET_DONOTHING)
-		return sprintf(buf, "NONE\n");
-	else
-		return sprintf(buf, "Invalid value\n");
-}
-
-static ssize_t scu_watchdog_store(struct kobject *kobj,
-	struct attribute *attr, const char *buf, size_t size)
-{
-	int ret;
-
-	pr_debug("watchdog store called\n");
-	pr_debug("input buf size is %x\n", size);
-	pr_debug("input string is %s\n", buf);
-
-	if (strncmp(buf, "COLD_OFF", size-1) == 0)
-		watchdog_device.reset_type = IPC_SET_SUB_SHUTDOWN;
-	else if (strncmp(buf, "COLD_RESET", size-1) == 0)
-		watchdog_device.reset_type = IPC_SET_COLDRESET;
-	else if (strncmp(buf, "COLD_BOOT", size-1) == 0)
-		watchdog_device.reset_type = IPC_SET_COLDBOOT;
-	else if (strncmp(buf, "NONE", size-1) == 0)
-		watchdog_device.reset_type = IPC_SET_DONOTHING;
-	else {
-		pr_debug("Unable to read value in input to watchdog set\n");
-		pr_debug("setting to SHUTDOWN\n");
-		watchdog_device.reset_type = IPC_SET_SUB_SHUTDOWN;
-	}
-
-	/* Send a keepalive to ensure we have time to send this command */
-	ret = watchdog_keepalive();
-
-	/* Default to shutdown if read failed */
-	pr_debug("I am changing watchdog mode to %d\n",
-		watchdog_device.reset_type);
-
-	/* Tell the timer to shut down the system upon next expiration */
-	ret = intel_scu_ipc_command(IPC_SET_WATCHDOG_TIMER,
-				watchdog_device.reset_type,
-				NULL, 0, NULL, 0);
-	return size;
-}
-
-static const struct sysfs_ops watchdog_sysfs_ops = {
-	.store = scu_watchdog_store,
-	.show = scu_watchdog_show,
-};
 
 /* Kernel Interfaces */
 static const struct file_operations intel_scu_fops = {
@@ -940,13 +994,334 @@ static const struct file_operations intel_scu_fops = {
 	.release        = intel_scu_release,
 };
 
+/* sysfs entry to disable watchdog */
+#ifdef CONFIG_DISABLE_SCU_WATCHDOG
+static ssize_t disable_store(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t size)
+{
+	int ret;
+
+	if (!strtobool(buf, &disable_kernel_watchdog)) {
+		if (disable_kernel_watchdog) {
+			ret = intel_scu_stop();
+			if (ret)
+				pr_err(PFX "cannot disable the timer\n");
+		} else {
+			ret = watchdog_config_and_start(timeout, pre_timeout);
+			if (ret)
+				return -EINVAL;
+		}
+	} else {
+		pr_err(PFX "got invalid value\n");
+		return -EINVAL;
+	}
+
+	return size;
+}
+
+static ssize_t disable_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	pr_debug(PFX "%s\n", __func__);
+	if (disable_kernel_watchdog)
+		return sprintf(buf, "1\n");
+
+	return sprintf(buf, "0\n");
+}
+
+static DEVICE_ATTR(disable, S_IWUSR | S_IRUGO,
+	disable_show, disable_store);
+
+#endif
+
+static ssize_t counter_store(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t size)
+{
+	int ret;
+	pr_debug(PFX "%s\n", __func__);
+	ret = intel_scu_ipc_write_osnib(&osnib_reset,
+		OSNIB_WRITE_SIZE, OSNIB_WDOG_OFFSET);
+	if (ret != 0) {
+		pr_err(PFX "cannot write OSNIB\n");
+		return -EINVAL;
+	}
+
+	return size;
+}
+
+#define OSNIB_WDOG_COUNTER_MASK 0xF0
+#define OSNIB_WDOG_COUNTER_SHIFT 4
+static ssize_t counter_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	unsigned char osnib_read = (unsigned char)0;
+	int ret;
+	pr_debug(PFX "%s\n", __func__);
+	ret = intel_scu_ipc_read_osnib(&osnib_read,
+		OSNIB_WRITE_SIZE, OSNIB_WDOG_OFFSET);
+	if (ret != 0)
+		return -EIO;
+
+	return sprintf(buf, "%d\n", (int)((osnib_read & OSNIB_WDOG_COUNTER_MASK)
+						>> OSNIB_WDOG_COUNTER_SHIFT));
+}
+
+static int reset_type_to_string(int reset_type, char *string)
+{
+	switch (reset_type) {
+	case IPC_SET_SUB_COLDBOOT:
+		strcpy(string, STRING_COLD_BOOT);
+		break;
+	case IPC_SET_SUB_COLDRESET:
+		strcpy(string, STRING_COLD_RESET);
+		break;
+	case IPC_SET_SUB_COLDOFF:
+		strcpy(string, STRING_COLD_OFF);
+		break;
+	case IPC_SET_SUB_DONOTHING:
+		strcpy(string, STRING_NONE);
+		break;
+	default:
+		return 1;
+	}
+
+	return 0;
+}
+
+static int string_to_reset_type(const char *string, int *reset_type)
+{
+	if (!reset_type || !string)
+		return 1;
+
+	if (strncmp(string, STRING_COLD_RESET,
+			sizeof(STRING_COLD_RESET) - 1) == 0) {
+		*reset_type = IPC_SET_SUB_COLDRESET;
+		return 0;
+	}
+	if (strncmp(string, STRING_COLD_BOOT,
+			sizeof(STRING_COLD_BOOT) - 1) == 0) {
+		*reset_type = IPC_SET_SUB_COLDBOOT;
+		return 0;
+	}
+	if (strncmp(string, STRING_COLD_OFF,
+			sizeof(STRING_COLD_OFF) - 1) == 0) {
+		*reset_type = IPC_SET_SUB_COLDOFF;
+		return 0;
+	}
+
+	/* We should not be here, this is an error case */
+	pr_debug("Invalid reset type value\n");
+	return 1;
+}
+
+static ssize_t reboot_ongoing_store(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t size)
+{
+	int ret;
+
+	pr_debug(PFX "%s\n", __func__);
+	/* reprogram timeouts. if error : continue */
+	ret = watchdog_set_appropriate_timeouts();
+	if (ret)
+		pr_err(PFX "%s: could not set timeouts\n", __func__);
+
+	/* restore reset type */
+	watchdog_set_reset_type(watchdog_device.reboot_wd_action);
+	if (ret) {
+		pr_err(PFX "%s: could not set reset type\n", __func__);
+		return -EINVAL;
+	}
+
+	return size;
+}
+
+static ssize_t shutdown_ongoing_store(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t size)
+{
+	int ret;
+
+	pr_debug(PFX "%s\n", __func__);
+	/* reprogram timeouts. if error : continue */
+	ret = watchdog_set_appropriate_timeouts();
+	if (ret)
+		pr_err(PFX "%s: could not set timeouts\n", __func__);
+
+	/* restore reset type */
+	watchdog_set_reset_type(watchdog_device.shutdown_wd_action);
+	if (ret) {
+		pr_err(PFX "%s: could not set reset type\n", __func__);
+		return -EINVAL;
+	}
+
+	return size;
+}
+
+static ssize_t normal_config_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	if (reset_type_to_string(watchdog_device.normal_wd_action, buf) != 0)
+		return -EINVAL;
+	strcat(buf, "\n");
+	return strlen(buf);
+}
+
+static ssize_t normal_config_store(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t size)
+{
+	if (string_to_reset_type(buf, &watchdog_device.normal_wd_action) != 0)
+		return -EINVAL;
+	if (watchdog_set_reset_type(watchdog_device.normal_wd_action) != 0)
+		return -EINVAL;
+
+	return size;
+}
+
+static ssize_t reboot_config_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	if (reset_type_to_string(watchdog_device.reboot_wd_action, buf) != 0)
+		return -EINVAL;
+	strcat(buf, "\n");
+	return strlen(buf);
+}
+
+static ssize_t reboot_config_store(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t size)
+{
+	if (string_to_reset_type(buf, &watchdog_device.reboot_wd_action) != 0)
+		return -EINVAL;
+
+	return size;
+}
+
+static ssize_t shutdown_config_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	if (reset_type_to_string(watchdog_device.shutdown_wd_action, buf) != 0)
+		return -EINVAL;
+	strcat(buf, "\n");
+	return strlen(buf);
+}
+
+static ssize_t shutdown_config_store(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t size)
+{
+	if (string_to_reset_type(buf, &watchdog_device.shutdown_wd_action) != 0)
+		return -EINVAL;
+
+	return size;
+}
+
+/* Watchdog behavior depending on system phase */
+static DEVICE_ATTR(normal_config, S_IWUSR | S_IRUGO,
+	normal_config_show, normal_config_store);
+static DEVICE_ATTR(reboot_config, S_IWUSR | S_IRUGO,
+	reboot_config_show, reboot_config_store);
+static DEVICE_ATTR(shutdown_config, S_IWUSR | S_IRUGO,
+	shutdown_config_show, shutdown_config_store);
+static DEVICE_ATTR(reboot_ongoing, S_IWUSR | S_IRUGO,
+	NULL, reboot_ongoing_store);
+static DEVICE_ATTR(shutdown_ongoing, S_IWUSR | S_IRUGO,
+	NULL, shutdown_ongoing_store);
+
+/* Reset counter watchdog entry */
+static DEVICE_ATTR(counter, S_IWUSR | S_IRUGO,
+	counter_show, counter_store);
+
+
+int create_watchdog_sysfs_files(void)
+{
+	int ret;
+
+#ifdef CONFIG_DISABLE_SCU_WATCHDOG
+	ret = device_create_file(watchdog_device.miscdev.this_device,
+		&dev_attr_disable);
+	if (ret) {
+		pr_warn("cant register dev file for disable\n");
+		return ret;
+	}
+#endif
+
+	ret = device_create_file(watchdog_device.miscdev.this_device,
+		&dev_attr_normal_config);
+	if (ret) {
+		pr_warn("cant register dev file for normal_config\n");
+		return ret;
+	}
+
+	ret = device_create_file(watchdog_device.miscdev.this_device,
+		&dev_attr_reboot_config);
+	if (ret) {
+		pr_warn("cant register dev file for reboot_config\n");
+		return ret;
+	}
+
+	ret = device_create_file(watchdog_device.miscdev.this_device,
+		&dev_attr_shutdown_config);
+	if (ret) {
+		pr_warn("cant register dev file for shutdown_config\n");
+		return ret;
+	}
+
+	ret = device_create_file(watchdog_device.miscdev.this_device,
+		&dev_attr_counter);
+	if (ret) {
+		pr_warn("cant register dev file for counter\n");
+		return ret;
+	}
+
+	ret = device_create_file(watchdog_device.miscdev.this_device,
+		&dev_attr_reboot_ongoing);
+	if (ret) {
+		pr_warn("cant register dev file for reboot_ongoing\n");
+		return ret;
+	}
+
+	ret = device_create_file(watchdog_device.miscdev.this_device,
+		&dev_attr_shutdown_ongoing);
+	if (ret) {
+		pr_warn("cant register dev file for shutdown_ongoing\n");
+		return ret;
+	}
+	return 0;
+}
+
+int remove_watchdog_sysfs_files(void)
+{
+#ifdef CONFIG_DISABLE_SCU_WATCHDOG
+	device_remove_file(watchdog_device.miscdev.this_device,
+		&dev_attr_disable);
+#endif
+	device_remove_file(watchdog_device.miscdev.this_device,
+		&dev_attr_normal_config);
+
+	device_remove_file(watchdog_device.miscdev.this_device,
+		&dev_attr_reboot_config);
+
+	device_remove_file(watchdog_device.miscdev.this_device,
+		&dev_attr_shutdown_config);
+
+	device_remove_file(watchdog_device.miscdev.this_device,
+		&dev_attr_counter);
+
+	device_remove_file(watchdog_device.miscdev.this_device,
+		&dev_attr_reboot_ongoing);
+
+	device_remove_file(watchdog_device.miscdev.this_device,
+		&dev_attr_shutdown_ongoing);
+	return 0;
+}
+
 /* Init code */
 static int __init intel_scu_watchdog_init(void)
 {
 	int ret = 0;
 
+	/* Initially, we are not in shutdown mode */
+	watchdog_device.shutdown_flag = false;
+
 	/* Check timeouts boot parameter */
-	if (check_timeouts()) {
+	if (check_timeouts(timer_timeout, pre_timeout, timeout)) {
 		pr_err(PFX "%s: Invalid timeouts\n", __func__);
 		return -EINVAL;
 	}
@@ -1050,14 +1425,30 @@ static int __init intel_scu_watchdog_init(void)
 	}
 
 #ifdef CONFIG_DEBUG_FS
-	create_debugfs_entries();
+	ret = create_debugfs_entries();
+	if (ret) {
+		pr_err(PFX "%s: Error creating debugfs entries\n", __func__);
+		goto error_debugfs_entry;
+	}
 #endif
 
 	watchdog_device.started = false;
-	watchdog_device.reset_type = IPC_SET_COLDRESET;
 
-	return 0;
+	ret = create_watchdog_sysfs_files();
+	if (ret) {
+		pr_err(PFX "%s: Error creating debugfs entries\n", __func__);
+		goto error_sysfs_entry;
+	}
 
+	return ret;
+
+
+error_sysfs_entry:
+	/* Nothing special to do */
+#ifdef CONFIG_DEBUG_FS
+error_debugfs_entry:
+	/* Remove entries done by create function */
+#endif
 error_request_irq:
 	free_irq(watchdog_device.timer7_tbl_ptr->irq, NULL);
 
@@ -1078,6 +1469,7 @@ static void __exit intel_scu_watchdog_exit(void)
 {
 	int ret = 0;
 
+	remove_watchdog_sysfs_files();
 #ifdef CONFIG_DEBUG_FS
 	remove_debugfs_entries();
 #endif
