@@ -327,6 +327,7 @@ IMG_VOID PVRSRVDebugPrintf	(
 			strncpy (pszBuf, "PVR_K: ", (ui32BufSiz -1));
 		}
 
+		pszBuf[ui32BufSiz - 1] = 0;
 		if (VBAppend(pszBuf, ui32BufSiz, pszFormat, vaArgs))
 		{
 			printk(KERN_INFO "PVR_K:(Message Truncated): %s\n", pszBuf);
