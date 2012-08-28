@@ -18,10 +18,12 @@
  */
 
 #include <linux/kernel.h>
+#include <linux/device.h>
 #include <linux/dma-mapping.h>
 #include <linux/types.h>
 #include <linux/delay.h>
 #include <linux/pm.h>
+#include <linux/pm_runtime.h>
 #include <linux/usb/otg.h>
 #include <linux/usb/dwc_otg3.h>
 #include <linux/platform_device.h>
@@ -37,6 +39,60 @@ static int xhci_reset_port(struct usb_hcd *hcd);
 static int xhci_stop_host(struct usb_hcd *hcd);
 static int dwc_host_setup(struct usb_hcd *hcd);
 static int xhci_release_host(struct usb_hcd *hcd);
+
+static void set_phy_suspend_resume(struct usb_hcd *hcd, int on_off)
+{
+	/* Comment the actual PHY operations. This is not final hardware desgin.
+	 * And on current HVP platform, it will cause LS/FS devices
+	 * can't enumerate success after resume from D0I1 mode.
+	 */
+#if 0
+	u32 data = 0;
+	struct xhci_hcd		*xhci = hcd_to_xhci(hcd);
+
+	switch (hcd->speed) {
+	case HCD_USB2:
+		data = readl(hcd->regs + GUSB2PHYCFG0);
+		if (on_off)
+			data |= GUSB2PHYCFG_SUS_PHY;
+		else
+			data &= ~GUSB2PHYCFG_SUS_PHY;
+		writel(data, hcd->regs + GUSB2PHYCFG0);
+		break;
+	case HCD_USB3:
+		data = readl(hcd->regs + GUSB3PIPECTL0);
+		if (on_off)
+			data |= GUSB3PIPECTL_SUS_EN;
+		else
+			data &= ~GUSB3PIPECTL_SUS_EN;
+		writel(data, hcd->regs + GUSB3PIPECTL0);
+		break;
+	default:
+		xhci_err(xhci, "Invalid arguments in %s!\n", __func__);
+		return;
+	}
+#endif
+
+	printk(KERN_ERR "DWC USB%d phy set %s.\n",
+			HCD_USB2 == hcd->speed ? 2 : 3,
+			on_off ? "suspend" : "resume");
+}
+
+static int xhci_dwc_bus_suspend(struct usb_hcd *hcd)
+{
+	int ret;
+	ret = xhci_bus_suspend(hcd);
+	set_phy_suspend_resume(hcd, 1);
+	return ret;
+}
+
+static int xhci_dwc_bus_resume(struct usb_hcd *hcd)
+{
+	int ret;
+	ret = xhci_bus_resume(hcd);
+	set_phy_suspend_resume(hcd, 0);
+	return ret;
+}
 
 static const struct hc_driver xhci_dwc_hc_driver = {
 	.description =		"dwc-xhci",
@@ -83,8 +139,8 @@ static const struct hc_driver xhci_dwc_hc_driver = {
 	/* Root hub support */
 	.hub_control =		xhci_hub_control,
 	.hub_status_data =	xhci_hub_status_data,
-	.bus_suspend =		xhci_bus_suspend,
-	.bus_resume =		xhci_bus_resume,
+	.bus_suspend =		xhci_dwc_bus_suspend,
+	.bus_resume =		xhci_dwc_bus_resume,
 
 	.start_host = xhci_start_host,
 	.stop_host = xhci_stop_host,
@@ -99,6 +155,7 @@ static int xhci_start_host(struct usb_hcd *hcd)
 	int ret = -EINVAL;
 	struct xhci_hcd *xhci;
 
+
 	if (!hcd) {
 		printk(KERN_DEBUG "%s() - NULL pointer returned", __func__);
 		return ret;
@@ -108,6 +165,8 @@ static int xhci_start_host(struct usb_hcd *hcd)
 		printk(KERN_DEBUG "%s() - Already registered", __func__);
 		return 0;
 	}
+
+	pm_runtime_get_sync(hcd->self.controller);
 
 	ret = usb_add_hcd(hcd, otg_irqnum, IRQF_DISABLED | IRQF_SHARED);
 	if (ret)
@@ -140,6 +199,7 @@ static int xhci_start_host(struct usb_hcd *hcd)
 	if (ret)
 		goto put_usb3_hcd;
 
+	pm_runtime_put(hcd->self.controller);
 	return 0;
 
 put_usb3_hcd:
@@ -155,6 +215,9 @@ dealloc_usb2_hcd:
 	usb_remove_hcd(hcd);
 
 	kfree(xhci);
+	*((struct xhci_hcd **) hcd->hcd_priv) = NULL;
+
+	pm_runtime_put(hcd->self.controller);
 	return ret;
 }
 
@@ -168,6 +231,13 @@ static int xhci_stop_host(struct usb_hcd *hcd)
 	}
 
 	xhci = hcd_to_xhci(hcd);
+
+	pm_runtime_get_sync(hcd->self.controller);
+
+	if (HCD_RH_RUNNING(hcd))
+		set_phy_suspend_resume(hcd, 1);
+	else if (HCD_RH_RUNNING(xhci->shared_hcd))
+		set_phy_suspend_resume(xhci->shared_hcd, 1);
 
 	if (xhci->shared_hcd) {
 		usb_remove_hcd(xhci->shared_hcd);
@@ -185,6 +255,9 @@ static int xhci_stop_host(struct usb_hcd *hcd)
 	usb_remove_hcd(hcd);
 
 	kfree(xhci);
+	*((struct xhci_hcd **) hcd->hcd_priv) = NULL;
+
+	pm_runtime_put(hcd->self.controller);
 	return 0;
 }
 
@@ -396,6 +469,10 @@ static int xhci_dwc_drv_probe(struct platform_device *pdev)
 		otg_set_host(otg, &hcd->self);
 		otg_put_transceiver(otg);
 	}
+	hcd->rpm_control = 1;
+	hcd->rpm_resume = 0;
+
+	pm_runtime_enable(hcd->self.controller);
 
 	return retval;
 }
@@ -404,14 +481,68 @@ static int xhci_dwc_drv_remove(struct platform_device *pdev)
 {
 	struct usb_hcd *hcd = platform_get_drvdata(pdev);
 	struct otg_transceiver *otg = otg_get_transceiver();
+	struct xhci_hcd *xhci = hcd_to_xhci(hcd);
+
 	printk(KERN_DEBUG "OTG: Removing host on otg=%p\n", otg);
 	otg_set_host(otg, NULL);
 	otg_put_transceiver(otg);
 
+	if (xhci)
+		xhci_stop_host(hcd);
 	usb_put_hcd(hcd);
+
+	pm_runtime_disable(hcd->self.controller);
+	pm_runtime_set_suspended(hcd->self.controller);
 	return 0;
 }
 
+
+#ifdef CONFIG_PM
+
+#ifdef CONFIG_PM_RUNTIME
+/*
+ * Do nothing in runtime pm callback.
+ * On HVP platform, if make controller go to hibernation mode.
+ * controller will not send IRQ until restore status which
+ * implement in pm runtime resume callback. So there is no
+ * any one can trigger pm_runtime_get to resume USB3 device.
+ * This issue need to continue investigate. So just implement SW logic at here.
+ */
+static int dwc_hcd_runtime_idle(struct device *dev)
+{
+	return 0;
+}
+static int dwc_hcd_runtime_suspend(struct device *dev)
+{
+	return 0;
+}
+static int dwc_hcd_runtime_resume(struct device *dev)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	struct usb_hcd *hcd = platform_get_drvdata(pdev);
+
+	if (hcd->rpm_control) {
+		if (hcd->rpm_resume) {
+			struct device		*rpm_dev = hcd->self.controller;
+			hcd->rpm_resume = 0;
+			pm_runtime_put(rpm_dev);
+		}
+	}
+
+	return 0;
+}
+#else
+#define dwc_hcd_runtime_idle NULL
+#define dwc_hcd_runtime_suspend NULL
+#define dwc_hcd_runtime_resume NULL
+#endif
+
+static const struct dev_pm_ops dwc_usb_hcd_pm_ops = {
+	.runtime_suspend = dwc_hcd_runtime_suspend,
+	.runtime_resume	= dwc_hcd_runtime_resume,
+	.runtime_idle	= dwc_hcd_runtime_idle,
+};
+#endif
 
 static struct platform_driver xhci_dwc_driver = {
 	.probe = xhci_dwc_drv_probe,
@@ -419,6 +550,9 @@ static struct platform_driver xhci_dwc_driver = {
 	.shutdown = usb_hcd_platform_shutdown,
 	.driver = {
 		.name = "dwc3-host",
+#ifdef CONFIG_PM
+		.pm = &dwc_usb_hcd_pm_ops
+#endif
 	},
 };
 MODULE_ALIAS("platform:dwc-xhci");
