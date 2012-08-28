@@ -519,8 +519,6 @@ void android_hdmi_connector_dpms(struct drm_connector *connector, int mode);
 static inline void android_hdmi_driver_init(struct drm_device *dev,
 						void *mode_dev) {}
 
-static inline void android_hdmi_enable_hotplug(struct drm_device *dev) {}
-
 static inline void android_hdmi_driver_setup(struct drm_device *dev) {}
 
 static inline int android_hdmi_mode_valid(struct drm_connector *connector,
@@ -528,6 +526,24 @@ static inline int android_hdmi_mode_valid(struct drm_connector *connector,
 
 static inline int android_hdmi_get_modes(struct drm_connector *connector)
 				{ return 0; }
+
+static inline void android_hdmi_encoder_save(struct drm_encoder *encoder) {}
+
+static inline void android_hdmi_encoder_restore(struct drm_encoder *encoder) {}
+
+static inline bool android_hdmi_mode_fixup(struct drm_encoder *encoder,
+			     struct drm_display_mode *mode,
+			     struct drm_display_mode *adjusted_mode)
+{ return false; }
+
+static inline void android_hdmi_connector_save(struct drm_connector
+					       *connector) {}
+
+static inline void android_hdmi_connector_restore(struct drm_connector
+						  *connector) {}
+
+static inline int android_hdmi_set_scaling_property(struct drm_crtc *crtc)
+{ return 0; }
 
 static inline int android_hdmi_crtc_mode_set(struct drm_crtc *crtc,
 				struct drm_display_mode *mode,
@@ -539,11 +555,6 @@ static inline void android_hdmi_enc_mode_set(struct drm_encoder *encoder,
 				struct drm_display_mode *mode,
 				struct drm_display_mode *adjusted_mode) {}
 
-static inline int android_hdmi_setup_hdmibuffers(struct drm_device *psDrmDev,
-				u32 ui32HdmiWidth, u32 ui32HdmiHeight,
-				u32 ui32BufferCount, int bpp, u32 ui32LvdsWidth,
-				u32 ui32LvdsHeight) { return 0; }
-
 static inline void android_hdmi_restore_and_enable_display(
 				struct drm_device *dev) {}
 
@@ -552,22 +563,24 @@ static inline void android_hdmi_save_display_registers(
 
 static inline void android_disable_hdmi(struct drm_device *dev) {}
 
-static inline enum drm_connector_status android_hdmi_detect(struct drm_connector
-							    *connector, bool force);
-{ return connector_status_disconnected; }
-static inline void android_hdmi_dpms(struct drm_encoder *encoder,
-				int mode) {}
-
 static inline bool android_enable_hdmi_hdcp(struct drm_device *dev)
 { return false; }
 static inline bool android_disable_hdmi_hdcp(struct drm_device *dev)
 { return false; }
-bool android_check_hdmi_hdcp_enc_status(struct drm_device *dev)
+static inline bool android_check_hdmi_hdcp_enc_status(struct drm_device *dev)
 { return false; }
-bool android_check_hdmi_hdcp_link_status(struct drm_device *dev)
+static inline bool android_check_hdmi_hdcp_link_status(struct drm_device *dev)
 { return false; }
-bool android_query_hdmi_hdcp_sink(struct drm_device *dev, uint8_t *bksv)
+static inline bool android_query_hdmi_hdcp_sink(struct drm_device *dev,
+						uint8_t *bksv)
 { return false; }
+
+static inline enum drm_connector_status android_hdmi_detect(struct drm_connector
+							 *connector, bool force)
+{ return connector_status_disconnected; }
+
+static inline void android_hdmi_dpms(struct drm_encoder *encoder,
+				int mode) {}
 
 #endif /* CONFIG_MDFD_HDMI */
 
