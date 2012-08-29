@@ -254,7 +254,6 @@ static const struct snd_soc_dapm_widget mfld_widgets[] = {
 	SND_SOC_DAPM_MIC("HeadsetMic", NULL),
 	SND_SOC_DAPM_MIC("Mic", NULL),
 	/* Dummy widget to trigger VAUDA on/off */
-	SND_SOC_DAPM_MICBIAS("VirtBias", SND_SOC_NOPM, 0, 0),
 	SND_SOC_DAPM_SUPPLY("Vibra1Clock", SND_SOC_NOPM, 0, 0,
 			mfld_vibra_enable_clk,
 			SND_SOC_DAPM_PRE_PMU | SND_SOC_DAPM_POST_PMD),
@@ -282,12 +281,7 @@ static int mfld_init(struct snd_soc_pcm_runtime *runtime)
 	int ret_val;
 
 	/* Add jack sense widgets */
-	snd_soc_dapm_new_controls(dapm, mfld_widgets, ARRAY_SIZE(mfld_widgets));
-
-	/* Set up the map */
-	snd_soc_dapm_add_routes(dapm, mfld_map, ARRAY_SIZE(mfld_map));
-
-	ret_val = snd_soc_add_controls(codec, mfld_snd_controls,
+	ret_val = snd_soc_add_codec_controls(codec, mfld_snd_controls,
 				ARRAY_SIZE(mfld_snd_controls));
 	if (ret_val) {
 		pr_err("soc_add_controls failed %d", ret_val);
@@ -541,7 +535,19 @@ static int snd_mfld_mc_poweroff(struct device *dev)
 
 static int mfld_card_stream_event(struct snd_soc_dapm_context *dapm, int event)
 {
-	struct snd_soc_codec *codec = dapm->codec;
+	struct snd_soc_codec *codec;
+
+	if (!dapm) {
+		pr_err("%s: Null dapm\n", __func__);
+		return -EINVAL;
+	}
+	/* we have only one codec in this machine */
+	codec = list_entry(dapm->card->codec_dev_list.next,
+			struct snd_soc_codec, card_list);
+	if (!codec) {
+		pr_err("%s: Null codec\n", __func__);
+		return -EIO;
+	}
 	pr_debug("machine stream event: %d\n", event);
 	if (event == SND_SOC_DAPM_STREAM_STOP) {
 		if (!codec->active) {
@@ -557,6 +563,10 @@ static struct snd_soc_card snd_soc_card_mfld = {
 	.name = "medfield_audio",
 	.dai_link = mfld_msic_dailink,
 	.num_links = ARRAY_SIZE(mfld_msic_dailink),
+	.dapm_widgets = mfld_widgets,
+	.num_dapm_widgets = ARRAY_SIZE(mfld_widgets),
+	.dapm_routes = mfld_map,
+	.num_dapm_routes = ARRAY_SIZE(mfld_map),
 };
 
 static irqreturn_t snd_mfld_jack_intr_handler(int irq, void *dev)
