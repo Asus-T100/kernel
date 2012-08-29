@@ -25,6 +25,12 @@
 #include <linux/init.h>
 #include <linux/pci.h>
 
+
+/* Chip ID of Intel Atom SOC*/
+#define INTEL_ATOM_MRST 0x26
+#define INTEL_ATOM_MFLD 0x27
+#define INTEL_ATOM_CLV 0x35
+
 /* Register Type definitions */
 #define OSPM_REG_TYPE          0x0
 #define APM_REG_TYPE           0x1

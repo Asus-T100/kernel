@@ -72,13 +72,13 @@ static int __init mid_pci_init(void)
 	 */
 	switch (boot_cpu_data.x86_model) {
 #ifdef CONFIG_X86_MRST
-	case 0x26:
+	case INTEL_ATOM_MRST:
 		mid_pci_platform_pm.set_state = mrst_pmu_pci_set_power_state;
 		pci_set_platform_pm(&mid_pci_platform_pm);
 		break;
 #endif
-	case 0x27:
-	case 0x35:
+	case INTEL_ATOM_MFLD:
+	case INTEL_ATOM_CLV:
 		mid_pci_platform_pm.set_state = pmu_pci_set_power_state;
 		mid_pci_platform_pm.choose_state = pmu_pci_choose_state;
 		pci_set_platform_pm(&mid_pci_platform_pm);
