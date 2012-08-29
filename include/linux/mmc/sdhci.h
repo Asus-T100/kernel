@@ -95,7 +95,8 @@ struct sdhci_host {
 #define SDHCI_QUIRK_CANNOT_KEEP_POWERCTL		(1<<1)
 /* V2.0 host controller support DDR50 */
 #define SDHCI_QUIRK2_V2_0_SUPPORT_DDR50			(1<<2)
-
+/* Controller has bug when enabling Auto CMD23 */
+#define SDHCI_QUIRK2_BROKEN_AUTO_CMD23			(1<<3)
 
 	int irq;		/* Device IRQ */
 	void __iomem *ioaddr;	/* Mapped address */
