@@ -477,6 +477,8 @@ static void intel_mrfl_mmc_remove_slot(struct sdhci_pci_slot *slot, int dead)
 }
 
 static const struct sdhci_pci_fixes sdhci_intel_mrfl_mmc = {
+	.quirks		= SDHCI_QUIRK_NO_ENDATTR_IN_NOPDESC,
+	.quirks2	= SDHCI_QUIRK2_BROKEN_AUTO_CMD23,
 	.probe		= intel_mrfl_mmc_probe,
 	.probe_slot	= intel_mrfl_mmc_probe_slot,
 	.remove_slot	= intel_mrfl_mmc_remove_slot,
