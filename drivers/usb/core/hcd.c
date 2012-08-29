@@ -2127,7 +2127,8 @@ irqreturn_t usb_hcd_irq (int irq, void *__hcd)
 
 		if ((hcd->rpm_resume)
 			|| (dev->power.runtime_status == RPM_RESUMING)) {
-			return IRQ_HANDLED;
+			rc = IRQ_HANDLED;
+			goto RET;
 		}
 
 		if (dev->power.runtime_status != RPM_ACTIVE) {
@@ -2135,7 +2136,8 @@ irqreturn_t usb_hcd_irq (int irq, void *__hcd)
 				"Wake up? Interrupt detected in suspended\n");
 			hcd->rpm_resume = 1;
 			pm_runtime_get(dev);
-			return IRQ_HANDLED;
+			rc = IRQ_HANDLED;
+			goto RET;
 		}
 	}
 
@@ -2150,6 +2152,7 @@ irqreturn_t usb_hcd_irq (int irq, void *__hcd)
 		rc = IRQ_HANDLED;
 	}
 
+RET:
 	local_irq_restore(flags);
 	return rc;
 }
