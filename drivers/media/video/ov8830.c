@@ -199,64 +199,81 @@ static struct ov8830_resolution ov8830_res_still[] = {
 
 static struct ov8830_resolution ov8830_res_video[] = {
 	{
-		 .desc =	"QCIF_strong_dvs_30fps"	,
-		 .width =	216	,
-		 .height =	176	,
-		 .fps =		30	,
-		 .used =	0	,
-		 .pixels_per_line = 0x0E18, /* 3608 */
-		 .lines_per_frame = 0x07E0, /* 2016 */
-		 .regs =	ov8830_QCIF_strong_dvs_30fps	,
+		 .desc = "QCIF_strong_dvs_30fps",
+		 .width = 216,
+		 .height = 176,
+		 .fps = 30,
+		 .used = 0,
+		 .pixels_per_line = 4128,
+		 .lines_per_frame = 1550,
+		 .regs = ov8830_QCIF_strong_dvs_30fps,
 	},
 	{
-		 .desc =	"QVGA_strong_dvs_30fps"	,
-		 .width =	408	,
-		 .height =	308	,
-		 .fps =		30	,
-		 .used =	0	,
-		 .pixels_per_line = 0x0E18, /* 3608 */
-		 .lines_per_frame = 0x07E0, /* 2016 */
-		 .regs =	ov8830_QVGA_strong_dvs_30fps	,
+		 .desc = "QVGA_strong_dvs_30fps",
+		 .width = 408,
+		 .height = 308,
+		 .fps = 30,
+		 .used = 0,
+		 .pixels_per_line = 4128,
+		 .lines_per_frame = 1550,
+		 .regs = ov8830_QVGA_strong_dvs_30fps,
 	},
 	{
-		 .desc =	"VGA_strong_dvs_30fps"	,
-		 .width =	820	,
-		 .height =	616	,
-		 .fps =		30	,
-		 .used =	0	,
-		 .pixels_per_line = 0x0E18, /* 3608 */
-		 .lines_per_frame = 0x07E0, /* 2016 */
-		 .regs =	ov8830_VGA_strong_dvs_30fps	,
+		 .desc = "VGA_strong_dvs_30fps",
+		 .width = 820,
+		 .height = 616,
+		 .fps = 30,
+		 .used = 0,
+		 .pixels_per_line = 4128,
+		 .lines_per_frame = 1550,
+		 .regs = ov8830_VGA_strong_dvs_30fps,
 	},
 	{
-		 .desc =	"WVGA_strong_dvs_30fps"	,
-		 .width =	1640	,
-		 .height =	1024	,
-		 .fps =		30	,
-		 .used =	0	,
-		 .pixels_per_line = 0x0E18, /* 3608 */
-		 .lines_per_frame = 0x07E0, /* 2016 */
-		 .regs =	ov8830_WVGA_strong_dvs_30fps	,
+		.desc = "480p_strong_dvs_30fps",
+		.width = 936,
+		.height = 602,
+		.fps = 30,
+		.used = 0,
+		.pixels_per_line = 4128,
+		.lines_per_frame = 1550,
+		.regs = ov8830_480p_strong_dvs_30fps,
 	},
 	{
-		 .desc =	"720p_strong_dvs_30fps"	,
-		 .width =	1568	,
-		 .height =	880	,
-		 .fps =		30	,
-		 .used =	0	,
-		 .pixels_per_line = 0x0E18, /* 3608 */
-		 .lines_per_frame = 0x07E0, /* 2016 */
-		 .regs =	ov8830_720p_strong_dvs_30fps	,
+		 .desc = "720p_strong_dvs_30fps",
+		 .width = 1568,
+		 .height = 880,
+		 .fps = 30,
+		 .used = 0,
+		 .pixels_per_line = 4128,
+		 .lines_per_frame = 1550,
+		 .regs = ov8830_720p_strong_dvs_30fps,
 	},
 	{
-		 .desc =	"MODE1920x1080"	,
-		 .width =	2336	,
-		 .height =	1308	,
-		 .fps =		30	,
-		 .used =	0	,
-		 .pixels_per_line = 0x0E18, /* 3608 */
-		 .lines_per_frame = 0x07E0, /* 2016 */
-		 .regs =	ov8830_1080p_strong_dvs_30fps
+		 .desc = "MODE1920x1080",
+		 .width = 2336,
+		 .height = 1308,
+		 .fps = 30,
+		 .used = 0,
+		 .pixels_per_line = 3608,
+		 .lines_per_frame = 1774,
+		 .regs = ov8830_1080p_strong_dvs_30fps,
+	},
+	/*
+	 * Fall Back to a working 1080P resolution where DVS is off.
+	 * The following one is kept as the last in the list
+	 * intentionally as the right now there are problems
+	 * with 2336x1308 at 30FPS.
+	 * TODO Revisit when DVS with 1080P is addressed.
+	 */
+	{
+		 .desc = "MODE1920x1080_DVS_OFF",
+		 .width = 1936,
+		 .height = 1104,
+		 .fps = 30,
+		 .used = 0,
+		 .pixels_per_line = 4000,
+		 .lines_per_frame = 1600,
+		 .regs = ov8830_1080p_30fps_dvs_off,
 	},
 };
 
