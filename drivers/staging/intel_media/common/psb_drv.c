@@ -2895,13 +2895,6 @@ static void overlay_wait_vblank(struct drm_device *dev,
 	}
 
 	/*
-	 * this is ugly. but still need because we need protect the
-	 * the vblank waiting from being interrupted by randomly mode
-	 * setting & dpms from user space.
-	 */
-	mutex_lock(&dev->mode_config.mutex);
-
-	/*
 	 * FIXME: don't enable vblank in this way.
 	 * Current vblank usages didn't follow the DRM framework.
 	 * drm_vblank_get()/drm_vblank_put() should be used to enable/disabe
@@ -2921,8 +2914,6 @@ static void overlay_wait_vblank(struct drm_device *dev,
 	} else {
 		DRM_DEBUG("%s: psb_enable_vblank() failed\n", __func__);
 	}
-
-	mutex_unlock(&dev->mode_config.mutex);
 }
 
 static int validate_overlay_register_buffer(struct drm_file *file_priv,
