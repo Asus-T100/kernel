@@ -1913,7 +1913,7 @@ static void update_charger_health(struct msic_power_module_info *mbi)
 
 static void update_battery_health(struct msic_power_module_info *mbi)
 {
-	int temp, volt, chr_mode, max_volt;
+	int temp, volt, chr_mode, max_volt, max_volt_hyst;
 	unsigned char dummy_val;
 
 	mutex_lock(&mbi->event_lock);
@@ -1946,10 +1946,14 @@ static void update_battery_health(struct msic_power_module_info *mbi)
 
 
 
-	if (chr_mode != BATT_CHARGING_MODE_NONE)
+	if (chr_mode != BATT_CHARGING_MODE_NONE) {
 		max_volt = (mbi->ch_params.cvol * OVP_VAL_MULT_FACTOR) / 10;
-	else
+		/* hysteresis is 10% of CV */
+		max_volt_hyst = (mbi->ch_params.cvol) / 10;
+	} else {
 		max_volt = BATT_OVERVOLTAGE_CUTOFF_VOLT;
+		max_volt_hyst = BATT_OVERVOLTAGE_CUTOFF_VOLT_HYST;
+	}
 
 	/* Check for fault and update health */
 	mutex_lock(&mbi->batt_lock);
@@ -1982,7 +1986,7 @@ static void update_battery_health(struct msic_power_module_info *mbi)
 			(temp >= (batt_thrshlds->temp_low
 				  + MSIC_TEMP_HYST_ERR)) &&
 			(volt >= batt_thrshlds->vbatt_crit) &&
-			(volt <= max_volt)) {
+			(volt <= (max_volt - max_volt_hyst))) {
 
 			mbi->batt_props.health = POWER_SUPPLY_HEALTH_GOOD;
 			dev_dbg(msic_dev, "Setting battery-health, power-supply good");
