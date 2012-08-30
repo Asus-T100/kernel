@@ -1287,6 +1287,10 @@ static void update_usb_ps_info(struct msic_power_module_info *mbi,
 			mbi->usb.type = POWER_SUPPLY_TYPE_USB;
 			dev_info(msic_dev, "Charger type: SDP, "
 					"current negotiated: %d", cap->mA);
+		} else if (cap->chrg_type == CHRG_SDP_INVAL) {
+			mbi->usb.type = POWER_SUPPLY_TYPE_USB;
+			dev_info(msic_dev, "Charger type: SDP_INVAL, "\
+					"current negotiated: %d", cap->mA);
 		} else {
 			/* CHRG_UNKNOWN */
 			dev_warn(msic_dev, "Charger type:%d unknown\n",
@@ -2058,20 +2062,6 @@ static void msic_batt_disconn(struct work_struct *work)
 	power_supply_changed(&mbi->usb);
 }
 
-static void msic_invalid_chrg_hndl_worker(struct work_struct *work)
-{
-	struct msic_power_module_info *mbi =
-	    container_of(work, struct msic_power_module_info,
-					invalid_chrg_dwrk.work);
-
-	mutex_lock(&mbi->usb_chrg_lock);
-	mbi->usb_chrg_props.charger_health =
-			POWER_SUPPLY_HEALTH_UNSPEC_FAILURE;
-	mutex_unlock(&mbi->usb_chrg_lock);
-	dev_warn(msic_dev, "invalid charger\n");
-	power_supply_changed(&mbi->usb);
-}
-
 /**
 * msic_event_handler - msic event handler
 * @arg : private  data pointer
@@ -2107,11 +2097,6 @@ static int msic_event_handler(void *arg, int event, struct otg_bc_cap *cap)
 	default:
 		dev_warn(msic_dev, "Invalid OTG Event:%s\n", __func__);
 	}
-
-	/* cancle the invalid charger detectio worker
-	 * as we recieved the new OTG event.
-	 */
-	cancel_delayed_work_sync(&mbi->invalid_chrg_dwrk);
 
 	/* Update USB power supply info */
 	update_usb_ps_info(mbi, cap, event);
@@ -2159,11 +2144,6 @@ static int msic_event_handler(void *arg, int event, struct otg_bc_cap *cap)
 					      CHRCNTL_CHRG_LOW_PWR_ENBL, 0);
 
 		schedule_delayed_work(&mbi->connect_handler, 0);
-
-		/* schedule a worker to detect invalid charger case */
-		if ((cap->chrg_type == CHRG_SDP) &&
-				(cap->mA <= CHRG_CURR_SDP_LOW))
-			schedule_delayed_work(&mbi->invalid_chrg_dwrk, HZ * 30);
 		break;
 	case USBCHRG_EVENT_DISCONN:
 		pm_runtime_put_sync(&mbi->ipcdev->dev);
@@ -2928,8 +2908,6 @@ static int msic_battery_probe(struct ipc_device *ipcdev)
 	INIT_DELAYED_WORK_DEFERRABLE(&mbi->chr_status_monitor,
 				     msic_status_monitor);
 	INIT_DELAYED_WORK(&mbi->chrg_callback_dwrk, msic_chrg_callback_worker);
-	INIT_DELAYED_WORK(&mbi->invalid_chrg_dwrk,
-				msic_invalid_chrg_hndl_worker);
 	wake_lock_init(&mbi->wakelock, WAKE_LOCK_SUSPEND,
 		       "msicbattery_wakelock");
 
