@@ -211,6 +211,7 @@
 #define UMIP_BATT_FG_TABLE_SIZE		0x9E
 #define UMIP_NO_OF_CFG_TBLS_SIZE	0x01
 #define UMIP_BATT_FG_TABLE_OFFSET	0x8A4
+#define UMIP_BATT_FG_TERMINATION_CURRENT 0x2E
 
 #define UMIP_NO_OF_CFG_TBLS		UMIP_BATT_FG_TABLE_OFFSET
 #define UMIP_BATT_FG_CFG_TBL1 \
@@ -336,6 +337,11 @@
 #define FPO1_CAPACITY_SHUTDOWN		(1 << 0)
 #define FPO1_VOLTAGE_SHUTDOWN		(1 << 1)
 #define FPO1_LOWBATTINT_SHUTDOWN	(1 << 2)
+
+
+/*current multiplication factor*/
+#define TERMINATION_CUR_CONV_FACTOR  156
+
 
 /* Valid msic exception events */
 enum msic_event {
@@ -510,5 +516,6 @@ struct msic_power_module_info {
 	uint8_t chrint_mask, chrint1_mask;
 
 	int in_cur_lmt;	/* input current limit level */
+	uint16_t term_curr; /*termination current */
 };
 #endif

@@ -1471,12 +1471,12 @@ static int check_charge_full(struct msic_power_module_info *mbi,
 	 * the charge current is with in the termination range.
 	 */
 	if ((volt_now > vref) && (volt_prev > vref) &&
-			(cur_avg <= FULL_CURRENT_AVG_HIGH)) {
+			(cur_avg <= mbi->term_curr)) {
 		is_full = true;
 	} else if ((volt_now > (vref - VBATT_FULL_DET_MARGIN)) &&
 		(volt_prev > (vref - VBATT_FULL_DET_MARGIN))) {
 		if (cur_avg >= FULL_CURRENT_AVG_LOW  &&
-				cur_avg <= FULL_CURRENT_AVG_HIGH)
+				cur_avg <= mbi->term_curr)
 			is_full = true;
 		else
 			is_full = false;
@@ -2603,6 +2603,29 @@ static void sfi_table_invalid_batt(struct msic_batt_sfi_prop *sfi_table)
 	sfi_table->temp_mon_ranges = 0;
 
 }
+/**
+* mfld_umip_read_termination_current - reads the termination current data from umip using IPC.
+* @term_curr : termination current read from umip.
+*/
+static void  mfld_umip_read_termination_current(u16 *term_curr)
+{
+	int mip_offset, ret;
+	/* Read 2bytes of termination current data from the umip */
+	mip_offset = UMIP_REF_FG_TBL + UMIP_BATT_FG_TERMINATION_CURRENT;
+	ret = intel_scu_ipc_read_mip((u8 *)term_curr, 2, mip_offset, 0);
+	if (ret) {
+		dev_warn(msic_dev, "Reading umip for termination_current failed. setting to default");
+		*term_curr = FULL_CURRENT_AVG_HIGH;
+	} else {
+		 /* multiply the current with maxim current conversion factor*/
+		 *term_curr *= TERMINATION_CUR_CONV_FACTOR;
+		 /* convert in to mili amps */
+		 *term_curr /= 1000;
+	}
+	dev_info(msic_dev, "termination_current read from umip: %dmA\n",
+			*term_curr);
+}
+
 
 /**
  * sfi_table_populate - Simple Firmware Interface table Populate
@@ -2667,7 +2690,8 @@ static void init_batt_props(struct msic_power_module_info *mbi)
 	mbi->batt_props.status = POWER_SUPPLY_STATUS_DISCHARGING;
 	mbi->batt_props.health = POWER_SUPPLY_HEALTH_GOOD;
 	mbi->batt_props.present = MSIC_BATT_NOT_PRESENT;
-
+	/*initialize the termination current*/
+	mfld_umip_read_termination_current(&mbi->term_curr);
 	/* read specific to determine the status */
 	retval = intel_scu_ipc_ioread8(MSIC_BATT_CHR_SPWRSRCINT_ADDR, &data);
 	if (retval)
