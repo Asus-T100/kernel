@@ -27,6 +27,7 @@
 #include <linux/irq.h>
 #include <linux/module.h>
 #include <linux/notifier.h>
+#include <linux/spinlock.h>
 #include <linux/mmc/core.h>
 #include <linux/mmc/card.h>
 #include <linux/blkdev.h>
@@ -81,6 +82,62 @@ int sfi_mtimer_num;
 struct sfi_rtc_table_entry sfi_mrtc_array[SFI_MRTC_MAX];
 EXPORT_SYMBOL_GPL(sfi_mrtc_array);
 int sfi_mrtc_num;
+
+/* Unified message bus read/write operation */
+DEFINE_SPINLOCK(msgbus_lock);
+
+u32 intel_mid_msgbus_read32_raw(u32 cmd)
+{
+	struct pci_dev *pci_root;
+	unsigned long irq_flags;
+	u32 data;
+
+	pci_root = pci_get_bus_and_slot(0, PCI_DEVFN(0, 0));
+
+	spin_lock_irqsave(&msgbus_lock, irq_flags);
+	pci_write_config_dword(pci_root, PCI_ROOT_MSGBUS_CTRL_REG, cmd);
+	pci_read_config_dword(pci_root, PCI_ROOT_MSGBUS_DATA_REG, &data);
+	spin_unlock_irqrestore(&msgbus_lock, irq_flags);
+
+	pci_dev_put(pci_root);
+
+	return data;
+}
+EXPORT_SYMBOL(intel_mid_msgbus_read32_raw);
+
+void intel_mid_msgbus_write32_raw(u32 cmd, u32 data)
+{
+	struct pci_dev *pci_root;
+	unsigned long irq_flags;
+
+	pci_root = pci_get_bus_and_slot(0, PCI_DEVFN(0, 0));
+
+	spin_lock_irqsave(&msgbus_lock, irq_flags);
+	pci_write_config_dword(pci_root, PCI_ROOT_MSGBUS_DATA_REG, data);
+	pci_write_config_dword(pci_root, PCI_ROOT_MSGBUS_CTRL_REG, cmd);
+	spin_unlock_irqrestore(&msgbus_lock, irq_flags);
+
+	pci_dev_put(pci_root);
+}
+EXPORT_SYMBOL(intel_mid_msgbus_write32_raw);
+
+u32 intel_mid_msgbus_read32(u8 port, u8 addr)
+{
+	u32 cmd = (PCI_ROOT_MSGBUS_READ << 24) | (port << 16) |
+		  (addr << 8) | PCI_ROOT_MSGBUS_DWORD_ENABLE;
+
+	return intel_mid_msgbus_read32_raw(cmd);
+}
+EXPORT_SYMBOL(intel_mid_msgbus_read32);
+
+void intel_mid_msgbus_write32(u8 port, u8 addr, u32 data)
+{
+	u32 cmd = (PCI_ROOT_MSGBUS_WRITE << 24) | (port << 16) |
+		  (addr << 8) | PCI_ROOT_MSGBUS_DWORD_ENABLE;
+
+	intel_mid_msgbus_write32_raw(cmd, data);
+}
+EXPORT_SYMBOL(intel_mid_msgbus_write32);
 
 /* parse all the mtimer info to a static mtimer array */
 static int __init sfi_parse_mtmr(struct sfi_table_header *table)
