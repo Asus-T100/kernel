@@ -31,11 +31,13 @@
 
 #include "vsp.h"
 
-#define FW_NAME "vsp_VPP.bin"
 #define FW_SZ (800 * 1024)
 
 #ifdef CONFIG_BOARD_MRFLD_VP
 #define VSP_RUNNING_ON_VP
+#define FW_NAME "vsp_VPP.bin"
+#else
+#define FW_NAME "vsp_VPP_sle.bin"
 #endif
 
 static inline void vsp_enter_start_mode(struct drm_psb_private *dev_priv,
