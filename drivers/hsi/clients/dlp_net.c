@@ -549,6 +549,28 @@ static int dlp_net_start_xmit(struct sk_buff *skb, struct net_device *dev)
 			return NETDEV_TX_OK;
 	}
 
+	/* Workaround for the 4Bytes alignment issue */
+	if ((unsigned int)(skb->data) & 3) {
+		struct sk_buff *new_skb;
+		new_skb = alloc_skb(NET_IP_ALIGN + skb->len + 4, GFP_ATOMIC);
+		if (new_skb == NULL) {
+			kfree_skb(skb);
+			return NETDEV_TX_OK;
+		}
+		skb_reserve(new_skb, 4);
+		skb_reset_mac_header(new_skb);
+		skb_set_network_header(new_skb,
+				skb_network_header(skb) - skb->head);
+		skb_set_transport_header(new_skb,
+				skb_transport_header(skb) - skb->head);
+		skb_copy_and_csum_dev(skb,
+				skb_put(new_skb, skb->len));
+		kfree_skb(skb);
+
+		/* Update to the new skb */
+		skb = new_skb;
+	}
+
 	/* Set msg params */
 	msg_param = (struct dlp_net_tx_params *)skb->cb;
 	msg_param->ch_ctx = ch_ctx;
@@ -633,7 +655,7 @@ static int dlp_net_start_xmit(struct sk_buff *skb, struct net_device *dev)
 		ptr++;
 		(*ptr) = offset;
 
-		/* Set the size */
+		/* Set the size (skb_len + header_space) */
 		ptr++;
 		(*ptr) = (DLP_HDR_NO_MORE_DESC|DLP_HDR_COMPLETE_PACKET|skb_len);
 		(*ptr) += DLP_HDR_SPACE_CP;
