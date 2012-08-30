@@ -410,6 +410,7 @@ static uint32_t *msvdx_get_fw(struct drm_device *dev,
 	if ((*raw)->size < sizeof(struct msvdx_fw)) {
 		DRM_ERROR("MSVDX: %s is is not correct size(%zd)\n",
 			  name, (*raw)->size);
+		release_firmware(*raw);
 		return NULL;
 	}
 
@@ -417,6 +418,7 @@ static uint32_t *msvdx_get_fw(struct drm_device *dev,
 
 	if (!ptr) {
 		DRM_ERROR("MSVDX: Failed to load %s\n", name);
+		release_firmware(*raw);
 		return NULL;
 	}
 
@@ -427,6 +429,7 @@ static uint32_t *msvdx_get_fw(struct drm_device *dev,
 	if ((*raw)->size < fw_size) {
 		DRM_ERROR("MSVDX: %s is is not correct size(%zd)\n",
 			  name, (*raw)->size);
+		release_firmware(*raw);
 		return NULL;
 	} else if ((*raw)->size > fw_size) { /* there is ec firmware */
 		ptr += ((fw_size + 0xfff) & ~0xfff);
