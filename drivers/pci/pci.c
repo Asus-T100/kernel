@@ -964,9 +964,11 @@ void pci_restore_state(struct pci_dev *dev)
 	for (i = 15; i >= 0; i--) {
 		pci_read_config_dword(dev, i * 4, &val);
 		if (val != dev->saved_config_space[i]) {
+#ifdef CONFIG_PCI_DEBUG
 			dev_printk(KERN_DEBUG, &dev->dev, "restoring config "
 				"space at offset %#x (was %#x, writing %#x)\n",
 				i, val, (int)dev->saved_config_space[i]);
+#endif
 			pci_write_config_dword(dev,i * 4,
 				dev->saved_config_space[i]);
 		}

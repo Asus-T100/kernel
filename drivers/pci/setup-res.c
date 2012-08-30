@@ -85,9 +85,11 @@ void pci_update_resource(struct pci_dev *dev, int resno)
 		}
 	}
 	res->flags &= ~IORESOURCE_UNSET;
+#ifdef CONFIG_PCI_DEBUG
 	dev_dbg(&dev->dev, "BAR %d: set to %pR (PCI address [%#llx-%#llx])\n",
 		 resno, res, (unsigned long long)region.start,
 		 (unsigned long long)region.end);
+#endif
 }
 
 int pci_claim_resource(struct pci_dev *dev, int resource)
