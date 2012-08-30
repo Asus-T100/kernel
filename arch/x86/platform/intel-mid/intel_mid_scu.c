@@ -57,6 +57,7 @@ int intel_mid_rproc_init(void)
 {
 	int err;
 
+	register_rpmsg_service("rpmsg_ipc", RPROC_SCU, RP_IPC);
 	register_rpmsg_service("rpmsg_pmic", RPROC_SCU, RP_PMIC_ACCESS);
 	register_rpmsg_service("rpmsg_mip", RPROC_SCU, RP_MIP_ACCESS);
 	register_rpmsg_service("rpmsg_watchdog", RPROC_SCU, RP_MIP_ACCESS);

@@ -35,6 +35,7 @@
 #define RP_MSIC_BATTERY		0XEF
 #define RP_MSIC_THERMAL		0x09
 #define RP_MSIC_POWER_BTN	0x10
+#define RP_IPC			0X11
 
 enum rproc_type {
 	RPROC_SCU = 0,
