@@ -383,14 +383,6 @@ static inline int handle_ipc_rw_status(int error_val,
 				POWER_SUPPLY_HEALTH_UNSPEC_FAILURE;
 		}
 		mutex_unlock(&mbi->batt_lock);
-		/* set charger health */
-		mutex_lock(&mbi->usb_chrg_lock);
-		if (mbi->usb_chrg_props.charger_health ==
-				POWER_SUPPLY_HEALTH_GOOD){
-			mbi->usb_chrg_props.charger_health =
-				POWER_SUPPLY_HEALTH_UNSPEC_FAILURE;
-		}
-		mutex_unlock(&mbi->usb_chrg_lock);
 		power_supply_changed(&mbi->usb);
 	}
 
@@ -1894,19 +1886,6 @@ static void update_charger_health(struct msic_power_module_info *mbi)
 			mbi->msic_chr_err = MSIC_CHRG_ERROR_NONE;
 		mutex_unlock(&mbi->event_lock);
 
-	} else if (mbi->batt_props.health ==
-			POWER_SUPPLY_HEALTH_UNSPEC_FAILURE){
-
-		/* do a dummy IPC read to see IPC recovered form IPC error.
-		 * If recovered reset error_count*/
-
-		if (!intel_scu_ipc_ioread8(MSIC_BATT_CHR_CHRCTRL_ADDR,
-					&dummy_val)) {
-			error_count = 0;
-			mbi->usb_chrg_props.charger_health =
-					POWER_SUPPLY_HEALTH_GOOD;
-
-		}
 	}
 	mutex_unlock(&mbi->usb_chrg_lock);
 }
@@ -2076,6 +2055,20 @@ static void msic_batt_disconn(struct work_struct *work)
 	power_supply_changed(&mbi->usb);
 }
 
+static void msic_invalid_chrg_hndl_worker(struct work_struct *work)
+{
+	struct msic_power_module_info *mbi =
+	    container_of(work, struct msic_power_module_info,
+					invalid_chrg_dwrk.work);
+
+	mutex_lock(&mbi->usb_chrg_lock);
+	mbi->usb_chrg_props.charger_health =
+			POWER_SUPPLY_HEALTH_UNSPEC_FAILURE;
+	mutex_unlock(&mbi->usb_chrg_lock);
+	dev_warn(msic_dev, "invalid charger\n");
+	power_supply_changed(&mbi->usb);
+}
+
 /**
 * msic_event_handler - msic event handler
 * @arg : private  data pointer
@@ -2087,6 +2080,35 @@ static int msic_event_handler(void *arg, int event, struct otg_bc_cap *cap)
 {
 	struct msic_power_module_info *mbi =
 	    (struct msic_power_module_info *)arg;
+
+
+	/* cancel the worker of opposite events
+	 * i.e cancel the connect handler worker
+	 * upon disconnect or suspend event and
+	 * cancel the disconnect handler worker
+	 * upon connect/update/resume event. This
+	 * ensures that the status or health params
+	 * won't be modified due to contineous flood
+	 * of OTG events.
+	 */
+	switch (event) {
+	case USBCHRG_EVENT_CONNECT:
+	case USBCHRG_EVENT_RESUME:
+	case USBCHRG_EVENT_UPDATE:
+		cancel_delayed_work_sync(&mbi->disconn_handler);
+		break;
+	case USBCHRG_EVENT_DISCONN:
+	case USBCHRG_EVENT_SUSPEND:
+		cancel_delayed_work_sync(&mbi->connect_handler);
+		break;
+	default:
+		dev_warn(msic_dev, "Invalid OTG Event:%s\n", __func__);
+	}
+
+	/* cancle the invalid charger detectio worker
+	 * as we recieved the new OTG event.
+	 */
+	cancel_delayed_work_sync(&mbi->invalid_chrg_dwrk);
 
 	/* Update USB power supply info */
 	update_usb_ps_info(mbi, cap, event);
@@ -2134,6 +2156,11 @@ static int msic_event_handler(void *arg, int event, struct otg_bc_cap *cap)
 					      CHRCNTL_CHRG_LOW_PWR_ENBL, 0);
 
 		schedule_delayed_work(&mbi->connect_handler, 0);
+
+		/* schedule a worker to detect invalid charger case */
+		if ((cap->chrg_type == CHRG_SDP) &&
+				(cap->mA <= CHRG_CURR_SDP_LOW))
+			schedule_delayed_work(&mbi->invalid_chrg_dwrk, HZ * 30);
 		break;
 	case USBCHRG_EVENT_DISCONN:
 		pm_runtime_put_sync(&mbi->ipcdev->dev);
@@ -2142,7 +2169,6 @@ static int msic_event_handler(void *arg, int event, struct otg_bc_cap *cap)
 		mbi->msic_chr_err = MSIC_CHRG_ERROR_NONE;
 		mutex_unlock(&mbi->event_lock);
 	case USBCHRG_EVENT_SUSPEND:
-		cancel_delayed_work_sync(&mbi->connect_handler);
 		schedule_delayed_work(&mbi->disconn_handler, 0);
 
 		mutex_lock(&mbi->event_lock);
@@ -2899,6 +2925,8 @@ static int msic_battery_probe(struct ipc_device *ipcdev)
 	INIT_DELAYED_WORK_DEFERRABLE(&mbi->chr_status_monitor,
 				     msic_status_monitor);
 	INIT_DELAYED_WORK(&mbi->chrg_callback_dwrk, msic_chrg_callback_worker);
+	INIT_DELAYED_WORK(&mbi->invalid_chrg_dwrk,
+				msic_invalid_chrg_hndl_worker);
 	wake_lock_init(&mbi->wakelock, WAKE_LOCK_SUSPEND,
 		       "msicbattery_wakelock");
 

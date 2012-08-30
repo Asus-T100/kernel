@@ -502,6 +502,9 @@ struct msic_power_module_info {
 	/* Worker to handle otg callback events */
 	struct delayed_work chrg_callback_dwrk;
 
+	/* Worker to handle invalid chargers */
+	struct delayed_work invalid_chrg_dwrk;
+
 	/* lock to avoid concurrent  access to HW Registers.
 	 * As some charger control and parameter registers
 	 * can be read or write at same time, ipc_rw_lock lock
