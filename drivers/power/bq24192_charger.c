@@ -395,7 +395,16 @@ static int ctp_adc_to_temp(uint16_t adc_val, int *tmp)
 	if (!ctp_is_valid_temp_adc(adc_val)) {
 		dev_warn(&bq24192_client->dev,
 			"Temperature out of Range: %u\n", adc_val);
-		return -ERANGE;
+		/*
+		 * If the value returned as an ERANGE the battery icon shows an
+		 * exclaimation mark in the COS.In order to fix the issue, if
+		 * the ADC returns a value which is not in range specified, we
+		 * update the value within the bound.
+		 */
+		if (adc_val > CLT_BTP_ADC_MAX)
+			adc_val = CLT_BTP_ADC_MAX;
+		else if (adc_val < CLT_BTP_ADC_MIN)
+			adc_val = CLT_BTP_ADC_MIN;
 	}
 
 	for (i = 0; i < CLT_BPTHERM_CURVE_MAX_SAMPLES; i++) {
@@ -1263,7 +1272,7 @@ uptd_chrg_set_exit:
 static void set_up_charging(struct bq24192_chip *chip,
 		struct bq24192_chrg_regs *reg, int chr_curr, int chr_volt)
 {
-	int ret, count;
+	int ret;
 
 	dev_dbg(&chip->client->dev, "%s\n", __func__);
 
@@ -1541,7 +1550,6 @@ static void bq24192_maintenance_worker(struct work_struct *work)
 		dev_warn(&chip->client->dev, "%s HiZ clr failed\n", __func__);
 		goto sched_maint_work;
 	}
-
 	retval = (chip->input_curr & ~INPUT_SRC_CNTL_EN_HIZ);
 	ret = bq24192_write_reg(chip->client,
 				BQ24192_INPUT_SRC_CNTL_REG, retval);
@@ -2486,52 +2494,6 @@ static void init_batt_thresholds(struct bq24192_chip *chip)
 		dev_warn(&chip->client->dev, "Failed to set the SAFETEMP\n");
 }
 
-static void init_charger_regs(struct bq24192_chip *chip)
-{
-	int ret;
-
-	/* Disable WDT and Safety timer */
-	ret = program_timers(chip, false, false);
-	if (ret < 0)
-		dev_warn(&chip->client->dev, "I2C write failed:%s\n", __func__);
-
-	/* disable the charger */
-	ret = bq24192_reg_multi_bitset(chip->client, BQ24192_POWER_ON_CFG_REG,
-						POWER_ON_CFG_CHRG_CFG_DIS,
-					CHR_CFG_BIT_POS, CHR_CFG_BIT_LEN);
-	if (ret < 0)
-		dev_warn(&chip->client->dev, "I2C write failed:%s\n", __func__);
-
-	/* disable Charge Termination */
-	ret = bq24192_reg_read_modify(chip->client,
-			BQ24192_CHRG_TIMER_EXP_CNTL_REG,
-				CHRG_TIMER_EXP_CNTL_EN_TERM, false);
-	if (ret < 0)
-		dev_warn(&chip->client->dev, "I2C write failed:%s\n", __func__);
-
-	/* set safty charge time to maximum */
-	ret = bq24192_reg_multi_bitset(chip->client,
-					BQ24192_CHRG_TIMER_EXP_CNTL_REG,
-					CHRG_TIMER_EXP_CNTL_SFT_TIMER,
-					SFT_TIMER_BIT_POS, SFT_TIMER_BIT_LEN);
-	if (ret < 0)
-		dev_warn(&chip->client->dev, "I2C write failed:%s\n", __func__);
-
-	/* disable charger interrupts */
-	ret = bq24192_reg_read_modify(chip->client,
-					BQ24192_MISC_OP_CNTL_REG,
-					MISC_OP_CNTL_MINT_CHRG, false);
-	if (ret < 0)
-		dev_warn(&chip->client->dev, "I2C write failed:%s\n", __func__);
-
-	/* disable battery interrupts */
-	ret = bq24192_reg_read_modify(chip->client,
-					BQ24192_MISC_OP_CNTL_REG,
-					MISC_OP_CNTL_MINT_BATT, false);
-	if (ret < 0)
-		dev_warn(&chip->client->dev, "I2C write failed:%s\n", __func__);
-}
-
 /* IRQ handler for charger Interrupts configured to GPIO pin */
 static irqreturn_t mask_gpio_irq(int irq, void *devid)
 {
@@ -2552,8 +2514,6 @@ EXPORT_SYMBOL(ctp_is_volt_shutdown_enabled);
 
 int ctp_get_vsys_min(void)
 {
-	int ret;
-
 	if (vbatt_sh_min)
 		return vbatt_sh_min * 1000;
 
