@@ -1631,10 +1631,15 @@ static void msic_batt_temp_charging(struct work_struct *work)
 	dev_dbg(msic_dev, "cc:%d  cv:%d\n", cc, cv);
 
 	mutex_lock(&mbi->event_lock);
-	/* Check on user setting for charge current */
-	if (mbi->usr_chrg_enbl == USER_SET_CHRG_LMT1)
-		vinlimit = CHRCNTL_VINLMT_100;	/* VINILMT set to 100mA */
-	else if (mbi->usr_chrg_enbl == USER_SET_CHRG_LMT2)
+	/*
+	 * Check on user setting for charge current.
+	 * MFLD doesn't support VSYS alone and at the same
+	 * time 100mA charging doesn't really charge the battery.
+	 * So for USER_SET_CHRG_LMT1 and USER_SET_CHRG_LMT2
+	 * we limit the charging to 500mA.
+	 */
+	if ((mbi->usr_chrg_enbl == USER_SET_CHRG_LMT1) ||
+		(mbi->usr_chrg_enbl == USER_SET_CHRG_LMT2))
 		vinlimit = CHRCNTL_VINLMT_500;	/* VINILMT set to 500mA */
 	else if (mbi->usr_chrg_enbl == USER_SET_CHRG_LMT3)
 		vinlimit = CHRCNTL_VINLMT_950;	/* VINILMT set to 950mA */
