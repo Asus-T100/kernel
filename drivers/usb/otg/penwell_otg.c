@@ -1164,6 +1164,17 @@ static void penwell_otg_HABA(int on)
 					pnw->iotg.base + CI_OTGSC);
 }
 
+/* read 8bit msic register */
+static int penwell_otg_msic_read(u16 addr, u8 *data)
+{
+	struct penwell_otg	*pnw = the_transceiver;
+	int			retval = intel_scu_ipc_ioread8(addr, data);
+	if (retval)
+		dev_warn(pnw->dev, "Failed to read MSIC register %x\n", addr);
+
+	return retval;
+}
+
 /* write 8bit msic register */
 static int penwell_otg_msic_write(u16 addr, u8 data)
 {
@@ -5066,15 +5077,63 @@ done:
 	return ret;
 }
 
+static void penwell_otg_dump_bogus_wake(void)
+{
+	struct penwell_otg	*pnw = the_transceiver;
+	int addr = 0x2C8, retval;
+	u8 val;
+
+	/* Enable SPI access */
+	penwell_otg_msic_spi_access(true);
+
+	retval = penwell_otg_msic_read(addr, &val);
+	if (retval) {
+		dev_err(pnw->dev, "msic read failed\n");
+		goto out;
+	}
+	dev_info(pnw->dev, "0x%03x: 0x%02x", addr, val);
+
+	for (addr = 0x340; addr <= 0x348 ; addr++) {
+		retval = penwell_otg_msic_read(addr, &val);
+		if (retval) {
+			dev_err(pnw->dev, "msic read failed\n");
+			goto out;
+		}
+		dev_info(pnw->dev, "0x%03x: 0x%02x", addr, val);
+	}
+
+	for (addr = 0x394; addr <= 0x3BF ; addr++) {
+		retval = penwell_otg_msic_read(addr, &val);
+		if (retval) {
+			dev_err(pnw->dev, "msic read failed\n");
+			goto out;
+		}
+		dev_info(pnw->dev, "0x%03x: 0x%02x", addr, val);
+	}
+
+	addr = 0x192;
+	retval = penwell_otg_msic_read(addr, &val);
+	if (retval) {
+		dev_err(pnw->dev, "msic read failed\n");
+		goto out;
+	}
+
+	dev_info(pnw->dev, "0x%03x: 0x%02x", addr, val);
+out:
+	penwell_otg_msic_spi_access(false);
+}
 
 static int penwell_otg_resume_noirq(struct device *dev)
 {
 	struct penwell_otg	*pnw = the_transceiver;
 	struct intel_mid_otg_xceiv	*iotg = &pnw->iotg;
+	struct pci_dev			*pdev;
 	int			ret = 0;
 	u32			val;
 
 	dev_dbg(pnw->dev, "%s --->\n", __func__);
+
+	pdev = to_pci_dev(pnw->dev);
 
 	if (mid_pmu_is_wake_source(PMU_OTG_WAKE_SOURCE)) {
 		/* dump OTGSC register for wakeup event */
@@ -5094,12 +5153,13 @@ static int penwell_otg_resume_noirq(struct device *dev)
 			dev_info(pnw->dev, "%s: a vbus valid\n", __func__);
 
 		if (!(val & OTGSC_INTSTS_MASK)) {
-
 			static bool uevent_reported;
 			dev_info(pnw->dev,
 				 "%s: waking up from USB source, but not a OTG wakeup event\n",
 				 __func__);
 			if (!uevent_reported) {
+				if (!is_clovertrail(pdev))
+					penwell_otg_dump_bogus_wake();
 				queue_work(pnw->qwork, &pnw->uevent_work);
 				uevent_reported = true;
 			}
