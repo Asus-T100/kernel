@@ -2598,7 +2598,8 @@ int snd_soc_put_volsw_sx(struct snd_kcontrol *kcontrol,
 	val = (ucontrol->value.integer.value[0] + min) & mask;
 	val = val << shift;
 
-	if (snd_soc_update_bits_locked(codec, reg, val_mask, val))
+	err = snd_soc_update_bits_locked(codec, reg, val_mask, val);
+	if (err < 0)
 			return err;
 
 	if (snd_soc_volsw_is_stereo(mc)) {
@@ -2606,7 +2607,8 @@ int snd_soc_put_volsw_sx(struct snd_kcontrol *kcontrol,
 		val2 = (ucontrol->value.integer.value[1] + min) & mask;
 		val2 = val2 << rshift;
 
-		if (snd_soc_update_bits_locked(codec, reg2, val_mask, val2))
+		err = snd_soc_update_bits_locked(codec, reg2, val_mask, val2);
+		if (err < 0)
 			return err;
 	}
 	return 0;
