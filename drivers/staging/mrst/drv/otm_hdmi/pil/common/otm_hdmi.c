@@ -1177,11 +1177,11 @@ static otm_hdmi_ret_t __pd_attr_declare(otm_hdmi_attribute_t *table,
 	 */
 	strsiz = strlen(name);
 	if ((name != NULL) && (strsiz <= OTM_HDMI_MAX_STRING_LENGTH))
-		strncpy(table[id].name, name, strsiz+1);
+		strncpy(table[id].name, name, OTM_HDMI_MAX_STRING_LENGTH);
 	else
 		LOG_ERROR("set default name\n");
 		/* TODO: set default name */
-
+	table[id].name[OTM_HDMI_MAX_STRING_LENGTH] = 0;
 	table[id].flags = flags;
 
 	switch (type) {
@@ -1200,9 +1200,10 @@ static otm_hdmi_ret_t __pd_attr_declare(otm_hdmi_attribute_t *table,
 			if ((value != NULL) &&
 			strsiz <= OTM_HDMI_MAX_STRING_LENGTH)
 				strncpy(table[id].content.string.value,
-					(char *) value, strsiz+1);
+					(char *) value, OTM_HDMI_MAX_STRING_LENGTH);
 			else
 				rc = OTM_HDMI_ERR_FAILED;
+			table[id].content.string.value[OTM_HDMI_MAX_STRING_LENGTH] = 0;
 			break;
 	default:
 			break;
