@@ -18,6 +18,8 @@
  * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
  *
  * Authors:
+ *    Li Zeng <li.zeng@intel.com>
+ *    Binglin Chen <binglin.chen@intel.com>
  *    Fei Jiang <fei.jiang@intel.com>
  *
  **************************************************************************/
@@ -27,7 +29,9 @@
 #include "psb_drv.h"
 #include "psb_msvdx.h"
 #include "psb_msvdx_msg.h"
+#ifdef CONFIG_DRM_MRFLD
 #include "psb_msvdx_ec.h"
+#endif
 #include "pnw_topaz.h"
 #include "psb_powermgmt.h"
 #include <linux/io.h>
@@ -71,6 +75,7 @@ static int psb_msvdx_dequeue_send(struct drm_device *dev)
 	if (IS_MSVDX_MEM_TILE(dev) && drm_psb_msvdx_tiling)
 		psb_msvdx_set_tile(dev, msvdx_cmd->msvdx_tile);
 
+#ifdef CONFIG_DRM_MRFLD
 	/* Seperate update frame and backup cmds because if a batch of cmds
 	 * doesn't have * host_be_opp message, no need to update frame info
 	 * but still need to backup cmds.
@@ -84,6 +89,7 @@ static int psb_msvdx_dequeue_send(struct drm_device *dev)
 			msvdx_cmd->cmd,
 			msvdx_cmd->cmd_size,
 			msvdx_cmd->deblock_cmd_offset);
+#endif
 	ret = psb_msvdx_send(dev, msvdx_cmd->cmd, msvdx_cmd->cmd_size);
 	if (ret) {
 		DRM_ERROR("MSVDXQUE: psb_msvdx_send failed\n");
@@ -291,6 +297,7 @@ static int psb_msvdx_map_command(struct drm_device *dev,
 				((dev_priv->msvdx_ctx->ctx_type >> 16) & 0xff);
 			psb_msvdx_set_tile(dev, msvdx_tile);
 		}
+#ifdef CONFIG_DRM_MRFLD
 		if (msvdx_priv->host_be_opp_enabled) {
 			psb_msvdx_update_frame_info(msvdx_priv,
 				msvdx_priv->tfile,
@@ -300,6 +307,7 @@ static int psb_msvdx_map_command(struct drm_device *dev,
 				cmd_start,
 				cmd_size,
 				msvdx_priv->deblock_cmd_offset);
+#endif
 		ret = psb_msvdx_send(dev, cmd_start, cmd_size);
 		if (ret) {
 			DRM_ERROR("MSVDXQUE: psb_msvdx_send failed\n");

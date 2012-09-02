@@ -17,6 +17,7 @@
  * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
  *
  * Authors:
+ *    Li Zeng <li.zeng@intel.com>
  *    Fei Jiang <fei.jiang@intel.com>
  *
  **************************************************************************/
@@ -731,10 +732,12 @@ struct msvdx_private {
 
 #define FW_VA_LAST_SLICE_OF_EXT_DMA                                         0x00001000
 
+#ifdef CONFIG_DRM_MRFLD
 struct psb_msvdx_ec_ctx *psb_msvdx_find_ec_ctx(
 			struct msvdx_private *msvdx_priv,
 			struct ttm_object_file *tfile,
 			void *cmd);
+#endif
 
 static inline void psb_msvdx_clearirq(struct drm_device *dev)
 {

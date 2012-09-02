@@ -19,6 +19,8 @@
  * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
  *
  * Authors:
+ *    Li Zeng <li.zeng@intel.com>
+ *    Binglin Chen <binglin.chen@intel.com>
  *    Fei Jiang <fei.jiang@intel.com>
  *
  **************************************************************************/
@@ -28,7 +30,9 @@
 #include "psb_drv.h"
 #include "psb_msvdx.h"
 #include "psb_msvdx_msg.h"
+#ifdef CONFIG_DRM_MRFLD
 #include "psb_msvdx_ec.h"
+#endif
 #include <linux/firmware.h>
 
 uint8_t psb_rev_id;
@@ -514,7 +518,9 @@ static void msvdx_init_ec(struct msvdx_private *msvdx_priv)
 			msvdx_priv->msvdx_ec_ctx[i]->fence =
 					PSB_MSVDX_INVALID_FENCE;
 	}
+#ifdef CONFIG_DRM_MRFLD
 	INIT_WORK(&(msvdx_priv->ec_work), psb_msvdx_do_concealment);
+#endif
 	return;
 }
 

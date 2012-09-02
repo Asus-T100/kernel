@@ -115,6 +115,7 @@ int psb_release(struct inode *inode, struct file *filp)
 
 	msvdx_priv = (struct msvdx_private *)dev_priv->msvdx_private;
 
+#ifdef CONFIG_DRM_MRFLD
 	/*cleanup for msvdx*/
 	/*
 	if (msvdx_priv->tfile == psb_fpriv(file_priv)->tfile) {
@@ -139,6 +140,7 @@ int psb_release(struct inode *inode, struct file *filp)
 			ec_ctx->fence = PSB_MSVDX_INVALID_FENCE;
 		}
 	}
+#endif
 
 	ttm_object_file_release(&psb_fp->tfile);
 #endif

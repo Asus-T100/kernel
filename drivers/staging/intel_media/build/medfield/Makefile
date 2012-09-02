@@ -223,11 +223,12 @@ gfx-$(CONFIG_MDFD_VIDEO_DECODE) += $(ENCODE_DIR)/pnw_topaz.o \
 		$(DECODE_DIR)/psb_msvdx.o \
 		$(DECODE_DIR)/psb_msvdxinit.o \
 		$(DECODE_DIR)/psb_msvdx_fw.o \
-		$(DECODE_DIR)/psb_msvdx_ec.o \
 		$(VIDEO_COMMON_DIR)/psb_ttm_glue.o \
 		$(VIDEO_COMMON_DIR)/psb_ttm_fence.o \
 		$(VIDEO_COMMON_DIR)/psb_ttm_fence_user.o \
 		$(VIDEO_COMMON_DIR)/psb_ttm_placement_user.o
+
+gfx-$(CONFIG_DRM_MRFLD) += $(DECODE_DIR)/psb_msvdx_ec.o
 
 gfx-$(CONFIG_MDFLD_DSI_DPU) += $(DISPLAYDIR)/mdfld_dsi_dbi_dpu.o
 
