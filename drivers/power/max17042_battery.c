@@ -81,6 +81,7 @@
 #define CONFIG_ALRT_BIT_ENBL	(1 << 2)
 #define CONFIG_TSTICKY_BIT_SET	(1 << 13)
 #define CONFIG_ALP_BIT_ENBL	(1 << 11)
+#define CONFIG_TEX_BIT_ENBL	(1 << 8)
 
 /* Interrupt status bits */
 #define STATUS_INTR_VMAX_BIT	(1 << 12)
@@ -629,11 +630,24 @@ static int read_batt_pack_temp(struct max17042_chip *chip, int *temp)
 		ret = chip->pdata->battery_pack_temp(temp);
 		if (ret < 0)
 			goto temp_read_err;
-		val = (0xff & (char)*temp) << 8;
-		ret = max17042_write_reg(chip->client, MAX17042_TEMP, val);
-		if (ret < 0)
-			dev_err(&chip->client->dev,
-					"Temp write fail to maxim:%d", ret);
+
+		/* Convert the temperature to 2's complement form.
+		 * Most significant byte contains the decimal
+		 * equivalent of the data */
+		if (fg_conf_data->cfg & CONFIG_TEX_BIT_ENBL) {
+			if (*temp < 0) {
+				val = (*temp + 0xff + 1);
+				val <<= 8;
+			} else {
+				val = *temp;
+				val <<= 8;
+			}
+			ret = max17042_write_reg(chip->client,
+							MAX17042_TEMP, val);
+			if (ret < 0)
+				dev_err(&chip->client->dev,
+					"Temp write to maxim failed:%d", ret);
+		}
 	} else {
 		ret = max17042_read_reg(chip->client, MAX17042_TEMP);
 		if (ret < 0)
