@@ -68,6 +68,7 @@
 
 #define LSB(b)    ((unsigned char) ((b) &  0xF))
 #define MSB(b)    ((unsigned char) ((b) >> 4))
+#define CMD_ID(b, id) (LSB(b) | (id << 4))
 
 #define DLP_CMD_TX_TIMOUT		 1000  /* 1 sec */
 #define DLP_CMD_RX_TIMOUT	     1000  /* 1 sec */
@@ -968,6 +969,9 @@ static void dlp_ctrl_complete_rx(struct hsi_msg *msg)
 		struct dlp_command *dlp_cmd;
 		struct hsi_msg *tx_msg = NULL;
 
+		/* Set the response cmd_id */
+		params.data3 = CMD_ID(params.data3, params.id);
+
 		/* Allocate the DLP command */
 		dlp_cmd = dlp_ctrl_cmd_alloc(ch_ctx,
 					     response,
@@ -1058,6 +1062,7 @@ static int dlp_ctrl_cmd_send(struct dlp_channel *ch_ctx,
 	int ret = 0;
 	struct dlp_ctrl_context *ctrl_ctx = DLP_CTRL_CTX;
 	struct dlp_command *dlp_cmd;
+	struct dlp_command_params expected_resp;
 	struct hsi_msg *tx_msg = NULL;
 
 	PROLOG("hsi_ch:%d, cmd:0x%X, resp:0x%X",
@@ -1142,23 +1147,22 @@ static int dlp_ctrl_cmd_send(struct dlp_channel *ch_ctx,
 		goto out;
 	}
 
-	/* Check the response */
-	ret = 0;
-	if ((ctrl_ctx->response.params.id != response_id) ||
-	    (ctrl_ctx->response.params.data1 != param1) ||
-	    (ctrl_ctx->response.params.data2 != param2) ||
-	    (ctrl_ctx->response.params.data3 != param3)) {
+	/* Set the expected response params */
+	expected_resp.id = response_id;
+	expected_resp.channel = ch_ctx->hsi_channel;
+	expected_resp.data1 = param1;
+	expected_resp.data2 = param2;
+	expected_resp.data3 = CMD_ID(param3, id);
 
-		CRITICAL("cmd:0x%X unexpected response [0x%X%X%02X%02X%02X]"
-			 " => expected [0x%X%X%02X%02X%02X]",
-			 id,
-			 ctrl_ctx->response.params.id,
-			 ctrl_ctx->response.params.channel,
-			 ctrl_ctx->response.params.data1,
-			 ctrl_ctx->response.params.data2,
-			 ctrl_ctx->response.params.data3,
-			 response_id,
-			 ch_ctx->hsi_channel, param1, param2, param3);
+	/* Check the received response params */
+	ret = 0;
+	if (memcmp(&ctrl_ctx->response.params,
+				&expected_resp,
+				sizeof(expected_resp))) {
+		pr_err(DRVNAME": cmd 0x%X unexpected response 0x%X (expected 0x%X)",
+			id,
+			(unsigned int)(*(u32 *)&ctrl_ctx->response.params),
+			(unsigned int)(*(u32 *)(&expected_resp)));
 
 		ret = -EIO;
 	}
