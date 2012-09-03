@@ -1649,8 +1649,6 @@ static void ffl_complete_tx(struct hsi_msg *frame)
 	int			wakeup;
 	unsigned long		flags;
 
-	main_ctx->reset.ongoing = 0;
-
 	spin_lock_irqsave(&ctx->lock, flags);
 	_ffl_fifo_ctrl_pop(ctx);
 	_ffl_free_frame(ctx, frame);
@@ -3185,6 +3183,10 @@ static irqreturn_t ffl_reset_isr(int irq, void *dev)
 		cause = (ctx->reset.ongoing) ? 0 : HU_RESET;
 		dev_dbg(&client->device, "GPIO RESET_OUT %x (%d)", status,
 			cause);
+
+		/* RISING edge => Reset done (clear the flag )*/
+		if (status)
+			ctx->reset.ongoing = 0;
 	} else if (irq == ctx->reset.cd_irq) {
 		status = gpio_get_value(pd->gpio_fcdp_rb);
 		/* Skip fake core dump sequences */
