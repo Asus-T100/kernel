@@ -3032,8 +3032,10 @@ static void gsmtty_detach_dlci(struct tty_struct *tty)
 	}
 	spin_lock(&dlci->gsmtty_lock);
 	has_open = --dlci->gsmtty_count;
-	if (!has_open)
+	if (!has_open) {
+		tty_port_tty_set(&dlci->port, NULL);
 		tty->driver_data = NULL;
+	}
 	spin_unlock(&dlci->gsmtty_lock);
 
 	gsm = dlci->gsm;
@@ -3130,7 +3132,6 @@ static void gsmtty_close(struct tty_struct *tty, struct file *filp)
 					gsm->n2 * gsm->t1 * HZ / 100);
 
 	tty_port_close_end(&dlci->port, tty);
-	tty_port_tty_set(&dlci->port, NULL);
 	gsmtty_detach_dlci(tty);
 }
 
