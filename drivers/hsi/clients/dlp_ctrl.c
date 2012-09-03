@@ -931,15 +931,15 @@ static void dlp_ctrl_complete_rx(struct hsi_msg *msg)
 		if (msg_complete) {
 			ret = ((params.data2 << 8) | params.data1);
 			response = DLP_CMD_ACK;
-			pr_info(DRVNAME ": ch%d open_conn received\n",
-					params.channel);
+			pr_info(DRVNAME ": ch%d open_conn received (size: %d)\n",
+					params.channel, ret);
 
 			/* Check the requested PDU size */
-			if (ch_ctx->tx.pdu_size != ret) {
+			if (ch_ctx->rx.pdu_size != ret) {
 				CRITICAL("Unexpected PDU size: %d => "
 						"Expected: %d (ch: %d)",
 						ret,
-						ch_ctx->tx.pdu_size,
+						ch_ctx->rx.pdu_size,
 						ch_ctx->hsi_channel);
 
 				response = DLP_CMD_NACK;

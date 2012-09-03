@@ -65,46 +65,24 @@
 /* Maximal number of pdu allocation failure prior firing an error message */
 #define DLP_PDU_ALLOC_RETRY_MAX_CNT	10
 
-/* Round-up the pdu and header length to a multiple of 4-bytes to align
- * on the HSI 4-byte granularity*/
-#define DLP_PDU_LENGTH	(((CONFIG_HSI_DLP_PDU_LENGTH+3)/4)*4)
-#define DLP_HEADER_LENGTH	(((CONFIG_HSI_DLP_HEADER_LENGTH+3)/4)*4)
-#define DLP_PAYLOAD_LENGTH	(DLP_PDU_LENGTH-DLP_HEADER_LENGTH)
-#define DLP_LENGTH_MASK		(roundup_pow_of_two(DLP_PAYLOAD_LENGTH)-1)
-
-/* Initial minimal buffering size (in bytes) */
-#define DLP_MIN_TX_BUFFERING	65536
-#define DLP_MIN_RX_BUFFERING	65536
-
 /* Compute the TX and RX, FIFO depth from the buffering requirements */
 /* For optimal performances the DLP_HSI_TX_CTRL_FIFO size shall be set to 2 at
  * least to allow back-to-back transfers. */
-#define DLP_TX_MAX_LEN	((DLP_MIN_TX_BUFFERING+DLP_PAYLOAD_LENGTH-1) \
-		/DLP_PAYLOAD_LENGTH)
-
-#define DLP_RX_MAX_LEN	((DLP_MIN_RX_BUFFERING+DLP_PAYLOAD_LENGTH-1) \
-		/DLP_PAYLOAD_LENGTH)
-
 #define DLP_HSI_TX_CTRL_FIFO	2
-#define DLP_HSI_TX_WAIT_FIFO	max(DLP_TX_MAX_LEN-DLP_HSI_TX_CTRL_FIFO, 1)
+#define DLP_HSI_RX_CTRL_FIFO	9
 
-#define DLP_HSI_RX_WAIT_FIFO	max(DLP_RX_MAX_LEN/2, 1)
-#define DLP_HSI_RX_CTRL_FIFO	max(DLP_RX_MAX_LEN-DLP_HSI_RX_WAIT_FIFO, 1)
-
-/* Tag for detecting buggy pdu sizes (must be greater than the maximum pdu
- * size */
-#define DLP_BUGGY_PDU_SIZE	0xFFFFFFFFUL
+#define DLP_HSI_TX_WAIT_FIFO	15
+#define DLP_HSI_RX_WAIT_FIFO	8
 
 /* PDU size for TTY channel */
-#define DLP_TTY_PDU_SIZE		4096	/* 1500 Bytes */
-#define DLP_TTY_TX_PDU_SIZE		4096	/* 1500 Bytes */
-#define DLP_TTY_RX_PDU_SIZE		4096	/* 1500 Bytes */
+#define DLP_TTY_TX_PDU_SIZE		4096	/* 4 KBytes */
+#define DLP_TTY_RX_PDU_SIZE		4096	/* 4 KBytes */
 #define DLP_TTY_HEADER_LENGTH	16
-#define DLP_TTY_PAYLOAD_LENGTH	(DLP_TTY_PDU_SIZE - DLP_TTY_HEADER_LENGTH)
+#define DLP_TTY_PAYLOAD_LENGTH	(DLP_TTY_TX_PDU_SIZE - DLP_TTY_HEADER_LENGTH)
 
 /* PDU size for NET channels */
-#define DLP_NET_RX_PDU_SIZE	4096	/* 15360: 15 KBytes */
-#define DLP_NET_TX_PDU_SIZE	4096	/* 15360: 15 KBytes */
+#define DLP_NET_RX_PDU_SIZE	8192	/* 8 KBytes */
+#define DLP_NET_TX_PDU_SIZE	6656	/* 6.5 KBytes */
 
 /* PDU size for CTRL channel */
 #define DLP_CTRL_TX_PDU_SIZE	4	/* 4 Bytes */
