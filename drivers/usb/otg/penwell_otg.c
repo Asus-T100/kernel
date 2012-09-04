@@ -4926,6 +4926,14 @@ static int penwell_otg_suspend(struct device *dev)
 	pnw->queue_stop = 1;
 	spin_unlock(&pnw->notify_lock);
 	flush_workqueue(pnw->qwork);
+	if (delayed_work_pending(&pnw->ulpi_check_work)) {
+		spin_lock(&pnw->notify_lock);
+		pnw->queue_stop = 0;
+		spin_unlock(&pnw->notify_lock);
+		ret = -EBUSY;
+		goto done;
+	} else
+		flush_delayed_work_sync(&pnw->ulpi_check_work);
 
 	switch (iotg->otg.state) {
 	case OTG_STATE_A_WAIT_BCON:
