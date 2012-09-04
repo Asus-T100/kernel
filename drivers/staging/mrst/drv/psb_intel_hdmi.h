@@ -56,7 +56,6 @@
 #define HDMI_EELD_SIZE 84
 
 struct mid_intel_hdmi_priv;
-extern void mdfld_hdcp_init(struct android_hdmi_priv *p_hdmi_priv);
 extern void mdfld_hdmi_audio_init(struct android_hdmi_priv *p_hdmi_priv);
 extern void mdfld_msic_init(struct android_hdmi_priv *p_hdmi_priv);
 extern void mdfld_ti_tpd_init(struct mid_intel_hdmi_priv *p_hdmi_priv);
@@ -777,7 +776,6 @@ struct mid_intel_hdmi_priv {
 	hdmi_eeld_t eeld;
 	u32 hdmi_eeld_size;
 	cea_861b_adb_t lpcm_sad;
-	bool is_hdcp_supported;
 	struct i2c_adapter *hdmi_i2c_adapter;	/* for control functions */
 	struct drm_device *dev;
 	struct drm_display_mode *edid_preferred_mode;

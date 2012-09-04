@@ -739,7 +739,6 @@ struct dpst_guardband {
 # define HDMIB_PORT_EN			(1 << 31)
 # define HDMIB_PIPE_B_SELECT		(1 << 30)
 # define HDMIB_NULL_PACKET		(1 << 9)
-#define HDMIB_HDCP_PORT (1 << 5)
 
 #define VIDEO_DIP_CTL          0x61170
 #define EN_DIP                        (1 << 31)

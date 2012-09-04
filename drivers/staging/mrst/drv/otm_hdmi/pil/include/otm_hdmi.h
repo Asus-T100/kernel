@@ -443,4 +443,17 @@ void test_otm_hdmi_report_edid(void);
  */
 extern void *otm_hdmi_get_context(void);
 
+typedef struct _sqword {
+	union {
+		unsigned long long quad_part;
+		struct {
+			unsigned long low_part;
+			unsigned long high_part;
+		} u;
+		struct {
+			uint8_t byte[8];
+		};
+	};
+} sqword_t;
+
 #endif /* _OTM_HDMI_H */

@@ -64,9 +64,6 @@
 #include "pvr_bridge.h"
 #include "linkage.h"
 
-#ifdef CONFIG_MDFD_HDMI
-#include "mdfld_hdcp.h"
-#endif
 #include "mdfld_csc.h"
 #include "mdfld_dsi_dbi_dsr.h"
 #include "mdfld_dsi_pkg_sender.h"
@@ -322,12 +319,6 @@ MODULE_DEVICE_TABLE(pci, pciidlist);
 		DRM_IO(DRM_PSB_DISABLE_HDCP + DRM_COMMAND_BASE)
 #define DRM_IOCTL_PSB_GET_HDCP_LINK_STATUS \
 		DRM_IOR(DRM_PSB_GET_HDCP_LINK_STATUS + DRM_COMMAND_BASE, uint32_t)
-#define DRM_IOCTL_PSB_ENABLE_HDCP_REPEATER \
-		DRM_IOR(DRM_PSB_ENABLE_HDCP_REPEATER + DRM_COMMAND_BASE, uint32_t)
-#define DRM_IOCTL_PSB_DISABLE_HDCP_REPEATER \
-		DRM_IO(DRM_PSB_DISABLE_HDCP_REPEATER + DRM_COMMAND_BASE)
-#define DRM_IOCTL_PSB_HDCP_REPEATER_PRESENT \
-		DRM_IOR(DRM_PSB_HDCP_REPEATER_PRESENT + DRM_COMMAND_BASE, uint32_t)
 /* CSC IOCTLS */
 #define DRM_IOCTL_PSB_SET_CSC \
 	DRM_IOW(DRM_PSB_SET_CSC + DRM_COMMAND_BASE, struct drm_psb_csc_matrix)
@@ -469,13 +460,7 @@ static int psb_enable_hdcp_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv);
 static int psb_disable_hdcp_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv);
-static int psb_enable_hdcp_repeater_ioctl(struct drm_device *dev, void *data,
-				 struct drm_file *file_priv);
-static int psb_disable_hdcp_repeater_ioctl(struct drm_device *dev, void *data,
-				 struct drm_file *file_priv);
 static int psb_get_hdcp_link_status_ioctl(struct drm_device *dev, void *data,
-				 struct drm_file *file_priv);
-static int psb_hdcp_repeater_present_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv);
 #endif
 
@@ -583,10 +568,7 @@ static struct drm_ioctl_desc psb_ioctls[] = {
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_GET_HDCP_STATUS, psb_get_hdcp_status_ioctl, DRM_AUTH),
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_ENABLE_HDCP, psb_enable_hdcp_ioctl, DRM_AUTH),
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_DISABLE_HDCP, psb_disable_hdcp_ioctl, DRM_AUTH),
-	PSB_IOCTL_DEF(DRM_IOCTL_PSB_ENABLE_HDCP_REPEATER, psb_enable_hdcp_repeater_ioctl, DRM_AUTH),
-	PSB_IOCTL_DEF(DRM_IOCTL_PSB_DISABLE_HDCP_REPEATER, psb_disable_hdcp_repeater_ioctl, DRM_AUTH),
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_GET_HDCP_LINK_STATUS, psb_get_hdcp_link_status_ioctl, DRM_AUTH),
-	PSB_IOCTL_DEF(DRM_IOCTL_PSB_HDCP_REPEATER_PRESENT, psb_hdcp_repeater_present_ioctl, DRM_AUTH),
 #endif
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_CSC_GAMMA_SETTING, psb_csc_gamma_setting_ioctl, DRM_AUTH),
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_SET_CSC, psb_set_csc_ioctl, DRM_AUTH),
@@ -2213,31 +2195,6 @@ static int psb_disable_hdcp_ioctl(struct drm_device *dev, void *data,
 		return 0;
 	return -1;
 }
-static int psb_enable_hdcp_repeater_ioctl(struct drm_device *dev, void *data,
-				 struct drm_file *file_priv)
-{
-	int ret;
-	int *arg = data;
-	/* HDCP repeater is not supported yet in OTM_HDMI code base */
-	*arg = 0; /* hdcp_enable_repeater(1); */
-
-	if (*arg)
-		return -1;
-	else
-		return 0;
-}
-
-static int psb_disable_hdcp_repeater_ioctl(struct drm_device *dev, void *data,
-				 struct drm_file *file_priv)
-{
-	int ret;
-	ret = 0; /* hdcp_enable_repeater(0); */
-
-	if (ret)
-		return -1;
-	else
-		return 0;
-}
 
 static int psb_get_hdcp_link_status_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv)
@@ -2248,15 +2205,6 @@ static int psb_get_hdcp_link_status_ioctl(struct drm_device *dev, void *data,
 		*arg = android_check_hdmi_hdcp_link_status(dev);
 		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 	}
-	return 0;
-}
-static int psb_hdcp_repeater_present_ioctl(struct drm_device *dev, void *data,
-				 struct drm_file *file_priv)
-{
-	uint32_t *arg = data;
-	/* HDCP repeater is not supported yet in OTM_HDMI code base. */
-	*arg = 0; /* hdcp_repeater_present(); */
-
 	return 0;
 }
 
