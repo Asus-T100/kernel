@@ -54,7 +54,6 @@ void (*st_recv) (void*, const unsigned char*, long);
 static void add_channel_to_table(struct st_data_s *st_gdata,
 		struct st_proto_s *new_proto)
 {
-	pr_info("%s: id %d\n", __func__, new_proto->chnl_id);
 	/* list now has the channel id as index itself */
 	st_gdata->list[new_proto->chnl_id] = new_proto;
 	st_gdata->is_registered[new_proto->chnl_id] = true;
@@ -63,7 +62,6 @@ static void add_channel_to_table(struct st_data_s *st_gdata,
 static void remove_channel_from_table(struct st_data_s *st_gdata,
 		struct st_proto_s *proto)
 {
-	pr_info("%s: id %d\n", __func__, proto->chnl_id);
 /*	st_gdata->list[proto->chnl_id] = NULL; */
 	st_gdata->is_registered[proto->chnl_id] = false;
 }
@@ -562,7 +560,6 @@ long st_register(struct st_proto_s *new_proto)
 	spin_lock_irqsave(&st_gdata->lock, flags);
 
 	if (test_bit(ST_REG_IN_PROGRESS, &st_gdata->st_state)) {
-		pr_info(" ST_REG_IN_PROGRESS:%d ", new_proto->chnl_id);
 		/* fw download in progress */
 
 		add_channel_to_table(st_gdata, new_proto);
@@ -573,7 +570,6 @@ long st_register(struct st_proto_s *new_proto)
 		spin_unlock_irqrestore(&st_gdata->lock, flags);
 		return -EINPROGRESS;
 	} else if (st_gdata->protos_registered == ST_EMPTY) {
-		pr_info(" chnl_id list empty :%d ", new_proto->chnl_id);
 		set_bit(ST_REG_IN_PROGRESS, &st_gdata->st_state);
 		st_recv = st_kim_recv;
 
@@ -659,7 +655,6 @@ long st_unregister(struct st_proto_s *proto)
 	spin_lock_irqsave(&st_gdata->lock, flags);
 
 	if (st_gdata->list[proto->chnl_id] == NULL) {
-		pr_err(" chnl_id %d not registered", proto->chnl_id);
 		spin_unlock_irqrestore(&st_gdata->lock, flags);
 		return -EPROTONOSUPPORT;
 	}
