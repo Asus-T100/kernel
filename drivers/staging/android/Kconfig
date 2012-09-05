@@ -12,18 +12,6 @@ config ANDROID_BINDER_IPC
 	bool "Android Binder IPC Driver"
 	default n
 
-config ANDROID_BINDER_IPC_COMPAT_32
-	bool "Binder Driver 32 bit IOCTL support"
-	default y
-	depends on X86_64
-	depends on ANDROID_BINDER_IPC
-	---help---
-	  Setting this option will tell the Binder in a 64bit kernel
-	  to expect 32-bit user space processes. If this is set, 64-bit processes
-	  will not be able to use the binder.
-
-	  If in doubt, say Y here when building Android for 64bit.
-
 config ANDROID_LOGGER
 	tristate "Android log driver"
 	default n
