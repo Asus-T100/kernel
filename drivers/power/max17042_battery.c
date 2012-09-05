@@ -63,14 +63,24 @@
 /* Tmax disabled, Tmin disabled */
 #define TEMP_DEF_MAX_MIN_THRLD  0x7F80
 
-/* SoCmax disabled, SoCmin set to 1% to get
- * INT at 0% because chip will generate
- * the INT when the thresholds are voilated.
+/* SoCmax disabled, SoCmin can be set to 15%, 4% and 1%.
+ * INT will trigger when the thresholds are voilated.
  */
-#define SOC_DEF_MAX_MIN_THRLD	0xFF01
+#define SOC_DEF_MAX_MIN1_THRLD	0xFF0E
+#define SOC_DEF_MAX_MIN2_THRLD	0xFF04
+#define SOC_DEF_MAX_MIN3_THRLD	0xFF01
+
+#define MISCCFG_CONFIG_REPSOC	0x0000
+#define MISCCFG_CONFIG_VFSOC	0x0003
+
+/* low battery notification warning level */
+#define SOC_WARNING_LEVEL1	14
+#define SOC_WARNING_LEVEL2	4
+#define SOC_SHUTDOWN_LEVEL	1
 
 #define CONFIG_ALRT_BIT_ENBL	(1 << 2)
 #define CONFIG_TSTICKY_BIT_SET	(1 << 13)
+#define CONFIG_ALP_BIT_ENBL	(1 << 11)
 
 /* Interrupt status bits */
 #define STATUS_INTR_VMAX_BIT	(1 << 12)
@@ -318,7 +328,8 @@ static struct notifier_block max17042_reboot_notifier_block = {
 	.priority = 0,
 };
 
-static void set_soc_intr_thresholds(struct max17042_chip *chip, int off);
+static void configure_interrupts(struct max17042_chip *chip);
+static void set_soc_intr_thresholds(struct max17042_chip *chip);
 static void save_runtime_params(struct max17042_chip *chip);
 static void set_chip_config(struct max17042_chip *chip);
 static u16 fg_vfSoc;
@@ -543,22 +554,26 @@ static irqreturn_t max17042_intr_handler(int id, void *dev)
 static irqreturn_t max17042_thread_handler(int id, void *dev)
 {
 	struct max17042_chip *chip = dev;
-	u16 val;
+	int stat;
 
 	pm_runtime_get_sync(&chip->client->dev);
 
-	mutex_lock(&chip->batt_lock);
-	val = max17042_read_reg(chip->client, MAX17042_STATUS);
+	stat = max17042_read_reg(chip->client, MAX17042_STATUS);
+	if (stat < 0) {
+		dev_err(&chip->client->dev,
+			"max17042-INTR: status read failed:%d\n", stat);
+		pm_runtime_put_sync(&chip->client->dev);
+		return IRQ_HANDLED;
+	}
+	dev_info(&chip->client->dev, "max17042-INTR: Status-val:%x\n", stat);
 
-	dev_info(&chip->client->dev, "max17042-INTR: Status-val: %x\n", val);
-	if ((val & STATUS_INTR_VMAX_BIT) ||
-		(val & STATUS_INTR_VMIN_BIT))
+	if ((stat & STATUS_INTR_VMAX_BIT) ||
+		(stat & STATUS_INTR_VMIN_BIT))
 		dev_info(&chip->client->dev, "VOLT threshold INTR\n");
 
-	if ((val & STATUS_INTR_SOCMAX_BIT) ||
-		(val & STATUS_INTR_SOCMIN_BIT))
+	if ((stat & STATUS_INTR_SOCMAX_BIT) ||
+		(stat & STATUS_INTR_SOCMIN_BIT))
 		dev_info(&chip->client->dev, "SOC threshold INTR\n");
-	mutex_unlock(&chip->batt_lock);
 
 	power_supply_changed(&chip->battery);
 	pm_runtime_put_sync(&chip->client->dev);
@@ -615,7 +630,6 @@ static int read_batt_pack_temp(struct max17042_chip *chip, int *temp)
 
 		*temp = adjust_sign_value(ret, BYTE_VALUE);
 	}
-
 	return 0;
 
 temp_read_err:
@@ -1391,18 +1405,9 @@ static void set_chip_config(struct max17042_chip *chip)
 			reset_max17042(chip);
 			chip->pdata->save_config_data = NULL;
 		}
-		/* enable Alerts for SOCRep */
-		max17042_write_reg(chip->client, MAX17042_MiscCFG, 0x0000);
-
-		/* disable the T-alert sticky bit */
-		max17042_reg_read_modify(chip->client, MAX17042_CONFIG,
-						CONFIG_TSTICKY_BIT_SET, 0);
-
-		/* enable alert pin */
-		max17042_reg_read_modify(chip->client, MAX17042_CONFIG,
-						CONFIG_ALRT_BIT_ENBL, 1);
 	}
 	chip->pdata->is_init_done = 1;
+	configure_interrupts(chip);
 
 	/* multiply with 1000 to align with linux power supply sub system */
 	chip->charge_full_des = (fg_conf_data->design_cap / 2) * 1000;
@@ -1417,45 +1422,39 @@ static void max17042_init_worker(struct work_struct *work)
 	max17042_restore_conf_data(chip);
 }
 
-static void set_soc_intr_thresholds(struct max17042_chip *chip, int off)
+static void set_soc_intr_thresholds(struct max17042_chip *chip)
 {
-	u16 soc_tr;
-	int soc, ret;
+	int ret, val, soc;
 
-	/* program interrupt thesholds such that we should
-	 * get interrupt for every 'off' perc change in the soc
-	 */
-	ret = max17042_read_reg(chip->client, MAX17042_RepSOC);
-	soc = ret >> 8;
+	if (chip->pdata->enable_current_sense)
+		ret = max17042_read_reg(chip->client, MAX17042_RepSOC);
+	else
+		ret = max17042_read_reg(chip->client, MAX17042_VFSOC);
+	if (ret < 0) {
+		dev_err(&chip->client->dev,
+			"maxim RepSOC read failed:%d\n", ret);
+		return ;
+	}
+	val = ret;
+	soc = val >> 8;
 	/* Check if MSB of lower byte is set
 	 * then round off the SOC to higher digit
 	 */
-	if (ret & 0x80)
+	if (val & 0x80)
 		soc += 1;
 
-	/* if the current capacity is below the
-	 * offset limits reduce offset limit */
-	if (soc <= off)
-		off = soc / 2;
-
-	/* if upper threshold exceeds 100% then stop
-	 * the interrupt for upper thresholds */
-	if ((soc + off) > 100)
-		soc_tr = 0xff << 8;
+	/* If soc > 15% set the alert threshold to 15%
+	 * else if soc > 4% set the threshold to 4%
+	 * else set it to 1%
+	 */
+	if (soc > SOC_WARNING_LEVEL1)
+		val = SOC_DEF_MAX_MIN1_THRLD;
+	else if (soc > SOC_WARNING_LEVEL2)
+		val = SOC_DEF_MAX_MIN2_THRLD;
 	else
-		soc_tr = (soc + off) << 8;
+		val = SOC_DEF_MAX_MIN3_THRLD;
 
-	/* if lower threshold falls
-	 * below 0% limit it to 0% */
-	if ((soc - off) < 0)
-		soc_tr = 0;
-	else
-		soc_tr |= (soc - off);
-
-	ret = max17042_write_reg(chip->client, MAX17042_SALRT_Th, soc_tr);
-	if (ret < 0)
-		dev_err(&chip->client->dev,
-				"SOC threshold write to maxim fail:%d", ret);
+	max17042_write_reg(chip->client, MAX17042_SALRT_Th, val);
 }
 
 static int max17042_get_batt_health(void)
@@ -1709,6 +1708,60 @@ static ssize_t get_fake_temp_enable(struct device *dev,
 	return sprintf(buf, "%d\n", chip->enable_fake_temp);
 }
 
+static void configure_interrupts(struct max17042_chip *chip)
+{
+	int ret;
+	unsigned int edge_type;
+
+	/* set SOC-alert threshold sholds to lowest value */
+	max17042_write_reg(chip->client, MAX17042_SALRT_Th,
+					SOC_DEF_MAX_MIN3_THRLD);
+
+	/* enable Alerts for SOCRep */
+	if (chip->pdata->enable_current_sense)
+		max17042_write_reg(chip->client, MAX17042_MiscCFG,
+						MISCCFG_CONFIG_REPSOC);
+	else
+		max17042_write_reg(chip->client, MAX17042_MiscCFG,
+						MISCCFG_CONFIG_VFSOC);
+
+	/* disable the T-alert sticky bit */
+	max17042_reg_read_modify(chip->client, MAX17042_CONFIG,
+					CONFIG_TSTICKY_BIT_SET, 0);
+
+	/* Setting V-alrt threshold register to default values */
+	max17042_write_reg(chip->client, MAX17042_VALRT_Th,
+					VOLT_DEF_MAX_MIN_THRLD);
+
+	/* Setting T-alrt threshold register to default values */
+	max17042_write_reg(chip->client, MAX17042_TALRT_Th,
+					TEMP_DEF_MAX_MIN_THRLD);
+
+	/* get interrupt edge type from ALP pin */
+	if (fg_conf_data->cfg & CONFIG_ALP_BIT_ENBL)
+		edge_type = IRQF_TRIGGER_RISING;
+	else
+		edge_type = IRQF_TRIGGER_FALLING;
+
+	/* register interrupt */
+	ret = request_threaded_irq(chip->client->irq,
+					max17042_intr_handler,
+					max17042_thread_handler,
+					edge_type,
+					DRV_NAME, chip);
+	if (ret) {
+		dev_warn(&chip->client->dev,
+			"cannot get IRQ:%d\n", chip->client->irq);
+		chip->client->irq = -1;
+	} else {
+		dev_info(&chip->client->dev, "IRQ No:%d\n", chip->client->irq);
+	}
+
+	/* enable interrupts */
+	max17042_reg_read_modify(chip->client, MAX17042_CONFIG,
+						CONFIG_ALRT_BIT_ENBL, 1);
+}
+
 static int __devinit max17042_probe(struct i2c_client *client,
 			const struct i2c_device_id *id)
 {
@@ -1786,22 +1839,6 @@ static int __devinit max17042_probe(struct i2c_client *client,
 	max17042_reg_read_modify(client, MAX17042_CONFIG,
 						CONFIG_ALRT_BIT_ENBL, 0);
 
-	/* disable the T-alert sticky bit */
-	max17042_reg_read_modify(client, MAX17042_CONFIG,
-						CONFIG_TSTICKY_BIT_SET, 0);
-
-	/* Setting V-alrt threshold register to default values */
-	max17042_write_reg(chip->client, MAX17042_VALRT_Th,
-					VOLT_DEF_MAX_MIN_THRLD);
-
-	/* Setting T-alrt threshold register to default values */
-	max17042_write_reg(chip->client, MAX17042_TALRT_Th,
-					TEMP_DEF_MAX_MIN_THRLD);
-
-	/* Setting SoC threshold register to default values */
-	max17042_write_reg(chip->client, MAX17042_SALRT_Th,
-					SOC_DEF_MAX_MIN_THRLD);
-
 	if (chip->pdata->enable_current_sense) {
 		dev_info(&chip->client->dev, "current sensing enabled\n");
 		/* Initialize the chip with battery config data */
@@ -1821,6 +1858,7 @@ static int __devinit max17042_probe(struct i2c_client *client,
 		max17042_write_reg(chip->client, MAX17042_MiscCFG,
 						MAX17042_CFG_INTR_SOCVF);
 	}
+
 	chip->technology = chip->pdata->technology;
 
 	chip->battery.name = "max170xx_battery";
@@ -1843,21 +1881,11 @@ static int __devinit max17042_probe(struct i2c_client *client,
 	pm_runtime_put_noidle(&chip->client->dev);
 	pm_schedule_suspend(&chip->client->dev, MSEC_PER_SEC);
 
-
-	/* register interrupt */
-	ret = request_threaded_irq(client->irq, max17042_intr_handler,
-						max17042_thread_handler,
-						IRQF_TRIGGER_FALLING,
-						DRV_NAME, chip);
-	if (ret) {
-		dev_warn(&client->dev, "cannot get IRQ:%d\n", client->irq);
-		client->irq = -1;
-	} else {
-		dev_info(&client->dev, "IRQ No:%d\n", client->irq);
-	}
-
-	max17042_reg_read_modify(client, MAX17042_CONFIG,
-						CONFIG_ALRT_BIT_ENBL, 1);
+	/* In case of power supply register INT now
+	 * else the INT will registered after chip init.
+	 */
+	if (!chip->pdata->enable_current_sense)
+		configure_interrupts(chip);
 
 	/* Create debugfs for maxim registers */
 	max17042_create_debugfs(chip);
@@ -1916,6 +1944,8 @@ static int max17042_suspend(struct device *dev)
 	 * driver.
 	 */
 	if (chip->client->irq > 0) {
+		/* set SOC alert thresholds */
+		set_soc_intr_thresholds(chip);
 		/* setting Vmin(3300mV) threshold to wake the
 		 * platfrom in under low battery conditions */
 		max17042_write_reg(chip->client, MAX17042_VALRT_Th,
@@ -1941,6 +1971,9 @@ static int max17042_resume(struct device *dev)
 		/* Setting V-alrt threshold register to default values */
 		max17042_write_reg(chip->client, MAX17042_VALRT_Th,
 					VOLT_DEF_MAX_MIN_THRLD);
+		/* set SOC-alert threshold sholds to lowest value */
+		max17042_write_reg(chip->client, MAX17042_SALRT_Th,
+					SOC_DEF_MAX_MIN3_THRLD);
 		enable_irq(chip->client->irq);
 		disable_irq_wake(chip->client->irq);
 	}
