@@ -19,6 +19,7 @@ obj-$(subst m,y,$(CONFIG_LEDS_INTEL_KPD))				+= platform_kpd_led.o
 obj-$(subst m,y,$(CONFIG_INTEL_MFLD_THERMAL))				+= platform_msic_thermal.o
 # IPC Devices for Merrifield Platform
 obj-$(subst m,y,$(CONFIG_BASINCOVE_GPADC))				+= platform_mrfl_adc.o
+obj-$(subst m,y,$(CONFIG_SENSORS_MRFLD_CURRENT))			+= platform_mrfl_ocd.o
 # I2C Devices
 obj-$(subst m,y,$(CONFIG_A1026))					+= platform_a1026.o
 obj-$(subst m,y,$(CONFIG_TOUCHSCREEN_CYTTSP_I2C))			+= platform_cyttsp.o

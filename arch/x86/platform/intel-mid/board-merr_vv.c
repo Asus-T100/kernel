@@ -19,6 +19,7 @@
 #include "device_libs/platform_mrfl_adc.h"
 #include "device_libs/platform_max3111.h"
 #include "device_libs/platform_mrfl_pmic.h"
+#include "device_libs/platform_mrfl_ocd.h"
 #include <asm/platform_mrfld_audio.h>
 /* I2C Devices */
 #include "device_libs/platform_max17042.h"
@@ -49,7 +50,7 @@ const struct intel_v4l2_subdev_id v4l2_ids[] = {
 
 struct devs_id __initconst device_ids[] = {
 	{"bcove_adc", SFI_DEV_TYPE_IPC, 1, &mrfl_adc_platform_data, NULL},
-	{"bcove_bcu", SFI_DEV_TYPE_IPC, 1, &no_platform_data, NULL},
+	{"bcove_bcu", SFI_DEV_TYPE_IPC, 1, &mrfl_ocd_platform_data, NULL},
 	{"bcove_thrm", SFI_DEV_TYPE_IPC, 1, &no_platform_data, NULL},
 	{"bcove_chrgr", SFI_DEV_TYPE_IPC, 1, &no_platform_data, NULL},
 	{"max17050", SFI_DEV_TYPE_I2C, 1, &max17042_platform_data, NULL},
