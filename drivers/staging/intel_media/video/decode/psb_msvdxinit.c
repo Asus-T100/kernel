@@ -254,7 +254,6 @@ int psb_msvdx_reset(struct drm_psb_private *dev_priv)
 		PSB_WMSVDX32(0xFFFFFFFF, MSVDX_INTERRUPT_CLEAR);
 	}
 
-out:
 	return ret;
 }
 

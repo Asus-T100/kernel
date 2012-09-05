@@ -112,13 +112,9 @@ static int psb_msvdx_map_command(struct drm_device *dev,
 	int ret = 0;
 	unsigned long cmd_page_offset = cmd_offset & ~PAGE_MASK;
 	unsigned long cmd_size_remaining;
-	struct ttm_bo_kmap_obj cmd_kmap, regio_kmap;
+	struct ttm_bo_kmap_obj cmd_kmap;
 	void *cmd, *cmd_copy, *cmd_start;
 	bool is_iomem;
-	int i;
-	struct HOST_BE_OPP_PARAMS *oppParam;
-	drm_psb_msvdx_frame_info_t *current_frame = NULL;
-	int first_empty = -1;
 
 
 	/* command buffers may not exceed page boundary */
@@ -147,7 +143,6 @@ static int psb_msvdx_map_command(struct drm_device *dev,
 		uint32_t cur_cmd_size = MEMIO_READ_FIELD(cmd, MTX_GENMSG_SIZE);
 		uint32_t cur_cmd_id = MEMIO_READ_FIELD(cmd, MTX_GENMSG_ID);
 		uint32_t mmu_ptd = 0, msvdx_mmu_invalid = 0;
-		unsigned long irq_flags;
 
 		PSB_DEBUG_GENERAL("cmd start at %08x cur_cmd_size = %d"
 				  " cur_cmd_id = %02x fence = %08x\n",
@@ -804,7 +799,6 @@ loop: /* just for coding style check */
 	}
 
 	case MTX_MSGID_CONTIGUITY_WARNING: {
-		drm_psb_msvdx_frame_info_t *ec_frame = NULL;
 		drm_psb_msvdx_decode_status_t *fault_region = NULL;
 		struct psb_msvdx_ec_ctx *msvdx_ec_ctx = NULL;
 		uint32_t reg_idx;
@@ -839,10 +833,6 @@ loop: /* just for coding style check */
 			goto done;
 		}
 
-		/*
-		ec_frame->fw_status = 1;
-		fault_region = &ec_frame->decode_status;
-		*/
 
 		fault_region = &msvdx_ec_ctx->decode_status;
 		if (start > end)
@@ -1131,9 +1121,7 @@ int lnc_video_getparam(struct drm_device *dev, void *data,
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *)file_priv->minor->dev->dev_private;
 	drm_psb_msvdx_frame_info_t *current_frame = NULL;
-	struct ttm_object_file *tfile = psb_fpriv(file_priv)->tfile;
 	uint32_t handle, i;
-	uint32_t offset = 0;
 	uint32_t device_info = 0;
 	uint32_t ctx_type = 0;
 	struct psb_video_ctx *video_ctx = NULL;
