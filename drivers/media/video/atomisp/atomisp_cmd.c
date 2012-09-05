@@ -801,8 +801,13 @@ static void atomisp_buf_done(struct atomisp_device *isp, int error)
 	struct vb2_buffer *vb_preview;
 	struct atomisp_video_pipe *mo_pipe = &isp->isp_subdev.video_out_mo;
 	struct atomisp_video_pipe *vf_pipe = &isp->isp_subdev.video_out_vf;
-
+	struct timespec ts;
+	struct timeval tv;
 	unsigned long flags;
+
+	ktime_get_ts(&ts);
+	tv.tv_sec = ts.tv_sec;
+	tv.tv_usec = ts.tv_nsec / NSEC_PER_USEC;
 
 	spin_lock_irqsave(&mo_pipe->irq_lock, flags);
 	vb_capture = isp->vb_capture;
@@ -815,14 +820,14 @@ static void atomisp_buf_done(struct atomisp_device *isp, int error)
 	spin_unlock_irqrestore(&vf_pipe->irq_lock, flags);
 
 	if (vb_capture) {
-		do_gettimeofday(&vb_capture->v4l2_buf.timestamp);
+		vb_capture->v4l2_buf.timestamp = tv;
 		/*mark videobuffer done for dequeue*/
 		vb2_buffer_done(vb_capture, error ? VB2_BUF_STATE_ERROR :
 				VB2_BUF_STATE_DONE);
 	}
 
 	if (vb_preview) {
-		do_gettimeofday(&vb_preview->v4l2_buf.timestamp);
+		vb_preview->v4l2_buf.timestamp = tv;
 		/*mark videobuffer done for dequeue*/
 		vb2_buffer_done(vb_preview, error ? VB2_BUF_STATE_ERROR :
 				VB2_BUF_STATE_DONE);
