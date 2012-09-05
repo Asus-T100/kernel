@@ -94,6 +94,7 @@ const struct intel_v4l2_subdev_id v4l2_ids[] = {
 };
 
 struct devs_id __initconst device_ids[] = {
+	{"a_gfreq",   SFI_DEV_TYPE_IPC, 0, &no_platform_data, NULL},
 	{"pmic_gpio", SFI_DEV_TYPE_SPI, 1, &pmic_gpio_platform_data, NULL},
 	{"pmic_gpio", SFI_DEV_TYPE_IPC, 1, &pmic_gpio_platform_data,
 					&ipc_device_handler},

@@ -78,6 +78,16 @@ config DRM_CTP_PR1
           platform. If M is selected the module will be called
           mid_gfx.
 
+config GPU_BURST
+	tristate "GPU Burst support"
+	depends on DRM_CTP
+	default y
+	help
+	  Choose this option to support Intel system-on-a-chip GPU Burst,
+	  wherein the GPU clock frequency may be increased when meaasurement of
+	  the graphics load indicates that additional performance is needed,
+	  subject to thermal conditions.
+
 config MDFLD_DSI_DSR
 	bool "Support DSI Fullscreen Display Self Refreshment "
 	depends on (DRM_MDFLD || DRM_CTP) && !MDFLD_DSI_DPU

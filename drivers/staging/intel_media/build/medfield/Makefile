@@ -45,6 +45,8 @@ gfx-y += $(SGXDIR)/gburst_hw.o
 
 endif
 
+obj-$(CONFIG_GPU_BURST) += ../../graphics/gburst/
+
 ccflags-y += $(include_dirs)
 ccflags-y += $(ANDROID_TOOLCHAIN_FLAGS) -I$(GFX_INCDIR)/services4/system/intel_drm -DANDROID -D_linux_ -D__KERNEL__
 
