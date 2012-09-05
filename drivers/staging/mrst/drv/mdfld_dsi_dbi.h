@@ -94,10 +94,10 @@ extern void mdfld_dsi_dbi_exit_dsr(struct drm_device *dev,
 extern void mdfld_dsi_dbi_enter_dsr(struct mdfld_dsi_dbi_output *dbi_output,
 		int pipe);
 extern int mdfld_dbi_dsr_init(struct drm_device *dev);
-
 extern struct mdfld_dsi_encoder *mdfld_dsi_dbi_init(struct drm_device *dev,
 		struct mdfld_dsi_connector *dsi_connector,
 		struct panel_funcs *p_funcs);
 extern void mdfld_reset_panel_handler_work(struct work_struct *work);
+extern void mdfld_dbi_update_panel(struct drm_device *dev, int pipe);
 
 #endif /*__MDFLD_DSI_DBI_H__*/

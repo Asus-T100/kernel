@@ -1011,7 +1011,7 @@ struct mdfld_dsi_encoder *mdfld_dsi_dpi_init(struct drm_device *dev,
 
 	/*init DSI controller*/
 	if (p_funcs->dsi_controller_init)
-		p_funcs->dsi_controller_init(dsi_config, pipe, 0);
+		p_funcs->dsi_controller_init(dsi_config, pipe);
 
 	/**
 	 * TODO: can we keep these code out of display driver as

@@ -33,21 +33,22 @@
 #include "psb_msvdx.h"
 #include "pnw_topaz.h"
 #include "mdfld_gl3.h"
-#include <linux/mutex.h>
 #include "mdfld_dsi_dbi.h"
 #include "mdfld_dsi_dbi_dpu.h"
-#include <asm/intel_scu_ipc.h>
 #include "psb_intel_hdmi.h"
 #include "mdfld_ti_tpd.h"
 #include "mdfld_dsi_dpi.h"
+#include "psb_intel_display.h"
 #ifdef CONFIG_GFX_RTPM
 #include <linux/pm_runtime.h>
 #endif
 
 #include <linux/earlysuspend.h>
 #include <linux/atomic.h>
+#include <asm/intel_scu_ipc.h>
+#include <linux/mutex.h>
+#include <linux/gpio.h>
 
-#undef OSPM_GFX_DPK
 #define SCU_CMD_VPROG2  0xe3
 
 struct drm_device *gpDrmDevice;
@@ -432,11 +433,7 @@ void ospm_post_init(struct drm_device *dev)
 	if (!(dev_priv->panel_desc))
 		dc_islands |= OSPM_MIPI_ISLAND;
 
-#ifdef OSPM_GFX_DPK
-	printk(KERN_ALERT
-		"%s dc_islands: %x to be powered OFF\n",
-		__func__, dc_islands);
-#endif
+	DRM_INFO("%s dc_islands: %x to be powered OFF\n", __func__, dc_islands);
 
 	spin_lock_irqsave(&dev_priv->ospm_lock, flags);
 	/*
@@ -470,149 +467,6 @@ disable these MSIC power rails permanently.  */
 }
 
 /*
- * save_display_registers
- *
- * Description: We are going to suspend so save current display
- * register state.
- */
-static int save_display_registers(struct drm_device *dev)
-{
-	struct drm_psb_private *dev_priv = dev->dev_private;
-	struct drm_crtc *crtc;
-	struct drm_connector *connector;
-	int i;
-
-	/* Display arbitration control + watermarks */
-	dev_priv->saveDSPARB = PSB_RVDC32(DSPARB);
-	dev_priv->saveDSPFW1 = PSB_RVDC32(DSPFW1);
-	dev_priv->saveDSPFW2 = PSB_RVDC32(DSPFW2);
-	dev_priv->saveDSPFW3 = PSB_RVDC32(DSPFW3);
-	dev_priv->saveDSPFW4 = PSB_RVDC32(DSPFW4);
-	dev_priv->saveDSPFW5 = PSB_RVDC32(DSPFW5);
-	dev_priv->saveDSPFW6 = PSB_RVDC32(DSPFW6);
-	dev_priv->saveCHICKENBIT = PSB_RVDC32(DSPCHICKENBIT);
-
-	if (IS_MRST(dev)) {
-		/* Pipe & plane A info */
-		dev_priv->savePIPEACONF = PSB_RVDC32(PIPEACONF);
-		dev_priv->savePIPEASRC = PSB_RVDC32(PIPEASRC);
-		dev_priv->saveFPA0 = PSB_RVDC32(MRST_FPA0);
-		dev_priv->saveFPA1 = PSB_RVDC32(MRST_FPA1);
-		dev_priv->saveDPLL_A = PSB_RVDC32(MRST_DPLL_A);
-		dev_priv->saveHTOTAL_A = PSB_RVDC32(HTOTAL_A);
-		dev_priv->saveHBLANK_A = PSB_RVDC32(HBLANK_A);
-		dev_priv->saveHSYNC_A = PSB_RVDC32(HSYNC_A);
-		dev_priv->saveVTOTAL_A = PSB_RVDC32(VTOTAL_A);
-		dev_priv->saveVBLANK_A = PSB_RVDC32(VBLANK_A);
-		dev_priv->saveVSYNC_A = PSB_RVDC32(VSYNC_A);
-		dev_priv->saveBCLRPAT_A = PSB_RVDC32(BCLRPAT_A);
-		dev_priv->saveDSPACNTR = PSB_RVDC32(DSPACNTR);
-		dev_priv->saveDSPASTRIDE = PSB_RVDC32(DSPASTRIDE);
-		dev_priv->saveDSPAADDR = PSB_RVDC32(DSPABASE);
-		dev_priv->saveDSPASURF = PSB_RVDC32(DSPASURF);
-		dev_priv->saveDSPALINOFF = PSB_RVDC32(DSPALINOFF);
-		dev_priv->saveDSPATILEOFF = PSB_RVDC32(DSPATILEOFF);
-
-		/*save cursor regs*/
-		dev_priv->saveDSPACURSOR_CTRL = PSB_RVDC32(CURACNTR);
-		dev_priv->saveDSPACURSOR_BASE = PSB_RVDC32(CURABASE);
-		dev_priv->saveDSPACURSOR_POS = PSB_RVDC32(CURAPOS);
-
-		/*save palette (gamma) */
-		for (i = 0; i < 256; i++)
-			dev_priv->save_palette_a[i] = PSB_RVDC32(PALETTE_A + (i<<2));
-
-		/*save performance state*/
-		dev_priv->savePERF_MODE = PSB_RVDC32(MRST_PERF_MODE);
-
-		/* LVDS state */
-		dev_priv->savePP_CONTROL = PSB_RVDC32(PP_CONTROL);
-		dev_priv->savePFIT_PGM_RATIOS = PSB_RVDC32(PFIT_PGM_RATIOS);
-		dev_priv->savePFIT_AUTO_RATIOS = PSB_RVDC32(PFIT_AUTO_RATIOS);
-		dev_priv->saveBLC_PWM_CTL = PSB_RVDC32(BLC_PWM_CTL);
-		dev_priv->saveBLC_PWM_CTL2 = PSB_RVDC32(BLC_PWM_CTL2);
-		dev_priv->saveLVDS = PSB_RVDC32(LVDS);
-		dev_priv->savePFIT_CONTROL = PSB_RVDC32(PFIT_CONTROL);
-		dev_priv->savePP_ON_DELAYS = PSB_RVDC32(LVDSPP_ON);
-		dev_priv->savePP_OFF_DELAYS = PSB_RVDC32(LVDSPP_OFF);
-		dev_priv->savePP_DIVISOR = PSB_RVDC32(PP_CYCLE);
-
-		/* HW overlay */
-		dev_priv->saveOV_OVADD = PSB_RVDC32(OV_OVADD);
-		dev_priv->saveOV_OGAMC0 = PSB_RVDC32(OV_OGAMC0);
-		dev_priv->saveOV_OGAMC1 = PSB_RVDC32(OV_OGAMC1);
-		dev_priv->saveOV_OGAMC2 = PSB_RVDC32(OV_OGAMC2);
-		dev_priv->saveOV_OGAMC3 = PSB_RVDC32(OV_OGAMC3);
-		dev_priv->saveOV_OGAMC4 = PSB_RVDC32(OV_OGAMC4);
-		dev_priv->saveOV_OGAMC5 = PSB_RVDC32(OV_OGAMC5);
-
-		/* MIPI DSI */
-		dev_priv->saveMIPI = PSB_RVDC32(MIPI);
-		dev_priv->saveDEVICE_READY_REG = PSB_RVDC32(DEVICE_READY_REG);
-		dev_priv->saveINTR_EN_REG  = PSB_RVDC32(INTR_EN_REG);
-		dev_priv->saveDSI_FUNC_PRG_REG  = PSB_RVDC32(DSI_FUNC_PRG_REG);
-		dev_priv->saveHS_TX_TIMEOUT_REG = PSB_RVDC32(HS_TX_TIMEOUT_REG);
-		dev_priv->saveLP_RX_TIMEOUT_REG = PSB_RVDC32(LP_RX_TIMEOUT_REG);
-		dev_priv->saveTURN_AROUND_TIMEOUT_REG =
-			PSB_RVDC32(TURN_AROUND_TIMEOUT_REG);
-		dev_priv->saveDEVICE_RESET_REG = PSB_RVDC32(DEVICE_RESET_REG);
-		dev_priv->saveDPI_RESOLUTION_REG =
-			PSB_RVDC32(DPI_RESOLUTION_REG);
-		dev_priv->saveHORIZ_SYNC_PAD_COUNT_REG =
-			PSB_RVDC32(HORIZ_SYNC_PAD_COUNT_REG);
-		dev_priv->saveHORIZ_BACK_PORCH_COUNT_REG =
-			PSB_RVDC32(HORIZ_BACK_PORCH_COUNT_REG);
-		dev_priv->saveHORIZ_FRONT_PORCH_COUNT_REG =
-			PSB_RVDC32(HORIZ_FRONT_PORCH_COUNT_REG);
-		dev_priv->saveHORIZ_ACTIVE_AREA_COUNT_REG =
-			PSB_RVDC32(HORIZ_ACTIVE_AREA_COUNT_REG);
-		dev_priv->saveVERT_SYNC_PAD_COUNT_REG =
-			PSB_RVDC32(VERT_SYNC_PAD_COUNT_REG);
-		dev_priv->saveVERT_BACK_PORCH_COUNT_REG =
-			PSB_RVDC32(VERT_BACK_PORCH_COUNT_REG);
-		dev_priv->saveVERT_FRONT_PORCH_COUNT_REG =
-			PSB_RVDC32(VERT_FRONT_PORCH_COUNT_REG);
-		dev_priv->saveHIGH_LOW_SWITCH_COUNT_REG =
-			PSB_RVDC32(HIGH_LOW_SWITCH_COUNT_REG);
-		dev_priv->saveINIT_COUNT_REG = PSB_RVDC32(INIT_COUNT_REG);
-		dev_priv->saveMAX_RET_PAK_REG = PSB_RVDC32(MAX_RET_PAK_REG);
-		dev_priv->saveVIDEO_FMT_REG = PSB_RVDC32(VIDEO_FMT_REG);
-		dev_priv->saveEOT_DISABLE_REG = PSB_RVDC32(EOT_DISABLE_REG);
-		dev_priv->saveLP_BYTECLK_REG = PSB_RVDC32(LP_BYTECLK_REG);
-		dev_priv->saveHS_LS_DBI_ENABLE_REG =
-			PSB_RVDC32(HS_LS_DBI_ENABLE_REG);
-		dev_priv->saveTXCLKESC_REG = PSB_RVDC32(TXCLKESC_REG);
-		dev_priv->saveDPHY_PARAM_REG  = PSB_RVDC32(DPHY_PARAM_REG);
-		dev_priv->saveMIPI_CONTROL_REG = PSB_RVDC32(MIPI_CONTROL_REG);
-
-		/* DPST registers */
-		dev_priv->saveHISTOGRAM_INT_CONTROL_REG = PSB_RVDC32(HISTOGRAM_INT_CONTROL);
-		dev_priv->saveHISTOGRAM_LOGIC_CONTROL_REG = PSB_RVDC32(HISTOGRAM_LOGIC_CONTROL);
-		dev_priv->savePWM_CONTROL_LOGIC = PSB_RVDC32(PWM_CONTROL_LOGIC);
-	} else { /*PSB*/
-		/*save crtc and output state*/
-		mutex_lock(&dev->mode_config.mutex);
-		list_for_each_entry(crtc, &dev->mode_config.crtc_list, head) {
-			if (drm_helper_crtc_in_use(crtc)) {
-				crtc->funcs->save(crtc);
-			}
-		}
-
-		list_for_each_entry(connector, &dev->mode_config.connector_list, head) {
-			connector->funcs->save(connector);
-		}
-		mutex_unlock(&dev->mode_config.mutex);
-	}
-
-	/* Interrupt state */
-	/*
-	 * Handled in psb_irq.c
-	 */
-
-	return 0;
-}
-
-/*
  * mdfld_save_display_registers
  *
  * Description: We are going to suspend so save current display
@@ -625,201 +479,89 @@ static int mdfld_save_display_registers (struct drm_device *dev, int pipe)
 	int i;
 
 	/* regester */
-	u32 dpll_reg = MRST_DPLL_A;
-	u32 fp_reg = MRST_FPA0;
-	u32 pipeconf_reg = PIPEACONF;
-	u32 htot_reg = HTOTAL_A;
-	u32 hblank_reg = HBLANK_A;
-	u32 hsync_reg = HSYNC_A;
-	u32 vtot_reg = VTOTAL_A;
-	u32 vblank_reg = VBLANK_A;
-	u32 vsync_reg = VSYNC_A;
-	u32 pipesrc_reg = PIPEASRC;
-	u32 dspstride_reg = DSPASTRIDE;
-	u32 dsplinoff_reg = DSPALINOFF;
-	u32 dsptileoff_reg = DSPATILEOFF;
-	u32 dspsize_reg = DSPASIZE;
-	u32 dsppos_reg = DSPAPOS;
-	u32 dspsurf_reg = DSPASURF;
-	u32 mipi_reg = MIPI;
-	u32 dspcntr_reg = DSPACNTR;
-	u32 dspstatus_reg = PIPEASTAT;
-	u32 palette_reg = PALETTE_A;
-	u32 color_coef_reg = PIPEA_COLOR_COEF0;
+	u32 dpll_reg = MDFLD_DPLL_B;
+	u32 fp_reg = MDFLD_DPLL_DIV0;
+	u32 pipeconf_reg = PIPEBCONF;
+	u32 htot_reg = HTOTAL_B;
+	u32 hblank_reg = HBLANK_B;
+	u32 hsync_reg = HSYNC_B;
+	u32 vtot_reg = VTOTAL_B;
+	u32 vblank_reg = VBLANK_B;
+	u32 vsync_reg = VSYNC_B;
+	u32 pipesrc_reg = PIPEBSRC;
+	u32 dspstride_reg = DSPBSTRIDE;
+	u32 dsplinoff_reg = DSPBLINOFF;
+	u32 dsptileoff_reg = DSPBTILEOFF;
+	u32 dspsize_reg = DSPBSIZE;
+	u32 dsppos_reg = DSPBPOS;
+	u32 dspsurf_reg = DSPBSURF;
+	u32 dspcntr_reg = DSPBCNTR;
+	u32 dspstatus_reg = PIPEBSTAT;
+	u32 palette_reg = PALETTE_B;
+	u32 color_coef_reg = PIPEB_COLOR_COEF0;
 
-	/* pointer to values */
-	u32 *dpll_val = &dev_priv->saveDPLL_A;
-	u32 *fp_val = &dev_priv->saveFPA0;
-	u32 *pipeconf_val = &dev_priv->savePIPEACONF;
-	u32 *htot_val = &dev_priv->saveHTOTAL_A;
-	u32 *hblank_val = &dev_priv->saveHBLANK_A;
-	u32 *hsync_val = &dev_priv->saveHSYNC_A;
-	u32 *vtot_val = &dev_priv->saveVTOTAL_A;
-	u32 *vblank_val = &dev_priv->saveVBLANK_A;
-	u32 *vsync_val = &dev_priv->saveVSYNC_A;
-	u32 *pipesrc_val = &dev_priv->savePIPEASRC;
-	u32 *dspstride_val = &dev_priv->saveDSPASTRIDE;
-	u32 *dsplinoff_val = &dev_priv->saveDSPALINOFF;
-	u32 *dsptileoff_val = &dev_priv->saveDSPATILEOFF;
-	u32 *dspsize_val = &dev_priv->saveDSPASIZE;
-	u32 *dsppos_val = &dev_priv->saveDSPAPOS;
-	u32 *dspsurf_val = &dev_priv->saveDSPASURF;
-	u32 *mipi_val = &dev_priv->saveMIPI;
-	u32 *dspcntr_val = &dev_priv->saveDSPACNTR;
-	u32 *dspstatus_val = &dev_priv->saveDSPASTATUS;
-	u32 *palette_val = dev_priv->save_palette_a;
-	u32 *color_coef = dev_priv->save_color_coef_a;
+
+	/* values */
+	u32 *dpll_val = &dev_priv->saveDPLL_B;
+	u32 *fp_val = &dev_priv->saveFPB0;
+	u32 *pipeconf_val = &dev_priv->savePIPEBCONF;
+	u32 *htot_val = &dev_priv->saveHTOTAL_B;
+	u32 *hblank_val = &dev_priv->saveHBLANK_B;
+	u32 *hsync_val = &dev_priv->saveHSYNC_B;
+	u32 *vtot_val = &dev_priv->saveVTOTAL_B;
+	u32 *vblank_val = &dev_priv->saveVBLANK_B;
+	u32 *vsync_val = &dev_priv->saveVSYNC_B;
+	u32 *pipesrc_val = &dev_priv->savePIPEBSRC;
+	u32 *dspstride_val = &dev_priv->saveDSPBSTRIDE;
+	u32 *dsplinoff_val = &dev_priv->saveDSPBLINOFF;
+	u32 *dsptileoff_val = &dev_priv->saveDSPBTILEOFF;
+	u32 *dspsize_val = &dev_priv->saveDSPBSIZE;
+	u32 *dsppos_val = &dev_priv->saveDSPBPOS;
+	u32 *dspsurf_val = &dev_priv->saveDSPBSURF;
+	u32 *dspcntr_val = &dev_priv->saveDSPBCNTR;
+	u32 *dspstatus_val = &dev_priv->saveDSPBSTATUS;
+	u32 *palette_val = dev_priv->save_palette_b;
+	u32 *color_coef = dev_priv->save_color_coef_b;
+
 	PSB_DEBUG_ENTRY("\n");
 
-	/**
-	 * For MIPI panels, all plane/pipe/port/DSI controller values
-	 * were already saved in dsi_hw_context, no need to save/restore
-	 * for these registers.
-	 * NOTE: only support TMD panel now, add support for other MIPI
-	 * panels later
-	 */
-	if (pipe != 1 && ((get_panel_type(dev, pipe) == TMD_6X10_VID) ||
-			  (get_panel_type(dev, pipe) == H8C7_VID) ||
-			  (get_panel_type(dev, pipe) == H8C7_CMD) ||
-			  (get_panel_type(dev, pipe) == GI_SONY_VID) ||
-			  (get_panel_type(dev, pipe) == AUO_SC1_VID)))
+	if (pipe != 1)
 		return 0;
 
-	switch (pipe) {
-	case 0:
-		break;
-	case 1:
-		/* regester */
-		dpll_reg = MDFLD_DPLL_B;
-		fp_reg = MDFLD_DPLL_DIV0;
-		pipeconf_reg = PIPEBCONF;
-		htot_reg = HTOTAL_B;
-		hblank_reg = HBLANK_B;
-		hsync_reg = HSYNC_B;
-		vtot_reg = VTOTAL_B;
-		vblank_reg = VBLANK_B;
-		vsync_reg = VSYNC_B;
-		pipesrc_reg = PIPEBSRC;
-		dspstride_reg = DSPBSTRIDE;
-		dsplinoff_reg = DSPBLINOFF;
-		dsptileoff_reg = DSPBTILEOFF;
-		dspsize_reg = DSPBSIZE;
-		dsppos_reg = DSPBPOS;
-		dspsurf_reg = DSPBSURF;
-		dspcntr_reg = DSPBCNTR;
-		dspstatus_reg = PIPEBSTAT;
-		palette_reg = PALETTE_B;
-		color_coef_reg = PIPEB_COLOR_COEF0;
-
-		/* values */
-		dpll_val = &dev_priv->saveDPLL_B;
-		fp_val = &dev_priv->saveFPB0;
-		pipeconf_val = &dev_priv->savePIPEBCONF;
-		htot_val = &dev_priv->saveHTOTAL_B;
-		hblank_val = &dev_priv->saveHBLANK_B;
-		hsync_val = &dev_priv->saveHSYNC_B;
-		vtot_val = &dev_priv->saveVTOTAL_B;
-		vblank_val = &dev_priv->saveVBLANK_B;
-		vsync_val = &dev_priv->saveVSYNC_B;
-		pipesrc_val = &dev_priv->savePIPEBSRC;
-		dspstride_val = &dev_priv->saveDSPBSTRIDE;
-		dsplinoff_val = &dev_priv->saveDSPBLINOFF;
-		dsptileoff_val = &dev_priv->saveDSPBTILEOFF;
-		dspsize_val = &dev_priv->saveDSPBSIZE;
-		dsppos_val = &dev_priv->saveDSPBPOS;
-		dspsurf_val = &dev_priv->saveDSPBSURF;
-		dspcntr_val = &dev_priv->saveDSPBCNTR;
-		dspstatus_val = &dev_priv->saveDSPBSTATUS;
-		palette_val = dev_priv->save_palette_b;
-		color_coef = dev_priv->save_color_coef_b;
-		break;
-	case 2:
-		/* regester */
-		pipeconf_reg = PIPECCONF;
-		htot_reg = HTOTAL_C;
-		hblank_reg = HBLANK_C;
-		hsync_reg = HSYNC_C;
-		vtot_reg = VTOTAL_C;
-		vblank_reg = VBLANK_C;
-		vsync_reg = VSYNC_C;
-		pipesrc_reg = PIPECSRC;
-		dspstride_reg = DSPCSTRIDE;
-		dsplinoff_reg = DSPCLINOFF;
-		dsptileoff_reg = DSPCTILEOFF;
-		dspsize_reg = DSPCSIZE;
-		dsppos_reg = DSPCPOS;
-		dspsurf_reg = DSPCSURF;
-		mipi_reg = MIPI_C;
-		dspcntr_reg = DSPCCNTR;
-		dspstatus_reg = PIPECSTAT;
-		palette_reg = PALETTE_C;
-		color_coef_reg = PIPEC_COLOR_COEF0;
-
-		/* pointer to values */
-		pipeconf_val = &dev_priv->savePIPECCONF;
-		htot_val = &dev_priv->saveHTOTAL_C;
-		hblank_val = &dev_priv->saveHBLANK_C;
-		hsync_val = &dev_priv->saveHSYNC_C;
-		vtot_val = &dev_priv->saveVTOTAL_C;
-		vblank_val = &dev_priv->saveVBLANK_C;
-		vsync_val = &dev_priv->saveVSYNC_C;
-		pipesrc_val = &dev_priv->savePIPECSRC;
-		dspstride_val = &dev_priv->saveDSPCSTRIDE;
-		dsplinoff_val = &dev_priv->saveDSPCLINOFF;
-		dsptileoff_val = &dev_priv->saveDSPCTILEOFF;
-		dspsize_val = &dev_priv->saveDSPCSIZE;
-		dsppos_val = &dev_priv->saveDSPCPOS;
-		dspsurf_val = &dev_priv->saveDSPCSURF;
-		mipi_val = &dev_priv->saveMIPI_C;
-		dspcntr_val = &dev_priv->saveDSPCCNTR;
-		dspstatus_val = &dev_priv->saveDSPCSTATUS;
-		palette_val = dev_priv->save_palette_c;
-		color_coef = dev_priv->save_color_coef_c;
-		break;
-	default:
-		DRM_ERROR("%s, invalid pipe number.\n", __func__);
-		return -EINVAL;
-	}
-
 	/* Pipe & plane A info */
-	*dpll_val = PSB_RVDC32(dpll_reg);
-	*fp_val = PSB_RVDC32(fp_reg);
-	*pipeconf_val = PSB_RVDC32(pipeconf_reg);
-	*htot_val = PSB_RVDC32(htot_reg);
-	*hblank_val = PSB_RVDC32(hblank_reg);
-	*hsync_val = PSB_RVDC32(hsync_reg);
-	*vtot_val = PSB_RVDC32(vtot_reg);
-	*vblank_val = PSB_RVDC32(vblank_reg);
-	*vsync_val = PSB_RVDC32(vsync_reg);
-	*pipesrc_val = PSB_RVDC32(pipesrc_reg);
-	*dspstride_val = PSB_RVDC32(dspstride_reg);
-	*dsplinoff_val = PSB_RVDC32(dsplinoff_reg);
-	*dsptileoff_val = PSB_RVDC32(dsptileoff_reg);
-	*dspsize_val = PSB_RVDC32(dspsize_reg);
-	*dsppos_val = PSB_RVDC32(dsppos_reg);
-	*dspsurf_val = PSB_RVDC32(dspsurf_reg);
-	*dspcntr_val = PSB_RVDC32(dspcntr_reg);
-	*dspstatus_val = PSB_RVDC32(dspstatus_reg);
+	*dpll_val = REG_READ(dpll_reg);
+	*fp_val = REG_READ(fp_reg);
+	*pipeconf_val = REG_READ(pipeconf_reg);
+	*htot_val = REG_READ(htot_reg);
+	*hblank_val = REG_READ(hblank_reg);
+	*hsync_val = REG_READ(hsync_reg);
+	*vtot_val = REG_READ(vtot_reg);
+	*vblank_val = REG_READ(vblank_reg);
+	*vsync_val = REG_READ(vsync_reg);
+	*pipesrc_val = REG_READ(pipesrc_reg);
+	*dspstride_val = REG_READ(dspstride_reg);
+	*dsplinoff_val = REG_READ(dsplinoff_reg);
+	*dsptileoff_val = REG_READ(dsptileoff_reg);
+	*dspsize_val = REG_READ(dspsize_reg);
+	*dsppos_val = REG_READ(dsppos_reg);
+	*dspsurf_val = REG_READ(dspsurf_reg);
+	*dspcntr_val = REG_READ(dspcntr_reg);
+	*dspstatus_val = REG_READ(dspstatus_reg);
 
 	/*save palette (gamma) */
 	for (i = 0; i < 256; i++)
-		palette_val[i] = PSB_RVDC32(palette_reg + (i<<2));
+		palette_val[i] = REG_READ(palette_reg + (i<<2));
 
 	/*save color_coef (chrome) */
 	for (i = 0; i < 6; i++)
-		color_coef[i] = PSB_RVDC32(color_coef_reg + (i<<2));
+		color_coef[i] = REG_READ(color_coef_reg + (i<<2));
 
 
-	if (pipe == 1) {
-		dev_priv->savePFIT_CONTROL = PSB_RVDC32(PFIT_CONTROL);
-		dev_priv->savePFIT_PGM_RATIOS = PSB_RVDC32(PFIT_PGM_RATIOS);
+	dev_priv->savePFIT_CONTROL = REG_READ(PFIT_CONTROL);
+	dev_priv->savePFIT_PGM_RATIOS = REG_READ(PFIT_PGM_RATIOS);
 
-		dev_priv->saveHDMIPHYMISCCTL = PSB_RVDC32(HDMIPHYMISCCTL);
-		dev_priv->saveHDMIB_CONTROL = PSB_RVDC32(HDMIB_CONTROL);
-		return 0;
-	}
-
-	*mipi_val = PSB_RVDC32(mipi_reg);
+	dev_priv->saveHDMIPHYMISCCTL = REG_READ(HDMIPHYMISCCTL);
+	dev_priv->saveHDMIB_CONTROL = REG_READ(HDMIB_CONTROL);
 	return 0;
 }
 /*
@@ -864,187 +606,73 @@ static int mdfld_save_cursor_overlay_registers(struct drm_device *dev)
 
 	return 0;
 }
-/*
- * mdfld_restore_display_registers
+
+/**
+ * @dev: DRM device
+ * @pipe: DC pipe
  *
- * Description: We are going to resume so restore display register state.
- *
+ * restore registers of display controller. It's just for HDMI, as for MIPI
+ * pipe, use early suspend to save/restore dc registers.
  */
 static int mdfld_restore_display_registers(struct drm_device *dev, int pipe)
 {
 	struct drm_psb_private *dev_priv = dev->dev_private;
-	struct mdfld_dsi_config *dsi_config = NULL;
-	u32 i = 0;
+	int i = 0;
 	u32 dpll = 0;
-	u32 timeout = 0;
-	u32 reg_offset = 0;
 
 	/* regester */
-	u32 dpll_reg = MRST_DPLL_A;
-	u32 fp_reg = MRST_FPA0;
-	u32 pipeconf_reg = PIPEACONF;
-	u32 htot_reg = HTOTAL_A;
-	u32 hblank_reg = HBLANK_A;
-	u32 hsync_reg = HSYNC_A;
-	u32 vtot_reg = VTOTAL_A;
-	u32 vblank_reg = VBLANK_A;
-	u32 vsync_reg = VSYNC_A;
-	u32 pipesrc_reg = PIPEASRC;
-	u32 dspstride_reg = DSPASTRIDE;
-	u32 dsplinoff_reg = DSPALINOFF;
-	u32 dsptileoff_reg = DSPATILEOFF;
-	u32 dspsize_reg = DSPASIZE;
-	u32 dsppos_reg = DSPAPOS;
-	u32 dspsurf_reg = DSPASURF;
-	u32 dspstatus_reg = PIPEASTAT;
-	u32 mipi_reg = MIPI;
-	u32 dspcntr_reg = DSPACNTR;
-	u32 palette_reg = PALETTE_A;
-	u32 color_coef_reg = PIPEA_COLOR_COEF0;
+	u32 dpll_reg = MDFLD_DPLL_B;
+	u32 fp_reg = MDFLD_DPLL_DIV0;
+	u32 pipeconf_reg = PIPEBCONF;
+	u32 htot_reg = HTOTAL_B;
+	u32 hblank_reg = HBLANK_B;
+	u32 hsync_reg = HSYNC_B;
+	u32 vtot_reg = VTOTAL_B;
+	u32 vblank_reg = VBLANK_B;
+	u32 vsync_reg = VSYNC_B;
+	u32 pipesrc_reg = PIPEBSRC;
+	u32 dspstride_reg = DSPBSTRIDE;
+	u32 dsplinoff_reg = DSPBLINOFF;
+	u32 dsptileoff_reg = DSPBTILEOFF;
+	u32 dspsize_reg = DSPBSIZE;
+	u32 dsppos_reg = DSPBPOS;
+	u32 dspsurf_reg = DSPBSURF;
+	u32 dspcntr_reg = DSPBCNTR;
+	u32 palette_reg = PALETTE_B;
+	u32 dspstatus_reg = PIPEBSTAT;
+	u32 color_coef_reg = PIPEB_COLOR_COEF0;
 
 	/* values */
-	u32 dpll_val = dev_priv->saveDPLL_A & ~DPLL_VCO_ENABLE;
-	u32 fp_val = dev_priv->saveFPA0;
-	u32 pipeconf_val = dev_priv->savePIPEACONF;
-	u32 htot_val = dev_priv->saveHTOTAL_A;
-	u32 hblank_val = dev_priv->saveHBLANK_A;
-	u32 hsync_val = dev_priv->saveHSYNC_A;
-	u32 vtot_val = dev_priv->saveVTOTAL_A;
-	u32 vblank_val = dev_priv->saveVBLANK_A;
-	u32 vsync_val = dev_priv->saveVSYNC_A;
-	u32 pipesrc_val = dev_priv->savePIPEASRC;
-	u32 dspstride_val = dev_priv->saveDSPASTRIDE;
-	u32 dsplinoff_val = dev_priv->saveDSPALINOFF;
-	u32 dsptileoff_val = dev_priv->saveDSPATILEOFF;
-	u32 dspsize_val = dev_priv->saveDSPASIZE;
-	u32 dsppos_val = dev_priv->saveDSPAPOS;
-	u32 dspsurf_val = dev_priv->saveDSPASURF;
-	u32 dspstatus_val = dev_priv->saveDSPASTATUS;
-	u32 mipi_val = dev_priv->saveMIPI;
-	u32 dspcntr_val = dev_priv->saveDSPACNTR;
-	u32 *palette_val = dev_priv->save_palette_a;
-	u32 *color_coef = dev_priv->save_color_coef_a;
+	u32 dpll_val = dev_priv->saveDPLL_B & ~DPLL_VCO_ENABLE;
+	u32 fp_val = dev_priv->saveFPB0;
+	u32 pipeconf_val = dev_priv->savePIPEBCONF;
+	u32 htot_val = dev_priv->saveHTOTAL_B;
+	u32 hblank_val = dev_priv->saveHBLANK_B;
+	u32 hsync_val = dev_priv->saveHSYNC_B;
+	u32 vtot_val = dev_priv->saveVTOTAL_B;
+	u32 vblank_val = dev_priv->saveVBLANK_B;
+	u32 vsync_val = dev_priv->saveVSYNC_B;
+	u32 pipesrc_val = dev_priv->savePIPEBSRC;
+	u32 dspstride_val = dev_priv->saveDSPBSTRIDE;
+	u32 dsplinoff_val = dev_priv->saveDSPBLINOFF;
+	u32 dsptileoff_val = dev_priv->saveDSPBTILEOFF;
+	u32 dspsize_val = dev_priv->saveDSPBSIZE;
+	u32 dsppos_val = dev_priv->saveDSPBPOS;
+	u32 dspsurf_val = dev_priv->saveDSPBSURF;
+	u32 dspcntr_val = dev_priv->saveDSPBCNTR & ~DISPLAY_PLANE_ENABLE;
+	u32 dspstatus_val = dev_priv->saveDSPBSTATUS;
+	u32 *palette_val = dev_priv->save_palette_b;
+	u32 *color_coef = dev_priv->save_color_coef_b;
+
 	PSB_DEBUG_ENTRY("\n");
 
-	/**
-	 * For MIPI panels, all plane/pipe/port/DSI controller values
-	 * were already saved in dsi_hw_context, no need to save/restore
-	 * for these registers.
-	 * NOTE: only support TMD panel now, add support for other MIPI
-	 * panels later
-	 */
-	if (pipe != 1 && ((get_panel_type(dev, pipe) == TMD_6X10_VID) ||
-			  (get_panel_type(dev, pipe) == H8C7_VID) ||
-			  (get_panel_type(dev, pipe) == H8C7_CMD) ||
-			  (get_panel_type(dev, pipe) == GI_SONY_VID) ||
-			  (get_panel_type(dev, pipe) == AUO_SC1_VID)))
+	if (pipe != 1)
 		return 0;
 
-	switch (pipe) {
-	case 0:
-		dsi_config = dev_priv->dsi_configs[0];
-		break;
-	case 1:
-		/* regester */
-		dpll_reg = MDFLD_DPLL_B;
-		fp_reg = MDFLD_DPLL_DIV0;
-		pipeconf_reg = PIPEBCONF;
-		htot_reg = HTOTAL_B;
-		hblank_reg = HBLANK_B;
-		hsync_reg = HSYNC_B;
-		vtot_reg = VTOTAL_B;
-		vblank_reg = VBLANK_B;
-		vsync_reg = VSYNC_B;
-		pipesrc_reg = PIPEBSRC;
-		dspstride_reg = DSPBSTRIDE;
-		dsplinoff_reg = DSPBLINOFF;
-		dsptileoff_reg = DSPBTILEOFF;
-		dspsize_reg = DSPBSIZE;
-		dsppos_reg = DSPBPOS;
-		dspsurf_reg = DSPBSURF;
-		dspcntr_reg = DSPBCNTR;
-		palette_reg = PALETTE_B;
-		dspstatus_reg = PIPEBSTAT;
-		color_coef_reg = PIPEB_COLOR_COEF0;
-
-		/* values */
-		dpll_val = dev_priv->saveDPLL_B & ~DPLL_VCO_ENABLE;
-		fp_val = dev_priv->saveFPB0;
-		pipeconf_val = dev_priv->savePIPEBCONF;
-		htot_val = dev_priv->saveHTOTAL_B;
-		hblank_val = dev_priv->saveHBLANK_B;
-		hsync_val = dev_priv->saveHSYNC_B;
-		vtot_val = dev_priv->saveVTOTAL_B;
-		vblank_val = dev_priv->saveVBLANK_B;
-		vsync_val = dev_priv->saveVSYNC_B;
-		pipesrc_val = dev_priv->savePIPEBSRC;
-		dspstride_val = dev_priv->saveDSPBSTRIDE;
-		dsplinoff_val = dev_priv->saveDSPBLINOFF;
-		dsptileoff_val = dev_priv->saveDSPBTILEOFF;
-		dspsize_val = dev_priv->saveDSPBSIZE;
-		dsppos_val = dev_priv->saveDSPBPOS;
-		dspsurf_val = dev_priv->saveDSPBSURF;
-		dspcntr_val = dev_priv->saveDSPBCNTR & ~DISPLAY_PLANE_ENABLE;
-		dspstatus_val = dev_priv->saveDSPBSTATUS;
-		palette_val = dev_priv->save_palette_b;
-		color_coef = dev_priv->save_color_coef_b;
-		break;
-	case 2:
-		reg_offset = MIPIC_REG_OFFSET;
-
-		/* regester */
-		pipeconf_reg = PIPECCONF;
-		htot_reg = HTOTAL_C;
-		hblank_reg = HBLANK_C;
-		hsync_reg = HSYNC_C;
-		vtot_reg = VTOTAL_C;
-		vblank_reg = VBLANK_C;
-		vsync_reg = VSYNC_C;
-		pipesrc_reg = PIPECSRC;
-		dspstride_reg = DSPCSTRIDE;
-		dsplinoff_reg = DSPCLINOFF;
-		dsptileoff_reg = DSPCTILEOFF;
-		dspsize_reg = DSPCSIZE;
-		dsppos_reg = DSPCPOS;
-		dspsurf_reg = DSPCSURF;
-		mipi_reg = MIPI_C;
-		dspcntr_reg = DSPCCNTR;
-		palette_reg = PALETTE_C;
-		dspstatus_reg = PIPECSTAT;
-		color_coef_reg = PIPEC_COLOR_COEF0;
-
-		/* values */
-		pipeconf_val = dev_priv->savePIPECCONF;
-		htot_val = dev_priv->saveHTOTAL_C;
-		hblank_val = dev_priv->saveHBLANK_C;
-		hsync_val = dev_priv->saveHSYNC_C;
-		vtot_val = dev_priv->saveVTOTAL_C;
-		vblank_val = dev_priv->saveVBLANK_C;
-		vsync_val = dev_priv->saveVSYNC_C;
-		pipesrc_val = dev_priv->savePIPECSRC;
-		dspstride_val = dev_priv->saveDSPCSTRIDE;
-		dsplinoff_val = dev_priv->saveDSPCLINOFF;
-		dsptileoff_val = dev_priv->saveDSPCTILEOFF;
-		dspsize_val = dev_priv->saveDSPCSIZE;
-		dsppos_val = dev_priv->saveDSPCPOS;
-		dspsurf_val = dev_priv->saveDSPCSURF;
-		dspstatus_val = dev_priv->saveDSPCSTATUS;
-		mipi_val = dev_priv->saveMIPI_C;
-		dspcntr_val = dev_priv->saveDSPCCNTR;
-		palette_val = dev_priv->save_palette_c;
-		color_coef = dev_priv->save_color_coef_c;
-
-		dsi_config = dev_priv->dsi_configs[1];
-		break;
-	default:
-		DRM_ERROR("%s, invalid pipe number.\n", __func__);
-		return -EINVAL;
-	}
-
 	/*make sure VGA plane is off. it initializes to on after reset!*/
-	PSB_WVDC32(0x80000000, VGACNTRL);
+	REG_WRITE(VGACNTRL, 0x80000000);
 
-	dpll = PSB_RVDC32(dpll_reg);
+	dpll = REG_READ(dpll_reg);
 
 	if (!(dpll & DPLL_VCO_ENABLE)) {
 		/**
@@ -1053,108 +681,57 @@ static int mdfld_restore_display_registers(struct drm_device *dev, int pipe)
 		 */
 		if (dpll & MDFLD_PWR_GATE_EN) {
 			dpll &= ~MDFLD_PWR_GATE_EN;
-			PSB_WVDC32(dpll, dpll_reg);
+			REG_WRITE(dpll_reg, dpll);
 			ndelay(500);
 		}
 
-		PSB_WVDC32(fp_val, fp_reg);
-		PSB_WVDC32(dpll_val, dpll_reg);
+		REG_WRITE(fp_reg, fp_val);
+		REG_WRITE(dpll_reg, dpll_val);
 		ndelay(500);
 
 		dpll_val |= DPLL_VCO_ENABLE;
-		PSB_WVDC32(dpll_val, dpll_reg);
-		PSB_RVDC32(dpll_reg);
-
-		/* wait for DSI PLL to lock */
-		/**
-		 * FIXME: HDMI PLL cannot be locked on pipe 1,
-		 * replace pipe == 0 with pipe != 2 when HDMI
-		 * restore is ready
-		 */
-		while ((pipe == 0) &&
-			(timeout < 20000) &&
-			!(PSB_RVDC32(pipeconf_reg) & PIPECONF_DSIPLL_LOCK)) {
-			usleep_range(150, 350);
-			timeout++;
-		}
-
-		if (timeout == 20000) {
-			DRM_ERROR("%s, can't lock DSIPLL.\n", __func__);
-			return -EINVAL;
-		}
+		REG_WRITE(dpll_reg, dpll_val);
+		REG_READ(dpll_reg);
 	}
 
 	/* Restore mode */
-	PSB_WVDC32(htot_val, htot_reg);
-	PSB_WVDC32(hblank_val, hblank_reg);
-	PSB_WVDC32(hsync_val, hsync_reg);
-	PSB_WVDC32(vtot_val, vtot_reg);
-	PSB_WVDC32(vblank_val, vblank_reg);
-	PSB_WVDC32(vsync_val, vsync_reg);
-	PSB_WVDC32(pipesrc_val, pipesrc_reg);
-	PSB_WVDC32(dspstatus_val, dspstatus_reg);
+	REG_WRITE(htot_reg, htot_val);
+	REG_WRITE(hblank_reg, hblank_val);
+	REG_WRITE(hsync_reg, hsync_val);
+	REG_WRITE(vtot_reg, vtot_val);
+	REG_WRITE(vblank_reg, vblank_val);
+	REG_WRITE(vsync_reg, vsync_val);
+	REG_WRITE(pipesrc_reg, pipesrc_val);
+	REG_WRITE(dspstatus_reg, dspstatus_val);
 
 	/*set up the plane*/
-	PSB_WVDC32(dspstride_val, dspstride_reg);
-	PSB_WVDC32(dsplinoff_val, dsplinoff_reg);
-	PSB_WVDC32(dsptileoff_val, dsptileoff_reg);
-	PSB_WVDC32(dspsize_val, dspsize_reg);
-	PSB_WVDC32(dsppos_val, dsppos_reg);
-	PSB_WVDC32(dspsurf_val, dspsurf_reg);
+	REG_WRITE(dspstride_reg, dspstride_val);
+	REG_WRITE(dsplinoff_reg, dsplinoff_val);
+	REG_WRITE(dsptileoff_reg, dsptileoff_val);
+	REG_WRITE(dspsize_reg, dspsize_val);
+	REG_WRITE(dsppos_reg, dsppos_val);
+	REG_WRITE(dspsurf_reg, dspsurf_val);
 
-	if (pipe == 1) {
-		PSB_WVDC32(dev_priv->savePFIT_CONTROL, PFIT_CONTROL);
-		PSB_WVDC32(dev_priv->savePFIT_PGM_RATIOS, PFIT_PGM_RATIOS);
-
-		PSB_WVDC32(dev_priv->saveHDMIPHYMISCCTL, HDMIPHYMISCCTL);
-		PSB_WVDC32(dev_priv->saveHDMIB_CONTROL, HDMIB_CONTROL);
-
-	} else {
-		/*set up pipe related registers*/
-		PSB_WVDC32(mipi_val, mipi_reg);
-		/*TODO: remove MIPI restore code later*/
-		/*dsi_config->dvr_ic_inited = 0;*/
-		/*mdfld_dsi_tmd_drv_ic_init(dsi_config, pipe);*/
-	}
+	REG_WRITE(PFIT_CONTROL, dev_priv->savePFIT_CONTROL);
+	REG_WRITE(PFIT_PGM_RATIOS, dev_priv->savePFIT_PGM_RATIOS);
+	REG_WRITE(HDMIPHYMISCCTL, dev_priv->saveHDMIPHYMISCCTL);
+	REG_WRITE(HDMIB_CONTROL, dev_priv->saveHDMIB_CONTROL);
 
 	/*save color_coef (chrome) */
 	for (i = 0; i < 6; i++)
-		PSB_WVDC32(color_coef[i], color_coef_reg + (i<<2));
+		REG_WRITE(color_coef_reg + (i<<2), color_coef[i]);
 
 	/* restore palette (gamma) */
-	/*DRM_UDELAY(50000); */
 	for (i = 0; i < 256; i++)
-		PSB_WVDC32(palette_val[i], palette_reg + (i<<2));
-
-	/* disable gamma if needed */
-	if (pipe == 0 && drm_psb_enable_gamma == 0)
-		 dspcntr_val &= ~(PIPEACONF_GAMMA);
-
-	/* disable csc if needed */
-	if (pipe == 0 && drm_psb_enable_color_conversion == 0)
-		 pipeconf_val &= ~(PIPEACONF_COLOR_MATRIX_ENABLE);
+		REG_WRITE(palette_reg + (i<<2), palette_val[i]);
 
 	/*enable the plane*/
-	PSB_WVDC32(dspcntr_val, dspcntr_reg);
+	REG_WRITE(dspcntr_reg, dspcntr_val);
 
 	/*enable the pipe*/
-	PSB_WVDC32(pipeconf_val, pipeconf_reg);
-
-	/*only wait pipe enable when time generate */
-	if (REG_READ(mipi_reg) & BIT31) {
-		if ((pipe == 0 && pipeconf_val & PIPEACONF_ENABLE) ||
-		    (pipe == 1 && pipeconf_val & PIPEBCONF_ENABLE))
-			/* Wait for the pipe enable to take effect. */
-			mdfldWaitForPipeEnable(dev, pipe);
-	}
-	if (pipe == 1)
-		return 0;
-
-	if ((get_panel_type(dev, pipe) == GI_SONY_CMD) || (get_panel_type(dev, pipe) == H8C7_CMD))
-		psb_enable_vblank(dev, pipe);
-	else if (IS_MDFLD(dev) && (dev_priv->platform_rev_id != MDFLD_PNW_A0) &&
-			!is_panel_vid_or_cmd(dev))
-		mdfld_enable_te(dev, pipe);
+	REG_WRITE(pipeconf_reg, pipeconf_val);
+	if (pipeconf_val & PIPEBCONF_ENABLE)
+		intel_wait_for_pipe_enable_disable(dev, pipe, true);
 
 	return 0;
 }
@@ -1169,34 +746,34 @@ static int mdfld_restore_cursor_overlay_registers(struct drm_device *dev)
 	struct drm_psb_private *dev_priv = dev->dev_private;
 
 	/*Enable Cursor A*/
-	PSB_WVDC32(dev_priv->saveDSPACURSOR_CTRL, CURACNTR);
-	PSB_WVDC32(dev_priv->saveDSPACURSOR_POS, CURAPOS);
-	PSB_WVDC32(dev_priv->saveDSPACURSOR_BASE, CURABASE);
+	REG_WRITE(CURACNTR, dev_priv->saveDSPACURSOR_CTRL);
+	REG_WRITE(CURAPOS, dev_priv->saveDSPACURSOR_POS);
+	REG_WRITE(CURABASE, dev_priv->saveDSPACURSOR_BASE);
 
-	PSB_WVDC32(dev_priv->saveDSPBCURSOR_CTRL, CURBCNTR);
-	PSB_WVDC32(dev_priv->saveDSPBCURSOR_POS, CURBPOS);
-	PSB_WVDC32(dev_priv->saveDSPBCURSOR_BASE, CURBBASE);
+	REG_WRITE(CURBCNTR, dev_priv->saveDSPBCURSOR_CTRL);
+	REG_WRITE(CURBPOS, dev_priv->saveDSPBCURSOR_POS);
+	REG_WRITE(CURBBASE, dev_priv->saveDSPBCURSOR_BASE);
 
-	PSB_WVDC32(dev_priv->saveDSPCCURSOR_CTRL, CURCCNTR);
-	PSB_WVDC32(dev_priv->saveDSPCCURSOR_POS, CURCPOS);
-	PSB_WVDC32(dev_priv->saveDSPCCURSOR_BASE, CURCBASE);
+	REG_WRITE(CURCCNTR, dev_priv->saveDSPCCURSOR_CTRL);
+	REG_WRITE(CURCPOS, dev_priv->saveDSPCCURSOR_POS);
+	REG_WRITE(CURCBASE, dev_priv->saveDSPCCURSOR_BASE);
 
 	/* restore HW overlay */
-	PSB_WVDC32(dev_priv->saveOV_OVADD, OV_OVADD);
-	PSB_WVDC32(dev_priv->saveOV_OGAMC0, OV_OGAMC0);
-	PSB_WVDC32(dev_priv->saveOV_OGAMC1, OV_OGAMC1);
-	PSB_WVDC32(dev_priv->saveOV_OGAMC2, OV_OGAMC2);
-	PSB_WVDC32(dev_priv->saveOV_OGAMC3, OV_OGAMC3);
-	PSB_WVDC32(dev_priv->saveOV_OGAMC4, OV_OGAMC4);
-	PSB_WVDC32(dev_priv->saveOV_OGAMC5, OV_OGAMC5);
+	REG_WRITE(OV_OVADD, dev_priv->saveOV_OVADD);
+	REG_WRITE(OV_OGAMC0, dev_priv->saveOV_OGAMC0);
+	REG_WRITE(OV_OGAMC1, dev_priv->saveOV_OGAMC1);
+	REG_WRITE(OV_OGAMC2, dev_priv->saveOV_OGAMC2);
+	REG_WRITE(OV_OGAMC3, dev_priv->saveOV_OGAMC3);
+	REG_WRITE(OV_OGAMC4, dev_priv->saveOV_OGAMC4);
+	REG_WRITE(OV_OGAMC5, dev_priv->saveOV_OGAMC5);
 
-	PSB_WVDC32(dev_priv->saveOV_OVADD_C, OV_OVADD + OV_C_OFFSET);
-	PSB_WVDC32(dev_priv->saveOV_OGAMC0_C, OV_OGAMC0 + OV_C_OFFSET);
-	PSB_WVDC32(dev_priv->saveOV_OGAMC1_C, OV_OGAMC1 + OV_C_OFFSET);
-	PSB_WVDC32(dev_priv->saveOV_OGAMC2_C, OV_OGAMC2 + OV_C_OFFSET);
-	PSB_WVDC32(dev_priv->saveOV_OGAMC3_C, OV_OGAMC3 + OV_C_OFFSET);
-	PSB_WVDC32(dev_priv->saveOV_OGAMC4_C, OV_OGAMC4 + OV_C_OFFSET);
-	PSB_WVDC32(dev_priv->saveOV_OGAMC5_C, OV_OGAMC5 + OV_C_OFFSET);
+	REG_WRITE(OV_OVADD + OV_C_OFFSET, dev_priv->saveOV_OVADD_C);
+	REG_WRITE(OV_OGAMC0 + OV_C_OFFSET, dev_priv->saveOV_OGAMC0_C);
+	REG_WRITE(OV_OGAMC1 + OV_C_OFFSET, dev_priv->saveOV_OGAMC1_C);
+	REG_WRITE(OV_OGAMC2 + OV_C_OFFSET, dev_priv->saveOV_OGAMC2_C);
+	REG_WRITE(OV_OGAMC3 + OV_C_OFFSET, dev_priv->saveOV_OGAMC3_C);
+	REG_WRITE(OV_OGAMC4 + OV_C_OFFSET, dev_priv->saveOV_OGAMC4_C);
+	REG_WRITE(OV_OGAMC5 + OV_C_OFFSET, dev_priv->saveOV_OGAMC5_C);
 
 	return 0;
 }
@@ -1208,16 +785,9 @@ static int mdfld_restore_cursor_overlay_registers(struct drm_device *dev)
  */
 void mdfld_save_display(struct drm_device *dev)
 {
-	struct drm_psb_private *dev_priv = dev->dev_private;
-#ifdef OSPM_GFX_DPK
-		printk(KERN_ALERT "ospm_save_display\n");
-#endif
-	mdfld_save_cursor_overlay_registers(dev);
+	PSB_DEBUG_ENTRY("\n");
 
-	if (dev_priv->panel_desc & DISPLAY_A)
-		mdfld_save_display_registers(dev, 0);
-	if (dev_priv->panel_desc & DISPLAY_C)
-		mdfld_save_display_registers(dev, 2);  /* h8c7_cmd */
+	mdfld_save_cursor_overlay_registers(dev);
 }
 
 /*
@@ -1229,89 +799,38 @@ void mdfld_save_display(struct drm_device *dev)
 void ospm_suspend_display(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv = dev->dev_private;
-	int pp_stat, ret = 0;
 
-#ifdef OSPM_GFX_DPK
-	printk(KERN_ALERT "%s\n", __func__);
-#endif
+	PSB_DEBUG_ENTRY("\n");
 
 	if (!ospm_power_is_hw_on(OSPM_DISPLAY_ISLAND)) {
-#ifdef OSPM_GFX_DPK
-		printk(KERN_ALERT "%s - IGNORING!!!!\n", __func__);
-#endif
+		DRM_INFO("%s: Exit because island is down\n", __func__);
 		return;
 	}
 
-	if (IS_MDFLD(dev)) {
-		mdfld_save_cursor_overlay_registers(dev);
+	mdfld_save_cursor_overlay_registers(dev);
 
-		if (dev_priv->panel_desc & DISPLAY_A)
-			mdfld_save_display_registers(dev, 0);
-		if (dev_priv->panel_desc & DISPLAY_B)
-			android_hdmi_save_display_registers(dev);
-		if (dev_priv->panel_desc & DISPLAY_C)
-			mdfld_save_display_registers(dev, 2);
-
-		if (dev_priv->panel_desc & DISPLAY_A)
-			mdfld_disable_crtc(dev, 0);
-		if (dev_priv->panel_desc & DISPLAY_B)
-			android_disable_hdmi(dev);
-		if (dev_priv->panel_desc & DISPLAY_C)
-			mdfld_disable_crtc(dev, 2);
-
-		/*save performance state*/
-		dev_priv->savePERF_MODE = PSB_RVDC32(MRST_PERF_MODE);
-		dev_priv->saveVED_CG_DIS = PSB_RVDC32(PSB_MSVDX_CLOCKGATING);
-		dev_priv->saveVEC_CG_DIS = PSB_RVDC32(PSB_TOPAZ_CLOCKGATING);
-#ifdef CONFIG_MDFD_GL3
-		dev_priv->saveGL3_CTL = PSB_RVDC32(MDFLD_GL3_CONTROL);
-		dev_priv->saveGL3_USE_WRT_INVAL = PSB_RVDC32(MDFLD_GL3_USE_WRT_INVAL);
-#endif
-
-	} else {
-		save_display_registers(dev);
-
-		if (dev_priv->iLVDS_enable) {
-			/*shutdown the panel*/
-			PSB_WVDC32(0, PP_CONTROL);
-
-			do {
-				pp_stat = PSB_RVDC32(PP_STATUS);
-			} while (pp_stat & 0x80000000);
-
-			/*turn off the plane*/
-			PSB_WVDC32(0x58000000, DSPACNTR);
-			PSB_WVDC32(0, DSPASURF);/*trigger the plane disable*/
-			/*wait ~4 ticks*/
-			msleep(4);
-
-			/*turn off pipe*/
-			PSB_WVDC32(0x0, PIPEACONF);
-			/*wait ~8 ticks*/
-			msleep(8);
-
-			/*turn off PLLs*/
-			PSB_WVDC32(0, MRST_DPLL_A);
-		} else {
-			PSB_WVDC32(DPI_SHUT_DOWN, DPI_CONTROL_REG);
-			PSB_WVDC32(0x0, PIPEACONF);
-			PSB_WVDC32(0x2faf0000, BLC_PWM_CTL);
-			while (REG_READ(0x70008) & 0x40000000)
-				;
-			while ((PSB_RVDC32(GEN_FIFO_STAT_REG) & DPI_FIFO_EMPTY)
-				!= DPI_FIFO_EMPTY)
-				;
-			PSB_WVDC32(0, DEVICE_READY_REG);
-
-			/* turn off panel power */
-			ret = 0;
-#ifdef CONFIG_X86_MDFLD
-			ret = intel_scu_ipc_simple_command(IPC_MSG_PANEL_ON_OFF, IPC_CMD_PANEL_OFF);
-			if (ret)
-				printk(KERN_WARNING "IPC 0xE9 failed to turn off pnl pwr. Error is: %x\n", ret);
-#endif
-		}
+	if (dev_priv->panel_desc & DISPLAY_A) {
+		mdfld_save_display_registers(dev, 0);
+		mdfld_disable_crtc(dev, 0);
 	}
+	if (dev_priv->panel_desc & DISPLAY_B) {
+		android_hdmi_save_display_registers(dev);
+		android_disable_hdmi(dev);
+	}
+	if (dev_priv->panel_desc & DISPLAY_C) {
+		mdfld_save_display_registers(dev, 2);
+		mdfld_disable_crtc(dev, 2);
+	}
+
+	/*save performance state*/
+	dev_priv->savePERF_MODE = REG_READ(MRST_PERF_MODE);
+	dev_priv->saveVED_CG_DIS = REG_READ(PSB_MSVDX_CLOCKGATING);
+	dev_priv->saveVEC_CG_DIS = REG_READ(PSB_TOPAZ_CLOCKGATING);
+
+#ifdef CONFIG_MDFD_GL3
+	dev_priv->saveGL3_CTL = REG_READ(MDFLD_GL3_CONTROL);
+	dev_priv->saveGL3_USE_WRT_INVAL = REG_READ(MDFLD_GL3_USE_WRT_INVAL);
+#endif
 
 	ospm_power_island_down(OSPM_DISPLAY_ISLAND);
 }
@@ -1356,47 +875,33 @@ void ospm_resume_display(struct pci_dev *pdev)
 	struct drm_psb_private *dev_priv = dev->dev_private;
 	struct psb_gtt *pg = dev_priv->pg;
 
-#ifdef OSPM_GFX_DPK
-	printk(KERN_ALERT "%s\n", __func__);
-#endif
+	PSB_DEBUG_ENTRY("\n");
+
 	if (ospm_power_is_hw_on(OSPM_DISPLAY_ISLAND)) {
-#ifdef OSPM_GFX_DPK
-		printk(KERN_ALERT "%s - IGNORING!!!!\n", __func__);
-#endif
-		printk(KERN_ALERT "[DISPLAY] Exit %s because hw on\n",
-				__func__);
+		DRM_INFO("%s: Exit because hw on\n", __func__);
 		return;
 	}
 
-	if (IS_MDFLD(dev)) {
-		/*restore performance mode*/
-		PSB_WVDC32(dev_priv->savePERF_MODE, MRST_PERF_MODE);
-		PSB_WVDC32(dev_priv->saveVED_CG_DIS, PSB_MSVDX_CLOCKGATING);
-		PSB_WVDC32(dev_priv->saveVEC_CG_DIS, PSB_TOPAZ_CLOCKGATING);
+	/*restore performance mode*/
+	REG_WRITE(MRST_PERF_MODE, dev_priv->savePERF_MODE);
+	REG_WRITE(PSB_MSVDX_CLOCKGATING, dev_priv->saveVED_CG_DIS);
+	REG_WRITE(PSB_TOPAZ_CLOCKGATING, dev_priv->saveVEC_CG_DIS);
 #ifdef CONFIG_MDFD_GL3
-		PSB_WVDC32(dev_priv->saveGL3_CTL, MDFLD_GL3_CONTROL);
-		PSB_WVDC32(dev_priv->saveGL3_USE_WRT_INVAL, MDFLD_GL3_USE_WRT_INVAL);
+	REG_WRITE(MDFLD_GL3_CONTROL, dev_priv->saveGL3_CTL);
+	REG_WRITE(MDFLD_GL3_USE_WRT_INVAL, dev_priv->saveGL3_USE_WRT_INVAL);
 #endif
-    }
 
 	/* turn on the display power island */
 	ospm_power_island_up(OSPM_DISPLAY_ISLAND);
 
-	PSB_WVDC32(pg->pge_ctl | _PSB_PGETBL_ENABLED, PSB_PGETBL_CTL);
+	REG_WRITE(PSB_PGETBL_CTL, pg->pge_ctl | _PSB_PGETBL_ENABLED);
 	pci_write_config_word(pdev, PSB_GMCH_CTRL,
 			pg->gmch_ctrl | _PSB_GMCH_ENABLED);
 
-	/* Don't reinitialize the GTT as it is unnecessary.  The gtt is
-	 * stored in memory so it will automatically be restored.  All
-	 * we need to do is restore the PGETBL_CTL which we already do
-	 * above.
-	 */
-	/*psb_gtt_init(dev_priv->pg, 1);*/
-
-	if (dev_priv->panel_desc & DISPLAY_C)
-		mdfld_restore_display_registers(dev, 2);
 	if (dev_priv->panel_desc & DISPLAY_A)
 		mdfld_restore_display_registers(dev, 0);
+	if (dev_priv->panel_desc & DISPLAY_C)
+		mdfld_restore_display_registers(dev, 2);
 
 	/*
 	 * Don't restore Display B registers during resuming, if HDMI
@@ -1434,9 +939,7 @@ void ospm_suspend_pci(struct pci_dev *pdev)
 	if (gbSuspended)
 		return;
 
-#ifdef OSPM_GFX_DPK
-	printk(KERN_ALERT "ospm_suspend_pci\n");
-#endif
+	PSB_DEBUG_ENTRY("\n");
 
 	pci_save_state(pdev);
 	pci_read_config_dword(pdev, 0x5C, &bsm);
@@ -1448,25 +951,6 @@ void ospm_suspend_pci(struct pci_dev *pdev)
 
 	pci_disable_device(pdev);
 	pci_set_power_state(pdev, PCI_D3hot);
-	/*
-	Disabling the IPC call to SCU
-	to turn off Vprog2 as SCU doesn't
-	support this IPC.
-	This will be enabled once SCU support
-	is available.
-	*/
-
-#if 0
-	/*Notify SCU on GFX suspend for VProg2.*/
-	{
-		unsigned int gfx_off = 0;
-		unsigned int  ret = 0;
-		ret = intel_scu_ipc_command(SCU_CMD_VPROG2, 0, &gfx_off, 1, NULL, 0);
-		if (ret)
-			printk(KERN_WARNING
-			"%s IPC 0xE3 failed; error is: %x\n", __func__, ret);
-	}
-#endif
 
 	gbSuspended = true;
 	gbgfxsuspended = true;
@@ -1487,27 +971,7 @@ static bool ospm_resume_pci(struct pci_dev *pdev)
 	if (!gbSuspended)
 		return true;
 
-#ifdef OSPM_GFX_DPK
-	printk(KERN_ALERT "ospm_resume_pci\n");
-#endif
-	/*
-	Disabling the IPC call to SCU
-	to turn on Vprog2 as SCU doesn't
-	support this IPC.
-	This will be enabled once SCU support
-	is available.
-	*/
-#if 0
-	/*Notify SCU on GFX resume for VProg2.*/
-	{
-		unsigned int gfx_on = 1;
-		unsigned int ret = 0;
-		ret = intel_scu_ipc_command(SCU_CMD_VPROG2, 0, &gfx_on, 1, NULL, 0);
-		if (ret)
-			printk(KERN_WARNING
-			"%s IPC 0xE3 failed; error is: %x\n", __func__, ret);
-	}
-#endif
+	PSB_DEBUG_ENTRY("\n");
 
 	pci_set_power_state(pdev, PCI_D0);
 	pci_restore_state(pdev);
@@ -1647,15 +1111,14 @@ int ospm_power_suspend(struct pci_dev *pdev, pm_message_t state)
 	bool hdmi_audio_suspend = false;
 	hdmi_audio_event_t hdmi_audio_event;
 #endif
+
 	if (gbSuspendInProgress || gbResumeInProgress) {
-#ifdef OSPM_GFX_DPK
-		printk(KERN_ALERT "%s system BUSY\n", __func__);
-#endif
+		DRM_INFO("%s: system BUSY\n", __func__);
 		return  -EBUSY;
 	}
-#ifdef OSPM_GFX_DPK
-	printk(KERN_ALERT "%s\n", __func__);
-#endif
+
+	PSB_DEBUG_ENTRY("\n");
+
 	mutex_lock(&g_ospm_mutex);
 	if (!gbSuspended) {
 #if (defined(CONFIG_SND_INTELMID_HDMI_AUDIO) || \
@@ -1738,10 +1201,8 @@ void ospm_power_island_up(int hw_islands)
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *) gpDrmDevice->dev_private;
 
-#ifdef OSPM_GFX_DPK
-	 printk(KERN_ALERT "%s hw_islands: %x\n",
-		 __func__, hw_islands);
-#endif
+	PSB_DEBUG_ENTRY("hw_islands: %x\n", hw_islands);
+
 	if (hw_islands & OSPM_DISPLAY_ISLAND) {
 		/*Power-up required islands only*/
 		if (dev_priv->panel_desc & DISPLAY_A)
@@ -1774,10 +1235,6 @@ void ospm_power_island_up(int hw_islands)
 	}
 
 	if (gfx_islands) {
-#ifdef OSPM_GFX_DPK
-		printk(KERN_ALERT "%s other hw_islands: %x\n",
-			 __func__, gfx_islands);
-#endif
 		/*
 		If pmu_nc_set_power_state fails then accessing HW
 		reg would result in a crash - IERR/Fabric error.
@@ -1807,18 +1264,13 @@ void ospm_power_island_up(int hw_islands)
 int ospm_power_resume(struct pci_dev *pdev)
 {
 	if (gbSuspendInProgress || gbResumeInProgress) {
-#ifdef OSPM_GFX_DPK
-		printk(KERN_ALERT "%s: Suspend/ResumeInProgress\n",
-			__func__);
-#endif
+		DRM_INFO("%s: suspend/resume in progress\n", __func__);
 		return 0;
 	}
 
-	mutex_lock(&g_ospm_mutex);
+	PSB_DEBUG_ENTRY("\n");
 
-#ifdef OSPM_GFX_DPK
-	printk(KERN_ALERT "OSPM_GFX_DPK: ospm_power_resume\n");
-#endif
+	mutex_lock(&g_ospm_mutex);
 
 	gbResumeInProgress = true;
 
@@ -1873,17 +1325,14 @@ void ospm_power_island_down(int hw_islands)
 {
 	u32 dc_islands = 0;
 	u32 gfx_islands = hw_islands;
+	int video_islands = hw_islands &
+		(OSPM_VIDEO_DEC_ISLAND | OSPM_VIDEO_ENC_ISLAND);
 	unsigned long flags;
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *) gpDrmDevice->dev_private;
 
-#ifdef OSPM_GFX_DPK
-	printk(KERN_ALERT "%s hw_islands: %x\n",
-		__func__, hw_islands);
-#endif
+	PSB_DEBUG_ENTRY("hw_islands: %x\n", hw_islands);
 
-	int video_islands = hw_islands &
-		(OSPM_VIDEO_DEC_ISLAND | OSPM_VIDEO_ENC_ISLAND);
 	if (video_islands) {
 		ospm_power_island_down_video(video_islands);
 		hw_islands = hw_islands &
@@ -1921,10 +1370,6 @@ unlock:
 	}
 
 	if (gfx_islands) {
-#ifdef OSPM_GFX_DPK
-		printk(KERN_ALERT "%s other hw_islands: %x\n",
-			 __func__, gfx_islands);
-#endif
 		spin_lock_irqsave(&dev_priv->ospm_lock, flags);
 		/* both graphics and GL3 based on graphics_access count */
 		if (hw_islands &
@@ -1942,11 +1387,6 @@ unlock:
 					OSPM_VIDEO_ENC_ISLAND |
 					OSPM_GRAPHICS_ISLAND)) ||
 					(drm_psb_gl3_enable == 0)) {
-#ifdef OSPM_GFX_DPK
-				printk(KERN_ALERT
-				"%s GL3 in use - can't turn OFF\n",
-				__func__);
-#endif
 				gfx_islands &=  ~OSPM_GL3_CACHE_ISLAND;
 				if (!gfx_islands) {
 					spin_unlock(&graphics_count_lock);
@@ -2022,10 +1462,8 @@ bool ospm_power_using_video_begin(int video_island)
 	 * it will block system from entering s0ix */
 	if (gbSuspendInProgress ||
 			pdev->dev.power.runtime_status == RPM_SUSPENDING) {
-#ifdef OSPM_GFX_DPK
-		printk(KERN_ALERT "%s Suspend In Progress,"
+		DRM_INFO("%s: suspend in progress,"
 			"call pm_runtime_get_noresume\n", __func__);
-#endif
 		pm_runtime_get_noresume(&pdev->dev);
 	} else {
 		pm_runtime_get(&pdev->dev);
@@ -2192,9 +1630,6 @@ bool ospm_power_using_hw_begin(int hw_island, UHBUsage usage)
 	 * it will block system from entering s0ix */
 	if (gbSuspendInProgress ||
 			pdev->dev.power.runtime_status == RPM_SUSPENDING) {
-#ifdef OSPM_GFX_DPK
-		printk(KERN_ALERT "%s Suspend In Progress, call pm_runtime_get_noresume\n", __func__);
-#endif
 		pm_runtime_get_noresume(&pdev->dev);
 	} else {
 		pm_runtime_get(&pdev->dev);
@@ -2326,8 +1761,7 @@ unlock:
 	}
 
 	if (!ret)
-		printk(KERN_ALERT "%s: %d failed\n",
-				__func__, hw_island);
+		DRM_INFO("%s: %d failed\n", __func__, hw_island);
 
 	gbResumeInProgress = false;
 
@@ -2337,9 +1771,8 @@ increase_count:
 			atomic_inc(&g_display_access_count);
 	}
 #ifdef CONFIG_GFX_RTPM
-	else{
+	else
 		pm_runtime_put(&pdev->dev);
-	}
 #endif
 	mutex_unlock(&g_ospm_mutex);
 
@@ -2414,14 +1847,11 @@ int ospm_runtime_pm_allow(struct drm_device *dev)
 	struct mdfld_dsi_config **dsi_configs;
 	bool panel_on = false, panel_on2 = false;
 
-	PSB_DEBUG_ENTRY("%s\n", __func__);
+	PSB_DEBUG_ENTRY("\n");
 
 	dev_priv = (struct drm_psb_private *)dev->dev_private;
 	dsi_configs = dev_priv->dsi_configs;
 
-#ifdef OSPM_GFX_DPK
-	printk(KERN_ALERT "%s\n", __func__);
-#endif
 	if (dev_priv->rpm_enabled)
 		return 0;
 
@@ -2445,11 +1875,7 @@ void ospm_runtime_pm_forbid(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv = dev->dev_private;
 
-	DRM_INFO("%s\n", __func__);
-
-#ifdef OSPM_GFX_DPK
-	printk(KERN_ALERT "%s\n", __func__);
-#endif
+	PSB_DEBUG_ENTRY("\n");
 
 #ifdef CONFIG_GFX_RTPM
 	pm_runtime_forbid(&dev->pdev->dev);
@@ -2461,22 +1887,18 @@ int psb_runtime_suspend(struct device *dev)
 {
 	pm_message_t state;
 	int ret = 0;
+
 	state.event = 0;
-#ifdef OSPM_GFX_DPK
-	printk(KERN_ALERT "%s\n", __func__);
-#endif
-	if (atomic_read(&g_graphics_access_count) || atomic_read(&g_videoenc_access_count)
-		|| (gbdispstatus == true)
-		|| atomic_read(&g_videodec_access_count) || atomic_read(&g_display_access_count)) {
-#ifdef OSPM_GFX_DPK
-		printk(KERN_ALERT "GFX:%d VEC:%d VED:%d DC:%d DSR:%d\n",
-			atomic_read(&g_graphics_access_count),
-			atomic_read(&g_videoenc_access_count),
-			atomic_read(&g_videodec_access_count),
-			atomic_read(&g_display_access_count), gbdispstatus);
-#endif
+
+	PSB_DEBUG_ENTRY("\n");
+
+	if (atomic_read(&g_graphics_access_count) ||
+	    atomic_read(&g_videoenc_access_count) ||
+	    (gbdispstatus == true) ||
+	    atomic_read(&g_videodec_access_count) ||
+	    atomic_read(&g_display_access_count))
 		return -EBUSY;
-	} else
+	else
 		ret = ospm_power_suspend(gpDrmDevice->pdev, state);
 
 	return ret;
@@ -2484,11 +1906,8 @@ int psb_runtime_suspend(struct device *dev)
 
 int psb_runtime_resume(struct device *dev)
 {
-	/* Notify HDMI Audio sub-system about the resume. */
+	PSB_DEBUG_ENTRY("\n");
 
-#ifdef OSPM_GFX_DPK
-	printk(KERN_ALERT "%s\n", __func__);
-#endif
 	/* Nop for GFX */
 	return 0;
 }
@@ -2496,13 +1915,17 @@ int psb_runtime_resume(struct device *dev)
 int psb_runtime_idle(struct device *dev)
 {
 	struct drm_psb_private *dev_priv = gpDrmDevice->dev_private;
-
 #if (defined(CONFIG_SND_INTELMID_HDMI_AUDIO) || \
 		defined(CONFIG_SND_INTELMID_HDMI_AUDIO_MODULE))
 	struct snd_intel_had_interface *had_interface = dev_priv->had_interface;
 	int hdmi_audio_busy = 0;
 	hdmi_audio_event_t hdmi_audio_event;
+#endif
 
+	PSB_DEBUG_ENTRY("\n");
+
+#if (defined(CONFIG_SND_INTELMID_HDMI_AUDIO) || \
+		defined(CONFIG_SND_INTELMID_HDMI_AUDIO_MODULE))
 	if (dev_priv->had_pvt_data && hdmi_state) {
 		hdmi_audio_event.type = HAD_EVENT_QUERY_IS_AUDIO_BUSY;
 		hdmi_audio_busy =
@@ -2511,22 +1934,19 @@ int psb_runtime_idle(struct device *dev)
 	}
 #endif
 
-	if (atomic_read(&g_graphics_access_count) || atomic_read(&g_videoenc_access_count)
-		|| atomic_read(&g_videodec_access_count) || atomic_read(&g_display_access_count)
-		|| (gbdispstatus == true)
+	if (atomic_read(&g_graphics_access_count) ||
+	    atomic_read(&g_videoenc_access_count) ||
+	    atomic_read(&g_videodec_access_count) ||
+	    atomic_read(&g_display_access_count) ||
+	    (gbdispstatus == true)
 #if (defined(CONFIG_SND_INTELMID_HDMI_AUDIO) || \
 	defined(CONFIG_SND_INTELMID_HDMI_AUDIO_MODULE))
-		|| hdmi_audio_busy
+	    || hdmi_audio_busy
 #endif
-#if 0   /* FIXME: video driver support for Linux Runtime PM */
-		|| (msvdx_hw_busy == 1)
-		|| (topaz_hw_busy == 1))
-#else
-		)
-#endif
-			return -EBUSY;
-		else
-			return 0;
+	   )
+		return -EBUSY;
+	else
+		return 0;
 }
 
 

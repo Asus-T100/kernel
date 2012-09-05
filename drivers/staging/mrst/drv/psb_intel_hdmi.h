@@ -836,4 +836,8 @@ typedef struct {
   #define HPD_SIGNAL_STATUS (1 << 0)
 #endif
 
+extern void mdfld_hdmi_init(struct drm_device *dev,
+		struct psb_intel_mode_device *mode_dev);
+extern const struct drm_encoder_funcs intel_hdmi_enc_funcs;
+
 #endif //__IHDMI_H__

@@ -39,7 +39,6 @@
 #include "drmlfb.h"
 #include "psb_fb.h"
 #include "psb_drv.h"
-#include "psb_intel_drv.h"
 #include "psb_intel_reg.h"
 #include "psb_powermgmt.h"
 
@@ -50,8 +49,6 @@
 #endif
 
 #define MIN(x, y) (((x) < (y)) ? (x) : (y))
-
-#define COUNT_MAX 1000
 
 struct mrst_clock_t {
 	/* derived values */
@@ -71,33 +68,6 @@ struct mrst_limit_t {
 static const struct drm_crtc_helper_funcs mdfld_helper_funcs;
 static const struct drm_crtc_funcs mdfld_intel_crtc_funcs;
 
-int psb_intel_get_pipe_from_crtc_id(struct drm_device *dev, void *data,
-				struct drm_file *file_priv)
-{
-	struct drm_psb_private *dev_priv = dev->dev_private;
-	struct drm_psb_get_pipe_from_crtc_id_arg *pipe_from_crtc_id = data;
-	struct drm_mode_object *drmmode_obj;
-	struct psb_intel_crtc *crtc;
-
-	if (!dev_priv) {
-		DRM_ERROR("called with no initialization\n");
-		return -EINVAL;
-	}
-
-	drmmode_obj = drm_mode_object_find(dev, pipe_from_crtc_id->crtc_id,
-			DRM_MODE_OBJECT_CRTC);
-
-	if (!drmmode_obj) {
-		DRM_ERROR("no such CRTC id\n");
-		return -EINVAL;
-	}
-
-	crtc = to_psb_intel_crtc(obj_to_crtc(drmmode_obj));
-	pipe_from_crtc_id->pipe = crtc->pipe;
-
-	return 0;
-}
-
 void psb_intel_crtc_init(struct drm_device *dev, int pipe,
 		     struct psb_intel_mode_device *mode_dev)
 {
@@ -116,16 +86,6 @@ void psb_intel_crtc_init(struct drm_device *dev, int pipe,
 		    GFP_KERNEL);
 	if (psb_intel_crtc == NULL)
 		return;
-
-#ifndef CONFIG_X86_MDFLD
-	psb_intel_crtc->crtc_state =
-		kzalloc(sizeof(struct psb_intel_crtc_state), GFP_KERNEL);
-	if (!psb_intel_crtc->crtc_state) {
-		DRM_INFO("Crtc state error: No memory\n");
-		kfree(psb_intel_crtc);
-		return;
-	}
-#endif
 
 	drm_crtc_init(dev, &psb_intel_crtc->base, &mdfld_intel_crtc_funcs);
 
@@ -172,181 +132,6 @@ void psb_intel_wait_for_vblank(struct drm_device *dev)
 	udelay(20000);
 }
 
-#ifndef CONFIG_X86_MDFLD
-/**
- * Save HW states of giving crtc
- */
-static void psb_intel_crtc_save(struct drm_crtc *crtc)
-{
-	struct drm_device *dev = crtc->dev;
-	/* struct drm_psb_private *dev_priv =
-			(struct drm_psb_private *)dev->dev_private; */
-	struct psb_intel_crtc *psb_intel_crtc = to_psb_intel_crtc(crtc);
-	struct psb_intel_crtc_state *crtc_state = psb_intel_crtc->crtc_state;
-	int pipeA = (psb_intel_crtc->pipe == 0);
-	uint32_t paletteReg;
-	int i;
-
-	DRM_DEBUG("\n");
-
-	if (!crtc_state) {
-		DRM_DEBUG("No CRTC state found\n");
-		return;
-	}
-
-	crtc_state->saveDSPCNTR = REG_READ(pipeA ? DSPACNTR : DSPBCNTR);
-	crtc_state->savePIPECONF = REG_READ(pipeA ? PIPEACONF : PIPEBCONF);
-	crtc_state->savePIPESRC = REG_READ(pipeA ? PIPEASRC : PIPEBSRC);
-	crtc_state->saveFP0 = REG_READ(pipeA ? FPA0 : FPB0);
-	crtc_state->saveFP1 = REG_READ(pipeA ? FPA1 : FPB1);
-	crtc_state->saveDPLL = REG_READ(pipeA ? DPLL_A : DPLL_B);
-	crtc_state->saveHTOTAL = REG_READ(pipeA ? HTOTAL_A : HTOTAL_B);
-	crtc_state->saveHBLANK = REG_READ(pipeA ? HBLANK_A : HBLANK_B);
-	crtc_state->saveHSYNC = REG_READ(pipeA ? HSYNC_A : HSYNC_B);
-	crtc_state->saveVTOTAL = REG_READ(pipeA ? VTOTAL_A : VTOTAL_B);
-	crtc_state->saveVBLANK = REG_READ(pipeA ? VBLANK_A : VBLANK_B);
-	crtc_state->saveVSYNC = REG_READ(pipeA ? VSYNC_A : VSYNC_B);
-	crtc_state->saveDSPSTRIDE = REG_READ(pipeA ? DSPASTRIDE : DSPBSTRIDE);
-
-	/*NOTE: DSPSIZE DSPPOS only for psb*/
-	crtc_state->saveDSPSIZE = REG_READ(pipeA ? DSPASIZE : DSPBSIZE);
-	crtc_state->saveDSPPOS = REG_READ(pipeA ? DSPAPOS : DSPBPOS);
-
-	crtc_state->saveDSPBASE = REG_READ(pipeA ? DSPABASE : DSPBBASE);
-
-	DRM_DEBUG("(%x %x %x %x %x %x %x %x %x %x %x %x %x %x %x %x)\n",
-			crtc_state->saveDSPCNTR,
-			crtc_state->savePIPECONF,
-			crtc_state->savePIPESRC,
-			crtc_state->saveFP0,
-			crtc_state->saveFP1,
-			crtc_state->saveDPLL,
-			crtc_state->saveHTOTAL,
-			crtc_state->saveHBLANK,
-			crtc_state->saveHSYNC,
-			crtc_state->saveVTOTAL,
-			crtc_state->saveVBLANK,
-			crtc_state->saveVSYNC,
-			crtc_state->saveDSPSTRIDE,
-			crtc_state->saveDSPSIZE,
-			crtc_state->saveDSPPOS,
-			crtc_state->saveDSPBASE
-		);
-
-	paletteReg = pipeA ? PALETTE_A : PALETTE_B;
-	for (i = 0; i < 256; ++i)
-		crtc_state->savePalette[i] = REG_READ(paletteReg + (i << 2));
-}
-
-/**
- * Restore HW states of giving crtc
- */
-static void psb_intel_crtc_restore(struct drm_crtc *crtc)
-{
-	struct drm_device *dev = crtc->dev;
-	/* struct drm_psb_private * dev_priv =
-				(struct drm_psb_private *)dev->dev_private; */
-	struct psb_intel_crtc *psb_intel_crtc =  to_psb_intel_crtc(crtc);
-	struct psb_intel_crtc_state *crtc_state = psb_intel_crtc->crtc_state;
-	/* struct drm_crtc_helper_funcs * crtc_funcs = crtc->helper_private; */
-	int pipeA = (psb_intel_crtc->pipe == 0);
-	uint32_t paletteReg;
-	int i;
-
-	DRM_DEBUG("\n");
-
-	if (!crtc_state) {
-		DRM_DEBUG("No crtc state\n");
-		return;
-	}
-
-	DRM_DEBUG(
-		"current:(%x %x %x %x %x %x %x %x %x %x %x %x %x %x %x %x)\n",
-		REG_READ(pipeA ? DSPACNTR : DSPBCNTR),
-		REG_READ(pipeA ? PIPEACONF : PIPEBCONF),
-		REG_READ(pipeA ? PIPEASRC : PIPEBSRC),
-		REG_READ(pipeA ? FPA0 : FPB0),
-		REG_READ(pipeA ? FPA1 : FPB1),
-		REG_READ(pipeA ? DPLL_A : DPLL_B),
-		REG_READ(pipeA ? HTOTAL_A : HTOTAL_B),
-		REG_READ(pipeA ? HBLANK_A : HBLANK_B),
-		REG_READ(pipeA ? HSYNC_A : HSYNC_B),
-		REG_READ(pipeA ? VTOTAL_A : VTOTAL_B),
-		REG_READ(pipeA ? VBLANK_A : VBLANK_B),
-		REG_READ(pipeA ? VSYNC_A : VSYNC_B),
-		REG_READ(pipeA ? DSPASTRIDE : DSPBSTRIDE),
-		REG_READ(pipeA ? DSPASIZE : DSPBSIZE),
-		REG_READ(pipeA ? DSPAPOS : DSPBPOS),
-		REG_READ(pipeA ? DSPABASE : DSPBBASE)
-		);
-
-	DRM_DEBUG(
-		"saved: (%x %x %x %x %x %x %x %x %x %x %x %x %x %x %x %x)\n",
-		crtc_state->saveDSPCNTR,
-		crtc_state->savePIPECONF,
-		crtc_state->savePIPESRC,
-		crtc_state->saveFP0,
-		crtc_state->saveFP1,
-		crtc_state->saveDPLL,
-		crtc_state->saveHTOTAL,
-		crtc_state->saveHBLANK,
-		crtc_state->saveHSYNC,
-		crtc_state->saveVTOTAL,
-		crtc_state->saveVBLANK,
-		crtc_state->saveVSYNC,
-		crtc_state->saveDSPSTRIDE,
-		crtc_state->saveDSPSIZE,
-		crtc_state->saveDSPPOS,
-		crtc_state->saveDSPBASE
-		);
-
-	if (crtc_state->saveDPLL & DPLL_VCO_ENABLE) {
-		REG_WRITE(pipeA ? DPLL_A : DPLL_B,
-			crtc_state->saveDPLL & ~DPLL_VCO_ENABLE);
-		REG_READ(pipeA ? DPLL_A : DPLL_B);
-		DRM_DEBUG("write dpll: %x\n",
-				REG_READ(pipeA ? DPLL_A : DPLL_B));
-		udelay(150);
-	}
-
-	REG_WRITE(pipeA ? FPA0 : FPB0, crtc_state->saveFP0);
-	REG_READ(pipeA ? FPA0 : FPB0);
-
-	REG_WRITE(pipeA ? FPA1 : FPB1, crtc_state->saveFP1);
-	REG_READ(pipeA ? FPA1 : FPB1);
-
-	REG_WRITE(pipeA ? DPLL_A : DPLL_B, crtc_state->saveDPLL);
-	REG_READ(pipeA ? DPLL_A : DPLL_B);
-	udelay(150);
-
-	REG_WRITE(pipeA ? HTOTAL_A : HTOTAL_B, crtc_state->saveHTOTAL);
-	REG_WRITE(pipeA ? HBLANK_A : HBLANK_B, crtc_state->saveHBLANK);
-	REG_WRITE(pipeA ? HSYNC_A : HSYNC_B, crtc_state->saveHSYNC);
-	REG_WRITE(pipeA ? VTOTAL_A : VTOTAL_B, crtc_state->saveVTOTAL);
-	REG_WRITE(pipeA ? VBLANK_A : VBLANK_B, crtc_state->saveVBLANK);
-	REG_WRITE(pipeA ? VSYNC_A : VSYNC_B, crtc_state->saveVSYNC);
-	REG_WRITE(pipeA ? DSPASTRIDE : DSPBSTRIDE, crtc_state->saveDSPSTRIDE);
-
-	REG_WRITE(pipeA ? DSPASIZE : DSPBSIZE, crtc_state->saveDSPSIZE);
-	REG_WRITE(pipeA ? DSPAPOS : DSPBPOS, crtc_state->saveDSPPOS);
-
-	REG_WRITE(pipeA ? PIPEASRC : PIPEBSRC, crtc_state->savePIPESRC);
-	REG_WRITE(pipeA ? DSPABASE : DSPBBASE, crtc_state->saveDSPBASE);
-	REG_WRITE(pipeA ? PIPEACONF : PIPEBCONF, crtc_state->savePIPECONF);
-
-	psb_intel_wait_for_vblank(dev);
-
-	REG_WRITE(pipeA ? DSPACNTR : DSPBCNTR, crtc_state->saveDSPCNTR);
-	REG_WRITE(pipeA ? DSPABASE : DSPBBASE, crtc_state->saveDSPBASE);
-
-	psb_intel_wait_for_vblank(dev);
-
-	paletteReg = pipeA ? PALETTE_A : PALETTE_B;
-	for (i = 0; i < 256; ++i)
-		REG_WRITE(paletteReg + (i << 2), crtc_state->savePalette[i]);
-}
-#endif
-
 static int mdfld_intel_crtc_cursor_set(struct drm_crtc *crtc,
 				 struct drm_file *file_priv,
 				 uint32_t handle,
@@ -368,7 +153,7 @@ static int mdfld_intel_crtc_cursor_set(struct drm_crtc *crtc,
 	void *bo;
 	int ret;
 
-	DRM_DEBUG("\n");
+	PSB_DEBUG_ENTRY("\n");
 
 	switch (pipe) {
 	case 0:
@@ -628,13 +413,27 @@ static void psb_intel_crtc_destroy(struct drm_crtc *crtc)
 	kfree(psb_intel_crtc);
 }
 
-void mdfldWaitForPipeDisable(struct drm_device *dev, int pipe)
+/**
+ * @dev: DRM device
+ * @pipe: wait on which pipe
+ * @state: wait for pipe status.
+ *
+ * return: void
+ *
+ * wait for pipe enable/disable according to state param, and return
+ * corresponding result.
+ */
+inline
+void intel_wait_for_pipe_enable_disable(struct drm_device *dev,
+		int pipe, bool state)
 {
-	int count, temp;
-	u32 pipeconf_reg = PIPEACONF;
+	int retry = 10000, ret = 0;
+	u32 pipeconf_reg = 0, pipeconf_val = 0;
+	u32 pipe_state = 0;
 
 	switch (pipe) {
 	case 0:
+		pipeconf_reg = PIPEACONF;
 		break;
 	case 1:
 		pipeconf_reg = PIPEBCONF;
@@ -643,51 +442,19 @@ void mdfldWaitForPipeDisable(struct drm_device *dev, int pipe)
 		pipeconf_reg = PIPECCONF;
 		break;
 	default:
-		DRM_ERROR("Illegal Pipe Number.\n");
+		DRM_ERROR("wrong pipe number!\n");
 		return;
 	}
 
-	/* Wait for for the pipe disable to take effect. */
-	for (count = 0; count < COUNT_MAX; count++) {
-		temp = REG_READ(pipeconf_reg);
-		if (!(temp & PIPEACONF_PIPE_STATE))
+	while (--retry) {
+		pipe_state = REG_READ(pipeconf_reg) & BIT30;
+		if ((pipe_state >> 30) == state)
 			break;
-
-		udelay(20);
+		udelay(2);
 	}
 
-	PSB_DEBUG_ENTRY("cout = %d.\n", count);
-}
-
-void mdfldWaitForPipeEnable(struct drm_device *dev, int pipe)
-{
-	int count, temp;
-	u32 pipeconf_reg = PIPEACONF;
-
-	switch (pipe) {
-	case 0:
-		break;
-	case 1:
-		pipeconf_reg = PIPEBCONF;
-		break;
-	case 2:
-		pipeconf_reg = PIPECCONF;
-		break;
-	default:
-		DRM_ERROR("Illegal Pipe Number.\n");
-		return;
-	}
-
-	/* Wait for for the pipe enable to take effect. */
-	for (count = 0; count < COUNT_MAX; count++) {
-		temp = REG_READ(pipeconf_reg);
-		if ((temp & PIPEACONF_PIPE_STATE))
-			break;
-
-		udelay(20);
-	}
-
-	PSB_DEBUG_ENTRY("cout = %d.\n", count);
+	if (!retry)
+		DRM_ERROR("pipe %d faild to change to state %d\n", pipe, state);
 }
 
 /*
@@ -1314,56 +1081,22 @@ psb_intel_pipe_set_base_exit:
 
 /**
  * Disable the pipe, plane and pll.
- *
  */
 void mdfld_disable_crtc(struct drm_device *dev, int pipe)
 {
-	int dpll_reg = MRST_DPLL_A;
-	int dspcntr_reg = DSPACNTR;
-	int dspbase_reg = MRST_DSPABASE;
-	int pipeconf_reg = PIPEACONF;
-	u32 gen_fifo_stat_reg = GEN_FIFO_STAT_REG;
+	int dpll_reg = DPLL_B;
+	int dspcntr_reg = DSPBCNTR;
+	int dspbase_reg = MRST_DSPBBASE;
+	int pipeconf_reg = PIPEBCONF;
 	u32 temp;
 
 	PSB_DEBUG_ENTRY("pipe = %d\n", pipe);
 
-	/**
-	 * NOTE: this path only works for TMD panel now. update it to
-	 * support all MIPI panels later.
-	 */
-	if (pipe != 1 && ((get_panel_type(dev, pipe) == TMD_6X10_VID) ||
-			  (get_panel_type(dev, pipe) == H8C7_VID) ||
-			  (get_panel_type(dev, pipe) == H8C7_CMD) ||
-			  (get_panel_type(dev, pipe) == GI_SONY_VID) ||
-			  (get_panel_type(dev, pipe) == AUO_SC1_VID)))
-		return;
-
-	switch (pipe) {
-	case 0:
-		break;
-	case 1:
-		dpll_reg = MDFLD_DPLL_B;
-		dspcntr_reg = DSPBCNTR;
-		dspbase_reg = DSPBSURF;
-		pipeconf_reg = PIPEBCONF;
-		break;
-	case 2:
-		dpll_reg = MRST_DPLL_A;
-		dspcntr_reg = DSPCCNTR;
-		dspbase_reg = MDFLD_DSPCBASE;
-		pipeconf_reg = PIPECCONF;
-		gen_fifo_stat_reg = GEN_FIFO_STAT_REG + MIPIC_REG_OFFSET;
-		break;
-	default:
-		DRM_ERROR("Illegal Pipe Number.\n");
-		return;
-	}
-
+	/*only for HDMI pipe*/
 	if (pipe != 1)
-		mdfld_dsi_gen_fifo_ready(dev, gen_fifo_stat_reg,
-				HS_CTRL_FIFO_EMPTY | HS_DATA_FIFO_EMPTY);
+		return;
 
-	/* Disable display plane */
+	/*Disable display plane*/
 	temp = REG_READ(dspcntr_reg);
 	if ((temp & DISPLAY_PLANE_ENABLE) != 0) {
 		REG_WRITE(dspcntr_reg,
@@ -1376,37 +1109,27 @@ void mdfld_disable_crtc(struct drm_device *dev, int pipe)
 	/* Next, disable display pipes */
 	temp = REG_READ(pipeconf_reg);
 	if ((temp & PIPEACONF_ENABLE) != 0) {
-		temp &= ~PIPEACONF_ENABLE;
+		temp &= ~PIPEBCONF_ENABLE;
 		temp |= PIPECONF_PLANE_OFF | PIPECONF_CURSOR_OFF;
 		REG_WRITE(pipeconf_reg, temp);
 		REG_READ(pipeconf_reg);
 
 		/* Wait for for the pipe disable to take effect. */
-		mdfldWaitForPipeDisable(dev, pipe);
+		intel_wait_for_pipe_enable_disable(dev, pipe, false);
 	}
 
 	temp = REG_READ(dpll_reg);
 	if (temp & DPLL_VCO_ENABLE) {
-		if ((pipe == 1) ||
-				((pipe != 1) &&
-				 !((REG_READ(PIPEACONF) | REG_READ(PIPECCONF)) &
-					 PIPEACONF_ENABLE))) {
-			temp &= ~(DPLL_VCO_ENABLE);
-			REG_WRITE(dpll_reg, temp);
-			REG_READ(dpll_reg);
-			/* Wait for the clocks to turn off. */
-			/* FIXME_MDFLD PO may need more delay */
-			udelay(500);
+		temp &= ~(DPLL_VCO_ENABLE);
+		REG_WRITE(dpll_reg, temp);
+		REG_READ(dpll_reg);
 
-			if (!(temp & MDFLD_PWR_GATE_EN)) {
-				/* gating power of DPLL */
-				REG_WRITE(dpll_reg, temp | MDFLD_PWR_GATE_EN);
-				/* FIXME_MDFLD PO - change 500 to 1 after PO */
-				udelay(5000);
-			}
+		if (!(temp & MDFLD_PWR_GATE_EN)) {
+			REG_WRITE(dpll_reg, temp | MDFLD_PWR_GATE_EN);
+			/*need wait 0.5us before enable VCO*/
+			udelay(1);
 		}
 	}
-
 }
 
 /**
@@ -1421,12 +1144,11 @@ static void mdfld_crtc_dpms(struct drm_crtc *crtc, int mode)
 	DRM_DRIVER_PRIVATE_T *dev_priv = dev->dev_private;
 	struct psb_intel_crtc *psb_intel_crtc = to_psb_intel_crtc(crtc);
 	int pipe = psb_intel_crtc->pipe;
-	int dpll_reg = MRST_DPLL_A;
-	int dspcntr_reg = DSPACNTR;
-	int dspbase_reg = MRST_DSPABASE;
-	int pipeconf_reg = PIPEACONF;
-	u32 pipestat_reg = PIPEASTAT;
-	u32 gen_fifo_stat_reg = GEN_FIFO_STAT_REG;
+	int dpll_reg = DPLL_B;
+	int dspcntr_reg = DSPBCNTR;
+	int dspbase_reg = DSPBBASE;
+	int pipeconf_reg = PIPEBCONF;
+	u32 pipestat_reg = PIPEBSTAT;
 	u32 pipeconf = dev_priv->pipeconf;
 	u32 dspcntr = dev_priv->dspcntr;
 	u32 mipi_enable_reg = MIPIA_DEVICE_READY_REG;
@@ -1439,75 +1161,16 @@ static void mdfld_crtc_dpms(struct drm_crtc *crtc, int mode)
 
 	PSB_DEBUG_ENTRY("mode = %d, pipe = %d\n", mode, pipe);
 
-	/**
-	 * MIPI dpms
-	 * NOTE: this path only works for TMD panel now. update it to
-	 * support all MIPI panels later.
-	 */
-	if (pipe != 1 && ((get_panel_type(dev, pipe) == TMD_6X10_VID) ||
-			  (get_panel_type(dev, pipe) == H8C7_VID) ||
-			  (get_panel_type(dev, pipe) == H8C7_CMD) ||
-			  (get_panel_type(dev, pipe) == GI_SONY_VID) ||
-			  (get_panel_type(dev, pipe) == AUO_SC1_VID))) {
-			return;
-	}
+	if (pipe != 1)
+		return;
 
-	if (((get_panel_type(dev, pipe) == AUO_SC1_CMD) ||
-		(get_panel_type(dev, pipe) == GI_SONY_CMD)) &&
-		!dev_priv->dsi_init_done)
+	/* Ignore if system is already in suspended state. */
+	if (gbgfxsuspended)
 		return;
 
 	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
 				       OSPM_UHB_FORCE_POWER_ON))
 		return;
-
-	/* Ignore if system is already in DSR and in suspended state. */
-	if (gbgfxsuspended && (gbdispstatus == false) && (mode == 3)) {
-		if (dev_priv->rpm_enabled && pipe == 1) {
-			/* dev_priv->is_mipi_on = false; */
-			pm_request_idle(&gpDrmDevice->pdev->dev);
-		}
-
-		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
-		return;
-	} else if (mode == 0) {
-		/*
-		 * do not need to set gbdispstatus=true in crtc.
-		 * this will be set in encoder such as mdfld_dsi_dbi_dpms
-		 * gbdispstatus = true;
-		 */
-	}
-
-	switch (pipe) {
-	case 0:
-		break;
-	case 1:
-		dpll_reg = DPLL_B;
-		dspcntr_reg = DSPBCNTR;
-		dspbase_reg = MRST_DSPBBASE;
-		pipeconf_reg = PIPEBCONF;
-		pipeconf = PIPEACONF_ENABLE;
-		dspcntr = dev_priv->dspcntr1;
-		if (IS_MDFLD(dev))
-			dpll_reg = MDFLD_DPLL_B;
-		break;
-	case 2:
-		dpll_reg = MRST_DPLL_A;
-		dspcntr_reg = DSPCCNTR;
-		dspbase_reg = MDFLD_DSPCBASE;
-		pipeconf_reg = PIPECCONF;
-		pipestat_reg = PIPECSTAT;
-		pipeconf = dev_priv->pipeconf2;
-		dspcntr = dev_priv->dspcntr2;
-		gen_fifo_stat_reg = GEN_FIFO_STAT_REG + MIPIC_REG_OFFSET;
-		mipi_enable_reg = MIPIA_DEVICE_READY_REG + MIPIC_REG_OFFSET;
-		break;
-	default:
-		DRM_ERROR("Illegal Pipe Number.\n");
-
-		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
-		return;
-	}
 
 	/* XXX: When our outputs are all unaware of DPMS modes other than off
 	 * and on, we should map those modes to DRM_MODE_DPMS_OFF in the CRTC.
@@ -1526,13 +1189,11 @@ static void mdfld_crtc_dpms(struct drm_crtc *crtc, int mode)
 			if (temp & MDFLD_PWR_GATE_EN) {
 				temp &= ~MDFLD_PWR_GATE_EN;
 				REG_WRITE(dpll_reg, temp);
-				/* FIXME_MDFLD PO - change 500 to 1 after PO */
-				udelay(500);
+				udelay(1);
 			}
 
 			REG_WRITE(dpll_reg, temp);
 			REG_READ(dpll_reg);
-			/* FIXME_MDFLD PO - change 500 to 1 after PO */
 			udelay(500);
 
 			REG_WRITE(dpll_reg, temp | DPLL_VCO_ENABLE);
@@ -1553,7 +1214,7 @@ static void mdfld_crtc_dpms(struct drm_crtc *crtc, int mode)
 
 		/* Enable the pipe */
 		temp = REG_READ(pipeconf_reg);
-		if ((temp & PIPEACONF_ENABLE) == 0) {
+		if ((temp & PIPEBCONF_ENABLE) == 0) {
 			/* Enable Pipe */
 			temp |= PIPEACONF_ENABLE;
 			/* Enable Display/Overplay Planes */
@@ -1564,7 +1225,7 @@ static void mdfld_crtc_dpms(struct drm_crtc *crtc, int mode)
 			REG_READ(pipeconf_reg);
 
 			/* Wait for for the pipe enable to take effect. */
-			mdfldWaitForPipeEnable(dev, pipe);
+			intel_wait_for_pipe_enable_disable(dev, pipe, true);
 		}
 
 		/* Enable the plane */
@@ -1576,67 +1237,10 @@ static void mdfld_crtc_dpms(struct drm_crtc *crtc, int mode)
 			REG_WRITE(dspbase_reg, REG_READ(dspbase_reg));
 		}
 
-
-		/*workaround for sighting 3741701 Random X blank display*/
-		/*perform w/a in video mode only on pipe A or C*/
-		if ((pipe == 0 || pipe == 2) &&
-			(is_panel_vid_or_cmd(dev) == MDFLD_DSI_ENCODER_DPI)) {
-			REG_WRITE(pipestat_reg, REG_READ(pipestat_reg));
-			msleep(100);
-			if (PIPE_VBLANK_STATUS & REG_READ(pipestat_reg)) {
-				PSB_DEBUG_ENTRY("OK");
-			} else {
-				PSB_DEBUG_ENTRY("STUCK!!!!");
-				/*shutdown controller*/
-				temp = REG_READ(dspcntr_reg);
-				REG_WRITE(dspcntr_reg,
-						temp & ~DISPLAY_PLANE_ENABLE);
-				REG_WRITE(dspbase_reg, REG_READ(dspbase_reg));
-				/*mdfld_dsi_dpi_shut_down(dev, pipe);*/
-				REG_WRITE(0xb048, 1);
-				msleep(100);
-				temp = REG_READ(pipeconf_reg);
-				temp &= ~PIPEACONF_ENABLE;
-				REG_WRITE(pipeconf_reg, temp);
-				msleep(100); /*wait for pipe disable*/
-				REG_WRITE(mipi_enable_reg, 0);
-				msleep(100);
-				PSB_DEBUG_ENTRY("70008 is %x\n",
-						REG_READ(0x70008));
-				PSB_DEBUG_ENTRY("b074 is %x\n",
-						REG_READ(0xb074));
-				REG_WRITE(0xb004, REG_READ(0xb004));
-				/* try to bring the controller back up again*/
-				REG_WRITE(mipi_enable_reg, 1);
-				temp = REG_READ(dspcntr_reg);
-				REG_WRITE(dspcntr_reg,
-						temp | DISPLAY_PLANE_ENABLE);
-				REG_WRITE(dspbase_reg, REG_READ(dspbase_reg));
-				/*mdfld_dsi_dpi_turn_on(dev, pipe);*/
-				REG_WRITE(0xb048, 2);
-				msleep(100);
-				temp = REG_READ(pipeconf_reg);
-				temp |= PIPEACONF_ENABLE;
-				REG_WRITE(pipeconf_reg, temp);
-			}
-		}
-
 		psb_intel_crtc_load_lut(crtc);
-
-		/* Give the overlay scaler a chance to enable
-		   if it's on this pipe */
-		/* psb_intel_crtc_dpms_video(crtc, true); TODO */
 
 		break;
 	case DRM_MODE_DPMS_OFF:
-		/* Give the overlay scaler a chance to disable
-		 * if it's on this pipe */
-		/* psb_intel_crtc_dpms_video(crtc, FALSE); TODO */
-		if (pipe != 1)
-			mdfld_dsi_gen_fifo_ready(dev, gen_fifo_stat_reg,
-					HS_CTRL_FIFO_EMPTY |
-					HS_DATA_FIFO_EMPTY);
-
 		/* Disable the VGA plane that we never use */
 		REG_WRITE(VGACNTRL, VGA_DISP_DISABLE);
 
@@ -1652,103 +1256,29 @@ static void mdfld_crtc_dpms(struct drm_crtc *crtc, int mode)
 
 		/* Next, disable display pipes */
 		temp = REG_READ(pipeconf_reg);
-		if ((temp & PIPEACONF_ENABLE) != 0) {
-			temp &= ~PIPEACONF_ENABLE;
+		if ((temp & PIPEBCONF_ENABLE) != 0) {
+			temp &= ~PIPEBCONF_ENABLE;
 			temp |= PIPECONF_PLANE_OFF | PIPECONF_CURSOR_OFF;
 			REG_WRITE(pipeconf_reg, temp);
 			REG_READ(pipeconf_reg);
 
 			/* Wait for for the pipe disable to take effect. */
-			mdfldWaitForPipeDisable(dev, pipe);
+			intel_wait_for_pipe_enable_disable(dev, pipe, false);
 		}
 
 		temp = REG_READ(dpll_reg);
 		if (temp & DPLL_VCO_ENABLE) {
-			if ((pipe == 1) ||
-					((pipe != 1) &&
-					 !((REG_READ(PIPEACONF) |
-					 REG_READ(PIPECCONF)) &
-						 PIPEACONF_ENABLE))) {
-				/*
-				 * FIXME: better to move it into the MIPI
-				 * encoder DPMS off process.
-				 */
-				if ((pipe < sizeof(dev_priv->dsi_configs) /
-					sizeof(*(dev_priv->dsi_configs))) &&
-						(get_panel_type(dev, pipe) ==
-						 AUO_SC1_CMD)) {
-					dsi_config =
-						dev_priv->dsi_configs[pipe];
-					regs = &dsi_config->regs;
-					mipi_dev_ready =
-						REG_READ(regs->device_ready_reg)
-						& ~DSI_DEVICE_READY;
-					mipi_port_ctrl =
-						REG_READ(regs->mipi_reg)
-						& ~MIPI_PORT_EN;
-					REG_WRITE(regs->device_ready_reg,
-							mipi_dev_ready);
-					REG_WRITE(regs->mipi_reg,
-							mipi_port_ctrl);
-				}
-
-				temp &= ~(DPLL_VCO_ENABLE);
-				if (get_panel_type(dev, pipe) == AUO_SC1_CMD)
-					temp |= MDFLD_PWR_GATE_EN;
-
-				REG_WRITE(dpll_reg, temp);
-				REG_READ(dpll_reg);
-				/* Wait for the clocks to turn off. */
-				/* FIXME_MDFLD PO may need more delay */
-				udelay(500);
-#if 0 /* FIXME_MDFLD Check if we need to power gate the PLL */
-		if (!(temp & MDFLD_PWR_GATE_EN)) {
-			/* gating power of DPLL */
-			REG_WRITE(dpll_reg, temp | MDFLD_PWR_GATE_EN);
-			/* FIXME_MDFLD PO - change 500 to 1 after PO */
-			udelay(5000);
-		}
-#endif
-			}
+			temp &= ~(DPLL_VCO_ENABLE);
+			REG_WRITE(dpll_reg, temp);
+			REG_READ(dpll_reg);
+			/* Wait for the clocks to turn off. */
+			/* FIXME_MDFLD PO may need more delay */
+			udelay(500);
 		}
 		break;
 	}
 
 	enabled = crtc->enabled && mode != DRM_MODE_DPMS_OFF;
-
-#if 0				/* JB: Add vblank support later */
-	if (enabled)
-		dev_priv->vblank_pipe |= (1 << pipe);
-	else
-		dev_priv->vblank_pipe &= ~(1 << pipe);
-#endif
-
-#if 0				/* JB: Add sarea support later */
-	if (!dev->primary->master)
-		return;
-
-	master_priv = dev->primary->master->driver_priv;
-	if (!master_priv->sarea_priv)
-		return;
-
-	switch (pipe) {
-	case 0:
-		master_priv->sarea_priv->planeA_w =
-		    enabled ? crtc->mode.hdisplay : 0;
-		master_priv->sarea_priv->planeA_h =
-		    enabled ? crtc->mode.vdisplay : 0;
-		break;
-	case 1:
-		master_priv->sarea_priv->planeB_w =
-		    enabled ? crtc->mode.hdisplay : 0;
-		master_priv->sarea_priv->planeB_h =
-		    enabled ? crtc->mode.vdisplay : 0;
-		break;
-	default:
-		DRM_ERROR("Can't update pipe %d in SAREA\n", pipe);
-		break;
-	}
-#endif
 
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 }
@@ -2282,433 +1812,33 @@ static int mdfld_crtc_mode_set(struct drm_crtc *crtc,
 {
 	struct drm_device *dev = crtc->dev;
 	struct psb_intel_crtc *psb_intel_crtc = to_psb_intel_crtc(crtc);
-	DRM_DRIVER_PRIVATE_T *dev_priv = dev->dev_private;
-	int pipe = psb_intel_crtc->pipe;
-	int fp_reg = MRST_FPA0;
-	int dpll_reg = MRST_DPLL_A;
-	int dspcntr_reg = DSPACNTR;
-	int pipeconf_reg = PIPEACONF;
-	int htot_reg = HTOTAL_A;
-	int hblank_reg = HBLANK_A;
-	int hsync_reg = HSYNC_A;
-	int vtot_reg = VTOTAL_A;
-	int vblank_reg = VBLANK_A;
-	int vsync_reg = VSYNC_A;
-	int dspsize_reg = DSPASIZE;
-	int dsppos_reg = DSPAPOS;
-	int pipesrc_reg = PIPEASRC;
-	u32 *pipeconf = &dev_priv->pipeconf;
-	u32 *dspcntr = &dev_priv->dspcntr;
-	int refclk = 0;
-	int clk_n = 0, clk_p2 = 0, clk_byte = 1, clk = 0,
-	    m_conv = 0, clk_tmp = 0;
-	struct mrst_clock_t clock;
-	bool ok;
-	u32 dpll = 0, fp = 0;
-	/* One hot encoding for P1 = 8 */
-	u32 p1_post = 0x40;
-	bool is_crt = false, is_lvds = false, is_tv = false;
-	bool is_mipi = false, is_mipi2 = false, is_hdmi = false;
-	struct drm_mode_config *mode_config = &dev->mode_config;
-	struct psb_intel_output *psb_intel_output = NULL;
+	struct drm_psb_private *dev_priv =
+		(struct drm_psb_private *)dev->dev_private;
 	struct mdfld_dsi_config *dsi_config;
-	uint64_t scalingType = DRM_MODE_SCALE_CENTER;
-	struct drm_encoder *encoder;
-	struct drm_connector *connector;
-	int timeout = 0;
-	struct drm_encoder *mipi_encoder;
-
-	struct mdfld_dsi_hw_context *ctx;
+	int pipe = psb_intel_crtc->pipe;
 
 	PSB_DEBUG_ENTRY("pipe = 0x%x\n", pipe);
 
-	if (((get_panel_type(dev, pipe) == AUO_SC1_CMD) ||
-		(get_panel_type(dev, pipe) == GI_SONY_CMD)) &&
-		!dev_priv->dsi_init_done)
-		return -EINVAL;
-
-	if (pipe == 0)
-		dsi_config = dev_priv->dsi_configs[0];
-	else if (pipe == 2)
-		dsi_config = dev_priv->dsi_configs[1];
-	ctx = &dsi_config->dsi_hw_context;
-
-	if (pipe == 1) {
-		if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, true))
-			return 0;
-		android_hdmi_crtc_mode_set(crtc, mode, adjusted_mode,
-			x, y, old_fb);
-		goto mrst_crtc_mode_set_exit;
-	}
-
-	/**
-	 * MIPI panel mode setting
-	 * NOTE: this path only works for TMD panel now. update it to
-	 * support all MIPI panels later.
-	 */
-	if (pipe != 1 && ((get_panel_type(dev, pipe) == TMD_6X10_VID) ||
-			  (get_panel_type(dev, pipe) == H8C7_VID) ||
-			  (get_panel_type(dev, pipe) == H8C7_CMD) ||
-			  (get_panel_type(dev, pipe) == GI_SONY_VID) ||
-			  (get_panel_type(dev, pipe) == AUO_SC1_VID))) {
+	if (pipe != 1) {
 		if (pipe == 0)
 			dsi_config = dev_priv->dsi_configs[0];
 		else if (pipe == 2)
 			dsi_config = dev_priv->dsi_configs[1];
-		else
-			return -EINVAL;
+
 		return mdfld_crtc_dsi_mode_set(crtc, dsi_config, mode,
 				adjusted_mode, x, y, old_fb);
-	 }
+	 } else {
+		 android_hdmi_crtc_mode_set(crtc, mode, adjusted_mode,
+				 x, y, old_fb);
 
-	switch (pipe) {
-	case 0:
-		break;
-	case 1:
-		fp_reg = FPB0;
-		dpll_reg = DPLL_B;
-		dspcntr_reg = DSPBCNTR;
-		pipeconf_reg = PIPEBCONF;
-		htot_reg = HTOTAL_B;
-		hblank_reg = HBLANK_B;
-		hsync_reg = HSYNC_B;
-		vtot_reg = VTOTAL_B;
-		vblank_reg = VBLANK_B;
-		vsync_reg = VSYNC_B;
-		dspsize_reg = DSPBSIZE;
-		dsppos_reg = DSPBPOS;
-		pipesrc_reg = PIPEBSRC;
-		pipeconf = &dev_priv->pipeconf1;
-		dspcntr = &dev_priv->dspcntr1;
-		if (IS_MDFLD(dev)) {
-			fp_reg = MDFLD_DPLL_DIV0;
-			dpll_reg = MDFLD_DPLL_B;
-		}
-		break;
-	case 2:
-		dpll_reg = MRST_DPLL_A;
-		dspcntr_reg = DSPCCNTR;
-		pipeconf_reg = PIPECCONF;
-		htot_reg = HTOTAL_C;
-		hblank_reg = HBLANK_C;
-		hsync_reg = HSYNC_C;
-		vtot_reg = VTOTAL_C;
-		vblank_reg = VBLANK_C;
-		vsync_reg = VSYNC_C;
-		dspsize_reg = DSPCSIZE;
-		dsppos_reg = DSPCPOS;
-		pipesrc_reg = PIPECSRC;
-		pipeconf = &dev_priv->pipeconf2;
-		dspcntr = &dev_priv->dspcntr2;
-		break;
-	default:
-		DRM_ERROR("Illegal Pipe Number.\n");
-		return 0;
+		 return 0;
 	}
-
-	PSB_DEBUG_ENTRY("adjusted_hdisplay = %d\n",
-		 adjusted_mode->hdisplay);
-	PSB_DEBUG_ENTRY("adjusted_vdisplay = %d\n",
-		 adjusted_mode->vdisplay);
-	PSB_DEBUG_ENTRY("adjusted_hsync_start = %d\n",
-		 adjusted_mode->hsync_start);
-	PSB_DEBUG_ENTRY("adjusted_hsync_end = %d\n",
-		 adjusted_mode->hsync_end);
-	PSB_DEBUG_ENTRY("adjusted_htotal = %d\n",
-		 adjusted_mode->htotal);
-	PSB_DEBUG_ENTRY("adjusted_vsync_start = %d\n",
-		 adjusted_mode->vsync_start);
-	PSB_DEBUG_ENTRY("adjusted_vsync_end = %d\n",
-		 adjusted_mode->vsync_end);
-	PSB_DEBUG_ENTRY("adjusted_vtotal = %d\n",
-		 adjusted_mode->vtotal);
-	PSB_DEBUG_ENTRY("adjusted_clock = %d\n",
-		 adjusted_mode->clock);
-	PSB_DEBUG_ENTRY("adjusted_refresh = %d\n",
-		 adjusted_mode->vrefresh);
-	PSB_DEBUG_ENTRY("hdisplay = %d\n",
-		 mode->hdisplay);
-	PSB_DEBUG_ENTRY("vdisplay = %d\n",
-		 mode->vdisplay);
-
-	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
-				OSPM_UHB_FORCE_POWER_ON))
-		return 0;
-
-	memcpy(&psb_intel_crtc->saved_mode, mode,
-			sizeof(struct drm_display_mode));
-	memcpy(&psb_intel_crtc->saved_adjusted_mode, adjusted_mode,
-			sizeof(struct drm_display_mode));
-
-	list_for_each_entry(connector, &mode_config->connector_list, head) {
-		if (!connector)
-			continue;
-
-		encoder = connector->encoder;
-
-		if (!encoder)
-			continue;
-
-		if (encoder->crtc != crtc)
-			continue;
-
-		psb_intel_output = to_psb_intel_output(connector);
-
-		PSB_DEBUG_ENTRY("output->type = 0x%x\n",
-				psb_intel_output->type);
-
-		switch (psb_intel_output->type) {
-		case INTEL_OUTPUT_LVDS:
-			is_lvds = true;
-			break;
-		case INTEL_OUTPUT_TVOUT:
-			is_tv = true;
-			break;
-		case INTEL_OUTPUT_ANALOG:
-			is_crt = true;
-			break;
-		case INTEL_OUTPUT_MIPI:
-			is_mipi = true;
-			mipi_encoder = encoder;
-			break;
-		case INTEL_OUTPUT_MIPI2:
-			is_mipi2 = true;
-			break;
-		case INTEL_OUTPUT_HDMI:
-			is_hdmi = true;
-			break;
-		}
-	}
-
-	/* Disable the VGA plane that we never use */
-	REG_WRITE(VGACNTRL, VGA_DISP_DISABLE);
-
-	/* Disable the panel fitter if it was on our pipe */
-	if (psb_intel_panel_fitter_pipe(dev) == pipe)
-		REG_WRITE(PFIT_CONTROL, 0);
-
-	if (psb_intel_output)
-		drm_connector_property_get_value(&psb_intel_output->base,
-			dev->mode_config.scaling_mode_property, &scalingType);
-
-	psb_intel_crtc->scaling_type = scalingType;
-
-	if (scalingType == DRM_MODE_SCALE_NO_SCALE) {
-		/*
-		 * Moorestown doesn't have register support for centering so we
-		 * need to mess with the h/vblank and h/vsync start and ends to
-		 * get centering
-		 */
-		int offsetX = 0, offsetY = 0;
-
-		offsetX = (adjusted_mode->crtc_hdisplay -
-				mode->crtc_hdisplay) / 2;
-		offsetY = (adjusted_mode->crtc_vdisplay -
-				mode->crtc_vdisplay) / 2;
-
-		REG_WRITE(htot_reg, (mode->crtc_hdisplay - 1) |
-			((adjusted_mode->crtc_htotal - 1) << 16));
-		REG_WRITE(vtot_reg, (mode->crtc_vdisplay - 1) |
-			((adjusted_mode->crtc_vtotal - 1) << 16));
-		REG_WRITE(hblank_reg, (adjusted_mode->crtc_hblank_start -
-					offsetX - 1) |
-				((adjusted_mode->crtc_hblank_end -
-				  offsetX - 1) << 16));
-		REG_WRITE(hsync_reg, (adjusted_mode->crtc_hsync_start -
-					offsetX - 1) |
-			((adjusted_mode->crtc_hsync_end - offsetX - 1) << 16));
-		REG_WRITE(vblank_reg, (adjusted_mode->crtc_vblank_start -
-					offsetY - 1) |
-			((adjusted_mode->crtc_vblank_end - offsetY - 1) << 16));
-		REG_WRITE(vsync_reg, (adjusted_mode->crtc_vsync_start -
-					offsetY - 1) |
-			((adjusted_mode->crtc_vsync_end - offsetY - 1) << 16));
-	} else {
-		REG_WRITE(htot_reg, (adjusted_mode->crtc_hdisplay - 1) |
-			((adjusted_mode->crtc_htotal - 1) << 16));
-		REG_WRITE(vtot_reg, (adjusted_mode->crtc_vdisplay - 1) |
-			((adjusted_mode->crtc_vtotal - 1) << 16));
-		REG_WRITE(hblank_reg, (adjusted_mode->crtc_hblank_start - 1) |
-			((adjusted_mode->crtc_hblank_end - 1) << 16));
-		REG_WRITE(hsync_reg, (adjusted_mode->crtc_hsync_start - 1) |
-			((adjusted_mode->crtc_hsync_end - 1) << 16));
-		REG_WRITE(vblank_reg, (adjusted_mode->crtc_vblank_start - 1) |
-			((adjusted_mode->crtc_vblank_end - 1) << 16));
-		REG_WRITE(vsync_reg, (adjusted_mode->crtc_vsync_start - 1) |
-			((adjusted_mode->crtc_vsync_end - 1) << 16));
-	}
-
-	/* setup pipeconf */
-	*pipeconf = PIPEACONF_ENABLE;
-
-	/* Set up the display plane register */
-	*dspcntr = REG_READ(dspcntr_reg);
-	*dspcntr |= pipe << DISPPLANE_SEL_PIPE_POS;
-	*dspcntr |= DISPLAY_PLANE_ENABLE;
-
-	if (is_mipi2)
-		goto mrst_crtc_mode_set_exit;
-
-	clk = adjusted_mode->clock;
-
-	if (is_hdmi) {
-		if ((dev_priv->ksel == KSEL_CRYSTAL_19) ||
-				(dev_priv->ksel == KSEL_BYPASS_19)) {
-			refclk = 19200;
-			clk_n = 1, clk_p2 = 10;
-		} else if (dev_priv->ksel == KSEL_BYPASS_25) {
-			refclk = 25000;
-			clk_n = 1, clk_p2 = 10;
-		} else if (dev_priv->ksel == KSEL_CRYSTAL_38) {
-			refclk = 38400;
-			clk_n = 2, clk_p2 = 10;
-		} else if ((dev_priv->ksel == KSEL_BYPASS_83_100) &&
-				(dev_priv->core_freq == 166)) {
-			refclk = 83000;
-			clk_n = 4, clk_p2 = 10;
-		} else if ((dev_priv->ksel == KSEL_BYPASS_83_100) &&
-			   (dev_priv->core_freq == 100 ||
-			    dev_priv->core_freq == 200)) {
-			refclk = 100000;
-			clk_n = 4, clk_p2 = 10;
-		}
-
-		clk_tmp = clk * clk_n * clk_p2 * clk_byte;
-
-		PSB_DEBUG_ENTRY("clk = %d, clk_n = %d, clk_p2 = %d.\n",
-				clk, clk_n, clk_p2);
-		PSB_DEBUG_ENTRY("adjusted_mode->clock = %d, clk_tmp = %d.\n",
-				adjusted_mode->clock, clk_tmp);
-
-		ok = mdfldFindBestPLL(crtc, clk_tmp, refclk, &clock);
-		dev_priv->tmds_clock_khz = clock.dot /
-			(clk_n * clk_p2 * clk_byte);
-
-		if (!ok)
-			DRM_ERROR("mdfldFindBestPLL fails.\n");
-		else {
-			m_conv = mdfld_m_converts[(clock.m - MDFLD_M_MIN)];
-
-			PSB_DEBUG_ENTRY("dot: %d, m: %d, p1: %d, m_conv: %d.\n",
-					clock.dot, clock.m, clock.p1, m_conv);
-		}
-
-		dpll = REG_READ(dpll_reg);
-
-		if (dpll & DPLL_VCO_ENABLE) {
-			dpll &= ~DPLL_VCO_ENABLE;
-			REG_WRITE(dpll_reg, dpll);
-			REG_READ(dpll_reg);
-
-			/* FIXME check the DPLL lock bit PIPEACONF[29] */
-			/* FIXME_MDFLD PO - change 500 to 1 after PO */
-			udelay(500);
-
-			/* reset M1, N1 & P1 */
-			REG_WRITE(fp_reg, 0);
-			dpll &= ~MDFLD_P1_MASK;
-			REG_WRITE(dpll_reg, dpll);
-			/* FIXME_MDFLD PO - change 500 to 1 after PO */
-			udelay(500);
-		}
-
-		/*
-		 * When ungating power of DPLL, needs to wait 0.5us before
-		 * enable the VCO
-		 */
-		if (dpll & MDFLD_PWR_GATE_EN) {
-			dpll &= ~MDFLD_PWR_GATE_EN;
-			REG_WRITE(dpll_reg, dpll);
-			/* FIXME_MDFLD PO - change 500 to 1 after PO */
-			udelay(500);
-		}
-
-		dpll = 0;
-
-#if 0 /* FIXME revisit later */
-		if ((dev_priv->ksel == KSEL_CRYSTAL_19) ||
-				(dev_priv->ksel == KSEL_BYPASS_19) ||
-				(dev_priv->ksel == KSEL_BYPASS_25)) {
-			dpll &= ~MDFLD_INPUT_REF_SEL;
-		} else if (dev_priv->ksel == KSEL_BYPASS_83_100) {
-			dpll |= MDFLD_INPUT_REF_SEL;
-		}
-#endif /* FIXME revisit later */
-
-		dpll |= MDFLD_VCO_SEL;
-
-		fp = (clk_n / 2) << 16;
-		fp |= m_conv;
-
-		/* compute bitmask from p1 value */
-		dpll |= (1 << (clock.p1 - 2)) << 17;
-
-	} else {
-		if (pipe == 2)
-			dsi_config = dev_priv->dsi_configs[1];
-		else
-			dsi_config = dev_priv->dsi_configs[0];
-
-		/*caculate pll*/
-		mdfld_crtc_dsi_pll_calc(crtc, dsi_config, dev,
-				 &dpll,
-				 &fp,
-				 adjusted_mode);
-
-	}
-
-	/*set pll*/
-	REG_WRITE(dpll_reg, 0);
-	REG_WRITE(fp_reg, 0);
-	REG_WRITE(fp_reg, fp);
-	REG_WRITE(dpll_reg, dpll & (~BIT30));
-	/* FIXME_MDFLD PO - change 500 to 1 after PO */
-	udelay(2);
-	dpll = REG_READ(dpll_reg);
-	REG_WRITE(dpll_reg, dpll | BIT31);
-
-	printk(KERN_ALERT "dpll = 0x%x, fb = 0x%x",
-			REG_READ(dpll_reg), REG_READ(fp_reg));
-
-	/* wait for DSI PLL to lock */
-	while ((timeout < 20000) &&
-			!(REG_READ(pipeconf_reg) & PIPECONF_DSIPLL_LOCK)) {
-		udelay(10);
-		timeout++;
-	}
-
-	if (is_mipi) {
-		if (get_panel_type(dev, pipe) == GI_SONY_CMD)
-			mdfld_gi_sony_power_on(mipi_encoder);
-
-		goto mrst_crtc_mode_set_exit;
-	}
-
-	PSB_DEBUG_ENTRY("is_mipi = 0x%x\n", is_mipi);
-
-	REG_WRITE(pipeconf_reg, *pipeconf);
-	REG_READ(pipeconf_reg);
-
-	REG_WRITE(dspcntr_reg, *dspcntr);
-	psb_intel_wait_for_vblank(dev);
-
-	/* Flush the plane changes */
-	struct drm_crtc_helper_funcs *crtc_funcs = crtc->helper_private;
-	crtc_funcs->mode_set_base(crtc, x, y, old_fb);
-
-mrst_crtc_mode_set_exit:
-
-	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
-
-	return 0;
 }
 
 
 static const struct drm_crtc_funcs mdfld_intel_crtc_funcs = {
-#ifndef CONFIG_X86_MDFLD
-	.save = psb_intel_crtc_save,
-	.restore = psb_intel_crtc_restore,
-#endif
+	.save = NULL,
+	.restore = NULL,
 	.cursor_set = mdfld_intel_crtc_cursor_set,
 	.cursor_move = mdfld_intel_crtc_cursor_move,
 	.gamma_set = psb_intel_crtc_gamma_set,

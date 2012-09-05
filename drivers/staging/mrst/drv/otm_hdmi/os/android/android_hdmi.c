@@ -70,7 +70,7 @@
 #include <drm/drm.h>
 #include <drm/drm_crtc.h>
 #include <drm/drm_edid.h>
-#include "psb_intel_drv.h"
+#include "psb_intel_display.h"
 #include "psb_intel_reg.h"
 #include "psb_intel_hdmi_reg.h"
 #include "psb_drv.h"
@@ -2374,7 +2374,7 @@ void android_hdmi_driver_init(struct drm_device *dev,
 					  &psb_intel_output->enc);
 	psb_intel_output->type = INTEL_OUTPUT_HDMI;
 
-	psb_intel_output->dev_priv = hdmi_priv;
+	psb_intel_output->dev_priv = (struct drm_psb_private *)hdmi_priv;
 
 	drm_encoder_helper_add(encoder, &android_hdmi_enc_helper_funcs);
 	drm_connector_helper_add(connector,

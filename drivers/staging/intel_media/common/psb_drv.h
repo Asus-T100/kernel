@@ -26,7 +26,6 @@
 #include "sys_pvr_drm_export.h"
 #include "psb_drm.h"
 #include "psb_reg.h"
-#include "psb_intel_drv.h"
 #include "psb_hotplug.h"
 #include "psb_dpst.h"
 #include "psb_gtt.h"
@@ -36,6 +35,7 @@
 #include "psb_ttm_userobj_api.h"
 #include "ttm/ttm_bo_driver.h"
 #include "ttm/ttm_lock.h"
+#include "psb_intel_display.h"
 
 /*IMG headers*/
 #include "private_data.h"
@@ -584,14 +584,7 @@ struct drm_psb_private {
 	/*
 	 *LVDS info
 	 */
-	int backlight_duty_cycle;	/* restore backlight to this value */
-	bool panel_wants_dither;
 	struct drm_display_mode *panel_fixed_mode;
-	struct drm_display_mode *lfp_lvds_vbt_mode;
-	struct drm_display_mode *sdvo_lvds_vbt_mode;
-
-	struct bdb_lvds_backlight *lvds_bl; /*LVDS backlight info from VBT*/
-	struct psb_intel_i2c_chan *lvds_i2c_bus;
 
 	/* Feature bits from the VBIOS*/
 	unsigned int int_tv_support:1;
@@ -628,8 +621,6 @@ struct drm_psb_private {
 
 	/* The DPI display */
 	bool dpi;
-
-	enum mipi_panel_type panel_make;
 
 	/* Set if MIPI encoder wants to control plane/pipe */
 	bool dsi_plane_pipe_control;
@@ -668,19 +659,7 @@ struct drm_psb_private {
 	u8 *p_DBI_dataBuffer;
 	uint32_t DBI_DB_pointer;
 
-	/* DSI panel spec */
-	uint32_t pixelClock;
-	uint32_t HsyncWidth;
-	uint32_t HbackPorch;
-	uint32_t HfrontPorch;
-	uint32_t HactiveArea;
-	uint32_t VsyncWidth;
-	uint32_t VbackPorch;
-	uint32_t VfrontPorch;
-	uint32_t VactiveArea;
 	uint32_t bpp:5;
-	uint32_t Reserved:27;
-	/* MRST_DSI private date end */
 
 	/* MDFLD_DSI private date start */
 	/* dual display - DPI & DBI */

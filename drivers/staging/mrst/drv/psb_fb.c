@@ -35,7 +35,6 @@
 
 #include "psb_drv.h"
 #include "psb_intel_reg.h"
-#include "psb_intel_drv.h"
 #include "psb_ttm_userobj_api.h"
 #include "psb_fb.h"
 #include "psb_pvr_glue.h"

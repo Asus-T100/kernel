@@ -30,7 +30,6 @@
 #include "mdfld_dsi_dbi.h"
 #include "mdfld_dsi_pkg_sender.h"
 #include "mdfld_dsi_esd.h"
-#include "psb_intel_drv.h"
 #include <linux/gpio.h>
 #include <linux/sfi.h>
 #include <linux/regulator/driver.h>
@@ -175,8 +174,7 @@ static int  mdfld_h8c7_drv_ic_init(struct mdfld_dsi_config *dsi_config,
 }
 
 static void
-mdfld_h8c7_dsi_controller_init(struct mdfld_dsi_config *dsi_config,
-				int pipe, int update)
+mdfld_h8c7_dsi_controller_init(struct mdfld_dsi_config *dsi_config, int pipe)
 {
 
 	struct mdfld_dsi_hw_context *hw_ctx = &dsi_config->dsi_hw_context;

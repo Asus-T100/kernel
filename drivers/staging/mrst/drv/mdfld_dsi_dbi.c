@@ -784,12 +784,9 @@ struct mdfld_dsi_encoder *mdfld_dsi_dbi_init(struct drm_device *dev,
 	}
 
 	/*init DSI controller*/
-	if (p_funcs->dsi_controller_init) {
-		if (get_panel_type(dev, pipe) == AUO_SC1_CMD)
-			p_funcs->dsi_controller_init(dsi_config, pipe, false);
-		else
-			p_funcs->dsi_controller_init(dsi_config, pipe, true);
-	}
+	if (p_funcs->dsi_controller_init)
+		p_funcs->dsi_controller_init(dsi_config, pipe);
+
 	if (dsi_connector->status == connector_status_connected) {
 		if (pipe == 0)
 			dev_priv->panel_desc |= DISPLAY_A;

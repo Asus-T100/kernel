@@ -38,8 +38,7 @@
 #define GPIO_MIPI_PANEL_RESET 128
 
 static void
-mdfld_auo_dsi_controller_init(struct mdfld_dsi_config *dsi_config,
-				int pipe, int update)
+mdfld_auo_dsi_controller_init(struct mdfld_dsi_config *dsi_config, int pipe)
 {
 	struct mdfld_dsi_hw_context *hw_ctx =
 		&dsi_config->dsi_hw_context;
@@ -72,35 +71,6 @@ mdfld_auo_dsi_controller_init(struct mdfld_dsi_config *dsi_config,
 
 	/*set up func_prg*/
 	hw_ctx->dsi_func_prg = (0xa000 | lane_count);
-
-	if (update) {
-		REG_WRITE(regs->mipi_reg, hw_ctx->mipi);
-
-		/* D-PHY parameter */
-		REG_WRITE(regs->dphy_param_reg, hw_ctx->dphy_param);
-
-		/* Configure DSI controller */
-		REG_WRITE(regs->mipi_control_reg, hw_ctx->mipi_control);
-		REG_WRITE(regs->intr_en_reg, hw_ctx->intr_en);
-		REG_WRITE(regs->hs_tx_timeout_reg, hw_ctx->hs_tx_timeout);
-		REG_WRITE(regs->lp_rx_timeout_reg, hw_ctx->lp_rx_timeout);
-		REG_WRITE(regs->turn_around_timeout_reg,
-				hw_ctx->turn_around_timeout);
-		REG_WRITE(regs->device_reset_timer_reg,
-				hw_ctx->device_reset_timer);
-		REG_WRITE(regs->high_low_switch_count_reg,
-				hw_ctx->high_low_switch_count);
-		REG_WRITE(regs->init_count_reg, hw_ctx->init_count);
-		REG_WRITE(regs->eot_disable_reg, hw_ctx->eot_disable);
-		REG_WRITE(regs->lp_byteclk_reg, hw_ctx->lp_byteclk);
-		REG_WRITE(regs->dbi_bw_ctrl_reg, hw_ctx->dbi_bw_ctrl);
-		REG_WRITE(regs->clk_lane_switch_time_cnt_reg,
-				hw_ctx->clk_lane_switch_time_cnt);
-		REG_WRITE(regs->dsi_func_prg_reg, hw_ctx->dsi_func_prg);
-
-		/* Enable DSI Controller */
-		REG_WRITE(regs->device_ready_reg, BIT0);
-	}
 }
 
 static struct drm_display_mode *auo_cmd_get_config_mode(struct drm_device* dev)

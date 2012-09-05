@@ -29,7 +29,6 @@
 #include <drm/drm_crtc.h>
 #include <drm/drm_edid.h>
 #include <drm/drm_mode.h>
-#include "psb_intel_drv.h"
 #include "psb_drv.h"
 #include "psb_irq.h"
 #include "psb_intel_reg.h"

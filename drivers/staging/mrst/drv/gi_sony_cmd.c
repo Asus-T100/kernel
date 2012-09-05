@@ -210,8 +210,7 @@ static int mdfld_gi_l5f3_dbi_ic_init(struct mdfld_dsi_config *dsi_config,
 }
 
 static void
-mdfld_gi_sony_dsi_controller_init(struct mdfld_dsi_config *dsi_config,
-				int pipe, int update)
+mdfld_gi_sony_dsi_controller_init(struct mdfld_dsi_config *dsi_config, int pipe)
 {
 	struct mdfld_dsi_hw_context *hw_ctx =
 		&dsi_config->dsi_hw_context;
@@ -598,61 +597,48 @@ static int gi_sony_cmd_get_panel_info(struct drm_device *dev,
 static int mdfld_gi_sony_dsi_cmd_detect(struct mdfld_dsi_config *dsi_config,
 		int pipe)
 {
-#ifndef CONFIG_DRM_DPMS
 	struct mdfld_dsi_hw_context *ctx = &dsi_config->dsi_hw_context;
 	struct drm_device *dev = dsi_config->dev;
 	struct mdfld_dsi_hw_registers *regs = &dsi_config->regs;
 	uint32_t dpll = 0;
-#endif
 	int status;
+	uint32_t dpll_val, device_ready_val;
 
 	PSB_DEBUG_ENTRY("Detecting panel %d connection status....\n", pipe);
 	/* dsi_config->dsi_hw_context.pll_bypass_mode = 0; */
 
 	if (pipe == 0) {
-		/* reconfig lane configuration */
-		/* [SC1] in bb2 is 3 */
 		dsi_config->lane_count = 1;
-		/* [SC1] in bb2 is MDFLD_DSI_DATA_LANE_3_1 */
-		/*
-		 * FIXME: JLIU7 dsi_config->lane_config =
-		 * MDFLD_DSI_DATA_LANE_4_0;
-		 */
 		dsi_config->lane_config = MDFLD_DSI_DATA_LANE_2_2;
 		dsi_config->dsi_hw_context.pll_bypass_mode = 1;
 		/* This is for 400 mhz. Set it to 0 for 800mhz */
 		dsi_config->dsi_hw_context.cck_div = 1;
 
-		status = MDFLD_DSI_PANEL_CONNECTED;
-#ifndef CONFIG_DRM_DPMS
-	PSB_DEBUG_ENTRY("ifndef CONFIG_DRM_DPMS....\n");
-		if (ctx->pll_bypass_mode) {
-			REG_WRITE(regs->dpll_reg, dpll);
-			if (ctx->cck_div)
-				dpll = dpll | BIT11;
-
-			REG_WRITE(regs->dpll_reg, dpll);
-			udelay(2);
-
-			dpll = dpll | BIT12;
-			REG_WRITE(regs->dpll_reg, dpll);
-			udelay(2);
-
-			dpll = dpll | BIT13;
-			REG_WRITE(regs->dpll_reg, dpll);
-
-			dpll = dpll | BIT31;
-			REG_WRITE(regs->dpll_reg, dpll);
-
-			REG_WRITE(MRST_FPA0, 0);
+		if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
+					OSPM_UHB_FORCE_POWER_ON)) {
+			DRM_ERROR("hw begin failed\n");
+			return -EAGAIN;
 		}
-#endif
+
+		dpll_val = REG_READ(regs->dpll_reg);
+		device_ready_val = REG_READ(regs->device_ready_reg);
+		if ((device_ready_val & DSI_DEVICE_READY) &&
+				(dpll_val & DPLL_VCO_ENABLE)) {
+			dsi_config->dsi_hw_context.panel_on = true;
+			status = MDFLD_DSI_PANEL_CONNECTED;
+		} else {
+			dsi_config->dsi_hw_context.panel_on = false;
+			status = MDFLD_DSI_PANEL_DISCONNECTED;
+			DRM_INFO("%s: panel is not detected!\n", __func__);
+		}
+
+		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 	} else {
 		PSB_DEBUG_ENTRY("Only support single panel\n");
 		status = MDFLD_DSI_PANEL_DISCONNECTED;
+		dsi_config->dsi_hw_context.panel_on = 0;
 	}
 
-	mdfld_enable_te(dev, pipe);
 	return 0;
 }
 

@@ -24,7 +24,6 @@
 #include <linux/version.h>
 #include "psb_drv.h"
 #include "psb_intel_reg.h"
-#include "psb_intel_drv.h"
 #include "psb_powermgmt.h"
 #include "mdfld_dsi_dbi.h"
 

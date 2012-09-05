@@ -267,25 +267,6 @@ mdfld_dsi_pr2_dsi_controller_init(struct mdfld_dsi_config *dsi_config,
 
 	/*set up func_prg*/
 	hw_ctx->dsi_func_prg = (0x200 | lane_count);
-
-	if (update) {
-		REG_WRITE(dphy_param_reg, hw_ctx->dphy_param);
-		REG_WRITE(mipi_control_reg, hw_ctx->mipi_control);
-		REG_WRITE(intr_en_reg, hw_ctx->intr_en);
-		REG_WRITE(hs_tx_timeout_reg, hw_ctx->hs_tx_timeout);
-		REG_WRITE(lp_rx_timeout_reg, hw_ctx->lp_rx_timeout);
-		REG_WRITE(turn_around_timeout_reg, hw_ctx->turn_around_timeout);
-		REG_WRITE(device_reset_timer_reg, hw_ctx->device_reset_timer);
-		REG_WRITE(high_low_switch_count_reg,
-			hw_ctx->high_low_switch_count);
-		REG_WRITE(init_count_reg, hw_ctx->init_count);
-		REG_WRITE(eot_disable_reg, hw_ctx->eot_disable);
-		REG_WRITE(lp_byteclk_reg, hw_ctx->lp_byteclk);
-		REG_WRITE(clk_lane_switch_time_cnt_reg,
-			hw_ctx->clk_lane_switch_time_cnt);
-		REG_WRITE(video_mode_format_reg, hw_ctx->video_mode_format);
-		REG_WRITE(dsi_func_prg_reg, hw_ctx->dsi_func_prg);
-	}
 }
 
 static int mdfld_dsi_pr2_detect(struct mdfld_dsi_config *dsi_config,

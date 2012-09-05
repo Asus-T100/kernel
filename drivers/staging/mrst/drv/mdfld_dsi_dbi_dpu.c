@@ -25,8 +25,9 @@
  * Jackie Li<yaodong.li@intel.com>
  */
  
- #include "mdfld_dsi_dbi_dpu.h"
- #include "mdfld_dsi_dbi.h"
+#include "mdfld_dsi_dbi_dpu.h"
+#include "mdfld_dsi_dbi.h"
+#include "psb_intel_display.h"
  
 /**
  * NOTE: all mdlfd_x_damage funcs should be called by holding dpu_update_lock
@@ -583,7 +584,7 @@ static int __mdfld_dbi_exit_dsr(struct mdfld_dsi_dbi_output * dbi_output, int pi
 		REG_WRITE(pipeconf_reg, reg_val);
 		REG_READ(pipeconf_reg);
 		udelay(500);
-		mdfldWaitForPipeEnable(dev, pipe);
+		intel_wait_for_pipe_enable_disable(dev, pipe, true);
 	}
 	
 	/*enable plane*/
