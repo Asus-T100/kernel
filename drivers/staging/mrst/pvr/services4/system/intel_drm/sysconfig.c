@@ -46,6 +46,10 @@
 #include "psb_powermgmt.h"
 #include "sys_pvr_drm_export.h"
 
+#if (defined CONFIG_GPU_BURST) || (defined CONFIG_GPU_BURST_MODULE)
+#include <gburst_interface.h>
+#endif
+
 #endif
 
 extern struct drm_device *gpDrmDevice;
@@ -1214,6 +1218,11 @@ PVRSRV_ERROR SysDevicePrePowerState(IMG_UINT32			ui32DeviceIndex,
 		{
 			PVR_DPF((PVR_DBG_MESSAGE,"SysDevicePrePowerState: Remove SGX power"));
 #if defined(SUPPORT_DRI_DRM_EXT)
+
+#if (defined CONFIG_GPU_BURST) || (defined CONFIG_GPU_BURST_MODULE)
+			gburst_interface_power_state_set(0);
+#endif /* if (defined CONFIG_GPU_BURST) || (defined CONFIG_GPU_BURST_MODULE) */
+
 			ospm_power_using_hw_end(OSPM_GRAPHICS_ISLAND);
 
 			/*! missed in IMG's DDK1.6,
@@ -1295,6 +1304,11 @@ PVRSRV_ERROR SysDevicePostPowerState(IMG_UINT32			ui32DeviceIndex,
 
 				return PVRSRV_ERROR_DEVICE_POWER_CHANGE_FAILURE;
 			}
+
+#if (defined CONFIG_GPU_BURST) || (defined CONFIG_GPU_BURST_MODULE)
+			gburst_interface_power_state_set(1);
+#endif /* if (defined CONFIG_GPU_BURST) || (defined CONFIG_GPU_BURST_MODULE) */
+
 #endif
 		}
 #if defined(PVR_MDFLD_SYS_MSVDX_AND_TOPAZ)

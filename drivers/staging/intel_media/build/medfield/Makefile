@@ -29,6 +29,22 @@ include_dirs := \
 		-Iinclude/linux \
 		-Iinclude/drm
 
+
+ifeq ($(CONFIG_GPU_BURST),y)
+GPU_BURST_CONFIGURED := 1
+else ifeq ($(CONFIG_GPU_BURST),m)
+GPU_BURST_CONFIGURED := 1
+else
+GPU_BURST_CONFIGURED := 0
+endif
+
+ifeq ($(GPU_BURST_CONFIGURED),1)
+
+gfx-y += $(SYSCONFIGDIR)/gburst_interface.o
+gfx-y += $(SGXDIR)/gburst_hw.o
+
+endif
+
 ccflags-y += $(include_dirs)
 ccflags-y += $(ANDROID_TOOLCHAIN_FLAGS) -I$(GFX_INCDIR)/services4/system/intel_drm -DANDROID -D_linux_ -D__KERNEL__
 
