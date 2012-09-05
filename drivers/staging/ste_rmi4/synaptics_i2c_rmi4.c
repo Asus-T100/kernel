@@ -29,6 +29,7 @@
 #include <linux/i2c.h>
 #include <linux/gpio.h>
 #include <linux/delay.h>
+#include <linux/slab.h>
 #include <linux/interrupt.h>
 #include <linux/regulator/consumer.h>
 #include <linux/earlysuspend.h>
@@ -68,23 +69,10 @@
 #define MASK_3BIT		0x07
 #define MASK_2BIT		0x03
 #define TOUCHPAD_CTRL_INTR	0x8
-#define PDT_START_SCAN_LOCATION (0x00E9)
-#define PDT_END_SCAN_LOCATION	(0x000A)
-#define PDT_ENTRY_SIZE		(0x0006)
 
-#define F01_CTRL0_CONFIGURED	(1 << 7)
-#define F01_CTRL0_SLEEP		(1 << 0)
-#define F01_CTRL0_NOSLEEP	(1 << 2)
-
-#define RMI4_TOUCHPAD_FUNC_NUM	(0x11)
-#define RMI4_BUTTON_FUNC_NUM	(0x1a)
-#define RMI4_DEV_CTL_FUNC_NUM	(0x01)
-
-#define RMI4_RESET_DELAY	50
-#define RMI4_PAGE_SIZE		0x100
-#define RMI4_PAGE_SELECT_REG	0xff
-#define RMI4_MAX_PAGE		0xff
-#define RMI4_PAGE_END_FUNC_ID(id) (id == 0x00 || id == 0xff)
+#define F01_CTRL0_CONFIGURED (1 << 7)
+#define F01_CTRL0_SLEEP      (1 << 0)
+#define F01_CTRL0_NOSLEEP    (1 << 2)
 
 enum finger_state {
 	F11_NO_FINGER = 0,
@@ -108,7 +96,19 @@ static struct rmi4_fn_ops supported_fn_ops[] = {
 		.irq_handler = rmi4_button_irq_handler,
 		.remove = rmi4_button_remove,
 	},
+#ifdef DEBUG
+	{
+		.fn_number = RMI4_ANALOG_FUNC_NUM,
+	},
+	{
+		.fn_number = RMI4_DEV_CTL_FUNC_NUM,
+	},
+	{
+		.fn_number = RMI4_FLASH_FW_FUNC_NUM,
+	}
+#endif
 };
+
 /**
  * rmi4_set_page() - sets the page
  * @pdata: pointer to rmi4_data structure
@@ -116,7 +116,7 @@ static struct rmi4_fn_ops supported_fn_ops[] = {
  *
  * This function is used to set the page and returns integer.
  */
-static int rmi4_set_page(struct rmi4_data *pdata, unsigned short address)
+static int rmi4_set_page(struct rmi4_data *pdata, u16 address)
 {
 	unsigned char	txbuf[PAGE_LEN];
 	int		retval;
@@ -137,9 +137,8 @@ static int rmi4_set_page(struct rmi4_data *pdata, unsigned short address)
 	return retval;
 }
 
-static int
-rmi4_i2c_block_read(struct rmi4_data *pdata, unsigned short address,
-						unsigned char *valp, int size)
+int rmi4_i2c_block_read(struct rmi4_data *pdata,
+					u16 address, u8 *valp, int size)
 {
 	int retval = 0;
 	int retry_count = 0;
@@ -175,16 +174,13 @@ exit:
 	return retval;
 }
 
-static int
-rmi4_i2c_byte_read(struct rmi4_data *pdata, unsigned short address,
-							unsigned char *valp)
+int rmi4_i2c_byte_read(struct rmi4_data *pdata, u16 address, u8 *valp)
 {
 	return rmi4_i2c_block_read(pdata, address, valp, 1);
 }
 
-static int
-rmi4_i2c_block_write(struct rmi4_data *pdata, unsigned short address,
-						unsigned char *valp, int size)
+int rmi4_i2c_block_write(struct rmi4_data *pdata,
+					u16 address, u8 *valp, int size)
 {
 	int retval = 0;
 	int retry_count = 0;
@@ -217,18 +213,15 @@ exit:
 	return retval;
 }
 
-static int
-rmi4_i2c_byte_write(struct rmi4_data *pdata, unsigned short address,
-							unsigned char data)
+int rmi4_i2c_byte_write(struct rmi4_data *pdata, u16 address, u8 data)
 {
 	return rmi4_i2c_block_write(pdata, address, &data, 1);
 }
 
-static int rmi4_i2c_set_bits(struct rmi4_data *pdata, unsigned short addr,
-							unsigned char bits)
+static int rmi4_i2c_set_bits(struct rmi4_data *pdata, u16 addr, u8 bits)
 {
 	int retval;
-	unsigned char reg = 0;
+	u8 reg = 0;
 	struct i2c_client *client = pdata->i2c_client;
 
 	retval = rmi4_i2c_byte_read(pdata, addr, &reg);
@@ -247,11 +240,10 @@ static int rmi4_i2c_set_bits(struct rmi4_data *pdata, unsigned short addr,
 	return 0;
 }
 
-static int rmi4_i2c_clear_bits(struct rmi4_data *pdata, unsigned short addr,
-							unsigned char bits)
+static int rmi4_i2c_clear_bits(struct rmi4_data *pdata, u16 addr, u8 bits)
 {
+	u8 reg = 0;
 	int retval;
-	unsigned char reg = 0;
 	struct i2c_client *client = pdata->i2c_client;
 
 	retval = rmi4_i2c_byte_read(pdata, addr, &reg);
@@ -298,9 +290,8 @@ int rmi4_touchpad_irq_handler(struct rmi4_data *pdata, struct rmi4_fn *rfi)
 	int finger_shift;
 	int x, y, wx, wy;
 	enum finger_state finger_status;
-	unsigned short data_base_addr;
-	unsigned short data_offset;
-	unsigned char *data;
+	u16 data_base_addr, data_offset;
+	u8 *data;
 	struct rmi4_touchpad_data *touch_data;
 	struct i2c_client *client = pdata->i2c_client;
 
@@ -389,7 +380,7 @@ int rmi4_button_irq_handler(struct rmi4_data *pdata, struct rmi4_fn *rfi)
 	int i;
 	int retval = 0;
 	bool bttn_down;
-	unsigned char bttns_status;
+	u8 bttns_status;
 	struct rmi4_button_data *button_data;
 	struct i2c_client *client = pdata->i2c_client;
 
@@ -418,8 +409,8 @@ int rmi4_button_irq_handler(struct rmi4_data *pdata, struct rmi4_fn *rfi)
 
 static irqreturn_t rmi4_irq_thread(int irq, void *data)
 {
-	unsigned char intr_status[4];
-	unsigned int retval;
+	u8 intr_status[4];
+	int retval;
 	struct rmi4_fn *rfi;
 	struct rmi4_device_info	*rmi;
 	struct rmi4_data *pdata = data;
@@ -466,7 +457,7 @@ static irqreturn_t rmi4_irq_thread(int irq, void *data)
 int rmi4_touchpad_detect(struct rmi4_data *pdata, struct rmi4_fn *rfi,
 						unsigned int interruptcount)
 {
-	unsigned char	queries[QUERY_LEN];
+	u8 queries[QUERY_LEN];
 	unsigned short	intr_offset;
 	unsigned char	abs_data_size;
 	unsigned char	abs_data_blk_size;
@@ -610,7 +601,7 @@ int rmi4_button_detect(struct rmi4_data *pdata, struct rmi4_fn *rfi,
 						unsigned int interruptcount)
 {
 	int i, retval, bttn_cnt;
-	unsigned char queries[2];
+	u8 queries[2];
 	unsigned short intr_offset;
 	struct rmi4_button_data *button_data;
 	struct i2c_client *client = pdata->i2c_client;
@@ -710,7 +701,7 @@ int rmi4_touchpad_config(struct rmi4_data *pdata, struct rmi4_fn *rfi)
 	 * For the data source - print info and do any
 	 * source specific configuration.
 	 */
-	unsigned char data[BUF_LEN];
+	u8 data[BUF_LEN];
 	int retval = 0;
 	struct	i2c_client *client = pdata->i2c_client;
 
@@ -753,7 +744,7 @@ rmi4_process_func(struct rmi4_data *pdata, struct rmi4_fn_desc *rmi_fd,
 	struct rmi4_fn *rfi = NULL;
 	struct rmi4_fn_ops *fn_ops = NULL;
 
-	dev_dbg(&client->dev, "fn 0x%x detected: query=0x%x, "
+	dev_info(&client->dev, "fn 0x%x detected: query=0x%x, "
 			"cmd=0x%x, ctrl=0x%x, data=0x%x, intr=0x%x\n",
 			rmi_fd->fn_number, rmi_fd->query_base_addr,
 			rmi_fd->cmd_base_addr, rmi_fd->ctrl_base_addr,
@@ -778,8 +769,6 @@ rmi4_process_func(struct rmi4_data *pdata, struct rmi4_fn_desc *rmi_fd,
 					"clear F01_CTRL0_NOSLEEP failed\n");
 			return retval;
 		}
-
-		return 0;
 	}
 
 	fn_ops = get_supported_fn_ops(id);
@@ -828,6 +817,62 @@ static void rmi4_free_funcs(struct rmi4_data *rmi4_data)
 	}
 }
 
+static int do_init_reset(struct rmi4_data *pdata)
+{
+	bool has_f01 = false;
+	bool has_f34 = false;
+	int i, retval;
+	int page, page_start, pdt_start, pdt_end;
+	struct rmi4_fn_desc rmi_fd, f34_fd, f01_fd;
+	struct i2c_client *client = pdata->i2c_client;
+
+	for (page = 0; page <= RMI4_MAX_PAGE; page++) {
+		page_start = page * RMI4_PAGE_SIZE;
+		pdt_start = page_start + PDT_START_SCAN_LOCATION;
+		pdt_end = page_start + PDT_END_SCAN_LOCATION;
+		for (i = pdt_start; i >= pdt_end; i -= PDT_ENTRY_SIZE) {
+			retval = rmi4_i2c_block_read(pdata, i,
+						(u8 *)&rmi_fd,
+						sizeof(rmi_fd));
+			if (retval < 0) {
+				dev_err(&client->dev, "%s: read 0x%x failed\n",
+								__func__, i);
+				return retval;
+			}
+			if (RMI4_END_OF_PDT(rmi_fd.fn_number))
+				break;
+
+			if (rmi_fd.fn_number == RMI4_DEV_CTL_FUNC_NUM) {
+				u16 addr = page_start + rmi_fd.cmd_base_addr;
+				u8 cmd = RMI4_DEVICE_RESET_CMD;
+				retval = rmi4_i2c_byte_write(pdata, addr, cmd);
+				if (retval < 0) {
+					dev_err(&client->dev,
+							"reset cmd failed.\n");
+					return retval;
+				}
+				msleep(RMI4_RESET_DELAY);
+				memcpy(&f01_fd, &rmi_fd, sizeof(rmi_fd));
+				has_f01 = true;
+			} else if (rmi_fd.fn_number == RMI4_FLASH_FW_FUNC_NUM) {
+				memcpy(&f34_fd, &rmi_fd, sizeof(rmi_fd));
+				has_f34 = true;
+			}
+		}
+		if (has_f01 && has_f34)
+			break;
+	}
+
+	if (!has_f01 || !has_f34) {
+		dev_err(&client->dev,
+			"%s: Failed to find F01/F34 for init reset.\n",
+			__func__);
+		return -ENODEV;
+	}
+	rmi4_fw_update(pdata, &f01_fd, &f34_fd);
+	return 0;
+}
+
 /**
  * rmi4_i2c_query_device() - query the rmi4 device
  * @pdata: pointer to rmi4_data structure
@@ -839,7 +884,7 @@ static int rmi4_i2c_query_device(struct rmi4_data *pdata)
 	int i, retval;
 	int page, page_start, pdt_start, pdt_end;
 	int data_sources = 0;
-	unsigned char std_queries[STD_QUERY_LEN];
+	u8 std_queries[STD_QUERY_LEN];
 	unsigned char intr_count = 0;
 	unsigned int ctrl_offset;
 	struct rmi4_fn_desc rmi_fd;
@@ -863,14 +908,14 @@ static int rmi4_i2c_query_device(struct rmi4_data *pdata)
 		pdt_end = page_start + PDT_END_SCAN_LOCATION;
 		for (i = pdt_start; i >= pdt_end; i -= PDT_ENTRY_SIZE) {
 			retval = rmi4_i2c_block_read(pdata, i,
-						(unsigned char *)&rmi_fd,
+						(u8 *)&rmi_fd,
 						sizeof(rmi_fd));
 			if (retval < 0) {
 				dev_err(&client->dev, "%s: read 0x%x failed",
 								__func__, i);
 				goto failed;
 			}
-			if (RMI4_PAGE_END_FUNC_ID(rmi_fd.fn_number))
+			if (RMI4_END_OF_PDT(rmi_fd.fn_number))
 				break;
 
 			retval = rmi4_process_func(pdata, &rmi_fd,
@@ -1021,6 +1066,226 @@ err_out:
 	return ret;
 }
 
+#ifdef DEBUG
+/* sysfs entries for debug */
+static ssize_t attr_ctrl_reg_set(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t size)
+{
+	unsigned long val;
+	struct rmi4_fn *rfi;
+	struct list_head *fn_list;
+	struct rmi4_data *rmi4_data = dev_get_drvdata(dev);
+
+	if (kstrtoul(buf, 10, &val))
+		return -EINVAL;
+	fn_list = &(rmi4_data->rmi4_mod_info.support_fn_list);
+	list_for_each_entry(rfi, fn_list, link) {
+		if (rfi->ops->fn_number == rmi4_data->dbg_fn_num) {
+			rmi4_i2c_byte_write(rmi4_data,
+				rfi->ctrl_base_addr + rmi4_data->dbg_reg_addr,
+				(u8)val);
+			return size;
+		}
+	}
+	return -EINVAL;
+}
+
+static ssize_t attr_ctrl_reg_get(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	u8 val;
+	struct rmi4_fn *rfi;
+	struct list_head *fn_list;
+	struct rmi4_data *rmi4_data = dev_get_drvdata(dev);
+
+	fn_list = &(rmi4_data->rmi4_mod_info.support_fn_list);
+	list_for_each_entry(rfi, fn_list, link) {
+		if (rfi->ops->fn_number == rmi4_data->dbg_fn_num) {
+			rmi4_i2c_byte_read(rmi4_data,
+				rfi->ctrl_base_addr + rmi4_data->dbg_reg_addr,
+				&val);
+			return sprintf(buf, "%d(0x%x)\n", val, val);
+		}
+	}
+	return -EINVAL;
+}
+static DEVICE_ATTR(ctrl_reg, S_IRUGO | S_IWUSR,
+		attr_ctrl_reg_get, attr_ctrl_reg_set);
+
+static ssize_t attr_query_reg_set(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t size)
+{
+	unsigned long val;
+	struct rmi4_fn *rfi;
+	struct list_head *fn_list;
+	struct rmi4_data *rmi4_data = dev_get_drvdata(dev);
+
+	if (kstrtoul(buf, 10, &val))
+		return -EINVAL;
+	fn_list = &(rmi4_data->rmi4_mod_info.support_fn_list);
+	list_for_each_entry(rfi, fn_list, link) {
+		if (rfi->ops->fn_number == rmi4_data->dbg_fn_num) {
+			rmi4_i2c_byte_write(rmi4_data,
+				rfi->query_base_addr + rmi4_data->dbg_reg_addr,
+				(u8)val);
+			return size;
+		}
+	}
+	return -EINVAL;
+}
+
+static ssize_t attr_query_reg_get(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	u8 val;
+	struct rmi4_fn *rfi;
+	struct list_head *fn_list;
+	struct rmi4_data *rmi4_data = dev_get_drvdata(dev);
+
+	fn_list = &(rmi4_data->rmi4_mod_info.support_fn_list);
+	list_for_each_entry(rfi, fn_list, link) {
+		if (rfi->ops->fn_number == rmi4_data->dbg_fn_num) {
+			rmi4_i2c_byte_read(rmi4_data,
+				rfi->query_base_addr + rmi4_data->dbg_reg_addr,
+				&val);
+			return sprintf(buf, "%d(0x%x)\n", val, val);
+		}
+	}
+	return -EINVAL;
+}
+static DEVICE_ATTR(query_reg, S_IRUGO | S_IWUSR,
+		attr_query_reg_get, attr_query_reg_set);
+
+static ssize_t attr_data_reg_set(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t size)
+{
+	unsigned long val;
+	struct rmi4_fn *rfi;
+	struct list_head *fn_list;
+	struct rmi4_data *rmi4_data = dev_get_drvdata(dev);
+
+	if (kstrtoul(buf, 10, &val))
+		return -EINVAL;
+	fn_list = &(rmi4_data->rmi4_mod_info.support_fn_list);
+	list_for_each_entry(rfi, fn_list, link) {
+		if (rfi->ops->fn_number == rmi4_data->dbg_fn_num) {
+			rmi4_i2c_byte_write(rmi4_data,
+				rfi->data_base_addr + rmi4_data->dbg_reg_addr,
+				(u8)val);
+			return size;
+		}
+	}
+	return -EINVAL;
+}
+
+static ssize_t attr_data_reg_get(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	u8 val;
+	struct rmi4_fn *rfi;
+	struct list_head *fn_list;
+	struct rmi4_data *rmi4_data = dev_get_drvdata(dev);
+
+	fn_list = &(rmi4_data->rmi4_mod_info.support_fn_list);
+	list_for_each_entry(rfi, fn_list, link) {
+		if (rfi->ops->fn_number == rmi4_data->dbg_fn_num) {
+			rmi4_i2c_byte_read(rmi4_data,
+				rfi->data_base_addr + rmi4_data->dbg_reg_addr,
+				&val);
+			return sprintf(buf, "%d(0x%x)\n", val, val);
+		}
+	}
+	return -EINVAL;
+}
+static DEVICE_ATTR(data_reg, S_IRUGO | S_IWUSR,
+		attr_data_reg_get, attr_data_reg_set);
+
+static ssize_t attr_reg_addr_set(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t size)
+{
+	unsigned long val;
+	struct rmi4_data *rmi4_data = dev_get_drvdata(dev);
+
+	if (kstrtoul(buf, 10, &val))
+		return -EINVAL;
+	rmi4_data->dbg_reg_addr = val;
+
+	return size;
+}
+
+static ssize_t attr_reg_addr_get(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	struct rmi4_data *rmi4_data = dev_get_drvdata(dev);
+
+	return sprintf(buf, "%d(0x%x)\n",
+			rmi4_data->dbg_reg_addr, rmi4_data->dbg_reg_addr);
+}
+static DEVICE_ATTR(reg_addr, S_IRUGO | S_IWUSR,
+			attr_reg_addr_get, attr_reg_addr_set);
+
+static ssize_t attr_fn_num_set(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t size)
+{
+	unsigned long val;
+	struct rmi4_data *rmi4_data = dev_get_drvdata(dev);
+
+	if (kstrtoul(buf, 16, &val))
+		return -EINVAL;
+	rmi4_data->dbg_fn_num = val;
+
+	return size;
+}
+
+static ssize_t attr_fn_num_get(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	struct rmi4_data *rmi4_data = dev_get_drvdata(dev);
+
+	return sprintf(buf, "0x%x\n", rmi4_data->dbg_fn_num);
+}
+static DEVICE_ATTR(fn_num, S_IRUGO | S_IWUSR,
+		attr_fn_num_get, attr_fn_num_set);
+
+static ssize_t attr_reg_set(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t size)
+{
+	unsigned long val;
+	struct rmi4_data *rmi4_data = dev_get_drvdata(dev);
+
+	if (kstrtoul(buf, 10, &val))
+		return -EINVAL;
+	rmi4_i2c_byte_write(rmi4_data, rmi4_data->dbg_reg_addr, (u8)val);
+	return size;
+}
+
+static ssize_t attr_reg_get(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	u8 val;
+	struct rmi4_data *rmi4_data = dev_get_drvdata(dev);
+
+	rmi4_i2c_byte_read(rmi4_data, rmi4_data->dbg_reg_addr, &val);
+	return sprintf(buf, "%d(0x%x)\n", val, val);
+}
+static DEVICE_ATTR(reg, S_IRUGO | S_IWUSR, attr_reg_get, attr_reg_set);
+
+static struct attribute *rmi4_attrs[] = {
+	&dev_attr_ctrl_reg.attr,
+	&dev_attr_query_reg.attr,
+	&dev_attr_data_reg.attr,
+	&dev_attr_reg_addr.attr,
+	&dev_attr_fn_num.attr,
+	&dev_attr_reg.attr,
+	NULL
+};
+
+static struct attribute_group rmi4_attr_dbg = {
+	.name = "rmi4",
+	.attrs = rmi4_attrs
+};
+#endif
+
 /**
  * rmi4_probe() - Initialze the i2c-client touchscreen driver
  * @client: i2c client structure pointer
@@ -1036,7 +1301,7 @@ static int __devinit rmi4_probe(struct i2c_client *client,
 					const struct i2c_device_id *dev_id)
 {
 	int retval;
-	unsigned char intr_status[4];
+	u8 intr_status[4];
 	struct rmi4_data *rmi4_data;
 	const struct rmi4_platform_data *platformdata =
 						client->dev.platform_data;
@@ -1096,6 +1361,9 @@ static int __devinit rmi4_probe(struct i2c_client *client,
 		goto err_config_gpio;
 	}
 
+	retval = do_init_reset(rmi4_data);
+	if (retval)
+		dev_warn(&client->dev, "Init reset failed! Soldiering on!\n");
 	/*
 	 * Register physical driver - this will call the detect function that
 	 * will then scan the device and determine the supported
@@ -1157,6 +1425,14 @@ static int __devinit rmi4_probe(struct i2c_client *client,
 		goto err_reg_input;
 	}
 
+#ifdef DEBUG
+	retval = sysfs_create_group(&client->dev.kobj, &rmi4_attr_dbg);
+	if (retval < 0) {
+		dev_err(&client->dev, "rmi4 sysfs register failed\n");
+		goto err_reg_input;
+	}
+#endif
+
 #ifdef CONFIG_HAS_EARLYSUSPEND
 	rmi4_data->es.level = EARLY_SUSPEND_LEVEL_BLANK_SCREEN + 1;
 	rmi4_data->es.suspend = rmi4_early_suspend;
@@ -1199,6 +1475,11 @@ static int __devexit rmi4_remove(struct i2c_client *client)
 	const struct rmi4_platform_data *pdata = rmi4_data->board;
 
 	free_irq(rmi4_data->irq, rmi4_data);
+	gpio_free(pdata->int_gpio_number);
+	gpio_free(pdata->rst_gpio_number);
+#ifdef DEBUG
+	sysfs_remove_group(&client->dev.kobj, &rmi4_attr_dbg);
+#endif
 	input_unregister_device(rmi4_data->input_dev);
 #ifdef CONFIG_HAS_EARLYSUSPEND
 	unregister_early_suspend(&rmi4_data->es);
@@ -1236,7 +1517,7 @@ void rmi4_late_resume(struct early_suspend *h)
 	int retval;
 	struct rmi4_data *pdata  = container_of(h, struct rmi4_data, es);
 	struct i2c_client *client = pdata->i2c_client;
-	unsigned char intr_status[4];
+	u8 intr_status[4];
 
 	dev_dbg(&client->dev, "%s: late resume", __func__);
 	if (pdata->regulator) {

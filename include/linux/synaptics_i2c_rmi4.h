@@ -49,6 +49,7 @@ struct rmi4_platform_data {
 	bool swap_axes;
 	bool regulator_en;
 	char *regulator_name;
+	char *fw_name;
 };
 
 #endif

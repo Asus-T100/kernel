@@ -80,6 +80,7 @@ void *s3202_platform_data(void *info)
 		.swap_axes = true,
 		.regulator_en = true,
 		.regulator_name = "vemmc2",
+		.fw_name = "s3202_fw.img",
 	};
 
 	s3202_platform_data.int_gpio_number = get_gpio_by_name("ts_int");
