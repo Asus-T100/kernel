@@ -156,20 +156,21 @@ EXPORT_SYMBOL_GPL(intel_scu_ipc_set_osc_clk0);
 #define MSIC_VPROG2_CTRL        0xD7
 #endif
 
-#define MSIC_VPROG_ON           0xFF
-#define MSIC_VPROG_OFF          0
+#define MSIC_VPROG2_ON          0x36 /*1.200V and Auto mode*/
+#define MSIC_VPROG1_ON          0xF6 /*2.800V and Auto mode*/
+#define MSIC_VPROG_OFF          0x24 /*1.200V and OFF*/
 
 int intel_scu_ipc_msic_vprog1(int on)
 {
 	return intel_scu_ipc_iowrite8(MSIC_VPROG1_CTRL,
-			on ? MSIC_VPROG_ON : MSIC_VPROG_OFF);
+			on ? MSIC_VPROG1_ON : MSIC_VPROG_OFF);
 }
 EXPORT_SYMBOL_GPL(intel_scu_ipc_msic_vprog1);
 
 int intel_scu_ipc_msic_vprog2(int on)
 {
 	return intel_scu_ipc_iowrite8(MSIC_VPROG2_CTRL,
-			on ? MSIC_VPROG_ON : MSIC_VPROG_OFF);
+			on ? MSIC_VPROG2_ON : MSIC_VPROG_OFF);
 }
 EXPORT_SYMBOL_GPL(intel_scu_ipc_msic_vprog2);
 
