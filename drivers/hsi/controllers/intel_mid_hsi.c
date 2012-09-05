@@ -1723,11 +1723,6 @@ static void do_hsi_start_dma(struct hsi_msg *msg, int lch,
 	}
 
 	dma_xfer = dma_ctx->ongoing;
-	if (unlikely(dma_xfer->msg != msg)) {
-		WARN(1, "dma_ctx->ongoing->msg is already freed!\n");
-		goto do_start_dma_done;
-	}
-
 	if (resuming)
 		nothing_to_do = ((intel_hsi->dma_resumed & mask) ||
 				 (msg->status != HSI_STATUS_PROCEEDING));
