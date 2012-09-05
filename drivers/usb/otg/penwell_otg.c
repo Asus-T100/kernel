@@ -3087,6 +3087,12 @@ static void penwell_otg_work(struct work_struct *work)
 			iotg->otg.default_a = 1;
 			hsm->a_srp_det = 0;
 
+			cancel_delayed_work_sync(&pnw->ulpi_poll_work);
+
+			/* Notify EM charger remove event */
+			penwell_otg_update_chrg_cap(CHRG_UNKNOWN,
+						CHRG_CURR_DISCONN);
+
 			if (iotg->stop_peripheral)
 				iotg->stop_peripheral(iotg);
 			else
