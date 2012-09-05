@@ -4,9 +4,10 @@
  * Implements the Intel HSI driver.
  *
  * Copyright (C) 2010 Nokia Corporation. All rights reserved.
- * Copyright (C) 2010, 2011 Intel Corporation.
+ * Copyright (C) 2012 Intel Corporation. All rights reserved.
  *
  * Contact: Olivier Stoltz-Douchet <olivierx.stoltz-douchet@intel.com>
+ *          Faouaz Tenoutit <faouaz.tenoutit@intel.com>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -29,9 +30,6 @@
 
 /* Set the following if wanting to schedule a later suspend on idle state */
 #define SCHEDULE_LATER_SUSPEND_ON_IDLE
-
-/* Set the following to allow software workaround of the DMA link listing */
-#define USE_SOFWARE_WORKAROUND_FOR_DMA_LLI
 
 #include <linux/err.h>
 #include <linux/io.h>
@@ -58,12 +56,17 @@
 #include "hsi_arasan.h"
 #include "hsi_dwahb_dma.h"
 
+#define DRVNAME "hsi-ctrl"
+
 #define HSI_MPU_IRQ_NAME	"HSI_CONTROLLER_IRQ"
+
 #define HSI_PNW_PCI_DEVICE_ID	0x833   /* PCI id for Penwell HSI */
-#define HSI_PNW_MASTER_DMA_ID	0x834	/* PCI id for Penwell DWAHB dma */
+#define HSI_PNW_MASTER_DMA_ID	0x834   /* PCI id for Penwell DWAHB dma */
 
 #define HSI_CLV_PCI_DEVICE_ID	0x902   /* PCI id for Cloverview HSI */
-#define HSI_CLV_MASTER_DMA_ID	0x903	/* PCI id for Cloverview DWAHB dma */
+#define HSI_CLV_MASTER_DMA_ID	0x903   /* PCI id for Cloverview DWAHB dma */
+
+#define HSI_TNG_PCI_DEVICE_ID	0x1197  /* PCI id for Tangier HSI */
 
 #define HSI_RESETDONE_TIMEOUT	10	/* 10 ms */
 #define HSI_RESETDONE_RETRIES	20	/* => max 200 ms waiting for reset */
@@ -95,6 +98,10 @@
 #define NUM_RX_FIFO_DWORDS(x)		((3 * x) / 4)
 #endif
 
+/* Set the following to dump all register accesses */
+/* #define DUMP_REGISTER_ACCESSES */
+
+
 /* This maps each channel to a single bit in DMA and HSI channels busy fields */
 #define DMA_BUSY(ch)		(1<<(ch))
 #define QUEUE_BUSY(ch)		(1<<(ch))
@@ -103,11 +110,6 @@
 enum {
 	TX_SLEEPING,
 	TX_READY
-};
-
-enum {
-	HSI_PM_ASYNC,
-	HSI_PM_SYNC
 };
 
 enum {
@@ -152,6 +154,10 @@ enum {
 	 DWAHB_DST_LINK_LIST(lli_enb) | \
 	 DWAHB_SRC_LINK_LIST(lli_enb))
 
+/* Maximum burst size of the HSI IP version 2 is 32 words,
+ * but it is limited to 16 word by Tangier fabric */
+#define HSI_DMA_MAX_BURST_SZ_V2		0x33333333
+
 /**
  * struct intel_dma_lli - DMA link list structure
  * @sar: DMA source address
@@ -169,15 +175,27 @@ struct intel_dma_lli {
 };
 
 /**
+ * struct intel_dma_lld - DMA link list descriptor structure
+ * @ctrl: DMA link list descriptor control field
+ * @size: DMA link list descriptor size field
+ * @llp: next DMA link list descriptor pointer
+ * @data: pointer to the DMA link list data buffer
+ */
+struct intel_dma_lld {
+	u32			 ctrl;
+	u32			 size;
+	u32			 llp;
+	u32			 data;
+};
+
+/**
  * struct intel_dma_lli_xfer - DMA transfer configuration using link listing
  * @blk: reference to the block being transferred
  * @llp_addr: DMA address of the first link list entry
  * @lli: array of DMA link list entries
  */
 struct intel_dma_lli_xfer {
-#ifdef USE_SOFWARE_WORKAROUND_FOR_DMA_LLI
 	struct scatterlist	*blk;
-#endif
 	dma_addr_t		 llp_addr;
 	struct intel_dma_lli	 lli[0];
 };
@@ -195,20 +213,42 @@ struct intel_dma_plain_xfer {
 };
 
 /**
- * struct intel_dma_xfer - Internal DMA transfer context
- * @msg: reference of the message being transferred
+ * struct intel_dma_xfer_v1 - Internal DMA transfer context for IP version 1
  * @mst_enable: master DMA enabling register
  * @slv_enable: slave DMA enabling register
- * @with_link_listing: DMA transfer with link listing context
- * @without_link_listing: DMA transfer without link listing context
+ * @with_link_list: DMA transfer with link listing context
+ * @without_link_list: DMA transfer without link listing context
  */
-struct intel_dma_xfer {
-	struct hsi_msg				*msg;
-	u32					 mst_enable;
-	u32					 slv_enable;
+struct intel_dma_xfer_v1 {
+	u32 mst_enable;
+	u32 slv_enable;
 	union {
 		struct intel_dma_lli_xfer	 with_link_list;
 		struct intel_dma_plain_xfer	 without_link_list;
+	};
+};
+
+/**
+ * struct intel_dma_xfer_v2 - Internal DMA transfer context for IP version 2
+ * @llp_addr: DMA address of the first link list entry
+ * @lld: array of DMA link list descriptors
+ */
+struct intel_dma_xfer_v2 {
+	dma_addr_t llp_addr;
+	struct intel_dma_lld lld[0];
+};
+
+/**
+ * struct intel_dma_xfer - Internal DMA transfer context (IP version 1 or 2)
+ * @msg: reference of the message being transferred
+ * @v1: for use with version 1 IP
+ * @v2: for use with version 2 IP
+ */
+struct intel_dma_xfer {
+	struct hsi_msg *msg;
+	union {
+		struct intel_dma_xfer_v1 v1;
+		struct intel_dma_xfer_v2 v2;
 	};
 };
 
@@ -276,19 +316,24 @@ struct intel_xfer_ctx {
  * @tx_state: current state of the TX side (0 for idle, >0 for ACWAKE)
  * @rx_state: current state of the RX state (0 for idle, 1 for ACWAKE)
  * @suspend_state: current power state (0 for powered, >0 for suspended)
+ * @version: version of the HSI controller IP
  * @irq_status: current interrupt status register
  * @err_status: current error interrupt status register
+ * @dma_status: current DMA interrupt status register
  * @irq_cfg: current interrupt configuration register
  * @err_cfg: current error interrupt configuration register
  * @clk_cfg: current clock configuration register
  * @prg_cfg: current program configuration register
  * @tx_fifo_config_cfg: current TX FIFO control configuration register
  * @rx_fifo_config_cfg: current RX FIFO control configuration register
+ * @tx_fifo_sz: channel-indexed array of TX FIFO sizes expressed in HSI frames
+ * @tx_fifo_th: channel-indexed array of TX FIFO thresholds in HSI frames
+ * @rx_fifo_sz: channel-indexed array of TX FIFO sizes expressed in HSI frames
+ * @rx_fifo_th: channel-indexed array of TX FIFO thresholds in HSI frames
  * @arb_cfg: current arbiter priority configuration register
  * @sz_cfg: current program1 configuration register
  * @ip_freq: HSI controller IP frequency in kHz
  * @brk_us_delay: Minimal BREAK sequence delay in us
- * @ip_resumed: event signalling that the IP has actually been resumed
  * @stay_awake: Android wake lock for preventing entering low power mode
  * @dir: debugfs HSI root directory
  */
@@ -322,15 +367,18 @@ struct intel_controller {
 	s8			 tx_dma_chan[HSI_MID_MAX_CHANNELS];
 	s8			 rx_dma_chan[HSI_MID_MAX_CHANNELS];
 	struct intel_dma_ctx	*dma_ctx[DWAHB_CHAN_CNT];
-	u32			 dma_running;
-	u32			 dma_resumed;
+	u16			 dma_running;
+	u16			 dma_resumed;
 	/* Current RX and TX states (0 for idle) */
 	int			 tx_state;
 	int			 rx_state;
 	int			 suspend_state;
+	/* HSI controller version */
+	int			 version;
 	/* HSI controller register images */
 	u32			 irq_status;
 	u32			 err_status;
+	u32			 dma_status;
 	/* HSI controller setup */
 	u32			 irq_cfg;
 	u32			 err_cfg;
@@ -338,12 +386,15 @@ struct intel_controller {
 	u32			 prg_cfg;
 	u32			 tx_fifo_cfg;
 	u32			 rx_fifo_cfg;
+	u16			 tx_fifo_sz[HSI_MID_MAX_CHANNELS];
+	u16			 tx_fifo_th[HSI_MID_MAX_CHANNELS];
+	u16			 rx_fifo_sz[HSI_MID_MAX_CHANNELS];
+	u16			 rx_fifo_th[HSI_MID_MAX_CHANNELS];
 	u32			 arb_cfg;
 	u32			 sz_cfg;
 	/* HSI controller IP frequency */
 	unsigned int		 ip_freq;
 	unsigned int		 brk_us_delay;
-	wait_queue_head_t	 ip_resumed;
 #ifdef CONFIG_HAS_WAKELOCK
 	/* Android PM support */
 	struct wake_lock	 stay_awake;
@@ -372,6 +423,30 @@ module_param(hsi_pm, uint, 0644);
 /*
  * Helper functions
  */
+
+#ifdef DUMP_REGISTER_ACCESSES
+static void diowrite32(u32 val, void __iomem *addr)
+{
+	unsigned int offset = ((unsigned int) addr) & 0x3FF;
+
+	printk(KERN_ERR "HSI[%03x] < %08x", offset, val);
+	iowrite32(val, addr);
+}
+
+static unsigned int dioread32(void __iomem *addr)
+{
+	unsigned int val, offset = ((unsigned int) addr) & 0x3FF;
+
+	val = ioread32(addr);
+	printk(KERN_ERR "HSI[%03x] > %08x", offset, val);
+
+	return val;
+}
+
+#else
+#define diowrite32(v, a) iowrite32(v, a)
+#define dioread32(a)     ioread32(a)
+#endif
 
 /**
  * is_using_link_list - checks if the DMA context is using link listing
@@ -446,85 +521,78 @@ static inline unsigned int rx_fifo_depth(struct intel_controller *intel_hsi,
 /**
  * hsi_enable_interrupt - enabling and signalling interrupts
  * @ctrl: the IO-based address of the HSI hardware
+ * @version: the version of the Arasan IP
  * @irq_enable: the bitfield of interrupt sources to enable
  */
-static inline void hsi_enable_interrupt(void __iomem *ctrl, u32 irq_enable)
+static inline void hsi_enable_interrupt(void __iomem *ctrl, int version,
+					u32 irq_enable)
 {
-	iowrite32(irq_enable, ARASAN_HSI_INTERRUPT_STATUS_ENABLE(ctrl));
-	iowrite32(irq_enable, ARASAN_HSI_INTERRUPT_SIGNAL_ENABLE(ctrl));
+	iowrite32(irq_enable, ARASAN_REG(INT_STATUS_ENABLE));
+	iowrite32(irq_enable, ARASAN_REG(INT_SIGNAL_ENABLE));
 }
 
 /**
  * hsi_enable_error_interrupt - enabling and signalling error interrupts
  * @ctrl: the IO-based address of the HSI hardware
+ * @version: the version of the Arasan IP
  * @irq_enable: the bitfield of error interrupt sources to enable
  */
-static inline void hsi_enable_error_interrupt(void __iomem *ctrl,
+static inline void hsi_enable_error_interrupt(void __iomem *ctrl, int version,
 					      u32 irq_enable)
 {
-	iowrite32(irq_enable, ARASAN_HSI_ERROR_INTERRUPT_STATUS_ENABLE(ctrl));
-	iowrite32(irq_enable, ARASAN_HSI_ERROR_INTERRUPT_SIGNAL_ENABLE(ctrl));
+	iowrite32(irq_enable, ARASAN_REG(ERR_INT_STATUS_ENABLE));
+	iowrite32(irq_enable, ARASAN_REG(ERR_INT_SIGNAL_ENABLE));
 }
 
 /**
- * hsi_is_resumed - checks if the HSI controller IP has been resumed or not
+ * hsi_pm_wake_lock - acquire the wake lock whenever necessary
  * @intel_hsi: Intel HSI controller reference
- *
- * This helper function is returning a non-zero value if the HSI IP has been
- * resumed or 0 if still suspended.
  */
-static __must_check int hsi_is_resumed(struct intel_controller *intel_hsi)
+static inline void hsi_pm_wake_lock(struct intel_controller *intel_hsi)
 	__acquires(&intel_hsi->hw_lock) __releases(&intel_hsi->hw_lock)
 {
-	unsigned long flags;
-	int ip_resumed;
-
-	spin_lock_irqsave(&intel_hsi->hw_lock, flags);
-	ip_resumed = (intel_hsi->suspend_state == DEVICE_READY);
-	spin_unlock_irqrestore(&intel_hsi->hw_lock, flags);
-
-	return ip_resumed;
-}
-
-/**
- * hsi_pm_runtime_get - getting a PM runtime reference to the HSI controller
- * @intel_hsi: Intel HSI controller reference
- * @mode: mode of the runtime PM reference get
- *
- * This function is also getting the wake lock should wake lock is used.
- */
-static void hsi_pm_runtime_get(struct intel_controller *intel_hsi, int mode)
-{
 #ifdef CONFIG_HAS_WAKELOCK
 	unsigned long flags;
-#endif
 
-	might_sleep_if(mode == HSI_PM_SYNC);
-
-#ifdef CONFIG_HAS_WAKELOCK
 	spin_lock_irqsave(&intel_hsi->hw_lock, flags);
 	if (intel_hsi->suspend_state != DEVICE_READY)
 		wake_lock(&intel_hsi->stay_awake);
 	spin_unlock_irqrestore(&intel_hsi->hw_lock, flags);
 #endif
+}
 
-	if (mode == HSI_PM_ASYNC) {
-		pm_runtime_get(intel_hsi->pdev);
-	} else {
-		pm_runtime_get_sync(intel_hsi->pdev);
-		wait_event_interruptible(intel_hsi->ip_resumed,
-					 hsi_is_resumed(intel_hsi));
-	}
+/**
+ * hsi_pm_runtime_get - getting a PM runtime reference to the HSI controller
+ * @intel_hsi: Intel HSI controller reference
+ *
+ * This function is also getting the wake lock should wake lock is used.
+ */
+static void hsi_pm_runtime_get(struct intel_controller *intel_hsi)
+{
+	hsi_pm_wake_lock(intel_hsi);
+	pm_runtime_get(intel_hsi->pdev);
+}
+
+/**
+ * hsi_pm_runtime_get_sync - getting a synchronised PM runtime reference to the
+ *			     HSI controller
+ * @intel_hsi: Intel HSI controller reference
+ *
+ * This function is also getting the wake lock should wake lock is used.
+ */
+static void hsi_pm_runtime_get_sync(struct intel_controller *intel_hsi)
+{
+	hsi_pm_wake_lock(intel_hsi);
+	pm_runtime_get_sync(intel_hsi->pdev);
 }
 
 /**
  * assert_acwake - asserting the ACWAKE line status
  * @intel_hsi: Intel HSI controller reference
- * @mode: mode of the ACWAKE assertion
  *
  * The actual ACWAKE assertion happens when tx_state was 0.
  */
-static void assert_acwake(struct intel_controller *intel_hsi, int mode)
+static void assert_acwake(struct intel_controller *intel_hsi)
 	__acquires(&intel_hsi->hw_lock) __releases(&intel_hsi->hw_lock)
 {
 	unsigned long flags;
@@ -532,6 +600,7 @@ static void assert_acwake(struct intel_controller *intel_hsi, int mode)
 
 	spin_lock_irqsave(&intel_hsi->hw_lock, flags);
 	if (hsi_pm) {
+		int version = intel_hsi->version;
 		void __iomem *ctrl = intel_hsi->ctrl_io;
 
 		do_wakeup = (intel_hsi->tx_state == TX_SLEEPING);
@@ -539,14 +608,14 @@ static void assert_acwake(struct intel_controller *intel_hsi, int mode)
 			intel_hsi->prg_cfg |= ARASAN_TX_ENABLE;
 			if (intel_hsi->suspend_state == DEVICE_READY)
 				iowrite32(intel_hsi->prg_cfg,
-						ARASAN_HSI_PROGRAM(ctrl));
+						ARASAN_REG(PROGRAM));
 		}
 	}
 	intel_hsi->tx_state++;
 	spin_unlock_irqrestore(&intel_hsi->hw_lock, flags);
 
 	if (do_wakeup)
-		hsi_pm_runtime_get(intel_hsi, mode);
+		hsi_pm_runtime_get(intel_hsi);
 }
 
 /**
@@ -595,36 +664,35 @@ static void tx_idle_poll(unsigned long param)
 	__acquires(&intel_hsi->hw_lock) __releases(&intel_hsi->hw_lock)
 {
 	struct intel_controller *intel_hsi = (struct intel_controller *) param;
+	void __iomem *ctrl = intel_hsi->ctrl_io;
+	int version = intel_hsi->version;
 	unsigned long flags;
 	int do_sleep = 0;
 
+	if (!hsi_pm)
+		return;
+
 	spin_lock_irqsave(&intel_hsi->hw_lock, flags);
-
-	if (hsi_pm) {
-		void __iomem *ctrl = intel_hsi->ctrl_io;
-
-		if (intel_hsi->tx_state != TX_SLEEPING) {
-			/* This timer has been called when tx_state == 0,
-			 * if no longer to 0, then the pm_runtime_put has
-			 * still to be taken */
-			do_sleep = 1;
-			goto tx_poll_out;
-		}
-
-		/* Prevent TX sleep and ACWAKE de-assertion until not empty */
-		do_sleep = ((ioread32(ARASAN_HSI_HSI_STATUS(ctrl))
-			& ARASAN_ALL_TX_EMPTY) == ARASAN_ALL_TX_EMPTY);
-
-		if (do_sleep) {
-			intel_hsi->prg_cfg &= ~ARASAN_TX_ENABLE;
-			if (likely(intel_hsi->suspend_state == DEVICE_READY))
-				iowrite32(intel_hsi->prg_cfg,
-						ARASAN_HSI_PROGRAM(ctrl));
-		} else {
-			mod_timer(&intel_hsi->tx_idle_poll,
-					jiffies + IDLE_POLL_JIFFIES);
-		}
+	if (intel_hsi->tx_state != TX_SLEEPING) {
+		/* This timer has been called when tx_state == 0, if no longer
+		 * to 0, then the pm_runtime_put has still to be taken */
+		do_sleep = 1;
+		goto tx_poll_out;
 	}
+
+	/* Prevent TX sleep and ACWAKE de-assertion until not empty */
+	do_sleep = ((ioread32(ARASAN_REG(HSI_STATUS)) & ARASAN_ALL_TX_EMPTY) ==
+				ARASAN_ALL_TX_EMPTY);
+
+	if (do_sleep) {
+		intel_hsi->prg_cfg &= ~ARASAN_TX_ENABLE;
+		if (likely(intel_hsi->suspend_state == DEVICE_READY))
+			iowrite32(intel_hsi->prg_cfg, ARASAN_REG(PROGRAM));
+	} else {
+		mod_timer(&intel_hsi->tx_idle_poll,
+				jiffies + IDLE_POLL_JIFFIES);
+	}
+
 tx_poll_out:
 	spin_unlock_irqrestore(&intel_hsi->hw_lock, flags);
 
@@ -644,6 +712,7 @@ static void rx_idle_poll(unsigned long param)
 {
 	struct intel_controller *intel_hsi = (struct intel_controller *) param;
 	void __iomem *ctrl = intel_hsi->ctrl_io;
+	int version = intel_hsi->version;
 	int schedule_rx_sleep = 0;
 	unsigned long flags;
 
@@ -664,13 +733,13 @@ static void rx_idle_poll(unsigned long param)
 
 	/* Prevent RX side disabling as long as CAWAKE is asserted or any RX
 	 * hardware FIFO is not empty */
-	if (ioread32(ARASAN_HSI_HSI_STATUS(ctrl)) &
-	    (ARASAN_RX_WAKE|ARASAN_ANY_RX_NOT_EMPTY))
+	if (ioread32(ARASAN_REG(HSI_STATUS)) &
+	    (ARASAN_RX_WAKE|ARASAN_ANY_RX_NOT_EMPTY)) {
 		mod_timer(&intel_hsi->rx_idle_poll,
 			  jiffies + IDLE_POLL_JIFFIES);
-	else {
+	} else {
 		intel_hsi->irq_cfg |= ARASAN_IRQ_RX_WAKE;
-		hsi_enable_interrupt(ctrl, intel_hsi->irq_cfg);
+		hsi_enable_interrupt(ctrl, version, intel_hsi->irq_cfg);
 		intel_hsi->rx_state = RX_CAN_SLEEP;
 		schedule_rx_sleep = 1;
 	}
@@ -690,6 +759,7 @@ static int has_enabled_acready(struct intel_controller *intel_hsi)
 	__acquires(&intel_hsi->hw_lock) __releases(&intel_hsi->hw_lock)
 {
 	void __iomem	*ctrl = intel_hsi->ctrl_io;
+	int version = intel_hsi->version;
 	unsigned long	 flags;
 	int do_wakeup;
 
@@ -699,16 +769,24 @@ static int has_enabled_acready(struct intel_controller *intel_hsi)
 	do_wakeup = (intel_hsi->rx_state == RX_SLEEPING);
 
 	intel_hsi->prg_cfg |= ARASAN_RX_ENABLE;
+	intel_hsi->irq_cfg &= ~ARASAN_IRQ_RX_WAKE;
+	intel_hsi->irq_cfg |= ARASAN_IRQ_RX_SLEEP(version);
+
 	if ((do_wakeup) && (intel_hsi->suspend_state == DEVICE_READY)) {
-		iowrite32(intel_hsi->prg_cfg, ARASAN_HSI_PROGRAM(ctrl));
-		mod_timer(&intel_hsi->rx_idle_poll,
-			  jiffies + IDLE_POLL_JIFFIES);
+		iowrite32(intel_hsi->prg_cfg, ARASAN_REG(PROGRAM));
+		if (is_arasan_v1(version))
+			mod_timer(&intel_hsi->rx_idle_poll,
+					jiffies + IDLE_POLL_JIFFIES);
+		else
+			hsi_enable_interrupt(ctrl, version, intel_hsi->irq_cfg);
 	}
-	intel_hsi->rx_state = RX_READY;
+
+	if (do_wakeup)
+		intel_hsi->rx_state = RX_READY;
 	spin_unlock_irqrestore(&intel_hsi->hw_lock, flags);
 
 	if (do_wakeup)
-		hsi_pm_runtime_get(intel_hsi, HSI_PM_ASYNC);
+		hsi_pm_runtime_get(intel_hsi);
 
 	return do_wakeup;
 }
@@ -727,21 +805,21 @@ static int has_disabled_acready(struct intel_controller *intel_hsi)
 	__acquires(&intel_hsi->hw_lock) __releases(&intel_hsi->hw_lock)
 {
 	void __iomem	*ctrl = intel_hsi->ctrl_io;
-	int		 do_sleep = 0;
-	unsigned long	 flags;
+	int version = intel_hsi->version;
+	int do_sleep = 0;
+	unsigned long flags;
 
 	spin_lock_irqsave(&intel_hsi->hw_lock, flags);
 	if (intel_hsi->rx_state != RX_CAN_SLEEP) {
 		spin_unlock_irqrestore(&intel_hsi->hw_lock, flags);
 		return 0;
 	}
-	do_sleep = !(ioread32(ARASAN_HSI_HSI_STATUS(ctrl)) &
+	do_sleep = !(ioread32(ARASAN_REG(HSI_STATUS)) &
 		     (ARASAN_RX_WAKE|ARASAN_ANY_RX_NOT_EMPTY));
 	if (likely(do_sleep)) {
 #ifndef PREVENT_RX_SLEEP_WHEN_NOT_SUSPENDED
 		intel_hsi->prg_cfg &= ~ARASAN_RX_ENABLE;
-		if (likely(intel_hsi->suspend_state == DEVICE_READY))
-			iowrite32(intel_hsi->prg_cfg, ARASAN_HSI_PROGRAM(ctrl));
+		iowrite32(intel_hsi->prg_cfg, ARASAN_REG(PROGRAM));
 #endif
 		intel_hsi->rx_state = RX_SLEEPING;
 	} else {
@@ -770,8 +848,10 @@ static void force_disable_acready(struct intel_controller *intel_hsi)
 	__acquires(&intel_hsi->hw_lock) __releases(&intel_hsi->hw_lock)
 {
 	void __iomem *ctrl		= intel_hsi->ctrl_io;
+	int version			= intel_hsi->version;
 	struct hsi_controller *hsi	= to_hsi_controller(intel_hsi->dev);
-	int do_sleep			= 0;
+	int do_sleep = 0;
+	u32 irq_clr;
 	unsigned int i;
 	unsigned long flags;
 
@@ -779,8 +859,7 @@ static void force_disable_acready(struct intel_controller *intel_hsi)
 	do_sleep = (intel_hsi->rx_state != RX_SLEEPING);
 	if (do_sleep) {
 		intel_hsi->prg_cfg &= ~ARASAN_RX_ENABLE;
-		if (likely(intel_hsi->suspend_state == DEVICE_READY))
-			iowrite32(intel_hsi->prg_cfg, ARASAN_HSI_PROGRAM(ctrl));
+		iowrite32(intel_hsi->prg_cfg, ARASAN_REG(PROGRAM));
 		intel_hsi->rx_state = RX_SLEEPING;
 	}
 
@@ -788,12 +867,12 @@ static void force_disable_acready(struct intel_controller *intel_hsi)
 	 * The CAWAKE event interrupt shall be re-enabled whenever the
 	 * RX fifo is no longer empty */
 	del_timer(&intel_hsi->rx_idle_poll);
-	intel_hsi->irq_status	&= ~ARASAN_IRQ_RX_WAKE;
-	intel_hsi->irq_cfg	&= ~ARASAN_IRQ_RX_WAKE;
+	irq_clr = ARASAN_IRQ_RX_WAKE | ARASAN_IRQ_RX_SLEEP(version);
+	intel_hsi->irq_status	&= ~irq_clr;
+	intel_hsi->irq_cfg	&= ~irq_clr;
 	if (likely(intel_hsi->suspend_state == DEVICE_READY)) {
-		iowrite32(ARASAN_IRQ_RX_WAKE,
-			  ARASAN_HSI_INTERRUPT_STATUS(ctrl));
-		hsi_enable_interrupt(ctrl, intel_hsi->irq_cfg);
+		hsi_enable_interrupt(ctrl, version, intel_hsi->irq_cfg);
+		iowrite32(irq_clr, ARASAN_REG(INT_STATUS));
 	}
 	spin_unlock_irqrestore(&intel_hsi->hw_lock, flags);
 
@@ -812,6 +891,7 @@ static void unforce_disable_acready(struct intel_controller *intel_hsi)
 	__acquires(&intel_hsi->hw_lock) __releases(&intel_hsi->hw_lock)
 {
 	void __iomem *ctrl		= intel_hsi->ctrl_io;
+	int version			= intel_hsi->version;
 	unsigned long flags;
 
 	spin_lock_irqsave(&intel_hsi->hw_lock, flags);
@@ -819,7 +899,7 @@ static void unforce_disable_acready(struct intel_controller *intel_hsi)
 		     (!(intel_hsi->irq_cfg & ARASAN_IRQ_RX_WAKE)))) {
 		intel_hsi->irq_cfg |= ARASAN_IRQ_RX_WAKE;
 		if (intel_hsi->suspend_state == DEVICE_READY)
-			hsi_enable_interrupt(ctrl, intel_hsi->irq_cfg);
+			hsi_enable_interrupt(ctrl, version, intel_hsi->irq_cfg);
 	}
 	spin_unlock_irqrestore(&intel_hsi->hw_lock, flags);
 }
@@ -912,85 +992,92 @@ static int hsi_ctrl_set_cfg(struct intel_controller *intel_hsi)
 {
 	void __iomem	*ctrl	= intel_hsi->ctrl_io;
 	void __iomem	*dma	= intel_hsi->dma_io;
-	u32		 status;
-	int		 i, dma_chan, lli_enb;
+	int		 version = intel_hsi->version;
+	u32 status, mask;
+	int i, dma_chan, lli_enb;
 
 	/* If the reset bit is set then nothing has been configured yet ! */
 	if (intel_hsi->prg_cfg & ARASAN_RESET)
 		return 0;
 
 	/* Prepare the internal clock without enabling it */
-	iowrite32(0, ARASAN_HSI_PROGRAM(ctrl));
-	iowrite32(0, ARASAN_HSI_DMA_TX_FIFO_SIZE(ctrl));
-	iowrite32(0, ARASAN_HSI_DMA_RX_FIFO_SIZE(ctrl));
+	iowrite32(0, ARASAN_REG(PROGRAM));
 	iowrite32((intel_hsi->clk_cfg & ~ARASAN_CLK_ENABLE),
-		  ARASAN_HSI_CLOCK_CONTROL(ctrl));
+		  ARASAN_REG(CLOCK_CTRL));
 
-	/* Configure fixed DMA registers (master and slave) */
-	for (i = 0; i < DWAHB_CHAN_CNT; i++)
-		iowrite32(0, ARASAN_HSI_DMA_CONFIG(ctrl, i));
+	/* Disable FIFO and configure fixed DMA registers */
+	if (is_arasan_v1(version)) {
+		iowrite32(0, ARASAN_REG_V1(ctrl, TX_FIFO_SIZE));
+		iowrite32(0, ARASAN_REG_V1(ctrl, RX_FIFO_SIZE));
 
-	iowrite32(DWAHB_ENABLE, HSI_DWAHB_DMACFG(dma));
-	for (i = 0; i < HSI_MID_MAX_CHANNELS; i++) {
-		dma_chan = intel_hsi->tx_dma_chan[i];
-		lli_enb = is_using_link_list(&intel_hsi->tx_ctx[i].dma);
-		if (dma_chan >= 0)
-			hsi_set_master_dma_cfg(dma, dma_chan, 1, lli_enb);
-	}
+		for (i = 0; i < DWAHB_CHAN_CNT; i++)
+			iowrite32(0, ARASAN_CHN_REG_V1(SLAVE_DMA_CFG, i));
 
-	for (i = 0; i < HSI_MID_MAX_CHANNELS; i++) {
-		dma_chan = intel_hsi->rx_dma_chan[i];
-		lli_enb = is_using_link_list(&intel_hsi->rx_ctx[i].dma);
-		if (dma_chan >= 0)
-			hsi_set_master_dma_cfg(dma, dma_chan, 0, lli_enb);
+		iowrite32(DWAHB_ENABLE, HSI_DWAHB_DMACFG(dma));
+		for (i = 0; i < HSI_MID_MAX_CHANNELS; i++) {
+			dma_chan = intel_hsi->tx_dma_chan[i];
+			lli_enb = is_using_link_list(&intel_hsi->tx_ctx[i].dma);
+			if (dma_chan >= 0)
+				hsi_set_master_dma_cfg(dma,
+						dma_chan, 1, lli_enb);
+		}
+
+		for (i = 0; i < HSI_MID_MAX_CHANNELS; i++) {
+			dma_chan = intel_hsi->rx_dma_chan[i];
+			lli_enb = is_using_link_list(&intel_hsi->rx_ctx[i].dma);
+			if (dma_chan >= 0)
+				hsi_set_master_dma_cfg(dma,
+						dma_chan, 0, lli_enb);
+		}
 	}
 
 	/* Enable the internal HSI clock */
-	status = ioread32(ARASAN_HSI_CLOCK_CONTROL(ctrl));
+	status = ioread32(ARASAN_REG(CLOCK_CTRL));
 	i = 0;
 	while (!(status & ARASAN_CLK_STABLE)) {
 		i++;
 		if (i > HSI_CLOCK_SETUP_DELAY_WAIT)
 			return -ETIME;
 		udelay(1);
-		status = ioread32(ARASAN_HSI_CLOCK_CONTROL(ctrl));
+		status = ioread32(ARASAN_REG(CLOCK_CTRL));
 	}
-	iowrite32(intel_hsi->clk_cfg, ARASAN_HSI_CLOCK_CONTROL(ctrl));
+	iowrite32(intel_hsi->clk_cfg, ARASAN_REG(CLOCK_CTRL));
 
 	/* Configure the main controller parameters (except wake status) */
 	if (!hsi_pm) {
 		intel_hsi->prg_cfg |= ARASAN_TX_ENABLE;
-		iowrite32(intel_hsi->prg_cfg & ~ARASAN_RX_ENABLE,
-				ARASAN_HSI_PROGRAM(ctrl));
+		mask = intel_hsi->prg_cfg & ~ARASAN_RX_ENABLE;
 	} else {
-		iowrite32(intel_hsi->prg_cfg &
-				~(ARASAN_TX_ENABLE|ARASAN_RX_ENABLE),
-				ARASAN_HSI_PROGRAM(ctrl));
+		mask = intel_hsi->prg_cfg;
+		mask &= ~(ARASAN_TX_ENABLE|ARASAN_RX_ENABLE);
 	}
+	iowrite32(intel_hsi->prg_cfg & mask, ARASAN_REG(PROGRAM));
 
 	/* Configure the number of HSI channels */
-	iowrite32(intel_hsi->sz_cfg, ARASAN_HSI_PROGRAM1(ctrl));
+	iowrite32(intel_hsi->sz_cfg, ARASAN_REG(PROGRAM1));
 
 	/* Configure the arbitration scheme */
-	iowrite32(intel_hsi->arb_cfg, ARASAN_HSI_ARBITER_PRIORITY(ctrl));
+	iowrite32(intel_hsi->arb_cfg, ARASAN_REG(ARBITER_PRIORITY));
 
 	/* Configure the hardware FIFO */
-	iowrite32(intel_hsi->tx_fifo_cfg, ARASAN_HSI_DMA_TX_FIFO_SIZE(ctrl));
-	iowrite32(TX_THRESHOLD, ARASAN_HSI_DMA_TX_FIFO_THRESHOLD(ctrl));
-	iowrite32(intel_hsi->rx_fifo_cfg, ARASAN_HSI_DMA_RX_FIFO_SIZE(ctrl));
-	iowrite32(RX_THRESHOLD, ARASAN_HSI_DMA_RX_FIFO_THRESHOLD(ctrl));
+	if (is_arasan_v1(version)) {
+		iowrite32(intel_hsi->tx_fifo_cfg, ARASAN_REG(TX_FIFO_SIZE));
+		iowrite32(TX_THRESHOLD, ARASAN_REG(TX_FIFO_THRES));
+		iowrite32(intel_hsi->rx_fifo_cfg, ARASAN_REG(RX_FIFO_SIZE));
+		iowrite32(RX_THRESHOLD, ARASAN_REG(RX_FIFO_THRES));
 
-	/* Start the RX idle poll mechanism if RX is enabled */
-	if (intel_hsi->prg_cfg & ARASAN_RX_ENABLE)
-		mod_timer(&intel_hsi->rx_idle_poll,
-			  jiffies + IDLE_POLL_JIFFIES);
+		/* Start the RX idle poll mechanism if RX is enabled */
+		if (intel_hsi->prg_cfg & ARASAN_RX_ENABLE)
+			mod_timer(&intel_hsi->rx_idle_poll,
+				 jiffies + IDLE_POLL_JIFFIES);
+	}
 
 	/* Enable then signal interrupts */
-	hsi_enable_interrupt(ctrl, intel_hsi->irq_cfg);
-	hsi_enable_error_interrupt(ctrl, intel_hsi->err_cfg);
+	hsi_enable_interrupt(ctrl, version, intel_hsi->irq_cfg);
+	hsi_enable_error_interrupt(ctrl, version, intel_hsi->err_cfg);
 
 	/* Enable the RX and TX parts if necessary */
-	iowrite32(intel_hsi->prg_cfg, ARASAN_HSI_PROGRAM(ctrl));
+	iowrite32(intel_hsi->prg_cfg, ARASAN_REG(PROGRAM));
 
 	return 0;
 }
@@ -1023,8 +1110,6 @@ static int hsi_ctrl_resume(struct intel_controller *intel_hsi)
 	}
 	spin_unlock_irqrestore(&intel_hsi->hw_lock, flags);
 
-	wake_up(&intel_hsi->ip_resumed);
-
 	return err;
 }
 
@@ -1042,6 +1127,7 @@ static int hsi_ctrl_suspend(struct intel_controller *intel_hsi)
 {
 	void __iomem *ctrl	= intel_hsi->ctrl_io;
 	void __iomem *dma	= intel_hsi->dma_io;
+	int version = intel_hsi->version;
 	int i, err = 0;
 	unsigned long flags;
 
@@ -1049,41 +1135,45 @@ static int hsi_ctrl_suspend(struct intel_controller *intel_hsi)
 	if (intel_hsi->suspend_state == DEVICE_READY) {
 
 #ifdef PREVENT_RX_SLEEP_WHEN_NOT_SUSPENDED
-		if (unlikely(ioread32(ARASAN_HSI_HSI_STATUS(ctrl)) &
+		if (unlikely(ioread32(ARASAN_REG(HSI_STATUS)) &
 			     (ARASAN_RX_WAKE|ARASAN_ANY_RX_NOT_EMPTY))) {
 			/* ACWAKE rising edge will be detected by the ISR */
 			err = -EBUSY;
-			pr_info("HSI prevent suspend (RX wake or RX not empty)\n");
+			pr_info(DRVNAME ": Prevent suspend (RX wake or RX not empty)\n");
 			goto exit_ctrl_suspend;
 		}
 
 		intel_hsi->prg_cfg &= ~ARASAN_RX_ENABLE;
-		iowrite32(intel_hsi->prg_cfg, ARASAN_HSI_PROGRAM(ctrl));
+		iowrite32(intel_hsi->prg_cfg, ARASAN_REG(PROGRAM));
 #endif
 
 		if ((intel_hsi->tx_state != TX_SLEEPING) ||
 		    (intel_hsi->rx_state != RX_SLEEPING)) {
 			err = -EBUSY;
-			pr_info("HSI prevent suspend (RX state: %d, TX state: %d)\n",
+			pr_info(DRVNAME ": Prevent suspend (RX state: %d, TX state: %d)\n",
 					intel_hsi->tx_state,
 					intel_hsi->rx_state);
 			goto exit_ctrl_suspend;
 		}
 
 		/* Disable all DMA */
-		iowrite32(DWAHB_CHAN_DISABLE(DWAHB_ALL_CHANNELS),
-			  HSI_DWAHB_CHEN(dma));
-		iowrite32(DWAHB_DISABLE, HSI_DWAHB_DMACFG(dma));
-		for (i = 0; i < DWAHB_CHAN_CNT; i++)
-			iowrite32(0, ARASAN_HSI_DMA_CONFIG(ctrl, i));
+		if (is_arasan_v1(version)) {
+			iowrite32(DWAHB_CHAN_DISABLE(DWAHB_ALL_CHANNELS),
+				  HSI_DWAHB_CHEN(dma));
+			iowrite32(DWAHB_DISABLE, HSI_DWAHB_DMACFG(dma));
+
+			for (i = 0; i < DWAHB_CHAN_CNT; i++)
+				iowrite32(0,
+					ARASAN_CHN_REG_V1(SLAVE_DMA_CFG, i));
+		}
 		intel_hsi->dma_running = 0;
 
 		/* Disable all interrupts */
-		hsi_enable_interrupt(ctrl, 0);
-		hsi_enable_error_interrupt(ctrl, 0);
+		hsi_enable_interrupt(ctrl, version, 0);
+		hsi_enable_error_interrupt(ctrl, version, 0);
 
 		/* Disable everyting and set the device as being suspended */
-		iowrite32(0, ARASAN_HSI_PROGRAM(ctrl));
+		iowrite32(0, ARASAN_REG(PROGRAM));
 		intel_hsi->suspend_state = DEVICE_SUSPENDED;
 
 #ifdef CONFIG_HAS_WAKELOCK
@@ -1105,18 +1195,30 @@ exit_ctrl_suspend:
 static void do_free_dma_xfer(struct intel_dma_xfer *dma_xfer, int sg_entries,
 			     struct intel_controller *intel_hsi)
 {
-	dma_addr_t		 dma_addr;
-	int			 size;
+	int	version = intel_hsi->version;
+	dma_addr_t dma_addr = 0;
+	int size = 0;
 
 	if (!dma_xfer)
 		return;
 
-	if (sg_entries > 1) {
-		size = sg_entries * sizeof(struct intel_dma_lli);
-		dma_addr = (dma_addr_t) (dma_xfer->with_link_list.llp_addr);
-		dma_unmap_single(intel_hsi->pdev, dma_addr, size,
-				 DMA_TO_DEVICE);
+	if (is_arasan_v1(version)) {
+		if (sg_entries > 1) {
+			size = sg_entries * sizeof(struct intel_dma_lli);
+			dma_addr = (dma_addr_t)
+					(dma_xfer->v1.with_link_list.llp_addr);
+		}
+	} else {
+		if (sg_entries > 0) {
+			size = sg_entries * sizeof(struct intel_dma_lli);
+			dma_addr = (dma_addr_t)
+					(dma_xfer->v1.with_link_list.llp_addr);
+		}
 	}
+
+	if (size > 0)
+		dma_unmap_single(intel_hsi->pdev, dma_addr,
+				size, DMA_TO_DEVICE);
 
 	kfree(dma_xfer);
 }
@@ -1139,21 +1241,24 @@ struct intel_dma_xfer *do_alloc_dma_xfer(int tx_not_rx, int hsi_chan,
 	struct intel_dma_xfer		*dma_xfer;
 	struct intel_dma_lli_xfer	*lli_xfer;
 	struct intel_dma_plain_xfer	*plain_xfer;
-	int				 size, sg_size, header;
-	dma_addr_t			 dma_addr;
-	int				 i;
+	dma_addr_t dma_addr;
+	int i, size, sg_size, header;
 
+	/* Compute the maximal full size for the buffer to allocate */
 	if (sg_entries > 1) {
-		header = offsetof(struct intel_dma_xfer, with_link_list);
+		header = offsetof(struct intel_dma_xfer_v1, with_link_list);
 		sg_size = sg_entries * sizeof(struct intel_dma_lli);
-		size = header + offsetof(struct intel_dma_lli_xfer, lli) +
-		       sg_size;
+		size = header + offsetof(struct intel_dma_lli_xfer, lli);
+		size += sg_size;
 
+		/* Allocate the buffer */
 		dma_xfer = kzalloc(size, GFP_ATOMIC);
 		if (!dma_xfer)
 			return NULL;
-		lli_xfer = &dma_xfer->with_link_list;
 
+		lli_xfer = &dma_xfer->v1.with_link_list;
+
+		/* Map the scatter gather link lists if existing */
 		dma_addr = dma_map_single(intel_hsi->pdev, lli_xfer->lli,
 					  sg_size, DMA_TO_DEVICE);
 		if (!dma_addr) {
@@ -1172,16 +1277,16 @@ struct intel_dma_xfer *do_alloc_dma_xfer(int tx_not_rx, int hsi_chan,
 					HSI_DWAHB_RX_ADDRESS(hsi_chan);
 
 			lli_xfer->lli[i].ctl_lo =
-					HSI_DWAHB_CTL_LO_CFG(tx_not_rx, 1);
+				HSI_DWAHB_CTL_LO_CFG(tx_not_rx, 1);
 		}
 	} else {
-		header = offsetof(struct intel_dma_xfer, without_link_list);
+		header = offsetof(struct intel_dma_xfer_v1, without_link_list);
 		size = header + sizeof(struct intel_dma_plain_xfer);
 
 		dma_xfer = kzalloc(size, GFP_ATOMIC);
 		if (!dma_xfer)
 			return NULL;
-		plain_xfer = &dma_xfer->without_link_list;
+		plain_xfer = &dma_xfer->v1.without_link_list;
 
 		if (tx_not_rx)
 			plain_xfer->dst_addr = HSI_DWAHB_TX_ADDRESS(hsi_chan);
@@ -1189,9 +1294,8 @@ struct intel_dma_xfer *do_alloc_dma_xfer(int tx_not_rx, int hsi_chan,
 			plain_xfer->src_addr = HSI_DWAHB_RX_ADDRESS(hsi_chan);
 	}
 
-		dma_xfer->mst_enable = DWAHB_CHAN_START(dma_chan);
-
-		return dma_xfer;
+	dma_xfer->v1.mst_enable = DWAHB_CHAN_START(dma_chan);
+	return dma_xfer;
 }
 
 /**
@@ -1240,7 +1344,7 @@ static void free_xfer_ctx(struct intel_controller *intel_hsi)
 	unsigned long flags;
 
 	spin_lock_irqsave(&intel_hsi->sw_lock, flags);
-	for (i = 0; i < DWAHB_CHAN_CNT; i++)
+	for (i = 0; i < HSI_MID_MAX_CHANNELS; i++) {
 		if (intel_hsi->dma_ctx[i]) {
 			dma_ctx	= intel_hsi->dma_ctx[i];
 			sg_ents	= dma_ctx->sg_entries;
@@ -1250,11 +1354,12 @@ static void free_xfer_ctx(struct intel_controller *intel_hsi)
 			intel_hsi->dma_ctx[i]->ready = NULL;
 			intel_hsi->dma_ctx[i] = NULL;
 		}
+	}
 	spin_unlock_irqrestore(&intel_hsi->sw_lock, flags);
 }
 
 /**
- * alloc_xfer_ctx - allocating and initialising contexts
+ * alloc_xfer_ctx - allocating and initialising xfer contexts
  * @intel_hsi: Intel HSI controller reference
  *
  * Returns 0 if successful or an error code
@@ -1300,7 +1405,7 @@ static void hsi_ctrl_clean_reset(struct intel_controller *intel_hsi)
 {
 	void __iomem *ctrl	= intel_hsi->ctrl_io;
 	void __iomem *dma	= intel_hsi->dma_io;
-	int i;
+	int i, version = intel_hsi->version;
 	unsigned long flags;
 
 	/* Disable the interrupt line */
@@ -1310,7 +1415,7 @@ static void hsi_ctrl_clean_reset(struct intel_controller *intel_hsi)
 	tasklet_disable(&intel_hsi->isr_tasklet);
 	tasklet_disable(&intel_hsi->fwd_tasklet);
 
-	pr_debug("hsi: clean reset requested !\n");
+	pr_debug(DRVNAME ": clean reset requested !\n");
 
 	/* Deassert ACWAKE and ACREADY as shutting down */
 	while (deassert_acwake(intel_hsi))
@@ -1319,8 +1424,6 @@ static void hsi_ctrl_clean_reset(struct intel_controller *intel_hsi)
 	/* Remove the TX idle poll timer */
 	if (del_timer_sync(&intel_hsi->tx_idle_poll))
 		pm_runtime_put(intel_hsi->pdev);
-
-	force_disable_acready(intel_hsi);
 
 	/* Remove the RX idle poll timer */
 	del_timer_sync(&intel_hsi->rx_idle_poll);
@@ -1332,16 +1435,23 @@ static void hsi_ctrl_clean_reset(struct intel_controller *intel_hsi)
 		goto exit_clean_reset;
 
 	/* Disable DMA */
-	for (i = 0; i < DWAHB_CHAN_CNT; i++)
-		iowrite32(0, ARASAN_HSI_DMA_CONFIG(ctrl, i));
-	hsi_disable_master_dma_cfg(dma);
+	if (is_arasan_v1(version)) {
+		for (i = 0; i < DWAHB_CHAN_CNT; i++)
+			iowrite32(0, ARASAN_CHN_REG_V1(SLAVE_DMA_CFG, i));
+		hsi_disable_master_dma_cfg(dma);
+	} else {
+		for (i = 0; i < HSI_MID_MAX_CHANNELS; i++) {
+			iowrite32(0, ARASAN_CHN_REG_V2(TX_DMA_LLD_PTR, i));
+			iowrite32(0, ARASAN_CHN_REG_V2(RX_DMA_LLD_PTR, i));
+		}
+	}
 
 	/* Disable IRQ */
-	hsi_enable_interrupt(ctrl, 0);
-	hsi_enable_error_interrupt(ctrl, 0);
+	hsi_enable_interrupt(ctrl, version, 0);
+	hsi_enable_error_interrupt(ctrl, version, 0);
 
 	/* Kill RX and TX wake sources and disable all channels */
-	iowrite32(0, ARASAN_HSI_PROGRAM(ctrl));
+	iowrite32(0, ARASAN_REG(PROGRAM));
 
 exit_clean_reset:
 	intel_hsi->dma_running	 = 0;
@@ -1353,6 +1463,8 @@ exit_clean_reset:
 	free_xfer_ctx(intel_hsi);
 
 	spin_unlock_irqrestore(&intel_hsi->hw_lock, flags);
+
+	force_disable_acready(intel_hsi);
 
 	/* Re-enable all tasklets */
 	tasklet_enable(&intel_hsi->fwd_tasklet);
@@ -1372,26 +1484,27 @@ static int hsi_ctrl_full_reset(struct intel_controller *intel_hsi)
 {
 	void __iomem *ctrl = intel_hsi->ctrl_io;
 	void __iomem *dma = intel_hsi->dma_io;
+	int version = intel_hsi->version;
 	u32 reset_ongoing = 1;
 	unsigned int ip_freq;
 	int retries = 0;
 
 	/* Read the IP frequency once at the beginning (if defined) */
-	ip_freq = ARASAN_TX_BASE_CLK_KHZ(ioread32(ARASAN_HSI_CAPABILITY(ctrl)));
+	ip_freq = ARASAN_TX_BASE_CLK_KHZ(ioread32(ARASAN_REG(CAPABILITY)));
 	if (ip_freq == 0)
 		ip_freq = HSI_BASE_FREQUENCY;
 	intel_hsi->ip_freq = ip_freq;
 
 	/* Perform software reset then loop until controller is ready */
-	iowrite32(ARASAN_RESET, ARASAN_HSI_PROGRAM(ctrl));
+	iowrite32(ARASAN_RESET, ARASAN_REG(PROGRAM));
 	while ((reset_ongoing) && (retries < HSI_RESETDONE_RETRIES)) {
 		set_current_state(TASK_UNINTERRUPTIBLE);
 		schedule_timeout(msecs_to_jiffies(HSI_RESETDONE_TIMEOUT));
-		reset_ongoing = ioread32(ARASAN_HSI_PROGRAM(ctrl)) &
+		reset_ongoing = ioread32(ARASAN_REG(PROGRAM)) &
 				ARASAN_RESET;
 		retries++;
 	}
-	iowrite32(0, ARASAN_HSI_PROGRAM(ctrl));
+	iowrite32(0, ARASAN_REG(PROGRAM));
 
 	if (reset_ongoing) {
 		dev_err(intel_hsi->dev, "HSI reset failed");
@@ -1399,7 +1512,8 @@ static int hsi_ctrl_full_reset(struct intel_controller *intel_hsi)
 	}
 
 	/* Disable all master DMA channels */
-	hsi_disable_master_dma_cfg(dma);
+	if (is_arasan_v1(version))
+		hsi_disable_master_dma_cfg(dma);
 
 	/* Tag the controller has being reset */
 	intel_hsi->prg_cfg = ARASAN_RESET;
@@ -1409,65 +1523,94 @@ static int hsi_ctrl_full_reset(struct intel_controller *intel_hsi)
 
 #ifdef CONFIG_DEBUG_FS
 
+#define HSI_PRINT_REG(r) \
+	seq_printf(m, #r "\t\t: 0x%08x\n", ioread32(ARASAN_REG(r)))
+
+#define HSI_PRINT_REG_V1(r) \
+	seq_printf(m, #r "\t\t: 0x%08x\n", ioread32(ARASAN_REG_V1(ctrl, r)))
+
+#define HSI_PRINT_REG_V2(r) \
+	seq_printf(m, #r "\t\t: 0x%08x\n", ioread32(ARASAN_REG_V2(ctrl, r)))
+
+#define HSI_PRINT_CHN(r, ch) \
+	seq_printf(m, #r "%d\t\t: 0x%08x\n", ch,\
+			ioread32(ARASAN_CHN_REG(r, ch)))
+
+#define HSI_PRINT_CHN_V1(r, ch) \
+	seq_printf(m, #r "%d\t\t: 0x%08x\n", ch,\
+			ioread32(ARASAN_CHN_REG_V1(r, ch)))
+
+#define HSI_PRINT_CHN_V2(r, ch) \
+	seq_printf(m, #r "%d\t\t: 0x%08x\n", ch,\
+			ioread32(ARASAN_CHN_REG_V2(r, ch)))
+
 static int hsi_debug_show(struct seq_file *m, void *p)
 {
 	struct hsi_port *port = m->private;
 	struct intel_controller *intel_hsi = hsi_port_drvdata(port);
 	void __iomem *ctrl = intel_hsi->ctrl_io;
+	int version = intel_hsi->version;
 	int ch;
 
-	hsi_pm_runtime_get(intel_hsi, HSI_PM_SYNC);
+	/* PM */
+	hsi_pm_runtime_get_sync(intel_hsi);
 	seq_printf(m, "PM (HSI, RT)\t\t: %d, %d\n", hsi_pm, runtime_pm);
-	seq_printf(m, "REVISION\t\t: 0x%08x\n",
-		ioread32(ARASAN_HSI_VERSION(ctrl)));
-	for (ch = 0; ch < DWAHB_CHAN_CNT; ch++) {
-		seq_printf(m, "DMA CONFIG %d\t\t: 0x%08x\n", ch,
-			ioread32(ARASAN_HSI_DMA_CONFIG(ctrl, ch)));
+
+	/* Version */
+	HSI_PRINT_REG(VERSION);
+
+	/* FIFO configurations */
+	if (is_arasan_v1(version)) {
+		HSI_PRINT_REG_V1(TX_FIFO_SIZE);
+		HSI_PRINT_REG_V1(TX_FIFO_THRES);
+		HSI_PRINT_REG_V1(RX_FIFO_SIZE);
+		HSI_PRINT_REG_V1(RX_FIFO_THRES);
+	} else {
+		for (ch = 0; ch < HSI_MID_MAX_CHANNELS; ch++) {
+			HSI_PRINT_CHN_V2(TX_FIFO_SIZE, ch);
+			HSI_PRINT_CHN_V2(TX_FIFO_THRES, ch);
+		}
+		for (ch = 0; ch < HSI_MID_MAX_CHANNELS; ch++) {
+			HSI_PRINT_CHN_V2(RX_FIFO_SIZE, ch);
+			HSI_PRINT_CHN_V2(RX_FIFO_THRES, ch);
+		}
 	}
-	seq_printf(m, "TXFIFO CTL1\t\t: 0x%08x\n",
-		ioread32(ARASAN_HSI_DMA_TX_FIFO_SIZE(ctrl)));
-	seq_printf(m, "TXFIFO CTL2\t\t: 0x%08x\n",
-		ioread32(ARASAN_HSI_DMA_TX_FIFO_THRESHOLD(ctrl)));
-	seq_printf(m, "RXFIFO CTL1\t\t: 0x%08x\n",
-		ioread32(ARASAN_HSI_DMA_RX_FIFO_SIZE(ctrl)));
-	seq_printf(m, "RXFIFO CTL2\t\t: 0x%08x\n",
-		ioread32(ARASAN_HSI_DMA_RX_FIFO_THRESHOLD(ctrl)));
-	seq_printf(m, "CLOCK CONTROL\t\t: 0x%08x\n",
-		ioread32(ARASAN_HSI_CLOCK_CONTROL(ctrl)));
-	seq_printf(m, "STATUS\t\t\t: 0x%08x\n",
-		ioread32(ARASAN_HSI_HSI_STATUS(ctrl)));
-	seq_printf(m, "STATUS1\t\t\t: 0x%08x\n",
-		ioread32(ARASAN_HSI_HSI_STATUS1(ctrl)));
-	seq_printf(m, "PROGRAM\t\t\t: 0x%08x\n",
-		ioread32(ARASAN_HSI_PROGRAM(ctrl)));
-	seq_printf(m, "PROGRAM1\t\t: 0x%08x\n",
-		ioread32(ARASAN_HSI_PROGRAM1(ctrl)));
-	seq_printf(m, "INTERRUPT STATUS\t: 0x%08x\n",
-		ioread32(ARASAN_HSI_INTERRUPT_STATUS(ctrl)));
-	seq_printf(m, "INTERRUPT STATUS ENABLE\t: 0x%08x\n",
-		ioread32(ARASAN_HSI_INTERRUPT_STATUS_ENABLE(ctrl)));
-	seq_printf(m, "INTERRUPT SIGNAL ENABLE\t: 0x%08x\n",
-		ioread32(ARASAN_HSI_INTERRUPT_SIGNAL_ENABLE(ctrl)));
-	seq_printf(m, "ARBITER PRIORITY\t: 0x%08x\n",
-		ioread32(ARASAN_HSI_ARBITER_PRIORITY(ctrl)));
-	seq_printf(m, "ARBITER BANDWIDTH1\t: 0x%08x\n",
-		ioread32(ARASAN_HSI_ARBITER_BANDWIDTH1(ctrl)));
-	seq_printf(m, "ARBITER BANDWIDTH2\t: 0x%08x\n",
-		ioread32(ARASAN_HSI_ARBITER_BANDWIDTH2(ctrl)));
-	seq_printf(m, "ERROR INT STATUS\t: 0x%08x\n",
-		ioread32(ARASAN_HSI_ERROR_INTERRUPT_STATUS(ctrl)));
-	seq_printf(m, "ERROR INT STATUS ENABLE\t: 0x%08x\n",
-		ioread32(ARASAN_HSI_ERROR_INTERRUPT_STATUS_ENABLE(ctrl)));
-	seq_printf(m, "ERROR INT SIGNAL ENABLE\t: 0x%08x\n",
-		ioread32(ARASAN_HSI_ERROR_INTERRUPT_SIGNAL_ENABLE(ctrl)));
+
+	/* Main configuration setup */
+	HSI_PRINT_REG(CLOCK_CTRL);
+	HSI_PRINT_REG(PROGRAM);
+	HSI_PRINT_REG(PROGRAM1);
+
+	/* Current HSI controller status */
+	HSI_PRINT_REG(HSI_STATUS);
+	HSI_PRINT_REG(HSI_STATUS1);
+	HSI_PRINT_REG(INT_STATUS);
+	HSI_PRINT_REG(INT_STATUS_ENABLE);
+	HSI_PRINT_REG(INT_SIGNAL_ENABLE);
+	HSI_PRINT_REG(ERR_INT_STATUS);
+	HSI_PRINT_REG(ERR_INT_STATUS_ENABLE);
+	HSI_PRINT_REG(ERR_INT_SIGNAL_ENABLE);
+	if (!is_arasan_v1(version))
+		HSI_PRINT_REG_V2(DMA_INT_STATUS);
+
+	/* HSI channel arbitration */
+	HSI_PRINT_REG(ARBITER_PRIORITY);
+	if (is_arasan_v1(version)) {
+		HSI_PRINT_REG_V1(ARBITER_BANDWIDTH1);
+		HSI_PRINT_REG_V1(ARBITER_BANDWIDTH2);
+	}
+
+	/* HSI controller capabilities */
+	HSI_PRINT_REG(CAPABILITY);
+
 	pm_runtime_put(intel_hsi->pdev);
 
 	return 0;
 }
 
-#define HSI_DEBUG_GDD_PRINT(F) \
+#define HSI_GDD_PRINT(F) \
 	seq_printf(m, #F "\t\t: 0x%08x\n", ioread32(HSI_DWAHB_ ## F(dma)))
-#define HSI_DEBUG_GDD_PRINT2(F, i) \
+#define HSI_GDD_PRINT_CHN(F, i) \
 	seq_printf(m, #F " %d\t\t: 0x%08x\n", i,\
 		   ioread32(HSI_DWAHB_ ## F(dma, i)))
 
@@ -1475,36 +1618,57 @@ static int hsi_debug_dma_show(struct seq_file *m, void *p)
 {
 	struct hsi_controller *hsi = m->private;
 	struct intel_controller *intel_hsi = hsi_controller_drvdata(hsi);
+	void __iomem *ctrl = intel_hsi->ctrl_io;
 	void __iomem *dma = intel_hsi->dma_io;
-	int i;
+	int version = intel_hsi->version;
+	int ch;
 
-	hsi_pm_runtime_get(intel_hsi, HSI_PM_SYNC);
-	for (i = 0; i < DWAHB_CHAN_CNT; i++) {
-		HSI_DEBUG_GDD_PRINT2(SAR, i);
-		HSI_DEBUG_GDD_PRINT2(DAR, i);
-		HSI_DEBUG_GDD_PRINT2(CTL_LO, i);
-		HSI_DEBUG_GDD_PRINT2(CTL_HI, i);
-		HSI_DEBUG_GDD_PRINT2(CFG_LO, i);
-		HSI_DEBUG_GDD_PRINT2(CFG_HI, i);
+	hsi_pm_runtime_get_sync(intel_hsi);
+
+	if (is_arasan_v1(version)) {
+		/* Global master DMA config */
+		HSI_GDD_PRINT(DMACFG);
+		HSI_GDD_PRINT(CHEN);
+
+		/* Global master DMA status */
+		HSI_GDD_PRINT(STATUSINT);
+		HSI_GDD_PRINT(STATUSTFR);
+		HSI_GDD_PRINT(STATUSBLOCK);
+		HSI_GDD_PRINT(STATUSSRCTRAN);
+		HSI_GDD_PRINT(STATUSDSTTRAN);
+		HSI_GDD_PRINT(STATUSERR);
+
+		HSI_GDD_PRINT(MASKTFR);
+		HSI_GDD_PRINT(MASKBLOCK);
+		HSI_GDD_PRINT(MASKSRCTRAN);
+		HSI_GDD_PRINT(MASKDSTTRAN);
+		HSI_GDD_PRINT(MASKERR);
+
+		/* Slave and master DMA configurations per DMA channel */
+		for (ch = 0; ch < DWAHB_CHAN_CNT; ch++) {
+			HSI_PRINT_CHN_V1(SLAVE_DMA_CFG, ch);
+			HSI_GDD_PRINT_CHN(SAR, ch);
+			HSI_GDD_PRINT_CHN(DAR, ch);
+			HSI_GDD_PRINT_CHN(CTL_LO, ch);
+			HSI_GDD_PRINT_CHN(CTL_HI, ch);
+			HSI_GDD_PRINT_CHN(CFG_LO, ch);
+			HSI_GDD_PRINT_CHN(CFG_HI, ch);
+		}
+	} else {
+		/* Global DMA configuration */
+		HSI_PRINT_REG_V2(TX_DMA_ARB);
+		HSI_PRINT_REG_V2(RX_DMA_ARB);
+		HSI_PRINT_REG_V2(TX_DMA_BST_SZ);
+		HSI_PRINT_REG_V2(RX_DMA_BST_SZ);
+
+		/* DMA configurations per TX and RX HSI channel */
+		for (ch = 0; ch < HSI_MID_MAX_CHANNELS; ch++) {
+			HSI_PRINT_CHN_V2(TX_DMA_LLD_PTR, ch);
+			HSI_PRINT_CHN_V2(RX_DMA_LLD_PTR, ch);
+		}
 	}
 
-	HSI_DEBUG_GDD_PRINT(DMACFG);
-	HSI_DEBUG_GDD_PRINT(CHEN);
-	HSI_DEBUG_GDD_PRINT(STATUSINT);
-
-	HSI_DEBUG_GDD_PRINT(STATUSTFR);
-	HSI_DEBUG_GDD_PRINT(STATUSBLOCK);
-	HSI_DEBUG_GDD_PRINT(STATUSSRCTRAN);
-	HSI_DEBUG_GDD_PRINT(STATUSDSTTRAN);
-	HSI_DEBUG_GDD_PRINT(STATUSERR);
-
-	HSI_DEBUG_GDD_PRINT(MASKTFR);
-	HSI_DEBUG_GDD_PRINT(MASKBLOCK);
-	HSI_DEBUG_GDD_PRINT(MASKSRCTRAN);
-	HSI_DEBUG_GDD_PRINT(MASKDSTTRAN);
-	HSI_DEBUG_GDD_PRINT(MASKERR);
 	pm_runtime_put(intel_hsi->pdev);
-
 	return 0;
 }
 
@@ -1553,13 +1717,14 @@ static int __init hsi_debug_add_ctrl(struct hsi_controller *hsi)
 #endif /* CONFIG_DEBUG_FS */
 
 /**
- * do_hsi_prepare_dma - prepare a DMA context
+ * do_hsi_prepare_dma_v1 - prepare a DMA context (for Arasan IP v1)
  * @msg: reference to the message
- * @lch: DMA channel to consider
+ * @dma_ctx: the DMA context to use
  * @intel_hsi: Intel HSI controller reference
  */
-static void do_hsi_prepare_dma(struct hsi_msg *msg, int lch,
-			       struct intel_controller *intel_hsi)
+static void do_hsi_prepare_dma_v1(struct hsi_msg *msg,
+				int lch,
+				struct intel_controller *intel_hsi)
 {
 	struct intel_dma_ctx *dma_ctx = intel_hsi->dma_ctx[lch];
 	struct intel_dma_xfer *ready_xfer = dma_ctx->ready;
@@ -1574,17 +1739,15 @@ static void do_hsi_prepare_dma(struct hsi_msg *msg, int lch,
 	int i;
 
 	if (is_using_link_list(dma_ctx)) {
-		lli_xfer = &ready_xfer->with_link_list;
+		lli_xfer = &ready_xfer->v1.with_link_list;
 		size = 0;
 		next_llp = (u32) lli_xfer->llp_addr;
-#ifdef USE_SOFWARE_WORKAROUND_FOR_DMA_LLI
 		lli_xfer->blk = sgl;
-#endif
 
 		for_each_sg(sgl, sg, sgt->nents, i) {
-			next_llp	+= sizeof(struct intel_dma_lli);
-			len		 = HSI_BYTES_TO_FRAMES(sg->length);
-			size		+= len;
+			next_llp += sizeof(struct intel_dma_lli);
+			len		  = HSI_BYTES_TO_FRAMES(sg->length);
+			size	 += len;
 
 			if (rx_not_tx)
 				lli_xfer->lli[i].dar = sg_dma_address(sg);
@@ -1595,12 +1758,10 @@ static void do_hsi_prepare_dma(struct hsi_msg *msg, int lch,
 		}
 
 		msg->actual_len = HSI_FRAMES_TO_BYTES(size);
-#ifdef USE_SOFWARE_WORKAROUND_FOR_DMA_LLI
 		size = 0; /* on slave, size is updated on each block xfer */
-#endif
 	} else {
 		size = HSI_BYTES_TO_FRAMES(sgl->length);
-		plain_xfer = &ready_xfer->without_link_list;
+		plain_xfer = &ready_xfer->v1.without_link_list;
 		plain_xfer->size = size;
 		if (rx_not_tx)
 			plain_xfer->dst_addr = sg_dma_address(msg->sgt.sgl);
@@ -1610,7 +1771,7 @@ static void do_hsi_prepare_dma(struct hsi_msg *msg, int lch,
 		msg->actual_len = HSI_FRAMES_TO_BYTES(size);
 	}
 
-	ready_xfer->slv_enable = ARASAN_DMA_DIR(rx_not_tx) |
+	ready_xfer->v1.slv_enable = ARASAN_DMA_DIR(rx_not_tx) |
 				 ARASAN_DMA_CHANNEL(msg->channel) |
 				 ARASAN_DMA_XFER_FRAMES(size) |
 				 ARASAN_DMA_BURST_SIZE(32) | ARASAN_DMA_ENABLE;
@@ -1619,12 +1780,42 @@ static void do_hsi_prepare_dma(struct hsi_msg *msg, int lch,
 }
 
 /**
- * try_hsi_prepare_dma - try preparing a ready DMA context
- * @queue: reference to queue ready to start transfer
- * @lch: DMA channel to consider
+ * do_hsi_prepare_dma_v2 - prepare a DMA context (for Arasan IP v2)
+ * @msg: reference to the message
+ * @dma_ctx: the DMA context to use
  * @intel_hsi: Intel HSI controller reference
  */
-static void hsi_try_prepare_dma(struct list_head *queue, int lch,
+static void do_hsi_prepare_dma_v2(struct hsi_msg *msg,
+				  struct intel_dma_ctx *dma_ctx,
+				  struct intel_controller *intel_hsi)
+{
+
+}
+
+/**
+ * do_hsi_prepare_dma - prepare a DMA context
+ * @msg: reference to the message
+ * @dma_ctx: the DMA context to use
+ * @intel_hsi: Intel HSI controller reference
+ */
+static inline void do_hsi_prepare_dma(struct hsi_msg *msg,
+					int lch,
+					struct intel_controller *intel_hsi)
+{
+	if (is_arasan_v1(intel_hsi->version))
+		do_hsi_prepare_dma_v1(msg, lch, intel_hsi);
+	else
+		do_hsi_prepare_dma_v2(msg, NULL, intel_hsi);
+}
+
+/**
+ * try_hsi_prepare_dma - try preparing a ready DMA context
+ * @queue: reference to queue ready to start transfer
+ * @dma_ctx: the DMA context to use
+ * @intel_hsi: Intel HSI controller reference
+ */
+static void hsi_try_prepare_dma(struct list_head *queue,
+				int lch,
 				struct intel_controller *intel_hsi)
 	__acquires(&intel_hsi->sw_lock) __releases(&intel_hsi->sw_lock)
 {
@@ -1633,7 +1824,10 @@ static void hsi_try_prepare_dma(struct list_head *queue, int lch,
 
 	spin_lock_irqsave(&intel_hsi->sw_lock, flags);
 
-	/* If some DMA context is already ready, we are fine */
+	/* We are fine:
+	 *  - If the DMA context was already released
+	 *  - If some DMA context is already ready
+	 */
 	if (!intel_hsi->dma_ctx[lch] ||
 		intel_hsi->dma_ctx[lch]->ready->msg)
 		goto all_dma_prepared;
@@ -1667,7 +1861,8 @@ static void hsi_start_pio(struct hsi_msg *msg,
 			  struct intel_controller *intel_hsi)
 	__acquires(&intel_hsi->hw_lock) __releases(&intel_hsi->hw_lock)
 {
-	int		 channel = msg->channel;
+	int channel = msg->channel;
+	int version = intel_hsi->version;
 	void __iomem	*ctrl = intel_hsi->ctrl_io;
 	unsigned long	 flags;
 	u32		 irq_en, err_en;
@@ -1683,9 +1878,11 @@ static void hsi_start_pio(struct hsi_msg *msg,
 	intel_hsi->irq_cfg |= irq_en;
 	intel_hsi->err_cfg |= err_en;
 	if (likely(intel_hsi->suspend_state == DEVICE_READY)) {
-		hsi_enable_interrupt(ctrl, intel_hsi->irq_cfg);
+		hsi_enable_interrupt(ctrl, version, intel_hsi->irq_cfg);
 		if (err_en)
-			hsi_enable_error_interrupt(ctrl, intel_hsi->err_cfg);
+			hsi_enable_error_interrupt(ctrl,
+					version,
+					intel_hsi->err_cfg);
 	}
 	spin_unlock_irqrestore(&intel_hsi->hw_lock, flags);
 }
@@ -1694,6 +1891,7 @@ static void hsi_start_pio(struct hsi_msg *msg,
  * do_hsi_start_dma - start/restart DMA data transfer helper function
  * @msg: reference to the message to transfer
  * @lch: DMA channel to consider
+ * @dma_ctx: the DMA context to use
  * @intel_hsi: Intel HSI controller reference
  * @resuming: flag stating if this is a first start or a resume restart
  */
@@ -1701,24 +1899,40 @@ static void do_hsi_start_dma(struct hsi_msg *msg, int lch,
 			     struct intel_controller *intel_hsi, int resuming)
 	__acquires(&intel_hsi->hw_lock) __releases(&intel_hsi->hw_lock)
 {
-	struct intel_dma_ctx *dma_ctx;
-	struct intel_dma_xfer *dma_xfer;
-	struct intel_dma_lli_xfer *lli_xfer;
-	struct intel_dma_plain_xfer *plain_xfer;
 	void __iomem *ctrl		= intel_hsi->ctrl_io;
 	void __iomem *dma		= intel_hsi->dma_io;
-	u32 mask			= DMA_BUSY(lch);
-	u32 blk_length_overwrite	= 0;
-	unsigned int blk_length;
+	void __iomem *dma_ldd_ptr;
+	struct intel_dma_ctx *dma_ctx;
+	struct intel_dma_xfer *dma_xfer;
+	int version = intel_hsi->version;
+	struct intel_dma_lli_xfer *lli_xfer;
+	struct intel_dma_plain_xfer *plain_xfer;
+	u32 mask;
+	u32 blk_len_overwrite = 0;
+	unsigned int blk_len;
 	unsigned long flags;
 	int nothing_to_do;
+
+	if (is_arasan_v1(version)) {
+		mask = DMA_BUSY(lch);
+	} else {
+		if (msg->ttype == HSI_MSG_WRITE) {
+			mask = DMA_BUSY(lch);
+			dma_ldd_ptr = (void __iomem *)
+					ARASAN_CHN_REG_V2(TX_DMA_LLD_PTR, lch);
+		} else {
+			mask = DMA_BUSY(lch + HSI_MID_MAX_CHANNELS);
+			dma_ldd_ptr = (void __iomem *)
+					ARASAN_CHN_REG_V2(RX_DMA_LLD_PTR, lch);
+		}
+	}
 
 	spin_lock_irqsave(&intel_hsi->hw_lock, flags);
 	dma_ctx = intel_hsi->dma_ctx[lch];
 	/* Check if the DMA IT was scheduled BUT not serverd just
 	   before the calling hsi_ctrl_clean_reset (SMP config) */
 	if (!dma_ctx) {
-		pr_debug("Transfer dropped (RESET requested) !");
+		pr_debug(DRVNAME ": Transfer dropped (RESET requested) !");
 		goto do_start_dma_done;
 	}
 
@@ -1733,31 +1947,33 @@ static void do_hsi_start_dma(struct hsi_msg *msg, int lch,
 	if (nothing_to_do)
 		goto do_start_dma_done;
 
-	if (is_using_link_list(dma_ctx)) {
-		/* Set the link list pointer */
-		lli_xfer = &dma_xfer->with_link_list;
-		iowrite32(lli_xfer->llp_addr, HSI_DWAHB_LLP(dma, lch));
-#ifdef USE_SOFWARE_WORKAROUND_FOR_DMA_LLI
-		/* Overwrite the block length */
-		blk_length = HSI_BYTES_TO_FRAMES(lli_xfer->blk->length);
-		blk_length_overwrite = ARASAN_DMA_XFER_FRAMES(blk_length);
-#endif
-	} else {
-		/* Clear 'done' bit and set the transfer size and addresses */
-		plain_xfer = &dma_xfer->without_link_list;
-		iowrite32(plain_xfer->size, HSI_DWAHB_CTL_HI(dma, lch));
-		iowrite32(plain_xfer->src_addr, HSI_DWAHB_SAR(dma, lch));
-		iowrite32(plain_xfer->dst_addr, HSI_DWAHB_DAR(dma, lch));
-	}
+	if (is_arasan_v1(version)) {
+		if (is_using_link_list(dma_ctx)) {
+			/* Set the link list pointer */
+			lli_xfer = &dma_xfer->v1.with_link_list;
+			iowrite32(lli_xfer->llp_addr, HSI_DWAHB_LLP(dma, lch));
 
-	/* Enable slave then master DMA to start the transfer */
-#ifdef USE_SOFWARE_WORKAROUND_FOR_DMA_LLI
-	iowrite32(dma_xfer->slv_enable | blk_length_overwrite,
-		  ARASAN_HSI_DMA_CONFIG(ctrl, lch));
-#else
-	iowrite32(dma_xfer->slv_enable, ARASAN_HSI_DMA_CONFIG(ctrl, lch));
-#endif
-	iowrite32(dma_xfer->mst_enable, HSI_DWAHB_CHEN(dma));
+			/* Overwrite the block length */
+			blk_len = HSI_BYTES_TO_FRAMES(lli_xfer->blk->length);
+			blk_len_overwrite = ARASAN_DMA_XFER_FRAMES(blk_len);
+		} else {
+			/* Clear 'done' bit & set the xfer size and addresses */
+			plain_xfer = &dma_xfer->v1.without_link_list;
+			iowrite32(plain_xfer->size, HSI_DWAHB_CTL_HI(dma, lch));
+			iowrite32(plain_xfer->src_addr,
+					HSI_DWAHB_SAR(dma, lch));
+			iowrite32(plain_xfer->dst_addr,
+					HSI_DWAHB_DAR(dma, lch));
+		}
+
+		/* Enable slave then master DMA to start the transfer */
+		iowrite32(dma_xfer->v1.slv_enable | blk_len_overwrite,
+				ARASAN_CHN_REG_V1(SLAVE_DMA_CFG, lch));
+		iowrite32(dma_xfer->v1.mst_enable, HSI_DWAHB_CHEN(dma));
+	} else {
+		/* Simply write down the LLD DMA pointer */
+		iowrite32(dma_xfer->v2.llp_addr | ARASAN_LLD_EN, dma_ldd_ptr);
+	}
 
 	intel_hsi->dma_running |= mask;
 	intel_hsi->dma_resumed |= mask;
@@ -1770,6 +1986,7 @@ do_start_dma_done:
  * hsi_start_dma - start DMA data transfer
  * @msg: reference to the message to transfer
  * @lch: DMA channel to consider
+ * @dma_ctx: the DMA context to use
  * @intel_hsi: Intel HSI controller reference
  */
 static void hsi_start_dma(struct hsi_msg *msg, int lch,
@@ -1783,6 +2000,7 @@ static void hsi_start_dma(struct hsi_msg *msg, int lch,
  * hsi_restart_dma - restarting DMA data transfer further to a resume
  * @msg: reference to the message to transfer
  * @lch: DMA channel to consider
+ * @dma_ctx: the DMA context to use
  * @intel_hsi: Intel HSI controller reference
  */
 static void hsi_restart_dma(struct hsi_msg *msg, int lch,
@@ -1806,6 +2024,7 @@ static void hsi_transfer(struct intel_controller *intel_hsi, int tx_not_rx,
 	struct list_head		*queue;
 	struct hsi_msg			*msg;
 	unsigned long			 flags;
+	struct intel_dma_ctx		*dma_ctx;
 	struct intel_dma_xfer		*done_dma_xfer;
 	struct intel_pio_ctx		*pio_ctx;
 
@@ -1828,19 +2047,24 @@ static void hsi_transfer(struct intel_controller *intel_hsi, int tx_not_rx,
 	msg->status = HSI_STATUS_PROCEEDING;
 
 	if (dma_channel >= 0) {
-		if (!intel_hsi->dma_ctx[dma_channel]) {
+		if (is_arasan_v1(intel_hsi->version))
+			dma_ctx = intel_hsi->dma_ctx[dma_channel];
+		else
+			dma_ctx = (tx_not_rx) ?
+				   &intel_hsi->tx_ctx[hsi_channel].dma :
+				   &intel_hsi->rx_ctx[hsi_channel].dma;
+		if (!dma_ctx) {
 			spin_unlock_irqrestore(&intel_hsi->sw_lock, flags);
 			return;
 		}
 
-		if (intel_hsi->dma_ctx[dma_channel]->ready->msg == NULL)
+		if (dma_ctx->ready->msg == NULL)
 			do_hsi_prepare_dma(msg, dma_channel, intel_hsi);
 
 		/* The ongoing DMA is now the ready DMA message */
-		done_dma_xfer = intel_hsi->dma_ctx[dma_channel]->ongoing;
-		intel_hsi->dma_ctx[dma_channel]->ongoing =
-					intel_hsi->dma_ctx[dma_channel]->ready;
-		intel_hsi->dma_ctx[dma_channel]->ready = done_dma_xfer;
+		done_dma_xfer		= dma_ctx->ongoing;
+		dma_ctx->ongoing	= dma_ctx->ready;
+		dma_ctx->ready		= done_dma_xfer;
 	} else {
 		msg->actual_len = 0;
 		pio_ctx = (tx_not_rx) ?
@@ -1853,7 +2077,7 @@ static void hsi_transfer(struct intel_controller *intel_hsi, int tx_not_rx,
 
 	/* Assert ACWAKE (deasserted on complete or destruct) */
 	if (tx_not_rx)
-		assert_acwake(intel_hsi, HSI_PM_ASYNC);
+		assert_acwake(intel_hsi);
 	else
 		unforce_disable_acready(intel_hsi);
 
@@ -1872,13 +2096,19 @@ static void hsi_transfer(struct intel_controller *intel_hsi, int tx_not_rx,
 static void hsi_resume_dma_transfers(struct intel_controller *intel_hsi)
 {
 	struct hsi_msg *msg;
-	int i;
+	struct intel_dma_ctx *dma_ctx;
+	int i, lch;
 
-	for (i = 0; i < DWAHB_CHAN_CNT; i++) {
-		msg = (intel_hsi->dma_ctx[i]) ?
-		      intel_hsi->dma_ctx[i]->ongoing->msg : NULL;
-		if (msg)
-			hsi_restart_dma(msg, i, intel_hsi);
+	if (is_arasan_v1(intel_hsi->version)) {
+		for (lch = 0; lch < DWAHB_CHAN_CNT; lch++) {
+			dma_ctx = intel_hsi->dma_ctx[lch];
+			msg = (dma_ctx) ? dma_ctx->ongoing->msg : NULL;
+			if (msg)
+				hsi_restart_dma(msg, lch, intel_hsi);
+		}
+	} else {
+		for (i = 0; i < HSI_MID_MAX_CHANNELS; i++)
+			lch = intel_hsi->tx_dma_chan[i];
 	}
 }
 
@@ -1920,7 +2150,7 @@ static void hsi_rx_error(struct intel_controller *intel_hsi)
 	unsigned int			 i;
 	unsigned long			 flags;
 
-	pr_err("hsi: rx error\n");
+	pr_err(DRVNAME ": RX error\n");
 
 	for (i = 0; i < hsi_rx_channel_count(intel_hsi); i++) {
 		queue = &intel_hsi->rx_queue[i];
@@ -1945,6 +2175,7 @@ static u32 hsi_timeout(struct intel_controller *intel_hsi, u32 timeout_reg)
 	__acquires(&intel_hsi->sw_lock) __releases(&intel_hsi->sw_lock)
 {
 	void __iomem			*ctrl = intel_hsi->ctrl_io;
+	int version = intel_hsi->version;
 	struct list_head		*queue;
 	struct hsi_msg			*msg = NULL;
 	struct intel_pio_ctx		*pio_ctx;
@@ -1985,12 +2216,12 @@ hsi_pio_timeout_try:
 
 		timeout_clr |= timeout_mask;
 
-		while ((ioread32(ARASAN_HSI_HSI_STATUS(ctrl)) &
+		while ((ioread32(ARASAN_REG(HSI_STATUS)) &
 			ARASAN_RX_NOT_EMPTY(i)) &&
 		       (msg->status == HSI_STATUS_PROCEEDING)) {
 			if (likely(pio_ctx->blk->length > 0)) {
 				buf = sg_virt(pio_ctx->blk) + pio_ctx->offset*4;
-				*buf = ioread32(ARASAN_HSI_RX_DATA(ctrl, i));
+				*buf = ioread32(ARASAN_CHN_REG(RX_DATA, i));
 				msg->actual_len += HSI_FRAMES_TO_BYTES(1);
 				pio_ctx->offset += 1;
 			}
@@ -2034,34 +2265,35 @@ static int hsi_async_break(struct hsi_msg *msg)
 	struct hsi_port *port = hsi_get_port(msg->cl);
 	struct intel_controller *intel_hsi = hsi_port_drvdata(port);
 	void __iomem *ctrl = intel_hsi->ctrl_io;
+	int version = intel_hsi->version;
 	unsigned long flags;
 
 	/* Return an error if not in frame mode */
 	if (unlikely(!is_in_tx_frame_mode(intel_hsi)))
 		return -EINVAL;
 
+	hsi_pm_runtime_get_sync(intel_hsi);
 	if (msg->ttype == HSI_MSG_WRITE) {
-		hsi_pm_runtime_get(intel_hsi, HSI_PM_SYNC);
-		assert_acwake(intel_hsi, HSI_PM_ASYNC);
+		assert_acwake(intel_hsi);
 		spin_lock_irqsave(&intel_hsi->hw_lock, flags);
 		intel_hsi->clk_cfg |= ARASAN_TX_BREAK;
-		iowrite32(intel_hsi->clk_cfg, ARASAN_HSI_CLOCK_CONTROL(ctrl));
+		iowrite32(intel_hsi->clk_cfg, ARASAN_REG(CLOCK_CTRL));
 		/* Dummy read to ensure that at least the minimal delay for a
 		 * break sequence will be met */
-		(void) ioread32(ARASAN_HSI_CLOCK_CONTROL(ctrl));
+		(void) ioread32(ARASAN_REG(CLOCK_CTRL));
 		udelay(intel_hsi->brk_us_delay);
 		intel_hsi->clk_cfg &= ~ARASAN_TX_BREAK;
-		iowrite32(intel_hsi->clk_cfg, ARASAN_HSI_CLOCK_CONTROL(ctrl));
+		iowrite32(intel_hsi->clk_cfg, ARASAN_REG(CLOCK_CTRL));
 		spin_unlock_irqrestore(&intel_hsi->hw_lock, flags);
 		msg->status = HSI_STATUS_COMPLETED;
 		msg->complete(msg);
 		(void) deassert_acwake(intel_hsi);
-		pm_runtime_put(intel_hsi->pdev);
 	} else {
 		spin_lock_irqsave(&intel_hsi->sw_lock, flags);
 		list_add_tail(&msg->link, &intel_hsi->brk_queue);
 		spin_unlock_irqrestore(&intel_hsi->sw_lock, flags);
 	}
+	pm_runtime_put(intel_hsi->pdev);
 
 	return 0;
 }
@@ -2081,8 +2313,9 @@ static int hsi_mid_async(struct hsi_msg *msg)
 	struct hsi_port *port = hsi_get_port(msg->cl);
 	struct intel_controller *intel_hsi = hsi_port_drvdata(port);
 	struct list_head *queue;
+	struct intel_dma_ctx *dma_ctx;
 	u16 *queue_busy;
-	unsigned int hsi_channel, nents, sg_entries;
+	unsigned int hsi_channel, nents;
 	int dma_channel;
 	u8 dir;
 	int tx_not_rx, old_status, err;
@@ -2097,6 +2330,8 @@ static int hsi_mid_async(struct hsi_msg *msg)
 	if (msg->ttype == HSI_MSG_WRITE) {
 		if (hsi_channel >= hsi_tx_channel_count(intel_hsi))
 			return -EINVAL;
+		dma_ctx = (dma_channel >= 0) ?
+			&intel_hsi->tx_ctx[hsi_channel].dma : NULL;
 		tx_not_rx = 1;
 		queue = &intel_hsi->tx_queue[hsi_channel];
 		queue_busy = &intel_hsi->tx_queue_busy;
@@ -2104,6 +2339,8 @@ static int hsi_mid_async(struct hsi_msg *msg)
 	} else {
 		if (hsi_channel >= hsi_rx_channel_count(intel_hsi))
 			return -EINVAL;
+		dma_ctx = (dma_channel >= 0) ?
+			&intel_hsi->rx_ctx[hsi_channel].dma : NULL;
 		tx_not_rx = 0;
 		queue = &intel_hsi->rx_queue[hsi_channel];
 		queue_busy = &intel_hsi->rx_queue_busy;
@@ -2111,15 +2348,8 @@ static int hsi_mid_async(struct hsi_msg *msg)
 	}
 
 	nents = msg->sgt.nents;
-	if (dma_channel >= 0) {
-		if (tx_not_rx)
-			sg_entries =
-				intel_hsi->tx_ctx[hsi_channel].dma.sg_entries;
-		else
-			sg_entries =
-				intel_hsi->rx_ctx[hsi_channel].dma.sg_entries;
-
-		if (nents > sg_entries) {
+	if (dma_ctx) {
+		if (nents > dma_ctx->sg_entries) {
 			pr_err("hsi: Unsupported number of SG entries\n");
 			return -ENOSYS;
 		}
@@ -2227,53 +2457,73 @@ del_node:
 }
 
 /**
- * hsi_cleanup_dma - cleanup DMA activities related to a client
+ * hsi_cleanup_dma_ch - cleanup a DMA channel activities related to a client
  * @intel_hsi: Intel HSI controller reference
  * @cl: HSI client reference
+ * @hsi_channel: the considered HSI channel
+ * @tx_not_rx: direction of the transfer (RX = 0, TX != 0)
  */
-static void hsi_cleanup_dma(struct intel_controller *intel_hsi,
-			    struct hsi_client *cl)
+static void hsi_cleanup_dma_ch(struct intel_controller *intel_hsi,
+					struct hsi_client *cl,
+					unsigned int hsi_channel)
 	__acquires(&intel_hsi->sw_lock) __releases(&intel_hsi->sw_lock)
 	__acquires(&intel_hsi->hw_lock) __releases(&intel_hsi->hw_lock)
 {
 	void __iomem	*ctrl = intel_hsi->ctrl_io;
 	void __iomem	*dma = intel_hsi->dma_io;
+	struct intel_dma_ctx *dma_ctx;
 	struct hsi_msg *msg;
-	unsigned int hsi_channel;
-	int tx_not_rx, i;
+	int is_tx, dma_channel;
 	unsigned long flags;
 
-	for (i = 0; i < DWAHB_CHAN_CNT; i++) {
-		spin_lock_irqsave(&intel_hsi->sw_lock, flags);
-		msg = (intel_hsi->dma_ctx[i]) ?
-		      intel_hsi->dma_ctx[i]->ongoing->msg : NULL;
-		if ((!msg) || (msg->cl != cl)) {
-			spin_unlock_irqrestore(&intel_hsi->sw_lock, flags);
-			continue;
-		}
-		intel_hsi->dma_ctx[i]->ongoing->msg = NULL;
-		msg->break_frame = 0;
-		msg->status = HSI_STATUS_ERROR;
+	spin_lock_irqsave(&intel_hsi->sw_lock, flags);
+	dma_ctx = intel_hsi->dma_ctx[hsi_channel];
+	msg = (dma_ctx) ? dma_ctx->ongoing->msg : NULL;
+	if ((!msg) || (msg->cl != cl)) {
 		spin_unlock_irqrestore(&intel_hsi->sw_lock, flags);
-
-		spin_lock_irqsave(&intel_hsi->hw_lock, flags);
-		if (likely(intel_hsi->suspend_state == DEVICE_READY)) {
-			iowrite32(0, ARASAN_HSI_DMA_CONFIG(ctrl, i));
-			iowrite32(DWAHB_CHAN_STOP(i), HSI_DWAHB_CHEN(dma));
-		}
-		intel_hsi->dma_running &= ~DMA_BUSY(i);
-		spin_unlock_irqrestore(&intel_hsi->hw_lock, flags);
-
-		spin_lock_irqsave(&intel_hsi->sw_lock, flags);
-		list_del(&msg->link);
-		spin_unlock_irqrestore(&intel_hsi->sw_lock, flags);
-
-		/* Restart transfers of other clients */
-		tx_not_rx = (msg->ttype == HSI_MSG_WRITE);
-		hsi_channel = msg->channel;
-		hsi_destruct_msg(msg, i, intel_hsi);
-		hsi_transfer(intel_hsi, tx_not_rx, hsi_channel, i);
+		return;
 	}
+
+	is_tx = (msg->ttype == HSI_MSG_WRITE);
+	dma_ctx->ongoing->msg = NULL;
+	msg->break_frame = 0;
+	msg->status = HSI_STATUS_ERROR;
+	list_del(&msg->link);
+	spin_unlock_irqrestore(&intel_hsi->sw_lock, flags);
+
+	spin_lock_irqsave(&intel_hsi->hw_lock, flags);
+	if (is_arasan_v1(intel_hsi->version)) {
+		if (likely(intel_hsi->suspend_state == DEVICE_READY)) {
+			iowrite32(0,
+				ARASAN_CHN_REG_V1(SLAVE_DMA_CFG, hsi_channel));
+
+			iowrite32(DWAHB_CHAN_STOP(hsi_channel),
+					HSI_DWAHB_CHEN(dma));
+		}
+		intel_hsi->dma_running &= ~DMA_BUSY(hsi_channel);
+	}
+	spin_unlock_irqrestore(&intel_hsi->hw_lock, flags);
+
+	/* Destroy any ongoing msg (skipped by the flush_queue function) */
+	dma_channel = hsi_get_dma_channel(intel_hsi, msg, msg->channel);
+	hsi_destruct_msg(msg, msg->channel, intel_hsi);
+
+	/* Restart transfers of other clients */
+	hsi_transfer(intel_hsi, is_tx, hsi_channel, dma_channel);
+}
+
+/**
+ * hsi_cleanup_dma - cleanup DMA activities related to a client
+ * @intel_hsi: Intel HSI controller reference
+ * @cl: HSI client reference
+ */
+static void hsi_cleanup_dma(struct intel_controller *intel_hsi,
+						struct hsi_client *cl)
+{
+	unsigned int i;
+
+	for (i = 0; i < HSI_MID_MAX_CHANNELS; i++)
+		hsi_cleanup_dma_ch(intel_hsi, cl, i);
 }
 
 /**
@@ -2292,10 +2542,10 @@ static int hsi_mid_setup(struct hsi_client *cl)
 	struct intel_controller *intel_hsi = hsi_port_drvdata(port);
 	struct hsi_mid_platform_data *pd;
 	unsigned int divisor, rx_timeout, data_timeout;
-	int i;
-	u32 tx_sz, tx_en, rx_sz, rx_en, rx_pio;
+	int full_tx_sz, tx_sz, tx_en;
+	int full_rx_sz, rx_sz, rx_en, rx_pio;
 	unsigned long flags;
-	int err = 0;
+	int i, err = 0;
 
 	/* Local register values */
 	u32 irq_cfg, err_cfg, clk_cfg, prg_cfg;
@@ -2353,13 +2603,19 @@ static int hsi_mid_setup(struct hsi_client *cl)
 			  ARASAN_RX_MODE(cl->rx_cfg.mode);
 	irq_cfg		= ARASAN_IRQ_RX_WAKE;
 	err_cfg		= ARASAN_IRQ_BREAK | ARASAN_IRQ_RX_ERROR;
+
+	full_tx_sz   = 0;
+	full_rx_sz   = 0;
+	data_timeout = 0;
 	for (i = 0; i < HSI_MID_MAX_CHANNELS; i++) {
 		tx_en = (pd->tx_fifo_sizes[i] > 0);
 		tx_sz = (tx_en) ? min(order_base_2(pd->tx_fifo_sizes[i]),
 				      ARASAN_FIFO_MAX_BITS) : 0;
+		full_tx_sz += tx_sz;
 		rx_en = (pd->rx_fifo_sizes[i] > 0);
 		rx_sz = (rx_en) ? min(order_base_2(pd->rx_fifo_sizes[i]),
 				      ARASAN_FIFO_MAX_BITS) : 0;
+		full_rx_sz += rx_sz;
 		rx_pio = ((rx_en) && (pd->rx_dma_channels[i] < 0)) ?
 				ARASAN_IRQ_DATA_TIMEOUT(i) : 0;
 
@@ -2397,6 +2653,15 @@ static int hsi_mid_setup(struct hsi_client *cl)
 
 		spin_unlock_irqrestore(&intel_hsi->hw_lock, flags);
 		return err;
+	}
+
+	if ((full_tx_sz > ARASAN_MAX_TX_FIFO_SZ) ||
+	    (full_rx_sz > ARASAN_MAX_RX_FIFO_SZ)) {
+		pr_err(DRVNAME ": Wrong FIFO size (rx; %d (%d), tx: %d (%d))\n",
+			full_rx_sz, ARASAN_MAX_TX_FIFO_SZ,
+			full_tx_sz, ARASAN_MAX_RX_FIFO_SZ);
+		spin_unlock_irqrestore(&intel_hsi->hw_lock, flags);
+		return -EINVAL;
 	}
 
 	/* Setup the HSI controller accordingly */
@@ -2447,6 +2712,7 @@ static int hsi_mid_flush(struct hsi_client *cl)
 	struct hsi_port *port = hsi_get_port(cl);
 	struct intel_controller *intel_hsi = hsi_port_drvdata(port);
 	void __iomem *ctrl = intel_hsi->ctrl_io;
+	int version = intel_hsi->version;
 	unsigned int i, unforce = 0;
 	unsigned long flags;
 
@@ -2457,11 +2723,12 @@ static int hsi_mid_flush(struct hsi_client *cl)
 	spin_unlock_irqrestore(&intel_hsi->sw_lock, flags);
 
 	/* Wake the device not to react on the CAWAKE and to access hw */
-	hsi_pm_runtime_get(intel_hsi, HSI_PM_SYNC);
+	hsi_pm_runtime_get_sync(intel_hsi);
 
 	/* Disable the ACREADY line not to be disturbed during flush */
 	force_disable_acready(intel_hsi);
 
+	/* Flush queues (Break, TX, RX, FW) */
 	hsi_flush_queue(&intel_hsi->brk_queue, cl, intel_hsi);
 	for (i = 0; i < hsi_tx_channel_count(intel_hsi); i++)
 		hsi_flush_queue(&intel_hsi->tx_queue[i], cl, intel_hsi);
@@ -2474,9 +2741,9 @@ static int hsi_mid_flush(struct hsi_client *cl)
 	spin_lock_irqsave(&intel_hsi->sw_lock, flags);
 	for (i = 0; i < hsi_rx_channel_count(intel_hsi); i++)
 		if (list_empty(&intel_hsi->rx_queue[i])) {
-			while (ioread32(ARASAN_HSI_HSI_STATUS(ctrl)) &
+			while (ioread32(ARASAN_REG(HSI_STATUS)) &
 					ARASAN_RX_NOT_EMPTY(i))
-				(void) ioread32(ARASAN_HSI_RX_DATA(ctrl, i));
+				ioread32(ARASAN_CHN_REG(RX_DATA, i));
 		} else
 			unforce = 1;
 	intel_hsi->tx_queue_busy = 0;
@@ -2529,7 +2796,7 @@ static int hsi_mid_start_tx(struct hsi_client *cl)
 	struct hsi_port *port = hsi_get_port(cl);
 	struct intel_controller *intel_hsi = hsi_port_drvdata(port);
 
-	assert_acwake(intel_hsi, HSI_PM_SYNC);
+	assert_acwake(intel_hsi);
 
 	return 0;
 }
@@ -2584,7 +2851,7 @@ static void try_disable_acready(struct intel_controller *intel_hsi)
 /**
  * hsi_pio_xfer_complete - PIO threshold reached interrupt management
  * @hsi: Intel HSI controller reference
- * @lch: DMA channel
+ * @ch: HSI channel
  * @tx_not_rx: direction of the transfer (RX = 0, TX != 0)
  *
  * Returns 0 on completion or some interrupt enable bitfield for re-enabling
@@ -2596,6 +2863,7 @@ static inline u32 hsi_pio_xfer_complete(struct intel_controller *intel_hsi,
 {
 	struct list_head *queue;
 	void __iomem *ctrl = intel_hsi->ctrl_io;
+	int version = intel_hsi->version;
 	void __iomem *fifo;
 	struct hsi_msg *msg;
 	struct intel_pio_ctx *pio_ctx;
@@ -2625,8 +2893,8 @@ static inline u32 hsi_pio_xfer_complete(struct intel_controller *intel_hsi,
 			NUM_TX_FIFO_DWORDS(tx_fifo_depth(intel_hsi, ch)) :
 			NUM_RX_FIFO_DWORDS(rx_fifo_depth(intel_hsi, ch));
 		fifo = (tx_not_rx) ?
-			ARASAN_HSI_TX_DATA(ctrl, ch) :
-			ARASAN_HSI_RX_DATA(ctrl, ch);
+			ARASAN_CHN_REG(TX_DATA, ch) :
+			ARASAN_CHN_REG(RX_DATA, ch);
 
 		while ((avail > 0) || (unlikely(!pio_ctx->blk->length))) {
 			buf = sg_virt(pio_ctx->blk) + (pio_ctx->offset*4);
@@ -2654,7 +2922,7 @@ static inline u32 hsi_pio_xfer_complete(struct intel_controller *intel_hsi,
 
 	if ((pio_ctx->offset < HSI_BYTES_TO_FRAMES(pio_ctx->blk->length)) ||
 	    ((tx_not_rx) &&
-	     (!(ioread32(ARASAN_HSI_HSI_STATUS(ctrl))&ARASAN_TX_EMPTY(ch))))) {
+	     (!(ioread32(ARASAN_REG(HSI_STATUS)) & ARASAN_TX_EMPTY(ch))))) {
 		spin_unlock_irqrestore(&intel_hsi->sw_lock, flags);
 		return (tx_not_rx) ?
 			ARASAN_IRQ_TX_THRESHOLD(ch) :
@@ -2711,7 +2979,7 @@ static u32 hsi_pio_tx_complete(struct intel_controller *intel_hsi,
  *
  * Returns the number of managed DMA transfers.
  */
-static int hsi_dma_complete(struct intel_controller *intel_hsi,
+static int hsi_dma_complete_v1(struct intel_controller *intel_hsi,
 			    unsigned int lch)
 	__acquires(&intel_hsi->sw_lock) __releases(&intel_hsi->sw_lock)
 	__acquires(&intel_hsi->hw_lock) __releases(&intel_hsi->hw_lock)
@@ -2723,17 +2991,16 @@ static int hsi_dma_complete(struct intel_controller *intel_hsi,
 	int tx_not_rx;
 	unsigned int hsi_channel;
 	unsigned long flags;
-#ifdef USE_SOFWARE_WORKAROUND_FOR_DMA_LLI
 	struct intel_dma_lli_xfer *lli_xfer;
-	unsigned int blk_sz = 0;
-#endif
+	u32 blk_len_overwrite = 0;
+	unsigned int blk_len = 0;
 
 	spin_lock_irqsave(&intel_hsi->sw_lock, flags);
 	dma_ctx = intel_hsi->dma_ctx[lch];
 	/* Check if the DMA IT was scheduled BUT not serverd just
 	   before the calling hsi_ctrl_clean_reset (SMP config) */
 	if (!dma_ctx) {
-		pr_debug("Interrupt ignored (RESET already done) !");
+		pr_debug(DRVNAME ": Interrupt ignored (RESET already done) !");
 
 		spin_unlock_irqrestore(&intel_hsi->sw_lock, flags);
 		return 0;
@@ -2742,28 +3009,25 @@ static int hsi_dma_complete(struct intel_controller *intel_hsi,
 	ongoing_xfer = dma_ctx->ongoing;
 
 	msg = ongoing_xfer->msg;
-#ifdef USE_SOFWARE_WORKAROUND_FOR_DMA_LLI
-	lli_xfer = &ongoing_xfer->with_link_list;
+	lli_xfer = &ongoing_xfer->v1.with_link_list;
 	if ((is_using_link_list(dma_ctx)) && (msg) &&
 	    (!sg_is_last(lli_xfer->blk))) {
 		lli_xfer->blk = sg_next(lli_xfer->blk);
-		blk_sz = HSI_BYTES_TO_FRAMES(lli_xfer->blk->length);
+		blk_len = HSI_BYTES_TO_FRAMES(lli_xfer->blk->length);
+		blk_len_overwrite = ARASAN_DMA_XFER_FRAMES(blk_len);
 		msg = NULL;
 	}
-#endif
+
 	if ((msg) && (msg->status != HSI_STATUS_ERROR))
 		msg->status = HSI_STATUS_COMPLETED;
 	spin_unlock_irqrestore(&intel_hsi->sw_lock, flags);
 
-#ifdef USE_SOFWARE_WORKAROUND_FOR_DMA_LLI
-	if (blk_sz) {
+	if (blk_len) {
 		spin_lock_irqsave(&intel_hsi->hw_lock, flags);
-		iowrite32(ongoing_xfer->slv_enable |
-			  ARASAN_DMA_XFER_FRAMES(blk_sz),
-			  ARASAN_HSI_DMA_CONFIG(ctrl, lch));
+		iowrite32(ongoing_xfer->v1.slv_enable | blk_len_overwrite,
+				ARASAN_CHN_REG_V1(SLAVE_DMA_CFG, lch));
 		spin_unlock_irqrestore(&intel_hsi->hw_lock, flags);
 	}
-#endif
 
 	if (unlikely(!msg))
 		return 0;
@@ -2772,7 +3036,7 @@ static int hsi_dma_complete(struct intel_controller *intel_hsi,
 	 * can start on this channel as long as the current message is not
 	 * popped from the list, which happens later on! */
 	spin_lock_irqsave(&intel_hsi->hw_lock, flags);
-	iowrite32(0, ARASAN_HSI_DMA_CONFIG(ctrl, lch));
+	iowrite32(0, ARASAN_CHN_REG_V1(SLAVE_DMA_CFG, lch));
 	intel_hsi->dma_running &= ~DMA_BUSY(lch);
 	spin_unlock_irqrestore(&intel_hsi->hw_lock, flags);
 
@@ -2804,8 +3068,9 @@ static void hsi_isr_tasklet(unsigned long hsi)
 {
 	struct intel_controller *intel_hsi = (struct intel_controller *) hsi;
 	void __iomem *ctrl = intel_hsi->ctrl_io;
+	int version = intel_hsi->version;
 	unsigned int ch;
-	u32 irq_status, err_status;
+	u32 irq_status, err_status, dma_status;
 	u32 irq_cfg	= 0;
 	u32 err_cfg	= 0;
 	u32 dma_mask	= ARASAN_IRQ_DMA_COMPLETE(0);
@@ -2818,8 +3083,10 @@ static void hsi_isr_tasklet(unsigned long hsi)
 	spin_lock_irqsave(&intel_hsi->hw_lock, flags);
 	irq_status = intel_hsi->irq_status;
 	err_status = intel_hsi->err_status;
+	dma_status = intel_hsi->dma_status;
 	intel_hsi->irq_status = 0;
 	intel_hsi->err_status = 0;
+	intel_hsi->dma_status = 0;
 	spin_unlock_irqrestore(&intel_hsi->hw_lock, flags);
 
 	if (irq_status & ARASAN_IRQ_RX_WAKE)
@@ -2828,10 +3095,12 @@ static void hsi_isr_tasklet(unsigned long hsi)
 	if (err_status & ARASAN_IRQ_RX_ERROR)
 		hsi_rx_error(intel_hsi);
 
-	for (ch = 0; ch < DWAHB_CHAN_CNT; ch++) {
-		if (irq_status & dma_mask)
-			do_fwd |= hsi_dma_complete(intel_hsi, ch);
-		dma_mask <<= 1;
+	if (is_arasan_v1(version)) {
+		for (ch = 0; ch < DWAHB_CHAN_CNT; ch++) {
+			if (irq_status & dma_mask)
+				do_fwd |= hsi_dma_complete_v1(intel_hsi, ch);
+			dma_mask <<= 1;
+		}
 	}
 
 	for (ch = 0; ch < HSI_MID_MAX_CHANNELS; ch++) {
@@ -2859,11 +3128,12 @@ static void hsi_isr_tasklet(unsigned long hsi)
 		spin_lock_irqsave(&intel_hsi->hw_lock, flags);
 		if (irq_cfg) {
 			intel_hsi->irq_cfg |= irq_cfg;
-			hsi_enable_interrupt(ctrl, intel_hsi->irq_cfg);
+			hsi_enable_interrupt(ctrl, version, intel_hsi->irq_cfg);
 		}
 		if (err_cfg) {
 			intel_hsi->err_cfg |= err_cfg;
-			hsi_enable_error_interrupt(ctrl, intel_hsi->err_cfg);
+			hsi_enable_error_interrupt(ctrl, version,
+						   intel_hsi->err_cfg);
 		}
 		spin_unlock_irqrestore(&intel_hsi->hw_lock, flags);
 	}
@@ -2925,7 +3195,8 @@ static irqreturn_t hsi_isr(int irq, void *hsi)
 {
 	struct intel_controller *intel_hsi = (struct intel_controller *) hsi;
 	void __iomem *ctrl = intel_hsi->ctrl_io;
-	u32 irq_status, err_status, irq_disable, err_disable;
+	int version = intel_hsi->version;
+	u32 irq_status, err_status, irq_disable, err_disable, dma_status;
 
 	spin_lock(&intel_hsi->hw_lock);
 	/* The only interrupt source when suspended is an external wakeup, so
@@ -2944,9 +3215,11 @@ static irqreturn_t hsi_isr(int irq, void *hsi)
 		goto exit_irq;
 	}
 
-	irq_status = ioread32(ARASAN_HSI_INTERRUPT_STATUS(ctrl));
+	irq_status = ioread32(ARASAN_REG(INT_STATUS));
 	err_status = (irq_status & ARASAN_IRQ_ERROR) ?
-			ioread32(ARASAN_HSI_ERROR_INTERRUPT_STATUS(ctrl)) : 0;
+			ioread32(ARASAN_REG(ERR_INT_STATUS)) : 0;
+	dma_status = (irq_status & ARASAN_IRQ_DMA(version)) ?
+			ioread32(ARASAN_REG_V2(ctrl, DMA_INT_STATUS)) : 0;
 
 	irq_disable = irq_status &
 			(ARASAN_IRQ_RX_WAKE | ARASAN_IRQ_ANY_RX_THRESHOLD |
@@ -2956,22 +3229,27 @@ static irqreturn_t hsi_isr(int irq, void *hsi)
 
 	if (irq_disable) {
 		intel_hsi->irq_cfg &= ~irq_disable;
-		hsi_enable_interrupt(ctrl, intel_hsi->irq_cfg);
+		hsi_enable_interrupt(ctrl, version, intel_hsi->irq_cfg);
 	}
 
 	if (irq_status) {
-		iowrite32(irq_status, ARASAN_HSI_INTERRUPT_STATUS(ctrl));
+		iowrite32(irq_status, ARASAN_REG(INT_STATUS));
 		intel_hsi->irq_status |= irq_status;
 	}
 
 	if (err_disable) {
 		intel_hsi->err_cfg &= ~err_disable;
-		hsi_enable_error_interrupt(ctrl, intel_hsi->err_cfg);
+		hsi_enable_error_interrupt(ctrl, version, intel_hsi->err_cfg);
 	}
 
 	if (err_status) {
-		iowrite32(err_status, ARASAN_HSI_ERROR_INTERRUPT_STATUS(ctrl));
+		iowrite32(err_status, ARASAN_REG(ERR_INT_STATUS));
 		intel_hsi->err_status |= err_status;
+	}
+
+	if (dma_status) {
+		iowrite32(dma_status, ARASAN_REG_V2(ctrl, DMA_INT_STATUS));
+		intel_hsi->dma_status |= dma_status;
 	}
 
 exit_irq:
@@ -3035,9 +3313,11 @@ static void hsi_ports_exit(struct hsi_controller *hsi)
 static int hsi_map_resources(struct intel_controller *intel_hsi,
 			     struct pci_dev *pdev)
 {
-	int err;
+	int version, err;
 	int pci_bar = 0;
 	unsigned long paddr;
+	unsigned int ext_dma_id;
+	void __iomem *ctrl;
 	u32 iolen;
 
 	/* get hsi controller io resource and map it */
@@ -3046,24 +3326,52 @@ static int hsi_map_resources(struct intel_controller *intel_hsi,
 	paddr = pci_resource_start(pdev, pci_bar);
 	iolen = pci_resource_len(pdev, pci_bar);
 	err = pci_request_region(pdev, pci_bar, dev_name(&pdev->dev));
-	if (err)
+	if (err) {
+		pr_err(DRVNAME ": pci_request_region failed (%d)\n", err);
 		goto no_sys_region;
+	}
 
-	intel_hsi->ctrl_io = ioremap_nocache(paddr, iolen);
-	if (!intel_hsi->ctrl_io) {
+	ctrl = ioremap_nocache(paddr, iolen);
+	if (!ctrl) {
+		pr_err(DRVNAME ": ioremap_nocache failed\n");
 		err = -EPERM;
 		goto no_sys_remap;
 	}
+	intel_hsi->ctrl_io = ctrl;
 
-	/* Get master DMA info */
+	/*
+	 * Read the HW plaform & HSI IP versions:
+	 * Penwell/Clovertrail = 1.X
+	 * Others HW platform  = 2.X
+	 */
+	version = ((pdev->device == HSI_PNW_PCI_DEVICE_ID) ||
+			(pdev->device == HSI_CLV_PCI_DEVICE_ID)) ? 0x10 : 0x20;
+
+	intel_hsi->version = ioread32(ARASAN_REG(VERSION)) & 0xff;
+
+	/* If the 2 versions do not match => We have a BIG problem ! */
+	if (is_arasan_v1(version) != is_arasan_v1(intel_hsi->version)) {
+		pr_err(DRVNAME ": Wrong HW version (platform: 0x%X, ip: 0x%X)\n",
+				version, intel_hsi->version);
+		err = -ENODEV;
+		goto wrong_ip_version;
+	}
+
+	/* Get master DMA info (for IP V1 only) */
+	if (!is_arasan_v1(intel_hsi->version)) {
+		pr_info(DRVNAME ": IP V2 (0x%X), HW PCI id (0x%X)\n",
+				intel_hsi->version, pdev->device);
+		return 0;
+	}
+
 	if (pdev->device == HSI_PNW_PCI_DEVICE_ID)
-		intel_hsi->dmac = pci_get_device(PCI_VENDOR_ID_INTEL,
-						HSI_PNW_MASTER_DMA_ID, NULL);
+		ext_dma_id = HSI_PNW_MASTER_DMA_ID;
 	else /* Assuming it's Cloverview */
-		intel_hsi->dmac = pci_get_device(PCI_VENDOR_ID_INTEL,
-						HSI_CLV_MASTER_DMA_ID, NULL);
+		ext_dma_id = HSI_CLV_MASTER_DMA_ID;
 
+	intel_hsi->dmac = pci_get_device(PCI_VENDOR_ID_INTEL, ext_dma_id, NULL);
 	if (!intel_hsi->dmac) {
+		pr_err(DRVNAME ": pci_get_device(dmac) failed\n");
 		err = -EPERM;
 		goto no_dmac_device;
 	}
@@ -3072,15 +3380,20 @@ static int hsi_map_resources(struct intel_controller *intel_hsi,
 	iolen = pci_resource_len(intel_hsi->dmac, pci_bar);
 	err = pci_request_region(intel_hsi->dmac, pci_bar,
 				 dev_name(&intel_hsi->dmac->dev));
-	if (err)
+	if (err) {
+		pr_err(DRVNAME ": pci_request_region failed (%d)\n", err);
 		goto no_dmac_region;
+	}
 
 	intel_hsi->dma_io = ioremap_nocache(paddr, iolen);
 	if (!intel_hsi->dma_io) {
+		pr_err(DRVNAME ": ioremap_nocache failed\n");
 		err = -EPERM;
 		goto no_dmac_remap;
 	}
 
+	pr_info(DRVNAME ": IP V1 (0x%X), HW PCI id (0x%X)\n",
+				intel_hsi->version, pdev->device);
 	return 0;
 
 no_dmac_remap:
@@ -3088,6 +3401,7 @@ no_dmac_remap:
 no_dmac_region:
 	pci_dev_put(intel_hsi->dmac);
 no_dmac_device:
+wrong_ip_version:
 	iounmap(intel_hsi->ctrl_io);
 no_sys_remap:
 	pci_release_region(pdev, pci_bar);
@@ -3106,9 +3420,13 @@ static void hsi_unmap_resources(struct intel_controller *intel_hsi,
 {
 	int pci_bar = 0;
 
-	iounmap(intel_hsi->dma_io);
-	pci_release_region(intel_hsi->dmac, pci_bar);
-	pci_dev_put(intel_hsi->dmac);
+	/* Release the external DMA controller only if it exists */
+	if (intel_hsi->dmac) {
+		iounmap(intel_hsi->dma_io);
+		pci_release_region(intel_hsi->dmac, pci_bar);
+		pci_dev_put(intel_hsi->dmac);
+	}
+
 	iounmap(intel_hsi->ctrl_io);
 	pci_release_region(pdev, pci_bar);
 }
@@ -3133,8 +3451,6 @@ static int hsi_controller_init(struct intel_controller *intel_hsi)
 
 	spin_lock_init(&intel_hsi->sw_lock);
 	spin_lock_init(&intel_hsi->hw_lock);
-
-	init_waitqueue_head(&intel_hsi->ip_resumed);
 
 #ifdef CONFIG_HAS_WAKELOCK
 	wake_lock_init(&intel_hsi->stay_awake, WAKE_LOCK_SUSPEND,
@@ -3347,7 +3663,7 @@ static int __init hsi_add_controller(struct hsi_controller *hsi,
 
 	intel_hsi = kzalloc(sizeof(*intel_hsi), GFP_KERNEL);
 	if (!intel_hsi) {
-		pr_err("not enough memory for intel hsi\n");
+		pr_err(DRVNAME ": Out of memory (intel_hsi)\n");
 		return -ENOMEM;
 	}
 	hsi->id = 0;
@@ -3362,7 +3678,7 @@ static int __init hsi_add_controller(struct hsi_controller *hsi,
 
 	err = pci_enable_device(pdev);
 	if (err) {
-		pr_err("pci enable fail %d\n", err);
+		pr_err(DRVNAME ": pci_enable_device failed (%d)\n", err);
 		goto fail_pci_enable_device;
 	}
 
@@ -3460,7 +3776,7 @@ static int intel_hsi_probe(struct pci_dev *pdev,
 
 	hsi = hsi_alloc_controller(1, GFP_KERNEL);
 	if (!hsi) {
-		pr_err("No memory for hsi controller\n");
+		pr_err(DRVNAME ": Out of memory (hsi controller)\n");
 		return -ENOMEM;
 	}
 
@@ -3472,7 +3788,7 @@ static int intel_hsi_probe(struct pci_dev *pdev,
 
 fail_add_controller:
 	kfree(hsi);
-	pr_err("hsi controller probe error exit");
+	pr_err(DRVNAME ": Controller probe failed\n");
 	return err;
 }
 
@@ -3510,11 +3826,12 @@ static const struct dev_pm_ops intel_mid_hsi_rtpm = {
  * struct pci_ids - PCI IDs handled by the driver (ID of HSI controller)
  */
 static const struct pci_device_id pci_ids[] __devinitdata = {
-	/*disable HSI controller for Redridge boards*/
+	/* Disable HSI controller for Redridge boards (No modem) */
 #ifndef CONFIG_BOARD_REDRIDGE
-	{ PCI_VDEVICE(INTEL, HSI_PNW_PCI_DEVICE_ID) }, /* HSI - Penwell */
+	{ PCI_VDEVICE(INTEL, HSI_PNW_PCI_DEVICE_ID) },	/* HSI - Penwell */
 #endif
-	{ PCI_VDEVICE(INTEL, HSI_CLV_PCI_DEVICE_ID) },  /* HSI - Cloverview */
+	{ PCI_VDEVICE(INTEL, HSI_CLV_PCI_DEVICE_ID) },	/* HSI - Cloverview */
+	{ PCI_VDEVICE(INTEL, HSI_TNG_PCI_DEVICE_ID) },	/* HSI - Tangier */
 	{ }
 };
 
@@ -3550,17 +3867,17 @@ static int __init intel_hsi_init(void)
  */
 #ifdef CONFIG_ATOM_SOC_POWER
 	if (enable_standby) {
-		pr_info("HSI controller driver not registered (enable_standby=1)\n");
+		pr_info(DRVNAME ": Driver not registered (enable_standby=1)\n");
 		return -EBUSY;
 	}
 #endif
 #endif
-	pr_info("init Intel HSI controller driver\n");
 
 	/* Disable the rtpm if the hsi_pm is disabled */
 	if (!hsi_pm)
 		runtime_pm = 0;
 
+	pr_info(DRVNAME ": Controller driver regiseterd\n");
 	return pci_register_driver(&intel_hsi_driver);
 }
 module_init(intel_hsi_init);
@@ -3570,13 +3887,14 @@ module_init(intel_hsi_init);
  */
 static void __exit intel_hsi_exit(void)
 {
-	pr_info("Intel HSI controller driver removed\n");
+	pr_info(DRVNAME ": Controller driver removed\n");
 	pci_unregister_driver(&intel_hsi_driver);
 }
 module_exit(intel_hsi_exit);
 
 MODULE_ALIAS("pci:intel_hsi");
 MODULE_AUTHOR("Olivier Stoltz Douchet <olivierx.stoltz-douchet@intel.com>");
+MODULE_AUTHOR("Faouaz Tenoutit <faouazx.tenoutit@intel.com>");
 MODULE_DESCRIPTION("Intel mid HSI Controller Driver");
 MODULE_LICENSE("GPL v2");
 
