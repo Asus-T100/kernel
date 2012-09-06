@@ -188,7 +188,7 @@ static int enter_dsr_locked(struct mdfld_dsi_config *dsi_config, int level)
 	struct drm_device *dev;
 	struct mdfld_dsi_pkg_sender *sender;
 	int err;
-
+	pm_message_t state;
 	int pipe0_enabled;
 	int pipe2_enabled;
 
@@ -243,9 +243,21 @@ static int enter_dsr_locked(struct mdfld_dsi_config *dsi_config, int level)
 		}
 		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 
-		/*suspend display*/
-		ospm_suspend_display(dev);
+		/*suspend whole PCI host and related islands
+		** if failed at this try, revive te for another chance
+		*/
+		state.event = 0;
+		if (ospm_power_suspend(gpDrmDevice->pdev, state)) {
+			/* Only display island is powered off then
+			** need revive the whole TE
+			*/
+			if (!ospm_power_is_hw_on(OSPM_DISPLAY_ISLAND))
+				exit_dsr_locked(dsi_config);
+			else
+				mdfld_enable_te(dev, dsi_config->pipe);
 
+			return -EINVAL;
+		}
 		/*
 		 *suspend pci
 		 *FIXME: should I do it here?
@@ -418,7 +430,7 @@ int mdfld_dsi_dsr_report_te(struct mdfld_dsi_config *dsi_config)
 		/*enter dsr*/
 		err = enter_dsr_locked(dsi_config, dsr_level);
 		if (err) {
-			DRM_ERROR("Failed to enter DSR\n");
+			PSB_DEBUG_ENTRY("Failed to enter DSR\n");
 			goto report_te_out;
 		}
 		dsr->dsr_state = dsr_level;

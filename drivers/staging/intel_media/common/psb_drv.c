@@ -2049,8 +2049,9 @@ static int psb_disp_ioctl(struct drm_device *dev, void *data,
 	int dspcntr_reg = DSPBCNTR;
 	int dspbase_reg = MRST_DSPBBASE;
 	u32 temp;
+	struct mdfld_dsi_config *dsi_config;
 	/*DRM_COPY_FROM_USER(&dp_ctrl, data, sizeof(struct drm_psb_disp_ctrl));*/
-	/*DRM_INFO("disp cmd:%d \n",dp_ctrl->cmd);*/
+	/*DRM_INFO("disp cmd:%d\n",dp_ctrl->cmd);*/
 	if (dp_ctrl->cmd == DRM_PSB_DISP_INIT_HDMI_FLIP_CHAIN) {
 		flip_data = &dp_ctrl->u.flip_chain_data;
 		if (flip_data->size > DRM_PSB_HDMI_FLIP_ARRAY_SIZE) {
@@ -2138,6 +2139,13 @@ static int psb_disp_ioctl(struct drm_device *dev, void *data,
 		*signals agains.
 		*/
 		if (!hdmi_state) {
+			/* We need forbid DSR here to let DSR has a new
+			** chance to determine the hdmi status
+			** Or when HDMI unplug, the DSR has sometimes
+			** remained at Level 0
+			*/
+			dsi_config = dev_priv->dsi_configs[0];
+			mdfld_dsi_dsr_forbid(dsi_config);
 			/*Set power island down when hdmi disconnected*/
 			acquire_ospm_lock();
 			/*HDMI is considered totally disconected
@@ -2149,6 +2157,7 @@ static int psb_disp_ioctl(struct drm_device *dev, void *data,
 			dev_priv->panel_desc &= ~DISPLAY_B;
 			DISP_PLANEB_STATUS = ~DISPLAY_PLANE_ENABLE;
 			release_ospm_lock();
+			mdfld_dsi_dsr_allow(dsi_config);
 		}
 	} else if (dp_ctrl->cmd == DRM_PSB_HDMI_NOTIFY_HOTPLUG_TO_AUDIO) {
 		if (dp_ctrl->u.data == 0) {

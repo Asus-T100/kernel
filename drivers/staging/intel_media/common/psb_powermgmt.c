@@ -48,6 +48,7 @@
 #include <asm/intel_scu_ipc.h>
 #include <linux/mutex.h>
 #include <linux/gpio.h>
+#include "mdfld_dsi_dbi_dsr.h"
 
 #define SCU_CMD_VPROG2  0xe3
 
@@ -83,6 +84,7 @@ static atomic_t g_display_access_count;
 static atomic_t g_graphics_access_count;
 atomic_t g_videoenc_access_count;
 atomic_t g_videodec_access_count;
+
 
 extern u32 DISP_PLANEB_STATUS;
 
@@ -1151,13 +1153,13 @@ int ospm_power_suspend(struct pci_dev *pdev, pm_message_t state)
 		)
 		ret = -EBUSY;
 		if (!ret) {
-			ospm_suspend_display(gpDrmDevice);
-
 			if (ospm_runtime_pm_msvdx_suspend(gpDrmDevice) != 0)
 				ret = -EBUSY;
 
 			if (ospm_runtime_pm_topaz_suspend(gpDrmDevice) != 0)
 				ret = -EBUSY;
+
+			ospm_suspend_display(gpDrmDevice);
 
 			if (!ret) {
 				/* When suspend, the gfx island may increase
@@ -1176,7 +1178,10 @@ int ospm_power_suspend(struct pci_dev *pdev, pm_message_t state)
 					spin_unlock(&graphics_count_lock);
 			}
 		} else {
-			printk(KERN_ALERT "ospm_power_suspend: device busy: graphics %d videoenc %d videodec %d display %d\n", graphics_access_count, videoenc_access_count, videodec_access_count, display_access_count);
+			PSB_DEBUG_ENTRY("ospm_power_suspend: device busy:");
+			PSB_DEBUG_ENTRY("SGX %d Enc %d Dec %d Display %d\n",
+				graphics_access_count, videoenc_access_count,
+				videodec_access_count, display_access_count);
 		}
 		spin_lock_irqsave(&dev_priv->ospm_lock, flags);
 		gbSuspendInProgress = false;
@@ -1328,6 +1333,7 @@ void ospm_power_island_down(int hw_islands)
 	int video_islands = hw_islands &
 		(OSPM_VIDEO_DEC_ISLAND | OSPM_VIDEO_ENC_ISLAND);
 	unsigned long flags;
+	struct mdfld_dsi_config *dsi_config;
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *) gpDrmDevice->dev_private;
 
@@ -1416,7 +1422,22 @@ unlock:
 			BUG();
 
 		spin_unlock_irqrestore(&dev_priv->ospm_lock, flags);
-		;
+
+		/* From the test, after enter DSR level 1, only GFX island
+		** has chance to power on and leave PCI host power ungated
+		** Because after SGX complete a buffer, it will trigger
+		** PROCESS_QUEUES command to SGX even if there are no more
+		** 3D thing to do, hence power on SGX and PCI. Because there are
+		** nothing remain to flip, exit_dsr doesn't be called,
+		** so PCI host remain power ungated.
+		** here just give another chance to enter DSR
+		** Note:
+		*/
+		if (gfx_islands & OSPM_GRAPHICS_ISLAND) {
+			dsi_config = dev_priv->dsi_configs[0];
+			mdfld_dsi_dsr_forbid(dsi_config);
+			mdfld_dsi_dsr_allow(dsi_config);
+		}
 	}
 }
 
