@@ -200,21 +200,21 @@ extern int mdfld_dsi_read_gen_hs(struct mdfld_dsi_pkg_sender *sender,
 			u8 param0,
 			u8 param1,
 			u8 param_num,
-			u32 *data,
-			u16 len);
+			u8 *data,
+			u32 len);
 extern int mdfld_dsi_read_gen_lp(struct mdfld_dsi_pkg_sender *sender,
 			u8 param0,
 			u8 param1,
 			u8 param_num,
-			u32 *data,
-			u16 len);
+			u8 *data,
+			u32 len);
 extern int mdfld_dsi_read_mcs_hs(struct mdfld_dsi_pkg_sender *sender,
 			u8 cmd,
-			u32 *data,
-			u16 len);
+			u8 *data,
+			u32 len);
 extern int mdfld_dsi_read_mcs_lp(struct mdfld_dsi_pkg_sender *sender,
 			u8 cmd,
-			u32 *data,
-			u16 len);
+			u8 *data,
+			u32 len);
 extern int mdfld_dsi_wait_for_fifos_empty(struct mdfld_dsi_pkg_sender *sender);
 #endif

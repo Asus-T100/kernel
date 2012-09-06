@@ -68,9 +68,8 @@
 #include "mdfld_hdcp.h"
 #endif
 #include "mdfld_csc.h"
-
 #include "mdfld_dsi_dbi_dsr.h"
-
+#include "mdfld_dsi_pkg_sender.h"
 int drm_psb_debug;
 int psb_video_fabric_debug;
 int drm_psb_enable_pr2_cabc = 1;
@@ -3635,6 +3634,160 @@ static int psb_ospm_write(struct file *file, const char *buffer,
 	}
 	return count;
 }
+static int psb_panel_register_read(char *buf, char **start, off_t offset,
+				 int request, int *eof, void *data)
+{
+	struct drm_minor *minor = (struct drm_minor *) data;
+	struct drm_device *dev = minor->dev;
+	struct drm_psb_private *dev_priv =
+		(struct drm_psb_private *) dev->dev_private;
+	/*do nothing*/
+	int len = dev_priv->count;
+	*eof = 1;
+	if (dev_priv->buf && dev_priv->count < PSB_REG_PRINT_SIZE)
+		memcpy(buf, dev_priv->buf, dev_priv->count);
+	return len - offset;
+}
+/*
+* use to read and write panel side register. and print to standard output.
+*/
+static int psb_panel_register_write(struct file *file, const char *buffer,
+				      unsigned long count, void *data)
+{
+	struct drm_minor *minor = (struct drm_minor *) data;
+	struct drm_device *dev = minor->dev;
+	struct drm_psb_private *dev_priv =
+		(struct drm_psb_private *) dev->dev_private;
+	struct mdfld_dsi_dbi_output **dbi_outputs;
+	struct mdfld_dsi_dbi_output *dbi_output;
+	struct mdfld_dbi_dsr_info *dsr_info = dev_priv->dbi_dsr_info;
+	struct mdfld_dsi_config *dsi_config = dev_priv->dsi_configs[0];
+	int reg_val = 0;
+	char buf[256];
+	char op = '0';
+	int  cmd = 0, start = 0, end = 0;
+	u8   par[256];
+	int  pnum = 0;
+	int  len = 0;
+	int  Offset = 0;
+	int  add_size = 0;
+	int  ret = 0;
+	u8 *pdata = NULL;
+	int  i = 0;
+
+	if (!dsi_config)
+		return -EINVAL;
+
+	dev_priv->count = 0;
+	memset(buf, '\0', sizeof(buf));
+
+	if (count > sizeof(buf)) {
+		PSB_DEBUG_ENTRY(
+			"The input is too bigger, kernel can not handle.\n");
+		return -EINVAL;
+	} else {
+		if (copy_from_user(buf, buffer, count))
+			return -EINVAL;
+		if (buf[count-1] != '\n')
+			return -EINVAL;
+		PSB_DEBUG_ENTRY("input = %s", buf);
+	}
+
+	sscanf(buf, "%c%x%x%x", &op, &cmd, &pnum, &par);
+
+	if (op != 'g' && op != 's') {
+		PSB_DEBUG_ENTRY("The input format is not right!\n");
+		PSB_DEBUG_ENTRY(
+			"g  cmd count (g a  1 :get panel status.)\n");
+		PSB_DEBUG_ENTRY(
+			"s  cmd count par (s 2c 0:set write_mem_start.)\n");
+		PSB_DEBUG_ENTRY(
+			"s  00  count cmd+par(s 0 1 28:set display on)\n");
+		return -EINVAL;
+	}
+	PSB_DEBUG_ENTRY("op= %c cmd=%x pnum=%x par=%s",
+			op, cmd, pnum, par);
+
+	if (op == 'g' && pnum == 0) {
+		PSB_DEBUG_ENTRY("get status must has parameter count!");
+		sprintf(dev_priv->buf,
+			"get status must has parameter count!\n");
+		return -EINVAL;
+	}
+
+	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
+				       OSPM_UHB_FORCE_POWER_ON)) {
+		PSB_DEBUG_ENTRY("Display controller can not power on.!\n");
+		return -EPERM;
+	}
+	/*forbid dsr which will restore regs*/
+	mdfld_dsi_dsr_forbid(dsi_config);
+
+	if (op == 'g') {
+		pdata = kmalloc(sizeof(u8)*pnum, GFP_KERNEL);
+		if (!pdata) {
+			DRM_ERROR("No memory for long_pkg data\n");
+			ret = -ENOMEM;
+			goto fun_exit;
+		}
+		ret = mdfld_dsi_get_panel_status(dsi_config, cmd,
+				pdata , MDFLD_DSI_LP_TRANSMISSION, pnum);
+		if (ret == pnum && ret != 0) {
+			PSB_DEBUG_ENTRY("read panel status\n");
+			PSB_DEBUG_ENTRY("cmd : 0x%02x\n", cmd);
+			add_size = sizeof("cmd : 0xFF\n");
+			if (dev_priv->buf && (dev_priv->count + add_size)
+					 < PSB_REG_PRINT_SIZE)
+				dev_priv->count += sprintf(
+						dev_priv->buf + dev_priv->count,
+						"cmd : 0x%02x\n", cmd);
+			for (i = 0; i < pnum; i++) {
+				PSB_DEBUG_ENTRY("par%d= 0x%02x\n",
+							 i, pdata[i], pdata[i]);
+				add_size = sizeof("par1=0xFF 0xFF\n");
+			  if (dev_priv->buf && (dev_priv->count + add_size)
+						 < PSB_REG_PRINT_SIZE)
+					dev_priv->count += sprintf(
+					    dev_priv->buf + dev_priv->count,
+					   "par%d= 0x%02x\n",
+						 i, pdata[i], pdata[i]);
+			}
+		} else {
+			PSB_DEBUG_ENTRY("get panel status fail\n");
+			sprintf(dev_priv->buf, "get panel status fail\n");
+		}
+
+		kfree(pdata);
+	}
+	if (op == 's') {
+		struct mdfld_dsi_pkg_sender *sender =
+				 mdfld_dsi_get_pkg_sender(dsi_config);
+		if (cmd == 0 && pnum != 0)
+			ret = mdfld_dsi_send_gen_long_lp(sender, par, pnum, 0);
+		else {
+			if (cmd == 0x2c)
+				atomic64_inc(&sender->te_seq);
+			ret = mdfld_dsi_send_dcs(sender,
+					cmd,
+					par,
+					pnum,
+					CMD_DATA_SRC_SYSTEM_MEM,
+					MDFLD_DSI_SEND_PACKAGE);
+		}
+		if (ret) {
+			PSB_DEBUG_ENTRY("set panel status fail!\n");
+			sprintf(dev_priv->buf, "set panel status fail!\n");
+		} else {
+			PSB_DEBUG_ENTRY("set panel status ok!\n");
+			sprintf(dev_priv->buf, "set panel status ok\n");
+		}
+	}
+fun_exit:
+	/*allow entering dsr*/
+	mdfld_dsi_dsr_allow(dsi_config);
+	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+	return count;
+}
 
 static int psb_display_register_read(char *buf, char **start, off_t offset, int request,
 				     int *eof, void *data)
@@ -3663,6 +3816,7 @@ static int psb_display_register_write(struct file *file, const char *buffer,
 	struct mdfld_dsi_dbi_output **dbi_outputs;
 	struct mdfld_dsi_dbi_output *dbi_output;
 	struct mdfld_dbi_dsr_info *dsr_info = dev_priv->dbi_dsr_info;
+	struct mdfld_dsi_config *dsi_config = dev_priv->dsi_configs[0];
 	int reg_val = 0;
 	char buf[256];
 	char op = '0';
@@ -3671,6 +3825,10 @@ static int psb_display_register_write(struct file *file, const char *buffer,
 	int  len = 0;
 	int  Offset = 0;
 	int  add_size = 0;
+	int  ret = 0;
+
+	if (!dsi_config)
+		return -EINVAL;
 
 	dev_priv->count = 0;
 	memset(buf, '\0', sizeof(buf));
@@ -3715,21 +3873,9 @@ static int psb_display_register_write(struct file *file, const char *buffer,
 		PSB_DEBUG_ENTRY("Display controller can not power on.!\n");
 		return -EPERM;
 	}
-	if (is_panel_vid_or_cmd(dev) == MDFLD_DSI_ENCODER_DBI) {
-#ifndef CONFIG_MDFLD_DSI_DPU
-		if (dev_priv->b_dsr_enable) {
-			dev_priv->exit_idle(dev,
-					MDFLD_DSR_2D_3D,
-					NULL,
-					true);
-			dsr_info = dev_priv->dbi_dsr_info;
-			dbi_outputs = dsr_info->dbi_outputs;
-			dbi_output = dbi_outputs[0];
-			/*make sure, during read no DSR again*/
-			dbi_output->mode_flags |= MODE_SETTING_ON_GOING;
-		}
-#endif
-	}
+	/*forbid dsr which will restore regs*/
+	mdfld_dsi_dsr_forbid(dsi_config);
+
 	if (op == 'r') {
 		if (reg >= 0xa000) {
 			reg_val = REG_READ(reg);
@@ -3766,12 +3912,14 @@ static int psb_display_register_write(struct file *file, const char *buffer,
 		PSB_DEBUG_ENTRY("end:  0x%08x\n", end);
 		if ((start % 0x4) != 0) {
 			PSB_DEBUG_ENTRY("The start address should be 4 byte aligned. Please reference the display controller specification.\n");
-			return -EINVAL;
+			ret = -EINVAL;
+			goto fun_exit;
 		}
 
 		if ((end % 0x4) != 0) {
 			PSB_DEBUG_ENTRY("The end address should be 4 byte aligned. Please reference the display controller specification.\n");
-			return -EINVAL;
+			ret = -EINVAL;
+			goto fun_exit;
 		}
 
 		len = end - start + 1;
@@ -3780,12 +3928,14 @@ static int psb_display_register_write(struct file *file, const char *buffer,
 
 		if (end < 0xa000 || end >  0x720ff) {
 			PSB_DEBUG_ENTRY("The end address is out of the display controller register range.\n");
-			return -EINVAL;
+			ret = -EINVAL;
+			goto fun_exit;
 		}
 
 		if (start < 0xa000 || start >  0x720ff)	{
 			PSB_DEBUG_ENTRY("The start address is out of the display controller register range.\n");
-			return -EINVAL;
+			ret = -EINVAL;
+			goto fun_exit;
 		}
 		for (Offset = start ; Offset < end; Offset = Offset + 0x10) {
 			if (reg >= 0xa000) {
@@ -3828,12 +3978,10 @@ static int psb_display_register_write(struct file *file, const char *buffer,
 
 		}
 	}
-	if (is_panel_vid_or_cmd(dev) == MDFLD_DSI_ENCODER_DBI) {
-#ifndef CONFIG_MDFLD_DSI_DPU
-		if (dev_priv->b_dsr_enable)
-			dbi_output->mode_flags &= ~MODE_SETTING_ON_GOING;
-#endif
-	}
+fun_exit:
+	/*allow entering dsr*/
+	mdfld_dsi_dsr_allow(dsi_config);
+
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 	return count;
 }
@@ -3856,9 +4004,12 @@ static int psb_proc_init(struct drm_minor *minor)
 	struct proc_dir_entry *ent1;
 	struct proc_dir_entry *rtpm;
 	struct proc_dir_entry *ent_display_status;
+	struct proc_dir_entry *ent_panel_status;
 	ent = create_proc_entry(OSPM_PROC_ENTRY, 0644, minor->proc_root);
 	rtpm = create_proc_entry(RTPM_PROC_ENTRY, 0644, minor->proc_root);
 	ent_display_status = create_proc_entry(DISPLAY_PROC_ENTRY, 0644, minor->proc_root);
+	ent_panel_status = create_proc_entry(PANEL_PROC_ENTRY,
+			 0644, minor->proc_root);
 	ent1 = proc_create_data(BLC_PROC_ENTRY, 0, minor->proc_root, &psb_blc_proc_fops, minor);
 
 	if (!ent || !ent1 || !rtpm || !ent_display_status)
@@ -3871,6 +4022,9 @@ static int psb_proc_init(struct drm_minor *minor)
 	ent_display_status->write_proc = psb_display_register_write;
 	ent_display_status->read_proc = psb_display_register_read;
 	ent_display_status->data = (void *)minor;
+	ent_panel_status->write_proc = psb_panel_register_write;
+	ent_panel_status->read_proc = psb_panel_register_read;
+	ent_panel_status->data = (void *)minor;
 	return 0;
 }
 
