@@ -478,6 +478,7 @@ struct drm_psb_private {
 
 	/* IMG video context */
 	struct list_head video_ctx;
+	struct mutex video_ctx_mutex;
 	/* Current video context */
 	struct psb_video_ctx *topaz_ctx;
 	struct psb_video_ctx *msvdx_ctx;

@@ -1469,6 +1469,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	if (dev_priv == NULL)
 		return -ENOMEM;
 	INIT_LIST_HEAD(&dev_priv->video_ctx);
+	mutex_init(&dev_priv->video_ctx_mutex);
 	if (IS_CTP(dev)) {
 		dev_priv->num_pipe = 2;
 	} else if (IS_MDFLD(dev)) {

@@ -120,6 +120,7 @@ static int ospm_runtime_pm_msvdx_suspend(struct drm_device *dev)
 		goto out;
 	}
 
+	mutex_lock(&dev_priv->video_ctx_mutex);
 	list_for_each_entry_safe(pos, n, &dev_priv->video_ctx, head) {
 		int entrypoint = pos->ctx_type & 0xff;
 		if (entrypoint == VAEntrypointVLD ||
@@ -131,6 +132,7 @@ static int ospm_runtime_pm_msvdx_suspend(struct drm_device *dev)
 			break;
 		}
 	}
+	mutex_unlock(&dev_priv->video_ctx_mutex);
 
 	/* have decode context, but not started, or is just closed */
 	if (decode_ctx && dev_priv->msvdx_ctx)
@@ -178,6 +180,7 @@ static int ospm_runtime_pm_topaz_suspend(struct drm_device *dev)
 		}
 	}
 
+	mutex_lock(&dev_priv->video_ctx_mutex);
 	list_for_each_entry_safe(pos, n, &dev_priv->video_ctx, head) {
 		int entrypoint = pos->ctx_type & 0xff;
 		if (entrypoint == VAEntrypointEncSlice ||
@@ -186,6 +189,7 @@ static int ospm_runtime_pm_topaz_suspend(struct drm_device *dev)
 			break;
 		}
 	}
+	mutex_unlock(&dev_priv->video_ctx_mutex);
 
 	/* have encode context, but not started, or is just closed */
 	if (encode_ctx && dev_priv->topaz_ctx)
@@ -239,6 +243,7 @@ static int ospm_runtime_pm_topaz_resume(struct drm_device *dev)
 
 	/*printk(KERN_ALERT "ospm_runtime_pm_topaz_resume\n");*/
 
+	mutex_lock(&dev_priv->video_ctx_mutex);
 	list_for_each_entry_safe(pos, n, &dev_priv->video_ctx, head) {
 		int entrypoint = pos->ctx_type & 0xff;
 		if (entrypoint == VAEntrypointEncSlice ||
@@ -247,6 +252,7 @@ static int ospm_runtime_pm_topaz_resume(struct drm_device *dev)
 			break;
 		}
 	}
+	mutex_unlock(&dev_priv->video_ctx_mutex);
 
 	/* have encode context, but not started, or is just closed */
 	if (encode_ctx && dev_priv->topaz_ctx)
