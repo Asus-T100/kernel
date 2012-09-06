@@ -472,6 +472,12 @@ extern int pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t state);
 extern pci_power_t pmu_pci_choose_state(struct pci_dev *pdev);
 #endif /* !CONFIG_X86_MDFLD */
 
+#ifdef CONFIG_INTEL_MID_RAM_CONSOLE
+extern void ram_consle_reserve_memory(void);
+#else
+static inline void ram_consle_reserve_memory(void){ }
+#endif/* !CONFIG_INTEL_MID_RAM_CONSOLE*/
+
 #ifdef CONFIG_X86_MRST
 extern int mrst_pmu_s0i3_entry(void);
 extern void mrst_pmu_disable_msi(void);

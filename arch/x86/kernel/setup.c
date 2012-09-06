@@ -934,6 +934,10 @@ void __init setup_arch(char **cmdline_p)
 	mrst_reserve_memory();
 #endif
 
+#ifdef CONFIG_INTEL_MID_RAM_CONSOLE
+	ram_consle_reserve_memory();
+#endif
+
 	init_gbpages();
 
 	/* max_pfn_mapped is updated here */

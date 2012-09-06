@@ -1974,6 +1974,19 @@ config INTEL_ATOM_CLV_POWER
 	---help---
 	Power management driver for cloverview Platform.
 	If you don't know what to do here, say N.
+
+config INTEL_MID_RAM_CONSOLE
+	bool "Enable intel MID support for Android RAM console"
+	depends on ANDROID_RAM_CONSOLE
+	----help---
+	Select this option to enable Android RAM console support on Intel MID
+	This allows saving the kernel printk message to a buffer in RAM,so
+	that after a kernel panic they can be viewed in the next kernel
+	invocation, by accessing /proc/last_kmsg
+	Ram console is not guaranteed to work due to RAM content might not
+	survive power cycle, enable this for emergency debug purpose only.
+	use it at your own risk.
+	NOTE: Board file needs to invoke relevant api to enable the support
 endmenu
 
 menu "Bus options (PCI etc.)"

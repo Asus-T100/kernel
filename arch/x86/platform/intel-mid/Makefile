@@ -18,6 +18,7 @@ obj-$(CONFIG_X86_MRST)			+= mrst-pmu.o
 obj-$(CONFIG_SERIAL_MFD_HSU)		+= mfld-hsu.o
 
 obj-$(CONFIG_X86_MDFLD)			+= mfld.o
+obj-$(CONFIG_INTEL_MID_RAM_CONSOLE)     += intel_mid_ram_console.o
 # MRFL specific file
 obj-$(CONFIG_X86_MRFLD)			+= mrfl.o
 
