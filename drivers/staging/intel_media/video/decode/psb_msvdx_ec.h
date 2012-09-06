@@ -16,9 +16,12 @@
  * this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
  *
+ * Authors:
+ *    Li Zeng <li.zeng@intel.com>
+ *
  **************************************************************************/
 
-#ifndef _PSB_MSVDX_EC_H_
+#ifdef CONFIG_DRM_MRFLD
 #define _PSB_MSVDX_EC_H_
 
 #define MSVDX_CMDS_BASE 0x1000

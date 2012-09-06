@@ -248,8 +248,10 @@ static int pnw_submit_encode_cmdbuf(struct drm_device *dev,
 		}
 
 		ret = pnw_topaz_save_command(dev, cmd, cmd_size, sequence);
-		if (ret)
+		if (ret) {
+			kfree(cmd);
 			DRM_ERROR("TOPAZ: save command failed\n");
+		}
 	}
 
 	return ret;

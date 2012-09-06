@@ -1443,6 +1443,18 @@ static IMG_BOOL ProcessFlip2(IMG_HANDLE hCmdCookie,
 	psPlaneContexts = (struct mdfld_plane_contexts *)psFlipCmd->pvPrivData;
 
 	mutex_lock(&dsi_config->context_lock);
+	/*Screen is off, no need to send data*/
+	if (psDevInfo->bScreenState) {
+		spin_lock_irqsave(&psDevInfo->sSwapChainLock, ulLockFlags);
+
+		MRSTFBFlipComplete(psSwapChain, NULL, MRST_FALSE);
+		psSwapChain->psPVRJTable->pfnPVRSRVCmdComplete(hCmdCookie,
+				IMG_TRUE);
+
+		spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
+		mutex_unlock(&dsi_config->context_lock);
+		return IMG_TRUE;
+	}
 	mdfld_dsi_dsr_forbid_locked(dsi_config);
 
 	if (dev_priv->exit_idle && (dsi_config->type == MDFLD_DSI_ENCODER_DPI))
@@ -1581,6 +1593,12 @@ static IMG_BOOL ProcessFlip(IMG_HANDLE  hCmdCookie,
 			dev_priv->b_dsr_enable = true;
 	}
 
+	if (!psBuffer)
+		return ProcessFlip2(hCmdCookie, ui32DataSize, pvData);
+
+	dsi_config = dev_priv->dsi_configs[0];
+
+	mutex_lock(&dsi_config->context_lock);
 	/*Screen is off, no need to send data*/
 	if (psDevInfo->bScreenState) {
 		spin_lock_irqsave(&psDevInfo->sSwapChainLock, ulLockFlags);
@@ -1590,16 +1608,9 @@ static IMG_BOOL ProcessFlip(IMG_HANDLE  hCmdCookie,
 				IMG_TRUE);
 
 		spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
-
+		mutex_unlock(&dsi_config->context_lock);
 		return IMG_TRUE;
 	}
-
-	if (!psBuffer)
-		return ProcessFlip2(hCmdCookie, ui32DataSize, pvData);
-
-	dsi_config = dev_priv->dsi_configs[0];
-
-	mutex_lock(&dsi_config->context_lock);
 	mdfld_dsi_dsr_forbid_locked(dsi_config);
 
 	if (dev_priv->exit_idle && (dsi_config->type == MDFLD_DSI_ENCODER_DPI))

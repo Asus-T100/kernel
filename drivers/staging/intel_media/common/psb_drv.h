@@ -50,9 +50,7 @@ extern struct drm_device *gpDrmDevice;
 extern bool gbdispstatus;
 extern int drm_psb_debug;
 extern int psb_video_fabric_debug;
-extern int drm_psb_enable_pr2_cabc ;
-extern int drm_psb_enable_sc1_cabc; /* SC1 setting */
-extern int drm_psb_enable_lex_cabc;
+extern int drm_psb_enable_cabc ;
 extern int gfxrtdelay;
 extern int drm_psb_te_timer_delay;
 extern int drm_psb_enable_gamma;
@@ -78,6 +76,7 @@ enum panel_type {
 	AUO_SC1_CMD,
 	GI_SONY_VID,
 	GI_SONY_CMD,
+	TC_35876X_VID,
 	HDMI,
 	GCT_DETECT
 };
@@ -108,6 +107,8 @@ enum panel_type {
 #define RTPM_PROC_ENTRY "rtpm"
 #define BLC_PROC_ENTRY "mrst_blc"
 #define DISPLAY_PROC_ENTRY "display_status"
+#define PANEL_PROC_ENTRY "panel_status"
+#define HDMI_PROC_ENTRY "hdmi_power"
 
 #define PSB_DRM_DRIVER_DATE "2009-03-10"
 #define PSB_DRM_DRIVER_MAJOR 8
@@ -149,12 +150,9 @@ enum panel_type {
 #define PSB_NUM_VALIDATE_BUFFERS 2048
 
 #define PSB_MEM_MMU_START       0x00000000
-#define PSB_MEM_RAR_START       0xD0000000
+#define PSB_MEM_IMR_START       0xD0000000
 #define PSB_MEM_TT_START        0xE0000000
 #define PSB_MEM_MMU_TILING_START       0xB0000000
-
-#define PSB_GL3_CACHE_CTL	0x2100
-#define PSB_GL3_CACHE_STAT	0x2108
 
 /*
  *Flags for external memory type field.
@@ -193,6 +191,7 @@ enum panel_type {
 /*
  *VDC registers and bits
  */
+#define PSB_GFX_CLOCKGATING	  0x2060
 #define PSB_MSVDX_CLOCKGATING	  0x2064
 #define PSB_TOPAZ_CLOCKGATING	  0x2068
 #define PSB_HWSTAM		  0x2098
@@ -227,7 +226,6 @@ enum panel_type {
 #define _PSB_MMU_ER_HOST      (1 << 16)
 #define GPIOA			0x5010
 #define GPIOB			0x5014
-#define GPIOC			0x5018
 #define GPIOD			0x501c
 #define GPIOE			0x5020
 #define GPIOF			0x5024
@@ -346,9 +344,10 @@ struct psb_context {
 	struct psb_validate_buffer *buffers;
 	uint32_t used_buffers;
 	struct list_head validate_list;
-	struct list_head kern_validate_list;
+	/* not used:
+	 * struct list_head kern_validate_list;
+	 * uint32_t val_seq; */
 	uint32_t fence_types;
-	uint32_t val_seq;
 };
 
 struct psb_validate_buffer;
@@ -428,10 +427,12 @@ struct drm_psb_private {
 	struct mdfld_dsi_config *dsi_configs[2];
 
 	struct work_struct te_work;
-	int te_pipe;
 	struct work_struct reset_panel_work;
 
 	int dsi_init_done;
+
+	struct work_struct vsync_event_work;
+	int vsync_pipe;
 
 	/*
 	 *TTM Glue.
@@ -446,6 +447,7 @@ struct drm_psb_private {
 	struct ttm_object_device *tdev;
 	struct ttm_fence_device fdev;
 	struct ttm_bo_device bdev;
+	/* Todo: can remove due to no one call ttm_write_lock */
 	struct ttm_lock ttm_lock;
 	struct vm_operations_struct *ttm_vm_ops;
 	int has_fence_device;
@@ -478,6 +480,7 @@ struct drm_psb_private {
 
 	/* IMG video context */
 	struct list_head video_ctx;
+	struct mutex video_ctx_mutex;
 	/* Current video context */
 	struct psb_video_ctx *topaz_ctx;
 	struct psb_video_ctx *msvdx_ctx;
@@ -528,17 +531,17 @@ struct drm_psb_private {
 	unsigned int ci_region_size;
 
 	/*
-	 * RAR share buffer;
+	 * IMR share buffer;
 	 */
-	unsigned int rar_region_start;
-	unsigned int rar_region_size;
+	unsigned int imr_region_start;
+	unsigned int imr_region_size;
 
 	/*
 	 *Memory managers
 	 */
 
 	int have_camera;
-	int have_rar;
+	int have_imr;
 	int have_tt;
 	int have_mem_mmu;
 	int have_mem_mmu_tiling;
@@ -917,8 +920,8 @@ struct drm_psb_private {
 	struct mutex cmdbuf_mutex;
 	/*uint32_t ta_mem_pages;
 	struct psb_ta_mem *ta_mem;
-	int force_ta_mem_load;*/
-	atomic_t val_seq;
+	int force_ta_mem_load;
+	atomic_t val_seq;*/
 
 	/*
 	 *TODO: change this to be per drm-context.
@@ -1055,7 +1058,6 @@ struct drm_psb_private {
 };
 
 struct psb_fpriv {
-	int bcd_index;
 	struct ttm_object_file *tfile;
 };
 
@@ -1121,10 +1123,13 @@ extern int psb_ttm_global_init(struct drm_psb_private *dev_priv);
 extern void psb_ttm_global_release(struct drm_psb_private *dev_priv);
 extern int psb_getpageaddrs_ioctl(struct drm_device *dev, void *data,
 				  struct drm_file *file_priv);
+extern int psb_video_getparam(struct drm_device *dev, void *data,
+			      struct drm_file *file_priv);
+extern void psb_remove_videoctx(struct drm_psb_private *dev_priv, struct file *filp);
+
 /*
  *MMU stuff.
  */
-
 extern struct psb_mmu_driver *psb_mmu_driver_init(uint8_t __iomem * registers,
 		int trap_pagefaults,
 		int invalid_type,
@@ -1132,8 +1137,10 @@ extern struct psb_mmu_driver *psb_mmu_driver_init(uint8_t __iomem * registers,
 extern void psb_mmu_driver_takedown(struct psb_mmu_driver *driver);
 extern struct psb_mmu_pd *psb_mmu_get_default_pd(struct psb_mmu_driver
 		*driver);
+/*
 extern void psb_mmu_mirror_gtt(struct psb_mmu_pd *pd, uint32_t mmu_offset,
 			       uint32_t gtt_start, uint32_t gtt_pages);
+*/
 extern struct psb_mmu_pd *psb_mmu_alloc_pd(struct psb_mmu_driver *driver,
 		int trap_pagefaults,
 		int invalid_type);
@@ -1146,14 +1153,14 @@ extern int psb_mmu_insert_pfn_sequence(struct psb_mmu_pd *pd,
 				       uint32_t start_pfn,
 				       unsigned long address,
 				       uint32_t num_pages, int type);
+#if 0
 extern int psb_mmu_virtual_to_pfn(struct psb_mmu_pd *pd, uint32_t virtual,
 				  unsigned long *pfn);
+#endif
 
 /*
  *Enable / disable MMU for different requestors.
  */
-
-
 extern void psb_mmu_set_pd_context(struct psb_mmu_pd *pd, int hw_context);
 extern int psb_mmu_insert_pages(struct psb_mmu_pd *pd, struct page **pages,
 				unsigned long address, uint32_t num_pages,
@@ -1163,18 +1170,15 @@ extern void psb_mmu_remove_pages(struct psb_mmu_pd *pd,
 				 unsigned long address, uint32_t num_pages,
 				 uint32_t desired_tile_stride,
 				 uint32_t hw_tile_stride);
+
+
 /*
  *psb_cmdbuf.c
  */
-
-
-
 extern int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 			    struct drm_file *file_priv);
 extern int psb_reg_submit(struct drm_psb_private *dev_priv,
 			  uint32_t *regs, unsigned int cmds);
-
-
 extern void psb_fence_or_sync(struct drm_file *file_priv,
 			      uint32_t engine,
 			      uint32_t fence_types,
@@ -1182,17 +1186,11 @@ extern void psb_fence_or_sync(struct drm_file *file_priv,
 			      struct list_head *list,
 			      struct psb_ttm_fence_rep *fence_arg,
 			      struct ttm_fence_object **fence_p);
-extern int psb_validate_kernel_buffer(struct psb_context *context,
-				      struct ttm_buffer_object *bo,
-				      uint32_t fence_class,
-				      uint64_t set_flags,
-				      uint64_t clr_flags);
 
-extern void psb_gl3_global_invalidation(struct drm_device *dev);
+
 /*
  *psb_irq.c
  */
-
 extern irqreturn_t psb_irq_handler(DRM_IRQ_ARGS);
 extern int psb_irq_enable_dpst(struct drm_device *dev);
 extern int psb_irq_disable_dpst(struct drm_device *dev);
@@ -1224,6 +1222,7 @@ extern int mdfld_irq_enable_hdmi_audio(struct drm_device *dev);
 extern int mdfld_irq_disable_hdmi_audio(struct drm_device *dev);
 extern void psb_te_timer_func(unsigned long data);
 extern void mdfld_te_handler_work(struct work_struct *te_work);
+extern void mdfld_vsync_event_work(struct work_struct *work);
 
 /*psb_fence.c*/
 extern void psb_fence_handler(struct drm_device *dev, uint32_t class);
@@ -1237,11 +1236,6 @@ extern void psb_fence_error(struct drm_device *dev,
 			    uint32_t sequence, uint32_t type, int error);
 extern int psb_ttm_fence_device_init(struct ttm_fence_device *fdev);
 
-/* MSVDX/Topaz stuff */
-extern int psb_remove_videoctx(struct drm_psb_private *dev_priv, struct file *filp);
-
-extern int lnc_video_getparam(struct drm_device *dev, void *data,
-			      struct drm_file *file_priv);
 
 /*
  *psb_fb.c
@@ -1308,7 +1302,6 @@ struct backlight_device *psb_get_backlight_device(void);
 
 extern int drm_psb_no_fb;
 extern int drm_psb_disable_vsync;
-extern int drm_idle_check_interval;
 extern int drm_topaz_sbuswa;
 
 #define PSB_DEBUG_GENERAL(_fmt, _arg...) \

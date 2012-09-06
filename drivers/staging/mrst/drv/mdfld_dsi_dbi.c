@@ -178,10 +178,16 @@ static int __dbi_enter_ulps_locked(struct mdfld_dsi_config *dsi_config)
 	mdfld_dsi_wait_for_fifos_empty(sender);
 
 	/*inform DSI host is to be put on ULPS*/
-	ctx->device_ready |= DSI_POWER_STATE_ULPS_ENTER;
+	ctx->device_ready |= (DSI_POWER_STATE_ULPS_ENTER |
+				 DSI_DEVICE_READY);
 	REG_WRITE(regs->device_ready_reg, ctx->device_ready);
+	mdelay(1);
 
-	DRM_INFO("%s: entered ULPS state\n", __func__);
+	/* set AFE hold value*/
+	REG_WRITE(regs->mipi_reg,
+	     REG_READ(regs->mipi_reg) & (~PASS_FROM_SPHY_TO_AFE));
+
+	PSB_DEBUG_ENTRY("%s: entered ULPS state\n", __func__);
 	return 0;
 }
 
@@ -193,9 +199,20 @@ static int __dbi_exit_ulps_locked(struct mdfld_dsi_config *dsi_config)
 
 	ctx->device_ready = REG_READ(regs->device_ready_reg);
 
+	/*inform DSI host is to be put on ULPS*/
+	ctx->device_ready |= (DSI_POWER_STATE_ULPS_ENTER |
+				 DSI_DEVICE_READY);
+	REG_WRITE(regs->device_ready_reg, ctx->device_ready);
+
+	mdelay(1);
+	/* clear AFE hold value*/
+	REG_WRITE(regs->mipi_reg,
+		REG_READ(regs->mipi_reg) | PASS_FROM_SPHY_TO_AFE);
+
 	/*enter ULPS EXIT state*/
 	ctx->device_ready &= ~DSI_POWER_STATE_ULPS_MASK;
-	ctx->device_ready |= DSI_POWER_STATE_ULPS_EXIT;
+	ctx->device_ready |= (DSI_POWER_STATE_ULPS_EXIT |
+			DSI_DEVICE_READY);
 	REG_WRITE(regs->device_ready_reg, ctx->device_ready);
 
 	/*wait for 1ms as spec suggests*/
@@ -203,18 +220,16 @@ static int __dbi_exit_ulps_locked(struct mdfld_dsi_config *dsi_config)
 
 	/*clear ULPS state*/
 	ctx->device_ready &= ~DSI_POWER_STATE_ULPS_MASK;
+	ctx->device_ready |= DSI_DEVICE_READY;
 	REG_WRITE(regs->device_ready_reg, ctx->device_ready);
 
-	DRM_INFO("%s: exited ULPS state\n", __func__);
+	mdelay(1);
+
+	PSB_DEBUG_ENTRY("%s: exited ULPS state\n", __func__);
 	return 0;
 }
-
-/**
- * Power on sequence for command mode MIPI panel.
- * NOTE: do NOT modify this function
- */
-static int __dbi_panel_power_on(struct mdfld_dsi_config *dsi_config,
-			struct panel_funcs *p_funcs)
+/* dbi interface power on*/
+int __dbi_power_on(struct mdfld_dsi_config *dsi_config)
 {
 	u32 val = 0;
 	struct mdfld_dsi_hw_registers *regs;
@@ -237,12 +252,6 @@ static int __dbi_panel_power_on(struct mdfld_dsi_config *dsi_config,
 	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
 					OSPM_UHB_FORCE_POWER_ON))
 		return -EAGAIN;
-
-	mdfld_dsi_dsr_forbid_locked(dsi_config);
-
-	/*after entering dstb mode, need reset*/
-	if (p_funcs && p_funcs->reset)
-		p_funcs->reset(dsi_config, RESET_FROM_OSPM_RESUME);
 
 	/*Enable DSI PLL*/
 	if (!(REG_READ(regs->dpll_reg) & BIT31)) {
@@ -281,6 +290,19 @@ static int __dbi_panel_power_on(struct mdfld_dsi_config *dsi_config,
 			}
 		}
 	}
+
+	/*exit ULPS*/
+	if (__dbi_exit_ulps_locked(dsi_config)) {
+		DRM_ERROR("Failed to exit ULPS\n");
+		goto power_on_err;
+	}
+	/*update MIPI port config*/
+	REG_WRITE(regs->mipi_reg, ctx->mipi |
+			 REG_READ(regs->mipi_reg));
+
+	/*unready dsi adapter for re-programming*/
+	REG_WRITE(regs->device_ready_reg,
+		REG_READ(regs->device_ready_reg) & ~(DSI_DEVICE_READY));
 
 	/*D-PHY parameter*/
 	REG_WRITE(regs->dphy_param_reg, ctx->dphy_param);
@@ -323,16 +345,19 @@ static int __dbi_panel_power_on(struct mdfld_dsi_config *dsi_config,
 	REG_WRITE(regs->dsplinoff_reg, ctx->dsplinoff);
 	REG_WRITE(regs->vgacntr_reg, ctx->vgacntr);
 
-	/*exit ULPS*/
-	if (__dbi_exit_ulps_locked(dsi_config)) {
-		DRM_ERROR("Failed to exit ULPS\n");
-		goto power_on_err;
-	}
-	REG_WRITE(regs->device_ready_reg, (ctx->device_ready | BIT0));
+	/*enable plane*/
+	val = ctx->dspcntr | BIT31;
+	REG_WRITE(regs->dspcntr_reg, val);
+
+	/*ready dsi adapter*/
+	REG_WRITE(regs->device_ready_reg,
+		REG_READ(regs->device_ready_reg) | DSI_DEVICE_READY);
+	mdelay(1);
 
 	/*Enable pipe*/
 	val = ctx->pipeconf;
-	val &= ~0x000c0000 | BIT31 | PIPEACONF_DSR;
+	val &= ~0x000c0000;
+	val |= BIT31 | PIPEACONF_DSR;
 	REG_WRITE(regs->pipeconf_reg, val);
 
 	/*Wait for pipe enabling,when timing generator is working */
@@ -346,15 +371,49 @@ static int __dbi_panel_power_on(struct mdfld_dsi_config *dsi_config,
 		goto power_on_err;
 	}
 
-	/*enable plane*/
-	val = ctx->dspcntr | BIT31;
-	REG_WRITE(regs->dspcntr_reg, val);
+power_on_err:
+	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+	return err;
+}
 
-	/*update MIPI port config*/
-	REG_WRITE(regs->mipi_reg, ctx->mipi);
+/**
+ * Power on sequence for command mode MIPI panel.
+ * NOTE: do NOT modify this function
+ */
+static int __dbi_panel_power_on(struct mdfld_dsi_config *dsi_config,
+			struct panel_funcs *p_funcs)
+{
+	u32 val = 0;
+	struct mdfld_dsi_hw_registers *regs;
+	struct mdfld_dsi_hw_context *ctx;
+	struct drm_psb_private *dev_priv;
+	struct drm_device *dev;
+	int retry;
+	int err = 0;
+	struct mdfld_dsi_pkg_sender *sender
+			= mdfld_dsi_get_pkg_sender(dsi_config);
 
-	/*set low power output hold*/
-	REG_WRITE(regs->mipi_reg, (ctx->mipi | BIT16));
+	PSB_DEBUG_ENTRY("\n");
+
+	if (!dsi_config)
+		return -EINVAL;
+
+	regs = &dsi_config->regs;
+	ctx = &dsi_config->dsi_hw_context;
+	dev = dsi_config->dev;
+	dev_priv = dev->dev_private;
+
+	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
+					OSPM_UHB_FORCE_POWER_ON))
+		return -EAGAIN;
+
+	mdfld_dsi_dsr_forbid_locked(dsi_config);
+
+	/*after entering dstb mode, need reset*/
+	if (p_funcs && p_funcs->reset)
+			p_funcs->reset(dsi_config, RESET_FROM_OSPM_RESUME);
+
+	__dbi_power_on(dsi_config);
 
 	/*enable TE, will need it in panel power on*/
 	mdfld_enable_te(dev, dsi_config->pipe);
@@ -391,8 +450,76 @@ static int __dbi_panel_power_on(struct mdfld_dsi_config *dsi_config,
 					ctx->lastbrightnesslevel))
 			DRM_ERROR("Failed to set panel brightness\n");
 
+	/*wait for all FIFOs empty*/
+	mdfld_dsi_wait_for_fifos_empty(sender);
+
 power_on_err:
 	mdfld_dsi_dsr_allow_locked(dsi_config);
+	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+	return err;
+}
+/**
+ * Power off sequence for DBI interface
+*/
+int __dbi_power_off(struct mdfld_dsi_config *dsi_config)
+{
+	u32 val = 0;
+	struct mdfld_dsi_hw_registers *regs;
+	struct mdfld_dsi_hw_context *ctx;
+	struct drm_device *dev;
+	struct drm_psb_private *dev_priv;
+	int pipe0_enabled;
+	int pipe2_enabled;
+	int err = 0;
+
+	if (!dsi_config)
+		return -EINVAL;
+
+	PSB_DEBUG_ENTRY("\n");
+
+	regs = &dsi_config->regs;
+	ctx = &dsi_config->dsi_hw_context;
+	dev = dsi_config->dev;
+	dev_priv = dev->dev_private;
+
+	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
+					OSPM_UHB_FORCE_POWER_ON))
+		return -EAGAIN;
+
+	/*save the plane informaton, for it will updated*/
+	ctx->dspsurf = dev_priv->init_screen_start;
+	ctx->dsplinoff = dev_priv->init_screen_offset;
+	ctx->pipestat = REG_READ(regs->pipestat_reg);
+	ctx->dspcntr = REG_READ(regs->dspcntr_reg);
+	ctx->dspstride = REG_READ(regs->dspstride_reg);
+	ctx->pipeconf = REG_READ(regs->pipeconf_reg);
+
+	/*Disable plane*/
+	val = ctx->dspcntr;
+	REG_WRITE(regs->dspcntr_reg, (val & ~BIT31));
+
+	/*Disable pipe and overlay & cursor panel assigned to this pipe*/
+	val = ctx->pipeconf;
+	REG_WRITE(regs->pipeconf_reg, ((val | 0x000c0000) & ~BIT31));
+
+	/*Disable DSI PLL*/
+	pipe0_enabled = (REG_READ(PIPEACONF) & BIT31) ? 1 : 0;
+	pipe2_enabled = (REG_READ(PIPECCONF) & BIT31) ? 1 : 0;
+
+	if (!pipe0_enabled && !pipe2_enabled) {
+		REG_WRITE(regs->dpll_reg , 0x0);
+		/*power gate pll*/
+		REG_WRITE(regs->dpll_reg, BIT30);
+	}
+	/*enter ulps*/
+	if (__dbi_enter_ulps_locked(dsi_config)) {
+		DRM_ERROR("Failed to enter ULPS\n");
+		goto power_off_err;
+	}
+
+	REG_WRITE(regs->mipi_reg,
+	      REG_READ(regs->mipi_reg) & (~PASS_FROM_SPHY_TO_AFE));
+power_off_err:
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 	return err;
 }
@@ -427,6 +554,8 @@ static int __dbi_panel_power_off(struct mdfld_dsi_config *dsi_config,
 					OSPM_UHB_FORCE_POWER_ON))
 		return -EAGAIN;
 
+	mdfld_dsi_dsr_forbid_locked(dsi_config);
+
 	ctx->lastbrightnesslevel = psb_brightness;
 	if (p_funcs && p_funcs->set_brightness)
 		if (p_funcs->set_brightness(dsi_config, 0))
@@ -436,7 +565,8 @@ static int __dbi_panel_power_off(struct mdfld_dsi_config *dsi_config,
 	if (dev_priv->pvr_screen_event_handler)
 		dev_priv->pvr_screen_event_handler(dev, 0);
 
-	mdfld_dsi_dsr_forbid_locked(dsi_config);
+	/*wait for two TE, let pending PVR flip complete*/
+	msleep(32);
 
 	/*Disable TE, don't need it anymore*/
 	mdfld_disable_te(dev, dsi_config->pipe);
@@ -453,41 +583,9 @@ static int __dbi_panel_power_off(struct mdfld_dsi_config *dsi_config,
 		}
 	}
 
-	/*save the plane informaton, for it will updated*/
-	ctx->dspsurf = dev_priv->init_screen_start;
-	ctx->dsplinoff = dev_priv->init_screen_offset;
-	ctx->pipestat = REG_READ(regs->pipestat_reg);
-	ctx->dspcntr = REG_READ(regs->dspcntr_reg);
-	ctx->dspstride = REG_READ(regs->dspstride_reg);
-	ctx->pipeconf = REG_READ(regs->pipeconf_reg);
+	/*power off dbi interface*/
+	__dbi_power_off(dsi_config);
 
-	/*Disable plane*/
-	val = ctx->dspcntr;
-	REG_WRITE(regs->dspcntr_reg, (val & ~BIT31));
-
-	/*Disable pipe and overlay & cursor panel assigned to this pipe*/
-	val = ctx->pipeconf;
-	REG_WRITE(regs->pipeconf_reg, ((val | 0x000c0000) & ~BIT31));
-
-	/*Disable DSI controller*/
-	val = ctx->device_ready;
-	REG_WRITE(regs->device_ready_reg, (val & ~BIT0));
-
-	/*enter ulps*/
-	if (__dbi_enter_ulps_locked(dsi_config)) {
-		DRM_ERROR("Failed to enter ULPS\n");
-		goto power_off_err;
-	}
-
-	/*Disable DSI PLL*/
-	pipe0_enabled = (REG_READ(PIPEACONF) & BIT31) ? 1 : 0;
-	pipe2_enabled = (REG_READ(PIPECCONF) & BIT31) ? 1 : 0;
-
-	if (!pipe0_enabled && !pipe2_enabled) {
-		REG_WRITE(regs->dpll_reg , 0x0);
-		/*power gate pll*/
-		REG_WRITE(regs->dpll_reg, BIT30);
-	}
 power_off_err:
 	mdfld_dsi_dsr_allow_locked(dsi_config);
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
@@ -890,6 +988,7 @@ out_err1:
 
 	return NULL;
 }
+
 
 void mdfld_reset_panel_handler_work(struct work_struct *work)
 {

@@ -40,6 +40,8 @@
 
 #include "psb_irq.h"
 
+#include <linux/time.h>
+
 extern int drm_psb_smart_vsync;
 extern atomic_t g_videoenc_access_count;
 extern atomic_t g_videodec_access_count;
@@ -289,8 +291,6 @@ static void mid_check_vblank(struct drm_device *dev, uint32_t pipe)
 
 	spin_lock_irqsave(&dev_priv->irqmask_lock, irqflags);
 	if (dev_priv->dsr_idle_count > 50) {
-		mid_disable_pipe_event(dev_priv, pipe);
-		psb_disable_pipestat(dev_priv, pipe, PIPE_VBLANK_INTERRUPT_ENABLE);
 		dev_priv->b_is_in_idle = true;
 	} else
 		dev_priv->dsr_idle_count++;
@@ -321,11 +321,11 @@ static void mid_vblank_handler(struct drm_device *dev, uint32_t pipe)
 	/* This sync check works only on MFLD and not on CTP, since
 	 * MIPI on CTP does uses the TE interrupt instead of Vblank interrupt
 	 */
-	if (mipi_hdmi_vsync_check(dev, pipe) && (dev_priv->psb_vsync_handler != NULL)) {
-		if ((*dev_priv->psb_vsync_handler)(dev, pipe)
-			&& dev_priv->b_vblank_enable)
-			mid_check_vblank(dev, pipe);
-	}
+	if (!mipi_hdmi_vsync_check(dev, pipe))
+		return;
+
+	if (dev_priv->psb_vsync_handler)
+		(*dev_priv->psb_vsync_handler)(dev, pipe);
 }
 
 /**
@@ -366,6 +366,35 @@ void psb_te_timer_func(unsigned long data)
 		if( dev_priv->psb_vsync_handler != NULL)
 			(*dev_priv->psb_vsync_handler)(dev,pipe);
 	*/
+}
+
+static void mdfld_vsync_event(struct drm_device *dev, uint32_t pipe)
+{
+	char event_string[32];
+	char pipe_string[32];
+	char *envp[] = { event_string, pipe_string, NULL };
+	struct timespec now;
+	s64 nsecs = 0;
+
+	getrawmonotonic(&now);
+
+	nsecs = timespec_to_ns(&now);
+
+	sprintf(event_string, "VSYNC=%lld\n", nsecs);
+	sprintf(pipe_string, "PIPE=%d\n", pipe);
+
+	kobject_uevent_env(&dev->primary->kdev.kobj, KOBJ_CHANGE, envp);
+}
+
+void mdfld_vsync_event_work(struct work_struct *work)
+{
+	struct drm_psb_private *dev_priv =
+		container_of(work, struct drm_psb_private, vsync_event_work);
+	int pipe = dev_priv->vsync_pipe;
+	struct drm_device *dev = dev_priv->dev;
+
+	/*report vsync event*/
+	mdfld_vsync_event(dev, pipe);
 }
 
 void mdfld_async_flip_te_handler(struct drm_device *dev, uint32_t pipe)
@@ -422,18 +451,24 @@ void mdfld_te_handler_work(struct work_struct *work)
 {
 	struct drm_psb_private *dev_priv =
 		container_of(work, struct drm_psb_private, te_work);
-	int pipe = dev_priv->te_pipe;
+	int pipe = dev_priv->vsync_pipe;
 	struct drm_device *dev = dev_priv->dev;
 
-	if (dev_priv->b_async_flip_enable)
+	if (dev_priv->b_async_flip_enable) {
 		mdfld_dsi_dsr_report_te(dev_priv->dsi_configs[0]);
-	else {
+
+		if (!mipi_te_hdmi_vsync_check(dev, pipe))
+			return;
+	} else {
 #ifdef CONFIG_MDFD_DSI_DPU
 		mdfld_dpu_update_panel(dev);
 #else
 		mdfld_dbi_update_panel(dev, pipe);
 #endif
 	}
+
+	/*report vsync event*/
+	mdfld_vsync_event(dev, pipe);
 
 	drm_handle_vblank(dev, pipe);
 
@@ -566,12 +601,14 @@ static void mid_pipe_event_handler(struct drm_device *dev, uint32_t pipe)
 
 	if (pipe_stat_val & PIPE_VBLANK_STATUS) {
 		mid_vblank_handler(dev, pipe);
+		dev_priv->vsync_pipe = pipe;
+		schedule_work(&dev_priv->vsync_event_work);
 	}
 
 	if (pipe_stat_val & PIPE_TE_STATUS) {
 		/*update te sequence on this pipe*/
 		update_te_counter(dev, pipe);
-		dev_priv->te_pipe = pipe;
+		dev_priv->vsync_pipe = pipe;
 		schedule_work(&dev_priv->te_work);
 	}
 
@@ -633,7 +670,6 @@ static void mdfld_gl3_interrupt(struct drm_device *dev, uint32_t vdc_stat)
 
 }
 #endif
-
 
 irqreturn_t psb_irq_handler(DRM_IRQ_ARGS)
 {
@@ -1106,7 +1142,7 @@ int psb_enable_vblank(struct drm_device *dev, int pipe)
 	PSB_DEBUG_ENTRY("\n");
 
 	if (IS_MDFLD(dev) && (dev_priv->platform_rev_id != MDFLD_PNW_A0) &&
-	    !is_panel_vid_or_cmd(dev))
+	    !is_panel_vid_or_cmd(dev) && (pipe != 1))
 		return mdfld_enable_te(dev, pipe);
 
 	if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, OSPM_UHB_ONLY_IF_ON)) {
@@ -1145,7 +1181,7 @@ void psb_disable_vblank(struct drm_device *dev, int pipe)
 	PSB_DEBUG_ENTRY("\n");
 
 	if (IS_MDFLD(dev) && (dev_priv->platform_rev_id != MDFLD_PNW_A0) &&
-	    !is_panel_vid_or_cmd(dev))
+	    !is_panel_vid_or_cmd(dev) && (pipe != 1))
 		mdfld_disable_te(dev, pipe);
 
 	dev_priv->b_vblank_enable = false;

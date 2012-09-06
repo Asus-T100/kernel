@@ -49,6 +49,7 @@
 #include "pnw_topaz.h"
 #include "psb_powermgmt.h"
 #include "pnw_topaz_hw_reg.h"
+#include "mdfld_gl3.h"
 
 /* WARNING: this define is very important */
 #define RAM_SIZE (1024 * 24)
@@ -1489,7 +1490,9 @@ void pnw_topaz_mmu_flushcache(struct drm_psb_private *dev_priv)
 	mmu_control &= (~F_ENCODE(1, TOPAZ_CR_MMU_INVALDC));
 	/* mmu_control &= (~F_ENCODE(1, TOPAZ_CR_MMU_FLUSH)); */
 	TOPAZ_WRITE32(TOPAZ_CR_MMU_CONTROL0, mmu_control, 0);
-	psb_gl3_global_invalidation(dev_priv->dev);
+#ifdef CONFIG_MDFD_GL3
+	gl3_invalidate();
+#endif
 }
 
 
@@ -1563,11 +1566,13 @@ int pnw_topaz_restore_mtx_state(struct drm_device *dev)
 	if (!topaz_priv->topaz_mtx_saved)
 		return -1;
 
+	mutex_lock(&dev_priv->video_ctx_mutex);
 	list_for_each_entry_safe(pos, n, &dev_priv->video_ctx, head) {
 		if ((pos->ctx_type & 0xff) == VAEntrypointEncSlice ||
 			(pos->ctx_type & 0xff) == VAEntrypointEncPicture)
 			need_restore = 1;
 	}
+	mutex_unlock(&dev_priv->video_ctx_mutex);
 
 	if (0 == need_restore) {
 		topaz_priv->topaz_mtx_saved = 0;
@@ -1794,11 +1799,13 @@ int pnw_topaz_save_mtx_state(struct drm_device *dev)
 
 	topaz_priv->topaz_mtx_saved = 0;
 
+	mutex_lock(&dev_priv->video_ctx_mutex);
 	list_for_each_entry_safe(pos, n, &dev_priv->video_ctx, head) {
 		if ((pos->ctx_type & 0xff) == VAEntrypointEncSlice ||
 			(pos->ctx_type & 0xff) == VAEntrypointEncPicture)
 			need_save = 1;
 	}
+	mutex_unlock(&dev_priv->video_ctx_mutex);
 
 	if (0 == need_save) {
 		PSB_DEBUG_GENERAL("TOPAZ: vec context not found. No need"

@@ -68,6 +68,21 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "srvkm.h"
 #include "ttrace.h"
 
+#if (defined CONFIG_GPU_BURST) || (defined CONFIG_GPU_BURST_MODULE)
+
+#include <linux/module.h>
+
+#include "gburst_hw_if.h"
+#endif /* if (defined CONFIG_GPU_BURST) || (defined CONFIG_GPU_BURST_MODULE) */
+
+
+#if (defined CONFIG_GPU_BURST) || (defined CONFIG_GPU_BURST_MODULE)
+
+/*  Variable visible at file scope */
+static struct gburst_hw_if_info_s gburst_sgx_info;
+
+#endif /* if (defined CONFIG_GPU_BURST) || (defined CONFIG_GPU_BURST_MODULE) */
+
 #if defined(PVRSRV_USSE_EDM_STATUS_DEBUG)
 
 static const IMG_CHAR *SGXUKernelStatusString(IMG_UINT32 code)
@@ -319,6 +334,33 @@ failed_allockernelccb:
 }
 
 
+#if (defined CONFIG_GPU_BURST) || (defined CONFIG_GPU_BURST_MODULE)
+int gburst_hw_if_get_info(struct gburst_hw_if_info_s *psh)
+{
+	smp_rmb();
+	*psh = gburst_sgx_info;
+
+	if (!gburst_sgx_info.gsh_initialized)
+		return -EINVAL;
+
+	return 0;
+}
+
+/*  Leave these exports in place, even if gburst is built-in (as opposed
+	to being a module), as it allows easy compilation testing of gburst
+	as a module. */
+EXPORT_SYMBOL(gburst_hw_if_get_info);
+
+/**
+ * NB: The following symbols are in other files that themselves have
+ * no modifications for gburst.  Further, said files are from IMG and any
+ * modifications made to it would have to be carried over with every new
+ * release of IMG software.  Therefore, the exports are done here instead of
+ * following the function definitions in those other files.
+ */
+EXPORT_SYMBOL(SGXScheduleCCBCommandKM);
+
+#endif /* if (defined CONFIG_GPU_BURST) || (defined CONFIG_GPU_BURST_MODULE) */
 
 
 static PVRSRV_ERROR SGXRunScript(PVRSRV_SGXDEV_INFO *psDevInfo, SGX_INIT_COMMAND *psScript, IMG_UINT32 ui32NumInitCommands)
@@ -1021,6 +1063,23 @@ PVRSRV_ERROR DevInitSGXPart2KM (PVRSRV_PER_PROCESS_DATA *psPerProc,
 	PDUMPMEM(IMG_NULL, psDevInfo->psKernelCCBCtlMemInfo, 0, sizeof(PVRSRV_SGX_CCB_CTL), PDUMP_FLAGS_CONTINUOUS, MAKEUNIQUETAG(psDevInfo->psKernelCCBCtlMemInfo));
 	PDUMPCOMMENT("Initialise Kernel CCB Event Kicker");
 	PDUMPMEM(IMG_NULL, psDevInfo->psKernelCCBEventKickerMemInfo, 0, sizeof(*psDevInfo->pui32KernelCCBEventKicker), PDUMP_FLAGS_CONTINUOUS, MAKEUNIQUETAG(psDevInfo->psKernelCCBEventKickerMemInfo));
+
+#if defined(SUPPORT_SGX_HWPERF)
+#if ((defined CONFIG_GPU_BURST) || (defined CONFIG_GPU_BURST_MODULE))
+	/*  Save for later. */
+	gburst_sgx_info.gsh_gburst_psDeviceNode = psDeviceNode;
+	gburst_sgx_info.gsh_gburst_psHWPerfCB =
+		psDevInfo->psKernelHWPerfCBMemInfo->pvLinAddrKM;
+
+	smp_wmb();
+
+	if (gburst_sgx_info.gsh_gburst_psDeviceNode
+		&& gburst_sgx_info.gsh_gburst_psHWPerfCB)
+		gburst_sgx_info.gsh_initialized = 1;
+	else
+		gburst_sgx_info.gsh_initialized = 0;
+#endif /* if (defined CONFIG_GPU_BURST) || (defined CONFIG_GPU_BURST_MODULE) */
+#endif /* if defined(SUPPORT_SGX_HWPERF) */
 
 	return PVRSRV_OK;
 

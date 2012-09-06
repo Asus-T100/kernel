@@ -99,5 +99,6 @@ extern struct mdfld_dsi_encoder *mdfld_dsi_dbi_init(struct drm_device *dev,
 		struct panel_funcs *p_funcs);
 extern void mdfld_reset_panel_handler_work(struct work_struct *work);
 extern void mdfld_dbi_update_panel(struct drm_device *dev, int pipe);
-
+extern int __dbi_power_on(struct mdfld_dsi_config *dsi_config);
+extern int __dbi_power_off(struct mdfld_dsi_config *dsi_config);
 #endif /*__MDFLD_DSI_DBI_H__*/

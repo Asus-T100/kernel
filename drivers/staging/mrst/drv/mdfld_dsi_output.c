@@ -326,10 +326,11 @@ set_brightness_out:
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 }
 
-static int mdfld_dsi_get_panel_status(struct mdfld_dsi_config *dsi_config,
+int mdfld_dsi_get_panel_status(struct mdfld_dsi_config *dsi_config,
 					u8 dcs,
-					u32 *data,
-					u8 transmission)
+					u8 *data,
+					u8 transmission,
+					u32 len)
 {
 	struct mdfld_dsi_pkg_sender *sender
 		= mdfld_dsi_get_pkg_sender(dsi_config);
@@ -340,15 +341,15 @@ static int mdfld_dsi_get_panel_status(struct mdfld_dsi_config *dsi_config,
 	}
 
 	if (transmission == MDFLD_DSI_HS_TRANSMISSION)
-		return mdfld_dsi_read_mcs_hs(sender, dcs, data, 1);
+		return mdfld_dsi_read_mcs_hs(sender, dcs, data, len);
 	else if (transmission == MDFLD_DSI_LP_TRANSMISSION)
-		return mdfld_dsi_read_mcs_lp(sender, dcs, data, 1);
+		return mdfld_dsi_read_mcs_lp(sender, dcs, data, len);
 	else
 		return -EINVAL;
 }
 
 int mdfld_dsi_get_power_mode(struct mdfld_dsi_config *dsi_config,
-				u32 *mode,
+				u8 *mode,
 				u8 transmission)
 {
 	if (!dsi_config || !mode) {
@@ -356,11 +357,12 @@ int mdfld_dsi_get_power_mode(struct mdfld_dsi_config *dsi_config,
 		return -EINVAL;
 	}
 
-	return mdfld_dsi_get_panel_status(dsi_config, 0x0A, mode, transmission);
+	return mdfld_dsi_get_panel_status(dsi_config, 0x0A, mode,
+						 transmission, 1);
 }
 
 int mdfld_dsi_get_diagnostic_result(struct mdfld_dsi_config *dsi_config,
-					u32 *result,
+					u8 *result,
 					u8 transmission)
 {
 	if (!dsi_config || !result) {
@@ -369,7 +371,7 @@ int mdfld_dsi_get_diagnostic_result(struct mdfld_dsi_config *dsi_config,
 	}
 
 	return mdfld_dsi_get_panel_status(dsi_config, 0x0f, result,
-					  transmission);
+					  transmission, 1);
 }
 
 static void mdfld_dsi_connector_save(struct drm_connector * connector)

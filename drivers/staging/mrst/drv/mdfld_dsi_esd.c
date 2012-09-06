@@ -43,7 +43,7 @@ static bool intel_dsi_dbi_esd_detection(struct mdfld_dsi_config *dsi_config)
 
 	ret = mdfld_dsi_get_power_mode(dsi_config,
 			&data,
-			MDFLD_DSI_LP_TRANSMISSION);
+			MDFLD_DSI_HS_TRANSMISSION);
 
 	if ((ret == 1) && ((data & 0x14) != 0x14))
 		return true;
@@ -65,34 +65,34 @@ static int __esd_thread(void *data)
 	if (!dsi_config)
 		return -EINVAL;
 
-	return 0;
-
 	set_freezable();
 
 	while (!kthread_should_stop()) {
+		wait_event_freezable(err_detector->esd_thread_wq,
+			(dsi_config->dsi_hw_context.panel_on ||
+			 kthread_should_stop()));
+
 		dbi_output = dev_priv->dbi_output;
 
 		if (!dbi_output)
 			goto esd_exit;
 
-		wait_event_freezable(err_detector->esd_thread_wq,
-			((dsi_config->dsi_hw_context.panel_on &&
-			 !dbi_output->first_boot) ||
-			 kthread_should_stop()));
+		mutex_lock(&dsi_config->context_lock);
 
 		p_funcs = dbi_output->p_funcs;
 		if (dsi_config->dsi_hw_context.panel_on &&
-			!mdfld_dsi_dsr_in_dsr(dsi_config)) {
+			!mdfld_dsi_dsr_in_dsr_locked(dsi_config)) {
 			/*forbid DSR during detection & resume*/
-			mdfld_dsi_dsr_forbid(dsi_config);
+			mdfld_dsi_dsr_forbid_locked(dsi_config);
 
 			if (intel_dsi_dbi_esd_detection(dsi_config)) {
 				DRM_INFO("%s: error detected\n", __func__);
 				schedule_work(&dev_priv->reset_panel_work);
 			}
 
-			mdfld_dsi_dsr_allow(dsi_config);
+			mdfld_dsi_dsr_allow_locked(dsi_config);
 		}
+		mutex_unlock(&dsi_config->context_lock);
 esd_exit:
 		schedule_timeout_interruptible(
 			msecs_to_jiffies(MDFLD_ESD_SLEEP_MSECS));

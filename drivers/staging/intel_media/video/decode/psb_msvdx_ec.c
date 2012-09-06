@@ -22,6 +22,9 @@
  * this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
  *
+ * Authors:
+ *    Li Zeng <li.zeng@intel.com>
+ *
  **************************************************************************/
 
 #include "psb_drv.h"
@@ -384,7 +387,6 @@ void psb_msvdx_update_frame_info(struct msvdx_private *msvdx_priv,
 					void *cmd)
 {
 
-	uint8_t context_id;
 	int i, free_idx;
 	drm_psb_msvdx_frame_info_t *frame_info;
 	struct fw_deblock_msg *deblock_msg = (struct fw_deblock_msg *)cmd;

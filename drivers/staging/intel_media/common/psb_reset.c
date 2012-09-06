@@ -77,7 +77,7 @@ void psb_msvdx_flush_cmd_queue(struct drm_device *dev)
 		PSB_DEBUG_GENERAL("MSVDXQUE: flushing sequence:0x%08x\n",
 				  msvdx_cmd->sequence);
 		msvdx_priv->msvdx_current_sequence = msvdx_cmd->sequence;
-		psb_fence_error(dev, PSB_ENGINE_VIDEO,
+		psb_fence_error(dev, PSB_ENGINE_DECODE,
 				msvdx_cmd->sequence,
 				_PSB_FENCE_TYPE_EXE, DRM_CMD_HANG);
 		kfree(msvdx_cmd->cmd);
@@ -105,7 +105,7 @@ static void psb_msvdx_reset_wq(struct work_struct *work)
 	("MSVDXFENCE: incremented msvdx_current_sequence to :%d\n",
 	 msvdx_priv->msvdx_current_sequence);
 
-	psb_fence_error(msvdx_priv->dev, PSB_ENGINE_VIDEO,
+	psb_fence_error(msvdx_priv->dev, PSB_ENGINE_DECODE,
 			msvdx_priv->msvdx_current_sequence,
 			_PSB_FENCE_TYPE_EXE, DRM_CMD_HANG);
 

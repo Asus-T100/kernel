@@ -27,156 +27,21 @@
 #include "mdfld_dsi_dbi_dsr.h"
 #include "mdfld_dsi_pkg_sender.h"
 
-#define DSR_COUNT 2
+#define DSR_COUNT 15
 
 static int exit_dsr_locked(struct mdfld_dsi_config *dsi_config)
 {
-	u32 val = 0;
-	struct mdfld_dsi_pkg_sender *sender;
-	struct mdfld_dsi_hw_registers *regs;
-	struct mdfld_dsi_hw_context *ctx;
-	struct drm_psb_private *dev_priv;
+	int err = 0;
 	struct drm_device *dev;
-	int retry;
-	int err;
-
-	PSB_DEBUG_ENTRY("mdfld_dsi_dsr: exit dsr\n");
-
 	if (!dsi_config)
 		return -EINVAL;
 
-	regs = &dsi_config->regs;
-	ctx = &dsi_config->dsi_hw_context;
 	dev = dsi_config->dev;
-	dev_priv = dev->dev_private;
-
-	sender = mdfld_dsi_get_pkg_sender(dsi_config);
-
-	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
-		OSPM_UHB_FORCE_POWER_ON)) {
-		DRM_ERROR("Failed power on display island\n");
-		return -EINVAL;
-	}
-
-	/*Enable DSI PLL*/
-	if (!(REG_READ(regs->dpll_reg) & BIT31)) {
-		if (ctx->pll_bypass_mode) {
-			uint32_t dpll = 0;
-
-			REG_WRITE(regs->dpll_reg, dpll);
-			if (ctx->cck_div)
-				dpll = dpll | BIT11;
-			REG_WRITE(regs->dpll_reg, dpll);
-			udelay(2);
-			dpll = dpll | BIT12;
-			REG_WRITE(regs->dpll_reg, dpll);
-			udelay(2);
-			dpll = dpll | BIT13;
-			REG_WRITE(regs->dpll_reg, dpll);
-			dpll = dpll | BIT31;
-			REG_WRITE(regs->dpll_reg, dpll);
-		} else {
-			REG_WRITE(regs->dpll_reg, 0x0);
-			REG_WRITE(regs->fp_reg, 0x0);
-			REG_WRITE(regs->fp_reg, ctx->fp);
-			REG_WRITE(regs->dpll_reg, ((ctx->dpll) & ~BIT30));
-			udelay(2);
-			val = REG_READ(regs->dpll_reg);
-			REG_WRITE(regs->dpll_reg, (val | BIT31));
-
-			/*wait for PLL lock on pipe*/
-			retry = 10000;
-			while (--retry && !(REG_READ(PIPEACONF) & BIT29))
-				udelay(3);
-			if (!retry) {
-				DRM_ERROR("PLL failed to lock on pipe\n");
-				err = -EAGAIN;
-				goto power_on_err;
-			}
-		}
-	}
-
-	/*D-PHY parameter*/
-	REG_WRITE(regs->dphy_param_reg, ctx->dphy_param);
-
-	/*Configure DSI controller*/
-	REG_WRITE(regs->mipi_control_reg, ctx->mipi_control);
-	REG_WRITE(regs->intr_en_reg, ctx->intr_en);
-	REG_WRITE(regs->hs_tx_timeout_reg, ctx->hs_tx_timeout);
-	REG_WRITE(regs->lp_rx_timeout_reg, ctx->lp_rx_timeout);
-	REG_WRITE(regs->turn_around_timeout_reg,
-		ctx->turn_around_timeout);
-	REG_WRITE(regs->device_reset_timer_reg,
-		ctx->device_reset_timer);
-	REG_WRITE(regs->high_low_switch_count_reg,
-		ctx->high_low_switch_count);
-	REG_WRITE(regs->init_count_reg, ctx->init_count);
-	REG_WRITE(regs->eot_disable_reg, ctx->eot_disable);
-	REG_WRITE(regs->lp_byteclk_reg, ctx->lp_byteclk);
-	REG_WRITE(regs->clk_lane_switch_time_cnt_reg,
-		ctx->clk_lane_switch_time_cnt);
-	REG_WRITE(regs->dsi_func_prg_reg, ctx->dsi_func_prg);
-
-	/*DBI bw ctrl*/
-	REG_WRITE(regs->dbi_bw_ctrl_reg, ctx->dbi_bw_ctrl);
-
-	/*Setup pipe timing*/
-	REG_WRITE(regs->htotal_reg, ctx->htotal);
-	REG_WRITE(regs->hblank_reg, ctx->hblank);
-	REG_WRITE(regs->hsync_reg, ctx->hsync);
-	REG_WRITE(regs->vtotal_reg, ctx->vtotal);
-	REG_WRITE(regs->vblank_reg, ctx->vblank);
-	REG_WRITE(regs->vsync_reg, ctx->vsync);
-	REG_WRITE(regs->pipesrc_reg, ctx->pipesrc);
-	REG_WRITE(regs->dsppos_reg, ctx->dsppos);
-	REG_WRITE(regs->dspstride_reg, ctx->dspstride);
-
-	/*Setup plane*/
-	REG_WRITE(regs->dspsize_reg, ctx->dspsize);
-	REG_WRITE(regs->dspsurf_reg, ctx->dspsurf);
-	REG_WRITE(regs->dsplinoff_reg, ctx->dsplinoff);
-	REG_WRITE(regs->vgacntr_reg, ctx->vgacntr);
-
-	REG_WRITE(regs->device_ready_reg, ctx->device_ready | BIT0);
-
-	/*Enable pipe*/
-	val = ctx->pipeconf;
-	val &= ~0x000c0000;
-	val |= BIT31;
-	val |= PIPEACONF_DSR;
-
-	REG_WRITE(regs->pipeconf_reg, val);
-
-	/*Wait for pipe enabling,when timing generator is working */
-	retry = 10000;
-	while (--retry && !(REG_READ(regs->pipeconf_reg) & BIT30))
-		udelay(3);
-	if (!retry) {
-		DRM_ERROR("Failed to enable pipe\n");
-		err = -EAGAIN;
-		goto power_on_err;
-	}
-
-	/*enable plane*/
-	val = ctx->dspcntr | BIT31;
-
-	REG_WRITE(regs->dspcntr_reg, val);
-
-	/*update MIPI port config*/
-	REG_WRITE(regs->mipi_reg, ctx->mipi);
-
-	/*set low power output hold*/
-	REG_WRITE(regs->mipi_reg, (ctx->mipi | BIT16));
-
-	REG_WRITE(regs->ovaadd_reg, ctx->ovaadd);
-
-	/*enable TE, will need it in panel power on*/
-	mdfld_enable_te(dev, dsi_config->pipe);
-
-power_on_err:
-	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
-
-	return 0;
+	err =  __dbi_power_on(dsi_config);
+	if (!err)
+		/*enable TE, will need it in panel power on*/
+		mdfld_enable_te(dev, dsi_config->pipe);
+	return err;
 }
 
 static int enter_dsr_locked(struct mdfld_dsi_config *dsi_config, int level)
@@ -188,7 +53,7 @@ static int enter_dsr_locked(struct mdfld_dsi_config *dsi_config, int level)
 	struct drm_device *dev;
 	struct mdfld_dsi_pkg_sender *sender;
 	int err;
-
+	pm_message_t state;
 	int pipe0_enabled;
 	int pipe2_enabled;
 
@@ -239,13 +104,26 @@ static int enter_dsr_locked(struct mdfld_dsi_config *dsi_config, int level)
 		err = mdfld_dsi_wait_for_fifos_empty(sender);
 		if (err) {
 			DRM_ERROR("mdfld_dsi_dsr: FIFO not empty\n");
+			mdfld_enable_te(dev, dsi_config->pipe);
+			ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 			return err;
 		}
 		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 
-		/*suspend display*/
-		ospm_suspend_display(dev);
-
+		/*suspend whole PCI host and related islands
+		** if failed at this try, revive te for another chance
+		*/
+		state.event = 0;
+		if (ospm_power_suspend(gpDrmDevice->pdev, state)) {
+			/* Only display island is powered off then
+			 ** need revive the whole TE
+			 */
+			if (!ospm_power_is_hw_on(OSPM_DISPLAY_ISLAND))
+				exit_dsr_locked(dsi_config);
+			else
+				mdfld_enable_te(dev, dsi_config->pipe);
+			return -EINVAL;
+		}
 		/*
 		 *suspend pci
 		 *FIXME: should I do it here?
@@ -276,28 +154,16 @@ static int enter_dsr_locked(struct mdfld_dsi_config *dsi_config, int level)
 
 	/*Disable TE, don't need it anymore*/
 	mdfld_disable_te(dev, dsi_config->pipe);
+	err = mdfld_dsi_wait_for_fifos_empty(sender);
+	if (err) {
+		DRM_ERROR("mdfld_dsi_dsr: FIFO not empty\n");
+		mdfld_enable_te(dev, dsi_config->pipe);
+		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+		return err;
+	}
 
-	/*Disable plane*/
-	val = ctx->dspcntr;
-	REG_WRITE(regs->dspcntr_reg, (val & ~BIT31));
-
-	val = REG_READ(regs->pipeconf_reg);
-	/*Disable overlay & cursor panel assigned to this pipe*/
-	REG_WRITE(regs->pipeconf_reg, (val | (0x000c0000)));
-
-	/*Disable pipe*/
-	val = REG_READ(regs->pipeconf_reg);
-	val &= ~BIT31;
-	REG_WRITE(regs->pipeconf_reg, val);
-
-	mdfld_dsi_wait_for_fifos_empty(sender);
-
-	/*Disable DSI PLL*/
-	pipe0_enabled = (REG_READ(PIPEACONF) & BIT31) ? 1 : 0;
-	pipe2_enabled = (REG_READ(PIPECCONF) & BIT31) ? 1 : 0;
-
-	if (!pipe0_enabled && !pipe2_enabled)
-		REG_WRITE(regs->dpll_reg , 0x0);
+	/*turn off dbi interface put in ulps*/
+	__dbi_power_off(dsi_config);
 
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 
@@ -337,6 +203,12 @@ int mdfld_dsi_dsr_update_panel_fb(struct mdfld_dsi_config *dsi_config)
 	/*ignore it if there are pending fb updates*/
 	if (dsr->pending_fb_updates)
 		goto update_fb_out;
+
+	if (!dsi_config->dsi_hw_context.panel_on) {
+		PSB_DEBUG_ENTRY(
+		"if screen off, update fb is not allowed\n");
+		goto update_fb_out;
+	}
 
 	/*no pending fb updates, go ahead to send out write_mem_start*/
 	PSB_DEBUG_ENTRY("send out write_mem_start\n");
@@ -418,7 +290,7 @@ int mdfld_dsi_dsr_report_te(struct mdfld_dsi_config *dsi_config)
 		/*enter dsr*/
 		err = enter_dsr_locked(dsi_config, dsr_level);
 		if (err) {
-			DRM_ERROR("Failed to enter DSR\n");
+			PSB_DEBUG_ENTRY("Failed to enter DSR\n");
 			goto report_te_out;
 		}
 		dsr->dsr_state = dsr_level;
@@ -449,7 +321,6 @@ int mdfld_dsi_dsr_forbid_locked(struct mdfld_dsi_config *dsi_config)
 		return 0;
 
 	/*exit dsr if necessary*/
-
 	if (!dsr->dsr_enabled)
 		goto forbid_out;
 
@@ -509,6 +380,10 @@ int mdfld_dsi_dsr_allow_locked(struct mdfld_dsi_config *dsi_config)
 	if (!dsr->dsr_enabled)
 		goto allow_out;
 
+
+	if (!dsr->ref_count)
+		goto allow_out;
+
 	dsr->ref_count--;
 allow_out:
 	return 0;
@@ -556,7 +431,7 @@ void mdfld_dsi_dsr_enable(struct mdfld_dsi_config *dsi_config)
 	mutex_unlock(&dsi_config->context_lock);
 }
 
-int mdfld_dsi_dsr_in_dsr(struct mdfld_dsi_config *dsi_config)
+int mdfld_dsi_dsr_in_dsr_locked(struct mdfld_dsi_config *dsi_config)
 {
 	struct mdfld_dsi_dsr *dsr;
 	int in_dsr = 0;
@@ -574,13 +449,9 @@ int mdfld_dsi_dsr_in_dsr(struct mdfld_dsi_config *dsi_config)
 	if (!dsr)
 		goto get_state_out;
 
-	/*lock dsr*/
-	mutex_lock(&dsi_config->context_lock);
-
 	if (dsr->dsr_state > DSR_EXITED)
 		in_dsr = 1;
 
-	mutex_unlock(&dsi_config->context_lock);
 get_state_out:
 	return in_dsr;
 }

@@ -66,15 +66,37 @@ void gl3_invalidate(void)
 	struct drm_psb_private *dev_priv =
 		    (struct drm_psb_private *) gpDrmDevice->dev_private;
 
-	PSB_DEBUG_ENTRY("gl3_invalidate called on platform %x\n",	dev_priv->platform_rev_id);
+	PSB_DEBUG_ENTRY("gl3_invalidate called on platform %x\n", dev_priv->platform_rev_id);
 	if (gl3_exist()) {
 		/* No need to call ospm_power_using_hw_begin
 			as this is being called from ospm_suspend_pci only.
 			Otherwise would lead to deadlock.
 		*/
 		/* Invalidate the cache */
-		MDFLD_GL3_WRITE(MDFLD_GL3_INVALIDATE_CACHE, MDFLD_GL3_CONTROL);
+		#if 0
+			MDFLD_GL3_WRITE(MDFLD_GL3_INVALIDATE_CACHE, MDFLD_GL3_CONTROL);
+		#else
+			uint32_t gl3_ctl;
+			/* IS there a way to avoid multiple invalidation simultaneously? Maybe a ATOM value */
+			gl3_ctl = MDFLD_GL3_READ(MDFLD_GL3_CONTROL);
+			PSB_DEBUG_GENERAL("gl3_invalidation: GCL_CR_CTL2 is 0x%08x\n", gl3_ctl);
+			MDFLD_GL3_WRITE(gl3_ctl | MDFLD_GL3_INVALIDATE, MDFLD_GL3_CONTROL);
+		#endif
 		PSB_DEBUG_GENERAL("gl3 cache invalidated with mask %x\n", MDFLD_GL3_INVALIDATE_CACHE);
+#if 0
+		uint32_t poll_count = 0x1000, gl3_stat;
+		while (poll_count) {
+			gl3_stat = MDFLD_GL3_READ(MDFLD_GL3_STATUS);
+			if (gl3_stat & 0x1) {
+				/* Frome D.Will : write 1 to Inval_done bit to clear it */
+				MDFLD_GL3_WRITE(gl3_stat | 0x1, MDFLD_GL3_STATUS);
+				return;
+			}
+			cpu_relax();
+			poll_count--;
+		}
+		DRM_ERROR("Invalidation GL3 timeout\n");
+#endif
 	}
 }
 

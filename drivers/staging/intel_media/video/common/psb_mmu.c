@@ -20,7 +20,7 @@
 #include "psb_reg.h"
 
 /*
- * Code for the SGX MMU:
+ * Code for the MSVDX/TOPAZ MMU:
  */
 
 /*
@@ -173,12 +173,14 @@ static void psb_mmu_flush_pd_locked(struct psb_mmu_driver *driver,
 	atomic_set(&driver->needs_tlbflush, 0);
 }
 
+#if 0
 static void psb_mmu_flush_pd(struct psb_mmu_driver *driver, int force)
 {
 	down_write(&driver->sem);
 	psb_mmu_flush_pd_locked(driver, force);
 	up_write(&driver->sem);
 }
+#endif
 
 void psb_mmu_flush(struct psb_mmu_driver *driver, int rc_prot)
 {
@@ -533,8 +535,6 @@ static void psb_mmu_check_mirrored_gtt(struct psb_mmu_pd *pd,
 	up_read(&pd->driver->sem);
 }
 
-#endif
-
 void psb_mmu_mirror_gtt(struct psb_mmu_pd *pd,
 			uint32_t mmu_offset, uint32_t gtt_start,
 			uint32_t gtt_pages)
@@ -566,6 +566,7 @@ void psb_mmu_mirror_gtt(struct psb_mmu_pd *pd,
 	up_read(&pd->driver->sem);
 	psb_mmu_flush_pd(pd->driver, 0);
 }
+#endif
 
 struct psb_mmu_pd *psb_mmu_get_default_pd(struct psb_mmu_driver *driver)
 {
@@ -600,9 +601,9 @@ struct psb_mmu_driver *psb_mmu_driver_init(uint8_t __iomem * registers,
 	struct psb_mmu_driver *driver;
 
 	driver = kmalloc(sizeof(*driver), GFP_KERNEL);
-
 	if (!driver)
 		return NULL;
+
 	driver->dev_priv = dev_priv;
 
 	driver->default_pd = psb_mmu_alloc_pd(driver, trap_pagefaults,
@@ -677,7 +678,6 @@ static void psb_mmu_flush_ptes(struct psb_mmu_pd *pd,
 	row_add = hw_tile_stride << PAGE_SHIFT;
 	mb();
 	for (i = 0; i < rows; ++i) {
-
 		addr = address;
 		end = addr + add;
 
@@ -916,6 +916,7 @@ out:
 
 	return ret;
 }
+
 #if 0 /*comented out, only used in mmu test now*/
 void psb_mmu_enable_requestor(struct psb_mmu_driver *driver, uint32_t mask)
 {
@@ -934,7 +935,7 @@ void psb_mmu_disable_requestor(struct psb_mmu_driver *driver,
 		      PSB_CR_BIF_CTRL);
 	(void) psb_ioread32(driver, PSB_CR_BIF_CTRL);
 }
-#endif
+
 int psb_mmu_virtual_to_pfn(struct psb_mmu_pd *pd, uint32_t virtual,
 			   unsigned long *pfn)
 {
@@ -975,7 +976,7 @@ out:
 	up_read(&pd->driver->sem);
 	return ret;
 }
-#if 0
+
 void psb_mmu_test(struct psb_mmu_driver *driver, uint32_t offset)
 {
 	struct page *p;

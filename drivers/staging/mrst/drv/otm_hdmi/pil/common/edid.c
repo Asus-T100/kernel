@@ -384,8 +384,10 @@ exit:
 static bool __timing_equal(const otm_hdmi_timing_t *t1,
 				    const otm_hdmi_timing_t *t2)
 {
-	unsigned int t1_flags = t1->mode_info_flags & PD_SCAN_INTERLACE;
-	unsigned int t2_flags = t2->mode_info_flags & PD_SCAN_INTERLACE;
+	unsigned int t1_flags = t1->mode_info_flags &
+			(PD_SCAN_INTERLACE | PD_AR_16_BY_9);
+	unsigned int t2_flags = t2->mode_info_flags &
+			(PD_SCAN_INTERLACE | PD_AR_16_BY_9);
 
 	return ((t1->width == t2->width) &&
 		(t1->height == t2->height) &&

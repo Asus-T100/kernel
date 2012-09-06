@@ -118,7 +118,7 @@ int psb_gtt_init(struct psb_gtt *pg, int resume)
 	 * managed by TTM to stolen_size */
 	stolen_size = vram_stolen_size;
 
-	rar_stolen_size = dev_priv->rar_region_size;
+	rar_stolen_size = dev_priv->imr_region_size;
 
 	printk(KERN_INFO"GMMADR(region 0) start: 0x%08x (%dM).\n",
 	       pg->gatt_start, pg->gatt_pages / 256);
@@ -138,7 +138,7 @@ int psb_gtt_init(struct psb_gtt *pg, int resume)
 		       ci_stolen_size / 1024 / 1024);
 	if (rar_stolen_size > 0)
 		printk(KERN_INFO"RAR Stole memory: RAM base = 0x%08x, size = %lu M \n",
-		       dev_priv->rar_region_start,
+		       dev_priv->imr_region_start,
 		       rar_stolen_size / 1024 / 1024);
 
 	if (resume && (gtt_pages != pg->gtt_pages) &&

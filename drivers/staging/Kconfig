@@ -134,4 +134,5 @@ source "drivers/staging/ozwpan/Kconfig"
 
 source "drivers/staging/intel_media/Kconfig"
 
+source "drivers/staging/mrfl/Kconfig"
 endif # STAGING

@@ -42,7 +42,7 @@ static size_t pl_bo_size;
 static uint32_t psb_busy_prios[] = {
 	TTM_PL_FLAG_TT | TTM_PL_FLAG_WC | TTM_PL_FLAG_UNCACHED,
 	TTM_PL_FLAG_PRIV0, /* CI */
-	TTM_PL_FLAG_PRIV2, /* RAR */
+	TTM_PL_FLAG_PRIV2, /* IMR */
 	TTM_PL_FLAG_PRIV1, /* DRM_PSB_MEM_MMU */
 	TTM_PL_FLAG_SYSTEM
 };

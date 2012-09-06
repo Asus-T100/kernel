@@ -959,15 +959,17 @@ static int mdfld_dsi_send_gen_long(struct mdfld_dsi_pkg_sender * sender,
 
 static int __read_panel_data(struct mdfld_dsi_pkg_sender *sender,
 				struct mdfld_dsi_pkg *pkg,
-				u32 *data,
-				u16 len)
+				u8 *data,
+				u32 len)
 {
 	unsigned long flags;
 	struct drm_device *dev = sender->dev;
 	int i;
 	u32 gen_data_reg;
+	u32 gen_data_value;
 	int retry = MDFLD_DSI_READ_MAX_COUNT;
 	u8 transmission = pkg->transmission_type;
+	int dword_count = 0, remain_byte_count = 0;
 
 	/*Check the len. Max value is 0x40
 	based on the generic read FIFO size*/
@@ -1022,8 +1024,22 @@ static int __read_panel_data(struct mdfld_dsi_pkg_sender *sender,
 		return -EINVAL;
 	}
 
-	for (i=0; i<len; i++)
-		*(data + i) = REG_READ(gen_data_reg);
+	dword_count = len / 4;
+	remain_byte_count = len % 4;
+	for (i = 0; i < dword_count * 4; i = i + 4) {
+		gen_data_value = REG_READ(gen_data_reg);
+		*(data + i)     = gen_data_value & 0x000000FF;
+		*(data + i + 1) = (gen_data_value >> 8)  & 0x000000FF;
+		*(data + i + 2) = (gen_data_value >> 16) & 0x000000FF;
+		*(data + i + 3) = (gen_data_value >> 24) & 0x000000FF;
+	}
+	if (remain_byte_count) {
+		gen_data_value = REG_READ(gen_data_reg);
+		for (i = 0; i < remain_byte_count; i++) {
+			*(data + dword_count * 4 + i)  =
+				(gen_data_value >> (8 * i)) & 0x000000FF;
+		}
+	}
 
 	spin_unlock_irqrestore(&sender->lock, flags);
 
@@ -1034,8 +1050,8 @@ static int mdfld_dsi_read_gen(struct mdfld_dsi_pkg_sender *sender,
 				u8 param0,
 				u8 param1,
 				u8 param_num,
-				u32 *data,
-				u16 len,
+				u8 *data,
+				u32 len,
 				u8 transmission)
 {
 	struct mdfld_dsi_pkg *pkg;
@@ -1079,8 +1095,8 @@ static int mdfld_dsi_read_gen(struct mdfld_dsi_pkg_sender *sender,
 
 static int mdfld_dsi_read_mcs(struct mdfld_dsi_pkg_sender *sender,
 				u8 cmd,
-				u32 *data,
-				u16 len,
+				u8 *data,
+				u32 len,
 				u8 transmission)
 {
 	struct mdfld_dsi_pkg *pkg;
@@ -1425,8 +1441,8 @@ int mdfld_dsi_read_gen_hs(struct mdfld_dsi_pkg_sender *sender,
 			u8 param0,
 			u8 param1,
 			u8 param_num,
-			u32 *data,
-			u16 len)
+			u8 *data,
+			u32 len)
 {
 	if (!sender || !data || param_num < 0 || param_num > 2
 		|| !data || !len) {
@@ -1443,8 +1459,8 @@ int mdfld_dsi_read_gen_lp(struct mdfld_dsi_pkg_sender *sender,
 			u8 param0,
 			u8 param1,
 			u8 param_num,
-			u32 *data,
-			u16 len)
+			u8 *data,
+			u32 len)
 {
 	if (!sender || !data || param_num < 0 || param_num > 2
 		|| !data || !len) {
@@ -1458,8 +1474,8 @@ int mdfld_dsi_read_gen_lp(struct mdfld_dsi_pkg_sender *sender,
 
 int mdfld_dsi_read_mcs_hs(struct mdfld_dsi_pkg_sender *sender,
 			u8 cmd,
-			u32 *data,
-			u16 len)
+			u8 *data,
+			u32 len)
 {
 	if (!sender || !data || !len) {
 		DRM_ERROR("Invalid parameters\n");
@@ -1472,8 +1488,8 @@ int mdfld_dsi_read_mcs_hs(struct mdfld_dsi_pkg_sender *sender,
 
 int mdfld_dsi_read_mcs_lp(struct mdfld_dsi_pkg_sender *sender,
 			u8 cmd,
-			u32 *data,
-			u16 len)
+			u8 *data,
+			u32 len)
 {
 	if (!sender || !data || !len) {
 		DRM_ERROR("Invalid parameters\n");
