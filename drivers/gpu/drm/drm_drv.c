@@ -419,14 +419,16 @@ long drm_ioctl(struct file *filp,
 	if ((nr == DRM_IOCTL_NR(DRM_IOCTL_DMA)) && dev->driver->dma_ioctl)
 		func = dev->driver->dma_ioctl;
 
-    /* workaround drm authentification issue on Android */
-    file_priv->authenticated = 1;
+	/* workaround drm authentification issue on Android
+	* don't need following check for DRM_AUTH
+	* otherwise maybe it will be reset before the check
+	*/
+	file_priv->authenticated = 1;
 
 	if (!func) {
 		DRM_DEBUG("no function\n");
 		retcode = -EINVAL;
 	} else if (((ioctl->flags & DRM_ROOT_ONLY) && !capable(CAP_SYS_ADMIN)) ||
-		   ((ioctl->flags & DRM_AUTH) && !file_priv->authenticated) ||
 		   ((ioctl->flags & DRM_MASTER) && !file_priv->is_master) ||
 		   (!(ioctl->flags & DRM_CONTROL_ALLOW) && (file_priv->minor->type == DRM_MINOR_CONTROL))) {
 		retcode = -EACCES;
