@@ -368,7 +368,7 @@ static void bcove_debugfs_init(void)
 
 	for (reg_index = 0; reg_index < bq24260_reg_cnt; reg_index++) {
 
-		sprintf(name, "%02x",
+		snprintf(name, sizeof(name), "%02x",
 				bq24260_regs[reg_index]);
 
 		fentry = debugfs_create_file(name,
@@ -390,7 +390,7 @@ static void bcove_debugfs_init(void)
 
 	for (reg_index = 0; reg_index < pmic_reg_cnt; reg_index++) {
 
-		sprintf(name, "%04x",
+		snprintf(name, sizeof(name), "%04x",
 				basin_cove_regs[reg_index]);
 
 		fentry = debugfs_create_file(name,
@@ -412,7 +412,7 @@ static void bcove_debugfs_init(void)
 
 	for (reg_index = 0; reg_index < pmic_tt_reg_cnt; reg_index++) {
 
-		sprintf(name, "%04x",
+		snprintf(name, sizeof(name), "%04x",
 				basin_cove_tt_regs[reg_index]);
 
 		fentry = debugfs_create_file(name,
