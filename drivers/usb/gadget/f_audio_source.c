@@ -623,7 +623,6 @@ audio_unbind(struct usb_configuration *c, struct usb_function *f)
 		audio_request_free(req, audio->in_ep);
 
 	snd_card_free_when_closed(audio->card);
-	kfree(audio);
 }
 
 static void audio_pcm_playback_start(struct audio_dev *audio)
@@ -739,6 +738,13 @@ static int audio_pcm_playback_trigger(struct snd_pcm_substream *substream,
 	return ret;
 }
 
+static void audio_private_free(struct snd_card *card)
+{
+	struct audio_dev *audio = card->private_data;
+
+	kfree(audio);
+}
+
 static struct snd_pcm_ops audio_playback_ops = {
 	.open		= audio_pcm_open,
 	.close		= audio_pcm_close,
@@ -784,6 +790,8 @@ int audio_source_bind_config(struct usb_configuration *c,
 		goto snd_card_fail;
 
 	snd_card_set_dev(card, &c->cdev->gadget->dev);
+	card->private_data = audio;
+	card->private_free = audio_private_free;
 
 	err = snd_pcm_new(card, "USB audio source", 0, 1, 0, &pcm);
 	if (err)
