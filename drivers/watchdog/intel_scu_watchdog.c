@@ -23,6 +23,7 @@
  */
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
+/* See Documentation/watchdog/intel-scu-watchdog.txt */
 
 #include <linux/compiler.h>
 #include <linux/module.h>
@@ -36,267 +37,356 @@
 #include <linux/reboot.h>
 #include <linux/init.h>
 #include <linux/jiffies.h>
+#include <linux/poll.h>
+#include <linux/wait.h>
 #include <linux/uaccess.h>
 #include <linux/slab.h>
 #include <linux/io.h>
 #include <linux/interrupt.h>
-#include <linux/delay.h>
 #include <linux/sched.h>
+#include <linux/kernel_stat.h>
+#include <linux/delay.h>
 #include <linux/signal.h>
 #include <linux/sfi.h>
-#include <asm/irq.h>
+#include <linux/timer.h>
+#include <linux/types.h>
 #include <linux/atomic.h>
+#include <linux/wakelock.h>
+#include <asm/irq.h>
 #include <asm/intel_scu_ipc.h>
 #include <asm/apb_timer.h>
-#include <asm/mrst.h>
 
 #include "intel_scu_watchdog.h"
 
-/* Bounds number of times we will retry loading time count */
-/* This retry is a work around for a silicon bug.	   */
-#define MAX_RETRY 16
+/* Adjustment flags */
+/* from config file */
+/* #define CONFIG_DISABLE_SCU_WATCHDOG */
+/* local */
+#define CONFIG_INTEL_SCU_SOFT_LOCKUP
+#define CONFIG_DEBUG_WATCHDOG
 
+/* Defines */
 #define IPC_SET_WATCHDOG_TIMER	0xF8
+#define IPC_SET_SUB_LOAD_THRES  0x00
+#define IPC_SET_SUB_DISABLE     0x01
+#define IPC_SET_SUB_KEEPALIVE   0x02
 
-static int timer_margin = DEFAULT_SOFT_TO_HARD_MARGIN;
-module_param(timer_margin, int, 0);
-MODULE_PARM_DESC(timer_margin,
-		"Watchdog timer margin"
+#define WDIOC_SETTIMERTIMEOUT     _IOW(WATCHDOG_IOCTL_BASE, 11, int)
+#define WDIOC_GETTIMERTIMEOUT     _IOW(WATCHDOG_IOCTL_BASE, 12, int)
+
+/* Statics */
+static struct intel_scu_watchdog_dev watchdog_device;
+static struct wake_lock watchdog_wake_lock;
+static DECLARE_WAIT_QUEUE_HEAD(read_wq);
+/* static unsigned char osnib_reset = OSNIB_WRITE_VALUE; */
+
+/* The read function (intel_scu_read) waits for the warning_flag to */
+/* be set by the watchdog interrupt handler. */
+/* When warning_flag is set intel_scu_read wakes up the user level */
+/* process, which is responsible for refreshing the watchdog timer */
+static int warning_flag;
+
+/* Module params */
+static bool disable_kernel_watchdog = true;
+#ifdef CONFIG_DISABLE_SCU_WATCHDOG
+/*
+ * Please note that we are using a config CONFIG_DISABLE_SCU_WATCHDOG
+ * because this boot parameter should only be settable in a developement
+ */
+module_param(disable_kernel_watchdog, bool, S_IRUGO);
+MODULE_PARM_DESC(disable_kernel_watchdog,
+		"Disable kernel watchdog"
+		"Set to 0, watchdog started at boot"
+		"and left running; Set to 1; watchdog"
+		"is not started until user space"
+		"watchdog daemon is started; also if the"
+		"timer is started by the iafw firmware, it"
+		"will be disabled upon initialization of this"
+		"driver if disable_kernel_watchdog is set");
+#endif
+
+static int pre_timeout = DEFAULT_PRETIMEOUT;
+module_param(pre_timeout, int, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(pre_timeout,
+		"Watchdog pre timeout"
 		"Time between interrupt and resetting the system"
-		"The range is from 1 to 160"
-		"This is the time for all keep alives to arrive");
+		"The range is from 1 to 160");
 
-static int timer_set = DEFAULT_TIME;
-module_param(timer_set, int, 0);
-MODULE_PARM_DESC(timer_set,
+static int timeout = DEFAULT_TIMEOUT;
+module_param(timeout, int, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(timeout,
 		"Default Watchdog timer setting"
 		"Complete cycle time"
 		"The range is from 1 to 170"
 		"This is the time for all keep alives to arrive");
 
-/* After watchdog device is closed, check force_boot. If:
- * force_boot == 0, then force boot on next watchdog interrupt after close,
- * force_boot == 1, then force boot immediately when device is closed.
- */
-static int force_boot;
-module_param(force_boot, int, 0);
-MODULE_PARM_DESC(force_boot,
-		"A value of 1 means that the driver will reboot"
+static int timer_timeout = DEFAULT_TIMER_DURATION;
+module_param(timer_timeout, int, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(timer_timeout,
+		"Watchdog timer timeout"
+		"Time between timer interrupt and resetting the system");
+
+static bool reset_on_release = true;
+static bool kicking_active = true;
+#ifdef CONFIG_DEBUG_WATCHDOG
+module_param(reset_on_release, bool, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(reset_on_release,
+		"A true means that the driver will reboot"
 		"the system immediately if the /dev/watchdog device is closed"
-		"A value of 0 means that when /dev/watchdog device is closed"
+		"A false means that when /dev/watchdog device is closed"
 		"the watchdog timer will be refreshed for one more interval"
-		"of length: timer_set. At the end of this interval, the"
+		"of length: timeout. At the end of this interval, the"
 		"watchdog timer will reset the system."
 		);
 
-/* there is only one device in the system now; this can be made into
- * an array in the future if we have more than one device */
+module_param(kicking_active, bool, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(kicking_active,
+		 "Deactivating the kicking will result in a cold reset"
+		 "after a while"
+		 );
+#endif
 
-static struct intel_scu_watchdog_dev watchdog_device;
-
-/* Forces restart, if force_reboot is set */
-static void watchdog_fire(void)
-{
-	if (force_boot) {
-		pr_crit("Initiating system reboot\n");
-		emergency_restart();
-		pr_crit("Reboot didn't ?????\n");
-	}
-
-	else {
-		pr_crit("Immediate Reboot Disabled\n");
-		pr_crit("System will reset when watchdog timer times out!\n");
-	}
-}
-
-static int check_timer_margin(int new_margin)
-{
-	if ((new_margin < MIN_TIME_CYCLE) ||
-	    (new_margin > MAX_TIME - timer_set)) {
-		pr_debug("value of new_margin %d is out of the range %d to %d\n",
-			 new_margin, MIN_TIME_CYCLE, MAX_TIME - timer_set);
-		return -EINVAL;
-	}
-	return 0;
-}
-
+#ifdef CONFIG_INTEL_SCU_SOFT_LOCKUP
 /*
- * IPC operations
+ * heartbeats: cpu last kstat.system times
+ * beattime : jeffies at the sample time of heartbeats.
+ * SOFT_LOCK_TIME : some time out in sec after warning interrupt.
+ * dump_softloc_debug : called on SOFT_LOCK_TIME time out after scu
+ *	interrupt to log data to logbuffer and emmc-panic code,
+ *	SOFT_LOCK_TIME needs to be < SCU warn to reset time
+ *	which is currently thats 15 sec.
+ *
+ * The soft lock works be taking a snapshot of kstat_cpu(i).cpustat.system at
+ * the time of the warning interrupt for each cpu.  Then at SOFT_LOCK_TIME the
+ * amount of time spend in system is computed and if its within 10 ms of the
+ * total SOFT_LOCK_TIME on any cpu it will dump the stack on that cpu and then
+ * calls panic.
+ *
  */
-static int watchdog_set_ipc(int soft_threshold, int threshold)
+static u64 heartbeats[NR_CPUS];
+static u64 beattime;
+#define SOFT_LOCK_TIME 10
+static void dump_softlock_debug(unsigned long data);
+DEFINE_TIMER(softlock_timer, dump_softlock_debug, 0, 0);
+
+/* time is about to run out and the scu will reset soon.  quickly
+ * dump debug data to logbuffer and emmc via calling panic before lights
+ * go out.
+ */
+static void smp_dumpstack(void *info)
+{
+	dump_stack();
+}
+
+static void dump_softlock_debug(unsigned long data)
+{
+	int i, reboot;
+	u64 system[NR_CPUS], num_jifs;
+
+	num_jifs = jiffies - beattime;
+	for_each_possible_cpu(i) {
+		system[i] = kcpustat_cpu(i).cpustat[CPUTIME_SYSTEM] -
+				heartbeats[i];
+	}
+
+	reboot = 0;
+
+	for_each_possible_cpu(i) {
+		if ((num_jifs - cputime_to_jiffies(system[i])) <
+						msecs_to_jiffies(10)) {
+			WARN(1, "cpu %d wedged\n", i);
+			smp_call_function_single(i, smp_dumpstack, NULL, 1);
+			reboot = 1;
+		}
+	}
+
+	if (reboot) {
+		panic_timeout = 10;
+		panic("Soft lock on CPUs\n");
+	}
+}
+#endif /* CONFIG_INTEL_SCU_SOFT_LOCKUP */
+
+/* Check current timeouts */
+static int check_timeouts(void)
+{
+	if (timer_timeout+pre_timeout < timeout)
+		return 0;
+
+	return -EINVAL;
+}
+
+/* Set the different timeouts needed by the SCU FW */
+static int watchdog_set_timeouts(int timer_threshold, int warning_pretimeout,
+			    int reset_timeout)
 {
 	u32	*ipc_wbuf;
-	u8	 cbuf[16] = { '\0' };
-	int	 ipc_ret = 0;
+	u8	cbuf[16] = { '\0' };
+	int	ret = 0;
+	u32	freq = watchdog_device.timer7_tbl_ptr->freq_hz;
 
 	ipc_wbuf = (u32 *)&cbuf;
-	ipc_wbuf[0] = soft_threshold;
-	ipc_wbuf[1] = threshold;
+	ipc_wbuf[0] = timer_threshold * freq;
+	ipc_wbuf[1] = warning_pretimeout * freq;
+	ipc_wbuf[2] = (reset_timeout - timer_threshold - warning_pretimeout)
+			* freq;
 
-	ipc_ret = intel_scu_ipc_command(
-			IPC_SET_WATCHDOG_TIMER,
-			0,
-			ipc_wbuf,
-			2,
-			NULL,
-			0);
+	pr_debug(PFX "Watchdog ipc_buff[0]%x\n", ipc_wbuf[0]);
+	pr_debug(PFX "Watchdog ipc_buff[1]%x\n", ipc_wbuf[1]);
+	pr_debug(PFX "Watchdog ipc_buff[2]%x\n", ipc_wbuf[2]);
 
-	if (ipc_ret != 0)
-		pr_err("Error setting SCU watchdog timer: %x\n", ipc_ret);
+	ret = intel_scu_ipc_command(IPC_SET_WATCHDOG_TIMER,
+				    IPC_SET_SUB_LOAD_THRES,
+				    ipc_wbuf, 3, NULL, 0);
 
-	return ipc_ret;
+	if (ret)
+		pr_crit(PFX "Error Setting SCU Watchdog Timer: %x\n", ret);
+
+	return ret;
 };
 
-/*
- *      Intel_SCU operations
- */
+/* Keep alive  */
+static int watchdog_keepalive(void)
+{
+int ret;
+
+	pr_err(PFX "%s\n", __func__);
+
+	if (unlikely(!kicking_active)) {
+		/* Close our eyes */
+		pr_err(PFX "Transparent kicking\n");
+		return 0;
+	}
+
+	/* Really kick it */
+	ret = intel_scu_ipc_command(IPC_SET_WATCHDOG_TIMER,
+				    IPC_SET_SUB_KEEPALIVE, NULL, 0, NULL, 0);
+	if (ret)
+		pr_err(PFX "Error sending keepalive ipc: %x\n", ret);
+
+	return ret;
+}
+
+/* stops the timer */
+static int intel_scu_stop(void)
+{
+int ret;
+
+	pr_err(PFX "%s\n", __func__);
+
+	ret = intel_scu_ipc_command(IPC_SET_WATCHDOG_TIMER,
+				    IPC_SET_SUB_DISABLE, NULL, 0, NULL, 0);
+	if (ret) {
+		pr_crit(PFX "Error sending disable ipc: %x\n", ret);
+		goto err;
+	}
+
+	watchdog_device.started = false;
+
+err:
+	return ret;
+}
+
+/* tasklet */
+static void watchdog_interrupt_tasklet_body(unsigned long data)
+{
+int ret;
+
+	pr_warn(PFX "interrupt tasklet body start\n");
+
+	if (disable_kernel_watchdog) {
+		/* disable the timer */
+		pr_warn(PFX "interrupt tasklet body disable set\n");
+		ret = intel_scu_stop();
+		if (ret)
+			pr_err(PFX "cannot disable the timer\n");
+		return;
+	}
+
+	/* wake up read to send data to user (reminder for keep alive */
+	warning_flag = 1;
+
+#ifdef CONFIG_INTEL_SCU_SOFT_LOCKUP
+	{
+		int i;
+		/*start timer for softlock detection */
+		beattime = jiffies;
+		for_each_possible_cpu(i) {
+			heartbeats[i] = kcpustat_cpu(i).cpustat[CPUTIME_SYSTEM];
+		}
+		mod_timer(&softlock_timer, jiffies + SOFT_LOCK_TIME * HZ);
+	}
+#endif
+
+	/* Wake up the daemon */
+	wake_up_interruptible(&read_wq);
+
+	/*
+	 * Hold a timeout wakelock so user space watchdogd has a chance
+	 * to run after waking up from s3
+	 */
+	wake_lock_timeout(&watchdog_wake_lock, 5 * HZ);
+}
 
 /* timer interrupt handler */
 static irqreturn_t watchdog_timer_interrupt(int irq, void *dev_id)
 {
-	int int_status;
-	int_status = ioread32(watchdog_device.timer_interrupt_status_addr);
-
-	pr_debug("irq, int_status: %x\n", int_status);
-
-	if (int_status != 0)
-		return IRQ_NONE;
-
-	/* has the timer been started? If not, then this is spurious */
-	if (watchdog_device.timer_started == 0) {
-		pr_debug("spurious interrupt received\n");
-		return IRQ_HANDLED;
+	if (watchdog_device.started) {
+		pr_warn(PFX "Expected SW WDT warning irq received\n");
+	} else {
+		/* Unexpected, but we'd better to handle it anyway */
+		/* and so try to avoid a ColdReset */
+		pr_warn(PFX "Unexpected SW WDT warning irq received\n");
 	}
 
-	/* temporarily disable the timer */
-	iowrite32(0x00000002, watchdog_device.timer_control_addr);
-
-	/* set the timer to the threshold */
-	iowrite32(watchdog_device.threshold,
-		  watchdog_device.timer_load_count_addr);
-
-	/* allow the timer to run */
-	iowrite32(0x00000003, watchdog_device.timer_control_addr);
+	tasklet_schedule(&watchdog_device.interrupt_tasklet);
 
 	return IRQ_HANDLED;
 }
 
-static int intel_scu_keepalive(void)
+/* warning interrupt handler */
+static irqreturn_t watchdog_warning_interrupt(int irq, void *dev_id)
 {
+	pr_warn("[SHTDWN] %s, WATCHDOG TIMEOUT!\n", __func__);
 
-	/* read eoi register - clears interrupt */
-	ioread32(watchdog_device.timer_clear_interrupt_addr);
+	/* Let's reset the platform after dumping some data */
+	panic("Kernel Watchdog");
 
-	/* temporarily disable the timer */
-	iowrite32(0x00000002, watchdog_device.timer_control_addr);
-
-	/* set the timer to the soft_threshold */
-	iowrite32(watchdog_device.soft_threshold,
-		  watchdog_device.timer_load_count_addr);
-
-	/* allow the timer to run */
-	iowrite32(0x00000003, watchdog_device.timer_control_addr);
-
-	return 0;
+	/* This code should not be reached */
+	return IRQ_HANDLED;
 }
 
-static int intel_scu_stop(void)
+/* Program and starts the timer */
+static int watchdog_config_and_start(u32 newtimeout, u32 newpretimeout)
 {
-	iowrite32(0, watchdog_device.timer_control_addr);
-	return 0;
-}
+int ret;
 
-static int intel_scu_set_heartbeat(u32 t)
-{
-	int			 ipc_ret;
-	int			 retry_count;
-	u32			 soft_value;
-	u32			 hw_pre_value;
-	u32			 hw_value;
+	timeout = newtimeout;
+	pre_timeout = newpretimeout;
 
-	watchdog_device.timer_set = t;
-	watchdog_device.threshold =
-		timer_margin * watchdog_device.timer_tbl_ptr->freq_hz;
-	watchdog_device.soft_threshold =
-		(watchdog_device.timer_set - timer_margin)
-		* watchdog_device.timer_tbl_ptr->freq_hz;
+	pr_warn(PFX "Configuration: %dkHz, timeout=%ds, pre_timeout=%ds, timer=%ds\n",
+		watchdog_device.timer7_tbl_ptr->freq_hz / 1000, timeout,
+		pre_timeout, timer_timeout);
 
-	pr_debug("set_heartbeat: timer freq is %d\n",
-		 watchdog_device.timer_tbl_ptr->freq_hz);
-	pr_debug("set_heartbeat: timer_set is %x (hex)\n",
-		 watchdog_device.timer_set);
-	pr_debug("set_hearbeat: timer_margin is %x (hex)\n", timer_margin);
-	pr_debug("set_heartbeat: threshold is %x (hex)\n",
-		 watchdog_device.threshold);
-	pr_debug("set_heartbeat: soft_threshold is %x (hex)\n",
-		 watchdog_device.soft_threshold);
+	/* Configure the watchdog */
+	ret = watchdog_set_timeouts(timer_timeout, pre_timeout, timeout);
+	if (ret) {
+		pr_err(PFX "%s: Cannot configure the watchdog\n", __func__);
 
-	/* Adjust thresholds by FREQ_ADJUSTMENT factor, to make the */
-	/* watchdog timing come out right. */
-	watchdog_device.threshold =
-		watchdog_device.threshold / FREQ_ADJUSTMENT;
-	watchdog_device.soft_threshold =
-		watchdog_device.soft_threshold / FREQ_ADJUSTMENT;
-
-	/* temporarily disable the timer */
-	iowrite32(0x00000002, watchdog_device.timer_control_addr);
-
-	/* send the threshold and soft_threshold via IPC to the processor */
-	ipc_ret = watchdog_set_ipc(watchdog_device.soft_threshold,
-				   watchdog_device.threshold);
-
-	if (ipc_ret != 0) {
 		/* Make sure the watchdog timer is stopped */
 		intel_scu_stop();
-		return ipc_ret;
+		return ret;
 	}
 
-	/* Soft Threshold set loop. Early versions of silicon did */
-	/* not always set this count correctly.  This loop checks */
-	/* the value and retries if it was not set correctly.     */
-
-	retry_count = 0;
-	soft_value = watchdog_device.soft_threshold & 0xFFFF0000;
-	do {
-
-		/* Make sure timer is stopped */
-		intel_scu_stop();
-
-		if (MAX_RETRY < retry_count++) {
-			/* Unable to set timer value */
-			pr_err("Unable to set timer\n");
-			return -ENODEV;
-		}
-
-		/* set the timer to the soft threshold */
-		iowrite32(watchdog_device.soft_threshold,
-			watchdog_device.timer_load_count_addr);
-
-		/* read count value before starting timer */
-		hw_pre_value = ioread32(watchdog_device.timer_load_count_addr);
-		hw_pre_value = hw_pre_value & 0xFFFF0000;
-
-		/* Start the timer */
-		iowrite32(0x00000003, watchdog_device.timer_control_addr);
-
-		/* read the value the time loaded into its count reg */
-		hw_value = ioread32(watchdog_device.timer_load_count_addr);
-		hw_value = hw_value & 0xFFFF0000;
-
-
-	} while (soft_value != hw_value);
-
-	watchdog_device.timer_started = 1;
+	watchdog_device.started = true;
 
 	return 0;
 }
 
-/*
- * /dev/watchdog handling
- */
-
+/* Open */
 static int intel_scu_open(struct inode *inode, struct file *file)
 {
+	int ret = 0;
 
 	/* Set flag to indicate that watchdog device is open */
 	if (test_and_set_bit(0, &watchdog_device.driver_open))
@@ -306,262 +396,410 @@ static int intel_scu_open(struct inode *inode, struct file *file)
 	if (watchdog_device.driver_closed)
 		return -EPERM;
 
+	/* Let shared OSNIB (sram) know we are open */
+	/* To publish a proc and ioctl to do this and leave userland decide */
+	/* when it is sensible to do it (boot completed intent) */
+	/* ret = intel_scu_ipc_write_osnib(&osnib_reset, OSNIB_WRITE_SIZE,
+		OSNIB_WDOG_OFFSET, OSNIB_WRITE_MASK); */
+
+	if (ret != 0) {
+		pr_err(PFX "cannot write OSNIB\n");
+		return -EINVAL;
+	}
+
 	return nonseekable_open(inode, file);
 }
 
+/* Release */
 static int intel_scu_release(struct inode *inode, struct file *file)
 {
 	/*
 	 * This watchdog should not be closed, after the timer
 	 * is started with the WDIPC_SETTIMEOUT ioctl
-	 * If force_boot is set watchdog_fire() will cause an
-	 * immediate reset. If force_boot is not set, the watchdog
+	 * If reset_on_release is set this  will cause an
+	 * immediate reset. If reset_on_release is not set, the watchdog
 	 * timer is refreshed for one more interval. At the end
 	 * of that interval, the watchdog timer will reset the system.
 	 */
 
-	if (!test_and_clear_bit(0, &watchdog_device.driver_open)) {
-		pr_debug("intel_scu_release, without open\n");
+	if (!test_bit(0, &watchdog_device.driver_open)) {
+		pr_err(PFX "intel_scu_release, without open\n");
 		return -ENOTTY;
 	}
 
-	if (!watchdog_device.timer_started) {
+	if (!watchdog_device.started) {
 		/* Just close, since timer has not been started */
-		pr_debug("closed, without starting timer\n");
+		pr_err(PFX "Closed, without starting timer\n");
 		return 0;
 	}
 
-	pr_crit("Unexpected close of /dev/watchdog!\n");
+	pr_crit(PFX "Unexpected close of /dev/watchdog!\n");
 
 	/* Since the timer was started, prevent future reopens */
 	watchdog_device.driver_closed = 1;
 
 	/* Refresh the timer for one more interval */
-	intel_scu_keepalive();
+	watchdog_keepalive();
 
-	/* Reboot system (if force_boot is set) */
-	watchdog_fire();
+	/* Reboot system if requested */
+	if (reset_on_release) {
+		pr_crit(PFX "Initiating system reboot.\n");
+		emergency_restart();
+	}
 
-	/* We should only reach this point if force_boot is not set */
+	pr_crit(PFX "Immediate Reboot Disabled\n");
+	pr_crit(PFX "System will reset when watchdog timer expire!\n");
+
 	return 0;
 }
 
-static ssize_t intel_scu_write(struct file *file,
-			      char const *data,
-			      size_t len,
+/* Write */
+static ssize_t intel_scu_write(struct file *file, char const *data, size_t len,
 			      loff_t *ppos)
 {
+	pr_debug(PFX "watchdog %s\n", __func__);
 
-	if (watchdog_device.timer_started)
+	if (watchdog_device.started) {
 		/* Watchdog already started, keep it alive */
-		intel_scu_keepalive();
-	else
+		watchdog_keepalive();
+		wake_unlock(&watchdog_wake_lock);
+	} else {
 		/* Start watchdog with timer value set by init */
-		intel_scu_set_heartbeat(watchdog_device.timer_set);
+		watchdog_config_and_start(timeout, pre_timeout);
+	}
 
 	return len;
 }
 
-static long intel_scu_ioctl(struct file *file,
-			   unsigned int cmd,
-			   unsigned long arg)
+/* Read */
+static ssize_t intel_scu_read(struct file *file, char __user *user_data,
+			     size_t len, loff_t *user_ppos)
 {
-	void __user *argp = (void __user *)arg;
-	u32 __user *p = argp;
-	u32 new_margin;
+int ret;
+const u8 *buf = "0";
 
+	/* we wait for the next interrupt; if more than one */
+	/* interrupt has occurred since the last read, we */
+	/* dont care. The data is not critical. We will do */
+	/* a copy to user each time we get and interrupt */
+	/* It is up to the Watchdog daemon to be ready to */
+	/* do the read (which signifies that the driver is */
+	/* awaiting a keep alive and that a limited time */
+	/* is available for the keep alive before the system */
+	/* is rebooted by the timer */
+
+	warning_flag = 0;
+
+	/* Please note that the content of the data is irrelevent */
+	/* All that matters is that the read is available to the user */
+	ret = copy_to_user(user_data, (const void *)buf, 1);
+
+	if (ret)
+		return -EFAULT;
+
+	return 1;
+}
+
+/* Poll */
+static unsigned int intel_scu_poll(struct file *file, poll_table *wait)
+{
+unsigned int mask;
+
+	poll_wait(file, &read_wq, wait);
+
+	mask = 0;
+	if (warning_flag == 1)
+		mask |= POLLIN | POLLRDNORM;
+
+	return mask;
+}
+
+/* ioctl */
+static long intel_scu_ioctl(struct file *file, unsigned int cmd,
+			    unsigned long arg)
+{
+void __user *argp = (void __user *)arg;
+u32 __user *p = argp;
+u32 val;
+int options;
 
 	static const struct watchdog_info ident = {
-		.options =          WDIOF_SETTIMEOUT
-				    | WDIOF_KEEPALIVEPING,
-		.firmware_version = 0,  /* @todo Get from SCU via
-						 ipc_get_scu_fw_version()? */
-		.identity =         "Intel_SCU IOH Watchdog"  /* len < 32 */
+		.options = WDIOF_SETTIMEOUT | WDIOF_KEEPALIVEPING,
+		/* @todo Get from SCU via ipc_get_scu_fw_version()? */
+		.firmware_version = 0,
+		/* len < 32 */
+		.identity = "Intel_SCU IOH Watchdog"
 	};
 
 	switch (cmd) {
 	case WDIOC_GETSUPPORT:
-		return copy_to_user(argp,
-				    &ident,
+		return copy_to_user(argp, &ident,
 				    sizeof(ident)) ? -EFAULT : 0;
 	case WDIOC_GETSTATUS:
 	case WDIOC_GETBOOTSTATUS:
 		return put_user(0, p);
 	case WDIOC_KEEPALIVE:
-		intel_scu_keepalive();
+		pr_warn(PFX "%s: KeepAlive ioctl\n", __func__);
+		if (!watchdog_device.started)
+			return -EINVAL;
 
+		watchdog_keepalive();
 		return 0;
-	case WDIOC_SETTIMEOUT:
-		if (get_user(new_margin, p))
+	case WDIOC_SETTIMERTIMEOUT:
+		pr_warn(PFX "%s: SetTimerTimeout ioctl\n", __func__);
+
+		if (watchdog_device.started)
+			return -EBUSY;
+
+		/* Timeout to start scheduling the daemon */
+		if (get_user(val, p))
 			return -EFAULT;
 
-		if (check_timer_margin(new_margin))
-			return -EINVAL;
+		timer_timeout = val;
+		return 0;
+	case WDIOC_SETPRETIMEOUT:
+		pr_warn(PFX "%s: SetPreTimeout ioctl\n", __func__);
 
-		if (intel_scu_set_heartbeat(new_margin))
-			return -EINVAL;
+		if (watchdog_device.started)
+			return -EBUSY;
+
+		/* Timeout to warn */
+		if (get_user(val, p))
+			return -EFAULT;
+
+		pre_timeout = val;
+		return 0;
+	case WDIOC_SETTIMEOUT:
+		pr_warn(PFX "%s: SetTimeout ioctl\n", __func__);
+
+		if (watchdog_device.started)
+			return -EBUSY;
+
+		if (get_user(val, p))
+			return -EFAULT;
+
+		timeout = val;
 		return 0;
 	case WDIOC_GETTIMEOUT:
-		return put_user(watchdog_device.soft_threshold, p);
+		return put_user(timeout, p);
+	case WDIOC_SETOPTIONS:
+		if (get_user(options, p))
+			return -EFAULT;
 
+		if (options & WDIOS_DISABLECARD) {
+			pr_warn(PFX "%s: Stopping the watchdog\n", __func__);
+			intel_scu_stop();
+			return 0;
+		}
+
+		if (options & WDIOS_ENABLECARD) {
+			pr_warn(PFX "%s: Starting the watchdog\n", __func__);
+
+			if (watchdog_device.started)
+				return -EBUSY;
+
+			if (check_timeouts()) {
+				pr_warn(PFX "%s: Invalid thresholds\n",
+					__func__);
+				return -EINVAL;
+			}
+			if (watchdog_config_and_start(timeout, pre_timeout))
+				return -EINVAL;
+			return 0;
+		}
+		return 0;
 	default:
 		return -ENOTTY;
 	}
 }
 
-/*
- *      Notifier for system down
- */
-static int intel_scu_notify_sys(struct notifier_block *this,
-			       unsigned long code,
-			       void *another_unused)
+/* Reboot notifier */
+static int reboot_notifier(struct notifier_block *this,
+			   unsigned long code,
+			   void *another_unused)
 {
-	if (code == SYS_DOWN || code == SYS_HALT)
-		/* Turn off the watchdog timer. */
-		intel_scu_stop();
+int ret;
+
+	if (code == SYS_RESTART || code == SYS_HALT || code == SYS_POWER_OFF) {
+		pr_warn(PFX "Reboot notifier\n");
+
+		/* Don't do instant reset on close */
+		reset_on_release = false;
+
+		/* Kick once again */
+		ret = watchdog_keepalive();
+		if (ret)
+			pr_warn(PFX "%s: cannot keep timer alive\n", __func__);
+	}
 	return NOTIFY_DONE;
 }
 
-/*
- *      Kernel Interfaces
- */
+/* Kernel Interfaces */
 static const struct file_operations intel_scu_fops = {
 	.owner          = THIS_MODULE,
 	.llseek         = no_llseek,
 	.write          = intel_scu_write,
+	.read		= intel_scu_read,
 	.unlocked_ioctl = intel_scu_ioctl,
 	.open           = intel_scu_open,
+	.poll		= intel_scu_poll,
 	.release        = intel_scu_release,
 };
 
+/* Init code */
 static int __init intel_scu_watchdog_init(void)
 {
 	int ret;
-	u32 __iomem *tmp_addr;
 
-	/*
-	 * We don't really need to check this as the SFI timer get will fail
-	 * but if we do so we can exit with a clearer reason and no noise.
-	 *
-	 * If it isn't an intel MID device then it doesn't have this watchdog
-	 */
-	if (!mrst_identify_cpu())
-		return -ENODEV;
-
-	/* Check boot parameters to verify that their initial values */
-	/* are in range. */
-	/* Check value of timer_set boot parameter */
-	if ((timer_set < MIN_TIME_CYCLE) ||
-	    (timer_set > MAX_TIME - MIN_TIME_CYCLE)) {
-		pr_err("value of timer_set %x (hex) is out of range from %x to %x (hex)\n",
-		       timer_set, MIN_TIME_CYCLE, MAX_TIME - MIN_TIME_CYCLE);
+	/* Check timeouts boot parameter */
+	if (check_timeouts()) {
+		pr_err(PFX "%s: Invalid timeouts\n", __func__);
 		return -EINVAL;
 	}
 
-	/* Check value of timer_margin boot parameter */
-	if (check_timer_margin(timer_margin))
-		return -EINVAL;
-
-	watchdog_device.timer_tbl_ptr = sfi_get_mtmr(sfi_mtimer_num-1);
-
-	if (watchdog_device.timer_tbl_ptr == NULL) {
-		pr_debug("timer is not available\n");
+	/* Acquire timer 7 */
+	watchdog_device.timer7_tbl_ptr = sfi_get_mtmr(sfi_mtimer_num-1);
+	if (watchdog_device.timer7_tbl_ptr == NULL) {
+		pr_debug(PFX "Watchdog timer - Intel SCU watchdog: Timer is"
+			" not available\n");
 		return -ENODEV;
 	}
-	/* make sure the timer exists */
-	if (watchdog_device.timer_tbl_ptr->phys_addr == 0) {
-		pr_debug("timer %d does not have valid physical memory\n",
-			 sfi_mtimer_num);
+	if (watchdog_device.timer7_tbl_ptr->phys_addr == 0) {
+		pr_debug(PFX "Watchdog timer - Intel SCU watchdog - timer %d does"
+		  " not have valid physical memory\n", sfi_mtimer_num);
 		return -ENODEV;
 	}
-
-	if (watchdog_device.timer_tbl_ptr->irq == 0) {
-		pr_debug("timer %d invalid irq\n", sfi_mtimer_num);
+	if (watchdog_device.timer7_tbl_ptr->irq == 0) {
+		pr_debug(PFX "Watchdog timer: timer %d invalid irq\n",
+		  sfi_mtimer_num);
 		return -ENODEV;
 	}
 
-	tmp_addr = ioremap_nocache(watchdog_device.timer_tbl_ptr->phys_addr,
-			20);
-
-	if (tmp_addr == NULL) {
-		pr_debug("timer unable to ioremap\n");
-		return -ENOMEM;
+	/* Acquire timer 6 */
+	watchdog_device.timer6_tbl_ptr = sfi_get_mtmr(sfi_mtimer_num-2);
+	if (watchdog_device.timer6_tbl_ptr == NULL) {
+		pr_debug(PFX "Watchdog timer - Intel SCU watchdog: Timer is"
+			" not available\n");
+		return -ENODEV;
+	}
+	if (watchdog_device.timer6_tbl_ptr->irq == 0) {
+		pr_debug(PFX "Watchdog timer: timer %d invalid irq\n",
+		  sfi_mtimer_num);
+		return -ENODEV;
 	}
 
-	watchdog_device.timer_load_count_addr = tmp_addr++;
-	watchdog_device.timer_current_value_addr = tmp_addr++;
-	watchdog_device.timer_control_addr = tmp_addr++;
-	watchdog_device.timer_clear_interrupt_addr = tmp_addr++;
-	watchdog_device.timer_interrupt_status_addr = tmp_addr++;
-
-	/* Set the default time values in device structure */
-
-	watchdog_device.timer_set = timer_set;
-	watchdog_device.threshold =
-		timer_margin * watchdog_device.timer_tbl_ptr->freq_hz;
-	watchdog_device.soft_threshold =
-		(watchdog_device.timer_set - timer_margin)
-		* watchdog_device.timer_tbl_ptr->freq_hz;
-
-
-	watchdog_device.intel_scu_notifier.notifier_call =
-		intel_scu_notify_sys;
-
-	ret = register_reboot_notifier(&watchdog_device.intel_scu_notifier);
+	/* Reboot notifier */
+	watchdog_device.reboot_notifier.notifier_call = reboot_notifier;
+	watchdog_device.reboot_notifier.priority = 1;
+	ret = register_reboot_notifier(&watchdog_device.reboot_notifier);
 	if (ret) {
-		pr_err("cannot register notifier %d)\n", ret);
-		goto register_reboot_error;
+		pr_crit(PFX "cannot register reboot notifier %d\n", ret);
+		goto error_stop_timer;
 	}
 
-	watchdog_device.miscdev.minor = WATCHDOG_MINOR;
-	watchdog_device.miscdev.name = "watchdog";
-	watchdog_device.miscdev.fops = &intel_scu_fops;
+	/* Do not publish the watchdog device when disable (TO BE REMOVED) */
+	if (!disable_kernel_watchdog) {
+		watchdog_device.miscdev.minor = WATCHDOG_MINOR;
+		watchdog_device.miscdev.name = "watchdog";
+		watchdog_device.miscdev.fops = &intel_scu_fops;
 
-	ret = misc_register(&watchdog_device.miscdev);
-	if (ret) {
-		pr_err("cannot register miscdev %d err =%d\n",
-		       WATCHDOG_MINOR, ret);
-		goto misc_register_error;
+		ret = misc_register(&watchdog_device.miscdev);
+		if (ret) {
+			pr_crit(PFX "Cannot register miscdev %d err =%d\n",
+				WATCHDOG_MINOR, ret);
+			goto error_reboot_notifier;
+		}
 	}
 
-	ret = request_irq((unsigned int)watchdog_device.timer_tbl_ptr->irq,
+	wake_lock_init(&watchdog_wake_lock, WAKE_LOCK_SUSPEND,
+			"intel_scu_watchdog");
+
+	/* MSI #7 handler for timer interrupts */
+	ret = request_irq((unsigned int)watchdog_device.timer7_tbl_ptr->irq,
 		watchdog_timer_interrupt,
-		IRQF_SHARED, "watchdog",
-		&watchdog_device.timer_load_count_addr);
+		IRQF_SHARED|IRQF_NO_SUSPEND, "watchdog timer",
+		&watchdog_device);
 	if (ret) {
-		pr_err("error requesting irq %d\n", ret);
-		goto request_irq_error;
+		pr_err(PFX "error requesting irq %d\n",
+		       watchdog_device.timer7_tbl_ptr->irq);
+		pr_err(PFX "error value returned is %d\n", ret);
+		goto error_misc_register;
 	}
-	/* Make sure timer is disabled before returning */
-	intel_scu_stop();
+
+	/* MSI #6 handler to dump registers */
+	ret = request_irq((unsigned int)watchdog_device.timer6_tbl_ptr->irq,
+		watchdog_warning_interrupt,
+		IRQF_SHARED|IRQF_NO_SUSPEND, "watchdog",
+		&watchdog_device);
+	if (ret) {
+		pr_err(PFX "error requesting warning irq %d\n",
+		       watchdog_device.timer6_tbl_ptr->irq);
+		pr_err(PFX "error value returned is %d\n", ret);
+		goto error_request_irq;
+	}
+
+	/* set up the tasklet for handling interrupt duties */
+	tasklet_init(&watchdog_device.interrupt_tasklet,
+		watchdog_interrupt_tasklet_body, (unsigned long)0);
+
+#ifdef CONFIG_INTEL_SCU_SOFT_LOCKUP
+	init_timer(&softlock_timer);
+#endif
+
+	if (disable_kernel_watchdog) {
+		pr_debug(PFX "disabling the timer\n");
+
+		/* Make sure timer is stopped */
+		ret = intel_scu_stop();
+		if (ret != 0)
+			pr_debug(PFX "cant disable timer\n");
+	}
+
+	watchdog_device.started = false;
+
 	return 0;
 
-/* error cleanup */
+error_request_irq:
+	free_irq(watchdog_device.timer7_tbl_ptr->irq, NULL);
 
-request_irq_error:
+error_misc_register:
 	misc_deregister(&watchdog_device.miscdev);
-misc_register_error:
-	unregister_reboot_notifier(&watchdog_device.intel_scu_notifier);
-register_reboot_error:
+
+error_reboot_notifier:
+	unregister_reboot_notifier(&watchdog_device.reboot_notifier);
+
+error_stop_timer:
 	intel_scu_stop();
-	iounmap(watchdog_device.timer_load_count_addr);
+
 	return ret;
 }
 
 static void __exit intel_scu_watchdog_exit(void)
 {
+	int ret = 0;
+#ifdef CONFIG_INTEL_SCU_SOFT_LOCKUP
+	del_timer_sync(&softlock_timer);
+#endif
+
+	ret = intel_scu_stop();
+	if (ret != 0)
+		pr_err(PFX "cant disable timer\n");
 
 	misc_deregister(&watchdog_device.miscdev);
-	unregister_reboot_notifier(&watchdog_device.intel_scu_notifier);
-	/* disable the timer */
-	iowrite32(0x00000002, watchdog_device.timer_control_addr);
-	iounmap(watchdog_device.timer_load_count_addr);
+	unregister_reboot_notifier(&watchdog_device.reboot_notifier);
 }
 
-late_initcall(intel_scu_watchdog_init);
+#ifdef MODULE
+module_init(intel_scu_watchdog_init);
+#else
+rootfs_initcall(intel_scu_watchdog_init);
+#endif
+
 module_exit(intel_scu_watchdog_exit);
 
 MODULE_AUTHOR("Intel Corporation");
+MODULE_AUTHOR("mark.a.allyn@intel.com");
+MODULE_AUTHOR("yannx.puech@intel.com");
 MODULE_DESCRIPTION("Intel SCU Watchdog Device Driver");
 MODULE_LICENSE("GPL");
 MODULE_ALIAS_MISCDEV(WATCHDOG_MINOR);
