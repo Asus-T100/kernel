@@ -52,9 +52,12 @@
 #include <linux/types.h>
 #include <linux/atomic.h>
 #include <linux/wakelock.h>
+#include <linux/rpmsg.h>
 #include <asm/irq.h>
 #include <asm/intel_scu_ipc.h>
 #include <asm/apb_timer.h>
+#include <asm/intel_mid_rpmsg.h>
+#include <asm/intel_mid_remoteproc.h>
 
 #include "intel_scu_watchdog.h"
 
@@ -169,6 +172,8 @@ static u64 beattime;
 static void dump_softlock_debug(unsigned long data);
 DEFINE_TIMER(softlock_timer, dump_softlock_debug, 0, 0);
 
+static struct rpmsg_instance *watchdog_instance;
+
 /* time is about to run out and the scu will reset soon.  quickly
  * dump debug data to logbuffer and emmc via calling panic before lights
  * go out.
@@ -235,20 +240,20 @@ static int watchdog_set_timeouts(int timer_threshold, int warning_pretimeout,
 	pr_debug(PFX "Watchdog ipc_buff[1]%x\n", ipc_wbuf[1]);
 	pr_debug(PFX "Watchdog ipc_buff[2]%x\n", ipc_wbuf[2]);
 
-	ret = intel_scu_ipc_command(IPC_SET_WATCHDOG_TIMER,
-				    IPC_SET_SUB_LOAD_THRES,
-				    ipc_wbuf, 3, NULL, 0);
-
+	ret = rpmsg_send_command(watchdog_instance,
+					IPC_SET_WATCHDOG_TIMER,
+					IPC_SET_SUB_LOAD_THRES,
+					ipc_wbuf, NULL, 3, 0);
 	if (ret)
 		pr_crit(PFX "Error Setting SCU Watchdog Timer: %x\n", ret);
 
 	return ret;
-};
+}
 
 /* Keep alive  */
 static int watchdog_keepalive(void)
 {
-int ret;
+	int ret;
 
 	pr_err(PFX "%s\n", __func__);
 
@@ -258,9 +263,10 @@ int ret;
 		return 0;
 	}
 
-	/* Really kick it */
-	ret = intel_scu_ipc_command(IPC_SET_WATCHDOG_TIMER,
-				    IPC_SET_SUB_KEEPALIVE, NULL, 0, NULL, 0);
+	ret = rpmsg_send_command(watchdog_instance,
+					IPC_SET_WATCHDOG_TIMER,
+					IPC_SET_SUB_KEEPALIVE,
+					NULL, NULL, 0, 0);
 	if (ret)
 		pr_err(PFX "Error sending keepalive ipc: %x\n", ret);
 
@@ -270,12 +276,14 @@ int ret;
 /* stops the timer */
 static int intel_scu_stop(void)
 {
-int ret;
+	int ret;
 
 	pr_err(PFX "%s\n", __func__);
 
-	ret = intel_scu_ipc_command(IPC_SET_WATCHDOG_TIMER,
-				    IPC_SET_SUB_DISABLE, NULL, 0, NULL, 0);
+	ret = rpmsg_send_command(watchdog_instance,
+					IPC_SET_WATCHDOG_TIMER,
+					IPC_SET_SUB_DISABLE,
+					NULL, NULL, 0, 0);
 	if (ret) {
 		pr_crit(PFX "Error sending disable ipc: %x\n", ret);
 		goto err;
@@ -647,7 +655,7 @@ static const struct file_operations intel_scu_fops = {
 };
 
 /* Init code */
-static int __init intel_scu_watchdog_init(void)
+static int intel_scu_watchdog_init(void)
 {
 	int ret;
 
@@ -774,7 +782,7 @@ error_stop_timer:
 	return ret;
 }
 
-static void __exit intel_scu_watchdog_exit(void)
+static void intel_scu_watchdog_exit(void)
 {
 	int ret = 0;
 #ifdef CONFIG_INTEL_SCU_SOFT_LOCKUP
@@ -789,13 +797,82 @@ static void __exit intel_scu_watchdog_exit(void)
 	unregister_reboot_notifier(&watchdog_device.reboot_notifier);
 }
 
+static int watchdog_rpmsg_probe(struct rpmsg_channel *rpdev)
+{
+	int ret = 0;
+
+	if (rpdev == NULL) {
+		pr_err("rpmsg channel not created\n");
+		ret = -ENODEV;
+		goto out;
+	}
+
+	dev_info(&rpdev->dev, "Probed watchdog rpmsg device\n");
+
+	/* Allocate rpmsg instance for watchdog*/
+	ret = alloc_rpmsg_instance(rpdev, &watchdog_instance);
+	if (!watchdog_instance) {
+		dev_err(&rpdev->dev, "kzalloc watchdog instance failed\n");
+		goto out;
+	}
+	/* Initialize rpmsg instance */
+	init_rpmsg_instance(watchdog_instance);
+	/* Init scu watchdog */
+	ret = intel_scu_watchdog_init();
+
+	if (ret)
+		free_rpmsg_instance(rpdev, &watchdog_instance);
+out:
+	return ret;
+}
+
+static void __devexit watchdog_rpmsg_remove(struct rpmsg_channel *rpdev)
+{
+	intel_scu_watchdog_exit();
+	free_rpmsg_instance(rpdev, &watchdog_instance);
+	dev_info(&rpdev->dev, "Removed watchdog rpmsg device\n");
+}
+
+static void watchdog_rpmsg_cb(struct rpmsg_channel *rpdev, void *data,
+					int len, void *priv, u32 src)
+{
+	dev_warn(&rpdev->dev, "unexpected, message\n");
+
+	print_hex_dump(KERN_DEBUG, __func__, DUMP_PREFIX_NONE, 16, 1,
+		       data, len,  true);
+}
+
+static struct rpmsg_device_id watchdog_rpmsg_id_table[] = {
+	{ .name	= "rpmsg_watchdog" },
+	{ },
+};
+MODULE_DEVICE_TABLE(rpmsg, watchdog_rpmsg_id_table);
+
+static struct rpmsg_driver watchdog_rpmsg = {
+	.drv.name	= KBUILD_MODNAME,
+	.drv.owner	= THIS_MODULE,
+	.id_table	= watchdog_rpmsg_id_table,
+	.probe		= watchdog_rpmsg_probe,
+	.callback	= watchdog_rpmsg_cb,
+	.remove		= __devexit_p(watchdog_rpmsg_remove),
+};
+
+static int __init watchdog_rpmsg_init(void)
+{
+	return register_rpmsg_driver(&watchdog_rpmsg);
+}
+
 #ifdef MODULE
-module_init(intel_scu_watchdog_init);
+module_init(watchdog_rpmsg_init);
 #else
-rootfs_initcall(intel_scu_watchdog_init);
+rootfs_initcall(watchdog_rpmsg_init);
 #endif
 
-module_exit(intel_scu_watchdog_exit);
+static void __exit watchdog_rpmsg_exit(void)
+{
+	return unregister_rpmsg_driver(&watchdog_rpmsg);
+}
+module_exit(watchdog_rpmsg_exit);
 
 MODULE_AUTHOR("Intel Corporation");
 MODULE_AUTHOR("mark.a.allyn@intel.com");

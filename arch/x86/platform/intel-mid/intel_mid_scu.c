@@ -64,7 +64,7 @@ int intel_mid_rproc_init(void)
 					RPROC_SCU, RP_FW_UPDATE);
 	register_rpmsg_service("rpmsg_ipc_util",
 					RPROC_SCU, RP_IPC_UTIL);
-	register_rpmsg_service("rpmsg_watchdog", RPROC_SCU, RP_MIP_ACCESS);
+	register_rpmsg_service("rpmsg_watchdog", RPROC_SCU, RP_SET_WATCHDOG);
 
 	err = platform_device_register(&intel_scu_device);
 	if (err < 0)
