@@ -12,6 +12,8 @@
 #ifndef _PLATFORM_MSIC_BATTERY_H_
 #define _PLATFORM_MSIC_BATTERY_H_
 
+#define BATTERY_DEVICE_NAME "msic_battery"
+
 extern void __init *msic_battery_platform_data(void *info)
 			__attribute__((weak));
 #endif

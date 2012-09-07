@@ -23,7 +23,32 @@
 
 void __init *msic_battery_platform_data(void *info)
 {
+	struct platform_device *pdev = NULL;
+	struct sfi_device_table_entry *entry = info;
+	void *pdata = NULL;
+	int ret = 0;
+
+	pdev = platform_device_alloc(BATTERY_DEVICE_NAME, -1);
+
+	if (!pdev) {
+		pr_err("out of memory for SFI platform dev %s\n",
+					BATTERY_DEVICE_NAME);
+		goto out;
+	}
+
+	pdev->dev.platform_data = pdata;
+
+	ret = platform_device_add(pdev);
+	if (ret) {
+		pr_err("failed to add battery platform device\n");
+		platform_device_put(pdev);
+		goto out;
+	}
+
+	install_irq_resource(pdev, entry->irq);
+
 	register_rpmsg_service("rpmsg_msic_battery", RPROC_SCU,
 				RP_MSIC_BATTERY);
-	return msic_generic_platform_data(info, INTEL_MSIC_BLOCK_BATTERY);
+out:
+	return pdata;
 }

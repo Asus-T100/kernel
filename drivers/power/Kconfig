@@ -236,6 +236,13 @@ config BATTERY_INTEL_MID
 	  Say Y here to enable the battery driver on Intel MID
 	  platforms.
 
+config BATTERY_INTEL_MDF
+        tristate "Battery driver for Intel Medfield MID platforms"
+        depends on INTEL_SCU_IPC && USB_PENWELL_OTG && MSIC_GPADC
+        help
+          Say Y here to enable the battery driver on Intel Medfield based MID
+          platforms.
+
 config CHARGER_ISP1704
 	tristate "ISP1704 USB Charger Detection"
 	depends on USB_OTG_UTILS
