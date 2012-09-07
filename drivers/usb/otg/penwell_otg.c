@@ -5136,10 +5136,25 @@ static int penwell_otg_resume(struct device *dev)
 static int penwell_otg_runtime_suspend(struct device *dev)
 {
 	struct penwell_otg	*pnw = the_transceiver;
+	struct pci_dev		*pdev = to_pci_dev(dev);
 	int			ret = 0;
 	u32			val;
 
 	dev_dbg(dev, "%s --->\n", __func__);
+
+	/* Flush any pending otg irq on local or any other CPUs.
+	*
+	* Host mode or Device mode irq should be synchronized by itself in
+	* their runtime_suspend handler. In fact, Host mode does so. For
+	* device mode, we don't care as its runtime PM is disabled.
+	*
+	* As device's runtime_status is already RPM_SUSPENDING, after flushing,
+	* any new irq handling will be rejected (otg irq handler only continues
+	* if runtime_status is RPM_ACTIVE).
+	* Thus, now it's safe to put PHY into low power mode and gate the
+	* fabric later in pci_set_power_state().
+	*/
+	synchronize_irq(pdev->irq);
 
 	switch (pnw->iotg.otg.state) {
 	case OTG_STATE_A_IDLE:
@@ -5167,13 +5182,17 @@ static int penwell_otg_runtime_suspend(struct device *dev)
 		break;
 	}
 
+	if (ret)
+		goto DONE;
+
 	penwell_otg_phy_low_power(1);
 
 	msleep(2);
 
 	penwell_otg_vusb330_low_power(1);
 
-	dev_dbg(dev, "%s <---\n", __func__);
+DONE:
+	dev_dbg(dev, "%s <---: ret = %d\n", __func__, ret);
 	return ret;
 }
 
