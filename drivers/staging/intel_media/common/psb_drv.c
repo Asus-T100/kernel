@@ -1771,6 +1771,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 		INIT_WORK(&dev_priv->te_work, mdfld_te_handler_work);
 		INIT_WORK(&dev_priv->reset_panel_work,
 				mdfld_reset_panel_handler_work);
+		INIT_WORK(&dev_priv->vsync_event_work, mdfld_vsync_event_work);
 	}
 
 	if (drm_psb_no_fb == 0) {
@@ -2975,6 +2976,7 @@ static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 	struct mdfld_dsi_config *dsi_config;
 	struct mdfld_dsi_hw_registers *regs;
 	struct mdfld_dsi_hw_context *ctx;
+	uint32_t pipe;
 
 	mutex_lock(&dev_priv->overlay_lock);
 	if (arg->display_write_mask != 0) {
@@ -3082,6 +3084,51 @@ static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 			if (arg->display_read_mask & REGRWBITS_VTOTAL_B)
 				arg->display.vtotal_b = dev_priv->saveVTOTAL_B;
 		}
+	}
+
+	if (arg->vsync_operation_mask) {
+		pipe = arg->vsync.pipe;
+		dsi_config = dev_priv->dsi_configs[0];
+
+		if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, true))
+			return -EINVAL;
+
+		if (arg->vsync_operation_mask & VSYNC_ENABLE) {
+			/*enable vblank/TE*/
+			/*drm_vblank_get(dev, pipe);*/
+			switch (pipe) {
+			case 0:
+			case 2:
+				mdfld_dsi_dsr_forbid(dsi_config);
+
+				if (is_panel_vid_or_cmd(dev) ==
+						MDFLD_DSI_ENCODER_DPI)
+					psb_enable_vblank(dev, pipe);
+				break;
+			case 1:
+				psb_enable_vblank(dev, pipe);
+				break;
+			}
+		}
+
+		if (arg->vsync_operation_mask & VSYNC_DISABLE) {
+			/*drm_vblank_put(dev, pipe);*/
+			switch (pipe) {
+			case 0:
+			case 2:
+				if (is_panel_vid_or_cmd(dev) ==
+						MDFLD_DSI_ENCODER_DPI)
+					psb_disable_vblank(dev, pipe);
+
+				mdfld_dsi_dsr_allow(dsi_config);
+				break;
+			case 1:
+				psb_disable_vblank(dev, pipe);
+				break;
+			}
+		}
+
+		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 	}
 
 	if (arg->overlay_write_mask != 0) {

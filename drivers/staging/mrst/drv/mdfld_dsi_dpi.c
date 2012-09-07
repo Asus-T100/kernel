@@ -931,20 +931,17 @@ void mdfld_dsi_dpi_exit_idle(struct drm_device *dev,
 	}
 
 	spin_lock_irqsave(&dev_priv->irqmask_lock, irqflags);
-	if (dev_priv->b_is_in_idle) {
-		/* update the surface base address. */
-		if (p_surfaceAddr) {
-			REG_WRITE(DSPASURF, *((u32 *)p_surfaceAddr));
+	/* update the surface base address. */
+	if (p_surfaceAddr) {
+		REG_WRITE(DSPASURF, *((u32 *)p_surfaceAddr));
 #if defined(CONFIG_MDFD_DUAL_MIPI)
-			REG_WRITE(DSPCSURF, *((u32 *)p_surfaceAddr));
+		REG_WRITE(DSPCSURF, *((u32 *)p_surfaceAddr));
 #endif
-		}
-
-		mid_enable_pipe_event(dev_priv, 0);
-		psb_enable_pipestat(dev_priv, 0, PIPE_VBLANK_INTERRUPT_ENABLE);
-		dev_priv->b_is_in_idle = false;
-		dev_priv->dsr_idle_count = 0;
 	}
+
+	mid_enable_pipe_event(dev_priv, 0);
+	psb_enable_pipestat(dev_priv, 0, PIPE_VBLANK_INTERRUPT_ENABLE);
+
 	spin_unlock_irqrestore(&dev_priv->irqmask_lock, irqflags);
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 }

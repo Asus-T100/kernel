@@ -321,7 +321,6 @@ int mdfld_dsi_dsr_forbid_locked(struct mdfld_dsi_config *dsi_config)
 		return 0;
 
 	/*exit dsr if necessary*/
-
 	if (!dsr->dsr_enabled)
 		goto forbid_out;
 
@@ -379,6 +378,10 @@ int mdfld_dsi_dsr_allow_locked(struct mdfld_dsi_config *dsi_config)
 		return 0;
 
 	if (!dsr->dsr_enabled)
+		goto allow_out;
+
+
+	if (!dsr->ref_count)
 		goto allow_out;
 
 	dsr->ref_count--;

@@ -427,10 +427,12 @@ struct drm_psb_private {
 	struct mdfld_dsi_config *dsi_configs[2];
 
 	struct work_struct te_work;
-	int te_pipe;
 	struct work_struct reset_panel_work;
 
 	int dsi_init_done;
+
+	struct work_struct vsync_event_work;
+	int vsync_pipe;
 
 	/*
 	 *TTM Glue.
@@ -1220,6 +1222,7 @@ extern int mdfld_irq_enable_hdmi_audio(struct drm_device *dev);
 extern int mdfld_irq_disable_hdmi_audio(struct drm_device *dev);
 extern void psb_te_timer_func(unsigned long data);
 extern void mdfld_te_handler_work(struct work_struct *te_work);
+extern void mdfld_vsync_event_work(struct work_struct *work);
 
 /*psb_fence.c*/
 extern void psb_fence_handler(struct drm_device *dev, uint32_t class);
