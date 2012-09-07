@@ -1906,16 +1906,18 @@ static void dwc3_stop_active_transfer(struct dwc3 *dwc, u32 epnum, int forceRM)
 
 	dep = dwc->eps[epnum];
 
-	cmd = DWC3_DEPCMD_ENDTRANSFER;
-	if (forceRM)
-		cmd |= DWC3_DEPCMD_HIPRI_FORCERM | DWC3_DEPCMD_CMDIOC;
-	else
-		cmd |= DWC3_DEPCMD_CMDIOC;
-	cmd |= DWC3_DEPCMD_PARAM(dep->res_trans_idx);
-	memset(&params, 0, sizeof(params));
-	ret = dwc3_send_gadget_ep_cmd(dwc, dep->number, cmd, &params);
-	WARN_ON_ONCE(ret);
-	dep->res_trans_idx = 0;
+	if (dep->res_trans_idx) {
+		cmd = DWC3_DEPCMD_ENDTRANSFER;
+		if (forceRM)
+			cmd |= DWC3_DEPCMD_HIPRI_FORCERM | DWC3_DEPCMD_CMDIOC;
+		else
+			cmd |= DWC3_DEPCMD_CMDIOC;
+		cmd |= DWC3_DEPCMD_PARAM(dep->res_trans_idx);
+		memset(&params, 0, sizeof(params));
+		ret = dwc3_send_gadget_ep_cmd(dwc, dep->number, cmd, &params);
+		WARN_ON_ONCE(ret);
+		dep->res_trans_idx = 0;
+	}
 }
 
 static void dwc3_stop_active_transfers(struct dwc3 *dwc)
@@ -2169,7 +2171,6 @@ static void dwc3_gadget_hibernation_interrupt(struct dwc3 *dwc)
 {
 	dev_vdbg(dwc->dev, "%s\n", __func__);
 
-	printk(KERN_ERR "Hiber INT!");
 	pm_runtime_put(dwc->dev);
 }
 
