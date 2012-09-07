@@ -889,6 +889,12 @@ static int __ov8830_set_exposure(struct v4l2_subdev *sd, int exposure, int gain)
 	struct ov8830_device *dev = to_ov8830_sensor(sd);
 	int exp_val, ret;
 
+	/* OV sensor driver has a limitation that the exposure
+	 * should not exceed beyond VTS-14
+	 */
+	 if (exposure > dev->lines_per_frame - 14)
+		exposure = dev->lines_per_frame - 14;
+
 	ret = ov8830_grouphold_start(sd);
 	if (ret)
 		goto out;
