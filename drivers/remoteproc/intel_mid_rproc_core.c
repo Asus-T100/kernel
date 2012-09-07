@@ -199,15 +199,8 @@ int intel_mid_rproc_msg_handle(struct intel_mid_rproc *iproc)
 
 	hdr = (struct rpmsg_hdr *)s_virt_addr;
 
-	/* TODO: this part needs to be generic */
-	if (hdr->dst == RP_PMIC_ACCESS) {
-		ret = iproc->rproc_rpmsg_handle(r_virt_addr, s_virt_addr,
+	ret = iproc->rproc_rpmsg_handle(r_virt_addr, s_virt_addr,
 						&r_len);
-	} else {
-		/* add other commands handlers here */
-		dev_info(iproc->rproc->dev, "Command not supported yet\n");
-		ret = 0;
-	}
 
 	r_vring->used->ring[r_vring->used->idx].id = r_vring->used->idx;
 	r_vring->used->ring[r_vring->used->idx].len = r_len;

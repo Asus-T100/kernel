@@ -32,6 +32,22 @@
 
 static struct rpmsg_ns_list *nslist;
 
+
+static int scu_ipc_command(void *tx_buf)
+{
+	struct tx_ipc_msg *tx_msg;
+	int ret = 0;
+
+	tx_msg = (struct tx_ipc_msg *)tx_buf;
+
+	ret = intel_scu_ipc_command(tx_msg->cmd, tx_msg->sub,
+				(u32 *)tx_msg->in, tx_msg->inlen,
+				tx_msg->out, tx_msg->outlen);
+
+	return ret;
+}
+
+
 /**
  * scu_ipc_rpmsg_handle() - scu rproc specified ipc rpmsg handle
  * @rx_buf: rx buffer to be add
@@ -43,6 +59,7 @@ int scu_ipc_rpmsg_handle(void *rx_buf, void *tx_buf, u32 *len)
 	struct rpmsg_hdr *tx_hdr, *tmp_hdr;
 	struct tx_ipc_msg *tx_msg;
 	struct rx_ipc_msg *tmp_msg;
+	int ret = 0;
 
 	*len = sizeof(struct rpmsg_hdr) + sizeof(struct rx_ipc_msg);
 
@@ -53,8 +70,15 @@ int scu_ipc_rpmsg_handle(void *rx_buf, void *tx_buf, u32 *len)
 	tmp_hdr = (struct rpmsg_hdr *)rx_buf;
 	tmp_msg = (struct rx_ipc_msg *)tmp_hdr->data;
 
-	tmp_msg->status = intel_scu_ipc_command(tx_msg->cmd, tx_msg->sub,
-		(u32 *)tx_msg->in, tx_msg->inlen, tx_msg->out, tx_msg->outlen);
+	switch (tx_hdr->dst) {
+	case RP_PMIC_ACCESS:
+	case RP_SET_WATCHDOG:
+		tmp_msg->status = scu_ipc_command(tx_msg);
+		break;
+	default:
+		pr_info("Command not supported yet\n");
+		break;
+	};
 
 	/* prepare rx buffer, switch src and dst */
 	tmp_hdr->src = tx_hdr->dst;
@@ -63,7 +87,7 @@ int scu_ipc_rpmsg_handle(void *rx_buf, void *tx_buf, u32 *len)
 	tmp_hdr->flags = tx_hdr->flags;
 	tmp_hdr->len = sizeof(struct rx_ipc_msg);
 
-	return 0;
+	return ret;
 }
 
 /* kick a virtqueue */
@@ -85,7 +109,8 @@ static void intel_rproc_scu_kick(struct rproc *rproc, int vqid)
 
 	switch (idx) {
 	case RX_VRING:
-		if (iproc->ns_enabled) {
+		if (iproc->ns_enabled &&
+			!list_is_last(&iproc->ns_info->node, &nslist->list)) {
 			list_for_each_entry_continue(iproc->ns_info,
 				&nslist->list, node) {
 				ret = intel_mid_rproc_ns_handle(iproc,
