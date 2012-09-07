@@ -568,7 +568,7 @@ void mdfld_dsi_dsr_enable(struct mdfld_dsi_config *dsi_config)
 	mutex_unlock(&dsi_config->context_lock);
 }
 
-int mdfld_dsi_dsr_in_dsr(struct mdfld_dsi_config *dsi_config)
+int mdfld_dsi_dsr_in_dsr_locked(struct mdfld_dsi_config *dsi_config)
 {
 	struct mdfld_dsi_dsr *dsr;
 	int in_dsr = 0;
@@ -586,13 +586,9 @@ int mdfld_dsi_dsr_in_dsr(struct mdfld_dsi_config *dsi_config)
 	if (!dsr)
 		goto get_state_out;
 
-	/*lock dsr*/
-	mutex_lock(&dsi_config->context_lock);
-
 	if (dsr->dsr_state > DSR_EXITED)
 		in_dsr = 1;
 
-	mutex_unlock(&dsi_config->context_lock);
 get_state_out:
 	return in_dsr;
 }

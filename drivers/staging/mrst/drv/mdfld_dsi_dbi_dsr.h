@@ -71,7 +71,7 @@ void mdfld_dsi_dsr_destroy(struct mdfld_dsi_config *dsi_config);
 
 void mdfld_dsi_dsr_enable(struct mdfld_dsi_config *dsi_config);
 
-int mdfld_dsi_dsr_in_dsr(struct mdfld_dsi_config *dsi_config);
+int mdfld_dsi_dsr_in_dsr_locked(struct mdfld_dsi_config *dsi_config);
 
 /*FIXME: remove it later*/
 extern void ospm_suspend_display(struct drm_device *dev);
