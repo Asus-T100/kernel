@@ -641,7 +641,7 @@ int mdfld_dsi_h8c7_cmd_panel_reset(struct mdfld_dsi_config *dsi_config,
 	struct mdfld_dsi_hw_context *ctx;
 	struct drm_device *dev;
 	int ret = 0;
-	static bool b_gpio_required[PSB_NUM_PIPE] = {0};
+	static bool b_gpio_required[PSB_NUM_PIPE] = {false};
 	unsigned gpio_mipi_panel_reset = 128;
 
 	regs = &dsi_config->regs;
@@ -656,8 +656,7 @@ int mdfld_dsi_h8c7_cmd_panel_reset(struct mdfld_dsi_config *dsi_config,
 		gpio_mipi_panel_reset = mdfld_mipi_panel_gpio_reset;
 	}
 
-	if (reset_from == RESET_FROM_BOOT_UP) {
-		b_gpio_required[dsi_config->pipe] = false;
+	if (b_gpio_required[dsi_config->pipe] == false) {
 		if (dsi_config->pipe) {
 			PSB_DEBUG_ENTRY(
 				"GPIO reset for MIPIC is skipped!\n");
@@ -670,7 +669,9 @@ int mdfld_dsi_h8c7_cmd_panel_reset(struct mdfld_dsi_config *dsi_config,
 			goto err;
 		}
 		b_gpio_required[dsi_config->pipe] = true;
+	}
 
+	if (reset_from == RESET_FROM_BOOT_UP) {
 		/* for get date from panel side is not easy,
 		so here use display side setting to judge
 		wheather panel have enabled or not by FW */
@@ -697,16 +698,16 @@ int mdfld_dsi_h8c7_cmd_panel_reset(struct mdfld_dsi_config *dsi_config,
 		/*reset time 5ms*/
 		mdelay(5);
 	} else {
-		PSB_DEBUG_ENTRY("pr2 panel reset fail.!");
+		DRM_ERROR("CTP CMI panel reset fail.!\n");
 	}
 fun_exit:
 	if (b_gpio_required[dsi_config->pipe])
-		PSB_DEBUG_ENTRY("bapr2 panel reset successfull.");
+		PSB_DEBUG_ENTRY("CTP CMI panel reset successfull.\n");
 
 	return 0;
 err:
 	gpio_free(gpio_mipi_panel_reset);
-	PSB_DEBUG_ENTRY("pr2 panel reset fail.!");
+	DRM_ERROR("CTP CMI panel reset fail.!\n");
 	return 0;
 }
 
