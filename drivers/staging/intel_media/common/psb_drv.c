@@ -3160,11 +3160,11 @@ static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 
 				ctx->ovaadd = arg->overlay.OVADD;
 
-				mutex_unlock(&dsi_config->context_lock);
-
 				/*update on-panel frame buffer*/
 				if (arg->overlay.b_wms)
 					mdfld_dsi_dsr_update_panel_fb(dsi_config);
+
+				mutex_unlock(&dsi_config->context_lock);
 
 				/* when switch back from HDMI to local
 				 * this ensures the Pipe B is fully disabled */

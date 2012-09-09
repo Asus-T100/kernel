@@ -192,7 +192,7 @@ mdfld_h8c7_dsi_controller_init(struct mdfld_dsi_config *dsi_config, int pipe)
 	hw_ctx->device_reset_timer = 0xffff;
 	hw_ctx->high_low_switch_count = 0x28;
 	hw_ctx->init_count = 0xf0;
-	hw_ctx->eot_disable = 0x1;
+	hw_ctx->eot_disable = 0x3;
 	hw_ctx->lp_byteclk = 0x4;
 	hw_ctx->clk_lane_switch_time_cnt = 0xa0014;
 	/*
@@ -209,7 +209,7 @@ mdfld_h8c7_dsi_controller_init(struct mdfld_dsi_config *dsi_config, int pipe)
 	/*set up func_prg*/
 	hw_ctx->dsi_func_prg = (0xa000 | lane_count);
 
-	hw_ctx->mipi = PASS_FROM_SPHY_TO_AFE | TE_TRIGGER_GPIO_PIN;
+	hw_ctx->mipi = TE_TRIGGER_GPIO_PIN;
 	hw_ctx->mipi |= dsi_config->lane_config;
 }
 
@@ -333,6 +333,8 @@ int mdfld_dsi_h8c7_cmd_power_on(struct mdfld_dsi_config *dsi_config)
 	}
 
 	/*clean on-panel FB*/
+	/*re-initizlize the te_seq count & set to one*/
+	atomic64_set(&sender->te_seq, 1);
 	err = mdfld_dsi_send_dcs(sender,
 			write_mem_start,
 			NULL,
@@ -343,7 +345,10 @@ int mdfld_dsi_h8c7_cmd_power_on(struct mdfld_dsi_config *dsi_config)
 		DRM_ERROR("%s - sent write_mem_start faild\n", __func__);
 		goto power_err;
 	}
-
+	/*wait for above write_mem_start happen
+	*fifo check will be at the begining of next command
+	*/
+	mdelay(16);
 
 	/*sleep out*/
 	param[0] = 0x00;
