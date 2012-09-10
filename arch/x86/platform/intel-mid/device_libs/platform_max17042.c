@@ -28,12 +28,12 @@ void max17042_i2c_reset_workaround(void)
 {
 /* toggle clock pin of I2C to recover devices from abnormal status.
  * currently, only max17042 on I2C needs such workaround */
-#if defined(CONFIG_BATTERY_INTEL_MDF)
-#define I2C_GPIO_PIN 27
-#elif defined(CONFIG_BOARD_CTP)
+#if defined(CONFIG_BOARD_CTP)
 #define I2C_GPIO_PIN 29
 #elif defined(CONFIG_X86_MRFLD)
 #define I2C_GPIO_PIN 21
+#else
+#define I2C_GPIO_PIN 27
 #endif
 	lnw_gpio_set_alt(I2C_GPIO_PIN, LNW_GPIO);
 	gpio_direction_output(I2C_GPIO_PIN, 0);
