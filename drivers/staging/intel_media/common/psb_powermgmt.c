@@ -55,26 +55,11 @@
 struct drm_device *gpDrmDevice;
 static struct mutex g_ospm_mutex;
 
-/* Lock for graphics_access_count, since we treat gfx power
-** on/off as atomic operation
-*/
-static spinlock_t graphics_count_lock;
-
-/* Only indicate video/display suspending/resuming status, not including gfx,
-** since we put gfx resume/suspend in atomic operation, no need
-** resuming/suspending status anymore
-*/
 /* Lock strategy */
-/* For GFX(3D) engine:
- * Since 3D driver will power on 3D engine in atomic context
- * here use graphics_count_lock to protect race condition
- * between process and atomic context, once 3D driver
- * can make sure power on 3D engine only in process context
- * we can use the same locks with other engines below.
- * For other engines(display/enc/dec):
+/*
  * we use both mutex lock and spin lock, for it
  * need synchronization between atomic context and process context
- * */
+*/
 static bool gbSuspendInProgress; /* default set as false */
 static bool gbResumeInProgress; /* default set as false */
 static bool pcihostSuspendInProgress;
@@ -365,7 +350,6 @@ void ospm_power_init(struct drm_device *dev)
 	gpDrmDevice = dev;
 
 	mutex_init(&g_ospm_mutex);
-	spin_lock_init(&graphics_count_lock);
 	spin_lock_init(&dev_priv->ospm_lock);
 
 	spin_lock_irqsave(&dev_priv->ospm_lock, flags);
@@ -1166,16 +1150,20 @@ int ospm_power_suspend(struct pci_dev *pdev, pm_message_t state)
 				** its access count, hence the PCI host
 				** shouldn't be power off
 				*/
-				spin_lock(&graphics_count_lock);
+				spin_lock_irqsave(&dev_priv->ospm_lock, flags);
 				graphics_access_count =
 					atomic_read(&g_graphics_access_count);
 				if (!graphics_access_count) {
 					pcihostSuspendInProgress = true;
-					spin_unlock(&graphics_count_lock);
+					spin_unlock_irqrestore(
+						&dev_priv->ospm_lock, flags);
 					ospm_suspend_pci(pdev);
 					pcihostSuspendInProgress = false;
-				} else
-					spin_unlock(&graphics_count_lock);
+				} else {
+					spin_unlock_irqrestore(
+						&dev_priv->ospm_lock, flags);
+					ret = -EBUSY;
+				}
 			}
 		} else {
 			PSB_DEBUG_ENTRY("ospm_power_suspend: device busy:");
@@ -1258,6 +1246,8 @@ void ospm_power_island_up(int hw_islands)
 		if (pmu_nc_set_power_state(gfx_islands,
 					   OSPM_ISLAND_UP, APM_REG_TYPE))
 			BUG();
+		if (gfx_islands & OSPM_GRAPHICS_ISLAND)
+			atomic_inc(&g_graphics_access_count);
 		g_hw_power_status_mask |= gfx_islands;
 		spin_unlock_irqrestore(&dev_priv->ospm_lock, flags);
 	}
@@ -1368,7 +1358,6 @@ void ospm_power_island_down(int hw_islands)
 		if (pmu_nc_set_power_state(dc_islands,
 					   OSPM_ISLAND_DOWN, OSPM_REG_TYPE))
 			BUG();
-unlock:
 		spin_unlock_irqrestore(&dev_priv->ospm_lock, flags);
 
 		/* handle other islands */
@@ -1378,9 +1367,6 @@ unlock:
 	if (gfx_islands) {
 		spin_lock_irqsave(&dev_priv->ospm_lock, flags);
 		/* both graphics and GL3 based on graphics_access count */
-		if (hw_islands &
-			(OSPM_GL3_CACHE_ISLAND | OSPM_GRAPHICS_ISLAND))
-			spin_lock(&graphics_count_lock);
 		if (gfx_islands & OSPM_GL3_CACHE_ISLAND) {
 #ifdef CONFIG_MDFD_GL3
 			/*
@@ -1395,11 +1381,9 @@ unlock:
 					(drm_psb_gl3_enable == 0)) {
 				gfx_islands &=  ~OSPM_GL3_CACHE_ISLAND;
 				if (!gfx_islands) {
-					spin_unlock(&graphics_count_lock);
 					spin_unlock_irqrestore(
-							&dev_priv->ospm_lock,
-							flags);
-					return;
+						&dev_priv->ospm_lock, flags);
+					return ;
 				}
 			}
 #endif
@@ -1414,9 +1398,6 @@ unlock:
 		reg would result in a crash - IERR/Fabric error.
 		*/
 		g_hw_power_status_mask &= ~gfx_islands;
-		if (hw_islands &
-			(OSPM_GL3_CACHE_ISLAND | OSPM_GRAPHICS_ISLAND))
-			spin_unlock(&graphics_count_lock);
 		if (pmu_nc_set_power_state(gfx_islands,
 			OSPM_ISLAND_DOWN, APM_REG_TYPE))
 			BUG();
@@ -1620,10 +1601,8 @@ out:
  * Otherwise, this will return false and the caller is expected to not
  * access the hw.
  *
- * NOTE:For gfx island, this function can supprot power on from off
- * mode in atomic context. While for other island,this function
- * doesn't support force_on in atomic context, as
- * there may sleep when resuming these islands. If u have to
+ * NOTE:The function doesn't support force_on in atomic context,
+ * as there may sleep when resuming these islands. If u have to
  * resume in atomic context for these islands, u need revise ur
  * logic and move the resume to a process context. return true if
  * the island is on(no matter it's forced or already on) otherwise
@@ -1657,50 +1636,8 @@ bool ospm_power_using_hw_begin(int hw_island, UHBUsage usage)
 	}
 #endif
 
-	/* Since gfx island power on/off can be atomic,
-	** so treat it in special way
-	*/
-	if (hw_island == OSPM_GRAPHICS_ISLAND) {
-		spin_lock(&graphics_count_lock);
 
-		island_is_on = ospm_power_is_hw_on(OSPM_GRAPHICS_ISLAND);
-
-		if (island_is_on)
-			goto increase_gfx_count;
-
-		if (!force_on && !island_is_on) {
-#ifdef CONFIG_GFX_RTPM
-			pm_runtime_put(&pdev->dev);
-#endif
-			goto unlock;
-		}
-
-		/* island_is_on == false and force_on == true case:
-		** Power on the island anyway, first power on pci host
-		** The PCI host should be already power on, if face bug()
-		** the caller need to redesign its logic, for put pci host
-		** to full funtional need sleep, it's forbidden
-		*/
-		if (gbSuspended || pcihostSuspendInProgress)
-			BUG();
-		psb_irq_preinstall_islands(gpDrmDevice, OSPM_GRAPHICS_ISLAND);
-		psb_irq_postinstall_islands(gpDrmDevice, OSPM_GRAPHICS_ISLAND);
-#ifdef CONFIG_MDFD_GL3
-		ospm_power_island_up(OSPM_GRAPHICS_ISLAND |
-				OSPM_GL3_CACHE_ISLAND);
-#else
-		ospm_power_island_up(OSPM_GRAPHICS_ISLAND);
-#endif
-		island_is_on = true;
-increase_gfx_count:
-		atomic_inc(&g_graphics_access_count);
-unlock:
-		spin_unlock(&graphics_count_lock);
-		return island_is_on;
-	}
-
-	/* Deal with other islands which may be in process context and
-	** atomic context. Only process context is allowed when in
+	/* Only process context is allowed when in
 	** force_on == true case. In force_on == false cases,
 	** it may be in atomic or process context, so use spin_lock_irq
 	*/
@@ -1716,10 +1653,11 @@ unlock:
 		** Note: when in interrupt context, we should
 		** always return true, for it has triggerred interrupt.
 		*/
-		if (!island_is_on ||
-		    ((hw_island == OSPM_DISPLAY_ISLAND) &&
-		      gbSuspendInProgress &&
-		      !in_interrupt())) {
+		if ((!island_is_on) ||
+			((((hw_island == OSPM_DISPLAY_ISLAND) &&
+			gbSuspendInProgress) ||
+			((hw_island == OSPM_GRAPHICS_ISLAND) &&
+			pcihostSuspendInProgress)) && (!in_interrupt()))) {
 			spin_unlock_irqrestore(&dev_priv->ospm_lock,
 				flags);
 #ifdef CONFIG_GFX_RTPM
@@ -1731,10 +1669,13 @@ unlock:
 		/* After sanity check can increase the access_count */
 		if (hw_island == OSPM_DISPLAY_ISLAND)
 			atomic_inc(&g_display_access_count);
+		else if (hw_island == OSPM_GRAPHICS_ISLAND)
+			atomic_inc(&g_graphics_access_count);
 
 		spin_unlock_irqrestore(&dev_priv->ospm_lock, flags);
 		return true;
 	}
+
 	/* Actually we can remove the codes below for following
 	** mutex lock can keep race condition safe. These codes
 	** exist only for facilitating gfx misuse force_on display
@@ -1753,12 +1694,18 @@ unlock:
 	}
 	spin_unlock_irqrestore(&dev_priv->ospm_lock, flags);
 
-	/* Deal with force_on==true case. It must be process context */
-	BUG_ON(in_interrupt());
+	BUG_ON((preempt_count() & ~PREEMPT_ACTIVE) != 0);
 	mutex_lock(&g_ospm_mutex);
 
-	/* Re-check the island status */
-	island_is_on = ospm_power_is_hw_on(hw_island);
+	spin_lock_irqsave(&dev_priv->ospm_lock, flags);
+	island_is_on = ((g_hw_power_status_mask & hw_island)
+			== hw_island) ? true : false;
+
+	if (island_is_on && (hw_island == OSPM_GRAPHICS_ISLAND))
+		atomic_inc(&g_graphics_access_count);
+
+	spin_unlock_irqrestore(&dev_priv->ospm_lock, flags);
+
 	if (island_is_on)
 		goto increase_count;
 
@@ -1777,8 +1724,19 @@ unlock:
 				OSPM_DISPLAY_ISLAND);
 			psb_irq_postinstall_islands(gpDrmDevice,
 				OSPM_DISPLAY_ISLAND);
-		}
-
+		} else if (hw_island == OSPM_GRAPHICS_ISLAND) {
+				deviceID = gui32SGXDeviceID;
+#ifdef CONFIG_MDFD_GL3
+				ospm_power_island_up(OSPM_GRAPHICS_ISLAND |
+						OSPM_GL3_CACHE_ISLAND);
+#else
+				ospm_power_island_up(OSPM_GRAPHICS_ISLAND);
+#endif
+				psb_irq_preinstall_islands(gpDrmDevice,
+				OSPM_GRAPHICS_ISLAND);
+				psb_irq_postinstall_islands(gpDrmDevice,
+					OSPM_GRAPHICS_ISLAND);
+			}
 	}
 
 	if (!ret)
