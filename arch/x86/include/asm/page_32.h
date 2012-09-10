@@ -33,7 +33,18 @@ static inline void copy_page(void *to, void *from)
 {
 	mmx_copy_page(to, from);
 }
-#else  /* !CONFIG_X86_USE_3DNOW */
+/* !CONFIG_X86_USE_3DNOW */
+#elif defined(CONFIG_X86_USE_SSE)
+
+# include <asm/sse.h>
+
+extern void (*__sse_clear_page)(void *);
+extern void (*__sse_copy_page)(void *, void*);
+# define clear_page(page)	(*__sse_clear_page)(page)
+# define copy_page(to, from)	(*__sse_copy_page)(to, from)
+
+#else
+
 #include <linux/string.h>
 
 static inline void clear_page(void *page)

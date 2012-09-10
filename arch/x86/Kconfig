@@ -439,6 +439,10 @@ config X86_MDFLD
 	  nor standard legacy replacement devices/features. e.g. Medfield does
 	  not contain i8259, i8254, HPET, legacy BIOS, most of the io ports.
 
+config X86_USE_SSE
+	bool
+	default y
+
 config X86_MRFLD
 	bool "Merrifield MID platform"
 	depends on PCI
