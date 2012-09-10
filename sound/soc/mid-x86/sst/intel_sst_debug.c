@@ -60,7 +60,7 @@ static ssize_t sst_debug_shim_read(struct file *file, char __user *user_buf,
 {
 	struct intel_sst_drv *drv = file->private_data;
 	unsigned long long val = 0;
-	char buf[128];
+	char buf[256];
 	int pos = 0;
 
 	if (drv->sst_state == SST_SUSPENDED) {
@@ -98,7 +98,7 @@ static ssize_t sst_debug_shim_write(struct file *file,
 {
 	struct intel_sst_drv *drv = file->private_data;
 	char buf[32];
-	char regname[8];
+	char regname[32];
 	char *start = buf, *end;
 	unsigned long value;
 	unsigned long long reg;
@@ -245,10 +245,10 @@ static const struct file_operations sst_debug_readme_ops = {
 static ssize_t sst_debug_osc_clk0_read(struct file *file, char __user *user_buf,
 				   size_t count, loff_t *ppos)
 {
-	char status[8];
+	char status[16];
 	int mode = intel_scu_ipc_set_osc_clk0(0, CLK0_QUERY);
 
-	sprintf(status, "0x%x\n", mode);
+	snprintf(status, 16, "0x%x\n", mode);
 	return simple_read_from_buffer(user_buf, count, ppos,
 			status, strlen(status));
 }
