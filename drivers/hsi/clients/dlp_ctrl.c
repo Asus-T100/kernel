@@ -1127,7 +1127,7 @@ static int dlp_ctrl_cmd_send(struct dlp_channel *ch_ctx,
 
 	/* TX OK */
    /* 1. Set the intermidiate channel state */
-	if (interm_state != -1)
+	if (interm_state != DLP_CH_STATE_NONE)
 		dlp_ctrl_set_channel_state(ch_ctx, interm_state);
 
 	/* Wait for response ? */
@@ -1169,7 +1169,7 @@ static int dlp_ctrl_cmd_send(struct dlp_channel *ch_ctx,
 
 no_resp:
 	/* Response received & OK => set the new channel state */
-	if (final_state != -1)
+	if (final_state != DLP_CH_STATE_NONE)
 		dlp_ctrl_set_channel_state(ch_ctx, final_state);
 
 	/* Restore RX callback */
@@ -1870,7 +1870,6 @@ int dlp_ctrl_close_channel(struct dlp_channel *ch_ctx)
 */
 int dlp_ctrl_send_nop(struct dlp_channel *ch_ctx)
 {
-#if 0
 	int ret;
 	unsigned char param1, param2, param3;
 
@@ -1883,13 +1882,11 @@ int dlp_ctrl_send_nop(struct dlp_channel *ch_ctx)
 	/* Send the NOP command */
 	ret = dlp_ctrl_cmd_send(ch_ctx,
 			DLP_CMD_NOP, DLP_CMD_NONE,
-			-1, -1,
+			DLP_CH_STATE_NONE, DLP_CH_STATE_NONE,
 			param1, param2, param3);
 
 	EPILOG();
 	return ret;
-#endif
-	return 0;
 }
 
 /*

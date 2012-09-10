@@ -158,7 +158,8 @@ enum {
 	DLP_CH_STATE_CLOSED,	/* Default initial state (channel closed) */
 	DLP_CH_STATE_CLOSING,	/* Closing ... (waiting for CLOSE_CONN resp) */
 	DLP_CH_STATE_OPENING,	/* Opening ... (waiting for OPEN_CONN resp) */
-	DLP_CH_STATE_OPENED	/* Channel correctly opened (OPEN_CONN + ACK) */
+	DLP_CH_STATE_OPENED,	/* Channel correctly opened (OPEN_CONN + ACK) */
+	DLP_CH_STATE_NONE		/* No channel state set yet */
 };
 
 /*  */
