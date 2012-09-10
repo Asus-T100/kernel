@@ -142,6 +142,7 @@ static inline void pmu_log_ipc(u32 command) { return; };
 static inline void pmu_log_ipc_irq(void) { return; };
 #endif
 
+extern bool mid_pmu_is_wake_source(u32 lss_number);
 #else
 
 /*
@@ -173,6 +174,7 @@ static inline void pmu_log_ipc(u32 command) { return; };
 static inline void pmu_log_ipc_irq(void) { return; };
 static inline int pmu_set_emmc_to_d0i0_atomic(void) { return -ENOSYS; }
 static inline void pmu_power_off(void) { return; }
+static inline bool mid_pmu_is_wake_source(u32 lss_number) { return false; }
 #endif /* #ifdef CONFIG_ATOM_SOC_POWER */
 
 #endif /* #ifndef INTEL_MID_PM_H */

@@ -523,6 +523,33 @@ static void pmu_prepare_wake(int s0ix_state)
 	writel(cur_pmsss.pmu2_states[3], &mid_pmu_cxt->pmu_reg->pm_wssc[3]);
 }
 
+/*
+ * Valid wake source: lss_number 0 to 63
+ * Returns true if 'lss_number' is wake source
+ * else false
+ */
+bool mid_pmu_is_wake_source(u32 lss_number)
+{
+	u32 wake = 0;
+	bool ret = false;
+
+	if (lss_number > PMU_RSVD9_LSS_63)
+		return ret;
+
+	if (lss_number < PMU_SCU_RAM1_LSS_32) {
+		wake = readl(&mid_pmu_cxt->pmu_reg->pm_wks[0]);
+		wake &= (1 << lss_number);
+	} else {
+		wake = readl(&mid_pmu_cxt->pmu_reg->pm_wks[1]);
+		wake &= (1 << (lss_number-PMU_SCU_RAM1_LSS_32));
+	}
+
+	if (wake)
+		ret = true;
+
+	return ret;
+}
+
 int mid_s0ix_enter(int s0ix_state)
 {
 	int ret = 0;
