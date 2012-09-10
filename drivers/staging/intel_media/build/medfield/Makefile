@@ -137,7 +137,8 @@ gfx-y += $(DISPLAYDIR)/psb_bl.o \
 		$(DISPLAYDIR)/h8c7_cmd.o \
 		$(DISPLAYDIR)/mdfld_dsi_pkg_sender.o \
 		$(DISPLAYDIR)/mdfld_dsi_esd.o \
-		$(DISPLAYDIR)/mdfld_dsi_dbi_dsr.o
+		$(DISPLAYDIR)/mdfld_dsi_dbi_dsr.o \
+		$(DISPLAYDIR)/tc35876x_vid.o
 
 gfx-$(CONFIG_MDFD_HDMI) += $(DISPLAYDIR)/psb_hotplug.o \
 		$(DISPLAYDIR)/psb_intel_hdmi.o \

@@ -225,7 +225,6 @@ enum panel_type {
 #define _PSB_MMU_ER_HOST      (1 << 16)
 #define GPIOA			0x5010
 #define GPIOB			0x5014
-#define GPIOC			0x5018
 #define GPIOD			0x501c
 #define GPIOE			0x5020
 #define GPIOF			0x5024
