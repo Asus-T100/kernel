@@ -1761,6 +1761,21 @@ static int serial_hsu_probe(struct pci_dev *pdev,
 		return -ENODEV;
 	}
 
+	/*
+	 * There is a hsu rx timeout interrup lost silicon bug, this workaround
+	 * is to shrink dma descriptor xfer size to 16 Bytes.
+	 * PNW A0 and CLVP A0 need this workaround.
+	 */
+	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_CLOVERVIEW &&
+		pdev->revision < 0xC) {
+		dev_warn(&pdev->dev, "CLVP A0 detected, dma_dscr_size=16\n");
+		dma_dscr_size = 16;
+	} else if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_PENWELL &&
+		pdev->revision < 0x8) {
+		dev_warn(&pdev->dev, "PNW A0 detected, dma_dscr_size=16\n");
+		dma_dscr_size = 16;
+	}
+
 	ret = pci_enable_device(pdev);
 	if (ret)
 		return ret;
@@ -2286,14 +2301,6 @@ static struct pci_driver hsu_pci_driver = {
 static int __init hsu_pci_init(void)
 {
 	int ret;
-	/* This is a workaround for CLV A0 chip,
-	   there is hsu rx timeout interrup lost
-	   silicon bug, this workaround is to shrink
-	   dma descriptor xfer size to 16 Byte.
-	*/
-	if (boot_cpu_data.x86_model == 0x35 &&
-		boot_cpu_data.x86_mask == 1)
-		dma_dscr_size = 16;
 
 	hsu_global_init();
 
