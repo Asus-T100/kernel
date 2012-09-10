@@ -72,9 +72,7 @@
 #include "mdfld_dsi_pkg_sender.h"
 int drm_psb_debug;
 int psb_video_fabric_debug;
-int drm_psb_enable_pr2_cabc = 1;
-int drm_psb_enable_sc1_cabc = 1;  /* [SC1] change paremeter name */
-int drm_psb_enable_lex_cabc = 1;
+int drm_psb_enable_cabc = 1;
 int drm_psb_enable_gamma;
 int drm_psb_enable_color_conversion;
 /*EXPORT_SYMBOL(drm_psb_debug); */
@@ -133,12 +131,10 @@ MODULE_PARM_DESC(enable_gamma, "Enable display side gamma");
 
 module_param_named(debug, drm_psb_debug, int, 0600);
 module_param_named(fabric_debug, psb_video_fabric_debug, int, 0600);
-module_param_named(psb_enable_pr2_cabc, drm_psb_enable_pr2_cabc, int, 0600);
+module_param_named(psb_enable_cabc, drm_psb_enable_cabc, int, 0600);
 module_param_named(enable_color_conversion, drm_psb_enable_color_conversion, int, 0600);
 module_param_named(enable_gamma, drm_psb_enable_gamma, int, 0600);
 /* [SC1] change parameter name */
-module_param_named(psb_enable_sc1_cabc, drm_psb_enable_sc1_cabc, int, 0600);
-module_param_named(psb_enable_lex_cabc, drm_psb_enable_lex_cabc, int, 0600);
 module_param_named(no_fb, drm_psb_no_fb, int, 0600);
 module_param_named(trap_pagefaults, drm_psb_trap_pagefaults, int, 0600);
 module_param_named(force_pipeb, drm_psb_force_pipeb, int, 0600);

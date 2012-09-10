@@ -363,7 +363,7 @@ static int __mdfld_gi_sony_dsi_power_on(struct mdfld_dsi_config *dsi_config)
 		goto power_err;
 	}
 
-	if (drm_psb_enable_lex_cabc) {
+	if (drm_psb_enable_cabc) {
 
 		param[0] = 0x03;
 		param[1] = 0x00;

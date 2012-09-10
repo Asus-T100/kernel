@@ -50,9 +50,7 @@ extern struct drm_device *gpDrmDevice;
 extern bool gbdispstatus;
 extern int drm_psb_debug;
 extern int psb_video_fabric_debug;
-extern int drm_psb_enable_pr2_cabc ;
-extern int drm_psb_enable_sc1_cabc; /* SC1 setting */
-extern int drm_psb_enable_lex_cabc;
+extern int drm_psb_enable_cabc ;
 extern int gfxrtdelay;
 extern int drm_psb_te_timer_delay;
 extern int drm_psb_enable_gamma;
