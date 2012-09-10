@@ -42,6 +42,7 @@
 #include <linux/gpio.h>
 #include <linux/interrupt.h>
 #include <linux/irq.h>
+#include <linux/serial.h>
 
 #include "dlp_main.h"
 
@@ -97,9 +98,10 @@ static int dlp_tty_push_rx_pdus(struct dlp_channel *ch_ctx)
 	return ret;
 }
 
-/*
+/* Called to handle modem hangup (Reset/CoreDump)
  *
- *
+ * Dont need to call tty hangup if the port closure is ongoing:
+ *	- TTY Close -> Port Shutdown is ongoing + Modem Reset/Coredump event
  */
 static void dlp_tty_modem_hangup(struct dlp_channel *ch_ctx, int reason)
 {
@@ -112,8 +114,8 @@ static void dlp_tty_modem_hangup(struct dlp_channel *ch_ctx, int reason)
 
 	ch_ctx->hangup.cause |= reason;
 	tty = tty_port_tty_get(&tty_ctx->tty_prt);
-	if (tty) {
-		tty_hangup(tty);
+	if (tty && !(tty_ctx->tty_prt.flags & ASYNC_CLOSING)) {
+		tty_vhangup(tty);
 		tty_kref_put(tty);
 	}
 
@@ -649,6 +651,9 @@ static void dlp_tty_port_shutdown(struct tty_port *port)
 
 	del_timer_sync(&ch_ctx->hangup.timer);
 
+	/* Flush any pending fw work */
+	flush_work_sync(&tty_ctx->do_tty_forward);
+
 	/* RX */
 	del_timer_sync(&rx_ctx->timer);
 	dlp_tty_rx_fifo_wait_recycle(rx_ctx);
@@ -804,6 +809,7 @@ static void dlp_tty_hangup(struct tty_struct *tty)
 
 	CRITICAL("TTY hangup");
 
+	/* Will call the port_shutdown function */
 	tty_port_hangup(&tty_ctx->tty_prt);
 }
 
@@ -845,6 +851,7 @@ static void dlp_tty_close(struct tty_struct *tty, struct file *filp)
 
 	/* Flush everything & Release the HSI port */
 	if (need_cleanup) {
+		pr_debug(DRVNAME": Flushing the HSI controller\n");
 		hsi_flush(dlp_drv.client);
 		dlp_hsi_port_unclaim();
 	}

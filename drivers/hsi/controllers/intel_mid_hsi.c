@@ -1889,24 +1889,21 @@ static void hsi_resume_dma_transfers(struct intel_controller *intel_hsi)
 static void hsi_break_complete(struct intel_controller *intel_hsi)
 	__acquires(&intel_hsi->sw_lock) __releases(&intel_hsi->sw_lock)
 {
-	struct list_head		*queue;
-	struct list_head		*node;
-	struct hsi_msg			*msg;
-	unsigned long			 flags;
+	struct hsi_msg	*msg, *tmp_msg;
+	unsigned long	flags;
 
 	dev_dbg(intel_hsi->dev, "HWBREAK received\n");
 
-	queue = &intel_hsi->brk_queue;
 	spin_lock_irqsave(&intel_hsi->sw_lock, flags);
-	node = queue->next;
-	while (node != queue) {
-		msg = list_entry(node, struct hsi_msg, link);
+	list_for_each_entry_safe(msg, tmp_msg, &intel_hsi->brk_queue, link) {
+		/* Remove the msg from the queue */
 		list_del(&msg->link);
 		spin_unlock_irqrestore(&intel_hsi->sw_lock, flags);
+
+		/* Call the msg complete callback */
 		msg->status = HSI_STATUS_COMPLETED;
 		msg->complete(msg);
 		spin_lock_irqsave(&intel_hsi->sw_lock, flags);
-		node = queue->next;
 	}
 	spin_unlock_irqrestore(&intel_hsi->sw_lock, flags);
 }
@@ -2189,50 +2186,44 @@ static void hsi_destruct_msg(struct hsi_msg *msg, int dma_channel,
 static void hsi_flush_queue(struct list_head *queue, struct hsi_client *cl,
 			    struct intel_controller *intel_hsi)
 {
-	unsigned int hsi_channel;
+	struct intel_dma_ctx *dma_ctx;
+	struct hsi_msg *msg, *tmp_msg;
 	int dma_channel;
-	struct list_head *node;
-	struct hsi_msg *msg;
 	unsigned long flags;
+	LIST_HEAD(msgs_to_delete);
 
 	spin_lock_irqsave(&intel_hsi->sw_lock, flags);
-	do {
-		node = queue->prev;
-		while (node != queue) {
-			msg = list_entry(node, struct hsi_msg, link);
-			if (cl != msg->cl)
-				goto prev_node;
+	list_for_each_entry_safe(msg, tmp_msg, queue, link) {
+		if (cl != msg->cl)
+			continue;
 
-			/* Do not remove the ongoing DMA message yet ! */
-			hsi_channel = msg->channel;
-			dma_channel = hsi_get_dma_channel(intel_hsi, msg,
-							  hsi_channel);
-			if (dma_channel < 0)
-				goto del_node;
+		dma_channel = hsi_get_dma_channel(intel_hsi, msg, msg->channel);
+		if (dma_channel < 0)
+			goto del_node;
 
-			if (intel_hsi->dma_ctx[dma_channel]->ongoing->msg ==
-			    msg) {
-				msg->break_frame = 1;
-				goto prev_node;
-			}
+		/* Do not remove the ongoing DMA message yet ! */
+		dma_ctx = intel_hsi->dma_ctx[dma_channel];
+		if (dma_ctx->ongoing->msg == msg) {
+			msg->break_frame = 1;
+			continue;
+		}
 
-			if (intel_hsi->dma_ctx[dma_channel]->ready->msg == msg)
-				intel_hsi->dma_ctx[dma_channel]->ready->msg =
-									  NULL;
+		/* Clear any ready msg */
+		if (dma_ctx->ready->msg == msg)
+			dma_ctx->ready->msg = NULL;
 
 del_node:
-			list_del(node);
-			spin_unlock_irqrestore(&intel_hsi->sw_lock, flags);
-
-			hsi_destruct_msg(msg, dma_channel, intel_hsi);
-
-			spin_lock_irqsave(&intel_hsi->sw_lock, flags);
-			break;
-prev_node:
-			node = node->prev;
-		}
-	} while (node != queue);
+		/* Move the msg to the local list (will be deleted after) */
+		list_move_tail(&msg->link, &msgs_to_delete);
+	}
 	spin_unlock_irqrestore(&intel_hsi->sw_lock, flags);
+
+	/* Clear & destroy msgs list */
+	list_for_each_entry_safe(msg, tmp_msg, &msgs_to_delete, link) {
+		list_del(&msg->link);
+		dma_channel = hsi_get_dma_channel(intel_hsi, msg, msg->channel);
+		hsi_destruct_msg(msg, dma_channel, intel_hsi);
+	}
 }
 
 /**

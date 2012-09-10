@@ -1038,9 +1038,8 @@ static void dlp_fifo_empty(struct list_head *fifo,
 		dlp_pdu_free(pdu, pdu->channel);
 	}
 
-	write_unlock_irqrestore(&xfer_ctx->lock, flags);
-
  out:
+	write_unlock_irqrestore(&xfer_ctx->lock, flags);
 	EPILOG();
 }
 
@@ -1489,7 +1488,8 @@ void dlp_do_start_tx(struct work_struct *work)
 
 	ret = hsi_start_tx(dlp_drv.client);
 	if (ret) {
-		CRITICAL("hsi_start_tx() failed (err: %d)", ret);
+		CRITICAL("hsi_start_tx failed (ch%d, err: %d)",
+				ch_ctx->hsi_channel, ret);
 		goto out;
 	}
 
@@ -1520,7 +1520,8 @@ void dlp_do_stop_tx(struct work_struct *work)
 	/* Stop the TX */
 	ret = hsi_stop_tx(dlp_drv.client);
 	if (ret) {
-		CRITICAL("hsi_stop_tx() failed (err: %d)", ret);
+		CRITICAL("hsi_stop_tx failed (ch%d, err: %d)",
+				ch_ctx->hsi_channel, ret);
 		dlp_ctx_set_state(&ch_ctx->tx, READY);
 	}
 
@@ -1639,8 +1640,10 @@ inline void dlp_hsi_port_unclaim(void)
 {
 	PROLOG();
 
-	if (hsi_port_claimed(dlp_drv.client))
+	if (hsi_port_claimed(dlp_drv.client)) {
+		pr_debug(DRVNAME": Releasing the HSI controller\n");
 		hsi_release_port(dlp_drv.client);
+	}
 
 	EPILOG();
 }
