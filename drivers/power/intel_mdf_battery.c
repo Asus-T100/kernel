@@ -1684,15 +1684,18 @@ static void msic_batt_temp_charging(struct work_struct *work)
 	 * Check on user setting for charge current.
 	 * MFLD doesn't support VSYS alone and at the same
 	 * time 100mA charging doesn't really charge the battery.
-	 * So for USER_SET_CHRG_LMT1 and USER_SET_CHRG_LMT2
-	 * we limit the charging to 500mA.
+	 * So for USER_SET_CHRG_LMT1, USER_SET_CHRG_LMT2 and
+	 * USER_SET_CHRG_LMT3,we limit the charging to 500mA.
+	 * For MFLD,USER_SET_CHRG_LMT4 and USER_SET_CHRG_LMT3 are
+	 * almost same(1A). It does not make any sense charging at
+	 * full rate in warning state so limiting the current to 500mA
+	 * even in USER_SET_CHRG_LMT3.
 	 */
 	if ((mbi->usr_chrg_enbl == USER_SET_CHRG_LMT1) ||
-		(mbi->usr_chrg_enbl == USER_SET_CHRG_LMT2))
+		(mbi->usr_chrg_enbl == USER_SET_CHRG_LMT2) ||
+		(mbi->usr_chrg_enbl == USER_SET_CHRG_LMT3)) {
 		vinlimit = CHRCNTL_VINLMT_500;	/* VINILMT set to 500mA */
-	else if (mbi->usr_chrg_enbl == USER_SET_CHRG_LMT3)
-		vinlimit = CHRCNTL_VINLMT_950;	/* VINILMT set to 950mA */
-	else {
+	} else {
 		/* D7,D6 bits of CHRCNTL will set the VINILMT */
 		if (charge_param.vinilmt > 950)
 			vinlimit = CHRCNTL_VINLMT_NOLMT;
