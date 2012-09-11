@@ -755,4 +755,11 @@ void h8c7_cmd_init(struct drm_device *dev, struct panel_funcs *p_funcs)
 			DRM_ERROR("FATAL:enable h8c7 regulator error\n");
 		}
 	}
+	/*Temperory Work Around to keep VEMMC2 rail ON as current display
+	panel doesnt support this */
+	ena_err = regulator_enable(h8c7_regulator_status.regulator);
+	if (ena_err < 0) {
+		regulator_put(h8c7_regulator_status.regulator);
+		DRM_ERROR("FATAL:enable h8c7 regulator error in WA\n");
+	}
 }
