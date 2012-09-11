@@ -206,6 +206,8 @@ static const char *psc_string(enum power_supply_type charger)
 	switch (charger) {
 	case POWER_SUPPLY_TYPE_USB:
 		return "Standard Downstream Port";
+	case POWER_SUPPLY_TYPE_USB_INVAL:
+		return "Invalid Standard Downstream Port";
 	case POWER_SUPPLY_TYPE_USB_CDP:
 		return "Charging Downstream Port";
 	case POWER_SUPPLY_TYPE_USB_DCP:
@@ -405,6 +407,7 @@ static enum power_supply_type usb_chrg_to_power_supply_chrg(
 	case CHRG_CDP: return POWER_SUPPLY_TYPE_USB_CDP;
 	case CHRG_DCP: return POWER_SUPPLY_TYPE_USB_DCP;
 	case CHRG_ACA: return POWER_SUPPLY_TYPE_USB_ACA;
+	case CHRG_SDP_INVAL: return POWER_SUPPLY_TYPE_USB_INVAL;
 	default: return POWER_SUPPLY_TYPE_BATTERY;
 	}
 }
@@ -423,6 +426,9 @@ static enum power_supply_charger_event check_psc_event(
 			return POWER_SUPPLY_CHARGER_EVENT_CONNECT;
 		else if (new.chrg_type == POWER_SUPPLY_TYPE_BATTERY)
 			return POWER_SUPPLY_CHARGER_EVENT_DISCONNECT;
+		else if (old.chrg_type == POWER_SUPPLY_TYPE_USB &&
+				new.chrg_type == POWER_SUPPLY_TYPE_USB_INVAL)
+			return POWER_SUPPLY_CHARGER_EVENT_UPDATE;
 		else {
 			dev_dbg(pnw->dev, "not a valid event\n");
 			return -1;
@@ -2892,6 +2898,7 @@ static void penwell_otg_sdp_check_work(struct work_struct *work)
 {
 	struct penwell_otg		*pnw = the_transceiver;
 	struct otg_bc_cap		cap;
+	struct power_supply_charger_cap	ps_cap;
 
 	/* Need to handle MFLD/CLV differently per different interface */
 	if (!is_clovertrail(to_pci_dev(pnw->dev))) {
@@ -2905,8 +2912,19 @@ static void penwell_otg_sdp_check_work(struct work_struct *work)
 		 * charging */
 		if (cap.mA != 100 || cap.chrg_type != CHRG_SDP)
 			return;
-	} else
-		return;
+	} else {
+		if (penwell_otg_query_power_supply_cap(&ps_cap)) {
+			dev_warn(pnw->dev, "SDP checking failed\n");
+			return;
+		}
+
+		/* If current charging cap is still 100mA SDP,
+		 * assume this is a invalid charger and do 500mA
+		 * charging */
+		if (ps_cap.mA != 100 ||
+				ps_cap.chrg_type != POWER_SUPPLY_TYPE_USB)
+			return;
+	}
 
 	dev_info(pnw->dev, "Notify invalid SDP at %dmA\n", CHRG_CURR_SDP_INVAL);
 	penwell_otg_update_chrg_cap(CHRG_SDP_INVAL, CHRG_CURR_SDP_INVAL);
