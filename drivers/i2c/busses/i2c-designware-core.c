@@ -367,7 +367,8 @@ i2c_dw_xfer_msg(struct dw_i2c_dev *dev)
 		rx_limit = dev->rx_fifo_depth - dw_readl(dev, DW_IC_RXFLR);
 
 		while (buf_len > 0 && tx_limit > 0 && rx_limit > 0) {
-			cmd = (dev->enable_stop	&& buf_len == 1) ?
+			cmd = (dev->enable_stop && buf_len == 1
+				&& dev->msg_write_idx == dev->msgs_num - 1) ?
 				DW_IC_CMD_STOP : 0;
 			if (msgs[dev->msg_write_idx].flags & I2C_M_RD) {
 				dw_writel(dev, cmd | 0x100, DW_IC_DATA_CMD);
