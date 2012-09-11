@@ -336,6 +336,16 @@ config VIDEO_LC898211
 
 	  It currently only works with the atomisp driver.
 
+config VIDEO_ATOMISP
+	bool "Intel Atom Image Signal Processor Driver"
+	depends on VIDEO_V4L2
+	---help---
+	  Say Y here if your platform supports Intel Atom SoC
+	  camera imaging subsystem.
+
+	  To enable a specific atomisp driver, see CONFIG_VIDEO_ATOMISP_CSS1
+	  and related options.
+
 config VIDEO_OV8830
 	tristate "Omnivision ov8830 sensor support"
 	depends on I2C && VIDEO_V4L2 && VIDEO_ATOMISP

@@ -1,4 +1,4 @@
-config VIDEO_ATOMISP
+config VIDEO_ATOMISP_CSS10
 	tristate "Medfield Penwell Image Signal Processor Driver"
 	depends on VIDEO_V4L2
 	depends on !64BIT

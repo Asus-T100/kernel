@@ -28,7 +28,7 @@ atomisp-objs := \
 		atomisp_v4l2.o \
 		atomisp_mem_ops.o
 
-obj-$(CONFIG_VIDEO_ATOMISP) = atomisp.o
+obj-$(CONFIG_VIDEO_ATOMISP_CSS10) = atomisp.o
 
 INCLUDES := -I$(srctree)/$(src)/include \
 	    -I$(srctree)/$(src)/include/atomisp \
