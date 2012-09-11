@@ -193,6 +193,7 @@ enum panel_type {
 /*
  *VDC registers and bits
  */
+#define PSB_GFX_CLOCKGATING	  0x2060
 #define PSB_MSVDX_CLOCKGATING	  0x2064
 #define PSB_TOPAZ_CLOCKGATING	  0x2068
 #define PSB_HWSTAM		  0x2098

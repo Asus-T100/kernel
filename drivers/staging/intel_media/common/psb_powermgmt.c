@@ -816,6 +816,7 @@ void ospm_suspend_display(struct drm_device *dev)
 
 	/*save performance state*/
 	dev_priv->savePERF_MODE = REG_READ(MRST_PERF_MODE);
+	dev_priv->saveCLOCKGATING = REG_READ(PSB_GFX_CLOCKGATING);
 	dev_priv->saveVED_CG_DIS = REG_READ(PSB_MSVDX_CLOCKGATING);
 	dev_priv->saveVEC_CG_DIS = REG_READ(PSB_TOPAZ_CLOCKGATING);
 
@@ -876,6 +877,7 @@ void ospm_resume_display(struct pci_dev *pdev)
 
 	/*restore performance mode*/
 	REG_WRITE(MRST_PERF_MODE, dev_priv->savePERF_MODE);
+	REG_WRITE(PSB_GFX_CLOCKGATING, dev_priv->saveCLOCKGATING);
 	REG_WRITE(PSB_MSVDX_CLOCKGATING, dev_priv->saveVED_CG_DIS);
 	REG_WRITE(PSB_TOPAZ_CLOCKGATING, dev_priv->saveVEC_CG_DIS);
 #ifdef CONFIG_MDFD_GL3
@@ -980,6 +982,8 @@ static bool ospm_resume_pci(struct pci_dev *pdev)
 		if (IS_MDFLD(dev)) {
 			/*restore performance mode*/
 			PSB_WVDC32(dev_priv->savePERF_MODE, MRST_PERF_MODE);
+			PSB_WVDC32(dev_priv->saveCLOCKGATING,
+				PSB_GFX_CLOCKGATING);
 			PSB_WVDC32(dev_priv->saveVED_CG_DIS,
 					PSB_MSVDX_CLOCKGATING);
 			PSB_WVDC32(dev_priv->saveVEC_CG_DIS,
