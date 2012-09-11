@@ -763,22 +763,8 @@ static int queue_dtd(struct langwell_ep *ep, struct langwell_request *req)
 		if (readl(&dev->op_regs->endptprime) & bit_mask)
 			goto out;
 
-		/* PNW */
-		if (dev->pdev->device != 0xE006) {
-			do {
-
-				/* set ATDTW bit in USBCMD */
-				usbcmd = readl(&dev->op_regs->usbcmd);
-				writel(usbcmd | CMD_ATDTW,
-					&dev->op_regs->usbcmd);
-
-				/* read correct status bit */
-				endptstat =
-				readl(&dev->op_regs->endptstat) & bit_mask;
-
-			} while (!(readl(&dev->op_regs->usbcmd) & CMD_ATDTW));
-
-		} else {
+		/* CLVP A0 */
+		if (dev->pdev->device == 0xE006 && dev->pdev->revision < 0xC) {
 			saw_zero = false;
 step_3:
 			/* set ATDTW bit in USBCMD */
@@ -803,8 +789,20 @@ step_3:
 					saw_zero = true;
 					goto step_3;
 				}
-
 			}
+		/* All other silicons except CLVP A0 */
+		} else {
+			do {
+				/* set ATDTW bit in USBCMD */
+				usbcmd = readl(&dev->op_regs->usbcmd);
+				writel(usbcmd | CMD_ATDTW,
+					&dev->op_regs->usbcmd);
+
+				/* read correct status bit */
+				endptstat =
+				readl(&dev->op_regs->endptstat) & bit_mask;
+
+			} while (!(readl(&dev->op_regs->usbcmd) & CMD_ATDTW));
 		}
 		/* write ATDTW bit to 0 */
 		usbcmd = readl(&dev->op_regs->usbcmd);
@@ -3834,7 +3832,6 @@ static int langwell_udc_probe(struct pci_dev *pdev,
 #else
 	pm_runtime_put_noidle(&pdev->dev);
 #endif
-
 	dev_vdbg(&dev->pdev->dev, "<--- %s()\n", __func__);
 	return 0;
 
