@@ -207,13 +207,12 @@ static int ehci_pci_setup(struct usb_hcd *hcd)
 
 			hcd->has_sram = 1;
 			/*
-			 * Enabling SRAM usage in USB OTG driver for Cloverview
-			 * would make USB OTG unstable during large file
-			 * transfer. For now, let's disable SRAM for Cloverview
-			 * until this issue is fully root caused and resolved.
+			 * Disable SRAM for CLVP A0 due to the silicon issue.
 			 */
-			if (pdev->device == 0xE006)
+			if (pdev->device == 0xE006 && pdev->revision < 0xC) {
+				ehci_info(ehci, "Disable SRAM for CLVP A0\n");
 				hcd->has_sram = 0;
+			}
 
 			hcd->sram_no_payload = 1;
 			sram_init(hcd);
