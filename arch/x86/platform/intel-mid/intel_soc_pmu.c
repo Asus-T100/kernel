@@ -385,6 +385,10 @@ static void log_wakeup_irq(void)
 	struct irq_desc *desc;
 	const char *act_name;
 
+	if ((mid_pmu_cxt->pmu_current_state != SYS_STATE_S3)
+	    || !mid_pmu_cxt->suspend_started)
+		return;
+
 	for (offset = (FIRST_EXTERNAL_VECTOR/32);
 	offset < (NR_VECTORS/32); offset++) {
 		irr = apic_read(APIC_IRR + (offset * 0x10));
@@ -410,50 +414,65 @@ static void log_wakeup_irq(void)
 	return;
 }
 
+static void log_wakeup_source(int source)
+{
+	enum sys_state type = mid_pmu_cxt->pmu_current_state;
+
+	mid_pmu_cxt->num_wakes[source][type]++;
+
+	trace_printk("wake_from_lss%d\n",
+		     source - mid_pmu_cxt->pmu1_max_devs);
+
+	if ((mid_pmu_cxt->pmu_current_state != SYS_STATE_S3)
+	    || !mid_pmu_cxt->suspend_started)
+		return;
+
+	switch (source - mid_pmu_cxt->pmu1_max_devs) {
+	case PMU_USB_OTG_LSS_06:
+		pr_info("wakeup from USB.\n");
+		break;
+	case PMU_GPIO0_LSS_39:
+		pr_info("wakeup from GPIO.\n");
+		break;
+	case PMU_HSI_LSS_03:
+		pr_info("wakeup from HSI.\n");
+		break;
+	default:
+		pr_info("wakeup from LSS%02d.\n",
+			source - mid_pmu_cxt->pmu1_max_devs);
+		break;
+	}
+}
+
 /* return the last wake source id, and make statistics about wake sources */
 static int pmu_get_wake_source(void)
 {
 	u32 wake0, wake1;
 	int i;
 	int source = INVALID_WAKE_SRC;
-	enum sys_state type = mid_pmu_cxt->pmu_current_state;
 
 	wake0 = readl(&mid_pmu_cxt->pmu_reg->pm_wks[0]);
 	wake1 = readl(&mid_pmu_cxt->pmu_reg->pm_wks[1]);
 
+	if (!wake0 && !wake1) {
+		log_wakeup_irq();
+		goto out;
+	}
+
 	while (wake0) {
 		i = fls(wake0) - 1;
 		source = i + mid_pmu_cxt->pmu1_max_devs;
-		mid_pmu_cxt->num_wakes[source][type]++;
-		trace_printk("wake_from_lss%d\n",
-				source - mid_pmu_cxt->pmu1_max_devs);
+		log_wakeup_source(source);
 		wake0 &= ~(1<<i);
 	}
 
 	while (wake1) {
 		i = fls(wake1) - 1;
 		source = i + 32 + mid_pmu_cxt->pmu1_max_devs;
-		mid_pmu_cxt->num_wakes[source][type]++;
-		trace_printk("wake_from_lss%d\n",
-				source - mid_pmu_cxt->pmu1_max_devs);
+		log_wakeup_source(source);
 		wake1 &= ~(1<<i);
 	}
-
-	if ((mid_pmu_cxt->pmu_current_state == SYS_STATE_S3)
-		&& mid_pmu_cxt->suspend_started)
-		switch (source - mid_pmu_cxt->pmu1_max_devs) {
-		case PMU_USB_OTG_LSS_06:
-			pr_info("wakeup from USB.\n");
-			break;
-		case PMU_GPIO0_LSS_39:
-			pr_info("wakeup from GPIO.\n");
-			break;
-		case PMU_HSI_LSS_03:
-			pr_info("wakeup from HSI.\n");
-			break;
-		default:
-			log_wakeup_irq();
-		}
+out:
 	return source;
 }
 
