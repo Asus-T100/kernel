@@ -27,7 +27,7 @@
 #include "mdfld_dsi_dbi_dsr.h"
 #include "mdfld_dsi_pkg_sender.h"
 
-#define DSR_COUNT 2
+#define DSR_COUNT 15
 
 static int exit_dsr_locked(struct mdfld_dsi_config *dsi_config)
 {
