@@ -187,6 +187,37 @@ void intel_mid_hsu_switch(int port)
 	hsu_port_enable(port);
 }
 
+
+/**
+ * intel_mid_hsu_port_map- get logic function port and share logic
+ * function port index
+ *
+ * @logic_idx: basic logic port index for one physical UART port
+ * @share_idx: share logic port index for same physical UART port that
+ *             logci_idx map
+ *
+ * physical 3 UART port will map to 4 logic UART port, so there will
+ * be 1 physical  UART port with 2 logci functions.
+ * e.g. penwell physical UART port 1 map to logic port 1 for modem
+ * function and logic port 3 for console function.
+ */
+
+void intel_mid_hsu_port_map(int *logic_idx, int *share_idx)
+{
+	int i, j;
+
+	for (i = 0; i < ARRAY_SIZE(default_hsu_info); i++) {
+		for (j = i + 1; j < ARRAY_SIZE(default_hsu_info); j++) {
+			if (platform_hsu_info[i].id ==
+			platform_hsu_info[j].id) {
+				*logic_idx = i;
+				*share_idx = j;
+				return;
+			}
+		}
+	}
+}
+
 int intel_mid_hsu_init(int port, struct device *dev, irq_handler_t wake_isr)
 {
 	struct mfld_hsu_info *info;

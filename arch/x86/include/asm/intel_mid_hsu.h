@@ -26,7 +26,7 @@ void intel_mid_hsu_set_rts(int port, int set);
 void intel_mid_hsu_resume(int port);
 void intel_mid_hsu_switch(int port);
 int intel_mid_hsu_init(int port, struct device *dev, irq_handler_t wake_isr);
-
+void intel_mid_hsu_port_map(int *logic_idx, int *share_idx);
 
 #endif
 
