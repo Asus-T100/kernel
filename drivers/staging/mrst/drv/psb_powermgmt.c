@@ -47,8 +47,7 @@
 #endif
 #include <linux/atomic.h>
 
-/*  SUPPORT_EARLY_SUSPEND --  FIXME -- rework.  */
-#define SUPPORT_EARLY_SUSPEND 0
+#define SUPPORT_EARLY_SUSPEND 1
 
 #if SUPPORT_EARLY_SUSPEND
 #include <linux/earlysuspend.h>
