@@ -10,6 +10,12 @@ menuconfig HSI
 
 if HSI
 
+config HSI_NO_MODEM
+	bool "HSI no modem support"
+	default n
+	help
+	  modem switch off
+
 source "drivers/hsi/controllers/Kconfig"
 source "drivers/hsi/clients/Kconfig"
 

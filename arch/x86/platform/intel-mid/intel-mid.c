@@ -842,7 +842,9 @@ static int __init sfi_parse_devs(struct sfi_table_header *table)
 				sfi_handle_sd_dev(pentry, dev);
 				break;
 			case SFI_DEV_TYPE_HSI:
+#ifndef CONFIG_HSI_NO_MODEM
 				sfi_handle_hsi_dev(pentry, dev);
+#endif
 				break;
 			case SFI_DEV_TYPE_UART:
 			default:

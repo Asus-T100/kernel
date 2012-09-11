@@ -121,7 +121,9 @@ struct devs_id __initconst device_ids[] = {
 						NULL},
 
 	/* Modem and Wifi */
+#ifndef CONFIG_HSI_NO_MODEM
 	{"hsi_ifx_modem", SFI_DEV_TYPE_HSI, 0, &hsi_modem_platform_data, NULL},
+#endif
 	{"wl12xx_clk_vmmc", SFI_DEV_TYPE_SD, 0, &wl12xx_platform_data,
 						NULL},
 	/*
