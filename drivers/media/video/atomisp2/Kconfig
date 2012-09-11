@@ -1,0 +1,11 @@
+config VIDEO_ATOMISP_CSS15
+	tristate "Intel Atom Image Signal Processor CSS1.5 Driver"
+	depends on VIDEO_V4L2
+	select VIDEOBUF_VMALLOC
+
+	---help---
+	  Say Y here if your platform support camera imaging subsystem on
+	  the Intel Atom SoC platform.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called atomisp.

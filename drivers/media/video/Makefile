@@ -196,6 +196,7 @@ obj-y	+= davinci/
 obj-$(CONFIG_ARCH_OMAP)	+= omap/
 
 obj-$(CONFIG_VIDEO_ATOMISP_CSS10) += atomisp/
+obj-$(CONFIG_VIDEO_ATOMISP_CSS15) += atomisp2/
 
 EXTRA_CFLAGS += -I$(srctree)/drivers/media/dvb/dvb-core
 EXTRA_CFLAGS += -I$(srctree)/drivers/media/dvb/frontends

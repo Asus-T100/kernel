@@ -1016,6 +1016,7 @@ config VIDEO_S5P_MIPI_CSIS
 	  module will be called s5p-csis.
 
 source "drivers/media/video/atomisp/Kconfig"
+source "drivers/media/video/atomisp2/Kconfig"
 
 #
 # USB Multimedia device configuration
