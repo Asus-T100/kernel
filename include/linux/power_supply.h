@@ -191,6 +191,9 @@ struct power_supply {
 	/* private */
 	struct device *dev;
 	struct work_struct changed_work;
+#ifdef CONFIG_THERMAL
+	struct thermal_zone_device *tzd;
+#endif
 	spinlock_t changed_lock;
 	bool changed;
 	struct wake_lock work_wake_lock;
