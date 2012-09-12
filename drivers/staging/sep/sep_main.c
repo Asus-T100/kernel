@@ -110,6 +110,12 @@ static inline u32 MDFLD_MSG_READ32(uint port, uint offset)
 	int mcr = (0x10 << 24) | (port << 16) | (offset << 8);
 	uint32_t ret_val = 0;
 	struct pci_dev *pci_root = pci_get_bus_and_slot(0, 0);
+
+	if (pci_root == NULL) {
+		pr_debug("oops, MDFLD_MSG_READ null pci_root\n");
+		return -EINVAL;
+	}
+
 	pci_write_config_dword(pci_root, 0xD0, mcr);
 	pci_read_config_dword(pci_root, 0xD4, &ret_val);
 	pci_dev_put(pci_root);
@@ -272,8 +278,8 @@ static void rpmb_process_request(struct work_struct *work)
 	total_iter_ptr_to_sep = (u32 *)(sep->shared_addr
 			+ SEP_ITERATION_RESP_OFFSET);
 
-	dev_dbg(&sep->pdev->dev, "[PID%d] rpmb msg total iteration loc: %p"
-		" value: %.8x\n",
+	dev_dbg(&sep->pdev->dev,
+		"[PID%d] rpmb msg total iteration loc: %p value: %.8x\n",
 		current->pid,
 		total_iter_ptr_from_sep,
 		*total_iter_ptr_from_sep);
@@ -325,13 +331,13 @@ static void rpmb_process_request(struct work_struct *work)
 			current->pid);
 		sep_dump_emmc(sep, (void *)sep->current_emmc_block);
 
-		dev_dbg(&sep->pdev->dev, "req_resp=%.8x, result=%.8x, "
-		"bc=%.8x, addr=%.8x, wc=%.8x\n",
-		sep->current_emmc_block->req_resp,
-		sep->current_emmc_block->result,
-		sep->current_emmc_block->bc,
-		sep->current_emmc_block->addr,
-		sep->current_emmc_block->wc);
+		dev_dbg(&sep->pdev->dev,
+			"req_resp=%.8x, result=%.8x, bc=%.8x, addr=%.8x, wc=%.8x\n",
+			sep->current_emmc_block->req_resp,
+			sep->current_emmc_block->result,
+			sep->current_emmc_block->bc,
+			sep->current_emmc_block->addr,
+			sep->current_emmc_block->wc);
 
 		/* fill in the emmc operation block */
 		my_request_block.type =
@@ -393,25 +399,25 @@ static void rpmb_process_request(struct work_struct *work)
 			my_request_block.type;
 
 		/* Debug print the results */
-		dev_dbg(&sep->pdev->dev, "response:req_resp=%.8x, "
-		"result=%.8x, bc=%.8x, addr=%.8x, wc=%.8x\n",
-		my_request_block.type, *(my_request_block.result),
-		my_request_block.blk_cnt, my_request_block.addr,
-		*(my_request_block.wc));
+		dev_dbg(&sep->pdev->dev,
+			"response:req_resp=%.8x, result=%.8x, bc=%.8x, addr=%.8x, wc=%.8x\n",
+			my_request_block.type, *(my_request_block.result),
+			my_request_block.blk_cnt, my_request_block.addr,
+			*(my_request_block.wc));
 
-		dev_dbg(&sep->pdev->dev, "Copied to emmc resp NDF:req_resp=%.8x, "
-				"result=%.8x, bc=%.8x, addr=%.8x, wc=%.8x\n",
-				sep->current_emmc_resp_block->req_resp,
-				sep->current_emmc_resp_block->result,
-				sep->current_emmc_resp_block->bc,
-				sep->current_emmc_resp_block->addr,
-				sep->current_emmc_resp_block->wc);
+		dev_dbg(&sep->pdev->dev,
+			"Copied to emmc resp NDF:req_resp=%.8x, result=%.8x, bc=%.8x, addr=%.8x, wc=%.8x\n",
+			sep->current_emmc_resp_block->req_resp,
+			sep->current_emmc_resp_block->result,
+			sep->current_emmc_resp_block->bc,
+			sep->current_emmc_resp_block->addr,
+			sep->current_emmc_resp_block->wc);
 
 		if (res || sep->current_emmc_resp_block->result) {
 			dev_warn(&sep->pdev->dev,
-					"[PID%d] rpmb error on emmc ret=0x%.8x, NDF result=0x%.8x\n",
-					current->pid, res,
-					sep->current_emmc_resp_block->result);
+				"[PID%d] rpmb error on emmc ret=0x%.8x, NDF result=0x%.8x\n",
+				current->pid, res,
+				sep->current_emmc_resp_block->result);
 
 			if (sep_incomming_msg_area->rpmb_command ==
 				RQ_READ_IN_PROG) {
@@ -1417,12 +1423,15 @@ static int sep_crypto_dma(
 	}
 
 	for_each_sg(sg, temp_sg, count_mapped, ct1) {
-		sep_dma[ct1].dma_addr = sg_dma_address(temp_sg);
-		sep_dma[ct1].size = sg_dma_len(temp_sg);
-		dev_dbg(&sep->pdev->dev, "(all hex) map %x dma %lx len %lx\n",
-			ct1, (unsigned long)sep_dma[ct1].dma_addr,
-			(unsigned long)sep_dma[ct1].size);
+		if (temp_sg != NULL) {
+			sep_dma[ct1].dma_addr = sg_dma_address(temp_sg);
+			sep_dma[ct1].size = sg_dma_len(temp_sg);
+			dev_dbg(&sep->pdev->dev,
+				"(all hex) map %x dma %lx len %lx\n",
+				ct1, (unsigned long)sep_dma[ct1].dma_addr,
+				(unsigned long)sep_dma[ct1].size);
 		}
+	}
 
 	*dma_maps = sep_dma;
 	return count_mapped;
@@ -1620,8 +1629,6 @@ static int sep_lock_user_pages(struct sep_device *sep,
 	struct sep_lli_entry *lli_array;
 	/* Map array */
 	struct sep_dma_map *map_array;
-	/* Direction of the DMA mapping for locked pages */
-	enum dma_data_direction	dir;
 
 	/* Set start and end pages  and num pages */
 	end_page = (app_virt_addr + data_size - 1) >> PAGE_SHIFT;
@@ -1688,12 +1695,6 @@ static int sep_lock_user_pages(struct sep_device *sep,
 
 	dev_dbg(&sep->pdev->dev, "[PID%d] get_user_pages succeeded\n",
 					current->pid);
-
-	/* Set direction */
-	if (in_out_flag == SEP_DRIVER_IN_FLAG)
-		dir = DMA_TO_DEVICE;
-	else
-		dir = DMA_FROM_DEVICE;
 
 	/*
 	 * Fill the array using page array data and
@@ -1854,9 +1855,9 @@ static int sep_lli_table_secure_dma(struct sep_device *sep,
 	start_page = app_virt_addr >> PAGE_SHIFT;
 	num_pages = end_page - start_page + 1;
 
-	dev_dbg(&sep->pdev->dev, "[PID%d] lock user pages"
-		" app_virt_addr is %x\n", current->pid, app_virt_addr);
-
+	dev_dbg(&sep->pdev->dev,
+		"[PID%d] lock user pages app_virt_addr is %x\n",
+		current->pid, app_virt_addr);
 	dev_dbg(&sep->pdev->dev, "[PID%d] data_size is (hex) %x\n",
 		current->pid, data_size);
 	dev_dbg(&sep->pdev->dev, "[PID%d] start_page is (hex) %x\n",
@@ -2348,12 +2349,12 @@ int sep_prepare_input_dma_table(struct sep_device *sep,
 	void *dma_lli_table_alloc_addr = 0;
 	void *dma_in_lli_table_ptr = 0;
 
-	dev_dbg(&sep->pdev->dev, "[PID%d] prepare intput dma "
-				 "tbl data size: (hex) %x\n",
-					current->pid, data_size);
+	dev_dbg(&sep->pdev->dev,
+		"[PID%d] prepare input dma tbl data size: (hex) %x\n",
+		current->pid, data_size);
 
 	dev_dbg(&sep->pdev->dev, "[PID%d] block_size is (hex) %x\n",
-					current->pid, block_size);
+		current->pid, block_size);
 
 	/* Initialize the pages pointers */
 	dma_ctx->dma_res_arr[dma_ctx->nr_dcb_creat].in_page_array = NULL;
@@ -2415,8 +2416,10 @@ int sep_prepare_input_dma_table(struct sep_device *sep,
 					dmatables_region,
 					dma_ctx,
 					sep_lli_entries);
-		if (error)
+		if (error) {
+			kfree(lli_array_ptr);
 			return error;
+		}
 		lli_table_alloc_addr = *dmatables_region;
 	}
 
@@ -2651,15 +2654,15 @@ static int sep_construct_dma_tables_from_lli(
 		/* Update the number of the lli tables created */
 		dma_ctx->num_lli_tables_created += 2;
 
-		dev_dbg(&sep->pdev->dev, "[PID%d] num_lli_tables_created"
-			" (hex) %x. current_in_entry(%x)"
-			" sep_in_lli_entries(%x)\n", current->pid,
+		dev_dbg(&sep->pdev->dev,
+			"[PID%d] num_lli_tables_created (hex) %x. current_in_entry(%x) sep_in_lli_entries(%x)\n",
+			current->pid,
 			dma_ctx->num_lli_tables_created, current_in_entry,
 			sep_in_lli_entries);
 
-		dev_dbg(&sep->pdev->dev, "[PID%d] num_lli_tables_created"
-			" (hex) %x. current_in_entry(%x)"
-			" sep_in_lli_entries(%x)\n", current->pid,
+		dev_dbg(&sep->pdev->dev,
+			"[PID%d] num_lli_tables_created (hex) %x. current_in_entry(%x) sep_in_lli_entries(%x)\n",
+			current->pid,
 			dma_ctx->num_lli_tables_created, current_in_entry,
 			sep_in_lli_entries);
 
@@ -2978,17 +2981,18 @@ int sep_prepare_input_output_dma_table(struct sep_device *sep,
 		}
 	}
 
-	dev_dbg(&sep->pdev->dev, "[PID%d] After lock; prep input output dma "
-		"table sep_in_num_pages is (hex) %x\n", current->pid,
+	dev_dbg(&sep->pdev->dev,
+		"[PID%d] After lock; prep input output dma table sep_in_num_pages is (hex) %x\n",
+		current->pid,
 		dma_ctx->dma_res_arr[dma_ctx->nr_dcb_creat].in_num_pages);
 
 	dev_dbg(&sep->pdev->dev, "[PID%d] sep_out_num_pages is (hex) %x\n",
 		current->pid,
 		dma_ctx->dma_res_arr[dma_ctx->nr_dcb_creat].out_num_pages);
 
-	dev_dbg(&sep->pdev->dev, "[PID%d] SEP_DRIVER_ENTRIES_PER_TABLE_IN_SEP"
-		" is (hex) %x\n", current->pid,
-		SEP_DRIVER_ENTRIES_PER_TABLE_IN_SEP);
+	dev_dbg(&sep->pdev->dev,
+		"[PID%d] SEP_DRIVER_ENTRIES_PER_TABLE_IN_SEP is (hex) %x\n",
+		current->pid, SEP_DRIVER_ENTRIES_PER_TABLE_IN_SEP);
 
 	/* Call the fucntion that creates table from the lli arrays */
 	dev_dbg(&sep->pdev->dev, "[PID%d] calling create table from lli\n",
@@ -3319,6 +3323,24 @@ int sep_free_dma_tables_and_dcb(struct sep_device *sep, bool isapplet,
 
 	dev_dbg(&sep->pdev->dev, "[PID%d] sep_free_dma_tables_and_dcb\n",
 					current->pid);
+
+	if (sep == NULL) {
+		dev_dbg(&sep->pdev->dev, "[PID%d] null sep\n",
+			current->pid);
+		return 0;
+	}
+
+	if (dma_ctx == NULL) {
+		dev_dbg(&sep->pdev->dev, "[PID%d] null dma_ctx\n",
+			current->pid);
+		return 0;
+	}
+
+	if (*dma_ctx == NULL) {
+		dev_dbg(&sep->pdev->dev, "[PID%d] null *dma_ctx\n",
+			current->pid);
+		return 0;
+	}
 
 	if (((*dma_ctx)->secure_dma == false) && (isapplet == true)) {
 		dev_dbg(&sep->pdev->dev, "[PID%d] handling applet\n",
@@ -3795,7 +3817,7 @@ static int sep_reconfig_shared_area(struct sep_device *sep)
  *	@dmatables_region: MLLI/DMA tables copy
  *	@dma_ctx: DMA context for current transaction
  */
-ssize_t sep_activate_dcb_dmatables_context(struct sep_device *sep,
+int sep_activate_dcb_dmatables_context(struct sep_device *sep,
 					struct sep_dcblock **dcb_region,
 					void **dmatables_region,
 					struct sep_dma_context *dma_ctx)
@@ -3804,7 +3826,7 @@ ssize_t sep_activate_dcb_dmatables_context(struct sep_device *sep,
 	void *dmaregion_free_end = NULL;
 	void *dcbregion_free_start = NULL;
 	void *dcbregion_free_end = NULL;
-	ssize_t error = 0;
+	int error = 0;
 
 	dev_dbg(&sep->pdev->dev, "[PID%d] activating dcb/dma region\n",
 		current->pid);
@@ -3889,7 +3911,7 @@ end_function:
  *	@num_dcbs: Number of DCBs to create
  *	@secure_dma: Indicate use of IMR restricted memory secure dma
  */
-static ssize_t sep_create_dcb_dmatables_context(struct sep_device *sep,
+static int sep_create_dcb_dmatables_context(struct sep_device *sep,
 			struct sep_dcblock **dcb_region,
 			void **dmatables_region,
 			struct sep_dma_context **dma_ctx,
@@ -3918,7 +3940,7 @@ static ssize_t sep_create_dcb_dmatables_context(struct sep_device *sep,
 
 	dcb_args = kzalloc(num_dcbs * sizeof(struct build_dcb_struct),
 			   GFP_KERNEL);
-	if (!dcb_args) {
+	if (dcb_args == NULL) {
 		dev_warn(&sep->pdev->dev, "[PID%d] no memory for dcb args\n",
 			 current->pid);
 		error = -ENOMEM;
@@ -3966,7 +3988,8 @@ static ssize_t sep_create_dcb_dmatables_context(struct sep_device *sep,
 	}
 
 end_function:
-	kfree(dcb_args);
+	if (dcb_args != NULL)
+		kfree(dcb_args);
 	return error;
 
 }
@@ -4056,7 +4079,7 @@ end_function:
  *	@msg_region: Message area context buf
  *	@msg_len: Message area context buffer size
  */
-static ssize_t sep_activate_msgarea_context(struct sep_device *sep,
+static int sep_activate_msgarea_context(struct sep_device *sep,
 					    void **msg_region,
 					    const size_t msg_len)
 {
@@ -4065,18 +4088,33 @@ static ssize_t sep_activate_msgarea_context(struct sep_device *sep,
 	dev_dbg(&sep->pdev->dev, "[PID%d] activating msg region\n",
 		current->pid);
 
-	if (!msg_region || !(*msg_region) ||
-	    SEP_DRIVER_MESSAGE_SHARED_AREA_SIZE_IN_BYTES < msg_len) {
+	if (msg_region == NULL) {
+		dev_warn(&sep->pdev->dev,
+			"[PID%d] msg region is null\n", current->pid);
+		/* Don't have to get rid if msg region; it never existed */
+		return -EINVAL;
+	}
+
+	if (*msg_region == NULL) {
+		dev_warn(&sep->pdev->dev,
+			"[PID%d] *msg region is null\n", current->pid);
+		/* Don't have to get rid if msg region; it never existed */
+		return -EINVAL;
+	}
+
+	if (SEP_DRIVER_MESSAGE_SHARED_AREA_SIZE_IN_BYTES < msg_len) {
 		dev_warn(&sep->pdev->dev,
 			 "[PID%d] invalid act msgarea len 0x%08X\n",
 			 current->pid, msg_len);
+		/* Cant return right away; gotta get rid of msg_region */
 		error = -EINVAL;
-		goto end_function;
+		goto jump_to_end_and_clear;
 	}
 
 	memcpy(sep->shared_addr, *msg_region, msg_len);
 
-end_function:
+jump_to_end_and_clear:
+
 	kfree(*msg_region);
 	*msg_region = NULL;
 
@@ -4090,7 +4128,7 @@ end_function:
  *	@msg_user: Content for msg area region from user
  *	@msg_len: Message area size
  */
-static ssize_t sep_create_msgarea_context(struct sep_device *sep,
+static int sep_create_msgarea_context(struct sep_device *sep,
 					  void **msg_region,
 					  const void __user *msg_user,
 					  const size_t msg_len)
@@ -4100,39 +4138,61 @@ static ssize_t sep_create_msgarea_context(struct sep_device *sep,
 	dev_dbg(&sep->pdev->dev, "[PID%d] creating msg region\n",
 		current->pid);
 
-	if (!msg_region ||
-	    !msg_user ||
-	    SEP_DRIVER_MAX_MESSAGE_SIZE_IN_BYTES < msg_len ||
-	    SEP_DRIVER_MIN_MESSAGE_SIZE_IN_BYTES > msg_len) {
+	if (msg_region == NULL) {
 		dev_warn(&sep->pdev->dev,
-			 "[PID%d] invalid creat msgarea len 0x%08X\n",
-			 current->pid, msg_len);
+			"[PID%d] msg_region is NULL\n",
+			current->pid);
 		error = -EINVAL;
-		goto end_function;
+		goto end_jumpoint;
+	}
+
+	if (msg_user == NULL) {
+		dev_warn(&sep->pdev->dev,
+			"[PID%d] msg_user is NULL\n",
+			current->pid);
+		error = -EINVAL;
+		goto end_jumpoint;
+	}
+
+	if ((SEP_DRIVER_MAX_MESSAGE_SIZE_IN_BYTES < msg_len) ||
+	    (SEP_DRIVER_MIN_MESSAGE_SIZE_IN_BYTES > msg_len)) {
+		dev_warn(&sep->pdev->dev,
+			 "[PID%d] invalid create msgarea len 0x%08X\n",
+			 current->pid, msg_len);
+		/* gotta get rid of msg region if it exists */
+		error = -EINVAL;
+		goto end_jumpoint;
 	}
 
 	/* Allocate thread-specific memory for message buffer */
 	*msg_region = kzalloc(msg_len, GFP_KERNEL);
-	if (!(*msg_region)) {
+	if (*msg_region == NULL) {
 		dev_warn(&sep->pdev->dev,
 			 "[PID%d] no mem for msgarea context\n",
 			 current->pid);
+		/* gotta get rid of msg region if it exists */
 		error = -ENOMEM;
-		goto end_function;
+		goto end_jumpoint;
 	}
 
 	/* Copy input data to write() to allocated message buffer */
 	if (copy_from_user(*msg_region, msg_user, msg_len)) {
+		/* gotta get rid of msg region if it exists */
 		error = -EINVAL;
-		goto end_function;
 	}
 
-end_function:
-	if (error && *msg_region) {
-		kfree(*msg_region);
-		*msg_region = NULL;
+end_jumpoint:
+
+	if (error) {
+		/* free *msg_region because of error */
+		if (msg_region != NULL)
+			if (*msg_region != NULL) {
+				kfree(*msg_region);
+				*msg_region = NULL;
+			}
 	}
 
+	/* This is zero on succss; -EINVAL otherwise */
 	return error;
 }
 
@@ -4156,14 +4216,14 @@ static ssize_t sep_read(struct file *filp,
 	struct sep_device *sep = private_data->device;
 	struct sep_dma_context **dma_ctx = &private_data->dma_ctx;
 	struct sep_queue_info **my_queue_elem = &private_data->my_queue_elem;
-	ssize_t error = 0, error_tmp = 0;
+	int error = 0, error_tmp = 0;
 
 	/* Am I the process that owns the transaction? */
 	error = sep_check_transaction_owner(sep);
 	if (error) {
 		dev_dbg(&sep->pdev->dev, "[PID%d] read pid is not owner\n",
 			current->pid);
-		goto end_function;
+		return error;
 	}
 
 	/* Checks that user has called necessarry apis */
@@ -4199,13 +4259,8 @@ static ssize_t sep_read(struct file *filp,
 	if (count_user > SEP_DRIVER_MESSAGE_SHARED_AREA_SIZE_IN_BYTES)
 		count_user = SEP_DRIVER_MESSAGE_SHARED_AREA_SIZE_IN_BYTES;
 
-	if (copy_to_user(buf_user, sep->shared_addr, count_user)) {
+	if (copy_to_user(buf_user, sep->shared_addr, count_user))
 		error = -EFAULT;
-		goto end_function_error;
-	}
-
-	dev_dbg(&sep->pdev->dev, "[PID%d] read succeeded\n", current->pid);
-	error = count_user;
 
 end_function_error:
 	/* Copy possible tail data to user and free DCB and MLLIs */
@@ -4222,8 +4277,12 @@ end_function_error:
 			 "[PID%d] ending transaction failed\n",
 			 current->pid);
 
-end_function:
-	return error;
+	if (error == 0)
+		/* proper etiquette is for read to return size read */
+		return count_user;
+	else
+		/* error is int; we return ssize_t */
+		return (ssize_t)error;
 }
 
 /**
@@ -4233,12 +4292,12 @@ end_function:
  *	@buf_user: User buffer for operation parameters
  *	@count_user: User buffer size
  */
-static inline ssize_t sep_fastcall_args_get(struct sep_device *sep,
+static inline int sep_fastcall_args_get(struct sep_device *sep,
 					    struct sep_fastcall_hdr *args,
 					    const char __user *buf_user,
 					    const size_t count_user)
 {
-	ssize_t error = 0;
+	int error = 0;
 	size_t actual_count = 0;
 
 	if (!buf_user) {
@@ -4325,7 +4384,7 @@ static ssize_t sep_write(struct file *filp,
 	void *msg_region = NULL;
 	void *dmatables_region = NULL;
 	struct sep_dcblock *dcb_region = NULL;
-	ssize_t error = 0;
+	int error = 0;
 	struct sep_queue_info *my_queue_elem = NULL;
 	bool my_secure_dma; /* are we using secure_dma (IMR)? */
 
@@ -4350,8 +4409,9 @@ static ssize_t sep_write(struct file *filp,
 	 * buffers created. Only SEP_DOUBLEBUF_USERS_LIMIT number
 	 * of threads can progress further at a time
 	 */
-	dev_dbg(&sep->pdev->dev, "[PID%d] waiting for double buffering "
-				 "region access\n", current->pid);
+	dev_dbg(&sep->pdev->dev,
+		"[PID%d] waiting for double buffering region access\n",
+		current->pid);
 	error = down_interruptible(&sep->sep_doublebuf);
 	dev_dbg(&sep->pdev->dev, "[PID%d] double buffering region start\n",
 					current->pid);
@@ -4395,8 +4455,9 @@ static ssize_t sep_write(struct file *filp,
 				     current->comm, sizeof(current->comm));
 
 	if (!my_queue_elem) {
-		dev_dbg(&sep->pdev->dev, "[PID%d] updating queue"
-					"status error\n", current->pid);
+		dev_dbg(&sep->pdev->dev,
+			"[PID%d] updating queue status error\n",
+			current->pid);
 		error = -ENOMEM;
 		goto end_function_error_doublebuf;
 	}
@@ -4424,7 +4485,7 @@ static ssize_t sep_write(struct file *filp,
 
 	sep_dump_message(sep);
 
-	if (0 < call_hdr.num_dcbs) {
+	if ((0 != call_hdr.num_dcbs) && (dma_ctx != NULL)) {
 		error = sep_activate_dcb_dmatables_context(sep,
 				&dcb_region,
 				&dmatables_region,
@@ -4457,7 +4518,6 @@ static ssize_t sep_write(struct file *filp,
 	private_data->dma_ctx = dma_ctx;
 	/* Update call status */
 	set_bit(SEP_FASTCALL_WRITE_DONE_OFFSET, &call_status->status);
-	error = count_user;
 
 	up(&sep->sep_doublebuf);
 	dev_dbg(&sep->pdev->dev, "[PID%d] double buffering region end\n",
@@ -4483,7 +4543,12 @@ end_function:
 	kfree(dmatables_region);
 	kfree(msg_region);
 
-	return error;
+	if (error == 0)
+		/* etiquette calls for write to return size written */
+		return count_user;
+	else
+		/* return error, but type casted to ssize_t */
+		return (ssize_t)error;
 }
 
 /**
@@ -4678,8 +4743,8 @@ static int __devinit sep_probe(struct pci_dev *pdev,
 
 	INIT_LIST_HEAD(&sep->sep_queue_status);
 
-	dev_dbg(&sep->pdev->dev, "sep probe: PCI obtained, "
-		"device being prepared\n");
+	dev_dbg(&sep->pdev->dev,
+		"sep probe: PCI obtained, device being prepared\n");
 	dev_dbg(&sep->pdev->dev, "revision is %d\n", sep->pdev->revision);
 
 	/* Set up our register area */
@@ -4762,7 +4827,7 @@ static int __devinit sep_probe(struct pci_dev *pdev,
 
 	if (error) {
 		dev_dbg(&sep->pdev->dev, "error registering dev file\n");
-		goto end_function_free_irq;
+		goto end_function_free_workqueue;
 	}
 
 	sep->in_use = 0; /* through touching the device */
