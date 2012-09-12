@@ -71,6 +71,7 @@ static int penwell_otg_ulpi_read(struct intel_mid_otg_xceiv *iotg,
 static int penwell_otg_ulpi_write(struct intel_mid_otg_xceiv *iotg,
 				u8 reg, u8 val);
 static void penwell_spi_reset_phy(void);
+static int penwell_otg_charger_hwdet(bool enable);
 
 #ifdef CONFIG_PM_SLEEP
 #include <linux/suspend.h>
@@ -1542,6 +1543,9 @@ static int penwell_otg_charger_det_dcd_clt(void)
 	if (retval)
 		return retval;
 
+	/* Clear HWDETECT result for safety */
+	penwell_otg_charger_hwdet(false);
+
 	/* Enable IDPSRC */
 	retval = penwell_otg_ulpi_write(iotg, ULPI_VS3SET, CHGD_IDP_SRC);
 	if (retval)
@@ -1783,6 +1787,33 @@ static int penwell_otg_charger_det_clean_clt(void)
 	return 0;
 }
 
+/* As we use SW mode to do charger detection, need to notify HW
+ * the result SW get, charging port or not */
+static int penwell_otg_charger_hwdet(bool enable)
+{
+	struct penwell_otg		*pnw = the_transceiver;
+	struct intel_mid_otg_xceiv	*iotg = &pnw->iotg;
+	int				retval;
+
+	/* This is for CLV only */
+	if (!is_clovertrail(to_pci_dev(pnw->dev)))
+		return 0;
+
+	if (enable) {
+		retval = penwell_otg_ulpi_write(iotg, ULPI_PWRCTRLSET, HWDET);
+		if (retval)
+			return retval;
+		dev_dbg(pnw->dev, "set HWDETECT\n");
+	} else {
+		retval = penwell_otg_ulpi_write(iotg, ULPI_PWRCTRLCLR, HWDET);
+		if (retval)
+			return retval;
+		dev_dbg(pnw->dev, "clear HWDETECT\n");
+	}
+
+	return 0;
+}
+
 static int penwell_otg_charger_det_clt(void)
 {
 	struct penwell_otg		*pnw = the_transceiver;
@@ -1804,6 +1835,7 @@ static int penwell_otg_charger_det_clt(void)
 		return CHRG_UNKNOWN;
 	} else if (retval == CHRG_ACA) {
 		dev_info(pnw->dev, "ACA detected\n");
+		penwell_otg_charger_hwdet(true);
 		return CHRG_ACA;
 	}
 
@@ -1814,6 +1846,7 @@ static int penwell_otg_charger_det_clt(void)
 		return CHRG_UNKNOWN;
 	} else if (retval == CHRG_SE1) {
 		dev_info(pnw->dev, "SE1 detected\n");
+		penwell_otg_charger_hwdet(true);
 		return CHRG_SE1;
 	}
 
@@ -1834,10 +1867,12 @@ static int penwell_otg_charger_det_clt(void)
 		return CHRG_UNKNOWN;
 	} else if (retval == CHRG_CDP) {
 		dev_info(pnw->dev, "CDP detected\n");
+		penwell_otg_charger_hwdet(true);
 		return CHRG_CDP;
 	} else  if (retval == CHRG_DCP) {
 		dev_info(pnw->dev, "DCP detected\n");
 		penwell_otg_charger_det_clean_clt();
+		penwell_otg_charger_hwdet(true);
 		return CHRG_DCP;
 	}
 
@@ -3110,14 +3145,17 @@ static void penwell_otg_work(struct work_struct *work)
 						ULPI_PWRCTRLCLR, DPVSRCEN);
 				if (retval)
 					dev_warn(pnw->dev, "ulpi failed\n");
+				penwell_otg_charger_hwdet(false);
 			} else if (ps_type == POWER_SUPPLY_TYPE_USB_ACA) {
 				/* Notify EM charger remove event */
 				penwell_otg_update_chrg_cap(CHRG_UNKNOWN,
 						CHRG_CURR_DISCONN);
+				penwell_otg_charger_hwdet(false);
 			} else if (ps_type == POWER_SUPPLY_TYPE_USB_DCP) {
 				/* Notify EM charger remove event */
 				penwell_otg_update_chrg_cap(CHRG_UNKNOWN,
 						CHRG_CURR_DISCONN);
+				penwell_otg_charger_hwdet(false);
 			}
 		}
 		break;
@@ -3130,6 +3168,7 @@ static void penwell_otg_work(struct work_struct *work)
 
 			cancel_delayed_work_sync(&pnw->ulpi_poll_work);
 			cancel_delayed_work_sync(&pnw->sdp_check_work);
+			penwell_otg_charger_hwdet(false);
 
 			/* Notify EM charger remove event */
 			penwell_otg_update_chrg_cap(CHRG_UNKNOWN,
@@ -3184,6 +3223,7 @@ static void penwell_otg_work(struct work_struct *work)
 				/* Notify EM charger remove event */
 				penwell_otg_update_chrg_cap(CHRG_UNKNOWN,
 							CHRG_CURR_DISCONN);
+				penwell_otg_charger_hwdet(false);
 			}
 
 			hsm->b_bus_req = 0;
