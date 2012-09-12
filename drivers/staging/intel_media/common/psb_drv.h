@@ -76,6 +76,7 @@ enum panel_type {
 	AUO_SC1_CMD,
 	GI_SONY_VID,
 	GI_SONY_CMD,
+	TC_35876X_VID,
 	HDMI,
 	GCT_DETECT
 };

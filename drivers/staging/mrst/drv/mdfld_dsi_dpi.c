@@ -1063,7 +1063,6 @@ struct mdfld_dsi_encoder *mdfld_dsi_dpi_init(struct drm_device *dev,
 	dev_priv->b_dsr_enable_config = true;
 #endif /*CONFIG_MDFLD_DSI_DSR*/
 
-
 	PSB_DEBUG_ENTRY("successfully\n");
 
 	return &dpi_output->base;

@@ -1100,6 +1100,10 @@ bool mrst_get_vbt_data(struct drm_psb_private *dev_priv)
 					dev_priv->panel_id = TMD_6X10_VID;
 					PSB_DEBUG_ENTRY("TMD_6X10_VID Panel\n");
 #endif
+#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
+					dev_priv->panel_id = TC_35876X_VID;
+					PSB_DEBUG_ENTRY("TC_35876X_VID.\n");
+#endif
 					break;
 				default:
 					PSB_DEBUG_ENTRY("No Panel type"
