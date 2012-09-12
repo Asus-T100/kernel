@@ -2530,7 +2530,6 @@ static int mxt_resume(struct device *dev)
 #ifdef CONFIG_HAS_EARLYSUSPEND
 void mxt_early_suspend(struct early_suspend *h)
 {
-	int i;
 	u16 addr;
 	u8 buf[3] = { 0 };
 	u8 err;
@@ -2550,14 +2549,6 @@ void mxt_early_suspend(struct early_suspend *h)
 	if (err < 0)
 		dev_err(&mxt_es->client->dev, "fail to stop scan.\n");
 
-	/* clear touch state when suspending */
-	for (i = 0; i < mxt_es->numtouch; i++) {
-		if (!mxt_es->finger[i].status)
-			continue;
-		mxt_es->finger[i].status = MXT_MSGB_T9_RELEASE;
-	}
-	report_mt(mxt_es);
-
 	mxt_es->suspended = TRUE;
 
 	mutex_unlock(&mxt_es->dev_mutex);
@@ -2575,6 +2566,7 @@ static void mxt_calibrate(struct mxt_data *mxt)
 
 void mxt_late_resume(struct early_suspend *h)
 {
+	int i;
 	int ret;
 	u16 addr;
 
@@ -2594,6 +2586,14 @@ void mxt_late_resume(struct early_suspend *h)
 		msleep(40);
 		mxt_calibrate(mxt_es);
 	}
+
+	/* clear touch state when suspending */
+	for (i = 0; i < mxt_es->numtouch; i++) {
+		if (!mxt_es->finger[i].status)
+			continue;
+		mxt_es->finger[i].status = MXT_MSGB_T9_RELEASE;
+	}
+	report_mt(mxt_es);
 
 	mxt_es->suspended = FALSE;
 	mxt_es->timestamp = jiffies;
