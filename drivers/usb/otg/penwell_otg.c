@@ -3698,6 +3698,13 @@ static void penwell_otg_work(struct work_struct *work)
 		} else if (!hsm->a_vbus_vld) {
 			/* Move to A_VBUS_ERR state, over-current detected */
 
+			/* CTP SW Workaround, add 300ms debouce on VBUS drop */
+			if (is_clovertrail(pdev)) {
+				msleep(300);
+				if (hsm->a_vbus_vld)
+					break;
+			}
+
 			/* Notify user space for vbus invalid event */
 			penwell_otg_notify_warning(USB_WARNING_VBUS_INVALID);
 
@@ -3792,6 +3799,13 @@ static void penwell_otg_work(struct work_struct *work)
 			iotg->otg.state = OTG_STATE_A_IDLE;
 		} else if (!hsm->a_vbus_vld) {
 			/* Move to A_VBUS_ERR state */
+
+			/* CTP SW Workaround, add 300ms debouce on VBUS drop */
+			if (is_clovertrail(pdev)) {
+				msleep(300);
+				if (hsm->a_vbus_vld)
+					break;
+			}
 
 			/* Notify user space for vbus invalid event */
 			penwell_otg_notify_warning(USB_WARNING_VBUS_INVALID);
