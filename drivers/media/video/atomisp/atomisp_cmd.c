@@ -4213,7 +4213,6 @@ int atomisp_save_iunit_reg(struct atomisp_device *isp)
 	isp->hw_contex.interrupt_control = 0;
 	isp->hw_contex.pmcs = 0;
 	isp->hw_contex.cg_dis = 0;
-	isp->hw_contex.i_control = 0;
 	isp->hw_contex.csi_rcomp_config = 0;
 	isp->hw_contex.csi_afe_dly = 0;
 	isp->hw_contex.csi_control = 0;
@@ -4235,8 +4234,6 @@ int atomisp_save_iunit_reg(struct atomisp_device *isp)
 			      &isp->hw_contex.pmcs);
 	pci_read_config_dword(dev, PCI_CG_DIS,
 			      &isp->hw_contex.cg_dis);
-	pci_read_config_dword(dev, PCI_I_CONTROL,
-			      &isp->hw_contex.i_control);
 	isp->hw_contex.csi_rcomp_config = intel_mid_msgbus_read32(
 			IUNITPHY_PORT, CSI_RCOMP);
 	isp->hw_contex.csi_afe_dly = intel_mid_msgbus_read32(
@@ -4250,6 +4247,7 @@ int atomisp_save_iunit_reg(struct atomisp_device *isp)
 int atomisp_restore_iunit_reg(struct atomisp_device *isp)
 {
 	struct pci_dev *dev = isp->pdev;
+	u32 isp_i_control_reg;
 
 	pci_write_config_word(dev, PCI_COMMAND, isp->hw_contex.pcicmdsts);
 	pci_write_config_dword(dev, PCI_BASE_ADDRESS_0,
@@ -4262,7 +4260,15 @@ int atomisp_restore_iunit_reg(struct atomisp_device *isp)
 			       isp->hw_contex.interrupt_control);
 	pci_write_config_dword(dev, PCI_PMCS, isp->hw_contex.pmcs);
 	pci_write_config_dword(dev, PCI_CG_DIS, isp->hw_contex.cg_dis);
-	pci_write_config_dword(dev, PCI_I_CONTROL, isp->hw_contex.i_control);
+
+	/*
+	 * The default value is not 1 for all suported chips. Hence
+	 * enable the read/write combining explicitly.
+	 */
+	pci_read_config_dword(dev, PCI_I_CONTROL, &isp_i_control_reg);
+	isp_i_control_reg |= PCI_I_CONTROL_ENABLE_READ_COMBINING
+			     | PCI_I_CONTROL_ENABLE_WRITE_COMBINING;
+	pci_write_config_dword(dev, PCI_I_CONTROL, isp_i_control_reg);
 
 	intel_mid_msgbus_write32(IUNITPHY_PORT, CSI_RCOMP,
 			    isp->hw_contex.csi_rcomp_config);

@@ -111,6 +111,19 @@ extern int pad_h;
 #define PCI_PMCS		0xD4
 #define PCI_CG_DIS		0xD8
 #define PCI_I_CONTROL		0xFC
+/*
+ * Enables the combining of adjacent 32-byte read requests to the same
+ * cache line. When cleared, each 32-byte read request is sent as a
+ * separate request on the IB interface.
+ */
+#define PCI_I_CONTROL_ENABLE_READ_COMBINING	0x10000
+
+/*
+ * Enables the combining of adjacent 32-byte write requests to the same
+ * cache line. When cleared, each 32-byte write request is sent as a
+ * separate request on the IB interface.
+ */
+#define PCI_I_CONTROL_ENABLE_WRITE_COMBINING	0x20000
 
 #define PCI_MEM_ACCESS		0x100002
 

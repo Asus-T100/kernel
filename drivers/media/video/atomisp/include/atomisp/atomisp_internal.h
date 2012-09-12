@@ -130,7 +130,6 @@ struct atomisp_hw_contex {
 	u32 interrupt_control;
 	u32 pmcs;
 	u32 cg_dis;
-	u32 i_control;
 
 	/* I-Unit PHY related info */
 	unsigned int csi_rcomp_config;
