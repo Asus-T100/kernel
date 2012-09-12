@@ -130,5 +130,7 @@ source "drivers/hwspinlock/Kconfig"
 
 source "drivers/clocksource/Kconfig"
 
+source "drivers/extcon/Kconfig"
+
 source "drivers/gps/Kconfig"
 endmenu
