@@ -16,8 +16,6 @@
  * Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  *
  */
-#define DEBUG
-
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/fs.h>
@@ -135,7 +133,7 @@ static ssize_t pn544_dev_read(struct file *filp, char __user *buf,
 	if (count > MAX_BUFFER_SIZE)
 		count = MAX_BUFFER_SIZE;
 
-	pr_debug("%s : reading %zu bytes.\n", __func__, count);
+	/*pr_debug("%s : reading %zu bytes.\n", __func__, count);*/
 
 	if (!gpio_get_value(pn544_dev->irq_gpio)) {
 		if (filp->f_flags & O_NONBLOCK) {
