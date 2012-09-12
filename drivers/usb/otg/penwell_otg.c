@@ -2076,9 +2076,11 @@ static void penwell_otg_add_timer(enum penwell_otg_timer_type timers)
 	case TA_WAIT_VRISE_TMR:
 		iotg->hsm.a_wait_vrise_tmout = 0;
 		data = (unsigned long)&iotg->hsm.a_wait_vrise_tmout;
-		time = TA_WAIT_VRISE;
+		/* Charger HW limitation workaround for CLV */
+		time = is_clovertrail(to_pci_dev(pnw->dev)) ?
+						400 : TA_WAIT_VRISE;
 		dev_dbg(pnw->dev,
-			"Add timer TA_WAIT_VRISE = %d\n", TA_WAIT_VRISE);
+			"Add timer TA_WAIT_VRISE = %d\n", time);
 		break;
 	case TA_WAIT_BCON_TMR:
 		iotg->hsm.a_wait_bcon_tmout = 0;
