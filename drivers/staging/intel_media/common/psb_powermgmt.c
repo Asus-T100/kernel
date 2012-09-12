@@ -1077,11 +1077,11 @@ static void gfx_late_resume(struct early_suspend *h)
 			enc_funcs->restore(encoder);
 	}
 
-	if (lastFailedBrightness > 0)
-		psb_set_brightness(NULL);
-
 	gbdispstatus = true;
 	dev_priv->b_dsr_enable = dev_priv->b_dsr_enable_status;
+
+	if (lastFailedBrightness > 0)
+		psb_set_brightness(NULL);
 
 	mutex_unlock(&dev->mode_config.mutex);
 }
@@ -1812,7 +1812,7 @@ void ospm_power_using_hw_end(int hw_island)
 {
 	if (!(hw_island & (OSPM_GRAPHICS_ISLAND | OSPM_DISPLAY_ISLAND |
 		OSPM_GL3_CACHE_ISLAND)))
-		return false;
+		return;
 
 	switch (hw_island) {
 	case OSPM_GRAPHICS_ISLAND:

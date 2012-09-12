@@ -391,7 +391,6 @@ static enum drm_connector_status mdfld_dsi_connector_detect
 		= to_psb_intel_output(connector);
 	struct mdfld_dsi_connector *dsi_connector
 		= MDFLD_DSI_CONNECTOR(psb_output);
-	struct drm_device *dev = connector->dev;
 
 	PSB_DEBUG_ENTRY("\n");
 
@@ -992,14 +991,12 @@ int mdfld_dsi_output_init(struct drm_device *dev,
 	dsi_config->dev = dev;
 	
 	/*init fixed mode basing on DSI config type*/
-	if(dsi_config->type == MDFLD_DSI_ENCODER_DBI) {
-		dsi_config->fixed_mode = p_cmd_funcs->get_config_mode(dev);
-		if(p_cmd_funcs->get_panel_info(dev, pipe, &dsi_panel_info))
-			goto dsi_init_err0;
+	if (dsi_config->type == MDFLD_DSI_ENCODER_DBI) {
+		dsi_config->fixed_mode = p_cmd_funcs->get_config_mode();
+		p_cmd_funcs->get_panel_info(pipe, &dsi_panel_info);
 	} else if(dsi_config->type == MDFLD_DSI_ENCODER_DPI) {
-		dsi_config->fixed_mode = p_vid_funcs->get_config_mode(dev);
-		if(p_vid_funcs->get_panel_info(dev, pipe, &dsi_panel_info))
-			goto dsi_init_err0;
+		dsi_config->fixed_mode = p_vid_funcs->get_config_mode();
+		p_vid_funcs->get_panel_info(pipe, &dsi_panel_info);
 	}
 
 	width_mm = dsi_panel_info.width_mm;

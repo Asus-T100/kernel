@@ -37,18 +37,20 @@
 
 #define GPIO_MIPI_PANEL_RESET 128
 
-static void
-mdfld_auo_dsi_controller_init(struct mdfld_dsi_config *dsi_config, int pipe)
+static
+void mdfld_auo_dsi_controller_init(struct mdfld_dsi_config *dsi_config)
 {
 	struct mdfld_dsi_hw_context *hw_ctx =
 		&dsi_config->dsi_hw_context;
-	struct drm_device *dev = dsi_config->dev;
-	struct drm_psb_private *dev_priv = dev->dev_private;
-	struct mdfld_dsi_hw_registers *regs = &dsi_config->regs;
-	int lane_count = dsi_config->lane_count;
 
-	PSB_DEBUG_ENTRY("%s: initializing dsi controller on pipe %d\n",
-			__func__, pipe);
+	PSB_DEBUG_ENTRY("\n");
+
+	dsi_config->lane_count = 2;
+	dsi_config->lane_config = MDFLD_DSI_DATA_LANE_2_2;
+
+	/* This is for 400 mhz. Set it to 0 for 800mhz */
+	hw_ctx->cck_div = 1;
+	hw_ctx->pll_bypass_mode = 1;
 
 	hw_ctx->mipi_control = 0x0;
 	hw_ctx->intr_en = 0xffffffff;
@@ -63,24 +65,15 @@ mdfld_auo_dsi_controller_init(struct mdfld_dsi_config *dsi_config, int pipe)
 	hw_ctx->clk_lane_switch_time_cnt = 0xa0014;
 	hw_ctx->dphy_param = 0x150c3408;
 	hw_ctx->dbi_bw_ctrl = 0x820;
-	if (dev_priv->platform_rev_id == MDFLD_PNW_A0)
-		hw_ctx->mipi = PASS_FROM_SPHY_TO_AFE | SEL_FLOPPED_HSTX
-				| TE_TRIGGER_GPIO_PIN;
-	else
-		hw_ctx->mipi = PASS_FROM_SPHY_TO_AFE | TE_TRIGGER_GPIO_PIN;
-
-	/*set up func_prg*/
-	hw_ctx->dsi_func_prg = (0xa000 | lane_count);
+	hw_ctx->mipi = PASS_FROM_SPHY_TO_AFE | TE_TRIGGER_GPIO_PIN;
+	hw_ctx->mipi |= dsi_config->lane_config;
+	hw_ctx->dsi_func_prg = (0xa000 | dsi_config->lane_count);
 }
 
-static struct drm_display_mode *auo_cmd_get_config_mode(struct drm_device* dev)
+static
+struct drm_display_mode *auo_cmd_get_config_mode(void)
 {
 	struct drm_display_mode *mode;
-	struct drm_psb_private *dev_priv =
-		(struct drm_psb_private *)dev->dev_private;
-	struct mrst_timing_info *ti = &dev_priv->gct_data.DTD;
-	struct mrst_vbt *pVBT = &dev_priv->vbt_data;
-	bool use_gct = false ;
 
 	PSB_DEBUG_ENTRY("\n");
 
@@ -88,44 +81,20 @@ static struct drm_display_mode *auo_cmd_get_config_mode(struct drm_device* dev)
 	if (!mode)
 		return NULL;
 
-	if (use_gct) {
-		PSB_DEBUG_ENTRY("gct find MIPI panel.\n");
-
-		mode->hdisplay = (ti->hactive_hi << 8) | ti->hactive_lo;
-		mode->vdisplay = (ti->vactive_hi << 8) | ti->vactive_lo;
-		mode->hsync_start = mode->hdisplay + \
-				((ti->hsync_offset_hi << 8) | \
-				ti->hsync_offset_lo);
-		mode->hsync_end = mode->hsync_start + \
-				((ti->hsync_pulse_width_hi << 8) | \
-				ti->hsync_pulse_width_lo);
-		mode->htotal = mode->hdisplay + ((ti->hblank_hi << 8) | \
-								ti->hblank_lo);
-		mode->vsync_start = \
-			mode->vdisplay + ((ti->vsync_offset_hi << 8) | \
-						ti->vsync_offset_lo);
-		mode->vsync_end = \
-			mode->vsync_start + ((ti->vsync_pulse_width_hi << 8) | \
-						ti->vsync_pulse_width_lo);
-		mode->vtotal = mode->vdisplay + \
-				((ti->vblank_hi << 8) | ti->vblank_lo);
-		mode->clock = ti->pixel_clock * 10;
-
-	} else {
-		mode->hdisplay = 540;
-		mode->vdisplay = 960;
-		/* HFP = 40, HSYNC = 10, HBP = 20 */
-		mode->hsync_start = mode->hdisplay + 40;
-		mode->hsync_end = mode->hsync_start + 10;
-		mode->htotal = mode->hsync_end + 20;
-		/* VFP = 4, VSYNC = 2, VBP = 4 */
-		mode->vsync_start = mode->vdisplay + 4;
-		mode->vsync_end = mode->vsync_start + 2;
-		mode->vtotal = mode->vsync_end + 4;
-		mode->vrefresh = 60;
-		mode->clock = mode->vrefresh * mode->vtotal *
-			mode->htotal / 1000;
-	}
+	mode->hdisplay = 540;
+	mode->vdisplay = 960;
+	/* HFP = 40, HSYNC = 10, HBP = 20 */
+	mode->hsync_start = mode->hdisplay + 40;
+	mode->hsync_end = mode->hsync_start + 10;
+	mode->htotal = mode->hsync_end + 20;
+	/* VFP = 4, VSYNC = 2, VBP = 4 */
+	mode->vsync_start = mode->vdisplay + 4;
+	mode->vsync_end = mode->vsync_start + 2;
+	mode->vtotal = mode->vsync_end + 4;
+	mode->vrefresh = 60;
+	mode->clock = mode->vrefresh * mode->vtotal *
+		mode->htotal / 1000;
+	mode->type |= DRM_MODE_TYPE_PREFERRED;
 
 	PSB_DEBUG_ENTRY("hdisplay is %d\n", mode->hdisplay);
 	PSB_DEBUG_ENTRY("vdisplay is %d\n", mode->vdisplay);
@@ -140,35 +109,7 @@ static struct drm_display_mode *auo_cmd_get_config_mode(struct drm_device* dev)
 	drm_mode_set_name(mode);
 	drm_mode_set_crtcinfo(mode, 0);
 
-	mode->type |= DRM_MODE_TYPE_PREFERRED;
-
 	return mode;
-}
-
-static bool mdfld_auo_dsi_dbi_mode_fixup(struct drm_encoder *encoder,
-				     struct drm_display_mode *mode,
-				     struct drm_display_mode *adjusted_mode)
-{
-	struct drm_device *dev = encoder->dev;
-	struct drm_display_mode *fixed_mode = auo_cmd_get_config_mode(dev);
-
-	PSB_DEBUG_ENTRY("\n");
-
-	if (fixed_mode) {
-		adjusted_mode->hdisplay = fixed_mode->hdisplay;
-		adjusted_mode->hsync_start = fixed_mode->hsync_start;
-		adjusted_mode->hsync_end = fixed_mode->hsync_end;
-		adjusted_mode->htotal = fixed_mode->htotal;
-		adjusted_mode->vdisplay = fixed_mode->vdisplay;
-		adjusted_mode->vsync_start = fixed_mode->vsync_start;
-		adjusted_mode->vsync_end = fixed_mode->vsync_end;
-		adjusted_mode->vtotal = fixed_mode->vtotal;
-		adjusted_mode->clock = fixed_mode->clock;
-		drm_mode_set_crtcinfo(adjusted_mode, CRTC_INTERLACE_HALVE_V);
-		kfree(fixed_mode);
-	}
-
-	return true;
 }
 
 static int __mdfld_auo_dsi_power_on(struct mdfld_dsi_config *dsi_config)
@@ -180,7 +121,7 @@ static int __mdfld_auo_dsi_power_on(struct mdfld_dsi_config *dsi_config)
 	u8 param_set[4];
 	int err = 0;
 
-	PSB_DEBUG_ENTRY("Turn on video mode TMD panel...\n");
+	PSB_DEBUG_ENTRY("\n");
 
 	if (!sender) {
 		DRM_ERROR("Failed to get DSI packet sender\n");
@@ -375,114 +316,59 @@ static int __mdfld_auo_dsi_power_off(struct mdfld_dsi_config *dsi_config)
 	return err;
 }
 
-/*
- * Update the DBI MIPI Panel Frame Buffer.
- */
-static void auo_dsi_dbi_update_fb(struct mdfld_dsi_dbi_output *dbi_output,
-		int pipe)
+static
+void auo_cmd_get_panel_info(int pipe, struct panel_info *pi)
 {
-	struct mdfld_dsi_pkg_sender *sender =
-		mdfld_dsi_encoder_get_pkg_sender(&dbi_output->base);
-	struct drm_device *dev = dbi_output->dev;
-	struct drm_psb_private *dev_priv = dev->dev_private;
-	struct drm_crtc *crtc = dbi_output->base.base.crtc;
-	struct psb_intel_crtc *psb_crtc =
-		(crtc) ? to_psb_intel_crtc(crtc) : NULL;
-	u32 dpll_reg = MRST_DPLL_A;
-	u32 dspcntr_reg = DSPACNTR;
-	u32 pipeconf_reg = PIPEACONF;
-	u32 dsplinoff_reg = DSPALINOFF;
-	u32 dspsurf_reg = DSPASURF;
-
-	if (!dev_priv->dsi_init_done)
-		return;
-
-	/* if mode setting on-going, back off */
-	if ((dbi_output->mode_flags & MODE_SETTING_ON_GOING) ||
-			(psb_crtc &&
-			 (psb_crtc->mode_flags & MODE_SETTING_ON_GOING)) ||
-			!(dbi_output->mode_flags & MODE_SETTING_ENCODER_DONE))
-		return;
-
-	if (pipe == 2) {
-		dspcntr_reg = DSPCCNTR;
-		pipeconf_reg = PIPECCONF;
-		dsplinoff_reg = DSPCLINOFF;
-		dspsurf_reg = DSPCSURF;
-	}
-
-	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
-				OSPM_UHB_FORCE_POWER_ON)) {
-		DRM_ERROR("hw begin failed\n");
-		return;
-	}
-
-	/* check DBI FIFO status */
-	if (!(REG_READ(dpll_reg) & DPLL_VCO_ENABLE) ||
-	   !(REG_READ(dspcntr_reg) & DISPLAY_PLANE_ENABLE) ||
-	   !(REG_READ(pipeconf_reg) & DISPLAY_PLANE_ENABLE)) {
-		goto update_fb_out0;
-	}
-
-	/* refresh plane changes */
-	REG_WRITE(dsplinoff_reg, REG_READ(dsplinoff_reg));
-	REG_WRITE(dspsurf_reg, REG_READ(dspsurf_reg));
-	REG_READ(dspsurf_reg);
-
-	mdfld_dsi_send_dcs(sender,
-			   write_mem_start,
-			   NULL,
-			   0,
-			   CMD_DATA_SRC_PIPE,
-			   MDFLD_DSI_SEND_PACKAGE);
-
-	dbi_output->dsr_fb_update_done = true;
-
-update_fb_out0:
-	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
-}
-
-static int auo_cmd_get_panel_info(struct drm_device *dev,
-		int pipe, struct panel_info *pi)
-{
-	if (!dev || !pi)
-		return -EINVAL;
-
 	pi->width_mm = AUO_PANEL_WIDTH;
 	pi->height_mm = AUO_PANEL_HEIGHT;
-
-	return 0;
 }
 
-static int mdfld_auo_dsi_cmd_detect(struct mdfld_dsi_config *dsi_config,
-		int pipe)
+static
+int mdfld_auo_dsi_cmd_detect(struct mdfld_dsi_config *dsi_config)
 {
 	int status;
+	struct drm_device *dev = dsi_config->dev;
+	struct mdfld_dsi_hw_registers *regs = &dsi_config->regs;
+	u32 dpll_val, device_ready_val;
+	int pipe = dsi_config->pipe;
 
-	PSB_DEBUG_ENTRY("Detecting panel %d connection status....\n", pipe);
-	/* dsi_config->dsi_hw_context.pll_bypass_mode = 0; */
+	PSB_DEBUG_ENTRY("\n");
 
 	if (pipe == 0) {
-		/* reconfig lane configuration */
-		/* [SC1] in bb2 is 3 */
-		dsi_config->lane_count = 2;
-		/* [SC1] in bb2 is MDFLD_DSI_DATA_LANE_3_1 */
-		dsi_config->lane_config = MDFLD_DSI_DATA_LANE_2_2;
-		dsi_config->dsi_hw_context.pll_bypass_mode = 1;
-		/* This is for 400 mhz. Set it to 0 for 800mhz */
-		dsi_config->dsi_hw_context.cck_div = 1;
+		/*
+		 * FIXME: WA to detect the panel connection status, and need to
+		 * implement detection feature with get_power_mode DSI command.
+		 */
+		if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
+					OSPM_UHB_FORCE_POWER_ON)) {
+			DRM_ERROR("hw begin failed\n");
+			return -EAGAIN;
+		}
+
+		dpll_val = REG_READ(regs->dpll_reg);
+		device_ready_val = REG_READ(regs->device_ready_reg);
+		if ((device_ready_val & DSI_DEVICE_READY) &&
+		    (dpll_val & DPLL_VCO_ENABLE)) {
+			dsi_config->dsi_hw_context.panel_on = true;
+		} else {
+			dsi_config->dsi_hw_context.panel_on = false;
+			DRM_INFO("%s: panel is not detected!\n", __func__);
+		}
 
 		status = MDFLD_DSI_PANEL_CONNECTED;
+
+		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 	} else {
-		PSB_DEBUG_ENTRY("Only support single panel\n");
+		DRM_INFO("%s: do NOT support dual panel\n", __func__);
 		status = MDFLD_DSI_PANEL_DISCONNECTED;
 	}
 
-	return 0;
+	return status;
 }
 
-static int mdfld_auo_dsi_cmd_set_brightness(struct mdfld_dsi_config *dsi_config,
-					int level)
+static
+int mdfld_auo_dsi_cmd_set_brightness(struct mdfld_dsi_config *dsi_config,
+		int level)
 {
 	struct mdfld_dsi_pkg_sender *sender =
 		mdfld_dsi_get_pkg_sender(dsi_config);
@@ -490,7 +376,7 @@ static int mdfld_auo_dsi_cmd_set_brightness(struct mdfld_dsi_config *dsi_config,
 	u8 param[4];
 	int err = 0;
 
-	PSB_DEBUG_ENTRY("Set brightness level %d...\n", level);
+	PSB_DEBUG_ENTRY("level = %d\n", level);
 
 	if (!sender) {
 		DRM_ERROR("Failed to get DSI packet sender\n");
@@ -503,11 +389,11 @@ static int mdfld_auo_dsi_cmd_set_brightness(struct mdfld_dsi_config *dsi_config,
 	param[1] = 0x00;
 	param[2] = 0x00;
 	err = mdfld_dsi_send_dcs(sender,
-				 write_display_brightness,
-				 param,
-				 3,
-				 CMD_DATA_SRC_SYSTEM_MEM,
-				 MDFLD_DSI_SEND_PACKAGE);
+			write_display_brightness,
+			param,
+			3,
+			CMD_DATA_SRC_SYSTEM_MEM,
+			MDFLD_DSI_SEND_PACKAGE);
 
 	if (err)
 		DRM_ERROR("DCS 0x%x sent failed\n", exit_sleep_mode);
@@ -515,66 +401,51 @@ static int mdfld_auo_dsi_cmd_set_brightness(struct mdfld_dsi_config *dsi_config,
 	return 0;
 }
 
-static int mdfld_auo_dsi_panel_reset(struct mdfld_dsi_config *dsi_config,
-		int reset_from)
+static
+int mdfld_auo_dsi_panel_reset(struct mdfld_dsi_config *dsi_config)
 {
-	static bool b_gpio_required[PSB_NUM_PIPE] = {0};
+	static int mipi_reset_gpio;
 	int ret = 0;
 
-	if (reset_from == RESET_FROM_BOOT_UP) {
-		b_gpio_required[dsi_config->pipe] = false;
-		if (dsi_config->pipe) {
-			PSB_DEBUG_ENTRY("PR2 GPIO reset for MIPIC is"
-					"skipped!\n");
-			goto fun_exit;
-		}
+	PSB_DEBUG_ENTRY("\n");
 
-		ret = gpio_request(GPIO_MIPI_PANEL_RESET, "gfx");
+	if (mipi_reset_gpio == 0) {
+		ret = get_gpio_by_name("mipi-reset");
+		if (ret < 0) {
+			DRM_ERROR("Faild to get panel reset gpio\n");
+			return -EINVAL;
+		}
+		mipi_reset_gpio = ret;
+
+		ret = gpio_request(mipi_reset_gpio, "mipi_display");
 		if (ret) {
-			DRM_ERROR("Failed to request gpio %d\n",
-					GPIO_MIPI_PANEL_RESET);
-			goto err;
+			DRM_ERROR("Faild to request panel reset gpio\n");
+			return -EINVAL;
 		}
 
-		b_gpio_required[dsi_config->pipe] = true;
-
-		goto fun_exit;
+		gpio_direction_output(mipi_reset_gpio, 0);
 	}
 
-	if (b_gpio_required[dsi_config->pipe]) {
-		gpio_direction_output(GPIO_MIPI_PANEL_RESET, 0);
-		gpio_set_value_cansleep(GPIO_MIPI_PANEL_RESET, 0);
+	gpio_set_value_cansleep(mipi_reset_gpio, 0);
 
-		/* reset low level width 20ms */
-		msleep(20);
+	/*low pluse wudtg in sleep in mode*/
+	mdelay(20);
 
-		gpio_direction_output(GPIO_MIPI_PANEL_RESET, 1);
-		gpio_set_value_cansleep(GPIO_MIPI_PANEL_RESET, 1);
+	gpio_set_value_cansleep(mipi_reset_gpio, 1);
 
-		/* reset time 20ms */
-		msleep(20);
-	} else {
-		PSB_DEBUG_ENTRY("pr2 panel reset fail.!");
-	}
+	/*minmum reset time*/
+	mdelay(20);
 
-fun_exit:
-	if (b_gpio_required[dsi_config->pipe])
-		PSB_DEBUG_ENTRY("pr2 panel reset successfull.");
-	return 0;
-
-err:
-	gpio_free(GPIO_MIPI_PANEL_RESET);
-	PSB_DEBUG_ENTRY("pr2 panel reset fail.!");
 	return 0;
 }
 
 void auo_sc1_cmd_init(struct drm_device *dev, struct panel_funcs *p_funcs)
 {
-	p_funcs->get_config_mode = &auo_cmd_get_config_mode;
-	p_funcs->update_fb = auo_dsi_dbi_update_fb;
+	PSB_DEBUG_ENTRY("\n");
+
+	p_funcs->get_config_mode = auo_cmd_get_config_mode;
 	p_funcs->get_panel_info = auo_cmd_get_panel_info;
 	p_funcs->reset = mdfld_auo_dsi_panel_reset;
-	p_funcs->drv_ic_init = NULL;
 	p_funcs->dsi_controller_init = mdfld_auo_dsi_controller_init;
 	p_funcs->detect = mdfld_auo_dsi_cmd_detect;
 	p_funcs->set_brightness = mdfld_auo_dsi_cmd_set_brightness;

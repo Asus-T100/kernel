@@ -52,8 +52,6 @@ static int mdfld_hdmi_audio_write (uint32_t reg, uint32_t val)
 {
 	struct drm_device *dev = hdmi_priv->dev;
 	int ret = 0;
-	struct drm_psb_private *dev_priv =
-		(struct drm_psb_private *) dev->dev_private;
 
 	if (hdmi_priv->monitor_type == MONITOR_TYPE_DVI)
 		return 0;
@@ -74,8 +72,6 @@ static int mdfld_hdmi_audio_write (uint32_t reg, uint32_t val)
 static int mdfld_hdmi_audio_read (uint32_t reg, uint32_t *val)
 {
 	struct drm_device *dev = hdmi_priv->dev;
-	struct drm_psb_private *dev_priv =
-		(struct drm_psb_private *) dev->dev_private;
 	int ret = 0;
 
 	if (hdmi_priv->monitor_type == MONITOR_TYPE_DVI)

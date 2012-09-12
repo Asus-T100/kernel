@@ -204,7 +204,7 @@ reset_recovery:
 	--reset_count;
 	/*HW-Reset*/
 	if (p_funcs && p_funcs->reset)
-		p_funcs->reset(dsi_config, RESET_FROM_OSPM_RESUME);
+		p_funcs->reset(dsi_config);
 
 	/*Enable DSI PLL*/
 	if (!(REG_READ(regs->dpll_reg) & BIT31)) {
@@ -318,7 +318,7 @@ reset_recovery:
 	 * drvIC initialized. Support it!
 	 */
 	if (p_funcs && p_funcs->drv_ic_init) {
-		if (p_funcs->drv_ic_init(dsi_config, 0)) {
+		if (p_funcs->drv_ic_init(dsi_config)) {
 			if (!reset_count) {
 				err = -EAGAIN;
 				goto power_on_err;
@@ -845,10 +845,6 @@ static void __mdfld_dsi_dpi_set_timing(struct mdfld_dsi_config *config,
 	ctx->vbp_count = dpi_timing.vbp_count;
 	ctx->vfp_count = dpi_timing.vfp_count;
 
-	/*setup mipi port configuration*/
-	if (config->pipe == 0)
-		ctx->mipi = PASS_FROM_SPHY_TO_AFE | config->lane_config;
-
 	mutex_unlock(&config->context_lock);
 }
 
@@ -973,18 +969,9 @@ struct mdfld_dsi_encoder *mdfld_dsi_dpi_init(struct drm_device *dev,
 	dsi_config = mdfld_dsi_get_config(dsi_connector);
 	pipe = dsi_connector->pipe;
 
-	/*panel hard-reset*/
-	if (p_funcs->reset) {
-		ret = p_funcs->reset(dsi_config, RESET_FROM_BOOT_UP);
-		if (ret) {
-			DRM_ERROR("Panel %d hard-reset failed\n", pipe);
-			return NULL;
-		}
-	}
-
 	/*detect panel connection stauts*/
 	if (p_funcs->detect) {
-		ret = p_funcs->detect(dsi_config, pipe);
+		ret = p_funcs->detect(dsi_config);
 		if (ret) {
 			DRM_INFO("Detecting Panel %d, Not connected\n", pipe);
 			dsi_connector->status = connector_status_disconnected;
@@ -1008,7 +995,7 @@ struct mdfld_dsi_encoder *mdfld_dsi_dpi_init(struct drm_device *dev,
 
 	/*init DSI controller*/
 	if (p_funcs->dsi_controller_init)
-		p_funcs->dsi_controller_init(dsi_config, pipe);
+		p_funcs->dsi_controller_init(dsi_config);
 
 	/**
 	 * TODO: can we keep these code out of display driver as

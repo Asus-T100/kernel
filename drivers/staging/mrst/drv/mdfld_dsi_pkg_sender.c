@@ -544,11 +544,11 @@ static int send_pkg_prepare(struct mdfld_dsi_pkg_sender * sender,
 	return 0;
 }
 
-static int send_pkg_done(struct mdfld_dsi_pkg_sender * sender,
-				struct mdfld_dsi_pkg * pkg)
+static int send_pkg_done(struct mdfld_dsi_pkg_sender *sender,
+		struct mdfld_dsi_pkg *pkg)
 {
 	u8 cmd;
-	u8 * data;
+	u8 *data = NULL;
 
 	PSB_DEBUG_ENTRY("Sent type 0x%x pkg\n", pkg->pkg_type);
 

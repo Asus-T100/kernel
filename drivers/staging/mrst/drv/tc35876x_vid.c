@@ -694,11 +694,12 @@ int tc35876x_vid_power_off(struct mdfld_dsi_config *dsi_config)
 }
 
 static
-int tc35876x_vid_detect(struct mdfld_dsi_config *dsi_config, int pipe)
+int tc35876x_vid_detect(struct mdfld_dsi_config *dsi_config)
 {
 	int status;
 	struct drm_device *dev = dsi_config->dev;
 	struct mdfld_dsi_hw_registers *regs = &dsi_config->regs;
+	int pipe = dsi_config->pipe;
 	u32 dpll_val, device_ready_val;
 
 	PSB_DEBUG_ENTRY("\n");
@@ -737,12 +738,8 @@ int tc35876x_vid_detect(struct mdfld_dsi_config *dsi_config, int pipe)
 }
 
 static
-int mdfld_dsi_tc35876x_panel_reset(struct mdfld_dsi_config *dsi_config,
-		int reset_from)
+int mdfld_dsi_tc35876x_panel_reset(struct mdfld_dsi_config *dsi_config)
 {
-	if (reset_from == RESET_FROM_BOOT_UP)
-		return 0;
-
 	tc35876x_set_bridge_reset_state(0);
 	tc35876x_toshiba_bridge_panel_on();
 
@@ -750,7 +747,7 @@ int mdfld_dsi_tc35876x_panel_reset(struct mdfld_dsi_config *dsi_config,
 }
 
 static
-struct drm_display_mode *tc35876x_vid_get_config_mode(struct drm_device *dev)
+struct drm_display_mode *tc35876x_vid_get_config_mode(void)
 {
 	struct drm_display_mode *mode;
 
@@ -791,9 +788,7 @@ struct drm_display_mode *tc35876x_vid_get_config_mode(struct drm_device *dev)
 }
 
 static
-int tc35876x_vid_get_panel_info(struct drm_device *dev,
-		int pipe,
-		struct panel_info *pi)
+void tc35876x_vid_get_panel_info(int pipe, struct panel_info *pi)
 {
 	PSB_DEBUG_ENTRY("\n");
 
@@ -801,13 +796,10 @@ int tc35876x_vid_get_panel_info(struct drm_device *dev,
 		pi->width_mm = TC35876X_PANEL_WIDTH;
 		pi->height_mm = TC35876X_PANEL_HEIGHT;
 	}
-
-	return 0;
 }
 
 static
-int tc35876x_vid_set_brightness(struct mdfld_dsi_config *dsi_config,
-		int level)
+int tc35876x_vid_set_brightness(struct mdfld_dsi_config *dsi_config, int level)
 {
 	int panel_duty_val = 0;
 	int ret = 0;
@@ -837,8 +829,7 @@ int tc35876x_vid_set_brightness(struct mdfld_dsi_config *dsi_config,
 }
 
 static
-void tc35876x_vid_dsi_controller_init(struct mdfld_dsi_config *dsi_config,
-		int pipe)
+void tc35876x_vid_dsi_controller_init(struct mdfld_dsi_config *dsi_config)
 {
 	struct mdfld_dsi_hw_context *hw_ctx = &dsi_config->dsi_hw_context;
 
@@ -869,7 +860,7 @@ void tc35876x_vid_dsi_controller_init(struct mdfld_dsi_config *dsi_config,
 
 	/*set up func_prg*/
 	hw_ctx->dsi_func_prg = (0x200 | dsi_config->lane_count);
-	hw_ctx->mipi = dsi_config->lane_config;
+	hw_ctx->mipi = PASS_FROM_SPHY_TO_AFE | dsi_config->lane_config;
 }
 
 void tc35876x_vid_init(struct drm_device *dev, struct panel_funcs *p_funcs)
