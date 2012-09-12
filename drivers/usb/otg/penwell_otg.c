@@ -2728,8 +2728,15 @@ static void penwell_otg_ulpi_check_work(struct work_struct *work)
 	struct penwell_otg		*pnw = the_transceiver;
 	struct intel_mid_otg_xceiv	*iotg = &pnw->iotg;
 	u8				data;
+	int				status;
 
-	pm_runtime_get_sync(pnw->dev);
+	status = pm_runtime_get_sync(pnw->dev);
+	if (status < 0) {
+		dev_err(pnw->dev, "%s: pm_runtime_get_sync FAILED err = %d\n",
+				__func__, status);
+		pm_runtime_put_sync(pnw->dev);
+		return;
+	}
 
 	if (penwell_otg_ulpi_read(iotg, 0x16, &data)) {
 		dev_err(pnw->dev,
@@ -2968,7 +2975,6 @@ static void penwell_otg_work(struct work_struct *work)
 				penwell_otg_update_chrg_cap(CHRG_DCP,
 							CHRG_CURR_DCP);
 				set_client_mode();
-				penwell_otg_phy_low_power(1);
 				break;
 
 			} else if (charger_type == CHRG_ACA) {
@@ -3085,7 +3091,6 @@ static void penwell_otg_work(struct work_struct *work)
 
 				/* Unknown: set charger type */
 				penwell_otg_update_chrg_cap(CHRG_UNKNOWN, 0);
-				penwell_otg_phy_low_power(1);
 			}
 
 			penwell_otg_eye_diagram_optimize();
