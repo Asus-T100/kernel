@@ -374,6 +374,7 @@ enum usb_charger_type {
 	CHRG_UNKNOWN,
 	CHRG_SDP,	/* Standard Downstream Port */
 	CHRG_CDP,	/* Charging Downstream Port */
+	CHRG_SDP_INVAL,	/* Invaild Standard Downstream Port */
 	CHRG_DCP,	/* Dedicated Charging Port */
 	CHRG_ACA,	/* Accessory Charger Adapter */
 	CHRG_ACA_DOCK,	/* Accessory Charger Adapter - Dock */
@@ -389,6 +390,9 @@ struct adp_status {
 	u8			t_adp_rise;
 };
 
+/* Invalid SDP checking timeout */
+#define INVALID_SDP_TIMEOUT	(HZ * 15)
+
 /* OTG Battery Charging capability is used in charger capability detection */
 struct otg_bc_cap {
 	enum usb_charger_type	chrg_type;
@@ -398,6 +402,7 @@ struct otg_bc_cap {
 #define CHRG_CURR_SDP_SUSP	CONFIG_USB_GADGET_SUSPEND_VBUS_DRAW
 #define CHRG_CURR_SDP_LOW	100
 #define CHRG_CURR_SDP_HIGH	500
+#define CHRG_CURR_SDP_INVAL	500
 #define CHRG_CURR_CDP		1500
 #define CHRG_CURR_DCP	1500
 #define CHRG_CURR_ACA	1500
@@ -438,6 +443,7 @@ struct penwell_otg {
 	struct work_struct		psc_notify;
 	struct delayed_work		ulpi_poll_work;
 	struct delayed_work		ulpi_check_work;
+	struct delayed_work		sdp_check_work;
 	struct workqueue_struct		*qwork;
 	struct workqueue_struct		*chrg_qwork;
 

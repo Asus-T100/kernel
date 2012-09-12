@@ -156,6 +156,8 @@ static const char *charger_string(enum usb_charger_type charger)
 	switch (charger) {
 	case CHRG_SDP:
 		return "Standard Downstream Port";
+	case CHRG_SDP_INVAL:
+		return "Invalid Standard Downstream Port";
 	case CHRG_CDP:
 		return "Charging Downstream Port";
 	case CHRG_DCP:
@@ -234,6 +236,7 @@ static void penwell_otg_set_charger(enum usb_charger_type charger)
 	case CHRG_DCP:
 	case CHRG_CDP:
 	case CHRG_ACA:
+	case CHRG_SDP_INVAL:
 	case CHRG_UNKNOWN:
 		pnw->charging_cap.chrg_type = charger;
 		break;
@@ -259,6 +262,9 @@ static void _penwell_otg_update_chrg_cap(enum usb_charger_type charger,
 	if (pnw->charging_cap.chrg_type != charger) {
 		if (pnw->charging_cap.chrg_type == CHRG_UNKNOWN ||
 			charger == CHRG_UNKNOWN) {
+			penwell_otg_set_charger(charger);
+		} else if (pnw->charging_cap.chrg_type == CHRG_SDP &&
+			charger == CHRG_SDP_INVAL) {
 			penwell_otg_set_charger(charger);
 		} else
 			return;
@@ -330,6 +336,12 @@ static void _penwell_otg_update_chrg_cap(enum usb_charger_type charger,
 		} else
 			dev_dbg(pnw->dev, "UNKNOWN: no need to update EM\n");
 		break;
+	case CHRG_SDP_INVAL:
+		if (mA == CHRG_CURR_SDP_INVAL) {
+			event = USBCHRG_EVENT_UPDATE;
+			flag = 1;
+		} else
+			dev_dbg(pnw->dev, "SDP_INVAL: no need to update EM\n");
 	default:
 		break;
 	}
@@ -2766,6 +2778,30 @@ static void penwell_otg_psc_notify_work(struct work_struct *work)
 	spin_unlock_irqrestore(&pnw->charger_lock, flags);
 }
 
+static void penwell_otg_sdp_check_work(struct work_struct *work)
+{
+	struct penwell_otg		*pnw = the_transceiver;
+	struct otg_bc_cap		cap;
+
+	/* Need to handle MFLD/CLV differently per different interface */
+	if (!is_clovertrail(to_pci_dev(pnw->dev))) {
+		if (penwell_otg_query_charging_cap(&cap)) {
+			dev_warn(pnw->dev, "SDP checking failed\n");
+			return;
+		}
+
+		/* If current charging cap is still 100mA SDP,
+		 * assume this is a invalid charger and do 500mA
+		 * charging */
+		if (cap.mA != 100 || cap.chrg_type != CHRG_SDP)
+			return;
+	} else
+		return;
+
+	dev_info(pnw->dev, "Notify invalid SDP at %dmA\n", CHRG_CURR_SDP_INVAL);
+	penwell_otg_update_chrg_cap(CHRG_SDP_INVAL, CHRG_CURR_SDP_INVAL);
+}
+
 static void penwell_otg_work(struct work_struct *work)
 {
 	struct penwell_otg		*pnw = container_of(work,
@@ -3004,6 +3040,11 @@ static void penwell_otg_work(struct work_struct *work)
 						"client driver not support\n");
 					break;
 				}
+
+				/* Schedule the SDP checking after TIMEOUT */
+				queue_delayed_work(pnw->qwork,
+						&pnw->sdp_check_work,
+						INVALID_SDP_TIMEOUT);
 			} else if (charger_type == CHRG_UNKNOWN) {
 				dev_info(pnw->dev, "Unknown Charger Found\n");
 
@@ -3088,6 +3129,7 @@ static void penwell_otg_work(struct work_struct *work)
 			hsm->a_srp_det = 0;
 
 			cancel_delayed_work_sync(&pnw->ulpi_poll_work);
+			cancel_delayed_work_sync(&pnw->sdp_check_work);
 
 			/* Notify EM charger remove event */
 			penwell_otg_update_chrg_cap(CHRG_UNKNOWN,
@@ -3116,6 +3158,7 @@ static void penwell_otg_work(struct work_struct *work)
 			hsm->ulpi_error = 0;
 
 			cancel_delayed_work_sync(&pnw->ulpi_poll_work);
+			cancel_delayed_work_sync(&pnw->sdp_check_work);
 
 			if (iotg->stop_peripheral)
 				iotg->stop_peripheral(iotg);
@@ -3132,6 +3175,7 @@ static void penwell_otg_work(struct work_struct *work)
 			/* Move to B_IDLE state, VBUS off/ACA */
 
 			cancel_delayed_work(&pnw->ulpi_poll_work);
+			cancel_delayed_work_sync(&pnw->sdp_check_work);
 
 			if (hsm->id == ID_ACA_B)
 				penwell_otg_update_chrg_cap(CHRG_ACA,
@@ -3196,6 +3240,8 @@ static void penwell_otg_work(struct work_struct *work)
 				dev_dbg(pnw->dev, "host driver not loaded.\n");
 
 		} else if (hsm->id == ID_ACA_C) {
+			cancel_delayed_work_sync(&pnw->sdp_check_work);
+
 			/* Make sure current limit updated */
 			penwell_otg_update_chrg_cap(CHRG_ACA, CHRG_CURR_ACA);
 		} else if (hsm->id == ID_B) {
@@ -4544,6 +4590,7 @@ static int penwell_otg_probe(struct pci_dev *pdev,
 	INIT_WORK(&pnw->hnp_poll_work, penwell_otg_hnp_poll_work);
 	INIT_DELAYED_WORK(&pnw->ulpi_poll_work, penwell_otg_ulpi_poll_work);
 	INIT_DELAYED_WORK(&pnw->ulpi_check_work, penwell_otg_ulpi_check_work);
+	INIT_DELAYED_WORK(&pnw->sdp_check_work, penwell_otg_sdp_check_work);
 
 	/* OTG common part */
 	pnw->dev = &pdev->dev;
