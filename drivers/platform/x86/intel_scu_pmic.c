@@ -489,7 +489,7 @@ static int __init pmic_rpmsg_init(void)
 #ifdef MODULE
 module_init(pmic_rpmsg_init);
 #else
-rootfs_initcall(pmic_rpmsg_init);
+fs_initcall_sync(pmic_rpmsg_init);
 #endif
 
 static void __exit pmic_rpmsg_exit(void)

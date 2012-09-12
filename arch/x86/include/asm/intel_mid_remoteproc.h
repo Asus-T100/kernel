@@ -45,6 +45,7 @@
 #define RP_FW_UPDATE		0X13
 #define RP_UMIP_ACCESS		0x14
 #define RP_OSIP_ACCESS		0x15
+#define RP_MSIC_ADC		0x16
 
 enum rproc_type {
 	RPROC_SCU = 0,
