@@ -107,6 +107,7 @@ enum panel_type {
 #define BLC_PROC_ENTRY "mrst_blc"
 #define DISPLAY_PROC_ENTRY "display_status"
 #define PANEL_PROC_ENTRY "panel_status"
+#define HDMI_PROC_ENTRY "hdmi_power"
 
 #define PSB_DRM_DRIVER_DATE "2009-03-10"
 #define PSB_DRM_DRIVER_MAJOR 8
