@@ -575,12 +575,13 @@ static int dwc_hcd_runtime_idle(struct device *dev)
 {
 	return 0;
 }
-/* dwc_hcd_runtime_suspend and dwc_hcd_runtime_resume functions
- * are refer to hcd_pci_runtime_suspend and hcd_pci_runtime_resume.
- * Because the common runtime pm callback just support PCI device.
+
+/* dwc_hcd_suspend_common and dwc_hcd_resume_common are refer to
+ * suspend_common and resume_common in usb core.
+ * Because the usb core function just support PCI device.
  * So re-write them in here to support platform devices.
  */
-static int dwc_hcd_runtime_suspend(struct device *dev)
+static int dwc_hcd_suspend_common(struct device *dev)
 {
 	struct platform_device		*pdev = to_platform_device(dev);
 	struct usb_hcd		*hcd = platform_get_drvdata(pdev);
@@ -645,8 +646,10 @@ static int dwc_hcd_runtime_suspend(struct device *dev)
 	synchronize_irq(otg_irqnum);
 
 	return retval;
+
 }
-static int dwc_hcd_runtime_resume(struct device *dev)
+
+static int dwc_hcd_resume_common(struct device *dev)
 {
 	struct platform_device		*pdev = to_platform_device(dev);
 	struct usb_hcd		*hcd = platform_get_drvdata(pdev);
@@ -656,14 +659,6 @@ static int dwc_hcd_runtime_resume(struct device *dev)
 	if (!xhci) {
 		printk(KERN_ERR "%s: xHCI equal NULL, return\n", __func__);
 		return 0;
-	}
-
-	if (hcd->rpm_control) {
-		if (hcd->rpm_resume) {
-			struct device		*rpm_dev = hcd->self.controller;
-			hcd->rpm_resume = 0;
-			pm_runtime_put(rpm_dev);
-		}
 	}
 
 	if (HCD_RH_RUNNING(hcd) ||
@@ -678,7 +673,6 @@ static int dwc_hcd_runtime_resume(struct device *dev)
 		clear_bit(HCD_FLAG_SAW_IRQ, &hcd->shared_hcd->flags);
 
 	if (!HCD_DEAD(hcd)) {
-
 		retval = xhci_resume(xhci, false);
 		if (retval) {
 			dev_err(dev, "PCI post-resume error %d!\n", retval);
@@ -692,16 +686,68 @@ static int dwc_hcd_runtime_resume(struct device *dev)
 
 	return retval;
 }
+
+static int dwc_hcd_runtime_suspend(struct device *dev)
+{
+	int retval;
+
+	retval = dwc_hcd_suspend_common(dev);
+
+	dev_dbg(dev, "hcd_pci_runtime_suspend: %d\n", retval);
+	return retval;
+}
+
+static int dwc_hcd_runtime_resume(struct device *dev)
+{
+	struct platform_device		*pdev = to_platform_device(dev);
+	struct usb_hcd		*hcd = platform_get_drvdata(pdev);
+	int retval;
+
+	retval = dwc_hcd_resume_common(dev);
+	dev_dbg(dev, "hcd_pci_runtime_resume: %d\n", retval);
+
+	if (hcd->rpm_control) {
+		if (hcd->rpm_resume) {
+			struct device		*rpm_dev = hcd->self.controller;
+			hcd->rpm_resume = 0;
+			pm_runtime_put(rpm_dev);
+		}
+	}
+	return retval;
+}
 #else
 #define dwc_hcd_runtime_idle NULL
 #define dwc_hcd_runtime_suspend NULL
 #define dwc_hcd_runtime_resume NULL
 #endif
 
+
+static int dwc_hcd_suspend(struct device *dev)
+{
+	int retval;
+
+	retval = dwc_hcd_suspend_common(dev);
+
+	dev_dbg(dev, "hcd_pci_runtime_suspend: %d\n", retval);
+	return retval;
+}
+
+static int dwc_hcd_resume(struct device *dev)
+{
+	int retval;
+
+	retval = dwc_hcd_resume_common(dev);
+	dev_dbg(dev, "hcd_pci_runtime_resume: %d\n", retval);
+
+	return retval;
+}
+
 static const struct dev_pm_ops dwc_usb_hcd_pm_ops = {
 	.runtime_suspend = dwc_hcd_runtime_suspend,
 	.runtime_resume	= dwc_hcd_runtime_resume,
 	.runtime_idle	= dwc_hcd_runtime_idle,
+	.suspend	=	dwc_hcd_suspend,
+	.resume		=	dwc_hcd_resume,
 };
 #endif
 
