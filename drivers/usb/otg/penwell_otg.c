@@ -3175,10 +3175,6 @@ static void penwell_otg_work(struct work_struct *work)
 			cancel_delayed_work_sync(&pnw->sdp_check_work);
 			penwell_otg_charger_hwdet(false);
 
-			/* Notify EM charger remove event */
-			penwell_otg_update_chrg_cap(CHRG_UNKNOWN,
-						CHRG_CURR_DISCONN);
-
 			if (iotg->stop_peripheral)
 				iotg->stop_peripheral(iotg);
 			else
@@ -3190,6 +3186,10 @@ static void penwell_otg_work(struct work_struct *work)
 
 			/* Always set a_bus_req to 1, in case no ADP */
 			hsm->a_bus_req = 1;
+
+			/* Notify EM charger remove event */
+			penwell_otg_update_chrg_cap(CHRG_UNKNOWN,
+						CHRG_CURR_DISCONN);
 
 			/* Prevent device enter D0i1 or S3*/
 			wake_lock(&pnw->wake_lock);
@@ -3221,16 +3221,6 @@ static void penwell_otg_work(struct work_struct *work)
 			cancel_delayed_work(&pnw->ulpi_poll_work);
 			cancel_delayed_work_sync(&pnw->sdp_check_work);
 
-			if (hsm->id == ID_ACA_B)
-				penwell_otg_update_chrg_cap(CHRG_ACA,
-							CHRG_CURR_ACA);
-			else if (hsm->id == ID_B) {
-				/* Notify EM charger remove event */
-				penwell_otg_update_chrg_cap(CHRG_UNKNOWN,
-							CHRG_CURR_DISCONN);
-				penwell_otg_charger_hwdet(false);
-			}
-
 			hsm->b_bus_req = 0;
 
 			if (is_clovertrail(pdev))
@@ -3247,6 +3237,16 @@ static void penwell_otg_work(struct work_struct *work)
 			if (!is_clovertrail(pdev)) {
 				dev_dbg(pnw->dev, "MFLD WA: disable PHY int\n");
 				penwell_otg_phy_intr(1);
+			}
+
+			if (hsm->id == ID_ACA_B)
+				penwell_otg_update_chrg_cap(CHRG_ACA,
+							CHRG_CURR_ACA);
+			else if (hsm->id == ID_B) {
+				/* Notify EM charger remove event */
+				penwell_otg_update_chrg_cap(CHRG_UNKNOWN,
+							CHRG_CURR_DISCONN);
+				penwell_otg_charger_hwdet(false);
 			}
 
 			iotg->otg.state = OTG_STATE_B_IDLE;
