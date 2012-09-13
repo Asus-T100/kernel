@@ -1605,8 +1605,16 @@ static int mmc_do_erase(struct mmc_card *card, unsigned int from,
 	memset(&cmd, 0, sizeof(struct mmc_command));
 	cmd.opcode = MMC_ERASE;
 	cmd.arg = arg;
-	cmd.flags = MMC_RSP_SPI_R1B | MMC_RSP_R1B | MMC_CMD_AC;
-	cmd.cmd_timeout_ms = mmc_erase_timeout(card, arg, qty);
+	if (card->quirks & MMC_QUIRK_POLL_WAIT_BUSY) {
+		cmd.flags = MMC_RSP_SPI_R1 | MMC_RSP_R1 | MMC_CMD_AC;
+		if (card->host->max_discard_to)
+			cmd.cmd_timeout_ms = card->host->max_discard_to - 1;
+		else
+			cmd.cmd_timeout_ms = mmc_erase_timeout(card, arg, qty);
+	} else {
+		cmd.flags = MMC_RSP_SPI_R1B | MMC_RSP_R1B | MMC_CMD_AC;
+		cmd.cmd_timeout_ms = mmc_erase_timeout(card, arg, qty);
+	}
 	err = mmc_wait_for_cmd(card->host, &cmd, 0);
 	if (err) {
 		pr_err("mmc_erase: erase error %d, status %#x\n",
@@ -1615,7 +1623,8 @@ static int mmc_do_erase(struct mmc_card *card, unsigned int from,
 		goto out;
 	}
 
-	if (mmc_host_is_spi(card->host))
+	if (mmc_host_is_spi(card->host) &&
+			!(card->quirks & MMC_QUIRK_POLL_WAIT_BUSY))
 		goto out;
 
 	do {
@@ -1767,7 +1776,7 @@ static unsigned int mmc_do_calc_max_discard(struct mmc_card *card,
 {
 	struct mmc_host *host = card->host;
 	unsigned int max_discard, x, y, qty = 0, max_qty, timeout;
-	unsigned int last_timeout = 0;
+	unsigned int last_timeout = 0, aligned_qty;
 
 	if (card->erase_shift)
 		max_qty = UINT_MAX >> card->erase_shift;
@@ -1791,19 +1800,32 @@ static unsigned int mmc_do_calc_max_discard(struct mmc_card *card,
 		qty += y;
 	} while (y);
 
-	if (!qty)
-		return 0;
+	/*
+	 * If qty == 0 or qty == 1, means the timeout value required by
+	 * card is larger than its host controller allowed, in this case
+	 * card needs to have the MMC_QUIRK_POLL_WAIT_BUSY to use polling
+	 * to wait busy, and the max_discard is set to one erase_size
+	 */
+	if (!qty || qty == 1) {
+		qty = 1;
+		card->quirks |= MMC_QUIRK_POLL_WAIT_BUSY;
+	}
 
-	if (qty == 1)
-		return 1;
+	if (arg & MMC_TRIM_ARGS) {
+		if (qty == 1)
+			aligned_qty = 1;
+		else
+			aligned_qty = qty - 1;
+	} else
+		aligned_qty = qty;
 
 	/* Convert qty to sectors */
 	if (card->erase_shift)
-		max_discard = --qty << card->erase_shift;
+		max_discard = aligned_qty << card->erase_shift;
 	else if (mmc_card_sd(card))
 		max_discard = qty;
 	else
-		max_discard = --qty * card->erase_size;
+		max_discard = aligned_qty * card->erase_size;
 
 	return max_discard;
 }
@@ -1824,7 +1846,7 @@ unsigned int mmc_calc_max_discard(struct mmc_card *card)
 	} else if (max_discard < card->erase_size) {
 		max_discard = 0;
 	}
-	pr_debug("%s: calculated max. discard sectors %u for timeout %u ms\n",
+	pr_info("%s: calculated max. discard sectors %u for timeout %u ms\n",
 		 mmc_hostname(host), max_discard, host->max_discard_to);
 	return max_discard;
 }
