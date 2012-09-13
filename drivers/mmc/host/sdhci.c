@@ -3266,6 +3266,14 @@ EXPORT_SYMBOL_GPL(sdhci_alloc_panic_host);
  *                                                                           *
 \*****************************************************************************/
 
+static void sdhci_set_emmc_state(struct sdhci_host *host, uint32_t state)
+{
+	/* Only if there is dekker mutex available */
+	if (!host->sram_addr)
+		return;
+	writel(state, host->sram_addr + DEKKER_EMMC_STATE);
+}
+
 #ifdef CONFIG_PM
 
 int sdhci_suspend_host(struct sdhci_host *host)
@@ -3302,6 +3310,10 @@ int sdhci_suspend_host(struct sdhci_host *host)
 	}
 
 	free_irq(host->irq, host);
+
+	/* Card succesfully suspended. Tell information to SCU */
+	sdhci_set_emmc_state(host, DEKKER_EMMC_CHIP_SUSPENDED);
+
 out:
 	sdhci_release_ownership(host->mmc);
 	return ret;
@@ -3348,6 +3360,8 @@ int sdhci_resume_host(struct sdhci_host *host)
 	    (host->tuning_mode == SDHCI_TUNING_MODE_1))
 		host->flags |= SDHCI_NEEDS_RETUNING;
 
+	/* Card back in active state */
+	sdhci_set_emmc_state(host, DEKKER_EMMC_CHIP_ACTIVE);
 out:
 	sdhci_release_ownership(host->mmc);
 	return ret;
