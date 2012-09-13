@@ -249,31 +249,24 @@ static struct ov8830_resolution ov8830_res_video[] = {
 		 .regs = ov8830_720p_strong_dvs_30fps,
 	},
 	{
+		.desc = "MODE1920x1080_DVS_OFF",
+		.width = 1936,
+		.height = 1104,
+		.fps = 30,
+		.used = 0,
+		.pixels_per_line = 3200,
+		.lines_per_frame = 2000,
+		.regs = ov8830_1080p_30fps_dvs_off,
+	},
+	{
 		 .desc = "MODE1920x1080",
 		 .width = 2336,
-		 .height = 1308,
+		 .height = 1320,
 		 .fps = 30,
 		 .used = 0,
-		 .pixels_per_line = 3608,
-		 .lines_per_frame = 1774,
+		 .pixels_per_line = 3200,
+		 .lines_per_frame = 2000,
 		 .regs = ov8830_1080p_strong_dvs_30fps,
-	},
-	/*
-	 * Fall Back to a working 1080P resolution where DVS is off.
-	 * The following one is kept as the last in the list
-	 * intentionally as the right now there are problems
-	 * with 2336x1308 at 30FPS.
-	 * TODO Revisit when DVS with 1080P is addressed.
-	 */
-	{
-		 .desc = "MODE1920x1080_DVS_OFF",
-		 .width = 1936,
-		 .height = 1104,
-		 .fps = 30,
-		 .used = 0,
-		 .pixels_per_line = 4000,
-		 .lines_per_frame = 1600,
-		 .regs = ov8830_1080p_30fps_dvs_off,
 	},
 };
 
