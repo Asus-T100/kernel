@@ -379,7 +379,8 @@ static int mmc_read_ext_csd(struct mmc_card *card, u8 *ext_csd)
 		card->ext_csd.rpmb_size = 128 * ext_csd[EXT_CSD_RPMB_SIZE_MULT];
 		card->ext_csd.rpmb_size <<= 2; /* Unit: half sector */
 
-		if (card->ext_csd.rpmb_size) {
+		if (card->ext_csd.rpmb_size &&
+				mmc_rpmb_partition_access(card->host)) {
 			part_size = card->ext_csd.rpmb_size >> 1;
 			mmc_part_add(card, part_size, EXT_CSD_PART_CONFIG_RPMB,
 					"rpmb", 0, true,

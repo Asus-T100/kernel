@@ -305,7 +305,7 @@ static int mfd_emmc_probe_slot(struct sdhci_pci_slot *slot)
 		mfd_emmc_mutex_register(slot);
 		sdhci_alloc_panic_host(slot->host);
 		slot->host->mmc->caps2 |= MMC_CAP2_INIT_CARD_SYNC |
-			MMC_CAP2_BOOTPART_NOACC;
+			MMC_CAP2_BOOTPART_NOACC | MMC_CAP2_RPMBPART_NOACC;
 		break;
 	case PCI_DEVICE_ID_INTEL_CLV_EMMC0:
 		sdhci_alloc_panic_host(slot->host);
@@ -315,7 +315,8 @@ static int mfd_emmc_probe_slot(struct sdhci_pci_slot *slot)
 	case PCI_DEVICE_ID_INTEL_CLV_EMMC1:
 		slot->host->mmc->caps |= MMC_CAP_1_8V_DDR;
 		slot->host->quirks2 |= SDHCI_QUIRK2_V2_0_SUPPORT_DDR50;
-		slot->host->mmc->caps2 |= MMC_CAP2_BOOTPART_NOACC;
+		slot->host->mmc->caps2 |= MMC_CAP2_BOOTPART_NOACC |
+			MMC_CAP2_RPMBPART_NOACC;
 		break;
 	}
 
