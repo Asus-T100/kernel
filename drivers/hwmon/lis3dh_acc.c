@@ -65,8 +65,8 @@
 
 #define	G_MAX		16000
 
-#define LIS3DH_6D_REPORT_DELAY 200
-#define LIS3DH_6D_REPORT_CNT   40
+#define LIS3DH_6D_REPORT_DELAY 67
+#define LIS3DH_6D_REPORT_CNT   120
 
 #define SENSITIVITY_2G		1	/**	mg/LSB	*/
 #define SENSITIVITY_4G		2	/**	mg/LSB	*/
