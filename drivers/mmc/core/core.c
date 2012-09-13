@@ -1715,8 +1715,6 @@ EXPORT_SYMBOL(mmc_can_erase);
 
 int mmc_can_trim(struct mmc_card *card)
 {
-	if (!mmc_card_mmc(card))
-		return 0;
 	if (card->ext_csd.sec_feature_support & EXT_CSD_SEC_GB_CL_EN)
 		return 1;
 	return 0;
@@ -1747,8 +1745,6 @@ EXPORT_SYMBOL(mmc_can_sanitize);
 
 int mmc_can_secure_erase_trim(struct mmc_card *card)
 {
-	if (!mmc_card_mmc(card))
-		return 0;
 	if (card->ext_csd.sec_feature_support & EXT_CSD_SEC_ER_EN)
 		return 1;
 	return 0;
@@ -1816,43 +1812,19 @@ unsigned int mmc_calc_max_discard(struct mmc_card *card)
 {
 	struct mmc_host *host = card->host;
 	unsigned int max_discard, max_trim;
-	unsigned int max_sec_discard, max_sec_trim;
 
 	if (!host->max_discard_to)
 		return UINT_MAX;
 
-	/*
-	 * calculate the max_discard for erase/sec_erase
-	 */
 	max_discard = mmc_do_calc_max_discard(card, MMC_ERASE_ARG);
-	if (mmc_can_secure_erase_trim(card)) {
-		max_sec_discard = mmc_do_calc_max_discard(card,
-				MMC_SECURE_ERASE_ARG);
-		if (max_sec_discard < card->erase_size)
-			card->ext_csd.sec_feature_support &= ~EXT_CSD_SEC_ER_EN;
-		else if (max_sec_discard < max_discard)
-			max_discard = max_sec_discard;
-	}
-	/*
-	 * calculate the max_discard for trim/sec_trim
-	 */
 	if (mmc_can_trim(card)) {
 		max_trim = mmc_do_calc_max_discard(card, MMC_TRIM_ARG);
-		if (mmc_can_secure_erase_trim(card)) {
-			max_sec_trim = mmc_do_calc_max_discard(card,
-					MMC_SECURE_TRIM1_ARG);
-			if (max_sec_trim == 0)
-				card->ext_csd.sec_feature_support &=
-					~EXT_CSD_SEC_ER_EN;
-			else if (max_sec_trim < max_trim)
-				max_trim = max_sec_trim;
-		}
 		if (max_trim < max_discard)
 			max_discard = max_trim;
 	} else if (max_discard < card->erase_size) {
 		max_discard = 0;
 	}
-	pr_info("%s: calculated max. discard sectors %u for timeout %u ms\n",
+	pr_debug("%s: calculated max. discard sectors %u for timeout %u ms\n",
 		 mmc_hostname(host), max_discard, host->max_discard_to);
 	return max_discard;
 }
