@@ -60,6 +60,10 @@ int intel_mid_rproc_init(void)
 	register_rpmsg_service("rpmsg_ipc", RPROC_SCU, RP_IPC);
 	register_rpmsg_service("rpmsg_pmic", RPROC_SCU, RP_PMIC_ACCESS);
 	register_rpmsg_service("rpmsg_mip", RPROC_SCU, RP_MIP_ACCESS);
+	register_rpmsg_service("rpmsg_fw_update",
+					RPROC_SCU, RP_FW_UPDATE);
+	register_rpmsg_service("rpmsg_ipc_util",
+					RPROC_SCU, RP_IPC_UTIL);
 	register_rpmsg_service("rpmsg_watchdog", RPROC_SCU, RP_MIP_ACCESS);
 
 	err = platform_device_register(&intel_scu_device);

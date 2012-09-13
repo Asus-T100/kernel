@@ -41,12 +41,83 @@ static int scu_ipc_command(void *tx_buf)
 	tx_msg = (struct tx_ipc_msg *)tx_buf;
 
 	ret = intel_scu_ipc_command(tx_msg->cmd, tx_msg->sub,
-				(u32 *)tx_msg->in, tx_msg->inlen,
+				tx_msg->in, tx_msg->inlen,
 				tx_msg->out, tx_msg->outlen);
+	return ret;
+}
+
+static int scu_ipc_raw_command(void *tx_buf)
+{
+	struct tx_ipc_msg *tx_msg;
+	int ret = 0;
+
+	tx_msg = (struct tx_ipc_msg *)tx_buf;
+
+	ret = intel_scu_ipc_raw_cmd(tx_msg->cmd, tx_msg->sub,
+				tx_msg->in, tx_msg->inlen,
+				tx_msg->out, tx_msg->outlen,
+				tx_msg->dptr, tx_msg->sptr);
 
 	return ret;
 }
 
+static int scu_ipc_simple_command(void *tx_buf)
+{
+	struct tx_ipc_msg *tx_msg;
+	int ret = 0;
+
+	tx_msg = (struct tx_ipc_msg *)tx_buf;
+
+	ret = intel_scu_ipc_simple_command(tx_msg->cmd, tx_msg->sub);
+
+	return ret;
+}
+
+static int scu_ipc_fw_command(void *tx_buf)
+{
+	struct tx_ipc_msg *tx_msg;
+	int ret = 0;
+
+	tx_msg = (struct tx_ipc_msg *)tx_buf;
+
+	switch (tx_msg->cmd) {
+	case RP_GET_FW_REVISION:
+		ret = scu_ipc_command(tx_buf);
+		break;
+	default:
+		pr_info("Command %x not supported\n", tx_msg->cmd);
+		break;
+	};
+
+	return ret;
+}
+
+static int scu_ipc_util_command(void *tx_buf)
+{
+	struct tx_ipc_msg *tx_msg;
+	int ret = 0;
+
+	tx_msg = (struct tx_ipc_msg *)tx_buf;
+
+	switch (tx_msg->cmd) {
+	case RP_GET_FW_REVISION:
+	case RP_GET_HOBADDR:
+	case RP_OSC_CLK_CTRL:
+		ret = scu_ipc_command(tx_buf);
+		break;
+	case RP_S0IX_COUNTER:
+		ret = scu_ipc_simple_command(tx_buf);
+		break;
+	case RP_WRITE_OSNIB:
+		ret = scu_ipc_raw_command(tx_buf);
+		break;
+	default:
+		pr_info("Command %x not supported\n", tx_msg->cmd);
+		break;
+	};
+
+	return ret;
+}
 
 /**
  * scu_ipc_rpmsg_handle() - scu rproc specified ipc rpmsg handle
@@ -75,8 +146,17 @@ int scu_ipc_rpmsg_handle(void *rx_buf, void *tx_buf, u32 *len)
 	case RP_SET_WATCHDOG:
 		tmp_msg->status = scu_ipc_command(tx_msg);
 		break;
+	case RP_MIP_ACCESS:
+		tmp_msg->status = scu_ipc_raw_command(tx_msg);
+		break;
+	case RP_IPC_UTIL:
+		tmp_msg->status = scu_ipc_util_command(tx_msg);
+		break;
+	case RP_FW_UPDATE:
+		tmp_msg->status = scu_ipc_fw_command(tx_msg);
+		break;
 	default:
-		pr_info("Command not supported yet\n");
+		pr_info("Command %x not supported yet\n", tx_hdr->dst);
 		break;
 	};
 

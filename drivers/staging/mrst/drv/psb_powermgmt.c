@@ -38,6 +38,7 @@
 #include "mdfld_dsi_dbi.h"
 #include "mdfld_dsi_dbi_dpu.h"
 #include <asm/intel_scu_ipc.h>
+#include <asm/intel_scu_pmic.h>
 #include "psb_intel_hdmi.h"
 #include "mdfld_ti_tpd.h"
 #include "mdfld_dsi_dpi.h"

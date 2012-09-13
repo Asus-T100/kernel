@@ -28,7 +28,7 @@
 #include "psb_drv.h"
 #include "psb_intel_hdmi.h"
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,34))
-#include <asm/intel_scu_ipc.h>
+#include <asm/intel_scu_pmic.h>
 #endif
 
 #define SRAM_MSIC_VRINT_ADDR 0xFFFF7FCB

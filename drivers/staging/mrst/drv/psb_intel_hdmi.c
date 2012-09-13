@@ -43,7 +43,7 @@
 #include "mdfld_ti_tpd.h"
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,34))
-#include <asm/intel_scu_ipc.h>
+#include <asm/intel_scu_pmic.h>
 #endif
 
 /* FIXME_MDFLD HDMI EDID supports */

@@ -44,6 +44,12 @@ int rpmsg_send_command(struct rpmsg_instance *instance, u32 cmd,
 						u32 outlen)
 {
 	int ret = 0;
+
+	if (!instance) {
+		pr_err("%s: Instance is NULL\n", __func__);
+		return -EFAULT;
+	}
+
 	mutex_lock(&instance->instance_lock);
 
 	/* Prepare Tx buffer */
@@ -90,6 +96,41 @@ end:
 	return ret;
 }
 EXPORT_SYMBOL(rpmsg_send_command);
+
+int rpmsg_send_raw_command(struct rpmsg_instance *instance, u32 cmd,
+						u32 sub, u8 *in,
+						u32 *out, u32 inlen,
+						u32 outlen, u32 sptr,
+						u32 dptr)
+{
+	int ret = 0;
+
+	if (!instance) {
+		pr_err("%s: Instance is NULL\n", __func__);
+		return -EFAULT;
+	}
+
+	mutex_lock(&instance->instance_lock);
+	instance->tx_msg->sptr = sptr;
+	instance->tx_msg->dptr = dptr;
+	mutex_unlock(&instance->instance_lock);
+
+	ret = rpmsg_send_command(instance, cmd, sub, in, out, inlen, outlen);
+
+	return ret;
+}
+EXPORT_SYMBOL(rpmsg_send_raw_command);
+
+int rpmsg_send_simple_command(struct rpmsg_instance *instance, u32 cmd,
+						u32 sub)
+{
+	int ret;
+
+	ret = rpmsg_send_command(instance, cmd, sub, NULL, NULL, 0, 0);
+
+	return ret;
+}
+EXPORT_SYMBOL(rpmsg_send_simple_command);
 
 static void rpmsg_recv_cb(struct rpmsg_channel *rpdev, void *data,
 					int len, void *priv, u32 src)

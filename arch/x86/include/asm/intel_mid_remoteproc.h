@@ -22,6 +22,11 @@
 #define	RP_COLD_BOOT		0xF3
 #define	RP_COLD_RESET		0xF1
 #define	RP_MIP_ACCESS		0xEC
+#define RP_GET_HOBADDR		0xE5
+#define RP_OSC_CLK_CTRL		0xE6
+#define RP_S0IX_COUNTER		0xE8
+#define RP_WRITE_OSNIB		0xE4
+
 /*
  * Assigning some temp ids for following devices
  * TODO: Need to change it to some meaningful
@@ -36,6 +41,8 @@
 #define RP_MSIC_THERMAL		0x09
 #define RP_MSIC_POWER_BTN	0x10
 #define RP_IPC			0X11
+#define RP_IPC_UTIL		0X12
+#define RP_FW_UPDATE		0X13
 
 enum rproc_type {
 	RPROC_SCU = 0,

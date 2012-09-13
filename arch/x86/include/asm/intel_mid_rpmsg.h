@@ -20,6 +20,15 @@ extern int rpmsg_send_command(struct rpmsg_instance *instance, u32 cmd,
 						u32 *out, u32 inlen,
 						u32 outlen);
 
+extern int rpmsg_send_raw_command(struct rpmsg_instance *instance, u32 cmd,
+						u32 sub, u8 *in,
+						u32 *out, u32 inlen,
+						u32 outlen, u32 sptr,
+						u32 dptr);
+
+extern int rpmsg_send_simple_command(struct rpmsg_instance *instance, u32 cmd,
+						u32 sub);
+
 extern int alloc_rpmsg_instance(struct rpmsg_channel *rpdev,
 				struct rpmsg_instance **pInstance);
 

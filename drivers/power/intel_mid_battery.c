@@ -35,6 +35,7 @@
 #include <linux/power_supply.h>
 
 #include <asm/intel_scu_ipc.h>
+#include <asm/intel_scu_pmic.h>
 
 #define DRIVER_NAME "pmic_battery"
 

@@ -37,6 +37,7 @@
 #include <linux/delay.h>
 #include <linux/pm_runtime.h>
 #include <linux/wakelock.h>
+#include <asm/intel_scu_pmic.h>
 #include <asm/intel_scu_ipc.h>
 #include "../core/usb.h"
 

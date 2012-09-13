@@ -17,6 +17,7 @@
 #define IPCMSG_FW_UPDATE        0xFE /* Firmware update */
 #define IPCMSG_PCNTRL           0xFF /* Power controller unit read/write */
 #define IPCMSG_OSC_CLK		0xE6 /* Turn on/off osc clock */
+#define IPCMSG_S0IX_COUNTER	0xEB /* Get S0ix residency */
 
 #define IPC_CMD_UMIP_RD     0
 #define IPC_CMD_UMIP_WR     1
@@ -46,55 +47,32 @@
 #define IPC_CMD_VRTC_SETTIME      1 /* Set time */
 #define IPC_CMD_VRTC_SETALARM     2 /* Set alarm */
 #define IPC_CMD_VRTC_SYNC_RTC     3 /* Sync MSIC/PMIC RTC to VRTC */
-/* Read single register */
-int intel_scu_ipc_ioread8(u16 addr, u8 *data);
 
-/* Read two sequential registers */
-int intel_scu_ipc_ioread16(u16 addr, u16 *data);
-
-/* Read four sequential registers */
-int intel_scu_ipc_ioread32(u16 addr, u32 *data);
-
-/* Read a vector */
-int intel_scu_ipc_readv(u16 *addr, u8 *data, int len);
-
-/* Write single register */
-int intel_scu_ipc_iowrite8(u16 addr, u8 data);
-
-/* Write two sequential registers */
-int intel_scu_ipc_iowrite16(u16 addr, u16 data);
-
-/* Write four sequential registers */
-int intel_scu_ipc_iowrite32(u16 addr, u32 data);
-
-/* Write a vector */
-int intel_scu_ipc_writev(u16 *addr, u8 *data, int len);
-
-/* Update single register based on the mask */
-int intel_scu_ipc_update_register(u16 addr, u8 data, u8 mask);
+/* Send ipc command and check ipc status */
+void intel_scu_ipc_send_command(u32 cmd);
+int intel_scu_ipc_check_status(void);
 
 /* Issue commands to the SCU with or without data */
 int intel_scu_ipc_simple_command(int cmd, int sub);
-int intel_scu_ipc_command(int cmd, int sub, u32 *in, int inlen,
-							u32 *out, int outlen);
+int intel_scu_ipc_command(u32 cmd, u32 sub, u8 *in, u32 inlen,
+		u32 *out, u32 outlen);
+int intel_scu_ipc_raw_cmd(u32 cmd, u32 sub, u8 *in, u32 inlen,
+		u32 *out, u32 outlen, u32 dptr, u32 sptr);
+
+/* IPC locking */
+void intel_scu_ipc_lock(void);
+void intel_scu_ipc_unlock(void);
+
 /* I2C control api */
 int intel_scu_ipc_i2c_cntrl(u32 addr, u32 *data);
 
 /* Update FW version */
+int intel_scu_ipc_fw_update(void);
 int intel_scu_ipc_mrstfw_update(u8 *buffer, u32 length);
-int intel_scu_ipc_medfw_upgrade(void);
 int intel_scu_ipc_medfw_prepare(void __user *arg);
 
 int intel_scu_ipc_read_mip(u8 *data, int len, int offset, int issigned);
 int intel_scu_ipc_write_umip(u8 *data, int len, int offset);
-
-/* OSHOB-OS Handoff Buffer read */
-int intel_scu_ipc_read_oshob(u8 *data, int len, int offset);
-/* OSNIB-OS No Init Buffer write */
-#define OSNIB_OFFSET		0x0C
-int intel_scu_ipc_write_osnib(u8 *data, int len, int offset, u32 mask);
-int intel_scu_ipc_write_osnib_rr(u8 rr);
-int intel_scu_ipc_read_osnib_rr(u8 *rr);
 
 /* Penwell has 4 osc clocks */
 #define OSC_CLK_AUDIO	0	/* Audio */
@@ -123,23 +101,5 @@ static inline int intel_scu_notifier_post(unsigned long v, void *p)
 
 #define		SCU_AVAILABLE		1
 #define		SCU_DOWN		2
-
-#define MSIC_VPROG1_CTRL	0xD6
-#define MSIC_VPROG2_CTRL	0xD7
-#define MSIC_VPROG_ON		0xFF
-#define MSIC_VPROG_OFF		0
-
-/* Helpers to turn on/off msic vprog1 and vprog2 */
-static inline int intel_scu_ipc_msic_vprog1(int on)
-{
-	return intel_scu_ipc_iowrite8(MSIC_VPROG1_CTRL,
-			on ? MSIC_VPROG_ON : MSIC_VPROG_OFF);
-}
-
-static inline int intel_scu_ipc_msic_vprog2(int on)
-{
-	return intel_scu_ipc_iowrite8(MSIC_VPROG2_CTRL,
-			on ? MSIC_VPROG_ON : MSIC_VPROG_OFF);
-}
 
 #endif

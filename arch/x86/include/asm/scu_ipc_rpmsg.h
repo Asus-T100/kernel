@@ -8,6 +8,8 @@ struct tx_ipc_msg {
 	u32 *out;
 	u32 inlen;	/* number of bytes to be written */
 	u32 outlen;	/* number of dwords to be read */
+	u32 sptr;	/* needed for raw ipc command */
+	u32 dptr;	/* needed for raw ipc command */
 };
 
 struct rx_ipc_msg {

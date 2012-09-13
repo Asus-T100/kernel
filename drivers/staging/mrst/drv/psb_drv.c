@@ -41,7 +41,7 @@
 #include <linux/pm_runtime.h>
 #endif
 
-#include <asm/intel_scu_ipc.h>
+#include <asm/intel_scu_pmic.h>
 #include <asm/intel-mid.h>
 
 #include "mdfld_dsi_dbi.h"

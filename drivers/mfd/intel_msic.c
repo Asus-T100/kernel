@@ -17,6 +17,7 @@
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 
+#include <asm/intel_scu_pmic.h>
 #include <asm/intel_scu_ipc.h>
 
 #define MSIC_VENDOR(id)		((id >> 6) & 3)
