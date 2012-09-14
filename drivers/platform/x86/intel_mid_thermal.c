@@ -99,13 +99,22 @@ static const int adc_code[2][TABLE_LENGTH] = {
 		65, 70, 75, 80, 85, 90, 100},
 	};
 
-/* ADC handle used to read sensor temperature values */
-void *therm_adc_handle;
+struct ts_cache_info {
+	bool is_cached_data_initialized;
+	struct mutex lock;
+	int cached_values[MSIC_THERMAL_SENSORS];
+	unsigned long last_updated;
+};
 
 struct ipc_info {
 	struct ipc_device *ipcdev;
 	struct thermal_zone_device *tzd[MSIC_THERMAL_SENSORS];
+	struct ts_cache_info cacheinfo;
+	/* ADC handle used to read sensor temperature values */
+	void *therm_adc_handle;
 };
+
+static struct ipc_info *ipcinfo;
 
 struct thermal_device_info {
 	/* if 1, ADC code to temperature conversion is direct. i.e. no linear
@@ -238,19 +247,30 @@ static int mid_read_temp(struct thermal_zone_device *tzd, unsigned long *temp)
 	struct thermal_device_info *td_info = tzd->devdata;
 	int ret;
 	long curr_temp, bp_temp = 0;
-	int sample_count = 1; /* No of times each channel must be sampled */
 	int indx = td_info->sensor_index; /* Required Index */
-	int val[MSIC_THERMAL_SENSORS];
 
-	ret = intel_mid_gpadc_sample(therm_adc_handle, sample_count,
-					&val[0], &val[1], &val[2], &val[3]);
-	if (ret)
-		return ret;
+	mutex_lock(&ipcinfo->cacheinfo.lock);
+
+	if (!ipcinfo->cacheinfo.is_cached_data_initialized ||
+	time_after(jiffies, ipcinfo->cacheinfo.last_updated + HZ)) {
+		ret = intel_mid_gpadc_sample(
+			ipcinfo->therm_adc_handle, 1,
+			&ipcinfo->cacheinfo.cached_values[0],
+			&ipcinfo->cacheinfo.cached_values[1],
+			&ipcinfo->cacheinfo.cached_values[2],
+			&ipcinfo->cacheinfo.cached_values[3]);
+		if (ret)
+			goto exit;
+		ipcinfo->cacheinfo.last_updated = jiffies;
+		ipcinfo->cacheinfo.is_cached_data_initialized = true;
+	}
 
 	/* Convert ADC value to temperature */
-	ret = adc_to_temp(td_info->direct, val[indx], &curr_temp);
+	ret = adc_to_temp(td_info->direct,
+		ipcinfo->cacheinfo.cached_values[indx],
+		&curr_temp);
 	if (ret)
-		return ret;
+		goto exit;
 
 	switch (indx) {
 	case SKIN0_INDEX:
@@ -259,9 +279,10 @@ static int mid_read_temp(struct thermal_zone_device *tzd, unsigned long *temp)
 	case SKIN1_INDEX:
 #ifdef CONFIG_BOARD_CTP
 		ret = adc_to_temp(td_info->direct,
-					val[BPTHERM_INDEX], &bp_temp);
+			ipcinfo->cacheinfo.cached_values[BPTHERM_INDEX],
+			&bp_temp);
 		if (ret)
-			return ret;
+			goto exit;
 		bp_temp = (bp_temp * BPTHERM_SLOPE + BPTHERM_INTERCEPT) / 1000;
 #endif
 		*temp = SKIN1_TEMP(curr_temp);
@@ -274,6 +295,8 @@ static int mid_read_temp(struct thermal_zone_device *tzd, unsigned long *temp)
 		*temp = curr_temp;
 	}
 
+exit:
+	mutex_unlock(&ipcinfo->cacheinfo.lock);
 	return ret;
 }
 
@@ -344,28 +367,29 @@ static int mid_thermal_probe(struct ipc_device *ipcdev)
 {
 	int ret;
 	int i;
-	struct ipc_info *ipcinfo;
-
 	ipcinfo = kzalloc(sizeof(struct ipc_info), GFP_KERNEL);
 	if (!ipcinfo)
 		return -ENOMEM;
 
+	/* initialize mutex locks */
+	mutex_init(&ipcinfo->cacheinfo.lock);
+
 #ifdef CONFIG_BOARD_CTP
 	/* Allocate ADC channels for all sensors */
-	therm_adc_handle = intel_mid_gpadc_alloc(MSIC_THERMAL_SENSORS,
+	ipcinfo->therm_adc_handle = intel_mid_gpadc_alloc(MSIC_THERMAL_SENSORS,
 					0x04 | CH_NEED_VREF | CH_NEED_VCALIB,
 					0x04 | CH_NEED_VREF | CH_NEED_VCALIB,
 					0x03 | CH_NEED_VCALIB,
 					0x09 | CH_NEED_VREF | CH_NEED_VCALIB);
 #else
 	/* Allocate ADC channels for all sensors */
-	therm_adc_handle = intel_mid_gpadc_alloc(MSIC_THERMAL_SENSORS,
+	ipcinfo->therm_adc_handle = intel_mid_gpadc_alloc(MSIC_THERMAL_SENSORS,
 					0x08 | CH_NEED_VREF | CH_NEED_VCALIB,
 					0x08 | CH_NEED_VREF | CH_NEED_VCALIB,
 					0x0A | CH_NEED_VREF | CH_NEED_VCALIB,
 					0x03 | CH_NEED_VCALIB);
 #endif
-	if (!therm_adc_handle) {
+	if (!ipcinfo->therm_adc_handle) {
 		ret = -ENOMEM;
 		goto alloc_fail;
 	}
@@ -402,15 +426,16 @@ alloc_fail:
 static int mid_thermal_remove(struct ipc_device *ipcdev)
 {
 	int i;
-	struct ipc_info *ipcinfo = ipc_get_drvdata(ipcdev);
 
 	for (i = 0; i < MSIC_THERMAL_SENSORS; i++)
 		thermal_zone_device_unregister(ipcinfo->tzd[i]);
 
-	ipc_set_drvdata(ipcdev, NULL);
-
 	/* Free the allocated ADC channels */
-	intel_mid_gpadc_free(therm_adc_handle);
+	if (ipcinfo->therm_adc_handle)
+		intel_mid_gpadc_free(ipcinfo->therm_adc_handle);
+
+	kfree(ipcinfo);
+	ipc_set_drvdata(ipcdev, NULL);
 
 	return 0;
 }
