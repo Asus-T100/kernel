@@ -35,6 +35,8 @@
 #include <linux/bitops.h>
 #include <linux/sched.h>
 #include <linux/atomic.h>
+#include <linux/notifier.h>
+#include <linux/suspend.h>
 #include <linux/wakelock.h>
 
 enum {
@@ -77,6 +79,14 @@ static struct intel_scu_ipc_ddata_t intel_scu_ipc_ddata[] = {
 		.ipc_len  = 0x100,
 		.i2c_len = 0x10,
 	},
+};
+static int  scu_ipc_pm_callback(struct notifier_block *nb,
+					unsigned long action,
+					void *ignored);
+
+static struct notifier_block scu_ipc_pm_notifier = {
+	.notifier_call = scu_ipc_pm_callback,
+	.priority = 1,
 };
 
 /*
@@ -140,9 +150,45 @@ static char *ipc_err_sources[] = {
 #define I2C_DATA_ADDR		0x04
 
 static DEFINE_MUTEX(ipclock); /* lock used to prevent multiple call to SCU */
+static struct wake_lock ipc_wake_lock;
 
 /* PM Qos struct */
 static struct pm_qos_request *qos;
+
+/* Suspend status*/
+static bool suspend_status;
+static DEFINE_MUTEX(scu_suspend_lock);
+
+/* Suspend status get */
+bool suspend_in_progress(void)
+{
+	return suspend_status;
+}
+
+/* Suspend status set */
+void set_suspend_status(bool status)
+{
+	mutex_lock(&scu_suspend_lock);
+	suspend_status = status;
+	mutex_unlock(&scu_suspend_lock);
+}
+
+/* IPC PM notifier callback */
+static int scu_ipc_pm_callback(struct notifier_block *nb,
+					unsigned long action,
+					void *ignored)
+{
+	switch (action) {
+	case PM_SUSPEND_PREPARE:
+		set_suspend_status(true);
+		return NOTIFY_OK;
+	case PM_POST_SUSPEND:
+		set_suspend_status(false);
+		return NOTIFY_OK;
+	}
+
+	return NOTIFY_DONE;
+}
 
 /*
  * Command Register (Write Only):
@@ -155,7 +201,7 @@ void intel_scu_ipc_send_command(u32 cmd) /* Send ipc command */
 	ipcdev.cmd = cmd;
 	INIT_COMPLETION(ipcdev.cmd_complete);
 
-	if (system_state == SYSTEM_RUNNING) {
+	if (system_state == SYSTEM_RUNNING && !suspend_in_progress()) {
 		ipcdev.ioc = 1;
 		writel(cmd | IPC_IOC, ipcdev.ipc_base);
 	} else {
@@ -204,7 +250,8 @@ int intel_scu_ipc_check_status(void)
 	int status;
 	int loop_count = 3000000;
 
-	if (ipcdev.ioc && (system_state == SYSTEM_RUNNING)) {
+	if (ipcdev.ioc && (system_state == SYSTEM_RUNNING) &&
+			(!suspend_in_progress())) {
 		if (0 == wait_for_completion_timeout(
 				&ipcdev.cmd_complete, 3 * HZ))
 			ret = -ETIMEDOUT;
@@ -273,11 +320,22 @@ void intel_scu_ipc_lock(void)
 	/* Prevent C-states beyond C6 */
 	pm_qos_update_request(qos, CSTATE_EXIT_LATENCY_S0i1 - 1);
 
+	/* Prevent S3 */
+	mutex_lock(&scu_suspend_lock);
+
+	if (!suspend_in_progress())
+		wake_lock(&ipc_wake_lock);
 }
 EXPORT_SYMBOL_GPL(intel_scu_ipc_lock);
 
 void intel_scu_ipc_unlock(void)
 {
+	/* Re-enable S3 */
+	if (!suspend_in_progress())
+		wake_unlock(&ipc_wake_lock);
+
+	mutex_unlock(&scu_suspend_lock);
+
 	/* Re-enable Deeper C-states beyond C6 */
 	pm_qos_update_request(qos, PM_QOS_DEFAULT_VALUE);
 
@@ -476,6 +534,10 @@ static int __init intel_scu_ipc_init(void)
 		return -ENOMEM;
 
 	pm_qos_add_request(qos, PM_QOS_CPU_DMA_LATENCY, PM_QOS_DEFAULT_VALUE);
+
+	register_pm_notifier(&scu_ipc_pm_notifier);
+
+	wake_lock_init(&ipc_wake_lock, WAKE_LOCK_SUSPEND, "intel_scu_ipc");
 
 	return  pci_register_driver(&ipc_driver);
 }
