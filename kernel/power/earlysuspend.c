@@ -37,6 +37,7 @@ static void early_suspend(struct work_struct *work);
 static void late_resume(struct work_struct *work);
 static void try_to_suspend(struct work_struct *work);
 static struct workqueue_struct *early_suspend_wq;
+static struct workqueue_struct *suspend_wq;
 static DECLARE_WORK(early_suspend_work, early_suspend);
 static DECLARE_WORK(late_resume_work, late_resume);
 static DECLARE_WORK(suspend_work, try_to_suspend);
@@ -57,7 +58,7 @@ void queue_up_early_suspend_work(struct work_struct *work)
 
 static void try_to_suspend(struct work_struct *work)
 {
-	unsigned int initial_count;
+	unsigned int initial_count, final_count;
 
 	if (!pm_get_wakeup_count(&initial_count, true))
 		goto queue_again;
@@ -69,6 +70,11 @@ static void try_to_suspend(struct work_struct *work)
 		goto queue_again;
 	}
 
+	if (suspend_state == PM_SUSPEND_ON) {
+		mutex_unlock(&suspend_lock);
+		return;
+	}
+
 	if (suspend_state >= PM_SUSPEND_MAX)
 		hibernate();
 	else
@@ -76,10 +82,18 @@ static void try_to_suspend(struct work_struct *work)
 
 	mutex_unlock(&suspend_lock);
 
-	return;
+	if (!pm_get_wakeup_count(&final_count, false))
+		goto queue_again;
+
+	/*
+	 * If the wakeup occured for an unknown reason, wait to prevent the
+	 * system from trying to suspend and waking up in a tight loop.
+	 */
+	if (final_count == initial_count)
+		schedule_timeout_uninterruptible(HZ / 2);
 
 queue_again:
-	queue_up_early_suspend_work(&suspend_work);
+	queue_work(suspend_wq, &suspend_work);
 }
 
 void register_early_suspend(struct early_suspend *handler)
@@ -146,6 +160,7 @@ abort:
 	if (state == SUSPEND_REQUESTED_AND_SUSPENDED)
 		__pm_relax(early_suspend_ws);
 	spin_unlock_irqrestore(&state_lock, irqflags);
+	queue_work(suspend_wq, &suspend_work);
 }
 
 static void late_resume(struct work_struct *work)
@@ -186,7 +201,6 @@ void request_suspend_state(suspend_state_t new_state)
 
 	mutex_lock(&suspend_lock);
 	prev_state = suspend_state;
-	mutex_unlock(&suspend_lock);
 	spin_lock_irqsave(&state_lock, irqflags);
 	old_sleep = state & SUSPEND_REQUESTED;
 	if (debug_mask & DEBUG_USER_STATE) {
@@ -210,25 +224,42 @@ void request_suspend_state(suspend_state_t new_state)
 		__pm_stay_awake(early_suspend_ws);
 		queue_up_early_suspend_work(&late_resume_work);
 	}
-	spin_unlock_irqrestore(&state_lock, irqflags);
-	mutex_lock(&suspend_lock);
 	suspend_state = new_state;
+	spin_unlock_irqrestore(&state_lock, irqflags);
 	mutex_unlock(&suspend_lock);
-	queue_up_early_suspend_work(&suspend_work);
 }
 
 int __init early_suspend_init(void)
 {
+	int ret = 0;
+
 	early_suspend_ws = wakeup_source_register("early_suspend");
 
-	if (!early_suspend_ws)
-		return -ENOMEM;
+	if (!early_suspend_ws) {
+		ret = -ENOMEM;
+		goto out;
+	}
 
 	early_suspend_wq = alloc_ordered_workqueue("early_suspend", 0);
 
-	if (early_suspend_wq)
-		return 0;
+	if (!early_suspend_wq) {
+		ret = -ENOMEM;
+		goto ws_err;
+	}
 
+	suspend_wq = alloc_ordered_workqueue("auto_suspend", 0);
+
+	if (!suspend_wq) {
+		ret = -ENOMEM;
+		goto es_wq_err;
+	}
+
+	goto out;
+
+es_wq_err:
+	destroy_workqueue(early_suspend_wq);
+ws_err:
 	wakeup_source_unregister(early_suspend_ws);
-	return -ENOMEM;
+out:
+	return ret;
 }
