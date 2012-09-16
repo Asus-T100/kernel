@@ -92,6 +92,20 @@ int sfi_mtimer_num;
 struct sfi_rtc_table_entry sfi_mrtc_array[SFI_MRTC_MAX];
 EXPORT_SYMBOL_GPL(sfi_mrtc_array);
 int sfi_mrtc_num;
+#ifdef CONFIG_X86_MDFLD
+void (*saved_shutdown)(void);
+#include <intel_soc_pmu.h>
+/* This function is here just to have a hook to execute code before
+ * generic x86 shutdown is executed. saved_shutdown contains pointer
+ * to original generic x86 shutdown function */
+void mfld_shutdown(void)
+{
+	down(&mid_pmu_cxt->scu_ready_sem);
+
+	if (saved_shutdown)
+		saved_shutdown();
+}
+#endif
 
 /* Unified message bus read/write operation */
 DEFINE_SPINLOCK(msgbus_lock);
@@ -390,6 +404,12 @@ void __init x86_intel_mid_early_setup(void)
 
 	/* Moorestown specific power_off/restart method */
 	pm_power_off = intel_mid_power_off;
+#ifdef CONFIG_X86_MDFLD
+	if (mfld_shutdown) {
+		saved_shutdown = machine_ops.shutdown;
+		machine_ops.shutdown = mfld_shutdown;
+	}
+#endif
 	machine_ops.restart = intel_mid_reboot;
 	machine_ops.emergency_restart  = intel_mid_emergency_reboot;
 
