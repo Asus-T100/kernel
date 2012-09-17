@@ -3648,6 +3648,7 @@ static int psb_panel_register_read(char *buf, char **start, off_t offset,
 /*
 * use to read and write panel side register. and print to standard output.
 */
+#define GENERIC_READ_FIFO_SIZE_MAX 0x40
 static int psb_panel_register_write(struct file *file, const char *buffer,
 				      unsigned long count, void *data)
 {
@@ -3720,7 +3721,7 @@ static int psb_panel_register_write(struct file *file, const char *buffer,
 	/*forbid dsr which will restore regs*/
 	mdfld_dsi_dsr_forbid(dsi_config);
 
-	if (op == 'g') {
+	if (op == 'g' && pnum <= GENERIC_READ_FIFO_SIZE_MAX) {
 		pdata = kmalloc(sizeof(u8)*pnum, GFP_KERNEL);
 		if (!pdata) {
 			DRM_ERROR("No memory for long_pkg data\n");
