@@ -148,6 +148,9 @@ struct mxt_data {
 	u8                   xpos_format;
 	u8                   ypos_format;
 
+	/* set if need to report input_sync */
+	u8                   need_report_sync;
+
 	u8                   numtouch;
 	struct mxt_finger    finger[MXT_MAX_NUM_TOUCHES];
 
@@ -1089,8 +1092,6 @@ static void report_mt(struct mxt_data *mxt)
 			finger[i].status = 0;
 		}
 	}
-
-	input_sync(mxt->touch_input);
 }
 
 static void mxt_enable_autocalib(struct mxt_data *mxt)
@@ -1429,6 +1430,7 @@ static int process_message(u8 *message, u8 object, struct mxt_data *mxt)
 	case MXT_TOUCH_MULTITOUCHSCREEN_T9:
 		if (mxt->calibration_confirm < 2)
 			mxt_check_calibration(mxt);
+		mxt->need_report_sync = 1;
 		process_T9_message(message, mxt);
 		report_mt(mxt);
 		break;
@@ -1666,6 +1668,8 @@ static void mxt_worker(struct mxt_data *mxt)
 		dev_dbg(&client->dev, "chgline: %d\n", mxt->read_chg());
 	} while ((report_id != MXT_END_OF_MESSAGES));
 
+	if (mxt->need_report_sync)
+		input_sync(mxt->touch_input);
 	kfree(message);
 }
 
@@ -1679,6 +1683,7 @@ static irqreturn_t mxt_irq_handler(int irq, void *_mxt)
 	struct mxt_data *mxt = _mxt;
 
 	mxt->irq_counter++;
+	mxt->need_report_sync = 0;
 	if (mxt->valid_interrupt()) {
 		mxt->valid_irq_counter++;
 
@@ -2594,6 +2599,7 @@ void mxt_late_resume(struct early_suspend *h)
 		mxt_es->finger[i].status = MXT_MSGB_T9_RELEASE;
 	}
 	report_mt(mxt_es);
+	input_sync(mxt_es->touch_input);
 
 	mxt_es->suspended = FALSE;
 	mxt_es->timestamp = jiffies;
