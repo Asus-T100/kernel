@@ -435,6 +435,15 @@ enum atomisp_acc_arg_type {
 	ATOMISP_ACC_ARG_FRAME	     /* Frame argument */
 };
 
+/** ISP memories, isp2300 */
+enum atomisp_acc_memory {
+	ATOMISP_ACC_MEMORY_PMEM = 0,
+	ATOMISP_ACC_MEMORY_DMEM,
+	ATOMISP_ACC_MEMORY_VMEM,
+	ATOMISP_ACC_MEMORY_VAMEM1,
+	ATOMISP_ACC_MEMORY_VAMEM2
+};
+
 struct atomisp_sp_arg {
 	enum atomisp_acc_arg_type type;	/* Type  of SP argument */
 	void                    *value;	/* Value of SP argument */
@@ -442,11 +451,24 @@ struct atomisp_sp_arg {
 };
 
 /* Acceleration API */
+
+/* For CSS 1.0 only */
 struct atomisp_acc_fw_arg {
 	unsigned int fw_handle;
 	unsigned int index;
 	void __user *value;
 	size_t size;
+};
+
+/*
+ * Set arguments after first mapping with ATOMISP_IOC_ACC_S_MAPPED_ARG.
+ * For CSS 1.5 only.
+ */
+struct atomisp_acc_s_mapped_arg {
+	unsigned int fw_handle;
+	__u32 memory;			/* one of enum atomisp_acc_memory */
+	size_t length;
+	unsigned long css_ptr;
 };
 
 struct atomisp_acc_fw_abort {
@@ -460,6 +482,16 @@ struct atomisp_acc_fw_load {
 	unsigned int fw_handle;
 	void __user *data;
 };
+
+struct atomisp_acc_map {
+	__u32 flags;			/* Flags, see list below */
+	__u32 length;			/* Length of data in bytes */
+	void __user *user_ptr;		/* Pointer into user space */
+	unsigned long css_ptr;		/* Pointer into CSS address space */
+	__u32 reserved[4];		/* Set to zero */
+};
+
+#define ATOMISP_MAP_FLAG_NOFLUSH	0x0001	/* Do not flush cache */
 
 /*
  * V4L2 private internal data interface.
@@ -600,6 +632,7 @@ struct v4l2_private_int_data {
 #define ATOMISP_IOC_ACC_UNLOAD \
 	_IOWR('v', BASE_VIDIOC_PRIVATE + 45, unsigned int)
 
+/* For CSS 1.0 only */
 #define ATOMISP_IOC_ACC_S_ARG \
 	_IOW('v', BASE_VIDIOC_PRIVATE + 46, struct atomisp_acc_fw_arg)
 
@@ -644,6 +677,21 @@ struct v4l2_private_int_data {
 /* motor internal memory read */
 #define ATOMISP_IOC_G_MOTOR_PRIV_INT_DATA \
 	_IOWR('v', BASE_VIDIOC_PRIVATE + 57, struct v4l2_private_int_data)
+
+/*
+ * Ioctls to map and unmap user buffers to CSS address space for acceleration.
+ * User fills fields length and user_ptr and sets other fields to zero,
+ * kernel may modify the flags and sets css_ptr.
+ */
+#define ATOMISP_IOC_ACC_MAP \
+	_IOWR('v', BASE_VIDIOC_PRIVATE + 58, struct atomisp_acc_map)
+
+/* User fills fields length, user_ptr, and css_ptr and zeroes other fields. */
+#define ATOMISP_IOC_ACC_UNMAP \
+	_IOW('v', BASE_VIDIOC_PRIVATE + 59, struct atomisp_acc_map)
+
+#define ATOMISP_IOC_ACC_S_MAPPED_ARG \
+	_IOW('v', BASE_VIDIOC_PRIVATE + 60, struct atomisp_acc_s_mapped_arg)
 
 /*  ISP Private control IDs */
 #define V4L2_CID_ATOMISP_BAD_PIXEL_DETECTION \
