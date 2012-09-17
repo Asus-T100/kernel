@@ -109,9 +109,8 @@ struct logger_log **get_log_list(void);
 
 #define LOGGER_LIST_SIZE 5
 
-#define LOGGER_ENTRY_MAX_LEN		(4*1024)
-#define LOGGER_ENTRY_MAX_PAYLOAD	\
-	(LOGGER_ENTRY_MAX_LEN - sizeof(struct logger_entry))
+#define LOGGER_ENTRY_MAX_LEN		(5*1024)
+#define LOGGER_ENTRY_MAX_PAYLOAD	4076
 
 #define __LOGGERIO	0xAE
 
