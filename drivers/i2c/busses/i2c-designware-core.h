@@ -68,6 +68,10 @@
 #define DW_IC_CON_RESTART_EN		0x20
 #define DW_IC_CON_SLAVE_DISABLE		0x40
 
+#define INTEL_MID_STD_CFG  (DW_IC_CON_MASTER |			\
+				DW_IC_CON_SLAVE_DISABLE |	\
+				DW_IC_CON_RESTART_EN)
+
 #define DW_IC_INTR_RX_UNDER	0x001
 #define DW_IC_INTR_RX_OVER	0x002
 #define DW_IC_INTR_RX_FULL	0x004
@@ -210,6 +214,9 @@ struct dw_i2c_dev {
 	u32			master_cfg;
 	unsigned int		tx_fifo_depth;
 	unsigned int		rx_fifo_depth;
+	int			use_dyn_clk;	/* use dynamic clk setting */
+	u32			clk_khz;	/* input clock */
+	u32			speed_cfg;
 };
 
 extern u32 dw_readl(struct dw_i2c_dev *dev, int offset);
