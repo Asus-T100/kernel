@@ -95,15 +95,17 @@
 #define LM3554_MAX_PERCENT                   100U
 #define LM3554_CLAMP_PERCENTAGE(val) \
 	clamp(val, LM3554_MIN_PERCENT, LM3554_MAX_PERCENT)
-/* we add 1 to the value to end up in the range [min..100%]
- * rather than in the range [0..max] where max < 100 */
-#define LM3554_VALUE_TO_PERCENT(v, step)     ((((v)+1) * (step)) / 100)
-/* we subtract 1 from the percentage to make sure we round down into
- * the valid range of [0..max] and not [1..max+1] */
-#define LM3554_PERCENT_TO_VALUE(p, step)     ((((p)-1) * 100) / (step))
+
+#define LM3554_VALUE_TO_PERCENT(v, step)     (((((unsigned long)(v))*(step))+50)/100)
+#define LM3554_PERCENT_TO_VALUE(p, step)     (((((unsigned long)(p))*100)+(step>>1))/(step))
+
+/* Product specific limits
+ * TODO: get these from platform data */
+#define LM3554_FLASH_MAX_LVL   0x0F /* 1191mA */
 
 /* Flash brightness, input is percentage, output is [0..15] */
-#define LM3554_FLASH_STEP                    625
+#define LM3554_FLASH_STEP	\
+	((100ul*(LM3554_MAX_PERCENT)+((LM3554_FLASH_MAX_LVL)>>1))/((LM3554_FLASH_MAX_LVL)))
 #define LM3554_FLASH_DEFAULT_BRIGHTNESS \
 	LM3554_VALUE_TO_PERCENT(13, LM3554_FLASH_STEP)
 
