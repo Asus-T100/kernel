@@ -39,7 +39,7 @@
 #include <linux/pm_runtime.h>
 #endif
 
-#include <asm/intel_scu_ipc.h>
+#include <asm/intel_scu_pmic.h>
 #include <asm/intel-mid.h>
 
 #include "mdfld_dsi_dbi.h"
@@ -3652,7 +3652,9 @@ static int psb_display_register_write(struct file *file, const char *buffer,
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *) dev->dev_private;
 	struct mdfld_dsi_dbi_output **dbi_outputs;
-	struct mdfld_dsi_dbi_output *dbi_output;
+#ifndef CONFIG_MDFLD_DSI_DPU
+	struct mdfld_dsi_dbi_output *dbi_output = NULL;
+#endif
 	struct mdfld_dbi_dsr_info *dsr_info = dev_priv->dbi_dsr_info;
 	int reg_val = 0;
 	char buf[256];
@@ -3881,6 +3883,17 @@ static const struct dev_pm_ops psb_pm_ops = {
 	.resume = psb_runtime_resume,
 };
 
+static const struct file_operations driver_psb_fops = {
+		.owner = THIS_MODULE,
+		.open = psb_open,
+		.release = psb_release,
+		.unlocked_ioctl = psb_unlocked_ioctl,
+		.mmap = psb_mmap,
+		.poll = psb_poll,
+		.fasync = drm_fasync,
+		.read = drm_read,
+};
+
 static struct drm_driver driver = {
 	.driver_features = DRIVER_HAVE_IRQ | DRIVER_IRQ_SHARED | \
 	DRIVER_IRQ_VBL | DRIVER_MODESET,
@@ -3904,16 +3917,7 @@ static struct drm_driver driver = {
 	.debugfs_init = psb_proc_init,
 	.debugfs_cleanup = psb_proc_cleanup,
 	.preclose = psb_driver_preclose,
-	.fops = {
-		.owner = THIS_MODULE,
-		.open = psb_open,
-		.release = psb_release,
-		.unlocked_ioctl = psb_unlocked_ioctl,
-		.mmap = psb_mmap,
-		.poll = psb_poll,
-		.fasync = drm_fasync,
-		.read = drm_read,
-	},
+	.fops = &driver_psb_fops,
 	.name = DRIVER_NAME,
 	 .desc = DRIVER_DESC,
 	  .date = PSB_DRM_DRIVER_DATE,

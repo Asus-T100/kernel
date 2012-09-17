@@ -45,7 +45,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define _SYSCOMMON_H
 
 #include "sysconfig.h"      /* System specific system defines */
-#include "sysinfo.h"		/* globally accessible system info */
+#include "pvrsysinfo.h"		/* globally accessible system info */
 #include "servicesint.h"
 #include "queue.h"
 #include "power.h"

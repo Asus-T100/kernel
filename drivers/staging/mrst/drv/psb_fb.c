@@ -44,6 +44,9 @@
 #include "mdfld_output.h"
 #include "mdfld_dsi_dbi_dsr.h"
 
+#include "portdefs.h"
+
+
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,35))
 static int fill_fb_bitfield(struct fb_var_screeninfo *var, int depth)
 {
@@ -390,10 +393,10 @@ static int psbfb_set_par(struct fb_info *info)
 	fb->width = var->xres;
 	fb->height = var->yres;
 	fb->bits_per_pixel = bpp;
-	fb->pitch = pitch;
+	fb->MEMBER_PITCH = pitch;
 	fb->depth = depth;
 
-	info->fix.line_length = psbfb->base.pitch;
+	info->fix.line_length = psbfb->base.MEMBER_PITCH;
 	info->fix.visual =
 	    (psbfb->base.depth ==
 	     8) ? FB_VISUAL_PSEUDOCOLOR : FB_VISUAL_DIRECTCOLOR;
@@ -801,7 +804,7 @@ static struct notifier_block paniced = {
 #endif
 
 static struct drm_framebuffer *psb_framebuffer_create
-			(struct drm_device *dev, struct drm_mode_fb_cmd *r,
+			(struct drm_device *dev, struct drm_mode_fb_cmd2 *r,
 			 void *mm_private)
 {
 	struct psb_framebuffer *fb;
@@ -829,13 +832,13 @@ err:
 
 static struct drm_framebuffer *psb_user_framebuffer_create
 			(struct drm_device *dev, struct drm_file *filp,
-			 struct drm_mode_fb_cmd *r)
+			struct drm_mode_fb_cmd2 *r)
 {
 	struct psb_framebuffer *psbfb;
 	struct drm_framebuffer *fb;
 	struct fb_info *info;
 	PVRSRV_KERNEL_MEM_INFO *psKernelMemInfo = IMG_NULL;
-	IMG_HANDLE hKernelMemInfo = (IMG_HANDLE)r->handle;
+	IMG_HANDLE hKernelMemInfo = (IMG_HANDLE)r->MEMBER_HANDLE;
 	struct drm_psb_private *dev_priv
 		= (struct drm_psb_private *) dev->dev_private;
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,35))
@@ -848,8 +851,8 @@ static struct drm_framebuffer *psb_user_framebuffer_create
 
 	ret = psb_get_meminfo_by_handle(hKernelMemInfo, &psKernelMemInfo);
 	if (ret) {
-		DRM_ERROR("Cannot get meminfo for handle 0x%x\n",
-			  (IMG_UINT32)hKernelMemInfo);
+		DRM_ERROR("Cannot get meminfo for handle %p\n",
+			  hKernelMemInfo);
 
 		return NULL;
 	}
@@ -859,7 +862,7 @@ static struct drm_framebuffer *psb_user_framebuffer_create
 
 	/* JB: TODO not drop, make smarter */
 	size = psKernelMemInfo->uAllocSize;
-	if (size < r->height * r->pitch)
+	if (size < r->height * r->MEMBER_PITCH)
 		return NULL;
 
 	/* JB: TODO not drop, refcount buffer */
@@ -881,8 +884,8 @@ static struct drm_framebuffer *psb_user_framebuffer_create
 	if (psKernelMemInfo->pvLinAddrKM != pg->vram_addr) {
 		ret = psb_gtt_map_meminfo(dev, hKernelMemInfo, 0, &offset);
 		if (ret) {
-			DRM_ERROR("map meminfo for 0x%x failed\n",
-				  (IMG_UINT32)hKernelMemInfo);
+			DRM_ERROR("map meminfo for %p failed\n",
+				hKernelMemInfo);
 			return NULL;
 		}
 		psbfb->offset = (offset << PAGE_SHIFT);
@@ -917,7 +920,7 @@ static struct drm_framebuffer *psb_user_framebuffer_create
 	info->fix.ywrapstep = 0;
 	info->fix.accel = FB_ACCEL_I830;
 	info->fix.type_aux = 0;
-	info->fix.line_length = fb->pitch;
+	info->fix.line_length = fb->MEMBER_PITCH;
 
 	/* it is called for kms flip, the back buffer has been rendered,
 	 * then we should not clear it*/
@@ -942,7 +945,7 @@ static struct drm_framebuffer *psb_user_framebuffer_create
 
 	fill_fb_bitfield(&info->var, fb->depth);
 # else	/*KERNEL_VERSION > 2.6.35*/
-	drm_fb_helper_fill_fix(info, fb->pitch, fb->depth);
+	drm_fb_helper_fill_fix(info, fb->MEMBER_PITCH, fb->depth);
 	drm_fb_helper_fill_var(info, &fbdev->psb_fb_helper, fb->width, fb->height);
 #endif
 
@@ -968,128 +971,7 @@ static struct drm_framebuffer *psb_user_framebuffer_create
 	return fb;
 }
 
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,35)) 
-int psbfb_create(struct drm_device *dev, uint32_t fb_width,
-		 uint32_t fb_height, uint32_t surface_width,
-		 uint32_t surface_height, struct psb_framebuffer **psbfb_p)
-{
-	struct fb_info *info;
-	struct psbfb_par *par;
-	struct drm_framebuffer *fb;
-	struct psb_framebuffer *psbfb;
-	struct drm_mode_fb_cmd mode_cmd;
-	struct device *device = &dev->pdev->dev;
-	struct drm_psb_private *dev_priv
-			= (struct drm_psb_private *)dev->dev_private;
-	struct psb_gtt *pg = dev_priv->pg;
-	int size, aligned_size, ret;
-
-	PSB_DEBUG_ENTRY("\n");
-
-	mode_cmd.width = surface_width;	/* crtc->desired_mode->hdisplay; */
-	mode_cmd.height = surface_height; /* crtc->desired_mode->vdisplay; */
-
-	mode_cmd.bpp = 32;
-	//HW requires pitch to be 64 byte aligned
-	mode_cmd.pitch =  ALIGN(mode_cmd.width * ((mode_cmd.bpp + 1) / 8), 64);
-	mode_cmd.depth = 24;
-
-	size = mode_cmd.pitch * mode_cmd.height;
-	aligned_size = ALIGN(size, PAGE_SIZE);
-
-	mutex_lock(&dev->struct_mutex);
-	fb = psb_framebuffer_create(dev, &mode_cmd, NULL);
-	if (!fb) {
-
-		DRM_ERROR("failed to allocate fb.\n");
-		ret = -ENOMEM;
-		goto out_err0;
-	}
-	psbfb = to_psb_fb(fb);
-	psbfb->size = size;
-
-	list_add(&fb->filp_head, &dev->mode_config.fb_kernel_list);
-	info = framebuffer_alloc(sizeof(struct psbfb_par), device);
-	if (!info) {
-		ret = -ENOMEM;
-		goto out_err1;
-	}
-
-	par = info->par;
-	par->psbfb = psbfb;
-
-	strcpy(info->fix.id, "psbfb");
-	info->fix.type = FB_TYPE_PACKED_PIXELS;
-	info->fix.visual = FB_VISUAL_TRUECOLOR;
-	info->fix.type_aux = 0;
-	info->fix.xpanstep = 1;	/* doing it in hw */
-	info->fix.ypanstep = 1;	/* doing it in hw */
-	info->fix.ywrapstep = 0;
-	info->fix.accel = FB_ACCEL_I830;
-	info->fix.type_aux = 0;
-
-	info->flags = FBINFO_DEFAULT;
-
-	info->fbops = &psbfb_ops;
-
-	info->fix.line_length = fb->pitch;
-	info->fix.smem_start = dev->mode_config.fb_base;
-	info->fix.smem_len = size;
-	info->flags = FBINFO_DEFAULT;
-	info->screen_base = (char *)pg->vram_addr;
-	info->screen_size = size;
-	memset(info->screen_base, 0, size);
-
-	info->pseudo_palette = fb->pseudo_palette;
-	info->var.xres_virtual = fb->width;
-	info->var.yres_virtual = fb->height;
-	info->var.bits_per_pixel = fb->bits_per_pixel;
-	info->var.xoffset = 0;
-	info->var.yoffset = 0;
-	info->var.activate = FB_ACTIVATE_NOW;
-	info->var.height = -1;
-	info->var.width = -1;
-
-	info->var.xres = fb_width;
-	info->var.yres = fb_height;
-
-	info->fix.mmio_start = pci_resource_start(dev->pdev, 0);
-	info->fix.mmio_len = pci_resource_len(dev->pdev, 0);
-
-	info->pixmap.size = 64 * 1024;
-	info->pixmap.buf_align = 8;
-	info->pixmap.access_align = 32;
-	info->pixmap.flags = FB_PIXMAP_SYSTEM;
-	info->pixmap.scan_align = 1;
-
-	DRM_DEBUG("fb depth is %d\n", fb->depth);
-	DRM_DEBUG("   pitch is %d\n", fb->pitch);
-	fill_fb_bitfield(&info->var, fb->depth);
-
-	fb->fbdev = info;
-
-	par->dev = dev;
-
-	/* To allow resizing without swapping buffers */
-	printk(KERN_INFO"allocated %dx%d fb\n",
-	       psbfb->base.width,
-	       psbfb->base.height);
-
-	if (psbfb_p)
-		*psbfb_p = psbfb;
-
-	mutex_unlock(&dev->struct_mutex);
-
-	return 0;
-out_err1:
-	fb->funcs->destroy(fb);
-out_err0:
-	mutex_unlock(&dev->struct_mutex);
-	return ret;
-}
-#else /*KERNEL_VERSION >= 2.6.35*/
-
-static int psbfb_create(struct psb_fbdev * fbdev, struct drm_fb_helper_surface_size * sizes) 
+static int psbfb_create(struct psb_fbdev * fbdev, struct drm_fb_helper_surface_size * sizes)
 {
 	struct drm_device * dev = fbdev->psb_fb_helper.dev;
 	struct drm_psb_private * dev_priv = (struct drm_psb_private *)dev->dev_private;
@@ -1097,12 +979,12 @@ static int psbfb_create(struct psb_fbdev * fbdev, struct drm_fb_helper_surface_s
 	struct fb_info * info;
 	struct drm_framebuffer *fb;
 	struct psb_framebuffer * psbfb;
-	struct drm_mode_fb_cmd mode_cmd;
+	struct drm_mode_fb_cmd2 mode_cmd;
 	struct device * device = &dev->pdev->dev;
 	int size, aligned_size;
 	int ret;
 	struct mdfld_dsi_encoder *dsi_encoder =
-		 MDFLD_DSI_ENCODER(dev_priv->encoder0);
+		MDFLD_DSI_ENCODER_WITH_DRM_ENABLE(dev_priv->encoder0);
 	struct mdfld_dsi_config *dsi_config =
 		mdfld_dsi_encoder_get_config(dsi_encoder);
 	struct drm_display_mode *fixed_mode = dsi_config->fixed_mode;
@@ -1120,13 +1002,25 @@ static int psbfb_create(struct psb_fbdev * fbdev, struct drm_fb_helper_surface_s
 		mode_cmd.height = fixed_mode->vdisplay;
 	}
 
-	mode_cmd.bpp = 32;
         //HW requires pitch to be 64 byte aligned
-        mode_cmd.pitch =  ALIGN(mode_cmd.width * ((mode_cmd.bpp + 1) / 8), 64);
-        mode_cmd.depth = 24;
 
-	size = mode_cmd.pitch * mode_cmd.height;
-	aligned_size = ALIGN(size, PAGE_SIZE);
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,3,0))
+	mode_cmd.bpp = 32;
+        mode_cmd.MEMBER_PITCH =  ALIGN(mode_cmd.width * ((mode_cmd.bpp + 1) / 8), 64);
+        mode_cmd.depth = 24;
+#else
+	/*  Note: sizes->surface_width == 800 and fixed_mode->hdisplay == 800,
+	    but mode_cmd.width may be 600. */
+
+	mode_cmd.MEMBER_PITCH = mode_cmd.width * (sizes->surface_bpp >> 3);
+	mode_cmd.MEMBER_PITCH = roundup(mode_cmd.MEMBER_PITCH, 64);
+
+	mode_cmd.pixel_format = drm_mode_legacy_fb_format(sizes->surface_bpp,
+		sizes->surface_depth);
+#endif
+
+	size = mode_cmd.MEMBER_PITCH * mode_cmd.height;
+	aligned_size = roundup(size, PAGE_SIZE);
 
 	mutex_lock(&dev->struct_mutex);
         fb = psb_framebuffer_create(dev, &mode_cmd, NULL);
@@ -1162,7 +1056,7 @@ static int psbfb_create(struct psb_fbdev * fbdev, struct drm_fb_helper_surface_s
 	info->screen_size = size;
 	/* memset(info->screen_base, 0, size); */
 
-	drm_fb_helper_fill_fix(info, fb->pitch, fb->depth);
+	drm_fb_helper_fill_fix(info, fb->MEMBER_PITCH, fb->depth);
 
 	if (get_panel_type(dev, 0) == TMD_6X10_VID)
 		drm_fb_helper_fill_var(info, &fbdev->psb_fb_helper, fb->width, fb->height);
@@ -1179,7 +1073,7 @@ static int psbfb_create(struct psb_fbdev * fbdev, struct drm_fb_helper_surface_s
 	info->pixmap.scan_align = 1;
 
 	DRM_DEBUG("fb depth is %d\n", fb->depth);
-	DRM_DEBUG("   pitch is %d\n", fb->pitch);
+	DRM_DEBUG("   pitch is %d\n", fb->MEMBER_PITCH);
 
 	printk(KERN_INFO"allocated %dx%d fb\n", psbfb->base.width, psbfb->base.height);	
 
@@ -1286,7 +1180,6 @@ void psb_fbdev_fini(struct drm_device * dev)
 	kfree(dev_priv->fbdev);
 	dev_priv->fbdev = NULL;
 }
-#endif
 
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,35))
 static int psbfb_multi_fb_probe_crtc(struct drm_device *dev,
@@ -1746,8 +1639,8 @@ static void *psb_bo_from_handle(struct drm_device *dev,
 
 	ret = psb_get_meminfo_by_handle(hKernelMemInfo, &psKernelMemInfo);
 	if (ret) {
-		DRM_ERROR("Cannot get meminfo for handle 0x%x\n",
-			  (IMG_UINT32)hKernelMemInfo);
+		DRM_ERROR("Cannot get meminfo for handle %p\n",
+			hKernelMemInfo);
 		return NULL;
 	}
 

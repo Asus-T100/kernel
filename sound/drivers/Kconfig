@@ -220,4 +220,15 @@ config SND_AC97_POWER_SAVE_DEFAULT
 
 	  See SND_AC97_POWER_SAVE for more details.
 
+config SND_INTELMID_HDMI_AUDIO
+        tristate "Intel MID based HDMI AUDIO driver"
+        select SND_PCM
+        depends on MDFD_HDMI
+        default n
+        help
+           Intel MID HDMI Audio Driver (HAD) enables audio playback through
+           HDMI interface on Intel Medfield MID platform.  This is an ALSA
+           driver.  This driver programs HDMI audio sub-system registers
+           according to the HDMI 1.3a spec.
+
 endif	# SND_DRIVERS

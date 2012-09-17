@@ -168,7 +168,10 @@ static int mipi_hdmi_vsync_check(struct drm_device *dev, uint32_t pipe)
 		(struct drm_psb_private *) dev->dev_private;
 	struct mdfld_dsi_config *dsi_config = dev_priv->dsi_configs[0];
 	static int pipe_surf[2];
-	int pipea_stat, pipeb_stat, pipeb_ctl, pipeb_cntr;
+	int pipea_stat = 0;
+	int pipeb_stat = 0;
+	int pipeb_ctl = 0;
+	int pipeb_cntr = 0;
 	unsigned long irqflags;
 
 	spin_lock_irqsave(&dev_priv->irqmask_lock, irqflags);

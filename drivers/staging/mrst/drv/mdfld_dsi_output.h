@@ -34,6 +34,7 @@
 #include <drm/drm.h>
 #include <drm/drm_crtc.h>
 #include <drm/drm_edid.h>
+#include <drm/drm_mode.h>
 
 #include "psb_drv.h"
 #include "psb_intel_display.h"
@@ -42,8 +43,6 @@
 #include "mdfld_output.h"
 
 #include <asm/intel-mid.h>
-
-#define DRM_MODE_ENCODER_MIPI  5
 
 /*mdfld DSI controller registers*/
 #define MIPIA_DEVICE_READY_REG				0xb000
@@ -206,9 +205,9 @@ struct mdfld_dsi_connector {
 	/*
 	 * This is ugly, but I have to use connector in it! :-(
 	 * FIXME: use drm_connector instead.
-	 */ 
+	 */
 	struct psb_intel_output base;
-	
+
 	int pipe;
 	void *private;
 	void *pkg_sender;
@@ -406,7 +405,7 @@ struct mdfld_dsi_config {
 	struct drm_device *dev;
 	struct drm_display_mode *fixed_mode;
 	struct drm_display_mode *mode;
-	
+
 	struct mdfld_dsi_connector *connector;
 	struct mdfld_dsi_encoder *encoders[DRM_CONNECTOR_MAX_ENCODER];
 	struct mdfld_dsi_encoder *encoder;
@@ -438,17 +437,21 @@ struct mdfld_dsi_config {
 
 #define MDFLD_DSI_CONNECTOR(psb_output) \
 		(container_of(psb_output, struct mdfld_dsi_connector, base))
-		
+
 #define MDFLD_DSI_ENCODER(encoder) \
 		(container_of(encoder, struct mdfld_dsi_encoder, base))
-		
-static inline struct mdfld_dsi_config * 
+
+#define MDFLD_DSI_ENCODER_WITH_DRM_ENABLE(encoder) \
+		(container_of((struct drm_encoder *) encoder, \
+		struct mdfld_dsi_encoder, base))
+
+static inline struct mdfld_dsi_config *
 	mdfld_dsi_get_config(struct mdfld_dsi_connector * connector)
 {
 	if(!connector) {
 		return NULL;
 	}
-	
+
 	return (struct mdfld_dsi_config *)connector->private;
 }
 
@@ -475,18 +478,18 @@ static inline struct mdfld_dsi_config *
 	return (struct mdfld_dsi_config *)encoder->private;
 }
 
-static inline struct mdfld_dsi_connector * 
+static inline struct mdfld_dsi_connector *
 	mdfld_dsi_encoder_get_connector(struct mdfld_dsi_encoder * encoder)
 {
 	struct mdfld_dsi_config * config;
-	
+
 	if(!encoder)
 		return NULL;
-		
+
 	config = mdfld_dsi_encoder_get_config(encoder);
 	if(!config)
 		return NULL;
-		
+
 	return config->connector;
 }
 
@@ -504,14 +507,14 @@ static inline void * mdfld_dsi_encoder_get_pkg_sender(struct mdfld_dsi_encoder *
 static inline int mdfld_dsi_encoder_get_pipe(struct mdfld_dsi_encoder * encoder)
 {
 	struct mdfld_dsi_connector * connector;
-	
+
 	if(!encoder)
 		return -1;
-		
+
 	connector = mdfld_dsi_encoder_get_connector(encoder);
 	if(!connector)
 		return -1;
-		
+
 	return connector->pipe;
 }
 

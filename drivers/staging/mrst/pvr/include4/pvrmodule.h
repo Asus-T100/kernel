@@ -42,6 +42,9 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #ifndef	_PVRMODULE_H_
 #define	_PVRMODULE_H_
 
+#include <linux/module.h>
+
+
 MODULE_AUTHOR("Imagination Technologies Ltd. <gpl-support@imgtec.com>");
 MODULE_LICENSE("Dual MIT/GPL");
 

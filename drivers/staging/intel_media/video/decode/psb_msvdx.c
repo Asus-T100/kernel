@@ -1125,7 +1125,6 @@ int lnc_video_getparam(struct drm_device *dev, void *data,
 	drm_psb_msvdx_frame_info_t *current_frame = NULL;
 	struct ttm_object_file *tfile = psb_fpriv(file_priv)->tfile;
 	uint32_t handle, i;
-	uint32_t offset = 0;
 	uint32_t device_info = 0;
 	uint32_t ctx_type = 0;
 	struct psb_video_ctx *video_ctx = NULL;
@@ -1355,7 +1354,7 @@ int psb_msvdx_save_context(struct drm_device *dev)
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *)dev->dev_private;
 	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
-	int offset = 0;
+	int offset;
 
 	if (msvdx_priv->fw_loaded_by_punit)
 		msvdx_priv->msvdx_needs_reset = MSVDX_RESET_NEEDS_INIT_FW;

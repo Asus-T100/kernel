@@ -66,6 +66,7 @@
 #include <linux/gpio.h>
 #include <linux/pci.h>
 #include <linux/kernel.h>
+#include <linux/export.h>
 #include <linux/string.h>
 #include "otm_hdmi.h"
 #include "ipil_hdmi.h"

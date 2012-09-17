@@ -44,6 +44,8 @@
 
 #include "android_hdmi.h"
 
+#include "portdefs.h"
+
 #ifdef MIN
 #undef MIN
 #endif
@@ -129,7 +131,10 @@ void psb_intel_crtc_init(struct drm_device *dev, int pipe,
 void psb_intel_wait_for_vblank(struct drm_device *dev)
 {
 	/* Wait for 20ms, i.e. one cycle at 50hz. */
-	udelay(20000);
+	/* Between kernel 3.0 and 3.3, udelay was made to complain at
+	   compile time for argument == 20000 or more.
+	   Therefore, reduce it from 20000 to 19999. */
+	udelay(19999);
 }
 
 static int mdfld_intel_crtc_cursor_set(struct drm_crtc *crtc,
@@ -385,15 +390,21 @@ void psb_intel_crtc_load_lut(struct drm_crtc *crtc)
 }
 
 static void psb_intel_crtc_gamma_set(struct drm_crtc *crtc, u16 *red,
-				 u16 *green, u16 *blue, uint32_t size)
+				u16 *green, u16 *blue,
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,3,0))
+				uint32_t start,
+#endif
+				uint32_t size)
 {
 	struct psb_intel_crtc *psb_intel_crtc = to_psb_intel_crtc(crtc);
 	int i;
-
-	if (size != 256)
-		return;
-
-	for (i = 0; i < 256; i++) {
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,3,0))
+	int start = 0;
+	int brk = 256;
+#else
+	int brk = (start + size > 256) ? 256 : start + size;
+#endif
+	for (i = start; i < brk; i++) {
 		psb_intel_crtc->lut_r[i] = red[i] >> 8;
 		psb_intel_crtc->lut_g[i] = green[i] >> 8;
 		psb_intel_crtc->lut_b[i] = blue[i] >> 8;
@@ -1023,7 +1034,7 @@ static int mdfld__intel_pipe_set_base(struct drm_crtc *crtc, int x, int y,
 
 	Start = mode_dev->bo_offset(dev, psbfb);
 	Size = mode_dev->bo_size(dev, psbfb);
-	Offset = y * crtc->fb->pitch + x * (crtc->fb->bits_per_pixel / 8);
+	Offset = y * crtc->fb->MEMBER_PITCH + x * (crtc->fb->bits_per_pixel / 8);
 
 	/* Try to attach/de-attach Plane B to an existing swap chain,
 	 * especially with another frame buffer inserted into GTT. */
@@ -1034,7 +1045,7 @@ static int mdfld__intel_pipe_set_base(struct drm_crtc *crtc, int x, int y,
 		goto psb_intel_pipe_set_base_exit;
 	}
 
-	REG_WRITE(dspstride, crtc->fb->pitch);
+	REG_WRITE(dspstride, crtc->fb->MEMBER_PITCH);
 	dspcntr = REG_READ(dspcntr_reg);
 	dspcntr &= ~DISPPLANE_PIXFORMAT_MASK;
 
@@ -1652,7 +1663,7 @@ static int mdfld_crtc_dsi_mode_set(struct drm_crtc *crtc,
 	mode = adjusted_mode;
 	ctx = &dsi_config->dsi_hw_context;
 	fb_bpp = crtc->fb->bits_per_pixel;
-	fb_pitch = crtc->fb->pitch;
+	fb_pitch = crtc->fb->MEMBER_PITCH;
 	fb_depth = crtc->fb->depth;
 	dev = crtc->dev;
 	dev_priv = (struct drm_psb_private *)dev->dev_private;

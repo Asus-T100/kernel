@@ -663,10 +663,9 @@ PVRSRV_ERROR SysFinalise(IMG_VOID)
 PVRSRV_ERROR SysDeinitialise (SYS_DATA *psSysData)
 {
 	PVRSRV_ERROR eError;
+	SYS_SPECIFIC_DATA *psSysSpecData = (SYS_SPECIFIC_DATA *) psSysData->pvSysSpecificData;
 
 	PVR_UNREFERENCED_PARAMETER(psSysData);
-
-	SYS_SPECIFIC_DATA *psSysSpecData = (SYS_SPECIFIC_DATA *) psSysData->pvSysSpecificData;
 
 #if (defined(SYS_USING_INTERRUPTS) && !defined(SUPPORT_DRI_DRM_EXT))
 	if (SYS_SPECIFIC_DATA_TEST(&gsSysSpecificData, SYS_SPECIFIC_DATA_IRQ_ENABLED))

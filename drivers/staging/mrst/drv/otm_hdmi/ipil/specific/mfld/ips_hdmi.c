@@ -592,9 +592,10 @@ void ips_hdmi_restore_and_enable_display(hdmi_device_t *dev)
 	/*enable the plane*/
 	hdmi_write32(IPS_DSPBCNTR, dev->reg_state.saveDSPBCNTR);
 
-	if (in_atomic() || in_interrupt())
-		udelay(20000);
-	else
+	if (in_atomic() || in_interrupt()) {
+		/*  udelay arg must be < 20000 */
+		udelay(19999);
+	} else
 		msleep_interruptible(20);
 
 	/*enable the pipe */

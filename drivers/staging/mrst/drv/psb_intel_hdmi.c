@@ -44,7 +44,7 @@
 
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,34))
-#include <asm/intel_scu_ipc.h>
+#include <asm/intel_scu_pmic.h>
 #endif
 
 extern u32 DISP_PLANEB_STATUS;
@@ -1399,8 +1399,12 @@ void hdmi_unplug_prepare(struct drm_psb_private *dev_priv)
 }
 
 static enum drm_connector_status mdfld_hdmi_detect(struct drm_connector
-						   *connector)
-{
+						*connector
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,3,0))
+						, bool force
+#endif
+						)
+ {
 #ifdef CONFIG_X86_MDFLD
 	struct drm_device *dev = connector->dev;
 	struct drm_psb_private *dev_priv =
@@ -1414,6 +1418,10 @@ static enum drm_connector_status mdfld_hdmi_detect(struct drm_connector
 			 connector_status_disconnected;
 	static bool first_time_boot_detect = true;
 	bool hdmi_hpd_connected = false;
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,3,0))
+	(void) force;           /*  unused parameter */
+#endif
 
 	/* Check if monitor is attached to HDMI connector. */
 	if (IS_MDFLD_OLD(dev)) {
@@ -1592,7 +1600,7 @@ int mdfld_add_eedid_video_block_modes(struct drm_connector *connector, struct ed
 
                                     mode = drm_mode_create(dev);
                                     if (!mode)
-                                        return NULL;
+                                        return 0;
 
                                     mode->type = DRM_MODE_TYPE_DRIVER;
 

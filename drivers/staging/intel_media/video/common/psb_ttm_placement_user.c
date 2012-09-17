@@ -28,13 +28,16 @@
 #include "ttm/ttm_lock.h"
 #include <linux/slab.h>
 #include <linux/sched.h>
+#include <linux/version.h>
 
 struct ttm_bo_user_object {
 	struct ttm_base_object base;
 	struct ttm_buffer_object bo;
 };
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,3,0))
 static size_t pl_bo_size;
+#endif
 
 static uint32_t psb_busy_prios[] = {
 	TTM_PL_FLAG_TT | TTM_PL_FLAG_WC | TTM_PL_FLAG_UNCACHED,
@@ -46,6 +49,7 @@ static uint32_t psb_busy_prios[] = {
 
 const struct ttm_placement default_placement = {0, 0, 0, NULL, 5, psb_busy_prios};
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,3,0))
 static size_t ttm_pl_size(struct ttm_bo_device *bdev, unsigned long num_pages)
 {
 	size_t page_array_size =
@@ -58,6 +62,7 @@ static size_t ttm_pl_size(struct ttm_bo_device *bdev, unsigned long num_pages)
 
 	return bdev->glob->ttm_bo_size + 2 * page_array_size;
 }
+#endif
 
 static struct ttm_bo_user_object *ttm_bo_user_lookup(struct ttm_object_file
 		*tfile, uint32_t handle) {
@@ -150,6 +155,7 @@ static void ttm_pl_fill_rep(struct ttm_buffer_object *bo,
 	rep->sync_object_arg = (uint32_t)(unsigned long)bo->sync_obj_arg;
 }
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,3,0))
 /* FIXME Copy from upstream TTM */
 static inline size_t ttm_bo_size(struct ttm_bo_global *glob,
 				 unsigned long num_pages)
@@ -159,7 +165,9 @@ static inline size_t ttm_bo_size(struct ttm_bo_global *glob,
 
 	return glob->ttm_bo_size + 2 * page_array_size;
 }
+#endif /* if (LINUX_VERSION_CODE < KERNEL_VERSION(3,3,0)) */
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,3,0))
 /* FIXME Copy from upstream TTM "ttm_bo_create", upstream TTM does not export this, so copy it here */
 static int ttm_bo_create_private(struct ttm_bo_device *bdev,
 				 unsigned long size,
@@ -168,7 +176,7 @@ static int ttm_bo_create_private(struct ttm_bo_device *bdev,
 				 uint32_t page_alignment,
 				 unsigned long buffer_start,
 				 bool interruptible,
-				 struct file *persistant_swap_storage,
+				 struct file *persistent_swap_storage,
 				 struct ttm_buffer_object **p_bo)
 {
 	struct ttm_buffer_object *bo;
@@ -190,12 +198,13 @@ static int ttm_bo_create_private(struct ttm_bo_device *bdev,
 
 	ret = ttm_bo_init(bdev, bo, size, type, placement, page_alignment,
 			  buffer_start, interruptible,
-			  persistant_swap_storage, acc_size, NULL);
+			  persistent_swap_storage, acc_size, NULL);
 	if (likely(ret == 0))
 		*p_bo = bo;
 
 	return ret;
 }
+#endif /* if (LINUX_VERSION_CODE < KERNEL_VERSION(3,3,0)) */
 
 int psb_ttm_bo_check_placement(struct ttm_buffer_object *bo,
 			       struct ttm_placement *placement)
@@ -230,7 +239,7 @@ int ttm_buffer_object_create(struct ttm_bo_device *bdev,
 			     uint32_t page_alignment,
 			     unsigned long buffer_start,
 			     bool interruptible,
-			     struct file *persistant_swap_storage,
+			     struct file *persistent_swap_storage,
 			     struct ttm_buffer_object **p_bo)
 {
 	struct ttm_placement placement = default_placement;
@@ -242,15 +251,14 @@ int ttm_buffer_object_create(struct ttm_bo_device *bdev,
 	placement.num_placement = 1;
 	placement.placement = &flags;
 
-	ret = ttm_bo_create_private(bdev,
-				    size,
-				    type,
-				    &placement,
-				    page_alignment,
-				    buffer_start,
-				    interruptible,
-				    persistant_swap_storage,
-				    p_bo);
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,3,0))
+	ret = ttm_bo_create_private(bdev, size, type, &placement,
+		page_alignment, buffer_start, interruptible,
+		persistent_swap_storage, p_bo);
+#else
+	ret = ttm_bo_create(bdev, size, type, &placement, page_alignment,
+		buffer_start, interruptible, persistent_swap_storage, p_bo);
+#endif
 
 	return ret;
 }
@@ -270,8 +278,14 @@ int ttm_pl_create_ioctl(struct ttm_object_file *tfile,
 	int ret = 0;
 	struct ttm_mem_global *mem_glob = bdev->glob->mem_glob;
 	struct ttm_placement placement = default_placement;
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,3,0))
 	size_t acc_size =
 		ttm_pl_size(bdev, (req->size + PAGE_SIZE - 1) >> PAGE_SHIFT);
+#else
+	size_t acc_size = ttm_bo_acc_size(bdev, req->size,
+		sizeof(struct ttm_buffer_object));
+#endif
+
 	ret = ttm_mem_global_alloc(mem_glob, acc_size, false, false);
 	if (unlikely(ret != 0))
 		return ret;
@@ -348,8 +362,15 @@ int ttm_pl_ub_create_ioctl(struct ttm_object_file *tfile,
 	int ret = 0;
 	struct ttm_mem_global *mem_glob = bdev->glob->mem_glob;
 	struct ttm_placement placement = default_placement;
+
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,3,0))
 	size_t acc_size =
 		ttm_pl_size(bdev, (req->size + PAGE_SIZE - 1) >> PAGE_SHIFT);
+#else
+	size_t acc_size = ttm_bo_acc_size(bdev, req->size,
+		sizeof(struct ttm_buffer_object));
+#endif
+
 	ret = ttm_mem_global_alloc(mem_glob, acc_size, false, false);
 	if (unlikely(ret != 0))
 		return ret;
@@ -371,10 +392,29 @@ int ttm_pl_ub_create_ioctl(struct ttm_object_file *tfile,
 	placement.num_placement = 1;
 	placement.placement = &flags;
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,3,0))
+
+/*  For kernel 3.0, use the desired type. */
+#define TTM_HACK_WORKAROUND_ttm_bo_type_user ttm_bo_type_user
+
+#else
+/*  TTM_HACK_WORKAROUND_ttm_bo_type_user -- Hack for porting,
+    as ttm_bo_type_user is no longer implemented.
+    This will not result in working code.
+    FIXME - to be removed. */
+
+#warning error: ttm_bo_type_user no longer supported
+
+/*  For kernel 3.3+, use the wrong type, which will compile but not work. */
+#define TTM_HACK_WORKAROUND_ttm_bo_type_user ttm_bo_type_kernel
+
+#endif
+
+
 	ret = ttm_bo_init(bdev,
 			  bo,
 			  req->size,
-			  ttm_bo_type_user,
+			  TTM_HACK_WORKAROUND_ttm_bo_type_user,
 			  &placement,
 			  req->page_alignment,
 			  req->user_address,

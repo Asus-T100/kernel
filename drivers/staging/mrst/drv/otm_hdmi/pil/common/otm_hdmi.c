@@ -66,6 +66,7 @@
 #include <linux/pci.h>
 #include <linux/string.h>
 #include <linux/interrupt.h>
+#include <linux/module.h>
 #include <linux/slab.h>
 #include <linux/mutex.h>
 #include <linux/types.h>

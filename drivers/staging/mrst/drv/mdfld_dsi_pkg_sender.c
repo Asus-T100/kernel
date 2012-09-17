@@ -548,7 +548,7 @@ static int send_pkg_done(struct mdfld_dsi_pkg_sender * sender,
 				struct mdfld_dsi_pkg * pkg)
 {
 	u8 cmd;
-	u8 * data;
+	u8 * data = NULL;
 
 	PSB_DEBUG_ENTRY("Sent type 0x%x pkg\n", pkg->pkg_type);
 
@@ -578,12 +578,8 @@ static int send_pkg_done(struct mdfld_dsi_pkg_sender * sender,
 	if (sender->status != MDFLD_DSI_CONTROL_ABNORMAL)
 		sender->status = MDFLD_DSI_PKG_SENDER_FREE;
 
-	/*after sending pkg done, free the data buffer for mcs long pkg*/
-	if (pkg->pkg_type == MDFLD_DSI_PKG_MCS_LONG_WRITE ||
-		pkg->pkg_type == MDFLD_DSI_PKG_GEN_LONG_WRITE) {
-		if (data != NULL)
-			kfree(data);
-	}
+	if (data != NULL)
+		kfree(data);
 
 	return 0;
 

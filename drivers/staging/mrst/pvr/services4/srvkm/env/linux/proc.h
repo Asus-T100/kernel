@@ -44,7 +44,10 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #ifndef __SERVICES_PROC_H__
 #define __SERVICES_PROC_H__
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3,3,0))
 #include <asm/system.h>		// va_list etc
+#endif
+
 #include <linux/proc_fs.h>	// read_proc_t etc
 #include <linux/seq_file.h> // seq_file
 

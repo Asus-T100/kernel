@@ -25,7 +25,7 @@ static int usb_otg_suspend(struct usb_hcd *hcd)
 	struct usb_phy *otg;
 	struct intel_mid_otg_xceiv *iotg;
 
-	otg = otg_get_transceiver();
+	otg = usb_get_transceiver();
 	if (otg == NULL) {
 		printk(KERN_ERR	"%s Failed to get otg transceiver\n", __func__);
 		return -EINVAL;
@@ -35,7 +35,7 @@ static int usb_otg_suspend(struct usb_hcd *hcd)
 
 	atomic_notifier_call_chain(&iotg->iotg_notifier,
 				MID_OTG_NOTIFY_HSUSPEND, iotg);
-	otg_put_transceiver(otg);
+	usb_put_transceiver(otg);
 	return 0;
 }
 
@@ -44,7 +44,7 @@ static int usb_otg_resume(struct usb_hcd *hcd)
 	struct usb_phy *otg;
 	struct intel_mid_otg_xceiv *iotg;
 
-	otg = otg_get_transceiver();
+	otg = usb_get_transceiver();
 	if (otg == NULL) {
 		printk(KERN_ERR "%s Failed to get otg transceiver\n", __func__);
 		return -EINVAL;
@@ -54,7 +54,7 @@ static int usb_otg_resume(struct usb_hcd *hcd)
 
 	atomic_notifier_call_chain(&iotg->iotg_notifier,
 				MID_OTG_NOTIFY_HRESUME, iotg);
-	otg_put_transceiver(otg);
+	usb_put_transceiver(otg);
 	return 0;
 }
 
@@ -74,7 +74,7 @@ static void otg_notify(struct usb_device *udev, unsigned action)
 	if (udev->parent && udev->parent->parent)
 		return;
 
-	otg = otg_get_transceiver();
+	otg = usb_get_transceiver();
 	if (otg == NULL) {
 		printk(KERN_ERR "%s Failed to get otg transceiver\n", __func__);
 		return;
@@ -103,10 +103,10 @@ static void otg_notify(struct usb_device *udev, unsigned action)
 					MID_OTG_NOTIFY_TEST_VBUS_OFF, iotg);
 		break;
 	default:
-		otg_put_transceiver(otg);
+		usb_put_transceiver(otg);
 		return ;
 	}
-	otg_put_transceiver(otg);
+	usb_put_transceiver(otg);
 	return;
 }
 
@@ -148,7 +148,7 @@ static int ehci_mid_probe(struct pci_dev *pdev,
 	ehci->otg_resume = usb_otg_resume;
 	/* this will be called by root hub code */
 	hcd->otg_notify = otg_notify;
-	otg = otg_get_transceiver();
+	otg = usb_get_transceiver();
 	if (otg == NULL) {
 		printk(KERN_ERR "%s Failed to get otg transceiver\n", __func__);
 		retval = -EINVAL;
@@ -169,10 +169,10 @@ static int ehci_mid_probe(struct pci_dev *pdev,
 	retval = usb_add_hcd(hcd, irq, IRQF_DISABLED | IRQF_SHARED);
 	if (retval != 0)
 		goto err2;
-	retval = otg_set_host(otg, &hcd->self);
-	if (!otg->default_a)
+	retval = otg_set_host(otg->otg, &hcd->self);
+	if (!otg->otg->default_a)
 		hcd->self.is_b_host = 1;
-	otg_put_transceiver(otg);
+	usb_put_transceiver(otg);
 	return retval;
 
 err2:
@@ -301,7 +301,7 @@ static int intel_mid_ehci_driver_register(struct pci_driver *host_driver)
 	struct usb_phy			*otg;
 	struct intel_mid_otg_xceiv	*iotg;
 
-	otg = otg_get_transceiver();
+	otg = usb_get_transceiver();
 	if (otg == NULL || host_driver == NULL)
 		return -EINVAL;
 
@@ -315,7 +315,7 @@ static int intel_mid_ehci_driver_register(struct pci_driver *host_driver)
 	atomic_notifier_call_chain(&iotg->iotg_notifier,
 				MID_OTG_NOTIFY_HOSTADD, iotg);
 
-	otg_put_transceiver(otg);
+	usb_put_transceiver(otg);
 
 	return 0;
 }
@@ -325,7 +325,7 @@ static void intel_mid_ehci_driver_unregister(struct pci_driver *host_driver)
 	struct usb_phy			*otg;
 	struct intel_mid_otg_xceiv	*iotg;
 
-	otg = otg_get_transceiver();
+	otg = usb_get_transceiver();
 	if (otg == NULL)
 		return ;
 
@@ -339,5 +339,5 @@ static void intel_mid_ehci_driver_unregister(struct pci_driver *host_driver)
 	atomic_notifier_call_chain(&iotg->iotg_notifier,
 				MID_OTG_NOTIFY_HOSTREMOVE, iotg);
 
-	otg_put_transceiver(otg);
+	usb_put_transceiver(otg);
 }

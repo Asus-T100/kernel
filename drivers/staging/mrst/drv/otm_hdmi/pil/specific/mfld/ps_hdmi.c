@@ -63,6 +63,7 @@
 #include "otm_hdmi_types.h"
 
 #include <asm/io.h>
+#include <linux/module.h>
 #include <linux/pci.h>
 #include <linux/kernel.h>
 #include <linux/string.h>
@@ -71,7 +72,7 @@
 #include "ipil_hdmi.h"
 #include "ps_hdmi.h"
 
-#include <asm/intel_scu_ipc.h>
+#include <asm/intel_scu_pmic.h>
 
 /* Implementation of the Medfield specific PCI driver for receiving
  * Hotplug and other device status signals.
