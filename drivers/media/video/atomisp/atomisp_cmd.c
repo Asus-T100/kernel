@@ -2780,7 +2780,8 @@ int atomisp_try_fmt(struct video_device *vdev, struct v4l2_format *f,
 	u32 in_width = 0;
 	u32 in_height = 0;
 	int ret;
-	if (f->type != V4L2_BUF_TYPE_VIDEO_CAPTURE) {
+	if ((f->type != V4L2_BUF_TYPE_VIDEO_CAPTURE) &&
+	    (f->type != V4L2_BUF_TYPE_PRIVATE)) {
 		v4l2_err(&atomisp_dev, "Wrong v4l2 buf type\n");
 		return -EINVAL;
 	}
