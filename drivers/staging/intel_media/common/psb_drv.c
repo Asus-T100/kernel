@@ -3088,13 +3088,16 @@ static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 	}
 
 	if (arg->overlay_write_mask != 0) {
+		uint32_t ovadd_pipe = (arg->overlay.OVADD >> 6) & 0x3;
+
 		if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, usage)) {
 			dsi_config = dev_priv->dsi_configs[0];
 			regs = &dsi_config->regs;
 			ctx = &dsi_config->dsi_hw_context;
 
 			/*forbid dsr which will restore regs*/
-			mdfld_dsi_dsr_forbid(dsi_config);
+			if (ovadd_pipe == 0)
+				mdfld_dsi_dsr_forbid(dsi_config);
 
 			if (arg->overlay_write_mask & OV_REGRWBITS_OGAM_ALL) {
 				PSB_WVDC32(arg->overlay.OGAMC5, OV_OGAMC5);
@@ -3132,27 +3135,30 @@ static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 					}
 				}
 
-				/*lock*/
-				mutex_lock(&dsi_config->context_lock);
+				if (ovadd_pipe == 0) {
+					/*lock*/
+					mutex_lock(&dsi_config->context_lock);
 
-				if (dev_priv->exit_idle &&
-						(dsi_config->type ==
-						 MDFLD_DSI_ENCODER_DPI))
-					dev_priv->exit_idle(dev,
-							MDFLD_DSR_2D_3D,
-							NULL,
-							true);
+					if (dev_priv->exit_idle &&
+							(dsi_config->type ==
+							 MDFLD_DSI_ENCODER_DPI))
+						dev_priv->exit_idle(dev,
+								MDFLD_DSR_2D_3D,
+								NULL,
+								true);
 
-				/*flip overlay*/
-				PSB_WVDC32(arg->overlay.OVADD, OV_OVADD);
+					/*flip overlay*/
+					PSB_WVDC32(arg->overlay.OVADD, OV_OVADD);
 
-				ctx->ovaadd = arg->overlay.OVADD;
+					ctx->ovaadd = arg->overlay.OVADD;
 
-				/*update on-panel frame buffer*/
-				if (arg->overlay.b_wms)
-					mdfld_dsi_dsr_update_panel_fb(dsi_config);
+					/*update on-panel frame buffer*/
+					if (arg->overlay.b_wms)
+						mdfld_dsi_dsr_update_panel_fb(dsi_config);
 
-				mutex_unlock(&dsi_config->context_lock);
+					mutex_unlock(&dsi_config->context_lock);
+				} else
+					PSB_WVDC32(arg->overlay.OVADD, OV_OVADD);
 
 				/* when switch back from HDMI to local
 				 * this ensures the Pipe B is fully disabled */
@@ -3213,7 +3219,8 @@ static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 				}
 			}
 			/*allow entering dsr*/
-			mdfld_dsi_dsr_allow(dsi_config);
+			if (ovadd_pipe == 0)
+				mdfld_dsi_dsr_allow(dsi_config);
 
 			ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 		} else {
