@@ -2968,6 +2968,13 @@ static void penwell_otg_work(struct work_struct *work)
 					charger_type = retval;
 			}
 
+			/* This is a workaround for self-powered hub case,
+			 * vbus valid event comes several ms before id change */
+			if (hsm->id == ID_A) {
+				dev_warn(pnw->dev, "ID changed\n");
+				break;
+			}
+
 			if (charger_type == CHRG_DCP) {
 				dev_info(pnw->dev, "DCP detected\n");
 
