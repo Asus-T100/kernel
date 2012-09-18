@@ -45,7 +45,8 @@
 #define DLP_ON1_DURATION   60 /* ON1 pulse duration (usec) */
 #define DLP_ON1_DELAY     200 /* ON1 wait duration (usec) */
 
-#define DLP_COLD_RST_OFF_DELAY       20 /* Cold reset wait duration (msec) */
+#define DLP_COLD_RST_DELAY       200 /* Delay for RESET_BB_N (usec) */
+#define DLP_COLD_REG_DELAY        20 /* Delay for CHIPCNTRL (msec) */
 
 #define DLP_WARM_RST_DURATION        60 /* RESET_BB_N pulse delay (usec) */
 #define DLP_WARM_RST_FLASHING_DELAY  30 /* RESET_BB_N wait duration (msec) */
@@ -565,7 +566,7 @@ struct dlp_channel *dlp_ctrl_ctx_create(unsigned int index,
 
 int dlp_ctrl_ctx_delete(struct dlp_channel *ch_ctx);
 
-void dlp_ctrl_cold_boot(struct dlp_channel *ch_ctx);
+int dlp_ctrl_cold_boot(struct dlp_channel *ch_ctx);
 
 int dlp_ctrl_cold_reset(struct dlp_channel *ch_ctx);
 

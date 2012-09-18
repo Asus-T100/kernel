@@ -110,10 +110,8 @@ enum {
 };
 
 /* Modem cold boot management */
-#define V1P35CNT_W	0x0E0		/* PMIC reg to power off the modem */
-#define V1P35_OFF	4
-#define V1P35_ON	6
-
+#define CHIPCNTRL          0x100
+#define CHIPCNTRL_MODEMRST 0x10
 /**
  * struct dlp_command_params - DLP modem comamnd/response
  * @data1: Command data (byte1)
@@ -1344,61 +1342,55 @@ static int dlp_ctrl_push_rx_pdus(struct dlp_channel *ch_ctx)
  ***************************************************************************/
 
 /**
- * Perform a modem cold boot sequence:
+ * Perform a modem cold boot/reset sequence:
  *
- *  - Set to HIGH the PWRDWN_N to switch ON the modem
- *  - Set to HIGH the RESET_BB_N
+ *  - Set Reset_BB_N to 0
+ *  - Delay 200us
+ *  - Program CHIPCNTRL register 4th bit (MODEMRST)
+ *  - Delay 20ms
+ *  - Set Reset_BB_N to 1
+ *  - Delay 60us
  *  - Do a pulse on ON1
  *
  * @ch_ctx: a reference to related channel context
  */
-void dlp_ctrl_cold_boot(struct dlp_channel *ch_ctx)
+int dlp_ctrl_cold_boot(struct dlp_channel *ch_ctx)
 {
 	struct dlp_ctrl_context *ctrl_ctx;
 	int ret = 0;
-	u16 addr = V1P35CNT_W;
-	u8 data, def_value;
+	u16 addr = CHIPCNTRL;
+	u8 data;
 
 	PROLOG();
 
 	if (!dlp_ctrl_have_control_context()) {
 		WARNING("Nothing to do (dlp protocol not registered)");
-		return;
+		return 0;
 	}
 
-	pr_warn(DRVNAME ": Cold boot requested by ch%d",
-			ch_ctx->hsi_channel);
-
-	/* Save the current register value */
-	ret = intel_scu_ipc_readv(&addr, &def_value, 1);
-	if (ret) {
-		CRITICAL("intel_scu_ipc_readv() failed (ret: %d)", ret);
-		goto out;
-	}
-
-	/* Write the new register value (V1P35_ON) */
-	data = (def_value & 0xf8) | V1P35_ON;
-	ret =  intel_scu_ipc_writev(&addr, &data, 1);
-	if (ret) {
-		CRITICAL("intel_scu_ipc_writev(ON) failed (ret: %d)", ret);
-		goto out;
-	}
-
-	/* Restore the saved register value */
-	ret =  intel_scu_ipc_writev(&addr, &def_value, 1);
-	if (ret) {
-		CRITICAL("intel_scu_ipc_writev() failed (ret: %d)", ret);
-		goto out;
-	}
+	pr_warn(DRVNAME ": Cold boot/reset request\n");
 
 	/* AP request => just ignore the modem reset */
 	ctrl_ctx = DLP_CTRL_CTX;
 	dlp_ctrl_set_reset_ongoing(1);
 
-	/* Toggle the RESET_BB_N */
-	gpio_set_value(ctrl_ctx->gpio_mdm_rst_bbn, 1);
+	/* Set the RESET_BB_N to 0 */
+	gpio_set_value(ctrl_ctx->gpio_mdm_rst_bbn, 0);
+	udelay(DLP_COLD_RST_DELAY);
 
-	/* Wait before doing the pulse on ON1 */
+	/* Write the 4th bit in the CHIPCTRL reg (MODEMRST) */
+	data = CHIPCNTRL_MODEMRST;
+	ret = intel_scu_ipc_writev(&addr, &data, 1);
+	if (ret) {
+		CRITICAL("scu_ipc_write(MODEMRST) failed (ret: %d)", ret);
+		goto out;
+	}
+
+	/* Wait before RESET_PWRDN_N to be 1 */
+	msleep(DLP_COLD_REG_DELAY);
+
+	/* Set the RESET_BB_N to 1 */
+	gpio_set_value(ctrl_ctx->gpio_mdm_rst_bbn, 1);
 	udelay(DLP_ON1_DELAY);
 
 	/* Do a pulse on ON1 */
@@ -1407,81 +1399,19 @@ void dlp_ctrl_cold_boot(struct dlp_channel *ch_ctx)
 	gpio_set_value(ctrl_ctx->gpio_mdm_pwr_on, 0);
 
 out:
+	return ret;
 	EPILOG();
 }
 
 /**
  * Perform a modem cold reset:
  *
- * - Set the RESET_BB_N to low (better SIM protection)
- * - Set the EXT1P35VREN field to low  during 20ms (V1P35CNT_W PMIC register)
- * - set the EXT1P35VREN field to high during 10ms (V1P35CNT_W PMIC register)
+ * Same sequence as cold boot
+ *
  */
 int dlp_ctrl_cold_reset(struct dlp_channel *ch_ctx)
 {
-	struct dlp_ctrl_context *ctrl_ctx;
-	u16 addr = V1P35CNT_W;
-	u8 data, def_value;
-	int ret = 0;
-
-	if (!dlp_ctrl_have_control_context()) {
-		pr_warn(DRVNAME ": Cold reset ignored (protocol not registered)");
-		return -ENODEV;
-	}
-
-	pr_info(DRVNAME ": Cold reset requested by ch%d", ch_ctx->hsi_channel);
-
-	/* Save the current register value */
-	ret = intel_scu_ipc_readv(&addr, &def_value, 1);
-	if (ret) {
-		pr_err(DRVNAME ": ipc_readv() failed (ret: %d)", ret);
-		goto out;
-	}
-
-	/* AP requested reset => just ignore */
-	ctrl_ctx = DLP_CTRL_CTX;
-	dlp_ctrl_set_reset_ongoing(1);
-
-	/* Set the reset_bb to low */
-	gpio_set_value(ctrl_ctx->gpio_mdm_rst_bbn, 0);
-	udelay(DLP_WARM_RST_DURATION);
-
-	/* Write the new register value (V1P35_OFF) */
-	data = (def_value & 0xF8) | V1P35_OFF;
-	ret =  intel_scu_ipc_writev(&addr, &data, 1);
-	if (ret) {
-		pr_err(DRVNAME ": ipc_writev(OFF) failed (ret: %d)", ret);
-		goto out;
-	}
-	msleep(DLP_COLD_RST_OFF_DELAY);
-
-	/* Write the new register value (V1P35_ON) */
-	data = (def_value & 0xF8) | V1P35_ON;
-	ret =  intel_scu_ipc_writev(&addr, &data, 1);
-	if (ret) {
-		pr_err(DRVNAME ": ipc_writev(ON) failed (ret: %d)", ret);
-		goto out;
-	}
-
-	/* Set the RESET_BB_N to high */
-	gpio_set_value(ctrl_ctx->gpio_mdm_rst_bbn, 1);
-
-	udelay(DLP_ON1_DELAY);
-
-	/* Write back the saved register value */
-	ret =  intel_scu_ipc_writev(&addr, &def_value, 1);
-	if (ret) {
-		pr_err(DRVNAME ": ipc_writev() failed (ret: %d)", ret);
-		goto out;
-	}
-
-	/* Assert, wait & de-assert the ON1 */
-	gpio_set_value(ctrl_ctx->gpio_mdm_pwr_on, 1);
-	udelay(DLP_ON1_DURATION);
-	gpio_set_value(ctrl_ctx->gpio_mdm_pwr_on, 0);
-
- out:
-	return ret;
+	return dlp_ctrl_cold_boot(ch_ctx);
 }
 
 /**
@@ -1554,19 +1484,19 @@ int dlp_ctrl_flashing_warm_reset(struct dlp_channel *ch_ctx)
 	return ret;
 }
 
-
 /**
  *  Perform the modem switch OFF sequence:
- *		- Set to low the ON1
- *		- Write the PMIC reg
+ *
+ *  - Set Reset_BB_N to 0
+ *  - Program CHIPCNTRL register 4th bit (MODEMRST)
  *
  * @ch_ctx: a reference to related channel context
  */
 static int dlp_ctrl_power_off(struct dlp_channel *ch_ctx)
 {
 	struct dlp_ctrl_context *ctrl_ctx;
-	u16 addr = V1P35CNT_W;
-	u8 data, def_value;
+	u16 addr = CHIPCNTRL;
+	u8 data;
 	int ret = 0;
 
 	if (!dlp_ctrl_have_control_context()) {
@@ -1580,30 +1510,15 @@ static int dlp_ctrl_power_off(struct dlp_channel *ch_ctx)
 	ctrl_ctx = DLP_CTRL_CTX;
 	dlp_ctrl_set_reset_ongoing(1);
 
-	/* Set to low the ON1 */
-	gpio_set_value(ctrl_ctx->gpio_mdm_pwr_on, 0);
+	/* Set the RESET_BB_N to 0 */
+	gpio_set_value(ctrl_ctx->gpio_mdm_rst_bbn, 0);
 
-	/* Save the current register value */
-	ret = intel_scu_ipc_readv(&addr, &def_value, 1);
-	if (ret) {
-		pr_err(DRVNAME ": ipc_readv() failed (ret: %d)", ret);
-		goto out;
-	}
-
-	/* Write the new register value (V1P35_OFF) */
-	data = (def_value & 0xF8) | V1P35_OFF;
-	ret =  intel_scu_ipc_writev(&addr, &data, 1);
-	if (ret) {
-		pr_err(DRVNAME ": ipc_writev(OFF)  failed (ret: %d)", ret);
-		goto out;
-	}
-
-	/* Write back the saved register value */
-	ret =  intel_scu_ipc_writev(&addr, &def_value, 1);
+	/* Write the 4th bit in the CHIPCTRL reg (MODEMRST) */
+	data = CHIPCNTRL_MODEMRST;
+	ret = intel_scu_ipc_writev(&addr, &data, 1);
 	if (ret)
-		pr_err(DRVNAME ": ipc_writev() failed (ret: %d)", ret);
+		CRITICAL("scu_ipc_writev(MODEMRST) failed (ret: %d)", ret);
 
- out:
 	return ret;
 }
 
