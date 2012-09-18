@@ -887,25 +887,25 @@ static const struct ov8830_reg ov8830_5M_STILL_15fps[] = {
 
 static const struct ov8830_reg ov8830_6M_STILL_15fps[] = {
 	{ OV8830_8BIT, { 0x3800 }, 0x00 },
-	{ OV8830_8BIT, { 0x3801 }, 0x0c },
+	{ OV8830_8BIT, { 0x3801 }, 0x04 },
 	{ OV8830_8BIT, { 0x3802 }, 0x01 },
-	{ OV8830_8BIT, { 0x3803 }, 0x40 },
+	{ OV8830_8BIT, { 0x3803 }, 0x36 },
 	{ OV8830_8BIT, { 0x3804 }, 0x0c },
-	{ OV8830_8BIT, { 0x3805 }, 0xd3 },
+	{ OV8830_8BIT, { 0x3805 }, 0xdb },
 	{ OV8830_8BIT, { 0x3806 }, 0x08 },
-	{ OV8830_8BIT, { 0x3807 }, 0x73 },
-	{ OV8830_8BIT, { 0x3808 }, 0x0c }, /* Output size 3264x1836 */
-	{ OV8830_8BIT, { 0x3809 }, 0xc0 },
+	{ OV8830_8BIT, { 0x3807 }, 0x79 }, /* Read Array: 3291 x 2169 */
+	{ OV8830_8BIT, { 0x3808 }, 0x0c }, /* Output size 3280x1852 */
+	{ OV8830_8BIT, { 0x3809 }, 0xd0 },
 	{ OV8830_8BIT, { 0x380a }, 0x07 },
-	{ OV8830_8BIT, { 0x380b }, 0x2c },
+	{ OV8830_8BIT, { 0x380b }, 0x3c },
 	{ OV8830_8BIT, { 0x380c }, 0x12 }, /* HTSxVTS 4696x2724*/
 	{ OV8830_8BIT, { 0x380d }, 0x58 },
 	{ OV8830_8BIT, { 0x380e }, 0x0a },
 	{ OV8830_8BIT, { 0x380f }, 0xa4 },
 	{ OV8830_8BIT, { 0x3810 }, 0x00 },
-	{ OV8830_8BIT, { 0x3811 }, 0x00 },
+	{ OV8830_8BIT, { 0x3811 }, 0x04 },
 	{ OV8830_8BIT, { 0x3812 }, 0x00 },
-	{ OV8830_8BIT, { 0x3813 }, 0x00 },
+	{ OV8830_8BIT, { 0x3813 }, 0x04 },
 	{ OV8830_8BIT, { 0x3814 }, 0x11 },
 	{ OV8830_8BIT, { 0x3815 }, 0x11 },
 	{ OV8830_8BIT, { 0x3820 }, 0x10 }, /* Binning off */

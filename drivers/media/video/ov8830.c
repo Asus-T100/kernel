@@ -175,8 +175,8 @@ static struct ov8830_resolution ov8830_res_still[] = {
 	},
 	{
 		 .desc = "STILL_6M_15fps",
-		 .width = 3264,
-		 .height = 1836,
+		 .width = 3280,
+		 .height = 1852,
 		 .fps = 15,
 		 .used = 0,
 		 .pixels_per_line = 4696,
