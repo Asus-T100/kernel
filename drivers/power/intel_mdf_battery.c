@@ -391,35 +391,13 @@ static inline int handle_ipc_rw_status(int error_val,
 
 /**
  * get_batt_fg_curve_index - get the fg curve ID from umip
- * @name : Power Supply name
- *
  * Returns FG curve ID
- *
  */
-static int get_batt_fg_curve_index(const char *name)
+static int get_batt_fg_curve_index(void)
 {
-	struct power_supply *psy;
 	int mip_offset, i, ret;
-	u8 batt_id[BATTID_STR_LEN];
+	u8 batt_id[BATTID_STR_LEN + 1];
 	u8 num_tbls = 0;
-	int num_supplicants;
-
-	/* check if we support the device in our supplied to list */
-	num_supplicants = ARRAY_SIZE(msic_power_supplied_to);
-	for (i = 0; i < num_supplicants; i++) {
-		/* check for string length match and compare the strings */
-		if ((strlen(name) == strlen(msic_power_supplied_to[i])) &&
-		 (!strcmp(name, msic_power_supplied_to[i])))
-			break;
-	}
-
-	if (i >= num_supplicants)
-		return -ENXIO;
-
-	/* check if msic charger is ready */
-	psy = power_supply_get_by_name(CHARGER_PS_NAME);
-	if (!psy)
-		return -EAGAIN;
 
 	/* get the no.of tables from mip */
 	ret = intel_scu_ipc_read_mip((u8 *)&num_tbls, 1,
@@ -430,7 +408,7 @@ static int get_batt_fg_curve_index(const char *name)
 	}
 
 	/* compare the batt ID provided by SFI table and FG table in mip */
-	mip_offset = UMIP_BATT_FG_CFG_TBL1 + BATT_FG_TBL_BATTID;
+	mip_offset = UMIP_BATT_FG_TABLE_OFFSET + BATT_FG_TBL_BATTID;
 	for (i = 0; i < num_tbls; i++) {
 		ret = intel_scu_ipc_read_mip(batt_id, BATTID_STR_LEN,
 							mip_offset, 0);
@@ -438,6 +416,7 @@ static int get_batt_fg_curve_index(const char *name)
 			dev_warn(msic_dev, "%s: umip read failed\n", __func__);
 			goto get_idx_failed;
 		}
+		dev_info(msic_dev, "[umip] tbl:%d, batt_id:%s\n", i, batt_id);
 
 		if (!strncmp(batt_id, sfi_table->batt_id, BATTID_STR_LEN))
 			break;
@@ -456,6 +435,71 @@ get_idx_failed:
 }
 
 /**
+ * intel_msic_store_referenced_table - store data to
+ * referenced table from preconfigured battery data
+ */
+static int intel_msic_store_refrenced_table(void)
+{
+	int mip_offset, ret, batt_index;
+	void *data;
+	u8 batt_id[BATTID_STR_LEN];
+
+	dev_info(msic_dev, "[sfi->batt_id]:%s\n", sfi_table->batt_id);
+
+	mip_offset = UMIP_REF_FG_TBL + BATT_FG_TBL_BATTID;
+	ret = intel_scu_ipc_read_mip(batt_id, BATTID_STR_LEN,
+						mip_offset, 0);
+	if (ret) {
+		dev_warn(msic_dev, "%s: umip read failed\n", __func__);
+		goto store_err;
+	}
+
+	/*if correct table is already in place then don't do anything*/
+	if (!strncmp(batt_id, sfi_table->batt_id, BATTID_STR_LEN)) {
+		dev_info(msic_dev,
+		 "%s: match found in ref tbl already\n", __func__);
+		return 0;
+	}
+
+	batt_index = get_batt_fg_curve_index();
+	if (batt_index < 0) {
+		dev_err(msic_dev,
+			"can't find fg battery index\n");
+		return batt_index;
+	}
+
+	data = kmalloc(UMIP_FG_TBL_SIZE, GFP_KERNEL);
+	if (!data) {
+		ret = -ENOMEM;
+		goto store_err;
+	}
+
+	/* read the fg data from batt_index */
+	mip_offset = UMIP_BATT_FG_TABLE_OFFSET + UMIP_FG_TBL_SIZE * batt_index;
+	ret = intel_scu_ipc_read_mip((u8 *)data, UMIP_FG_TBL_SIZE,
+							mip_offset, 0);
+	if (ret) {
+		dev_warn(msic_dev, "%s: umip read failed\n", __func__);
+		kfree(data);
+		goto store_err;
+	}
+	/* write the data to ref table */
+	mip_offset = UMIP_REF_FG_TBL;
+	ret = intel_scu_ipc_write_umip((u8 *)data, UMIP_FG_TBL_SIZE,
+					mip_offset);
+	if (ret) {
+		dev_warn(msic_dev, "%s: umip read failed\n", __func__);
+		kfree(data);
+		goto store_err;
+	}
+
+	kfree(data);
+
+store_err:
+	return ret;
+}
+
+/**
  * intel_msic_restore_config_data - restore config data
  * @name : Power Supply name
  * @data : config data output pointer
@@ -467,8 +511,14 @@ int intel_msic_restore_config_data(const char *name, void *data, int len)
 	int mip_offset, ret;
 
 	/* check if msic charger is ready */
-	if (!power_supply_get_by_name("msic_charger"))
+	if (!power_supply_get_by_name(CHARGER_PS_NAME))
 		return -EAGAIN;
+
+	ret = intel_msic_store_refrenced_table();
+	if (ret < 0) {
+		dev_err("%s failed to read fg data\n", __func__);
+		return ret;
+	}
 
 	/* Read the fuel gauge config data from umip */
 	mip_offset = UMIP_REF_FG_TBL + BATT_FG_TBL_BODY;
