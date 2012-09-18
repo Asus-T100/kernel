@@ -175,6 +175,30 @@ int power_supply_is_system_supplied(void)
 }
 EXPORT_SYMBOL_GPL(power_supply_is_system_supplied);
 
+static int __power_supply_is_battery_connected(struct device *dev, void *data)
+{
+	union power_supply_propval ret = {0,};
+	struct power_supply *psy = dev_get_drvdata(dev);
+
+	if (psy->type == POWER_SUPPLY_TYPE_BATTERY) {
+		if (psy->get_property(psy, POWER_SUPPLY_PROP_PRESENT, &ret))
+			return 0;
+		if (ret.intval)
+			return ret.intval;
+	}
+	return 0;
+}
+
+int power_supply_is_battery_connected(void)
+{
+	int error;
+
+	error = class_for_each_device(power_supply_class, NULL, NULL,
+					__power_supply_is_battery_connected);
+	return error;
+}
+EXPORT_SYMBOL_GPL(power_supply_is_battery_connected);
+
 int power_supply_set_battery_charged(struct power_supply *psy)
 {
 	if (psy->type == POWER_SUPPLY_TYPE_BATTERY && psy->set_charged) {

@@ -231,6 +231,7 @@ struct power_supply_info {
 extern struct power_supply *power_supply_get_by_name(char *name);
 extern void power_supply_changed(struct power_supply *psy);
 extern int power_supply_am_i_supplied(struct power_supply *psy);
+extern int power_supply_is_battery_connected(void);
 extern int power_supply_set_battery_charged(struct power_supply *psy);
 extern void power_supply_charger_event(struct power_supply_charger_cap cap);
 extern void power_supply_query_charger_caps(struct power_supply_charger_cap
