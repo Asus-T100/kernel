@@ -845,7 +845,6 @@ void atomisp_work(struct work_struct *work)
 	u32 irq_infos;
 
 	isp->fr_status = ATOMISP_FRAME_STATUS_OK;
-	isp->sw_contex.error = false;
 	isp->sw_contex.buffer_underrun = false;
 	isp->sw_contex.invalid_frame = false;
 	INIT_COMPLETION(isp->wq_frame_complete);

@@ -141,6 +141,14 @@ static int atomisp_start_streaming(struct vb2_queue *vq)
 	intel_mid_msgbus_write32(PUNIT_PORT, OR1, msg_ret);
 #endif
 
+	/*
+	 * WQ is about get launched. So reset this flag here. atomisp_dqbuf()
+	 * checks this flag and returns ISP Error if this flag is set. There
+	 * can be situations where atomisp_dqbuf() gets called even before
+	 * WQ is scheduled.
+	 */
+	isp->sw_contex.error = false;
+
 	/*stream on sensor in work thread*/
 	queue_work(isp->work_queue, &isp->work);
 	isp->sw_contex.work_queued = true;
