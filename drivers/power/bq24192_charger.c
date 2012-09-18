@@ -20,6 +20,7 @@
  *
  * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
  * Author: Ramakrishna Pallala <ramakrishna.pallala@intel.com>
+ * Author: Raj Pandey <raj.pandey@intel.com>
  */
 
 #include <linux/module.h>
@@ -738,14 +739,14 @@ static int bq24192_clear_hiz(struct bq24192_chip *chip)
 			goto i2c_error;
 		}
 
-		if (chip->input_curr & INPUT_SRC_CNTL_EN_HIZ) {
+		if (ret & INPUT_SRC_CNTL_EN_HIZ) {
 			dev_warn(&chip->client->dev,
 						"Charger IC in Hi-Z mode\n");
 #ifdef DEBUG
 			bq24192_dump_registers(chip);
 #endif
 			/* Clear the Charger from Hi-Z mode */
-			ret &= ~INPUT_SRC_CNTL_EN_HIZ;
+			ret = (chip->input_curr & ~INPUT_SRC_CNTL_EN_HIZ);
 
 			/* Write the values back */
 			ret = bq24192_write_reg(chip->client,
@@ -1177,7 +1178,7 @@ static int enable_charging(struct bq24192_chip *chip,
 
 	/* set charge voltage reg */
 	ret = bq24192_write_reg(chip->client, BQ24192_CHRG_VOLT_CNTL_REG,
-				reg->chr_volt | CHRG_VOLT_CNTL_VRECHRG);
+								reg->chr_volt);
 	if (ret < 0) {
 		dev_warn(&chip->client->dev, "I2C write failed:%s\n", __func__);
 		goto i2c_write_failed;
@@ -1462,17 +1463,7 @@ static  bool bq24192_check_charge_full(struct bq24192_chip *chip, int vref)
 	int volt_now;
 	int cur_avg;
 	int ret;
-
-	ret = bq24192_read_reg(chip->client, BQ24192_SYSTEM_STAT_REG);
-	if (ret < 0) {
-		dev_err(&chip->client->dev, "i2c read err:%d\n", ret);
-		return is_full;
-	}
-
-	if ((ret & SYSTEM_STAT_CHRG_MASK) == SYSTEM_STAT_CHRG_DONE) {
-		is_full = true;
-		return is_full;
-	}
+	struct bq24192_chrg_regs reg;
 
 	/* Read voltage and current from FG driver */
 	volt_now = fg_chip_get_property(POWER_SUPPLY_PROP_VOLTAGE_NOW);
@@ -1483,6 +1474,44 @@ static  bool bq24192_check_charge_full(struct bq24192_chip *chip, int vref)
 
 	/* convert to milli volts */
 	volt_now /= 1000;
+
+	ret = bq24192_read_reg(chip->client, BQ24192_SYSTEM_STAT_REG);
+	if (ret < 0) {
+		dev_err(&chip->client->dev, "i2c read err:%d\n", ret);
+		return is_full;
+	}
+
+	if ((ret & SYSTEM_STAT_CHRG_MASK) == SYSTEM_STAT_CHRG_DONE) {
+		if (volt_now >= (vref - CLT_VBATT_FULL_DET_MARGIN)) {
+			dev_info(&chip->client->dev,
+					"FULL: HW based termination\n");
+			is_full = true;
+		} else {
+			is_full = false;
+			if (chip->batt_mode == BATT_CHRG_NORMAL) {
+				/*
+				 * FIXME: Charger chip cuts the charging even
+				 * when the battery has not reached FULL.
+				 * Restart the charging would make sure that
+				 * battery continues to charge unless reached
+				 * FULL.
+				 */
+				dev_info(&chip->client->dev,
+					"Charging complete before FULL.\n");
+				stop_charging(chip);
+				set_up_charging(chip, &reg, chip->curr_chrg,
+							chip->curr_volt);
+
+				ret = enable_charging(chip, &reg);
+				if (ret < 0) {
+					dev_err(&chip->client->dev,
+						"enable charging failed %s\n",
+								__func__);
+				}
+			}
+		}
+		return is_full;
+	}
 
 	/* Using Current-avg instead of Current-now to take care of
 	 * instantaneous spike or dip */
@@ -1502,8 +1531,11 @@ static  bool bq24192_check_charge_full(struct bq24192_chip *chip, int vref)
 	if ((volt_now >= (vref - CLT_VBATT_FULL_DET_MARGIN)) &&
 	    (volt_prev >= (vref - CLT_VBATT_FULL_DET_MARGIN))  &&
 		((cur_avg <= CLT_FULL_CURRENT_AVG_HIGH) &&
-		(cur_avg > CLT_FULL_CURRENT_AVG_LOW)))
+		(cur_avg > CLT_FULL_CURRENT_AVG_LOW))) {
+			dev_info(&chip->client->dev,
+					"FULL: SW based termination\n");
 			is_full = true;
+		}
 		else
 			is_full = false;
 
@@ -1520,13 +1552,12 @@ static  bool bq24192_check_charge_full(struct bq24192_chip *chip, int vref)
  */
 static void bq24192_maintenance_worker(struct work_struct *work)
 {
-	int ret, batt_temp, battery_status, idx = 0, vbatt = 0, retval;
+	int ret, batt_temp, battery_status, idx = 0, vbatt = 0;
 	struct bq24192_chip *chip = container_of(work,
 				struct bq24192_chip, maint_chrg_wrkr.work);
 	short int cv = 0, usr_cc = -1;
 	struct ctp_temp_mon_table *temp_mon = NULL;
 	bool is_chrg_term = false, is_chrg_full = false;
-	static int prev_temp_idx = -1;
 	static int chrg_cur_cntl = USER_SET_CHRG_NOLMT;
 	bool sysfs_stat = false;
 
@@ -1550,9 +1581,7 @@ static void bq24192_maintenance_worker(struct work_struct *work)
 		dev_warn(&chip->client->dev, "%s HiZ clr failed\n", __func__);
 		goto sched_maint_work;
 	}
-	retval = (chip->input_curr & ~INPUT_SRC_CNTL_EN_HIZ);
-	ret = bq24192_write_reg(chip->client,
-				BQ24192_INPUT_SRC_CNTL_REG, retval);
+
 	if (ret < 0) {
 		dev_warn(&chip->client->dev, "%s:I2C write fail\n", __func__);
 		goto sched_maint_work;
@@ -1679,7 +1708,7 @@ static void bq24192_maintenance_worker(struct work_struct *work)
 			 */
 			chip->batt_mode = BATT_CHRG_FULL;
 			mutex_unlock(&chip->event_lock);
-		} else if ((prev_temp_idx != idx) || (sysfs_stat == true)) {
+		} else if ((idx > -1) || (sysfs_stat == true)) {
 			/* If there is change in temperature zone
 			 * or user mode charge current settings */
 			ret = bq24192_do_charging(
@@ -1727,7 +1756,7 @@ static void bq24192_maintenance_worker(struct work_struct *work)
 				"Discharging and withing maintenance mode range\n");
 
 			/* if within the range */
-			if ((prev_temp_idx != idx) || (sysfs_stat == true)) {
+			if ((idx > -1) || (sysfs_stat == true)) {
 				dev_info(&chip->client->dev,
 					"Change in Temp Zone or User Setting:\n");
 				ret = bq24192_do_charging(
@@ -1786,8 +1815,6 @@ static void bq24192_maintenance_worker(struct work_struct *work)
 		goto sched_maint_work;
 	}
 
-	/* store the current temp index */
-	prev_temp_idx = idx;
 	power_supply_changed(&chip->usb);
 sched_maint_work:
 	if ((chip->batt_mode == BATT_CHRG_MAINT) ||
@@ -1822,7 +1849,7 @@ sched_maint_work:
 }
 
 /* This function should be called with the mutex held */
-static int turn_otg_vbus(struct bq24192_chip *chip, bool votg_on)
+static int bq24192_turn_otg_vbus(struct bq24192_chip *chip, bool votg_on)
 {
 	int ret = 0;
 
@@ -1990,7 +2017,7 @@ static void bq24192_event_worker(struct work_struct *work)
 		} else if (chip->chrg_type == POWER_SUPPLY_TYPE_USB_HOST) {
 			dev_info(&chip->client->dev,
 				 "Charger type USB HOST\n");
-			ret = turn_otg_vbus(chip, true);
+			ret = bq24192_turn_otg_vbus(chip, true);
 			if (ret < 0) {
 				dev_err(&chip->client->dev,
 				"turning OTG vbus ON failed\n");
@@ -2024,6 +2051,11 @@ static void bq24192_event_worker(struct work_struct *work)
 		 */
 		if (!wake_lock_active(&chip->wakelock))
 			wake_lock(&chip->wakelock);
+		/*
+		 * Assert the chrg_otg gpio now. This will ensure that the
+		 * current pulled out from VBUS is ~500mA in case of SDP
+		 */
+		gpio_direction_output(BQ24192_CHRG_OTG_GPIO, 1);
 		break;
 	case POWER_SUPPLY_CHARGER_EVENT_DISCONNECT:
 		disconnected = 1;
@@ -2050,7 +2082,7 @@ static void bq24192_event_worker(struct work_struct *work)
 		chip->online = 0;
 		chip->batt_status = POWER_SUPPLY_STATUS_DISCHARGING;
 		if (chip->votg) {
-				ret = turn_otg_vbus(chip, false);
+				ret = bq24192_turn_otg_vbus(chip, false);
 				if (ret < 0) {
 					dev_err(&chip->client->dev,
 						"turning OTG vbus OFF failed\n");
@@ -2084,6 +2116,9 @@ static void bq24192_event_worker(struct work_struct *work)
 		chip->cached_chrg_cur_cntl = chip->chrg_cur_cntl;
 
 		mutex_unlock(&chip->event_lock);
+		/* de-assert the chrg_otg gpio now */
+		gpio_direction_output(BQ24192_CHRG_OTG_GPIO, 0);
+		gpio_direction_input(BQ24192_CHRG_OTG_GPIO);
 		break;
 	default:
 		dev_err(&chip->client->dev,
@@ -2824,5 +2859,6 @@ static void __exit bq24192_exit(void)
 module_exit(bq24192_exit);
 
 MODULE_AUTHOR("Ramakrishna Pallala <ramakrishna.pallala@intel.com>");
+MODULE_AUTHOR("Raj Pandey <raj.pandey@intel.com>");
 MODULE_DESCRIPTION("BQ24192 Charger Driver");
 MODULE_LICENSE("GPL");
