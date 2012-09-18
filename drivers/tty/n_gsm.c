@@ -3074,6 +3074,8 @@ static int gsmtty_open(struct tty_struct *tty, struct file *filp)
 	/* if DLC0 is not open, return permission denied */
 	if (dlci->gsm->dlci[0]->state != DLCI_OPEN)
 		return -EACCES;
+	if (dlci->state == DLCI_CLOSING)
+		return -EAGAIN;
 	port = &dlci->port;
 	port->count++;
 	tty_port_tty_set(port, tty);
