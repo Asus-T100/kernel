@@ -58,6 +58,7 @@ static char *name[MSIC_THERMAL_SENSORS] = {
 #define SKIN0_INTERCEPT		14050
 #define BPTHERM_SLOPE		788
 #define BPTHERM_INTERCEPT	5065
+
 #else
 
 /* Number of thermal sensors */
@@ -73,6 +74,21 @@ static char *name[MSIC_THERMAL_SENSORS] = {
 	"skin0", "skin1", "sys", "msicdie"
 };
 #endif
+
+/* Cooling device attributes */
+#define SOC_IPC_COMMAND		0xCF
+enum {
+	NORMAL = 0,
+	WARNING,
+	ALERT,
+	CRITICAL
+} thermal_state;
+enum {
+	SOC_SKIN_NORMAL = 0,
+	SOC_SKIN_WARM = 2,
+	SOC_SKIN_PROCHOT,
+	SOC_MAX_STATES
+} soc_skin_state;
 
 /* MSIC die attributes */
 #define MSIC_DIE_ADC_MIN	488
@@ -106,12 +122,20 @@ struct ts_cache_info {
 	unsigned long last_updated;
 };
 
+struct soc_cooling_device_info {
+	unsigned long soc_state;
+	struct mutex lock_cool_state;
+};
+
+static struct soc_cooling_device_info soc_cdev_info;
+
 struct ipc_info {
 	struct ipc_device *ipcdev;
 	struct thermal_zone_device *tzd[MSIC_THERMAL_SENSORS];
 	struct ts_cache_info cacheinfo;
 	/* ADC handle used to read sensor temperature values */
 	void *therm_adc_handle;
+	struct thermal_cooling_device *soc_cdev;
 };
 
 static struct ipc_info *ipcinfo;
@@ -123,6 +147,88 @@ struct thermal_device_info {
 	int sensor_index;
 };
 
+/* SoC cooling device callbacks */
+static int soc_get_max_state(struct thermal_cooling_device *cdev,
+				unsigned long *state)
+{
+	/* SoC has 4 levels of throttling from 0 to 3 */
+	*state = SOC_MAX_STATES - 1;
+	return 0;
+}
+
+static int soc_get_cur_state(struct thermal_cooling_device *cdev,
+				unsigned long *state)
+{
+	mutex_lock(&soc_cdev_info.lock_cool_state);
+	*state = soc_cdev_info.soc_state;
+	mutex_unlock(&soc_cdev_info.lock_cool_state);
+	return 0;
+}
+
+static int soc_set_cur_state(struct thermal_cooling_device *cdev,
+				unsigned long state)
+{
+	int ret;
+	if (state < 0 || state > SOC_MAX_STATES - 1) {
+		pr_err("Invalid SoC throttle state:%ld\n", state);
+		return -EINVAL;
+	}
+
+	switch (state) {
+	/* SoC De-Throttle */
+	case NORMAL:
+		state = SOC_SKIN_NORMAL;
+		break;
+	case WARNING:
+		/*
+		 * New state is assigned based on present state.
+		 * State 1 can be reached from state 0 or 2.
+		 * State 0 to 1 means skin WARM.
+		 * state 2 to 1 means skin no longer PROCHOT but WARM
+		 */
+		state = SOC_SKIN_WARM;
+		break;
+	/* SoC Throttle, PROCHOT */
+	case ALERT:
+	case CRITICAL:
+		state = SOC_SKIN_PROCHOT;
+		break;
+	}
+	/* Send IPC command to throttle SoC */
+	mutex_lock(&soc_cdev_info.lock_cool_state);
+	ret = intel_scu_ipc_command(SOC_IPC_COMMAND, 0,
+			(u8 *) &state, 4, NULL, 0);
+	if (ret)
+		pr_err("IPC_COMMAND failed: %d\n", ret);
+	else
+		soc_cdev_info.soc_state = state;
+
+	mutex_unlock(&soc_cdev_info.lock_cool_state);
+	return ret;
+}
+
+static struct thermal_cooling_device_ops soc_cooling_ops = {
+	.get_max_state = soc_get_max_state,
+	.get_cur_state = soc_get_cur_state,
+	.set_cur_state = soc_set_cur_state,
+};
+
+static int register_soc_as_cdev(void)
+{
+	int ret = 0;
+	ipcinfo->soc_cdev = thermal_cooling_device_register("SoC", NULL,
+						&soc_cooling_ops);
+	if (IS_ERR(ipcinfo->soc_cdev)) {
+		ret = PTR_ERR(ipcinfo->soc_cdev);
+		ipcinfo->soc_cdev = NULL;
+	}
+	return ret;
+}
+
+static void unregister_soc_as_cdev(void)
+{
+	thermal_cooling_device_unregister(ipcinfo->soc_cdev);
+}
 
 /**
  * is_valid_adc - checks whether the adc code is within the defined range
@@ -375,6 +481,8 @@ static int mid_thermal_probe(struct ipc_device *ipcdev)
 	mutex_init(&ipcinfo->cacheinfo.lock);
 
 #ifdef CONFIG_BOARD_CTP
+	mutex_init(&soc_cdev_info.lock_cool_state);
+
 	/* Allocate ADC channels for all sensors */
 	ipcinfo->therm_adc_handle = intel_mid_gpadc_alloc(MSIC_THERMAL_SENSORS,
 					0x04 | CH_NEED_VREF | CH_NEED_VCALIB,
@@ -405,6 +513,15 @@ static int mid_thermal_probe(struct ipc_device *ipcdev)
 
 	ipcinfo->ipcdev = ipcdev;
 	ipc_set_drvdata(ipcdev, ipcinfo);
+
+#ifdef CONFIG_BOARD_CTP
+	/* Register SoC as a cooling device */
+	ret = register_soc_as_cdev();
+	/* Log this, but keep the driver loaded */
+	if (ret)
+		dev_err(&ipcdev->dev, "register_soc_as_cdev failed:%d\n", ret);
+#endif
+
 	return 0;
 
 reg_fail:
@@ -429,6 +546,11 @@ static int mid_thermal_remove(struct ipc_device *ipcdev)
 
 	for (i = 0; i < MSIC_THERMAL_SENSORS; i++)
 		thermal_zone_device_unregister(ipcinfo->tzd[i]);
+
+#ifdef CONFIG_BOARD_CTP
+	/* Unregister SoC as cooling device */
+	unregister_soc_as_cdev();
+#endif
 
 	/* Free the allocated ADC channels */
 	if (ipcinfo->therm_adc_handle)
