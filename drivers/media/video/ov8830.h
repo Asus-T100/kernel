@@ -986,6 +986,9 @@ static struct ov8830_reg const ov8830_PREVIEW_WIDE_PREVIEW_30fps[] = {
 	{ OV8830_8BIT, { 0x3809 }, 0x00 },
 	{ OV8830_8BIT, { 0x380a }, 0x02 },
 	{ OV8830_8BIT, { 0x380b }, 0xd0 }, /* 1280X720*/
+	{ OV8830_8BIT, { 0x380c }, 0x0e },
+	{ OV8830_8BIT, { 0x380d }, 0x18 },
+	{ OV8830_8BIT, { 0x380e }, 0x06 },
 	{ OV8830_8BIT, { 0x380f }, 0xed }, /* HTS/VTS 3608x1773*/
 	{ OV8830_8BIT, { 0x3810 }, 0x00 },
 	{ OV8830_8BIT, { 0x3811 }, 0x04 },
