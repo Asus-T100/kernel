@@ -91,7 +91,9 @@ static u32 h8c7_mcs_clumn_addr[] = {0x0200002a, 0xcf};
 static u32 h8c7_mcs_page_addr[] = {0x0400002b, 0xff};
 
 static u32 h8c7_mcs_protect_on[] = {0x000000b9};
-static u32 h8c7_set_address_mode[] = {0x00000036};
+static u8 h8c7_set_address_mode[] = {0x36, 0x00};
+static u8 h8c7_set_te_scanline[] = {0x44, 0x00, 0x00, 0x00};
+static u8 h8c7_set_pixel_format[] = {0x3a, 0x77};
 
 #define MIN_BRIGHTNESS_LEVEL 60
 #define MAX_BRIGHTNESS_LEVEL 100
@@ -142,9 +144,6 @@ static int  mdfld_h8c7_drv_ic_init(struct mdfld_dsi_config *dsi_config,
 	/* set password*/
 	mdfld_dsi_send_gen_long_lp(sender, h8c7_mcs_protect_off, 4, 0);
 
-	/* set TE on*/
-	mdfld_dsi_send_mcs_long_lp(sender, h8c7_set_tear_on, 4, 0);
-
 	/* set backlight on*/
 	mdfld_dsi_send_mcs_long_lp(sender, h8c7_turn_on_backlight, 4, 0);
 
@@ -166,9 +165,13 @@ static int  mdfld_h8c7_drv_ic_init(struct mdfld_dsi_config *dsi_config,
 	mdfld_dsi_send_gen_long_lp(sender, h8c7_gamma_g, 36, 0);
 	mdfld_dsi_send_gen_long_lp(sender, h8c7_gamma_b, 36, 0);
 	mdfld_dsi_send_mcs_long_lp(sender, h8c7_enter_set_cabc, 10, 0);
+	mdfld_dsi_send_mcs_long_lp(sender, h8c7_set_pixel_format, 2, 0);
+	mdfld_dsi_send_mcs_long_lp(sender, h8c7_mcs_clumn_addr, 8, 0);
+	mdfld_dsi_send_mcs_long_lp(sender, h8c7_mcs_page_addr, 8, 0);
+	mdfld_dsi_send_mcs_long_lp(sender, h8c7_set_address_mode, 2, 0);
+	mdfld_dsi_send_mcs_long_lp(sender, h8c7_set_te_scanline, 3, 0);
+	mdfld_dsi_send_gen_long_lp(sender, h8c7_set_tear_on, 2, 0);
 	mdfld_dsi_send_gen_long_lp(sender, h8c7_mcs_protect_on, 4, 0);
-	mdfld_dsi_send_gen_long_lp(sender, h8c7_mcs_clumn_addr, 8, 0);
-	mdfld_dsi_send_gen_long_lp(sender, h8c7_mcs_page_addr, 8, 0);
 
 	return 0;
 }
