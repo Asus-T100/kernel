@@ -328,6 +328,7 @@ static struct notifier_block max17042_reboot_notifier_block = {
 	.priority = 0,
 };
 
+static bool is_battery_online(struct max17042_chip *chip);
 static void configure_interrupts(struct max17042_chip *chip);
 static void set_soc_intr_thresholds(struct max17042_chip *chip);
 static void save_runtime_params(struct max17042_chip *chip);
@@ -574,6 +575,20 @@ static irqreturn_t max17042_thread_handler(int id, void *dev)
 	if ((stat & STATUS_INTR_SOCMAX_BIT) ||
 		(stat & STATUS_INTR_SOCMIN_BIT))
 		dev_info(&chip->client->dev, "SOC threshold INTR\n");
+
+	if (stat & STATUS_BR_BIT) {
+		dev_info(&chip->client->dev, "Battery removed INTR\n");
+		/* clear BR bit */
+		max17042_reg_read_modify(chip->client, MAX17042_STATUS,
+						STATUS_BR_BIT, 0);
+		if (stat & STATUS_BST_BIT) {
+			dev_warn(&chip->client->dev, "battery unplugged\n");
+			mutex_lock(&chip->batt_lock);
+			chip->present = 0;
+			mutex_unlock(&chip->batt_lock);
+			kernel_power_off();
+		}
+	}
 
 	power_supply_changed(&chip->battery);
 	pm_runtime_put_sync(&chip->client->dev);
@@ -1556,16 +1571,36 @@ static void max17042_external_power_changed(struct power_supply *psy)
 	schedule_work(&chip->evt_worker);
 }
 
-static void init_battery_props(struct max17042_chip *chip)
+static bool is_battery_online(struct max17042_chip *chip)
 {
-	u16 val;
+	int val;
+	bool online = false;
 
 	val = max17042_read_reg(chip->client, MAX17042_STATUS);
+	if (val < 0) {
+		dev_info(&chip->client->dev, "i2c read error\n");
+		return online;
+	}
+
 	/* check battery present bit */
 	if (val & STATUS_BST_BIT)
-		chip->present = 0;
+		online = false;
 	else
+		online = true;
+
+	return online;
+}
+
+static void init_battery_props(struct max17042_chip *chip)
+{
+	if (is_battery_online(chip)) {
+		dev_dbg(&chip->client->dev, "battery present\n");
 		chip->present = 1;
+	} else {
+		dev_warn(&chip->client->dev, "battery NOT present\n");
+		chip->present = 0;
+		kernel_power_off();
+	}
 
 	chip->status = POWER_SUPPLY_STATUS_UNKNOWN;
 	chip->health = POWER_SUPPLY_HEALTH_UNKNOWN;
@@ -1780,6 +1815,20 @@ static void configure_interrupts(struct max17042_chip *chip)
 	/* enable interrupts */
 	max17042_reg_read_modify(chip->client, MAX17042_CONFIG,
 						CONFIG_ALRT_BIT_ENBL, 1);
+
+	/*
+	 * recheckthe battery present status to
+	 * make sure we didn't miss any battery
+	 * removal event and power off if battery
+	 * is removed/unplugged.
+	 */
+	if (!is_battery_online(chip)) {
+		dev_warn(&chip->client->dev, "battery NOT present\n");
+		mutex_lock(&chip->batt_lock);
+		chip->present = 0;
+		mutex_unlock(&chip->batt_lock);
+		kernel_power_off();
+	}
 }
 
 static int __devinit max17042_probe(struct i2c_client *client,
