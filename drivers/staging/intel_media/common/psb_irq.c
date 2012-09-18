@@ -422,9 +422,12 @@ void mdfld_te_handler_work(struct work_struct *work)
 	int pipe = dev_priv->te_pipe;
 	struct drm_device *dev = dev_priv->dev;
 
-	if (dev_priv->b_async_flip_enable)
+	if (dev_priv->b_async_flip_enable) {
 		mdfld_dsi_dsr_report_te(dev_priv->dsi_configs[0]);
-	else {
+
+		if (!mipi_te_hdmi_vsync_check(dev, pipe))
+			return;
+	} else {
 #ifdef CONFIG_MDFD_DSI_DPU
 		mdfld_dpu_update_panel(dev);
 #else
