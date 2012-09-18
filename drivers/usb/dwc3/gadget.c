@@ -1320,16 +1320,20 @@ static int dwc3_dev_init(struct dwc3 *dwc)
 	dwc3_writel(dwc->regs, DWC3_DCFG, reg);
 
 	/* hibernation enabling */
-	num = DWC3_GHWPARAMS4_HIBER_SCRATCHBUFS(dwc->hwparams.hwparams4);
-	if (num != 1)
-		dev_err(dwc->dev, "number of scratchpad buffer: %d\n", num);
+	if (dwc->hibernation.enabled) {
+		num = DWC3_GHWPARAMS4_HIBER_SCRATCHBUFS(
+				dwc->hwparams.hwparams4);
+		if (num != 1)
+			dev_err(dwc->dev, "number of scratchpad buffer: %d\n",
+				num);
 
-	reg = dwc3_readl(dwc->regs, DWC3_GCTL);
-	reg |= DWC3_GCTL_GBLHIBERNATIONEN;
-	dwc3_writel(dwc->regs, DWC3_GCTL, reg);
+		reg = dwc3_readl(dwc->regs, DWC3_GCTL);
+		reg |= DWC3_GCTL_GBLHIBERNATIONEN;
+		dwc3_writel(dwc->regs, DWC3_GCTL, reg);
 
-	dwc3_send_gadget_cmd(dwc, DWC3_DGCMD_SET_SCRATCH_ADDR_LO,
-		scratch_array_dma & 0xffffffffU);
+		dwc3_send_gadget_cmd(dwc, DWC3_DGCMD_SET_SCRATCH_ADDR_LO,
+			scratch_array_dma & 0xffffffffU);
+	}
 
 #if 0
 	dwc3_gadget_usb2_phy_power(dwc, false);
@@ -1490,7 +1494,9 @@ static int dwc3_start_peripheral(struct usb_gadget *g)
 	/* Set Run/Stop bit */
 	dwc3_gadget_run_stop(dwc, 1);
 
-	dwc3_gadget_keep_conn(dwc, 1);
+
+	if (dwc->hibernation.enabled)
+		dwc3_gadget_keep_conn(dwc, 1);
 
 	dwc->pm_state = PM_ACTIVE;
 
@@ -2061,6 +2067,7 @@ static void dwc3_update_ram_clk_sel(struct dwc3 *dwc, u32 speed)
 	dwc3_writel(dwc->regs, DWC3_GCTL, reg);
 }
 
+#if 0
 static void dwc3_gadget_disable_phy(struct dwc3 *dwc, u8 speed)
 {
 	switch (speed) {
@@ -2074,6 +2081,7 @@ static void dwc3_gadget_disable_phy(struct dwc3 *dwc, u8 speed)
 		break;
 	}
 }
+#endif
 
 static void dwc3_gadget_conndone_interrupt(struct dwc3 *dwc)
 {
@@ -2170,8 +2178,9 @@ static void dwc3_gadget_linksts_change_interrupt(struct dwc3 *dwc,
 static void dwc3_gadget_hibernation_interrupt(struct dwc3 *dwc)
 {
 	dev_vdbg(dwc->dev, "%s\n", __func__);
-
-	pm_runtime_put(dwc->dev);
+	if (dwc->hibernation.enabled &&
+	    dwc->dev_state == DWC3_CONFIGURED_STATE)
+		pm_runtime_put(dwc->dev);
 }
 
 static void dwc3_gadget_interrupt(struct dwc3 *dwc,
@@ -2292,6 +2301,22 @@ static irqreturn_t dwc3_interrupt(int irq, void *_dwc)
 	return ret;
 }
 
+static ssize_t store_enable_hiber(struct device *_dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct dwc3	*dwc = dev_get_drvdata(_dev);
+	int		enabled = 0;
+
+	sscanf(buf, "%d", &enabled);
+
+	dwc->hibernation.enabled = enabled;
+
+	return count;
+}
+
+static DEVICE_ATTR(enable_hiber, S_IRUGO|S_IWUSR|S_IWGRP,\
+			NULL, store_enable_hiber);
+
 /**
  * dwc3_gadget_init - Initializes gadget related registers
  * @dwc: Pointer to out controller context structure
@@ -2409,6 +2434,13 @@ int __devinit dwc3_gadget_init(struct dwc3 *dwc)
 	if (ret) {
 		dev_err(dwc->dev, "failed to register udc\n");
 		goto err7;
+	}
+
+	ret = device_create_file(dwc->dev, &dev_attr_enable_hiber);
+	if (ret < 0) {
+		dev_err(dwc->dev,
+			"failed to create sysfs interface: %d\n",
+			ret);
 	}
 
 	return 0;
