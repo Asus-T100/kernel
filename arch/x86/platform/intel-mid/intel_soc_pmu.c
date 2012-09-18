@@ -1165,6 +1165,47 @@ unlock:
 }
 EXPORT_SYMBOL(pmu_nc_set_power_state);
 
+/*
+* update_dev_res - Calulates & Updates the device residency when
+* a device state change occurs.
+* Computation of respective device residency starts when
+* its first state tranisition happens after the pmu driver
+* is initialised.
+*
+*/
+void update_dev_res(int index, pci_power_t state)
+{
+	if (state != PCI_D0) {
+		if (mid_pmu_cxt->pmu_dev_res[index].start == 0) {
+			mid_pmu_cxt->pmu_dev_res[index].start = cpu_clock(0);
+			mid_pmu_cxt->pmu_dev_res[index].d0i3_entry =
+				mid_pmu_cxt->pmu_dev_res[index].start;
+				mid_pmu_cxt->pmu_dev_res[index].d0i0_acc = 0;
+		} else{
+			mid_pmu_cxt->pmu_dev_res[index].d0i3_entry =
+							cpu_clock(0);
+			mid_pmu_cxt->pmu_dev_res[index].d0i0_acc +=
+			(mid_pmu_cxt->pmu_dev_res[index].d0i3_entry -
+				 mid_pmu_cxt->pmu_dev_res[index].d0i0_entry);
+		}
+	} else {
+		if (mid_pmu_cxt->pmu_dev_res[index].start == 0) {
+			mid_pmu_cxt->pmu_dev_res[index].start =
+						 cpu_clock(0);
+			mid_pmu_cxt->pmu_dev_res[index].d0i0_entry
+				= mid_pmu_cxt->pmu_dev_res[index].start;
+			mid_pmu_cxt->pmu_dev_res[index].d0i3_acc = 0;
+		} else {
+			mid_pmu_cxt->pmu_dev_res[index].d0i0_entry =
+						 cpu_clock(0);
+			mid_pmu_cxt->pmu_dev_res[index].d0i3_acc +=
+			(mid_pmu_cxt->pmu_dev_res[index].d0i0_entry -
+			mid_pmu_cxt->pmu_dev_res[index].d0i3_entry);
+		}
+	}
+	mid_pmu_cxt->pmu_dev_res[index].state = state;
+}
+
 /**
  * pmu_pci_set_power_state - Callback function is used by all the PCI devices
  *			for a platform  specific device power on/shutdown.
@@ -1172,9 +1213,9 @@ EXPORT_SYMBOL(pmu_nc_set_power_state);
  */
 int __ref pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t state)
 {
-	int i;
-	u32 pm_cmd_val;
 	u32 new_value;
+	int i = 0;
+	u32 pm_cmd_val, chk_val;
 	int sub_sys_pos, sub_sys_index;
 	int pmu_num;
 	struct pmu_ss_states cur_pmssc;
@@ -1207,8 +1248,15 @@ int __ref pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t state)
 
 	/*If the LSS corresponds to northcomplex device, update
 	  *the status and return*/
-	if (update_nc_device_states(i, state))
-		goto unlock;
+	if (update_nc_device_states(i, state)) {
+		if (mid_pmu_cxt->pmu_dev_res[i].state == state)
+			goto unlock;
+		else {
+			if (i < MAX_DEVICES)
+				update_dev_res(i, state);
+			goto unlock;
+		}
+	}
 
 	/* initialize the current pmssc states */
 	memset(&cur_pmssc, 0, sizeof(cur_pmssc));
@@ -1316,6 +1364,15 @@ retry:
 	/* update stats */
 	inc_d0ix_stat((i-mid_pmu_cxt->pmu1_max_devs),
 				pci_to_platform_state(state));
+
+	/* check if tranisition to requested state has happened */
+	pmu_read_sss(&cur_pmssc);
+	chk_val = cur_pmssc.pmu2_states[sub_sys_index] &
+		(D0I3_MASK << (sub_sys_pos * BITS_PER_LSS));
+	new_value &= (D0I3_MASK << (sub_sys_pos * BITS_PER_LSS));
+
+	if ((chk_val == new_value) && (i < MAX_DEVICES))
+		update_dev_res(i, state);
 
 unlock:
 	up(&mid_pmu_cxt->scu_ready_sem);

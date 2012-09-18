@@ -341,6 +341,65 @@ static void pmu_stat_seq_printf(struct seq_file *s, int type, char *typestr)
 	seq_printf(s, "%5lu.%03lu\n", time, (unsigned long) t);
 }
 
+static unsigned long pmu_dev_res_print(int index, unsigned long *precision,
+				unsigned long *sampled_time, bool dev_state)
+{
+	unsigned long long t, delta_time = 0;
+	unsigned long nanosec_rem, remainder;
+	unsigned long time, init_to_now_time;
+
+	t =  cpu_clock(raw_smp_processor_id());
+
+	if (dev_state) {
+		/* print for d0ix */
+		if ((mid_pmu_cxt->pmu_dev_res[index].state != PCI_D0))
+			delta_time = t -
+				mid_pmu_cxt->pmu_dev_res[index].d0i3_entry;
+
+			delta_time += mid_pmu_cxt->pmu_dev_res[index].d0i3_acc;
+	} else {
+		/* print for d0i0 */
+		if ((mid_pmu_cxt->pmu_dev_res[index].state == PCI_D0))
+			delta_time = t -
+				mid_pmu_cxt->pmu_dev_res[index].d0i0_entry;
+
+		delta_time += mid_pmu_cxt->pmu_dev_res[index].d0i0_acc;
+	}
+
+	t -= mid_pmu_cxt->pmu_dev_res[index].start;
+	nanosec_rem = do_div(t, NANO_SEC);
+
+	init_to_now_time =  (unsigned long) t;
+
+	t = delta_time;
+	nanosec_rem = do_div(t, NANO_SEC);
+
+	/* convert time in secs */
+	time = (unsigned long)t;
+	*sampled_time = time;
+
+	/* for calculating percentage residency */
+	time = time * 100;
+	t = (u64) time;
+
+	/* take care of divide by zero */
+	if (init_to_now_time) {
+		remainder = do_div(t, init_to_now_time);
+		time = (unsigned long) t;
+
+		/* for getting 3 digit precision after
+		* decimal dot */
+		remainder *= 1000;
+		t = (u64) remainder;
+		remainder = do_div(t, init_to_now_time);
+	} else
+		time = t = 0;
+
+	*precision = (unsigned long)t;
+
+	return time;
+}
+
 static int pmu_nc_get_power_state(int island, int reg_type)
 {
 	u32 pwr_sts;
@@ -624,6 +683,67 @@ static const struct file_operations pmu_sss_state_operations = {
 	.release	= single_release,
 };
 
+static int show_pmu_dev_stats(struct seq_file *s, void *unused)
+{
+	struct pci_dev *pdev = NULL;
+	unsigned long sampled_time, precision;
+	int index, pmu_num, ss_idx, ss_pos;
+	unsigned int base_class;
+
+	seq_printf(s, "%5s\t%20s\t%10s\t%10s\t%s\n",
+		"lss", "Name", "D0_res", "D0ix_res", "Sampled_Time");
+	seq_printf(s,
+	"==================================================================\n");
+
+	while ((pdev = pci_get_device(PCI_ID_ANY, PCI_ID_ANY, pdev)) != NULL) {
+
+		/* find the base class info */
+		base_class = pdev->class >> 16;
+
+		if (base_class == PCI_BASE_CLASS_BRIDGE)
+			continue;
+
+		if (pmu_pci_to_indexes(pdev, &index, &pmu_num, &ss_idx,
+							&ss_pos))
+			continue;
+
+		if (pmu_num == PMU_NUM_1) {
+			seq_printf(s,
+			"%5s%20s\t%5lu.%03lu%%\t%5lu.%03lu%%\t%lu\n",
+			"NC", dev_driver_string(&pdev->dev),
+			pmu_dev_res_print(index, &precision,
+				 &sampled_time, false),
+			precision,
+			pmu_dev_res_print(index, &precision,
+				 &sampled_time, true),
+			precision, sampled_time);
+			continue;
+		}
+
+		/* Print for South Complex devices */
+		seq_printf(s, "%5d\t%20s\t%5lu.%03lu%%\t%5lu.%03lu%%\t%lu\n",
+		index - mid_pmu_cxt->pmu1_max_devs,
+		dev_driver_string(&pdev->dev),
+		pmu_dev_res_print(index, &precision, &sampled_time, false),
+		precision,
+		pmu_dev_res_print(index, &precision, &sampled_time, true),
+		precision, sampled_time);
+	}
+	return 0;
+}
+
+static int pmu_dev_stat_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, show_pmu_dev_stats, NULL);
+}
+
+static const struct file_operations pmu_dev_stat_operations = {
+	.open		= pmu_dev_stat_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
 #ifdef CONFIG_PM_DEBUG
 static int pmu_stats_interval = PMU_LOG_INTERVAL_SECS;
 module_param_named(pmu_stats_interval, pmu_stats_interval,
@@ -845,6 +965,10 @@ void pmu_stats_init(void)
 	/* /sys/kernel/debug/pmu_sss_states */
 	(void) debugfs_create_file("pmu_sss_states", S_IFREG | S_IRUGO,
 				NULL, NULL, &pmu_sss_state_operations);
+
+	/* /sys/kernel/debug/pmu_dev_stats */
+	(void) debugfs_create_file("pmu_dev_stats", S_IFREG | S_IRUGO,
+				NULL, NULL, &pmu_dev_stat_operations);
 
 #ifdef CONFIG_PM_DEBUG
 	/* dynamic debug tracing in every 5 mins */
