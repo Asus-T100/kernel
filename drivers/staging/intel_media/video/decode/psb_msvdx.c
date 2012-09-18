@@ -36,13 +36,12 @@
 #include "psb_powermgmt.h"
 #include <linux/io.h>
 #include <linux/delay.h>
+#include "mdfld_gl3.h"
 
 #ifndef list_first_entry
 #define list_first_entry(ptr, type, member) \
 	list_entry((ptr)->next, type, member)
 #endif
-
-static int ied_enabled;
 
 static int psb_msvdx_send(struct drm_device *dev, void *cmd,
 			  unsigned long cmd_size);
@@ -172,7 +171,9 @@ static int psb_msvdx_map_command(struct drm_device *dev,
 			if (msvdx_mmu_invalid == 1) {
 				decode_msg->flag_size.bits.flags |=
 						FW_INVALIDATE_MMU;
-				psb_gl3_global_invalidation(dev);
+#ifdef CONFIG_MDFD_GL3
+				gl3_invalidate();
+#endif
 				PSB_DEBUG_GENERAL("MSVDX:Set MMU invalidate\n");
 			}
 
@@ -322,7 +323,7 @@ int psb_submit_video_cmdbuf(struct drm_device *dev,
 			    struct ttm_fence_object *fence)
 {
 	struct drm_psb_private *dev_priv = dev->dev_private;
-	uint32_t sequence =  (dev_priv->sequence[PSB_ENGINE_VIDEO] << 4);
+	uint32_t sequence =  (dev_priv->sequence[PSB_ENGINE_DECODE] << 4);
 	unsigned long irq_flags;
 	int ret = 0;
 	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
@@ -469,7 +470,7 @@ int psb_cmdbuf_video(struct drm_file *priv,
 
 
 	/* DRM_ERROR("Intel: Fix video fencing!!\n"); */
-	psb_fence_or_sync(priv, PSB_ENGINE_VIDEO, fence_type,
+	psb_fence_or_sync(priv, PSB_ENGINE_DECODE, fence_type,
 			  arg->fence_flags, validate_list, fence_arg,
 			  &fence);
 
@@ -723,7 +724,7 @@ loop: /* just for coding style check */
 			msvdx_priv->msvdx_needs_reset = 1;
 
 		diff = msvdx_priv->msvdx_current_sequence
-		       - dev_priv->sequence[PSB_ENGINE_VIDEO];
+		       - dev_priv->sequence[PSB_ENGINE_DECODE];
 
 		if (diff > 0x0FFFFFFF)
 			msvdx_priv->msvdx_current_sequence++;
@@ -732,7 +733,7 @@ loop: /* just for coding style check */
 				  "assuming %08x\n",
 				  msvdx_priv->msvdx_current_sequence);
 
-		psb_fence_error(dev, PSB_ENGINE_VIDEO,
+		psb_fence_error(dev, PSB_ENGINE_DECODE,
 				msvdx_priv->msvdx_current_sequence,
 				_PSB_FENCE_TYPE_EXE, DRM_CMD_FAILED);
 
@@ -787,7 +788,7 @@ loop: /* just for coding style check */
 				;
 		msvdx_priv->ref_pic_fence = fence;
 
-		psb_fence_handler(dev, PSB_ENGINE_VIDEO);
+		psb_fence_handler(dev, PSB_ENGINE_DECODE);
 
 		if (flags & FW_VA_RENDER_HOST_INT) {
 			/*Now send the next command from the msvdx cmd queue */
@@ -972,10 +973,10 @@ void psb_msvdx_lockup(struct drm_psb_private *dev_priv,
 			  "last_sequence:%d and last_submitted_sequence :%d\n",
 			  msvdx_priv->msvdx_current_sequence,
 			  msvdx_priv->msvdx_last_sequence,
-			  dev_priv->sequence[PSB_ENGINE_VIDEO]);
+			  dev_priv->sequence[PSB_ENGINE_DECODE]);
 
 	diff = msvdx_priv->msvdx_current_sequence -
-	       dev_priv->sequence[PSB_ENGINE_VIDEO];
+	       dev_priv->sequence[PSB_ENGINE_DECODE];
 
 	if (diff > 0x0FFFFFFF) {
 		if (msvdx_priv->msvdx_current_sequence ==
@@ -1025,333 +1026,6 @@ int psb_check_msvdx_idle(struct drm_device *dev)
 	return 0;
 }
 
-
-int psb_remove_videoctx(struct drm_psb_private *dev_priv, struct file *filp)
-{
-	struct psb_video_ctx *pos, *n;
-	/* iterate to query all ctx to if there is DRM running*/
-	ied_enabled = 0;
-
-	mutex_lock(&dev_priv->video_ctx_mutex);
-	list_for_each_entry_safe(pos, n, &dev_priv->video_ctx, head) {
-		if (pos->filp == filp) {
-			PSB_DEBUG_GENERAL("Video:remove context profile %d,"
-					  " entrypoint %d\n",
-					  (pos->ctx_type >> 8) & 0xff,
-					  (pos->ctx_type & 0xff));
-
-			/* if current ctx points to it, set to NULL */
-			if (dev_priv->topaz_ctx == pos) {
-				/*Reset fw load status here.*/
-				if (IS_MDFLD(dev_priv->dev) &&
-					(VAEntrypointEncSlice ==
-						(pos->ctx_type & 0xff)
-					|| VAEntrypointEncPicture ==
-						(pos->ctx_type & 0xff)))
-					pnw_reset_fw_status(dev_priv->dev);
-
-				dev_priv->topaz_ctx = NULL;
-			} else if (IS_MDFLD(dev_priv->dev) &&
-					(VAEntrypointEncSlice ==
-						(pos->ctx_type & 0xff)
-					|| VAEntrypointEncPicture ==
-						(pos->ctx_type & 0xff)))
-				PSB_DEBUG_GENERAL("Remove a inactive "\
-						"encoding context.\n");
-
-			if (dev_priv->last_topaz_ctx == pos)
-				dev_priv->last_topaz_ctx = NULL;
-
-			if (dev_priv->msvdx_ctx == pos)
-				dev_priv->msvdx_ctx = NULL;
-			if (dev_priv->last_msvdx_ctx == pos)
-				dev_priv->last_msvdx_ctx = NULL;
-
-			list_del(&pos->head);
-			kfree(pos);
-		} else {
-			if (pos->ctx_type & VA_RT_FORMAT_PROTECTED)
-				ied_enabled = 1;
-		}
-	}
-	mutex_unlock(&dev_priv->video_ctx_mutex);
-	return 0;
-}
-
-struct psb_video_ctx *psb_find_videoctx(struct drm_psb_private *dev_priv,
-					struct file *filp)
-{
-	struct psb_video_ctx *pos, *n;
-
-	list_for_each_entry_safe(pos, n, &dev_priv->video_ctx, head) {
-		if (pos->filp == filp)
-			return pos;
-	}
-	return NULL;
-}
-
-static int psb_entrypoint_number(struct drm_psb_private *dev_priv,
-		uint32_t entry_type)
-{
-	struct psb_video_ctx *pos, *n;
-	int count = 0;
-
-	entry_type &= 0xff;
-
-	if (entry_type < VAEntrypointVLD ||
-			entry_type > VAEntrypointEncPicture) {
-		DRM_ERROR("Invalide entrypoint value %d.\n", entry_type);
-		return -EINVAL;
-	}
-
-	mutex_lock(&dev_priv->video_ctx_mutex);
-	list_for_each_entry_safe(pos, n, &dev_priv->video_ctx, head) {
-		if (entry_type == (pos->ctx_type & 0xff))
-			count++;
-
-	}
-	mutex_unlock(&dev_priv->video_ctx_mutex);
-
-	PSB_DEBUG_GENERAL("There are %d active entrypoint %d.\n",
-			count, entry_type);
-	return count;
-}
-
-int lnc_video_getparam(struct drm_device *dev, void *data,
-		       struct drm_file *file_priv)
-{
-	struct drm_lnc_video_getparam_arg *arg = data;
-	int ret = 0;
-	struct drm_psb_private *dev_priv =
-		(struct drm_psb_private *)file_priv->minor->dev->dev_private;
-	drm_psb_msvdx_frame_info_t *current_frame = NULL;
-	uint32_t handle, i;
-	uint32_t device_info = 0;
-	uint32_t ctx_type = 0;
-	struct psb_video_ctx *video_ctx = NULL;
-	uint32_t rar_ci_info[2];
-	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
-
-	switch (arg->key) {
-	case LNC_VIDEO_GETPARAM_RAR_INFO:
-		rar_ci_info[0] = dev_priv->rar_region_start;
-		rar_ci_info[1] = dev_priv->rar_region_size;
-		ret = copy_to_user((void __user *)((unsigned long)arg->value),
-				   &rar_ci_info[0],
-				   sizeof(rar_ci_info));
-		break;
-	case LNC_VIDEO_GETPARAM_CI_INFO:
-		rar_ci_info[0] = dev_priv->ci_region_start;
-		rar_ci_info[1] = dev_priv->ci_region_size;
-		ret = copy_to_user((void __user *)((unsigned long)arg->value),
-				   &rar_ci_info[0],
-				   sizeof(rar_ci_info));
-		break;
-	case LNC_VIDEO_FRAME_SKIP:
-		/* Medfield should not call it */
-		ret = -EFAULT;
-		break;
-	case LNC_VIDEO_DEVICE_INFO:
-		device_info = 0xffff & dev_priv->video_device_fuse;
-		device_info |= (0xffff & dev->pci_device) << 16;
-
-		ret = copy_to_user((void __user *)((unsigned long)arg->value),
-				   &device_info, sizeof(device_info));
-		break;
-	case IMG_VIDEO_NEW_CONTEXT:
-		/* add video decode/encode context */
-		ret = copy_from_user(&ctx_type, (void __user *)((unsigned long)arg->value),
-				     sizeof(ctx_type));
-		video_ctx = kmalloc(sizeof(struct psb_video_ctx), GFP_KERNEL);
-		if (video_ctx == NULL) {
-			ret = -ENOMEM;
-			break;
-		}
-		INIT_LIST_HEAD(&video_ctx->head);
-		video_ctx->ctx_type = ctx_type;
-		video_ctx->filp = file_priv->filp;
-		mutex_lock(&dev_priv->video_ctx_mutex);
-		list_add(&video_ctx->head, &dev_priv->video_ctx);
-		mutex_unlock(&dev_priv->video_ctx_mutex);
-
-		if (IS_MDFLD(dev_priv->dev) &&
-				(VAEntrypointEncSlice ==
-				 (ctx_type & 0xff)))
-			pnw_reset_fw_status(dev_priv->dev);
-
-		PSB_DEBUG_GENERAL("Video:add ctx profile %d, entry %d.\n",
-					((ctx_type >> 8) & 0xff),
-					(ctx_type & 0xff));
-		PSB_DEBUG_GENERAL("Video:add context protected 0x%x.\n",
-					(ctx_type & VA_RT_FORMAT_PROTECTED));
-		if (ctx_type & VA_RT_FORMAT_PROTECTED)
-			ied_enabled = 1;
-		break;
-
-	case IMG_VIDEO_RM_CONTEXT:
-		psb_remove_videoctx(dev_priv, file_priv->filp);
-		break;
-	case IMG_VIDEO_UPDATE_CONTEXT:
-		ret = copy_from_user(&ctx_type,
-				(void __user *)((unsigned long)arg->value),
-				sizeof(ctx_type));
-		video_ctx = psb_find_videoctx(dev_priv, file_priv->filp);
-		if (video_ctx) {
-			PSB_DEBUG_GENERAL(
-				"Video: update video ctx old value 0x%08x\n",
-				video_ctx->ctx_type);
-			video_ctx->ctx_type = ctx_type;
-			PSB_DEBUG_GENERAL(
-				"Video: update video ctx new value 0x%08x\n",
-				video_ctx->ctx_type);
-		} else
-			PSB_DEBUG_GENERAL(
-				"Video:fail to find context profile %d, entrypoint %d",
-				(ctx_type >> 8), (ctx_type & 0xff));
-		break;
-	case IMG_VIDEO_DECODE_STATUS:
-		if (msvdx_priv->host_be_opp_enabled) {
-			/*get the right frame_info struct for current surface*/
-			ret = copy_from_user(&handle,
-					     (void __user *)((unsigned long)arg->arg), 4);
-			if (ret) {
-				DRM_ERROR("MSVDX in lnc_video_getparam, copy_from_user failed.\n");
-				break;
-			}
-
-			for (i = 0; i < MAX_DECODE_BUFFERS; i++) {
-				if (msvdx_priv->frame_info[i].handle == handle) {
-					current_frame = &msvdx_priv->frame_info[i];
-					break;
-				}
-			}
-			if (!current_frame) {
-				DRM_ERROR("MSVDX: didn't find frame_info which matched the surface_id. \n");
-				return -EFAULT;
-			}
-			ret = copy_to_user((void __user *)((unsigned long)arg->value),
-					   &current_frame->fw_status, sizeof(current_frame->fw_status));
-		} else
-			ret = copy_to_user((void __user *)((unsigned long)arg->value),
-					   &msvdx_priv->fw_status, sizeof(msvdx_priv->fw_status));
-		break;
-
-	case IMG_VIDEO_MB_ERROR:
-		/*get the right frame_info struct for current surface*/
-		ret = copy_from_user(&handle,
-				     (void __user *)((unsigned long)arg->arg), 4);
-		if (ret)
-			break;
-
-		for (i = 0; i < MAX_DECODE_BUFFERS; i++) {
-			if (msvdx_priv->frame_info[i].handle == handle) {
-				current_frame = &msvdx_priv->frame_info[i];
-				break;
-			}
-		}
-		if (!current_frame) {
-			DRM_ERROR("MSVDX: didn't find frame_info which matched the surface_id. \n");
-			return -EFAULT;
-		}
-		ret = copy_to_user((void __user *)((unsigned long)arg->value),
-				   &(current_frame->decode_status), sizeof(drm_psb_msvdx_decode_status_t));
-		if (ret) {
-			DRM_ERROR("lnc_video_getparam copy_to_user error.\n");
-			return -EFAULT;
-		}
-		break;
-	case IMG_VIDEO_SET_DISPLAYING_FRAME:
-		ret = copy_from_user(&msvdx_priv->displaying_frame,
-				(void __user *)((unsigned long)arg->value),
-				sizeof(msvdx_priv->displaying_frame));
-		if (ret) {
-			DRM_ERROR("IMG_VIDEO_SET_DISPLAYING_FRAME error.\n");
-			return -EFAULT;
-		}
-		break;
-	case IMG_VIDEO_GET_DISPLAYING_FRAME:
-		ret = copy_to_user((void __user *)((unsigned long)arg->value),
-				&msvdx_priv->displaying_frame,
-				sizeof(msvdx_priv->displaying_frame));
-		if (ret) {
-			DRM_ERROR("IMG_VIDEO_GET_DISPLAYING_FRAME error.\n");
-			return -EFAULT;
-		}
-		break;
-	case IMG_DISPLAY_SET_WIDI_EXT_STATE:
-		DRM_ERROR("variable drm_psb_widi has been removed\n");
-		break;
-	case IMG_VIDEO_GET_HDMI_STATE:
-		ret = copy_to_user((void __user *)((unsigned long)arg->value),
-				&hdmi_state,
-				sizeof(hdmi_state));
-		if (ret) {
-			DRM_ERROR("IMG_VIDEO_GET_HDMI_STATE error.\n");
-			return -EFAULT;
-		}
-		break;
-	case IMG_VIDEO_SET_HDMI_STATE:
-		if (!hdmi_state) {
-			PSB_DEBUG_ENTRY(
-				"wait 100ms for kernel hdmi pipe ready.\n");
-			msleep(100);
-		}
-		if (dev_priv->bhdmiconnected)
-			hdmi_state = (int)arg->value;
-		else
-			PSB_DEBUG_ENTRY(
-				"skip hdmi_state setting, for unplugged.\n");
-
-		PSB_DEBUG_ENTRY("%s, set hdmi_state = %d\n",
-				 __func__, hdmi_state);
-		break;
-	case PNW_VIDEO_QUERY_ENTRY:
-		ret = copy_from_user(&handle,
-				(void __user *)((unsigned long)arg->arg),
-				sizeof(handle));
-		if (ret)
-			break;
-		/*Return the number of active entries*/
-		i = psb_entrypoint_number(dev_priv, handle);
-		if (i >= 0)
-			ret = copy_to_user((void __user *)
-					((unsigned long)arg->value),
-					&i, sizeof(i));
-		break;
-	case IMG_VIDEO_IED_STATE:
-		/* query IED status by register is not safe */
-		/* need first power-on msvdx, while now only  */
-		/* schedule vxd suspend wq in interrupt handler */
-#if 0
-		int ied_enable;
-		/* VXD must be power on during query IED register */
-		if (!ospm_power_using_hw_begin(OSPM_VIDEO_DEC_ISLAND,
-				OSPM_UHB_FORCE_POWER_ON))
-			return -EBUSY;
-		/* wrong spec, IED should be located in pci device 2 */
-		if (REG_READ(PSB_IED_DRM_CNTL_STATUS) & IED_DRM_VLD)
-			ied_enable = 1;
-		else
-			ied_enable = 0;
-		PSB_DEBUG_GENERAL("ied_enable is %d.\n", ied_enable);
-		ospm_power_using_hw_end(OSPM_VIDEO_DEC_ISLAND);
-#endif
-		ret = copy_to_user((void __user *)
-				((unsigned long)arg->value),
-				&ied_enabled, sizeof(ied_enabled));
-		break;
-
-	default:
-		ret = -EFAULT;
-		break;
-	}
-
-	if (ret)
-		return -EFAULT;
-
-	return 0;
-}
-
 int psb_msvdx_save_context(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv =
@@ -1384,7 +1058,7 @@ int psb_msvdx_restore_context(struct drm_device *dev)
 	return 0;
 }
 
-int psb_msvdx_check_reset_fw(struct drm_device *dev)
+void psb_msvdx_check_reset_fw(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv = dev->dev_private;
 	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
@@ -1399,7 +1073,6 @@ int psb_msvdx_check_reset_fw(struct drm_device *dev)
 		ospm_power_island_down(OSPM_VIDEO_DEC_ISLAND);
 	}
 	spin_unlock_irqrestore(&msvdx_priv->msvdx_lock, irq_flags);
-	return 0;
 }
 
 static void psb_msvdx_set_tile(struct drm_device *dev, unsigned long msvdx_tile)

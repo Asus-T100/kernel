@@ -49,6 +49,7 @@
 #include "pnw_topaz.h"
 #include "psb_powermgmt.h"
 #include "pnw_topaz_hw_reg.h"
+#include "mdfld_gl3.h"
 
 /* WARNING: this define is very important */
 #define RAM_SIZE (1024 * 24)
@@ -1489,7 +1490,9 @@ void pnw_topaz_mmu_flushcache(struct drm_psb_private *dev_priv)
 	mmu_control &= (~F_ENCODE(1, TOPAZ_CR_MMU_INVALDC));
 	/* mmu_control &= (~F_ENCODE(1, TOPAZ_CR_MMU_FLUSH)); */
 	TOPAZ_WRITE32(TOPAZ_CR_MMU_CONTROL0, mmu_control, 0);
-	psb_gl3_global_invalidation(dev_priv->dev);
+#ifdef CONFIG_MDFD_GL3
+	gl3_invalidate();
+#endif
 }
 
 

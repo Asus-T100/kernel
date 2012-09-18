@@ -39,14 +39,20 @@ static inline int psb_same_page(unsigned long offset,
 	return (offset & PAGE_MASK) == (offset2 & PAGE_MASK);
 }
 
+#if 0
 static inline unsigned long psb_offset_end(unsigned long offset,
 		unsigned long end)
 {
 	offset = (offset + PAGE_SIZE) & PAGE_MASK;
 	return (end < offset) ? end : offset;
 }
+#endif
 
-static void psb_idle_engine(struct drm_device *dev, int engine);
+static void psb_idle_engine(struct drm_device *dev, int engine)
+{
+	/*Fix me add video engile support*/
+	return;
+}
 
 struct psb_dstbuf_cache {
 	unsigned int dst;
@@ -108,6 +114,7 @@ static void psb_unreference_buffers(struct psb_context *context)
 		ttm_bo_unref(&entry->bo);
 	}
 
+	/*
 	list = &context->kern_validate_list;
 
 	list_for_each_entry_safe(entry, next, list, head) {
@@ -116,8 +123,8 @@ static void psb_unreference_buffers(struct psb_context *context)
 		list_del(&entry->head);
 		ttm_bo_unref(&entry->bo);
 	}
+	*/
 }
-
 
 static int psb_lookup_validate_buffer(struct drm_file *file_priv,
 				      uint64_t data,
@@ -179,15 +186,19 @@ out_err0:
 	return ret;
 }
 
-static int
-psb_placement_fence_type(struct ttm_buffer_object *bo,
-			 uint64_t set_val_flags,
-			 uint64_t clr_val_flags,
-			 uint32_t new_fence_class,
-			 uint32_t *new_fence_type)
+/* Todo: can simplified the code:
+ * set_val_flags is hard code as (read | write) in user space
+ * clr_flags is set as NULL
+ * only one fence type is needed */
+static int psb_placement_fence_type(struct ttm_buffer_object *bo,
+						uint64_t set_val_flags,
+						uint64_t clr_val_flags,
+						uint32_t new_fence_class,
+						uint32_t *new_fence_type)
 {
 	int ret;
 	uint32_t n_fence_type;
+
 	/*
 	uint32_t set_flags = set_val_flags & 0xFFFFFFFF;
 	uint32_t clr_flags = clr_val_flags & 0xFFFFFFFF;
@@ -308,8 +319,7 @@ static int psb_validate_buffer_list(struct drm_file *file_priv,
 	*po_correct = 1;
 
 	list_for_each_entry(entry, list, head) {
-		item =
-			container_of(entry, struct psb_validate_buffer, base);
+		item = container_of(entry, struct psb_validate_buffer, base);
 		bo = entry->bo;
 		item->ret = 0;
 		req = &item->req;
@@ -333,7 +343,9 @@ static int psb_validate_buffer_list(struct drm_file *file_priv,
 
 		spin_unlock(&bo->bdev->fence_lock);
 		ret = ttm_bo_validate(bo, &placement, 1, 0, 0);
-		/* spin_lock(&bo->lock); */ /* mem and offset field of bo is protected by ::reserve, this function is called in reserve*/
+		/* spin_lock(&bo->lock); */
+		/* mem and offset field of bo is protected by ::reserve
+		 * this function is called in reserve */
 		if (unlikely(ret != 0))
 			goto out_err;
 
@@ -345,9 +357,8 @@ static int psb_validate_buffer_list(struct drm_file *file_priv,
 		item->flags = bo->mem.placement;
 		/* spin_unlock(&bo->lock); */
 
-		ret =
-			psb_check_presumed(&item->req, bo, item->user_val_arg,
-					   &item->po_correct);
+		ret = psb_check_presumed(&item->req, bo, item->user_val_arg,
+					&item->po_correct);
 		if (unlikely(ret != 0))
 			goto out_err;
 
@@ -407,10 +418,9 @@ static int psb_update_dstbuf_cache(struct psb_dstbuf_cache *dst_cache,
 			dst_cache->dst_page = NULL;
 		}
 
-		ret =
-			ttm_bo_kmap(dst_cache->dst_buf,
-				    dst_offset >> PAGE_SHIFT, 1,
-				    &dst_cache->dst_kmap);
+		ret = ttm_bo_kmap(dst_cache->dst_buf,
+				dst_offset >> PAGE_SHIFT, 1,
+				&dst_cache->dst_kmap);
 		if (ret) {
 			DRM_ERROR("Could not map destination buffer for "
 				  "relocation.\n");
@@ -478,8 +488,8 @@ static int psb_apply_reloc(struct drm_psb_private *dev_priv,
 		return -EINVAL;
 	}
 
-	ret =
-		psb_update_dstbuf_cache(dst_cache, buffers, reloc->dst_buffer,
+	ret = psb_update_dstbuf_cache(dst_cache, buffers,
+					reloc->dst_buffer,
 					reloc->where << 2);
 	if (ret)
 		return ret;
@@ -735,12 +745,6 @@ static int psb_dump_page(struct ttm_buffer_object *bo,
 }
 #endif
 
-static void psb_idle_engine(struct drm_device *dev, int engine)
-{
-	/*Fix me add video engile support*/
-	return;
-}
-
 static int psb_handle_copyback(struct drm_device *dev,
 			       struct psb_context *context,
 			       int ret)
@@ -752,10 +756,10 @@ static int psb_handle_copyback(struct drm_device *dev,
 
 	if (ret) {
 		ttm_eu_backoff_reservation(list);
-		ttm_eu_backoff_reservation(&context->kern_validate_list);
+		/* ttm_eu_backoff_reservation(&context->kern_validate_list); */
 	}
 
-
+	/* Todo: actually user space driver didn't hanlde the rep info */
 	if (ret != -EAGAIN && ret != -EINTR && ret != -ERESTART) {
 		list_for_each_entry(entry, list, head) {
 			struct psb_validate_buffer *vbuf =
@@ -806,15 +810,12 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 	int engine;
 	int po_correct;
 	struct psb_context *context;
-	unsigned num_buffers;
-
-	num_buffers = PSB_NUM_VALIDATE_BUFFERS;
 
 	ret = ttm_read_lock(&dev_priv->ttm_lock, true);
 	if (unlikely(ret != 0))
 		return ret;
 
-	if (arg->engine == PSB_ENGINE_VIDEO) {
+	if (arg->engine == PSB_ENGINE_DECODE) {
 		if (msvdx_priv->fw_loaded_by_punit)
 			psb_msvdx_check_reset_fw(dev);
 		if (!ospm_power_using_video_begin(OSPM_VIDEO_DEC_ISLAND))
@@ -827,7 +828,6 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 			return -EBUSY;
 	}
 
-
 	ret = mutex_lock_interruptible(&dev_priv->cmdbuf_mutex);
 	if (unlikely(ret != 0))
 		goto out_err0;
@@ -838,7 +838,7 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 	context->used_buffers = 0;
 	context->fence_types = 0;
 	BUG_ON(!list_empty(&context->validate_list));
-	BUG_ON(!list_empty(&context->kern_validate_list));
+	/* BUG_ON(!list_empty(&context->kern_validate_list)); */
 
 	if (unlikely(context->buffers == NULL)) {
 		context->buffers = vmalloc(PSB_NUM_VALIDATE_BUFFERS *
@@ -852,7 +852,6 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 	ret = psb_reference_buffers(file_priv,
 				    arg->buffer_list,
 				    context);
-
 	if (unlikely(ret != 0))
 		goto out_err1;
 
@@ -889,7 +888,7 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 		if (pos->filp == file_priv->filp) {
 			int entrypoint = pos->ctx_type & 0xff;
 
-			PSB_DEBUG_GENERAL("Video:commands for profile %d, entrypoint %d",
+			PSB_DEBUG_GENERAL("cmds for profile %d, entrypoint %d",
 					(pos->ctx_type >> 8) & 0xff,
 					(pos->ctx_type & 0xff));
 
@@ -905,23 +904,21 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 	mutex_unlock(&dev_priv->video_ctx_mutex);
 
 	switch (arg->engine) {
-	case PSB_ENGINE_VIDEO:
+	case PSB_ENGINE_DECODE:
 		ret = psb_cmdbuf_video(file_priv, &context->validate_list,
 				       context->fence_types, arg,
 				       cmd_buffer, &fence_arg);
-
 		if (unlikely(ret != 0))
 			goto out_err4;
 		break;
+
 	case LNC_ENGINE_ENCODE:
 		ret = pnw_cmdbuf_video(file_priv, &context->validate_list,
 					       context->fence_types, arg,
 					       cmd_buffer, &fence_arg);
-
 		if (unlikely(ret != 0))
 			goto out_err4;
 		break;
-
 
 	default:
 		DRM_ERROR
@@ -949,42 +946,11 @@ out_err1:
 out_err0:
 	ttm_read_unlock(&dev_priv->ttm_lock);
 
-	if (arg->engine == PSB_ENGINE_VIDEO)
+	if (arg->engine == PSB_ENGINE_DECODE)
 		ospm_power_using_video_end(OSPM_VIDEO_DEC_ISLAND);
 
 	if (arg->engine == LNC_ENGINE_ENCODE)
 		ospm_power_using_video_end(OSPM_VIDEO_ENC_ISLAND);
 
 	return ret;
-}
-
-void psb_gl3_global_invalidation(struct drm_device *dev)
-{
-#ifdef CONFIG_MDFD_GL3
-	struct drm_psb_private *dev_priv = dev->dev_private;
-	uint32_t gl3_ctl;
-	/* uint32_t poll_count = 0x1000, gl3_stat; */
-
-	/* IS there a way to avoid multiple invalidation simultaneously? Maybe a ATOM value */
-
-	gl3_ctl = PSB_RVDC32(PSB_GL3_CACHE_CTL);
-	/* gl3_ctl = PSB_RVDC32(0xb0000); */
-	/* printk("gl3_invalidation: GCL_CR_CTL2 is 0x%08x\n", gl3_ctl); */
-
-	PSB_WVDC32(gl3_ctl | 0x2, PSB_GL3_CACHE_CTL);
-
-#if 0
-	while (poll_count) {
-		gl3_stat = PSB_RVDC32(PSB_GL3_CACHE_STAT);
-		if (gl3_stat & 0x1) {
-			PSB_WVDC32(gl3_stat | 0x1, PSB_GL3_CACHE_STAT); /* Frome D.Will : write 1 to Inval_done bit to clear it */
-			return;
-		}
-		cpu_relax();
-		poll_count--;
-	}
-
-	DRM_ERROR("Invalidation GL3 timeout\n");
-#endif
-#endif
 }

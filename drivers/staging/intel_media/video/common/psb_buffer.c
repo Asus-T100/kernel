@@ -24,8 +24,6 @@
 #include <drm/drmP.h>
 #include "psb_drv.h"
 
-#define DRM_MEM_TTM       26
-
 struct drm_psb_ttm_backend {
 	struct ttm_backend base;
 	struct page **pages;
@@ -36,108 +34,6 @@ struct drm_psb_ttm_backend {
 	unsigned long offset;
 	unsigned long num_pages;
 };
-
-/*
- * MSVDX/TOPAZ GPU virtual space looks like this
- * (We currently use only one MMU context).
- * PSB_MEM_MMU_START: from 0x00000000~0xd000000, for generic buffers
- * TTM_PL_RAR: from 0xd0000000, for MFLD IMR buffers
- * TTM_PL_CI: from 0xe0000000+half GTT space, for MRST camear/video buffer sharing
- * TTM_PL_TT: from TTM_PL_CI+CI size, for buffers need to mapping into GTT
- */
-static int psb_init_mem_type(struct ttm_bo_device *bdev, uint32_t type,
-			     struct ttm_mem_type_manager *man)
-{
-
-	struct drm_psb_private *dev_priv =
-		container_of(bdev, struct drm_psb_private, bdev);
-	struct psb_gtt *pg = dev_priv->pg;
-
-	switch (type) {
-	case TTM_PL_SYSTEM:
-		man->flags = TTM_MEMTYPE_FLAG_MAPPABLE;
-		man->available_caching = TTM_PL_FLAG_CACHED |
-					 TTM_PL_FLAG_UNCACHED | TTM_PL_FLAG_WC;
-		man->default_caching = TTM_PL_FLAG_CACHED;
-		break;
-	case DRM_PSB_MEM_MMU:
-		man->func = &ttm_bo_manager_func;
-		man->flags = TTM_MEMTYPE_FLAG_MAPPABLE |
-			     TTM_MEMTYPE_FLAG_CMA;
-		man->gpu_offset = PSB_MEM_MMU_START;
-		man->available_caching = TTM_PL_FLAG_CACHED |
-					 TTM_PL_FLAG_UNCACHED | TTM_PL_FLAG_WC;
-		man->default_caching = TTM_PL_FLAG_WC;
-		break;
-	case TTM_PL_CI:
-		man->func = &ttm_bo_manager_func;
-		man->flags = TTM_MEMTYPE_FLAG_MAPPABLE |
-			     TTM_MEMTYPE_FLAG_FIXED;
-		man->gpu_offset = pg->mmu_gatt_start + (pg->ci_start);
-		man->available_caching = TTM_PL_FLAG_UNCACHED;
-		man->default_caching = TTM_PL_FLAG_UNCACHED;
-		break;
-	case TTM_PL_RAR:	/* Unmappable RAR memory */
-		man->func = &ttm_bo_manager_func;
-		man->flags = TTM_MEMTYPE_FLAG_MAPPABLE |
-			     TTM_MEMTYPE_FLAG_FIXED;
-		man->available_caching = TTM_PL_FLAG_UNCACHED;
-		man->default_caching = TTM_PL_FLAG_UNCACHED;
-		man->gpu_offset = PSB_MEM_RAR_START;
-		break;
-	case TTM_PL_TT:	/* Mappable GATT memory */
-		man->func = &ttm_bo_manager_func;
-#ifdef PSB_WORKING_HOST_MMU_ACCESS
-		man->flags = TTM_MEMTYPE_FLAG_MAPPABLE;
-#else
-		man->flags = TTM_MEMTYPE_FLAG_MAPPABLE |
-			     TTM_MEMTYPE_FLAG_CMA;
-#endif
-		man->available_caching = TTM_PL_FLAG_CACHED |
-					 TTM_PL_FLAG_UNCACHED | TTM_PL_FLAG_WC;
-		man->default_caching = TTM_PL_FLAG_WC;
-		man->gpu_offset = pg->mmu_gatt_start + pg->ci_start + pg->ci_stolen_size;
-		break;
-	case DRM_PSB_MEM_MMU_TILING:
-		man->func = &ttm_bo_manager_func;
-		man->flags = TTM_MEMTYPE_FLAG_MAPPABLE |
-			     TTM_MEMTYPE_FLAG_CMA;
-		man->gpu_offset = PSB_MEM_MMU_TILING_START;
-		man->available_caching = TTM_PL_FLAG_CACHED |
-					 TTM_PL_FLAG_UNCACHED | TTM_PL_FLAG_WC;
-		man->default_caching = TTM_PL_FLAG_WC;
-		break;
-	default:
-		DRM_ERROR("Unsupported memory type %u\n", (unsigned) type);
-		return -EINVAL;
-	}
-	return 0;
-}
-
-
-static void psb_evict_mask(struct ttm_buffer_object *bo, struct ttm_placement* placement)
-{
-	static uint32_t cur_placement;
-
-	cur_placement = bo->mem.placement & ~TTM_PL_MASK_MEM;
-	cur_placement |= TTM_PL_FLAG_SYSTEM;
-
-	placement->fpfn = 0;
-	placement->lpfn = 0;
-	placement->num_placement = 1;
-	placement->placement = &cur_placement;
-	placement->num_busy_placement = 0;
-	placement->busy_placement = NULL;
-
-	/* all buffers evicted to system memory */
-	/* return cur_placement | TTM_PL_FLAG_SYSTEM; */
-}
-
-static int psb_invalidate_caches(struct ttm_bo_device *bdev,
-				 uint32_t placement)
-{
-	return 0;
-}
 
 static int psb_move_blit(struct ttm_buffer_object *bo,
 			 bool evict, bool no_wait,
@@ -151,7 +47,6 @@ static int psb_move_blit(struct ttm_buffer_object *bo,
  * Flip destination ttm into GATT,
  * then blit and subsequently move out again.
  */
-
 static int psb_move_flip(struct ttm_buffer_object *bo,
 			 bool evict, bool interruptible, bool no_wait,
 			 struct ttm_mem_reg *new_mem)
@@ -193,41 +88,6 @@ out_cleanup:
 	return ret;
 }
 
-static int psb_move(struct ttm_buffer_object *bo,
-		    bool evict, bool interruptible, bool no_wait_reserve,
-		    bool no_wait, struct ttm_mem_reg *new_mem)
-{
-	struct ttm_mem_reg *old_mem = &bo->mem;
-
-	if ((old_mem->mem_type == TTM_PL_RAR) ||
-	    (new_mem->mem_type == TTM_PL_RAR)) {
-		if (old_mem->mm_node) {
-			spin_lock(&bo->glob->lru_lock);
-			drm_mm_put_block(old_mem->mm_node);
-			spin_unlock(&bo->glob->lru_lock);
-		}
-		old_mem->mm_node = NULL;
-		*old_mem = *new_mem;
-	} else if (old_mem->mem_type == TTM_PL_SYSTEM) {
-		return ttm_bo_move_memcpy(bo, evict, false, no_wait, new_mem);
-	} else if (new_mem->mem_type == TTM_PL_SYSTEM) {
-		int ret = psb_move_flip(bo, evict, interruptible,
-					no_wait, new_mem);
-		if (unlikely(ret != 0)) {
-			if (ret == -ERESTART)
-				return ret;
-			else
-				return ttm_bo_move_memcpy(bo, evict, false, no_wait,
-							  new_mem);
-		}
-	} else {
-		if (psb_move_blit(bo, evict, no_wait, new_mem))
-			return ttm_bo_move_memcpy(bo, evict, false, no_wait,
-						  new_mem);
-	}
-	return 0;
-}
-
 static int drm_psb_tbe_populate(struct ttm_backend *backend,
 				unsigned long num_pages,
 				struct page **pages,
@@ -242,6 +102,16 @@ static int drm_psb_tbe_populate(struct ttm_backend *backend,
 	return 0;
 }
 
+static void drm_psb_tbe_clear(struct ttm_backend *backend)
+{
+	struct drm_psb_ttm_backend *psb_be =
+		container_of(backend, struct drm_psb_ttm_backend, base);
+
+	psb_be->pages = NULL;
+	psb_be->dma_addrs = NULL;
+	return;
+}
+
 static int drm_psb_tbe_unbind(struct ttm_backend *backend)
 {
 	struct ttm_bo_device *bdev = backend->bdev;
@@ -250,7 +120,6 @@ static int drm_psb_tbe_unbind(struct ttm_backend *backend)
 	struct drm_psb_ttm_backend *psb_be =
 		container_of(backend, struct drm_psb_ttm_backend, base);
 	struct psb_mmu_pd *pd = psb_mmu_get_default_pd(dev_priv->mmu);
-	/* struct ttm_mem_type_manager *man = &bdev->man[psb_be->mem_type]; */
 
 	if (psb_be->mem_type == TTM_PL_TT) {
 		uint32_t gatt_p_offset =
@@ -290,9 +159,8 @@ static int drm_psb_tbe_bind(struct ttm_backend *backend,
 	psb_be->offset = (bo_mem->start << PAGE_SHIFT) +
 			 man->gpu_offset;
 
-	type =
-		(bo_mem->
-		 placement & TTM_PL_FLAG_CACHED) ? PSB_MMU_CACHED_MEMORY : 0;
+	type = (bo_mem->placement & TTM_PL_FLAG_CACHED) ?
+				PSB_MMU_CACHED_MEMORY : 0;
 
 	if (psb_be->mem_type == TTM_PL_TT) {
 		uint32_t gatt_p_offset =
@@ -317,16 +185,6 @@ out_err:
 	drm_psb_tbe_unbind(backend);
 	return ret;
 
-}
-
-static void drm_psb_tbe_clear(struct ttm_backend *backend)
-{
-	struct drm_psb_ttm_backend *psb_be =
-		container_of(backend, struct drm_psb_ttm_backend, base);
-
-	psb_be->pages = NULL;
-	psb_be->dma_addrs = NULL;
-	return;
 }
 
 static void drm_psb_tbe_destroy(struct ttm_backend *backend)
@@ -357,6 +215,159 @@ static struct ttm_backend *drm_psb_tbe_init(struct ttm_bo_device *bdev)
 	psb_be->base.func = &psb_ttm_backend;
 	psb_be->base.bdev = bdev;
 	return &psb_be->base;
+}
+
+static int psb_invalidate_caches(struct ttm_bo_device *bdev,
+				 uint32_t placement)
+{
+	return 0;
+}
+
+/*
+ * MSVDX/TOPAZ GPU virtual space looks like this
+ * (We currently use only one MMU context).
+ * PSB_MEM_MMU_START: from 0x00000000~0xd000000, for generic buffers
+ * TTM_PL_IMR: from 0xd0000000, for MFLD IMR buffers
+ * TTM_PL_CI: from 0xe0000000+half GTT space, for MRST camear/video buffer sharing
+ * TTM_PL_TT: from TTM_PL_CI+CI size, for buffers need to mapping into GTT
+ */
+static int psb_init_mem_type(struct ttm_bo_device *bdev, uint32_t type,
+			     struct ttm_mem_type_manager *man)
+{
+
+	struct drm_psb_private *dev_priv =
+		container_of(bdev, struct drm_psb_private, bdev);
+	struct psb_gtt *pg = dev_priv->pg;
+
+	switch (type) {
+	case TTM_PL_SYSTEM:
+		man->flags = TTM_MEMTYPE_FLAG_MAPPABLE;
+		man->available_caching = TTM_PL_FLAG_CACHED |
+					 TTM_PL_FLAG_UNCACHED | TTM_PL_FLAG_WC;
+		man->default_caching = TTM_PL_FLAG_CACHED;
+		break;
+	case DRM_PSB_MEM_MMU:
+		man->func = &ttm_bo_manager_func;
+		man->flags = TTM_MEMTYPE_FLAG_MAPPABLE |
+			     TTM_MEMTYPE_FLAG_CMA;
+		man->gpu_offset = PSB_MEM_MMU_START;
+		man->available_caching = TTM_PL_FLAG_CACHED |
+					 TTM_PL_FLAG_UNCACHED | TTM_PL_FLAG_WC;
+		man->default_caching = TTM_PL_FLAG_WC;
+		break;
+	case TTM_PL_CI:
+		man->func = &ttm_bo_manager_func;
+		man->flags = TTM_MEMTYPE_FLAG_MAPPABLE |
+			     TTM_MEMTYPE_FLAG_FIXED;
+		man->gpu_offset = pg->mmu_gatt_start + (pg->ci_start);
+		man->available_caching = TTM_PL_FLAG_UNCACHED;
+		man->default_caching = TTM_PL_FLAG_UNCACHED;
+		break;
+	case TTM_PL_IMR:	/* Unmappable IMR memory */
+		man->func = &ttm_bo_manager_func;
+		man->flags = TTM_MEMTYPE_FLAG_MAPPABLE |
+			     TTM_MEMTYPE_FLAG_FIXED;
+		man->available_caching = TTM_PL_FLAG_UNCACHED;
+		man->default_caching = TTM_PL_FLAG_UNCACHED;
+		man->gpu_offset = PSB_MEM_IMR_START;
+		break;
+	case TTM_PL_TT:	/* Mappable GATT memory */
+		man->func = &ttm_bo_manager_func;
+#ifdef PSB_WORKING_HOST_MMU_ACCESS
+		man->flags = TTM_MEMTYPE_FLAG_MAPPABLE;
+#else
+		man->flags = TTM_MEMTYPE_FLAG_MAPPABLE |
+			     TTM_MEMTYPE_FLAG_CMA;
+#endif
+		man->available_caching = TTM_PL_FLAG_CACHED |
+					 TTM_PL_FLAG_UNCACHED | TTM_PL_FLAG_WC;
+		man->default_caching = TTM_PL_FLAG_WC;
+		man->gpu_offset = pg->mmu_gatt_start + pg->ci_start + pg->ci_stolen_size;
+		break;
+	case DRM_PSB_MEM_MMU_TILING:
+		man->func = &ttm_bo_manager_func;
+		man->flags = TTM_MEMTYPE_FLAG_MAPPABLE |
+			     TTM_MEMTYPE_FLAG_CMA;
+		man->gpu_offset = PSB_MEM_MMU_TILING_START;
+		man->available_caching = TTM_PL_FLAG_CACHED |
+					 TTM_PL_FLAG_UNCACHED | TTM_PL_FLAG_WC;
+		man->default_caching = TTM_PL_FLAG_WC;
+		break;
+	default:
+		DRM_ERROR("Unsupported memory type %u\n", (unsigned) type);
+		return -EINVAL;
+	}
+	return 0;
+}
+
+static void psb_evict_mask(struct ttm_buffer_object *bo, struct ttm_placement *placement)
+{
+	static uint32_t cur_placement;
+
+	cur_placement = bo->mem.placement & ~TTM_PL_MASK_MEM;
+	cur_placement |= TTM_PL_FLAG_SYSTEM;
+
+	placement->fpfn = 0;
+	placement->lpfn = 0;
+	placement->num_placement = 1;
+	placement->placement = &cur_placement;
+	placement->num_busy_placement = 0;
+	placement->busy_placement = NULL;
+
+	/* all buffers evicted to system memory */
+	/* return cur_placement | TTM_PL_FLAG_SYSTEM; */
+}
+
+static int psb_move(struct ttm_buffer_object *bo,
+		    bool evict, bool interruptible, bool no_wait_reserve,
+		    bool no_wait, struct ttm_mem_reg *new_mem)
+{
+	struct ttm_mem_reg *old_mem = &bo->mem;
+
+	if ((old_mem->mem_type == TTM_PL_IMR) ||
+	    (new_mem->mem_type == TTM_PL_IMR)) {
+		if (old_mem->mm_node) {
+			spin_lock(&bo->glob->lru_lock);
+			drm_mm_put_block(old_mem->mm_node);
+			spin_unlock(&bo->glob->lru_lock);
+		}
+		old_mem->mm_node = NULL;
+		*old_mem = *new_mem;
+	} else if (old_mem->mem_type == TTM_PL_SYSTEM) {
+		return ttm_bo_move_memcpy(bo, evict, false, no_wait, new_mem);
+	} else if (new_mem->mem_type == TTM_PL_SYSTEM) {
+		int ret = psb_move_flip(bo, evict, interruptible,
+					no_wait, new_mem);
+		if (unlikely(ret != 0)) {
+			if (ret == -ERESTART)
+				return ret;
+			else
+				return ttm_bo_move_memcpy(bo, evict, false, no_wait,
+							  new_mem);
+		}
+	} else {
+		if (psb_move_blit(bo, evict, no_wait, new_mem))
+			return ttm_bo_move_memcpy(bo, evict, false, no_wait,
+						  new_mem);
+	}
+	return 0;
+}
+
+int psb_verify_access(struct ttm_buffer_object *bo,
+		      struct file *filp)
+{
+	struct drm_file *file_priv = (struct drm_file *)filp->private_data;
+
+	if (capable(CAP_SYS_ADMIN))
+		return 0;
+
+	/* workaround drm authentification issue on Android for ttm_bo_mmap */
+	/*
+	if (unlikely(!file_priv->authenticated))
+		return -EPERM;
+	*/
+
+	return ttm_pl_verify_access(bo, psb_fpriv(file_priv)->tfile);
 }
 
 static int psb_ttm_io_mem_reserve(struct ttm_bo_device *bdev, struct ttm_mem_reg *mem)
@@ -391,9 +402,9 @@ static int psb_ttm_io_mem_reserve(struct ttm_bo_device *bdev, struct ttm_mem_reg
 		mem->bus.base = dev_priv->ci_region_start;;
 		mem->bus.is_iomem = true;
 		break;
-	case TTM_PL_RAR:
+	case TTM_PL_IMR:
 		mem->bus.offset = mem->start << PAGE_SHIFT;
-		mem->bus.base = dev_priv->rar_region_start;;
+		mem->bus.base = dev_priv->imr_region_start;;
 		mem->bus.is_iomem = true;
 		break;
 	default:
@@ -406,37 +417,7 @@ static void psb_ttm_io_mem_free(struct ttm_bo_device *bdev, struct ttm_mem_reg *
 {
 }
 
-/*
- * Use this memory type priority if no eviction is needed.
- */
-/*
-static uint32_t psb_mem_prios[] = {
-	TTM_PL_CI,
-	TTM_PL_RAR,
-	TTM_PL_TT,
-	DRM_PSB_MEM_MMU,
-	TTM_PL_SYSTEM
-};
-*/
-/*
- * Use this memory type priority if need to evict.
- */
-/*
-static uint32_t psb_busy_prios[] = {
-	TTM_PL_TT,
-	TTM_PL_CI,
-	TTM_PL_RAR,
-	DRM_PSB_MEM_MMU,
-	TTM_PL_SYSTEM
-};
-*/
 struct ttm_bo_driver psb_ttm_bo_driver = {
-	/*
-		.mem_type_prio = psb_mem_prios,
-		.mem_busy_prio = psb_busy_prios,
-		.num_mem_type_prio = ARRAY_SIZE(psb_mem_prios),
-		.num_mem_busy_prio = ARRAY_SIZE(psb_busy_prios),
-	*/
 	.create_ttm_backend_entry = &drm_psb_tbe_init,
 	.invalidate_caches = &psb_invalidate_caches,
 	.init_mem_type = &psb_init_mem_type,

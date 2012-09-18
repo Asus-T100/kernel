@@ -27,6 +27,4 @@ extern int psb_submit_video_cmdbuf(struct drm_device *dev,
 				   unsigned long cmd_size,
 				   struct ttm_fence_object *fence);
 
-extern int drm_idle_check_interval;
-
 #endif

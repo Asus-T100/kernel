@@ -31,6 +31,8 @@
 /*IMG Headers*/
 #include "private_data.h"
 
+static int ied_enabled;
+
 extern int PVRMMap(struct file *pFile, struct vm_area_struct *ps_vma);
 
 static struct vm_operations_struct psb_ttm_vm_ops;
@@ -74,7 +76,6 @@ int psb_open(struct inode *inode, struct file *filp)
 
 	psb_fp->tfile = ttm_object_file_init(dev_priv->tdev,
 					     PSB_FILE_OBJECT_HASH_ORDER);
-	psb_fp->bcd_index = -1;
 	if (unlikely(psb_fp->tfile == NULL))
 		goto out_err1;
 
@@ -117,14 +118,13 @@ int psb_release(struct inode *inode, struct file *filp)
 
 #ifdef CONFIG_DRM_MRFLD
 	/*cleanup for msvdx*/
-	/*
+#if 0
 	if (msvdx_priv->tfile == psb_fpriv(file_priv)->tfile) {
 		msvdx_priv->fw_status = 0;
 		msvdx_priv->host_be_opp_enabled = 0;
-		msvdx_priv->deblock_enabled = 0;
 		memset(&msvdx_priv->frame_info, 0, sizeof(struct drm_psb_msvdx_frame_info) * MAX_DECODE_BUFFERS);
 	}
-	*/
+#endif
 
 	if (msvdx_priv->msvdx_ec_ctx[0] != NULL) {
 		for (i = 0; i < PSB_MAX_EC_INSTANCE; i++) {
@@ -176,11 +176,9 @@ int psb_release(struct inode *inode, struct file *filp)
 	return ret;
 }
 
-#ifdef CONFIG_MDFD_VIDEO_DECODE
 int psb_fence_signaled_ioctl(struct drm_device *dev, void *data,
 			     struct drm_file *file_priv)
 {
-
 	return ttm_fence_signaled_ioctl(psb_fpriv(file_priv)->tfile, data);
 }
 
@@ -207,7 +205,6 @@ int psb_pl_setstatus_ioctl(struct drm_device *dev, void *data,
 {
 	return ttm_pl_setstatus_ioctl(psb_fpriv(file_priv)->tfile,
 				      &psb_priv(dev)->ttm_lock, data);
-
 }
 
 int psb_pl_synccpu_ioctl(struct drm_device *dev, void *data,
@@ -237,7 +234,6 @@ int psb_pl_create_ioctl(struct drm_device *dev, void *data,
 
 	return ttm_pl_create_ioctl(psb_fpriv(file_priv)->tfile,
 				   &dev_priv->bdev, &dev_priv->ttm_lock, data);
-
 }
 
 int psb_pl_ub_create_ioctl(struct drm_device *dev, void *data,
@@ -247,8 +243,8 @@ int psb_pl_ub_create_ioctl(struct drm_device *dev, void *data,
 
 	return ttm_pl_ub_create_ioctl(psb_fpriv(file_priv)->tfile,
 				      &dev_priv->bdev, &dev_priv->ttm_lock, data);
-
 }
+
 /**
  * psb_ttm_fault - Wrapper around the ttm fault method.
  *
@@ -261,7 +257,6 @@ int psb_pl_ub_create_ioctl(struct drm_device *dev, void *data,
  * reserving and thus validating buffers in aperture- and memory shortage
  * situations.
  */
-
 static int psb_ttm_fault(struct vm_area_struct *vma,
 			 struct vm_fault *vmf)
 {
@@ -273,18 +268,16 @@ static int psb_ttm_fault(struct vm_area_struct *vma,
 
 	ret = ttm_read_lock(&dev_priv->ttm_lock, true);
 	if (unlikely(ret != 0))
-		return VM_FAULT_NOPAGE;
+		return ret;
 
 	ret = dev_priv->ttm_vm_ops->fault(vma, vmf);
 
 	ttm_read_unlock(&dev_priv->ttm_lock);
 	return ret;
 }
-#endif
 
 /**
- * if vm_pgoff < DRM_PSB_FILE_PAGE_OFFSET call directly to
- * PVRMMap
+ * if vm_pgoff < DRM_PSB_FILE_PAGE_OFFSET call directly to PVRMMap
  */
 int psb_mmap(struct file *filp, struct vm_area_struct *vma)
 {
@@ -335,27 +328,7 @@ ssize_t psb_ttm_read(struct file *filp, char __user *buf,
 	return ttm_bo_io(&dev_priv->bdev, filp, NULL, buf, count, f_pos, 1);
 }
 */
-int psb_verify_access(struct ttm_buffer_object *bo,
-		      struct file *filp)
-{
-	struct drm_file *file_priv = (struct drm_file *)filp->private_data;
 
-	if (capable(CAP_SYS_ADMIN))
-		return 0;
-
-	/* workaround drm authentification issue on Android for ttm_bo_mmap */
-	/*
-	if (unlikely(!file_priv->authenticated))
-		return -EPERM;
-	*/
-#ifdef CONFIG_MDFD_VIDEO_DECODE
-	return ttm_pl_verify_access(bo, psb_fpriv(file_priv)->tfile);
-#else
-	return 0;
-#endif
-}
-
-#ifdef CONFIG_MDFD_VIDEO_DECODE
 static int psb_ttm_mem_global_init(struct drm_global_reference *ref)
 {
 	return ttm_mem_global_init(ref->object);
@@ -404,7 +377,6 @@ void psb_ttm_global_release(struct drm_psb_private *dev_priv)
 {
 	drm_global_item_unref(&dev_priv->mem_global_ref);
 }
-#endif
 
 int psb_getpageaddrs_ioctl(struct drm_device *dev, void *data,
 			   struct drm_file *file_priv)
@@ -415,9 +387,7 @@ int psb_getpageaddrs_ioctl(struct drm_device *dev, void *data,
 	struct page **tt_pages;
 	unsigned long i, num_pages;
 	unsigned long *p = arg->page_addrs;
-	int ret = 0;
 
-#ifdef CONFIG_MDFD_VIDEO_DECODE
 	bo = ttm_buffer_object_lookup(psb_fpriv(file_priv)->tfile,
 				      arg->handle);
 	if (unlikely(bo == NULL)) {
@@ -434,6 +404,326 @@ int psb_getpageaddrs_ioctl(struct drm_device *dev, void *data,
 		p[i] = (unsigned long)page_to_phys(tt_pages[i]);
 
 	ttm_bo_unref(&bo);
+
+	return 0;
+}
+
+void psb_remove_videoctx(struct drm_psb_private *dev_priv, struct file *filp)
+{
+	struct psb_video_ctx *pos, *n;
+	/* iterate to query all ctx to if there is DRM running*/
+	ied_enabled = 0;
+
+	mutex_lock(&dev_priv->video_ctx_mutex);
+	list_for_each_entry_safe(pos, n, &dev_priv->video_ctx, head) {
+		if (pos->filp == filp) {
+			PSB_DEBUG_GENERAL("Video:remove context profile %d,"
+					  " entrypoint %d\n",
+					  (pos->ctx_type >> 8) & 0xff,
+					  (pos->ctx_type & 0xff));
+
+			/* if current ctx points to it, set to NULL */
+			if (dev_priv->topaz_ctx == pos) {
+				/*Reset fw load status here.*/
+				if (IS_MDFLD(dev_priv->dev) &&
+					(VAEntrypointEncSlice ==
+						(pos->ctx_type & 0xff)
+					|| VAEntrypointEncPicture ==
+						(pos->ctx_type & 0xff)))
+					pnw_reset_fw_status(dev_priv->dev);
+
+				dev_priv->topaz_ctx = NULL;
+			} else if (IS_MDFLD(dev_priv->dev) &&
+					(VAEntrypointEncSlice ==
+						(pos->ctx_type & 0xff)
+					|| VAEntrypointEncPicture ==
+						(pos->ctx_type & 0xff)))
+				PSB_DEBUG_GENERAL("Remove a inactive "\
+						"encoding context.\n");
+
+			if (dev_priv->last_topaz_ctx == pos)
+				dev_priv->last_topaz_ctx = NULL;
+
+			if (dev_priv->msvdx_ctx == pos)
+				dev_priv->msvdx_ctx = NULL;
+			if (dev_priv->last_msvdx_ctx == pos)
+				dev_priv->last_msvdx_ctx = NULL;
+
+			list_del(&pos->head);
+			kfree(pos);
+		} else {
+			if (pos->ctx_type & VA_RT_FORMAT_PROTECTED)
+				ied_enabled = 1;
+		}
+	}
+	mutex_unlock(&dev_priv->video_ctx_mutex);
+}
+
+static struct psb_video_ctx *psb_find_videoctx(struct drm_psb_private *dev_priv,
+						struct file *filp)
+{
+	struct psb_video_ctx *pos, *n;
+
+	mutex_lock(&dev_priv->video_ctx_mutex);
+	list_for_each_entry_safe(pos, n, &dev_priv->video_ctx, head) {
+		if (pos->filp == filp) {
+			mutex_unlock(&dev_priv->video_ctx_mutex);
+			return pos;
+		}
+	}
+	mutex_unlock(&dev_priv->video_ctx_mutex);
+	return NULL;
+}
+
+static int psb_entrypoint_number(struct drm_psb_private *dev_priv,
+		uint32_t entry_type)
+{
+	struct psb_video_ctx *pos, *n;
+	int count = 0;
+
+	entry_type &= 0xff;
+
+	if (entry_type < VAEntrypointVLD ||
+			entry_type > VAEntrypointEncPicture) {
+		DRM_ERROR("Invalide entrypoint value %d.\n", entry_type);
+		return -EINVAL;
+	}
+
+	mutex_lock(&dev_priv->video_ctx_mutex);
+	list_for_each_entry_safe(pos, n, &dev_priv->video_ctx, head) {
+		if (entry_type == (pos->ctx_type & 0xff))
+			count++;
+	}
+	mutex_unlock(&dev_priv->video_ctx_mutex);
+
+	PSB_DEBUG_GENERAL("There are %d active entrypoint %d.\n",
+			count, entry_type);
+	return count;
+}
+
+int psb_video_getparam(struct drm_device *dev, void *data,
+		       struct drm_file *file_priv)
+{
+	struct drm_lnc_video_getparam_arg *arg = data;
+	int ret = 0;
+	struct drm_psb_private *dev_priv =
+		(struct drm_psb_private *)file_priv->minor->dev->dev_private;
+	drm_psb_msvdx_frame_info_t *current_frame = NULL;
+	uint32_t handle, i;
+	uint32_t device_info = 0;
+	uint32_t ctx_type = 0;
+	struct psb_video_ctx *video_ctx = NULL;
+	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
+	uint32_t imr_info[2], ci_info[2];
+
+	switch (arg->key) {
+	case LNC_VIDEO_GETPARAM_IMR_INFO:
+		imr_info[0] = dev_priv->imr_region_start;
+		imr_info[1] = dev_priv->imr_region_size;
+		ret = copy_to_user((void __user *)((unsigned long)arg->value),
+				   &imr_info[0],
+				   sizeof(imr_info));
+		break;
+	case LNC_VIDEO_GETPARAM_CI_INFO:
+		ci_info[0] = dev_priv->ci_region_start;
+		ci_info[1] = dev_priv->ci_region_size;
+		ret = copy_to_user((void __user *)((unsigned long)arg->value),
+				   &ci_info[0],
+				   sizeof(ci_info));
+		break;
+	case LNC_VIDEO_FRAME_SKIP:
+		/* Medfield should not call it */
+		ret = -EFAULT;
+		break;
+	case LNC_VIDEO_DEVICE_INFO:
+		device_info = 0xffff & dev_priv->video_device_fuse;
+		device_info |= (0xffff & dev->pci_device) << 16;
+
+		ret = copy_to_user((void __user *)((unsigned long)arg->value),
+				   &device_info, sizeof(device_info));
+		break;
+	case IMG_VIDEO_NEW_CONTEXT:
+		/* add video decode/encode context */
+		ret = copy_from_user(&ctx_type, (void __user *)((unsigned long)arg->value),
+				     sizeof(ctx_type));
+		if (ret)
+			break;
+
+		video_ctx = kmalloc(sizeof(struct psb_video_ctx), GFP_KERNEL);
+		if (video_ctx == NULL) {
+			ret = -ENOMEM;
+			break;
+		}
+		INIT_LIST_HEAD(&video_ctx->head);
+		video_ctx->ctx_type = ctx_type;
+		video_ctx->filp = file_priv->filp;
+		mutex_lock(&dev_priv->video_ctx_mutex);
+		list_add(&video_ctx->head, &dev_priv->video_ctx);
+		mutex_unlock(&dev_priv->video_ctx_mutex);
+
+		if (IS_MDFLD(dev_priv->dev) &&
+				(VAEntrypointEncSlice ==
+				 (ctx_type & 0xff)))
+			pnw_reset_fw_status(dev_priv->dev);
+
+		PSB_DEBUG_GENERAL("Video:add ctx profile %d, entry %d.\n",
+					((ctx_type >> 8) & 0xff),
+					(ctx_type & 0xff));
+		PSB_DEBUG_GENERAL("Video:add context protected 0x%x.\n",
+					(ctx_type & VA_RT_FORMAT_PROTECTED));
+		if (ctx_type & VA_RT_FORMAT_PROTECTED)
+			ied_enabled = 1;
+		break;
+	case IMG_VIDEO_RM_CONTEXT:
+		psb_remove_videoctx(dev_priv, file_priv->filp);
+		break;
+	case IMG_VIDEO_UPDATE_CONTEXT:
+		ret = copy_from_user(&ctx_type,
+				(void __user *)((unsigned long)arg->value),
+				sizeof(ctx_type));
+		if (ret)
+			break;
+		video_ctx = psb_find_videoctx(dev_priv, file_priv->filp);
+		if (video_ctx) {
+			PSB_DEBUG_GENERAL(
+				"Video: update video ctx old value 0x%08x\n",
+				video_ctx->ctx_type);
+			video_ctx->ctx_type = ctx_type;
+			PSB_DEBUG_GENERAL(
+				"Video: update video ctx new value 0x%08x\n",
+				video_ctx->ctx_type);
+		} else
+			PSB_DEBUG_GENERAL(
+				"Video:fail to find context profile %d, entrypoint %d",
+				(ctx_type >> 8), (ctx_type & 0xff));
+		break;
+	case IMG_VIDEO_DECODE_STATUS:
+		if (msvdx_priv->host_be_opp_enabled) {
+			/*get the right frame_info struct for current surface*/
+			ret = copy_from_user(&handle,
+					     (void __user *)((unsigned long)arg->arg), 4);
+			if (ret)
+				break;
+
+			for (i = 0; i < MAX_DECODE_BUFFERS; i++) {
+				if (msvdx_priv->frame_info[i].handle == handle) {
+					current_frame = &msvdx_priv->frame_info[i];
+					break;
+				}
+			}
+			if (!current_frame) {
+				DRM_ERROR("MSVDX: didn't find frame_info which matched the surface_id. \n");
+				ret = -EFAULT;
+				break;
+			}
+			ret = copy_to_user((void __user *)((unsigned long)arg->value),
+					   &current_frame->fw_status, sizeof(current_frame->fw_status));
+		} else
+			ret = copy_to_user((void __user *)((unsigned long)arg->value),
+					   &msvdx_priv->fw_status, sizeof(msvdx_priv->fw_status));
+		break;
+
+	case IMG_VIDEO_MB_ERROR:
+		/*get the right frame_info struct for current surface*/
+		ret = copy_from_user(&handle,
+				     (void __user *)((unsigned long)arg->arg), 4);
+		if (ret)
+			break;
+
+		for (i = 0; i < MAX_DECODE_BUFFERS; i++) {
+			if (msvdx_priv->frame_info[i].handle == handle) {
+				current_frame = &msvdx_priv->frame_info[i];
+				break;
+			}
+		}
+		if (!current_frame) {
+			DRM_ERROR("MSVDX: didn't find frame_info which matched the surface_id. \n");
+			ret = -EFAULT;
+			break;
+		}
+		ret = copy_to_user((void __user *)((unsigned long)arg->value),
+				   &(current_frame->decode_status), sizeof(drm_psb_msvdx_decode_status_t));
+		break;
+	case IMG_VIDEO_SET_DISPLAYING_FRAME:
+		ret = copy_from_user(&msvdx_priv->displaying_frame,
+				(void __user *)((unsigned long)arg->value),
+				sizeof(msvdx_priv->displaying_frame));
+		break;
+	case IMG_VIDEO_GET_DISPLAYING_FRAME:
+		ret = copy_to_user((void __user *)((unsigned long)arg->value),
+				&msvdx_priv->displaying_frame,
+				sizeof(msvdx_priv->displaying_frame));
+		break;
+	case IMG_DISPLAY_SET_WIDI_EXT_STATE:
+		ret = -EFAULT;
+		DRM_ERROR("variable drm_psb_widi has been removed\n");
+		break;
+	case IMG_VIDEO_GET_HDMI_STATE:
+		ret = copy_to_user((void __user *)((unsigned long)arg->value),
+				&hdmi_state,
+				sizeof(hdmi_state));
+		break;
+	case IMG_VIDEO_SET_HDMI_STATE:
+		if (!hdmi_state) {
+			PSB_DEBUG_ENTRY(
+				"wait 100ms for kernel hdmi pipe ready.\n");
+			msleep(100);
+		}
+		if (dev_priv->bhdmiconnected)
+			hdmi_state = (int)arg->value;
+		else
+			PSB_DEBUG_ENTRY(
+				"skip hdmi_state setting, for unplugged.\n");
+
+		PSB_DEBUG_ENTRY("%s, set hdmi_state = %d\n",
+				 __func__, hdmi_state);
+		break;
+	case PNW_VIDEO_QUERY_ENTRY:
+		ret = copy_from_user(&handle,
+				(void __user *)((unsigned long)arg->arg),
+				sizeof(handle));
+		if (ret)
+			break;
+		/*Return the number of active entries*/
+		i = psb_entrypoint_number(dev_priv, handle);
+		if (i >= 0)
+			ret = copy_to_user((void __user *)
+					((unsigned long)arg->value),
+					&i, sizeof(i));
+		break;
+	case IMG_VIDEO_IED_STATE:
+		/* query IED status by register is not safe */
+		/* need first power-on msvdx, while now only  */
+		/* schedule vxd suspend wq in interrupt handler */
+#if 0
+		int ied_enable;
+		/* VXD must be power on during query IED register */
+		if (!ospm_power_using_hw_begin(OSPM_VIDEO_DEC_ISLAND,
+				OSPM_UHB_FORCE_POWER_ON))
+			return -EBUSY;
+		/* wrong spec, IED should be located in pci device 2 */
+		if (REG_READ(PSB_IED_DRM_CNTL_STATUS) & IED_DRM_VLD)
+			ied_enable = 1;
+		else
+			ied_enable = 0;
+		PSB_DEBUG_GENERAL("ied_enable is %d.\n", ied_enable);
+		ospm_power_using_hw_end(OSPM_VIDEO_DEC_ISLAND);
 #endif
-	return ret;
+		ret = copy_to_user((void __user *)
+				((unsigned long)arg->value),
+				&ied_enabled, sizeof(ied_enabled));
+		break;
+
+	default:
+		ret = -EFAULT;
+		break;
+	}
+
+out:
+	if (ret) {
+		DRM_ERROR("%s: failed to call sub-ioctl", __func__, arg->key);
+		return -EFAULT;
+	}
+
+	return 0;
 }

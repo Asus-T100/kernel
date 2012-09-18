@@ -62,8 +62,8 @@
 #define TTM_PL_CI               TTM_PL_PRIV0
 #define TTM_PL_FLAG_CI          TTM_PL_FLAG_PRIV0
 
-#define TTM_PL_RAR               TTM_PL_PRIV2
-#define TTM_PL_FLAG_RAR          TTM_PL_FLAG_PRIV2
+#define TTM_PL_IMR               TTM_PL_PRIV2
+#define TTM_PL_FLAG_IMR          TTM_PL_FLAG_PRIV2
 
 #define DRM_PSB_MEM_MMU_TILING TTM_PL_PRIV3
 #define DRM_PSB_FLAG_MEM_MMU_TILING TTM_PL_FLAG_PRIV3
@@ -160,9 +160,9 @@ struct drm_psb_reloc {
 
 #define PSB_BO_FLAG_COMMAND         (1ULL << 52)
 
-#define PSB_ENGINE_2D 0
-#define PSB_ENGINE_VIDEO 1
-#define LNC_ENGINE_ENCODE 5
+#define PSB_ENGINE_DECODE 0
+#define LNC_ENGINE_ENCODE 1
+#define PSB_NUM_ENGINES 2
 
 /*
  * For this fence class we have a couple of
@@ -174,9 +174,6 @@ struct drm_psb_reloc {
 
 #define _PSB_FENCE_TYPE_EXE         (1 << _PSB_FENCE_EXE_SHIFT)
 #define _PSB_FENCE_TYPE_FEEDBACK    (1 << _PSB_FENCE_FEEDBACK_SHIFT)
-
-#define PSB_NUM_ENGINES 6
-
 
 #define PSB_FEEDBACK_OP_VISTEST (1 << 0)
 
@@ -237,13 +234,7 @@ struct psb_ttm_fence_rep {
 
 typedef struct drm_psb_cmdbuf_arg {
 	uint64_t buffer_list;	/* List of buffers to validate */
-	uint64_t clip_rects;	/* See i915 counterpart */
 	uint64_t fence_arg;
-
-
-	uint32_t oom_handle;
-	uint32_t oom_offset;
-	uint32_t oom_size;
 
 	uint32_t cmdbuf_handle;	/* 2D Command buffer object or, */
 	uint32_t cmdbuf_offset;	/* rasterizer reg-value pairs */
@@ -266,7 +257,7 @@ typedef struct drm_psb_pageflip_arg {
 
 typedef enum {
 	LNC_VIDEO_DEVICE_INFO,
-	LNC_VIDEO_GETPARAM_RAR_INFO,
+	LNC_VIDEO_GETPARAM_IMR_INFO,
 	LNC_VIDEO_GETPARAM_CI_INFO,
 	LNC_VIDEO_FRAME_SKIP,
 	IMG_VIDEO_DECODE_STATUS,

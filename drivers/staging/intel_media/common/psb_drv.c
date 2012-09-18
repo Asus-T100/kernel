@@ -83,7 +83,6 @@ bool gbdispstatus = true;
 int drm_psb_disable_vsync = 1;
 int drm_psb_no_fb;
 int drm_psb_force_pipeb;
-int drm_idle_check_interval = 5;
 int drm_msvdx_pmpolicy = PSB_PMPOLICY_POWERDOWN;
 int drm_psb_cpurelax;
 int drm_psb_udelaydivider = 1;
@@ -377,7 +376,7 @@ MODULE_DEVICE_TABLE(pci, pciidlist);
 
 #define DRM_PSB_FLIP	   (DRM_PSB_TTM_FENCE_UNREF + 1)	/*20*/
 /* PSB video extension */
-#define DRM_LNC_VIDEO_GETPARAM		(DRM_PSB_FLIP + 1)
+#define DRM_PSB_VIDEO_GETPARAM		(DRM_PSB_FLIP + 1)
 
 #define DRM_IOCTL_PSB_TTM_PL_CREATE    \
 	DRM_IOWR(DRM_COMMAND_BASE + DRM_PSB_TTM_PL_CREATE,\
@@ -412,8 +411,8 @@ MODULE_DEVICE_TABLE(pci, pciidlist);
 #define DRM_IOCTL_PSB_FLIP \
 	DRM_IOWR(DRM_COMMAND_BASE + DRM_PSB_FLIP, \
 		 struct drm_psb_pageflip_arg)
-#define DRM_IOCTL_LNC_VIDEO_GETPARAM \
-	DRM_IOWR(DRM_COMMAND_BASE + DRM_LNC_VIDEO_GETPARAM, \
+#define DRM_IOCTL_PSB_VIDEO_GETPARAM \
+	DRM_IOWR(DRM_COMMAND_BASE + DRM_PSB_VIDEO_GETPARAM, \
 		 struct drm_lnc_video_getparam_arg)
 
 static int psb_vt_leave_ioctl(struct drm_device *dev, void *data,
@@ -569,8 +568,8 @@ static struct drm_ioctl_desc psb_ioctls[] = {
 	DRM_AUTH | DRM_UNLOCKED),
 	/*to be removed later */
 	/*PSB_IOCTL_DEF(DRM_IOCTL_PSB_FLIP, psb_page_flip, DRM_AUTH),*/
-	PSB_IOCTL_DEF(DRM_IOCTL_LNC_VIDEO_GETPARAM,
-	lnc_video_getparam, DRM_AUTH | DRM_UNLOCKED),
+	PSB_IOCTL_DEF(DRM_IOCTL_PSB_VIDEO_GETPARAM,
+	psb_video_getparam, DRM_AUTH | DRM_UNLOCKED),
 #endif
 	PSB_IOCTL_DEF(DRM_IOCRL_PSB_DPU_QUERY, psb_dpu_query_ioctl,
 	DRM_AUTH),
@@ -634,16 +633,16 @@ static void get_imr_info(struct drm_psb_private *dev_priv)
 	if (end > start)
 		size = end - start + 1;
 	if (size > 0) {
-		dev_priv->rar_region_start = start;
-		dev_priv->rar_region_size = size & PAGE_MASK;
+		dev_priv->imr_region_start = start;
+		dev_priv->imr_region_size = size & PAGE_MASK;
 	} else {
-		dev_priv->rar_region_start = 0;
-		dev_priv->rar_region_size = 0;
+		dev_priv->imr_region_start = 0;
+		dev_priv->imr_region_size = 0;
 	}
 	DRM_INFO("IMR4 start=0x%08x, size=%dB (%d pages)\n",
-		dev_priv->rar_region_start,
-		dev_priv->rar_region_size,
-		dev_priv->rar_region_size >> PAGE_SHIFT);
+		dev_priv->imr_region_start,
+		dev_priv->imr_region_size,
+		dev_priv->imr_region_size >> PAGE_SHIFT);
 	return;
 }
 
@@ -691,9 +690,9 @@ static void psb_do_takedown(struct drm_device *dev)
 		ttm_bo_clean_mm(bdev, TTM_PL_CI);
 		dev_priv->have_camera = 0;
 	}
-	if (dev_priv->have_rar) {
-		ttm_bo_clean_mm(bdev, TTM_PL_RAR);
-		dev_priv->have_rar = 0;
+	if (dev_priv->have_imr) {
+		ttm_bo_clean_mm(bdev, TTM_PL_IMR);
+		dev_priv->have_imr = 0;
 	}
 
 #ifdef CONFIG_MDFD_VIDEO_DECODE
@@ -1245,8 +1244,7 @@ static int psb_do_init(struct drm_device *dev)
 	 * submission mechanisms.
 	 */
 
-	dev_priv->sequence[PSB_ENGINE_2D] = 0;
-	dev_priv->sequence[PSB_ENGINE_VIDEO] = 1;
+	dev_priv->sequence[PSB_ENGINE_DECODE] = 1;
 	dev_priv->sequence[LNC_ENGINE_ENCODE] = 0;
 
 	if (pg->mmu_gatt_start & 0x0FFFFFFF) {
@@ -1289,11 +1287,11 @@ static int psb_do_init(struct drm_device *dev)
 	tt_pages -= tt_start >> PAGE_SHIFT;
 	dev_priv->sizes.ta_mem_size = 0;
 
-	/* RAR region managed by TTM */
-	tmp = dev_priv->rar_region_size >> PAGE_SHIFT; /* RAR region size */
-	if ((dev_priv->rar_region_size != 0) &&
-	    !ttm_bo_init_mm(bdev, TTM_PL_RAR, tmp))
-		dev_priv->have_rar = 1;
+	/* IMR region managed by TTM */
+	tmp = dev_priv->imr_region_size >> PAGE_SHIFT; /* IMR region size */
+	if ((dev_priv->imr_region_size != 0) &&
+	    !ttm_bo_init_mm(bdev, TTM_PL_IMR, tmp))
+		dev_priv->have_imr = 1;
 
 	/* TT region managed by TTM. */
 	tmp = pg->gatt_pages -
@@ -1307,13 +1305,13 @@ static int psb_do_init(struct drm_device *dev)
 		tmp = PSB_MEM_MMU_TILING_START >> PAGE_SHIFT;
 	else
 		tmp =
-		PSB_MEM_RAR_START >> PAGE_SHIFT; /* MMU region size:MMU->RAR */
+		PSB_MEM_IMR_START >> PAGE_SHIFT; /* MMU region size:MMU->IMR */
 	if (!ttm_bo_init_mm(bdev, DRM_PSB_MEM_MMU, tmp))
 		dev_priv->have_mem_mmu = 1;
 
 	if (IS_MSVDX_MEM_TILE(dev)) {
 		/* Create tiling MMU region managed by TTM */
-		tmp = (PSB_MEM_RAR_START -
+		tmp = (PSB_MEM_IMR_START -
 			PSB_MEM_MMU_TILING_START) >> PAGE_SHIFT;
 		if (!ttm_bo_init_mm(bdev, DRM_PSB_MEM_MMU_TILING, tmp))
 			dev_priv->have_mem_mmu_tiling = 1;
@@ -1518,7 +1516,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 		goto out_err;
 	mutex_init(&dev_priv->cmdbuf_mutex);
 	INIT_LIST_HEAD(&dev_priv->context.validate_list);
-	INIT_LIST_HEAD(&dev_priv->context.kern_validate_list);
+	/* INIT_LIST_HEAD(&dev_priv->context.kern_validate_list); */
 #endif
 
 	mutex_init(&dev_priv->temp_mem);
@@ -1630,9 +1628,9 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 		goto out_err;
 
 	/* For VXD385 DE2.x firmware support 16bit fence value */
-	dev_priv->fdev.fence_class[PSB_ENGINE_VIDEO].wrap_diff = (1 << 14);
-	dev_priv->fdev.fence_class[PSB_ENGINE_VIDEO].flush_diff = (1 << 13);
-	dev_priv->fdev.fence_class[PSB_ENGINE_VIDEO].sequence_mask =
+	dev_priv->fdev.fence_class[PSB_ENGINE_DECODE].wrap_diff = (1 << 14);
+	dev_priv->fdev.fence_class[PSB_ENGINE_DECODE].flush_diff = (1 << 13);
+	dev_priv->fdev.fence_class[PSB_ENGINE_DECODE].sequence_mask =
 								0x0000ffff;
 
 	dev_priv->has_fence_device = 1;
@@ -1706,8 +1704,8 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 		down_read(&pg->sem);
 		ret = psb_mmu_insert_pfn_sequence(
 			      psb_mmu_get_default_pd(dev_priv->mmu),
-			      dev_priv->rar_region_start >> PAGE_SHIFT,
-			      PSB_MEM_RAR_START,
+			      dev_priv->imr_region_start >> PAGE_SHIFT,
+			      PSB_MEM_IMR_START,
 			      pg->rar_stolen_size >> PAGE_SHIFT, 0);
 		up_read(&pg->sem);
 		if (ret)
@@ -1894,10 +1892,9 @@ int psb_extension_ioctl(struct drm_device *dev, void *data,
 		return 0;
 	}
 
-	/* return the video rar offset */
 	if (strcmp(arg->extension, "lnc_video_getparam") == 0) {
 		rep->exists = 1;
-		rep->driver_ioctl_offset = DRM_LNC_VIDEO_GETPARAM;
+		rep->driver_ioctl_offset = DRM_PSB_VIDEO_GETPARAM;
 		rep->sarea_offset = 0;
 		rep->major = 1;
 		rep->minor = 0;
