@@ -4769,8 +4769,9 @@ static int penwell_otg_probe(struct pci_dev *pdev,
 	penwell_otg_phy_low_power(1);
 	msleep(100);
 
-	/* enable ACA device detection */
-	penwell_otg_aca_enable();
+	/* enable ACA device detection for CTP */
+	if (is_clovertrail(pdev))
+		penwell_otg_aca_enable();
 
 	reset_otg();
 	init_hsm();
