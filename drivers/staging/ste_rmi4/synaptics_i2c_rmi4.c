@@ -74,6 +74,13 @@
 #define F01_CTRL0_SLEEP      (1 << 0)
 #define F01_CTRL0_NOSLEEP    (1 << 2)
 
+#define BOOT_MODE_MOS	0
+#define BOOT_MODE_COS	1
+
+static int boot_mode;
+module_param(boot_mode, uint, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(param, "The boot mode of system");
+
 enum finger_state {
 	F11_NO_FINGER = 0,
 	F11_PRESENT = 1,
@@ -735,7 +742,7 @@ int rmi4_touchpad_config(struct rmi4_data *pdata, struct rmi4_fn *rfi)
 	return retval;
 }
 
-static unsigned char
+static int
 rmi4_process_func(struct rmi4_data *pdata, struct rmi4_fn_desc *rmi_fd,
 						int page_start, int intr_cnt)
 {
@@ -762,12 +769,31 @@ rmi4_process_func(struct rmi4_data *pdata, struct rmi4_fn_desc *rmi_fd,
 			dev_err(&client->dev, "Set F01_CONFIGURED failed\n");
 			return retval;
 		}
-		retval = rmi4_i2c_clear_bits(pdata, pdata->fn01_ctrl_base_addr,
-							F01_CTRL0_NOSLEEP);
-		if (retval < 0) {
-			dev_err(&client->dev,
-					"clear F01_CTRL0_NOSLEEP failed\n");
-			return retval;
+		if (boot_mode == BOOT_MODE_COS) {
+			retval = rmi4_i2c_set_bits(pdata,
+					pdata->fn01_ctrl_base_addr,
+					F01_CTRL0_SLEEP);
+			if (retval < 0) {
+				dev_err(&client->dev,
+					"set F01_CTRL0_SLEEP failed\n");
+				return retval;
+			}
+			msleep(RMI4_RESET_DELAY);
+			dev_info(&client->dev,
+				"System is in charger mode, "
+				"touch screen should be always in sleep mode, "
+				"we don't need to go on anymore\n");
+			return -1;
+
+		} else {
+			retval = rmi4_i2c_clear_bits(pdata,
+					pdata->fn01_ctrl_base_addr,
+					F01_CTRL0_NOSLEEP);
+			if (retval < 0) {
+				dev_err(&client->dev,
+					"clear F01_CTRL0_SLEEP failed\n");
+				return retval;
+			}
 		}
 	}
 
@@ -1501,7 +1527,7 @@ void rmi4_early_suspend(struct early_suspend *h)
 	struct rmi4_data *pdata  = container_of(h, struct rmi4_data, es);
 	struct i2c_client *client = pdata->i2c_client;
 
-	dev_dbg(&client->dev, "%s: early suspend", __func__);
+	dev_info(&client->dev, "Enter %s\n", __func__);
 	disable_irq(pdata->irq);
 	retval = rmi4_i2c_set_bits(pdata,
 			pdata->fn01_ctrl_base_addr, F01_CTRL0_SLEEP);
@@ -1519,7 +1545,7 @@ void rmi4_late_resume(struct early_suspend *h)
 	struct i2c_client *client = pdata->i2c_client;
 	u8 intr_status[4];
 
-	dev_dbg(&client->dev, "%s: late resume", __func__);
+	dev_info(&client->dev, "Enter %s\n", __func__);
 	if (pdata->regulator) {
 		/*need wait to stable if regulator first output*/
 		int needwait = !regulator_is_enabled(pdata->regulator);
