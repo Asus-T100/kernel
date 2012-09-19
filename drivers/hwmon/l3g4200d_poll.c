@@ -557,10 +557,10 @@ static ssize_t attr_reg_get(struct device *dev, struct device_attribute *attr,
 
 
 static struct device_attribute attributes[] = {
-	__ATTR(poll, 0666, attr_polling_rate_show, attr_polling_rate_store),
-	__ATTR(enable, 0666, attr_enable_show, attr_enable_store),
-	__ATTR(range, 0666, attr_range_show, attr_range_store),
-	__ATTR(enable_selftest, 0666, attr_get_selftest, attr_set_selftest),
+	__ATTR(poll, 0644, attr_polling_rate_show, attr_polling_rate_store),
+	__ATTR(enable, 0644, attr_enable_show, attr_enable_store),
+	__ATTR(range, 0644, attr_range_show, attr_range_store),
+	__ATTR(enable_selftest, 0644, attr_get_selftest, attr_set_selftest),
 	__ATTR(registers, 0600, attr_reg_get, NULL),
 };
 
