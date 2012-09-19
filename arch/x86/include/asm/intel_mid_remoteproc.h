@@ -43,6 +43,8 @@
 #define RP_IPC			0X11
 #define RP_IPC_UTIL		0X12
 #define RP_FW_UPDATE		0X13
+#define RP_UMIP_ACCESS		0x14
+#define RP_OSIP_ACCESS		0x15
 
 enum rproc_type {
 	RPROC_SCU = 0,

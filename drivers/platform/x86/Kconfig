@@ -664,6 +664,29 @@ config INTEL_MID_POWER_BUTTON
 
 	  If unsure, say N.
 
+config INTEL_MID_OSIP
+	tristate "osip driver for Intel MID platforms"
+	depends on INTEL_SCU_IPC
+	default y
+	help
+	  This driver modifies the osip header when rebooting,
+	  so that one can type 'reboot bootloader' to fall back
+	  in kboot mode.
+
+	  If unsure, say N.
+
+config INTEL_MID_OSIP_DEBUG_FS
+	tristate "osip driver debug fs"
+	depends on INTEL_MID_OSIP && DEBUG_FS
+	default y
+	help
+	  This driver adds debugfs interface.
+	  The main feature of that interface is to be able to modify the kernel
+	  cmdline directly in the OSIP.
+	  This has to be disabled if we have secure boot enabled by default.
+
+	  If unsure, say N.
+
 config INTEL_MFLD_THERMAL
        tristate "Thermal driver for Intel Medfield platform"
        depends on MFD_INTEL_MSIC && THERMAL
@@ -765,5 +788,13 @@ config APPLE_GMUX
 	  Apple laptops, which controls the display mux for the hybrid
 	  graphics as well as the backlight. Currently only backlight
 	  control is supported by the driver.
+
+config INTEL_MID_UMIP
+	tristate "umip driver config"
+	depends on INTEL_SCU_IPC
+	default y
+	help
+	  This driver builds the UMIP Sysfs Iterface. We could read write
+	  the USB HOst enable timeout values using these interfaces.
 
 endif # X86_PLATFORM_DEVICES
