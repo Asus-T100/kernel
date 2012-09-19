@@ -649,10 +649,30 @@ static int max17042_get_property(struct power_supply *psy,
 	mutex_lock(&chip->batt_lock);
 	switch (psp) {
 	case POWER_SUPPLY_PROP_STATUS:
-		val->intval = chip->status;
+		/*
+		 * status is being read from external
+		 * module so check for error case before
+		 * assigning to intval.
+		 */
+		if (chip->status < 0) {
+			ret = chip->status;
+			goto ps_prop_read_err;
+		} else {
+			val->intval = chip->status;
+		}
 		break;
 	case POWER_SUPPLY_PROP_HEALTH:
-		val->intval = chip->health;
+		/*
+		 * health is being read from external
+		 * module so check for error case before
+		 * assigning to intval.
+		 */
+		if (chip->health < 0) {
+			ret = chip->health;
+			goto ps_prop_read_err;
+		} else {
+			val->intval = chip->health;
+		}
 		break;
 	case POWER_SUPPLY_PROP_PRESENT:
 		val->intval = chip->present;
