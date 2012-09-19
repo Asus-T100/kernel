@@ -3600,6 +3600,7 @@ static int langwell_udc_probe(struct pci_dev *pdev,
 	dev->iotg = otg_to_mid_xceiv(dev->transceiver);
 
 	base = dev->iotg->base;
+	dev->is_peripheral_start = 0;
 
 	/*
 	 * In OTG case, OTG Transceiver driver initialize itself early
@@ -4110,6 +4111,7 @@ static int intel_mid_start_peripheral(struct intel_mid_otg_xceiv *iotg)
 
 	}
 	spin_unlock_irqrestore(&dev->lock, flags);
+	dev->is_peripheral_start = 1;
 
 	dev_dbg(&dev->pdev->dev, "<--- %s()\n", __func__);
 	return 0;
@@ -4119,6 +4121,9 @@ static int intel_mid_stop_peripheral(struct intel_mid_otg_xceiv *iotg)
 {
 	struct langwell_udc	*dev = the_controller;
 	unsigned long		flags;
+
+	if (!dev->is_peripheral_start)
+		return 1;
 
 	dev_dbg(&dev->pdev->dev, "---> %s()\n", __func__);
 
@@ -4144,9 +4149,11 @@ static int intel_mid_stop_peripheral(struct intel_mid_otg_xceiv *iotg)
 		dev->dtd_pool = NULL;
 	}
 
-	if (dev->ep_dqh)
+	if (dev->ep_dqh) {
 		dma_free_coherent(&dev->pdev->dev, dev->ep_dqh_size,
 			dev->ep_dqh, dev->ep_dqh_dma);
+		dev->ep_dqh = NULL;
+	}
 
 	/* release SRAM caching */
 	if (dev->has_sram && dev->got_sram)
@@ -4160,6 +4167,8 @@ static int intel_mid_stop_peripheral(struct intel_mid_otg_xceiv *iotg)
 
 	pm_runtime_put(&dev->pdev->dev);
 	wake_unlock(&dev->wake_lock);
+
+	dev->is_peripheral_start = 0;
 
 	dev_dbg(&dev->pdev->dev, "<--- %s()\n", __func__);
 	return 0;

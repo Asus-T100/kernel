@@ -230,5 +230,8 @@ struct langwell_udc {
 	u16			dev_status;
 
 	struct	wake_lock	wake_lock;
+#ifdef OTG_TRANSCEIVER
+	unsigned int		is_peripheral_start;
+#endif
 };
 
