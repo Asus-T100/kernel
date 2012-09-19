@@ -409,14 +409,14 @@ static int __dbi_panel_power_on(struct mdfld_dsi_config *dsi_config,
 
 	mdfld_dsi_dsr_forbid_locked(dsi_config);
 
+	/*after entering dstb mode, need reset*/
+	if (p_funcs && p_funcs->reset)
+			p_funcs->reset(dsi_config, RESET_FROM_OSPM_RESUME);
+
 	__dbi_power_on(dsi_config);
 
 	/*enable TE, will need it in panel power on*/
 	mdfld_enable_te(dev, dsi_config->pipe);
-
-	/*after entering dstb mode, need reset*/
-	if (p_funcs && p_funcs->reset)
-		p_funcs->reset(dsi_config, RESET_FROM_OSPM_RESUME);
 
 	/**
 	 * Different panel may have different ways to have
