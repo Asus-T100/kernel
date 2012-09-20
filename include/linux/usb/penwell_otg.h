@@ -476,6 +476,7 @@ struct penwell_otg {
 
 	unsigned			rt_resuming;
 
+	unsigned			rt_quiesce;
 	struct cloverview_usb_otg_pdata *otg_pdata;
 
 	struct wake_lock		wake_lock;

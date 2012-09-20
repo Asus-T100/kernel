@@ -2431,19 +2431,21 @@ static irqreturn_t otg_irq(int irq, void *_dev)
 {
 	struct penwell_otg		*pnw = _dev;
 	struct intel_mid_otg_xceiv	*iotg = &pnw->iotg;
+	unsigned long			flags;
 
 #ifdef CONFIG_PM_RUNTIME
 	if (pnw->rt_resuming)
 		return IRQ_HANDLED;
-	else if (pnw->dev->power.runtime_status == RPM_RESUMING)
-		return IRQ_HANDLED;
 
 	/* If it's not active, resume device first before access regs */
-	if (pnw->dev->power.runtime_status != RPM_ACTIVE) {
-		dev_dbg(pnw->dev, "Wake up? Interrupt detected in suspended\n");
-		pnw->rt_resuming = 1;
-
-		pm_runtime_get(pnw->dev);
+	if (pnw->rt_quiesce) {
+		spin_lock_irqsave(&pnw->lock, flags);
+		if (pnw->rt_quiesce) {
+			dev_dbg(pnw->dev, "Wake up? Interrupt detected in suspended\n");
+			pnw->rt_resuming = 1;
+			pm_runtime_get(pnw->dev);
+		}
+		spin_unlock_irqrestore(&pnw->lock, flags);
 
 		return IRQ_HANDLED;
 	}
@@ -4680,6 +4682,7 @@ static int penwell_otg_probe(struct pci_dev *pdev,
 	pnw->iotg.stop_hnp_poll = penwell_otg_stop_hnp_poll;
 	pnw->iotg.otg.state = OTG_STATE_UNDEFINED;
 	pnw->rt_resuming = 0;
+	pnw->rt_quiesce = 0;
 	pnw->queue_stop = 0;
 	if (otg_set_transceiver(&pnw->iotg.otg)) {
 		dev_dbg(pnw->dev, "can't set transceiver\n");
@@ -5253,8 +5256,11 @@ static int penwell_otg_runtime_suspend(struct device *dev)
 	struct pci_dev		*pdev = to_pci_dev(dev);
 	int			ret = 0;
 	u32			val;
+	unsigned long		flags;
 
 	dev_dbg(dev, "%s --->\n", __func__);
+
+	pnw->rt_quiesce = 1;
 
 	/* Flush any pending otg irq on local or any other CPUs.
 	*
@@ -5296,8 +5302,16 @@ static int penwell_otg_runtime_suspend(struct device *dev)
 		break;
 	}
 
-	if (ret)
+	if (ret) {
+		spin_lock_irqsave(&pnw->lock, flags);
+		pnw->rt_quiesce = 0;
+		if(pnw->rt_resuming) {
+			pnw->rt_resuming = 0;
+			pm_runtime_put(pnw->dev);
+		}
+		spin_unlock_irqrestore(&pnw->lock, flags);
 		goto DONE;
+	}
 
 	penwell_otg_phy_low_power(1);
 
@@ -5315,6 +5329,7 @@ static int penwell_otg_runtime_resume(struct device *dev)
 	struct penwell_otg	*pnw = the_transceiver;
 	int			ret = 0;
 	u32			val;
+	unsigned long		flags;
 
 	dev_dbg(dev, "%s --->\n", __func__);
 
@@ -5353,12 +5368,13 @@ static int penwell_otg_runtime_resume(struct device *dev)
 		break;
 	}
 
-	if (pnw->rt_resuming) {
-		dev_dbg(pnw->dev, "irq num: %d\n", pnw->rt_resuming);
+	spin_lock_irqsave(&pnw->lock, flags);
+	pnw->rt_quiesce = 0;
+	if(pnw->rt_resuming) {
 		pnw->rt_resuming = 0;
-
 		pm_runtime_put(pnw->dev);
 	}
+	spin_unlock_irqrestore(&pnw->lock, flags);
 
 	dev_dbg(dev, "%s <---\n", __func__);
 
