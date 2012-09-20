@@ -193,6 +193,9 @@
 #define	RESUME_ENTRIES		17
 /* end RESUME STATE INDICES */
 
+/* the device need a short dealy for stable */
+#define HW_STABLE_DELAY_US	(10 * 1000)
+
 struct {
 	unsigned int cutoff_ms;
 	unsigned int mask;
@@ -551,6 +554,7 @@ static int lis3dh_acc_enable(struct lis3dh_acc_data *acc)
 	/* clear interrupt source */
 	lis3dh_acc_get_int1_source(acc);
 	lis3dh_acc_device_power_on(acc);
+	usleep_range(HW_STABLE_DELAY_US, HW_STABLE_DELAY_US + 1000);
 	acc->enabled = 1;
 
 	/* Send initial events to userspace */
