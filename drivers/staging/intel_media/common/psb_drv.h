@@ -50,9 +50,7 @@ extern struct drm_device *gpDrmDevice;
 extern bool gbdispstatus;
 extern int drm_psb_debug;
 extern int psb_video_fabric_debug;
-extern int drm_psb_enable_pr2_cabc ;
-extern int drm_psb_enable_sc1_cabc; /* SC1 setting */
-extern int drm_psb_enable_lex_cabc;
+extern int drm_psb_enable_cabc ;
 extern int gfxrtdelay;
 extern int drm_psb_te_timer_delay;
 extern int drm_psb_enable_gamma;
@@ -109,6 +107,7 @@ enum panel_type {
 #define BLC_PROC_ENTRY "mrst_blc"
 #define DISPLAY_PROC_ENTRY "display_status"
 #define PANEL_PROC_ENTRY "panel_status"
+#define HDMI_PROC_ENTRY "hdmi_power"
 
 #define PSB_DRM_DRIVER_DATE "2009-03-10"
 #define PSB_DRM_DRIVER_MAJOR 8
@@ -194,6 +193,7 @@ enum panel_type {
 /*
  *VDC registers and bits
  */
+#define PSB_GFX_CLOCKGATING	  0x2060
 #define PSB_MSVDX_CLOCKGATING	  0x2064
 #define PSB_TOPAZ_CLOCKGATING	  0x2068
 #define PSB_HWSTAM		  0x2098
@@ -479,6 +479,7 @@ struct drm_psb_private {
 
 	/* IMG video context */
 	struct list_head video_ctx;
+	struct mutex video_ctx_mutex;
 	/* Current video context */
 	struct psb_video_ctx *topaz_ctx;
 	struct psb_video_ctx *msvdx_ctx;

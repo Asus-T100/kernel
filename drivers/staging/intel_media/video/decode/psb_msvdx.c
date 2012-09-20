@@ -1032,6 +1032,7 @@ int psb_remove_videoctx(struct drm_psb_private *dev_priv, struct file *filp)
 	/* iterate to query all ctx to if there is DRM running*/
 	ied_enabled = 0;
 
+	mutex_lock(&dev_priv->video_ctx_mutex);
 	list_for_each_entry_safe(pos, n, &dev_priv->video_ctx, head) {
 		if (pos->filp == filp) {
 			PSB_DEBUG_GENERAL("Video:remove context profile %d,"
@@ -1073,6 +1074,7 @@ int psb_remove_videoctx(struct drm_psb_private *dev_priv, struct file *filp)
 				ied_enabled = 1;
 		}
 	}
+	mutex_unlock(&dev_priv->video_ctx_mutex);
 	return 0;
 }
 
@@ -1102,11 +1104,13 @@ static int psb_entrypoint_number(struct drm_psb_private *dev_priv,
 		return -EINVAL;
 	}
 
+	mutex_lock(&dev_priv->video_ctx_mutex);
 	list_for_each_entry_safe(pos, n, &dev_priv->video_ctx, head) {
 		if (entry_type == (pos->ctx_type & 0xff))
 			count++;
 
 	}
+	mutex_unlock(&dev_priv->video_ctx_mutex);
 
 	PSB_DEBUG_GENERAL("There are %d active entrypoint %d.\n",
 			count, entry_type);
@@ -1166,7 +1170,9 @@ int lnc_video_getparam(struct drm_device *dev, void *data,
 		INIT_LIST_HEAD(&video_ctx->head);
 		video_ctx->ctx_type = ctx_type;
 		video_ctx->filp = file_priv->filp;
+		mutex_lock(&dev_priv->video_ctx_mutex);
 		list_add(&video_ctx->head, &dev_priv->video_ctx);
+		mutex_unlock(&dev_priv->video_ctx_mutex);
 
 		if (IS_MDFLD(dev_priv->dev) &&
 				(VAEntrypointEncSlice ==

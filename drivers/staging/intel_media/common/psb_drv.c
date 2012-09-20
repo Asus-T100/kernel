@@ -72,9 +72,7 @@
 #include "mdfld_dsi_pkg_sender.h"
 int drm_psb_debug;
 int psb_video_fabric_debug;
-int drm_psb_enable_pr2_cabc = 1;
-int drm_psb_enable_sc1_cabc = 1;  /* [SC1] change paremeter name */
-int drm_psb_enable_lex_cabc = 1;
+int drm_psb_enable_cabc = 1;
 int drm_psb_enable_gamma;
 int drm_psb_enable_color_conversion;
 /*EXPORT_SYMBOL(drm_psb_debug); */
@@ -133,12 +131,10 @@ MODULE_PARM_DESC(enable_gamma, "Enable display side gamma");
 
 module_param_named(debug, drm_psb_debug, int, 0600);
 module_param_named(fabric_debug, psb_video_fabric_debug, int, 0600);
-module_param_named(psb_enable_pr2_cabc, drm_psb_enable_pr2_cabc, int, 0600);
+module_param_named(psb_enable_cabc, drm_psb_enable_cabc, int, 0600);
 module_param_named(enable_color_conversion, drm_psb_enable_color_conversion, int, 0600);
 module_param_named(enable_gamma, drm_psb_enable_gamma, int, 0600);
 /* [SC1] change parameter name */
-module_param_named(psb_enable_sc1_cabc, drm_psb_enable_sc1_cabc, int, 0600);
-module_param_named(psb_enable_lex_cabc, drm_psb_enable_lex_cabc, int, 0600);
 module_param_named(no_fb, drm_psb_no_fb, int, 0600);
 module_param_named(trap_pagefaults, drm_psb_trap_pagefaults, int, 0600);
 module_param_named(force_pipeb, drm_psb_force_pipeb, int, 0600);
@@ -1473,6 +1469,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	if (dev_priv == NULL)
 		return -ENOMEM;
 	INIT_LIST_HEAD(&dev_priv->video_ctx);
+	mutex_init(&dev_priv->video_ctx_mutex);
 	if (IS_CTP(dev)) {
 		dev_priv->num_pipe = 2;
 	} else if (IS_MDFLD(dev)) {
@@ -3986,6 +3983,50 @@ fun_exit:
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 	return count;
 }
+
+static int psb_hdmi_power_read(char *buf, char **start, off_t offset, int request,
+				     int *eof, void *data)
+{
+	return 0;
+}
+
+static int psb_hdmi_power_write(struct file *file, const char *buffer,
+				      unsigned long count, void *data)
+{
+	char buf[2];
+	int  hdmi_power;
+	if (count != sizeof(buf)) {
+		return -EINVAL;
+	} else {
+		if (copy_from_user(buf, buffer, count))
+			return -EINVAL;
+		if (buf[count-1] != '\n')
+			return -EINVAL;
+		hdmi_power = buf[0] - '0';
+		PSB_DEBUG_ENTRY(" hdmi_power: %d\n", hdmi_power);
+
+		if (!hdmi_power) {
+			intel_scu_ipc_iowrite8(MSIC_VHDMICNT, VHDMI_OFF);
+			intel_scu_ipc_iowrite8(MSIC_VCC330CNT, VCC330_OFF);
+		} else {
+			/* turn on HDMI power rails. These will be on in all non-S0iX
+			states so that HPD and connection status will work. VCC330 will
+			have ~1.7mW usage during idle states when the display is
+			active.*/
+			intel_scu_ipc_iowrite8(MSIC_VCC330CNT, VCC330_ON);
+
+			/* MSIC documentation requires that there be a 500us delay
+			after enabling VCC330 before you can enable VHDMI */
+			usleep_range(500, 1000);
+
+			/* Extend VHDMI switch de-bounce time, to avoid redundant MSIC
+			 * VREG/HDMI interrupt during HDMI cable plugged in/out. */
+			intel_scu_ipc_iowrite8(MSIC_VHDMICNT, VHDMI_ON | VHDMI_DB_30MS);
+		}
+	}
+	return count;
+}
+
 /* When a client dies:
  *    - Check for and clean up flipped page state
  */
@@ -4006,12 +4047,14 @@ static int psb_proc_init(struct drm_minor *minor)
 	struct proc_dir_entry *rtpm;
 	struct proc_dir_entry *ent_display_status;
 	struct proc_dir_entry *ent_panel_status;
+	struct proc_dir_entry *ent_hdmi_status;
 	ent = create_proc_entry(OSPM_PROC_ENTRY, 0644, minor->proc_root);
 	rtpm = create_proc_entry(RTPM_PROC_ENTRY, 0644, minor->proc_root);
 	ent_display_status = create_proc_entry(DISPLAY_PROC_ENTRY, 0644, minor->proc_root);
 	ent_panel_status = create_proc_entry(PANEL_PROC_ENTRY,
 			 0644, minor->proc_root);
 	ent1 = proc_create_data(BLC_PROC_ENTRY, 0, minor->proc_root, &psb_blc_proc_fops, minor);
+	ent_hdmi_status = create_proc_entry(HDMI_PROC_ENTRY, 0644, minor->proc_root);
 
 	if (!ent || !ent1 || !rtpm || !ent_display_status)
 		return -1;
@@ -4026,6 +4069,9 @@ static int psb_proc_init(struct drm_minor *minor)
 	ent_panel_status->write_proc = psb_panel_register_write;
 	ent_panel_status->read_proc = psb_panel_register_read;
 	ent_panel_status->data = (void *)minor;
+	ent_hdmi_status->write_proc = psb_hdmi_power_write;
+	ent_hdmi_status->read_proc = psb_hdmi_power_read;
+	ent_hdmi_status->data = (void *)minor;
 	return 0;
 }
 

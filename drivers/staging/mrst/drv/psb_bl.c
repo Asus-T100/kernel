@@ -96,7 +96,7 @@ int psb_set_brightness(struct backlight_device *bd)
 
 	lastFailedBrightness = -1;
 
-	if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, OSPM_UHB_ONLY_IF_ON)) {
+	if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, OSPM_UHB_FORCE_POWER_ON)) {
 		if (IS_MRST(dev)) {
 			/* Calculate and set the brightness value */
 			max_pwm_blc = REG_READ(BLC_PWM_CTL) >> MRST_BACKLIGHT_MODULATION_FREQ_SHIFT;

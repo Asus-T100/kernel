@@ -343,7 +343,7 @@ static int mdfld_dsi_pr2_power_on(struct mdfld_dsi_config *dsi_config)
 	msleep(21);
 
 	/*Enable BLON , CABC*/
-	if (drm_psb_enable_pr2_cabc) {
+	if (drm_psb_enable_cabc) {
 		pr2_backlight_control_1[0] |= BIT8;
 		mdfld_dsi_send_gen_long_hs(sender,
 				pr2_backlight_control_1, 24, 0);
@@ -426,7 +426,7 @@ static int mdfld_dsi_pr2_set_brightness(struct mdfld_dsi_config *dsi_config,
 	/*update duty value*/
 	pr2_backlight_control_2[0] =  (0x0000001b9 | (duty_val << 16));
 
-	if (drm_psb_enable_pr2_cabc) {
+	if (drm_psb_enable_cabc) {
 		if (level < 50) {
 			pr2_backlight_control_1[0] = 0x0f0f00b8;
 			PSB_DEBUG_ENTRY("brightness too low, cabc disable,\n");

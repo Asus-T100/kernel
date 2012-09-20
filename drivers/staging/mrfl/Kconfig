@@ -1,0 +1,92 @@
+#
+# Drm device configuration
+#
+# This driver provides support for the
+# Direct Rendering Infrastructure (DRI) in XFree86 4.1.0 and higher.
+#
+
+config DRM_INTEL_HANDSET
+	tristate "Intel Merrifield Graphics Driver Support (load along with IMG driver)"
+	depends on DRM && PCI
+	select FB_CFB_COPYAREA
+        select FB_CFB_FILLRECT
+        select FB_CFB_IMAGEBLIT
+        select DRM_KMS_HELPER
+        select DRM_TTM
+	help
+	  xxxxxxxxxxxxxxxxxxxxxxxxxx
+
+choice
+	prompt "Build IMG kernel service as "
+	depends on DRM_INTEL_HANDSET
+	default DRM_HANDSET_RELEASE
+
+config DRM_HANDSET_RELEASE
+	bool "Release"
+	depends on DRM_INTEL_HANDSET
+	help
+	  Build IMG kernel services as release
+
+config DRM_HANDSET_DEBUG
+	bool "Debug"
+	depends on DRM_INTEL_HANDSET
+	help
+	  Build IMG kernel services as debug
+
+endchoice
+
+config MRFL_DISPLAY
+	tristate "Intel Merrifield Generic Framebuffer Driver"
+	depends on PCI && X86_MRFLD && !DRM_MDFLD && FB
+	default n
+	select FB_CFB_COPYAREA
+        select FB_CFB_FILLRECT
+        select FB_CFB_IMAGEBLIT
+	help
+	   Basic support for Generic Framebuffer Driver for Merrifield.
+
+config DRM_MRFLD
+        tristate "Intel Merrifield Graphics Driver Support with IMG"
+        depends on DRM_INTEL_HANDSET && PCI
+        select FB_CFB_COPYAREA
+        select FB_CFB_FILLRECT
+        select FB_CFB_IMAGEBLIT
+        select DRM_KMS_HELPER
+        help
+          Choose this option if you have a Merrifield platform.
+          If M is selected the module will be called mid_gfx.
+
+config MID_DSI_DSR
+	bool "Support DSI Fullscreen Display Self Refreshment "
+	depends on DRM_INTEL_HANDSET && !MID_DSI_DPU
+	default y
+	help
+	  Choose this option if you have a Type1 MIPI panel.
+
+config MID_DSI_DPU
+	bool "Support DSI Display Partial Update"
+	depends on DRM_INTEL_HANDSET
+	default n
+	help
+	  xxxxxx
+
+config MID_DUAL_MIPI
+        bool "SUPPORT_DUAL_MIPI_DISPLAYS"
+        depends on DRM_INTEL_HANDSET
+        default n
+        help
+          xxxxxx
+
+config MID_HDMI
+        bool "SUPPORT_HDMI_DISPLAY"
+        depends on DRM_INTEL_HANDSET
+        default n
+        help
+          xxxxxx
+
+config GFX_RTPM
+	bool "Enable GFX runtime_pm"
+	depends on DRM_INTEL_HANDSET
+	default n
+	help
+          xxxxxx

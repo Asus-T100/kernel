@@ -120,6 +120,7 @@ static int ospm_runtime_pm_msvdx_suspend(struct drm_device *dev)
 		goto out;
 	}
 
+	mutex_lock(&dev_priv->video_ctx_mutex);
 	list_for_each_entry_safe(pos, n, &dev_priv->video_ctx, head) {
 		int entrypoint = pos->ctx_type & 0xff;
 		if (entrypoint == VAEntrypointVLD ||
@@ -131,6 +132,7 @@ static int ospm_runtime_pm_msvdx_suspend(struct drm_device *dev)
 			break;
 		}
 	}
+	mutex_unlock(&dev_priv->video_ctx_mutex);
 
 	/* have decode context, but not started, or is just closed */
 	if (decode_ctx && dev_priv->msvdx_ctx)
@@ -178,6 +180,7 @@ static int ospm_runtime_pm_topaz_suspend(struct drm_device *dev)
 		}
 	}
 
+	mutex_lock(&dev_priv->video_ctx_mutex);
 	list_for_each_entry_safe(pos, n, &dev_priv->video_ctx, head) {
 		int entrypoint = pos->ctx_type & 0xff;
 		if (entrypoint == VAEntrypointEncSlice ||
@@ -186,6 +189,7 @@ static int ospm_runtime_pm_topaz_suspend(struct drm_device *dev)
 			break;
 		}
 	}
+	mutex_unlock(&dev_priv->video_ctx_mutex);
 
 	/* have encode context, but not started, or is just closed */
 	if (encode_ctx && dev_priv->topaz_ctx)
@@ -239,6 +243,7 @@ static int ospm_runtime_pm_topaz_resume(struct drm_device *dev)
 
 	/*printk(KERN_ALERT "ospm_runtime_pm_topaz_resume\n");*/
 
+	mutex_lock(&dev_priv->video_ctx_mutex);
 	list_for_each_entry_safe(pos, n, &dev_priv->video_ctx, head) {
 		int entrypoint = pos->ctx_type & 0xff;
 		if (entrypoint == VAEntrypointEncSlice ||
@@ -247,6 +252,7 @@ static int ospm_runtime_pm_topaz_resume(struct drm_device *dev)
 			break;
 		}
 	}
+	mutex_unlock(&dev_priv->video_ctx_mutex);
 
 	/* have encode context, but not started, or is just closed */
 	if (encode_ctx && dev_priv->topaz_ctx)
@@ -810,6 +816,7 @@ void ospm_suspend_display(struct drm_device *dev)
 
 	/*save performance state*/
 	dev_priv->savePERF_MODE = REG_READ(MRST_PERF_MODE);
+	dev_priv->saveCLOCKGATING = REG_READ(PSB_GFX_CLOCKGATING);
 	dev_priv->saveVED_CG_DIS = REG_READ(PSB_MSVDX_CLOCKGATING);
 	dev_priv->saveVEC_CG_DIS = REG_READ(PSB_TOPAZ_CLOCKGATING);
 
@@ -870,6 +877,7 @@ void ospm_resume_display(struct pci_dev *pdev)
 
 	/*restore performance mode*/
 	REG_WRITE(MRST_PERF_MODE, dev_priv->savePERF_MODE);
+	REG_WRITE(PSB_GFX_CLOCKGATING, dev_priv->saveCLOCKGATING);
 	REG_WRITE(PSB_MSVDX_CLOCKGATING, dev_priv->saveVED_CG_DIS);
 	REG_WRITE(PSB_TOPAZ_CLOCKGATING, dev_priv->saveVEC_CG_DIS);
 #ifdef CONFIG_MDFD_GL3
@@ -974,6 +982,8 @@ static bool ospm_resume_pci(struct pci_dev *pdev)
 		if (IS_MDFLD(dev)) {
 			/*restore performance mode*/
 			PSB_WVDC32(dev_priv->savePERF_MODE, MRST_PERF_MODE);
+			PSB_WVDC32(dev_priv->saveCLOCKGATING,
+				PSB_GFX_CLOCKGATING);
 			PSB_WVDC32(dev_priv->saveVED_CG_DIS,
 					PSB_MSVDX_CLOCKGATING);
 			PSB_WVDC32(dev_priv->saveVEC_CG_DIS,
@@ -1232,16 +1242,6 @@ void ospm_power_island_up(int hw_islands)
 		If pmu_nc_set_power_state fails then accessing HW
 		reg would result in a crash - IERR/Fabric error.
 		*/
-#ifdef CONFIG_MDFD_GL3
-		/*
-		 * GL3 power island needs to be on for MSVDX working.
-		 * We found this during enabling new MSVDX firmware
-		 * uploading mechanism(by PUNIT) for Penwell D0.
-		 */
-		if ((gfx_islands & OSPM_VIDEO_DEC_ISLAND) &&
-				!ospm_power_is_hw_on(OSPM_GL3_CACHE_ISLAND))
-			gfx_islands |= OSPM_GL3_CACHE_ISLAND;
-#endif
 		spin_lock_irqsave(&dev_priv->ospm_lock, flags);
 		if (pmu_nc_set_power_state(gfx_islands,
 					   OSPM_ISLAND_UP, APM_REG_TYPE))
@@ -1508,15 +1508,20 @@ bool ospm_power_using_video_begin(int video_island)
 			*/
 		}
 
-#ifdef CONFIG_MDFD_GL3
-		if (!ospm_power_is_hw_on(OSPM_GL3_CACHE_ISLAND))
-			ospm_power_island_up(OSPM_GL3_CACHE_ISLAND);
-#endif
 		if (!ospm_power_is_hw_on(OSPM_VIDEO_DEC_ISLAND)) {
 			/* printk(KERN_ALERT "%s power on video decode\n",
 			** __func__);
 			*/
+			/*
+			 * GL3 power island needs to be on for MSVDX working.
+			 * We found this during enabling new MSVDX firmware
+			 * uploading mechanism(by PUNIT) for Penwell D0.
+			 */
+#ifdef CONFIG_MDFD_GL3
+			ospm_power_island_up(OSPM_GL3_CACHE_ISLAND | OSPM_VIDEO_DEC_ISLAND);
+#else
 			ospm_power_island_up(OSPM_VIDEO_DEC_ISLAND);
+#endif
 			if (msvdx_priv->fw_loaded_by_punit) {
 				int reg_ret;
 				reg_ret = psb_wait_for_register(dev_priv,
@@ -1531,6 +1536,8 @@ bool ospm_power_using_video_begin(int video_island)
 				OSPM_VIDEO_DEC_ISLAND);
 			psb_irq_postinstall_islands(gpDrmDevice,
 				OSPM_VIDEO_DEC_ISLAND);
+		} else {
+			ospm_power_island_up(OSPM_GL3_CACHE_ISLAND);
 		}
 
 		break;
@@ -1544,20 +1551,23 @@ bool ospm_power_using_video_begin(int video_island)
 			psb_irq_postinstall_islands(gpDrmDevice,
 				OSPM_DISPLAY_ISLAND);
 		}
-#ifdef CONFIG_MDFD_GL3
-		if (!ospm_power_is_hw_on(OSPM_GL3_CACHE_ISLAND))
-			ospm_power_island_up(OSPM_GL3_CACHE_ISLAND);
-#endif
+
 		if (!ospm_power_is_hw_on(OSPM_VIDEO_ENC_ISLAND)) {
 			/* printk(KERN_ALERT "%s power on video
 			** encode\n", __func__);
 			*/
+#ifdef CONFIG_MDFD_GL3
+			ospm_power_island_up(OSPM_VIDEO_ENC_ISLAND | OSPM_GL3_CACHE_ISLAND);
+#else
 			ospm_power_island_up(OSPM_VIDEO_ENC_ISLAND);
+#endif
 			ospm_runtime_pm_topaz_resume(gpDrmDevice);
 			psb_irq_preinstall_islands(gpDrmDevice,
 				OSPM_VIDEO_ENC_ISLAND);
 			psb_irq_postinstall_islands(gpDrmDevice,
 				OSPM_VIDEO_ENC_ISLAND);
+		} else {
+			ospm_power_island_up(OSPM_GL3_CACHE_ISLAND);
 		}
 		break;
 	default:
