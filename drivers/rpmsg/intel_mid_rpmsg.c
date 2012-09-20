@@ -200,10 +200,12 @@ static void rpmsg_recv_cb(struct rpmsg_channel *rpdev, void *data,
 		return;
 	}
 
+#ifdef DEBUG_RPMSG_MSG
 	dev_info(&rpdev->dev, "incoming msg %d (src: 0x%x)\n", ++rx_count, src);
 
 	print_hex_dump(KERN_DEBUG, __func__, DUMP_PREFIX_NONE, 16, 1,
 		       data, len,  true);
+#endif
 
 	mutex_lock(&instance->rx_lock);
 
