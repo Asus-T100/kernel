@@ -356,8 +356,7 @@ int __dbi_power_on(struct mdfld_dsi_config *dsi_config)
 
 	/*Enable pipe*/
 	val = ctx->pipeconf;
-	val &= ~0x000c0000;
-	val |= BIT31 | PIPEACONF_DSR;
+	val &= ~0x000c0000 | BIT31 | PIPEACONF_DSR;
 	REG_WRITE(regs->pipeconf_reg, val);
 
 	/*Wait for pipe enabling,when timing generator is working */

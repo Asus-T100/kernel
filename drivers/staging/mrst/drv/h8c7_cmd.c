@@ -385,12 +385,7 @@ int mdfld_dsi_h8c7_cmd_power_on(struct mdfld_dsi_config *dsi_config)
 		DRM_ERROR("%s - sent set_display_on faild\n", __func__);
 		goto power_err;
 	}
-	if (drm_psb_enable_cabc) {
-		/* turn on cabc */
-		h8c7_disable_cabc[0] |= BIT8;
-		h8c7_disable_cabc[0] |= BIT9;
-		mdfld_dsi_send_mcs_long_lp(sender, h8c7_disable_cabc, 4, 0);
-	}
+
 power_err:
 	return err;
 }
@@ -409,11 +404,6 @@ static int mdfld_dsi_h8c7_cmd_power_off(struct mdfld_dsi_config *dsi_config)
 		DRM_ERROR("Failed to get DSI packet sender\n");
 		return -EINVAL;
 	}
-
-	/* turn off cabc */
-	h8c7_disable_cabc[0] &= (~BIT8);
-	h8c7_disable_cabc[0] &= (~BIT9);
-	mdfld_dsi_send_mcs_long_lp(sender, h8c7_disable_cabc, 4, 0);
 
 	/*turn off backlight*/
 	err = mdfld_dsi_send_mcs_long_lp(sender, h8c7_turn_off_backlight, 4, 0);

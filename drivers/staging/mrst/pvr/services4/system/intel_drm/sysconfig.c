@@ -1216,6 +1216,8 @@ PVRSRV_ERROR SysDevicePrePowerState(IMG_UINT32			ui32DeviceIndex,
 #if defined(SUPPORT_DRI_DRM_EXT)
 			ospm_power_using_hw_end(OSPM_GRAPHICS_ISLAND);
 
+			ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+
 			/*! missed in IMG's DDK1.6,
 				may cause system hang after early resume
 			*/
@@ -1228,8 +1230,8 @@ PVRSRV_ERROR SysDevicePrePowerState(IMG_UINT32			ui32DeviceIndex,
 			ospm_power_island_down(OSPM_GL3_CACHE_ISLAND);
 #endif
 
-#if defined(SUPPORT_DRI_DRM_EXT)
-			ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+#ifdef CONFIG_GFX_RTPM
+			pm_request_idle(&gpDrmDevice->pdev->dev);
 #endif
 
 		}

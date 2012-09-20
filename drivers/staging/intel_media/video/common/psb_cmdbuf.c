@@ -884,7 +884,6 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 		goto out_err4;
 	}
 
-	mutex_lock(&dev_priv->video_ctx_mutex);
 	list_for_each_entry_safe(pos, n, &dev_priv->video_ctx, head) {
 		if (pos->filp == file_priv->filp) {
 			int entrypoint = pos->ctx_type & 0xff;
@@ -902,7 +901,6 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 			break;
 		}
 	}
-	mutex_unlock(&dev_priv->video_ctx_mutex);
 
 	switch (arg->engine) {
 	case PSB_ENGINE_VIDEO:

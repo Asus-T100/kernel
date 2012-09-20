@@ -27,7 +27,7 @@
 #include "mdfld_dsi_dbi_dsr.h"
 #include "mdfld_dsi_pkg_sender.h"
 
-#define DSR_COUNT 15
+#define DSR_COUNT 2
 
 static int exit_dsr_locked(struct mdfld_dsi_config *dsi_config)
 {
@@ -154,13 +154,6 @@ static int enter_dsr_locked(struct mdfld_dsi_config *dsi_config, int level)
 
 	/*Disable TE, don't need it anymore*/
 	mdfld_disable_te(dev, dsi_config->pipe);
-	err = mdfld_dsi_wait_for_fifos_empty(sender);
-	if (err) {
-		DRM_ERROR("mdfld_dsi_dsr: FIFO not empty\n");
-		mdfld_enable_te(dev, dsi_config->pipe);
-		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
-		return err;
-	}
 
 	/*turn off dbi interface put in ulps*/
 	__dbi_power_off(dsi_config);

@@ -164,5 +164,4 @@ source "drivers/staging/intel_media/Kconfig"
 
 source "drivers/staging/matrix/Kconfig"
 
-source "drivers/staging/mrfl/Kconfig"
 endif # STAGING

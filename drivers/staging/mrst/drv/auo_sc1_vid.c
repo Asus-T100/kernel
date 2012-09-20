@@ -206,7 +206,7 @@ static int mdfld_dsi_sc1_power_on(struct mdfld_dsi_config *dsi_config)
 	msleep(21);
 
 	/*enable BLON , CABC*/
-	if (drm_psb_enable_cabc) {
+	if (drm_psb_enable_sc1_cabc) {
 		mdfld_dsi_send_mcs_long_hs(sender, sc1_enable_CABC_bl_on, 4, 0);
 		printk(KERN_ALERT "enable SC1 cabc\n");
 	}

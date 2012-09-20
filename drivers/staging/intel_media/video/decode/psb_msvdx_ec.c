@@ -29,10 +29,7 @@
 
 #include "psb_drv.h"
 #include "psb_msvdx.h"
-#include "psb_msvdx_msg.h"
 #include "psb_msvdx_ec.h"
-
-#define MAX_SIZE_IN_MB		(4096 / 256)
 
 static inline int psb_msvdx_cmd_port_write(struct drm_psb_private *dev_priv,
 			uint32_t offset, uint32_t value, uint32_t *cmd_space)
@@ -84,8 +81,8 @@ void psb_msvdx_do_concealment(struct work_struct *work)
 	struct drm_psb_private *dev_priv = NULL;
 	struct psb_msvdx_ec_ctx *msvdx_ec_ctx = msvdx_priv->cur_msvdx_ec_ctx;
 	drm_psb_msvdx_decode_status_t *fault_region = NULL;
-	struct fw_deblock_msg *deblock_msg =
-		(struct fw_deblock_msg *)(msvdx_ec_ctx->unfenced_cmd +
+	FW_VA_DEBLOCK_MSG *deblock_cmd =
+		(FW_VA_DEBLOCK_MSG *)(msvdx_ec_ctx->unfenced_cmd +
 		msvdx_ec_ctx->deblock_cmd_offset);
 	uint32_t width_in_mb, height_in_mb, cmd;
 	int conceal_above_row = 0, loop, mb_loop;
@@ -116,15 +113,8 @@ void psb_msvdx_do_concealment(struct work_struct *work)
 	}
 
 
-	width_in_mb = deblock_msg->pic_size.bits.pic_width_mb;
-	height_in_mb = deblock_msg->pic_size.bits.frame_height_mb;
-
-	if (unlikely(!width_in_mb || !height_in_mb ||
-		width_in_mb > MAX_SIZE_IN_MB ||
-		height_in_mb > MAX_SIZE_IN_MB)) {
-		PSB_DEBUG_MSVDX("wrong pic size\n");
-		goto ec_done;
-	}
+	width_in_mb = deblock_cmd->pic_size.bits.pic_width_mb;
+	height_in_mb = deblock_cmd->pic_size.bits.frame_height_mb;
 
 	{
 		int i;
@@ -133,202 +123,40 @@ void psb_msvdx_do_concealment(struct work_struct *work)
 					 i,
 					 fault_region->mb_regions[i].start,
 					 fault_region->mb_regions[i].end);
-		PSB_DEBUG_MSVDX("MSVDX: MSGID_DEBLOCK:"
-			" - fence: %08x"
-			" - flags: %08x - slice_field_type: %08x"
-			" - operating_mode: %08x"
-			" - context: %08x - mmu_ptd: %08x"
-			" - frame_height_mb: %08x - pic_width_mb: %08x"
-			" - address_a0: %08x - address_a1: %08x"
-			" - mb_param_address: %08x"
-			" - ext_stride_a: %08x"
-			" - address_b0: %08x - address_b1: %08x"
-			" - alt_output_flags_b: %08x.\n",
-			deblock_msg->header.bits.msg_fence,
-			deblock_msg->flag_type.bits.flags,
-			deblock_msg->flag_type.bits.slice_field_type,
-			deblock_msg->operating_mode,
-			deblock_msg->mmu_context.bits.context,
-			deblock_msg->mmu_context.bits.mmu_ptd,
-			deblock_msg->pic_size.bits.frame_height_mb,
-			deblock_msg->pic_size.bits.pic_width_mb,
-			deblock_msg->address_a0,
-			deblock_msg->address_a1,
-			deblock_msg->mb_param_address,
-			deblock_msg->ext_stride_a,
-			deblock_msg->address_b0,
-			deblock_msg->address_b1,
-			deblock_msg->alt_output_flags_b);
+
+		PSB_DEBUG_MSVDX("deblock header is	0x%08x\n",
+					deblock_cmd->header);
+		PSB_DEBUG_MSVDX("deblock flags is	0x%08x\n",
+					deblock_cmd->flags);
+		PSB_DEBUG_MSVDX("deblock op mode is	0x%08x\n",
+					deblock_cmd->operating_mode);
+		PSB_DEBUG_MSVDX("deblock mmu_contex	0x%08x\n",
+					deblock_cmd->mmu_context);
+		PSB_DEBUG_MSVDX("deblock pic_size is	0x%08x\n",
+					deblock_cmd->pic_size);
+		PSB_DEBUG_MSVDX("deblock addr_a0 is	0x%08x\n",
+					deblock_cmd->address_a0);
+		PSB_DEBUG_MSVDX("deblock addr_a1 is	0x%08x\n",
+					deblock_cmd->address_a1);
+		PSB_DEBUG_MSVDX("deblock mb_param is	0x%08x\n",
+					deblock_cmd->mb_param_address);
+		PSB_DEBUG_MSVDX("deblock stride_a is	0x%08x\n",
+					deblock_cmd->ext_stride_a);
+		PSB_DEBUG_MSVDX("deblock addr_b0 is	0x%08x\n",
+					deblock_cmd->address_b0);
+		PSB_DEBUG_MSVDX("deblock addr_b1 is	0x%08x\n",
+					deblock_cmd->address_b1);
+		PSB_DEBUG_MSVDX("deblock output_fg is	0x%08x\n",
+					deblock_cmd->rotation_flags);
 		PSB_DEBUG_MSVDX("deblock addr_c0 is	0x%08x\n",
-					deblock_msg->address_c0);
+					deblock_cmd->address_c0);
 		PSB_DEBUG_MSVDX("deblock addr_c1 is	0x%08x\n",
-					deblock_msg->address_c1);
+					deblock_cmd->address_c1);
 	}
 
-	cmd = 0;
-	REGIO_WRITE_FIELD_LITE(cmd, MSVDX_CMDS,
-			       DISPLAY_PICTURE_SIZE_DISPLAY_PICTURE_HEIGHT,
-			       (height_in_mb * 16) - 1);
-	REGIO_WRITE_FIELD_LITE(cmd, MSVDX_CMDS,
-			       DISPLAY_PICTURE_SIZE_DISPLAY_PICTURE_WIDTH,
-			       (width_in_mb * 16) - 1);
-	PSB_CMDPORT_WRITE(dev_priv,
-				 MSVDX_CMDS_DISPLAY_PICTURE_SIZE_OFFSET,
-				 cmd, cmd_space);
 
-	cmd = 0;
-	REGIO_WRITE_FIELD_LITE(cmd, MSVDX_CMDS,
-			       CODED_PICTURE_SIZE_CODED_PICTURE_HEIGHT,
-			       (height_in_mb * 16) - 1);
-	REGIO_WRITE_FIELD_LITE(cmd, MSVDX_CMDS,
-			       CODED_PICTURE_SIZE_CODED_PICTURE_WIDTH,
-			       (width_in_mb * 16) - 1);
-	PSB_CMDPORT_WRITE(dev_priv,
-				 MSVDX_CMDS_CODED_PICTURE_SIZE_OFFSET,
-				 cmd, cmd_space);
 
-	cmd = deblock_msg->operating_mode;
-	REGIO_WRITE_FIELD(cmd, MSVDX_CMDS_OPERATING_MODE,
-			  CHROMA_FORMAT, 1);
-	REGIO_WRITE_FIELD(cmd, MSVDX_CMDS_OPERATING_MODE,
-			  ASYNC_MODE, 1);
-	REGIO_WRITE_FIELD(cmd, MSVDX_CMDS_OPERATING_MODE,
-			  CODEC_MODE, 3);
-	REGIO_WRITE_FIELD(cmd, MSVDX_CMDS_OPERATING_MODE,
-			  CODEC_PROFILE, 1);
-	PSB_CMDPORT_WRITE(dev_priv,
-				 MSVDX_CMDS_OPERATING_MODE_OFFSET,
-				 cmd, cmd_space);
 
-	/* dest frame address */
-	PSB_CMDPORT_WRITE(dev_priv,
-		MSVDX_CMDS_LUMA_RECONSTRUCTED_PICTURE_BASE_ADDRESSES_OFFSET,
-				 deblock_msg->address_a0,
-				 cmd_space);
-
-	PSB_CMDPORT_WRITE(dev_priv,
-		MSVDX_CMDS_CHROMA_RECONSTRUCTED_PICTURE_BASE_ADDRESSES_OFFSET,
-				 deblock_msg->address_a1,
-				 cmd_space);
-
-	/* conceal frame address */
-	PSB_CMDPORT_WRITE(dev_priv,
-		MSVDX_CMDS_REFERENCE_PICTURE_BASE_ADDRESSES_OFFSET,
-				 deblock_msg->address_b0,
-				 cmd_space);
-	PSB_CMDPORT_WRITE(dev_priv,
-		MSVDX_CMDS_REFERENCE_PICTURE_BASE_ADDRESSES_OFFSET + 4,
-				 deblock_msg->address_b1,
-				 cmd_space);
-	cmd = 0;
-	REGIO_WRITE_FIELD(cmd, MSVDX_CMDS_SLICE_PARAMS, SLICE_FIELD_TYPE, 2);
-	REGIO_WRITE_FIELD(cmd, MSVDX_CMDS_SLICE_PARAMS, SLICE_CODE_TYPE, 1);
-
-	PSB_CMDPORT_WRITE(dev_priv,
-				 MSVDX_CMDS_SLICE_PARAMS_OFFSET,
-				 cmd, cmd_space);
-
-	cmd = deblock_msg->alt_output_flags_b;
-	if ((cmd & 3) != 0) {
-		PSB_DEBUG_MSVDX("MSVDX: conceal to rotate surface\n");
-	} else {
-		PSB_CMDPORT_WRITE(dev_priv,
-			MSVDX_CMDS_ALTERNATIVE_OUTPUT_PICTURE_ROTATION_OFFSET,
-					 cmd, cmd_space);
-
-		PSB_CMDPORT_WRITE(dev_priv,
-			MSVDX_CMDS_VC1_LUMA_RANGE_MAPPING_BASE_ADDRESS_OFFSET,
-				 0, cmd_space);
-
-		PSB_CMDPORT_WRITE(dev_priv,
-			MSVDX_CMDS_VC1_CHROMA_RANGE_MAPPING_BASE_ADDRESS_OFFSET,
-				 0, cmd_space);
-
-		PSB_CMDPORT_WRITE(dev_priv,
-			MSVDX_CMDS_VC1_RANGE_MAPPING_FLAGS_OFFSET,
-				 0, cmd_space);
-	}
-
-	cmd = deblock_msg->ext_stride_a;
-	PSB_CMDPORT_WRITE(dev_priv,
-			  MSVDX_CMDS_EXTENDED_ROW_STRIDE_OFFSET,
-			  cmd, cmd_space);
-
-	for (loop = 0; loop < fault_region->num_region; loop++) {
-
-		uint32_t start = fault_region->mb_regions[loop].start;
-		uint32_t end = fault_region->mb_regions[loop].end;
-		uint32_t x, y;
-
-		PSB_DEBUG_MSVDX("MSVDX: region(%d) is %d~%d\n",
-			loop, start, end);
-
-		if (conceal_above_row)
-			start -= width_in_mb;
-		if (end > (width_in_mb * height_in_mb - 1))
-			end = (width_in_mb * height_in_mb - 1);
-		if (start > end)
-			start = 0;
-
-		PSB_DEBUG_MSVDX("MSVDX: modify region(%d) is %d~%d\n",
-			loop, start, end);
-
-		x = start % width_in_mb;
-		y = start / width_in_mb;
-
-		for (mb_loop = start; mb_loop <= end; mb_loop++, x++) {
-			if (x >= width_in_mb) {
-				x = 0;
-				y++;
-			}
-
-			/* PSB_DEBUG_MSVDX("MSVDX: concleament (%d,%d)\n",
-				x, y); */
-			if ((x == 0) && (mb_loop != start))
-				PSB_CMDPORT_WRITE_FAST(dev_priv,
-					MSVDX_CMDS_END_SLICE_PICTURE_OFFSET,
-					0, cmd_space);
-			cmd = 0;
-			REGIO_WRITE_FIELD_LITE(cmd,
-					       MSVDX_CMDS_MACROBLOCK_NUMBER,
-					       MB_CODE_TYPE, 1);
-			REGIO_WRITE_FIELD_LITE(cmd,
-					       MSVDX_CMDS_MACROBLOCK_NUMBER,
-					       MB_NO_X, x);
-			REGIO_WRITE_FIELD_LITE(cmd,
-					       MSVDX_CMDS_MACROBLOCK_NUMBER,
-					       MB_NO_Y, y);
-			PSB_CMDPORT_WRITE_FAST(dev_priv,
-				MSVDX_CMDS_MACROBLOCK_NUMBER_OFFSET,
-				cmd, cmd_space);
-			PSB_CMDPORT_WRITE_FAST(dev_priv,
-				MSVDX_CMDS_MACROBLOCK_RESIDUAL_FORMAT_OFFSET,
-				0, cmd_space);
-			cmd = 0;
-			REGIO_WRITE_FIELD_LITE(cmd,
-					MSVDX_CMDS_INTER_BLOCK_PREDICTION,
-					       REF_INDEX_A_VALID, 1);
-			REGIO_WRITE_FIELD_LITE(cmd,
-					MSVDX_CMDS_INTER_BLOCK_PREDICTION,
-					       INTER_PRED_BLOCK_SIZE, 0);
-			REGIO_WRITE_FIELD_LITE(cmd,
-					MSVDX_CMDS_INTER_BLOCK_PREDICTION,
-					       REF_INDEX_A, 0);
-			REGIO_WRITE_FIELD_LITE(cmd,
-				MSVDX_CMDS_INTER_BLOCK_PREDICTION,
-				REF_INDEX_B, 0);
-			PSB_CMDPORT_WRITE_FAST(dev_priv,
-				MSVDX_CMDS_INTER_BLOCK_PREDICTION_OFFSET,
-				cmd, cmd_space);
-			PSB_CMDPORT_WRITE_FAST(dev_priv,
-				MSVDX_CMDS_MOTION_VECTOR_OFFSET,
-				0, cmd_space);
-		}
-
-		PSB_CMDPORT_WRITE(dev_priv,
-			MSVDX_CMDS_END_SLICE_PICTURE_OFFSET,
-			0, cmd_space);
-	}
 
 ec_done:
 	/* try to unblock rendec */
@@ -355,7 +183,7 @@ struct psb_msvdx_ec_ctx *psb_msvdx_find_ec_ctx(
 {
 	int i, free_idx;
 	struct psb_msvdx_ec_ctx *ec_ctx = NULL;
-	struct fw_deblock_msg *deblock_msg = (struct fw_deblock_msg *)cmd;
+	FW_VA_DEBLOCK_MSG *deblock_msg = (FW_VA_DEBLOCK_MSG *)cmd;
 
 	free_idx = -1;
 	for (i = 0; i < PSB_MAX_EC_INSTANCE; i++) {
@@ -389,7 +217,7 @@ void psb_msvdx_update_frame_info(struct msvdx_private *msvdx_priv,
 
 	int i, free_idx;
 	drm_psb_msvdx_frame_info_t *frame_info;
-	struct fw_deblock_msg *deblock_msg = (struct fw_deblock_msg *)cmd;
+	FW_VA_DEBLOCK_MSG *deblock_msg = (FW_VA_DEBLOCK_MSG *)cmd;
 	uint32_t buffer_handle = deblock_msg->mb_param_address;
 
 	struct psb_msvdx_ec_ctx *ec_ctx;
@@ -432,7 +260,7 @@ void psb_msvdx_backup_cmd(struct msvdx_private *msvdx_priv,
 				uint32_t cmd_size,
 				uint32_t deblock_cmd_offset)
 {
-	struct fw_deblock_msg *deblock_msg = NULL;
+	FW_VA_DEBLOCK_MSG *deblock_msg = NULL;
 
 	struct psb_msvdx_ec_ctx *ec_ctx;
 
@@ -447,7 +275,7 @@ void psb_msvdx_backup_cmd(struct msvdx_private *msvdx_priv,
 
 
 	if (deblock_cmd_offset != PSB_MSVDX_INVALID_OFFSET)
-		deblock_msg = (struct fw_deblock_msg *)(cmd + deblock_cmd_offset);
+		deblock_msg = (FW_VA_DEBLOCK_MSG *)(cmd + deblock_cmd_offset);
 
 	if (deblock_msg &&
 	    ec_ctx->context_id != deblock_msg->mmu_context.bits.context) {
@@ -462,7 +290,7 @@ void psb_msvdx_backup_cmd(struct msvdx_private *msvdx_priv,
 	if (cmd_size)
 		ec_ctx->fence =
 			MEMIO_READ_FIELD(ec_ctx->unfenced_cmd,
-					MTX_GENMSG_FENCE);
+					FW_VA_CMD_COMPLETED_MSG_ID);
 	ec_ctx->fence &= (~0xf);
 	PSB_DEBUG_MSVDX("backup cmd for ved: fence 0x%08x, cmd_size %d\n",
 				ec_ctx->fence, cmd_size);
