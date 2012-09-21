@@ -355,18 +355,18 @@ int rmi4_touchpad_irq_handler(struct rmi4_data *pdata, struct rmi4_fn *rfi)
 			if (pdata->board->y_flip)
 				y = pdata->sensor_max_y - y;
 
-			input_report_abs(pdata->input_dev,
+			input_report_abs(pdata->input_ts_dev,
 					ABS_MT_TRACKING_ID, finger + 1);
-			input_report_abs(pdata->input_dev,
+			input_report_abs(pdata->input_ts_dev,
 					ABS_MT_TOUCH_MAJOR, max(wx , wy));
-			input_report_abs(pdata->input_dev,
+			input_report_abs(pdata->input_ts_dev,
 					ABS_MT_TOUCH_MINOR, min(wx , wy));
-			input_report_abs(pdata->input_dev,
+			input_report_abs(pdata->input_ts_dev,
 					ABS_MT_POSITION_X, x);
-			input_report_abs(pdata->input_dev,
+			input_report_abs(pdata->input_ts_dev,
 					ABS_MT_POSITION_Y, y);
 
-			input_mt_sync(pdata->input_dev);
+			input_mt_sync(pdata->input_ts_dev);
 
 			/* number of active touch points */
 			touch_count++;
@@ -374,10 +374,10 @@ int rmi4_touchpad_irq_handler(struct rmi4_data *pdata, struct rmi4_fn *rfi)
 	}
 
 	if (!touch_count)
-		input_mt_sync(pdata->input_dev);
+		input_mt_sync(pdata->input_ts_dev);
 
 	/* sync after groups of events */
-	input_sync(pdata->input_dev);
+	input_sync(pdata->input_ts_dev);
 
 	return touch_count;
 }
@@ -404,12 +404,12 @@ int rmi4_button_irq_handler(struct rmi4_data *pdata, struct rmi4_fn *rfi)
 		if (bttn_down != button_data->status[i]) {
 			dev_dbg(&client->dev, "%s: button %d - %d",
 					__func__, i, bttn_down);
-			input_report_key(pdata->input_dev,
+			input_report_key(pdata->input_key_dev,
 					button_data->bttns_map[i], bttn_down);
 			button_data->status[i] = bttn_down;
 		}
 	}
-	input_sync(pdata->input_dev);
+	input_sync(pdata->input_key_dev);
 
 	return retval;
 }
@@ -646,7 +646,7 @@ int rmi4_button_detect(struct rmi4_data *pdata, struct rmi4_fn *rfi,
 	/* Set the button map table as 1, 2, 3 ... */
 	for (i = 0; i < bttn_cnt; i++) {
 		button_data->bttns_map[i] = i + 1;
-		set_bit(i + 1, pdata->input_dev->keybit);
+		set_bit(i + 1, pdata->input_key_dev->keybit);
 	}
 	button_data->num_of_bttns = bttn_cnt;
 	rfi->fn_data = button_data;
@@ -1344,11 +1344,17 @@ static int __devinit rmi4_probe(struct i2c_client *client,
 		return -ENOMEM;
 	}
 
-	rmi4_data->input_dev = input_allocate_device();
-	if (rmi4_data->input_dev == NULL) {
-		dev_err(&client->dev, "input device alloc failed\n");
+	rmi4_data->input_ts_dev = input_allocate_device();
+	if (rmi4_data->input_ts_dev == NULL) {
+		dev_err(&client->dev, "ts input device alloc failed\n");
 		retval = -ENOMEM;
-		goto err_input;
+		goto err_input_ts;
+	}
+	rmi4_data->input_key_dev = input_allocate_device();
+	if (rmi4_data->input_key_dev == NULL) {
+		dev_err(&client->dev, "key input device alloc failed\n");
+		retval = -ENOMEM;
+		goto err_input_key;
 	}
 
 	if (platformdata->regulator_en && platformdata->regulator_name) {
@@ -1405,26 +1411,32 @@ static int __devinit rmi4_probe(struct i2c_client *client,
 	i2c_set_clientdata(client, rmi4_data);
 
 	/*initialize the input device parameters */
-	rmi4_data->input_dev->name	= DRIVER_NAME;
-	rmi4_data->input_dev->phys	= "Synaptics_Clearpad";
-	rmi4_data->input_dev->id.bustype = BUS_I2C;
-	rmi4_data->input_dev->dev.parent = &client->dev;
-	input_set_drvdata(rmi4_data->input_dev, rmi4_data);
+	rmi4_data->input_ts_dev->name	= DRIVER_NAME;
+	rmi4_data->input_ts_dev->phys	= "Synaptics_Clearpad";
+	rmi4_data->input_ts_dev->id.bustype = BUS_I2C;
+	rmi4_data->input_ts_dev->dev.parent = &client->dev;
+	input_set_drvdata(rmi4_data->input_ts_dev, rmi4_data);
+
+	rmi4_data->input_key_dev->name	= "rmi4_key";
+	rmi4_data->input_key_dev->phys	= "Synaptics_Clearpad";
+	rmi4_data->input_key_dev->id.bustype = BUS_I2C;
+	rmi4_data->input_key_dev->dev.parent = &client->dev;
+	input_set_drvdata(rmi4_data->input_key_dev, rmi4_data);
 
 	/* Initialize the function handlers for rmi4 */
-	set_bit(EV_SYN, rmi4_data->input_dev->evbit);
-	set_bit(EV_KEY, rmi4_data->input_dev->evbit);
-	set_bit(EV_ABS, rmi4_data->input_dev->evbit);
+	set_bit(EV_SYN, rmi4_data->input_ts_dev->evbit);
+	set_bit(EV_ABS, rmi4_data->input_ts_dev->evbit);
+	set_bit(EV_KEY, rmi4_data->input_key_dev->evbit);
 
-	input_set_abs_params(rmi4_data->input_dev,
+	input_set_abs_params(rmi4_data->input_ts_dev,
 			ABS_MT_POSITION_X, 0, rmi4_data->sensor_max_x, 0, 0);
-	input_set_abs_params(rmi4_data->input_dev,
+	input_set_abs_params(rmi4_data->input_ts_dev,
 			ABS_MT_POSITION_Y, 0, rmi4_data->sensor_max_y, 0, 0);
-	input_set_abs_params(rmi4_data->input_dev,
+	input_set_abs_params(rmi4_data->input_ts_dev,
 			ABS_MT_TOUCH_MAJOR, 0, MAX_TOUCH_MAJOR, 0, 0);
-	input_set_abs_params(rmi4_data->input_dev,
+	input_set_abs_params(rmi4_data->input_ts_dev,
 			ABS_MT_TOUCH_MINOR, 0, MAX_TOUCH_MINOR, 0, 0);
-	input_set_abs_params(rmi4_data->input_dev,
+	input_set_abs_params(rmi4_data->input_ts_dev,
 			ABS_MT_TRACKING_ID, MIN_TRACKING_ID,
 						MAX_TRACKING_ID, 0, 0);
 	/* Clear interrupts */
@@ -1445,10 +1457,16 @@ static int __devinit rmi4_probe(struct i2c_client *client,
 		goto err_req_irq;
 	}
 
-	retval = input_register_device(rmi4_data->input_dev);
+	retval = input_register_device(rmi4_data->input_ts_dev);
 	if (retval) {
-		dev_err(&client->dev, "input register failed\n");
-		goto err_reg_input;
+		dev_err(&client->dev, "ts input register failed\n");
+		goto err_reg_input_ts;
+	}
+
+	retval = input_register_device(rmi4_data->input_key_dev);
+	if (retval) {
+		dev_err(&client->dev, "key input register failed\n");
+		goto err_reg_input_key;
 	}
 
 #ifdef DEBUG
@@ -1468,6 +1486,12 @@ static int __devinit rmi4_probe(struct i2c_client *client,
 	return retval;
 
 err_reg_input:
+	input_unregister_device(rmi4_data->input_key_dev);
+	rmi4_data->input_key_dev = NULL;
+err_reg_input_key:
+	input_unregister_device(rmi4_data->input_ts_dev);
+	rmi4_data->input_ts_dev = NULL;
+err_reg_input_ts:
 	free_irq(rmi4_data->irq, rmi4_data);
 err_req_irq:
 err_clear_irq:
@@ -1481,8 +1505,12 @@ err_config_gpio:
 		regulator_put(rmi4_data->regulator);
 	}
 err_regulator:
-	input_free_device(rmi4_data->input_dev);
-err_input:
+	if (rmi4_data->input_key_dev)
+		input_free_device(rmi4_data->input_key_dev);
+err_input_key:
+	if (rmi4_data->input_ts_dev)
+		input_free_device(rmi4_data->input_ts_dev);
+err_input_ts:
 	kfree(rmi4_data);
 
 	return retval;
@@ -1506,7 +1534,8 @@ static int __devexit rmi4_remove(struct i2c_client *client)
 #ifdef DEBUG
 	sysfs_remove_group(&client->dev.kobj, &rmi4_attr_dbg);
 #endif
-	input_unregister_device(rmi4_data->input_dev);
+	input_unregister_device(rmi4_data->input_ts_dev);
+	input_unregister_device(rmi4_data->input_key_dev);
 #ifdef CONFIG_HAS_EARLYSUSPEND
 	unregister_early_suspend(&rmi4_data->es);
 #endif

@@ -137,7 +137,8 @@ struct rmi4_device_info {
 /**
  * struct rmi4_data - contains the rmi4 device data
  * @rmi4_mod_info: structure variable for rmi4 device info
- * @input_dev: pointer for input device
+ * @input_ts_dev: pointer for input touch device
+ * @input_key_dev: pointer for input key device
  * @i2c_client: pointer for i2c client
  * @board: constant pointer for touch platform data
  * @rmi4_page_mutex: mutex for rmi4 page
@@ -157,7 +158,8 @@ struct rmi4_device_info {
 struct rmi4_data {
 	const struct rmi4_platform_data *board;
 	struct rmi4_device_info rmi4_mod_info;
-	struct input_dev	*input_dev;
+	struct input_dev	*input_ts_dev;
+	struct input_dev	*input_key_dev;
 	struct i2c_client	*i2c_client;
 	struct mutex		rmi4_page_mutex;
 	unsigned int		number_of_interrupt_register;
