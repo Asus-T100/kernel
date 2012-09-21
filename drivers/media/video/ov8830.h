@@ -362,6 +362,9 @@ struct ov8830_resolution {
 	unsigned short pixels_per_line;
 	unsigned short lines_per_frame;
 	const struct ov8830_reg *regs;
+	u8 bin_factor_x;
+	u8 bin_factor_y;
+	unsigned short skip_frames;
 };
 
 struct ov8830_format {
