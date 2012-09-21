@@ -2114,6 +2114,15 @@ ov8830_g_frame_interval(struct v4l2_subdev *sd,
 	return 0;
 }
 
+static int ov8830_g_skip_frames(struct v4l2_subdev *sd, u32 *frames)
+{
+	struct ov8830_device *dev = to_ov8830_sensor(sd);
+
+	*frames = ov8830_res[dev->fmt_idx].skip_frames;
+
+	return 0;
+}
+
 static const struct v4l2_subdev_video_ops ov8830_video_ops = {
 	.s_stream = ov8830_s_stream,
 	.enum_framesizes = ov8830_enum_framesizes,
@@ -2124,6 +2133,10 @@ static const struct v4l2_subdev_video_ops ov8830_video_ops = {
 	.s_mbus_fmt = ov8830_s_mbus_fmt,
 	.s_parm = ov8830_s_parm,
 	.g_frame_interval = ov8830_g_frame_interval,
+};
+
+static const struct v4l2_subdev_sensor_ops ov8830_sensor_ops = {
+	.g_skip_frames	= ov8830_g_skip_frames,
 };
 
 static const struct v4l2_subdev_core_ops ov8830_core_ops = {
@@ -2148,6 +2161,7 @@ static const struct v4l2_subdev_ops ov8830_ops = {
 	.core = &ov8830_core_ops,
 	.video = &ov8830_video_ops,
 	.pad = &ov8830_pad_ops,
+	.sensor = &ov8830_sensor_ops,
 };
 
 static const struct media_entity_operations ov8830_entity_ops = {
