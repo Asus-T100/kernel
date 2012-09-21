@@ -4444,7 +4444,11 @@ trace_printk_seq(struct trace_seq *s)
 	/* should be zero ended, but we are paranoid. */
 	s->buffer[s->len] = 0;
 
+#ifdef CONFIG_ANDROID_RAM_CONSOLE
+	ftrace_reserved_buffer_write(s->buffer, s->len);
+#else
 	printk(KERN_TRACE "%s", s->buffer);
+#endif
 
 	trace_seq_init(s);
 }

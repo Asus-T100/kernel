@@ -34,7 +34,15 @@ struct ram_console_buffer {
 	uint8_t     data[0];
 };
 
+struct ftrace_reserved_buffer {
+	uint32_t  sig;
+	uint32_t  start;
+	uint32_t  size;
+	uint8_t   data[0];
+};
+
 #define RAM_CONSOLE_SIG (0x43474244) /* DBGC */
+#define FTRACE_BUFFER_SIG (0x23456789)
 
 #ifdef CONFIG_ANDROID_RAM_CONSOLE_EARLY_INIT
 static char __initdata
@@ -45,6 +53,12 @@ static size_t ram_console_old_log_size;
 
 static struct ram_console_buffer *ram_console_buffer;
 static size_t ram_console_buffer_size;
+
+static char *ftrace_old_buffer;
+static size_t ftrace_old_buffer_size;
+static struct ftrace_reserved_buffer *ftrace_reserved_buffer;
+static size_t ftrace_reserved_buffer_size;
+
 #ifdef CONFIG_ANDROID_RAM_CONSOLE_ERROR_CORRECTION
 static char *ram_console_par_buffer;
 static struct rs_control *ram_console_rs_decoder;
@@ -336,16 +350,58 @@ static int __init ram_console_early_init(void)
 		ram_console_old_log_init_buffer);
 }
 #else
+static void ftrace_reserved_buffer_init(struct ftrace_reserved_buffer *
+		ftrace_buffer, size_t ftrace_buffer_size)
+{
+	ftrace_reserved_buffer = ftrace_buffer;
+	ftrace_reserved_buffer_size = ftrace_buffer_size -
+		sizeof(struct ftrace_reserved_buffer);
+
+	if (ftrace_reserved_buffer_size > ftrace_buffer_size) {
+		pr_err("%s: buffer %p, invalid size %zu, datasize %zu\n",
+			__func__, ftrace_buffer, ftrace_buffer_size,
+			ftrace_reserved_buffer_size);
+		return ;
+	}
+	if (ftrace_buffer->sig == FTRACE_BUFFER_SIG) {
+		if (ftrace_buffer->size > ftrace_reserved_buffer_size ||
+				ftrace_buffer->start > ftrace_buffer->size)
+			pr_info("%s: found existing invalid buffer", __func__);
+		else {
+			/* save old buffer */
+			ftrace_old_buffer = vmalloc(ftrace_buffer->size);
+			if (!ftrace_old_buffer) {
+				pr_err("%s: vmalloc failed\n", __func__);
+
+			} else {
+				ftrace_old_buffer_size = ftrace_buffer->size;
+			/* if ring buffer is not overlap,
+			 ftrace_buffer->start equals ftrace_buffer->size */
+				memcpy(ftrace_old_buffer, &ftrace_buffer->data[ftrace_buffer->start],
+						ftrace_buffer->size - ftrace_buffer->start);
+				memcpy(ftrace_old_buffer + ftrace_buffer->size - ftrace_buffer->start,
+						&ftrace_buffer->data[0], ftrace_buffer->start);
+			}
+		}
+	}
+	ftrace_buffer->sig = FTRACE_BUFFER_SIG;
+	ftrace_buffer->start = 0;
+	ftrace_buffer->size = 0;
+
+}
+
 static int ram_console_driver_probe(struct platform_device *pdev)
 {
 	struct resource *res = pdev->resource;
 	size_t start;
 	size_t buffer_size;
 	void *buffer;
+	size_t ftrace_buffer_size;
+	void *ftrace_buffer;
 	const char *bootinfo = NULL;
 	struct ram_console_platform_data *pdata = pdev->dev.platform_data;
 
-	if (res == NULL || pdev->num_resources != 1 ||
+	if (res == NULL || pdev->num_resources != 2 ||
 	    !(res->flags & IORESOURCE_MEM)) {
 		printk(KERN_ERR "ram_console: invalid resource, %p %d flags "
 		       "%lx\n", res, pdev->num_resources, res ? res->flags : 0);
@@ -360,6 +416,15 @@ static int ram_console_driver_probe(struct platform_device *pdev)
 		printk(KERN_ERR "ram_console: failed to map memory\n");
 		return -ENOMEM;
 	}
+	res++;
+	ftrace_buffer_size = res->end - res->start + 1;
+	ftrace_buffer = ioremap(res->start, ftrace_buffer_size);
+	if (ftrace_buffer == NULL) {
+		pr_err("ftrace_reserved_buffer:  ioreamp failed.\n");
+		return -ENOMEM;
+	}
+	ftrace_old_buffer_size = 0;
+	ftrace_reserved_buffer_init(ftrace_buffer, ftrace_buffer_size);
 
 	if (pdata)
 		bootinfo = pdata->bootinfo;
@@ -381,6 +446,63 @@ static int __init ram_console_module_init(void)
 	return err;
 }
 #endif
+static void ftrace_buffer_update(char *s, unsigned int count)
+{
+	struct ftrace_reserved_buffer *buffer = ftrace_reserved_buffer;
+
+	memcpy(buffer->data + buffer->start, s, count);
+}
+
+ssize_t ftrace_reserved_buffer_write(const char *s, ssize_t count)
+{
+	int rem;
+	struct ftrace_reserved_buffer *buffer = ftrace_reserved_buffer;
+
+	if (count > ftrace_reserved_buffer_size) {
+		s += count - ftrace_reserved_buffer_size;
+		count = ftrace_reserved_buffer_size;
+	}
+	rem = ftrace_reserved_buffer_size - buffer->start;
+	/* ring buffer */
+	if (rem < count) {
+		ftrace_buffer_update(s, rem);
+		s += rem;
+		count -= rem;
+		buffer->start = 0;
+		buffer->size = ftrace_reserved_buffer_size;
+
+	}
+
+	ftrace_buffer_update(s, count);
+
+	buffer->start += count;
+	if (buffer->size < ftrace_reserved_buffer_size)
+		buffer->size += count;
+	return 0;
+}
+EXPORT_SYMBOL_GPL(ftrace_reserved_buffer_write);
+
+ssize_t ftrace_reserved_buffer_read_old(struct file *filp,
+	const char __user *buf, unsigned long len, loff_t *offset)
+{
+
+	ssize_t count;
+	loff_t pos = *offset;
+
+	if (pos >= ftrace_old_buffer_size || ftrace_old_buffer_size == 0)
+		return 0;
+
+	count = min(len, (size_t)(ftrace_old_buffer_size - pos));
+
+	if (copy_to_user(buf, ftrace_old_buffer + pos, count))
+		return -EFAULT;
+
+	*offset += count;
+
+	return count;
+}
+
+
 
 static ssize_t ram_console_read_old(struct file *file, char __user *buf,
 				    size_t len, loff_t *offset)
@@ -404,6 +526,10 @@ static const struct file_operations ram_console_file_ops = {
 	.read = ram_console_read_old,
 };
 
+static const struct file_operations ftrace_reserved_buffer_file_ops = {
+	.owner = THIS_MODULE,
+	.read = ftrace_reserved_buffer_read_old,
+};
 static int __init ram_console_late_init(void)
 {
 	struct proc_dir_entry *entry;
@@ -431,6 +557,16 @@ static int __init ram_console_late_init(void)
 
 	entry->proc_fops = &ram_console_file_ops;
 	entry->size = ram_console_old_log_size;
+
+	entry = create_proc_entry("last_trace", S_IFREG | S_IRUGO, NULL);
+	if (!entry) {
+		printk(KERN_ERR "ftrace_reserved: failed to create proc entry\n");
+		kfree(ram_console_old_log);
+		ram_console_old_log = NULL;
+		return 0;
+	}
+	entry->proc_fops = &ftrace_reserved_buffer_file_ops;
+
 	return 0;
 }
 

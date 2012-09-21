@@ -24,6 +24,7 @@ config ANDROID_LOGGER_PTI
 config ANDROID_RAM_CONSOLE
 	bool "Android RAM buffer console"
 	default n
+	depends on DEBUG_FS
 
 config ANDROID_RAM_CONSOLE_ENABLE_VERBOSE
 	bool "Enable verbose console messages on Android RAM console"

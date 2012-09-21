@@ -17,10 +17,14 @@
 
 #define SZ_2M                           0x00200000
 #define SZ_16M                          0x01000000
+#define SZ_20M                          0x01400000
 
 /* Board files use the following if they are ok with 16M size defaults */
 #define INTEL_MID_RAM_CONSOLE_START_DEFAULT	SZ_16M
+#define INTEL_FTRACE_BUFFER_START_DEFAULT      SZ_20M
+
 #define INTEL_MID_RAM_CONSOLE_SIZE_DEFAULT	SZ_2M
+#define INTEL_FTRACE_BUFFER_SIZE_DEFAULT       SZ_2M
 
 
 static struct resource ram_console_resources[] = {
@@ -30,6 +34,14 @@ static struct resource ram_console_resources[] = {
 		.end    = INTEL_MID_RAM_CONSOLE_START_DEFAULT +
 			  INTEL_MID_RAM_CONSOLE_SIZE_DEFAULT - 1,
 	},
+
+	{
+		.flags  = IORESOURCE_MEM,
+		.start  = INTEL_FTRACE_BUFFER_START_DEFAULT,
+		.end    = INTEL_FTRACE_BUFFER_START_DEFAULT +
+			INTEL_FTRACE_BUFFER_SIZE_DEFAULT - 1,
+	}
+
 };
 
 static struct ram_console_platform_data ram_console_pdata;
@@ -82,6 +94,16 @@ void __init ram_consle_reserve_memory(void)
 	ram_console_resources[0].start = mem;
 	ram_console_resources[0].end = mem + size - 1;
 	memblock_x86_reserve_range(mem, mem + size, "ram_console");
+
+	size = INTEL_FTRACE_BUFFER_SIZE_DEFAULT;
+	size = ALIGN(size, PAGE_SIZE);
+	mem = memblock_find_in_range(0, 1<<28, size, PAGE_SIZE);
+	if (mem == MEMBLOCK_ERROR)
+		panic("Cannot allocate\n");
+
+	ram_console_resources[1].start = mem;
+	ram_console_resources[1].end = mem + size - 1;
+	memblock_x86_reserve_range(mem, mem + size, "ftrace reserved memory");
 
 	intel_mid_ramconsole_inited = true;
 }
