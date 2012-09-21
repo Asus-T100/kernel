@@ -179,29 +179,6 @@ static int mrst_hc_probe(struct sdhci_pci_chip *chip)
 	return 0;
 }
 
-/* Medfield eMMC hardware reset GPIOs */
-static int mfd_emmc0_rst_gpio = -EINVAL;
-static int mfd_emmc1_rst_gpio = -EINVAL;
-
-static int mfd_emmc_gpio_parse(struct sfi_table_header *table)
-{
-	struct sfi_table_simple *sb = (struct sfi_table_simple *)table;
-	struct sfi_gpio_table_entry *entry;
-	int i, num;
-
-	num = SFI_GET_NUM_ENTRIES(sb, struct sfi_gpio_table_entry);
-	entry = (struct sfi_gpio_table_entry *)sb->pentry;
-
-	for (i = 0; i < num; i++, entry++) {
-		if (!strncmp(entry->pin_name, "emmc0_rst", SFI_NAME_LEN))
-			mfd_emmc0_rst_gpio = entry->pin_no;
-		else if (!strncmp(entry->pin_name, "emmc1_rst", SFI_NAME_LEN))
-			mfd_emmc1_rst_gpio = entry->pin_no;
-	}
-
-	return 0;
-}
-
 #ifdef CONFIG_PM_RUNTIME
 /*
  * SD card insert/remove handler
@@ -214,7 +191,7 @@ static int mfd_emmc_gpio_parse(struct sfi_table_header *table)
  * So before start to detect a card, finish the current
  * request first.
  */
-static irqreturn_t intel_mid_sd_cd(int irq, void *dev_id)
+static irqreturn_t sdhci_pci_sd_cd(int irq, void *dev_id)
 {
 	struct sdhci_pci_slot *slot = dev_id;
 	struct sdhci_host *host = slot->host;
@@ -227,13 +204,15 @@ static irqreturn_t intel_mid_sd_cd(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
-
-static int intel_mid_sd_cd_init(struct sdhci_pci_slot *slot, int gpio)
+static void sdhci_pci_add_own_cd(struct sdhci_pci_slot *slot)
 {
-	int err, irq;
+	int err, irq, gpio = slot->cd_gpio;
 
 	slot->cd_gpio = -EINVAL;
 	slot->cd_irq = -EINVAL;
+
+	if (!gpio_is_valid(gpio))
+		return;
 
 	err = gpio_request(gpio, "sd_cd");
 	if (err < 0)
@@ -247,8 +226,8 @@ static int intel_mid_sd_cd_init(struct sdhci_pci_slot *slot, int gpio)
 	if (irq < 0)
 		goto out_free;
 
-	err = request_irq(irq, intel_mid_sd_cd, IRQF_TRIGGER_RISING |
-			  IRQF_TRIGGER_FALLING, "sd_cd", slot);
+	err = request_irq(irq, sdhci_pci_sd_cd, IRQF_TRIGGER_RISING |
+			IRQF_TRIGGER_FALLING, "sd_cd", slot);
 	if (err)
 		goto out_free;
 
@@ -256,39 +235,33 @@ static int intel_mid_sd_cd_init(struct sdhci_pci_slot *slot, int gpio)
 	slot->cd_irq = irq;
 	slot->host->quirks2 |= SDHCI_QUIRK2_OWN_CARD_DETECTION;
 
-	return 0;
+	return;
 
 out_free:
 	gpio_free(gpio);
 out:
 	dev_warn(&slot->chip->pdev->dev, "failed to setup card detect wake up\n");
-	return 0;
 }
 
-static void intel_mid_sd_cd_free(struct sdhci_pci_slot *slot)
+static void sdhci_pci_remove_own_cd(struct sdhci_pci_slot *slot)
 {
 	if (slot->cd_irq >= 0)
 		free_irq(slot->cd_irq, slot);
-	gpio_free(slot->cd_gpio);
+	if (gpio_is_valid(slot->cd_gpio))
+		gpio_free(slot->cd_gpio);
 }
+
 #else
-#define intel_mid_sd_cd_init	NULL
-#define intel_mid_sd_cd_free	NULL
+
+static inline void sdhci_pci_add_own_cd(struct sdhci_pci_slot *slot)
+{
+}
+
+static inline void sdhci_pci_remove_own_cd(struct sdhci_pci_slot *slot)
+{
+}
+
 #endif
-
-#define MFLD_SD_CD_PIN 69
-static int mfd_sd_probe_slot(struct sdhci_pci_slot *slot)
-{
-	return intel_mid_sd_cd_init(slot, MFLD_SD_CD_PIN);
-}
-
-static void mfd_sd_remove_slot(struct sdhci_pci_slot *slot, int dead)
-{
-	if (slot->chip->pdev->device != PCI_DEVICE_ID_INTEL_MFD_SD)
-		return;
-
-	intel_mid_sd_cd_free(slot);
-}
 
 #define MFD_SDHCI_DEKKER_BASE	0xffff7fb0
 static void mfd_emmc_mutex_register(struct sdhci_pci_slot *slot)
@@ -336,52 +309,32 @@ static int intel_mfld_sdio_probe_slot(struct sdhci_pci_slot *slot)
 
 static int mfd_emmc_probe_slot(struct sdhci_pci_slot *slot)
 {
-	const char *name = NULL;
-	int gpio = -EINVAL;
-
-	sfi_table_parse(SFI_SIG_GPIO, NULL, NULL, mfd_emmc_gpio_parse);
-
 	switch (slot->chip->pdev->device) {
 	case PCI_DEVICE_ID_INTEL_MFD_EMMC0:
 		mfd_emmc_mutex_register(slot);
-		gpio = mfd_emmc0_rst_gpio;
-		name = "eMMC0_reset";
 		slot->host->mmc->caps2 |= MMC_CAP2_INIT_CARD_SYNC |
 			MMC_CAP2_BOOTPART_NOACC | MMC_CAP2_RPMBPART_NOACC;
 		sdhci_alloc_panic_host(slot->host);
 		break;
 	case PCI_DEVICE_ID_INTEL_CLV_EMMC0:
-		gpio = mfd_emmc0_rst_gpio;
-		name = "eMMC0_reset";
 		sdhci_alloc_panic_host(slot->host);
 		slot->host->quirks2 |= SDHCI_QUIRK2_V2_0_SUPPORT_DDR50;
 		slot->host->mmc->caps |= MMC_CAP_1_8V_DDR;
 		slot->host->mmc->caps2 |= MMC_CAP2_INIT_CARD_SYNC;
 		break;
 	case PCI_DEVICE_ID_INTEL_CLV_EMMC1:
-		gpio = mfd_emmc1_rst_gpio;
-		name = "eMMC1_reset";
 		slot->host->quirks2 |= SDHCI_QUIRK2_V2_0_SUPPORT_DDR50;
 		slot->host->mmc->caps |= MMC_CAP_1_8V_DDR;
 		slot->host->mmc->caps2 |= MMC_CAP2_BOOTPART_NOACC |
 			MMC_CAP2_RPMBPART_NOACC;
 		break;
 	case PCI_DEVICE_ID_INTEL_MFD_EMMC1:
-		gpio = mfd_emmc1_rst_gpio;
-		name = "eMMC1_reset";
 		slot->host->mmc->caps2 |= MMC_CAP2_BOOTPART_NOACC|
 			MMC_CAP2_RPMBPART_NOACC;
 		break;
 	}
 
-	if (!gpio_request(gpio, name)) {
-		gpio_direction_output(gpio, 1);
-		slot->rst_n_gpio = gpio;
-		slot->host->mmc->caps |= MMC_CAP_HW_RESET;
-	}
-
 	slot->host->mmc->caps |= MMC_CAP_8_BIT_DATA | MMC_CAP_NONREMOVABLE;
-
 	slot->host->mmc->caps2 |= MMC_CAP2_HC_ERASE_SZ;
 
 	return 0;
@@ -389,7 +342,6 @@ static int mfd_emmc_probe_slot(struct sdhci_pci_slot *slot)
 
 static void mfd_emmc_remove_slot(struct sdhci_pci_slot *slot, int dead)
 {
-	gpio_free(slot->rst_n_gpio);
 	if (slot->host->sram_addr)
 		iounmap(slot->host->sram_addr);
 }
@@ -406,8 +358,6 @@ static const struct sdhci_pci_fixes sdhci_intel_mrst_hc1_hc2 = {
 
 static const struct sdhci_pci_fixes sdhci_intel_mfd_sd = {
 	.quirks		= SDHCI_QUIRK_NO_ENDATTR_IN_NOPDESC,
-	.probe_slot	= mfd_sd_probe_slot,
-	.remove_slot	= mfd_sd_remove_slot,
 };
 
 static const struct sdhci_pci_fixes sdhci_intel_mfd_sdio = {
@@ -442,7 +392,6 @@ static int intel_mrfl_mmc_probe(struct sdhci_pci_chip *chip)
 	return ret;
 }
 
-#define MRFLD_SD_CD_PIN 77
 static int intel_mrfl_mmc_probe_slot(struct sdhci_pci_slot *slot)
 {
 	if ((PCI_FUNC(slot->chip->pdev->devfn) == 0) ||
@@ -466,16 +415,11 @@ static int intel_mrfl_mmc_probe_slot(struct sdhci_pci_slot *slot)
 	/* Enable eMMC v4.5 Power Off Notification feature */
 	slot->host->mmc->caps2 |= MMC_CAP2_POWEROFF_NOTIFY;
 
-	if (PCI_FUNC(slot->chip->pdev->devfn) == 2) /* SD host controller */
-		intel_mid_sd_cd_init(slot, MRFLD_SD_CD_PIN);
-
 	return 0;
 }
 
 static void intel_mrfl_mmc_remove_slot(struct sdhci_pci_slot *slot, int dead)
 {
-	if (PCI_FUNC(slot->chip->pdev->devfn) == 2) /* SD host controller */
-		intel_mid_sd_cd_free(slot);
 }
 
 static const struct sdhci_pci_fixes sdhci_intel_mrfl_mmc = {
@@ -1530,6 +1474,7 @@ static struct sdhci_pci_slot * __devinit sdhci_pci_probe_slot(
 	slot->host = host;
 	slot->pci_bar = bar;
 	slot->rst_n_gpio = -EINVAL;
+	slot->cd_gpio = -EINVAL;
 
 	/* Retrieve platform data if there is any */
 	if (*sdhci_pci_get_data)
@@ -1543,6 +1488,8 @@ static struct sdhci_pci_slot * __devinit sdhci_pci_probe_slot(
 				goto free;
 			}
 		}
+		slot->rst_n_gpio = slot->data->rst_n_gpio;
+		slot->cd_gpio = slot->data->cd_gpio;
 	}
 
 	host->hw_name = "PCI";
@@ -1571,15 +1518,30 @@ static struct sdhci_pci_slot * __devinit sdhci_pci_probe_slot(
 			goto unmap;
 	}
 
+	if (gpio_is_valid(slot->rst_n_gpio)) {
+		if (!gpio_request(slot->rst_n_gpio, "eMMC_reset")) {
+			gpio_direction_output(slot->rst_n_gpio, 1);
+			slot->host->mmc->caps |= MMC_CAP_HW_RESET;
+		} else {
+			dev_warn(&pdev->dev, "failed to request rst_n_gpio\n");
+			slot->rst_n_gpio = -EINVAL;
+		}
+	}
+
 	host->mmc->pm_caps = MMC_PM_KEEP_POWER | MMC_PM_WAKE_SDIO_IRQ;
 
 	ret = sdhci_add_host(host);
 	if (ret)
 		goto remove;
 
+	sdhci_pci_add_own_cd(slot);
+
 	return slot;
 
 remove:
+	if (gpio_is_valid(slot->rst_n_gpio))
+		gpio_free(slot->rst_n_gpio);
+
 	if (chip->fixes && chip->fixes->remove_slot)
 		chip->fixes->remove_slot(slot, 0);
 
@@ -1604,12 +1566,17 @@ static void sdhci_pci_remove_slot(struct sdhci_pci_slot *slot)
 	int dead;
 	u32 scratch;
 
+	sdhci_pci_remove_own_cd(slot);
+
 	dead = 0;
 	scratch = readl(slot->host->ioaddr + SDHCI_INT_STATUS);
 	if (scratch == (u32)-1)
 		dead = 1;
 
 	sdhci_remove_host(slot->host, dead);
+
+	if (gpio_is_valid(slot->rst_n_gpio))
+		gpio_free(slot->rst_n_gpio);
 
 	if (slot->chip->fixes && slot->chip->fixes->remove_slot)
 		slot->chip->fixes->remove_slot(slot, dead);
