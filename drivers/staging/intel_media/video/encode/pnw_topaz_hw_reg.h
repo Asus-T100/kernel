@@ -1214,7 +1214,6 @@ int pnw_topaz_wait_for_register(struct drm_psb_private *dev_priv,
 void pnw_topaz_mmu_flushcache(struct drm_psb_private *dev_priv);
 
 uint32_t psb_get_default_pd_addr(struct psb_mmu_driver *driver);
-int pnw_video_get_core_num(struct drm_device *dev, uint64_t user_pointer);
 int pnw_topaz_kick_null_cmd(struct drm_psb_private *dev_priv,
 			    uint32_t core_id,
 			    uint32_t wb_offset,

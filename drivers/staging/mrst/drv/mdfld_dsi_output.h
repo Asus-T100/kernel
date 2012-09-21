@@ -526,26 +526,16 @@ extern void mdfld_dsi_brightness_init(struct mdfld_dsi_config *dsi_config,
 extern void mdfld_dsi_brightness_control(struct drm_device *dev, int pipe,
 				int level);
 extern int mdfld_dsi_output_init(struct drm_device *dev,
-				int pipe,
-				struct mdfld_dsi_config *config,
-				struct panel_funcs *p_cmd_funcs,
-				struct panel_funcs *p_vid_funcs);
-extern void mdfld_dsi_controller_init(struct mdfld_dsi_config *dsi_config,
-				int pipe);
-
+		int pipe,
+		struct mdfld_dsi_config *config,
+		struct panel_funcs *p_funcs);
 extern int mdfld_dsi_get_panel_status(struct mdfld_dsi_config *dsi_config,
-					u8 dcs,
-					u8 *data,
-					u8 transmission,
-					u32 len);
+		u8 dcs,
+		u8 *data,
+		u8 transmission,
+		u32 len);
 extern int mdfld_dsi_get_power_mode(struct mdfld_dsi_config *dsi_config,
-				u8 *mode,
-				u8 transmission);
-
-extern int mdfld_dsi_get_diagnostic_result(struct mdfld_dsi_config *dsi_config,
-					u8 *result,
-					u8 transmission);
-extern int mdfld_dsi_panel_reset(struct mdfld_dsi_config *dsi_config,
-			int reset_from);
+		u8 *mode,
+		u8 transmission);
 
 #endif /*__MDFLD_DSI_OUTPUT_H__*/

@@ -1175,8 +1175,7 @@ static void mdfld_crtc_dpms(struct drm_crtc *crtc, int mode)
 	if (pipe != 1)
 		return;
 
-	/* Ignore if system is already in suspended state. */
-	if (gbgfxsuspended)
+	if (gbSuspended)
 		return;
 
 	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,

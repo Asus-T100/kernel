@@ -72,6 +72,7 @@
 
 #include "otm_hdmi_types.h"
 #include "otm_hdmi_defs.h"
+#include "otm_hdmi_eld.h"
 
 /**
  * Attribute name getting routine
@@ -216,6 +217,9 @@ otm_hdmi_ret_t otm_hdmi_hpd_callback_register(void *context,
 /* parse the raw edid and fill the capability table */
 otm_hdmi_ret_t otm_hdmi_edid_parse(void *ctx, otm_hdmi_use_edid_t use_edid);
 
+/* prepare hdmi eld packet and copy it to the input buffer */
+otm_hdmi_ret_t otm_hdmi_get_eld(void *ctx, otm_hdmi_eld_t *eld);
+
 /* init hdmi device driver */
 otm_hdmi_ret_t otm_hdmi_device_init(void **context, struct pci_dev *pdev);
 
@@ -227,6 +231,9 @@ unsigned char *otm_hdmi_read_edid(void);
 
 /* turn HDMI power rails on */
 bool otm_hdmi_power_rails_on(void);
+
+/* turn HDMI power rails off */
+bool otm_hdmi_power_rails_off(void);
 
 /*
  * otm_hdmi_get_cable_status - Get HDMI cable connection status

@@ -28,6 +28,7 @@
 #include <linux/init.h>
 #include "mdfld_dsi_dbi.h"
 #include "mdfld_dsi_dpi.h"
+#include "mdfld_output.h"
 #include "mdfld_dsi_output.h"
 #include "android_hdmi.h"
 
@@ -38,9 +39,22 @@
 #include "displays/gi_sony_vid.h"
 #include "displays/gi_sony_cmd.h"
 #include "displays/h8c7_cmd.h"
+#include "displays/tc35876x_vid.h"
+#include "displays/gi_renesas_cmd.h"
 #include "displays/hdmi.h"
 #include "psb_drv.h"
-#include "tc35876x_vid.h"
+
+static struct intel_mid_panel_list panel_list[] = {
+	{TMD_6X10_VID,	MDFLD_DSI_ENCODER_DPI, tmd_6x10_vid_init},
+	{H8C7_VID,	MDFLD_DSI_ENCODER_DPI, h8c7_vid_init},
+	{H8C7_CMD,	MDFLD_DSI_ENCODER_DBI, h8c7_cmd_init},
+	{AUO_SC1_VID,	MDFLD_DSI_ENCODER_DPI, auo_sc1_vid_init},
+	{AUO_SC1_CMD,	MDFLD_DSI_ENCODER_DBI, auo_sc1_cmd_init},
+	{GI_SONY_VID,	MDFLD_DSI_ENCODER_DPI, gi_sony_vid_init},
+	{GI_SONY_CMD,	MDFLD_DSI_ENCODER_DBI, gi_sony_cmd_init},
+	{GI_RENESAS_CMD, MDFLD_DSI_ENCODER_DBI, gi_renesas_cmd_init},
+	{TC35876X_VID,	MDFLD_DSI_ENCODER_DPI, tc35876x_vid_init}
+};
 
 enum panel_type get_panel_type(struct drm_device *dev, int pipe)
 {
@@ -54,126 +68,45 @@ int is_panel_vid_or_cmd(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *) dev->dev_private;
+	int i = 0;
 
-	int ret = 0;
-	switch(dev_priv->panel_id) {
-	case AUO_SC1_VID:
-	case GI_SONY_VID:
-	case TMD_6X10_VID:
-	case H8C7_VID:
-	case TC_35876X_VID:
-		ret =  MDFLD_DSI_ENCODER_DPI;
-		break;
-	case AUO_SC1_CMD:
-	case GI_SONY_CMD:
-	case H8C7_CMD:
-	default:
-		ret =  MDFLD_DSI_ENCODER_DBI;
-		break;
+	for (i = 0; i < sizeof panel_list; i++) {
+		if (panel_list[i].p_type == dev_priv->panel_id)
+			return panel_list[i].encoder_type;
 	}
-	return ret;
 }
 
 void init_panel(struct drm_device* dev, int mipi_pipe, enum panel_type p_type)
 {
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *) dev->dev_private;
-	struct panel_funcs * p_cmd_funcs = NULL; 
-	struct panel_funcs * p_vid_funcs = NULL;
-	int ret = 0;
+	struct panel_funcs *p_funcs = NULL;
+	int i = 0, ret = 0;
 
-	dev_priv->cur_pipe = mipi_pipe;
-	p_cmd_funcs = kzalloc(sizeof(struct panel_funcs), GFP_KERNEL);
-	p_vid_funcs = kzalloc(sizeof(struct panel_funcs), GFP_KERNEL);
-	
-	switch (p_type) {
-	case AUO_SC1_CMD:
-		kfree(p_vid_funcs);
-		p_vid_funcs = NULL;
-		auo_sc1_cmd_init(dev, p_cmd_funcs);
-		ret = mdfld_dsi_output_init(dev, mipi_pipe, NULL, p_cmd_funcs,
-				NULL);
-		break;
-	case AUO_SC1_VID:
-		kfree(p_cmd_funcs);
-		p_cmd_funcs = NULL;
-		auo_sc1_vid_init(dev, p_vid_funcs);
-		ret = mdfld_dsi_output_init(dev, mipi_pipe, NULL, NULL,
-				p_vid_funcs);
-		break;
-	case GI_SONY_CMD:
-		kfree(p_vid_funcs);
-		p_vid_funcs = NULL;
-		gi_sony_cmd_init(dev, p_cmd_funcs);
-		ret = mdfld_dsi_output_init(dev, mipi_pipe, NULL, p_cmd_funcs,
-				NULL);
-		break;
-	case H8C7_CMD:
-		kfree(p_vid_funcs);
-		p_vid_funcs = NULL;
-		h8c7_cmd_init(dev, p_cmd_funcs);
-		ret = mdfld_dsi_output_init(dev, mipi_pipe, NULL, p_cmd_funcs,
-				NULL);
-		break;
-	case GI_SONY_VID:
-		kfree(p_cmd_funcs);
-		p_cmd_funcs = NULL;
-		gi_sony_vid_init(dev, p_vid_funcs);
-		ret = mdfld_dsi_output_init(dev, mipi_pipe, NULL, NULL,
-				p_vid_funcs);
-		break;
-	case TMD_6X10_VID:
-		kfree(p_cmd_funcs);
-		p_cmd_funcs = NULL;
-		tmd_6x10_vid_init(dev, p_vid_funcs);
-		ret = mdfld_dsi_output_init(dev, mipi_pipe,
-					NULL,
-					NULL,
-					p_vid_funcs);
-		break;
-	case H8C7_VID:
-		kfree(p_cmd_funcs);
-		p_cmd_funcs = NULL;
-		h8c7_vid_init(dev, p_vid_funcs);
-		ret = mdfld_dsi_output_init(dev, mipi_pipe,
-					NULL,
-					NULL,
-					p_vid_funcs);
-		break;
-	case TC_35876X_VID:
-		kfree(p_cmd_funcs);
-		p_cmd_funcs = NULL;
-		tc35876x_vid_init(dev, p_vid_funcs);
-		ret = mdfld_dsi_output_init(dev, mipi_pipe,
-					NULL,
-					NULL,
-					p_vid_funcs);
-		break;
 #ifdef CONFIG_MDFD_HDMI
-	case HDMI:
-		kfree(p_vid_funcs);
-		kfree(p_cmd_funcs);
-		p_vid_funcs = NULL;
-		p_cmd_funcs = NULL;
-		/*hdmi_init(dev);*/
+	if (p_type == HDMI) {
 		PSB_DEBUG_ENTRY( "GFX: Initializing HDMI");
 		android_hdmi_driver_init(dev, &dev_priv->mode_dev);
-		/*hdmi_output_init(dev);*/
-		break;
-#endif
-	default:
-		kfree(p_vid_funcs);
-		kfree(p_cmd_funcs);
-		p_vid_funcs = NULL;
-		p_cmd_funcs = NULL;
-		break;
+		return;
 	}
+#endif
 
-	if (ret) {
-		if (p_cmd_funcs)
-			kfree(p_cmd_funcs);
-		if (p_vid_funcs)
-			kfree(p_vid_funcs);
+	dev_priv->cur_pipe = mipi_pipe;
+	p_funcs = kzalloc(sizeof(struct panel_funcs), GFP_KERNEL);
+
+	for (i = 0; i < sizeof panel_list; i++) {
+		if (panel_list[i].p_type == dev_priv->panel_id) {
+			panel_list[i].panel_init(
+					dev,
+					p_funcs);
+			ret = mdfld_dsi_output_init(dev,
+					mipi_pipe,
+					NULL,
+					p_funcs);
+			if (ret)
+				kfree(p_funcs);
+			break;
+		}
 	}
 }
 

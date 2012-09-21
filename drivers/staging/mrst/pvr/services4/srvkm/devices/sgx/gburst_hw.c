@@ -24,6 +24,8 @@
  * Authors:
  *    Hitesh K. Patel <hitesh.k.patel@intel.com>
  *    Dale B. Stimson <dale.b.stimson@intel.com>
+ *    Jari Luoma-aho  <jari.luoma-aho@intel.com>
+ *    Jari Nippula    <jari.nippula@intel.com>
  *
  */
 
@@ -73,7 +75,7 @@
  */
 
 #if (!defined GBURST_UPDATE_GPU_TIMING)
-#define GBURST_UPDATE_GPU_TIMING 0
+#define GBURST_UPDATE_GPU_TIMING 1
 #endif
 
 
@@ -88,28 +90,37 @@
 
 #define NUM_COUNTERS (PVRSRV_SGX_HWPERF_NUM_COUNTERS)
 
+/**
+ * Utilization calculation per counter uses the following formula:
+ * utilization = 100 * current_utilization / maximum_utilization, where
+ * maximum_utilization = pi_coeff * timestamp_delta
+ *   - pi_coeff = cycles per timestamp increment * cycles per counter update
+ *      + cycles per timestamp increment = 16 (timer updates every 16th
+ *        GPU cycle)
+ *      + cycles per counter update = GPU cycles spend per one counter update
+ *   - timestamp_delta = timestamp_end - timestamp_start
+ *      + time counter values between two consecutive counter entry
+ * current_utilization
+ *      + performance counter value increment between two consecutive counter
+ *         entries
+ */
 
 struct perf_counter_info_s {
 	u32 pi_group;       /* The counter group (in device). */
 	u32 pi_bit;         /* The counter bit (in device). */
-
-	/**
-	 * Maximum counts per microsecond.  In other words, the count that would
-	 * be expected if utilization for this item was 100%.
-	 */
-	u32 pi_max;
+	u32 pi_coeff;	    /* Counter coefficient (see above) */
 };
 
 
 static const struct perf_counter_info_s pidat_initial[NUM_COUNTERS] = {
-	{ 0, 0, 533, },    /* 0 - TA processing,           max: max/clk 1/1 */
-	{ 0, 1, 533, },    /* 1 - 3D processing,           max: max/clk 1/1 */
-	{ 0, 4, 533, },    /* 2 - USSE1 Processing,        max: max/clk 1/1 */
-	{ 0, 5, 533, },    /* 3 - USSE2 Processing,        max: max/clk 1/1 */
-	{ 0, 6, 533, },    /* 4 - USSE3 Processing,        max: max/clk 1/1 */
-	{ 0, 7, 533, },    /* 5 - USSE4 Processing,        max: max/clk 1/1 */
-	{ 0, 24, 45, },    /* 6 - Vtx processed at input,  max: max/clk 1/12? */
-	{ 0, 25, 45, },    /* 7 - Tris processed at input, max: max/clk 1/12? */
+	{ 1, 0, 16, },    /* 0: group, id, coeff */
+	{ 1, 1, 16, },    /* 1: group, id, coeff */
+	{ 1, 2, 16, },    /* 2: group, id, coeff */
+	{ 1, 3, 16, },    /* 3: group, id, coeff */
+	{ 1, 4, 16, },    /* 4: group, id, coeff */
+	{ 1, 5, 16, },    /* 5: group, id, coeff */
+	{ 1, 6, 16, },    /* 6: group, id, coeff */
+	{ 1, 7, 16, },    /* 7: group, id, coeff */
 };
 
 
@@ -164,9 +175,9 @@ static void gburst_hw_select_counters(struct perf_counter_info_s *cdef)
 
 	for (i = 0 ; i < NUM_COUNTERS ; i++) {
 		/* The counter group (in device). */
-		psDevInfo->psSGXHostCtl->aui32PerfGroup[i] = cdef->pi_group;
+		psDevInfo->psSGXHostCtl->aui32PerfGroup[i] = cdef[i].pi_group;
 		/* The counter bit (in device). */
-		psDevInfo->psSGXHostCtl->aui32PerfBit[i] = cdef->pi_bit;
+		psDevInfo->psSGXHostCtl->aui32PerfBit[i] = cdef[i].pi_bit;
 	}
 
 	return;
@@ -269,16 +280,16 @@ int gburst_hw_set_counter_id(unsigned int ctr_ix, int ctr_grp, int ctr_bit)
 EXPORT_SYMBOL(gburst_hw_set_counter_id);
 
 
-int gburst_hw_inq_counter_max_value(unsigned int ctr_ix)
+int gburst_hw_inq_counter_coeff(unsigned int ctr_ix)
 {
 	if (!gburst_hw_initialization_complete())
 		return -EINVAL;
 	if (ctr_ix >= NUM_COUNTERS)
 		return -EINVAL;
 
-	return pidat[ctr_ix].pi_max;
+	return pidat[ctr_ix].pi_coeff;
 }
-EXPORT_SYMBOL(gburst_hw_inq_counter_max_value);
+EXPORT_SYMBOL(gburst_hw_inq_counter_coeff);
 
 
 int gburst_hw_gpu_freq_mhz_info(int freq_MHz)

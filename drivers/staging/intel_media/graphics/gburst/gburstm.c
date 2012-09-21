@@ -23,6 +23,8 @@
  *
  * Authors:
  *    Dale B. Stimson <dale.b.stimson@intel.com>
+ *    Jari Luoma-aho  <jari.luoma-aho@intel.com>
+ *    Jari Nippula    <jari.nippula@intel.com>
  */
 
 /**
@@ -259,7 +261,116 @@ struct pfs_data {
 	write_proc_t *pfd_func_write;
 };
 
-#define GBURST_PROCFS_FILE_COUNT 17
+
+/*
+ * Forward references for procfs read and write functions:
+ */
+
+static int pfs_debug_message_read(char *buf,
+	char **start, off_t offset, int breq, int *eof, void *pvd);
+static int pfs_debug_message_write(struct file *file,
+	const char *buffer, unsigned long count, void *pvd);
+static int pfs_dump_read(char *buf,
+	char **start, off_t offset, int breq, int *eof, void *pvd);
+static int pfs_enable_read(char *buf,
+	char **start, off_t offset, int breq, int *eof, void *pvd);
+static int pfs_enable_write(struct file *file,
+	const char *buffer, unsigned long count, void *pvd);
+static int pfs_gpu_monitored_counters_read(char *buf,
+	char **start, off_t offset, int breq, int *eof, void *pvd);
+static int pfs_gpu_monitored_counters_write(struct file *file,
+	const char *buffer, unsigned long count, void *pvd);
+static int pfs_pwrgt_sts_read(char *buf,
+	char **start, off_t offset, int breq, int *eof, void *pvd);
+static int pfs_state_times_read(char *buf,
+	char **start, off_t offset, int breq, int *eof, void *pvd);
+static int pfs_state_times_write(struct file *file,
+	const char *buffer, unsigned long count, void *pvd);
+static int pfs_thermal_override_read(char *buf,
+	char **start, off_t offset, int breq, int *eof, void *pvd);
+static int pfs_thermal_override_write(struct file *file,
+	const char *buffer, unsigned long count, void *pvd);
+static int pfs_thermal_state_read(char *buf,
+	char **start, off_t offset, int breq, int *eof, void *pvd);
+static int pfs_gb_threshold_down_diff_read(char *buf,
+	char **start, off_t offset, int breq, int *eof, void *pvd);
+static int pfs_gb_threshold_down_diff_write(struct file *file,
+	const char *buffer, unsigned long count, void *pvd);
+static int pfs_gb_threshold_high_read(char *buf,
+	char **start, off_t offset, int breq, int *eof, void *pvd);
+static int pfs_gb_threshold_high_write(struct file *file,
+	const char *buffer, unsigned long count, void *pvd);
+static int pfs_gb_threshold_low_read(char *buf,
+	char **start, off_t offset, int breq, int *eof, void *pvd);
+static int pfs_gb_threshold_low_write(struct file *file,
+	const char *buffer, unsigned long count, void *pvd);
+static int pfs_timer_period_usecs_read(char *buf,
+	char **start, off_t offset, int breq, int *eof, void *pvd);
+static int pfs_timer_period_usecs_write(struct file *file,
+	const char *buffer, unsigned long count, void *pvd);
+static int pfs_utilization_read(char *buf,
+	char **start, off_t offset, int breq, int *eof, void *pvd);
+static int pfs_utilization_override_read(char *buf,
+	char **start, off_t offset, int breq, int *eof, void *pvd);
+static int pfs_utilization_override_write(struct file *file,
+	const char *buffer, unsigned long count, void *pvd);
+static int pfs_verbosity_read(char *buf,
+	char **start, off_t offset, int breq, int *eof, void *pvd);
+static int pfs_verbosity_write(struct file *file,
+	const char *buffer, unsigned long count, void *pvd);
+
+
+/**
+ * pfs_tab -- table specifying each gburst file under /proc/gburst.
+ */
+static const struct pfs_data pfs_tab[] = {
+	{ "debug_message",
+		pfs_debug_message_read,
+		pfs_debug_message_write, },
+	{ "dump",
+		pfs_dump_read,
+		NULL, },
+	{ "enable",
+		pfs_enable_read,
+		pfs_enable_write, },
+	{ "monitored",
+		pfs_gpu_monitored_counters_read,
+		pfs_gpu_monitored_counters_write, },
+	{ "pwrgt_sts",
+		pfs_pwrgt_sts_read,
+		NULL, },
+	{ "state_times",
+		pfs_state_times_read,
+		pfs_state_times_write, },
+	{ "thermal_override",
+		pfs_thermal_override_read,
+		pfs_thermal_override_write, },
+	{ "thermal_state",
+		pfs_thermal_state_read,
+		NULL, },
+	{ "threshold_down_diff",
+		pfs_gb_threshold_down_diff_read,
+		pfs_gb_threshold_down_diff_write, },
+	{ "threshold_high",
+		pfs_gb_threshold_high_read,
+		pfs_gb_threshold_high_write, },
+	{ "threshold_low",
+		pfs_gb_threshold_low_read,
+		pfs_gb_threshold_low_write, },
+	{ "timer_period_usecs",
+		pfs_timer_period_usecs_read,
+		pfs_timer_period_usecs_write, },
+	{ "utilization",
+		pfs_utilization_read,
+		NULL, },
+	{ "utilization_override",
+		pfs_utilization_override_read,
+		pfs_utilization_override_write, },
+	{ "verbosity",
+		pfs_verbosity_read,
+		pfs_verbosity_write, },
+};
+
 
 /**
  * freq_mhz_table - "local data" array translating from frequency code to
@@ -304,7 +415,7 @@ struct gburst_pvt_s {
 	ktime_t                 gbp_hrt_period;
 
 	/* gbp_pfs_handle */
-	struct proc_dir_entry  *gbp_pfs_handle[GBURST_PROCFS_FILE_COUNT];
+	struct proc_dir_entry  *gbp_pfs_handle[ARRAY_SIZE(pfs_tab)];
 
 	/**
 	 * Multipe time values, all updated at once.
@@ -494,8 +605,8 @@ static void write_PWRGT_CNT(struct gburst_pvt_s *gbprv, u32 value)
 {
 	u32 wvl;
 
-	/**
-	 * Change the state opf the toggle bit.  It's state must be reversed
+	/*
+	 * Change the state of the toggle bit.  Its state must be reversed
 	 * for every write to this register.
 	 */
 	gbprv->gbp_pwrgt_cnt_toggle_bit ^= PWRGT_CNT_TOGGLE_BIT;
@@ -576,11 +687,13 @@ static inline u32 read_PWRGT_STS_simple(void)
  */
 static void hrt_start(struct gburst_pvt_s *gbprv)
 {
-	gbprv->gbp_timer_is_enabled = 1;
+	if (gbprv->gbp_enable) {
+		gbprv->gbp_timer_is_enabled = 1;
 
-	/* If timer is already active, this will set a new time. */
-	hrtimer_start(&gbprv->gbp_timer, gbprv->gbp_hrt_period,
-		HRTIMER_MODE_REL);
+		/* If timer is already active, this will set a new time. */
+		hrtimer_start(&gbprv->gbp_timer, gbprv->gbp_hrt_period,
+			HRTIMER_MODE_REL);
+	}
 }
 
 
@@ -663,7 +776,8 @@ static u32 read_and_process_PWRGT_STS(struct gburst_pvt_s *gbprv)
 		 * evidenced by their bit fields within this register), then
 		 * process the new state.
 		 */
-		if (((uval ^ valprv) & PWRGT_STS_BURST_REALIZED_M)
+		if (!gbprv->gbp_suspended &&
+			((uval ^ valprv) & PWRGT_STS_BURST_REALIZED_M)
 			&& (freq_mhz != 0)) {
 			/**
 			 * Tell graphics subsystem the updated frequency,
@@ -762,6 +876,11 @@ static int desired_burst_state_query(struct gburst_pvt_s *gbprv,
 
 	if (!gbprv->gbp_enable) {
 		*p_whymsg = "!enable";
+		return 0;
+	}
+
+	if (gbprv->gbp_suspended) {
+		*p_whymsg = "suspended";
 		return 0;
 	}
 
@@ -985,7 +1104,9 @@ static enum hrtimer_restart hrt_event_processor(struct hrtimer *hrthdl)
 	ktime_t mc_now;
 
 	smp_rmb();
-	if (gbprv->gbp_initialized && gbprv->gbp_enable) {
+
+	if (gbprv->gbp_initialized && gbprv->gbp_enable &&
+		!gbprv->gbp_suspended) {
 		gbprv->gbp_thread_check_utilization = 1;
 		smp_wmb();
 		wake_thread(gbprv);
@@ -1013,10 +1134,11 @@ static enum hrtimer_restart hrt_event_processor(struct hrtimer *hrthdl)
  */
 static int thread_action(struct gburst_pvt_s *gbprv)
 {
+	int gpustate;
 	int utilpct;
 
 	smp_rmb();
-	if (!gbprv->gbp_initialized)
+	if (!gbprv->gbp_initialized || gbprv->gbp_suspended)
 		return 1;
 
 #if GBURST_DEBUG
@@ -1030,8 +1152,10 @@ static int thread_action(struct gburst_pvt_s *gbprv)
 
 	gbprv->gbp_thread_check_utilization = 0;
 
+	/* Check the GPU operating point*/
+	gpustate = GBURST_BURST_REALIZED(gbprv);
 	/* Determine current utilization. */
-	utilpct = gburst_stats_gfx_hw_perf_record();
+	utilpct = gburst_stats_gfx_hw_perf_record(gpustate);
 	if (utilpct < 0) {
 		/**
 		 * This should only fail if not initialized and is
@@ -1199,16 +1323,6 @@ static void gburst_thread_stop(struct gburst_pvt_s *gbprv)
 
 
 /**
- * clear_prior_performance_history() - Centralized dispatcher to the function
- * that clears performance history.
- */
-static void clear_prior_performance_history(void)
-{
-	gburst_stats_gfx_hw_perf_max_values_clear();
-}
-
-
-/**
  * gburst_enable_set() - gburst enable/disable.
  * @gbprv: gb handle.
  * @flgenb: non-zero to enable, zero to disable.
@@ -1226,8 +1340,6 @@ static void gburst_enable_set(struct gburst_pvt_s *gbprv, int flgenb)
 		return;
 
 	gbprv->gbp_enable = flgenb;
-
-	clear_prior_performance_history();
 
 	if (!gbprv->gbp_enable) {
 		hrt_cancel(gbprv);
@@ -1376,19 +1488,6 @@ static void threshold_derive_either(struct gburst_pvt_s *gbprv)
 
 
 /**
- * monitored_counter_list_string() - Write monitored GPU PC counters.
- * @gbprv: gb handle.
- * @buf: String containing an list specifying active counters.
- * @nbytes: Number of bytes in buf.
- */
-static int monitored_counter_list_string(struct gburst_pvt_s *gbprv,
-	const char *buf, size_t nbytes)
-{
-	return gburst_stats_active_counters_from_string(buf, nbytes);
-}
-
-
-/**
  * generate_dump_string() - Dump all status variables for gpu burst.
  * Useful during development and test.
  * @gbprv: gb handle.
@@ -1454,14 +1553,14 @@ static int generate_dump_string(struct gburst_pvt_s *gbprv, size_t buflen,
 		"utilization = %d\n",
 		gbprv->gbp_utilization_percentage);
 
-	ix = state_times_to_string(gbprv, GBURST_HEADING, 1, ix, buflen, buf);
-
 	if (gbprv->gbp_utilization_override >= 0) {
 		ix = ut_isnprintf(ix, buf, buflen,
 			GBURST_HEADING
 			"utilization_override = %d\n",
 			gbprv->gbp_utilization_override);
 	}
+
+	ix = state_times_to_string(gbprv, GBURST_HEADING, 1, ix, buflen, buf);
 
 	if (!gbprv->gbp_task) {
 		ix = ut_isnprintf(ix, buf, buflen,
@@ -1550,8 +1649,6 @@ static int generate_dump_string(struct gburst_pvt_s *gbprv, size_t buflen,
 			generate_freq_string(tmpv1, sbuf1, sizeof(sbuf1)));
 	}
 
-	ix = gburst_stats_gfx_hw_perf_max_values_to_string(ix, buf, buflen);
-
 	if (ix >= buflen)
 		return -EINVAL;
 
@@ -1563,101 +1660,6 @@ static int generate_dump_string(struct gburst_pvt_s *gbprv, size_t buflen,
 		buf);
 
 	return ix;
-}
-
-
-/**
- * pfs_gpu_active_counters_read() - Procfs read function for
- * /proc/gburst/active - read/write which of the monitored counters are active
- * (i.e., which are being used in the performance (utilization) computation).
- * Parameters are the standard ones for procfs read functions.
- * @buf: buffer into which output can be provided for read function.
- * @start: May be used to provide multiple buffers of output.
- * @offset: May be used to provide multiple buffers of output.
- * @breq: Number of bytes available in buf.
- * @eof: Set by this function to indicate EOF.
- * @pvd: Private data (in this case, gbprv).
- *
- * This is specified as a string consisting of one digit per counter, where
- * 0 indicates the counter is not active and 1 indicates it is active.
- * Example from read, where "x" is "0" or "1":
- *    xxxxxxxx
- * Example for write, where "x" is "0" or "1": xxxxxxxx
- */
-static int pfs_gpu_active_counters_read(char *buf,
-	char **start, off_t offset, int breq, int *eof, void *pvd)
-{
-	if (*start || (offset > 0)) {
-		*eof = 1;
-		return 0;
-	}
-
-	return gburst_stats_active_counters_to_string(buf, breq);
-}
-
-
-/**
- * pfs_gpu_active_counters_write() - Procfs write function for
- * /proc/gburst/active - read/write which of the monitored counters are active
- * (i.e., which are being used in the performance (utilization) computation).
- * Parameters are the standard ones for procfs read functions.
- * @file: Pointer to procfs associated struct file.
- * @buffer: buffer with data written to the proc file, input to this function.
- * @count: number of bytes of data present in buffer.
- * @pvd: Private data (in this case, gbprv).
- *
- * This is specified as a string consisting of one digit per counter, where
- * 0 indicates the counter is not active and 1 indicates it is active.
- * Example from read, where "x" is "0" or "1":
- *   #01234567
- *   #========
- *    xxxxxxxx
- * Example for write, where "x" is "0" or "1": xxxxxxxx
- */
-static int pfs_gpu_active_counters_write(struct file *file,
-	const char *buffer, unsigned long count, void *pvd)
-{
-	struct gburst_pvt_s *gbprv = (struct gburst_pvt_s *) pvd;
-	char buf[16];
-	int rva;
-
-	if (copy_from_user_nt(buf, sizeof(buf), buffer, count))
-		return -EINVAL;
-
-	rva = monitored_counter_list_string(gbprv, buf, count);
-	if (rva < 0)
-		return rva;
-
-	return count;
-}
-
-
-/**
- * pfs_gb_clear_max_write() - Procfs write function for
- * /proc/gburst/clear_max
- * Parameters are the standard ones for procfs read functions.
- * @file: Pointer to procfs associated struct file.
- * @buffer: buffer with data written to the proc file, input to this function.
- * @count: number of bytes of data present in buffer.
- * @pvd: Private data (in this case, gbprv).
- *
- * read: null.
- * write: "1" to clear retained performance data maximums.
- */
-static int pfs_gb_clear_max_write(struct file *file,
-	const char *buffer, unsigned long count, void *pvd)
-{
-	unsigned int uval;
-	int rva;
-
-	rva = kstrtouint_from_user(buffer, count, 0, &uval);
-	if (rva < 0)
-		return rva;
-
-	if (uval == 1)
-		clear_prior_performance_history();
-
-	return count;
 }
 
 
@@ -2540,64 +2542,6 @@ static int pfs_verbosity_write(struct file *file,
 
 
 /**
- * pfs_tab -- table specifying each gburst file under /proc/gburst.
- */
-static const struct pfs_data pfs_tab[GBURST_PROCFS_FILE_COUNT] = {
-	{ "active",
-		pfs_gpu_active_counters_read,
-		pfs_gpu_active_counters_write, },
-	{ "clear_max",
-		NULL,
-		pfs_gb_clear_max_write, },
-	{ "debug_message",
-		pfs_debug_message_read,
-		pfs_debug_message_write, },
-	{ "dump",
-		pfs_dump_read,
-		NULL, },
-	{ "enable",
-		pfs_enable_read,
-		pfs_enable_write, },
-	{ "monitored",
-		pfs_gpu_monitored_counters_read,
-		pfs_gpu_monitored_counters_write, },
-	{ "pwrgt_sts",
-		pfs_pwrgt_sts_read,
-		NULL, },
-	{ "thermal_override",
-		pfs_thermal_override_read,
-		pfs_thermal_override_write, },
-	{ "thermal_state",
-		pfs_thermal_state_read,
-		NULL, },
-	{ "threshold_down_diff",
-		pfs_gb_threshold_down_diff_read,
-		pfs_gb_threshold_down_diff_write, },
-	{ "threshold_high",
-		pfs_gb_threshold_high_read,
-		pfs_gb_threshold_high_write, },
-	{ "threshold_low",
-		pfs_gb_threshold_low_read,
-		pfs_gb_threshold_low_write, },
-	{ "state_times",
-		pfs_state_times_read,
-		pfs_state_times_write, },
-	{ "timer_period_usecs",
-		pfs_timer_period_usecs_read,
-		pfs_timer_period_usecs_write, },
-	{ "utilization_override",
-		pfs_utilization_override_read,
-		pfs_utilization_override_write, },
-	{ "utilization",
-		pfs_utilization_read,
-		NULL, },
-	{ "verbosity",
-		pfs_verbosity_read,
-		pfs_verbosity_write, },
-};
-
-
-/**
  * pfs_init() - Create all /proc/gburst entries.
  * @gbprv: gb handle.
  *
@@ -2609,21 +2553,6 @@ static void pfs_init(struct gburst_pvt_s *gbprv)
 	const struct pfs_data *pfsdat;
 	int fmode;
 	int ix;
-
-	{
-		/**
-		 * pfs_tab_len - number of entries in table pfs_tab.
-		 */
-		const int pfs_tab_len = ARRAY_SIZE(pfs_tab);
-
-		/**
-		 * Ensure that GBURST_PROCFS_FILE_COUNT == pfs_tab_len;
-		 * otherwise, gcc will issue the diagnostic:
-		 *   error: size of array ‘test_array’ is negative
-		 */
-		int __attribute__((__unused__))
-			test_array[-(GBURST_PROCFS_FILE_COUNT != pfs_tab_len)];
-	}
 
 	/* Create /proc/gburst */
 	if (!gbprv->gbp_proc_gburst) {
@@ -2640,11 +2569,11 @@ static void pfs_init(struct gburst_pvt_s *gbprv)
 		}
 	}
 
-	for (ix = 0; ix < GBURST_PROCFS_FILE_COUNT; ix++) {
+	for (ix = 0; ix < ARRAY_SIZE(pfs_tab); ix++) {
 		pfsdat = pfs_tab + ix;
 
 		fmode = 0644;
-		if (pfsdat->pfd_func_read)
+		if (!pfsdat->pfd_func_read)
 			fmode &= ~0444;
 		if (!pfsdat->pfd_func_write)
 			fmode &= ~0222;
@@ -2676,7 +2605,7 @@ static void pfs_cleanup(struct gburst_pvt_s *gbprv)
 	if (!pde_root)
 		return;
 
-	for (ix = 0; ix < GBURST_PROCFS_FILE_COUNT; ix++) {
+	for (ix = 0; ix < ARRAY_SIZE(pfs_tab); ix++) {
 		if (gbprv->gbp_pfs_handle[ix]) {
 			const struct pfs_data *pfsdat = pfs_tab + ix;
 
@@ -2716,6 +2645,11 @@ static irqreturn_t gburst_irq_handler(int irq, void *pvd)
 	gbprv->gbp_interrupt_count++;
 #endif /* if GBURST_DEBUG */
 
+	if (gbprv->gbp_suspended) {
+		printk(GBURST_ALERT "interrupt while suspended\n");
+		return IRQ_HANDLED;
+	}
+
 	wake_thread(gbprv);
 
 	/**
@@ -2738,23 +2672,54 @@ static irqreturn_t gburst_irq_handler(int irq, void *pvd)
 static int gburst_suspend(struct gburst_pvt_s *gbprv)
 {
 	smp_rmb();
-	if (gbprv && gbprv->gbp_initialized) {
-		if (mprm_verbosity >= 3)
-			printk(GBURST_ALERT "suspend\n");
+	if (!gbprv || !gbprv->gbp_initialized)
+		return 0;
+
+	if (mprm_verbosity >= 3)
+		printk(GBURST_ALERT "suspend\n");
 
 #if GBURST_DEBUG
-		gbprv->gbp_suspend_count++;
+	gbprv->gbp_suspend_count++;
 #endif
 
-		/* Must update times before changing flag. */
-		update_state_times(gbprv, NULL);
-		gbprv->gbp_suspended = 1;
+	/* Must update times before changing flag. */
+	update_state_times(gbprv, NULL);
+	gbprv->gbp_suspended = 1;
+	smp_wmb();
 
-		/* Cancel timer events. */
-		hrt_cancel(gbprv);
+	/* Cancel timer events. */
+	hrt_cancel(gbprv);
 
-		write_PWRGT_CNT(gbprv, 0);
+	write_PWRGT_CNT(gbprv, 0);
+
+/*  GBURST_TIMING_BEFORE_SUSPEND - Code currently under test. */
+#define GBURST_TIMING_BEFORE_SUSPEND 1
+
+#if GBURST_TIMING_BEFORE_SUSPEND
+	/*
+	 * Before suspend takes place, tell gfx hw driver that gpu
+	 * frequency is normal.  It is hoped that this will lead to
+	 * better stability.
+	 * No additional call to update_state_times is desired here, as
+	 * the delta time should be insignificant from the previous call.
+	 */
+
+	mutex_lock(&gbprv->gbp_mutex_pwrgt_sts);
+
+	if ((gbprv->gbp_pwrgt_sts_last_read & PWRGT_STS_BURST_REALIZED_M)
+		!= PWRGT_STS_BURST_REALIZED_M_400) {
+		/*  Notify driver. */
+		gburst_stats_gpu_freq_mhz_info(
+			freq_mhz_table[GBURST_GPU_FREQ_400]);
 	}
+
+	gbprv->gbp_pwrgt_sts_last_read = (gbprv->gbp_pwrgt_sts_last_read &
+		~(PWRGT_STS_BURST_REQUEST_M | PWRGT_STS_BURST_REALIZED_M))
+		| (GBURST_GPU_FREQ_400 << PWRGT_STS_BURST_REQUEST_P)
+		| (GBURST_GPU_FREQ_400 << PWRGT_STS_BURST_REALIZED_P);
+
+	mutex_unlock(&gbprv->gbp_mutex_pwrgt_sts);
+#endif /* if GBURST_TIMING_BEFORE_SUSPEND */
 
 	return 0;
 }
@@ -2783,19 +2748,16 @@ static int gburst_resume(struct gburst_pvt_s *gbprv)
 #endif /* if GBURST_DEBUG */
 
 	update_state_times(gbprv, NULL);
-	gbprv->gbp_suspended = 0;
 
 	read_PWRGT_CNT_toggle(gbprv);
-
-	/* Ensure that current state is reflected in our data. */
-	read_and_process_PWRGT_STS(gbprv);
 
 	/* Assume thermal state is current or will be updated soon. */
 
 	/* PWRGT_CNT to 0 except toggle and interrupt enable. */
 	set_state_pwrgt_cnt(gbprv, PWRGT_CNT_BURST_REQUEST_M_400);
 
-	clear_prior_performance_history();
+	gbprv->gbp_suspended = 0;
+	smp_wmb();
 
 	hrt_start(gbprv);
 
@@ -3074,10 +3036,8 @@ static int __init gburst_init(struct gburst_pvt_s *gbprv)
 
 	smp_wmb();
 
-	if (gbprv->gbp_enable) {
-		/* Start Timer */
-		hrt_start(gbprv);
-	}
+	/* Start Timer */
+	hrt_start(gbprv);
 
 	set_state_pwrgt_cnt(gbprv, PWRGT_CNT_BURST_REQUEST_M_400);
 

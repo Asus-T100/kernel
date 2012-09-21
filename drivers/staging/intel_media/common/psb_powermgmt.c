@@ -35,9 +35,8 @@
 #include "mdfld_gl3.h"
 #include "mdfld_dsi_dbi.h"
 #include "mdfld_dsi_dbi_dpu.h"
-#include "psb_intel_hdmi.h"
-#include "mdfld_ti_tpd.h"
 #include "mdfld_dsi_dpi.h"
+#include "android_hdmi.h"
 #include "psb_intel_display.h"
 #ifdef CONFIG_GFX_RTPM
 #include <linux/pm_runtime.h>
@@ -68,7 +67,7 @@ static struct mutex g_ospm_mutex;
 static bool gbSuspendInProgress; /* default set as false */
 static bool gbResumeInProgress; /* default set as false */
 static bool pcihostSuspendInProgress;
-static bool gbSuspended; /* Indicate the host PCI suspened or not */
+bool gbSuspended; /* Indicate the host PCI suspened or not */
 static int g_hw_power_status_mask;
 static atomic_t g_display_access_count;
 static atomic_t g_graphics_access_count;
@@ -77,8 +76,6 @@ atomic_t g_videodec_access_count;
 
 
 extern u32 DISP_PLANEB_STATUS;
-
-bool gbgfxsuspended; /* default set as false */
 
 void acquire_ospm_lock(void)
 {
@@ -143,7 +140,7 @@ static int ospm_runtime_pm_msvdx_suspend(struct drm_device *dev)
 	mutex_unlock(&dev_priv->video_ctx_mutex);
 
 	/* have decode context, but not started, or is just closed */
-	if (decode_ctx && dev_priv->msvdx_ctx)
+	if (decode_ctx && msvdx_priv->msvdx_ctx)
 		decode_running = 1;
 
 #ifdef CONFIG_MDFD_VIDEO_DECODE
@@ -568,6 +565,7 @@ static int mdfld_save_display_registers (struct drm_device *dev, int pipe)
 	dev_priv->saveHDMIB_CONTROL = REG_READ(HDMIB_CONTROL);
 	return 0;
 }
+
 /*
  * mdfld_save_cursor_overlay_registers
  *
@@ -840,37 +838,6 @@ void ospm_suspend_display(struct drm_device *dev)
 	ospm_power_island_down(OSPM_DISPLAY_ISLAND);
 }
 
-#if (defined(CONFIG_SND_INTELMID_HDMI_AUDIO) || \
-		defined(CONFIG_SND_INTELMID_HDMI_AUDIO_MODULE))
-/*
- * is_hdmi_plugged_out
- *
- * Description: to check whether hdmi is plugged out in S3 suspend
- *
- */
-static bool is_hdmi_plugged_out(struct drm_device *dev)
-{
-	u8 data = 0;
-	bool hdmi_plugged_out = true;
-
-	if (IS_MDFLD_OLD(dev)) {
-		intel_scu_ipc_ioread8(MSIC_HDMI_STATUS, &data);
-
-		if (data & HPD_SIGNAL_STATUS)
-			hdmi_plugged_out = false;
-		else
-			hdmi_plugged_out = true;
-	} else if (IS_CTP(dev)) {
-		if (gpio_get_value(CLV_TI_HPD_GPIO_PIN) == 0)
-			hdmi_plugged_out = true;
-		else
-			hdmi_plugged_out = false;
-	}
-
-	return hdmi_plugged_out;
-}
-#endif
-
 /*
  * ospm_resume_display
  *
@@ -922,7 +889,7 @@ void ospm_resume_display(struct pci_dev *pdev)
 		  when system suspend,re-detect once here*/
 #if (defined(CONFIG_SND_INTELMID_HDMI_AUDIO) || \
 		defined(CONFIG_SND_INTELMID_HDMI_AUDIO_MODULE))
-		if (!is_hdmi_plugged_out(dev)) {
+		if (android_hdmi_is_connected(dev)) {
 			PSB_DEBUG_ENTRY("resume hdmi_state %d", hdmi_state);
 			if (dev_priv->had_pvt_data && hdmi_state)
 				dev_priv->had_interface->
@@ -962,7 +929,6 @@ void ospm_suspend_pci(struct pci_dev *pdev)
 	pci_set_power_state(pdev, PCI_D3hot);
 
 	gbSuspended = true;
-	gbgfxsuspended = true;
 }
 
 /*
@@ -1094,11 +1060,11 @@ static void gfx_late_resume(struct early_suspend *h)
 			enc_funcs->restore(encoder);
 	}
 
-	if (lastFailedBrightness > 0)
-		psb_set_brightness(NULL);
-
 	gbdispstatus = true;
 	dev_priv->b_dsr_enable = dev_priv->b_dsr_enable_status;
+
+	if (lastFailedBrightness > 0)
+		psb_set_brightness(NULL);
 
 	mutex_unlock(&dev->mode_config.mutex);
 }
@@ -1648,7 +1614,8 @@ bool ospm_power_using_hw_begin(int hw_island, UHBUsage usage)
 		(struct drm_psb_private *) gpDrmDevice->dev_private;
 	unsigned long flags;
 
-	if (!(hw_island & (OSPM_GRAPHICS_ISLAND | OSPM_DISPLAY_ISLAND)))
+	if (!(hw_island & (OSPM_GRAPHICS_ISLAND | OSPM_DISPLAY_ISLAND |
+		OSPM_GL3_CACHE_ISLAND)))
 		return false;
 
 #ifdef CONFIG_GFX_RTPM
@@ -1827,7 +1794,8 @@ void ospm_power_using_video_end(int video_island)
  */
 void ospm_power_using_hw_end(int hw_island)
 {
-	if (!(hw_island & (OSPM_GRAPHICS_ISLAND | OSPM_DISPLAY_ISLAND)))
+	if (!(hw_island & (OSPM_GRAPHICS_ISLAND | OSPM_DISPLAY_ISLAND |
+		OSPM_GL3_CACHE_ISLAND)))
 		return;
 
 	switch (hw_island) {

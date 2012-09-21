@@ -31,71 +31,103 @@
 #include "mdfld_dsi_dpi.h"
 #include "mdfld_dsi_pkg_sender.h"
 #include <linux/gpio.h>
-#include <linux/sfi.h>
 #include "psb_drv.h"
 
-#define GPIO_MIPI_PANEL_RESET 128
+static u8 pr2_mcs_protect_off[]      = {0xb0, 0x04};
+static u8 pr2_pixel_format[]         = {0xb3, 0x00, 0x87, 0x00};
+static u8 pr2_dsi_control[]          = {0xb6, 0x30, 0x83, 0x00};
+static u8 pr2_control[]              = {0xc3, 0x00, 0x19, 0x00};
+static u8 pr2_test_mode_0[]          = {0xc4, 0x03, 0x00, 0x00};
+static u8 pr2_can_skip[]             = {0xc6, 0x00, 0x00, 0x00};
+static u8 pr2_source_amplifiers[]    = {0xd2, 0xb3, 0x00, 0x00};
+static u8 pr2_power_supply_circuit[] = {0xd3, 0x33, 0x03, 0x00};
+static u8 pr2_vreg_setting[]         = {0xd5, 0x00, 0x00, 0x00};
+static u8 pr2_test_mode_2[]          = {0xd6, 0x01, 0x00, 0x00};
+static u8 pr2_timing_control_2[]     = {0xd9, 0x5b, 0x7f, 0x05};
+static u8 pr2_vcs_setting[]          = {0xdd, 0x53, 0x00, 0x00};
+static u8 pr2_vcom_dc_setting[]      = {0xde, 0x43, 0x00, 0x00};
+static u8 pr2_mcs_protect_on[]       = {0xb0, 0x03, 0x00, 0x00};
+static u8 pr2_set_address_mode[]     = {0x36, 0x00, 0x00, 0x00};
+static u8 pr2_set_pixel_format[]     = {0x3a, 0x70, 0x00, 0x00};
+static u8 pr2_exit_sleep_mode[]      = {0x11, 0x00, 0x00, 0x00};
+static u8 pr2_set_display_on[]       = {0x29, 0x00, 0x00, 0x00};
+static u8 pr2_set_display_off[]      = {0x28, 0x00, 0x00, 0x00};
+static u8 pr2_enter_sleep_mode[]     = {0x10, 0x00, 0x00, 0x00};
+static u8 pr2_enter_low_power_mode[] = {0xb1, 0x01, 0x00, 0x00};
+static u8 pr2_panel_driving[] = {
+	0xc0, 0x01, 0xfe, 0x65,
+	0x00, 0x01, 0x00, 0x00};
+static u8 pr2_v_timing[] = {
+	0xc1, 0x00, 0x10, 0x00,
+	0x01, 0x00, 0x00, 0x00};
+static u8 pr2_h_timing[] = {
+	0xc5, 0x00, 0x01, 0x05,
+	0x04, 0x5e, 0x00, 0x00,
+	0x00, 0x00, 0x0b, 0x17,
+	0x05, 0x00, 0x00, 0x00};
+static u8 pr2_gamma_set_a[] = {
+	0xc8, 0x0a, 0x15, 0x18,
+	0x1b, 0x1c, 0x0d, 0x00,
+	0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00};
+static u8 pr2_gamma_set_b[] = {
+	0xc9, 0x0d, 0x1d, 0x1f,
+	0x1f, 0x1f, 0x10, 0x00,
+	0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00};
+static u8 pr2_gamma_set_c[] = {
+	0xca, 0x1e, 0x1f, 0x1e,
+	0x1d, 0x1d, 0x10, 0x00,
+	0x00, 0x00, 0x00, 0x00,
+	0x00, 0x00, 0x00, 0x00};
+static u8 pr2_charge_pump_setting[] = {
+	0xd0, 0x02, 0x00, 0xa3,
+	0xb8, 0x00, 0x00, 0x00};
+static u8 pr2_test_mode_1[] = {
+	0xd1, 0x10, 0x14, 0x53,
+	0x64, 0x00, 0x00, 0x00};
+static u8 pr2_timing_control_0[] = {
+	0xd7, 0x09, 0x00, 0x84,
+	0x81, 0x61, 0xbc, 0xb5,
+	0x05, 0x00, 0x00, 0x00};
+static u8 pr2_timing_control_1[] = {
+	0xd8, 0x04, 0x25, 0x90,
+	0x4c, 0x92, 0x00, 0x00};
+static u8 pr2_white_balance[] = {
+	0xcb, 0x00, 0x00, 0x00,
+	0x1c, 0x00, 0x00, 0x00};
+static u8 pr2_test_mode_3[] = {
+	0xe4, 0x00, 0x00, 0x22,
+	0xaa, 0x00, 0x00, 0x00};
+static u8 pr2_backlight_control_1[] = {
+	0xb8, 0x01, 0x0f, 0x0f,
+	0xff, 0xff, 0xc8, 0xc8,
+	0x0f, 0x0f, 0x18, 0x18,
+	0x90, 0x90, 0x00, 0x02,
+	0x0c, 0x1d, 0x37, 0x5a,
+	0x87, 0xbe, 0xff, 0x00};
+static u8 pr2_backlight_control_2[] = {
+	0xb9, 0x01, 0xcc, 0x00,
+	0x18, 0x00, 0x00, 0x00};
 
-/* ************************************************************************* *\
- * FUNCTION: mdfld_dsi_tmd_6X10_ic_init
- *
- * DESCRIPTION:  This function is called only by mrst_dsi_mode_set and
- *               restore_display_registers.  since this function does not
- *               acquire the mutex, it is important that the calling function
- *               does!
-\* ************************************************************************* */
-static u32 pr2_mcs_protect_off[] = {0x000004b0};
-static u32 pr2_pixel_format[] = {0x008700b3};
-static u32 pr2_dsi_control[] = {0x008330b6};
-static u32 pr2_panel_driving[] = {0x65FE01c0, 0x00000100};
-static u32 pr2_v_timing[] = {0x001000c1, 0x00000001};
-static u32 pr2_control[] = {0x001900c3};
-static u32 pr2_test_mode_0[] = {0x000003c4};
-static u32 pr2_h_timing[] = {0x050100c5, 0x00005e04, 0x170b0000, 0x00000005};
-static u32 pr2_can_skip[] = {0x000000c6};
-static u32 pr2_gamma_set_a[] = {0x18150ac8, 0x000d1c1b, 0x00000000, 0x00000000};
-static u32 pr2_gamma_set_b[] = {0x1f1d0dc9, 0x00101f1f, 0x00000000, 0x00000000};
-static u32 pr2_gamma_set_c[] = {0x1e1f1eca, 0x00101d1d, 0x00000000, 0x00000000};
-static u32 pr2_charge_pump_setting[] = {0xa30002d0, 0x000000b8};
-static u32 pr2_test_mode_1[] = {0x531410d1, 0x00000064};
-static u32 pr2_source_amplifiers[] = {0x0000b3d2};
-static u32 pr2_power_supply_circuit[] = {0x000333d3};
-static u32 pr2_vreg_setting[] = {0x000000d5};
-static u32 pr2_test_mode_2[] = {0x000001d6};
-static u32 pr2_timing_control_0[] = {0x840009d7, 0xB5bc6181, 0x00000005};
-static u32 pr2_timing_control_1[] = {0x902504d8, 0x0000924c};
-static u32 pr2_timing_control_2[] = {0x057F5bd9};
-static u32 pr2_white_balance[] = {0x000000cb, 0x0000001c};
-static u32 pr2_vcs_setting[] = {0x000053dd};
-static u32 pr2_vcom_dc_setting[] = {0x000043de};
-static u32 pr2_test_mode_3[] = {0x220000e4, 0x000000aa};
-static u32 pr2_mcs_protect_on[] = {0x000003b0};
-static u32 pr2_set_address_mode[] = {0x00000036};
-static u32 pr2_set_pixel_format[] = {0x0000703a};
-static u32 pr2_exit_sleep_mode[] = {0x00000011};
-static u32 pr2_set_display_on[] = {0x00000029};
-static u32 pr2_set_display_off[] = {0x00000028};
-static u32 pr2_enter_sleep_mode[] = {0x00000010};
-static u32 pr2_enter_low_power_mode[] = {0x000001b1};
-static u32 pr2_backlight_control_1[] = {0x0f0f01b8, 0xc8c8ffff, 0x18180f0f,
-					0x02009090, 0x5A371D0c, 0x00FFBE87};
-static u32 pr2_backlight_control_2[] = {0x00cc01b9, 0x00000018};
+#define MIPI_RESET_GPIO_DEFAULT	128
 
-int mdfld_dsi_pr2_ic_init(struct mdfld_dsi_config *dsi_config, int pipe)
+static
+int mdfld_dsi_pr2_ic_init(struct mdfld_dsi_config *dsi_config)
 {
-	struct mdfld_dsi_pkg_sender *sender
-			= mdfld_dsi_get_pkg_sender(dsi_config);
-	unsigned long wait_timeout;
+	struct mdfld_dsi_pkg_sender *sender =
+		mdfld_dsi_get_pkg_sender(dsi_config);
 
 	if (!sender) {
 		DRM_ERROR("Cannot get sender\n");
 		return -EINVAL;
 	}
 
-	printk(KERN_ALERT "[DISPLAY TRK] Enter %s\n", __func__);
+	PSB_DEBUG_ENTRY("\n");
+
 	sender->status = MDFLD_DSI_PKG_SENDER_FREE;
 
-	mdfld_dsi_send_gen_long_lp(sender, pr2_mcs_protect_off, 4, 0);
+	mdfld_dsi_send_gen_long_lp(sender, pr2_mcs_protect_off, 2, 0);
 	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
 		return -EIO;
 
@@ -210,36 +242,20 @@ int mdfld_dsi_pr2_ic_init(struct mdfld_dsi_config *dsi_config, int pipe)
 	return 0;
 }
 
-static void
-mdfld_dsi_pr2_dsi_controller_init(struct mdfld_dsi_config *dsi_config,
-				int pipe, int update)
+static
+void mdfld_dsi_pr2_dsi_controller_init(struct mdfld_dsi_config *dsi_config)
 {
-	struct mdfld_dsi_hw_context *hw_ctx =
-		&dsi_config->dsi_hw_context;
-	struct drm_device *dev = dsi_config->dev;
-	int lane_count = dsi_config->lane_count;
-	u32 mipi_control_reg = dsi_config->regs.mipi_control_reg;
-	u32 intr_en_reg = dsi_config->regs.intr_en_reg;
-	u32 hs_tx_timeout_reg = dsi_config->regs.hs_tx_timeout_reg;
-	u32 lp_rx_timeout_reg = dsi_config->regs.lp_rx_timeout_reg;
-	u32 turn_around_timeout_reg =
-		dsi_config->regs.turn_around_timeout_reg;
-	u32 device_reset_timer_reg =
-		dsi_config->regs.device_reset_timer_reg;
-	u32 high_low_switch_count_reg =
-		dsi_config->regs.high_low_switch_count_reg;
-	u32 init_count_reg = dsi_config->regs.init_count_reg;
-	u32 eot_disable_reg = dsi_config->regs.eot_disable_reg;
-	u32 lp_byteclk_reg = dsi_config->regs.lp_byteclk_reg;
-	u32 clk_lane_switch_time_cnt_reg =
-		dsi_config->regs.clk_lane_switch_time_cnt_reg;
-	u32 video_mode_format_reg =
-		dsi_config->regs.video_mode_format_reg;
-	u32 dphy_param_reg = dsi_config->regs.dphy_param_reg;
-	u32 dsi_func_prg_reg = dsi_config->regs.dsi_func_prg_reg;
+	struct mdfld_dsi_hw_context *hw_ctx = &dsi_config->dsi_hw_context;
 
-	PSB_DEBUG_ENTRY("%s: initializing dsi controller on pipe %d\n",
-			__func__, pipe);
+	PSB_DEBUG_ENTRY("\n");
+
+	/*reconfig lane configuration*/
+	dsi_config->lane_count = 3;
+	dsi_config->lane_config = MDFLD_DSI_DATA_LANE_3_1;
+
+	/* This is for 400 mhz.  Set it to 0 for 800mhz */
+	hw_ctx->cck_div = 1;
+	hw_ctx->pll_bypass_mode = 1;
 
 	hw_ctx->mipi_control = 0x18;
 	hw_ctx->intr_en = 0xffffffff;
@@ -266,48 +282,63 @@ mdfld_dsi_pr2_dsi_controller_init(struct mdfld_dsi_config *dsi_config,
 	hw_ctx->video_mode_format = 0xf;
 
 	/*set up func_prg*/
-	hw_ctx->dsi_func_prg = (0x200 | lane_count);
+	hw_ctx->dsi_func_prg = (0x200 | dsi_config->lane_count);
+
+	/*setup mipi port configuration*/
+	hw_ctx->mipi = PASS_FROM_SPHY_TO_AFE | dsi_config->lane_config;
 }
 
-static int mdfld_dsi_pr2_detect(struct mdfld_dsi_config *dsi_config,
-				int pipe)
+static
+int mdfld_dsi_pr2_detect(struct mdfld_dsi_config *dsi_config)
 {
 	int status;
 	struct drm_device *dev = dsi_config->dev;
+	struct mdfld_dsi_hw_registers *regs = &dsi_config->regs;
+	u32 dpll_val, device_ready_val;
+	int pipe = dsi_config->pipe;
 
-	printk(KERN_ALERT"%s\n", __func__);
+	PSB_DEBUG_ENTRY("\n");
 
 	if (pipe == 0) {
-		/*reconfig lane configuration*/
-		dsi_config->lane_count = 3;
-		dsi_config->lane_config = MDFLD_DSI_DATA_LANE_3_1;
-		dsi_config->dsi_hw_context.pll_bypass_mode = 1;
-		/* This is for 400 mhz.  Set it to 0 for 800mhz */
-		dsi_config->dsi_hw_context.cck_div = 1;
-	
-		if (IS_CTP(dev))
-			dsi_config->dsi_hw_context.pll_bypass_mode = 0;
+		/*
+		 * FIXME: WA to detect the panel connection status, and need to
+		 * implement detection feature with get_power_mode DSI command.
+		 */
+		if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
+					OSPM_UHB_FORCE_POWER_ON)) {
+			DRM_ERROR("hw begin failed\n");
+			return -EAGAIN;
+		}
+
+		dpll_val = REG_READ(regs->dpll_reg);
+		device_ready_val = REG_READ(regs->device_ready_reg);
+		if ((device_ready_val & DSI_DEVICE_READY) &&
+		    (dpll_val & DPLL_VCO_ENABLE)) {
+			dsi_config->dsi_hw_context.panel_on = true;
+		} else {
+			dsi_config->dsi_hw_context.panel_on = false;
+			DRM_INFO("%s: panel is not detected!\n", __func__);
+		}
 
 		status = MDFLD_DSI_PANEL_CONNECTED;
-		dsi_config->dsi_hw_context.panel_on = 1;
+
+		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 	} else {
-		PSB_DEBUG_ENTRY("Only support single panel\n");
+		DRM_INFO("%s: do NOT support dual panel\n", __func__);
 		status = MDFLD_DSI_PANEL_DISCONNECTED;
-		dsi_config->dsi_hw_context.panel_on = 0;
 	}
 
 	return status;
 }
 
-static int mdfld_dsi_pr2_power_on(struct mdfld_dsi_config *dsi_config)
+static
+int mdfld_dsi_pr2_power_on(struct mdfld_dsi_config *dsi_config)
 {
 	struct mdfld_dsi_pkg_sender *sender =
 		mdfld_dsi_get_pkg_sender(dsi_config);
-	struct drm_psb_private *dev_priv =
-		(struct drm_psb_private *) gpDrmDevice->dev_private;
 	int err;
 
-	PSB_DEBUG_ENTRY("Turn on video mode TMD panel...\n");
+	PSB_DEBUG_ENTRY("\n");
 
 	if (!sender) {
 		DRM_ERROR("Failed to get DSI packet sender\n");
@@ -321,11 +352,13 @@ static int mdfld_dsi_pr2_power_on(struct mdfld_dsi_config *dsi_config)
 		DRM_ERROR("Failed to send turn on packet\n");
 		return err;
 	}
-	/*According HW DSI spec, here need wait for 100ms. This is
+	/**
+	 * According HW DSI spec, here need wait for 100ms. This is
 	 * not necessary as the code is anyway sleeping 141 ms later
-	 * in this function */
+	 * in this function
+	 */
 
-	mdfld_dsi_send_gen_long_hs(sender, pr2_mcs_protect_off, 4, 0);
+	mdfld_dsi_send_gen_long_hs(sender, pr2_mcs_protect_off, 2, 0);
 	/*change power state*/
 	mdfld_dsi_send_mcs_long_hs(sender, pr2_exit_sleep_mode, 4, 0);
 
@@ -333,7 +366,7 @@ static int mdfld_dsi_pr2_power_on(struct mdfld_dsi_config *dsi_config)
 	msleep(120);
 
 	/*enable PWMON*/
-	pr2_backlight_control_2[0] |= BIT8;
+	pr2_backlight_control_2[1] |= 0x01;
 	mdfld_dsi_send_mcs_long_hs(sender,
 			pr2_backlight_control_2, 8, 0);
 
@@ -344,24 +377,23 @@ static int mdfld_dsi_pr2_power_on(struct mdfld_dsi_config *dsi_config)
 
 	/*Enable BLON , CABC*/
 	if (drm_psb_enable_cabc) {
-		pr2_backlight_control_1[0] |= BIT8;
+		pr2_backlight_control_1[1] |= 0x01;
 		mdfld_dsi_send_gen_long_hs(sender,
 				pr2_backlight_control_1, 24, 0);
-		printk(KERN_ALERT "enable pr2 cabc\n");
+		DRM_INFO("%s: enable pr2 cabc\n", __func__);
 	}
 
 	return 0;
 }
 
-static int mdfld_dsi_pr2_power_off(struct mdfld_dsi_config *dsi_config)
+static
+int mdfld_dsi_pr2_power_off(struct mdfld_dsi_config *dsi_config)
 {
 	struct mdfld_dsi_pkg_sender *sender =
 		mdfld_dsi_get_pkg_sender(dsi_config);
-	struct drm_psb_private *dev_priv =
-		(struct drm_psb_private *) gpDrmDevice->dev_private;
 	int err;
 
-	PSB_DEBUG_ENTRY("Turn off video mode TMD panel...\n");
+	PSB_DEBUG_ENTRY("\n");
 
 	if (!sender) {
 		DRM_ERROR("Failed to get DSI packet sender\n");
@@ -370,7 +402,7 @@ static int mdfld_dsi_pr2_power_off(struct mdfld_dsi_config *dsi_config)
 
 	/*send SHUT_DOWN packet*/
 	err = mdfld_dsi_send_dpi_spk_pkg_hs(sender,
-				MDFLD_DSI_DPI_SPK_SHUT_DOWN);
+			MDFLD_DSI_DPI_SPK_SHUT_DOWN);
 	if (err) {
 		DRM_ERROR("Failed to send turn off packet\n");
 		return err;
@@ -378,21 +410,18 @@ static int mdfld_dsi_pr2_power_off(struct mdfld_dsi_config *dsi_config)
 	/*according HW DSI spec, need wait for 100ms*/
 	msleep(100);
 
-	mdfld_dsi_send_gen_long_hs(sender, pr2_mcs_protect_off, 4, 0);
+	mdfld_dsi_send_gen_long_hs(sender, pr2_mcs_protect_off, 2, 0);
 	/*change power state here*/
 	mdfld_dsi_send_mcs_long_hs(sender, pr2_set_display_off, 4, 0);
 
 	/*disable BLCON, disable CABC*/
-	pr2_backlight_control_1[0] &= (~BIT8);
+	pr2_backlight_control_1[1] &= ~0x01;
 	mdfld_dsi_send_gen_long_hs(sender,
 			pr2_backlight_control_1, 6, 0);
-	printk(KERN_ALERT "disable pr2 cabc\n");
-
 	/* Per panel spec, 21ms delay is needed */
 	msleep(21);
 
 	mdfld_dsi_send_mcs_long_hs(sender, pr2_enter_sleep_mode, 4, 0);
-
 	/*120ms delay is needed between enter and exit sleep mode per spec*/
 	msleep(120);
 
@@ -405,14 +434,15 @@ static int mdfld_dsi_pr2_power_off(struct mdfld_dsi_config *dsi_config)
 	return 0;
 }
 
-static int mdfld_dsi_pr2_set_brightness(struct mdfld_dsi_config *dsi_config,
-					int level)
+static
+int mdfld_dsi_pr2_set_brightness(struct mdfld_dsi_config *dsi_config,
+		int level)
 {
 	struct mdfld_dsi_pkg_sender *sender =
 		mdfld_dsi_get_pkg_sender(dsi_config);
 	int duty_val = 0;
 
-	PSB_DEBUG_ENTRY("Set brightness level %d...\n", level);
+	PSB_DEBUG_ENTRY("level = %d\n", level);
 
 	if (!sender) {
 		DRM_ERROR("Failed to get DSI packet sender\n");
@@ -421,153 +451,92 @@ static int mdfld_dsi_pr2_set_brightness(struct mdfld_dsi_config *dsi_config,
 
 	duty_val = (255 * level) / 100;
 
-	mdfld_dsi_send_gen_long_hs(sender, pr2_mcs_protect_off, 4, 0);
+	mdfld_dsi_send_gen_long_hs(sender, pr2_mcs_protect_off, 2, 0);
 
 	/*update duty value*/
-	pr2_backlight_control_2[0] =  (0x0000001b9 | (duty_val << 16));
+	pr2_backlight_control_2[2] = duty_val;
 
 	if (drm_psb_enable_cabc) {
 		if (level < 50) {
-			pr2_backlight_control_1[0] = 0x0f0f00b8;
-			PSB_DEBUG_ENTRY("brightness too low, cabc disable,\n");
+			pr2_backlight_control_1[1] = 0x00;
+			pr2_backlight_control_1[2] = 0x0f;
+			pr2_backlight_control_1[3] = 0x0f;
 		} else if (level < 66) {
 			/* Case 10% */
-			pr2_backlight_control_1[0] = 0x070701b8;
-			pr2_backlight_control_1[1] = 0xe4e4ffff;
+			pr2_backlight_control_1[1] = 0x01;
+			pr2_backlight_control_1[2] = 0x07;
+			pr2_backlight_control_1[3] = 0x07;
+			pr2_backlight_control_1[6] = 0xe4;
+			pr2_backlight_control_1[7] = 0xe4;
 		} else if (level < 82) {
 			/* Case 20% */
-			pr2_backlight_control_1[0] = 0x0b0b01b8;
-			pr2_backlight_control_1[1] = 0xd4d4ffff;
+			pr2_backlight_control_1[1] = 0x01;
+			pr2_backlight_control_1[2] = 0x0b;
+			pr2_backlight_control_1[3] = 0x0b;
+			pr2_backlight_control_1[6] = 0xd4;
+			pr2_backlight_control_1[7] = 0xd4;
 		} else {
 			/* Case 30% */
-			pr2_backlight_control_1[0] = 0x0f0f01b8;
-			pr2_backlight_control_1[1] = 0xc8c8ffff;
+			pr2_backlight_control_1[1] = 0x01;
+			pr2_backlight_control_1[2] = 0x0f;
+			pr2_backlight_control_1[3] = 0x0f;
+			pr2_backlight_control_1[6] = 0xc8;
+			pr2_backlight_control_1[7] = 0xc8;
 		}
 
 		mdfld_dsi_send_gen_long_hs(sender,
 				pr2_backlight_control_1, 24, 0);
 	}
-	mdfld_dsi_send_gen_long_hs(sender, pr2_backlight_control_2, 8, 0);
 
+	mdfld_dsi_send_gen_long_hs(sender, pr2_backlight_control_2, 8, 0);
 	mdfld_dsi_send_gen_long_hs(sender, pr2_mcs_protect_on, 4, 0);
 
 	return 0;
 }
 
-/* MIPI display panel reset GPIO */
-static int mdfld_mipi_panel_gpio_reset = -EINVAL;
-
-static int mdfld_mipi_panel_gpio_parse(struct sfi_table_header *table)
+static
+int mdfld_dsi_pr2_panel_reset(struct mdfld_dsi_config *dsi_config)
 {
-	struct sfi_table_simple *sb = (struct sfi_table_simple *)table;
-	struct sfi_gpio_table_entry *entry;
-	int i, num;
-
-	num = SFI_GET_NUM_ENTRIES(sb, struct sfi_gpio_table_entry);
-	entry = (struct sfi_gpio_table_entry *)sb->pentry;
-
-	for (i = 0; i < num; i++, entry++) {
-		if (!strncmp(entry->pin_name, "mipi-reset", SFI_NAME_LEN))
-			mdfld_mipi_panel_gpio_reset = entry->pin_no;
-	}
-
-	return 0;
-}
-
-static int mdfld_dsi_pr2_panel_reset(struct mdfld_dsi_config *dsi_config,
-		int reset_from)
-{
-	struct mdfld_dsi_hw_registers *regs;
-	struct mdfld_dsi_hw_context *ctx;
-	struct drm_device *dev;
+	static int mipi_reset_gpio;
 	int ret = 0;
-	static bool b_gpio_required[PSB_NUM_PIPE] = {0};
-	unsigned gpio_mipi_panel_reset = 128;
-	struct mdfld_dsi_pkg_sender *sender =
-		mdfld_dsi_get_pkg_sender(dsi_config);
 
-	regs = &dsi_config->regs;
-	ctx = &dsi_config->dsi_hw_context;
-	dev = dsi_config->dev;
+	PSB_DEBUG_ENTRY("\n");
 
-	if (IS_CTP(dev)) {
-		sfi_table_parse(SFI_SIG_GPIO, NULL, NULL, mdfld_mipi_panel_gpio_parse);
-		gpio_mipi_panel_reset = mdfld_mipi_panel_gpio_reset;
-	}
-
-	if (reset_from == RESET_FROM_BOOT_UP) {
-		b_gpio_required[dsi_config->pipe] = false;
-		if (dsi_config->pipe) {
-			PSB_DEBUG_ENTRY(
-				"PR2 GPIO reset for MIPIC is skipped!\n");
-			goto fun_exit;
+	if (mipi_reset_gpio == 0) {
+		ret = get_gpio_by_name("mipi-reset");
+		if (ret < 0) {
+			DRM_ERROR("Faild to get panel reset gpio, " \
+				  "use default reset pin\n");
+			ret = MIPI_RESET_GPIO_DEFAULT;
 		}
-		ret = gpio_request(gpio_mipi_panel_reset, "gfx");
+
+		mipi_reset_gpio = ret;
+
+		ret = gpio_request(mipi_reset_gpio, "mipi_display");
 		if (ret) {
-			DRM_ERROR(
-			"Failed to request gpio %d\n", gpio_mipi_panel_reset);
-			goto err;
+			DRM_ERROR("Faild to request panel reset gpio\n");
+			return -EINVAL;
 		}
-		b_gpio_required[dsi_config->pipe] = true;
 
-		/* for get date from panel side is not easy,
-		so here use display side setting to judge
-		wheather panel have enabled or not by FW */
-		if ((REG_READ(regs->dpll_reg) & BIT31) &&
-			(REG_READ(regs->pipeconf_reg) & BIT30) &&
-			(REG_READ(regs->mipi_reg) & BIT31)) {
-			PSB_DEBUG_ENTRY(
-				"FW has initialized the panel, skip reset during boot up\n.");
-			psb_enable_vblank(dev, dsi_config->pipe);
-
-			/* enable BLC */
-			mdfld_dsi_send_gen_long_hs(sender,
-						pr2_mcs_protect_off, 4, 0);
-			mdfld_dsi_send_gen_long_hs(sender,
-						pr2_panel_driving, 8, 0);
-			mdfld_dsi_send_gen_long_hs(sender,
-						pr2_backlight_control_1, 24, 0);
-			mdfld_dsi_send_gen_long_hs(sender,
-						pr2_mcs_protect_on, 4, 0);
-
-			goto fun_exit;
-		}
+		gpio_direction_output(mipi_reset_gpio, 0);
 	}
-	if (b_gpio_required[dsi_config->pipe]) {
-		gpio_direction_output(gpio_mipi_panel_reset, 0);
-		gpio_set_value_cansleep(gpio_mipi_panel_reset, 0);
 
-		/* HW reset need minmum 3ms */
-		usleep_range(3000, 4000);
+	gpio_set_value_cansleep(mipi_reset_gpio, 0);
+	/* HW reset need minmum 3ms */
+	usleep_range(3000, 4000);
 
-		gpio_direction_output(gpio_mipi_panel_reset, 1);
-		gpio_set_value_cansleep(gpio_mipi_panel_reset, 1);
+	gpio_set_value_cansleep(mipi_reset_gpio, 1);
 
-		/* After reset and Before sending IC init sequence,
-		 * need wait 7ms, this time has confirmed ok by panel vender*/
-		usleep_range(7000, 7100);
-	} else {
-		PSB_DEBUG_ENTRY("pr2 panel reset fail.!");
-	}
-fun_exit:
-	if (b_gpio_required[dsi_config->pipe])
-		PSB_DEBUG_ENTRY("pr2 panel reset successfull.");
-	return 0;
-err:
-	gpio_free(gpio_mipi_panel_reset);
-	PSB_DEBUG_ENTRY("pr2 panel reset fail.!");
+	/* After reset and Before sending IC init sequence,
+	 * need wait 7ms, this time has confirmed ok by panel vender*/
+	usleep_range(7000, 7100);
+
 	return 0;
 }
 
-struct drm_display_mode *pr2_vid_get_config_mode(struct drm_device *dev)
+struct drm_display_mode *pr2_vid_get_config_mode(void)
 {
 	struct drm_display_mode *mode;
-	struct drm_psb_private *dev_priv =
-		(struct drm_psb_private *) dev->dev_private;
-	struct mrst_timing_info *ti = &dev_priv->gct_data.DTD;
-	bool use_gct = false; /*Disable GCT for now*/
-	if (IS_CTP(dev))
-		use_gct = true;
 
 	PSB_DEBUG_ENTRY("\n");
 
@@ -575,84 +544,41 @@ struct drm_display_mode *pr2_vid_get_config_mode(struct drm_device *dev)
 	if (!mode)
 		return NULL;
 
-	if (use_gct) {
-		PSB_DEBUG_ENTRY("gct find MIPI panel.\n");
-		mode->hdisplay = (ti->hactive_hi << 8) | ti->hactive_lo;
-		mode->vdisplay = (ti->vactive_hi << 8) | ti->vactive_lo;
-		mode->hsync_start = mode->hdisplay + \
-				((ti->hsync_offset_hi << 8) | \
-				ti->hsync_offset_lo);
-		mode->hsync_end = mode->hsync_start + \
-				((ti->hsync_pulse_width_hi << 8) | \
-				ti->hsync_pulse_width_lo);
-		mode->htotal = mode->hdisplay + ((ti->hblank_hi << 8) | \
-								ti->hblank_lo);
-		mode->vsync_start = \
-			mode->vdisplay + ((ti->vsync_offset_hi << 8) | \
-						ti->vsync_offset_lo);
-		mode->vsync_end = \
-			mode->vsync_start + ((ti->vsync_pulse_width_hi << 8) | \
-						ti->vsync_pulse_width_lo);
-		mode->vtotal = mode->vdisplay + \
-				((ti->vblank_hi << 8) | ti->vblank_lo);
-		mode->clock = ti->pixel_clock * 10;
-
-		PSB_DEBUG_ENTRY("hdisplay is %d\n", mode->hdisplay);
-		PSB_DEBUG_ENTRY("vdisplay is %d\n", mode->vdisplay);
-		PSB_DEBUG_ENTRY("HSS is %d\n", mode->hsync_start);
-		PSB_DEBUG_ENTRY("HSE is %d\n", mode->hsync_end);
-		PSB_DEBUG_ENTRY("htotal is %d\n", mode->htotal);
-		PSB_DEBUG_ENTRY("VSS is %d\n", mode->vsync_start);
-		PSB_DEBUG_ENTRY("VSE is %d\n", mode->vsync_end);
-		PSB_DEBUG_ENTRY("vtotal is %d\n", mode->vtotal);
-		PSB_DEBUG_ENTRY("clock is %d\n", mode->clock);
-	} else {
-		mode->hdisplay = 800;
-		mode->vdisplay = 1024;
-		mode->hsync_start = 823;
-		mode->hsync_end = 831;
-		mode->htotal = 847;
-		mode->vsync_start = 1031;
-		mode->vsync_end = 1033;
-		mode->vtotal = 1035;
-		mode->vrefresh = 60;
-		mode->clock = mode->vrefresh * mode->vtotal *
-				mode->htotal / 1000;
-	}
+	mode->hdisplay = 800;
+	mode->vdisplay = 1024;
+	mode->hsync_start = 823;
+	mode->hsync_end = 831;
+	mode->htotal = 847;
+	mode->vsync_start = 1031;
+	mode->vsync_end = 1033;
+	mode->vtotal = 1035;
+	mode->vrefresh = 60;
+	mode->clock = mode->vrefresh * mode->vtotal *
+		mode->htotal / 1000;
+	mode->type |= DRM_MODE_TYPE_PREFERRED;
 
 	drm_mode_set_name(mode);
 	drm_mode_set_crtcinfo(mode, 0);
 
-	mode->type |= DRM_MODE_TYPE_PREFERRED;
-
 	return mode;
 }
 
-static int pr2_vid_get_panel_info(struct drm_device *dev,
-				int pipe,
-				struct panel_info *pi)
+static
+void pr2_vid_get_panel_info(int pipe, struct panel_info *pi)
 {
-	if (!dev || !pi)
-		return -EINVAL;
+	PSB_DEBUG_ENTRY("\n");
 
-	pi->width_mm = TMD_PANEL_WIDTH;
-	pi->height_mm = TMD_PANEL_HEIGHT;
-
-	return 0;
+	if (pipe == 0) {
+		pi->width_mm = TMD_PANEL_WIDTH;
+		pi->height_mm = TMD_PANEL_HEIGHT;
+	}
 }
-
 
 void tmd_6x10_vid_init(struct drm_device *dev, struct panel_funcs *p_funcs)
 {
-	if (!dev || !p_funcs) {
-		DRM_ERROR("Invalid parameters\n");
-		return;
-	}
-
 	PSB_DEBUG_ENTRY("\n");
 
-	p_funcs->get_config_mode = &pr2_vid_get_config_mode;
-	p_funcs->update_fb = NULL;
+	p_funcs->get_config_mode = pr2_vid_get_config_mode;
 	p_funcs->get_panel_info = pr2_vid_get_panel_info;
 	p_funcs->reset = mdfld_dsi_pr2_panel_reset;
 	p_funcs->drv_ic_init = mdfld_dsi_pr2_ic_init;

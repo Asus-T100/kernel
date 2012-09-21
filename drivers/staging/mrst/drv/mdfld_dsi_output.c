@@ -200,65 +200,6 @@ void mdfld_dsi_gen_fifo_ready (struct drm_device *dev, u32 gen_fifo_stat_reg, u3
 }
 
 /**
- * Manage the DSI MIPI keyboard and display brightness.
- * FIXME: this is exported to OSPM code. should work out an specific 
- * display interface to OSPM. 
- */
-void mdfld_dsi_brightness_init(struct mdfld_dsi_config *dsi_config, int pipe)
-{
-	struct mdfld_dsi_pkg_sender * sender = mdfld_dsi_get_pkg_sender(dsi_config);
-	struct drm_device * dev = sender->dev;
-	struct drm_psb_private * dev_priv = dev->dev_private;
-	u32 gen_ctrl_val;
-	
-	if(!sender) {
-		DRM_ERROR("No sender found\n");
-	}
-	/* Set default display backlight value to 85% (0xd8)*/
-	mdfld_dsi_send_mcs_short_hs(sender,
-				    write_display_brightness,
-				    0xd8,
-				    1,
-				    MDFLD_DSI_SEND_PACKAGE);
-
-	/* Set minimum brightness setting of CABC function to 20% (0x33)*/
-	mdfld_dsi_send_mcs_short_hs(sender,
-				    write_cabc_min_bright,
-				    0x33,
-				    1,
-				    MDFLD_DSI_SEND_PACKAGE);
-
-	mdfld_dsi_write_hysteresis (dsi_config, pipe);
-	mdfld_dsi_write_display_profile (dsi_config, pipe);
-	mdfld_dsi_write_kbbc_profile (dsi_config, pipe);
-	mdfld_dsi_write_gamma_setting (dsi_config, pipe);
-
-	/* Enable backlight or/and LABC */
-	gen_ctrl_val = BRIGHT_CNTL_BLOCK_ON | DISPLAY_DIMMING_ON| BACKLIGHT_ON;
-	if (LABC_control == 1 || CABC_control == 1)
-		gen_ctrl_val |= DISPLAY_DIMMING_ON| DISPLAY_BRIGHTNESS_AUTO | GAMMA_AUTO;
-
-	if (LABC_control == 1)
-		gen_ctrl_val |= AMBIENT_LIGHT_SENSE_ON;
-
-	dev_priv->mipi_ctrl_display = gen_ctrl_val;
-
-	mdfld_dsi_send_mcs_short_hs(sender,
-				    write_ctrl_display,
-				    (u8)gen_ctrl_val,
-				    1,
-				    MDFLD_DSI_SEND_PACKAGE);
-
-	if (CABC_control == 0)
-		return;
-	mdfld_dsi_send_mcs_short_hs(sender,
-				    write_ctrl_cabc,
-				    UI_IMAGE,
-				    1,
-				    MDFLD_DSI_SEND_PACKAGE);
-}
-
-/**
  * Manage the mipi display brightness.
  * TODO: refine this interface later
  */
@@ -361,19 +302,6 @@ int mdfld_dsi_get_power_mode(struct mdfld_dsi_config *dsi_config,
 						 transmission, 1);
 }
 
-int mdfld_dsi_get_diagnostic_result(struct mdfld_dsi_config *dsi_config,
-					u8 *result,
-					u8 transmission)
-{
-	if (!dsi_config || !result) {
-		DRM_ERROR("Invalid parameter\n");
-		return -EINVAL;
-	}
-
-	return mdfld_dsi_get_panel_status(dsi_config, 0x0f, result,
-					  transmission, 1);
-}
-
 static void mdfld_dsi_connector_save(struct drm_connector * connector)
 {
 	PSB_DEBUG_ENTRY("\n");
@@ -391,7 +319,6 @@ static enum drm_connector_status mdfld_dsi_connector_detect
 		= to_psb_intel_output(connector);
 	struct mdfld_dsi_connector *dsi_connector
 		= MDFLD_DSI_CONNECTOR(psb_output);
-	struct drm_device *dev = connector->dev;
 
 	PSB_DEBUG_ENTRY("\n");
 
@@ -875,57 +802,6 @@ mdfld_dsi_get_configuration_mode(struct mdfld_dsi_config * dsi_config, int pipe)
 	return mode;
 }
 
-int mdfld_dsi_panel_reset(struct mdfld_dsi_config *dsi_config, int reset_from)
-{
-	unsigned gpio;
-	int ret = 0;
-	int pipe = 0;
-	static bool b_gpio_required[PSB_NUM_PIPE] = {0};
-	pipe = dsi_config->pipe;
-	switch (pipe) {
-	case 0:
-		gpio = 128;
-		break;
-	case 2:
-		gpio = 34;
-		break;
-	default:
-		DRM_ERROR("Invalid output\n");
-		return -EINVAL;
-	}
-	if (reset_from == RESET_FROM_BOOT_UP) {
-		b_gpio_required[pipe] = false;
-		ret = gpio_request(gpio, "gfx");
-		if (ret) {
-			DRM_ERROR("gpio_rqueset failed\n");
-			goto gpio_error;
-		}
-		b_gpio_required[pipe] = true;
-
-	}
-
-	if (b_gpio_required[pipe]) {
-		ret = gpio_direction_output(gpio, 1);
-		if (ret) {
-			DRM_ERROR("gpio_direction_output failed\n");
-			goto gpio_error;
-		}
-
-		gpio_get_value(128);
-	} else {
-		PSB_DEBUG_ENTRY("try to reset panel before gpio required.!!!");
-	}
-
-	if (b_gpio_required[pipe])
-		PSB_DEBUG_ENTRY("panel reset successfull.");
-	return ret;
-gpio_error:
-	gpio_free(gpio);
-	PSB_DEBUG_ENTRY("Panel reset unsuccessfull!!!\n");
-
-	return ret;
-}
-
 /*
  * MIPI output init
  * @dev drm device
@@ -936,10 +812,9 @@ gpio_error:
  * initialization of DSI output on @pipe 
  */
 int mdfld_dsi_output_init(struct drm_device *dev,
-			   int pipe, 
-			   struct mdfld_dsi_config *config,
-			   struct panel_funcs *p_cmd_funcs,
-			   struct panel_funcs *p_vid_funcs)
+		int pipe,
+		struct mdfld_dsi_config *config,
+		struct panel_funcs *p_funcs)
 {
 	struct mdfld_dsi_config * dsi_config;
 	struct mdfld_dsi_connector * dsi_connector;
@@ -992,14 +867,12 @@ int mdfld_dsi_output_init(struct drm_device *dev,
 	dsi_config->dev = dev;
 	
 	/*init fixed mode basing on DSI config type*/
-	if(dsi_config->type == MDFLD_DSI_ENCODER_DBI) {
-		dsi_config->fixed_mode = p_cmd_funcs->get_config_mode(dev);
-		if(p_cmd_funcs->get_panel_info(dev, pipe, &dsi_panel_info))
-			goto dsi_init_err0;
+	if (dsi_config->type == MDFLD_DSI_ENCODER_DBI) {
+		dsi_config->fixed_mode = p_funcs->get_config_mode();
+		p_funcs->get_panel_info(pipe, &dsi_panel_info);
 	} else if(dsi_config->type == MDFLD_DSI_ENCODER_DPI) {
-		dsi_config->fixed_mode = p_vid_funcs->get_config_mode(dev);
-		if(p_vid_funcs->get_panel_info(dev, pipe, &dsi_panel_info))
-			goto dsi_init_err0;
+		dsi_config->fixed_mode = p_funcs->get_config_mode();
+		p_funcs->get_panel_info(pipe, &dsi_panel_info);
 	}
 
 	width_mm = dsi_panel_info.width_mm;
@@ -1063,8 +936,8 @@ int mdfld_dsi_output_init(struct drm_device *dev,
 	}
 
 	/*create DBI & DPI encoders*/
-	if(p_cmd_funcs) {
-		encoder = mdfld_dsi_dbi_init(dev, dsi_connector, p_cmd_funcs);
+	if (dsi_config->type == MDFLD_DSI_ENCODER_DBI) {
+		encoder = mdfld_dsi_dbi_init(dev, dsi_connector, p_funcs);
 		if(!encoder) {
 			DRM_ERROR("Create DBI encoder failed\n");
 			goto dsi_init_err2;
@@ -1077,10 +950,8 @@ int mdfld_dsi_output_init(struct drm_device *dev,
 	
 		if (pipe == 0)
 			dev_priv->encoder0 = encoder;
-	}
-	
-	if(p_vid_funcs) {
-		encoder = mdfld_dsi_dpi_init(dev, dsi_connector, p_vid_funcs);
+	} else if (dsi_config->type == MDFLD_DSI_ENCODER_DPI) {
+		encoder = mdfld_dsi_dpi_init(dev, dsi_connector, p_funcs);
 		if(!encoder) {
 			DRM_ERROR("Create DPI encoder failed\n");
 			goto dsi_init_err2;

@@ -168,8 +168,6 @@ extern int pnw_cmdbuf_video(struct drm_file *priv,
 			    struct psb_ttm_fence_rep *fence_arg);
 extern int pnw_wait_topaz_idle(struct drm_device *dev);
 extern int pnw_check_topaz_idle(struct drm_device *dev);
-extern void pnw_unmap_topaz_reg(struct drm_device *dev);
-extern void pnw_map_topaz_reg(struct drm_device *dev);
 extern int pnw_topaz_restore_mtx_state(struct drm_device *dev);
 extern void pnw_topaz_enableirq(struct drm_device *dev);
 extern void pnw_topaz_disableirq(struct drm_device *dev);

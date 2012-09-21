@@ -1,10 +1,10 @@
 /*
- * Copyright (c) 2010 Intel Corporation
+ * Copyright (c)  2012 Intel Corporation
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
  * to deal in the Software without restriction, including without limitation
- * the rights to use, copy, modify, merge, publish, distribute, sublicense,
+ * the rights to use, copy, modify, merge, publish, distribute, sublicensen
  * and/or sell copies of the Software, and to permit persons to whom the
  * Software is furnished to do so, subject to the following conditions:
  *
@@ -21,23 +21,12 @@
  * DEALINGS IN THE SOFTWARE.
  *
  * Authors:
- *	Austin Hu <austin.hu@intel.com>
+ * Geng Xiujun <xiujun.geng@intel.com>
  */
 
-/*
- * TI HDMI COMPANION CHIP (TPD12S015) used for Intel CloverView SoC.
- */
-#ifndef __MDFLD_TI_TPD_H__
-#define __MDFLD_TI_TPD_H__
+#ifndef __H_GI_RENESAS_CMD_H__
+#define __H_GI_RENESAS_CMD_H__
 
-#include <drm/drmP.h>
+void gi_renesas_cmd_init(struct drm_device *, struct panel_funcs *);
 
-#define TI_TPD_PCI_DEVICE_ID 0x901
-#define CLV_TI_HPD_GPIO_PIN 43
-#define CLV_HDMI_LS_OE_GPIO_PIN 91
-
-int ti_tpd_regsiter_driver(void);
-int ti_tpd_unregister_driver(void);
-extern void hpd_notify_um(struct drm_device *dev);
-
-#endif /* __MDFLD_TI_TPD_H__ */
+#endif

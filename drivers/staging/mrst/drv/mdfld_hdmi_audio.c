@@ -21,11 +21,8 @@
 #include <drm/drmP.h>
 #include "psb_drv.h"
 #include "psb_intel_reg.h"
-#include "psb_intel_hdmi_reg.h"
-#include "psb_intel_hdmi_edid.h"
-#include "psb_intel_hdmi.h"
 #include "mdfld_hdmi_audio_if.h"
-
+#include "android_hdmi.h"
 
 /*
  * Audio register range 0x69000 to 0x69117
@@ -52,8 +49,6 @@ static int mdfld_hdmi_audio_write (uint32_t reg, uint32_t val)
 {
 	struct drm_device *dev = hdmi_priv->dev;
 	int ret = 0;
-	struct drm_psb_private *dev_priv =
-		(struct drm_psb_private *) dev->dev_private;
 
 	if (hdmi_priv->monitor_type == MONITOR_TYPE_DVI)
 		return 0;
@@ -74,8 +69,6 @@ static int mdfld_hdmi_audio_write (uint32_t reg, uint32_t val)
 static int mdfld_hdmi_audio_read (uint32_t reg, uint32_t *val)
 {
 	struct drm_device *dev = hdmi_priv->dev;
-	struct drm_psb_private *dev_priv =
-		(struct drm_psb_private *) dev->dev_private;
 	int ret = 0;
 
 	if (hdmi_priv->monitor_type == MONITOR_TYPE_DVI)
@@ -124,7 +117,7 @@ static int mdfld_hdmi_audio_get_caps (enum had_caps_list get_element, void *capa
 
     switch (get_element) {
     case HAD_GET_ELD:
-        memcpy(capabilities, &(hdmi_priv->eeld), sizeof(hdmi_eeld_t));
+	ret = android_hdmi_get_eld(dev, capabilities);
         break;
     case HAD_GET_SAMPLING_FREQ:
         memcpy(capabilities, &(dev_priv->tmds_clock_khz), sizeof(uint32_t));
@@ -155,13 +148,13 @@ static int mdfld_hdmi_audio_set_caps (enum had_caps_list set_element, void *capa
         hdmib = REG_READ(hdmi_priv->hdmib_reg);
 
 	if (hdmib & HDMIB_PORT_EN)
-		hdmib |= HDMI_AUDIO_ENABLE;
+		hdmib |= HDMIB_AUDIO_ENABLE;
 
         REG_WRITE(hdmi_priv->hdmib_reg, hdmib);
         REG_READ(hdmi_priv->hdmib_reg);
         break;
     case HAD_SET_DISABLE_AUDIO:
-        hdmib = REG_READ(hdmi_priv->hdmib_reg) & ~HDMI_AUDIO_ENABLE;
+	hdmib = REG_READ(hdmi_priv->hdmib_reg) & ~HDMIB_AUDIO_ENABLE;
         REG_WRITE(hdmi_priv->hdmib_reg, hdmib);
         REG_READ(hdmi_priv->hdmib_reg);
         break;

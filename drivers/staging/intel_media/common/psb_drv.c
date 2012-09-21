@@ -51,12 +51,8 @@
 #include "mdfld_gl3.h"
 #endif
 
-#ifdef CONFIG_MDFD_HDMI
-#include "mdfld_msic.h"
-#include "mdfld_ti_tpd.h"
-#endif
-#include "psb_intel_hdmi.h"
 #include "otm_hdmi.h"
+#include "android_hdmi.h"
 
 /*IMG headers*/
 #include "pvr_drm_shared.h"
@@ -70,8 +66,10 @@
 #include "mdfld_csc.h"
 #include "mdfld_dsi_dbi_dsr.h"
 #include "mdfld_dsi_pkg_sender.h"
+
+#define HDMI_MONITOR_NAME_LENGTH 20
+
 int drm_psb_debug;
-int psb_video_fabric_debug;
 int drm_psb_enable_cabc = 1;
 int drm_psb_enable_gamma;
 int drm_psb_enable_color_conversion;
@@ -129,7 +127,6 @@ MODULE_PARM_DESC(enable_color_conversion, "Enable display side color conversion"
 MODULE_PARM_DESC(enable_gamma, "Enable display side gamma");
 
 module_param_named(debug, drm_psb_debug, int, 0600);
-module_param_named(fabric_debug, psb_video_fabric_debug, int, 0600);
 module_param_named(psb_enable_cabc, drm_psb_enable_cabc, int, 0600);
 module_param_named(enable_color_conversion, drm_psb_enable_color_conversion, int, 0600);
 module_param_named(enable_gamma, drm_psb_enable_gamma, int, 0600);
@@ -593,31 +590,6 @@ static struct drm_ioctl_desc psb_ioctls[] = {
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_SET_CSC, psb_set_csc_ioctl, DRM_AUTH),
 };
 
-static void get_ci_info(struct drm_psb_private *dev_priv)
-{
-	struct pci_dev *pdev;
-
-	pdev = pci_get_subsys(0x8086, 0x080b, 0, 0, NULL);
-	if (pdev == NULL) {
-		/* IF no pci_device we set size & addr to 0, no ci
-		 * share buffer can be created */
-		dev_priv->ci_region_start = 0;
-		dev_priv->ci_region_size = 0;
-		printk(KERN_ERR "can't find CI device, no ci share buffer\n");
-		return;
-	}
-
-	dev_priv->ci_region_start = pci_resource_start(pdev, 1);
-	dev_priv->ci_region_size = pci_resource_len(pdev, 1);
-
-	PSB_DEBUG_ENTRY("ci_region_start %x ci_region_size %d\n",
-	       dev_priv->ci_region_start, dev_priv->ci_region_size);
-
-	pci_dev_put(pdev);
-
-	return;
-}
-
 static void get_imr_info(struct drm_psb_private *dev_priv)
 {
 	u32 high, low, start, end;
@@ -655,16 +627,24 @@ static void psb_lastclose(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *) dev->dev_private;
+	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
 
-	return;
-
-	if (!dev->dev_private)
+	if (!dev_priv)
 		return;
 
+	if (msvdx_priv) {
+		mutex_lock(&msvdx_priv->msvdx_mutex);
+		if (dev_priv->decode_context.buffers) {
+			vfree(dev_priv->decode_context.buffers);
+			dev_priv->decode_context.buffers = NULL;
+		}
+		mutex_unlock(&msvdx_priv->msvdx_mutex);
+	}
+
 	mutex_lock(&dev_priv->cmdbuf_mutex);
-	if (dev_priv->context.buffers) {
-		vfree(dev_priv->context.buffers);
-		dev_priv->context.buffers = NULL;
+	if (dev_priv->encode_context.buffers) {
+		vfree(dev_priv->encode_context.buffers);
+		dev_priv->encode_context.buffers = NULL;
 	}
 	mutex_unlock(&dev_priv->cmdbuf_mutex);
 }
@@ -674,7 +654,6 @@ static void psb_do_takedown(struct drm_device *dev)
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *) dev->dev_private;
 	struct ttm_bo_device *bdev = &dev_priv->bdev;
-
 
 	if (dev_priv->have_mem_mmu) {
 		ttm_bo_clean_mm(bdev, DRM_PSB_MEM_MMU);
@@ -686,10 +665,6 @@ static void psb_do_takedown(struct drm_device *dev)
 		dev_priv->have_tt = 0;
 	}
 
-	if (dev_priv->have_camera) {
-		ttm_bo_clean_mm(bdev, TTM_PL_CI);
-		dev_priv->have_camera = 0;
-	}
 	if (dev_priv->have_imr) {
 		ttm_bo_clean_mm(bdev, TTM_PL_IMR);
 		dev_priv->have_imr = 0;
@@ -891,254 +866,130 @@ bool mid_get_pci_revID(struct drm_psb_private *dev_priv)
 	return true;
 }
 
-bool mrst_get_vbt_data(struct drm_psb_private *dev_priv)
+static
+bool intel_mid_get_vbt_data(struct drm_psb_private *dev_priv)
 {
-	struct mrst_vbt *pVBT = &dev_priv->vbt_data;
 	u32 platform_config_address;
-	u16 new_size;
 	u8 *pVBT_virtual;
-	u8 bpi;
+	u8 primary_panel;
 	u8 number_desc = 0;
-	struct mrst_timing_info *dp_ti = &dev_priv->gct_data.DTD;
-	struct gct_r10_timing_info ti;
-	void *pGCT;
+	u8 panel_name[17] = {0};
+	struct intel_mid_vbt *pVBT = &dev_priv->vbt_data;
+	void *panel_desc;
 	struct pci_dev *pci_gfx_root = pci_get_bus_and_slot(0, PCI_DEVFN(2, 0));
-	mdfld_dsi_encoder_t mipi_mode = MDFLD_DSI_ENCODER_DBI;
+	mdfld_dsi_encoder_t mipi_mode;
+
+	PSB_DEBUG_ENTRY("\n");
 
 	/*get the address of the platform config vbt, B0:D2:F0;0xFC */
 	pci_read_config_dword(pci_gfx_root, 0xFC, &platform_config_address);
 	pci_dev_put(pci_gfx_root);
-	DRM_INFO("drm platform config address is %x\n",
-		 platform_config_address);
 
-	/* check for platform config address == 0. */
-	/* this means fw doesn't support vbt */
-
+	/**
+	 * if platform_config_address is 0,
+	 * that means FW doesn't support VBT
+	 */
 	if (platform_config_address == 0) {
-		pVBT->Size = 0;
+		pVBT->size = 0;
 		return false;
 	}
 
-	/* get the virtual address of the vbt */
+	/*copy vbt data to local memory*/
 	pVBT_virtual = ioremap(platform_config_address, sizeof(*pVBT));
-
 	memcpy(pVBT, pVBT_virtual, sizeof(*pVBT));
 	iounmap(pVBT_virtual); /* Free virtual address space */
 
-	PSB_DEBUG_ENTRY("GCT Revision is %x\n", pVBT->Revision);
-
-	switch (pVBT->Revision) {
-	case 0:
-		pVBT->mrst_gct = NULL;
-		pVBT->mrst_gct = \
-				 ioremap(platform_config_address + sizeof(*pVBT) - 4,
-					 pVBT->Size - sizeof(*pVBT) + 4);
-		pGCT = pVBT->mrst_gct;
-		bpi = ((struct mrst_gct_v1 *)pGCT)->PD.BootPanelIndex;
-		dev_priv->gct_data.bpi = bpi;
-		dev_priv->gct_data.pt =
-			((struct mrst_gct_v1 *)pGCT)->PD.PanelType;
-		memcpy(&dev_priv->gct_data.DTD,
-		       &((struct mrst_gct_v1 *)pGCT)->panel[bpi].DTD,
-		       sizeof(struct mrst_timing_info));
-		dev_priv->gct_data.Panel_Port_Control =
-			((struct mrst_gct_v1 *)pGCT)->panel[bpi].Panel_Port_Control;
-		dev_priv->gct_data.Panel_MIPI_Display_Descriptor =
-			((struct mrst_gct_v1 *)pGCT)->panel[bpi].Panel_MIPI_Display_Descriptor;
-		break;
-	case 1:
-		pVBT->mrst_gct = NULL;
-		pVBT->mrst_gct = \
-				 ioremap(platform_config_address + sizeof(*pVBT) - 4,
-					 pVBT->Size - sizeof(*pVBT) + 4);
-		pGCT = pVBT->mrst_gct;
-		bpi = ((struct mrst_gct_v2 *)pGCT)->PD.BootPanelIndex;
-		dev_priv->gct_data.bpi = bpi;
-		dev_priv->gct_data.pt =
-			((struct mrst_gct_v2 *)pGCT)->PD.PanelType;
-		memcpy(&dev_priv->gct_data.DTD,
-		       &((struct mrst_gct_v2 *)pGCT)->panel[bpi].DTD,
-		       sizeof(struct mrst_timing_info));
-		dev_priv->gct_data.Panel_Port_Control =
-			((struct mrst_gct_v2 *)pGCT)->panel[bpi].Panel_Port_Control;
-		dev_priv->gct_data.Panel_MIPI_Display_Descriptor =
-			((struct mrst_gct_v2 *)pGCT)->panel[bpi].Panel_MIPI_Display_Descriptor;
-		break;
-	case 0x10:
-		/*header definition changed from rev 01 (v2) to rev 10h. */
-		/*so, some values have changed location*/
-		new_size = pVBT->Checksum; /*checksum contains lo size byte*/
-		/*LSB of mrst_gct contains hi size byte*/
-		new_size |= ((0xff & (unsigned int)pVBT->mrst_gct)) << 8;
-
-		pVBT->Checksum = pVBT->Size; /*size contains the checksum*/
-		if (new_size > 0xff)
-			pVBT->Size = 0xff; /*restrict size to 255*/
-		else
-			pVBT->Size = new_size;
-
-		/* number of descriptors defined in the GCT */
-		number_desc = ((0xff00 & (unsigned int)pVBT->mrst_gct)) >> 8;
-		bpi = ((0xff0000 & (unsigned int)pVBT->mrst_gct)) >> 16;
-		pVBT->mrst_gct = NULL;
-		pVBT->mrst_gct = \
-				 ioremap(platform_config_address + GCT_R10_HEADER_SIZE,
-					 GCT_R10_DISPLAY_DESC_SIZE * number_desc);
-		pGCT = pVBT->mrst_gct;
-		pGCT = (u8 *)pGCT + (bpi * GCT_R10_DISPLAY_DESC_SIZE);
-		dev_priv->gct_data.bpi = bpi; /*save boot panel id*/
-
-		/*copy the GCT display timings into a temp structure*/
-		memcpy(&ti, pGCT, sizeof(struct gct_r10_timing_info));
-
-		/*now copy the temp struct into the dev_priv->gct_data*/
-		dp_ti->pixel_clock = ti.pixel_clock;
-		dp_ti->hactive_hi = ti.hactive_hi;
-		dp_ti->hactive_lo = ti.hactive_lo;
-		dp_ti->hblank_hi = ti.hblank_hi;
-		dp_ti->hblank_lo = ti.hblank_lo;
-		dp_ti->hsync_offset_hi = ti.hsync_offset_hi;
-		dp_ti->hsync_offset_lo = ti.hsync_offset_lo;
-		dp_ti->hsync_pulse_width_hi = ti.hsync_pulse_width_hi;
-		dp_ti->hsync_pulse_width_lo = ti.hsync_pulse_width_lo;
-		dp_ti->vactive_hi = ti.vactive_hi;
-		dp_ti->vactive_lo = ti.vactive_lo;
-		dp_ti->vblank_hi = ti.vblank_hi;
-		dp_ti->vblank_lo = ti.vblank_lo;
-		dp_ti->vsync_offset_hi = ti.vsync_offset_hi;
-		dp_ti->vsync_offset_lo = ti.vsync_offset_lo;
-		dp_ti->vsync_pulse_width_hi = ti.vsync_pulse_width_hi;
-		dp_ti->vsync_pulse_width_lo = ti.vsync_pulse_width_lo;
-
-		/*mov the MIPI_Display_Descriptor data from GCT to dev priv*/
-		dev_priv->gct_data.Panel_MIPI_Display_Descriptor =
-			*((u8 *)pGCT + 0x0d);
-		dev_priv->gct_data.Panel_MIPI_Display_Descriptor |=
-			(*((u8 *)pGCT + 0x0e)) << 8;
-		mipi_mode =
-			(dev_priv->gct_data.Panel_MIPI_Display_Descriptor &
-			 0x40) ? MDFLD_DSI_ENCODER_DPI : MDFLD_DSI_ENCODER_DBI;
-		break;
-	default:
-		PSB_DEBUG_ENTRY("Unknown revision of GCT!\n");
-		pVBT->Size = 0;
+	if (strncmp(pVBT->signature, "$GCT", 4)) {
+		DRM_ERROR("wrong GCT signature\n");
 		return false;
 	}
 
-	if (IS_MDFLD(dev_priv->dev)) {
-		if (PanelID == GCT_DETECT) {
-			if (IS_CTP(dev_priv->dev)) {
-				if (dev_priv->gct_data.bpi == CLV_GCT_NDX_STD) {
-					PSB_DEBUG_ENTRY(
-						"[GFX] TMD_6X10 panel Detected\n");
-					dev_priv->panel_id = TMD_6X10_VID;
-					PanelID = TMD_6X10_VID;
-				} else if (dev_priv->gct_data.bpi ==
-						CLV_GCT_NDX_OEM) {
-					PSB_DEBUG_ENTRY(
-						"[GFX] H8C7 panel Detected.\n");
-					dev_priv->panel_id = H8C7_VID;
-					PanelID = H8C7_VID;
-#ifdef CONFIG_SUPPORT_MIPI_H8C7_CMD_DISPLAY
-					dev_priv->panel_id = H8C7_CMD;
-					PanelID = H8C7_CMD;
-#endif
+	PSB_DEBUG_ENTRY("GCT Revision is %#x\n", pVBT->revision);
 
-				} else {
-					PSB_DEBUG_ENTRY(
-						"[GFX] Default panel H8C7.\n");
-					dev_priv->panel_id = H8C7_VID;
-					PanelID = H8C7_VID;
-				}
-			} else if (IS_MDFLD_OLD(dev_priv->dev)) {
-				switch (dev_priv->gct_data.bpi) {
-				case PNW_GCT_NDX_OEM:
-					PSB_DEBUG_ENTRY("[GFX] Customer Panel"
-							"Detected.\n");
-					/*
-					 * Set Enzo command mode panel as
-					 * default for customer panel.
-					 */
-					/*
-					 * FIXME: need to distinguish different
-					 * customer panels.
-					 */
-					if (mipi_mode ==
-							MDFLD_DSI_ENCODER_DBI) {
-						dev_priv->panel_id =
-							AUO_SC1_CMD;
-						PSB_DEBUG_ENTRY("AUO_SC1_CMD"
-								"Panel\n");
-					} else {
-						dev_priv->panel_id =
-							AUO_SC1_VID;
-						PSB_DEBUG_ENTRY("AUO_SC1_VID"
-								"Panel\n");
-					}
-
-#ifdef CONFIG_SUPPORT_AUO_MIPI_SC1_DISPLAY
-					dev_priv->panel_id = AUO_SC1_VID;
-					PSB_DEBUG_ENTRY("AUO_SC1_VID Panel\n");
-#endif
-
-#ifdef CONFIG_SUPPORT_AUO_MIPI_SC1_COMMAND_MODE_DISPLAY
-					dev_priv->panel_id = AUO_SC1_CMD;
-					PSB_DEBUG_ENTRY("AUO_SC1_CMD Panel\n");
-#endif
-					break;
-				case PNW_GCT_NDX_STD:
-					PSB_DEBUG_ENTRY("Standard (PRx) Panel"
-							"Detected.\n");
-					/*
-					 * Set TMD 600 x 1024 panel as default
-					 * for standard internal (PRx) panel.
-					 */
-					dev_priv->panel_id = TMD_6X10_VID;
-					PanelID = TMD_6X10_VID;
-
-#ifdef CONFIG_SUPPORT_TMD_MIPI_600X1024_DISPLAY
-					dev_priv->panel_id = TMD_6X10_VID;
-					PSB_DEBUG_ENTRY("TMD_6X10_VID Panel\n");
-#endif
-#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
-					dev_priv->panel_id = TC_35876X_VID;
-					PSB_DEBUG_ENTRY("TC_35876X_VID.\n");
-#endif
-					break;
-				default:
-					PSB_DEBUG_ENTRY("No Panel type"
-							"Detected.\n");
-					dev_priv->panel_id = TMD_6X10_VID;
-					PanelID = TMD_6X10_VID;
-
-					/* FIXME: temporarily move the GI CONFIG support here
-					 * because the gct support on GI phone is not clear enough,
-					 * from the print log, gct_data.bpi read from IAFW is 4.
-					 *
-					 * This part can be moved after the GCT table is confirmed.
-					 * */
-#ifdef CONFIG_SUPPORT_GI_MIPI_SONY_DISPLAY
-					dev_priv->panel_id = GI_SONY_VID;
-					PSB_DEBUG_ENTRY("GI_SONY_VID.\n");
-					printk("GI_SONY_VID.\n");
-#endif
-
-#ifdef CONFIG_SUPPORT_GI_MIPI_SONY_COMMAND_MODE_DISPLAY
-					dev_priv->panel_id = GI_SONY_CMD;
-					PSB_DEBUG_ENTRY("GI_SONY_CMD.\n");
-#endif
-					break;
-				}
-			}
-		} else {
-			PSB_DEBUG_ENTRY("[GFX] Panel Parameter Passed in"
-					"through cmd line\n");
-			dev_priv->panel_id = PanelID;
-		}
+	/**
+	 * CTP use separate FW, and it doesn't support panel ID
+	 */
+	if (IS_CTP(dev_priv->dev)) {
+		PSB_DEBUG_ENTRY("H8C7_CMD\n");
+		dev_priv->panel_id = H8C7_CMD;
+		goto out;
 	}
 
+	number_desc = pVBT->num_of_panel_desc;
+	primary_panel = pVBT->primary_panel_idx;
+	dev_priv->gct_data.bpi = primary_panel; /*save boot panel id*/
+
+	/**
+	 * current we just need parse revision 0x10 and 0x11
+	 */
+	switch (pVBT->revision) {
+	case 0x10:
+		pVBT->panel_descs =
+			ioremap(platform_config_address + GCT_R10_HEADER_SIZE,
+				GCT_R10_DISPLAY_DESC_SIZE * number_desc);
+		panel_desc = (u8 *)pVBT->panel_descs +
+			(primary_panel * GCT_R10_DISPLAY_DESC_SIZE);
+
+		mipi_mode =
+		((struct gct_r10_panel_desc *)panel_desc)->display.mode ? \
+			MDFLD_DSI_ENCODER_DPI : MDFLD_DSI_ENCODER_DBI;
+
+		break;
+	case 0x11:
+		/* number of descriptors defined in the GCT */
+		pVBT->panel_descs =
+			ioremap(platform_config_address + GCT_R11_HEADER_SIZE,
+				GCT_R11_DISPLAY_DESC_SIZE * number_desc);
+		panel_desc = (u8 *)pVBT->panel_descs +
+			(primary_panel * GCT_R11_DISPLAY_DESC_SIZE);
+
+		strncpy(panel_name, panel_desc, 16);
+
+		mipi_mode =
+		((struct gct_r11_panel_desc *)panel_desc)->display.mode ? \
+			MDFLD_DSI_ENCODER_DPI : MDFLD_DSI_ENCODER_DBI;
+
+		break;
+	default:
+		PSB_DEBUG_ENTRY("NOT supported GCT revision\n");
+		pVBT->size = 0;
+		return false;
+	}
+
+	switch (primary_panel) {
+	case GCT_TMD_PRX:
+		PSB_DEBUG_ENTRY("TMD_6X10_VID panel\n");
+		dev_priv->panel_id = TMD_6X10_VID;
+		break;
+	case GCT_RR:
+		PSB_DEBUG_ENTRY("TC35876X_VID panel\n");
+		dev_priv->panel_id = TC35876X_VID;
+		break;
+	case GCT_LEX_PRX:
+		PSB_DEBUG_ENTRY("LEX PRX\n");
+
+		if (mipi_mode == MDFLD_DSI_ENCODER_DPI) {
+			PSB_DEBUG_ENTRY("GI_SONY_VID panel\n");
+			dev_priv->panel_id = GI_SONY_VID;
+		} else {
+			PSB_DEBUG_ENTRY("GI_SONY_CMD panel\n");
+			dev_priv->panel_id = GI_SONY_CMD;
+		}
+		break;
+	case GCT_LEX_DV1:
+		PSB_DEBUG_ENTRY("GI_RENESAS_CMD panel\n");
+		dev_priv->panel_id = GI_RENESAS_CMD;
+		break;
+	default:
+		DRM_ERROR("unsupported panel id\n");
+		return false;
+		break;
+	}
+
+out:
 	PanelID = dev_priv->panel_id;
-	printk(KERN_ALERT"PanelID:%d\n", PanelID);
+	DRM_INFO("PanelID: %d\n", PanelID);
+
 	return true;
 }
 
@@ -1201,20 +1052,7 @@ void hdmi_do_audio_wq(struct work_struct *work)
 	*/
 
 	DRM_INFO("hdmi_do_audio_wq: Checking for HDMI connection at boot\n");
-
-	if (IS_MDFLD_OLD(dev_priv->dev)) {
-		intel_scu_ipc_ioread8(MSIC_HDMI_STATUS, &data);
-
-		if (data & HPD_SIGNAL_STATUS)
-			hdmi_hpd_connected = true;
-		else
-			hdmi_hpd_connected = false;
-	} else if (IS_CTP(dev_priv->dev)) {
-		if (gpio_get_value(CLV_TI_HPD_GPIO_PIN) == 0)
-			hdmi_hpd_connected = false;
-		else
-			hdmi_hpd_connected = true;
-	}
+	hdmi_hpd_connected = android_hdmi_is_connected(dev_priv->dev);
 
 	if (hdmi_hpd_connected) {
 		DRM_INFO("hdmi_do_audio_wq: HDMI plugged in\n");
@@ -1242,12 +1080,10 @@ static int psb_do_init(struct drm_device *dev)
 
 	int ret = -ENOMEM;
 
-
 	/*
 	 * Initialize sequence numbers for the different command
 	 * submission mechanisms.
 	 */
-
 	dev_priv->sequence[PSB_ENGINE_DECODE] = 1;
 	dev_priv->sequence[LNC_ENGINE_ENCODE] = 0;
 
@@ -1519,8 +1355,12 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	if (unlikely(dev_priv->tdev == NULL))
 		goto out_err;
 	mutex_init(&dev_priv->cmdbuf_mutex);
-	INIT_LIST_HEAD(&dev_priv->context.validate_list);
-	/* INIT_LIST_HEAD(&dev_priv->context.kern_validate_list); */
+	INIT_LIST_HEAD(&dev_priv->decode_context.validate_list);
+	INIT_LIST_HEAD(&dev_priv->encode_context.validate_list);
+	/*
+	INIT_LIST_HEAD(&dev_priv->decode_context.kern_validate_list);
+	INIT_LIST_HEAD(&dev_priv->encode_context.kern_validate_list);
+	*/
 #endif
 
 	mutex_init(&dev_priv->temp_mem);
@@ -1605,7 +1445,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 
 	if (IS_MID(dev)) {
 		mrst_get_fuse_settings(dev);
-		mrst_get_vbt_data(dev_priv);
+		intel_mid_get_vbt_data(dev_priv);
 		mid_get_pci_revID(dev_priv);
 	}
 
@@ -1687,22 +1527,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 
 #ifdef CONFIG_MDFD_VIDEO_DECODE
 	/*
-	 * Make MSVDX/TOPAZ MMU aware of the CI stolen memory area.
-	 */
-	if (dev_priv->pg->ci_stolen_size != 0) {
-		down_read(&pg->sem);
-		ret = psb_mmu_insert_pfn_sequence(psb_mmu_get_default_pd
-						  (dev_priv->mmu),
-						  dev_priv->ci_region_start >> PAGE_SHIFT,
-						  pg->mmu_gatt_start + pg->ci_start,
-						  pg->ci_stolen_size >> PAGE_SHIFT, 0);
-		up_read(&pg->sem);
-		if (ret)
-			goto out_err;
-	}
-
-	/*
-	 * Make MSVDX/TOPAZ MMU aware of the rar stolen memory area.
+	 * Make MSVDX/TOPAZ MMU aware of the imr stolen memory area.
 	 */
 	if (dev_priv->pg->rar_stolen_size != 0) {
 		down_read(&pg->sem);
@@ -4053,24 +3878,7 @@ static int psb_hdmi_power_write(struct file *file, const char *buffer,
 		hdmi_power = buf[0] - '0';
 		PSB_DEBUG_ENTRY(" hdmi_power: %d\n", hdmi_power);
 
-		if (!hdmi_power) {
-			intel_scu_ipc_iowrite8(MSIC_VHDMICNT, VHDMI_OFF);
-			intel_scu_ipc_iowrite8(MSIC_VCC330CNT, VCC330_OFF);
-		} else {
-			/* turn on HDMI power rails. These will be on in all non-S0iX
-			states so that HPD and connection status will work. VCC330 will
-			have ~1.7mW usage during idle states when the display is
-			active.*/
-			intel_scu_ipc_iowrite8(MSIC_VCC330CNT, VCC330_ON);
-
-			/* MSIC documentation requires that there be a 500us delay
-			after enabling VCC330 before you can enable VHDMI */
-			usleep_range(500, 1000);
-
-			/* Extend VHDMI switch de-bounce time, to avoid redundant MSIC
-			 * VREG/HDMI interrupt during HDMI cable plugged in/out. */
-			intel_scu_ipc_iowrite8(MSIC_VHDMICNT, VHDMI_ON | VHDMI_DB_30MS);
-		}
+		android_hdmi_set_power_rails(hdmi_power != 0);
 	}
 	return count;
 }
@@ -4139,15 +3947,191 @@ static const struct dev_pm_ops psb_pm_ops = {
 	.resume = psb_runtime_resume,
 };
 
+extern int PVRMMap(struct file *pFile, struct vm_area_struct *ps_vma);
+
+static struct vm_operations_struct psb_ttm_vm_ops;
+
+/**
+ * NOTE: driver_private of drm_file is now a PVRSRV_FILE_PRIVATE_DATA struct
+ * pPriv in PVRSRV_FILE_PRIVATE_DATA contains the original psb_fpriv;
+ */
+int psb_open(struct inode *inode, struct file *filp)
+{
+	struct drm_file *file_priv;
+	struct drm_psb_private *dev_priv;
+	struct psb_fpriv *psb_fp;
+	PVRSRV_FILE_PRIVATE_DATA *pvr_file_priv;
+	int ret;
+
+	DRM_DEBUG("\n");
+
+	ret = drm_open(inode, filp);
+	if (unlikely(ret))
+		return ret;
+
+	psb_fp = kzalloc(sizeof(*psb_fp), GFP_KERNEL);
+
+	if (unlikely(psb_fp == NULL))
+		goto out_err0;
+
+	file_priv = (struct drm_file *) filp->private_data;
+
+	/* In case that the local file priv has created a master,
+	 * which has been referenced, even if it's not authenticated
+	 * (non-root user). */
+	if ((file_priv->minor->master)
+		&& (file_priv->master == file_priv->minor->master)
+		&& (!file_priv->is_master))
+		file_priv->is_master = 1;
+
+	dev_priv = psb_priv(file_priv->minor->dev);
+
+	DRM_DEBUG("is_master %d\n", file_priv->is_master ? 1 : 0);
+
+	psb_fp->tfile = ttm_object_file_init(dev_priv->tdev,
+					     PSB_FILE_OBJECT_HASH_ORDER);
+	if (unlikely(psb_fp->tfile == NULL))
+		goto out_err1;
+
+	pvr_file_priv = (PVRSRV_FILE_PRIVATE_DATA *)file_priv->driver_priv;
+	if (!pvr_file_priv) {
+		DRM_ERROR("drm file private is NULL\n");
+		goto out_err1;
+	}
+
+	pvr_file_priv->pPriv = psb_fp;
+	if (unlikely(dev_priv->bdev.dev_mapping == NULL))
+		dev_priv->bdev.dev_mapping = dev_priv->dev->dev_mapping;
+
+	return 0;
+
+out_err1:
+	kfree(psb_fp);
+out_err0:
+	(void) drm_release(inode, filp);
+	return ret;
+}
+
+int psb_release(struct inode *inode, struct file *filp)
+{
+	struct drm_file *file_priv;
+	struct psb_fpriv *psb_fp;
+	struct drm_psb_private *dev_priv;
+	struct msvdx_private *msvdx_priv;
+	int ret, i;
+	struct psb_msvdx_ec_ctx *ec_ctx;
+	uint32_t ui32_reg_value = 0;
+	file_priv = (struct drm_file *) filp->private_data;
+	struct ttm_object_file *tfile = psb_fpriv(file_priv)->tfile;
+	psb_fp = psb_fpriv(file_priv);
+	dev_priv = psb_priv(file_priv->minor->dev);
+
+#ifdef CONFIG_MDFD_VIDEO_DECODE
+
+	msvdx_priv = (struct msvdx_private *)dev_priv->msvdx_private;
+
+#ifdef CONFIG_DRM_MRFLD
+	/*cleanup for msvdx*/
+#if 0
+	if (msvdx_priv->tfile == psb_fpriv(file_priv)->tfile) {
+		msvdx_priv->fw_status = 0;
+		msvdx_priv->host_be_opp_enabled = 0;
+		memset(&msvdx_priv->frame_info, 0, sizeof(struct drm_psb_msvdx_frame_info) * MAX_DECODE_BUFFERS);
+	}
+#endif
+
+	if (msvdx_priv->msvdx_ec_ctx[0] != NULL) {
+		for (i = 0; i < PSB_MAX_EC_INSTANCE; i++) {
+			if (msvdx_priv->msvdx_ec_ctx[i]->tfile == tfile)
+				break;
+		}
+
+		if (i < PSB_MAX_EC_INSTANCE) {
+			ec_ctx = msvdx_priv->msvdx_ec_ctx[i];
+			printk(KERN_DEBUG "remove ec ctx with tfile 0x%08x\n",
+			       ec_ctx->tfile);
+			ec_ctx->tfile = NULL;
+			ec_ctx->fence = PSB_MSVDX_INVALID_FENCE;
+		}
+	}
+#endif
+
+	ttm_object_file_release(&psb_fp->tfile);
+#endif
+	kfree(psb_fp);
+
+#ifdef CONFIG_MDFD_VIDEO_DECODE
+	/* remove video context */
+	psb_remove_videoctx(dev_priv, filp);
+
+	if (IS_MRST(dev_priv->dev)) {
+		/*
+		schedule_delayed_work(&dev_priv->scheduler.topaz_suspend_wq, 10);
+		*/
+		/* FIXME: workaround for HSD3469585
+		 *        re-enable DRAM Self Refresh Mode
+		 *        by setting DUNIT.DPMC0
+		 */
+		ui32_reg_value = intel_mid_msgbus_read32_raw((0xD0 << 24) |
+			(0x1 << 16) | (0x4 << 8) | 0xF0);
+		intel_mid_msgbus_write32_raw((0xE0 << 24) | (0x1 << 16) |
+			(0x4 << 8) | 0xF0, ui32_reg_value | (0x1 << 7));
+	} else if (IS_MDFLD(dev_priv->dev)) {
+		struct pnw_topaz_private *topaz_priv =
+			(struct pnw_topaz_private *)dev_priv->topaz_private;
+		schedule_delayed_work(&topaz_priv->topaz_suspend_wq,
+						msecs_to_jiffies(10));
+	}
+	schedule_delayed_work(&msvdx_priv->msvdx_suspend_wq,
+					msecs_to_jiffies(10));
+#endif
+	ret = drm_release(inode, filp);
+
+	return ret;
+}
+
+/**
+ * if vm_pgoff < DRM_PSB_FILE_PAGE_OFFSET call directly to PVRMMap
+ */
+int psb_mmap(struct file *filp, struct vm_area_struct *vma)
+{
+	struct drm_file *file_priv;
+	struct drm_psb_private *dev_priv;
+	int ret;
+
+	if (vma->vm_pgoff < DRM_PSB_FILE_PAGE_OFFSET ||
+	    vma->vm_pgoff > 2 * DRM_PSB_FILE_PAGE_OFFSET)
+		return PVRMMap(filp, vma);
+
+	file_priv = (struct drm_file *) filp->private_data;
+	dev_priv = psb_priv(file_priv->minor->dev);
+
+	ret = ttm_bo_mmap(filp, vma, &dev_priv->bdev);
+	if (unlikely(ret != 0))
+		return ret;
+
+	if (unlikely(dev_priv->ttm_vm_ops == NULL)) {
+		dev_priv->ttm_vm_ops = (struct vm_operations_struct *)vma->vm_ops;
+		psb_ttm_vm_ops = *vma->vm_ops;
+#ifdef CONFIG_MDFD_VIDEO_DECODE
+		psb_ttm_vm_ops.fault = &psb_ttm_fault;
+#endif
+	}
+
+	vma->vm_ops = &psb_ttm_vm_ops;
+
+	return 0;
+}
+
 static const struct file_operations driver_psb_fops = {
-		.owner = THIS_MODULE,
-		.open = psb_open,
-		.release = psb_release,
-		.unlocked_ioctl = psb_unlocked_ioctl,
-		.mmap = psb_mmap,
-		.poll = psb_poll,
-		.fasync = drm_fasync,
-		.read = drm_read,
+	.owner = THIS_MODULE,
+	.open = psb_open,
+	.release = psb_release,
+	.unlocked_ioctl = psb_unlocked_ioctl,
+	.mmap = psb_mmap,
+	.poll = psb_poll,
+	.fasync = drm_fasync,
+	.read = drm_read,
 };
 
 static struct drm_driver driver = {
@@ -4175,11 +4159,11 @@ static struct drm_driver driver = {
 	.preclose = psb_driver_preclose,
 	.fops = &driver_psb_fops,
 	.name = DRIVER_NAME,
-	 .desc = DRIVER_DESC,
-	  .date = PSB_DRM_DRIVER_DATE,
-	   .major = PSB_DRM_DRIVER_MAJOR,
-	    .minor = PSB_DRM_DRIVER_MINOR,
-	     .patchlevel = PSB_DRM_DRIVER_PATCHLEVEL
+	.desc = DRIVER_DESC,
+	.date = PSB_DRM_DRIVER_DATE,
+	.major = PSB_DRM_DRIVER_MAJOR,
+	.minor = PSB_DRM_DRIVER_MINOR,
+	.patchlevel = PSB_DRM_DRIVER_PATCHLEVEL
 };
 
 static struct pci_driver psb_pci_driver = {

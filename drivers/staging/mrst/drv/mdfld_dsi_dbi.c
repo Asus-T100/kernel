@@ -41,13 +41,6 @@ void mdfld_dsi_dbi_enter_dsr (struct mdfld_dsi_dbi_output * dbi_output, int pipe
 }
 
 #ifndef CONFIG_MDFLD_DSI_DPU
-static void mdfld_dbi_output_exit_dsr(struct mdfld_dsi_dbi_output *dbi_output,
-		int pipe,
-		void *p_surfaceAddr,
-		bool check_hw_on_only)
-{
-	return;
-}
 
 int mdfld_dsi_dbi_async_check_fifo_empty(struct drm_device *dev)
 {
@@ -87,18 +80,66 @@ void mdfld_dsi_dbi_exit_dsr(struct drm_device *dev,
 {
 }
 
-static bool mdfld_dbi_is_in_dsr(struct drm_device * dev)
-{
-	if(REG_READ(MRST_DPLL_A) & DPLL_VCO_ENABLE)
-		return false;
-	if((REG_READ(PIPEACONF) & PIPEACONF_ENABLE) ||
-	   (REG_READ(PIPECCONF) & PIPEACONF_ENABLE))
-		return false;
-	if((REG_READ(DSPACNTR) & DISPLAY_PLANE_ENABLE) ||
-	   (REG_READ(DSPCCNTR) & DISPLAY_PLANE_ENABLE))
-		return false;
 
-	return true;
+static
+void intel_dsi_dbi_update_fb(struct mdfld_dsi_dbi_output *dbi_output)
+{
+	struct mdfld_dsi_pkg_sender *sender =
+		mdfld_dsi_encoder_get_pkg_sender(&dbi_output->base);
+	struct drm_device *dev = dbi_output->dev;
+	struct drm_crtc *crtc = dbi_output->base.base.crtc;
+	struct psb_intel_crtc *psb_crtc =
+		(crtc) ? to_psb_intel_crtc(crtc) : NULL;
+	int pipe = dbi_output->channel_num ? 2 : 0;
+	u32 dpll_reg = MRST_DPLL_A;
+	u32 dspcntr_reg = DSPACNTR;
+	u32 pipeconf_reg = PIPEACONF;
+	u32 dsplinoff_reg = DSPALINOFF;
+	u32 dspsurf_reg = DSPASURF;
+
+	/* if mode setting on-going, back off */
+
+	if ((dbi_output->mode_flags & MODE_SETTING_ON_GOING) ||
+	    (psb_crtc && (psb_crtc->mode_flags & MODE_SETTING_ON_GOING)) ||
+	    !(dbi_output->mode_flags & MODE_SETTING_ENCODER_DONE))
+		return;
+
+	if (pipe == 2) {
+		dspcntr_reg = DSPCCNTR;
+		pipeconf_reg = PIPECCONF;
+		dsplinoff_reg = DSPCLINOFF;
+		dspsurf_reg = DSPCSURF;
+	}
+
+	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
+				OSPM_UHB_FORCE_POWER_ON)) {
+		DRM_ERROR("hw begin failed\n");
+		return;
+	}
+
+	/* check DBI FIFO status */
+	if (!(REG_READ(dpll_reg) & DPLL_VCO_ENABLE) ||
+	   !(REG_READ(dspcntr_reg) & DISPLAY_PLANE_ENABLE) ||
+	   !(REG_READ(pipeconf_reg) & DISPLAY_PLANE_ENABLE))
+		goto update_fb_out0;
+
+	/* refresh plane changes */
+
+	REG_WRITE(dsplinoff_reg, REG_READ(dsplinoff_reg));
+	REG_WRITE(dspsurf_reg, REG_READ(dspsurf_reg));
+	REG_READ(dspsurf_reg);
+
+	mdfld_dsi_send_dcs(sender,
+			   write_mem_start,
+			   NULL,
+			   0,
+			   CMD_DATA_SRC_PIPE,
+			   MDFLD_DSI_SEND_PACKAGE);
+	dbi_output->dsr_fb_update_done = true;
+	mdfld_dsi_cmds_kick_out(sender);
+
+update_fb_out0:
+	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 }
 
 /* Perodically update dbi panel */
@@ -110,7 +151,6 @@ void mdfld_dbi_update_panel(struct drm_device *dev, int pipe)
 	struct mdfld_dsi_dbi_output *dbi_output;
 	struct mdfld_dsi_config *dsi_config;
 	struct mdfld_dsi_hw_context *ctx;
-	int i;
 
 	if (!dsr_info)
 		return;
@@ -131,8 +171,8 @@ void mdfld_dbi_update_panel(struct drm_device *dev, int pipe)
 	if (!ctx->panel_on)
 		goto update_out;
 
-	if (dbi_output->p_funcs && dbi_output->p_funcs->update_fb)
-		dbi_output->p_funcs->update_fb(dbi_output, pipe);
+	intel_dsi_dbi_update_fb(dbi_output);
+
 update_out:
 	mutex_unlock(&dsi_config->context_lock);
 }
@@ -411,7 +451,7 @@ static int __dbi_panel_power_on(struct mdfld_dsi_config *dsi_config,
 
 	/*after entering dstb mode, need reset*/
 	if (p_funcs && p_funcs->reset)
-			p_funcs->reset(dsi_config, RESET_FROM_OSPM_RESUME);
+		p_funcs->reset(dsi_config);
 
 	__dbi_power_on(dsi_config);
 
@@ -423,8 +463,8 @@ static int __dbi_panel_power_on(struct mdfld_dsi_config *dsi_config,
 	 * drvIC initialized. Support it!
 	 */
 	if (p_funcs && p_funcs->drv_ic_init) {
-		if (p_funcs->drv_ic_init(dsi_config, 0)) {
-			DRM_ERROR("Failed to init dsi controller, reset it!\n");
+		if (p_funcs->drv_ic_init(dsi_config)) {
+			DRM_ERROR("Failed to init dsi controller!\n");
 			err = -EAGAIN;
 			goto power_on_err;
 		}
@@ -603,6 +643,8 @@ int mdfld_generic_dsi_dbi_set_power(struct drm_encoder *encoder, bool on)
 	struct panel_funcs *p_funcs;
 	struct drm_device *dev;
 	struct drm_psb_private *dev_priv;
+	static bool last_ospm_suspend;
+	int pipe = 0;
 
 	if (!encoder) {
 		DRM_ERROR("Invalid encoder\n");
@@ -618,6 +660,7 @@ int mdfld_generic_dsi_dbi_set_power(struct drm_encoder *encoder, bool on)
 	p_funcs = dbi_output->p_funcs;
 	dev = encoder->dev;
 	dev_priv = dev->dev_private;
+	pipe = dsi_config->pipe;
 
 	mutex_lock(&dsi_config->context_lock);
 
@@ -626,10 +669,19 @@ int mdfld_generic_dsi_dbi_set_power(struct drm_encoder *encoder, bool on)
 
 	if (dbi_output->first_boot &&
 	    dsi_config->dsi_hw_context.panel_on) {
+		if (on)
+			mdfld_enable_te(dev, pipe);
+
 		DRM_INFO("skip panle power setting for first boot! " \
 			 "panel is already powered on\n");
 		goto fun_exit;
 	}
+
+	/**
+	 * if ospm has turned panel off, but dpms tries to turn panel on, skip
+	 */
+	if (dev_priv->dpms_on_off && on && last_ospm_suspend)
+		goto fun_exit;
 
 	switch (on) {
 	case true:
@@ -645,6 +697,8 @@ int mdfld_generic_dsi_dbi_set_power(struct drm_encoder *encoder, bool on)
 
 		dsi_config->dsi_hw_context.panel_on = 1;
 		dbi_output->dbi_panel_on = 1;
+		last_ospm_suspend = false;
+
 		break;
 	case false:
 		if (!dsi_config->dsi_hw_context.panel_on &&
@@ -655,6 +709,11 @@ int mdfld_generic_dsi_dbi_set_power(struct drm_encoder *encoder, bool on)
 			DRM_ERROR("Faild to turn off panel\n");
 			goto set_power_err;
 		}
+
+		if (!dev_priv->dpms_on_off)
+			last_ospm_suspend = true;
+		else
+			last_ospm_suspend = false;
 
 		dsi_config->dsi_hw_context.panel_on = 0;
 		dbi_output->dbi_panel_on = 0;
@@ -747,12 +806,14 @@ void mdfld_generic_dsi_dbi_dpms(struct drm_encoder *encoder, int mode)
 	}
 
 	mutex_lock(&dev_priv->dpms_mutex);
+	dev_priv->dpms_on_off = true;
 
 	if (mode == DRM_MODE_DPMS_ON)
 		mdfld_generic_dsi_dbi_set_power(encoder, true);
 	else
 		mdfld_generic_dsi_dbi_set_power(encoder, false);
 
+	dev_priv->dpms_on_off = false;
 	mutex_unlock(&dev_priv->dpms_mutex);
 }
 
@@ -859,15 +920,13 @@ struct mdfld_dsi_encoder *mdfld_dsi_dbi_init(struct drm_device *dev,
 
 	/*detect panel connection stauts*/
 	if (p_funcs->detect) {
-		ret = p_funcs->detect(dsi_config, pipe);
+		ret = p_funcs->detect(dsi_config);
 		if (ret) {
-			PSB_DEBUG_ENTRY("Fail to detect Panel %d\n",
-					pipe);
+			DRM_INFO("Fail to detect Panel on pipe %d\n", pipe);
 			dsi_connector->status =
 				connector_status_disconnected;
 		} else {
-			PSB_DEBUG_ENTRY("Panel %d is connected\n",
-					pipe);
+			DRM_INFO("Panel on pipe %d is connected\n", pipe);
 			dsi_connector->status =
 				connector_status_connected;
 		}
@@ -883,7 +942,7 @@ struct mdfld_dsi_encoder *mdfld_dsi_dbi_init(struct drm_device *dev,
 
 	/*init DSI controller*/
 	if (p_funcs->dsi_controller_init)
-		p_funcs->dsi_controller_init(dsi_config, pipe);
+		p_funcs->dsi_controller_init(dsi_config);
 
 	if (dsi_connector->status == connector_status_connected) {
 		if (pipe == 0)

@@ -73,6 +73,7 @@
 #define MAX_CAPS 30
 #define SEGMENT_SIZE 128
 #define MAX_EDID_BLOCKS 5
+#define MAX_DATA_BLOCK_SIZE 32
 
 /**
  * Different types representing pointers to a function
@@ -92,8 +93,10 @@ typedef struct {
 	otm_hdmi_timing_t timings[MAX_TIMINGS];	/* Supported timings */
 	unsigned int order[MAX_TIMINGS];	/* VIC order of descovery */
 	unsigned int num_caps;	/* Number of supported audiocaps */
-	otm_hdmi_audio_cap_t audio_caps[MAX_CAPS];	/* Supported audio caps
-							*/
+	otm_hdmi_audio_cap_t audio_caps[MAX_CAPS];	/* Supported audio caps */
+	unsigned char short_audio_descriptor_data[MAX_DATA_BLOCK_SIZE]; /* payload of CEA 861 audio data block holding SADs*/
+	unsigned int short_audio_descriptor_count;  /* number of Short Audio Descriptor (SAD) */
+
 	unsigned int speaker_map;	/* Speaker layout */
 	unsigned short manufacturer_id;	/* Manufacturer ID */
 	unsigned short product_code;	/* Product code */

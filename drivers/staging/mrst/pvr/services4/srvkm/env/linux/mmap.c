@@ -1005,6 +1005,7 @@ PVRMMap(struct file* pFile, struct vm_area_struct* ps_vma)
     IMG_VOID *pvBase = IMG_NULL;
     int iRetVal = 0;
     IMG_UINT32 ui32ByteOffset = 0;	/* Keep compiler happy */
+    IMG_UINT32 ui32FlushSize = 0;
 
     PVR_UNREFERENCED_PARAMETER(pFile);
 
@@ -1110,16 +1111,28 @@ PVRMMap(struct file* pFile, struct vm_area_struct* ps_vma)
     /* Compute the flush region (if necessary) inside the mmap mutex */
     if(psOffsetStruct->psLinuxMemArea->bNeedsCacheInvalidate)
     {
+        psFlushMemArea = psOffsetStruct->psLinuxMemArea;
+
+		/* Sparse mappings have to ask the BM for the virtual size */
+		if (psFlushMemArea->hBMHandle)
+		{
+			pvBase = (IMG_VOID *)ps_vma->vm_start;
+			ui32ByteOffset = 0;
+			ui32FlushSize = BM_GetVirtualSize(psFlushMemArea->hBMHandle);
+		}
+		else
+		{
         IMG_UINT32 ui32DummyByteSize;
 
-        DetermineUsersSizeAndByteOffset(psOffsetStruct->psLinuxMemArea,
+	        DetermineUsersSizeAndByteOffset(psFlushMemArea,
                                         &ui32DummyByteSize,
                                         &ui32ByteOffset);
 
         pvBase = (IMG_VOID *)ps_vma->vm_start + ui32ByteOffset;
-        psFlushMemArea = psOffsetStruct->psLinuxMemArea;
+	        ui32FlushSize = psFlushMemArea->ui32ByteSize;
+		}
 
-        psOffsetStruct->psLinuxMemArea->bNeedsCacheInvalidate = IMG_FALSE;
+        psFlushMemArea->bNeedsCacheInvalidate = IMG_FALSE;
     }
 
     /* Call the open routine to increment the usage count */
@@ -1139,7 +1152,7 @@ unlock_and_return:
     if(psFlushMemArea)
     {
         OSInvalidateCPUCacheRangeKM(psFlushMemArea, ui32ByteOffset, pvBase,
-									psFlushMemArea->ui32ByteSize);
+									ui32FlushSize);
     }
 
     return iRetVal;

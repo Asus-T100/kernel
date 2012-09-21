@@ -40,9 +40,5 @@
 #include "mdfld_output.h"
 
 void gi_sony_vid_init(struct drm_device *dev, struct panel_funcs *p_funcs);
-struct drm_display_mode *gi_sony_vid_get_config_mode(struct drm_device *dev);
-void mdfld_gi_sony_bkl_control(struct mdfld_dsi_config *dsi_config,
-				u32 pipe,
-				int level);
 
 #endif

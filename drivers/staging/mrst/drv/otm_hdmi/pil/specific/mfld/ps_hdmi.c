@@ -222,6 +222,26 @@ bool ps_hdmi_power_rails_on(void)
 	return false;
 }
 
+
+bool ps_hdmi_power_rails_off(void)
+{
+	int ret = 0;
+
+	ret = intel_scu_ipc_iowrite8(PS_MSIC_VHDMICNT, PS_VHDMI_OFF);
+	if (ret) {
+		pr_debug("%s: Failed to power off VHDMI.\n", __func__);
+		return false;
+	}
+
+	ret = intel_scu_ipc_iowrite8(PS_MSIC_VCC330CNT, PS_VCC330_OFF);
+	if (ret) {
+		pr_debug("%s: Failed to power off VCC330.\n", __func__);
+		return false;
+	}
+
+	return true;
+}
+
 /*
  * ps_hdmi_get_cable_status - Get HDMI cable connection status
  * @context: hdmi device context

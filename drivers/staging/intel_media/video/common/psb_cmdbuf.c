@@ -29,7 +29,7 @@
 #include "ttm/ttm_execbuf_util.h"
 #include "psb_ttm_userobj_api.h"
 #include "ttm/ttm_placement.h"
-#include "psb_cmdbuf.h"
+#include "psb_video_drv.h"
 #include "psb_intel_reg.h"
 #include "psb_powermgmt.h"
 
@@ -62,16 +62,6 @@ struct psb_dstbuf_cache {
 	unsigned int dst_page_offset;
 	struct ttm_bo_kmap_obj dst_kmap;
 	bool dst_is_iomem;
-};
-
-struct psb_validate_buffer {
-	struct ttm_validate_buffer base;
-	struct psb_validate_req req;
-	int ret;
-	struct psb_validate_arg __user *user_val_arg;
-	uint32_t flags;
-	uint32_t offset;
-	int po_correct;
 };
 
 static int psb_check_presumed(struct psb_validate_req *req,
@@ -807,8 +797,8 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 		(struct drm_psb_private *)file_priv->minor->dev->dev_private;
 	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
 	struct psb_video_ctx *pos, *n;
-	int engine;
-	int po_correct;
+	int engine, po_correct;
+	int found = 0;
 	struct psb_context *context;
 
 	ret = ttm_read_lock(&dev_priv->ttm_lock, true);
@@ -818,23 +808,37 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 	if (arg->engine == PSB_ENGINE_DECODE) {
 		if (msvdx_priv->fw_loaded_by_punit)
 			psb_msvdx_check_reset_fw(dev);
-		if (!ospm_power_using_video_begin(OSPM_VIDEO_DEC_ISLAND))
-			return -EBUSY;
-	} else if (arg->engine == LNC_ENGINE_ENCODE) {
-		if (dev_priv->topaz_disabled)
-			return -ENODEV;
+		if (!ospm_power_using_video_begin(OSPM_VIDEO_DEC_ISLAND)) {
+			ret = -EBUSY;
+			goto out_err0;
+		}
 
-		if (!ospm_power_using_video_begin(OSPM_VIDEO_ENC_ISLAND))
-			return -EBUSY;
+		ret = mutex_lock_interruptible(&msvdx_priv->msvdx_mutex);
+		if (unlikely(ret != 0))
+			goto out_err0;
+
+		msvdx_priv->tfile = tfile;
+		context = &dev_priv->decode_context;
+	} else if (arg->engine == LNC_ENGINE_ENCODE) {
+		if (dev_priv->topaz_disabled) {
+			ret = -ENODEV;
+			goto out_err0;
+		}
+
+		if (!ospm_power_using_video_begin(OSPM_VIDEO_ENC_ISLAND)) {
+			ret = -EBUSY;
+			goto out_err0;
+		}
+
+		ret = mutex_lock_interruptible(&dev_priv->cmdbuf_mutex);
+		if (unlikely(ret != 0))
+			goto out_err0;
+		context = &dev_priv->encode_context;
+	} else {
+		ret = -EINVAL;
+		goto out_err0;
 	}
 
-	ret = mutex_lock_interruptible(&dev_priv->cmdbuf_mutex);
-	if (unlikely(ret != 0))
-		goto out_err0;
-
-	((struct msvdx_private *)dev_priv->msvdx_private)->tfile = tfile;
-
-	context = &dev_priv->context;
 	context->used_buffers = 0;
 	context->fence_types = 0;
 	BUG_ON(!list_empty(&context->validate_list));
@@ -896,12 +900,16 @@ int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
 			    entrypoint == VAEntrypointEncPicture)
 				dev_priv->topaz_ctx = pos;
 			else
-				dev_priv->msvdx_ctx = pos;
-
+				msvdx_priv->msvdx_ctx = pos;
+			found = 1;
 			break;
 		}
 	}
 	mutex_unlock(&dev_priv->video_ctx_mutex);
+	if (!found) {
+		PSB_DEBUG_WARN("WARN: video ctx is not found.\n");
+		goto out_err4;
+	}
 
 	switch (arg->engine) {
 	case PSB_ENGINE_DECODE:
@@ -942,7 +950,10 @@ out_err3:
 out_err2:
 	psb_unreference_buffers(context);
 out_err1:
-	mutex_unlock(&dev_priv->cmdbuf_mutex);
+	if (arg->engine == PSB_ENGINE_DECODE)
+		mutex_unlock(&msvdx_priv->msvdx_mutex);
+	if (arg->engine == LNC_ENGINE_ENCODE)
+		mutex_unlock(&dev_priv->cmdbuf_mutex);
 out_err0:
 	ttm_read_unlock(&dev_priv->ttm_lock);
 

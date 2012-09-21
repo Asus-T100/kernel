@@ -394,6 +394,86 @@ exit:
 }
 
 /**
+* prepare hdmi eld packet and copy it to the given buffer
+* @ctx: hdmi context
+* @eld: pointer to otm_hdmi_eld_t structure
+*
+* Returns: OTM_HDMI_SUCCESS, OTM_HDMI_ERR_INTERNAL or OTM_HDMI_ERR_NULL_ARG
+*/
+otm_hdmi_ret_t otm_hdmi_get_eld(void *ctx, otm_hdmi_eld_t *eld)
+{
+	hdmi_context_t *context = (hdmi_context_t *)ctx;
+	edid_info_t *edid_int = NULL;
+
+	if (!context)
+		return OTM_HDMI_ERR_INTERNAL;
+
+	if (eld == NULL)
+		return OTM_HDMI_ERR_NULL_ARG;
+
+	memset(eld->eld_data, 0, sizeof(OTM_HDMI_ELD_SIZE));
+
+	edid_int = &(context->edid_int);
+
+	/* ELD Version Number - version 2, supporting CEA 861D or below */
+	eld->eld_ver = 2;
+
+	/* Version number of the ELD, reserved for future */
+	eld->veld_ver = 0;
+
+	/* Length of the Baseline structure, in number of DWORD. Maximum 80 bytes as per EELD proposal */
+	eld->baseline_eld_length = OTM_HDMI_ELD_SIZE/4;
+
+	/* monitor name length */
+	/* monitor name is not populated intentionally */
+	eld->mnl = 0;
+	/*011b - indicates CEA 861 B, C or D */
+	eld->cea_edid_rev_id = 3;
+
+	/* Capabilities */
+	eld->hdcp = 1;
+	eld->ai_support = edid_int->supports_ai;
+	/* 00b - indicate HDMI connection type */
+	eld->connection_type = 0;
+	/* number of Short Audio Descriptors  (SAD) */
+	eld->sadc = edid_int->short_audio_descriptor_count;
+
+	/* delay of video compared to audio in terms of units of 2ms */
+	eld->audio_synch_delay = 0;
+	/* valid value of video/audio latency ranges from 1 to 251, see HDMI spec 3a */
+	/* Section 8.3.2 HDMI Vendor Specific Data Block (VSDB) */
+	if (edid_int->latency_video > 0 &&
+		edid_int->latency_video < 252 &&
+		edid_int->latency_audio > 0 &&
+		edid_int->latency_audio < 252) {
+		eld->audio_synch_delay = edid_int->latency_video - edid_int->latency_audio;
+		/* the maximum delay is 500ms */
+		if (eld->audio_synch_delay > 250)
+			eld->audio_synch_delay = 0;
+
+		pr_debug("video latency: %d, audio_latency: %d, lipsync: %d\n",
+			edid_int->latency_video,
+			edid_int->latency_audio,
+			eld->audio_synch_delay);
+	}
+
+	/* bits 8 - 10 are ignored: FLH/FRH (Front Left/Right High), TC (Top Center), FCH (Front Center High) */
+	eld->speaker_allocation_block = (uint8_t) (edid_int->speaker_map & 0xff);
+
+	/* The following fields are intentionally ignored */
+	/* eld->port_id_value */
+	/* eld->manufacturer_id */
+	/* eld->product_id */
+
+	/* 64-byte of baseline data, including monitor names and and list of 3-byte SAD */
+	/* monitor name is not populated here */
+	if (edid_int->short_audio_descriptor_count)
+		memcpy(eld->mn_sand_sads, edid_int->short_audio_descriptor_data, 3 * edid_int->short_audio_descriptor_count);
+
+	return OTM_HDMI_SUCCESS;
+}
+
+/**
  * otm_hdmi_timing_from_cea_modes() - get timings for cea modes
  * @buffer: the extension block buffer
  * @timings: the result CEA timings extacted from the buffer
@@ -703,6 +783,12 @@ exit:
 bool otm_hdmi_power_rails_on(void)
 {
 	return ps_hdmi_power_rails_on();
+}
+
+/* turn HDMI power rails off */
+bool otm_hdmi_power_rails_off(void)
+{
+	return ps_hdmi_power_rails_off();
 }
 
 /*

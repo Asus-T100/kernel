@@ -824,23 +824,6 @@ int pnw_check_topaz_idle(struct drm_device *dev)
 }
 
 
-int pnw_video_get_core_num(struct drm_device *dev, uint64_t user_pointer)
-{
-	struct drm_psb_private *dev_priv =
-		(struct drm_psb_private *)dev->dev_private;
-	struct pnw_topaz_private *topaz_priv = dev_priv->topaz_private;
-	int ret;
-
-	ret = copy_to_user((void __user *)((unsigned long)user_pointer),
-			   &topaz_priv->topaz_num_cores,
-			   sizeof(topaz_priv->topaz_num_cores));
-
-	if (ret)
-		return -EFAULT;
-
-	return 0;
-
-}
 
 static void pnw_topaz_flush_cmd_queue(struct pnw_topaz_private *topaz_priv)
 {
@@ -879,40 +862,6 @@ void pnw_topaz_handle_timeout(struct ttm_fence_device *fdev)
 	schedule_delayed_work(&topaz_priv->topaz_suspend_wq, 0);
 }
 
-
-void pnw_map_topaz_reg(struct drm_device *dev)
-{
-	unsigned long resource_start;
-	struct drm_psb_private *dev_priv =
-		(struct drm_psb_private *)dev->dev_private;
-
-	resource_start = pci_resource_start(dev->pdev, PSB_MMIO_RESOURCE);
-
-	if (IS_MDFLD(dev) && !dev_priv->topaz_disabled) {
-		dev_priv->topaz_reg = ioremap(
-					      resource_start + PNW_TOPAZ_OFFSET,
-					      PNW_TOPAZ_SIZE);
-		if (!dev_priv->topaz_reg)
-			DRM_ERROR("failed to map TOPAZ register address\n");
-	}
-
-	return;
-}
-
-void pnw_unmap_topaz_reg(struct drm_device *dev)
-{
-	struct drm_psb_private *dev_priv =
-		(struct drm_psb_private *)dev->dev_private;
-
-	if (IS_MDFLD(dev)) {
-		if (dev_priv->topaz_reg) {
-			iounmap(dev_priv->topaz_reg);
-			dev_priv->topaz_reg = NULL;
-		}
-	}
-
-	return;
-}
 
 void pnw_topaz_enableirq(struct drm_device *dev)
 {

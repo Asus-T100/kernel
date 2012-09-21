@@ -101,6 +101,31 @@ static int psb_msvdx_dequeue_send(struct drm_device *dev)
 	return ret;
 }
 
+void psb_msvdx_flush_cmd_queue(struct drm_device *dev)
+{
+	struct drm_psb_private *dev_priv = dev->dev_private;
+	struct psb_msvdx_cmd_queue *msvdx_cmd;
+	struct list_head *list, *next;
+	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
+	unsigned long irq_flags;
+	spin_lock_irqsave(&msvdx_priv->msvdx_lock, irq_flags);
+	/*Flush the msvdx cmd queue and signal all fences in the queue */
+	list_for_each_safe(list, next, &msvdx_priv->msvdx_queue) {
+		msvdx_cmd =
+			list_entry(list, struct psb_msvdx_cmd_queue, head);
+		list_del(list);
+		PSB_DEBUG_GENERAL("MSVDXQUE: flushing sequence:0x%08x\n",
+				  msvdx_cmd->sequence);
+		msvdx_priv->msvdx_current_sequence = msvdx_cmd->sequence;
+		psb_fence_error(dev, PSB_ENGINE_DECODE,
+				msvdx_cmd->sequence,
+				_PSB_FENCE_TYPE_EXE, DRM_CMD_HANG);
+		kfree(msvdx_cmd->cmd);
+		kfree(msvdx_cmd);
+	}
+	spin_unlock_irqrestore(&msvdx_priv->msvdx_lock, irq_flags);
+}
+
 static int psb_msvdx_map_command(struct drm_device *dev,
 				 struct ttm_buffer_object *cmd_buffer,
 				 unsigned long cmd_offset, unsigned long cmd_size,
@@ -290,7 +315,7 @@ static int psb_msvdx_map_command(struct drm_device *dev,
 		PSB_DEBUG_GENERAL("MSVDXQUE:did NOT copy command\n");
 		if (IS_MSVDX_MEM_TILE(dev) && drm_psb_msvdx_tiling) {
 			unsigned long msvdx_tile =
-				((dev_priv->msvdx_ctx->ctx_type >> 16) & 0xff);
+				((msvdx_priv->msvdx_ctx->ctx_type >> 16) & 0xff);
 			psb_msvdx_set_tile(dev, msvdx_tile);
 		}
 #ifdef CONFIG_DRM_MRFLD
@@ -331,7 +356,7 @@ int psb_submit_video_cmdbuf(struct drm_device *dev,
 
 	spin_lock_irqsave(&msvdx_priv->msvdx_lock, irq_flags);
 
-	dev_priv->last_msvdx_ctx = dev_priv->msvdx_ctx;
+	msvdx_priv->last_msvdx_ctx = msvdx_priv->msvdx_ctx;
 
 	if (msvdx_priv->msvdx_needs_reset) {
 		spin_unlock_irqrestore(&msvdx_priv->msvdx_lock, irq_flags);
@@ -428,7 +453,7 @@ int psb_submit_video_cmdbuf(struct drm_device *dev,
 		msvdx_cmd->cmd_size = cmd_size;
 		msvdx_cmd->sequence = sequence;
 		msvdx_cmd->msvdx_tile =
-			((dev_priv->msvdx_ctx->ctx_type >> 16) & 0xff);
+			((msvdx_priv->msvdx_ctx->ctx_type >> 16) & 0xff);
 		msvdx_cmd->deblock_cmd_offset =
 			msvdx_priv->deblock_cmd_offset;
 		msvdx_cmd->host_be_opp_enabled =
@@ -1013,8 +1038,8 @@ int psb_check_msvdx_idle(struct drm_device *dev)
 
 	if (msvdx_priv->fw_loaded_by_punit) {
 		PSB_DEBUG_MSVDX("   SIGNITURE is %x\n", PSB_RMSVDX32(MSVDX_COMMS_SIGNATURE));
-
-		if (!(PSB_RMSVDX32(MSVDX_COMMS_FW_STATUS) & MSVDX_FW_STATUS_HW_IDLE))
+		if (!(PSB_RMSVDX32(MSVDX_COMMS_FW_STATUS) &
+					MSVDX_FW_STATUS_HW_IDLE))
 			return -EBUSY;
 	}
 	/*
