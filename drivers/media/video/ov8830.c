@@ -1205,32 +1205,22 @@ static int ov8830_get_intg_factor(struct v4l2_subdev *sd,
 {
 	const int ext_clk = 19200000; /* MHz */
 	struct sensor_mode_data *m = (struct sensor_mode_data *)&info->data;
+	struct ov8830_device *dev = to_ov8830_sensor(sd);
 	int pll2_prediv;
 	int pll2_multiplier;
 	int pll2_divs;
 	int pll2_seld5;
-	int timing_vts_hi;
-	int timing_vts_lo;
-	int timing_hts_hi;
-	int timing_hts_lo;
 	int t1, t2, t3;
 	int sclk;
 
 	memset(&info->data, 0, sizeof(info->data));
-
-	timing_vts_hi = ov8830_get_register(sd, OV8830_TIMING_VTS, reglist);
-	timing_vts_lo = ov8830_get_register(sd, OV8830_TIMING_VTS + 1, reglist);
-	timing_hts_hi = ov8830_get_register(sd, OV8830_TIMING_HTS, reglist);
-	timing_hts_lo = ov8830_get_register(sd, OV8830_TIMING_HTS + 1, reglist);
 
 	pll2_prediv     = ov8830_get_register(sd, OV8830_PLL_PLL10, reglist);
 	pll2_multiplier = ov8830_get_register(sd, OV8830_PLL_PLL11, reglist);
 	pll2_divs       = ov8830_get_register(sd, OV8830_PLL_PLL12, reglist);
 	pll2_seld5      = ov8830_get_register(sd, OV8830_PLL_PLL13, reglist);
 
-	if (timing_vts_hi < 0 || timing_vts_lo < 0 ||
-	    timing_hts_hi < 0 || timing_vts_lo < 0 ||
-	    pll2_prediv < 0 || pll2_multiplier < 0 ||
+	if (pll2_prediv < 0 || pll2_multiplier < 0 ||
 	    pll2_divs < 0 || pll2_seld5 < 0)
 		return -EIO;
 
@@ -1254,9 +1244,24 @@ static int ov8830_get_intg_factor(struct v4l2_subdev *sd,
 		sclk = t3 / pll2_seld5;
 	m->vt_pix_clk_freq_mhz = sclk;
 
-	m->frame_length_lines = (timing_vts_hi  << 8) | timing_vts_lo;
-	m->line_length_pck = (timing_hts_hi << 8) | timing_hts_lo;
+	/* HTS and VTS */
+	m->frame_length_lines = ov8830_res[dev->fmt_idx].lines_per_frame;
+	m->line_length_pck = ov8830_res[dev->fmt_idx].pixels_per_line;
 
+	m->coarse_integration_time_min = 0;
+	m->coarse_integration_time_max_margin = OV8830_INTEGRATION_TIME_MARGIN;
+
+	/* OV Sensor do not use fine integration time. */
+	m->fine_integration_time_min = 0;
+	m->fine_integration_time_max_margin = 0;
+
+	/*
+	 * read_mode inicate whether binning is used for calculating
+	 * the correct exposure value from the user side. So adapt the
+	 * read mode values accordingly.
+	 */
+	m->read_mode = ov8830_res[dev->fmt_idx].bin_factor_x ?
+		     OV8830_READ_MODE_BINNING_ON : OV8830_READ_MODE_BINNING_OFF;
 	return 0;
 }
 

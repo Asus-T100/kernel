@@ -118,6 +118,11 @@ struct drv201_device {
 #define OV8830_TIMING_X_INC		0x3814
 #define OV8830_TIMING_Y_INC		0x3815
 
+/* sensor_mode_data read_mode adaptation */
+#define OV8830_READ_MODE_BINNING_ON	0x0400
+#define OV8830_READ_MODE_BINNING_OFF	0x00
+#define OV8830_INTEGRATION_TIME_MARGIN	14
+
 /*
  * focal length bits definition:
  * bits 31-16: numerator, bits 15-0: denominator
