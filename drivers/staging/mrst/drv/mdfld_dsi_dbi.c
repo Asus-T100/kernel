@@ -603,6 +603,7 @@ int mdfld_generic_dsi_dbi_set_power(struct drm_encoder *encoder, bool on)
 	struct panel_funcs *p_funcs;
 	struct drm_device *dev;
 	struct drm_psb_private *dev_priv;
+	static bool last_ospm_suspend;
 
 	if (!encoder) {
 		DRM_ERROR("Invalid encoder\n");
@@ -631,6 +632,12 @@ int mdfld_generic_dsi_dbi_set_power(struct drm_encoder *encoder, bool on)
 		goto fun_exit;
 	}
 
+	/**
+	 * if ospm has turned panel off, but dpms tries to turn panel on, skip
+	 */
+	if (dev_priv->dpms_on_off && on && last_ospm_suspend)
+		goto fun_exit;
+
 	switch (on) {
 	case true:
 		/* panel is already on */
@@ -645,6 +652,8 @@ int mdfld_generic_dsi_dbi_set_power(struct drm_encoder *encoder, bool on)
 
 		dsi_config->dsi_hw_context.panel_on = 1;
 		dbi_output->dbi_panel_on = 1;
+		last_ospm_suspend = false;
+
 		break;
 	case false:
 		if (!dsi_config->dsi_hw_context.panel_on &&
@@ -655,6 +664,11 @@ int mdfld_generic_dsi_dbi_set_power(struct drm_encoder *encoder, bool on)
 			DRM_ERROR("Faild to turn off panel\n");
 			goto set_power_err;
 		}
+
+		if (!dev_priv->dpms_on_off)
+			last_ospm_suspend = true;
+		else
+			last_ospm_suspend = false;
 
 		dsi_config->dsi_hw_context.panel_on = 0;
 		dbi_output->dbi_panel_on = 0;
@@ -747,12 +761,14 @@ void mdfld_generic_dsi_dbi_dpms(struct drm_encoder *encoder, int mode)
 	}
 
 	mutex_lock(&dev_priv->dpms_mutex);
+	dev_priv->dpms_on_off = true;
 
 	if (mode == DRM_MODE_DPMS_ON)
 		mdfld_generic_dsi_dbi_set_power(encoder, true);
 	else
 		mdfld_generic_dsi_dbi_set_power(encoder, false);
 
+	dev_priv->dpms_on_off = false;
 	mutex_unlock(&dev_priv->dpms_mutex);
 }
 
