@@ -1013,8 +1013,8 @@ int psb_check_msvdx_idle(struct drm_device *dev)
 
 	if (msvdx_priv->fw_loaded_by_punit) {
 		PSB_DEBUG_MSVDX("   SIGNITURE is %x\n", PSB_RMSVDX32(MSVDX_COMMS_SIGNATURE));
-
-		if (!(PSB_RMSVDX32(MSVDX_COMMS_FW_STATUS) & MSVDX_FW_STATUS_HW_IDLE))
+		if (!(PSB_RMSVDX32(MSVDX_COMMS_FW_STATUS) &
+					MSVDX_FW_STATUS_HW_IDLE))
 			return -EBUSY;
 	}
 	/*

@@ -49,7 +49,6 @@
 extern struct drm_device *gpDrmDevice;
 extern bool gbdispstatus;
 extern int drm_psb_debug;
-extern int psb_video_fabric_debug;
 extern int drm_psb_enable_cabc ;
 extern int gfxrtdelay;
 extern int drm_psb_te_timer_delay;
@@ -1448,10 +1447,15 @@ static inline void SGX_REGISTER_WRITE(struct drm_device *dev, uint32_t reg,
 
 extern int drm_psb_apm_base;
 
-#define PSB_WMSVDX32(_val, _offs) \
+
+#define MFLD_MSVDX_FABRIC_DEBUG 0
+#define MSVDX_REG_DUMP 0
+
+#if MFLD_MSVDX_FABRIC_DEBUG
+
+#define PSB_WMSVDX32(_val, _offs)				\
 do {								\
-	if (psb_video_fabric_debug &&				\
-		((inl(drm_psb_apm_base + APM_STS) & 0xc) == 0xc))	\
+	if ((inl(drm_psb_apm_base + APM_STS) & 0xc) == 0xc)	\
 		panic("msvdx reg 0x%x write failed.\n",		\
 				(unsigned int)(_offs));		\
 	else							\
@@ -1462,14 +1466,40 @@ static inline uint32_t PSB_RMSVDX32(uint32_t _offs)
 {
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *)gpDrmDevice->dev_private;
-	if (psb_video_fabric_debug &&
-			((inl(drm_psb_apm_base + APM_STS) & 0xc) == 0xc)) {
+	if ((inl(drm_psb_apm_base + APM_STS) & 0xc) == 0xc) {
 		panic("msvdx reg 0x%x read failed.\n", (unsigned int)(_offs));
 		return 0;
 	} else {
 		return ioread32(dev_priv->msvdx_reg + (_offs));
 	}
 }
+
+#elif MSVDX_REG_DUMP
+
+#define PSB_WMSVDX32(_val, _offs) \
+do {                                                \
+	printk(KERN_INFO"MSVDX: write %08x to reg 0x%08x\n", \
+			(unsigned int)(_val),       \
+			(unsigned int)(_offs));     \
+	iowrite32(_val, dev_priv->msvdx_reg + (_offs));   \
+} while (0)
+
+static inline uint32_t PSB_RMSVDX32(uint32_t _offs)
+{
+	uint32_t val = ioread32(dev_priv->msvdx_reg + (_offs));
+	printk(KERN_INFO"MSVDX: read reg 0x%08x, get %08x\n",
+			(unsigned int)(_offs), val);
+	return val;
+}
+
+#else
+
+#define PSB_WMSVDX32(_val, _offs) \
+	iowrite32(_val, dev_priv->msvdx_reg + (_offs))
+#define PSB_RMSVDX32(_offs) \
+	ioread32(dev_priv->msvdx_reg + (_offs))
+
+#endif
 
 #define PSB_ALPL(_val, _base)			\
   (((_val) >> (_base ## _ALIGNSHIFT)) << (_base ## _SHIFT))
