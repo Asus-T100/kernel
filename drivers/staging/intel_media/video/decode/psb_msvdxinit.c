@@ -119,7 +119,7 @@ static void msvdx_free_ccb(struct ttm_buffer_object **ccb)
 	*ccb = NULL;
 }
 
-static int msvdx_reset_internal_unused(struct drm_psb_private *dev_priv)
+int psb_msvdx_reset(struct drm_psb_private *dev_priv)
 {
 	int ret = 0;
 	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
@@ -230,6 +230,7 @@ static int msvdx_reset_internal_unused(struct drm_psb_private *dev_priv)
  * Reset chip and disable interrupts.
  * Return 0 success, 1 failure
  */
+#if 0
 int psb_msvdx_reset(struct drm_psb_private *dev_priv)
 {
 	int ret = 0;
@@ -256,6 +257,7 @@ int psb_msvdx_reset(struct drm_psb_private *dev_priv)
 
 	return ret;
 }
+#endif
 
 static int msvdx_allocate_ccb(struct drm_device *dev,
 			    struct ttm_buffer_object **ccb,
