@@ -80,6 +80,27 @@ langwell_ep0_desc = {
 
 static void ep_set_halt(struct langwell_ep *ep, int value);
 
+
+#ifdef CONFIG_DEBUG_FS
+
+extern  unsigned int *pm_sss0_base;
+
+extern  int check_pm_otg();
+#ifdef readl
+#undef readl
+#endif
+#ifdef writel
+#undef writel
+#endif
+#define readl(addr) ({ if (check_pm_otg()) { \
+	panic("usb otg, read reg:0x%x, pm_sss0_base:0x%x",  \
+	addr, *(pm_sss0_base)); }; __le32_to_cpu(__raw_readl(addr)); })
+#define writel(b, addr) ({ if (check_pm_otg()) { \
+	panic("usb otg, write reg:0x%x, pm_sss0_base:0x%x",  \
+	addr, *(pm_sss0_base)); }; __raw_writel(__cpu_to_le32(b), addr); })
+#endif
+
+
 /*-------------------------------------------------------------------------*/
 /* debugging */
 
@@ -3582,6 +3603,7 @@ static int langwell_udc_probe(struct pci_dev *pdev,
 		retval = -ENOMEM;
 		goto error;
 	}
+
 
 	/* initialize device spinlock */
 	spin_lock_init(&dev->lock);

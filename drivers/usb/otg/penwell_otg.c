@@ -75,6 +75,32 @@ static void penwell_spi_reset_phy(void);
 static int penwell_otg_charger_hwdet(bool enable);
 static void update_hsm(void);
 
+#ifdef CONFIG_DEBUG_FS
+unsigned int *pm_sss0_base;
+
+int check_pm_otg()
+{
+	/* check whether bit 12 and 13 are 0 */
+	/* printk(">>>>leon, pm_sss0_base:0x%x\n", *(pm_sss0_base)); */
+	if (pm_sss0_base)
+		return (*pm_sss0_base) & 0x3000;
+	else
+		return 0;
+}
+#ifdef readl
+#undef readl
+#endif
+#ifdef writel
+#undef writel
+#endif
+#define readl(addr) ({ if (check_pm_otg()) { \
+	panic("usb otg, read reg:0x%x, pm_sss0_base:0x%x",  \
+	addr, *(pm_sss0_base)); }; __le32_to_cpu(__raw_readl(addr)); })
+#define writel(b, addr) ({ if (check_pm_otg()) { \
+	panic("usb otg, write reg:0x%x, pm_sss0_base:0x%x",  \
+	addr, *(pm_sss0_base)); }; __raw_writel(__cpu_to_le32(b), addr); })
+#endif
+
 #ifdef CONFIG_PM_SLEEP
 #include <linux/suspend.h>
 DECLARE_WAIT_QUEUE_HEAD(stop_host_wait);
@@ -5467,12 +5493,18 @@ static struct pci_driver otg_pci_driver = {
 
 static int __init penwell_otg_init(void)
 {
+#ifdef	CONFIG_DEBUG_FS
+	pm_sss0_base = ioremap_nocache(0xFF11D030, 0x100);
+#endif
 	return pci_register_driver(&otg_pci_driver);
 }
 module_init(penwell_otg_init);
 
 static void __exit penwell_otg_cleanup(void)
 {
+#ifdef	CONFIG_DEBUG_FS
+	iounmap(pm_sss0_base);
+#endif
 	pci_unregister_driver(&otg_pci_driver);
 }
 module_exit(penwell_otg_cleanup);
