@@ -256,6 +256,9 @@ enum max170xx_chip_type {MAX17042, MAX17050};
 /* No of times we should reset I2C lines */
 #define NR_I2C_RESET_CNT	8
 
+#define VBATT_MAX 4200
+#define VBATT_MIN 3400
+
 /* default fuel gauge cell data for debug purpose only */
 static uint16_t cell_char_tbl[] = {
 	/* Data to be written from 0x80h */
@@ -350,6 +353,30 @@ static struct i2c_client *max17042_client;
 atomic_t fopen_count;
 
 static void update_runtime_params(struct max17042_chip *chip);
+
+/* Voltage-Capacity lookup function to get
+ * capacity value against a given voltage */
+static unsigned int voltage_capacity_lookup(unsigned int val)
+{
+	unsigned int max = VBATT_MAX;
+	unsigned int min = VBATT_MIN;
+	unsigned int capacity;
+	unsigned int total_diff;
+	unsigned int val_diff;
+
+	if (val > VBATT_MAX)
+		return 100;
+
+	if (val < VBATT_MIN)
+		return 0;
+
+	total_diff = max - min;
+	val_diff = max - val;
+
+	capacity = (total_diff - val_diff) * 100 / total_diff;
+
+	return capacity;
+}
 
 static int dev_file_open(struct inode *i, struct file *f)
 {
@@ -860,18 +887,24 @@ static int max17042_get_property(struct power_supply *psy,
 
 		/* If current sensing is not enabled then read the
 		 * voltage based fuel gauge register for SOC */
-		if (chip->pdata->enable_current_sense)
+		if (chip->pdata->enable_current_sense) {
 			ret = max17042_read_reg(chip->client, MAX17042_RepSOC);
-		else
-			ret = max17042_read_reg(chip->client, MAX17042_VFSOC);
-		if (ret < 0)
-			goto ps_prop_read_err;
-		val->intval = ret >> 8;
-		/* Check if MSB of lower byte is set
-		 * then round off the SOC to higher digit
-		 */
-		if ((ret & 0x80) && val->intval)
-			val->intval += 1;
+			if (ret < 0)
+				goto ps_prop_read_err;
+			val->intval = ret >> 8;
+			/* Check if MSB of lower byte is set
+			 * then round off the SOC to higher digit
+			 */
+			if ((ret & 0x80) && val->intval)
+				val->intval += 1;
+		} else {
+			ret = max17042_read_reg(chip->client, MAX17042_VCELL);
+			if (ret < 0)
+				goto ps_prop_read_err;
+
+			ret = (ret >> 3) * MAX17042_VOLT_CONV_FCTR / 1000;
+			val->intval = voltage_capacity_lookup(ret);
+		}
 
 		if (val->intval > 100)
 			val->intval = 100;
