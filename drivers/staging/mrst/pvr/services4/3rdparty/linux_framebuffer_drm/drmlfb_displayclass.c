@@ -1441,7 +1441,7 @@ static IMG_BOOL ProcessFlip2(IMG_HANDLE hCmdCookie,
 	psPlaneContexts = (struct mdfld_plane_contexts *)psFlipCmd->pvPrivData;
 
 	mutex_lock(&dsi_config->context_lock);
-	/*Screen is off, no need to send data*/
+	/* double check to make sure we don't send data when screen is off */
 	if (psDevInfo->bScreenState) {
 		spin_lock_irqsave(&psDevInfo->sSwapChainLock, ulLockFlags);
 
@@ -1575,8 +1575,12 @@ static IMG_BOOL ProcessFlip(IMG_HANDLE  hCmdCookie,
 	psBuffer = (MRSTLFB_BUFFER*)psFlipCmd->hExtBuffer;
 	psSwapChain = (MRSTLFB_SWAPCHAIN*) psFlipCmd->hExtSwapChain;
 
-	/* bFlush == true means hw recovery */
-	if (bFlush) {
+	/*
+	 * bFlush == true means hw recovery;
+	 * screen is off, no need to send data
+	 *
+	 */
+	if (bFlush || psDevInfo->bScreenState) {
 		spin_lock_irqsave(&psDevInfo->sSwapChainLock, ulLockFlags);
 		MRSTFBFlipComplete(psSwapChain, NULL, MRST_FALSE);
 		psSwapChain->psPVRJTable->pfnPVRSRVCmdComplete(hCmdCookie, IMG_TRUE);
@@ -1597,7 +1601,7 @@ static IMG_BOOL ProcessFlip(IMG_HANDLE  hCmdCookie,
 	dsi_config = dev_priv->dsi_configs[0];
 
 	mutex_lock(&dsi_config->context_lock);
-	/*Screen is off, no need to send data*/
+	/* double check to make sure we don't send data when screen is off */
 	if (psDevInfo->bScreenState) {
 		spin_lock_irqsave(&psDevInfo->sSwapChainLock, ulLockFlags);
 
