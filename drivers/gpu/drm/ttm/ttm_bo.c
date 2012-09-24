@@ -1225,10 +1225,10 @@ int ttm_bo_init(struct ttm_bo_device *bdev,
 		goto out_err;
 
 	/*
-	 * For ttm_bo_type_device buffers, allocate
+	 * For ttm_bo_type_device and ttm_bo_type_user buffers, allocate
 	 * address space from the device.
 	 */
-	if (bo->type == ttm_bo_type_device) {
+	if (bo->type == ttm_bo_type_device || bo->type == ttm_bo_type_user) {
 		ret = ttm_bo_setup_vm(bo);
 		if (ret)
 			goto out_err;
