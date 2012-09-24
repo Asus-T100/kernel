@@ -413,6 +413,15 @@ static int create_fwerr_log(char *output_buf, void __iomem *oshob_ptr)
 
 	get_additional_error(output_buf, num_err_logs, &faberr_dwords[offset],
 						MAX_NUM_LOGDWORDS - offset);
+
+	strcat(output_buf, "\n\n\nAdditional debug data:\n\n");
+	for (count = MAX_NUM_LOGDWORDS;
+		count < MAX_NUM_LOGDWORDS + MAX_NUM_LOGDWORDS_EXTENDED;
+		count++) {
+		sprintf(temp, "DW%d:0x%08x\n",
+			count, faberr_dwords[count]);
+		strcat(output_buf, temp);
+	}
 	return strlen(output_buf);
 }
 
