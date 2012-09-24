@@ -73,6 +73,7 @@ static int penwell_otg_ulpi_write(struct intel_mid_otg_xceiv *iotg,
 				u8 reg, u8 val);
 static void penwell_spi_reset_phy(void);
 static int penwell_otg_charger_hwdet(bool enable);
+static void update_hsm(void);
 
 #ifdef CONFIG_PM_SLEEP
 #include <linux/suspend.h>
@@ -1102,6 +1103,9 @@ static void penwell_otg_id(int on)
 	u32			val;
 
 	val = readl(pnw->iotg.base + CI_OTGSC);
+	/* mask W/C bits to avoid clearing them when
+	*  val is written back to OTGSC */
+	val &= ~OTGSC_INTSTS_MASK;
 	if (on) {
 		val = val | OTGSC_IDIE;
 		writel(val, pnw->iotg.base + CI_OTGSC);
@@ -1121,6 +1125,9 @@ static void penwell_otg_intr(int on)
 	dev_dbg(pnw->dev, "%s ---> %s\n", __func__, on ? "on" : "off");
 
 	val = readl(pnw->iotg.base + CI_OTGSC);
+	/* mask W/C bits to avoid clearing them when
+	*  val is written back to OTGSC */
+	val &= ~OTGSC_INTSTS_MASK;
 	if (on) {
 		val = val | (OTGSC_INTEN_MASK);
 		writel(val, pnw->iotg.base + CI_OTGSC);
@@ -2179,6 +2186,10 @@ static void pnw_phy_ctrl_rst(void)
 
 	udelay(4000);
 	penwell_otg_id(1);
+
+	/* after reset, need to sync to OTGSC status bits to hsm */
+	update_hsm();
+	penwell_update_transceiver();
 
 	spin_unlock_irqrestore(&pnw->lock, flags);
 }
@@ -5332,11 +5343,6 @@ static int penwell_otg_runtime_resume(struct device *dev)
 	unsigned long		flags;
 
 	dev_dbg(dev, "%s --->\n", __func__);
-
-	if (pnw->rt_resuming) {
-		dev_dbg(pnw->dev, "%s  rt_resuming--->\n", __func__);
-		penwell_otg_check_wakeup_event(pnw);
-	}
 
 	penwell_otg_phy_low_power(0);
 	penwell_otg_vusb330_low_power(0);
