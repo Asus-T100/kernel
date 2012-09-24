@@ -931,14 +931,8 @@ static pci_power_t  pmu_pci_get_weakest_state_for_lss(int lss_index,
 			set_mid_pci_power_state(lss_index, i, state);
 
 		if (get_mid_pci_drv(lss_index, i) &&
-			(get_mid_pci_power_state(lss_index, i) < weakest)) {
-			dev_warn(&pdev->dev, "%s:%s prevented me to suspend...\n",
-			    dev_name(&(get_mid_pci_drv(lss_index, i))->dev),
-			    dev_driver_string
-				(&(get_mid_pci_drv(lss_index, i))->dev));
-
+			(get_mid_pci_power_state(lss_index, i) < weakest))
 			weakest = get_mid_pci_power_state(lss_index, i);
-		}
 	}
 	return weakest;
 }
