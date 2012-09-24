@@ -425,7 +425,7 @@ static int mfld_voice_hw_params(struct snd_pcm_substream *substream,
 	struct mfld_mc_private *ctx = snd_soc_card_get_drvdata(soc_card);
 	pr_debug("%s\n", __func__);
 
-	if (ctx->sn95031_pcm1_mode) { /* VOIP call */
+	if (ctx->sn95031_pcm1_master_mode) { /* VOIP call */
 		snd_soc_codec_set_pll(codec, 0, SN95031_PLLIN, 1, 1);
 		snd_soc_dai_set_fmt(rtd->codec_dai, SND_SOC_DAIFMT_CBM_CFM
 						| SND_SOC_DAIFMT_DSP_A);
