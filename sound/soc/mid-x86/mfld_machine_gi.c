@@ -368,8 +368,10 @@ static int mfld_media_hw_params(struct snd_pcm_substream *substream,
 	int ret;
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct snd_soc_codec *codec = rtd->codec;
+	struct mfld_mc_private *ctx = snd_soc_card_get_drvdata(rtd->card);
 
 	pr_debug("%s\n", __func__);
+
 	/* Force the data width to 24 bit in MSIC since post processing
 	algorithms in DSP enabled with 24 bit precision */
 	ret = snd_soc_codec_set_params(codec, SNDRV_PCM_FORMAT_S24_LE);
@@ -377,7 +379,14 @@ static int mfld_media_hw_params(struct snd_pcm_substream *substream,
 		pr_debug("codec_set_params returned error %d\n", ret);
 		return ret;
 	}
-	snd_soc_codec_set_pll(codec, 0, SN95031_PLLIN, 1, 1);
+
+	/* if PCM1 is running and in slave mode, dont reconfigure PLL */
+	if (ctx->voice_usage && !ctx->sn95031_pcm1_master_mode) {
+		pr_debug("FM active, do not reconfigure PLL\n");
+		snd_soc_dai_set_tristate(rtd->codec_dai, 0);
+		return 0;
+	}
+
 
 	/* VAUD needs to be on before configuring PLL */
 	snd_soc_dapm_force_enable_pin(&codec->dapm, "VirtBias");
@@ -385,8 +394,9 @@ static int mfld_media_hw_params(struct snd_pcm_substream *substream,
 	snd_soc_dapm_sync(&codec->dapm);
 	mutex_unlock(&codec->mutex);
 	usleep_range(5000, 6000);
-	sn95031_configure_pll(codec, SN95031_ENABLE_PLL);
 
+	snd_soc_codec_set_pll(codec, 0, SN95031_PLLIN, 1, 1);
+	sn95031_configure_pll(codec, SN95031_ENABLE_PLL);
 	/* enable PCM2 */
 	snd_soc_dai_set_tristate(rtd->codec_dai, 0);
 	return 0;
@@ -401,7 +411,7 @@ static int mfld_voice_hw_params(struct snd_pcm_substream *substream,
 	struct mfld_mc_private *ctx = snd_soc_card_get_drvdata(soc_card);
 	pr_debug("%s\n", __func__);
 
-	if (ctx->sn95031_pcm1_mode) { /* VOIP call */
+	if (ctx->sn95031_pcm1_master_mode) { /* VOIP call */
 		snd_soc_codec_set_pll(codec, 0, SN95031_PLLIN, 1, 1);
 		snd_soc_dai_set_fmt(rtd->codec_dai, SND_SOC_DAIFMT_CBM_CFM
 						| SND_SOC_DAIFMT_DSP_A);
@@ -436,11 +446,14 @@ static struct snd_pcm_hw_constraint_list constraints_44100 = {
 
 static int mfld_media_startup(struct snd_pcm_substream *substream)
 {
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct mfld_mc_private *ctx = snd_soc_card_get_drvdata(rtd->card);
 	pr_debug("%s - applying rate constraint\n", __func__);
 	snd_pcm_hw_constraint_list(substream->runtime, 0,
 				   SNDRV_PCM_HW_PARAM_RATE,
 				   &constraints_44100);
 	intel_scu_ipc_set_osc_clk0(true, CLK0_MSIC);
+	ctx->media_usage++;
 	return 0;
 }
 
@@ -448,26 +461,45 @@ static void mfld_media_shutdown(struct snd_pcm_substream *substream)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct snd_soc_dai *codec_dai = rtd->codec_dai;
+	struct mfld_mc_private *ctx = snd_soc_card_get_drvdata(rtd->card);
 	pr_debug("%s\n", __func__);
 
 	snd_soc_dapm_disable_pin(&rtd->codec->dapm, "VirtBias");
-	/* switch off PCM2 port */
-	if (!rtd->codec->active)
+	ctx->media_usage--;
+
+	/* switch off PCM2 port if no media streams active */
+	if (!ctx->media_usage)
 		snd_soc_dai_set_tristate(codec_dai, 1);
 }
 
 static int mfld_voice_startup(struct snd_pcm_substream *substream)
 {
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct mfld_mc_private *ctx = snd_soc_card_get_drvdata(rtd->card);
 	intel_scu_ipc_set_osc_clk0(true, CLK0_MSIC);
+	ctx->voice_usage++;
 	return 0;
 }
 
 static void mfld_voice_shutdown(struct snd_pcm_substream *substream)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct mfld_mc_private *ctx = snd_soc_card_get_drvdata(rtd->card);
+	struct snd_soc_codec *codec = rtd->codec;
 	pr_debug("%s\n", __func__);
 
 	snd_soc_dapm_disable_pin(&rtd->codec->dapm, "VirtBias");
+	ctx->voice_usage--;
+
+	/* currently in slave mode. FM exiting and media still running,
+	 * reconfigure PLL for media
+	 */
+	if (!ctx->sn95031_pcm1_master_mode && ctx->media_usage > 0) {
+		pr_debug("FM exiting, reconfiguring PLL for media\n");
+		snd_soc_codec_set_pll(codec, 0, SN95031_PLLIN, 1, 1);
+		sn95031_configure_pll(codec, SN95031_ENABLE_PLL);
+	}
+
 }
 
 static struct snd_soc_ops mfld_media_ops = {

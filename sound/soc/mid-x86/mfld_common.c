@@ -126,8 +126,8 @@ int mfld_get_pcm1_mode(struct snd_kcontrol *kcontrol,
 	struct snd_soc_codec *codec =  snd_kcontrol_chip(kcontrol);
 	struct mfld_mc_private *ctx = snd_soc_card_get_drvdata(codec->card);
 
-	pr_debug("PCM1 master mode: %d\n", ctx->sn95031_pcm1_mode);
-	ucontrol->value.integer.value[0] = ctx->sn95031_pcm1_mode;
+	pr_debug("PCM1 master mode: %d\n", ctx->sn95031_pcm1_master_mode);
+	ucontrol->value.integer.value[0] = ctx->sn95031_pcm1_master_mode;
 	return 0;
 }
 
@@ -137,7 +137,7 @@ int mfld_set_pcm1_mode(struct snd_kcontrol *kcontrol,
 	struct snd_soc_codec *codec =  snd_kcontrol_chip(kcontrol);
 	struct mfld_mc_private *ctx = snd_soc_card_get_drvdata(codec->card);
 
-	ctx->sn95031_pcm1_mode = ucontrol->value.integer.value[0];
+	ctx->sn95031_pcm1_master_mode = ucontrol->value.integer.value[0];
 	return 0;
 }
 

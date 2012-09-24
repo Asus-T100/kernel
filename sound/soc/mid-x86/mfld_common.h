@@ -64,12 +64,14 @@ struct mfld_mc_private {
 	spinlock_t lock; /* lock for interrupt status and jack debounce */
 	struct mfld_jack_work jack_work;
 	void *audio_adc_handle;
-	int sn95031_pcm1_mode;
+	int sn95031_pcm1_master_mode;
 	unsigned int mfld_jack_lp_flag;
 	unsigned int hs_switch;
 	unsigned int sn95031_lo_dac;
 	struct msic_audio_platform_data *pdata;
 	int jack_gpio;
+	int media_usage;
+	int voice_usage;
 #ifdef CONFIG_HAS_WAKELOCK
 	struct wake_lock *jack_wake_lock;
 #endif
