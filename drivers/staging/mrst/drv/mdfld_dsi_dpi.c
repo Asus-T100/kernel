@@ -535,7 +535,8 @@ static int mdfld_dsi_dpi_panel_turn_on(struct mdfld_dsi_config *dsi_config)
 	err = mdfld_dsi_send_dpi_spk_pkg_hs(sender,
 			MDFLD_DSI_DPI_SPK_TURN_ON);
 	/*According HW DSI spec, here need wait for 100ms*/
-	msleep(100);
+	/*To optimize dpms flow, move sleep out of mutex*/
+	/* msleep(100); */
 
 	return err;
 }
@@ -552,7 +553,8 @@ static int mdfld_dsi_dpi_panel_shut_down(struct mdfld_dsi_config *dsi_config)
 	err = mdfld_dsi_send_dpi_spk_pkg_hs(sender,
 			MDFLD_DSI_DPI_SPK_SHUT_DOWN);
 	/*According HW DSI spec, here need wait for 100ms*/
-	msleep(100);
+	/*To optimize dpms flow, move sleep out of mutex*/
+	/* msleep(100); */
 
 	return err;
 }
@@ -663,6 +665,9 @@ static int __mdfld_dsi_dpi_set_power(struct drm_encoder *encoder, bool on)
 
 fun_exit:
 	mutex_unlock(&dsi_config->context_lock);
+	/*To optimize dpms with context lock, move panel sleep out of mutex*/
+	if (dev_priv->dpms_on_off)
+		msleep(100);
 	PSB_DEBUG_ENTRY("successfully\n");
 	return 0;
 set_power_err:

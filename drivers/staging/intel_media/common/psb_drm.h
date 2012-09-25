@@ -664,6 +664,7 @@ struct intel_sprite_context {
 #define INTEL_SPRITE_PLANE_NUM		3
 #define INTEL_OVERLAY_PLANE_NUM		2
 #define INTEL_DISPLAY_PLANE_NUM		5
+#define INVALID_INDEX			0xffffffff
 
 struct mdfld_plane_contexts {
 	uint32_t active_primaries;

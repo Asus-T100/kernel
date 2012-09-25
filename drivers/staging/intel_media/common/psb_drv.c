@@ -1360,6 +1360,9 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	mutex_init(&dev_priv->gamma_csc_lock);
 	mutex_init(&dev_priv->overlay_lock);
 
+	dev_priv->overlay_wait = 0;
+	dev_priv->overlay_fliped = 0;
+
 	spin_lock_init(&dev_priv->reloc_lock);
 	spin_lock_init(&dev_priv->dsr_lock);
 
@@ -1556,6 +1559,12 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	ret = drm_vblank_init(dev, dev_priv->num_pipe);
 	if (ret)
 		goto out_err;
+
+	/* disable vblank_disable_timer in drm_vblank_put
+	 * because the vblank disable should be controlled
+	 * by framework in Jellybean instead of in driver.
+	 */
+	drm_vblank_offdelay = 0;
 
 	/*
 	 * Install interrupt handlers prior to powering off SGX or else we will
@@ -2640,6 +2649,25 @@ static void overlay_wait_flip(struct drm_device *dev)
 {
 	int retry;
 	struct drm_psb_private *dev_priv = psb_priv(dev);
+	/*
+	 * make sure OVADD write complete in ProcessFlip
+	 */
+	dev_priv->overlay_wait++;
+
+	retry = 300;
+	while (--retry) {
+		if (dev_priv->overlay_wait == dev_priv->overlay_fliped)
+			break;
+		usleep_range(50, 100);
+	}
+
+	if (!retry) {
+		/* reset to 0 when timeout happens */
+		dev_priv->overlay_wait = 0;
+		dev_priv->overlay_fliped = 0;
+		DRM_ERROR("wait OVADD flip timeout!\n");
+	}
+
 	/**
 	 * make sure overlay command buffer
 	 * was copied before updating the system

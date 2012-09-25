@@ -965,6 +965,8 @@ struct drm_psb_private {
 	struct mutex gamma_csc_lock;
 	/* overlay setting lock*/
 	struct mutex overlay_lock;
+	uint32_t overlay_wait;
+	uint32_t overlay_fliped;
 	int brightness_adjusted;
 
 	/*

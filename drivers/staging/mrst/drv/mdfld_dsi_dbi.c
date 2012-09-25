@@ -487,10 +487,6 @@ reset_recovery:
 			goto power_on_err;
 		}
 
-	/*Notify PVR module that screen is on*/
-	if (dev_priv->pvr_screen_event_handler)
-		dev_priv->pvr_screen_event_handler(dev, 1);
-
 	if (p_funcs && p_funcs->set_brightness)
 		if (p_funcs->set_brightness(dsi_config,
 					ctx->lastbrightnesslevel))
@@ -624,10 +620,6 @@ static int __dbi_panel_power_off(struct mdfld_dsi_config *dsi_config,
 		if (p_funcs->set_brightness(dsi_config, 0))
 			DRM_ERROR("Failed to set panel brightness\n");
 
-	/*Notify PVR module that screen is off*/
-	if (dev_priv->pvr_screen_event_handler)
-		dev_priv->pvr_screen_event_handler(dev, 0);
-
 	/*wait for two TE, let pending PVR flip complete*/
 	msleep(32);
 
@@ -684,6 +676,10 @@ int mdfld_generic_dsi_dbi_set_power(struct drm_encoder *encoder, bool on)
 	dev = encoder->dev;
 	dev_priv = dev->dev_private;
 	pipe = dsi_config->pipe;
+
+	/*Notify PVR module screen is off before power off*/
+	if (!on && dev_priv->pvr_screen_event_handler)
+		dev_priv->pvr_screen_event_handler(dev, 0);
 
 	mutex_lock(&dsi_config->context_lock);
 
@@ -751,11 +747,19 @@ int mdfld_generic_dsi_dbi_set_power(struct drm_encoder *encoder, bool on)
 
 fun_exit:
 	mutex_unlock(&dsi_config->context_lock);
+	if (dsi_config->dsi_hw_context.panel_on) {
+		/*Notify PVR module screen is on if success power on*/
+		if (dev_priv->pvr_screen_event_handler)
+			dev_priv->pvr_screen_event_handler(dev, 1);
+	}
 	PSB_DEBUG_ENTRY("successfully\n");
 	return 0;
 
 set_power_err:
 	mutex_unlock(&dsi_config->context_lock);
+	/* if err occurs, modify the state back to its previous state */
+	if (dev_priv->pvr_screen_event_handler)
+		dev_priv->pvr_screen_event_handler(dev, on ? 0 : 1);
 	PSB_DEBUG_ENTRY("unsuccessfully!\n");
 	return -EAGAIN;
 }

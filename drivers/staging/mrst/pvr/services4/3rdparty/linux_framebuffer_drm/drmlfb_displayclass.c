@@ -128,11 +128,13 @@ static void MRSTLFBFlipOverlay(MRSTLFB_DEVINFO *psDevInfo,
 	dev_priv =
 		(struct drm_psb_private *)psDevInfo->psDrmDevice->dev_private;
 
-	DRM_INFO("%s: flip 0x%x, index %d, pipe 0x%x\n", __func__,
+	/* DRM_INFO("%s: flip 0x%x, index %d, pipe 0x%x\n", __func__,
 		psContext->ovadd, psContext->index, psContext->pipe);
-
+	*/
 	if (psContext->index == 1)
 		ovadd_reg = OVC_OVADD;
+	else if (psContext->index > 1)
+		return;
 
 	psContext->ovadd |= psContext->pipe;
 	psContext->ovadd |= 1;
@@ -296,9 +298,15 @@ static IMG_BOOL MRSTLFBFlipContexts(MRSTLFB_DEVINFO *psDevInfo,
 		}
 	}
 
-	if (mdfld_dsi_dsr_update_panel_fb(dev_priv->dsi_configs[0])) {
-		DRM_ERROR("mdfld_dsi_dsr: failed to update panel fb\n");
-		ret = IMG_FALSE;
+	/* increase overlay_fliped to match up with overlay_wait after flip */
+	if (psContexts->active_overlays != 0)
+		dev_priv->overlay_fliped++;
+
+	if (!psDevInfo->bScreenState) {
+		if (mdfld_dsi_dsr_update_panel_fb(dev_priv->dsi_configs[0])) {
+			DRM_ERROR("mdfld_dsi_dsr: failed to update panel fb\n");
+			ret = IMG_FALSE;
+		}
 	}
 
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
@@ -1399,6 +1407,101 @@ static IMG_BOOL updatePlaneContexts(MRSTLFB_SWAPCHAIN *psSwapChain,
 	return IMG_TRUE;
 }
 
+static IMG_BOOL bIllegalFlipContexts(IMG_VOID *pvData)
+{
+	IMG_BOOL bIllegal = IMG_TRUE;
+	DISPLAYCLASS_FLIP_COMMAND2 *psFlipCmd;
+	struct drm_device *dev;
+	struct drm_psb_private *dev_priv;
+	MRSTLFB_DEVINFO *psDevInfo;
+	struct mdfld_plane_contexts *psContexts;
+	struct intel_sprite_context *psPrimaryContext;
+	struct intel_sprite_context *psSpriteContext;
+	struct intel_overlay_context *psOverlayContext;
+	int i;
+
+	psFlipCmd = (DISPLAYCLASS_FLIP_COMMAND2 *)pvData;
+	psDevInfo = (MRSTLFB_DEVINFO *)psFlipCmd->hExtDevice;
+	dev = psDevInfo->psDrmDevice;
+	dev_priv =
+		(struct drm_psb_private *)psDevInfo->psDrmDevice->dev_private;
+
+	psContexts = (struct mdfld_plane_contexts *)psFlipCmd->pvPrivData;
+
+	if (!psFlipCmd || !psDevInfo || !psContexts || !dev_priv) {
+		DRM_ERROR("Invalid parameters\n");
+		return IMG_TRUE;
+	}
+
+	/*check all active primary planes*/
+	for (i = 0; i < INTEL_SPRITE_PLANE_NUM; i++) {
+		if (psContexts->active_primaries & (1 << i)) {
+			psPrimaryContext = &psContexts->primary_contexts[i];
+
+			if (psPrimaryContext->index == 0 &&
+				psDevInfo->bScreenState) {
+				/* MIPI A off, should not flush PIPEA */
+				psPrimaryContext->index = INVALID_INDEX;
+			} else if (psPrimaryContext->index == 1 &&
+					hdmi_state &&
+					dev_priv->early_suspended) {
+				/* HDMI off, should not flush PIPEB */
+				psPrimaryContext->index = INVALID_INDEX;
+			} else if (psPrimaryContext->index == 2) {
+				/* NULL unless PLANE C Enabled */
+			} else
+				bIllegal = IMG_FALSE;
+
+		}
+	}
+
+	/*check all active sprite planes*/
+	for (i = 0; i < INTEL_SPRITE_PLANE_NUM; i++) {
+		if (psContexts->active_sprites & (1 << i)) {
+			psSpriteContext = &psContexts->sprite_contexts[i];
+
+			if (psSpriteContext->index == 0 &&
+				psDevInfo->bScreenState) {
+				/* MIPI A off, should not flush PIPEA */
+				psSpriteContext->index = INVALID_INDEX;
+			} else if (psSpriteContext->index == 1 &&
+					hdmi_state &&
+					dev_priv->early_suspended) {
+				/* HDMI off, should not flush PIPEB */
+				psSpriteContext->index = INVALID_INDEX;
+			} else if (psSpriteContext->index == 2) {
+				/* NULL unless PLANE C Enabled */
+			} else
+				bIllegal = IMG_FALSE;
+		}
+	}
+
+	/*check all active overlay planes*/
+	for (i = 0; i < INTEL_OVERLAY_PLANE_NUM; i++) {
+		if (psContexts->active_overlays & (1 << i)) {
+			psOverlayContext = &psContexts->overlay_contexts[i];
+
+			/* OVERLAY A/C have same policy */
+			if (psOverlayContext->pipe == 0x00 &&
+				(psDevInfo->bScreenState || hdmi_state)) {
+				psOverlayContext->index = INVALID_INDEX;
+			} else if (psOverlayContext->pipe == 0x80 &&
+					hdmi_state &&
+					dev_priv->early_suspended) {
+				psOverlayContext->index = INVALID_INDEX;
+			} else
+				bIllegal = IMG_FALSE;
+		}
+	}
+
+	/* handle overlay_fliped when contexts are illegal */
+	if (bIllegal && psContexts->active_overlays != 0)
+		dev_priv->overlay_fliped++;
+
+	/* if all contexts are illegal, should not do flush */
+	return bIllegal;
+}
+
 static IMG_BOOL ProcessFlip2(IMG_HANDLE hCmdCookie,
 			IMG_UINT32 ui32DataSize,
 			IMG_VOID *pvData)
@@ -1415,6 +1518,7 @@ static IMG_BOOL ProcessFlip2(IMG_HANDLE hCmdCookie,
 	MRSTLFB_DEVINFO *psDevInfo;
 	struct mdfld_plane_contexts *psPlaneContexts;
 	struct mdfld_dsi_config *dsi_config;
+	int contextlocked;
 
 	psFlipCmd = (DISPLAYCLASS_FLIP_COMMAND2 *)pvData;
 	psDevInfo = (MRSTLFB_DEVINFO *)psFlipCmd->hExtDevice;
@@ -1440,9 +1544,21 @@ static IMG_BOOL ProcessFlip2(IMG_HANDLE hCmdCookie,
 
 	psPlaneContexts = (struct mdfld_plane_contexts *)psFlipCmd->pvPrivData;
 
-	mutex_lock(&dsi_config->context_lock);
-	/* double check to make sure we don't send data when screen is off */
-	if (psDevInfo->bScreenState) {
+	/* Firstly try to get lock; if failed, check ScreenState.
+	 * If screen is off, no need to lock context_lock;otherwise
+	 * it will try to get the lock. This is the way to avoid
+	 * long time block caused by DPMS.
+	 */
+	contextlocked = mutex_trylock(&dsi_config->context_lock);
+	if (!contextlocked) {
+		if (!psDevInfo->bScreenState) {
+			mutex_lock(&dsi_config->context_lock);
+			contextlocked = 1;
+		}
+	}
+
+	/*Screen is off, no need to send data*/
+	if (bIllegalFlipContexts(pvData)) {
 		spin_lock_irqsave(&psDevInfo->sSwapChainLock, ulLockFlags);
 
 		MRSTFBFlipComplete(psSwapChain, NULL, MRST_FALSE);
@@ -1453,7 +1569,9 @@ static IMG_BOOL ProcessFlip2(IMG_HANDLE hCmdCookie,
 		mutex_unlock(&dsi_config->context_lock);
 		return IMG_TRUE;
 	}
-	mdfld_dsi_dsr_forbid_locked(dsi_config);
+
+	if (contextlocked)
+		mdfld_dsi_dsr_forbid_locked(dsi_config);
 
 	if (dev_priv->exit_idle && (dsi_config->type == MDFLD_DSI_ENCODER_DPI))
 		dev_priv->exit_idle(dev, MDFLD_DSR_2D_3D, NULL, true);
@@ -1530,14 +1648,18 @@ static IMG_BOOL ProcessFlip2(IMG_HANDLE hCmdCookie,
 	}
 ExitErrorUnlock:
 	spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
-	mdfld_dsi_dsr_allow_locked(dsi_config);
-	mutex_unlock(&dsi_config->context_lock);
+	if (contextlocked) {
+		mdfld_dsi_dsr_allow_locked(dsi_config);
+		mutex_unlock(&dsi_config->context_lock);
+	}
 	return IMG_FALSE;
 ExitTrueUnlock:
 #endif
 	spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
-	mdfld_dsi_dsr_allow_locked(dsi_config);
-	mutex_unlock(&dsi_config->context_lock);
+	if (contextlocked) {
+		mdfld_dsi_dsr_allow_locked(dsi_config);
+		mutex_unlock(&dsi_config->context_lock);
+	}
 	return IMG_TRUE;
 }
 
@@ -1557,6 +1679,7 @@ static IMG_BOOL ProcessFlip(IMG_HANDLE  hCmdCookie,
 	struct drm_device *dev;
 	struct drm_psb_private *dev_priv;
 	struct mdfld_dsi_config *dsi_config;
+	int contextlocked;
 
 	if(!hCmdCookie || !pvData)
 		return IMG_FALSE;
@@ -1575,12 +1698,9 @@ static IMG_BOOL ProcessFlip(IMG_HANDLE  hCmdCookie,
 	psBuffer = (MRSTLFB_BUFFER*)psFlipCmd->hExtBuffer;
 	psSwapChain = (MRSTLFB_SWAPCHAIN*) psFlipCmd->hExtSwapChain;
 
-	/*
-	 * bFlush == true means hw recovery;
-	 * screen is off, no need to send data
-	 *
-	 */
-	if (bFlush || psDevInfo->bScreenState) {
+	/* bFlush == true means hw recovery */
+	if (bFlush || (!psBuffer && bIllegalFlipContexts(pvData)) ||
+		(psBuffer && psDevInfo->bScreenState)) {
 		spin_lock_irqsave(&psDevInfo->sSwapChainLock, ulLockFlags);
 		MRSTFBFlipComplete(psSwapChain, NULL, MRST_FALSE);
 		psSwapChain->psPVRJTable->pfnPVRSRVCmdComplete(hCmdCookie, IMG_TRUE);
@@ -1600,7 +1720,14 @@ static IMG_BOOL ProcessFlip(IMG_HANDLE  hCmdCookie,
 
 	dsi_config = dev_priv->dsi_configs[0];
 
-	mutex_lock(&dsi_config->context_lock);
+	contextlocked = mutex_trylock(&dsi_config->context_lock);
+	if (!contextlocked) {
+		if (!psDevInfo->bScreenState) {
+			mutex_lock(&dsi_config->context_lock);
+			contextlocked = 1;
+		}
+	}
+
 	/* double check to make sure we don't send data when screen is off */
 	if (psDevInfo->bScreenState) {
 		spin_lock_irqsave(&psDevInfo->sSwapChainLock, ulLockFlags);
@@ -1613,7 +1740,9 @@ static IMG_BOOL ProcessFlip(IMG_HANDLE  hCmdCookie,
 		mutex_unlock(&dsi_config->context_lock);
 		return IMG_TRUE;
 	}
-	mdfld_dsi_dsr_forbid_locked(dsi_config);
+
+	if (contextlocked)
+		mdfld_dsi_dsr_forbid_locked(dsi_config);
 
 	if (dev_priv->exit_idle && (dsi_config->type == MDFLD_DSI_ENCODER_DPI))
 		dev_priv->exit_idle(dev, MDFLD_DSR_2D_3D, NULL, true);
@@ -1688,15 +1817,19 @@ static IMG_BOOL ProcessFlip(IMG_HANDLE  hCmdCookie,
 	}
 ExitErrorUnlock:
 	spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
-	mdfld_dsi_dsr_allow_locked(dsi_config);
-	mutex_unlock(&dsi_config->context_lock);
+	if (contextlocked) {
+		mdfld_dsi_dsr_allow_locked(dsi_config);
+		mutex_unlock(&dsi_config->context_lock);
+	}
 	return IMG_FALSE;
 
 ExitTrueUnlock:
 #endif
 	spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
-	mdfld_dsi_dsr_allow_locked(dsi_config);
-	mutex_unlock(&dsi_config->context_lock);
+	if (contextlocked) {
+		mdfld_dsi_dsr_allow_locked(dsi_config);
+		mutex_unlock(&dsi_config->context_lock);
+	}
 	return IMG_TRUE;
 }
 
