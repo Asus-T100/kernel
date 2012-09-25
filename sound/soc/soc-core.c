@@ -2975,6 +2975,22 @@ int snd_soc_dai_set_fmt(struct snd_soc_dai *dai, unsigned int fmt)
 EXPORT_SYMBOL_GPL(snd_soc_dai_set_fmt);
 
 /**
+ * snd_soc_codec_set_params - configure codec hardware audio params.
+ * @codec:  codec
+ * @params: SNDRV_PCM_FMTBIT format value.
+ *
+ * Configures the codec params.
+ */
+int snd_soc_codec_set_params(struct snd_soc_codec *codec, unsigned int param)
+{
+	if (codec->driver->set_params)
+		return codec->driver->set_params(codec, param);
+	else
+		return -EINVAL;
+}
+EXPORT_SYMBOL_GPL(snd_soc_codec_set_params);
+
+/**
  * snd_soc_dai_set_tdm_slot - configure DAI TDM.
  * @dai: DAI
  * @tx_mask: bitmask representing active TX slots.

@@ -1,9 +1,11 @@
 /*
- *  mfld_machine.c - ASoc Machine driver for Intel Medfield MID platform
+ *  mfld_machine_gi.c - ASoc Machine driver for Gilligan Island board
+ *  based on Intel Medfield MID platform
  *
  *  Copyright (C) 2010 Intel Corp
  *  Author: Vinod Koul <vinod.koul@intel.com>
  *  Author: Harsha Priya <priya.harsha@intel.com>
+ *  Author: Ramesh babu K V <ramesh.babu@intel.com>
  *  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -25,14 +27,13 @@
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
 #include <linux/init.h>
-#include <linux/module.h>
 #include <linux/device.h>
 #include <linux/delay.h>
 #include <linux/slab.h>
 #include <linux/io.h>
 #include <linux/async.h>
 #include <linux/wakelock.h>
-#include <linux/gpio.h>
+#include <linux/ipc_device.h>
 #include <asm/intel-mid.h>
 #include <asm/intel_scu_ipcutil.h>
 #include <asm/intel_mid_gpadc.h>
@@ -44,8 +45,8 @@
 #include "../codecs/sn95031.h"
 #include "mfld_common.h"
 
-#define MFLD_JACK_DEBOUNCE_TIME	  250 /* mS */
-#define MFLD_GPIO_HEADSET_DET_PIN 77
+/* The GI jack is different, debounce time needs to be more */
+#define MFLD_JACK_DEBOUNCE_TIME	  700 /* mS */
 
 /* jack detection voltage zones */
 static struct snd_soc_jack_zone mfld_zones[] = {
@@ -57,7 +58,8 @@ static void mfld_jack_enable_mic_bias(struct snd_soc_codec *codec)
 {
 	pr_debug("enable mic bias\n");
 	mutex_lock(&codec->mutex);
-	snd_soc_dapm_force_enable_pin(&codec->dapm, "AMIC1Bias");
+	/* FIXME: GI has micbias swapped, change this when HW is fixed */
+	snd_soc_dapm_force_enable_pin(&codec->dapm, "AMIC2Bias");
 	snd_soc_dapm_sync(&codec->dapm);
 	mutex_unlock(&codec->mutex);
 }
@@ -66,27 +68,20 @@ static void mfld_jack_disable_mic_bias(struct snd_soc_codec *codec)
 {
 	pr_debug("disable mic bias\n");
 	mutex_lock(&codec->mutex);
-	snd_soc_dapm_disable_pin(&codec->dapm, "AMIC1Bias");
+	snd_soc_dapm_disable_pin(&codec->dapm, "AMIC2Bias");
 	snd_soc_dapm_sync(&codec->dapm);
 	mutex_unlock(&codec->mutex);
 }
 
 static int mfld_get_headset_state(struct snd_soc_jack *jack)
 {
-	int micbias, jack_type, hs_gpio = 1;
+	int micbias, jack_type;
 
 	mfld_jack_enable_mic_bias(jack->codec);
 	micbias = mfld_jack_read_voltage(jack);
 
 	jack_type = snd_soc_jack_get_type(jack, micbias);
 	pr_debug("jack type detected = %d, micbias = %d\n", jack_type, micbias);
-
-	if ((jack_type != SND_JACK_HEADSET) && (jack_type != SND_JACK_HEADPHONE))
-		hs_gpio = gpio_get_value(MFLD_GPIO_HEADSET_DET_PIN);
-	if (!hs_gpio) {
-		jack_type = SND_JACK_HEADPHONE;
-		pr_debug("GPIO says there is a headphone, reporting it\n");
-	}
 
 	if (jack_type == SND_JACK_HEADSET)
 		/* enable btn press detection */
@@ -103,7 +98,7 @@ static void mfld_jack_report(struct snd_soc_jack *jack, unsigned int status)
 
 	pr_debug("jack reported of type: 0x%x\n", status);
 	if ((status == SND_JACK_HEADSET) || (status == SND_JACK_HEADPHONE)) {
-		/* if we detected valid headset then disable headset ground.
+		/* if we detected valid headset then disable headset ground,
 		 * this is required for jack detection to work well */
 		snd_soc_update_bits(jack->codec, SN95031_BTNCTRL2, BIT(1), 0);
 	} else if (status == 0) {
@@ -141,11 +136,6 @@ void mfld_jack_wq(struct work_struct *work)
 			snd_soc_update_bits(jack->codec, SN95031_ACCDETMASK,
 							BIT(1)|BIT(0), 0);
 	} else if (intr_id & SN95031_JACK_REMOVED) {
-		if (!gpio_get_value(MFLD_GPIO_HEADSET_DET_PIN)) {
-			pr_debug("remove interrupt, "
-				"but GPIO says inserted\n");
-			return;
-		}
 		pr_debug("reporting jack as removed\n");
 		snd_soc_update_bits(jack->codec, SN95031_BTNCTRL2, BIT(0), 0);
 		snd_soc_update_bits(jack->codec, SN95031_ACCDETMASK, BIT(2), 0);
@@ -202,10 +192,6 @@ static int mfld_schedule_jack_wq(struct mfld_jack_work *jack_work)
 			msecs_to_jiffies(MFLD_JACK_DEBOUNCE_TIME));
 }
 
-/* The Medfield jack takes additional time for the interrupts to settle,
- * hence we have an software debounce mechanism so and take the value of
- * the final interrupt reported withing the debounce time to be true
- */
 static void mfld_jack_detection(unsigned int intr_id,
 				struct mfld_jack_work *jack_work)
 {
@@ -249,11 +235,9 @@ static const DECLARE_TLV_DB_SCALE(out_tlv, -6200, 100, 0);
 static const struct snd_kcontrol_new mfld_snd_controls[] = {
 	SOC_ENUM_EXT("Playback Switch", mfld_headset_enum,
 			mfld_headset_get_switch, mfld_headset_set_switch),
-	SOC_ENUM_EXT("Lineout Mux", sn95031_lo_enum,
-			mfld_lo_get_switch, mfld_lo_set_switch),
 	SOC_ENUM_EXT("PCM1 Mode", sn95031_pcm1_mode_config_enum,
 			mfld_get_pcm1_mode, mfld_set_pcm1_mode),
-	/* Add digital volume and mute controls for Headphone/Headset */
+	/* Add digital volume and mute controls for Headphone/Headset*/
 	SOC_DOUBLE_R_EXT_TLV("Headphone Playback Volume", SN95031_HSLVOLCTRL,
 				SN95031_HSRVOLCTRL, 0, 71, 1,
 				snd_soc_get_volsw_2r, mfld_set_vol_2r,
@@ -266,6 +250,8 @@ static const struct snd_kcontrol_new mfld_snd_controls[] = {
 
 static const struct snd_soc_dapm_widget mfld_widgets[] = {
 	SND_SOC_DAPM_HP("Headphones", NULL),
+	SND_SOC_DAPM_MIC("BuiltinMic", NULL),
+	SND_SOC_DAPM_MIC("HeadsetMic", NULL),
 	SND_SOC_DAPM_MIC("Mic", NULL),
 	/* Dummy widget to trigger VAUDA on/off */
 	SND_SOC_DAPM_SUPPLY("Vibra1Clock", SND_SOC_NOPM, 0, 0,
@@ -281,7 +267,8 @@ static const struct snd_soc_dapm_route mfld_map[] = {
 	{ "HPOUTR", NULL, "Headset Rail"},
 	{"Headphones", NULL, "HPOUTR"},
 	{"Headphones", NULL, "HPOUTL"},
-	{"AMIC1", NULL, "Mic"},
+	{"AMIC2", NULL, "BuiltinMic"},
+	{"AMIC1", NULL, "HeadsetMic"},
 	{"VIB1SPI", NULL, "Vibra1Clock"},
 	{"VIB2SPI", NULL, "Vibra2Clock"},
 };
@@ -305,16 +292,17 @@ static int mfld_init(struct snd_soc_pcm_runtime *runtime)
 	/* default is lineout NC, userspace sets it explcitly */
 	snd_soc_dapm_disable_pin(dapm, "LINEOUTL");
 	snd_soc_dapm_disable_pin(dapm, "LINEOUTR");
-	ctx->sn95031_lo_dac = 3;
 	ctx->hs_switch = 0;
 	/* we dont use linein in this so set to NC */
 	snd_soc_dapm_disable_pin(dapm, "LINEINL");
 	snd_soc_dapm_disable_pin(dapm, "LINEINR");
+	snd_soc_dapm_disable_pin(dapm, "DMIC1");
 	snd_soc_dapm_disable_pin(dapm, "DMIC2");
 	snd_soc_dapm_disable_pin(dapm, "DMIC3");
 	snd_soc_dapm_disable_pin(dapm, "DMIC4");
+	snd_soc_dapm_disable_pin(dapm, "DMIC5");
 	snd_soc_dapm_disable_pin(dapm, "DMIC6");
-	snd_soc_dapm_disable_pin(dapm, "AMIC2");
+	snd_soc_dapm_disable_pin(dapm, "IHFOUTR");
 
 	/* Keep the voice call paths active during
 	suspend. Mark the end points ignore_suspend */
@@ -322,11 +310,9 @@ static int mfld_init(struct snd_soc_pcm_runtime *runtime)
 	snd_soc_dapm_ignore_suspend(dapm, "PCM1_Out");
 	snd_soc_dapm_ignore_suspend(dapm, "EPOUT");
 	snd_soc_dapm_ignore_suspend(dapm, "IHFOUTL");
-	snd_soc_dapm_ignore_suspend(dapm, "IHFOUTR");
-	snd_soc_dapm_ignore_suspend(dapm, "DMIC1");
-	snd_soc_dapm_ignore_suspend(dapm, "DMIC5");
 	snd_soc_dapm_ignore_suspend(dapm, "Headphones");
-	snd_soc_dapm_ignore_suspend(dapm, "Mic");
+	snd_soc_dapm_ignore_suspend(dapm, "BuiltinMic");
+	snd_soc_dapm_ignore_suspend(dapm, "HeadsetMic");
 	mutex_lock(&codec->mutex);
 	snd_soc_dapm_sync(dapm);
 	mutex_unlock(&codec->mutex);
@@ -355,20 +341,12 @@ static int mfld_init(struct snd_soc_pcm_runtime *runtime)
 	return ret_val;
 }
 
-#ifdef CONFIG_SND_MFLD_MONO_SPEAKER_SUPPORT
 static int mfld_speaker_init(struct snd_soc_pcm_runtime *runtime)
 {
 	struct snd_soc_dai *cpu_dai = runtime->cpu_dai;
-	struct snd_soc_dapm_context *dapm = &runtime->codec->dapm;
-	struct snd_soc_codec *codec = runtime->codec;
 
-	snd_soc_dapm_disable_pin(dapm, "IHFOUTR");
-	mutex_lock(&codec->mutex);
-	snd_soc_dapm_sync(dapm);
-	mutex_unlock(&codec->mutex);
 	return cpu_dai->driver->ops->set_tdm_slot(cpu_dai, 0, 0, 1, 0);
 }
-#endif
 
 static int mfld_media_hw_params(struct snd_pcm_substream *substream,
 		struct snd_pcm_hw_params *params)
@@ -509,40 +487,11 @@ static struct snd_soc_dai_link mfld_msic_dailink[] = {
 		.codec_dai_name = "SN95031 Speaker",
 		.codec_name = "sn95031",
 		.platform_name = "sst-platform",
-#ifdef CONFIG_SND_MFLD_MONO_SPEAKER_SUPPORT
 		.init = mfld_speaker_init,
-#else
-		.init = NULL,
-#endif
 		.ignore_suspend = 1,
 		.ops = &mfld_media_ops,
 	},
-/*
- *	This configurtaion doesnt need Vibra as PCM device
- *	so comment this out.
- *	codec should have SPI controls
- */
-/*	{
-		.name = "Medfield Vibra",
-		.stream_name = "Vibra1",
-		.cpu_dai_name = "Vibra1-cpu-dai",
-		.codec_dai_name = "SN95031 Vibra1",
-		.codec_name = "sn95031",
-		.platform_name = "sst-platform",
-		.init = NULL,
-		.ignore_suspend = 1,
-	},
 	{
-		.name = "Medfield Haptics",
-		.stream_name = "Vibra2",
-		.cpu_dai_name = "Vibra2-cpu-dai",
-		.codec_dai_name = "SN95031 Vibra2",
-		.codec_name = "sn95031",
-		.platform_name = "sst-platform",
-		.init = NULL,
-		.ignore_suspend = 1,
-	},
-*/	{
 		.name = "Medfield Voice",
 		.stream_name = "Voice",
 		.cpu_dai_name = "Voice-cpu-dai",
@@ -594,7 +543,7 @@ static int mfld_card_stream_event(struct snd_soc_dapm_context *dapm, int event)
 	}
 	/* we have only one codec in this machine */
 	codec = list_entry(dapm->card->codec_dev_list.next,
-				struct snd_soc_codec, card_list);
+			struct snd_soc_codec, card_list);
 	if (!codec) {
 		pr_err("%s: Null codec\n", __func__);
 		return -EIO;
@@ -682,7 +631,7 @@ ret:
 	return IRQ_HANDLED;
 }
 
-static int __devinit snd_mfld_mc_probe(struct platform_device *pdev)
+static int __devinit snd_mfld_mc_probe(struct ipc_device *ipcdev)
 {
 	int ret_val = 0, irq;
 	struct mfld_mc_private *ctx;
@@ -691,7 +640,7 @@ static int __devinit snd_mfld_mc_probe(struct platform_device *pdev)
 	pr_debug("snd_mfld_mc_probe called\n");
 
 	/* retrive the irq number */
-	irq = platform_get_irq(pdev, 0);
+	irq = ipc_get_irq(ipcdev, 0);
 
 	/* audio interrupt base of SRAM location where
 	 * interrupts are stored by System FW */
@@ -704,11 +653,11 @@ static int __devinit snd_mfld_mc_probe(struct platform_device *pdev)
 #ifdef CONFIG_HAS_WAKELOCK
 	ctx->jack_wake_lock =
 		kzalloc(sizeof(*(ctx->jack_wake_lock)), GFP_ATOMIC);
-	wake_lock_init(ctx->jack_wake_lock, WAKE_LOCK_SUSPEND, "jack_detect");
+	wake_lock_init(ctx->jack_wake_lock,
+		       WAKE_LOCK_SUSPEND, "jack_detect");
 #endif
 
-	irq_mem = platform_get_resource_byname(pdev,
-				IORESOURCE_MEM, "IRQ_BASE");
+	irq_mem = ipc_get_resource_byname(ipcdev, IORESOURCE_MEM, "IRQ_BASE");
 	if (!irq_mem) {
 		pr_err("no mem resource given\n");
 		ret_val = -ENODEV;
@@ -726,13 +675,6 @@ static int __devinit snd_mfld_mc_probe(struct platform_device *pdev)
 	}
 	INIT_DELAYED_WORK(&ctx->jack_work.work, mfld_jack_wq);
 
-	ret_val = gpio_request_one(MFLD_GPIO_HEADSET_DET_PIN, GPIOF_DIR_IN,
-				   "headset_detect_gpio");
-	if (ret_val) {
-		pr_err("Headset detect GPIO alloc fail:%d\n", ret_val);
-		goto unalloc;
-	}
-
 	ctx->int_base = ioremap_nocache(irq_mem->start, resource_size(irq_mem));
 	if (!ctx->int_base) {
 		pr_err("Mapping of cache failed\n");
@@ -743,13 +685,13 @@ static int __devinit snd_mfld_mc_probe(struct platform_device *pdev)
 	ret_val = request_threaded_irq(irq, snd_mfld_jack_intr_handler,
 			snd_mfld_codec_intr_detection,
 			IRQF_SHARED | IRQF_NO_SUSPEND,
-			pdev->dev.driver->name, ctx);
+			ipcdev->dev.driver->name, ctx);
 	if (ret_val) {
 		pr_err("cannot register IRQ\n");
 		goto unalloc;
 	}
 	/* register the soc card */
-	snd_soc_card_mfld.dev = &pdev->dev;
+	snd_soc_card_mfld.dev = &ipcdev->dev;
 	snd_soc_card_mfld.dapm.stream_event = mfld_card_stream_event;
 	snd_soc_card_set_drvdata(&snd_soc_card_mfld, ctx);
 	ret_val = snd_soc_register_card(&snd_soc_card_mfld);
@@ -757,7 +699,7 @@ static int __devinit snd_mfld_mc_probe(struct platform_device *pdev)
 		pr_debug("snd_soc_register_card failed %d\n", ret_val);
 		goto freeirq;
 	}
-	platform_set_drvdata(pdev, &snd_soc_card_mfld);
+	ipc_set_drvdata(ipcdev, &snd_soc_card_mfld);
 	pr_debug("successfully exited probe\n");
 	return ret_val;
 
@@ -768,12 +710,12 @@ unalloc:
 	return ret_val;
 }
 
-static int __devexit snd_mfld_mc_remove(struct platform_device *pdev)
+static int __devexit snd_mfld_mc_remove(struct ipc_device *ipcdev)
 {
-	struct snd_soc_card *soc_card = platform_get_drvdata(pdev);
+	struct snd_soc_card *soc_card = ipc_get_drvdata(ipcdev);
 	struct mfld_mc_private *ctx = snd_soc_card_get_drvdata(soc_card);
 	pr_debug("snd_mfld_mc_remove called\n");
-	free_irq(platform_get_irq(pdev, 0), ctx);
+	free_irq(ipc_get_irq(ipcdev, 0), ctx);
 #ifdef CONFIG_HAS_WAKELOCK
 	if (wake_lock_active(ctx->jack_wake_lock))
 		wake_unlock(ctx->jack_wake_lock);
@@ -783,10 +725,9 @@ static int __devexit snd_mfld_mc_remove(struct platform_device *pdev)
 	cancel_delayed_work(&ctx->jack_work.work);
 	intel_mid_gpadc_free(ctx->audio_adc_handle);
 	kfree(ctx);
-	gpio_free(MFLD_GPIO_HEADSET_DET_PIN);
 	snd_soc_card_set_drvdata(soc_card, NULL);
 	snd_soc_unregister_card(soc_card);
-	platform_set_drvdata(pdev, NULL);
+	ipc_set_drvdata(ipcdev, NULL);
 	return 0;
 }
 static const struct dev_pm_ops snd_mfld_mc_pm_ops = {
@@ -795,7 +736,7 @@ static const struct dev_pm_ops snd_mfld_mc_pm_ops = {
 	.poweroff = snd_mfld_mc_poweroff,
 };
 
-static struct platform_driver snd_mfld_mc_driver = {
+static struct ipc_driver snd_mfld_mc_driver = {
 	.driver = {
 		.owner = THIS_MODULE,
 		.name = "msic_audio",
@@ -808,19 +749,20 @@ static struct platform_driver snd_mfld_mc_driver = {
 static int __init snd_mfld_driver_init(void)
 {
 	pr_info("snd_mfld_driver_init called\n");
-	return platform_driver_register(&snd_mfld_mc_driver);
+	return ipc_driver_register(&snd_mfld_mc_driver);
 }
 late_initcall(snd_mfld_driver_init);
 
 static void __exit snd_mfld_driver_exit(void)
 {
 	pr_debug("snd_mfld_driver_exit called\n");
-	platform_driver_unregister(&snd_mfld_mc_driver);
+	ipc_driver_unregister(&snd_mfld_mc_driver);
 }
 module_exit(snd_mfld_driver_exit);
 
 MODULE_DESCRIPTION("ASoC Intel(R) MID Machine driver");
 MODULE_AUTHOR("Vinod Koul <vinod.koul@intel.com>");
 MODULE_AUTHOR("Harsha Priya <priya.harsha@intel.com>");
+MODULE_AUTHOR("Ramesh Babu K V <ramesh.babu@intel.com>");
 MODULE_LICENSE("GPL v2");
 MODULE_ALIAS("ipc:msic-audio");

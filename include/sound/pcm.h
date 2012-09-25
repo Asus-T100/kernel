@@ -281,6 +281,7 @@ struct snd_pcm_runtime {
 	unsigned long hw_ptr_jiffies;	/* Time when hw_ptr is updated */
 	unsigned long hw_ptr_buffer_jiffies; /* buffer time in jiffies */
 	snd_pcm_sframes_t delay;	/* extra delay; typically FIFO size */
+	snd_pcm_sframes_t soc_delay;	/* extra delay; typically delay incurred in soc */
 
 	/* -- HW params -- */
 	snd_pcm_access_t access;	/* access mode */

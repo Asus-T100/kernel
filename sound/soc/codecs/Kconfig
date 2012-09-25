@@ -290,6 +290,15 @@ config SND_SOC_WL1273
 config SND_SOC_WM1250_EV1
 	tristate
 
+config SND_SOC_WL1273_UART
+	tristate
+
+config SND_SOC_IFX1130_MODEM_CODEC
+	tristate
+
+config SND_SOC_ES305
+	tristate
+
 config SND_SOC_WM2000
 	tristate
 

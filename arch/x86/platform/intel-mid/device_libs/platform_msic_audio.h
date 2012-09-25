@@ -12,5 +12,7 @@
 #ifndef _PLATFORM_MSIC_AUDIO_H_
 #define _PLATFORM_MSIC_AUDIO_H_
 
+#define MSIC_AUDIO_DEVICE_NAME "msic_audio"
+
 extern void __init *msic_audio_platform_data(void *info) __attribute__((weak));
 #endif

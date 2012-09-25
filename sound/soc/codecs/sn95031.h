@@ -1,3 +1,4 @@
+
 /*
  *  sn95031.h - TI sn95031 Codec driver
  *
@@ -27,6 +28,9 @@
 #define _SN95031_H
 
 /*register map*/
+#define SN95031_OCAUDIOMASK		0x1D
+#define SN95031_ACCDETMASK		0x1E
+
 #define SN95031_VAUD			0xDB
 #define SN95031_VHSP			0xDC
 #define SN95031_VHSN			0xDD
@@ -49,6 +53,8 @@
 #define SN95031_AUDIOTXEN		0x24F
 #define SN95031_HSEPRXCTRL		0x250
 #define SN95031_IHFRXCTRL		0x251
+#define SN95031_VOICETXVOL		0x252
+#define SN95031_VOICETXCTRL		0x255
 #define SN95031_HSMIXER			0x256
 #define SN95031_DACCONFIG		0x257
 #define SN95031_SOFTMUTE		0x258
@@ -96,6 +102,11 @@
 #define SN95031_SSR5			0x384
 #define SN95031_SSR6			0x385
 
+#define SN95031_JACK_INSERTED		0x04
+#define SN95031_JACK_REMOVED		0x08
+#define SN95031_JACK_BTN1		0x02
+#define SN95031_JACK_BTN0		0x01
+
 /* ADC registers */
 
 #define SN95031_ADC1CNTL1 0x1C0
@@ -111,22 +122,34 @@
 #define SN95031_ADC_NO_LOOP 0x07
 #define SN95031_AUDIO_GPIO_CTRL 0x070
 
-/* ADC channel code values */
-#define SN95031_AUDIO_DETECT_CODE 0x06
+/*BCU related values*/
+#define SN95031_BCU_VOLUME_RECOVERY_3DB 0x3
+#define SN95031_BCU_VOLUME_RECOVERY_6DB 0x6
+#define SN95031_BCU_CRUSH_VOL 0x40
+#define SN95031_IHF_VOLUME_MASK 0x7f
+#define SN95031_BURST_CNTRL 0x107
+#define SN95031_BCU_DELAY 100
 
-/* ADC base addresses */
-#define SN95031_ADC_CHNL_START_ADDR 0x1C5 /* increments by 1 */
-#define SN95031_ADC_DATA_START_ADDR 0x1D4  /* increments by 2 */
-/* multipier to convert to mV */
-#define SN95031_ADC_ONE_LSB_MULTIPLIER 2346
+#define SN95031_PLLIN 0x0
+#define SN95031_MODMCLK 0x1
+#define SN95031_PCM1BCLK 0x2
+#define SN95031_RSVD 0x3
+#define SN95031_PCM1SYNC 0x04
+#define SN95031_INVALID 0x8
 
+#define SN95031_DISABLE_PLL 0
+#define SN95031_ENABLE_PLL 1
 
-struct mfld_jack_data {
-	int intr_id;
-	int micbias_vol;
-	struct snd_soc_jack *mfld_jack;
+enum sn95031_pll_status {
+	PLL_DISABLED,
+	PLL_ENABLE_PENDING,
+	PLL_ENABLED
 };
 
-extern void sn95031_jack_detection(struct mfld_jack_data *jack_data);
+void sn95031_configure_pll(struct snd_soc_codec *codec, int operation);
+
+#ifdef CONFIG_SWITCH_MID
+extern void mid_headset_report(int state);
+#endif
 
 #endif
