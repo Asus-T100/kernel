@@ -43,7 +43,7 @@ static bool intel_dsi_dbi_esd_detection(struct mdfld_dsi_config *dsi_config)
 
 	ret = mdfld_dsi_get_power_mode(dsi_config,
 			&data,
-			MDFLD_DSI_LP_TRANSMISSION);
+			MDFLD_DSI_HS_TRANSMISSION);
 
 	if ((ret == 1) && ((data & 0x14) != 0x14))
 		return true;
