@@ -39,6 +39,7 @@
 #include <sound/initval.h>
 #include <sound/tlv.h>
 #include <sound/jack.h>
+#include <sound/sn95031_platform.h>
 #include "sn95031.h"
 
 #define SN95031_RATES (SNDRV_PCM_RATE_8000_96000)
@@ -686,18 +687,11 @@ static const struct snd_soc_dapm_route sn95031_audio_map[] = {
 
 	/* AMIC2 */
 	{ "Mic_InputR Capture Route", "AMIC", "MIC2 Enable"},
-#if (defined(CONFIG_SND_MFLD_MACHINE_GI) \
-		|| defined(CONFIG_SND_MFLD_MACHINE_GI_MODULE))
-	{ "MIC1 Enable", NULL, "AMIC2Bias"},
-	{ "MIC2 Enable", NULL, "AMIC1Bias"},
-	{ "AMIC1Bias", NULL, "AMIC2"},
-	{ "AMIC2Bias", NULL, "AMIC1"},
-#else
 	{ "MIC1 Enable", NULL, "AMIC1Bias"},
 	{ "MIC2 Enable", NULL, "AMIC2Bias"},
 	{ "AMIC1Bias", NULL, "AMIC1"},
 	{ "AMIC2Bias", NULL, "AMIC2"},
-#endif
+
 	/* Linein */
 	{ "LineIn Enable Left", NULL, "LINEINL"},
 	{ "LineIn Enable Right", NULL, "LINEINR"},
@@ -1186,8 +1180,6 @@ static int sn95031_codec_probe(struct snd_soc_codec *codec)
 	 * volume control.
 	 */
 	snd_soc_update_bits(codec, SN95031_OCAUDIOMASK, BIT(0), BIT(0));
-
-
 	snd_soc_codec_set_drvdata(codec, sn95031_ctx);
 	return 0;
 }
@@ -1223,7 +1215,11 @@ struct snd_soc_codec_driver sn95031_codec = {
 
 static int __devinit sn95031_device_probe(struct platform_device *pdev)
 {
+	struct sn95031_platform_data *pdata = pdev->dev.platform_data;
+	const struct sfi_soft_platform_id *spid = pdata->spid;
+
 	pr_debug("codec device probe called for %s\n", dev_name(&pdev->dev));
+
 	return snd_soc_register_codec(&pdev->dev, &sn95031_codec,
 			sn95031_dais, ARRAY_SIZE(sn95031_dais));
 }
