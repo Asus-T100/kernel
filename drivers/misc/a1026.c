@@ -282,7 +282,7 @@ static ssize_t chk_wakeup_es305(struct vp_ctxt *the_vp)
 
 	if (the_vp->suspended == 1) {
 		the_vp->pdata->wakeup(gpio_l);
-		msleep(120); /* fig 3 eS305 spec.  BUGBUG should be 30 */
+		msleep(30); /* es305b spec: need to wait 30ms after wake-up */
 
 		do {
 			rc = execute_cmdmsg(A100_msg_Sync, the_vp);
