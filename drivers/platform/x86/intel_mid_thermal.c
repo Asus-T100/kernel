@@ -82,8 +82,8 @@ static char *name[MSIC_THERMAL_SENSORS] = {
 #define TO_MSIC_DIE_TEMP(adc_val)	(368 * adc_val - 219560)
 
 /* Convert Thermistor temperature to skin0/skin1 temperature */
-#define SKIN0_TEMP(temp) ((temp * SKIN0_SLOPE + SKIN0_INTERCEPT) / 1000)
-#define SKIN1_TEMP(temp) ((temp * SKIN1_SLOPE + SKIN1_INTERCEPT) / 1000)
+#define SKIN0_TEMP(temp) ((temp * SKIN0_SLOPE)/1000 + SKIN0_INTERCEPT)
+#define SKIN1_TEMP(temp) ((temp * SKIN1_SLOPE)/1000 + SKIN1_INTERCEPT)
 
 #define TABLE_LENGTH 24
 /*
@@ -283,7 +283,7 @@ static int mid_read_temp(struct thermal_zone_device *tzd, unsigned long *temp)
 			&bp_temp);
 		if (ret)
 			goto exit;
-		bp_temp = (bp_temp * BPTHERM_SLOPE + BPTHERM_INTERCEPT) / 1000;
+		bp_temp = (bp_temp * BPTHERM_SLOPE)/1000 + BPTHERM_INTERCEPT;
 #endif
 		*temp = SKIN1_TEMP(curr_temp);
 
