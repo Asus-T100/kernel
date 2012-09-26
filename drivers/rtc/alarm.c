@@ -27,6 +27,7 @@
 #include <linux/wakelock.h>
 #include <linux/reboot.h>
 #include <linux/notifier.h>
+#include <linux/debugfs.h>
 
 #define ANDROID_ALARM_PRINT_ERROR (1U << 0)
 #define ANDROID_ALARM_PRINT_INIT_STATUS (1U << 1)
@@ -75,6 +76,8 @@ static u32 config_pm_threshold = (u32)CONFIG_ALARM_PM_THRESHOLD;
 static u32 config_pm_threshold;
 #endif
 
+static struct dentry *backoff_dir;
+
 static int alarm_reboot_callback(struct notifier_block *nfb,
 				 unsigned long event, void *data);
 
@@ -83,7 +86,84 @@ static struct notifier_block alarm_reboot_notifier_block = {
 	.priority = 0,
 };
 
+static int alarm_backoff_show(struct seq_file *s, void *unused)
+{
+	seq_printf(s, "%u\n", config_pm_threshold);
+	return 0;
+}
 
+static int alarm_backoff_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, alarm_backoff_show, NULL);
+}
+
+static ssize_t alarm_backoff_write(struct file *file, const char __user *ubuf,
+				   size_t count, loff_t *off)
+{
+	char buf[10];
+	u32 val;
+	int ret;
+
+	if (count >= sizeof(buf))
+		return -EINVAL;
+
+	if (copy_from_user(&buf, ubuf, count))
+		return -EFAULT;
+
+	buf[count] = 0;
+
+	ret = kstrtoul(buf, 10, (unsigned long *)&val);
+	if (ret)
+		return ret;
+
+	if (val < 3600)
+		config_pm_threshold = val;
+	else
+		return -EINVAL;
+
+	return count;
+}
+
+static const struct file_operations backoff_fops = {
+	.owner = THIS_MODULE,
+	.open = alarm_backoff_open,
+	.read = seq_read,
+	.write = alarm_backoff_write,
+	.llseek = seq_lseek,
+	.release = single_release,
+};
+
+static void debugfs_backoff_exit(void)
+{
+	if (backoff_dir)
+		debugfs_remove_recursive(backoff_dir);
+}
+
+static int __init debugfs_backoff_init(void)
+{
+	struct dentry *ent;
+
+	backoff_dir = debugfs_create_dir("alarm-backoff", NULL);
+	if (!backoff_dir) {
+		pr_err("unable to create alarm-backoff entry (%ld)\n",
+		       PTR_ERR(backoff_dir));
+		return 0;
+	}
+
+	ent = debugfs_create_file("threshold",
+				  S_IFREG | S_IRUGO | S_IWUSR | S_IWGRP,
+				  backoff_dir, (void *)0, &backoff_fops);
+	if (!ent) {
+		pr_alarm(ERROR, "unable to create alarm entry (%ld)\n",
+			 PTR_ERR(ent));
+		goto fail;
+	}
+
+	return 0;
+fail:
+	debugfs_backoff_exit();
+	return 0;
+}
 
 static void update_timer_locked(struct alarm_queue *base, bool head_removed)
 {
@@ -711,9 +791,11 @@ static void  __exit alarm_exit(void)
 	class_interface_unregister(&rtc_alarm_interface);
 	wake_lock_destroy(&alarm_rtc_wake_lock);
 	platform_driver_unregister(&alarm_driver);
+	debugfs_backoff_exit();
 }
 
 late_initcall(alarm_late_init);
+late_initcall(debugfs_backoff_init);
 module_init(alarm_driver_init);
 module_exit(alarm_exit);
 
