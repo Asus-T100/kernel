@@ -1167,15 +1167,6 @@ static int intel_mid_ssp_spi_probe(struct pci_dev *pdev,
 		goto err_abort_probe;
 	}
 
-/* [REVERT ME] SPI mode bit not configured correctly in tangier simulation */
-#ifdef CONFIG_X86_MRFLD
-	if (intel_mrfl_identify_sim() == INTEL_MRFL_CPU_SIMULATION_VP &&
-		(PCI_FUNC(pdev->devfn) == 1)) {
-		/* override */
-		ssp_cfg |= SSP_CFG_SPI_MODE_ID;
-	}
-#endif /* CONFIG_X86_MRFLD */
-
 	if (SSP_CFG_GET_MODE(ssp_cfg) != SSP_CFG_SPI_MODE_ID) {
 		dev_info(dev, "Unsupported SSP mode (%02xh)\n",
 			ssp_cfg);
