@@ -1629,7 +1629,8 @@ bool ospm_power_using_hw_begin(int hw_island, UHBUsage usage)
 		(struct drm_psb_private *) gpDrmDevice->dev_private;
 	unsigned long flags;
 
-	if (!(hw_island & (OSPM_GRAPHICS_ISLAND | OSPM_DISPLAY_ISLAND)))
+	if (!(hw_island & (OSPM_GRAPHICS_ISLAND | OSPM_DISPLAY_ISLAND |
+		OSPM_GL3_CACHE_ISLAND)))
 		return false;
 
 #ifdef CONFIG_GFX_RTPM
@@ -1808,8 +1809,9 @@ void ospm_power_using_video_end(int video_island)
  */
 void ospm_power_using_hw_end(int hw_island)
 {
-	if (!(hw_island & (OSPM_GRAPHICS_ISLAND | OSPM_DISPLAY_ISLAND)))
-		return;
+	if (!(hw_island & (OSPM_GRAPHICS_ISLAND | OSPM_DISPLAY_ISLAND |
+		OSPM_GL3_CACHE_ISLAND)))
+		return false;
 
 	switch (hw_island) {
 	case OSPM_GRAPHICS_ISLAND:
