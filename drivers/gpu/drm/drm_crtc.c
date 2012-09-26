@@ -159,8 +159,8 @@ static struct drm_conn_prop_enum_list drm_connector_enum_list[] =
 	{ DRM_MODE_CONNECTOR_HDMIB, "HDMI-B", 0 },
 	{ DRM_MODE_CONNECTOR_TV, "TV", 0 },
 	{ DRM_MODE_CONNECTOR_eDP, "eDP", 0 },
-	{ DRM_MODE_CONNECTOR_VIRTUAL, "Virtual", 0},
 	{ DRM_MODE_CONNECTOR_MIPI, "MIPI", 0},
+	{ DRM_MODE_CONNECTOR_VIRTUAL, "Virtual", 0},
 };
 
 static struct drm_prop_enum_list drm_encoder_enum_list[] =
@@ -169,8 +169,8 @@ static struct drm_prop_enum_list drm_encoder_enum_list[] =
 	{ DRM_MODE_ENCODER_TMDS, "TMDS" },
 	{ DRM_MODE_ENCODER_LVDS, "LVDS" },
 	{ DRM_MODE_ENCODER_TVDAC, "TV" },
-	{ DRM_MODE_ENCODER_VIRTUAL, "Virtual" },
 	{ DRM_MODE_ENCODER_MIPI, "MIPI" },
+	{ DRM_MODE_ENCODER_VIRTUAL, "Virtual" },
 };
 
 char *drm_get_encoder_name(struct drm_encoder *encoder)
