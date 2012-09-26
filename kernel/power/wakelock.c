@@ -18,6 +18,7 @@
 #include <linux/rtc.h>
 #include <linux/suspend.h>
 #include <linux/wakelock.h>
+#include <linux/debugfs.h>
 
 #ifndef CREATE_TRACE_POINTS
 #define CREATE_TRACE_POINTS
@@ -61,6 +62,171 @@ static unsigned suspend_short_count;
 static struct wake_lock deleted_wake_locks;
 static ktime_t last_sleep_time_update;
 static int wait_for_wakeup;
+
+static unsigned int suspend_backoff_threshold =
+	CONFIG_SUSPEND_BACKOFF_THRESHOLD;
+static unsigned int suspend_backoff_residency =
+	CONFIG_SUSPEND_BACKOFF_RESIDENCY;
+static unsigned int suspend_backoff_interval =
+	CONFIG_SUSPEND_BACKOFF_INTERVAL;
+
+static struct dentry *backoff_dir;
+
+static int backoff_threshold_show(struct seq_file *s, void *unused)
+{
+	seq_printf(s, "%u\n", suspend_backoff_threshold);
+	return 0;
+}
+
+static int backoff_residency_show(struct seq_file *s, void *unused)
+{
+	seq_printf(s, "%u\n", suspend_backoff_residency);
+	return 0;
+}
+
+static int backoff_interval_show(struct seq_file *s, void *unused)
+{
+	seq_printf(s, "%u\n", suspend_backoff_interval);
+	return 0;
+}
+
+static int backoff_threshold_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, backoff_threshold_show, NULL);
+}
+
+static int backoff_interval_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, backoff_interval_show, NULL);
+}
+
+static int backoff_residency_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, backoff_residency_show, NULL);
+}
+
+static size_t get_backoff_param(size_t count, const char __user *ubuf,
+				unsigned int *param)
+{
+	int ret;
+	char buf[10];
+	unsigned long val;
+
+	if (count >= sizeof(buf))
+		return -EINVAL;
+
+	if (copy_from_user(&buf, ubuf, count))
+		return -EFAULT;
+
+	buf[count] = 0;
+
+	ret = kstrtoul(buf, 10, &val);
+	if (ret)
+		return ret;
+
+	*param = val;
+
+	return count;
+}
+
+static ssize_t backoff_threshold_write(struct file *file,
+				       const char __user *ubuf,
+				       size_t count, loff_t *off)
+{
+	return get_backoff_param(count, ubuf, &suspend_backoff_threshold);
+}
+
+static ssize_t backoff_interval_write(struct file *file,
+				      const char __user *ubuf,
+				      size_t count, loff_t *off)
+{
+	return get_backoff_param(count, ubuf, &suspend_backoff_interval);
+}
+
+static ssize_t backoff_residency_write(struct file *file,
+				       const char __user *ubuf,
+				       size_t count, loff_t *off)
+{
+	return get_backoff_param(count, ubuf, &suspend_backoff_residency);
+}
+
+
+static const struct file_operations backoff_fops[3] = {
+	{
+		.owner = THIS_MODULE,
+		.open = backoff_threshold_open,
+		.read = seq_read,
+		.write = backoff_threshold_write,
+		.llseek = seq_lseek,
+		.release = single_release,
+	},
+	{
+		.owner = THIS_MODULE,
+		.open = backoff_interval_open,
+		.read = seq_read,
+		.write = backoff_interval_write,
+		.llseek = seq_lseek,
+		.release = single_release,
+	},
+	{
+		.owner = THIS_MODULE,
+		.open = backoff_residency_open,
+		.read = seq_read,
+		.write = backoff_residency_write,
+		.llseek = seq_lseek,
+		.release = single_release,
+	},
+};
+
+static void debugfs_backoff_exit(void)
+{
+	if (backoff_dir)
+		debugfs_remove_recursive(backoff_dir);
+}
+
+static int __init debugfs_backoff_init(void)
+{
+	struct dentry *ent;
+
+	backoff_dir = debugfs_create_dir("suspend-backoff", NULL);
+	if (!backoff_dir) {
+		pr_err("unable to create suspend-backoff entry (%ld)\n",
+		       PTR_ERR(backoff_dir));
+		return 0;
+	}
+
+	ent =  debugfs_create_file("threshold",
+				   S_IFREG | S_IRUGO | S_IWUSR | S_IWGRP,
+				   backoff_dir, (void *)0, &backoff_fops[0]);
+	if (!ent) {
+		pr_err("unable to create threshold entry (%ld)\n",
+		       PTR_ERR(ent));
+		goto fail;
+	}
+
+	ent = debugfs_create_file("interval",
+				  S_IFREG | S_IRUGO | S_IWUSR | S_IWGRP,
+				  backoff_dir, (void *)0, &backoff_fops[1]);
+	if (!ent) {
+		pr_err("unable to create interval entry (%ld)\n",
+		       PTR_ERR(ent));
+		goto fail;
+	}
+
+	ent = debugfs_create_file("residency",
+				  S_IFREG | S_IRUGO | S_IWUSR | S_IWGRP,
+				  backoff_dir, (void *)0, &backoff_fops[2]);
+	if (!ent) {
+		pr_err("unable to create residency entry (%ld)\n",
+		       PTR_ERR(ent));
+		goto fail;
+	}
+
+	return 0;
+fail:
+	debugfs_backoff_exit();
+	return 0;
+}
 
 int get_expired_time(struct wake_lock *lock, ktime_t *expire_time)
 {
@@ -267,7 +433,7 @@ static void suspend_backoff(void)
 {
 	pr_info("suspend: too many immediate wakeups, back off\n");
 	wake_lock_timeout(&suspend_backoff_lock,
-			  msecs_to_jiffies(CONFIG_SUSPEND_BACKOFF_INTERVAL));
+			  msecs_to_jiffies(suspend_backoff_interval));
 }
 
 static void suspend(struct work_struct *work)
@@ -299,12 +465,10 @@ static void suspend(struct work_struct *work)
 			tm.tm_hour, tm.tm_min, tm.tm_sec, ts_exit.tv_nsec);
 	}
 
-	if (ts_exit.tv_sec - ts_entry.tv_sec <=
-	    CONFIG_SUSPEND_BACKOFF_RESIDENCY) {
+	if (ts_exit.tv_sec - ts_entry.tv_sec <= suspend_backoff_residency) {
 		++suspend_short_count;
 
-		if (suspend_short_count ==
-		    CONFIG_SUSPEND_BACKOFF_THRESHOLD) {
+		if (suspend_short_count == suspend_backoff_threshold) {
 			suspend_backoff();
 			suspend_short_count = 0;
 		}
@@ -634,7 +798,10 @@ static void  __exit wakelocks_exit(void)
 #ifdef CONFIG_WAKELOCK_STAT
 	wake_lock_destroy(&deleted_wake_locks);
 #endif
+	debugfs_backoff_exit();
 }
 
 core_initcall(wakelocks_init);
+late_initcall(debugfs_backoff_init);
+
 module_exit(wakelocks_exit);
