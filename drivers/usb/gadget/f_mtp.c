@@ -730,6 +730,12 @@ static void send_file_work(struct work_struct *data) {
 			r = -ECANCELED;
 			break;
 		}
+
+		if (dev->state != STATE_BUSY) {
+			r = -EIO;
+			break;
+		}
+
 		if (!req) {
 			r = ret;
 			break;
@@ -844,6 +850,12 @@ static void receive_file_work(struct work_struct *data)
 					usb_ep_dequeue(dev->ep_out, read_req);
 				break;
 			}
+
+			if (dev->state != STATE_BUSY) {
+				r = -EIO;
+				break;
+			}
+
 			/* if xfer_file_length is 0xFFFFFFFF, then we read until
 			 * we get a zero length packet
 			 */
@@ -1179,6 +1191,9 @@ mtp_function_unbind(struct usb_configuration *c, struct usb_function *f)
 	struct mtp_dev	*dev = func_to_mtp(f);
 	struct usb_request *req;
 	int i;
+
+	/* cleanup the work items */
+	flush_workqueue(dev->wq);
 
 	while ((req = mtp_req_get(dev, &dev->tx_idle)))
 		mtp_request_free(req, dev->ep_in);
