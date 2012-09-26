@@ -59,6 +59,7 @@ enum GPIO_REG {
 	GFER,		/* falling edge detect */
 	GEDR,		/* edge detect result */
 	GAFR,		/* alt function */
+	GFBR = 9,       /* glitch filter bypas */
 };
 
 struct lnw_gpio {
@@ -119,6 +120,35 @@ void lnw_gpio_set_alt(int gpio, int alt)
 	dev_dbg(lnw->chip.dev, "ALT: writing 0x%x to %p\n", value, mem + reg);
 }
 EXPORT_SYMBOL_GPL(lnw_gpio_set_alt);
+
+static int lnw_gpio_set_debounce(struct gpio_chip *chip, unsigned offset,
+			unsigned debounce)
+{
+	struct lnw_gpio *lnw = container_of(chip, struct lnw_gpio, chip);
+	void __iomem *gfbr = gpio_reg(chip, offset, GFBR);
+	unsigned long flags;
+	u32 value;
+
+	if (lnw->pdev)
+		pm_runtime_get(&lnw->pdev->dev);
+
+	spin_lock_irqsave(&lnw->lock, flags);
+	value = readl(gfbr);
+	if (debounce) {
+		/* debounce bypass disable */
+		value &= ~BIT(offset % 32);
+	} else {
+		/* debounce bypass enable */
+		value |= BIT(offset % 32);
+	}
+	writel(value, gfbr);
+	spin_unlock_irqrestore(&lnw->lock, flags);
+
+	if (lnw->pdev)
+		pm_runtime_put(&lnw->pdev->dev);
+
+	return 0;
+}
 
 static int lnw_gpio_get(struct gpio_chip *chip, unsigned offset)
 {
@@ -427,6 +457,7 @@ static int __devinit lnw_gpio_probe(struct pci_dev *pdev,
 	lnw->chip.base = gpio_base;
 	lnw->chip.ngpio = id->driver_data;
 	lnw->chip.can_sleep = 0;
+	lnw->chip.set_debounce = lnw_gpio_set_debounce;
 	lnw->pdev = pdev;
 	pci_set_drvdata(pdev, lnw);
 	retval = gpiochip_add(&lnw->chip);
