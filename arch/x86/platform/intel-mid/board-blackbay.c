@@ -13,34 +13,16 @@
 #include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/interrupt.h>
-#include <linux/scatterlist.h>
 #include <linux/sfi.h>
-#include <linux/intel_pmic_gpio.h>
-#include <linux/spi/spi.h>
+#include <linux/lnw_gpio.h>
 #include <linux/i2c.h>
-#include <linux/i2c/pca953x.h>
+#include <linux/input.h>
 #include <linux/gpio.h>
 #include <linux/gpio_keys.h>
-#include <linux/input.h>
 #include <linux/platform_device.h>
-#include <linux/mfd/intel_msic.h>
-#include <linux/irq.h>
-#include <linux/module.h>
-#include <linux/notifier.h>
 #include <linux/i2c-gpio.h>
 
-#include <asm/setup.h>
-#include <asm/mpspec_def.h>
-#include <asm/hw_irq.h>
-#include <asm/apic.h>
-#include <asm/io_apic.h>
 #include <asm/intel-mid.h>
-#include <asm/mrst-vrtc.h>
-#include <asm/io.h>
-#include <asm/i8259.h>
-#include <asm/intel_scu_ipc.h>
-#include <asm/apb_timer.h>
-#include <asm/reboot.h>
 
 /*
  * IPC devices
@@ -66,6 +48,7 @@
 #include "device_libs/platform_lis331.h"
 #include "device_libs/platform_mpu3050.h"
 #include "device_libs/platform_tc35876x.h"
+#include "device_libs/platform_max17042.h"
 
 /*
  * SPI devices
@@ -87,6 +70,7 @@ struct devs_id __initconst device_ids[] = {
 	{"pmic_gpio", SFI_DEV_TYPE_SPI, 1, &pmic_gpio_platform_data, NULL},
 	{"pmic_gpio", SFI_DEV_TYPE_IPC, 1, &pmic_gpio_platform_data,
 					&ipc_device_handler},
+	{"max17042", SFI_DEV_TYPE_I2C, 1, &max17042_platform_data, NULL},
 	{"spi_max3111", SFI_DEV_TYPE_SPI, 0, &max3111_platform_data, NULL},
 	{"i2c_max7315", SFI_DEV_TYPE_I2C, 1, &max7315_platform_data, NULL},
 	{"i2c_max7315_2", SFI_DEV_TYPE_I2C, 1, &max7315_platform_data, NULL},
