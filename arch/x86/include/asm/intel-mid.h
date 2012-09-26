@@ -35,6 +35,7 @@
 extern struct sfi_soft_platform_id spid;
 extern int intel_mid_pci_init(void);
 extern int get_gpio_by_name(const char *name);
+extern void *get_oem0_table(void);
 extern void intel_delayed_device_register(void *dev,
 			void (*delayed_callback)(void *dev_desc));
 extern void install_irq_resource(struct platform_device *pdev, int irq);
