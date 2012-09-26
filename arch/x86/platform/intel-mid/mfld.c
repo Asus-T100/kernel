@@ -75,10 +75,24 @@ unsigned long __init intel_mid_calibrate_tsc(void)
 		ratio = 16;
 	}
 	rdmsr(MSR_FSB_FREQ, lo, hi);
-	if ((lo & 0x7) == 0x7)
-		fsb = PENWELL_FSB_FREQ_83SKU;
-	else
-		fsb = PENWELL_FSB_FREQ_100SKU;
+
+	switch (lo & BSEL_SOC_FUSE_MASK) {
+	case BSEL_SOC_FUSE_001:
+		fsb = FSB_FREQ_133SKU;
+		break;
+	case BSEL_SOC_FUSE_101:
+		fsb = FSB_FREQ_100SKU;
+		break;
+	case BSEL_SOC_FUSE_111:
+		fsb = FSB_FREQ_83SKU;
+		break;
+	default:
+		pr_err("%s: unsupported BSEL_SOC_FUSE: %d, fall back to 83SKU",
+					__func__, lo & BSEL_SOC_FUSE_MASK);
+		fsb = FSB_FREQ_83SKU;
+		break;
+	}
+
 	fast_calibrate = ratio * fsb;
 	pr_debug("read penwell tsc %lu khz\n", fast_calibrate);
 	lapic_timer_frequency = fsb * 1000 / HZ;

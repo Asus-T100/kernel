@@ -433,9 +433,17 @@ enum {
 /*
  * Penwell uses spread spectrum clock, so the freq number is not exactly
  * the same as reported by MSR based on SDM.
+ * CLVP A0 has 100MHz FSB and CLVP B0 has 133MHz FSB.
  */
-#define PENWELL_FSB_FREQ_83SKU         83200
-#define PENWELL_FSB_FREQ_100SKU        99840
+#define FSB_FREQ_83SKU		83200
+#define FSB_FREQ_100SKU		99840
+#define FSB_FREQ_133SKU		133000
+
+/* Bus Select SoC Fuse value */
+#define BSEL_SOC_FUSE_MASK	0x7
+#define BSEL_SOC_FUSE_001	0x1 /* FSB 133MHz */
+#define BSEL_SOC_FUSE_101	0x5 /* FSB 100MHz */
+#define BSEL_SOC_FUSE_111	0x7 /* FSB 83MHz */
 
 #define SFI_MTMR_MAX_NUM 8
 #define SFI_MRTC_MAX	8
