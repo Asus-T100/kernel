@@ -21,15 +21,16 @@
 #include "intel_soc_pm_debug.h"
 
 #define PMU_DEBUG_PRINT_STATS	(1U << 0)
-
 static int debug_mask;
 module_param_named(debug_mask, debug_mask, int, S_IRUGO | S_IWUSR | S_IWGRP);
 
-#define pr_pmu_log(debug_level_mask, args...) \
-	do { \
-		if (debug_mask & PMU_DEBUG_PRINT_##debug_level_mask) { \
-			pr_info(args); \
-		} \
+#define DEBUG_PRINT(logging_type, s, debug_level_mask, args...)		\
+	do {								\
+		if (logging_type)					\
+			seq_printf(s, args);				\
+		else if (debug_mask &					\
+			PMU_DEBUG_PRINT_##debug_level_mask)		\
+			pr_info(args);					\
 	} while (0)
 
 static struct island display_islands[] = {
@@ -817,7 +818,8 @@ void pmu_s0ix_demotion_stat(int req_state, int grant_state)
 }
 EXPORT_SYMBOL(pmu_s0ix_demotion_stat);
 
-static void pmu_log_s0ix_status(int type, char *typestr)
+static void pmu_log_s0ix_status(int type, char *typestr,
+		struct seq_file *s, bool logging_type)
 {
 	unsigned long long t;
 	unsigned long time, remainder, init_2_now_time;
@@ -849,80 +851,123 @@ static void pmu_log_s0ix_status(int type, char *typestr)
 		remainder = do_div(t, init_2_now_time);
 	} else
 		time = t = 0;
-
-	pr_pmu_log(STATS, "%s\t%5llu\t%9llu\t%9llu\t%5lu.%03lu\n", typestr,
-		mid_pmu_cxt->pmu_stats[type].count,
-		mid_pmu_cxt->pmu_stats[type].err_count[1],
-		mid_pmu_cxt->pmu_stats[type].err_count[2],
-		time, (unsigned long) t);
+	DEBUG_PRINT(logging_type, s, STATS,
+			"%s\t%5llu\t%9llu\t%9llu\t%5lu.%03lu\n"
+			, typestr, mid_pmu_cxt->pmu_stats[type].count,
+			mid_pmu_cxt->pmu_stats[type].err_count[1],
+			mid_pmu_cxt->pmu_stats[type].err_count[2],
+			time, (unsigned long) t);
 }
 
-static void pmu_log_s0ix_demotion(int type, char *typestr)
+static void pmu_log_s0ix_demotion(int type, char *typestr,
+		struct seq_file *s, bool logging_type)
 {
-	pr_pmu_log(STATS, "%s:\t%6d\t%6d\t%6d\t%6d\t%6d\n", typestr,
-			mid_pmu_cxt->pmu_stats[type].demote_count[0],
-			mid_pmu_cxt->pmu_stats[type].demote_count[1],
-			mid_pmu_cxt->pmu_stats[type].demote_count[2],
-			mid_pmu_cxt->pmu_stats[type].demote_count[3],
-			mid_pmu_cxt->pmu_stats[type].demote_count[4]);
+	DEBUG_PRINT(logging_type, s, STATS, "%s:\t%6d\t%6d\t%6d\t%6d\t%6d\n",
+		typestr,
+		mid_pmu_cxt->pmu_stats[type].demote_count[0],
+		mid_pmu_cxt->pmu_stats[type].demote_count[1],
+		mid_pmu_cxt->pmu_stats[type].demote_count[2],
+		mid_pmu_cxt->pmu_stats[type].demote_count[3],
+		mid_pmu_cxt->pmu_stats[type].demote_count[4]);
 }
 
-static void pmu_log_s0ix_lss_blocked(int type, char *typestr)
+static void pmu_log_s0ix_lss_blocked(int type, char *typestr,
+		struct seq_file *s, bool logging_type)
 {
 	int i, block_count;
 
-	pr_pmu_log(STATS, "%s: Block Count\n", typestr);
+	DEBUG_PRINT(logging_type, s, STATS, "%s: Block Count\n", typestr);
 
 	block_count = mid_pmu_cxt->pmu_stats[type].display_blocker_count;
+
 	if (block_count)
-		pr_pmu_log(STATS, "\tDisplay blocked: %d times\n", block_count);
+		DEBUG_PRINT(logging_type, s, STATS,
+			 "\tDisplay blocked: %d times\n", block_count);
 
 	block_count = mid_pmu_cxt->pmu_stats[type].camera_blocker_count;
-	if (block_count)
-		pr_pmu_log(STATS, "\tCamera blocked: %d times\n", block_count);
 
-	pr_pmu_log(STATS, "\tLSS\t #blocked\n");
+	if (block_count)
+		DEBUG_PRINT(logging_type, s, STATS,
+			"\tCamera blocked: %d times\n", block_count);
+
+	DEBUG_PRINT(logging_type, s, STATS, "\tLSS\t #blocked\n");
+
 	for  (i = 0; i < MAX_LSS_POSSIBLE; i++) {
 		block_count = mid_pmu_cxt->pmu_stats[type].blocker_count[i];
 		if (block_count)
-			pr_pmu_log(STATS, "\t%02d\t %6d\n", i, block_count);
+			DEBUG_PRINT(logging_type, s, STATS, "\t%02d\t %6d\n", i,
+						block_count);
 	}
-	pr_pmu_log(STATS, "\n");
+	DEBUG_PRINT(logging_type, s, STATS, "\n");
+}
+
+static void pmu_stats_logger(bool logging_type, struct seq_file *s)
+{
+
+	if (!logging_type)
+		DEBUG_PRINT(logging_type, s, STATS,
+			"\n----MID_PMU_STATS_LOG_BEGIN----\n");
+
+	DEBUG_PRINT(logging_type, s, STATS,
+			"\tcount\ts0ix_miss\tno_ack_c6\tresidency(%%)\n");
+	pmu_log_s0ix_status(SYS_STATE_S0I1, "s0i1", s, logging_type);
+	pmu_log_s0ix_status(SYS_STATE_S0I2, "lpmp3", s, logging_type);
+	pmu_log_s0ix_status(SYS_STATE_S0I3, "s0i3", s, logging_type);
+	pmu_log_s0ix_status(SYS_STATE_S3, "s3", s, logging_type);
+
+	DEBUG_PRINT(logging_type, s, STATS, "\nFrom:\tTo\n");
+	DEBUG_PRINT(logging_type, s, STATS,
+		"\t    C4\t   C6\t  S0i1\t  Lpmp3\t  S0i3\n");
+
+	/* storing C6 demotion info in S0I0 */
+	pmu_log_s0ix_demotion(SYS_STATE_S0I0, "  C6", s, logging_type);
+
+	pmu_log_s0ix_demotion(SYS_STATE_S0I1, "s0i1", s, logging_type);
+	pmu_log_s0ix_demotion(SYS_STATE_S0I2, "lpmp3", s, logging_type);
+	pmu_log_s0ix_demotion(SYS_STATE_S0I3, "s0i3", s, logging_type);
+
+	DEBUG_PRINT(logging_type, s, STATS, "\n");
+	pmu_log_s0ix_lss_blocked(SYS_STATE_S0I1, "s0i1", s, logging_type);
+	pmu_log_s0ix_lss_blocked(SYS_STATE_S0I2, "lpmp3", s, logging_type);
+	pmu_log_s0ix_lss_blocked(SYS_STATE_S0I3, "s0i3", s, logging_type);
+
+	if (!logging_type)
+		DEBUG_PRINT(logging_type, s, STATS,
+				"\n----MID_PMU_STATS_LOG_END----\n");
 }
 
 static void pmu_log_stat(struct work_struct *work)
 {
-	pr_pmu_log(STATS, "\n----MID_PMU_STATS_LOG_BEGIN----\n");
-	pr_pmu_log(STATS, "\tcount\ts0ix_miss\tno_ack_c6\tresidency(%%)\n");
-	pmu_log_s0ix_status(SYS_STATE_S0I1, "s0i1");
-	pmu_log_s0ix_status(SYS_STATE_S0I2, "lpmp3");
-	pmu_log_s0ix_status(SYS_STATE_S0I3, "s0i3");
-	pmu_log_s0ix_status(SYS_STATE_S3, "s3");
 
-	pr_pmu_log(STATS, "\nFrom:\tTo\n");
-	pr_pmu_log(STATS, "\t    C4\t   C6\t  S0i1\t  Lmp3\t  S0i3\n");
-
-	/* storing C6 demotion info in S0I0 */
-	pmu_log_s0ix_demotion(SYS_STATE_S0I0, "  C6");
-
-	pmu_log_s0ix_demotion(SYS_STATE_S0I1, "s0i1");
-	pmu_log_s0ix_demotion(SYS_STATE_S0I2, "lmp3");
-	pmu_log_s0ix_demotion(SYS_STATE_S0I3, "s0i3");
-
-	pr_pmu_log(STATS, "\n");
-	pmu_log_s0ix_lss_blocked(SYS_STATE_S0I1, "s0i1");
-	pmu_log_s0ix_lss_blocked(SYS_STATE_S0I2, "lmp3");
-	pmu_log_s0ix_lss_blocked(SYS_STATE_S0I3, "s0i3");
-
-	pr_pmu_log(STATS, "\n----MID_PMU_STATS_LOG_END----\n");
+	pmu_stats_logger(false, NULL);
 
 	schedule_delayed_work(&mid_pmu_cxt->log_work,
 			msecs_to_jiffies(pmu_stats_interval*1000));
 }
+
+static int show_pmu_stats_log(struct seq_file *s, void *unused)
+{
+	pmu_stats_logger(true, s);
+	return 0;
+}
+
+static int pmu_stats_log_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, show_pmu_stats_log, NULL);
+}
+
+static const struct file_operations pmu_stats_log_operations = {
+	.open		= pmu_stats_log_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
 #endif
 
 void pmu_stats_init(void)
 {
+	struct dentry *fentry;
+
 	/* /sys/kernel/debug/mid_pmu_states */
 	(void) debugfs_create_file("mid_pmu_states", S_IFREG | S_IRUGO,
 				NULL, NULL, &devices_state_operations);
@@ -942,6 +987,13 @@ void pmu_stats_init(void)
 				msecs_to_jiffies(pmu_stats_interval*1000));
 
 	debug_mask = PMU_DEBUG_PRINT_STATS;
+
+	/* /sys/kernel/debug/pmu_stats_log */
+	fentry = debugfs_create_file("pmu_stats_log", S_IFREG | S_IRUGO,
+				NULL, NULL, &pmu_stats_log_operations);
+	if (fentry == NULL)
+		printk(KERN_ERR "Failed to create pmu_stats_log debugfs\n");
+
 #endif
 }
 
