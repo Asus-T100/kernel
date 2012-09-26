@@ -13,9 +13,10 @@
  * GNU General Public License for more details.
  */
 
-typedef int (*rpmsg_handle_t)(void *rx_buf, void *tx_buf, u32 *len);
+typedef int (*rpmsg_handle_t)(void *rx_buf, void *tx_buf,
+				u32 *r_len, u32 *s_len);
 
-int scu_ipc_rpmsg_handle(void *rx_buf, void *tx_buf, u32 *len);
+int scu_ipc_rpmsg_handle(void *rx_buf, void *tx_buf, u32 *r_len, u32 *s_len);
 int psh_ipc_rpmsg_handle(void *rx_buf, void *tx_buf, u32 *len);
 
 #define RPROC_FW_LOADING_TIMEOUT	(3 * HZ)

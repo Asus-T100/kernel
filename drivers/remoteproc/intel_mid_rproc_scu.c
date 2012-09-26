@@ -123,16 +123,18 @@ static int scu_ipc_util_command(void *tx_buf)
  * scu_ipc_rpmsg_handle() - scu rproc specified ipc rpmsg handle
  * @rx_buf: rx buffer to be add
  * @tx_buf: tx buffer to be get
- * @len: rx buffer length
+ * @r_len: rx buffer length
+ * @s_len: tx buffer length
  */
-int scu_ipc_rpmsg_handle(void *rx_buf, void *tx_buf, u32 *len)
+int scu_ipc_rpmsg_handle(void *rx_buf, void *tx_buf, u32 *r_len, u32 *s_len)
 {
 	struct rpmsg_hdr *tx_hdr, *tmp_hdr;
 	struct tx_ipc_msg *tx_msg;
 	struct rx_ipc_msg *tmp_msg;
 	int ret = 0;
 
-	*len = sizeof(struct rpmsg_hdr) + sizeof(struct rx_ipc_msg);
+	*r_len = sizeof(struct rpmsg_hdr) + sizeof(struct rx_ipc_msg);
+	*s_len = sizeof(struct rpmsg_hdr) + sizeof(struct tx_ipc_msg);
 
 	/* get tx_msg and send scu ipc command */
 	tx_hdr = (struct rpmsg_hdr *)tx_buf;
@@ -156,6 +158,7 @@ int scu_ipc_rpmsg_handle(void *rx_buf, void *tx_buf, u32 *len)
 		tmp_msg->status = scu_ipc_fw_command(tx_msg);
 		break;
 	default:
+		tmp_msg->status = 0;
 		pr_info("Command %x not supported yet\n", tx_hdr->dst);
 		break;
 	};
@@ -207,11 +210,10 @@ static void intel_rproc_scu_kick(struct rproc *rproc, int vqid)
 		break;
 
 	case TX_VRING:
-		iproc->tx_vring.used->idx++;
-		intel_mid_rproc_vq_interrupt(rproc, vqid);
 
 		dev_dbg(dev, "remote processor got the message ...\n");
 		intel_mid_rproc_msg_handle(iproc);
+		intel_mid_rproc_vq_interrupt(rproc, vqid);
 
 		/*
 		 * After remoteproc handles the message, it calls

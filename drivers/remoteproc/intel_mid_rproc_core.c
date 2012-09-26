@@ -182,8 +182,7 @@ int intel_mid_rproc_msg_handle(struct intel_mid_rproc *iproc)
 	void *r_virt_addr, *s_virt_addr;
 	u16 r_idx, s_idx;
 	u64 r_dma_addr, s_dma_addr;
-	u32 r_len;
-	struct rpmsg_hdr *hdr;
+	u32 r_len, s_len;
 
 	r_vring = &iproc->rx_vring;
 	s_vring = &iproc->tx_vring;
@@ -197,14 +196,16 @@ int intel_mid_rproc_msg_handle(struct intel_mid_rproc *iproc)
 	r_virt_addr = phys_to_virt(r_dma_addr);
 	s_virt_addr = phys_to_virt(s_dma_addr);
 
-	hdr = (struct rpmsg_hdr *)s_virt_addr;
-
 	ret = iproc->rproc_rpmsg_handle(r_virt_addr, s_virt_addr,
-						&r_len);
+						&r_len, &s_len);
 
-	r_vring->used->ring[r_vring->used->idx].id = r_vring->used->idx;
-	r_vring->used->ring[r_vring->used->idx].len = r_len;
+	r_vring->used->ring[r_idx].id = r_idx;
+	r_vring->used->ring[r_idx].len = r_len;
 	r_vring->used->idx++;
+
+	s_vring->used->ring[s_idx].id = s_idx;
+	s_vring->used->ring[s_idx].len = s_len;
+	s_vring->used->idx++;
 
 	iproc->r_vring_last_used++;
 	iproc->s_vring_last_used++;
@@ -259,8 +260,8 @@ int intel_mid_rproc_ns_handle(struct intel_mid_rproc *iproc,
 	msg->src = nsm->addr;
 	msg->dst = RPMSG_NS_ADDR;
 
-	r_vring->used->ring[r_vring->used->idx].id = r_vring->used->idx;
-	r_vring->used->ring[r_vring->used->idx].len = len;
+	r_vring->used->ring[index].id = index;
+	r_vring->used->ring[index].len = len;
 	r_vring->used->idx++;
 
 	iproc->r_vring_last_used++;

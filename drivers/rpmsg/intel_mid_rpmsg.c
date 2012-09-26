@@ -213,8 +213,7 @@ static void rpmsg_recv_cb(struct rpmsg_channel *rpdev, void *data,
 
 	mutex_unlock(&instance->rx_lock);
 
-	if (instance->rx_msg->status == 0)
-		complete(&instance->reply_arrived);
+	complete(&instance->reply_arrived);
 
 }
 
