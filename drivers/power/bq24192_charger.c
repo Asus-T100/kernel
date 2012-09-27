@@ -194,7 +194,7 @@
 #define STATUS_UPDATE_INTERVAL		(HZ * 60) /* 60sec */
 
 #define BQ24192_CHRG_OTG_GPIO		36
-#define MAINTENANCE_CHRG_JIFFIES	(HZ * 75) /* 75sec */
+#define MAINTENANCE_CHRG_JIFFIES	(HZ * 60) /* 60sec */
 #define INITIAL_THREAD_JIFFY		(HZ / 2)  /* 500msec */
 
 #define CLT_BPTHERM_CURVE_MAX_SAMPLES	23
@@ -265,7 +265,6 @@ struct bq24192_chip {
 	struct power_supply usb;
 	struct power_supply_charger_cap cap;
 	struct delayed_work chrg_evt_wrkr;
-	struct delayed_work stat_mon_wrkr;
 	struct delayed_work maint_chrg_wrkr;
 	struct mutex event_lock;
 
@@ -1374,21 +1373,6 @@ is_chrg_term_exit:
 	return is_chrg_term;
 }
 
-static void bq24192_monitor_worker(struct work_struct *work)
-{
-	int ret = 0;
-	struct bq24192_chip *chip = container_of(work,
-				struct bq24192_chip, stat_mon_wrkr.work);
-	dev_info(&chip->client->dev, "%s\n", __func__);
-	mutex_lock(&chip->event_lock);
-	ret = reset_wdt_timer(chip);
-	if (ret < 0)
-		dev_warn(&chip->client->dev, "WDT reset failed\n");
-	mutex_unlock(&chip->event_lock);
-	power_supply_changed(&chip->usb);
-	schedule_delayed_work(&chip->stat_mon_wrkr, STATUS_UPDATE_INTERVAL);
-}
-
 /*
  * bq24192_do_charging - Programs the charger as per the charge current passed
  * curr -charging current value passed as per the platform current state
@@ -1573,6 +1557,12 @@ static void bq24192_maintenance_worker(struct work_struct *work)
 		goto sched_maint_work;
 	}
 
+	mutex_lock(&chip->event_lock);
+	ret = reset_wdt_timer(chip);
+	if (ret < 0)
+		dev_warn(&chip->client->dev, "WDT reset failed\n");
+	mutex_unlock(&chip->event_lock);
+
 	/*
 	 * FIXEME: Hw issue in TI charger. Hi-Z needs to be cleared continuously
 	 * as long as charger is connected
@@ -1583,8 +1573,13 @@ static void bq24192_maintenance_worker(struct work_struct *work)
 		goto sched_maint_work;
 	}
 
-	if (ret < 0) {
-		dev_warn(&chip->client->dev, "%s:I2C write fail\n", __func__);
+	/*
+	 * We update the battery charging status as per the type of
+	 * charger connected. If it is host mode cable connected then
+	 * battery status should be discharging
+	 */
+	if (chip->chrg_type == POWER_SUPPLY_TYPE_USB_HOST) {
+		dev_info(&chip->client->dev, "Charger type Host\n");
 		goto sched_maint_work;
 	}
 
@@ -1816,13 +1811,19 @@ static void bq24192_maintenance_worker(struct work_struct *work)
 		goto sched_maint_work;
 	}
 
-	power_supply_changed(&chip->usb);
 sched_maint_work:
 	if ((chip->batt_mode == BATT_CHRG_MAINT) ||
-	    (chip->batt_mode == BATT_CHRG_FULL))
+	    (chip->batt_mode == BATT_CHRG_FULL)) {
 		battery_status = POWER_SUPPLY_STATUS_FULL;
-	else
+		/* When the charge status is FULL the FG interrupts
+		 * are disabled so sending power supply notification
+		 * to UI
+		 */
+		dev_info(&chip->client->dev, "Charge status FUll\n");
+		power_supply_changed(&chip->usb);
+	} else {
 		battery_status = POWER_SUPPLY_STATUS_CHARGING;
+	}
 
 	/*
 	 * Update the UI per the current battery/charger status
@@ -2651,7 +2652,6 @@ static int __devinit bq24192_probe(struct i2c_client *client,
 	}
 
 	INIT_DELAYED_WORK(&chip->chrg_evt_wrkr, bq24192_event_worker);
-	INIT_DELAYED_WORK(&chip->stat_mon_wrkr, bq24192_monitor_worker);
 	INIT_DELAYED_WORK(&chip->maint_chrg_wrkr, bq24192_maintenance_worker);
 	mutex_init(&chip->event_lock);
 
@@ -2752,8 +2752,6 @@ static int __devinit bq24192_probe(struct i2c_client *client,
 		schedule_delayed_work(&chip->chrg_evt_wrkr, 0);
 	}
 
-	/* start the status monitor worker */
-	schedule_delayed_work(&chip->stat_mon_wrkr, 0);
 	return 0;
 }
 
@@ -2778,7 +2776,6 @@ static int bq24192_suspend(struct device *dev)
 {
 	struct bq24192_chip *chip = dev_get_drvdata(dev);
 
-	cancel_delayed_work(&chip->stat_mon_wrkr);
 	dev_dbg(&chip->client->dev, "bq24192 suspend\n");
 	return 0;
 }
@@ -2787,7 +2784,6 @@ static int bq24192_resume(struct device *dev)
 {
 	struct bq24192_chip *chip = dev_get_drvdata(dev);
 
-	schedule_delayed_work(&chip->stat_mon_wrkr, 0);
 	dev_dbg(&chip->client->dev, "bq24192 resume\n");
 	return 0;
 }
