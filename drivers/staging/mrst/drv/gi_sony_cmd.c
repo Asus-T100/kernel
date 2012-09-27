@@ -157,10 +157,6 @@ int mdfld_gi_l5f3_dbi_ic_init(struct mdfld_dsi_config *dsi_config)
 	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_set_te_scanline, 4, 0);
 	mdfld_ms_delay(MSLEEP, 5);
 
-	/* set TE on and wait for 10ms. */
-	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_set_tear_on, 4, 0);
-	mdfld_ms_delay(MSLEEP, 5);
-
 	/* set password on and wait for 10ms. */
 	mdfld_dsi_send_gen_long_hs(sender, gi_l5f3_passwd1_on, 4, 0);
 	mdfld_ms_delay(MSLEEP, 5);
@@ -214,10 +210,6 @@ int mdfld_gi_l5f3_dbi_ic_init(struct mdfld_dsi_config *dsi_config)
 	/* disalble CABC and wait for 10ms. */
 	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_disable_cabc, 4, 0);
 	mdfld_ms_delay(MSLEEP, 5);
-
-	/* sleep out and wait for 150ms. */
-	mdfld_dsi_send_mcs_long_hs(sender, gi_l5f3_exit_sleep_mode, 4, 0);
-	mdfld_ms_delay(MSLEEP, 150);
 
 	dsi_config->drv_ic_inited = 1;
 
@@ -300,9 +292,6 @@ static
 int __mdfld_gi_sony_dsi_power_on(struct mdfld_dsi_config *dsi_config)
 {
 	struct drm_device *dev = dsi_config->dev;
-	struct drm_psb_private *dev_priv = dev->dev_private;
-	struct mdfld_dsi_hw_registers *regs =
-		&dsi_config->regs;
 	struct mdfld_dsi_pkg_sender *sender =
 		mdfld_dsi_get_pkg_sender(dsi_config);
 	u8 param[4];
@@ -315,44 +304,13 @@ int __mdfld_gi_sony_dsi_power_on(struct mdfld_dsi_config *dsi_config)
 		return -EINVAL;
 	}
 
-	param[0] = 0x00;
-	param[1] = 0x00;
-	param[2] = 0x00;
-	err = mdfld_dsi_send_dcs(sender,
-				 exit_sleep_mode,
-				 param,
-				 3,
-				 CMD_DATA_SRC_SYSTEM_MEM,
-				 MDFLD_DSI_SEND_PACKAGE);
-
-	if (err) {
-		DRM_ERROR("DCS 0x%x sent failed\n", exit_sleep_mode);
-		goto power_err;
-	}
-
-	REG_WRITE(regs->dsplinoff_reg, dev_priv->init_screen_offset);
-	REG_WRITE(regs->dspsurf_reg, dev_priv->init_screen_start);
-
-	err = mdfld_dsi_send_dcs(sender,
-				   write_mem_start,
-				   NULL,
-				   0,
-				   CMD_DATA_SRC_PIPE,
-				   MDFLD_DSI_SEND_PACKAGE);
-	if (err) {
-		DRM_ERROR("%s - sent write_mem_start faild\n", __func__);
-		goto power_err;
-	}
-
 	if (drm_psb_enable_cabc) {
 
 		param[0] = 0x03;
-		param[1] = 0x00;
-		param[2] = 0x00;
 		err = mdfld_dsi_send_dcs(sender,
 			 write_ctrl_cabc,
 			 param,
-			 3,
+			 1,
 			 CMD_DATA_SRC_SYSTEM_MEM,
 			 MDFLD_DSI_SEND_PACKAGE);
 		if (err) {
@@ -361,12 +319,10 @@ int __mdfld_gi_sony_dsi_power_on(struct mdfld_dsi_config *dsi_config)
 		}
 
 		param[0] = 0x28;
-		param[1] = 0x00;
-		param[2] = 0x00;
 		err = mdfld_dsi_send_dcs(sender,
 			 write_ctrl_display,
 			 param,
-			 3,
+			 1,
 			 CMD_DATA_SRC_SYSTEM_MEM,
 			 MDFLD_DSI_SEND_PACKAGE);
 		if (err) {
@@ -375,12 +331,10 @@ int __mdfld_gi_sony_dsi_power_on(struct mdfld_dsi_config *dsi_config)
 		}
 
 		param[0] = 0x2c;
-		param[1] = 0x00;
-		param[2] = 0x00;
 		err = mdfld_dsi_send_dcs(sender,
 			 write_ctrl_display,
 			 param,
-			 3,
+			 1,
 			 CMD_DATA_SRC_SYSTEM_MEM,
 			 MDFLD_DSI_SEND_PACKAGE);
 		if (err) {
@@ -390,13 +344,23 @@ int __mdfld_gi_sony_dsi_power_on(struct mdfld_dsi_config *dsi_config)
 		DRM_INFO("%s enable lxt cabc\n", __func__);
 	}
 
-	param[0] = 0x00;
-	param[1] = 0x00;
-	param[2] = 0x00;
+	err = mdfld_dsi_send_dcs(sender,
+		 exit_sleep_mode,
+		 NULL,
+		 0,
+		 CMD_DATA_SRC_SYSTEM_MEM,
+		 MDFLD_DSI_SEND_PACKAGE);
+	if (err) {
+		DRM_ERROR("DCS 0x%x sent failed\n", exit_sleep_mode);
+		goto power_err;
+	}
+
+	msleep(150);
+
 	err = mdfld_dsi_send_dcs(sender,
 		 set_tear_on,
-		 param,
-		 3,
+		 NULL,
+		 0,
 		 CMD_DATA_SRC_SYSTEM_MEM,
 		 MDFLD_DSI_SEND_PACKAGE);
 	if (err) {
@@ -404,13 +368,10 @@ int __mdfld_gi_sony_dsi_power_on(struct mdfld_dsi_config *dsi_config)
 		goto power_err;
 	}
 
-	param[0] = 0x00;
-	param[1] = 0x00;
-	param[2] = 0x00;
 	err = mdfld_dsi_send_dcs(sender,
 		 set_display_on,
-		 param,
-		 3,
+		 NULL,
+		 0,
 		 CMD_DATA_SRC_SYSTEM_MEM,
 		 MDFLD_DSI_SEND_PACKAGE);
 	if (err) {
@@ -439,13 +400,10 @@ int __mdfld_gi_sony_dsi_power_off(struct mdfld_dsi_config *dsi_config)
 	}
 
 	/* turn off display */
-	param[0] = 0x00;
-	param[1] = 0x00;
-	param[2] = 0x00;
 	err = mdfld_dsi_send_dcs(sender,
 		 set_display_off,
-		 param,
-		 3,
+		 NULL,
+		 0,
 		 CMD_DATA_SRC_SYSTEM_MEM,
 		 MDFLD_DSI_SEND_PACKAGE);
 	if (err) {
@@ -454,14 +412,24 @@ int __mdfld_gi_sony_dsi_power_off(struct mdfld_dsi_config *dsi_config)
 	}
 	mdelay(70);
 
+	/*set tear off*/
+	err = mdfld_dsi_send_dcs(sender,
+		 set_tear_off,
+		 NULL,
+		 0,
+		 CMD_DATA_SRC_SYSTEM_MEM,
+		 MDFLD_DSI_SEND_PACKAGE);
+	if (err) {
+		DRM_ERROR("%s - sent set_tear_off faild\n", __func__);
+		goto power_err;
+	}
+
 	/* disable BLCON, disable CABC */
 	param[0] = 0x28;
-	param[1] = 0x00;
-	param[2] = 0x00;
 	err = mdfld_dsi_send_dcs(sender,
 		 write_ctrl_display,
 		 param,
-		 3,
+		 1,
 		 CMD_DATA_SRC_SYSTEM_MEM,
 		 MDFLD_DSI_SEND_PACKAGE);
 	if (err) {
@@ -470,15 +438,12 @@ int __mdfld_gi_sony_dsi_power_off(struct mdfld_dsi_config *dsi_config)
 	}
 
 	/* Enter sleep mode */
-	param[0] = 0x00;
-	param[1] = 0x00;
-	param[2] = 0x00;
 	err = mdfld_dsi_send_dcs(sender,
-				 enter_sleep_mode,
-				 param,
-				 3,
-				 CMD_DATA_SRC_SYSTEM_MEM,
-				 MDFLD_DSI_SEND_PACKAGE);
+		enter_sleep_mode,
+		NULL,
+		0,
+		CMD_DATA_SRC_SYSTEM_MEM,
+		MDFLD_DSI_SEND_PACKAGE);
 
 	if (err) {
 		DRM_ERROR("DCS 0x%x sent failed\n", enter_sleep_mode);

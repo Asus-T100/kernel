@@ -129,18 +129,6 @@ static int __mdfld_auo_dsi_power_on(struct mdfld_dsi_config *dsi_config)
 	}
 
 	/* Send DCS commands. */
-	cmd = write_mem_start;
-	err = mdfld_dsi_send_dcs(sender,
-			cmd,
-			NULL,
-			0,
-			CMD_DATA_SRC_PIPE,
-			MDFLD_DSI_SEND_PACKAGE);
-	if (err) {
-		DRM_ERROR("DCS 0x%x sent failed\n", cmd);
-		return err;
-	}
-
 	cmd = exit_sleep_mode;
 	err = mdfld_dsi_send_dcs(sender,
 			cmd,
@@ -232,18 +220,6 @@ static int __mdfld_auo_dsi_power_on(struct mdfld_dsi_config *dsi_config)
 		return err;
 	}
 
-	cmd = write_mem_start;
-	err = mdfld_dsi_send_dcs(sender,
-			cmd,
-			NULL,
-			0,
-			CMD_DATA_SRC_PIPE,
-			MDFLD_DSI_SEND_PACKAGE);
-	if (err) {
-		DRM_ERROR("DCS 0x%x sent failed\n", cmd);
-		return err;
-	}
-
 	cmd = set_display_on;
 	err = mdfld_dsi_send_dcs(sender,
 			cmd,
@@ -299,6 +275,20 @@ static int __mdfld_auo_dsi_power_off(struct mdfld_dsi_config *dsi_config)
 	}
 
 	msleep(120);
+
+	/*set tear off*/
+	cmd = set_tear_off;
+	err = mdfld_dsi_send_dcs(sender,
+			cmd,
+			NULL,
+			0,
+			CMD_DATA_SRC_SYSTEM_MEM,
+			MDFLD_DSI_SEND_PACKAGE);
+	if (err) {
+		DRM_ERROR("DCS 0x%x sent failed\n", cmd);
+		return err;
+	}
+
 
 	/*set display off*/
 	cmd = set_display_off;

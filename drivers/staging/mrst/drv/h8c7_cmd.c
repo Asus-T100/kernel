@@ -163,12 +163,6 @@ int mdfld_h8c7_drv_ic_init(struct mdfld_dsi_config *dsi_config)
 	/*wait for 5ms*/
 	mdelay(5);
 
-	/* sleep out and wait for 150ms. */
-	mdfld_dsi_send_mcs_long_hs(sender, h8c7_exit_sleep_mode, 1, 0);
-	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
-		return -EIO;
-	mdelay(150);
-
 	/* set password*/
 	mdfld_dsi_send_gen_long_hs(sender, h8c7_mcs_protect_off, 4, 0);
 	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
@@ -263,18 +257,10 @@ int mdfld_h8c7_drv_ic_init(struct mdfld_dsi_config *dsi_config)
 	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
 		return -EIO;
 
-	mdfld_dsi_send_gen_long_hs(sender, h8c7_set_tear_on, 2, 0);
-	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
-		return -EIO;
-
 	mdfld_dsi_send_gen_long_hs(sender, h8c7_mcs_protect_on, 4, 0);
 	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
 		return -EIO;
 
-	/*wait for last command (protect on), make sure it takes effect
-	* for other command, it waits in next coming
-	* mdfld_dsi_send_XXXX_long
-	*/
 	mdelay(5);
 	return 0;
 }
@@ -358,7 +344,6 @@ int mdfld_dsi_h8c7_cmd_power_on(struct mdfld_dsi_config *dsi_config)
 
 	struct mdfld_dsi_pkg_sender *sender =
 		mdfld_dsi_get_pkg_sender(dsi_config);
-	u8 param[4];
 	int err = 0;
 	int enable_err, enabled = 0;
 
@@ -400,57 +385,41 @@ int mdfld_dsi_h8c7_cmd_power_on(struct mdfld_dsi_config *dsi_config)
 			regulator_is_enabled(h8c7_regulator_status.regulator));
 	}
 
-	/*clean on-panel FB*/
-	/*re-initizlize the te_seq count & set to one*/
-	atomic64_set(&sender->te_seq, 1);
+	/*exit sleep */
 	err = mdfld_dsi_send_dcs(sender,
-			write_mem_start,
-			NULL,
-			0,
-			CMD_DATA_SRC_PIPE,
-			MDFLD_DSI_SEND_PACKAGE);
-	if (err) {
-		DRM_ERROR("sent write_mem_start faild\n");
-		goto power_err;
-	}
-	/*wait for above write_mem_start happen
-	*fifo check will be at the begining of next command
-	*/
-	mdelay(16);
-	/*sleep out*/
-	param[0] = 0x00;
-	param[1] = 0x00;
-	param[2] = 0x00;
-	err = mdfld_dsi_send_dcs(sender,
-			exit_sleep_mode,
-			param,
-			1,
-			CMD_DATA_SRC_SYSTEM_MEM,
-			MDFLD_DSI_SEND_PACKAGE);
-
-	if (err) {
-		DRM_ERROR("DCS 0x%x sent failed\n", exit_sleep_mode);
-		goto power_err;
-	}
-
-	/**
-	 * must wait 120ms before entering sleep mode.
-	 * and wait 5ms before sending next command
-	 */
-	mdelay(120);
-
-	/*turn on display*/
-	param[0] = 0x00;
-	param[1] = 0x00;
-	param[2] = 0x00;
-	err = mdfld_dsi_send_dcs(sender,
-		 set_display_on,
-		 param,
-		 3,
+		 exit_sleep_mode,
+		 NULL,
+		 0,
 		 CMD_DATA_SRC_SYSTEM_MEM,
 		 MDFLD_DSI_SEND_PACKAGE);
 	if (err) {
-		DRM_ERROR("faild to exit sleep mode\n");
+		DRM_ERROR("faild to exit_sleep mode\n");
+		goto power_err;
+	}
+
+	msleep(120);
+
+	/*set tear on*/
+	err = mdfld_dsi_send_dcs(sender,
+		 set_tear_on,
+		 NULL,
+		 0,
+		 CMD_DATA_SRC_SYSTEM_MEM,
+		 MDFLD_DSI_SEND_PACKAGE);
+	if (err) {
+		DRM_ERROR("faild to set_tear_on mode\n");
+		goto power_err;
+	}
+
+	/*turn on display*/
+	err = mdfld_dsi_send_dcs(sender,
+		 set_display_on,
+		 NULL,
+		 0,
+		 CMD_DATA_SRC_SYSTEM_MEM,
+		 MDFLD_DSI_SEND_PACKAGE);
+	if (err) {
+		DRM_ERROR("faild to set_display_on mode\n");
 		goto power_err;
 	}
 	if (drm_psb_enable_cabc) {
@@ -488,6 +457,7 @@ static int mdfld_dsi_h8c7_cmd_power_off(struct mdfld_dsi_config *dsi_config)
 	}
 	mdelay(1);
 
+
 	/*turn off display */
 	err = mdfld_dsi_send_dcs(sender,
 		 set_display_off,
@@ -497,6 +467,18 @@ static int mdfld_dsi_h8c7_cmd_power_off(struct mdfld_dsi_config *dsi_config)
 		 MDFLD_DSI_SEND_PACKAGE);
 	if (err) {
 		DRM_ERROR("sent set_display_off faild\n");
+		goto out;
+	}
+
+	/*set tear off */
+	err = mdfld_dsi_send_dcs(sender,
+		 set_tear_off,
+		 NULL,
+		 0,
+		 CMD_DATA_SRC_SYSTEM_MEM,
+		 MDFLD_DSI_SEND_PACKAGE);
+	if (err) {
+		DRM_ERROR("sent set_tear_off faild\n");
 		goto out;
 	}
 
@@ -720,11 +702,10 @@ void h8c7_cmd_init(struct drm_device *dev, struct panel_funcs *p_funcs)
 
 	p_funcs->get_config_mode = h8c7_cmd_get_config_mode;
 	p_funcs->get_panel_info = h8c7_cmd_get_panel_info;
-
-	/**
-	 * because CMI will reset panel in enter_sleep_mode /exit_sleep_mode
-	 * so hw reset is not necessary, otherwise, it will conflict
-	 */
+	/*For CMI panel, according stress test,
+	* soft reset is better than HW reset.
+	* soft reset will be set in ic init function
+	*/
 	p_funcs->reset = NULL;
 	p_funcs->drv_ic_init = mdfld_h8c7_drv_ic_init;
 	p_funcs->dsi_controller_init = mdfld_h8c7_dsi_controller_init;
