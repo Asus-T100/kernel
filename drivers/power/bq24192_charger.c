@@ -303,6 +303,7 @@ static struct i2c_client *bq24192_client;
 static char *bq24192_power_supplied_to[] = {
 			"max170xx_battery",
 			"max17042_battery",
+			"max17047_battery",
 };
 
 /*
