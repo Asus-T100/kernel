@@ -2123,6 +2123,7 @@ int atomisp_set_dis_vector(struct atomisp_device *isp,
 	spin_unlock_irqrestore(&isp->irq_lock, irqflags);
 
 	isp->params.dis_proj_data_valid = false;
+	isp->params.css_update_params_needed = true;
 	return 0;
 }
 
@@ -2854,6 +2855,7 @@ int atomisp_digital_zoom(struct atomisp_device *isp, int flag, __s32 *value)
 
 		v4l2_dbg(3, dbg_level, &atomisp_dev, "%s, zoom: %d\n", __func__, zoom);
 		sh_css_set_zoom_factor(zoom, zoom);
+		isp->params.css_update_params_needed = true;
 	}
 
 	return 0;
@@ -3338,6 +3340,7 @@ static void atomisp_set_dis_envelop(struct atomisp_device *isp,
 	}
 
 	isp->params.dis_proj_data_valid = false;
+	isp->params.css_update_params_needed = true;
 }
 
 static int atomisp_get_sensor_bin_factor(struct atomisp_device *isp)

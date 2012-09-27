@@ -1286,6 +1286,8 @@ static int atomisp_streamon(struct file *file, void *fh,
 		return ret;
 	}
 
+	/* Make sure that update_isp_params is called at least once.*/
+	isp->params.css_update_params_needed = true;
 	isp->sw_contex.isp_streaming = true;
 	mutex_unlock(&isp->isp_lock);
 
