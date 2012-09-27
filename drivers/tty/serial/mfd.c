@@ -943,14 +943,19 @@ static inline void dma_chan_irq(struct hsu_dma_chan *chan)
 
 	/* Rx channel */
 	if (up->dma_rx_on && chan->dirt == DMA_FROM_DEVICE) {
+#ifdef CONFIG_PM_RUNTIME
 		if (up->dev->power.runtime_status == RPM_ACTIVE ||
 		up->dev->power.runtime_status == RPM_RESUMING)
+#endif
 			hsu_dma_rx(up, int_sts);
 	}
 	/* Tx channel */
 	if (chan->dirt == DMA_TO_DEVICE) {
+#ifdef CONFIG_PM_RUNTIME
 		if (up->dev->power.runtime_status == RPM_ACTIVE ||
-		up->dev->power.runtime_status == RPM_RESUMING) {
+		up->dev->power.runtime_status == RPM_RESUMING)
+#endif
+		{
 			chan_writel(chan, HSU_CH_CR, 0x0);
 			up->dma_tx_on = 0;
 			hsu_dma_tx(up);
