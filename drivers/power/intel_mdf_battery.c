@@ -1330,6 +1330,10 @@ static void update_usb_ps_info(struct msic_power_module_info *mbi,
 			mbi->usb.type = POWER_SUPPLY_TYPE_USB_DCP;
 			dev_info(msic_dev, "Charger type: DCP, "
 					"current-val: %d", cap->mA);
+		} else if (cap->chrg_type == CHRG_SE1) {
+			mbi->usb.type = POWER_SUPPLY_TYPE_USB_DCP;
+			dev_info(msic_dev, "Charger type: SE1, "
+					"current-val: %d", cap->mA);
 		} else if (cap->chrg_type == CHRG_ACA) {
 			mbi->usb.type = POWER_SUPPLY_TYPE_USB_ACA;
 			dev_info(msic_dev, "Charger type: ACA, "
