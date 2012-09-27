@@ -1718,6 +1718,9 @@ struct dlp_channel *dlp_ctrl_ctx_create(unsigned int index, struct device *dev)
 	dlp_xfer_ctx_init(ch_ctx,
 			  DLP_CTRL_RX_PDU_SIZE, 0, 0, 0, NULL, HSI_MSG_READ);
 
+	/* Set ch_ctx, not yet done in the probe */
+	DLP_CHANNEL_CTX(DLP_CHANNEL_CTRL) = ch_ctx;
+
 	/* Configure GPIOs */
 	ctrl_ctx->gpio_mdm_rst_out = pd->gpio_mdm_rst_out;
 	ctrl_ctx->gpio_mdm_pwr_on  = pd->gpio_mdm_pwr_on;
@@ -1726,9 +1729,6 @@ struct dlp_channel *dlp_ctrl_ctx_create(unsigned int index, struct device *dev)
 
 	if (dlp_ctrl_setup_irq_gpio(ch_ctx, dev))
 		goto free_ctx;
-
-	/* Set ch_ctx, not yet done in the probe */
-	DLP_CHANNEL_CTX(DLP_CHANNEL_CTRL) = ch_ctx;
 
 	dlp_ctrl_push_rx_pdus(ch_ctx);
 
