@@ -534,15 +534,15 @@ bool mid_pmu_is_wake_source(u32 lss_number)
 	u32 wake = 0;
 	bool ret = false;
 
-	if (lss_number > PMU_RSVD9_LSS_63)
+	if (lss_number > PMU_MAX_LSS)
 		return ret;
 
-	if (lss_number < PMU_SCU_RAM1_LSS_32) {
+	if (lss_number < PMU_LSS_IN_FIRST_DWORD) {
 		wake = readl(&mid_pmu_cxt->pmu_reg->pm_wks[0]);
 		wake &= (1 << lss_number);
 	} else {
 		wake = readl(&mid_pmu_cxt->pmu_reg->pm_wks[1]);
-		wake &= (1 << (lss_number-PMU_SCU_RAM1_LSS_32));
+		wake &= (1 << (lss_number - PMU_LSS_IN_FIRST_DWORD));
 	}
 
 	if (wake)
