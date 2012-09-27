@@ -1948,7 +1948,10 @@ static int __devinit max17042_probe(struct i2c_client *client,
 
 	chip->technology = chip->pdata->technology;
 
-	chip->battery.name = "max170xx_battery";
+	if (chip->chip_type == MAX17042)
+		chip->battery.name = "max17042_battery";
+	else
+		chip->battery.name = "max17047_battery";
 	chip->battery.type		= POWER_SUPPLY_TYPE_BATTERY;
 	chip->battery.get_property	= max17042_get_property;
 	chip->battery.external_power_changed = max17042_external_power_changed;
