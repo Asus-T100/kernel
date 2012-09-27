@@ -23,6 +23,8 @@
  *
  * Authors:
  *    Dale B. Stimson <dale.b.stimson@intel.com>
+ *    Jari Luoma-aho  <jari.luoma-aho@intel.com>
+ *    Jari Nippula    <jari.nippula@intel.com>
  *
  */
 
@@ -64,7 +66,7 @@ int gburst_stats_gfx_hw_perf_counters_to_string(int ix_in,
 
 int gburst_stats_gfx_hw_perf_counters_set(const char *buf);
 
-int gburst_stats_gfx_hw_perf_record(void);
+int gburst_stats_gfx_hw_perf_record(int gpu_state);
 
 int gburst_stats_active_counters_from_string(const char *buf, int nbytes);
 
