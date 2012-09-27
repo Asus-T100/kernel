@@ -49,6 +49,7 @@
 #include "device_libs/platform_mpu3050.h"
 #include "device_libs/platform_tc35876x.h"
 #include "device_libs/platform_max17042.h"
+#include "device_libs/platform_mxt224.h"
 
 /*
  * SPI devices
@@ -82,6 +83,7 @@ struct devs_id __initconst device_ids[] = {
 	{"mpu3050", SFI_DEV_TYPE_I2C, 1, &mpu3050_platform_data, NULL},
 	{"i2c_disp_brig", SFI_DEV_TYPE_I2C, 0, &tc35876x_platform_data, NULL},
 	{"st_kim", SFI_DEV_TYPE_UART, 0, &hsu_dev_platform_data, NULL},
+	{"mxt224", SFI_DEV_TYPE_I2C, 0, &mxt224_platform_data, NULL},
 
 	/* MSIC subdevices */
 	{"msic_adc", SFI_DEV_TYPE_IPC, 1, &msic_adc_platform_data,

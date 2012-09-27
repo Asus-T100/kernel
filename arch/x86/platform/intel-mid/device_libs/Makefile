@@ -21,7 +21,7 @@ obj-$(subst m,y,$(CONFIG_BATTERY_MAX17042))				+= platform_max17042.o
 else
 obj-$(subst m,y,$(CONFIG_BATTERY_MAX17050))				+= platform_max17042.o
 endif
-
+obj-$(subst m,y,$(CONFIG_TOUCHSCREEN_ATMEL_MXT224))                    += platform_mxt224.o
 # SPI Devices
 obj-$(subst m,y,$(CONFIG_SERIAL_MRST_MAX3110))				+= platform_max3111.o
 # UART Devices

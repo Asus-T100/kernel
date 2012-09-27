@@ -851,4 +851,12 @@ config TOUCHSCREEN_TPS6507X
 	  To compile this driver as a module, choose M here: the
 	  module will be called tps6507x_ts.
 
+config TOUCHSCREEN_ATMEL_MXT224
+	tristate "ATMEL mXT224 touchscreen"
+	depends on I2C
+	default n
+	help
+		Say Y here if you have a mXT224 touchscreen
+		If unsure, say N.
+
 endif
