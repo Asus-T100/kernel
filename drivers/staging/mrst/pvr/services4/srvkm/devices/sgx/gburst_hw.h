@@ -23,6 +23,8 @@
  *
  * Authors:
  *    Dale B. Stimson <dale.b.stimson@intel.com>
+ *    Jari Luoma-aho  <jari.luoma-aho@intel.com>
+ *    Jari Nippula    <jari.nippula@intel.com>
  *
  */
 
@@ -45,7 +47,7 @@ int gburst_hw_set_counter_id(unsigned int ctr_ix, int ctr_grp, int ctr_bit);
 
 int gburst_hw_inq_counter_id(unsigned int ctr_ix, int *ctr_grp, int *ctr_bit);
 
-int gburst_hw_inq_counter_max_value(unsigned int ctr_ix);
+int gburst_hw_inq_counter_coeff(unsigned int ctr_ix);
 
 int gburst_hw_perf_data_get_indices(int *ix_roff, int *ix_woff);
 

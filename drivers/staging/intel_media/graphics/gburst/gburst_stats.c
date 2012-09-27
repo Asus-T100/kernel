@@ -145,7 +145,7 @@ static void gpu_init_perf_counters(void)
 
 	for (ndx = 0; ndx < gsdat.gsd_num_counters; ndx++) {
 		for (ix_core = 0; ix_core < gsdat.gsd_num_cores; ix_core++) {
-			val = gburst_hw_inq_counter_max_value(ndx);
+			val = gburst_hw_inq_counter_coeff(ndx);
 			if (val < 0)
 				val = 0;
 			gsdat.gsd_pcd[ix_core][ndx].pce_full_util_ref = val;
