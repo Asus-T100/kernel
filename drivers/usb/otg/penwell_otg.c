@@ -74,6 +74,7 @@ static int penwell_otg_ulpi_write(struct intel_mid_otg_xceiv *iotg,
 static void penwell_spi_reset_phy(void);
 static int penwell_otg_charger_hwdet(bool enable);
 static void update_hsm(void);
+static void set_client_mode(void);
 
 #ifdef CONFIG_DEBUG_FS
 unsigned int *pm_sss0_base;
@@ -1069,6 +1070,14 @@ static void penwell_otg_phy_low_power(int on)
 	u32			val;
 
 	dev_dbg(pnw->dev, "%s ---> %s\n", __func__, on ? "on" : "off");
+
+	val = readl(pnw->iotg.base + CI_USBMODE);
+	if (!(val & USBMODE_CM)) {
+		dev_err(pnw->dev,
+			"PHY can't enter low power mode "
+			"when UDC is in idle mode\n");
+		set_client_mode();
+	}
 
 	val = readl(pnw->iotg.base + CI_HOSTPC1);
 	dev_dbg(pnw->dev, "---> Register CI_HOSTPC1 = %x\n", val);
