@@ -199,6 +199,47 @@ int mdfld_dbi_dsr_init(struct drm_device *dev)
 }
 #endif
 
+static int mdfld_initia_panel_inside_fb(struct mdfld_dsi_config *dsi_config)
+{
+	struct mdfld_dsi_hw_registers *regs = &dsi_config->regs;
+	struct drm_device *dev = dsi_config->dev;
+	struct drm_psb_private *dev_priv;
+	struct mdfld_dsi_pkg_sender *sender
+			= mdfld_dsi_get_pkg_sender(dsi_config);
+	int err = 0;
+	PSB_DEBUG_ENTRY("\n");
+	dev_priv = dev->dev_private;
+	/*if recovery from suspend case, set black frame buffer*/
+	if (!gbdispstatus) {
+		REG_WRITE(regs->dspstride_reg, dev_priv->init_screen_stride);
+		REG_WRITE(regs->dspsize_reg, dev_priv->init_screen_size);
+		REG_WRITE(regs->dsplinoff_reg, dev_priv->init_screen_offset);
+		REG_WRITE(regs->dspsurf_reg, dev_priv->init_screen_start);
+	}
+	/*clean on-panel FB*/
+	/*re-initizlize the te_seq count & screen update*/
+	atomic64_set(&sender->last_screen_update, 0);
+	atomic64_set(&sender->te_seq, 1);
+	/*for initia clear directly write out,
+	  so temp disable TE trigger */
+	REG_WRITE(regs->mipi_reg,
+		(REG_READ(regs->mipi_reg) & (~(TE_TRIGGER_GPIO_PIN |
+				 TE_TRIGGER_DSI_PROTOCOL))));
+	err = mdfld_dsi_send_dcs(sender,
+			write_mem_start,
+			NULL,
+			0,
+			CMD_DATA_SRC_PIPE,
+			MDFLD_DSI_SEND_PACKAGE);
+	if (err)
+		DRM_ERROR("%s - sent write_mem_start faild\n", __func__);
+	/*wait for updata completly */
+	mdfld_dsi_wait_for_fifos_empty(sender);
+	/*restor back FB update by TE trigger*/
+	REG_WRITE(regs->mipi_reg,
+			(REG_READ(regs->mipi_reg) | TE_TRIGGER_GPIO_PIN));
+	return err;
+}
 static int __dbi_enter_ulps_locked(struct mdfld_dsi_config *dsi_config)
 {
 	struct mdfld_dsi_hw_registers *regs = &dsi_config->regs;
@@ -475,7 +516,10 @@ reset_recovery:
 			goto power_on_err;
 		}
 	}
-
+	/* panel insider fb is random after exit deep standby mode
+	*re-initia panel insider fb before turn on
+	*/
+	mdfld_initia_panel_inside_fb(dsi_config);
 	/**
 	 * Different panel may have different ways to have
 	 * panel turned on. Support it!
@@ -546,13 +590,13 @@ int __dbi_power_off(struct mdfld_dsi_config *dsi_config)
 		return -EAGAIN;
 
 	/*save the plane informaton, for it will updated*/
-	ctx->dspsurf = dev_priv->init_screen_start;
-	ctx->dsplinoff = dev_priv->init_screen_offset;
-	ctx->dspstride = dev_priv->init_screen_stride;
-	ctx->dspsize = dev_priv->init_screen_size;
-	ctx->pipestat = REG_READ(regs->pipestat_reg);
-	ctx->dspcntr = REG_READ(regs->dspcntr_reg);
-	ctx->pipeconf = REG_READ(regs->pipeconf_reg);
+	ctx->dspsurf	= REG_READ(regs->dspsurf_reg);
+	ctx->dsplinoff	= REG_READ(regs->dsplinoff_reg);
+	ctx->dspstride	= REG_READ(regs->dspstride_reg);
+	ctx->dspsize	= REG_READ(regs->dspsize_reg);
+	ctx->pipestat	= REG_READ(regs->pipestat_reg);
+	ctx->dspcntr	= REG_READ(regs->dspcntr_reg);
+	ctx->pipeconf	= REG_READ(regs->pipeconf_reg);
 
 	/*Disable plane*/
 	val = ctx->dspcntr;

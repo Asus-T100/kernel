@@ -236,24 +236,12 @@ int __gi_renesas_dsi_power_on(struct mdfld_dsi_config *dsi_config)
 		mdfld_dsi_get_pkg_sender(dsi_config);
 	int err = 0;
 
-	PSB_DEBUG_ENTRY("Turn on video mode TMD panel...\n");
+	PSB_DEBUG_ENTRY("\n");
 
 	if (!sender) {
 		DRM_ERROR("Failed to get DSI packet sender\n");
 		return -EINVAL;
 	}
-
-	REG_WRITE(regs->dsplinoff_reg, dev_priv->init_screen_offset);
-	REG_WRITE(regs->dspsurf_reg, dev_priv->init_screen_start);
-
-	err = mdfld_dsi_send_dcs(sender,
-			write_mem_start,
-			NULL,
-			0,
-			CMD_DATA_SRC_PIPE,
-			MDFLD_DSI_SEND_PACKAGE);
-	if (err)
-		DRM_ERROR("%s - sent write_mem_start faild\n", __func__);
 
 	if (drm_psb_enable_cabc) {
 		/* enable cabc */
@@ -266,9 +254,9 @@ int __gi_renesas_dsi_power_on(struct mdfld_dsi_config *dsi_config)
 	mdfld_dsi_send_gen_long_hs(sender, gi_er61529_mcs_protect_on, 2, 0);
 	mdfld_dsi_send_gen_long_hs(sender, gi_er61529_backlight_cntr, 5, 0);
 	mdfld_dsi_send_gen_long_hs(sender, gi_er61529_mcs_protect_off, 2, 0);
-
 	mdfld_dsi_send_mcs_long_hs(sender, gi_er61529_exit_sleep_mode, 1, 0);
 	mdelay(120);
+	mdfld_dsi_send_mcs_long_hs(sender, gi_er61529_set_tear_on, 2, 0);
 	mdfld_dsi_send_mcs_long_hs(sender, gi_er61529_dcs_set_display_on, 1, 0);
 
 	return err;
@@ -279,7 +267,6 @@ int __gi_renesas_dsi_power_off(struct mdfld_dsi_config *dsi_config)
 {
 	struct mdfld_dsi_pkg_sender *sender =
 		mdfld_dsi_get_pkg_sender(dsi_config);
-	u8 param[4];
 	int err = 0;
 
 	PSB_DEBUG_ENTRY("Turn off video mode TMD panel...\n");
@@ -290,13 +277,10 @@ int __gi_renesas_dsi_power_off(struct mdfld_dsi_config *dsi_config)
 	}
 
 	/* turn off display */
-	param[0] = 0x00;
-	param[1] = 0x00;
-	param[2] = 0x00;
 	err = mdfld_dsi_send_dcs(sender,
 		 set_display_off,
-		 param,
-		 3,
+		 NULL,
+		 0,
 		 CMD_DATA_SRC_SYSTEM_MEM,
 		 MDFLD_DSI_SEND_PACKAGE);
 	if (err) {
@@ -304,6 +288,18 @@ int __gi_renesas_dsi_power_off(struct mdfld_dsi_config *dsi_config)
 		goto power_err;
 	}
 	mdelay(70);
+
+	/* set tear off display */
+	err = mdfld_dsi_send_dcs(sender,
+		 set_tear_off,
+		 NULL,
+		 0,
+		 CMD_DATA_SRC_SYSTEM_MEM,
+		 MDFLD_DSI_SEND_PACKAGE);
+	if (err) {
+		DRM_ERROR("%s - sent set_tear_off faild\n", __func__);
+		goto power_err;
+	}
 
 	/* disable CABC */
 	gi_er61529_backlight_cntr_1[1] = 0x00;
