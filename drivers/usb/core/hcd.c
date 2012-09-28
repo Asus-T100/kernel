@@ -2552,6 +2552,9 @@ void usb_remove_hcd(struct usb_hcd *hcd)
 
 #ifdef CONFIG_USB_SUSPEND
 	cancel_work_sync(&hcd->wakeup_work);
+	/* Resume root-hub and disable its runtime pm before removing it. */
+	usb_autoresume_device(rhdev);
+	usb_disable_autosuspend(rhdev);
 #endif
 
 	mutex_lock(&usb_bus_list_lock);
