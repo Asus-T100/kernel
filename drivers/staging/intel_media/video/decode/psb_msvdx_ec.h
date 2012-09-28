@@ -21,7 +21,7 @@
  *
  **************************************************************************/
 
-#ifdef CONFIG_DRM_MRFLD
+#ifdef CONFIG_VIDEO_MRFLD
 #define _PSB_MSVDX_EC_H_
 
 #define MSVDX_CMDS_BASE 0x1000

@@ -3976,7 +3976,7 @@ int psb_release(struct inode *inode, struct file *filp)
 
 	msvdx_priv = (struct msvdx_private *)dev_priv->msvdx_private;
 
-#ifdef CONFIG_DRM_MRFLD
+#ifdef CONFIG_VIDEO_MRFLD
 	/*cleanup for msvdx*/
 #if 0
 	if (msvdx_priv->tfile == psb_fpriv(file_priv)->tfile) {

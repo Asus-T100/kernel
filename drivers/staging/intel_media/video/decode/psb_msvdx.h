@@ -749,7 +749,7 @@ struct psb_msvdx_cmd_queue {
 
 #define FW_VA_LAST_SLICE_OF_EXT_DMA                                         0x00001000
 
-#ifdef CONFIG_DRM_MRFLD
+#ifdef CONFIG_VIDEO_MRFLD
 struct psb_msvdx_ec_ctx *psb_msvdx_find_ec_ctx(
 			struct msvdx_private *msvdx_priv,
 			struct ttm_object_file *tfile,
