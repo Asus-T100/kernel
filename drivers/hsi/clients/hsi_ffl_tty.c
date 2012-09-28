@@ -3582,7 +3582,7 @@ static int ffl_reset_ctx_init(struct ffl_reset_ctx *ctx_reset,
 	ffl_request_input_gpio("ifxHSIModem", mdm_rst_out, "RST_OUT");
 	ffl_request_input_gpio("ifxHSIModem", fcdp_rb, "CORE DUMP");
 
-	ffl_request_irq(irq, IRQF_TRIGGER_RISING|IRQF_TRIGGER_FALLING,
+	ffl_request_irq(irq, IRQF_TRIGGER_RISING|IRQF_TRIGGER_FALLING|IRQF_NO_SUSPEND,
 			mdm_rst_out, "RST_OUT");
 	ffl_request_irq(cd_irq, IRQF_TRIGGER_RISING, fcdp_rb, "CORE DUMP");
 	enable_irq_wake(ctx_reset->irq);

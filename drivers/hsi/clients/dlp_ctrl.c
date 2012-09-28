@@ -415,7 +415,7 @@ dlp_ctrl_setup_irq_gpio(struct dlp_channel *ch_ctx,
 
 	ret = request_irq(ctrl_ctx->reset.rst_irq,
 			  dlp_ctrl_reset_it,
-			  IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
+			  IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING | IRQF_NO_SUSPEND,
 			  DRVNAME,
 			  ch_ctx);
 	if (ret) {
