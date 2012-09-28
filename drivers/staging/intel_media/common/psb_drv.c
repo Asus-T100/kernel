@@ -629,14 +629,24 @@ static void psb_lastclose(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *) dev->dev_private;
+	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
 
 	if (!dev_priv)
 		return;
 
+	if (msvdx_priv) {
+		mutex_lock(&msvdx_priv->msvdx_mutex);
+		if (dev_priv->decode_context.buffers) {
+			vfree(dev_priv->decode_context.buffers);
+			dev_priv->decode_context.buffers = NULL;
+		}
+		mutex_unlock(&msvdx_priv->msvdx_mutex);
+	}
+
 	mutex_lock(&dev_priv->cmdbuf_mutex);
-	if (dev_priv->context.buffers) {
-		vfree(dev_priv->context.buffers);
-		dev_priv->context.buffers = NULL;
+	if (dev_priv->encode_context.buffers) {
+		vfree(dev_priv->encode_context.buffers);
+		dev_priv->encode_context.buffers = NULL;
 	}
 	mutex_unlock(&dev_priv->cmdbuf_mutex);
 }
@@ -1486,8 +1496,12 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	if (unlikely(dev_priv->tdev == NULL))
 		goto out_err;
 	mutex_init(&dev_priv->cmdbuf_mutex);
-	INIT_LIST_HEAD(&dev_priv->context.validate_list);
-	/* INIT_LIST_HEAD(&dev_priv->context.kern_validate_list); */
+	INIT_LIST_HEAD(&dev_priv->decode_context.validate_list);
+	INIT_LIST_HEAD(&dev_priv->encode_context.validate_list);
+	/*
+	INIT_LIST_HEAD(&dev_priv->decode_context.kern_validate_list);
+	INIT_LIST_HEAD(&dev_priv->encode_context.kern_validate_list);
+	*/
 #endif
 
 	mutex_init(&dev_priv->temp_mem);

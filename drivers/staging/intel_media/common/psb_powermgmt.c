@@ -135,7 +135,7 @@ static int ospm_runtime_pm_msvdx_suspend(struct drm_device *dev)
 	mutex_unlock(&dev_priv->video_ctx_mutex);
 
 	/* have decode context, but not started, or is just closed */
-	if (decode_ctx && dev_priv->msvdx_ctx)
+	if (decode_ctx && msvdx_priv->msvdx_ctx)
 		decode_running = 1;
 
 #ifdef CONFIG_MDFD_VIDEO_DECODE

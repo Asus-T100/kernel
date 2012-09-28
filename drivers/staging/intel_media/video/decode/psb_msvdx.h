@@ -725,6 +725,12 @@ struct msvdx_private {
 
 	/* pm suspend wq */
 	struct delayed_work msvdx_suspend_wq;
+
+	/* protected by msvdx_mutex */
+	/* Current video context */
+	struct psb_video_ctx *msvdx_ctx;
+	/* previous vieo context */
+	struct psb_video_ctx *last_msvdx_ctx;
 };
 
 struct psb_msvdx_cmd_queue {

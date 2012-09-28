@@ -389,10 +389,9 @@ struct drm_psb_private {
 	struct mutex video_ctx_mutex;
 	/* Current video context */
 	struct psb_video_ctx *topaz_ctx;
-	struct psb_video_ctx *msvdx_ctx;
 	/* previous vieo context */
 	struct psb_video_ctx *last_topaz_ctx;
-	struct psb_video_ctx *last_msvdx_ctx;
+
 
 	/*
 	 *MSVDX
@@ -832,7 +831,8 @@ struct drm_psb_private {
 	 *TODO: change this to be per drm-context.
 	 */
 
-	struct psb_context context;
+	struct psb_context decode_context;
+	struct psb_context encode_context;
 
 	/*
 	 * LID-Switch
@@ -1072,6 +1072,7 @@ struct backlight_device *psb_get_backlight_device(void);
 #define PSB_D_REG     (1 << 8)
 #define PSB_D_MSVDX   (1 << 9)
 #define PSB_D_TOPAZ   (1 << 10)
+#define PSB_D_WARN    (1 << 11)
 
 #ifndef DRM_DEBUG_CODE
 /* To enable debug printout, set drm_psb_debug in psb_drv.c
@@ -1106,6 +1107,8 @@ extern int drm_topaz_sbuswa;
 	PSB_DEBUG(PSB_D_MSVDX, _fmt, ##_arg)
 #define PSB_DEBUG_TOPAZ(_fmt, _arg...) \
 	PSB_DEBUG(PSB_D_TOPAZ, _fmt, ##_arg)
+#define PSB_DEBUG_WARN(_fmt, _arg...) \
+		PSB_DEBUG(PSB_D_WARN, _fmt, ##_arg)
 
 #if DRM_DEBUG_CODE
 #define PSB_DEBUG(_flag, _fmt, _arg...)					\

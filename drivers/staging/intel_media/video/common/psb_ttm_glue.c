@@ -235,6 +235,7 @@ int psb_getpageaddrs_ioctl(struct drm_device *dev, void *data,
 void psb_remove_videoctx(struct drm_psb_private *dev_priv, struct file *filp)
 {
 	struct psb_video_ctx *pos, *n;
+	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
 	/* iterate to query all ctx to if there is DRM running*/
 	ied_enabled = 0;
 
@@ -268,10 +269,12 @@ void psb_remove_videoctx(struct drm_psb_private *dev_priv, struct file *filp)
 			if (dev_priv->last_topaz_ctx == pos)
 				dev_priv->last_topaz_ctx = NULL;
 
-			if (dev_priv->msvdx_ctx == pos)
-				dev_priv->msvdx_ctx = NULL;
-			if (dev_priv->last_msvdx_ctx == pos)
-				dev_priv->last_msvdx_ctx = NULL;
+			mutex_lock(&msvdx_priv->msvdx_mutex);
+			if (msvdx_priv->msvdx_ctx == pos)
+				msvdx_priv->msvdx_ctx = NULL;
+			if (msvdx_priv->last_msvdx_ctx == pos)
+				msvdx_priv->last_msvdx_ctx = NULL;
+			mutex_unlock(&msvdx_priv->msvdx_mutex);
 
 			list_del(&pos->head);
 			kfree(pos);

@@ -315,7 +315,7 @@ static int psb_msvdx_map_command(struct drm_device *dev,
 		PSB_DEBUG_GENERAL("MSVDXQUE:did NOT copy command\n");
 		if (IS_MSVDX_MEM_TILE(dev) && drm_psb_msvdx_tiling) {
 			unsigned long msvdx_tile =
-				((dev_priv->msvdx_ctx->ctx_type >> 16) & 0xff);
+				((msvdx_priv->msvdx_ctx->ctx_type >> 16) & 0xff);
 			psb_msvdx_set_tile(dev, msvdx_tile);
 		}
 #ifdef CONFIG_DRM_MRFLD
@@ -356,7 +356,7 @@ int psb_submit_video_cmdbuf(struct drm_device *dev,
 
 	spin_lock_irqsave(&msvdx_priv->msvdx_lock, irq_flags);
 
-	dev_priv->last_msvdx_ctx = dev_priv->msvdx_ctx;
+	msvdx_priv->last_msvdx_ctx = msvdx_priv->msvdx_ctx;
 
 	if (msvdx_priv->msvdx_needs_reset) {
 		spin_unlock_irqrestore(&msvdx_priv->msvdx_lock, irq_flags);
@@ -453,7 +453,7 @@ int psb_submit_video_cmdbuf(struct drm_device *dev,
 		msvdx_cmd->cmd_size = cmd_size;
 		msvdx_cmd->sequence = sequence;
 		msvdx_cmd->msvdx_tile =
-			((dev_priv->msvdx_ctx->ctx_type >> 16) & 0xff);
+			((msvdx_priv->msvdx_ctx->ctx_type >> 16) & 0xff);
 		msvdx_cmd->deblock_cmd_offset =
 			msvdx_priv->deblock_cmd_offset;
 		msvdx_cmd->host_be_opp_enabled =
