@@ -5372,7 +5372,8 @@ static int penwell_otg_runtime_resume(struct device *dev)
 
 	penwell_otg_phy_low_power(0);
 	penwell_otg_vusb330_low_power(0);
-	penwell_otg_intr(1);
+	/* waiting for hardware stable */
+	usleep_range(2000, 4000);
 
 	switch (pnw->iotg.otg.state) {
 	case OTG_STATE_A_IDLE:
