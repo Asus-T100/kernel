@@ -149,6 +149,7 @@ enum int_status {
 	SUBSYS_POW_ERR_INT = 4,
 	S0ix_MISS_INT = 5,
 	NO_ACKC6_INT = 6,
+	TRIGGERERR = 7,
 	INVALID_SRC_INT
 };
 

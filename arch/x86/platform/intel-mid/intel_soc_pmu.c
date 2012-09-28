@@ -631,6 +631,10 @@ static irqreturn_t pmu_sc_irq(int irq, void *ignored)
 				wake_source);
 		pmu_stat_end();
 		break;
+	case TRIGGERERR:
+		pmu_dump_logs();
+		BUG();
+		break;
 	}
 	pmu_log_pmu_irq(status, mid_pmu_cxt->interactive_cmd_sent);
 
@@ -1064,10 +1068,17 @@ int pmu_set_emmc_to_d0i0_atomic(void)
 
 	memset(&cur_pmssc, 0, sizeof(cur_pmssc));
 
+	/*
+	 * Give time for possible previous PMU operation to finish in
+	 * case where SCU is functioning normally. For SCU crashed case
+	 * PMU may stay busy but check if the emmc is accessible.
+	 */
 	status = _pmu2_wait_not_busy();
-
-	if (status)
-		goto err;
+	if (status) {
+		dev_err(&mid_pmu_cxt->pmu_dev->dev,
+			"PMU2 busy, ignoring as emmc might be already d0i0\n");
+		status = 0;
+	}
 
 	pmu_read_sss(&cur_pmssc);
 
@@ -1078,6 +1089,10 @@ int pmu_set_emmc_to_d0i0_atomic(void)
 						(~pm_cmd_val);
 
 	if (new_value == cur_pmssc.pmu2_states[sub_sys_index])
+		goto err;
+
+	status = _pmu2_wait_not_busy();
+	if (status)
 		goto err;
 
 	cur_pmssc.pmu2_states[sub_sys_index] = new_value;
