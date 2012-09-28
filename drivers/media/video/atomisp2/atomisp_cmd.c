@@ -795,9 +795,11 @@ static void atomisp_buf_done(struct atomisp_device *isp,
 			break;
 		case SH_CSS_BUFFER_TYPE_VF_OUTPUT_FRAME:
 			if (isp->sw_contex.invalid_vf_frame) {
-				requeue = true;
+				error = true;
 				isp->sw_contex.invalid_vf_frame = false;
-				break;
+				v4l2_dbg(3, dbg_level, &atomisp_dev,
+				 "%s css has marked this vf frame as invalid\n",
+				 __func__);
 			}
 			if (!atomisp_is_viewfinder_support(isp)) {
 				v4l2_err(&atomisp_dev,
@@ -830,9 +832,11 @@ static void atomisp_buf_done(struct atomisp_device *isp,
 			break;
 		case SH_CSS_BUFFER_TYPE_OUTPUT_FRAME:
 			if (isp->sw_contex.invalid_frame) {
-				requeue = true;
+				error = true;
 				isp->sw_contex.invalid_frame = false;
-				break;
+				v4l2_dbg(3, dbg_level, &atomisp_dev,
+				   "%s css has marked this frame as invalid\n",
+				   __func__);
 			}
 			/* relay buffer to correct pipe */
 			if (isp->sw_contex.run_mode != CI_MODE_PREVIEW)
@@ -881,6 +885,7 @@ static void atomisp_buf_done(struct atomisp_device *isp,
 		/*mark videobuffer done for dequeue*/
 		vb->state = !error ? VIDEOBUF_DONE : VIDEOBUF_ERROR;
 		spin_unlock_irqrestore(&pipe->irq_lock, irqflags);
+
 		/*
 		 * Frame capture done, wake up any process block on
 		 * current active buffer
@@ -890,7 +895,10 @@ static void atomisp_buf_done(struct atomisp_device *isp,
 		vb = NULL;
 	}
 
-	/* requeue same buffer back and return */
+	/*
+	 * Requeue should only be done for 3a and dis buffers.
+	 * Queue/dequeue order will change if driver recycles image buffers.
+	 */
 	if (requeue) {
 		mutex_lock(&isp->isp_lock);
 		err = sh_css_queue_buffer(css_pipe_id, buf_type, buffer);
