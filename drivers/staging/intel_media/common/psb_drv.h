@@ -36,6 +36,7 @@
 #include "ttm/ttm_bo_driver.h"
 #include "ttm/ttm_lock.h"
 #include "psb_intel_display.h"
+#include "psb_video_drv.h"
 
 /*IMG headers*/
 #include "private_data.h"
@@ -47,6 +48,8 @@
 #define DRM_MODE_SCALE_NO_SCALE   4
 
 extern struct drm_device *gpDrmDevice;
+
+/* sys interface variables */
 extern bool gbdispstatus;
 extern int drm_psb_debug;
 extern int drm_psb_enable_cabc ;
@@ -114,16 +117,6 @@ enum panel_type {
 #define PSB_DRM_DRIVER_MINOR 1
 #define PSB_DRM_DRIVER_PATCHLEVEL 0
 
-/*
- *TTM driver private offsets.
- */
-
-#define DRM_PSB_FILE_PAGE_OFFSET (0x100000000ULL >> PAGE_SHIFT)
-
-#define PSB_OBJECT_HASH_ORDER 9
-#define PSB_FILE_OBJECT_HASH_ORDER 8
-#define PSB_BO_HASH_ORDER 8
-
 #define PSB_VDC_OFFSET		 0x00000000
 #define PSB_VDC_SIZE		 0x000080000
 #define MRST_MMIO_SIZE		 0x0000C0000
@@ -144,32 +137,20 @@ enum panel_type {
 #define PSB_PGETBL_CTL		 0x2020
 #define _PSB_PGETBL_ENABLED	 0x00000001
 #define PSB_SGX_2D_SLAVE_PORT	 0x4000
-#define PSB_TT_PRIV0_LIMIT	 (256*1024*1024)
-#define PSB_TT_PRIV0_PLIMIT	 (PSB_TT_PRIV0_LIMIT >> PAGE_SHIFT)
-#define PSB_NUM_VALIDATE_BUFFERS 2048
 
-#define PSB_MEM_MMU_START       0x00000000
-#define PSB_MEM_IMR_START       0xD0000000
-#define PSB_MEM_TT_START        0xE0000000
-#define PSB_MEM_MMU_TILING_START       0xB0000000
-
-/*
- *Flags for external memory type field.
- */
-
+/* MSVDX MMIO region is 0x50000 - 0x57fff ==> 32KB */
 #define MRST_MSVDX_OFFSET	0x90000	/*MSVDX Base offset */
+#define PSB_MSVDX_SIZE		0x10000
 
 #define PSB_IED_DRM_CNTL_STATUS		0x2208
 #define IED_DRM_VLD			(1<<0)
-
-/* MSVDX MMIO region is 0x50000 - 0x57fff ==> 32KB */
-#define PSB_MSVDX_SIZE		0x10000
 
 #define LNC_TOPAZ_OFFSET	0xA0000
 #define PNW_TOPAZ_OFFSET	0xC0000
 #define PNW_GL3_OFFSET		0xB0000
 #define LNC_TOPAZ_SIZE		0x10000
 #define PNW_TOPAZ_SIZE		0x30000 /* PNW VXE285 has two cores */
+
 #define PSB_MMU_CACHED_MEMORY	  0x0001	/* Bind to MMU only */
 #define PSB_MMU_RO_MEMORY	  0x0002	/* MMU RO memory */
 #define PSB_MMU_WO_MEMORY	  0x0004	/* MMU WO memory */
@@ -263,22 +244,18 @@ enum panel_type {
 #define PSB_UIRQ_FIRE_RASTER_REPLY     4
 
 #define PSB_2D_SIZE (256*1024*1024)
-#define PSB_MAX_RELOC_PAGES 1024
 
 #define PSB_LOW_REG_OFFS 0x0204
 #define PSB_HIGH_REG_OFFS 0x0600
 
 #define PSB_NUM_VBLANKS 2
-
 
 #define PSB_2D_SIZE (256*1024*1024)
-#define PSB_MAX_RELOC_PAGES 1024
 
 #define PSB_LOW_REG_OFFS 0x0204
 #define PSB_HIGH_REG_OFFS 0x0600
 
 #define PSB_NUM_VBLANKS 2
-#define PSB_WATCHDOG_DELAY (DRM_HZ * 2)
 #define PSB_LID_DELAY (DRM_HZ / 10)
 
 #define MDFLD_PNW_A0 0x00
@@ -327,80 +304,6 @@ struct drm_psb_uopt {
 	int pad; /*keep it here in case we use it in future*/
 };
 
-/**
- *struct psb_context
- *
- *@buffers:	 array of pre-allocated validate buffers.
- *@used_buffers: number of buffers in @buffers array currently in use.
- *@validate_buffer: buffers validated from user-space.
- *@kern_validate_buffers : buffers validated from kernel-space.
- *@fence_flags : Fence flags to be used for fence creation.
- *
- *This structure is used during execbuf validation.
- */
-
-struct psb_context {
-	struct psb_validate_buffer *buffers;
-	uint32_t used_buffers;
-	struct list_head validate_list;
-	/* not used:
-	 * struct list_head kern_validate_list;
-	 * uint32_t val_seq; */
-	uint32_t fence_types;
-};
-
-struct psb_validate_buffer;
-
-struct psb_msvdx_cmd_queue {
-	struct list_head head;
-	void *cmd;
-	unsigned long cmd_size;
-	uint32_t sequence;
-	uint32_t msvdx_tile;
-	uint32_t host_be_opp_enabled;
-	uint32_t deblock_cmd_offset;
-	struct ttm_object_file *tfile;
-};
-
-
-/* Currently defined profiles */
-enum VAProfile {
-	VAProfileMPEG2Simple		= 0,
-	VAProfileMPEG2Main		= 1,
-	VAProfileMPEG4Simple		= 2,
-	VAProfileMPEG4AdvancedSimple	= 3,
-	VAProfileMPEG4Main		= 4,
-	VAProfileH264Baseline		= 5,
-	VAProfileH264Main		= 6,
-	VAProfileH264High		= 7,
-	VAProfileVC1Simple		= 8,
-	VAProfileVC1Main		= 9,
-	VAProfileVC1Advanced		= 10,
-	VAProfileH263Baseline		= 11,
-	VAProfileJPEGBaseline           = 12,
-	VAProfileH264ConstrainedBaseline = 13
-};
-
-/* Currently defined entrypoints */
-enum VAEntrypoint {
-	VAEntrypointVLD		= 1,
-	VAEntrypointIZZ		= 2,
-	VAEntrypointIDCT	= 3,
-	VAEntrypointMoComp	= 4,
-	VAEntrypointDeblocking	= 5,
-	VAEntrypointEncSlice	= 6,	/* slice level encode */
-	VAEntrypointEncPicture 	= 7	/* pictuer encode, JPEG, etc */
-};
-
-#define VA_RT_FORMAT_PROTECTED	0x80000000
-
-struct psb_video_ctx {
-	struct list_head head;
-	struct file *filp; /* DRM device file pointer */
-	int ctx_type; /* (msvdx_tile&0xff)<<16|profile<<8|entrypoint */
-	/* todo: more context specific data for multi-context support */
-};
-
 typedef int (*pfn_vsync_handler)(struct drm_device *dev, int pipe);
 typedef int(*pfn_screen_event_handler)(struct drm_device *psDrmDevice, int state);
 
@@ -414,6 +317,10 @@ typedef int(*pfn_screen_event_handler)(struct drm_device *psDrmDevice, int state
 #define GCT_R10_DISPLAY_DESC_SIZE	28
 
 #define PSB_REG_PRINT_SIZE    40960
+
+struct psb_context;
+struct psb_validate_buffer;
+struct psb_video_ctx;
 
 struct drm_psb_private {
 	/*
@@ -1056,10 +963,6 @@ struct drm_psb_private {
 	struct android_hdmi_priv *hdmi_priv;
 };
 
-struct psb_fpriv {
-	struct ttm_object_file *tfile;
-};
-
 struct psb_mmu_driver;
 
 extern int drm_crtc_probe_output_modes(struct drm_device *dev, int, int);
@@ -1069,6 +972,9 @@ extern int mdfld_intel_crtc_set_gamma(struct drm_device *dev,
 extern int mdfld_intel_crtc_set_color_conversion(struct drm_device *dev,
 					struct csc_setting *setting_data);
 
+struct psb_fpriv {
+	struct ttm_object_file *tfile;
+};
 
 static inline struct psb_fpriv *psb_fpriv(struct drm_file *file_priv)
 {
@@ -1081,111 +987,6 @@ static inline struct drm_psb_private *psb_priv(struct drm_device *dev)
 {
 	return (struct drm_psb_private *) dev->dev_private;
 }
-
-/*
- *TTM glue. psb_ttm_glue.c
- */
-
-extern int psb_open(struct inode *inode, struct file *filp);
-extern int psb_release(struct inode *inode, struct file *filp);
-extern int psb_mmap(struct file *filp, struct vm_area_struct *vma);
-
-extern int psb_fence_signaled_ioctl(struct drm_device *dev, void *data,
-				    struct drm_file *file_priv);
-extern int psb_verify_access(struct ttm_buffer_object *bo,
-			     struct file *filp);
-extern ssize_t psb_ttm_read(struct file *filp, char __user *buf,
-			    size_t count, loff_t *f_pos);
-extern ssize_t psb_ttm_write(struct file *filp, const char __user *buf,
-			     size_t count, loff_t *f_pos);
-extern int psb_fence_finish_ioctl(struct drm_device *dev, void *data,
-				  struct drm_file *file_priv);
-extern int psb_fence_unref_ioctl(struct drm_device *dev, void *data,
-				 struct drm_file *file_priv);
-extern int psb_pl_waitidle_ioctl(struct drm_device *dev, void *data,
-				 struct drm_file *file_priv);
-extern int psb_pl_setstatus_ioctl(struct drm_device *dev, void *data,
-				  struct drm_file *file_priv);
-extern int psb_pl_synccpu_ioctl(struct drm_device *dev, void *data,
-				struct drm_file *file_priv);
-extern int psb_pl_unref_ioctl(struct drm_device *dev, void *data,
-			      struct drm_file *file_priv);
-extern int psb_pl_reference_ioctl(struct drm_device *dev, void *data,
-				  struct drm_file *file_priv);
-extern int psb_pl_create_ioctl(struct drm_device *dev, void *data,
-			       struct drm_file *file_priv);
-extern int psb_pl_ub_create_ioctl(struct drm_device *dev, void *data,
-				  struct drm_file *file_priv);
-extern int psb_extension_ioctl(struct drm_device *dev, void *data,
-			       struct drm_file *file_priv);
-extern int psb_ttm_global_init(struct drm_psb_private *dev_priv);
-extern void psb_ttm_global_release(struct drm_psb_private *dev_priv);
-extern int psb_getpageaddrs_ioctl(struct drm_device *dev, void *data,
-				  struct drm_file *file_priv);
-extern int psb_video_getparam(struct drm_device *dev, void *data,
-			      struct drm_file *file_priv);
-extern void psb_remove_videoctx(struct drm_psb_private *dev_priv, struct file *filp);
-
-/*
- *MMU stuff.
- */
-extern struct psb_mmu_driver *psb_mmu_driver_init(uint8_t __iomem * registers,
-		int trap_pagefaults,
-		int invalid_type,
-		struct drm_psb_private *dev_priv);
-extern void psb_mmu_driver_takedown(struct psb_mmu_driver *driver);
-extern struct psb_mmu_pd *psb_mmu_get_default_pd(struct psb_mmu_driver
-		*driver);
-/*
-extern void psb_mmu_mirror_gtt(struct psb_mmu_pd *pd, uint32_t mmu_offset,
-			       uint32_t gtt_start, uint32_t gtt_pages);
-*/
-extern struct psb_mmu_pd *psb_mmu_alloc_pd(struct psb_mmu_driver *driver,
-		int trap_pagefaults,
-		int invalid_type);
-extern void psb_mmu_free_pagedir(struct psb_mmu_pd *pd);
-extern void psb_mmu_flush(struct psb_mmu_driver *driver, int rc_prot);
-extern void psb_mmu_remove_pfn_sequence(struct psb_mmu_pd *pd,
-					unsigned long address,
-					uint32_t num_pages);
-extern int psb_mmu_insert_pfn_sequence(struct psb_mmu_pd *pd,
-				       uint32_t start_pfn,
-				       unsigned long address,
-				       uint32_t num_pages, int type);
-#if 0
-extern int psb_mmu_virtual_to_pfn(struct psb_mmu_pd *pd, uint32_t virtual,
-				  unsigned long *pfn);
-#endif
-
-/*
- *Enable / disable MMU for different requestors.
- */
-extern void psb_mmu_set_pd_context(struct psb_mmu_pd *pd, int hw_context);
-extern int psb_mmu_insert_pages(struct psb_mmu_pd *pd, struct page **pages,
-				unsigned long address, uint32_t num_pages,
-				uint32_t desired_tile_stride,
-				uint32_t hw_tile_stride, int type);
-extern void psb_mmu_remove_pages(struct psb_mmu_pd *pd,
-				 unsigned long address, uint32_t num_pages,
-				 uint32_t desired_tile_stride,
-				 uint32_t hw_tile_stride);
-
-
-/*
- *psb_cmdbuf.c
- */
-extern int psb_cmdbuf_ioctl(struct drm_device *dev, void *data,
-			    struct drm_file *file_priv);
-extern int psb_reg_submit(struct drm_psb_private *dev_priv,
-			  uint32_t *regs, unsigned int cmds);
-extern void psb_fence_or_sync(struct drm_file *file_priv,
-			      uint32_t engine,
-			      uint32_t fence_types,
-			      uint32_t fence_flags,
-			      struct list_head *list,
-			      struct psb_ttm_fence_rep *fence_arg,
-			      struct ttm_fence_object **fence_p);
-
 
 /*
  *psb_irq.c
@@ -1223,18 +1024,6 @@ extern void psb_te_timer_func(unsigned long data);
 extern void mdfld_te_handler_work(struct work_struct *te_work);
 extern void mdfld_vsync_event_work(struct work_struct *work);
 
-/*psb_fence.c*/
-extern void psb_fence_handler(struct drm_device *dev, uint32_t class);
-
-extern int psb_fence_emit_sequence(struct ttm_fence_device *fdev,
-				   uint32_t fence_class,
-				   uint32_t flags, uint32_t *sequence,
-				   unsigned long *timeout_jiffies);
-extern void psb_fence_error(struct drm_device *dev,
-			    uint32_t class,
-			    uint32_t sequence, uint32_t type, int error);
-extern int psb_ttm_fence_device_init(struct ttm_fence_device *fdev);
-
 
 /*
  *psb_fb.c
@@ -1248,13 +1037,6 @@ extern int psbfb_kms_on_ioctl(struct drm_device *dev, void *data,
 			      struct drm_file *file_priv);
 extern void *psbfb_vdc_reg(struct drm_device* dev);
 
-/*
- *psb_reset.c
- */
-
-extern void psb_schedule_watchdog(struct drm_psb_private *dev_priv);
-extern void psb_watchdog_init(struct drm_psb_private *dev_priv);
-extern void psb_watchdog_takedown(struct drm_psb_private *dev_priv);
 extern void psb_print_pagefault(struct drm_psb_private *dev_priv);
 extern void mdfld_dsr_timer_init(struct drm_psb_private *dev_priv);
 extern void mdfld_dsr_timer_takedown(struct drm_psb_private *dev_priv);

@@ -22,6 +22,7 @@
 
 #include <drm/drmP.h>
 #include "psb_drv.h"
+#include "psb_video_drv.h"
 #include "psb_ttm_userobj_api.h"
 #include <linux/io.h>
 #include <asm/intel-mid.h>
@@ -32,149 +33,6 @@
 #include "private_data.h"
 
 static int ied_enabled;
-
-extern int PVRMMap(struct file *pFile, struct vm_area_struct *ps_vma);
-
-static struct vm_operations_struct psb_ttm_vm_ops;
-
-/**
- * NOTE: driver_private of drm_file is now a PVRSRV_FILE_PRIVATE_DATA struct
- * pPriv in PVRSRV_FILE_PRIVATE_DATA contains the original psb_fpriv;
- */
-int psb_open(struct inode *inode, struct file *filp)
-{
-	struct drm_file *file_priv;
-	struct drm_psb_private *dev_priv;
-	struct psb_fpriv *psb_fp;
-	PVRSRV_FILE_PRIVATE_DATA *pvr_file_priv;
-	int ret;
-
-	DRM_DEBUG("\n");
-
-	ret = drm_open(inode, filp);
-	if (unlikely(ret))
-		return ret;
-
-	psb_fp = kzalloc(sizeof(*psb_fp), GFP_KERNEL);
-
-	if (unlikely(psb_fp == NULL))
-		goto out_err0;
-
-	file_priv = (struct drm_file *) filp->private_data;
-
-	/* In case that the local file priv has created a master,
-	 * which has been referenced, even if it's not authenticated
-	 * (non-root user). */
-	if ((file_priv->minor->master)
-		&& (file_priv->master == file_priv->minor->master)
-		&& (!file_priv->is_master))
-		file_priv->is_master = 1;
-
-	dev_priv = psb_priv(file_priv->minor->dev);
-
-	DRM_DEBUG("is_master %d\n", file_priv->is_master ? 1 : 0);
-
-	psb_fp->tfile = ttm_object_file_init(dev_priv->tdev,
-					     PSB_FILE_OBJECT_HASH_ORDER);
-	if (unlikely(psb_fp->tfile == NULL))
-		goto out_err1;
-
-	pvr_file_priv = (PVRSRV_FILE_PRIVATE_DATA *)file_priv->driver_priv;
-	if (!pvr_file_priv) {
-		DRM_ERROR("drm file private is NULL\n");
-		goto out_err1;
-	}
-
-	pvr_file_priv->pPriv = psb_fp;
-	if (unlikely(dev_priv->bdev.dev_mapping == NULL))
-		dev_priv->bdev.dev_mapping = dev_priv->dev->dev_mapping;
-
-	return 0;
-
-out_err1:
-	kfree(psb_fp);
-out_err0:
-	(void) drm_release(inode, filp);
-	return ret;
-}
-
-int psb_release(struct inode *inode, struct file *filp)
-{
-	struct drm_file *file_priv;
-	struct psb_fpriv *psb_fp;
-	struct drm_psb_private *dev_priv;
-	struct msvdx_private *msvdx_priv;
-	int ret, i;
-	struct psb_msvdx_ec_ctx *ec_ctx;
-	uint32_t ui32_reg_value = 0;
-	file_priv = (struct drm_file *) filp->private_data;
-	struct ttm_object_file *tfile = psb_fpriv(file_priv)->tfile;
-	psb_fp = psb_fpriv(file_priv);
-	dev_priv = psb_priv(file_priv->minor->dev);
-
-#ifdef CONFIG_MDFD_VIDEO_DECODE
-
-	msvdx_priv = (struct msvdx_private *)dev_priv->msvdx_private;
-
-#ifdef CONFIG_DRM_MRFLD
-	/*cleanup for msvdx*/
-#if 0
-	if (msvdx_priv->tfile == psb_fpriv(file_priv)->tfile) {
-		msvdx_priv->fw_status = 0;
-		msvdx_priv->host_be_opp_enabled = 0;
-		memset(&msvdx_priv->frame_info, 0, sizeof(struct drm_psb_msvdx_frame_info) * MAX_DECODE_BUFFERS);
-	}
-#endif
-
-	if (msvdx_priv->msvdx_ec_ctx[0] != NULL) {
-		for (i = 0; i < PSB_MAX_EC_INSTANCE; i++) {
-			if (msvdx_priv->msvdx_ec_ctx[i]->tfile == tfile)
-				break;
-		}
-
-		if (i < PSB_MAX_EC_INSTANCE) {
-			ec_ctx = msvdx_priv->msvdx_ec_ctx[i];
-			printk(KERN_DEBUG "remove ec ctx with tfile 0x%08x\n",
-			       ec_ctx->tfile);
-			ec_ctx->tfile = NULL;
-			ec_ctx->fence = PSB_MSVDX_INVALID_FENCE;
-		}
-	}
-#endif
-
-	ttm_object_file_release(&psb_fp->tfile);
-#endif
-	kfree(psb_fp);
-
-#ifdef CONFIG_MDFD_VIDEO_DECODE
-	/* remove video context */
-	psb_remove_videoctx(dev_priv, filp);
-
-	if (IS_MRST(dev_priv->dev)) {
-		/*
-		schedule_delayed_work(&dev_priv->scheduler.topaz_suspend_wq, 10);
-		*/
-		/* FIXME: workaround for HSD3469585
-		 *        re-enable DRAM Self Refresh Mode
-		 *        by setting DUNIT.DPMC0
-		 */
-		ui32_reg_value = intel_mid_msgbus_read32_raw((0xD0 << 24) |
-			(0x1 << 16) | (0x4 << 8) | 0xF0);
-		intel_mid_msgbus_write32_raw((0xE0 << 24) | (0x1 << 16) |
-			(0x4 << 8) | 0xF0, ui32_reg_value | (0x1 << 7));
-	} else if (IS_MDFLD(dev_priv->dev)) {
-		struct pnw_topaz_private *topaz_priv =
-			(struct pnw_topaz_private *)dev_priv->topaz_private;
-		schedule_delayed_work(&topaz_priv->topaz_suspend_wq,
-						msecs_to_jiffies(10));
-	}
-	schedule_delayed_work(&msvdx_priv->msvdx_suspend_wq,
-					msecs_to_jiffies(10));
-#endif
-	ret = drm_release(inode, filp);
-
-	return ret;
-}
 
 int psb_fence_signaled_ioctl(struct drm_device *dev, void *data,
 			     struct drm_file *file_priv)
@@ -257,8 +115,7 @@ int psb_pl_ub_create_ioctl(struct drm_device *dev, void *data,
  * reserving and thus validating buffers in aperture- and memory shortage
  * situations.
  */
-static int psb_ttm_fault(struct vm_area_struct *vma,
-			 struct vm_fault *vmf)
+int psb_ttm_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
 {
 	struct ttm_buffer_object *bo = (struct ttm_buffer_object *)
 				       vma->vm_private_data;
@@ -274,39 +131,6 @@ static int psb_ttm_fault(struct vm_area_struct *vma,
 
 	ttm_read_unlock(&dev_priv->ttm_lock);
 	return ret;
-}
-
-/**
- * if vm_pgoff < DRM_PSB_FILE_PAGE_OFFSET call directly to PVRMMap
- */
-int psb_mmap(struct file *filp, struct vm_area_struct *vma)
-{
-	struct drm_file *file_priv;
-	struct drm_psb_private *dev_priv;
-	int ret;
-
-	if (vma->vm_pgoff < DRM_PSB_FILE_PAGE_OFFSET ||
-	    vma->vm_pgoff > 2 * DRM_PSB_FILE_PAGE_OFFSET)
-		return PVRMMap(filp, vma);
-
-	file_priv = (struct drm_file *) filp->private_data;
-	dev_priv = psb_priv(file_priv->minor->dev);
-
-	ret = ttm_bo_mmap(filp, vma, &dev_priv->bdev);
-	if (unlikely(ret != 0))
-		return ret;
-
-	if (unlikely(dev_priv->ttm_vm_ops == NULL)) {
-		dev_priv->ttm_vm_ops = (struct vm_operations_struct *)vma->vm_ops;
-		psb_ttm_vm_ops = *vma->vm_ops;
-#ifdef CONFIG_MDFD_VIDEO_DECODE
-		psb_ttm_vm_ops.fault = &psb_ttm_fault;
-#endif
-	}
-
-	vma->vm_ops = &psb_ttm_vm_ops;
-
-	return 0;
 }
 
 /*

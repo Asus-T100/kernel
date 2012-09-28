@@ -797,3 +797,101 @@ int psb_msvdx_uninit(struct drm_device *dev)
 
 	return 0;
 }
+
+/*
+ * watchdog function can be enabled whenever required.
+ */
+#if 0
+void psb_schedule_watchdog(struct drm_psb_private *dev_priv)
+{
+	struct timer_list *wt = &dev_priv->watchdog_timer;
+	unsigned long irq_flags;
+
+	spin_lock_irqsave(&dev_priv->watchdog_lock, irq_flags);
+	if (dev_priv->timer_available && !timer_pending(wt)) {
+		wt->expires = jiffies + PSB_WATCHDOG_DELAY;
+		add_timer(wt);
+	}
+	spin_unlock_irqrestore(&dev_priv->watchdog_lock, irq_flags);
+}
+
+
+static void psb_watchdog_func(unsigned long data)
+{
+	struct drm_psb_private *dev_priv = (struct drm_psb_private *) data;
+	int msvdx_lockup;
+	int msvdx_idle;
+	unsigned long irq_flags;
+
+	psb_msvdx_lockup(dev_priv, &msvdx_lockup, &msvdx_idle);
+
+	if (msvdx_lockup) {
+		spin_lock_irqsave(&dev_priv->watchdog_lock, irq_flags);
+		dev_priv->timer_available = 0;
+		spin_unlock_irqrestore(&dev_priv->watchdog_lock,
+				       irq_flags);
+		if (msvdx_lockup)
+			schedule_work(&dev_priv->msvdx_watchdog_wq);
+	}
+	if (!msvdx_idle)
+		psb_schedule_watchdog(dev_priv);
+}
+
+static void psb_msvdx_reset_wq(struct work_struct *work)
+{
+	struct drm_psb_private *dev_priv =
+		container_of(work, struct drm_psb_private, msvdx_watchdog_wq);
+	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
+
+	unsigned long irq_flags;
+
+	mutex_lock(&msvdx_priv->msvdx_mutex);
+	if (msvdx_priv->fw_loaded_by_punit)
+		msvdx_priv->msvdx_needs_reset |= MSVDX_RESET_NEEDS_REUPLOAD_FW |
+			MSVDX_RESET_NEEDS_INIT_FW;
+	else
+		msvdx_priv->msvdx_needs_reset = 1;
+	msvdx_priv->msvdx_current_sequence++;
+	PSB_DEBUG_GENERAL
+	("MSVDXFENCE: incremented msvdx_current_sequence to :%d\n",
+	 msvdx_priv->msvdx_current_sequence);
+
+	psb_fence_error(msvdx_priv->dev, PSB_ENGINE_DECODE,
+			msvdx_priv->msvdx_current_sequence,
+			_PSB_FENCE_TYPE_EXE, DRM_CMD_HANG);
+
+	spin_lock_irqsave(&dev_priv->watchdog_lock, irq_flags);
+	dev_priv->timer_available = 1;
+	spin_unlock_irqrestore(&dev_priv->watchdog_lock, irq_flags);
+
+	psb_msvdx_flush_cmd_queue(msvdx_priv->dev);
+
+	psb_schedule_watchdog(dev_priv);
+	mutex_unlock(&msvdx_priv->msvdx_mutex);
+}
+
+void psb_watchdog_init(struct drm_psb_private *dev_priv)
+{
+	struct timer_list *wt = &dev_priv->watchdog_timer;
+	unsigned long irq_flags;
+
+	spin_lock_init(&dev_priv->watchdog_lock);
+	spin_lock_irqsave(&dev_priv->watchdog_lock, irq_flags);
+	init_timer(wt);
+	INIT_WORK(&dev_priv->msvdx_watchdog_wq, &psb_msvdx_reset_wq);
+	wt->data = (unsigned long) dev_priv;
+	wt->function = &psb_watchdog_func;
+	dev_priv->timer_available = 1;
+	spin_unlock_irqrestore(&dev_priv->watchdog_lock, irq_flags);
+}
+
+void psb_watchdog_takedown(struct drm_psb_private *dev_priv)
+{
+	unsigned long irq_flags;
+
+	spin_lock_irqsave(&dev_priv->watchdog_lock, irq_flags);
+	dev_priv->timer_available = 0;
+	spin_unlock_irqrestore(&dev_priv->watchdog_lock, irq_flags);
+	(void) del_timer_sync(&dev_priv->watchdog_timer);
+}
+#endif

@@ -79,9 +79,6 @@ typedef enum {
 /* psb_mmu.c */
 uint32_t psb_get_default_pd_addr(struct psb_mmu_driver *driver);
 
-/* psb_reset.c */
-void psb_msvdx_flush_cmd_queue(struct drm_device *dev);
-
 /* psb_msvdxinit.c */
 int psb_wait_for_register(struct drm_psb_private *dev_priv,
 			  uint32_t offset,
@@ -111,6 +108,8 @@ int psb_msvdx_save_context(struct drm_device *dev);
 int psb_msvdx_restore_context(struct drm_device *dev);
 void psb_msvdx_check_reset_fw(struct drm_device *dev);
 void psb_powerdown_msvdx(struct work_struct *work);
+void psb_msvdx_flush_cmd_queue(struct drm_device *dev);
+
 
 /* psb_msvdx_fw.c */
 int32_t psb_msvdx_alloc_fw_bo(struct drm_psb_private *dev_priv);
@@ -728,6 +727,17 @@ struct msvdx_private {
 	struct delayed_work msvdx_suspend_wq;
 };
 
+struct psb_msvdx_cmd_queue {
+	struct list_head head;
+	void *cmd;
+	unsigned long cmd_size;
+	uint32_t sequence;
+	uint32_t msvdx_tile;
+	uint32_t host_be_opp_enabled;
+	uint32_t deblock_cmd_offset;
+	struct ttm_object_file *tfile;
+};
+
 #define REGISTER(__group__, __reg__) (__group__##_##__reg__##_OFFSET)
 
 #define FW_VA_LAST_SLICE_OF_EXT_DMA                                         0x00001000
@@ -849,5 +859,18 @@ do {									\
 		: ((new_state == PSB_PMSTATE_POWERDOWN) ? "powerdown"	\
 			: "clockgated"));				\
 } while (0)
+
+#if 0
+#define PSB_WATCHDOG_DELAY (DRM_HZ * 2)
+extern void psb_schedule_watchdog(struct drm_psb_private *dev_priv);
+extern void psb_watchdog_init(struct drm_psb_private *dev_priv);
+extern void psb_watchdog_takedown(struct drm_psb_private *dev_priv);
+#endif
+
+extern int psb_submit_video_cmdbuf(struct drm_device *dev,
+				   struct ttm_buffer_object *cmd_buffer,
+				   unsigned long cmd_offset,
+				   unsigned long cmd_size,
+				   struct ttm_fence_object *fence);
 
 #endif

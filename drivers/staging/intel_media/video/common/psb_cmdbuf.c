@@ -29,7 +29,7 @@
 #include "ttm/ttm_execbuf_util.h"
 #include "psb_ttm_userobj_api.h"
 #include "ttm/ttm_placement.h"
-#include "psb_cmdbuf.h"
+#include "psb_video_drv.h"
 #include "psb_intel_reg.h"
 #include "psb_powermgmt.h"
 
@@ -62,16 +62,6 @@ struct psb_dstbuf_cache {
 	unsigned int dst_page_offset;
 	struct ttm_bo_kmap_obj dst_kmap;
 	bool dst_is_iomem;
-};
-
-struct psb_validate_buffer {
-	struct ttm_validate_buffer base;
-	struct psb_validate_req req;
-	int ret;
-	struct psb_validate_arg __user *user_val_arg;
-	uint32_t flags;
-	uint32_t offset;
-	int po_correct;
 };
 
 static int psb_check_presumed(struct psb_validate_req *req,

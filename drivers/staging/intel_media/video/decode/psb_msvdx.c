@@ -101,6 +101,31 @@ static int psb_msvdx_dequeue_send(struct drm_device *dev)
 	return ret;
 }
 
+void psb_msvdx_flush_cmd_queue(struct drm_device *dev)
+{
+	struct drm_psb_private *dev_priv = dev->dev_private;
+	struct psb_msvdx_cmd_queue *msvdx_cmd;
+	struct list_head *list, *next;
+	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
+	unsigned long irq_flags;
+	spin_lock_irqsave(&msvdx_priv->msvdx_lock, irq_flags);
+	/*Flush the msvdx cmd queue and signal all fences in the queue */
+	list_for_each_safe(list, next, &msvdx_priv->msvdx_queue) {
+		msvdx_cmd =
+			list_entry(list, struct psb_msvdx_cmd_queue, head);
+		list_del(list);
+		PSB_DEBUG_GENERAL("MSVDXQUE: flushing sequence:0x%08x\n",
+				  msvdx_cmd->sequence);
+		msvdx_priv->msvdx_current_sequence = msvdx_cmd->sequence;
+		psb_fence_error(dev, PSB_ENGINE_DECODE,
+				msvdx_cmd->sequence,
+				_PSB_FENCE_TYPE_EXE, DRM_CMD_HANG);
+		kfree(msvdx_cmd->cmd);
+		kfree(msvdx_cmd);
+	}
+	spin_unlock_irqrestore(&msvdx_priv->msvdx_lock, irq_flags);
+}
+
 static int psb_msvdx_map_command(struct drm_device *dev,
 				 struct ttm_buffer_object *cmd_buffer,
 				 unsigned long cmd_offset, unsigned long cmd_size,

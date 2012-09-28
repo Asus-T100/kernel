@@ -111,7 +111,6 @@ gfx-y += $(FBDEVDIR)/drmlfb_displayclass.o \
 		$(FBDEVDIR)/drmlfb_linux.o
 
 gfx-y += $(MEDIA_COMMON_DIR)/psb_drv.o \
-		$(MEDIA_COMMON_DIR)/psb_reset.o \
 		$(MEDIA_COMMON_DIR)/psb_powermgmt.o \
 		$(MEDIA_COMMON_DIR)/psb_irq.o \
 		$(MEDIA_COMMON_DIR)/psb_gtt.o
