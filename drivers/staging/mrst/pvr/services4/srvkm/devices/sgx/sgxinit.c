@@ -67,6 +67,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "lists.h"
 #include "srvkm.h"
 #include "ttrace.h"
+#include <linux/delay.h>
+
 
 extern int drm_psb_dump_pm_history;
 
@@ -1544,6 +1546,7 @@ IMG_VOID SGXDumpDebugInfo (PVRSRV_SGXDEV_INFO	*psDevInfo,
 
 	#if defined(PVRSRV_USSE_EDM_STATUS_DEBUG)
 	{
+		msleep(1);
 		IMG_UINT32	*pui32MKTraceBuffer = psDevInfo->psKernelEDMStatusBufferMemInfo->pvLinAddrKM;
 		IMG_UINT32	ui32LastStatusCode, ui32WriteOffset;
 
@@ -1566,16 +1569,23 @@ IMG_VOID SGXDumpDebugInfo (PVRSRV_SGXDEV_INFO	*psDevInfo,
 				 ui32LoopCounter < SGXMK_TRACE_BUFFER_SIZE;
 				 ui32LoopCounter++)
 			{
+
 				IMG_UINT32	*pui32BufPtr;
 				pui32BufPtr = pui32MKTraceBuffer +
 								(((ui32WriteOffset + ui32LoopCounter) % SGXMK_TRACE_BUFFER_SIZE) * 4);
 				PVR_LOG(("\t(MKT-%X) %08X %08X %08X %08X %s", ui32LoopCounter,
 						 pui32BufPtr[2], pui32BufPtr[3], pui32BufPtr[1], pui32BufPtr[0],
 						 SGXUKernelStatusString(pui32BufPtr[0])));
+				if (ui32LoopCounter && ((ui32LoopCounter & 127) == 0)) {
+					/*give log utility enough time to save log*/
+					msleep(1);
+				}
 			}
 		}
 		#endif /* PVRSRV_DUMP_MK_TRACE */
 	}
+	/*give log utility enough time to save log*/
+	msleep(1);
 	#endif /* PVRSRV_USSE_EDM_STATUS_DEBUG */
 
 	{
