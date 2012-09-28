@@ -64,6 +64,11 @@ static irqreturn_t mfld_pb_isr(int irq, void *dev_id)
 	input_event(priv->input, EV_KEY, KEY_POWER, !(pbstat & MSIC_PB_LEVEL));
 	input_sync(priv->input);
 
+	if (pbstat & MSIC_PB_LEVEL)
+		pr_info("[%s] power button released\n", DRIVER_NAME);
+	else
+		pr_info("[%s] power button pressed\n", DRIVER_NAME);
+
 	return IRQ_HANDLED;
 }
 
