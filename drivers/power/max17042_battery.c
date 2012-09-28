@@ -1878,9 +1878,6 @@ static int __devinit max17042_probe(struct i2c_client *client,
 	chip->client = client;
 	chip->pdata = client->dev.platform_data;
 
-	if (chip->pdata->file_sys_storage_enabled)
-		misc_register(&fg_helper);
-
 	i2c_set_clientdata(client, chip);
 	max17042_client = client;
 
@@ -1969,6 +1966,9 @@ static int __devinit max17042_probe(struct i2c_client *client,
 	 */
 	if (!chip->pdata->enable_current_sense)
 		configure_interrupts(chip);
+
+	if (chip->pdata->file_sys_storage_enabled)
+		misc_register(&fg_helper);
 
 	/* Create debugfs for maxim registers */
 	max17042_create_debugfs(chip);
