@@ -446,7 +446,6 @@ struct drm_psb_private {
 	 *Memory managers
 	 */
 
-	int have_camera;
 	int have_imr;
 	int have_tt;
 	int have_mem_mmu;

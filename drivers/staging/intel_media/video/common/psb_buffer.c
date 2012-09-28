@@ -255,14 +255,6 @@ static int psb_init_mem_type(struct ttm_bo_device *bdev, uint32_t type,
 					 TTM_PL_FLAG_UNCACHED | TTM_PL_FLAG_WC;
 		man->default_caching = TTM_PL_FLAG_WC;
 		break;
-	case TTM_PL_CI:
-		man->func = &ttm_bo_manager_func;
-		man->flags = TTM_MEMTYPE_FLAG_MAPPABLE |
-			     TTM_MEMTYPE_FLAG_FIXED;
-		man->gpu_offset = pg->mmu_gatt_start + (pg->ci_start);
-		man->available_caching = TTM_PL_FLAG_UNCACHED;
-		man->default_caching = TTM_PL_FLAG_UNCACHED;
-		break;
 	case TTM_PL_IMR:	/* Unmappable IMR memory */
 		man->func = &ttm_bo_manager_func;
 		man->flags = TTM_MEMTYPE_FLAG_MAPPABLE |
@@ -396,11 +388,6 @@ static int psb_ttm_io_mem_reserve(struct ttm_bo_device *bdev, struct ttm_mem_reg
 	case DRM_PSB_MEM_MMU:
 		mem->bus.offset = mem->start << PAGE_SHIFT;
 		mem->bus.base = 0x00000000;
-		break;
-	case TTM_PL_CI:
-		mem->bus.offset = mem->start << PAGE_SHIFT;
-		mem->bus.base = dev_priv->ci_region_start;;
-		mem->bus.is_iomem = true;
 		break;
 	case TTM_PL_IMR:
 		mem->bus.offset = mem->start << PAGE_SHIFT;

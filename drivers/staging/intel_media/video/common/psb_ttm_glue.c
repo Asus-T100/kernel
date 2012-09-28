@@ -349,11 +349,8 @@ int psb_video_getparam(struct drm_device *dev, void *data,
 				   sizeof(imr_info));
 		break;
 	case LNC_VIDEO_GETPARAM_CI_INFO:
-		ci_info[0] = dev_priv->ci_region_start;
-		ci_info[1] = dev_priv->ci_region_size;
-		ret = copy_to_user((void __user *)((unsigned long)arg->value),
-				   &ci_info[0],
-				   sizeof(ci_info));
+		/* Medfield should not call it */
+		ret = -EFAULT;
 		break;
 	case LNC_VIDEO_FRAME_SKIP:
 		/* Medfield should not call it */

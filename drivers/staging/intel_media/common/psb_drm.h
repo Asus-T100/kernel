@@ -59,9 +59,6 @@
 #define DRM_PSB_MEM_MMU TTM_PL_PRIV1
 #define DRM_PSB_FLAG_MEM_MMU TTM_PL_FLAG_PRIV1
 
-#define TTM_PL_CI               TTM_PL_PRIV0
-#define TTM_PL_FLAG_CI          TTM_PL_FLAG_PRIV0
-
 #define TTM_PL_IMR               TTM_PL_PRIV2
 #define TTM_PL_FLAG_IMR          TTM_PL_FLAG_PRIV2
 

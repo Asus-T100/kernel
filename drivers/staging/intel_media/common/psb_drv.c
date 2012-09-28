@@ -592,31 +592,6 @@ static struct drm_ioctl_desc psb_ioctls[] = {
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_SET_CSC, psb_set_csc_ioctl, DRM_AUTH),
 };
 
-static void get_ci_info(struct drm_psb_private *dev_priv)
-{
-	struct pci_dev *pdev;
-
-	pdev = pci_get_subsys(0x8086, 0x080b, 0, 0, NULL);
-	if (pdev == NULL) {
-		/* IF no pci_device we set size & addr to 0, no ci
-		 * share buffer can be created */
-		dev_priv->ci_region_start = 0;
-		dev_priv->ci_region_size = 0;
-		printk(KERN_ERR "can't find CI device, no ci share buffer\n");
-		return;
-	}
-
-	dev_priv->ci_region_start = pci_resource_start(pdev, 1);
-	dev_priv->ci_region_size = pci_resource_len(pdev, 1);
-
-	PSB_DEBUG_ENTRY("ci_region_start %x ci_region_size %d\n",
-	       dev_priv->ci_region_start, dev_priv->ci_region_size);
-
-	pci_dev_put(pdev);
-
-	return;
-}
-
 static void get_imr_info(struct drm_psb_private *dev_priv)
 {
 	u32 high, low, start, end;
@@ -682,10 +657,6 @@ static void psb_do_takedown(struct drm_device *dev)
 		dev_priv->have_tt = 0;
 	}
 
-	if (dev_priv->have_camera) {
-		ttm_bo_clean_mm(bdev, TTM_PL_CI);
-		dev_priv->have_camera = 0;
-	}
 	if (dev_priv->have_imr) {
 		ttm_bo_clean_mm(bdev, TTM_PL_IMR);
 		dev_priv->have_imr = 0;
@@ -1683,22 +1654,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 
 #ifdef CONFIG_MDFD_VIDEO_DECODE
 	/*
-	 * Make MSVDX/TOPAZ MMU aware of the CI stolen memory area.
-	 */
-	if (dev_priv->pg->ci_stolen_size != 0) {
-		down_read(&pg->sem);
-		ret = psb_mmu_insert_pfn_sequence(psb_mmu_get_default_pd
-						  (dev_priv->mmu),
-						  dev_priv->ci_region_start >> PAGE_SHIFT,
-						  pg->mmu_gatt_start + pg->ci_start,
-						  pg->ci_stolen_size >> PAGE_SHIFT, 0);
-		up_read(&pg->sem);
-		if (ret)
-			goto out_err;
-	}
-
-	/*
-	 * Make MSVDX/TOPAZ MMU aware of the rar stolen memory area.
+	 * Make MSVDX/TOPAZ MMU aware of the imr stolen memory area.
 	 */
 	if (dev_priv->pg->rar_stolen_size != 0) {
 		down_read(&pg->sem);
