@@ -41,9 +41,6 @@
 
 #include "dlp_main.h"
 
-#define DEBUG_TAG 0x3
-#define DEBUG_VAR (dlp_drv.debug)
-
 /* Defaut NET stack TX timeout delay (in milliseconds) */
 #define DLP_NET_TX_DELAY		20000	/* 20 sec */
 
@@ -92,11 +89,8 @@ static inline int dlp_net_is_trace_channel(struct dlp_channel *ch_ctx)
  */
 static int dlp_net_push_rx_pdus(struct dlp_channel *ch_ctx)
 {
-	int ret = 0;
-
+	int ret;
 	struct dlp_xfer_ctx *rx_ctx = &ch_ctx->rx;
-
-	PROLOG();
 
 	ret = dlp_pop_recycled_push_ctrl(rx_ctx);
 	if (ret == -EAGAIN) {
@@ -104,7 +98,6 @@ static int dlp_net_push_rx_pdus(struct dlp_channel *ch_ctx)
 		ret = 0;
 	}
 
-	EPILOG();
 	return ret;
 }
 
@@ -116,15 +109,11 @@ static void dlp_net_modem_hangup(struct dlp_channel *ch_ctx, int reason)
 {
 	struct dlp_net_context *net_ctx = ch_ctx->ch_data;
 
-	PROLOG();
-
 	ch_ctx->hangup.cause |= reason;
 
 	/* Stop the NET IF */
 	if (!netif_queue_stopped(net_ctx->ndev))
 		netif_stop_queue(net_ctx->ndev);
-
-	EPILOG();
 }
 
 /**
@@ -136,15 +125,8 @@ static void dlp_net_modem_hangup(struct dlp_channel *ch_ctx, int reason)
  */
 static void dlp_net_mdm_coredump_cb(struct dlp_channel *ch_ctx)
 {
-	struct dlp_net_context *net_ctx = ch_ctx->ch_data;
-
-	PROLOG("%s", net_ctx->ndev->name);
-
-	WARNING("Modem coredump");
-
+	pr_err(DRVNAME ": %s (Modem coredump)\n", __func__);
 	dlp_net_modem_hangup(ch_ctx, DLP_MODEM_HU_COREDUMP);
-
-	EPILOG();
 }
 
 /**
@@ -156,13 +138,8 @@ static void dlp_net_mdm_coredump_cb(struct dlp_channel *ch_ctx)
  */
 static void dlp_net_mdm_reset_cb(struct dlp_channel *ch_ctx)
 {
-	PROLOG();
-
-	WARNING("Modem reset");
-
+	pr_err(DRVNAME ": %s (Modem reset)\n", __func__);
 	dlp_net_modem_hangup(ch_ctx, DLP_MODEM_HU_RESET);
-
-	EPILOG();
 }
 
 /**
@@ -173,13 +150,9 @@ static void dlp_net_credits_available_cb(struct dlp_channel *ch_ctx)
 {
 	struct dlp_net_context *net_ctx = ch_ctx->ch_data;
 
-	PROLOG();
-
 	/* Restart the NET stack if it was stopped */
 	if (netif_queue_stopped(net_ctx->ndev))
 		netif_wake_queue(net_ctx->ndev);
-
-	EPILOG();
 }
 
 /**
@@ -198,10 +171,14 @@ static __be16 dlp_net_type_trans(const char *buffer)
 	case 6:
 		return htons(ETH_P_IPV6);
 	default:
-		CRITICAL("Invalid IP frame header (0x%x)", (*buffer) >> 4);
+		pr_err(DRVNAME ": Invalid IP frame header (0x%x)\n",
+				(*buffer) >> 4);
 
 		/* Dump the invalid PDU data */
-		dlp_dbg_dump_data_as_word((u32 *)buffer, 160, 16, 1, 0);
+		print_hex_dump(KERN_DEBUG,
+				DRVNAME": NET", DUMP_PREFIX_OFFSET,
+				16, 4,
+				buffer, 64, 0);
 	}
 
 	return htons(0);
@@ -221,8 +198,6 @@ static void dlp_net_complete_tx(struct hsi_msg *pdu)
 	struct dlp_channel *ch_ctx = msg_param->ch_ctx;
 	struct dlp_net_context *net_ctx = ch_ctx->ch_data;
 	struct dlp_xfer_ctx *xfer_ctx = &ch_ctx->tx;
-
-	PROLOG("%s", net_ctx->ndev->name);
 
 	/* TX xfer done => Reset the "ongoing" flag */
 	dlp_ctrl_set_reset_ongoing(0);
@@ -250,7 +225,6 @@ static void dlp_net_complete_tx(struct hsi_msg *pdu)
 	}
 
 	write_unlock_irqrestore(&xfer_ctx->lock, flags);
-	EPILOG();
 }
 
 /*
@@ -267,9 +241,6 @@ static void dlp_net_complete_rx(struct hsi_msg *pdu)
 	unsigned int *ptr;
 	unsigned long flags;
 
-	PROLOG("%s, pdu [0x%p, actual_len: %d, sgl->len: %d]",
-	       net_ctx->ndev->name, pdu, pdu->actual_len, pdu->sgt.sgl->length);
-
 	/* Pop the CTRL queue */
 	write_lock_irqsave(&xfer_ctx->lock, flags);
 	dlp_hsi_controller_pop(xfer_ctx);
@@ -278,10 +249,22 @@ static void dlp_net_complete_rx(struct hsi_msg *pdu)
 	/* Check the received PDU header & seq_num */
 	ret = dlp_pdu_header_check(xfer_ctx, pdu);
 	if (ret == -EINVAL) {
-		/* Dump the first 160 bytes */
-		dlp_dbg_dump_pdu(pdu, 16, 160, 1);
+		/* Dump the first 64 bytes */
+		print_hex_dump(KERN_DEBUG,
+				DRVNAME"_NET", DUMP_PREFIX_OFFSET,
+				16, 4,
+				sg_virt(pdu->sgt.sgl), 64, 0);
 		goto recycle;
 	}
+
+	/* Dump the RX data/length */
+	if (EDLP_NET_RX_DATA_REPORT)
+		print_hex_dump(KERN_DEBUG,
+				DRVNAME"_NET_RX", DUMP_PREFIX_OFFSET,
+				16, 4,
+				sg_virt(pdu->sgt.sgl), 64, 0);
+	else if (EDLP_NET_RX_DATA_LEN_REPORT)
+		pr_debug(DRVNAME ": NET_RX %d bytes\n", pdu->actual_len);
 
 	/* Read packets desc  */
 	/*---------------------*/
@@ -299,21 +282,13 @@ static void dlp_net_complete_rx(struct hsi_msg *pdu)
 		data_size = DLP_HDR_DATA_SIZE((*ptr)) - DLP_HDR_SPACE_AP;
 		data_addr = start_addr + offset + DLP_HDR_SPACE_AP;
 
-		PRINT_RX
-		    ("RX: DESC => data_addr: 0x%p, offset: 0x%x, size: %d\n",
-		     data_addr, offset, data_size);
-
-		/* Dump the first 160 bytes */
-		/* dlp_dbg_dump_data_as_byte(data_addr,
-				MIN(data_size, 160), 16, 0); */
-
 		/*
 		 * The packet has been retrieved from the transmission
 		 * medium. Build an skb around it, so upper layers can handle it
 		 */
 		skb = netdev_alloc_skb_ip_align(net_ctx->ndev, data_size);
 		if (!skb) {
-			CRITICAL("Out of memory (size: %d) => packet dropped\n",
+			pr_err(DRVNAME ": Out of memory (size: %d) => packet dropped\n",
 					data_size);
 
 			net_ctx->ndev->stats.rx_dropped++;
@@ -328,16 +303,12 @@ static void dlp_net_complete_rx(struct hsi_msg *pdu)
 		skb->protocol = dlp_net_type_trans(skb_data);
 		skb->ip_summed = CHECKSUM_UNNECESSARY;	/* don't check it */
 
-		/* Dump the first 160 bytes */
-		/* dlp_dbg_dump_data_as_byte(skb->data,
-				MIN(skb->len, 160), 16, 0);*/
-
 		/* Push received packet up to the IP networking stack */
 		ret = netif_rx(skb);
 
 		/* Update statistics */
 		if (ret) {
-			WARNING("Packet dropped");
+			pr_warn(DRVNAME ": packet dropped\n");
 			net_ctx->ndev->stats.rx_dropped++;
 
 			/* Free the allocated skb */
@@ -351,8 +322,6 @@ static void dlp_net_complete_rx(struct hsi_msg *pdu)
 recycle:
 	/* Recycle or free the pdu */
 	dlp_pdu_recycle(xfer_ctx, pdu);
-
-	EPILOG("%d", ret);
 }
 
 /**
@@ -367,11 +336,7 @@ void dlp_net_tx_stop(unsigned long param)
 {
 	struct dlp_xfer_ctx *xfer_ctx = (struct dlp_xfer_ctx *)param;
 
-	PROLOG();
-
 	dlp_stop_tx(xfer_ctx);
-
-	EPILOG();
 }
 
 /**
@@ -399,11 +364,9 @@ int dlp_net_open(struct net_device *dev)
 	int ret;
 	struct dlp_channel *ch_ctx = netdev_priv(dev);
 
-	PROLOG("%s, hsi_ch:%d", dev->name, ch_ctx->hsi_channel);
-
 	/* Check & wait for modem readiness */
 	if (!dlp_ctrl_modem_is_ready()) {
-		CRITICAL("Unale to open NETIF%d (Modem NOT ready) !",
+		pr_err(DRVNAME ": Unale to open NETIF%d (Modem NOT ready) !\n",
 				ch_ctx->hsi_channel);
 		ret = -EBUSY;
 		goto out;
@@ -441,7 +404,7 @@ int dlp_net_open(struct net_device *dev)
 	/* Open the channel */
 	ret = dlp_ctrl_open_channel(ch_ctx);
 	if (ret) {
-		CRITICAL("dlp_ctrl_open_channel() failed !");
+		pr_err(DRVNAME ": ch%d open failed !\n", ch_ctx->hsi_channel);
 		ret = -EIO;
 		goto out;
 	}
@@ -452,11 +415,7 @@ int dlp_net_open(struct net_device *dev)
 	/* Start the netif */
 	netif_wake_queue(dev);
 
-	EPILOG();
-	return ret;
-
 out:
-	EPILOG();
 	return ret;
 }
 
@@ -466,8 +425,6 @@ int dlp_net_stop(struct net_device *dev)
 	struct dlp_xfer_ctx *tx_ctx;
 	struct dlp_xfer_ctx *rx_ctx;
 	int ret;
-
-	PROLOG("%s, hsi_ch:%d", dev->name, ch_ctx->hsi_channel);
 
 	tx_ctx = &ch_ctx->tx;
 	rx_ctx = &ch_ctx->rx;
@@ -480,7 +437,7 @@ int dlp_net_stop(struct net_device *dev)
 
 	ret = dlp_ctrl_close_channel(ch_ctx);
 	if (ret)
-		CRITICAL("dlp_ctrl_close_channel() failed !");
+		pr_err(DRVNAME ": ch%d close failed !\n", ch_ctx->hsi_channel);
 
 	/* RX */
 	del_timer_sync(&rx_ctx->timer);
@@ -496,20 +453,15 @@ int dlp_net_stop(struct net_device *dev)
 	flush_work_sync(&ch_ctx->start_tx_w);
 	flush_work_sync(&ch_ctx->stop_tx_w);
 
-	EPILOG();
 	return 0;
 }
 
 static void dlp_net_pdu_destructor(struct hsi_msg *pdu)
 {
-	PROLOG();
-
 	if (pdu->ttype == HSI_MSG_WRITE)
 		dlp_pdu_free(pdu, -1);
 	else
 		dlp_pdu_free(pdu, pdu->channel);
-
-	EPILOG();
 }
 
 /*
@@ -528,20 +480,15 @@ static int dlp_net_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	struct scatterlist *sg;
 	skb_frag_t *frag;
 
-	PROLOG("%s, len:%d, nb_frag: %d",
-	       dev->name, skb->len, skb_shinfo(skb)->nr_frags);
-
 	if (!dlp_ctx_have_credits(&ch_ctx->tx, ch_ctx)) {
 		/* Stop the NET if */
 		netif_stop_queue(net_ctx->ndev);
 
-		CRITICAL("No credits available (%d)", ch_ctx->tx.seq_num);
+		pr_warn(DRVNAME ": ch%d out of credits (%d)",
+				ch_ctx->hsi_channel, ch_ctx->tx.seq_num);
 		ret = NETDEV_TX_BUSY;
 		goto out;
 	}
-
-	/* Dump the first 160 bytes */
-	/* dlp_dbg_dump_data_as_byte(skb->data, MIN(skb->len, 160), 16); */
 
 	if (skb->len < ETH_ZLEN) {
 		/* WARNING("Padding received packet (size: %d)", skb->len); */
@@ -571,6 +518,15 @@ static int dlp_net_start_xmit(struct sk_buff *skb, struct net_device *dev)
 		skb = new_skb;
 	}
 
+	/* Dump the TX data/length */
+	if (EDLP_NET_TX_DATA_REPORT)
+		print_hex_dump(KERN_DEBUG,
+				DRVNAME"_NET_TX", DUMP_PREFIX_OFFSET,
+				16, 4,
+				skb->data, skb->len, 0);
+	else if (EDLP_NET_TX_DATA_LEN_REPORT)
+		pr_debug(DRVNAME ": NET_TX %d bytes\n", skb->len);
+
 	/* Set msg params */
 	msg_param = (struct dlp_net_tx_params *)skb->cb;
 	msg_param->ch_ctx = ch_ctx;
@@ -599,7 +555,7 @@ static int dlp_net_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	/* Allocate the HSI msg */
 	new = hsi_alloc_msg(nb_entries, GFP_ATOMIC);
 	if (!new) {
-		CRITICAL("No more memory to allocate hsi_msg struct");
+		pr_err(DRVNAME ": Out of memory (hsi_msg)\n");
 		ret = NETDEV_TX_BUSY;
 		goto out;
 	}
@@ -622,7 +578,7 @@ static int dlp_net_start_xmit(struct sk_buff *skb, struct net_device *dev)
 
 	ptr = dlp_buffer_alloc(desc_size, &sg_dma_address(sg));
 	if (!ptr) {
-		CRITICAL("No more memory to allocate msg descriptors");
+		pr_err(DRVNAME ": Out of memory (msg_desc)\n");
 		goto free_msg;
 	}
 
@@ -635,9 +591,6 @@ static int dlp_net_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	i = 0;
 	offset = desc_size - DLP_HDR_SPACE_CP;
 
-	PRINT_TX("TX: desc_size: 0x%x, nb_entries:%d, nb_packets:%d\n",
-		 desc_size, nb_entries, nb_packets);
-
 	do {
 		if (nb_packets == 1) {
 			skb_data = skb->data;
@@ -647,8 +600,6 @@ static int dlp_net_start_xmit(struct sk_buff *skb, struct net_device *dev)
 
 			skb_len = frag->size;
 			skb_data = (void *)frag->page;
-
-			CRITICAL("FRAGGGGGGGGGGGGGGGGGGGGG");
 		}
 
 		/* Set the start offset */
@@ -666,9 +617,6 @@ static int dlp_net_start_xmit(struct sk_buff *skb, struct net_device *dev)
 		sg->dma_address = dma_map_single(dlp_drv.controller,
 						 skb_data,
 						 skb_len, DMA_TO_DEVICE);
-
-		PRINT_TX("TX: Entry %d: offset: 0x%x, size:0x%x\n", i, offset,
-			 (*ptr));
 
 		/* Still have packets ? */
 		i++;
@@ -705,9 +653,6 @@ static int dlp_net_start_xmit(struct sk_buff *skb, struct net_device *dev)
 		sg->dma_address = net_ctx->net_padd_dma;
 	}
 
-	PRINT_TX("TX: Entry %d (Padding): offset: 0x%x, size:0x%x\n", i, offset,
-		 padding_len);
-
 	ret = dlp_hsi_controller_push(&ch_ctx->tx, new);
 	if (ret) {
 		ret = NETDEV_TX_BUSY;
@@ -715,14 +660,12 @@ static int dlp_net_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	}
 
 	ret = NETDEV_TX_OK;
-	EPILOG("%d", ret);
 	return ret;
 
 free_msg:
 	hsi_free_msg(new);
 
 out:
-	EPILOG("%d", ret);
 	return ret;
 }
 
@@ -734,16 +677,12 @@ void dlp_net_tx_timeout(struct net_device *dev)
 	struct dlp_channel *ch_ctx = netdev_priv(dev);
 	struct dlp_net_context *net_ctx = ch_ctx->ch_data;
 
-	PROLOG("%s", dev->name);
-
-	PDEBUG("NET TX timeout at %d ms (latency: %d ms)",
+	pr_warn(DRVNAME ": NET TX timeout at %d ms (latency: %d ms)\n",
 	       jiffies_to_msecs(jiffies),
 	       jiffies_to_msecs(jiffies - dev->trans_start));
 
 	/* Update statistics */
 	net_ctx->ndev->stats.tx_errors++;
-
-	EPILOG();
 }
 
 /*
@@ -752,10 +691,6 @@ void dlp_net_tx_timeout(struct net_device *dev)
 int dlp_net_change_mtu(struct net_device *dev, int new_mtu)
 {
 	int ret = -EPERM;
-
-	PROLOG("%s", dev->name);
-
-	EPILOG();
 	return ret;
 }
 
@@ -774,8 +709,6 @@ static const struct net_device_ops dlp_net_netdev_ops = {
  **/
 void dlp_net_dev_setup(struct net_device *dev)
 {
-	PROLOG();
-
 	dev->netdev_ops = &dlp_net_netdev_ops;
 	dev->watchdog_timeo = DLP_NET_TX_DELAY;
 
@@ -786,8 +719,6 @@ void dlp_net_dev_setup(struct net_device *dev)
 	dev->mtu = DLP_NET_TX_PDU_SIZE;	/* FIXME: check wget crash */
 	dev->tx_queue_len = 10;
 	dev->flags = IFF_POINTOPOINT | IFF_NOARP | IFF_MULTICAST;
-
-	EPILOG();
 }
 
 /****************************************************************************
@@ -804,21 +735,19 @@ struct dlp_channel *dlp_net_ctx_create(unsigned int index, struct device *dev)
 	struct dlp_net_context *net_ctx;
 	int ret;
 
-	PROLOG("%d", index);
-
 	/* Allocate the net device */
 	ndev = alloc_netdev(sizeof(struct dlp_channel),
 			    CONFIG_HSI_DLP_NET_NAME "%d", dlp_net_dev_setup);
 
 	if (!ndev) {
-		CRITICAL("alloc_netdev() failed !");
+		pr_err(DRVNAME ": alloc_netdev() failed !\n");
 		return NULL;
 	}
 
 	/* Allocate the context private data */
 	net_ctx = kzalloc(sizeof(struct dlp_net_context), GFP_KERNEL);
 	if (!net_ctx) {
-		CRITICAL("Unable to allocate memory (net_ctx)");
+		pr_err(DRVNAME ": Out of memory (net_ctx)\n");
 		goto free_dev;
 	}
 
@@ -827,7 +756,7 @@ struct dlp_channel *dlp_net_ctx_create(unsigned int index, struct device *dev)
 					     &net_ctx->net_padd_dma);
 
 	if (!net_ctx->net_padd) {
-		CRITICAL("No more memory to allocate padding buffer");
+		pr_err(DRVNAME ": Out of memory (padding)\n");
 		ret = -ENOMEM;
 		goto free_ctx;
 	}
@@ -835,7 +764,7 @@ struct dlp_channel *dlp_net_ctx_create(unsigned int index, struct device *dev)
 	/* Register the net device */
 	ret = register_netdev(ndev);
 	if (ret) {
-		CRITICAL("register_netdev() for %s failed, error %d\n",
+		pr_err(DRVNAME ": register_netdev(%s) failed (%d)\n",
 			 ndev->name, ret);
 		goto free_buff;
 	}
@@ -895,7 +824,6 @@ struct dlp_channel *dlp_net_ctx_create(unsigned int index, struct device *dev)
 		}
 	}
 
-	EPILOG();
 	return ch_ctx;
 
 free_buff:
@@ -907,14 +835,13 @@ free_ctx:
 
 free_dev:
 	free_netdev(ndev);
-
-	pr_err(DRVNAME": Failed to create context for ch%d", index);
+	pr_err(DRVNAME": Failed to create context for ch%d\n", index);
 	return NULL;
 
 cleanup:
 	dlp_net_ctx_delete(ch_ctx);
 
-	pr_err(DRVNAME": Failed to create context for ch%d", index);
+	pr_err(DRVNAME": Failed to create context for ch%d\n", index);
 	return NULL;
 }
 
@@ -939,7 +866,5 @@ int dlp_net_ctx_delete(struct dlp_channel *ch_ctx)
 
 	/* Free the ch_ctx */
 	free_netdev(net_ctx->ndev);
-
-	EPILOG();
 	return ret;
 }

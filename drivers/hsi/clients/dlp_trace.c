@@ -36,9 +36,6 @@
 
 #define TRACE_DEVNAME	CONFIG_HSI_TRACE_DEV_NAME
 
-#define DEBUG_TAG 0x5
-#define DEBUG_VAR (dlp_drv.debug)
-
 /*
  * struct trace_driver - HSI Modem trace driver protocol
  *
@@ -88,12 +85,8 @@ static void dlp_trace_complete_rx(struct hsi_msg *msg);
 */
 static inline void dlp_trace_msg_destruct(struct hsi_msg *msg)
 {
-	PROLOG("msg:0x%p", msg);
-
 	/* Delete the received msg */
 	dlp_pdu_free(msg, msg->channel);
-
-	EPILOG();
 }
 
 /*
@@ -104,8 +97,6 @@ static int dlp_trace_push_rx_pdu(struct dlp_channel *ch_ctx)
 {
 	int ret;
 	struct hsi_msg *rx_msg;
-
-	PROLOG();
 
 	/* Allocate a new RX msg */
 	rx_msg = dlp_pdu_alloc(ch_ctx->hsi_channel,
@@ -130,7 +121,6 @@ static int dlp_trace_push_rx_pdu(struct dlp_channel *ch_ctx)
 		goto free_msg;
 	}
 
-	EPILOG();
 	return 0;
 
 free_msg:
@@ -138,7 +128,6 @@ free_msg:
 	dlp_pdu_free(rx_msg, rx_msg->channel);
 
 out:
-	EPILOG();
 	return ret;
 }
 
@@ -184,9 +173,6 @@ static void dlp_trace_complete_rx(struct hsi_msg *msg)
 	unsigned long flags;
 	int ret;
 
-	PROLOG("msg:0x%p, actual_len:%d, pdu_len:%d", msg,
-			msg->actual_len, msg->sgt.sgl->length);
-
 	if (msg->status != HSI_STATUS_COMPLETED) {
 		pr_err(DRVNAME": Invalid msg status: %d (ignored)\n",
 				msg->status);
@@ -221,8 +207,6 @@ push_again:
 		/* Delete the received msg */
 		dlp_pdu_free(msg, msg->channel);
 	}
-
-	EPILOG();
 }
 
 
@@ -235,8 +219,6 @@ static int dlp_trace_dev_open(struct inode *inode, struct file *filp)
 	unsigned long flags;
 	struct dlp_channel *ch_ctx = DLP_CHANNEL_CTX(DLP_CHANNEL_TRACE);
 	struct dlp_trace_ctx *trace_ctx = ch_ctx->ch_data;
-
-	PROLOG("flags:0x%x", filp->f_flags);
 
 	/* Check if the the channel is not already opened by the NET IF */
 	state = dlp_ctrl_get_channel_state(ch_ctx);
@@ -271,7 +253,6 @@ static int dlp_trace_dev_open(struct inode *inode, struct file *filp)
 		dlp_trace_push_rx_pdu(ch_ctx);
 
 out:
-	EPILOG();
 	return ret;
 }
 
@@ -302,8 +283,6 @@ static ssize_t dlp_trace_dev_read(struct file *filp,
 	struct hsi_msg *msg;
 	int ret, to_copy, copied, available;
 	unsigned long flags;
-
-	PROLOG("count:%d", count);
 
 	/* Check the user buffer size */
 	if (count < DLP_TRACE_RX_PDU_SIZE) {
@@ -366,7 +345,6 @@ static ssize_t dlp_trace_dev_read(struct file *filp,
 	(*ppos) += copied;
 
 out:
-	EPILOG("bytes_read:%d, pos: %d", copied, (unsigned int)(*ppos));
 	return copied;
 }
 
@@ -399,8 +377,6 @@ static unsigned int dlp_trace_dev_poll(struct file *filp,
 	unsigned long flags;
 	unsigned int ret = 0;
 
-	PROLOG();
-
 	poll_wait(filp, &trace_ctx->read_wq, pt);
 
 	/* Have some data to read ? */
@@ -408,8 +384,6 @@ static unsigned int dlp_trace_dev_poll(struct file *filp,
 	if (!list_empty(&trace_ctx->rx_msgs))
 		ret = POLLIN | POLLRDNORM;
 	spin_unlock_irqrestore(&ch_ctx->lock, flags);
-
-	EPILOG("0x%d", ret);
 	return ret;
 }
 
@@ -439,8 +413,6 @@ struct dlp_channel *dlp_trace_ctx_create(unsigned int index, struct device *dev)
 	struct hsi_client *client = to_hsi_client(dev);
 	struct dlp_channel *ch_ctx;
 	struct dlp_trace_ctx *trace_ctx;
-
-	PROLOG();
 
 	/* Allocate channel struct data */
 	ch_ctx = kzalloc(sizeof(struct dlp_channel), GFP_KERNEL);
@@ -510,7 +482,6 @@ struct dlp_channel *dlp_trace_ctx_create(unsigned int index, struct device *dev)
 		goto del_class;
 	}
 
-	EPILOG();
 	return ch_ctx;
 
 del_class:
@@ -527,7 +498,6 @@ free_ctx:
 
 free_ch:
 	kfree(ch_ctx);
-	EPILOG("Failed");
 	return NULL;
 }
 
@@ -543,8 +513,6 @@ int dlp_trace_ctx_delete(struct dlp_channel *ch_ctx)
 	struct dlp_trace_ctx *trace_ctx = ch_ctx->ch_data;
 	int ret = 0;
 
-	PROLOG();
-
 	/* Unregister the device */
 	cdev_del(&trace_ctx->cdev);
 	unregister_chrdev_region(trace_ctx->tdev, 1);
@@ -555,8 +523,6 @@ int dlp_trace_ctx_delete(struct dlp_channel *ch_ctx)
 
 	/* Free the ch_ctx */
 	kfree(ch_ctx);
-
-	EPILOG();
 	return ret;
 }
 

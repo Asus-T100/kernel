@@ -37,8 +37,6 @@
 #include <linux/netdevice.h>
 #include <linux/wait.h>
 
-#include "../dlp_debug.h"
-
 #define DRVNAME				"hsi-dlp"
 
 /* Delays for powering up/resetting the modem */
@@ -119,6 +117,35 @@
 
 #ifndef MIN
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
+#endif
+
+/* Debug macro */
+#ifdef DEBUG
+#define EDLP_TTY_RX_DATA_LEN_REPORT  (dlp_drv.debug & 0x001)
+#define EDLP_TTY_RX_DATA_REPORT      (dlp_drv.debug & 0x002)
+#define EDLP_TTY_TX_DATA_LEN_REPORT  (dlp_drv.debug & 0x004)
+#define EDLP_TTY_TX_DATA_REPORT      (dlp_drv.debug & 0x008)
+
+#define EDLP_NET_RX_DATA_LEN_REPORT  (dlp_drv.debug & 0x010)
+#define EDLP_NET_RX_DATA_REPORT      (dlp_drv.debug & 0x020)
+#define EDLP_NET_TX_DATA_LEN_REPORT  (dlp_drv.debug & 0x040)
+#define EDLP_NET_TX_DATA_REPORT      (dlp_drv.debug & 0x080)
+
+#define EDLP_CTRL_RX_DATA_REPORT     (dlp_drv.debug & 0x100)
+#define EDLP_CTRL_TX_DATA_REPORT     (dlp_drv.debug & 0x200)
+#else
+#define EDLP_TTY_RX_DATA_LEN_REPORT  0
+#define EDLP_TTY_RX_DATA_REPORT      0
+#define EDLP_TTY_TX_DATA_LEN_REPORT  0
+#define EDLP_TTY_TX_DATA_REPORT      0
+
+#define EDLP_NET_RX_DATA_LEN_REPORT  0
+#define EDLP_NET_RX_DATA_REPORT      0
+#define EDLP_NET_TX_DATA_LEN_REPORT  0
+#define EDLP_NET_TX_DATA_REPORT      0
+
+#define EDLP_CTRL_RX_DATA_REPORT     0
+#define EDLP_CTRL_TX_DATA_REPORT     0
 #endif
 
 /*
@@ -347,14 +374,13 @@ struct dlp_driver {
 	struct hsi_config flash_tx_cfg;
 	struct hsi_config flash_rx_cfg;
 
-	/* Platform data */
-	struct hsi_mid_platform_data *pd;
-
-	/* Debug variables */
-	long debug;
 	int flow_ctrl;
 
+#ifdef DEBUG
+	/* Debug purpose */
+	long debug;
 	struct dentry *debug_dir;
+#endif
 };
 
 /*
@@ -383,8 +409,6 @@ int dlp_allocate_pdus_pool(struct dlp_channel *ch_ctx,
 void *dlp_buffer_alloc(unsigned int buff_size, dma_addr_t *dma_addr);
 
 void dlp_buffer_free(void *buff, dma_addr_t dma_addr, unsigned int buff_size);
-
-void dlp_pdu_dump(struct hsi_msg *pdu, int as_string);
 
 struct hsi_msg *dlp_pdu_alloc(unsigned int hsi_channel,
 			      int ttype,

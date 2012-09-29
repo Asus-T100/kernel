@@ -35,10 +35,6 @@
 #include "dlp_main.h"
 
 
-#define DEBUG_TAG 0x4
-#define DEBUG_VAR (dlp_drv.debug)
-
-
 #define FLASHING_DEVNAME	"tty"CONFIG_HSI_FLASHING_DEV_NAME
 
 /* Number of RX msg to push
@@ -135,12 +131,8 @@ static inline int dlp_flash_get_opened(struct dlp_channel *ch_ctx)
 */
 static inline void dlp_flash_msg_destruct_fix(struct hsi_msg *msg)
 {
-	PROLOG("msg:0x%p", msg);
-
 	/* Delete the received msg */
 	dlp_pdu_free(msg, msg->channel);
-
-	EPILOG();
 }
 
 /*
@@ -150,13 +142,9 @@ static inline void dlp_flash_msg_destruct_fix(struct hsi_msg *msg)
 */
 static inline void dlp_flash_msg_destruct_var(struct hsi_msg *msg)
 {
-	PROLOG("msg:0x%p", msg);
-
 	/* Delete the received msg
 	 * (size is variable, so dont consider the default PDU size) */
 	dlp_pdu_free(msg, -1);
-
-	EPILOG();
 }
 
 /*
@@ -168,8 +156,6 @@ static int dlp_flash_push_rx_pdu(struct dlp_channel *ch_ctx)
 	int ret;
 	struct hsi_msg *rx_msg;
 
-	PROLOG();
-
 	/* Allocate a new RX msg */
 	rx_msg = dlp_pdu_alloc(ch_ctx->hsi_channel,
 				HSI_MSG_READ,
@@ -180,7 +166,7 @@ static int dlp_flash_push_rx_pdu(struct dlp_channel *ch_ctx)
 				dlp_flash_msg_destruct_fix);
 
 	if (!rx_msg) {
-		CRITICAL("dlp_pdu_alloc(RX) failed");
+		pr_err(DRVNAME ": dlp_pdu_alloc(RX) failed\n");
 		ret = -ENOMEM;
 		goto out;
 	}
@@ -188,12 +174,11 @@ static int dlp_flash_push_rx_pdu(struct dlp_channel *ch_ctx)
 	/* Send the RX HSI msg */
 	ret = hsi_async(rx_msg->cl, rx_msg);
 	if (ret) {
-		CRITICAL("hsi_async() failed, ret:%d", ret);
+		pr_err(DRVNAME ": hsi_async() failed, ret:%d\n", ret);
 		ret = -EIO;
 		goto free_msg;
 	}
 
-	EPILOG();
 	return 0;
 
 free_msg:
@@ -201,7 +186,6 @@ free_msg:
 	dlp_pdu_free(rx_msg, rx_msg->channel);
 
 out:
-	EPILOG();
 	return ret;
 }
 
@@ -275,12 +259,8 @@ static struct hsi_msg *dlp_boot_rx_dequeue(struct dlp_channel *ch_ctx)
 */
 static void dlp_flash_complete_tx(struct hsi_msg *msg)
 {
-	PROLOG("msg:0x%p", msg);
-
 	/* Delete the received msg */
 	dlp_pdu_free(msg, -1);
-
-	EPILOG();
 }
 
 /*
@@ -294,16 +274,14 @@ static void dlp_flash_complete_rx(struct hsi_msg *msg)
 	struct dlp_flash_ctx *flash_ctx = ch_ctx->ch_data;
 	int ret;
 
-	PROLOG("msg:0x%p, actual_len:%d, pdu_len:%d", msg,
-			msg->actual_len, msg->sgt.sgl->length);
-
 	if (msg->status != HSI_STATUS_COMPLETED) {
-		CRITICAL("Invalid msg status: %d (ignored)", msg->status);
+		pr_err(DRVNAME ": Invalid msg status: %d (ignored)\n",
+				msg->status);
 
 		/* Push again the RX msg */
 		ret = hsi_async(msg->cl, msg);
 		if (ret) {
-			CRITICAL("hsi_async failed (%d) => FIFO will be empty",
+			pr_err(DRVNAME ": hsi_async failed (%d) => FIFO will be empty\n",
 					ret);
 
 			/* Delete the received msg */
@@ -316,8 +294,6 @@ static void dlp_flash_complete_rx(struct hsi_msg *msg)
 		/* Wakeup any waiting clients for read/poll */
 		wake_up_interruptible(&flash_ctx->read_wq);
 	}
-
-	EPILOG();
 }
 
 
@@ -328,8 +304,6 @@ static int dlp_flash_dev_open(struct inode *inode, struct file *filp)
 {
 	int ret = 0;
 	struct dlp_channel *ch_ctx = DLP_CHANNEL_CTX(DLP_CHANNEL_FLASH);
-
-	PROLOG("flags:0x%x", filp->f_flags);
 
 	/* Only ONE instance of this device can be opened */
 	if (dlp_flash_get_opened(ch_ctx)) {
@@ -348,7 +322,6 @@ static int dlp_flash_dev_open(struct inode *inode, struct file *filp)
 		dlp_flash_push_rx_pdu(ch_ctx);
 
 out:
-	EPILOG();
 	return ret;
 }
 
@@ -359,12 +332,9 @@ static int dlp_flash_dev_close(struct inode *inode, struct file *filp)
 {
 	struct dlp_channel *ch_ctx = filp->private_data;
 
-	PROLOG();
-
 	/* Set the open flag */
 	dlp_flash_set_opened(ch_ctx, 0);
 
-	EPILOG();
 	return 0;
 }
 
@@ -383,8 +353,6 @@ static ssize_t dlp_flash_dev_read(struct file *filp,
 	int ret, to_copy, copied, available;
 	unsigned long flags;
 
-	PROLOG("count:%d", count);
-
 	/* Have some data to read ? */
 	spin_lock_irqsave(&ch_ctx->lock, flags);
 	ret = list_empty(&flash_ctx->rx_msgs);
@@ -398,8 +366,6 @@ static ssize_t dlp_flash_dev_read(struct file *filp,
 			goto out;
 		} else {
 			ret = wait_event_interruptible(flash_ctx->read_wq, 0);
-
-			PDEBUG("Wake up !");
 			if (ret) {
 				copied = -EINTR;
 				goto out;
@@ -425,7 +391,7 @@ static ssize_t dlp_flash_dev_read(struct file *filp,
 		/* Copy data to the user buffer */
 		ret = copy_to_user(data+copied, sg_virt(msg->sgt.sgl), to_copy);
 		if (ret) {
-			CRITICAL("Uanble to copy data to the user buffer");
+			pr_err(DRVNAME ": Uanble to copy data to the user buffer\n");
 
 			/* Put the msg back in the RX queue */
 			dlp_boot_rx_queue_head(ch_ctx, msg);
@@ -441,7 +407,7 @@ static ssize_t dlp_flash_dev_read(struct file *filp,
 		/* Push again the RX msg to the controller */
 		ret = hsi_async(msg->cl, msg);
 		if (ret) {
-			CRITICAL("hsi_async failed (%d) => FIFO will be empty",
+			pr_err(DRVNAME ": hsi_async failed (%d) => FIFO will be empty\n",
 					ret);
 
 			/* Delete the received msg */
@@ -453,7 +419,6 @@ static ssize_t dlp_flash_dev_read(struct file *filp,
 	(*ppos) += copied;
 
 out:
-	EPILOG("bytes_read:%d, pos: %d", copied, (unsigned int)(*ppos));
 	return copied;
 }
 
@@ -469,8 +434,6 @@ static ssize_t dlp_flash_dev_write(struct file *filp,
 	struct dlp_channel *ch_ctx = filp->private_data;
 	struct hsi_msg *tx_msg = NULL;
 
-	PROLOG("count: %d", count);
-
 	/* Allocate a new TX msg */
 	tx_msg = dlp_pdu_alloc(ch_ctx->hsi_channel,
 				HSI_MSG_WRITE,
@@ -481,7 +444,7 @@ static ssize_t dlp_flash_dev_write(struct file *filp,
 				dlp_flash_msg_destruct_var);
 
 	if (!tx_msg) {
-		CRITICAL("dlp_pdu_alloc(TX, len: %d) failed", count);
+		pr_err(DRVNAME ": dlp_pdu_alloc(TX, len: %d) failed\n", count);
 		ret = -ENOMEM;
 		goto out;
 	}
@@ -492,13 +455,12 @@ static ssize_t dlp_flash_dev_write(struct file *filp,
 	/* Send the TX HSI msg */
 	ret = hsi_async(tx_msg->cl, tx_msg);
 	if (ret) {
-		CRITICAL("hsi_async(TX) failed (ret:%d)", ret);
+		pr_err(DRVNAME ": hsi_async(TX) failed (ret:%d)\n", ret);
 		ret = -EIO;
 		goto free_tx;
 	}
 
 	ret = count;
-	EPILOG();
 	return ret;
 
 free_tx:
@@ -507,7 +469,6 @@ free_tx:
 	dlp_pdu_free(tx_msg, -1);
 
 out:
-	EPILOG();
 	return ret;
 }
 
@@ -528,8 +489,6 @@ static unsigned int dlp_flash_dev_poll(struct file *filp,
 	unsigned long flags;
 	unsigned int ret = 0;
 
-	PROLOG();
-
 	poll_wait(filp, &flash_ctx->read_wq, pt);
 
 	/* Have some data to read ? */
@@ -537,8 +496,6 @@ static unsigned int dlp_flash_dev_poll(struct file *filp,
 	if (!list_empty(&flash_ctx->rx_msgs))
 		ret = POLLIN | POLLRDNORM;
 	spin_unlock_irqrestore(&ch_ctx->lock, flags);
-
-	EPILOG("0x%d", ret);
 	return ret;
 }
 
@@ -569,19 +526,17 @@ struct dlp_channel *dlp_flash_ctx_create(unsigned int index, struct device *dev)
 	struct dlp_channel *ch_ctx;
 	struct dlp_flash_ctx *flash_ctx;
 
-	PROLOG();
-
 	/* Allocate channel struct data */
 	ch_ctx = kzalloc(sizeof(struct dlp_channel), GFP_KERNEL);
 	if (!ch_ctx) {
-		CRITICAL("Unable to allocate memory (ch_ctx)");
+		pr_err(DRVNAME ": Unable to allocate memory (flash_ch_ctx)\n");
 		goto out;
 	}
 
 	/* Allocate the context private data */
 	flash_ctx = kzalloc(sizeof(struct dlp_flash_ctx), GFP_KERNEL);
 	if (!flash_ctx) {
-		CRITICAL("Unable to allocate memory (flash_ctx)");
+		pr_err(DRVNAME ": Unable to allocate memory (flash_ctx)\n");
 		goto free_ch;
 	}
 
@@ -606,7 +561,7 @@ struct dlp_channel *dlp_flash_ctx_create(unsigned int index, struct device *dev)
 	/* Register the device */
 	ret = alloc_chrdev_region(&flash_ctx->tdev, 0, 1, FLASHING_DEVNAME);
 	if (ret) {
-		CRITICAL("Unable to allocate the device (err: %d)", ret);
+		pr_err(DRVNAME ": alloc_chrdev_region failed (err: %d)\n", ret);
 		goto free_ctx;
 	}
 
@@ -616,7 +571,7 @@ struct dlp_channel *dlp_flash_ctx_create(unsigned int index, struct device *dev)
 
 	ret = cdev_add(&flash_ctx->cdev, flash_ctx->tdev, 1);
 	if (ret) {
-		CRITICAL("Unable to register the device (err: %d)", ret);
+		pr_err(DRVNAME ": cdev_add failed (err: %d)", ret);
 		goto unreg_reg;
 	}
 
@@ -629,12 +584,11 @@ struct dlp_channel *dlp_flash_ctx_create(unsigned int index, struct device *dev)
 			flash_ctx->tdev,
 			NULL, FLASHING_DEVNAME"%d", DLP_TTY_DEV_NUM);
 	if (IS_ERR(flash_ctx->dev)) {
-		CRITICAL("Unable to create the device (err: %ld)",
+		pr_err(DRVNAME ": device_create failed (err: %ld)",
 				PTR_ERR(flash_ctx->dev));
 		goto del_class;
 	}
 
-	EPILOG();
 	return ch_ctx;
 
 del_class:
@@ -653,7 +607,6 @@ free_ch:
 	kfree(ch_ctx);
 
 out:
-	EPILOG("Failed");
 	return NULL;
 }
 
@@ -669,8 +622,6 @@ int dlp_flash_ctx_delete(struct dlp_channel *ch_ctx)
 	struct dlp_flash_ctx *flash_ctx = ch_ctx->ch_data;
 	int ret = 0;
 
-	PROLOG();
-
 	/* Unregister the device */
 	cdev_del(&flash_ctx->cdev);
 	unregister_chrdev_region(flash_ctx->tdev, 1);
@@ -681,8 +632,6 @@ int dlp_flash_ctx_delete(struct dlp_channel *ch_ctx)
 
 	/* Free the ch_ctx */
 	kfree(ch_ctx);
-
-	EPILOG();
 	return ret;
 }
 
@@ -690,16 +639,10 @@ static int dlp_flash_set_flashing_mode(const char *val, struct kernel_param *kp)
 {
 	long flashing;
 
-	PROLOG("%s", val);
-
-	if (kstrtol(val, 16, &flashing) < 0) {
-		EPILOG();
+	if (kstrtol(val, 16, &flashing) < 0)
 		return -EINVAL;
-	}
 
 	dlp_set_flashing_mode(flashing);
-
-	EPILOG();
 	return 0;
 }
 
