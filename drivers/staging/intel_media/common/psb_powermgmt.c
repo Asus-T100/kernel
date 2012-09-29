@@ -556,6 +556,7 @@ static int mdfld_save_display_registers (struct drm_device *dev, int pipe)
 	dev_priv->saveHDMIB_CONTROL = REG_READ(HDMIB_CONTROL);
 	return 0;
 }
+
 /*
  * mdfld_save_cursor_overlay_registers
  *

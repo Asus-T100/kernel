@@ -70,6 +70,7 @@
 #include "mdfld_csc.h"
 #include "mdfld_dsi_dbi_dsr.h"
 #include "mdfld_dsi_pkg_sender.h"
+
 int drm_psb_debug;
 int psb_video_fabric_debug;
 int drm_psb_enable_cabc = 1;
@@ -1100,9 +1101,10 @@ bool mrst_get_vbt_data(struct drm_psb_private *dev_priv)
 					dev_priv->panel_id = TMD_6X10_VID;
 					PSB_DEBUG_ENTRY("TMD_6X10_VID Panel\n");
 #endif
+
 #ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
-					dev_priv->panel_id = TC_35876X_VID;
-					PSB_DEBUG_ENTRY("TC_35876X_VID.\n");
+					dev_priv->panel_id = TC35876X_VID;
+					PSB_DEBUG_ENTRY("TC35876X_VID.\n");
 #endif
 					break;
 				default:
@@ -1127,6 +1129,7 @@ bool mrst_get_vbt_data(struct drm_psb_private *dev_priv)
 					dev_priv->panel_id = GI_SONY_CMD;
 					PSB_DEBUG_ENTRY("GI_SONY_CMD.\n");
 #endif
+
 					break;
 				}
 			}

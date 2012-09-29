@@ -21,8 +21,8 @@
  * DEALINGS IN THE SOFTWARE.
  *
  * Authors:
- * Jim Liu <jim.liu@intel.com>
-*/
+ * Xiujun Geng <xiujun.geng@intel.com>
+ */
 
 
 #ifndef __TC35876X_VID_H__

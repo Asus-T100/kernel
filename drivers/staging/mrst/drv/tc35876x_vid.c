@@ -1,8 +1,33 @@
+/*
+ * Copyright © 2010 Intel Corporation
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a
+ * copy of this software and associated documentation files (the "Software"),
+ * to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
+ * and/or sell copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice (including the next
+ * paragraph) shall be included in all copies or substantial portions of the
+ * Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+ * DEALINGS IN THE SOFTWARE.
+ *
+ * Authors:
+ * Xiujun Geng <xiujun.geng@intel.com>
+ */
+
 #include "mdfld_dsi_dbi.h"
 #include "mdfld_dsi_pkg_sender.h"
 #include "mdfld_dsi_esd.h"
 #include <asm/intel_scu_ipc.h>
-#include "tc35876x_vid.h"
 #include <linux/gpio.h>
 
 /* HACK to create I2C device while it's not created by platform code */
@@ -29,8 +54,8 @@
 #define PWM0DUTYCYCLE		0x67
 
 /* panel info */
-#define TC35876X_PANEL_WIDTH	21696
-#define TC35876X_PANEL_HEIGHT	13560
+#define TC35876X_PANEL_WIDTH	216
+#define TC35876X_PANEL_HEIGHT	135
 
 /* Panel CABC registers */
 #define PANEL_PWM_CONTROL	0x90
@@ -218,28 +243,18 @@ static
 int tc35876x_bridge_probe(struct i2c_client *client,
 		const struct i2c_device_id *id)
 {
-	int ret;
-
 	PSB_DEBUG_ENTRY("\n");
 
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
 		DRM_ERROR("i2c_check_functionality() failed\n");
 		return -ENODEV;
 	}
-	ret = gpio_request(GPIO_MIPI_LCD_VADD, "display");
-	if (ret)
-		printk(KERN_ALERT "[DISPLAY]%s: GPIO request failed [%d]\n",
-			__func__, GPIO_MIPI_LCD_VADD);
 
-	ret = gpio_request(GPIO_MIPI_BRIDGE_RESET, "tc35876x bridge reset");
-	if (ret)
-		printk(KERN_ALERT "[DISPLAY]%s: GPIO request failed [%d]\n",
-				__func__, GPIO_MIPI_BRIDGE_RESET);
+	gpio_request(GPIO_MIPI_BRIDGE_RESET, "tc35876x_bridge_reset");
 
-	ret = gpio_request(GPIO_MIPI_LCD_BL_EN,  "tc35876x panel bl en");
-	if (ret)
-		printk(KERN_ALERT "[DISPLAY]%s: GPIO request failed [%d]\n",
-				__func__, GPIO_MIPI_LCD_BL_EN);
+	gpio_request(GPIO_MIPI_LCD_BL_EN, "tc35876x_panel_bl_en");
+
+	gpio_request(GPIO_MIPI_LCD_VADD, "display_dvdd");
 
 	tc35876x_client = client;
 
@@ -248,7 +263,7 @@ int tc35876x_bridge_probe(struct i2c_client *client,
 
 static int tc35876x_bridge_remove(struct i2c_client *client)
 {
-	dev_dbg(&client->dev, "%s\n", __func__);
+	PSB_DEBUG_ENTRY("\n");
 
 	gpio_free(GPIO_MIPI_BRIDGE_RESET);
 	gpio_free(GPIO_MIPI_LCD_BL_EN);
@@ -626,7 +641,22 @@ void tc35876x_configure_lvds_bridge(void)
 static
 int tc35876x_vid_power_on(struct mdfld_dsi_config *dsi_config)
 {
+	struct mdfld_dsi_pkg_sender *sender =
+		mdfld_dsi_get_pkg_sender(dsi_config);
+	int err = 0;
+
+	PSB_DEBUG_ENTRY("\n");
+
 	tc35876x_configure_lvds_bridge();
+
+	/*send TURN_ON packet*/
+	err = mdfld_dsi_send_dpi_spk_pkg_hs(sender,
+			MDFLD_DSI_DPI_SPK_TURN_ON);
+	if (err) {
+		DRM_ERROR("Faild to send turn on packet\n");
+		return err;
+	}
+
 	return 0;
 }
 
@@ -642,7 +672,6 @@ void tc35876x_toshiba_bridge_panel_off(void)
 	gpio_direction_output(GPIO_MIPI_LCD_VADD, 0);
 }
 
-
 static
 void tc35876x_suspend_lvds_bridge(void)
 {
@@ -656,12 +685,16 @@ void tc35876x_suspend_lvds_bridge(void)
 static
 int tc35876x_vid_power_off(struct mdfld_dsi_config *dsi_config)
 {
+	PSB_DEBUG_ENTRY("\n");
+
+	tc35876x_toshiba_bridge_panel_off();
+	tc35876x_suspend_lvds_bridge();
+
 	return 0;
 }
 
 static
-int tc35876x_vid_detect(struct mdfld_dsi_config *dsi_config,
-		int pipe)
+int tc35876x_vid_detect(struct mdfld_dsi_config *dsi_config, int pipe)
 {
 	int status;
 	struct drm_device *dev = dsi_config->dev;
@@ -686,6 +719,7 @@ int tc35876x_vid_detect(struct mdfld_dsi_config *dsi_config,
 		if ((device_ready_val & DSI_DEVICE_READY) &&
 		    (dpll_val & DPLL_VCO_ENABLE)) {
 			dsi_config->dsi_hw_context.panel_on = true;
+			psb_enable_vblank(dev, pipe);
 		} else {
 			dsi_config->dsi_hw_context.panel_on = false;
 			DRM_INFO("%s: panel is not detected!\n", __func__);
@@ -700,6 +734,19 @@ int tc35876x_vid_detect(struct mdfld_dsi_config *dsi_config,
 	}
 
 	return status;
+}
+
+static
+int mdfld_dsi_tc35876x_panel_reset(struct mdfld_dsi_config *dsi_config,
+		int reset_from)
+{
+	if (reset_from == RESET_FROM_BOOT_UP)
+		return 0;
+
+	tc35876x_set_bridge_reset_state(0);
+	tc35876x_toshiba_bridge_panel_on();
+
+	return 0;
 }
 
 static
@@ -718,6 +765,7 @@ struct drm_display_mode *tc35876x_vid_get_config_mode(struct drm_device *dev)
 	mode->hsync_start = mode->hdisplay + 80;
 	mode->hsync_end = mode->hsync_start + 40;
 	mode->htotal = mode->hsync_end + 40;
+
 	mode->vsync_start = mode->vdisplay + 14;
 	mode->vsync_end = mode->vsync_start + 10;
 	mode->vtotal = mode->vsync_end + 14;
@@ -744,16 +792,16 @@ struct drm_display_mode *tc35876x_vid_get_config_mode(struct drm_device *dev)
 
 static
 int tc35876x_vid_get_panel_info(struct drm_device *dev,
-		int pipe, struct panel_info *pi)
+		int pipe,
+		struct panel_info *pi)
 {
 	PSB_DEBUG_ENTRY("\n");
-	if (!dev || !pi)
-		return -EINVAL;
 
 	if (pipe == 0) {
 		pi->width_mm = TC35876X_PANEL_WIDTH;
 		pi->height_mm = TC35876X_PANEL_HEIGHT;
 	}
+
 	return 0;
 }
 
@@ -764,25 +812,6 @@ int tc35876x_vid_set_brightness(struct mdfld_dsi_config *dsi_config,
 	int panel_duty_val = 0;
 	int ret = 0;
 
-	ret |= intel_scu_ipc_iowrite8(0x62, 0x00);
-	ret |= intel_scu_ipc_iowrite8(0x61, 0xFA);
-	if (ret) {
-		printk(KERN_ERR "[DISPLAY] %s: ipc write fail\n", __func__);
-		return -EINVAL;
-	}
-
-#ifdef CONFIG_SUPPORT_HOST_PWM0
-	duty_val = level*BACKLIGHT_DUTY_FACTOR/MDFLD_DSI_BRIGHTNESS_MAX_LEVEL;
-
-	PSB_DEBUG_ENTRY("level is %d and duty = %x\n", level, duty_val);
-
-	ret = intel_scu_ipc_iowrite8(PWM0DUTYCYCLE, duty_val);
-
-	if (ret) {
-		DRM_ERROR("ipc write brightness fail\n");
-		return -EINVAL;
-	}
-#endif
 	/* When using 20KHz CABC pwm output, the backlight will be unstable if
 	 * the brightness level less than 15%, so set the minimum brightness
 	 * level to 15% as workround.
@@ -812,51 +841,35 @@ void tc35876x_vid_dsi_controller_init(struct mdfld_dsi_config *dsi_config,
 		int pipe)
 {
 	struct mdfld_dsi_hw_context *hw_ctx = &dsi_config->dsi_hw_context;
-	u32 val = 0;
 
 	PSB_DEBUG_ENTRY("\n");
 
-	dsi_config->lane_count = 3;
-	dsi_config->lane_config = MDFLD_DSI_DATA_LANE_3_1;
+	dsi_config->lane_count = 4;
+	dsi_config->bpp = 24;
+	dsi_config->lane_config = MDFLD_DSI_DATA_LANE_4_0;
+	dsi_config->video_mode = MDFLD_DSI_VIDEO_NON_BURST_MODE_SYNC_EVENTS;
+
+	/* This is for 400 mhz.  Set it to 0 for 800mhz */
+	hw_ctx->cck_div = 0;
+	hw_ctx->pll_bypass_mode = 0;
 
 	hw_ctx->mipi_control = 0x18;
 	hw_ctx->intr_en = 0xffffffff;
-	hw_ctx->hs_tx_timeout = 0x9f880;
+	hw_ctx->hs_tx_timeout = 0xdcf50;
 	hw_ctx->lp_rx_timeout = 0xffff;
 	hw_ctx->turn_around_timeout = 0x14;
 	hw_ctx->device_reset_timer = 0xffff;
-	hw_ctx->high_low_switch_count = 0x46;
+	hw_ctx->high_low_switch_count = 0x18;
 	hw_ctx->init_count = 0x7d0;
 	hw_ctx->eot_disable = 0x0;
-	hw_ctx->lp_byteclk = 0x4;
-	hw_ctx->clk_lane_switch_time_cnt = 0xa0014;
-	hw_ctx->dphy_param = 0x150c3408;
-
-	/*setup video mode format*/
-	val = 0;
-	val = dsi_config->video_mode | DSI_DPI_COMPLETE_LAST_LINE;
-	hw_ctx->video_mode_format = val;
+	hw_ctx->lp_byteclk = 0x3;
+	hw_ctx->clk_lane_switch_time_cnt = 0x18000b;
+	hw_ctx->video_mode_format = 0x6;
+	hw_ctx->dphy_param = 0x160d3610;
 
 	/*set up func_prg*/
-	val = 0;
-	val |= dsi_config->lane_count;
-	val |= dsi_config->channel_num << DSI_DPI_VIRT_CHANNEL_OFFSET;
-
-	switch (dsi_config->bpp) {
-	case 16:
-		val |= DSI_DPI_COLOR_FORMAT_RGB565;
-		break;
-	case 18:
-		val |= DSI_DPI_COLOR_FORMAT_RGB666;
-		break;
-	case 24:
-		val |= DSI_DPI_COLOR_FORMAT_RGB888;
-		break;
-	default:
-		DRM_ERROR("unsupported color format, bpp = %d\n",
-			dsi_config->bpp);
-	}
-	hw_ctx->dsi_func_prg = val;
+	hw_ctx->dsi_func_prg = (0x200 | dsi_config->lane_count);
+	hw_ctx->mipi = dsi_config->lane_config;
 }
 
 void tc35876x_vid_init(struct drm_device *dev, struct panel_funcs *p_funcs)
@@ -869,6 +882,7 @@ void tc35876x_vid_init(struct drm_device *dev, struct panel_funcs *p_funcs)
 	p_funcs->get_panel_info = tc35876x_vid_get_panel_info;
 	p_funcs->dsi_controller_init = tc35876x_vid_dsi_controller_init;
 	p_funcs->detect = tc35876x_vid_detect;
+	p_funcs->reset = mdfld_dsi_tc35876x_panel_reset;
 	p_funcs->power_on = tc35876x_vid_power_on;
 	p_funcs->power_off = tc35876x_vid_power_off;
 	p_funcs->set_brightness = tc35876x_vid_set_brightness;
@@ -890,32 +904,5 @@ void tc35876x_vid_init(struct drm_device *dev, struct panel_funcs *p_funcs)
 		DRM_ERROR("add bridge I2C driver faild\n");
 		return;
 	}
-#ifdef CONFIG_SUPPORT_HOST_PWM0
-		/* Init the PWM0 of host, if the backlight brightness
-		 * is controlled by internel pwm of the panel, ignore
-		 * this operation */
-		ret = intel_scu_ipc_ioread8(GPIOPWMCTRL, &pwmctrl);
-	if (ret || pwmctrl != 0x01) {
-		if (ret)
-			pr_err("%s: GPIOPWMCTRL read failed\n", __func__);
-		else
-			PSB_DEBUG_ENTRY("GPIOPWMCTRL was not set to system"\
-					"clock (pwmctrl = 0x%02x)\n", pwmctrl);
-
-		ret = intel_scu_ipc_iowrite8(GPIOPWMCTRL, 0x01);
-		if (ret)
-			pr_err("%s: GPIOPWMCTRL set failed\n", __func__);
-	}
-
-	ret = intel_scu_ipc_iowrite8(PWM0CLKDIV1, 0x00);
-	if (!ret)
-		ret = intel_scu_ipc_iowrite8(PWM0CLKDIV0, 0x25);
-
-	if (ret)
-		pr_err("%s: PWM0CLKDIV set failed\n", __func__);
-	else
-		PSB_DEBUG_ENTRY("PWM0CLKDIV set to 0x%04x\n", 0x25);
-#endif
-
 }
 

@@ -187,8 +187,6 @@ int mdfld_dsi_dsr_update_panel_fb(struct mdfld_dsi_config *dsi_config)
 	struct mdfld_dsi_pkg_sender *sender;
 	int err = 0;
 
-	PSB_DEBUG_ENTRY("\n");
-
 	if (!dsi_config) {
 		DRM_ERROR("Invalid parameter\n");
 		return -EINVAL;
@@ -199,6 +197,8 @@ int mdfld_dsi_dsr_update_panel_fb(struct mdfld_dsi_config *dsi_config)
 	/*if no dsr attached, return 0*/
 	if (!dsr)
 		return 0;
+
+	PSB_DEBUG_ENTRY("\n");
 
 	/*ignore it if there are pending fb updates*/
 	if (dsr->pending_fb_updates)
@@ -307,8 +307,6 @@ int mdfld_dsi_dsr_forbid_locked(struct mdfld_dsi_config *dsi_config)
 	struct mdfld_dsi_dsr *dsr;
 	int err = 0;
 
-	PSB_DEBUG_ENTRY("\n");
-
 	if (!dsi_config) {
 		DRM_ERROR("Invalid parameter\n");
 		return -EINVAL;
@@ -323,6 +321,8 @@ int mdfld_dsi_dsr_forbid_locked(struct mdfld_dsi_config *dsi_config)
 	/*exit dsr if necessary*/
 	if (!dsr->dsr_enabled)
 		goto forbid_out;
+
+	PSB_DEBUG_ENTRY("\n");
 
 	/*if reference count is not 0, it means dsr was forbidden*/
 	if (dsr->ref_count) {
@@ -364,8 +364,6 @@ int mdfld_dsi_dsr_allow_locked(struct mdfld_dsi_config *dsi_config)
 {
 	struct mdfld_dsi_dsr *dsr;
 
-	PSB_DEBUG_ENTRY("\n");
-
 	if (!dsi_config) {
 		DRM_ERROR("Invalid parameter\n");
 		return -EINVAL;
@@ -383,6 +381,8 @@ int mdfld_dsi_dsr_allow_locked(struct mdfld_dsi_config *dsi_config)
 
 	if (!dsr->ref_count)
 		goto allow_out;
+
+	PSB_DEBUG_ENTRY("\n");
 
 	dsr->ref_count--;
 allow_out:

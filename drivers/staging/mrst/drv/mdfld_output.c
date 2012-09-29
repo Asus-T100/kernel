@@ -38,9 +38,9 @@
 #include "displays/gi_sony_vid.h"
 #include "displays/gi_sony_cmd.h"
 #include "displays/h8c7_cmd.h"
+#include "displays/tc35876x_vid.h"
 #include "displays/hdmi.h"
 #include "psb_drv.h"
-#include "tc35876x_vid.h"
 
 enum panel_type get_panel_type(struct drm_device *dev, int pipe)
 {
@@ -60,8 +60,8 @@ int is_panel_vid_or_cmd(struct drm_device *dev)
 	case AUO_SC1_VID:
 	case GI_SONY_VID:
 	case TMD_6X10_VID:
+	case TC35876X_VID:
 	case H8C7_VID:
-	case TC_35876X_VID:
 		ret =  MDFLD_DSI_ENCODER_DPI;
 		break;
 	case AUO_SC1_CMD:
@@ -140,14 +140,14 @@ void init_panel(struct drm_device* dev, int mipi_pipe, enum panel_type p_type)
 					NULL,
 					p_vid_funcs);
 		break;
-	case TC_35876X_VID:
+	case TC35876X_VID:
 		kfree(p_cmd_funcs);
 		p_cmd_funcs = NULL;
 		tc35876x_vid_init(dev, p_vid_funcs);
 		ret = mdfld_dsi_output_init(dev, mipi_pipe,
-					NULL,
-					NULL,
-					p_vid_funcs);
+				NULL,
+				NULL,
+				p_vid_funcs);
 		break;
 #ifdef CONFIG_MDFD_HDMI
 	case HDMI:
