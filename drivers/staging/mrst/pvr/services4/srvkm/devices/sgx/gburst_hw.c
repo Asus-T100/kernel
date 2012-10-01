@@ -75,7 +75,7 @@
  */
 
 #if (!defined GBURST_UPDATE_GPU_TIMING)
-#define GBURST_UPDATE_GPU_TIMING 0
+#define GBURST_UPDATE_GPU_TIMING 1
 #endif
 
 
