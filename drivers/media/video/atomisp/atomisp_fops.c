@@ -549,6 +549,16 @@ static int atomisp_release(struct file *file)
 		pipe->out_fmt = NULL;
 	}
 
+	if (pipe->main_info.frame_info) {
+		kfree(pipe->main_info.frame_info);
+		pipe->main_info.frame_info = NULL;
+	}
+
+	if (pipe->vf_info.frame_info) {
+		kfree(pipe->vf_info.frame_info);
+		pipe->vf_info.frame_info = NULL;
+	}
+
 	if (isp->vf_format) {
 		kfree(isp->vf_format);
 		isp->vf_format = NULL;
