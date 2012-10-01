@@ -6647,9 +6647,15 @@ sh_css_input_set_compression(const mipi_predictor_t comp,
 enum sh_css_err
 sh_css_load_extension(struct sh_css_fw_info *fw)
 {
+	int r;
+
 	sh_css_dtrace(SH_DBG_TRACE, "%s()\n", __FUNCTION__);
-	sh_css_pipe_load_extension(&my_css.preview_pipe, fw);
-	sh_css_pipe_load_extension(&my_css.video_pipe, fw);
+	r = sh_css_pipe_load_extension(&my_css.preview_pipe, fw);
+	if (r != sh_css_success)
+		return r;
+	r = sh_css_pipe_load_extension(&my_css.video_pipe, fw);
+	if (r != sh_css_success)
+		return r;
 	return sh_css_pipe_load_extension(&my_css.capture_pipe, fw);
 }
 
