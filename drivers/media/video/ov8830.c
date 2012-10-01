@@ -841,7 +841,7 @@ static int ov8830_grouphold_start(struct v4l2_subdev *sd)
 				group | OV8830_GROUP_ACCESS_HOLD_START);
 }
 
-/* End group hold and quick launch it */
+/* End group hold and delay launch it */
 static int ov8830_grouphold_launch(struct v4l2_subdev *sd)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
@@ -930,23 +930,82 @@ static int ov8830_g_priv_int_data(struct v4l2_subdev *sd,
 	return r;
 }
 
+static int __ov8830_check_and_update_vts(struct v4l2_subdev *sd, int exposure)
+{
+	struct i2c_client *client = v4l2_get_subdevdata(sd);
+	struct ov8830_device *dev = to_ov8830_sensor(sd);
+	int ret;
+	u16 vts;
+
+	if (exposure > ov8830_res[dev->fmt_idx].lines_per_frame
+			- OV8830_INTEGRATION_TIME_MARGIN) {
+		/* Increase the VTS to match exposure + 14 */
+		vts = (u16) exposure + OV8830_INTEGRATION_TIME_MARGIN;
+	} else if (ov8830_res[dev->fmt_idx].lines_per_frame
+			!= dev->lines_per_frame) {
+		/*
+		 * Restore the VTS so that frame rate do not exceed than
+		 * what we claim
+		 */
+		vts = ov8830_res[dev->fmt_idx].lines_per_frame;
+	} else {
+		/* No change in VTS. Return. */
+		return 0;
+	}
+
+	ret = ov8830_write_reg(client, OV8830_16BIT, OV8830_TIMING_VTS, vts);
+	if (ret)
+		return ret;
+
+	/* Update the device's lines per frame to new VTS */
+	dev->lines_per_frame = vts;
+
+	return ret;
+}
+
 static int __ov8830_set_exposure(struct v4l2_subdev *sd, int exposure, int gain)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	struct ov8830_device *dev = to_ov8830_sensor(sd);
 	int exp_val, ret;
 
-	/* OV sensor driver has a limitation that the exposure
-	 * should not exceed beyond VTS-14
+	/*
+	 * Validate exposure: must not exceed the max supported or less than 0.
+	 * Exposure registers can hold 20bit value. Also xposure cannot
+	 * exceed VTS-14. VTS can support only 16bit value. So that makes the
+	 * maximum exposure that can support to Max(VTS)-14
 	 */
-	 if (exposure > dev->lines_per_frame - 14)
-		exposure = dev->lines_per_frame - 14;
+	exposure = clamp_t(int, exposure, 0, OV8830_MAX_EXPOSURE_VALUE);
 
-	ret = ov8830_grouphold_start(sd);
-	if (ret)
+	/* Validate gain: must not exceed maximum 8bit value or less than 0 */
+	gain = clamp_t(int, gain, 0, OV8830_MAX_GAIN_VALUE);
+
+	/* Group hold is valid only if sensor is streaming. */
+	if (dev->streaming) {
+		ret = ov8830_grouphold_start(sd);
+		if (ret)
+			goto out;
+	}
+
+	/*
+	 * The sensor mode has a default HTS and VTS value based on the maximum
+	 * FPS that we support fot that particular mode.
+	 *
+	 * Exposure must be less than VTS -14. So if the exposure is more than
+	 * the default value, we need to increase the VTS to accomodate the
+	 * set exposure. And once the VTS is increased, if it goes beyond the
+	 * default value we need to limit the VTS back to the default value
+	 * so that we dont exceed the max supported FPS for that mode.
+	 *
+	 * VTS will be adjusted as per the above rules in this function
+	 */
+	ret = __ov8830_check_and_update_vts(sd, exposure);
+	if (ret) {
+		v4l2_err(sd, "Could not set the appropriate VTS.\n");
 		goto out;
+	}
 
-	/* set exposure time */
+	/* For OV8835, the low 4 bits are fraction bits and must be kept 0 */
 	exp_val = exposure << 4;
 	ret = ov8830_write_reg(client, OV8830_8BIT,
 			       OV8830_LONG_EXPO+2, exp_val & 0xFF);
@@ -964,14 +1023,16 @@ static int __ov8830_set_exposure(struct v4l2_subdev *sd, int exposure, int gain)
 		goto out;
 
 	/* set global gain */
-	ret = ov8830_write_reg(client, OV8830_8BIT,
-			       OV8830_AGC_ADJ, gain);
+	ret = ov8830_write_reg(client, OV8830_8BIT, OV8830_AGC_ADJ, gain);
 	if (ret)
 		goto out;
 
-	ret = ov8830_grouphold_launch(sd);
-	if (ret)
-		goto out;
+	/* Group hold launch - delayed launch */
+	if (dev->streaming) {
+		ret = ov8830_grouphold_launch(sd);
+		if (ret)
+			goto out;
+	}
 
 	dev->gain     = gain;
 	dev->exposure = exposure;
@@ -1694,12 +1755,12 @@ static int ov8830_s_mbus_fmt(struct v4l2_subdev *sd,
 		return -EINVAL;
 	}
 
-	/* restore exposure, gain settings */
-	if (dev->exposure) {
-		ret = __ov8830_set_exposure(sd, dev->exposure, dev->gain);
-		if (ret)
-			v4l2_warn(sd, "failed to set exposure time\n");
-	}
+	/*
+	 * We do not reset the register settings on mode change. So that means
+	 * the exposure register had old values. So adjust the VTS accordingly.
+	 */
+	if (dev->exposure)
+		__ov8830_check_and_update_vts(sd, dev->exposure);
 
 	mutex_unlock(&dev->input_lock);
 
@@ -1779,9 +1840,6 @@ static int ov8830_s_stream(struct v4l2_subdev *sd, int enable)
 
 	dev->streaming = enable;
 
-	/* restore settings */
-	ov8830_res = ov8830_res_preview;
-	N_RES = N_RES_PREVIEW;
 	mutex_unlock(&dev->input_lock);
 
 	return 0;

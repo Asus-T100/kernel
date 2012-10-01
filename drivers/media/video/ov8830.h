@@ -85,7 +85,7 @@ struct drv201_device {
 #define OV8830_PLL_PLL11			0x3091
 #define OV8830_PLL_PLL12			0x3092
 #define OV8830_PLL_PLL13			0x3093
-#define	OV8830_TIMING_VTS			0x380E
+#define OV8830_TIMING_VTS			0x380e
 #define OV8830_TIMING_HTS			0x380C
 
 #define OV8830_SC_CMMN_CHIP_ID_H		0x0000
@@ -122,6 +122,9 @@ struct drv201_device {
 #define OV8830_READ_MODE_BINNING_ON	0x0400
 #define OV8830_READ_MODE_BINNING_OFF	0x00
 #define OV8830_INTEGRATION_TIME_MARGIN	14
+
+#define OV8830_MAX_EXPOSURE_VALUE	0xFFF1
+#define OV8830_MAX_GAIN_VALUE		0xFF
 
 /*
  * focal length bits definition:
