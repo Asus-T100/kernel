@@ -48,6 +48,10 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "sgxutils.h"
 #include "pdump_km.h"
 
+#if (defined CONFIG_GPU_BURST) || (defined CONFIG_GPU_BURST_MODULE)
+#include <gburst_interface.h>
+#endif
+
 
 #if defined(SUPPORT_HW_RECOVERY)
 static PVRSRV_ERROR SGXAddTimer(PVRSRV_DEVICE_NODE		*psDeviceNode,
@@ -306,6 +310,10 @@ PVRSRV_ERROR SGXPrePowerState (IMG_HANDLE				hDevHandle,
 		IMG_UINT32			ui32Core;
 		IMG_UINT32			ui32CoresEnabled;
 
+#if (defined CONFIG_GPU_BURST) || (defined CONFIG_GPU_BURST_MODULE)
+		gburst_interface_power_state_set(0);
+#endif /* if (defined CONFIG_GPU_BURST) || (defined CONFIG_GPU_BURST_MODULE) */
+
 		#if defined(SUPPORT_HW_RECOVERY)
 		/* Disable timer callback for HW recovery */
 		eError = OSDisableTimer(psDevInfo->hTimer);
@@ -491,6 +499,10 @@ PVRSRV_ERROR SGXPostPowerState (IMG_HANDLE				hDevHandle,
 		}
 
 		SGXStartTimer(psDevInfo);
+
+#if (defined CONFIG_GPU_BURST) || (defined CONFIG_GPU_BURST_MODULE)
+		gburst_interface_power_state_set(1);
+#endif /* if (defined CONFIG_GPU_BURST) || (defined CONFIG_GPU_BURST_MODULE) */
 	}
 
 	return PVRSRV_OK;
@@ -540,6 +552,17 @@ PVRSRV_ERROR SGXPreClockSpeedChange (IMG_HANDLE				hDevHandle,
 				PDUMPRESUME();
 				return eError;
 			}
+		} else {
+			#if defined(SUPPORT_HW_RECOVERY)
+			PVRSRV_ERROR	eError;
+
+			eError = OSDisableTimer(psDevInfo->hTimer);
+			if (eError != PVRSRV_OK) {
+				PVR_DPF((PVR_DBG_ERROR,
+				"OSDisableTimer : "
+				"Failed to disable host timer"));
+			}
+			#endif /* SUPPORT_HW_RECOVERY */
 		}
 	}
 
