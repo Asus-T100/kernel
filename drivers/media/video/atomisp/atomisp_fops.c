@@ -198,9 +198,14 @@ static int atomisp_stop_streaming(struct vb2_queue *vq)
 	/*stream off sensor, power off is called in senor driver*/
 	if (!pipe->is_main)
 		return 0;
-	if (!isp->sw_contex.file_input)
+	if (!isp->sw_contex.file_input) {
+#ifndef CONFIG_X86_MRFLD
+		sh_css_enable_interrupt(SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF,
+					false);
+#endif /* CONFIG_X86_MRFLD */
 		ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
 				       video, s_stream, 0);
+	}
 
 	isp->sw_contex.sensor_streaming = false;
 	isp->isp3a_stat_ready = false;

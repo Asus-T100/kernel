@@ -33,6 +33,7 @@
 #include "hrt/bits.h"
 #include "linux/intel_mid_pm.h"
 #include <linux/kernel.h>
+#include <media/v4l2-event.h>
 #include <asm/intel-mid.h>
 
 /* We should never need to run the flash for more than 2 frames.
@@ -250,6 +251,18 @@ static void print_csi_rx_errors(void)
 		v4l2_err(&atomisp_dev, "  line sync error");
 }
 
+#ifndef CONFIG_X86_MRFLD
+static void atomisp_sof_event(struct atomisp_device *isp)
+{
+	struct v4l2_event event;
+
+	memset(&event, 0, sizeof(event));
+	event.type = V4L2_EVENT_FRAME_SYNC;
+
+	v4l2_event_queue(isp->isp_subdev.subdev.devnode, &event);
+}
+#endif /* CONFIG_X86_MRFLD */
+
 /* interrupt handling function*/
 irqreturn_t atomisp_isr(int irq, void *dev)
 {
@@ -290,6 +303,11 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 		spin_unlock_irqrestore(&isp->irq_lock, irqflags);
 		return IRQ_NONE;
 	}
+
+#ifndef CONFIG_X86_MRFLD
+	if (irq_infos & SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF)
+		atomisp_sof_event(isp);
+#endif /* CONFIG_X86_MRFLD */
 
 	if (irq_infos & SH_CSS_IRQ_INFO_FRAME_DONE ||
 	    irq_infos & SH_CSS_IRQ_INFO_START_NEXT_STAGE) {
@@ -624,6 +642,11 @@ static int atomisp_streamon_input(struct atomisp_device *isp)
 	}
 
 	if (isp->sw_contex.sensor_streaming == false) {
+#ifndef CONFIG_X86_MRFLD
+		sh_css_enable_interrupt(SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF,
+					true);
+#endif /* CONFIG_X86_MRFLD */
+
 		set_term_en_count(isp);
 		/*
 		 * stream on the sensor, power on is called before
@@ -642,6 +665,12 @@ static int atomisp_streamon_input(struct atomisp_device *isp)
 static void atomisp_pipe_reset(struct atomisp_device *isp)
 {
 	v4l2_warn(&atomisp_dev, "ISP timeout. Recovering\n");
+
+#ifndef CONFIG_X86_MRFLD
+	if (!isp->sw_contex.file_input)
+		sh_css_enable_interrupt(SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF,
+					false);
+#endif /* CONFIG_X86_MRFLD */
 
 	/* clear irq */
 	enable_isp_irq(hrt_isp_css_irq_sp, false);
