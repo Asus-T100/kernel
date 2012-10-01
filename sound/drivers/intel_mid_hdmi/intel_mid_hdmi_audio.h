@@ -147,6 +147,108 @@ enum hdmi_ctrl_reg {
 	AUD_HDMIW_INFOFR	= 0x69114,
 };
 
+/*
+ * CEA speaker placement:
+ *
+ *  FL  FLC   FC   FRC   FR
+ *
+ *                         LFE
+ *
+ *  RL  RLC   RC   RRC   RR
+ *
+ * The Left/Right Surround channel _notions_ LS/RS in SMPTE 320M corresponds to
+ * CEA RL/RR; The SMPTE channel _assignment_ C/LFE is swapped to CEA LFE/FC.
+ */
+enum cea_speaker_placement {
+	FL  = (1 <<  0),        /* Front Left           */
+	FC  = (1 <<  1),        /* Front Center         */
+	FR  = (1 <<  2),        /* Front Right          */
+	FLC = (1 <<  3),        /* Front Left Center    */
+	FRC = (1 <<  4),        /* Front Right Center   */
+	RL  = (1 <<  5),        /* Rear Left            */
+	RC  = (1 <<  6),        /* Rear Center          */
+	RR  = (1 <<  7),        /* Rear Right           */
+	RLC = (1 <<  8),        /* Rear Left Center     */
+	RRC = (1 <<  9),        /* Rear Right Center    */
+	LFE = (1 << 10),        /* Low Frequency Effect */
+};
+
+/*
+ * ELD SA bits in the CEA Speaker Allocation data block
+*/
+static int eld_speaker_allocation_bits[] = {
+	[0] = FL | FR,
+	[1] = LFE,
+	[2] = FC,
+	[3] = RL | RR,
+	[4] = RC,
+	[5] = FLC | FRC,
+	[6] = RLC | RRC,
+	/* the following are not defined in ELD yet */
+	[7] = 0,
+};
+
+struct cea_channel_speaker_allocation {
+	int ca_index;
+	int speakers[8];
+
+	/* derived values, just for convenience */
+	int channels;
+	int spk_mask;
+};
+
+/*
+ * This is an ordered list!
+ *
+ * The preceding ones have better chances to be selected by
+ * hdmi_channel_allocation().
+ */
+static struct cea_channel_speaker_allocation channel_allocations[] = {
+/*                        channel:   7     6    5    4    3     2    1    0  */
+{ .ca_index = 0x00,  .speakers = {   0,    0,   0,   0,   0,    0,  FR,  FL } },
+				/* 2.1 */
+{ .ca_index = 0x01,  .speakers = {   0,    0,   0,   0,   0,  LFE,  FR,  FL } },
+				/* Dolby Surround */
+{ .ca_index = 0x02,  .speakers = {   0,    0,   0,   0,  FC,    0,  FR,  FL } },
+				/* surround40 */
+{ .ca_index = 0x08,  .speakers = {   0,    0,  RR,  RL,   0,    0,  FR,  FL } },
+				/* surround41 */
+{ .ca_index = 0x09,  .speakers = {   0,    0,  RR,  RL,   0,  LFE,  FR,  FL } },
+				/* surround50 */
+{ .ca_index = 0x0a,  .speakers = {   0,    0,  RR,  RL,  FC,    0,  FR,  FL } },
+				/* surround51 */
+{ .ca_index = 0x0b,  .speakers = {   0,    0,  RR,  RL,  FC,  LFE,  FR,  FL } },
+				/* 6.1 */
+{ .ca_index = 0x0f,  .speakers = {   0,   RC,  RR,  RL,  FC,  LFE,  FR,  FL } },
+				/* surround71 */
+{ .ca_index = 0x13,  .speakers = { RRC,  RLC,  RR,  RL,  FC,  LFE,  FR,  FL } },
+
+{ .ca_index = 0x03,  .speakers = {   0,    0,   0,   0,  FC,  LFE,  FR,  FL } },
+{ .ca_index = 0x04,  .speakers = {   0,    0,   0,  RC,   0,    0,  FR,  FL } },
+{ .ca_index = 0x05,  .speakers = {   0,    0,   0,  RC,   0,  LFE,  FR,  FL } },
+{ .ca_index = 0x06,  .speakers = {   0,    0,   0,  RC,  FC,    0,  FR,  FL } },
+{ .ca_index = 0x07,  .speakers = {   0,    0,   0,  RC,  FC,  LFE,  FR,  FL } },
+{ .ca_index = 0x0c,  .speakers = {   0,   RC,  RR,  RL,   0,    0,  FR,  FL } },
+{ .ca_index = 0x0d,  .speakers = {   0,   RC,  RR,  RL,   0,  LFE,  FR,  FL } },
+{ .ca_index = 0x0e,  .speakers = {   0,   RC,  RR,  RL,  FC,    0,  FR,  FL } },
+{ .ca_index = 0x10,  .speakers = { RRC,  RLC,  RR,  RL,   0,    0,  FR,  FL } },
+{ .ca_index = 0x11,  .speakers = { RRC,  RLC,  RR,  RL,   0,  LFE,  FR,  FL } },
+{ .ca_index = 0x12,  .speakers = { RRC,  RLC,  RR,  RL,  FC,    0,  FR,  FL } },
+{ .ca_index = 0x14,  .speakers = { FRC,  FLC,   0,   0,   0,    0,  FR,  FL } },
+{ .ca_index = 0x15,  .speakers = { FRC,  FLC,   0,   0,   0,  LFE,  FR,  FL } },
+{ .ca_index = 0x16,  .speakers = { FRC,  FLC,   0,   0,  FC,    0,  FR,  FL } },
+{ .ca_index = 0x17,  .speakers = { FRC,  FLC,   0,   0,  FC,  LFE,  FR,  FL } },
+{ .ca_index = 0x18,  .speakers = { FRC,  FLC,   0,  RC,   0,    0,  FR,  FL } },
+{ .ca_index = 0x19,  .speakers = { FRC,  FLC,   0,  RC,   0,  LFE,  FR,  FL } },
+{ .ca_index = 0x1a,  .speakers = { FRC,  FLC,   0,  RC,  FC,    0,  FR,  FL } },
+{ .ca_index = 0x1b,  .speakers = { FRC,  FLC,   0,  RC,  FC,  LFE,  FR,  FL } },
+{ .ca_index = 0x1c,  .speakers = { FRC,  FLC,  RR,  RL,   0,    0,  FR,  FL } },
+{ .ca_index = 0x1d,  .speakers = { FRC,  FLC,  RR,  RL,   0,  LFE,  FR,  FL } },
+{ .ca_index = 0x1e,  .speakers = { FRC,  FLC,  RR,  RL,  FC,    0,  FR,  FL } },
+{ .ca_index = 0x1f,  .speakers = { FRC,  FLC,  RR,  RL,  FC,  LFE,  FR,  FL } },
+};
+
+
 /**
  * union aud_cfg - Audio configuration offset - 69000
  *

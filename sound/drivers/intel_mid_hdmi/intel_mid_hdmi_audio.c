@@ -79,6 +79,7 @@ MODULE_VERSION(HAD_DRIVER_VERSION);
 #define VALID_DIP_WORDS		3
 #define LAYOUT0			0
 #define LAYOUT1			1
+#define SWAP_LFE_CENTER		0x00fac4c8
 
 /* hardware capability structure */
 static const struct snd_pcm_hardware snd_intel_hadstream = {
@@ -302,6 +303,74 @@ int snd_intelhad_init_audio_ctrl(struct snd_pcm_substream *substream,
 	return 0;
 }
 
+/*
+ * Compute derived values in channel_allocations[].
+ */
+static void init_channel_allocations(void)
+{
+	int i, j;
+	struct cea_channel_speaker_allocation *p;
+
+	for (i = 0; i < ARRAY_SIZE(channel_allocations); i++) {
+		p = channel_allocations + i;
+		p->channels = 0;
+		p->spk_mask = 0;
+		for (j = 0; j < ARRAY_SIZE(p->speakers); j++)
+			if (p->speakers[j]) {
+				p->channels++;
+				p->spk_mask |= p->speakers[j];
+			}
+	}
+}
+
+/*
+ * The transformation takes two steps:
+ *
+ *      eld->spk_alloc => (eld_speaker_allocation_bits[]) => spk_mask
+ *            spk_mask => (channel_allocations[])         => ai->CA
+ *
+ * TODO: it could select the wrong CA from multiple candidates.
+*/
+static int snd_intelhad_channel_allocation(struct snd_intelhad *intelhaddata,
+					int channels)
+{
+	int i;
+	int ca = 0;
+	int spk_mask = 0;
+
+	init_channel_allocations();
+	/*
+	* CA defaults to 0 for basic stereo audio
+	*/
+	if (channels <= 2)
+		return 0;
+
+	/*
+	* expand ELD's speaker allocation mask
+	*
+	* ELD tells the speaker mask in a compact(paired) form,
+	* expand ELD's notions to match the ones used by Audio InfoFrame.
+	*/
+	for (i = 0; i < ARRAY_SIZE(eld_speaker_allocation_bits); i++) {
+		if (intelhaddata->eeld.speaker_allocation_block & (1 << i))
+				spk_mask |= eld_speaker_allocation_bits[i];
+	}
+
+	/* search for the first working match in the CA table */
+	for (i = 0; i < ARRAY_SIZE(channel_allocations); i++) {
+		if (channels == channel_allocations[i].channels &&
+		(spk_mask & channel_allocations[i].spk_mask) ==
+				channel_allocations[i].spk_mask) {
+			ca = channel_allocations[i].ca_index;
+			break;
+		}
+	}
+
+	pr_debug("HDMI: select CA 0x%x for %d\n", ca, channels);
+
+	return ca;
+}
+
 /**
  * snd_intelhad_prog_dip - to initialize Data Island Packets registers
  *
@@ -319,13 +388,15 @@ static void snd_intelhad_prog_dip(struct snd_pcm_substream *substream,
 	union aud_info_frame2 frame2 = {.fr2_val = 0};
 	union aud_info_frame3 frame3 = {.fr3_val = 0};
 	u8 checksum = 0;
+	int channels;
+	channels = substream->runtime->channels;
 
 	had_write_register(AUD_CNTL_ST, ctrl_state.ctrl_val);
 
 	frame2.fr2_regx.chnl_cnt = substream->runtime->channels - 1;
 
-	/*TODO: Read from intelhaddata->eeld.speaker_allocation_block;*/
-	frame3.fr3_regx.chnl_alloc = CHANNEL_ALLOCATION;
+	frame3.fr3_regx.chnl_alloc = snd_intelhad_channel_allocation(
+					intelhaddata, channels);
 
 	/*Calculte the byte wide checksum for all valid DIP words*/
 	for (i = 0; i < BYTES_PER_WORD; i++)
@@ -871,6 +942,11 @@ static int snd_intelhad_pcm_prepare(struct snd_pcm_substream *substream)
 	/* Prog buffer address */
 	retval = snd_intelhad_prog_buffer(intelhaddata,
 			HAD_BUF_TYPE_A, HAD_BUF_TYPE_D);
+
+	/* Program channel mapping in following order:
+	   FL, FR, C, LFE, RL, RR */
+
+	had_write_register(AUD_BUF_CH_SWAP, SWAP_LFE_CENTER);
 
 prep_end:
 	return retval;
