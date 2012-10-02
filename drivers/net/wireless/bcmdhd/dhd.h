@@ -24,7 +24,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: dhd.h 347624 2012-07-27 10:49:56Z $
+ * $Id: dhd.h 356711 2012-09-13 15:58:32Z $
  */
 
 /****************
@@ -71,16 +71,20 @@ enum dhd_bus_state {
 	DHD_BUS_DATA		/* Ready for frame transfers */
 };
 
-
+enum dhd_op_flags {
 /* Firmware requested operation mode */
-#define STA_MASK			0x0001
-#define HOSTAPD_MASK		0x0002
-#define WFD_MASK			0x0004
-#define SOFTAP_FW_MASK	0x0008
-#define	CONCURRENT_FW_MASK	(STA_MASK | WFD_MASK)
-#define P2P_GO_ENABLED		0x0010
-#define P2P_GC_ENABLED		0x0020
-#define CONCURENT_MASK		0x00F0
+	DHD_FLAG_STA_MODE				= BIT(0), /* STA only */
+	DHD_FLAG_HOSTAP_MODE				= BIT(1), /* SOFTAP only */
+	DHD_FLAG_P2P_MODE				= BIT(2), /* P2P Only */
+	/* STA + P2P */
+	DHD_FLAG_CONCURR_SINGLE_CHAN_MODE = (DHD_FLAG_STA_MODE | DHD_FLAG_P2P_MODE),
+	DHD_FLAG_CONCURR_MULTI_CHAN_MODE		= BIT(4), /* STA + P2P */
+	/* Current P2P mode for P2P connection */
+	DHD_FLAG_P2P_GC_MODE				= BIT(5),
+	DHD_FLAG_P2P_GO_MODE				= BIT(6),
+	DHD_FLAG_MBSS_MODE				= BIT(7) /* MBSS in future */
+};
+
 #define MANUFACTRING_FW 	"WLTEST"
 
 /* max sequential rxcntl timeouts to set HANG event */
@@ -88,8 +92,9 @@ enum dhd_bus_state {
 #define MAX_CNTL_TIMEOUT  2
 #endif
 
-#define DHD_SCAN_ACTIVE_TIME	 40 /* ms : Embedded default Active setting from DHD Driver */
-#define DHD_SCAN_PASSIVE_TIME	130 /* ms: Embedded default Passive setting from DHD Driver */
+#define DHD_SCAN_ASSOC_ACTIVE_TIME	40 /* ms: Embedded default Active setting from DHD */
+#define DHD_SCAN_UNASSOC_ACTIVE_TIME	40 /* ms: Embedded def. Unassoc Active setting from DHD */
+#define DHD_SCAN_PASSIVE_TIME		130 /* ms: Embedded default Passive setting from DHD */
 
 #ifndef POWERUP_MAX_RETRY
 #define POWERUP_MAX_RETRY	3 /* how many times we retry to power up the chip */
@@ -482,13 +487,14 @@ extern int dhd_dev_get_pno_status(struct net_device *dev);
 #define DHD_MULTICAST4_FILTER_NUM	2
 #define DHD_MULTICAST6_FILTER_NUM	3
 #define DHD_MDNS_FILTER_NUM		4
-extern int dhd_os_set_packet_filter(dhd_pub_t *dhdp, int val);
-extern int net_os_set_packet_filter(struct net_device *dev, int val);
+extern int dhd_os_enable_packet_filter(dhd_pub_t *dhdp, int val);
+extern void dhd_enable_packet_filter(int value, dhd_pub_t *dhd);
+extern int net_os_enable_packet_filter(struct net_device *dev, int val);
 extern int net_os_rxfilter_add_remove(struct net_device *dev, int val, int num);
 #endif /* PKT_FILTER_SUPPORT */
 
 extern int dhd_get_dtim_skip(dhd_pub_t *dhd);
-extern bool dhd_check_ap_wfd_mode_set(dhd_pub_t *dhd);
+extern bool dhd_support_sta_mode(dhd_pub_t *dhd);
 
 #ifdef DHD_DEBUG
 extern int write_to_file(dhd_pub_t *dhd, uint8 *buf, int size);
@@ -559,7 +565,7 @@ extern int dhd_keep_alive_onoff(dhd_pub_t *dhd);
 extern void dhd_arp_offload_set(dhd_pub_t * dhd, int arp_mode);
 extern void dhd_arp_offload_enable(dhd_pub_t * dhd, int arp_enable);
 #endif /* ARP_OFFLOAD_SUPPORT */
-
+extern bool dhd_is_concurrent_mode(dhd_pub_t *dhd);
 
 typedef enum cust_gpio_modes {
 	WLAN_RESET_ON,
@@ -639,6 +645,21 @@ extern uint dhd_force_tx_queueing;
 #define CUSTOM_GLOM_SETTING 	DEFAULT_GLOM_VALUE
 #endif
 
+/* hooks for custom Roaming Trigger  setting via Makefile */
+#define DEFAULT_ROAM_TRIGGER_VALUE -75 /* dBm default roam trigger all band */
+#define DEFAULT_ROAM_TRIGGER_SETTING 	-1
+#ifndef CUSTOM_ROAM_TRIGGER_SETTING
+#define CUSTOM_ROAM_TRIGGER_SETTING 	DEFAULT_ROAM_TRIGGER_VALUE
+#endif
+
+/* hooks for custom Roaming Romaing  setting via Makefile */
+#define DEFAULT_ROAM_DELTA_VALUE  10 /* dBm default roam delta all band */
+#define DEFAULT_ROAM_DELTA_SETTING 	-1
+#ifndef CUSTOM_ROAM_DELTA_SETTING
+#define CUSTOM_ROAM_DELTA_SETTING 	DEFAULT_ROAM_DELTA_VALUE
+#endif
+
+
 /* hooks for custom dhd_dpc_prio setting option via Makefile */
 #define DEFAULT_DHP_DPC_PRIO  1
 #ifndef CUSTOM_DPC_PRIO_SETTING
@@ -669,7 +690,6 @@ extern char fw_path2[MOD_PARAM_PATHLEN];
 
 /* Flag to indicate if we should download firmware on driver load */
 extern uint dhd_download_fw_on_driverload;
-
 
 
 /* For supporting multiple interfaces */
