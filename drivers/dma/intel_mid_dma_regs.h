@@ -45,7 +45,7 @@
 #define DISABLE_CHANNEL(chan_num) \
 	(REG_BIT8 << chan_num)
 
-#define DESCS_PER_CHANNEL	16
+#define DESCS_PER_CHANNEL	128
 /*DMA Registers*/
 /*registers associated with channel programming*/
 #define DMA_REG_SIZE		0x400
@@ -192,6 +192,7 @@ struct intel_mid_dma_chan {
 	u32			raw_tfr;
 	u32			raw_block;
 	struct intel_mid_dma_slave *mid_slave;
+	struct dma_pool		*lli_pool;
 };
 
 static inline struct intel_mid_dma_chan *to_intel_mid_dma_chan(
