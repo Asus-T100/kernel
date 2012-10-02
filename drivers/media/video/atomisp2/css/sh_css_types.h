@@ -180,6 +180,11 @@ struct sh_css_uds_info {
 	uint16_t yc;
 };
 
+struct sh_css_zoom {
+	uint16_t dx;
+	uint16_t dy;
+};
+
 struct sh_css_crop_pos {
 	uint16_t x;
 	uint16_t y;
@@ -403,6 +408,14 @@ struct sh_css_gc_config {
 	unsigned short gain_k2; /**< */
 };
 
+
+/* @GC: Comment on this & Remove the hard-coded values */
+struct sh_css_dvs_6axis_config {
+	unsigned int xcoords[19][13];
+	unsigned int ycoords[19][13];
+};
+
+
 /** Advanced Noise Reduction configuration.
  *  This is also known as Low-Light.
  */
@@ -543,64 +556,83 @@ struct sh_css_isp_memory_interface {
 	struct sh_css_isp_memory_section parameters;
 };
 
-/** ISP memories, isp2300 */
+#if defined(IS_ISP_2300_SYSTEM)
 enum sh_css_isp_memories {
 	SH_CSS_ISP_PMEM = 0,
 	SH_CSS_ISP_DMEM,
 	SH_CSS_ISP_VMEM,
 	SH_CSS_ISP_VAMEM1,
-	SH_CSS_ISP_VAMEM2
+	SH_CSS_ISP_VAMEM2,
+	N_SH_CSS_ISP_MEMORIES
 };
 
 #define SH_CSS_NUM_ISP_MEMORIES 5
+
+#elif defined(IS_ISP_2400_SYSTEM)
+enum sh_css_isp_memories {
+	SH_CSS_ISP_PMEM = 0,
+	SH_CSS_ISP_DMEM,
+	SH_CSS_ISP_VMEM,
+	SH_CSS_ISP_VAMEM1,
+	SH_CSS_ISP_VAMEM2,
+	SH_CSS_ISP_VAMEM3,
+	N_SH_CSS_ISP_MEMORIES
+};
+
+#define SH_CSS_NUM_ISP_MEMORIES 6
+
+#else
+#error "sh_css_types.h:  SYSTEM must be one of {ISP_2300_SYSTEM, ISP_2400_SYSTEM}"
+#endif
 
 /** Structure describing an ISP binary.
  * It describes the capabilities of a binary, like the maximum resolution,
  * support features, dma channels, uds features, etc.
  */
 struct sh_css_binary_info {
-	unsigned int		 id; /* enum sh_css_binary_id */
-	unsigned int		 mode;
+	unsigned int		id; /* enum sh_css_binary_id */
+	unsigned int		mode;
 	enum sh_css_acc_type	 type;
 	const struct sh_css_blob_descr *blob;
 	int			 num_output_formats;
 	enum sh_css_frame_format output_formats[SH_CSS_MAX_NUM_FRAME_FORMATS];
-	unsigned int             max_input_width;
-	unsigned int             min_output_width;
-	unsigned int             max_internal_width;
-	unsigned int             max_output_width;
-	unsigned int             max_dvs_envelope_width;
-	unsigned int             max_dvs_envelope_height;
-	unsigned int             variable_resolution;
-	unsigned int             variable_output_format;
-	unsigned int             variable_vf_veceven;
-	unsigned int             max_vf_log_downscale;
-	unsigned int             top_cropping;
-	unsigned int             left_cropping;
-	unsigned int             s3atbl_use_dmem;
+	unsigned int		max_input_width;
+	unsigned int		min_output_width;
+	unsigned int		max_internal_width;
+	unsigned int		max_output_width;
+	unsigned int		max_dvs_envelope_width;
+	unsigned int		max_dvs_envelope_height;
+	unsigned int		variable_resolution;
+	unsigned int		variable_output_format;
+	unsigned int		variable_vf_veceven;
+	unsigned int		max_vf_log_downscale;
+	unsigned int		top_cropping;
+	unsigned int		left_cropping;
+	unsigned int		s3atbl_use_dmem;
 	int                      input;
-	unsigned int		 xmem_addr; /* hrt_vaddress */
-	unsigned int             c_subsampling;
-	unsigned int             output_num_chunks;
-	unsigned int             num_stripes;
-	unsigned int             pipelining;
-	unsigned int             fixed_s3a_deci_log;
-	unsigned int		 isp_addresses; /* Address in ISP dmem */
-	unsigned int		 main_entry;    /* Address of entry fct */
-	unsigned int		 in_frame;  /* Address in ISP dmem */
-	unsigned int		 out_frame; /* Address in ISP dmem */
-	unsigned int		 in_data;  /* Address in ISP dmem */
-	unsigned int		 out_data; /* Address in ISP dmem */
-	unsigned int     block_width;
-	unsigned int     block_height;
+	unsigned int		xmem_addr; /* hrt_vaddress */
+	unsigned int		c_subsampling;
+	unsigned int		output_num_chunks;
+	unsigned int		num_stripes;
+	unsigned int		pipelining;
+	unsigned int		fixed_s3a_deci_log;
+	unsigned int		isp_addresses; /* Address in ISP dmem */
+	unsigned int		main_entry;    /* Address of entry fct */
+	unsigned int		in_frame;  /* Address in ISP dmem */
+	unsigned int		out_frame; /* Address in ISP dmem */
+	unsigned int		in_data;  /* Address in ISP dmem */
+	unsigned int		out_data; /* Address in ISP dmem */
+	unsigned int		block_width;
+	unsigned int		block_height;
 	struct sh_css_isp_memory_interface
 				 memory_interface[SH_CSS_NUM_ISP_MEMORIES];
-	unsigned int		 sh_dma_cmd_ptr;     /* In ISP dmem */
+	unsigned int		sh_dma_cmd_ptr;     /* In ISP dmem */
 	struct {
 		unsigned char	 ctc;   /* enum sh_css_isp_memories */
 		unsigned char	 gamma; /* enum sh_css_isp_memories */
 		unsigned char	 xnr;   /* enum sh_css_isp_memories */
 	} memories;
+/* MW: Packing (related) bools in an integer ?? */
 	struct {
 		unsigned char     vf_veceven;
 		unsigned char     dis;
@@ -620,6 +652,7 @@ struct sh_css_binary_info {
 		unsigned char     ss;
 		unsigned char     output;
 		unsigned char     ref_frame;
+		unsigned char     tnr;
 		unsigned char     xnr;
 		unsigned char     raw;
 		unsigned char     params;
@@ -638,7 +671,10 @@ struct sh_css_binary_info {
 		unsigned char     multi_channel;
 		unsigned char     raw_out_channel;
 		unsigned char     sctbl_channel;
-		unsigned char     tnr_channel;
+		unsigned char     ref_y_channel;
+		unsigned char     ref_c_channel;
+		unsigned char     tnr_y_channel;
+		unsigned char     tnr_c_channel;
 		unsigned char     raw_channel;
 		unsigned char     output_channel;
 		unsigned char     c_channel;

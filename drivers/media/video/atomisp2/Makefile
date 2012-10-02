@@ -39,7 +39,7 @@ atomisp-objs += \
 		css/hive_isp_css_system/host/isp.o \
 		css/hive_isp_css_shared/host/queue.o \
 		css/hive_isp_css_shared/host/tag.o \
-                css/hive_isp_css_shared/host/sw_event.o \
+		css/hive_isp_css_shared/host/sw_event.o \
 		css/hive_isp_css_system/host/fifo_monitor.o \
 		css/hive_isp_css_system/host/gp_device.o \
 		css/hive_isp_css_system/host/input_formatter.o \

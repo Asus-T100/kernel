@@ -34,6 +34,7 @@
 #include "sh_css_defs.h"
 #include "sh_css_internal.h"
 #include "sh_css_debug.h"
+#include "sh_css_debug_internal.h"
 
 #include "gdc_device.h"				/* HRT_GDC_N */
 
@@ -50,13 +51,6 @@
 #ifndef offsetof
 #define offsetof(T, x) ((unsigned)&(((T *)0)->x))
 #endif
-
-/* Convenience macro to force a value to a lower even value.
- *  We do not want to (re)use the kernel macro round_down here
- *  because the same code base is used internally by Silicon Hive
- *  simulation environment, where the kernel macro is not available
- */
-#define EVEN_FLOOR(x)	(x & ~1)
 
 struct sh_css_sp_group		sh_css_sp_group;
 struct sh_css_sp_stage		sh_css_sp_stage;
@@ -707,141 +701,6 @@ sh_css_stage_write_binary_info(struct sh_css_binary_info *info)
 	sh_css_sp_stage.binary_info = *info;
 }
 
-static void
-update_uds_and_crop_info(
-		const struct sh_css_binary_info *info,
-		const struct sh_css_frame_info *in_frame_info,
-		const struct sh_css_frame_info *out_frame_info,
-		const struct sh_css_dvs_envelope *dvs_env,
-		const struct sh_css_vector *motion_vector,
-		bool preview_mode,
-		struct sh_css_uds_info *uds,		/* out */
-		struct sh_css_crop_pos *sp_out_crop_pos	/* out */
-		)
-{
-	unsigned int dx, dy;
-
-	if (info->mode == SH_CSS_BINARY_MODE_VF_PP && !preview_mode) {
-			/* in non-preview modes, VF_PP does not do
-			   the zooming, capture_pp or video do. */
-			dx = HRT_GDC_N;
-			dy = HRT_GDC_N;
-	} else
-		sh_css_get_zoom_factor(&dx, &dy);
-
-	uds->curr_dx   = dx;
-	uds->curr_dy   = dy;
-
-	if (info->enable.dvs_envelope) {
-		unsigned int crop_x = 0,
-			     crop_y = 0,
-			     uds_xc = 0,
-			     uds_yc = 0,
-			     env_width, env_height;
-		int half_env_x, half_env_y;
-		int motion_x = motion_vector->x;
-		int motion_y = motion_vector->y;
-		bool upscale_x = in_frame_info->width < out_frame_info->width;
-		bool upscale_y = in_frame_info->height < out_frame_info->height;
-
-		if (info->enable.uds && !info->enable.ds) {
-			/**
-			 * we calculate with the envelope that we can actually
-			 * use, the min dvs envelope is for the filter
-			 * initialization.
-			 */
-			env_width  = dvs_env->width -
-					SH_CSS_MIN_DVS_ENVELOPE;
-			env_height = dvs_env->height -
-					SH_CSS_MIN_DVS_ENVELOPE;
-			half_env_x = env_width / 2;
-			half_env_y = env_height / 2;
-			/**
-			 * for digital zoom, we use the dvs envelope and make
-			 * sure that we don't include the 8 leftmost pixels or
-			 * 8 topmost rows.
-			 */
-			if (upscale_x) {
-				uds_xc = (in_frame_info->width
-					+ env_width
-					+ SH_CSS_MIN_DVS_ENVELOPE) / 2;
-			} else {
-				uds_xc = (out_frame_info->width
-							+ env_width) / 2
-					+ SH_CSS_MIN_DVS_ENVELOPE;
-			}
-			if (upscale_y) {
-				uds_yc = (in_frame_info->height
-					+ env_height
-					+ SH_CSS_MIN_DVS_ENVELOPE) / 2;
-			} else {
-				uds_yc = (out_frame_info->height
-							+ env_height) / 2
-					+ SH_CSS_MIN_DVS_ENVELOPE;
-			}
-			/* clip the motion vector to +/- half the envelope */
-			motion_x = clamp(motion_x, -half_env_x, half_env_x);
-			motion_y = clamp(motion_y, -half_env_y, half_env_y);
-			uds_xc += motion_x;
-			uds_yc += motion_y;
-			/* uds can be pipelined, remove top lines */
-			crop_y = 2;
-		} else if (info->enable.ds) {
-			env_width  = dvs_env->width;
-			env_height = dvs_env->height;
-			half_env_x = env_width / 2;
-			half_env_y = env_height / 2;
-			/* clip the motion vector to +/- half the envelope */
-			motion_x = clamp(motion_x, -half_env_x, half_env_x);
-			motion_y = clamp(motion_y, -half_env_y, half_env_y);
-			/* for video with downscaling, the envelope is included
-			    in the input resolution. */
-			uds_xc = in_frame_info->width/2 + motion_x;
-			uds_yc = in_frame_info->height/2 + motion_y;
-			crop_x = info->left_cropping;
-			/* ds == 2 (yuv_ds) can be pipelined, remove top
-			   lines */
-			if (info->enable.ds & 1)
-				crop_y = info->top_cropping;
-			else
-				crop_y = 2;
-		} else {
-			/* video nodz: here we can only crop. We make sure we
-			   crop at least the first 8x8 pixels away. */
-			env_width  = dvs_env->width -
-					SH_CSS_MIN_DVS_ENVELOPE;
-			env_height = dvs_env->height -
-					SH_CSS_MIN_DVS_ENVELOPE;
-			half_env_x = env_width / 2;
-			half_env_y = env_height / 2;
-			motion_x = clamp(motion_x, -half_env_x, half_env_x);
-			motion_y = clamp(motion_y, -half_env_y, half_env_y);
-			crop_x = SH_CSS_MIN_DVS_ENVELOPE
-						+ half_env_x + motion_x;
-			crop_y = SH_CSS_MIN_DVS_ENVELOPE
-						+ half_env_y + motion_y;
-		}
-
-		/* Must enforce that the crop position is even */
-		crop_x = EVEN_FLOOR(crop_x);
-		crop_y = EVEN_FLOOR(crop_y);
-		uds_xc = EVEN_FLOOR(uds_xc);
-		uds_yc = EVEN_FLOOR(uds_yc);
-
-		uds->xc = uds_xc;
-		uds->yc = uds_yc;
-		sp_out_crop_pos->x = crop_x;
-		sp_out_crop_pos->y = crop_y;
-	}
-	else {
-		/* for down scaling, we always use the center of the image */
-		uds->xc = in_frame_info->width / 2;
-		uds->yc = in_frame_info->height / 2;
-		sp_out_crop_pos->x = info->left_cropping;
-		sp_out_crop_pos->y = info->top_cropping;
-	}
-}
-
 static enum sh_css_err
 sh_css_sp_init_stage(struct sh_css_binary *binary,
 		    const char *binary_name,
@@ -925,14 +784,37 @@ sh_css_sp_init_stage(struct sh_css_binary *binary,
 	memcpy(&sh_css_sp_stage.isp_mem_interface, isp_mem_if,
 		sizeof(sh_css_sp_stage.isp_mem_interface));
 
-	update_uds_and_crop_info(binary->info,
-				&binary->in_frame_info,
-				&binary->out_frame_info,
-				&binary->dvs_envelope,
-				&args->motion_vector,
-				preview_mode,
-				&sh_css_sp_stage.uds,
-				&sh_css_sp_stage.sp_out_crop_pos);
+#if 0
+	{
+		struct sh_css_vector motion;
+		struct sh_css_zoom zoom;
+
+		sh_css_get_zoom(&zoom);
+		sh_css_get_dis_motion(&motion);
+
+		sh_css_update_uds_and_crop_info(binary->info,
+					&binary->in_frame_info,
+					&binary->out_frame_info,
+					&binary->dvs_envelope,
+					preview_mode,
+					&zoom,
+					&motion,
+					&sh_css_sp_stage.uds,
+					&sh_css_sp_stage.sp_out_crop_pos);
+	}
+#else
+	/**
+	 * Even when a stage does not need uds and does not params,
+	 * sp_uds_init() seems to be called (needs further investigation)
+	 * This function can not deal with dx, dy = {0, 0}
+	 */
+	(void)preview_mode;
+#if 0
+	sh_css_sp_stage.uds =
+		(struct sh_css_uds_info){HRT_GDC_N, HRT_GDC_N, 0, 0};
+#endif
+
+#endif
 
 	sh_css_params_set_current_binary(binary);
 
@@ -1065,7 +947,7 @@ sh_css_sp_init_pipeline(struct sh_css_pipeline *me,
 	/* Count stages */
 	for (stage = me->stages, num = 0; stage; stage = stage->next, num++) {
 		stage->stage_num = num;
-		debug_pipe_graph_dump_stage(stage, id);
+		sh_css_debug_pipe_graph_dump_stage(stage, id);
 	}
 	me->num_stages = num;
 
@@ -1085,7 +967,7 @@ sh_css_sp_init_pipeline(struct sh_css_pipeline *me,
 				two_ppc, input_is_raw_reordered,
 				copy_ovrd);
 
-			debug_pipe_graph_dump_sp_raw_copy(first_args->cc_frame);
+			sh_css_debug_pipe_graph_dump_sp_raw_copy(first_args->cc_frame);
 		}
 	} /* if (first_binary != NULL) */
 
@@ -1349,7 +1231,7 @@ sh_css_sp_start_isp(void)
 	(void)HIVE_ADDR_sp_invalidate_tlb;
 	(void)HIVE_ADDR_sp_request_flash;
 
-	debug_pipe_graph_dump_epilogue();
+	sh_css_debug_pipe_graph_dump_epilogue();
 
 	store_sp_per_frame_data(fw);
 	sp_dmem_store_uint32(SP0_ID,

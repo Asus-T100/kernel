@@ -221,13 +221,14 @@ void mmgr_free(
 	hrt_vaddress			vaddr)
 {
 /* "free()" should accept NULL, "hrt_isp_css_mm_free()" may not */
-	if (vaddr != mmgr_NULL)
+	if (vaddr != mmgr_NULL) {
 #if SH_CSS_MEMORY_GUARDING
 		alloc_admin_remove(vaddr);
 		/* Reconstruct the "original" address used with the alloc */
 		vaddr -= GUARD_SIZE_ALIGNED;
 #endif
 		hrt_isp_css_mm_free((hmm_ptr)HOST_ADDRESS(vaddr));
+	}
 return;
 }
 

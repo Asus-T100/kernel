@@ -9,6 +9,14 @@
 
 #include "dma_v1_defs.h"
 
+/*
+ * Command token bit mappings
+ *
+ * transfer / config
+ *    crun  param id[4] channel id[8] cmd id[4]
+ *	| b16 | b15 .. b12 | b11 ... b4 | b3 ... b0 |
+ */
+
 typedef unsigned int dma_channel;
 
 typedef enum {
@@ -21,7 +29,6 @@ typedef enum {
   dma_zero_extension = _DMA_ZERO_EXTEND,
   dma_sign_extension = _DMA_SIGN_EXTEND
 } dma_extension;
-
 
 
 #define DMA_PACK_CHANNEL(ch)             ((ch)   << _DMA_CHANNEL_IDX)
@@ -178,11 +185,18 @@ typedef enum {
 #define	DMA_RW_CMDBIT		0x01
 #define	DMA_CFG_CMDBIT		0x02
 #define	DMA_CLEAR_CMDBIT	0x08
+#define	DMA_PARAM_CMDBIT	0x01
+
+#define	DMA_CFG_CMD			(DMA_CFG_CMDBIT)
+#define	DMA_CFGPARAM_CMD	(DMA_CFG_CMDBIT | DMA_PARAM_CMDBIT)
 
 #define DMA_CMD_NEEDS_ACK(cmd) (1)
+#define DMA_CMD_IS_TRANSFER(cmd) ((cmd & DMA_CFG_CMDBIT) == 0)
 #define DMA_CMD_IS_WR(cmd) ((cmd & DMA_RW_CMDBIT) != 0)
 #define DMA_CMD_IS_RD(cmd) ((cmd & DMA_RW_CMDBIT) == 0)
 #define DMA_CMD_IS_CLR(cmd) ((cmd & DMA_CLEAR_CMDBIT) != 0)
+#define DMA_CMD_IS_CFG(cmd) ((cmd & DMA_CFG_CMDBIT) != 0)
+#define DMA_CMD_IS_PARAMCFG(cmd) ((cmd & DMA_CFGPARAM_CMD) == DMA_CFGPARAM_CMD)
 
 /* As a matter of convention */
 #define DMA_TRANSFER_READ		DMA_TRANSFER_B2A
@@ -198,5 +212,16 @@ typedef enum {
 	DMA_TRANSFER_A2B = DMA_RW_CMDBIT,
 	DMA_TRANSFER_B2A = 0,
 } dma_transfer_type_t;
+
+typedef enum {
+	DMA_CONFIG_SETUP = _DMA_PACKING_SETUP_PARAM,
+	DMA_CONFIG_HEIGHT = _DMA_HEIGHT_PARAM,
+	DMA_CONFIG_STRIDE_A_ = _DMA_STRIDE_A_PARAM,
+	DMA_CONFIG_CROP_ELEM_A = _DMA_ELEM_CROPPING_A_PARAM,
+	DMA_CONFIG_WIDTH_A = _DMA_WIDTH_A_PARAM,
+	DMA_CONFIG_STRIDE_B_ = _DMA_STRIDE_B_PARAM,
+	DMA_CONFIG_CROP_ELEM_B = _DMA_ELEM_CROPPING_B_PARAM,
+	DMA_CONFIG_WIDTH_B = _DMA_WIDTH_B_PARAM,
+} dma_config_type_t;
 
 #endif /* __DMA_GLOBAL_H_INCLUDED__ */

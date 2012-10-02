@@ -24,6 +24,7 @@
 #include "memory_access.h"
 
 #include "sh_css_debug.h"
+#include "sh_css_debug_internal.h"
 
 #include "assert_support.h"
 #include "print_support.h"
@@ -1483,198 +1484,226 @@ static const char *format2str[] = {
 	[SH_CSS_FRAME_FORMAT_RAW_REORDERED] = "RAW_REORDERED"
 };
 
+#define DPG_START "sh_css_pipe_graph_dump_start "
+#define DPG_END   " sh_css_pipe_graph_dump_end"
+
+#ifdef HRT_CSIM
+/* For CSIM we print double because HSS log can mess up this output */
+/* As post processing, we remove incomplete lines and make lines uniq */
+#define DTRACE_DOT(format, args...)                                         \
+	do {                                                                \
+		sh_css_dtrace(SH_DBG_INFO, "%s" format "%s\n",            \
+						DPG_START,##args, DPG_END); \
+		sh_css_dtrace(SH_DBG_INFO, "%s" format "%s\n",            \
+						DPG_START,##args, DPG_END); \
+  } while (0)
+#else
+#define DTRACE_DOT(format, args...)                                         \
+	sh_css_dtrace(SH_DBG_INFO, "%s" format "%s\n",            \
+					DPG_START,##args, DPG_END)
+#endif
+
+
 void
-debug_pipe_graph_dump_prologue(void)
+sh_css_debug_pipe_graph_dump_prologue(void)
 {
 
-	sh_css_dtrace(SH_DBG_INFO,
-		"/* sh_css_pipe_graph.gv */ digraph sh_css_pipe_graph {\n" );
-	sh_css_dtrace(SH_DBG_INFO,
-		"/* sh_css_pipe_graph.gv */ rankdir=LR;\n" );
+	DTRACE_DOT("digraph sh_css_pipe_graph {" );
+	DTRACE_DOT("rankdir=LR;" );
 }
 
 void
-debug_pipe_graph_dump_epilogue(void)
+sh_css_debug_pipe_graph_dump_epilogue(void)
 {
 
-	sh_css_dtrace(SH_DBG_INFO,
-		"/* sh_css_pipe_graph.gv */ }\n");
-
+	DTRACE_DOT("}");
 	debug_pipe_graph_do_init = true;
 }
 
 void
-debug_pipe_graph_dump_stage(
+sh_css_debug_pipe_graph_dump_stage(
 	struct sh_css_pipeline_stage *stage,
 	enum sh_css_pipe_id id)
 {
 
-	char const *blob_name = "<no_blob_descr>";
+	char const *blob_name = "<unknow name>";
+	char const *bin_type = "<unknow type>";
 
 	if (debug_pipe_graph_do_init) {
-		debug_pipe_graph_dump_prologue();
+		sh_css_debug_pipe_graph_dump_prologue();
 		debug_pipe_graph_do_init = false;
 	}
 
-	if (stage->binary_info->blob)
-		blob_name = stage->binary_info->blob->name;
+	if (stage->binary) {
+		bin_type= "binary";
+		if (stage->binary_info->blob)
+			blob_name = stage->binary_info->blob->name;
+	} else if (stage->firmware){
+		bin_type= "firmware";
+		blob_name =
+			(char const *)SH_CSS_EXT_ISP_PROG_NAME(stage->firmware);
+	}
 
-	sh_css_dtrace(SH_DBG_INFO,
-		"/* sh_css_pipe_graph.gv */\tnode [shape = circle,"
-		" fixedsize=true, width=2]; \"%s_%d\"\n",
-		blob_name, id);
+	DTRACE_DOT("node [shape = circle, fixedsize=true, width=2, "
+		"label=\"%s\\n%s\\np:%d, s:%d\"]; \"%s_%d\"",
+		bin_type, blob_name, id, stage->stage_num, blob_name, id);
 
 	if (stage->args.cc_frame) {
-		sh_css_dtrace(SH_DBG_INFO,
-			"/* sh_css_pipe_graph.gv */\tnode [shape = box, "
+		DTRACE_DOT(
+			"node [shape = box, "
 			"fixedsize=true, width=2]; \"0x%08lx\" "
-			"[label = \"%s\\n%d(%d) x %d x %d\"];\n",
+			"[label = \"%s\\n%d(%d) x %d x %d\"];",
 			HOST_ADDRESS(stage->args.cc_frame),
 			format2str[stage->args.cc_frame->info.format],
 			stage->args.cc_frame->info.width,
 			stage->args.cc_frame->info.padded_width,
 			stage->args.cc_frame->info.height,
 			stage->args.cc_frame->info.raw_bit_depth);
-		sh_css_dtrace(SH_DBG_INFO,
-			"/* sh_css_pipe_graph.gv */\t\"0x%08lx\"->\"%s_%d\" "
-			"[label = in_frame];\n",
+		DTRACE_DOT(
+			"\"0x%08lx\"->\"%s_%d\" "
+			"[label = in_frame];",
 			HOST_ADDRESS(stage->args.cc_frame), blob_name, id);
 
 
 	} else if (stage->args.in_frame) {
-		sh_css_dtrace(SH_DBG_INFO,
-			"/* sh_css_pipe_graph.gv */\tnode [shape = box, "
+		DTRACE_DOT(
+			"node [shape = box, "
 			"fixedsize=true, width=2]; \"0x%08lx\" "
-			"[label = \"%s\\n%d(%d) x %d x %d\"];\n",
+			"[label = \"%s\\n%d(%d) x %d x %d\"];",
 			HOST_ADDRESS(stage->args.in_frame),
 			format2str[stage->args.in_frame->info.format],
 			stage->args.in_frame->info.width,
 			stage->args.in_frame->info.padded_width,
 			stage->args.in_frame->info.height,
 			stage->args.in_frame->info.raw_bit_depth);
-		sh_css_dtrace(SH_DBG_INFO,
-			"/* sh_css_pipe_graph.gv */\t\"0x%08lx\"->\"%s_%d\" "
-			"[label = in_frame];\n",
+		DTRACE_DOT(
+			"\"0x%08lx\"->\"%s_%d\" "
+			"[label = in_frame];",
 			HOST_ADDRESS(stage->args.in_frame), blob_name, id);
 	}
 
 	if (stage->args.in_ref_frame) {
-		sh_css_dtrace(SH_DBG_INFO,
-			"/* sh_css_pipe_graph.gv */\tnode [shape = box, "
+		DTRACE_DOT(
+			"node [shape = box, "
 			"fixedsize=true, width=2]; \"0x%08lx\" "
-			"[label = \"%s\\n%d(%d) x %d x %d\"];\n",
+			"[label = \"%s\\n%d(%d) x %d x %d\"];",
 			HOST_ADDRESS(stage->args.in_ref_frame),
 			format2str[stage->args.in_ref_frame->info.format],
 			stage->args.in_ref_frame->info.width,
 			stage->args.in_ref_frame->info.padded_width,
 			stage->args.in_ref_frame->info.height,
 			stage->args.in_ref_frame->info.raw_bit_depth);
-		sh_css_dtrace(SH_DBG_INFO,
-			"/* sh_css_pipe_graph.gv */\t\"0x%08lx\"->\"%s_%d\" "
-			"[label = in_ref_frame];\n",
+		DTRACE_DOT(
+			"\"0x%08lx\"->\"%s_%d\" "
+			"[label = in_ref_frame];",
 			HOST_ADDRESS(stage->args.in_ref_frame), blob_name, id);
 	}
 
 	if (stage->args.in_tnr_frame) {
-		sh_css_dtrace(SH_DBG_INFO,
-			"/* sh_css_pipe_graph.gv */\tnode [shape = box, "
+		DTRACE_DOT(
+			"node [shape = box, "
 			"fixedsize=true, width=2]; \"0x%08lx\" "
-			"[label = \"%s\\n%d(%d) x %d x %d\"];\n",
+			"[label = \"%s\\n%d(%d) x %d x %d\"];",
 			HOST_ADDRESS(stage->args.in_tnr_frame),
 			format2str[stage->args.in_tnr_frame->info.format],
 			stage->args.in_tnr_frame->info.width,
 			stage->args.in_tnr_frame->info.padded_width,
 			stage->args.in_tnr_frame->info.height,
 			stage->args.in_tnr_frame->info.raw_bit_depth);
-		sh_css_dtrace(SH_DBG_INFO,
-			"/* sh_css_pipe_graph.gv */\t\"0x%08lx\"->\"%s_%d\" "
-			"[label = in_tnr_frame];\n",
+		DTRACE_DOT(
+			"\"0x%08lx\"->\"%s_%d\" "
+			"[label = in_tnr_frame];",
 			HOST_ADDRESS(stage->args.in_tnr_frame), blob_name, id);
 	}
 
 	if (stage->args.out_ref_frame) {
-		sh_css_dtrace(SH_DBG_INFO,
-			"/* sh_css_pipe_graph.gv */\tnode [shape = box, "
+		DTRACE_DOT(
+			"node [shape = box, "
 			"fixedsize=true, width=2]; \"0x%08lx\" "
-			"[label = \"%s\\n%d(%d) x %d x %d\"];\n",
+			"[label = \"%s\\n%d(%d) x %d x %d\"];",
 			HOST_ADDRESS(stage->args.out_ref_frame),
 			format2str[stage->args.out_ref_frame->info.format],
 			stage->args.out_ref_frame->info.width,
 			stage->args.out_ref_frame->info.padded_width,
 			stage->args.out_ref_frame->info.height,
 			stage->args.out_ref_frame->info.raw_bit_depth);
-		sh_css_dtrace(SH_DBG_INFO,
-			"/* sh_css_pipe_graph.gv */\t\"%s_%d\"->\"0x%08lx\" "
-			"[label = out_ref_frame];\n",
+		DTRACE_DOT(
+			"\"%s_%d\"->\"0x%08lx\" "
+			"[label = out_ref_frame];",
 			blob_name, id, HOST_ADDRESS(stage->args.out_ref_frame));
 	}
 
 	if (stage->args.out_tnr_frame) {
-		sh_css_dtrace(SH_DBG_INFO,
-			"/* sh_css_pipe_graph.gv */\tnode [shape = box, "
+		DTRACE_DOT(
+			"node [shape = box, "
 			"fixedsize=true, width=2]; \"0x%08lx\" "
-			"[label = \"%s\\n%d(%d) x %d x %d\"];\n",
+			"[label = \"%s\\n%d(%d) x %d x %d\"];",
 			HOST_ADDRESS(stage->args.out_tnr_frame),
 			format2str[stage->args.out_tnr_frame->info.format],
 			stage->args.out_tnr_frame->info.width,
 			stage->args.out_tnr_frame->info.padded_width,
 			stage->args.out_tnr_frame->info.height,
 			stage->args.out_tnr_frame->info.raw_bit_depth);
-		sh_css_dtrace(SH_DBG_INFO,
-			"/* sh_css_pipe_graph.gv */\t\"%s_%d\"->\"0x%08lx\" "
-			"[label = out_tnr_frame];\n",
+		DTRACE_DOT(
+			"\"%s_%d\"->\"0x%08lx\" "
+			"[label = out_tnr_frame];",
 			blob_name, id, HOST_ADDRESS(stage->args.out_tnr_frame));
 	}
 
 	if (stage->args.out_frame) {
-		sh_css_dtrace(SH_DBG_INFO,
-			"/* sh_css_pipe_graph.gv */\tnode [shape = box, "
+		DTRACE_DOT(
+			"node [shape = box, "
 			"fixedsize=true, width=2]; \"0x%08lx\" "
-			"[label = \"%s\\n%d(%d) x %d x %d\"];\n",
+			"[label = \"%s\\n%d(%d) x %d x %d\"];",
 			HOST_ADDRESS(stage->args.out_frame),
 			format2str[stage->args.out_frame->info.format],
 			stage->args.out_frame->info.width,
 			stage->args.out_frame->info.padded_width,
 			stage->args.out_frame->info.height,
 			stage->args.out_frame->info.raw_bit_depth);
-		sh_css_dtrace(SH_DBG_INFO,
-			"/* sh_css_pipe_graph.gv */\t\"%s_%d\"->\"0x%08lx\" "
-			"[label = out_frame];\n",
+		DTRACE_DOT(
+			"\"%s_%d\"->\"0x%08lx\" "
+			"[label = out_frame];",
 			blob_name, id, HOST_ADDRESS(stage->args.out_frame));
 	}
 
 	if (stage->args.out_vf_frame) {
-		sh_css_dtrace(SH_DBG_INFO,
-			"/* sh_css_pipe_graph.gv */\tnode [shape = box, "
+		DTRACE_DOT(
+			"node [shape = box, "
 			"fixedsize=true, width=2]; \"0x%08lx\" "
-			"[label = \"%s\\n%d(%d) x %d x %d\"];\n",
+			"[label = \"%s\\n%d(%d) x %d x %d\"];",
 			HOST_ADDRESS(stage->args.out_vf_frame),
 			format2str[stage->args.out_vf_frame->info.format],
 			stage->args.out_vf_frame->info.width,
 			stage->args.out_vf_frame->info.padded_width,
 			stage->args.out_vf_frame->info.height,
 			stage->args.out_vf_frame->info.raw_bit_depth);
-		sh_css_dtrace(SH_DBG_INFO,
-			"/* sh_css_pipe_graph.gv */\t\"%s_%d\"->\"0x%08lx\" "
-			"[label = out_vf_frame];\n",
+		DTRACE_DOT(
+			"\"%s_%d\"->\"0x%08lx\" "
+			"[label = out_vf_frame];",
 			blob_name, id, HOST_ADDRESS(stage->args.out_vf_frame));
 	}
 
 }
 
 void
-debug_pipe_graph_dump_sp_raw_copy(
+sh_css_debug_pipe_graph_dump_sp_raw_copy(
 	struct sh_css_frame *cc_frame)
 {
-	sh_css_dtrace(SH_DBG_INFO,
-		"/* sh_css_pipe_graph.gv */\tnode [shape = circle, "
-		"fixedsize=true, width=2]; \"%s\"\n",
+	DTRACE_DOT(
+		"node [shape = circle, "
+		"fixedsize=true, width=2]; \"%s\"",
 		"sp_raw_copy_1");
 
-	sh_css_dtrace(SH_DBG_INFO,
-		"/* sh_css_pipe_graph.gv */\tnode [shape = box, "
+	DTRACE_DOT("node [shape = circle, fixedsize=true, width=2, "
+		"label=\"%s\\n%s\\np:%d, s:%d\"]; \"%s_%d\"",
+		"sp-binary", "sp_raw_copy", 1, 0, "sp_raw_copy", 1);
+
+
+	DTRACE_DOT(
+		"node [shape = box, "
 		"fixedsize=true, width=2]; \"0x%08lx\" "
-		"[label = \"%s\\n%d(%d) x %d x %d\"];\n",
+		"[label = \"%s\\n%d(%d) x %d x %d\"];",
 		HOST_ADDRESS(cc_frame),
 		format2str[cc_frame->info.format],
 		cc_frame->info.width,
@@ -1683,10 +1712,10 @@ debug_pipe_graph_dump_sp_raw_copy(
 		cc_frame->info.raw_bit_depth);
 
 
-	sh_css_dtrace(SH_DBG_INFO,
-		"/* sh_css_pipe_graph.gv */\t\"%s\"->\"0x%08lx\" "
-		"[label = cc_frame];\n",
-		"sp_raw_copy_1", HOST_ADDRESS(cc_frame));
+	DTRACE_DOT(
+		"\"%s_%d\"->\"0x%08lx\" "
+		"[label = cc_frame];",
+		"sp_raw_copy", 1, HOST_ADDRESS(cc_frame));
 
 }
 

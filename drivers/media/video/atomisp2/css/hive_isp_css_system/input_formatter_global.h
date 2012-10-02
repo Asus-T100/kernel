@@ -7,6 +7,8 @@
 
 #include "if_defs.h"
 
+typedef struct input_formatter_cfg_s	input_formatter_cfg_t;
+
 /* Hardware registers */
 #define HIVE_IF_RESET_ADDRESS                   0x000
 #define HIVE_IF_START_LINE_ADDRESS              0x004

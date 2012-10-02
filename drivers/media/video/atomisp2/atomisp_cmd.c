@@ -276,7 +276,6 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 	unsigned long irqflags;
 	unsigned int irq_infos = 0;
 	int err;
-	//struct sh_css_sp_debug_state state;
 
 	/*
 	 * spin_lock_irqsave() is necessary to avoid racing between multiple
@@ -291,11 +290,6 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 
 	err = sh_css_translate_interrupt(&irq_infos);
 	v4l2_dbg(5, dbg_level, &atomisp_dev, "irq:0x%x\n", irq_infos);
-	//sh_css_sp_get_debug_state(&state);
-	//printk(KERN_ERR "first incorrect s3a_lo container address: 0x%x\n",
-	//			state.debug[39]);
-	//printk(KERN_ERR "first incorrect s3a_lo container payload: 0x%x\n",
-	//			state.debug[40]);
 
 	if (err != sh_css_success) {
 		v4l2_warn(&atomisp_dev, "%s:failed to translate irq (err = %d,"

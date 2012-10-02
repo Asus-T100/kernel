@@ -5,6 +5,8 @@
 
 #include "isp.h"		/* ISP_VEC_ALIGN */
 
+typedef struct input_formatter_state_s		input_formatter_state_t;
+
 #define HIVE_IF_FSM_SYNC_STATUS                 0x100
 #define HIVE_IF_FSM_SYNC_COUNTER                0x104
 #define HIVE_IF_FSM_CROP_STATUS                 0x108

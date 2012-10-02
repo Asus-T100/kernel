@@ -82,6 +82,59 @@ void
 sh_css_get_isp_config(enum sh_css_pipe_id pipe,
 		      const struct sh_css_isp_config **config);
 
+/** @brief Set the digital zoom factor.
+ *
+ * @param[in]	dx	The horizontal zoom factor.
+ * @param[in]	dy	The vertical zoom factor.
+ *
+ * Digital zoom: this feature can be configured with a zoom factor
+ * which determines the amount of zoom and a zoom center which determines
+ * the point to zoom in at.
+ * This feature is currently available only for video, but will become
+ * available for preview and capture as well.
+ * Set the digital zoom factor, this is a logarithmic scale. The actual zoom
+ * factor will be 64/x.
+ * Setting dx or dy to 0 disables digital zoom for that direction.
+ */
+void
+sh_css_set_zoom_factor(unsigned int dx, unsigned int dy);
+
+/** @brief Get the digital zoom factor.
+ *
+ * @param[out]	dx	Pointer to the horizontal zoom factor.
+ * @param[out]	dy	Pointer to the vertical zoom factor.
+ *
+ * Get the current zoom factor. This will return the same values as were set
+ * during the last video_set_zoom_factor() call.
+ */
+void
+sh_css_get_zoom_factor(unsigned int *dx, unsigned int *dy);
+
+void
+sh_css_get_zoom(struct sh_css_zoom *zoom);
+
+/** @brief Set the motion vector for DVS.
+ *
+ * @param	x	Horizontal motion vector.
+ * @param	y	Vertical motion vector.
+ *
+ * Set the motion vector for Digital Video Stabilization (DVS).
+ * These positions are normally calculated using the DVS statistics.
+ */
+void
+sh_css_video_set_dis_vector(int x, int y);
+
+void
+sh_css_get_dis_motion(struct sh_css_vector *motion);
+
+/** @brief Set the color shading table.
+ *
+ * @param[in]	table	The shading table itself.
+ *
+ * Set the shading table for the current sensor module. This table will be
+ * used for shading correction in each mode that supports this feature.
+ */
+
 /* FPN */
 enum sh_css_err
 sh_css_set_black_frame(const struct sh_css_frame *raw_black_frame);
@@ -204,6 +257,13 @@ sh_css_get_macc_table(const struct sh_css_macc_table **table);
 bool
 sh_css_params_set_binning_factor(unsigned int sensor_binning);
 
+/* 6-axis DVS */
+void
+sh_css_set_dvs_6axis_config(const struct sh_css_dvs_6axis_config *dvs_config);
+
+void
+sh_css_get_dvs_6axis_config(const struct sh_css_dvs_6axis_config **dvs_config);
+
 bool
 sh_css_params_set_shading_table(
 	const struct sh_css_shading_table *table);
@@ -245,5 +305,18 @@ enum sh_css_err sh_css_allocate_stat_buffers_from_info(
 void
 sh_css_free_stat_buffers(union sh_css_s3a_data *s3a_ptr,
 	struct sh_css_dis_data *dis_ptr);
+
+void
+sh_css_update_uds_and_crop_info(
+		const struct sh_css_binary_info *info,
+		const struct sh_css_frame_info *in_frame_info,
+		const struct sh_css_frame_info *out_frame_info,
+		const struct sh_css_dvs_envelope *dvs_env,
+		bool preview_mode,
+		const struct sh_css_zoom *zoom,
+		const struct sh_css_vector *motion_vector,
+		struct sh_css_uds_info *uds,		/* out */
+		struct sh_css_crop_pos *sp_out_crop_pos	/* out */
+		);
 
 #endif /* _SH_CSS_PARAMS_H_ */

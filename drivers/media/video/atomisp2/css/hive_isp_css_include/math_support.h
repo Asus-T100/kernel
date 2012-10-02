@@ -1,6 +1,9 @@
 #ifndef __MATH_SUPPORT_H_INCLUDED__
 #define __MATH_SUPPORT_H_INCLUDED__
 
+/* ceil((real)a / b) */
+#define ceil_div(a,b) (((a)+(b)-1)/(b))
+
 #if defined(_MSC_VER)
 
 #define min(a, b) ((a) < (b) ? (a) : (b))

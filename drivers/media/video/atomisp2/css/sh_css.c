@@ -60,7 +60,6 @@
 #include "platform_support.h" /* hrt_sleep() */
 
 #define WITH_PC_MONITORING  0
-#define FLASH_IMPL_3
 
 #if WITH_PC_MONITORING
 #define MULTIPLE_SAMPLES 1
@@ -145,8 +144,6 @@ enum sh_css_state {
 	DEFAULT_FRAME_INFO,        /* output_info */\
 	DEFAULT_FRAME_INFO,        /* vf_output_info */ \
 	DEFAULT_FRAME_INFO,        /* yuv_ds_input_info */\
-	HRT_GDC_N,                 /* curr_dx */ \
-	HRT_GDC_N,                 /* curr_dy */ \
 	0,                         /* ch_id */ \
 	N_SH_CSS_INPUT_FORMAT,     /* input_format */ \
 	SH_CSS_INPUT_MODE_SENSOR,  /* input_mode */ \
@@ -163,7 +160,6 @@ enum sh_css_state {
 	DEFAULT_FRAME_INFO,        /* input_effective_info */ \
 	SH_CSS_CAPTURE_MODE_PRIMARY,/* capture_mode */ \
 	false,                     /* xnr */ \
-	{ 0, 0 },                  /* motion_vector */ \
 	{ 0, 0 },                  /* dvs_envelope */ \
 	false,                     /* invalid_first_frame */ \
 	false,                     /* enable_yuv_ds */ \
@@ -261,9 +257,7 @@ struct sh_css_pipe {
 	struct sh_css_frame_info     output_info;
 	struct sh_css_frame_info     vf_output_info;
 	struct sh_css_frame_info     yuv_ds_input_info;
-	unsigned int                 curr_dx;
-	unsigned int                 curr_dy;
-	unsigned int                   ch_id;
+	unsigned int                 ch_id;
 	enum sh_css_input_format     input_format;
 	enum sh_css_input_mode       input_mode;
 	bool                         two_ppc;
@@ -279,7 +273,6 @@ struct sh_css_pipe {
 	struct sh_css_frame_info       input_effective_info;
 	enum sh_css_capture_mode     capture_mode;
 	bool                         xnr;
-	struct sh_css_vector         motion_vector;
 	struct sh_css_envelope       dvs_envelope;
 	bool                         invalid_first_frame;
 	bool                         enable_yuv_ds;
@@ -1390,7 +1383,6 @@ sh_css_binary_args_reset(struct sh_css_binary_args *args)
 	args->out_tnr_frame = NULL;
 	args->extra_frame   = NULL;
 	args->out_vf_frame  = NULL;
-	args->motion_vector = (struct sh_css_vector){0, 0};;
 	args->copy_vf       = false;
 	args->copy_output   = true;
 	args->vf_downscale_log2 = 0;
@@ -1897,9 +1889,9 @@ enum sh_css_err sh_css_init(
 	void (*flush_func) (struct sh_css_acc_fw *fw) = env->sh_env.flush;
 
 	static struct sh_css default_css = DEFAULT_CSS;
-	static struct sh_css_preview_settings preview = DEFAULT_PREVIEW_SETTINGS; 
-	static struct sh_css_capture_settings capture = DEFAULT_CAPTURE_SETTINGS; 
-	static struct sh_css_video_settings   video   = DEFAULT_VIDEO_SETTINGS; 
+	static struct sh_css_preview_settings preview = DEFAULT_PREVIEW_SETTINGS;
+	static struct sh_css_capture_settings capture = DEFAULT_CAPTURE_SETTINGS;
+	static struct sh_css_video_settings   video   = DEFAULT_VIDEO_SETTINGS;
 
 	hrt_data select = gpio_reg_load(GPIO0_ID, _gpio_block_reg_do_select)
 						& (~GPIO_FLASH_PIN_MASK);
@@ -3546,7 +3538,7 @@ sh_css_dequeue_event(enum sh_css_pipe_id *pipe_id,
 		sh_css_sp_snd_event(SP_SW_EVENT_ID_3,
 				0,
 				0,
-				0);		
+				0);
 	}
 
 	host_event = translate_sp_event(sp_event);
@@ -4276,7 +4268,6 @@ printf("wouldhave prepare (%p, %d, ..., %p)\n", NULL,
 	/* update the arguments with the latest info */
 	video_stage->args.out_frame = out_frame;
 
-	video_stage->args.motion_vector = pipe->motion_vector;
 	if (pipe->online && !in_frame)
 		vf_pp_stage->args.out_frame = vf_frame;
 
@@ -4374,15 +4365,6 @@ sh_css_video_configure_viewfinder(unsigned int width,
 	return sh_css_success;
 }
 
-void
-sh_css_video_set_dis_vector(int x, int y)
-{
-	struct sh_css_pipe *pipe = &my_css.video_pipe;
-
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_video_set_dis_vector()\n");
-	pipe->motion_vector = (struct sh_css_vector){x, y};
-}
-
 /* Specify the envelope to be used for DIS. */
 void
 sh_css_video_set_dis_envelope(unsigned int width, unsigned int height)
@@ -4408,6 +4390,8 @@ sh_css_video_get_dis_envelope(unsigned int *width, unsigned int *height)
 	*height = pipe->dvs_envelope.height;
 }
 
+#if 0
+/* rvanimme: Not supported for now, use global sh_css_set_zoom_factor */
 void
 sh_css_pipe_set_zoom_factor(struct sh_css_pipe *me,
 			    unsigned int dx,
@@ -4441,6 +4425,7 @@ sh_css_pipe_get_zoom_factor(struct sh_css_pipe *me,
 		"sh_css_pipe_get_zoom_factor() out: dx=%d, dy=%d\n", *dx, *dy);
 
 }
+#endif
 
 static enum sh_css_err
 load_copy_binaries(struct sh_css_pipe *pipe)
@@ -4464,6 +4449,8 @@ load_copy_binaries(struct sh_css_pipe *pipe)
 static bool
 need_capture_pp(const struct sh_css_pipe *pipe)
 {
+	struct sh_css_zoom zoom;
+
 	/* determine whether we need to use the capture_pp binary.
 	 * This is needed for:
 	 *   1. XNR or
@@ -4476,8 +4463,10 @@ need_capture_pp(const struct sh_css_pipe *pipe)
 		return true;
 	if (pipe->xnr)
 		return true;
-	if (pipe->curr_dx < HRT_GDC_N ||
-	    pipe->curr_dy < HRT_GDC_N)
+
+	sh_css_get_zoom(&zoom);
+	if (zoom.dx < HRT_GDC_N ||
+	    zoom.dy < HRT_GDC_N)
 		return true;
 	return false;
 }
@@ -6291,7 +6280,6 @@ void sh_css_enable_sp_invalidate_tlb(void)
 		1);
 }
 
-#if defined(FLASH_IMPL_1) || defined(FLASH_IMPL_3)
 void sh_css_request_flash(void)
 {
 	const struct sh_css_fw_info *fw;
@@ -6307,69 +6295,6 @@ void sh_css_request_flash(void)
 		1);
 
 }
-#endif
-
-#ifdef FLASH_IMPL_2
-void sh_css_request_flash(void)
-{
-	const struct sh_css_fw_info *fw;
-	unsigned int HIVE_ADDR_sp_request_flash;
-	hrt_data data;
-	hrt_data enable = gpio_reg_load(GPIO0_ID, _gpio_block_reg_do_e)
-						| GPIO_FLASH_PIN_MASK;
-
-	fw = &sh_css_sp_fw;
-	HIVE_ADDR_sp_request_flash = fw->info.sp.request_flash;
-
-	(void)HIVE_ADDR_sp_request_flash; /* Suppres warnings in CRUN */
-
-	/* pqiao TODO: load flash_in_use from SP to
-		decide whether sending commands */
-
-	/* command 1: trigger flash upon receiving SOF irq of frame 0*/
-	data = gpio_reg_load(GPIO0_ID, _gpio_block_reg_do_0)
-				& (~GPIO_FLASH_PIN_MASK);
-	data |= (GPIO_FLASH_PIN_MASK & ~GPIO_FLASH_PIN_MASK) |
-				(1 << HIVE_GPIO_STROBE_TRIGGER_PIN);
-	timed_ctrl_snd_gpio_commnd(TIMED_CTRL0_ID,
-				1 << HIVE_TIMED_CTRL_MIPI_SOF_BIT_ID,
-				1 << HIVE_TIMED_CTRL_MIPI_SOF_BIT_ID,
-				0,
-				GPIO0_ID,
-				_gpio_block_reg_do_0 * sizeof(hrt_data),
-				data);
-	/* command 2: inform SP flash is triggered */
-	timed_ctrl_snd_sp_commnd(TIMED_CTRL0_ID,
-				1 << HIVE_TIMED_CTRL_MIPI_SOL_BIT_ID,
-				1 << HIVE_TIMED_CTRL_MIPI_SOL_BIT_ID,
-				0,
-				SP0_ID,
-				(unsigned int)sp_address_of(sp_flash_in_use),
-				1);
-
-	/* command 3: dummy action to skip the EOF irq of frame 0 */
-	timed_ctrl_snd_gpio_commnd(TIMED_CTRL0_ID,
-				1 << HIVE_TIMED_CTRL_MIPI_EOF_BIT_ID,
-				1 << HIVE_TIMED_CTRL_MIPI_EOF_BIT_ID,
-				0,
-				GPIO0_ID,
-				_gpio_block_reg_do_e * sizeof(hrt_data),
-				enable);
-
-	/* command 4: turn off flash upon receiving EOF irq of frame 1 */
-	data = gpio_reg_load(GPIO0_ID, _gpio_block_reg_do_0)
-				& (~GPIO_FLASH_PIN_MASK);
-	data |= (GPIO_FLASH_PIN_MASK & ~GPIO_FLASH_PIN_MASK) |
-				~(1 << HIVE_GPIO_STROBE_TRIGGER_PIN);
-	timed_ctrl_snd_gpio_commnd(TIMED_CTRL0_ID,
-				1 << HIVE_TIMED_CTRL_MIPI_EOF_BIT_ID,
-				1 << HIVE_TIMED_CTRL_MIPI_EOF_BIT_ID,
-				0,
-				GPIO0_ID,
-				_gpio_block_reg_do_0 * sizeof(hrt_data),
-				data);
-}
-#endif
 
 /* CSS 1.5 wrapper */
 enum sh_css_err
@@ -6492,26 +6417,6 @@ sh_css_video_enable_online(bool enable)
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_video_enable_online() in: enable=%d\n", enable);
 	sh_css_pipe_enable_online(&my_css.video_pipe, enable);
-}
-
-void
-sh_css_set_zoom_factor(unsigned int dx, unsigned int dy)
-{
-	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_set_zoom_factor() in: dx=%d, dy=%d\n", dx, dy);
-	sh_css_pipe_set_zoom_factor(&my_css.preview_pipe, dx, dy);
-	sh_css_pipe_set_zoom_factor(&my_css.capture_pipe, dx, dy);
-	sh_css_pipe_set_zoom_factor(&my_css.video_pipe, dx, dy);
-}
-
-void
-sh_css_get_zoom_factor(unsigned int *dx, unsigned int *dy)
-{
-	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_zoom_factor()\n");
-	/* we arbitrarily pick preview pipe, they should all be equal */
-	sh_css_pipe_get_zoom_factor(&my_css.preview_pipe, dx, dy);
-	sh_css_dtrace(SH_DBG_TRACE,
-		"sh_css_get_zoom_factor() out: dx=%d, dy=%d\n", *dx, *dy);
 }
 
 void

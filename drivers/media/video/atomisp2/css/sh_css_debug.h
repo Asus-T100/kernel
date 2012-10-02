@@ -274,40 +274,4 @@ extern bool sh_css_debug_mode_enable_dma_channel(
 		int channel_id,
 		int request_type);
 
-/**
- * @brief Internal debug support for constructing a pipe graph.
- *
- * @return	None
- */
-extern void debug_pipe_graph_dump_prologue(void);
-
-/**
- * @brief Internal debug support for constructing a pipe graph.
- *
- * @return	None
- */
-extern void debug_pipe_graph_dump_epilogue(void);
-
-/**
- * @brief Internal debug support for constructing a pipe graph.
- * @param[in]	stage		Pipeline stage.
- * @param[in]	id		Pipe id.
- *
- * @return	None
- */
-extern void debug_pipe_graph_dump_stage(
-		struct sh_css_pipeline_stage *stage,
-		enum sh_css_pipe_id id);
-
-/**
- * @brief Internal debug support for constructing a pipe graph.
- * @param[in]	cc_frame	Output frame of SP raw copy.
- *
- * @return	None
- */
-extern void debug_pipe_graph_dump_sp_raw_copy(
-		struct sh_css_frame *cc_frame);
-
-
-
 #endif /* _SH_CSS_DEBUG_H_ */

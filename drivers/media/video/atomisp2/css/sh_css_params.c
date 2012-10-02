@@ -56,6 +56,14 @@
 #define sISP_VAL_MAX		      ((1<<uISP_REG_BIT)-1)
 #define uISP_VAL_MIN		      ((unsigned)0)
 #define uISP_VAL_MAX		      ((unsigned)((1<<uISP_REG_BIT)-1))
+
+/* Convenience macro to force a value to a lower even value.
+ *  We do not want to (re)use the kernel macro round_down here
+ *  because the same code base is used internally by Silicon Hive
+ *  simulation environment, where the kernel macro is not available
+ */
+#define EVEN_FLOOR(x)	(x & ~1)
+
 /* a:fraction bits for 16bit precision, b:fraction bits for ISP precision */
 #define sDIGIT_FITTING(v, a, b) \
 	min(max((((v)>>sSHIFT) >> (sFRACTION_BITS_FITTING(a)-(b))), \
@@ -106,8 +114,30 @@
 	(SH_CSS_MORPH_TABLE_ELEM_BYTES * (binary)->morph_tbl_aligned_width * \
 	 (binary)->morph_tbl_height)
 
+/* @GC TODO: Move these defines to the appropriate place later. */
+#define DVS_BLOCKDIM_X (64)
+#define DVS_BLOCKDIM_Y (64)
+#define DVS_COORD_FRAC_BITS (4)
+#define DVS_INPUT_BYTES_PER_PIXEL (1)
+#define XMEM_ALIGN_LOG2 (5)
+
+#define DVS_6AXIS_BYTES(binary) \
+	(sizeof(struct s_isp_dvs_6axis_config) \
+	 * (binary)->out_frame_info.width / DVS_BLOCKDIM_X \
+	 * (binary)->out_frame_info.height) / (DVS_BLOCKDIM_Y/2)
+struct s_isp_dvs_6axis_config {
+	unsigned int in_addr_offset;
+	unsigned int in_block_width;
+	unsigned int in_block_height;
+	unsigned int relative_x[4];
+	unsigned int relative_y[4];
+};
+
+
 static struct sh_css_isp_params isp_parameters;
 static struct sh_css_fpn_table fpn_table;
+static struct sh_css_zoom zoom_config;
+static struct sh_css_vector motion_config;
 static const struct sh_css_morph_table   *morph_table;
 static const struct sh_css_shading_table *sc_table;
 static const struct sh_css_macc_table    *macc_table;
@@ -126,8 +156,11 @@ static const struct sh_css_de_config     *de_config;
 static const struct sh_css_gc_config     *gc_config;
 static const struct sh_css_anr_config    *anr_config;
 static const struct sh_css_ce_config     *ce_config;
+static const struct sh_css_dvs_6axis_config     *dvs_6axis_config;
 static bool isp_params_changed,
 	    fpn_table_changed,
+	    zoom_config_changed,
+	    motion_config_changed,
 	    dis_coef_table_changed,
 	    morph_table_changed,
 	    sc_table_changed,
@@ -146,8 +179,9 @@ static bool isp_params_changed,
 	    de_config_changed,
 	    gc_config_changed,
 	    anr_config_changed,
-	    ce_config_changed;
-		
+	    ce_config_changed,
+	    dvs_6axis_config_changed;
+
 static hrt_vaddress last_one;
 
 static unsigned int sensor_binning;
@@ -186,13 +220,109 @@ static hrt_vaddress xmem_sp_group_ptrs;
 static hrt_vaddress xmem_sp_stage_ptrs[SH_CSS_NR_OF_PIPELINES]
 						[SH_CSS_MAX_STAGES];
 
+
+
+/* @GC: X and Y coords will later be pointer with no default value.
+ * This is just for initial testing with hardcoded tetragon coords */
+#if 0
+static const struct sh_css_dvs_6axis_config default_dvs_6axis_config = {
+	.xcoords = {
+{2048, 3072, 4096, 5120, 6144, 7168, 8192, 9216,10240,11264,12288,13312,14336},
+{2048, 3072, 4096, 5120, 6144, 7168, 8192, 9216,10240,11264,12288,13312,14336},
+{2048, 3072, 4096, 5120, 6144, 7168, 8192, 9216,10240,11264,12288,13312,14336},
+{2048, 3072, 4096, 5120, 6144, 7168, 8192, 9216,10240,11264,12288,13312,14336},
+{2048, 3072, 4096, 5120, 6144, 7168, 8192, 9216,10240,11264,12288,13312,14336},
+{2048, 3072, 4096, 5120, 6144, 7168, 8192, 9216,10240,11264,12288,13312,14336},
+{2048, 3072, 4096, 5120, 6144, 7168, 8192, 9216,10240,11264,12288,13312,14336},
+{2048, 3072, 4096, 5120, 6144, 7168, 8192, 9216,10240,11264,12288,13312,14336},
+{2048, 3072, 4096, 5120, 6144, 7168, 8192, 9216,10240,11264,12288,13312,14336},
+{2048, 3072, 4096, 5120, 6144, 7168, 8192, 9216,10240,11264,12288,13312,14336},
+{2048, 3072, 4096, 5120, 6144, 7168, 8192, 9216,10240,11264,12288,13312,14336},
+{2048, 3072, 4096, 5120, 6144, 7168, 8192, 9216,10240,11264,12288,13312,14336},
+{2048, 3072, 4096, 5120, 6144, 7168, 8192, 9216,10240,11264,12288,13312,14336},
+{2048, 3072, 4096, 5120, 6144, 7168, 8192, 9216,10240,11264,12288,13312,14336},
+{2048, 3072, 4096, 5120, 6144, 7168, 8192, 9216,10240,11264,12288,13312,14336},
+{2048, 3072, 4096, 5120, 6144, 7168, 8192, 9216,10240,11264,12288,13312,14336},
+{2048, 3072, 4096, 5120, 6144, 7168, 8192, 9216,10240,11264,12288,13312,14336},
+{2048, 3072, 4096, 5120, 6144, 7168, 8192, 9216,10240,11264,12288,13312,14336},
+{2048, 3072, 4096, 5120, 6144, 7168, 8192, 9216,10240,11264,12288,13312,14336}
+},
+	.ycoords = {
+{ 1536, 1536, 1536, 1536, 1536, 1536, 1536, 1536, 1536, 1536, 1536, 1536, 1536},
+{ 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048, 2048},
+{ 2560, 2560, 2560, 2560, 2560, 2560, 2560, 2560, 2560, 2560, 2560, 2560, 2560},
+{ 3072, 3072, 3072, 3072, 3072, 3072, 3072, 3072, 3072, 3072, 3072, 3072, 3072},
+{ 3584, 3584, 3584, 3584, 3584, 3584, 3584, 3584, 3584, 3584, 3584, 3584, 3584},
+{ 4096, 4096, 4096, 4096, 4096, 4096, 4096, 4096, 4096, 4096, 4096, 4096, 4096},
+{ 4608, 4608, 4608, 4608, 4608, 4608, 4608, 4608, 4608, 4608, 4608, 4608, 4608},
+{ 5120, 5120, 5120, 5120, 5120, 5120, 5120, 5120, 5120, 5120, 5120, 5120, 5120},
+{ 5632, 5632, 5632, 5632, 5632, 5632, 5632, 5632, 5632, 5632, 5632, 5632, 5632},
+{ 6144, 6144, 6144, 6144, 6144, 6144, 6144, 6144, 6144, 6144, 6144, 6144, 6144},
+{ 6656, 6656, 6656, 6656, 6656, 6656, 6656, 6656, 6656, 6656, 6656, 6656, 6656},
+{ 7168, 7168, 7168, 7168, 7168, 7168, 7168, 7168, 7168, 7168, 7168, 7168, 7168},
+{ 7680, 7680, 7680, 7680, 7680, 7680, 7680, 7680, 7680, 7680, 7680, 7680, 7680},
+{ 8192, 8192, 8192, 8192, 8192, 8192, 8192, 8192, 8192, 8192, 8192, 8192, 8192},
+{ 8704, 8704, 8704, 8704, 8704, 8704, 8704, 8704, 8704, 8704, 8704, 8704, 8704},
+{ 9216, 9216, 9216, 9216, 9216, 9216, 9216, 9216, 9216, 9216, 9216, 9216, 9216},
+{ 9728, 9728, 9728, 9728, 9728, 9728, 9728, 9728, 9728, 9728, 9728, 9728, 9728},
+{10240,10240,10240,10240,10240,10240,10240,10240,10240,10240,10240,10240,10240},
+{10752,10752,10752,10752,10752,10752,10752,10752,10752,10752,10752,10752,10752}
+}
+};
+#else
+static const struct sh_css_dvs_6axis_config default_dvs_6axis_config = {
+	.xcoords = {
+{ 2069, 3093, 4118, 5144, 6169, 7194, 8220, 9246,10272,11298,12325,13351,14378},
+{ 2070, 3095, 4119, 5144, 6169, 7195, 8220, 9246,10272,11298,12324,13350,14377},
+{ 2072, 3096, 4120, 5145, 6170, 7195, 8221, 9246,10272,11297,12324,13350,14376},
+{ 2073, 3097, 4121, 5146, 6171, 7196, 8221, 9246,10271,11297,12323,13349,14375},
+{ 2074, 3098, 4123, 5147, 6171, 7196, 8221, 9246,10271,11297,12322,13348,14374},
+{ 2076, 3100, 4124, 5148, 6172, 7197, 8221, 9246,10271,11296,12322,13347,14373},
+{ 2077, 3101, 4125, 5148, 6173, 7197, 8221, 9246,10271,11296,12321,13347,14372},
+{ 2079, 3102, 4126, 5149, 6173, 7197, 8222, 9246,10271,11296,12321,13346,14371},
+{ 2080, 3103, 4127, 5150, 6174, 7198, 8222, 9246,10271,11295,12320,13345,14370},
+{ 2081, 3104, 4128, 5151, 6175, 7198, 8222, 9246,10271,11295,12320,13344,14370},
+{ 2083, 3106, 4129, 5152, 6175, 7199, 8222, 9246,10270,11295,12319,13344,14369},
+{ 2084, 3107, 4130, 5153, 6176, 7199, 8223, 9246,10270,11294,12319,13343,14368},
+{ 2086, 3108, 4131, 5153, 6176, 7200, 8223, 9246,10270,11294,12318,13342,14367},
+{ 2087, 3109, 4132, 5154, 6177, 7200, 8223, 9246,10270,11294,12317,13342,14366},
+{ 2088, 3110, 4133, 5155, 6178, 7200, 8223, 9246,10270,11293,12317,13341,14365},
+{ 2090, 3112, 4134, 5156, 6178, 7201, 8224, 9247,10270,11293,12316,13340,14364},
+{ 2091, 3113, 4135, 5157, 6179, 7201, 8224, 9247,10269,11293,12316,13339,14363},
+{ 2093, 3114, 4136, 5158, 6180, 7202, 8224, 9247,10269,11292,12315,13339,14362},
+{ 2094, 3115, 4137, 5158, 6180, 7202, 8224, 9247,10269,11292,12315,13338,14361}
+},
+	.ycoords = {
+{ 1497, 1497, 1496, 1496, 1496, 1495, 1495, 1494, 1494, 1493, 1493, 1492, 1492},
+{ 2010, 2010, 2009, 2009, 2008, 2008, 2007, 2007, 2006, 2006, 2006, 2005, 2005},
+{ 2522, 2522, 2522, 2521, 2521, 2520, 2520, 2520, 2519, 2519, 2518, 2518, 2518},
+{ 3034, 3034, 3034, 3033, 3033, 3033, 3032, 3032, 3032, 3031, 3031, 3031, 3030},
+{ 3546, 3546, 3546, 3546, 3545, 3545, 3545, 3544, 3544, 3544, 3543, 3543, 3543},
+{ 4058, 4058, 4058, 4057, 4057, 4057, 4057, 4056, 4056, 4056, 4056, 4055, 4055},
+{ 4570, 4570, 4569, 4569, 4569, 4569, 4568, 4568, 4568, 4568, 4568, 4567, 4567},
+{ 5081, 5081, 5081, 5081, 5080, 5080, 5080, 5080, 5080, 5080, 5079, 5079, 5079},
+{ 5592, 5592, 5592, 5592, 5592, 5592, 5592, 5591, 5591, 5591, 5591, 5591, 5591},
+{ 6103, 6103, 6103, 6103, 6103, 6103, 6103, 6103, 6103, 6103, 6102, 6102, 6102},
+{ 6614, 6614, 6614, 6614, 6614, 6614, 6614, 6614, 6614, 6614, 6614, 6614, 6614},
+{ 7125, 7125, 7125, 7125, 7125, 7125, 7125, 7125, 7125, 7125, 7125, 7125, 7125},
+{ 7635, 7635, 7635, 7635, 7635, 7635, 7635, 7635, 7635, 7635, 7636, 7636, 7636},
+{ 8145, 8145, 8145, 8145, 8146, 8146, 8146, 8146, 8146, 8146, 8146, 8146, 8146},
+{ 8655, 8655, 8655, 8656, 8656, 8656, 8656, 8656, 8656, 8656, 8657, 8657, 8657},
+{ 9165, 9165, 9165, 9165, 9166, 9166, 9166, 9166, 9166, 9167, 9167, 9167, 9167},
+{ 9674, 9675, 9675, 9675, 9675, 9676, 9676, 9676, 9676, 9677, 9677, 9677, 9677},
+{10184,10184,10184,10185,10185,10185,10186,10186,10186,10186,10187,10187,10187},
+{10693,10693,10694,10694,10694,10695,10695,10695,10696,10696,10696,10697,10697}
+}
+};
+#endif
+
+
+
+
 #if defined(HAS_VAMEM_VERSION_2)
 
 static const struct sh_css_gamma_table default_gamma_table = {
-#if !defined(_MSC_VER)
-	.data = {
-#endif
-  0,   4,   8,  12,  17,  21,  27,  32,
+{ 0,   4,   8,  12,  17,  21,  27,  32,
  38,  44,  49,  55,  61,  66,  71,  76,
  80,  84,  88,  92,  95,  98, 102, 105,
 108, 110, 113, 116, 118, 121, 123, 126,
@@ -224,17 +354,11 @@ static const struct sh_css_gamma_table default_gamma_table = {
 249, 249, 250, 250, 250, 250, 251, 251,
 251, 251, 252, 252, 252, 252, 253, 253,
 253, 253, 254, 254, 254, 254, 255, 255,
-#if !defined(_MSC_VER)
-255} };
-#else
-255};
-#endif
+255 }
+};
 
 static const struct sh_css_ctc_table default_ctc_table = {
-#if !defined(_MSC_VER)
-	.data = {
-#endif
-   0,  384,  837,  957, 1011, 1062, 1083, 1080,
+ { 0,  384,  837,  957, 1011, 1062, 1083, 1080,
 1078, 1077, 1053, 1039, 1012,  992,  969,  951,
  929,  906,  886,  866,  845,  823,  809,  790,
  772,  758,  741,  726,  711,  701,  688,  675,
@@ -266,21 +390,15 @@ static const struct sh_css_ctc_table default_ctc_table = {
   53,   51,   49,   49,   47,   45,   45,   45,
   41,   40,   39,   39,   34,   33,   34,   32,
   25,   23,   24,   20,   13,    9,   12,    0,
-#if !defined(_MSC_VER)
-  0} };
-#else
-   0};
-#endif
+   0 }
+};
 
 static const struct sh_css_xnr_table default_xnr_table = {
-#if !defined(_MSC_VER)
-	.data = {
-#endif
   /* 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 */
-  8191>>1, 4096>>1, 2730>>1, 2048>>1, 1638>>1, 1365>>1, 1170>>1, 1024>>1, 910>>1, 819>>1, 744>>1, 682>>1, 630>>1, 585>>1,
+  { 8191>>1, 4096>>1, 2730>>1, 2048>>1, 1638>>1, 1365>>1, 1170>>1, 1024>>1, 910>>1, 819>>1, 744>>1, 682>>1, 630>>1, 585>>1,
     546>>1, 512>>1,
 
-  /* 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 */ 
+  /* 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 */
   481>>1, 455>>1, 431>>1, 409>>1, 390>>1, 372>>1, 356>>1, 341>>1, 327>>1, 315>>1, 303>>1, 292>>1, 282>>1, 273>>1, 264>>1,
     256>>1,
 
@@ -289,12 +407,8 @@ static const struct sh_css_xnr_table default_xnr_table = {
     170>>1,
 
   /* 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 */
-  167>>1, 163>>1, 160>>1, 157>>1, 154>>1, 151>>1, 148>>1, 146>>1, 143>>1, 141>>1, 138>>1, 136>>1, 134>>1, 132>>1, 130>>1, 128>>1
-#if !defined(_MSC_VER)
-  } };
-#else
+  167>>1, 163>>1, 160>>1, 157>>1, 154>>1, 151>>1, 148>>1, 146>>1, 143>>1, 141>>1, 138>>1, 136>>1, 134>>1, 132>>1, 130>>1, 128>>1 }
   };
-#endif
 
 const struct sh_css_gamma_table *default_gamma_table_ptr = &default_gamma_table;
 const struct sh_css_ctc_table *default_ctc_table_ptr = &default_ctc_table;
@@ -304,10 +418,7 @@ const struct sh_css_xnr_table *default_xnr_table_ptr = &default_xnr_table;
 
 /* Default Parameters */
 static const struct sh_css_gamma_table default_gamma_table = {
-#if !defined(_MSC_VER)
-	.data = {
-#endif
-		0, 1, 2, 3, 4, 5, 6, 7,
+		{ 0, 1, 2, 3, 4, 5, 6, 7,
 		8, 9, 10, 11, 12, 13, 14, 16,
 		17, 18, 19, 20, 21, 23, 24, 25,
 		27, 28, 29, 31, 32, 33, 35, 36,
@@ -434,17 +545,11 @@ static const struct sh_css_gamma_table default_gamma_table = {
 		253, 253, 253, 253, 253, 253, 253, 253,
 		254, 254, 254, 254, 254, 254, 254, 254,
 		254, 254, 254, 254, 254, 254, 254, 254,
-		255, 255, 255, 255, 255, 255, 255, 255
-#if !defined(_MSC_VER)
-	}
-#endif
+		255, 255, 255, 255, 255, 255, 255, 255 }
 };
 
 static const struct sh_css_ctc_table default_ctc_table = {
-#if !defined(_MSC_VER)
-	.data = {
-#endif
-		0, 0, 256, 384, 384, 497, 765, 806,
+		{ 0, 0, 256, 384, 384, 497, 765, 806,
 		837, 851, 888, 901, 957, 981, 993, 1001,
 		1011, 1029, 1028, 1039, 1062, 1059, 1073, 1080,
 		1083, 1085, 1085, 1098, 1080, 1084, 1085, 1093,
@@ -571,21 +676,15 @@ static const struct sh_css_ctc_table default_ctc_table = {
 		25, 25, 27, 26, 23, 23, 23, 25,
 		24, 24, 22, 21, 20, 19, 16, 14,
 		13, 13, 13, 10, 9, 7, 7, 7,
-		12, 12, 12, 7, 0, 0, 0, 0
-#if !defined(_MSC_VER)
-	}
-#endif
+		12, 12, 12, 7, 0, 0, 0, 0 }
 };
 
 static const struct sh_css_xnr_table default_xnr_table = {
-#if !defined(_MSC_VER)
-	.data = {
-#endif
   /* 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 */
-  8191>>1, 4096>>1, 2730>>1, 2048>>1, 1638>>1, 1365>>1, 1170>>1, 1024>>1, 910>>1, 819>>1, 744>>1, 682>>1, 630>>1, 585>>1,
+  { 8191>>1, 4096>>1, 2730>>1, 2048>>1, 1638>>1, 1365>>1, 1170>>1, 1024>>1, 910>>1, 819>>1, 744>>1, 682>>1, 630>>1, 585>>1,
     546>>1, 512>>1,
 
-  /* 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 */ 
+  /* 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32 */
   481>>1, 455>>1, 431>>1, 409>>1, 390>>1, 372>>1, 356>>1, 341>>1, 327>>1, 315>>1, 303>>1, 292>>1, 282>>1, 273>>1, 264>>1,
     256>>1,
 
@@ -594,10 +693,7 @@ static const struct sh_css_xnr_table default_xnr_table = {
     170>>1,
 
   /* 49 50 51 52 53 54 55 56 57 58 59 60 61 62 63 64 */
-  167>>1, 163>>1, 160>>1, 157>>1, 154>>1, 151>>1, 148>>1, 146>>1, 143>>1, 141>>1, 138>>1, 136>>1, 134>>1, 132>>1, 130>>1, 128>>1
-#if !defined(_MSC_VER)
-	}
-#endif
+  167>>1, 163>>1, 160>>1, 157>>1, 154>>1, 151>>1, 148>>1, 146>>1, 143>>1, 141>>1, 138>>1, 136>>1, 134>>1, 132>>1, 130>>1, 128>>1 }
 };
 
 #else
@@ -609,20 +705,14 @@ static const struct sh_css_xnr_table default_xnr_table = {
  * 64values = 2x2matrix for 16area, [s2.11].
  */
 static const struct sh_css_macc_table default_macc_table = {
-#if !defined(_MSC_VER)
-	.data = {
-#endif
+		{ 8192, 0, 0, 8192, 8192, 0, 0, 8192,
 		8192, 0, 0, 8192, 8192, 0, 0, 8192,
 		8192, 0, 0, 8192, 8192, 0, 0, 8192,
 		8192, 0, 0, 8192, 8192, 0, 0, 8192,
 		8192, 0, 0, 8192, 8192, 0, 0, 8192,
 		8192, 0, 0, 8192, 8192, 0, 0, 8192,
 		8192, 0, 0, 8192, 8192, 0, 0, 8192,
-		8192, 0, 0, 8192, 8192, 0, 0, 8192,
-		8192, 0, 0, 8192, 8192, 0, 0, 8192
-#if !defined(_MSC_VER)
-	}
-#endif
+		8192, 0, 0, 8192, 8192, 0, 0, 8192 }
 };
 
 /* Digital Zoom lookup table. See documentation for more details about the
@@ -1183,156 +1273,6 @@ static const int zoom_table[4][HRT_GDC_N] = {
 	one of {GDC_VERSION_1, GDC_VERSION_2}"
 #endif
 
-#if defined(__USE_DESIGNATED_INITIALISERS__)
-static const struct sh_css_3a_config default_3a_config = {
-	.ae_y_coef_r  = 25559,
-	.ae_y_coef_g  = 32768,
-	.ae_y_coef_b  = 7209,
-	.awb_lg_high_raw = 65535,
-	.awb_lg_low      = 0,
-	.awb_lg_high     = 65535,
-	.af_fir1_coef = {-3344, -6104, -19143, 19143, 6104, 3344, 0},
-	.af_fir2_coef = {1027, 0, -9219, 16384, -9219, 1027, 0}
-};
-
-static const struct sh_css_3a_config disabled_3a_config = {
-	.ae_y_coef_r  = 25559,
-	.ae_y_coef_g  = 32768,
-	.ae_y_coef_b  = 7209,
-	.awb_lg_high_raw = 65535,
-	.awb_lg_low      = 0,
-	.awb_lg_high     = 65535,
-	.af_fir1_coef = {-6689, -12207, -32768, 32767, 12207, 6689, 0},
-	.af_fir2_coef = {2053, 0, -18437, 32767, -18437, 2053, 0}
-};
-
-static const struct sh_css_wb_config default_wb_config = {
-	.integer_bits = 1,
-	.gr		   = 32768,
-	.r		    = 32768,
-	.b		    = 32768,
-	.gb		   = 32768
-};
-
-static const struct sh_css_wb_config disabled_wb_config = {
-	.integer_bits = 1,
-	.gr		   = 32768,
-	.r		    = 32768,
-	.b		    = 32768,
-	.gb		   = 32768
-};
-
-static const struct sh_css_cc_config default_cc_config = {
-	.fraction_bits = 8,
-	.matrix		= {255, 29, 120, 0, -374, -342, 0, -672, 301},
-};
-
-static const struct sh_css_cc_config disabled_cc_config = {
-	.fraction_bits = 8,
-	.matrix		= {256, 44, 47, 0, -169, -171, 0, -214, 148},
-};
-
-static const struct sh_css_tnr_config default_tnr_config = {
-	.gain		 = 32768,
-	.threshold_y  = 32,
-	.threshold_uv = 32,
-};
-
-static const struct sh_css_tnr_config disabled_tnr_config = {
-	.gain		 = 0,
-	.threshold_y  = 0,
-	.threshold_uv = 0,
-};
-
-static const struct sh_css_ob_config default_ob_config = {
-	.mode		   = sh_css_ob_mode_none,
-	.level_gr       = 0,
-	.level_r		= 0,
-	.level_b		= 0,
-	.level_gb       = 0,
-	.start_position = 0,
-	.end_position   = 0
-};
-
-static const struct sh_css_ob_config disabled_ob_config = {
-	.mode		   = sh_css_ob_mode_none,
-	.level_gr       = 0,
-	.level_r		= 0,
-	.level_b		= 0,
-	.level_gb       = 0,
-	.start_position = 0,
-	.end_position   = 0
-};
-
-static const struct sh_css_dp_config default_dp_config = {
-	.threshold = 8192,
-	.gain      = 2048
-};
-
-static const struct sh_css_dp_config disabled_dp_config = {
-	.threshold = 65535,
-	.gain      = 65535
-};
-
-static const struct sh_css_nr_config default_nr_config = {
-	.bnr_gain     = 16384,
-	.ynr_gain     = 8192,
-	.direction    = 1280,
-	.threshold_cb = 0,
-	.threshold_cr = 0
-};
-
-static const struct sh_css_nr_config disabled_nr_config = {
-	.bnr_gain     = 0,
-	.ynr_gain     = 0,
-	.direction    = 0,
-	.threshold_cb = 0,
-	.threshold_cr = 0
-};
-
-static const struct sh_css_ee_config default_ee_config = {
-	.gain		= 8192,
-	.threshold   = 128,
-	.detail_gain = 2048
-};
-
-static const struct sh_css_ee_config disabled_ee_config = {
-	.gain		= 0,
-	.threshold   = 0,
-	.detail_gain = 0
-};
-
-static const struct sh_css_de_config default_de_config = {
-	.pixelnoise		  = 0,
-	.c1_coring_threshold = 0,
-	.c2_coring_threshold = 0
-};
-
-static const struct sh_css_de_config disabled_de_config = {
-	.pixelnoise		  = 65535,
-	.c1_coring_threshold = 0,
-	.c2_coring_threshold = 0
-};
-
-static const struct sh_css_gc_config default_gc_config = {
-	.gain_k1 = 0,
-	.gain_k2 = 0
-};
-
-static const struct sh_css_gc_config disabled_gc_config = {
-	.gain_k1 = 0,
-	.gain_k2 = 0
-};
-
-static const struct sh_css_anr_config default_anr_config = {
-	.threshold   = 10,
-};
-
-static const struct sh_css_ce_config default_ce_config = {
-	.uv_level_min = 0,
-	.uv_level_max = 255
-};
-#else  /* defined(__USE_DESIGNATED_INITIALISERS__) */
 static const struct sh_css_3a_config default_3a_config = {
 	25559,
 	32768,
@@ -1481,7 +1421,17 @@ static const struct sh_css_ce_config default_ce_config = {
 	0,
 	255
 };
-#endif /* defined(__USE_DESIGNATED_INITIALISERS__) */
+
+static const struct sh_css_zoom default_zoom_config = {
+	HRT_GDC_N,
+	HRT_GDC_N
+};
+
+static const struct sh_css_vector default_motion_config = {
+	0,
+	0
+};
+
 
 static enum sh_css_err
 ref_sh_css_ddr_address_map(
@@ -1729,6 +1679,139 @@ sh_css_params_ddr_address_map(void)
 	return sp_ddr_ptrs;
 }
 
+/*
+ * @GC:
+ */
+static void
+convert_coords_to_ispparams(hrt_vaddress ddr_addr,
+		const struct sh_css_dvs_6axis_config *config,
+		unsigned int i_width,
+		unsigned int o_width,
+		unsigned int o_height,
+		unsigned int uv_flag)
+{
+	unsigned int i, j;
+	struct s_isp_dvs_6axis_config s;
+	unsigned int x00, x01, x10, x11,
+		     y00, y01, y10, y11;
+
+	unsigned int xmin, ymin;
+	unsigned int topleft_x, topleft_y,
+		     topleft_x_frac, topleft_y_frac;
+
+	/* number of blocks per height and width */
+	unsigned int num_blocks_y = (o_height / (DVS_BLOCKDIM_Y/2));
+	unsigned int num_blocks_x = o_width / DVS_BLOCKDIM_X;
+
+	unsigned int in_stride = i_width * DVS_INPUT_BYTES_PER_PIXEL;
+
+	assert (o_height % (DVS_BLOCKDIM_Y/2) == 0);
+	assert (o_width % DVS_BLOCKDIM_X == 0);
+
+	for (j = 0; j < num_blocks_y; j++) {
+		for (i = 0; i < num_blocks_x; i++) {
+			x00 = config->xcoords[(j)<<uv_flag][(i)<<uv_flag] >> uv_flag;
+			x01 = config->xcoords[(j)<<uv_flag][(i+1)<<uv_flag] >> uv_flag;
+			x10 = config->xcoords[(j+1)<<uv_flag][(i)<<uv_flag] >> uv_flag;
+			x11 = config->xcoords[(j+1)<<uv_flag][(i+1)<<uv_flag] >> uv_flag;
+
+			y00 = config->ycoords[(j)<<uv_flag][(i)<<uv_flag] >> uv_flag;
+			y01 = config->ycoords[(j)<<uv_flag][(i+1)<<uv_flag] >> uv_flag;
+			y10 = config->ycoords[(j+1)<<uv_flag][(i)<<uv_flag] >> uv_flag;
+			y11 = config->ycoords[(j+1)<<uv_flag][(i+1)<<uv_flag] >> uv_flag;
+
+			/* TODO: Assert that right column's X is greater */
+			xmin = MIN(x00, x10);
+			/* TODO: Assert that bottom row's Y is greater */
+			ymin = MIN(y00, y01);
+
+#if 0
+			/* TODO: Round width to the multiple of bus width */
+			xmax = MAX(x01, x11);
+			ymax = MAX(y10, y11);
+			in_block_width  = xmax - xmin;
+			in_block_height = ymax - ymin;
+#else
+			/*
+			 * For initial testing, we are using constant input
+			 * block size
+			 * */
+			s.in_block_width  = 128;
+			s.in_block_height = 48;
+#endif
+
+			topleft_y = ymin >> DVS_COORD_FRAC_BITS;
+			topleft_x = ((xmin >> DVS_COORD_FRAC_BITS)
+					>> XMEM_ALIGN_LOG2)
+					<< (XMEM_ALIGN_LOG2 + uv_flag);
+
+			s.in_addr_offset = topleft_y * in_stride + topleft_x;
+
+			topleft_x_frac = topleft_x << (DVS_COORD_FRAC_BITS - uv_flag);
+			topleft_y_frac = topleft_y << (DVS_COORD_FRAC_BITS);
+
+			s.relative_x[0] = x00 - topleft_x_frac;
+			s.relative_x[1] = x01 - topleft_x_frac;
+			s.relative_x[2] = x10 - topleft_x_frac;
+			s.relative_x[3] = x11 - topleft_x_frac;
+
+			s.relative_y[0] = y00 - topleft_y_frac;
+			s.relative_y[1] = y01 - topleft_y_frac;
+			s.relative_y[2] = y10 - topleft_y_frac;
+			s.relative_y[3] = y11 - topleft_y_frac;
+#if 0
+			printf("j: %d\ti:%d\n", j, i);
+			printf("offset: %d\n", s.in_addr_offset);
+			printf("relative_x[0]: %d\n", s.relative_x[0]);
+			printf("relative_x[1]: %d\n", s.relative_x[1]);
+			printf("relative_x[2]: %d\n", s.relative_x[2]);
+			printf("relative_x[3]: %d\n", s.relative_x[3]);
+			printf("relative_y[0]: %d\n", s.relative_y[0]);
+			printf("relative_y[1]: %d\n", s.relative_y[1]);
+			printf("relative_y[2]: %d\n", s.relative_y[2]);
+			printf("relative_y[3]: %d\n", s.relative_y[3]);
+			printf("relative_x_nofrac[0]: %d\n", s.relative_x[0]>>DVS_COORD_FRAC_BITS);
+			printf("relative_x_nofrac[1]: %d\n", s.relative_x[1]>>DVS_COORD_FRAC_BITS);
+			printf("relative_x_nofrac[2]: %d\n", s.relative_x[2]>>DVS_COORD_FRAC_BITS);
+			printf("relative_x_nofrac[3]: %d\n", s.relative_x[3]>>DVS_COORD_FRAC_BITS);
+			printf("relative_y_nofrac[0]: %d\n", s.relative_y[0]>>DVS_COORD_FRAC_BITS);
+			printf("relative_y_nofrac[1]: %d\n", s.relative_y[1]>>DVS_COORD_FRAC_BITS);
+			printf("relative_y_nofrac[2]: %d\n", s.relative_y[2]>>DVS_COORD_FRAC_BITS);
+			printf("relative_y_nofrac[3]: %d\n", s.relative_y[3]>>DVS_COORD_FRAC_BITS);
+			printf("\n");
+#endif
+
+			/* HMM STORE the struct "s" */
+			mmgr_store(ddr_addr,
+				   (void *)(&s),
+				   sizeof(struct s_isp_dvs_6axis_config));
+			ddr_addr += sizeof(struct s_isp_dvs_6axis_config);
+		}
+	}
+}
+
+static void
+store_dvs_6axis_config(const struct sh_css_binary *binary,
+		hrt_vaddress ddr_addr_y,
+		hrt_vaddress ddr_addr_uv)
+{
+	unsigned int i_width  = binary->in_frame_info.width;
+	unsigned int o_width  = binary->out_frame_info.width;
+	unsigned int o_height = binary->out_frame_info.height;
+
+	if (!dvs_6axis_config)
+		return;
+
+	/* Y plane */
+	convert_coords_to_ispparams(ddr_addr_y, dvs_6axis_config
+					, i_width, o_width, o_height, 0);
+	/* UV plane */
+	convert_coords_to_ispparams(ddr_addr_uv, dvs_6axis_config
+					, i_width/2, o_width/2, o_height/2, 1);
+
+
+	isp_params_changed = true;
+}
 /* ****************************************************
  * Each coefficient is stored as 7bits to fit 2 of them into one
  * ISP vector element, so we will store 4 coefficents on every
@@ -2186,6 +2269,54 @@ sh_css_process_ce(void)
 	ce_config_changed = false;
 }
 
+static void
+sh_css_process_zoom_and_motion(
+	enum sh_css_pipe_id pipe_id,
+	const struct sh_css_pipeline_stage *first_stage)
+{
+	const struct sh_css_pipeline_stage *stage;
+
+	/* Go through all stages to udate uds and cropping */
+	for (stage = first_stage; stage; stage = stage->next) {
+
+		struct sh_css_binary *binary;
+		struct sh_css_binary tmp_binary;
+
+		const struct sh_css_binary_info *info = NULL;
+
+		binary = stage->binary;
+		if (binary) {
+			info = binary->info;
+		} else {
+			const struct sh_css_binary_args *args = &stage->args;
+			info = &stage->firmware->info.isp;
+			sh_css_fill_binary_info(info, false, false,
+				SH_CSS_INPUT_FORMAT_RAW_10,
+				args->in_frame  ? &args->in_frame->info  : NULL,
+				args->out_frame ? &args->out_frame->info : NULL,
+				args->out_vf_frame ? &args->out_vf_frame->info
+									: NULL,
+				&tmp_binary,
+				false);
+			binary = &tmp_binary;
+			binary->info = info;
+		}
+
+		assert(stage->stage_num < SH_CSS_MAX_STAGES);
+		sh_css_update_uds_and_crop_info(
+			info,
+			&binary->in_frame_info,
+			&binary->out_frame_info,
+			&binary->dvs_envelope,
+			pipe_id == SH_CSS_PREVIEW_PIPELINE,
+			&zoom_config,
+			&motion_config,
+			&isp_parameters.uds[stage->stage_num],
+			&isp_parameters.sp_out_crop_pos[stage->stage_num]);
+	}
+	isp_params_changed = true;
+}
+
 void
 sh_css_set_gamma_table(const struct sh_css_gamma_table *table)
 {
@@ -2603,6 +2734,26 @@ sh_css_get_ce_config(const struct sh_css_ce_config **config)
 	*config = ce_config;
 }
 
+
+void
+sh_css_set_dvs_6axis_config(const struct sh_css_dvs_6axis_config *dvs_config)
+{
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_dvs_config()\n");
+
+	if (dvs_config != NULL) {
+		dvs_6axis_config = dvs_config;
+		dvs_6axis_config_changed = true;
+	}
+}
+
+void
+sh_css_get_dvs_6axis_config(const struct sh_css_dvs_6axis_config **dvs_config)
+{
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_dvs_config()\n");
+	*dvs_config = dvs_6axis_config;
+}
+
+
 /* TODO: make a direct implementation and remove the partial ones */
 /* TODO: use pipe id, currently only one set available */
 void sh_css_set_isp_config(
@@ -2679,6 +2830,73 @@ assert(*config != NULL);
 	((struct sh_css_isp_config *)*config)->xnr_config = *xnr_config;
 */
 return;
+}
+
+void
+sh_css_set_zoom_factor(unsigned int dx, unsigned int dy)
+{
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_set_zoom_factor() in: dx=%d, dy=%d\n", dx, dy);
+
+	assert(dx <= HRT_GDC_N);
+	assert(dy <= HRT_GDC_N);
+
+	zoom_config = (struct sh_css_zoom){dx, dy};
+	zoom_config_changed = true;
+	isp_params_changed = true;
+
+}
+
+void
+sh_css_get_zoom_factor(unsigned int *dx, unsigned int *dy)
+{
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_zoom_factor()\n");
+
+	*dx = zoom_config.dx;
+	*dy = zoom_config.dy;
+
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_get_zoom_factor() out: dx=%d, dy=%d\n", *dx, *dy);
+}
+
+void
+sh_css_get_zoom(struct sh_css_zoom *zoom)
+{
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_zoom()\n");
+	assert(zoom);
+
+	*zoom = zoom_config;
+
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_get_zoom_factor() out: dx=%d, dy=%d\n",
+		zoom->dx, zoom->dy);
+}
+
+void
+sh_css_video_set_dis_vector(int x, int y)
+{
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_video_set_dis_vector() in: x=%d, y=%d\n",
+		x, y);
+
+	motion_config.x = x;
+	motion_config.y = y;
+
+	motion_config_changed = true;
+	isp_params_changed = true;
+}
+
+void
+sh_css_get_dis_motion(struct sh_css_vector *motion)
+{
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_dis_motion()\n");
+	assert(motion);
+
+	*motion = motion_config;
+
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_get_dis_motion() out: x=%d, y=%d\n",
+		motion->x, motion->y);
 }
 
 /*
@@ -3013,6 +3231,7 @@ sh_css_params_init(void)
 		sh_css_uninit();
 		return sh_css_err_cannot_allocate_memory;
 	}
+	sh_css_set_dvs_6axis_config(&default_dvs_6axis_config);
 	sh_css_set_3a_config(&default_3a_config);
 	sh_css_set_wb_config(&default_wb_config);
 	sh_css_set_cc_config(&default_cc_config);
@@ -3036,6 +3255,10 @@ sh_css_params_init(void)
 	morph_table_changed = true;
 	sc_table = NULL;
 	sc_table_changed = true;
+	zoom_config = default_zoom_config;
+	zoom_config_changed = true;
+	motion_config = default_motion_config;
+	motion_config_changed = true;
 
 	last_one = mmgr_NULL;
 
@@ -3241,7 +3464,7 @@ sh_css_dequeue_param_buffers(void)
 				0,
 				sh_css_param_buffer_queue,
 				0);
-		
+
 		sh_css_dtrace(SH_DBG_TRACE,
 			"sh_css_dequeue_param_buffers: "
 			"dequeued param set %x from %d\n",
@@ -3327,6 +3550,14 @@ sh_css_param_update_isp_params(bool commit)
 
 		cur_map = &pipe_ddr_ptrs[pipeline->pipe_id];
 		cur_map_size = &pipe_ddr_ptrs_size[pipeline->pipe_id];
+
+		if (zoom_config_changed || motion_config_changed) {
+			/* we have to do this per pipeline because */
+			/* the processing is a.o. resolution dependent */
+			sh_css_process_zoom_and_motion(pipeline->pipe_id,
+							pipeline->stages);
+		}
+
 		/* TODO: not just make a deep copy,
 		   create a copy for the pipeline:
 		   - shading table for desired resolution
@@ -3372,15 +3603,15 @@ sh_css_param_update_isp_params(bool commit)
 				"sh_css_param_update_isp_params: "
 				"queue param set %x to %d\n",
 				cpy, thread_id);
-			
+
 			rc = host2sp_enqueue_buffer(thread_id, 0,
 				sh_css_param_buffer_queue,
 				cpy);
 			if (!rc) {
 				free_sh_css_ddr_address_map(cpy);
-			} 
+			}
 			else {
-#if 0			
+#if 0
 				uint32_t tmp[2];
 				uint32_t sw_event;
 
@@ -3412,6 +3643,8 @@ sh_css_param_update_isp_params(bool commit)
 	   for all pipelines have been updated */
 	isp_params_changed = false;
 	fpn_table_changed = false;
+	zoom_config_changed = false;
+	motion_config_changed = false;
 	sc_table_changed = false;
 	ctc_table_changed = false;
 	xnr_table_changed = false;
@@ -3548,6 +3781,29 @@ assert(binary != NULL);
 		mmgr_store(ddr_map->macc_tbl,
 				     converted_macc_table.data,
 				     sizeof(converted_macc_table.data));
+	}
+	if (binary->info->enable.dvs_6axis) {
+		buff_realloced = reallocate_buffer(
+				&ddr_map->dvs_6axis_params_y,
+				&ddr_map_size->dvs_6axis_params_y,
+				(size_t)(DVS_6AXIS_BYTES(binary)),
+				dvs_6axis_config_changed,
+				&err);
+		if (err != sh_css_success)
+			return err;
+		buff_realloced |= reallocate_buffer(
+				&ddr_map->dvs_6axis_params_uv,
+				&ddr_map_size->dvs_6axis_params_uv,
+				(size_t)(DVS_6AXIS_BYTES(binary)/4),
+				dvs_6axis_config_changed,
+				&err);
+		if (err != sh_css_success)
+			return err;
+		if (dvs_6axis_config_changed || buff_realloced) {
+			store_dvs_6axis_config(binary,
+				ddr_map->dvs_6axis_params_y,
+				ddr_map->dvs_6axis_params_uv);
+		}
 	}
 
 	if (binary->info->enable.dis) {
@@ -3947,4 +4203,140 @@ void sh_css_invalidate_params() {
 	gc_config_changed = true;
 	anr_config_changed = true;
 	ce_config_changed = true;
+	zoom_config_changed = true;
+	motion_config_changed = true;
 }
+
+void
+sh_css_update_uds_and_crop_info(
+		const struct sh_css_binary_info *info,
+		const struct sh_css_frame_info *in_frame_info,
+		const struct sh_css_frame_info *out_frame_info,
+		const struct sh_css_dvs_envelope *dvs_env,
+		bool preview_mode,
+		const struct sh_css_zoom *zoom,
+		const struct sh_css_vector *motion_vector,
+		struct sh_css_uds_info *uds,		/* out */
+		struct sh_css_crop_pos *sp_out_crop_pos	/* out */
+		)
+{
+	if (info->mode == SH_CSS_BINARY_MODE_VF_PP && !preview_mode) {
+		/* in non-preview modes, VF_PP does not do
+		   the zooming, capture_pp or video do. */
+		uds->curr_dx = HRT_GDC_N;
+		uds->curr_dy = HRT_GDC_N;
+	} else {
+		uds->curr_dx   = zoom->dx;
+		uds->curr_dy   = zoom->dy;
+	}
+
+	if (info->enable.dvs_envelope) {
+		unsigned int crop_x = 0,
+			     crop_y = 0,
+			     uds_xc = 0,
+			     uds_yc = 0,
+			     env_width, env_height;
+		int half_env_x, half_env_y;
+		int motion_x = motion_vector->x;
+		int motion_y = motion_vector->y;
+		bool upscale_x = in_frame_info->width < out_frame_info->width;
+		bool upscale_y = in_frame_info->height < out_frame_info->height;
+
+		if (info->enable.uds && !info->enable.ds) {
+			/**
+			 * we calculate with the envelope that we can actually
+			 * use, the min dvs envelope is for the filter
+			 * initialization.
+			 */
+			env_width  = dvs_env->width -
+					SH_CSS_MIN_DVS_ENVELOPE;
+			env_height = dvs_env->height -
+					SH_CSS_MIN_DVS_ENVELOPE;
+			half_env_x = env_width / 2;
+			half_env_y = env_height / 2;
+			/**
+			 * for digital zoom, we use the dvs envelope and make
+			 * sure that we don't include the 8 leftmost pixels or
+			 * 8 topmost rows.
+			 */
+			if (upscale_x) {
+				uds_xc = (in_frame_info->width
+					+ env_width
+					+ SH_CSS_MIN_DVS_ENVELOPE) / 2;
+			} else {
+				uds_xc = (out_frame_info->width
+							+ env_width) / 2
+					+ SH_CSS_MIN_DVS_ENVELOPE;
+			}
+			if (upscale_y) {
+				uds_yc = (in_frame_info->height
+					+ env_height
+					+ SH_CSS_MIN_DVS_ENVELOPE) / 2;
+			} else {
+				uds_yc = (out_frame_info->height
+							+ env_height) / 2
+					+ SH_CSS_MIN_DVS_ENVELOPE;
+			}
+			/* clip the motion vector to +/- half the envelope */
+			motion_x = clamp(motion_x, -half_env_x, half_env_x);
+			motion_y = clamp(motion_y, -half_env_y, half_env_y);
+			uds_xc += motion_x;
+			uds_yc += motion_y;
+			/* uds can be pipelined, remove top lines */
+			crop_y = 2;
+		} else if (info->enable.ds) {
+			env_width  = dvs_env->width;
+			env_height = dvs_env->height;
+			half_env_x = env_width / 2;
+			half_env_y = env_height / 2;
+			/* clip the motion vector to +/- half the envelope */
+			motion_x = clamp(motion_x, -half_env_x, half_env_x);
+			motion_y = clamp(motion_y, -half_env_y, half_env_y);
+			/* for video with downscaling, the envelope is included
+			    in the input resolution. */
+			uds_xc = in_frame_info->width/2 + motion_x;
+			uds_yc = in_frame_info->height/2 + motion_y;
+			crop_x = info->left_cropping;
+			/* ds == 2 (yuv_ds) can be pipelined, remove top
+			   lines */
+			if (info->enable.ds & 1)
+				crop_y = info->top_cropping;
+			else
+				crop_y = 2;
+		} else {
+			/* video nodz: here we can only crop. We make sure we
+			   crop at least the first 8x8 pixels away. */
+			env_width  = dvs_env->width -
+					SH_CSS_MIN_DVS_ENVELOPE;
+			env_height = dvs_env->height -
+					SH_CSS_MIN_DVS_ENVELOPE;
+			half_env_x = env_width / 2;
+			half_env_y = env_height / 2;
+			motion_x = clamp(motion_x, -half_env_x, half_env_x);
+			motion_y = clamp(motion_y, -half_env_y, half_env_y);
+			crop_x = SH_CSS_MIN_DVS_ENVELOPE
+						+ half_env_x + motion_x;
+			crop_y = SH_CSS_MIN_DVS_ENVELOPE
+						+ half_env_y + motion_y;
+		}
+
+		/* Must enforce that the crop position is even */
+		crop_x = EVEN_FLOOR(crop_x);
+		crop_y = EVEN_FLOOR(crop_y);
+		uds_xc = EVEN_FLOOR(uds_xc);
+		uds_yc = EVEN_FLOOR(uds_yc);
+
+		uds->xc = uds_xc;
+		uds->yc = uds_yc;
+		sp_out_crop_pos->x = crop_x;
+		sp_out_crop_pos->y = crop_y;
+	}
+	else {
+		/* for down scaling, we always use the center of the image */
+		uds->xc = in_frame_info->width / 2;
+		uds->yc = in_frame_info->height / 2;
+		sp_out_crop_pos->x = info->left_cropping;
+		sp_out_crop_pos->y = info->top_cropping;
+	}
+}
+

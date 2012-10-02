@@ -5,9 +5,6 @@
 
 #include "system_types.h"
 
-typedef struct input_formatter_state_s		input_formatter_state_t;
-typedef struct input_formatter_cfg_s		input_formatter_cfg_t;
-
 /*! Reset INPUT_FORMATTER[ID]
  
  \param	ID[in]				INPUT_FORMATTER identifier

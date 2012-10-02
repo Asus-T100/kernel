@@ -114,8 +114,6 @@ enum hrt_isp_css_irq_status irq_get_channel_id(
 {
 	unsigned int irq_status = irq_reg_load(ID,
 		_HRT_IRQ_CONTROLLER_STATUS_REG_IDX);
-	unsigned int irq_mask = irq_reg_load(ID,
-		_HRT_IRQ_CONTROLLER_MASK_REG_IDX);
 	enum hrt_isp_css_irq idx = hrt_isp_css_irq_num_irqs;
 	enum hrt_isp_css_irq_status status = hrt_isp_css_irq_status_success;
 
@@ -133,16 +131,9 @@ assert(irq_id != NULL);
 	if (irq_status != (1U << idx))
 		status = hrt_isp_css_irq_status_more_irqs;
 
-/*
- * Clear the irq status bit, to avoid generating a
- * new IRQ, we must set the mask temporarily to zero.
- */
-	irq_reg_store(ID,
-		_HRT_IRQ_CONTROLLER_MASK_REG_IDX, 0);
+
 	irq_reg_store(ID,
 		_HRT_IRQ_CONTROLLER_CLEAR_REG_IDX, 1U << idx);
-	irq_reg_store(ID,
-		_HRT_IRQ_CONTROLLER_MASK_REG_IDX, irq_mask);
 
 	irq_wait_for_write_complete(ID);
 

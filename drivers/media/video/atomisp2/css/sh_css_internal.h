@@ -58,6 +58,8 @@
 #define NUM_VIDEO_TNR_FRAMES	2
 #define NR_OF_PIPELINES		5 /* Must match with SH_CSS_NR_OF_PIPELINES */
 
+#define SH_CSS_MAX_STAGES 6 /* copy, preisp, anr, postisp, capture_pp, vf_pp */
+
 /*
  * JB: keep next enum in sync with thread id's
  * and pipe id's
@@ -208,6 +210,9 @@ struct sh_css_isp_params {
 	/* CE (Chroma Enhancement) */
 	int ce_uv_level_min;
 	int ce_uv_level_max;
+
+	struct sh_css_crop_pos sp_out_crop_pos[SH_CSS_MAX_STAGES];
+	struct sh_css_uds_info uds[SH_CSS_MAX_STAGES];
 };
 
 /* xmem address map allocation */
@@ -233,6 +238,8 @@ struct sh_css_ddr_address_map {
 	hrt_vaddress tetra_ratb_y;
 	hrt_vaddress tetra_batr_x;
 	hrt_vaddress tetra_batr_y;
+	hrt_vaddress dvs_6axis_params_y;
+	hrt_vaddress dvs_6axis_params_uv;
 };
 
 /* xmem address map allocation */
@@ -258,6 +265,8 @@ struct sh_css_ddr_address_map_size {
 	size_t tetra_ratb_y;
 	size_t tetra_batr_x;
 	size_t tetra_batr_y;
+	size_t dvs_6axis_params_y;
+	size_t dvs_6axis_params_uv;
 };
 
 struct sh_css_ddr_address_map_compound {
@@ -282,7 +291,6 @@ struct sh_css_binary_args {
 	struct sh_css_frame *out_tnr_frame;  /* tnr output frame */
 	struct sh_css_frame *extra_frame;    /* intermediate frame */
 	struct sh_css_frame *out_vf_frame;   /* viewfinder output frame */
-	struct sh_css_vector motion_vector;
 	bool                 copy_vf;
 	bool                 copy_output;
 	unsigned             vf_downscale_log2;
@@ -368,8 +376,6 @@ enum sh_css_sp_stage_func {
   SH_CSS_SP_BIN_COPY = 1
 };
 #define SH_CSS_NUM_STAGE_FUNCS 2
-
-#define SH_CSS_MAX_STAGES 6 /* copy, preisp, anr, postisp, capture_pp, vf_pp */
 
 #define SH_CSS_PIPE_CONFIG_SAMPLE_PARAMS_MASK  (0x0f)
 #define SH_CSS_PIPE_CONFIG_SAMPLE_PARAMS  (1 << 0)
