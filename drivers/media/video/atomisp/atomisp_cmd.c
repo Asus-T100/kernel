@@ -258,6 +258,7 @@ static void atomisp_sof_event(struct atomisp_device *isp)
 
 	memset(&event, 0, sizeof(event));
 	event.type = V4L2_EVENT_FRAME_SYNC;
+	event.u.frame_sync.frame_sequence = atomic_read(&isp->sequence);
 
 	v4l2_event_queue(isp->isp_subdev.subdev.devnode, &event);
 }
@@ -305,8 +306,13 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 	}
 
 #ifndef CONFIG_X86_MRFLD
-	if (irq_infos & SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF)
+	if (irq_infos & SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF) {
+		atomic_inc(&isp->sequence);
 		atomisp_sof_event(isp);
+	}
+#else /* CONFIG_X86_MRFLD */
+	if (irq_infos & SH_CSS_IRQ_INFO_FRAME_DONE)
+		atomic_inc(&isp->sequence);
 #endif /* CONFIG_X86_MRFLD */
 
 	if (irq_infos & SH_CSS_IRQ_INFO_FRAME_DONE ||
@@ -826,6 +832,7 @@ static void atomisp_buf_done(struct atomisp_device *isp, int error)
 	struct timespec ts;
 	struct timeval tv;
 	unsigned long flags;
+	unsigned int sequence = atomic_read(&isp->sequence);
 
 	ktime_get_ts(&ts);
 	tv.tv_sec = ts.tv_sec;
@@ -843,6 +850,7 @@ static void atomisp_buf_done(struct atomisp_device *isp, int error)
 
 	if (vb_capture) {
 		vb_capture->v4l2_buf.timestamp = tv;
+		vb_capture->v4l2_buf.sequence = sequence;
 		/*mark videobuffer done for dequeue*/
 		vb2_buffer_done(vb_capture, error ? VB2_BUF_STATE_ERROR :
 				VB2_BUF_STATE_DONE);
@@ -850,6 +858,7 @@ static void atomisp_buf_done(struct atomisp_device *isp, int error)
 
 	if (vb_preview) {
 		vb_preview->v4l2_buf.timestamp = tv;
+		vb_preview->v4l2_buf.sequence = sequence;
 		/*mark videobuffer done for dequeue*/
 		vb2_buffer_done(vb_preview, error ? VB2_BUF_STATE_ERROR :
 				VB2_BUF_STATE_DONE);

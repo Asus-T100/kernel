@@ -122,6 +122,7 @@ static int atomisp_start_streaming(struct vb2_queue *vq, unsigned int count)
 #endif
 
 	isp->sw_contex.isp_streaming = true;
+	atomic_set(&isp->sequence, -1);
 
 	if (isp->sw_contex.work_queued)
 		goto done;
