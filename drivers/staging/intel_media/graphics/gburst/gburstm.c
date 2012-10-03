@@ -73,7 +73,7 @@
 #include <gburst_interface.h>
 #include <gburst.h>
 
-#define GBURST_GLOBAL_ENABLE_DEFAULT 0
+#define GBURST_GLOBAL_ENABLE_DEFAULT 1
 
 #define GBURST_DRIVER_NAME "gburst"
 
