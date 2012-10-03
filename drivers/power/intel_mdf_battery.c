@@ -2126,7 +2126,6 @@ static int msic_event_handler(void *arg, int event, struct otg_bc_cap *cap)
 	struct msic_power_module_info *mbi =
 	    (struct msic_power_module_info *)arg;
 
-
 	/* cancel the worker of opposite events
 	 * i.e cancel the connect handler worker
 	 * upon disconnect or suspend event and
@@ -2427,13 +2426,8 @@ static irqreturn_t msic_battery_thread_handler(int id, void *dev)
 	}
 
 	/* Check charger Status bits */
-	if (((data[0] & ~(MSIC_BATT_CHR_TIMEEXP_MASK)) ||
-		(data[1] & ~(MSIC_BATT_CHR_CHRCMPLT_MASK)))
-			&& is_charger_fault()) {
-		mutex_lock(&mbi->batt_lock);
-		mbi->batt_props.status = POWER_SUPPLY_STATUS_NOT_CHARGING;
-		mutex_unlock(&mbi->batt_lock);
-
+	if ((data[0] & ~(MSIC_BATT_CHR_TIMEEXP_MASK)) ||
+		(data[1] & ~(MSIC_BATT_CHR_CHRCMPLT_MASK))) {
 		dev_info(msic_dev, "PWRSRC Int %x %x\n", log_intr & 0xff,
 				(log_intr & 0xff00) >> 8);
 		dev_info(msic_dev, "CHR Int %x %x\n", data[0], data[1]);
