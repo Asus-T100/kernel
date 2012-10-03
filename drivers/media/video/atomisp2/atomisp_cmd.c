@@ -1184,29 +1184,27 @@ static int raw_output_format_match_input(u32 input, u32 output)
  * 2 types of format: SH format, v4l2 format
  * atomisp_format_bridge is a wrapper format for the other 2
  */
-static struct atomisp_format_bridge *get_atomisp_format_bridge(
+static const struct atomisp_format_bridge *get_atomisp_format_bridge(
 					unsigned int pixelformat)
 {
 	unsigned int i;
 
 	for (i = 0; i < atomisp_output_fmts_num; i++) {
 		if (atomisp_output_fmts[i].pixelformat == pixelformat)
-			return (struct atomisp_format_bridge *)
-				&atomisp_output_fmts[i];
+			return &atomisp_output_fmts[i];
 	}
 
 	return NULL;
 }
 
-static struct atomisp_format_bridge *get_atomisp_format_bridge_from_mbus(
+static const struct atomisp_format_bridge *get_atomisp_format_bridge_from_mbus(
 				enum v4l2_mbus_pixelcode mbus_code)
 {
 	unsigned int i;
 
 	for (i = 0; i < atomisp_output_fmts_num; i++) {
 		if (atomisp_output_fmts[i].mbus_code == mbus_code)
-			return (struct atomisp_format_bridge *)
-				&atomisp_output_fmts[i];
+			return &atomisp_output_fmts[i];
 	}
 
 	return NULL;
@@ -2908,7 +2906,7 @@ int atomisp_try_fmt(struct video_device *vdev, struct v4l2_format *f,
 {
 	struct atomisp_device *isp = video_get_drvdata(vdev);
 	struct v4l2_mbus_framefmt snr_mbus_fmt;
-	struct atomisp_format_bridge *fmt;
+	const struct atomisp_format_bridge *fmt;
 	u32 out_width = f->fmt.pix.width;
 	u32 out_height = f->fmt.pix.height;
 	u32 pixelformat = f->fmt.pix.pixelformat;
@@ -2927,7 +2925,7 @@ int atomisp_try_fmt(struct video_device *vdev, struct v4l2_format *f,
 	fmt = get_atomisp_format_bridge(pixelformat);
 	if (fmt == NULL) {
 		v4l2_err(&atomisp_dev, "unsupported pixelformat!\n");
-		fmt = (struct atomisp_format_bridge *)atomisp_output_fmts;
+		fmt = atomisp_output_fmts;
 	}
 
 	/* fixing me! seems tpg does not support mbus interface */
@@ -3083,7 +3081,7 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 	struct camera_mipi_info *mipi_info;
 	struct atomisp_device *isp = video_get_drvdata(vdev);
 	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
-	struct atomisp_format_bridge *format;
+	const struct atomisp_format_bridge *format;
 	int effective_input_width = pipe->format->in.width;
 	int effective_input_height = pipe->format->in.height;
 	int ret;
@@ -3250,7 +3248,7 @@ static int atomisp_get_effective_resolution(struct atomisp_device *isp,
 					    int out_width, int out_height,
 					    int padding_w, int padding_h)
 {
-	struct atomisp_format_bridge *format;
+	const struct atomisp_format_bridge *format;
 	struct v4l2_pix_format *in_fmt = &isp->main_format->in;
 	struct v4l2_pix_format *out_fmt = &isp->input_format->out;
 	unsigned int no_padding_w, no_padding_h;
@@ -3352,7 +3350,7 @@ static int atomisp_set_fmt_to_snr(struct atomisp_device *isp,
 			  unsigned int padding_w, unsigned int padding_h,
 			  unsigned int dvs_env_w, unsigned int dvs_env_h)
 {
-	struct atomisp_format_bridge *format;
+	const struct atomisp_format_bridge *format;
 	struct v4l2_mbus_framefmt snr_mbus_fmt;
 	struct atomisp_video_pipe *out_pipe = &isp->isp_subdev.video_in;
 	int ret;
@@ -3421,7 +3419,7 @@ int atomisp_set_fmt(struct video_device *vdev, struct v4l2_format *f)
 {
 	struct atomisp_device *isp = video_get_drvdata(vdev);
 	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
-	struct atomisp_format_bridge *format_bridge;
+	const struct atomisp_format_bridge *format_bridge;
 	struct sh_css_frame_info output_info, raw_output_info;
 	struct v4l2_format snr_fmt = *f;
 	unsigned int width = f->fmt.pix.width;
