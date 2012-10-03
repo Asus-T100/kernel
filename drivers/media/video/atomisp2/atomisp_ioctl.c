@@ -1961,16 +1961,13 @@ static long atomisp_vidioc_default(struct file *file, void *fh,
 		return atomisp_ee(isp, 1, arg);
 
 	case ATOMISP_IOC_G_DIS_STAT:
-		return atomisp_get_dis_stat(isp,
-				(struct atomisp_dis_statistics *)arg);
+		return atomisp_get_dis_stat(isp, arg);
 
 	case ATOMISP_IOC_S_DIS_COEFS:
-		return atomisp_set_dis_coefs(isp,
-				(struct atomisp_dis_coefficients *)arg);
+		return atomisp_set_dis_coefs(isp, arg);
 
 	case ATOMISP_IOC_S_DIS_VECTOR:
-		return atomisp_set_dis_vector(isp,
-				(struct atomisp_dis_vector *) arg);
+		return atomisp_set_dis_vector(isp, arg);
 
 	case ATOMISP_IOC_G_ISP_PARM:
 		return atomisp_param(isp, 0, arg);
@@ -1994,12 +1991,10 @@ static long atomisp_vidioc_default(struct file *file, void *fh,
 		return atomisp_gdc_cac_table(isp, 1, arg);
 
 	case ATOMISP_IOC_G_ISP_MACC:
-		return atomisp_macc_table(isp, 0,
-			(struct atomisp_macc_config *)arg);
+		return atomisp_macc_table(isp, 0, arg);
 
 	case ATOMISP_IOC_S_ISP_MACC:
-		return atomisp_macc_table(isp, 1,
-			(struct atomisp_macc_config *)arg);
+		return atomisp_macc_table(isp, 1, arg);
 
 	case ATOMISP_IOC_G_ISP_BAD_PIXEL_DETECTION:
 		return atomisp_bad_pixel_param(isp, 0, arg);

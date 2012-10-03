@@ -109,7 +109,7 @@ int atomisp_nr(struct atomisp_device *isp, int flag,
  * Function to configure temporal noise reduction (TNR)
  */
 int atomisp_tnr(struct atomisp_device *isp, int flag,
-	void *config);
+		struct atomisp_tnr_config *config);
 
 /*
  * Function to get histogram data for image frame
@@ -120,24 +120,25 @@ int atomisp_histogram(struct atomisp_device *isp,
 /*
  * Function to configure black level compensation
  */
-int atomisp_black_level(struct atomisp_device *isp, int flag, void *config);
+int atomisp_black_level(struct atomisp_device *isp, int flag,
+			struct atomisp_ob_config *config);
 
 /*
  * Function to configure edge enhancement
  */
 int atomisp_ee(struct atomisp_device *isp, int flag,
-		       void *config);
+	       struct atomisp_ee_config *config);
 
 /*
  * Function to update Gamma table for gamma, brightness and contrast config
  */
 int atomisp_gamma(struct atomisp_device *isp, int flag,
-	void *config);
+		  struct atomisp_gamma_table *config);
 /*
  * Function to update Ctc table for Chroma Enhancement
  */
 int atomisp_ctc(struct atomisp_device *isp, int flag,
-			  void *config);
+		struct atomisp_ctc_table *config);
 
 /*
  * Function to update gamma correction parameters
@@ -149,13 +150,13 @@ int atomisp_gamma_correction(struct atomisp_device *isp, int flag,
  * Function to update Gdc table for gdc
  */
 int atomisp_gdc_cac_table(struct atomisp_device *isp, int flag,
-	void *config);
+			  struct atomisp_morph_table *config);
 
 /*
  * Function to update table for macc
  */
 int atomisp_macc_table(struct atomisp_device *isp, int flag,
-	void *config);
+		       struct atomisp_macc_config *config);
 /*
  * Function to get DIS statistics.
  */
@@ -178,13 +179,13 @@ int atomisp_set_dis_vector(struct atomisp_device *isp,
  * Function to set/get 3A stat from isp
  */
 int atomisp_3a_stat(struct atomisp_device *isp, int flag,
-	void *config);
+		    struct atomisp_3a_statistics *config);
 
 /*
  * Function to set/get isp parameters to isp
  */
 int atomisp_param(struct atomisp_device *isp, int flag,
-	void *config);
+		  struct atomisp_parm *config);
 
 /*
  * Function to configure color effect of the image
@@ -200,7 +201,7 @@ int atomisp_bad_pixel(struct atomisp_device *isp, int flag, __s32 *value);
  * Function to configure bad pixel correction params
  */
 int atomisp_bad_pixel_param(struct atomisp_device *isp, int flag,
-	void *config);
+			    struct atomisp_dp_config *config);
 
 /*
  * Function to enable/disable video image stablization
@@ -233,16 +234,16 @@ int atomisp_false_color(struct atomisp_device *isp, int flag, __s32 * value);
  * Function to configure false color correction params
  */
 int atomisp_false_color_param(struct atomisp_device *isp, int flag,
-	void *config);
+			      struct atomisp_de_config *config);
 
 /*
  * Function to configure white balance params
  */
 int atomisp_white_balance_param(struct atomisp_device *isp, int flag,
-	void *config);
+				struct atomisp_wb_config *config);
 
 int atomisp_3a_config_param(struct atomisp_device *isp, int flag,
-			    void *config);
+			    struct atomisp_3a_config *config);
 
 /*
  * Function to enable/disable lens shading correction
@@ -256,7 +257,7 @@ int atomisp_shading_correction(struct atomisp_device *isp, int flag,
 int atomisp_digital_zoom(struct atomisp_device *isp, int flag, __s32 * value);
 
 int atomisp_get_sensor_mode_data(struct atomisp_device *isp,
-				 void *config);
+				 struct atomisp_sensor_mode_data *config);
 
 int atomisp_get_fmt(struct video_device *vdev, struct v4l2_format *f);
 
@@ -278,7 +279,7 @@ int atomisp_restore_iunit_reg(struct atomisp_device *isp);
 int atomisp_ospm_dphy_down(struct atomisp_device *isp);
 int atomisp_ospm_dphy_up(struct atomisp_device *isp);
 int atomisp_exif_makernote(struct atomisp_device *isp,
-	void *config);
+			   struct atomisp_makernote_info *config);
 
 void atomisp_free_internal_buffers(struct atomisp_device *isp);
 void atomisp_free_3a_dis_buffers(struct atomisp_device *isp);

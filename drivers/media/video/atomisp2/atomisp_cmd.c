@@ -1445,14 +1445,12 @@ int atomisp_nr(struct atomisp_device *isp, int flag,
  * Function to configure temporal noise reduction (TNR)
  */
 int atomisp_tnr(struct atomisp_device *isp, int flag,
-			void *config)
+		struct atomisp_tnr_config *config)
 {
-	struct atomisp_tnr_config *arg = (struct atomisp_tnr_config *)config;
-
-	if (arg == NULL)
+	if (config == NULL)
 		return -EINVAL;
 
-	if (sizeof(*arg) != sizeof(isp->params.tnr_config)) {
+	if (sizeof(*config) != sizeof(isp->params.tnr_config)) {
 		v4l2_err(&atomisp_dev,
 			"%s: incompatible param.\n", __func__);
 		return -EINVAL;
@@ -1461,10 +1459,10 @@ int atomisp_tnr(struct atomisp_device *isp, int flag,
 	/* Get tnr config from current setup */
 	if (flag == 0) {
 		/* Get tnr config from current setup */
-		memcpy(arg, &isp->params.tnr_config, sizeof(*arg));
+		memcpy(config, &isp->params.tnr_config, sizeof(*config));
 	} else {
 		/* Set tnr config to isp parameters */
-		memcpy(&isp->params.tnr_config, arg,
+		memcpy(&isp->params.tnr_config, config,
 			sizeof(struct sh_css_tnr_config));
 		sh_css_set_tnr_config(&isp->params.tnr_config);
 		isp->params.css_update_params_needed = true;
@@ -1559,14 +1557,12 @@ buffer_free:
  * Function to configure black level compensation
  */
 int atomisp_black_level(struct atomisp_device *isp, int flag,
-				void *config)
+			struct atomisp_ob_config *config)
 {
-	struct atomisp_ob_config *arg = (struct atomisp_ob_config *)config;
-
-	if (arg == NULL)
+	if (config == NULL)
 		return -EINVAL;
 
-	if (sizeof(*arg) != sizeof(isp->params.ob_config)) {
+	if (sizeof(*config) != sizeof(isp->params.ob_config)) {
 		v4l2_err(&atomisp_dev,
 			"%s: incompatible param.\n", __func__);
 		return -EINVAL;
@@ -1576,10 +1572,10 @@ int atomisp_black_level(struct atomisp_device *isp, int flag,
 		/* Get ob config from current setup */
 		const struct sh_css_ob_config *ob_config;
 		sh_css_get_ob_config(&ob_config);
-		memcpy(arg, ob_config, sizeof(*arg));
+		memcpy(config, ob_config, sizeof(*config));
 	} else {
 		/* Set ob config to isp parameters */
-		memcpy(&isp->params.ob_config, arg,
+		memcpy(&isp->params.ob_config, config,
 			sizeof(struct sh_css_ob_config));
 		sh_css_set_ob_config(&isp->params.ob_config);
 		isp->params.css_update_params_needed = true;
@@ -1592,14 +1588,12 @@ int atomisp_black_level(struct atomisp_device *isp, int flag,
  * Function to configure edge enhancement
  */
 int atomisp_ee(struct atomisp_device *isp, int flag,
-		       void *config)
+	       struct atomisp_ee_config *config)
 {
-	struct atomisp_ee_config *arg = (struct atomisp_ee_config *)config;
-
-	if (arg == NULL)
+	if (config == NULL)
 		return -EINVAL;
 
-	if (sizeof(*arg) != sizeof(isp->params.ee_config)) {
+	if (sizeof(*config) != sizeof(isp->params.ee_config)) {
 		v4l2_err(&atomisp_dev,
 			"%s: incompatible param.\n", __func__);
 		return -EINVAL;
@@ -1609,10 +1603,10 @@ int atomisp_ee(struct atomisp_device *isp, int flag,
 		/* Get ee config from current setup */
 		const struct sh_css_ee_config *ee_config;
 		sh_css_get_ee_config(&ee_config);
-		memcpy(arg, ee_config, sizeof(*arg));
+		memcpy(config, ee_config, sizeof(*config));
 	} else {
 		/* Set ee config to isp parameters */
-		memcpy(&isp->params.ee_config, arg,
+		memcpy(&isp->params.ee_config, config,
 		       sizeof(isp->params.ee_config));
 		sh_css_set_ee_config(&isp->params.ee_config);
 		isp->params.css_update_params_needed = true;
@@ -1625,14 +1619,12 @@ int atomisp_ee(struct atomisp_device *isp, int flag,
  * Function to update Gamma table for gamma, brightness and contrast config
  */
 int atomisp_gamma(struct atomisp_device *isp, int flag,
-			  void *config)
+		  struct atomisp_gamma_table *config)
 {
-	struct atomisp_gamma_table *arg = (struct atomisp_gamma_table *)config;
-
-	if (arg == NULL)
+	if (config == NULL)
 		return -EINVAL;
 
-	if (sizeof(*arg) != sizeof(isp->params.gamma_table)) {
+	if (sizeof(*config) != sizeof(isp->params.gamma_table)) {
 		v4l2_err(&atomisp_dev,
 			"%s: incompatible param.\n", __func__);
 		return -EINVAL;
@@ -1642,10 +1634,10 @@ int atomisp_gamma(struct atomisp_device *isp, int flag,
 		/* Get gamma table from current setup */
 		const struct sh_css_gamma_table *tab;
 		sh_css_get_gamma_table(&tab);
-		memcpy(arg, tab, sizeof(*arg));
+		memcpy(config, tab, sizeof(*config));
 	} else {
 		/* Set gamma table to isp parameters */
-		memcpy(&isp->params.gamma_table, arg,
+		memcpy(&isp->params.gamma_table, config,
 		       sizeof(isp->params.gamma_table));
 		sh_css_set_gamma_table(&isp->params.gamma_table);
 	}
@@ -1657,14 +1649,12 @@ int atomisp_gamma(struct atomisp_device *isp, int flag,
  * Function to update Ctc table for Chroma Enhancement
  */
 int atomisp_ctc(struct atomisp_device *isp, int flag,
-			  void *config)
+		struct atomisp_ctc_table *config)
 {
-	struct atomisp_ctc_table *arg = (struct atomisp_ctc_table *) config;
-
-	if (arg == NULL)
+	if (config == NULL)
 		return -EINVAL;
 
-	if (sizeof(*arg) != sizeof(isp->params.ctc_table)) {
+	if (sizeof(*config) != sizeof(isp->params.ctc_table)) {
 		v4l2_err(&atomisp_dev,
 			"%s: incompatible param.\n", __func__);
 		return -EINVAL;
@@ -1674,10 +1664,10 @@ int atomisp_ctc(struct atomisp_device *isp, int flag,
 		/* Get ctc table from current setup */
 		const struct sh_css_ctc_table *tab;
 		sh_css_get_ctc_table(&tab);
-		memcpy(arg, tab, sizeof(*arg));
+		memcpy(config, tab, sizeof(*config));
 	} else {
 		/* Set ctc table to isp parameters */
-		memcpy(&isp->params.ctc_table, arg,
+		memcpy(&isp->params.ctc_table, config,
 			sizeof(isp->params.ctc_table));
 		sh_css_set_ctc_table(&isp->params.ctc_table);
 	}
@@ -1963,22 +1953,21 @@ static void atomisp_curr_user_grid_info(struct atomisp_device *isp,
  * Function to update Gdc table for gdc
  */
 int atomisp_gdc_cac_table(struct atomisp_device *isp, int flag,
-	void *config)
+			  struct atomisp_morph_table *config)
 {
 	int ret;
 	int i;
-	struct atomisp_morph_table *arg = (struct atomisp_morph_table *)config;
 
 	if (flag == 0) {
 		/* Get gdc table from current setup */
 		const struct sh_css_morph_table *tab;
 		sh_css_get_morph_table(&tab);
 
-		arg->width = tab->width;
-		arg->height = tab->height;
+		config->width = tab->width;
+		config->height = tab->height;
 
 		for (i = 0; i < SH_CSS_MORPH_TABLE_NUM_PLANES; i++) {
-			ret = copy_to_user(arg->coordinates_x[i],
+			ret = copy_to_user(config->coordinates_x[i],
 				tab->coordinates_x[i], tab->height *
 				tab->width * sizeof(*tab->coordinates_x[i]));
 			if (ret) {
@@ -1986,7 +1975,7 @@ int atomisp_gdc_cac_table(struct atomisp_device *isp, int flag,
 					"Failed to copy to User for x\n");
 				return -EFAULT;
 			}
-			ret = copy_to_user(arg->coordinates_y[i],
+			ret = copy_to_user(config->coordinates_y[i],
 				tab->coordinates_y[i], tab->height *
 				tab->width * sizeof(*tab->coordinates_y[i]));
 			if (ret) {
@@ -2006,7 +1995,8 @@ int atomisp_gdc_cac_table(struct atomisp_device *isp, int flag,
 		}
 
 		/* allocate new one */
-		tab = sh_css_morph_table_allocate(arg->width, arg->height);
+		tab = sh_css_morph_table_allocate(config->width,
+						  config->height);
 
 		if (!tab) {
 			v4l2_err(&atomisp_dev, "out of memory\n");
@@ -2015,9 +2005,9 @@ int atomisp_gdc_cac_table(struct atomisp_device *isp, int flag,
 
 		for (i = 0; i < SH_CSS_MORPH_TABLE_NUM_PLANES; i++) {
 			ret = copy_from_user(tab->coordinates_x[i],
-				arg->coordinates_x[i],
-				arg->height * arg->width *
-				sizeof(*arg->coordinates_x[i]));
+				config->coordinates_x[i],
+				config->height * config->width *
+				sizeof(*config->coordinates_x[i]));
 			if (ret) {
 				v4l2_err(&atomisp_dev,
 				"Failed to copy from User for x, ret %d\n",
@@ -2026,9 +2016,9 @@ int atomisp_gdc_cac_table(struct atomisp_device *isp, int flag,
 				return -EFAULT;
 			}
 			ret = copy_from_user(tab->coordinates_y[i],
-				arg->coordinates_y[i],
-				arg->height * arg->width *
-				sizeof(*arg->coordinates_y[i]));
+				config->coordinates_y[i],
+				config->height * config->width *
+				sizeof(*config->coordinates_y[i]));
 			if (ret) {
 				v4l2_err(&atomisp_dev,
 				"Failed to copy from User for y, ret is %d\n",
@@ -2046,21 +2036,20 @@ int atomisp_gdc_cac_table(struct atomisp_device *isp, int flag,
 }
 
 int atomisp_macc_table(struct atomisp_device *isp, int flag,
-	void *config)
+		       struct atomisp_macc_config *config)
 {
 	struct sh_css_macc_table *macc_table;
-	struct atomisp_macc_config *arg = (struct atomisp_macc_config *)config;
 
-	if (arg == NULL)
+	if (config == NULL)
 		return -EINVAL;
 
-	if (sizeof(arg->table) != sizeof(*macc_table)) {
+	if (sizeof(config->table) != sizeof(*macc_table)) {
 		v4l2_err(&atomisp_dev,
 			"%s: incompatible param.\n", __func__);
 		return -EINVAL;
 	}
 
-	switch (arg->color_effect) {
+	switch (config->color_effect) {
 	case V4L2_COLORFX_NONE:
 		macc_table = &isp->params.macc_table;
 		break;
@@ -2085,12 +2074,12 @@ int atomisp_macc_table(struct atomisp_device *isp, int flag,
 
 	if (flag == 0) {
 		/* Get macc table from current setup */
-		memcpy(&arg->table, macc_table,
+		memcpy(&config->table, macc_table,
 		       sizeof(struct sh_css_macc_table));
 	} else {
-		memcpy(macc_table, &arg->table,
+		memcpy(macc_table, &config->table,
 		       sizeof(struct sh_css_macc_table));
-		if (arg->color_effect == isp->params.color_effect)
+		if (config->color_effect == isp->params.color_effect)
 			sh_css_set_macc_table(macc_table);
 	}
 
@@ -2211,23 +2200,21 @@ int atomisp_compare_grid(struct atomisp_device *isp, struct atomisp_grid_info *a
  * Function to set/get 3A stat from isp
  */
 int atomisp_3a_stat(struct atomisp_device *isp, int flag,
-		    void *config)
+		    struct atomisp_3a_statistics *config)
 {
-	struct atomisp_3a_statistics *arg =
-	    (struct atomisp_3a_statistics *)config;
 	unsigned long ret;
 
 	if (flag != 0)
 		return -EINVAL;
 
-	if (arg == NULL)
+	if (config == NULL)
 		return -EINVAL;
 
 	/* sanity check to avoid writing into unallocated memory. */
 	if (isp->params.s3a_output_bytes == 0)
 		return -EINVAL;
 
-	if (atomisp_compare_grid(isp, &arg->grid_info) != 0) {
+	if (atomisp_compare_grid(isp, &config->grid_info) != 0) {
 		/* If the grid info in the argument differs from the current
 		   grid info, we tell the caller to reset the grid size and
 		   try again. */
@@ -2243,7 +2230,7 @@ int atomisp_3a_stat(struct atomisp_device *isp, int flag,
 		return -EAGAIN;
 	}
 
-	ret = copy_to_user(arg->data,
+	ret = copy_to_user(config->data,
 			   isp->params.s3a_output_buf,
 			   isp->params.s3a_output_bytes);
 	mutex_unlock(&isp->isp_lock);
@@ -2259,69 +2246,67 @@ int atomisp_3a_stat(struct atomisp_device *isp, int flag,
  * Function to set/get isp parameters to isp
  */
 int atomisp_param(struct atomisp_device *isp, int flag,
-			  void *config)
+		  struct atomisp_parm *config)
 {
-	struct atomisp_parm *arg = (struct atomisp_parm *)config;
-
 	/* Read parameter for 3A bianry info */
 	if (flag == 0) {
-		if (&arg->info == NULL) {
+		if (&config->info == NULL) {
 			v4l2_err(&atomisp_dev,
 				    "ERROR: NULL pointer in grid_info\n");
 			return -EINVAL;
 		}
-		atomisp_curr_user_grid_info(isp, &arg->info);
+		atomisp_curr_user_grid_info(isp, &config->info);
 		return 0;
 	}
 
-	if (sizeof(arg->wb_config) != sizeof(isp->params.wb_config))
+	if (sizeof(config->wb_config) != sizeof(isp->params.wb_config))
 		goto INVALID_PARM;
-	if (sizeof(arg->cc_config) != sizeof(isp->params.cc_config))
+	if (sizeof(config->cc_config) != sizeof(isp->params.cc_config))
 		goto INVALID_PARM;
-	if (sizeof(arg->ob_config) != sizeof(isp->params.ob_config))
+	if (sizeof(config->ob_config) != sizeof(isp->params.ob_config))
 		goto INVALID_PARM;
-	if (sizeof(arg->de_config) != sizeof(isp->params.de_config))
+	if (sizeof(config->de_config) != sizeof(isp->params.de_config))
 		goto INVALID_PARM;
-	if (sizeof(arg->ce_config) != sizeof(isp->params.ce_config))
+	if (sizeof(config->ce_config) != sizeof(isp->params.ce_config))
 		goto INVALID_PARM;
-	if (sizeof(arg->dp_config) != sizeof(isp->params.dp_config))
+	if (sizeof(config->dp_config) != sizeof(isp->params.dp_config))
 		goto INVALID_PARM;
-	if (sizeof(arg->nr_config) != sizeof(isp->params.nr_config))
+	if (sizeof(config->nr_config) != sizeof(isp->params.nr_config))
 		goto INVALID_PARM;
-	if (sizeof(arg->ee_config) != sizeof(isp->params.ee_config))
+	if (sizeof(config->ee_config) != sizeof(isp->params.ee_config))
 		goto INVALID_PARM;
-	if (sizeof(arg->tnr_config) != sizeof(isp->params.tnr_config))
+	if (sizeof(config->tnr_config) != sizeof(isp->params.tnr_config))
 		goto INVALID_PARM;
 
-	memcpy(&isp->params.wb_config, &arg->wb_config,
+	memcpy(&isp->params.wb_config, &config->wb_config,
 	       sizeof(struct sh_css_wb_config));
-	memcpy(&isp->params.ob_config, &arg->ob_config,
+	memcpy(&isp->params.ob_config, &config->ob_config,
 	       sizeof(struct sh_css_ob_config));
-	memcpy(&isp->params.dp_config, &arg->dp_config,
+	memcpy(&isp->params.dp_config, &config->dp_config,
 	       sizeof(struct sh_css_dp_config));
-	memcpy(&isp->params.de_config, &arg->de_config,
+	memcpy(&isp->params.de_config, &config->de_config,
 	       sizeof(struct sh_css_de_config));
-	memcpy(&isp->params.ce_config, &arg->ce_config,
+	memcpy(&isp->params.ce_config, &config->ce_config,
 	       sizeof(struct sh_css_ce_config));
-	memcpy(&isp->params.nr_config, &arg->nr_config,
+	memcpy(&isp->params.nr_config, &config->nr_config,
 	       sizeof(struct sh_css_nr_config));
-	memcpy(&isp->params.ee_config, &arg->ee_config,
+	memcpy(&isp->params.ee_config, &config->ee_config,
 	       sizeof(struct sh_css_ee_config));
-	memcpy(&isp->params.tnr_config, &arg->tnr_config,
+	memcpy(&isp->params.tnr_config, &config->tnr_config,
 	       sizeof(struct sh_css_tnr_config));
 
 	if (isp->params.color_effect == V4L2_COLORFX_NEGATIVE) {
-		arg->cc_config.matrix[3] = -arg->cc_config.matrix[3];
-		arg->cc_config.matrix[4] = -arg->cc_config.matrix[4];
-		arg->cc_config.matrix[5] = -arg->cc_config.matrix[5];
-		arg->cc_config.matrix[6] = -arg->cc_config.matrix[6];
-		arg->cc_config.matrix[7] = -arg->cc_config.matrix[7];
-		arg->cc_config.matrix[8] = -arg->cc_config.matrix[8];
+		config->cc_config.matrix[3] = -config->cc_config.matrix[3];
+		config->cc_config.matrix[4] = -config->cc_config.matrix[4];
+		config->cc_config.matrix[5] = -config->cc_config.matrix[5];
+		config->cc_config.matrix[6] = -config->cc_config.matrix[6];
+		config->cc_config.matrix[7] = -config->cc_config.matrix[7];
+		config->cc_config.matrix[8] = -config->cc_config.matrix[8];
 	}
 
 	if (isp->params.color_effect != V4L2_COLORFX_SEPIA &&
 	    isp->params.color_effect != V4L2_COLORFX_BW) {
-		memcpy(&isp->params.cc_config, &arg->cc_config,
+		memcpy(&isp->params.cc_config, &config->cc_config,
 		       sizeof(struct sh_css_cc_config));
 		sh_css_set_cc_config(&isp->params.cc_config);
 	}
@@ -2449,14 +2434,12 @@ int atomisp_bad_pixel(struct atomisp_device *isp, int flag, __s32 *value)
  * Function to configure bad pixel correction params
  */
 int atomisp_bad_pixel_param(struct atomisp_device *isp, int flag,
-	void *config)
+			    struct atomisp_dp_config *config)
 {
-	struct atomisp_dp_config *arg = (struct atomisp_dp_config *)config;
-
-	if (arg == NULL)
+	if (config == NULL)
 		return -EINVAL;
 
-	if (sizeof(*arg) != sizeof(isp->params.dp_config)) {
+	if (sizeof(*config) != sizeof(isp->params.dp_config)) {
 		v4l2_err(&atomisp_dev,
 			"%s: incompatible param.\n", __func__);
 		return -EINVAL;
@@ -2464,10 +2447,10 @@ int atomisp_bad_pixel_param(struct atomisp_device *isp, int flag,
 
 	if (flag == 0) {
 		/* Get bad pixel from current setup */
-		memcpy(arg, &isp->params.dp_config, sizeof(*arg));
+		memcpy(config, &isp->params.dp_config, sizeof(*config));
 	} else {
 		/* Set bad pixel to isp parameters */
-		memcpy(&isp->params.dp_config, arg, sizeof(*arg));
+		memcpy(&isp->params.dp_config, config, sizeof(*config));
 		sh_css_set_dp_config(&isp->params.dp_config);
 		isp->params.css_update_params_needed = true;
 	}
@@ -2700,15 +2683,12 @@ int atomisp_false_color(struct atomisp_device *isp, int flag, __s32 *value)
  * Function to configure bad pixel correction params
  */
 int atomisp_false_color_param(struct atomisp_device *isp, int flag,
-	void *config)
+			      struct atomisp_de_config *config)
 {
-	struct atomisp_de_config *arg =
-	    (struct atomisp_de_config *)config;
-
-	if (arg == NULL)
+	if (config == NULL)
 		return -EINVAL;
 
-	if (sizeof(*arg) != sizeof(isp->params.de_config)) {
+	if (sizeof(*config) != sizeof(isp->params.de_config)) {
 		v4l2_err(&atomisp_dev,
 			"%s: incompatible param.\n", __func__);
 		return -EINVAL;
@@ -2716,10 +2696,10 @@ int atomisp_false_color_param(struct atomisp_device *isp, int flag,
 
 	if (flag == 0) {
 		/* Get false color from current setup */
-		memcpy(arg, &isp->params.de_config, sizeof(*arg));
+		memcpy(config, &isp->params.de_config, sizeof(*config));
 	} else {
 		/* Set false color to isp parameters */
-		memcpy(&isp->params.de_config, arg, sizeof(*arg));
+		memcpy(&isp->params.de_config, config, sizeof(*config));
 		sh_css_set_de_config(&isp->params.de_config);
 		isp->params.css_update_params_needed = true;
 	}
@@ -2731,14 +2711,12 @@ int atomisp_false_color_param(struct atomisp_device *isp, int flag,
  * Function to configure white balance params
  */
 int atomisp_white_balance_param(struct atomisp_device *isp, int flag,
-	void *config)
+	struct atomisp_wb_config *config)
 {
-	struct atomisp_wb_config *arg = (struct atomisp_wb_config *)config;
-
-	if (arg == NULL)
+	if (config == NULL)
 		return -EINVAL;
 
-	if (sizeof(*arg) != sizeof(isp->params.wb_config)) {
+	if (sizeof(*config) != sizeof(isp->params.wb_config)) {
 		v4l2_err(&atomisp_dev,
 			"%s: incompatible param.\n", __func__);
 		return -EINVAL;
@@ -2746,10 +2724,10 @@ int atomisp_white_balance_param(struct atomisp_device *isp, int flag,
 
 	if (flag == 0) {
 		/* Get white balance from current setup */
-		memcpy(arg, &isp->params.wb_config, sizeof(*arg));
+		memcpy(config, &isp->params.wb_config, sizeof(*config));
 	} else {
 		/* Set white balance to isp parameters */
-		memcpy(&isp->params.wb_config, arg, sizeof(*arg));
+		memcpy(&isp->params.wb_config, config, sizeof(*config));
 		sh_css_set_wb_config(&isp->params.wb_config);
 		isp->params.css_update_params_needed = true;
 	}
@@ -2758,16 +2736,13 @@ int atomisp_white_balance_param(struct atomisp_device *isp, int flag,
 }
 
 int atomisp_3a_config_param(struct atomisp_device *isp, int flag,
-			    void *config)
+			    struct atomisp_3a_config *config)
 {
-	struct atomisp_3a_config *arg = (struct atomisp_3a_config *)config;
-
-	v4l2_dbg(5, dbg_level, &atomisp_dev,
-		 ">%s %d \n",__func__, flag);
-	if (arg == NULL)
+	v4l2_dbg(5, dbg_level, &atomisp_dev, ">%s %d\n", __func__, flag);
+	if (config == NULL)
 		return -EINVAL;
 
-	if (sizeof(*arg) != sizeof(isp->params.s3a_config)) {
+	if (sizeof(*config) != sizeof(isp->params.s3a_config)) {
 		v4l2_err(&atomisp_dev,
 			"%s: incompatible param.\n", __func__);
 		return -EINVAL;
@@ -2775,10 +2750,10 @@ int atomisp_3a_config_param(struct atomisp_device *isp, int flag,
 
 	if (flag == 0) {
 		/* Get white balance from current setup */
-		memcpy(arg, &isp->params.s3a_config, sizeof(*arg));
+		memcpy(config, &isp->params.s3a_config, sizeof(*config));
 	} else {
 		/* Set white balance to isp parameters */
-		memcpy(&isp->params.s3a_config, arg, sizeof(*arg));
+		memcpy(&isp->params.s3a_config, config, sizeof(*config));
 		/*
 		 * using default values for awb threshold valued
 		 * until 3a library starts setting values by itself
@@ -2850,10 +2825,8 @@ int atomisp_digital_zoom(struct atomisp_device *isp, int flag, __s32 *value)
  * which will be used for auto exposure conversion.
  */
 int atomisp_get_sensor_mode_data(struct atomisp_device *isp,
-				void *config)
+				 struct atomisp_sensor_mode_data *config)
 {
-	struct atomisp_sensor_mode_data *arg =
-			(struct atomisp_sensor_mode_data *)config;
 	struct camera_mipi_info *mipi_info;
 
 	mipi_info = atomisp_to_sensor_mipi_info(
@@ -2861,7 +2834,7 @@ int atomisp_get_sensor_mode_data(struct atomisp_device *isp,
 	if (mipi_info == NULL)
 		return -EINVAL;
 
-	memcpy(arg, &mipi_info->data, sizeof(*arg));
+	memcpy(config, &mipi_info->data, sizeof(*config));
 	return 0;
 }
 
@@ -4509,7 +4482,7 @@ int atomisp_ospm_dphy_up(struct atomisp_device *isp)
 
 
 int atomisp_exif_makernote(struct atomisp_device *isp,
-	void *config)
+			   struct atomisp_makernote_info *config)
 {
 	struct atomisp_makernote_info *arg =
 			(struct atomisp_makernote_info *)config;
