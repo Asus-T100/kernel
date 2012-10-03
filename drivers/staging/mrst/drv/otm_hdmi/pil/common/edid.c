@@ -547,6 +547,10 @@ static void decode_audio_data_block(unsigned char *e, int n, edid_info_t *edid)
 
 	LOG_PRINT(LOG_LEVEL_DETAIL, "[audio data block... %d entries]\n", ne);
 
+	edid->short_audio_descriptor_count = ne;
+	if (ne > 0)
+		memcpy(edid->short_audio_descriptor_data, e, n);
+
 	while (ne-- > 0) {
 		/* Do we have room for another capability? */
 		if (edid->num_caps < MAX_CAPS) {

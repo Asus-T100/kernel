@@ -77,164 +77,6 @@
 #define MONITOR_TYPE_HDMI 1
 #define MONITOR_TYPE_DVI  2
 
-#define HDMI_EELD_SIZE 84
-typedef union _hdmi_eeld {
-	uint8_t eeld[HDMI_EELD_SIZE];
-	#pragma pack(1)
-	struct {
-		/* Byte[0] = ELD Version Number */
-		union {
-			uint8_t   byte0;
-			struct {
-				uint8_t reserved:3; /* Reserf */
-				uint8_t eld_ver:5; /* ELD Version Number */
-						/* 00000b - reserved
-						 * 00001b - first rev
-						 * 00010b:11111b - reserved
-						 * for future
-						 */
-			};
-		};
-
-		/* Byte[1] = Vendor Version Field */
-		union {
-			uint8_t vendor_version;
-			struct {
-				uint8_t reserved1:3;
-				uint8_t veld_ver:5; /* Version number of the ELD
-						     * extension. This value is
-						     * provisioned and unique to
-						     * each vendor.
-						     */
-			};
-		};
-
-		/* Byte[2] = Baseline Lenght field */
-		uint8_t baseline_eld_length; /* Length of the Baseline structure
-					      *	divided by Four.
-					      */
-
-		/* Byte [3] = Reserved for future use */
-		uint8_t byte3;
-
-		/* Starting of the BaseLine EELD structure
-		 * Byte[4] = Monitor Name Length
-		 */
-		union {
-			uint8_t byte4;
-			struct {
-				uint8_t mnl:5;
-				uint8_t cea_edid_rev_id:3;
-			};
-		};
-
-		/* Byte[5] = Capabilities */
-		union {
-			uint8_t capabilities;
-			struct {
-				uint8_t hdcp:1; /* HDCP support */
-				uint8_t ai_support:1;   /* AI support */
-				uint8_t connection_type:2; /* Connection type
-							    * 00 - HDMI
-							    * 01 - DP
-							    * 10 -11  Reserved
-							    * for future
-							    * connection types
-							    */
-				uint8_t sadc:4; /* Indicates number of 3 bytes
-						 * Short Audio Descriptors.
-						 */
-			};
-		};
-
-		/* Byte[6] = Audio Synch Delay */
-		uint8_t audio_synch_delay; /* Amount of time reported by the
-					    * sink that the video trails audio
-					    * in milliseconds.
-					    */
-
-		/* Byte[7] = Speaker Allocation Block */
-		union {
-			uint8_t speaker_allocation_block;
-			struct {
-				uint8_t flr:1; /*Front Left and Right channels*/
-				uint8_t lfe:1; /*Low Frequency Effect channel*/
-				uint8_t fc:1;  /*Center transmission channel*/
-				uint8_t rlr:1; /*Rear Left and Right channels*/
-				uint8_t rc:1; /*Rear Center channel*/
-				uint8_t flrc:1; /*Front left and Right of Center
-						 *transmission channels
-						 */
-				uint8_t rlrc:1; /*Rear left and Right of Center
-						 *transmission channels
-						 */
-				uint8_t reserved3:1; /* Reserved */
-			};
-		};
-
-		/* Byte[8 - 15] - 8 Byte port identification value */
-		uint8_t port_id_value[8];
-
-		/* Byte[16 - 17] - 2 Byte Manufacturer ID */
-		uint8_t manufacturer_id[2];
-
-		/* Byte[18 - 19] - 2 Byte Product ID */
-		uint8_t product_id[2];
-
-		/* Byte [20-83] - 64 Bytes of BaseLine Data */
-		uint8_t mn_sand_sads[64]; /* This will include
-					   * - ASCII string of Monitor name
-					   * - List of 3 byte SADs
-					   * - Zero padding
-					   */
-
-		/* Vendor ELD Block should continue here!
-		 * No Vendor ELD block defined as of now.
-		 */
-	};
-	#pragma pack()
-} hdmi_eeld_t;
-
-typedef struct _cea_861b_adb {
-#pragma pack(1)
-	union {
-		uint8_t byte1;
-		struct {
-			uint8_t   max_channels:3; /* Bits[0-2] */
-			uint8_t   audio_format_code:4; /* Bits[3-6],
-							see AUDIO_FORMAT_CODES*/
-			uint8_t   b1reserved:1; /* Bit[7] - reserved */
-		};
-	};
-	union {
-		uint8_t	byte2;
-		struct {
-			uint8_t sp_rate_32kHz:1; /*Bit[0] sample rate=32kHz*/
-			uint8_t sp_rate_44kHz:1; /*Bit[1] sample rate=44kHz*/
-			uint8_t sp_rate_48kHz:1; /*Bit[2] sample rate=48kHz*/
-			uint8_t sp_rate_88kHz:1; /*Bit[3] sample rate=88kHz*/
-			uint8_t sp_rate_96kHz:1; /*Bit[4] sample rate=96kHz*/
-			uint8_t sp_rate_176kHz:1; /*Bit[5] sample rate=176kHz*/
-			uint8_t sp_rate_192kHz:1; /*Bit[6] sample rate=192kHz*/
-			uint8_t sp_rate_b2reserved:1; /* Bit[7] - reserved*/
-		};
-	};
-	union {
-		uint8_t   byte3; /* maximum bit rate divided by 8kHz */
-		/* following is the format of 3rd byte for
-		 * uncompressed(LPCM) audio
-		 */
-		struct {
-			uint8_t	bit_rate_16bit:1;	/* Bit[0] */
-			uint8_t	bit_rate_20bit:1;	/* Bit[1] */
-			uint8_t	bit_rate_24bit:1;	/* Bit[2] */
-			uint8_t	bit_rate_b3reserved:5;	/* Bits[3-7] */
-		};
-	};
-#pragma pack()
-
-} cea_861b_adb_t;
-
 struct android_hdmi_priv {
 	/* common */
 	struct drm_device *dev;
@@ -242,11 +84,6 @@ struct android_hdmi_priv {
 	/*medfield specific */
 	u32 hdmib_reg;
 	u32 save_HDMIB;
-
-	/* EELD packet holder*/
-	hdmi_eeld_t eeld;
-	u32 hdmi_eeld_size;
-	cea_861b_adb_t lpcm_sad;
 
 	/* Delayed Encoder Restore */
 	struct drm_display_mode *current_mode;
@@ -435,6 +272,18 @@ void android_hdmi_restore_and_enable_display(struct drm_device *dev);
 void android_hdmi_save_display_registers(struct drm_device *dev);
 
 /**
+ * Prepare HDMI EDID-like data and copy it to the given buffer
+ * Input parameters:
+ * @dev: drm Device
+ * @eld: pointer to otm_hdmi_eld_t data structure
+ *
+ * Returns:	0 on success
+ *		-EINVAL on NULL input arguments
+ */
+int android_hdmi_get_eld(struct drm_device *dev, void *eld);
+
+
+/**
  * disable HDMI display
  * Input parameters:
  *	psDrmDev: Drm Device.
@@ -584,6 +433,9 @@ static inline void android_hdmi_save_display_registers(
 				struct drm_device *dev) {}
 
 static inline void android_disable_hdmi(struct drm_device *dev) {}
+
+static inline int android_hdmi_get_eld(struct drm_device *dev, void *eld)
+{ return 0; }
 
 static inline bool android_enable_hdmi_hdcp(struct drm_device *dev)
 { return false; }

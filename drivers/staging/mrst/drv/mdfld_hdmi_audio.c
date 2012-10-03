@@ -117,7 +117,7 @@ static int mdfld_hdmi_audio_get_caps (enum had_caps_list get_element, void *capa
 
     switch (get_element) {
     case HAD_GET_ELD:
-        memcpy(capabilities, &(hdmi_priv->eeld), sizeof(hdmi_eeld_t));
+	ret = android_hdmi_get_eld(dev, capabilities);
         break;
     case HAD_GET_SAMPLING_FREQ:
         memcpy(capabilities, &(dev_priv->tmds_clock_khz), sizeof(uint32_t));

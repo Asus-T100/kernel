@@ -1494,6 +1494,43 @@ void android_hdmi_save_display_registers(struct drm_device *dev)
 	return;
 }
 
+
+/**
+ * Prepare HDMI EDID-like data and copy it to the given buffer
+ * Input parameters:
+ * @dev: drm Device
+ * @eld: pointer to otm_hdmi_eld_t data structure
+*
+ * Returns:	0 on success
+ *		-EINVAL on NULL input arguments
+ */
+
+int android_hdmi_get_eld(struct drm_device *dev, void *eld)
+{
+	struct drm_psb_private *dev_priv;
+	struct android_hdmi_priv *hdmi_priv;
+	otm_hdmi_eld_t *hdmi_eld;
+	otm_hdmi_ret_t ret;
+
+	if (NULL == dev || NULL == eld)
+		return -EINVAL;
+	dev_priv = dev->dev_private;
+	if (NULL == dev_priv)
+		return -EINVAL;
+	hdmi_priv = dev_priv->hdmi_priv;
+	if (NULL == hdmi_priv)
+		return -EINVAL;
+
+	hdmi_eld = (otm_hdmi_eld_t *)eld;
+	ret = otm_hdmi_get_eld(hdmi_priv->context, hdmi_eld);
+	if (ret == OTM_HDMI_SUCCESS)
+		return 0;
+
+	/* TODO: return proper error code. */
+	return -EINVAL;
+}
+
+
 /**
  * Restore the register and enable the HDMI display
  * @dev:		drm device

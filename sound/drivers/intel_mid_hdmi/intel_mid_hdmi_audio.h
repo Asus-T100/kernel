@@ -31,6 +31,7 @@
 #include <linux/version.h>
 #include <sound/asoundef.h>
 #include <sound/control.h>
+#include <otm_hdmi_eld.h>
 #include <android_hdmi.h>
 #include <mdfld_hdmi_audio_if.h>
 
@@ -449,7 +450,7 @@ struct snd_intelhad {
 	enum had_drv_status	drv_status;
 	struct		ring_buf_info buf_info[HAD_NUM_OF_RING_BUFS];
 	struct		pcm_stream_info stream_info;
-	hdmi_eeld_t	eeld;
+	otm_hdmi_eld_t	eeld;
 	enum		intel_had_aud_buf_type curr_buf;
 	int		valid_buf_cnt;
 	unsigned int	aes_bits;
