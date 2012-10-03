@@ -2343,6 +2343,7 @@ int atomisp_param(struct atomisp_device *isp, int flag,
 	sh_css_set_nr_config(&isp->params.nr_config);
 	sh_css_set_ee_config(&isp->params.ee_config);
 	sh_css_set_tnr_config(&isp->params.tnr_config);
+	isp->params.css_update_params_needed = true;
 
 	return 0;
 
