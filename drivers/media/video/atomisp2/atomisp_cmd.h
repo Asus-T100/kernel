@@ -32,7 +32,6 @@
 
 #include <linux/atomisp.h>
 
-#define DIV_RND_UP(a, b) (((a) + (b) - 1) / b)
 #define MSI_ENABLE_BIT		16
 #define INTR_DISABLE_BIT	10
 #define BUS_MASTER_ENABLE	2

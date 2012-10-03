@@ -3018,23 +3018,12 @@ atomisp_try_fmt_file(struct atomisp_device *isp, struct v4l2_format *f)
 	}
 
 	f->fmt.pix.field = field;
-
-	if (width > ATOM_ISP_MAX_WIDTH)
-		width = ATOM_ISP_MAX_WIDTH;
-	else if (width < ATOM_ISP_MIN_WIDTH)
-		width = ATOM_ISP_MIN_WIDTH;
-
-	if (height > ATOM_ISP_MAX_HEIGHT)
-		height = ATOM_ISP_MAX_HEIGHT;
-	else if (height < ATOM_ISP_MIN_HEIGHT)
-		height = ATOM_ISP_MIN_HEIGHT;
-
-	width = width - width % ATOM_ISP_STEP_WIDTH;
-	height = height - height % ATOM_ISP_STEP_HEIGHT;
-
-	f->fmt.pix.width = width;
-	f->fmt.pix.height = height;
-
+	f->fmt.pix.width = clamp_t(u32,
+				   rounddown(width, (u32)ATOM_ISP_STEP_WIDTH),
+				   ATOM_ISP_MIN_WIDTH, ATOM_ISP_MAX_WIDTH);
+	f->fmt.pix.height = clamp_t(u32, rounddown(height,
+						   (u32)ATOM_ISP_STEP_HEIGHT),
+				    ATOM_ISP_MIN_HEIGHT, ATOM_ISP_MAX_HEIGHT);
 	f->fmt.pix.bytesperline = (width * depth) >> 3;
 
 	return 0;
@@ -3280,12 +3269,12 @@ static int atomisp_get_effective_resolution(struct atomisp_device *isp,
 	if (no_padding_w > out_width || no_padding_h > out_height) {
 		/* keep a right ratio of width and height*/
 		in_fmt->width = no_padding_w;
-		in_fmt->height = DIV_RND_UP(in_fmt->width * out_height,
-							out_width);
+		in_fmt->height = DIV_ROUND_UP(in_fmt->width * out_height,
+					      out_width);
 		if (in_fmt->height > no_padding_h) {
 			in_fmt->height = no_padding_h;
-			in_fmt->width = DIV_RND_UP(in_fmt->height * out_width,
-								out_height);
+			in_fmt->width = DIV_ROUND_UP(in_fmt->height * out_width,
+						     out_height);
 
 		}
 		in_fmt->width = (in_fmt->width &
@@ -3408,10 +3397,10 @@ static void atomisp_get_yuv_ds_status(struct atomisp_device *isp,
 				      unsigned int width, unsigned int height)
 {
 	/* no YUV downscaling if sensor output is 10% larger than isp output */
-	unsigned int w_tmp =  isp->input_format->out.width -
-				DIV_RND_UP(isp->input_format->out.width, 10);
-	unsigned int h_tmp =  isp->input_format->out.height -
-				DIV_RND_UP(isp->input_format->out.height , 10);
+	unsigned int w_tmp = isp->input_format->out.width -
+		DIV_ROUND_UP(isp->input_format->out.width, 10);
+	unsigned int h_tmp = isp->input_format->out.height -
+		DIV_ROUND_UP(isp->input_format->out.height, 10);
 	/*
 	 * yuv downscaling is not enabled in video binary,
 	 * ,raw format output, soc sensor. effective resolution should
@@ -3606,7 +3595,8 @@ done:
 	pipe->format->out.height = height;
 	pipe->format->out.pixelformat = pixelformat;
 	pipe->format->out.bytesperline =
-	    DIV_RND_UP(format_bridge->depth * output_info.padded_width, 8);
+		DIV_ROUND_UP(format_bridge->depth * output_info.padded_width,
+			     8);
 	pipe->format->out.sizeimage =
 	    PAGE_ALIGN(height * pipe->format->out.bytesperline);
 	if (f->fmt.pix.field == V4L2_FIELD_ANY)
