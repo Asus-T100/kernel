@@ -4420,8 +4420,6 @@ int atomisp_ospm_dphy_up(struct atomisp_device *isp)
 int atomisp_exif_makernote(struct atomisp_device *isp,
 			   struct atomisp_makernote_info *config)
 {
-	struct atomisp_makernote_info *arg =
-			(struct atomisp_makernote_info *)config;
 	struct v4l2_control ctrl;
 
 	ctrl.id = V4L2_CID_FOCAL_ABSOLUTE;
@@ -4429,14 +4427,14 @@ int atomisp_exif_makernote(struct atomisp_device *isp,
 				 core, g_ctrl, &ctrl))
 		v4l2_warn(&atomisp_dev, "failed to g_ctrl for focal length\n");
 	else
-		arg->focal_length = ctrl.value;
+		config->focal_length = ctrl.value;
 
 	ctrl.id = V4L2_CID_FNUMBER_ABSOLUTE;
 	if (v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
 				core, g_ctrl, &ctrl))
 		v4l2_warn(&atomisp_dev, "failed to g_ctrl for f-number\n");
 	else
-		arg->f_number_curr = ctrl.value;
+		config->f_number_curr = ctrl.value;
 
 	ctrl.id = V4L2_CID_FNUMBER_RANGE;
 	if (v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
@@ -4444,7 +4442,7 @@ int atomisp_exif_makernote(struct atomisp_device *isp,
 		v4l2_warn(&atomisp_dev,
 				"failed to g_ctrl for f number range\n");
 	else
-		arg->f_number_range = ctrl.value;
+		config->f_number_range = ctrl.value;
 
 	return 0;
 }
