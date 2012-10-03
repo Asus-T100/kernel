@@ -1257,6 +1257,17 @@ static int intel_mid_ssp_spi_probe(struct pci_dev *pdev,
 	drv_context->irq = pdev->irq;
 	status = request_irq(drv_context->irq, ssp_int, IRQF_SHARED,
 		"intel_mid_ssp_spi", drv_context);
+
+#ifdef CONFIG_X86_MRFLD
+	if ((intel_mrfl_identify_sim() == INTEL_MRFL_CPU_SIMULATION_SLE) ||
+		(intel_mrfl_identify_sim() == INTEL_MRFL_CPU_SIMULATION_NONE)) {
+		/* [REVERT ME] Tangier SLE not supported.
+		Requires debug before removal.  Assume
+		also required in Si.            */
+		disable_irq_nosync(drv_context->irq);
+	}
+#endif
+
 	if (status < 0) {
 		dev_err(&pdev->dev, "can not get IRQ\n");
 		goto err_free_4;

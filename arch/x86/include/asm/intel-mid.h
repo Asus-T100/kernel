@@ -445,6 +445,16 @@ enum {
 #define BSEL_SOC_FUSE_101	0x5 /* FSB 100MHz */
 #define BSEL_SOC_FUSE_111	0x7 /* FSB 83MHz */
 
+/* TNG: translate MSR values directly, scaled to hertz */
+#define TNG_IDI_FREQ_83SKU             83300
+#define TNG_IDI_FREQ_100SKU            100000
+#define TNG_IDI_FREQ_133SKU            133300
+#define TNG_IDI_FREQ_167SKU            167000
+#define TNG_IDI_FREQ_200SKU            200000
+#define TNG_IDI_FREQ_267SKU            267000
+#define TNG_IDI_FREQ_333SKU            333000
+#define TNG_IDI_FREQ_400SKU            400000
+
 #define SFI_MTMR_MAX_NUM 8
 #define SFI_MRTC_MAX	8
 

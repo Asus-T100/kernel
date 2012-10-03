@@ -891,6 +891,13 @@ hc_init:
 
 static void __devinit quirk_usb_early_handoff(struct pci_dev *pdev)
 {
+#if defined(CONFIG_BOARD_MRFLD_SLE)
+	/* [REVERT ME] quirk_usb_early_handoff being disabled as SLE
+		does not have USB support at this time.
+		(compact model).  Even after disabling USB,
+		 this function is still called.
+	*/
+#else
 	/* Skip Netlogic mips SoC's internal PCI USB controller.
 	 * This device does not need/support EHCI/OHCI handoff
 	 */
@@ -916,6 +923,7 @@ static void __devinit quirk_usb_early_handoff(struct pci_dev *pdev)
 	else if (pdev->class == PCI_CLASS_SERIAL_USB_XHCI)
 		quirk_usb_handoff_xhci(pdev);
 	pci_disable_device(pdev);
+#endif
 }
 DECLARE_PCI_FIXUP_FINAL(PCI_ANY_ID, PCI_ANY_ID, quirk_usb_early_handoff);
 

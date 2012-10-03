@@ -509,6 +509,15 @@ config BOARD_MRFLD_HVP
 	  model of the Merrifield North Cluster interface to the FPGA
 	  implementation of the TNG South Cluster RTL in the Cypress
 	  River (CR4) Board.
+
+config BOARD_MRFLD_SLE
+	bool "Merrifield SLE (Zilker) platform"
+	depends on X86_MRFLD
+	default n
+	---help---
+	  Merrifield SLE platform.
+	  Enable this option for SLE codepaths and workarounds.
+	  Note this option is not necessary for VP/HVP.
 endchoice
 
 endif

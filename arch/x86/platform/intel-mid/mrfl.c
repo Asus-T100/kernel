@@ -22,6 +22,8 @@
 #include <linux/power/intel_mid_powersupply.h>
 #include <asm/intel_scu_ipc.h>
 
+#define APIC_DIVISOR 16
+
 unsigned long __init intel_mid_calibrate_tsc(void)
 {
 	/* [REVERT ME] fast timer calibration method to be defined */
@@ -30,6 +32,75 @@ unsigned long __init intel_mid_calibrate_tsc(void)
 		return 1000000;
 	}
 
+	if ((intel_mrfl_identify_sim() == INTEL_MRFL_CPU_SIMULATION_SLE) ||
+		(intel_mrfl_identify_sim() == INTEL_MRFL_CPU_SIMULATION_NONE)) {
+
+		unsigned long fast_calibrate;
+		u32 lo, hi, ratio, fsb, bus_freq;
+
+		/* *********************** */
+		/* Compute TSC:Ratio * FSB */
+		/* *********************** */
+
+		/* Compute Ratio */
+		rdmsr(MSR_PLATFORM_INFO, lo, hi);
+		pr_debug("IA32 PLATFORM_INFO is 0x%x : %x\n", hi, lo);
+
+		ratio = (lo >> 8) & 0xFF;
+		pr_debug("ratio is %d\n", ratio);
+		if (!ratio) {
+			pr_err("Read a zero ratio, force tsc ratio to 4 ...\n");
+			ratio = 4;
+		}
+
+		/* Compute FSB */
+		rdmsr(MSR_FSB_FREQ, lo, hi);
+		pr_debug("Actual FSB frequency detected by SOC 0x%x : %x\n",
+			hi, lo);
+
+		bus_freq = (lo >> 4) & 0x7;
+		pr_debug("bus_freq = 0x%x\n", bus_freq);
+
+		if (bus_freq == 0)
+			fsb = TNG_IDI_FREQ_100SKU;
+		else if (bus_freq == 1)
+			fsb = TNG_IDI_FREQ_133SKU;
+		else if (bus_freq == 2)
+			fsb = TNG_IDI_FREQ_200SKU;
+		else if (bus_freq == 3)
+			fsb = TNG_IDI_FREQ_167SKU;
+		else if (bus_freq == 4)
+			fsb = TNG_IDI_FREQ_83SKU;
+		else if (bus_freq == 5)
+			fsb = TNG_IDI_FREQ_400SKU;
+		else if (bus_freq == 6)
+			fsb = TNG_IDI_FREQ_267SKU;
+		else if (bus_freq == 7)
+			fsb = TNG_IDI_FREQ_333SKU;
+		else {
+			BUG();
+			pr_err("Invalid bus_freq! Setting to minimal value!\n");
+			fsb = TNG_IDI_FREQ_100SKU;
+		}
+
+		/* TSC = FSB Freq * Resolved HFM Ratio */
+		fast_calibrate = ratio * fsb;
+		pr_debug("calculate tangier tsc %lu KHz\n", fast_calibrate);
+
+		/* ************************************ */
+		/* Calculate Local APIC Timer Frequency */
+		/* ************************************ */
+		lapic_timer_frequency = (fsb * 1000) / HZ;
+
+		pr_debug("Setting lapic_timer_frequency = %d\n",
+			lapic_timer_frequency);
+
+		/* mark tsc clocksource as reliable */
+		set_cpu_cap(&boot_cpu_data, X86_FEATURE_TSC_RELIABLE);
+
+		if (fast_calibrate)
+			return fast_calibrate;
+	}
 	return 0;
 }
 
