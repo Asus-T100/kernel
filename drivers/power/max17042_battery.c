@@ -431,6 +431,7 @@ static enum power_supply_property max17042_battery_props[] = {
 	POWER_SUPPLY_PROP_TECHNOLOGY,
 	POWER_SUPPLY_PROP_VOLTAGE_NOW,
 	POWER_SUPPLY_PROP_VOLTAGE_AVG,
+	POWER_SUPPLY_PROP_VOLTAGE_OCV,
 	POWER_SUPPLY_PROP_VOLTAGE_MIN_DESIGN,
 	POWER_SUPPLY_PROP_CURRENT_NOW,
 	POWER_SUPPLY_PROP_CURRENT_AVG,
@@ -773,13 +774,19 @@ static int max17042_get_property(struct power_supply *psy,
 		val->intval = batt_temp * 10;
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
-		ret = max17042_read_reg(chip->client, MAX17042_OCVInternal);
+		ret = max17042_read_reg(chip->client, MAX17042_VCELL);
 		if (ret < 0)
 			goto ps_prop_read_err;
 		val->intval = (ret >> 3) * MAX17042_VOLT_CONV_FCTR;
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_AVG:
 		ret = max17042_read_reg(chip->client, MAX17042_AvgVCELL);
+		if (ret < 0)
+			goto ps_prop_read_err;
+		val->intval = (ret >> 3) * MAX17042_VOLT_CONV_FCTR;
+		break;
+	case POWER_SUPPLY_PROP_VOLTAGE_OCV:
+		ret = max17042_read_reg(chip->client, MAX17042_OCVInternal);
 		if (ret < 0)
 			goto ps_prop_read_err;
 		val->intval = (ret >> 3) * MAX17042_VOLT_CONV_FCTR;
