@@ -1492,7 +1492,7 @@ static int check_charge_full(struct msic_power_module_info *mbi,
 	int cur_avg;
 
 	/* Read voltage and current from FG driver */
-	volt_now = fg_chip_get_property(POWER_SUPPLY_PROP_VOLTAGE_NOW);
+	volt_now = fg_chip_get_property(POWER_SUPPLY_PROP_VOLTAGE_OCV);
 	if (volt_now == -ENODEV || volt_now == -EINVAL) {
 		dev_warn(msic_dev, "Can't read voltage from FG\n");
 		return false;
@@ -1816,7 +1816,7 @@ static void msic_batt_temp_charging(struct work_struct *work)
 			temp_mon = &sfi_table->temp_mon_range[i];
 			/* Read battery Voltage */
 			adc_vol = fg_chip_get_property(
-					POWER_SUPPLY_PROP_VOLTAGE_NOW);
+					POWER_SUPPLY_PROP_VOLTAGE_OCV);
 			if (adc_vol == -ENODEV || adc_vol == -EINVAL) {
 				dev_warn(msic_dev, "Can't read voltage from FG\n");
 				goto lbl_sched_work;
@@ -1825,7 +1825,9 @@ static void msic_batt_temp_charging(struct work_struct *work)
 			adc_vol /= 1000;
 
 			if ((adc_vol <= temp_mon->maint_chrg_vol_ll)) {
-				dev_dbg(msic_dev, "restart charging\n");
+					dev_info(msic_dev,
+					"restart maint charging,vocv_vol:%dmv\n",
+								adc_vol);
 				cv = temp_mon->maint_chrg_vol_ul;
 			} else {
 				dev_dbg(msic_dev, "vbat is more than ll\n");
