@@ -375,7 +375,6 @@ if ($tree && -f "$root/$removal") {
 
 my @rawlines = ();
 my @comparelines = ();
-my @commit_list = ();
 my @lines = ();
 my $vname;
 
@@ -388,44 +387,6 @@ sub process_whitelist {
 		push(@comparelines, $_);
 	}
 	close(FILE);
-}
-# Checks for mix of upstream and non upstream content
-sub check_for_upstream {
-# Declarations
-	use File::Basename;
-	my @upstream_commit = ();
-	my @upstream_list = ();
-	my $dirname = dirname($0);
-	my $filename = "upstreamlist.txt";
-# Open upstream list
-	if (-e "$dirname/$filename") {
-		open(FILE, '<', "$dirname/$filename") || die $!;
-		while (<FILE>) {
-			chomp;
-			push(@upstream_list, $_);
-		}
-		close(FILE);
-	}
-	else {
-		print "FILE $dirname/$filename does not exist\n";
-	}
-# Iterate through the commit_list and look for a match in
-# upstream list.
-	foreach my $commit (@commit_list) {
-		foreach my $upstream_file (@upstream_list) {
-			if ($upstream_file =~ /$commit/) {
-				push(@upstream_commit,$commit);
-				last;
-			}
-		}
-	}
-# Iterate when there is a length mismatch
-	if ($#upstream_commit != $#commit_list) {
-		foreach my $commit (@upstream_commit) {
-			ERROR("UPSTREAM FILE:",
-			"Upstream file touched\n" . $commit);
-		}
-	}
 }
 
 for my $filename (@ARGV) {
@@ -455,7 +416,6 @@ for my $filename (@ARGV) {
 	}
 	@rawlines = ();
 	@comparelines = ();
-	@commit_list = ();
 	@lines = ();
 }
 
@@ -1612,7 +1572,6 @@ sub process {
 			$realfile = $1;
 			$realfile =~ s@^([^/]*)/@@;
 			$in_commit_log = 0;
-			push(@commit_list,$realfile);
 			$skip = 0;
 			foreach my $compareline (@comparelines) {
 				if ($realfile =~ /$compareline/) {
@@ -3563,8 +3522,6 @@ sub process {
 		ERROR("MISSING_SIGN_OFF",
 		      "Missing Signed-off-by: line(s)\n");
 	}
-
-	check_for_upstream();
 
 	print report_dump();
 	if ($summary && !($clean == 1 && $quiet == 1)) {
