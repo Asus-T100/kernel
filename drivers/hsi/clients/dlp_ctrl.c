@@ -269,6 +269,8 @@ static void dlp_ctrl_handle_tx_timeout(struct work_struct *work)
 	struct dlp_channel *ch_ctx;
 	int i;
 
+	pr_err(DRVNAME ": HSI TX Timeout\n");
+
 	/* Call any register TX timeout CB */
 	for (i = 0; i < DLP_CHANNEL_COUNT; i++) {
 		ch_ctx = DLP_CHANNEL_CTX(i);
