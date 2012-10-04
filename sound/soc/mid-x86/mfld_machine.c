@@ -533,32 +533,7 @@ static struct snd_soc_dai_link mfld_msic_dailink[] = {
 		.ignore_suspend = 1,
 		.ops = &mfld_media_ops,
 	},
-/*
- *	This configurtaion doesnt need Vibra as PCM device
- *	so comment this out.
- *	codec should have SPI controls
- */
-/*	{
-		.name = "Medfield Vibra",
-		.stream_name = "Vibra1",
-		.cpu_dai_name = "Vibra1-cpu-dai",
-		.codec_dai_name = "SN95031 Vibra1",
-		.codec_name = "sn95031",
-		.platform_name = "sst-platform",
-		.init = NULL,
-		.ignore_suspend = 1,
-	},
 	{
-		.name = "Medfield Haptics",
-		.stream_name = "Vibra2",
-		.cpu_dai_name = "Vibra2-cpu-dai",
-		.codec_dai_name = "SN95031 Vibra2",
-		.codec_name = "sn95031",
-		.platform_name = "sst-platform",
-		.init = NULL,
-		.ignore_suspend = 1,
-	},
-*/	{
 		.name = "Medfield Voice",
 		.stream_name = "Voice",
 		.cpu_dai_name = "Voice-cpu-dai",
