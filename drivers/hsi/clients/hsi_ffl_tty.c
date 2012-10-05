@@ -1649,6 +1649,9 @@ static void ffl_complete_tx(struct hsi_msg *frame)
 	int			wakeup;
 	unsigned long		flags;
 
+	/* xfer done (Modem up & running) => clear the reset_ongoing flag */
+	main_ctx->reset.ongoing = 0;
+
 	spin_lock_irqsave(&ctx->lock, flags);
 	_ffl_fifo_ctrl_pop(ctx);
 	_ffl_free_frame(ctx, frame);
