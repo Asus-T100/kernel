@@ -90,6 +90,9 @@ bool ps_hdmi_get_cable_status(void *context);
 
 bool ps_hdmi_power_rails_on(void);
 
+bool ps_hdmi_power_rails_off(void);
+
+
 /**
  * hdmi interrupt handler (top half).
  * @irq:	irq number

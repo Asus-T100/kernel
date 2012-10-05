@@ -260,6 +260,7 @@ struct android_hdmi_priv {
 };
 
 extern int psb_intel_panel_fitter_pipe(struct drm_device *dev);
+extern void mdfld_hdmi_audio_init(struct android_hdmi_priv *p_hdmi_priv);
 
 #ifdef CONFIG_MDFD_HDMI
 
@@ -494,6 +495,27 @@ bool android_query_hdmi_hdcp_sink(struct drm_device *dev, uint8_t *bksv);
 enum drm_connector_status android_hdmi_detect(struct drm_connector
 					      *connector, bool force);
 
+
+/**
+ * Description: check whether hdmi/dvi is connected or not.
+ *
+ * @dev:	drm device
+ *
+ * Returns:	true if hdmi/dvi is connected.
+ *		false if hdmi/dvi is not connected.
+ */
+bool android_hdmi_is_connected(struct drm_device *dev);
+
+/**
+ * Description: Turn on or off HDMI power rails.
+ *
+ * @on:	true or false
+ *
+ * Returns: none
+ */
+void android_hdmi_set_power_rails(bool on);
+
+
 /**
  * Description: hdmi helper function to manage power to the display (dpms)
  *
@@ -578,6 +600,12 @@ static inline bool android_query_hdmi_hdcp_sink(struct drm_device *dev,
 static inline enum drm_connector_status android_hdmi_detect(struct drm_connector
 							 *connector, bool force)
 { return connector_status_disconnected; }
+
+static inline bool android_hdmi_is_connected(struct drm_device *dev)
+{ return false; }
+
+static inline void android_hdmi_set_power_rails(bool on)
+{}
 
 static inline void android_hdmi_dpms(struct drm_encoder *encoder,
 				int mode) {}

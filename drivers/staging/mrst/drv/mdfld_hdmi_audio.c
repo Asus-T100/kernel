@@ -21,11 +21,8 @@
 #include <drm/drmP.h>
 #include "psb_drv.h"
 #include "psb_intel_reg.h"
-#include "psb_intel_hdmi_reg.h"
-#include "psb_intel_hdmi_edid.h"
-#include "psb_intel_hdmi.h"
 #include "mdfld_hdmi_audio_if.h"
-
+#include "android_hdmi.h"
 
 /*
  * Audio register range 0x69000 to 0x69117
@@ -151,13 +148,13 @@ static int mdfld_hdmi_audio_set_caps (enum had_caps_list set_element, void *capa
         hdmib = REG_READ(hdmi_priv->hdmib_reg);
 
 	if (hdmib & HDMIB_PORT_EN)
-		hdmib |= HDMI_AUDIO_ENABLE;
+		hdmib |= HDMIB_AUDIO_ENABLE;
 
         REG_WRITE(hdmi_priv->hdmib_reg, hdmib);
         REG_READ(hdmi_priv->hdmib_reg);
         break;
     case HAD_SET_DISABLE_AUDIO:
-        hdmib = REG_READ(hdmi_priv->hdmib_reg) & ~HDMI_AUDIO_ENABLE;
+	hdmib = REG_READ(hdmi_priv->hdmib_reg) & ~HDMIB_AUDIO_ENABLE;
         REG_WRITE(hdmi_priv->hdmib_reg, hdmib);
         REG_READ(hdmi_priv->hdmib_reg);
         break;

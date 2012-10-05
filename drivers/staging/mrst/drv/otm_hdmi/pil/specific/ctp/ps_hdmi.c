@@ -219,6 +219,13 @@ bool ps_hdmi_power_rails_on(void)
 	return true;
 }
 
+bool ps_hdmi_power_rails_off(void)
+{
+	/* To be implemented */
+	return true;
+}
+
+
 /*
  * ps_hdmi_get_cable_status - Get HDMI cable connection status
  * @context: hdmi device context

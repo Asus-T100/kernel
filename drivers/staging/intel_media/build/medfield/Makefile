@@ -139,8 +139,7 @@ gfx-y += $(DISPLAYDIR)/psb_bl.o \
 		$(DISPLAYDIR)/mdfld_dsi_dbi_dsr.o \
 		$(DISPLAYDIR)/tc35876x_vid.o
 
-gfx-$(CONFIG_MDFD_HDMI) += $(DISPLAYDIR)/psb_hotplug.o \
-		$(DISPLAYDIR)/psb_intel_hdmi.o \
+gfx-$(CONFIG_MDFD_HDMI) += $(DISPLAYDIR)/psb_hotplug.o
 
 gfx-$(CONFIG_SND_INTELMID_HDMI_AUDIO) += $(DISPLAYDIR)/mdfld_hdmi_audio.o
 

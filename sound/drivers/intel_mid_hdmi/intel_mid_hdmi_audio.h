@@ -31,7 +31,7 @@
 #include <linux/version.h>
 #include <sound/asoundef.h>
 #include <sound/control.h>
-#include <psb_intel_hdmi.h>
+#include <android_hdmi.h>
 #include <mdfld_hdmi_audio_if.h>
 
 #define HAD_DRIVER_VERSION	"0.01.003"

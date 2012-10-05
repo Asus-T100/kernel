@@ -739,7 +739,7 @@ struct dpst_guardband {
 # define HDMIB_PORT_EN			(1 << 31)
 # define HDMIB_PIPE_B_SELECT		(1 << 30)
 # define HDMIB_NULL_PACKET		(1 << 9)
-
+# define HDMIB_AUDIO_ENABLE             (1 << 6)
 #define VIDEO_DIP_CTL          0x61170
 #define EN_DIP                        (1 << 31)
 #define PORT_B_SELECT                 (1 << 29)
@@ -1269,5 +1269,13 @@ gamma settings.
 #define PIPEC_COLOR_COEF12 	0x6207c
 #define PIPEC_COLOR_COEF21 	0x62080
 #define PIPEC_COLOR_COEF22 	0x62084
+
+/* MDFLD HDMI power rails registers */
+#define MSIC_VCC330CNT      0xd3
+#define VCC330_OFF          0x24
+#define VCC330_ON           0x37
+#define MSIC_VHDMICNT       0xde
+#define VHDMI_OFF           0x24
+#define VHDMI_ON            0xa4
 
 #endif

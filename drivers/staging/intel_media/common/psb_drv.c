@@ -51,12 +51,8 @@
 #include "mdfld_gl3.h"
 #endif
 
-#ifdef CONFIG_MDFD_HDMI
-#include "mdfld_msic.h"
-#include "mdfld_ti_tpd.h"
-#endif
-#include "psb_intel_hdmi.h"
 #include "otm_hdmi.h"
+#include "android_hdmi.h"
 
 /*IMG headers*/
 #include "pvr_drm_shared.h"
@@ -67,6 +63,8 @@
 #include "mdfld_csc.h"
 #include "mdfld_dsi_dbi_dsr.h"
 #include "mdfld_dsi_pkg_sender.h"
+
+#define HDMI_MONITOR_NAME_LENGTH 20
 
 int drm_psb_debug;
 int drm_psb_enable_cabc = 1;
@@ -1162,20 +1160,7 @@ void hdmi_do_audio_wq(struct work_struct *work)
 	*/
 
 	DRM_INFO("hdmi_do_audio_wq: Checking for HDMI connection at boot\n");
-
-	if (IS_MDFLD_OLD(dev_priv->dev)) {
-		intel_scu_ipc_ioread8(MSIC_HDMI_STATUS, &data);
-
-		if (data & HPD_SIGNAL_STATUS)
-			hdmi_hpd_connected = true;
-		else
-			hdmi_hpd_connected = false;
-	} else if (IS_CTP(dev_priv->dev)) {
-		if (gpio_get_value(CLV_TI_HPD_GPIO_PIN) == 0)
-			hdmi_hpd_connected = false;
-		else
-			hdmi_hpd_connected = true;
-	}
+	hdmi_hpd_connected = android_hdmi_is_connected(dev_priv->dev);
 
 	if (hdmi_hpd_connected) {
 		DRM_INFO("hdmi_do_audio_wq: HDMI plugged in\n");
@@ -3965,24 +3950,7 @@ static int psb_hdmi_power_write(struct file *file, const char *buffer,
 		hdmi_power = buf[0] - '0';
 		PSB_DEBUG_ENTRY(" hdmi_power: %d\n", hdmi_power);
 
-		if (!hdmi_power) {
-			intel_scu_ipc_iowrite8(MSIC_VHDMICNT, VHDMI_OFF);
-			intel_scu_ipc_iowrite8(MSIC_VCC330CNT, VCC330_OFF);
-		} else {
-			/* turn on HDMI power rails. These will be on in all non-S0iX
-			states so that HPD and connection status will work. VCC330 will
-			have ~1.7mW usage during idle states when the display is
-			active.*/
-			intel_scu_ipc_iowrite8(MSIC_VCC330CNT, VCC330_ON);
-
-			/* MSIC documentation requires that there be a 500us delay
-			after enabling VCC330 before you can enable VHDMI */
-			usleep_range(500, 1000);
-
-			/* Extend VHDMI switch de-bounce time, to avoid redundant MSIC
-			 * VREG/HDMI interrupt during HDMI cable plugged in/out. */
-			intel_scu_ipc_iowrite8(MSIC_VHDMICNT, VHDMI_ON | VHDMI_DB_30MS);
-		}
+		android_hdmi_set_power_rails(hdmi_power != 0);
 	}
 	return count;
 }

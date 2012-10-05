@@ -228,6 +228,9 @@ unsigned char *otm_hdmi_read_edid(void);
 /* turn HDMI power rails on */
 bool otm_hdmi_power_rails_on(void);
 
+/* turn HDMI power rails off */
+bool otm_hdmi_power_rails_off(void);
+
 /*
  * otm_hdmi_get_cable_status - Get HDMI cable connection status
  * @context: hdmi device context

@@ -35,9 +35,8 @@
 #include "mdfld_gl3.h"
 #include "mdfld_dsi_dbi.h"
 #include "mdfld_dsi_dbi_dpu.h"
-#include "psb_intel_hdmi.h"
-#include "mdfld_ti_tpd.h"
 #include "mdfld_dsi_dpi.h"
+#include "android_hdmi.h"
 #include "psb_intel_display.h"
 #ifdef CONFIG_GFX_RTPM
 #include <linux/pm_runtime.h>
@@ -830,34 +829,6 @@ void ospm_suspend_display(struct drm_device *dev)
 }
 
 /*
- * is_hdmi_plugged_out
- *
- * Description: to check whether hdmi is plugged out in S3 suspend
- *
- */
-static bool is_hdmi_plugged_out(struct drm_device *dev)
-{
-	u8 data = 0;
-	bool hdmi_plugged_out = true;
-
-	if (IS_MDFLD_OLD(dev)) {
-		intel_scu_ipc_ioread8(MSIC_HDMI_STATUS, &data);
-
-		if (data & HPD_SIGNAL_STATUS)
-			hdmi_plugged_out = false;
-		else
-			hdmi_plugged_out = true;
-	} else if (IS_CTP(dev)) {
-		if (gpio_get_value(CLV_TI_HPD_GPIO_PIN) == 0)
-			hdmi_plugged_out = true;
-		else
-			hdmi_plugged_out = false;
-	}
-
-	return hdmi_plugged_out;
-}
-
-/*
  * ospm_resume_display
  *
  * Description: Resume the display hardware restoring state and enabling
@@ -908,7 +879,7 @@ void ospm_resume_display(struct pci_dev *pdev)
 		  when system suspend,re-detect once here*/
 #if (defined(CONFIG_SND_INTELMID_HDMI_AUDIO) || \
 		defined(CONFIG_SND_INTELMID_HDMI_AUDIO_MODULE))
-		if (!is_hdmi_plugged_out(dev)) {
+		if (android_hdmi_is_connected(dev)) {
 			PSB_DEBUG_ENTRY("resume hdmi_state %d", hdmi_state);
 			if (dev_priv->had_pvt_data && hdmi_state)
 				dev_priv->had_interface->

@@ -704,6 +704,12 @@ bool otm_hdmi_power_rails_on(void)
 	return ps_hdmi_power_rails_on();
 }
 
+/* turn HDMI power rails off */
+bool otm_hdmi_power_rails_off(void)
+{
+	return ps_hdmi_power_rails_off();
+}
+
 /*
  * otm_hdmi_get_cable_status - Get HDMI cable connection status
  * @context: hdmi device context
