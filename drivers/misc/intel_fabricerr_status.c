@@ -24,10 +24,11 @@
 #include <linux/errno.h>
 #include <linux/device.h>
 #include <linux/types.h>
+#include <asm/intel-mid.h>
 
 #include "intel_fabricid_def.h"
 
-static char *FullChip_FlagStatusLow32[] = {
+static char *FullChip_FlagStatusLow32_pnw[] = {
 	"cdmi_iocp (IA Burst Timeout)",		/* bit 0 */
 	"cha_iahb (IA Burst Timeout)",		/* bit 1 */
 	"nand_iaxi (IA Burst Timeout)",		/* bit 2 */
@@ -62,7 +63,42 @@ static char *FullChip_FlagStatusLow32[] = {
 	""					/* bit 31 */
 };
 
-static char *FullChip_FlagStatusHi32[] = {
+static char *FullChip_FlagStatusLow32_clv[] = {
+	"cdmi_iocp (IA Burst Timeout)",		/* bit 0 */
+	"cha_iahb (IA Burst Timeout)",		/* bit 1 */
+	"",					/* bit 2 */
+	"otg_iahb (IA Burst Timeout)",		/* bit 3 */
+	"usb_iahb (IA Burst Timeout)",		/* bit 4 */
+	"usc0a_iahb (IA Burst Timeout)",	/* bit 5 */
+	"usc0b_iahb (IA Burst Timeout)",	/* bit 6 */
+	"usc2_iahb (IA Burst Timeout)",		/* bit 7 */
+	"tra0_iocp (IA Burst Timeout)",		/* bit 8 */
+	"",					/* bit 9 */
+	"",					/* bit 10 */
+	"",					/* bit 11 */
+	"",					/* bit 12 */
+	"",					/* bit 13 */
+	"",					/* bit 14 */
+	"",					/* bit 15 */
+	"cdmi_iocp (IA Resp Timeout)",		/* bit 16 */
+	"cha_iahb (IA Resp Timeout)",		/* bit 17 */
+	"",					/* bit 18 */
+	"otg_iahb (IA Resp Timeout)",		/* bit 19 */
+	"usb_iahb (IA Resp Timeout)",		/* bit 20 */
+	"usc0a_iahb (IA Resp Timeout)",		/* bit 21 */
+	"usc0b_iahb (IA Resp Timeout)",		/* bit 22 */
+	"usc2_iahb (IA Resp Timeout)",		/* bit 23 */
+	"tra0_iocp (IA Resp Timeout)",		/* bit 24 */
+	"",					/* bit 25 */
+	"",					/* bit 26 */
+	"",					/* bit 27 */
+	"",					/* bit 28 */
+	"",					/* bit 29 */
+	"",					/* bit 30 */
+	""					/* bit 31 */
+};
+
+static char *FullChip_FlagStatusHi32_pnw[] = {
 	"cdmi_iocp (IA Inband Error)",		/* bit 32 */
 	"cha_iahb (IA Inband Error)",		/* bit 33 */
 	"nand_iaxi (IA Inband Error)",		/* bit 34 */
@@ -83,6 +119,41 @@ static char *FullChip_FlagStatusHi32[] = {
 	"cha_tahb (TA Req Timeout)",		/* bit 49 */
 	"nand_taxi (TA Req Timeout)",		/* bit 50 */
 	"nandreg_taxi (TA Req Timeout)",	/* bit 51 */
+	"otg_tahb (TA Req Timeout)",		/* bit 52 */
+	"usb_tahb (TA Req Timeout)",		/* bit 53 */
+	"usc0a_tahb (TA Req Timeout)",		/* bit 54 */
+	"usc0b_tahb (TA Req Timeout)",		/* bit 55 */
+	"usc2_tahb (TA Req Timeout)",		/* bit 56 */
+	"pti_tocp (TA Req Timeout)",		/* bit 57 */
+	"tra0_tocp (TA Req Timeout)",		/* bit 58 */
+	"",					/* bit 59 */
+	"",					/* bit 60 */
+	"",					/* bit 61 */
+	"",					/* bit 62 */
+	""					/* bit 63 */
+};
+
+static char *FullChip_FlagStatusHi32_clv[] = {
+	"cdmi_iocp (IA Inband Error)",		/* bit 32 */
+	"cha_iahb (IA Inband Error)",		/* bit 33 */
+	"",					/* bit 34 */
+	"otg_iahb (IA Inband Error)",		/* bit 35 */
+	"usb_iahb (IA Inband Error)",		/* bit 36 */
+	"usc0a_iahb (IA Inband Error)",		/* bit 37 */
+	"usc0b_iahb (IA Inband Error)",		/* bit 38 */
+	"usc2_iahb (IA Inband Error)",		/* bit 39 */
+	"tra0_iocp (IA Inband Error)",		/* bit 40 */
+	"",					/* bit 41 */
+	"",					/* bit 42 */
+	"",					/* bit 43 */
+	"",					/* bit 44 */
+	"",					/* bit 45 */
+	"",					/* bit 46 */
+	"",					/* bit 47 */
+	"cdmi_tocp (TA Req Timeout)",		/* bit 48 */
+	"cha_tahb (TA Req Timeout)",		/* bit 49 */
+	"",					/* bit 50 */
+	"",				/* bit 51 */
 	"otg_tahb (TA Req Timeout)",		/* bit 52 */
 	"usb_tahb (TA Req Timeout)",		/* bit 53 */
 	"usc0a_tahb (TA Req Timeout)",		/* bit 54 */
@@ -202,7 +273,7 @@ static char *Audio_FlagStatusLow32[] = {
 	""					/* bit 31 */
 };
 
-static char *Audio_FlagStatusHi32[] = {
+static char *Audio_FlagStatusHi32_pnw[] = {
 	"aes_iahb (IA Inband Error)",		/* bit 32 */
 	"adma_iahb (IA Inband Error)",		/* bit 33 */
 	"adma2_iahb (IA Inband Error)",		/* bit 34 */
@@ -232,6 +303,42 @@ static char *Audio_FlagStatusHi32[] = {
 	"slim1_iocp (TA Req Timeout)",		/* bit 57 */
 	"slim2_iocp (TA Req Timeout)",		/* bit 58 */
 	"",					/* bit 59 */
+	"",					/* bit 60 */
+	"",					/* bit 61 */
+	"",					/* bit 62 */
+	""					/* bit 63 */
+};
+
+static char *Audio_FlagStatusHi32_clv[] = {
+	"aes_iahb (IA Inband Error)",		/* bit 32 */
+	"adma_iahb (IA Inband Error)",		/* bit 33 */
+	"adma2_iahb (IA Inband Error)",		/* bit 34 */
+	"",					/* bit 35 */
+	"",					/* bit 36 */
+	"",					/* bit 37 */
+	"",					/* bit 38 */
+	"",					/* bit 39 */
+	"",					/* bit 40 */
+	"",					/* bit 41 */
+	"",					/* bit 42 */
+	"",					/* bit 43 */
+	"",					/* bit 44 */
+	"",					/* bit 44 */
+	"",					/* bit 45 */
+	"",					/* bit 46 */
+	"",					/* bit 47 */
+	"aes_tahb (TA Req Timeout)",		/* bit 48 */
+	"adma_tahb (TA Req Timeout)",		/* bit 49 */
+	"adram2_tocp (TA Req Timeout)",		/* bit 50 */
+	"adram_tocp (TA Req Timeout)",		/* bit 51 */
+	"airam_tocp (TA Req Timeout)",		/* bit 52 */
+	"assp1_1_tapb (TA Req Timeout)",	/* bit 53 */
+	"assp_2_tapb (TA Req Timeout)",		/* bit 54 */
+	"adma2_tahb (TA Req Timeout)",		/* bit 55 */
+	"assp_3_tapb (TA Req Timeout)",		/* bit 56 */
+	"",					/* bit 57 */
+	"",					/* bit 58 */
+	"assp_4_tapb (TA Req Timeout)",		/* bit 59 */
 	"",					/* bit 60 */
 	"",					/* bit 61 */
 	"",					/* bit 62 */
@@ -308,7 +415,7 @@ static char *GP_FlagStatusHi32[] = {
 	""					/* bit 63 */
 };
 
-static char *SC_FlagStatusLow32[] = {
+static char *SC_FlagStatusLow32_pnw[] = {
 	"MFlag0 (Audio)",			/* bit 0 */
 	"MFlag1 (Secondary)",			/* bit 1 */
 	"MFlag2 (FullChip)",			/* bit 2 */
@@ -343,7 +450,42 @@ static char *SC_FlagStatusLow32[] = {
 	""					/* bit 31 */
 };
 
-static char *SC_FlagStatusHi32[] = {
+static char *SC_FlagStatusLow32_clv[] = {
+	"MFlag0 (Audio)",			/* bit 0 */
+	"MFlag1 (Secondary)",			/* bit 1 */
+	"MFlag2 (FullChip)",			/* bit 2 */
+	"MFlag3 (GP)",				/* bit 3 */
+	"",					/* bit 4 */
+	"",					/* bit 5 */
+	"",					/* bit 6 */
+	"ilb_iocp (IA Burst Timeout)",		/* bit 7 */
+	"arc_iocp (IA Burst Timeout)",		/* bit 8 */
+	"scdma_iocp (IA Burst Timeout)",	/* bit 9 */
+	"uart_iocp (IA Burst Timeout)",		/* bit 10 */
+	"",					/* bit 11 */
+	"",					/* bit 12 */
+	"",					/* bit 13 */
+	"",					/* bit 14 */
+	"",					/* bit 15 */
+	"arc_iocp (IA Resp Timeout)",		/* bit 16 */
+	"scdma_iocp (IA Resp Timeout)",		/* bit 17 */
+	"uart_iocp (IA Resp Timeout)",		/* bit 18 */
+	"ilb_iocp (IA Resp Timeout)",		/* bit 19 */
+	"",					/* bit 20 */
+	"",					/* bit 21 */
+	"",					/* bit 22 */
+	"",					/* bit 23 */
+	"arc_iocp (IA Inband Error)",		/* bit 24 */
+	"scdma_iocp (IA Inband Error)",		/* bit 25 */
+	"uart_iocp (IA Inband Error)",		/* bit 26 */
+	"ilb_iocp (IA Inband Error)",		/* bit 27 */
+	"",					/* bit 28 */
+	"",					/* bit 29 */
+	"",					/* bit 30 */
+	""					/* bit 31 */
+};
+
+static char *SC_FlagStatusHi32_pnw[] = {
 	"",					/* bit 32 */
 	"",					/* bit 33 */
 	"",					/* bit 34 */
@@ -378,6 +520,41 @@ static char *SC_FlagStatusHi32[] = {
 	""					/* bit 63 */
 };
 
+static char *SC_FlagStatusHi32_clv[] = {
+	"",					/* bit 32 */
+	"",					/* bit 33 */
+	"",					/* bit 34 */
+	"",					/* bit 35 */
+	"",					/* bit 36 */
+	"",					/* bit 37 */
+	"",					/* bit 38 */
+	"",					/* bit 39 */
+	"",					/* bit 40 */
+	"",					/* bit 41 */
+	"",					/* bit 42 */
+	"",					/* bit 43 */
+	"",					/* bit 44 */
+	"",					/* bit 45 */
+	"",					/* bit 46 */
+	"",					/* bit 47 */
+	"gpio_tocp (TA Req Timeout)",		/* bit 48 */
+	"uart_tocp (TA Req Timeout)",		/* bit 49 */
+	"ipc1_tocp (TA Req Timeout)",		/* bit 50 */
+	"ipc2_tocp (TA Req Timeout)",		/* bit 51 */
+	"kbd_tocp (TA Req Timeout)",		/* bit 52 */
+	"pmu_tocp (TA Req Timeout)",		/* bit 53 */
+	"scdma_tocp (TA Req Timeout)",		/* bit 54 */
+	"spi0_tocp (TA Req Timeout)",		/* bit 55 */
+	"tim_ocp (TA Req Timeout)",		/* bit 56 */
+	"vrtc_tocp (TA Req Timeout)",		/* bit 57 */
+	"arcs_tocp (TA Req Timeout)",		/* bit 58 */
+	"ilb_tocp (TA Req Timeout)",		/* bit 59 */
+	"ilbmb0_tocp (TA Req Timeout)",		/* bit 60 */
+	"",					/* bit 61 */
+	"",					/* bit 62 */
+	""					/* bit 63 */
+};
+
 char *fabric_error_lookup(u32 fab_id, u32 error_index, int use_hidword)
 {
 	if (error_index > 31) /* Out of range of 32bit */
@@ -385,24 +562,54 @@ char *fabric_error_lookup(u32 fab_id, u32 error_index, int use_hidword)
 
 	switch (fab_id) {
 	case FAB_ID_FULLCHIP:
-		return use_hidword ? FullChip_FlagStatusHi32[error_index] :
-			FullChip_FlagStatusLow32[error_index];
+		switch (intel_mid_identify_cpu()) {
+		case INTEL_MID_CPU_CHIP_PENWELL:
+			return use_hidword ?
+				FullChip_FlagStatusHi32_pnw[error_index] :
+				FullChip_FlagStatusLow32_pnw[error_index];
+		case INTEL_MID_CPU_CHIP_CLOVERVIEW:
+			return use_hidword ?
+				FullChip_FlagStatusHi32_clv[error_index] :
+				FullChip_FlagStatusLow32_clv[error_index];
+		default:
+			return NULL;
+		}
 
 	case FAB_ID_SECONDARY:
 		return use_hidword ? Secondary_FlagStatusHi32[error_index] :
 			Secondary_FlagStatusLow32[error_index];
 
 	case FAB_ID_AUDIO:
-		return use_hidword ? Audio_FlagStatusHi32[error_index] :
-			Audio_FlagStatusLow32[error_index];
+		switch (intel_mid_identify_cpu()) {
+		case INTEL_MID_CPU_CHIP_PENWELL:
+			return use_hidword ?
+				Audio_FlagStatusHi32_pnw[error_index] :
+				Audio_FlagStatusLow32[error_index];
+		case INTEL_MID_CPU_CHIP_CLOVERVIEW:
+			return use_hidword ?
+				Audio_FlagStatusHi32_clv[error_index] :
+				Audio_FlagStatusLow32[error_index];
+		default:
+			return NULL;
+		}
 
 	case FAB_ID_GP:
 		return use_hidword ? GP_FlagStatusHi32[error_index] :
 			GP_FlagStatusLow32[error_index];
 
 	case FAB_ID_SC:
-		return use_hidword ? SC_FlagStatusHi32[error_index] :
-			SC_FlagStatusLow32[error_index];
+		switch (intel_mid_identify_cpu()) {
+		case INTEL_MID_CPU_CHIP_PENWELL:
+			return use_hidword ?
+				SC_FlagStatusHi32_pnw[error_index] :
+				SC_FlagStatusLow32_pnw[error_index];
+		case INTEL_MID_CPU_CHIP_CLOVERVIEW:
+			return use_hidword ?
+				SC_FlagStatusHi32_clv[error_index] :
+				SC_FlagStatusLow32_clv[error_index];
+		default:
+			return NULL;
+		}
 
 	default:
 		return NULL;
