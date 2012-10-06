@@ -605,8 +605,8 @@ static void write_PWRGT_CNT(struct gburst_pvt_s *gbprv, u32 value)
 {
 	u32 wvl;
 
-	/**
-	 * Change the state opf the toggle bit.  It's state must be reversed
+	/*
+	 * Change the state of the toggle bit.  Its state must be reversed
 	 * for every write to this register.
 	 */
 	gbprv->gbp_pwrgt_cnt_toggle_bit ^= PWRGT_CNT_TOGGLE_BIT;
@@ -687,11 +687,13 @@ static inline u32 read_PWRGT_STS_simple(void)
  */
 static void hrt_start(struct gburst_pvt_s *gbprv)
 {
-	gbprv->gbp_timer_is_enabled = 1;
+	if (gbprv->gbp_enable) {
+		gbprv->gbp_timer_is_enabled = 1;
 
-	/* If timer is already active, this will set a new time. */
-	hrtimer_start(&gbprv->gbp_timer, gbprv->gbp_hrt_period,
-		HRTIMER_MODE_REL);
+		/* If timer is already active, this will set a new time. */
+		hrtimer_start(&gbprv->gbp_timer, gbprv->gbp_hrt_period,
+			HRTIMER_MODE_REL);
+	}
 }
 
 
@@ -774,7 +776,8 @@ static u32 read_and_process_PWRGT_STS(struct gburst_pvt_s *gbprv)
 		 * evidenced by their bit fields within this register), then
 		 * process the new state.
 		 */
-		if (((uval ^ valprv) & PWRGT_STS_BURST_REALIZED_M)
+		if (!gbprv->gbp_suspended &&
+			((uval ^ valprv) & PWRGT_STS_BURST_REALIZED_M)
 			&& (freq_mhz != 0)) {
 			/**
 			 * Tell graphics subsystem the updated frequency,
@@ -873,6 +876,11 @@ static int desired_burst_state_query(struct gburst_pvt_s *gbprv,
 
 	if (!gbprv->gbp_enable) {
 		*p_whymsg = "!enable";
+		return 0;
+	}
+
+	if (gbprv->gbp_suspended) {
+		*p_whymsg = "suspended";
 		return 0;
 	}
 
@@ -1096,7 +1104,9 @@ static enum hrtimer_restart hrt_event_processor(struct hrtimer *hrthdl)
 	ktime_t mc_now;
 
 	smp_rmb();
-	if (gbprv->gbp_initialized && gbprv->gbp_enable) {
+
+	if (gbprv->gbp_initialized && gbprv->gbp_enable &&
+		!gbprv->gbp_suspended) {
 		gbprv->gbp_thread_check_utilization = 1;
 		smp_wmb();
 		wake_thread(gbprv);
@@ -1128,7 +1138,7 @@ static int thread_action(struct gburst_pvt_s *gbprv)
 	int utilpct;
 
 	smp_rmb();
-	if (!gbprv->gbp_initialized)
+	if (!gbprv->gbp_initialized || gbprv->gbp_suspended)
 		return 1;
 
 #if GBURST_DEBUG
@@ -1543,14 +1553,14 @@ static int generate_dump_string(struct gburst_pvt_s *gbprv, size_t buflen,
 		"utilization = %d\n",
 		gbprv->gbp_utilization_percentage);
 
-	ix = state_times_to_string(gbprv, GBURST_HEADING, 1, ix, buflen, buf);
-
 	if (gbprv->gbp_utilization_override >= 0) {
 		ix = ut_isnprintf(ix, buf, buflen,
 			GBURST_HEADING
 			"utilization_override = %d\n",
 			gbprv->gbp_utilization_override);
 	}
+
+	ix = state_times_to_string(gbprv, GBURST_HEADING, 1, ix, buflen, buf);
 
 	if (!gbprv->gbp_task) {
 		ix = ut_isnprintf(ix, buf, buflen,
@@ -2635,6 +2645,11 @@ static irqreturn_t gburst_irq_handler(int irq, void *pvd)
 	gbprv->gbp_interrupt_count++;
 #endif /* if GBURST_DEBUG */
 
+	if (gbprv->gbp_suspended) {
+		printk(GBURST_ALERT "interrupt while suspended\n");
+		return IRQ_HANDLED;
+	}
+
 	wake_thread(gbprv);
 
 	/**
@@ -2657,23 +2672,54 @@ static irqreturn_t gburst_irq_handler(int irq, void *pvd)
 static int gburst_suspend(struct gburst_pvt_s *gbprv)
 {
 	smp_rmb();
-	if (gbprv && gbprv->gbp_initialized) {
-		if (mprm_verbosity >= 3)
-			printk(GBURST_ALERT "suspend\n");
+	if (!gbprv || !gbprv->gbp_initialized)
+		return 0;
+
+	if (mprm_verbosity >= 3)
+		printk(GBURST_ALERT "suspend\n");
 
 #if GBURST_DEBUG
-		gbprv->gbp_suspend_count++;
+	gbprv->gbp_suspend_count++;
 #endif
 
-		/* Must update times before changing flag. */
-		update_state_times(gbprv, NULL);
-		gbprv->gbp_suspended = 1;
+	/* Must update times before changing flag. */
+	update_state_times(gbprv, NULL);
+	gbprv->gbp_suspended = 1;
+	smp_wmb();
 
-		/* Cancel timer events. */
-		hrt_cancel(gbprv);
+	/* Cancel timer events. */
+	hrt_cancel(gbprv);
 
-		write_PWRGT_CNT(gbprv, 0);
+	write_PWRGT_CNT(gbprv, 0);
+
+/*  GBURST_TIMING_BEFORE_SUSPEND - Code currently under test. */
+#define GBURST_TIMING_BEFORE_SUSPEND 1
+
+#if GBURST_TIMING_BEFORE_SUSPEND
+	/*
+	 * Before suspend takes place, tell gfx hw driver that gpu
+	 * frequency is normal.  It is hoped that this will lead to
+	 * better stability.
+	 * No additional call to update_state_times is desired here, as
+	 * the delta time should be insignificant from the previous call.
+	 */
+
+	mutex_lock(&gbprv->gbp_mutex_pwrgt_sts);
+
+	if ((gbprv->gbp_pwrgt_sts_last_read & PWRGT_STS_BURST_REALIZED_M)
+		!= PWRGT_STS_BURST_REALIZED_M_400) {
+		/*  Notify driver. */
+		gburst_stats_gpu_freq_mhz_info(
+			freq_mhz_table[GBURST_GPU_FREQ_400]);
 	}
+
+	gbprv->gbp_pwrgt_sts_last_read = (gbprv->gbp_pwrgt_sts_last_read &
+		~(PWRGT_STS_BURST_REQUEST_M | PWRGT_STS_BURST_REALIZED_M))
+		| (GBURST_GPU_FREQ_400 << PWRGT_STS_BURST_REQUEST_P)
+		| (GBURST_GPU_FREQ_400 << PWRGT_STS_BURST_REALIZED_P);
+
+	mutex_unlock(&gbprv->gbp_mutex_pwrgt_sts);
+#endif /* if GBURST_TIMING_BEFORE_SUSPEND */
 
 	return 0;
 }
@@ -2702,17 +2748,16 @@ static int gburst_resume(struct gburst_pvt_s *gbprv)
 #endif /* if GBURST_DEBUG */
 
 	update_state_times(gbprv, NULL);
-	gbprv->gbp_suspended = 0;
 
 	read_PWRGT_CNT_toggle(gbprv);
-
-	/* Ensure that current state is reflected in our data. */
-	read_and_process_PWRGT_STS(gbprv);
 
 	/* Assume thermal state is current or will be updated soon. */
 
 	/* PWRGT_CNT to 0 except toggle and interrupt enable. */
 	set_state_pwrgt_cnt(gbprv, PWRGT_CNT_BURST_REQUEST_M_400);
+
+	gbprv->gbp_suspended = 0;
+	smp_wmb();
 
 	hrt_start(gbprv);
 
@@ -2991,10 +3036,8 @@ static int __init gburst_init(struct gburst_pvt_s *gbprv)
 
 	smp_wmb();
 
-	if (gbprv->gbp_enable) {
-		/* Start Timer */
-		hrt_start(gbprv);
-	}
+	/* Start Timer */
+	hrt_start(gbprv);
 
 	set_state_pwrgt_cnt(gbprv, PWRGT_CNT_BURST_REQUEST_M_400);
 
