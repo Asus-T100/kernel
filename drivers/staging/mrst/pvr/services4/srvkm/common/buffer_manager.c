@@ -194,6 +194,12 @@ AllocMemory (BM_CONTEXT			*pBMContext,
 									   ui32PrivDataLength,
 									   IMG_NULL);   /* We allocate VM space */
 
+			if (!bSuccess)
+			{
+				PVR_DPF((PVR_DBG_ERROR, "AllocMemory: BM_ImportMemory failed"));
+				return IMG_FALSE;
+			}
+
 			if (puiActualSize != ui32ChunkSize * ui32NumPhysChunks)
 			{
 				/*
@@ -767,17 +773,15 @@ FreeBuf (BM_BUF *pBuf, IMG_UINT32 ui32Flags, IMG_BOOL bFromAllocator)
 		/* BM supplied Device Virtual Address */
 		if(pBuf->hOSMemHandle != pMapping->hOSMemHandle)
 		{
-           		/* Submemhandle is required by exported mappings */
+			/* Submemhandle is required by exported mappings */
 			if ((pBuf->ui32ExportCount == 0) && (pBuf->ui32RefCount == 0))
 			{
-				
 				OSReleaseSubMemHandle(pBuf->hOSMemHandle, ui32Flags);
 			}
 		}
 		if(ui32Flags & PVRSRV_MEM_RAM_BACKED_ALLOCATION)
 		{
-			
-            		/* Submemhandle is required by exported mappings */
+			/* Submemhandle is required by exported mappings */
 			if ((pBuf->ui32ExportCount == 0) && (pBuf->ui32RefCount == 0))
 			{
 				/*
@@ -2971,7 +2975,9 @@ BM_ImportMemory (IMG_VOID *pH,
 		goto fail_mapping_alloc;
 	}
 
-	
+	/*
+	 * Allocate some device memory for what we just allocated.
+	 */
 	if ((uFlags & PVRSRV_MEM_NO_GPU_ADDR)==0 && (uFlags & PVRSRV_MEM_SPARSE) == 0)
 	{
 		bResult = DevMemoryAlloc (pBMContext,

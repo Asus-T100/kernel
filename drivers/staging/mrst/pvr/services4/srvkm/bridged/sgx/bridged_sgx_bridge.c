@@ -609,7 +609,6 @@ SGXDoKickBW(IMG_UINT32 ui32BridgeID,
 
 PVRSRV_BRIDGE_SGX_DOKICK_RETURN_RESULT:
 
-//#if (!defined(_UITRON_) && !defined(UNDER_VISTA)) || defined (SUPPORT_SID_INTERFACE)
 	if(phKernelSyncInfoHandles)
 	{
 		OSFreeMem(PVRSRV_OS_PAGEABLE_HEAP,
