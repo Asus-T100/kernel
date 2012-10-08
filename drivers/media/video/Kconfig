@@ -356,6 +356,17 @@ config VIDEO_ATOMISP
 	  To enable a specific atomisp driver, see CONFIG_VIDEO_ATOMISP_CSS1
 	  and related options.
 
+config VIDEO_OV9724
+	tristate "OVT ov9724 sensor support"
+	depends on I2C && VIDEO_V4L2
+	---help---
+	  This is a Video4Linux2 sensor-level driver for the OVT
+	  OV9724 raw camera.
+
+	  OVT is a 720P raw sensor.
+
+	  It currently only works with the atomisp driver.
+
 config VIDEO_OV8830
 	tristate "Omnivision ov8830 sensor support"
 	depends on I2C && VIDEO_V4L2 && VIDEO_ATOMISP
