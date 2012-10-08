@@ -1,0 +1,25 @@
+config VIDEO_IMX
+	tristate "sony imx sensor support"
+	depends on I2C && VIDEO_V4L2
+	---help---
+	  This is a Video4Linux2 sensor-level driver for the Sony
+	  IMX RAW sensor.
+
+	  It currently depends on internal V4L2 extensions defined in
+	  atomisp driver.
+
+choice
+	prompt "Select sensor settings"
+	depends on VIDEO_IMX
+
+config VIDEO_IMX175
+	bool "Sony IMX175 8Mp raw sensor"
+	---help---
+	  This is sensor driver for Sony IMX175 raw sensor.
+
+	  It currently depends on VIDEO_IMX defined in the above section.
+	  And it will be used on MRFLD platform firstly. Enable this if you own imx175
+	  sensor and want to use it
+
+endchoice
+

@@ -797,6 +797,8 @@ config VIDEO_HEXIUM_ORION
 	  To compile this driver as a module, choose M here: the
 	  module will be called hexium_orion.
 
+source "drivers/media/video/imx/Kconfig"
+
 source "drivers/media/video/ivtv/Kconfig"
 
 config VIDEO_MEYE
