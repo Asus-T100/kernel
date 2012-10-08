@@ -75,6 +75,7 @@ obj-$(CONFIG_VIDEO_M5MOLS)	+= m5mols/
 
 obj-$(CONFIG_VIDEO_LM3555) += lm3555.o
 obj-$(CONFIG_VIDEO_LM3554) += lm3554.o
+obj-$(CONFIG_VIDEO_IMX) += imx/
 obj-$(CONFIG_VIDEO_OV9724) += ov9724.o
 
 obj-$(CONFIG_VIDEO_MT9E013)  += mt9e013/

@@ -806,6 +806,8 @@ source "drivers/media/video/cx23885/Kconfig"
 
 source "drivers/media/video/au0828/Kconfig"
 
+source "drivers/media/video/imx/Kconfig"
+
 source "drivers/media/video/ivtv/Kconfig"
 
 source "drivers/media/video/cx18/Kconfig"
