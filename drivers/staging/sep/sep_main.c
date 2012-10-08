@@ -4704,6 +4704,10 @@ static int __devinit sep_probe(struct pci_dev *pdev,
 	int error = 0;
 	struct sep_device *sep = NULL;
 
+	/* Used for telling the sep our new shared memory physical address */
+	struct sep_msg_shared_mem_addr_to_sep *shm_to_sep = NULL;
+	struct sep_msg_shared_mem_addr_from_sep *shm_from_sep = NULL;
+
 	if (sep_dev != NULL) {
 		dev_dbg(&pdev->dev, "only one SEP supported.\n");
 		return -EBUSY;
@@ -4820,6 +4824,68 @@ static int __devinit sep_probe(struct pci_dev *pdev,
 	INIT_WORK(&sep->rpmb_work, rpmb_process_request);
 
 	sep->in_use = 1;
+
+	/**
+	 * Now we need to tell the sep the newly acqured shared
+	 * memory physical address.
+	 * This also serves the purpose of informing the sep that
+	 * we are in post-os boot; ie; that it's the os that is
+	 * now using the sep and no longer the scu. This is required
+	 * for the RPMB functionality.
+	 */
+
+	/* First set the outgoing and incomming message pointers */
+	dev_dbg(&sep->pdev->dev, "Sending shared phys to sep\n");
+
+	shm_to_sep = (struct sep_msg_shared_mem_addr_to_sep *)
+		(sep->shared_addr +
+		SEP_DRIVER_MESSAGE_AREA_OFFSET_IN_BYTES);
+
+	shm_from_sep = (struct sep_msg_shared_mem_addr_from_sep *)
+		(sep->shared_addr +
+		SEP_DRIVER_MESSAGE_AREA_OFFSET_IN_BYTES);
+
+	/* fill in the outgoing meessage to the sep */
+
+	shm_to_sep->token = SEP_START_MSG_TOKEN;
+	shm_to_sep->command = DX_SEP_HOST_SEP_SEP_DRIVER_LOADED_OP_CODE;
+	shm_to_sep->shared_phys = (u32)sep->shared_bus;
+	shm_to_sep->crc = 0;
+	shm_to_sep->size = 7;
+
+	/* Now send this command */
+	error = sep_send_command_handler(sep);
+
+	/* Now wait for sep */
+	wait_event_timeout(sep->event_interrupt,
+		(test_bit(SEP_WORKING_LOCK_BIT,
+			&sep->in_use_flags) == 0),
+		(WAIT_TIME * HZ));
+
+	/* see if the sep got the message okay */
+	if (shm_from_sep->token != SEP_START_MSG_TOKEN) {
+		dev_dbg(&sep->pdev->dev, "shm_from_sep->token incorrect\n");
+		goto end_function_free_workqueue;
+	}
+
+	if (shm_from_sep->command !=
+		DX_SEP_HOST_SEP_SEP_DRIVER_LOADED_OP_CODE) {
+
+		dev_dbg(&sep->pdev->dev, "shm_from_sep->command incorrect\n");
+		goto end_function_free_workqueue;
+	}
+
+	if (shm_from_sep->result != 0) {
+		dev_dbg(&sep->pdev->dev, "shm_from_sep->result incorrect\n");
+		dev_dbg(&sep->pdev->dev, "got %x instead of %x\n",
+			shm_from_sep->result, 0);
+		goto end_function_free_workqueue;
+	}
+
+	/* clear the lock bit */
+	clear_bit(SEP_WORKING_LOCK_BIT, &sep->in_use_flags);
+
+	dev_dbg(&sep->pdev->dev, "Done sending shared phys to sep\n");
 
 	/* Finally magic up the device nodes */
 	/* Register driver with the fs */
