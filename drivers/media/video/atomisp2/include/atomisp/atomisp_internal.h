@@ -267,6 +267,12 @@ struct atomisp_video_pipe_format {
 	unsigned int out_sh_fmt;
 };
 
+struct atomisp_map {
+	hrt_vaddress ptr;
+	size_t length;
+	struct list_head list;
+};
+
 /*
  * ci device struct
  */
@@ -280,10 +286,13 @@ struct atomisp_device {
 
 	struct pm_qos_request_list pm_qos;
 
-	struct sh_css_acc_fw *acc_fw[ATOMISP_ACC_FW_MAX];
-	unsigned int acc_fw_handle;
-	int acc_fw_count;
-	struct sh_css_acc_fw *marked_fw_for_unload;
+	struct {
+		struct sh_css_fw_info *fw[ATOMISP_ACC_FW_MAX];
+		int fw_count;
+		struct sh_css_pipeline *pipeline;
+		struct list_head memory_maps;
+	} acc;
+
 	unsigned int frame_bufs_in_css;
 	unsigned int vf_frame_bufs_in_css;
 	unsigned int s3a_bufs_in_css;
@@ -300,8 +309,6 @@ struct atomisp_device {
 	struct work_struct work;
 	struct completion wq_frame_complete;
 	struct completion dis_state_complete;
-	struct completion acc_fw_complete;
-	struct completion acc_unload_fw_complete;
 
 	spinlock_t irq_lock;
 	struct list_head s3a_stats;

@@ -50,18 +50,6 @@
 	}
 
 /*
- * Implementation in atomisp_cmd.c only required to be known here as
- * it is registered in CSS with "sh_css_init()" which is called from
- * here. So "flush_acc_api_arguments()" is not a true public function
- *
- * "flush_acc_api_arguments()" needs to be accessible in CSS for the
- * extension type accelerator cache control of (shared buffer pointer)
- * arguments
- */
-extern void flush_acc_api_arguments(struct sh_css_acc_fw *fw);
-
-
-/*
  * Videobuf ops
  */
 int atomisp_buf_setup(struct videobuf_queue *vq,
@@ -463,7 +451,7 @@ static int atomisp_open(struct file *file)
 
 	my_env.sh_env.alloc = my_kernel_malloc;
 	my_env.sh_env.free = atomisp_kernel_free;
-	my_env.sh_env.flush = flush_acc_api_arguments;
+	/* FIXME: my_env.sh_env.flush needs to be implemented */
 
 	v4l2_dbg(2, dbg_level, &atomisp_dev, ">%s [%d]\n",
 				__func__, pipe->pipe_type);

@@ -23,6 +23,7 @@
 
 #include "atomisp_ioctl.h"
 #include "atomisp_cmd.h"
+#include "atomisp_acc.h"
 #include "atomisp_fops.h"
 #include <linux/delay.h>
 
@@ -2058,20 +2059,20 @@ static long atomisp_vidioc_default(struct file *file, void *fh,
 	case ATOMISP_IOC_ACC_UNLOAD:
 		return atomisp_acc_unload(isp, arg);
 
-	case ATOMISP_IOC_ACC_S_ARG:
-		return atomisp_acc_set_arg(isp, arg);
-
 	case ATOMISP_IOC_ACC_START:
 		return atomisp_acc_start(isp, arg);
 
 	case ATOMISP_IOC_ACC_WAIT:
 		return atomisp_acc_wait(isp, arg);
 
-	case ATOMISP_IOC_ACC_ABORT:
-		return atomisp_acc_abort(isp, arg);
+	case ATOMISP_IOC_ACC_MAP:
+		return atomisp_acc_map(isp, arg);
 
-	case ATOMISP_IOC_ACC_DESTAB:
-		return atomisp_acc_destabilize(isp, arg);
+	case ATOMISP_IOC_ACC_UNMAP:
+		return atomisp_acc_unmap(isp, arg);
+
+	case ATOMISP_IOC_ACC_S_MAPPED_ARG:
+		return atomisp_acc_s_mapped_arg(isp, arg);
 
 	case ATOMISP_IOC_CAMERA_BRIDGE:
 		return -EINVAL;

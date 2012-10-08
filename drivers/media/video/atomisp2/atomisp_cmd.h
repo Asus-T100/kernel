@@ -46,7 +46,6 @@ void dump_sp_dmem(unsigned int addr, unsigned int size);
 struct camera_mipi_info *atomisp_to_sensor_mipi_info(struct v4l2_subdev *sd);
 struct atomisp_video_pipe *atomisp_to_video_pipe(struct video_device *dev);
 int atomisp_reset(struct atomisp_device *isp);
-void flush_acc_api_arguments(struct sh_css_acc_fw *fw);
 void atomisp_flush_bufs_and_wakeup(struct atomisp_device *isp);
 int atomisp_alloc_css_stat_bufs(struct atomisp_device *isp, int count);
 
@@ -285,28 +284,5 @@ void atomisp_free_internal_buffers(struct atomisp_device *isp);
 void atomisp_free_3a_dis_buffers(struct atomisp_device *isp);
 
 int  atomisp_flash_enable(struct atomisp_device *isp, int num_frames);
-
-int atomisp_acc_load(struct atomisp_device *isp,
-		     struct atomisp_acc_fw_load *fw);
-
-int atomisp_acc_unload(struct atomisp_device *isp,
-		       unsigned int *handler);
-
-void atomisp_acc_unload_all(struct atomisp_device *isp);
-
-int atomisp_acc_set_arg(struct atomisp_device *isp,
-			struct atomisp_acc_fw_arg *fw_arg);
-
-int atomisp_acc_start(struct atomisp_device *isp,
-		      unsigned int *handler);
-
-int atomisp_acc_wait(struct atomisp_device *isp,
-		     unsigned int *handler);
-
-int atomisp_acc_abort(struct atomisp_device *isp,
-		      struct atomisp_acc_fw_abort *abort);
-
-int atomisp_acc_destabilize(struct atomisp_device *isp,
-			    struct atomisp_acc_fw_arg *fw_arg);
 
 #endif

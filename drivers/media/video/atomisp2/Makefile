@@ -7,6 +7,7 @@ atomisp-objs := \
 		atomisp_tpg.o \
 		atomisp_file.o \
 		atomisp_v4l2.o \
+		atomisp_acc.o \
 		mmu/isp_mmu.o \
 		mmu/sh_mmu_mrfld.o \
 		mmu/sh_mmu_mfld.o \

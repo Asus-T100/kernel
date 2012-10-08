@@ -846,6 +846,7 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 		goto init_mod_fail;
 	}
 
+	INIT_LIST_HEAD(&isp->acc.memory_maps);
 	INIT_LIST_HEAD(&isp->s3a_stats);
 	INIT_LIST_HEAD(&isp->dis_stats);
 	init_completion(&isp->wq_frame_complete);
