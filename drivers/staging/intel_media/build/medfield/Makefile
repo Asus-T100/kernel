@@ -137,7 +137,8 @@ gfx-y += $(DISPLAYDIR)/psb_bl.o \
 		$(DISPLAYDIR)/mdfld_dsi_pkg_sender.o \
 		$(DISPLAYDIR)/mdfld_dsi_esd.o \
 		$(DISPLAYDIR)/mdfld_dsi_dbi_dsr.o \
-		$(DISPLAYDIR)/tc35876x_vid.o
+		$(DISPLAYDIR)/tc35876x_vid.o \
+		$(DISPLAYDIR)/gi_renesas_cmd.o
 
 gfx-$(CONFIG_MDFD_HDMI) += $(DISPLAYDIR)/psb_hotplug.o
 

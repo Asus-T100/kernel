@@ -99,6 +99,12 @@ struct panel_funcs {
 	int (*drv_ic_init)(struct mdfld_dsi_config *dsi_config);
 };
 
+struct intel_mid_panel_list {
+	enum panel_type p_type;
+	int encoder_type;
+	void (*panel_init)(struct drm_device *, struct panel_funcs *);
+};
+
 extern void mdfld_output_init(struct drm_device *dev);
 extern enum panel_type get_panel_type(struct drm_device *dev, int pipe);
 extern int is_panel_vid_or_cmd(struct drm_device *dev);

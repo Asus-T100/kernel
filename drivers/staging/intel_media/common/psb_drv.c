@@ -848,256 +848,130 @@ bool mid_get_pci_revID(struct drm_psb_private *dev_priv)
 	return true;
 }
 
-bool mrst_get_vbt_data(struct drm_psb_private *dev_priv)
+static
+bool intel_mid_get_vbt_data(struct drm_psb_private *dev_priv)
 {
-	struct mrst_vbt *pVBT = &dev_priv->vbt_data;
 	u32 platform_config_address;
-	u16 new_size;
 	u8 *pVBT_virtual;
-	u8 bpi;
+	u8 primary_panel;
 	u8 number_desc = 0;
-	struct mrst_timing_info *dp_ti = &dev_priv->gct_data.DTD;
-	struct gct_r10_timing_info ti;
-	void *pGCT;
+	u8 panel_name[17] = {0};
+	struct intel_mid_vbt *pVBT = &dev_priv->vbt_data;
+	void *panel_desc;
 	struct pci_dev *pci_gfx_root = pci_get_bus_and_slot(0, PCI_DEVFN(2, 0));
-	mdfld_dsi_encoder_t mipi_mode = MDFLD_DSI_ENCODER_DBI;
+	mdfld_dsi_encoder_t mipi_mode;
+
+	PSB_DEBUG_ENTRY("\n");
 
 	/*get the address of the platform config vbt, B0:D2:F0;0xFC */
 	pci_read_config_dword(pci_gfx_root, 0xFC, &platform_config_address);
 	pci_dev_put(pci_gfx_root);
-	DRM_INFO("drm platform config address is %x\n",
-		 platform_config_address);
 
-	/* check for platform config address == 0. */
-	/* this means fw doesn't support vbt */
-
+	/**
+	 * if platform_config_address is 0,
+	 * that means FW doesn't support VBT
+	 */
 	if (platform_config_address == 0) {
-		pVBT->Size = 0;
+		pVBT->size = 0;
 		return false;
 	}
 
-	/* get the virtual address of the vbt */
+	/*copy vbt data to local memory*/
 	pVBT_virtual = ioremap(platform_config_address, sizeof(*pVBT));
-
 	memcpy(pVBT, pVBT_virtual, sizeof(*pVBT));
 	iounmap(pVBT_virtual); /* Free virtual address space */
 
-	PSB_DEBUG_ENTRY("GCT Revision is %x\n", pVBT->Revision);
-
-	switch (pVBT->Revision) {
-	case 0:
-		pVBT->mrst_gct = NULL;
-		pVBT->mrst_gct = \
-				 ioremap(platform_config_address + sizeof(*pVBT) - 4,
-					 pVBT->Size - sizeof(*pVBT) + 4);
-		pGCT = pVBT->mrst_gct;
-		bpi = ((struct mrst_gct_v1 *)pGCT)->PD.BootPanelIndex;
-		dev_priv->gct_data.bpi = bpi;
-		dev_priv->gct_data.pt =
-			((struct mrst_gct_v1 *)pGCT)->PD.PanelType;
-		memcpy(&dev_priv->gct_data.DTD,
-		       &((struct mrst_gct_v1 *)pGCT)->panel[bpi].DTD,
-		       sizeof(struct mrst_timing_info));
-		dev_priv->gct_data.Panel_Port_Control =
-			((struct mrst_gct_v1 *)pGCT)->panel[bpi].Panel_Port_Control;
-		dev_priv->gct_data.Panel_MIPI_Display_Descriptor =
-			((struct mrst_gct_v1 *)pGCT)->panel[bpi].Panel_MIPI_Display_Descriptor;
-		break;
-	case 1:
-		pVBT->mrst_gct = NULL;
-		pVBT->mrst_gct = \
-				 ioremap(platform_config_address + sizeof(*pVBT) - 4,
-					 pVBT->Size - sizeof(*pVBT) + 4);
-		pGCT = pVBT->mrst_gct;
-		bpi = ((struct mrst_gct_v2 *)pGCT)->PD.BootPanelIndex;
-		dev_priv->gct_data.bpi = bpi;
-		dev_priv->gct_data.pt =
-			((struct mrst_gct_v2 *)pGCT)->PD.PanelType;
-		memcpy(&dev_priv->gct_data.DTD,
-		       &((struct mrst_gct_v2 *)pGCT)->panel[bpi].DTD,
-		       sizeof(struct mrst_timing_info));
-		dev_priv->gct_data.Panel_Port_Control =
-			((struct mrst_gct_v2 *)pGCT)->panel[bpi].Panel_Port_Control;
-		dev_priv->gct_data.Panel_MIPI_Display_Descriptor =
-			((struct mrst_gct_v2 *)pGCT)->panel[bpi].Panel_MIPI_Display_Descriptor;
-		break;
-	case 0x10:
-		/*header definition changed from rev 01 (v2) to rev 10h. */
-		/*so, some values have changed location*/
-		new_size = pVBT->Checksum; /*checksum contains lo size byte*/
-		/*LSB of mrst_gct contains hi size byte*/
-		new_size |= ((0xff & (unsigned int)pVBT->mrst_gct)) << 8;
-
-		pVBT->Checksum = pVBT->Size; /*size contains the checksum*/
-		if (new_size > 0xff)
-			pVBT->Size = 0xff; /*restrict size to 255*/
-		else
-			pVBT->Size = new_size;
-
-		/* number of descriptors defined in the GCT */
-		number_desc = ((0xff00 & (unsigned int)pVBT->mrst_gct)) >> 8;
-		bpi = ((0xff0000 & (unsigned int)pVBT->mrst_gct)) >> 16;
-		pVBT->mrst_gct = NULL;
-		pVBT->mrst_gct = \
-				 ioremap(platform_config_address + GCT_R10_HEADER_SIZE,
-					 GCT_R10_DISPLAY_DESC_SIZE * number_desc);
-		pGCT = pVBT->mrst_gct;
-		pGCT = (u8 *)pGCT + (bpi * GCT_R10_DISPLAY_DESC_SIZE);
-		dev_priv->gct_data.bpi = bpi; /*save boot panel id*/
-
-		/*copy the GCT display timings into a temp structure*/
-		memcpy(&ti, pGCT, sizeof(struct gct_r10_timing_info));
-
-		/*now copy the temp struct into the dev_priv->gct_data*/
-		dp_ti->pixel_clock = ti.pixel_clock;
-		dp_ti->hactive_hi = ti.hactive_hi;
-		dp_ti->hactive_lo = ti.hactive_lo;
-		dp_ti->hblank_hi = ti.hblank_hi;
-		dp_ti->hblank_lo = ti.hblank_lo;
-		dp_ti->hsync_offset_hi = ti.hsync_offset_hi;
-		dp_ti->hsync_offset_lo = ti.hsync_offset_lo;
-		dp_ti->hsync_pulse_width_hi = ti.hsync_pulse_width_hi;
-		dp_ti->hsync_pulse_width_lo = ti.hsync_pulse_width_lo;
-		dp_ti->vactive_hi = ti.vactive_hi;
-		dp_ti->vactive_lo = ti.vactive_lo;
-		dp_ti->vblank_hi = ti.vblank_hi;
-		dp_ti->vblank_lo = ti.vblank_lo;
-		dp_ti->vsync_offset_hi = ti.vsync_offset_hi;
-		dp_ti->vsync_offset_lo = ti.vsync_offset_lo;
-		dp_ti->vsync_pulse_width_hi = ti.vsync_pulse_width_hi;
-		dp_ti->vsync_pulse_width_lo = ti.vsync_pulse_width_lo;
-
-		/*mov the MIPI_Display_Descriptor data from GCT to dev priv*/
-		dev_priv->gct_data.Panel_MIPI_Display_Descriptor =
-			*((u8 *)pGCT + 0x0d);
-		dev_priv->gct_data.Panel_MIPI_Display_Descriptor |=
-			(*((u8 *)pGCT + 0x0e)) << 8;
-		mipi_mode =
-			(dev_priv->gct_data.Panel_MIPI_Display_Descriptor &
-			 0x40) ? MDFLD_DSI_ENCODER_DPI : MDFLD_DSI_ENCODER_DBI;
-		break;
-	default:
-		PSB_DEBUG_ENTRY("Unknown revision of GCT!\n");
-		pVBT->Size = 0;
+	if (strncmp(pVBT->signature, "$GCT", 4)) {
+		DRM_ERROR("wrong GCT signature\n");
 		return false;
 	}
 
-	if (IS_MDFLD(dev_priv->dev)) {
-		if (PanelID == GCT_DETECT) {
-			if (IS_CTP(dev_priv->dev)) {
-				if (dev_priv->gct_data.bpi == CLV_GCT_NDX_STD) {
-					PSB_DEBUG_ENTRY(
-						"[GFX] TMD_6X10 panel Detected\n");
-					dev_priv->panel_id = TMD_6X10_VID;
-					PanelID = TMD_6X10_VID;
-				} else if (dev_priv->gct_data.bpi ==
-						CLV_GCT_NDX_OEM) {
-					PSB_DEBUG_ENTRY(
-						"[GFX] H8C7 panel Detected.\n");
-					dev_priv->panel_id = H8C7_VID;
-					PanelID = H8C7_VID;
-#ifdef CONFIG_SUPPORT_MIPI_H8C7_CMD_DISPLAY
-					dev_priv->panel_id = H8C7_CMD;
-					PanelID = H8C7_CMD;
-#endif
+	PSB_DEBUG_ENTRY("GCT Revision is %#x\n", pVBT->revision);
 
-				} else {
-					PSB_DEBUG_ENTRY(
-						"[GFX] Default panel H8C7.\n");
-					dev_priv->panel_id = H8C7_VID;
-					PanelID = H8C7_VID;
-				}
-			} else if (IS_MDFLD_OLD(dev_priv->dev)) {
-				switch (dev_priv->gct_data.bpi) {
-				case PNW_GCT_NDX_OEM:
-					PSB_DEBUG_ENTRY("[GFX] Customer Panel"
-							"Detected.\n");
-					/*
-					 * Set Enzo command mode panel as
-					 * default for customer panel.
-					 */
-					/*
-					 * FIXME: need to distinguish different
-					 * customer panels.
-					 */
-					if (mipi_mode ==
-							MDFLD_DSI_ENCODER_DBI) {
-						dev_priv->panel_id =
-							AUO_SC1_CMD;
-						PSB_DEBUG_ENTRY("AUO_SC1_CMD"
-								"Panel\n");
-					} else {
-						dev_priv->panel_id =
-							AUO_SC1_VID;
-						PSB_DEBUG_ENTRY("AUO_SC1_VID"
-								"Panel\n");
-					}
-
-#ifdef CONFIG_SUPPORT_AUO_MIPI_SC1_DISPLAY
-					dev_priv->panel_id = AUO_SC1_VID;
-					PSB_DEBUG_ENTRY("AUO_SC1_VID Panel\n");
-#endif
-
-#ifdef CONFIG_SUPPORT_AUO_MIPI_SC1_COMMAND_MODE_DISPLAY
-					dev_priv->panel_id = AUO_SC1_CMD;
-					PSB_DEBUG_ENTRY("AUO_SC1_CMD Panel\n");
-#endif
-					break;
-				case PNW_GCT_NDX_STD:
-					PSB_DEBUG_ENTRY("Standard (PRx) Panel"
-							"Detected.\n");
-					/*
-					 * Set TMD 600 x 1024 panel as default
-					 * for standard internal (PRx) panel.
-					 */
-					dev_priv->panel_id = TMD_6X10_VID;
-					PanelID = TMD_6X10_VID;
-
-#ifdef CONFIG_SUPPORT_TMD_MIPI_600X1024_DISPLAY
-					dev_priv->panel_id = TMD_6X10_VID;
-					PSB_DEBUG_ENTRY("TMD_6X10_VID Panel\n");
-#endif
-
-#ifdef CONFIG_SUPPORT_TOSHIBA_MIPI_LVDS_BRIDGE
-					dev_priv->panel_id = TC35876X_VID;
-					PSB_DEBUG_ENTRY("TC35876X_VID.\n");
-#endif
-					break;
-				default:
-					PSB_DEBUG_ENTRY("No Panel type"
-							"Detected.\n");
-					dev_priv->panel_id = TMD_6X10_VID;
-					PanelID = TMD_6X10_VID;
-
-					/* FIXME: temporarily move the GI CONFIG support here
-					 * because the gct support on GI phone is not clear enough,
-					 * from the print log, gct_data.bpi read from IAFW is 4.
-					 *
-					 * This part can be moved after the GCT table is confirmed.
-					 * */
-#ifdef CONFIG_SUPPORT_GI_MIPI_SONY_DISPLAY
-					dev_priv->panel_id = GI_SONY_VID;
-					PSB_DEBUG_ENTRY("GI_SONY_VID.\n");
-					printk("GI_SONY_VID.\n");
-#endif
-
-#ifdef CONFIG_SUPPORT_GI_MIPI_SONY_COMMAND_MODE_DISPLAY
-					dev_priv->panel_id = GI_SONY_CMD;
-					PSB_DEBUG_ENTRY("GI_SONY_CMD.\n");
-#endif
-
-					break;
-				}
-			}
-		} else {
-			PSB_DEBUG_ENTRY("[GFX] Panel Parameter Passed in"
-					"through cmd line\n");
-			dev_priv->panel_id = PanelID;
-		}
+	/**
+	 * CTP use separate FW, and it doesn't support panel ID
+	 */
+	if (IS_CTP(dev_priv->dev)) {
+		PSB_DEBUG_ENTRY("H8C7_CMD\n");
+		dev_priv->panel_id = H8C7_CMD;
+		goto out;
 	}
 
+	number_desc = pVBT->num_of_panel_desc;
+	primary_panel = pVBT->primary_panel_idx;
+	dev_priv->gct_data.bpi = primary_panel; /*save boot panel id*/
+
+	/**
+	 * current we just need parse revision 0x10 and 0x11
+	 */
+	switch (pVBT->revision) {
+	case 0x10:
+		pVBT->panel_descs =
+			ioremap(platform_config_address + GCT_R10_HEADER_SIZE,
+				GCT_R10_DISPLAY_DESC_SIZE * number_desc);
+		panel_desc = (u8 *)pVBT->panel_descs +
+			(primary_panel * GCT_R10_DISPLAY_DESC_SIZE);
+
+		mipi_mode =
+		((struct gct_r10_panel_desc *)panel_desc)->display.mode ? \
+			MDFLD_DSI_ENCODER_DPI : MDFLD_DSI_ENCODER_DBI;
+
+		break;
+	case 0x11:
+		/* number of descriptors defined in the GCT */
+		pVBT->panel_descs =
+			ioremap(platform_config_address + GCT_R11_HEADER_SIZE,
+				GCT_R11_DISPLAY_DESC_SIZE * number_desc);
+		panel_desc = (u8 *)pVBT->panel_descs +
+			(primary_panel * GCT_R11_DISPLAY_DESC_SIZE);
+
+		strncpy(panel_name, panel_desc, 16);
+
+		mipi_mode =
+		((struct gct_r11_panel_desc *)panel_desc)->display.mode ? \
+			MDFLD_DSI_ENCODER_DPI : MDFLD_DSI_ENCODER_DBI;
+
+		break;
+	default:
+		PSB_DEBUG_ENTRY("NOT supported GCT revision\n");
+		pVBT->size = 0;
+		return false;
+	}
+
+	switch (primary_panel) {
+	case GCT_TMD_PRX:
+		PSB_DEBUG_ENTRY("TMD_6X10_VID panel\n");
+		dev_priv->panel_id = TMD_6X10_VID;
+		break;
+	case GCT_RR:
+		PSB_DEBUG_ENTRY("TC35876X_VID panel\n");
+		dev_priv->panel_id = TC35876X_VID;
+		break;
+	case GCT_LEX_PRX:
+		PSB_DEBUG_ENTRY("LEX PRX\n");
+
+		if (mipi_mode == MDFLD_DSI_ENCODER_DPI) {
+			PSB_DEBUG_ENTRY("GI_SONY_VID panel\n");
+			dev_priv->panel_id = GI_SONY_VID;
+		} else {
+			PSB_DEBUG_ENTRY("GI_SONY_CMD panel\n");
+			dev_priv->panel_id = GI_SONY_CMD;
+		}
+		break;
+	case GCT_LEX_DV1:
+		PSB_DEBUG_ENTRY("GI_RENESAS_CMD panel\n");
+		dev_priv->panel_id = GI_RENESAS_CMD;
+		break;
+	default:
+		DRM_ERROR("unsupported panel id\n");
+		return false;
+		break;
+	}
+
+out:
 	PanelID = dev_priv->panel_id;
-	printk(KERN_ALERT"PanelID:%d\n", PanelID);
+	DRM_INFO("PanelID: %d\n", PanelID);
+
 	return true;
 }
 
@@ -1553,7 +1427,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 
 	if (IS_MID(dev)) {
 		mrst_get_fuse_settings(dev);
-		mrst_get_vbt_data(dev_priv);
+		intel_mid_get_vbt_data(dev_priv);
 		mid_get_pci_revID(dev_priv);
 	}
 

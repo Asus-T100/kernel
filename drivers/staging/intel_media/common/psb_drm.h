@@ -470,13 +470,79 @@ struct gct_ioctl_arg {
 	uint16_t Panel_MIPI_Display_Descriptor;
 } __attribute__((packed));
 
-struct mrst_vbt {
-	char Signature[4]; /*4 bytes,"$GCT" */
-	uint8_t Revision; /*1 byte */
-	uint8_t Size; /*1 byte */
-	uint8_t Checksum; /*1 byte,Calculated*/
-	void *mrst_gct;
+struct gct_timing_desc_block {
+	uint16_t clock;
+	uint16_t hactive:12;
+	uint16_t hblank:12;
+	uint16_t hsync_start:10;
+	uint16_t hsync_end:10;
+	uint16_t hsync_polarity:1;
+	uint16_t h_reversed:3;
+	uint16_t vactive:12;
+	uint16_t vblank:12;
+	uint16_t vsync_start:10;
+	uint16_t vsync_end:10;
+	uint16_t vsync_polarity:1;
+	uint16_t v_reversed:3;
+} __packed;
+
+struct gct_display_desc_block {
+	uint8_t type:2;
+	uint8_t pxiel_format:4;
+	uint8_t mode:2;
+	uint8_t frame_rate:6;
+	uint8_t reserved:2;
 } __attribute__((packed));
+
+struct gct_dsi_desc_block {
+	uint8_t lane_count:2;
+	uint8_t lane_frequency:3;
+	uint8_t transfer_mode:2;
+	uint8_t hs_clock_behavior:1;
+	uint8_t duo_display_support:1;
+	uint8_t ecc_caps:1;
+	uint8_t bdirect_support:1;
+	uint8_t reversed:5;
+} __packed;
+
+struct gct_bkl_desc_block {
+	uint16_t frequency;
+	uint8_t max_brightness:7;
+	uint8_t polarity:1;
+} __packed;
+
+struct gct_r11_panel_desc {
+	uint8_t panel_name[16];
+	struct gct_timing_desc_block timing;
+	struct gct_display_desc_block display;
+	struct gct_dsi_desc_block dsi;
+	struct gct_bkl_desc_block bkl;
+	uint32_t early_init_seq;
+	uint32_t late_init_seq;
+	uint8_t reversed[4];
+} __packed;
+
+struct gct_r10_panel_desc {
+	struct gct_timing_desc_block timing;
+	struct gct_display_desc_block display;
+	struct gct_dsi_desc_block dsi;
+	struct gct_bkl_desc_block bkl;
+	uint32_t early_init_seq;
+	uint32_t late_init_seq;
+	uint8_t reversed[4];
+} __packed;
+struct intel_mid_vbt {
+	char signature[4];		/*4 bytes,"$GCT" */
+	uint8_t revision;		/*1 byte GCT version*/
+	uint8_t checksum;		/*1 byte checksum*/
+	uint16_t size;			/*2 byte size of checksumed data*/
+	uint8_t num_of_panel_desc;	/*1 byte number of panel descriptor*/
+	uint8_t primary_panel_idx;	/*1 byte primary panel descriptor idx*/
+	uint8_t secondary_panel_idx;	/*1 byte secondary panel desc idx*/
+	uint8_t splash_flag;		/*1 byte bit 0 is to disable splash*/
+	uint8_t reserved[4];		/*reserved*/
+	void *panel_descs;
+} __packed;
 
 struct mrst_gct_v1 { /* expect this table to change per customer request*/
 	union { /*8 bits,Defined as follows: */

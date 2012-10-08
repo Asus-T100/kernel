@@ -78,9 +78,17 @@ enum panel_type {
 	AUO_SC1_CMD,
 	GI_SONY_VID,
 	GI_SONY_CMD,
+	GI_RENESAS_CMD,
 	TC35876X_VID,
 	HDMI,
 	GCT_DETECT
+};
+
+enum gct_panel_table {
+	GCT_RR = 1,
+	GCT_LEX_PRX = 4,
+	GCT_TMD_PRX = 5,
+	GCT_LEX_DV1 = 6
 };
 
 #define PNW_GCT_NDX_OEM		0
@@ -315,6 +323,8 @@ typedef int(*pfn_screen_event_handler)(struct drm_device *psDrmDevice, int state
 #define MODE_SETTING_ENCODER_DONE 0x8
 #define GCT_R10_HEADER_SIZE	16
 #define GCT_R10_DISPLAY_DESC_SIZE	28
+#define GCT_R11_HEADER_SIZE	16
+#define GCT_R11_DISPLAY_DESC_SIZE	44
 
 #define PSB_REG_PRINT_SIZE    40960
 
@@ -480,7 +490,7 @@ struct drm_psb_private {
 	uint32_t fuse_reg_value;
 
 	/* vbt (gct) header information*/
-	struct mrst_vbt vbt_data;
+	struct intel_mid_vbt vbt_data;
 	/* info that is stored from the gct */
 	struct gct_ioctl_arg gct_data;
 	enum panel_type panel_id;
