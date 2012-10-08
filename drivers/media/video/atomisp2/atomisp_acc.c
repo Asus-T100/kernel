@@ -227,6 +227,9 @@ int atomisp_acc_start(struct atomisp_device *isp, unsigned int *handle)
 	mutex_lock(&isp->input_lock);
 	mutex_lock(&isp->isp_lock);
 
+	/* Invalidate caches. FIXME: should flush only necessary buffers */
+	wbinvd();
+
 	sh_css_start_pipeline(SH_CSS_ACC_PIPELINE, isp->acc.pipeline);
 	while (!sh_css_sp_has_initialized())
 		hrt_sleep();
