@@ -225,6 +225,7 @@ static void atomisp_sof_event(struct atomisp_device *isp)
 
 	memset(&event, 0, sizeof(event));
 	event.type = V4L2_EVENT_FRAME_SYNC;
+	event.u.frame_sync.frame_sequence = atomic_read(&isp->sequence);
 
 	v4l2_event_queue(isp->isp_subdev.subdev.devnode, &event);
 }
@@ -283,8 +284,13 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 	}
 
 #ifndef CONFIG_X86_MRFLD
-	if (irq_infos & SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF)
+	if (irq_infos & SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF) {
+		atomic_inc(&isp->sequence);
 		atomisp_sof_event(isp);
+	}
+#else /* CONFIG_X86_MRFLD */
+	if (irq_infos & SH_CSS_IRQ_INFO_PIPELINE_DONE)
+		atomic_inc(&isp->sequence);
 #endif /* CONFIG_X86_MRFLD */
 
 #ifdef CONFIG_X86_MRFLD
@@ -560,7 +566,8 @@ void atomisp_flush_bufs_and_wakeup(struct atomisp_device *isp)
 			if (pipe->capq.bufs[i]->state == VIDEOBUF_ACTIVE ||
 					pipe->capq.bufs[i]->state == VIDEOBUF_QUEUED) {
 				get_buf_timestamp(&pipe->capq.bufs[i]->ts);
-				pipe->capq.bufs[i]->field_count++;
+				pipe->capq.bufs[i]->field_count =
+					atomic_read(&isp->sequence) << 1;
 				pipe->capq.bufs[i]->state = VIDEOBUF_ERROR;
 				wake_up(&pipe->capq.bufs[i]->done);
 				v4l2_dbg(2, dbg_level, &atomisp_dev,
@@ -577,7 +584,9 @@ void atomisp_flush_bufs_and_wakeup(struct atomisp_device *isp)
 			if (pipe->capq.bufs[i]->state == VIDEOBUF_ACTIVE ||
 					pipe->capq.bufs[i]->state == VIDEOBUF_QUEUED) {
 				get_buf_timestamp(&pipe->capq.bufs[i]->ts);
-				pipe->capq.bufs[i]->field_count++;
+				/* videobuf field count == sequence * 2 */
+				pipe->capq.bufs[i]->field_count =
+					atomic_read(&isp->sequence) << 1;
 				pipe->capq.bufs[i]->state = VIDEOBUF_ERROR;
 				wake_up(&pipe->capq.bufs[i]->done);
 				v4l2_dbg(2, dbg_level, &atomisp_dev,
@@ -594,7 +603,8 @@ void atomisp_flush_bufs_and_wakeup(struct atomisp_device *isp)
 			if (pipe->capq.bufs[i]->state == VIDEOBUF_ACTIVE ||
 					pipe->capq.bufs[i]->state == VIDEOBUF_QUEUED) {
 				get_buf_timestamp(&pipe->capq.bufs[i]->ts);
-				pipe->capq.bufs[i]->field_count++;
+				pipe->capq.bufs[i]->field_count =
+					atomic_read(&isp->sequence) << 1;
 				pipe->capq.bufs[i]->state = VIDEOBUF_ERROR;
 				wake_up(&pipe->capq.bufs[i]->done);
 				v4l2_dbg(2, dbg_level, &atomisp_dev,
@@ -789,7 +799,7 @@ static void atomisp_buf_done(struct atomisp_device *isp,
 	}
 	if (vb) {
 		get_buf_timestamp(&vb->ts);
-		vb->field_count++;
+		vb->field_count = atomic_read(&isp->sequence) << 1;
 		/*mark videobuffer done for dequeue*/
 		spin_lock_irqsave(&pipe->irq_lock, irqflags);
 		vb->state = !error ? VIDEOBUF_DONE : VIDEOBUF_ERROR;

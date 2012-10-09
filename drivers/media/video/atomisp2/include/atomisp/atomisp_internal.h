@@ -358,6 +358,8 @@ struct atomisp_device {
 	struct videobuf_buffer *vb_capture; /* TODO: needed? */
 	struct videobuf_buffer *vb_snapshot; /* TODO: needed? */
 	struct videobuf_buffer *vb_preview; /* TODO: needed? */
+
+	atomic_t sequence;
 };
 
 #define v4l2_dev_to_atomisp_device(dev) \
