@@ -97,8 +97,12 @@ __u32 get_entry_msg_len(struct logger_log *log, size_t off);
 struct logger_log *get_log_from_minor(int minor);
 struct logger_log **get_log_list(void);
 
-/* logger_offset - returns index 'n' into the log via (optimized) modulus */
-#define logger_offset(n)	((n) & (log->size - 1))
+/* logger_offset - returns index 'n' into the log via (optimized) modulus
+ * The optimized modulus supports size multiple of 2^16, for example 192 KB
+ * used for the bottom kernel buffer.
+ */
+#define logger_offset(n)	(((n) < log->size) ? (n) \
+					:  ((n) & ((log->size - 1) & 0xffff)))
 
 #define LOGGER_LOG_RADIO	"log_radio"	/* radio-related messages */
 #define LOGGER_LOG_EVENTS	"log_events"	/* system/hardware events */
