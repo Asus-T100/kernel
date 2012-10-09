@@ -1391,8 +1391,10 @@ start_workq:
 	isp->sw_contex.work_queued = true;
 
 	if (!isp->sw_contex.file_input) {
+#ifndef CONFIG_X86_MRFLD
 		sh_css_enable_interrupt(SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF,
 					true);
+#endif /* CONFIG_X86_MRFLD */
 
 		atomisp_set_term_en_count(isp);
 		/*
@@ -1474,6 +1476,12 @@ int atomisp_streamoff(struct file *file, void *fh,
 	isp->frame_bufs_in_css = 0;
 	isp->dis_bufs_in_css = 0;
 	isp->vf_frame_bufs_in_css = 0;
+
+#ifndef CONFIG_X86_MRFLD
+	if (!isp->sw_contex.file_input)
+		sh_css_enable_interrupt(SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF,
+					false);
+#endif /* CONFIG_X86_MRFLD */
 
 	switch (isp->sw_contex.run_mode) {
 	case CI_MODE_STILL_CAPTURE:

@@ -42,6 +42,7 @@
 #include "hrt/bits.h"
 #include "linux/intel_mid_pm.h"
 #include <linux/kernel.h>
+#include <media/v4l2-event.h>
 #include <asm/intel-mid.h>
 
 #define ATOMISP_DEFAULT_DTRACE_LEVEL 5
@@ -217,6 +218,18 @@ void atomisp_msi_irq_uninit(struct atomisp_device *isp, struct pci_dev *dev)
 	pci_write_config_word(dev, PCI_COMMAND, msg16);
 }
 
+#ifndef CONFIG_X86_MRFLD
+static void atomisp_sof_event(struct atomisp_device *isp)
+{
+	struct v4l2_event event;
+
+	memset(&event, 0, sizeof(event));
+	event.type = V4L2_EVENT_FRAME_SYNC;
+
+	v4l2_event_queue(isp->isp_subdev.subdev.devnode, &event);
+}
+#endif /* CONFIG_X86_MRFLD */
+
 static void print_csi_rx_errors(void)
 {
 	u32 infos = 0;
@@ -268,6 +281,11 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 			  " infos = %d)\n", __func__, err, irq_infos);
 		return IRQ_NONE;
 	}
+
+#ifndef CONFIG_X86_MRFLD
+	if (irq_infos & SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF)
+		atomisp_sof_event(isp);
+#endif /* CONFIG_X86_MRFLD */
 
 #ifdef CONFIG_X86_MRFLD
 	if ((irq_infos & SH_CSS_IRQ_INFO_INPUT_SYSTEM_ERROR) ||
@@ -373,6 +391,12 @@ static void atomisp_pipe_reset(struct atomisp_device *isp)
 
 	v4l2_warn(&atomisp_dev, "ISP timeout. Recovering\n");
 
+#ifndef CONFIG_X86_MRFLD
+	if (!isp->sw_contex.file_input)
+		sh_css_enable_interrupt(SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF,
+					false);
+#endif /* CONFIG_X86_MRFLD */
+
 	switch (isp->sw_contex.run_mode) {
 	case CI_MODE_STILL_CAPTURE:
 		sh_css_capture_stop();
@@ -416,7 +440,9 @@ static void atomisp_pipe_reset(struct atomisp_device *isp)
 
 	sh_css_start(css_pipe_id);
 	if (!isp->sw_contex.file_input) {
+#ifndef CONFIG_X86_MRFLD
 		sh_css_enable_interrupt(SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF, true);
+#endif /* CONFIG_X86_MRFLD */
 		atomisp_set_term_en_count(isp);
 		ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
 				       video, s_stream, 1);
