@@ -1519,7 +1519,9 @@ bool ospm_power_using_video_begin(int video_island)
 			psb_irq_postinstall_islands(gpDrmDevice,
 				OSPM_VIDEO_DEC_ISLAND);
 		} else {
+#ifdef CONFIG_MDFD_GL3
 			ospm_power_island_up(OSPM_GL3_CACHE_ISLAND);
+#endif
 		}
 
 		break;
@@ -1549,7 +1551,9 @@ bool ospm_power_using_video_begin(int video_island)
 			psb_irq_postinstall_islands(gpDrmDevice,
 				OSPM_VIDEO_ENC_ISLAND);
 		} else {
+#ifdef CONFIG_MDFD_GL3
 			ospm_power_island_up(OSPM_GL3_CACHE_ISLAND);
+#endif
 		}
 		break;
 	default:
