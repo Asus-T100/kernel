@@ -35,14 +35,17 @@
 #include <linux/wakelock.h>
 #include <linux/gpio.h>
 #include <linux/rpmsg.h>
+#include <linux/module.h>
 #include <asm/intel_scu_pmic.h>
 #include <asm/intel_scu_ipcutil.h>
 #include <asm/intel_mid_rpmsg.h>
 #include <asm/intel_mid_remoteproc.h>
+#include <asm/intel-mid.h>
 
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
 #include <sound/soc.h>
+#include <sound/clvs_audio_platform.h>
 #include <sound/jack.h>
 #include "../codecs/cs42l73.h"
 
@@ -123,6 +126,7 @@ struct clv_mc_private {
 #ifdef CONFIG_HAS_WAKELOCK
 	struct wake_lock *jack_wake_lock;
 #endif
+	struct clvs_audio_platform_data *pdata;
 };
 
 
@@ -151,21 +155,35 @@ static struct snd_soc_jack_gpio hs_gpio[] = {
 	},
 };
 
+bool ctp_vv_board(const struct sfi_soft_platform_id *spid)
+{
+	if ((spid->platform_family_id == INTEL_CLVTP_PHONE) &&
+		((spid->product_line_id == CLVTPP_RHB_CCVV2) ||
+		(spid->product_line_id == CLVTPP_RHB_CCVV1) ||
+		(spid->product_line_id == CLVTPP_RHB_CCVV3) ||
+		(spid->product_line_id == CLVTPP_RHB_CCPVV1) ||
+		(spid->product_line_id == CLVTPP_RHB_CCVV0)))
+		return true;
+	else
+		return false;
+}
 static int set_mic_bias(struct snd_soc_jack *jack, int state)
 {
 	struct snd_soc_codec *codec = jack->codec;
 	struct snd_soc_dapm_context *dapm = &codec->dapm;
+	struct clv_mc_private *ctx =
+		container_of(jack, struct clv_mc_private, clv_jack);
 
 	mutex_lock(&codec->mutex);
 	switch (state) {
 	case MIC_BIAS_DISABLE:
-		if (ctp_board_id() == CTP_BID_VV)
+		if (ctp_vv_board(ctx->pdata->spid))
 			snd_soc_dapm_disable_pin(dapm, "MIC1 Bias");
 		else
 			snd_soc_dapm_disable_pin(dapm, "MIC2 Bias");
 		break;
 	case MIC_BIAS_ENABLE:
-		if (ctp_board_id() == CTP_BID_VV)
+		if (ctp_vv_board(ctx->pdata->spid))
 			snd_soc_dapm_force_enable_pin(dapm, "MIC1 Bias");
 		else
 			snd_soc_dapm_force_enable_pin(dapm, "MIC2 Bias");
@@ -475,7 +493,7 @@ static int clv_init(struct snd_soc_pcm_runtime *runtime)
 
 	/*In VV board SPKOUT is connected and SPKLINEOUT on PR board*/
 	/*In VV board MIC1 is connected  and MIC2 is PR boards */
-	if (ctp_board_id() == CTP_BID_VV) {
+	if (ctp_vv_board(ctx->pdata->spid)) {
 		snd_soc_dapm_disable_pin(dapm, "MIC1");
 		snd_soc_dapm_disable_pin(dapm, "SPKOUT");
 		snd_soc_dapm_ignore_suspend(dapm, "SPKLINEOUT");
@@ -643,6 +661,7 @@ static int snd_clv_mc_probe(struct platform_device *pdev)
 			"jack_detect");
 #endif
 
+	ctx->pdata = pdev->dev.platform_data;
 	/* register the soc card */
 	snd_soc_card_clv.dev = &pdev->dev;
 	snd_soc_card_set_drvdata(&snd_soc_card_clv, ctx);

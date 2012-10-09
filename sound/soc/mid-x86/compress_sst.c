@@ -36,7 +36,7 @@
 #include <linux/list.h>
 #include <linux/sched.h>
 #include <linux/uaccess.h>
-#include <linux/uaccess.h>
+#include <linux/module.h>
 #include <linux/platform_device.h>
 #include <sound/core.h>
 #include <sound/initval.h>

@@ -17,10 +17,14 @@
 #include <linux/sfi.h>
 #include <linux/platform_device.h>
 #include <asm/intel-mid.h>
-#include <asm/intel-mid.h>
 #include <asm/intel_mid_remoteproc.h>
+#include <sound/clvs_audio_platform.h>
 #include "platform_msic.h"
 #include "platform_clvs_audio.h"
+
+static struct clvs_audio_platform_data clvs_audio_pdata = {
+	.spid = &spid,
+};
 
 void *clvs_audio_platform_data(void *info)
 {
@@ -78,6 +82,13 @@ void *clvs_audio_platform_data(void *info)
 		platform_device_put(pdev);
 		return NULL;
 	}
+	if (platform_device_add_data(pdev, &clvs_audio_pdata,
+			sizeof(struct clvs_audio_platform_data))) {
+		pr_err("failed to add clvs_audio platform data\n");
+		platform_device_put(pdev);
+		return NULL;
+	}
+
 	register_rpmsg_service("rpmsg_msic_clv_audio", RPROC_SCU,
 				RP_MSIC_CLV_AUDIO);
 	return NULL;
