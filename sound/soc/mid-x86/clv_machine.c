@@ -31,11 +31,15 @@
 #include <linux/io.h>
 #include <linux/async.h>
 #include <linux/delay.h>
-#include <linux/ipc_device.h>
+#include <linux/platform_device.h>
 #include <linux/wakelock.h>
 #include <linux/gpio.h>
+#include <linux/rpmsg.h>
 #include <asm/intel_scu_pmic.h>
 #include <asm/intel_scu_ipcutil.h>
+#include <asm/intel_mid_rpmsg.h>
+#include <asm/intel_mid_remoteproc.h>
+
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
 #include <sound/soc.h>
@@ -109,7 +113,7 @@ static int clv_vsp_hw_params(struct snd_pcm_substream *substream,
 }
 
 struct clv_mc_private {
-	struct ipc_device *socdev;
+	struct platform_device *socdev;
 	void __iomem *int_base;
 	struct snd_soc_codec *codec;
 	/* Jack related */
@@ -615,7 +619,7 @@ static struct snd_soc_card snd_soc_card_clv = {
 	.set_bias_level_post = clv_set_bias_level_post,
 };
 
-static int snd_clv_mc_probe(struct ipc_device *ipcdev)
+static int snd_clv_mc_probe(struct platform_device *pdev)
 {
 	int ret_val = 0;
 	struct clv_mc_private *ctx;
@@ -640,14 +644,14 @@ static int snd_clv_mc_probe(struct ipc_device *ipcdev)
 #endif
 
 	/* register the soc card */
-	snd_soc_card_clv.dev = &ipcdev->dev;
+	snd_soc_card_clv.dev = &pdev->dev;
 	snd_soc_card_set_drvdata(&snd_soc_card_clv, ctx);
 	ret_val = snd_soc_register_card(&snd_soc_card_clv);
 	if (ret_val) {
 		pr_err("snd_soc_register_card failed %d\n", ret_val);
 		goto unalloc;
 	}
-	ipc_set_drvdata(ipcdev, &snd_soc_card_clv);
+	platform_set_drvdata(pdev, &snd_soc_card_clv);
 
 	pr_debug("successfully exited probe\n");
 	return ret_val;
@@ -663,9 +667,9 @@ unalloc:
 	return ret_val;
 }
 
-static int __devexit snd_clv_mc_remove(struct ipc_device *ipcdev)
+static int __devexit snd_clv_mc_remove(struct platform_device *pdev)
 {
-	struct snd_soc_card *soc_card = ipc_get_drvdata(ipcdev);
+	struct snd_soc_card *soc_card = platform_get_drvdata(pdev);
 	struct clv_mc_private *ctx = snd_soc_card_get_drvdata(soc_card);
 
 	pr_debug("In %s\n", __func__);
@@ -680,7 +684,7 @@ static int __devexit snd_clv_mc_remove(struct ipc_device *ipcdev)
 	kfree(ctx);
 	snd_soc_card_set_drvdata(soc_card, NULL);
 	snd_soc_unregister_card(soc_card);
-	ipc_set_drvdata(ipcdev, NULL);
+	platform_set_drvdata(pdev, NULL);
 	return 0;
 }
 const struct dev_pm_ops snd_clv_mc_pm_ops = {
@@ -689,7 +693,7 @@ const struct dev_pm_ops snd_clv_mc_pm_ops = {
 	.poweroff = snd_clv_poweroff,
 };
 
-static struct ipc_driver snd_clv_mc_driver = {
+static struct platform_driver snd_clv_mc_driver = {
 	.driver = {
 		.owner = THIS_MODULE,
 		.name = "clvcs_audio",
@@ -702,19 +706,78 @@ static struct ipc_driver snd_clv_mc_driver = {
 static int __init snd_clv_driver_init(void)
 {
 	pr_info("In %s\n", __func__);
-	return ipc_driver_register(&snd_clv_mc_driver);
+	return platform_driver_register(&snd_clv_mc_driver);
 }
-late_initcall(snd_clv_driver_init);
 
 static void __exit snd_clv_driver_exit(void)
 {
 	pr_debug("In %s\n", __func__);
-	ipc_driver_unregister(&snd_clv_mc_driver);
+	platform_driver_unregister(&snd_clv_mc_driver);
 }
 
-module_exit(snd_clv_driver_exit);
+static int snd_clv_rpmsg_probe(struct rpmsg_channel *rpdev)
+{
+	int ret = 0;
+
+	if (rpdev == NULL) {
+		pr_err("rpmsg channel not created\n");
+		ret = -ENODEV;
+		goto out;
+	}
+
+	dev_info(&rpdev->dev, "Probed snd_clv rpmsg device\n");
+
+	ret = snd_clv_driver_init();
+
+out:
+	return ret;
+}
+
+static void __devexit snd_clv_rpmsg_remove(struct rpmsg_channel *rpdev)
+{
+	snd_clv_driver_exit();
+	dev_info(&rpdev->dev, "Removed snd_clv rpmsg device\n");
+}
+
+static void snd_clv_rpmsg_cb(struct rpmsg_channel *rpdev, void *data,
+					int len, void *priv, u32 src)
+{
+	dev_warn(&rpdev->dev, "unexpected, message\n");
+
+	print_hex_dump(KERN_DEBUG, __func__, DUMP_PREFIX_NONE, 16, 1,
+		       data, len,  true);
+}
+
+static struct rpmsg_device_id snd_clv_rpmsg_id_table[] = {
+	{ .name	= "rpmsg_msic_clv_audio" },
+	{ },
+};
+MODULE_DEVICE_TABLE(rpmsg, snd_clv_rpmsg_id_table);
+
+static struct rpmsg_driver snd_clv_rpmsg = {
+	.drv.name	= KBUILD_MODNAME,
+	.drv.owner	= THIS_MODULE,
+	.id_table	= snd_clv_rpmsg_id_table,
+	.probe		= snd_clv_rpmsg_probe,
+	.callback	= snd_clv_rpmsg_cb,
+	.remove		= __devexit_p(snd_clv_rpmsg_remove),
+};
+
+static int __init snd_clv_rpmsg_init(void)
+{
+	return register_rpmsg_driver(&snd_clv_rpmsg);
+}
+
+late_initcall(snd_clv_rpmsg_init);
+
+static void __exit snd_clv_rpmsg_exit(void)
+{
+	return unregister_rpmsg_driver(&snd_clv_rpmsg);
+}
+module_exit(snd_clv_rpmsg_exit);
+
 
 MODULE_DESCRIPTION("ASoC Intel(R) Cloverview MID Machine driver");
 MODULE_AUTHOR("Jeeja KP<jeeja.kp@intel.com>");
 MODULE_LICENSE("GPL v2");
-MODULE_ALIAS("ipc:clvcs42l73-audio");
+MODULE_ALIAS("platform:clvcs42l73-audio");

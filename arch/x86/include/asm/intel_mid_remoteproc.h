@@ -47,6 +47,7 @@
 #define RP_OSIP_ACCESS		0x15
 #define RP_MSIC_ADC		0x16
 #define RP_BQ24192		0x17
+#define RP_MSIC_CLV_AUDIO	0x18
 
 enum rproc_type {
 	RPROC_SCU = 0,

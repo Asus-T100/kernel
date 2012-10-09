@@ -17,6 +17,8 @@
 #include <linux/sfi.h>
 #include <linux/platform_device.h>
 #include <asm/intel-mid.h>
+#include <asm/intel-mid.h>
+#include <asm/intel_mid_remoteproc.h>
 #include "platform_msic.h"
 #include "platform_clvs_audio.h"
 
@@ -76,6 +78,7 @@ void *clvs_audio_platform_data(void *info)
 		platform_device_put(pdev);
 		return NULL;
 	}
-
+	register_rpmsg_service("rpmsg_msic_clv_audio", RPROC_SCU,
+				RP_MSIC_CLV_AUDIO);
 	return NULL;
 }
