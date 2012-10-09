@@ -827,10 +827,7 @@ static int snd_intelhad_pcm_trigger(struct snd_pcm_substream *substream,
 		spin_unlock_irqrestore(&intelhaddata->had_spinlock, flag_irq);
 
 		/* Enable Audio */
-		/* ToDo: Need to enable UNDERRUN interrupts as well
-		   caps = HDMI_AUDIO_UNDERRUN | HDMI_AUDIO_BUFFER_DONE;
-		   */
-		caps = HDMI_AUDIO_BUFFER_DONE;
+		caps = HDMI_AUDIO_UNDERRUN | HDMI_AUDIO_BUFFER_DONE;
 		retval = had_set_caps(HAD_SET_ENABLE_AUDIO_INT, &caps);
 		retval = had_set_caps(HAD_SET_ENABLE_AUDIO, NULL);
 		had_read_modify(AUD_CONFIG, 1, BIT(0));
@@ -850,10 +847,7 @@ static int snd_intelhad_pcm_trigger(struct snd_pcm_substream *substream,
 		had_stream->stream_type = HAD_INIT;
 		spin_unlock_irqrestore(&intelhaddata->had_spinlock, flag_irq);
 		/* Disable Audio */
-		/* ToDo: Need to disable UNDERRUN interrupts as well
-		   caps = HDMI_AUDIO_UNDERRUN | HDMI_AUDIO_BUFFER_DONE;
-		   */
-		caps = HDMI_AUDIO_BUFFER_DONE;
+		caps = HDMI_AUDIO_UNDERRUN | HDMI_AUDIO_BUFFER_DONE;
 		had_set_caps(HAD_SET_DISABLE_AUDIO_INT, &caps);
 		had_set_caps(HAD_SET_DISABLE_AUDIO, NULL);
 		had_read_modify(AUD_CONFIG, 0, BIT(0));
