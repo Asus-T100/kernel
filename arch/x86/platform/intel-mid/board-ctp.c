@@ -40,6 +40,7 @@
  */
 #include "device_libs/platform_mxt224.h"
 #include "device_libs/platform_max17042.h"
+#include "device_libs/platform_s3202.h"
 #include "device_libs/platform_bq24192.h"
 
 /*
@@ -85,6 +86,7 @@ struct devs_id __initconst device_ids[] = {
 
 	/* Touch Screen */
 	{"mxt224", SFI_DEV_TYPE_I2C, 0, &mxt224_platform_data, NULL},
+	{"synaptics_3202", SFI_DEV_TYPE_I2C, 0, &s3202_platform_data},
 
 	{},
 };
