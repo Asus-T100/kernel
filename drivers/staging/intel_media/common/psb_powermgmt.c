@@ -62,7 +62,7 @@ static struct mutex g_ospm_mutex;
 static bool gbSuspendInProgress; /* default set as false */
 static bool gbResumeInProgress; /* default set as false */
 static bool pcihostSuspendInProgress;
-static bool gbSuspended; /* Indicate the host PCI suspened or not */
+bool gbSuspended; /* Indicate the host PCI suspened or not */
 static int g_hw_power_status_mask;
 static atomic_t g_display_access_count;
 static atomic_t g_graphics_access_count;
@@ -71,8 +71,6 @@ atomic_t g_videodec_access_count;
 
 
 extern u32 DISP_PLANEB_STATUS;
-
-bool gbgfxsuspended; /* default set as false */
 
 void acquire_ospm_lock(void)
 {
@@ -919,7 +917,6 @@ void ospm_suspend_pci(struct pci_dev *pdev)
 	pci_set_power_state(pdev, PCI_D3hot);
 
 	gbSuspended = true;
-	gbgfxsuspended = true;
 }
 
 /*

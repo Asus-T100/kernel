@@ -62,7 +62,7 @@
 #define DISPLAY_B 0x2
 #define DISPLAY_C 0x4
 
-extern bool gbgfxsuspended;
+extern bool gbSuspended;
 extern int lastFailedBrightness;
 extern struct drm_device *gpDrmDevice;
 
