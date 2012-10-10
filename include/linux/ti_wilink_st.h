@@ -289,6 +289,7 @@ struct kim_data_s {
  * ldisc installed, read chip_version, download relevant fw
  */
 long st_kim_start(void *);
+void __st_kim_stop(void *);
 long st_kim_stop(void *);
 
 void st_kim_recv(void *, const unsigned char *, long count);

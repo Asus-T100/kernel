@@ -32,6 +32,7 @@
 #include <linux/sched.h>
 #include <linux/sysfs.h>
 #include <linux/tty.h>
+#include <linux/pm_runtime.h>
 
 #include <linux/skbuff.h>
 #include <linux/ti_wilink_st.h>
@@ -444,11 +445,16 @@ long st_kim_start(void *kim_data)
 	long retry = POR_RETRY_COUNT;
 	struct ti_st_plat_data	*pdata;
 	struct kim_data_s	*kim_gdata = (struct kim_data_s *)kim_data;
+	struct device *tty_dev;
 
 	pr_info(" %s", __func__);
 	pdata = kim_gdata->kim_pdev->dev.platform_data;
 
 	do {
+		tty_dev = kim_gdata->core_data->tty_dev;
+		if (tty_dev)
+			pm_runtime_get_sync(tty_dev);
+
 		/* platform specific enabling code here */
 		if (pdata->chip_enable)
 			pdata->chip_enable(kim_gdata->core_data);
@@ -460,11 +466,24 @@ long st_kim_start(void *kim_data)
 		mdelay(100);
 		/* re-initialize the completion */
 		INIT_COMPLETION(kim_gdata->ldisc_installed);
+
 		/* send notification to UIM */
-		kim_gdata->ldisc_install = 1;
-		pr_info("ldisc_install = 1");
-		sysfs_notify(&kim_gdata->kim_pdev->dev.kobj,
-				NULL, "install");
+		if (!kim_gdata->ldisc_install) {
+			kim_gdata->ldisc_install = 1;
+			pr_info("ldisc_install = 1");
+			sysfs_notify(&kim_gdata->kim_pdev->dev.kobj,
+				     NULL, "install");
+		}
+
+		/*
+		 * tty_dev is unknown until l_disc is registered so skip the
+		 * first retry quickly.
+		 */
+		if (!tty_dev) {
+			__st_kim_stop(kim_gdata);
+			continue;
+		}
+
 		/* wait for ldisc to be installed */
 		err = wait_for_completion_timeout(&kim_gdata->ldisc_installed,
 				msecs_to_jiffies(LDISC_TIME));
@@ -472,7 +491,8 @@ long st_kim_start(void *kim_data)
 			/* ldisc installation timeout,
 			 * flush uart, power cycle BT_EN */
 			pr_err("ldisc installation timeout");
-			err = st_kim_stop(kim_gdata);
+			__st_kim_stop(kim_gdata);
+			pm_runtime_put_sync(tty_dev);
 			continue;
 		} else {
 			/* ldisc installed now */
@@ -482,14 +502,43 @@ long st_kim_start(void *kim_data)
 				/* ldisc installed but fw download failed,
 				 * flush uart & power cycle BT_EN */
 				pr_err("download firmware failed");
-				err = st_kim_stop(kim_gdata);
+				__st_kim_stop(kim_gdata);
+				pm_runtime_put_sync(tty_dev);
 				continue;
 			} else {	/* on success don't retry */
+				pm_runtime_put_sync(tty_dev);
 				break;
 			}
 		}
 	} while (retry--);
 	return err;
+}
+
+void __st_kim_stop(void *kim_data)
+{
+	struct kim_data_s	*kim_gdata = (struct kim_data_s *)kim_data;
+	struct tty_struct	*tty = kim_gdata->core_data->tty;
+
+	if (tty) {	/* can be called before ldisc is installed */
+		/* Flush any pending characters in the driver and discipline. */
+		tty_ldisc_flush(tty);
+		tty_driver_flush_buffer(tty);
+		tty->ops->flush_buffer(tty);
+	}
+
+	/* By default configure BT nShutdown to LOW state */
+	gpio_set_value(kim_gdata->nshutdown, GPIO_LOW);
+	mdelay(1);
+	gpio_set_value(kim_gdata->nshutdown, GPIO_HIGH);
+	mdelay(1);
+	gpio_set_value(kim_gdata->nshutdown, GPIO_LOW);
+
+	/* send uninstall notification to UIM */
+	if (kim_gdata->ldisc_install) {
+		pr_info("ldisc_install = 0");
+		kim_gdata->ldisc_install = 0;
+		sysfs_notify(&kim_gdata->kim_pdev->dev.kobj, NULL, "install");
+	}
 }
 
 /**
@@ -505,44 +554,28 @@ long st_kim_start(void *kim_data)
 long st_kim_stop(void *kim_data)
 {
 	long err = 0;
+	int ret = 0;
 	struct kim_data_s	*kim_gdata = (struct kim_data_s *)kim_data;
 	struct ti_st_plat_data	*pdata =
 		kim_gdata->kim_pdev->dev.platform_data;
-	struct tty_struct	*tty = kim_gdata->core_data->tty;
 
 	INIT_COMPLETION(kim_gdata->ldisc_installed);
 
-	if (tty) {	/* can be called before ldisc is installed */
-		/* Flush any pending characters in the driver and discipline. */
-		tty_ldisc_flush(tty);
-		tty_driver_flush_buffer(tty);
-		tty->ops->flush_buffer(tty);
-	}
-
-	/* send uninstall notification to UIM */
-	pr_info("ldisc_install = 0");
-	kim_gdata->ldisc_install = 0;
-	sysfs_notify(&kim_gdata->kim_pdev->dev.kobj, NULL, "install");
+	__st_kim_stop(kim_data);
 
 	/* wait for ldisc to be un-installed */
 	err = wait_for_completion_timeout(&kim_gdata->ldisc_installed,
 			msecs_to_jiffies(LDISC_TIME));
 	if (!err) {		/* timeout */
 		pr_err(" timed out waiting for ldisc to be un-installed");
-		return -ETIMEDOUT;
+		ret = -ETIMEDOUT;
 	}
-
-	/* By default configure BT nShutdown to LOW state */
-	gpio_set_value(kim_gdata->nshutdown, GPIO_LOW);
-	mdelay(1);
-	gpio_set_value(kim_gdata->nshutdown, GPIO_HIGH);
-	mdelay(1);
-	gpio_set_value(kim_gdata->nshutdown, GPIO_LOW);
 
 	/* platform specific disable */
 	if (pdata->chip_disable)
 		pdata->chip_disable(kim_gdata->core_data);
-	return err;
+
+	return ret;
 }
 
 /**********************************************************************/
