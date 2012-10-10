@@ -2297,8 +2297,6 @@ static void init_hsm(void)
 		wake_lock(&pnw->wake_lock);
 		pm_runtime_get(pnw->dev);
 	}
-
-	penwell_otg_phy_low_power(1);
 }
 
 static void update_hsm(void)
@@ -3081,9 +3079,6 @@ static void penwell_otg_work(struct work_struct *work)
 				} else if (hsm->id == ID_ACA_B) {
 					penwell_otg_update_chrg_cap(CHRG_ACA,
 								CHRG_CURR_ACA);
-
-					/* make sure PHY low power state */
-					penwell_otg_phy_low_power(1);
 					break;
 				} else if (hsm->id == ID_ACA_C) {
 					penwell_otg_update_chrg_cap(CHRG_ACA,
@@ -3197,8 +3192,6 @@ static void penwell_otg_work(struct work_struct *work)
 					pnw->iotg.otg.start_srp(&pnw->iotg.otg);
 				penwell_otg_add_timer(TB_SRP_FAIL_TMR);
 
-				/* reset PHY low power mode here */
-				penwell_otg_phy_low_power(1);
 			} else {
 				hsm->b_bus_req = 0;
 				dev_info(pnw->dev,
@@ -3257,7 +3250,6 @@ static void penwell_otg_work(struct work_struct *work)
 					"client driver has been removed.\n");
 
 			set_host_mode();
-			penwell_otg_phy_low_power(1);
 
 			/* Always set a_bus_req to 1, in case no ADP */
 			hsm->a_bus_req = 1;
@@ -3385,7 +3377,6 @@ static void penwell_otg_work(struct work_struct *work)
 			PNW_STOP_HOST(pnw);
 
 			set_host_mode();
-			penwell_otg_phy_low_power(1);
 
 			/* Always set a_bus_req to 1, in case no ADP */
 			iotg->hsm.a_bus_req = 1;
@@ -3414,7 +3405,6 @@ static void penwell_otg_work(struct work_struct *work)
 			PNW_STOP_HOST(pnw);
 
 			set_client_mode();
-			penwell_otg_phy_low_power(1);
 
 			/* allow D3 and D0i3 */
 			pm_runtime_put(pnw->dev);
@@ -3476,7 +3466,6 @@ static void penwell_otg_work(struct work_struct *work)
 			PNW_STOP_HOST(pnw);
 
 			set_host_mode();
-			penwell_otg_phy_low_power(1);
 
 			/* Always set a_bus_req to 1, in case no ADP */
 			hsm->a_bus_req = 1;
@@ -3504,7 +3493,6 @@ static void penwell_otg_work(struct work_struct *work)
 			PNW_STOP_HOST(pnw);
 
 			set_client_mode();
-			penwell_otg_phy_low_power(1);
 
 			/* allow D3 and D0i3 in A_WAIT_BCON */
 			pm_runtime_put(pnw->dev);
@@ -3552,8 +3540,6 @@ static void penwell_otg_work(struct work_struct *work)
 			hsm->b_bus_req = 0;
 
 			set_client_mode();
-			msleep(5);
-			penwell_otg_phy_low_power(1);
 
 			iotg->otg.state = OTG_STATE_B_IDLE;
 			penwell_update_transceiver();
@@ -3616,9 +3602,7 @@ static void penwell_otg_work(struct work_struct *work)
 		} else if (hsm->b_sess_end || hsm->a_sess_vld ||
 				hsm->a_srp_det || !hsm->b_sess_vld) {
 			hsm->a_srp_det = 0;
-			dev_dbg(pnw->dev,
-				"reconfig...PHCD bit for PHY low power mode\n");
-			penwell_otg_phy_low_power(1);
+			dev_dbg(pnw->dev, "reconfig...\n");
 		}
 		break;
 
@@ -3725,7 +3709,6 @@ static void penwell_otg_work(struct work_struct *work)
 			/* Turn off VBUS and enter PHY low power mode */
 			otg_set_vbus(&iotg->otg, false);
 
-			penwell_otg_phy_low_power(1);
 			/* disallow D3 or D0i3 */
 			pm_runtime_get(pnw->dev);
 			wake_lock(&pnw->wake_lock);
@@ -3832,8 +3815,6 @@ static void penwell_otg_work(struct work_struct *work)
 
 			/* Turn off VBUS */
 			otg_set_vbus(&iotg->otg, false);
-
-			penwell_otg_phy_low_power(1);
 
 			/* disallow D3 or D0i3 */
 			pm_runtime_get(pnw->dev);
@@ -3958,7 +3939,6 @@ static void penwell_otg_work(struct work_struct *work)
 
 			/* Turn off VBUS */
 			otg_set_vbus(&iotg->otg, false);
-			penwell_otg_phy_low_power(1);
 			iotg->otg.state = OTG_STATE_A_VBUS_ERR;
 		} else if (!hsm->b_conn && !pnw->iotg.otg.host->b_hnp_enable) {
 			/* Move to A_WAIT_BCON */
@@ -4058,7 +4038,6 @@ static void penwell_otg_work(struct work_struct *work)
 
 			/* Turn off the VBUS and enter PHY low power mode */
 			otg_set_vbus(&iotg->otg, false);
-			penwell_otg_phy_low_power(1);
 
 			iotg->otg.state = OTG_STATE_A_VBUS_ERR;
 		} else if (hsm->a_bidl_adis_tmout) {
@@ -4121,8 +4100,6 @@ static void penwell_otg_work(struct work_struct *work)
 			hsm->a_wait_vfall_tmout = 0;
 
 			/* Move to A_IDLE state, vbus falls */
-			penwell_otg_phy_low_power(1);
-
 			/* Always set a_bus_req to 1, in case no ADP */
 			hsm->a_bus_req = 1;
 
@@ -4134,8 +4111,6 @@ static void penwell_otg_work(struct work_struct *work)
 			hsm->test_device = 0;
 			hsm->otg_vbus_off = 0;
 			hsm->tst_noadp_tmout = 0;
-
-			penwell_otg_phy_low_power(1);
 
 			hsm->a_bus_req = 1;
 
