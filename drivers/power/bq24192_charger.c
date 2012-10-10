@@ -2183,7 +2183,7 @@ static void bq24192_charging_port_changed(struct power_supply *psy,
 }
 
 #ifdef CONFIG_DEBUG_FS
-#define DBGFS_REG_BUF_LEN	4
+#define DBGFS_REG_BUF_LEN	3
 
 static int bq24192_show(struct seq_file *seq, void *unused)
 {
@@ -2207,18 +2207,20 @@ static int bq24192_dbgfs_open(struct inode *inode, struct file *file)
 static ssize_t bq24192_dbgfs_reg_write(struct file *file,
 		const char __user *user_buf, size_t count, loff_t *ppos)
 {
-	char buf[DBGFS_REG_BUF_LEN] = {'\0', };
-	long addr, value;
+	char buf[DBGFS_REG_BUF_LEN];
+	long addr;
+	unsigned long value;
 	int ret;
 	struct seq_file *seq = file->private_data;
 
 	if (!seq || strict_strtol((char *)seq->private, 16, &addr))
 		return -EINVAL;
 
-	if (copy_from_user(buf, user_buf, DBGFS_REG_BUF_LEN))
+	if (copy_from_user(buf, user_buf, DBGFS_REG_BUF_LEN-1))
 		return -EFAULT;
 
-	if (strict_strtoul(buf, 16, &value))
+	buf[DBGFS_REG_BUF_LEN-1] = '\0';
+	if (kstrtoul(buf, 16, &value))
 		return -EINVAL;
 
 	dev_info(&bq24192_client->dev,
