@@ -485,6 +485,58 @@ int extcon_register_interest(struct extcon_specific_cable_nb *obj,
 }
 
 /**
+ * extcon_register_interest_cable_byname() - Register a notifier for a state
+ *			change of a specific cable, on any extcon device
+ *			extcon device.
+ * @obj:	an empty extcon_specific_cable_nb object to be returned.
+ * @cable_name:		the target cable name.
+ * @nb:		the notifier block to get notified.
+ *
+ * Provide an empty extcon_specific_cable_nb.
+ * extcon_register_interest_cable_name() sets the struct for you.
+ *
+ * extcon_register_cable_interest is a helper function for those who want to get
+ * notification for a single specific cable's status change without knowing the
+ * extcon device name.
+ *
+ * Note : This will register the interest with the first extcon device which
+ * reports the status for the cable. If multiple extcon devices reports the
+ * same cable name, this API will register interest with the first extcon device
+ */
+
+struct extcon_dev *register_interest_cable_byname
+		(struct extcon_specific_cable_nb *extcon_dev,
+		const char *cable_name, struct notifier_block *nb)
+{
+	struct class_dev_iter iter;
+	struct device *dev;
+	struct extcon_dev *extd = NULL;
+
+	/* Identify the extcon device which supports the cable and register
+	* interest.
+	*/
+	if (extcon_class == NULL)
+		return NULL;
+	class_dev_iter_init(&iter, extcon_class, NULL, NULL);
+	while ((dev = class_dev_iter_next(&iter))) {
+		extd = (struct extcon_dev *)dev_get_drvdata(dev);
+		/* check for cable  support */
+		if (extcon_find_cable_index(extd, cable_name) < 0) {
+			extd = NULL;
+			continue;
+		}
+
+		if (extcon_register_interest(extcon_dev, extd->name,
+						cable_name, nb) < 0) {
+			extd = NULL;
+			continue;
+		}
+	}
+	class_dev_iter_exit(&iter);
+	return extd;
+}
+
+/**
  * extcon_unregister_interest() - Unregister the notifier registered by
  *				extcon_register_interest().
  * @obj:	the extcon_specific_cable_nb object returned by

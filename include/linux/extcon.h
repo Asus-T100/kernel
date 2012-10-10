@@ -222,6 +222,9 @@ extern int extcon_register_interest(struct extcon_specific_cable_nb *obj,
 				    const char *extcon_name,
 				    const char *cable_name,
 				    struct notifier_block *nb);
+extern struct extcon_dev *register_interest_cable_byname
+		(struct extcon_specific_cable_nb *extcon_dev,
+		const char *cable_name, struct notifier_block *nb);
 extern int extcon_unregister_interest(struct extcon_specific_cable_nb *nb);
 
 /*
