@@ -716,10 +716,10 @@ int mdfld_generic_dsi_dbi_set_power(struct drm_encoder *encoder, bool on)
 			DRM_ERROR("Faild to turn on panel\n");
 			goto set_power_err;
 		}
-		mdfld_dsi_error_detector_wakeup(dsi_connector);
 
 		dsi_config->dsi_hw_context.panel_on = 1;
 		dbi_output->dbi_panel_on = 1;
+		mdfld_dsi_error_detector_wakeup(dsi_connector);
 		last_ospm_suspend = false;
 
 		break;
