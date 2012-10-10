@@ -100,7 +100,7 @@ void sh_css_dump_isp_state(void)
 				stall.fifo1);
 		sh_css_dtrace(2, "\t%-32s: %d\n", "[2] dma_FIFO stalled",
 				stall.fifo2);
-#if defined(HAS_ISP_2400_MAMOIADA)
+#if defined(HAS_ISP_2400_MAMOIADA) || defined(HAS_ISP_2400A0_MAMOIADA)
 		sh_css_dtrace(2, "\t%-32s: %d\n", "[3] gdc0_FIFO stalled",
 				stall.fifo3);
 		sh_css_dtrace(2, "\t%-32s: %d\n", "[4] gdc1_FIFO stalled",
@@ -130,7 +130,7 @@ void sh_css_dump_isp_state(void)
 				stall.vamem1);
 		sh_css_dtrace(2, "\t%-32s: %d\n", "vamem2 stalled",
 				stall.vamem2);
-#if defined(HAS_ISP_2400_MAMOIADA)
+#if defined(HAS_ISP_2400_MAMOIADA) || defined(HAS_ISP_2400A0_MAMOIADA)
 		sh_css_dtrace(2, "\t%-32s: %d\n", "vamem3 stalled",
 				stall.vamem3);
 		sh_css_dtrace(2, "\t%-32s: %d\n", "hmem stalled",
@@ -149,7 +149,7 @@ void sh_css_dump_sp_state(void)
 	sp_get_state(SP0_ID, &state, &stall);
 	print_sp_state(&state, "SP");
 	if (state.is_stalling) {
-#if defined(HAS_SP_2400)
+#if defined(HAS_SP_2400) || defined(HAS_SP_2400A0)
 		sh_css_dtrace(2, "\t%-32s: %d\n", "isys_FIFO stalled",
 				stall.fifo0);
 		sh_css_dtrace(2, "\t%-32s: %d\n", "if_sec_FIFO stalled",

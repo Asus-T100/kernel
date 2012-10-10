@@ -89,6 +89,9 @@
 #define SH_CSS_XNR_TABLE_SIZE_LOG2      6
 #define SH_CSS_XNR_TABLE_SIZE	        (1U<<SH_CSS_XNR_TABLE_SIZE_LOG2)
 /*#define SH_CSS_XNR_TABLE_SIZE	        (SH_CSS_XNR_TABLE_SIZEM1 + 1)*/
+#define SH_CSS_RGB_GAMMA_TABLE_SIZE_LOG2    8
+#define SH_CSS_RGB_GAMMA_TABLE_SIZEM1	(1U<<SH_CSS_RGB_GAMMA_TABLE_SIZE_LOG2)
+#define SH_CSS_RGB_GAMMA_TABLE_SIZE     (SH_CSS_RGB_GAMMA_TABLE_SIZEM1 + 1)
 #elif defined(HAS_VAMEM_VERSION_1)
 /** Number of elements in the CTC table. */
 #define SH_CSS_CTC_TABLE_SIZE_LOG2      10
@@ -99,6 +102,9 @@
 /** Number of elements in the xnr table. */
 #define SH_CSS_XNR_TABLE_SIZE_LOG2      6
 #define SH_CSS_XNR_TABLE_SIZE           (1U<<SH_CSS_XNR_TABLE_SIZE_LOG2)
+/** Number of elements in the sRGB gamma table. */
+#define SH_CSS_RGB_GAMMA_TABLE_SIZE_LOG2 8
+#define SH_CSS_RGB_GAMMA_TABLE_SIZE      (1U<<SH_CSS_RGB_GAMMA_TABLE_SIZE_LOG2)
 #else
 #error "sh_css_types: Unknown VAMEM version"
 #endif
@@ -325,6 +331,12 @@ struct sh_css_ctc_table {
 	unsigned short data[SH_CSS_CTC_TABLE_SIZE];
 };
 
+/** sRGB Gamma table, used for sRGB gamma correction.
+ */
+struct sh_css_rgb_gamma_table {
+	unsigned short data[SH_CSS_RGB_GAMMA_TABLE_SIZE];
+};
+
 /** XNR table
  */
 struct sh_css_xnr_table {
@@ -396,9 +408,9 @@ struct sh_css_ee_config {
 /** Demosaic (bayer-to-rgb) configuration.
  */
 struct sh_css_de_config {
-	u0_16 pixelnoise;	   /**< */
-	u0_16 c1_coring_threshold; /**< */
-	u0_16 c2_coring_threshold; /**< */
+	u0_16 pixelnoise;	   /**< Pixel noise used in moire elimination */
+	u0_16 c1_coring_threshold; /**< Coring threshold for C1 */
+	u0_16 c2_coring_threshold; /**< Coring threshold for C2 */
 };
 
 /** Gamma Correction configuration.
@@ -409,11 +421,33 @@ struct sh_css_gc_config {
 };
 
 
+
+/* 
+ * NOTE: 
+ * Temporary code until the proper mechanism for
+ * host to receive tetragon coordinates is implemented.
+ * Important:
+ *   Enable only one of the following defines.
+*/
+#define DVS_6AXIS_COORDS_1080P_UNITY
+//#define DVS_6AXIS_COORDS_SMALL_UNITY
+//#define DVS_6AXIS_COORDS_SMALL_WARPED
+
 /* @GC: Comment on this & Remove the hard-coded values */
+#if defined(DVS_6AXIS_COORDS_1080P_UNITY)
 struct sh_css_dvs_6axis_config {
-	unsigned int xcoords[19][13];
-	unsigned int ycoords[19][13];
+	unsigned int xcoords[18][31];
+	unsigned int ycoords[18][31];
 };
+#elif defined(DVS_6AXIS_COORDS_SMALL_UNITY) ||\
+	defined(DVS_6AXIS_COORDS_SMALL_WARPED)
+struct sh_css_dvs_6axis_config {
+	unsigned int xcoords[10][13];
+	unsigned int ycoords[10][13];
+};
+#else
+#error No default DVS coordinate table specified.
+#endif
 
 
 /** Advanced Noise Reduction configuration.
@@ -423,11 +457,89 @@ struct sh_css_anr_config {
 	int threshold; /**< Threshold */
 };
 
+/** Y(Luma) Noise Reduction configuration.
+ */
+struct sh_css_ynr_config {
+	unsigned short edge_sense_gain_0;
+	unsigned short edge_sense_gain_1;
+	unsigned short corner_sense_gain_0;
+	unsigned short corner_sense_gain_1;
+};
+
+/** Fringe Control configuration.
+ */
+struct sh_css_fc_config {
+	unsigned char gain_exp;
+	unsigned short gain_pos_0;
+	unsigned short gain_pos_1;
+	unsigned short gain_neg_0;
+	unsigned short gain_neg_1;
+	unsigned short crop_pos_0;
+	unsigned short crop_pos_1;
+	unsigned short crop_neg_0;
+	unsigned short crop_neg_1;
+};
+
+/** Chroma Noise Reduction configuration.
+ */
+struct sh_css_cnr_config {
+	unsigned char coring_u;
+	unsigned char coring_v;
+	unsigned char sense_gain_vy;
+	unsigned char sense_gain_vu;
+	unsigned char sense_gain_vv;
+	unsigned char sense_gain_hy;
+	unsigned char sense_gain_hu;
+	unsigned char sense_gain_hv;
+};
+
+/** MACC
+ */
+struct sh_css_macc_config {
+	unsigned char exp; /**< */
+};
+
+/** Chroma Tone Control configuration.
+ */
+struct sh_css_ctc_config {
+	unsigned short y0;
+	unsigned short y1;
+	unsigned short y2;
+	unsigned short y3;
+	unsigned short y4;
+	unsigned short y5;
+	unsigned short ce_gain_exp;
+	unsigned short x1;
+	unsigned short x2;
+	unsigned short x3;
+	unsigned short x4;
+};
+
 /** Chroma Enhancement configuration.
  */
 struct sh_css_ce_config {
 	u0_16 uv_level_min; /**< */
 	u0_16 uv_level_max; /**< */
+};
+
+/** Color Correction Matrix (YCgCo to RGB) settings.
+ *  The data is
+ *  s(13-SH_CSS_YUV2RGB_CCM_COEF_SHIFT).SH_CSS_YUV2RGB_CCM_COEF_SHIFT
+ *  fixed point.
+ */
+struct sh_css_yuv2rgb_cc_config {
+	int matrix[3 * 3]; /**< YUV2RGB conversion matrix, signed
+	<13-SH_CSS_YUV2RGB_CCM_COEF_SHIFT>.<SH_CSS_YUV2RGB_CCM_COEF_SHIFT> */
+};
+
+/** Color Space Conversion (RGB to YUV) settings.
+ *  The data is
+ *  s(13-SH_CSS_RGB2YUV_CSC_COEF_SHIFT).SH_CSS_RGB2YUV_CSC_COEF_SHIFT
+ *  fixed point.
+ */
+struct sh_css_rgb2yuv_cc_config {
+	int matrix[3 * 3]; /**< RGB2YUV conversion matrix, signed
+	<13-SH_CSS_RGB2YUV_CSC_COEF_SHIFT>.<SH_CSS_RGB2YUV_CSC_COEF_SHIFT> */
 };
 
 /** 3A configuration. This configures the 3A statistics collection
@@ -460,6 +572,11 @@ struct sh_css_isp_config {
 	struct sh_css_wb_config  wb_config;  /**< White Balance config */
 	struct sh_css_cc_config  cc_config;  /**< Color Correction config */
 	struct sh_css_tnr_config tnr_config; /**< Temporal Noise Reduction */
+	struct sh_css_ynr_config ynr_config; /**< Y(Luma) Noise Reduction */
+	struct sh_css_fc_config  fc_config;  /**< Fringe Control */
+	struct sh_css_cnr_config cnr_config; /**< Chroma Noise Reduction */
+	struct sh_css_macc_config  macc_config;  /**< MACC */
+	struct sh_css_ctc_config ctc_config; /**< Chroma Tone Control */
 	struct sh_css_ob_config  ob_config;  /**< Objective Black config */
 	struct sh_css_dp_config  dp_config;  /**< Dead Pixel config */
 	struct sh_css_nr_config  nr_config;  /**< Noise Reduction config */
@@ -467,6 +584,10 @@ struct sh_css_isp_config {
 	struct sh_css_de_config  de_config;  /**< Demosaic config */
 	struct sh_css_gc_config  gc_config;  /**< Gamma Correction config */
 	struct sh_css_anr_config anr_config; /**< Advanced Noise Reduction */
+	struct sh_css_yuv2rgb_cc_config yuv2rgb_cc_config; /**< Color
+							Correction config */
+	struct sh_css_rgb2yuv_cc_config rgb2yuv_cc_config; /**< Color
+							Correction config */
 	struct sh_css_3a_config  s3a_config; /**< 3A Statistics config */
 	struct sh_css_xnr_config xnr_config; /**< eXtra Noise Reduction */
 };
@@ -590,7 +711,7 @@ enum sh_css_isp_memories {
  * support features, dma channels, uds features, etc.
  */
 struct sh_css_binary_info {
-	unsigned int		id; /* enum sh_css_binary_id */
+	unsigned int		id; /* SH_CSS_BINARY_ID_* */
 	unsigned int		mode;
 	enum sh_css_acc_type	 type;
 	const struct sh_css_blob_descr *blob;
@@ -624,13 +745,18 @@ struct sh_css_binary_info {
 	unsigned int		out_data; /* Address in ISP dmem */
 	unsigned int		block_width;
 	unsigned int		block_height;
+	unsigned int		output_block_height;
 	struct sh_css_isp_memory_interface
 				 memory_interface[SH_CSS_NUM_ISP_MEMORIES];
 	unsigned int		sh_dma_cmd_ptr;     /* In ISP dmem */
+	unsigned int		isp_pipe_version;
 	struct {
 		unsigned char	 ctc;   /* enum sh_css_isp_memories */
 		unsigned char	 gamma; /* enum sh_css_isp_memories */
 		unsigned char	 xnr;   /* enum sh_css_isp_memories */
+		unsigned char	 r_gamma; /* enum sh_css_isp_memories */
+		unsigned char	 g_gamma; /* enum sh_css_isp_memories */
+		unsigned char	 b_gamma; /* enum sh_css_isp_memories */
 	} memories;
 /* MW: Packing (related) bools in an integer ?? */
 	struct {
@@ -663,23 +789,27 @@ struct sh_css_binary_info {
 		unsigned char     in_frame;
 		unsigned char     out_frame;
 		unsigned char     high_speed;
-		unsigned char     padding[2];
+		unsigned char     de_yuv444;
+		unsigned char     rgb_gamma;
 	} enable;
 	struct {
-		unsigned char     crop_channel;
-		unsigned char     fpntbl_channel;
-		unsigned char     multi_channel;
-		unsigned char     raw_out_channel;
-		unsigned char     sctbl_channel;
-		unsigned char     ref_y_channel;
-		unsigned char     ref_c_channel;
-		unsigned char     tnr_y_channel;
-		unsigned char     tnr_c_channel;
-		unsigned char     raw_channel;
-		unsigned char     output_channel;
-		unsigned char     c_channel;
-		unsigned char     vfout_channel;
-		unsigned char     claimed_by_isp;
+/* DMA channel ID: [0,...,HIVE_ISP_NUM_DMA_CHANNELS> */
+		uint8_t		crop_channel;
+		uint8_t		fpntbl_channel;
+		uint8_t		multi_channel;
+		uint8_t		raw_out_channel;
+		uint8_t		sctbl_channel;
+		uint8_t		ref_y_channel;
+		uint8_t		ref_c_channel;
+		uint8_t		tnr_y_channel;
+		uint8_t		tnr_c_channel;
+		uint8_t		tnr_y_out_channel;
+		uint8_t		tnr_c_out_channel;
+		uint8_t		raw_channel;
+		uint8_t		output_channel;
+		uint8_t		c_channel;
+		uint8_t		vfout_channel;
+		uint8_t		claimed_by_isp;
 		unsigned char     padding[1];
 	} dma;
 	struct {
@@ -687,6 +817,7 @@ struct sh_css_binary_info {
 		unsigned short	 use_bci;
 		unsigned short	 woix;
 		unsigned short	 woiy;
+		unsigned short   extra_out_vecs;
 		unsigned short	 vectors_per_line_in;
 		unsigned short	 vectors_per_line_out;
 		unsigned short	 vectors_c_per_line_in;

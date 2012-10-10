@@ -5,8 +5,6 @@
 
 #include "sp_global.h"
 
-#include <scalar_processor_params.h>
-
 struct sp_state_s {
 	int		pc;
 	int		status_register;

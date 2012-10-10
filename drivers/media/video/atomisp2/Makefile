@@ -38,6 +38,8 @@ atomisp-objs += \
 		css/hive_isp_css_system/host/sp.o \
 		css/hive_isp_css_system/host/isp.o \
 		css/hive_isp_css_shared/host/queue.o \
+		css/hive_isp_css_shared/host/ia_css_i_rmgr_shared.o \
+		css/hive_isp_css_shared/host/ia_css_i_rmgr_vbuf_shared.o \
 		css/hive_isp_css_shared/host/tag.o \
 		css/hive_isp_css_shared/host/sw_event.o \
 		css/hive_isp_css_system/host/fifo_monitor.o \

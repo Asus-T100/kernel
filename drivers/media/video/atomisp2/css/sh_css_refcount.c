@@ -127,7 +127,7 @@ hrt_vaddress sh_css_refcount_retain(int32_t id, hrt_vaddress ptr)
 
 	entry = find_entry(ptr, false);
 
-	sh_css_dtrace(SH_DBG_TRACE, "sh_cssa_refcount_retain(%x) 0x%x\n", id, ptr);
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_refcount_retain(%x) 0x%x\n", id, ptr);
 
 	if (!entry) {
 		entry = find_entry(ptr, true);
@@ -208,6 +208,7 @@ void sh_css_refcount_clear(int32_t id, void (*clear_func)(hrt_vaddress ptr))
 {
 	struct sh_css_refcount_entry *entry;
 	uint32_t i;
+	uint32_t count = 0;
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_refcount_clear(%x)\n", id);
 	for (i = 0; i < myrefcount.size; i++) {
 		entry = &myrefcount.items[i];
@@ -215,9 +216,7 @@ void sh_css_refcount_clear(int32_t id, void (*clear_func)(hrt_vaddress ptr))
 			sh_css_dtrace(SH_DBG_TRACE, "sh_css_refcount_clear:"
 					" %x: 0x%x\n", id, entry->data);
 			if (clear_func) {
-				sh_css_dtrace(SH_DBG_TRACE,
-						"sh_css_refcount_clear: "
-						"using clear_func provided\n");
+				/* clear using provided function */
 				clear_func(entry->data);
 			}
 			else {
@@ -230,6 +229,9 @@ void sh_css_refcount_clear(int32_t id, void (*clear_func)(hrt_vaddress ptr))
 			entry->data = mmgr_NULL;
 			entry->count = 0;
 			entry->id = 0;
+			count++;
 		}
 	}
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_refcount_clear(%x): cleared %d\n",
+		id, count);
 }

@@ -529,6 +529,7 @@ sh_css_binary_find(struct sh_css_binary_descr *descr,
 	bool enable_dvs_6axis  = descr->enable_dvs_6axis;
 	enum sh_css_err err = sh_css_success;
 	bool continuous = sh_css_continuous_is_enabled();
+	unsigned int isp_pipe_version = descr->isp_pipe_version;
 
 	if (mode == SH_CSS_BINARY_MODE_VIDEO) {
 		unsigned int dx, dy;
@@ -553,6 +554,9 @@ sh_css_binary_find(struct sh_css_binary_descr *descr,
 
 	for (candidate = binary_infos[mode]; candidate;
 	     candidate = candidate->next) {
+		if (mode == SH_CSS_BINARY_MODE_VIDEO &&
+		    candidate->isp_pipe_version != isp_pipe_version)
+			continue;
 		if (!candidate->enable.dvs_6axis && enable_dvs_6axis)
 			continue;
 		if (candidate->enable.high_speed && !enable_high_speed)

@@ -7,7 +7,7 @@
 #ifndef HRT_USE_VIR_ADDRS
 #define HRT_USE_VIR_ADDRS
 #endif
-#include "hive_isp_css_custom_host_hrt.h"
+/*#include "hive_isp_css_custom_host_hrt.h"*/
 #endif
 
 #include <timed_controller.h>

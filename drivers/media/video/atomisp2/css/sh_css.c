@@ -39,6 +39,7 @@
 #include "sh_css_param_shading.h"
 #include "sh_css_pipeline.h"
 #include "sh_css_refcount.h"
+#include "ia_css_i_rmgr.h"
 #include "sh_css_debug.h"
 
 #include "memory_access.h"
@@ -69,9 +70,16 @@
 #include "linux/delay.h"
 #include "sh_css_metrics.h"
 
+
+
+
 static int thread_alive;
 #endif
 
+#define DVS_REF_TESTING 0
+#if DVS_REF_TESTING
+#include <stdio.h>
+#endif
 
 /* Name of the sp program: should not be built-in */
 #define SP_PROG_NAME "sp"
@@ -120,6 +128,7 @@ enum sh_css_state {
 	0, \
 	-1, \
 	SH_CSS_FRAME_NO_FLASH, \
+	0, \
 	false, \
 	{ 0 } \
 }
@@ -165,6 +174,8 @@ enum sh_css_state {
 	false,                     /* enable_yuv_ds */ \
 	false,                     /* enable_high_speed */ \
 	false,                     /* enable_dvs_6axis */ \
+	true,                      /* enable_viewfinder */ \
+	1,                         /* isp_pipe_version */ \
 	{ }                        /* settings */
 
 struct sh_css_preview_settings {
@@ -278,6 +289,8 @@ struct sh_css_pipe {
 	bool                         enable_yuv_ds;
 	bool                         enable_high_speed;
 	bool                         enable_dvs_6axis;
+	bool                         enable_viewfinder;
+	unsigned int                 isp_pipe_version;
 	union {
 		struct sh_css_preview_settings preview;
 		struct sh_css_video_settings   video;
@@ -1912,6 +1925,10 @@ enum sh_css_err sh_css_init(
 	my_css.flush = flush_func;
 	sh_css_printf = env->print_env.debug_print;
 
+ia_css_i_host_rmgr_init();
+// stop execution
+//assert(0);
+
 	sh_css_set_dtrace_level(9);
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_init()\n");
 
@@ -3390,6 +3407,9 @@ sh_css_dequeue_buffer(enum sh_css_pipe_id   pipe,
 	case SH_CSS_BUFFER_TYPE_OUTPUT_FRAME:
 			*buffer =
 				(struct sh_css_frame *)HOST_ADDRESS(ddr_buffer.kernel_ptr);
+			if (ddr_buffer.payload.frame.exp_id)
+				((struct sh_css_frame *)(*buffer))->exp_id
+					= ddr_buffer.payload.frame.exp_id;
 			if (ddr_buffer.payload.frame.flashed == 1)
 				((struct sh_css_frame *)(*buffer))->flash_state
 					= SH_CSS_FRAME_PARTIAL_FLASH;
@@ -3400,6 +3420,9 @@ sh_css_dequeue_buffer(enum sh_css_pipe_id   pipe,
 	case SH_CSS_BUFFER_TYPE_VF_OUTPUT_FRAME:
 			*buffer =
 				(struct sh_css_frame *)HOST_ADDRESS(ddr_buffer.kernel_ptr);
+			if (ddr_buffer.payload.frame.exp_id)
+				((struct sh_css_frame *)(*buffer))->exp_id
+					= ddr_buffer.payload.frame.exp_id;
 			if (ddr_buffer.payload.frame.flashed == 1)
 				((struct sh_css_frame *)(*buffer))->flash_state
 					= SH_CSS_FRAME_PARTIAL_FLASH;
@@ -3736,6 +3759,14 @@ sh_css_video_enable_dvs_6axis(bool enable)
 }
 
 void
+sh_css_video_enable_viewfinder(bool enable)
+{
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_video_enable_viewfinder() in: enable=%d\n", enable);
+	my_css.video_pipe.enable_viewfinder = enable;
+}
+
+void
 sh_css_enable_continuous(bool enable)
 {
 	sh_css_dtrace(SH_DBG_TRACE,
@@ -3893,14 +3924,14 @@ init_video_descr(struct sh_css_pipe *pipe,
  * @GC: TEMPORARY CODE TO TEST DVS AGAINST THE REFERENCE
  * PLEASE DO NOT REMOVE IT!
  */
-#if 0
+#if DVS_REF_TESTING
 static enum sh_css_err
 alloc_frame_from_file(struct sh_css_pipe *pipe, int width, int height)
 {
 	FILE *fp;
 	int len = 0, err;
 	int bytes_per_pixel;
-	const char *file = "../File_input/dvs_input1.yuv";
+	const char *file = "../File_input/dvs_input2.yuv";
 	char *y_buf, *u_buf, *v_buf;
 	char *uv_buf;
 	int offset = 0;
@@ -3949,9 +3980,12 @@ alloc_frame_from_file(struct sh_css_pipe *pipe, int width, int height)
 	fread(v_buf, 1, len/4, fp);
 
 	for (h=0; h<height/2; h++) {
-		for (w=0; w<width; w+=2) {
+		for (w=0; w<width/2; w++) {
 			*(uv_buf + offset + w) = *(u_buf++);
-			*(uv_buf + offset + w + 1) = *(v_buf++);
+			*(uv_buf + offset + w + width/2) = *(v_buf++);
+			//printf("width: %d\n", width);
+			//printf("offset_u: %d\n", offset+w);
+			//printf("offset_v: %d\n", offset+w+width/2);
 		}
 		offset += width;
 	}
@@ -4008,7 +4042,7 @@ load_video_binaries(struct sh_css_pipe *pipe)
 	/* cannot have online video and input_mode memory */
 	if (online && pipe->input_mode == SH_CSS_INPUT_MODE_MEMORY)
 		return sh_css_err_unsupported_configuration;
-	if (online) {
+	if (my_css.video_pipe.enable_viewfinder) {
 		err = check_vf_out_info(&pipe->output_info,
 					&pipe->vf_output_info);
 		if (err != sh_css_success)
@@ -4020,7 +4054,7 @@ load_video_binaries(struct sh_css_pipe *pipe)
 	}
 
 	/* Video */
-	if (online)
+	if (my_css.video_pipe.enable_viewfinder)
 		video_vf_info = &pipe->vf_output_info;
 	else
 		video_vf_info = NULL;
@@ -4031,6 +4065,7 @@ load_video_binaries(struct sh_css_pipe *pipe)
 		video_descr.enable_high_speed = true;
 	if (pipe->enable_dvs_6axis)
 		video_descr.enable_dvs_6axis = true;
+	video_descr.isp_pipe_version = pipe->isp_pipe_version;
 	err = sh_css_binary_find(&video_descr,
 				 &pipe->pipe.video.video_binary);
 	if (err != sh_css_success)
@@ -4052,7 +4087,7 @@ load_video_binaries(struct sh_css_pipe *pipe)
 	pipe->invalid_first_frame = true;
 
 	/* Viewfinder post-processing */
-	if (online) {
+	if (my_css.video_pipe.enable_viewfinder) {
 		init_vf_pp_descr(pipe,
 			&pipe->pipe.video.video_binary.vf_frame_info,
 			&pipe->vf_output_info);
@@ -4084,7 +4119,7 @@ load_video_binaries(struct sh_css_pipe *pipe)
 	}
 
 
-#if 0
+#if DVS_REF_TESTING
 	/* @GC: TEMPORARY CODE TO TEST DVS AGAINST THE REFERENCE
 	 * To test dvs-6axis:
 	 * 1. Enable this function call
@@ -4119,8 +4154,10 @@ static enum sh_css_err
 video_start(struct sh_css_pipe *pipe)
 {
 	struct sh_css_pipeline *me = &pipe->pipeline;
-	struct sh_css_pipeline_stage *copy_stage, *video_stage, *vf_pp_stage;
-	struct sh_css_pipeline_stage *in_stage;
+	struct sh_css_pipeline_stage *copy_stage  = NULL;
+	struct sh_css_pipeline_stage *video_stage = NULL;
+	struct sh_css_pipeline_stage *vf_pp_stage = NULL;
+	struct sh_css_pipeline_stage *in_stage    = NULL;
 	struct sh_css_binary *copy_binary, *video_binary, *vf_pp_binary;
 	enum sh_css_err err = sh_css_success;
 
@@ -4146,7 +4183,7 @@ video_start(struct sh_css_pipe *pipe)
 	if (err != sh_css_success)
 		return err;
 
-	if (!pipe->online || in_frame) {
+	if (!my_css.video_pipe.enable_viewfinder || in_frame) {
 		/* These situations don't support viewfinder output */
 		vf_frame = NULL;
 	} else {
@@ -4212,7 +4249,7 @@ video_start(struct sh_css_pipe *pipe)
 		video_stage->args.copy_vf =
 			video_binary->info->mode == SH_CSS_BINARY_MODE_COPY;
 		video_stage->args.copy_output = video_stage->args.copy_vf;
-		if (!in_frame) {
+		if (!in_frame && my_css.video_pipe.enable_viewfinder) {
 			err = add_vf_pp_stage(pipe, vf_frame, vf_pp_binary,
 					      video_stage, &vf_pp_stage);
 			if (err != sh_css_success)
@@ -4252,7 +4289,7 @@ printf("wouldhave prepare (%p, %d, ..., %p)\n", NULL,
 		in_stage = video_stage;
 
 
-	if (pipe->online && !in_frame) {
+	if (!in_frame && my_css.video_pipe.enable_viewfinder) {
 		err = sh_css_pipeline_get_output_stage(me,
 						       vf_pp_binary->info->mode,
 						       &vf_pp_stage);
@@ -4268,13 +4305,15 @@ printf("wouldhave prepare (%p, %d, ..., %p)\n", NULL,
 	/* update the arguments with the latest info */
 	video_stage->args.out_frame = out_frame;
 
-	if (pipe->online && !in_frame)
+	if (vf_pp_stage)
 		vf_pp_stage->args.out_frame = vf_frame;
 
 	if (pipe->online)
 		sh_css_set_irq_buffer(in_stage, sh_css_frame_in, in_frame);
 	sh_css_set_irq_buffer(video_stage, sh_css_frame_out,    out_frame);
-	sh_css_set_irq_buffer(vf_pp_stage, sh_css_frame_out_vf, vf_frame);
+	if (vf_pp_stage)
+		sh_css_set_irq_buffer(vf_pp_stage, sh_css_frame_out_vf,
+					vf_frame);
 
 	start_pipe(pipe, SH_CSS_PIPE_CONFIG_OVRD_NO_OVRD);
 	me->reload = false;
@@ -6217,6 +6256,51 @@ assert(key < SH_CSS_BUFFER_TYPE_NR_OF_TYPES);
 }
 
 /**
+ * @brief Tag a specific frame in continuous capture.
+ * Refer to "sh_css_internal.h" for details.
+ */
+enum sh_css_err
+sh_css_offline_capture_tag_frame(unsigned int exp_id)
+{
+	struct sh_css_tag_descr tag_descr;
+	unsigned int encoded_tag_descr;
+
+	bool enqueue_successful = false;
+
+	sh_css_dtrace(SH_DBG_TRACE,
+		"sh_css_offline_capture_tag_frame() in: exp_id=%d\n",
+		exp_id);
+
+	if (exp_id == 0)
+		return sh_css_err_invalid_tag_description;
+
+	/* Create the tag descriptor from the parameters */
+	sh_css_create_tag_descr(0, 0, 0, exp_id, &tag_descr);
+
+
+	/* Encode the tag descriptor into a 32-bit value */
+	encoded_tag_descr = sh_css_encode_tag_descr(&tag_descr);
+
+
+	/* Enqueue the encoded tag to the host2sp queue.
+	 * Note: The pipe and stage IDs for tag_cmd queue are hard-coded to 0
+	 * on both host and the SP side.
+	 * It is mainly because it is enough to have only one tag_cmd queue */
+	enqueue_successful = host2sp_enqueue_buffer(0, 0,
+				sh_css_tag_cmd_queue,
+				(uint32_t)encoded_tag_descr);
+
+
+	/* Give an error if the tag command cannot be issued
+	 * (because the cmd queue is full) */
+	if (!enqueue_successful)
+		return sh_css_err_tag_queue_is_full;
+
+
+	return sh_css_success;
+}
+
+/**
  * @brief Configure the continuous capture.
  * Refer to "sh_css_internal.h" for details.
  */
@@ -6240,7 +6324,7 @@ sh_css_offline_capture_configure(int num_captures,
 
 
 	/* Create the tag descriptor from the parameters */
-	sh_css_create_tag_descr(num_captures, skip, offset, &tag_descr);
+	sh_css_create_tag_descr(num_captures, skip, offset, 0, &tag_descr);
 
 
 	/* Encode the tag descriptor into a 32-bit value */
@@ -6568,4 +6652,11 @@ sh_css_input_set_resolution(unsigned int width, unsigned int height)
 	sh_css_pipe_set_input_resolution(&my_css.preview_pipe, width, height);
 	sh_css_pipe_set_input_resolution(&my_css.video_pipe, width, height);
 	return sh_css_pipe_set_input_resolution(&my_css.capture_pipe, width, height);
+}
+
+void
+sh_css_video_set_isp_pipe_version(unsigned int version)
+{
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_video_set_isp_pipe_version()\n");
+	my_css.video_pipe.isp_pipe_version = version;
 }

@@ -36,6 +36,8 @@
 #define HIVE_ISP_DDR_WORD_BITS      256
 #define HIVE_ISP_DDR_WORD_BYTES     (HIVE_ISP_DDR_WORD_BITS/8)
 #define HIVE_ISP_DDR_BYTES          (256 * 1024 * 1024)
+#define HIVE_ISP_DDR_BYTES_RTL      ( 16 * 1024 * 1024)
+
 #define HIVE_ISP_PAGE_SHIFT         12
 #define HIVE_ISP_PAGE_SIZE          (1<<HIVE_ISP_PAGE_SHIFT)
 

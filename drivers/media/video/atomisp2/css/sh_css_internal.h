@@ -182,6 +182,48 @@ struct sh_css_isp_params {
 	int yee_clip_minus_g;
 	int ynryee_Yclip;
 
+	int yee_edge_sense_gain_0;
+	int yee_edge_sense_gain_1;
+	int yee_corner_sense_gain_0;
+	int yee_corner_sense_gain_1;
+
+	/* Fringe Control */
+	int fc_gain_exp;
+	int fc_gain_pos_0;
+	int fc_gain_pos_1;
+	int fc_gain_neg_0;
+	int fc_gain_neg_1;
+	int fc_crop_pos_0;
+	int fc_crop_pos_1;
+	int fc_crop_neg_0;
+	int fc_crop_neg_1;
+
+	/* CNR */
+	int cnr_coring_u;
+	int cnr_coring_v;
+	int cnr_sense_gain_vy;
+	int cnr_sense_gain_vu;
+	int cnr_sense_gain_vv;
+	int cnr_sense_gain_hy;
+	int cnr_sense_gain_hu;
+	int cnr_sense_gain_hv;
+
+	/* MACC */
+	int exp;
+
+	/* CTC */
+	int ctc_y0;
+	int ctc_y1;
+	int ctc_y2;
+	int ctc_y3;
+	int ctc_y4;
+	int ctc_y5;
+	int ctc_ce_gain_exp;
+	int ctc_x1;
+	int ctc_x2;
+	int ctc_x3;
+	int ctc_x4;
+
 	/* CSC (Color Space Conversion) */
 	/* YC1C2->YCbCr */
 	int csc_coef_shift;
@@ -213,6 +255,28 @@ struct sh_css_isp_params {
 
 	struct sh_css_crop_pos sp_out_crop_pos[SH_CSS_MAX_STAGES];
 	struct sh_css_uds_info uds[SH_CSS_MAX_STAGES];
+
+	/* CCM before sRGB Gamma: YCgCo->RGB */
+	int ycgco_to_rgb_00;
+	int ycgco_to_rgb_01;
+	int ycgco_to_rgb_02;
+	int ycgco_to_rgb_10;
+	int ycgco_to_rgb_11;
+	int ycgco_to_rgb_12;
+	int ycgco_to_rgb_20;
+	int ycgco_to_rgb_21;
+	int ycgco_to_rgb_22;
+
+	/* CSC after sRGB Gamma: RGB->YUV */
+	int rgb_to_yuv_00;
+	int rgb_to_yuv_01;
+	int rgb_to_yuv_02;
+	int rgb_to_yuv_10;
+	int rgb_to_yuv_11;
+	int rgb_to_yuv_12;
+	int rgb_to_yuv_20;
+	int rgb_to_yuv_21;
+	int rgb_to_yuv_22;
 };
 
 /* xmem address map allocation */
@@ -240,6 +304,9 @@ struct sh_css_ddr_address_map {
 	hrt_vaddress tetra_batr_y;
 	hrt_vaddress dvs_6axis_params_y;
 	hrt_vaddress dvs_6axis_params_uv;
+	hrt_vaddress r_gamma_tbl;
+	hrt_vaddress g_gamma_tbl;
+	hrt_vaddress b_gamma_tbl;
 };
 
 /* xmem address map allocation */
@@ -267,6 +334,9 @@ struct sh_css_ddr_address_map_size {
 	size_t tetra_batr_y;
 	size_t dvs_6axis_params_y;
 	size_t dvs_6axis_params_uv;
+	size_t r_gamma_tbl;
+	size_t g_gamma_tbl;
+	size_t b_gamma_tbl;
 };
 
 struct sh_css_ddr_address_map_compound {
@@ -621,6 +691,7 @@ struct sh_css_hmm_buffer {
 		struct {
 			hrt_vaddress	frame_data;
 			unsigned int	flashed;
+			unsigned int	exp_id;
 		} frame;
 		hrt_vaddress ddr_ptrs;
 	} payload;

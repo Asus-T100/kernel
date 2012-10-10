@@ -3,6 +3,8 @@
 
 #define IS_SP_2300
 
+#include <scalar_processor_params.h>
+
 #define SP_PMEM_WIDTH_LOG2		SP_PMEM_LOG_WIDTH_BITS
 #define SP_PMEM_SIZE			SP_PMEM_DEPTH
 

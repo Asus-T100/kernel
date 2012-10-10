@@ -58,6 +58,7 @@ struct sh_css_binary_descr {
 	struct sh_css_frame_info *in_info;
 	struct sh_css_frame_info *out_info;
 	struct sh_css_frame_info *vf_info;
+	unsigned int isp_pipe_version;
 };
 
 struct sh_css_binary {

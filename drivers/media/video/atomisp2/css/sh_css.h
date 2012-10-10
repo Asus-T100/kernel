@@ -76,7 +76,7 @@ The CSS subsystem contains an MMU to access external memory. This allows us to
  table base address and one to invalidate the TLB inside the MMU.
  DEPRECATED: MMU programming is an HRT abckend function outside the scope of CSS
 \subsection css_hw_gdc_sec GDC / Scaling Accelerator
-Commonly referred to as “GDC block”, this hardwired accelerator can perform
+Commonly referred to as "GDC block" this hardwired accelerator can perform
  the following functionality:
 -# Scaling (upscaling, downscaling, digital zoom).
 -# Geometric Distortion and Chromatic Abberation Correction.
@@ -149,7 +149,7 @@ Under normal circumstances, the ISP processes streaming input data (coming from
  external memory.
 -# When the ISP is done processing the frame, it sends a stop token to the SP
  firmware. The SP then exits from its main function which brings the SP into
- the “idle” state. When this state transition occurs, the SP generates an
+ the idle state. When this state transition occurs, the SP generates an
  interrupt which is handled on the host CPU.
 -# The interrupt handler on the host CPU asks the CSS API what to do next. For
  certain modes, we need to execute multiple ISP executables in a row. When this
@@ -175,7 +175,7 @@ In certain cases, this output data is then loaded from external memory by the
  application where it is displayed, encoded, processed or written to file.
 In other cases, this data is further processed by other ISP executables. ISP
  executables that read input data from memory rather than from the CSI receiver
- are referred to as “offline” executables (or offline binaries).
+ are referred to as offline executables (or offline binaries).
 \subsection css_sw_preview_sec Preview Mode
 When running the ISP in preview mode, we execute 2 stages for each frame.
 -# Preview stage: this does all line based image processing and writes the
@@ -183,7 +183,7 @@ When running the ISP in preview mode, we execute 2 stages for each frame.
  formatter(s).
 -# Vf_pp stage: this stage performs downscaling, digital zoom and format
  conversions. Since these are block based operations, implemented
- on the GDC block, we cannot combine it with the “online” line based image
+ on the GDC block, we cannot combine it with the online line based image
  processing.
 \section css_video_sec Video Mode
 The video mode also consists of 2 stages:
@@ -211,7 +211,7 @@ In primary capture mode, we execute 2 or 3 stages, depending on which
  functionality is enabled:
 -# Primary stage: this runs all line based image processing on input from either
  memory or the input formatter(s). This can be determined at runtime and is used
- to provide “RAW+JPEG” functionality where we capture both the RAW bayer
+ to provide RAW+JPEG functionality where we capture both the RAW bayer
  frame and a processed YUV frame which is subsequently encoded to JPEG.
 -# Capture_pp stage: this stage performs post-processing on the capture frame.
  This includes XNR, digital zoom and YUV downscaling. This stage is only
@@ -665,6 +665,8 @@ struct sh_css_frame {
 	 */
 	int dynamic_data_index;
 	enum sh_css_frame_flash_state flash_state;
+	unsigned int exp_id; /**< exposure id, only valid for continuous
+				capture cases */
 	bool contiguous; /**< memory is allocated physically contiguously */
 	union {
 		unsigned int	_initialisation_dummy;
@@ -1644,10 +1646,19 @@ sh_css_video_enable_high_speed(bool enable);
  *
  * @param	enable	Enabling value.
  *
- * Enable or disable high speed mode. Default is disabled.
+ * Enable or disable 6-axis DVS mode. Default is disabled.
  */
 void
 sh_css_video_enable_dvs_6axis(bool enable);
+
+/** @brief Enable/disable viewfinder for video.
+ *
+ * @param	enable	Enabling value.
+ *
+ * Enable or disable viewfinder. Default is enabled.
+ */
+void
+sh_css_video_enable_viewfinder(bool enable);
 
 /** @brief Enable continuous mode.
  *
@@ -1825,6 +1836,18 @@ enum sh_css_err
 sh_css_offline_capture_configure(int num_captures,
 				 unsigned int skip,
 				 int offset);
+
+/** @brief Specify which raw frame to tag based on exp_id found in frame info
+ *
+ * @param	exp_id	The exposure id of the raw frame to tag.
+ *
+ * @return			IA_CSS_SUCCESS or error code upon error.
+ *
+ * This function allows the user to tag a raw frame based on the exposure id
+ * found in the viewfinder frames' frame info.
+ */
+enum sh_css_err
+sh_css_offline_capture_tag_frame(unsigned int exp_id);
 
 /** @brief Specify buffer depth for SP RAW copy
  *
@@ -2421,6 +2444,15 @@ sh_css_enable_sp_invalidate_tlb(void);
  */
 void
 sh_css_request_flash(void);
+
+/** @brief Set the isp pipe version for video.
+ *
+ * @param	version	Version of isp pipe (1 or 2).
+ *
+ * Set the version of isp pipe for video. Default is 1.
+ */
+void
+sh_css_video_set_isp_pipe_version(unsigned int version);
 
 
 /* For convenience, so users only need to include sh_css.h
