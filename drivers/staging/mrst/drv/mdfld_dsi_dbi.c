@@ -428,7 +428,7 @@ static int __dbi_panel_power_on(struct mdfld_dsi_config *dsi_config,
 	struct mdfld_dsi_hw_context *ctx;
 	struct drm_psb_private *dev_priv;
 	struct drm_device *dev;
-	int retry;
+	int retry, reset_count = 10;
 	int err = 0;
 	struct mdfld_dsi_pkg_sender *sender
 			= mdfld_dsi_get_pkg_sender(dsi_config);
@@ -448,12 +448,18 @@ static int __dbi_panel_power_on(struct mdfld_dsi_config *dsi_config,
 		return -EAGAIN;
 
 	mdfld_dsi_dsr_forbid_locked(dsi_config);
-
+reset_recovery:
+	--reset_count;
+	err = 0;
 	/*after entering dstb mode, need reset*/
 	if (p_funcs && p_funcs->reset)
 		p_funcs->reset(dsi_config);
 
-	__dbi_power_on(dsi_config);
+	if (__dbi_power_on(dsi_config)) {
+		DRM_ERROR("Failed to init display controller!\n");
+		err = -EAGAIN;
+		goto power_on_err;
+	}
 
 	/*enable TE, will need it in panel power on*/
 	mdfld_enable_te(dev, dsi_config->pipe);
@@ -494,6 +500,23 @@ static int __dbi_panel_power_on(struct mdfld_dsi_config *dsi_config,
 	mdfld_dsi_wait_for_fifos_empty(sender);
 
 power_on_err:
+	if (err && reset_count) {
+		if (dev_priv->bhdmiconnected) {
+			/*if hdmi connected, turn off display A will
+			* influnce HDMI, so only turn off MIPI island
+			*/
+			pmu_nc_set_power_state(OSPM_MIPI_ISLAND,
+					OSPM_ISLAND_DOWN, OSPM_REG_TYPE);
+
+			pmu_nc_set_power_state(OSPM_MIPI_ISLAND,
+					OSPM_ISLAND_UP, OSPM_REG_TYPE);
+		} else {
+			ospm_power_island_down(OSPM_DISPLAY_A_ISLAND);
+			ospm_power_island_up(OSPM_DISPLAY_A_ISLAND);
+		}
+		DRM_ERROR("Failed to init panel, try  reset it again!\n");
+		goto reset_recovery;
+	}
 	mdfld_dsi_dsr_allow_locked(dsi_config);
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 	return err;
