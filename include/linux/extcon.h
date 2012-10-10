@@ -122,6 +122,7 @@ struct extcon_dev {
 	/* --- Optional callbacks to override class functions --- */
 	ssize_t	(*print_name)(struct extcon_dev *edev, char *buf);
 	ssize_t	(*print_state)(struct extcon_dev *edev, char *buf);
+	int (*get_cable_properties)(const char *cable_name, void *cable_props);
 
 	/* --- Internal data. Please do not set. --- */
 	struct device	*dev;
@@ -175,6 +176,19 @@ struct extcon_specific_cable_nb {
 	int cable_index;
 	struct extcon_dev *edev;
 	unsigned long previous_value;
+};
+
+enum extcon_chrgr_cbl_stat {
+	EXTCON_CHRGR_CABLE_CONNECTED,
+	EXTCON_CHRGR_CABLE_DISCONNECTED,
+	EXTCON_CHRGR_CABLE_SUSPENDED,
+	EXTCON_CHRGR_CABLE_RESUMED,
+	EXTCON_CHRGR_CABLE_UPDATED,
+};
+
+struct extcon_chrgr_cbl_props {
+	enum extcon_chrgr_cbl_stat cable_stat;
+	unsigned long mA;
 };
 
 #if IS_ENABLED(CONFIG_EXTCON)
