@@ -644,6 +644,7 @@ int mdfld_generic_dsi_dbi_set_power(struct drm_encoder *encoder, bool on)
 	struct drm_device *dev;
 	struct drm_psb_private *dev_priv;
 	static bool last_ospm_suspend;
+	int pipe = 0;
 
 	if (!encoder) {
 		DRM_ERROR("Invalid encoder\n");
@@ -659,6 +660,7 @@ int mdfld_generic_dsi_dbi_set_power(struct drm_encoder *encoder, bool on)
 	p_funcs = dbi_output->p_funcs;
 	dev = encoder->dev;
 	dev_priv = dev->dev_private;
+	pipe = dsi_config->pipe;
 
 	mutex_lock(&dsi_config->context_lock);
 
@@ -667,6 +669,9 @@ int mdfld_generic_dsi_dbi_set_power(struct drm_encoder *encoder, bool on)
 
 	if (dbi_output->first_boot &&
 	    dsi_config->dsi_hw_context.panel_on) {
+		if (on)
+			mdfld_enable_te(dev, pipe);
+
 		DRM_INFO("skip panle power setting for first boot! " \
 			 "panel is already powered on\n");
 		goto fun_exit;
