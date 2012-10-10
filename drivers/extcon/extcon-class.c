@@ -42,6 +42,11 @@
  * names that are actually used in your extcon device.
  */
 const char *extcon_cable_name[] = {
+	[EXTCON_SDP]		= "CHARGER_USB_SDP",
+	[EXTCON_DCP]		= "CHARGER_USB_DCP",
+	[EXTCON_CDP]		= "CHARGER_USB_CDP",
+	[EXTCON_ACA]		= "CHARGER_USB_ACA",
+	[EXTCON_AC]		= "CHARGER_AC",
 	[EXTCON_USB]		= "USB",
 	[EXTCON_USB_HOST]	= "USB-Host",
 	[EXTCON_TA]		= "TA",
