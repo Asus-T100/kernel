@@ -70,6 +70,9 @@
 #define SOC_DEF_MAX_MIN2_THRLD	0xFF04
 #define SOC_DEF_MAX_MIN3_THRLD	0xFF01
 
+/* SOC threshold for 1% interrupt */
+#define SOC_INTR_S0_THR		1
+
 #define MISCCFG_CONFIG_REPSOC	0x0000
 #define MISCCFG_CONFIG_VFSOC	0x0003
 
@@ -331,7 +334,10 @@ static struct notifier_block max17042_reboot_notifier_block = {
 
 static bool is_battery_online(struct max17042_chip *chip);
 static void configure_interrupts(struct max17042_chip *chip);
-static void set_soc_intr_thresholds(struct max17042_chip *chip);
+/* Set SOC threshold in S3 state */
+static void set_soc_intr_thresholds_s3(struct max17042_chip *chip);
+/* Set SOC threshold to offset percentage in S0 state */
+static void set_soc_intr_thresholds_s0(struct max17042_chip *chip, int offset);
 static void save_runtime_params(struct max17042_chip *chip);
 static void set_chip_config(struct max17042_chip *chip);
 static u16 fg_vfSoc;
@@ -575,8 +581,12 @@ static irqreturn_t max17042_thread_handler(int id, void *dev)
 		dev_info(&chip->client->dev, "VOLT threshold INTR\n");
 
 	if ((stat & STATUS_INTR_SOCMAX_BIT) ||
-		(stat & STATUS_INTR_SOCMIN_BIT))
+		(stat & STATUS_INTR_SOCMIN_BIT)) {
 		dev_info(&chip->client->dev, "SOC threshold INTR\n");
+		/* set thresholds for the next trigger */
+		if (chip->pdata->soc_intr_mode_enabled)
+			set_soc_intr_thresholds_s0(chip, SOC_INTR_S0_THR);
+	}
 
 	if (stat & STATUS_BR_BIT) {
 		dev_info(&chip->client->dev, "Battery removed INTR\n");
@@ -1478,7 +1488,51 @@ static void max17042_init_worker(struct work_struct *work)
 	max17042_restore_conf_data(chip);
 }
 
-static void set_soc_intr_thresholds(struct max17042_chip *chip)
+/* Set the SOC threshold interrupt to offset percentage in S0 state */
+static void set_soc_intr_thresholds_s0(struct max17042_chip *chip, int offset)
+{
+	u16 soc_tr;
+	int soc, ret;
+
+	/* program interrupt thesholds such that we should
+	 * get interrupt for every 'offset' perc change in the soc
+	 */
+	ret = max17042_read_reg(chip->client, MAX17042_RepSOC);
+	if (ret < 0) {
+		dev_err(&chip->client->dev,
+			"maxim RepSOC read failed:%d\n", ret);
+		return ;
+	}
+	soc = ret >> 8;
+	/* Check if MSB of lower byte is set
+	 * then round off the SOC to higher digit
+	 */
+	if (ret & 0x80)
+		soc += 1;
+
+	/* if upper threshold exceeds 100% then stop
+	 * the interrupt for upper thresholds */
+	 if ((soc + offset) > 100)
+		soc_tr = 0xff << 8;
+	else
+		soc_tr = (soc + offset) << 8;
+
+	/* if lower threshold falls
+	 * below 1% limit it to 1% */
+	if ((soc - offset) < 1)
+		soc_tr |= 1;
+	else
+		soc_tr |= (soc - offset);
+
+	dev_info(&chip->client->dev,
+		"soc perc: soc: %d, offset: %d\n", soc, offset);
+	ret = max17042_write_reg(chip->client, MAX17042_SALRT_Th, soc_tr);
+	if (ret < 0)
+		dev_err(&chip->client->dev,
+			"SOC threshold write to maxim fail:%d", ret);
+}
+
+static void set_soc_intr_thresholds_s3(struct max17042_chip *chip)
 {
 	int ret, val, soc;
 
@@ -1582,6 +1636,12 @@ static void max17042_evt_worker(struct work_struct *work)
 		schedule_work(&chip->init_worker);
 
 	power_supply_changed(&chip->battery);
+	/* If charging is stopped and there is a sudden drop in SOC below
+	 * minimum threshold currently set, we'll not get further interrupts.
+	 * This call to set thresholds, will take care of this scenario.
+	 */
+	if (chip->pdata->soc_intr_mode_enabled)
+		set_soc_intr_thresholds_s0(chip, SOC_INTR_S0_THR);
 	pm_runtime_put_sync(&chip->client->dev);
 }
 
@@ -1837,6 +1897,10 @@ static void configure_interrupts(struct max17042_chip *chip)
 	max17042_reg_read_modify(chip->client, MAX17042_CONFIG,
 						CONFIG_ALRT_BIT_ENBL, 1);
 
+	/* set the Interrupt threshold register for soc */
+	if (chip->pdata->soc_intr_mode_enabled)
+		set_soc_intr_thresholds_s0(chip, SOC_INTR_S0_THR);
+
 	/*
 	 * recheckthe battery present status to
 	 * make sure we didn't miss any battery
@@ -2038,7 +2102,7 @@ static int max17042_suspend(struct device *dev)
 	 */
 	if (chip->client->irq > 0) {
 		/* set SOC alert thresholds */
-		set_soc_intr_thresholds(chip);
+		set_soc_intr_thresholds_s3(chip);
 		/* setting Vmin(3300mV) threshold to wake the
 		 * platfrom in under low battery conditions */
 		max17042_write_reg(chip->client, MAX17042_VALRT_Th,
@@ -2064,12 +2128,18 @@ static int max17042_resume(struct device *dev)
 		/* Setting V-alrt threshold register to default values */
 		max17042_write_reg(chip->client, MAX17042_VALRT_Th,
 					VOLT_DEF_MAX_MIN_THRLD);
-		/* set SOC-alert threshold sholds to lowest value */
-		max17042_write_reg(chip->client, MAX17042_SALRT_Th,
+		/* set the Interrupt threshold register for soc */
+		if (chip->pdata->soc_intr_mode_enabled)
+			set_soc_intr_thresholds_s0(chip, SOC_INTR_S0_THR);
+		else
+			/* set SOC-alert threshold sholds to lowest value */
+			max17042_write_reg(chip->client, MAX17042_SALRT_Th,
 					SOC_DEF_MAX_MIN3_THRLD);
 		enable_irq(chip->client->irq);
 		disable_irq_wake(chip->client->irq);
 	}
+	/* current capacity updation to UI */
+	power_supply_changed(&chip->battery);
 
 	/* max17042 IC automatically wakes up if any edge
 	 * on SDCl or SDA if we set I2CSH of CONFG reg
