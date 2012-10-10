@@ -197,8 +197,7 @@ typedef struct MRSTLFB_DEVINFO_TAG
 	struct notifier_block   sLINNotifBlock;
 
 
-	spinlock_t             sSwapChainLock;
-
+	struct mutex		sSwapChainMutex;
 
 
 
@@ -230,6 +229,8 @@ typedef struct MRSTLFB_DEVINFO_TAG
 	MRST_BOOL bScreenState;
 
 	struct timer_list sFlipTimer;
+
+	struct work_struct flip_complete_work;
 }  MRSTLFB_DEVINFO;
 
 #if 0

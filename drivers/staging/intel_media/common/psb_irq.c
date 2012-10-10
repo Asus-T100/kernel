@@ -390,6 +390,8 @@ void mdfld_vsync_event_work(struct work_struct *work)
 	int pipe = dev_priv->vsync_pipe;
 	struct drm_device *dev = dev_priv->dev;
 
+	mid_vblank_handler(dev, pipe);
+
 	/*report vsync event*/
 	mdfld_vsync_event(dev, pipe);
 }
@@ -597,7 +599,6 @@ static void mid_pipe_event_handler(struct drm_device *dev, uint32_t pipe)
 	}
 
 	if (pipe_stat_val & PIPE_VBLANK_STATUS) {
-		mid_vblank_handler(dev, pipe);
 		dev_priv->vsync_pipe = pipe;
 		schedule_work(&dev_priv->vsync_event_work);
 	}

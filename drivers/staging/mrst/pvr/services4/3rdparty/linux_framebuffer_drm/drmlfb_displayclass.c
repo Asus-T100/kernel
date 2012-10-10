@@ -1,3 +1,4 @@
+
 /**********************************************************************
  *
  * Copyright (C) Imagination Technologies Ltd. All rights reserved.
@@ -498,13 +499,11 @@ static void SetFlushStateNoLock(MRSTLFB_DEVINFO* psDevInfo,
 static IMG_VOID SetFlushState(MRSTLFB_DEVINFO* psDevInfo,
                                       MRST_BOOL bFlushState)
 {
-	unsigned long ulLockFlags;
-
-	spin_lock_irqsave(&psDevInfo->sSwapChainLock, ulLockFlags);
+	mutex_lock(&psDevInfo->sSwapChainMutex);
 
 	SetFlushStateNoLock(psDevInfo, bFlushState);
 
-	spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
+	mutex_unlock(&psDevInfo->sSwapChainMutex);
 }
 
 static IMG_VOID SetDCState(IMG_HANDLE hDevice, IMG_UINT32 ui32State)
@@ -833,7 +832,6 @@ static PVRSRV_ERROR CreateDCSwapChain(IMG_HANDLE hDevice,
 
 	UNREFERENCED_PARAMETER(ui32OEMFlags);
 
-
 	if(!hDevice
 	|| !psDstSurfAttrib
 	|| !psSrcSurfAttrib
@@ -952,7 +950,7 @@ static PVRSRV_ERROR CreateDCSwapChain(IMG_HANDLE hDevice,
 	if (fbdev != NULL)
 		psbfb = fbdev->pfb;
 
-	spin_lock_irqsave(&psDevInfo->sSwapChainLock, ulLockFlags);
+	mutex_lock(&psDevInfo->sSwapChainMutex);
 
 	psSwapChain->ui32SwapChainID = *pui32SwapChainID = iSCId+1;
 	psSwapChain->ui32SwapChainPropertyFlag =
@@ -972,8 +970,7 @@ static PVRSRV_ERROR CreateDCSwapChain(IMG_HANDLE hDevice,
 		MRSTLFBEnableVSyncInterrupt(psDevInfo);
 	}
 
-	spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
-
+	mutex_unlock(&psDevInfo->sSwapChainMutex);
 
 	*phSwapChain = (IMG_HANDLE)psSwapChain;
 
@@ -1012,7 +1009,7 @@ static PVRSRV_ERROR DestroyDCSwapChain(IMG_HANDLE hDevice,
 	psDevInfo = (MRSTLFB_DEVINFO*)hDevice;
 	psSwapChain = (MRSTLFB_SWAPCHAIN*)hSwapChain;
 
-	spin_lock_irqsave(&psDevInfo->sSwapChainLock, ulLockFlags);
+	mutex_lock(&psDevInfo->sSwapChainMutex);
 
 	psDevInfo->ui32SwapChainNum--;
 
@@ -1023,15 +1020,7 @@ static PVRSRV_ERROR DestroyDCSwapChain(IMG_HANDLE hDevice,
 
 	psDevInfo->apsSwapChains[ psSwapChain->ui32SwapChainID -1] = NULL;
 
-	/*
-	 * Release the spin lock here, as FlushInternalVSyncQueue() may invoke
-	 * mutex_lock when freeing buffer.
-	 */
-	spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
-
 	FlushInternalVSyncQueue(psSwapChain, psDevInfo->ui32SwapChainNum == 0);
-
-	spin_lock_irqsave(&psDevInfo->sSwapChainLock, ulLockFlags);
 
 	if (psDevInfo->ui32SwapChainNum == 0)
 	{
@@ -1044,7 +1033,8 @@ static PVRSRV_ERROR DestroyDCSwapChain(IMG_HANDLE hDevice,
 		psDevInfo->ui32SwapChainNum == 0)
 		psDevInfo->psCurrentSwapChain = NULL;
 
-	spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
+	mutex_unlock(&psDevInfo->sSwapChainMutex);
+
 
 	if (psSwapChain->ulBufferCount)
 		taskid = (psSwapChain->ppsBuffer[0])->ui32OwnerTaskID;
@@ -1199,15 +1189,15 @@ static PVRSRV_ERROR SwapToDCBuffer(IMG_HANDLE hDevice,
 	return (PVRSRV_OK);
 }
 
-void MRSTLFBFlipTimerFn(unsigned long arg)
+static void timer_flip_handler(struct work_struct *work)
 {
-	MRSTLFB_DEVINFO *psDevInfo = (MRSTLFB_DEVINFO *)arg;
-	unsigned long ulLockFlags;
+	MRSTLFB_DEVINFO *psDevInfo;
 	MRSTLFB_SWAPCHAIN *psSwapChain;
 	MRSTLFB_VSYNC_FLIP_ITEM *psLastItem;
 
-	spin_lock_irqsave(&psDevInfo->sSwapChainLock, ulLockFlags);
+	psDevInfo = container_of(work, MRSTLFB_DEVINFO, flip_complete_work);
 
+	mutex_lock(&psDevInfo->sSwapChainMutex);
 	psSwapChain = psDevInfo->psCurrentSwapChain;
 	if (psSwapChain == NULL)
 	{
@@ -1224,9 +1214,25 @@ void MRSTLFBFlipTimerFn(unsigned long arg)
 		}
 	}
 	printk(KERN_WARNING "MRSTLFBFlipTimerFn: swapchain is not empty, flush queue\n");
+
+	/*
+	 * Release the spin lock here, as FlushInternalVSyncQueue() may invoke
+	 * mutex_lock when freeing buffer.
+	 */
+
 	FlushInternalVSyncQueue(psSwapChain, MRST_TRUE);
+
 ExitUnlock:
-	spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
+	mutex_unlock(&psDevInfo->sSwapChainMutex);
+	return;
+
+}
+
+void MRSTLFBFlipTimerFn(unsigned long arg)
+{
+	MRSTLFB_DEVINFO *psDevInfo = (MRSTLFB_DEVINFO *)arg;
+
+	schedule_work(&psDevInfo->flip_complete_work);
 }
 
 
@@ -1251,7 +1257,7 @@ static MRST_BOOL MRSTLFBVSyncIHandler(MRSTLFB_DEVINFO *psDevInfo, int iPipe)
 	unsigned long ulLockFlags;
 	MRSTLFB_SWAPCHAIN *psSwapChain;
 
-	spin_lock_irqsave(&psDevInfo->sSwapChainLock, ulLockFlags);
+	mutex_lock(&psDevInfo->sSwapChainMutex);
 
 
 	psSwapChain = psDevInfo->psCurrentSwapChain;
@@ -1271,9 +1277,9 @@ static MRST_BOOL MRSTLFBVSyncIHandler(MRSTLFB_DEVINFO *psDevInfo, int iPipe)
 			if(!psFlipItem->bCmdCompleted)
 			{
 				MRST_BOOL bScheduleMISR;
-
 				bScheduleMISR = MRST_TRUE;
 				MRSTFBFlipComplete(psSwapChain, psFlipItem, MRST_TRUE);
+
 				psFlipItem->bCmdCompleted = MRST_TRUE;
 			}
 
@@ -1318,7 +1324,7 @@ static MRST_BOOL MRSTLFBVSyncIHandler(MRSTLFB_DEVINFO *psDevInfo, int iPipe)
 		bStatus = MRST_FALSE;
 	}
 ExitUnlock:
-	spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
+	mutex_unlock(&psDevInfo->sSwapChainMutex);
 
 	return bStatus;
 }
@@ -1559,13 +1565,13 @@ static IMG_BOOL ProcessFlip2(IMG_HANDLE hCmdCookie,
 
 	/*Screen is off, no need to send data*/
 	if (bIllegalFlipContexts(pvData)) {
-		spin_lock_irqsave(&psDevInfo->sSwapChainLock, ulLockFlags);
+		mutex_lock(&psDevInfo->sSwapChainMutex);
 
 		MRSTFBFlipComplete(psSwapChain, NULL, MRST_FALSE);
 		psSwapChain->psPVRJTable->pfnPVRSRVCmdComplete(hCmdCookie,
 				IMG_TRUE);
 
-		spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
+		mutex_unlock(&psDevInfo->sSwapChainMutex);
 		mutex_unlock(&dsi_config->context_lock);
 		return IMG_TRUE;
 	}
@@ -1576,7 +1582,7 @@ static IMG_BOOL ProcessFlip2(IMG_HANDLE hCmdCookie,
 	if (dev_priv->exit_idle && (dsi_config->type == MDFLD_DSI_ENCODER_DPI))
 		dev_priv->exit_idle(dev, MDFLD_DSR_2D_3D, NULL, true);
 
-	spin_lock_irqsave(&psDevInfo->sSwapChainLock, ulLockFlags);
+	mutex_lock(&psDevInfo->sSwapChainMutex);
 
 	/*update context*/
 	updatePlaneContexts(psSwapChain, psFlipCmd, psPlaneContexts);
@@ -1647,7 +1653,7 @@ static IMG_BOOL ProcessFlip2(IMG_HANDLE hCmdCookie,
 		goto ExitTrueUnlock;
 	}
 ExitErrorUnlock:
-	spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
+	mutex_unlock(&psDevInfo->sSwapChainMutex);
 	if (contextlocked) {
 		mdfld_dsi_dsr_allow_locked(dsi_config);
 		mutex_unlock(&dsi_config->context_lock);
@@ -1655,7 +1661,7 @@ ExitErrorUnlock:
 	return IMG_FALSE;
 ExitTrueUnlock:
 #endif
-	spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
+	mutex_unlock(&psDevInfo->sSwapChainMutex);
 	if (contextlocked) {
 		mdfld_dsi_dsr_allow_locked(dsi_config);
 		mutex_unlock(&dsi_config->context_lock);
@@ -1684,12 +1690,10 @@ static IMG_BOOL ProcessFlip(IMG_HANDLE  hCmdCookie,
 	if(!hCmdCookie || !pvData)
 		return IMG_FALSE;
 
-
 	psFlipCmd = (DISPLAYCLASS_FLIP_COMMAND*)pvData;
 
 	if (psFlipCmd == IMG_NULL)
 		return IMG_FALSE;
-
 
 	psDevInfo = (MRSTLFB_DEVINFO*)psFlipCmd->hExtDevice;
 	dev = psDevInfo->psDrmDevice;
@@ -1701,10 +1705,10 @@ static IMG_BOOL ProcessFlip(IMG_HANDLE  hCmdCookie,
 	/* bFlush == true means hw recovery */
 	if (bFlush || (!psBuffer && bIllegalFlipContexts(pvData)) ||
 		(psBuffer && psDevInfo->bScreenState)) {
-		spin_lock_irqsave(&psDevInfo->sSwapChainLock, ulLockFlags);
+		mutex_lock(&psDevInfo->sSwapChainMutex);
 		MRSTFBFlipComplete(psSwapChain, NULL, MRST_FALSE);
 		psSwapChain->psPVRJTable->pfnPVRSRVCmdComplete(hCmdCookie, IMG_TRUE);
-		spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
+		mutex_unlock(&psDevInfo->sSwapChainMutex);
 		return IMG_TRUE;
 	}
 
@@ -1730,13 +1734,13 @@ static IMG_BOOL ProcessFlip(IMG_HANDLE  hCmdCookie,
 
 	/* double check to make sure we don't send data when screen is off */
 	if (psDevInfo->bScreenState) {
-		spin_lock_irqsave(&psDevInfo->sSwapChainLock, ulLockFlags);
+		mutex_lock(&psDevInfo->sSwapChainMutex);
 
 		MRSTFBFlipComplete(psSwapChain, NULL, MRST_FALSE);
 		psSwapChain->psPVRJTable->pfnPVRSRVCmdComplete(hCmdCookie,
 				IMG_TRUE);
 
-		spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
+		mutex_unlock(&psDevInfo->sSwapChainMutex);
 		mutex_unlock(&dsi_config->context_lock);
 		return IMG_TRUE;
 	}
@@ -1747,7 +1751,7 @@ static IMG_BOOL ProcessFlip(IMG_HANDLE  hCmdCookie,
 	if (dev_priv->exit_idle && (dsi_config->type == MDFLD_DSI_ENCODER_DPI))
 		dev_priv->exit_idle(dev, MDFLD_DSR_2D_3D, NULL, true);
 
-	spin_lock_irqsave(&psDevInfo->sSwapChainLock, ulLockFlags);
+	mutex_lock(&psDevInfo->sSwapChainMutex);
 
 #if defined(MRST_USING_INTERRUPTS)
 
@@ -1816,7 +1820,7 @@ static IMG_BOOL ProcessFlip(IMG_HANDLE  hCmdCookie,
 		goto ExitTrueUnlock;
 	}
 ExitErrorUnlock:
-	spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
+	mutex_unlock(&psDevInfo->sSwapChainMutex);
 	if (contextlocked) {
 		mdfld_dsi_dsr_allow_locked(dsi_config);
 		mutex_unlock(&dsi_config->context_lock);
@@ -1825,7 +1829,7 @@ ExitErrorUnlock:
 
 ExitTrueUnlock:
 #endif
-	spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
+	mutex_unlock(&psDevInfo->sSwapChainMutex);
 	if (contextlocked) {
 		mdfld_dsi_dsr_allow_locked(dsi_config);
 		mutex_unlock(&dsi_config->context_lock);
@@ -1866,7 +1870,7 @@ void MRSTLFBSuspend(void)
 	MRSTLFB_DEVINFO *psDevInfo = GetAnchorPtr();
 	unsigned long ulLockFlags;
 
-	spin_lock_irqsave(&psDevInfo->sSwapChainLock, ulLockFlags);
+	mutex_lock(&psDevInfo->sSwapChainMutex);
 
 	if (!psDevInfo->bSuspended)
 	{
@@ -1879,7 +1883,7 @@ void MRSTLFBSuspend(void)
 		psDevInfo->bSuspended = MRST_TRUE;
 	}
 
-	spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
+	mutex_unlock(&psDevInfo->sSwapChainMutex);
 }
 
 void MRSTLFBResume(void)
@@ -1887,7 +1891,7 @@ void MRSTLFBResume(void)
 	MRSTLFB_DEVINFO *psDevInfo = GetAnchorPtr();
 	unsigned long ulLockFlags;
 
-	spin_lock_irqsave(&psDevInfo->sSwapChainLock, ulLockFlags);
+	mutex_lock(&psDevInfo->sSwapChainMutex);
 
 	if (psDevInfo->bSuspended)
 	{
@@ -1902,7 +1906,7 @@ void MRSTLFBResume(void)
 		MRSTLFBRestoreLastFlip(psDevInfo);
 	}
 
-	spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
+	mutex_unlock(&psDevInfo->sSwapChainMutex);
 
 #if !defined(PVR_MRST_STYLE_PM)
 	(void) UnblankDisplay(psDevInfo);
@@ -2066,11 +2070,11 @@ MRST_ERROR MRSTLFBChangeSwapChainProperty(unsigned long *psSwapChainGTTOffset,
 		return eError;
 	}
 
-	spin_lock_irqsave(&psDevInfo->sSwapChainLock, ulLockFlags);
+	mutex_lock(&psDevInfo->sSwapChainMutex);
 
 	if (psDevInfo->apsSwapChains == IMG_NULL) {
 		DRM_ERROR("No swap chain.\n");
-		spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
+		mutex_unlock(&psDevInfo->sSwapChainMutex);
 		return eError;
 	}
 
@@ -2099,7 +2103,7 @@ MRST_ERROR MRSTLFBChangeSwapChainProperty(unsigned long *psSwapChainGTTOffset,
 			psDevInfo->apsSwapChains[ui32SwapChainID]->ui32SwapChainPropertyFlag &= ~iSwapChainAttachedPlane;
 	}
 
-	spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
+	mutex_unlock(&psDevInfo->sSwapChainMutex);
 
 	eError = MRST_OK;
 	return eError;
@@ -2127,13 +2131,14 @@ static int DRMLFBLeaveVTHandler(struct drm_device *dev)
 	MRSTLFB_DEVINFO *psDevInfo = GetAnchorPtr();
   	unsigned long ulLockFlags;
 
-	spin_lock_irqsave(&psDevInfo->sSwapChainLock, ulLockFlags);
+	mutex_lock(&psDevInfo->sSwapChainMutex);
 
 	if (!psDevInfo->bLeaveVT)
 	{
 		if(psDevInfo->psCurrentSwapChain != NULL)
 		{
 			FlushInternalVSyncQueue(psDevInfo->psCurrentSwapChain, MRST_TRUE);
+
 			SetFlushStateNoLock(psDevInfo, MRST_TRUE);
 		}
 
@@ -2142,7 +2147,7 @@ static int DRMLFBLeaveVTHandler(struct drm_device *dev)
 		psDevInfo->bLeaveVT = MRST_TRUE;
 	}
 
-	spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
+	mutex_unlock(&psDevInfo->sSwapChainMutex);
 
 	return 0;
 }
@@ -2152,7 +2157,7 @@ static int DRMLFBEnterVTHandler(struct drm_device *dev)
 	MRSTLFB_DEVINFO *psDevInfo = GetAnchorPtr();
   	unsigned long ulLockFlags;
 
-	spin_lock_irqsave(&psDevInfo->sSwapChainLock, ulLockFlags);
+	mutex_lock(&psDevInfo->sSwapChainMutex);
 
 	if (psDevInfo->bLeaveVT)
 	{
@@ -2166,7 +2171,7 @@ static int DRMLFBEnterVTHandler(struct drm_device *dev)
 		MRSTLFBRestoreLastFlip(psDevInfo);
 	}
 
-	spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
+	mutex_unlock(&psDevInfo->sSwapChainMutex);
 
 	return 0;
 }
@@ -2351,7 +2356,8 @@ MRST_ERROR MRSTLFBInit(struct drm_device * dev)
 		}
 
 
-		spin_lock_init(&psDevInfo->sSwapChainLock);
+		mutex_init(&psDevInfo->sSwapChainMutex);
+		INIT_WORK(&psDevInfo->flip_complete_work, timer_flip_handler);
 
 		psDevInfo->psCurrentSwapChain = NULL;
 		psDevInfo->bFlushCommands = MRST_FALSE;
