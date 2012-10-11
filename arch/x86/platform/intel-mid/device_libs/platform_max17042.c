@@ -17,6 +17,7 @@
 #include <linux/power/max17042_battery.h>
 #include <linux/power/intel_mdf_battery.h>
 #include <linux/power/smb347-charger.h>
+#include <linux/power/bq24192_charger.h>
 #include <asm/intel-mid.h>
 #include <asm/delay.h>
 #include <asm/intel_scu_ipc.h>

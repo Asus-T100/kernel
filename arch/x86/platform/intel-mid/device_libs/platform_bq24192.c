@@ -15,6 +15,7 @@
 #include <linux/power/bq24192_charger.h>
 #include <linux/lnw_gpio.h>
 #include <asm/intel-mid.h>
+#include <asm/intel_mid_remoteproc.h>
 #include "platform_bq24192.h"
 
 static bool msic_battery_check(void)
@@ -69,5 +70,8 @@ void *bq24192_platform_data(void *info)
 
 	platform_data.temp_low_lim = -10;
 	platform_data.slave_mode = 0;
+
+	register_rpmsg_service("rpmsg_bq24192", RPROC_SCU,
+				RP_BQ24192);
 	return &platform_data;
 }

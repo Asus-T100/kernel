@@ -110,6 +110,9 @@ CHARGE_COUNTER - the current charge counter (in µAh).  This could easily
 be negative; there is no empty or full value.  It is only useful for
 relative, time-based measurements.
 
+CHARGE_CURRENT_LIMIT - charge control limit to control the charge current
+from user space.This corresponds to POWER_SUPPLY_CHARGE_CURRENT_LIMIT_*.
+
 ENERGY_FULL, ENERGY_EMPTY - same as above but for energy.
 
 CAPACITY - capacity in percents.
@@ -123,7 +126,6 @@ TIME_TO_EMPTY - seconds left for battery to be considered empty (i.e.
 while battery powers a load)
 TIME_TO_FULL - seconds left for battery to be considered full (i.e.
 while battery is charging)
-
 
 Battery <-> external power supply interaction
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

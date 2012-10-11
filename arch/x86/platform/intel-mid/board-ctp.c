@@ -40,6 +40,7 @@
  */
 #include "device_libs/platform_mxt224.h"
 #include "device_libs/platform_max17042.h"
+#include "device_libs/platform_bq24192.h"
 
 /*
  * SPI devices
@@ -75,6 +76,7 @@ struct devs_id __initconst device_ids[] = {
 
 	/* Fuel Gauge and charger */
 	{"max17042", SFI_DEV_TYPE_I2C, 1, &max17042_platform_data, NULL},
+	{"bq24192", SFI_DEV_TYPE_I2C, 1, &bq24192_platform_data},
 
 	/* Audio */
 	{"clvcs_audio", SFI_DEV_TYPE_IPC, 1, &clvs_audio_platform_data,
