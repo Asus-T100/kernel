@@ -19,3 +19,4 @@ obj-$(CONFIG_INTEL_ATOM_MDFLD_POWER) += intel_soc_mdfld.o
 obj-$(CONFIG_INTEL_ATOM_CLV_POWER) += intel_soc_clv.o
 # BOARD files
 obj-$(CONFIG_BOARD_MFLD_BLACKBAY) += board-blackbay.o
+obj-$(CONFIG_BOARD_CTP) += board-ctp.o

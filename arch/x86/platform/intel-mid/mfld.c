@@ -20,6 +20,7 @@
 #include <linux/module.h>
 #include <linux/notifier.h>
 #include <linux/intel_mid_pm.h>
+#include <linux/power_supply.h>
 #include <linux/intel_pmic_gpio.h>
 #include <linux/gpio.h>
 #include <linux/gpio_keys.h>
@@ -40,6 +41,20 @@
 
 void intel_mid_power_off(void)
 {
+#if defined(CONFIG_INTEL_MID_OSIP) && !defined(CONFIG_BOARD_REDRIDGE)
+	if (!get_force_shutdown_occured() &&
+	    power_supply_is_system_supplied()) {
+		/*
+		 * Do a cold reset to let bootloader bring up the
+		 * platform into acting dead mode to continue
+		 * battery charging.
+		 * If some special condition occured and wants to
+		 * make a force shutdown, even if the charger is
+		 * connected, dont boot(up to COS).
+		 */
+		intel_scu_ipc_simple_command(IPCMSG_COLD_RESET, 0);
+	} else
+#endif
 	pmu_power_off();
 }
 
@@ -58,10 +73,24 @@ unsigned long __init intel_mid_calibrate_tsc(void)
 		ratio = 16;
 	}
 	rdmsr(MSR_FSB_FREQ, lo, hi);
-	if ((lo & 0x7) == 0x7)
-		fsb = PENWELL_FSB_FREQ_83SKU;
-	else
-		fsb = PENWELL_FSB_FREQ_100SKU;
+
+	switch (lo & BSEL_SOC_FUSE_MASK) {
+	case BSEL_SOC_FUSE_001:
+		fsb = FSB_FREQ_133SKU;
+		break;
+	case BSEL_SOC_FUSE_101:
+		fsb = FSB_FREQ_100SKU;
+		break;
+	case BSEL_SOC_FUSE_111:
+		fsb = FSB_FREQ_83SKU;
+		break;
+	default:
+		pr_err("%s: unsupported BSEL_SOC_FUSE: %d, fall back to 83SKU",
+					__func__, lo & BSEL_SOC_FUSE_MASK);
+		fsb = FSB_FREQ_83SKU;
+		break;
+	}
+
 	fast_calibrate = ratio * fsb;
 	pr_debug("read penwell tsc %lu khz\n", fast_calibrate);
 	lapic_timer_frequency = fsb * 1000 / HZ;

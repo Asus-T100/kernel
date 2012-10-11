@@ -281,6 +281,8 @@ static void __cpuinit intel_mid_arch_setup(void)
 		__intel_mid_cpu_chip = INTEL_MID_CPU_CHIP_PENWELL;
 	else if (boot_cpu_data.x86 == 6 && boot_cpu_data.x86_model == 0x26)
 		__intel_mid_cpu_chip = INTEL_MID_CPU_CHIP_LINCROFT;
+	else if (boot_cpu_data.x86 == 6 && boot_cpu_data.x86_model == 0x35)
+		__intel_mid_cpu_chip = INTEL_MID_CPU_CHIP_CLOVERVIEW;
 	else {
 		pr_err("Unknown Moorestown CPU (%d:%d), default to Lincroft\n",
 			boot_cpu_data.x86, boot_cpu_data.x86_model);
@@ -302,10 +304,33 @@ MODULE_PARM_DESC(force_cold_boot,
 
 static void intel_mid_reboot(void)
 {
-	if (force_cold_boot)
+	if (intel_scu_ipc_fw_update()) {
+		pr_debug("intel_scu_fw_update: IFWI upgrade failed...\n");
+		BUG();
+	}
+	if (force_cold_boot) {
+		pr_info("Immediate COLD BOOT\n");
 		intel_scu_ipc_simple_command(IPCMSG_COLD_BOOT, 0);
-	else
+	} else {
+		pr_info("Immediate COLD RESET\n");
 		intel_scu_ipc_simple_command(IPCMSG_COLD_RESET, 0);
+	}
+}
+
+static void intel_mid_emergency_reboot(char *cmd)
+{
+	/* Change system state to poll IPC status until IPC not busy*/
+	system_state = SYSTEM_RESTART;
+
+	while (intel_scu_ipc_check_status())
+		udelay(10);
+
+	if (force_cold_boot)
+		intel_scu_ipc_raw_cmd(IPCMSG_COLD_BOOT,
+			0, NULL, 0, NULL, 0, 0, 0);
+	else
+		intel_scu_ipc_raw_cmd(IPCMSG_COLD_RESET,
+			0, NULL, 0, NULL, 0, 0, 0);
 }
 
 /*
@@ -335,7 +360,8 @@ void __init x86_intel_mid_early_setup(void)
 	legacy_pic = &null_legacy_pic;
 
 	pm_power_off = intel_mid_power_off;
-	machine_ops.emergency_restart  = intel_mid_reboot;
+	machine_ops.restart = intel_mid_reboot;
+	machine_ops.emergency_restart  = intel_mid_emergency_reboot;
 
 	/* Avoid searching for BIOS MP tables */
 	x86_init.mpparse.find_smp_config = x86_init_noop;
@@ -408,9 +434,9 @@ static int __init sfi_parse_gpio(struct sfi_table_header *table)
 	memcpy(gpio_table, pentry, num * sizeof(*pentry));
 	gpio_num_entry = num;
 
-	pr_debug("GPIO pin info:\n");
+	pr_info("GPIO pin info:\n");
 	for (i = 0; i < num; i++, pentry++)
-		pr_debug("info[%2d]: controller = %16.16s, pin_name = %16.16s,"
+		pr_info("info[%2d]: controller = %16.16s, pin_name = %16.16s,"
 		" pin = %d\n", i,
 			pentry->controller_name,
 			pentry->pin_name,
@@ -679,11 +705,15 @@ static int __init sfi_parse_devs(struct sfi_table_header *table)
 			 * so we have to enable them one by one here
 			 */
 			ioapic = mp_find_ioapic(irq);
-			irq_attr.ioapic = ioapic;
-			irq_attr.ioapic_pin = irq;
-			irq_attr.trigger = 1;
-			irq_attr.polarity = 1;
-			io_apic_set_pci_routing(NULL, irq, &irq_attr);
+			if (ioapic >= 0) {
+				irq_attr.ioapic = ioapic;
+				irq_attr.ioapic_pin = irq;
+				irq_attr.trigger = 1;
+				irq_attr.polarity = 1;
+				io_apic_set_pci_routing(NULL, irq, &irq_attr);
+			} else
+				printk(KERN_INFO, "APIC entry not found for: name=%s, irq=%d, ioapic=%d",
+					pentry->name, irq, ioapic);
 		}
 
 		dev = get_device_id(pentry->type, pentry->name);
