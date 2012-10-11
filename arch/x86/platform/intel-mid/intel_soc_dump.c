@@ -51,6 +51,18 @@
  * dump_cmd
  *     e.g.  echo "w pci 0 2 0 0x20 0x380020f3" > dump_cmd
  *
+ * msr read: echo "r[4|8]  msr [<cpu>|all] <reg>" > dump_cmd
+ * read cab be 32bit(r4) or 64bit(r8), default is r8 (=r)
+ * cpu can be 0, 1, 2, 3, ... or all, default is all
+ *     e.g.  echo "r msr 0 0xcd" > dump_cmd
+ *     (read all cpu's msr reg 0xcd in 64bit mode)
+ *
+ * msr write: echo "w[4|8] msr [<cpu>|all] <reg> <val>" > dump_cmd
+ * write cab be 32bit(w4) or 64bit(w8), default is w8 (=w)
+ * cpu can be 0, 1, 2, 3, ... or all, default is all
+ *     e.g.  echo "w msr 1 289 0xf03090a0cc73be64" > dump_cmd
+ *     (write value 0xf03090a0cc73be64 to cpu 1's msr reg 289 in 64bit mode)
+ *
  * i2c read:  echo "r i2c <bus> <addr>" > dump_cmd
  *     e.g.  echo "r i2c 1 0x3e" > dump_cmd
  *
@@ -72,6 +84,8 @@
 #include <linux/pm_runtime.h>
 #include <asm/uaccess.h>
 #include <asm/intel-mid.h>
+#include <asm/processor.h>
+#include <asm/msr.h>
 
 #define MAX_CMDLEN		96
 #define MAX_ERRLEN		255
@@ -84,11 +98,13 @@
 #define ACCESS_WIDTH_8BIT	1
 #define ACCESS_WIDTH_16BIT	2
 #define ACCESS_WIDTH_32BIT	4
+#define ACCESS_WIDTH_64BIT	8
 
 #define ACCESS_BUS_MMIO		1
 #define ACCESS_BUS_MSG_BUS	2
 #define ACCESS_BUS_PCI		3
-#define ACCESS_BUS_I2C		4
+#define ACCESS_BUS_MSR		4
+#define ACCESS_BUS_I2C		5
 
 #define ACCESS_DIR_READ		1
 #define ACCESS_DIR_WRITE	2
@@ -115,6 +131,7 @@ static char dump_cmd_buf[MAX_CMDLEN], err_buf[MAX_ERRLEN + 1];
 
 static int access_dir, access_width, access_bus, access_len;
 static u32 access_value;
+static u64 access_value_64;
 
 /* mmio */
 static u32 mmio_addr;
@@ -126,6 +143,10 @@ static u32 msg_bus_addr;
 /* pci */
 static u8 pci_bus, pci_dev, pci_func;
 static u16 pci_reg;
+
+/* msr */
+static int msr_cpu;
+static u32 msr_reg;
 
 /* i2c */
 static u8 i2c_bus;
@@ -241,6 +262,80 @@ static const struct mmio_pci_map soc_clv_map[] = {
 	{ 0xff11d000, 0x1000, 0, 2, 2, "PMU" },
 };
 
+static const struct mmio_pci_map soc_tng_map[] = {
+	/* I2C0 is reserved for SCU<-->PMIC communication */
+	{ 0xff18b000, 0x400, 0, 8, 0, "I2C1" },
+	{ 0xff18c000, 0x400, 0, 8, 1, "I2C2" },
+	{ 0xff18d000, 0x400, 0, 8, 2, "I2C3" },
+	{ 0xff18e000, 0x400, 0, 8, 3, "I2C4" },
+	{ 0xff18f000, 0x400, 0, 9, 0, "I2C5" },
+	{ 0xff190000, 0x400, 0, 9, 1, "I2C6" },
+	{ 0xff191000, 0x400, 0, 9, 2, "I2C7" },
+
+	/* SDIO controllers number: 4 (compared to 5 of PNW/CLV) */
+	{ 0xff3fa000, 0x100, 0, 1, 2, "SDIO0 (HC2)" },
+	{ 0xff3fb000, 0x100, 0, 1, 3, "SDIO1 (HC1a)" },
+	{ 0xff3fc000, 0x100, 0, 1, 0, "SDIO3/eMMC0 (HC0a)" },
+	{ 0xff3fd000, 0x100, 0, 1, 1, "SDIO4/eMMC1 (HC0b)" },
+
+	/* GPIO0 and GPIO1 are merged to one GPIO controller in TNG */
+	{ 0xff008000, 0x1000, 0, 12, 0, "GPIO" },
+	{ 0xff192000, 0x1000, 0, 21, 0, "GP DMA" },
+
+	/* SSP Audio: SSP0: Modem, SSP1: Audio Codec, SSP2: Bluetooth */
+
+	/* LPE */
+	{ 0xff340000, 0x4000, 0, 13, 0, "LPE SHIM" },
+	{ 0xff344000, 0x1000, 0, 13, 0, "MAILBOX RAM" },
+	{ 0xff2c0000, 0x14000, 0, 13, 0, "ICCM" },
+	{ 0xff300000, 0x28000, 0, 13, 0, "DCCM" },
+	{ 0xff298000, 0x4000, 0, 14, 0, "LPE DMA0" },
+	/* invisible to IA: { 0xff29c000, 0x4000, -1, -1, -1, "LPE DMA1" }, */
+
+
+	/* SSP SC: SSP4: used by SCU for SPI Debug Card */
+	/* invisible to IA: { 0xff00e000, 0x1000, -1, -1, -1, "SSP SC" }, */
+
+	/* SSP General Purpose */
+	{ 0xff188000, 0x1000, 0, 7, 0, "SSP3" },
+	{ 0xff189000, 0x1000, 0, 7, 1, "SSP5" },
+	{ 0xff18a000, 0x1000, 0, 7, 2, "SSP6" },
+
+	/* UART */
+	{ 0xff010080, 0x80, 0, 4, 1, "UART0" },
+	{ 0xff011000, 0x80, 0, 4, 2, "UART1" },
+	{ 0xff011080, 0x80, 0, 4, 3, "UART2" },
+	{ 0xff011400, 0x400, 0, 5, 0, "UART DMA" },
+
+	/* HSI */
+	{ 0xff3f8000, 0x1000, 0, 10, 0, "HSI" },
+
+	/* USB */
+	{ 0xf9040000, 0x20000, 0, 15, 0, "USB2 OTG" },
+	{ 0xf9060000, 0x20000, 0, 16, 0, "USB2 MPH/HSIC" },
+	{ 0xf9100000, 0x100000, 0, 17, 0, "USB3 OTG" },
+	/* { 0xf90f0000, 0x1000, -1, -1, -1, "USB3 PHY" }, */
+	/* { 0xf90a0000, 0x10000, -1, -1, -1, "USB3 DMA FETCH" }, */
+
+	/* Security/Chaabi */
+	{ 0xf9030000, 0x1000, 0, 11, 0, "SEP SECURITY" },
+
+	/* Graphics/Display */
+	{ 0xc0000000, 0x2000000, 0, 2, 0, "GVD BAR0" },
+	{ 0x80000000, 0x10000000, 0, 2, 0, "GVD BAR2" },
+
+	/* ISP */
+	{ 0xc2000000, 0x400000, 0, 3, 0, "ISP" },
+
+	/* PTI */
+	{ 0xf9009000, 0x1000, 0, 18, 0, "PTI STM" },
+	{ 0xf90a0000, 0x10000, 0, 18, 0, "PTI USB3 DMA FETCH" },
+	{ 0xfa000000, 0x1000000, 0, 18, 0, "PTI APERTURE A" },
+
+	{ 0xff009000, 0x1000, 0, 19, 0, "SCU-IA IPC" },
+	{ 0xff00b000, 0x1000, 0, 20, 0, "PMU" },
+};
+
 static struct pci_dev *mmio_to_pci(u32 addr, char **name)
 {
 	int i, count;
@@ -252,6 +347,9 @@ static struct pci_dev *mmio_to_pci(u32 addr, char **name)
 	} else if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_CLOVERVIEW) {
 		count = ARRAY_SIZE(soc_clv_map);
 		map = (struct mmio_pci_map *) &soc_clv_map[0];
+	} else if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_TANGIER) {
+		count = ARRAY_SIZE(soc_tng_map);
+		map = (struct mmio_pci_map *) &soc_tng_map[0];
 	} else {
 		return NULL;
 	}
@@ -553,6 +651,78 @@ failed:
 	return -EINVAL;
 }
 
+static int parse_msr_args(char **arg_list, int arg_num)
+{
+	int ret, arg_reg, arg_val;
+
+	if (((access_dir == ACCESS_DIR_READ) && (arg_num < 3)) ||
+		((access_dir == ACCESS_DIR_WRITE) && (arg_num < 4))) {
+		snprintf(err_buf, MAX_ERRLEN, "too few arguments\n"
+			"usage: r[4|8] msr [<cpu> | all] <reg>]\n"
+			"       w[4|8] msr [<cpu> | all] <reg> <val>]\n");
+		goto failed;
+	}
+
+	if (((access_dir == ACCESS_DIR_READ) && (arg_num > 4)) ||
+		((access_dir == ACCESS_DIR_WRITE) && (arg_num > 5))) {
+		snprintf(err_buf, MAX_ERRLEN, "too many arguments\n"
+			"usage: r[4|8] msr [<cpu> | all] <reg>]\n"
+			"       w[4|8] msr [<cpu> | all] <reg> <val>]\n");
+		goto failed;
+	}
+
+	if (access_width == ACCESS_WIDTH_DEFAULT)
+		access_width = ACCESS_WIDTH_64BIT;
+
+	if (!strncmp(arg_list[2], "all", 3)) {
+		msr_cpu = -1;
+		arg_reg = 3;
+		arg_val = 4;
+	} else if ((access_dir == ACCESS_DIR_READ && arg_num == 4) ||
+		(access_dir == ACCESS_DIR_WRITE && arg_num == 5)) {
+		ret = kstrtou32(arg_list[2], 0, &msr_cpu);
+		if (ret) {
+			snprintf(err_buf, MAX_ERRLEN, "invalid cpu: %s\n",
+							arg_list[2]);
+			goto failed;
+		}
+		arg_reg = 3;
+		arg_val = 4;
+	} else {
+		/* Default cpu for msr read is all, for msr write is 0 */
+		if (access_dir == ACCESS_DIR_READ)
+			msr_cpu = -1;
+		else
+			msr_cpu = 0;
+		arg_reg = 2;
+		arg_val = 3;
+	}
+
+
+	ret = kstrtou32(arg_list[arg_reg], 0, &msr_reg);
+	if (ret) {
+		snprintf(err_buf, MAX_ERRLEN, "invalid msr reg: %s\n",
+							arg_list[2]);
+		goto failed;
+	}
+	if (access_dir == ACCESS_DIR_WRITE) {
+		if (access_width == ACCESS_WIDTH_32BIT)
+			ret = kstrtou32(arg_list[arg_val], 0, &access_value);
+		else
+			ret = kstrtou64(arg_list[arg_val], 0, &access_value_64);
+		if (ret) {
+			snprintf(err_buf, MAX_ERRLEN, "invalid value: %s\n",
+							arg_list[arg_val]);
+			goto failed;
+		}
+	}
+
+	return 0;
+
+failed:
+	return -EINVAL;
+}
+
 static int parse_i2c_args(char **arg_list, int arg_num)
 {
 	int ret;
@@ -643,8 +813,11 @@ static ssize_t dump_cmd_write(struct file *file, const char __user *buf,
 		goto done;
 	}
 
-	/* arg 1: direction(read/write) and mode (8/16/32 bit) */
-	if (!strncmp(arg_list[0], "r4", 2)) {
+	/* arg 1: direction(read/write) and mode (8/16/32/64 bit) */
+	if (!strncmp(arg_list[0], "r8", 2)) {
+		access_dir = ACCESS_DIR_READ;
+		access_width = ACCESS_WIDTH_64BIT;
+	} else if (!strncmp(arg_list[0], "r4", 2)) {
 		access_dir = ACCESS_DIR_READ;
 		access_width = ACCESS_WIDTH_32BIT;
 	} else if (!strncmp(arg_list[0], "r2", 2)) {
@@ -656,6 +829,9 @@ static ssize_t dump_cmd_write(struct file *file, const char __user *buf,
 	} else if (!strncmp(arg_list[0], "r", 1)) {
 		access_dir = ACCESS_DIR_READ;
 		access_width = ACCESS_WIDTH_DEFAULT;
+	} else if (!strncmp(arg_list[0], "w8", 2)) {
+		access_dir = ACCESS_DIR_WRITE;
+		access_width = ACCESS_WIDTH_64BIT;
 	} else if (!strncmp(arg_list[0], "w4", 2)) {
 		access_dir = ACCESS_DIR_WRITE;
 		access_width = ACCESS_WIDTH_32BIT;
@@ -685,6 +861,9 @@ static ssize_t dump_cmd_write(struct file *file, const char __user *buf,
 	} else if (!strncmp(arg_list[1], "pci", 3)) {
 		access_bus = ACCESS_BUS_PCI;
 		ret = parse_pci_args(arg_list, arg_num);
+	} else if (!strncmp(arg_list[1], "msr", 3)) {
+		access_bus = ACCESS_BUS_MSR;
+		ret = parse_msr_args(arg_list, arg_num);
 	} else if (!strncmp(arg_list[1], "i2c", 3)) {
 		access_bus = ACCESS_BUS_I2C;
 		ret = parse_i2c_args(arg_list, arg_num);
@@ -717,6 +896,16 @@ static ssize_t dump_cmd_write(struct file *file, const char __user *buf,
 		ret = -EINVAL;
 	}
 
+	if (access_bus == ACCESS_BUS_MSR) {
+		if ((access_width != ACCESS_WIDTH_32BIT) &&
+			(access_width != ACCESS_WIDTH_64BIT) &&
+			(access_width != ACCESS_WIDTH_DEFAULT)) {
+			snprintf(err_buf, MAX_ERRLEN,
+				"only 32bit or 64bit is allowed for msr\n");
+			ret = -EINVAL;
+		}
+	}
+
 done:
 	dump_cmd_was_set = ret ? 0 : 1;
 	return ret ? ret : len;
@@ -733,7 +922,7 @@ static int dump_output_show_mmio(struct seq_file *s)
 	pdev = mmio_to_pci(mmio_addr, &name);
 	if (pdev && pm_runtime_get_sync(&pdev->dev) < 0) {
 		seq_printf(s, "can't put device %s into D0i0 state\n", name);
-		return -EBUSY;
+		return 0;
 	}
 
 	if (access_dir == ACCESS_DIR_WRITE) {
@@ -743,7 +932,7 @@ static int dump_output_show_mmio(struct seq_file *s)
 				mmio_addr);
 			if (pdev)
 				pm_runtime_put_sync(&pdev->dev);
-			return -EFAULT;
+			return 0;
 		}
 		switch (access_width) {
 		case ACCESS_WIDTH_8BIT:
@@ -775,7 +964,7 @@ static int dump_output_show_mmio(struct seq_file *s)
 				mmio_addr);
 			if (pdev)
 				pm_runtime_put_sync(&pdev->dev);
-			return -EFAULT;
+			return 0;
 		}
 
 		for (i = 0; i < comp1 + comp2 + access_len; i++) {
@@ -869,12 +1058,12 @@ static int dump_output_show_pci(struct seq_file *s)
 	if (!pdev) {
 		seq_printf(s, "pci bus %d:%d:%d doesn't exist\n",
 			pci_bus, pci_dev, pci_func);
-		return -EINVAL;
+		return 0;
 	}
 	if (pm_runtime_get_sync(&pdev->dev) < 0) {
 		seq_printf(s, "can't put pci device %d:%d:%d into D0i0 state\n",
 			pci_bus, pci_dev, pci_func);
-		return -EBUSY;
+		return 0;
 	}
 
 	if (access_dir == ACCESS_DIR_WRITE) {
@@ -949,6 +1138,80 @@ static int dump_output_show_pci(struct seq_file *s)
 	return 0;
 }
 
+static int dump_output_show_msr(struct seq_file *s)
+{
+	int ret, i, count;
+	u32 data[2];
+
+	if (access_dir == ACCESS_DIR_READ) {
+		if (msr_cpu < 0) {
+			/* loop for all cpus */
+			i = 0;
+			count = nr_cpu_ids;
+		} else if (msr_cpu >= nr_cpu_ids || msr_cpu < 0) {
+			seq_printf(s, "cpu should be between 0 - %d\n",
+							nr_cpu_ids - 1);
+			return 0;
+		} else {
+			/* loop for one cpu */
+			i = msr_cpu;
+			count = msr_cpu + 1;
+		}
+		for (; i < count; i++) {
+			ret = rdmsr_safe_on_cpu(i, msr_reg, &data[0], &data[1]);
+			if (ret) {
+				seq_printf(s, "msr read error: %d\n", ret);
+				return 0;
+			} else {
+				if (access_width == ACCESS_WIDTH_32BIT)
+					seq_printf(s, "[cpu %1d] %08x\n",
+							i, data[0]);
+				else
+					seq_printf(s, "[cpu %1d] %08x%08x\n",
+						 i, data[1], data[0]);
+			}
+		}
+	} else {
+		if (access_width == ACCESS_WIDTH_32BIT) {
+			ret = rdmsr_safe_on_cpu(msr_cpu, msr_reg,
+					&data[0], &data[1]);
+			if (ret) {
+				seq_printf(s, "msr write error: %d\n", ret);
+				return 0;
+			}
+			data[0] = access_value;
+		} else {
+			data[0] = (u32)access_value_64;
+			data[1] = (u32)(access_value_64 >> 32);
+		}
+		if (msr_cpu < 0) {
+			/* loop for all cpus */
+			i = 0;
+			count = nr_cpu_ids;
+		} else {
+			if (msr_cpu >= nr_cpu_ids || msr_cpu < 0) {
+				seq_printf(s, "cpu should be between 0 - %d\n",
+						nr_cpu_ids - 1);
+				return 0;
+			}
+			/* loop for one cpu */
+			i = msr_cpu;
+			count = msr_cpu + 1;
+		}
+		for (; i < count; i++) {
+			ret = wrmsr_safe_on_cpu(i, msr_reg, data[0], data[1]);
+			if (ret) {
+				seq_printf(s, "msr write error: %d\n", ret);
+				return 0;
+			} else {
+				seq_printf(s, "write succeeded.\n");
+			}
+		}
+	}
+
+	return 0;
+}
+
 static int dump_output_show_i2c(struct seq_file *s)
 {
 	int ret;
@@ -960,7 +1223,7 @@ static int dump_output_show_i2c(struct seq_file *s)
 	if (!adap) {
 		seq_printf(s, "can't find bus adapter for i2c bus %d\n",
 							i2c_bus);
-		return -ENODEV;
+		return 0;
 	}
 
 	if (access_dir == ACCESS_DIR_WRITE) {
@@ -969,7 +1232,7 @@ static int dump_output_show_i2c(struct seq_file *s)
 		msg.buf = (u8 *) &access_value;
 		ret = i2c_transfer(adap, &msg, 1);
 		if (ret != 1)
-			seq_printf(s, "write failed.\n");
+			seq_printf(s, "i2c write error: %d\n", ret);
 		else
 			seq_printf(s, "write succeeded.\n");
 	} else {
@@ -979,7 +1242,7 @@ static int dump_output_show_i2c(struct seq_file *s)
 		msg.buf = &val;
 		ret = i2c_transfer(adap, &msg, 1);
 		if (ret != 1)
-			seq_printf(s, "%s", "read error!\n");
+			seq_printf(s, "i2c read error: %d\n", ret);
 		else
 			seq_printf(s, "%02x\n", val);
 	}
@@ -1005,6 +1268,9 @@ static int dump_output_show(struct seq_file *s, void *unused)
 		break;
 	case ACCESS_BUS_PCI:
 		ret = dump_output_show_pci(s);
+		break;
+	case ACCESS_BUS_MSR:
+		ret = dump_output_show_msr(s);
 		break;
 	case ACCESS_BUS_I2C:
 		ret = dump_output_show_i2c(s);
