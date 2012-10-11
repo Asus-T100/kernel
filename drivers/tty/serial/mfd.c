@@ -141,8 +141,6 @@ struct uart_hsu_port {
 struct hsu_port {
 	int dma_irq;
 	int init_completion;
-	int phy_port_num;
-	int alt_port_num;
 	struct hsu_port_cfg	*configs[HSU_PORT_MAX];
 	void __iomem	*reg;
 	struct uart_hsu_port	port[HSU_PORT_MAX];
@@ -1214,8 +1212,7 @@ serial_hsu_console_setup(struct console *co, char *options)
 	int parity = 'n';
 	int flow = 'n';
 
-	if (co->index < 0 ||
-		co->index >= phsu->phy_port_num + phsu->alt_port_num)
+	if (co->index < 0 || co->index >= hsu_port_max)
 		return -ENODEV;
 
 	if (options)
@@ -1273,7 +1270,6 @@ static struct uart_driver serial_hsu_reg = {
 	.major		= TTY_MAJOR,
 	.minor		= 128,
 	.nr		= HSU_PORT_MAX,
-	.cons		= SERIAL_HSU_CONSOLE,
 };
 
 static irqreturn_t wakeup_irq(int irq, void *dev)
@@ -1613,7 +1609,6 @@ static int serial_hsu_probe(struct pci_dev *pdev,
 		struct hsu_port_cfg *cfg = hsu_port_func_cfg + ent->driver_data;
 		index = cfg->index;
 		phsu->configs[index] = cfg;
-		phsu->phy_port_num++;
 		uport = phsu->port + index;
 
 		ret = pci_request_region(pdev, 0, cfg->name);
@@ -1660,6 +1655,11 @@ static int serial_hsu_probe(struct pci_dev *pdev,
 			dev_err(&pdev->dev, "can not get IRQ\n");
 			goto err_disable;
 		}
+		if (cfg->type == debug_port) {
+			serial_hsu_reg.cons = SERIAL_HSU_CONSOLE;
+			serial_hsu_reg.cons->index = index;
+		} else
+			serial_hsu_reg.cons = NULL;
 		uart_add_one_port(&serial_hsu_reg, &uport->port);
 		pci_set_drvdata(pdev, uport);
 		pm_runtime_put_noidle(&pdev->dev);
@@ -1672,7 +1672,6 @@ static int serial_hsu_probe(struct pci_dev *pdev,
 			int alt_index = alt_cfg->index;
 
 			phsu->configs[alt_index] = alt_cfg;
-			phsu->alt_port_num++;
 			alt_uport = phsu->port + alt_index;
 			memcpy(alt_uport, uport, sizeof(*uport));
 			alt_uport->port.line = alt_index;
@@ -1695,6 +1694,11 @@ static int serial_hsu_probe(struct pci_dev *pdev,
 				dev_err(&pdev->dev, "can not get IRQ\n");
 				goto err_disable;
 			}
+			if (alt_cfg->type == debug_port) {
+				serial_hsu_reg.cons = SERIAL_HSU_CONSOLE;
+				serial_hsu_reg.cons->index = alt_index;
+			} else
+				serial_hsu_reg.cons = NULL;
 			uart_add_one_port(&serial_hsu_reg, &alt_uport->port);
 		}
 	}
