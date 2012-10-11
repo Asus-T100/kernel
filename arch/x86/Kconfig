@@ -442,7 +442,7 @@ config X86_MDFLD
 	select X86_PLATFORM_DEVICES
 	select MFD_INTEL_MSIC
 	---help---
-	  Medfield is Intel's Low Power Intel Architecture (LPIA) based Moblin
+	  Medfield is Intel's Low Power Intel Architecture (LPIA) based Mobile
 	  Internet Device(MID) platform. 
 	  Unlike standard x86 PCs, Medfield does not have many legacy devices
 	  nor standard legacy replacement devices/features. e.g. Medfield does
@@ -1946,6 +1946,13 @@ config INTEL_ATOM_CLV_POWER
 	  Power management driver for cloverview Platform.
 	  If you don't know what to do here, say N.
 
+config INTEL_ATOM_MRFLD_POWER
+	bool "Power Management driver for Intel merrifield platform"
+	depends on PCI && CPU_IDLE && PM_RUNTIME && PM_SLEEP && X86_MRFLD
+	select ATOM_SOC_POWER
+	---help---
+	  Power management driver for merrifield Platform.
+	  If you don't know what to do here, say N.
 endmenu
 
 

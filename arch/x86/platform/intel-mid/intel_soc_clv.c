@@ -20,17 +20,9 @@
 
 #include "intel_soc_pmu.h"
 
-/**
- *      platform_set_pmu_ops - Set the global pmu method table.
- *      @ops:   Pointer to ops structure.
- */
-void platform_set_pmu_ops(void)
-{
-	pmu_ops = &clv_pmu_ops;
-}
-
 static int clv_pmu_init(void)
 {
+	mid_pmu_cxt->s3_hint = C6_HINT;
 	return 0;
 }
 
@@ -94,10 +86,21 @@ static pci_power_t clv_pmu_choose_state(int device_lss)
 	return state;
 }
 
+/**
+ *      platform_set_pmu_ops - Set the global pmu method table.
+ *      @ops:   Pointer to ops structure.
+ */
+void platform_set_pmu_ops(void)
+{
+	pmu_ops = &clv_pmu_ops;
+}
+
 struct platform_pmu_ops clv_pmu_ops = {
 	.init		= clv_pmu_init,
 	.enter		 = clv_pmu_enter,
 	.wakeup		 = clv_pmu_wakeup,
 	.remove		= clv_pmu_remove,
 	.pci_choose_state = clv_pmu_choose_state,
+	.set_power_state_ops = pmu_set_s0ix_possible,
+	.set_s0ix_complete = s0ix_complete,
 };

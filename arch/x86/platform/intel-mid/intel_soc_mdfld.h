@@ -27,6 +27,9 @@
 #define PMU_MISC_SET_TIMEOUT	50 /* 50usec timeout */
 #define PMU_C6OFFLOAD_ACCESS_TIMEOUT 1500 /* 1.5msecs timeout */
 
+#define PMU1_MAX_DEVS   8
+#define PMU2_MAX_DEVS   55
+
 #define GFX_LSS_INDEX			1
 #define PMU_SDIO0_LSS_00		0
 #define PMU_EMMC0_LSS_01		1
@@ -92,6 +95,11 @@
 #define PMU_RSVD7_LSS_61		61
 #define PMU_RSVD8_LSS_62		62
 #define PMU_RSVD9_LSS_63		63
+
+#define PMU_MAX_LSS			63
+#define PMU_LSS_IN_FIRST_DWORD		32
+
+#define EMMC0_LSS			PMU_EMMC0_LSS_01
 
 #define S0IX_TARGET_SSS0_MASK ( \
 	SSMSK(D0I3_MASK, PMU_SDIO0_LSS_00) | \
@@ -333,4 +341,9 @@
 	SSMSK(D0I3_MASK, PMU_AUDIO_SSP0_LSS_51-48) | \
 	SSMSK(D0I3_MASK, PMU_AUDIO_SSP1_LSS_52-48) | \
 	SSMSK(D0I3_MASK, PMU_GP_DMA_LSS_54-48))
+
+extern void pmu_set_s0ix_possible(int state);
+extern void log_wakeup_irq(void);
+extern void s0ix_complete(void);
+
 #endif
