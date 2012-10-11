@@ -529,9 +529,12 @@ sh_css_binary_find(struct sh_css_binary_descr *descr,
 	bool enable_yuv_ds = descr->enable_yuv_ds;
 	bool enable_high_speed = descr->enable_high_speed;
 	bool enable_dvs_6axis  = descr->enable_dvs_6axis;
-	enum sh_css_err err = sh_css_success;
+	enum sh_css_err err = sh_css_err_internal_error;
 	bool continuous = sh_css_continuous_is_enabled();
 	unsigned int isp_pipe_version = descr->isp_pipe_version;
+
+	if (cc_in_info == NULL || cc_out_info == NULL || cc_vf_info == NULL)
+		goto out;
 
 	if (mode == SH_CSS_BINARY_MODE_VIDEO) {
 		unsigned int dx, dy;
@@ -631,10 +634,12 @@ sh_css_binary_find(struct sh_css_binary_descr *descr,
 		} else {
 			*cc_in_info  = *req_in_info;
 			*cc_out_info = *req_out_info;
-			if (req_vf_info != NULL)
+			if (req_vf_info != NULL) {
 				*cc_vf_info  = *req_vf_info;
-			else
+			} else {
+				sh_css_free(cc_vf_info);
 				cc_vf_info  = NULL;
+			}
 		}
 
 		/* reconfigure any variable properties of the binary */
@@ -643,11 +648,16 @@ sh_css_binary_find(struct sh_css_binary_descr *descr,
 				       cc_out_info, cc_vf_info,
 				       binary, continuous);
 		if (err)
-			return err;
+			goto out;
 		init_metrics(&binary->metrics, binary->info);
-		return sh_css_success;
+		break;
 	}
-	return sh_css_err_internal_error;
+out:
+	sh_css_free(cc_in_info);
+	sh_css_free(cc_out_info);
+	sh_css_free(cc_vf_info);
+
+	return err;
 }
 
 unsigned
