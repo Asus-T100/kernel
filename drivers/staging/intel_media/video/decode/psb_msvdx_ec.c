@@ -32,7 +32,7 @@
 #include "psb_msvdx_msg.h"
 #include "psb_msvdx_ec.h"
 
-#define MAX_SIZE_IN_MB		(4096 / 256)
+#define MAX_SIZE_IN_MB		(4096 / 16)
 
 static inline int psb_msvdx_cmd_port_write(struct drm_psb_private *dev_priv,
 			uint32_t offset, uint32_t value, uint32_t *cmd_space)
@@ -119,13 +119,6 @@ void psb_msvdx_do_concealment(struct work_struct *work)
 	width_in_mb = deblock_msg->pic_size.bits.pic_width_mb;
 	height_in_mb = deblock_msg->pic_size.bits.frame_height_mb;
 
-	if (unlikely(!width_in_mb || !height_in_mb ||
-		width_in_mb > MAX_SIZE_IN_MB ||
-		height_in_mb > MAX_SIZE_IN_MB)) {
-		PSB_DEBUG_MSVDX("wrong pic size\n");
-		goto ec_done;
-	}
-
 	{
 		int i;
 		for (i = 0; i < fault_region->num_region; i++)
@@ -163,6 +156,13 @@ void psb_msvdx_do_concealment(struct work_struct *work)
 					deblock_msg->address_c0);
 		PSB_DEBUG_MSVDX("deblock addr_c1 is	0x%08x\n",
 					deblock_msg->address_c1);
+	}
+
+	if (unlikely(!width_in_mb || !height_in_mb ||
+		width_in_mb > MAX_SIZE_IN_MB ||
+		height_in_mb > MAX_SIZE_IN_MB)) {
+		PSB_DEBUG_MSVDX("wrong pic size\n");
+		goto ec_done;
 	}
 
 	cmd = 0;

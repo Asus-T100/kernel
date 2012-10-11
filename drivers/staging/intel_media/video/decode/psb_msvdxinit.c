@@ -506,6 +506,19 @@ static void msvdx_tile_setup(struct drm_psb_private *dev_priv)
 
 static void msvdx_init_ec(struct msvdx_private *msvdx_priv)
 {
+	struct drm_psb_private *dev_priv = msvdx_priv->dev_priv;
+
+	/* we should restore the state, if we power down/up
+	 * during EC */
+	PSB_WMSVDX32(0, MSVDX_EXT_FW_ERROR_STATE); /* EXT_FW_ERROR_STATE */
+	PSB_WMSVDX32(0, MSVDX_COMMS_MSG_COUNTER);
+	PSB_WMSVDX32(0, 0x2000 + 0xcc4); /* EXT_FW_ERROR_STATE */
+	PSB_WMSVDX32(0, 0x2000 + 0xcb0); /* EXT_FW_LAST_MBS */
+	PSB_WMSVDX32(0, 0x2000 + 0xcb4); /* EXT_FW_LAST_MBS */
+	PSB_WMSVDX32(0, 0x2000 + 0xcb8); /* EXT_FW_LAST_MBS */
+	PSB_WMSVDX32(0, 0x2000 + 0xcbc); /* EXT_FW_LAST_MBS */
+
+
 	msvdx_priv->msvdx_ec_ctx[0] =
 		kzalloc(sizeof(struct psb_msvdx_ec_ctx) *
 				PSB_MAX_EC_INSTANCE,
@@ -562,16 +575,6 @@ int psb_setup_msvdx(struct drm_device *dev)
 	psb_msvdx_mtx_set_clocks(dev_priv->dev, clk_enable_all);
 
 	PSB_WMSVDX32(FIRMWAREID, MSVDX_COMMS_FIRMWARE_ID);
-
-	/* we should restore the state, if we power down/up
-	 * during EC */
-	PSB_WMSVDX32(0, MSVDX_EXT_FW_ERROR_STATE); /* EXT_FW_ERROR_STATE */
-	PSB_WMSVDX32(0, MSVDX_COMMS_MSG_COUNTER);
-	PSB_WMSVDX32(0, 0x2000 + 0xcc4); /* EXT_FW_ERROR_STATE */
-	PSB_WMSVDX32(0, 0x2000 + 0xcb0); /* EXT_FW_LAST_MBS */
-	PSB_WMSVDX32(0, 0x2000 + 0xcb4); /* EXT_FW_LAST_MBS */
-	PSB_WMSVDX32(0, 0x2000 + 0xcb8); /* EXT_FW_LAST_MBS */
-	PSB_WMSVDX32(0, 0x2000 + 0xcbc); /* EXT_FW_LAST_MBS */
 
 	/* read register bank size */
 	{
