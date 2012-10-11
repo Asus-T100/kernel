@@ -616,59 +616,25 @@ static enum usb_charger_type aca_check(struct dwc_otg2 *otg)
 	enum usb_charger_type type = CHRG_UNKNOWN;
 	int ret;
 
-	/*Enable VDAT_DET comparator.*/
-	ulpi_write(otg, TUSB1211_POWER_CONTROL_SET, PWCTRL_DP_VSRC_EN);
-
-	/*Wait >66.1ms (for TCHGD_SERX_DEB)*/
+	/* Wait >66.1ms (for TCHGD_SERX_DEB) */
 	msleep(66);
 
-	/*Read decoded RID value ????*/
+	/* Read decoded RID value */
 	ret = intel_scu_ipc_ioread8(PMIC_USBIDSTS, &rarbrc);
 	if (ret)
 		otg_err(otg, "Fail to read decoded RID value\n");
 	rarbrc &= USBIDSTS_ID_RARBRC_STS(3);
 
-	ret = ulpi_read(otg, TUSB1211_POWER_CONTROL, &vdat_det);
-	if (ret < 0) {
-		otg_err(otg, "ULPI read error!\n");
-		return CHRG_UNKNOWN;
-	}
-	vdat_det &= PWCTRL_VDAT_DET;
-
-	ret = ulpi_read(otg, TUSB1211_VENDOR_SPECIFIC4, &chgd_serx_dm);
-	if (ret < 0) {
-		otg_err(otg, "ULPI read error!\n");
-		return CHRG_UNKNOWN;
-	}
-	chgd_serx_dm &= VS4_CHGD_SERX_DM;
-
-	/* If ID_RARBRC_STS==01 &&
-	 * (VDAT_DET==1 && CHGD_SERX_DM==0): ACA-Dock detected
-	 * If ID_RARBRC_STS==01 &&
-	 * (VDAT_DET==0 || CHGD_SERX_DM==1): ACA-A detected
-	 * If ID_RARBRC_STS==10: ACA-B detected
-	 * If ID_RARBRC_STS==11: ACA-C detected
+	/* If ID_RARBRC_STS==01: ACA-Dock detected
 	 * If ID_RARBRC_STS==00: MHL detected
-	 * */
-	if (rarbrc & (vdat_det && !chgd_serx_dm)) {
-		/*ACA-Dock*/
+	 */
+	if (rarbrc == 1) {
+		/* ACA-Dock */
 		type = CHRG_ACA_DOCK;
-	} else if (rarbrc && (!vdat_det || chgd_serx_dm)) {
-		/*ACA-A*/
-		type = CHRG_ACA_A;
-	} else if (rarbrc == 0x2) {
-		/*ACA-B*/
-		type = CHRG_ACA_B;
-	} else if (rarbrc == 0x3) {
-		/*ACA-C*/
-		type = CHRG_ACA_C;
 	} else if (!rarbrc) {
-		otg_dbg(otg, "detect MHL device\n");
+		/* MHL */
 		type = CHRG_MHL;
 	}
-
-	/*Disable VDAT_DET comparator.*/
-	ulpi_write(otg, TUSB1211_POWER_CONTROL_CLR, PWCTRL_DP_VSRC_EN);
 
 	return type;
 }
@@ -679,7 +645,9 @@ static enum usb_charger_type get_charger_type(struct dwc_otg2 *otg)
 	int ret, count = 0;
 	enum usb_charger_type type = CHRG_UNKNOWN;
 
-	/* PHY Enable: De-assert USBRST*/
+	/* PHY Enable:
+	 * De-assert USBRST
+	 */
 	ret = intel_scu_ipc_update_register(PMIC_USBPHYCTRL, \
 			PMIC_USBPHYCTRL_D0,  PMIC_USBPHYCTRL_D0);
 	if (ret)
@@ -689,57 +657,51 @@ static enum usb_charger_type get_charger_type(struct dwc_otg2 *otg)
 	 * XXus for initial Link reg sync-up).*/
 	msleep(20);
 
-	/* ACA Enable: Enable ACA & ID detection logic.*/
+	/* Enable ACA:
+	 * Enable ACA & ID detection logic.
+	 */
 	ret = intel_scu_ipc_update_register(PMIC_USBIDCTRL, \
 			USBIDCTRL_ACA_DETEN_D1 | PMIC_USBPHYCTRL_D0, \
 			USBIDCTRL_ACA_DETEN_D1 | PMIC_USBPHYCTRL_D0);
 	if (ret)
 		otg_err(otg, "Fail to enable ACA&ID detection logic\n");
 
-	/* Enable DP/DM pulldowns (to ensure PHY RX comparators don't float) */
-	ulpi_write(otg, TUSB1211_OTG_CTRL_SET, OTGCTRL_DMPULLDOWN |
-						OTGCTRL_DPPULLDOWN);
-
-	/* DCD Enable: Change OPMODE to 01 (Non-driving),
-	 * TermSel to 0, &
-	 * XcvrSel to 01 (enable FS xcvr)
+	/* DCD Enable:
+	 * Enable SW control
 	 */
-	ulpi_write(otg, TUSB1211_FUNC_CTRL_SET, \
-			FUNCCTRL_OPMODE(1) | FUNCCTRL_XCVRSELECT(1));
-	ulpi_write(otg, TUSB1211_FUNC_CTRL_CLR, \
-			FUNCCTRL_OPMODE(2) | FUNCCTRL_XCVRSELECT(2) \
-			| FUNCCTRL_TERMSELECT);
-
-	/*Disable DP pulldown (to allow weak Idp_src for DCD)*/
-	ulpi_write(otg, TUSB1211_OTG_CTRL_CLR, OTGCTRL_DPPULLDOWN);
-
-	/*Enable SW control*/
 	ulpi_write(otg, TUSB1211_POWER_CONTROL_SET, PWCTRL_SW_CONTROL);
 
-	/*Enable IDPSRC*/
+	/* Enable IDPSRC */
 	ulpi_write(otg, TUSB1211_VENDOR_SPECIFIC3_SET, VS3_CHGD_IDP_SRC_EN);
 
+	/* DCD Check: */
 	do {
-		msleep(20);
-		count++;
-		/*Read DP logic level.*/
+		/* Delay 66.5 ms. (Note:
+		 * TIDP_SRC_ON + TCHGD_SERX_DEB =
+		 * 347.8us + 66.1ms).
+		 */
+		msleep(67);
+		count += 67;
+		/* Read DP logic level. */
 		ret = ulpi_read(otg, TUSB1211_VENDOR_SPECIFIC4, &val);
 		if (ret < 0) {
 			otg_err(otg, "ULPI read error!\n");
 			continue;
 		}
-		if (count > 80) {
+		if (count > 800) {
 			otg_err(otg, "ULPI read TUSB1211_VENDOR_SPECIFIC4 timeout!\n");
 			break;
 		}
 		val &= ~VS4_CHGD_SERX_DP;
 	} while (val != 0);
 
-	/*Disable DP pullup (Idp_src)*/
+	/* Disable DP pullup (Idp_src) */
 	ulpi_write(otg, TUSB1211_VENDOR_SPECIFIC3_CLR, VS3_CHGD_IDP_SRC_EN);
 
-	/*Check ID pin state.*/
-	ret = intel_scu_ipc_ioread8(PMIC_USBIDCTRL, &val);
+	/* ID Check:
+	 * Check ID pin state.
+	 */
+	ret = intel_scu_ipc_ioread8(PMIC_USBIDSTS, &val);
 	if (ret)
 		otg_err(otg, "Fail to enable ACA&ID detection logic\n");
 	val &= USBIDSTS_ID_FLOAT_STS;
@@ -748,84 +710,105 @@ static enum usb_charger_type get_charger_type(struct dwc_otg2 *otg)
 		goto cleanup;
 	}
 
-	/*Enable DP/DM pulldowns (to ensure PHY RX comparators don't float).*/
-	ulpi_write(otg, TUSB1211_OTG_CTRL_SET, \
-			OTGCTRL_DMPULLDOWN | OTGCTRL_DPPULLDOWN);
-
-	/*Read DP/DM logic level.*/
-	ret = ulpi_read(otg, TUSB1211_VENDOR_SPECIFIC4, &val);
+	/* SE1 Det Enable:
+	 * Read DP/DM logic level. Note: use DEBUG
+	 * because VS4 isn’t enabled in this situation.
+     */
+	ret = ulpi_read(otg, TUSB1211_DEBUG, &val);
 	if (ret < 0)
 		otg_err(otg, "ULPI read error!\n");
 
-	val &= VS4_CHGD_SERX_DP | VS4_CHGD_SERX_DM;
+	val &= DEBUG_LINESTATE;
 
-	/*If '11': SE1 detected; goto 'Cleanup'.
+	/* If '11': SE1 detected; goto 'Cleanup'.
 	 * Else: goto 'Pri Det Enable'.
 	 */
-	if (val == 3)
+	if (val == 3) {
+		type = CHRG_SE1;
 		goto cleanup;
+	}
 
-	/*Pri Det Enable: Enable VDPSRC.*/
+	/* Pri Det Enable:
+	 * Enable VDPSRC.
+	 */
 	ulpi_write(otg, TUSB1211_POWER_CONTROL_SET, PWCTRL_DP_VSRC_EN);
 
-	/*Wait >106.1ms (40ms for BC Tvdpsrc_on, 66.1ms for TI CHGD_SERX_DEB).*/
+	/* Wait >106.1ms (40ms for BC
+	 * Tvdpsrc_on, 66.1ms for TI CHGD_SERX_DEB).
+	 */
 	msleep(107);
 
-	/*Pri Det Check: Check if DM > VDATREF.*/
+	/* Pri Det Check:
+	 * Check if DM > VDATREF.
+	 */
 	ret = ulpi_read(otg, TUSB1211_POWER_CONTROL, &vdat_det);
 	if (ret < 0)
 		otg_err(otg, "ULPI read error!\n");
 
 	vdat_det &= PWCTRL_VDAT_DET;
 
+	/* Check if DM<VLGC */
 	ret = ulpi_read(otg, TUSB1211_VENDOR_SPECIFIC4, &chgd_serx_dm);
 	if (ret < 0)
 		otg_err(otg, "ULPI read error!\n");
 
 	chgd_serx_dm &= VS4_CHGD_SERX_DM;
 
+	/* If VDAT_DET==0 || CHGD_SERX_DM==1: SDP detected
+	 * If VDAT_DET==1 && CHGD_SERX_DM==0: CDP/DCP
+	 */
 	if (vdat_det == 0 || chgd_serx_dm == 1)
 		type = CHRG_SDP;
 
-	/*Disable VDPSRC.*/
+	/* Disable VDPSRC. */
 	ulpi_write(otg, TUSB1211_POWER_CONTROL_CLR, PWCTRL_DP_VSRC_EN);
 
+	/* If SDP, goto “Cleanup”.
+	 * Else, goto “Sec Det Enable”
+	 */
 	if (type == CHRG_SDP)
 		goto cleanup;
 
-	/*Sec Det Enable: Sec Det Enable*/
+	/* Sec Det Enable:
+	 * delay 1ms.
+	 */
 	mdelay(1);
 
-	/*Swap DP & DM*/
+	/* Swap DP & DM */
 	ulpi_write(otg, TUSB1211_VENDOR_SPECIFIC1_CLR, VS1_DATAPOLARITY);
 
-	/*Enable 'VDMSRC'.*/
+	/* Enable 'VDMSRC'. */
 	ulpi_write(otg, TUSB1211_POWER_CONTROL_SET, PWCTRL_DP_VSRC_EN);
 
-	/*Wait >73ms (40ms for BC Tvdmsrc_on, 33ms for TI TVDPSRC_DEB)*/
+	/* Wait >73ms (40ms for BC Tvdmsrc_on, 33ms for TI TVDPSRC_DEB) */
 	msleep(73);
 
-	/*Check if DP>VDATREF.*/
+	/* Sec Det Check:
+	 * Check if DP>VDATREF.
+	 */
 	ret = ulpi_read(otg, TUSB1211_POWER_CONTROL, &val);
 	if (ret < 0)
 		otg_err(otg, "ULPI read error!\n");
 
 	val &= PWCTRL_VDAT_DET;
 
-	if (val)
+	/* If VDAT_DET==0: CDP detected.
+	 * If VDAT_DET==1: DCP detected.
+	 */
+	if (!val)
 		type = CHRG_CDP;
 	else
 		type = CHRG_DCP;
 
-	/*Disable VDMSRC.*/
+	/* Disable VDMSRC. */
 	ulpi_write(otg, TUSB1211_POWER_CONTROL_CLR, PWCTRL_DP_VSRC_EN);
 
-	/*Swap DP & DM.*/
+	/* Swap DP & DM. */
 	ulpi_write(otg, TUSB1211_VENDOR_SPECIFIC1_SET, VS1_DATAPOLARITY);
 
 cleanup:
 
-	/*If DCP detected, assert VDPSRC.*/
+	/* If DCP detected, assert VDPSRC. */
 	if (type == CHRG_DCP)
 		ulpi_write(otg, TUSB1211_POWER_CONTROL_SET, \
 				PWCTRL_SW_CONTROL | PWCTRL_DP_VSRC_EN);
@@ -992,6 +975,7 @@ static enum dwc_otg_state do_charger_detection(struct dwc_otg2 *otg)
 		break;
 	case CHRG_DCP:
 	case CHRG_ACA_B:
+	case CHRG_SE1:
 		state = DWC_STATE_CHARGING;
 		break;
 	case CHRG_UNKNOWN:

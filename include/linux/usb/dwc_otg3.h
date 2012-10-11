@@ -515,6 +515,8 @@ struct dwc_otg2 {
 #define VS5_VBUS_MNTR_FALL_EN					(1 << 1)
 #define VS5_REG3V3IN_MNTR_EN					(1 << 0)
 
+#define DEBUG_LINESTATE                       (0x3 << 0)
+
 #define OTGCTRL_USEEXTVBUS_INDICATOR			(1 << 7)
 #define OTGCTRL_DRVVBUSEXTERNAL					(1 << 6)
 #define OTGCTRL_DRVVBUS							(1 << 5)
@@ -546,7 +548,7 @@ struct dwc_otg2 {
 #define USBIDCTRL_USB_IDEN_D0	(1 << 0)
 #define PMIC_USBIDSTS				0x1A
 #define USBIDSTS_ID_GND			(1 << 0)
-#define USBIDSTS_ID_RARBRC_STS(v)	((v & 0x3)  << 1)
+#define USBIDSTS_ID_RARBRC_STS(v)	((v & 0x3)  << 0)
 #define USBIDSTS_ID_FLOAT_STS	(1 << 3)
 #define PMIC_USBPHYCTRL_D0		(1 << 0)
 
