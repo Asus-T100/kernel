@@ -352,6 +352,8 @@ static ssize_t dma_show_regs(struct file *file, char __user *user_buf,
 	if (!buf)
 		return 0;
 
+	pm_runtime_get_sync(chan->uport->dev);
+
 	len += snprintf(buf + len, HSU_REGS_BUFSIZE - len,
 			"MFD HSU DMA channel [%d] regs:\n", chan->id);
 
@@ -381,6 +383,8 @@ static ssize_t dma_show_regs(struct file *file, char __user *user_buf,
 			"D0SAR: \t\t0x%08x\n", chan_readl(chan, HSU_CH_D3SAR));
 	len += snprintf(buf + len, HSU_REGS_BUFSIZE - len,
 			"D0TSR: \t\t0x%08x\n", chan_readl(chan, HSU_CH_D3TSR));
+
+	pm_runtime_put(chan->uport->dev);
 
 	if (len > HSU_REGS_BUFSIZE)
 			len = HSU_REGS_BUFSIZE;
