@@ -113,6 +113,7 @@ struct uart_hsu_port {
 	 * in IRQ context) */
 	struct tasklet_struct	hsu_dma_rx_tasklet;
 	int			suspended;
+	int			reopen;
 };
 
 /* Top level data structure of HSU */
@@ -1086,10 +1087,10 @@ static int serial_hsu_startup(struct uart_port *port)
 		struct uart_hsu_port *up3 = serial_hsu_ports[share_idx];
 		if (up3->running) {
 			uart_suspend_port(&serial_hsu_reg, &up3->port);
-			/* after suspend port, up3->running will be 0
-			 * while we need keep it, so we can resume later
+			/* after suspend port, set reopen flag to reopen
+			 * the mirror port in major port shutdown callback
 			 */
-			up3->running = 1;
+			up3->reopen = 1;
 		}
 		intel_mid_hsu_switch(logic_idx);
 	}
@@ -1203,7 +1204,8 @@ static void serial_hsu_shutdown(struct uart_port *port)
 	if (up->index == logic_idx) {
 		struct uart_hsu_port *up3 = serial_hsu_ports[share_idx];
 		intel_mid_hsu_switch(share_idx);
-		if (up3->running) {
+		if (up3->reopen) {
+			up3->reopen = 0;
 			mutex_unlock(&hsu_lock);
 			uart_resume_port(&serial_hsu_reg, &up3->port);
 			goto f_out;
@@ -1948,6 +1950,7 @@ static void hsu_global_init(void)
 		uport->port.uartclk = 115200 * 24 * 16;
 
 		uport->running = 0;
+		uport->reopen  = 0;
 		uport->txc = &hsu->chans[offset * 2];
 		uport->rxc = &hsu->chans[offset * 2 + 1];
 
