@@ -201,6 +201,12 @@ static ssize_t pmdown_time_set(struct device *dev,
 static DEVICE_ATTR(pmdown_time, 0644, pmdown_time_show, pmdown_time_set);
 
 #ifdef CONFIG_DEBUG_FS
+static int codec_reg_open_file(struct inode *inode, struct file *file)
+{
+	file->private_data = inode->i_private;
+	return 0;
+}
+
 static ssize_t codec_reg_read_file(struct file *file, char __user *user_buf,
 				   size_t count, loff_t *ppos)
 {
@@ -258,7 +264,7 @@ static ssize_t codec_reg_write_file(struct file *file,
 }
 
 static const struct file_operations codec_reg_fops = {
-	.open = simple_open,
+	.open = codec_reg_open_file,
 	.read = codec_reg_read_file,
 	.write = codec_reg_write_file,
 	.llseek = default_llseek,
@@ -2527,6 +2533,89 @@ int snd_soc_put_volsw(struct snd_kcontrol *kcontrol,
 EXPORT_SYMBOL_GPL(snd_soc_put_volsw);
 
 /**
+ * snd_soc_get_volsw_sx - single mixer get callback
+ * @kcontrol: mixer control
+ * @ucontrol: control element information
+ *
+ * Callback to get the value of a single mixer control, or a double mixer
+ * control that spans 2 registers.
+ *
+ * Returns 0 for success.
+ */
+int snd_soc_get_volsw_sx(struct snd_kcontrol *kcontrol,
+		      struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
+	struct soc_mixer_control *mc =
+	    (struct soc_mixer_control *)kcontrol->private_value;
+
+	unsigned int reg = mc->reg;
+	unsigned int reg2 = mc->rreg;
+	unsigned int shift = mc->shift;
+	unsigned int rshift = mc->rshift;
+	int max = mc->max;
+	int min = mc->min;
+	int mask = (1 << (fls(min + max) - 1)) - 1;
+
+	ucontrol->value.integer.value[0] =
+	    ((snd_soc_read(codec, reg) >> shift) - min) & mask;
+
+	if (snd_soc_volsw_is_stereo(mc))
+		ucontrol->value.integer.value[1] =
+			((snd_soc_read(codec, reg2) >> rshift) - min) & mask;
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(snd_soc_get_volsw_sx);
+
+/**
+ * snd_soc_put_volsw_sx - double mixer set callback
+ * @kcontrol: mixer control
+ * @uinfo: control element information
+ *
+ * Callback to set the value of a double mixer control that spans 2 registers.
+ *
+ * Returns 0 for success.
+ */
+int snd_soc_put_volsw_sx(struct snd_kcontrol *kcontrol,
+			 struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
+	struct soc_mixer_control *mc =
+	    (struct soc_mixer_control *)kcontrol->private_value;
+
+	unsigned int reg = mc->reg;
+	unsigned int reg2 = mc->rreg;
+	unsigned int shift = mc->shift;
+	unsigned int rshift = mc->rshift;
+	int max = mc->max;
+	int min = mc->min;
+	int mask = (1 << (fls(min + max) - 1)) - 1;
+	int err;
+	unsigned short val, val_mask, val2 = 0;
+
+	val_mask = mask << shift;
+	val = (ucontrol->value.integer.value[0] + min) & mask;
+	val = val << shift;
+
+	err = snd_soc_update_bits_locked(codec, reg, val_mask, val);
+	if (err < 0)
+			return err;
+
+	if (snd_soc_volsw_is_stereo(mc)) {
+		val_mask = mask << rshift;
+		val2 = (ucontrol->value.integer.value[1] + min) & mask;
+		val2 = val2 << rshift;
+
+		err = snd_soc_update_bits_locked(codec, reg2, val_mask, val2);
+		if (err < 0)
+			return err;
+	}
+	return 0;
+}
+EXPORT_SYMBOL_GPL(snd_soc_put_volsw_sx);
+
+/**
  * snd_soc_info_volsw_s8 - signed mixer info callback
  * @kcontrol: mixer control
  * @uinfo: control element information
@@ -3613,9 +3702,9 @@ EXPORT_SYMBOL_GPL(snd_soc_unregister_codec);
 int snd_soc_of_parse_card_name(struct snd_soc_card *card,
 			       const char *propname)
 {
+#if 0
 	struct device_node *np = card->dev->of_node;
 	int ret;
-
 	ret = of_property_read_string_index(np, propname, 0, &card->name);
 	/*
 	 * EINVAL means the property does not exist. This is fine providing
@@ -3628,7 +3717,7 @@ int snd_soc_of_parse_card_name(struct snd_soc_card *card,
 			propname, ret);
 		return ret;
 	}
-
+#endif
 	return 0;
 }
 EXPORT_SYMBOL_GPL(snd_soc_of_parse_card_name);
@@ -3636,16 +3725,17 @@ EXPORT_SYMBOL_GPL(snd_soc_of_parse_card_name);
 int snd_soc_of_parse_audio_routing(struct snd_soc_card *card,
 				   const char *propname)
 {
+#if 0
 	struct device_node *np = card->dev->of_node;
 	int num_routes;
 	struct snd_soc_dapm_route *routes;
 	int i, ret;
 
 	num_routes = of_property_count_strings(np, propname);
-	if (num_routes < 0 || num_routes & 1) {
+	if (num_routes & 1) {
 		dev_err(card->dev,
-		     "Property '%s' does not exist or its length is not even\n",
-		     propname);
+			"Property '%s's length is not even\n",
+			propname);
 		return -EINVAL;
 	}
 	num_routes /= 2;
@@ -3685,7 +3775,7 @@ int snd_soc_of_parse_audio_routing(struct snd_soc_card *card,
 
 	card->num_dapm_routes = num_routes;
 	card->dapm_routes = routes;
-
+#endif
 	return 0;
 }
 EXPORT_SYMBOL_GPL(snd_soc_of_parse_audio_routing);

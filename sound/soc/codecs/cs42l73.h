@@ -144,6 +144,8 @@
 #define PDN_ASP_SDIN		(1 << 2)
 #define PDN_XSP_SDOUT		(1 << 1)
 #define PDN_XSP_SDIN		(1 << 0)
+#define MIC_BIAS_DISABLE	1
+#define MIC_BIAS_ENABLE	0
 
 /* CS42L73_PWRCTL3 */
 #define PDN_THMS		(1 << 5)
@@ -222,6 +224,13 @@
 
 #define CS42L73_SPC(id)		(CS42L73_XSPC + (id << 1))
 #define CS42L73_MMCC(id)	(CS42L73_XSPMMCC + (id << 1))
-#define CS42L73_SPFS(id)	((id == CS42L73_ASP) ? CS42L73_ASPC : CS42L73_VXSPFS)
+#define CS42L73_SPFS(id) ((id == CS42L73_ASP) ? CS42L73_ASPC : CS42L73_VXSPFS)
+
+extern int cs42l73_bp_detection(struct snd_soc_codec *codec,
+				  struct snd_soc_jack *jack, int plug_status);
+extern int cs42l73_hp_detection(struct snd_soc_codec *codec,
+				  struct snd_soc_jack *jack, int plug_status);
+
+extern void mid_headset_report(int state);
 
 #endif	/* __CS42L73_H__ */
