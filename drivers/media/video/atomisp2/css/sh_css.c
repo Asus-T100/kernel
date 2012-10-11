@@ -3372,7 +3372,7 @@ sh_css_dequeue_buffer(enum sh_css_pipe_id   pipe,
 	enum sh_css_err err;
 	enum sh_css_buffer_queue_id queue_id;
 	hrt_vaddress ddr_buffer_addr;
-	struct sh_css_hmm_buffer ddr_buffer;
+	struct sh_css_hmm_buffer ddr_buffer = {0};
 	bool rc;
 	unsigned int i, found_record;
 
@@ -3402,6 +3402,9 @@ sh_css_dequeue_buffer(enum sh_css_pipe_id   pipe,
 			}
 		}
 		assert(found_record == 1);
+
+		if (ddr_buffer.kernel_ptr == 0)
+			rc = false;
 
 	switch (buf_type) {
 	case SH_CSS_BUFFER_TYPE_OUTPUT_FRAME:
