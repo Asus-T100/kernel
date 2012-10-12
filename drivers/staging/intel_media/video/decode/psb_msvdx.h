@@ -731,6 +731,7 @@ struct msvdx_private {
 	struct psb_video_ctx *msvdx_ctx;
 	/* previous vieo context */
 	struct psb_video_ctx *last_msvdx_ctx;
+	uint32_t pm_gating_count;
 };
 
 struct psb_msvdx_cmd_queue {
@@ -748,7 +749,7 @@ struct psb_msvdx_cmd_queue {
 
 #define FW_VA_LAST_SLICE_OF_EXT_DMA                                         0x00001000
 
-#ifdef CONFIG_DRM_MRFLD
+#ifdef CONFIG_VIDEO_MRFLD
 struct psb_msvdx_ec_ctx *psb_msvdx_find_ec_ctx(
 			struct msvdx_private *msvdx_priv,
 			struct ttm_object_file *tfile,
@@ -859,11 +860,13 @@ static inline void psb_msvdx_mtx_set_clocks(struct drm_device *dev, uint32_t clo
 #define MSVDX_NEW_PMSTATE(drm_dev, msvdx_priv, new_state)		\
 do {									\
 	msvdx_priv->pmstate = new_state;				\
+	if (new_state == PSB_PMSTATE_POWERDOWN)				\
+		msvdx_priv->pm_gating_count++;				\
 	sysfs_notify_dirent(msvdx_priv->sysfs_pmstate);			\
-	PSB_DEBUG_PM("MSVDX: %s\n",					\
+	PSB_DEBUG_PM("MSVDX: %s, power gating count 0x%08x\n",		\
 		(new_state == PSB_PMSTATE_POWERUP) ? "powerup"		\
 		: ((new_state == PSB_PMSTATE_POWERDOWN) ? "powerdown"	\
-			: "clockgated"));				\
+			: "clockgated"), msvdx_priv->pm_gating_count);	\
 } while (0)
 
 #if 0

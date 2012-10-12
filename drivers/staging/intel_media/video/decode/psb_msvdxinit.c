@@ -30,7 +30,7 @@
 #include "psb_drv.h"
 #include "psb_msvdx.h"
 #include "psb_msvdx_msg.h"
-#ifdef CONFIG_DRM_MRFLD
+#ifdef CONFIG_VIDEO_MRFLD
 #include "psb_msvdx_ec.h"
 #endif
 #include <linux/firmware.h>
@@ -302,14 +302,16 @@ static ssize_t psb_msvdx_pmstate_show(struct device *dev,
 				      struct device_attribute *attr, char *buf)
 {
 	struct drm_device *drm_dev = dev_get_drvdata(dev);
+	struct drm_psb_private *dev_priv = drm_dev->dev_private;
+	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
 	int ret = -EINVAL;
 
 	if (drm_dev == NULL)
 		return 0;
 
-	ret = snprintf(buf, 64, "MSVDX Power state 0x%s\n",
+	ret = snprintf(buf, 64, "MSVDX Power state 0x%s, gating count 0x%08x\n",
 		       ospm_power_is_hw_on(OSPM_VIDEO_DEC_ISLAND)
-				? "ON" : "OFF");
+				? "ON" : "OFF", msvdx_priv->pm_gating_count);
 
 	return ret;
 }
@@ -504,6 +506,19 @@ static void msvdx_tile_setup(struct drm_psb_private *dev_priv)
 
 static void msvdx_init_ec(struct msvdx_private *msvdx_priv)
 {
+	struct drm_psb_private *dev_priv = msvdx_priv->dev_priv;
+
+	/* we should restore the state, if we power down/up
+	 * during EC */
+	PSB_WMSVDX32(0, MSVDX_EXT_FW_ERROR_STATE); /* EXT_FW_ERROR_STATE */
+	PSB_WMSVDX32(0, MSVDX_COMMS_MSG_COUNTER);
+	PSB_WMSVDX32(0, 0x2000 + 0xcc4); /* EXT_FW_ERROR_STATE */
+	PSB_WMSVDX32(0, 0x2000 + 0xcb0); /* EXT_FW_LAST_MBS */
+	PSB_WMSVDX32(0, 0x2000 + 0xcb4); /* EXT_FW_LAST_MBS */
+	PSB_WMSVDX32(0, 0x2000 + 0xcb8); /* EXT_FW_LAST_MBS */
+	PSB_WMSVDX32(0, 0x2000 + 0xcbc); /* EXT_FW_LAST_MBS */
+
+
 	msvdx_priv->msvdx_ec_ctx[0] =
 		kzalloc(sizeof(struct psb_msvdx_ec_ctx) *
 				PSB_MAX_EC_INSTANCE,
@@ -519,7 +534,7 @@ static void msvdx_init_ec(struct msvdx_private *msvdx_priv)
 			msvdx_priv->msvdx_ec_ctx[i]->fence =
 					PSB_MSVDX_INVALID_FENCE;
 	}
-#ifdef CONFIG_DRM_MRFLD
+#ifdef CONFIG_VIDEO_MRFLD
 	INIT_WORK(&(msvdx_priv->ec_work), psb_msvdx_do_concealment);
 #endif
 	return;
@@ -560,16 +575,6 @@ int psb_setup_msvdx(struct drm_device *dev)
 	psb_msvdx_mtx_set_clocks(dev_priv->dev, clk_enable_all);
 
 	PSB_WMSVDX32(FIRMWAREID, MSVDX_COMMS_FIRMWARE_ID);
-
-	/* we should restore the state, if we power down/up
-	 * during EC */
-	PSB_WMSVDX32(0, MSVDX_EXT_FW_ERROR_STATE); /* EXT_FW_ERROR_STATE */
-	PSB_WMSVDX32(0, MSVDX_COMMS_MSG_COUNTER);
-	PSB_WMSVDX32(0, 0x2000 + 0xcc4); /* EXT_FW_ERROR_STATE */
-	PSB_WMSVDX32(0, 0x2000 + 0xcb0); /* EXT_FW_LAST_MBS */
-	PSB_WMSVDX32(0, 0x2000 + 0xcb4); /* EXT_FW_LAST_MBS */
-	PSB_WMSVDX32(0, 0x2000 + 0xcb8); /* EXT_FW_LAST_MBS */
-	PSB_WMSVDX32(0, 0x2000 + 0xcbc); /* EXT_FW_LAST_MBS */
 
 	/* read register bank size */
 	{
@@ -632,6 +637,7 @@ static int msvdx_first_init(struct drm_device *dev)
 		(((dev)->pci_device & 0xffff) == 0x08c7) || \
 		(((dev)->pci_device & 0xffff) == 0x08c8);
 	msvdx_tile_setup(dev_priv);
+	msvdx_priv->pm_gating_count = 0;
 
 	/* get device --> drm_device --> drm_psb_private --> msvdx_priv
 	 * for psb_msvdx_pmstate_show: msvdx_pmpolicy

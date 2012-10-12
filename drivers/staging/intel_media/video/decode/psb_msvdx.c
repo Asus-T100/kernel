@@ -29,7 +29,7 @@
 #include "psb_drv.h"
 #include "psb_msvdx.h"
 #include "psb_msvdx_msg.h"
-#ifdef CONFIG_DRM_MRFLD
+#ifdef CONFIG_VIDEO_MRFLD
 #include "psb_msvdx_ec.h"
 #endif
 #include "pnw_topaz.h"
@@ -74,7 +74,7 @@ static int psb_msvdx_dequeue_send(struct drm_device *dev)
 	if (IS_MSVDX_MEM_TILE(dev) && drm_psb_msvdx_tiling)
 		psb_msvdx_set_tile(dev, msvdx_cmd->msvdx_tile);
 
-#ifdef CONFIG_DRM_MRFLD
+#ifdef CONFIG_VIDEO_MRFLD
 	/* Seperate update frame and backup cmds because if a batch of cmds
 	 * doesn't have * host_be_opp message, no need to update frame info
 	 * but still need to backup cmds.
@@ -318,7 +318,7 @@ static int psb_msvdx_map_command(struct drm_device *dev,
 				((msvdx_priv->msvdx_ctx->ctx_type >> 16) & 0xff);
 			psb_msvdx_set_tile(dev, msvdx_tile);
 		}
-#ifdef CONFIG_DRM_MRFLD
+#ifdef CONFIG_VIDEO_MRFLD
 		if (msvdx_priv->host_be_opp_enabled) {
 			psb_msvdx_update_frame_info(msvdx_priv,
 				msvdx_priv->tfile,
@@ -833,8 +833,9 @@ loop: /* just for coding style check */
 		struct fw_contiguity_msg *contiguity_msg =
 					(struct fw_contiguity_msg *)buf;
 
-		PSB_DEBUG_GENERAL("MSVDX: MSGID_CONTIGUITY_WARNING:"
-			" - Fence: %08x - end_mb_num: %08x - end_mb_num: %08x\n",
+		PSB_DEBUG_GENERAL("MSVDX: MSGID_CONTIGUITY_WARNING:");
+		PSB_DEBUG_GENERAL(
+			"- Fence: %08x - end_mb: %08x - begin_mb: %08x\n",
 			contiguity_msg->header.bits.msg_fence,
 			contiguity_msg->mb.bits.end_mb_num,
 			contiguity_msg->mb.bits.begin_mb_num);
@@ -893,6 +894,51 @@ loop: /* just for coding style check */
 		break;
 
 	}
+
+	case MTX_MSGID_DEBLOCK_REQUIRED: {
+		struct fw_deblock_required_msg *deblock_required_msg =
+					(struct fw_deblock_required_msg *)buf;
+		uint32_t fence;
+
+		fence = deblock_required_msg->header.bits.msg_fence;
+		PSB_DEBUG_GENERAL(
+		    "MSVDX: MTX_MSGID_DEBLOCK_REQUIRED Fence=%08x\n", fence);
+
+
+		struct psb_msvdx_ec_ctx *msvdx_ec_ctx = NULL;
+		int found = 0;
+		PSB_DEBUG_MSVDX("Get deblock required msg for ec\n");
+		for (i = 0; i < PSB_MAX_EC_INSTANCE; i++)
+			if (msvdx_priv->msvdx_ec_ctx[i]->fence
+						== (fence & (~0xf))) {
+				msvdx_ec_ctx =
+					msvdx_priv->msvdx_ec_ctx[i];
+				found++;
+			}
+		/* if found > 1, fence wrapping happens */
+		if (!msvdx_ec_ctx ||
+		    !(msvdx_ec_ctx->tfile) || found > 1) {
+			PSB_DEBUG_MSVDX(
+		"no matched ctx: fence 0x%x, found %d, ctx 0x%08x\n",
+				fence, found, msvdx_ec_ctx);
+			PSB_WMSVDX32(0, MSVDX_CMDS_END_SLICE_PICTURE);
+			PSB_WMSVDX32(1, MSVDX_CMDS_END_SLICE_PICTURE);
+			goto done;
+		}
+
+		msvdx_ec_ctx->cur_frame_info->fw_status = 1;
+
+		/* try to unblock rendec */
+		/*
+		PSB_WMSVDX32(0, MSVDX_CMDS_END_SLICE_PICTURE);
+		PSB_WMSVDX32(1, MSVDX_CMDS_END_SLICE_PICTURE);
+		*/
+		/*do error concealment with hw*/
+		msvdx_priv->cur_msvdx_ec_ctx = msvdx_ec_ctx;
+		schedule_work(&msvdx_priv->ec_work);
+		break;
+	}
+
 	default:
 		DRM_ERROR("ERROR: msvdx Unknown message from MTX, ID:0x%08x\n", MEMIO_READ_FIELD(buf, FWRK_GENMSG_ID));
 		goto done;

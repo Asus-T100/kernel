@@ -130,8 +130,14 @@ static u8 h8c7_gamma_b[] = {
 	0x13, 0x0f, 0x18};
 static u8 h8c7_enter_set_cabc[] = {
 	0xc9, 0x1f, 0x00, 0x1e,
-	0x1e, 0x00, 0x00, 0x00,
+	0x1e, 0x00, 0x20, 0x00,
 	0x01, 0xe3};
+
+/*cabc 20% gain setting*/
+static u8 h8c7_set_cabc_gain[] = {
+	0xca, 0x28, 0x27, 0x26,
+	0x25, 0x24, 0x23, 0x22,
+	0x21, 0x20};
 
 #define MIPI_RESET_GPIO_DEFAULT 128
 
@@ -369,8 +375,7 @@ int mdfld_dsi_h8c7_cmd_power_on(struct mdfld_dsi_config *dsi_config)
 	}
 	if (drm_psb_enable_cabc) {
 		/* turn on cabc */
-		h8c7_disable_cabc[0] |= BIT8;
-		h8c7_disable_cabc[0] |= BIT9;
+		h8c7_disable_cabc[1] = 0x3;
 		mdfld_dsi_send_mcs_long_hs(sender, h8c7_disable_cabc, 4, 0);
 	}
 power_err:
@@ -391,8 +396,7 @@ static int mdfld_dsi_h8c7_cmd_power_off(struct mdfld_dsi_config *dsi_config)
 	}
 
 	/* turn off cabc */
-	h8c7_disable_cabc[0] &= (~BIT8);
-	h8c7_disable_cabc[0] &= (~BIT9);
+	h8c7_disable_cabc[1] = 0x0;
 	mdfld_dsi_send_mcs_long_hs(sender, h8c7_disable_cabc, 4, 0);
 
 	/*turn off backlight*/
@@ -529,6 +533,51 @@ int mdfld_dsi_h8c7_cmd_set_brightness(struct mdfld_dsi_config *dsi_config,
 	if (!sender) {
 		DRM_ERROR("Failed to get DSI packet sender\n");
 		return -EINVAL;
+	}
+
+	if (drm_psb_enable_cabc) {
+		if (level < 50) {
+			h8c7_disable_cabc[1] = 0x0;
+		} else if (level < 66) {
+			/* Case 10% */
+			h8c7_disable_cabc[1] = 0x3;
+			h8c7_set_cabc_gain[1] = 0x23;
+			h8c7_set_cabc_gain[2] = 0x23;
+			h8c7_set_cabc_gain[3] = 0x23;
+			h8c7_set_cabc_gain[4] = 0x22;
+			h8c7_set_cabc_gain[5] = 0x22;
+			h8c7_set_cabc_gain[6] = 0x22;
+			h8c7_set_cabc_gain[7] = 0x21;
+			h8c7_set_cabc_gain[8] = 0x21;
+			h8c7_set_cabc_gain[9] = 0x20;
+		} else if (level < 82) {
+			/* Case 20% */
+			h8c7_disable_cabc[1] = 0x3;
+			h8c7_set_cabc_gain[1] = 0x28;
+			h8c7_set_cabc_gain[2] = 0x27;
+			h8c7_set_cabc_gain[3] = 0x26;
+			h8c7_set_cabc_gain[4] = 0x25;
+			h8c7_set_cabc_gain[5] = 0x24;
+			h8c7_set_cabc_gain[6] = 0x23;
+			h8c7_set_cabc_gain[7] = 0x22;
+			h8c7_set_cabc_gain[8] = 0x21;
+			h8c7_set_cabc_gain[9] = 0x20;
+		} else {
+			/* Case 30% */
+			h8c7_disable_cabc[1] = 0x3;
+			h8c7_set_cabc_gain[1] = 0x2d;
+			h8c7_set_cabc_gain[2] = 0x2c;
+			h8c7_set_cabc_gain[3] = 0x2b;
+			h8c7_set_cabc_gain[4] = 0x29;
+			h8c7_set_cabc_gain[5] = 0x27;
+			h8c7_set_cabc_gain[6] = 0x25;
+			h8c7_set_cabc_gain[7] = 0x23;
+			h8c7_set_cabc_gain[8] = 0x21;
+			h8c7_set_cabc_gain[9] = 0x20;
+		}
+
+		mdfld_dsi_send_mcs_long_hs(sender, h8c7_disable_cabc, 4, 0);
+		mdfld_dsi_send_mcs_long_hs(sender, h8c7_set_cabc_gain, 10, 0);
 	}
 
 	duty_val = (255 * level) / 100;

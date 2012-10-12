@@ -834,6 +834,10 @@ typedef struct drm_psb_msvdx_decode_status {
 #define DRM_PSB_CSC_GAMMA_SETTING 0x29
 #define DRM_PSB_SET_CSC         0x2a
 
+/* IED session */
+#define DRM_PSB_ENABLE_IED_SESSION  0x30
+#define DRM_PSB_DISABLE_IED_SESSION 0x31
+
 /* Do not use IOCTL between 0x40 and 0x4F */
 /* These will be reserved for OEM to use */
 /* OEM IOCTLs */
