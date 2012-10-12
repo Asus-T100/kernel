@@ -93,13 +93,14 @@ extern  int check_pm_otg();
 #undef writel
 #endif
 #define readl(addr) ({ if (check_pm_otg()) { \
-	panic("usb otg, read reg:0x%x, pm_sss0_base:0x%x",  \
-	addr, *(pm_sss0_base)); }; __le32_to_cpu(__raw_readl(addr)); })
+	panic("usb otg, read reg:%p, pm_sss0_base:%p",  \
+	(void *) addr, (void *) *(pm_sss0_base)); };\
+	__le32_to_cpu(__raw_readl(addr)); })
 #define writel(b, addr) ({ if (check_pm_otg()) { \
-	panic("usb otg, write reg:0x%x, pm_sss0_base:0x%x",  \
-	addr, *(pm_sss0_base)); }; __raw_writel(__cpu_to_le32(b), addr); })
+	panic("usb otg, write reg:%p, pm_sss0_base:%p",  \
+	(void *) addr, (void *) *(pm_sss0_base)); };\
+	__raw_writel(__cpu_to_le32(b), addr); })
 #endif
-
 
 /*-------------------------------------------------------------------------*/
 /* debugging */

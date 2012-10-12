@@ -836,7 +836,7 @@ static int __init sfi_parse_devs(struct sfi_table_header *table)
 #endif
 				io_apic_set_pci_routing(NULL, irq, &irq_attr);
 			} else
-				printk(KERN_INFO, "APIC entry not found for: name=%s, irq=%d, ioapic=%d",
+				printk(KERN_INFO "APIC entry not found for: name=%s, irq=%d, ioapic=%d",
 					pentry->name, irq, ioapic);
 		}
 

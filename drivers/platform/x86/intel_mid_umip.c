@@ -161,7 +161,7 @@ static ssize_t usb_host_enable_timeout_show(struct device *dev,
 	if (i == MAX_NUM_TIMEOUTS)
 		return sprintf(buffer, "%s\n", "Could not read right value");
 	else
-		return sprintf(buffer, "%s\n", &timeout);
+		return snprintf(buffer, sizeof(timeout), "%s\n", timeout);
 }
 
 ssize_t usb_host_enable_timeout_store(struct device *dev,

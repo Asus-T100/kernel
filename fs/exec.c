@@ -2161,7 +2161,7 @@ void do_coredump(long signr, int exit_code, struct pt_regs *regs)
 		struct inode *inode;
 
 		if (cprm.limit < binfmt->min_coredump) {
-			printk(KERN_ERR " min_coredump: %x less than %x\n",
+			printk(KERN_ERR " min_coredump: %lx less than %lx\n",
 					cprm.limit, binfmt->min_coredump);
 			goto fail_unlock;
 		}

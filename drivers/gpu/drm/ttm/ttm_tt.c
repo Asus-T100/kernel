@@ -478,7 +478,7 @@ static int alloc_user_pages_ttm(struct ttm_tt *ttm,
 	vma = find_vma(current->mm, userptr);
 	up_read(&current->mm->mmap_sem);
 	if (vma == NULL) {
-		printk("find_vma failed\n");
+		printk(KERN_ERR "find_vma failed\n");
 		return -EFAULT;
 	}
 
@@ -505,8 +505,8 @@ static int alloc_user_pages_ttm(struct ttm_tt *ttm,
 
 	/* can be written by caller, not forced */
 	if (page_nr != ttm->num_pages) {
-		printk("get_user_pages err: bo->pgnr = %d, "
-				"pgnr actually pinned = %d.\n",
+		printk(KERN_ERR "get_user_pages err: bo->pgnr = %lu, "
+				"pgnr actually pinned = %u.\n",
 				ttm->num_pages, page_nr);
 		return -ENOMEM;
 	}

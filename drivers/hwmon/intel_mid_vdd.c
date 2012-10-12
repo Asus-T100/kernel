@@ -259,7 +259,7 @@ static ssize_t show_action_mask(struct device *dev,
 	assert_pin = SET_ACTION_MASK(assert_pin, (data & 1), 4);
 mask_ipc_fail:
 	mutex_unlock(&vdd_update_lock);
-	return sprintf(buf, "%x\n", assert_pin);
+	return sprintf(buf, "%ld\n", assert_pin);
 }
 
 static ssize_t store_bcu_status(struct device *dev,

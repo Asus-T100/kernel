@@ -781,7 +781,7 @@ int kim_suspend(struct platform_device *pdev, pm_message_t state)
 
 	if (st_data->ll_state != ST_LL_ASLEEP &&
 	    st_data->ll_state != ST_LL_INVALID) {
-		pr_info("Shared Transport LL state : %d", st_data->ll_state);
+		pr_info("Shared Transport LL state : %lu", st_data->ll_state);
 		return -EBUSY;
 	}
 

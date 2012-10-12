@@ -356,7 +356,7 @@ static int pn544_dev_ioctl(struct file *filp,
 					!pn544_dev->nfc_enable);
 			msleep(10);
 		} else {
-			pr_err("%s bad arg %u\n", __func__, arg);
+			pr_err("%s bad arg %lu\n", __func__, arg);
 			return -EINVAL;
 		}
 		break;
