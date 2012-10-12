@@ -744,7 +744,11 @@ static void flush_to_bottom_log(struct logger_log *log,
 	if (unlikely(!header.len))
 		return;
 
-	spin_lock_irqsave(&log_lock, flags);
+	if (oops_in_progress) {
+		if (!spin_trylock_irqsave(&log_lock, flags))
+			return;
+	} else
+		spin_lock_irqsave(&log_lock, flags);
 
 	fix_up_readers(log, sizeof(struct logger_entry) + header.len);
 
@@ -900,7 +904,8 @@ logger_console_write(struct console *console, const char *s, unsigned int count)
 
 	if (unlikely(!keventd_up()))
 		return;
-	schedule_work(&write_console_wq);
+	if (!oops_in_progress)
+		schedule_work(&write_console_wq);
 }
 
 /* logger console uses CON_IGNORELEVEL that provides a way to ignore
