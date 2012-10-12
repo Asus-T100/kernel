@@ -1281,6 +1281,7 @@ static void binder_send_failed_reply(struct binder_transaction *t,
 					"already\n", target_thread->proc->pid,
 					target_thread->pid,
 					target_thread->return_error);
+				kfree(t);
 			}
 			return;
 		} else {
@@ -2509,6 +2510,11 @@ static void binder_release_work(struct list_head *list)
 			t = container_of(w, struct binder_transaction, work);
 			if (t->buffer->target_node && !(t->flags & TF_ONE_WAY))
 				binder_send_failed_reply(t, BR_DEAD_REPLY);
+			else {
+				t->buffer->transaction = NULL;
+				kfree(t);
+				binder_stats_deleted(BINDER_STAT_TRANSACTION);
+			}
 		} break;
 		case BINDER_WORK_TRANSACTION_COMPLETE: {
 			kfree(w);
@@ -2982,6 +2988,7 @@ static void binder_deferred_release(struct binder_proc *proc)
 
 		nodes++;
 		rb_erase(&node->rb_node, &proc->nodes);
+		binder_release_work(&node->async_todo);
 		list_del_init(&node->work.entry);
 		if (hlist_empty(&node->refs)) {
 			kfree(node);
