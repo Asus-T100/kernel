@@ -9,6 +9,7 @@
  */
 
 #include <linux/pci.h>
+#include <linux/pci_ids.h>
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/device.h>
@@ -441,6 +442,14 @@ static void pci_device_shutdown(struct device *dev)
  */
 static int pci_restore_standard_config(struct pci_dev *pci_dev)
 {
+#ifdef CONFIG_HSI_NO_MODEM
+	/* LSS:07 must be stay off */
+	if ((pci_dev->device == 0x08F2) &&
+	    (pci_dev->vendor == PCI_VENDOR_ID_INTEL)) {
+		pr_info("%s: let EHCI SPH off\n", __func__);
+		return 0;
+	}
+#endif
 	pci_update_current_state(pci_dev, PCI_UNKNOWN);
 
 	if (pci_dev->current_state != PCI_D0) {
