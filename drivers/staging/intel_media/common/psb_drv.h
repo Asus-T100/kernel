@@ -80,6 +80,7 @@ enum panel_type {
 	GI_SONY_CMD,
 	GI_RENESAS_CMD,
 	TC35876X_VID,
+	YB_CMI_VID,
 	HDMI,
 	GCT_DETECT
 };

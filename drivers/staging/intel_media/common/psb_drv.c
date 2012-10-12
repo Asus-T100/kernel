@@ -909,6 +909,15 @@ bool intel_mid_get_vbt_data(struct drm_psb_private *dev_priv)
 		goto out;
 	}
 
+	/*FIXME:
+	 * This is a workaround for Yukka Beach power on. Usually panel ID
+	 * should be detected from IA FW dynamically, befor FW's ready,
+	 * workaround it first. This MUST be reverted if FW's ready.
+	 */
+#ifdef CONFIG_SUPPORT_YB_MIPI_DISPLAY
+	dev_priv->panel_id = YB_CMI_VID;
+	goto out;
+#endif
 	number_desc = pVBT->num_of_panel_desc;
 	primary_panel = pVBT->primary_panel_idx;
 	dev_priv->gct_data.bpi = primary_panel; /*save boot panel id*/

@@ -779,6 +779,8 @@ static
 void mdfld_dsi_dpi_prepare(struct drm_encoder *encoder)
 {
 	PSB_DEBUG_ENTRY("\n");
+
+	__mdfld_dsi_dpi_set_power(encoder, false);
 }
 
 static
@@ -1038,6 +1040,7 @@ struct mdfld_dsi_encoder *mdfld_dsi_dpi_init(struct drm_device *dev,
 	
 	/*attach to given connector*/
 	drm_mode_connector_attach_encoder(connector, encoder);
+	connector->encoder = encoder;
 	
 	/*set possible crtcs and clones*/
 	if(dsi_connector->pipe) {

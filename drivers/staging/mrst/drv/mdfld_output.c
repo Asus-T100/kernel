@@ -42,6 +42,7 @@
 #include "displays/h8c7_cmd.h"
 #include "displays/tc35876x_vid.h"
 #include "displays/gi_renesas_cmd.h"
+#include "displays/yb_cmi_vid.h"
 #include "displays/hdmi.h"
 #include "psb_drv.h"
 
@@ -54,7 +55,8 @@ static struct intel_mid_panel_list panel_list[] = {
 	{GI_SONY_VID,	MDFLD_DSI_ENCODER_DPI, gi_sony_vid_init},
 	{GI_SONY_CMD,	MDFLD_DSI_ENCODER_DBI, gi_sony_cmd_init},
 	{GI_RENESAS_CMD, MDFLD_DSI_ENCODER_DBI, gi_renesas_cmd_init},
-	{TC35876X_VID,	MDFLD_DSI_ENCODER_DPI, tc35876x_vid_init}
+	{TC35876X_VID,	MDFLD_DSI_ENCODER_DPI, tc35876x_vid_init},
+	{YB_CMI_VID,	MDFLD_DSI_ENCODER_DPI, yb_cmi_vid_init}
 };
 
 enum panel_type get_panel_type(struct drm_device *dev, int pipe)
