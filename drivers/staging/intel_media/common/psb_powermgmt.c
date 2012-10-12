@@ -398,6 +398,35 @@ void ospm_power_uninit(void)
 	pm_runtime_get_noresume(&gpDrmDevice->pdev->dev);
 #endif
 }
+
+/*
+*  gfx_register_program
+*
+* Update some register value to avoid hdmi flicker
+*/
+static void gfx_register_program(struct drm_device *dev)
+{
+	u32 temp;
+
+	REG_WRITE(DSPARB, 0x0005E480);
+	REG_WRITE(DSPFW1, 0x0F0F103F);
+	REG_WRITE(DSPFW4, 0x0707101F);
+	REG_WRITE(MI_ARB, 0x0);
+
+	temp = REG_READ(DSPARB);
+	PSB_DEBUG_ENTRY("gfx_hdmi_setting: DSPARB = 0x%x", temp);
+
+	temp = REG_READ(DSPFW1);
+	PSB_DEBUG_ENTRY("gfx_hdmi_setting: DSPFW1 = 0x%x", temp);
+
+	temp = REG_READ(DSPFW4);
+	PSB_DEBUG_ENTRY("gfx_hdmi_setting: DSPFW4 = 0x%x", temp);
+
+	temp = REG_READ(MI_ARB);
+	PSB_DEBUG_ENTRY("gfx_hdmi_setting: MI_ARB = 0x%x", temp);
+
+}
+
 /*
 * ospm_post_init
 *
@@ -462,6 +491,9 @@ disable these MSIC power rails permanently.  */
 		intel_scu_ipc_iowrite8(MSIC_VCC330CNT, VCC330_OFF);
 	}
 #endif
+	if (IS_CTP(dev))
+		gfx_register_program(dev);
+
 	mutex_unlock(&g_ospm_mutex);
 
 }
@@ -897,6 +929,9 @@ void ospm_resume_display(struct pci_dev *pdev)
 #endif
 	}
 	mdfld_restore_cursor_overlay_registers(dev);
+
+	if (IS_CTP(dev))
+		gfx_register_program(dev);
 }
 
 /*
