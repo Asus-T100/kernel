@@ -282,6 +282,92 @@ static void psy_unregister_thermal(struct power_supply *psy)
 		return;
 	thermal_zone_device_unregister(psy->tzd);
 }
+
+/* thermal cooling device callbacks */
+static int ps_get_max_charge_cntl_limit(struct thermal_cooling_device *tcd,
+						unsigned long *state)
+{
+	struct power_supply *psy;
+	union power_supply_propval val;
+	int ret;
+
+	if (WARN_ON(tcd == NULL))
+		return -EINVAL;
+	psy = tcd->devdata;
+	ret = psy->get_property(psy,
+		POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT_MAX, &val);
+	if (!ret)
+		*state = val.intval;
+
+	return ret;
+}
+
+static int ps_get_cur_chrage_cntl_limit(struct thermal_cooling_device *tcd,
+						unsigned long *state)
+{
+	struct power_supply *psy;
+	union power_supply_propval val;
+	int ret;
+
+	if (WARN_ON(tcd == NULL))
+		return -EINVAL;
+	psy = tcd->devdata;
+	ret = psy->get_property(psy,
+		POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT, &val);
+	if (!ret)
+		*state = val.intval;
+
+	return ret;
+}
+
+static int ps_set_cur_charge_cntl_limit(struct thermal_cooling_device *tcd,
+							unsigned long state)
+{
+	struct power_supply *psy;
+	union power_supply_propval val;
+	int ret;
+
+	if (WARN_ON(tcd == NULL))
+		return -EINVAL;
+	psy = tcd->devdata;
+	val.intval = state;
+	ret = psy->set_property(psy,
+		POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT, &val);
+
+	return ret;
+}
+
+static struct thermal_cooling_device_ops psy_tcd_ops = {
+	.get_max_state = ps_get_max_charge_cntl_limit,
+	.get_cur_state = ps_get_cur_chrage_cntl_limit,
+	.set_cur_state = ps_set_cur_charge_cntl_limit,
+};
+
+static int psy_register_cooler(struct power_supply *psy)
+{
+	int i;
+
+	/* Register for cooling device if psy can control charging */
+	for (i = 0; i < psy->num_properties; i++) {
+		if (psy->properties[i] ==
+				POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT) {
+			psy->tcd = thermal_cooling_device_register(
+							(char *)psy->name,
+							psy, &psy_tcd_ops);
+			if (IS_ERR(psy->tcd))
+				return PTR_ERR(psy->tcd);
+			break;
+		}
+	}
+	return 0;
+}
+
+static void psy_unregister_cooler(struct power_supply *psy)
+{
+	if (IS_ERR_OR_NULL(psy->tcd))
+		return;
+	thermal_cooling_device_unregister(psy->tcd);
+}
 #else
 static int psy_register_thermal(struct power_supply *psy)
 {
@@ -290,6 +376,16 @@ static int psy_register_thermal(struct power_supply *psy)
 
 static void psy_unregister_thermal(struct power_supply *psy)
 {
+}
+
+static int psy_register_cooler(struct power_supply *psy)
+{
+	return 0;
+}
+
+static void psy_unregister_cooler(struct power_supply *psy)
+{
+
 }
 #endif
 
@@ -328,6 +424,10 @@ int power_supply_register(struct device *parent, struct power_supply *psy)
 	if (rc)
 		goto register_thermal_failed;
 
+	rc = psy_register_cooler(psy);
+	if (rc)
+		goto register_cooler_failed;
+
 	rc = power_supply_create_triggers(psy);
 	if (rc)
 		goto create_triggers_failed;
@@ -337,6 +437,8 @@ int power_supply_register(struct device *parent, struct power_supply *psy)
 	goto success;
 
 create_triggers_failed:
+	psy_unregister_cooler(psy);
+register_cooler_failed:
 	psy_unregister_thermal(psy);
 register_thermal_failed:
 	wake_lock_destroy(&psy->work_wake_lock);
@@ -353,6 +455,7 @@ void power_supply_unregister(struct power_supply *psy)
 {
 	cancel_work_sync(&psy->changed_work);
 	power_supply_remove_triggers(psy);
+	psy_unregister_cooler(psy);
 	psy_unregister_thermal(psy);
 	wake_lock_destroy(&psy->work_wake_lock);
 	device_unregister(psy->dev);
