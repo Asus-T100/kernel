@@ -2016,6 +2016,10 @@ static void bq24192_event_worker(struct work_struct *work)
 			chip->usb.type = POWER_SUPPLY_TYPE_USB;
 			dev_info(&chip->client->dev,
 				 "Charger type SDP\n");
+		} else if (chip->chrg_type == POWER_SUPPLY_TYPE_USB_INVAL) {
+			chip->usb.type = POWER_SUPPLY_TYPE_USB_INVAL;
+			dev_info(&chip->client->dev,
+				 "Charger type INVAL SDP\n");
 		} else if (chip->chrg_type == POWER_SUPPLY_TYPE_USB_HOST) {
 			dev_info(&chip->client->dev,
 				 "Charger type USB HOST\n");
