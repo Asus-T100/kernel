@@ -8,6 +8,14 @@ menuconfig POWER_SUPPLY
 
 if POWER_SUPPLY
 
+config POWER_SUPPLY_BATTID
+	bool "Power Supply Battery Identification Framework"
+	help
+	 Say Y here to enable the power supply battery idnetification
+	 framework. The framework would allow different battery identification
+	 drivers to interface with power supply subsystem. Also it allows consumer
+	 drivers to register for notification from the power_supply subsystem.
+
 config POWER_SUPPLY_DEBUG
 	bool "Power supply debug"
 	help
