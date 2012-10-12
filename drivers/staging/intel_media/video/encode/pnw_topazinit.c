@@ -227,9 +227,9 @@ static ssize_t psb_topaz_pmstate_show(struct device *dev,
 
 	pmstate = topaz_priv->pmstate;
 	spin_lock_irqsave(&topaz_priv->topaz_lock, flags);
-	ret = snprintf(buf, 64, "%s\n",
+	ret = snprintf(buf, 64, "%s, gating count 0x%08x\n",
 		       (pmstate == PSB_PMSTATE_POWERUP) ?
-		       "powerup" : "powerdown");
+		       "powerup" : "powerdown", topaz_priv->pm_gating_count);
 	spin_unlock_irqrestore(&topaz_priv->topaz_lock, flags);
 
 	return ret;

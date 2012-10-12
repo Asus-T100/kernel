@@ -302,14 +302,16 @@ static ssize_t psb_msvdx_pmstate_show(struct device *dev,
 				      struct device_attribute *attr, char *buf)
 {
 	struct drm_device *drm_dev = dev_get_drvdata(dev);
+	struct drm_psb_private *dev_priv = drm_dev->dev_private;
+	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
 	int ret = -EINVAL;
 
 	if (drm_dev == NULL)
 		return 0;
 
-	ret = snprintf(buf, 64, "MSVDX Power state 0x%s\n",
+	ret = snprintf(buf, 64, "MSVDX Power state 0x%s, gating count 0x%08x\n",
 		       ospm_power_is_hw_on(OSPM_VIDEO_DEC_ISLAND)
-				? "ON" : "OFF");
+				? "ON" : "OFF", msvdx_priv->pm_gating_count);
 
 	return ret;
 }
@@ -632,6 +634,7 @@ static int msvdx_first_init(struct drm_device *dev)
 		(((dev)->pci_device & 0xffff) == 0x08c7) || \
 		(((dev)->pci_device & 0xffff) == 0x08c8);
 	msvdx_tile_setup(dev_priv);
+	msvdx_priv->pm_gating_count = 0;
 
 	/* get device --> drm_device --> drm_psb_private --> msvdx_priv
 	 * for psb_msvdx_pmstate_show: msvdx_pmpolicy

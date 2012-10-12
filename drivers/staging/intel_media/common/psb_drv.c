@@ -4025,10 +4025,13 @@ int psb_release(struct inode *inode, struct file *filp)
 	} else if (IS_MDFLD(dev_priv->dev)) {
 		struct pnw_topaz_private *topaz_priv =
 			(struct pnw_topaz_private *)dev_priv->topaz_private;
-		schedule_delayed_work(&topaz_priv->topaz_suspend_wq,
+		if (drm_topaz_pmpolicy == PSB_PMPOLICY_POWERDOWN)
+			schedule_delayed_work(&topaz_priv->topaz_suspend_wq,
 						msecs_to_jiffies(10));
 	}
-	schedule_delayed_work(&msvdx_priv->msvdx_suspend_wq,
+
+	if (drm_msvdx_pmpolicy == PSB_PMPOLICY_POWERDOWN)
+		schedule_delayed_work(&msvdx_priv->msvdx_suspend_wq,
 					msecs_to_jiffies(10));
 #endif
 	ret = drm_release(inode, filp);

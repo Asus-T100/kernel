@@ -153,6 +153,7 @@ struct pnw_topaz_private {
 	uint16_t frame_h;
 	/* topaz suspend work queue */
 	struct delayed_work topaz_suspend_wq;
+	uint32_t pm_gating_count;
 };
 
 /* external function declare */
@@ -191,9 +192,12 @@ extern void psb_powerdown_topaz(struct work_struct *work);
 #define PNW_TOPAZ_NEW_PMSTATE(drm_dev, topaz_priv, new_state)		\
 do { \
 	topaz_priv->pmstate = new_state;				\
+	if (new_state == PSB_PMSTATE_POWERDOWN)				\
+		topaz_priv->pm_gating_count++;				\
 	sysfs_notify_dirent(topaz_priv->sysfs_pmstate);			\
-	PSB_DEBUG_PM("TOPAZ: %s\n",					\
-		(new_state == PSB_PMSTATE_POWERUP) ? "powerup" : "powerdown"); \
+	PSB_DEBUG_PM("TOPAZ: %s, power gating count 0x%08x\n",		\
+	(new_state == PSB_PMSTATE_POWERUP) ? "powerup" : "powerdown",	\
+		topaz_priv->pm_gating_count); \
 } while (0)
 
 #endif	/* _PNW_TOPAZ_H_ */
