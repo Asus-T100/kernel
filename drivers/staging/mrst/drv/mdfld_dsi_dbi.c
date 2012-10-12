@@ -692,9 +692,13 @@ int mdfld_generic_dsi_dbi_set_power(struct drm_encoder *encoder, bool on)
 
 	if (dbi_output->first_boot &&
 	    dsi_config->dsi_hw_context.panel_on) {
-		if (on)
+		if (on) {
+			/* When using smooth transition, enable TE
+			 * and wake up ESD detection thread.
+			 */
 			mdfld_enable_te(dev, pipe);
-
+			mdfld_dsi_error_detector_wakeup(dsi_connector);
+		}
 		DRM_INFO("skip panle power setting for first boot! " \
 			 "panel is already powered on\n");
 		goto fun_exit;
