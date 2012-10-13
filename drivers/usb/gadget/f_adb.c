@@ -366,10 +366,17 @@ static ssize_t adb_write(struct file *fp, const char __user *buf,
 			break;
 		}
 
+		if (!dev->online) {
+			pr_debug("adb_write !dev->online\n");
+			r = -EIO;
+			break;
+		}
+
 		/* get an idle tx request to use */
 		req = 0;
 		ret = wait_event_interruptible(dev->write_wq,
-			(req = adb_req_get(dev, &dev->tx_idle)) || dev->error);
+				dev->error || !dev->online ||
+				(req = adb_req_get(dev, &dev->tx_idle)));
 
 		if (ret < 0) {
 			r = ret;
@@ -425,7 +432,9 @@ static int adb_open(struct inode *ip, struct file *fp)
 	/* clear the error latch */
 	_adb_dev->error = 0;
 
+#if 0
 	adb_ready_callback();
+#endif
 
 	return 0;
 }
@@ -434,7 +443,9 @@ static int adb_release(struct inode *ip, struct file *fp)
 {
 	pr_info("adb_release\n");
 
+#if 0
 	adb_closed_callback();
+#endif
 
 	adb_unlock(&_adb_dev->open_excl);
 	return 0;

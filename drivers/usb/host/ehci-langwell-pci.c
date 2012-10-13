@@ -19,6 +19,7 @@
 
 #include <linux/usb/otg.h>
 #include <linux/usb/intel_mid_otg.h>
+#include <linux/wakelock.h>
 
 static int usb_otg_suspend(struct usb_hcd *hcd)
 {
@@ -141,7 +142,6 @@ static int ehci_mid_probe(struct pci_dev *pdev,
 		goto err1;
 	}
 
-	hcd->self.otg_port = 1;
 	ehci = hcd_to_ehci(hcd);
 	/* this will be called in ehci_bus_suspend and ehci_bus_resume */
 	ehci->otg_suspend = usb_otg_suspend;
@@ -166,6 +166,16 @@ static int ehci_mid_probe(struct pci_dev *pdev,
 		retval = -EFAULT;
 		goto err2;
 	}
+
+#ifdef CONFIG_USB_SUSPEND
+	/*get wakelock from itog*/
+	hcd->wake_lock = &iotg->wake_lock;
+	dev_dbg(&pdev->dev, "get usb_hcd wakelock from iotg\n");
+#endif
+
+	/* Mandatorily set the controller as remote-wakeup enabled */
+	device_set_wakeup_enable(&pdev->dev, true);
+
 	retval = usb_add_hcd(hcd, irq, IRQF_DISABLED | IRQF_SHARED);
 	if (retval != 0)
 		goto err2;
@@ -239,6 +249,87 @@ static int ehci_mid_stop_host(struct intel_mid_otg_xceiv *iotg)
 	return 0;
 }
 
+#ifdef CONFIG_PM_SLEEP
+static int ehci_mid_suspend_host(struct intel_mid_otg_xceiv *iotg)
+{
+	int	retval;
+
+	if (iotg == NULL)
+		return -EINVAL;
+
+	if (ehci_otg_driver.driver.pm == NULL)
+		return -EINVAL;
+
+	retval = ehci_otg_driver.driver.pm->suspend(iotg->otg.dev);
+	if (retval)
+		dev_warn(iotg->otg.dev, "suspend failed, return %d\n", retval);
+
+	return retval;
+
+}
+
+static int ehci_mid_suspend_noirq_host(struct intel_mid_otg_xceiv *iotg)
+{
+	int	retval;
+
+	if (iotg == NULL)
+		return -EINVAL;
+
+	if (ehci_otg_driver.driver.pm == NULL)
+		return -EINVAL;
+
+	retval = ehci_otg_driver.driver.pm->suspend_noirq(iotg->otg.dev);
+	if (retval)
+		dev_warn(iotg->otg.dev, "suspend_noirq failed, return %d\n",
+				retval);
+
+	return retval;
+
+}
+
+static int ehci_mid_resume_host(struct intel_mid_otg_xceiv *iotg)
+{
+	int	retval;
+
+	if (iotg == NULL)
+		return -EINVAL;
+
+	if (ehci_otg_driver.driver.pm == NULL)
+		return -EINVAL;
+
+	retval = ehci_otg_driver.driver.pm->resume(iotg->otg.dev);
+	if (retval)
+		dev_warn(iotg->otg.dev, "resume failed, return %d\n", retval);
+
+	return retval;
+}
+
+static int ehci_mid_resume_noirq_host(struct intel_mid_otg_xceiv *iotg)
+{
+	int	retval;
+
+	if (iotg == NULL)
+		return -EINVAL;
+
+	if (ehci_otg_driver.driver.pm == NULL)
+		return -EINVAL;
+
+	retval = ehci_otg_driver.driver.pm->resume_noirq(iotg->otg.dev);
+	if (retval)
+		dev_warn(iotg->otg.dev, "resume_noirq failed, return %d\n",
+				retval);
+
+	return retval;
+}
+#else
+
+#define ehci_mid_suspend_host NULL
+#define ehci_mid_suspend_noirq_host NULL
+#define ehci_mid_resume_host NULL
+#define ehci_mid_resume_noirq_host NULL
+
+#endif
+
 #ifdef CONFIG_PM_RUNTIME
 static int ehci_mid_runtime_suspend_host(struct intel_mid_otg_xceiv *iotg)
 {
@@ -311,6 +402,15 @@ static int intel_mid_ehci_driver_register(struct pci_driver *host_driver)
 	iotg->runtime_suspend_host = ehci_mid_runtime_suspend_host;
 	iotg->runtime_resume_host = ehci_mid_runtime_resume_host;
 
+	iotg->suspend_host = ehci_mid_suspend_host;
+	iotg->suspend_noirq_host = ehci_mid_suspend_noirq_host;
+	iotg->resume_host = ehci_mid_resume_host;
+	iotg->resume_noirq_host = ehci_mid_resume_noirq_host;
+
+#ifdef CONFIG_USB_SUSPEND
+	wake_lock_init(&iotg->wake_lock, WAKE_LOCK_SUSPEND, "ehci_wake_lock");
+#endif
+
 	/* notify host driver is registered */
 	atomic_notifier_call_chain(&iotg->iotg_notifier,
 				MID_OTG_NOTIFY_HOSTADD, iotg);
@@ -335,9 +435,86 @@ static void intel_mid_ehci_driver_unregister(struct pci_driver *host_driver)
 	iotg->runtime_suspend_host = NULL;
 	iotg->runtime_resume_host = NULL;
 
+#ifdef CONFIG_USB_SUSPEND
+	wake_lock_destroy(&iotg->wake_lock);
+#endif
+
 	/* notify host driver is unregistered */
 	atomic_notifier_call_chain(&iotg->iotg_notifier,
 				MID_OTG_NOTIFY_HOSTREMOVE, iotg);
 
 	usb_put_transceiver(otg);
 }
+
+#ifdef CONFIG_BOARD_CTP
+#include <linux/gpio.h>
+#include <asm/intel-mid.h>
+#define SPH_CS_N	51
+#define SPH_RST_N	169
+
+static int cloverview_sph_gpio_init(void)
+{
+	int		retval = 0;
+	u32		board_id;
+
+	board_id = ctp_board_id();
+
+	/*Only ctp_pr0/pr1 phone need to do CS and PHY operation */
+	if (board_id == CTP_BID_PR0) {
+
+		if (gpio_is_valid(SPH_CS_N)) {
+			retval = gpio_request(SPH_CS_N, "SPH_CS_N");
+			if (retval < 0) {
+				printk(KERN_INFO "Request GPIO %d with error %d\n",
+				SPH_CS_N, retval);
+				retval = -ENODEV;
+				goto err;
+			}
+		} else {
+			retval = -ENODEV;
+			goto err;
+		}
+
+		if (gpio_is_valid(SPH_RST_N)) {
+			retval = gpio_request(SPH_RST_N, "SPH_RST_N");
+			if (retval < 0) {
+				printk(KERN_INFO "Request GPIO %d with error %d\n",
+				SPH_RST_N, retval);
+				retval = -ENODEV;
+				goto err1;
+			}
+		} else {
+			retval = -ENODEV;
+			goto err1;
+		}
+
+		gpio_direction_output(SPH_CS_N, 0);
+
+		gpio_direction_output(SPH_RST_N, 0);
+		usleep_range(200, 500);
+		gpio_set_value(SPH_RST_N, 1);
+	}
+
+	return retval;
+
+err1:
+	gpio_free(SPH_CS_N);
+err:
+	return retval;
+}
+
+static void cloverview_sph_gpio_cleanup(void)
+{
+	u32		board_id;
+
+	board_id = ctp_board_id();
+
+	if (board_id == CTP_BID_PR0) {
+		if (gpio_is_valid(SPH_CS_N))
+			gpio_free(SPH_CS_N);
+		if (gpio_is_valid(SPH_RST_N))
+			gpio_free(SPH_RST_N);
+	}
+}
+#endif
+

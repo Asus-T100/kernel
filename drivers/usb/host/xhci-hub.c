@@ -461,6 +461,23 @@ void xhci_test_and_clear_bit(struct xhci_hcd *xhci, __le32 __iomem **port_array,
 		xhci_writel(xhci, temp, port_array[port_id]);
 	}
 }
+static int handshake(struct xhci_hcd *xhci, void __iomem *ptr,
+		      u32 mask, u32 done, int usec)
+{
+	u32	result;
+
+	do {
+		result = xhci_readl(xhci, ptr);
+		if (result == ~(u32)0)		/* card removed */
+			return -ENODEV;
+		result &= mask;
+		if (result == done)
+			return 0;
+		udelay(1);
+		usec--;
+	} while (usec > 0);
+	return -ETIMEDOUT;
+}
 
 /* Updates Link Status for super Speed port */
 static void xhci_hub_report_link_state(u32 *status, u32 status_reg)
@@ -511,6 +528,9 @@ int xhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 	struct xhci_bus_state *bus_state;
 	u16 link_state = 0;
 	u16 wake_mask = 0;
+	u32 __iomem *status_reg = &xhci->op_regs->port_power_base +
+		NUM_PORT_REGS*((wIndex & 0xff) - 1);
+	u32 i, command, num_ports, selector;
 
 	max_ports = xhci_get_ports(hcd, &port_array);
 	bus_state = &xhci->bus_state[hcd_index(hcd)];
@@ -779,6 +799,78 @@ int xhci_hub_control(struct usb_hcd *hcd, u16 typeReq, u16 wValue,
 
 			temp = xhci_readl(xhci, port_array[wIndex]);
 			break;
+		case USB_PORT_FEAT_TEST:
+			selector = wIndex >> 8;
+			if (!selector || selector >= 5)
+				goto error;
+			/*
+			 * Disable all Device Slots.
+			 */
+			for (i = 0; i < MAX_HC_SLOTS; i++) {
+				if (xhci->dcbaa->dev_context_ptrs[i]) {
+					if (xhci_queue_slot_control(xhci,
+						TRB_DISABLE_SLOT, i)) {
+						xhci_err(xhci,
+						"Disable slot[%d] failed!\n",
+						i);
+						goto error;
+					}
+				xhci_dbg(xhci, "Disable Slot[%d].\n", i);
+				}
+			}
+			/*
+			 *	All ports shall be in the Disable state (PP = 0)
+			 */
+			xhci_dbg(xhci, "Disable all port (PP = 0)\n");
+			num_ports = HCS_MAX_PORTS(xhci->hcs_params1);
+			for (i = 0; i < num_ports; i++) {
+				u32 __iomem *sreg =
+					&xhci->op_regs->port_status_base +
+						NUM_PORT_REGS*i;
+				temp = xhci_readl(xhci, sreg);
+				temp &= ~PORT_POWER;
+				xhci_writel(xhci, temp, sreg);
+			}
+
+			/*	Set the Run/Stop (R/S) bit in the USBCMD
+			 *	register to a '0' and wait for HCHalted(HCH) bit
+			 *	in the USBSTS register, to transition to a '1'.
+			 */
+			xhci_dbg(xhci, "Stop controller\n");
+			command = xhci_readl(xhci, &xhci->op_regs->command);
+			command &= ~CMD_RUN;
+			xhci_writel(xhci, command, &xhci->op_regs->command);
+			if (handshake(xhci, &xhci->op_regs->status,
+						STS_HALT, STS_HALT, 100*100)) {
+				xhci_warn(xhci, "WARN: xHC CMD_RUN timeout\n");
+				return -ETIMEDOUT;
+			}
+
+			/*
+			 * start to test
+			 */
+			xhci_dbg(xhci, "test case:");
+			switch (selector) {
+			case 1:
+				xhci_dbg(xhci, "TEST_J\n");
+				break;
+			case 2:
+				xhci_dbg(xhci, "TEST_K\n");
+				break;
+			case 3:
+				xhci_dbg(xhci, "TEST_SE0_NAK\n");
+				break;
+			case 4:
+				xhci_dbg(xhci, "TEST_PACKET\n");
+				break;
+			default:
+				xhci_dbg(xhci, "Invalide test case!\n");
+				goto error;
+			}
+			temp = xhci_readl(xhci, status_reg);
+			temp |= selector << 28;
+			xhci_writel(xhci, temp, status_reg);
+
 		default:
 			goto error;
 		}

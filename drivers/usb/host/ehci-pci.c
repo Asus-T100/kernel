@@ -184,7 +184,8 @@ static int ehci_pci_setup(struct usb_hcd *hcd)
 		}
 		break;
 	case PCI_VENDOR_ID_INTEL:
-		if (pdev->device == 0x0811 || pdev->device == 0x0829) {
+		if (pdev->device == 0x0811 || pdev->device == 0x0829 ||
+				pdev->device == 0xE006) {
 			ehci_info(ehci, "Detected Intel MID OTG HC\n");
 			hcd->has_tt = 1;
 			ehci->has_hostpc = 1;
@@ -193,11 +194,26 @@ static int ehci_pci_setup(struct usb_hcd *hcd)
 #endif
 			force_otg_hc_mode = 1;
 
-			/* For Penwell, Power budget limit is 200mA */
+#ifdef CONFIG_BOARD_REDRIDGE
+			hcd->power_budget = 500;
+#else
+			/* For Penwell, Power budget limit is 200mA,
+			 * For Cloverview, Power budget limit is 500mA */
 			if (pdev->device == 0x0829)
 				hcd->power_budget = 200;
+			else if (pdev->device == 0xE006)
+				hcd->power_budget = 500;
+#endif
 
 			hcd->has_sram = 1;
+			/*
+			 * Disable SRAM for CLVP A0 due to the silicon issue.
+			 */
+			if (pdev->device == 0xE006 && pdev->revision < 0xC) {
+				ehci_info(ehci, "Disable SRAM for CLVP A0\n");
+				hcd->has_sram = 0;
+			}
+
 			hcd->sram_no_payload = 1;
 			sram_init(hcd);
 		} else if (pdev->device == 0x0806) {
@@ -211,6 +227,32 @@ static int ehci_pci_setup(struct usb_hcd *hcd)
 			ehci_info(ehci, "Detected Penwell OTG HC\n");
 			hcd->has_tt = 1;
 			ehci->has_hostpc = 1;
+		} else if (pdev->device == 0x08F2) {
+			/* Check SPH enabled or not */
+			if (!sph_enabled()) {
+				ehci_info(ehci, "USB SPH is disabled\n");
+				return -ENODEV;
+			}
+
+			ehci_info(ehci, "Detected SPH HC\n");
+			hcd->has_tt = 1;
+			ehci->has_hostpc = 1;
+
+			/* All need to bypass tll mode  */
+			temp = ehci_readl(ehci, hcd->regs + CLV_SPHCFG);
+			temp &= ~CLV_SPHCFG_ULPI1TYPE;
+			ehci_writel(ehci, temp, hcd->regs + CLV_SPHCFG);
+
+			temp = ehci_readl(ehci, hcd->regs + CLV_SPH_HOSTPC);
+			temp |= CLV_SPH_HOSTPC_PTS;
+			ehci_writel(ehci, temp, hcd->regs + CLV_SPH_HOSTPC);
+
+			device_set_wakeup_enable(&pdev->dev, true);
+
+			/* Set Runtime-PM flags for SPH */
+			hcd->rpm_control = 1;
+			hcd->rpm_resume = 0;
+			pm_runtime_set_active(&pdev->dev);
 		}
 	}
 
@@ -284,7 +326,7 @@ static int ehci_pci_setup(struct usb_hcd *hcd)
 			ehci_info(ehci, "using broken periodic workaround\n");
 		}
 		if (pdev->device == 0x0806 || pdev->device == 0x0811
-				|| pdev->device == 0x0829) {
+			|| pdev->device == 0x0829 || pdev->device == 0xE006) {
 			ehci_info(ehci, "disable lpm for langwell/penwell\n");
 			ehci->has_lpm = 0;
 		}
@@ -482,6 +524,7 @@ static int ehci_pci_suspend(struct usb_hcd *hcd, bool do_wakeup)
 	struct ehci_hcd		*ehci = hcd_to_ehci(hcd);
 	unsigned long		flags;
 	int			rc = 0;
+	int			port;
 
 	if (time_before(jiffies, ehci->next_statechange))
 		msleep(10);
@@ -500,6 +543,31 @@ static int ehci_pci_suspend(struct usb_hcd *hcd, bool do_wakeup)
 	spin_lock_irqsave (&ehci->lock, flags);
 	ehci_writel(ehci, 0, &ehci->regs->intr_enable);
 	(void)ehci_readl(ehci, &ehci->regs->intr_enable);
+
+	/* Set HOSTPC_PHCD if not set yet to let PHY enter low-power mode */
+	if (ehci->has_hostpc) {
+		spin_unlock_irqrestore(&ehci->lock, flags);
+		usleep_range(5000, 6000);
+		spin_lock_irqsave(&ehci->lock, flags);
+
+		port = HCS_N_PORTS(ehci->hcs_params);
+		while (port--) {
+			u32 __iomem	*hostpc_reg;
+			u32		temp;
+
+			hostpc_reg = (u32 __iomem *)((u8 *) ehci->regs
+					 + HOSTPC0 + 4 * port);
+			temp = ehci_readl(ehci, hostpc_reg);
+
+			if (!(temp & HOSTPC_PHCD))
+				ehci_writel(ehci, temp | HOSTPC_PHCD,
+						hostpc_reg);
+			temp = ehci_readl(ehci, hostpc_reg);
+			ehci_dbg(ehci, "Port %d PHY low-power mode %s\n",
+					port, (temp & HOSTPC_PHCD) ?
+					"succeeded" : "failed");
+		}
+	}
 
 	clear_bit(HCD_FLAG_HW_ACCESSIBLE, &hcd->flags);
 	spin_unlock_irqrestore (&ehci->lock, flags);

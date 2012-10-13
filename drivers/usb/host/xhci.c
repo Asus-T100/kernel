@@ -32,6 +32,11 @@
 #define DRIVER_AUTHOR "Sarah Sharp"
 #define DRIVER_DESC "'eXtensible' Host Controller (xHC) Driver"
 
+#ifdef CONFIG_USB_DWC_OTG_XCEIV
+#include "xhci-dwc.c"
+#define	XHCI_PLATFORM_DRIVER		xhci_dwc_driver
+#endif
+
 /* Some 0.95 hardware can't handle the chain bit on a Link TRB being cleared */
 static int link_quirk;
 module_param(link_quirk, int, S_IRUGO | S_IWUSR);
@@ -186,7 +191,7 @@ int xhci_reset(struct xhci_hcd *xhci)
 	return ret;
 }
 
-#ifdef CONFIG_PCI
+#if !defined(XHCI_PLATFORM_DRIVER) && defined(CONFIG_PCI)
 static int xhci_free_msi(struct xhci_hcd *xhci)
 {
 	int i;
@@ -199,6 +204,28 @@ static int xhci_free_msi(struct xhci_hcd *xhci)
 			free_irq(xhci->msix_entries[i].vector,
 					xhci_to_hcd(xhci));
 	return 0;
+}
+
+/*
+ * Free IRQs
+ * free all IRQs request
+ */
+static void xhci_free_irq(struct xhci_hcd *xhci)
+{
+	struct pci_dev *pdev = to_pci_dev(xhci_to_hcd(xhci)->self.controller);
+	int ret;
+
+	/* return if using legacy interrupt */
+	if (xhci_to_hcd(xhci)->irq > 0)
+		return;
+
+	ret = xhci_free_msi(xhci);
+	if (!ret)
+		return;
+	if (pdev->irq > 0)
+		free_irq(pdev->irq, xhci_to_hcd(xhci));
+
+	return;
 }
 
 /*
@@ -223,28 +250,6 @@ static int xhci_setup_msi(struct xhci_hcd *xhci)
 	}
 
 	return ret;
-}
-
-/*
- * Free IRQs
- * free all IRQs request
- */
-static void xhci_free_irq(struct xhci_hcd *xhci)
-{
-	struct pci_dev *pdev = to_pci_dev(xhci_to_hcd(xhci)->self.controller);
-	int ret;
-
-	/* return if using legacy interrupt */
-	if (xhci_to_hcd(xhci)->irq > 0)
-		return;
-
-	ret = xhci_free_msi(xhci);
-	if (!ret)
-		return;
-	if (pdev->irq > 0)
-		free_irq(pdev->irq, xhci_to_hcd(xhci));
-
-	return;
 }
 
 /*
@@ -520,7 +525,6 @@ int xhci_run(struct usb_hcd *hcd)
 		return xhci_run_finished(xhci);
 
 	xhci_dbg(xhci, "xhci_run\n");
-
 	ret = xhci_try_enable_msi(hcd);
 	if (ret)
 		return ret;
@@ -4069,18 +4073,32 @@ MODULE_LICENSE("GPL");
 
 static int __init xhci_hcd_init(void)
 {
-	int retval;
+	int retval = 0;
+#ifdef XHCI_PLATFORM_DRIVER
+	retval = platform_driver_register(&XHCI_PLATFORM_DRIVER);
 
+	if (retval < 0) {
+		printk(KERN_DEBUG "Problem registering Platform driver.");
+		return retval;
+	}
+	goto done;
+#endif
+
+#ifdef CONFIG_PCI
 	retval = xhci_register_pci();
+
 	if (retval < 0) {
 		printk(KERN_DEBUG "Problem registering PCI driver.");
 		return retval;
 	}
+
 	retval = xhci_register_plat();
 	if (retval < 0) {
 		printk(KERN_DEBUG "Problem registering platform driver.");
 		goto unreg_pci;
 	}
+#endif
+done:
 	/*
 	 * Check the compiler generated sizes of structures that must be laid
 	 * out in specific ways for hardware access.
@@ -4100,15 +4118,23 @@ static int __init xhci_hcd_init(void)
 	BUILD_BUG_ON(sizeof(struct xhci_run_regs) != (8+8*128)*32/8);
 	BUILD_BUG_ON(sizeof(struct xhci_doorbell_array) != 256*32/8);
 	return 0;
+#ifdef CONFIG_PCI
 unreg_pci:
 	xhci_unregister_pci();
 	return retval;
+#endif
 }
 module_init(xhci_hcd_init);
 
 static void __exit xhci_hcd_cleanup(void)
 {
+#ifdef XHCI_PLATFORM_DRIVER
+	platform_driver_unregister(&XHCI_PLATFORM_DRIVER);
+	return;
+#endif
+#ifdef CONFIG_PCI
 	xhci_unregister_pci();
 	xhci_unregister_plat();
+#endif
 }
 module_exit(xhci_hcd_cleanup);

@@ -179,17 +179,14 @@ struct langwell_udc {
 				enabled:1,
 				region:1,
 				got_irq:1,
-				powered:1,
 				remote_wakeup:1,
-				rate:1,
-				is_reset:1,
 				softconnected:1,
 				vbus_active:1,
-				suspended:1,
 				stopped:1,
 				lpm:1,		/* LPM capability */
 				has_sram:1,	/* SRAM caching */
-				got_sram:1;
+				got_sram:1,
+				sdis:1;		/* Streaming mode */
 
 	/* pci state used to access those endpoints */
 	struct pci_dev		*pdev;
@@ -223,6 +220,9 @@ struct langwell_udc {
 	u16			dev_status;
 
 	struct	wake_lock	wake_lock;
+#ifdef OTG_TRANSCEIVER
+	unsigned int		is_peripheral_start;
+#endif
 };
 
 #define gadget_to_langwell(g)	container_of((g), struct langwell_udc, gadget)

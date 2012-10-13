@@ -170,11 +170,19 @@ struct ehci_regs {
 #define HOSTPC0		0x84		/* HOSTPC extension */
 #define HOSTPC_PHCD	(1<<22)		/* Phy clock disable */
 #define HOSTPC_PSPD	(3<<25)		/* Port speed detection */
+#define HOSTPC_ASUS	(1<<0)		/* Auto PHY low power mode */
 #define USBMODE_EX	0xc8		/* USB Device mode extension */
 #define USBMODE_EX_VBPS	(1<<5)		/* VBus Power Select On */
 #define USBMODE_EX_HC	(3<<0)		/* host controller mode */
 #define TXFILLTUNING	0x24		/* TX FIFO Tuning register */
 #define TXFIFO_DEFAULT	(8<<16)		/* FIFO burst threshold 8 */
+
+/* Cloverview SPH registers definition, used for bypass TLL mode
+*/
+#define CLV_SPH_HOSTPC		0xb4	/* SPH HOSTPC */
+#define CLV_SPH_HOSTPC_PTS	(1<<30)	/* SPH HOSTPC PTS */
+#define CLV_SPHCFG		0x400	/* SPHCFG (16bit) */
+#define CLV_SPHCFG_ULPI1TYPE	(1<<0)	/* SPHCFG ULPI1TYPE */
 
 /* Appendix C, Debug port ... intended for use with special "debug devices"
  * that can help if there's no serial console.  (nonstandard enumeration.)

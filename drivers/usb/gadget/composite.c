@@ -21,6 +21,51 @@
 #include <linux/usb/composite.h>
 #include <asm/unaligned.h>
 
+#ifdef CONFIG_USB_GADGET_DWC3
+#include <linux/module.h>
+#include <linux/init.h>
+#include <linux/pci.h>
+#include <linux/platform_device.h>
+#include <linux/dma-mapping.h>
+#include <linux/usb/otg.h>
+#include <linux/sched.h>
+#include <linux/freezer.h>
+#include <linux/kthread.h>
+
+
+enum {
+	MANUFACTURER	= 1,
+	PRODUCT,
+	SERIAL,
+	CONFIG,
+	INTERFACE0,
+	INTERFACE1,
+};
+
+const char manufacturer[] = "ICS kernel with dwc usb3 device";
+const char product[] = "Android Composite Gadget";
+const char serial[] = "382046656272";
+const char config[] = "Self-powered";
+const char interface0[] = "interface 0";
+const char interface1[] = "interface 1";
+
+static struct usb_string		usb_strings[] = {
+	{MANUFACTURER,		manufacturer},
+	{PRODUCT,		product},
+	{SERIAL,		serial},
+	{CONFIG,		config},
+	{INTERFACE0,		interface0},
+	{INTERFACE1,		interface1},
+	{}
+};
+
+struct usb_gadget_strings	usb_stringtab = {
+	.language	= 0x0409,		/* en-us */
+	.strings	= usb_strings,
+};
+
+#endif
+
 /*
  * The code in this file is utility code, used to build a gadget driver
  * from one or more "function" drivers, one or more "configuration"
@@ -446,9 +491,28 @@ static int config_desc(struct usb_composite_dev *cdev, unsigned w_value)
 			if (!c->fullspeed)
 				continue;
 		}
-
+#if defined(CONFIG_USB_GADGET_LANGWELL) && defined(CONFIG_USB_ANDROID)
+		if (!fastboot) {
+			if (w_value == 0) {
+				c->bMaxPower = 250;
+				c->bConfigurationValue = 1;
+				return config_buf(c, speed,
+				cdev->req->buf, type);
+			} else if (w_value == 1) {
+				c->bMaxPower = 50;
+				c->bConfigurationValue = 2;
+				return config_buf(c, speed,
+				cdev->req->buf, type);
+			}
+		} else {
+			if (w_value == 0)
+				return config_buf(c, speed,
+					cdev->req->buf, type);
+		}
+#else
 		if (w_value == 0)
 			return config_buf(c, speed, cdev->req->buf, type);
+#endif
 		w_value--;
 	}
 	return -EINVAL;
@@ -484,7 +548,14 @@ static int count_configs(struct usb_composite_dev *cdev, unsigned type)
 		}
 		count++;
 	}
+#if defined(CONFIG_USB_GADGET_LANGWELL) && defined(CONFIG_USB_ANDROID)
+	if (!fastboot)
+		return count + 1;
+	else
+		return count;
+#else
 	return count;
+#endif
 }
 
 /**
@@ -595,8 +666,40 @@ static int set_config(struct usb_composite_dev *cdev,
 	unsigned		power = gadget_is_otg(gadget) ? 8 : 100;
 	int			tmp;
 
+#if defined(CONFIG_USB_GADGET_SUSPEND_VBUS_DRAW)
+	if (power < CONFIG_USB_GADGET_SUSPEND_VBUS_DRAW)
+		power = CONFIG_USB_GADGET_SUSPEND_VBUS_DRAW;
+#endif
+
 	if (number) {
 		list_for_each_entry(c, &cdev->configs, list) {
+#if defined(CONFIG_USB_GADGET_LANGWELL) && defined(CONFIG_USB_ANDROID)
+			if (!fastboot) {
+				if (number == 1) {
+					c->bConfigurationValue = 1;
+					c->bMaxPower = 250;
+					result = 0;
+					break;
+				} else if (number == 2) {
+					c->bConfigurationValue = 2;
+					c->bMaxPower = 50;
+					result = 0;
+					break;
+				}
+			} else {
+				if (c->bConfigurationValue == number) {
+				/*
+				 * We disable the FDs of the previous
+				 * configuration only if the new configuration
+				 * is a valid one
+				 */
+				if (cdev->config)
+					reset_config(cdev);
+					result = 0;
+					break;
+				}
+			}
+#else
 			if (c->bConfigurationValue == number) {
 				/*
 				 * We disable the FDs of the previous
@@ -608,6 +711,7 @@ static int set_config(struct usb_composite_dev *cdev,
 				result = 0;
 				break;
 			}
+#endif
 		}
 		if (result < 0)
 			goto done;
@@ -795,6 +899,12 @@ static int unbind_config(struct usb_composite_dev *cdev,
 		config->unbind(config);
 			/* may free memory for "c" */
 	}
+
+	/* reset cdev->next_string_id to cdev->reset_string_id
+	 * because "android_usb" driver is working and its
+	 * string descriptor numbers have been allocated */
+	cdev->next_string_id = cdev->reset_string_id;
+
 	return 0;
 }
 
@@ -1143,6 +1253,12 @@ composite_setup(struct usb_gadget *gadget, const struct usb_ctrlrequest *ctrl)
 			if (gadget_is_superspeed(gadget)) {
 				value = bos_desc(cdev);
 				value = min(w_length, (u16) value);
+			}
+			break;
+		case USB_DT_OTG:
+			if (cdev->otg_desc) {
+				memcpy(req->buf, cdev->otg_desc, w_length);
+				value = w_length;
 			}
 			break;
 		}
@@ -1515,6 +1631,8 @@ composite_suspend(struct usb_gadget *gadget)
 {
 	struct usb_composite_dev	*cdev = get_gadget_data(gadget);
 	struct usb_function		*f;
+	struct usb_configuration	*c;
+	int				power;
 
 	/* REVISIT:  should we have config level
 	 * suspend/resume callbacks?
@@ -1531,7 +1649,17 @@ composite_suspend(struct usb_gadget *gadget)
 
 	cdev->suspended = 1;
 
-	usb_gadget_vbus_draw(gadget, 2);
+	/* set charging current according active config MaxPower*/
+	c = cdev->config;
+
+	if (!c)
+		power = CONFIG_USB_GADGET_SUSPEND_VBUS_DRAW;
+	else if ((c->bMaxPower * 2) > CONFIG_USB_GADGET_SUSPEND_VBUS_DRAW)
+		power = CONFIG_USB_GADGET_SUSPEND_VBUS_DRAW;
+	else
+		power = c->bMaxPower * 2;
+
+	usb_gadget_vbus_draw(gadget, power);
 }
 
 static void

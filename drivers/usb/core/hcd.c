@@ -2145,13 +2145,32 @@ irqreturn_t usb_hcd_irq (int irq, void *__hcd)
 	 */
 	local_irq_save(flags);
 
+	/* Do Runtime-PM Operation if hcd->rpm_control == 1 */
+	if (hcd->rpm_control) {
+		struct device		*dev = hcd->self.controller;
+
+		if ((hcd->rpm_resume)
+			|| (dev->power.runtime_status == RPM_RESUMING)) {
+			rc = IRQ_HANDLED;
+			goto RET;
+		}
+
+		if (dev->power.runtime_status != RPM_ACTIVE) {
+			dev_dbg(hcd->self.controller,
+				"Wake up? Interrupt detected in suspended\n");
+			hcd->rpm_resume = 1;
+			pm_runtime_get(dev);
+			rc = IRQ_HANDLED;
+			goto RET;
+		}
+	}
 	if (unlikely(HCD_DEAD(hcd) || !HCD_HW_ACCESSIBLE(hcd)))
 		rc = IRQ_NONE;
 	else if (hcd->driver->irq(hcd) == IRQ_NONE)
 		rc = IRQ_NONE;
 	else
 		rc = IRQ_HANDLED;
-
+RET:
 	local_irq_restore(flags);
 	return rc;
 }
@@ -2562,6 +2581,9 @@ void usb_remove_hcd(struct usb_hcd *hcd)
 
 #ifdef CONFIG_USB_SUSPEND
 	cancel_work_sync(&hcd->wakeup_work);
+	/* Resume root-hub and disable its runtime pm before removing it. */
+	usb_autoresume_device(rhdev);
+	usb_disable_autosuspend(rhdev);
 #endif
 
 	mutex_lock(&usb_bus_list_lock);

@@ -24,6 +24,7 @@
 #include <linux/power_supply.h>
 #include <linux/wakelock.h>
 
+#define PMU_OTG_WAKE_SOURCE     6
 #define CI_USBCMD		0x30
 #	define USBCMD_RST		BIT(1)
 #	define USBCMD_RS		BIT(0)
@@ -127,6 +128,8 @@
 #define	ULPI_OTGCTRL		0x0a
 #define	ULPI_OTGCTRLSET		0x0b
 #define	ULPI_OTGCTRLCLR		0x0c
+#	define DRVVBUS_EXTERNAL		BIT(6)
+#	define DRVVBUS			BIT(5)
 #	define DMPULLDOWN		BIT(2)
 #	define DPPULLDOWN		BIT(1)
 #define MSIC_USBINTEN_RISE	0x39d
@@ -135,6 +138,19 @@
 #define MSIC_USBINTEN_FALL	0x3a0
 #define MSIC_USBINTEN_FALLSET	0x3a1
 #define MSIC_USBINTEN_FALLCLR	0x3a2
+
+/*
+ * For Clovertrail, due to change of USB PHY from MSIC to external standalone
+ * chip, USB Interrupt Enable Rising/Falling registers can be accessed only
+ * from ULPI interface.
+ */
+#define ULPI_USBINTEN_RISING		0xd
+#define ULPI_USBINTEN_RISINGSET		0xe
+#define ULPI_USBINTEN_RISINGCLR		0xf
+#define ULPI_USBINTEN_FALLING		0xa
+#define ULPI_USBINTEN_FALLINGSET	0xb
+#define ULPI_USBINTEN_FALLINGCLR	0xc
+
 #	define IDGND			BIT(4)
 #	define SESSEND			BIT(3)
 #	define SESSVLD			BIT(2)
@@ -157,11 +173,13 @@
 #define ULPI_FUNCTRL		0x04
 #define ULPI_FUNCTRLSET		0x05
 #define ULPI_FUNCTRLCLR		0x06
+#	define PHYRESET			BIT(5)
 #	define OPMODE1			BIT(4)
 #	define OPMODE0			BIT(3)
 #	define TERMSELECT		BIT(2)
 #	define XCVRSELECT1		BIT(1)
 #	define XCVRSELECT0		BIT(0)
+#define ULPI_DEBUG		0x15
 #define MSIC_VS1		0x3b6
 #define MSIC_VS1SET		0x3a9
 #define MSIC_VS1CLR		0x3aa
@@ -169,6 +187,20 @@
 #define ULPI_VS1SET		0x81
 #define ULPI_VS1CLR		0x82
 #	define DATAPOLARITY		BIT(6)
+#define ULPI_VS2STS		0x83
+#define ULPI_VS2LATCH		0x84
+#	define VBUS_MNTR_STS		BIT(7)
+#	define REG3V3_MNTR_STS		BIT(6)
+#	define SVLDCONWKB_WDOG_STS	BIT(5)
+#	define IDFLOAT_STS		BIT(4)
+#	define IDRARBRC_STS(d)		(((d)>>2)&3)
+#	define IDRARBRC_STS1		BIT(3)
+#	define IDRARBRC_STS2		BIT(2)
+#	define IDRARBRC_MSK		(BIT(2) | BIT(3))
+#	define IDRARBRC_A		1
+#	define IDRARBRC_B		2
+#	define IDRARBRC_C		3
+#	define BVALID_STS		BIT(0)
 #define MSIC_VS3		0x3b9
 #define MSIC_VS3SET		0x346	/* Vendor Specific */
 #define MSIC_VS3CLR		0x347
@@ -192,6 +224,22 @@
 #	define R1KERIES			BIT(4)
 #	define CHRG_SERX_DP		BIT(1)
 #	define CHRG_SERX_DM		BIT(0)
+#define ULPI_VS5		0x8b
+#define ULPI_VS5SET		0x8c
+#define ULPI_VS5CLR		0x8d
+#	define AUTORESUME_WDOG		BIT(6)
+#	define IDFLOAT_EN		BIT(5)
+#	define IDRES_EN			BIT(4)
+#	define SVLDCONWKB_WDOG		BIT(3)
+#	define VBUS_MNTR_RISEEN		BIT(2)
+#	define VBUS_MNTR_FALLEN		BIT(1)
+#	define REG3V3IN_MNTR_EN		BIT(0)
+#define ULPI_VS6		0x8e
+#define ULPI_VS6SET		0x8f
+#define ULPI_VS6CLR		0x90
+#	define ACA_RID_B_CFG		BIT(7)
+#	define ACA_RID_A_CFG		BIT(6)
+#	define SOF_EN			BIT(5)
 #define MSIC_ULPIACCESSMODE	0x348
 #	define SPIMODE			BIT(0)
 #define MSIC_INT_EN_RISE	0x39D
@@ -322,13 +370,20 @@ enum msic_vendor {
 	MSIC_VD_UNKNOWN
 };
 
-/* charger defined in BC 1.1 */
+/* charger defined in BC 1.2 */
 enum usb_charger_type {
 	CHRG_UNKNOWN,
 	CHRG_SDP,	/* Standard Downstream Port */
 	CHRG_CDP,	/* Charging Downstream Port */
+	CHRG_SDP_INVAL,	/* Invaild Standard Downstream Port */
 	CHRG_DCP,	/* Dedicated Charging Port */
-	CHRG_ACA	/* Accessory Charger Adapter */
+	CHRG_ACA,	/* Accessory Charger Adapter */
+	CHRG_ACA_DOCK,	/* Accessory Charger Adapter - Dock */
+	CHRG_ACA_A,	/* Accessory Charger Adapter - RID_A */
+	CHRG_ACA_B,	/* Accessory Charger Adapter - RID_B */
+	CHRG_ACA_C,	/* Accessory Charger Adapter - RID_C */
+	CHRG_SE1,	/* SE1 (Apple)*/
+	CHRG_MHL	/* Moblie High-Definition Link */
 };
 
 struct adp_status {
@@ -336,20 +391,28 @@ struct adp_status {
 	u8			t_adp_rise;
 };
 
+/* Invalid SDP checking timeout */
+#define INVALID_SDP_TIMEOUT	(HZ * 15)
+
 /* OTG Battery Charging capability is used in charger capability detection */
 struct otg_bc_cap {
 	enum usb_charger_type	chrg_type;
 	unsigned int		mA;
 #define CHRG_CURR_UNKNOWN	0
 #define CHRG_CURR_DISCONN	0
-#define CHRG_CURR_SDP_SUSP	2
+#define CHRG_CURR_SDP_SUSP	CONFIG_USB_GADGET_SUSPEND_VBUS_DRAW
 #define CHRG_CURR_SDP_LOW	100
 #define CHRG_CURR_SDP_HIGH	500
-#define CHRG_CURR_CDP		500
-#define CHRG_CURR_CDP_HS	950
+#define CHRG_CURR_SDP_INVAL	500
+#define CHRG_CURR_CDP		1500
 #define CHRG_CURR_DCP	1500
 #define CHRG_CURR_ACA	1500
 	unsigned int            current_event;
+};
+
+struct otg_bc_event {
+	struct list_head		node;
+	struct power_supply_charger_cap	cap;
 };
 
 /* Bus monitor action for b_ssend_srp/b_se0_srp */
@@ -364,6 +427,11 @@ struct otg_bc_cap {
 #define USBCHRG_EVENT_RESUME	4
 #define USBCHRG_EVENT_UPDATE	5
 
+struct cloverview_usb_otg_pdata {
+	int gpio_cs;
+	int gpio_reset;
+};
+
 struct penwell_otg {
 	struct intel_mid_otg_xceiv	iotg;
 	struct device			*dev;
@@ -374,7 +442,13 @@ struct penwell_otg {
 	struct work_struct		work;
 	struct work_struct		hnp_poll_work;
 	struct work_struct		psc_notify;
+	struct work_struct		uevent_work;
+	struct delayed_work		ulpi_poll_work;
+	struct delayed_work		ulpi_check_work;
+	struct delayed_work		sdp_check_work;
 	struct workqueue_struct		*qwork;
+	struct workqueue_struct		*chrg_qwork;
+
 
 	struct timer_list		hsm_timer;
 	struct timer_list		hnp_poll_timer;
@@ -393,6 +467,7 @@ struct penwell_otg {
 	struct adp_status		adp;
 
 	spinlock_t			charger_lock;
+	struct list_head		chrg_evt_queue;
 	struct otg_bc_cap		charging_cap;
 	spinlock_t			cap_lock;
 	struct power_supply_charger_cap psc_cap;
@@ -401,7 +476,11 @@ struct penwell_otg {
 
 	unsigned			rt_resuming;
 
+	unsigned			rt_quiesce;
+	struct cloverview_usb_otg_pdata *otg_pdata;
+
 	struct wake_lock		wake_lock;
+	spinlock_t			lock;
 };
 
 static inline
@@ -416,5 +495,8 @@ extern int penwell_otg_query_power_supply_cap(
 extern void *penwell_otg_register_bc_callback(
 	int (*cb)(void *, int, struct otg_bc_cap *), void *arg);
 extern int penwell_otg_unregister_bc_callback(void *handler);
+
+extern int pnw_otg_ulpi_write(u8 reg, u8 val);
+extern int is_clovertrail(struct pci_dev *pdev);
 
 #endif /* __PENWELL_OTG_H__ */

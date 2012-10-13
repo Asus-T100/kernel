@@ -252,6 +252,16 @@ int usb_hcd_pci_probe(struct pci_dev *dev, const struct pci_device_id *id)
 
 	if (pci_dev_run_wake(dev))
 		pm_runtime_put_noidle(&dev->dev);
+
+	/* Enable Runtime-PM if hcd->rpm_control == 1 */
+	if (hcd->rpm_control) {
+		/* Check here to avoid to call pm_runtime_put_noidle() twice */
+		if (!pci_dev_run_wake(dev))
+			pm_runtime_put_noidle(&dev->dev);
+
+		pm_runtime_allow(&dev->dev);
+	}
+
 	return retval;
 
 unmap_registers:
@@ -296,6 +306,13 @@ void usb_hcd_pci_remove(struct pci_dev *dev)
 
 	if (pci_dev_run_wake(dev))
 		pm_runtime_get_noresume(&dev->dev);
+
+	if (hcd->rpm_control) {
+		if (!pci_dev_run_wake(dev))
+			pm_runtime_get_noresume(&dev->dev);
+
+		pm_runtime_forbid(&dev->dev);
+	}
 
 	/* Fake an interrupt request in order to give the driver a chance
 	 * to test whether the controller hardware has been removed (e.g.,
@@ -566,11 +583,21 @@ static int hcd_pci_runtime_suspend(struct device *dev)
 
 static int hcd_pci_runtime_resume(struct device *dev)
 {
-	int	retval;
+	int			retval;
+	struct pci_dev		*pci_dev = to_pci_dev(dev);
+	struct usb_hcd		*hcd = pci_get_drvdata(pci_dev);
 
 	powermac_set_asic(to_pci_dev(dev), 1);
 	retval = resume_common(dev, PM_EVENT_AUTO_RESUME);
 	dev_dbg(dev, "hcd_pci_runtime_resume: %d\n", retval);
+
+	if (hcd->rpm_control) {
+		if (hcd->rpm_resume) {
+			struct device		*rpm_dev = hcd->self.controller;
+			hcd->rpm_resume = 0;
+			pm_runtime_put(rpm_dev);
+		}
+	}
 	return retval;
 }
 

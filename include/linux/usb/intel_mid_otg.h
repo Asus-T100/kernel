@@ -23,6 +23,7 @@
 #include <linux/pm.h>
 #include <linux/usb/otg.h>
 #include <linux/notifier.h>
+#include <linux/wakelock.h>
 
 struct intel_mid_otg_xceiv;
 
@@ -91,11 +92,14 @@ struct otg_hsm {
 
 	/* Others */
 	int vbus_srp_up;
+	int ulpi_error;
+	int ulpi_polling;
 
 	/* Test Mode */
 	int otg_srp_reqd;
 	int otg_hnp_reqd;
 	int otg_vbus_off;
+	int in_test_mode;
 };
 
 /* must provide ULPI access function to read/write registers implemented in
@@ -130,6 +134,10 @@ struct intel_mid_otg_xceiv {
 	/* hnp poll lock */
 	spinlock_t			hnp_poll_lock;
 
+#ifdef CONFIG_USB_SUSPEND
+	struct wake_lock		wake_lock;
+#endif
+
 	/* start/stop USB Host function */
 	int	(*start_host)(struct intel_mid_otg_xceiv *iotg);
 	int	(*stop_host)(struct intel_mid_otg_xceiv *iotg);
@@ -150,9 +158,10 @@ struct intel_mid_otg_xceiv {
 
 #ifdef CONFIG_PM
 	/* suspend/resume USB host function */
-	int	(*suspend_host)(struct intel_mid_otg_xceiv *iotg,
-					pm_message_t message);
+	int	(*suspend_host)(struct intel_mid_otg_xceiv *iotg);
+	int	(*suspend_noirq_host)(struct intel_mid_otg_xceiv *iotg);
 	int	(*resume_host)(struct intel_mid_otg_xceiv *iotg);
+	int	(*resume_noirq_host)(struct intel_mid_otg_xceiv *iotg);
 
 	int	(*suspend_peripheral)(struct intel_mid_otg_xceiv *iotg,
 					pm_message_t message);
@@ -183,13 +192,13 @@ struct intel_mid_otg_xceiv *otg_to_mid_xceiv(struct usb_phy *otg)
 #define MID_OTG_NOTIFY_HOSTREMOVE	0x0008
 #define MID_OTG_NOTIFY_CLIENTADD	0x0009
 #define MID_OTG_NOTIFY_CLIENTREMOVE	0x000a
-#define MID_OTG_NOTIFY_CLIENTFS		0x000b
-#define MID_OTG_NOTIFY_CLIENTHS		0x000c
-#define	MID_OTG_NOTIFY_CRESET		0x000d
+#define	MID_OTG_NOTIFY_CRESET		0x000b
 
 #define	MID_OTG_NOTIFY_TEST_SRP_REQD	0x0101
 #define	MID_OTG_NOTIFY_TEST_VBUS_OFF	0x0102
 #define	MID_OTG_NOTIFY_TEST		0x0103
+#define	MID_OTG_NOTIFY_TEST_MODE_START	0x0104
+#define	MID_OTG_NOTIFY_TEST_MODE_STOP	0x0105
 
 static inline int
 intel_mid_otg_register_notifier(struct intel_mid_otg_xceiv *iotg,

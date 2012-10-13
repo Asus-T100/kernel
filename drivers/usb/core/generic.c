@@ -135,10 +135,12 @@ int usb_choose_configuration(struct usb_device *udev)
 			best = c;
 	}
 
-	if (insufficient_power > 0)
+	if (insufficient_power > 0) {
 		dev_info(&udev->dev, "rejected %d configuration%s "
 			"due to insufficient available bus power\n",
 			insufficient_power, plural(insufficient_power));
+		usb_notify_warning(udev, USB_WARNING_INSUFF_POWER);
+	}
 
 	if (best) {
 		i = best->desc.bConfigurationValue;
@@ -156,7 +158,6 @@ int usb_choose_configuration(struct usb_device *udev)
 
 static int generic_probe(struct usb_device *udev)
 {
-	struct usb_hcd	*hcd = bus_to_hcd(udev->bus);
 	int err, c;
 
 	/* Choose and set the configuration.  This registers the interfaces
@@ -166,7 +167,9 @@ static int generic_probe(struct usb_device *udev)
 		;		/* Don't configure if the device is owned */
 	else if (udev->authorized == 0)
 		dev_err(&udev->dev, "Device is not authorized for usage\n");
+#ifdef CONFIG_USB_OTG
 	else if (is_otg_testdev(udev)) {
+		struct usb_hcd	*hcd = bus_to_hcd(udev->bus);
 
 		/* According to USB OTG2.0 Spec Test mode support 6.4.2,
 		 * for A-device enumeration, set_configuration(1), and
@@ -196,8 +199,9 @@ static int generic_probe(struct usb_device *udev)
 			hcd->otg_notify(udev, USB_OTG_TESTDEV_VBUSOFF);
 		else
 			hcd->otg_notify(udev, USB_OTG_TESTDEV);
-
-	} else {
+	}
+#endif
+	else {
 		c = usb_choose_configuration(udev);
 		if (c >= 0) {
 			err = usb_set_configuration(udev, c);

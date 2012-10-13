@@ -105,8 +105,8 @@ static int log2_irq_thresh = 0;		// 0 to 6
 module_param (log2_irq_thresh, int, S_IRUGO);
 MODULE_PARM_DESC (log2_irq_thresh, "log2 IRQ latency, 1-64 microframes");
 
-/* initial park setting:  slower than hw default */
-static unsigned park = 0;
+/* initial park setting:  hw default */
+static unsigned park = 3;
 module_param (park, uint, S_IRUGO);
 MODULE_PARM_DESC (park, "park setting; 1-3 back-to-back async packets");
 
@@ -119,6 +119,20 @@ MODULE_PARM_DESC (ignore_oc, "ignore bogus hardware overcurrent indications");
 static unsigned int hird;
 module_param(hird, int, S_IRUGO);
 MODULE_PARM_DESC(hird, "host initiated resume duration, +1 for each 75us");
+
+/* CloverTrail USB SPH and Modem USB Switch Control Flag */
+static unsigned int use_sph = 1;
+module_param(use_sph, uint, S_IRUGO);
+MODULE_PARM_DESC(use_sph, "sph and modem usb switch control flag, default use sph\n");
+
+/*
+ * for external read access to <usb_sph>
+ */
+unsigned int sph_enabled(void)
+{
+	return use_sph;
+}
+EXPORT_SYMBOL_GPL(sph_enabled);
 
 #define	INTR_MASK (STS_IAA | STS_FATAL | STS_PCD | STS_ERR | STS_INT)
 
@@ -206,7 +220,12 @@ static int tdi_in_host_mode (struct ehci_hcd *ehci)
 	u32 __iomem	*reg_ptr;
 	u32		tmp;
 
-	reg_ptr = (u32 __iomem *)(((u8 __iomem *)ehci->regs) + USBMODE);
+	if (ehci->has_hostpc)
+		reg_ptr = (u32 __iomem *)(((u8 __iomem *)ehci->regs)
+			 + USBMODE_EX);
+	else
+		reg_ptr = (u32 __iomem *)(((u8 __iomem *)ehci->regs)
+			+ USBMODE);
 	tmp = ehci_readl(ehci, reg_ptr);
 	return (tmp & 3) == USBMODE_CM_HC;
 }
@@ -301,7 +320,12 @@ static void tdi_reset (struct ehci_hcd *ehci)
 	u32 __iomem	*reg_ptr;
 	u32		tmp;
 
-	reg_ptr = (u32 __iomem *)(((u8 __iomem *)ehci->regs) + USBMODE);
+	if (ehci->has_hostpc)
+		reg_ptr = (u32 __iomem *)(((u8 __iomem *)ehci->regs)
+				+ USBMODE_EX);
+	else
+		reg_ptr = (u32 __iomem *)(((u8 __iomem *)ehci->regs)
+				+ USBMODE);
 	tmp = ehci_readl(ehci, reg_ptr);
 	tmp |= USBMODE_CM_HC;
 	/* The default byte access to MMR space is LE after
@@ -318,6 +342,8 @@ static int ehci_reset (struct ehci_hcd *ehci)
 {
 	int	retval;
 	u32	command = ehci_readl(ehci, &ehci->regs->command);
+	int	port;
+	u32	temp;
 
 	/* If the EHCI debug controller is active, special care must be
 	 * taken before and after a host controller reset */
@@ -337,6 +363,19 @@ static int ehci_reset (struct ehci_hcd *ehci)
 			(u32 __iomem *)(((u8 *)ehci->regs) + USBMODE_EX));
 		ehci_writel(ehci, TXFIFO_DEFAULT,
 			(u32 __iomem *)(((u8 *)ehci->regs) + TXFILLTUNING));
+
+		/* FIXME: clear ASUS auto PHY low power mode, as we set it
+		 * manually */
+		port = HCS_N_PORTS(ehci->hcs_params);
+		while (port--) {
+			u32 __iomem	*hostpc_reg;
+
+			hostpc_reg = (u32 __iomem *)((u8 *) ehci->regs
+					+ HOSTPC0 + 4 * port);
+			temp = ehci_readl(ehci, hostpc_reg);
+			ehci_writel(ehci, temp & ~HOSTPC_ASUS, hostpc_reg);
+		}
+
 	}
 	if (retval)
 		return retval;
@@ -923,6 +962,14 @@ static irqreturn_t ehci_irq (struct usb_hcd *hcd)
 		if (ehci->rh_state == EHCI_RH_SUSPENDED)
 			usb_hcd_resume_root_hub(hcd);
 
+#ifdef CONFIG_USB_SUSPEND
+	/* add time-out wakelock */
+	if (hcd->wake_lock) {
+		wake_lock_timeout(hcd->wake_lock, 5 * HZ);
+		ehci_dbg(ehci, "add 5s wake_lock for connect change\n");
+	}
+#endif
+
 		/* get per-port change detect bits */
 		if (ehci->has_ppcd)
 			ppcd = status >> 16;
@@ -1417,6 +1464,14 @@ static int __init ehci_hcd_init(void)
 		 sizeof(struct ehci_qh), sizeof(struct ehci_qtd),
 		 sizeof(struct ehci_itd), sizeof(struct ehci_sitd));
 
+#ifdef CONFIG_BOARD_CTP
+	if (sph_enabled()) {
+		retval = cloverview_sph_gpio_init();
+		if (retval < 0)
+			return retval;
+	}
+#endif
+
 #ifdef DEBUG
 	ehci_debug_root = debugfs_create_dir("ehci", usb_debug_root);
 	if (!ehci_debug_root) {
@@ -1492,6 +1547,10 @@ clean0:
 	ehci_debug_root = NULL;
 err_debug:
 #endif
+#ifdef CONFIG_BOARD_CTP
+	if (sph_enabled())
+		cloverview_sph_gpio_cleanup();
+#endif
 	clear_bit(USB_EHCI_LOADED, &usb_hcds_loaded);
 	return retval;
 }
@@ -1516,6 +1575,10 @@ static void __exit ehci_hcd_cleanup(void)
 #endif
 #ifdef INTEL_MID_OTG_HOST_DRIVER
 	intel_mid_ehci_driver_unregister(&INTEL_MID_OTG_HOST_DRIVER);
+#endif
+#ifdef CONFIG_BOARD_CTP
+	if (sph_enabled())
+		cloverview_sph_gpio_cleanup();
 #endif
 #ifdef DEBUG
 	debugfs_remove(ehci_debug_root);

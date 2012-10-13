@@ -1329,6 +1329,7 @@ static int hub_probe(struct usb_interface *intf, const struct usb_device_id *id)
 	if (hdev->level == MAX_TOPO_LEVEL) {
 		dev_err(&intf->dev,
 			"Unsupported bus topology: hub nested too deep\n");
+		usb_notify_warning(hdev, USB_WARNING_HUB_MAX_TIER);
 		return -E2BIG;
 	}
 
@@ -2329,6 +2330,7 @@ done:
 
 	return status;
 }
+
 
 /* Check if a port is power on */
 static int port_is_power_on(struct usb_hub *hub, unsigned portstatus)

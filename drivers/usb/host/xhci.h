@@ -27,6 +27,8 @@
 #include <linux/timer.h>
 #include <linux/kernel.h>
 #include <linux/usb/hcd.h>
+#include <linux/pm_runtime.h>
+#include <linux/pm.h>
 
 /* Code sharing between pci-quirks and xhci hcd */
 #include	"xhci-ext-caps.h"
@@ -1535,11 +1537,19 @@ static inline struct usb_hcd *xhci_to_hcd(struct xhci_hcd *xhci)
 static inline unsigned int xhci_readl(const struct xhci_hcd *xhci,
 		__le32 __iomem *regs)
 {
+	struct usb_hcd *hcd = xhci_to_hcd((struct xhci_hcd *)xhci);
+	if (hcd->self.controller->power.runtime_status == RPM_SUSPENDED) {
+		dump_stack(); printk(KERN_ERR "DWC xHCI met fabric error!\n"); }
+
 	return readl(regs);
 }
 static inline void xhci_writel(struct xhci_hcd *xhci,
 		const unsigned int val, __le32 __iomem *regs)
 {
+	struct usb_hcd *hcd = xhci_to_hcd((struct xhci_hcd *)xhci);
+	if (hcd->self.controller->power.runtime_status == RPM_SUSPENDED) {
+		dump_stack(); printk(KERN_ERR "DWC xHCI met fabric error!\n"); }
+
 	writel(val, regs);
 }
 

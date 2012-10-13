@@ -118,6 +118,8 @@ struct usb_phy {
 	int	(*set_suspend)(struct usb_phy *x,
 				int suspend);
 
+	/* for A or B-peripheral: host has released the bus.  */
+	int     (*host_release)(struct otg_transceiver *otg);
 };
 
 

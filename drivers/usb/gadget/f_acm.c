@@ -664,6 +664,10 @@ acm_bind(struct usb_configuration *c, struct usb_function *f)
 	if (c->bConfigurationValue == 4) {
 		/* Descriptors with association descriptor */
 		fs_function = acm_fs_function;
+	} else if (c->bConfigurationValue == 1) {
+		/* If define ACM for Android,
+		 * descriptors with association descriptor */
+		fs_function = acm_fs_function;
 	} else {
 		/* Descriptors without association descriptor */
 		fs_function = &acm_fs_function[1];
@@ -687,6 +691,10 @@ acm_bind(struct usb_configuration *c, struct usb_function *f)
 
 		if (c->bConfigurationValue == 4) {
 			/* Descriptors with association descriptor */
+			hs_function = acm_hs_function;
+		} else if (c->bConfigurationValue == 1) {
+			/* If define ACM for Android,
+			 * descriptors with association descriptor */
 			hs_function = acm_hs_function;
 		} else {
 			/* Descriptors without association descriptor */
@@ -737,6 +745,7 @@ acm_unbind(struct usb_configuration *c, struct usb_function *f)
 {
 	struct f_acm		*acm = func_to_acm(f);
 
+	acm_string_defs[ACM_CTRL_IDX].id = 0;
 	if (gadget_is_dualspeed(c->cdev->gadget))
 		usb_free_descriptors(f->hs_descriptors);
 	if (gadget_is_superspeed(c->cdev->gadget))

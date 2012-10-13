@@ -2483,7 +2483,13 @@ restart:
 			ehci->next_uframe = now_uframe;
 			now = ehci_read_frame_index(ehci) & (mod - 1);
 			if (now_uframe == now)
+			now = ehci_readl(ehci, &ehci->regs->frame_index) &
+					(mod - 1);
+			if (now_uframe == now) {
+				quirk_usb_periodic_hw_bug_workaround(
+				&ehci->next_uframe, ehci->periodic_size);
 				break;
+			}
 
 			/* rescan the rest of this frame, then ... */
 			clock = now;

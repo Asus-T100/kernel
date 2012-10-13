@@ -36,6 +36,7 @@
 #include <linux/types.h>	/* __u8 etc */
 #include <asm/byteorder.h>	/* le16_to_cpu */
 
+
 /*-------------------------------------------------------------------------*/
 
 /* CONTROL REQUEST SUPPORT */
@@ -123,6 +124,8 @@
 #define USB_DEVICE_A_HNP_SUPPORT	4	/* (otg) RH port supports HNP */
 #define USB_DEVICE_A_ALT_HNP_SUPPORT	5	/* (otg) other RH port does */
 #define USB_DEVICE_DEBUG_MODE		6	/* (special devices only) */
+#define USB_NTF_HOST_REL                51
+#define USB_B3_RSP_ENABLE               52
 
 /*
  * Test Mode Selectors
@@ -662,17 +665,19 @@ struct usb_qualifier_descriptor {
 
 /*-------------------------------------------------------------------------*/
 
-/* USB_DT_OTG (from OTG 1.0a supplement) */
+/* USB_DT_OTG (from OTG 2.0) */
 struct usb_otg_descriptor {
 	__u8  bLength;
 	__u8  bDescriptorType;
 
 	__u8  bmAttributes;	/* support for HNP, SRP, etc */
+	__le16 bcdOTG;		/* release number, i.e, 2.0 is 0x0200 */
 } __attribute__ ((packed));
 
 /* from usb_otg_descriptor.bmAttributes */
 #define USB_OTG_SRP		(1 << 0)
 #define USB_OTG_HNP		(1 << 1)	/* swap host/device roles */
+#define USB_OTG_ADP		(1 << 2)	/* attachment detection */
 
 /*-------------------------------------------------------------------------*/
 
