@@ -81,14 +81,17 @@ uint32_t psb_get_default_pd_addr(struct psb_mmu_driver *driver);
 
 /* psb_msvdxinit.c */
 int psb_wait_for_register(struct drm_psb_private *dev_priv,
-			  uint32_t offset,
-			  uint32_t value,
-			  uint32_t enable);
+			  uint32_t offset, uint32_t value, uint32_t enable,
+			  uint32_t poll_cnt, uint32_t timeout);
 int psb_msvdx_init(struct drm_device *dev);
 int psb_msvdx_uninit(struct drm_device *dev);
+int psb_msvdx_core_reset(struct drm_psb_private *dev_priv);
+#ifdef PSB_MSVDX_FW_LOADED_BY_HOST
+/* TODO: psb_msvdx_reset is used for the case of fw loading by driver
+ * Later we can test if it can be removed. */
 int psb_msvdx_reset(struct drm_psb_private *dev_priv);
-void psb_write_mtx_core_reg(struct drm_psb_private *dev_priv,
-			    const uint32_t core_reg, const uint32_t val);
+#endif
+int psb_msvdx_post_boot_init(struct drm_device *dev);
 
 /* psb_msvdx.c */
 IMG_BOOL psb_msvdx_interrupt(IMG_VOID *pvData);
@@ -251,6 +254,9 @@ MSVDX_CORE_CR_MSVDX_MAN_CLK_ENABLE_CR_MTX_MAN_CLK_ENABLE_MASK)
 #define MTX_CORE_CR_MTX_SYSC_CDMAT_OFFSET               (0x0350)
 #define MTX_CORE_CR_MTX_SYSC_CDMAC_OFFSET               (0x0340)
 
+#define	MSVDX_MTX_SOFT_RESET_MTXRESET 0x00000001
+
+
 /* MSVDX registers */
 #define MSVDX_CONTROL			(0x0600)
 #define MSVDX_INTERRUPT_CLEAR		(0x060C)
@@ -325,7 +331,8 @@ MSVDX_CORE_CR_MSVDX_MAN_CLK_ENABLE_CR_MTX_MAN_CLK_ENABLE_MASK)
 /* There is no work currently underway on the hardware */
 #define MSVDX_FW_STATUS_HW_IDLE	0x00000001
 
-#define MSVDX_EXT_FW_ERROR_STATE (0x2884)
+#define MSVDX_EXT_FW_ERROR_STATE (0x2CC4)
+
 #define MSVDX_COMMS_AREA_ADDR (0x02fe0)
 
 #define MSVDX_COMMS_CORE_WTD			(MSVDX_COMMS_AREA_ADDR - 0x08)
@@ -693,18 +700,27 @@ struct msvdx_private {
 	struct mutex msvdx_mutex;
 	struct list_head msvdx_queue;
 	int msvdx_busy;
-	int msvdx_is_setup;
+	int rendec_init;
+#ifdef PSB_MSVDX_FW_LOADED_BY_HOST
 	int msvdx_fw_loaded;
 	void *msvdx_fw;
 	int msvdx_fw_size;
-
+#endif
 	uint32_t msvdx_hw_busy;
 
+#ifdef PSB_MSVDX_SAVE_RESTORE_VEC
 	uint32_t *vec_local_mem_data;
 	uint32_t vec_local_mem_size;
 	uint32_t vec_local_mem_saved;
+#endif
+
+#ifdef CONFIG_VIDEO_MRFLD
+	uint32_t vec_ec_mem_data[4];
+	uint32_t vec_ec_mem_saved;
+#endif
+
 	uint32_t psb_dash_access_ctrl;
-	uint32_t fw_status;
+	uint32_t decoding_err;
 	uint32_t fw_loaded_by_punit;
 
 	drm_psb_msvdx_frame_info_t frame_info[MAX_DECODE_BUFFERS];

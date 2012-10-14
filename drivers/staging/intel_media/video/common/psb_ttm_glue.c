@@ -441,7 +441,7 @@ int psb_video_getparam(struct drm_device *dev, void *data,
 					   &current_frame->fw_status, sizeof(current_frame->fw_status));
 		} else
 			ret = copy_to_user((void __user *)((unsigned long)arg->value),
-					   &msvdx_priv->fw_status, sizeof(msvdx_priv->fw_status));
+					   &msvdx_priv->decoding_err, sizeof(msvdx_priv->decoding_err));
 		break;
 
 	case IMG_VIDEO_MB_ERROR:

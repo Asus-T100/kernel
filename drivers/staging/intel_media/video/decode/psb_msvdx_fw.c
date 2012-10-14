@@ -30,6 +30,8 @@
 #include "psb_msvdx.h"
 #include <linux/firmware.h>
 
+#ifdef PSB_MSVDX_FW_LOADED_BY_HOST
+
 #define UPLOAD_FW_BY_DMA 1
 #define STACKGUARDWORD          0x10101010
 #define MSVDX_MTX_DATA_LOCATION 0x82880000
@@ -187,13 +189,16 @@ static void msvdx_upload_fw(struct drm_psb_private *dev_priv,
 	if (psb_wait_for_register(dev_priv,
 				  REGISTER(DMAC, DMAC_IRQ_STAT) + dma_channel,
 				  DMAC_DMAC_IRQ_STAT_TRANSFER_FIN_MASK,
-				  DMAC_DMAC_IRQ_STAT_TRANSFER_FIN_MASK)) {
+				  DMAC_DMAC_IRQ_STAT_TRANSFER_FIN_MASK,
+				  2000000, 5)) {
 		msvdx_release_mtx_control_from_dash(dev_priv);
 		return;
 	}
 
 	/* Assert that the MTX DMA port is all done aswell */
-	if (psb_wait_for_register(dev_priv, REGISTER(MTX_CORE, CR_MTX_SYSC_CDMAS0), 1, 1)) {
+	if (psb_wait_for_register(dev_priv,
+			REGISTER(MTX_CORE, CR_MTX_SYSC_CDMAS0),
+			1, 1, 2000000, 5)) {
 		msvdx_release_mtx_control_from_dash(dev_priv);
 		return;
 	}
@@ -220,7 +225,8 @@ static void msvdx_upload_fw(struct drm_psb_private *dev_priv,
 	/* Wait for MCMSTAT to become be idle 1 */
 	psb_wait_for_register(dev_priv, MSVDX_MTX_RAM_ACCESS_STATUS,
 			      1,	/* Required Value */
-			      0xffffffff /* Enables */);
+			      0xffffffff, /* Enables */
+			      2000000, 5);
 
 	for (loop = 0; loop < words; loop++) {
 		ram_id = data_mem + (address / ram_bank_size);
@@ -247,7 +253,8 @@ static void msvdx_upload_fw(struct drm_psb_private *dev_priv,
 		/* Wait for MCMSTAT to become be idle 1 */
 		psb_wait_for_register(dev_priv, MSVDX_MTX_RAM_ACCESS_STATUS,
 				      1,	/* Required Value */
-				      0xffffffff /* Enables */);
+				      0xffffffff, /* Enables */
+				      2000000, 5);
 	}
 	PSB_DEBUG_GENERAL("MSVDX: Upload done\n");
 
@@ -272,7 +279,8 @@ static int msvdx_verify_fw(struct drm_psb_private *dev_priv,
 	/* Wait for MCMSTAT to become be idle 1 */
 	psb_wait_for_register(dev_priv, MSVDX_MTX_RAM_ACCESS_STATUS,
 			      1,	/* Required Value */
-			      0xffffffff /* Enables */);
+			      0xffffffff, /* Enables */
+			      2000000, 5);
 
 	for (loop = 0; loop < words; loop++) {
 		uint32_t reg_value;
@@ -303,7 +311,8 @@ static int msvdx_verify_fw(struct drm_psb_private *dev_priv,
 		/* Wait for MCMSTAT to become be idle 1 */
 		psb_wait_for_register(dev_priv, MSVDX_MTX_RAM_ACCESS_STATUS,
 				      1,	/* Required Value */
-				      0xffffffff /* Enables */);
+				      0xffffffff, /* Enables */
+				      2000000, 5);
 
 		reg_value = PSB_RMSVDX32(MSVDX_MTX_RAM_ACCESS_DATA_TRANSFER);
 		if (data[loop] != reg_value) {
@@ -453,6 +462,29 @@ static uint32_t *msvdx_get_fw(struct drm_device *dev,
 	release_firmware(*raw);
 
 	return msvdx_priv->msvdx_fw;
+}
+
+void msvdx_write_mtx_core_reg(struct drm_psb_private *dev_priv,
+			    const uint32_t core_reg, const uint32_t val)
+{
+	uint32_t reg = 0;
+
+	/* Put data in MTX_RW_DATA */
+	PSB_WMSVDX32(val, MSVDX_MTX_REGISTER_READ_WRITE_DATA);
+
+	/* DREADY is set to 0 and request a write */
+	reg = core_reg;
+	REGIO_WRITE_FIELD_LITE(reg, MSVDX_MTX_REGISTER_READ_WRITE_REQUEST,
+			       MTX_RNW, 0);
+	REGIO_WRITE_FIELD_LITE(reg, MSVDX_MTX_REGISTER_READ_WRITE_REQUEST,
+			       MTX_DREADY, 0);
+	PSB_WMSVDX32(reg, MSVDX_MTX_REGISTER_READ_WRITE_REQUEST);
+
+	psb_wait_for_register(dev_priv,
+			      MSVDX_MTX_REGISTER_READ_WRITE_REQUEST,
+			      MSVDX_MTX_REGISTER_READ_WRITE_REQUEST_MTX_DREADY_MASK,
+			      MSVDX_MTX_REGISTER_READ_WRITE_REQUEST_MTX_DREADY_MASK,
+			      2000000, 5);
 }
 
 int psb_setup_fw(struct drm_device *dev)
@@ -611,7 +643,7 @@ int psb_setup_fw(struct drm_device *dev)
 #endif
 
 	/*	-- Set starting PC address	*/
-	psb_write_mtx_core_reg(dev_priv, MTX_PC, PC_START_ADDRESS);
+	msvdx_write_mtx_core_reg(dev_priv, MTX_PC, PC_START_ADDRESS);
 
 	/*	-- Turn on the thread	*/
 	PSB_WMSVDX32(MSVDX_MTX_ENABLE_MTX_ENABLE_MASK, MSVDX_MTX_ENABLE);
@@ -619,7 +651,8 @@ int psb_setup_fw(struct drm_device *dev)
 	/* Wait for the signature value to be written back */
 	ret = psb_wait_for_register(dev_priv, MSVDX_COMMS_SIGNATURE,
 				    MSVDX_COMMS_SIGNATURE_VALUE, /*Required value*/
-				    0xffffffff /* Enabled bits */);
+				    0xffffffff, /* Enabled bits */
+				    2000000, 5);
 	if (ret) {
 		DRM_ERROR("MSVDX: firmware fails to initialize.\n");
 		goto out;
@@ -632,3 +665,5 @@ int psb_setup_fw(struct drm_device *dev)
 out:
 	return ret;
 }
+
+#endif

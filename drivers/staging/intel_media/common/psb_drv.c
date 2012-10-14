@@ -66,7 +66,7 @@
 
 #define HDMI_MONITOR_NAME_LENGTH 20
 
-int drm_psb_debug;
+int drm_psb_debug = PSB_D_WARN;
 int drm_psb_enable_cabc = 1;
 int drm_psb_enable_gamma;
 int drm_psb_enable_color_conversion;
@@ -95,8 +95,6 @@ char HDMI_EDID[HDMI_MONITOR_NAME_LENGTH];
 int hdmi_state;
 u32 DISP_PLANEB_STATUS = ~DISPLAY_PLANE_ENABLE;
 int drm_psb_msvdx_tiling;
-
-int drm_psb_apm_base;
 
 static int psb_probe(struct pci_dev *pdev, const struct pci_device_id *ent);
 
@@ -1401,7 +1399,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 		if (!dev_priv->topaz_reg)
 			goto out_err;
 	}
-	drm_psb_apm_base =
+	dev_priv->psb_apm_base =
 		intel_mid_msgbus_read32(OSPM_PUNIT_PORT, OSPM_APMBA) & 0xffff;
 #endif
 
@@ -4073,7 +4071,7 @@ int psb_release(struct inode *inode, struct file *filp)
 	/*cleanup for msvdx*/
 #if 0
 	if (msvdx_priv->tfile == psb_fpriv(file_priv)->tfile) {
-		msvdx_priv->fw_status = 0;
+		msvdx_priv->decoding_err = 0;
 		msvdx_priv->host_be_opp_enabled = 0;
 		memset(&msvdx_priv->frame_info, 0, sizeof(struct drm_psb_msvdx_frame_info) * MAX_DECODE_BUFFERS);
 	}

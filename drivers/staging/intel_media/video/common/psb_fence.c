@@ -118,7 +118,7 @@ static void psb_fence_lockup(struct ttm_fence_object *fence,
 	} else if (fence->fence_class == PSB_ENGINE_DECODE) {
 		struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
 
-		DRM_ERROR("MSVDX timeout (probable lockup) detected, flush queued cmdbuf");
+		PSB_DEBUG_WARN("MSVDX timeout (probable lockup) detected, flush queued cmdbuf");
 
 		psb_msvdx_flush_cmd_queue(dev);
 

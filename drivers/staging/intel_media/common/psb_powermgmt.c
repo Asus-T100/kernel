@@ -273,14 +273,22 @@ static int ospm_runtime_pm_topaz_resume(struct drm_device *dev)
 	return 0;
 }
 
-void ospm_apm_power_down_msvdx(struct drm_device *dev)
+void ospm_apm_power_down_msvdx(struct drm_device *dev, int force_off)
 {
 	struct drm_psb_private *dev_priv = dev->dev_private;
 	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
+	PSB_DEBUG_PM("MSVDX: work queue is scheduled to power off msvdx.\n");
 
 	mutex_lock(&g_ospm_mutex);
+	if (force_off)
+		goto power_off;
 	if (!ospm_power_is_hw_on(OSPM_VIDEO_DEC_ISLAND))
 		goto out;
+
+	if (psb_get_power_state(dev, OSPM_VIDEO_DEC_ISLAND) == 0) {
+		PSB_DEBUG_PM("MSVDX: island already in power off state.\n");
+		goto out;
+	}
 
 	if (atomic_read(&g_videodec_access_count))
 		goto out;
@@ -290,7 +298,10 @@ void ospm_apm_power_down_msvdx(struct drm_device *dev)
 		goto out;
 
 	psb_msvdx_save_context(dev);
+
 #endif
+
+power_off:
 	ospm_power_island_down(OSPM_VIDEO_DEC_ISLAND);
 #ifdef CONFIG_MDFD_GL3
 	/* Power off GL3 */
@@ -1263,6 +1274,7 @@ static void ospm_power_island_down_video(int video_islands)
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *) gpDrmDevice->dev_private;
 	unsigned long flags;
+	PSB_DEBUG_ENTRY("MSVDX: power on video island %d.\n", video_islands);
 	spin_lock_irqsave(&dev_priv->ospm_lock, flags);
 	if (video_islands & OSPM_VIDEO_DEC_ISLAND) {
 		if (pmu_nc_set_power_state(OSPM_VIDEO_DEC_ISLAND,
@@ -1422,6 +1434,7 @@ bool ospm_power_using_video_begin(int video_island)
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *)gpDrmDevice->dev_private;
 	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
+	PSB_DEBUG_ENTRY("MSVDX: need power on island %d.\n", video_island);
 
 	if (!(video_island & (OSPM_VIDEO_DEC_ISLAND | OSPM_VIDEO_ENC_ISLAND)))
 		return false;
@@ -1496,7 +1509,7 @@ bool ospm_power_using_video_begin(int video_island)
 				reg_ret = psb_wait_for_register(dev_priv,
 					MSVDX_COMMS_SIGNATURE,
 					MSVDX_COMMS_SIGNATURE_VALUE,
-					0xffffffff);
+					0xffffffff, 2000000, 5);
 				if (reg_ret)
 					printk(KERN_ERR	"fw fails to init.\n");
 			}

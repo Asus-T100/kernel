@@ -402,6 +402,7 @@ struct drm_psb_private {
 	/* previous vieo context */
 	struct psb_video_ctx *last_topaz_ctx;
 
+	int psb_apm_base;
 
 	/*
 	 *MSVDX
@@ -1239,6 +1240,13 @@ static inline void SGX_REGISTER_WRITE(struct drm_device *dev, uint32_t reg,
 /* APM_STS register:
  * 1:0- GPS, 3:2 - VDPS, 5:4 -VEPS, 7:6 -GL3, 9:8 -ISP, 11:10 - IPH */
 #define APM_STS			0x04
+#define APM_STS_VDPS_SHIFT	2
+
+#define APM_STS_D0		0x0
+#define APM_STS_D1		0x1
+#define APM_STS_D2		0x2
+#define APM_STS_D3		0x3
+#define APM_STS_VDPS_MASK	0xC
 
 /* OSPM_PM_SSS register:
  * 1:0 - GFX, 3:2 - DPA, 5:4 - VED, 7:6 - VEC, 9:8 - GL3,
@@ -1248,28 +1256,45 @@ static inline void SGX_REGISTER_WRITE(struct drm_device *dev, uint32_t reg,
 #define OSPM_OSPMBA		0x78
 #define OSPM_PM_SSS		0x30
 
-extern int drm_psb_apm_base;
-
-
 #define MFLD_MSVDX_FABRIC_DEBUG 0
 #define MSVDX_REG_DUMP 0
 
+static inline int psb_get_power_state(struct drm_device *dev, int islands)
+{
+	struct drm_psb_private *dev_priv =
+		(struct drm_psb_private *)dev->dev_private;
+	int apm_sts_val = inl(dev_priv->psb_apm_base + APM_STS);
+	switch (islands) {
+	case OSPM_VIDEO_DEC_ISLAND:
+		if ((apm_sts_val & APM_STS_VDPS_MASK) ==
+			(APM_STS_D3 << APM_STS_VDPS_SHIFT))
+			return 0;
+		else
+			return 1;
+		break;
+	default:
+		PSB_DEBUG_PM("unsupported island.\n");
+		return -EINVAL;
+	}
+}
+
 #if MFLD_MSVDX_FABRIC_DEBUG
 
-#define PSB_WMSVDX32(_val, _offs)				\
-do {								\
-	if ((inl(drm_psb_apm_base + APM_STS) & 0xc) == 0xc)	\
-		panic("msvdx reg 0x%x write failed.\n",		\
-				(unsigned int)(_offs));		\
-	else							\
-		iowrite32(_val, dev_priv->msvdx_reg + (_offs));	\
+#define PSB_WMSVDX32(_val, _offs)					\
+do {									\
+	if ((inl(dev_priv->psb_apm_base + APM_STS) & APM_STS_VDPS_MASK)	\
+			== (APM_STS_D3 << APM_STS_VDPS_SHIFT))		\
+		panic("msvdx reg 0x%x write failed.\n",			\
+				(unsigned int)(_offs));			\
+	else								\
+		iowrite32(_val, dev_priv->msvdx_reg + (_offs));		\
 } while (0)
 
 static inline uint32_t PSB_RMSVDX32(uint32_t _offs)
 {
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *)gpDrmDevice->dev_private;
-	if ((inl(drm_psb_apm_base + APM_STS) & 0xc) == 0xc) {
+	if ((inl(dev_priv->psb_apm_base + APM_STS) & 0xc) == 0xc) {
 		panic("msvdx reg 0x%x read failed.\n", (unsigned int)(_offs));
 		return 0;
 	} else {
