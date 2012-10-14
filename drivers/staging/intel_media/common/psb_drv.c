@@ -1152,6 +1152,14 @@ static int psb_do_init(struct drm_device *dev)
 	}
 
 	PSB_DEBUG_INIT("Init MSVDX\n");
+
+	/*
+	 * Customer will boot droidboot, then boot the MOS kernel.
+	 * It is observed the video decode island is off during the
+	 * MOS kernel boot.
+	 * We need to power on it first, else will cause the fabric error.
+	 */
+	ospm_power_island_up(OSPM_VIDEO_DEC_ISLAND);
 	psb_msvdx_init(dev);
 
 	PSB_DEBUG_INIT("Init Topaz\n");
