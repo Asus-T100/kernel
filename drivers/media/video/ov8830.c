@@ -782,8 +782,7 @@ static int drv201_t_focus_abs(struct v4l2_subdev *sd, s32 value)
 		return -ENODEV;
 
 	value = clamp(value, 0, DRV201_MAX_FOCUS_POS);
-	r = drv201_write16(sd, DRV201_VCM_CURRENT,
-			   DRV201_MAX_FOCUS_POS - value);
+	r = drv201_write16(sd, DRV201_VCM_CURRENT, value);
 	if (r < 0)
 		return r;
 

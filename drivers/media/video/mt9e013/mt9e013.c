@@ -391,8 +391,7 @@ static int mt9e013_t_focus_abs(struct v4l2_subdev *sd, s32 value)
 
 	value = min(value, MT9E013_MAX_FOCUS_POS);
 
-	ret = mt9e013_write_reg(client, MT9E013_16BIT, MT9E013_VCM_CODE,
-				MT9E013_MAX_FOCUS_POS - value);
+	ret = mt9e013_write_reg(client, MT9E013_16BIT, MT9E013_VCM_CODE, value);
 	if (ret == 0) {
 		dev->number_of_steps = value - dev->focus;
 		dev->focus = value;
@@ -1638,10 +1637,8 @@ static int mt9e013_s_stream(struct v4l2_subdev *sd, int enable)
 				{MT9E013_TOK_TERM, {0}, 0}
 			};
 
-			mt9e013_stream_enable[1].val =
-					MT9E013_MAX_FOCUS_POS - dev->focus + 1;
-			mt9e013_stream_enable[3].val =
-					MT9E013_MAX_FOCUS_POS - dev->focus;
+			mt9e013_stream_enable[1].val = dev->focus + 1;
+			mt9e013_stream_enable[3].val = dev->focus;
 
 			ret = mt9e013_write_reg_array(client, mt9e013_stream_enable);
 		} else {
