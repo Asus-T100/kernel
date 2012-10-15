@@ -316,7 +316,6 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 	mutex_init(&sst_drv_ctx->mixer_ctrl_lock);
 
 	sst_drv_ctx->stream_cnt = 0;
-	sst_drv_ctx->am_cnt = 0;
 	sst_drv_ctx->pb_streams = 0;
 	sst_drv_ctx->cp_streams = 0;
 	sst_drv_ctx->fw = NULL;
@@ -709,7 +708,7 @@ static int intel_sst_runtime_idle(struct device *dev)
 	if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID)
 		return -EBUSY;
 	pr_debug("runtime_idle called\n");
-	if (!sst_drv_ctx->am_cnt && sst_drv_ctx->sst_state != SST_UN_INIT) {
+	if (sst_drv_ctx->sst_state != SST_UN_INIT) {
 		pm_schedule_suspend(dev, SST_SUSPEND_DELAY);
 		return -EBUSY;
 	} else {
