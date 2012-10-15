@@ -81,6 +81,8 @@ obj-$(CONFIG_VIDEO_OV8830)   += ov8830.o
 CFFLAGS_ov8830.o = -Werror
 obj-$(CONFIG_VIDEO_MT9M114)  += mt9m114.o
 CFFLAGS_mt9m114.o = -Werror
+obj-$(CONFIG_VIDEO_MT9V113)  += mt9v113.o
+CFFLAGS_mt9v113.o = -Werror
 obj-$(CONFIG_VIDEO_LC898211) += lc898211.o
 CFFLAGS_lc898211.o = -Werror
 

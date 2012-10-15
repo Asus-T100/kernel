@@ -57,6 +57,7 @@
 #include "device_libs/platform_camera.h"
 #include "device_libs/platform_mt9e013.h"
 #include "device_libs/platform_mt9m114.h"
+#include "device_libs/platform_mt9v113.h"
 #include "device_libs/platform_mxt224.h"
 #include "device_libs/platform_a1026.h"
 #include "device_libs/platform_lis3dh.h"
@@ -102,6 +103,7 @@ static void __init *no_platform_data(void *info)
 const struct intel_v4l2_subdev_id v4l2_ids[] = {
 	{"mt9e013", RAW_CAMERA, ATOMISP_CAMERA_PORT_PRIMARY},
 	{"mt9m114", SOC_CAMERA, ATOMISP_CAMERA_PORT_SECONDARY},
+	{"mt9v113", SOC_CAMERA, ATOMISP_CAMERA_PORT_SECONDARY},
 	{"lm3554", LED_FLASH, -1},
 	{},
 };
@@ -140,6 +142,8 @@ struct devs_id __initconst device_ids[] = {
 	{"mt9e013", SFI_DEV_TYPE_I2C, 0, &mt9e013_platform_data,
 					&intel_ignore_i2c_device_register},
 	{"mt9m114", SFI_DEV_TYPE_I2C, 0, &mt9m114_platform_data,
+					&intel_ignore_i2c_device_register},
+	{"mt9v113", SFI_DEV_TYPE_I2C, 0, &mt9v113_platform_data,
 					&intel_ignore_i2c_device_register},
 	{"mxt224", SFI_DEV_TYPE_I2C, 0, &mxt224_platform_data, NULL},
 	{"max11871", SFI_DEV_TYPE_I2C, 0, &max11871_platform_data},
