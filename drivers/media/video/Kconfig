@@ -365,6 +365,16 @@ config VIDEO_OV8830
 
 	  It currently only works with the atomisp driver.
 
+config VIDEO_MT9D113
+	tristate "Aptina mt9d113 sensor support"
+	depends on I2C && VIDEO_V4L2
+	---help---
+	  This is a Video4Linux2 sensor-level driver for the Micron
+	  mt9d113 2M camera.
+
+	  mt9d113 is video camera sensor.
+
+	  It currently only works with the atomisp driver.
 config VIDEO_MT9M114
 	tristate "Aptina mt9m114 sensor support"
 	depends on I2C && VIDEO_V4L2
