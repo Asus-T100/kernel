@@ -115,6 +115,9 @@ relative, time-based measurements.
 CHARGE_CURRENT_LIMIT - charge control limit to control the charge current
 from user space.This corresponds to POWER_SUPPLY_CHARGE_CURRENT_LIMIT_*.
 
+CHARGE_CONTROL_LIMIT - current charge control limit setting
+CHARGE_CONTROL_LIMIT_MAX - maximum charge control limit setting
+
 ENERGY_FULL, ENERGY_EMPTY - same as above but for energy.
 
 CAPACITY - capacity in percents.
