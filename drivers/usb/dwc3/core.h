@@ -45,6 +45,7 @@
 #include <linux/dma-mapping.h>
 #include <linux/mm.h>
 #include <linux/debugfs.h>
+#include <linux/wakelock.h>
 
 #include <linux/usb/ch9.h>
 #include <linux/usb/gadget.h>
@@ -676,6 +677,8 @@ struct dwc3 {
 	enum dwc3_pm_state	pm_state;
 	struct dwc3_hwregs	hwregs;
 	struct dwc3_hiber	hibernation;
+
+	struct	wake_lock	wake_lock;
 };
 
 /* -------------------------------------------------------------------------- */

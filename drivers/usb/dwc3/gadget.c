@@ -46,6 +46,7 @@
 #include <linux/io.h>
 #include <linux/list.h>
 #include <linux/dma-mapping.h>
+#include <linux/wakelock.h>
 
 #include <linux/usb/ch9.h>
 #include <linux/usb/gadget.h>
@@ -1457,6 +1458,7 @@ static int dwc3_start_peripheral(struct usb_gadget *g)
 	int			ret;
 	u32			reg;
 
+	wake_lock(&dwc->wake_lock);
 	pm_runtime_get_sync(dwc->dev);
 
 	ret = request_irq(dwc->irq, dwc3_interrupt, IRQF_SHARED,
@@ -1571,6 +1573,7 @@ static int dwc3_stop_peripheral(struct usb_gadget *g)
 	}
 
 	pm_runtime_put(dwc->dev);
+	wake_unlock(&dwc->wake_lock);
 
 	return 0;
 }
@@ -2423,6 +2426,8 @@ int __devinit dwc3_gadget_init(struct dwc3 *dwc)
 	dwc->got_irq = 1;
 #endif
 
+	wake_lock_init(&dwc->wake_lock, WAKE_LOCK_SUSPEND, "dwc_wake_lock");
+
 	ret = device_register(&dwc->gadget.dev);
 	if (ret) {
 		dev_err(dwc->dev, "failed to register gadget device\n");
@@ -2512,6 +2517,8 @@ void dwc3_gadget_exit(struct dwc3 *dwc)
 
 	dma_free_coherent(NULL, sizeof(*scratch_array),
 			  scratch_array, scratch_array_dma);
+
+	wake_lock_destroy(&dwc->wake_lock);
 
 	device_unregister(&dwc->gadget.dev);
 }
