@@ -54,6 +54,11 @@
 
 #define AUTO_OFF_TIMEOUT 2000
 
+/* Guard time to activate the sniff mode, chosen between 0-60s
+ *	0 -> sniff mode desactivated
+ */
+#define SNIFF_MODE_TIMEOUT_MS 30000
+
 static void hci_cmd_task(unsigned long arg);
 static void hci_rx_task(unsigned long arg);
 static void hci_tx_task(unsigned long arg);
@@ -1478,7 +1483,7 @@ int hci_register_dev(struct hci_dev *hdev)
 	hdev->link_mode = (HCI_LM_ACCEPT);
 	hdev->io_capability = 0x03; /* No Input No Output */
 
-	hdev->idle_timeout = 0;
+	hdev->idle_timeout = SNIFF_MODE_TIMEOUT_MS;
 	hdev->sniff_max_interval = 800;
 	hdev->sniff_min_interval = 80;
 
