@@ -1105,8 +1105,8 @@ void mdfld_reset_panel_handler_work(struct work_struct *work)
 		}
 
 		acquire_ospm_lock();
-		ospm_power_island_down(OSPM_DISPLAY_A_ISLAND);
-		ospm_power_island_up(OSPM_DISPLAY_A_ISLAND);
+		ospm_power_island_down(OSPM_DISPLAY_ISLAND);
+		ospm_power_island_up(OSPM_DISPLAY_ISLAND);
 		release_ospm_lock();
 
 		if (__dbi_panel_power_on(dsi_config, p_funcs)) {
