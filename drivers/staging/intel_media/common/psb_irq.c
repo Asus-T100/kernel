@@ -451,6 +451,11 @@ void mdfld_te_handler_work(struct work_struct *work)
 	int pipe = dev_priv->vsync_pipe;
 	struct drm_device *dev = dev_priv->dev;
 
+	/*report vsync event*/
+	mdfld_vsync_event(dev, pipe);
+
+	drm_handle_vblank(dev, pipe);
+
 	if (dev_priv->b_async_flip_enable) {
 		mdfld_dsi_dsr_report_te(dev_priv->dsi_configs[0]);
 
@@ -463,11 +468,6 @@ void mdfld_te_handler_work(struct work_struct *work)
 		mdfld_dbi_update_panel(dev, pipe);
 #endif
 	}
-
-	/*report vsync event*/
-	mdfld_vsync_event(dev, pipe);
-
-	drm_handle_vblank(dev, pipe);
 
 	if (dev_priv->psb_vsync_handler != NULL)
 		(*dev_priv->psb_vsync_handler)(dev, pipe);
