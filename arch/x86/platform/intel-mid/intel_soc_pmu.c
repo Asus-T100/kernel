@@ -1201,6 +1201,56 @@ unlock:
 }
 EXPORT_SYMBOL(pmu_nc_set_power_state);
 
+/**
+ * pmu_nc_get_power_state - Callback function is used to
+ * query power status of all the devices in north complex.
+ * Following assumptions are made by this function
+ *
+ * Every new request starts from scratch with no assumptions
+ * on previous/pending request to Punit.
+ * Caller is responsible to retry if request fails.
+ * Avoids multiple requests to Punit if target state is
+ * already in the expected state.
+ * spin_locks guarantee serialized access to these registers
+ * and avoid concurrent access from 2d/3d, VED, VEC, ISP & IPH.
+ *
+ */
+int pmu_nc_get_power_state(int island, int reg_type)
+{
+	u32 pwr_sts;
+	unsigned long flags;
+	int i, lss;
+	int ret = -EINVAL;
+
+	spin_lock_irqsave(&mid_pmu_cxt->nc_ready_lock, flags);
+
+	switch (reg_type) {
+	case APM_REG_TYPE:
+		pwr_sts = inl(mid_pmu_cxt->apm_base + APM_STS);
+		break;
+	case OSPM_REG_TYPE:
+		pwr_sts = inl(mid_pmu_cxt->ospm_base + OSPM_PM_SSS);
+		break;
+	default:
+		pr_err("%s: invalid argument 'island': %d.\n",
+				 __func__, island);
+		goto unlock;
+	}
+
+	for (i = 0; i < OSPM_MAX_POWER_ISLANDS; i++) {
+		lss = island & (0x1 << i);
+		if (lss) {
+			ret = (pwr_sts >> (2 * i)) & 0x3;
+			break;
+		}
+	}
+
+unlock:
+	spin_unlock_irqrestore(&mid_pmu_cxt->nc_ready_lock, flags);
+	return ret;
+}
+EXPORT_SYMBOL(pmu_nc_get_power_state);
+
 /*
 * update_dev_res - Calulates & Updates the device residency when
 * a device state change occurs.

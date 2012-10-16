@@ -275,17 +275,24 @@ int mdfld_dsi_get_panel_status(struct mdfld_dsi_config *dsi_config,
 {
 	struct mdfld_dsi_pkg_sender *sender
 		= mdfld_dsi_get_pkg_sender(dsi_config);
+	int ret = 0;
 
 	if (!sender || !data) {
 		DRM_ERROR("Invalid parameter\n");
 		return -EINVAL;
 	}
 
-	if (transmission == MDFLD_DSI_HS_TRANSMISSION)
-		return mdfld_dsi_read_mcs_hs(sender, dcs, data, len);
-	else if (transmission == MDFLD_DSI_LP_TRANSMISSION)
-		return mdfld_dsi_read_mcs_lp(sender, dcs, data, len);
-	else
+	if (transmission == MDFLD_DSI_HS_TRANSMISSION) {
+		ret = mdfld_dsi_read_mcs_hs(sender, dcs, data, len);
+		if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+			ret = -EIO;
+		return ret;
+	} else if (transmission == MDFLD_DSI_LP_TRANSMISSION) {
+		ret = mdfld_dsi_read_mcs_lp(sender, dcs, data, len);
+		if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+			ret = -EIO;
+		return ret;
+	} else
 		return -EINVAL;
 }
 

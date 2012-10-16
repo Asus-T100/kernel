@@ -80,6 +80,7 @@ enum panel_type {
 	GI_SONY_CMD,
 	GI_RENESAS_CMD,
 	TC35876X_VID,
+	YB_CMI_VID,
 	HDMI,
 	GCT_DETECT
 };
@@ -349,6 +350,8 @@ struct drm_psb_private {
 
 	struct work_struct vsync_event_work;
 	int vsync_pipe;
+	wait_queue_head_t vsync_queue;
+	atomic_t *vblank_count;
 
 	/*
 	 *TTM Glue.
@@ -401,7 +404,6 @@ struct drm_psb_private {
 	struct psb_video_ctx *topaz_ctx;
 	/* previous vieo context */
 	struct psb_video_ctx *last_topaz_ctx;
-
 
 	/*
 	 *MSVDX
@@ -914,6 +916,8 @@ struct drm_psb_private {
 	bool dsi_device_ready;
 	bool hdmi_done_reading_edid;
 	bool um_start;
+	/*flag to indicate android restart*/
+	bool usermode_restart;
 
 	uint32_t tmds_clock_khz;
 	had_event_call_back mdfld_had_event_callbacks;
@@ -964,6 +968,8 @@ struct drm_psb_private {
 	struct mutex gamma_csc_lock;
 	/* overlay setting lock*/
 	struct mutex overlay_lock;
+	uint32_t overlay_wait;
+	uint32_t overlay_fliped;
 	int brightness_adjusted;
 
 	/*
@@ -1038,7 +1044,7 @@ extern int mdfld_irq_disable_hdmi_audio(struct drm_device *dev);
 extern void psb_te_timer_func(unsigned long data);
 extern void mdfld_te_handler_work(struct work_struct *te_work);
 extern void mdfld_vsync_event_work(struct work_struct *work);
-
+extern u32 intel_vblank_count(struct drm_device *dev, int pipe);
 
 /*
  *psb_fb.c
@@ -1126,13 +1132,14 @@ extern int drm_topaz_sbuswa;
 	PSB_DEBUG(PSB_D_MSVDX, _fmt, ##_arg)
 #define PSB_DEBUG_TOPAZ(_fmt, _arg...) \
 	PSB_DEBUG(PSB_D_TOPAZ, _fmt, ##_arg)
+/* force to print WARN msg */
 #define PSB_DEBUG_WARN(_fmt, _arg...) \
-		PSB_DEBUG(PSB_D_WARN, _fmt, ##_arg)
+	PSB_DEBUG(PSB_D_WARN, _fmt, ##_arg)
 
 #if DRM_DEBUG_CODE
 #define PSB_DEBUG(_flag, _fmt, _arg...)					\
 	do {								\
-		if (unlikely((_flag) & drm_psb_debug))			\
+		if ((_flag & drm_psb_debug) ||	(_flag == PSB_D_WARN)) 	\
 			printk(KERN_DEBUG				\
 			       "[psb:0x%02x:%s] " _fmt , _flag,		\
 			       __func__ , ##_arg);			\
@@ -1239,6 +1246,13 @@ static inline void SGX_REGISTER_WRITE(struct drm_device *dev, uint32_t reg,
 /* APM_STS register:
  * 1:0- GPS, 3:2 - VDPS, 5:4 -VEPS, 7:6 -GL3, 9:8 -ISP, 11:10 - IPH */
 #define APM_STS			0x04
+#define APM_STS_VDPS_SHIFT	2
+
+#define APM_STS_D0		0x0
+#define APM_STS_D1		0x1
+#define APM_STS_D2		0x2
+#define APM_STS_D3		0x3
+#define APM_STS_VDPS_MASK	0xC
 
 /* OSPM_PM_SSS register:
  * 1:0 - GFX, 3:2 - DPA, 5:4 - VED, 7:6 - VEC, 9:8 - GL3,
@@ -1248,61 +1262,24 @@ static inline void SGX_REGISTER_WRITE(struct drm_device *dev, uint32_t reg,
 #define OSPM_OSPMBA		0x78
 #define OSPM_PM_SSS		0x30
 
-extern int drm_psb_apm_base;
-
-
 #define MFLD_MSVDX_FABRIC_DEBUG 0
 #define MSVDX_REG_DUMP 0
 
-#if MFLD_MSVDX_FABRIC_DEBUG
-
-#define PSB_WMSVDX32(_val, _offs)				\
-do {								\
-	if ((inl(drm_psb_apm_base + APM_STS) & 0xc) == 0xc)	\
-		panic("msvdx reg 0x%x write failed.\n",		\
-				(unsigned int)(_offs));		\
-	else							\
-		iowrite32(_val, dev_priv->msvdx_reg + (_offs));	\
-} while (0)
-
-static inline uint32_t PSB_RMSVDX32(uint32_t _offs)
+static inline int psb_get_power_state(int islands)
 {
-	struct drm_psb_private *dev_priv =
-		(struct drm_psb_private *)gpDrmDevice->dev_private;
-	if ((inl(drm_psb_apm_base + APM_STS) & 0xc) == 0xc) {
-		panic("msvdx reg 0x%x read failed.\n", (unsigned int)(_offs));
-		return 0;
-	} else {
-		return ioread32(dev_priv->msvdx_reg + (_offs));
+	switch (islands) {
+	case OSPM_VIDEO_DEC_ISLAND:
+		if (pmu_nc_get_power_state(OSPM_VIDEO_DEC_ISLAND, APM_REG_TYPE) ==
+			APM_STS_D3)
+			return 0;
+		else
+			return 1;
+		break;
+	default:
+		PSB_DEBUG_WARN("WARN: unsupported island.\n");
+		return -EINVAL;
 	}
 }
-
-#elif MSVDX_REG_DUMP
-
-#define PSB_WMSVDX32(_val, _offs) \
-do {                                                \
-	printk(KERN_INFO"MSVDX: write %08x to reg 0x%08x\n", \
-			(unsigned int)(_val),       \
-			(unsigned int)(_offs));     \
-	iowrite32(_val, dev_priv->msvdx_reg + (_offs));   \
-} while (0)
-
-static inline uint32_t PSB_RMSVDX32(uint32_t _offs)
-{
-	uint32_t val = ioread32(dev_priv->msvdx_reg + (_offs));
-	printk(KERN_INFO"MSVDX: read reg 0x%08x, get %08x\n",
-			(unsigned int)(_offs), val);
-	return val;
-}
-
-#else
-
-#define PSB_WMSVDX32(_val, _offs) \
-	iowrite32(_val, dev_priv->msvdx_reg + (_offs))
-#define PSB_RMSVDX32(_offs) \
-	ioread32(dev_priv->msvdx_reg + (_offs))
-
-#endif
 
 #define PSB_ALPL(_val, _base)			\
   (((_val) >> (_base ## _ALIGNSHIFT)) << (_base ## _SHIFT))

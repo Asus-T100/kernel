@@ -57,7 +57,7 @@
 #define SCU_CMD_VPROG2  0xe3
 
 struct drm_device *gpDrmDevice;
-static struct mutex g_ospm_mutex;
+struct mutex g_ospm_mutex;
 
 /* Lock strategy */
 /*
@@ -114,6 +114,11 @@ static int ospm_runtime_pm_msvdx_suspend(struct drm_device *dev)
 
 	if (!ospm_power_is_hw_on(OSPM_VIDEO_DEC_ISLAND))
 		goto out;
+
+	if (psb_get_power_state(OSPM_VIDEO_DEC_ISLAND) == 0) {
+		PSB_DEBUG_PM("MSVDX: island already in power off state.\n");
+		goto out;
+	}
 
 	if (atomic_read(&g_videodec_access_count)) {
 		ret = -1;
@@ -281,14 +286,22 @@ static int ospm_runtime_pm_topaz_resume(struct drm_device *dev)
 	return 0;
 }
 
-void ospm_apm_power_down_msvdx(struct drm_device *dev)
+void ospm_apm_power_down_msvdx(struct drm_device *dev, int force_off)
 {
 	struct drm_psb_private *dev_priv = dev->dev_private;
 	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
+	PSB_DEBUG_PM("MSVDX: work queue is scheduled to power off msvdx.\n");
 
 	mutex_lock(&g_ospm_mutex);
+	if (force_off)
+		goto power_off;
 	if (!ospm_power_is_hw_on(OSPM_VIDEO_DEC_ISLAND))
 		goto out;
+
+	if (psb_get_power_state(OSPM_VIDEO_DEC_ISLAND) == 0) {
+		PSB_DEBUG_PM("MSVDX: island already in power off state.\n");
+		goto out;
+	}
 
 	if (atomic_read(&g_videodec_access_count))
 		goto out;
@@ -298,7 +311,10 @@ void ospm_apm_power_down_msvdx(struct drm_device *dev)
 		goto out;
 
 	psb_msvdx_save_context(dev);
+
 #endif
+
+power_off:
 	ospm_power_island_down(OSPM_VIDEO_DEC_ISLAND);
 #ifdef CONFIG_MDFD_GL3
 	/* Power off GL3 */
@@ -399,6 +415,35 @@ void ospm_power_uninit(void)
 	pm_runtime_get_noresume(&gpDrmDevice->pdev->dev);
 #endif
 }
+
+/*
+*  gfx_register_program
+*
+* Update some register value to avoid hdmi flicker
+*/
+static void gfx_register_program(struct drm_device *dev)
+{
+	u32 temp;
+
+	REG_WRITE(DSPARB, 0x0005E480);
+	REG_WRITE(DSPFW1, 0x0F0F103F);
+	REG_WRITE(DSPFW4, 0x0707101F);
+	REG_WRITE(MI_ARB, 0x0);
+
+	temp = REG_READ(DSPARB);
+	PSB_DEBUG_ENTRY("gfx_hdmi_setting: DSPARB = 0x%x", temp);
+
+	temp = REG_READ(DSPFW1);
+	PSB_DEBUG_ENTRY("gfx_hdmi_setting: DSPFW1 = 0x%x", temp);
+
+	temp = REG_READ(DSPFW4);
+	PSB_DEBUG_ENTRY("gfx_hdmi_setting: DSPFW4 = 0x%x", temp);
+
+	temp = REG_READ(MI_ARB);
+	PSB_DEBUG_ENTRY("gfx_hdmi_setting: MI_ARB = 0x%x", temp);
+
+}
+
 /*
 * ospm_post_init
 *
@@ -463,6 +508,9 @@ disable these MSIC power rails permanently.  */
 		intel_scu_ipc_iowrite8(MSIC_VCC330CNT, VCC330_OFF);
 	}
 #endif
+	if (IS_CTP(dev))
+		gfx_register_program(dev);
+
 	mutex_unlock(&g_ospm_mutex);
 
 }
@@ -898,6 +946,9 @@ void ospm_resume_display(struct pci_dev *pdev)
 #endif
 	}
 	mdfld_restore_cursor_overlay_registers(dev);
+
+	if (IS_CTP(dev))
+		gfx_register_program(dev);
 }
 
 /*
@@ -915,7 +966,7 @@ void ospm_suspend_pci(struct pci_dev *pdev)
 	if (gbSuspended)
 		return;
 
-	PSB_DEBUG_ENTRY("\n");
+	PSB_DEBUG_PM("ospm_suspend_pci\n");
 
 	pci_save_state(pdev);
 	pci_read_config_dword(pdev, 0x5C, &bsm);
@@ -946,7 +997,7 @@ static bool ospm_resume_pci(struct pci_dev *pdev)
 	if (!gbSuspended)
 		return true;
 
-	PSB_DEBUG_ENTRY("\n");
+	PSB_DEBUG_PM("ospm_resume_pci.\n");
 
 	pci_set_power_state(pdev, PCI_D0);
 	pci_restore_state(pdev);
@@ -1094,11 +1145,11 @@ int ospm_power_suspend(struct pci_dev *pdev, pm_message_t state)
 #endif
 
 	if (gbSuspendInProgress || gbResumeInProgress) {
-		DRM_INFO("%s: system BUSY\n", __func__);
+		PSB_DEBUG_PM(KERN_ALERT "%s: system BUSY\n", __func__);
 		return  -EBUSY;
 	}
 
-	PSB_DEBUG_ENTRY("\n");
+	PSB_DEBUG_PM("enter ospm_power_suspend\n");
 
 	mutex_lock(&g_ospm_mutex);
 	if (!gbSuspended) {
@@ -1161,8 +1212,8 @@ int ospm_power_suspend(struct pci_dev *pdev, pm_message_t state)
 				}
 			}
 		} else {
-			PSB_DEBUG_ENTRY("ospm_power_suspend: device busy:");
-			PSB_DEBUG_ENTRY("SGX %d Enc %d Dec %d Display %d\n",
+			PSB_DEBUG_PM("ospm_power_suspend: device busy:");
+			PSB_DEBUG_PM("SGX %d Enc %d Dec %d Display %d\n",
 				graphics_access_count, videoenc_access_count,
 				videodec_access_count, display_access_count);
 		}
@@ -1279,6 +1330,7 @@ static void ospm_power_island_down_video(int video_islands)
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *) gpDrmDevice->dev_private;
 	unsigned long flags;
+	PSB_DEBUG_ENTRY("MSVDX: power on video island %d.\n", video_islands);
 	spin_lock_irqsave(&dev_priv->ospm_lock, flags);
 	if (video_islands & OSPM_VIDEO_DEC_ISLAND) {
 		if (pmu_nc_set_power_state(OSPM_VIDEO_DEC_ISLAND,
@@ -1438,6 +1490,7 @@ bool ospm_power_using_video_begin(int video_island)
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *)gpDrmDevice->dev_private;
 	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
+	PSB_DEBUG_PM("MSVDX: need power on island 0x%x.\n", video_island);
 
 	if (!(video_island & (OSPM_VIDEO_DEC_ISLAND | OSPM_VIDEO_ENC_ISLAND)))
 		return false;
@@ -1512,7 +1565,7 @@ bool ospm_power_using_video_begin(int video_island)
 				reg_ret = psb_wait_for_register(dev_priv,
 					MSVDX_COMMS_SIGNATURE,
 					MSVDX_COMMS_SIGNATURE_VALUE,
-					0xffffffff);
+					0xffffffff, 2000000, 5);
 				if (reg_ret)
 					printk(KERN_ERR	"fw fails to init.\n");
 			}
@@ -1522,7 +1575,9 @@ bool ospm_power_using_video_begin(int video_island)
 			psb_irq_postinstall_islands(gpDrmDevice,
 				OSPM_VIDEO_DEC_ISLAND);
 		} else {
+#ifdef CONFIG_MDFD_GL3
 			ospm_power_island_up(OSPM_GL3_CACHE_ISLAND);
+#endif
 		}
 
 		break;
@@ -1552,7 +1607,9 @@ bool ospm_power_using_video_begin(int video_island)
 			psb_irq_postinstall_islands(gpDrmDevice,
 				OSPM_VIDEO_ENC_ISLAND);
 		} else {
+#ifdef CONFIG_MDFD_GL3
 			ospm_power_island_up(OSPM_GL3_CACHE_ISLAND);
+#endif
 		}
 		break;
 	default:
@@ -1764,6 +1821,8 @@ EXPORT_SYMBOL(ospm_power_using_hw_begin);
  */
 void ospm_power_using_video_end(int video_island)
 {
+	PSB_DEBUG_PM("MSVDX: using video 0x%x end.\n", video_island);
+
 	if (!(video_island & (OSPM_VIDEO_ENC_ISLAND | OSPM_VIDEO_DEC_ISLAND)))
 		return;
 
@@ -1866,7 +1925,7 @@ int psb_runtime_suspend(struct device *dev)
 
 	state.event = 0;
 
-	PSB_DEBUG_ENTRY("\n");
+	PSB_DEBUG_PM("psb_runtime_suspend is called.\n");
 
 	if (atomic_read(&g_graphics_access_count) ||
 	    atomic_read(&g_videoenc_access_count) ||

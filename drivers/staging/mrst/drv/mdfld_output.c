@@ -26,6 +26,7 @@
 */
 
 #include <linux/init.h>
+#include <linux/kernel.h>
 #include "mdfld_dsi_dbi.h"
 #include "mdfld_dsi_dpi.h"
 #include "mdfld_output.h"
@@ -41,6 +42,7 @@
 #include "displays/h8c7_cmd.h"
 #include "displays/tc35876x_vid.h"
 #include "displays/gi_renesas_cmd.h"
+#include "displays/yb_cmi_vid.h"
 #include "displays/hdmi.h"
 #include "psb_drv.h"
 
@@ -53,7 +55,8 @@ static struct intel_mid_panel_list panel_list[] = {
 	{GI_SONY_VID,	MDFLD_DSI_ENCODER_DPI, gi_sony_vid_init},
 	{GI_SONY_CMD,	MDFLD_DSI_ENCODER_DBI, gi_sony_cmd_init},
 	{GI_RENESAS_CMD, MDFLD_DSI_ENCODER_DBI, gi_renesas_cmd_init},
-	{TC35876X_VID,	MDFLD_DSI_ENCODER_DPI, tc35876x_vid_init}
+	{TC35876X_VID,	MDFLD_DSI_ENCODER_DPI, tc35876x_vid_init},
+	{YB_CMI_VID,	MDFLD_DSI_ENCODER_DPI, yb_cmi_vid_init}
 };
 
 enum panel_type get_panel_type(struct drm_device *dev, int pipe)
@@ -70,7 +73,7 @@ int is_panel_vid_or_cmd(struct drm_device *dev)
 		(struct drm_psb_private *) dev->dev_private;
 	int i = 0;
 
-	for (i = 0; i < sizeof panel_list; i++) {
+	for (i = 0; i < ARRAY_SIZE(panel_list); i++) {
 		if (panel_list[i].p_type == dev_priv->panel_id)
 			return panel_list[i].encoder_type;
 	}
@@ -94,7 +97,7 @@ void init_panel(struct drm_device* dev, int mipi_pipe, enum panel_type p_type)
 	dev_priv->cur_pipe = mipi_pipe;
 	p_funcs = kzalloc(sizeof(struct panel_funcs), GFP_KERNEL);
 
-	for (i = 0; i < sizeof panel_list; i++) {
+	for (i = 0; i < ARRAY_SIZE(panel_list); i++) {
 		if (panel_list[i].p_type == dev_priv->panel_id) {
 			panel_list[i].panel_init(
 					dev,

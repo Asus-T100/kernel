@@ -128,6 +128,7 @@ extern void pmu_set_s0ix_complete(void);
 extern bool pmu_is_s0ix_in_progress(void);
 extern int pmu_nc_set_power_state
 	(int islands, int state_type, int reg_type);
+extern int pmu_nc_get_power_state(int island, int reg_type);
 extern int pmu_set_emmc_to_d0i0_atomic(void);
 
 #ifdef LOG_PMU_EVENTS

@@ -77,7 +77,7 @@ void mdfld_dsi_dpi_set_power(struct drm_encoder *encoder, bool on);
 void mdfld_dsi_dbi_set_power(struct drm_encoder *encoder, bool on);
 /* extern int psb_check_msvdx_idle(struct drm_device *dev); */
 /* Use these functions to power down video HW for D0i3 purpose  */
-void ospm_apm_power_down_msvdx(struct drm_device *dev);
+void ospm_apm_power_down_msvdx(struct drm_device *dev, int force_on);
 void ospm_apm_power_down_topaz(struct drm_device *dev);
 
 void ospm_power_init(struct drm_device *dev);

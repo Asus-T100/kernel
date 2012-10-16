@@ -235,6 +235,7 @@ int psb_getpageaddrs_ioctl(struct drm_device *dev, void *data,
 void psb_remove_videoctx(struct drm_psb_private *dev_priv, struct file *filp)
 {
 	struct psb_video_ctx *pos, *n;
+	struct psb_video_ctx *found_ctx = NULL;
 	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
 	/* iterate to query all ctx to if there is DRM running*/
 	ied_enabled = 0;
@@ -242,48 +243,44 @@ void psb_remove_videoctx(struct drm_psb_private *dev_priv, struct file *filp)
 	mutex_lock(&dev_priv->video_ctx_mutex);
 	list_for_each_entry_safe(pos, n, &dev_priv->video_ctx, head) {
 		if (pos->filp == filp) {
-			PSB_DEBUG_GENERAL("Video:remove context profile %d,"
-					  " entrypoint %d\n",
-					  (pos->ctx_type >> 8) & 0xff,
-					  (pos->ctx_type & 0xff));
-
-			/* if current ctx points to it, set to NULL */
-			if (dev_priv->topaz_ctx == pos) {
-				/*Reset fw load status here.*/
-				if (IS_MDFLD(dev_priv->dev) &&
-					(VAEntrypointEncSlice ==
-						(pos->ctx_type & 0xff)
-					|| VAEntrypointEncPicture ==
-						(pos->ctx_type & 0xff)))
-					pnw_reset_fw_status(dev_priv->dev);
-
-				dev_priv->topaz_ctx = NULL;
-			} else if (IS_MDFLD(dev_priv->dev) &&
-					(VAEntrypointEncSlice ==
-						(pos->ctx_type & 0xff)
-					|| VAEntrypointEncPicture ==
-						(pos->ctx_type & 0xff)))
-				PSB_DEBUG_GENERAL("Remove a inactive "\
-						"encoding context.\n");
-
-			if (dev_priv->last_topaz_ctx == pos)
-				dev_priv->last_topaz_ctx = NULL;
-
-			mutex_lock(&msvdx_priv->msvdx_mutex);
-			if (msvdx_priv->msvdx_ctx == pos)
-				msvdx_priv->msvdx_ctx = NULL;
-			if (msvdx_priv->last_msvdx_ctx == pos)
-				msvdx_priv->last_msvdx_ctx = NULL;
-			mutex_unlock(&msvdx_priv->msvdx_mutex);
-
+			found_ctx = pos;
 			list_del(&pos->head);
-			kfree(pos);
 		} else {
 			if (pos->ctx_type & VA_RT_FORMAT_PROTECTED)
 				ied_enabled = 1;
 		}
 	}
 	mutex_unlock(&dev_priv->video_ctx_mutex);
+
+	if (found_ctx) {
+		PSB_DEBUG_PM("Video:remove context profile %d,"
+				  " entrypoint %d\n",
+				  (found_ctx->ctx_type >> 8) & 0xff,
+				  (found_ctx->ctx_type & 0xff));
+		/* if current ctx points to it, set to NULL */
+		if (VAEntrypointEncSlice ==
+				(found_ctx->ctx_type & 0xff)
+			|| VAEntrypointEncPicture ==
+				(found_ctx->ctx_type & 0xff)) {
+			if (dev_priv->topaz_ctx == found_ctx) {
+				pnw_reset_fw_status(dev_priv->dev);
+				dev_priv->topaz_ctx = NULL;
+			} else {
+				PSB_DEBUG_PM("Remove a inactive "\
+						"encoding context.\n");
+			}
+			if (dev_priv->last_topaz_ctx == found_ctx)
+				dev_priv->last_topaz_ctx = NULL;
+		} else {
+			mutex_lock(&msvdx_priv->msvdx_mutex);
+			if (msvdx_priv->msvdx_ctx == found_ctx)
+				msvdx_priv->msvdx_ctx = NULL;
+			if (msvdx_priv->last_msvdx_ctx == found_ctx)
+				msvdx_priv->last_msvdx_ctx = NULL;
+			mutex_unlock(&msvdx_priv->msvdx_mutex);
+		}
+		kfree(found_ctx);
+	}
 }
 
 static struct psb_video_ctx *psb_find_videoctx(struct drm_psb_private *dev_priv,
@@ -390,10 +387,10 @@ int psb_video_getparam(struct drm_device *dev, void *data,
 				 (ctx_type & 0xff)))
 			pnw_reset_fw_status(dev_priv->dev);
 
-		PSB_DEBUG_GENERAL("Video:add ctx profile %d, entry %d.\n",
+		PSB_DEBUG_INIT("Video:add ctx profile %d, entry %d.\n",
 					((ctx_type >> 8) & 0xff),
 					(ctx_type & 0xff));
-		PSB_DEBUG_GENERAL("Video:add context protected 0x%x.\n",
+		PSB_DEBUG_INIT("Video:add context protected 0x%x.\n",
 					(ctx_type & VA_RT_FORMAT_PROTECTED));
 		if (ctx_type & VA_RT_FORMAT_PROTECTED)
 			ied_enabled = 1;
@@ -444,7 +441,7 @@ int psb_video_getparam(struct drm_device *dev, void *data,
 					   &current_frame->fw_status, sizeof(current_frame->fw_status));
 		} else
 			ret = copy_to_user((void __user *)((unsigned long)arg->value),
-					   &msvdx_priv->fw_status, sizeof(msvdx_priv->fw_status));
+					   &msvdx_priv->decoding_err, sizeof(msvdx_priv->decoding_err));
 		break;
 
 	case IMG_VIDEO_MB_ERROR:

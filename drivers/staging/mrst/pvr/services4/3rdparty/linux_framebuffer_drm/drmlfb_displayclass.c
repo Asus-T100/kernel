@@ -1,3 +1,4 @@
+
 /**********************************************************************
  *
  * Copyright (C) Imagination Technologies Ltd. All rights reserved.
@@ -55,6 +56,14 @@ extern int drm_psb_3D_vblank;
 #define MRSTLFB_COMMAND_COUNT		1
 
 #define FLIP_TIMEOUT (HZ/4)
+
+/*if panel refresh rate is 60HZ
+* then the max transfer time shoule be smaller
+* than 16ms,otherwise the framerate will drop
+*/
+#define MAX_TRANS_TIME_FOR_ONE_FRAME   16
+/*for JB, android use three swap buffer*/
+#define SWAP_BUFFER_COUNT              3
 
 static PFN_DC_GET_PVRJTABLE pfnGetPVRJTable = 0;
 static int FirstCleanFlag = 1;
@@ -120,30 +129,65 @@ static inline void MRSTFBFlipComplete(MRSTLFB_SWAPCHAIN *psSwapChain, MRSTLFB_VS
 
 
 static void MRSTLFBFlipOverlay(MRSTLFB_DEVINFO *psDevInfo,
-			struct intel_overlay_context *psContext)
+			struct intel_overlay_context *psContext, u32 pipe_mask)
 {
 	struct drm_device *dev;
 	struct drm_psb_private *dev_priv;
 	u32 ovadd_reg = OV_OVADD;
+	u32 uDspCntr = 0;
 
 	dev = psDevInfo->psDrmDevice;
 	dev_priv =
 		(struct drm_psb_private *)psDevInfo->psDrmDevice->dev_private;
 
-	DRM_INFO("%s: flip 0x%x, index %d, pipe 0x%x\n", __func__,
+	/* DRM_INFO("%s: flip 0x%x, index %d, pipe 0x%x\n", __func__,
 		psContext->ovadd, psContext->index, psContext->pipe);
-
+	*/
 	if (psContext->index == 1)
 		ovadd_reg = OVC_OVADD;
+	else if (psContext->index > 1)
+		return;
 
 	psContext->ovadd |= psContext->pipe;
 	psContext->ovadd |= 1;
 
 	PSB_WVDC32(psContext->ovadd, ovadd_reg);
+
+	/* If overlay enabled while display plane doesn't,
+	 * disable display plane explicitly */
+	/* A pipe */
+	if (((psContext->pipe >> 6) & 0x3) == 0x00 &&
+		!(pipe_mask & (1 << 0))) {
+		uDspCntr = PSB_RVDC32(DSPACNTR);
+		if (uDspCntr & DISPLAY_PLANE_ENABLE) {
+			uDspCntr &= ~DISPLAY_PLANE_ENABLE;
+			PSB_WVDC32(uDspCntr, DSPACNTR);
+			/* trigger cntr register take effect */
+			PSB_WVDC32(0, DSPASURF);
+		}
+	} else if (((psContext->pipe >> 6) & 0x3) == 0x2 &&
+		!(pipe_mask & (1 << 1))) {
+		uDspCntr = PSB_RVDC32(DSPACNTR + 0x1000);
+		if (uDspCntr & DISPLAY_PLANE_ENABLE) {
+			uDspCntr &= ~DISPLAY_PLANE_ENABLE;
+			PSB_WVDC32(uDspCntr, DSPACNTR + 0x1000);
+			/* trigger cntr register take effect */
+			PSB_WVDC32(0, DSPBSURF);
+		}
+	} else if (((psContext->pipe >> 6) & 0x3) == 0x1 &&
+		!(pipe_mask & (1 << 2))) {
+		uDspCntr = PSB_RVDC32(DSPACNTR + 0x2000);
+		if (uDspCntr & DISPLAY_PLANE_ENABLE) {
+			uDspCntr &= ~DISPLAY_PLANE_ENABLE;
+			PSB_WVDC32(uDspCntr, DSPACNTR + 0x2000);
+			/* trigger cntr register take effect */
+			PSB_WVDC32(0, DSPCSURF);
+		}
+	}
 }
 
 static void MRSTLFBFlipSprite(MRSTLFB_DEVINFO *psDevInfo,
-			struct intel_sprite_context *psContext)
+			struct intel_sprite_context *psContext, u32 *pipe_mask)
 {
 	struct drm_device *dev;
 	struct drm_psb_private *dev_priv;
@@ -170,6 +214,8 @@ static void MRSTLFBFlipSprite(MRSTLFB_DEVINFO *psDevInfo,
 	} else
 		return;
 
+	(*pipe_mask) |= (1 << pipe);
+
 	if ((psContext->update_mask & SPRITE_UPDATE_POSITION))
 		PSB_WVDC32(psContext->pos, DSPAPOS + reg_offset);
 	if ((psContext->update_mask & SPRITE_UPDATE_SIZE)) {
@@ -178,7 +224,8 @@ static void MRSTLFBFlipSprite(MRSTLFB_DEVINFO *psDevInfo,
 	}
 
 	if ((psContext->update_mask & SPRITE_UPDATE_CONTROL))
-		PSB_WVDC32(psContext->cntr, DSPACNTR + reg_offset);
+		PSB_WVDC32(psContext->cntr | DISPLAY_PLANE_ENABLE,
+			       DSPACNTR + reg_offset);
 
 	if ((psContext->update_mask & SPRITE_UPDATE_SURFACE)) {
 		PSB_WVDC32(psContext->linoff, DSPALINOFF + reg_offset);
@@ -197,7 +244,7 @@ static void MRSTLFBFlipSprite(MRSTLFB_DEVINFO *psDevInfo,
 }
 
 static void MRSTLFBFlipPrimary(MRSTLFB_DEVINFO *psDevInfo,
-			struct intel_sprite_context *psContext)
+			struct intel_sprite_context *psContext, u32 *pipe_mask)
 {
 	struct drm_device *dev;
 	struct drm_psb_private *dev_priv;
@@ -224,6 +271,8 @@ static void MRSTLFBFlipPrimary(MRSTLFB_DEVINFO *psDevInfo,
 	} else
 		return;
 
+	(*pipe_mask) |= (1 << pipe);
+
 	/*for HDMI only flip the surface address*/
 	if (pipe == 1)
 		psContext->update_mask &= SPRITE_UPDATE_SURFACE;
@@ -236,7 +285,8 @@ static void MRSTLFBFlipPrimary(MRSTLFB_DEVINFO *psDevInfo,
 	}
 
 	if ((psContext->update_mask & SPRITE_UPDATE_CONTROL))
-		PSB_WVDC32(psContext->cntr, DSPACNTR + reg_offset);
+		PSB_WVDC32(psContext->cntr | DISPLAY_PLANE_ENABLE,
+			       DSPACNTR + reg_offset);
 
 	if ((psContext->update_mask & SPRITE_UPDATE_SURFACE)) {
 		PSB_WVDC32(psContext->linoff, DSPALINOFF + reg_offset);
@@ -264,6 +314,7 @@ static IMG_BOOL MRSTLFBFlipContexts(MRSTLFB_DEVINFO *psDevInfo,
 	struct drm_device *dev;
 	IMG_BOOL ret = IMG_TRUE;
 	int i;
+	u32 pipe_mask = 0;
 
 	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, MRST_TRUE)) {
 		DRM_ERROR("mdfld_dsi_dsr: failed to hw_begin\n");
@@ -278,7 +329,8 @@ static IMG_BOOL MRSTLFBFlipContexts(MRSTLFB_DEVINFO *psDevInfo,
 	for (i = 0; i < INTEL_SPRITE_PLANE_NUM; i++) {
 		if (psContexts->active_primaries & (1 << i)) {
 			psPrimaryContext = &psContexts->primary_contexts[i];
-			MRSTLFBFlipPrimary(psDevInfo, psPrimaryContext);
+			MRSTLFBFlipPrimary(psDevInfo, psPrimaryContext,
+				&pipe_mask);
 		}
 	}
 
@@ -286,7 +338,8 @@ static IMG_BOOL MRSTLFBFlipContexts(MRSTLFB_DEVINFO *psDevInfo,
 	for (i = 0; i < INTEL_SPRITE_PLANE_NUM; i++) {
 		if (psContexts->active_sprites & (1 << i)) {
 			psSpriteContext = &psContexts->sprite_contexts[i];
-			MRSTLFBFlipSprite(psDevInfo, psSpriteContext);
+			MRSTLFBFlipSprite(psDevInfo, psSpriteContext,
+				&pipe_mask);
 		}
 	}
 
@@ -294,13 +347,20 @@ static IMG_BOOL MRSTLFBFlipContexts(MRSTLFB_DEVINFO *psDevInfo,
 	for (i = 0; i < INTEL_OVERLAY_PLANE_NUM; i++) {
 		if (psContexts->active_overlays & (1 << i)) {
 			psOverlayContext = &psContexts->overlay_contexts[i];
-			MRSTLFBFlipOverlay(psDevInfo, psOverlayContext);
+			MRSTLFBFlipOverlay(psDevInfo, psOverlayContext,
+				pipe_mask);
 		}
 	}
 
-	if (mdfld_dsi_dsr_update_panel_fb(dev_priv->dsi_configs[0])) {
-		DRM_ERROR("mdfld_dsi_dsr: failed to update panel fb\n");
-		ret = IMG_FALSE;
+	/* increase overlay_fliped to match up with overlay_wait after flip */
+	if (psContexts->active_overlays != 0)
+		dev_priv->overlay_fliped++;
+
+	if (!psDevInfo->bScreenState) {
+		if (mdfld_dsi_dsr_update_panel_fb(dev_priv->dsi_configs[0])) {
+			DRM_ERROR("mdfld_dsi_dsr: failed to update panel fb\n");
+			ret = IMG_FALSE;
+		}
 	}
 
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
@@ -428,6 +488,45 @@ static IMG_BOOL DRMLFBFlipBuffer(MRSTLFB_DEVINFO *psDevInfo,
 	return ret;
 }
 
+static IMG_BOOL DRMLFBFlipBlackScreen(MRSTLFB_DEVINFO *psDevInfo)
+{
+	struct drm_psb_private *dev_priv;
+	u32 offset;
+	u32 dspcntr;
+
+	if (!psDevInfo) {
+		DRM_ERROR("Invalid parameters\n");
+		return IMG_FALSE;
+	}
+
+	if (psDevInfo->ui32MainPipe == 0)
+		offset = 0x0000;
+	else if (psDevInfo->ui32MainPipe == 1)
+		offset = 0x1000;
+	else if (psDevInfo->ui32MainPipe == 2)
+		offset = 0x2000;
+	else
+		return IMG_FALSE;
+
+	dev_priv =
+		(struct drm_psb_private *)psDevInfo->psDrmDevice->dev_private;
+
+	if (!dev_priv) {
+		DRM_ERROR("Invalid parameters\n");
+		return IMG_FALSE;
+	}
+
+	PSB_WVDC32(0x0, DSPAPOS + offset);
+	PSB_WVDC32(dev_priv->init_screen_size, DSPASIZE + offset);
+	PSB_WVDC32(dev_priv->init_screen_stride, DSPASTRIDE + offset);
+	PSB_WVDC32(dev_priv->init_screen_offset, DSPALINOFF + offset);
+	dspcntr = PSB_RVDC32(DSPACNTR + offset) & (~DISPPLANE_PIXFORMAT_MASK);
+	PSB_WVDC32(dspcntr | DISPPLANE_32BPP_NO_ALPHA, DSPACNTR + offset);
+	PSB_WVDC32(dev_priv->init_screen_start, DSPASURF + offset);
+
+	return IMG_TRUE;
+}
+
 static IMG_BOOL DRMLFBFlipBuffer2(MRSTLFB_DEVINFO *psDevInfo,
 			MRSTLFB_SWAPCHAIN *psSwapChain,
 			struct mdfld_plane_contexts *psContexts)
@@ -492,13 +591,11 @@ static void SetFlushStateNoLock(MRSTLFB_DEVINFO* psDevInfo,
 static IMG_VOID SetFlushState(MRSTLFB_DEVINFO* psDevInfo,
                                       MRST_BOOL bFlushState)
 {
-	unsigned long ulLockFlags;
-
-	spin_lock_irqsave(&psDevInfo->sSwapChainLock, ulLockFlags);
+	mutex_lock(&psDevInfo->sSwapChainMutex);
 
 	SetFlushStateNoLock(psDevInfo, bFlushState);
 
-	spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
+	mutex_unlock(&psDevInfo->sSwapChainMutex);
 }
 
 static IMG_VOID SetDCState(IMG_HANDLE hDevice, IMG_UINT32 ui32State)
@@ -827,7 +924,6 @@ static PVRSRV_ERROR CreateDCSwapChain(IMG_HANDLE hDevice,
 
 	UNREFERENCED_PARAMETER(ui32OEMFlags);
 
-
 	if(!hDevice
 	|| !psDstSurfAttrib
 	|| !psSrcSurfAttrib
@@ -946,7 +1042,7 @@ static PVRSRV_ERROR CreateDCSwapChain(IMG_HANDLE hDevice,
 	if (fbdev != NULL)
 		psbfb = fbdev->pfb;
 
-	spin_lock_irqsave(&psDevInfo->sSwapChainLock, ulLockFlags);
+	mutex_lock(&psDevInfo->sSwapChainMutex);
 
 	psSwapChain->ui32SwapChainID = *pui32SwapChainID = iSCId+1;
 	psSwapChain->ui32SwapChainPropertyFlag =
@@ -966,11 +1062,11 @@ static PVRSRV_ERROR CreateDCSwapChain(IMG_HANDLE hDevice,
 		MRSTLFBEnableVSyncInterrupt(psDevInfo);
 	}
 
-	spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
-
+	mutex_unlock(&psDevInfo->sSwapChainMutex);
 
 	*phSwapChain = (IMG_HANDLE)psSwapChain;
-
+	dev_priv->usermode_restart = true;
+	DRM_INFO("user mode restart");
 	return (PVRSRV_OK);
 
 ErrorFreeAllocatedBuffes:
@@ -1006,7 +1102,7 @@ static PVRSRV_ERROR DestroyDCSwapChain(IMG_HANDLE hDevice,
 	psDevInfo = (MRSTLFB_DEVINFO*)hDevice;
 	psSwapChain = (MRSTLFB_SWAPCHAIN*)hSwapChain;
 
-	spin_lock_irqsave(&psDevInfo->sSwapChainLock, ulLockFlags);
+	mutex_lock(&psDevInfo->sSwapChainMutex);
 
 	psDevInfo->ui32SwapChainNum--;
 
@@ -1017,28 +1113,21 @@ static PVRSRV_ERROR DestroyDCSwapChain(IMG_HANDLE hDevice,
 
 	psDevInfo->apsSwapChains[ psSwapChain->ui32SwapChainID -1] = NULL;
 
-	/*
-	 * Release the spin lock here, as FlushInternalVSyncQueue() may invoke
-	 * mutex_lock when freeing buffer.
-	 */
-	spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
-
 	FlushInternalVSyncQueue(psSwapChain, psDevInfo->ui32SwapChainNum == 0);
-
-	spin_lock_irqsave(&psDevInfo->sSwapChainLock, ulLockFlags);
 
 	if (psDevInfo->ui32SwapChainNum == 0)
 	{
-
 		DRMLFBFlipBuffer(psDevInfo, NULL, &psDevInfo->sSystemBuffer);
 		MRSTLFBClearSavedFlip(psDevInfo);
+		DRMLFBFlipBlackScreen(psDevInfo);
 	}
 
 	if (psDevInfo->psCurrentSwapChain == psSwapChain ||
 		psDevInfo->ui32SwapChainNum == 0)
 		psDevInfo->psCurrentSwapChain = NULL;
 
-	spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
+	mutex_unlock(&psDevInfo->sSwapChainMutex);
+
 
 	if (psSwapChain->ulBufferCount)
 		taskid = (psSwapChain->ppsBuffer[0])->ui32OwnerTaskID;
@@ -1055,7 +1144,6 @@ static PVRSRV_ERROR DestroyDCSwapChain(IMG_HANDLE hDevice,
 	MRSTLFBFreeKernelMem(psSwapChain->psVSyncFlips);
 	MRSTLFBFreeKernelMem(psSwapChain->ppsBuffer);
 	MRSTLFBFreeKernelMem(psSwapChain);
-
 	return (PVRSRV_OK);
 }
 
@@ -1193,15 +1281,15 @@ static PVRSRV_ERROR SwapToDCBuffer(IMG_HANDLE hDevice,
 	return (PVRSRV_OK);
 }
 
-void MRSTLFBFlipTimerFn(unsigned long arg)
+static void timer_flip_handler(struct work_struct *work)
 {
-	MRSTLFB_DEVINFO *psDevInfo = (MRSTLFB_DEVINFO *)arg;
-	unsigned long ulLockFlags;
+	MRSTLFB_DEVINFO *psDevInfo;
 	MRSTLFB_SWAPCHAIN *psSwapChain;
 	MRSTLFB_VSYNC_FLIP_ITEM *psLastItem;
 
-	spin_lock_irqsave(&psDevInfo->sSwapChainLock, ulLockFlags);
+	psDevInfo = container_of(work, MRSTLFB_DEVINFO, flip_complete_work);
 
+	mutex_lock(&psDevInfo->sSwapChainMutex);
 	psSwapChain = psDevInfo->psCurrentSwapChain;
 	if (psSwapChain == NULL)
 	{
@@ -1218,9 +1306,25 @@ void MRSTLFBFlipTimerFn(unsigned long arg)
 		}
 	}
 	printk(KERN_WARNING "MRSTLFBFlipTimerFn: swapchain is not empty, flush queue\n");
+
+	/*
+	 * Release the spin lock here, as FlushInternalVSyncQueue() may invoke
+	 * mutex_lock when freeing buffer.
+	 */
+
 	FlushInternalVSyncQueue(psSwapChain, MRST_TRUE);
+
 ExitUnlock:
-	spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
+	mutex_unlock(&psDevInfo->sSwapChainMutex);
+	return;
+
+}
+
+void MRSTLFBFlipTimerFn(unsigned long arg)
+{
+	MRSTLFB_DEVINFO *psDevInfo = (MRSTLFB_DEVINFO *)arg;
+
+	schedule_work(&psDevInfo->flip_complete_work);
 }
 
 
@@ -1245,7 +1349,7 @@ static MRST_BOOL MRSTLFBVSyncIHandler(MRSTLFB_DEVINFO *psDevInfo, int iPipe)
 	unsigned long ulLockFlags;
 	MRSTLFB_SWAPCHAIN *psSwapChain;
 
-	spin_lock_irqsave(&psDevInfo->sSwapChainLock, ulLockFlags);
+	mutex_lock(&psDevInfo->sSwapChainMutex);
 
 
 	psSwapChain = psDevInfo->psCurrentSwapChain;
@@ -1265,9 +1369,9 @@ static MRST_BOOL MRSTLFBVSyncIHandler(MRSTLFB_DEVINFO *psDevInfo, int iPipe)
 			if(!psFlipItem->bCmdCompleted)
 			{
 				MRST_BOOL bScheduleMISR;
-
 				bScheduleMISR = MRST_TRUE;
 				MRSTFBFlipComplete(psSwapChain, psFlipItem, MRST_TRUE);
+
 				psFlipItem->bCmdCompleted = MRST_TRUE;
 			}
 
@@ -1312,7 +1416,7 @@ static MRST_BOOL MRSTLFBVSyncIHandler(MRSTLFB_DEVINFO *psDevInfo, int iPipe)
 		bStatus = MRST_FALSE;
 	}
 ExitUnlock:
-	spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
+	mutex_unlock(&psDevInfo->sSwapChainMutex);
 
 	return bStatus;
 }
@@ -1401,6 +1505,101 @@ static IMG_BOOL updatePlaneContexts(MRSTLFB_SWAPCHAIN *psSwapChain,
 	return IMG_TRUE;
 }
 
+static IMG_BOOL bIllegalFlipContexts(IMG_VOID *pvData)
+{
+	IMG_BOOL bIllegal = IMG_TRUE;
+	DISPLAYCLASS_FLIP_COMMAND2 *psFlipCmd;
+	struct drm_device *dev;
+	struct drm_psb_private *dev_priv;
+	MRSTLFB_DEVINFO *psDevInfo;
+	struct mdfld_plane_contexts *psContexts;
+	struct intel_sprite_context *psPrimaryContext;
+	struct intel_sprite_context *psSpriteContext;
+	struct intel_overlay_context *psOverlayContext;
+	int i;
+
+	psFlipCmd = (DISPLAYCLASS_FLIP_COMMAND2 *)pvData;
+	psDevInfo = (MRSTLFB_DEVINFO *)psFlipCmd->hExtDevice;
+	dev = psDevInfo->psDrmDevice;
+	dev_priv =
+		(struct drm_psb_private *)psDevInfo->psDrmDevice->dev_private;
+
+	psContexts = (struct mdfld_plane_contexts *)psFlipCmd->pvPrivData;
+
+	if (!psFlipCmd || !psDevInfo || !psContexts || !dev_priv) {
+		DRM_ERROR("Invalid parameters\n");
+		return IMG_TRUE;
+	}
+
+	/*check all active primary planes*/
+	for (i = 0; i < INTEL_SPRITE_PLANE_NUM; i++) {
+		if (psContexts->active_primaries & (1 << i)) {
+			psPrimaryContext = &psContexts->primary_contexts[i];
+
+			if (psPrimaryContext->index == 0 &&
+				psDevInfo->bScreenState) {
+				/* MIPI A off, should not flush PIPEA */
+				psPrimaryContext->index = INVALID_INDEX;
+			} else if (psPrimaryContext->index == 1 &&
+					hdmi_state &&
+					dev_priv->early_suspended) {
+				/* HDMI off, should not flush PIPEB */
+				psPrimaryContext->index = INVALID_INDEX;
+			} else if (psPrimaryContext->index == 2) {
+				/* NULL unless PLANE C Enabled */
+			} else
+				bIllegal = IMG_FALSE;
+
+		}
+	}
+
+	/*check all active sprite planes*/
+	for (i = 0; i < INTEL_SPRITE_PLANE_NUM; i++) {
+		if (psContexts->active_sprites & (1 << i)) {
+			psSpriteContext = &psContexts->sprite_contexts[i];
+
+			if (psSpriteContext->index == 0 &&
+				psDevInfo->bScreenState) {
+				/* MIPI A off, should not flush PIPEA */
+				psSpriteContext->index = INVALID_INDEX;
+			} else if (psSpriteContext->index == 1 &&
+					hdmi_state &&
+					dev_priv->early_suspended) {
+				/* HDMI off, should not flush PIPEB */
+				psSpriteContext->index = INVALID_INDEX;
+			} else if (psSpriteContext->index == 2) {
+				/* NULL unless PLANE C Enabled */
+			} else
+				bIllegal = IMG_FALSE;
+		}
+	}
+
+	/*check all active overlay planes*/
+	for (i = 0; i < INTEL_OVERLAY_PLANE_NUM; i++) {
+		if (psContexts->active_overlays & (1 << i)) {
+			psOverlayContext = &psContexts->overlay_contexts[i];
+
+			/* OVERLAY A/C have same policy */
+			if (psOverlayContext->pipe == 0x00 &&
+				(psDevInfo->bScreenState || hdmi_state)) {
+				psOverlayContext->index = INVALID_INDEX;
+			} else if (psOverlayContext->pipe == 0x80 &&
+					hdmi_state &&
+					dev_priv->early_suspended) {
+				psOverlayContext->index = INVALID_INDEX;
+			} else
+				bIllegal = IMG_FALSE;
+		}
+	}
+
+	/* handle overlay_fliped when contexts are illegal */
+	if (bIllegal && psContexts->active_overlays != 0)
+		dev_priv->overlay_fliped++;
+
+	/* if all contexts are illegal, should not do flush */
+	return bIllegal;
+}
+
 static IMG_BOOL ProcessFlip2(IMG_HANDLE hCmdCookie,
 			IMG_UINT32 ui32DataSize,
 			IMG_VOID *pvData)
@@ -1417,6 +1616,8 @@ static IMG_BOOL ProcessFlip2(IMG_HANDLE hCmdCookie,
 	MRSTLFB_DEVINFO *psDevInfo;
 	struct mdfld_plane_contexts *psPlaneContexts;
 	struct mdfld_dsi_config *dsi_config;
+	int contextlocked;
+	int retry = MAX_TRANS_TIME_FOR_ONE_FRAME * SWAP_BUFFER_COUNT;
 
 	psFlipCmd = (DISPLAYCLASS_FLIP_COMMAND2 *)pvData;
 	psDevInfo = (MRSTLFB_DEVINFO *)psFlipCmd->hExtDevice;
@@ -1442,25 +1643,60 @@ static IMG_BOOL ProcessFlip2(IMG_HANDLE hCmdCookie,
 
 	psPlaneContexts = (struct mdfld_plane_contexts *)psFlipCmd->pvPrivData;
 
-	mutex_lock(&dsi_config->context_lock);
-	/* double check to make sure we don't send data when screen is off */
-	if (psDevInfo->bScreenState) {
-		spin_lock_irqsave(&psDevInfo->sSwapChainLock, ulLockFlags);
+	/* Firstly try to get lock; if failed, check ScreenState.
+	 * If screen is off, no need to lock context_lock;otherwise
+	 * it will try to get the lock. This is the way to avoid
+	 * long time block caused by DPMS.
+	 */
+	contextlocked = mutex_trylock(&dsi_config->context_lock);
+	if (!contextlocked) {
+		if (!psDevInfo->bScreenState) {
+			mutex_lock(&dsi_config->context_lock);
+			contextlocked = 1;
+		}
+	}
+
+	/*Screen is off, no need to send data*/
+	if (bIllegalFlipContexts(pvData)) {
+		mutex_lock(&psDevInfo->sSwapChainMutex);
 
 		MRSTFBFlipComplete(psSwapChain, NULL, MRST_FALSE);
 		psSwapChain->psPVRJTable->pfnPVRSRVCmdComplete(hCmdCookie,
 				IMG_TRUE);
 
-		spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
+		mutex_unlock(&psDevInfo->sSwapChainMutex);
 		mutex_unlock(&dsi_config->context_lock);
 		return IMG_TRUE;
 	}
-	mdfld_dsi_dsr_forbid_locked(dsi_config);
+
+	if (contextlocked)
+		mdfld_dsi_dsr_forbid_locked(dsi_config);
 
 	if (dev_priv->exit_idle && (dsi_config->type == MDFLD_DSI_ENCODER_DPI))
 		dev_priv->exit_idle(dev, MDFLD_DSR_2D_3D, NULL, true);
 
-	spin_lock_irqsave(&psDevInfo->sSwapChainLock, ulLockFlags);
+	/* wait for previous frame finished, otherwise
+	 * if waiting at sending command, it will occupy CPU resource.
+	 * For 60HZ, normaly the max wait will not bigger than
+	 * 16ms, if wait time bigger then JB triple buffer, report
+	 * fail.
+	 */
+	if (dsi_config->type == MDFLD_DSI_ENCODER_DBI) {
+		while (!DRMLFBFifoEmpty(psDevInfo) && retry) {
+			usleep_range(500, 1000);
+			retry--;
+		}
+		if (!retry) {
+			DRM_ERROR("FIFO never emptied\n");
+			if (contextlocked) {
+				mdfld_dsi_dsr_allow_locked(dsi_config);
+				mutex_unlock(&dsi_config->context_lock);
+			}
+			return IMG_FALSE;
+		}
+	}
+
+	mutex_lock(&psDevInfo->sSwapChainMutex);
 
 	/*update context*/
 	updatePlaneContexts(psSwapChain, psFlipCmd, psPlaneContexts);
@@ -1531,15 +1767,19 @@ static IMG_BOOL ProcessFlip2(IMG_HANDLE hCmdCookie,
 		goto ExitTrueUnlock;
 	}
 ExitErrorUnlock:
-	spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
-	mdfld_dsi_dsr_allow_locked(dsi_config);
-	mutex_unlock(&dsi_config->context_lock);
+	mutex_unlock(&psDevInfo->sSwapChainMutex);
+	if (contextlocked) {
+		mdfld_dsi_dsr_allow_locked(dsi_config);
+		mutex_unlock(&dsi_config->context_lock);
+	}
 	return IMG_FALSE;
 ExitTrueUnlock:
 #endif
-	spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
-	mdfld_dsi_dsr_allow_locked(dsi_config);
-	mutex_unlock(&dsi_config->context_lock);
+	mutex_unlock(&psDevInfo->sSwapChainMutex);
+	if (contextlocked) {
+		mdfld_dsi_dsr_allow_locked(dsi_config);
+		mutex_unlock(&dsi_config->context_lock);
+	}
 	return IMG_TRUE;
 }
 
@@ -1559,16 +1799,16 @@ static IMG_BOOL ProcessFlip(IMG_HANDLE  hCmdCookie,
 	struct drm_device *dev;
 	struct drm_psb_private *dev_priv;
 	struct mdfld_dsi_config *dsi_config;
+	int contextlocked;
+	int retry = MAX_TRANS_TIME_FOR_ONE_FRAME * SWAP_BUFFER_COUNT;
 
 	if(!hCmdCookie || !pvData)
 		return IMG_FALSE;
-
 
 	psFlipCmd = (DISPLAYCLASS_FLIP_COMMAND*)pvData;
 
 	if (psFlipCmd == IMG_NULL)
 		return IMG_FALSE;
-
 
 	psDevInfo = (MRSTLFB_DEVINFO*)psFlipCmd->hExtDevice;
 	dev = psDevInfo->psDrmDevice;
@@ -1577,16 +1817,13 @@ static IMG_BOOL ProcessFlip(IMG_HANDLE  hCmdCookie,
 	psBuffer = (MRSTLFB_BUFFER*)psFlipCmd->hExtBuffer;
 	psSwapChain = (MRSTLFB_SWAPCHAIN*) psFlipCmd->hExtSwapChain;
 
-	/*
-	 * bFlush == true means hw recovery;
-	 * screen is off, no need to send data
-	 *
-	 */
-	if (bFlush || psDevInfo->bScreenState) {
-		spin_lock_irqsave(&psDevInfo->sSwapChainLock, ulLockFlags);
+	/* bFlush == true means hw recovery */
+	if (bFlush || (!psBuffer && bIllegalFlipContexts(pvData)) ||
+		(psBuffer && psDevInfo->bScreenState)) {
+		mutex_lock(&psDevInfo->sSwapChainMutex);
 		MRSTFBFlipComplete(psSwapChain, NULL, MRST_FALSE);
 		psSwapChain->psPVRJTable->pfnPVRSRVCmdComplete(hCmdCookie, IMG_TRUE);
-		spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
+		mutex_unlock(&psDevInfo->sSwapChainMutex);
 		return IMG_TRUE;
 	}
 
@@ -1602,25 +1839,55 @@ static IMG_BOOL ProcessFlip(IMG_HANDLE  hCmdCookie,
 
 	dsi_config = dev_priv->dsi_configs[0];
 
-	mutex_lock(&dsi_config->context_lock);
+	contextlocked = mutex_trylock(&dsi_config->context_lock);
+	if (!contextlocked) {
+		if (!psDevInfo->bScreenState) {
+			mutex_lock(&dsi_config->context_lock);
+			contextlocked = 1;
+		}
+	}
+
 	/* double check to make sure we don't send data when screen is off */
 	if (psDevInfo->bScreenState) {
-		spin_lock_irqsave(&psDevInfo->sSwapChainLock, ulLockFlags);
+		mutex_lock(&psDevInfo->sSwapChainMutex);
 
 		MRSTFBFlipComplete(psSwapChain, NULL, MRST_FALSE);
 		psSwapChain->psPVRJTable->pfnPVRSRVCmdComplete(hCmdCookie,
 				IMG_TRUE);
 
-		spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
+		mutex_unlock(&psDevInfo->sSwapChainMutex);
 		mutex_unlock(&dsi_config->context_lock);
 		return IMG_TRUE;
 	}
-	mdfld_dsi_dsr_forbid_locked(dsi_config);
+
+	if (contextlocked)
+		mdfld_dsi_dsr_forbid_locked(dsi_config);
 
 	if (dev_priv->exit_idle && (dsi_config->type == MDFLD_DSI_ENCODER_DPI))
 		dev_priv->exit_idle(dev, MDFLD_DSR_2D_3D, NULL, true);
 
-	spin_lock_irqsave(&psDevInfo->sSwapChainLock, ulLockFlags);
+	/* Wait for previous frame finished, otherwise
+	 * if waiting at sending command, it will occupy CPU resource
+	 * For 60HZ, normaly the max wait will not bigger than
+	 * 16ms, if wait time bigger then JB triple buffer, report
+	 * fail.
+	 */
+	if (dsi_config->type == MDFLD_DSI_ENCODER_DBI) {
+		while (!DRMLFBFifoEmpty(psDevInfo) && retry) {
+			usleep_range(500, 1000);
+			retry--;
+		}
+		if (!retry) {
+			DRM_ERROR("FIFO never emptied\n");
+			if (contextlocked) {
+				mdfld_dsi_dsr_allow_locked(dsi_config);
+				mutex_unlock(&dsi_config->context_lock);
+			}
+			return IMG_FALSE;
+		}
+	}
+
+	mutex_lock(&psDevInfo->sSwapChainMutex);
 
 #if defined(MRST_USING_INTERRUPTS)
 
@@ -1689,16 +1956,20 @@ static IMG_BOOL ProcessFlip(IMG_HANDLE  hCmdCookie,
 		goto ExitTrueUnlock;
 	}
 ExitErrorUnlock:
-	spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
-	mdfld_dsi_dsr_allow_locked(dsi_config);
-	mutex_unlock(&dsi_config->context_lock);
+	mutex_unlock(&psDevInfo->sSwapChainMutex);
+	if (contextlocked) {
+		mdfld_dsi_dsr_allow_locked(dsi_config);
+		mutex_unlock(&dsi_config->context_lock);
+	}
 	return IMG_FALSE;
 
 ExitTrueUnlock:
 #endif
-	spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
-	mdfld_dsi_dsr_allow_locked(dsi_config);
-	mutex_unlock(&dsi_config->context_lock);
+	mutex_unlock(&psDevInfo->sSwapChainMutex);
+	if (contextlocked) {
+		mdfld_dsi_dsr_allow_locked(dsi_config);
+		mutex_unlock(&dsi_config->context_lock);
+	}
 	return IMG_TRUE;
 }
 
@@ -1735,7 +2006,7 @@ void MRSTLFBSuspend(void)
 	MRSTLFB_DEVINFO *psDevInfo = GetAnchorPtr();
 	unsigned long ulLockFlags;
 
-	spin_lock_irqsave(&psDevInfo->sSwapChainLock, ulLockFlags);
+	mutex_lock(&psDevInfo->sSwapChainMutex);
 
 	if (!psDevInfo->bSuspended)
 	{
@@ -1748,7 +2019,7 @@ void MRSTLFBSuspend(void)
 		psDevInfo->bSuspended = MRST_TRUE;
 	}
 
-	spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
+	mutex_unlock(&psDevInfo->sSwapChainMutex);
 }
 
 void MRSTLFBResume(void)
@@ -1756,7 +2027,7 @@ void MRSTLFBResume(void)
 	MRSTLFB_DEVINFO *psDevInfo = GetAnchorPtr();
 	unsigned long ulLockFlags;
 
-	spin_lock_irqsave(&psDevInfo->sSwapChainLock, ulLockFlags);
+	mutex_lock(&psDevInfo->sSwapChainMutex);
 
 	if (psDevInfo->bSuspended)
 	{
@@ -1771,7 +2042,7 @@ void MRSTLFBResume(void)
 		MRSTLFBRestoreLastFlip(psDevInfo);
 	}
 
-	spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
+	mutex_unlock(&psDevInfo->sSwapChainMutex);
 
 #if !defined(PVR_MRST_STYLE_PM)
 	(void) UnblankDisplay(psDevInfo);
@@ -1939,11 +2210,11 @@ MRST_ERROR MRSTLFBChangeSwapChainProperty(unsigned long *psSwapChainGTTOffset,
 		return eError;
 	}
 
-	spin_lock_irqsave(&psDevInfo->sSwapChainLock, ulLockFlags);
+	mutex_lock(&psDevInfo->sSwapChainMutex);
 
 	if (psDevInfo->apsSwapChains == IMG_NULL) {
 		DRM_ERROR("No swap chain.\n");
-		spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
+		mutex_unlock(&psDevInfo->sSwapChainMutex);
 		return eError;
 	}
 
@@ -1972,7 +2243,7 @@ MRST_ERROR MRSTLFBChangeSwapChainProperty(unsigned long *psSwapChainGTTOffset,
 			psDevInfo->apsSwapChains[ui32SwapChainID]->ui32SwapChainPropertyFlag &= ~iSwapChainAttachedPlane;
 	}
 
-	spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
+	mutex_unlock(&psDevInfo->sSwapChainMutex);
 
 	eError = MRST_OK;
 	return eError;
@@ -2000,13 +2271,14 @@ static int DRMLFBLeaveVTHandler(struct drm_device *dev)
 	MRSTLFB_DEVINFO *psDevInfo = GetAnchorPtr();
   	unsigned long ulLockFlags;
 
-	spin_lock_irqsave(&psDevInfo->sSwapChainLock, ulLockFlags);
+	mutex_lock(&psDevInfo->sSwapChainMutex);
 
 	if (!psDevInfo->bLeaveVT)
 	{
 		if(psDevInfo->psCurrentSwapChain != NULL)
 		{
 			FlushInternalVSyncQueue(psDevInfo->psCurrentSwapChain, MRST_TRUE);
+
 			SetFlushStateNoLock(psDevInfo, MRST_TRUE);
 		}
 
@@ -2015,7 +2287,7 @@ static int DRMLFBLeaveVTHandler(struct drm_device *dev)
 		psDevInfo->bLeaveVT = MRST_TRUE;
 	}
 
-	spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
+	mutex_unlock(&psDevInfo->sSwapChainMutex);
 
 	return 0;
 }
@@ -2025,7 +2297,7 @@ static int DRMLFBEnterVTHandler(struct drm_device *dev)
 	MRSTLFB_DEVINFO *psDevInfo = GetAnchorPtr();
   	unsigned long ulLockFlags;
 
-	spin_lock_irqsave(&psDevInfo->sSwapChainLock, ulLockFlags);
+	mutex_lock(&psDevInfo->sSwapChainMutex);
 
 	if (psDevInfo->bLeaveVT)
 	{
@@ -2039,7 +2311,7 @@ static int DRMLFBEnterVTHandler(struct drm_device *dev)
 		MRSTLFBRestoreLastFlip(psDevInfo);
 	}
 
-	spin_unlock_irqrestore(&psDevInfo->sSwapChainLock, ulLockFlags);
+	mutex_unlock(&psDevInfo->sSwapChainMutex);
 
 	return 0;
 }
@@ -2224,7 +2496,8 @@ MRST_ERROR MRSTLFBInit(struct drm_device * dev)
 		}
 
 
-		spin_lock_init(&psDevInfo->sSwapChainLock);
+		mutex_init(&psDevInfo->sSwapChainMutex);
+		INIT_WORK(&psDevInfo->flip_complete_work, timer_flip_handler);
 
 		psDevInfo->psCurrentSwapChain = NULL;
 		psDevInfo->bFlushCommands = MRST_FALSE;

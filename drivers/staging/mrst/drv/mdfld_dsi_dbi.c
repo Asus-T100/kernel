@@ -428,7 +428,7 @@ static int __dbi_panel_power_on(struct mdfld_dsi_config *dsi_config,
 	struct mdfld_dsi_hw_context *ctx;
 	struct drm_psb_private *dev_priv;
 	struct drm_device *dev;
-	int retry;
+	int retry, reset_count = 10;
 	int err = 0;
 	struct mdfld_dsi_pkg_sender *sender
 			= mdfld_dsi_get_pkg_sender(dsi_config);
@@ -448,12 +448,18 @@ static int __dbi_panel_power_on(struct mdfld_dsi_config *dsi_config,
 		return -EAGAIN;
 
 	mdfld_dsi_dsr_forbid_locked(dsi_config);
-
+reset_recovery:
+	--reset_count;
+	err = 0;
 	/*after entering dstb mode, need reset*/
 	if (p_funcs && p_funcs->reset)
 		p_funcs->reset(dsi_config);
 
-	__dbi_power_on(dsi_config);
+	if (__dbi_power_on(dsi_config)) {
+		DRM_ERROR("Failed to init display controller!\n");
+		err = -EAGAIN;
+		goto power_on_err;
+	}
 
 	/*enable TE, will need it in panel power on*/
 	mdfld_enable_te(dev, dsi_config->pipe);
@@ -481,10 +487,6 @@ static int __dbi_panel_power_on(struct mdfld_dsi_config *dsi_config,
 			goto power_on_err;
 		}
 
-	/*Notify PVR module that screen is on*/
-	if (dev_priv->pvr_screen_event_handler)
-		dev_priv->pvr_screen_event_handler(dev, 1);
-
 	if (p_funcs && p_funcs->set_brightness)
 		if (p_funcs->set_brightness(dsi_config,
 					ctx->lastbrightnesslevel))
@@ -494,6 +496,23 @@ static int __dbi_panel_power_on(struct mdfld_dsi_config *dsi_config,
 	mdfld_dsi_wait_for_fifos_empty(sender);
 
 power_on_err:
+	if (err && reset_count) {
+		if (dev_priv->bhdmiconnected) {
+			/*if hdmi connected, turn off display A will
+			* influnce HDMI, so only turn off MIPI island
+			*/
+			pmu_nc_set_power_state(OSPM_MIPI_ISLAND,
+					OSPM_ISLAND_DOWN, OSPM_REG_TYPE);
+
+			pmu_nc_set_power_state(OSPM_MIPI_ISLAND,
+					OSPM_ISLAND_UP, OSPM_REG_TYPE);
+		} else {
+			ospm_power_island_down(OSPM_DISPLAY_A_ISLAND);
+			ospm_power_island_up(OSPM_DISPLAY_A_ISLAND);
+		}
+		DRM_ERROR("Failed to init panel, try  reset it again!\n");
+		goto reset_recovery;
+	}
 	mdfld_dsi_dsr_allow_locked(dsi_config);
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 	return err;
@@ -529,9 +548,10 @@ int __dbi_power_off(struct mdfld_dsi_config *dsi_config)
 	/*save the plane informaton, for it will updated*/
 	ctx->dspsurf = dev_priv->init_screen_start;
 	ctx->dsplinoff = dev_priv->init_screen_offset;
+	ctx->dspstride = dev_priv->init_screen_stride;
+	ctx->dspsize = dev_priv->init_screen_size;
 	ctx->pipestat = REG_READ(regs->pipestat_reg);
 	ctx->dspcntr = REG_READ(regs->dspcntr_reg);
-	ctx->dspstride = REG_READ(regs->dspstride_reg);
 	ctx->pipeconf = REG_READ(regs->pipeconf_reg);
 
 	/*Disable plane*/
@@ -601,10 +621,6 @@ static int __dbi_panel_power_off(struct mdfld_dsi_config *dsi_config,
 		if (p_funcs->set_brightness(dsi_config, 0))
 			DRM_ERROR("Failed to set panel brightness\n");
 
-	/*Notify PVR module that screen is off*/
-	if (dev_priv->pvr_screen_event_handler)
-		dev_priv->pvr_screen_event_handler(dev, 0);
-
 	/*wait for two TE, let pending PVR flip complete*/
 	msleep(32);
 
@@ -662,6 +678,10 @@ int mdfld_generic_dsi_dbi_set_power(struct drm_encoder *encoder, bool on)
 	dev_priv = dev->dev_private;
 	pipe = dsi_config->pipe;
 
+	/*Notify PVR module screen is off before power off*/
+	if (!on && dev_priv->pvr_screen_event_handler)
+		dev_priv->pvr_screen_event_handler(dev, 0);
+
 	mutex_lock(&dsi_config->context_lock);
 
 	if (dsi_connector->status != connector_status_connected)
@@ -669,9 +689,13 @@ int mdfld_generic_dsi_dbi_set_power(struct drm_encoder *encoder, bool on)
 
 	if (dbi_output->first_boot &&
 	    dsi_config->dsi_hw_context.panel_on) {
-		if (on)
+		if (on) {
+			/* When using smooth transition, enable TE
+			 * and wake up ESD detection thread.
+			 */
 			mdfld_enable_te(dev, pipe);
-
+			mdfld_dsi_error_detector_wakeup(dsi_connector);
+		}
 		DRM_INFO("skip panle power setting for first boot! " \
 			 "panel is already powered on\n");
 		goto fun_exit;
@@ -693,10 +717,10 @@ int mdfld_generic_dsi_dbi_set_power(struct drm_encoder *encoder, bool on)
 			DRM_ERROR("Faild to turn on panel\n");
 			goto set_power_err;
 		}
-		mdfld_dsi_error_detector_wakeup(dsi_connector);
 
 		dsi_config->dsi_hw_context.panel_on = 1;
 		dbi_output->dbi_panel_on = 1;
+		mdfld_dsi_error_detector_wakeup(dsi_connector);
 		last_ospm_suspend = false;
 
 		break;
@@ -724,11 +748,19 @@ int mdfld_generic_dsi_dbi_set_power(struct drm_encoder *encoder, bool on)
 
 fun_exit:
 	mutex_unlock(&dsi_config->context_lock);
+	if (dsi_config->dsi_hw_context.panel_on) {
+		/*Notify PVR module screen is on if success power on*/
+		if (dev_priv->pvr_screen_event_handler)
+			dev_priv->pvr_screen_event_handler(dev, 1);
+	}
 	PSB_DEBUG_ENTRY("successfully\n");
 	return 0;
 
 set_power_err:
 	mutex_unlock(&dsi_config->context_lock);
+	/* if err occurs, modify the state back to its previous state */
+	if (dev_priv->pvr_screen_event_handler)
+		dev_priv->pvr_screen_event_handler(dev, on ? 0 : 1);
 	PSB_DEBUG_ENTRY("unsuccessfully!\n");
 	return -EAGAIN;
 }
@@ -1078,8 +1110,8 @@ void mdfld_reset_panel_handler_work(struct work_struct *work)
 		}
 
 		acquire_ospm_lock();
-		ospm_power_island_down(OSPM_DISPLAY_A_ISLAND);
-		ospm_power_island_up(OSPM_DISPLAY_A_ISLAND);
+		ospm_power_island_down(OSPM_DISPLAY_ISLAND);
+		ospm_power_island_up(OSPM_DISPLAY_ISLAND);
 		release_ospm_lock();
 
 		if (__dbi_panel_power_on(dsi_config, p_funcs)) {

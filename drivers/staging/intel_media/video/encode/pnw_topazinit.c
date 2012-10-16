@@ -1817,8 +1817,10 @@ int pnw_topaz_save_mtx_state(struct drm_device *dev)
 	if (topaz_priv->topaz_needs_reset)
 		return 0;
 
-	PSB_DEBUG_GENERAL("TOPAZ: Found one vec context. "
-			  "Need to save mtx registers.\n");
+	PSB_DEBUG_INIT("TOPAZ: Found one vec codec(%d)." \
+			  "Need to save mtx registers.\n",
+			topaz_priv->topaz_cur_codec);
+
 	if (topaz_priv->topaz_num_cores > MAX_TOPAZ_CORES) {
 		DRM_ERROR("TOPAZ: Invalid core numbers: %d\n",
 			  topaz_priv->topaz_num_cores);

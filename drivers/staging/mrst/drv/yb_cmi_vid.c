@@ -1,0 +1,429 @@
+/*
+ * Copyright © 2010 Intel Corporation
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a
+ * copy of this software and associated documentation files (the "Software"),
+ * to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
+ * and/or sell copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice (including the next
+ * paragraph) shall be included in all copies or substantial portions of the
+ * Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+ * DEALINGS IN THE SOFTWARE.
+ *
+ * Authors:
+ * Geng Xiujun <xiujun.geng@intel.com>
+ */
+
+#include "displays/yb_cmi_vid.h"
+#include "mdfld_dsi_dpi.h"
+#include "mdfld_dsi_pkg_sender.h"
+#include <asm/intel_scu_pmic.h>
+#include <linux/gpio.h>
+#include "psb_drv.h"
+
+static u8 yb_cmi_soft_reset[] = {0x01};
+static u8 yb_cmi_enter_sleep_mode[] = {0x10};
+static u8 yb_cmi_exit_sleep_mode[] = {0x11};
+static u8 yb_cmi_set_address_mode[] = {0x36, 0x01};
+/* enable cabc by default */
+static u8 yb_cmi_panel_control_1[] = {0xb1, 0xb0};
+static u8 yb_cmi_panel_control_2[] = {0xb2, 0x00};
+
+/**
+ * GPIO pin definition
+ */
+static int yb_cmi_gpio_panel_reset = 128;
+static int yb_cmi_gpio_panel_stdby = 33;
+static int yb_cmi_gpio_bklt_en = 162;
+static int yb_cmi_gpio_shlr;
+static int yb_cmi_gpio_updn;
+static int yb_cmi_gpio_cabc_en;
+
+#define YB_CMI_PANEL_WIDTH	165
+#define YB_CMI_PANEL_HEIGHT	105
+static
+int yb_cmi_vid_ic_init(struct mdfld_dsi_config *dsi_config)
+{
+	struct mdfld_dsi_pkg_sender *sender =
+		mdfld_dsi_get_pkg_sender(dsi_config);
+
+	if (!sender) {
+		DRM_ERROR("Cannot get sender\n");
+		return -EINVAL;
+	}
+
+	PSB_DEBUG_ENTRY("\n");
+
+	sender->status = MDFLD_DSI_PKG_SENDER_FREE;
+
+	/* wait 10ms for VADD stable */
+	mdelay(10);
+
+	gpio_direction_output(yb_cmi_gpio_panel_stdby, 1);
+	mdelay(10);
+	gpio_direction_output(yb_cmi_gpio_panel_reset, 1);
+	mdelay(10);
+	gpio_direction_output(yb_cmi_gpio_panel_reset, 0);
+	mdelay(10);
+	gpio_direction_output(yb_cmi_gpio_panel_reset, 1);
+	mdelay(100);
+
+	mdfld_dsi_send_gen_short_lp(sender, yb_cmi_panel_control_1[0],
+			yb_cmi_panel_control_1[1], 2, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
+	mdfld_dsi_send_gen_short_lp(sender, yb_cmi_panel_control_2[0],
+			yb_cmi_panel_control_2[1], 2, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
+	mdfld_dsi_send_gen_short_lp(sender, yb_cmi_set_address_mode[0],
+			yb_cmi_set_address_mode[1], 2, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
+	return 0;
+}
+
+static
+void yb_cmi_vid_dsi_controller_init(struct mdfld_dsi_config *dsi_config)
+{
+	struct mdfld_dsi_hw_context *hw_ctx = &dsi_config->dsi_hw_context;
+
+	PSB_DEBUG_ENTRY("\n");
+
+	/*reconfig lane configuration*/
+	dsi_config->lane_count = 4;
+	dsi_config->lane_config = MDFLD_DSI_DATA_LANE_4_0;
+
+	/* This is for 400 mhz.  Set it to 0 for 800mhz */
+	hw_ctx->cck_div = 0;
+	hw_ctx->pll_bypass_mode = 0;
+
+	hw_ctx->mipi_control = 0x18;
+	hw_ctx->intr_en = 0xffffffff;
+	hw_ctx->hs_tx_timeout = 0xffffff;
+	hw_ctx->lp_rx_timeout = 0xffffff;
+	hw_ctx->turn_around_timeout = 0x14;
+	hw_ctx->device_reset_timer = 0xff;
+	hw_ctx->high_low_switch_count = 0x17;
+	hw_ctx->init_count = 0xf0;
+	hw_ctx->eot_disable = 0x0;
+	hw_ctx->lp_byteclk = 0x3;
+	hw_ctx->clk_lane_switch_time_cnt = 0x17000A;
+
+	/*148Mbps dsi clock rate*/
+	hw_ctx->dphy_param = 0x120a2b0c;
+
+	/*setup video mode format*/
+	hw_ctx->video_mode_format = 0xf;
+
+	/*set up func_prg*/
+	hw_ctx->dsi_func_prg = (0x200 | dsi_config->lane_count);
+
+	/*setup mipi port configuration*/
+	hw_ctx->mipi = PASS_FROM_SPHY_TO_AFE | dsi_config->lane_config;
+}
+
+static
+int yb_cmi_vid_detect(struct mdfld_dsi_config *dsi_config)
+{
+	int status;
+	struct drm_device *dev = dsi_config->dev;
+	struct mdfld_dsi_hw_registers *regs = &dsi_config->regs;
+	u32 dpll_val, device_ready_val;
+	int pipe = dsi_config->pipe;
+
+	PSB_DEBUG_ENTRY("\n");
+
+	if (pipe == 0) {
+		/*
+		 * FIXME: WA to detect the panel connection status, and need to
+		 * implement detection feature with get_power_mode DSI command.
+		 */
+		if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
+					OSPM_UHB_FORCE_POWER_ON)) {
+			DRM_ERROR("hw begin failed\n");
+			return -EAGAIN;
+		}
+
+		dpll_val = REG_READ(regs->dpll_reg);
+		device_ready_val = REG_READ(regs->device_ready_reg);
+		if ((device_ready_val & DSI_DEVICE_READY) &&
+		    (dpll_val & DPLL_VCO_ENABLE)) {
+			dsi_config->dsi_hw_context.panel_on = true;
+			psb_enable_vblank(dev, pipe);
+		} else {
+			dsi_config->dsi_hw_context.panel_on = false;
+			DRM_INFO("%s: panel is not detected!\n", __func__);
+		}
+
+		status = MDFLD_DSI_PANEL_CONNECTED;
+
+		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+	} else {
+		DRM_INFO("%s: do NOT support dual panel\n", __func__);
+		status = MDFLD_DSI_PANEL_DISCONNECTED;
+	}
+
+	/**
+	 * FIXME:
+	 * workaround for Yukka Beach power on, skip FW setting
+	 */
+	dsi_config->dsi_hw_context.panel_on = false;
+	return status;
+}
+
+static
+int yb_cmi_vid_power_on(struct mdfld_dsi_config *dsi_config)
+{
+	struct mdfld_dsi_pkg_sender *sender =
+		mdfld_dsi_get_pkg_sender(dsi_config);
+	int err;
+
+	PSB_DEBUG_ENTRY("\n");
+
+	if (!sender) {
+		DRM_ERROR("Failed to get DSI packet sender\n");
+		return -EINVAL;
+	}
+
+	/*turn on backlight*/
+	gpio_direction_output(yb_cmi_gpio_bklt_en, 1);
+	mdelay(100);
+
+	/*send TURN_ON packet*/
+	err = mdfld_dsi_send_dpi_spk_pkg_hs(sender,
+			MDFLD_DSI_DPI_SPK_TURN_ON);
+	if (err) {
+		DRM_ERROR("Failed to send turn on packet\n");
+		return err;
+	}
+	mdelay(100);
+
+	return 0;
+}
+
+static
+int yb_cmi_vid_power_off(struct mdfld_dsi_config *dsi_config)
+{
+	struct mdfld_dsi_pkg_sender *sender =
+		mdfld_dsi_get_pkg_sender(dsi_config);
+	int err;
+
+	PSB_DEBUG_ENTRY("\n");
+
+	if (!sender) {
+		DRM_ERROR("Failed to get DSI packet sender\n");
+		return -EINVAL;
+	}
+
+	gpio_direction_output(yb_cmi_gpio_bklt_en, 0);
+	mdelay(10);
+
+	/*send SHUT_DOWN packet*/
+	err = mdfld_dsi_send_dpi_spk_pkg_hs(sender,
+			MDFLD_DSI_DPI_SPK_SHUT_DOWN);
+	if (err) {
+		DRM_ERROR("Failed to send turn off packet\n");
+		return err;
+	}
+	/*according HW DSI spec, need wait for 100ms*/
+	msleep(100);
+
+	gpio_direction_output(yb_cmi_gpio_panel_stdby, 0);
+	msleep(100);
+	gpio_direction_output(yb_cmi_gpio_panel_reset, 0);
+	mdelay(10);
+
+	return 0;
+}
+
+#define PWM0DUTYCYCLE	0x67
+#define DUTY_VALUE_MAX	0x63
+#define BRIGHTNESS_LEVEL_MAX	100
+static
+int yb_cmi_vid_set_brightness(struct mdfld_dsi_config *dsi_config, int level)
+{
+	int duty_val = 0;
+	int ret = 0;
+
+	PSB_DEBUG_ENTRY("level = %d\n", level);
+
+	duty_val = (DUTY_VALUE_MAX * level) / BRIGHTNESS_LEVEL_MAX;
+
+	ret = intel_scu_ipc_iowrite8(PWM0DUTYCYCLE, duty_val);
+	if (ret)
+		DRM_ERROR("write brightness duty value faild\n");
+
+	return ret;
+}
+
+static
+int yb_cmi_vid_panel_reset(struct mdfld_dsi_config *dsi_config)
+{
+	PSB_DEBUG_ENTRY("\n");
+
+	gpio_direction_output(yb_cmi_gpio_panel_reset, 1);
+
+	usleep_range(7000, 7100);
+
+	return 0;
+}
+
+struct drm_display_mode *yb_cmi_vid_get_config_mode(void)
+{
+	struct drm_display_mode *mode;
+
+	PSB_DEBUG_ENTRY("\n");
+
+	mode = kzalloc(sizeof(*mode), GFP_KERNEL);
+	if (!mode)
+		return NULL;
+
+	mode->hdisplay = 1024;
+	mode->vdisplay = 600;
+	mode->hsync_start = mode->hdisplay + 160;
+	mode->hsync_end = mode->hsync_start + 80;
+	mode->htotal = mode->hsync_end + 160;
+	mode->vsync_start = mode->vdisplay + 12;
+	mode->vsync_end = mode->vsync_start + 10;
+	mode->vtotal = mode->vsync_end + 23;
+	mode->vrefresh = 60;
+	mode->clock = mode->vrefresh * mode->vtotal *
+		mode->htotal / 1000;
+	mode->type |= DRM_MODE_TYPE_PREFERRED;
+
+	drm_mode_set_name(mode);
+	drm_mode_set_crtcinfo(mode, 0);
+
+	return mode;
+}
+
+static
+void yb_cmi_vid_get_panel_info(int pipe, struct panel_info *pi)
+{
+	PSB_DEBUG_ENTRY("\n");
+
+	if (pipe == 0) {
+		pi->width_mm = YB_CMI_PANEL_WIDTH;
+		pi->height_mm = YB_CMI_PANEL_HEIGHT;
+	}
+}
+
+static int yb_cmi_vid_gpio_init()
+{
+	int ret = 0;
+
+	gpio_request(yb_cmi_gpio_panel_reset, "lcd-reset");
+	gpio_request(yb_cmi_gpio_panel_stdby, "lcd-stdby");
+	gpio_request(yb_cmi_gpio_bklt_en, "lcd-bklt");
+
+#if 0
+	ret = get_gpio_by_name("lcd-reset");
+	if (ret < 0)
+		DRM_ERROR("Faild to get panel reset GPIO\n");
+	else {
+		yb_cmi_gpio_panel_reset = ret;
+		gpio_request(yb_cmi_gpio_panel_reset, "lcd-reset");
+	}
+
+	ret = get_gpio_by_name("lcd-stdby");
+	if (ret < 0)
+		DRM_ERROR("Faild to get panel reset GPIO\n");
+	else {
+		yb_cmi_gpio_panel_stdby = ret;
+		gpio_request(yb_cmi_gpio_panel_stdby, "lcd-stdby");
+	}
+
+	ret = get_gpio_by_name("lcd-bklt");
+	if (ret < 0)
+		DRM_ERROR("Faild to get panel reset GPIO\n");
+	else {
+		yb_cmi_gpio_bklt_en = ret;
+		gpio_request(yb_cmi_gpio_bklt_en, "lcd-bklt-en");
+	}
+
+	ret = get_gpio_by_name("lcd-shlr");
+	if (ret < 0)
+		DRM_ERROR("Faild to get panel reset GPIO\n");
+	else {
+		yb_cmi_gpio_shlr = ret;
+		gpio_request(yb_cmi_gpio_shlr, "lcd-shlr");
+	}
+
+	ret = get_gpio_by_name("lcd-updn");
+	if (ret < 0)
+		DRM_ERROR("Faild to get panel reset GPIO\n");
+	else {
+		yb_cmi_gpio_updn = ret;
+		gpio_request(yb_cmi_gpio_updn, "lcd-updn");
+	}
+
+	ret = get_gpio_by_name("lcd");
+	if (ret < 0)
+		DRM_ERROR("Faild to get panel reset GPIO\n");
+	else {
+		yb_cmi_gpio_cabc_en = ret;
+		gpio_request(yb_cmi_gpio_cabc_en, "lcd-cabc-en");
+	}
+#endif
+
+	return 0;
+}
+
+#define PWM0CLKDIV1	0x61
+#define PWM0CLKDIV0	0x62
+static int yb_cmi_vid_brightness_init()
+{
+	int ret;
+	u8 pwmctrl;
+
+	PSB_DEBUG_ENTRY("\n");
+
+	ret = intel_scu_ipc_iowrite8(PWM0CLKDIV1, 0x00);
+	if (!ret)
+		ret = intel_scu_ipc_iowrite8(PWM0CLKDIV0, 0x25);
+
+	if (ret)
+		pr_err("%s: PWM0CLKDIV set failed\n", __func__);
+	else
+		PSB_DEBUG_ENTRY("PWM0CLKDIV set to 0x%04x\n", 0x25);
+
+	return ret;
+}
+
+void yb_cmi_vid_init(struct drm_device *dev, struct panel_funcs *p_funcs)
+{
+	int ret = 0;
+
+	PSB_DEBUG_ENTRY("\n");
+
+	p_funcs->get_config_mode = yb_cmi_vid_get_config_mode;
+	p_funcs->get_panel_info = yb_cmi_vid_get_panel_info;
+	p_funcs->drv_ic_init = yb_cmi_vid_ic_init;
+	p_funcs->dsi_controller_init = yb_cmi_vid_dsi_controller_init;
+	p_funcs->detect = yb_cmi_vid_detect;
+	p_funcs->power_on = yb_cmi_vid_power_on;
+	p_funcs->power_off = yb_cmi_vid_power_off;
+	p_funcs->set_brightness = yb_cmi_vid_set_brightness;
+
+	ret = yb_cmi_vid_gpio_init();
+	if (ret)
+		DRM_ERROR("Faild to request GPIO for yb cmi panel\n");
+
+	ret = yb_cmi_vid_brightness_init();
+	if (ret)
+		DRM_ERROR("Faild to initilize PWM of MSCI\n");
+}

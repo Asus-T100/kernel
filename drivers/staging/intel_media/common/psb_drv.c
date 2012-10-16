@@ -69,7 +69,7 @@
 
 #define HDMI_MONITOR_NAME_LENGTH 20
 
-int drm_psb_debug;
+int drm_psb_debug = PSB_D_WARN;
 int drm_psb_enable_cabc = 1;
 int drm_psb_enable_gamma;
 int drm_psb_enable_color_conversion;
@@ -98,8 +98,6 @@ char HDMI_EDID[HDMI_MONITOR_NAME_LENGTH];
 int hdmi_state;
 u32 DISP_PLANEB_STATUS = ~DISPLAY_PLANE_ENABLE;
 int drm_psb_msvdx_tiling;
-
-int drm_psb_apm_base;
 
 static int psb_probe(struct pci_dev *pdev, const struct pci_device_id *ent);
 
@@ -929,6 +927,15 @@ bool intel_mid_get_vbt_data(struct drm_psb_private *dev_priv)
 		goto out;
 	}
 
+	/*FIXME:
+	 * This is a workaround for Yukka Beach power on. Usually panel ID
+	 * should be detected from IA FW dynamically, befor FW's ready,
+	 * workaround it first. This MUST be reverted if FW's ready.
+	 */
+#ifdef CONFIG_SUPPORT_YB_MIPI_DISPLAY
+	dev_priv->panel_id = YB_CMI_VID;
+	goto out;
+#endif
 	number_desc = pVBT->num_of_panel_desc;
 	primary_panel = pVBT->primary_panel_idx;
 	dev_priv->gct_data.bpi = primary_panel; /*save boot panel id*/
@@ -1172,6 +1179,14 @@ static int psb_do_init(struct drm_device *dev)
 	}
 
 	PSB_DEBUG_INIT("Init MSVDX\n");
+
+	/*
+	 * Customer will boot droidboot, then boot the MOS kernel.
+	 * It is observed the video decode island is off during the
+	 * MOS kernel boot.
+	 * We need to power on it first, else will cause the fabric error.
+	 */
+	ospm_power_island_up(OSPM_VIDEO_DEC_ISLAND);
 	psb_msvdx_init(dev);
 
 	PSB_DEBUG_INIT("Init Topaz\n");
@@ -1295,6 +1310,7 @@ static int psb_driver_unload(struct drm_device *dev)
 		if (dev_priv->has_global)
 			psb_ttm_global_release(dev_priv);
 #endif
+		kfree(dev_priv->vblank_count);
 		kfree(dev_priv);
 		dev->dev_private = NULL;
 	}
@@ -1314,6 +1330,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	unsigned long irqflags;
 	int ret = -ENOMEM;
 	uint32_t tt_pages;
+	int i = 0;
 
 	DRM_INFO("psb - %s\n", PSB_PACKAGE_VERSION);
 
@@ -1345,6 +1362,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 #endif
 	dev_priv->um_start = false;
 	dev_priv->b_vblank_enable = false;
+	dev_priv->usermode_restart = false;
 
 	dev_priv->dev = dev;
 	bdev = &dev_priv->bdev;
@@ -1388,6 +1406,9 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	mutex_init(&dev_priv->gamma_csc_lock);
 	mutex_init(&dev_priv->overlay_lock);
 
+	dev_priv->overlay_wait = 0;
+	dev_priv->overlay_fliped = 0;
+
 	spin_lock_init(&dev_priv->reloc_lock);
 	spin_lock_init(&dev_priv->dsr_lock);
 
@@ -1419,8 +1440,6 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 		if (!dev_priv->topaz_reg)
 			goto out_err;
 	}
-	drm_psb_apm_base =
-		intel_mid_msgbus_read32(OSPM_PUNIT_PORT, OSPM_APMBA) & 0xffff;
 #endif
 
 	dev_priv->vdc_reg =
@@ -1585,6 +1604,23 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	if (ret)
 		goto out_err;
 
+	/* disable vblank_disable_timer in drm_vblank_put
+	 * because the vblank disable should be controlled
+	 * by framework in Jellybean instead of in driver.
+	 */
+	drm_vblank_offdelay = 0;
+
+	DRM_INIT_WAITQUEUE(&dev_priv->vsync_queue);
+
+	dev_priv->vblank_count =
+		kmalloc(sizeof(atomic_t) * dev_priv->num_pipe, GFP_KERNEL);
+
+	if (!dev_priv->vblank_count)
+		goto out_err;
+
+	for (i = 0; i < dev_priv->num_pipe; i++)
+		atomic_set(&dev_priv->vblank_count[i], 0);
+
 	/*
 	 * Install interrupt handlers prior to powering off SGX or else we will
 	 * crash.
@@ -1633,8 +1669,10 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 
 	/*must be after mrst_get_fuse_settings()*/
 	ret = psb_backlight_init(dev);
-	if (ret)
+	if (ret) {
+		kfree(dev_priv->vblank_count);
 		return ret;
+	}
 
 #ifdef CONFIG_MDFD_HDMI
 	/* initialize HDMI Hotplug interrupt forwarding
@@ -2779,16 +2817,35 @@ static void overlay_wait_flip(struct drm_device *dev)
 {
 	int retry;
 	struct drm_psb_private *dev_priv = psb_priv(dev);
+	/*
+	 * make sure OVADD write complete in ProcessFlip
+	 */
+	dev_priv->overlay_wait++;
+
+	retry = 300;
+	while (--retry) {
+		if (dev_priv->overlay_wait == dev_priv->overlay_fliped)
+			break;
+		usleep_range(50, 100);
+	}
+
+	if (!retry) {
+		/* reset to 0 when timeout happens */
+		dev_priv->overlay_wait = 0;
+		dev_priv->overlay_fliped = 0;
+		DRM_DEBUG("wait OVADD flip timeout!\n");
+	}
+
 	/**
 	 * make sure overlay command buffer
 	 * was copied before updating the system
 	 * overlay command buffer.
 	 */
-	retry = 3000;
+	retry = 60;
 	while (--retry) {
 		if (BIT31 & PSB_RVDC32(OV_DOVASTA))
 			break;
-		udelay(10);
+		usleep_range(500, 600);
 	}
 
 	if (!retry)
@@ -2899,6 +2956,12 @@ static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 	struct mdfld_dsi_hw_registers *regs;
 	struct mdfld_dsi_hw_context *ctx;
 	uint32_t pipe;
+	unsigned long irq_flags;
+	uint32_t vsync_enable = 0;
+	u32 vbl_count = 0;
+	struct timespec now;
+	s64 nsecs = 0;
+	int ret = 0;
 
 	mutex_lock(&dev_priv->overlay_lock);
 	if (arg->display_write_mask != 0) {
@@ -3010,10 +3073,43 @@ static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 
 	if (arg->vsync_operation_mask) {
 		pipe = arg->vsync.pipe;
+
+		if (arg->vsync_operation_mask & VSYNC_WAIT) {
+			vbl_count = intel_vblank_count(dev, pipe);
+
+			spin_lock_irqsave(&dev_priv->irqmask_lock, irq_flags);
+			vsync_enable = dev_priv->pipestat[pipe] &
+				(PIPE_TE_ENABLE | PIPE_VBLANK_INTERRUPT_ENABLE);
+			spin_unlock_irqrestore(&dev_priv->irqmask_lock,
+					irq_flags);
+
+			if (vsync_enable) {
+				DRM_WAIT_ON(ret, dev_priv->vsync_queue,
+						3 * DRM_HZ,
+						(intel_vblank_count(dev,
+								    pipe) !=
+						 vbl_count));
+
+				if (ret == -EINTR)
+					DRM_ERROR("Pipe %d vsync time out\n",
+							pipe);
+			}
+
+			getrawmonotonic(&now);
+			nsecs = timespec_to_ns(&now);
+
+			arg->vsync.timestamp = (uint64_t)nsecs;
+
+			mutex_unlock(&dev_priv->overlay_lock);
+			return 0;
+		}
+
 		dsi_config = dev_priv->dsi_configs[0];
 
-		if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, true))
+		if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, true)) {
+			mutex_unlock(&dev_priv->overlay_lock);
 			return -EINVAL;
+		}
 
 		if (arg->vsync_operation_mask & VSYNC_ENABLE) {
 			/*enable vblank/TE*/
@@ -3087,7 +3183,6 @@ static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 
 			if (arg->overlay_write_mask & OV_REGRWBITS_OVADD) {
 				if (arg->overlay.buffer_handle) {
-					int ret;
 					ret = validate_overlay_register_buffer(
 						file_priv,
 						&arg->overlay.OVADD,
@@ -3156,7 +3251,6 @@ static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 			}
 			if (arg->overlay_write_mask & OVC_REGRWBITS_OVADD) {
 				if (arg->overlay.buffer_handle) {
-					int ret;
 					ret = validate_overlay_register_buffer(
 						file_priv,
 						&arg->overlay.OVADD,
@@ -4111,7 +4205,7 @@ int psb_release(struct inode *inode, struct file *filp)
 	struct psb_fpriv *psb_fp;
 	struct drm_psb_private *dev_priv;
 	struct msvdx_private *msvdx_priv;
-	int ret, i;
+	int ret, i, island_is_on;
 	struct psb_msvdx_ec_ctx *ec_ctx;
 	uint32_t ui32_reg_value = 0;
 	file_priv = (struct drm_file *) filp->private_data;
@@ -4127,7 +4221,7 @@ int psb_release(struct inode *inode, struct file *filp)
 	/*cleanup for msvdx*/
 #if 0
 	if (msvdx_priv->tfile == psb_fpriv(file_priv)->tfile) {
-		msvdx_priv->fw_status = 0;
+		msvdx_priv->decoding_err = 0;
 		msvdx_priv->host_be_opp_enabled = 0;
 		memset(&msvdx_priv->frame_info, 0, sizeof(struct drm_psb_msvdx_frame_info) * MAX_DECODE_BUFFERS);
 	}
@@ -4177,9 +4271,13 @@ int psb_release(struct inode *inode, struct file *filp)
 						msecs_to_jiffies(10));
 	}
 
-	if (drm_msvdx_pmpolicy == PSB_PMPOLICY_POWERDOWN)
+	island_is_on = ospm_power_is_hw_on(OSPM_VIDEO_DEC_ISLAND);
+
+	if ((drm_msvdx_pmpolicy == PSB_PMPOLICY_POWERDOWN) && island_is_on) {
+		PSB_DEBUG_PM("MSVDX: psb_release schedule msvdx suspend.\n");
 		schedule_delayed_work(&msvdx_priv->msvdx_suspend_wq,
 					msecs_to_jiffies(10));
+	}
 #endif
 	ret = drm_release(inode, filp);
 

@@ -576,6 +576,8 @@ struct dpst_guardband {
 # define VGA_2X_MODE				(1 << 30)
 # define VGA_PIPE_B_SELECT			(1 << 29)
 
+#define MI_ARB	0x020E4
+
 /*
  * Overlay registers
  */

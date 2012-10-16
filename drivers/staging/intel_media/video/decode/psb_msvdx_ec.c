@@ -30,6 +30,7 @@
 #include "psb_drv.h"
 #include "psb_msvdx.h"
 #include "psb_msvdx_msg.h"
+#include "psb_msvdx_reg.h"
 #include "psb_msvdx_ec.h"
 
 #define MAX_SIZE_IN_MB		(4096 / 16)

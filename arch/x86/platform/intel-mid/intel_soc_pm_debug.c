@@ -400,41 +400,6 @@ static unsigned long pmu_dev_res_print(int index, unsigned long *precision,
 	return time;
 }
 
-static int pmu_nc_get_power_state(int island, int reg_type)
-{
-	u32 pwr_sts;
-	unsigned long flags;
-	int i, lss;
-	int ret = -EINVAL;
-
-	spin_lock_irqsave(&mid_pmu_cxt->nc_ready_lock, flags);
-
-	switch (reg_type) {
-	case APM_REG_TYPE:
-		pwr_sts = inl(mid_pmu_cxt->apm_base + APM_STS);
-		break;
-	case OSPM_REG_TYPE:
-		pwr_sts = inl(mid_pmu_cxt->ospm_base + OSPM_PM_SSS);
-		break;
-	default:
-		pr_err("%s: invalid argument 'island': %d.\n",
-				 __func__, island);
-		goto unlock;
-	}
-
-	for (i = 0; i < OSPM_MAX_POWER_ISLANDS; i++) {
-		lss = island & (0x1 << i);
-		if (lss) {
-			ret = (pwr_sts >> (2 * i)) & 0x3;
-			break;
-		}
-	}
-
-unlock:
-	spin_unlock_irqrestore(&mid_pmu_cxt->nc_ready_lock, flags);
-	return ret;
-}
-
 static void nc_device_state_show(struct seq_file *s, struct pci_dev *pdev)
 {
 	int off, i, islands_num, state;

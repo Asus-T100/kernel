@@ -127,7 +127,7 @@ IMG_BOOL pnw_topaz_interrupt(IMG_VOID *pvData)
 	TOPAZ_MTX_WB_READ32(topaz_priv->topaz_sync_addr,
 			    0, MTX_WRITEBACK_VALUE, &cur_seq);
 
-	PSB_DEBUG_IRQ("TOPAZ:Got SYNC IRQ,sync seq:0x%08x (MTX)"
+	PSB_DEBUG_TOPAZ("TOPAZ:Got SYNC IRQ,sync seq:0x%08x (MTX)"
 		      " vs 0x%08x(fence)\n",
 		      cur_seq, dev_priv->sequence[LNC_ENGINE_ENCODE]);
 
@@ -532,7 +532,8 @@ pnw_topaz_send(struct drm_device *dev, unsigned char *cmd,
 	uint32_t reg_cnt;
 	uint32_t *p_command;
 
-	PSB_DEBUG_GENERAL("TOPAZ: send the command in the buffer one by one\n");
+	PSB_DEBUG_TOPAZ("TOPAZ: send encoding commands(seq 0x%08x) to HW\n",
+		sync_seq);
 
 	/* Command header(struct topaz_cmd_header) is 32 bit */
 	while (cmd_size >= sizeof(struct topaz_cmd_header)) {
@@ -796,15 +797,18 @@ int pnw_check_topaz_idle(struct drm_device *dev)
 	struct pnw_topaz_private *topaz_priv = dev_priv->topaz_private;
 	uint32_t reg_val;
 
-	if (dev_priv->topaz_ctx == NULL)
-		return 0;
-
 	/*HW is stuck. Need to power off TopazSC to reset HW*/
 	if (topaz_priv->topaz_needs_reset)
 		return 0;
 
+	/* Even if topaz_ctx is null, which means there is no more encoding
+	    commands, return busy here to avoid runtime PM power down Topaz,
+	    but let Topaz suspend(D0i3) task will power down Topaz */
 	if (topaz_priv->topaz_busy)
 		return -EBUSY;
+
+	if (dev_priv->topaz_ctx == NULL)
+		return 0;
 
 	if (topaz_priv->topaz_hw_busy) {
 		PSB_DEBUG_PM("TOPAZ: %s, HW is busy\n", __func__);
@@ -889,7 +893,7 @@ void pnw_topaz_disableirq(struct drm_device *dev)
 	struct drm_psb_private *dev_priv = dev->dev_private;
 	/*uint32_t ier = dev_priv->vdc_irq_mask & (~_PNW_IRQ_TOPAZ_FLAG); */
 
-	PSB_DEBUG_INIT("TOPAZ: disable IRQ\n");
+	PSB_DEBUG_IRQ("TOPAZ: disable IRQ\n");
 
 	TOPAZ_WRITE32(TOPAZ_CR_IMG_TOPAZ_INTENAB, 0, 0);
 

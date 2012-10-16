@@ -45,7 +45,11 @@ static bool intel_dsi_dbi_esd_detection(struct mdfld_dsi_config *dsi_config)
 			&data,
 			MDFLD_DSI_HS_TRANSMISSION);
 
-	if ((ret == 1) && ((data & 0x14) != 0x14))
+	/**
+	 * if FIFO is not empty, need do ESD, ret equals -EIO means
+	 * FIFO is abnormal.
+	 */
+	if ((ret == -EIO) || ((ret == 1) && ((data & 0x14) != 0x14)))
 		return true;
 
 	return false;

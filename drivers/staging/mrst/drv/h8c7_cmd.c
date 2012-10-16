@@ -151,50 +151,125 @@ int mdfld_h8c7_drv_ic_init(struct mdfld_dsi_config *dsi_config)
 		return -EINVAL;
 
 	PSB_DEBUG_ENTRY("\n");
+	sender->status = MDFLD_DSI_PKG_SENDER_FREE;
 	/**
 	 * soft reset will let panel exit from deep standby mode and
 	 * keep at standy mode.
 	 */
 	mdfld_dsi_send_gen_long_hs(sender, h8c7_soft_reset, 1, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
 
 	/*wait for 5ms*/
 	mdelay(5);
 
 	/* sleep out and wait for 150ms. */
 	mdfld_dsi_send_mcs_long_hs(sender, h8c7_exit_sleep_mode, 1, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
 	mdelay(150);
 
 	/* set password*/
 	mdfld_dsi_send_gen_long_hs(sender, h8c7_mcs_protect_off, 4, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
 
 	/* set backlight on*/
 	mdfld_dsi_send_mcs_long_hs(sender, h8c7_turn_on_backlight, 2, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
 
 	/* disalble CABC*/
 	mdfld_dsi_send_mcs_long_hs(sender, h8c7_disable_cabc, 2, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
 
 	mdfld_dsi_send_gen_long_hs(sender, h8c7_ic_bias_current, 8, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
 	mdfld_dsi_send_gen_long_hs(sender, h8c7_set_power, 14, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
 	mdfld_dsi_send_gen_long_hs(sender, h8c7_set_disp_reg, 13, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
 	mdfld_dsi_send_gen_long_hs(sender, h8c7_set_command_cyc, 21, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
 	mdfld_dsi_send_gen_long_hs(sender, h8c7_set_mipi_ctrl, 2, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
 	mdfld_dsi_send_gen_long_hs(sender, h8c7_command_mode, 2, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
 	mdfld_dsi_send_gen_long_hs(sender, h8c7_set_blanking_opt_2, 4, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
 	mdfld_dsi_send_gen_long_hs(sender, h8c7_set_panel, 2, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
 	mdfld_dsi_send_gen_long_hs(sender, h8c7_set_eq_func_ltps, 2, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
 	mdfld_dsi_send_gen_long_hs(sender, h8c7_set_ltps_ctrl_output, 24, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
 	mdfld_dsi_send_gen_long_hs(sender, h8c7_set_video_cyc, 21, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
 	mdfld_dsi_send_gen_long_hs(sender, h8c7_gamma_r, 35, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
 	mdfld_dsi_send_gen_long_hs(sender, h8c7_gamma_g, 35, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
 	mdfld_dsi_send_gen_long_hs(sender, h8c7_gamma_b, 35, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
 	mdfld_dsi_send_mcs_long_hs(sender, h8c7_enter_set_cabc, 10, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
 	mdfld_dsi_send_mcs_long_hs(sender, h8c7_set_pixel_format, 2, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
 	mdfld_dsi_send_mcs_long_hs(sender, h8c7_mcs_clumn_addr, 5, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
 	mdfld_dsi_send_mcs_long_hs(sender, h8c7_mcs_page_addr, 5, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
 	mdfld_dsi_send_mcs_long_hs(sender, h8c7_set_address_mode, 2, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
 	mdfld_dsi_send_mcs_long_hs(sender, h8c7_set_te_scanline, 4, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
 	mdfld_dsi_send_gen_long_hs(sender, h8c7_set_tear_on, 2, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
+
 	mdfld_dsi_send_gen_long_hs(sender, h8c7_mcs_protect_on, 4, 0);
+	if (sender->status == MDFLD_DSI_CONTROL_ABNORMAL)
+		return -EIO;
 
 	return 0;
 }
