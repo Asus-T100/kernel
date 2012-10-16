@@ -26,6 +26,7 @@
 */
 
 #include <linux/init.h>
+#include <linux/kernel.h>
 #include "mdfld_dsi_dbi.h"
 #include "mdfld_dsi_dpi.h"
 #include "mdfld_output.h"
@@ -70,7 +71,7 @@ int is_panel_vid_or_cmd(struct drm_device *dev)
 		(struct drm_psb_private *) dev->dev_private;
 	int i = 0;
 
-	for (i = 0; i < sizeof panel_list; i++) {
+	for (i = 0; i < ARRAY_SIZE(panel_list); i++) {
 		if (panel_list[i].p_type == dev_priv->panel_id)
 			return panel_list[i].encoder_type;
 	}
@@ -94,7 +95,7 @@ void init_panel(struct drm_device* dev, int mipi_pipe, enum panel_type p_type)
 	dev_priv->cur_pipe = mipi_pipe;
 	p_funcs = kzalloc(sizeof(struct panel_funcs), GFP_KERNEL);
 
-	for (i = 0; i < sizeof panel_list; i++) {
+	for (i = 0; i < ARRAY_SIZE(panel_list); i++) {
 		if (panel_list[i].p_type == dev_priv->panel_id) {
 			panel_list[i].panel_init(
 					dev,
