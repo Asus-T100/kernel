@@ -5193,6 +5193,10 @@ static int penwell_otg_resume_noirq(struct device *dev)
 
 	pdev = to_pci_dev(pnw->dev);
 
+	/* add delay in case controller is back to D0, controller
+	 * needs time to sync/latch value for OTGSC register */
+	usleep_range(2000, 2500);
+
 	if (mid_pmu_is_wake_source(PMU_OTG_WAKE_SOURCE)) {
 		/* dump OTGSC register for wakeup event */
 		val = readl(pnw->iotg.base + CI_OTGSC);
