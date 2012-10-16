@@ -56,6 +56,7 @@
 #define SFI_SIG_OEM0        "OEM0"
 #define IRQ_KFIFO_ELEMENT	1
 
+#define MODE_SWITCH_VOLT_OFF 25 /* 25mV*/
 
 static void *otg_handle;
 static struct device *msic_dev;
@@ -1808,35 +1809,53 @@ static void msic_batt_temp_charging(struct work_struct *work)
 	 * we need to set charging parameters and enable charging.
 	 */
 	if (i == iprev) {
+		if (!is_maint_chrg) {
+			/*Reset WDT Timer reset for 60 sec */
+			reset_wdt_timer(mbi);
+			dev_dbg(msic_dev, "Charger Watchdog timer reset"
+					" for 60sec\n");
+			goto lbl_sched_work;
+		}
+
 		/*
 		 * Check if the voltage falls below lower threshold
 		 * if we are in maintenance mode charging.
 		 */
-		if (is_maint_chrg && !is_chrg_enbl) {
-			temp_mon = &sfi_table->temp_mon_range[i];
-			/* Read battery Voltage */
-			adc_vol = fg_chip_get_property(
-					POWER_SUPPLY_PROP_VOLTAGE_OCV);
-			if (adc_vol == -ENODEV || adc_vol == -EINVAL) {
-				dev_warn(msic_dev, "Can't read voltage from FG\n");
-				goto lbl_sched_work;
-			}
-			/* convert to milli volts */
-			adc_vol /= 1000;
-
-			if ((adc_vol <= temp_mon->maint_chrg_vol_ll)) {
-					dev_info(msic_dev,
-					"restart maint charging,vocv_vol:%dmv\n",
-								adc_vol);
-				cv = temp_mon->maint_chrg_vol_ul;
-			} else {
-				dev_dbg(msic_dev, "vbat is more than ll\n");
-				goto lbl_sched_work;
-			}
+		temp_mon = &sfi_table->temp_mon_range[i];
+		/* Read battery Voltage */
+		adc_vol = fg_chip_get_property(
+				POWER_SUPPLY_PROP_VOLTAGE_OCV);
+		if (adc_vol == -ENODEV || adc_vol == -EINVAL) {
+			dev_warn(msic_dev, "Can't read voltage from FG\n");
+			goto lbl_sched_work;
+		}
+		/* convert to milli volts */
+		adc_vol /= 1000;
+		/*
+		 * Switch to normal mode charging, if the voltage drops
+		 * much below the lower threshold range.
+		 */
+		if (is_chrg_enbl && adc_vol < (temp_mon->maint_chrg_vol_ll -
+				MODE_SWITCH_VOLT_OFF)) {
+			dev_info(msic_dev, "Drop in voltage"
+					"switch to normal mode"
+					"charging vocv_vol:%dmv\n",
+					adc_vol);
+			is_maint_chrg = false;
+			mutex_lock(&mbi->event_lock);
+			mbi->charging_mode = BATT_CHARGING_MODE_NORMAL;
+			mutex_unlock(&mbi->event_lock);
+			cv = temp_mon->full_chrg_vol;
+		} else if (!is_chrg_enbl && (adc_vol <=
+					temp_mon->maint_chrg_vol_ll)) {
+			dev_info(msic_dev, "restart maint charging"
+					"vocv_vol:%dmv\n",
+					adc_vol);
+			cv = temp_mon->maint_chrg_vol_ul;
 		} else {
-			/* Reset WDT Timer Register for 60 Sec */
+			dev_dbg(msic_dev, "vbat is more than ll\n");
 			reset_wdt_timer(mbi);
-			dev_dbg(msic_dev, "Charger Watchdog timer reset for 60sec\n");
+
 			goto lbl_sched_work;
 		}
 	} else {
@@ -1895,10 +1914,20 @@ static void msic_batt_temp_charging(struct work_struct *work)
 		dev_warn(msic_dev, "msic_batt_do_charging failed\n");
 		mbi->batt_props.status = POWER_SUPPLY_STATUS_NOT_CHARGING;
 	} else {
-		if (is_maint_chrg)
-			mbi->batt_props.status = POWER_SUPPLY_STATUS_FULL;
-		else
+		if (is_maint_chrg) {
+			if (mbi->batt_props.status ==
+					POWER_SUPPLY_STATUS_NOT_CHARGING) {
+				mbi->charging_mode = BATT_CHARGING_MODE_NORMAL;
+				is_maint_chrg = false;
+				mbi->batt_props.status =
+					 POWER_SUPPLY_STATUS_CHARGING;
+			} else {
+				mbi->batt_props.status =
+					POWER_SUPPLY_STATUS_FULL;
+			}
+		} else {
 			mbi->batt_props.status = POWER_SUPPLY_STATUS_CHARGING;
+		}
 		is_chrg_enbl = true;
 	}
 	mutex_unlock(&mbi->batt_lock);
