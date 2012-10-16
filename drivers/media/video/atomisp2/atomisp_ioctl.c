@@ -1358,9 +1358,6 @@ int atomisp_streamoff(struct file *file, void *fh,
 			return ret;
 	}
 
-	if (!IS_MRFLD)
-		atomisp_wdt_lock_dog(isp);
-
 	mutex_lock(&isp->isp_lock);
 
 	spin_lock_irqsave(&isp->irq_lock, flags);
@@ -1405,8 +1402,6 @@ int atomisp_streamoff(struct file *file, void *fh,
 		cancel_work_sync(&isp->work);
 		isp->sw_contex.work_queued = false;
 	}
-
-	atomisp_wdt_lock_dog(isp);
 
 	ret = videobuf_streamoff(&pipe->capq);
 	if (ret)

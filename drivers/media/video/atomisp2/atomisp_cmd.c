@@ -111,7 +111,6 @@ __acc_fw_free(struct atomisp_device *isp, struct sh_css_acc_fw *fw);
 static struct sh_css_acc_fw *
 __acc_fw_alloc(struct atomisp_device *isp, struct atomisp_acc_fw_load *user_fw);
 
-static int atomisp_wdt_pet_dog(struct atomisp_device *isp);
 static void atomisp_buf_done(struct atomisp_device *isp,
 			     int error, enum sh_css_buffer_type buf_type);
 static int atomisp_configure_flash(struct atomisp_device *isp);
@@ -283,11 +282,6 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 	 */
 	spin_lock_irqsave(&isp->irq_lock, irqflags);
 
-	if (isp->sw_contex.isp_streaming && atomisp_wdt_pet_dog(isp) < 0) {
-		WARN(1, "%s: watchdog already woken up.\n", __func__);
-		goto out;
-	}
-
 	err = sh_css_translate_interrupt(&irq_infos);
 	v4l2_dbg(5, dbg_level, &atomisp_dev, "irq:0x%x\n", irq_infos);
 
@@ -321,7 +315,7 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 	pci_read_config_dword(isp->pdev, PCI_INTERRUPT_CTRL, &msg_ret);
 	msg_ret |= 1 << INTR_IIR;
 	pci_write_config_dword(isp->pdev, PCI_INTERRUPT_CTRL, msg_ret);
-out:
+
 	spin_unlock_irqrestore(&isp->irq_lock, irqflags);
 	return IRQ_HANDLED;
 }
@@ -533,52 +527,6 @@ static void atomisp_timeout_handler(struct atomisp_device *isp)
 	 * has. */
 	atomisp_flush_bufs_and_wakeup(isp);
 	v4l2_err(&atomisp_dev, "ISP timeout recovery handling done\n");
-}
-
-void atomisp_wdt_wakeup_dog(unsigned long handle)
-{
-	struct atomisp_device *isp = (struct atomisp_device *)handle;
-	isp->wdt_status =  ATOMISP_WDT_STATUS_ERROR_FATAL;
-	v4l2_info(&atomisp_dev, "%s\n",__func__);
-
-	/* wake up WQ */
-	complete(&isp->wq_frame_complete);
-}
-
-/*
- * atomisp_wdt_pet_dog - pet watchdog to notice it we're alive.
- *
- * Returns 0 if watchdog received no previous error or -1 otherwise.
- */
-static int atomisp_wdt_pet_dog(struct atomisp_device *isp)
-{
-	const unsigned long timeout = jiffies +
-				      msecs_to_jiffies(ATOMISP_WDT_TIMEOUT);
-	isp->timeout_cnt = 0;
-
-	/*
-	 * mod_timer_pending() returns 0 for unitialized timer or 1 for
-	 * initialized.
-	 * If 0, watchdog has woken up, which means we want to return -1 for
-	 * error.
-	 * If 1, watchdog is being nice and we want to return 0 for no error.
-	 */
-	return mod_timer_pending(&isp->wdt, timeout) - 1;
-}
-
-static void atomisp_wdt_init(struct atomisp_device *isp)
-{
-	const unsigned long timeout = jiffies +
-				      msecs_to_jiffies(ATOMISP_WDT_TIMEOUT);
-
-	isp->wdt_status = ATOMISP_WDT_STATUS_OK;
-	mod_timer(&isp->wdt, timeout);
-}
-
-void atomisp_wdt_lock_dog(struct atomisp_device *isp)
-{
-	v4l2_dbg(3, dbg_level, &atomisp_dev, "%s\n",__func__);
-	del_timer_sync(&isp->wdt);
 }
 
 static struct videobuf_buffer *atomisp_css_frame_to_vbuf(
@@ -891,8 +839,6 @@ void atomisp_work(struct work_struct *work)
 	struct atomisp_device *isp = container_of(work, struct atomisp_device,
 						  work);
 	int ret;
-	bool timeout_flag;
-	enum atomisp_wdt_status wdt_status;
 	unsigned long irqflags;
 	uint32_t cssEvent = 0;
 	uint32_t cssPipeId = 0;
@@ -900,7 +846,7 @@ void atomisp_work(struct work_struct *work)
 	int frameCount = 0;
 	int vfCount = 0;
 	int disCount = 0;
-	int retry = 2;
+	int retry = ATOMISP_ISP_MAX_TIMEOUT_COUNT;
 	const int MAX_EVENTS = 10;
 	enum sh_css_buffer_type events[MAX_EVENTS];
 	int next_event = 0;
@@ -915,8 +861,6 @@ void atomisp_work(struct work_struct *work)
 	isp->irq_infos = 0;
 
 	for (;;) {
-		timeout_flag = false;
-
 		mutex_lock(&isp->isp_lock);
 		spin_lock_irqsave(&isp->irq_lock, irqflags);
 		/* streamoff */
@@ -930,7 +874,6 @@ void atomisp_work(struct work_struct *work)
 
 		/* restore isp normal status */
 		isp->isp_timeout = false;
-		atomisp_wdt_init(isp);
 
 		ret = atomisp_streamon_input(isp);
 		if (ret) {
@@ -957,8 +900,20 @@ void atomisp_work(struct work_struct *work)
 
 		mutex_unlock(&isp->isp_lock);
 
-		wait_for_completion(&isp->wq_frame_complete);
+		if (wait_for_completion_timeout(
+				&isp->wq_frame_complete,
+				ATOMISP_ISP_TIMEOUT_DURATION) == 0) {
+			/* Timeout happens*/
+			if (retry == 0)
+				goto error;
 
+			atomisp_timeout_handler(isp);
+			/* stop streaming on error state */
+			retry--;
+			continue;
+		}
+
+		/* no timeout case*/
 		mutex_lock(&isp->isp_lock);
 
 		s3aCount = 0;
@@ -993,30 +948,11 @@ void atomisp_work(struct work_struct *work)
 			}
 		}
 
-		spin_lock_irqsave(&isp->irq_lock, irqflags);
-		wdt_status = isp->wdt_status;
-		isp->wdt_status = ATOMISP_WDT_STATUS_OK;
-		spin_unlock_irqrestore(&isp->irq_lock, irqflags);
 		INIT_COMPLETION(isp->wq_frame_complete);
 		mutex_unlock(&isp->isp_lock);
 
-		if (wdt_status == ATOMISP_WDT_STATUS_ERROR_FATAL) {
-			if (retry == 0)
-				goto error;
-
-			/*
-			 * purpose is to reset and try again,
-			 * not sure if we are able to do it
-			 * with css 1.5
-			 */
-			atomisp_timeout_handler(isp);
-			timeout_flag = true;
-			/* stop streaming on error state */
-			retry--;
-		}
-
-		while (isp->sw_contex.isp_streaming && !timeout_flag
-		       && current_event != next_event) {
+		while (isp->sw_contex.isp_streaming &&
+				current_event != next_event) {
 			switch(events[current_event]) {
 			case SH_CSS_EVENT_OUTPUT_FRAME_DONE:
 				frame_done_found = true;
@@ -1055,9 +991,9 @@ void atomisp_work(struct work_struct *work)
 
 			current_event = (current_event + 1) % MAX_EVENTS;
 		}
+
 		mutex_lock(&isp->isp_lock);
 		if (isp->sw_contex.isp_streaming &&
-		    !timeout_flag &&
 		    frame_done_found &&
 		    isp->params.css_update_params_needed) {
 			sh_css_update_isp_params();

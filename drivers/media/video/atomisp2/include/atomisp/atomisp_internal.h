@@ -90,8 +90,8 @@
 
 #define ATOMISP_SC_TYPE_SIZE	2
 
-#define ATOMISP_WDT_TIMEOUT		(2 * MSEC_PER_SEC) /* msecs */
-#define ATOMISP_WDT_MAX_TIMEOUTS	5
+#define ATOMISP_ISP_TIMEOUT_DURATION		(2 * HZ) /* second */
+#define ATOMISP_ISP_MAX_TIMEOUT_COUNT	2
 
 #define ATOMISP_CSS_Q_DEPTH	3
 /*
@@ -267,12 +267,6 @@ struct atomisp_video_pipe_format {
 	unsigned int out_sh_fmt;
 };
 
-enum atomisp_wdt_status {
-	ATOMISP_WDT_STATUS_OK,
-	ATOMISP_WDT_STATUS_ERROR_TRYAGAIN,
-	ATOMISP_WDT_STATUS_ERROR_FATAL,
-};
-
 /*
  * ci device struct
  */
@@ -283,7 +277,6 @@ struct atomisp_device {
 	struct media_device media_dev;
 	struct atomisp_platform_data *pdata;
 	const struct firmware *firmware;
-	struct timer_list wdt;
 
 	struct pm_qos_request_list pm_qos;
 
@@ -346,7 +339,6 @@ struct atomisp_device {
 	/* isp timeout status flag */
 	bool isp_timeout;
 	int timeout_cnt;
-	enum atomisp_wdt_status wdt_status;
 	enum atomisp_frame_status fr_status;
 
 	struct videobuf_buffer *vb_capture; /* TODO: needed? */

@@ -890,8 +890,6 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 		goto request_irq_fail;
 	}
 
-	setup_timer(&isp->wdt, atomisp_wdt_wakeup_dog, (unsigned long)isp);
-
 	atomisp_msi_irq_init(isp, dev);
 
 	pm_qos_add_request(&isp->pm_qos, PM_QOS_CPU_DMA_LATENCY,
