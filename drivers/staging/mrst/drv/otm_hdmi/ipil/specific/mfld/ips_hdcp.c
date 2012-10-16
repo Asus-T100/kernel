@@ -619,14 +619,14 @@ bool ips_hdcp_compute_tx_v(uint8_t *rep_ksv_list,
 	temp_buffer += 8;
 
 	/* 4. Pad the buffer with extra bytes
-	 * No need to pad the begining of padding bytes by adding
-	 * 0x80. HW automatically appends the same while creating
-	 * the buffer.
+	 *. The first padding byte must be 0x80 based on SHA1 message digest algorithm
+	 * HW automatically appends 0x80 while creating
+	 * the buffer if M0 is not 32-bit aligned
+	 * If M0 is 32-bit aligned we need to explicitly inject 0x80 to the buffer
 	 */
-	for (i = 0; i < num_pad_bytes; i++) {
-		*temp_buffer = (uint8_t)0x00;
-		temp_buffer++;
-	}
+	if (num_pad_bytes && ((num_devices * HDCP_KSV_SIZE + BSTAT_M0) % 4 == 0))
+		*temp_buffer = 0x80;
+	temp_buffer += num_pad_bytes;
 
 	/* 5. Construct the length byte */
 	buffer_len.quad_part = (unsigned long long)(rep_ksv_list_entries *
@@ -732,6 +732,10 @@ bool ips_hdcp_compute_tx_v(uint8_t *rep_ksv_list,
 		case 3:
 			ips_hdcp_set_repeater_control(
 				HDCP_REPEATER_8BIT_TEXT_24BIT_MO_IP);
+			break;
+		case 4:
+			ips_hdcp_set_repeater_control(
+				HDCP_REPEATER_32BIT_MO_IP);
 			break;
 		default:
 			/* should never happen */
