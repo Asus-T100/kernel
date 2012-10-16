@@ -253,7 +253,7 @@ void psb_remove_videoctx(struct drm_psb_private *dev_priv, struct file *filp)
 	mutex_unlock(&dev_priv->video_ctx_mutex);
 
 	if (found_ctx) {
-		PSB_DEBUG_GENERAL("Video:remove context profile %d,"
+		PSB_DEBUG_PM("Video:remove context profile %d,"
 				  " entrypoint %d\n",
 				  (found_ctx->ctx_type >> 8) & 0xff,
 				  (found_ctx->ctx_type & 0xff));
@@ -266,7 +266,7 @@ void psb_remove_videoctx(struct drm_psb_private *dev_priv, struct file *filp)
 				pnw_reset_fw_status(dev_priv->dev);
 				dev_priv->topaz_ctx = NULL;
 			} else {
-				PSB_DEBUG_GENERAL("Remove a inactive "\
+				PSB_DEBUG_PM("Remove a inactive "\
 						"encoding context.\n");
 			}
 			if (dev_priv->last_topaz_ctx == found_ctx)
@@ -387,10 +387,10 @@ int psb_video_getparam(struct drm_device *dev, void *data,
 				 (ctx_type & 0xff)))
 			pnw_reset_fw_status(dev_priv->dev);
 
-		PSB_DEBUG_GENERAL("Video:add ctx profile %d, entry %d.\n",
+		PSB_DEBUG_INIT("Video:add ctx profile %d, entry %d.\n",
 					((ctx_type >> 8) & 0xff),
 					(ctx_type & 0xff));
-		PSB_DEBUG_GENERAL("Video:add context protected 0x%x.\n",
+		PSB_DEBUG_INIT("Video:add context protected 0x%x.\n",
 					(ctx_type & VA_RT_FORMAT_PROTECTED));
 		if (ctx_type & VA_RT_FORMAT_PROTECTED)
 			ied_enabled = 1;

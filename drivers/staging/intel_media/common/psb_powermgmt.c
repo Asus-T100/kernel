@@ -914,7 +914,7 @@ void ospm_suspend_pci(struct pci_dev *pdev)
 	if (gbSuspended)
 		return;
 
-	PSB_DEBUG_ENTRY("\n");
+	PSB_DEBUG_PM("ospm_suspend_pci\n");
 
 	pci_save_state(pdev);
 	pci_read_config_dword(pdev, 0x5C, &bsm);
@@ -1089,11 +1089,11 @@ int ospm_power_suspend(struct pci_dev *pdev, pm_message_t state)
 #endif
 
 	if (gbSuspendInProgress || gbResumeInProgress) {
-		DRM_INFO("%s: system BUSY\n", __func__);
+		PSB_DEBUG_PM(KERN_ALERT "%s: system BUSY\n", __func__);
 		return  -EBUSY;
 	}
 
-	PSB_DEBUG_ENTRY("\n");
+	PSB_DEBUG_PM("enter ospm_power_suspend\n");
 
 	mutex_lock(&g_ospm_mutex);
 	if (!gbSuspended) {
