@@ -1628,7 +1628,10 @@ static int __devinit sdhci_pci_probe(struct pci_dev *pdev,
 	if (slots == 0)
 		return -ENODEV;
 
-	BUG_ON(slots > MAX_SLOTS);
+	if (slots > MAX_SLOTS) {
+		dev_err(&pdev->dev, "Invalid number of the slots. Aborting.\n");
+		return -ENODEV;
+	}
 
 	ret = pci_read_config_byte(pdev, PCI_SLOT_INFO, &first_bar);
 	if (ret)
