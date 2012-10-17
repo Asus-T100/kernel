@@ -305,9 +305,6 @@ struct atomisp_device {
 	struct atomisp_tpg_device tpg;
 	struct atomisp_file_device file_dev;
 
-	struct workqueue_struct *work_queue;
-	struct work_struct work;
-	struct completion wq_frame_complete;
 	struct completion dis_state_complete;
 
 	spinlock_t irq_lock;
@@ -345,7 +342,8 @@ struct atomisp_device {
 
 	/* isp timeout status flag */
 	bool isp_timeout;
-	int timeout_cnt;
+	struct workqueue_struct *wdt_work_queue;
+	struct work_struct wdt_work;
 	struct timer_list wdt;
 	atomic_t wdt_count;
 	enum atomisp_frame_status fr_status;

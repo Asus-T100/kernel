@@ -850,16 +850,15 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 	INIT_LIST_HEAD(&isp->acc.memory_maps);
 	INIT_LIST_HEAD(&isp->s3a_stats);
 	INIT_LIST_HEAD(&isp->dis_stats);
-	init_completion(&isp->wq_frame_complete);
 	init_completion(&isp->dis_state_complete);
 	spin_lock_init(&isp->irq_lock);
 
-	isp->work_queue = create_singlethread_workqueue(isp->v4l2_dev.name);
-	if (isp->work_queue == NULL) {
+	isp->wdt_work_queue = alloc_workqueue(isp->v4l2_dev.name, 0, 1);
+	if (isp->wdt_work_queue == NULL) {
 		v4l2_err(&atomisp_dev, "Failed to initialize work queue\n");
 		goto work_queue_fail;
 	}
-	INIT_WORK(&isp->work, atomisp_work);
+	INIT_WORK(&isp->wdt_work, atomisp_wdt_work);
 
 	isp->hw_contex.ispmmadr = start;
 
@@ -884,8 +883,8 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 			    "Failed to enable msi\n");
 		goto enable_msi_fail;
 	}
-	err = request_irq(dev->irq, atomisp_isr,
-			  IRQF_SHARED, "isp_irq", isp);
+	err = request_threaded_irq(dev->irq, atomisp_isr, atomisp_isr_thread,
+				   IRQF_SHARED, "isp_irq", isp);
 	if (err) {
 		v4l2_err(&atomisp_dev,
 			    "Failed to request irq\n");
@@ -917,7 +916,7 @@ request_irq_fail:
 	pci_disable_msi(dev);
 enable_msi_fail:
 	pci_set_drvdata(dev, NULL);
-	destroy_workqueue(isp->work_queue);
+	destroy_workqueue(isp->wdt_work_queue);
 work_queue_fail:
 	atomisp_unregister_entities(isp);
 init_mod_fail:
@@ -949,8 +948,7 @@ static void __devexit atomisp_pci_remove(struct pci_dev *dev)
 
 	atomisp_unregister_entities(isp);
 
-	flush_workqueue(isp->work_queue);
-	destroy_workqueue(isp->work_queue);
+	destroy_workqueue(isp->wdt_work_queue);
 
 	iounmap(atomisp_io_base);
 	pci_set_drvdata(dev, NULL);

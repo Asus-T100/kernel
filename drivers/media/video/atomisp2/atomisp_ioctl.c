@@ -1297,7 +1297,6 @@ static int atomisp_streamon(struct file *file, void *fh,
 	isp->fr_status = ATOMISP_FRAME_STATUS_OK;
 	isp->sw_contex.error = false;
 	isp->sw_contex.invalid_frame = false;
-	INIT_COMPLETION(isp->wq_frame_complete);
 	isp->irq_infos = 0;
 	mutex_unlock(&isp->isp_lock);
 
@@ -1319,8 +1318,6 @@ start_workq:
 		atomisp_setup_flash(isp);
 	}
 
-	/*stream on sensor in work thread*/
-	queue_work(isp->work_queue, &isp->work);
 	isp->sw_contex.work_queued = true;
 
 	if (!isp->sw_contex.file_input) {
@@ -1394,8 +1391,13 @@ int atomisp_streamoff(struct file *file, void *fh,
 
 	spin_lock_irqsave(&isp->irq_lock, flags);
 	isp->sw_contex.isp_streaming = false;
+	isp->sw_contex.error = true;
+
+	isp->s3a_bufs_in_css = 0;
+	isp->frame_bufs_in_css = 0;
+	isp->dis_bufs_in_css = 0;
+	isp->vf_frame_bufs_in_css = 0;
 	spin_unlock_irqrestore(&isp->irq_lock, flags);
-	del_timer_sync(&isp->wdt);
 
 	switch (isp->sw_contex.run_mode) {
 	case CI_MODE_STILL_CAPTURE:
@@ -1416,25 +1418,23 @@ int atomisp_streamoff(struct file *file, void *fh,
 	}
 	mutex_unlock(&isp->isp_lock);
 
+	del_timer_sync(&isp->wdt);
+	cancel_work_sync(&isp->wdt_work);
+
 	/* cancel work queue*/
-	if (isp->sw_contex.work_queued) {
-		if (isp->isp_subdev.video_out_mo.opened) {
-			mo_pipe = &isp->isp_subdev.video_out_mo;
-			wake_up_interruptible(&mo_pipe->capq.wait);
-		}
-		if (isp->isp_subdev.video_out_ss.opened) {
-			ss_pipe = &isp->isp_subdev.video_out_ss;
-			wake_up_interruptible(&ss_pipe->capq.wait);
-		}
-		if (isp->isp_subdev.video_out_vf.opened) {
-			vf_pipe = &isp->isp_subdev.video_out_vf;
-			wake_up_interruptible(&vf_pipe->capq.wait);
-		}
-		/* in case we are waiting event from css */
-		complete(&isp->wq_frame_complete);
-		cancel_work_sync(&isp->work);
-		isp->sw_contex.work_queued = false;
+	if (isp->isp_subdev.video_out_mo.opened) {
+		mo_pipe = &isp->isp_subdev.video_out_mo;
+		wake_up_interruptible(&mo_pipe->capq.wait);
 	}
+	if (isp->isp_subdev.video_out_ss.opened) {
+		ss_pipe = &isp->isp_subdev.video_out_ss;
+		wake_up_interruptible(&ss_pipe->capq.wait);
+	}
+	if (isp->isp_subdev.video_out_vf.opened) {
+		vf_pipe = &isp->isp_subdev.video_out_vf;
+		wake_up_interruptible(&vf_pipe->capq.wait);
+	}
+	isp->sw_contex.work_queued = false;
 
 	ret = videobuf_streamoff(&pipe->capq);
 	if (ret)

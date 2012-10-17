@@ -296,10 +296,8 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 		isp->sw_contex.invalid_dis = true;
 	}
 
-	/*make work queue run*/
 	atomic_set(&isp->wdt_count, 0);
 	mod_timer(&isp->wdt, jiffies + ATOMISP_ISP_TIMEOUT_DURATION);
-	complete(&isp->wq_frame_complete);
 
 	/* Clear irq reg at PENWELL B0 */
 	pci_read_config_dword(isp->pdev, PCI_INTERRUPT_CTRL, &msg_ret);
@@ -307,7 +305,7 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 	pci_write_config_dword(isp->pdev, PCI_INTERRUPT_CTRL, msg_ret);
 
 	spin_unlock_irqrestore(&isp->irq_lock, irqflags);
-	return IRQ_HANDLED;
+	return isp->sw_contex.isp_streaming ? IRQ_WAKE_THREAD : IRQ_HANDLED;
 }
 
 /*
@@ -481,7 +479,7 @@ static void atomisp_timeout_handler(struct atomisp_device *isp)
 
 	sh_css_dump_sp_sw_debug_info();
 	snprintf(debug_context, 64, "ISP timeout encountered (%d of 5)",
-		 isp->timeout_cnt);
+		 atomic_read(&isp->wdt_count));
 	sh_css_dump_debug_info(debug_context);
 	v4l2_err(&atomisp_dev,
 			"%s, frames in css: %d\n",
@@ -810,13 +808,38 @@ static void atomisp_buf_done(struct atomisp_device *isp,
 		atomisp_qbuffers_to_css(isp, pipe);
 }
 
+void atomisp_wdt_work(struct work_struct *work)
+{
+	struct atomisp_device *isp = container_of(work, struct atomisp_device,
+						  wdt_work);
+
+	switch (atomic_inc_return(&isp->wdt_count)) {
+	case ATOMISP_ISP_MAX_TIMEOUT_COUNT:
+		mutex_lock(&isp->isp_lock);
+		isp->sw_contex.error = true;
+
+		isp->s3a_bufs_in_css = 0;
+		isp->frame_bufs_in_css = 0;
+		isp->dis_bufs_in_css = 0;
+		isp->vf_frame_bufs_in_css = 0;
+
+		atomic_set(&isp->wdt_count, 0);
+
+		atomisp_flush_bufs_and_wakeup(isp);
+		mutex_unlock(&isp->isp_lock);
+		break;
+	default:
+		atomisp_timeout_handler(isp);
+	}
+
+	mod_timer(&isp->wdt, jiffies + ATOMISP_ISP_TIMEOUT_DURATION);
+}
+
 void atomisp_wdt(unsigned long isp_addr)
 {
 	struct atomisp_device *isp = (struct atomisp_device *)isp_addr;
 
-	atomic_inc(&isp->wdt_count);
-
-	complete(&isp->wq_frame_complete);
+	queue_work(isp->wdt_work_queue, &isp->wdt_work);
 }
 
 void atomisp_setup_flash(struct atomisp_device *isp)
@@ -844,18 +867,15 @@ void atomisp_setup_flash(struct atomisp_device *isp)
 	}
 }
 
-void atomisp_work(struct work_struct *work)
+irqreturn_t atomisp_isr_thread(int irq, void *isp_ptr)
 {
-	struct atomisp_device *isp = container_of(work, struct atomisp_device,
-						  work);
-	unsigned long irqflags;
+	struct atomisp_device *isp = isp_ptr;
 	uint32_t cssEvent = 0;
 	uint32_t cssPipeId = 0;
 	int s3aCount = 0;
 	int frameCount = 0;
 	int vfCount = 0;
 	int disCount = 0;
-	int retry = ATOMISP_ISP_MAX_TIMEOUT_COUNT;
 	const int MAX_EVENTS = 10;
 	enum sh_css_buffer_type events[MAX_EVENTS];
 	int next_event = 0;
@@ -864,134 +884,93 @@ void atomisp_work(struct work_struct *work)
 
 	v4l2_dbg(2, dbg_level, &atomisp_dev, ">%s\n", __func__);
 
-	for (;;) {
-		mutex_lock(&isp->isp_lock);
-		spin_lock_irqsave(&isp->irq_lock, irqflags);
-		/* streamoff */
-		if(!isp->sw_contex.isp_streaming) {
-			spin_unlock_irqrestore(&isp->irq_lock, irqflags);
-			mutex_unlock(&isp->isp_lock);
-			v4l2_err(&atomisp_dev, "not streaming it seems\n");
-			goto error;
-		}
-		spin_unlock_irqrestore(&isp->irq_lock, irqflags);
+	mutex_lock(&isp->isp_lock);
 
-		mutex_unlock(&isp->isp_lock);
-
-		wait_for_completion(&isp->wq_frame_complete);
-		switch (atomic_read(&isp->wdt_count)) {
-		case 0:
+	while (isp->sw_contex.isp_streaming &&
+	       sh_css_dequeue_event(&cssPipeId, &cssEvent) == sh_css_success) {
+		events[next_event] = cssEvent;
+		next_event = (next_event + 1) % MAX_EVENTS;
+		switch (cssEvent) {
+		case SH_CSS_EVENT_OUTPUT_FRAME_DONE:
+			frameCount++;
 			break;
-		case ATOMISP_ISP_MAX_TIMEOUT_COUNT:
-			atomic_set(&isp->wdt_count, 0);
-			goto error;
+		case SH_CSS_EVENT_3A_STATISTICS_DONE:
+			s3aCount++;
+			break;
+		case SH_CSS_EVENT_VF_OUTPUT_FRAME_DONE:
+			vfCount++;
+			break;
+		case SH_CSS_EVENT_DIS_STATISTICS_DONE:
+			disCount++;
+			break;
+		case SH_CSS_EVENT_PIPELINE_DONE:
+			break;
 		default:
-			atomisp_timeout_handler(isp);
-			continue;
+			v4l2_err(&atomisp_dev,
+				 "unhandled css event: 0x%x\n",
+				 cssEvent & 0xFFFF);
+			break;
 		}
-
-		mutex_lock(&isp->isp_lock);
-
-		s3aCount = 0;
-		frameCount = 0;
-		vfCount = 0;
-		disCount = 0;
-
-		while (isp->sw_contex.isp_streaming &&
-		       sh_css_dequeue_event(&cssPipeId, &cssEvent) == sh_css_success) {
-			events[next_event] = cssEvent;
-			next_event = (next_event + 1) % MAX_EVENTS;
-			switch(cssEvent) {
-				case SH_CSS_EVENT_OUTPUT_FRAME_DONE:
-					frameCount++;
-					break;
-				case SH_CSS_EVENT_3A_STATISTICS_DONE:
-					s3aCount++;
-					break;
-				case SH_CSS_EVENT_VF_OUTPUT_FRAME_DONE:
-					vfCount++;
-					break;
-				case SH_CSS_EVENT_DIS_STATISTICS_DONE:
-					disCount++;
-					break;
-				case SH_CSS_EVENT_PIPELINE_DONE:
-					break;
-				default :
-					v4l2_err(&atomisp_dev,
-						"unhandled css event: 0x%x\n",
-						 cssEvent & 0xFFFF);
-					break;
-			}
-		}
-
-		INIT_COMPLETION(isp->wq_frame_complete);
-		mutex_unlock(&isp->isp_lock);
-
-		while (isp->sw_contex.isp_streaming &&
-				current_event != next_event) {
-			switch(events[current_event]) {
-			case SH_CSS_EVENT_OUTPUT_FRAME_DONE:
-				frame_done_found = true;
-				atomisp_buf_done(
-					isp, 0,
-					SH_CSS_BUFFER_TYPE_OUTPUT_FRAME);
-				frameCount--;
-				break;
-			case SH_CSS_EVENT_3A_STATISTICS_DONE:
-				atomisp_buf_done(
-					isp, 0,
-					SH_CSS_BUFFER_TYPE_3A_STATISTICS);
-				s3aCount--;
-				break;
-			case SH_CSS_EVENT_VF_OUTPUT_FRAME_DONE:
-				atomisp_buf_done(
-					isp, 0,
-					SH_CSS_BUFFER_TYPE_VF_OUTPUT_FRAME);
-				vfCount--;
-				break;
-			case SH_CSS_EVENT_DIS_STATISTICS_DONE:
-				atomisp_buf_done(
-					isp, 0,
-					SH_CSS_BUFFER_TYPE_DIS_STATISTICS);
-				disCount--;
-				break;
-			case SH_CSS_EVENT_PIPELINE_DONE:
-				break;
-			default:
-				v4l2_err(&atomisp_dev,
-					 "unhandled css stored event: 0x%x\n",
-					 events[current_event]);
-				break;
-			}
-			events[current_event] = SH_CSS_NR_OF_EVENTS;/*  this line is for debuging */
-
-			current_event = (current_event + 1) % MAX_EVENTS;
-		}
-
-		mutex_lock(&isp->isp_lock);
-		if (isp->sw_contex.isp_streaming &&
-		    frame_done_found &&
-		    isp->params.css_update_params_needed) {
-			sh_css_update_isp_params();
-			isp->params.css_update_params_needed = false;
-			frame_done_found = false;
-		}
-		isp->isp_timeout = false;
-		atomisp_setup_flash(isp);
-		mutex_unlock(&isp->isp_lock);
 	}
-error:
-	isp->sw_contex.error = true;
 
-	isp->s3a_bufs_in_css = 0;
-	isp->frame_bufs_in_css = 0;
-	isp->dis_bufs_in_css = 0;
-	isp->vf_frame_bufs_in_css = 0;
+	mutex_unlock(&isp->isp_lock);
 
-	if (retry == 0)
-		atomisp_flush_bufs_and_wakeup(isp);
+	while (isp->sw_contex.isp_streaming &&
+	       current_event != next_event) {
+		switch (events[current_event]) {
+		case SH_CSS_EVENT_OUTPUT_FRAME_DONE:
+			frame_done_found = true;
+			atomisp_buf_done(
+				isp, 0,
+				SH_CSS_BUFFER_TYPE_OUTPUT_FRAME);
+			frameCount--;
+			break;
+		case SH_CSS_EVENT_3A_STATISTICS_DONE:
+			atomisp_buf_done(
+				isp, 0,
+				SH_CSS_BUFFER_TYPE_3A_STATISTICS);
+			s3aCount--;
+			break;
+		case SH_CSS_EVENT_VF_OUTPUT_FRAME_DONE:
+			atomisp_buf_done(
+				isp, 0,
+				SH_CSS_BUFFER_TYPE_VF_OUTPUT_FRAME);
+			vfCount--;
+			break;
+		case SH_CSS_EVENT_DIS_STATISTICS_DONE:
+			atomisp_buf_done(
+				isp, 0,
+				SH_CSS_BUFFER_TYPE_DIS_STATISTICS);
+			disCount--;
+			break;
+		case SH_CSS_EVENT_PIPELINE_DONE:
+			break;
+		default:
+			v4l2_err(&atomisp_dev,
+				 "unhandled css stored event: 0x%x\n",
+				 events[current_event]);
+			break;
+		}
+		events[current_event] = SH_CSS_NR_OF_EVENTS;
+
+		current_event = (current_event + 1) % MAX_EVENTS;
+	}
+
+	mutex_lock(&isp->isp_lock);
+	if (isp->sw_contex.isp_streaming &&
+	    frame_done_found &&
+	    isp->params.css_update_params_needed) {
+		sh_css_update_isp_params();
+		isp->params.css_update_params_needed = false;
+		frame_done_found = false;
+	}
+	isp->isp_timeout = false;
+	atomisp_setup_flash(isp);
+	mutex_unlock(&isp->isp_lock);
 
 	v4l2_dbg(2, dbg_level, &atomisp_dev, "<%s\n", __func__);
+
+	return IRQ_HANDLED;
 }
 
 /*
