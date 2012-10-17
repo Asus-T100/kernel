@@ -257,6 +257,7 @@ struct gsm_mux {
 	int t1, t2;		/* Timers in 1/100th of a sec */
 	int n2;			/* Retry count */
 	int clocal;		/* CLOCAL default state */
+	int burst;		/* Burst mode support */
 
 	/* Statistics (not currently exposed) */
 	unsigned long bad_fcs;
@@ -708,7 +709,8 @@ static void gsm_data_kick(struct gsm_mux *gsm)
 		gsm->tx_bytes -= msg->len;
 		/* For a burst of frames skip the extra SOF within the
 		   burst */
-		skip_sof = 1;
+		if (gsm->burst)
+			skip_sof = 1;
 
 		list_del(&msg->list);
 		kfree(msg);
@@ -2235,6 +2237,7 @@ struct gsm_mux *gsm_alloc_mux(void)
 	gsm->mru = 64;	/* Default to encoding 1 so these should be 64 */
 	gsm->mtu = 64;
 	gsm->clocal = 1; /* Ignore CD (DV flags in MSC)*/
+	gsm->burst = 1; /* Support burst mode by default */
 	gsm->dead = 1;	/* Avoid early tty opens */
 
 	return gsm;
@@ -2653,6 +2656,7 @@ static int gsmld_config(struct tty_struct *tty, struct gsm_mux *gsm,
 	gsm->adaption = c->adaption;
 	gsm->n2 = c->n2;
 	gsm->clocal = c->clocal;
+	gsm->burst = c->burst;
 
 	if (c->i == 1)
 		gsm->ftype = UIH;
@@ -2697,6 +2701,7 @@ static int gsmld_ioctl(struct tty_struct *tty, struct file *file,
 		c.mru = gsm->mru;
 		c.mtu = gsm->mtu;
 		c.clocal = gsm->clocal;
+		c.burst = gsm->burst;
 		c.k = 0;
 		if (copy_to_user((void *)arg, &c, sizeof(c)))
 			return -EFAULT;
