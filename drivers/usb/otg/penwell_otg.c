@@ -1595,11 +1595,6 @@ static int penwell_otg_charger_det_dcd_clt(void)
 	if (retval)
 		return retval;
 
-	/* Disable DP pulldown to allow weak Idp_src for DCD */
-	retval = penwell_otg_ulpi_write(iotg, ULPI_OTGCTRLCLR, DPPULLDOWN);
-	if (retval)
-		return retval;
-
 	/* Enable SW control */
 	retval = penwell_otg_ulpi_write(iotg, ULPI_PWRCTRLSET, SWCNTRL);
 	if (retval)
@@ -1617,12 +1612,19 @@ static int penwell_otg_charger_det_dcd_clt(void)
 	timeout = jiffies + msecs_to_jiffies(DATACON_TIMEOUT);
 	interval = DATACON_INTERVAL * 1000; /* us */
 
+	dev_info(pnw->dev, "DCD started\n");
+
+	/* Delay TIDP_SRC_ON + TCHGD_SERX_DEB = 347.8us + 66.1ms max */
+	usleep_range(66500, 67000);
+
 	while (!time_after(jiffies, timeout)) {
 		retval = penwell_otg_ulpi_read(iotg, ULPI_VS4, &data);
 		if (retval) {
 			dev_warn(pnw->dev, "Failed to read ULPI register\n");
 			return retval;
 		}
+
+		dev_dbg(pnw->dev, "VS4 = 0x%02x.. DP = bit1\n", data);
 
 		if (!(data & CHRG_SERX_DP)) {
 			dev_info(pnw->dev, "Data contact detected!\n");
@@ -1736,12 +1738,6 @@ static int penwell_otg_charger_det_se1_clt(void)
 	int				retval;
 	u8				data;
 
-	retval = penwell_otg_ulpi_write(iotg, ULPI_OTGCTRLSET,
-						DMPULLDOWN | DPPULLDOWN);
-	if (retval)
-		return retval;
-
-	msleep(50);
 	retval = penwell_otg_ulpi_read(iotg, ULPI_DEBUG, &data);
 	if (retval) {
 		dev_warn(pnw->dev, "ULPI read failed, exit\n");
