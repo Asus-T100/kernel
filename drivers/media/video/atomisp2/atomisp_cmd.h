@@ -66,6 +66,7 @@ void atomisp_kernel_free(void *ptr);
  */
 void atomisp_msi_irq_init(struct atomisp_device *isp, struct pci_dev *dev);
 void atomisp_msi_irq_uninit(struct atomisp_device *isp, struct pci_dev *dev);
+void atomisp_wdt(unsigned long isp_addr);
 irqreturn_t atomisp_isr(int irq, void *dev);
 void atomisp_work(struct work_struct *work);
 int atomisp_get_frame_pgnr(const struct sh_css_frame *frame, u32 * p_pgnr);

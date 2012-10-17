@@ -346,6 +346,8 @@ struct atomisp_device {
 	/* isp timeout status flag */
 	bool isp_timeout;
 	int timeout_cnt;
+	struct timer_list wdt;
+	atomic_t wdt_count;
 	enum atomisp_frame_status fr_status;
 
 	struct videobuf_buffer *vb_capture; /* TODO: needed? */

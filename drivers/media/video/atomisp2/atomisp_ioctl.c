@@ -1290,6 +1290,8 @@ static int atomisp_streamon(struct file *file, void *fh,
 	/* Make sure that update_isp_params is called at least once.*/
 	isp->params.css_update_params_needed = true;
 	isp->sw_contex.isp_streaming = true;
+	atomic_set(&isp->wdt_count, 0);
+	mod_timer(&isp->wdt, jiffies + ATOMISP_ISP_TIMEOUT_DURATION);
 	mutex_unlock(&isp->isp_lock);
 
 	atomisp_qbuffers_to_css(isp, pipe);
@@ -1364,6 +1366,7 @@ int atomisp_streamoff(struct file *file, void *fh,
 	spin_lock_irqsave(&isp->irq_lock, flags);
 	isp->sw_contex.isp_streaming = false;
 	spin_unlock_irqrestore(&isp->irq_lock, flags);
+	del_timer_sync(&isp->wdt);
 
 	switch (isp->sw_contex.run_mode) {
 	case CI_MODE_STILL_CAPTURE:

@@ -302,6 +302,8 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 	}
 
 	/*make work queue run*/
+	atomic_set(&isp->wdt_count, 0);
+	mod_timer(&isp->wdt, jiffies + ATOMISP_ISP_TIMEOUT_DURATION);
 	complete(&isp->wq_frame_complete);
 
 	/* Clear irq reg at PENWELL B0 */
@@ -827,6 +829,15 @@ static void atomisp_buf_done(struct atomisp_device *isp,
 		atomisp_qbuffers_to_css(isp, pipe);
 }
 
+void atomisp_wdt(unsigned long isp_addr)
+{
+	struct atomisp_device *isp = (struct atomisp_device *)isp_addr;
+
+	atomic_inc(&isp->wdt_count);
+
+	complete(&isp->wq_frame_complete);
+}
+
 void atomisp_work(struct work_struct *work)
 {
 	struct atomisp_device *isp = container_of(work, struct atomisp_device,
@@ -893,20 +904,18 @@ void atomisp_work(struct work_struct *work)
 
 		mutex_unlock(&isp->isp_lock);
 
-		if (wait_for_completion_timeout(
-				&isp->wq_frame_complete,
-				ATOMISP_ISP_TIMEOUT_DURATION) == 0) {
-			/* Timeout happens*/
-			if (retry == 0)
-				goto error;
-
+		wait_for_completion(&isp->wq_frame_complete);
+		switch (atomic_read(&isp->wdt_count)) {
+		case 0:
+			break;
+		case ATOMISP_ISP_MAX_TIMEOUT_COUNT:
+			atomic_set(&isp->wdt_count, 0);
+			goto error;
+		default:
 			atomisp_timeout_handler(isp);
-			/* stop streaming on error state */
-			retry--;
 			continue;
 		}
 
-		/* no timeout case*/
 		mutex_lock(&isp->isp_lock);
 
 		s3aCount = 0;

@@ -625,6 +625,7 @@ static int atomisp_release(struct file *file)
 	if (isp->sw_contex.init == false)
 		goto done;
 
+	del_timer_sync(&isp->wdt);
 	atomisp_free_3a_dis_buffers(isp);
 	atomisp_free_all_shading_tables(isp);
 	atomisp_free_internal_buffers(isp);
