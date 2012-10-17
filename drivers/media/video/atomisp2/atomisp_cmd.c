@@ -101,7 +101,6 @@ void atomisp_kernel_free(void *ptr)
 
 static void atomisp_buf_done(struct atomisp_device *isp,
 			     int error, enum sh_css_buffer_type buf_type);
-static int atomisp_configure_flash(struct atomisp_device *isp);
 
 /*
  * get sensor:dis71430/ov2720 related info from v4l2_subdev->priv data field.
@@ -820,11 +819,35 @@ void atomisp_wdt(unsigned long isp_addr)
 	complete(&isp->wq_frame_complete);
 }
 
+void atomisp_setup_flash(struct atomisp_device *isp)
+{
+	if (isp->params.flash_state != ATOMISP_FLASH_REQUESTED &&
+	    isp->params.flash_state != ATOMISP_FLASH_DONE)
+		return;
+
+	if (isp->params.num_flash_frames) {
+		struct v4l2_control ctrl;
+
+		/* make sure the timeout is set before setting flash mode */
+		ctrl.id = V4L2_CID_FLASH_TIMEOUT;
+		ctrl.value = FLASH_TIMEOUT;
+
+		if (v4l2_subdev_call(isp->flash, core, s_ctrl, &ctrl)) {
+			v4l2_err(&atomisp_dev, "flash timeout configure failed\n");
+			return;
+		}
+		sh_css_request_flash();
+		isp->params.flash_state = ATOMISP_FLASH_ONGOING;
+	} else {
+		/* Flashing all frames is done */
+		isp->params.flash_state = ATOMISP_FLASH_IDLE;
+	}
+}
+
 void atomisp_work(struct work_struct *work)
 {
 	struct atomisp_device *isp = container_of(work, struct atomisp_device,
 						  work);
-	int ret;
 	unsigned long irqflags;
 	uint32_t cssEvent = 0;
 	uint32_t cssPipeId = 0;
@@ -857,21 +880,6 @@ void atomisp_work(struct work_struct *work)
 			goto error;
 		}
 		spin_unlock_irqrestore(&isp->irq_lock, irqflags);
-
-		if (isp->params.flash_state == ATOMISP_FLASH_REQUESTED ||
-		    isp->params.flash_state == ATOMISP_FLASH_DONE) {
-			if (isp->params.num_flash_frames) {
-				ret = atomisp_configure_flash(isp);
-				if (ret)
-					v4l2_err(&atomisp_dev,
-						 "flash configuration error %d\n", ret);
-				sh_css_request_flash();
-				isp->params.flash_state = ATOMISP_FLASH_ONGOING;
-			}
-			/* Flashing all frames is done */
-			else
-				isp->params.flash_state = ATOMISP_FLASH_IDLE;
-		}
 
 		mutex_unlock(&isp->isp_lock);
 
@@ -974,6 +982,7 @@ void atomisp_work(struct work_struct *work)
 			frame_done_found = false;
 		}
 		isp->isp_timeout = false;
+		atomisp_setup_flash(isp);
 		mutex_unlock(&isp->isp_lock);
 	}
 error:
@@ -3827,21 +3836,3 @@ int atomisp_flash_enable(struct atomisp_device *isp, int num_frames)
 	mutex_unlock(&isp->isp_lock);
 	return 0;
 }
-
-/* Configures flash timeout */
-static int atomisp_configure_flash(struct atomisp_device *isp)
-{
-	struct v4l2_control ctrl;
-
-	/* make sure the timeout is set before setting flash mode */
-	ctrl.id = V4L2_CID_FLASH_TIMEOUT;
-	ctrl.value = FLASH_TIMEOUT;
-
-	if (v4l2_subdev_call(isp->flash, core, s_ctrl, &ctrl)) {
-		v4l2_err(&atomisp_dev, "flash timeout configure failed\n");
-		return -EINVAL;
-	}
-
-	return 0;
-}
-

@@ -1298,11 +1298,6 @@ static int atomisp_streamon(struct file *file, void *fh,
 
 	atomisp_qbuffers_to_css(isp, pipe);
 	//sh_css_dump_sp_sw_debug_info();
-	if (isp->flash) {
-		ret += v4l2_subdev_call(isp->flash, core, s_power, 1);
-		isp->params.num_flash_frames = 0;
-		isp->params.flash_state = ATOMISP_FLASH_IDLE;
-	}
 
 	/* don't start workq yet, wait for another pipe*/
 	/* for capture pipe + raw output,  ISP only support output main*/
@@ -1312,6 +1307,13 @@ static int atomisp_streamon(struct file *file, void *fh,
 		goto done;
 
 start_workq:
+	if (isp->flash) {
+		ret += v4l2_subdev_call(isp->flash, core, s_power, 1);
+		isp->params.num_flash_frames = 0;
+		isp->params.flash_state = ATOMISP_FLASH_IDLE;
+		atomisp_setup_flash(isp);
+	}
+
 	/*stream on sensor in work thread*/
 	queue_work(isp->work_queue, &isp->work);
 	isp->sw_contex.work_queued = true;
