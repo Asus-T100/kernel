@@ -863,11 +863,6 @@ void atomisp_work(struct work_struct *work)
 	bool frame_done_found = false;
 
 	v4l2_dbg(2, dbg_level, &atomisp_dev, ">%s\n", __func__);
-	isp->fr_status = ATOMISP_FRAME_STATUS_OK;
-	isp->sw_contex.error = false;
-	isp->sw_contex.invalid_frame = false;
-	INIT_COMPLETION(isp->wq_frame_complete);
-	isp->irq_infos = 0;
 
 	for (;;) {
 		mutex_lock(&isp->isp_lock);
