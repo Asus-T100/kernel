@@ -858,9 +858,6 @@ void atomisp_work(struct work_struct *work)
 		}
 		spin_unlock_irqrestore(&isp->irq_lock, irqflags);
 
-		/* restore isp normal status */
-		isp->isp_timeout = false;
-
 		if (isp->params.flash_state == ATOMISP_FLASH_REQUESTED ||
 		    isp->params.flash_state == ATOMISP_FLASH_DONE) {
 			if (isp->params.num_flash_frames) {
@@ -976,6 +973,7 @@ void atomisp_work(struct work_struct *work)
 			isp->params.css_update_params_needed = false;
 			frame_done_found = false;
 		}
+		isp->isp_timeout = false;
 		mutex_unlock(&isp->isp_lock);
 	}
 error:

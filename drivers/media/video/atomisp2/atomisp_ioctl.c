@@ -1291,6 +1291,7 @@ static int atomisp_streamon(struct file *file, void *fh,
 	/* Make sure that update_isp_params is called at least once.*/
 	isp->params.css_update_params_needed = true;
 	isp->sw_contex.isp_streaming = true;
+	isp->isp_timeout = false;
 	atomic_set(&isp->wdt_count, 0);
 	mod_timer(&isp->wdt, jiffies + ATOMISP_ISP_TIMEOUT_DURATION);
 	mutex_unlock(&isp->isp_lock);
