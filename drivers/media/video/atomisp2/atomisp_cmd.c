@@ -264,10 +264,6 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 	unsigned int irq_infos = 0;
 	int err;
 
-	/*
-	 * spin_lock_irqsave() is necessary to avoid racing between multiple
-	 * calls of ISP's ISR
-	 */
 	spin_lock_irqsave(&isp->irq_lock, irqflags);
 
 	err = sh_css_translate_interrupt(&irq_infos);
