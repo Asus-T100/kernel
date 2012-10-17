@@ -345,7 +345,7 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 #define TERM_EN_COUNT_4LANE_PWN_B0_OFFSET	20	/* bit 23:20 */
 #define TERM_EN_COUNT_4LANE_PWN_B0_MASK		0xf00000
 
-static void set_term_en_count(struct atomisp_device *isp)
+void atomisp_set_term_en_count(struct atomisp_device *isp)
 {
 	uint32_t val;
 	int pwn_b0 = 0;
@@ -367,31 +367,6 @@ static void set_term_en_count(struct atomisp_device *isp)
 				TERM_EN_COUNT_4LANE_OFFSET);
 
 	intel_mid_msgbus_write32(IUNITPHY_PORT, CSI_CONTROL, val);
-}
-
-static int atomisp_streamon_input(struct atomisp_device *isp)
-{
-	int ret;
-	if (isp->sw_contex.file_input) {
-		ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
-				       video, s_stream, 1);
-		return ret;
-	}
-
-	if (isp->sw_contex.sensor_streaming == false) {
-		set_term_en_count(isp);
-		/*
-		 * stream on the sensor, power on is called before
-		 * work queue start
-		 */
-		ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
-				       video, s_stream, 1);
-		if (ret)
-			return -EINVAL;
-
-		isp->sw_contex.sensor_streaming = true;
-	}
-	return 0;
 }
 
 static void atomisp_pipe_reset(struct atomisp_device *isp)
@@ -455,7 +430,7 @@ static void atomisp_pipe_reset(struct atomisp_device *isp)
 	sh_css_start(css_pipe_id);
 	if (!isp->sw_contex.file_input) {
 		sh_css_enable_interrupt(SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF, true);
-		set_term_en_count(isp);
+		atomisp_set_term_en_count(isp);
 		ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
 				       video, s_stream, 1);
 		if (ret)
@@ -890,12 +865,16 @@ void atomisp_work(struct work_struct *work)
 		/* restore isp normal status */
 		isp->isp_timeout = false;
 
-		ret = atomisp_streamon_input(isp);
-		if (ret) {
-			mutex_unlock(&isp->isp_lock);
-			v4l2_err(&atomisp_dev,
-				 "stream on input error.\n");
-			goto error;
+		if (isp->sw_contex.file_input) {
+			ret = v4l2_subdev_call(
+				isp->inputs[isp->input_curr].camera, video,
+				s_stream, 1);
+			if (ret) {
+				mutex_unlock(&isp->isp_lock);
+				v4l2_err(&atomisp_dev,
+					 "stream on input error.\n");
+				goto error;
+			}
 		}
 
 		if (isp->params.flash_state == ATOMISP_FLASH_REQUESTED ||

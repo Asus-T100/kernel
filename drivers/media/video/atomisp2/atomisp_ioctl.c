@@ -1219,6 +1219,7 @@ int atomisp_get_css_buf_type(struct atomisp_device *isp,
 	}
 	return buf_type;
 }
+
 /*
  * This ioctl start the capture during streaming I/O.
  */
@@ -1313,6 +1314,26 @@ start_workq:
 	/*stream on sensor in work thread*/
 	queue_work(isp->work_queue, &isp->work);
 	isp->sw_contex.work_queued = true;
+
+	if (!isp->sw_contex.file_input) {
+		sh_css_enable_interrupt(SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF,
+					true);
+
+		atomisp_set_term_en_count(isp);
+		/*
+		 * stream on the sensor, power on is called before
+		 * work queue start
+		 */
+		ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
+				       video, s_stream, 1);
+		if (ret) {
+			mutex_lock(&isp->isp_lock);
+			atomisp_reset(isp);
+			mutex_unlock(&isp->isp_lock);
+			return -EINVAL;
+		}
+		isp->sw_contex.sensor_streaming = true;
+	}
 
 done:
 	/*
