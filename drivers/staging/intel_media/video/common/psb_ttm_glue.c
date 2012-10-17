@@ -513,15 +513,26 @@ int psb_video_getparam(struct drm_device *dev, void *data,
 					&i, sizeof(i));
 		break;
 	case IMG_VIDEO_IED_STATE:
-		if (IS_MDFLD(dev)) {
-			int enabled = dev_priv->ied_enabled ? 1 : 0;
-			ret = copy_to_user((void __user *)
+		/* query IED status by register is not safe */
+		/* need first power-on msvdx, while now only  */
+		/* schedule vxd suspend wq in interrupt handler */
+#if 0
+		int ied_enable;
+		/* VXD must be power on during query IED register */
+		if (!ospm_power_using_hw_begin(OSPM_VIDEO_DEC_ISLAND,
+				OSPM_UHB_FORCE_POWER_ON))
+			return -EBUSY;
+		/* wrong spec, IED should be located in pci device 2 */
+		if (REG_READ(PSB_IED_DRM_CNTL_STATUS) & IED_DRM_VLD)
+			ied_enable = 1;
+		else
+			ied_enable = 0;
+		PSB_DEBUG_GENERAL("ied_enable is %d.\n", ied_enable);
+		ospm_power_using_hw_end(OSPM_VIDEO_DEC_ISLAND);
+#endif
+		ret = copy_to_user((void __user *)
 				((unsigned long)arg->value),
-				&enabled, sizeof(enabled));
-		} else {
-			DRM_ERROR("IMG_VIDEO_IED_EANBLE error.\n");
-			return -EFAULT;
-		}
+				&ied_enabled, sizeof(ied_enabled));
 		break;
 
 	default:

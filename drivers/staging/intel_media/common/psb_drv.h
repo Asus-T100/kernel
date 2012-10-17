@@ -971,12 +971,6 @@ struct drm_psb_private {
 	 * HDMI info
 	 */
 	struct android_hdmi_priv *hdmi_priv;
-
-	/* indicate whether IED session is active */
-	/* Maximum one active IED session at any given time */
-	bool ied_enabled;
-	/* indicate which source sets ied_enabled flag */
-	struct file *ied_context;
 };
 
 struct psb_mmu_driver;
@@ -1065,9 +1059,6 @@ extern void psb_modeset_cleanup(struct drm_device *dev);
 /*fbdev*/
 extern int psb_fbdev_init(struct drm_device *dev);
 #endif
-/* ied session */
-extern void psb_cleanup_ied_session(struct drm_psb_private *dev_priv,
-			      struct file *filp);
 
 /* psb_bl.c */
 extern  int psb_brightness;
