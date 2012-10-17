@@ -861,18 +861,6 @@ void atomisp_work(struct work_struct *work)
 		/* restore isp normal status */
 		isp->isp_timeout = false;
 
-		if (isp->sw_contex.file_input) {
-			ret = v4l2_subdev_call(
-				isp->inputs[isp->input_curr].camera, video,
-				s_stream, 1);
-			if (ret) {
-				mutex_unlock(&isp->isp_lock);
-				v4l2_err(&atomisp_dev,
-					 "stream on input error.\n");
-				goto error;
-			}
-		}
-
 		if (isp->params.flash_state == ATOMISP_FLASH_REQUESTED ||
 		    isp->params.flash_state == ATOMISP_FLASH_DONE) {
 			if (isp->params.num_flash_frames) {

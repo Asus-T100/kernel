@@ -154,19 +154,6 @@ static int isp_subdev_unsubscribe_event(struct v4l2_subdev *sd,
 	return v4l2_event_unsubscribe(fh, sub);
 }
 
-/*
-* isp_subdev_set_stream - Enable/Disable streaming on the isp sub module
-* @sd: ISP V4L2 subdevice
-* @enable: Enable/disable stream
-*/
-static int isp_subdev_set_stream(struct v4l2_subdev *sd, int enable)
-{
-	int ret = 0;
-
-	/* handle continuous, single shot or stopped state */
-	return ret;
-}
-
 static struct v4l2_mbus_framefmt *
 __isp_subdev_get_format(struct atomisp_sub_device *isp_subdev,
 	struct v4l2_subdev_fh *fh, unsigned int pad,
@@ -457,11 +444,6 @@ static const struct v4l2_subdev_core_ops isp_subdev_v4l2_core_ops = {
 	 .unsubscribe_event = isp_subdev_unsubscribe_event,
 };
 
-/* V4L2 subdev video operations */
-static const struct v4l2_subdev_video_ops isp_subdev_v4l2_video_ops = {
-	 .s_stream = isp_subdev_set_stream,
-};
-
 /* V4L2 subdev pad operations */
 static const struct v4l2_subdev_pad_ops isp_subdev_v4l2_pad_ops = {
 	 .enum_mbus_code = isp_subdev_enum_mbus_code,
@@ -473,7 +455,6 @@ static const struct v4l2_subdev_pad_ops isp_subdev_v4l2_pad_ops = {
 /* V4L2 subdev operations */
 static const struct v4l2_subdev_ops isp_subdev_v4l2_ops = {
 	 .core = &isp_subdev_v4l2_core_ops,
-	 .video = &isp_subdev_v4l2_video_ops,
 	 .pad = &isp_subdev_v4l2_pad_ops,
 };
 
