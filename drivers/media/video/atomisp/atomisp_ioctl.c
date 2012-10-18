@@ -867,12 +867,6 @@ static int atomisp_qbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 		return -EINVAL;
 	}
 
-	/* fixing me! */
-	/* There is bug in libcamera that field v4l2_buffer->length is not
-	 * initialized.
-	 */
-	buf->length = pipe->format->out.sizeimage;
-
 	/*
 	 * For userptr type frame, we convert user space address to physic
 	 * address and reprograme out page table properly
