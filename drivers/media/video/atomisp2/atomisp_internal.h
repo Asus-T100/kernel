@@ -107,6 +107,19 @@ struct atomisp_input_subdev {
 	struct v4l2_frmsizeenum frame_size;
 };
 
+struct atomisp_freq_scaling_rule {
+	unsigned int width;
+	unsigned int height;
+	unsigned short fps;
+	unsigned int isp_freq;
+	unsigned int run_mode;
+};
+
+enum atomisp_dfs_mode {
+	ATOMISP_DFS_MODE_AUTO = 0,
+	ATOMISP_DFS_MODE_LOW,
+};
+
 struct atomisp_regs {
 	/* PCI config space info */
 	u16 pcicmdsts;
@@ -143,6 +156,7 @@ struct atomisp_sw_contex {
 	int power_state;
 	int run_mode;
 	int output_mode;
+	int running_freq;
 };
 
 /* Internal states for flash process */

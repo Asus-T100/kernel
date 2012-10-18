@@ -33,6 +33,7 @@
 #include "atomisp_internal.h"
 #include "atomisp_ioctl.h"
 #include "atomisp_subdev.h"
+#include "atomisp-regs.h"
 
 #include "hrt/hive_isp_css_mm_hrt.h"
 
@@ -378,6 +379,15 @@ int atomisp_init_struct(struct atomisp_device *isp)
 	isp->params.offline_parm.offset = 0;
 	isp->params.continuous_vf = false;
 	isp->sw_contex.file_input = 0;
+	/*
+	 * For Merrifield, frequency is scalable.
+	 * After boot-up, the default frequency is 200MHz.
+	 * For Medfield/Clovertrail, all running at 320MHz
+	 */
+	if (IS_MRFLD)
+		isp->sw_contex.running_freq = ISP_FREQ_200MHZ;
+	else
+		isp->sw_contex.running_freq = ISP_FREQ_320MHZ;
 
 	/* Add for channel */
 	if (isp->inputs[0].camera)

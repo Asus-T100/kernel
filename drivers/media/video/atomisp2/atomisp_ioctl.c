@@ -1376,6 +1376,10 @@ start_sensor:
 #endif /* CONFIG_X86_MRFLD */
 
 		atomisp_set_term_en_count(isp);
+
+		if (IS_MRFLD &&
+			atomisp_freq_scaling(isp, ATOMISP_DFS_MODE_AUTO) < 0)
+				v4l2_warn(&atomisp_dev, "dfs failed! image capture might fail due to low freq.");
 		/*
 		 * stream on the sensor, power on is called before
 		 * work queue start
@@ -1535,6 +1539,8 @@ stopsensor:
 	}
 #endif
 
+	if (IS_MRFLD && atomisp_freq_scaling(isp, ATOMISP_DFS_MODE_LOW))
+		v4l2_warn(&atomisp_dev, "DFS failed.\n");
 	/*
 	 * ISP work around, need to reset isp
 	 * Is it correct time to reset ISP when first node does streamoff?

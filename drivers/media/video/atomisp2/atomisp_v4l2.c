@@ -456,6 +456,9 @@ static int atomisp_runtime_suspend(struct device *dev)
 	if (!ret)
 		pm_qos_update_request(&isp->pm_qos, PM_QOS_DEFAULT_VALUE);
 
+	if (IS_MRFLD && atomisp_freq_scaling(isp, ATOMISP_DFS_MODE_LOW) < 0)
+		v4l2_warn(&atomisp_dev, "DFS failed.\n");
+
 	return ret;
 }
 
@@ -479,6 +482,10 @@ static int atomisp_runtime_resume(struct device *dev)
 	/*restore register values for iUnit and iUnitPHY registers*/
 	if (isp->saved_regs.pcicmdsts)
 		atomisp_restore_iunit_reg(isp);
+
+	if (IS_MRFLD && atomisp_freq_scaling(isp, ATOMISP_DFS_MODE_LOW) < 0)
+		v4l2_warn(&atomisp_dev, "DFS failed.\n");
+
 
 	return 0;
 }
