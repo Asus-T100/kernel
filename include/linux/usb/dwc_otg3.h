@@ -403,10 +403,8 @@ struct dwc_otg2 {
 	struct platform_device *gadget;
 
 	/* Charger detection */
+	struct otg_bc_cap charging_cap;
 	struct notifier_block nb;
-	enum usb_charger_type ctype;
-	int sdp_current;
-	int is_cdp;
 };
 
 #define sleep_main_thread_until_condition_timeout(otg, condition, msecs) ({ \
