@@ -584,10 +584,11 @@ struct dpst_guardband {
 #define OV_C_OFFSET		0x08000
 #define OV_OVADD		0x30000
 #define OV_DOVASTA              0x30008
-# define OV_PIPE_SELECT				(BIT6|BIT7)
-# define OV_PIPE_SELECT_POS			6
-# define OV_PIPE_A				0
-# define OV_PIPE_C				1
+#define OV_COMD			0x30168
+#define OV_PIPE_SELECT				(BIT6|BIT7)
+#define OV_PIPE_SELECT_POS			6
+#define OV_PIPE_A				0
+#define OV_PIPE_C				1
 #define OV_OGAMC5		0x30010
 #define OV_OGAMC4		0x30014
 #define OV_OGAMC3		0x30018
@@ -596,6 +597,7 @@ struct dpst_guardband {
 #define OV_OGAMC0		0x30024
 #define OVC_OVADD		0x38000
 #define OVC_DOVCSTA             0x38008
+#define OVC_COMD		0x38168
 #define OVC_OGAMC5		0x38010
 #define OVC_OGAMC4		0x38014
 #define OVC_OGAMC3		0x38018

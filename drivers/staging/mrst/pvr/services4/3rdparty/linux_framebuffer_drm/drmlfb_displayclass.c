@@ -127,12 +127,11 @@ static inline void MRSTFBFlipComplete(MRSTLFB_SWAPCHAIN *psSwapChain, MRSTLFB_VS
 
 
 static void MRSTLFBFlipOverlay(MRSTLFB_DEVINFO *psDevInfo,
-			struct intel_overlay_context *psContext, u32 pipe_mask)
+			struct intel_overlay_context *psContext)
 {
 	struct drm_device *dev;
 	struct drm_psb_private *dev_priv;
 	u32 ovadd_reg = OV_OVADD;
-	u32 uDspCntr = 0;
 
 	dev = psDevInfo->psDrmDevice;
 	dev_priv =
@@ -150,42 +149,10 @@ static void MRSTLFBFlipOverlay(MRSTLFB_DEVINFO *psDevInfo,
 	psContext->ovadd |= 1;
 
 	PSB_WVDC32(psContext->ovadd, ovadd_reg);
-
-	/* If overlay enabled while display plane doesn't,
-	 * disable display plane explicitly */
-	/* A pipe */
-	if (((psContext->pipe >> 6) & 0x3) == 0x00 &&
-		!(pipe_mask & (1 << 0))) {
-		uDspCntr = PSB_RVDC32(DSPACNTR);
-		if (uDspCntr & DISPLAY_PLANE_ENABLE) {
-			uDspCntr &= ~DISPLAY_PLANE_ENABLE;
-			PSB_WVDC32(uDspCntr, DSPACNTR);
-			/* trigger cntr register take effect */
-			PSB_WVDC32(0, DSPASURF);
-		}
-	} else if (((psContext->pipe >> 6) & 0x3) == 0x2 &&
-		!(pipe_mask & (1 << 1))) {
-		uDspCntr = PSB_RVDC32(DSPACNTR + 0x1000);
-		if (uDspCntr & DISPLAY_PLANE_ENABLE) {
-			uDspCntr &= ~DISPLAY_PLANE_ENABLE;
-			PSB_WVDC32(uDspCntr, DSPACNTR + 0x1000);
-			/* trigger cntr register take effect */
-			PSB_WVDC32(0, DSPBSURF);
-		}
-	} else if (((psContext->pipe >> 6) & 0x3) == 0x1 &&
-		!(pipe_mask & (1 << 2))) {
-		uDspCntr = PSB_RVDC32(DSPACNTR + 0x2000);
-		if (uDspCntr & DISPLAY_PLANE_ENABLE) {
-			uDspCntr &= ~DISPLAY_PLANE_ENABLE;
-			PSB_WVDC32(uDspCntr, DSPACNTR + 0x2000);
-			/* trigger cntr register take effect */
-			PSB_WVDC32(0, DSPCSURF);
-		}
-	}
 }
 
 static void MRSTLFBFlipSprite(MRSTLFB_DEVINFO *psDevInfo,
-			struct intel_sprite_context *psContext, u32 *pipe_mask)
+			struct intel_sprite_context *psContext)
 {
 	struct drm_device *dev;
 	struct drm_psb_private *dev_priv;
@@ -211,8 +178,6 @@ static void MRSTLFBFlipSprite(MRSTLFB_DEVINFO *psDevInfo,
 		pipe = 2;
 	} else
 		return;
-
-	(*pipe_mask) |= (1 << pipe);
 
 	if ((psContext->update_mask & SPRITE_UPDATE_POSITION))
 		PSB_WVDC32(psContext->pos, DSPAPOS + reg_offset);
@@ -242,7 +207,7 @@ static void MRSTLFBFlipSprite(MRSTLFB_DEVINFO *psDevInfo,
 }
 
 static void MRSTLFBFlipPrimary(MRSTLFB_DEVINFO *psDevInfo,
-			struct intel_sprite_context *psContext, u32 *pipe_mask)
+			struct intel_sprite_context *psContext)
 {
 	struct drm_device *dev;
 	struct drm_psb_private *dev_priv;
@@ -268,8 +233,6 @@ static void MRSTLFBFlipPrimary(MRSTLFB_DEVINFO *psDevInfo,
 		pipe = 2;
 	} else
 		return;
-
-	(*pipe_mask) |= (1 << pipe);
 
 	/*for HDMI only flip the surface address*/
 	if (pipe == 1)
@@ -302,6 +265,156 @@ static void MRSTLFBFlipPrimary(MRSTLFB_DEVINFO *psDevInfo,
 	}
 }
 
+static void MRSTLFBDisableUnusedSprite(MRSTLFB_DEVINFO *psDevInfo,
+		struct intel_sprite_context *psContext)
+{
+	struct drm_device *dev;
+	struct drm_psb_private *dev_priv;
+	struct mdfld_dsi_config *dsi_config = 0;
+	struct mdfld_dsi_hw_context *ctx = 0;
+	u32 reg_offset;
+	u32 val;
+	int pipe;
+
+	dev = psDevInfo->psDrmDevice;
+	dev_priv =
+		(struct drm_psb_private *)psDevInfo->psDrmDevice->dev_private;
+
+	if (psContext->index == 0)
+		reg_offset = 0;
+	else if (psContext->index == 1)
+		reg_offset = 0x1000;
+	else if (psContext->index == 2)
+		reg_offset = 0x2000;
+	else
+		return;
+
+	val = PSB_RVDC32(DSPACNTR + reg_offset);
+	if (val & DISPLAY_PLANE_ENABLE) {
+		val &= ~DISPLAY_PLANE_ENABLE;
+		PSB_WVDC32(val, DSPACNTR + reg_offset);
+	}
+}
+
+static void MRSTLFBDisableUnusedPrimary(MRSTLFB_DEVINFO *psDevInfo,
+		struct intel_sprite_context *psContext)
+{
+	struct drm_device *dev;
+	struct drm_psb_private *dev_priv;
+	struct mdfld_dsi_config *dsi_config = 0;
+	struct mdfld_dsi_hw_context *ctx = 0;
+	u32 reg_offset;
+	u32 val;
+	int pipe;
+
+	dev = psDevInfo->psDrmDevice;
+	dev_priv =
+		(struct drm_psb_private *)psDevInfo->psDrmDevice->dev_private;
+
+	if (psContext->index == 0)
+		reg_offset = 0;
+	else if (psContext->index == 1)
+		reg_offset = 0x1000;
+	else if (psContext->index == 2)
+		reg_offset = 0x2000;
+	else
+		return;
+
+	val = PSB_RVDC32(DSPACNTR + reg_offset);
+	if (val & DISPLAY_PLANE_ENABLE) {
+		val &= ~DISPLAY_PLANE_ENABLE;
+		PSB_WVDC32(val, DSPACNTR + reg_offset);
+	}
+}
+
+static IMG_BOOL IsOverlayDisabled(MRSTLFB_DEVINFO *psDevInfo,
+		struct intel_overlay_context *psContext)
+{
+	struct drm_device *dev;
+	struct drm_psb_private *dev_priv;
+	u32 ocomd_reg = OV_COMD;
+
+	dev = psDevInfo->psDrmDevice;
+	dev_priv =
+		(struct drm_psb_private *)psDevInfo->psDrmDevice->dev_private;
+
+	if (psContext->index == 1)
+		ocomd_reg = OVC_COMD;
+	else if (psContext->index > 1)
+		return IMG_TRUE;
+
+	return (PSB_RVDC32(ocomd_reg) & BIT0) ? IMG_FALSE : IMG_TRUE;
+}
+
+static void MRSTLFBDisableUnusedPlanes(MRSTLFB_DEVINFO *psDevInfo,
+		struct mdfld_plane_contexts *psContexts)
+{
+	struct intel_sprite_context *psPrimaryContext;
+	struct intel_sprite_context *psSpriteContext;
+	struct intel_overlay_context *psOverlayContext;
+	struct drm_device *dev;
+	struct drm_psb_private *dev_priv;
+	u32 ocomd_reg = 0x30168;
+	int i;
+
+	dev = psDevInfo->psDrmDevice;
+	dev_priv =
+		(struct drm_psb_private *)psDevInfo->psDrmDevice->dev_private;
+
+	if (psContexts->active_primaries || psContexts->active_sprites)
+		return;
+
+	if (!psContexts->active_overlays)
+		return;
+
+	/*check whether we can disable*/
+	for (i = 0; i < INTEL_OVERLAY_PLANE_NUM; i++) {
+		if (psContexts->active_overlays & (1 << i)) {
+			psOverlayContext = &psContexts->overlay_contexts[i];
+			if (IsOverlayDisabled(psDevInfo, psOverlayContext))
+				return;
+		}
+	}
+
+	for (i = 0; i < INTEL_SPRITE_PLANE_NUM; i++) {
+		psPrimaryContext = &psContexts->primary_contexts[i];
+		MRSTLFBDisableUnusedPrimary(psDevInfo, psPrimaryContext);
+	}
+
+	for (i = 0; i < INTEL_SPRITE_PLANE_NUM; i++) {
+		psSpriteContext = &psContexts->sprite_contexts[i];
+		MRSTLFBDisableUnusedSprite(psDevInfo, psSpriteContext);
+	}
+}
+
+static void MRSTLFBWaitOverlayFlip(MRSTLFB_DEVINFO *psDevInfo,
+		struct intel_overlay_context *psContext)
+{
+	struct drm_device *dev;
+	struct drm_psb_private *dev_priv;
+	u32 ovstat_reg = OV_DOVASTA;
+	int retry;
+
+	dev = psDevInfo->psDrmDevice;
+	dev_priv =
+		(struct drm_psb_private *)psDevInfo->psDrmDevice->dev_private;
+
+	if (psContext->index == 1)
+		ovstat_reg = OVC_DOVCSTA;
+	else if (psContext->index > 1)
+		return;
+
+	retry = 60;
+	while (--retry) {
+		if (BIT31 & PSB_RVDC32(ovstat_reg))
+			break;
+		usleep_range(500, 600);
+	}
+
+	if (!retry)
+		DRM_INFO("OVADD flip timeout!\n");
+}
+
 static IMG_BOOL MRSTLFBFlipContexts(MRSTLFB_DEVINFO *psDevInfo,
 			struct mdfld_plane_contexts *psContexts)
 {
@@ -312,7 +425,6 @@ static IMG_BOOL MRSTLFBFlipContexts(MRSTLFB_DEVINFO *psDevInfo,
 	struct drm_device *dev;
 	IMG_BOOL ret = IMG_TRUE;
 	int i;
-	u32 pipe_mask = 0;
 
 	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, MRST_TRUE)) {
 		DRM_ERROR("mdfld_dsi_dsr: failed to hw_begin\n");
@@ -327,8 +439,7 @@ static IMG_BOOL MRSTLFBFlipContexts(MRSTLFB_DEVINFO *psDevInfo,
 	for (i = 0; i < INTEL_SPRITE_PLANE_NUM; i++) {
 		if (psContexts->active_primaries & (1 << i)) {
 			psPrimaryContext = &psContexts->primary_contexts[i];
-			MRSTLFBFlipPrimary(psDevInfo, psPrimaryContext,
-				&pipe_mask);
+			MRSTLFBFlipPrimary(psDevInfo, psPrimaryContext);
 		}
 	}
 
@@ -336,8 +447,7 @@ static IMG_BOOL MRSTLFBFlipContexts(MRSTLFB_DEVINFO *psDevInfo,
 	for (i = 0; i < INTEL_SPRITE_PLANE_NUM; i++) {
 		if (psContexts->active_sprites & (1 << i)) {
 			psSpriteContext = &psContexts->sprite_contexts[i];
-			MRSTLFBFlipSprite(psDevInfo, psSpriteContext,
-				&pipe_mask);
+			MRSTLFBFlipSprite(psDevInfo, psSpriteContext);
 		}
 	}
 
@@ -345,8 +455,7 @@ static IMG_BOOL MRSTLFBFlipContexts(MRSTLFB_DEVINFO *psDevInfo,
 	for (i = 0; i < INTEL_OVERLAY_PLANE_NUM; i++) {
 		if (psContexts->active_overlays & (1 << i)) {
 			psOverlayContext = &psContexts->overlay_contexts[i];
-			MRSTLFBFlipOverlay(psDevInfo, psOverlayContext,
-				pipe_mask);
+			MRSTLFBFlipOverlay(psDevInfo, psOverlayContext);
 		}
 	}
 
@@ -360,6 +469,9 @@ static IMG_BOOL MRSTLFBFlipContexts(MRSTLFB_DEVINFO *psDevInfo,
 			ret = IMG_FALSE;
 		}
 	}
+
+	/*try to disable unused planes*/
+	MRSTLFBDisableUnusedPlanes(psDevInfo, psContexts);
 
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 	return ret;
