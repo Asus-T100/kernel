@@ -31,6 +31,7 @@
 #include <media/v4l2-subdev.h>
 
 #include "sh_css_types.h"
+#include "atomisp_internal.h"
 
 struct atomisp_device;
 struct sh_css_frame;
@@ -299,4 +300,6 @@ void atomisp_free_3a_dis_buffers(struct atomisp_device *isp);
 
 int  atomisp_flash_enable(struct atomisp_device *isp, int num_frames);
 
+int atomisp_freq_scaling(struct atomisp_device *vdev,
+			 enum atomisp_dfs_mode mode);
 #endif /* __ATOMISP_CMD_H__ */

@@ -133,6 +133,178 @@ struct atomisp_video_pipe *atomisp_to_video_pipe(struct video_device *dev)
 	    container_of(dev, struct atomisp_video_pipe, vdev);
 }
 
+/* This is just a draft rules, should be tuned when sensor is ready*/
+struct atomisp_freq_scaling_rule dfs_rules[] = {
+	{
+		.width = 1920,
+		.height = 1080,
+		.fps = 60,
+		.isp_freq = ISP_FREQ_400MHZ,
+		.run_mode = CI_MODE_VIDEO,
+	},
+	{
+		.width = ISP_FREQ_RULE_ANY,
+		.height = ISP_FREQ_RULE_ANY,
+		.fps = ISP_FREQ_RULE_ANY,
+		.isp_freq = ISP_FREQ_320MHZ,
+		.run_mode = CI_MODE_STILL_CAPTURE,
+	},
+	{
+		.width = 1280,
+		.height = 720,
+		.fps = 60,
+		.isp_freq = ISP_FREQ_320MHZ,
+		.run_mode = CI_MODE_VIDEO,
+	},
+};
+
+#define ISP_FREQ_RULE_MAX (ARRAY_SIZE(dfs_rules))
+
+static unsigned short atomisp_get_sensor_fps(struct atomisp_device *isp)
+{
+	struct v4l2_subdev_frame_interval frame_interval;
+	unsigned short fps;
+
+	if (v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
+		video, g_frame_interval, &frame_interval)) {
+		fps = 0;
+	} else {
+		if (frame_interval.interval.numerator)
+			fps = frame_interval.interval.denominator /
+			    frame_interval.interval.numerator;
+		else
+			fps = 0;
+	}
+	return fps;
+}
+/*
+ * DFS progress is shown as follows:
+ * 1. Target frequency is calculated according to FPS/Resolution/ISP running
+ * mode.
+ * 2. Ratio is calucated in formula: 2 * (HPLL / target frequency) - 1
+ * 3. Set ratio to ISPFREQ40, 1 to FREQVALID and ISPFREQGUAR40
+ *    to 200MHz in ISPSSPM1.
+ * 4. Wait for FREQVALID to be cleared by P-Unit.
+ * 5. Wait for field ISPFREQSTAT40 in ISPSSPM1 turn to ratio set in 3.
+ */
+static int write_target_freq_to_hw(int new_freq)
+{
+	int ratio, timeout;
+	u32 isp_sspm1 = 0;
+	isp_sspm1 = intel_mid_msgbus_read32(PUNIT_PORT, ISPSSPM1);
+	if (isp_sspm1 & ISP_FREQ_VALID_MASK) {
+		v4l2_dbg(3, dbg_level, &atomisp_dev,
+			  "clearing ISPSSPM1 valid bit.\n");
+		intel_mid_msgbus_write32(PUNIT_PORT, ISPSSPM1,
+				    isp_sspm1 & ~(1 << ISP_FREQ_VALID_OFFSET));
+	}
+
+	ratio = 2 * (HPLL_FREQ / new_freq) - 1;
+	isp_sspm1 = intel_mid_msgbus_read32(PUNIT_PORT, ISPSSPM1);
+	isp_sspm1 &= ~(0x1F << ISP_REQ_FREQ_OFFSET);
+	intel_mid_msgbus_write32(PUNIT_PORT, ISPSSPM1,
+				   isp_sspm1
+				   | ratio << ISP_REQ_FREQ_OFFSET
+				   | 1 << ISP_FREQ_VALID_OFFSET
+				   | 0xF << ISP_REQ_GUAR_FREQ_OFFSET);
+
+	isp_sspm1 = intel_mid_msgbus_read32(PUNIT_PORT, ISPSSPM1);
+	timeout = 10;
+	while ((isp_sspm1 & ISP_FREQ_VALID_MASK) && timeout) {
+		isp_sspm1 = intel_mid_msgbus_read32(PUNIT_PORT, ISPSSPM1);
+		v4l2_dbg(3, dbg_level, &atomisp_dev,
+			"waiting for ISPSSPM1 valid bit to be 0.\n");
+		udelay(100);
+		timeout--;
+	}
+	if (timeout == 0) {
+		v4l2_err(&atomisp_dev, "DFS failed due to HW error.\n");
+		return -EINVAL;
+	}
+
+	isp_sspm1 = intel_mid_msgbus_read32(PUNIT_PORT, ISPSSPM1);
+	timeout = 10;
+	while (((isp_sspm1 >> ISP_FREQ_STAT_OFFSET) != ratio) && timeout) {
+		isp_sspm1 = intel_mid_msgbus_read32(PUNIT_PORT, ISPSSPM1);
+		v4l2_dbg(3, dbg_level, &atomisp_dev,
+				"waiting for ISPSSPM1 status bit to be 0x%x.\n",
+				 new_freq);
+		udelay(100);
+		timeout--;
+	}
+	if (timeout == 0) {
+		v4l2_err(&atomisp_dev, "DFS target freq is rejected by HW.\n");
+		return -EINVAL;
+	}
+
+	return 0;
+}
+int atomisp_freq_scaling(struct atomisp_device *isp, enum atomisp_dfs_mode mode)
+{
+	unsigned int new_freq;
+	struct atomisp_freq_scaling_rule curr_rules;
+	int i, ret;
+	unsigned short fps = 0;
+
+	if (isp->sw_contex.power_state != ATOM_ISP_POWER_UP) {
+		v4l2_err(&atomisp_dev, "DFS cannot proceed due to no power.\n");
+		return -EINVAL;
+	}
+
+	if (mode == ATOMISP_DFS_MODE_LOW) {
+		new_freq = ISP_FREQ_200MHZ;
+		goto done;
+	}
+
+	if (!isp->capture_format) {
+		v4l2_err(&atomisp_dev, "DFS need format to choose freq setting.\n");
+		return -EINVAL;
+	}
+
+	fps = atomisp_get_sensor_fps(isp);
+	if (fps == 0)
+		return -EINVAL;
+
+	curr_rules.width = isp->capture_format->out.width;
+	curr_rules.height = isp->capture_format->out.height;
+	curr_rules.fps = fps;
+	curr_rules.run_mode = isp->sw_contex.run_mode;
+
+	/* search for the target frequency by looping freq rules*/
+	for (i = 0; i < ISP_FREQ_RULE_MAX; i++) {
+		if (curr_rules.width != dfs_rules[i].width
+			&& dfs_rules[i].width != ISP_FREQ_RULE_ANY)
+			continue;
+		if (curr_rules.height != dfs_rules[i].height
+			&& dfs_rules[i].height != ISP_FREQ_RULE_ANY)
+			continue;
+		if (curr_rules.fps != dfs_rules[i].fps
+			&& dfs_rules[i].fps != ISP_FREQ_RULE_ANY)
+			continue;
+		if (curr_rules.run_mode != dfs_rules[i].run_mode
+			&& dfs_rules[i].run_mode != ISP_FREQ_RULE_ANY)
+			continue;
+		break;
+	}
+	if (i == ISP_FREQ_RULE_MAX)
+		new_freq = ISP_FREQ_320MHZ;
+	else
+		new_freq = dfs_rules[i].isp_freq;
+
+done:
+	v4l2_dbg(3, dbg_level, &atomisp_dev,
+		 "DFS target frequency=%d.\n", new_freq);
+	if (new_freq == isp->sw_contex.running_freq) {
+		v4l2_dbg(3, dbg_level, &atomisp_dev,
+			 "ignoring DFS target freq.\n");
+		return 0;
+	}
+	ret = write_target_freq_to_hw(new_freq);
+	if (!ret)
+		isp->sw_contex.running_freq = new_freq;
+	return ret;
+}
+
 /*
  * reset and restore ISP
  */
