@@ -416,6 +416,10 @@ static int dwc_otg_notify_charger_type(struct dwc_otg2 *otg,
 		atomic_notifier_call_chain(&otg->otg.notifier,
 				USB_EVENT_CHARGER, &cap);
 		return ret;
+	} else if (state == OTG_CHR_STATE_SUSPENDED) {
+		atomic_notifier_call_chain(&otg->otg.notifier,
+				USB_EVENT_CHARGER, &cap);
+		return ret;
 	}
 
 	switch (chrg_type) {
@@ -1906,6 +1910,18 @@ static int dwc_otg_runtime_idle(struct device *dev)
 }
 static int dwc_otg_runtime_suspend(struct device *dev)
 {
+	struct dwc_otg2 *otg = the_transceiver;
+
+	if (!otg) {
+		printk(KERN_ERR "%s: dwc_otg2 haven't init.\n", __func__);
+		return 0;
+	}
+
+	if (otg->state == DWC_STATE_A_HOST) {
+		dwc_otg_notify_charger_type(otg, \
+				0, OTG_CHR_STATE_SUSPENDED);
+	}
+
 	return 0;
 }
 static int dwc_otg_runtime_resume(struct device *dev)
