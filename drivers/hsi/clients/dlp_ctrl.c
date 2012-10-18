@@ -59,6 +59,7 @@
 #define LSB(b)    ((unsigned char) ((b) &  0xF))
 #define MSB(b)    ((unsigned char) ((b) >> 4))
 #define CMD_ID(b, id) (LSB(b) | (id << 4))
+#define CMD_ID_ERR(p, err) (CMD_ID(p.data3, p.id) | err)
 
 #define DLP_CMD_TX_TIMOUT		 1000  /* 1 sec */
 #define DLP_CMD_RX_TIMOUT	     1000  /* 1 sec */
@@ -607,9 +608,10 @@ static void dlp_ctrl_complete_rx(struct hsi_msg *msg)
 {
 	struct dlp_channel *ch_ctx;
 	struct dlp_ctrl_context *ctrl_ctx = DLP_CTRL_CTX;
-	struct dlp_command_params params;
+	struct dlp_command_params params, tx_params;
 	struct dlp_command *dlp_cmd;
 	struct hsi_msg *tx_msg = NULL;
+	unsigned long flags;
 	int hsi_channel, ret, response, msg_complete;
 
 	/* Copy the reponse */
@@ -617,6 +619,7 @@ static void dlp_ctrl_complete_rx(struct hsi_msg *msg)
 	       sg_virt(msg->sgt.sgl), sizeof(struct dlp_command_params));
 
 	response = -1;
+	memcpy(&tx_params, &params, sizeof(struct dlp_command_params));
 	msg_complete = (msg->status == HSI_STATUS_COMPLETED);
 
 	/* Dump the RX command */
@@ -636,45 +639,68 @@ static void dlp_ctrl_complete_rx(struct hsi_msg *msg)
 		break;
 
 	case DLP_CMD_CREDITS:
-		if (msg_complete) {
-			unsigned long flags;
+		if (!msg_complete)
+			break;
 
-			/* Increase the CREDITS counter */
-			spin_lock_irqsave(&ch_ctx->lock, flags);
-			ch_ctx->credits += params.data3;
-			ret = ch_ctx->credits;
-			spin_unlock_irqrestore(&ch_ctx->lock, flags);
+		/* Increase the CREDITS counter */
+		spin_lock_irqsave(&ch_ctx->lock, flags);
+		ch_ctx->credits += params.data3;
+		ret = ch_ctx->credits;
+		spin_unlock_irqrestore(&ch_ctx->lock, flags);
 
-			/* Credits available ==> Notify the channel */
-			if (ch_ctx->credits_available_cb)
-				ch_ctx->credits_available_cb(ch_ctx);
+		/* Credits available ==> Notify the channel */
+		if (ch_ctx->credits_available_cb)
+			ch_ctx->credits_available_cb(ch_ctx);
 
-			response = DLP_CMD_ACK;
-		}
+		/* CREDITS => ACK */
+		response = DLP_CMD_ACK;
+
+		/* Set the response params */
+		tx_params.data1 = params.data3;
+		tx_params.data2 = 0;
+		tx_params.data3 = 0;
 		break;
 
 	case DLP_CMD_OPEN_CONN:
-		if (msg_complete) {
-			ret = ((params.data2 << 8) | params.data1);
-			response = DLP_CMD_ACK;
-			pr_debug(DRVNAME ": ch%d open_conn received (size: %d)\n",
+		if (!msg_complete)
+			break;
+
+		/* Get PDU size value */
+		ret = ((params.data2 << 8) | params.data1);
+
+		/* OPEN_CONN => ACK by default */
+		response = DLP_CMD_ACK;
+		tx_params.data3 = CMD_ID(params.data3, params.id);
+
+		pr_debug(DRVNAME ": ch%d open_conn received (size: %d)\n",
 					params.channel, ret);
 
-			/* Check the requested PDU size */
-			if (ch_ctx->rx.pdu_size != ret) {
-				pr_err(DRVNAME ": Unexpected PDU size: %d => "
-						"Expected: %d (ch: %d)\n",
-						ret,
-						ch_ctx->rx.pdu_size,
-						ch_ctx->hsi_channel);
+		/* Check the requested PDU size */
+		if (ch_ctx->rx.pdu_size != ret) {
+			pr_err(DRVNAME ": ch%d wrong pdu size %d (expected %d)\n",
+					ch_ctx->hsi_channel,
+					ret,
+					ch_ctx->rx.pdu_size);
 
-				response = DLP_CMD_NACK;
-			}
+			/* OPEN_CONN => NACK (Unexpected PDU size) */
+			response = DLP_CMD_NACK;
+
+			/* Set the response params */
+			tx_params.data1 = 0;
+			tx_params.data2 = 0;
+			tx_params.data3 = CMD_ID_ERR(params,
+					EDLP_ERR_WRONG_PDU_SIZE);
 		}
 		break;
 
 	case DLP_CMD_CLOSE_CONN:
+		/* CLOSE_CONN => ACK */
 		response = DLP_CMD_ACK;
+
+		/* Set the response params */
+		tx_params.data1 = params.data3;
+		tx_params.data2 = 0;
+		tx_params.data3 = CMD_ID(params.data3, params.id);
 		pr_debug(DRVNAME ": ch%d close_conn received\n",
 				params.channel);
 		break;
@@ -695,14 +721,11 @@ static void dlp_ctrl_complete_rx(struct hsi_msg *msg)
 	if (response == -1)
 		goto push_rx;
 
-	/* Set the response cmd_id */
-	params.data3 = CMD_ID(params.data3, params.id);
-
 	/* Allocate the eDLP response */
 	dlp_cmd = dlp_ctrl_cmd_alloc(ch_ctx,
 				     response,
-				     params.data1,
-				     params.data2, params.data3);
+				     tx_params.data1,
+				     tx_params.data2, tx_params.data3);
 	if (!dlp_cmd) {
 		pr_err(DRVNAME ": Out of memory (dlp_cmd: 0x%X)\n", response);
 		goto push_rx;
@@ -741,6 +764,11 @@ static void dlp_ctrl_complete_rx(struct hsi_msg *msg)
 		/* Delete the command */
 		kfree(dlp_cmd);
 	}
+
+	/* Dump the TX command */
+	if (EDLP_CTRL_TX_DATA_REPORT)
+		pr_debug(DRVNAME ": CTRL_TX (0x%X)\n",
+				*((u32 *)&dlp_cmd->params));
 
 push_rx:
 	/* Push the RX msg again for futur response */
@@ -824,6 +852,11 @@ static int dlp_ctrl_cmd_send(struct dlp_channel *ch_ctx,
 		goto free_tx;
 	}
 
+	/* Dump the TX command */
+	if (EDLP_CTRL_TX_DATA_REPORT)
+		pr_debug(DRVNAME ": CTRL_TX (0x%X)\n",
+				*((u32 *)&dlp_cmd->params));
+
 	/* Wait for TX msg to be sent */
 	ret = wait_for_completion_timeout(&ch_ctx->tx.cmd_xfer_done,
 					  msecs_to_jiffies(DLP_CMD_TX_TIMOUT));
@@ -843,11 +876,6 @@ static int dlp_ctrl_cmd_send(struct dlp_channel *ch_ctx,
 		ret = -EIO;
 		goto out;
 	}
-
-	/* Dump the TX command */
-	if (EDLP_CTRL_TX_DATA_REPORT)
-		pr_debug(DRVNAME ": CTRL_TX (0x%X)\n",
-				*((u32 *)&dlp_cmd->params));
 
 	/* TX OK */
    /* 1. Set the intermidiate channel state */
@@ -874,9 +902,20 @@ static int dlp_ctrl_cmd_send(struct dlp_channel *ch_ctx,
 	/* Set the expected response params */
 	expected_resp.id = response_id;
 	expected_resp.channel = ch_ctx->hsi_channel;
-	expected_resp.data1 = param1;
-	expected_resp.data2 = param2;
-	expected_resp.data3 = CMD_ID(param3, id);
+
+	switch (id) {
+	case DLP_CMD_CLOSE_CONN:
+		expected_resp.data1 = param3;
+		expected_resp.data2 = param2;
+		expected_resp.data3 = CMD_ID(param1, id);
+		break;
+
+	case DLP_CMD_OPEN_CONN:
+	default:
+		expected_resp.data1 = param1;
+		expected_resp.data2 = param2;
+		expected_resp.data3 = CMD_ID(param3, id);
+	}
 
 	/* Check the received response params */
 	ret = 0;
