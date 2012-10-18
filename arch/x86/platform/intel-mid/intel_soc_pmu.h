@@ -149,6 +149,7 @@ enum int_status {
 	SUBSYS_POW_ERR_INT = 4,
 	S0ix_MISS_INT = 5,
 	NO_ACKC6_INT = 6,
+	TRIGGERERR = 7,
 	INVALID_SRC_INT
 };
 
@@ -282,6 +283,15 @@ struct mid_pmu_stats {
 	u32 blocker_count[MAX_LSS_POSSIBLE];
 };
 
+struct device_residency {
+	u64 d0i0_entry;
+	u64 d0i3_entry;
+	u64 d0i0_acc;
+	u64 d0i3_acc;
+	u64 start;
+	pci_power_t state;
+};
+
 struct mid_pmu_dev {
 	bool suspend_started;
 	bool shutdown_started;
@@ -321,6 +331,7 @@ struct mid_pmu_dev {
 	struct semaphore scu_ready_sem;
 	struct completion set_mode_complete;
 	struct mid_pmu_stats pmu_stats[SYS_STATE_MAX];
+	struct device_residency pmu_dev_res[MAX_DEVICES];
 	struct delayed_work log_work;
 
 #ifdef LOG_PMU_EVENTS

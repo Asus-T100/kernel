@@ -52,7 +52,7 @@ static struct lss_definition lsses[] = {
 	{"Lss04", "Security", "RNG"},
 	{"Lss05", "Storage", "eMMC1 (HC0b)"},
 	{"Lss06", "USB", "USB OTG (ULPI)"},
-	{"NA", "USB", "USB HSIC (Host) (Note 5)"},
+	{"Lss07", "USB", "USB_SPH"},
 	{"Lss08", "Audio", ""},
 	{"Lss09", "Audio", ""},
 	{"Lss10", "SRAM", " SRAM CTL+SRAM_16KB"},
