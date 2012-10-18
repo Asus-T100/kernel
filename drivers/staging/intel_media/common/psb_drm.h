@@ -635,6 +635,7 @@ struct drm_psb_stolen_memory_arg {
 /*vsync operation*/
 #define VSYNC_ENABLE				(1 << 0)
 #define VSYNC_DISABLE				(1 << 1)
+#define VSYNC_WAIT				(1 << 2)
 struct intel_overlay_context {
 	uint32_t index;
 	uint32_t pipe;
@@ -715,6 +716,8 @@ struct drm_psb_register_rw_arg {
 
 	struct {
 		uint32_t pipe;
+		int vsync_pipe;
+		uint64_t timestamp;
 	} vsync;
 
 	uint32_t sprite_enable_mask;

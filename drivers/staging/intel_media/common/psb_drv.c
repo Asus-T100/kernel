@@ -1292,6 +1292,7 @@ static int psb_driver_unload(struct drm_device *dev)
 		if (dev_priv->has_global)
 			psb_ttm_global_release(dev_priv);
 #endif
+		kfree(dev_priv->vblank_count);
 		kfree(dev_priv);
 		dev->dev_private = NULL;
 	}
@@ -1311,6 +1312,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	unsigned long irqflags;
 	int ret = -ENOMEM;
 	uint32_t tt_pages;
+	int i = 0;
 
 	DRM_INFO("psb - %s\n", PSB_PACKAGE_VERSION);
 
@@ -1589,6 +1591,17 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	 */
 	drm_vblank_offdelay = 0;
 
+	DRM_INIT_WAITQUEUE(&dev_priv->vsync_queue);
+
+	dev_priv->vblank_count =
+		kmalloc(sizeof(atomic_t) * dev_priv->num_pipe, GFP_KERNEL);
+
+	if (!dev_priv->vblank_count)
+		goto out_err;
+
+	for (i = 0; i < dev_priv->num_pipe; i++)
+		atomic_set(&dev_priv->vblank_count[i], 0);
+
 	/*
 	 * Install interrupt handlers prior to powering off SGX or else we will
 	 * crash.
@@ -1637,8 +1650,10 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 
 	/*must be after mrst_get_fuse_settings()*/
 	ret = psb_backlight_init(dev);
-	if (ret)
+	if (ret) {
+		kfree(dev_priv->vblank_count);
 		return ret;
+	}
 
 #ifdef CONFIG_MDFD_HDMI
 	/* initialize HDMI Hotplug interrupt forwarding
@@ -2888,6 +2903,12 @@ static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 	struct mdfld_dsi_hw_registers *regs;
 	struct mdfld_dsi_hw_context *ctx;
 	uint32_t pipe;
+	unsigned long irq_flags;
+	uint32_t vsync_enable = 0;
+	u32 vbl_count = 0;
+	struct timespec now;
+	s64 nsecs = 0;
+	int ret = 0;
 
 	mutex_lock(&dev_priv->overlay_lock);
 	if (arg->display_write_mask != 0) {
@@ -2999,10 +3020,43 @@ static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 
 	if (arg->vsync_operation_mask) {
 		pipe = arg->vsync.pipe;
+
+		if (arg->vsync_operation_mask & VSYNC_WAIT) {
+			vbl_count = intel_vblank_count(dev, pipe);
+
+			spin_lock_irqsave(&dev_priv->irqmask_lock, irq_flags);
+			vsync_enable = dev_priv->pipestat[pipe] &
+				(PIPE_TE_ENABLE | PIPE_VBLANK_INTERRUPT_ENABLE);
+			spin_unlock_irqrestore(&dev_priv->irqmask_lock,
+					irq_flags);
+
+			if (vsync_enable) {
+				DRM_WAIT_ON(ret, dev_priv->vsync_queue,
+						3 * DRM_HZ,
+						(intel_vblank_count(dev,
+								    pipe) !=
+						 vbl_count));
+
+				if (ret == -EINTR)
+					DRM_ERROR("Pipe %d vsync time out\n",
+							pipe);
+			}
+
+			getrawmonotonic(&now);
+			nsecs = timespec_to_ns(&now);
+
+			arg->vsync.timestamp = (uint64_t)nsecs;
+
+			mutex_unlock(&dev_priv->overlay_lock);
+			return 0;
+		}
+
 		dsi_config = dev_priv->dsi_configs[0];
 
-		if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, true))
+		if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, true)) {
+			mutex_unlock(&dev_priv->overlay_lock);
 			return -EINVAL;
+		}
 
 		if (arg->vsync_operation_mask & VSYNC_ENABLE) {
 			/*enable vblank/TE*/
@@ -3076,7 +3130,6 @@ static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 
 			if (arg->overlay_write_mask & OV_REGRWBITS_OVADD) {
 				if (arg->overlay.buffer_handle) {
-					int ret;
 					ret = validate_overlay_register_buffer(
 						file_priv,
 						&arg->overlay.OVADD,
@@ -3145,7 +3198,6 @@ static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 			}
 			if (arg->overlay_write_mask & OVC_REGRWBITS_OVADD) {
 				if (arg->overlay.buffer_handle) {
-					int ret;
 					ret = validate_overlay_register_buffer(
 						file_priv,
 						&arg->overlay.OVADD,

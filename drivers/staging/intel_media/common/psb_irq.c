@@ -124,6 +124,10 @@ psb_disable_pipestat(struct drm_psb_private *dev_priv, int pipe, u32 mask)
 		u32 reg = psb_pipestat(pipe);
 		dev_priv->pipestat[pipe] &= ~mask;
 		if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, OSPM_UHB_ONLY_IF_ON)) {
+			if ((mask == PIPE_VBLANK_INTERRUPT_ENABLE) ||
+					(mask == PIPE_TE_ENABLE))
+				wake_up_interruptible(&dev_priv->vsync_queue);
+
 			u32 writeVal = PSB_RVDC32(reg);
 			/* Don't clear other interrupts */
 			writeVal &= (PIPE_EVENT_MASK | PIPE_VBLANK_MASK);
@@ -294,6 +298,14 @@ static void mid_check_vblank(struct drm_device *dev, uint32_t pipe)
 	spin_unlock_irqrestore(&dev_priv->irqmask_lock, irqflags);
 }
 
+u32 intel_vblank_count(struct drm_device *dev, int pipe)
+{
+	struct drm_psb_private *dev_priv =
+		(struct drm_psb_private *)dev->dev_private;
+
+	return atomic_read(&dev_priv->vblank_count[pipe]);
+}
+
 /**
  * Display controller interrupt handler for vsync/vblank.
  *
@@ -306,6 +318,8 @@ static void mid_vblank_handler(struct drm_device *dev, uint32_t pipe)
 	/*if (pipe == 1)
 		psb_flip_hdmi(dev, pipe);*/
 	drm_handle_vblank(dev, pipe);
+
+	atomic_inc(&dev_priv->vblank_count[pipe]);
 
 	/* Record surface address to be flipped on MIPI, when HDMI vblank came
 	 * This information is later used in the MIPI vblank/TE handler to
@@ -367,20 +381,11 @@ void psb_te_timer_func(unsigned long data)
 
 static void mdfld_vsync_event(struct drm_device *dev, uint32_t pipe)
 {
-	char event_string[32];
-	char pipe_string[32];
-	char *envp[] = { event_string, pipe_string, NULL };
-	struct timespec now;
-	s64 nsecs = 0;
+	struct drm_psb_private *dev_priv =
+		(struct drm_psb_private *)dev->dev_private;
 
-	getrawmonotonic(&now);
-
-	nsecs = timespec_to_ns(&now);
-
-	sprintf(event_string, "VSYNC=%lld\n", nsecs);
-	sprintf(pipe_string, "PIPE=%d\n", pipe);
-
-	kobject_uevent_env(&dev->primary->kdev.kobj, KOBJ_CHANGE, envp);
+	if (dev_priv)
+		wake_up_interruptible(&dev_priv->vsync_queue);
 }
 
 void mdfld_vsync_event_work(struct work_struct *work)
@@ -457,6 +462,8 @@ void mdfld_te_handler_work(struct work_struct *work)
 	mdfld_vsync_event(dev, pipe);
 
 	drm_handle_vblank(dev, pipe);
+
+	atomic_inc(&dev_priv->vblank_count[pipe]);
 
 	if (dev_priv->b_async_flip_enable) {
 		mdfld_dsi_dsr_report_te(dev_priv->dsi_configs[0]);
