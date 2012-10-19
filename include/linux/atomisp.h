@@ -674,18 +674,8 @@ struct v4l2_private_int_data {
 /* Request a number of flash-exposed frames. The frame status can be
  * found in the reserved field in the v4l2_buffer struct. */
 #define V4L2_CID_REQUEST_FLASH             (V4L2_CID_CAMERA_LASTP1 + 3)
-/* Flash intensity, in percentage. */
-#define V4L2_CID_FLASH_INTENSITY           (V4L2_CID_CAMERA_LASTP1 + 4)
 /* Query flash driver status. See enum atomisp_flash_status above. */
 #define V4L2_CID_FLASH_STATUS              (V4L2_CID_CAMERA_LASTP1 + 5)
-/* Torch intensity, in percentage. */
-#define V4L2_CID_FLASH_TORCH_INTENSITY     (V4L2_CID_CAMERA_LASTP1 + 6)
-/* Indicator intensity, in percentage. */
-#define V4L2_CID_FLASH_INDICATOR_INTENSITY (V4L2_CID_CAMERA_LASTP1 + 7)
-/* Flash timeout (in ms). */
-#define V4L2_CID_FLASH_TIMEOUT             (V4L2_CID_CAMERA_LASTP1 + 8)
-/* Enable (1) or disable (0) the flash (only valid in FLASH mode). */
-#define V4L2_CID_FLASH_STROBE              (V4L2_CID_CAMERA_LASTP1 + 9)
 /* Set the flash mode (see enum atomisp_flash_mode) */
 #define V4L2_CID_FLASH_MODE                (V4L2_CID_CAMERA_LASTP1 + 10)
 

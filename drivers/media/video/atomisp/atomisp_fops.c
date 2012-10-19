@@ -60,14 +60,15 @@ extern void flush_acc_api_arguments(struct sh_css_acc_fw *fw);
 /*
  * Videobuf2 ops
  */
-static int atomisp_queue_setup(struct vb2_queue *vq, unsigned int *nbuffers,
-				unsigned int *nplanes, unsigned long sizes[],
-				void *alloc_ctxs[])
+static int atomisp_queue_setup(struct vb2_queue *vq,
+			       const struct v4l2_format *fmt,
+			       unsigned int *nbuffers,
+			       unsigned int *nplanes, unsigned int sizes[],
+			       void *alloc_ctxs[])
 {
 	struct atomisp_video_pipe *pipe = vq->drv_priv;
-#ifdef MULTI_PLANE_SUPPORT
 	int i;
-#endif
+
 	/*
 	 * if number of buffers < 1, driver cannot handle them, need to
 	 * set number of buffers afresh.
@@ -76,9 +77,12 @@ static int atomisp_queue_setup(struct vb2_queue *vq, unsigned int *nbuffers,
 			  (unsigned int)VIDEO_MAX_FRAME);
 	/* currently only one plane gets supported */
 	*nplanes = 1;
-#ifdef MULTI_PLANE_SUPPORT
+
 	for (i = 0; i < *nplanes; i++) {
-		sizes[i] = pipe->format->out.sizeimage;
+		if (fmt)
+			sizes[i] = fmt->fmt.pix.sizeimage;
+		else
+			sizes[i] = pipe->format->out.sizeimage;
 
 		/* alloc_ctxs is used to store allocator private data */
 		if (pipe->is_main)
@@ -86,15 +90,7 @@ static int atomisp_queue_setup(struct vb2_queue *vq, unsigned int *nbuffers,
 		else
 			alloc_ctxs[i] = &pipe->vf_info;
 	}
-#else
-	sizes[0] = pipe->format->out.sizeimage;
 
-	/* alloc_ctxs is used to store allocator private data */
-	if (pipe->is_main)
-		alloc_ctxs[0] = &pipe->main_info;
-	else
-		alloc_ctxs[0] = &pipe->vf_info;
-#endif
 	return 0;
 }
 
@@ -116,7 +112,7 @@ static void atomisp_buf_queue(struct vb2_buffer *vb)
 	wake_up(&pipe->vb_queued);
 }
 
-static int atomisp_start_streaming(struct vb2_queue *vq)
+static int atomisp_start_streaming(struct vb2_queue *vq, unsigned int count)
 {
 	struct atomisp_video_pipe *pipe = vq->drv_priv;
 	struct video_device *vdev = &pipe->vdev;
@@ -223,15 +219,15 @@ static int atomisp_stop_streaming(struct vb2_queue *vq)
 }
 
 static int atomisp_queue_setup_output(struct vb2_queue *vq,
+				      const struct v4l2_format *fmt,
 				      unsigned int *nbuffers,
 				      unsigned int *nplanes,
-				      unsigned long sizes[],
+				      unsigned int sizes[],
 				      void *alloc_ctxs[])
 {
 	struct atomisp_video_pipe *pipe = vq->drv_priv;
-#ifdef MULTI_PLANE_SUPPORT
 	int i;
-#endif
+
 	/*
 	 * if number of buffers < 1, driver cannot handle them, need to
 	 * set number of buffers afresh.
@@ -240,12 +236,14 @@ static int atomisp_queue_setup_output(struct vb2_queue *vq,
 			  (unsigned int)VIDEO_MAX_FRAME);
 	/* currently only one plane gets supported */
 	*nplanes = 1;
-#ifdef MULTI_PLANE_SUPPORT
-	for (i = 0; i < *nplanes; i++)
-		sizes[i] = pipe->out_fmt->imagesize;
-#else
-		sizes[0] = pipe->out_fmt->imagesize;
-#endif
+
+	for (i = 0; i < *nplanes; i++) {
+		if (fmt)
+			sizes[i] = fmt->fmt.pix.sizeimage;
+		else
+			sizes[i] = pipe->out_fmt->imagesize;
+	}
+
 	return 0;
 }
 
