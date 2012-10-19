@@ -18,8 +18,14 @@
 #include <linux/wlan_plat.h>
 #include <linux/interrupt.h>
 #include "platform_bcm43xx.h"
+#include <linux/mmc/sdhci.h>
 
-/***************/
+static int sdhci_quirk;
+
+int bcmdhd_get_sdhci_quirk(void)
+{
+	return sdhci_quirk;
+}
 
 static int bcmdhd_set_power(int on)
 {
@@ -53,8 +59,6 @@ static struct platform_device bcmdhd_device = {
 	.num_resources = ARRAY_SIZE(bcmdhd_res),
 	.resource = bcmdhd_res,
 };
-
-/********/
 
 static struct regulator_consumer_supply bcm43xx_vmmc3_supply = {
 	.supply		= "vmmc",
@@ -134,6 +138,8 @@ void __init bcm43xx_platform_data_init_post_scu(void *info)
 void __init *bcm43xx_platform_data(void *info)
 {
 	struct sd_board_info *sd_info;
+
+	sdhci_quirk = SDHCI_QUIRK_ADVERTISE_2V0_FORCE_1V8;
 
 	sd_info = kmemdup(info, sizeof(*sd_info), GFP_KERNEL);
 	if (!sd_info) {

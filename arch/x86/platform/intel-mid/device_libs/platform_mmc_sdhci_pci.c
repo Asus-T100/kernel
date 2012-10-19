@@ -19,11 +19,19 @@
 static struct sdhci_pci_data mfd_clv_emmc0_data;
 static struct sdhci_pci_data mfd_clv_emmc1_data;
 static struct sdhci_pci_data mfd_clv_sd_data;
+static struct sdhci_pci_data mfd_clv_sdio_data;
+
+static struct sdhci_pci_data mfld_sdio_data;
 
 static struct sdhci_pci_data mrfl_emmc0_data;
 static struct sdhci_pci_data mrfl_emmc1_data;
 static struct sdhci_pci_data mrfl_sd_data;
 static struct sdhci_pci_data mrfl_sdio_data;
+
+int bcmdhd_get_sdhci_quirk(void)
+{
+	return 0;
+}
 
 static struct sdhci_pci_data *sdhci_host_get_data(struct pci_dev *pdev,
 							int slotno)
@@ -45,9 +53,15 @@ static struct sdhci_pci_data *sdhci_host_get_data(struct pci_dev *pdev,
 	case PCI_DEVICE_ID_INTEL_CLV_EMMC1:
 		pdata = &mfd_clv_emmc1_data;
 		break;
+	case PCI_DEVICE_ID_INTEL_MFD_SDIO1:
+		pdata = &mfld_sdio_data;
+		break;
 	case PCI_DEVICE_ID_INTEL_MFD_SD:
 	case PCI_DEVICE_ID_INTEL_CLV_SDIO0:
 		pdata = &mfd_clv_sd_data;
+		break;
+	case PCI_DEVICE_ID_INTEL_CLV_SDIO1:
+		pdata = &mfd_clv_sdio_data;
 		break;
 	case PCI_DEVICE_ID_INTEL_MRFL_MMC:
 		switch (PCI_FUNC(pdev->devfn)) {
@@ -103,6 +117,8 @@ static int __init sdhci_pci_platform_data_init(void)
 	memset(&mfd_clv_emmc0_data, 0, sizeof(struct sdhci_pci_data));
 	memset(&mfd_clv_emmc1_data, 0, sizeof(struct sdhci_pci_data));
 	memset(&mfd_clv_sd_data, 0, sizeof(struct sdhci_pci_data));
+	memset(&mfd_clv_sdio_data, 0, sizeof(struct sdhci_pci_data));
+
 
 	mfd_clv_emmc0_data.rst_n_gpio = get_gpio_by_name("emmc0_rst");
 	mfd_clv_emmc0_data.cd_gpio = -EINVAL;
@@ -113,6 +129,10 @@ static int __init sdhci_pci_platform_data_init(void)
 	mfd_clv_sd_data.rst_n_gpio = -EINVAL;
 	mfd_clv_sd_data.cd_gpio = get_gpio_by_name("sd_cd_pin");
 	mfd_clv_sd_data.cd_gpio = 69;
+
+	mfd_clv_sdio_data.rst_n_gpio = -EINVAL;
+	mfd_clv_sdio_data.cd_gpio = -EINVAL;
+	mfd_clv_sdio_data.quirks = bcmdhd_get_sdhci_quirk();
 
 	memset(&mrfl_emmc0_data, 0, sizeof(struct sdhci_pci_data));
 	memset(&mrfl_emmc1_data, 0, sizeof(struct sdhci_pci_data));
@@ -136,10 +156,16 @@ static int __init sdhci_pci_platform_data_init(void)
 	mrfl_sdio_data.cd_gpio = -EINVAL;
 	mrfl_sdio_data.setup = mrfl_sdio_setup;
 	mrfl_sdio_data.cleanup = mrfl_sdio_cleanup;
+	mrfl_sdio_data.quirks = bcmdhd_get_sdhci_quirk();
+
+	memset(&mfld_sdio_data, 0, sizeof(struct sdhci_pci_data));
+
+	mfld_sdio_data.rst_n_gpio = -EINVAL;
+	mfld_sdio_data.cd_gpio = -EINVAL;
+	mfld_sdio_data.quirks = bcmdhd_get_sdhci_quirk();
 
 	sdhci_pci_get_data = sdhci_host_get_data;
 
 	return 0;
 }
 fs_initcall(sdhci_pci_platform_data_init);
-

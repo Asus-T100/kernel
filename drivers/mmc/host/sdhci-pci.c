@@ -1480,6 +1480,11 @@ static struct sdhci_pci_slot * __devinit sdhci_pci_probe_slot(
 	if (*sdhci_pci_get_data)
 		slot->data = sdhci_pci_get_data(pdev, slotno);
 
+	host->hw_name = "PCI";
+	host->ops = &sdhci_pci_ops;
+	host->quirks = chip->quirks;
+	host->quirks2 = chip->quirks2;
+
 	if (slot->data) {
 		if (slot->data->setup) {
 			ret = slot->data->setup(slot->data);
@@ -1490,12 +1495,10 @@ static struct sdhci_pci_slot * __devinit sdhci_pci_probe_slot(
 		}
 		slot->rst_n_gpio = slot->data->rst_n_gpio;
 		slot->cd_gpio = slot->data->cd_gpio;
-	}
 
-	host->hw_name = "PCI";
-	host->ops = &sdhci_pci_ops;
-	host->quirks = chip->quirks;
-	host->quirks2 = chip->quirks2;
+		if (slot->data->quirks)
+			host->quirks2 |= slot->data->quirks;
+	}
 
 	host->irq = pdev->irq;
 

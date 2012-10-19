@@ -97,6 +97,8 @@ struct sdhci_host {
 #define SDHCI_QUIRK2_V2_0_SUPPORT_DDR50			(1<<2)
 /* Controller has bug when enabling Auto CMD23 */
 #define SDHCI_QUIRK2_BROKEN_AUTO_CMD23			(1<<3)
+/* BRCM voltage support: advertise 2.0v support and force using 1.8v instead */
+#define SDHCI_QUIRK_ADVERTISE_2V0_FORCE_1V8			(1<<4)
 
 	int irq;		/* Device IRQ */
 	void __iomem *ioaddr;	/* Mapped address */

@@ -12,4 +12,6 @@
 #ifndef _PLATFORM_MMC_SDHCI_PCI_H_
 #define _PLATFORM_MMC_SDHCI_PCI_H_
 
+int bcmdhd_get_sdhci_quirk(void) __attribute__((weak));
+
 #endif

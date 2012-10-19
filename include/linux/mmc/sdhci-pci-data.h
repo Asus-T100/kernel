@@ -8,6 +8,7 @@ struct sdhci_pci_data {
 	int		slotno;
 	int		rst_n_gpio; /* Set to -EINVAL if unused */
 	int		cd_gpio;    /* Set to -EINVAL if unused */
+	int		quirks;
 	int		(*setup)(struct sdhci_pci_data *data);
 	void		(*cleanup)(struct sdhci_pci_data *data);
 };
