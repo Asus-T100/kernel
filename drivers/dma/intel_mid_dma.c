@@ -379,15 +379,20 @@ static void midc_descriptor_complete(struct intel_mid_dma_chan *midc,
 		else
 			desc->current_lli = 0;
 	}
-	spin_unlock_bh(&midc->lock);
 	if (midc->raw_tfr) {
+		list_del(&desc->desc_node);
+		spin_unlock_bh(&midc->lock);
 		desc->status = DMA_SUCCESS;
 		if (desc->lli != NULL && desc->lli->llp != NULL) {
 			pci_pool_free(desc->lli_pool, desc->lli,
 						desc->lli_phys);
 		}
-		list_move(&desc->desc_node, &midc->free_list);
+		spin_lock_bh(&midc->lock);
+		list_add(&desc->desc_node, &midc->free_list);
+		spin_unlock_bh(&midc->lock);
 		midc->busy = false;
+	} else {
+		spin_unlock_bh(&midc->lock);
 	}
 	if (callback_txd) {
 		pr_debug("MDMA: TXD callback set ... calling\n");
@@ -648,15 +653,19 @@ static int intel_mid_dma_device_control(struct dma_chan *chan,
 
 	midc->descs_allocated = 0;
 
-	spin_unlock_bh(&midc->lock);
 	list_for_each_entry_safe(desc, _desc, &midc->active_list, desc_node) {
+		list_del(&desc->desc_node);
+		spin_unlock_bh(&midc->lock);
 		if (desc->lli != NULL) {
 			pci_pool_free(desc->lli_pool, desc->lli,
 						desc->lli_phys);
 			pci_pool_destroy(desc->lli_pool);
 		}
-		list_move(&desc->desc_node, &midc->free_list);
+		spin_lock_bh(&midc->lock);
+		list_add(&desc->desc_node, &midc->free_list);
 	}
+	spin_unlock_bh(&midc->lock);
+
 	return 0;
 }
 
