@@ -372,6 +372,8 @@ assert(info != NULL);
 		/* we also store the raw downscaled width. This is used for
 		 * digital zoom in preview to zoom only on the width that
 		 * we actually want to keep, not on the aligned width. */
+			if (out_info == NULL) 
+				return sh_css_err_internal_error;
 			binary->vf_frame_info.width =
 				(out_info->width >> vf_log_ds);
 			binary->vf_frame_info.padded_width = vf_out_width;
@@ -536,9 +538,10 @@ sh_css_binary_find(struct sh_css_binary_descr *descr,
 		sh_css_get_zoom_factor(&dx, &dy);
 		sh_css_video_get_dis_envelope(&dvs_envelope_width,
 					      &dvs_envelope_height);
-
+		sh_css_video_get_enable_dz(&need_dz);
 		/* Video is the only mode that has a nodz variant. */
-		need_dz = ((dx != HRT_GDC_N) || (dy != HRT_GDC_N));
+		if (!need_dz)
+			need_dz = ((dx != HRT_GDC_N) || (dy != HRT_GDC_N));
 		need_dvs = dvs_envelope_width || dvs_envelope_height;
 	}
 

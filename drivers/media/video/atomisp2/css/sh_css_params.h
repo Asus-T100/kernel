@@ -256,6 +256,13 @@ sh_css_set_ctc_config(const struct sh_css_ctc_config *ctc_config);
 void
 sh_css_get_ctc_config(const struct sh_css_ctc_config **ctc_config);
 
+/* Anti-Aliasing */
+void
+sh_css_set_aa_config(const struct sh_css_aa_config *aa_config);
+
+void
+sh_css_get_aa_config(const struct sh_css_aa_config **aa_config);
+
 /* Gamma Correction */
 void
 sh_css_set_gc_config(const struct sh_css_gc_config *gc_config);

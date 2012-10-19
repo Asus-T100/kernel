@@ -2076,6 +2076,24 @@ sh_css_video_set_dis_envelope(unsigned int width, unsigned int height);
 void
 sh_css_video_get_dis_envelope(unsigned int *width, unsigned int *height);
 
+/** @brief Set the flag for using DZ.
+ *
+ * @param[in]	enable_dz	Enable digital zoom.
+ *
+ * Set the flag for using digital zoom for video. By default this is enabled.
+ */
+void
+sh_css_video_set_enable_dz(bool enable_dz);
+
+/** @brief Retrieve the flag for using DZ.
+ *
+ * @param[out]	enable_dz	Digital zoom enabled.
+ *
+ * Retrieve the flag for using digital zoom for video. By default it is enabled.
+ */
+void
+sh_css_video_get_enable_dz(bool *enable_dz);
+
 /** @brief Get the video output information
  *
  * @param[out]	info	Pointer to the output information.

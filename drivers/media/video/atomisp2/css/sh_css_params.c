@@ -121,20 +121,13 @@
 #define DVS_INPUT_BYTES_PER_PIXEL (1)
 #define XMEM_ALIGN_LOG2 (5)
 
-#define DVS_6AXIS_COORDS_ELEMS CEIL_MUL(sizeof(struct s_isp_dvs_6axis_config) \
+#define DVS_6AXIS_COORDS_ELEMS CEIL_MUL(sizeof(gdc_warp_param_mem_t) \
 					, HIVE_ISP_DDR_WORD_BYTES)
 
 #define DVS_6AXIS_BYTES(binary) \
 	(DVS_6AXIS_COORDS_ELEMS \
 	 * (binary)->out_frame_info.width / DVS_BLOCKDIM_X \
 	 * (binary)->out_frame_info.height) / (DVS_BLOCKDIM_Y)
-struct s_isp_dvs_6axis_config {
-	unsigned int in_addr_offset;
-	unsigned int in_block_width;
-	unsigned int in_block_height;
-	unsigned int relative_x[4];
-	unsigned int relative_y[4];
-};
 
 
 static struct sh_css_isp_params isp_parameters;
@@ -165,6 +158,7 @@ static const struct sh_css_fc_config     *fc_config;
 static const struct sh_css_cnr_config    *cnr_config;
 static const struct sh_css_macc_config   *macc_config;
 static const struct sh_css_ctc_config    *ctc_config;
+static const struct sh_css_aa_config     *aa_config;
 static const struct sh_css_rgb_gamma_table     *r_gamma_table;
 static const struct sh_css_rgb_gamma_table     *g_gamma_table;
 static const struct sh_css_rgb_gamma_table     *b_gamma_table;
@@ -199,6 +193,7 @@ static bool isp_params_changed,
 	    cnr_config_changed,
 	    macc_config_changed,
 	    ctc_config_changed,
+	    aa_config_changed,
 	    r_gamma_table_changed,
 	    g_gamma_table_changed,
 	    b_gamma_table_changed,
@@ -1723,17 +1718,21 @@ static const struct sh_css_macc_config disabled_macc_config = {
 };
 
 static const struct sh_css_ctc_config default_ctc_config = {
-	4096,
-	4096,
-	4096,
-	4096,
-	4096,
-	4096,
+	((1 << SH_CSS_CTC_COEF_SHIFT) + 1) / 2,		/* 0.5 */
+	((1 << SH_CSS_CTC_COEF_SHIFT) + 1) / 2,		/* 0.5 */
+	((1 << SH_CSS_CTC_COEF_SHIFT) + 1) / 2,		/* 0.5 */
+	((1 << SH_CSS_CTC_COEF_SHIFT) + 1) / 2,		/* 0.5 */
+	((1 << SH_CSS_CTC_COEF_SHIFT) + 1) / 2,		/* 0.5 */
+	((1 << SH_CSS_CTC_COEF_SHIFT) + 1) / 2,		/* 0.5 */
 	1,
-	0,
-	0,
-	0,
-	0,
+	SH_CSS_BAYER_MAXVAL / 5,	/* To be implemented */
+	SH_CSS_BAYER_MAXVAL * 2 / 5,	/* To be implemented */
+	SH_CSS_BAYER_MAXVAL * 3 / 5,	/* To be implemented */
+	SH_CSS_BAYER_MAXVAL * 4 / 5,	/* To be implemented */
+};
+
+static const struct sh_css_aa_config default_aa_config = {
+	8191,
 };
 
 static const struct sh_css_yuv2rgb_cc_config
@@ -2022,7 +2021,7 @@ convert_coords_to_ispparams(hrt_vaddress ddr_addr,
 		unsigned int uv_flag)
 {
 	unsigned int i, j;
-	struct s_isp_dvs_6axis_config s;
+	gdc_warp_param_mem_t s;
 	unsigned int x00, x01, x10, x11,
 		     y00, y01, y10, y11;
 
@@ -2084,15 +2083,15 @@ convert_coords_to_ispparams(hrt_vaddress ddr_addr,
 			topleft_x_frac = topleft_x << (DVS_COORD_FRAC_BITS);
 			topleft_y_frac = topleft_y << (DVS_COORD_FRAC_BITS);
 
-			s.relative_x[0] = x00 - topleft_x_frac;
-			s.relative_x[1] = x01 - topleft_x_frac;
-			s.relative_x[2] = x10 - topleft_x_frac;
-			s.relative_x[3] = x11 - topleft_x_frac;
+			s.p0_x = x00 - topleft_x_frac;
+			s.p1_x = x01 - topleft_x_frac;
+			s.p2_x = x10 - topleft_x_frac;
+			s.p3_x = x11 - topleft_x_frac;
 
-			s.relative_y[0] = y00 - topleft_y_frac;
-			s.relative_y[1] = y01 - topleft_y_frac;
-			s.relative_y[2] = y10 - topleft_y_frac;
-			s.relative_y[3] = y11 - topleft_y_frac;
+			s.p0_y = y00 - topleft_y_frac;
+			s.p1_y = y01 - topleft_y_frac;
+			s.p2_y = y10 - topleft_y_frac;
+			s.p3_y = y11 - topleft_y_frac;
 #if 0
 			printf("j: %d\ti:%d\n", j, i);
 			printf("offset: %d\n", s.in_addr_offset);
@@ -2118,7 +2117,7 @@ convert_coords_to_ispparams(hrt_vaddress ddr_addr,
 			/* HMM STORE the struct "s" */
 			mmgr_store(ddr_addr,
 				   (void *)(&s),
-				   sizeof(struct s_isp_dvs_6axis_config));
+				   sizeof(gdc_warp_param_mem_t));
 			ddr_addr += DVS_6AXIS_COORDS_ELEMS;
 		}
 	}
@@ -2654,15 +2653,18 @@ sh_css_process_zoom_and_motion(
 static void
 sh_css_process_ynr(void)
 {
+#if SH_CSS_ISP_PARAMS_VERSION == 2
 	isp_parameters.yee_edge_sense_gain_0   = ynr_config->edge_sense_gain_0;
 	isp_parameters.yee_edge_sense_gain_1   = ynr_config->edge_sense_gain_1;
 	isp_parameters.yee_corner_sense_gain_0 = ynr_config->corner_sense_gain_0;
 	isp_parameters.yee_corner_sense_gain_1 = ynr_config->corner_sense_gain_1;
+#endif /* SH_CSS_ISP_PARAMS_VERSION == 2 */
 }
 
 static void
 sh_css_process_fc(void)
 {
+#if SH_CSS_ISP_PARAMS_VERSION == 2
 	isp_parameters.fc_gain_exp   = fc_config->gain_exp;
 
 	isp_parameters.fc_gain_pos_0 = fc_config->gain_pos_0;
@@ -2674,11 +2676,13 @@ sh_css_process_fc(void)
 	isp_parameters.fc_crop_pos_1 = fc_config->crop_pos_1;
 	isp_parameters.fc_crop_neg_0 = fc_config->crop_neg_0;
 	isp_parameters.fc_crop_neg_1 = fc_config->crop_neg_1;
+#endif /* SH_CSS_ISP_PARAMS_VERSION == 2 */
 }
 
 static void
 sh_css_process_cnr(void)
 {
+#if SH_CSS_ISP_PARAMS_VERSION == 2
 	isp_parameters.cnr_coring_u = cnr_config->coring_u;
 	isp_parameters.cnr_coring_v = cnr_config->coring_v;
 	isp_parameters.cnr_sense_gain_vy = cnr_config->sense_gain_vy;
@@ -2687,6 +2691,7 @@ sh_css_process_cnr(void)
 	isp_parameters.cnr_sense_gain_hy = cnr_config->sense_gain_hy;
 	isp_parameters.cnr_sense_gain_hu = cnr_config->sense_gain_hu;
 	isp_parameters.cnr_sense_gain_hv = cnr_config->sense_gain_hv;
+#endif /* SH_CSS_ISP_PARAMS_VERSION == 2 */
 }
 
 static void
@@ -2695,9 +2700,24 @@ sh_css_process_macc(void)
 	isp_parameters.exp = macc_config->exp;
 }
 
+#if SH_CSS_ISP_PARAMS_VERSION == 2
+static void
+ctc_gradient(int *int_part, int *frc_part,
+	int y1, int y0, int x1, int x0)
+{
+	int dy = y1 - y0;
+	int dx = x1 - x0;
+	int dydx = dy / dx;
+
+	*int_part = dydx;
+	*frc_part = ((dy - dydx * dx) << SH_CSS_CTC_DYDX_SHIFT) / dx;
+}
+#endif /* SH_CSS_ISP_PARAMS_VERSION == 2 */
+
 static void
 sh_css_process_ctc(void)
 {
+#if SH_CSS_ISP_PARAMS_VERSION == 2
 	isp_parameters.ctc_y0 = ctc_config->y0;
 	isp_parameters.ctc_y1 = ctc_config->y1;
 	isp_parameters.ctc_y2 = ctc_config->y2;
@@ -2711,11 +2731,46 @@ sh_css_process_ctc(void)
 	isp_parameters.ctc_x2 = ctc_config->x2;
 	isp_parameters.ctc_x3 = ctc_config->x3;
 	isp_parameters.ctc_x4 = ctc_config->x4;
+
+	ctc_gradient(&isp_parameters.ctc_dydx0_int,
+		     &isp_parameters.ctc_dydx0_frc,
+		     ctc_config->y1, ctc_config->y0,
+		     ctc_config->x1, 0);
+
+	ctc_gradient(&isp_parameters.ctc_dydx1_int,
+		     &isp_parameters.ctc_dydx1_frc,
+		     ctc_config->y2, ctc_config->y1,
+		     ctc_config->x2, ctc_config->x1);
+
+	ctc_gradient(&isp_parameters.ctc_dydx2_int,
+		     &isp_parameters.ctc_dydx2_frc,
+		     ctc_config->y3, ctc_config->y2,
+		     ctc_config->x3, ctc_config->x2);
+
+	ctc_gradient(&isp_parameters.ctc_dydx3_int,
+		     &isp_parameters.ctc_dydx3_frc,
+		     ctc_config->y4, ctc_config->y3,
+		     ctc_config->x4, ctc_config->x3);
+
+	ctc_gradient(&isp_parameters.ctc_dydx4_int,
+		     &isp_parameters.ctc_dydx4_frc,
+		     ctc_config->y5, ctc_config->y4,
+		     SH_CSS_BAYER_MAXVAL, ctc_config->x4);
+#endif /* SH_CSS_ISP_PARAMS_VERSION == 2 */
+}
+
+static void
+sh_css_process_aa(void)
+{
+#if SH_CSS_ISP_PARAMS_VERSION == 2
+	isp_parameters.aa_scale = aa_config->scale;
+#endif /* SH_CSS_ISP_PARAMS_VERSION == 2 */
 }
 
 static void
 sh_css_process_yuv2rgb_cc(void)
 {
+#if SH_CSS_ISP_PARAMS_VERSION == 2
 	isp_parameters.ycgco_to_rgb_00 = (int) yuv2rgb_cc_config->matrix[0];
 	isp_parameters.ycgco_to_rgb_01 = (int) yuv2rgb_cc_config->matrix[1];
 	isp_parameters.ycgco_to_rgb_02 = (int) yuv2rgb_cc_config->matrix[2];
@@ -2727,11 +2782,13 @@ sh_css_process_yuv2rgb_cc(void)
 	isp_parameters.ycgco_to_rgb_22 = (int) yuv2rgb_cc_config->matrix[8];
 	isp_params_changed = true;
 	yuv2rgb_cc_config_changed = false;
+#endif /* SH_CSS_ISP_PARAMS_VERSION == 2 */
 }
 
 static void
 sh_css_process_rgb2yuv_cc(void)
 {
+#if SH_CSS_ISP_PARAMS_VERSION == 2
 	isp_parameters.rgb_to_yuv_00 = (int) rgb2yuv_cc_config->matrix[0];
 	isp_parameters.rgb_to_yuv_01 = (int) rgb2yuv_cc_config->matrix[1];
 	isp_parameters.rgb_to_yuv_02 = (int) rgb2yuv_cc_config->matrix[2];
@@ -2743,6 +2800,7 @@ sh_css_process_rgb2yuv_cc(void)
 	isp_parameters.rgb_to_yuv_22 = (int) rgb2yuv_cc_config->matrix[8];
 	isp_params_changed = true;
 	rgb2yuv_cc_config_changed = false;
+#endif /* SH_CSS_ISP_PARAMS_VERSION == 2 */
 }
 
 void
@@ -3272,6 +3330,24 @@ sh_css_get_ctc_config(const struct sh_css_ctc_config **config)
 }
 
 void
+sh_css_set_aa_config(const struct sh_css_aa_config *config)
+{
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_aa_config()\n");
+	if (config != NULL)
+		aa_config = config;
+	else
+		aa_config = &default_aa_config;
+	aa_config_changed = true;
+}
+
+void
+sh_css_get_aa_config(const struct sh_css_aa_config **config)
+{
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_get_aa_config()\n");
+	*config = aa_config;
+}
+
+void
 sh_css_set_r_gamma_table(const struct sh_css_rgb_gamma_table *table)
 {
 	sh_css_dtrace(SH_DBG_TRACE, "sh_css_set_r_gamma_table()\n");
@@ -3376,6 +3452,7 @@ assert(config != NULL);
 	sh_css_set_cnr_config(&config->cnr_config);
 	sh_css_set_macc_config(&config->macc_config);
 	sh_css_set_ctc_config(&config->ctc_config);
+	sh_css_set_aa_config(&config->aa_config);
 	sh_css_set_yuv2rgb_cc_config(&config->yuv2rgb_cc_config);
 	sh_css_set_rgb2yuv_cc_config(&config->rgb2yuv_cc_config);
 	sh_css_set_anr_config(&config->anr_config);
@@ -3406,6 +3483,7 @@ void sh_css_get_isp_config(
 	const struct sh_css_cnr_config *cnr_config;
 	const struct sh_css_macc_config *macc_config;
 	const struct sh_css_ctc_config *ctc_config;
+	const struct sh_css_aa_config  *aa_config;
 	const struct sh_css_yuv2rgb_cc_config  *yuv2rgb_cc_config;
 	const struct sh_css_rgb2yuv_cc_config  *rgb2yuv_cc_config;
 	/*const struct sh_css_xnr_config xnr_config;*/
@@ -3447,6 +3525,8 @@ assert(*config != NULL);
 	((struct sh_css_isp_config *)*config)->macc_config = *macc_config;
 	sh_css_get_ctc_config(&ctc_config);
 	((struct sh_css_isp_config *)*config)->ctc_config = *ctc_config;
+	sh_css_get_aa_config(&aa_config);
+	((struct sh_css_isp_config *)*config)->aa_config = *aa_config;
 	sh_css_get_yuv2rgb_cc_config(&yuv2rgb_cc_config);
 	((struct sh_css_isp_config *)*config)->yuv2rgb_cc_config
 		= *yuv2rgb_cc_config;
@@ -3807,6 +3887,7 @@ sh_css_params_init(void)
 	sh_css_set_cnr_config(&default_cnr_config);
 	sh_css_set_macc_config(&default_macc_config);
 	sh_css_set_ctc_config(&default_ctc_config);
+	sh_css_set_aa_config(&default_aa_config);
 	sh_css_set_r_gamma_table(&default_r_gamma_table);
 	sh_css_set_g_gamma_table(&default_g_gamma_table);
 	sh_css_set_b_gamma_table(&default_b_gamma_table);
@@ -4119,6 +4200,8 @@ sh_css_param_update_isp_params(bool commit)
 		sh_css_process_macc();
 	if (ctc_config && ctc_config_changed)
 		sh_css_process_ctc();
+	if (aa_config && aa_config_changed)
+		sh_css_process_aa();
 	if (yuv2rgb_cc_config && yuv2rgb_cc_config_changed)
 		sh_css_process_yuv2rgb_cc();
 	if (rgb2yuv_cc_config && rgb2yuv_cc_config_changed)
@@ -4147,7 +4230,13 @@ sh_css_param_update_isp_params(bool commit)
 		cur_map = &pipe_ddr_ptrs[pipeline->pipe_id];
 		cur_map_size = &pipe_ddr_ptrs_size[pipeline->pipe_id];
 
-		if (zoom_config_changed || motion_config_changed) {
+		/* TODO: Normally, zoom and motion parameters shouldn't
+		 * be part of "isp_params" as it is resolution/pipe dependant
+		 * Therefore, move the zoom config elsewhere (e.g. shading
+		 * table can be taken as an example! @GC
+		 * */
+		if (isp_params_changed || zoom_config_changed ||
+				motion_config_changed) {
 			/* we have to do this per pipeline because */
 			/* the processing is a.o. resolution dependent */
 			sh_css_process_zoom_and_motion(pipeline->pipe_id,
@@ -4249,6 +4338,7 @@ sh_css_param_update_isp_params(bool commit)
 	cnr_config_changed = false;
 	macc_config_changed = false;
 	ctc_config_changed = false;
+	aa_config_changed = false;
 	r_gamma_table_changed = false;
 	g_gamma_table_changed = false;
 	b_gamma_table_changed = false;

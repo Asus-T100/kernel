@@ -60,6 +60,21 @@
 
 #define SH_CSS_MAX_STAGES 6 /* copy, preisp, anr, postisp, capture_pp, vf_pp */
 
+/* ISP parameter versions
+   If ISP_PIPE_VERSION is defined as 2 in isp_defs_for_hive.h,
+   SH_CSS_ISP_PARAMS_VERSION should be 2.
+   If ISP_PIPE_VERSION is defined as 1,
+   SH_CSS_ISP_PARAMS_VERSION can be either 1 or 2.
+   ISP_PIPE_VRSION is always defined as 1 for ISP2300,
+   so SH_CSS_ISP_PARAMS_VERSION can be defined as 1 for ISP2300
+   to avoid sched error by increase of the number of paramaters.
+*/
+#if defined(HAS_ISP_2400_MAMOIADA) || defined(HAS_ISP_2400A0_MAMOIADA)
+#define SH_CSS_ISP_PARAMS_VERSION	2
+#else
+#define SH_CSS_ISP_PARAMS_VERSION	1
+#endif
+
 /*
  * JB: keep next enum in sync with thread id's
  * and pipe id's
@@ -182,48 +197,6 @@ struct sh_css_isp_params {
 	int yee_clip_minus_g;
 	int ynryee_Yclip;
 
-	int yee_edge_sense_gain_0;
-	int yee_edge_sense_gain_1;
-	int yee_corner_sense_gain_0;
-	int yee_corner_sense_gain_1;
-
-	/* Fringe Control */
-	int fc_gain_exp;
-	int fc_gain_pos_0;
-	int fc_gain_pos_1;
-	int fc_gain_neg_0;
-	int fc_gain_neg_1;
-	int fc_crop_pos_0;
-	int fc_crop_pos_1;
-	int fc_crop_neg_0;
-	int fc_crop_neg_1;
-
-	/* CNR */
-	int cnr_coring_u;
-	int cnr_coring_v;
-	int cnr_sense_gain_vy;
-	int cnr_sense_gain_vu;
-	int cnr_sense_gain_vv;
-	int cnr_sense_gain_hy;
-	int cnr_sense_gain_hu;
-	int cnr_sense_gain_hv;
-
-	/* MACC */
-	int exp;
-
-	/* CTC */
-	int ctc_y0;
-	int ctc_y1;
-	int ctc_y2;
-	int ctc_y3;
-	int ctc_y4;
-	int ctc_y5;
-	int ctc_ce_gain_exp;
-	int ctc_x1;
-	int ctc_x2;
-	int ctc_x3;
-	int ctc_x4;
-
 	/* CSC (Color Space Conversion) */
 	/* YC1C2->YCbCr */
 	int csc_coef_shift;
@@ -256,6 +229,67 @@ struct sh_css_isp_params {
 	struct sh_css_crop_pos sp_out_crop_pos[SH_CSS_MAX_STAGES];
 	struct sh_css_uds_info uds[SH_CSS_MAX_STAGES];
 
+/* parameters for ISP pipe version 2 */
+#if SH_CSS_ISP_PARAMS_VERSION == 2
+	/* YNR (Y Noise Reduction), YEE (Y Edge Enhancement) */
+	int yee_edge_sense_gain_0;
+	int yee_edge_sense_gain_1;
+	int yee_corner_sense_gain_0;
+	int yee_corner_sense_gain_1;
+
+	/* Fringe Control */
+	int fc_gain_exp;
+	int fc_gain_pos_0;
+	int fc_gain_pos_1;
+	int fc_gain_neg_0;
+	int fc_gain_neg_1;
+	int fc_crop_pos_0;
+	int fc_crop_pos_1;
+	int fc_crop_neg_0;
+	int fc_crop_neg_1;
+
+	/* CNR */
+	int cnr_coring_u;
+	int cnr_coring_v;
+	int cnr_sense_gain_vy;
+	int cnr_sense_gain_vu;
+	int cnr_sense_gain_vv;
+	int cnr_sense_gain_hy;
+	int cnr_sense_gain_hu;
+	int cnr_sense_gain_hv;
+#endif /* SH_CSS_ISP_PARAMS_VERSION == 2 */
+
+	/* MACC */
+	int exp;
+
+/* parameters for ISP pipe version 2 */
+#if SH_CSS_ISP_PARAMS_VERSION == 2
+	/* CTC */
+	int ctc_y0;
+	int ctc_y1;
+	int ctc_y2;
+	int ctc_y3;
+	int ctc_y4;
+	int ctc_y5;
+	int ctc_ce_gain_exp;
+	int ctc_x1;
+	int ctc_x2;
+	int ctc_x3;
+	int ctc_x4;
+	int ctc_dydx0_int; /* integer part */
+	int ctc_dydx0_frc; /* fractional part */
+	int ctc_dydx1_int;
+	int ctc_dydx1_frc;
+	int ctc_dydx2_int;
+	int ctc_dydx2_frc;
+	int ctc_dydx3_int;
+	int ctc_dydx3_frc;
+	int ctc_dydx4_int;
+	int ctc_dydx4_frc;
+
+	/* Anti-Aliasing */
+        int aa_scale;
+
 	/* CCM before sRGB Gamma: YCgCo->RGB */
 	int ycgco_to_rgb_00;
 	int ycgco_to_rgb_01;
@@ -277,6 +311,7 @@ struct sh_css_isp_params {
 	int rgb_to_yuv_20;
 	int rgb_to_yuv_21;
 	int rgb_to_yuv_22;
+#endif /* SH_CSS_ISP_PARAMS_VERSION == 2 */
 };
 
 /* xmem address map allocation */

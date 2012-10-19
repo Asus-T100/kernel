@@ -175,6 +175,7 @@ enum sh_css_state {
 	false,                     /* enable_high_speed */ \
 	false,                     /* enable_dvs_6axis */ \
 	true,                      /* enable_viewfinder */ \
+	true,                      /* enable_dz */ \
 	1,                         /* isp_pipe_version */ \
 	{ }                        /* settings */
 
@@ -290,6 +291,7 @@ struct sh_css_pipe {
 	bool                         enable_high_speed;
 	bool                         enable_dvs_6axis;
 	bool                         enable_viewfinder;
+	bool                         enable_dz;
 	unsigned int                 isp_pipe_version;
 	union {
 		struct sh_css_preview_settings preview;
@@ -3381,6 +3383,7 @@ sh_css_dequeue_buffer(enum sh_css_pipe_id   pipe,
 		pipe, buf_type);
 
 	(void)pipe;
+	ddr_buffer.kernel_ptr = 0;
 
 	sh_css_query_internal_queue_id(buf_type, &queue_id);
 
@@ -3402,12 +3405,13 @@ sh_css_dequeue_buffer(enum sh_css_pipe_id   pipe,
 			}
 		}
 		assert(found_record == 1);
+		assert(ddr_buffer.kernel_ptr != 0);
 
 		if (ddr_buffer.kernel_ptr == 0)
 			rc = false;
 
-	switch (buf_type) {
-	case SH_CSS_BUFFER_TYPE_OUTPUT_FRAME:
+		switch (buf_type) {
+		case SH_CSS_BUFFER_TYPE_OUTPUT_FRAME:
 			*buffer =
 				(struct sh_css_frame *)HOST_ADDRESS(ddr_buffer.kernel_ptr);
 			if (ddr_buffer.payload.frame.exp_id)
@@ -3419,8 +3423,8 @@ sh_css_dequeue_buffer(enum sh_css_pipe_id   pipe,
 			if (ddr_buffer.payload.frame.flashed == 2)
 				((struct sh_css_frame *)(*buffer))->flash_state
 					= SH_CSS_FRAME_FULLY_FLASH;
-		break;
-	case SH_CSS_BUFFER_TYPE_VF_OUTPUT_FRAME:
+			break;
+		case SH_CSS_BUFFER_TYPE_VF_OUTPUT_FRAME:
 			*buffer =
 				(struct sh_css_frame *)HOST_ADDRESS(ddr_buffer.kernel_ptr);
 			if (ddr_buffer.payload.frame.exp_id)
@@ -3432,19 +3436,19 @@ sh_css_dequeue_buffer(enum sh_css_pipe_id   pipe,
 			if (ddr_buffer.payload.frame.flashed == 2)
 				((struct sh_css_frame *)(*buffer))->flash_state
 					= SH_CSS_FRAME_FULLY_FLASH;
-		break;
-	case SH_CSS_BUFFER_TYPE_3A_STATISTICS:
+			break;
+		case SH_CSS_BUFFER_TYPE_3A_STATISTICS:
 			*buffer =
 				(union sh_css_s3a_data *)HOST_ADDRESS(ddr_buffer.kernel_ptr);
-		break;
-	case SH_CSS_BUFFER_TYPE_DIS_STATISTICS:
+			break;
+		case SH_CSS_BUFFER_TYPE_DIS_STATISTICS:
 			*buffer =
 				(struct sh_css_dis_data *)HOST_ADDRESS(ddr_buffer.kernel_ptr);
-		break;
-	default:
-		rc = false;
-		break;
-	}
+			break;
+		default:
+			rc = false;
+			break;
+		}
 	}
 
 	err = rc ? sh_css_success : sh_css_err_buffer_queue_is_empty;
@@ -6411,6 +6415,25 @@ sh_css_capture_enable_online(bool enable)
 	sh_css_dtrace(SH_DBG_TRACE,
 		"sh_css_capture_enable_online() in: enable=%d\n", enable);
 	sh_css_pipe_enable_online(&my_css.capture_pipe, enable);
+}
+
+void
+sh_css_video_set_enable_dz(bool enable_dz)
+{
+	struct sh_css_pipe *pipe = &my_css.video_pipe;
+
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_video_set_enable_dz()\n");
+	pipe->enable_dz = enable_dz;
+}
+
+void
+sh_css_video_get_enable_dz(bool *enable_dz)
+{
+	struct sh_css_pipe *pipe = &my_css.video_pipe;
+
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_video_get_enable_dz()\n");
+	if (enable_dz != NULL)
+		*enable_dz = pipe->enable_dz;
 }
 
 enum sh_css_err

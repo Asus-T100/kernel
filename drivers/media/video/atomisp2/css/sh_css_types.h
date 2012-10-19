@@ -69,9 +69,11 @@
 #define SH_CSS_DIS_NUM_COEF_TYPES      6
 #define SH_CSS_DIS_COEF_TYPES_ON_DMEM  2
 
-/** Fractional bits for CTC? */
+/** Fractional bits for CTC gain */
 #define SH_CSS_CTC_COEF_SHIFT          13
-/** Fractional bits for gamma gain? */
+/** Fractional bits for gradient of CTC curve (ISP2 only) */
+#define SH_CSS_CTC_DYDX_SHIFT          13
+/** Fractional bits for GAMMA gain */
 #define SH_CSS_GAMMA_GAIN_K_SHIFT      13
 
 /*
@@ -515,6 +517,12 @@ struct sh_css_ctc_config {
 	unsigned short x4;
 };
 
+/** Anti-Aliasing configuration.
+ */
+struct sh_css_aa_config {
+	unsigned short scale;
+};
+
 /** Chroma Enhancement configuration.
  */
 struct sh_css_ce_config {
@@ -577,6 +585,7 @@ struct sh_css_isp_config {
 	struct sh_css_cnr_config cnr_config; /**< Chroma Noise Reduction */
 	struct sh_css_macc_config  macc_config;  /**< MACC */
 	struct sh_css_ctc_config ctc_config; /**< Chroma Tone Control */
+	struct sh_css_aa_config  aa_config;  /**< Anti-Aliasing */
 	struct sh_css_ob_config  ob_config;  /**< Objective Black config */
 	struct sh_css_dp_config  dp_config;  /**< Dead Pixel config */
 	struct sh_css_nr_config  nr_config;  /**< Noise Reduction config */
@@ -679,11 +688,11 @@ struct sh_css_isp_memory_interface {
 
 #if defined(IS_ISP_2300_SYSTEM)
 enum sh_css_isp_memories {
-	SH_CSS_ISP_PMEM = 0,
-	SH_CSS_ISP_DMEM,
-	SH_CSS_ISP_VMEM,
+	SH_CSS_ISP_PMEM0 = 0,
+	SH_CSS_ISP_DMEM0,
+	SH_CSS_ISP_VMEM0,
+	SH_CSS_ISP_VAMEM0,
 	SH_CSS_ISP_VAMEM1,
-	SH_CSS_ISP_VAMEM2,
 	N_SH_CSS_ISP_MEMORIES
 };
 
@@ -691,16 +700,17 @@ enum sh_css_isp_memories {
 
 #elif defined(IS_ISP_2400_SYSTEM)
 enum sh_css_isp_memories {
-	SH_CSS_ISP_PMEM = 0,
-	SH_CSS_ISP_DMEM,
-	SH_CSS_ISP_VMEM,
+	SH_CSS_ISP_PMEM0 = 0,
+	SH_CSS_ISP_DMEM0,
+	SH_CSS_ISP_VMEM0,
+	SH_CSS_ISP_VAMEM0,
 	SH_CSS_ISP_VAMEM1,
 	SH_CSS_ISP_VAMEM2,
-	SH_CSS_ISP_VAMEM3,
+	SH_CSS_ISP_HMEM0,
 	N_SH_CSS_ISP_MEMORIES
 };
 
-#define SH_CSS_NUM_ISP_MEMORIES 6
+#define SH_CSS_NUM_ISP_MEMORIES 7
 
 #else
 #error "sh_css_types.h:  SYSTEM must be one of {ISP_2300_SYSTEM, ISP_2400_SYSTEM}"
@@ -746,6 +756,8 @@ struct sh_css_binary_info {
 	unsigned int		block_width;
 	unsigned int		block_height;
 	unsigned int		output_block_height;
+	unsigned int		dvs_in_block_width;
+	unsigned int		dvs_in_block_height;
 	struct sh_css_isp_memory_interface
 				 memory_interface[SH_CSS_NUM_ISP_MEMORIES];
 	unsigned int		sh_dma_cmd_ptr;     /* In ISP dmem */
@@ -789,8 +801,6 @@ struct sh_css_binary_info {
 		unsigned char     in_frame;
 		unsigned char     out_frame;
 		unsigned char     high_speed;
-		unsigned char     de_yuv444;
-		unsigned char     rgb_gamma;
 	} enable;
 	struct {
 /* DMA channel ID: [0,...,HIVE_ISP_NUM_DMA_CHANNELS> */
@@ -805,6 +815,8 @@ struct sh_css_binary_info {
 		uint8_t		tnr_c_channel;
 		uint8_t		tnr_y_out_channel;
 		uint8_t		tnr_c_out_channel;
+		uint8_t		dvs_in_channel;
+		uint8_t		dvs_coords_channel;
 		uint8_t		raw_channel;
 		uint8_t		output_channel;
 		uint8_t		c_channel;
