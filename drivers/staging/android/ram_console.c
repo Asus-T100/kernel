@@ -411,14 +411,18 @@ static int ram_console_driver_probe(struct platform_device *pdev)
 	start = res->start;
 	printk(KERN_INFO "ram_console: got buffer at %zx, size %zx\n",
 	       start, buffer_size);
-	buffer = ioremap(res->start, buffer_size);
+	/*already reserve RAM resource, so use it by directly map to
+		 kernel space*/
+	/*buffer = ioremap(res->start, buffer_size);*/
+	buffer = phys_to_virt(res->start);
 	if (buffer == NULL) {
 		printk(KERN_ERR "ram_console: failed to map memory\n");
 		return -ENOMEM;
 	}
 	res++;
 	ftrace_buffer_size = res->end - res->start + 1;
-	ftrace_buffer = ioremap(res->start, ftrace_buffer_size);
+	/*ftrace_buffer = ioremap(res->start, ftrace_buffer_size);*/
+	ftrace_buffer = phys_to_virt(res->start);
 	if (ftrace_buffer == NULL) {
 		pr_err("ftrace_reserved_buffer:  ioreamp failed.\n");
 		return -ENOMEM;

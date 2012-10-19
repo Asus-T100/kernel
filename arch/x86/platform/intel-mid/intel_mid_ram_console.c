@@ -13,6 +13,9 @@
 #include <linux/platform_device.h>
 #include <linux/platform_data/ram_console.h>
 #include <linux/memblock.h>
+#include <linux/bootmem.h>
+#include <linux/slab.h>
+#include <linux/kmemleak.h>
 
 
 #define SZ_2M                           0x00200000
@@ -26,6 +29,12 @@
 #define INTEL_MID_RAM_CONSOLE_SIZE_DEFAULT	SZ_2M
 #define INTEL_FTRACE_BUFFER_SIZE_DEFAULT       SZ_2M
 
+
+#ifdef CONFIG_X86_32
+#define INTEL_RAM_CONSOLE_MAX_MEM  (max_low_pfn << PAGE_SHIFT)
+#else
+#define INTEL_RAM_CONSOLE_MAX_MEM  (1 << 28)
+#endif
 
 static struct resource ram_console_resources[] = {
 	{
@@ -88,22 +97,25 @@ void __init ram_consle_reserve_memory(void)
 	size = INTEL_MID_RAM_CONSOLE_SIZE_DEFAULT;
 	size = ALIGN(size, PAGE_SIZE);
 
-	mem = memblock_find_in_range(0, 1<<28, size, PAGE_SIZE);
+	mem = memblock_find_in_range(0, INTEL_RAM_CONSOLE_MAX_MEM,
+							size, PAGE_SIZE);
 	if (mem == MEMBLOCK_ERROR)
 		panic("Cannot allocate\n");
 	ram_console_resources[0].start = mem;
 	ram_console_resources[0].end = mem + size - 1;
 	memblock_x86_reserve_range(mem, mem + size, "ram_console");
+	kmemleak_ignore(phys_to_virt(mem));
 
 	size = INTEL_FTRACE_BUFFER_SIZE_DEFAULT;
 	size = ALIGN(size, PAGE_SIZE);
-	mem = memblock_find_in_range(0, 1<<28, size, PAGE_SIZE);
+	mem = memblock_find_in_range(0, INTEL_RAM_CONSOLE_MAX_MEM,
+							size, PAGE_SIZE);
 	if (mem == MEMBLOCK_ERROR)
 		panic("Cannot allocate\n");
-
 	ram_console_resources[1].start = mem;
 	ram_console_resources[1].end = mem + size - 1;
 	memblock_x86_reserve_range(mem, mem + size, "ftrace reserved memory");
+	kmemleak_ignore(phys_to_virt(mem));
 
 	intel_mid_ramconsole_inited = true;
 }
