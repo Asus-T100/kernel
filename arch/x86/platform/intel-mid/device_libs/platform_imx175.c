@@ -65,20 +65,23 @@ static int imx175_flisclk_ctrl(struct v4l2_subdev *sd, int flag)
 
 static int imx175_power_ctrl(struct v4l2_subdev *sd, int flag)
 {
+	int ret = 0;
 
 	if (flag) {
 		if (!camera_vprog1_on) {
-			camera_vprog1_on = 1;
-			intel_scu_ipc_msic_vprog1(1);
+			ret = intel_scu_ipc_msic_vprog1(1);
+			if (!ret)
+				camera_vprog1_on = 1;
+			return ret;
 		}
 	} else {
 		if (camera_vprog1_on) {
-			camera_vprog1_on = 0;
-			intel_scu_ipc_msic_vprog1(0);
+			ret = intel_scu_ipc_msic_vprog1(0);
+			if (!ret)
+				camera_vprog1_on = 0;
+			return ret;
 		}
 	}
-
-	return 0;
 }
 
 static int imx175_csi_configure(struct v4l2_subdev *sd, int flag)
