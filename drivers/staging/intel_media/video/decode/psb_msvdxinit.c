@@ -58,7 +58,7 @@ int psb_wait_for_register(struct drm_psb_private *dev_priv,
 		/* PSB_UDELAY(5); */
 		poll_cnt--;
 	}
-	DRM_ERROR("MSVDX: Timeout while waiting for register %08x:"
+	PSB_DEBUG_WARN("MSVDX: Timeout while waiting for register %08x:"
 		  " expecting %08x (mask %08x), got %08x\n",
 		  offset, value, enable, reg_value);
 
@@ -622,10 +622,12 @@ void msvdx_post_powerup_core_reset(struct drm_device *dev)
 	psb_msvdx_enableirq(dev);
 }
 
-void msvdx_mtx_init(struct drm_device *dev, int error_reset)
+int msvdx_mtx_init(struct drm_device *dev, int error_reset)
 {
 	struct drm_psb_private *dev_priv = dev->dev_private;
 	uint32_t clk_divider = 200;
+	int ret;
+	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
 
 	/* Reset MTX not done here, should be done before loading fw
 	 * while fw is loaded by gunit now */
@@ -660,10 +662,20 @@ void msvdx_mtx_init(struct drm_device *dev, int error_reset)
 	/* DDK: redefine toHost and toMTX msg buffer, seems not needed */
 
 	/* Wait for the signature value to be written back */
-	psb_wait_for_register(dev_priv, MSVDX_COMMS_SIGNATURE,
+	ret = psb_wait_for_register(dev_priv, MSVDX_COMMS_SIGNATURE,
 				    MSVDX_COMMS_SIGNATURE_VALUE,
 				    0xffffffff,
 				    1000, 1000);
+	if (ret) {
+		PSB_DEBUG_WARN("WARN: Gunit upload fw failure, MTX_ENABLE reg is 0x%x.\n",
+				PSB_RMSVDX32(MSVDX_MTX_ENABLE));
+		PSB_DEBUG_WARN("WARN: MSVDX_COMMS_FW_STATUS reg is 0x%x.\n",
+				PSB_RMSVDX32(MSVDX_COMMS_FW_STATUS));
+		msvdx_priv->msvdx_needs_reset |=
+				MSVDX_RESET_NEEDS_REUPLOAD_FW |
+				MSVDX_RESET_NEEDS_INIT_FW;
+	}
+	return ret;
 }
 
 /* This value is hardcoded in FW */
@@ -843,11 +855,15 @@ int psb_msvdx_init(struct drm_device *dev)
 
 	msvdx_priv->rendec_init = 0;
 
-	msvdx_mtx_init(dev, msvdx_priv->decoding_err);
+	ret = msvdx_mtx_init(dev, msvdx_priv->decoding_err);
+	if (ret) {
+		PSB_DEBUG_WARN("WARN: msvdx_mtx_init failed.\n");
+		return 1;
+	}
 
 	ret = msvdx_alloc_ccb_for_rendec(dev);
 	if (ret) {
-		DRM_ERROR("msvdx_alloc_ccb_for_rendec failed.\n");
+		PSB_DEBUG_WARN("WARN: msvdx_alloc_ccb_for_rendec failed.\n");
 		return 1;
 	}
 

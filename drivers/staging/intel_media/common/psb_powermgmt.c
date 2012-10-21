@@ -52,7 +52,7 @@
 #define SCU_CMD_VPROG2  0xe3
 
 struct drm_device *gpDrmDevice;
-static struct mutex g_ospm_mutex;
+struct mutex g_ospm_mutex;
 
 /* Lock strategy */
 /*
@@ -106,6 +106,11 @@ static int ospm_runtime_pm_msvdx_suspend(struct drm_device *dev)
 
 	if (!ospm_power_is_hw_on(OSPM_VIDEO_DEC_ISLAND))
 		goto out;
+
+	if (psb_get_power_state(OSPM_VIDEO_DEC_ISLAND) == 0) {
+		PSB_DEBUG_PM("MSVDX: island already in power off state.\n");
+		goto out;
+	}
 
 	if (atomic_read(&g_videodec_access_count)) {
 		ret = -1;
@@ -285,7 +290,7 @@ void ospm_apm_power_down_msvdx(struct drm_device *dev, int force_off)
 	if (!ospm_power_is_hw_on(OSPM_VIDEO_DEC_ISLAND))
 		goto out;
 
-	if (psb_get_power_state(dev, OSPM_VIDEO_DEC_ISLAND) == 0) {
+	if (psb_get_power_state(OSPM_VIDEO_DEC_ISLAND) == 0) {
 		PSB_DEBUG_PM("MSVDX: island already in power off state.\n");
 		goto out;
 	}
@@ -980,7 +985,7 @@ static bool ospm_resume_pci(struct pci_dev *pdev)
 	if (!gbSuspended)
 		return true;
 
-	PSB_DEBUG_ENTRY("\n");
+	PSB_DEBUG_PM("ospm_resume_pci.\n");
 
 	pci_set_power_state(pdev, PCI_D0);
 	pci_restore_state(pdev);
@@ -1191,8 +1196,8 @@ int ospm_power_suspend(struct pci_dev *pdev, pm_message_t state)
 				}
 			}
 		} else {
-			PSB_DEBUG_ENTRY("ospm_power_suspend: device busy:");
-			PSB_DEBUG_ENTRY("SGX %d Enc %d Dec %d Display %d\n",
+			PSB_DEBUG_PM("ospm_power_suspend: device busy:");
+			PSB_DEBUG_PM("SGX %d Enc %d Dec %d Display %d\n",
 				graphics_access_count, videoenc_access_count,
 				videodec_access_count, display_access_count);
 		}
@@ -1469,7 +1474,7 @@ bool ospm_power_using_video_begin(int video_island)
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *)gpDrmDevice->dev_private;
 	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
-	PSB_DEBUG_ENTRY("MSVDX: need power on island %d.\n", video_island);
+	PSB_DEBUG_PM("MSVDX: need power on island 0x%x.\n", video_island);
 
 	if (!(video_island & (OSPM_VIDEO_DEC_ISLAND | OSPM_VIDEO_ENC_ISLAND)))
 		return false;
@@ -1800,6 +1805,8 @@ EXPORT_SYMBOL(ospm_power_using_hw_begin);
  */
 void ospm_power_using_video_end(int video_island)
 {
+	PSB_DEBUG_PM("MSVDX: using video 0x%x end.\n", video_island);
+
 	if (!(video_island & (OSPM_VIDEO_ENC_ISLAND | OSPM_VIDEO_DEC_ISLAND)))
 		return;
 
@@ -1902,7 +1909,7 @@ int psb_runtime_suspend(struct device *dev)
 
 	state.event = 0;
 
-	PSB_DEBUG_ENTRY("\n");
+	PSB_DEBUG_PM("psb_runtime_suspend is called.\n");
 
 	if (atomic_read(&g_graphics_access_count) ||
 	    atomic_read(&g_videoenc_access_count) ||

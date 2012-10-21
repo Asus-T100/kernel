@@ -403,8 +403,6 @@ struct drm_psb_private {
 	/* previous vieo context */
 	struct psb_video_ctx *last_topaz_ctx;
 
-	int psb_apm_base;
-
 	/*
 	 *MSVDX
 	 */
@@ -1130,13 +1128,14 @@ extern int drm_topaz_sbuswa;
 	PSB_DEBUG(PSB_D_MSVDX, _fmt, ##_arg)
 #define PSB_DEBUG_TOPAZ(_fmt, _arg...) \
 	PSB_DEBUG(PSB_D_TOPAZ, _fmt, ##_arg)
+/* force to print WARN msg */
 #define PSB_DEBUG_WARN(_fmt, _arg...) \
-		PSB_DEBUG(PSB_D_WARN, _fmt, ##_arg)
+	PSB_DEBUG(PSB_D_WARN, _fmt, ##_arg)
 
 #if DRM_DEBUG_CODE
 #define PSB_DEBUG(_flag, _fmt, _arg...)					\
 	do {								\
-		if (unlikely((_flag) & drm_psb_debug))			\
+		if ((_flag & drm_psb_debug) ||	(_flag == PSB_D_WARN)) 	\
 			printk(KERN_DEBUG				\
 			       "[psb:0x%02x:%s] " _fmt , _flag,		\
 			       __func__ , ##_arg);			\
@@ -1262,21 +1261,18 @@ static inline void SGX_REGISTER_WRITE(struct drm_device *dev, uint32_t reg,
 #define MFLD_MSVDX_FABRIC_DEBUG 0
 #define MSVDX_REG_DUMP 0
 
-static inline int psb_get_power_state(struct drm_device *dev, int islands)
+static inline int psb_get_power_state(int islands)
 {
-	struct drm_psb_private *dev_priv =
-		(struct drm_psb_private *)dev->dev_private;
-	int apm_sts_val = inl(dev_priv->psb_apm_base + APM_STS);
 	switch (islands) {
 	case OSPM_VIDEO_DEC_ISLAND:
-		if ((apm_sts_val & APM_STS_VDPS_MASK) ==
-			(APM_STS_D3 << APM_STS_VDPS_SHIFT))
+		if (pmu_nc_get_power_state(OSPM_VIDEO_DEC_ISLAND, APM_REG_TYPE) ==
+			APM_STS_D3)
 			return 0;
 		else
 			return 1;
 		break;
 	default:
-		PSB_DEBUG_PM("unsupported island.\n");
+		PSB_DEBUG_WARN("WARN: unsupported island.\n");
 		return -EINVAL;
 	}
 }
@@ -1285,8 +1281,7 @@ static inline int psb_get_power_state(struct drm_device *dev, int islands)
 
 #define PSB_WMSVDX32(_val, _offs)					\
 do {									\
-	if ((inl(dev_priv->psb_apm_base + APM_STS) & APM_STS_VDPS_MASK)	\
-			== (APM_STS_D3 << APM_STS_VDPS_SHIFT))		\
+	if (psb_get_power_state(OSPM_VIDEO_DEC_ISLAND) == 0)		\
 		panic("msvdx reg 0x%x write failed.\n",			\
 				(unsigned int)(_offs));			\
 	else								\
@@ -1297,7 +1292,7 @@ static inline uint32_t PSB_RMSVDX32(uint32_t _offs)
 {
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *)gpDrmDevice->dev_private;
-	if ((inl(dev_priv->psb_apm_base + APM_STS) & 0xc) == 0xc) {
+	if (psb_get_power_state(OSPM_VIDEO_DEC_ISLAND) == 0) {
 		panic("msvdx reg 0x%x read failed.\n", (unsigned int)(_offs));
 		return 0;
 	} else {

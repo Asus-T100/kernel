@@ -1419,8 +1419,6 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 		if (!dev_priv->topaz_reg)
 			goto out_err;
 	}
-	dev_priv->psb_apm_base =
-		intel_mid_msgbus_read32(OSPM_PUNIT_PORT, OSPM_APMBA) & 0xffff;
 #endif
 
 	dev_priv->vdc_reg =
@@ -4100,7 +4098,7 @@ int psb_release(struct inode *inode, struct file *filp)
 	struct psb_fpriv *psb_fp;
 	struct drm_psb_private *dev_priv;
 	struct msvdx_private *msvdx_priv;
-	int ret, i;
+	int ret, i, island_is_on;
 	struct psb_msvdx_ec_ctx *ec_ctx;
 	uint32_t ui32_reg_value = 0;
 	file_priv = (struct drm_file *) filp->private_data;
@@ -4166,9 +4164,13 @@ int psb_release(struct inode *inode, struct file *filp)
 						msecs_to_jiffies(10));
 	}
 
-	if (drm_msvdx_pmpolicy == PSB_PMPOLICY_POWERDOWN)
+	island_is_on = ospm_power_is_hw_on(OSPM_VIDEO_DEC_ISLAND);
+
+	if ((drm_msvdx_pmpolicy == PSB_PMPOLICY_POWERDOWN) && island_is_on) {
+		PSB_DEBUG_PM("MSVDX: psb_release schedule msvdx suspend.\n");
 		schedule_delayed_work(&msvdx_priv->msvdx_suspend_wq,
 					msecs_to_jiffies(10));
+	}
 #endif
 	ret = drm_release(inode, filp);
 

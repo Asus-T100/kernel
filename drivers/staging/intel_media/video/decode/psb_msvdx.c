@@ -379,7 +379,11 @@ int psb_submit_video_cmdbuf(struct drm_device *dev,
 		msvdx_priv->msvdx_needs_reset = 0;
 		msvdx_priv->msvdx_busy = 0;
 
-		psb_msvdx_init(dev);
+		if (psb_msvdx_init(dev)) {
+			ret = -EBUSY;
+			PSB_DEBUG_WARN("WARN: psb_msvdx_init failed.\n");
+			return ret;
+		}
 
 #ifdef PSB_MSVDX_SAVE_RESTORE_VEC
 		/* restore vec local mem if needed */
@@ -1107,7 +1111,7 @@ int psb_check_msvdx_idle(struct drm_device *dev)
 	}
 
 	if (msvdx_priv->fw_loaded_by_punit) {
-		PSB_DEBUG_MSVDX("SIGNITURE is %x\n", PSB_RMSVDX32(MSVDX_COMMS_SIGNATURE));
+		PSB_DEBUG_PM("SIGNITURE is %x\n", PSB_RMSVDX32(MSVDX_COMMS_SIGNATURE));
 		if (!(PSB_RMSVDX32(MSVDX_COMMS_FW_STATUS) &
 					MSVDX_FW_STATUS_HW_IDLE)) {
 			PSB_DEBUG_PM("MSVDX: MSVDX_COMMS_FW_STATUS reg indicate hw busy.\n");
@@ -1121,7 +1125,10 @@ int psb_check_msvdx_idle(struct drm_device *dev)
 					MSVDX_MMU_MEM_REQ,
 					0, 0xff, 2000000, 5);
 	if (ret) {
-		PSB_DEBUG_PM("MSVDX: MSVDX_MMU_MEM_REQ reg indicate mem busy.\n");
+		PSB_DEBUG_WARN("MSVDX: MSVDX_MMU_MEM_REQ reg is 0x%x, indicate mem busy.\n",
+				PSB_RMSVDX32(MSVDX_MMU_MEM_REQ));
+		PSB_DEBUG_WARN("WARN: MSVDX_COMMS_FW_STATUS reg is 0x%x.\n",
+				PSB_RMSVDX32(MSVDX_COMMS_FW_STATUS));
 		return -EBUSY;
 	}
 	/*
