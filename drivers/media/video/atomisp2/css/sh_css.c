@@ -6409,6 +6409,13 @@ sh_css_capture_stop(void)
 	return sh_css_pipe_stop(&my_css.capture_pipe);
 }
 
+enum sh_css_err
+sh_css_acceleration_stop(void)
+{
+	sh_css_dtrace(SH_DBG_TRACE, "sh_css_acceleration_stop()\n");
+	return sh_css_pipeline_stop(SH_CSS_ACC_PIPELINE);
+}
+
 void
 sh_css_capture_enable_online(bool enable)
 {

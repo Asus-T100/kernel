@@ -2356,6 +2356,17 @@ sh_css_acceleration_done(struct sh_css_acc_fw *firmware);
 void
 sh_css_abort_acceleration(struct sh_css_acc_fw *firmware, unsigned deadline);
 
+/** @brief Stop the acceleration pipe
+ *
+ * @return		IA_CSS_SUCCESS or error code upon error.
+ *
+ * This function stops the acceleration pipe that's running. Note that any
+ * dependent pipes will also be stopped automatically since otherwise
+ * they would starve because they no longer receive input data.
+ */
+enum sh_css_err
+sh_css_acceleration_stop(void);
+
 /** @brief Append a stage to pipeline.
  *
  * @param	pipeline	Pointer to the pipeline to be extended.

@@ -185,7 +185,15 @@ int atomisp_acc_unload(struct atomisp_device *isp, unsigned int *handle)
 
 	mutex_lock(&isp->input_lock);
 	mutex_lock(&isp->isp_lock);
-	ret = __acc_unload(isp, handle);
+
+	if (sh_css_acceleration_stop() != sh_css_success) {
+		v4l2_err(&atomisp_dev,
+			 "%s: cannot stop acceleration pipeline\n", __func__);
+		ret = -EBADE;
+	} else {
+		ret = __acc_unload(isp, handle);
+	}
+
 	mutex_unlock(&isp->isp_lock);
 	mutex_unlock(&isp->input_lock);
 	return ret;
@@ -310,6 +318,7 @@ int atomisp_acc_map(struct atomisp_device *isp, struct atomisp_acc_map *map)
 	list_add(&atomisp_map->list, &isp->acc.memory_maps);
 
 	map->css_ptr = cssptr;
+
 out:
 	mutex_unlock(&isp->isp_lock);
 	mutex_unlock(&isp->input_lock);
