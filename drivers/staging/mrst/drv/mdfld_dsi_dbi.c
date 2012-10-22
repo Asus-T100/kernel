@@ -548,9 +548,10 @@ int __dbi_power_off(struct mdfld_dsi_config *dsi_config)
 	/*save the plane informaton, for it will updated*/
 	ctx->dspsurf = dev_priv->init_screen_start;
 	ctx->dsplinoff = dev_priv->init_screen_offset;
+	ctx->dspstride = dev_priv->init_screen_stride;
+	ctx->dspsize = dev_priv->init_screen_size;
 	ctx->pipestat = REG_READ(regs->pipestat_reg);
 	ctx->dspcntr = REG_READ(regs->dspcntr_reg);
-	ctx->dspstride = REG_READ(regs->dspstride_reg);
 	ctx->pipeconf = REG_READ(regs->pipeconf_reg);
 
 	/*Disable plane*/
