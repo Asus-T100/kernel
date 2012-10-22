@@ -270,7 +270,7 @@ static uint32_t update_perf_counter_value(int ix_core, int ndx,
  *
  * The input string specifies which counters are to be visible as
  * whitespace-separated (e.g., space, tab, newline) groups of: %u:%u:%u:%u
- * which correspond to counter:group:bit:full_util_ref .
+ * which correspond to counter:group:bit:coeff .
  * then assigns the values into data structures for all cores.
  * These per-counter values are:
  * 1.  counter - An index into this module's counter data arrays.

@@ -1879,15 +1879,14 @@ static int pfs_gpu_monitored_counters_read(char *buf,
  *
  * The input string specifies which counters are to be visible as
  * whitespace-separated (e.g., space, tab, newline) groups of: %u:%u:%u:%u
- * which correspond to counter:group:bit:full_util_ref .
+ * which correspond to counter:group:bit:coeff .
  * then assigns the values into data structures for all cores.
  * These per-counter values are:
  * 1.  counter - An index into this module's counter data arrays.
  * 2.  group -- The hardware "group" from which this counter is taken.
  * 3.  bit   -- The hardware bit (for this group) that selects this counter.
- * 4.  full_util_ref -- The delta for this counter (per time_stamp unit)
- *     that is nominally equal to 100% utilization.
- * Example input string: "1:0:1:400   6:0:24:32"
+ * 4.  coeff -- A counter specific increment value.
+ * Example input string: "1:0:1:16   6:0:24:32"
  */
 static int pfs_gpu_monitored_counters_write(struct file *file,
 	const char *buffer, unsigned long count, void *pvd)
@@ -2655,7 +2654,7 @@ static irqreturn_t gburst_irq_handler(int irq, void *pvd)
 #endif /* if GBURST_DEBUG */
 
 	if (gbprv->gbp_suspended) {
-		printk(GBURST_ALERT "interrupt while suspended\n");
+		/* Interrupt while suspended is not an abnormal event. */
 		return IRQ_HANDLED;
 	}
 
