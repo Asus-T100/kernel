@@ -382,14 +382,14 @@ static int soc_pcm_close(struct snd_pcm_substream *substream)
 			schedule_delayed_work(&rtd->delayed_work,
 				msecs_to_jiffies(rtd->pmdown_time));
 		}
-	} else {
+	} else if (substream->stream == SNDRV_PCM_STREAM_CAPTURE
+			&& !codec_dai->capture_active) {
 		/* capture streams can be powered down now */
 		snd_soc_dapm_stream_event(rtd, SNDRV_PCM_STREAM_CAPTURE,
 					  codec_dai, SND_SOC_DAPM_STREAM_STOP);
 	}
 
 	mutex_unlock(&rtd->pcm_mutex);
-
 	pm_runtime_put(platform->dev);
 	pm_runtime_put(codec_dai->dev);
 	pm_runtime_put(cpu_dai->dev);
