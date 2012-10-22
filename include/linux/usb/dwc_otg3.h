@@ -405,8 +405,11 @@ struct dwc_otg2 {
 	/* Charger detection */
 	struct otg_bc_cap charging_cap;
 	struct notifier_block nb;
+	struct delayed_work sdp_check_work;
 };
 
+/* Invalid SDP checking timeout */
+#define INVALID_SDP_TIMEOUT	(HZ * 15)
 #define sleep_main_thread_until_condition_timeout(otg, condition, msecs) ({ \
 		int __timeout = msecs;				\
 		while (!(condition)) {				\

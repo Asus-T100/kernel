@@ -374,6 +374,9 @@ static void stop_peripheral(struct dwc_otg2 *otg)
 	if (!gadget)
 		return;
 
+#ifdef CONFIG_DWC_CHARGER_DETECION
+	cancel_delayed_work_sync(&otg->sdp_check_work);
+#endif
 	otg_dbg(otg, "\n");
 	gadget->ops->stop_device(gadget);
 }
@@ -458,6 +461,28 @@ int otg_get_chr_status(struct otg_transceiver *_otg, void *data)
 	return 0;
 }
 EXPORT_SYMBOL_GPL(otg_get_chr_status);
+
+static void dwc_otg_sdp_check_work(struct work_struct *work)
+{
+	struct dwc_otg2 *otg = the_transceiver;
+	struct otg_bc_cap	cap;
+	unsigned long flags;
+
+	if (otg_get_chr_status(&otg->otg, (void *)&cap)) {
+		otg_err(otg, "%s: sdp checking failed\n", __func__);
+		return;
+	}
+
+	if (cap.mA != 100 || cap.chrg_type != CHRG_SDP)
+		return;
+
+	otg_dbg(otg, "Current charger is Non-compliant charger!\n");
+	spin_lock_irqsave(&otg->lock, flags);
+	otg->charging_cap.mA = 500;
+	spin_unlock_irqrestore(&otg->lock, flags);
+
+	dwc_otg_notify_charger_type(otg, OTG_CHR_STATE_CONNECTED);
+}
 
 static int ulpi_read(struct dwc_otg2 *otg, const u8 reg, u8 *val)
 {
@@ -793,6 +818,9 @@ static int dwc_otg_set_power(struct otg_transceiver *_otg,
 	otg->charging_cap.mA = mA;
 	spin_unlock_irqrestore(&otg->lock, flags);
 
+#ifdef CONFIG_DWC_CHARGER_DETECION
+	cancel_delayed_work_sync(&otg->sdp_check_work);
+#endif
 	dwc_otg_notify_charger_type(otg,
 			OTG_CHR_STATE_CONNECTED);
 
@@ -945,6 +973,10 @@ static enum dwc_otg_state do_charger_detection(struct dwc_otg2 *otg)
 	case CHRG_SDP:
 		/* Notify SDP current is 100ma before enumeration. */
 		mA = 100;
+#ifdef CONFIG_DWC_CHARGER_DETECION
+		schedule_delayed_work(&otg->sdp_check_work,
+				INVALID_SDP_TIMEOUT);
+#endif
 	default:
 		otg_err(otg, "Charger type is not valid to notify battery\n");
 		return -EINVAL;
@@ -1708,6 +1740,9 @@ static int dwc_otg_probe(struct pci_dev *pdev,
 	otg->otg.host_release   = dwc_otg2_received_host_release;
 	otg->otg.set_power	= dwc_otg_set_power;
 	ATOMIC_INIT_NOTIFIER_HEAD(&otg->otg.notifier);
+#ifdef CONFIG_DWC_CHARGER_DETECION
+	INIT_DELAYED_WORK(&otg->sdp_check_work, dwc_otg_sdp_check_work);
+#endif
 
 	otg->state = DWC_STATE_INIT;
 	spin_lock_init(&otg->lock);
