@@ -146,6 +146,7 @@ IMG_BOOL  MRSTLFBFlipToSurface(MRSTLFB_DEVINFO *psDevInfo,
     MRSTLFB_SWAPCHAIN *psCurrentSwapChain = psDevInfo->psCurrentSwapChain;
 	struct mdfld_dsi_config *dsi_config;
 	struct mdfld_dsi_hw_context *ctx;
+	unsigned int tmp;
 
     if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, false))
     {
@@ -156,6 +157,10 @@ IMG_BOOL  MRSTLFBFlipToSurface(MRSTLFB_DEVINFO *psDevInfo,
 			if (psCurrentSwapChain->ui32SwapChainPropertyFlag
 					& PVRSRV_SWAPCHAIN_ATTACHED_PLANE_A) {
 				dspsurf = DSPASURF;
+				tmp = PSB_RVDC32(DSPACNTR);
+				if (!(tmp & DISPLAY_PLANE_ENABLE))
+					PSB_WVDC32(tmp | DISPLAY_PLANE_ENABLE,
+							DSPACNTR);
 				MRSTLFBVSyncWriteReg(psDevInfo, dspsurf, uiAddr);
 
 				dsi_config = dev_priv->dsi_configs[0];
@@ -171,6 +176,10 @@ IMG_BOOL  MRSTLFBFlipToSurface(MRSTLFB_DEVINFO *psDevInfo,
 			if (psCurrentSwapChain->ui32SwapChainPropertyFlag
 					& PVRSRV_SWAPCHAIN_ATTACHED_PLANE_C) {
 				dspsurf = DSPCSURF;
+				tmp = PSB_RVDC32(DSPACNTR + 0x2000);
+				if (!(tmp & DISPLAY_PLANE_ENABLE))
+					PSB_WVDC32(tmp | DISPLAY_PLANE_ENABLE,
+							DSPACNTR + 0x2000);
 				MRSTLFBVSyncWriteReg(psDevInfo, dspsurf, uiAddr);
 
 				dsi_config = dev_priv->dsi_configs[1];
@@ -189,6 +198,10 @@ IMG_BOOL  MRSTLFBFlipToSurface(MRSTLFB_DEVINFO *psDevInfo,
 			if (psCurrentSwapChain->ui32SwapChainPropertyFlag
 					& PVRSRV_SWAPCHAIN_ATTACHED_PLANE_B) {
 				dspsurf = DSPBSURF;
+				tmp = PSB_RVDC32(DSPACNTR + 0x1000);
+				if (!(tmp & DISPLAY_PLANE_ENABLE))
+					PSB_WVDC32(tmp | DISPLAY_PLANE_ENABLE,
+							DSPACNTR + 0x1000);
 				MRSTLFBVSyncWriteReg(psDevInfo, dspsurf, uiAddr);
 			}
 #endif

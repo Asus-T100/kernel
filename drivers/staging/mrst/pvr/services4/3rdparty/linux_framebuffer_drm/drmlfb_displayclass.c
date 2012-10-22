@@ -119,11 +119,12 @@ static inline void MRSTFBFlipComplete(MRSTLFB_SWAPCHAIN *psSwapChain, MRSTLFB_VS
 
 
 static void MRSTLFBFlipOverlay(MRSTLFB_DEVINFO *psDevInfo,
-			struct intel_overlay_context *psContext)
+			struct intel_overlay_context *psContext, u32 pipe_mask)
 {
 	struct drm_device *dev;
 	struct drm_psb_private *dev_priv;
 	u32 ovadd_reg = OV_OVADD;
+	u32 uDspCntr = 0;
 
 	dev = psDevInfo->psDrmDevice;
 	dev_priv =
@@ -141,10 +142,42 @@ static void MRSTLFBFlipOverlay(MRSTLFB_DEVINFO *psDevInfo,
 	psContext->ovadd |= 1;
 
 	PSB_WVDC32(psContext->ovadd, ovadd_reg);
+
+	/* If overlay enabled while display plane doesn't,
+	 * disable display plane explicitly */
+	/* A pipe */
+	if (((psContext->pipe >> 6) & 0x3) == 0x00 &&
+		!(pipe_mask & (1 << 0))) {
+		uDspCntr = PSB_RVDC32(DSPACNTR);
+		if (uDspCntr & DISPLAY_PLANE_ENABLE) {
+			uDspCntr &= ~DISPLAY_PLANE_ENABLE;
+			PSB_WVDC32(uDspCntr, DSPACNTR);
+			/* trigger cntr register take effect */
+			PSB_WVDC32(0, DSPASURF);
+		}
+	} else if (((psContext->pipe >> 6) & 0x3) == 0x2 &&
+		!(pipe_mask & (1 << 1))) {
+		uDspCntr = PSB_RVDC32(DSPACNTR + 0x1000);
+		if (uDspCntr & DISPLAY_PLANE_ENABLE) {
+			uDspCntr &= ~DISPLAY_PLANE_ENABLE;
+			PSB_WVDC32(uDspCntr, DSPACNTR + 0x1000);
+			/* trigger cntr register take effect */
+			PSB_WVDC32(0, DSPBSURF);
+		}
+	} else if (((psContext->pipe >> 6) & 0x3) == 0x1 &&
+		!(pipe_mask & (1 << 2))) {
+		uDspCntr = PSB_RVDC32(DSPACNTR + 0x2000);
+		if (uDspCntr & DISPLAY_PLANE_ENABLE) {
+			uDspCntr &= ~DISPLAY_PLANE_ENABLE;
+			PSB_WVDC32(uDspCntr, DSPACNTR + 0x2000);
+			/* trigger cntr register take effect */
+			PSB_WVDC32(0, DSPCSURF);
+		}
+	}
 }
 
 static void MRSTLFBFlipSprite(MRSTLFB_DEVINFO *psDevInfo,
-			struct intel_sprite_context *psContext)
+			struct intel_sprite_context *psContext, u32 *pipe_mask)
 {
 	struct drm_device *dev;
 	struct drm_psb_private *dev_priv;
@@ -171,6 +204,8 @@ static void MRSTLFBFlipSprite(MRSTLFB_DEVINFO *psDevInfo,
 	} else
 		return;
 
+	(*pipe_mask) |= (1 << pipe);
+
 	if ((psContext->update_mask & SPRITE_UPDATE_POSITION))
 		PSB_WVDC32(psContext->pos, DSPAPOS + reg_offset);
 	if ((psContext->update_mask & SPRITE_UPDATE_SIZE)) {
@@ -179,7 +214,8 @@ static void MRSTLFBFlipSprite(MRSTLFB_DEVINFO *psDevInfo,
 	}
 
 	if ((psContext->update_mask & SPRITE_UPDATE_CONTROL))
-		PSB_WVDC32(psContext->cntr, DSPACNTR + reg_offset);
+		PSB_WVDC32(psContext->cntr | DISPLAY_PLANE_ENABLE,
+			       DSPACNTR + reg_offset);
 
 	if ((psContext->update_mask & SPRITE_UPDATE_SURFACE)) {
 		PSB_WVDC32(psContext->linoff, DSPALINOFF + reg_offset);
@@ -198,7 +234,7 @@ static void MRSTLFBFlipSprite(MRSTLFB_DEVINFO *psDevInfo,
 }
 
 static void MRSTLFBFlipPrimary(MRSTLFB_DEVINFO *psDevInfo,
-			struct intel_sprite_context *psContext)
+			struct intel_sprite_context *psContext, u32 *pipe_mask)
 {
 	struct drm_device *dev;
 	struct drm_psb_private *dev_priv;
@@ -225,6 +261,8 @@ static void MRSTLFBFlipPrimary(MRSTLFB_DEVINFO *psDevInfo,
 	} else
 		return;
 
+	(*pipe_mask) |= (1 << pipe);
+
 	/*for HDMI only flip the surface address*/
 	if (pipe == 1)
 		psContext->update_mask &= SPRITE_UPDATE_SURFACE;
@@ -237,7 +275,8 @@ static void MRSTLFBFlipPrimary(MRSTLFB_DEVINFO *psDevInfo,
 	}
 
 	if ((psContext->update_mask & SPRITE_UPDATE_CONTROL))
-		PSB_WVDC32(psContext->cntr, DSPACNTR + reg_offset);
+		PSB_WVDC32(psContext->cntr | DISPLAY_PLANE_ENABLE,
+			       DSPACNTR + reg_offset);
 
 	if ((psContext->update_mask & SPRITE_UPDATE_SURFACE)) {
 		PSB_WVDC32(psContext->linoff, DSPALINOFF + reg_offset);
@@ -265,6 +304,7 @@ static IMG_BOOL MRSTLFBFlipContexts(MRSTLFB_DEVINFO *psDevInfo,
 	struct drm_device *dev;
 	IMG_BOOL ret = IMG_TRUE;
 	int i;
+	u32 pipe_mask = 0;
 
 	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND, MRST_TRUE)) {
 		DRM_ERROR("mdfld_dsi_dsr: failed to hw_begin\n");
@@ -279,7 +319,8 @@ static IMG_BOOL MRSTLFBFlipContexts(MRSTLFB_DEVINFO *psDevInfo,
 	for (i = 0; i < INTEL_SPRITE_PLANE_NUM; i++) {
 		if (psContexts->active_primaries & (1 << i)) {
 			psPrimaryContext = &psContexts->primary_contexts[i];
-			MRSTLFBFlipPrimary(psDevInfo, psPrimaryContext);
+			MRSTLFBFlipPrimary(psDevInfo, psPrimaryContext,
+				&pipe_mask);
 		}
 	}
 
@@ -287,7 +328,8 @@ static IMG_BOOL MRSTLFBFlipContexts(MRSTLFB_DEVINFO *psDevInfo,
 	for (i = 0; i < INTEL_SPRITE_PLANE_NUM; i++) {
 		if (psContexts->active_sprites & (1 << i)) {
 			psSpriteContext = &psContexts->sprite_contexts[i];
-			MRSTLFBFlipSprite(psDevInfo, psSpriteContext);
+			MRSTLFBFlipSprite(psDevInfo, psSpriteContext,
+				&pipe_mask);
 		}
 	}
 
@@ -295,7 +337,8 @@ static IMG_BOOL MRSTLFBFlipContexts(MRSTLFB_DEVINFO *psDevInfo,
 	for (i = 0; i < INTEL_OVERLAY_PLANE_NUM; i++) {
 		if (psContexts->active_overlays & (1 << i)) {
 			psOverlayContext = &psContexts->overlay_contexts[i];
-			MRSTLFBFlipOverlay(psDevInfo, psOverlayContext);
+			MRSTLFBFlipOverlay(psDevInfo, psOverlayContext,
+				pipe_mask);
 		}
 	}
 
