@@ -431,9 +431,11 @@ static void atomisp_pipe_reset(struct atomisp_device *isp)
 	 */
 	/* stream off sensor */
 	if (!isp->sw_contex.file_input) {
-		v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
-				 video, s_stream, 0);
-		isp->sw_contex.sensor_streaming = false;
+		ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
+				       video, s_stream, 0);
+		if (ret)
+			dev_warn(isp->dev,
+				 "can't stop streaming on sensor!\n");
 	}
 
 	/* reset ISP and restore its state */
@@ -451,6 +453,15 @@ static void atomisp_pipe_reset(struct atomisp_device *isp)
 
 	mutex_lock(&isp->isp_lock);
 	sh_css_start(css_pipe_id);
+	if (!isp->sw_contex.file_input) {
+		sh_css_enable_interrupt(SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF, true);
+		set_term_en_count(isp);
+		ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
+				       video, s_stream, 1);
+		if (ret)
+			dev_warn(isp->dev,
+				 "can't start streaming on sensor!\n");
+	}
 	mutex_unlock(&isp->isp_lock);
 }
 
