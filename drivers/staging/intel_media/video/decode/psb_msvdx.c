@@ -46,10 +46,8 @@
 
 static int psb_msvdx_send(struct drm_device *dev, void *cmd,
 			  unsigned long cmd_size);
-#ifdef PSB_MSVDX_TILE_SUPPORT
 static void psb_msvdx_set_tile(struct drm_device *dev,
 				unsigned long msvdx_tile);
-#endif
 static int psb_msvdx_dequeue_send(struct drm_device *dev)
 {
 	struct drm_psb_private *dev_priv = dev->dev_private;
@@ -72,10 +70,8 @@ static int psb_msvdx_dequeue_send(struct drm_device *dev)
 	spin_unlock_irqrestore(&msvdx_priv->msvdx_lock, irq_flags);
 
 	PSB_DEBUG_GENERAL("MSVDXQUE: Queue has id %08x\n", msvdx_cmd->sequence);
-#ifdef PSB_MSVDX_TILE_SUPPORT
 	if (IS_MSVDX_MEM_TILE(dev) && drm_psb_msvdx_tiling)
 		psb_msvdx_set_tile(dev, msvdx_cmd->msvdx_tile);
-#endif
 
 #ifdef CONFIG_VIDEO_MRFLD
 	/* Seperate update frame and backup cmds because if a batch of cmds
@@ -319,13 +315,11 @@ static int psb_msvdx_map_command(struct drm_device *dev,
 		*msvdx_cmd = cmd_copy;
 	} else {
 		PSB_DEBUG_GENERAL("MSVDXQUE:did NOT copy command\n");
-#ifdef PSB_MSVDX_TILE_SUPPORT
 		if (IS_MSVDX_MEM_TILE(dev) && drm_psb_msvdx_tiling) {
 			unsigned long msvdx_tile =
 				((msvdx_priv->msvdx_ctx->ctx_type >> 16) & 0xff);
 			psb_msvdx_set_tile(dev, msvdx_tile);
 		}
-#endif
 #ifdef CONFIG_VIDEO_MRFLD
 		if (msvdx_priv->host_be_opp_enabled) {
 			psb_msvdx_update_frame_info(msvdx_priv,
@@ -1261,7 +1255,6 @@ void psb_msvdx_check_reset_fw(struct drm_device *dev)
 	spin_unlock_irqrestore(&msvdx_priv->msvdx_lock, irq_flags);
 }
 
-#ifdef PSB_MSVDX_TILE_SUPPORT
 static void psb_msvdx_set_tile(struct drm_device *dev, unsigned long msvdx_tile)
 {
 	struct drm_psb_private *dev_priv = dev->dev_private;
@@ -1296,7 +1289,6 @@ static void psb_msvdx_set_tile(struct drm_device *dev, unsigned long msvdx_tile)
 		PSB_WMSVDX32(cmd, MSVDX_MMU_TILE_BASE1_OFFSET);
 	}
 }
-#endif
 
 void psb_powerdown_msvdx(struct work_struct *work)
 {

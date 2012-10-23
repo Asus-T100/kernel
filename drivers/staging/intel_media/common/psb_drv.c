@@ -94,10 +94,10 @@ static int PanelID = GCT_DETECT;
 char HDMI_EDID[HDMI_MONITOR_NAME_LENGTH];
 int hdmi_state;
 u32 DISP_PLANEB_STATUS = ~DISPLAY_PLANE_ENABLE;
-int drm_psb_msvdx_tiling;
 int drm_psb_use_cases_control = PSB_ALL_UC_ENABLE;
 int drm_psb_dump_pm_history;
 
+int drm_psb_msvdx_tiling = 1;
 
 static int psb_probe(struct pci_dev *pdev, const struct pci_device_id *ent);
 
@@ -1148,6 +1148,7 @@ static int psb_do_init(struct drm_device *dev)
 		/* Create tiling MMU region managed by TTM */
 		tmp = (PSB_MEM_IMR_START -
 			PSB_MEM_MMU_TILING_START) >> PAGE_SHIFT;
+		printk(KERN_INFO "init tiling heap, size is 0x%08x pages\n", tmp);
 		if (!ttm_bo_init_mm(bdev, DRM_PSB_MEM_MMU_TILING, tmp))
 			dev_priv->have_mem_mmu_tiling = 1;
 	}

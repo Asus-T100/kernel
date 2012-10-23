@@ -1323,7 +1323,7 @@ static inline int psb_get_power_state(int islands)
 
 #define IS_TOPAZ(dev) ((IS_MRST(dev) && (((dev)->pci_device & 0xfffc) != PCI_ID_TOPAZ_DISABLED)) || IS_MDFLD(dev))
 
-#define IS_MSVDX_MEM_TILE(dev) ((IS_MRFL(dev)))
+#define IS_MSVDX_MEM_TILE(dev) ((IS_MRFL(dev)) || (IS_CTP(dev)))
 
 extern int drm_psb_ospm;
 extern int drm_psb_cpurelax;

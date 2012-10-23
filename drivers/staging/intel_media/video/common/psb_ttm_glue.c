@@ -284,7 +284,6 @@ void psb_remove_videoctx(struct drm_psb_private *dev_priv, struct file *filp)
 	}
 }
 
-#ifdef PSB_MSVDX_TILE_SUPPORT
 static struct psb_video_ctx *psb_find_videoctx(struct drm_psb_private *dev_priv,
 						struct file *filp)
 {
@@ -300,7 +299,6 @@ static struct psb_video_ctx *psb_find_videoctx(struct drm_psb_private *dev_priv,
 	mutex_unlock(&dev_priv->video_ctx_mutex);
 	return NULL;
 }
-#endif
 
 static int psb_entrypoint_number(struct drm_psb_private *dev_priv,
 		uint32_t entry_type)
@@ -394,7 +392,6 @@ int psb_video_getparam(struct drm_device *dev, void *data,
 	case IMG_VIDEO_RM_CONTEXT:
 		psb_remove_videoctx(dev_priv, file_priv->filp);
 		break;
-#ifdef PSB_MSVDX_TILE_SUPPORT
 	case IMG_VIDEO_UPDATE_CONTEXT:
 		ret = copy_from_user(&ctx_type,
 				(void __user *)((unsigned long)arg->value),
@@ -415,7 +412,6 @@ int psb_video_getparam(struct drm_device *dev, void *data,
 				"Video:fail to find context profile %d, entrypoint %d",
 				(ctx_type >> 8), (ctx_type & 0xff));
 		break;
-#endif
 	case IMG_VIDEO_DECODE_STATUS:
 #ifdef CONFIG_VIDEO_MRFLD
 		if (msvdx_priv->host_be_opp_enabled) {

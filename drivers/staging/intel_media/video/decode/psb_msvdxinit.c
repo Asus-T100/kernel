@@ -442,8 +442,6 @@ static void msvdx_tile_setup(struct drm_psb_private *dev_priv)
 	msvdx_priv->tile_region_end1 = msvdx_priv->tile_region_start1 +
 		(dev_priv->bdev.man[TTM_PL_TT].size << PAGE_SHIFT);
 
-	drm_psb_msvdx_tiling = 0;
-
 #if 0
 	if (drm_psb_msvdx_tiling && IS_MSVDX_MEM_TILE(dev)) {
 		uint32_t tile_start =
