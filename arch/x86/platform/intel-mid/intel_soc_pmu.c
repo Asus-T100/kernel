@@ -989,7 +989,7 @@ static bool update_nc_device_states(int i, pci_power_t state)
 void init_nc_device_states(void)
 {
 #ifndef CONFIG_VIDEO_ATOMISP
-	mid_pmu_cxt->camera_off = true;
+	mid_pmu_cxt->camera_off = false;
 #endif
 
 #ifndef GFX_ENABLE
@@ -1286,11 +1286,11 @@ int __ref pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t state)
 	  *the status and return*/
 	if (update_nc_device_states(i, state)) {
 		if (mid_pmu_cxt->pmu_dev_res[i].state == state)
-			goto unlock;
+			goto nc_done;
 		else {
 			if (i < MAX_DEVICES)
 				update_dev_res(i, state);
-			goto unlock;
+			goto nc_done;
 		}
 	}
 
@@ -1409,6 +1409,22 @@ retry:
 
 	if ((chk_val == new_value) && (i < MAX_DEVICES))
 		update_dev_res(i, state);
+
+nc_done:
+#ifndef CONFIG_VIDEO_ATOMISP
+	/* ATOMISP is always powered up on system-resume path. It needs
+	 * to be turned off here if there is no driver to do it. */
+	if (!mid_pmu_cxt->camera_off) {
+		/* power down isp */
+		pmu_nc_set_power_state(APM_ISP_ISLAND | APM_IPH_ISLAND,
+				       OSPM_ISLAND_DOWN, APM_REG_TYPE);
+		/* power down DPHY */
+		new_value = intel_mid_msgbus_read32(0x09, 0x03);
+		new_value |= 0x300;
+		intel_mid_msgbus_write32(0x09, 0x03, new_value);
+		mid_pmu_cxt->camera_off = true;
+	}
+#endif
 
 unlock:
 	up(&mid_pmu_cxt->scu_ready_sem);
