@@ -2208,29 +2208,30 @@ static void pnw_phy_ctrl_rst(void)
 {
 	struct penwell_otg *pnw = the_transceiver;
 	unsigned long	flags;
+	struct pci_dev	*pdev;
 
-	spin_lock_irqsave(&pnw->lock, flags);
+	pdev = to_pci_dev(pnw->dev);
 
 	/* mask id intr before reset and delay for 4 ms
 	* before unmasking id intr to avoid wrongly
 	* detecting ID_A which is a side-effect of reset
 	* PHY
 	*/
-	penwell_otg_id(0);
+	penwell_otg_intr(0);
+	synchronize_irq(pdev->irq);
+
 	gpio_direction_output(pnw->otg_pdata->gpio_reset, 0);
 	udelay(500);
 	gpio_set_value(pnw->otg_pdata->gpio_reset, 1);
 
 	reset_otg();
 
-	udelay(4000);
-	penwell_otg_id(1);
+	msleep(50);
+	penwell_otg_intr(1);
 
 	/* after reset, need to sync to OTGSC status bits to hsm */
 	update_hsm();
 	penwell_update_transceiver();
-
-	spin_unlock_irqrestore(&pnw->lock, flags);
 }
 
 static void set_host_mode(void)
