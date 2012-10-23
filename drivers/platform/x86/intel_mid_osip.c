@@ -326,36 +326,47 @@ static struct notifier_block osip_reboot_notifier = {
 /* useful for engineering, not for product */
 #ifdef CONFIG_INTEL_MID_OSIP_DEBUG_FS
 /* show and edit boot.bin's cmdline */
+#define OSIP_MAX_CMDLINE_SIZE 0x400
+/* number N of sectors (512bytes) needed for the cmdline, N+1 needed */
+#define OSIP_MAX_CMDLINE_SECTOR ((OSIP_MAX_CMDLINE_SIZE >> 9) + 1)
 
 struct cmdline_priv {
-	Sector sect;
+	Sector sect[OSIP_MAX_CMDLINE_SECTOR];
 	struct block_device *bdev;
 	int lba;
 	char *cmdline;
 	int osip_id;
+	uint8_t attribute;
 };
 
 static int osip_find_cmdline(struct OSIP_header *osip, void *data)
 {
 	struct cmdline_priv *p = (struct cmdline_priv *) data;
-	if (p->osip_id < MAX_OSII)
-		if (osip->desc[p->osip_id].attribute % 2)
-			/* Even number: Unsigned */
-			p->lba = osip->desc[p->osip_id].logical_start_block;
-		else
-			/* Odd number: Signed plus 1 for VRL header */
-			p->lba = osip->desc[p->osip_id].logical_start_block + 1;
+	if (p->osip_id < MAX_OSII) {
+		p->attribute = osip->desc[p->osip_id].attribute;
+		p->lba = osip->desc[p->osip_id].logical_start_block;
+	}
 	return 0;
 }
 int open_cmdline(struct inode *i, struct file *f)
 {
 	struct cmdline_priv *p;
-	int ret ;
+	int ret, j;
 	p = kzalloc(sizeof(*p), GFP_KERNEL);
+	if (!p) {
+		pr_err("%s:unable to allocate p!\n", __func__);
+		ret = -ENOMEM;
+		goto end;
+	}
 	if (i->i_private)
 		p->osip_id = (int) i->i_private;
 	f->private_data = 0;
 	access_osip_record(osip_find_cmdline, (void *)p);
+	if (!p->lba) {
+		pr_err("%s:osip_find_cmdline failed!\n", __func__);
+		ret = -ENODEV;
+		goto free;
+	}
 	/* need to open it again */
 	p->bdev = get_emmc_bdev();
 	if (!p->bdev) {
@@ -366,31 +377,37 @@ int open_cmdline(struct inode *i, struct file *f)
 	ret = blkdev_get(p->bdev, f->f_mode, NULL);
 	if (ret < 0) {
 		pr_err("%s: blk_dev_get failed!\n", __func__);
-		goto put;
+		ret = -ENODEV;
+		goto free;
 	}
 	if (p->lba >= get_capacity(p->bdev->bd_disk)) {
 		pr_err("%s: %d out of disk bound!\n", __func__, p->lba);
 		ret = -EINVAL;
 		goto put;
 	}
-	p->cmdline = read_dev_sector(p->bdev,
-				     p->lba,
-				     &p->sect);
+	for (j = (OSIP_MAX_CMDLINE_SECTOR-1); j >= 0; j--) {
+		p->cmdline = read_dev_sector(p->bdev,
+				p->lba+j,
+				&p->sect[j]);
+	}
 	if (!p->cmdline) {
 		pr_err("%s:read_dev_sector failed!\n", __func__);
 		ret = -ENODEV;
 		goto put;
 	}
+	if (!(p->attribute & 1))
+		/* even number: Signed plus 480 bytes for VRL header */
+		p->cmdline += 0x1E0;
 	f->private_data = p;
 	return 0;
+
 put:
 	blkdev_put(p->bdev, f->f_mode);
 free:
 	kfree(p);
-	return -ENODEV;
+end:
+	return ret;
 }
-
-#define OSIP_MAX_CMDLINE_SIZE 0x400
 
 static ssize_t read_cmdline(struct file *file, char __user *buf,
 			    size_t count, loff_t *ppos)
@@ -409,26 +426,46 @@ static ssize_t write_cmdline(struct file *file, const char __user *buf,
 {
 	struct cmdline_priv *p =
 		(struct cmdline_priv *)file->private_data;
-	int ret;
+	int ret, i;
 	if (!p)
 		return -ENODEV;
 	/* @todo detect if image is signed, and prevent write */
-	lock_page(p->sect.v);
+	lock_page(p->sect[0].v);
+	for (i = 1; i < OSIP_MAX_CMDLINE_SECTOR; i++) {
+		if (p->sect[i-1].v != p->sect[i].v)
+			lock_page(p->sect[i].v);
+	}
 	ret = simple_write_to_buffer(p->cmdline, OSIP_MAX_CMDLINE_SIZE-1,
 				     ppos,
 				     buf, count);
+	if (ret < 0)
+		goto unlock;
 	/* make sure we zero terminate the cmdline */
 	if (file->f_pos + count < OSIP_MAX_CMDLINE_SIZE)
 		p->cmdline[file->f_pos + count] = '\0';
-	set_page_dirty(p->sect.v);
-	unlock_page(p->sect.v);
+
+unlock:
+	set_page_dirty(p->sect[0].v);
+	unlock_page(p->sect[0].v);
+	for (i = 1; i < OSIP_MAX_CMDLINE_SECTOR; i++) {
+		if (p->sect[i-1].v != p->sect[i].v) {
+			set_page_dirty(p->sect[i].v);
+			unlock_page(p->sect[i].v);
+		}
+	}
 	return ret;
 }
 int release_cmdline(struct inode *i, struct file *f)
 {
+	int j;
 	struct cmdline_priv *p =
 		(struct cmdline_priv *)f->private_data;
-	put_dev_sector(p->sect);
+	if (!p)
+		return -ENOMEM;
+	put_dev_sector(p->sect[0]);
+	for (j = 1; j < OSIP_MAX_CMDLINE_SECTOR; j++)
+		if (p->sect[j-1].v != p->sect[j].v)
+			put_dev_sector(p->sect[j]);
 	blkdev_put(p->bdev, f->f_mode);
 	kfree(p);
 	return 0;
@@ -437,6 +474,8 @@ int fsync_cmdline(struct file *f, int datasync)
 {
 	struct cmdline_priv *p =
 		(struct cmdline_priv *)f->private_data;
+	if (!p)
+		return -ENOMEM;
 	sync_blockdev(p->bdev);
 	return 0;
 }
