@@ -2785,11 +2785,29 @@ static void penwell_otg_hnp_poll_work(struct work_struct *work)
 	}
 }
 
-static void penwell_otg_ulpi_check_work(struct work_struct *work)
+static int penwell_otg_ulpi_check(void)
 {
 	struct penwell_otg		*pnw = the_transceiver;
 	struct intel_mid_otg_xceiv	*iotg = &pnw->iotg;
 	u8				data;
+	int				retval;
+
+	retval = penwell_otg_ulpi_read(iotg, 0x16, &data);
+	if (retval) {
+		dev_err(pnw->dev,
+				"%s: [ ULPI hang ] detected\n"
+				"reset PHY & ctrl to recover\n",
+				 __func__);
+		pnw_phy_ctrl_rst();
+		return retval;
+	}
+	return 0;
+}
+
+static void penwell_otg_ulpi_check_work(struct work_struct *work)
+{
+	struct penwell_otg		*pnw = the_transceiver;
+	struct intel_mid_otg_xceiv	*iotg = &pnw->iotg;
 	int				status;
 
 	status = pm_runtime_get_sync(pnw->dev);
@@ -2800,12 +2818,28 @@ static void penwell_otg_ulpi_check_work(struct work_struct *work)
 		return;
 	}
 
-	if (penwell_otg_ulpi_read(iotg, 0x16, &data)) {
-		dev_err(pnw->dev,
-				"%s: [ ULPI hang ] detected\n"
-				"reset PHY & ctrl to recover\n",
-				 __func__);
-		pnw_phy_ctrl_rst();
+	if (iotg->otg.state == OTG_STATE_B_IDLE) {
+		/* Before charger detection or charger detection done */
+		dev_dbg(pnw->dev, "ulpi_check health\n");
+		penwell_otg_ulpi_check();
+	} else if (iotg->otg.state == OTG_STATE_B_PERIPHERAL) {
+		/* After charger detection, SDP/CDP is detected */
+		dev_dbg(pnw->dev, "ulpi_check health\n");
+		status = penwell_otg_ulpi_check();
+		if (status) {
+			/* After phy rst then restart peripheral stack */
+			if (iotg->stop_peripheral)
+				iotg->stop_peripheral(iotg);
+			else
+				dev_dbg(pnw->dev,
+					"client driver not support\n");
+
+			if (iotg->start_peripheral)
+				iotg->start_peripheral(iotg);
+			else
+				dev_dbg(pnw->dev,
+					"client driver not support\n");
+		}
 	}
 
 	pm_runtime_put(pnw->dev);
@@ -3306,9 +3340,10 @@ static void penwell_otg_work(struct work_struct *work)
 
 			hsm->b_bus_req = 0;
 
-			if (is_clovertrail(pdev))
-				schedule_delayed_work(&pnw->ulpi_check_work,
-									HZ);
+			if (is_clovertrail(pdev)) {
+				queue_delayed_work(pnw->qwork,
+					&pnw->ulpi_check_work, HZ);
+			}
 
 			if (iotg->stop_peripheral)
 				iotg->stop_peripheral(iotg);
