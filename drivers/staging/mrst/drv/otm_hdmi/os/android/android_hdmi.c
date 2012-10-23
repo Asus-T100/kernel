@@ -2497,7 +2497,7 @@ void android_hdmi_driver_init(struct drm_device *dev,
 
 	drm_connector_attach_property(connector,
 					dev->mode_config.scaling_mode_property,
-					DRM_MODE_SCALE_ASPECT);
+					DRM_MODE_SCALE_CENTER);
 
 	connector->display_info.subpixel_order = SubPixelHorizontalRGB;
 	connector->interlace_allowed = false;
