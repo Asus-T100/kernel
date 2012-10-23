@@ -434,11 +434,14 @@ static void scsi_run_queue(struct request_queue *q)
 			continue;
 		}
 
+		scsi_device_get(sdev);
 		spin_unlock(shost->host_lock);
+
 		spin_lock(sdev->request_queue->queue_lock);
 		__blk_run_queue(sdev->request_queue);
-		spin_unlock(sdev->request_queue->queue_lock);
-		spin_lock(shost->host_lock);
+		spin_unlock_irq(sdev->request_queue->queue_lock);
+		scsi_device_put(sdev);
+		spin_lock_irq(shost->host_lock);
 	}
 	/* put any unprocessed entries back */
 	list_splice(&starved_list, &shost->starved_list);
