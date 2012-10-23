@@ -323,6 +323,11 @@ MODULE_DEVICE_TABLE(pci, pciidlist);
 #define DRM_IOCTL_PSB_CSC_GAMMA_SETTING \
 		DRM_IOWR(DRM_PSB_CSC_GAMMA_SETTING + DRM_COMMAND_BASE, struct drm_psb_csc_gamma_setting)
 
+#define DRM_IOCTL_PSB_ENABLE_IED_SESSION \
+		DRM_IO(DRM_PSB_ENABLE_IED_SESSION + DRM_COMMAND_BASE)
+#define DRM_IOCTL_PSB_DISABLE_IED_SESSION \
+		DRM_IO(DRM_PSB_DISABLE_IED_SESSION + DRM_COMMAND_BASE)
+
 /*
  * TTM execbuf extension.
  */
@@ -465,6 +470,10 @@ static int psb_set_csc_ioctl(struct drm_device *dev, void *data,
 static int psb_csc_gamma_setting_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv);
 
+static int psb_enable_ied_session_ioctl(struct drm_device *dev, void *data,
+				 struct drm_file *file_priv);
+static int psb_disable_ied_session_ioctl(struct drm_device *dev, void *data,
+				 struct drm_file *file_priv);
 
 #define PSB_IOCTL_DEF(ioctl, func, flags) \
 	[DRM_IOCTL_NR(ioctl) - DRM_COMMAND_BASE] = {ioctl, flags, func}
@@ -568,6 +577,11 @@ static struct drm_ioctl_desc psb_ioctls[] = {
 #endif
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_CSC_GAMMA_SETTING, psb_csc_gamma_setting_ioctl, DRM_AUTH),
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_SET_CSC, psb_set_csc_ioctl, DRM_AUTH),
+
+	PSB_IOCTL_DEF(DRM_IOCTL_PSB_ENABLE_IED_SESSION,
+	psb_enable_ied_session_ioctl, DRM_AUTH),
+	PSB_IOCTL_DEF(DRM_IOCTL_PSB_DISABLE_IED_SESSION,
+	psb_disable_ied_session_ioctl, DRM_AUTH),
 };
 
 static void get_imr_info(struct drm_psb_private *dev_priv)
@@ -1324,6 +1338,8 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	bdev = &dev_priv->bdev;
 
 	hdmi_state = 0;
+	dev_priv->ied_enabled = false;
+	dev_priv->ied_context = NULL;
 	dev_priv->bhdmiconnected = false;
 	dev_priv->dpms_on_off = false;
 	dev_priv->brightness_adjusted = 0;
@@ -1852,6 +1868,83 @@ static int psb_csc_gamma_setting_ioctl(struct drm_device *dev, void *data,
 		ret = mdfld_intel_crtc_set_color_conversion(dev,
 			&csc_gamma_setting->data.csc_data);
 	return ret;
+}
+static int psb_enable_ied_session_ioctl(struct drm_device *dev, void *data,
+						struct drm_file *file_priv)
+{
+	struct drm_psb_private *dev_priv = psb_priv(dev);
+	struct mdfld_dsi_config *dsi_config = dev_priv->dsi_configs[0];
+	DRM_INFO("Enabling IED session...\n");
+	if (file_priv == NULL) {
+		DRM_ERROR("%s: file_priv is NULL.\n", __func__);
+		return -1;
+	}
+	if (dev_priv->ied_enabled) {
+		DRM_ERROR("%s: ied_enabled has been set.\n", __func__);
+		return 0;
+	}
+	dev_priv->ied_enabled = true;
+	dev_priv->ied_context = file_priv->filp;
+	mdfld_dsi_dsr_forbid(dsi_config);
+	if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
+		OSPM_UHB_FORCE_POWER_ON)) {
+		/* Set bit 31 to enable IED pipeline */
+		REG_WRITE(PSB_IED_DRM_CNTL_STATUS, 0x80000000);
+		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+		return 0;
+	} else {
+		DRM_ERROR("%s: Failed to power on display island.\n", __func__);
+		return -1;
+	}
+}
+
+static int psb_disable_ied_session_ioctl(struct drm_device *dev, void *data,
+					struct drm_file *file_priv)
+{
+	int ret = 0;
+	struct drm_psb_private *dev_priv = psb_priv(dev);
+	DRM_INFO("Disabling IED session...\n");
+	struct mdfld_dsi_config *dsi_config = dev_priv->dsi_configs[0];
+	if (file_priv == NULL) {
+		DRM_ERROR("%s: file_priv is NULL.\n", __func__);
+		return -1;
+	}
+	if (dev_priv->ied_enabled == false) {
+		DRM_ERROR("%s: ied_enabled is not set.\n", __func__);
+		return 0;
+	}
+	if (dev_priv->ied_context != file_priv->filp) {
+		DRM_ERROR("%s: Wrong context.\n", __func__);
+		return -1;
+	}
+	dev_priv->ied_enabled = false;
+	dev_priv->ied_context = NULL;
+	if (ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
+		OSPM_UHB_FORCE_POWER_ON)) {
+		REG_WRITE(PSB_IED_DRM_CNTL_STATUS, 0);
+		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
+		ret = 0;
+	} else {
+		DRM_ERROR("%s: Failed to power on display island.\n", __func__);
+		ret = -1;
+	}
+	mdfld_dsi_dsr_allow(dsi_config);
+	return ret;
+}
+
+void psb_cleanup_ied_session(struct drm_psb_private *dev_priv,
+			struct file *filp)
+{
+	struct mdfld_dsi_config *dsi_config = NULL;
+	if (dev_priv == NULL || filp == NULL)
+		return;
+	if (dev_priv->ied_enabled && dev_priv->ied_context == filp) {
+		DRM_ERROR("%s: ied_enabled is not cleared.\n", __func__);
+		dev_priv->ied_enabled = false;
+		dev_priv->ied_context = NULL;
+		dsi_config = dev_priv->dsi_configs[0];
+		mdfld_dsi_dsr_allow(dsi_config);
+	}
 }
 
 static int psb_disp_ioctl(struct drm_device *dev, void *data,
