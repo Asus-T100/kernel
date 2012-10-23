@@ -1883,14 +1883,14 @@ static int penwell_otg_charger_det_clt(void)
 	retval = penwell_otg_charger_det_dcd_clt();
 	if (retval) {
 		dev_warn(pnw->dev, "DCD failed, exit\n");
-		return CHRG_UNKNOWN;
+		return retval;
 	}
 
 	/* ACA Detection */
 	retval = penwell_otg_charger_det_aca_clt();
 	if (retval < 0) {
 		dev_warn(pnw->dev, "ACA Det failed, exit\n");
-		return CHRG_UNKNOWN;
+		return retval;
 	} else if (retval == CHRG_ACA) {
 		dev_info(pnw->dev, "ACA detected\n");
 		penwell_otg_charger_hwdet(true);
@@ -1901,7 +1901,7 @@ static int penwell_otg_charger_det_clt(void)
 	retval = penwell_otg_charger_det_se1_clt();
 	if (retval < 0) {
 		dev_warn(pnw->dev, "SE1 Det failed, exit\n");
-		return CHRG_UNKNOWN;
+		return retval;
 	} else if (retval == CHRG_SE1) {
 		dev_info(pnw->dev, "SE1 detected\n");
 		penwell_otg_charger_hwdet(true);
@@ -1912,7 +1912,7 @@ static int penwell_otg_charger_det_clt(void)
 	retval = penwell_otg_charger_det_pri_clt();
 	if (retval < 0) {
 		dev_warn(pnw->dev, "Pri Det failed, exit\n");
-		return CHRG_UNKNOWN;
+		return retval;
 	} else if (retval == CHRG_SDP) {
 		dev_info(pnw->dev, "SDP detected\n");
 		return CHRG_SDP;
@@ -1922,7 +1922,7 @@ static int penwell_otg_charger_det_clt(void)
 	retval = penwell_otg_charger_det_sec_clt();
 	if (retval < 0) {
 		dev_warn(pnw->dev, "Sec Det failed, exit\n");
-		return CHRG_UNKNOWN;
+		return retval;
 	} else if (retval == CHRG_CDP) {
 		dev_info(pnw->dev, "CDP detected\n");
 		penwell_otg_charger_hwdet(true);
@@ -3079,7 +3079,14 @@ static void penwell_otg_work(struct work_struct *work)
 				/* Clovertrail charger detection flow */
 				retval = penwell_otg_charger_det_clt();
 				if (retval < 0) {
-					dev_warn(pnw->dev, "Charger detect failure\n");
+					dev_warn(pnw->dev, "detect failed\n");
+					/* Reset PHY and redo the detection */
+					pnw_phy_ctrl_rst();
+					/* Restart charger detection */
+					retval = penwell_otg_charger_det_clt();
+					if (retval)
+						dev_warn(pnw->dev,
+							"detect fail again\n");
 					break;
 				} else
 					charger_type = retval;
