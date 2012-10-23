@@ -55,6 +55,14 @@ extern int drm_psb_3D_vblank;
 
 #define FLIP_TIMEOUT (HZ/4)
 
+/*if panel refresh rate is 60HZ
+* then the max transfer time shoule be smaller
+* than 16ms,otherwise the framerate will drop
+*/
+#define MAX_TRANS_TIME_FOR_ONE_FRAME   16
+/*for JB, android use three swap buffer*/
+#define SWAP_BUFFER_COUNT              3
+
 static PFN_DC_GET_PVRJTABLE pfnGetPVRJTable = 0;
 static int FirstCleanFlag = 1;
 
@@ -1568,6 +1576,7 @@ static IMG_BOOL ProcessFlip2(IMG_HANDLE hCmdCookie,
 	struct mdfld_plane_contexts *psPlaneContexts;
 	struct mdfld_dsi_config *dsi_config;
 	int contextlocked;
+	int retry = MAX_TRANS_TIME_FOR_ONE_FRAME * SWAP_BUFFER_COUNT;
 
 	psFlipCmd = (DISPLAYCLASS_FLIP_COMMAND2 *)pvData;
 	psDevInfo = (MRSTLFB_DEVINFO *)psFlipCmd->hExtDevice;
@@ -1624,6 +1633,27 @@ static IMG_BOOL ProcessFlip2(IMG_HANDLE hCmdCookie,
 
 	if (dev_priv->exit_idle && (dsi_config->type == MDFLD_DSI_ENCODER_DPI))
 		dev_priv->exit_idle(dev, MDFLD_DSR_2D_3D, NULL, true);
+
+	/* wait for previous frame finished, otherwise
+	 * if waiting at sending command, it will occupy CPU resource.
+	 * For 60HZ, normaly the max wait will not bigger than
+	 * 16ms, if wait time bigger then JB triple buffer, report
+	 * fail.
+	 */
+	if (dsi_config->type == MDFLD_DSI_ENCODER_DBI) {
+		while (!DRMLFBFifoEmpty(psDevInfo) && retry) {
+			usleep_range(500, 1000);
+			retry--;
+		}
+		if (!retry) {
+			DRM_ERROR("FIFO never emptied\n");
+			if (contextlocked) {
+				mdfld_dsi_dsr_allow_locked(dsi_config);
+				mutex_unlock(&dsi_config->context_lock);
+			}
+			return IMG_FALSE;
+		}
+	}
 
 	mutex_lock(&psDevInfo->sSwapChainMutex);
 
@@ -1729,6 +1759,7 @@ static IMG_BOOL ProcessFlip(IMG_HANDLE  hCmdCookie,
 	struct drm_psb_private *dev_priv;
 	struct mdfld_dsi_config *dsi_config;
 	int contextlocked;
+	int retry = MAX_TRANS_TIME_FOR_ONE_FRAME * SWAP_BUFFER_COUNT;
 
 	if(!hCmdCookie || !pvData)
 		return IMG_FALSE;
@@ -1793,6 +1824,27 @@ static IMG_BOOL ProcessFlip(IMG_HANDLE  hCmdCookie,
 
 	if (dev_priv->exit_idle && (dsi_config->type == MDFLD_DSI_ENCODER_DPI))
 		dev_priv->exit_idle(dev, MDFLD_DSR_2D_3D, NULL, true);
+
+	/* Wait for previous frame finished, otherwise
+	 * if waiting at sending command, it will occupy CPU resource
+	 * For 60HZ, normaly the max wait will not bigger than
+	 * 16ms, if wait time bigger then JB triple buffer, report
+	 * fail.
+	 */
+	if (dsi_config->type == MDFLD_DSI_ENCODER_DBI) {
+		while (!DRMLFBFifoEmpty(psDevInfo) && retry) {
+			usleep_range(500, 1000);
+			retry--;
+		}
+		if (!retry) {
+			DRM_ERROR("FIFO never emptied\n");
+			if (contextlocked) {
+				mdfld_dsi_dsr_allow_locked(dsi_config);
+				mutex_unlock(&dsi_config->context_lock);
+			}
+			return IMG_FALSE;
+		}
+	}
 
 	mutex_lock(&psDevInfo->sSwapChainMutex);
 
