@@ -576,7 +576,6 @@ static int isp_subdev_init_entities(struct atomisp_sub_device *isp_subdev)
 	strlcpy(sd->name, "ATOM ISP SUBDEV", sizeof(sd->name));
 	v4l2_set_subdevdata(sd, isp_subdev);
 	sd->flags |= V4L2_SUBDEV_FL_HAS_EVENTS | V4L2_SUBDEV_FL_HAS_DEVNODE;
-	sd->nevents = 16; /* TBD */
 
 	pads[ATOMISP_SUBDEV_PAD_SINK].flags = MEDIA_PAD_FL_SINK;
 	pads[ATOMISP_SUBDEV_PAD_SOURCE_VF].flags = MEDIA_PAD_FL_SOURCE;
