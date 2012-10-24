@@ -51,7 +51,13 @@
 #endif
 
 #define NUM_REF_FRAMES		2
+
+#if defined(HAS_SP_2400A0)
 #define NUM_CONTINUOUS_FRAMES	5
+#else
+#define NUM_CONTINUOUS_FRAMES	10
+#endif
+
 #define NUM_TNR_FRAMES		2
 
 #define NUM_VIDEO_REF_FRAMES	2
@@ -61,15 +67,15 @@
 #define SH_CSS_MAX_STAGES 6 /* copy, preisp, anr, postisp, capture_pp, vf_pp */
 
 /* ISP parameter versions
-   If ISP_PIPE_VERSION is defined as 2 in isp_defs_for_hive.h,
-   SH_CSS_ISP_PARAMS_VERSION should be 2.
-   If ISP_PIPE_VERSION is defined as 1,
-   SH_CSS_ISP_PARAMS_VERSION can be either 1 or 2.
-   ISP_PIPE_VRSION is always defined as 1 for ISP2300,
-   so SH_CSS_ISP_PARAMS_VERSION can be defined as 1 for ISP2300
-   to avoid sched error by increase of the number of paramaters.
+ * If ISP_PIPE_VERSION is defined as 2 in isp_defs_for_hive.h,
+ * SH_CSS_ISP_PARAMS_VERSION should be 2.
+ * If ISP_PIPE_VERSION is defined as 1,
+ * SH_CSS_ISP_PARAMS_VERSION can be either 1 or 2.
+ * ISP_PIPE_VRSION is always defined as 1 for ISP2300,
+ * so SH_CSS_ISP_PARAMS_VERSION can be defined as 1 for ISP2300
+ * to avoid sched error by increase of the number of paramaters.
 */
-#if defined(HAS_ISP_2400_MAMOIADA) || defined(HAS_ISP_2400A0_MAMOIADA)
+#if defined(IS_ISP_2400_SYSTEM)
 #define SH_CSS_ISP_PARAMS_VERSION	2
 #else
 #define SH_CSS_ISP_PARAMS_VERSION	1
@@ -276,16 +282,16 @@ struct sh_css_isp_params {
 	int ctc_x2;
 	int ctc_x3;
 	int ctc_x4;
-	int ctc_dydx0_int; /* integer part */
-	int ctc_dydx0_frc; /* fractional part */
-	int ctc_dydx1_int;
-	int ctc_dydx1_frc;
-	int ctc_dydx2_int;
-	int ctc_dydx2_frc;
-	int ctc_dydx3_int;
-	int ctc_dydx3_frc;
-	int ctc_dydx4_int;
-	int ctc_dydx4_frc;
+	int ctc_dydx0;
+	int ctc_dydx0_shift;
+	int ctc_dydx1;
+	int ctc_dydx1_shift;
+	int ctc_dydx2;
+	int ctc_dydx2_shift;
+	int ctc_dydx3;
+	int ctc_dydx3_shift;
+	int ctc_dydx4;
+	int ctc_dydx4_shift;
 
 	/* Anti-Aliasing */
         int aa_scale;
@@ -453,21 +459,22 @@ struct sh_css_sp_debug_command {
 
 /* SP configuration information */
 struct sh_css_sp_config {
-	unsigned int	is_offline;  /* Run offline, with continuous copy */
-	unsigned int	input_is_raw_reordered;
-	unsigned int	no_isp_sync; /* Signal host immediately after start */
+	uint8_t			is_offline;  /* Run offline, with continuous copy */
+	uint8_t			input_is_raw_reordered;
+	uint8_t			no_isp_sync; /* Signal host immediately after start */
 	struct {
-		unsigned int		a_changed;
-		unsigned int		b_changed;
+		uint8_t					a_changed;
+		uint8_t					b_changed;
+		uint8_t					isp_2ppc;
+		uint32_t				stream_format;
 		input_formatter_cfg_t	config_a;
 		input_formatter_cfg_t	config_b;
-		unsigned int		isp_2ppc;
-		unsigned int		stream_format;
 	} input_formatter;
 	sync_generator_cfg_t	sync_gen;
 	tpg_cfg_t				tpg;
 	prbs_cfg_t				prbs;
 	input_system_cfg_t		input_circuit;
+	uint8_t					input_circuit_cfg_changed;
 };
 
 enum sh_css_stage_type {
@@ -482,8 +489,9 @@ enum sh_css_sp_stage_func {
 };
 #define SH_CSS_NUM_STAGE_FUNCS 2
 
-#define SH_CSS_PIPE_CONFIG_SAMPLE_PARAMS_MASK  (0x0f)
-#define SH_CSS_PIPE_CONFIG_SAMPLE_PARAMS  (1 << 0)
+#define SH_CSS_PIPE_CONFIG_SAMPLE_PARAMS 	(1 << 0)
+#define SH_CSS_PIPE_CONFIG_SAMPLE_PARAMS_MASK \
+	((SH_CSS_PIPE_CONFIG_SAMPLE_PARAMS << SH_CSS_MAX_SP_THREADS)-1)
 
 /* Information for a pipeline */
 struct sh_css_sp_pipeline {
@@ -623,37 +631,44 @@ struct sh_css_sp_frames {
 /* Information for a single pipeline stage */
 struct sh_css_sp_stage {
 	/*
-	 * On behalf of the compatability and
-	 * portablilty, please use "unsigned int"
-	 * instead of using "enum".
-	 * Same for unsigned char vs. bool.
+	 * For compatability and portabilty, only types
+	 * from "stdint.h" are allowed
+	 *
+	 * Use of "enum" and "bool" is prohibited
+	 * Multiple boolean flags can be stored in an
+	 * integer
 	 */
-	unsigned char			num; /* Stage number */
-	unsigned char			isp_online;
-	unsigned char			isp_copy_vf;
-	unsigned char			isp_copy_output;
-	unsigned char			sp_enable_xnr;
-	unsigned char			isp_deci_log_factor;
-	unsigned char			isp_vf_downscale_bits;
-	unsigned char			anr;
-	unsigned char			deinterleaved;
-	unsigned char			program_input_circuit;
-	/* enum sh_css_sp_stage_func	func; */
-	unsigned char			func;
+	uint8_t			num; /* Stage number */
+	uint8_t			isp_online;
+	uint8_t			isp_copy_vf;
+	uint8_t			isp_copy_output;
+	uint8_t			sp_enable_xnr;
+	uint8_t			isp_deci_log_factor;
+	uint8_t			isp_vf_downscale_bits;
+	uint8_t			anr;
+	uint8_t			deinterleaved;
+/*
+ * NOTE: Programming the input circuit can only be done at the
+ * start of a session. It is illegal to program it during execution
+ * The input circuit defines the connectivity
+ */
+	uint8_t			program_input_circuit;
+/* enum sh_css_sp_stage_func	func; */
+	uint8_t			func;
 	/* The type of the pipe-stage */
 	/* enum sh_css_stage_type	stage_type; */
-	unsigned char			stage_type;
+	uint8_t			stage_type;
 	/* Add padding to come to a word boundary */
 	/* unsigned char			padding[0]; */
 	struct sh_css_crop_pos		sp_out_crop_pos;
 	/* Indicate which buffers require an IRQ */
-	unsigned int			irq_buf_flags;
+	uint32_t					irq_buf_flags;
 	struct sh_css_sp_frames		frames;
 	struct sh_css_dvs_envelope	dvs_envelope;
 	struct sh_css_uds_info		uds;
 	struct sh_css_blob_info		isp_blob_info;
 	struct sh_css_binary_info	binary_info;
-	char				binary_name[SH_CSS_MAX_BINARY_NAME];
+	char					binary_name[SH_CSS_MAX_BINARY_NAME];
 	hrt_vaddress			xmem_bin_addr;
 	hrt_vaddress			xmem_map_addr;
 	struct sh_css_hmm_isp_interface isp_mem_interface
@@ -768,6 +783,7 @@ struct host_sp_communication {
 	 *   Remove it when the Host and the SP is decoupled.
 	 */
 	hrt_vaddress host2sp_offline_frames[NUM_CONTINUOUS_FRAMES];
+	unsigned int host2sp_cont_num_raw_frames;
 	struct sh_css_event_irq_mask host2sp_event_irq_mask[NR_OF_PIPELINES];
 
 };
@@ -874,6 +890,9 @@ sh_css_frame_info_set_width(struct sh_css_frame_info *info,
 /* Return whether the sp copy process should be started */
 bool
 sh_css_continuous_start_sp_copy(void);
+
+bool
+sh_css_pipe_uses_params(struct sh_css_pipeline *me);
 
 /* The following functions are used for testing purposes only */
 const struct sh_css_fpn_table *

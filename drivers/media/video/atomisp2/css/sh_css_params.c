@@ -2702,15 +2702,30 @@ sh_css_process_macc(void)
 
 #if SH_CSS_ISP_PARAMS_VERSION == 2
 static void
-ctc_gradient(int *int_part, int *frc_part,
+ctc_gradient(int *dydx, int *shift,
 	int y1, int y0, int x1, int x0)
 {
 	int dy = y1 - y0;
 	int dx = x1 - x0;
-	int dydx = dy / dx;
+	float f_dydx = (float)dy / (float)dx;
+	int sft;
 
-	*int_part = dydx;
-	*frc_part = ((dy - dydx * dx) << SH_CSS_CTC_DYDX_SHIFT) / dx;
+	/* max_dydx = the maxinum gradient = the maximum y (gain) */
+	int max_dydx = (1 << SH_CSS_CTC_COEF_SHIFT) - 1;
+
+	assert(y0 >= 0 && y0 <= max_dydx);
+	assert(y1 >= 0 && y1 <= max_dydx);
+	assert(x0 < x1);
+	
+	for (sft = 0; sft <= SH_CSS_CTC_COEF_SHIFT; sft++) {
+		int i_dydx = (int)(f_dydx * (1 << sft));
+		if (i_dydx <= max_dydx) {
+			*dydx = i_dydx;
+			*shift = sft;
+		}
+		if (i_dydx >= max_dydx)
+			break;		
+	}
 }
 #endif /* SH_CSS_ISP_PARAMS_VERSION == 2 */
 
@@ -2732,28 +2747,28 @@ sh_css_process_ctc(void)
 	isp_parameters.ctc_x3 = ctc_config->x3;
 	isp_parameters.ctc_x4 = ctc_config->x4;
 
-	ctc_gradient(&isp_parameters.ctc_dydx0_int,
-		     &isp_parameters.ctc_dydx0_frc,
+	ctc_gradient(&isp_parameters.ctc_dydx0,
+		     &isp_parameters.ctc_dydx0_shift,
 		     ctc_config->y1, ctc_config->y0,
 		     ctc_config->x1, 0);
 
-	ctc_gradient(&isp_parameters.ctc_dydx1_int,
-		     &isp_parameters.ctc_dydx1_frc,
+	ctc_gradient(&isp_parameters.ctc_dydx1,
+		     &isp_parameters.ctc_dydx1_shift,
 		     ctc_config->y2, ctc_config->y1,
 		     ctc_config->x2, ctc_config->x1);
 
-	ctc_gradient(&isp_parameters.ctc_dydx2_int,
-		     &isp_parameters.ctc_dydx2_frc,
+	ctc_gradient(&isp_parameters.ctc_dydx2,
+		     &isp_parameters.ctc_dydx2_shift,
 		     ctc_config->y3, ctc_config->y2,
 		     ctc_config->x3, ctc_config->x2);
 
-	ctc_gradient(&isp_parameters.ctc_dydx3_int,
-		     &isp_parameters.ctc_dydx3_frc,
+	ctc_gradient(&isp_parameters.ctc_dydx3,
+		     &isp_parameters.ctc_dydx3_shift,
 		     ctc_config->y4, ctc_config->y3,
 		     ctc_config->x4, ctc_config->x3);
 
-	ctc_gradient(&isp_parameters.ctc_dydx4_int,
-		     &isp_parameters.ctc_dydx4_frc,
+	ctc_gradient(&isp_parameters.ctc_dydx4,
+		     &isp_parameters.ctc_dydx4_shift,
 		     ctc_config->y5, ctc_config->y4,
 		     SH_CSS_BAYER_MAXVAL, ctc_config->x4);
 #endif /* SH_CSS_ISP_PARAMS_VERSION == 2 */

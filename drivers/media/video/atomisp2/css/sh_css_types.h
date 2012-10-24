@@ -71,8 +71,6 @@
 
 /** Fractional bits for CTC gain */
 #define SH_CSS_CTC_COEF_SHIFT          13
-/** Fractional bits for gradient of CTC curve (ISP2 only) */
-#define SH_CSS_CTC_DYDX_SHIFT          13
 /** Fractional bits for GAMMA gain */
 #define SH_CSS_GAMMA_GAIN_K_SHIFT      13
 
@@ -801,6 +799,8 @@ struct sh_css_binary_info {
 		unsigned char     in_frame;
 		unsigned char     out_frame;
 		unsigned char     high_speed;
+		unsigned char     input_chunking;
+		/* unsigned char	  padding[2]; */
 	} enable;
 	struct {
 /* DMA channel ID: [0,...,HIVE_ISP_NUM_DMA_CHANNELS> */
@@ -811,10 +811,8 @@ struct sh_css_binary_info {
 		uint8_t		sctbl_channel;
 		uint8_t		ref_y_channel;
 		uint8_t		ref_c_channel;
-		uint8_t		tnr_y_channel;
-		uint8_t		tnr_c_channel;
-		uint8_t		tnr_y_out_channel;
-		uint8_t		tnr_c_out_channel;
+		uint8_t		tnr_channel;
+		uint8_t		tnr_out_channel;
 		uint8_t		dvs_in_channel;
 		uint8_t		dvs_coords_channel;
 		uint8_t		raw_channel;
@@ -822,7 +820,7 @@ struct sh_css_binary_info {
 		uint8_t		c_channel;
 		uint8_t		vfout_channel;
 		uint8_t		claimed_by_isp;
-		unsigned char     padding[1];
+		/* uint8_t	padding[0]; */
 	} dma;
 	struct {
 		unsigned short	 bpp;
@@ -836,6 +834,7 @@ struct sh_css_binary_info {
 		unsigned short	 vectors_c_per_line_out;
 		unsigned short	 vmem_gdc_in_block_height_y;
 		unsigned short	 vmem_gdc_in_block_height_c;
+		/* unsigned short	 padding; */
 	} uds;
 	unsigned		   blob_index;
 	struct sh_css_binary_info *next;

@@ -281,13 +281,6 @@ The CSS API and its implementation do not depend on any particular environment
  driver.
 */
 
-/*!
-  \page initialization FAQ
-  contents
-  ...
-  more contents
-*/
-
 #ifndef _SH_CSS_H_
 #define _SH_CSS_H_
 
@@ -1687,6 +1680,35 @@ sh_css_enable_cont_capt(bool enable);
 bool
 sh_css_continuous_is_enabled(void);
 
+/** @brief Return max nr of continuous RAW frames.
+ *
+ * @return	Max nr of continuous RAW frames.
+ *
+ * Return the maximum nr of continuous RAW frames the system can support.
+ */
+int
+sh_css_continuous_get_max_raw_frames(void);
+
+/** @brief Set nr of continuous RAW frames to use.
+ *
+ * @param 	num_frames	Number of frames.
+ * @return	SH_CSS_SUCCESS or error code upon error.
+ *
+ * Set the number of continuous frames to use during continuous modes.
+ */
+enum sh_css_err
+sh_css_continuous_set_num_raw_frames(int num_frames);
+
+/** @brief Get nr of continuous RAW frames to use.
+ *
+ * @return 	Number of frames to use.
+ *
+ * Get the currently set number of continuous frames
+ * to use during continuous modes.
+ */
+int
+sh_css_continuous_get_num_raw_frames(void);
+
 /** @brief Enable reordered raw format mode.
  *
  * @param	enable	Enabling value.
@@ -1848,17 +1870,6 @@ sh_css_offline_capture_configure(int num_captures,
  */
 enum sh_css_err
 sh_css_offline_capture_tag_frame(unsigned int exp_id);
-
-/** @brief Specify buffer depth for SP RAW copy
- *
- * @param	depth	The depth (in number of buffers).
- *
- * This function sets the depth of the circular output buffer into which the
- * RAW copy mode on the SP will write its output. These buffers are used by
- * offline image pipes for processing.
- */
-enum sh_css_err
-sh_css_raw_copy_set_raw_depth(unsigned int depth);
 
 /** @brief Specify the mode used for capturing.
  *
@@ -2358,7 +2369,7 @@ sh_css_abort_acceleration(struct sh_css_acc_fw *firmware, unsigned deadline);
 
 /** @brief Stop the acceleration pipe
  *
- * @return		IA_CSS_SUCCESS or error code upon error.
+ * @return	       IA_CSS_SUCCESS or error code upon error.
  *
  * This function stops the acceleration pipe that's running. Note that any
  * dependent pipes will also be stopped automatically since otherwise
