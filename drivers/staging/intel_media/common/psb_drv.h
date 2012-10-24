@@ -1277,56 +1277,6 @@ static inline int psb_get_power_state(int islands)
 	}
 }
 
-#if MFLD_MSVDX_FABRIC_DEBUG
-
-#define PSB_WMSVDX32(_val, _offs)					\
-do {									\
-	if (psb_get_power_state(OSPM_VIDEO_DEC_ISLAND) == 0)		\
-		panic("msvdx reg 0x%x write failed.\n",			\
-				(unsigned int)(_offs));			\
-	else								\
-		iowrite32(_val, dev_priv->msvdx_reg + (_offs));		\
-} while (0)
-
-static inline uint32_t PSB_RMSVDX32(uint32_t _offs)
-{
-	struct drm_psb_private *dev_priv =
-		(struct drm_psb_private *)gpDrmDevice->dev_private;
-	if (psb_get_power_state(OSPM_VIDEO_DEC_ISLAND) == 0) {
-		panic("msvdx reg 0x%x read failed.\n", (unsigned int)(_offs));
-		return 0;
-	} else {
-		return ioread32(dev_priv->msvdx_reg + (_offs));
-	}
-}
-
-#elif MSVDX_REG_DUMP
-
-#define PSB_WMSVDX32(_val, _offs) \
-do {                                                \
-	printk(KERN_INFO"MSVDX: write %08x to reg 0x%08x\n", \
-			(unsigned int)(_val),       \
-			(unsigned int)(_offs));     \
-	iowrite32(_val, dev_priv->msvdx_reg + (_offs));   \
-} while (0)
-
-static inline uint32_t PSB_RMSVDX32(uint32_t _offs)
-{
-	uint32_t val = ioread32(dev_priv->msvdx_reg + (_offs));
-	printk(KERN_INFO"MSVDX: read reg 0x%08x, get %08x\n",
-			(unsigned int)(_offs), val);
-	return val;
-}
-
-#else
-
-#define PSB_WMSVDX32(_val, _offs) \
-	iowrite32(_val, dev_priv->msvdx_reg + (_offs))
-#define PSB_RMSVDX32(_offs) \
-	ioread32(dev_priv->msvdx_reg + (_offs))
-
-#endif
-
 #define PSB_ALPL(_val, _base)			\
   (((_val) >> (_base ## _ALIGNSHIFT)) << (_base ## _SHIFT))
 #define PSB_ALPLM(_val, _base)			\

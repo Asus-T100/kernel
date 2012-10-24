@@ -30,6 +30,7 @@
 #include "psb_drv.h"
 #include "psb_msvdx.h"
 #include "psb_msvdx_msg.h"
+#include "psb_msvdx_reg.h"
 #ifdef CONFIG_VIDEO_MRFLD
 #include "psb_msvdx_ec.h"
 #endif
@@ -71,10 +72,10 @@ int psb_poll_mtx_irq(struct drm_psb_private *dev_priv)
 	int ret = 0;
 	uint32_t mtx_int = 0;
 
-	REGIO_WRITE_FIELD_LITE(mtx_int, MSVDX_INTERRUPT_STATUS, CR_MTX_IRQ,
+	REGIO_WRITE_FIELD_LITE(mtx_int, MSVDX_INTERRUPT_STATUS, MTX_IRQ,
 			       1);
 
-	ret = psb_wait_for_register(dev_priv, MSVDX_INTERRUPT_STATUS,
+	ret = psb_wait_for_register(dev_priv, MSVDX_INTERRUPT_STATUS_OFFSET,
 				    /* Required value */
 				    mtx_int,
 				    /* Enabled bits */
@@ -89,7 +90,7 @@ int psb_poll_mtx_irq(struct drm_psb_private *dev_priv)
 	PSB_DEBUG_IRQ("MSVDX: Got MTX Int\n");
 
 	/* Got it so clear the bit */
-	PSB_WMSVDX32(mtx_int, MSVDX_INTERRUPT_CLEAR);
+	PSB_WMSVDX32(mtx_int, MSVDX_INTERRUPT_CLEAR_OFFSET);
 
 	return ret;
 }
@@ -114,17 +115,17 @@ int psb_msvdx_core_reset(struct drm_psb_private *dev_priv)
 	 * when resetting.  It is very bad to have memory
 	 * activity at the same time as a reset - Very Very bad
 	 */
-	PSB_WMSVDX32(2, MSVDX_MMU_CONTROL0);
+	PSB_WMSVDX32(2, MSVDX_MMU_CONTROL0_OFFSET);
 
 	/* MSVDX 385 core revision is 0x20001 */
-	core_rev = PSB_RMSVDX32(MSVDX_CORE_REV);
+	core_rev = PSB_RMSVDX32(MSVDX_CORE_REV_OFFSET);
 	if (core_rev < 0x00050502) {
 		/* if there's any page fault */
-		int int_status = PSB_RMSVDX32(MSVDX_INTERRUPT_STATUS);
+		int int_status = PSB_RMSVDX32(MSVDX_INTERRUPT_STATUS_OFFSET);
 
-		if (int_status & MSVDX_INTERRUPT_STATUS_CR_MMU_FAULT_IRQ_MASK) {
+		if (int_status & MSVDX_INTERRUPT_STATUS__MMU_FAULT_IRQ_MASK) {
 			/* was it a page table rather than a protection fault */
-			int mmu_status = PSB_RMSVDX32(MSVDX_MMU_STATUS);
+			int mmu_status = PSB_RMSVDX32(MSVDX_MMU_STATUS_OFFSET);
 
 			if (mmu_status & 1) {
 				struct page *p;
@@ -142,13 +143,13 @@ int psb_msvdx_core_reset(struct drm_psb_private *dev_priv)
 				pptd = kmap(p);
 				for (loop = 0; loop < 1024; loop++)
 					pptd[loop] = ptd_addr | 0x00000003;
-				PSB_WMSVDX32(ptd_addr, MSVDX_CORE_CR_MMU_DIR_LIST_BASE_OFFSET +  0);
-				PSB_WMSVDX32(ptd_addr, MSVDX_CORE_CR_MMU_DIR_LIST_BASE_OFFSET +  4);
-				PSB_WMSVDX32(ptd_addr, MSVDX_CORE_CR_MMU_DIR_LIST_BASE_OFFSET +  8);
-				PSB_WMSVDX32(ptd_addr, MSVDX_CORE_CR_MMU_DIR_LIST_BASE_OFFSET + 12);
+				PSB_WMSVDX32(ptd_addr, MSVDX_MMU_DIR_LIST_BASE_OFFSET +  0);
+				PSB_WMSVDX32(ptd_addr, MSVDX_MMU_DIR_LIST_BASE_OFFSET +  4);
+				PSB_WMSVDX32(ptd_addr, MSVDX_MMU_DIR_LIST_BASE_OFFSET +  8);
+				PSB_WMSVDX32(ptd_addr, MSVDX_MMU_DIR_LIST_BASE_OFFSET + 12);
 
-				PSB_WMSVDX32(6, MSVDX_MMU_CONTROL0);
-				PSB_WMSVDX32(MSVDX_INTERRUPT_STATUS_CR_MMU_FAULT_IRQ_MASK, MSVDX_INTERRUPT_STATUS);
+				PSB_WMSVDX32(6, MSVDX_MMU_CONTROL0_OFFSET);
+				PSB_WMSVDX32(MSVDX_INTERRUPT_STATUS__MMU_FAULT_IRQ_MASK, MSVDX_INTERRUPT_STATUS_OFFSET);
 				__free_page(p);
 			}
 		}
@@ -160,7 +161,7 @@ int psb_msvdx_core_reset(struct drm_psb_private *dev_priv)
 		uint32_t cmd;
 		for (loop = 0; loop < 10; loop++)
 			ret = psb_wait_for_register(dev_priv,
-						MSVDX_MMU_MEM_REQ,
+						MSVDX_MMU_MEM_REQ_OFFSET,
 						0, 0xff, 2000000, 5);
 		if (ret) {
 			DRM_ERROR("have outstanding read request.\n");
@@ -168,32 +169,32 @@ int psb_msvdx_core_reset(struct drm_psb_private *dev_priv)
 			return ret;
 		}
 		/* disconnect RENDEC decoders from memory */
-		cmd = PSB_RMSVDX32(MSVDX_RENDEC_CONTROL1);
+		cmd = PSB_RMSVDX32(MSVDX_RENDEC_CONTROL1_OFFSET);
 		REGIO_WRITE_FIELD(cmd, MSVDX_RENDEC_CONTROL1, RENDEC_DEC_DISABLE, 1);
-		PSB_WMSVDX32(cmd, MSVDX_RENDEC_CONTROL1);
+		PSB_WMSVDX32(cmd, MSVDX_RENDEC_CONTROL1_OFFSET);
 
 		/* Issue software reset for all but core */
-		PSB_WMSVDX32((unsigned int)~MSVDX_CONTROL_CR_MSVDX_SOFT_RESET_MASK, MSVDX_CONTROL);
-		PSB_RMSVDX32(MSVDX_CONTROL);
+		PSB_WMSVDX32((unsigned int)~MSVDX_CONTROL__MSVDX_SOFT_RESET_MASK, MSVDX_CONTROL_OFFSET);
+		PSB_RMSVDX32(MSVDX_CONTROL_OFFSET);
 		/* bit format is set as little endian */
-		PSB_WMSVDX32(0, MSVDX_CONTROL);
+		PSB_WMSVDX32(0, MSVDX_CONTROL_OFFSET);
 		/* make sure read requests are zero */
-		ret = psb_wait_for_register(dev_priv, MSVDX_MMU_MEM_REQ,
+		ret = psb_wait_for_register(dev_priv, MSVDX_MMU_MEM_REQ_OFFSET,
 						0, 0xff, 2000000, 5);
 		if (!ret) {
 			/* Issue software reset */
-			PSB_WMSVDX32(MSVDX_CONTROL_CR_MSVDX_SOFT_RESET_MASK, MSVDX_CONTROL);
+			PSB_WMSVDX32(MSVDX_CONTROL__MSVDX_SOFT_RESET_MASK, MSVDX_CONTROL_OFFSET);
 
-			ret = psb_wait_for_register(dev_priv, MSVDX_CONTROL, 0,
-					MSVDX_CONTROL_CR_MSVDX_SOFT_RESET_MASK,
+			ret = psb_wait_for_register(dev_priv, MSVDX_CONTROL_OFFSET, 0,
+					MSVDX_CONTROL__MSVDX_SOFT_RESET_MASK,
 					2000000, 5);
 
 			if (!ret) {
 				/* Clear interrupt enabled flag */
-				PSB_WMSVDX32(0, MSVDX_HOST_INTERRUPT_ENABLE);
+				PSB_WMSVDX32(0, MSVDX_HOST_INTERRUPT_ENABLE_OFFSET);
 
 				/* Clear any pending interrupt flags */
-				PSB_WMSVDX32(0xFFFFFFFF, MSVDX_INTERRUPT_CLEAR);
+				PSB_WMSVDX32(0xFFFFFFFF, MSVDX_INTERRUPT_CLEAR_OFFSET);
 			}
 		}
 	}
@@ -211,16 +212,16 @@ int psb_msvdx_reset(struct drm_psb_private *dev_priv)
 
 	/* Issue software reset */
 	/* PSB_WMSVDX32(msvdx_sw_reset_all, MSVDX_CONTROL); */
-	PSB_WMSVDX32(MSVDX_CONTROL_CR_MSVDX_SOFT_RESET_MASK, MSVDX_CONTROL);
+	PSB_WMSVDX32(MSVDX_CONTROL__MSVDX_SOFT_RESET_MASK, MSVDX_CONTROL_OFFSET);
 
-	ret = psb_wait_for_register(dev_priv, MSVDX_CONTROL, 0,
-			MSVDX_CONTROL_CR_MSVDX_SOFT_RESET_MASK);
+	ret = psb_wait_for_register(dev_priv, MSVDX_CONTROL_OFFSET, 0,
+			MSVDX_CONTROL__MSVDX_SOFT_RESET_MASK);
 	if (!ret) {
 		/* Clear interrupt enabled flag */
-		PSB_WMSVDX32(0, MSVDX_HOST_INTERRUPT_ENABLE);
+		PSB_WMSVDX32(0, MSVDX_HOST_INTERRUPT_ENABLE_OFFSET);
 
 		/* Clear any pending interrupt flags */
-		PSB_WMSVDX32(0xFFFFFFFF, MSVDX_INTERRUPT_CLEAR);
+		PSB_WMSVDX32(0xFFFFFFFF, MSVDX_INTERRUPT_CLEAR_OFFSET);
 	}
 
 	return ret;
@@ -335,15 +336,15 @@ static void msvdx_rendec_init_by_reg(struct drm_device *dev)
 	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
 	uint32_t cmd;
 
-	PSB_WMSVDX32(msvdx_priv->base_addr0, MSVDX_RENDEC_BASE_ADDR0);
-	PSB_WMSVDX32(msvdx_priv->base_addr1, MSVDX_RENDEC_BASE_ADDR1);
+	PSB_WMSVDX32(msvdx_priv->base_addr0, MSVDX_RENDEC_BASE_ADDR0_OFFSET);
+	PSB_WMSVDX32(msvdx_priv->base_addr1, MSVDX_RENDEC_BASE_ADDR1_OFFSET);
 
 	cmd = 0;
 	REGIO_WRITE_FIELD(cmd, MSVDX_RENDEC_BUFFER_SIZE,
 			RENDEC_BUFFER_SIZE0, RENDEC_A_SIZE / 4096);
 	REGIO_WRITE_FIELD(cmd, MSVDX_RENDEC_BUFFER_SIZE,
 			RENDEC_BUFFER_SIZE1, RENDEC_B_SIZE / 4096);
-	PSB_WMSVDX32(cmd, MSVDX_RENDEC_BUFFER_SIZE);
+	PSB_WMSVDX32(cmd, MSVDX_RENDEC_BUFFER_SIZE_OFFSET);
 
 	cmd = 0;
 	REGIO_WRITE_FIELD(cmd, MSVDX_RENDEC_CONTROL1,
@@ -354,20 +355,20 @@ static void msvdx_rendec_init_by_reg(struct drm_device *dev)
 			RENDEC_BURST_SIZE_R, 1);
 	REGIO_WRITE_FIELD(cmd, MSVDX_RENDEC_CONTROL1,
 			RENDEC_EXTERNAL_MEMORY, 1);
-	PSB_WMSVDX32(cmd, MSVDX_RENDEC_CONTROL1);
+	PSB_WMSVDX32(cmd, MSVDX_RENDEC_CONTROL1_OFFSET);
 
 	cmd = 0x00101010;
-	PSB_WMSVDX32(cmd, MSVDX_RENDEC_CONTEXT0);
-	PSB_WMSVDX32(cmd, MSVDX_RENDEC_CONTEXT1);
-	PSB_WMSVDX32(cmd, MSVDX_RENDEC_CONTEXT2);
-	PSB_WMSVDX32(cmd, MSVDX_RENDEC_CONTEXT3);
-	PSB_WMSVDX32(cmd, MSVDX_RENDEC_CONTEXT4);
-	PSB_WMSVDX32(cmd, MSVDX_RENDEC_CONTEXT5);
+	PSB_WMSVDX32(cmd, MSVDX_RENDEC_CONTEXT0_OFFSET);
+	PSB_WMSVDX32(cmd, MSVDX_RENDEC_CONTEXT1_OFFSET);
+	PSB_WMSVDX32(cmd, MSVDX_RENDEC_CONTEXT2_OFFSET);
+	PSB_WMSVDX32(cmd, MSVDX_RENDEC_CONTEXT3_OFFSET);
+	PSB_WMSVDX32(cmd, MSVDX_RENDEC_CONTEXT4_OFFSET);
+	PSB_WMSVDX32(cmd, MSVDX_RENDEC_CONTEXT5_OFFSET);
 
 	cmd = 0;
 	REGIO_WRITE_FIELD(cmd, MSVDX_RENDEC_CONTROL0, RENDEC_INITIALISE,
 			1);
-	PSB_WMSVDX32(cmd, MSVDX_RENDEC_CONTROL0);
+	PSB_WMSVDX32(cmd, MSVDX_RENDEC_CONTROL0_OFFSET);
 }
 
 static int32_t msvdx_rendec_init_by_msg(struct drm_device *dev)
@@ -393,29 +394,29 @@ static void msvdx_sw_rest(struct drm_psb_private *dev_priv)
 	uint32_t reg_val;
 
 	/* Issue software reset for all but core*/
-	PSB_WMSVDX32((uint32_t) ~MSVDX_CORE_CR_MSVDX_CONTROL_CR_MSVDX_SOFT_RESET_MASK, REGISTER(MSVDX_CORE, CR_MSVDX_CONTROL));
+	PSB_WMSVDX32((uint32_t) ~MSVDX_CONTROL__MSVDX_SOFT_RESET_MASK, MSVDX_CONTROL_OFFSET);
 
-	reg_val = PSB_RMSVDX32(REGISTER(MSVDX_CORE, CR_MSVDX_CONTROL));
-	PSB_WMSVDX32(0, REGISTER(MSVDX_CORE, CR_MSVDX_CONTROL));
-	PSB_WMSVDX32(MSVDX_CORE_CR_MSVDX_CONTROL_CR_MSVDX_SOFT_RESET_MASK, REGISTER(MSVDX_CORE, CR_MSVDX_CONTROL));
-
-	reg_val = 0;
-	REGIO_WRITE_FIELD(reg_val, MSVDX_CORE_CR_FE_MSVDX_WDT_CONTROL, FE_WDT_CNT_CTRL, 0x3);
-	REGIO_WRITE_FIELD(reg_val, MSVDX_CORE_CR_FE_MSVDX_WDT_CONTROL, FE_WDT_ENABLE, 0);
-	REGIO_WRITE_FIELD(reg_val, MSVDX_CORE_CR_FE_MSVDX_WDT_CONTROL, FE_WDT_ACTION0, 1);
-	REGIO_WRITE_FIELD(reg_val, MSVDX_CORE_CR_FE_MSVDX_WDT_CONTROL, FE_WDT_CLEAR_SELECT, 1);
-	REGIO_WRITE_FIELD(reg_val, MSVDX_CORE_CR_FE_MSVDX_WDT_CONTROL, FE_WDT_CLKDIV_SELECT, 7);
-	PSB_WMSVDX32(820, REGISTER(MSVDX_CORE, CR_FE_MSVDX_WDT_COMPAREMATCH));
-	PSB_WMSVDX32(reg_val, REGISTER(MSVDX_CORE, CR_FE_MSVDX_WDT_CONTROL));
+	reg_val = PSB_RMSVDX32(MSVDX_CONTROL_OFFSET);
+	PSB_WMSVDX32(0, MSVDX_CONTROL_OFFSET);
+	PSB_WMSVDX32(MSVDX_CONTROL__MSVDX_SOFT_RESET_MASK, MSVDX_CONTROL_OFFSET);
 
 	reg_val = 0;
-	REGIO_WRITE_FIELD(reg_val, MSVDX_CORE_CR_BE_MSVDX_WDT_CONTROL, BE_WDT_CNT_CTRL, 0x7);
-	REGIO_WRITE_FIELD(reg_val, MSVDX_CORE_CR_BE_MSVDX_WDT_CONTROL, BE_WDT_ENABLE, 0);
-	REGIO_WRITE_FIELD(reg_val, MSVDX_CORE_CR_BE_MSVDX_WDT_CONTROL, BE_WDT_ACTION0, 1);
-	REGIO_WRITE_FIELD(reg_val, MSVDX_CORE_CR_BE_MSVDX_WDT_CONTROL, BE_WDT_CLEAR_SELECT, 0xd);
-	REGIO_WRITE_FIELD(reg_val, MSVDX_CORE_CR_BE_MSVDX_WDT_CONTROL, BE_WDT_CLKDIV_SELECT, 7);
-	PSB_WMSVDX32(8200, REGISTER(MSVDX_CORE, CR_BE_MSVDX_WDT_COMPAREMATCH));
-	PSB_WMSVDX32(reg_val, REGISTER(MSVDX_CORE, CR_BE_MSVDX_WDT_CONTROL));
+	REGIO_WRITE_FIELD(reg_val, FE_MSVDX_WDT_CONTROL, FE_WDT_CNT_CTRL, 0x3);
+	REGIO_WRITE_FIELD(reg_val, FE_MSVDX_WDT_CONTROL, FE_WDT_ENABLE, 0);
+	REGIO_WRITE_FIELD(reg_val, FE_MSVDX_WDT_CONTROL, FE_WDT_ACTION0, 1);
+	REGIO_WRITE_FIELD(reg_val, FE_MSVDX_WDT_CONTROL, FE_WDT_CLEAR_SELECT, 1);
+	REGIO_WRITE_FIELD(reg_val, FE_MSVDX_WDT_CONTROL, FE_WDT_CLKDIV_SELECT, 7);
+	PSB_WMSVDX32(820, FE_MSVDX_WDT_COMPAREMATCH_OFFSET);
+	PSB_WMSVDX32(reg_val, FE_MSVDX_WDT_CONTROL_OFFSET);
+
+	reg_val = 0;
+	REGIO_WRITE_FIELD(reg_val, BE_MSVDX_WDT_CONTROL, BE_WDT_CNT_CTRL, 0x7);
+	REGIO_WRITE_FIELD(reg_val, BE_MSVDX_WDT_CONTROL, BE_WDT_ENABLE, 0);
+	REGIO_WRITE_FIELD(reg_val, BE_MSVDX_WDT_CONTROL, BE_WDT_ACTION0, 1);
+	REGIO_WRITE_FIELD(reg_val, BE_MSVDX_WDT_CONTROL, BE_WDT_CLEAR_SELECT, 0xd);
+	REGIO_WRITE_FIELD(reg_val, BE_MSVDX_WDT_CONTROL, BE_WDT_CLKDIV_SELECT, 7);
+	PSB_WMSVDX32(8200, BE_MSVDX_WDT_COMPAREMATCH_OFFSET);
+	PSB_WMSVDX32(reg_val, BE_MSVDX_WDT_CONTROL_OFFSET);
 }
 #endif
 
@@ -451,7 +452,7 @@ static void msvdx_tile_setup(struct drm_psb_private *dev_priv)
 		PSB_DEBUG_GENERAL("MSVDX: MMU Tiling register0 %08x\n", cmd);
 		PSB_DEBUG_GENERAL("	  Region 0x%08x-0x%08x\n",
 					tile_start, tile_end);
-		PSB_WMSVDX32(cmd, MSVDX_MMU_TILE_BASE0);
+		PSB_WMSVDX32(cmd, MSVDX_MMU_TILE_BASE0_OFFSET);
 
 		tile_start =
 			dev_priv->bdev.man[TTM_PL_TT].gpu_offset;
@@ -464,7 +465,7 @@ static void msvdx_tile_setup(struct drm_psb_private *dev_priv)
 		PSB_DEBUG_GENERAL("MSVDX: MMU Tiling register1 %08x\n", cmd);
 		PSB_DEBUG_GENERAL("	  Region 0x%08x-0x%08x\n",
 					tile_start, tile_end);
-		PSB_WMSVDX32(cmd, MSVDX_MMU_TILE_BASE1);
+		PSB_WMSVDX32(cmd, MSVDX_MMU_TILE_BASE1_OFFSET);
 	}
 #endif
 	return;
@@ -601,18 +602,18 @@ void msvdx_post_powerup_core_reset(struct drm_device *dev)
 	/* msvdx sw reset should be done by gunit before loading fw */
 #if 0
 	/* Issue software reset for all but core*/
-	PSB_WMSVDX32(~MSVDX_CORE_CR_MSVDX_CONTROL_CR_MSVDX_SOFT_RESET_MASK,
-				REGISTER(MSVDX_CORE, CR_MSVDX_CONTROL));
+	PSB_WMSVDX32(~MSVDX_CONTROL__MSVDX_SOFT_RESET_MASK,
+				MSVDX_CONTROL_OFFSET);
 
-	PSB_RMSVDX32(REGISTER(MSVDX_CORE, CR_MSVDX_CONTROL));
-	PSB_WMSVDX32(0, REGISTER(MSVDX_CORE, CR_MSVDX_CONTROL));
+	PSB_RMSVDX32(MSVDX_CONTROL_OFFSET);
+	PSB_WMSVDX32(0, MSVDX_CONTROL_OFFSET);
 
-	psb_wait_for_register(dev_priv, MSVDX_MMU_MEM_REQ, 0,
+	psb_wait_for_register(dev_priv, MSVDX_MMU_MEM_REQ_OFFSET, 0,
 						0xff, 100, 100);
-	PSB_WMSVDX32(MSVDX_CORE_CR_MSVDX_CONTROL_CR_MSVDX_SOFT_RESET_MASK,
-				REGISTER(MSVDX_CORE, CR_MSVDX_CONTROL));
-	psb_wait_for_register(dev_priv, REGISTER(MSVDX_CORE, CR_MSVDX_CONTROL), 0,
-			MSVDX_CORE_CR_MSVDX_CONTROL_CR_MSVDX_SOFT_RESET_MASK,
+	PSB_WMSVDX32(MSVDX_CONTROL__MSVDX_SOFT_RESET_MASK,
+				MSVDX_CONTROL_OFFSET);
+	psb_wait_for_register(dev_priv, MSVDX_CONTROL_OFFSET, 0,
+			MSVDX_CONTROL__MSVDX_SOFT_RESET_MASK,
 									100, 100);
 #endif
 
@@ -632,7 +633,7 @@ int msvdx_mtx_init(struct drm_device *dev, int error_reset)
 	/* Reset MTX not done here, should be done before loading fw
 	 * while fw is loaded by gunit now */
 #if 0
-	PSB_WMSVDX32(MSVDX_MTX_SOFT_RESET_MTXRESET, MSVDX_MTX_SOFT_RESET);
+	PSB_WMSVDX32(MTX_SOFT_RESET__MTXRESET, MTX_SOFT_RESET_OFFSET);
 	PSB_WMSVDX32(0, MSVDX_COMMS_SIGNATURE);
 #endif
 
@@ -655,7 +656,7 @@ int msvdx_mtx_init(struct drm_device *dev, int error_reset)
 
 	/* DDK: check device_node_flags with 0x400 to | (1<<16),
 	 * while it is not set in fw spec */
-	PSB_WMSVDX32(clk_divider - 1, MSVDX_MTX_SYSC_TIMERDIV);
+	PSB_WMSVDX32(clk_divider - 1, MTX_SYSC_TIMERDIV_OFFSET);
 
 	/* DDK: LLDMA upload fw, which is now done by gunit */
 
@@ -668,7 +669,7 @@ int msvdx_mtx_init(struct drm_device *dev, int error_reset)
 				    1000, 1000);
 	if (ret) {
 		PSB_DEBUG_WARN("WARN: Gunit upload fw failure, MTX_ENABLE reg is 0x%x.\n",
-				PSB_RMSVDX32(MSVDX_MTX_ENABLE));
+				PSB_RMSVDX32(MTX_ENABLE_OFFSET));
 		PSB_DEBUG_WARN("WARN: MSVDX_COMMS_FW_STATUS reg is 0x%x.\n",
 				PSB_RMSVDX32(MSVDX_COMMS_FW_STATUS));
 		msvdx_priv->msvdx_needs_reset |=
@@ -700,10 +701,10 @@ int psb_msvdx_post_boot_init(struct drm_device *dev)
 	{
 		uint32_t ram_bank_size;
 		uint32_t bank_size, reg;
-		reg = PSB_RMSVDX32(MSVDX_MTX_RAM_BANK);
+		reg = PSB_RMSVDX32(MSVDX_MTX_RAM_BANK_OFFSET);
 		bank_size =
 			REGIO_READ_FIELD(reg, MSVDX_MTX_RAM_BANK,
-					 CR_MTX_RAM_BANK_SIZE);
+					 MTX_RAM_BANK_SIZE);
 		ram_bank_size = (uint32_t)(1 << (bank_size + 2));
 		PSB_DEBUG_GENERAL("MSVDX: RAM bank size = %d bytes\n",
 				  ram_bank_size);
@@ -716,28 +717,28 @@ int psb_msvdx_post_boot_init(struct drm_device *dev)
 #ifdef PSB_MSVDX_FW_LOADED_BY_HOST
 	/* set watchdog timer here */
 	reg_val = 0;
-	REGIO_WRITE_FIELD(reg_val, MSVDX_CORE_CR_FE_MSVDX_WDT_CONTROL, FE_WDT_CNT_CTRL, 0x3);
-	REGIO_WRITE_FIELD(reg_val, MSVDX_CORE_CR_FE_MSVDX_WDT_CONTROL, FE_WDT_ENABLE, 0);
-	REGIO_WRITE_FIELD(reg_val, MSVDX_CORE_CR_FE_MSVDX_WDT_CONTROL, FE_WDT_ACTION0, 1);
-	REGIO_WRITE_FIELD(reg_val, MSVDX_CORE_CR_FE_MSVDX_WDT_CONTROL, FE_WDT_CLEAR_SELECT, 1);
-	REGIO_WRITE_FIELD(reg_val, MSVDX_CORE_CR_FE_MSVDX_WDT_CONTROL, FE_WDT_CLKDIV_SELECT, 7);
-	PSB_WMSVDX32(fe_wdt_clks / WDT_CLOCK_DIVIDER, REGISTER(MSVDX_CORE, CR_FE_MSVDX_WDT_COMPAREMATCH));
-	PSB_WMSVDX32(reg_val, REGISTER(MSVDX_CORE, CR_FE_MSVDX_WDT_CONTROL));
+	REGIO_WRITE_FIELD(reg_val, FE_MSVDX_WDT_CONTROL, FE_WDT_CNT_CTRL, 0x3);
+	REGIO_WRITE_FIELD(reg_val, FE_MSVDX_WDT_CONTROL, FE_WDT_ENABLE, 0);
+	REGIO_WRITE_FIELD(reg_val, FE_MSVDX_WDT_CONTROL, FE_WDT_ACTION0, 1);
+	REGIO_WRITE_FIELD(reg_val, FE_MSVDX_WDT_CONTROL, FE_WDT_CLEAR_SELECT, 1);
+	REGIO_WRITE_FIELD(reg_val, FE_MSVDX_WDT_CONTROL, FE_WDT_CLKDIV_SELECT, 7);
+	PSB_WMSVDX32(fe_wdt_clks / WDT_CLOCK_DIVIDER, FE_MSVDX_WDT_COMPAREMATCH_OFFSET);
+	PSB_WMSVDX32(reg_val, FE_MSVDX_WDT_CONTROL_OFFSET);
 
 	reg_val = 0;
 	/* DDK set BE_WDT_CNT_CTRL as 0x5 and BE_WDT_CLEAR_SELECT as 0x1 */
-	REGIO_WRITE_FIELD(reg_val, MSVDX_CORE_CR_BE_MSVDX_WDT_CONTROL, BE_WDT_CNT_CTRL, 0x7);
-	REGIO_WRITE_FIELD(reg_val, MSVDX_CORE_CR_BE_MSVDX_WDT_CONTROL, BE_WDT_ENABLE, 0);
-	REGIO_WRITE_FIELD(reg_val, MSVDX_CORE_CR_BE_MSVDX_WDT_CONTROL, BE_WDT_ACTION0, 1);
-	REGIO_WRITE_FIELD(reg_val, MSVDX_CORE_CR_BE_MSVDX_WDT_CONTROL, BE_WDT_CLEAR_SELECT, 0xd);
-	REGIO_WRITE_FIELD(reg_val, MSVDX_CORE_CR_BE_MSVDX_WDT_CONTROL, BE_WDT_CLKDIV_SELECT, 7);
+	REGIO_WRITE_FIELD(reg_val, BE_MSVDX_WDT_CONTROL, BE_WDT_CNT_CTRL, 0x7);
+	REGIO_WRITE_FIELD(reg_val, BE_MSVDX_WDT_CONTROL, BE_WDT_ENABLE, 0);
+	REGIO_WRITE_FIELD(reg_val, BE_MSVDX_WDT_CONTROL, BE_WDT_ACTION0, 1);
+	REGIO_WRITE_FIELD(reg_val, BE_MSVDX_WDT_CONTROL, BE_WDT_CLEAR_SELECT, 0xd);
+	REGIO_WRITE_FIELD(reg_val, BE_MSVDX_WDT_CONTROL, BE_WDT_CLKDIV_SELECT, 7);
 
-	PSB_WMSVDX32(be_wdt_clks / WDT_CLOCK_DIVIDER, REGISTER(MSVDX_CORE, CR_BE_MSVDX_WDT_COMPAREMATCH));
-	PSB_WMSVDX32(reg_val, REGISTER(MSVDX_CORE, CR_BE_MSVDX_WDT_CONTROL));
+	PSB_WMSVDX32(be_wdt_clks / WDT_CLOCK_DIVIDER, BE_MSVDX_WDT_COMPAREMATCH_OFFSET);
+	PSB_WMSVDX32(reg_val, BE_MSVDX_WDT_CONTROL_OFFSET);
 #else
 	/* for the other two, use the default value punit set */
-	PSB_WMSVDX32(fe_wdt_clks / WDT_CLOCK_DIVIDER, MSVDX_CORE_CR_FE_MSVDX_WDT_COMPAREMATCH);
-	PSB_WMSVDX32(be_wdt_clks / WDT_CLOCK_DIVIDER, MSVDX_CORE_CR_BE_MSVDX_WDT_COMPAREMATCH);
+	PSB_WMSVDX32(fe_wdt_clks / WDT_CLOCK_DIVIDER, FE_MSVDX_WDT_COMPAREMATCH_OFFSET);
+	PSB_WMSVDX32(be_wdt_clks / WDT_CLOCK_DIVIDER, BE_MSVDX_WDT_COMPAREMATCH_OFFSET);
 #endif
 	return msvdx_rendec_init_by_msg(dev);
 }
@@ -770,7 +771,7 @@ int psb_msvdx_init(struct drm_device *dev)
 #endif
 	if (!msvdx_priv->fw_loaded_by_punit) {
 		/* Enable MMU by removing all bypass bits */
-		PSB_WMSVDX32(0, MSVDX_MMU_CONTROL0);
+		PSB_WMSVDX32(0, MSVDX_MMU_CONTROL0_OFFSET);
 	}
 
 	ret = msvdx_alloc_ccb_for_rendec(dev);
@@ -795,16 +796,16 @@ int psb_msvdx_init(struct drm_device *dev)
 		/* move fw loading to the place receiving first cmd buffer */
 		msvdx_priv->msvdx_fw_loaded = 0; /* need to load firware */
 		/* it should be set at punit post boot init phase */
-		PSB_WMSVDX32(820, MSVDX_CORE_CR_FE_MSVDX_WDT_COMPAREMATCH);
-		PSB_WMSVDX32(8200, MSVDX_CORE_CR_BE_MSVDX_WDT_COMPAREMATCH);
+		PSB_WMSVDX32(820, FE_MSVDX_WDT_COMPAREMATCH_OFFSET);
+		PSB_WMSVDX32(8200, _BE_MSVDX_WDT_COMPAREMATCH_OFFSET);
 
-		PSB_WMSVDX32(820, MSVDX_CORE_CR_FE_MSVDX_WDT_COMPAREMATCH);
-		PSB_WMSVDX32(8200, MSVDX_CORE_CR_BE_MSVDX_WDT_COMPAREMATCH);
+		PSB_WMSVDX32(820, FE_MSVDX_WDT_COMPAREMATCH_OFFSET);
+		PSB_WMSVDX32(8200, BE_MSVDX_WDT_COMPAREMATCH_OFFSET);
 	} else {
 		msvdx_priv->rendec_init = 0;
 		/* for the other two, use the default value punit set */
-		PSB_WMSVDX32(0x334, MSVDX_CORE_CR_FE_MSVDX_WDT_COMPAREMATCH);
-		PSB_WMSVDX32(0x2008, MSVDX_CORE_CR_BE_MSVDX_WDT_COMPAREMATCH);
+		PSB_WMSVDX32(0x334, FE_MSVDX_WDT_COMPAREMATCH_OFFSET);
+		PSB_WMSVDX32(0x2008, BE_MSVDX_WDT_COMPAREMATCH_OFFSET);
 	}
 
 	psb_msvdx_clearirq(dev);
@@ -815,12 +816,12 @@ int psb_msvdx_init(struct drm_device *dev)
 
 	if (!msvdx_priv->fw_loaded_by_punit) {
 		cmd = 0;
-		cmd = PSB_RMSVDX32(MSVDX_VEC_SHIFTREG_CONTROL);
+		cmd = PSB_RMSVDX32(VEC_SHIFTREG_CONTROL_OFFSET);
 		REGIO_WRITE_FIELD(cmd,
 				  VEC_SHIFTREG_CONTROL,
 				  SR_MASTER_SELECT,
 				  1);  /* Host */
-		PSB_WMSVDX32(cmd, MSVDX_VEC_SHIFTREG_CONTROL);
+		PSB_WMSVDX32(cmd, VEC_SHIFTREG_CONTROL_OFFSET);
 	}
 
 	return 0;

@@ -28,6 +28,15 @@
 #include "psb_drv.h"
 #include "img_types.h"
 
+/* Start of parser specific Host->MTX messages. */
+#define	FWRK_MSGID_START_PSR_HOSTMTX_MSG	(0x80)
+
+/* Start of parser specific MTX->Host messages. */
+#define	FWRK_MSGID_START_PSR_MTXHOST_MSG	(0xC0)
+
+/* Host defined msg, just for host use, MTX not recgnize */
+#define	FWRK_MSGID_HOST_EMULATED		(0x40)
+
 /* This type defines the framework specified message ids */
 enum {
 	/* ! Sent by the VA driver on the host to the mtx firmware.
@@ -72,7 +81,7 @@ enum {
 #define MTX_GENMSG_ID_SHIFT		(0)
 #define MTX_GENMSG_ID_OFFSET		(0x0001)
 
-#define MTX_GENMSG_HEADER_SIZE 2
+#define MTX_GENMSG_HEADER_SIZE		2
 
 #define MTX_GENMSG_FENCE_TYPE		uint16_t
 #define MTX_GENMSG_FENCE_MASK		(0xFFFF)
@@ -172,6 +181,7 @@ struct fw_deblock_msg {
 	uint32_t address_c1;
 };
 
+#define MTX_PADMSG_SIZE 2
 struct fw_padding_msg {
 	union {
 		struct {

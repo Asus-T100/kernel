@@ -29,6 +29,7 @@
 #include "psb_drv.h"
 #include "psb_msvdx.h"
 #include <linux/firmware.h>
+#include "psb_msvdx_reg.h"
 
 #ifdef PSB_MSVDX_FW_LOADED_BY_HOST
 
@@ -51,7 +52,7 @@ int32_t psb_msvdx_alloc_fw_bo(struct drm_psb_private *dev_priv)
 	int32_t ret = 0;
 	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
 
-	core_rev = PSB_RMSVDX32(MSVDX_CORE_REV);
+	core_rev = PSB_RMSVDX32(MSVDX_CORE_REV_OFFSET);
 
 	if ((core_rev & 0xffffff) < 0x020000)
 		msvdx_priv->mtx_mem_size = 16 * 1024;
@@ -81,10 +82,10 @@ static void msvdx_get_mtx_control_from_dash(struct drm_psb_private *dev_priv)
 
 	REGIO_WRITE_FIELD(reg_val, MSVDX_MTX_DEBUG, MTX_DBG_IS_SLAVE, 1);
 	REGIO_WRITE_FIELD(reg_val, MSVDX_MTX_DEBUG, MTX_DBG_GPIO_IN, 0x02);
-	PSB_WMSVDX32(reg_val, MSVDX_MTX_DEBUG);
+	PSB_WMSVDX32(reg_val, MSVDX_MTX_DEBUG_OFFSET);
 
 	do {
-		reg_val = PSB_RMSVDX32(MSVDX_MTX_DEBUG);
+		reg_val = PSB_RMSVDX32(MSVDX_MTX_DEBUG_OFFSET);
 		count++;
 	} while (((reg_val & 0x18) != 0) && count < 50000);
 
@@ -92,7 +93,7 @@ static void msvdx_get_mtx_control_from_dash(struct drm_psb_private *dev_priv)
 		PSB_DEBUG_GENERAL("MAVDX: timeout in get_mtx_control_from_dash\n");
 
 	/* Save the access control register...*/
-	msvdx_priv->psb_dash_access_ctrl = PSB_RMSVDX32(MSVDX_MTX_RAM_ACCESS_CONTROL);
+	msvdx_priv->psb_dash_access_ctrl = PSB_RMSVDX32(MTX_RAM_ACCESS_CONTROL_OFFSET);
 }
 
 static void msvdx_release_mtx_control_from_dash(struct drm_psb_private *dev_priv)
@@ -100,9 +101,9 @@ static void msvdx_release_mtx_control_from_dash(struct drm_psb_private *dev_priv
 	struct msvdx_private *msvdx_priv = dev_priv->msvdx_private;
 
 	/* restore access control */
-	PSB_WMSVDX32(msvdx_priv->psb_dash_access_ctrl, MSVDX_MTX_RAM_ACCESS_CONTROL);
+	PSB_WMSVDX32(msvdx_priv->psb_dash_access_ctrl, MTX_RAM_ACCESS_CONTROL_OFFSET);
 	/* release bus */
-	PSB_WMSVDX32(0x4, MSVDX_MTX_DEBUG);
+	PSB_WMSVDX32(0x4, MSVDX_MTX_DEBUG_OFFSET);
 }
 
 static void msvdx_upload_fw(struct drm_psb_private *dev_priv,
@@ -119,24 +120,24 @@ static void msvdx_upload_fw(struct drm_psb_private *dev_priv,
 	msvdx_get_mtx_control_from_dash(dev_priv);
 
 	/* dma transfers to/from the mtx have to be 32-bit aligned and in multiples of 32 bits */
-	PSB_WMSVDX32(address, REGISTER(MTX_CORE, CR_MTX_SYSC_CDMAA));
+	PSB_WMSVDX32(address, MTX_SYSC_CDMAA_OFFSET);
 
-	REGIO_WRITE_FIELD_LITE(reg_val, MTX_CORE_CR_MTX_SYSC_CDMAC, BURSTSIZE,	4); /* burst size in multiples of 64 bits (allowed values are 2 or 4) */
-	REGIO_WRITE_FIELD_LITE(reg_val, MTX_CORE_CR_MTX_SYSC_CDMAC, RNW, 0);	/* false means write to mtx mem, true means read from mtx mem */
-	REGIO_WRITE_FIELD_LITE(reg_val, MTX_CORE_CR_MTX_SYSC_CDMAC, ENABLE,	1);				/* begin transfer */
-	REGIO_WRITE_FIELD_LITE(reg_val, MTX_CORE_CR_MTX_SYSC_CDMAC, LENGTH,	words);		/* This specifies the transfer size of the DMA operation in terms of 32-bit words */
-	PSB_WMSVDX32(reg_val, REGISTER(MTX_CORE, CR_MTX_SYSC_CDMAC));
+	REGIO_WRITE_FIELD_LITE(reg_val, MTX_SYSC_CDMAC, BURSTSIZE,	4); /* burst size in multiples of 64 bits (allowed values are 2 or 4) */
+	REGIO_WRITE_FIELD_LITE(reg_val, MTX_SYSC_CDMAC, RNW, 0);	/* false means write to mtx mem, true means read from mtx mem */
+	REGIO_WRITE_FIELD_LITE(reg_val, MTX_SYSC_CDMAC, ENABLE,	1);				/* begin transfer */
+	REGIO_WRITE_FIELD_LITE(reg_val, MTX_SYSC_CDMAC, LENGTH,	words);		/* This specifies the transfer size of the DMA operation in terms of 32-bit words */
+	PSB_WMSVDX32(reg_val, MTX_SYSC_CDMAC_OFFSET);
 
 	/* toggle channel 0 usage between mtx and other msvdx peripherals */
 	{
-		reg_val = PSB_RMSVDX32(REGISTER(MSVDX_CORE, CR_MSVDX_CONTROL));
-		REGIO_WRITE_FIELD(reg_val, MSVDX_CORE_CR_MSVDX_CONTROL, DMAC_CH0_SELECT,  0);
-		PSB_WMSVDX32(reg_val, REGISTER(MSVDX_CORE, CR_MSVDX_CONTROL));
+		reg_val = PSB_RMSVDX32(MSVDX_CONTROL_OFFSET));
+		REGIO_WRITE_FIELD(reg_val, MSVDX_CONTROL, DMAC_CH0_SELECT,  0);
+		PSB_WMSVDX32(reg_val, MSVDX_CONTROL_OFFSET);
 	}
 
 
 	/* Clear the DMAC Stats */
-	PSB_WMSVDX32(0 , REGISTER(DMAC, DMAC_IRQ_STAT) + dma_channel);
+	PSB_WMSVDX32(0 , DMAC_DMAC_IRQ_STAT_OFFSET + dma_channel);
 
 	offset = msvdx_priv->fw->offset;
 
@@ -145,19 +146,19 @@ static void msvdx_upload_fw(struct drm_psb_private *dev_priv,
 
 	/* use bank 0 */
 	cmd = 0;
-	PSB_WMSVDX32(cmd, REGISTER(MSVDX_CORE, CR_MMU_BANK_INDEX));
+	PSB_WMSVDX32(cmd, MSVDX_MMU_BANK_INDEX_OFFSET);
 
 	/* Write PTD to mmu base 0*/
 	mmu_ptd = psb_get_default_pd_addr(dev_priv->mmu);
-	PSB_WMSVDX32(mmu_ptd, REGISTER(MSVDX_CORE, CR_MMU_DIR_LIST_BASE) + 0);
+	PSB_WMSVDX32(mmu_ptd, MSVDX_MMU_DIR_LIST_BASE_OFFSET + 0);
 
 	/* Invalidate */
-	reg_val = PSB_RMSVDX32(REGISTER(MSVDX_CORE, CR_MMU_CONTROL0));
+	reg_val = PSB_RMSVDX32(MSVDX_MMU_CONTROL0_OFFSET);
 	reg_val &= ~0xf;
-	REGIO_WRITE_FIELD(reg_val, MSVDX_CORE_CR_MMU_CONTROL0, CR_MMU_INVALDC, 1);
-	PSB_WMSVDX32(reg_val, REGISTER(MSVDX_CORE, CR_MMU_CONTROL0));
+	REGIO_WRITE_FIELD(reg_val, MSVDX_MMU_CONTROL0, MMU_INVALDC, 1);
+	PSB_WMSVDX32(reg_val, MSVDX_MMU_CONTROL0_OFFSET);
 
-	PSB_WMSVDX32(offset, REGISTER(DMAC, DMAC_SETUP) + dma_channel);
+	PSB_WMSVDX32(offset, DMAC_DMAC_SETUP_OFFSET + dma_channel);
 
 	/* Only use a single dma - assert that this is valid */
 	if ((size / 4) >= (1 << 15)) {
@@ -171,23 +172,23 @@ static void msvdx_upload_fw(struct drm_psb_private *dev_priv,
 					 0,
 					 (size / 4));
 	/* Set the number of bytes to dma*/
-	PSB_WMSVDX32(uCountReg, REGISTER(DMAC, 	DMAC_COUNT) + dma_channel);
+	PSB_WMSVDX32(uCountReg, DMAC_DMAC_COUNT_OFFSET + dma_channel);
 
 	cmd = PSB_DMAC_VALUE_PERIPH_PARAM(PSB_DMAC_ACC_DEL_0, PSB_DMAC_INCR_OFF, PSB_DMAC_BURST_2);
-	PSB_WMSVDX32(cmd, REGISTER(DMAC, DMAC_PERIPH) + dma_channel);
+	PSB_WMSVDX32(cmd, DMAC_DMAC_PERIPH_OFFSET + dma_channel);
 
 	/* Set destination port for dma */
 	cmd = 0;
-	REGIO_WRITE_FIELD(cmd, DMAC_DMAC_PERIPHERAL_ADDR, ADDR, MTX_CORE_CR_MTX_SYSC_CDMAT_OFFSET);
-	PSB_WMSVDX32(cmd, REGISTER(DMAC, DMAC_PERIPHERAL_ADDR) + dma_channel);
+	REGIO_WRITE_FIELD(cmd, DMAC_DMAC_PERIPHERAL_ADDR, ADDR, MTX_SYSC_CDMAT_OFFSET);
+	PSB_WMSVDX32(cmd, DMAC_DMAC_PERIPHERAL_ADDR_OFFSET + dma_channel);
 
 
 	/* Finally, rewrite the count register with the enable bit set*/
-	PSB_WMSVDX32(uCountReg | DMAC_DMAC_COUNT_EN_MASK, REGISTER(DMAC, DMAC_COUNT) + dma_channel);
+	PSB_WMSVDX32(uCountReg | DMAC_DMAC_COUNT_EN_MASK, DMAC_DMAC_COUNT_OFFSET + dma_channel);
 
 	/* Wait for all to be done */
 	if (psb_wait_for_register(dev_priv,
-				  REGISTER(DMAC, DMAC_IRQ_STAT) + dma_channel,
+				  DMAC_DMAC_IRQ_STAT_OFFSET + dma_channel,
 				  DMAC_DMAC_IRQ_STAT_TRANSFER_FIN_MASK,
 				  DMAC_DMAC_IRQ_STAT_TRANSFER_FIN_MASK,
 				  2000000, 5)) {
@@ -197,7 +198,7 @@ static void msvdx_upload_fw(struct drm_psb_private *dev_priv,
 
 	/* Assert that the MTX DMA port is all done aswell */
 	if (psb_wait_for_register(dev_priv,
-			REGISTER(MTX_CORE, CR_MTX_SYSC_CDMAS0),
+			MTX_SYSC_CDMAS0_OFFSET,
 			1, 1, 2000000, 5)) {
 		msvdx_release_mtx_control_from_dash(dev_priv);
 		return;
@@ -220,10 +221,10 @@ static void msvdx_upload_fw(struct drm_psb_private *dev_priv,
 
 	PSB_DEBUG_GENERAL("MSVDX: Upload firmware by register interface\n");
 	/* Save the access control register... */
-	access_ctrl = PSB_RMSVDX32(MSVDX_MTX_RAM_ACCESS_CONTROL);
+	access_ctrl = PSB_RMSVDX32(MTX_RAM_ACCESS_CONTROL_OFFSET);
 
 	/* Wait for MCMSTAT to become be idle 1 */
-	psb_wait_for_register(dev_priv, MSVDX_MTX_RAM_ACCESS_STATUS,
+	psb_wait_for_register(dev_priv, MTX_RAM_ACCESS_STATUS_OFFSET,
 			      1,	/* Required Value */
 			      0xffffffff, /* Enables */
 			      2000000, 5);
@@ -234,24 +235,24 @@ static void msvdx_upload_fw(struct drm_psb_private *dev_priv,
 			addr = address >> 2;
 			ctrl = 0;
 			REGIO_WRITE_FIELD_LITE(ctrl,
-					       MSVDX_MTX_RAM_ACCESS_CONTROL,
+					       MTX_RAM_ACCESS_CONTROL,
 					       MTX_MCMID, ram_id);
 			REGIO_WRITE_FIELD_LITE(ctrl,
-					       MSVDX_MTX_RAM_ACCESS_CONTROL,
+					       MTX_RAM_ACCESS_CONTROL,
 					       MTX_MCM_ADDR, addr);
 			REGIO_WRITE_FIELD_LITE(ctrl,
-					       MSVDX_MTX_RAM_ACCESS_CONTROL,
+					       MTX_RAM_ACCESS_CONTROL,
 					       MTX_MCMAI, 1);
-			PSB_WMSVDX32(ctrl, MSVDX_MTX_RAM_ACCESS_CONTROL);
+			PSB_WMSVDX32(ctrl, MTX_RAM_ACCESS_CONTROL_OFFSET);
 			cur_bank = ram_id;
 		}
 		address += 4;
 
 		PSB_WMSVDX32(data[loop],
-			     MSVDX_MTX_RAM_ACCESS_DATA_TRANSFER);
+			     MTX_RAM_ACCESS_DATA_TRANSFER_OFFSET);
 
 		/* Wait for MCMSTAT to become be idle 1 */
-		psb_wait_for_register(dev_priv, MSVDX_MTX_RAM_ACCESS_STATUS,
+		psb_wait_for_register(dev_priv, MTX_RAM_ACCESS_STATUS_OFFSET,
 				      1,	/* Required Value */
 				      0xffffffff, /* Enables */
 				      2000000, 5);
@@ -274,10 +275,10 @@ static int msvdx_verify_fw(struct drm_psb_private *dev_priv,
 	int ret = 0;
 
 	/* Save the access control register... */
-	access_ctrl = PSB_RMSVDX32(MSVDX_MTX_RAM_ACCESS_CONTROL);
+	access_ctrl = PSB_RMSVDX32(MTX_RAM_ACCESS_CONTROL_OFFSET);
 
 	/* Wait for MCMSTAT to become be idle 1 */
-	psb_wait_for_register(dev_priv, MSVDX_MTX_RAM_ACCESS_STATUS,
+	psb_wait_for_register(dev_priv, MTX_RAM_ACCESS_STATUS_OFFSET,
 			      1,	/* Required Value */
 			      0xffffffff, /* Enables */
 			      2000000, 5);
@@ -290,31 +291,31 @@ static int msvdx_verify_fw(struct drm_psb_private *dev_priv,
 			addr = address >> 2;
 			ctrl = 0;
 			REGIO_WRITE_FIELD_LITE(ctrl,
-					       MSVDX_MTX_RAM_ACCESS_CONTROL,
+					       MTX_RAM_ACCESS_CONTROL,
 					       MTX_MCMID, ram_id);
 			REGIO_WRITE_FIELD_LITE(ctrl,
-					       MSVDX_MTX_RAM_ACCESS_CONTROL,
+					       MTX_RAM_ACCESS_CONTROL,
 					       MTX_MCM_ADDR, addr);
 			REGIO_WRITE_FIELD_LITE(ctrl,
-					       MSVDX_MTX_RAM_ACCESS_CONTROL,
+					       MTX_RAM_ACCESS_CONTROL,
 					       MTX_MCMAI, 1);
 			REGIO_WRITE_FIELD_LITE(ctrl,
-					       MSVDX_MTX_RAM_ACCESS_CONTROL,
+					       MTX_RAM_ACCESS_CONTROL,
 					       MTX_MCMR, 1);
 
-			PSB_WMSVDX32(ctrl, MSVDX_MTX_RAM_ACCESS_CONTROL);
+			PSB_WMSVDX32(ctrl, MTX_RAM_ACCESS_CONTROL_OFFSET);
 
 			cur_bank = ram_id;
 		}
 		address += 4;
 
 		/* Wait for MCMSTAT to become be idle 1 */
-		psb_wait_for_register(dev_priv, MSVDX_MTX_RAM_ACCESS_STATUS,
+		psb_wait_for_register(dev_priv, MTX_RAM_ACCESS_STATUS_OFFSET,
 				      1,	/* Required Value */
 				      0xffffffff, /* Enables */
 				      2000000, 5);
 
-		reg_value = PSB_RMSVDX32(MSVDX_MTX_RAM_ACCESS_DATA_TRANSFER);
+		reg_value = PSB_RMSVDX32(MTX_RAM_ACCESS_DATA_TRANSFER_OFFSET);
 		if (data[loop] != reg_value) {
 			DRM_ERROR("psb: Firmware validation fails"
 				  " at index=%08x\n", loop);
@@ -324,7 +325,7 @@ static int msvdx_verify_fw(struct drm_psb_private *dev_priv,
 	}
 
 	/* Restore the access control register... */
-	PSB_WMSVDX32(access_ctrl, MSVDX_MTX_RAM_ACCESS_CONTROL);
+	PSB_WMSVDX32(access_ctrl, MTX_RAM_ACCESS_CONTROL_OFFSET);
 
 	return ret;
 }
@@ -470,20 +471,20 @@ void msvdx_write_mtx_core_reg(struct drm_psb_private *dev_priv,
 	uint32_t reg = 0;
 
 	/* Put data in MTX_RW_DATA */
-	PSB_WMSVDX32(val, MSVDX_MTX_REGISTER_READ_WRITE_DATA);
+	PSB_WMSVDX32(val, MTX_REGISTER_READ_WRITE_DATA_OFFSET);
 
 	/* DREADY is set to 0 and request a write */
 	reg = core_reg;
-	REGIO_WRITE_FIELD_LITE(reg, MSVDX_MTX_REGISTER_READ_WRITE_REQUEST,
+	REGIO_WRITE_FIELD_LITE(reg, MTX_REGISTER_READ_WRITE_REQUEST,
 			       MTX_RNW, 0);
-	REGIO_WRITE_FIELD_LITE(reg, MSVDX_MTX_REGISTER_READ_WRITE_REQUEST,
+	REGIO_WRITE_FIELD_LITE(reg, MTX_REGISTER_READ_WRITE_REQUEST,
 			       MTX_DREADY, 0);
-	PSB_WMSVDX32(reg, MSVDX_MTX_REGISTER_READ_WRITE_REQUEST);
+	PSB_WMSVDX32(reg, MTX_REGISTER_READ_WRITE_REQUEST_OFFSET);
 
 	psb_wait_for_register(dev_priv,
-			      MSVDX_MTX_REGISTER_READ_WRITE_REQUEST,
-			      MSVDX_MTX_REGISTER_READ_WRITE_REQUEST_MTX_DREADY_MASK,
-			      MSVDX_MTX_REGISTER_READ_WRITE_REQUEST_MTX_DREADY_MASK,
+			      MTX_REGISTER_READ_WRITE_REQUEST_OFFSET,
+			      MTX_REGISTER_READ_WRITE_REQUEST__MTX_DREADY_MASK,
+			      MTX_REGISTER_READ_WRITE_REQUEST__MTX_DREADY_MASK,
 			      2000000, 5);
 }
 
@@ -506,13 +507,13 @@ int psb_setup_fw(struct drm_device *dev)
 	psb_msvdx_mtx_set_clocks(dev_priv->dev, clk_enable_all);
 
 	/* Reset MTX */
-	PSB_WMSVDX32(MSVDX_MTX_SOFT_RESET_MTX_RESET_MASK,
-			MSVDX_MTX_SOFT_RESET);
+	PSB_WMSVDX32(MTX_SOFT_RESET__MTX_RESET_MASK,
+			MTX_SOFT_RESET_OFFSET);
 
 	PSB_WMSVDX32(FIRMWAREID, MSVDX_COMMS_FIRMWARE_ID);
 
 	PSB_WMSVDX32(0, MSVDX_COMMS_ERROR_TRIG);
-	PSB_WMSVDX32(199, MSVDX_MTX_SYSC_TIMERDIV); /* MTX_SYSC_TIMERDIV */
+	PSB_WMSVDX32(199, MTX_SYSC_TIMERDIV_OFFSET); /* MTX_SYSC_TIMERDIV */
 	PSB_WMSVDX32(0, MSVDX_EXT_FW_ERROR_STATE); /* EXT_FW_ERROR_STATE */
 	PSB_WMSVDX32(0, MSVDX_COMMS_MSG_COUNTER);
 	PSB_WMSVDX32(0, MSVDX_COMMS_SIGNATURE);
@@ -530,10 +531,10 @@ int psb_setup_fw(struct drm_device *dev)
 	/* read register bank size */
 	{
 		uint32_t bank_size, reg;
-		reg = PSB_RMSVDX32(MSVDX_MTX_RAM_BANK);
+		reg = PSB_RMSVDX32(MSVDX_MTX_RAM_BANK_OFFSET);
 		bank_size =
 			REGIO_READ_FIELD(reg, MSVDX_MTX_RAM_BANK,
-					 CR_MTX_RAM_BANK_SIZE);
+					 MTX_RAM_BANK_SIZE);
 		ram_bank_size = (uint32_t)(1 << (bank_size + 2));
 	}
 
@@ -646,7 +647,7 @@ int psb_setup_fw(struct drm_device *dev)
 	msvdx_write_mtx_core_reg(dev_priv, MTX_PC, PC_START_ADDRESS);
 
 	/*	-- Turn on the thread	*/
-	PSB_WMSVDX32(MSVDX_MTX_ENABLE_MTX_ENABLE_MASK, MSVDX_MTX_ENABLE);
+	PSB_WMSVDX32(MTX_ENABLE__MTX_ENABLE_MASK, MTX_ENABLE_OFFSET);
 
 	/* Wait for the signature value to be written back */
 	ret = psb_wait_for_register(dev_priv, MSVDX_COMMS_SIGNATURE,
