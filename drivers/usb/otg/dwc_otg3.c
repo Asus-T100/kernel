@@ -1902,10 +1902,22 @@ static int dwc_otg_runtime_resume(struct device *dev)
 	return 0;
 }
 
+static int dwc_otg_suspend(struct device *dev)
+{
+	return 0;
+}
+
+static int dwc_otg_resume(struct device *dev)
+{
+	return 0;
+}
+
 static const struct dev_pm_ops dwc_usb_otg_pm_ops = {
 	.runtime_suspend = dwc_otg_runtime_suspend,
 	.runtime_resume	= dwc_otg_runtime_resume,
-	.runtime_idle	= dwc_otg_runtime_idle,
+	.runtime_idle = dwc_otg_runtime_idle,
+	.suspend = dwc_otg_suspend,
+	.resume	= dwc_otg_resume
 };
 
 static struct pci_driver dwc_otg_pci_driver = {
