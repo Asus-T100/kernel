@@ -575,10 +575,10 @@ static void done(struct langwell_ep *ep, struct langwell_request *req,
 	if (req->mapped) {
 		dma_unmap_single(&dev->pdev->dev,
 			req->req.dma, req->req.length,
-			is_in(ep) ? PCI_DMA_TODEVICE : PCI_DMA_FROMDEVICE);
+			is_in(ep) ? DMA_TO_DEVICE : DMA_FROM_DEVICE);
 		req->req.dma = DMA_ADDR_INVALID;
 		req->mapped = 0;
-	} else
+	} else if (req->req.dma != DMA_ADDR_INVALID)
 		dma_sync_single_for_cpu(&dev->pdev->dev, req->req.dma,
 				req->req.length,
 				is_in(ep) ? DMA_TO_DEVICE : DMA_FROM_DEVICE);
@@ -970,7 +970,7 @@ static int langwell_ep_queue(struct usb_ep *_ep, struct usb_request *_req,
 	struct langwell_ep	*ep;
 	struct langwell_udc	*dev;
 	unsigned long		flags;
-	int			is_iso = 0, zlflag = 0, in = 0;
+	int			is_iso = 0, in = 0;
 
 	if (unlikely(!_ep || !_req))
 		return -EINVAL;
@@ -1016,24 +1016,14 @@ static int langwell_ep_queue(struct usb_ep *_ep, struct usb_request *_req,
 
 	/* set up dma mapping in case the caller didn't */
 	if (_req->dma == DMA_ADDR_INVALID) {
-		/* WORKAROUND: WARN_ON(size == 0) */
-		if (_req->length == 0) {
-			dev_vdbg(&dev->pdev->dev, "req->length: 0->1\n");
-			zlflag = 1;
-			_req->length++;
-		}
-
-		_req->dma = dma_map_single(&dev->pdev->dev,
+		if (_req->length) {
+			_req->dma = dma_map_single(&dev->pdev->dev,
 				_req->buf, _req->length,
 				in ? DMA_TO_DEVICE : DMA_FROM_DEVICE);
-		if (zlflag && (_req->length == 1)) {
-			dev_vdbg(&dev->pdev->dev, "req->length: 1->0\n");
-			zlflag = 0;
-			_req->length = 0;
-		}
-
-		req->mapped = 1;
-		dev_vdbg(&dev->pdev->dev, "req->mapped = 1\n");
+			req->mapped = 1;
+			dev_vdbg(&dev->pdev->dev, "req->mapped = 1\n");
+		} else
+			req->mapped = 0;
 	} else {
 		dma_sync_single_for_device(&dev->pdev->dev,
 				_req->dma, _req->length,
@@ -2449,6 +2439,8 @@ static int prime_status_phase(struct langwell_udc *dev, int dir)
 
 	req->ep = ep;
 	req->req.length = 0;
+	req->req.dma = DMA_ADDR_INVALID;
+	req->mapped = 0;
 	req->req.status = -EINPROGRESS;
 	req->req.actual = 0;
 	req->req.complete = NULL;
@@ -2521,6 +2513,8 @@ static int prime_status_phase_test_mode(struct langwell_udc *dev,
 	req->ep = ep;
 	req->test_mode = test_mode;
 	req->req.length = 0;
+	req->req.dma = DMA_ADDR_INVALID;
+	req->mapped = 0;
 	req->req.status = -EINPROGRESS;
 	req->req.actual = 0;
 	req->req.complete = test_mode_complete;
@@ -2662,6 +2656,9 @@ static void get_status(struct langwell_udc *dev, u8 request_type, u16 value,
 	*((u16 *) req->req.buf) = cpu_to_le16(status_data);
 	req->ep = ep;
 	req->req.length = flag ? 1 : 2;
+	req->req.dma = dma_map_single(&dev->pdev->dev,
+		req->req.buf, req->req.length, DMA_TO_DEVICE);
+	req->mapped = 1;
 	req->req.status = -EINPROGRESS;
 	req->req.actual = 0;
 	req->req.complete = NULL;
@@ -3759,7 +3756,7 @@ static int langwell_udc_probe(struct pci_dev *pdev,
 
 	/* allocate a small amount of memory to get valid address */
 	dev->status_req->req.buf = kmalloc(8, GFP_KERNEL);
-	dev->status_req->req.dma = virt_to_phys(dev->status_req->req.buf);
+	dev->status_req->req.dma = DMA_ADDR_INVALID;
 
 	dev->resume_state = USB_STATE_NOTATTACHED;
 	dev->usb_state = USB_STATE_POWERED;
