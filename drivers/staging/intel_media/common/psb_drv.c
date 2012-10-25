@@ -1344,6 +1344,7 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 #endif
 	dev_priv->um_start = false;
 	dev_priv->b_vblank_enable = false;
+	dev_priv->usermode_restart = false;
 
 	dev_priv->dev = dev;
 	bdev = &dev_priv->bdev;

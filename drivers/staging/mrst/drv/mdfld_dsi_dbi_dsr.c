@@ -282,6 +282,15 @@ int mdfld_dsi_dsr_report_te(struct mdfld_dsi_config *dsi_config)
 	if (!dsi_config->dsi_hw_context.panel_on)
 		goto report_te_out;
 
+	/*In case, DSR in forbid state & user mode
+	*suddenly  restart, then the ref count will
+	* be abnormal statue, so here reset it
+	*/
+	if (dev_priv->usermode_restart) {
+		dsr->ref_count = 0;
+		dev_priv->usermode_restart = false;
+	}
+
 	if (dsr_level <= dsr->dsr_state)
 		goto report_te_out;
 	else if (++dsr->free_count > DSR_COUNT && !dsr->ref_count) {

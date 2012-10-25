@@ -916,6 +916,8 @@ struct drm_psb_private {
 	bool dsi_device_ready;
 	bool hdmi_done_reading_edid;
 	bool um_start;
+	/*flag to indicate android restart*/
+	bool usermode_restart;
 
 	uint32_t tmds_clock_khz;
 	had_event_call_back mdfld_had_event_callbacks;

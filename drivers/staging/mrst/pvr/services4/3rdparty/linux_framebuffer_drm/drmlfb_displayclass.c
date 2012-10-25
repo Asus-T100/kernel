@@ -1063,7 +1063,8 @@ static PVRSRV_ERROR CreateDCSwapChain(IMG_HANDLE hDevice,
 	mutex_unlock(&psDevInfo->sSwapChainMutex);
 
 	*phSwapChain = (IMG_HANDLE)psSwapChain;
-
+	dev_priv->usermode_restart = true;
+	DRM_INFO("user mode restart");
 	return (PVRSRV_OK);
 
 ErrorFreeAllocatedBuffes:
@@ -1141,7 +1142,6 @@ static PVRSRV_ERROR DestroyDCSwapChain(IMG_HANDLE hDevice,
 	MRSTLFBFreeKernelMem(psSwapChain->psVSyncFlips);
 	MRSTLFBFreeKernelMem(psSwapChain->ppsBuffer);
 	MRSTLFBFreeKernelMem(psSwapChain);
-
 	return (PVRSRV_OK);
 }
 
