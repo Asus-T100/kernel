@@ -24,11 +24,22 @@
 #include "device_libs/platform_max17042.h"
 #include "device_libs/platform_bq24261.h"
 #include "device_libs/platform_pn544.h"
+#include "device_libs/platform_camera.h"
+#include "device_libs/platform_imx175.h"
+#include "device_libs/platform_ov9724.h"
+#include "device_libs/platform_lm3559.h"
 
 static void __init *no_platform_data(void *info)
 {
 	return NULL;
 }
+
+const struct intel_v4l2_subdev_id v4l2_ids[] = {
+	{"imx175", RAW_CAMERA, ATOMISP_CAMERA_PORT_PRIMARY},
+	{"ov9724", RAW_CAMERA, ATOMISP_CAMERA_PORT_SECONDARY},
+	{"lm3559", LED_FLASH, -1},
+	{},
+};
 
 /*
  * WIFI devices
@@ -57,6 +68,17 @@ struct devs_id __initconst device_ids[] = {
 	{"lm49453_codec", SFI_DEV_TYPE_I2C, 1, &no_platform_data, NULL},
 	{"bcm43xx_clk_vmmc", SFI_DEV_TYPE_SD, 0, &bcm43xx_platform_data, NULL},
 	{"pn544", SFI_DEV_TYPE_I2C, 0, &pn544_platform_data, NULL},
+	/*
+	 * Camera Sensors and LED Flash.
+	 * I2C devices for camera image subsystem which will not be load into
+	 * I2C core while initialize
+	 */
+	{"imx175", SFI_DEV_TYPE_I2C, 0, &imx175_platform_data,
+					&intel_ignore_i2c_device_register},
+	{"ov9724", SFI_DEV_TYPE_I2C, 0, &ov9724_platform_data,
+					&intel_ignore_i2c_device_register},
+	{"lm3559", SFI_DEV_TYPE_I2C, 0, &lm3559_platform_data_func,
+					&intel_ignore_i2c_device_register},
 	{},
 };
 
