@@ -830,7 +830,7 @@ static int dlp_ctrl_cmd_send(struct dlp_channel *ch_ctx,
 			dlp_cmd->params.channel, dlp_cmd->params.id);
 
 		ret = -EIO;
-		goto free_tx;
+		goto out;
 	}
 
 	/* TX msg sent, check the status */
@@ -839,7 +839,7 @@ static int dlp_ctrl_cmd_send(struct dlp_channel *ch_ctx,
 				dlp_cmd->params.id);
 
 		ret = -EIO;
-		goto free_tx;
+		goto out;
 	}
 
 	/* Dump the TX command */
@@ -866,7 +866,7 @@ static int dlp_ctrl_cmd_send(struct dlp_channel *ch_ctx,
 			dlp_cmd->params.channel, dlp_cmd->params.id);
 
 		ret = -EIO;
-		goto free_tx;
+		goto out;
 	}
 
 	/* Set the expected response params */
@@ -896,9 +896,6 @@ no_resp:
 
 	/* Restore RX callback */
 	dlp_restore_rx_callbacks(&ctrl_ctx->start_rx_cb, &ctrl_ctx->stop_rx_cb);
-
-	/* Free the DLP command */
-	dlp_ctrl_cmd_free(dlp_cmd);
 
 	/* Everything is OK */
 	return ret;
