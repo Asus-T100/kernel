@@ -203,6 +203,7 @@ static int atomisp_stop_streaming(struct vb2_queue *vq)
 				       video, s_stream, 0);
 
 	isp->sw_contex.sensor_streaming = false;
+	isp->isp3a_stat_ready = false;
 
 #ifdef PUNIT_CAMERA_BUSY
 	/* Free camera_busy bit */

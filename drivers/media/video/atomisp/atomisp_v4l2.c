@@ -835,7 +835,6 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 	}
 
 	init_completion(&isp->wq_frame_complete);
-	init_completion(&isp->dis_state_complete);
 	spin_lock_init(&isp->irq_lock);
 
 	isp->work_queue = create_singlethread_workqueue(isp->v4l2_dev.name);

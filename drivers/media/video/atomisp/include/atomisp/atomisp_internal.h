@@ -278,7 +278,6 @@ struct atomisp_device {
 	struct workqueue_struct *work_queue;
 	struct work_struct work;
 	struct completion wq_frame_complete;
-	struct completion dis_state_complete;
 	struct completion acc_fw_complete;
 	struct completion acc_unload_fw_complete;
 

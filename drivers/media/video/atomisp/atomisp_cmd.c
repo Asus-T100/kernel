@@ -258,7 +258,6 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 	enum sh_css_err err;
 	unsigned int irq_infos = 0;
 	bool signal_worker = false;
-	bool signal_statistics = false;
 	bool signal_acceleration = false;
 	unsigned long irqflags;
 
@@ -296,7 +295,6 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 	    irq_infos & SH_CSS_IRQ_INFO_START_NEXT_STAGE) {
 		/* Wake up sleep thread for next binary */
 		if (irq_infos & SH_CSS_IRQ_INFO_STATISTICS_READY) {
-			signal_statistics = true;
 			isp->isp3a_stat_ready = true;
 			irq_infos &= ~SH_CSS_IRQ_INFO_STATISTICS_READY;
 		}
@@ -325,7 +323,6 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 		if (rx_infos & SH_CSS_RX_IRQ_INFO_BUFFER_OVERRUN) {
 #endif
 			signal_worker = true;
-			signal_statistics = true;
 			signal_acceleration = true;
 		}
 
@@ -420,9 +417,6 @@ no_frame_done:
 	if (signal_worker)
 		/*make work queue run*/
 		complete(&isp->wq_frame_complete);
-	if (signal_statistics)
-		/*make work queue run*/
-		complete(&isp->dis_state_complete);
 
 	/* Clear irq reg at PENWELL B0 */
 	pci_read_config_dword(isp->pdev, PCI_INTERRUPT_CTRL, &msg_ret);
@@ -452,7 +446,6 @@ static int atomisp_buf_pre_dequeue(struct atomisp_video_pipe *pipe,
 
 		mutex_lock(&isp->isp_lock);
 		isp->sw_contex.buffer_underrun = true;
-		complete(&isp->dis_state_complete);
 		mutex_unlock(&isp->isp_lock);
 
 		if (wait_event_interruptible(pipe->vb_queued,
@@ -2006,8 +1999,7 @@ int atomisp_set_dis_vector(struct atomisp_device *isp,
 int atomisp_get_dis_stat(struct atomisp_device *isp,
 			 struct atomisp_dis_statistics *stats)
 {
-	int error;
-	long left;
+	int error = 0;
 
 	if (stats->vertical_projections   == NULL ||
 	    stats->horizontal_projections == NULL ||
@@ -2029,24 +2021,12 @@ int atomisp_get_dis_stat(struct atomisp_device *isp,
 		return -EINVAL;
 
 	mutex_lock(&isp->isp_lock);
-	if (isp->sw_contex.buffer_underrun) {
+
+	/* prevent reading before first stats are ready, after that
+	   css 3A double buffering ensures it is safe to read. */
+	if (!isp->isp3a_stat_ready) {
 		mutex_unlock(&isp->isp_lock);
-		return -ENOBUFS;
-	}
-
-	INIT_COMPLETION(isp->dis_state_complete);
-	mutex_unlock(&isp->isp_lock);
-
-	left = wait_for_completion_timeout(&isp->dis_state_complete, 1 * HZ);
-
-	/* recheck whether wakeup is caused of buffer underrun */
-	if (isp->sw_contex.buffer_underrun)
-		return -ENOBUFS;
-
-	/* Timeout to get the statistics */
-	if (left == 0) {
-		v4l2_err(&atomisp_dev, "Failed to wait frame DIS state\n");
-		return -EINVAL;
+		return -EBUSY;
 	}
 
 	sh_css_get_dis_projections(isp->params.dis_hor_proj_buf,
@@ -2056,11 +2036,17 @@ int atomisp_get_dis_stat(struct atomisp_device *isp,
 			     isp->params.dis_ver_proj_buf,
 			     isp->params.dis_ver_proj_bytes);
 	if (error)
-		return -EFAULT;
+		goto out;
 
 	error = copy_to_user(stats->horizontal_projections,
 			     isp->params.dis_hor_proj_buf,
 			     isp->params.dis_hor_proj_bytes);
+	if (error)
+		goto out;
+
+out:
+	mutex_unlock(&isp->isp_lock);
+
 	if (error)
 		return -EFAULT;
 
@@ -2113,6 +2099,9 @@ int atomisp_3a_stat(struct atomisp_device *isp, int flag,
 	if (isp->params.s3a_output_bytes == 0)
 		return -EINVAL;
 
+	if (!isp->sw_contex.isp_streaming)
+		return -EINVAL;
+
 	/* If the grid info in the argument differs from the current
 	   grid info, we tell the caller to reset the grid size and
 	   try again. */
@@ -2121,6 +2110,14 @@ int atomisp_3a_stat(struct atomisp_device *isp, int flag,
 		return -EAGAIN;
 
 	mutex_lock(&isp->isp_lock);
+
+	/* prevent reading before first stats are ready, after that
+	   css 3A double buffering ensures it is safe to read. */
+	if (!isp->isp3a_stat_ready) {
+		mutex_unlock(&isp->isp_lock);
+		return -EBUSY;
+	}
+
 	/* Getting 3A statistics if ready */
 	ret = sh_css_get_3a_statistics(isp->params.s3a_output_buf);
 	if (ret != sh_css_success) {
@@ -2138,6 +2135,7 @@ int atomisp_3a_stat(struct atomisp_device *isp, int flag,
 			    "copy to user failed: copied %lu bytes\n", ret);
 		return -EFAULT;
 	}
+
 	return 0;
 }
 
