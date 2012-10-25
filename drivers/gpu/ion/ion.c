@@ -952,14 +952,21 @@ static long ion_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 	switch (cmd) {
 	case ION_IOC_ALLOC:
 	{
+		int ret = 0;
 		struct ion_allocation_data data;
 
 		if (copy_from_user(&data, (void __user *)arg, sizeof(data)))
 			return -EFAULT;
 		data.handle = ion_alloc(client, data.len, data.align,
 					     data.flags);
+		if (IS_ERR_OR_NULL(data.handle)) {
+			ret = data.handle;
+			data.handle = NULL;
+		}
 		if (copy_to_user((void __user *)arg, &data, sizeof(data)))
 			return -EFAULT;
+		else if (ret)
+			return ret;
 		break;
 	}
 	case ION_IOC_FREE:
