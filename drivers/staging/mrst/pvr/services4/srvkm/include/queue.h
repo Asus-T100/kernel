@@ -75,7 +75,6 @@ extern "C" {
 	IMG_UINT32			ui32AllocSize;		/*!< allocated size*/
 	PFN_QUEUE_COMMAND_COMPLETE	pfnCommandComplete;	/*!< Command complete callback */
 	IMG_HANDLE					hCallbackData;		/*!< Command complete callback data */
-	IMG_UINT32					ui32Stamp;
  }COMMAND_COMPLETE_DATA, *PCOMMAND_COMPLETE_DATA;
 
 #if !defined(USE_CODE)

@@ -70,11 +70,6 @@ typedef struct _DEVICE_COMMAND_DATA_
 } DEVICE_COMMAND_DATA;
 
 
-static IMG_UINT32 g_ui32OutStamp = 0;
-static IMG_UINT32 g_ui32InStamp = 0;
-static IMG_HANDLE g_TimerHandle = IMG_NULL;
-
-
 #if defined(__linux__) && defined(__KERNEL__)
 
 #include "proc.h"
@@ -978,32 +973,6 @@ PVRSRV_ERROR CheckIfSyncIsQueued(PVRSRV_SYNC_OBJECT *psSync, COMMAND_COMPLETE_DA
 	return PVRSRV_ERROR_FAILED_DEPENDENCIES;
 }
 
-static IMG_VOID _CommandCompleteTimeout(IMG_PVOID pvData)
-{
-	COMMAND_COMPLETE_DATA *psCmdCompleteData = pvData;
-	IMG_UINT32 ui32SyncCounter;
-
-	PVR_DPF((PVR_DBG_ERROR, "Timeout fired for operation %d", psCmdCompleteData->ui32Stamp));
-
-	for (ui32SyncCounter = 0;
-		 ui32SyncCounter < psCmdCompleteData->ui32SrcSyncCount;
-		 ui32SyncCounter++)
-	{
-		QueueDumpCmdComplete(psCmdCompleteData, ui32SyncCounter, IMG_TRUE);
-	}
-
-	for (ui32SyncCounter = 0;
-		 ui32SyncCounter < psCmdCompleteData->ui32DstSyncCount;
-		 ui32SyncCounter++)
-	{
-		QueueDumpCmdComplete(psCmdCompleteData, ui32SyncCounter, IMG_FALSE);
-	}
-	OSDisableTimer(g_TimerHandle);
-	OSRemoveTimer(g_TimerHandle);
-	g_TimerHandle = IMG_NULL;
-}
-
-
 /*!
 ******************************************************************************
 
@@ -1157,8 +1126,6 @@ PVRSRV_ERROR PVRSRVProcessCommand(SYS_DATA			*psSysData,
 				ui32CCBOffset));
 	}
 
-	psCmdCompleteData->ui32Stamp = g_ui32OutStamp++;
-
 	/*
 		call the cmd specific handler:
 		it should:
@@ -1179,24 +1146,7 @@ PVRSRV_ERROR PVRSRVProcessCommand(SYS_DATA			*psSysData,
 			free cmd complete structure
 		*/
 		psCmdCompleteData->bInUse = IMG_FALSE;
-		g_ui32InStamp++;
 		eError = PVRSRV_ERROR_CMD_NOT_PROCESSED;
-	}
-
-	if ((g_ui32OutStamp - g_ui32InStamp) == DC_NUM_COMMANDS_PER_TYPE)
-	{
-		/*
-			We've just sent out a new flip which has filled the DC's pipeline.
-			This means that we expect a complete within a VSync period, start
-			a timer that will print out a message if we haven't got a complete
-			within a reasonable period (200ms)
-		*/
-		if (g_TimerHandle != IMG_NULL) {
-			PVR_DPF((PVR_DBG_ERROR, "service queue debug timer is already in use"));
-		} else {
-			g_TimerHandle = OSAddTimer(_CommandCompleteTimeout, psCmdCompleteData, 200);
-			OSEnableTimer(g_TimerHandle);
-		}
 	}
 	
 	/* Increment the CCB offset */
@@ -1352,22 +1302,6 @@ IMG_VOID PVRSRVCommandCompleteKM(IMG_HANDLE	hCmdCookie,
 	SYS_DATA				*psSysData;
 
 	SysAcquireData(&psSysData);
-
-	if (g_TimerHandle)
-	{
-		OSDisableTimer(g_TimerHandle);
-		OSRemoveTimer(g_TimerHandle);
-		g_TimerHandle = IMG_NULL;
-	}
-
-	if (psCmdCompleteData->ui32Stamp != g_ui32InStamp)
-	{
-		PVR_DPF((PVR_DBG_ERROR, "PVRSRVCommandCompleteKM: Complete arrived in unexpected order (got %d expecting %d)",
-				psCmdCompleteData->ui32Stamp,
-				g_ui32InStamp));
-	}
-
-	g_ui32InStamp++;
 
 	PVR_TTRACE(PVRSRV_TRACE_GROUP_QUEUE, PVRSRV_TRACE_CLASS_CMD_COMP_START,
 			QUEUE_TOKEN_COMMAND_COMPLETE);
