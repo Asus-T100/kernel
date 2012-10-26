@@ -61,6 +61,7 @@
 #include "device_libs/platform_ltr301als.h"
 #include "device_libs/platform_tc35876x.h"
 #include "device_libs/platform_lm3554.h"
+#include "device_libs/platform_tpm502i.h"
 
 /*
  * SPI devices
@@ -145,6 +146,7 @@ struct devs_id __initconst device_ids[] = {
 	{"als", SFI_DEV_TYPE_I2C, 0, &ltr502als_platform_data, NULL},
 	{"ltr301", SFI_DEV_TYPE_I2C, 0, &ltr301als_platform_data, NULL},
 	{"i2c_disp_brig", SFI_DEV_TYPE_I2C, 0, &tc35876x_platform_data},
+	{"tpm_i2c", SFI_DEV_TYPE_I2C, 0, &tpm502i_platform_data, NULL},
 
 	{},
 };

@@ -78,3 +78,4 @@ obj-$(subst m,y,$(CONFIG_USB_PENWELL_OTG))				+= platform_usb_otg.o
 obj-$(subst m,y,$(CONFIG_SERIAL_MFD_HSU))				+= platform_hsu.o
 obj-$(subst m,y,$(CONFIG_LEDS_INTEL_KPD_GPIO))				+= platform_kpd_led_gpio.o
 obj-y									+= platform_clv_regulator.o
+obj-$(subst m,y,$(CONFIG_TCG_TPM))					+= platform_tpm502i.o
