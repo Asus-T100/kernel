@@ -332,7 +332,7 @@ fail:
  *
  * This function shall only be called by the pool of pdu management routines.
  */
-void dlp_pdu_free(struct hsi_msg *pdu, unsigned int hsi_ch)
+void dlp_pdu_free(struct hsi_msg *pdu, int hsi_ch)
 {
 	/* Revert to the real allocated size */
 	if (hsi_ch != -1) {

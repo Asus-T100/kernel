@@ -418,7 +418,7 @@ struct hsi_msg *dlp_pdu_alloc(unsigned int hsi_channel,
 			      xfer_complete_cb complete_cb,
 			      xfer_complete_cb destruct_cb);
 
-void dlp_pdu_free(struct hsi_msg *pdu, unsigned int hsi_channel);
+void dlp_pdu_free(struct hsi_msg *pdu, int hsi_channel);
 
 void dlp_pdu_delete(struct dlp_xfer_ctx *xfer_ctx, struct hsi_msg *pdu);
 
