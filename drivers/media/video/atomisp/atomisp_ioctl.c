@@ -1224,25 +1224,21 @@ static int atomisp_g_ext_ctrls(struct file *file, void *fh,
 
 	/* input_lock is not need for the Camera releated IOCTLs
 	 * The input_lock downgrade the FPS of 3A*/
-	if (c->ctrl_class == V4L2_CTRL_CLASS_CAMERA) {
-		ret = atomisp_camera_g_ext_ctrls(file, fh, c);
+	ret = atomisp_camera_g_ext_ctrls(file, fh, c);
+	if (ret != -EINVAL)
 		return ret;
-	}
 
-	if (c->ctrl_class == V4L2_CTRL_CLASS_USER) {
-		for (i = 0; i < c->count; i++) {
-			ctrl.id = c->controls[i].id;
-			ctrl.value = c->controls[i].value;
-			ret = atomisp_g_ctrl(file, fh, &ctrl);
-			c->controls[i].value = ctrl.value;
-			if (ret) {
-				c->error_idx = i;
-				break;
-			}
+	for (i = 0; i < c->count; i++) {
+		ctrl.id = c->controls[i].id;
+		ctrl.value = c->controls[i].value;
+		ret = atomisp_g_ctrl(file, fh, &ctrl);
+		c->controls[i].value = ctrl.value;
+		if (ret) {
+			c->error_idx = i;
+			break;
 		}
-		return ret;
 	}
-	return -EINVAL;
+	return ret;
 }
 
 static int atomisp_camera_s_ext_ctrls(struct file *file, void *fh,
@@ -1317,26 +1313,21 @@ static int atomisp_s_ext_ctrls(struct file *file, void *fh,
 
 	/* input_lock is not need for the Camera releated IOCTLs
 	 * The input_lock downgrade the FPS of 3A*/
-	if (c->ctrl_class == V4L2_CTRL_CLASS_CAMERA) {
-		ret = atomisp_camera_s_ext_ctrls(file, fh, c);
+	ret = atomisp_camera_s_ext_ctrls(file, fh, c);
+	if (ret != -EINVAL)
 		return ret;
-	}
 
-	if (c->ctrl_class == V4L2_CTRL_CLASS_USER) {
-		for (i = 0; i < c->count; i++) {
-			ctrl.id = c->controls[i].id;
-			ctrl.value = c->controls[i].value;
-			ret = atomisp_s_ctrl(file, fh, &ctrl);
-			c->controls[i].value = ctrl.value;
-			if (ret) {
-				c->error_idx = i;
-				break;
-			}
+	for (i = 0; i < c->count; i++) {
+		ctrl.id = c->controls[i].id;
+		ctrl.value = c->controls[i].value;
+		ret = atomisp_s_ctrl(file, fh, &ctrl);
+		c->controls[i].value = ctrl.value;
+		if (ret) {
+			c->error_idx = i;
+			break;
 		}
-		return ret;
 	}
-
-	return -EINVAL;
+	return ret;
 }
 
 /*
