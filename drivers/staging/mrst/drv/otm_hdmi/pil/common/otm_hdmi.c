@@ -1301,14 +1301,6 @@ otm_hdmi_ret_t otm_hdmi_declare_attributes(pd_attr_declare_t declare,
 		OTM_HDMI_ATTR_ID_VERSION_MINOR,
 		PD_ATTR_FLAGS_RS, get_name, 4, 0, 9);
 
-	PD_DECLARE_ATTRIBUTE_STRING(declare, table,
-		OTM_HDMI_ATTR_ID_BUILD_DATE,
-		PD_ATTR_FLAGS_RS, get_name, __DATE__);
-
-	PD_DECLARE_ATTRIBUTE_STRING(declare, table,
-		OTM_HDMI_ATTR_ID_BUILD_TIME,
-		PD_ATTR_FLAGS_RS, get_name, __TIME__);
-
 	PD_DECLARE_ATTRIBUTE_UINT(declare, table,
 		OTM_HDMI_ATTR_ID_DISPLAY_PIPE,
 		PD_ATTR_FLAGS_RWS,
