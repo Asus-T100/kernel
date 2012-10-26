@@ -324,13 +324,14 @@ static IMG_VOID QueueDumpCommand(SYS_DATA *psSysData)
 			while (psSyncWalker < psSyncEnd)
 			{
 				psSyncData = psSyncWalker->psKernelSyncInfoKM->psSyncData;
-				PVR_LOG(("\tDst Sync Object: Write[%X](%X:%X) Read[%X](%X:%X) Read2[%X](%X:%X)",
+				PVR_LOG(("\tDst Sync Object: Write[%X](%X:%X) Read[%X](%X:%X) Read2[%X](%X:%X) WP:%X, R2P:%X",
 					psSyncWalker->psKernelSyncInfoKM->sWriteOpsCompleteDevVAddr.uiAddr,
 					psSyncData->ui32WriteOpsComplete, psSyncData->ui32WriteOpsPending,
 					psSyncWalker->psKernelSyncInfoKM->sReadOpsCompleteDevVAddr.uiAddr,
 					psSyncData->ui32ReadOpsComplete,  psSyncData->ui32ReadOpsPending,
 					psSyncWalker->psKernelSyncInfoKM->sReadOps2CompleteDevVAddr.uiAddr,
-					psSyncData->ui32ReadOps2Complete, psSyncData->ui32ReadOps2Pending));
+					psSyncData->ui32ReadOps2Complete, psSyncData->ui32ReadOps2Pending,
+					psSyncWalker->ui32WriteOpsPending, psSyncWalker->ui32ReadOps2Pending));
 				psSyncWalker++;
 			}
 
@@ -339,13 +340,14 @@ static IMG_VOID QueueDumpCommand(SYS_DATA *psSysData)
 			while (psSyncWalker < psSyncEnd)
 			{
 				psSyncData = psSyncWalker->psKernelSyncInfoKM->psSyncData;
-				PVR_LOG(("\tSrc Sync Object: Write[%X](%X:%X) Read[%X](%X:%X) Read2[%X](%X:%X)",
+				PVR_LOG(("\tSrc Sync Object: Write[%X](%X:%X) Read[%X](%X:%X) Read2[%X](%X:%X) WP:%X, R2P:%X",
 					psSyncWalker->psKernelSyncInfoKM->sWriteOpsCompleteDevVAddr.uiAddr,
 					psSyncData->ui32WriteOpsComplete, psSyncData->ui32WriteOpsPending,
 					psSyncWalker->psKernelSyncInfoKM->sReadOpsCompleteDevVAddr.uiAddr,
 					psSyncData->ui32ReadOpsComplete,  psSyncData->ui32ReadOpsPending,
 					psSyncWalker->psKernelSyncInfoKM->sReadOps2CompleteDevVAddr.uiAddr,
-					psSyncData->ui32ReadOps2Complete, psSyncData->ui32ReadOps2Pending));
+					psSyncData->ui32ReadOps2Complete, psSyncData->ui32ReadOps2Pending,
+					psSyncWalker->ui32WriteOpsPending, psSyncWalker->ui32ReadOps2Pending));
 				psSyncWalker++;
 			}
 
