@@ -87,12 +87,21 @@ int imx_vcm_power_up(struct v4l2_subdev *sd)
 		return ret;
 	/* Wait for VBAT to stabilize */
 	udelay(1);
+	/*
+	 * Jiggle SCL pin to wake up device.
+	 * Drv201 expect SCL from low to high to wake device up.
+	 * So the 1st access to i2c would fail.
+	 * Using following function to wake device up.
+	 */
+	drv201_i2c_wr8(client, DRV201_CONTROL, DRV201_RESET);
+
+	/* Need 100us to transit from SHUTDOWN to STANDBY*/
+	usleep_range(WAKEUP_DELAY_US, WAKEUP_DELAY_US * 10);
+
 	/* Reset device */
 	ret = drv201_i2c_wr8(client, DRV201_CONTROL, DRV201_RESET);
 	if (ret < 0)
 		goto fail_powerdown;
-	/* Transition time required from shutdown to standby state */
-	usleep_range(WAKEUP_DELAY_US, WAKEUP_DELAY_US * 10);
 
 	/* Detect device */
 	ret = drv201_i2c_rd8(client, DRV201_CONTROL, &value);
