@@ -23,6 +23,7 @@
 #include <linux/moduleparam.h>
 #include <linux/time.h>
 #include <linux/i2c.h>
+#include <linux/string.h>
 #include <linux/earlysuspend.h>
 #include <linux/synaptics_i2c_rmi4.h>
 #include "synaptics_i2c_rmi4.h"
@@ -59,6 +60,10 @@
 
 #define IS_IDLE(ctl_ptr)      ((!ctl_ptr->status) && (!ctl_ptr->command))
 #define extract_u32(ptr)      (le32_to_cpu(*(__le32 *)(ptr)))
+
+#define FIRMWARE_NAME_OGS	"s3202_ogs.img"
+#define FIRMWARE_NAME_GFF	"s3202_gff.img"
+#define FIRMWARE_NAME_FORCE	"s3202.img"
 
 /** Image file V5, Option 0
  */
@@ -612,7 +617,7 @@ static bool go_nogo(struct reflash_data *data, struct image_header *header)
 	return device_status.flash_prog || force;
 }
 
-void rmi4_fw_update(struct rmi4_data *pdata,
+int rmi4_fw_update(struct rmi4_data *pdata,
 		struct rmi4_fn_desc *f01_pdt, struct rmi4_fn_desc *f34_pdt)
 {
 #ifdef DEBUG
@@ -620,7 +625,7 @@ void rmi4_fw_update(struct rmi4_data *pdata,
 	struct timespec end;
 	s64 duration_ns;
 #endif
-	int retval;
+	int retval, hardware_type;
 	char firmware_name[PRODUCT_ID_SIZE + 12];
 	const struct firmware *fw_entry = NULL;
 	struct i2c_client *client = pdata->i2c_client;
@@ -647,35 +652,45 @@ void rmi4_fw_update(struct rmi4_data *pdata,
 	if (pdt_props.has_bsr) {
 		dev_warn(&client->dev,
 			 "Firmware update for LTS not currently supported.\n");
-		return;
+		return 0;
 	}
 
 	retval = read_f01_queries(&data);
 	if (retval) {
 		dev_err(&client->dev, "F01 queries failed, code = %d.\n",
 			retval);
-		return;
+		return 0;
 	}
+	if (data.product_id[0] == 0) {
+		snprintf(firmware_name, sizeof(firmware_name), "%s",
+			FIRMWARE_NAME_GFF);
+		dev_info(&client->dev, "Need flash %s.\n", firmware_name);
+		hardware_type = HARDWARE_TYPE_GFF;
+	} else {
+		snprintf(firmware_name, sizeof(firmware_name), "%s",
+			FIRMWARE_NAME_OGS);
+		dev_info(&client->dev, "Need flash %s.\n", firmware_name);
+		hardware_type = HARDWARE_TYPE_OGS;
+	}
+	if (force == 1) {
+		snprintf(firmware_name, sizeof(firmware_name), "%s",
+			FIRMWARE_NAME_FORCE);
+		dev_info(&client->dev, "Need flash %s.\n", firmware_name);
+	}
+
 	retval = read_f34_queries(&data);
 	if (retval) {
 		dev_err(&client->dev, "F34 queries failed, code = %d.\n",
 			retval);
-		return;
+		return hardware_type;
 	}
-	if (pdata->board->fw_name && strlen(pdata->board->fw_name))
-		snprintf(firmware_name, sizeof(firmware_name), "%s",
-			pdata->board->fw_name);
-	else
-		snprintf(firmware_name, sizeof(firmware_name), "%s",
-			(img_name &&
-			 strlen(img_name)) ? img_name : data.product_id);
 	dev_info(&client->dev, "Requesting %s.\n", firmware_name);
 	retval = request_firmware(&fw_entry, firmware_name, &client->dev);
 	if (retval != 0) {
 		dev_err(&client->dev,
 				"Firmware %s not available, code = %d\n",
 				firmware_name, retval);
-		return;
+		return hardware_type;
 	}
 
 	extract_header(fw_entry->data, 0, &header);
@@ -700,11 +715,13 @@ void rmi4_fw_update(struct rmi4_data *pdata,
 		data.config_data = fw_entry->data + F34_FW_IMAGE_OFFSET +
 			header.image_size;
 
-	if (go_nogo(&data, &header)) {
-		reflash_firmware(&data);
-		reset_device(&data);
-	} else
-		dev_info(&client->dev, "Go/NoGo said don't reflash.\n");
+	dev_info(&client->dev, "family: %d, %d     firmware: %d, %d\n",
+					data.f01_queries.productinfo_1,
+					header.product_info[0],
+					data.f01_queries.productinfo_2,
+					header.product_info[1]);
+	reflash_firmware(&data);
+	reset_device(&data);
 
 	if (fw_entry)
 		release_firmware(fw_entry);
@@ -713,4 +730,5 @@ void rmi4_fw_update(struct rmi4_data *pdata,
 	duration_ns = timespec_to_ns(&end) - timespec_to_ns(&start);
 	dev_info(&client->dev, "Time to reflash: %lld ns.\n", duration_ns);
 #endif
+	return hardware_type;
 }

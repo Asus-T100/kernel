@@ -348,7 +348,8 @@ int rmi4_touchpad_irq_handler(struct rmi4_data *pdata, struct rmi4_fn *rfi)
 			wx = (data[3] & MASK_4BIT);
 			wy = (data[3] >> 4) & MASK_4BIT;
 
-			if (pdata->board->swap_axes)
+			if  (pdata->board->swap_axes &&
+				pdata->hardware_type != HARDWARE_TYPE_GFF)
 				swap(x, y);
 			if (pdata->board->x_flip)
 				x = pdata->sensor_max_x - x;
@@ -361,6 +362,7 @@ int rmi4_touchpad_irq_handler(struct rmi4_data *pdata, struct rmi4_fn *rfi)
 					ABS_MT_TOUCH_MAJOR, max(wx , wy));
 			input_report_abs(pdata->input_ts_dev,
 					ABS_MT_TOUCH_MINOR, min(wx , wy));
+
 			input_report_abs(pdata->input_ts_dev,
 					ABS_MT_POSITION_X, x);
 			input_report_abs(pdata->input_ts_dev,
@@ -737,7 +739,7 @@ int rmi4_touchpad_config(struct rmi4_data *pdata, struct rmi4_fn *rfi)
 					((data[9] & MASK_4BIT) << 8);
 	if (pdata->board->swap_axes)
 		swap(pdata->sensor_max_x, pdata->sensor_max_y);
-	dev_dbg(&client->dev, "sensor_max_x=%d, sensor_max_y=%d\n",
+	dev_info(&client->dev, "sensor_max_x=%d, sensor_max_y=%d\n",
 				pdata->sensor_max_x, pdata->sensor_max_y);
 	return retval;
 }
@@ -895,7 +897,8 @@ static int do_init_reset(struct rmi4_data *pdata)
 			__func__);
 		return -ENODEV;
 	}
-	rmi4_fw_update(pdata, &f01_fd, &f34_fd);
+	pdata->hardware_type = rmi4_fw_update(pdata, &f01_fd, &f34_fd);
+	dev_info(&client->dev, "hardware type is %d\n", pdata->hardware_type);
 	return 0;
 }
 
@@ -1417,7 +1420,11 @@ static int __devinit rmi4_probe(struct i2c_client *client,
 	rmi4_data->input_ts_dev->dev.parent = &client->dev;
 	input_set_drvdata(rmi4_data->input_ts_dev, rmi4_data);
 
-	rmi4_data->input_key_dev->name	= "rmi4_key";
+	if (rmi4_data->hardware_type == HARDWARE_TYPE_GFF)
+		rmi4_data->input_key_dev->name	= "rmi4_key_gff";
+	else
+		rmi4_data->input_key_dev->name	= "rmi4_key";
+
 	rmi4_data->input_key_dev->phys	= "Synaptics_Clearpad";
 	rmi4_data->input_key_dev->id.bustype = BUS_I2C;
 	rmi4_data->input_key_dev->dev.parent = &client->dev;
@@ -1428,10 +1435,18 @@ static int __devinit rmi4_probe(struct i2c_client *client,
 	set_bit(EV_ABS, rmi4_data->input_ts_dev->evbit);
 	set_bit(EV_KEY, rmi4_data->input_key_dev->evbit);
 
-	input_set_abs_params(rmi4_data->input_ts_dev,
+	if (rmi4_data->hardware_type == HARDWARE_TYPE_GFF) {
+		input_set_abs_params(rmi4_data->input_ts_dev,
+			ABS_MT_POSITION_Y, 0, rmi4_data->sensor_max_x, 0, 0);
+		input_set_abs_params(rmi4_data->input_ts_dev,
+			ABS_MT_POSITION_X, 0, rmi4_data->sensor_max_y, 0, 0);
+	} else {
+		input_set_abs_params(rmi4_data->input_ts_dev,
 			ABS_MT_POSITION_X, 0, rmi4_data->sensor_max_x, 0, 0);
-	input_set_abs_params(rmi4_data->input_ts_dev,
+		input_set_abs_params(rmi4_data->input_ts_dev,
 			ABS_MT_POSITION_Y, 0, rmi4_data->sensor_max_y, 0, 0);
+	}
+
 	input_set_abs_params(rmi4_data->input_ts_dev,
 			ABS_MT_TOUCH_MAJOR, 0, MAX_TOUCH_MAJOR, 0, 0);
 	input_set_abs_params(rmi4_data->input_ts_dev,
