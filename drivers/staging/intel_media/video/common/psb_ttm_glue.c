@@ -283,6 +283,7 @@ void psb_remove_videoctx(struct drm_psb_private *dev_priv, struct file *filp)
 	}
 }
 
+#ifdef PSB_MSVDX_TILE_SUPPORT
 static struct psb_video_ctx *psb_find_videoctx(struct drm_psb_private *dev_priv,
 						struct file *filp)
 {
@@ -298,6 +299,7 @@ static struct psb_video_ctx *psb_find_videoctx(struct drm_psb_private *dev_priv,
 	mutex_unlock(&dev_priv->video_ctx_mutex);
 	return NULL;
 }
+#endif
 
 static int psb_entrypoint_number(struct drm_psb_private *dev_priv,
 		uint32_t entry_type)
@@ -348,14 +350,6 @@ int psb_video_getparam(struct drm_device *dev, void *data,
 				   &imr_info[0],
 				   sizeof(imr_info));
 		break;
-	case LNC_VIDEO_GETPARAM_CI_INFO:
-		/* Medfield should not call it */
-		ret = -EFAULT;
-		break;
-	case LNC_VIDEO_FRAME_SKIP:
-		/* Medfield should not call it */
-		ret = -EFAULT;
-		break;
 	case LNC_VIDEO_DEVICE_INFO:
 		device_info = 0xffff & dev_priv->video_device_fuse;
 		device_info |= (0xffff & dev->pci_device) << 16;
@@ -398,6 +392,7 @@ int psb_video_getparam(struct drm_device *dev, void *data,
 	case IMG_VIDEO_RM_CONTEXT:
 		psb_remove_videoctx(dev_priv, file_priv->filp);
 		break;
+#ifdef PSB_MSVDX_TILE_SUPPORT
 	case IMG_VIDEO_UPDATE_CONTEXT:
 		ret = copy_from_user(&ctx_type,
 				(void __user *)((unsigned long)arg->value),
@@ -418,7 +413,9 @@ int psb_video_getparam(struct drm_device *dev, void *data,
 				"Video:fail to find context profile %d, entrypoint %d",
 				(ctx_type >> 8), (ctx_type & 0xff));
 		break;
+#endif
 	case IMG_VIDEO_DECODE_STATUS:
+#ifdef CONFIG_VIDEO_MRFLD
 		if (msvdx_priv->host_be_opp_enabled) {
 			/*get the right frame_info struct for current surface*/
 			ret = copy_from_user(&handle,
@@ -440,10 +437,13 @@ int psb_video_getparam(struct drm_device *dev, void *data,
 			ret = copy_to_user((void __user *)((unsigned long)arg->value),
 					   &current_frame->fw_status, sizeof(current_frame->fw_status));
 		} else
+#endif
+		{
 			ret = copy_to_user((void __user *)((unsigned long)arg->value),
 					   &msvdx_priv->decoding_err, sizeof(msvdx_priv->decoding_err));
+		}
 		break;
-
+#ifdef CONFIG_VIDEO_MRFLD
 	case IMG_VIDEO_MB_ERROR:
 		/*get the right frame_info struct for current surface*/
 		ret = copy_from_user(&handle,
@@ -465,6 +465,7 @@ int psb_video_getparam(struct drm_device *dev, void *data,
 		ret = copy_to_user((void __user *)((unsigned long)arg->value),
 				   &(current_frame->decode_status), sizeof(drm_psb_msvdx_decode_status_t));
 		break;
+#endif
 	case IMG_VIDEO_SET_DISPLAYING_FRAME:
 		ret = copy_from_user(&msvdx_priv->displaying_frame,
 				(void __user *)((unsigned long)arg->value),
@@ -474,10 +475,6 @@ int psb_video_getparam(struct drm_device *dev, void *data,
 		ret = copy_to_user((void __user *)((unsigned long)arg->value),
 				&msvdx_priv->displaying_frame,
 				sizeof(msvdx_priv->displaying_frame));
-		break;
-	case IMG_DISPLAY_SET_WIDI_EXT_STATE:
-		ret = -EFAULT;
-		DRM_ERROR("variable drm_psb_widi has been removed\n");
 		break;
 	case IMG_VIDEO_GET_HDMI_STATE:
 		ret = copy_to_user((void __user *)((unsigned long)arg->value),

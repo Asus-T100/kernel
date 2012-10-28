@@ -35,6 +35,7 @@ struct drm_psb_ttm_backend {
 	unsigned long num_pages;
 };
 
+#ifdef PSB_MSVDX_PCI_ONCARD_MEM_SUPPORT
 static int psb_move_blit(struct ttm_buffer_object *bo,
 			 bool evict, bool no_wait,
 			 struct ttm_mem_reg *new_mem)
@@ -87,6 +88,7 @@ out_cleanup:
 	}
 	return ret;
 }
+#endif
 
 static int drm_psb_tbe_populate(struct ttm_backend *backend,
 				unsigned long num_pages,
@@ -217,11 +219,13 @@ static struct ttm_backend *drm_psb_tbe_init(struct ttm_bo_device *bdev)
 	return &psb_be->base;
 }
 
+#ifdef PSB_INVALIDATE_CACHES
 static int psb_invalidate_caches(struct ttm_bo_device *bdev,
 				 uint32_t placement)
 {
 	return 0;
 }
+#endif
 
 /*
  * MSVDX/TOPAZ GPU virtual space looks like this
@@ -276,6 +280,7 @@ static int psb_init_mem_type(struct ttm_bo_device *bdev, uint32_t type,
 		man->default_caching = TTM_PL_FLAG_WC;
 		man->gpu_offset = pg->mmu_gatt_start + pg->ci_start + pg->ci_stolen_size;
 		break;
+#ifdef PSB_MSVDX_TILE_SUPPORT
 	case DRM_PSB_MEM_MMU_TILING:
 		man->func = &ttm_bo_manager_func;
 		man->flags = TTM_MEMTYPE_FLAG_MAPPABLE |
@@ -285,6 +290,7 @@ static int psb_init_mem_type(struct ttm_bo_device *bdev, uint32_t type,
 					 TTM_PL_FLAG_UNCACHED | TTM_PL_FLAG_WC;
 		man->default_caching = TTM_PL_FLAG_WC;
 		break;
+#endif
 	default:
 		DRM_ERROR("Unsupported memory type %u\n", (unsigned) type);
 		return -EINVAL;
@@ -310,6 +316,7 @@ static void psb_evict_mask(struct ttm_buffer_object *bo, struct ttm_placement *p
 	/* return cur_placement | TTM_PL_FLAG_SYSTEM; */
 }
 
+#ifdef PSB_MSVDX_PCI_ONCARD_MEM_SUPPORT
 static int psb_move(struct ttm_buffer_object *bo,
 		    bool evict, bool interruptible, bool no_wait_reserve,
 		    bool no_wait, struct ttm_mem_reg *new_mem)
@@ -344,6 +351,7 @@ static int psb_move(struct ttm_buffer_object *bo,
 	}
 	return 0;
 }
+#endif
 
 int psb_verify_access(struct ttm_buffer_object *bo,
 		      struct file *filp)
@@ -400,16 +408,22 @@ static int psb_ttm_io_mem_reserve(struct ttm_bo_device *bdev, struct ttm_mem_reg
 	return 0;
 }
 
+#ifdef PSB_TTM_IO_MEM_FREE
 static void psb_ttm_io_mem_free(struct ttm_bo_device *bdev, struct ttm_mem_reg *mem)
 {
 }
+#endif
 
 struct ttm_bo_driver psb_ttm_bo_driver = {
 	.create_ttm_backend_entry = &drm_psb_tbe_init,
+#ifdef PSB_INVALIDATE_CACHES
 	.invalidate_caches = &psb_invalidate_caches,
+#endif
 	.init_mem_type = &psb_init_mem_type,
 	.evict_flags = &psb_evict_mask,
+#ifdef PSB_MSVDX_PCI_ONCARD_MEM_SUPPORT
 	.move = &psb_move,
+#endif
 	.verify_access = &psb_verify_access,
 	.sync_obj_signaled = &ttm_fence_sync_obj_signaled,
 	.sync_obj_wait = &ttm_fence_sync_obj_wait,
@@ -417,5 +431,7 @@ struct ttm_bo_driver psb_ttm_bo_driver = {
 	.sync_obj_unref = &ttm_fence_sync_obj_unref,
 	.sync_obj_ref = &ttm_fence_sync_obj_ref,
 	.io_mem_reserve = &psb_ttm_io_mem_reserve,
+#ifdef PSB_TTM_IO_MEM_FREE
 	.io_mem_free = &psb_ttm_io_mem_free
+#endif
 };

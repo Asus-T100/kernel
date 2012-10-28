@@ -574,7 +574,7 @@ pnw_topaz_send(struct drm_device *dev, unsigned char *cmd,
 			}
 			topaz_priv->topaz_cur_codec = codec;
 			break;
-
+#ifdef CONFIG_VIDEO_MRFLD
 		case MTX_CMDID_SW_ENTER_LOWPOWER:
 			PSB_DEBUG_GENERAL("TOPAZ: enter lowpower....\n");
 			cur_cmd_size = sizeof(struct topaz_cmd_header)
@@ -590,7 +590,7 @@ pnw_topaz_send(struct drm_device *dev, unsigned char *cmd,
 			PNW_TOPAZ_CHECK_CMD_SIZE(cmd_size,
 					cur_cmd_size, cur_cmd_id);
 			break;
-
+#endif
 		case MTX_CMDID_SW_WRITEREG:
 			p_command = (uint32_t *)
 				(cmd + sizeof(struct topaz_cmd_header));

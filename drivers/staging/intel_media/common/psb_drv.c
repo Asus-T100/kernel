@@ -4316,7 +4316,6 @@ int psb_release(struct inode *inode, struct file *filp)
 	struct msvdx_private *msvdx_priv;
 	int ret, i, island_is_on;
 	struct psb_msvdx_ec_ctx *ec_ctx;
-	uint32_t ui32_reg_value = 0;
 	file_priv = (struct drm_file *) filp->private_data;
 	struct ttm_object_file *tfile = psb_fpriv(file_priv)->tfile;
 	psb_fp = psb_fpriv(file_priv);
@@ -4360,19 +4359,17 @@ int psb_release(struct inode *inode, struct file *filp)
 	/* remove video context */
 	psb_remove_videoctx(dev_priv, filp);
 
-	if (IS_MRST(dev_priv->dev)) {
-		/*
-		schedule_delayed_work(&dev_priv->scheduler.topaz_suspend_wq, 10);
-		*/
-		/* FIXME: workaround for HSD3469585
-		 *        re-enable DRAM Self Refresh Mode
-		 *        by setting DUNIT.DPMC0
-		 */
-		ui32_reg_value = intel_mid_msgbus_read32_raw((0xD0 << 24) |
-			(0x1 << 16) | (0x4 << 8) | 0xF0);
-		intel_mid_msgbus_write32_raw((0xE0 << 24) | (0x1 << 16) |
-			(0x4 << 8) | 0xF0, ui32_reg_value | (0x1 << 7));
-	} else if (IS_MDFLD(dev_priv->dev)) {
+#ifdef PSB_DRAM_SELF_REFRESH
+	/* FIXME: workaround for MRST HSD3469585
+	 *        re-enable DRAM Self Refresh Mode
+	 *        by setting DUNIT.DPMC0
+	 */
+	int ui32_reg_value = intel_mid_msgbus_read32_raw((0xD0 << 24) |
+		(0x1 << 16) | (0x4 << 8) | 0xF0);
+	intel_mid_msgbus_write32_raw((0xE0 << 24) | (0x1 << 16) |
+		(0x4 << 8) | 0xF0, ui32_reg_value | (0x1 << 7));
+#endif
+	if (IS_MDFLD(dev_priv->dev)) {
 		struct pnw_topaz_private *topaz_priv =
 			(struct pnw_topaz_private *)dev_priv->topaz_private;
 		if (drm_topaz_pmpolicy == PSB_PMPOLICY_POWERDOWN)

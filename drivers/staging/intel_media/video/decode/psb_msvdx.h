@@ -56,9 +56,10 @@ int psb_msvdx_post_boot_init(struct drm_device *dev);
 /* psb_msvdx.c */
 IMG_BOOL psb_msvdx_interrupt(IMG_VOID *pvData);
 int psb_mtx_send(struct drm_psb_private *dev_priv, const void *pvMsg);
-
+#if 0
 void psb_msvdx_lockup(struct drm_psb_private *dev_priv,
 		      int *msvdx_lockup, int *msvdx_idle);
+#endif
 int psb_check_msvdx_idle(struct drm_device *dev);
 int psb_wait_msvdx_idle(struct drm_device *dev);
 int psb_cmdbuf_video(struct drm_file *priv,
