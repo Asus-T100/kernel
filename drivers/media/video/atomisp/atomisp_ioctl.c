@@ -239,6 +239,33 @@ static struct v4l2_queryctrl ci_v4l2_controls[] = {
 		.step = 1,
 		.default_value = 0,
 	},
+	{
+		.id = V4L2_CID_EXPOSURE_ABSOLUTE,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "exposure",
+		.minimum = 0x0,
+		.maximum = 0xffff,
+		.step = 0x01,
+		.default_value = 0x00,
+	},
+	{
+		.id = V4L2_CID_AUTO_EXPOSURE_BIAS,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "exposure bias",
+		.minimum = 0x0,
+		.maximum = 0xffff,
+		.step = 0x01,
+		.default_value = 0x00,
+	},
+	{
+		.id = V4L2_CID_ISO_SENSITIVITY,
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.name = "iso",
+		.minimum = 0x0,
+		.maximum = 0xffff,
+		.step = 0x01,
+		.default_value = 0x00,
+	},
 };
 static const u32 ctrls_num = ARRAY_SIZE(ci_v4l2_controls);
 
@@ -1058,6 +1085,8 @@ static int atomisp_g_ctrl(struct file *file, void *fh,
 	switch (control->id) {
 	case V4L2_CID_IRIS_ABSOLUTE:
 	case V4L2_CID_EXPOSURE_ABSOLUTE:
+	case V4L2_CID_AUTO_EXPOSURE_BIAS:
+	case V4L2_CID_ISO_SENSITIVITY:
 	case V4L2_CID_FNUMBER_ABSOLUTE:
 	case V4L2_CID_AUTO_FOCUS_STATUS:
 	case V4L2_CID_HFLIP:
@@ -1211,6 +1240,8 @@ static int atomisp_camera_g_ext_ctrls(struct file *file, void *fh,
 		ctrl.value = c->controls[i].value;
 		switch (ctrl.id) {
 		case V4L2_CID_EXPOSURE_ABSOLUTE:
+		case V4L2_CID_AUTO_EXPOSURE_BIAS:
+		case V4L2_CID_ISO_SENSITIVITY:
 		case V4L2_CID_IRIS_ABSOLUTE:
 		case V4L2_CID_FNUMBER_ABSOLUTE:
 		case V4L2_CID_BIN_FACTOR_HORZ:
