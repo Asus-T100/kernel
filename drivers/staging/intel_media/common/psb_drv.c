@@ -1615,8 +1615,16 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	PSB_WVDC32(0x00000000, PSB_INT_ENABLE_R);
 	PSB_WVDC32(0xFFFFFFFF, PSB_INT_MASK_R);
 	spin_unlock_irqrestore(&dev_priv->irqmask_lock, irqflags);
-	if (drm_core_check_feature(dev, DRIVER_MODESET))
+	if (drm_core_check_feature(dev, DRIVER_MODESET)) {
 		drm_irq_install(dev);
+		if (IS_CTP(dev)) {
+			if (irq_set_affinity(drm_dev_to_irq(dev),
+					cpumask_of(0)))
+				pr_err("psb_drv: set irq affinity failed\n");
+			else
+				pr_info("psb_drv: set irq affnity to CPU0\n");
+		}
+	}
 
 	dev->vblank_disable_allowed = 1;
 
