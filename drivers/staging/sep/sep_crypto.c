@@ -237,7 +237,7 @@ static struct scatterlist *sep_alloc_sg_buf(
 
 	current_size = 0;
 	sg_temp = sg;
-	for (ct1 = 0; ct1 < nbr_pages; ct1 += 1) {
+	for (ct1 = 0; (ct1 < nbr_pages) && (sg_temp != NULL); ct1 += 1) {
 		buf = (void *)get_zeroed_page(GFP_ATOMIC);
 		if (!buf) {
 			dev_warn(&sep->pdev->dev,
@@ -306,7 +306,8 @@ static void sep_copy_sg(
 
 	dev_dbg(&sep->pdev->dev, "sep copy sg not null\n");
 
-	while (count < size) {
+	while ((count < size) && (sg_src_tmp != NULL) &&
+		(sg_dst_tmp != NULL)) {
 		if ((sg_src_tmp->length - in_offset) >
 			(sg_dst_tmp->length - out_offset))
 			seg_size = sg_dst_tmp->length - out_offset;
@@ -672,16 +673,6 @@ void sep_dump_ivs(struct ablkcipher_request *req, char *reason)
 }
 
 /**
-  * Length must be in increments of block size
-  */
-u32 cipher_len(int nbytes, int block_size)
-{
-	int this_len = nbytes;
-	this_len -= (nbytes & (block_size - 1));
-	return this_len > (1 << 16) ? (1 << 16) : this_len;
-}
-
-/**
  * RFC2451: Weak key check
  * Returns: 1 (weak), 0 (not weak)
  */
@@ -970,7 +961,7 @@ void sep_read_msg(struct this_task_ctx *ta_ctx, void *in_addr,
 u32 sep_verify_op(struct this_task_ctx *ta_ctx, u32 op_code, u32 *msg_offset)
 {
 	u32 error;
-	u32 in_ary[2];
+	u32 in_ary[2] = { 0 };
 
 	struct sep_device *sep = ta_ctx->sep_used;
 
@@ -1177,8 +1168,8 @@ int sep_crypto_take_sep(struct this_task_ctx *ta_ctx)
 		current->comm, sizeof(current->comm));
 
 	if (!ta_ctx->queue_elem) {
-		dev_dbg(&sep->pdev->dev, "[PID%d] updating queue"
-			" status error\n", current->pid);
+		dev_dbg(&sep->pdev->dev,
+		"[PID%d] updating queue status error\n", current->pid);
 		return -EINVAL;
 	}
 
@@ -1647,9 +1638,9 @@ static void sep_crypto_block(void *data)
 		((ta_ctx->aes_opmode == SEP_AES_ECB) &&
 		(ta_ctx->aes_encmode == SEP_AES_DECRYPT) &&
 		(sctx->key_sent_dec == 0)) ||
-		((ta_ctx->aes_opmode == SEP_DES_CBC) &&
+		((ta_ctx->aes_opmode == SEP_AES_CBC) &&
 		(sctx->key_sent == 0)) ||
-		((ta_ctx->aes_opmode == SEP_DES_ECB) &&
+		((ta_ctx->aes_opmode == SEP_AES_ECB) &&
 		(sctx->key_sent == 0))) {
 
 		are_we_done_yet = 0;
@@ -1794,9 +1785,9 @@ u32 crypto_post_op(struct sep_device *sep)
 		((ta_ctx->aes_opmode == SEP_AES_ECB) &&
 		(ta_ctx->aes_encmode == SEP_AES_DECRYPT) &&
 		(sctx->key_sent_dec == 0)) ||
-		((ta_ctx->aes_opmode == SEP_DES_CBC) &&
+		((ta_ctx->aes_opmode == SEP_AES_CBC) &&
 		(sctx->key_sent == 0)) ||
-		((ta_ctx->aes_opmode == SEP_DES_ECB) &&
+		((ta_ctx->aes_opmode == SEP_AES_ECB) &&
 		(sctx->key_sent == 0))) {
 
 		/* Did SEP do it okay */
@@ -2515,7 +2506,7 @@ static void sep_hash_update(void *data)
 	sep_write_msg(ta_ctx, &tail_len, sizeof(u32),
 		sizeof(u32), &msg_offset, 0);
 
-	if (tail_len) {
+	if ((tail_len) && (ta_ctx->src_sg != NULL)) {
 		copy_result = sep_copy_offset_sg(
 			ta_ctx->sep_used,
 			ta_ctx->src_sg,
@@ -2735,7 +2726,7 @@ static void sep_hash_digest(void *data)
 	sep_write_msg(ta_ctx, &tail_len, sizeof(u32),
 		sizeof(u32), &msg_offset, 0);
 
-	if (tail_len) {
+	if ((tail_len) && (ta_ctx->src_sg != NULL)) {
 		copy_result = sep_copy_offset_sg(
 			ta_ctx->sep_used,
 			ta_ctx->src_sg,
@@ -2814,7 +2805,6 @@ static void sep_dequeuer(void *data)
 		pr_debug("sep crypto backlog set\n");
 		if (backlog->complete)
 			backlog->complete(backlog, -EINPROGRESS);
-		backlog = NULL;
 	}
 
 	if (!async_req->tfm) {
@@ -3810,6 +3800,7 @@ static int sep_des_setkey(struct crypto_ablkcipher *tfm, const u8 *key,
 	case DES_KEY_SIZE * 3:
 		sctx->des_nbr_keys = DES_KEY_3;
 		break;
+	default:
 		pr_debug("invalid key size %x\n",
 			keylen);
 		return -EINVAL;
@@ -4242,34 +4233,29 @@ int sep_crypto_setup(void)
 		return -ENOMEM;
 	}
 
-	i = 0;
-	j = 0;
-
 	spin_lock_init(&queue_lock);
-
-	err = 0;
 
 	for (i = 0; i < ARRAY_SIZE(hash_algs); i++) {
 		err = crypto_register_ahash(&hash_algs[i]);
 		if (err)
-			goto err_algs;
+			goto err_hash_algs;
 	}
 
-	err = 0;
 	for (j = 0; j < ARRAY_SIZE(crypto_algs); j++) {
 		err = crypto_register_alg(&crypto_algs[j]);
 		if (err)
-			goto err_algs;
+			goto err_crypto_algs;
 	}
 
 	return err;
 
-err_algs:
-	for (k = 0; k < i; k++)
-		crypto_unregister_ahash(&hash_algs[k]);
-	return err;
+err_crypto_algs:
 	for (k = 0; k < j; k++)
 		crypto_unregister_alg(&crypto_algs[k]);
+
+err_hash_algs:
+	for (k = 0; k < i; k++)
+		crypto_unregister_ahash(&hash_algs[k]);
 	return err;
 
 }
