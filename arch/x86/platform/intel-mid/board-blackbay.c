@@ -67,6 +67,7 @@
 #include "device_libs/platform_max11871.h"
 #include "device_libs/platform_apds990x.h"
 #include "device_libs/platform_lm3554.h"
+#include "device_libs/platform_ft5406.h"
 
 /*
  * SPI devices
@@ -142,6 +143,7 @@ struct devs_id __initconst device_ids[] = {
 					&intel_ignore_i2c_device_register},
 	{"mxt224", SFI_DEV_TYPE_I2C, 0, &mxt224_platform_data, NULL},
 	{"max11871", SFI_DEV_TYPE_I2C, 0, &max11871_platform_data},
+	{"ft5406", SFI_DEV_TYPE_I2C, 0, &ft5406_platform_data},
 	{"audience_es305", SFI_DEV_TYPE_I2C, 0, &audience_platform_data,
 						NULL},
 	{"accel", SFI_DEV_TYPE_I2C, 0, &lis3dh_platform_data, NULL},

@@ -40,6 +40,7 @@ obj-$(subst m,y,$(CONFIG_GPIO_PCA953X))					+= platform_max7315.o
 obj-$(subst m,y,$(CONFIG_SENSORS_MPU3050))				+= platform_mpu3050.o
 obj-$(subst m,y,$(CONFIG_SENSORS_MS5607))				+= platform_ms5607.o
 obj-$(subst m,y,$(CONFIG_TOUCHSCREEN_ATMEL_MXT224))			+= platform_mxt224.o
+obj-$(subst m,y,$(CONFIG_TOUCHSCREEN_FOCALTECH_FT5406))			+= platform_ft5406.o
 obj-$(subst m,y,$(CONFIG_TOUCHSCREEN_ATMEL_MXT))			+= platform_mxt_ts.o
 ifdef CONFIG_TOUCHSCREEN_SYNAPTICS_RMI4_I2C
 obj-$(subst m,y,$(CONFIG_TOUCHSCREEN_SYNAPTICS_RMI4_I2C))		+= platform_s3202.o
