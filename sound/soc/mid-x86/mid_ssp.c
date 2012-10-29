@@ -1,8 +1,8 @@
 /*
  *	mid_ssp.c - ASoC CPU DAI driver for
  *
- *  Copyright (C) 2012 Intel Corp
- *  Author:
+ *  Copyright (C) 2011-12 Intel Corp
+ *  Author: Selma Bensaid<selma.bensaid@intel.com>
  *  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -26,7 +26,9 @@
 #define FORMAT(fmt) "%s: " fmt, __func__
 #define pr_fmt(fmt) KBUILD_MODNAME ": " FORMAT(fmt)
 
+#include <linux/module.h>
 #include "mid_ssp.h"
+
 
 /*
  * Default I2S configuration
@@ -410,6 +412,7 @@ static struct snd_pcm_ops ssp_platform_ops = {
 
 struct snd_soc_platform_driver soc_ssp_platform_drv = {
 	.ops		= &ssp_platform_ops,
+	.probe		= NULL,
 	.pcm_new	= ssp_platform_pcm_new,
 	.pcm_free	= ssp_platform_pcm_free,
 };
@@ -466,14 +469,19 @@ static int ssp_dai_startup(struct snd_pcm_substream *substream,
 	struct intel_ssp_config *ssp_config;
 	struct snd_pcm_runtime *pl_runtime;
 	struct intel_alsa_ssp_stream_info *str_info;
+	struct intel_ssp_info *ssp_info;
 	struct snd_soc_dai_driver *cpudai_drv = cpu_dai->driver;
 	unsigned int device;
 	int ret = 0;
-	struct workqueue_struct *ssp_dai_wq;
 
 	pr_info("SSP DAI: FCT %s enters for DAI Id = %d\n",
 			__func__, cpu_dai->driver->id);
 
+	ssp_info = dev_get_drvdata(cpu_dai->dev);
+
+	WARN(!ssp_info, "SSP DAI: ERROR NULL ssp_info\n");
+	if (!ssp_info)
+		return -EINVAL;
 
 	pl_runtime = substream->runtime;
 
@@ -484,8 +492,6 @@ static int ssp_dai_startup(struct snd_pcm_substream *substream,
 			__func__);
 	if (!ssp_config)
 		return -EINVAL;
-
-	ssp_dai_wq = dev_get_drvdata(cpu_dai->dev);
 
 	WARN(!cpu_dai->driver, "SSP DAI: "
 			"FCT %s ERROR NULL cpu_dai->driver\n",
@@ -525,14 +531,16 @@ static int ssp_dai_startup(struct snd_pcm_substream *substream,
 		if (!strcmp(cpudai_drv->name, SSP_BT_DAI_NAME)) {
 			ssp_config->i2s_handle =
 				intel_mid_i2s_open(SSP_USAGE_BLUETOOTH_FM);
-			pr_debug("opening the CPU_DAI for SSP_USAGE_BLUETOOTH_FM, i2s_handle = %p\n",
-							ssp_config->i2s_handle);
+			pr_debug("opening the CPU_DAI for"\
+					"SSP_USAGE_BLUETOOTH_FM, i2s_handle = %p\n",
+					ssp_config->i2s_handle);
 
 		} else if (!strcmp(cpudai_drv->name, SSP_MODEM_DAI_NAME)) {
 			ssp_config->i2s_handle =
 				intel_mid_i2s_open(SSP_USAGE_MODEM);
-			pr_debug("opening the CPU_DAI for SSP_USAGE_MODEM, i2s_handle = %p\n",
-							ssp_config->i2s_handle);
+			pr_debug("opening the CPU_DAI for"\
+					"SSP_USAGE_MODEM, i2s_handle = %p\n",
+					ssp_config->i2s_handle);
 
 		} else {
 			pr_err("non Valid SOC CARD\n");
@@ -567,10 +575,23 @@ static void ssp_dai_shutdown(struct snd_pcm_substream *substream,
 	struct intel_ssp_config *ssp_config;
 	struct intel_alsa_ssp_stream_info *str_info;
 	struct snd_pcm_runtime *runtime;
+	struct intel_ssp_info *ssp_info;
 
 	ssp_config = snd_soc_dai_get_dma_data(cpu_dai, substream);
 
 	BUG_ON(!ssp_config);
+
+	runtime = substream->runtime;
+	BUG_ON(!runtime->private_data);
+
+	str_info = runtime->private_data;
+	BUG_ON(!str_info);
+
+	ssp_info = dev_get_drvdata(cpu_dai->dev);
+	BUG_ON(!ssp_info);
+
+	/* Cancel pending work */
+	cancel_work_sync(&str_info->ssp_ws);
 
 	switch (substream->stream) {
 	case SNDRV_PCM_STREAM_PLAYBACK:
@@ -587,6 +608,7 @@ static void ssp_dai_shutdown(struct snd_pcm_substream *substream,
 			pr_debug("SSP DAI: FCT %s TX DMA Channel released\n",
 					__func__);
 		}
+		ssp_info->ssp_dai_tx_allocated = false;
 		break;
 
 	case SNDRV_PCM_STREAM_CAPTURE:
@@ -600,6 +622,7 @@ static void ssp_dai_shutdown(struct snd_pcm_substream *substream,
 			pr_debug("SSP DAI: FCT %s RX DMA Channel released\n",
 					__func__);
 		}
+		ssp_info->ssp_dai_rx_allocated = false;
 		break;
 
 	default:
@@ -607,12 +630,6 @@ static void ssp_dai_shutdown(struct snd_pcm_substream *substream,
 				__func__, substream->stream);
 		break;
 	}
-
-	runtime = substream->runtime;
-	str_info = runtime->private_data;
-
-	/* Cancel pending work */
-	cancel_work_sync(&str_info->ssp_ws);
 
 	kfree(str_info);
 
@@ -690,23 +707,44 @@ static int ssp_set_dai_fmt(struct snd_soc_dai *cpu_dai,
 		return -EINVAL;
 	}
 	/*
-	 * SSP Signal Inversion Mode
+	 * SSP Sgnal Inversion Mode
+	 * Use clock gating bitfield for
+	 * Serial bit-rate Clock Mode
 	 */
-	switch (fmt & SND_SOC_DAIFMT_INV_MASK) {
-	case SND_SOC_DAIFMT_NB_NF:
+	switch (fmt & SND_SOC_DAIFMT_CLOCK_MASK) {
+	case SSP_DAI_SCMODE_0:
 		i2s_config->ssp_serial_clk_mode = SSP_CLK_MODE_0;
 		break;
-	case SND_SOC_DAIFMT_NB_IF:
+	case SSP_DAI_SCMODE_1:
 		i2s_config->ssp_serial_clk_mode = SSP_CLK_MODE_1;
 		break;
-	case SND_SOC_DAIFMT_IB_IF:
+	case SSP_DAI_SCMODE_2:
 		i2s_config->ssp_serial_clk_mode = SSP_CLK_MODE_2;
 		break;
-	case SND_SOC_DAIFMT_IB_NF:
+	case SSP_DAI_SCMODE_3:
 		i2s_config->ssp_serial_clk_mode = SSP_CLK_MODE_3;
 		break;
 	default:
 		pr_err("SSP DAI: %s Bad DAI Signal Inversion Mode=%d\n",
+				__func__,
+				(fmt & SND_SOC_DAIFMT_INV_MASK));
+		return -EINVAL;
+	}
+
+	/*
+	 * SSP FS Inversion Mode
+	 */
+	switch (fmt & SND_SOC_DAIFMT_INV_MASK) {
+	case SND_SOC_DAIFMT_NB_NF:
+	case SND_SOC_DAIFMT_IB_NF:
+		i2s_config->ssp_frmsync_pol_bit = SSP_FRMS_ACTIVE_HIGH;
+		break;
+	case SND_SOC_DAIFMT_NB_IF:
+	case SND_SOC_DAIFMT_IB_IF:
+		i2s_config->ssp_frmsync_pol_bit = SSP_FRMS_ACTIVE_LOW;
+		break;
+	default:
+		pr_err("SSP DAI: %s Bad DAI FS Inversion Mode=%d\n",
 				__func__,
 				(fmt & SND_SOC_DAIFMT_INV_MASK));
 		return -EINVAL;
@@ -807,24 +845,56 @@ static int ssp_set_dai_sysclk(struct snd_soc_dai *cpu_dai,
 				__func__, freq);
 
 	switch (freq) {
-	case SNDRV_PCM_RATE_48000:
-		i2s_config->master_mode_standard_freq = SSP_FRM_FREQ_48_000;
-		break;
-	case SNDRV_PCM_RATE_44100:
-		i2s_config->master_mode_standard_freq = SSP_FRM_FREQ_44_100;
-		break;
-	case SNDRV_PCM_RATE_22050:
-		i2s_config->master_mode_standard_freq = SSP_FRM_FREQ_22_050;
-		break;
-	case SNDRV_PCM_RATE_16000:
-		i2s_config->master_mode_standard_freq = SSP_FRM_FREQ_16_000;
-		break;
-	case SNDRV_PCM_RATE_11025:
-		i2s_config->master_mode_standard_freq = SSP_FRM_FREQ_11_025;
-		break;
-	case SNDRV_PCM_RATE_8000:
+	case 8000:
 		i2s_config->master_mode_standard_freq = SSP_FRM_FREQ_8_000;
+		i2s_config->ssp_psp_T1 = 0;
+		i2s_config->ssp_psp_T2 = 1;
+		i2s_config->ssp_psp_T4 = 0;
+		i2s_config->ssp_psp_T5 = 0;
+		i2s_config->ssp_psp_T6 = 1;
+
 		break;
+
+	case 11025:
+		i2s_config->master_mode_standard_freq = SSP_FRM_FREQ_11_025;
+		pr_err("SSP DAI: %s Bad freq_out=%d\n",
+						__func__,
+						freq);
+		return -EINVAL;
+
+
+	case 16000:
+		i2s_config->master_mode_standard_freq = SSP_FRM_FREQ_16_000;
+		pr_err("SSP DAI: %s Bad freq_out=%d\n",
+						__func__,
+						freq);
+		return -EINVAL;
+
+
+	case 22050:
+		i2s_config->master_mode_standard_freq = SSP_FRM_FREQ_22_050;
+		pr_err("SSP DAI: %s Bad freq_out=%d\n",
+						__func__,
+						freq);
+		return -EINVAL;
+
+
+	case 44100:
+		i2s_config->master_mode_standard_freq = SSP_FRM_FREQ_44_100;
+		pr_err("SSP DAI: %s Bad freq_out=%d\n",
+						__func__,
+						freq);
+		return -EINVAL;
+
+	case 48000:
+		i2s_config->master_mode_standard_freq = SSP_FRM_FREQ_48_000;
+		i2s_config->ssp_psp_T1 = 6;
+		i2s_config->ssp_psp_T2 = 2;
+		i2s_config->ssp_psp_T4 = 0;
+		i2s_config->ssp_psp_T5 = 14;
+		i2s_config->ssp_psp_T6 = 16;
+		break;
+
 	default:
 		i2s_config->master_mode_standard_freq = SSP_FRM_FREQ_UNDEFINED;
 		pr_err("SSP DAI: %s Bad freq_out=%d\n",
@@ -860,7 +930,6 @@ static int ssp_set_dai_tristate(struct snd_soc_dai *cpu_dai,
 		i2s_config->ssp_frmsync_timing_bit =
 				NEXT_FRMS_ASS_AFTER_END_OF_T4;
 
-	i2s_config->ssp_psp_T2 = IS_DUMMY_START_ONE_PERIOD_OFFSET(tristate);
 	pr_debug("FCT %s tristate %x\n", __func__, tristate);
 
 	return 0;
@@ -882,7 +951,7 @@ static int ssp_dai_trigger(struct snd_pcm_substream *substream,
 	int ret_val = 0;
 	struct intel_alsa_ssp_stream_info *str_info;
 	struct snd_pcm_runtime *pl_runtime;
-	struct workqueue_struct *ssp_dai_wq;
+	struct intel_ssp_info *ssp_info;
 	bool trigger_start = true;
 	int stream = 0;
 
@@ -907,11 +976,11 @@ static int ssp_dai_trigger(struct snd_pcm_substream *substream,
 	if (!cpu_dai->dev)
 		return -EINVAL;
 
-	ssp_dai_wq = dev_get_drvdata(cpu_dai->dev);
+	ssp_info = dev_get_drvdata(cpu_dai->dev);
 
 
-	WARN(!ssp_dai_wq, "SSP DAI: ERROR NULL ssp_dai_wq\n");
-	if (!ssp_dai_wq)
+	WARN(!ssp_info->ssp_dai_wq, "SSP DAI: ERROR NULL ssp_dai_wq\n");
+	if (!ssp_info->ssp_dai_wq)
 		return -EINVAL;
 
 	str_info = pl_runtime->private_data;
@@ -940,11 +1009,15 @@ static int ssp_dai_trigger(struct snd_pcm_substream *substream,
 		/* Store the substream locally */
 		if (trigger_start) {
 			if (stream == SNDRV_PCM_STREAM_PLAYBACK) {
+
 				pr_debug("SSP DAI: queue Playback Work\n");
-				queue_work(ssp_dai_wq, &str_info->ssp_ws);
+				queue_work(ssp_info->ssp_dai_wq,
+						&str_info->ssp_ws);
 			} else if (stream == SNDRV_PCM_STREAM_CAPTURE) {
+
 				pr_debug("SSP DAI: queue Capture Work\n");
-				queue_work(ssp_dai_wq, &str_info->ssp_ws);
+				queue_work(ssp_info->ssp_dai_wq,
+						&str_info->ssp_ws);
 			} else {
 				pr_err("SSP DAI: SNDRV_PCM_TRIGGER_START Bad Stream: %d\n",
 						substream->stream);
@@ -989,45 +1062,67 @@ static int ssp_dai_hw_params(struct snd_pcm_substream *substream,
 		struct snd_pcm_hw_params *hw_params,
 		struct snd_soc_dai *cpu_dai)
 {
-	struct intel_ssp_config *ssp_config;
 
-	pr_info("SSP DAI: FCT %s enters\n",
-			__func__);
+	return 0;
+}
+
+static int ssp_dai_prepare(struct snd_pcm_substream *substream,
+		struct snd_soc_dai *cpu_dai)
+{
+	struct intel_ssp_config *ssp_config;
+	struct intel_ssp_info *ssp_info;
+
+	pr_debug("SSP DAI: FCT %s enters\n",
+				__func__);
 
 	WARN(!cpu_dai, "SSP DAI: ERROR NULL cpu_dai\n");
 	if (!cpu_dai)
 		return -EINVAL;
 
+
+	ssp_info = dev_get_drvdata(cpu_dai->dev);
+	WARN(!ssp_info, "SSP DAI: ERROR NULL ssp_info\n");
+	if (!ssp_info)
+		return -EINVAL;
+
 	ssp_config = snd_soc_dai_get_dma_data(cpu_dai, substream);
-	pr_info("SSP DAI: FCT %s ssp_config %p\n",
-				__func__,
-				ssp_config);
+	pr_debug("SSP DAI: FCT %s ssp_dai_tx_allocated %d"\
+			"ssp_dai_rx_allocated %d\n",
+			__func__,
+			ssp_info->ssp_dai_tx_allocated,
+			ssp_info->ssp_dai_rx_allocated);
 
 	/*
 	 * The set HW Config is only once for a CPU DAI
 	 */
 
-	if (cpu_dai->active == 1) {
+	if (!ssp_info->ssp_dai_tx_allocated && !ssp_info->ssp_dai_rx_allocated) {
+
 		intel_mid_i2s_command(ssp_config->i2s_handle,
 						SSP_CMD_SET_HW_CONFIG,
 						&(ssp_config->i2s_settings));
-
 	}
 
 	switch (substream->stream) {
 	case SNDRV_PCM_STREAM_PLAYBACK:
-		if (intel_mid_i2s_command(ssp_config->i2s_handle,
-				SSP_CMD_ALLOC_TX, NULL)) {
-			pr_err("can not alloc TX DMA Channel\n");
-			return -EBUSY;
+		if (!ssp_info->ssp_dai_tx_allocated) {
+			if (intel_mid_i2s_command(ssp_config->i2s_handle,
+					SSP_CMD_ALLOC_TX, NULL)) {
+				pr_err("can not alloc TX DMA Channel\n");
+				return -EBUSY;
+			}
+			ssp_info->ssp_dai_tx_allocated = true;
 		}
 		break;
 
 	case SNDRV_PCM_STREAM_CAPTURE:
-		if (intel_mid_i2s_command(ssp_config->i2s_handle,
-				SSP_CMD_ALLOC_RX, NULL)) {
-			pr_err("can not alloc RX DMA Channel\n");
-			return -EBUSY;
+		if (!ssp_info->ssp_dai_rx_allocated) {
+			if (intel_mid_i2s_command(ssp_config->i2s_handle,
+					SSP_CMD_ALLOC_RX, NULL)) {
+				pr_err("can not alloc RX DMA Channel\n");
+				return -EBUSY;
+			}
+			ssp_info->ssp_dai_rx_allocated = true;
 		}
 		break;
 
@@ -1045,12 +1140,15 @@ static int ssp_dai_hw_params(struct snd_pcm_substream *substream,
 	return 0;
 }
 
+
+
 /* BT/FM */
 static struct snd_soc_dai_ops ssp_dai_ops = {
 	.startup	= ssp_dai_startup,
 	.shutdown	= ssp_dai_shutdown,
 	.trigger	= ssp_dai_trigger,
 	.hw_params	= ssp_dai_hw_params,
+	.prepare    = ssp_dai_prepare,
 	.set_sysclk	= ssp_set_dai_sysclk,
 	.set_pll    = NULL,
 	.set_fmt	= ssp_set_dai_fmt,
@@ -1111,16 +1209,25 @@ struct snd_soc_dai_driver intel_ssp_platform_dai[] = {
 static int ssp_dai_probe(struct platform_device *pdev)
 {
 	int ret;
-	struct workqueue_struct *ssp_dai_wq;
+	struct intel_ssp_info *ssp_info;
 
-	pr_debug("SSP DAI: FCT %s enters\n",
+	pr_info("SSP DAI: FCT %s enters\n",
 			__func__);
+
+	ssp_info = kzalloc(sizeof(struct intel_ssp_info), GFP_KERNEL);
+
+	if (ssp_info == NULL) {
+		pr_err("Unable to allocate ssp_info\n");
+		return -ENOMEM;
+	}
+	pr_info("ssp_info address %p", ssp_info);
 
 	ret = snd_soc_register_platform(&pdev->dev,
 				&soc_ssp_platform_drv);
 	if (ret) {
 		pr_err("registering SSP PLATFORM failed\n");
 		snd_soc_unregister_dai(&pdev->dev);
+		kfree(ssp_info);
 		return -EBUSY;
 	}
 
@@ -1131,20 +1238,25 @@ static int ssp_dai_probe(struct platform_device *pdev)
 	if (ret) {
 		pr_err("registering cpu DAIs failed\n");
 		snd_soc_unregister_dai(&pdev->dev);
+		kfree(ssp_info);
 		return -EBUSY;
 	}
 
-	ssp_dai_wq = create_workqueue("ssp_transfer_data");
+	ssp_info->ssp_dai_wq = create_workqueue("ssp_transfer_data");
+	ssp_info->ssp_dai_tx_allocated = false;
+	ssp_info->ssp_dai_rx_allocated = false;
 
-	if (!ssp_dai_wq) {
+
+	if (!ssp_info->ssp_dai_wq) {
 		pr_err("work queue failed\n");
 		snd_soc_unregister_dai(&pdev->dev);
+		kfree(ssp_info);
 		return -ENOMEM;
 	}
 
-	platform_set_drvdata(pdev, ssp_dai_wq);
+	platform_set_drvdata(pdev, ssp_info);
 
-	pr_debug("SSP DAI: FCT %s leaves %d\n",
+	pr_info("SSP DAI: FCT %s leaves %d\n",
 			__func__, ret);
 
 	return ret;
@@ -1152,14 +1264,20 @@ static int ssp_dai_probe(struct platform_device *pdev)
 
 static int ssp_dai_remove(struct platform_device *pdev)
 {
-	struct workqueue_struct *ssp_dai_wq = platform_get_drvdata(pdev);
+	struct intel_ssp_info *ssp_info = platform_get_drvdata(pdev);
 
 	pr_debug("SSP DAI: FCT %s enters\n",
 			__func__);
 
-	flush_workqueue(ssp_dai_wq);
+	if (ssp_info == NULL) {
+		pr_err("Unable to allocate ssp_info\n");
+		return -ENOMEM;
+	}
+	pr_info("ssp_info address %p", ssp_info);
 
-	destroy_workqueue(ssp_dai_wq);
+	flush_workqueue(ssp_info->ssp_dai_wq);
+
+	destroy_workqueue(ssp_info->ssp_dai_wq);
 
 	platform_set_drvdata(pdev, NULL);
 
@@ -1185,7 +1303,7 @@ static struct platform_driver intel_ssp_dai_driver = {
 
 static int __init ssp_soc_dai_init(void)
 {
-	pr_debug("SSP DAI: FCT %s called\n",
+	pr_info("SSP DAI: FCT %s called\n",
 			__func__);
 
 	return  platform_driver_register(&intel_ssp_dai_driver);

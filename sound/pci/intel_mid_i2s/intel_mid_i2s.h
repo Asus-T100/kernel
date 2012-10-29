@@ -363,6 +363,13 @@ enum i2s_flags {
  */
 #define MODEM_FND 0
 
+/*
+ * variable "clv_ssps_found"
+ * bits to set if CLV SSP0/1 found on platform
+ */
+#define CLV_SSP0_FND 0
+#define CLV_SSP1_FND 1
+
 #define FIFO_SIZE 16
 /*
  *	Structures Definition

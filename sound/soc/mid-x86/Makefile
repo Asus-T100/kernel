@@ -34,7 +34,4 @@ obj-$(CONFIG_SND_MRFLD_MACHINE) += snd-soc-mrfld-machine.o
 obj-$(CONFIG_SND_INTEL_SST) += sst/
 
 # Audio Comms
-snd-soc-comms-machine-objs := mfld_comms_machine.o
-snd-soc-ssp-objs := mfld_ssp.o
-obj-$(CONFIG_SND_MFLD_COMMS_MACHINE) += mfld_comms_machine.o
-obj-$(CONFIG_SND_SOC_SSP) += mid_ssp.o
+obj-$(CONFIG_SND_SOC_COMMS_SSP) += mid_ssp.o

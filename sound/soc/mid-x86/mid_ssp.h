@@ -1,7 +1,7 @@
 /*
  *	mfld_ssp.h - ASoC CPU DAI driver for
  *
- *  Copyright (C) 2012 Intel Corp
+ *  Copyright (C) 2011-12 Intel Corp
  *  Authors:	Selma Bensaid <selma.bensaid@intel.com>
  *  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
  *
@@ -60,6 +60,17 @@
 #define MID_SSP_RX_FIFO_THRESHOLD 8
 #define MID_SSP_TX_FIFO_THRESHOLD 7
 
+
+/* data driven FALLING, data sampled RISING, idle LOW */
+#define SSP_DAI_SCMODE_0        (1 << 4)
+/* data driven RISING, data sampled FALLING, idle LOW */
+#define SSP_DAI_SCMODE_1		(2 << 4)
+/* data driven RISING, data sampled FALLING, idle HIGH */
+#define SSP_DAI_SCMODE_2		(3 << 4)
+/* data driven FALLING, data sampled RISING, idle HIGH */
+#define SSP_DAI_SCMODE_3		(4 << 4)
+
+
 /*
  * Structures Definition
  */
@@ -69,6 +80,12 @@ struct intel_ssp_config {
 	struct intel_mid_i2s_hdl *i2s_handle;
 	struct intel_mid_i2s_settings i2s_settings;
 	bool intel_mid_dma_alloc;
+};
+
+struct intel_ssp_info {
+	struct workqueue_struct *ssp_dai_wq;
+	bool ssp_dai_tx_allocated;
+	bool ssp_dai_rx_allocated;
 };
 
 struct intel_alsa_ssp_stream_info {

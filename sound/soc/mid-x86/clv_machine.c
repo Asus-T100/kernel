@@ -47,6 +47,7 @@
 #include <sound/jack.h>
 #include "../codecs/cs42l73.h"
 #include "ctp_common.h"
+#include "clv_machine.h"
 
 /* Headset jack detection gpios func(s) */
 #define HPDETECT_POLL_INTERVAL	msecs_to_jiffies(1000)	/* 1sec */
@@ -132,6 +133,101 @@ int clv_set_bias_level_post(struct snd_soc_card *card,
 			card->dapm.bias_level);
 	return 0;
 }
+
+static int get_ssp_bt_sco_master_mode(struct snd_kcontrol *kcontrol,
+	struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_card *card =  snd_kcontrol_chip(kcontrol);
+	struct clv_mc_private *ctx = snd_soc_card_get_drvdata(card);
+	struct comms_mc_private *ctl = &(ctx->comms_ctl);
+
+	ucontrol->value.integer.value[0] = ctl->ssp_bt_sco_master_mode;
+	return 0;
+}
+
+static int set_ssp_bt_sco_master_mode(struct snd_kcontrol *kcontrol,
+	struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_card *card =  snd_kcontrol_chip(kcontrol);
+	struct clv_mc_private *ctx = snd_soc_card_get_drvdata(card);
+	struct comms_mc_private *ctl = &(ctx->comms_ctl);
+
+	if (ucontrol->value.integer.value[0] == ctl->ssp_bt_sco_master_mode)
+		return 0;
+
+	ctl->ssp_bt_sco_master_mode = ucontrol->value.integer.value[0];
+
+	return 0;
+}
+
+static int get_ssp_voip_master_mode(struct snd_kcontrol *kcontrol,
+	struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_card *card =  snd_kcontrol_chip(kcontrol);
+	struct clv_mc_private *ctx = snd_soc_card_get_drvdata(card);
+	struct comms_mc_private *ctl = &(ctx->comms_ctl);
+
+	ucontrol->value.integer.value[0] = ctl->ssp_voip_master_mode;
+	return 0;
+}
+
+static int set_ssp_voip_master_mode(struct snd_kcontrol *kcontrol,
+	struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_card *card =  snd_kcontrol_chip(kcontrol);
+	struct clv_mc_private *ctx = snd_soc_card_get_drvdata(card);
+	struct comms_mc_private *ctl = &(ctx->comms_ctl);
+
+	if (ucontrol->value.integer.value[0] == ctl->ssp_voip_master_mode)
+		return 0;
+
+	ctl->ssp_voip_master_mode = ucontrol->value.integer.value[0];
+
+	return 0;
+}
+
+
+static int get_ssp_ifx_master_mode(struct snd_kcontrol *kcontrol,
+	struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_card *card =  snd_kcontrol_chip(kcontrol);
+	struct clv_mc_private *ctx = snd_soc_card_get_drvdata(card);
+	struct comms_mc_private *ctl = &(ctx->comms_ctl);
+
+	ucontrol->value.integer.value[0] = ctl->ssp_ifx_master_mode;
+	return 0;
+}
+
+static int set_ssp_ifx_master_mode(struct snd_kcontrol *kcontrol,
+	struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_card *card =  snd_kcontrol_chip(kcontrol);
+	struct clv_mc_private *ctx = snd_soc_card_get_drvdata(card);
+	struct comms_mc_private *ctl = &(ctx->comms_ctl);
+
+	if (ucontrol->value.integer.value[0] == ctl->ssp_ifx_master_mode)
+		return 0;
+
+	ctl->ssp_ifx_master_mode = ucontrol->value.integer.value[0];
+
+	return 0;
+}
+
+static const struct snd_kcontrol_new ssp_comms_controls[] = {
+		SOC_ENUM_EXT("SSP BT Master Mode",
+				ssp_bt_sco_master_mode_enum,
+				get_ssp_bt_sco_master_mode,
+				set_ssp_bt_sco_master_mode),
+		SOC_ENUM_EXT("SSP VOIP Master Mode",
+				ssp_voip_master_mode_enum,
+				get_ssp_voip_master_mode,
+				set_ssp_voip_master_mode),
+		SOC_ENUM_EXT("SSP Modem Master Mode",
+				ssp_ifx_master_mode_enum,
+				get_ssp_ifx_master_mode,
+				set_ssp_ifx_master_mode),
+};
+
 static int clv_asp_hw_params(struct snd_pcm_substream *substream,
 		struct snd_pcm_hw_params *params)
 {
@@ -189,6 +285,261 @@ static int clv_vsp_hw_params(struct snd_pcm_substream *substream,
 	}
 	return 0;
 }
+static int clv_comms_dai_link_startup(struct snd_pcm_substream *substream)
+{
+	struct snd_pcm_runtime *str_runtime;
+
+	str_runtime = substream->runtime;
+
+	WARN(!substream->pcm, "CLV Comms Machine: ERROR "\
+				"NULL substream->pcm\n");
+
+	if (!substream->pcm)
+		return -EINVAL;
+
+	/* set the runtime hw parameter with local snd_pcm_hardware struct */
+	switch (substream->pcm->device) {
+	case CLV_COMMS_BT_SCO_DEV:
+		str_runtime->hw = BT_sco_hw_param;
+		break;
+
+	case CLV_COMMS_MSIC_VOIP_DEV:
+		str_runtime->hw = VOIP_alsa_hw_param;
+		break;
+
+	case CLV_COMMS_IFX_MODEM_DEV:
+		str_runtime->hw = IFX_modem_alsa_hw_param;
+		break;
+	default:
+		pr_err("MFLD Comms Machine: bad PCM Device = %d\n",
+						substream->pcm->device);
+	}
+	return snd_pcm_hw_constraint_integer(str_runtime,
+						SNDRV_PCM_HW_PARAM_PERIODS);
+}
+
+static int clv_comms_dai_link_hw_params(struct snd_pcm_substream *substream,
+				      struct snd_pcm_hw_params *params)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
+	struct snd_soc_card *soc_card = rtd->card;
+	struct clv_mc_private *ctx = snd_soc_card_get_drvdata(soc_card);
+	struct comms_mc_private *ctl = &(ctx->comms_ctl);
+
+	int ret = 0;
+	unsigned int tx_mask, rx_mask;
+	unsigned int nb_slot = 0;
+	unsigned int slot_width = 0;
+	unsigned int tristate_offset = 0;
+	unsigned int device = substream->pcm->device;
+
+
+	pr_debug("ssp_bt_sco_master_mode %d\n", ctl->ssp_bt_sco_master_mode);
+	pr_debug("ssp_voip_master_mode %d\n", ctl->ssp_voip_master_mode);
+	pr_debug("ssp_ifx_master_mode %d\n", ctl->ssp_ifx_master_mode);
+
+	switch (device) {
+	case CLV_COMMS_BT_SCO_DEV:
+		/*
+		 * set cpu DAI configuration
+		 * frame_format = PSP_FORMAT
+		 * ssp_serial_clk_mode = SSP_CLK_MODE_1
+		 * ssp_frmsync_pol_bit = SSP_FRMS_ACTIVE_HIGH
+		 */
+		ret = snd_soc_dai_set_fmt(cpu_dai,
+				SND_SOC_DAIFMT_I2S |
+				SSP_DAI_SCMODE_1 |
+				SND_SOC_DAIFMT_NB_NF |
+				(ctl->ssp_bt_sco_master_mode ?
+				SND_SOC_DAIFMT_CBM_CFM : SND_SOC_DAIFMT_CBS_CFS));
+
+		if (ret < 0) {
+			pr_err("MFLD Comms Machine: Set FMT Fails %d\n",
+					ret);
+			return -EINVAL;
+		}
+
+		/*
+		 * BT SCO SSP Config
+		 * ssp_active_tx_slots_map = 0x01
+		 * ssp_active_rx_slots_map = 0x01
+		 * frame_rate_divider_control = 1
+		 * data_size = 16
+		 * tristate = 1
+		 * ssp_frmsync_timing_bit = 0
+		 * (NEXT_FRMS_ASS_AFTER_END_OF_T4)
+		 * ssp_frmsync_timing_bit = 1
+		 * (NEXT_FRMS_ASS_WITH_LSB_PREVIOUS_FRM)
+		 * ssp_psp_T2 = 1
+		 * (Dummy start offset = 1 bit clock period)
+		 */
+		nb_slot = SSP_BT_SLOT_NB_SLOT;
+		slot_width = SSP_BT_SLOT_WIDTH;
+		tx_mask = SSP_BT_SLOT_TX_MASK;
+		rx_mask = SSP_BT_SLOT_RX_MASK;
+
+		if (ctl->ssp_bt_sco_master_mode)
+			tristate_offset = BIT(TRISTATE_BIT);
+		else
+			tristate_offset = BIT(FRAME_SYNC_RELATIVE_TIMING_BIT);
+		break;
+	case CLV_COMMS_MSIC_VOIP_DEV:
+		/*
+		 * set cpu DAI configuration
+		 * frame_format = PSP_FORMAT
+		 * ssp_serial_clk_mode = SSP_CLK_MODE_0
+		 * ssp_frmsync_pol_bit = SSP_FRMS_ACTIVE_LOW
+		 */
+		ret = snd_soc_dai_set_fmt(cpu_dai,
+				SND_SOC_DAIFMT_I2S |
+				SSP_DAI_SCMODE_0 |
+				SND_SOC_DAIFMT_NB_IF |
+				(ctl->ssp_voip_master_mode ?
+				SND_SOC_DAIFMT_CBM_CFM : SND_SOC_DAIFMT_CBS_CFS));
+
+		if (ret < 0) {
+			pr_err("MFLD Comms Machine: Set FMT Fails %d\n",
+							ret);
+			return -EINVAL;
+		}
+
+		/*
+		 * MSIC VOIP SSP Config
+		 * ssp_active_tx_slots_map = 0x01
+		 * ssp_active_rx_slots_map = 0x01
+		 * frame_rate_divider_control = 1
+		 * data_size = 32
+		 * tristate = 1
+		 * ssp_frmsync_timing_bit = 0, for SLAVE
+		 * (NEXT_FRMS_ASS_AFTER_END_OF_T4)
+		 * ssp_frmsync_timing_bit = 1, for MASTER
+		 * (NEXT_FRMS_ASS_WITH_LSB_PREVIOUS_FRM)
+		 *
+		 *
+		 */
+		nb_slot = SSP_VOIP_SLOT_NB_SLOT;
+		slot_width = SSP_VOIP_SLOT_WIDTH;
+		tx_mask = SSP_VOIP_SLOT_TX_MASK;
+		rx_mask = SSP_VOIP_SLOT_RX_MASK;
+
+		tristate_offset = BIT(TRISTATE_BIT);
+		break;
+
+	case CLV_COMMS_IFX_MODEM_DEV:
+		/*
+		 * set cpu DAI configuration
+		 * frame_format = PSP_FORMAT
+		 * ssp_serial_clk_mode = SSP_CLK_MODE_0
+		 * ssp_frmsync_pol_bit = SSP_FRMS_ACTIVE_HIGH
+		 */
+		ret = snd_soc_dai_set_fmt(cpu_dai,
+				SND_SOC_DAIFMT_I2S |
+				SSP_DAI_SCMODE_0 |
+				SND_SOC_DAIFMT_NB_NF |
+				(ctl->ssp_ifx_master_mode ?
+				SND_SOC_DAIFMT_CBM_CFM : SND_SOC_DAIFMT_CBS_CFS));
+		if (ret < 0) {
+			pr_err("MFLD Comms Machine:  Set FMT Fails %d\n", ret);
+			return -EINVAL;
+		}
+
+		/*
+		 * IFX Modem Mixing SSP Config
+		 * ssp_active_tx_slots_map = 0x01
+		 * ssp_active_rx_slots_map = 0x01
+		 * frame_rate_divider_control = 1
+		 * data_size = 32
+		 * Master:
+		 *	tristate = 3
+		 *	ssp_frmsync_timing_bit = 1, for MASTER
+		 *	(NEXT_FRMS_ASS_WITH_LSB_PREVIOUS_FRM)
+		 * Slave:
+		 *	tristate = 1
+		 *	ssp_frmsync_timing_bit = 0, for SLAVE
+		 *	(NEXT_FRMS_ASS_AFTER_END_OF_T4)
+		 *
+		 */
+		nb_slot = SSP_IFX_SLOT_NB_SLOT;
+		slot_width = SSP_IFX_SLOT_WIDTH;
+		tx_mask = SSP_IFX_SLOT_TX_MASK;
+		rx_mask = SSP_IFX_SLOT_RX_MASK;
+
+		tristate_offset = BIT(TRISTATE_BIT) |\
+				BIT(FRAME_SYNC_RELATIVE_TIMING_BIT);
+
+		break;
+	default:
+		pr_err("CLV Comms Machine: bad PCM Device ID = %d\n",
+				device);
+		return -EINVAL;
+	}
+
+	ret = snd_soc_dai_set_tdm_slot(cpu_dai, tx_mask,
+			rx_mask, nb_slot, slot_width);
+
+	if (ret < 0) {
+		pr_err("CLV Comms Machine:  Set TDM Slot Fails %d\n",
+				ret);
+		return -EINVAL;
+	}
+
+	ret = snd_soc_dai_set_tristate(cpu_dai, tristate_offset);
+	if (ret < 0) {
+		pr_err("CLV Comms Machine: Set Tristate Fails %d\n",
+				ret);
+		return -EINVAL;
+	}
+
+	if (device == CLV_COMMS_MSIC_VOIP_DEV) {
+		pr_debug("Call clv_vsp_hw_params to enable the PLL Codec\n");
+		clv_vsp_hw_params(substream, params);
+	}
+
+	pr_debug("CLV Comms Machine: slot_width = %d\n",
+			slot_width);
+	pr_debug("CLV Comms Machine: tx_mask = %d\n",
+			tx_mask);
+	pr_debug("CLV Comms Machine: rx_mask = %d\n",
+			rx_mask);
+	pr_debug("CLV Comms Machine: tristate_offset = %d\n",
+			tristate_offset);
+
+	return 0;
+
+} /* clv_comms_dai_link_hw_params*/
+
+static int clv_comms_dai_link_prepare(struct snd_pcm_substream *substream)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
+	struct clv_mc_private *ctx = snd_soc_card_get_drvdata(rtd->card);
+	struct comms_mc_private *ctl = &(ctx->comms_ctl);
+
+	unsigned int device = substream->pcm->device;
+
+	pr_debug("%s substream->runtime->rate %d\n",
+			__func__,
+			substream->runtime->rate);
+
+	/* select clock source (if master) */
+	/* BT SCO: CPU DAI is master */
+	/* FM: CPU DAI is master */
+	/* BT_VOIP: CPU DAI is master */
+	if (((device == CLV_COMMS_BT_SCO_DEV &&\
+		ctl->ssp_bt_sco_master_mode) ||
+		((device == CLV_COMMS_MSIC_VOIP_DEV) &&\
+		ctl->ssp_voip_master_mode)) ||
+		(device == CLV_COMMS_IFX_MODEM_DEV &&\
+		ctl->ssp_ifx_master_mode)) {
+
+		snd_soc_dai_set_sysclk(cpu_dai, SSP_CLK_ONCHIP,
+				substream->runtime->rate, 0);
+
+	}
+
+	return 0;
+} /* clv_comms_dai_link_prepare */
 
 /* Headset jack detection gpios func(s) */
 static int clv_soc_jack_gpio_detect(void);
@@ -399,6 +750,20 @@ static int clv_init(struct snd_soc_pcm_runtime *runtime)
 	snd_soc_dapm_add_routes(dapm, clv_audio_map,
 					ARRAY_SIZE(clv_audio_map));
 
+	/* Add Comms specefic controls */
+	ctx->comms_ctl.ssp_bt_sco_master_mode = false;
+	ctx->comms_ctl.ssp_voip_master_mode = false;
+	ctx->comms_ctl.ssp_ifx_master_mode = false;
+
+	ret = snd_soc_add_card_controls(card, ssp_comms_controls,
+				ARRAY_SIZE(ssp_comms_controls));
+	if (ret) {
+		pr_err("Add Comms Controls failed %d",
+				ret);
+		return ret;
+	}
+
+
 	/* Keep the voice call paths active during
 	suspend. Mark the end points ignore_suspend */
 	snd_soc_dapm_ignore_suspend(dapm, "EAROUT");
@@ -479,9 +844,19 @@ static struct snd_soc_ops clv_vsp_ops = {
 	.hw_params = clv_vsp_hw_params,
 };
 
+static struct snd_soc_ops clv_comms_dai_link_ops = {
+		.startup = clv_comms_dai_link_startup,
+		.hw_params = clv_comms_dai_link_hw_params,
+		.prepare = clv_comms_dai_link_prepare,
+};
+static struct snd_soc_ops clv_comms_voip_dai_link_ops = {
+		.startup = clv_comms_dai_link_startup,
+		.hw_params = clv_comms_dai_link_hw_params,
+		.prepare = clv_comms_dai_link_prepare,
+};
 
 struct snd_soc_dai_link clv_msic_dailink[] = {
-	{
+		[CLV_AUD_ASP_DEV] = {
 		.name = "Cloverview ASP",
 		.stream_name = "Audio",
 		.cpu_dai_name = "Headset-cpu-dai",
@@ -492,7 +867,7 @@ struct snd_soc_dai_link clv_msic_dailink[] = {
 		.ignore_suspend = 1,
 		.ops = &clv_asp_ops,
 	},
-	{
+	[CLV_AUD_VSP_DEV] = {
 		.name = "Cloverview VSP",
 		.stream_name = "Voice",
 		.cpu_dai_name = "Voice-cpu-dai",
@@ -504,7 +879,7 @@ struct snd_soc_dai_link clv_msic_dailink[] = {
 		.ops = &clv_vsp_ops,
 	},
 
-	{
+	[CLV_AUD_COMP_ASP_DEV] = {
 		.name = "Cloverview Comp ASP",
 		.stream_name = "Compress-Audio",
 		.cpu_dai_name = "Virtual-cpu-dai",
@@ -515,6 +890,37 @@ struct snd_soc_dai_link clv_msic_dailink[] = {
 		.ignore_suspend = 1,
 		.ops = &clv_asp_ops,
 	},
+	[CLV_COMMS_BT_SCO_DEV] = {
+		.name = "Cloverview Comms BT SCO",
+		.stream_name = "BTSCO",
+		.cpu_dai_name = SSP_BT_DAI_NAME,
+		.codec_dai_name = "snd-soc-dummy-dai",
+		.codec_name = "snd-soc-dummy",
+		.platform_name = "mid-ssp-dai",
+		.init = NULL,
+		.ops = &clv_comms_dai_link_ops,
+	},
+	[CLV_COMMS_MSIC_VOIP_DEV] = {
+		.name = "Cloverview Comms MSIC VOIP",
+		.stream_name = "VOIP",
+		.cpu_dai_name = SSP_BT_DAI_NAME,
+		.codec_dai_name = "cs42l73-vsp",
+		.codec_name = "cs42l73.1-004a",
+		.platform_name = "mid-ssp-dai",
+		.init = NULL,
+		.ops = &clv_comms_voip_dai_link_ops,
+	},
+	[CLV_COMMS_IFX_MODEM_DEV] = {
+		.name = "Cloverview Comms IFX MODEM",
+		.stream_name = "IFX_MODEM_MIXING",
+		.cpu_dai_name = SSP_MODEM_DAI_NAME,
+		.codec_dai_name = "snd-soc-dummy-dai",
+		.codec_name = "snd-soc-dummy",
+		.platform_name = "mid-ssp-dai",
+		.init = NULL,
+		.ops = &clv_comms_dai_link_ops,
+	},
+
 };
 
 /* SoC card */
