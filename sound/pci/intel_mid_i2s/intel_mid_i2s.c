@@ -28,6 +28,7 @@
 #include <linux/list.h>
 #include <linux/async.h>
 #include <linux/device.h>
+#include <linux/platform_device.h>
 #include <linux/lnw_gpio.h>
 #include <linux/interrupt.h>
 #ifdef __MRFL_SPECIFIC__
@@ -61,6 +62,7 @@ static void __iomem *lpeshim_base_address;
  * Currently this limit to ONE modem on platform
  */
 static unsigned long modem_found_and_i2s_setup_ok;
+static unsigned long clv_ssps_found;
 
 static void(*intel_mid_i2s_modem_probe_cb)(void);
 static void(*intel_mid_i2s_modem_remove_cb)(void);
@@ -2681,8 +2683,10 @@ static int intel_mid_i2s_probe(struct pci_dev *pdev,
 {
 	struct intel_mid_i2s_hdl *drv_data;
 	struct intel_mid_ssp_gpio ssp_fs_pin;
-	int status = 0;
+	struct platform_device *asoc_pdev;
 	enum intel_mid_i2s_ssp_usage usage;
+	int status = 0;
+	int ret = 0;
 
 	drv_data = kzalloc(sizeof(struct intel_mid_i2s_hdl), GFP_KERNEL);
 	dev_dbg(&(pdev->dev), "%s Probe,drv_data =%p\n", DRIVER_NAME, drv_data);
@@ -2850,6 +2854,37 @@ static int intel_mid_i2s_probe(struct pci_dev *pdev,
 			(*intel_mid_i2s_modem_probe_cb)();
 	}
 
+	/*
+	 * Create the WL1273 BT/FM ASoC platform devices
+	 */
+	pr_info("ALLOCATE FOR ASOC\n");
+
+	if (pdev->device == CLV_SSP0_DEVICE_ID)
+		WARN(test_and_set_bit(CLV_SSP0_FND, &clv_ssps_found), "CLV SSP0 already probed");
+
+	if (pdev->device == CLV_SSP1_DEVICE_ID)
+		WARN(test_and_set_bit(CLV_SSP1_FND, &clv_ssps_found), "CLV SSP1 already probed");
+
+	if (test_bit(CLV_SSP0_FND, &clv_ssps_found) & test_bit(CLV_SSP1_FND, &clv_ssps_found)) {
+		/*
+		 * MID SSP CPU DAI
+		 */
+		asoc_pdev = platform_device_alloc("mid-ssp-dai", -1);
+		if (!asoc_pdev) {
+			dev_err(&pdev->dev,
+					"platform mid-ssp-dai allocation failed\n");
+			status = -ENODEV;
+			goto leave;
+		}
+		ret = platform_device_add(asoc_pdev);
+		if (ret) {
+			dev_err(&pdev->dev,
+					"platform mid-ssp-dai add failed\n");
+			platform_device_put(asoc_pdev);
+		}
+		pr_info("I2S: platform mid-ssp-dai allocated\n");
+	}
+
 	goto leave;
 err_i2s_probe3:
 	iounmap(drv_data->ioaddr);
@@ -2867,6 +2902,7 @@ static void __devexit intel_mid_i2s_remove(struct pci_dev *pdev)
 {
 	struct intel_mid_i2s_hdl *drv_data;
 	enum intel_mid_i2s_ssp_usage usage;
+	u32 device = pdev->device;
 
 	drv_data = pci_get_drvdata(pdev);
 	if (!drv_data) {
@@ -2894,6 +2930,10 @@ static void __devexit intel_mid_i2s_remove(struct pci_dev *pdev)
 		if (intel_mid_i2s_modem_remove_cb)
 			(*intel_mid_i2s_modem_remove_cb)();
 	}
+	if (device == CLV_SSP0_DEVICE_ID)
+		clear_bit(CLV_SSP0_FND, &clv_ssps_found);
+	if (device == CLV_SSP1_DEVICE_ID)
+		clear_bit(CLV_SSP1_FND, &clv_ssps_found);
 
 leave:
 	return;
@@ -2906,7 +2946,8 @@ leave:
 static int __init intel_mid_i2s_init(void)
 {
 	clear_bit(MODEM_FND, &modem_found_and_i2s_setup_ok);
-
+	clear_bit(CLV_SSP0_FND, &clv_ssps_found);
+	clear_bit(CLV_SSP1_FND, &clv_ssps_found);
 #ifdef __MRFL_SPECIFIC_TMP__
 	/* FIXME: use of MRFL_LPE_SHIM_REG_BASE_ADDRESS should be
 	 * avoided and replaced by a call to SST driver that will

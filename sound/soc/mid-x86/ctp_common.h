@@ -36,7 +36,14 @@
 #define GPIO_AMP_OFF 0x0
 #define GPIOHVCTL 0x70
 
+struct comms_mc_private {
+	bool ssp_bt_sco_master_mode;
+	bool ssp_voip_master_mode;
+	bool ssp_ifx_master_mode;
+};
+
 struct clv_mc_private {
+	struct comms_mc_private comms_ctl;
 	struct ipc_device *socdev;
 	void __iomem *int_base;
 	struct snd_soc_codec *codec;

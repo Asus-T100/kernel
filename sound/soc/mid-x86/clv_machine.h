@@ -1,9 +1,8 @@
 /*
- *  mfld_ssp_wl1273_machine.c - ASoC Machine driver for
- *  Intel Medfield MID platform
+ *  clv_machine.h - ASoc Machine driver for Intel Cloverview MID platform
  *
- *  Copyright (C) 2011 Intel Corp
- *  Author: Selma Bensaid <selma.bensaidl@intel.com>
+ *  Copyright (C) 2011-12 Intel Corp
+ *  Author: Selma Bensaid <selma.bensaid@intel.com>
  *  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -33,20 +32,8 @@
 
 #include "mid_ssp.h"
 
-/*
- * Structures Definition
- */
-
-struct comms_mc_private {
-	bool ssp_master_mode;
-};
-
-static int mfld_comms_dai_link_startup(struct snd_pcm_substream *substream);
-static int mfld_comms_dai_link_hw_params(struct snd_pcm_substream *substream,
-				      struct snd_pcm_hw_params *params);
-
 /* Data path functionalities */
-struct snd_pcm_hardware BT_soc_hw_param = {
+struct snd_pcm_hardware BT_sco_hw_param = {
 		.info = (SNDRV_PCM_INFO_INTERLEAVED |
 				SNDRV_PCM_INFO_DOUBLE |
 				SNDRV_PCM_INFO_PAUSE |
@@ -142,10 +129,12 @@ struct snd_pcm_hardware VOIP_alsa_hw_param = {
 
 
 enum {
-	BT_SCO_DEV = 0,
-	FM_DEV,
-	MSIC_VOIP_DEV,
-	IFX_MODEM_DEV,
+	CLV_AUD_ASP_DEV = 0,
+	CLV_AUD_VSP_DEV,
+	CLV_AUD_COMP_ASP_DEV,
+	CLV_COMMS_BT_SCO_DEV,
+	CLV_COMMS_MSIC_VOIP_DEV,
+	CLV_COMMS_IFX_MODEM_DEV,
 };
 
 /*
@@ -170,7 +159,7 @@ enum {
  * to transfer stereo 16 bits PCM samples
  */
 #define SSP_VOIP_SLOT_NB_SLOT	1
-#define SSP_VOIP_SLOT_WIDTH		16
+#define SSP_VOIP_SLOT_WIDTH		32
 #define SSP_VOIP_SLOT_RX_MASK	0x1
 #define SSP_VOIP_SLOT_TX_MASK	0x1
 
@@ -183,5 +172,18 @@ enum {
 #define SSP_IFX_SLOT_RX_MASK	0x1
 #define SSP_IFX_SLOT_TX_MASK	0x1
 
+/*
+ * MIXER CONTROLS for SSP BT
+ */
+static const char * const ssp_master_mode_text[] = {"disabled", "enabled"};
+
+static const struct soc_enum ssp_bt_sco_master_mode_enum =
+	SOC_ENUM_SINGLE_EXT(2, ssp_master_mode_text);
+
+static const struct soc_enum ssp_voip_master_mode_enum =
+	SOC_ENUM_SINGLE_EXT(2, ssp_master_mode_text);
+
+static const struct soc_enum ssp_ifx_master_mode_enum =
+	SOC_ENUM_SINGLE_EXT(2, ssp_master_mode_text);
 
 #endif /* MFLD_SSP_WL1273_MACHINE_H_ */
