@@ -85,13 +85,6 @@ enum panel_type {
 	GCT_DETECT
 };
 
-enum gct_panel_table {
-	GCT_RR = 1,
-	GCT_LEX_PRX = 4,
-	GCT_TMD_PRX = 5,
-	GCT_LEX_DV1 = 6
-};
-
 #define PNW_GCT_NDX_OEM		0
 #define PNW_GCT_NDX_STD		1
 #define PNW_GCT_NDX_TMD		2
@@ -323,10 +316,12 @@ typedef int(*pfn_screen_event_handler)(struct drm_device *psDrmDevice, int state
 #define MODE_SETTING_ON_GOING 	0x3
 #define MODE_SETTING_IN_DSR 	0x4
 #define MODE_SETTING_ENCODER_DONE 0x8
-#define GCT_R10_HEADER_SIZE	16
+#define GCT_R10_HEADER_SIZE		16
 #define GCT_R10_DISPLAY_DESC_SIZE	28
-#define GCT_R11_HEADER_SIZE	16
+#define GCT_R11_HEADER_SIZE		16
 #define GCT_R11_DISPLAY_DESC_SIZE	44
+#define GCT_R20_HEADER_SIZE		16
+#define GCT_R20_DISPLAY_DESC_SIZE	48
 
 #define PSB_REG_PRINT_SIZE    40960
 
