@@ -915,6 +915,7 @@ bool intel_mid_get_vbt_data(struct drm_psb_private *dev_priv)
 	void *panel_desc;
 	struct pci_dev *pci_gfx_root = pci_get_bus_and_slot(0, PCI_DEVFN(2, 0));
 	mdfld_dsi_encoder_t mipi_mode;
+	int ret = 0;
 
 	PSB_DEBUG_ENTRY("\n");
 
@@ -943,15 +944,6 @@ bool intel_mid_get_vbt_data(struct drm_psb_private *dev_priv)
 
 	PSB_DEBUG_ENTRY("GCT Revision is %#x\n", pVBT->revision);
 
-	/**
-	 * CTP use separate FW, and it doesn't support panel ID
-	 */
-	if (IS_CTP(dev_priv->dev)) {
-		PSB_DEBUG_ENTRY("H8C7_CMD\n");
-		dev_priv->panel_id = H8C7_CMD;
-		goto out;
-	}
-
 	/*FIXME:
 	 * This is a workaround for Yukka Beach power on. Usually panel ID
 	 * should be detected from IA FW dynamically, befor FW's ready,
@@ -969,18 +961,6 @@ bool intel_mid_get_vbt_data(struct drm_psb_private *dev_priv)
 	 * current we just need parse revision 0x10 and 0x11
 	 */
 	switch (pVBT->revision) {
-	case 0x10:
-		pVBT->panel_descs =
-			ioremap(platform_config_address + GCT_R10_HEADER_SIZE,
-				GCT_R10_DISPLAY_DESC_SIZE * number_desc);
-		panel_desc = (u8 *)pVBT->panel_descs +
-			(primary_panel * GCT_R10_DISPLAY_DESC_SIZE);
-
-		mipi_mode =
-		((struct gct_r10_panel_desc *)panel_desc)->display.mode ? \
-			MDFLD_DSI_ENCODER_DPI : MDFLD_DSI_ENCODER_DBI;
-
-		break;
 	case 0x11:
 		/* number of descriptors defined in the GCT */
 		pVBT->panel_descs =
@@ -996,41 +976,34 @@ bool intel_mid_get_vbt_data(struct drm_psb_private *dev_priv)
 			MDFLD_DSI_ENCODER_DPI : MDFLD_DSI_ENCODER_DBI;
 
 		break;
+	case 0x20:
+		pVBT->panel_descs =
+			ioremap(platform_config_address + GCT_R20_HEADER_SIZE,
+				GCT_R20_DISPLAY_DESC_SIZE * number_desc);
+		panel_desc = (u8 *)pVBT->panel_descs +
+			(primary_panel * GCT_R20_DISPLAY_DESC_SIZE);
+
+		strncpy(panel_name, panel_desc, 16);
+
+		mipi_mode =
+		((struct gct_r20_panel_desc *)panel_desc)->panel_mode.mode ?\
+			MDFLD_DSI_ENCODER_DPI : MDFLD_DSI_ENCODER_DBI;
+		break;
 	default:
-		PSB_DEBUG_ENTRY("NOT supported GCT revision\n");
+		pr_err("unsupported GCT revision\n");
 		pVBT->size = 0;
 		return false;
 	}
 
-	switch (primary_panel) {
-	case GCT_TMD_PRX:
-		PSB_DEBUG_ENTRY("TMD_6X10_VID panel\n");
-		dev_priv->panel_id = TMD_6X10_VID;
-		break;
-	case GCT_RR:
-		PSB_DEBUG_ENTRY("TC35876X_VID panel\n");
-		dev_priv->panel_id = TC35876X_VID;
-		break;
-	case GCT_LEX_PRX:
-		PSB_DEBUG_ENTRY("LEX PRX\n");
+	DRM_INFO("%s: panel name: %s\n", __func__, panel_name);
 
-		if (mipi_mode == MDFLD_DSI_ENCODER_DPI) {
-			PSB_DEBUG_ENTRY("GI_SONY_VID panel\n");
-			dev_priv->panel_id = GI_SONY_VID;
-		} else {
-			PSB_DEBUG_ENTRY("GI_SONY_CMD panel\n");
-			dev_priv->panel_id = GI_SONY_CMD;
-		}
-		break;
-	case GCT_LEX_DV1:
-		PSB_DEBUG_ENTRY("GI_RENESAS_CMD panel\n");
-		dev_priv->panel_id = GI_RENESAS_CMD;
-		break;
-	default:
+	ret = parse_panel_id_from_gct(panel_name, mipi_mode);
+	if (ret < 0) {
 		DRM_ERROR("unsupported panel id\n");
 		return false;
-		break;
 	}
+
+	dev_priv->panel_id = ret;
 
 out:
 	PanelID = dev_priv->panel_id;

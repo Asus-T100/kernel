@@ -480,8 +480,8 @@ struct gct_timing_desc_block {
 	uint16_t h_reversed:3;
 	uint16_t vactive:12;
 	uint16_t vblank:12;
-	uint16_t vsync_start:10;
-	uint16_t vsync_end:10;
+	uint16_t vsync_start:6;
+	uint16_t vsync_end:6;
 	uint16_t vsync_polarity:1;
 	uint16_t v_reversed:3;
 } __packed;
@@ -511,6 +511,41 @@ struct gct_bkl_desc_block {
 	uint8_t polarity:1;
 } __packed;
 
+struct gct_r20_clock_desc {
+	uint8_t pre_divisor:2;
+	uint16_t divisor:9;
+	uint8_t post_divisor:4;
+	uint8_t pll_bypass:1;
+	uint8_t cck_clock_divisor:1;
+	uint8_t reserved:7;
+} __packed;
+
+struct gct_r20_panel_info {
+	uint16_t width;
+	uint16_t height;
+} __packed;
+
+struct gct_r20_panel_mode {
+	uint8_t mode:1;
+	uint16_t reserved:15;
+} __packed;
+
+struct gct_r20_dsi_desc {
+	uint8_t num_dsi_lanes:2;
+	uint16_t reserved:14;
+} __packed;
+
+struct gct_r20_panel_desc {
+	uint8_t panel_name[16];
+	struct gct_timing_desc_block timing;
+	struct gct_r20_clock_desc clock_desc;
+	struct gct_r20_panel_info panel_info;
+	struct gct_r20_panel_mode panel_mode;
+	struct gct_r20_dsi_desc dsi_desc;
+	uint32_t early_init_seq;
+	uint32_t late_init_seq;
+} __packed;
+
 struct gct_r11_panel_desc {
 	uint8_t panel_name[16];
 	struct gct_timing_desc_block timing;
@@ -519,7 +554,6 @@ struct gct_r11_panel_desc {
 	struct gct_bkl_desc_block bkl;
 	uint32_t early_init_seq;
 	uint32_t late_init_seq;
-	uint8_t reversed[4];
 } __packed;
 
 struct gct_r10_panel_desc {
@@ -531,6 +565,7 @@ struct gct_r10_panel_desc {
 	uint32_t late_init_seq;
 	uint8_t reversed[4];
 } __packed;
+
 struct intel_mid_vbt {
 	char signature[4];		/*4 bytes,"$GCT" */
 	uint8_t revision;		/*1 byte GCT version*/
@@ -540,7 +575,7 @@ struct intel_mid_vbt {
 	uint8_t primary_panel_idx;	/*1 byte primary panel descriptor idx*/
 	uint8_t secondary_panel_idx;	/*1 byte secondary panel desc idx*/
 	uint8_t splash_flag;		/*1 byte bit 0 is to disable splash*/
-	uint8_t reserved[4];		/*reserved*/
+	uint8_t reserved[4];		/*[0..1] relates to GPU burst for R20*/
 	void *panel_descs;
 } __packed;
 

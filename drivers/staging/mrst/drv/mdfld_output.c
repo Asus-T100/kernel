@@ -46,18 +46,69 @@
 #include "displays/hdmi.h"
 #include "psb_drv.h"
 
-static struct intel_mid_panel_list panel_list[] = {
-	{TMD_6X10_VID,	MDFLD_DSI_ENCODER_DPI, tmd_6x10_vid_init},
-	{H8C7_VID,	MDFLD_DSI_ENCODER_DPI, h8c7_vid_init},
-	{H8C7_CMD,	MDFLD_DSI_ENCODER_DBI, h8c7_cmd_init},
-	{AUO_SC1_VID,	MDFLD_DSI_ENCODER_DPI, auo_sc1_vid_init},
-	{AUO_SC1_CMD,	MDFLD_DSI_ENCODER_DBI, auo_sc1_cmd_init},
-	{GI_SONY_VID,	MDFLD_DSI_ENCODER_DPI, gi_sony_vid_init},
-	{GI_SONY_CMD,	MDFLD_DSI_ENCODER_DBI, gi_sony_cmd_init},
-	{GI_RENESAS_CMD, MDFLD_DSI_ENCODER_DBI, gi_renesas_cmd_init},
-	{TC35876X_VID,	MDFLD_DSI_ENCODER_DPI, tc35876x_vid_init},
-	{YB_CMI_VID,	MDFLD_DSI_ENCODER_DPI, yb_cmi_vid_init}
+struct intel_mid_panel_list panel_list[] = {
+	{
+		TMD_6X10_VID,
+		MDFLD_DSI_ENCODER_DPI,
+		"TMD BB PRx",
+		tmd_6x10_vid_init
+	},
+	{
+		H8C7_VID,
+		MDFLD_DSI_ENCODER_DPI,
+		"H8C7 VID RHB",
+		h8c7_vid_init
+	},
+	{
+		H8C7_CMD,
+		MDFLD_DSI_ENCODER_DBI,
+		"H8C7 CMD RHB",
+		h8c7_cmd_init
+	},
+	{
+		GI_SONY_VID,
+		MDFLD_DSI_ENCODER_DPI,
+		"Sony LEX PRx",
+		gi_sony_vid_init
+	},
+	{
+		GI_SONY_CMD,
+		MDFLD_DSI_ENCODER_DBI,
+		"Sony LEX PRx",
+		gi_sony_cmd_init
+	},
+	{
+		GI_RENESAS_CMD,
+		MDFLD_DSI_ENCODER_DBI,
+		"Renesas LEX DV1",
+		gi_renesas_cmd_init
+	},
+	{
+		TC35876X_VID,
+		MDFLD_DSI_ENCODER_DPI,
+		"TMD RR",
+		tc35876x_vid_init
+	},
+	{
+		YB_CMI_VID,
+		MDFLD_DSI_ENCODER_DPI,
+		"CMI YB VID",
+		yb_cmi_vid_init
+	}
 };
+
+int parse_panel_id_from_gct(char *panel_name, int mipi_mode)
+{
+	int idx = 0;
+	for (idx = 0; idx < ARRAY_SIZE(panel_list); idx++) {
+		if (!strncmp(panel_name, panel_list[idx].panel_name,
+				strlen(panel_list[idx].panel_name)) &&
+				mipi_mode == panel_list[idx].encoder_type)
+			return panel_list[idx].p_type;
+	}
+
+	return -EINVAL;
+}
 
 enum panel_type get_panel_type(struct drm_device *dev, int pipe)
 {
