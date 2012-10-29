@@ -2767,7 +2767,7 @@ static void overlay_wait_flip(struct drm_device *dev)
 		/* reset to 0 when timeout happens */
 		dev_priv->overlay_wait = 0;
 		dev_priv->overlay_fliped = 0;
-		DRM_ERROR("wait OVADD flip timeout!\n");
+		DRM_DEBUG("wait OVADD flip timeout!\n");
 	}
 
 	/**
@@ -2775,11 +2775,11 @@ static void overlay_wait_flip(struct drm_device *dev)
 	 * was copied before updating the system
 	 * overlay command buffer.
 	 */
-	retry = 3000;
+	retry = 60;
 	while (--retry) {
 		if (BIT31 & PSB_RVDC32(OV_DOVASTA))
 			break;
-		udelay(10);
+		usleep_range(500, 600);
 	}
 
 	if (!retry)
