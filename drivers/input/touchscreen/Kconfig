@@ -762,6 +762,18 @@ config TOUCHSCREEN_CYTTSP_CORE
        help
          Always activated for Cypress TTSP touchscreen
 
+config TOUCHSCREEN_FOCALTECH_FT5406
+	tristate "FOCALTECH FT5406 touchscreen"
+	depends on I2C
+	default n
+	help
+		Say Y here if you have a FocalTech ft5406 touchscreen
+
+		The FocalTech ft5406 is a touchscreen which supports
+		ten touches.
+
+		If unsure, say N.
+
 source "drivers/input/touchscreen/rmi/Kconfig"
           
 config TOUCHSCREEN_ATMEL_MXT224
