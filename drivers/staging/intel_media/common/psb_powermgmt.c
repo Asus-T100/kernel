@@ -1731,7 +1731,7 @@ bool ospm_power_using_hw_begin(int hw_island, UHBUsage usage)
 	}
 	spin_unlock_irqrestore(&dev_priv->ospm_lock, flags);
 
-	BUG_ON((preempt_count() & ~PREEMPT_ACTIVE) != 0);
+	BUG_ON(in_interrupt());
 	mutex_lock(&g_ospm_mutex);
 
 	spin_lock_irqsave(&dev_priv->ospm_lock, flags);
