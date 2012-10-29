@@ -135,7 +135,6 @@ static void sst_fill_alloc_params(struct snd_pcm_substream *substream,
 	alloc_param->ring_buf_info[0].size = buffer_bytes;
 	alloc_param->sg_count = 1;
 	alloc_param->reserved = 0;
-	alloc_param->reserved2 = 0;
 	alloc_param->frag_size = periodbytes * channels;
 
 	pr_debug("period_size = %d\n", alloc_param->frag_size);
@@ -144,16 +143,13 @@ static void sst_fill_alloc_params(struct snd_pcm_substream *substream,
 static void sst_fill_pcm_params(struct snd_pcm_substream *substream,
 				struct snd_sst_stream_params *param)
 {
-	param->uc.pcm_params.codec = SST_CODEC_TYPE_PCM;
 	param->uc.pcm_params.num_chan = (u8) substream->runtime->channels;
 	param->uc.pcm_params.pcm_wd_sz = substream->runtime->sample_bits;
-	param->uc.pcm_params.reserved = 0;
 	param->uc.pcm_params.sfreq = substream->runtime->rate;
 
 	/* PCM stream via ALSA interface */
 	param->uc.pcm_params.use_offload_path = 0;
 	param->uc.pcm_params.reserved2 = 0;
-	param->uc.pcm_params.reserved3 = 0;
 	memset(param->uc.pcm_params.channel_map, 0, sizeof(u8));
 	pr_debug("sfreq= %d, wd_sz = %d\n",
 	param->uc.pcm_params.sfreq, param->uc.pcm_params.pcm_wd_sz);
@@ -175,7 +171,7 @@ static int sst_platform_alloc_stream(struct snd_pcm_substream *substream)
 	substream->runtime->dma_area = substream->dma_buffer.area;
 	str_params.sparams = param;
 	str_params.aparams = alloc_params;
-	str_params.codec =  param.uc.pcm_params.codec;
+	str_params.codec = SST_CODEC_TYPE_PCM;
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
 		str_params.ops = STREAM_OPS_PLAYBACK;
 		str_params.device_type = substream->pcm->device + 1;
