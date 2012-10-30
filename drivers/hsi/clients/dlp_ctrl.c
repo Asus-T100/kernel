@@ -873,7 +873,7 @@ static int dlp_ctrl_cmd_send(struct dlp_channel *ch_ctx,
 				dlp_cmd->params.id);
 
 		ret = -EIO;
-		goto out;
+		goto free_cmd;
 	}
 
 	/* TX OK */
@@ -895,7 +895,7 @@ static int dlp_ctrl_cmd_send(struct dlp_channel *ch_ctx,
 			dlp_cmd->params.channel, dlp_cmd->params.id);
 
 		ret = -EIO;
-		goto out;
+		goto free_cmd;
 	}
 
 	/* Set the expected response params */
@@ -933,6 +933,9 @@ no_resp:
 	/* Response received & OK => set the new channel state */
 	if (final_state != DLP_CH_STATE_NONE)
 		dlp_ctrl_set_channel_state(ch_ctx, final_state);
+
+	/* Free the DLP command */
+	dlp_ctrl_cmd_free(dlp_cmd);
 
 	/* Restore RX callback */
 	dlp_restore_rx_callbacks(&ctrl_ctx->start_rx_cb, &ctrl_ctx->stop_rx_cb);
