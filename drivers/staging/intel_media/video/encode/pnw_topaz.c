@@ -199,23 +199,8 @@ static int pnw_submit_encode_cmdbuf(struct drm_device *dev,
 	if (topaz_priv->topaz_needs_reset) {
 		/* #.# reset it */
 		spin_unlock_irqrestore(&topaz_priv->topaz_lock, irq_flags);
-		PSB_DEBUG_GENERAL("TOPAZ: needs reset.\n");
-
-		if (pnw_topaz_reset(dev_priv)) {
-			ret = -EBUSY;
-			DRM_ERROR("TOPAZ: reset failed.\n");
-			return ret;
-		}
-
-		PSB_DEBUG_GENERAL("TOPAZ: reset ok.\n");
-
-		/* #.# upload firmware */
-		if (pnw_topaz_setup_fw(dev, topaz_priv->topaz_cur_codec)) {
-			DRM_ERROR("TOPAZ: upload FW to HW failed\n");
-			return -EBUSY;
-		}
-
-		spin_lock_irqsave(&topaz_priv->topaz_lock, irq_flags);
+		DRM_ERROR("TOPAZ: needs reset.\n");
+		return -EFAULT;
 	}
 
 	if (!topaz_priv->topaz_busy) {
@@ -762,15 +747,28 @@ int pnw_topaz_dequeue_send(struct drm_device *dev)
 		return 0;
 	}
 
-	topaz_priv->topaz_busy = 1;
-	topaz_cmd = list_first_entry(&topaz_priv->topaz_queue,
-				     struct pnw_topaz_cmd_queue, head);
+	if (dev_priv->topaz_ctx) {
+		topaz_priv->topaz_busy = 1;
+		topaz_cmd = list_first_entry(&topaz_priv->topaz_queue,
+			struct pnw_topaz_cmd_queue, head);
 
-	PSB_DEBUG_GENERAL("TOPAZ: queue has id %08x\n", topaz_cmd->sequence);
-	ret = pnw_topaz_send(dev, topaz_cmd->cmd, topaz_cmd->cmd_size,
-			     topaz_cmd->sequence);
-	if (ret) {
-		DRM_ERROR("TOPAZ: pnw_topaz_send failed.\n");
+		PSB_DEBUG_GENERAL("TOPAZ: queue has id %08x\n",
+			topaz_cmd->sequence);
+		ret = pnw_topaz_send(dev, topaz_cmd->cmd, topaz_cmd->cmd_size,
+			topaz_cmd->sequence);
+		if (ret) {
+			DRM_ERROR("TOPAZ: pnw_topaz_send failed.\n");
+			ret = -EINVAL;
+		}
+	} else {
+		/* Since context has been removed, we should discard the
+		   encoding commands in the queue and release fence */
+		PSB_DEBUG_TOPAZ("TOPAZ: Context has been removed!\n");
+		TOPAZ_MTX_WB_WRITE32(topaz_priv->topaz_sync_addr,
+			0, MTX_WRITEBACK_VALUE,
+			topaz_cmd->sequence);
+		topaz_priv->topaz_busy = 0;
+		psb_fence_handler(dev, LNC_ENGINE_ENCODE);
 		ret = -EINVAL;
 	}
 
@@ -795,7 +793,6 @@ int pnw_check_topaz_idle(struct drm_device *dev)
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *)dev->dev_private;
 	struct pnw_topaz_private *topaz_priv = dev_priv->topaz_private;
-	uint32_t reg_val;
 
 	/*HW is stuck. Need to power off TopazSC to reset HW*/
 	if (topaz_priv->topaz_needs_reset)
@@ -814,28 +811,15 @@ int pnw_check_topaz_idle(struct drm_device *dev)
 		PSB_DEBUG_PM("TOPAZ: %s, HW is busy\n", __func__);
 		return -EBUSY;
 	}
-	TOPAZ_MULTICORE_READ32(TOPAZSC_CR_MULTICORE_CMD_FIFO_1,
-			&reg_val);
-	reg_val &= MASK_TOPAZSC_CR_CMD_FIFO_SPACE;
-	if (reg_val != TOPAZ_CMD_FIFO_SIZE) {
-		PSB_DEBUG_GENERAL("TOPAZ: HW is busy. Free words in command"
-				"FIFO is %d.\n",
-				reg_val);
-		return -EBUSY;
-	}
 
 	return 0; /* we think it is idle */
 }
 
 
 
-static void pnw_topaz_flush_cmd_queue(struct pnw_topaz_private *topaz_priv)
+void pnw_topaz_flush_cmd_queue(struct pnw_topaz_private *topaz_priv)
 {
 	struct pnw_topaz_cmd_queue *entry, *next;
-
-	/* remind to reset topaz */
-	topaz_priv->topaz_needs_reset = 1;
-	topaz_priv->topaz_busy = 0;
 
 	if (list_empty(&topaz_priv->topaz_queue))
 		return;
@@ -857,13 +841,20 @@ void pnw_topaz_handle_timeout(struct ttm_fence_device *fdev)
 	struct drm_psb_private *dev_priv =
 		container_of(fdev, struct drm_psb_private, fdev);
 	struct pnw_topaz_private *topaz_priv = dev_priv->topaz_private;
+	u32 cur_seq;
+
+	TOPAZ_MTX_WB_READ32(topaz_priv->topaz_sync_addr,
+			    0, MTX_WRITEBACK_VALUE, &cur_seq);
+
+	DRM_ERROR("TOPAZ:last sync seq:0x%08x (MTX)" \
+		      " vs 0x%08x(fence)\n",
+		      cur_seq, dev_priv->sequence[LNC_ENGINE_ENCODE]);
 
 	DRM_ERROR("TOPAZ: current codec is %s\n",
 			codec_to_string(topaz_priv->topaz_cur_codec));
 	pnw_topaz_flush_cmd_queue(topaz_priv);
-
-	/*Power down TopazSC to reset HW*/
-	schedule_delayed_work(&topaz_priv->topaz_suspend_wq, 0);
+	topaz_priv->topaz_needs_reset = 1;
+	topaz_priv->topaz_busy = 0;
 }
 
 
@@ -912,3 +903,4 @@ void psb_powerdown_topaz(struct work_struct *work)
 	if (!dev_priv->topaz_disabled)
 		ospm_apm_power_down_topaz(topaz_priv->dev);
 }
+

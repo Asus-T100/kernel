@@ -1595,8 +1595,11 @@ int pnw_topaz_restore_mtx_state(struct drm_device *dev)
 	}
 
 	/*TopazSC will be reset, no need to restore context.*/
-	if (topaz_priv->topaz_needs_reset)
+	if (topaz_priv->topaz_needs_reset) {
+		PSB_DEBUG_TOPAZ("TOPAZ: Reset. No need to restore context\n");
+		topaz_priv->topaz_mtx_saved = 0;
 		return 0;
+	}
 
 	/*There is no need to restore context for JPEG encoding*/
 	if (PNW_IS_JPEG_ENC(topaz_priv->topaz_cur_codec)) {
@@ -1800,6 +1803,12 @@ int pnw_topaz_save_mtx_state(struct drm_device *dev)
 
 	topaz_priv->topaz_mtx_saved = 0;
 
+	/*TopazSC will be reset, no need to save context.*/
+	if (topaz_priv->topaz_needs_reset) {
+		PSB_DEBUG_TOPAZ("TOPAZ: Will be reset\n");
+		return 0;
+	}
+
 	mutex_lock(&dev_priv->video_ctx_mutex);
 	list_for_each_entry_safe(pos, n, &dev_priv->video_ctx, head) {
 		if ((pos->ctx_type & 0xff) == VAEntrypointEncSlice ||
@@ -1809,14 +1818,10 @@ int pnw_topaz_save_mtx_state(struct drm_device *dev)
 	mutex_unlock(&dev_priv->video_ctx_mutex);
 
 	if (0 == need_save) {
-		PSB_DEBUG_GENERAL("TOPAZ: vec context not found. No need"
+		PSB_DEBUG_TOPAZ("TOPAZ: vec context not found. No need"
 				  " to save mtx registers.\n");
 		return 0;
 	}
-
-	/*TopazSC will be reset, no need to save context.*/
-	if (topaz_priv->topaz_needs_reset)
-		return 0;
 
 	PSB_DEBUG_INIT("TOPAZ: Found one vec codec(%d)." \
 			  "Need to save mtx registers.\n",
@@ -2129,13 +2134,29 @@ int mtx_dma_write(struct drm_device *dev, uint32_t core_id)
 }
 
 
-void pnw_reset_fw_status(struct drm_device *dev)
+void pnw_reset_fw_status(struct drm_device *dev, u32 flag)
 {
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *)dev->dev_private;
 	struct pnw_topaz_private *topaz_priv = dev_priv->topaz_private;
+	u32 reg;
 
 	/*Before end the session, mark firmware MTX data as invalid.*/
-	if (topaz_priv)
+	if (topaz_priv) {
 		topaz_priv->topaz_mtx_saved = 0;
+		if (flag & PNW_TOPAZ_START_CTX)
+			topaz_priv->topaz_needs_reset = 0;
+		else if (flag & PNW_TOPAZ_END_CTX) {
+			TOPAZ_MTX_WB_READ32(topaz_priv->topaz_sync_addr,
+				0, MTX_WRITEBACK_VALUE, &reg);
+			PSB_DEBUG_TOPAZ("TOPAZ: current fence 0x%08x " \
+				"last writeback 0x%08x\n",
+				dev_priv->sequence[LNC_ENGINE_ENCODE],
+				reg);
+			if (topaz_priv->topaz_needs_reset) {
+				DRM_ERROR("TOPAZ: reset Topaz\n");
+				ospm_apm_power_down_topaz(topaz_priv->dev);
+			}
+		}
+	}
 }

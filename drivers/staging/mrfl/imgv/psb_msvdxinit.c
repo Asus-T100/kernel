@@ -554,8 +554,7 @@ int psb_setup_fw(struct drm_device *dev)
 	   }
 	 */
 
-	if (IS_MDFLD(dev))
-		PSB_WMSVDX32(FIRMWAREID, MSVDX_COMMS_FIRMWARE_ID);
+	PSB_WMSVDX32(FIRMWAREID, MSVDX_COMMS_FIRMWARE_ID);
 
 	PSB_WMSVDX32(0, MSVDX_COMMS_ERROR_TRIG);
 	PSB_WMSVDX32(199, MSVDX_MTX_SYSC_TIMERDIV);	/* MTX_SYSC_TIMERDIV */
@@ -588,20 +587,14 @@ int psb_setup_fw(struct drm_device *dev)
 	if (msvdx_priv->msvdx_fw)
 		fw_ptr = msvdx_priv->msvdx_fw;
 	else {
-		if (IS_MDFLD(dev)) {
-			if (IS_FW_UPDATED)
-				fw_ptr =
-				    msvdx_get_fw(dev, &raw,
-						 "msvdx_fw_mfld_DE2.0.bin");
-			else
-				fw_ptr =
-				    msvdx_get_fw(dev, &raw,
-						 "msvdx_fw_mfld.bin");
+		{
+			fw_ptr =
+			    msvdx_get_fw(dev, &raw,
+					 "msvdx_fw_mfld_DE2.0.bin");
 
 			PSB_DEBUG_GENERAL
 			    ("MSVDX:load msvdx_fw_mfld_DE2.0.bin by udevd\n");
-		} else
-			DRM_ERROR("MSVDX:HW is neither mrst nor mfld\n");
+		}
 	}
 
 	if (!fw_ptr) {
@@ -612,7 +605,7 @@ int psb_setup_fw(struct drm_device *dev)
 
 	if (!msvdx_priv->is_load) {	/* Load firmware into BO */
 		PSB_DEBUG_GENERAL("MSVDX:load msvdx_fw.bin by udevd into BO\n");
-		if (IS_MDFLD(dev)) {
+		{
 			if (IS_FW_UPDATED)
 				ret =
 				    msvdx_get_fw_bo(dev, &raw,
@@ -621,8 +614,7 @@ int psb_setup_fw(struct drm_device *dev)
 				ret =
 				    msvdx_get_fw_bo(dev, &raw,
 						    "msvdx_fw_mfld.bin");
-		} else
-			DRM_ERROR("MSVDX:HW is neither mrst nor mfld\n");
+		}
 		msvdx_priv->is_load = 1;
 	}
 
@@ -1157,22 +1149,21 @@ int psb_msvdx_init(struct drm_device *dev)
 	}
 
 	if (!msvdx_priv->fw) {
-		uint32_t core_rev;
+		uint32_t core_rev, core_id;
 		uint32_t fw_bo_size;
 
+		core_id = PSB_RMSVDX32(MSVDX_CORE_ID);
 		core_rev = PSB_RMSVDX32(MSVDX_CORE_REV);
+		PSB_DEBUG_INIT("MSVDX Core ID:  %08x\n", core_id);
+		PSB_DEBUG_INIT("MSVDX Core Ver: %08x\n", core_rev);
+
 
 		if ((core_rev & 0xffffff) < 0x020000)
 			msvdx_priv->mtx_mem_size = 16 * 1024;
 		else
 			msvdx_priv->mtx_mem_size = 40 * 1024;
 
-		if (IS_MDFLD(dev))
-			fw_bo_size = msvdx_priv->mtx_mem_size + 4096;
-		else
-			/* fw + ec_fw */
-			fw_bo_size =
-			((msvdx_priv->mtx_mem_size + 8192) & ~0xfff) * 2;
+		fw_bo_size = msvdx_priv->mtx_mem_size + 4096;
 
 		PSB_DEBUG_INIT("MSVDX: "
 		"MTX mem size is 0x%08x bytes allocate"
@@ -1267,7 +1258,7 @@ int psb_msvdx_init(struct drm_device *dev)
 	psb_msvdx_clearirq(dev);
 	psb_msvdx_enableirq(dev);
 
-	if (IS_MSVDX(dev)) {
+	{
 		PSB_DEBUG_INIT("MSDVX:old clock gating disable = 0x%08x\n",
 			       PSB_RVDC32(PSB_MSVDX_CLOCKGATING));
 	}

@@ -779,8 +779,6 @@ static
 void mdfld_dsi_dpi_prepare(struct drm_encoder *encoder)
 {
 	PSB_DEBUG_ENTRY("\n");
-
-	__mdfld_dsi_dpi_set_power(encoder, false);
 }
 
 static

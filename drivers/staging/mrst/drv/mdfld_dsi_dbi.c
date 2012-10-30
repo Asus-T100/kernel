@@ -890,7 +890,6 @@ bool mdfld_generic_dsi_dbi_mode_fixup(struct drm_encoder *encoder,
 		adjusted_mode->vtotal = fixed_mode->vtotal;
 		adjusted_mode->clock = fixed_mode->clock;
 		drm_mode_set_crtcinfo(adjusted_mode, CRTC_INTERLACE_HALVE_V);
-		kfree(fixed_mode);
 	}
 
 	return true;

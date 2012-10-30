@@ -146,8 +146,14 @@ enum panel_type {
 /*
  *Flags for external memory type field.
  */
+#define CONFIG_VIDEO_MRFLD  1
+#define CONFIG_VIDEO_MRFLD_VP  1
 
+#ifdef CONFIG_VIDEO_MRFLD
+#define MRST_MSVDX_OFFSET	0x120000	/*MSVDX Base offset */
+#else
 #define MRST_MSVDX_OFFSET	0x90000	/*MSVDX Base offset */
+#endif
 #define PSB_MSVDX_OFFSET	0x50000	/*MSVDX Base offset */
 /* MSVDX MMIO region is 0x50000 - 0x57fff ==> 32KB */
 #define PSB_MSVDX_SIZE		0x10000

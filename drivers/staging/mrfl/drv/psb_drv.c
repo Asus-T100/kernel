@@ -358,7 +358,6 @@ MODULE_DEVICE_TABLE(pci, pciidlist);
 /*
  * TTM execbuf extension.
  */
-#define DRM_PSB_CMDBUF		  (DRM_PSB_SET_CSC + 1)
 
 #define DRM_PSB_SCENE_UNREF	  (DRM_PSB_CMDBUF + 1)
 #define DRM_IOCTL_PSB_CMDBUF	\

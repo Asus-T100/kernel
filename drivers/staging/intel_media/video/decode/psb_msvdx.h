@@ -328,11 +328,15 @@ static inline void psb_msvdx_mtx_set_clocks(struct drm_device *dev, uint32_t clo
 		/* Turn off clocks procedure */
 		if (old_clock_state) {
 			/* Turn off all the clocks except core */
-			PSB_WMSVDX32(MSVDX_MAN_CLK_ENABLE__CORE_MAN_CLK_ENABLE_MASK, MSVDX_MAN_CLK_ENABLE_OFFSET);
+			PSB_WMSVDX32(
+				MSVDX_MAN_CLK_ENABLE__CORE_MAN_CLK_ENABLE_MASK,
+				MSVDX_MAN_CLK_ENABLE_OFFSET);
 
 			/* Make sure all the clocks are off except core */
-			reg_value = PSB_RMSVDX32(MSVDX_MAN_CLK_ENABLE_OFFSET);
-			BUG_ON(reg_value != MSVDX_MAN_CLK_ENABLE__CORE_MAN_CLK_ENABLE_MASK);
+			psb_wait_for_register(dev_priv,
+				MSVDX_MAN_CLK_ENABLE_OFFSET,
+				MSVDX_MAN_CLK_ENABLE__CORE_MAN_CLK_ENABLE_MASK,
+				0xffffffff, 2000000, 5);
 
 			/* Turn off core clock */
 			PSB_WMSVDX32(0, MSVDX_MAN_CLK_ENABLE_OFFSET);
@@ -346,24 +350,30 @@ static inline void psb_msvdx_mtx_set_clocks(struct drm_device *dev, uint32_t clo
 		/* If all clocks were disable do the bring up procedure */
 		if (old_clock_state == 0) {
 			/* turn on core clock */
-			PSB_WMSVDX32(MSVDX_MAN_CLK_ENABLE__CORE_MAN_CLK_ENABLE_MASK, MSVDX_MAN_CLK_ENABLE_OFFSET);
+			PSB_WMSVDX32(
+				MSVDX_MAN_CLK_ENABLE__CORE_MAN_CLK_ENABLE_MASK,
+				MSVDX_MAN_CLK_ENABLE_OFFSET);
 
-			/* Make sure it is on */
-			reg_value = PSB_RMSVDX32(MSVDX_MAN_CLK_ENABLE_OFFSET);
-			BUG_ON(reg_value != MSVDX_MAN_CLK_ENABLE__CORE_MAN_CLK_ENABLE_MASK);
+			/* Make sure core clock is on */
+			psb_wait_for_register(dev_priv,
+				MSVDX_MAN_CLK_ENABLE_OFFSET,
+				MSVDX_MAN_CLK_ENABLE__CORE_MAN_CLK_ENABLE_MASK,
+				0xffffffff, 2000000, 5);
 
 			/* turn on the other clocks as well */
 			PSB_WMSVDX32(clocks_en, MSVDX_MAN_CLK_ENABLE_OFFSET);
 
-			/* Make sure that they are on */
-			reg_value = PSB_RMSVDX32(MSVDX_MAN_CLK_ENABLE_OFFSET);
-			BUG_ON(reg_value != clocks_en);
+			/* Make sure that all they are on */
+			psb_wait_for_register(dev_priv,
+					MSVDX_MAN_CLK_ENABLE_OFFSET,
+					clocks_en, 0xffffffff, 2000000, 5);
 		} else {
 			PSB_WMSVDX32(clocks_en, MSVDX_MAN_CLK_ENABLE_OFFSET);
 
 			/* Make sure that they are on */
-			reg_value = PSB_RMSVDX32(MSVDX_MAN_CLK_ENABLE_OFFSET);
-			BUG_ON(reg_value != clocks_en);
+			psb_wait_for_register(dev_priv,
+					MSVDX_MAN_CLK_ENABLE_OFFSET,
+					clocks_en, 0xffffffff, 2000000, 5);
 		}
 	}
 }
