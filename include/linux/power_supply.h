@@ -174,6 +174,21 @@ struct power_supply_charger_cap {
 	unsigned int			mA;	/* input current limit */
 };
 
+enum power_supply_charger_cable_type {
+	POWER_SUPPLY_CHARGER_TYPE_NONE = 0,
+	POWER_SUPPLY_CHARGER_TYPE_USB_SDP = 1 << 0,
+	POWER_SUPPLY_CHARGER_TYPE_USB_DCP = 1 << 1,
+	POWER_SUPPLY_CHARGER_TYPE_USB_CDP = 1 << 2,
+	POWER_SUPPLY_CHARGER_TYPE_USB_ACA = 1 << 3,
+	POWER_SUPPLY_CHARGER_TYPE_AC = 1 << 4,
+};
+
+#define POWER_SUPPLY_CHARGER_TYPE_USB \
+	(POWER_SUPPLY_CHARGER_TYPE_USB_SDP | \
+	POWER_SUPPLY_CHARGER_TYPE_USB_DCP | \
+	POWER_SUPPLY_CHARGER_TYPE_USB_CDP | \
+	POWER_SUPPLY_CHARGER_TYPE_USB_ACA)
+
 union power_supply_propval {
 	int intval;
 	const char *strval;
@@ -186,6 +201,7 @@ struct power_supply {
 	size_t num_properties;
 
 	char **supplied_to;
+	unsigned long supported_cables;
 	size_t num_supplicants;
 
 	int (*get_property)(struct power_supply *psy,
