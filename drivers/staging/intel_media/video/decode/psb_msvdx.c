@@ -581,8 +581,9 @@ int psb_mtx_send(struct drm_psb_private *dev_priv, const void *msg)
 
 	PSB_DEBUG_GENERAL("MSVDX: psb_mtx_send\n");
 
-	/* we need clocks enabled before we touch VEC local ram */
-	psb_msvdx_mtx_set_clocks(dev_priv->dev, clk_enable_all);
+	/* we need clocks enabled before we touch VEC local ram,
+	 * but fw will take care of the clock after fw is loaded
+	 */
 
 	msg_num = (MEMIO_READ_FIELD(msg, MTX_GENMSG_SIZE) + 3) / 4;
 
@@ -666,8 +667,9 @@ int psb_mtx_send(struct drm_psb_private *dev_priv, const void *msg)
 
 	PSB_WMSVDX32(widx, MSVDX_COMMS_TO_MTX_WRT_INDEX);
 
-	/* Make sure clocks are enabled before we kick */
-	psb_msvdx_mtx_set_clocks(dev_priv->dev, clk_enable_all);
+	/* Make sure clocks are enabled before we kick
+	 * but fw will take care of the clock after fw is loaded
+	 */
 
 	/* signal an interrupt to let the mtx know there is a new message */
 	PSB_WMSVDX32(1, MTX_KICK_INPUT_OFFSET);
@@ -697,10 +699,9 @@ static void psb_msvdx_mtx_interrupt(struct drm_device *dev)
 
 	PSB_DEBUG_GENERAL("MSVDX:Got a MSVDX MTX interrupt\n");
 
-	/* Are clocks enabled  - If not enable before
-	 * attempting to read from VLR
+	/* we need clocks enabled before we touch VEC local ram,
+	 * but fw will take care of the clock after fw is loaded
 	 */
-	psb_msvdx_mtx_set_clocks(dev_priv->dev, clk_enable_all);
 
 loop: /* just for coding style check */
 	ridx = PSB_RMSVDX32(MSVDX_COMMS_TO_HOST_RD_INDEX);

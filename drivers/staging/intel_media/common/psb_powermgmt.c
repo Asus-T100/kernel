@@ -1318,7 +1318,7 @@ static void ospm_power_island_down_video(int video_islands)
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *) gpDrmDevice->dev_private;
 	unsigned long flags;
-	PSB_DEBUG_ENTRY("MSVDX: power on video island %d.\n", video_islands);
+	PSB_DEBUG_PM("MSVDX: power off video island %d.\n", video_islands);
 	spin_lock_irqsave(&dev_priv->ospm_lock, flags);
 	if (video_islands & OSPM_VIDEO_DEC_ISLAND) {
 		if (pmu_nc_set_power_state(OSPM_VIDEO_DEC_ISLAND,
