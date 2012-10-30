@@ -624,12 +624,13 @@ static struct drm_ioctl_desc psb_ioctls[] = {
 		      DRM_AUTH),
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_DISABLE_HDCP, psb_disable_hdcp_ioctl,
 		      DRM_AUTH),
+	PSB_IOCTL_DEF(DRM_IOCTL_PSB_SET_CSC, psb_set_csc_ioctl, DRM_AUTH),
+/*
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_S3D_QUERY, psb_s3d_query_ioctl, DRM_AUTH),
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_S3D_PREMODESET, psb_s3d_premodeset_ioctl,
 		      DRM_AUTH),
-	PSB_IOCTL_DEF(DRM_IOCTL_PSB_SET_CSC, psb_set_csc_ioctl, DRM_AUTH),
 	PSB_IOCTL_DEF(DRM_IOCTL_PSB_S3D_ENABLE, psb_s3d_enable_ioctl, DRM_AUTH),
-
+*/
     /*****************************
      *  S3D OVERLAY IOCTLS
      */

@@ -75,6 +75,7 @@ int vsp_init(struct drm_device *dev)
 	struct drm_psb_private *dev_priv = dev->dev_private;
 	struct ttm_bo_device *bdev = &dev_priv->bdev;
 	struct vsp_private *vsp_priv;
+	bool is_iomem;
 	int ret;
 
 	VSP_DEBUG("init vsp private data structure\n");
@@ -117,6 +118,61 @@ int vsp_init(struct drm_device *dev)
 		goto out_clean;
 	}
 
+	vsp_priv->cmd_queue_sz = VSP_CMD_QUEUE_SIZE *
+		sizeof(struct vss_command_t);
+	ret = ttm_buffer_object_create(bdev,
+				       vsp_priv->cmd_queue_sz,
+				       ttm_bo_type_kernel,
+				       DRM_PSB_FLAG_MEM_MMU |
+				       TTM_PL_FLAG_NO_EVICT,
+				       0, 0, 0, NULL, &vsp_priv->cmd_queue_bo);
+	if (ret != 0) {
+		DRM_ERROR("VSP: failed to allocate VSP cmd queue\n");
+		goto out_clean;
+	}
+
+	vsp_priv->ack_queue_sz = VSP_ACK_QUEUE_SIZE *
+		sizeof(struct vss_response_t);
+	ret = ttm_buffer_object_create(bdev,
+				       vsp_priv->ack_queue_sz,
+				       ttm_bo_type_kernel,
+				       DRM_PSB_FLAG_MEM_MMU |
+				       TTM_PL_FLAG_NO_EVICT,
+				       0, 0, 0, NULL, &vsp_priv->ack_queue_bo);
+	if (ret != 0) {
+		DRM_ERROR("VSP: failed to allocate VSP cmd ack queue\n");
+		goto out_clean;
+	}
+
+	/* map cmd queue */
+	ret = ttm_bo_kmap(vsp_priv->cmd_queue_bo, 0,
+			  vsp_priv->cmd_queue_bo->num_pages,
+			  &vsp_priv->cmd_kmap);
+	if (ret) {
+		DRM_ERROR("drm_bo_kmap failed: %d\n", ret);
+		ttm_bo_unref(&vsp_priv->cmd_queue_bo);
+		ttm_bo_kunmap(&vsp_priv->cmd_kmap);
+		goto out_clean;
+	}
+
+	vsp_priv->cmd_queue = ttm_kmap_obj_virtual(&vsp_priv->cmd_kmap,
+						   &is_iomem);
+
+
+	/* map ack queue */
+	ret = ttm_bo_kmap(vsp_priv->ack_queue_bo, 0,
+			  vsp_priv->ack_queue_bo->num_pages,
+			  &vsp_priv->ack_kmap);
+	if (ret) {
+		DRM_ERROR("drm_bo_kmap failed: %d\n", ret);
+		ttm_bo_unref(&vsp_priv->ack_queue_bo);
+		ttm_bo_kunmap(&vsp_priv->ack_kmap);
+		goto out_clean;
+	}
+
+	vsp_priv->ack_queue = ttm_kmap_obj_virtual(&vsp_priv->ack_kmap,
+						   &is_iomem);
+
 	spin_lock_init(&vsp_priv->lock);
 
 	return 0;
@@ -133,6 +189,21 @@ int vsp_deinit(struct drm_device *dev)
 	VSP_DEBUG("free VSP firmware/context buffer\n");
 	if (vsp_priv->firmware)
 		ttm_bo_unref(&vsp_priv->firmware);
+
+	if (vsp_priv->cmd_queue) {
+		ttm_bo_kunmap(&vsp_priv->cmd_kmap);
+		vsp_priv->cmd_queue = NULL;
+	}
+
+	if (vsp_priv->ack_queue) {
+		ttm_bo_kunmap(&vsp_priv->ack_kmap);
+		vsp_priv->ack_queue = NULL;
+	}
+
+	if (vsp_priv->ack_queue_bo)
+		ttm_bo_unref(&vsp_priv->ack_queue_bo);
+	if (vsp_priv->cmd_queue_bo)
+		ttm_bo_unref(&vsp_priv->cmd_queue_bo);
 
 	device_remove_file(&dev->pdev->dev, &dev_attr_vsp_pmstate);
 	sysfs_put(vsp_priv->sysfs_pmstate);
@@ -218,8 +289,6 @@ int vsp_init_fw(struct drm_device *dev)
 	config = (struct vsp_config *)ptr;
 	/* get firmware configuration */
 	memcpy(&vsp_priv->config, ptr, sizeof(vsp_priv->config));
-	vsp_priv->ctrl = (struct vsp_data *)(dev_priv->vsp_reg +
-					     config->data_addr);
 
 	if (vsp_priv->config.magic_number != VSP_FIRMWARE_MAGIC_NUMBER) {
 		DRM_ERROR("VSP: failed to load correct vsp firmware\n"
@@ -256,7 +325,6 @@ int vsp_init_fw(struct drm_device *dev)
 	VSP_DEBUG("bss_size %x\n", config->bss_size);
 	VSP_DEBUG("init_addr %x\n", config->init_addr);
 	VSP_DEBUG("main_addr %x\n", config->main_addr);
-	VSP_DEBUG("data_addr %x\n", config->data_addr);
 
 	/* load firmware to dmem */
 	if (raw->size > vsp_priv->firmware_sz) {
@@ -300,6 +368,10 @@ int vsp_init_fw(struct drm_device *dev)
 
 	vsp_priv->fw_loaded = 1;
 	vsp_priv->needs_reset = 1;
+
+	vsp_priv->ctrl = (struct vsp_ctrl_reg *) (dev_priv->vsp_reg +
+						  VSP_CONFIG_REG_SDRAM_BASE +
+						  VSP_CONFIG_REG_START);
 out:
 	release_firmware(raw);
 
@@ -329,6 +401,22 @@ int vsp_setup_fw(struct drm_psb_private *dev_priv)
 		psb_get_default_pd_addr(dev_priv->vsp_mmu) >> PAGE_TABLE_SHIFT);
 	SET_MMU_PTD(psb_get_default_pd_addr(dev_priv->vsp_mmu) >> PAGE_SHIFT);
 
+	/* set cmd/ack queue address */
+	vsp_priv->ctrl->cmd_queue_addr = vsp_priv->cmd_queue_bo->offset;
+	vsp_priv->ctrl->ack_queue_addr = vsp_priv->ack_queue_bo->offset;
+
+	/* init queue */
+	vsp_priv->ctrl->cmd_rd = 0;
+	vsp_priv->ctrl->cmd_wr = 0;
+	vsp_priv->ctrl->ack_rd = 0;
+	vsp_priv->ctrl->ack_wr = 0;
+
+	/* init context */
+	vsp_priv->ctrl->context_init_req = 0;
+	vsp_priv->ctrl->context_init_ack = 0;
+	vsp_priv->ctrl->context_uninit_req = 0;
+	vsp_priv->ctrl->context_uninit_ack = 0;
+
 	VSP_DEBUG("setup firmware\n");
 #ifdef VSP_RUNNING_ON_VP
 	ret = vsp_set_firmware_vp(dev_priv, vsp_priv->config.boot_processor);
@@ -340,6 +428,8 @@ int vsp_setup_fw(struct drm_psb_private *dev_priv)
 		return -1;
 	}
 
+	vsp_priv->ctrl->entry_kind = vsp_entry_init;
+
 	/* init fw */
 	vsp_start_func(dev_priv, vsp_priv->config.init_addr,
 		       vsp_priv->config.boot_processor);
@@ -349,16 +439,6 @@ int vsp_setup_fw(struct drm_psb_private *dev_priv)
 	do {
 		udelay(10);
 	} while (!vsp_is_idle(dev_priv, vsp_priv->config.boot_processor));
-
-	/* start fw */
-	vsp_start_func(dev_priv, vsp_priv->config.main_addr,
-		       vsp_priv->config.api_processor);
-	vsp_kick(dev_priv, vsp_priv->config.api_processor);
-
-	VSP_DEBUG("check number of queues\n");
-	VSP_DEBUG("queue number is %d\n",
-		  vsp_priv->ctrl->cmd_queue.size);
-	/* BUG_ON(vsp_priv->ctrl->cmd_queue.size < 2); */
 
 	/* enable irq */
 	psb_irq_preinstall_islands(dev_priv->dev, OSPM_VIDEO_VPP_ISLAND);
@@ -427,8 +507,7 @@ unsigned int vsp_set_firmware_vp(struct drm_psb_private *dev_priv,
 	char *input;
 
 	VSP_DEBUG("set firmware address in config reg 2\n");
-	CONFIG_REG_WRITE32(VSP_CONFIG_REG_D2,
-			   vsp_priv->firmware->offset);
+	vsp_priv->ctrl->firmware_addr = vsp_priv->firmware->offset;
 
 	VSP_DEBUG("enter special mode\n");
 	/* CSIM section on VP */
@@ -468,8 +547,7 @@ unsigned int vsp_set_firmware(struct drm_psb_private *dev_priv,
 		       vsp_priv->config.text_src,
 		       processor);
 
-	CONFIG_REG_WRITE32(VSP_CONFIG_REG_D2,
-			   vsp_priv->firmware->offset);
+	vsp_priv->ctrl->firmware_addr = vsp_priv->firmware->offset;
 
 	return 0;
 }

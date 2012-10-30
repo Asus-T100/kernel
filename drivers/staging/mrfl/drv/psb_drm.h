@@ -216,13 +216,8 @@ struct psb_ttm_fence_rep {
 
 typedef struct drm_psb_cmdbuf_arg {
 	uint64_t buffer_list;	/* List of buffers to validate */
-	uint64_t clip_rects;	/* See i915 counterpart */
 	uint64_t fence_arg;
 
-
-	uint32_t oom_handle;
-	uint32_t oom_offset;
-	uint32_t oom_size;
 
 	uint32_t cmdbuf_handle;	/* 2D Command buffer object or, */
 	uint32_t cmdbuf_offset;	/* rasterizer reg-value pairs */
@@ -680,15 +675,21 @@ struct drm_psb_msvdx_decode_status_t {
 #define DRM_PSB_GET_HDCP_STATUS		0x26
 #define DRM_PSB_ENABLE_HDCP		0x27
 #define DRM_PSB_DISABLE_HDCP		0x28
-#define DRM_PSB_GET_HDCP_LINK_STATUS	0x29
+#define DRM_PSB_CSC_GAMMA_SETTING	0x29
+#define DRM_PSB_ENABLE_HDCP_REPEATER	0x2c
+#define DRM_PSB_DISABLE_HDCP_REPEATER	0x2d
+#define DRM_PSB_HDCP_REPEATER_PRESENT	0x2e
 
 /* S3D IOCTLs */
+/*
 #define DRM_PSB_S3D_QUERY               0x2A
 #define DRM_PSB_S3D_PREMODESET          0x2B
 #define DRM_PSB_S3D_ENABLE              0x2C
+*/
 
 /* CSC IOCTLS */
-#define DRM_PSB_SET_CSC                 0x2D
+#define DRM_PSB_SET_CSC			0x2A
+#define DRM_PSB_GET_HDCP_LINK_STATUS	0x2b
 
     /*****************************
      *  BEGIN S3D OVERLAY
