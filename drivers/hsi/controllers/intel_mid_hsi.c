@@ -2375,31 +2375,8 @@ static int hsi_mid_setup(struct hsi_client *cl)
 			irq_cfg	|= ARASAN_IRQ_DMA_COMPLETE(rx_dma_chan[i]);
 	}
 
-	/* Check if the configuration is compatible with the current one (if
-	 * any) */
-	spin_lock_irqsave(&intel_hsi->hw_lock, flags);
-	if (!(intel_hsi->prg_cfg & ARASAN_RESET)) {
-		for (i = 0; i < HSI_MID_MAX_CHANNELS; i++)
-			if ((tx_dma_chan[i] != intel_hsi->tx_dma_chan[i]) ||
-			    (rx_dma_chan[i] != intel_hsi->rx_dma_chan[i]))
-				err = -EINVAL;
-
-		if (((irq_cfg & ARASAN_IRQ_ANY_DMA_COMPLETE) !=
-		     (intel_hsi->irq_cfg & ARASAN_IRQ_ANY_DMA_COMPLETE)) ||
-		    (clk_cfg	!= (intel_hsi->clk_cfg & ~ARASAN_TX_BREAK)) ||
-		    (prg_cfg	!= (intel_hsi->prg_cfg &
-				    ~(ARASAN_TX_ENABLE|ARASAN_RX_ENABLE))) ||
-		    (tx_fifo_cfg != intel_hsi->tx_fifo_cfg) ||
-		    (rx_fifo_cfg != intel_hsi->rx_fifo_cfg) ||
-		    (arb_cfg	!= intel_hsi->arb_cfg) ||
-		    (sz_cfg	!= intel_hsi->sz_cfg))
-			err = -EINVAL;
-
-		spin_unlock_irqrestore(&intel_hsi->hw_lock, flags);
-		return err;
-	}
-
 	/* Setup the HSI controller accordingly */
+	spin_lock_irqsave(&intel_hsi->hw_lock, flags);
 	intel_hsi->irq_cfg	 = irq_cfg;
 	intel_hsi->err_cfg	 = err_cfg;
 	intel_hsi->clk_cfg	 = clk_cfg;
