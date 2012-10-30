@@ -9,6 +9,10 @@ obj-$(CONFIG_SND_MFLD_MACHINE) += snd-soc-mfld-machine.o
 snd-soc-mfld-machine-gi-objs := mfld_common.o mfld_machine_gi.o
 obj-$(CONFIG_SND_MFLD_MACHINE_GI) += snd-soc-mfld-machine-gi.o
 
+# Yukkabeach board
+snd-soc-yukkabeach-machine-objs := mfld_common.o yukkabeach_machine.o
+obj-$(CONFIG_SND_YUKKABEACH_MACHINE) += snd-soc-yukkabeach-machine.o
+
 # Cloverview/Clovertrail+ board
 snd-soc-clv-machine-objs := clv_machine.o
 obj-$(CONFIG_SND_CLV_MACHINE) += snd-soc-clv-machine.o
