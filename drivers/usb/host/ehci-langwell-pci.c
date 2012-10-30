@@ -459,8 +459,10 @@ static int cloverview_sph_gpio_init(void)
 
 	board_id = ctp_board_id();
 
-	/*Only ctp_pr0/pr1 phone need to do CS and PHY operation */
-	if (board_id == CTP_BID_PR0) {
+	/* Bypass CTP_VV series for VV use different PHY(SMSC USB3340)
+	 * Do CS and reset operation for TI TUSB1212 PHY used by other boards
+	 */
+	if (board_id != CTP_BID_VV) {
 
 		if (gpio_is_valid(SPH_CS_N)) {
 			retval = gpio_request(SPH_CS_N, "SPH_CS_N");
@@ -509,7 +511,7 @@ static void cloverview_sph_gpio_cleanup(void)
 
 	board_id = ctp_board_id();
 
-	if (board_id == CTP_BID_PR0) {
+	if (board_id != CTP_BID_VV) {
 		if (gpio_is_valid(SPH_CS_N))
 			gpio_free(SPH_CS_N);
 		if (gpio_is_valid(SPH_RST_N))
