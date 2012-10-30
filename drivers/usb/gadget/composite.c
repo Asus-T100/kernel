@@ -855,6 +855,11 @@ static int set_config(struct usb_composite_dev *cdev,
 
 	/* when we return, be sure our power usage is valid */
 	power = c->bMaxPower ? (2 * c->bMaxPower) : CONFIG_USB_GADGET_VBUS_DRAW;
+
+#ifdef CONFIG_USB_GADGET_DWC3
+	if (c->bMaxPower && gadget->speed == USB_SPEED_SUPER)
+		power *= 4;
+#endif
 done:
 	usb_gadget_vbus_draw(gadget, power);
 
@@ -1775,6 +1780,10 @@ composite_resume(struct usb_gadget *gadget)
 
 		maxpower = cdev->config->bMaxPower;
 
+#ifdef CONFIG_USB_GADGET_DWC3
+	if (maxpower && gadget->speed == USB_SPEED_SUPER)
+		maxpower *= 4;
+#endif
 		usb_gadget_vbus_draw(gadget, maxpower ?
 			(2 * maxpower) : CONFIG_USB_GADGET_VBUS_DRAW);
 	}
