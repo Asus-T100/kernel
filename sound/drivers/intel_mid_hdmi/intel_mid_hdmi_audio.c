@@ -220,8 +220,7 @@ int snd_intelhad_init_audio_ctrl(struct snd_pcm_substream *substream,
 	union aud_ch_status_1 ch_stat1 = {.status_1_regval = 0};
 	union aud_buf_config buf_cfg = {.buf_cfgval = 0};
 	u8 channels;
-	int format, retval;
-	u32 data;
+	int format;
 
 	ch_stat0.status_0_regx.lpcm_id = (intelhaddata->aes_bits &
 						IEC958_AES0_NONAUDIO)>>1;
@@ -785,10 +784,14 @@ static int snd_intelhad_hw_free(struct snd_pcm_substream *substream)
 	pr_debug("snd_intelhad_hw_free called\n");
 
 	/* mark back the pages as cached/writeback region before the free */
-	addr = (unsigned long) substream->runtime->dma_area;
-	pages = (substream->runtime->dma_bytes + PAGE_SIZE - 1) / PAGE_SIZE;
-	set_memory_wb(addr, pages);
-	return snd_pcm_lib_free_pages(substream);
+	if (substream->runtime->dma_area != NULL) {
+		addr = (unsigned long) substream->runtime->dma_area;
+		pages = (substream->runtime->dma_bytes + PAGE_SIZE - 1) /
+								PAGE_SIZE;
+		set_memory_wb(addr, pages);
+		return snd_pcm_lib_free_pages(substream);
+	}
+	return 0;
 }
 
 /**
