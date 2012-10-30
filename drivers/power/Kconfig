@@ -16,6 +16,18 @@ config POWER_SUPPLY_CHARGER
 	  drivers to keep the charging logic outside and the charger driver
 	  just need to abstract the charger hardware
 
+config POWER_SUPPLY_CHARGING_ALGO_PSE
+	bool "PSE compliant charging algorithm"
+	help
+	  Say Y here to select PSE compliant charging algorithm. As per PSE
+	  standard the battery characteristics and thereby the charging rates
+	  can vary on different temperature zones. This config will enable PSE
+	  compliant charging algorithm with maintenance charging support. The
+	  algorithm can be selected by the charging framework based on the type
+	  of the battery charging profile.
+
+	depends on POWER_SUPPLY_CHARGER
+
 config POWER_SUPPLY_BATTID
 	bool "Power Supply Battery Identification Framework"
 	help
