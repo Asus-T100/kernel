@@ -486,6 +486,45 @@ static IMG_BOOL DRMLFBFlipBuffer(MRSTLFB_DEVINFO *psDevInfo,
 	return ret;
 }
 
+static IMG_BOOL DRMLFBFlipBlackScreen(MRSTLFB_DEVINFO *psDevInfo)
+{
+	struct drm_psb_private *dev_priv;
+	u32 offset;
+	u32 dspcntr;
+
+	if (!psDevInfo) {
+		DRM_ERROR("Invalid parameters\n");
+		return IMG_FALSE;
+	}
+
+	if (psDevInfo->ui32MainPipe == 0)
+		offset = 0x0000;
+	else if (psDevInfo->ui32MainPipe == 1)
+		offset = 0x1000;
+	else if (psDevInfo->ui32MainPipe == 2)
+		offset = 0x2000;
+	else
+		return IMG_FALSE;
+
+	dev_priv =
+		(struct drm_psb_private *)psDevInfo->psDrmDevice->dev_private;
+
+	if (!dev_priv) {
+		DRM_ERROR("Invalid parameters\n");
+		return IMG_FALSE;
+	}
+
+	PSB_WVDC32(0x0, DSPAPOS + offset);
+	PSB_WVDC32(dev_priv->init_screen_size, DSPASIZE + offset);
+	PSB_WVDC32(dev_priv->init_screen_stride, DSPASTRIDE + offset);
+	PSB_WVDC32(dev_priv->init_screen_offset, DSPALINOFF + offset);
+	dspcntr = PSB_RVDC32(DSPACNTR + offset) & (~DISPPLANE_PIXFORMAT_MASK);
+	PSB_WVDC32(dspcntr | DISPPLANE_32BPP_NO_ALPHA, DSPACNTR + offset);
+	PSB_WVDC32(dev_priv->init_screen_start, DSPASURF + offset);
+
+	return IMG_TRUE;
+}
+
 static IMG_BOOL DRMLFBFlipBuffer2(MRSTLFB_DEVINFO *psDevInfo,
 			MRSTLFB_SWAPCHAIN *psSwapChain,
 			struct mdfld_plane_contexts *psContexts)
@@ -1075,9 +1114,9 @@ static PVRSRV_ERROR DestroyDCSwapChain(IMG_HANDLE hDevice,
 
 	if (psDevInfo->ui32SwapChainNum == 0)
 	{
-
 		DRMLFBFlipBuffer(psDevInfo, NULL, &psDevInfo->sSystemBuffer);
 		MRSTLFBClearSavedFlip(psDevInfo);
+		DRMLFBFlipBlackScreen(psDevInfo);
 	}
 
 	if (psDevInfo->psCurrentSwapChain == psSwapChain ||
