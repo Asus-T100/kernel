@@ -19,6 +19,7 @@
 #include <linux/power_supply.h>
 #include <linux/thermal.h>
 #include "power_supply.h"
+#include "power_supply_charger.h"
 
 /* exported for the APM Power driver, APM emulation */
 struct class *power_supply_class;
@@ -63,6 +64,7 @@ static void power_supply_changed_work(struct work_struct *work)
 
 		class_for_each_device(power_supply_class, NULL, psy,
 				      __power_supply_changed_work);
+		power_supply_trigger_charging_handler(psy);
 
 		power_supply_update_leds(psy);
 
@@ -334,6 +336,8 @@ static int ps_set_cur_charge_cntl_limit(struct thermal_cooling_device *tcd,
 	ret = psy->set_property(psy,
 		POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT, &val);
 
+	psy_charger_throttle_charger(psy, state);
+
 	return ret;
 }
 
@@ -432,10 +436,16 @@ int power_supply_register(struct device *parent, struct power_supply *psy)
 	if (rc)
 		goto create_triggers_failed;
 
+	if (IS_CHARGER(psy))
+		rc = power_supply_register_charger(psy);
+	if (rc)
+		goto charger_register_failed;
+
 	power_supply_changed(psy);
 
 	goto success;
 
+charger_register_failed:
 create_triggers_failed:
 	psy_unregister_cooler(psy);
 register_cooler_failed:
@@ -455,6 +465,8 @@ void power_supply_unregister(struct power_supply *psy)
 {
 	cancel_work_sync(&psy->changed_work);
 	power_supply_remove_triggers(psy);
+	if (IS_CHARGER(psy))
+		power_supply_unregister_charger(psy);
 	psy_unregister_cooler(psy);
 	psy_unregister_thermal(psy);
 	wake_lock_destroy(&psy->work_wake_lock);
