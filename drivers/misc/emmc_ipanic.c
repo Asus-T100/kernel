@@ -834,12 +834,11 @@ static int emmc_ipanic(struct notifier_block *this, unsigned long event,
 	}
 	/* Write emmc ipanic partition header */
 	emmc_ipanic_write_pageheader(emmc);
-	printk(KERN_INFO "Panic log data wirttien done!\n");
+	printk(KERN_INFO "Panic log data written done!\n");
 out:
 #ifdef CONFIG_PREEMPT
 	sub_preempt_count(PREEMPT_ACTIVE);
 #endif
-	in_panic = 0;
 	return NOTIFY_DONE;
 }
 
