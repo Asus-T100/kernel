@@ -26,6 +26,21 @@ config SND_MFLD_MACHINE_GI
           Say Y if you have such a device
           If unsure select "N".
 
+config SND_YUKKABEACH_MACHINE
+	tristate "SOC Machine Audio driver for Intel Yukkbeach board"
+	depends on INTEL_SCU_IPC && INTEL_SCU_IPC_UTIL && X86 && GPIO_LANGWELL
+	depends on MSIC_GPADC
+	select SND_SOC_SN95031
+	select SND_SST_PLATFORM
+	select SND_INTEL_SST
+	default n
+	help
+          This adds support for ASoC machine driver for Yukkabeach board, based on
+	  Intel(R) MID Medfield platform(and Lexington board). This will create an
+	  alsa sound card.
+          Say Y if you have such a device
+          If unsure select "N".
+
 config SND_MRFLD_MACHINE
 	tristate "SOC Machine Audio driver for Intel Merrifield MID platform"
 	depends on INTEL_SCU_IPC && INTEL_SCU_IPC_UTIL && X86
