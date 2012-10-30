@@ -452,6 +452,7 @@ int mdfld_dsi_h8c7_cmd_power_on(struct mdfld_dsi_config *dsi_config)
 		/* turn on cabc */
 		h8c7_disable_cabc[1] = 0x3;
 		mdfld_dsi_send_mcs_long_hs(sender, h8c7_disable_cabc, 4, 0);
+		DRM_INFO("%s enable h8c7 cabc\n", __func__);
 	}
 power_err:
 	return err;
