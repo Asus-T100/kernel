@@ -194,6 +194,18 @@ union power_supply_propval {
 	const char *strval;
 };
 
+enum psy_throttle_action {
+
+	PSY_THROTTLE_DISABLE_CHARGER = 0,
+	PSY_THROTTLE_DISABLE_CHARGING,
+	PSY_THROTTLE_CC_LIMIT,
+	PSY_THROTTLE_INPUT_LIMIT,
+};
+
+struct power_supply_throttle {
+	enum psy_throttle_action throttle_action;
+	unsigned throttle_val;
+};
 struct power_supply {
 	const char *name;
 	enum power_supply_type type;
@@ -203,6 +215,7 @@ struct power_supply {
 	char **supplied_to;
 	unsigned long supported_cables;
 	size_t num_supplicants;
+	struct power_supply_throttle *throttle_states;
 
 	int (*get_property)(struct power_supply *psy,
 			    enum power_supply_property psp,
