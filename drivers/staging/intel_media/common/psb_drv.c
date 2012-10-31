@@ -3677,11 +3677,12 @@ static int psb_panel_register_write(struct file *file, const char *buffer,
 	int reg_val = 0;
 	char buf[256];
 	char op = '0';
+	char type = '0';
 	int  cmd = 0, start = 0, end = 0;
-	u8   par[256];
+	char par[256];
 	int  pnum = 0;
 	int  len = 0;
-	int  Offset = 0;
+	int  Offset = 0, par_offset = 0;
 	int  add_size = 0;
 	int  ret = 0;
 	u8 *pdata = NULL;
@@ -3705,20 +3706,25 @@ static int psb_panel_register_write(struct file *file, const char *buffer,
 		PSB_DEBUG_ENTRY("input = %s", buf);
 	}
 
-	sscanf(buf, "%c%x%x%x", &op, &cmd, &pnum, &par);
+	sscanf(buf, "%c%c%x%x", &op, &type, &cmd, &pnum);
+	par_offset = (sizeof("xx xx xx ") - 2);
+	memcpy(par, buf + par_offset, 256 - par_offset);
 
 	if (op != 'g' && op != 's') {
 		PSB_DEBUG_ENTRY("The input format is not right!\n");
 		PSB_DEBUG_ENTRY(
-			"g  cmd count (g a  1 :get panel status.)\n");
+			"sg: send generic. sm: send mcs. gg: get state\n");
 		PSB_DEBUG_ENTRY(
-			"s  cmd count par (s 2c 0:set write_mem_start.)\n");
+			"gg  cmd count (gg a 01 :get panel status.)\n");
 		PSB_DEBUG_ENTRY(
-			"s  00  count cmd+par(s 0 1 28:set display on)\n");
+			"sg  cmd count par (sg 2c 00:set write_mem_start.)\n");
+		PSB_DEBUG_ENTRY(
+			"sm  00  count cmd+par(sm 00 01 28:set display on)\n");
 		return -EINVAL;
 	}
-	PSB_DEBUG_ENTRY("op= %c cmd=%x pnum=%x par=%s",
-			op, cmd, pnum, par);
+	PSB_DEBUG_ENTRY("op= %c type= %c cmd=%x pnum=%x\n",
+			op, type, cmd, pnum);
+	PSB_DEBUG_ENTRY("par =%s", par);
 
 	if (op == 'g' && pnum == 0) {
 		PSB_DEBUG_ENTRY("get status must has parameter count!");
@@ -3774,14 +3780,29 @@ static int psb_panel_register_write(struct file *file, const char *buffer,
 	if (op == 's') {
 		struct mdfld_dsi_pkg_sender *sender =
 				 mdfld_dsi_get_pkg_sender(dsi_config);
-		if (cmd == 0 && pnum != 0)
-			ret = mdfld_dsi_send_gen_long_lp(sender, par, pnum, 0);
+		pdata = kmalloc(sizeof(u8)*pnum, GFP_KERNEL);
+		if (!pdata) {
+			DRM_ERROR("No memory for long_pkg data\n");
+			ret = -ENOMEM;
+			goto fun_exit;
+		}
+		for (i = 0; i < pnum; i++)
+			sscanf(par + i * 3, "%x", &pdata[i]);
+
+		if (cmd == 0 && pnum != 0) {
+			if (type == 'g')
+				ret = mdfld_dsi_send_gen_long_hs(
+						sender, pdata, pnum, 0);
+			else if (type == 'm')
+				ret = mdfld_dsi_send_mcs_long_hs(
+						sender, pdata, pnum, 0);
+		}
 		else {
 			if (cmd == 0x2c)
 				atomic64_inc(&sender->te_seq);
 			ret = mdfld_dsi_send_dcs(sender,
 					cmd,
-					par,
+					pdata,
 					pnum,
 					CMD_DATA_SRC_SYSTEM_MEM,
 					MDFLD_DSI_SEND_PACKAGE);
@@ -3793,6 +3814,7 @@ static int psb_panel_register_write(struct file *file, const char *buffer,
 			PSB_DEBUG_ENTRY("set panel status ok!\n");
 			sprintf(dev_priv->buf, "set panel status ok\n");
 		}
+		kfree(pdata);
 	}
 fun_exit:
 	/*allow entering dsr*/
