@@ -1077,10 +1077,16 @@ static int serial_hsu_startup(struct uart_port *port)
 
 	mutex_lock(&hsu_lock);
 	if (up->index == share_idx) {
+		int loop_round = 0;
 		struct uart_hsu_port *up1 = serial_hsu_ports[logic_idx];
 		/* wait for mux port to close */
-		while (up1->running)
-			msleep(1000);
+		while (up1->running) {
+			msleep(20);
+			if (++loop_round > 50) {
+				WARN(1, "waiting for mux port to close timeout 1s\n");
+				loop_round = 0;
+			}
+		}
 		intel_mid_hsu_switch(share_idx);
 	}
 	if (up->index == logic_idx) {
