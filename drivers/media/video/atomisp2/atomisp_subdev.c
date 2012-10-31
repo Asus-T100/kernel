@@ -479,10 +479,11 @@ static int isp_subdev_link_setup(struct media_entity *entity,
 	struct v4l2_subdev *sd = media_entity_to_v4l2_subdev(entity);
 	struct atomisp_sub_device *isp_sd = v4l2_get_subdevdata(sd);
 	struct atomisp_device *isp = isp_sd->isp;
+	unsigned int i;
 
 	switch (local->index | media_entity_type(remote->entity)) {
 	case ATOMISP_SUBDEV_PAD_SINK | MEDIA_ENT_T_V4L2_SUBDEV:
-		/* Read from the sensor CSI2-4p or CSI2-1p. */
+		/* Read from the sensor CSI2-ports. */
 		if (!(flags & MEDIA_LNK_FL_ENABLED)) {
 			isp_sd->input = ATOMISP_SUBDEV_INPUT_NONE;
 			break;
@@ -491,20 +492,22 @@ static int isp_subdev_link_setup(struct media_entity *entity,
 		if (isp_sd->input != ATOMISP_SUBDEV_INPUT_NONE)
 			return -EBUSY;
 
-		if (remote->entity == &isp->csi2_4p.subdev.entity)
-			isp_sd->input = ATOMISP_SUBDEV_INPUT_CSI2_4P;
-		else if (remote->entity == &isp->csi2_1p.subdev.entity)
-			isp_sd->input = ATOMISP_SUBDEV_INPUT_CSI2_1P;
-		else
-			isp_sd->input = ATOMISP_SUBDEV_INPUT_CSI2_4P;
+		for (i = 0; i < ATOMISP_CAMERA_NR_PORTS; i++) {
+			if (remote->entity != &isp->csi2_port[i].subdev.entity)
+				continue;
 
-		break;
+			isp_sd->input = ATOMISP_SUBDEV_INPUT_CSI2_PORT1 + i;
+			return 0;
+		}
+
+		return -EINVAL;
 
 	case ATOMISP_SUBDEV_PAD_SINK | MEDIA_ENT_T_DEVNODE:
 		/* read from memory */
 		if (flags & MEDIA_LNK_FL_ENABLED) {
-			if (isp_sd->input == ATOMISP_SUBDEV_INPUT_CSI2_4P
-			|| isp_sd->input == ATOMISP_SUBDEV_INPUT_CSI2_1P)
+			if (isp_sd->input >= ATOMISP_SUBDEV_INPUT_CSI2_PORT1 &&
+				isp_sd->input < (ATOMISP_SUBDEV_INPUT_CSI2_PORT1
+						+ ATOMISP_CAMERA_NR_PORTS))
 				return -EBUSY;
 			isp_sd->input = ATOMISP_SUBDEV_INPUT_MEMORY;
 		} else {

@@ -300,8 +300,7 @@ struct atomisp_device {
 
 	/* ISP modules */
 	struct atomisp_sub_device isp_subdev;
-	struct atomisp_mipi_csi2_device csi2_4p;
-	struct atomisp_mipi_csi2_device csi2_1p;
+	struct atomisp_mipi_csi2_device csi2_port[ATOMISP_CAMERA_NR_PORTS];
 	struct atomisp_tpg_device tpg;
 	struct atomisp_file_device file_dev;
 

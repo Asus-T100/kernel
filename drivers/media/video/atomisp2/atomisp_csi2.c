@@ -343,10 +343,7 @@ static int mipi_csi2_init_entities(struct atomisp_mipi_csi2_device *csi2,
 	int ret;
 
 	v4l2_subdev_init(sd, &csi2_ops);
-	if (port == ATOMISP_CAMERA_PORT_SECONDARY)
-		strlcpy(sd->name, "ATOM ISP CSI2-1p", sizeof(sd->name));
-	else if (port == ATOMISP_CAMERA_PORT_PRIMARY)
-		strlcpy(sd->name, "ATOM ISP CSI2-4p", sizeof(sd->name));
+	snprintf(sd->name, sizeof(sd->name), "ATOM ISP CSI2-port%d", port);
 
 	v4l2_set_subdevdata(sd, csi2);
 	sd->flags |= V4L2_SUBDEV_FL_HAS_DEVNODE;
@@ -400,20 +397,18 @@ void atomisp_mipi_csi2_cleanup(struct atomisp_device *isp)
 
 int atomisp_mipi_csi2_init(struct atomisp_device *isp)
 {
-	struct atomisp_mipi_csi2_device *csi2_4p = &isp->csi2_4p;
-	struct atomisp_mipi_csi2_device *csi2_1p = &isp->csi2_1p;
+	struct atomisp_mipi_csi2_device *csi2_port;
+	unsigned int i;
 	int ret;
 
-	csi2_4p->isp = isp;
-	csi2_1p->isp = isp;
+	for (i = 0; i < ATOMISP_CAMERA_NR_PORTS; i++) {
+		csi2_port = &isp->csi2_port[i];
+		csi2_port->isp = isp;
+		ret = mipi_csi2_init_entities(csi2_port, i);
+		if (ret < 0)
+			goto fail;
+	}
 
-	ret = mipi_csi2_init_entities(csi2_4p, ATOMISP_CAMERA_PORT_PRIMARY);
-	if (ret < 0)
-		goto fail;
-
-	ret = mipi_csi2_init_entities(csi2_1p, ATOMISP_CAMERA_PORT_SECONDARY);
-	if (ret < 0)
-		goto fail;
 	return 0;
 
 fail:

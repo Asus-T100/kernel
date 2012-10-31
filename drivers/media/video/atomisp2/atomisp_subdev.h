@@ -30,8 +30,12 @@ enum atomisp_subdev_input_entity {
 	ATOMISP_SUBDEV_INPUT_NONE,
 	ATOMISP_SUBDEV_INPUT_MEMORY,
 	ATOMISP_SUBDEV_INPUT_CSI2,
-	ATOMISP_SUBDEV_INPUT_CSI2_4P,
-	ATOMISP_SUBDEV_INPUT_CSI2_1P
+	/*
+	 * The following enum for CSI2 port must go together in one row.
+	 * Otherwise it breaks the code logic.
+	 */
+	ATOMISP_SUBDEV_INPUT_CSI2_PORT1,
+	ATOMISP_SUBDEV_INPUT_CSI2_PORT2,
 };
 
 #define ATOMISP_SUBDEV_PAD_SINK			0

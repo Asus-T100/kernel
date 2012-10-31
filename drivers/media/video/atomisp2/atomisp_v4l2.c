@@ -508,11 +508,13 @@ static int atomisp_subdev_probe(struct atomisp_device *isp)
 
 static void atomisp_unregister_entities(struct atomisp_device *isp)
 {
+	unsigned int i;
+
 	atomisp_subdev_unregister_entities(&isp->isp_subdev);
 	atomisp_tpg_unregister_entities(&isp->tpg);
 	atomisp_file_input_unregister_entities(&isp->file_dev);
-	atomisp_mipi_csi2_unregister_entities(&isp->csi2_1p);
-	atomisp_mipi_csi2_unregister_entities(&isp->csi2_4p);
+	for (i = 0; i < ATOMISP_CAMERA_NR_PORTS; i++)
+		atomisp_mipi_csi2_unregister_entities(&isp->csi2_port[i]);
 
 	v4l2_device_unregister(&isp->v4l2_dev);
 	media_device_unregister(&isp->media_dev);
@@ -521,7 +523,7 @@ static void atomisp_unregister_entities(struct atomisp_device *isp)
 static int atomisp_register_entities(struct atomisp_device *isp)
 {
 	int ret = 0;
-	int i = 0;
+	unsigned int i;
 	struct v4l2_subdev *subdev = NULL;
 	struct media_entity *input = NULL;
 	unsigned int flags;
@@ -556,24 +558,25 @@ static int atomisp_register_entities(struct atomisp_device *isp)
 	if (!IS_MRFLD) {
 		ret = atomisp_subdev_probe(isp);
 		if (ret < 0)
-			goto lane4_and_subdev_probe_failed;
+			goto csi_and_subdev_probe_failed;
 	}
 
 	/* Register internal entities */
-	ret =
-	atomisp_mipi_csi2_register_entities(&isp->csi2_4p, &isp->v4l2_dev);
-	if (ret < 0) {
-		v4l2_err(&atomisp_dev,
-			"atomisp_mipi_csi2_register_entities 4p\n");
-		goto lane4_and_subdev_probe_failed;
-	}
+	for (i = 0; i < ATOMISP_CAMERA_NR_PORTS; i++) {
+		ret = atomisp_mipi_csi2_register_entities(&isp->csi2_port[i],
+								&isp->v4l2_dev);
+		if (ret == 0)
+			continue;
 
-	ret =
-	atomisp_mipi_csi2_register_entities(&isp->csi2_1p, &isp->v4l2_dev);
-	if (ret < 0) {
+		/* error case */
 		v4l2_err(&atomisp_dev,
-			"atomisp_mipi_csi2_register_entities 1p\n");
-		goto lane1_failed;
+			"failed to register the CSI port: %d\n", i);
+		/* deregister all registered CSI ports */
+		while (i--)
+			atomisp_mipi_csi2_unregister_entities(
+							&isp->csi2_port[i]);
+
+		goto csi_and_subdev_probe_failed;
 	}
 
 	ret =
@@ -599,23 +602,19 @@ static int atomisp_register_entities(struct atomisp_device *isp)
 	}
 
 	for (i = 0; i < isp->input_cnt; i++) {
-		subdev = isp->inputs[i].camera;
-		switch (isp->inputs[i].port) {
-		case ATOMISP_CAMERA_PORT_PRIMARY:
-			input = &isp->csi2_4p.subdev.entity;
-			pad = CSI2_PAD_SINK;
-			flags = 0;
-			break;
-		case ATOMISP_CAMERA_PORT_SECONDARY:
-			input = &isp->csi2_1p.subdev.entity;
-			pad = CSI2_PAD_SINK;
-			flags = 0;
-			break;
-		default:
-			v4l2_dbg(1, dbg_level, &atomisp_dev,
-				  "isp->inputs type not supported\n");
-			break;
+		if (isp->inputs[i].port >= ATOMISP_CAMERA_NR_PORTS) {
+			v4l2_err(&atomisp_dev,
+					"isp->inputs port %d not supported\n",
+					isp->inputs[i].port);
+			ret = -EINVAL;
+			goto link_failed;
 		}
+
+		subdev = isp->inputs[i].camera;
+		input = &isp->csi2_port[isp->inputs[i].port].subdev.entity;
+		pad = CSI2_PAD_SINK;
+		flags = 0;
+
 		ret = media_entity_create_link(&subdev->entity, 0,
 			input, pad, flags);
 		if (ret < 0) {
@@ -659,10 +658,9 @@ subdev_register_failed:
 tpg_register_failed:
 	atomisp_file_input_unregister_entities(&isp->file_dev);
 file_input_register_failed:
-	atomisp_mipi_csi2_unregister_entities(&isp->csi2_1p);
-lane1_failed:
-	atomisp_mipi_csi2_unregister_entities(&isp->csi2_4p);
-lane4_and_subdev_probe_failed:
+	for (i = 0; i < ATOMISP_CAMERA_NR_PORTS; i++)
+		atomisp_mipi_csi2_unregister_entities(&isp->csi2_port[i]);
+csi_and_subdev_probe_failed:
 	v4l2_device_unregister(&isp->v4l2_dev);
 v4l2_device_failed:
 	media_device_unregister(&isp->media_dev);
@@ -672,6 +670,7 @@ v4l2_device_failed:
 static int atomisp_initialize_modules(struct atomisp_device *isp)
 {
 	int ret;
+	unsigned int i;
 
 	ret = atomisp_mipi_csi2_init(isp);
 	if (ret < 0) {
@@ -699,22 +698,16 @@ static int atomisp_initialize_modules(struct atomisp_device *isp)
 	}
 
 	/* connet submoduels */
-	ret = media_entity_create_link(
-			&isp->csi2_4p.subdev.entity,
-			CSI2_PAD_SOURCE,
-			&isp->isp_subdev.subdev.entity,
-			ATOMISP_SUBDEV_PAD_SINK,
-			0);
-	if (ret < 0)
-		goto error_link;
-	ret = media_entity_create_link(
-			&isp->csi2_1p.subdev.entity,
-			CSI2_PAD_SOURCE,
-			&isp->isp_subdev.subdev.entity,
-			ATOMISP_SUBDEV_PAD_SINK,
-			0);
-	if (ret < 0)
-		goto error_link;
+	for (i = 0; i < ATOMISP_CAMERA_NR_PORTS; i++) {
+		ret = media_entity_create_link(
+				&isp->csi2_port[i].subdev.entity,
+				CSI2_PAD_SOURCE,
+				&isp->isp_subdev.subdev.entity,
+				ATOMISP_SUBDEV_PAD_SINK,
+				0);
+		if (ret < 0)
+			goto error_link;
+	}
 	return 0;
 
 error_link:
