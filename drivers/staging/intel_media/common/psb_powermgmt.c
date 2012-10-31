@@ -495,6 +495,10 @@ disable these MSIC power rails permanently.  */
 		intel_scu_ipc_iowrite8(MSIC_VHDMICNT, VHDMI_OFF);
 		intel_scu_ipc_iowrite8(MSIC_VCC330CNT, VCC330_OFF);
 	}
+	if (IS_CTP(dev)) {
+		/* turn off HDMI power rails */
+		intel_scu_ipc_iowrite8(MSIC_VCC330CNT, VCC330_OFF);
+	}
 #endif
 	if (IS_CTP(dev))
 		gfx_register_program(dev);
