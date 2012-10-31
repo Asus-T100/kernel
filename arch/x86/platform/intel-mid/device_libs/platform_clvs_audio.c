@@ -15,28 +15,25 @@
 #include <linux/scatterlist.h>
 #include <linux/init.h>
 #include <linux/sfi.h>
+#include <asm/platform_sst_audio.h>
 #include <linux/platform_device.h>
 #include <asm/intel-mid.h>
 #include "platform_ipc.h"
-#include "platform_clvs_audio.h"
+#include <asm/platform_clvs_audio.h>
+
+static struct clvcs_audio_platform_data clvcs_audio_pdata = {
+	.spid = &spid,
+};
 
 void *clvs_audio_platform_data(void *info)
 {
 	struct platform_device *pdev;
 	int ret;
 
-	pdev = platform_device_alloc("sst-platform", -1);
-	if (!pdev) {
-		pr_err("failed to allocate audio platform device\n");
+	ret = add_sst_platform_device();
+	if (ret < 0)
 		return NULL;
-	}
 
-	ret = platform_device_add(pdev);
-	if (ret) {
-		pr_err("failed to add audio platform device\n");
-		platform_device_put(pdev);
-		return NULL;
-	}
 	pdev = platform_device_alloc("compress-sst", -1);
 	if (!pdev) {
 		pr_err("failed to allocate compress-sst platform device\n");
@@ -64,5 +61,5 @@ void *clvs_audio_platform_data(void *info)
 		return NULL;
 	}
 
-	return NULL;
+	return &clvcs_audio_pdata;
 }

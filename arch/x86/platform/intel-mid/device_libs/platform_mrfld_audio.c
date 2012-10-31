@@ -15,6 +15,7 @@
 #include <linux/scatterlist.h>
 #include <linux/init.h>
 #include <linux/sfi.h>
+#include <asm/platform_sst_audio.h>
 #include <linux/platform_device.h>
 #include <linux/mfd/intel_msic.h>
 #include <linux/i2c.h>
@@ -26,21 +27,13 @@ void *mrfld_audio_platform_data(void *info)
 {
 	int bus, ret;
 	struct i2c_board_info i2c_info;
-	struct platform_device *pdev;
 
 	pr_debug("in mrfld_audio_platform_data\n");
 
-	pdev = platform_device_alloc("sst-platform", -1);
-	if (!pdev) {
-		pr_err("failed to allocate audio platform device\n");
+	ret = add_sst_platform_device();
+	if (ret < 0)
 		return NULL;
-	}
-	ret = platform_device_add(pdev);
-	if (ret) {
-		pr_err("failed to add audio platform device\n");
-		platform_device_put(pdev);
-		return NULL;
-	}
+
 	/*FIXME: remove when using the POR codec for merrifield*/
 	memset(&i2c_info, 0, sizeof(i2c_info));
 	bus = 1;

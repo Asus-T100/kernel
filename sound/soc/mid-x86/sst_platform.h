@@ -27,6 +27,12 @@
 #ifndef __SST_PLATFORMDRV_H__
 #define __SST_PLATFORMDRV_H__
 
+struct sst_data {
+	struct platform_device *pdev;
+	struct sst_platform_data *pdata;
+	unsigned int     lpe_mixer_input_ihf;
+	unsigned int     lpe_mixer_input_hs;
+};
 
 enum sst_audio_device_type {
 	SND_SST_DEVICE_HEADSET = 1,
@@ -117,6 +123,6 @@ struct sst_device {
 
 int sst_register_dsp(struct sst_device *sst);
 int sst_unregister_dsp(struct sst_device *sst);
-/* FIXME: remove once vibra becomes PCI driver */
-void intel_sst_pwm_suspend(unsigned int suspend);
+int sst_platform_clv_init(struct snd_soc_platform *platform);
+int sst_set_mixer_param(unsigned int device_input_mixer);
 #endif

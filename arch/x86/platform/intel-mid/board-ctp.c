@@ -35,12 +35,12 @@
 #include "device_libs/platform_pmic_audio.h"
 #include "device_libs/platform_msic_adc.h"
 #include "device_libs/platform_msic_gpio.h"
-#include "device_libs/platform_clvs_audio.h"
+#include <asm/platform_clvs_audio.h>
 #include "device_libs/platform_msic_power_btn.h"
 #include "device_libs/platform_msic_vdd.h"
 /*
- * I2C devices
- */
+* I2C devices
+*/
 
 #include "device_libs/platform_lsm303.h"
 #include "device_libs/platform_apds990x.h"

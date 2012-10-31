@@ -17,6 +17,7 @@
 #include <linux/sfi.h>
 #include <sound/msic_audio_platform.h>
 #include <sound/sn95031_platform.h>
+#include <asm/platform_sst_audio.h>
 #include <linux/platform_device.h>
 #include <linux/mfd/intel_msic.h>
 #include <asm/intel-mid.h>
@@ -59,18 +60,9 @@ void *msic_audio_platform_data(void *info)
 	struct platform_device *pdev;
 	struct sfi_device_table_entry *entry = info;
 
-	pdev = platform_device_alloc("sst-platform", -1);
-	if (!pdev) {
-		pr_err("failed to allocate audio platform device\n");
+	ret = add_sst_platform_device();
+	if (ret < 0)
 		return NULL;
-	}
-
-	ret = platform_device_add(pdev);
-	if (ret) {
-		pr_err("failed to add audio platform device\n");
-		platform_device_put(pdev);
-		return NULL;
-	}
 
 	pdev = platform_device_alloc("hdmi-audio", -1);
 	if (!pdev) {

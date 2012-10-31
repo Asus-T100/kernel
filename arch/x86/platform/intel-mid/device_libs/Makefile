@@ -8,6 +8,7 @@ obj-y									+= platform_msic_audio.o
 obj-y									+= platform_clvs_audio.o
 obj-y									+= platform_msic_gpio.o
 obj-y									+= platform_msic_ocd.o
+obj-y									+= platform_sst_audio.o
 obj-$(subst m,y,$(CONFIG_SENSORS_MID_VDD))				+= platform_msic_vdd.o
 obj-$(subst m,y,$(CONFIG_MSIC_GPADC))					+= platform_msic_adc.o
 obj-$(subst m,y,$(CONFIG_BATTERY_INTEL_MDF))				+= platform_msic_battery.o
