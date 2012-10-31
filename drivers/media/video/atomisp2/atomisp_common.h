@@ -75,58 +75,68 @@ extern int mipicsi_flag;
 extern int pad_w;
 extern int pad_h;
 
+/* common register definitions */
 #define PUNIT_PORT		0x04
 
-#define IUNIT_PORT_MDFLD		0x08
-/*
- * Fixing me!
- * Not that IUnit port change to 0x1C according to
- * IUnit HAS 0.95_R6, but currently VP4.0.0 still
- * use the old 0x15 value
- */
-#define IUNIT_PORT_MRFLD		0x15
-
-#define IUNITPHY_PORT		0x09
-
-#define CSI_RCOMP		0x00
 #define PCICMDSTS		0x01
-#define CSI_AFE			0x02
-#define CSI_CONTROL		0x03
-#define ISPMMADR		0x04
 #define INTR			0x0f
 #define MSI_CAPID		0x24
 #define MSI_ADDRESS		0x25
 #define MSI_DATA		0x26
 #define INTR_CTL		0x27
-#define PMCS			0x35
-#define CG_DIS			0x36
-#define I_CONTROL		0x3f
-#define OR1			0x72
-#define APMBA			0x7a
 
 #define PCI_MSI_CAPID		0x90
 #define PCI_MSI_ADDR		0x94
 #define PCI_MSI_DATA		0x98
 #define PCI_INTERRUPT_CTRL	0x9C
-#define PCI_PRI_D0		0xD0
-#define PCI_PMCS		0xD4
-#define PCI_CG_DIS		0xD8
-#define PCI_I_CONTROL		0xFC
+#define PCI_I_CONTROL		0xfc
+
+/* MFLD specific register definitions */
+#define MFLD_IUNITPHY_PORT	0x09
+
+#define MFLD_CSI_RCOMP		0x00
+#define MFLD_CSI_AFE		0x02
+#define MFLD_CSI_CONTROL	0x03
+#define MFLD_CG_DIS		0x36
+#define MFLD_OR1		0x72
+
+#define MFLD_PCI_PMCS		0xd4
+#define MFLD_PCI_CG_DIS		0xd8
+
 /*
  * Enables the combining of adjacent 32-byte read requests to the same
  * cache line. When cleared, each 32-byte read request is sent as a
  * separate request on the IB interface.
  */
-#define PCI_I_CONTROL_ENABLE_READ_COMBINING	0x10000
+#define MFLD_PCI_I_CONTROL_ENABLE_READ_COMBINING	0x10000
 
 /*
  * Enables the combining of adjacent 32-byte write requests to the same
  * cache line. When cleared, each 32-byte write request is sent as a
  * separate request on the IB interface.
  */
-#define PCI_I_CONTROL_ENABLE_WRITE_COMBINING	0x20000
+#define MFLD_PCI_I_CONTROL_ENABLE_WRITE_COMBINING	0x20000
 
-#define PCI_MEM_ACCESS		0x100002
+/* MRFLD specific register definitions */
+#define MRFLD_CSI_AFE		0x39
+#define MRFLD_CSI_CONTROL	0x3a
+#define MRFLD_CSI_RCOMP		0x3d
+
+#define MRFLD_PCI_PMCS		0x84
+
+/*
+ * Enables the combining of adjacent 32-byte read requests to the same
+ * cache line. When cleared, each 32-byte read request is sent as a
+ * separate request on the IB interface.
+ */
+#define MRFLD_PCI_I_CONTROL_ENABLE_READ_COMBINING	0x1
+
+/*
+ * Enables the combining of adjacent 32-byte write requests to the same
+ * cache line. When cleared, each 32-byte write request is sent as a
+ * separate request on the IB interface.
+ */
+#define MRFLD_PCI_I_CONTROL_ENABLE_WRITE_COMBINING	0x2
 
 extern int atomisp_pci_vendor;
 extern int atomisp_pci_device;

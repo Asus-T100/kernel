@@ -1270,9 +1270,9 @@ static int atomisp_streamon(struct file *file, void *fh,
 	 * GFX performance (freq) while camera is up to prevent peak
 	 * current issues. this is done by setting the camera busy bit.
 	 */
-	msg_ret = intel_mid_msgbus_read32(PUNIT_PORT, OR1);
+	msg_ret = intel_mid_msgbus_read32(PUNIT_PORT, MFLD_OR1);
 	msg_ret |= 0x100;
-	intel_mid_msgbus_write32(PUNIT_PORT, OR1, msg_ret);
+	intel_mid_msgbus_write32(PUNIT_PORT, MFLD_OR1, msg_ret);
 #endif
 
 	ret = atomisp_get_css_pipe_id(isp, &css_pipe_id);
@@ -1485,9 +1485,9 @@ stopsensor:
 
 #ifdef PUNIT_CAMERA_BUSY
 	/* Free camera_busy bit */
-	msg_ret = intel_mid_msgbus_read32(PUNIT_PORT, OR1);
+	msg_ret = intel_mid_msgbus_read32(PUNIT_PORT, MFLD_OR1);
 	msg_ret &= ~0x100;
-	intel_mid_msgbus_write32(PUNIT_PORT, OR1, msg_ret);
+	intel_mid_msgbus_write32(PUNIT_PORT, MFLD_OR1, msg_ret);
 #endif
 
 	/*
