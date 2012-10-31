@@ -477,13 +477,11 @@ static int atomisp_open(struct file *file)
 	}
 
 #ifdef CONFIG_PM
-	if (!IS_MRFLD) {
-		/* runtime power management, turn on ISP */
-		if (pm_runtime_get_sync(vdev->v4l2_dev->dev) < 0) {
-			v4l2_err(&atomisp_dev,
-				 "Failed to power on device\n");
-			goto runtime_get_failed;
-		}
+	/* runtime power management, turn on ISP */
+	if (pm_runtime_get_sync(vdev->v4l2_dev->dev) < 0) {
+		v4l2_err(&atomisp_dev,
+				"Failed to power on device\n");
+		goto runtime_get_failed;
 	}
 #endif
 	device_set_base_address(0);
@@ -519,7 +517,12 @@ static int atomisp_open(struct file *file)
 	/* CSS has default zoom factor of 61x61, we want no zoom
 	   because the zoom binary for capture is broken (XNR). */
 	v4l2_dbg(2, dbg_level, &atomisp_dev, "sh_css_init success\n");
-	sh_css_set_zoom_factor(64, 64);
+	if (IS_MRFLD)
+		sh_css_set_zoom_factor(MRFLD_MAX_ZOOM_FACTOR,
+					MRFLD_MAX_ZOOM_FACTOR);
+	else
+		sh_css_set_zoom_factor(MFLD_MAX_ZOOM_FACTOR,
+					MFLD_MAX_ZOOM_FACTOR);
 
 	/* Initialize the CSS debug trace verbosity level. To change
 	 * the verbosity level, change the definition of this macro
@@ -538,8 +541,7 @@ done:
 css_init_failed:
 	v4l2_err(&atomisp_dev, "css init failed\n");
 #ifdef CONFIG_PM
-	if (!IS_MRFLD)
-		pm_runtime_put(vdev->v4l2_dev->dev);
+	pm_runtime_put(vdev->v4l2_dev->dev);
 #endif
 runtime_get_failed:
 	atomisp_uninit_pipe(pipe);

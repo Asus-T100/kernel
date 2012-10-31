@@ -398,6 +398,92 @@ static int atomisp_resume(struct device *dev)
 }
 #endif
 
+static int mrfld_csi_lane_config(struct atomisp_device *isp)
+{
+	static const u8 mipi_lanes[MRFLD_PORT_CONFIG_NUM][MRFLD_PORT_NUM] = {
+		{4, 1, 0},
+		{3, 1, 0},
+		{2, 1, 0},
+		{1, 1, 0},
+		{2, 1, 2},
+		{3, 1, 1},
+		{2, 1, 1},
+		{1, 1, 1}
+	};
+
+	unsigned int i, j;
+	u8 sensor_lanes[MRFLD_PORT_NUM] = {0};
+	u32 data;
+
+	for (i = 0; i < isp->input_cnt; i++) {
+		struct camera_mipi_info *mipi_info;
+
+		if (isp->inputs[i].type != RAW_CAMERA &&
+			isp->inputs[i].type != SOC_CAMERA)
+			continue;
+
+		mipi_info = atomisp_to_sensor_mipi_info(isp->inputs[i].camera);
+		if (!mipi_info)
+			continue;
+
+		switch (mipi_info->port) {
+		case ATOMISP_CAMERA_PORT_PRIMARY:
+			sensor_lanes[0] = mipi_info->num_lanes;
+			break;
+		case ATOMISP_CAMERA_PORT_SECONDARY:
+			sensor_lanes[1] = mipi_info->num_lanes;
+			break;
+		case ATOMISP_CAMERA_PORT_THIRD:
+			sensor_lanes[2] = mipi_info->num_lanes;
+			break;
+		default:
+			v4l2_err(&atomisp_dev,
+				"%s: invalid port: %d for the %dth sensor\n",
+				__func__, mipi_info->port, i);
+			break;
+		}
+	}
+
+	for (i = 0; i < MRFLD_PORT_CONFIG_NUM; i++) {
+		for (j = 0; j < MRFLD_PORT_NUM; j++)
+			if (sensor_lanes[j]
+				&& sensor_lanes[j] != mipi_lanes[i][j])
+				break;
+
+		if (j == MRFLD_PORT_NUM)
+			break;	/* matched setting is found */
+	}
+
+	if (i == MRFLD_PORT_CONFIG_NUM) {
+		v4l2_err(&atomisp_dev,
+			"%s: could not find the CSI port setting for %d-%d-%d\n",
+			__func__, sensor_lanes[0],
+			sensor_lanes[1], sensor_lanes[2]);
+		return -EINVAL;
+	}
+
+	pci_read_config_dword(isp->pdev, MRFLD_PCI_CSI_CONTROL, &data);
+	v4l2_dbg(3, dbg_level, &atomisp_dev,
+				"%s: original CSI_CONTROL is 0x%x\n",
+				__func__, data);
+	data &= ~MRFLD_PORT_CONFIG_MASK;
+	data |= (i << MRFLD_PORT_CONFIGCODE_SHIFT)
+		| (mipi_lanes[i][2] ? 0 : (1 << MRFLD_PORT3_ENABLE_SHIFT))
+		| (((1 << mipi_lanes[i][0]) - 1) << MRFLD_PORT1_LANES_SHIFT)
+		| (((1 << mipi_lanes[i][1]) - 1) << MRFLD_PORT2_LANES_SHIFT)
+		| (((1 << mipi_lanes[i][2]) - 1) << MRFLD_PORT3_LANES_SHIFT);
+
+	pci_write_config_dword(isp->pdev, MRFLD_PCI_CSI_CONTROL, data);
+
+	v4l2_dbg(3, dbg_level, &atomisp_dev,
+		"%s: the portconfig is %d-%d-%d, CSI_CONTROL is 0x%x\n",
+		__func__, mipi_lanes[i][0], mipi_lanes[i][1],
+		mipi_lanes[i][2], data);
+
+	return 0;
+}
+
+
 static int atomisp_subdev_probe(struct atomisp_device *isp)
 {
 	struct atomisp_platform_data *pdata = NULL;
@@ -407,16 +493,7 @@ static int atomisp_subdev_probe(struct atomisp_device *isp)
 	struct i2c_board_info *board_info;
 	int raw_index = -1;
 
-	/*
-	 * fixing me!
-	 * currently no function intel_get_v4l2_subdev_table()
-	 * defined in board specific source code
-	 */
-#ifndef CONFIG_X86_MRFLD
 	pdata = (struct atomisp_platform_data *)intel_get_v4l2_subdev_table();
-#else
-	pdata = NULL;
-#endif
 	if (pdata == NULL) {
 		v4l2_err(&atomisp_dev, "no platform data available\n");
 		return -ENODEV;
@@ -503,6 +580,10 @@ static int atomisp_subdev_probe(struct atomisp_device *isp)
 		       "no camera attached or fail to detect\n");
 		return -ENODEV;
 	}
+
+	if (IS_MRFLD)
+		return mrfld_csi_lane_config(isp);
+
 	return 0;
 }
 
@@ -550,16 +631,9 @@ static int atomisp_register_entities(struct atomisp_device *isp)
 		goto v4l2_device_failed;
 	}
 
-	/*
-	 * fixing me!
-	 * not sub device exists on
-	 * mrfld vp
-	 */
-	if (!IS_MRFLD) {
-		ret = atomisp_subdev_probe(isp);
-		if (ret < 0)
-			goto csi_and_subdev_probe_failed;
-	}
+	ret = atomisp_subdev_probe(isp);
+	if (ret < 0)
+		goto csi_and_subdev_probe_failed;
 
 	/* Register internal entities */
 	for (i = 0; i < ATOMISP_CAMERA_NR_PORTS; i++) {
@@ -815,17 +889,10 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 	isp->hw_contex.pci_root = pci_get_bus_and_slot(0, 0);
 
 	/* Load isp firmware from user space */
-	/*
-	 * fixing me:
-	 * MRFLD VP does not use firmware loading
-	 * from file system
-	 */
-	if (!IS_MRFLD) {
-		isp->firmware = load_firmware(&dev->dev);
-		if (!isp->firmware) {
-			v4l2_err(&atomisp_dev, "Load firmwares failed\n");
-			goto load_fw_fail;
-		}
+	isp->firmware = load_firmware(&dev->dev);
+	if (!isp->firmware) {
+		v4l2_err(&atomisp_dev, "Load firmwares failed\n");
+		goto load_fw_fail;
 	}
 
 	err = atomisp_initialize_modules(isp);
@@ -890,16 +957,21 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 
 	pm_qos_add_request(&isp->pm_qos, PM_QOS_CPU_DMA_LATENCY,
 			   PM_QOS_DEFAULT_VALUE);
-	/*
-	 * fixing me!
-	 * MRFLD VP does not implement
-	 * PM Core
-	 */
-#ifdef CONFIG_PM
-	if (!IS_MRFLD) {
-		pm_runtime_put_noidle(&dev->dev);
-		pm_runtime_allow(&dev->dev);
+
+	if (IS_MRFLD) {
+		/*
+		 * for MRFLD, Software/firmware needs to write a 1 to bit 0 of
+		 * the register at CSI_RECEIVER_SELECTION_REG to enable SH CSI
+		 * backend write 0 will enable Arasan CSI backend, which has
+		 * bugs(like sighting:4567697 and 4567699) and will be removed
+		 * in B0
+		 */
+		device_store_uint32(MRFLD_CSI_RECEIVER_SELECTION_REG, 1);
 	}
+
+#ifdef CONFIG_PM
+	pm_runtime_put_noidle(&dev->dev);
+	pm_runtime_allow(&dev->dev);
 #endif
 	isp->sw_contex.probed = true;
 
@@ -948,14 +1020,7 @@ static void __devexit atomisp_pci_remove(struct pci_dev *dev)
 	pci_release_region(dev, 0);
 	pci_disable_device(dev);
 
-	/* in case user forget to close */
-	/*
-	 * fixing me:
-	 * MRFLD VP does not use firmware loading
-	 * from file system
-	 */
-	if (!IS_MRFLD)
-		release_firmware(isp->firmware);
+	release_firmware(isp->firmware);
 
 	kfree(isp);
 }

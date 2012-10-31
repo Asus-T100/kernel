@@ -343,6 +343,10 @@ void atomisp_set_term_en_count(struct atomisp_device *isp)
 	uint32_t val;
 	int pwn_b0 = 0;
 
+	/* For MRFLD, there is no Tescape-clock cycles control. */
+	if (IS_MRFLD)
+		return;
+
 	if (isp->pdev->device == 0x0148 && isp->pdev->revision < 0x6 &&
 		__intel_mid_cpu_chip == INTEL_MID_CPU_CHIP_PENWELL)
 		pwn_b0 = 1;
@@ -2691,18 +2695,17 @@ int atomisp_shading_correction(struct atomisp_device *isp, int flag,
 int atomisp_digital_zoom(struct atomisp_device *isp, int flag, __s32 *value)
 {
 	u32 zoom;
+	unsigned int max_zoom =
+		IS_MRFLD ? MRFLD_MAX_ZOOM_FACTOR : MFLD_MAX_ZOOM_FACTOR;
 
 	if (flag == 0) {
 		sh_css_get_zoom_factor(&zoom, &zoom);
-		*value = 64 - zoom;
+		*value = max_zoom - zoom;
 	} else {
 		if (*value < 0)
 			return -EINVAL;
 
-		zoom = *value;
-		if (zoom >= 64)
-			zoom = 64;
-		zoom = 64 - zoom;
+		zoom = max_zoom - min_t(u32, max_zoom, (*value));
 
 		v4l2_dbg(3, dbg_level, &atomisp_dev, "%s, zoom: %d\n",
 			 __func__, zoom);
@@ -2910,10 +2913,19 @@ static bool atomisp_input_format_is_raw(enum atomisp_input_format format)
 }
 static mipi_port_ID_t __get_mipi_port(enum atomisp_camera_port port)
 {
-	if (port == ATOMISP_CAMERA_PORT_PRIMARY)
+	switch (port) {
+	case ATOMISP_CAMERA_PORT_PRIMARY:
 		return MIPI_PORT0_ID;
-	else
+	case ATOMISP_CAMERA_PORT_SECONDARY:
 		return MIPI_PORT1_ID;
+	case ATOMISP_CAMERA_PORT_THIRD:
+		if (MIPI_PORT1_ID + 1 != N_MIPI_PORT_ID)
+			return MIPI_PORT1_ID + 1;
+		/* go through down for else case */
+	default:
+		v4l2_err(&atomisp_dev, "unsupported port: %d\n", port);
+		return MIPI_PORT0_ID;
+	}
 }
 
 static inline void
@@ -3649,16 +3661,38 @@ int atomisp_save_iunit_reg(struct atomisp_device *isp)
 			      &isp->hw_contex.intr);
 	pci_read_config_dword(dev, PCI_INTERRUPT_CTRL,
 			      &isp->hw_contex.interrupt_control);
-	pci_read_config_dword(dev, MFLD_PCI_PMCS,
-			      &isp->hw_contex.pmcs);
-	pci_read_config_dword(dev, MFLD_PCI_CG_DIS,
-			      &isp->hw_contex.cg_dis);
-	isp->hw_contex.csi_rcomp_config = intel_mid_msgbus_read32(
-			MFLD_IUNITPHY_PORT, MFLD_CSI_RCOMP);
-	isp->hw_contex.csi_afe_dly = intel_mid_msgbus_read32(
-			MFLD_IUNITPHY_PORT, MFLD_CSI_AFE);
-	isp->hw_contex.csi_control = intel_mid_msgbus_read32(
-			MFLD_IUNITPHY_PORT, MFLD_CSI_CONTROL);
+
+	if (IS_MRFLD) {
+		pci_read_config_dword(dev, MRFLD_PCI_PMCS,
+				      &isp->hw_contex.pmcs);
+
+		pci_read_config_dword(dev, MRFLD_PCI_CSI_ACCESS_CTRL_VIOL,
+				      &isp->hw_contex.csi_access_viol);
+		pci_read_config_dword(dev, MRFLD_PCI_CSI_RCOMP_CONTROL,
+				      &isp->hw_contex.csi_rcomp_config);
+		pci_read_config_dword(dev, MRFLD_PCI_CSI_AFE_TRIM_CONTROL,
+				      &isp->hw_contex.csi_afe_dly);
+		pci_read_config_dword(dev, MRFLD_PCI_CSI_CONTROL,
+				      &isp->hw_contex.csi_control);
+		pci_read_config_dword(dev, MRFLD_PCI_CSI_AFE_RCOMP_CONTROL,
+				      &isp->hw_contex.csi_afe_rcomp_config);
+		pci_read_config_dword(dev, MRFLD_PCI_CSI_AFE_HS_CONTROL,
+				      &isp->hw_contex.csi_afe_hs_control);
+		pci_read_config_dword(dev, MRFLD_PCI_CSI_DEADLINE_CONTROL,
+				      &isp->hw_contex.csi_deadline_control);
+
+	} else {
+		pci_read_config_dword(dev, MFLD_PCI_PMCS,
+				      &isp->hw_contex.pmcs);
+		pci_read_config_dword(dev, MFLD_PCI_CG_DIS,
+				      &isp->hw_contex.cg_dis);
+		isp->hw_contex.csi_rcomp_config = intel_mid_msgbus_read32(
+				MFLD_IUNITPHY_PORT, MFLD_CSI_RCOMP);
+		isp->hw_contex.csi_afe_dly = intel_mid_msgbus_read32(
+				MFLD_IUNITPHY_PORT, MFLD_CSI_AFE);
+		isp->hw_contex.csi_control = intel_mid_msgbus_read32(
+				MFLD_IUNITPHY_PORT, MFLD_CSI_CONTROL);
+	}
 
 	return 0;
 }
@@ -3666,7 +3700,7 @@ int atomisp_save_iunit_reg(struct atomisp_device *isp)
 int atomisp_restore_iunit_reg(struct atomisp_device *isp)
 {
 	struct pci_dev *dev = isp->pdev;
-	u32 isp_i_control_reg;
+	u32 reg32;
 
 	v4l2_dbg(3, dbg_level, &atomisp_dev, "%s\n", __func__);
 
@@ -3679,24 +3713,65 @@ int atomisp_restore_iunit_reg(struct atomisp_device *isp)
 	pci_write_config_byte(dev, PCI_INTERRUPT_LINE, isp->hw_contex.intr);
 	pci_write_config_dword(dev, PCI_INTERRUPT_CTRL,
 			       isp->hw_contex.interrupt_control);
-	pci_write_config_dword(dev, MFLD_PCI_PMCS, isp->hw_contex.pmcs);
-	pci_write_config_dword(dev, MFLD_PCI_CG_DIS, isp->hw_contex.cg_dis);
 
-	/*
-	 * The default value is not 1 for all suported chips. Hence
-	 * enable the read/write combining explicitly.
-	 */
-	pci_read_config_dword(dev, PCI_I_CONTROL, &isp_i_control_reg);
-	isp_i_control_reg |= MFLD_PCI_I_CONTROL_ENABLE_READ_COMBINING
-			     | MFLD_PCI_I_CONTROL_ENABLE_WRITE_COMBINING;
-	pci_write_config_dword(dev, PCI_I_CONTROL, isp_i_control_reg);
+	if (IS_MRFLD) {
+		pci_write_config_dword(dev, MRFLD_PCI_PMCS,
+						isp->hw_contex.pmcs);
 
-	intel_mid_msgbus_write32(MFLD_IUNITPHY_PORT, MFLD_CSI_RCOMP,
-			    isp->hw_contex.csi_rcomp_config);
-	intel_mid_msgbus_write32(MFLD_IUNITPHY_PORT, MFLD_CSI_AFE,
-			    isp->hw_contex.csi_afe_dly);
-	intel_mid_msgbus_write32(MFLD_IUNITPHY_PORT, MFLD_CSI_CONTROL,
-			    isp->hw_contex.csi_control);
+		/*
+		 * The default value is not 1 for all suported chips. Hence
+		 * enable the read/write combining explicitly.
+		 */
+		pci_read_config_dword(dev, PCI_I_CONTROL, &reg32);
+		reg32 |= MRFLD_PCI_I_CONTROL_ENABLE_READ_COMBINING
+				| MRFLD_PCI_I_CONTROL_ENABLE_WRITE_COMBINING;
+		pci_write_config_dword(dev, PCI_I_CONTROL, reg32);
+
+		pci_write_config_dword(dev, MRFLD_PCI_CSI_ACCESS_CTRL_VIOL,
+				      isp->hw_contex.csi_access_viol);
+		pci_write_config_dword(dev, MRFLD_PCI_CSI_RCOMP_CONTROL,
+				      isp->hw_contex.csi_rcomp_config);
+		pci_write_config_dword(dev, MRFLD_PCI_CSI_AFE_TRIM_CONTROL,
+				      isp->hw_contex.csi_afe_dly);
+		pci_write_config_dword(dev, MRFLD_PCI_CSI_CONTROL,
+				      isp->hw_contex.csi_control);
+		pci_write_config_dword(dev, MRFLD_PCI_CSI_AFE_RCOMP_CONTROL,
+				      isp->hw_contex.csi_afe_rcomp_config);
+		pci_write_config_dword(dev, MRFLD_PCI_CSI_AFE_HS_CONTROL,
+				      isp->hw_contex.csi_afe_hs_control);
+		pci_write_config_dword(dev, MRFLD_PCI_CSI_DEADLINE_CONTROL,
+				      isp->hw_contex.csi_deadline_control);
+
+		/*
+		 * for MRFLD, Software/firmware needs to write a 1 to bit0
+		 * of the register at CSI_RECEIVER_SELECTION_REG to enable
+		 * SH CSI backend write 0 will enable Arasan CSI backend,
+		 * which has bugs(like sighting:4567697 and 4567699) and
+		 * will be removed in B0
+		 */
+		device_store_uint32(MRFLD_CSI_RECEIVER_SELECTION_REG, 1);
+
+	} else {
+		pci_write_config_dword(dev, MFLD_PCI_PMCS, isp->hw_contex.pmcs);
+		pci_write_config_dword(dev, MFLD_PCI_CG_DIS,
+						isp->hw_contex.cg_dis);
+
+		/*
+		 * The default value is not 1 for all suported chips. Hence
+		 * enable the read/write combining explicitly.
+		 */
+		pci_read_config_dword(dev, PCI_I_CONTROL, &reg32);
+		reg32 |= MFLD_PCI_I_CONTROL_ENABLE_READ_COMBINING
+				| MFLD_PCI_I_CONTROL_ENABLE_WRITE_COMBINING;
+		pci_write_config_dword(dev, PCI_I_CONTROL, reg32);
+
+		intel_mid_msgbus_write32(MFLD_IUNITPHY_PORT, MFLD_CSI_RCOMP,
+				    isp->hw_contex.csi_rcomp_config);
+		intel_mid_msgbus_write32(MFLD_IUNITPHY_PORT, MFLD_CSI_AFE,
+				    isp->hw_contex.csi_afe_dly);
+		intel_mid_msgbus_write32(MFLD_IUNITPHY_PORT, MFLD_CSI_CONTROL,
+				    isp->hw_contex.csi_control);
+	}
 
 	return 0;
 }
@@ -3708,6 +3783,11 @@ int atomisp_ospm_dphy_down(struct atomisp_device *isp)
 	int timeout = 100;
 	bool idle;
 	v4l2_dbg(3, dbg_level, &atomisp_dev, "%s\n", __func__);
+
+	/* MRFLD IUNIT PHY is located in an always-power-on island */
+	if (IS_MRFLD)
+		return 0;
+
 	/* if ISP timeout, we can force powerdown */
 	if (isp->isp_timeout) {
 		isp->isp_timeout = false;
@@ -3747,6 +3827,10 @@ int atomisp_ospm_dphy_up(struct atomisp_device *isp)
 {
 	u32 pwr_cnt = 0;
 	v4l2_dbg(3, dbg_level, &atomisp_dev, "%s\n", __func__);
+
+	/* MRFLD IUNIT PHY is located in an always-power-on island */
+	if (IS_MRFLD)
+		return 0;
 
 	/* power on DPHY */
 	pwr_cnt = intel_mid_msgbus_read32(MFLD_IUNITPHY_PORT, MFLD_CSI_CONTROL);

@@ -137,9 +137,15 @@ struct atomisp_hw_contex {
 	u32 cg_dis;
 
 	/* I-Unit PHY related info */
-	unsigned int csi_rcomp_config;
-	unsigned int csi_afe_dly;
-	unsigned int csi_control;
+	u32 csi_rcomp_config;
+	u32 csi_afe_dly;
+	u32 csi_control;
+
+	/* New for MRFLD */
+	u32 csi_afe_rcomp_config;
+	u32 csi_afe_hs_control;
+	u32 csi_deadline_control;
+	u32 csi_access_viol;
 
 	/* ISP MMU base address */
 	void *mmu_l1_base;
@@ -300,6 +306,9 @@ struct atomisp_device {
 
 	/* ISP modules */
 	struct atomisp_sub_device isp_subdev;
+	/*
+	 * MRFLD has 3 CSI ports, while MFLD has only 2.
+	 */
 	struct atomisp_mipi_csi2_device csi2_port[ATOMISP_CAMERA_NR_PORTS];
 	struct atomisp_tpg_device tpg;
 	struct atomisp_file_device file_dev;
