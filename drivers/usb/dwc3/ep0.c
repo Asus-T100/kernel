@@ -37,6 +37,7 @@
  */
 
 #include <linux/kernel.h>
+#include <linux/delay.h>
 #include <linux/slab.h>
 #include <linux/spinlock.h>
 #include <linux/platform_device.h>
@@ -48,6 +49,7 @@
 
 #include <linux/usb/ch9.h>
 #include <linux/usb/gadget.h>
+#include <linux/usb/composite.h>
 
 #include "core.h"
 #include "gadget.h"
@@ -55,10 +57,34 @@
 
 #define DWC3_EP0_DELAYED_STATUS 999
 
-static int request_config;
+#define USB3_I_MAX	0x70
+#define USB3_I_UNIT	0x12
+#define USB2_I_MAX	0xFA
+#define USB2_I_UNIT	0x32
+
+enum dwc3_ep0_config {
+	DWC3_CONFIG_NORMAL = 0,
+	DWC3_CONFIG_DELAYED,
+	DWC3_CONFIG_NONE,
+};
+static enum dwc3_ep0_config request_config;
 
 static void dwc3_ep0_inspect_setup(struct dwc3 *dwc,
 		const struct dwc3_event_depevt *event);
+
+static void dwc3_ep0_set_max_power(struct dwc3 *dwc, int mA)
+{
+	struct usb_configuration	*c;
+	struct usb_composite_dev	*cdev = get_gadget_data(&dwc->gadget);
+
+	list_for_each_entry(c, &cdev->configs, list) {
+		if (c->bConfigurationValue == 1) {
+			c->bMaxPower = mA;
+			break;
+		}
+		continue;
+	}
+}
 
 static void set_sel_complete(struct usb_ep *ep, struct usb_request *req)
 {
@@ -158,12 +184,12 @@ static int __dwc3_gadget_ep0_queue(struct dwc3_ep *dep,
 	 * required request, we should kick the transfer here because the
 	 * IRQ we were waiting for is long gone.
 	 */
-	if (request_config == 1) {
+	if (request_config == DWC3_CONFIG_DELAYED) {
 		unsigned	direction;
 		u32		type;
 		struct dwc3	*dwc = dep->dwc;
-		request_config = 0;
 
+		request_config = DWC3_CONFIG_NORMAL;
 		direction = DWC3_EP0_DIR_IN;
 
 		if (dwc->ep0state == EP0_STATUS_PHASE) {
@@ -496,6 +522,14 @@ static int dwc3_ep0_set_address(struct dwc3 *dwc, struct usb_ctrlrequest *ctrl)
 	else
 		dwc->dev_state = DWC3_DEFAULT_STATE;
 
+	if (request_config == DWC3_CONFIG_NONE)
+		request_config = DWC3_CONFIG_NORMAL;
+	else
+		if (dwc->speed == DWC3_DSTS_SUPERSPEED)
+			dwc3_ep0_set_max_power(dwc, USB3_I_MAX);
+		else
+			dwc3_ep0_set_max_power(dwc, USB2_I_MAX);
+
 	return 0;
 }
 
@@ -526,6 +560,11 @@ static int dwc3_ep0_set_config(struct dwc3 *dwc, struct usb_ctrlrequest *ctrl)
 		break;
 
 	case DWC3_ADDRESS_STATE:
+		if (!cfg) {
+			request_config = DWC3_CONFIG_NONE;
+			break;
+		}
+
 		ret = dwc3_ep0_delegate_req(dwc, ctrl);
 		/* if the cfg matches and the cfg is non zero */
 
@@ -541,7 +580,7 @@ static int dwc3_ep0_set_config(struct dwc3 *dwc, struct usb_ctrlrequest *ctrl)
 
 		if (ret >= 999+256) {
 			dwc->dev_state = DWC3_CONFIGURED_STATE;
-			request_config = 1;
+			request_config = DWC3_CONFIG_DELAYED;
 			return ret;
 		}
 
@@ -619,7 +658,7 @@ static void dwc3_ep0_inspect_setup(struct dwc3 *dwc,
 		ret = dwc3_ep0_delegate_req(dwc, ctrl);
 
 	if (ret >= DWC3_EP0_DELAYED_STATUS)
-		request_config = 1;
+		request_config = DWC3_CONFIG_DELAYED;
 
 	if (ret >= 0)
 		return;
@@ -685,6 +724,7 @@ static void dwc3_ep0_complete_req(struct dwc3 *dwc,
 	struct dwc3_request	*r;
 	struct dwc3_ep		*dep;
 	int			ret;
+	int			power;
 
 	dep = dwc->eps[0];
 
@@ -703,6 +743,23 @@ static void dwc3_ep0_complete_req(struct dwc3 *dwc,
 
 	dwc->ep0state = EP0_SETUP_PHASE;
 	dwc3_ep0_out_start(dwc);
+
+	/* modify bMaxPower value and re-enumerate the device */
+	if (request_config == DWC3_CONFIG_NONE) {
+		dwc3_gadget_run_stop(dwc, 0);
+		dwc3_gadget_keep_conn(dwc, 0);
+
+		if (dwc->speed == DWC3_DSTS_SUPERSPEED)
+			power = USB3_I_UNIT;
+		else
+			power = USB2_I_UNIT;
+
+		dwc3_ep0_set_max_power(dwc, power);
+		udelay(50);
+
+		dwc3_gadget_run_stop(dwc, 1);
+		dwc3_gadget_keep_conn(dwc, 1);
+	}
 }
 
 static void dwc3_ep0_xfer_complete(struct dwc3 *dwc,
@@ -871,7 +928,7 @@ static void dwc3_ep0_xfernotready(struct dwc3 *dwc,
 	case DEPEVT_STATUS_CONTROL_STATUS:
 		dev_vdbg(dwc->dev, "Control Status\n");
 
-		if (request_config == 1) {
+		if (request_config == DWC3_CONFIG_DELAYED) {
 			dwc->ep0state = EP0_STATUS_PHASE;
 			return;
 		}

@@ -1187,7 +1187,7 @@ static int dwc3_gadget_set_selfpowered(struct usb_gadget *g,
 	return 0;
 }
 
-static void dwc3_gadget_run_stop(struct dwc3 *dwc, int is_on)
+void dwc3_gadget_run_stop(struct dwc3 *dwc, int is_on)
 {
 	u32			reg;
 	u32			timeout = 500;
@@ -1437,7 +1437,7 @@ static int dwc3_gadget_stop(struct usb_gadget *g,
 	return 0;
 }
 
-static void dwc3_gadget_keep_conn(struct dwc3 *dwc, int is_on)
+void dwc3_gadget_keep_conn(struct dwc3 *dwc, int is_on)
 {
 	u32			reg;
 
@@ -1577,6 +1577,27 @@ static int dwc3_stop_peripheral(struct usb_gadget *g)
 
 	return 0;
 }
+
+static int dwc3_vbus_draw(struct usb_gadget *g, unsigned mA)
+{
+	struct dwc3			*dwc = gadget_to_dwc(g);
+	struct otg_transceiver		*otg;
+	int				ret;
+
+	dev_dbg(dwc->dev, "otg_set_power: %d mA\n", mA);
+	printk(KERN_ERR "otg_set_power: %d mA\n", mA);
+
+	otg = otg_get_transceiver();
+	if (!otg) {
+		dev_err(dwc->dev, "OTG driver not available\n");
+		return -ENODEV;
+	}
+
+	ret = otg_set_power(otg, mA);
+	otg_put_transceiver(otg);
+
+	return ret;
+}
 #endif
 
 static const struct usb_gadget_ops dwc3_gadget_ops = {
@@ -1589,6 +1610,7 @@ static const struct usb_gadget_ops dwc3_gadget_ops = {
 #ifdef CONFIG_USB_DWC_OTG_XCEIV
 	.start_device		= dwc3_start_peripheral,
 	.stop_device		= dwc3_stop_peripheral,
+	.vbus_draw		= dwc3_vbus_draw,
 #endif
 };
 

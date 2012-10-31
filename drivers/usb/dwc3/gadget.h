@@ -144,6 +144,9 @@ int dwc3_send_gadget_cmd(struct dwc3 *dwc, unsigned cmd, unsigned param);
 void dwc3_map_buffer_to_dma(struct dwc3_request *req);
 void dwc3_unmap_buffer_from_dma(struct dwc3_request *req);
 
+void dwc3_gadget_run_stop(struct dwc3 *dwc, int is_on);
+void dwc3_gadget_keep_conn(struct dwc3 *dwc, int is_on);
+
 #ifdef CONFIG_PM_RUNTIME
 int dwc3_runtime_suspend(struct device *device);
 int dwc3_runtime_resume(struct device *device);
