@@ -3,6 +3,7 @@
 
 /* HW register offset definition */
 #define UART_FOR	0x08
+#define UART_ABR	0x09
 #define UART_PS		0x0C
 #define UART_MUL	0x0D
 #define UART_DIV	0x0E
@@ -44,7 +45,8 @@
 #define HSU_CH_D3SAR		0x38
 #define HSU_CH_D3TSR		0x3C
 
-#if defined(CONFIG_X86_MRST ) || defined(CONFIG_X86_MDFLD)
+#if defined(CONFIG_X86_MRST) || defined(CONFIG_X86_MDFLD) \
+	|| defined(CONFIG_X86_MRFLD)
 void mfld_hsu_port1_switch(int on);
 #else
 inline void mfld_hsu_port1_switch(int on)

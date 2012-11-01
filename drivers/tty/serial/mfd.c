@@ -139,13 +139,12 @@ static struct hsu_port hsu;
 /* temp global pointer before we settle down on using one or four PCI dev */
 static struct hsu_port *phsu = &hsu;
 static int logic_idx = -1, share_idx = -1;
+static int clock = 50000; /* default clock source is 50M */
 
 inline bool hsu_port_is_active(struct uart_hsu_port *up)
 {
-#ifdef CONFIG_PM_SLEEP
 #ifdef CONFIG_PM_RUNTIME
 	return (up->dev->power.runtime_status == RPM_ACTIVE);
-#endif
 #endif
 	return true;
 }
@@ -207,11 +206,9 @@ module_param(hsu_low_latency, uint, S_IRUGO);
  * The runtime check is used to check whether the current chip
  * stepping is Penwell A0, if yes, enable the DMA RX timeout timer
  */
-static inline int dmarx_need_timer(void)
+static inline int dmarx_need_timer(struct uart_hsu_port *up)
 {
-	return hsu_rx_wa ||
-		(boot_cpu_data.x86_model == 0x27 &&
-		boot_cpu_data.x86_mask == 0);
+	return hsu_rx_wa && up->use_dma;
 }
 
 static inline void runtime_suspend_delay(struct uart_hsu_port *up)
@@ -547,7 +544,7 @@ void hsu_dma_start_rx_chan(struct uart_hsu_port *up,
 	chan_writel(rxc, HSU_CH_CR, 0x3);
 	up->dma_rx_on = 1;
 
-	if (dmarx_need_timer()) {
+	if (dmarx_need_timer(up)) {
 		mod_timer(&rxc->rx_timer, jiffies + HSU_DMA_TIMEOUT_CHECK_FREQ);
 		runtime_suspend_delay(up);
 	}
@@ -634,7 +631,7 @@ static void hsu_dma_rx_tasklet(unsigned long data)
 
 		chan_writel(chan, HSU_CH_CR, 0x3);
 
-		if (dmarx_need_timer()) {
+		if (dmarx_need_timer(up)) {
 			mod_timer(&chan->rx_timer,
 				jiffies + HSU_DMA_TIMEOUT_CHECK_FREQ);
 			runtime_suspend_delay(up);
@@ -672,7 +669,7 @@ void hsu_dma_rx(struct uart_hsu_port *up, u32 int_sts)
 		udelay(2);
 
 	/* Stop the channel */
-	chan_writel(chan, HSU_CH_CR, 0x0);
+	chan_writel(chan, HSU_CH_CR, 0x2);
 
 	count = chan_readl(chan, HSU_CH_D0SAR) - dbuf->dma_addr;
 	if (!count) {
@@ -682,7 +679,7 @@ void hsu_dma_rx(struct uart_hsu_port *up, u32 int_sts)
 		return;
 	}
 
-	if (dmarx_need_timer()) {
+	if (dmarx_need_timer(up)) {
 		del_timer(&chan->rx_timer);
 		runtime_suspend_delay(up);
 	}
@@ -739,7 +736,7 @@ static void serial_hsu_stop_rx(struct uart_port *port)
 			chan_writel(up->rxc, HSU_CH_CR, 0x2);
 		}
 		up->dma_rx_on = 0;
-		if (dmarx_need_timer())
+		if (dmarx_need_timer(up))
 			del_timer_sync(&up->rxc->rx_timer);
 	} else {
 		up->ier &= ~UART_IER_RLSI;
@@ -1255,7 +1252,7 @@ static void serial_hsu_shutdown(struct uart_port *port)
 		}
 
 	}
-	if (dmarx_need_timer())
+	if (dmarx_need_timer(up))
 		del_timer_sync(&up->rxc->rx_timer);
 
 	/* Disable interrupts from this port */
@@ -1348,7 +1345,7 @@ serial_hsu_set_termios(struct uart_port *port, struct ktermios *termios,
 		cval |= UART_LCR_EPAR;
 
 	/*
-	 * The base clk is 50Mhz, and the baud rate come from:
+	 * If the base clk is 50Mhz, and the baud rate come from:
 	 *	baud = 50M * MUL / (DIV * PS * DLAB)
 	 *
 	 * For those basic low baud rate we can get the direct
@@ -1359,28 +1356,30 @@ serial_hsu_set_termios(struct uart_port *port, struct ktermios *termios,
 	 */
 	baud = uart_get_baud_rate(port, termios, old, 0, 4000000);
 
-	quot = 1;
-	ps = 0x10;
-	mul = 0x3600;
+	/* ps = 16 is prefered, if not have to use 12 */
+	if (baud * 16 > clock * 1000)
+		ps = 0xc;
+	else
+		ps = 0x10;
+
 	switch (baud) {
 	case 3500000:
-		mul = 0x3345;
-		ps = 0xC;
-		break;
-	case 1843200:
-		mul = 0x2400;
-		break;
 	case 3000000:
 	case 2500000:
 	case 2000000:
+	case 1843200:
 	case 1500000:
 	case 1000000:
 	case 500000:
-		/* mul/ps/quot = 0x9C4/0x10/0x1 will make a 500000 bps */
-		mul = baud / 500000 * 0x9C4;
+		quot = 1;
+		/* avoid overflow: mul = baud * 0x3d09 * ps / 1000 / clock;*/
+		mul = (0x3d09 * ps / 100) * (baud / 100) * 10 / clock;
 		break;
 	default:
-		/* Use uart_get_divisor to get quot for other baud rates */
+		/* Use uart_get_divisor to get quot for other baud rates
+		 * avoid overflow: mul = uartclk * 0x3d09 / clock / 1000
+		 * uartclk is multiply of 115200 * n * 16 */
+		mul = (up->port.uartclk / 1600) * 0x3d09 / clock * 16 / 10;
 		quot = 0;
 	}
 
@@ -1796,6 +1795,7 @@ static void hsu_init_low_latency_tasklet(struct uart_hsu_port *uport,
 static int hsu_port_init(struct pci_dev *pdev, int index)
 {
 	struct uart_hsu_port *uport;
+	int uclk;
 	int ret = 0;
 
 	if (index == share_idx) {
@@ -1829,6 +1829,7 @@ static int hsu_port_init(struct pci_dev *pdev, int index)
 
 	uport->port.membase = ioremap_nocache(uport->port.mapbase,
 				pci_resource_len(pdev, 0));
+
 	if (!uport->port.membase) {
 		ret = -ENOMEM;
 		dev_err(&pdev->dev, "ioremap error\n");
@@ -1839,8 +1840,19 @@ static int hsu_port_init(struct pci_dev *pdev, int index)
 	uport->port.ops = &serial_hsu_pops;
 	uport->port.line = index;
 	uport->port.flags = UPF_IOREMAP;
-	/* set the scalable maxim support rate to 2746800 bps */
-	uport->port.uartclk = 115200 * 24 * 16;
+
+	/* calculate if DLAB=1, the ideal uartclk */
+	uclk = clock * 1000 / (115200 * 16); /* 16 is default ps */
+	if (uclk >= 24)
+		uclk = 24;
+	else if (uclk >= 16)
+		uclk = 16;
+	else if (uclk >= 8)
+		uclk = 8;
+	else
+		uclk = 1;
+
+	uport->port.uartclk = 115200 * uclk * 16;
 
 	uport->running = 0;
 	uport->reopen  = 0;
@@ -1914,7 +1926,7 @@ static void hsu_dma_rx_timeout(unsigned long data)
 	count = chan_readl(chan, HSU_CH_D0SAR) - dbuf->dma_addr;
 
 	if (!count) {
-		if (dmarx_need_timer())
+		if (dmarx_need_timer(up))
 			mod_timer(&chan->rx_timer,
 				jiffies + HSU_DMA_TIMEOUT_CHECK_FREQ);
 		goto exit;
@@ -1943,7 +1955,7 @@ static int serial_hsu_probe(struct pci_dev *pdev,
 		pci_resource_start(pdev, 0), pci_resource_len(pdev, 0));
 	/*
 	 * There is a hsu rx timeout interrup lost silicon bug, this workaround
-	 * is to shrink dma descriptor xfer size to 16 Bytes.
+	 * is to use RX timer to clean up tailing chars.
 	 * PNW A0 and CLVP A0 need this workaround.
 	 */
 	if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_CLOVERVIEW &&
@@ -1953,6 +1965,18 @@ static int serial_hsu_probe(struct pci_dev *pdev,
 	} else if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_PENWELL &&
 		pdev->revision < 0x8) {
 		dev_warn(&pdev->dev, "PNW A0 detected, enable hsu timer\n");
+		hsu_rx_wa = 1;
+	} else if (intel_mid_identify_cpu() == INTEL_MID_CPU_CHIP_TANGIER) {
+#define TNG_CLOCK_CTL 0xFF00B830
+		int *clkctl = ioremap_nocache(TNG_CLOCK_CTL, 4);
+
+		if (clkctl) {
+			if (!((*clkctl) & (1 << 16)))
+				clock = 19200;/* 19.2 M */
+			dev_warn(&pdev->dev, "TNG hsu clock is 19.2M\n");
+			iounmap(clkctl);
+		}
+		dev_warn(&pdev->dev, "TNG A0 detected, enable hsu timer\n");
 		hsu_rx_wa = 1;
 	}
 
@@ -2001,8 +2025,8 @@ static int serial_hsu_probe(struct pci_dev *pdev,
 					i * HSU_DMA_CHANS_REG_LENGTH;
 
 			/* Work around for RX */
-			if (dmarx_need_timer() && hsu_dma_enable & (1 << i/2)
-			&& dchan->dirt == DMA_FROM_DEVICE) {
+			if (dmarx_need_timer(dchan->uport)
+				&& dchan->dirt == DMA_FROM_DEVICE) {
 				init_timer(&dchan->rx_timer);
 				dchan->rx_timer.function = hsu_dma_rx_timeout;
 				dchan->rx_timer.data = (unsigned long)dchan;
@@ -2224,7 +2248,7 @@ static int hsu_runtime_suspend(struct device *dev)
 	struct pci_dev *pdev = container_of(dev, struct pci_dev, dev);
 	struct uart_hsu_port *up = pci_get_drvdata(pdev);
 
-	if (dmarx_need_timer())
+	if (dmarx_need_timer(up))
 		del_timer_sync(&up->rxc->rx_timer);
 
 	if (up->running)
@@ -2237,7 +2261,7 @@ static int hsu_runtime_suspend(struct device *dev)
 		if (up->running)
 			intel_mid_hsu_resume(up->index);
 
-		if (up->dma_rx_on && dmarx_need_timer())
+		if (up->dma_rx_on && dmarx_need_timer(up))
 			mod_timer(&up->rxc->rx_timer,
 				jiffies + HSU_DMA_TIMEOUT_CHECK_FREQ);
 
@@ -2270,7 +2294,7 @@ static int hsu_runtime_suspend(struct device *dev)
 		struct uart_hsu_port *up3 = serial_hsu_ports[share_idx];
 		memcpy(up3->reg_shadow + 1, up3->port.membase + 1,
 			HSU_PORT_REG_LENGTH - 1);
-		if (dmarx_need_timer())
+		if (dmarx_need_timer(up))
 			del_timer_sync(&up3->rxc->rx_timer);
 	}
 	memcpy(up->reg_shadow + 1, up->port.membase + 1, HSU_PORT_REG_LENGTH - 1);
@@ -2289,7 +2313,7 @@ static int hsu_runtime_resume(struct device *dev)
 
 		if (up3->dma_rx_on) {
 			dma_rx_on = 1;
-			if (dmarx_need_timer())
+			if (dmarx_need_timer(up))
 				mod_timer(&up3->rxc->rx_timer,
 					jiffies + HSU_DMA_TIMEOUT_CHECK_FREQ);
 		}
@@ -2299,7 +2323,7 @@ static int hsu_runtime_resume(struct device *dev)
 	if (up->dma_rx_on || dma_rx_on)
 		chan_writel(up->rxc, HSU_CH_CR, 0x3);
 
-	if (up->dma_rx_on && dmarx_need_timer())
+	if (up->dma_rx_on && dmarx_need_timer(up))
 		mod_timer(&up->rxc->rx_timer,
 			jiffies + HSU_DMA_TIMEOUT_CHECK_FREQ);
 

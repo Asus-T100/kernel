@@ -119,6 +119,9 @@ enum fixed_addresses {
 #ifdef	CONFIG_X86_INTEL_MID
 	FIX_LNW_VRTC,
 #endif
+#ifdef CONFIG_X86_MRFLD
+	FIX_CLOCK_CTL,
+#endif
 	__end_of_permanent_fixed_addresses,
 
 	/*

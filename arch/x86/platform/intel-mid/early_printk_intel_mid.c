@@ -386,6 +386,10 @@ void mrfld_early_printk(const char *fmt, ...)
  * UART console.
  * For Clovertrail boards, HSU port 2 can be used as UART console.
  */
+#ifdef CONFIG_X86_MRFLD
+	#define HSU_PORT_PADDR  0xff010180
+	#define HSU_CLK_CTL  0xff00b830
+#else
 #if CONFIG_SERIAL_MFD_HSU_CONSOLE_PORT == 2
 	#define HSU_PORT_PADDR  0xffa28180
 #elif CONFIG_SERIAL_MFD_HSU_CONSOLE_PORT == 3
@@ -393,13 +397,19 @@ void mrfld_early_printk(const char *fmt, ...)
 #else
 	#warning "Unsupported CONFIG_SERIAL_MFD_HSU_CONSOLE_PORT, reset to 3"
 #endif
+#endif
 
 static void __iomem *phsu;
 
 void hsu_early_console_init(void)
 {
 	u8 lcr;
-
+#ifdef CONFIG_X86_MRFLD
+	int *clkctl;
+	int clk = 0;
+	clkctl = (int *)set_fixmap_offset_nocache(FIX_CLOCK_CTL,
+							HSU_CLK_CTL);
+#endif
 	phsu = (void *)set_fixmap_offset_nocache(FIX_EARLYCON_MEM_BASE,
 							HSU_PORT_PADDR);
 
@@ -409,9 +419,21 @@ void hsu_early_console_init(void)
 	/* Set to default 115200 bps, 8n1 */
 	lcr = readb(phsu + UART_LCR);
 	writeb((0x80 | lcr), phsu + UART_LCR);
-	writeb(0x18, phsu + UART_DLL);
+	writeb(0x01, phsu + UART_DLL);
+	writeb(0x00, phsu + UART_DLM);
 	writeb(lcr,  phsu + UART_LCR);
-	writel(0x3600, phsu + UART_MUL*4);
+	writel(0x0010, phsu + UART_ABR * 4);
+	writel(0x0010, phsu + UART_PS * 4);
+#ifdef CONFIG_X86_MRFLD
+	/* detect HSU clock is 50M or 19.2M */
+	if (*clkctl & (1 << 16))
+		writel(0x0240, phsu + UART_MUL * 4); /* for 50M */
+	else
+		writel(0x05DC, phsu + UART_MUL * 4);  /* for 19.2M */
+#else
+	writel(0x0240, phsu + UART_MUL * 4);
+#endif
+	writel(0x3D09, phsu + UART_DIV * 4);
 
 	writeb(0x8, phsu + UART_MCR);
 	writeb(0x7, phsu + UART_FCR);

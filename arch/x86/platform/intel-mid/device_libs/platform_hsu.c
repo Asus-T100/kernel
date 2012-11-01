@@ -15,6 +15,45 @@
 #include <asm/intel_mid_hsu.h>
 #include "platform_hsu.h"
 
+#ifdef CONFIG_X86_MRFLD
+static struct mfld_hsu_info tng_hsu_info[] = {
+	[0] = {
+		.id = 0,
+		.name = DEVICE_NAME_0,
+		.cts_gpio = 124,
+		.cts_alt = 1,
+		.rts_gpio = 125,
+		.rts_alt = 1,
+		.wake_gpio = 124,
+	},
+	[1] = {
+		.id = 1,
+		.name = DEVICE_NAME_1,
+		.cts_gpio = 128,
+		.cts_alt = 1,
+		.rts_gpio = 129,
+		.rts_alt = 1,
+		.wake_gpio = 128,
+	},
+	[2] = {
+		.id = 2,
+		.name = DEVICE_NAME_2,
+		.cts_gpio = 132,
+		.cts_alt = 1,
+		.rts_gpio = 133,
+		.rts_alt = 1,
+		.wake_gpio = 134,
+	},
+};
+
+static int __init tng_hsu_init(void)
+{
+	platform_hsu_info = tng_hsu_info;
+	return 0;
+}
+arch_initcall(tng_hsu_init);
+#endif
+
 /* TODO: put non-ctp platform info here too or in its own device file */
 #ifdef CONFIG_BOARD_CTP
 static struct mfld_hsu_info ctp_hsu_info[] = {
