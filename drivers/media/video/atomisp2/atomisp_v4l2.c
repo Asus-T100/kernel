@@ -734,17 +734,18 @@ load_firmware(struct device *dev)
 {
 	const struct firmware *fw;
 	int rc;
+	char *fw_path = IS_MRFLD ? MRFLD_FW_PATH : MFLD_FW_PATH;
 
-	rc = request_firmware(&fw, FW_PATH, dev);
+	rc = request_firmware(&fw, fw_path, dev);
 	if (rc) {
 		if (rc == -ENOENT)
 			v4l2_err(&atomisp_dev,
 				    "Error ISP firmware %s not found.\n",
-				    FW_PATH);
+				    fw_path);
 		else
 			v4l2_err(&atomisp_dev,
 				    "atomisp: Error %d while requesting"
-				    " firmware %s\n", rc, FW_PATH);
+				    " firmware %s\n", rc, fw_path);
 		return NULL;
 	}
 

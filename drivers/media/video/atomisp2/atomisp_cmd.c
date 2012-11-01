@@ -25,7 +25,6 @@
 #include "atomisp_cmd.h"
 #include "atomisp_fops.h"
 #include "hrt/hive_isp_css_mm_hrt.h"
-#include "hrt/css_receiver_ahb_defs.h"
 
 #include "sh_css_debug.h"
 #include "sh_css_hrt.h"
@@ -281,7 +280,12 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 		return IRQ_NONE;
 	}
 
+#ifdef CONFIG_X86_MRFLD
+	if ((irq_infos & SH_CSS_IRQ_INFO_INPUT_SYSTEM_ERROR) ||
+		(irq_infos & SH_CSS_IRQ_INFO_IF_ERROR)) {
+#else
 	if (irq_infos & SH_CSS_IRQ_INFO_CSS_RECEIVER_ERROR) {
+#endif
 		/* handle mipi receiver error */
 		u32 rx_infos;
 		print_csi_rx_errors();
