@@ -68,5 +68,5 @@ static int __init ctp_hsu_init(void)
 	platform_hsu_info = ctp_hsu_info;
 	return 0;
 }
-device_initcall(ctp_hsu_init);
+arch_initcall(ctp_hsu_init);
 #endif

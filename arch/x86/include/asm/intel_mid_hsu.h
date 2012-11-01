@@ -2,6 +2,12 @@
 #define __INTEL_MID_HSU_H__
 
 #define MFLD_HSU_NUM	4
+
+enum {
+	HSU_UART,
+	HSU_DMA,
+};
+
 struct mfld_hsu_info {
 	char *name;
 	int id;
