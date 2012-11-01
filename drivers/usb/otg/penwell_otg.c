@@ -2756,6 +2756,13 @@ static void penwell_otg_hnp_poll_work(struct work_struct *work)
 		return;
 	}
 
+	/* Skip HS Electrical Test Device */
+	if (le16_to_cpu(udev->descriptor.idVendor) == 0x1A0A &&
+		le16_to_cpu(udev->descriptor.idProduct) > 0x0100 &&
+		le16_to_cpu(udev->descriptor.idProduct) < 0x0109) {
+		return;
+	}
+
 	/* get host request flag from connected USB device */
 	err = usb_control_msg(udev, usb_rcvctrlpipe(udev, 0),
 		USB_REQ_GET_STATUS, USB_DIR_IN, 0, 0xF000, &data, 1, 5000);
