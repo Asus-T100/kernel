@@ -68,7 +68,7 @@
  */
 
 #include "device_libs/platform_max3111.h"
-
+#include "device_libs/platform_ntrig.h"
 /*
  * HSI devices
  */
@@ -145,9 +145,9 @@ struct devs_id __initconst device_ids[] = {
 	{"baro", SFI_DEV_TYPE_I2C, 0, &ms5607_platform_data, NULL},
 	{"als", SFI_DEV_TYPE_I2C, 0, &ltr502als_platform_data, NULL},
 	{"ltr301", SFI_DEV_TYPE_I2C, 0, &ltr301als_platform_data, NULL},
+	{"ntrig_spi", SFI_DEV_TYPE_SPI, 1, &ntrig_platform_data, NULL},
 	{"i2c_disp_brig", SFI_DEV_TYPE_I2C, 0, &tc35876x_platform_data},
 	{"tpm_i2c", SFI_DEV_TYPE_I2C, 0, &tpm502i_platform_data, NULL},
-
 	{},
 };
 
