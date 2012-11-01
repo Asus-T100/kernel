@@ -79,7 +79,7 @@ static void set_client_mode(void);
 #ifdef CONFIG_DEBUG_FS
 unsigned int *pm_sss0_base;
 
-int check_pm_otg()
+int check_pm_otg(void)
 {
 	/* check whether bit 12 and 13 are 0 */
 	/* printk(">>>>leon, pm_sss0_base:0x%x\n", *(pm_sss0_base)); */
@@ -727,7 +727,6 @@ static int penwell_otg_set_vbus(struct otg_transceiver *otg, bool enabled)
 	u8				data;
 	unsigned long			flags;
 	int				retval = 0;
-	struct power_supply_charger_cap psc_cap;
 	struct otg_bc_event		*evt;
 
 	dev_dbg(pnw->dev, "%s ---> %s\n", __func__, enabled ? "on" : "off");
@@ -810,10 +809,8 @@ static int penwell_otg_ulpi_run(void)
 
 	val = readl(pnw->iotg.base + CI_ULPIVP);
 
-	if (val & ULPI_RUN) {
-		dev_dbg(pnw->dev, "%s: ULPI command wip\n", __func__);
+	if (val & ULPI_RUN)
 		return 1;
-	}
 
 	dev_dbg(pnw->dev, "%s: ULPI command done\n", __func__);
 	return 0;
@@ -853,7 +850,7 @@ penwell_otg_ulpi_read(struct intel_mid_otg_xceiv *iotg, u8 reg, u8 *val)
 		}
 	}
 
-	dev_warn(pnw->dev, "%s - timeout\n", __func__);
+	dev_warn(pnw->dev, "%s - addr 0x%x timeout\n", __func__, reg);
 
 	spin_unlock_irqrestore(&pnw->lock, flags);
 	return -ETIMEDOUT;
@@ -885,8 +882,8 @@ penwell_otg_ulpi_write(struct intel_mid_otg_xceiv *iotg, u8 reg, u8 val)
 		udelay(5);
 	}
 
-	dev_dbg(pnw->dev,
-		"%s - %s\n", __func__, count ? "complete" : "timeout");
+	dev_dbg(pnw->dev, "%s - addr 0x%x %s\n", __func__, reg,
+			count ? "complete" : "timeout");
 
 	spin_unlock_irqrestore(&pnw->lock, flags);
 	return count ? 0 : -ETIMEDOUT;
@@ -1122,7 +1119,7 @@ static int penwell_otg_vusb330_low_power(int on)
 {
 	struct penwell_otg	*pnw = the_transceiver;
 	u8			data;
-	int			retval;
+	int			retval = 0;
 
 	dev_dbg(pnw->dev, "%s ---> %s\n", __func__, on ? "on" : "off");
 
@@ -1138,26 +1135,6 @@ static int penwell_otg_vusb330_low_power(int on)
 
 	return retval;
 }
-
-/* penwell_otg_id enables/disables id interrupt */
-static void penwell_otg_id(int on)
-{
-	struct penwell_otg	*pnw = the_transceiver;
-	u32			val;
-
-	val = readl(pnw->iotg.base + CI_OTGSC);
-	/* mask W/C bits to avoid clearing them when
-	*  val is written back to OTGSC */
-	val &= ~OTGSC_INTSTS_MASK;
-	if (on) {
-		val = val | OTGSC_IDIE;
-		writel(val, pnw->iotg.base + CI_OTGSC);
-	} else {
-		val = val & ~OTGSC_IDIE;
-		writel(val, pnw->iotg.base + CI_OTGSC);
-	}
-}
-
 
 /* Enable/Disable OTG interrupt */
 static void penwell_otg_intr(int on)
@@ -2082,7 +2059,7 @@ static void penwell_otg_add_timer(enum penwell_otg_timer_type timers)
 		time = is_clovertrail(to_pci_dev(pnw->dev)) ?
 						400 : TA_WAIT_VRISE;
 		dev_dbg(pnw->dev,
-			"Add timer TA_WAIT_VRISE = %d\n", time);
+			"Add timer TA_WAIT_VRISE = %lu\n", time);
 		break;
 	case TA_WAIT_BCON_TMR:
 		iotg->hsm.a_wait_bcon_tmout = 0;
@@ -2207,7 +2184,6 @@ static void reset_otg(void)
 static void pnw_phy_ctrl_rst(void)
 {
 	struct penwell_otg *pnw = the_transceiver;
-	unsigned long	flags;
 	struct pci_dev	*pdev;
 
 	pdev = to_pci_dev(pnw->dev);
@@ -2501,72 +2477,6 @@ static irqreturn_t otg_irq(int irq, void *_dev)
 #endif /* CONFIG_PM_RUNTIME */
 
 	return otg_irq_handle(pnw, iotg);
-}
-
-static void penwell_otg_check_wakeup_event(struct penwell_otg *pnw)
-{
-	u32		int_sts, int_en, int_mask = 0;
-	int		flag = 0;
-	int		id, a_vbus_vld, b_sess_end;
-	int		b_sess_vld, a_sess_vld;
-
-	pnw = the_transceiver;
-
-	/* OTGSC needs 1ms debounce time to get synced with MSIC
-	 * after back from clock gated state to D0, sleep 2ms
-	 * will be enough */
-	usleep_range(1800, 2000);
-
-	/* Check VBUS/SRP interrup */
-	int_sts = readl(pnw->iotg.base + CI_OTGSC);
-	int_en = (int_sts & OTGSC_INTEN_MASK) >> 8;
-	int_mask = int_sts & int_en;
-
-	/* won't use OTGSC INTSTS bit, because controller is
-	 * reset during runtime suspend, just check current status */
-
-	/* get current id/a_vbus_vld/b_sess_end/b_sess_vld/a_sess_vld */
-	id = !!(int_sts & OTGSC_ID) ? ID_B : ID_A;
-	b_sess_end = !!(int_sts & OTGSC_BSE);
-	b_sess_vld = !!(int_sts & OTGSC_BSV);
-	a_sess_vld = !!(int_sts & OTGSC_ASV);
-	a_vbus_vld = !!(int_sts & OTGSC_AVV);
-
-	if (id != pnw->iotg.hsm.id) {
-		pnw->iotg.hsm.id = id;
-		dev_dbg(pnw->dev, "ID Wake up id = %d\n", id);
-		flag = 1;
-	}
-
-	if (b_sess_end != pnw->iotg.hsm.b_sess_end) {
-		pnw->iotg.hsm.b_sess_end = b_sess_end;
-		dev_dbg(pnw->dev, "B_sess_end Wake up = %d\n", b_sess_end);
-		flag = 1;
-	}
-
-	if (b_sess_vld != pnw->iotg.hsm.b_sess_vld) {
-		pnw->iotg.hsm.b_sess_vld = b_sess_vld;
-		dev_dbg(pnw->dev, "B_sess_vld Wake up = %d\n", b_sess_vld);
-		flag = 1;
-	}
-
-	if (a_sess_vld != pnw->iotg.hsm.a_sess_vld) {
-		pnw->iotg.hsm.a_sess_vld = a_sess_vld;
-		dev_dbg(pnw->dev, "A_sess_vld Wake up = %d\n", a_sess_vld);
-		flag = 1;
-	}
-
-	if (a_vbus_vld != pnw->iotg.hsm.a_vbus_vld) {
-		pnw->iotg.hsm.a_vbus_vld = a_vbus_vld;
-		dev_dbg(pnw->dev, "A_vbus_vld Wake up = %d\n", a_vbus_vld);
-		flag = 1;
-	}
-
-	if (int_mask)
-		writel((int_sts & ~OTGSC_INTSTS_MASK) | int_mask,
-				pnw->iotg.base + CI_OTGSC);
-	if (flag)
-		penwell_update_transceiver();
 }
 
 static void penwell_otg_start_ulpi_poll(void)
