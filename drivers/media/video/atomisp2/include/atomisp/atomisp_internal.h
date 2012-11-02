@@ -169,10 +169,10 @@ struct atomisp_sw_contex {
 	bool updating_uptr;
 	bool file_input;
 	bool grid_info_updated;
-	bool invalid_frame;
-	bool invalid_vf_frame;
-	bool invalid_s3a;
-	bool invalid_dis;
+	int  invalid_frame;
+	int  invalid_vf_frame;
+	int  invalid_s3a;
+	int  invalid_dis;
 
 	int power_state;
 	int run_mode;

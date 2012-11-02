@@ -288,10 +288,10 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 	}
 
 	if (irq_infos & SH_CSS_IRQ_INFO_INVALID_FIRST_FRAME) {
-		isp->sw_contex.invalid_frame = true;
-		isp->sw_contex.invalid_vf_frame = true;
-		isp->sw_contex.invalid_s3a = true;
-		isp->sw_contex.invalid_dis = true;
+		isp->sw_contex.invalid_frame = 1;
+		isp->sw_contex.invalid_vf_frame = 1;
+		isp->sw_contex.invalid_s3a = 1;
+		isp->sw_contex.invalid_dis = 1;
 	}
 
 	atomic_set(&isp->wdt_count, 0);
@@ -632,7 +632,7 @@ static void atomisp_buf_done(struct atomisp_device *isp,
 			/* ignore error in case of 3a statistics for now */
 			if (isp->sw_contex.invalid_s3a) {
 				requeue = true;
-				isp->sw_contex.invalid_s3a = false;
+				isp->sw_contex.invalid_s3a = 0;
 				break;
 			}
 			/* update the 3A data to ISP context */
@@ -655,7 +655,7 @@ static void atomisp_buf_done(struct atomisp_device *isp,
 			/* ignore error in case of dis statistics for now */
 			if (isp->sw_contex.invalid_dis) {
 				requeue = true;
-				isp->sw_contex.invalid_dis = false;
+				isp->sw_contex.invalid_dis = 0;
 				break;
 			}
 			if (isp->params.dis_ver_proj_bytes &&
@@ -677,7 +677,7 @@ static void atomisp_buf_done(struct atomisp_device *isp,
 		case SH_CSS_BUFFER_TYPE_VF_OUTPUT_FRAME:
 			if (isp->sw_contex.invalid_vf_frame) {
 				error = true;
-				isp->sw_contex.invalid_vf_frame = false;
+				isp->sw_contex.invalid_vf_frame = 0;
 				v4l2_dbg(3, dbg_level, &atomisp_dev,
 				 "%s css has marked this vf frame as invalid\n",
 				 __func__);
@@ -713,7 +713,7 @@ static void atomisp_buf_done(struct atomisp_device *isp,
 		case SH_CSS_BUFFER_TYPE_OUTPUT_FRAME:
 			if (isp->sw_contex.invalid_frame) {
 				error = true;
-				isp->sw_contex.invalid_frame = false;
+				isp->sw_contex.invalid_frame = 0;
 				v4l2_dbg(3, dbg_level, &atomisp_dev,
 				   "%s css has marked this frame as invalid\n",
 				   __func__);
