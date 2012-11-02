@@ -246,11 +246,18 @@ config BATTERY_INTEL_MDF
           platforms.
 
 config CHARGER_SMB347
-        tristate "Charger driver for Intel Medfield Tablet platforms"
+        tristate "Summit SMB347 Charger driver"
         depends on I2C && USB_PENWELL_OTG
         help
           Say Y here to enable the charger driver on Intel Medfield based Tablet
           platforms.
+
+config CHARGER_SMB349
+	bool "SMB349 Charger support"
+	depends on CHARGER_SMB347
+	help
+          Say Y here to enable the SMB349 chip support which
+	  which is improved version over smb347.
 
 config INTEL_MID_BASIN_COVE_CHARGER
         tristate "Charger driver for Basin Cove PMIC on Intel MID"

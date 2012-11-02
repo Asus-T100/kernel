@@ -16,6 +16,7 @@
 #include <asm/intel-mid.h>
 #include "platform_smb347.h"
 
+#ifdef CONFIG_CHARGER_SMB349
 static struct smb347_charger_platform_data smb347_pdata = {
 	.battery_info	= {
 		.name			= "UP110005",
@@ -24,23 +25,63 @@ static struct smb347_charger_platform_data smb347_pdata = {
 		.voltage_min_design	= 3000000,
 		.charge_full_design	= 6894000,
 	},
-	.max_charge_current		= 3360000,
-	.max_charge_voltage		= 4200000,
-	.otg_uvlo_voltage		= 3300000,
-	.chip_temp_threshold		= 120,
-	.soft_cold_temp_limit		= 5,
-	.soft_hot_temp_limit		= 50,
-	.hard_cold_temp_limit		= 5,
-	.hard_hot_temp_limit		= 55,
-	.suspend_on_hard_temp_limit	= true,
-	.soft_temp_limit_compensation	= SMB347_SOFT_TEMP_COMPENSATE_CURRENT
-					| SMB347_SOFT_TEMP_COMPENSATE_VOLTAGE,
-	.charge_current_compensation	= 900000,
 	.use_mains			= true,
 	.enable_control			= SMB347_CHG_ENABLE_PIN_ACTIVE_LOW,
 	.otg_control			= SMB347_OTG_CONTROL_SW,
 	.irq_gpio			= SMB347_IRQ_GPIO,
+	.char_config_regs		= {
+						/* Reg  Value */
+						0x00, 0xA1,
+						0x01, 0x6C,
+						0x02, 0x93,
+						0x03, 0xE5,
+						0x04, 0x3E,
+						0x05, 0x16,
+						0x06, 0x0C,
+						0x07, 0x8c,
+						0x08, 0x08,
+						0x09, 0x0c,
+						0x0A, 0xA4,
+						0x0B, 0x13,
+						0x0C, 0x81,
+						0x0D, 0x02,
+						0x0E, 0x20,
+						0x10, 0x7F
+					},
 };
+#else
+static struct smb347_charger_platform_data smb347_pdata = {
+	.battery_info	= {
+		.name			= "UP110005",
+		.technology		= POWER_SUPPLY_TECHNOLOGY_LIPO,
+		.voltage_max_design	= 3700000,
+		.voltage_min_design	= 3000000,
+		.charge_full_design	= 6894000,
+	},
+	.use_mains			= true,
+	.enable_control			= SMB347_CHG_ENABLE_PIN_ACTIVE_LOW,
+	.otg_control			= SMB347_OTG_CONTROL_SW,
+	.irq_gpio			= SMB347_IRQ_GPIO,
+	.char_config_regs		= {
+						/* Reg  Value */
+						0x00, 0xFC,
+						0x01, 0x95,
+						0x02, 0x83,
+						0x03, 0xE3,
+						0x04, 0x3A,
+						0x05, 0x1A,
+						0x06, 0x65,
+						0x07, 0xEF,
+						0x08, 0x09,
+						0x09, 0xDF,
+						0x0A, 0xAB,
+						0x0B, 0x5A,
+						0x0C, 0xC1,
+						0x0D, 0x46,
+						0x00, 0x00,
+					},
+};
+#endif
 
 void *smb347_platform_data(void *info)
 {

@@ -65,6 +65,7 @@
 #define CFG_SYSOK_SUSPEND_HARD_LIMIT_DISABLED	BIT(2)
 #define CFG_OTHER				0x09
 #define CFG_OTHER_RID_MASK			0xc0
+#define CFG_OTHER_RID_DISABLED_OTG_I2C		0x00
 #define CFG_OTHER_RID_DISABLED_OTG_PIN		0x40
 #define CFG_OTHER_RID_ENABLED_OTG_I2C		0x80
 #define CFG_OTHER_RID_ENABLED_AUTO_OTG		0xc0
@@ -190,79 +191,6 @@ static char *smb347_power_supplied_to[] = {
 			"max17047_battery",
 			"max17050_battery",
 };
-
-/* Fast charge current in uA */
-static const unsigned int fcc_tbl[] = {
-	700000,
-	900000,
-	1200000,
-	1500000,
-	1800000,
-	2000000,
-	2200000,
-	2500000,
-};
-
-/* Pre-charge current in uA */
-static const unsigned int pcc_tbl[] = {
-	100000,
-	150000,
-	200000,
-	250000,
-};
-
-/* Termination current in uA */
-static const unsigned int tc_tbl[] = {
-	37500,
-	50000,
-	100000,
-	150000,
-	200000,
-	250000,
-	500000,
-	600000,
-};
-
-/* Input current limit in uA */
-static const unsigned int icl_tbl[] = {
-	300000,
-	500000,
-	700000,
-	900000,
-	1200000,
-	1500000,
-	1800000,
-	2000000,
-	2200000,
-	2500000,
-};
-
-/* Charge current compensation in uA */
-static const unsigned int ccc_tbl[] = {
-	250000,
-	700000,
-	900000,
-	1200000,
-};
-
-/* Convert register value to current using lookup table */
-static int hw_to_current(const unsigned int *tbl, size_t size, unsigned int val)
-{
-	if (val >= size)
-		return -EINVAL;
-	return tbl[val];
-}
-
-/* Convert current to register value using lookup table */
-static int current_to_hw(const unsigned int *tbl, size_t size, unsigned int val)
-{
-	size_t i;
-
-	for (i = 0; i < size; i++)
-		if (val < tbl[i])
-			break;
-	return i > 0 ? i - 1 : -EINVAL;
-}
 
 static int smb347_read(struct smb347_charger *smb, u8 reg)
 {
@@ -654,337 +582,29 @@ static int smb347_otg_notifier(struct notifier_block *nb, unsigned long event,
 	return NOTIFY_OK;
 }
 
-static int smb347_set_charge_current(struct smb347_charger *smb)
-{
-	int ret, val;
-
-	ret = smb347_read(smb, CFG_CHARGE_CURRENT);
-	if (ret < 0)
-		return ret;
-
-	if (smb->pdata->max_charge_current) {
-		val = current_to_hw(fcc_tbl, ARRAY_SIZE(fcc_tbl),
-				    smb->pdata->max_charge_current);
-		if (val < 0)
-			return val;
-
-		ret &= ~CFG_CHARGE_CURRENT_FCC_MASK;
-		ret |= val << CFG_CHARGE_CURRENT_FCC_SHIFT;
-	}
-
-	if (smb->pdata->pre_charge_current) {
-		val = current_to_hw(pcc_tbl, ARRAY_SIZE(pcc_tbl),
-				    smb->pdata->pre_charge_current);
-		if (val < 0)
-			return val;
-
-		ret &= ~CFG_CHARGE_CURRENT_PCC_MASK;
-		ret |= val << CFG_CHARGE_CURRENT_PCC_SHIFT;
-	}
-
-	if (smb->pdata->termination_current) {
-		val = current_to_hw(tc_tbl, ARRAY_SIZE(tc_tbl),
-				    smb->pdata->termination_current);
-		if (val < 0)
-			return val;
-
-		ret &= ~CFG_CHARGE_CURRENT_TC_MASK;
-		ret |= val;
-	}
-
-	return smb347_write(smb, CFG_CHARGE_CURRENT, ret);
-}
-
-static int smb347_set_current_limits(struct smb347_charger *smb)
-{
-	int ret, val;
-
-	ret = smb347_read(smb, CFG_CURRENT_LIMIT);
-	if (ret < 0)
-		return ret;
-
-	if (smb->pdata->mains_current_limit) {
-		val = current_to_hw(icl_tbl, ARRAY_SIZE(icl_tbl),
-				    smb->pdata->mains_current_limit);
-		if (val < 0)
-			return val;
-
-		ret &= ~CFG_CURRENT_LIMIT_DC_MASK;
-		ret |= val << CFG_CURRENT_LIMIT_DC_SHIFT;
-	}
-
-	if (smb->pdata->usb_hc_current_limit) {
-		val = current_to_hw(icl_tbl, ARRAY_SIZE(icl_tbl),
-				    smb->pdata->usb_hc_current_limit);
-		if (val < 0)
-			return val;
-
-		ret &= ~CFG_CURRENT_LIMIT_USB_MASK;
-		ret |= val;
-	}
-
-	return smb347_write(smb, CFG_CURRENT_LIMIT, ret);
-}
-
-static int smb347_set_voltage_limits(struct smb347_charger *smb)
-{
-	int ret, val;
-
-	ret = smb347_read(smb, CFG_FLOAT_VOLTAGE);
-	if (ret < 0)
-		return ret;
-
-	if (smb->pdata->pre_to_fast_voltage) {
-		val = smb->pdata->pre_to_fast_voltage;
-
-		/* uV */
-		val = clamp_val(val, 2400000, 3000000) - 2400000;
-		val /= 200000;
-
-		ret &= ~CFG_FLOAT_VOLTAGE_THRESHOLD_MASK;
-		ret |= val << CFG_FLOAT_VOLTAGE_THRESHOLD_SHIFT;
-	}
-
-	if (smb->pdata->max_charge_voltage) {
-		val = smb->pdata->max_charge_voltage;
-
-		/* uV */
-		val = clamp_val(val, 3500000, 4500000) - 3500000;
-		val /= 20000;
-
-		ret |= val;
-	}
-
-	ret = smb347_write(smb, CFG_FLOAT_VOLTAGE, ret);
-	if (ret < 0)
-		return ret;
-
-	if (smb->pdata->otg_uvlo_voltage) {
-		val = smb->pdata->otg_uvlo_voltage;
-
-		val = clamp_val(val, 2700000, 3300000) - 2700000;
-		val /= 200000;
-
-		ret = smb347_read(smb, CFG_OTG);
-		if (ret < 0)
-			return ret;
-
-		ret &= ~CFG_OTG_BATTERY_UVLO_THRESHOLD_MASK;
-		ret |= val & 0x3;
-
-		ret = smb347_write(smb, CFG_OTG, ret);
-		if (ret < 0)
-			return ret;
-	}
-
-	return ret;
-}
-
-static int smb347_set_temp_limits(struct smb347_charger *smb)
-{
-	bool enable_therm_monitor = false;
-	int ret, val;
-
-	if (smb->pdata->chip_temp_threshold) {
-		val = smb->pdata->chip_temp_threshold;
-
-		/* degree C */
-		val = clamp_val(val, 100, 130) - 100;
-		val /= 10;
-
-		ret = smb347_read(smb, CFG_OTG);
-		if (ret < 0)
-			return ret;
-
-		ret &= ~CFG_OTG_TEMP_THRESHOLD_MASK;
-		ret |= val << CFG_OTG_TEMP_THRESHOLD_SHIFT;
-
-		ret = smb347_write(smb, CFG_OTG, ret);
-		if (ret < 0)
-			return ret;
-	}
-
-	ret = smb347_read(smb, CFG_TEMP_LIMIT);
-	if (ret < 0)
-		return ret;
-
-	if (smb->pdata->soft_cold_temp_limit != SMB347_TEMP_USE_DEFAULT) {
-		val = smb->pdata->soft_cold_temp_limit;
-
-		val = clamp_val(val, 0, 15);
-		val /= 5;
-		/* this goes from higher to lower so invert the value */
-		val = ~val & 0x3;
-
-		ret &= ~CFG_TEMP_LIMIT_SOFT_COLD_MASK;
-		ret |= val << CFG_TEMP_LIMIT_SOFT_COLD_SHIFT;
-
-		enable_therm_monitor = true;
-	}
-
-	if (smb->pdata->soft_hot_temp_limit != SMB347_TEMP_USE_DEFAULT) {
-		val = smb->pdata->soft_hot_temp_limit;
-
-		val = clamp_val(val, 40, 55) - 40;
-		val /= 5;
-
-		ret &= ~CFG_TEMP_LIMIT_SOFT_HOT_MASK;
-		ret |= val << CFG_TEMP_LIMIT_SOFT_HOT_SHIFT;
-
-		enable_therm_monitor = true;
-	}
-
-	if (smb->pdata->hard_cold_temp_limit != SMB347_TEMP_USE_DEFAULT) {
-		val = smb->pdata->hard_cold_temp_limit;
-
-		val = clamp_val(val, -5, 10) + 5;
-		val /= 5;
-		/* this goes from higher to lower so invert the value */
-		val = ~val & 0x3;
-
-		ret &= ~CFG_TEMP_LIMIT_HARD_COLD_MASK;
-		ret |= val << CFG_TEMP_LIMIT_HARD_COLD_SHIFT;
-
-		enable_therm_monitor = true;
-	}
-
-	if (smb->pdata->hard_hot_temp_limit != SMB347_TEMP_USE_DEFAULT) {
-		val = smb->pdata->hard_hot_temp_limit;
-
-		val = clamp_val(val, 50, 65) - 50;
-		val /= 5;
-
-		ret &= ~CFG_TEMP_LIMIT_HARD_HOT_MASK;
-		ret |= val << CFG_TEMP_LIMIT_HARD_HOT_SHIFT;
-
-		enable_therm_monitor = true;
-	}
-
-	ret = smb347_write(smb, CFG_TEMP_LIMIT, ret);
-	if (ret < 0)
-		return ret;
-
-	/*
-	 * If any of the temperature limits are set, we also enable the
-	 * thermistor monitoring.
-	 *
-	 * When soft limits are hit, the device will start to compensate
-	 * current and/or voltage depending on the configuration.
-	 *
-	 * When hard limit is hit, the device will suspend charging
-	 * depending on the configuration.
-	 */
-	if (enable_therm_monitor) {
-		ret = smb347_read(smb, CFG_THERM);
-		if (ret < 0)
-			return ret;
-
-		ret &= ~CFG_THERM_MONITOR_DISABLED;
-
-		ret = smb347_write(smb, CFG_THERM, ret);
-		if (ret < 0)
-			return ret;
-	}
-
-	if (smb->pdata->suspend_on_hard_temp_limit) {
-		ret = smb347_read(smb, CFG_SYSOK);
-		if (ret < 0)
-			return ret;
-
-		ret &= ~CFG_SYSOK_SUSPEND_HARD_LIMIT_DISABLED;
-
-		ret = smb347_write(smb, CFG_SYSOK, ret);
-		if (ret < 0)
-			return ret;
-	}
-
-	if (smb->pdata->soft_temp_limit_compensation !=
-	    SMB347_SOFT_TEMP_COMPENSATE_DEFAULT) {
-		val = smb->pdata->soft_temp_limit_compensation & 0x3;
-
-		ret = smb347_read(smb, CFG_THERM);
-		if (ret < 0)
-			return ret;
-
-		ret &= ~CFG_THERM_SOFT_HOT_COMPENSATION_MASK;
-		ret |= val << CFG_THERM_SOFT_HOT_COMPENSATION_SHIFT;
-
-		ret &= ~CFG_THERM_SOFT_COLD_COMPENSATION_MASK;
-		ret |= val << CFG_THERM_SOFT_COLD_COMPENSATION_SHIFT;
-
-		ret = smb347_write(smb, CFG_THERM, ret);
-		if (ret < 0)
-			return ret;
-	}
-
-	if (smb->pdata->charge_current_compensation) {
-		val = current_to_hw(ccc_tbl, ARRAY_SIZE(ccc_tbl),
-				    smb->pdata->charge_current_compensation);
-		if (val < 0)
-			return val;
-
-		ret = smb347_read(smb, CFG_OTG);
-		if (ret < 0)
-			return ret;
-
-		ret &= ~CFG_OTG_CC_COMPENSATION_MASK;
-		ret |= (val & 0x3) << CFG_OTG_CC_COMPENSATION_SHIFT;
-
-		ret = smb347_write(smb, CFG_OTG, ret);
-		if (ret < 0)
-			return ret;
-	}
-
-	return ret;
-}
-
 static int smb347_hw_init(struct smb347_charger *smb)
 {
-	int ret;
+	int ret, loopCount, i;
+	int regOffset = 0;
 
 	ret = smb347_set_writable(smb, true);
 	if (ret < 0)
 		return ret;
 
+	loopCount = MAXSMB347_CONFIG_DATA_SIZE / 2;
+
 	/*
 	 * Program the platform specific configuration values to the device
-	 * first.
 	 */
-	ret = smb347_set_charge_current(smb);
-	if (ret < 0)
-		goto fail;
-
-	ret = smb347_set_current_limits(smb);
-	if (ret < 0)
-		goto fail;
-
-	ret = smb347_set_voltage_limits(smb);
-	if (ret < 0)
-		goto fail;
-
-	ret = smb347_set_temp_limits(smb);
-	if (ret < 0)
-		goto fail;
-
-	/* If USB charging is disabled we put the USB in suspend mode */
-	if (!smb->pdata->use_usb) {
-		ret = smb347_read(smb, CMD_A);
-		if (ret < 0)
-			goto fail;
-
-		ret |= CMD_A_SUSPEND_ENABLED;
-
-		ret = smb347_write(smb, CMD_A, ret);
-		if (ret < 0)
-			goto fail;
+	for (i = 0; i < loopCount; i++) {
+		smb347_write(smb, smb->pdata->char_config_regs[regOffset],
+			smb->pdata->char_config_regs[regOffset+1]);
+		regOffset += 2;
+		/* check if we reached the end of valid row */
+		if ((i < loopCount - 1) &&
+			(smb->pdata->char_config_regs[regOffset] == 0x0))
+			break;
 	}
-
-	/* Setup OTG VBUS control depending on the platform data. */
-	ret = smb347_read(smb, CFG_OTHER);
-	if (ret < 0)
-		goto fail;
-
-	ret &= ~CFG_OTHER_RID_MASK;
 
 	switch (smb->pdata->otg_control) {
 	case SMB347_OTG_CONTROL_DISABLED:
@@ -1013,65 +633,14 @@ static int smb347_hw_init(struct smb347_charger *smb)
 		break;
 
 	case SMB347_OTG_CONTROL_PIN:
-		ret |= CFG_OTHER_RID_DISABLED_OTG_PIN;
-		ret |= CFG_OTHER_OTG_PIN_ACTIVE_LOW;
-		break;
-
 	case SMB347_OTG_CONTROL_AUTO:
-		ret |= CFG_OTHER_RID_ENABLED_AUTO_OTG;
+		/*
+		 * no need to program again as the OTG settings
+		 * as they are already configured as part of platform
+		 * specific register configuration.
+		 */
 		break;
 	}
-
-	ret = smb347_write(smb, CFG_OTHER, ret);
-	if (ret < 0)
-		goto fail;
-
-	ret = smb347_read(smb, CFG_PIN);
-	if (ret < 0)
-		goto fail;
-
-	/*
-	 * Make the charging functionality controllable by a write to the
-	 * command register unless pin control is specified in the platform
-	 * data.
-	 */
-	ret &= ~CFG_PIN_EN_CTRL_MASK;
-
-	switch (smb->pdata->enable_control) {
-	case SMB347_CHG_ENABLE_SW:
-		/* Do nothing, 0 means i2c control */
-		break;
-	case SMB347_CHG_ENABLE_PIN_ACTIVE_LOW:
-		ret |= CFG_PIN_EN_CTRL_ACTIVE_LOW;
-		break;
-	case SMB347_CHG_ENABLE_PIN_ACTIVE_HIGH:
-		ret |= CFG_PIN_EN_CTRL_ACTIVE_HIGH;
-		break;
-	}
-
-	/* Disable Automatic Power Source Detection (APSD) interrupt. */
-	ret &= ~CFG_PIN_EN_APSD_IRQ;
-
-	ret = smb347_write(smb, CFG_PIN, ret);
-	if (ret < 0)
-		goto fail;
-
-	/*
-	 * Summit recommends that register 0x02 (CFG_VARIOUS_FUNCS) is
-	 * programmed last. This has something to do with the fact that
-	 * current limits are correctly updated. We really don't have
-	 * anything else to configure there except that we update the input
-	 * source priority.
-	 */
-	ret = smb347_read(smb, CFG_VARIOUS_FUNCS);
-	if (ret < 0)
-		goto fail;
-
-	ret &= ~CFG_VARIOUS_FUNCS_PRIORITY_USB;
-
-	ret = smb347_write(smb, CFG_VARIOUS_FUNCS, ret);
-	if (ret < 0)
-		goto fail;
 
 	ret = smb347_update_status(smb);
 	if (ret < 0)
@@ -1689,6 +1258,7 @@ static int smb347_remove(struct i2c_client *client)
 
 static const struct i2c_device_id smb347_id[] = {
 	{ "smb347", 0},
+	{ "smb349", 1},
 };
 MODULE_DEVICE_TABLE(i2c, smb347_id);
 
