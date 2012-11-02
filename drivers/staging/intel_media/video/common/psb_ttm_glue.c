@@ -263,7 +263,8 @@ void psb_remove_videoctx(struct drm_psb_private *dev_priv, struct file *filp)
 			|| VAEntrypointEncPicture ==
 				(found_ctx->ctx_type & 0xff)) {
 			if (dev_priv->topaz_ctx == found_ctx) {
-				pnw_reset_fw_status(dev_priv->dev);
+				pnw_reset_fw_status(dev_priv->dev,
+					PNW_TOPAZ_END_CTX);
 				dev_priv->topaz_ctx = NULL;
 			} else {
 				PSB_DEBUG_PM("Remove a inactive "\
@@ -379,7 +380,8 @@ int psb_video_getparam(struct drm_device *dev, void *data,
 		if (IS_MDFLD(dev_priv->dev) &&
 				(VAEntrypointEncSlice ==
 				 (ctx_type & 0xff)))
-			pnw_reset_fw_status(dev_priv->dev);
+			pnw_reset_fw_status(dev_priv->dev,
+				PNW_TOPAZ_START_CTX);
 
 		PSB_DEBUG_INIT("Video:add ctx profile %d, entry %d.\n",
 					((ctx_type >> 8) & 0xff),
@@ -528,7 +530,8 @@ int psb_video_getparam(struct drm_device *dev, void *data,
 
 out:
 	if (ret) {
-		DRM_ERROR("%s: failed to call sub-ioctl", __func__, arg->key);
+		DRM_ERROR("%s: failed to call sub-ioctl 0x%x",
+			__func__, arg->key);
 		return -EFAULT;
 	}
 

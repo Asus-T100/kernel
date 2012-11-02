@@ -178,7 +178,10 @@ extern int pnw_topaz_uninit(struct drm_device *dev);
 extern void pnw_topaz_handle_timeout(struct ttm_fence_device *fdev);
 
 extern int pnw_topaz_save_mtx_state(struct drm_device *dev);
-extern void pnw_reset_fw_status(struct drm_device *dev);
+
+#define PNW_TOPAZ_START_CTX (0x1)
+#define PNW_TOPAZ_END_CTX (0x1<<1)
+extern void pnw_reset_fw_status(struct drm_device *dev, u32 flag);
 
 extern void topaz_write_core_reg(struct drm_psb_private *dev_priv,
 				 uint32_t core,
@@ -189,6 +192,8 @@ extern void topaz_read_core_reg(struct drm_psb_private *dev_priv,
 				uint32_t reg,
 				uint32_t *ret_val);
 extern void psb_powerdown_topaz(struct work_struct *work);
+
+extern void pnw_topaz_flush_cmd_queue(struct pnw_topaz_private *topaz_priv);
 #define PNW_TOPAZ_NEW_PMSTATE(drm_dev, topaz_priv, new_state)		\
 do { \
 	topaz_priv->pmstate = new_state;				\
