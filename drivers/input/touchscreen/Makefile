@@ -66,5 +66,6 @@ obj-$(CONFIG_TOUCHSCREEN_CYTTSP_CORE)	+= cyttsp_core.o
 obj-$(CONFIG_TOUCHSCREEN_CYTTSP_I2C)	+= cyttsp_i2c.o
 obj-$(CONFIG_TOUCHSCREEN_ATMEL_MXT224)	+= atmel_mxt224.o
 obj-$(CONFIG_TOUCHSCREEN_FOCALTECH_FT5406)	+= ft5x06_ts.o
+obj-$(CONFIG_TOUCHSCREEN_R69001_I2C)	+= r69001-ts-i2c.o
 
 obj-y += rmi/
