@@ -3595,21 +3595,8 @@ out:
 int atomisp_save_iunit_reg(struct atomisp_device *isp)
 {
 	struct pci_dev *dev = isp->pdev;
-	v4l2_dbg(3, dbg_level, &atomisp_dev, "%s\n", __func__);
 
-	/*Clear those register value first*/
-	isp->hw_contex.pcicmdsts = 0;
-	isp->hw_contex.ispmmadr = 0;
-	isp->hw_contex.msicap = 0;
-	isp->hw_contex.msi_addr = 0;
-	isp->hw_contex.msi_data = 0;
-	isp->hw_contex.intr = 0;
-	isp->hw_contex.interrupt_control = 0;
-	isp->hw_contex.pmcs = 0;
-	isp->hw_contex.cg_dis = 0;
-	isp->hw_contex.csi_rcomp_config = 0;
-	isp->hw_contex.csi_afe_dly = 0;
-	isp->hw_contex.csi_control = 0;
+	v4l2_dbg(3, dbg_level, &atomisp_dev, "%s\n", __func__);
 
 	pci_read_config_word(dev, PCI_COMMAND, &isp->hw_contex.pcicmdsts);
 	pci_read_config_dword(dev, PCI_BASE_ADDRESS_0,
@@ -3628,7 +3615,6 @@ int atomisp_save_iunit_reg(struct atomisp_device *isp)
 	if (IS_MRFLD) {
 		pci_read_config_dword(dev, MRFLD_PCI_PMCS,
 				      &isp->hw_contex.pmcs);
-
 		pci_read_config_dword(dev, MRFLD_PCI_CSI_ACCESS_CTRL_VIOL,
 				      &isp->hw_contex.csi_access_viol);
 		pci_read_config_dword(dev, MRFLD_PCI_CSI_RCOMP_CONTROL,
@@ -3643,7 +3629,6 @@ int atomisp_save_iunit_reg(struct atomisp_device *isp)
 				      &isp->hw_contex.csi_afe_hs_control);
 		pci_read_config_dword(dev, MRFLD_PCI_CSI_DEADLINE_CONTROL,
 				      &isp->hw_contex.csi_deadline_control);
-
 	} else {
 		pci_read_config_dword(dev, MFLD_PCI_PMCS,
 				      &isp->hw_contex.pmcs);
