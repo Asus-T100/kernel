@@ -27,29 +27,30 @@
 #include <linux/intel_mid_pm.h>
 #endif
 
-#include <linux/pm_qos_params.h>
-#include <media/v4l2-dev.h>
-#include <media/v4l2-device.h>
-#include <media/v4l2-subdev.h>
-#include <media/v4l2-common.h>
-#include <media/v4l2-ioctl.h>
-#include <media/videobuf-core.h>
-#include <media/videobuf-vmalloc.h>
-#include <linux/firmware.h>
-#include <media/media-device.h>
-#include <linux/kernel.h>
-
 #include <linux/atomisp.h>
 #include <linux/atomisp_platform.h>
+#include <linux/firmware.h>
+#include <linux/kernel.h>
+#include <linux/pm_qos_params.h>
+
+#include <media/media-device.h>
+#include <media/v4l2-common.h>
+#include <media/v4l2-dev.h>
+#include <media/v4l2-device.h>
+#include <media/v4l2-ioctl.h>
+#include <media/v4l2-subdev.h>
+#include <media/videobuf-core.h>
+#include <media/videobuf-vmalloc.h>
 
 #include <sh_css_types.h>
+
+#include "atomisp_csi2.h"
+#include "atomisp_file.h"
+#include "atomisp_subdev.h"
+#include "atomisp_tpg.h"
+
 #include "gp_device.h"
 #include "irq.h"
-
-#include "atomisp_subdev.h"
-#include "atomisp_csi2.h"
-#include "atomisp_tpg.h"
-#include "atomisp_file.h"
 
 #define MAGIC_NUMBER 0x73c5cc4
 

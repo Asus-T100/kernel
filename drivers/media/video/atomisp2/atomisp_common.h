@@ -24,44 +24,46 @@
 #ifndef	__ATOMISP_COMMON_H__
 #define	__ATOMISP_COMMON_H__
 
-#include <linux/module.h>
-#include <linux/moduleparam.h>
-#include <linux/errno.h>
-#include <linux/init.h>
-#include <linux/kernel.h>	/* atomisp_dbg */
-#include <linux/version.h>	/* atomisp_dbg */
-#include <linux/ioport.h>
-#include <linux/types.h>
-#include <linux/delay.h>
-#include <linux/time.h>
-#include <linux/sched.h>
-#include <linux/timer.h>
-#include <linux/interrupt.h>
-#include <linux/slab.h>		/* for kmalloc */
-#include <linux/mm.h>		/* for GFP_ATOMIC */
-#include <linux/pci.h>		/* for DMA */
-#include <linux/pm_runtime.h>	/* for runtime pm */
-#include <linux/stringify.h>
-#include <linux/io.h>		/* ioremap */
-#include <linux/uaccess.h>	/* access_ok */
-#include <linux/param.h>	/* access_ok */
-#include <linux/gpio.h>
-#include <asm/irq.h>
-#include <linux/poll.h>
-#include <linux/stddef.h>
-#include <linux/firmware.h>
 #include <asm/intel_scu_ipc.h>
 #include <asm/intel-mid.h>
-
-#include <linux/videodev2.h>
-#include <media/v4l2-device.h>
-#include <media/v4l2-subdev.h>
-#include <media/v4l2-common.h>
-#include <media/v4l2-ioctl.h>
-#include <media/videobuf-core.h>
-#include <media/videobuf-vmalloc.h>
+#include <asm/irq.h>
 
 #include <hmm/hmm.h>
+
+#include <linux/delay.h>
+#include <linux/errno.h>
+#include <linux/firmware.h>
+#include <linux/gpio.h>
+#include <linux/init.h>
+#include <linux/interrupt.h>
+#include <linux/io.h>		/* ioremap */
+#include <linux/ioport.h>
+#include <linux/kernel.h>	/* atomisp_dbg */
+#include <linux/mm.h>		/* for GFP_ATOMIC */
+#include <linux/module.h>
+#include <linux/moduleparam.h>
+#include <linux/param.h>	/* access_ok */
+#include <linux/pci.h>		/* for DMA */
+#include <linux/pm_runtime.h>	/* for runtime pm */
+#include <linux/poll.h>
+#include <linux/sched.h>
+#include <linux/slab.h>		/* for kmalloc */
+#include <linux/stddef.h>
+#include <linux/stringify.h>
+#include <linux/time.h>
+#include <linux/timer.h>
+#include <linux/types.h>
+#include <linux/uaccess.h>	/* access_ok */
+#include <linux/version.h>	/* atomisp_dbg */
+#include <linux/videodev2.h>
+
+#include <media/v4l2-common.h>
+#include <media/v4l2-device.h>
+#include <media/v4l2-ioctl.h>
+#include <media/v4l2-subdev.h>
+
+#include <media/videobuf-core.h>
+#include <media/videobuf-vmalloc.h>
 
 #include <sh_css.h>
 
