@@ -428,8 +428,8 @@ static int mt9d113_wait_standby(struct v4l2_subdev *sd, int flag)
 			return ret;
 		}
 
-		if (((status & MT9D113_MASK_STBY_STAT) >> MT9D113_BIT_STBY_STAT)
-		    == flag)
+		if (((status & STBY_CTRL_MASK_STBY_STAT)
+			>> STBY_CTRL_BIT_STBY_STAT) == flag)
 			return 0;
 		msleep(20);
 	}
@@ -444,7 +444,7 @@ static int mt9d113_set_suspend(struct v4l2_subdev *sd)
 	int ret;
 
 	ret = misensor_rmw_reg(client, MISENSOR_16BIT, MT9D113_REG_STBY_CTRL,
-			       MT9D113_MASK_STBY_REQ, 0x01);
+			       STBY_CTRL_MASK_STBY_REQ, 0x01);
 	if (ret) {
 		dev_err(&client->dev, "err set standby bit: %d", ret);
 		return -EINVAL;
@@ -543,7 +543,7 @@ static int mt9d113_wait_pll_lock(struct v4l2_subdev *sd)
 			dev_err(&client->dev, "err read pll status: %d", ret);
 			return ret;
 		}
-		if (status_pll & MT9D113_MASK_PLL_STAT)
+		if (status_pll & PLL_CTRL_MASK_PLL_STAT)
 			return 0;
 		msleep(20);
 	}
@@ -618,6 +618,43 @@ err:
 	return ret;
 }
 
+static int mt9d113_wait_mipi_standby(struct v4l2_subdev *sd)
+{
+	struct i2c_client *client = v4l2_get_subdevdata(sd);
+	int i = 100;
+	int ret, status;
+
+	while (i--) {
+		ret = mt9d113_read_reg(client, MISENSOR_16BIT,
+				       MT9D113_REG_MIPI_STAT, &status);
+		if (ret) {
+			dev_err(&client->dev, "err read SEQ_CMD: %d", ret);
+			return ret;
+		}
+
+		if (status & MIPI_STAT_MASK_MIPI_STBY)
+			return 0;
+		msleep(20);
+	}
+
+	dev_err(&client->dev, "wait mipi standby %d timeout.", status);
+	return -EBUSY;
+}
+
+static int mt9d113_mipi_standby(struct v4l2_subdev *sd, int state)
+{
+	int ret = 0;
+	struct i2c_client *c = v4l2_get_subdevdata(sd);
+
+	ret = misensor_rmw_reg(c, MISENSOR_16BIT, MT9D113_REG_MIPI_CTRL,
+			       MIPI_CTRL_MASK_MIPI_STBY, state);
+	if (ret)
+		dev_err(&c->dev, "err set mipi standby bit: %d",
+			ret);
+
+	return ret;
+}
+
 static int mt9d113_init_common(struct v4l2_subdev *sd)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
@@ -635,7 +672,7 @@ static int mt9d113_init_common(struct v4l2_subdev *sd)
 	 */
 	/* Disable Parallel */
 	ret = misensor_rmw_reg(client, MISENSOR_16BIT, MT9D113_REG_MISC_CTRL,
-			       MT9D113_MASK_EN_PARALL, 0x0);
+			       MISC_CTRL_MASK_EN_PARALL, 0x0);
 	if (ret) {
 		dev_err(&client->dev, "err disable parallel: %d", ret);
 		return ret;
@@ -643,9 +680,17 @@ static int mt9d113_init_common(struct v4l2_subdev *sd)
 
 	/* Enable MIPI TX */
 	ret = misensor_rmw_reg(client, MISENSOR_16BIT, MT9D113_REG_MISC_CTRL,
-				MT9D113_MASK_EN_MIPI_TX, 0x1);
+				MISC_CTRL_MASK_EN_MIPI_TX, 0x1);
 	if (ret) {
 		dev_err(&client->dev, "err init mipi: %d", ret);
+		return ret;
+	}
+
+	/* MIPI Stop EOF */
+	ret = misensor_rmw_reg(client, MISENSOR_16BIT, MT9D113_REG_MIPI_CTRL,
+			       MIPI_CTRL_MASK_MIPI_EOF, 0x1);
+	if (ret) {
+		dev_err(&client->dev, "err set mipi EOF bit: %d", ret);
 		return ret;
 	}
 
@@ -662,7 +707,7 @@ static int mt9d113_init_common(struct v4l2_subdev *sd)
 	 * Load=MCU Powerup Stop Enable
 	 */
 	ret = misensor_rmw_reg(client, MISENSOR_16BIT, MT9D113_REG_STBY_CTRL,
-			       MT9D113_MASK_STOP_MCU, 0x1);
+			       STBY_CTRL_MASK_STOP_MCU, 0x1);
 	if (ret) {
 		dev_err(&client->dev, "err set powerup stop bit: %d", ret);
 		return ret;
@@ -672,7 +717,7 @@ static int mt9d113_init_common(struct v4l2_subdev *sd)
 	 * Load GO
 	 */
 	ret = misensor_rmw_reg(client, MISENSOR_16BIT, MT9D113_REG_STBY_CTRL,
-			       MT9D113_MASK_STBY_REQ, 0x0);
+			       STBY_CTRL_MASK_STBY_REQ, 0x0);
 	if (ret) {
 		dev_err(&client->dev, "err release MCU from standby: %d", ret);
 		return ret;
@@ -761,13 +806,8 @@ static int mt9d113_s_power(struct v4l2_subdev *sd, int power)
 
 	if (power_up(sd))
 		return -EINVAL;
-/*
- * FIXME
- * No initialization here
- * The initialization is done in s_mbus_fmt
- */
-	/* return mt9d113_init_common(sd); */
-	return 0;
+
+	return mt9d113_init_common(sd);
 }
 
 static int mt9d113_try_res(u32 *w, u32 *h)
@@ -908,17 +948,7 @@ static int mt9d113_set_mbus_fmt(struct v4l2_subdev *sd,
 		WARN_ON(1);
 		return -EINVAL;
 	}
-/*
- * FIXME
- * The intialization should be done only once after sensor physically powered
- * on. But the mt9d113 does not have the explict stream off cmd, which causes
- * it can not be streamed on again once the standby cmd is executed to make it
- * stop streamming. So make the initialization here for WA to make it get fully
- * re-initializationed for next stream on
- */
-	ret = mt9d113_init_common(sd);
-	if (ret)
-		return ret;
+
 	switch (res_index->res) {
 	case MT9D113_RES_QCIF:
 		ret = mt9d113_write_reg_array(c, mt9d113_qcif_30_init);
@@ -1123,23 +1153,35 @@ static int mt9d113_s_stream(struct v4l2_subdev *sd, int enable)
 	if (enable) {
 		/* Clear power up stop bit */
 		ret = misensor_rmw_reg(c, MISENSOR_16BIT, MT9D113_REG_STBY_CTRL,
-				       MT9D113_MASK_STOP_MCU,
-				       0x0);
+				       STBY_CTRL_MASK_STOP_MCU, 0x0);
 		if (ret) {
 			dev_err(&c->dev, "err clear powerup stop bit: %d",
 				ret);
 			return ret;
 		}
 		ret = mt9d113_refresh(sd);
+		if (ret)
+			return ret;
+
+		ret = mt9d113_mipi_standby(sd, 0);
+		if (ret)
+			return ret;
+
 	} else {
+		ret = mt9d113_mipi_standby(sd, 1);
+		if (ret)
+			return ret;
+
+		ret = mt9d113_wait_mipi_standby(sd);
+		if (ret)
+			return ret;
+
 		ret = misensor_rmw_reg(c, MISENSOR_16BIT, MT9D113_REG_STBY_CTRL,
-				       MT9D113_MASK_STOP_MCU,
-				       0x1);
+				       STBY_CTRL_MASK_STOP_MCU, 0x1);
 		if (ret)
 			dev_warn(&c->dev, "err set powerup stop bit: %d",
 				 ret);
 
-		ret = mt9d113_set_suspend(sd);
 	}
 
 	return ret;
