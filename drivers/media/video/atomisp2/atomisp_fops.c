@@ -435,7 +435,7 @@ static int atomisp_open(struct file *file)
 	struct video_device *vdev = video_devdata(file);
 	struct atomisp_device *isp = video_get_drvdata(vdev);
 	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
-	int ret = -EINVAL;
+	int ret;
 	struct sh_css_env my_env = sh_css_default_env();
 
 	my_env.sh_env.alloc = my_kernel_malloc;
@@ -452,13 +452,15 @@ static int atomisp_open(struct file *file)
 
 	if (!isp->input_cnt) {
 		v4l2_err(&atomisp_dev, "no camera attached\n");
+		ret = -EINVAL;
 		goto error;
 	}
 
 	if (pipe->opened)
 		goto done;
 
-	if (atomisp_init_pipe(pipe) < 0)
+	ret = atomisp_init_pipe(pipe);
+	if (ret)
 		goto error;
 
 	if (isp->sw_contex.init) {
@@ -468,7 +470,8 @@ static int atomisp_open(struct file *file)
 
 #ifdef CONFIG_PM
 	/* runtime power management, turn on ISP */
-	if (pm_runtime_get_sync(vdev->v4l2_dev->dev) < 0) {
+	ret = pm_runtime_get_sync(vdev->v4l2_dev->dev);
+	if (ret) {
 		v4l2_err(&atomisp_dev,
 				"Failed to power on device\n");
 		goto runtime_get_failed;
