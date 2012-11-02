@@ -438,8 +438,7 @@ void dump_sp_dmem(unsigned int addr, unsigned int size)
 	v4l2_dbg(3, dbg_level, &atomisp_dev,
 		 "%s, addr:0x%x, size: %d, size32: %d\n",
 		 __func__, addr, size, size32);
-	if (size32 < 0 ||
-	    (size32 * 4) + addr > 0x4000) {
+	if (size32 * 4 + addr > 0x4000) {
 		v4l2_err(&atomisp_dev,
 			 "illegal size (%d) or addr (0x%x)\n",
 			 size32, addr);
@@ -2056,7 +2055,8 @@ int atomisp_set_dis_coefs(struct atomisp_device *isp,
 	return 0;
 }
 
-int atomisp_compare_grid(struct atomisp_device *isp, struct atomisp_grid_info *atomgrid)
+static int atomisp_compare_grid(struct atomisp_device *isp,
+				struct atomisp_grid_info *atomgrid)
 {
 	struct atomisp_grid_info tmp;
 	memset(&tmp, 0, sizeof(tmp));

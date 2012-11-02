@@ -78,10 +78,10 @@ int atomisp_buf_prepare(struct videobuf_queue *vq,
 	return 0;
 }
 
-int atomisp_css_qbuf(struct atomisp_device *isp,
-		     struct atomisp_video_pipe *pipe,
-		     enum sh_css_buffer_type buf_type,
-		     void *buffer)
+static int atomisp_css_qbuf(struct atomisp_device *isp,
+			    struct atomisp_video_pipe *pipe,
+			    enum sh_css_buffer_type buf_type,
+			    void *buffer)
 {
 	enum sh_css_pipe_id css_pipe_id;
 	int *in_css;
