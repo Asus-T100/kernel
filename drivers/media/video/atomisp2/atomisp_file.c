@@ -205,9 +205,6 @@ static int file_input_s_mbus_fmt(struct v4l2_subdev *sd,
 static int file_input_g_chip_ident(struct v4l2_subdev *sd,
 			       struct v4l2_dbg_chip_ident *chip)
 {
-	struct atomisp_file_device *dev;
-	dev = container_of(sd, struct atomisp_file_device, sd);
-
 	if (!chip)
 		return -EINVAL;
 
@@ -300,10 +297,6 @@ static const struct v4l2_subdev_ops file_input_ops = {
 	.core = &file_input_core_ops,
 	.video = &file_input_video_ops,
 	.pad = &file_input_pad_ops,
-};
-
-static const struct media_entity_operations file_input_entity_ops = {
-/*	.set_power = v4l2_subdev_set_power,	*/
 };
 
 void

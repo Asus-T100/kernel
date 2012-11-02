@@ -89,9 +89,6 @@ static int tpg_s_mbus_fmt(struct v4l2_subdev *sd,
 static int tpg_g_chip_ident(struct v4l2_subdev *sd,
 			       struct v4l2_dbg_chip_ident *chip)
 {
-	struct atomisp_tpg_device *dev;
-	dev = container_of(sd, struct atomisp_tpg_device, sd);
-
 	if (!chip)
 		return -EINVAL;
 	return 0;
@@ -193,10 +190,6 @@ static const struct v4l2_subdev_ops tpg_ops = {
 	.core = &tpg_core_ops,
 	.video = &tpg_video_ops,
 	.pad = &tpg_pad_ops,
-};
-
-static const struct media_entity_operations tpg_entity_ops = {
-/*	.set_power = v4l2_subdev_set_power,	*/
 };
 
 void atomisp_tpg_unregister_entities(struct atomisp_tpg_device *tpg)

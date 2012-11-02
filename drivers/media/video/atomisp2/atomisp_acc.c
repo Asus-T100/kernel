@@ -314,6 +314,7 @@ out:
 	return ret;
 }
 
+#if 0
 void atomisp_acc_unmap_all(struct atomisp_device *isp)
 {
 	struct atomisp_map *atomisp_map, *t;
@@ -326,6 +327,7 @@ void atomisp_acc_unmap_all(struct atomisp_device *isp)
 
 	return;
 }
+#endif
 
 int atomisp_acc_s_mapped_arg(struct atomisp_device *isp,
 			     struct atomisp_acc_s_mapped_arg *arg)

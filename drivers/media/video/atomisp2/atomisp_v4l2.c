@@ -229,14 +229,6 @@ static struct atomisp_tvnorm tvnorms[] = {
 	}
 };
 
-static const struct video_device atomisp_video_dev = {
-	.name = "atomisp",
-	.minor = -1,
-	.fops = &atomisp_fops,
-	.release = video_device_release_empty,
-	.ioctl_ops = &atomisp_ioctl_ops
-};
-
 int atomisp_video_init(struct atomisp_video_pipe *video, const char *name)
 {
 	int ret;
