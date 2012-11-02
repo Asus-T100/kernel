@@ -75,6 +75,7 @@ obj-$(subst m,y,$(CONFIG_TI_ST))					+= platform_btwilink.o
 obj-$(subst m,y,$(CONFIG_MMC_SDHCI_PCI))				+= platform_mmc_sdhci_pci.o
 # WIFI
 obj-$(subst m,y,$(CONFIG_WL12XX_PLATFORM_DATA))				+= platform_wl12xx.o
+obj-$(subst m,y,$(CONFIG_BCM43XX_PLATFORM_DATA))			+= platform_bcm43xx.o
 # MISC Devices
 obj-$(subst m,y,$(CONFIG_KEYBOARD_GPIO))				+= platform_gpio_keys.o
 obj-$(subst m,y,$(CONFIG_SWITCH_MID))					+= platform_switch_mid.o

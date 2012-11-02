@@ -89,6 +89,7 @@
  */
 
 #include "device_libs/platform_wl12xx.h"
+#include "device_libs/platform_bcm43xx.h"
 
 /*
  * Bluetooth devices
@@ -123,6 +124,8 @@ struct devs_id __initconst device_ids[] = {
 	{"max17042", SFI_DEV_TYPE_I2C, 1, &max17042_platform_data, NULL},
 	{"hsi_ifx_modem", SFI_DEV_TYPE_HSI, 0, &hsi_modem_platform_data, NULL},
 	{"wl12xx_clk_vmmc", SFI_DEV_TYPE_SD, 0, &wl12xx_platform_data, NULL},
+	{"bcm43xx_clk_vmmc", SFI_DEV_TYPE_SD, 0, &bcm43xx_platform_data, NULL},
+
 	/* MSIC subdevices */
 	{"msic_battery", SFI_DEV_TYPE_IPC, 1, &msic_battery_platform_data,
 					&ipc_device_handler},
