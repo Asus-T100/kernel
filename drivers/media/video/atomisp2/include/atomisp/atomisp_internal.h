@@ -38,8 +38,6 @@
 #include <linux/firmware.h>
 #include <media/media-device.h>
 #include <linux/kernel.h>
-#include <media/v4l2-device.h>
-#include <media/v4l2-common.h>
 
 #include <linux/atomisp.h>
 #include <linux/atomisp_platform.h>

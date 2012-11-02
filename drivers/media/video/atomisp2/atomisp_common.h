@@ -32,7 +32,6 @@
 #include <linux/version.h>	/* atomisp_dbg */
 #include <linux/ioport.h>
 #include <linux/types.h>
-#include <linux/slab.h>
 #include <linux/delay.h>
 #include <linux/time.h>
 #include <linux/sched.h>
