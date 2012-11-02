@@ -866,7 +866,7 @@ irqreturn_t atomisp_isr_thread(int irq, void *isp_ptr)
 	int current_event = 0;
 	bool frame_done_found = false;
 
-	v4l2_dbg(2, dbg_level, &atomisp_dev, ">%s\n", __func__);
+	v4l2_dbg(5, dbg_level, &atomisp_dev, ">%s\n", __func__);
 	mutex_lock(&isp->mutex);
 
 	while (isp->sw_contex.isp_streaming &&
@@ -948,7 +948,7 @@ irqreturn_t atomisp_isr_thread(int irq, void *isp_ptr)
 	atomisp_setup_flash(isp);
 	mutex_unlock(&isp->mutex);
 
-	v4l2_dbg(2, dbg_level, &atomisp_dev, "<%s\n", __func__);
+	v4l2_dbg(5, dbg_level, &atomisp_dev, "<%s\n", __func__);
 
 	return IRQ_HANDLED;
 }
