@@ -865,8 +865,6 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 		v4l2_err(&atomisp_dev, "Failed to alloc CI ISP structure\n");
 		return -ENOMEM;
 	}
-	isp->sw_contex.probed = false;
-	isp->sw_contex.init = false;
 	isp->pdev = dev;
 	isp->dev = &dev->dev;
 	isp->sw_contex.power_state = ATOM_ISP_POWER_UP;
@@ -913,8 +911,6 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 
 	isp->tvnorm = tvnorms;
 	mutex_init(&isp->mutex);
-	isp->sw_contex.updating_uptr = false;
-	isp->isp3a_stat_ready = false;
 
 	pci_set_drvdata(dev, isp);
 
