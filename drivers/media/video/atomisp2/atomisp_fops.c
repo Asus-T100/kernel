@@ -452,8 +452,11 @@ static int atomisp_open(struct file *file)
 
 	v4l2_dbg(2, dbg_level, &atomisp_dev, ">%s [%d]\n",
 				__func__, pipe->pipe_type);
-	if (!isp || isp->sw_contex.probed == 0)
+	mutex_lock(&isp->mutex);
+	if (!isp || isp->sw_contex.probed == 0) {
+		mutex_unlock(&isp->mutex);
 		return -ENODEV;
+	}
 
 	if (!isp->input_cnt) {
 		v4l2_err(&atomisp_dev, "no camera attached\n");
@@ -529,6 +532,7 @@ static int atomisp_open(struct file *file)
 
 	isp->sw_contex.init = true;
 done:
+	mutex_unlock(&isp->mutex);
 	return 0;
 
 css_init_failed:
@@ -539,6 +543,7 @@ css_init_failed:
 runtime_get_failed:
 	atomisp_uninit_pipe(pipe);
 error:
+	mutex_unlock(&isp->mutex);
 	return ret;
 }
 
@@ -566,6 +571,7 @@ static int atomisp_release(struct file *file)
 	if (isp == NULL)
 		return -EBADF;
 
+	mutex_lock(&isp->mutex);
 	if (pipe->capq.streaming &&
 	    atomisp_streamoff(file, NULL,
 			      V4L2_BUF_TYPE_VIDEO_CAPTURE))
@@ -652,9 +658,12 @@ static int atomisp_release(struct file *file)
 #endif
 done:
 	pipe->opened = false;
+	mutex_unlock(&isp->mutex);
 
 	return 0;
 error:
+	mutex_unlock(&isp->mutex);
+
 	return ret;
 }
 
@@ -800,6 +809,7 @@ static int atomisp_mmap(struct file *file, struct vm_area_struct *vma)
 	u32 end = vma->vm_end;
 	u32 size = end - start;
 	u32 origin_size, new_size;
+	int ret;
 
 	if (!(vma->vm_flags & (VM_WRITE | VM_READ)))
 		return -EACCES;
@@ -807,20 +817,23 @@ static int atomisp_mmap(struct file *file, struct vm_area_struct *vma)
 	if (!(vma->vm_flags & VM_SHARED))
 		return -EINVAL;
 
+	mutex_lock(&isp->mutex);
 	new_size = pipe->format->out.width *
 		pipe->format->out.height * 2;
 
 	/* mmap for ISP offline raw data */
 	if ((pipe->pipe_type == ATOMISP_PIPE_MASTEROUTPUT) &&
 	    (vma->vm_pgoff == (ISP_PARAM_MMAP_OFFSET >> PAGE_SHIFT))) {
-		int ret;
-		if (isp->params.online_process != 0)
-			return -EINVAL;
+		if (isp->params.online_process != 0) {
+			ret = -EINVAL;
+			goto error;
+		}
 		raw_virt_addr = isp->raw_output_frame;
 		if (raw_virt_addr == NULL) {
 			v4l2_err(&atomisp_dev,
 				 "Failed to request RAW frame\n");
-			return -EINVAL;
+			ret = -EINVAL;
+			goto error;
 		}
 
 		ret = remove_pad_from_frame(raw_virt_addr,
@@ -828,7 +841,7 @@ static int atomisp_mmap(struct file *file, struct vm_area_struct *vma)
 				      pipe->format->out.height);
 		if (ret < 0) {
 			v4l2_err(&atomisp_dev, "remove pad failed.\n");
-			return ret;
+			goto error;
 		}
 		origin_size = raw_virt_addr->data_bytes;
 		raw_virt_addr->data_bytes = new_size;
@@ -837,17 +850,20 @@ static int atomisp_mmap(struct file *file, struct vm_area_struct *vma)
 			v4l2_err(&atomisp_dev,
 				 "incorrect size for mmap ISP"
 				 " Raw Frame\n");
-			return -EINVAL;
+			ret = -EINVAL;
+			goto error;
 		}
 
 		if (frame_mmap(raw_virt_addr, vma)) {
 			v4l2_err(&atomisp_dev,
 				 "frame_mmap failed.\n");
 			raw_virt_addr->data_bytes = origin_size;
-			return -EAGAIN;
+			ret = -EAGAIN;
+			goto error;
 		}
 		raw_virt_addr->data_bytes = origin_size;
 		vma->vm_flags |= VM_RESERVED;
+		mutex_unlock(&isp->mutex);
 		return 0;
 	}
 
@@ -857,10 +873,17 @@ static int atomisp_mmap(struct file *file, struct vm_area_struct *vma)
 	if (size != pipe->format->out.sizeimage) {
 		v4l2_err(&atomisp_dev,
 			    "incorrect size for mmap ISP frames\n");
-		return -EINVAL;
+		ret = -EINVAL;
+		goto error;
 	}
+	mutex_unlock(&isp->mutex);
 
 	return atomisp_videobuf_mmap_mapper(&pipe->capq, vma);
+
+error:
+	mutex_unlock(&isp->mutex);
+
+	return ret;
 }
 
 int atomisp_file_mmap(struct file *file, struct vm_area_struct *vma)
@@ -875,10 +898,15 @@ static unsigned int
 atomisp_poll(struct file *file, struct poll_table_struct *pt)
 {
 	struct video_device *vdev = video_devdata(file);
+	struct atomisp_device *isp = video_get_drvdata(vdev);
 	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
 
-	if (pipe->capq.streaming != 1)
+	mutex_lock(&isp->mutex);
+	if (pipe->capq.streaming != 1) {
+		mutex_unlock(&isp->mutex);
 		return POLLERR;
+	}
+	mutex_unlock(&isp->mutex);
 
 	return videobuf_poll_stream(file, &pipe->capq, pt);
 }

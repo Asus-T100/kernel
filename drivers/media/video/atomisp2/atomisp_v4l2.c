@@ -929,6 +929,7 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 			(unsigned int)atomisp_io_base);
 
 	isp->tvnorm = tvnorms;
+	mutex_init(&isp->mutex);
 	isp->sw_contex.updating_uptr = false;
 	isp->isp3a_stat_ready = false;
 

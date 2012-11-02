@@ -803,6 +803,7 @@ void atomisp_wdt_work(struct work_struct *work)
 	struct atomisp_device *isp = container_of(work, struct atomisp_device,
 						  wdt_work);
 
+	mutex_lock(&isp->mutex);
 	switch (atomic_inc_return(&isp->wdt_count)) {
 	case ATOMISP_ISP_MAX_TIMEOUT_COUNT:
 		isp->sw_contex.error = true;
@@ -821,6 +822,7 @@ void atomisp_wdt_work(struct work_struct *work)
 	}
 
 	mod_timer(&isp->wdt, jiffies + ATOMISP_ISP_TIMEOUT_DURATION);
+	mutex_unlock(&isp->mutex);
 }
 
 void atomisp_wdt(unsigned long isp_addr)
@@ -871,6 +873,7 @@ irqreturn_t atomisp_isr_thread(int irq, void *isp_ptr)
 	bool frame_done_found = false;
 
 	v4l2_dbg(2, dbg_level, &atomisp_dev, ">%s\n", __func__);
+	mutex_lock(&isp->mutex);
 
 	while (isp->sw_contex.isp_streaming &&
 	       sh_css_dequeue_event(&cssPipeId, &cssEvent) == sh_css_success) {
@@ -949,6 +952,7 @@ irqreturn_t atomisp_isr_thread(int irq, void *isp_ptr)
 	}
 	isp->isp_timeout = false;
 	atomisp_setup_flash(isp);
+	mutex_unlock(&isp->mutex);
 
 	v4l2_dbg(2, dbg_level, &atomisp_dev, "<%s\n", __func__);
 
@@ -1995,8 +1999,11 @@ int atomisp_get_dis_stat(struct atomisp_device *isp,
 	INIT_COMPLETION(isp->dis_state_complete);
 	/*this might be blocking other v4l2 calls*/
 	if(!isp->params.dis_proj_data_valid) {
+		/* ioctl is holding lock when this is called */
+		mutex_unlock(&isp->mutex);
 		left = wait_for_completion_timeout(&isp->dis_state_complete,
 						   1 * HZ);
+		mutex_lock(&isp->mutex);
 
 		/* Timeout to get the statistics */
 		if (left == 0) {
