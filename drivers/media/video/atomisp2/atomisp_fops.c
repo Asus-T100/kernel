@@ -303,15 +303,11 @@ static struct videobuf_queue_ops videobuf_qops_output = {
 
 static int atomisp_uninit_pipe(struct atomisp_video_pipe *pipe)
 {
-	if (pipe->format) {
-		kfree(pipe->format);
-		pipe->format = NULL;
-	}
+	kfree(pipe->format);
+	pipe->format = NULL;
 
-	if (pipe->out_fmt) {
-		kfree(pipe->out_fmt);
-		pipe->out_fmt = NULL;
-	}
+	kfree(pipe->out_fmt);
+	pipe->out_fmt = NULL;
 
 	pipe->opened = false;
 	return 0;
@@ -584,32 +580,25 @@ static int atomisp_release(struct file *file)
 		mutex_unlock(&pipe->capq.vb_lock);
 	}
 
-	if (pipe->format) {
-		kfree(pipe->format);
-		pipe->format = NULL;
-		isp->main_format = NULL;
-	}
-
 	if (pipe->outq.bufs[0]) {
 		mutex_lock(&pipe->outq.vb_lock);
 		videobuf_queue_cancel(&pipe->outq);
 		mutex_unlock(&pipe->outq.vb_lock);
 	}
 
-	if (pipe->out_fmt) {
-		kfree(pipe->out_fmt);
-		pipe->out_fmt = NULL;
-	}
+	kfree(pipe->format);
+	pipe->format = NULL;
 
-	if (isp->vf_format) {
-		kfree(isp->vf_format);
-		isp->vf_format = NULL;
-	}
+	isp->main_format = NULL;
 
-	if (isp->input_format) {
-		kfree(isp->input_format);
-		isp->input_format = NULL;
-	}
+	kfree(pipe->out_fmt);
+	pipe->out_fmt = NULL;
+
+	kfree(isp->vf_format);
+	isp->vf_format = NULL;
+
+	kfree(isp->input_format);
+	isp->input_format = NULL;
 
 	if (atomisp_openpipes(isp) > 1)
 		goto done;

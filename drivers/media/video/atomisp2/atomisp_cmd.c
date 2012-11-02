@@ -1611,14 +1611,11 @@ void atomisp_free_3a_dis_buffers(struct atomisp_device *isp)
 	isp->params.s3a_output_bytes = 0;
 	isp->params.s3a_buf_data_valid = false;
 
-	if (isp->params.dis_hor_proj_buf)
-		kfree(isp->params.dis_hor_proj_buf);
-	if (isp->params.dis_ver_proj_buf)
-		kfree(isp->params.dis_ver_proj_buf);
-	if (isp->params.dis_hor_coef_buf)
-		kfree(isp->params.dis_hor_coef_buf);
-	if (isp->params.dis_ver_coef_buf)
-		kfree(isp->params.dis_ver_coef_buf);
+	kfree(isp->params.dis_hor_proj_buf);
+	kfree(isp->params.dis_ver_proj_buf);
+	kfree(isp->params.dis_hor_coef_buf);
+	kfree(isp->params.dis_ver_coef_buf);
+
 	isp->params.dis_hor_proj_buf = NULL;
 	isp->params.dis_ver_proj_buf = NULL;
 	isp->params.dis_hor_coef_buf = NULL;
