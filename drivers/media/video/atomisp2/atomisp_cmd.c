@@ -128,7 +128,6 @@ int atomisp_reset(struct atomisp_device *isp)
 	/* Reset ISP by power-cycling it */
 	int ret = 0;
 	v4l2_dbg(2, dbg_level, &atomisp_dev, "%s\n",__func__);
-	mutex_lock(&isp->isp_lock);
 	sh_css_suspend();
 	ret = pm_runtime_put_sync(isp->dev);
 	if (ret) {
@@ -139,7 +138,6 @@ int atomisp_reset(struct atomisp_device *isp)
 			v4l2_err(&atomisp_dev, "can not enable ISP power\n");
 	}
 	sh_css_resume();
-	mutex_unlock(&isp->isp_lock);
 	return ret;
 }
 
@@ -380,7 +378,6 @@ static void atomisp_pipe_reset(struct atomisp_device *isp)
 
 	v4l2_warn(&atomisp_dev, "ISP timeout. Recovering\n");
 
-	mutex_lock(&isp->isp_lock);
 	switch (isp->sw_contex.run_mode) {
 	case CI_MODE_STILL_CAPTURE:
 		sh_css_capture_stop();
@@ -392,7 +389,6 @@ static void atomisp_pipe_reset(struct atomisp_device *isp)
 		sh_css_video_stop();
 		break;
 	}
-	mutex_unlock(&isp->isp_lock);
 
 	/* clear irq */
 	enable_isp_irq(hrt_isp_css_irq_sp, false);
@@ -423,7 +419,6 @@ static void atomisp_pipe_reset(struct atomisp_device *isp)
 	isp->dis_bufs_in_css = 0;
 	isp->vf_frame_bufs_in_css = 0;
 
-	mutex_lock(&isp->isp_lock);
 	sh_css_start(css_pipe_id);
 	if (!isp->sw_contex.file_input) {
 		sh_css_enable_interrupt(SH_CSS_IRQ_INFO_CSS_RECEIVER_SOF, true);
@@ -434,7 +429,6 @@ static void atomisp_pipe_reset(struct atomisp_device *isp)
 			dev_warn(isp->dev,
 				 "can't start streaming on sensor!\n");
 	}
-	mutex_unlock(&isp->isp_lock);
 }
 
 /* 0x100000 is the start of dmem inside SP */
@@ -624,11 +618,9 @@ static void atomisp_buf_done(struct atomisp_device *isp,
 		return;
 	}
 
-	mutex_lock(&isp->isp_lock);
 	err = sh_css_dequeue_buffer(css_pipe_id,
 			buf_type,
 			(void **)&buffer);
-	mutex_unlock(&isp->isp_lock);
 	if (err){
 		v4l2_err(&atomisp_dev,
 			"sh_css_dequeue_buffer failed: 0x%x\n",
@@ -647,7 +639,6 @@ static void atomisp_buf_done(struct atomisp_device *isp,
 			if (isp->params.s3a_output_buf &&
 			    isp->params.s3a_output_bytes && !error) {
 				/* To avoid racing with atomisp_3a_stat() */
-				mutex_lock(&isp->isp_lock);
 				err = sh_css_get_3a_statistics(
 					isp->params.s3a_output_buf,
 					isp->params.curr_grid_info.s3a_grid.use_dmem,
@@ -657,7 +648,6 @@ static void atomisp_buf_done(struct atomisp_device *isp,
 				else
 					v4l2_err(&atomisp_dev,
 						"get 3a statistics failed, not enough memory\n");
-				mutex_unlock(&isp->isp_lock);
 			}
 			isp->s3a_bufs_in_css--;
 			break;
@@ -674,13 +664,11 @@ static void atomisp_buf_done(struct atomisp_device *isp,
 			    isp->params.dis_hor_proj_bytes &&
 			    !error) {
 				/* To avoid racing with atomisp_get_dis_stat()*/
-				mutex_lock(&isp->isp_lock);
 				sh_css_get_dis_projections(
 					isp->params.dis_hor_proj_buf,
 					isp->params.dis_ver_proj_buf, buffer);
 
 				isp->params.dis_proj_data_valid = true;
-				mutex_unlock(&isp->isp_lock);
 				/* wake up the sleep thread in atomisp_get_dis_stat */
 				complete(&isp->dis_state_complete);
 			}
@@ -800,12 +788,10 @@ static void atomisp_buf_done(struct atomisp_device *isp,
 	 * Queue/dequeue order will change if driver recycles image buffers.
 	 */
 	if (requeue) {
-		mutex_lock(&isp->isp_lock);
 		err = sh_css_queue_buffer(css_pipe_id, buf_type, buffer);
 		if (err)
 			v4l2_err(&atomisp_dev,"%s, q to css fails: %d\n",
 					__func__, err);
-		mutex_unlock(&isp->isp_lock);
 		return;
 	}
 	if (!error)
@@ -819,7 +805,6 @@ void atomisp_wdt_work(struct work_struct *work)
 
 	switch (atomic_inc_return(&isp->wdt_count)) {
 	case ATOMISP_ISP_MAX_TIMEOUT_COUNT:
-		mutex_lock(&isp->isp_lock);
 		isp->sw_contex.error = true;
 
 		isp->s3a_bufs_in_css = 0;
@@ -830,7 +815,6 @@ void atomisp_wdt_work(struct work_struct *work)
 		atomic_set(&isp->wdt_count, 0);
 
 		atomisp_flush_bufs_and_wakeup(isp);
-		mutex_unlock(&isp->isp_lock);
 		break;
 	default:
 		atomisp_timeout_handler(isp);
@@ -888,8 +872,6 @@ irqreturn_t atomisp_isr_thread(int irq, void *isp_ptr)
 
 	v4l2_dbg(2, dbg_level, &atomisp_dev, ">%s\n", __func__);
 
-	mutex_lock(&isp->isp_lock);
-
 	while (isp->sw_contex.isp_streaming &&
 	       sh_css_dequeue_event(&cssPipeId, &cssEvent) == sh_css_success) {
 		events[next_event] = cssEvent;
@@ -916,8 +898,6 @@ irqreturn_t atomisp_isr_thread(int irq, void *isp_ptr)
 			break;
 		}
 	}
-
-	mutex_unlock(&isp->isp_lock);
 
 	while (isp->sw_contex.isp_streaming &&
 	       current_event != next_event) {
@@ -960,7 +940,6 @@ irqreturn_t atomisp_isr_thread(int irq, void *isp_ptr)
 		current_event = (current_event + 1) % MAX_EVENTS;
 	}
 
-	mutex_lock(&isp->isp_lock);
 	if (isp->sw_contex.isp_streaming &&
 	    frame_done_found &&
 	    isp->params.css_update_params_needed) {
@@ -970,7 +949,6 @@ irqreturn_t atomisp_isr_thread(int irq, void *isp_ptr)
 	}
 	isp->isp_timeout = false;
 	atomisp_setup_flash(isp);
-	mutex_unlock(&isp->isp_lock);
 
 	v4l2_dbg(2, dbg_level, &atomisp_dev, "<%s\n", __func__);
 
@@ -1986,12 +1964,7 @@ int atomisp_macc_table(struct atomisp_device *isp, int flag,
 int atomisp_set_dis_vector(struct atomisp_device *isp,
 			   struct atomisp_dis_vector *vector)
 {
-	unsigned long irqflags;
-
-	/* Avoid race conditions with ISR */
-	spin_lock_irqsave(&isp->irq_lock, irqflags);
 	sh_css_video_set_dis_vector(vector->x, vector->y);
-	spin_unlock_irqrestore(&isp->irq_lock, irqflags);
 
 	isp->params.dis_proj_data_valid = false;
 	isp->params.css_update_params_needed = true;
@@ -2039,7 +2012,6 @@ int atomisp_get_dis_stat(struct atomisp_device *isp,
 		}
 	}
 
-	mutex_lock(&isp->isp_lock);
 	error = copy_to_user(stats->vertical_projections,
 			     isp->params.dis_ver_proj_buf,
 			     isp->params.dis_ver_proj_bytes);
@@ -2047,7 +2019,6 @@ int atomisp_get_dis_stat(struct atomisp_device *isp,
 	error |= copy_to_user(stats->horizontal_projections,
 			     isp->params.dis_hor_proj_buf,
 			     isp->params.dis_hor_proj_bytes);
-	mutex_unlock(&isp->isp_lock);
 
 	if (error)
 		return -EFAULT;
@@ -2118,11 +2089,8 @@ int atomisp_3a_stat(struct atomisp_device *isp, int flag,
 		return -EAGAIN;
 	}
 
-	mutex_lock(&isp->isp_lock);
-
 	/* This is done in the atomisp_s3a_buf_done() */
 	if(!isp->params.s3a_buf_data_valid) {
-		mutex_unlock(&isp->isp_lock);
 		v4l2_err(&atomisp_dev, "3a statistics is not valid.\n");
 		return -EAGAIN;
 	}
@@ -2130,7 +2098,6 @@ int atomisp_3a_stat(struct atomisp_device *isp, int flag,
 	ret = copy_to_user(config->data,
 			   isp->params.s3a_output_buf,
 			   isp->params.s3a_output_bytes);
-	mutex_unlock(&isp->isp_lock);
 	if (ret) {
 		v4l2_err(&atomisp_dev,
 			    "copy to user failed: copied %lu bytes\n", ret);
@@ -3577,10 +3544,8 @@ int atomisp_set_shading_table(struct atomisp_device *isp,
 	}
 
 	if (!user_shading_table->enable) {
-		mutex_lock(&isp->isp_lock);
 		sh_css_set_shading_table(NULL);
 		isp->params.sc_en = 0;
-		mutex_unlock(&isp->isp_lock);
 		return 0;
 	}
 
@@ -3615,14 +3580,10 @@ int atomisp_set_shading_table(struct atomisp_device *isp,
 	shading_table->sensor_height = user_shading_table->sensor_height;
 	shading_table->fraction_bits = user_shading_table->fraction_bits;
 
-	mutex_lock(&isp->isp_lock);
-
 	free_table = isp->inputs[isp->input_curr].shading_table;
 	isp->inputs[isp->input_curr].shading_table = shading_table;
 	sh_css_set_shading_table(shading_table);
 	isp->params.sc_en = 1;
-
-	mutex_unlock(&isp->isp_lock);
 
 out:
 	if (free_table != NULL)
@@ -3890,9 +3851,7 @@ int atomisp_flash_enable(struct atomisp_device *isp, int num_frames)
 		return -EBUSY;
 	}
 
-	mutex_lock(&isp->isp_lock);
 	isp->params.num_flash_frames = num_frames;
 	isp->params.flash_state = ATOMISP_FLASH_REQUESTED;
-	mutex_unlock(&isp->isp_lock);
 	return 0;
 }

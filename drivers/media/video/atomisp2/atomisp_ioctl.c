@@ -242,10 +242,8 @@ static int atomisp_g_chip_ident(struct file *file, void *fh,
 	struct atomisp_device *isp = video_get_drvdata(vdev);
 	int ret = 0;
 
-	mutex_lock(&isp->input_lock);
 	ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
 			       core, g_chip_ident, chip);
-	mutex_unlock(&isp->input_lock);
 
 	if (ret)
 		v4l2_err(&atomisp_dev,
@@ -402,10 +400,8 @@ static int atomisp_s_input(struct file *file, void *fh, unsigned int input)
 		return -EINVAL;
 	}
 
-	mutex_lock(&isp->input_lock);
 	camera = isp->inputs[input].camera;
 	if (!camera) {
-		mutex_unlock(&isp->input_lock);
 		v4l2_err(&atomisp_dev,
 			 "%s, no camera\n",__func__);
 		return -EINVAL;
@@ -416,7 +412,6 @@ static int atomisp_s_input(struct file *file, void *fh, unsigned int input)
 	    (isp->isp_subdev.video_in.capq.streaming == 1)) {
 		v4l2_err(&atomisp_dev,
 			 "ISP is still streaming, stop first\n");
-		mutex_unlock(&isp->input_lock);
 		return -EINVAL;
 	}
 
@@ -436,7 +431,6 @@ static int atomisp_s_input(struct file *file, void *fh, unsigned int input)
 		if (ret) {
 			v4l2_err(&atomisp_dev,
 				    "Failed to power-on sensor\n");
-			mutex_unlock(&isp->input_lock);
 			return -EINVAL;
 		}
 		if (isp->inputs[input].motor)
@@ -445,8 +439,6 @@ static int atomisp_s_input(struct file *file, void *fh, unsigned int input)
 	}
 
 	isp->input_curr = input;
-
-	mutex_unlock(&isp->input_lock);
 
 	return 0;
 }
@@ -798,29 +790,23 @@ int atomisp_alloc_css_stat_bufs(struct atomisp_device *isp, int count)
 		}
 
 		if (isp->params.curr_grid_info.s3a_grid.use_dmem) {
-			mutex_lock(&isp->isp_lock);
 			if (sh_css_allocate_stat_buffers_from_info(
 						&s3a_buf->s3a_data,
 						&dis_buf->dis_data,
 						&isp->params.curr_grid_info)) {
 				v4l2_err(&atomisp_dev,
 						"stat buf allocation failed\n");
-				mutex_unlock(&isp->isp_lock);
 				goto error;
 			}
-			mutex_unlock(&isp->isp_lock);
 		} else {
-			mutex_lock(&isp->isp_lock);
 			if (sh_css_allocate_stat_buffers_from_info(
 						&s3a_buf->s3a_data,
 						&dis_buf->dis_data,
 						&isp->params.curr_grid_info)) {
 				v4l2_err(&atomisp_dev,
 						"stat buf allocation failed\n");
-				mutex_unlock(&isp->isp_lock);
 				goto error;
 			}
-			mutex_unlock(&isp->isp_lock);
 		}
 		spin_lock_irqsave(&isp->irq_lock, irqflags);
 		list_add_tail(&s3a_buf->list, &isp->s3a_stats);
@@ -1053,7 +1039,6 @@ static int atomisp_qbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 				goto error;
 			break;
 		}
-		mutex_lock(&isp->isp_lock);
 #ifdef CONFIG_ION
 		hrt_isp_css_mm_set_user_ptr(userptr, pgnr,
 			buf->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_ION
@@ -1082,7 +1067,6 @@ static int atomisp_qbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 							&frame_info);
 
 		hrt_isp_css_mm_set_user_ptr(0, 0, HRT_USR_PTR);
-		mutex_unlock(&isp->isp_lock);
 
 		if (ret != sh_css_success) {
 			v4l2_err(&atomisp_dev, "Error to allocate frame\n");
@@ -1281,12 +1265,10 @@ static int atomisp_streamon(struct file *file, void *fh,
 	if (ret < 0)
 		return ret;
 
-	mutex_lock(&isp->isp_lock);
 	ret = sh_css_start(css_pipe_id);
 	if (ret) {
 		v4l2_err(&atomisp_dev,
 				"sh_css_start fails: %d\n", ret);
-		mutex_unlock(&isp->isp_lock);
 		return ret;
 	}
 
@@ -1300,7 +1282,6 @@ static int atomisp_streamon(struct file *file, void *fh,
 	isp->sw_contex.error = false;
 	isp->sw_contex.invalid_frame = false;
 	isp->irq_infos = 0;
-	mutex_unlock(&isp->isp_lock);
 
 	atomisp_qbuffers_to_css(isp, pipe);
 	//sh_css_dump_sp_sw_debug_info();
@@ -1334,9 +1315,7 @@ start_workq:
 		ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
 				       video, s_stream, 1);
 		if (ret) {
-			mutex_lock(&isp->isp_lock);
 			atomisp_reset(isp);
-			mutex_unlock(&isp->isp_lock);
 			return -EINVAL;
 		}
 		isp->sw_contex.sensor_streaming = true;
@@ -1389,8 +1368,6 @@ int atomisp_streamoff(struct file *file, void *fh,
 			return ret;
 	}
 
-	mutex_lock(&isp->isp_lock);
-
 	spin_lock_irqsave(&isp->irq_lock, flags);
 	isp->sw_contex.isp_streaming = false;
 	isp->sw_contex.error = true;
@@ -1418,7 +1395,6 @@ int atomisp_streamoff(struct file *file, void *fh,
 		sh_css_video_stop();
 		break;
 	}
-	mutex_unlock(&isp->isp_lock);
 
 	del_timer_sync(&isp->wdt);
 	cancel_work_sync(&isp->wdt_work);
@@ -1517,8 +1493,6 @@ static int atomisp_g_ctrl(struct file *file, void *fh,
 	struct atomisp_device *isp = video_get_drvdata(vdev);
 	int i, ret = -EINVAL;
 
-	mutex_lock(&isp->input_lock);
-
 	for (i = 0; i < ctrls_num; i++) {
 		if (ci_v4l2_controls[i].id == control->id) {
 			ret = 0;
@@ -1526,10 +1500,8 @@ static int atomisp_g_ctrl(struct file *file, void *fh,
 		}
 	}
 
-	if (ret) {
-		mutex_unlock(&isp->input_lock);
+	if (ret)
 		return ret;
-	}
 
 	switch (control->id) {
 	case V4L2_CID_IRIS_ABSOLUTE:
@@ -1566,7 +1538,6 @@ static int atomisp_g_ctrl(struct file *file, void *fh,
 		break;
 	}
 
-	mutex_unlock(&isp->input_lock);
 	return ret;
 }
 
@@ -1582,8 +1553,6 @@ static int atomisp_s_ctrl(struct file *file, void *fh,
 	struct atomisp_device *isp = video_get_drvdata(vdev);
 	int i, ret = -EINVAL;
 
-	mutex_lock(&isp->input_lock);
-
 	for (i = 0; i < ctrls_num; i++) {
 		if (ci_v4l2_controls[i].id == control->id) {
 			ret = 0;
@@ -1591,10 +1560,8 @@ static int atomisp_s_ctrl(struct file *file, void *fh,
 		}
 	}
 
-	if (ret) {
-		mutex_unlock(&isp->input_lock);
+	if (ret)
 		return ret;
-	}
 
 	switch (control->id) {
 	case V4L2_CID_HFLIP:
@@ -1631,7 +1598,6 @@ static int atomisp_s_ctrl(struct file *file, void *fh,
 		ret = -EINVAL;
 		break;
 	}
-	mutex_unlock(&isp->input_lock);
 	return ret;
 }
 /*
@@ -1643,14 +1609,10 @@ static int atomisp_s_ctrl(struct file *file, void *fh,
 static int atomisp_queryctl(struct file *file, void *fh,
 			    struct v4l2_queryctrl *qc)
 {
-	struct video_device *vdev = video_devdata(file);
-	struct atomisp_device *isp = video_get_drvdata(vdev);
 	int i, ret = -EINVAL;
 
 	if (qc->id & V4L2_CTRL_FLAG_NEXT_CTRL)
 		return ret;
-
-	mutex_lock(&isp->input_lock);
 
 	for (i = 0; i < ctrls_num; i++) {
 		if (ci_v4l2_controls[i].id == qc->id) {
@@ -1664,7 +1626,6 @@ static int atomisp_queryctl(struct file *file, void *fh,
 	if (ret != 0)
 		qc->flags = V4L2_CTRL_FLAG_DISABLED;
 
-	mutex_unlock(&isp->input_lock);
 	return ret;
 }
 
@@ -1870,18 +1831,14 @@ static int atomisp_g_parm(struct file *file, void *fh,
 	struct video_device *vdev = video_devdata(file);
 	struct atomisp_device *isp = video_get_drvdata(vdev);
 
-	mutex_lock(&isp->input_lock);
-
 	if (parm->type != V4L2_BUF_TYPE_VIDEO_CAPTURE) {
 		v4l2_err(&atomisp_dev,
 			    "unsupport v4l2 buf type\n");
-		mutex_unlock(&isp->input_lock);
 		return -EINVAL;
 	}
 
 	parm->parm.capture.capturemode = isp->sw_contex.run_mode;
 
-	mutex_unlock(&isp->input_lock);
 	return 0;
 }
 
@@ -1892,12 +1849,9 @@ static int atomisp_s_parm(struct file *file, void *fh,
 	struct atomisp_device *isp = video_get_drvdata(vdev);
 	int ret = 0;
 
-	mutex_lock(&isp->input_lock);
-
 	if (parm->type != V4L2_BUF_TYPE_VIDEO_CAPTURE) {
 		v4l2_err(&atomisp_dev,
 			    "unsupport v4l2 buf type\n");
-		mutex_unlock(&isp->input_lock);
 		return -EINVAL;
 	}
 
@@ -1905,7 +1859,6 @@ static int atomisp_s_parm(struct file *file, void *fh,
 	ret = v4l2_subdev_call(isp->inputs[isp->input_curr].camera,
 				video, s_parm, parm);
 
-	mutex_unlock(&isp->input_lock);
 	/*
 	 * why do we think the return value -ENOIOCTLCMD is ok?
 	 * that's because some sensor drivers may don't need s_parm

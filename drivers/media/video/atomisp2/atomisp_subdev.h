@@ -74,7 +74,6 @@ struct atomisp_video_pipe {
 	struct videobuf_queue outq;
 	struct list_head activeq;
 	struct list_head activeq_out;
-	struct mutex mutex;
 
 	spinlock_t irq_lock;
 	bool opened;

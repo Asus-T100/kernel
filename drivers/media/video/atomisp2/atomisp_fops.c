@@ -122,7 +122,6 @@ int atomisp_css_qbuf(struct atomisp_device *isp,
 	if (err < 0)
 		return -EINVAL;
 
-	mutex_lock(&isp->isp_lock);
 	err = sh_css_queue_buffer(css_pipe_id, buf_type, cssbuffer);
 	if (err) {
 		v4l2_err(&atomisp_dev, "%s, css q fails: %d\n",
@@ -130,7 +129,6 @@ int atomisp_css_qbuf(struct atomisp_device *isp,
 		return -EINVAL;
 	}
 	*in_css += 1;
-	mutex_unlock(&isp->isp_lock);
 
 	if (buf_type == SH_CSS_BUFFER_TYPE_OUTPUT_FRAME ||
 	    buf_type == SH_CSS_BUFFER_TYPE_VF_OUTPUT_FRAME) {
@@ -342,7 +340,6 @@ static int atomisp_init_pipe(struct atomisp_video_pipe *pipe)
 
 	/* init locks */
 	spin_lock_init(&pipe->irq_lock);
-	mutex_init(&pipe->mutex);
 
 	videobuf_queue_vmalloc_init(&pipe->capq, &videobuf_qops, NULL,
 				    &pipe->irq_lock,
@@ -458,8 +455,6 @@ static int atomisp_open(struct file *file)
 	if (!isp || isp->sw_contex.probed == 0)
 		return -ENODEV;
 
-	mutex_lock(&isp->input_lock);
-
 	if (!isp->input_cnt) {
 		v4l2_err(&atomisp_dev, "no camera attached\n");
 		goto error;
@@ -534,8 +529,6 @@ static int atomisp_open(struct file *file)
 
 	isp->sw_contex.init = true;
 done:
-	mutex_unlock(&isp->input_lock);
-
 	return 0;
 
 css_init_failed:
@@ -546,7 +539,6 @@ css_init_failed:
 runtime_get_failed:
 	atomisp_uninit_pipe(pipe);
 error:
-	mutex_unlock(&isp->input_lock);
 	return ret;
 }
 
@@ -573,8 +565,6 @@ static int atomisp_release(struct file *file)
 	req.count = 0;
 	if (isp == NULL)
 		return -EBADF;
-
-	mutex_lock(&isp->input_lock);
 
 	if (pipe->capq.streaming &&
 	    atomisp_streamoff(file, NULL,
@@ -662,11 +652,9 @@ static int atomisp_release(struct file *file)
 #endif
 done:
 	pipe->opened = false;
-	mutex_unlock(&isp->input_lock);
 
 	return 0;
 error:
-	mutex_unlock(&isp->input_lock);
 	return ret;
 }
 

@@ -929,9 +929,6 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 			(unsigned int)atomisp_io_base);
 
 	isp->tvnorm = tvnorms;
-	mutex_init(&isp->input_lock);
-	/* isp_lock is to protect race access of css functions */
-	mutex_init(&isp->isp_lock);
 	isp->sw_contex.updating_uptr = false;
 	isp->isp3a_stat_ready = false;
 
