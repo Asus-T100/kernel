@@ -842,7 +842,10 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 	}
 
 	start = pci_resource_start(dev, 0);
+	v4l2_dbg(1, dbg_level, &atomisp_dev, "start: 0x%x\n", start);
+
 	len = pci_resource_len(dev, 0);
+	v4l2_dbg(1, dbg_level, &atomisp_dev, "len: 0x%x\n", len);
 
 	err = pci_request_region(dev, 0, atomisp_pci_driver.name);
 	if (err) {
@@ -853,20 +856,14 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 		goto request_region_fail;
 	}
 
-	v4l2_dbg(1, dbg_level, &atomisp_dev, "start: 0x%x\n",
-			(unsigned int)start);
-	v4l2_dbg(1, dbg_level, &atomisp_dev, "len: 0x%x\n",
-			(unsigned int)len);
-
 	base = ioremap_nocache(start, len);
-	v4l2_dbg(1, dbg_level, &atomisp_dev, "base: 0x%x\n",
-			(unsigned int)base);
 	if (!base) {
 		v4l2_err(&atomisp_dev,
 			    "Failed to I/O memory remapping\n");
 		err = -ENOMEM;
 		goto ioremap_fail;
 	}
+	v4l2_dbg(1, dbg_level, &atomisp_dev, "base: %p\n", base);
 
 	isp = kzalloc(sizeof(struct atomisp_device), GFP_KERNEL);
 	if (!isp) {
@@ -916,8 +913,8 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 	pci_set_master(dev);
 	atomisp_io_base = base;
 
-	v4l2_dbg(1, dbg_level, &atomisp_dev, "atomisp_io_base: 0x%x\n",
-			(unsigned int)atomisp_io_base);
+	v4l2_dbg(1, dbg_level, &atomisp_dev, "atomisp_io_base: %p\n",
+			atomisp_io_base);
 
 	isp->tvnorm = tvnorms;
 	mutex_init(&isp->mutex);
