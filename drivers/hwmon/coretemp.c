@@ -351,8 +351,9 @@ static int adjust_tjmax(struct cpuinfo_x86 *c, u32 id, struct device *dev)
 		usemsr_ee = 0;
 
 	/* Atom CPUs */
-	/* Model '0x27' for Atom based Penwell CPU */
-	if (c->x86_model == 0x1c || c->x86_model == 0x27) {
+	/* Model '0x27 or 0x35' for Atom based Penwell CPU */
+	if (c->x86_model == 0x1c || c->x86_model == 0x27
+				|| c->x86_model == 0x35) {
 		usemsr_ee = 0;
 
 		host_bridge = pci_get_bus_and_slot(0, PCI_DEVFN(0, 0));
@@ -440,8 +441,10 @@ static int get_tjmax(struct cpuinfo_x86 *c, u32 id, struct device *dev)
 	 */
 	err = rdmsr_safe_on_cpu(id, MSR_IA32_TEMPERATURE_TARGET, &eax, &edx);
 	if (err) {
-		if (c->x86_model > 0xe && c->x86_model != 0x1c)
+		if (c->x86_model > 0xe && c->x86_model != 0x1c &&
+				c->x86_model != 0x27 && c->x86_model != 0x35) {
 			dev_warn(dev, "Unable to read TjMax from CPU %u\n", id);
+		}
 	} else {
 		val = (eax >> 16) & 0xff;
 		/*
