@@ -896,7 +896,8 @@ int atomisp_reqbufs(struct file *file, void *fh,
 	mutex_lock(&isp->mutex);
 	switch (isp->sw_contex.run_mode) {
 	case CI_MODE_STILL_CAPTURE:
-		if (isp->main_format->out_sh_fmt != SH_CSS_FRAME_FORMAT_RAW) {
+		if (isp->main_format &&
+		    isp->main_format->out_sh_fmt != SH_CSS_FRAME_FORMAT_RAW) {
 			if (sh_css_capture_get_viewfinder_frame_info(&vf_info))
 				goto error;
 		}
@@ -1078,7 +1079,8 @@ static int atomisp_qbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 
 		switch (isp->sw_contex.run_mode) {
 		case CI_MODE_STILL_CAPTURE:
-			if ((isp->main_format->out_sh_fmt !=
+			if (isp->main_format &&
+			    (isp->main_format->out_sh_fmt !=
 				SH_CSS_FRAME_FORMAT_RAW) &&
 			sh_css_capture_get_viewfinder_frame_info(&vf_info))
 				goto error;

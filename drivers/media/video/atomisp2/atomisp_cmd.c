@@ -1205,6 +1205,7 @@ bool atomisp_is_viewfinder_support(struct atomisp_device *isp)
 		return false;
 
 	if (isp->sw_contex.run_mode == CI_MODE_STILL_CAPTURE &&
+	    isp->main_format &&
 	    isp->main_format->out_sh_fmt == SH_CSS_FRAME_FORMAT_RAW &&
 	    isp->sw_contex.bypass)
 		return false;
