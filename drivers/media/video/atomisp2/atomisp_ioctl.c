@@ -808,18 +808,14 @@ static void atomisp_videobuf_free(struct videobuf_queue *q)
 
 int atomisp_alloc_css_stat_bufs(struct atomisp_device *isp, int count)
 {
-	unsigned long irqflags;
 	struct atomisp_s3a_buf *s3a_buf = NULL;
 	struct atomisp_dis_buf *dis_buf = NULL;
 
-	spin_lock_irqsave(&isp->irq_lock, irqflags);
 	if (!count ||
 	    (!list_empty(&isp->s3a_stats) &&
 	     !list_empty(&isp->dis_stats))) {
-		spin_unlock_irqrestore(&isp->irq_lock, irqflags);
 		return 0;
 	}
-	spin_unlock_irqrestore(&isp->irq_lock, irqflags);
 
 	v4l2_dbg(2, dbg_level, &atomisp_dev,
 		    "allocating %d 3a & dis buffers\n", count);
@@ -855,10 +851,8 @@ int atomisp_alloc_css_stat_bufs(struct atomisp_device *isp, int count)
 				goto error;
 			}
 		}
-		spin_lock_irqsave(&isp->irq_lock, irqflags);
 		list_add_tail(&s3a_buf->list, &isp->s3a_stats);
 		list_add_tail(&dis_buf->list, &isp->dis_stats);
-		spin_unlock_irqrestore(&isp->irq_lock, irqflags);
 	}
 
 	return 0;
@@ -1315,15 +1309,15 @@ static int atomisp_streamon(struct file *file, void *fh,
 	}
 
 	mutex_lock(&isp->mutex);
-	spin_lock_irqsave(&isp->irq_lock, irqflags);
+	spin_lock_irqsave(&pipe->irq_lock, irqflags);
 	if (list_empty(&(pipe->capq.stream))) {
-		spin_unlock_irqrestore(&isp->irq_lock, irqflags);
+		spin_unlock_irqrestore(&pipe->irq_lock, irqflags);
 		v4l2_err(&atomisp_dev,
 			"no buffer in the queue\n");
 		ret = -EINVAL;
 		goto error;
 	}
-	spin_unlock_irqrestore(&isp->irq_lock, irqflags);
+	spin_unlock_irqrestore(&pipe->irq_lock, irqflags);
 
 	ret = videobuf_streamon(&pipe->capq);
 	if (ret)
@@ -1471,7 +1465,6 @@ int atomisp_streamoff(struct file *file, void *fh,
 		}
 	}
 
-	spin_lock_irqsave(&isp->irq_lock, flags);
 	isp->sw_contex.isp_streaming = false;
 	isp->sw_contex.error = true;
 
@@ -1479,7 +1472,6 @@ int atomisp_streamoff(struct file *file, void *fh,
 	isp->frame_bufs_in_css = 0;
 	isp->dis_bufs_in_css = 0;
 	isp->vf_frame_bufs_in_css = 0;
-	spin_unlock_irqrestore(&isp->irq_lock, flags);
 
 	switch (isp->sw_contex.run_mode) {
 	case CI_MODE_STILL_CAPTURE:

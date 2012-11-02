@@ -75,6 +75,9 @@ struct atomisp_video_pipe {
 	struct list_head activeq;
 	struct list_head activeq_out;
 
+	/* irq_lock is used to protect video buffer state change operations and
+	 * also to make activeq, activeq_out, capq and outq list
+	 * operations atomic. */
 	spinlock_t irq_lock;
 	bool opened;
 	unsigned int pipe_type;

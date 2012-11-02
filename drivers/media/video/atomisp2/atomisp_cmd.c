@@ -257,11 +257,8 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 {
 	u32 msg_ret;
 	struct atomisp_device *isp = (struct atomisp_device *)dev;
-	unsigned long irqflags;
 	unsigned int irq_infos = 0;
 	int err;
-
-	spin_lock_irqsave(&isp->irq_lock, irqflags);
 
 	err = sh_css_translate_interrupt(&irq_infos);
 	v4l2_dbg(5, dbg_level, &atomisp_dev, "irq:0x%x\n", irq_infos);
@@ -269,7 +266,6 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 	if (err != sh_css_success) {
 		v4l2_warn(&atomisp_dev, "%s:failed to translate irq (err = %d,"
 			  " infos = %d)\n", __func__, err, irq_infos);
-		spin_unlock_irqrestore(&isp->irq_lock, irqflags);
 		return IRQ_NONE;
 	}
 
@@ -302,7 +298,6 @@ irqreturn_t atomisp_isr(int irq, void *dev)
 	msg_ret |= 1 << INTR_IIR;
 	pci_write_config_dword(isp->pdev, PCI_INTERRUPT_CTRL, msg_ret);
 
-	spin_unlock_irqrestore(&isp->irq_lock, irqflags);
 	return isp->sw_contex.isp_streaming ? IRQ_WAKE_THREAD : IRQ_HANDLED;
 }
 
@@ -536,51 +531,51 @@ void atomisp_flush_bufs_and_wakeup(struct atomisp_device *isp)
 	pipe = &isp->isp_subdev.video_out_mo;
 	if(pipe->opened) {
 		for (i = 0; pipe->capq.bufs[i]; i++) {
+			spin_lock_irqsave(&pipe->irq_lock, irqflags);
 			if (pipe->capq.bufs[i]->state == VIDEOBUF_ACTIVE ||
 					pipe->capq.bufs[i]->state == VIDEOBUF_QUEUED) {
-				spin_lock_irqsave(&pipe->irq_lock, irqflags);
 				get_buf_timestamp(&pipe->capq.bufs[i]->ts);
 				pipe->capq.bufs[i]->field_count++;
 				pipe->capq.bufs[i]->state = VIDEOBUF_ERROR;
-				spin_unlock_irqrestore(&pipe->irq_lock, irqflags);
 				wake_up(&pipe->capq.bufs[i]->done);
 				v4l2_dbg(2, dbg_level, &atomisp_dev,
 						 "free 1 buffer from video_out_mo queue\n");
 			}
+			spin_unlock_irqrestore(&pipe->irq_lock, irqflags);
 		}
 	}
 
 	pipe = &isp->isp_subdev.video_out_vf;
 	if(pipe->opened) {
 		for (i = 0; pipe->capq.bufs[i]; i++) {
+			spin_lock_irqsave(&pipe->irq_lock, irqflags);
 			if (pipe->capq.bufs[i]->state == VIDEOBUF_ACTIVE ||
 					pipe->capq.bufs[i]->state == VIDEOBUF_QUEUED) {
-				spin_lock_irqsave(&pipe->irq_lock, irqflags);
 				get_buf_timestamp(&pipe->capq.bufs[i]->ts);
 				pipe->capq.bufs[i]->field_count++;
 				pipe->capq.bufs[i]->state = VIDEOBUF_ERROR;
-				spin_unlock_irqrestore(&pipe->irq_lock, irqflags);
 				wake_up(&pipe->capq.bufs[i]->done);
 				v4l2_dbg(2, dbg_level, &atomisp_dev,
 						 "free 1 buffer from video_out_vf queue\n");
 			}
+			spin_unlock_irqrestore(&pipe->irq_lock, irqflags);
 		}
 	}
 
 	pipe = &isp->isp_subdev.video_out_ss;
 	if(pipe->opened) {
 		for (i = 0; pipe->capq.bufs[i]; i++) {
+			spin_lock_irqsave(&pipe->irq_lock, irqflags);
 			if (pipe->capq.bufs[i]->state == VIDEOBUF_ACTIVE ||
 					pipe->capq.bufs[i]->state == VIDEOBUF_QUEUED) {
-				spin_lock_irqsave(&pipe->irq_lock, irqflags);
 				get_buf_timestamp(&pipe->capq.bufs[i]->ts);
 				pipe->capq.bufs[i]->field_count++;
 				pipe->capq.bufs[i]->state = VIDEOBUF_ERROR;
-				spin_unlock_irqrestore(&pipe->irq_lock, irqflags);
 				wake_up(&pipe->capq.bufs[i]->done);
 				v4l2_dbg(2, dbg_level, &atomisp_dev,
 						 "free 1 buffer from video_out_ss queue\n");
 			}
+			spin_unlock_irqrestore(&pipe->irq_lock, irqflags);
 		}
 	}
 }
@@ -768,10 +763,10 @@ static void atomisp_buf_done(struct atomisp_device *isp,
 			break;
 	}
 	if (vb) {
-		spin_lock_irqsave(&pipe->irq_lock, irqflags);
 		get_buf_timestamp(&vb->ts);
 		vb->field_count++;
 		/*mark videobuffer done for dequeue*/
+		spin_lock_irqsave(&pipe->irq_lock, irqflags);
 		vb->state = !error ? VIDEOBUF_DONE : VIDEOBUF_ERROR;
 		spin_unlock_irqrestore(&pipe->irq_lock, irqflags);
 

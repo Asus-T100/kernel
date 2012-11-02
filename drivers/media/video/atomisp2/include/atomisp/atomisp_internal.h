@@ -317,7 +317,6 @@ struct atomisp_device {
 	/* Purpose of mutex is to protect and serialize use of isp data
 	 * structures and css API calls. */
 	struct mutex mutex;
-	spinlock_t irq_lock;
 	struct list_head s3a_stats;
 	struct list_head dis_stats;
 	uint32_t irq_infos;

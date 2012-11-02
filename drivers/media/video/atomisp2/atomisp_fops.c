@@ -185,13 +185,11 @@ int atomisp_qbuffers_to_css(struct atomisp_device *isp,
 	err = isp->params.curr_grid_info.s3a_grid.enable == false? 1:0;
 	while (!err && isp->s3a_bufs_in_css < ATOMISP_CSS_Q_DEPTH) {
 
-		spin_lock_irqsave(&isp->irq_lock, irqflags);
 		if (!list_empty(&isp->s3a_stats)) {
 			s3a_buf = list_entry(isp->s3a_stats.next,
 					struct atomisp_s3a_buf, list);
 			list_move_tail(&s3a_buf->list, &isp->s3a_stats);
 		}
-		spin_unlock_irqrestore(&isp->irq_lock, irqflags);
 		if (!s3a_buf) {
 			err = -EINVAL;
 			break;
@@ -208,13 +206,11 @@ int atomisp_qbuffers_to_css(struct atomisp_device *isp,
 	err = isp->params.curr_grid_info.dvs_grid.enable == false? 1:0;
 	while (!err && isp->dis_bufs_in_css < ATOMISP_CSS_Q_DEPTH) {
 
-		spin_lock_irqsave(&isp->irq_lock, irqflags);
 		if (!list_empty(&isp->dis_stats)) {
 			dis_buf = list_entry(isp->dis_stats.next,
 					struct atomisp_dis_buf, list);
 			list_move_tail(&dis_buf->list, &isp->dis_stats);
 		}
-		spin_unlock_irqrestore(&isp->irq_lock, irqflags);
 
 		if (!dis_buf) {
 			err = -EINVAL;
