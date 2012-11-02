@@ -543,13 +543,11 @@ error:
 	return ret;
 }
 
-static int atomisp_openpipes(struct atomisp_device *isp)
+static inline int atomisp_openpipes(struct atomisp_device *isp)
 {
-	int count;
-	count = isp->isp_subdev.video_out_vf.opened ? 1 : 0;
-	count += isp->isp_subdev.video_out_ss.opened ? 1 : 0;
-	count += isp->isp_subdev.video_out_mo.opened ? 1 : 0;
-	return count;
+	return (isp->isp_subdev.video_out_vf.opened ? 1 : 0) +
+	       (isp->isp_subdev.video_out_ss.opened ? 1 : 0) +
+	       (isp->isp_subdev.video_out_mo.opened ? 1 : 0);
 }
 
 static int atomisp_release(struct file *file)
