@@ -515,7 +515,7 @@ static irqreturn_t vdd_intrpt_handler(int id, void *dev)
 static irqreturn_t vdd_interrupt_thread_handler(int irq, void *dev_data)
 {
 	int ret;
-	uint8_t irq_data, event;
+	uint8_t irq_data, event = 0;
 	struct vdd_info *vinfo = (struct vdd_info *)dev_data;
 
 	if (!vinfo)
@@ -535,13 +535,13 @@ static irqreturn_t vdd_interrupt_thread_handler(int irq, void *dev_data)
 	mutex_lock(&vdd_update_lock);
 	if (irq_data & VCRIT_IRQ)
 		/* BCU VCRIT Interrupt */
-		event = VCRIT_EVENT;
-	else if (irq_data & VWARNA_IRQ)
+		event |= VCRIT_EVENT;
+	if (irq_data & VWARNA_IRQ)
 		/* BCU WARNA Interrupt */
-		event = VWARNA_EVENT;
-	else
+		event |= VWARNA_EVENT;
+	if (irq_data & VWARNB_IRQ)
 		/* BCU WARNB Interrupt */
-		event = VWARNB_EVENT;
+		event |= VWARNB_EVENT;
 
 	handle_events(event, dev_data);
 
