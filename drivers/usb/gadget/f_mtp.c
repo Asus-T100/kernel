@@ -37,7 +37,7 @@
 #include <linux/usb/f_mtp.h>
 
 #define MTP_BULK_TX_BUFFER_SIZE       16384
-#define MTP_BULK_RX_BUFFER_SIZE       131072
+#define MTP_BULK_RX_BUFFER_SIZE       65536
 #define INTR_BUFFER_SIZE           28
 
 /* String IDs */
@@ -93,6 +93,7 @@ struct mtp_dev {
 	wait_queue_head_t write_wq;
 	wait_queue_head_t intr_wq;
 	struct usb_request *rx_req[RX_REQ_MAX];
+	void *rx_mem[RX_REQ_MAX];
 	int rx_done;
 
 	/* for processing MTP_SEND_FILE, MTP_RECEIVE_FILE and
@@ -491,9 +492,11 @@ static int mtp_create_bulk_endpoints(struct mtp_dev *dev,
 		mtp_req_put(dev, &dev->tx_idle, req);
 	}
 	for (i = 0; i < RX_REQ_MAX; i++) {
-		req = mtp_request_new(dev->ep_out, MTP_BULK_RX_BUFFER_SIZE);
+		req = usb_ep_alloc_request(dev->ep_out, GFP_KERNEL);
 		if (!req)
 			goto fail;
+		/* link rx_mem buffer to the usb_request */
+		req->buf = dev->rx_mem[i];
 		req->complete = mtp_complete_out;
 		dev->rx_req[i] = req;
 	}
@@ -1197,8 +1200,14 @@ mtp_function_unbind(struct usb_configuration *c, struct usb_function *f)
 
 	while ((req = mtp_req_get(dev, &dev->tx_idle)))
 		mtp_request_free(req, dev->ep_in);
-	for (i = 0; i < RX_REQ_MAX; i++)
-		mtp_request_free(dev->rx_req[i], dev->ep_out);
+	for (i = 0; i < RX_REQ_MAX; i++) {
+		req = dev->rx_req[i];
+		if (req) {
+			/* Set to NULL to avoid UDC touch the rx_mem */
+			req->buf = NULL;
+			usb_ep_free_request(dev->ep_out, req);
+		}
+	}
 	while ((req = mtp_req_get(dev, &dev->intr_idle)))
 		mtp_request_free(req, dev->ep_intr);
 	dev->state = STATE_OFFLINE;
@@ -1298,6 +1307,7 @@ static int mtp_setup(void)
 {
 	struct mtp_dev *dev;
 	int ret;
+	int i;
 
 	dev = kzalloc(sizeof(*dev), GFP_KERNEL);
 	if (!dev)
@@ -1317,6 +1327,16 @@ static int mtp_setup(void)
 		ret = -ENOMEM;
 		goto err1;
 	}
+
+	/* Request memory buffer for RX */
+	for (i = 0; i < RX_REQ_MAX; i++) {
+		dev->rx_mem[i] = kzalloc(MTP_BULK_RX_BUFFER_SIZE, GFP_KERNEL);
+		if (!dev->rx_mem[i]) {
+			ret = -ENOMEM;
+			goto err2;
+		}
+	}
+
 	INIT_WORK(&dev->send_file_work, send_file_work);
 	INIT_WORK(&dev->receive_file_work, receive_file_work);
 
@@ -1324,12 +1344,17 @@ static int mtp_setup(void)
 
 	ret = misc_register(&mtp_device);
 	if (ret)
-		goto err2;
+		goto err3;
 
 	return 0;
 
-err2:
+err3:
 	destroy_workqueue(dev->wq);
+err2:
+	if (i > 0) {
+		for (i = i-1; i >= 0; i--)
+			kfree(dev->rx_mem[i]);
+	}
 err1:
 	_mtp_dev = NULL;
 	kfree(dev);
@@ -1340,6 +1365,7 @@ err1:
 static void mtp_cleanup(void)
 {
 	struct mtp_dev *dev = _mtp_dev;
+	int i;
 
 	if (!dev)
 		return;
@@ -1347,5 +1373,7 @@ static void mtp_cleanup(void)
 	misc_deregister(&mtp_device);
 	destroy_workqueue(dev->wq);
 	_mtp_dev = NULL;
+	for (i = 0; i < RX_REQ_MAX; i++)
+		kfree(dev->rx_mem[i]);
 	kfree(dev);
 }
