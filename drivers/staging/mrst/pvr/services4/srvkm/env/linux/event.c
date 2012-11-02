@@ -381,7 +381,7 @@ PVRSRV_ERROR LinuxEventObjectWait(IMG_HANDLE hOSEventObject, IMG_UINT32 ui32MSTi
 	PVRSRV_LINUX_EVENT_OBJECT *psLinuxEventObject = (PVRSRV_LINUX_EVENT_OBJECT *) hOSEventObject;
 
 	IMG_UINT32 ui32TimeOutJiffies = msecs_to_jiffies(ui32MSTimeout);
-	
+	trace_printk("LinuxEventObjectWait beginning for %d\n", ui32MSTimeout);
 	do	
 	{
 		prepare_to_wait(&psLinuxEventObject->sWait, &sWait, TASK_INTERRUPTIBLE);
@@ -407,7 +407,7 @@ PVRSRV_ERROR LinuxEventObjectWait(IMG_HANDLE hOSEventObject, IMG_UINT32 ui32MSTi
 	finish_wait(&psLinuxEventObject->sWait, &sWait);	
 
 	psLinuxEventObject->ui32TimeStampPrevious = ui32TimeStamp;
-
+	trace_printk("LinuxEventObjectWait ends\n");
 	return ui32TimeOutJiffies ? PVRSRV_OK : PVRSRV_ERROR_TIMEOUT;
 
 }
