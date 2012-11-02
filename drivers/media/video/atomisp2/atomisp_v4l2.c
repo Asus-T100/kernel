@@ -820,13 +820,13 @@ load_firmware(struct device *dev)
 static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 				       const struct pci_device_id *id)
 {
-	struct atomisp_device *isp = NULL;
+	struct atomisp_device *isp;
 	unsigned int start, len;
 	void __iomem *base = NULL;
-	int err = 0;
+	int err;
 
 	if (!dev) {
-		v4l2_err(&atomisp_dev, "atomisp: erorr device ptr\n");
+		v4l2_err(&atomisp_dev, "atomisp: error device ptr\n");
 		return -EINVAL;
 	}
 
