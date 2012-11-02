@@ -30,6 +30,7 @@ const struct intel_v4l2_subdev_id v4l2_ids[] = {
 	{"mt9m114", SOC_CAMERA, ATOMISP_CAMERA_PORT_SECONDARY},
 	{"mt9v113", SOC_CAMERA, ATOMISP_CAMERA_PORT_SECONDARY},
 	{"lm3554", LED_FLASH, -1},
+	{"lm3559", LED_FLASH, -1},
 	{},
 };
 
