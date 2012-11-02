@@ -2994,8 +2994,10 @@ static int atomisp_set_fmt_to_isp(struct video_device *vdev,
 	if (sh_css_input_set_effective_resolution(effective_input_width,
 						  effective_input_height))
 		return -EINVAL;
-	v4l2_err(&atomisp_dev, "sh css input effective width: %d, height: %d\n",
-				effective_input_width, effective_input_height);
+
+	v4l2_dbg(2, dbg_level, &atomisp_dev,
+			"sh css input effective width: %d, height: %d\n",
+			effective_input_width, effective_input_height);
 
 	if (!isp->vf_format)
 		isp->vf_format =
