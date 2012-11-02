@@ -294,6 +294,8 @@ config CHARGER_HELPER
 
 config MRFL_CHARGER_SIM_DRIVER
 	tristate "Sim Framework"
+	select USB_OTG
+	select USB_OTG_UTILS
 	help
 	  Simulation framework driver that allows simulation of
 	  charging/discharging scenarios and events and allows
