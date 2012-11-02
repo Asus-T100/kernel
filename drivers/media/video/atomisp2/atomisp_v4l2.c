@@ -817,9 +817,8 @@ load_firmware(struct device *dev)
 	return fw;
 }
 
-static struct pci_driver atomisp_pci_driver;
 static int __devinit atomisp_pci_probe(struct pci_dev *dev,
-					const struct pci_device_id *id)
+				       const struct pci_device_id *id)
 {
 	struct atomisp_device *isp = NULL;
 	unsigned int start, len;
@@ -847,7 +846,7 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 	len = pci_resource_len(dev, 0);
 	v4l2_dbg(1, dbg_level, &atomisp_dev, "len: 0x%x\n", len);
 
-	err = pci_request_region(dev, 0, atomisp_pci_driver.name);
+	err = pci_request_region(dev, 0, pci_name(dev));
 	if (err) {
 		v4l2_err(&atomisp_dev,
 			    "Failed to request region 0x%1x-0x%Lx\n",
