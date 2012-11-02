@@ -846,28 +846,24 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 	len = pci_resource_len(dev, 0);
 	v4l2_dbg(1, dbg_level, &atomisp_dev, "len: 0x%x\n", len);
 
-	err = pci_request_region(dev, 0, pci_name(dev));
-	if (err) {
-		v4l2_err(&atomisp_dev,
-			    "Failed to request region 0x%1x-0x%Lx\n",
-			    start, (unsigned long long)pci_resource_end(dev,
-				0));
-		goto request_region_fail;
+	if (!devm_request_mem_region(&dev->dev, start, len, pci_name(dev))) {
+		v4l2_err(&atomisp_dev, "Failed to request region 0x%x-0x%x\n",
+				       start, start + len - 1);
+		return -EBUSY;
 	}
 
-	base = ioremap_nocache(start, len);
+	base = devm_ioremap(&dev->dev, start, len);
 	if (!base) {
 		v4l2_err(&atomisp_dev,
 			    "Failed to I/O memory remapping\n");
-		err = -ENOMEM;
-		goto ioremap_fail;
+		return -ENOMEM;
 	}
 	v4l2_dbg(1, dbg_level, &atomisp_dev, "base: %p\n", base);
 
-	isp = kzalloc(sizeof(struct atomisp_device), GFP_KERNEL);
+	isp = devm_kzalloc(&dev->dev, sizeof(struct atomisp_device), GFP_KERNEL);
 	if (!isp) {
 		v4l2_err(&atomisp_dev, "Failed to alloc CI ISP structure\n");
-		goto kzalloc_fail;
+		return -ENOMEM;
 	}
 	isp->sw_contex.probed = false;
 	isp->sw_contex.init = false;
@@ -928,8 +924,10 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 			    "Failed to enable msi\n");
 		goto enable_msi_fail;
 	}
-	err = request_threaded_irq(dev->irq, atomisp_isr, atomisp_isr_thread,
-				   IRQF_SHARED, "isp_irq", isp);
+
+	err = devm_request_threaded_irq(&dev->dev, dev->irq,
+					atomisp_isr, atomisp_isr_thread,
+					IRQF_SHARED, "isp_irq", isp);
 	if (err) {
 		v4l2_err(&atomisp_dev,
 			    "Failed to request irq\n");
@@ -972,12 +970,6 @@ work_queue_fail:
 init_mod_fail:
 	release_firmware(isp->firmware);
 load_fw_fail:
-	kfree(isp);
-kzalloc_fail:
-	iounmap(base);
-ioremap_fail:
-	pci_release_region(dev, 0);
-request_region_fail:
 	pci_disable_device(dev);
 	return err;
 }
@@ -992,7 +984,6 @@ static void __devexit atomisp_pci_remove(struct pci_dev *dev)
 	pm_qos_remove_request(&isp->pm_qos);
 
 	atomisp_msi_irq_uninit(isp, dev);
-	free_irq(dev->irq, isp);
 	pci_disable_msi(dev);
 	pci_dev_put(isp->hw_contex.pci_root);
 
@@ -1000,14 +991,10 @@ static void __devexit atomisp_pci_remove(struct pci_dev *dev)
 
 	destroy_workqueue(isp->wdt_work_queue);
 
-	iounmap(atomisp_io_base);
 	pci_set_drvdata(dev, NULL);
-	pci_release_region(dev, 0);
 	pci_disable_device(dev);
 
 	release_firmware(isp->firmware);
-
-	kfree(isp);
 }
 
 static DEFINE_PCI_DEVICE_TABLE(atomisp_pci_tbl) = {
