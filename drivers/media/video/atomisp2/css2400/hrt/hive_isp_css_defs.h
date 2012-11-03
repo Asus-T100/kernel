@@ -39,7 +39,7 @@
 #define HIVE_ISP_DDR_DMA_SPECS {{32,  8}, {16, 16}, {18, 14}, {25, 10}, {21, 12}}
 #define HIVE_ISP_DDR_WORD_BITS 256
 #define HIVE_ISP_DDR_WORD_BYTES  (HIVE_ISP_DDR_WORD_BITS/8)
-#define HIVE_ISP_DDR_BYTES       (127 * 1024 * 1024)
+#define HIVE_ISP_DDR_BYTES       (512 * 1024 * 1024)
 #define HIVE_ISP_DDR_BYTES_RTL   HIVE_ISP_DDR_BYTES
 #define HIVE_ISP_DDR_SMALL_BYTES (128 * 256 / 8)
 #define HIVE_ISP_PAGE_SHIFT    12
@@ -263,7 +263,7 @@
 #define HIVE_GP_TIMER_ISP_WIRE_DEBUG_LM_MSINK_RUN_I4_I0        51
 #define HIVE_GP_TIMER_ISP_WIRE_DEBUG_LM_MSINK_RUN_I5_I0        52
 #define HIVE_GP_TIMER_ISP_WIRE_DEBUG_LM_MSINK_RUN_I6_I0        53
-#define HIVE_GP_TIMER_ISP_WIRE_DEBUG_LM_MSINK_RUN_I7_I0        54
+#define HIVE_GP_TIMER_ISP_WIRE_DEBUG_LM_MSINK_RUN_I7_I0        54                                                         
 #define HIVE_GP_TIMER_MIPI_SOL_BIT_ID                          55
 #define HIVE_GP_TIMER_MIPI_EOL_BIT_ID                          56
 #define HIVE_GP_TIMER_MIPI_SOF_BIT_ID                          57
@@ -274,15 +274,15 @@
 /* port definititions SP streaming monitor, monitors the status of streaming ports at the SP side of the streaming FIFO's */
 #define SP_STR_MON_PORT_SP2SIF            0
 #define SP_STR_MON_PORT_SIF2SP            1
-#define SP_STR_MON_PORT_SP2MC             2
+#define SP_STR_MON_PORT_SP2MC             2 
 #define SP_STR_MON_PORT_MC2SP             3
-#define SP_STR_MON_PORT_SP2DMA            4
+#define SP_STR_MON_PORT_SP2DMA            4 
 #define SP_STR_MON_PORT_DMA2SP            5
-#define SP_STR_MON_PORT_SP2ISP            6
+#define SP_STR_MON_PORT_SP2ISP            6 
 #define SP_STR_MON_PORT_ISP2SP            7
 #define SP_STR_MON_PORT_SP2GPD            8
 #define SP_STR_MON_PORT_FA2SP             9
-#define SP_STR_MON_PORT_SP2ISYS          10
+#define SP_STR_MON_PORT_SP2ISYS          10 
 #define SP_STR_MON_PORT_ISYS2SP          11
 #define SP_STR_MON_PORT_SP2PIFA          12
 #define SP_STR_MON_PORT_PIFA2SP          13
@@ -319,33 +319,33 @@
 /* port definititions ISP streaming monitor, monitors the status of streaming ports at the ISP side of the streaming FIFO's */
 #define ISP_STR_MON_PORT_ISP2PIFA         0
 #define ISP_STR_MON_PORT_PIFA2ISP         1
-#define ISP_STR_MON_PORT_ISP2PIFB         2
+#define ISP_STR_MON_PORT_ISP2PIFB         2 
 #define ISP_STR_MON_PORT_PIFB2ISP         3
-#define ISP_STR_MON_PORT_ISP2DMA          4
+#define ISP_STR_MON_PORT_ISP2DMA          4 
 #define ISP_STR_MON_PORT_DMA2ISP          5
-#define ISP_STR_MON_PORT_ISP2GDC1         6
+#define ISP_STR_MON_PORT_ISP2GDC1         6 
 #define ISP_STR_MON_PORT_GDC12ISP         7
-#define ISP_STR_MON_PORT_ISP2GDC2         8
+#define ISP_STR_MON_PORT_ISP2GDC2         8 
 #define ISP_STR_MON_PORT_GDC22ISP         9
-#define ISP_STR_MON_PORT_ISP2GPD         10
+#define ISP_STR_MON_PORT_ISP2GPD         10 
 #define ISP_STR_MON_PORT_FA2ISP          11
-#define ISP_STR_MON_PORT_ISP2SP          12
+#define ISP_STR_MON_PORT_ISP2SP          12 
 #define ISP_STR_MON_PORT_SP2ISP          13
 
 /* previously used ISP streaming monitor port identifiers, kept for backward compatibility */
 #define ISP_STR_MON_PORT_SND_PIF_A       ISP_STR_MON_PORT_ISP2PIFA
 #define ISP_STR_MON_PORT_RCV_PIF_A       ISP_STR_MON_PORT_PIFA2ISP
-#define ISP_STR_MON_PORT_SND_PIF_B       ISP_STR_MON_PORT_ISP2PIFB
+#define ISP_STR_MON_PORT_SND_PIF_B       ISP_STR_MON_PORT_ISP2PIFB 
 #define ISP_STR_MON_PORT_RCV_PIF_B       ISP_STR_MON_PORT_PIFB2ISP
-#define ISP_STR_MON_PORT_SND_DMA         ISP_STR_MON_PORT_ISP2DMA
-#define ISP_STR_MON_PORT_RCV_DMA         ISP_STR_MON_PORT_DMA2ISP
-#define ISP_STR_MON_PORT_SND_GDC         ISP_STR_MON_PORT_ISP2GDC1
+#define ISP_STR_MON_PORT_SND_DMA         ISP_STR_MON_PORT_ISP2DMA  
+#define ISP_STR_MON_PORT_RCV_DMA         ISP_STR_MON_PORT_DMA2ISP 
+#define ISP_STR_MON_PORT_SND_GDC         ISP_STR_MON_PORT_ISP2GDC1 
 #define ISP_STR_MON_PORT_RCV_GDC         ISP_STR_MON_PORT_GDC12ISP
-#define ISP_STR_MON_PORT_SND_GPD         ISP_STR_MON_PORT_ISP2GPD
+#define ISP_STR_MON_PORT_SND_GPD         ISP_STR_MON_PORT_ISP2GPD 
 #define ISP_STR_MON_PORT_RCV_GPD         ISP_STR_MON_PORT_FA2ISP
 #define ISP_STR_MON_PORT_SND_SP          ISP_STR_MON_PORT_ISP2SP
 #define ISP_STR_MON_PORT_RCV_SP          ISP_STR_MON_PORT_SP2ISP
-
+                                           
 /* port definititions MOD streaming monitor, monitors the status of streaming ports at the module side of the streaming FIFO's */
 
 #define MOD_STR_MON_PORT_PIFA2CELLS       0
@@ -391,7 +391,7 @@
 #define HIVE_TESTBENCH_IDLE_REG_IDX                             4
 #define HIVE_TESTBENCH_GPIO_DATA_IN_REG_IDX                     5
 #define HIVE_TESTBENCH_MIPI_BFM_EN_REG_IDX                      6
-#define HIVE_TESTBENCH_CSI_CONFIG_REG_IDX                       7
+#define HIVE_TESTBENCH_CSI_CONFIG_REG_IDX                       7 
 #define HIVE_TESTBENCH_DDR_STALL_EN_REG_IDX                     8
 
 #define HIVE_TESTBENCH_ISP_PMEM_ERROR_IRQ_REG_IDX               9

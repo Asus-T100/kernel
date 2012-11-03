@@ -29,7 +29,7 @@
 #include <stdint.h>
 
 #define IS_ISP_2400_SYSTEM
-#define SYSTEM_hive_isp_css_2400_system
+#define SYSTEM_hive_isp_css_2400A0_system
 /*
  * Since the 2400A0 system is temporary, we use the same DLI for
  * both systems. The difference is only visible in the name of
@@ -191,6 +191,15 @@ typedef enum {
 	INPUT_FORMATTER2_ID,
 	N_INPUT_FORMATTER_ID
 } input_formatter_ID_t;
+
+/* The IF RST is outside the IF */
+#define INPUT_FORMATTER0_SRST_OFFSET	0x0824
+#define INPUT_FORMATTER1_SRST_OFFSET	0x0624
+#define INPUT_FORMATTER2_SRST_OFFSET	0x0424
+
+#define INPUT_FORMATTER0_SRST_MASK		0x0001
+#define INPUT_FORMATTER1_SRST_MASK		0x0002
+#define INPUT_FORMATTER2_SRST_MASK		0x0004
 
 typedef enum {
 	INPUT_SYSTEM0_ID = 0,

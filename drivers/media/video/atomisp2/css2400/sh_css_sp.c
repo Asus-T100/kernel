@@ -522,7 +522,7 @@ set_tnr_in_frame_buffer(const struct sh_css_frame *frame,
 	if (frame == NULL)
 		return sh_css_err_invalid_arguments;
 
-	if (frame->info.format != SH_CSS_FRAME_FORMAT_YUV420)
+	if (frame->info.format != SH_CSS_FRAME_FORMAT_YUV_LINE)
 		return sh_css_err_unsupported_frame_format;
 	sh_css_copy_frame_to_spframe(&sh_css_sp_stage.frames.tnr_in, frame,
 					pipe_num, stage_num,
@@ -537,7 +537,7 @@ set_tnr_out_frame_buffer(const struct sh_css_frame *frame,
 	if (frame == NULL)
 		return sh_css_err_invalid_arguments;
 
-	if (frame->info.format != SH_CSS_FRAME_FORMAT_YUV420)
+	if (frame->info.format != SH_CSS_FRAME_FORMAT_YUV_LINE)
 		return sh_css_err_unsupported_frame_format;
 	sh_css_copy_frame_to_spframe(NULL, frame,
 					pipe_num, stage_num,
@@ -616,8 +616,13 @@ sh_css_sp_program_input_circuit(int fmt_type,
 {
 	sh_css_sp_group.config.input_circuit.no_side_band = false;
 	sh_css_sp_group.config.input_circuit.fmt_type     = fmt_type;
-	sh_css_sp_group.config.input_circuit.ch_id	   = ch_id;
+	sh_css_sp_group.config.input_circuit.ch_id	      = ch_id;
 	sh_css_sp_group.config.input_circuit.input_mode   = input_mode;
+/*
+ * The SP group is only loaded at SP boot time and is read once
+ * change flags as "input_circuit_cfg_changed" must be reset on the SP
+ */
+	sh_css_sp_group.config.input_circuit_cfg_changed = true;
 	sh_css_sp_stage.program_input_circuit = true;
 }
 
@@ -979,10 +984,10 @@ sh_css_sp_init_pipeline(struct sh_css_pipeline *me,
 	sh_css_sp_group.pipe[thread_id].pipe_id = pipe_id;
 	/* TODO: next indicates from which queues parameters need to be
 		 sampled, needs checking/improvement */
-	sh_css_sp_group.pipe[thread_id].pipe_config =
+	if (sh_css_pipe_uses_params(me)) {
+		sh_css_sp_group.pipe[thread_id].pipe_config =
 			SH_CSS_PIPE_CONFIG_SAMPLE_PARAMS << thread_id;
-	if (pipe_id == SH_CSS_ACC_PIPELINE)
-		sh_css_sp_group.pipe[thread_id].pipe_config = 0;
+	}
 
 	/* For continuous use-cases, SP copy is responsible for sampling the
 	 * parameters */
@@ -1102,6 +1107,25 @@ assert(frame_num < NUM_CONTINUOUS_FRAMES);
 
 	store_sp_array_uint(host_sp_com, o,
 				frame ? frame->data : 0);
+}
+
+void
+sh_css_update_host2sp_cont_num_raw_frames(unsigned num_frames)
+{
+	const struct sh_css_fw_info *fw;
+	unsigned int HIVE_ADDR_host_sp_com;
+	unsigned int o;
+
+	(void)HIVE_ADDR_host_sp_com; /* Suppres warnings in CRUN */
+
+	/* Write new frame data into SP DMEM */
+	fw = &sh_css_sp_fw;
+	HIVE_ADDR_host_sp_com = fw->info.sp.host_sp_com;
+	o = offsetof(struct host_sp_communication, host2sp_cont_num_raw_frames)
+		/ sizeof(int);
+
+	store_sp_array_uint(host_sp_com, o,
+				num_frames);
 }
 
 void
@@ -1265,6 +1289,7 @@ sh_css_sp_start_isp(void)
 	 * because only after the process_frame command has been
 	 * received, the SP starts configuring the input network.
 	 */
+	sh_css_mmu_invalidate_cache();
 	sh_css_hrt_sp_start_isp();
 
 	sp_running = true;

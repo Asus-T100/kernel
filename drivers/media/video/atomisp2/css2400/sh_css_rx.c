@@ -265,7 +265,7 @@ enum sh_css_err sh_css_input_format_type(
 		break;
 #if defined(HAS_RX_VERSION_2)
 	default:
-		if (input_format > N_MIPI_FORMAT)
+		if (input_format > (unsigned int)N_MIPI_FORMAT)
 			return sh_css_err_internal_error;
 		*fmt_type = input_format;
 		break;

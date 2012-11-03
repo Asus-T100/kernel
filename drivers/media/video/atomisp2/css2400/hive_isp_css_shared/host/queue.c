@@ -131,25 +131,40 @@ static void dump_sp_queue(
 void init_host2sp_queues(void)
 {
 	unsigned int i, j;
-	struct host_sp_queues *my_queues = NULL;
+	struct sh_css_circular_buf *offset_to_queue;
 
 	for (i = 0; i < SH_CSS_MAX_SP_THREADS; i++) {
 		for (j = 0; j < SH_CSS_NUM_BUFFER_QUEUES; j++) {
-			init_sp_queue(&my_queues->host2sp_buffer_queues[i][j]);
+			offset_to_queue = (struct sh_css_circular_buf *)
+				offsetof(struct host_sp_queues,
+					host2sp_buffer_queues[i][j]);
+			init_sp_queue(offset_to_queue);
 		}
 	}
-	init_sp_queue(&my_queues->host2sp_event_queue);
+	offset_to_queue = (struct sh_css_circular_buf *)
+		offsetof(struct host_sp_queues,
+			host2sp_event_queue);
+	init_sp_queue(offset_to_queue);
 }
 
 void init_sp2host_queues(void)
 {
 	unsigned int j;
-	struct host_sp_queues *my_queues = NULL;
+//	struct host_sp_queues *my_queues = NULL;
+	struct sh_css_circular_buf *offset_to_queue;
 
 	for (j = 0; j < SH_CSS_NUM_BUFFER_QUEUES; j++) {
-		init_sp_queue(&my_queues->sp2host_buffer_queues[j]);
+		offset_to_queue = (struct sh_css_circular_buf *)
+			offsetof(struct host_sp_queues,
+				sp2host_buffer_queues[j]);
+		init_sp_queue(offset_to_queue);
+		//init_sp_queue(&my_queues->sp2host_buffer_queues[j]);
 	}
-	init_sp_queue(&my_queues->sp2host_event_queue);
+	offset_to_queue = (struct sh_css_circular_buf *)
+		offsetof(struct host_sp_queues,
+			sp2host_event_queue);
+	init_sp_queue(offset_to_queue);
+//	init_sp_queue(&my_queues->sp2host_event_queue);
 }
 
 /************************************************************
@@ -164,26 +179,30 @@ bool host2sp_enqueue_buffer(
 	uint32_t buffer_ptr)
 {
 	bool is_full;
-	struct host_sp_queues *my_queues = NULL;
+//	struct host_sp_queues *my_queues = NULL;
+	struct sh_css_circular_buf *offset_to_queue;
 
 	(void)stage_num;
 
 assert(pipe_num < SH_CSS_MAX_SP_THREADS);
 assert((index < SH_CSS_NUM_BUFFER_QUEUES));
 
+	if (pipe_num >= SH_CSS_MAX_SP_THREADS)
+		return false;
+
 	/* This is just the first step of introducing the queue API */
 	/* The implementation is still the old non-queue implementation */
 	/* till the new queue implementation is there */
+	offset_to_queue = (struct sh_css_circular_buf *)
+		offsetof(struct host_sp_queues,
+			host2sp_buffer_queues[pipe_num][index]);
 
 	/* check whether both queues are full or not */
-	is_full = is_sp_queue_full(&my_queues->host2sp_buffer_queues
-					[pipe_num][index]);
+	is_full = is_sp_queue_full(offset_to_queue);
 
 	if (!is_full) {
 		/* push elements into the queues */
-		push_sp_queue(&my_queues->host2sp_buffer_queues
-				[pipe_num][index],
-			(uint32_t)buffer_ptr);
+		push_sp_queue(offset_to_queue, (uint32_t)buffer_ptr);
 	}
 
 
@@ -199,15 +218,18 @@ bool host2sp_enqueue_sp_event(
 		uint32_t event)
 {
 	bool is_full;
-	struct host_sp_queues *my_queues = NULL;
+	//struct host_sp_queues *my_queues = NULL;
+	struct sh_css_circular_buf *offset_to_queue;
+	offset_to_queue = (struct sh_css_circular_buf *)
+		offsetof(struct host_sp_queues,
+			host2sp_event_queue);
 
 	/* check whether the queue is full or not */
-	is_full = is_sp_queue_full(&my_queues->host2sp_event_queue);
+	is_full = is_sp_queue_full(offset_to_queue);
 
 	if (!is_full) {
 		/* push elements into the queues */
-		push_sp_queue(&my_queues->host2sp_event_queue,
-			event);
+		push_sp_queue(offset_to_queue, event);
 	}
 
 	return !is_full;
@@ -226,7 +248,11 @@ bool sp2host_dequeue_buffer(
 {
 	uint32_t elem;
 	bool is_empty;
-	struct host_sp_queues *my_queues = NULL;
+	//struct host_sp_queues *my_queues = NULL;
+	struct sh_css_circular_buf *offset_to_queue;
+	offset_to_queue = (struct sh_css_circular_buf *)
+		offsetof(struct host_sp_queues,
+			sp2host_buffer_queues[index]);
 
 	(void)stage_num;
 	(void)pipe_num;
@@ -238,12 +264,12 @@ assert((index < SH_CSS_NUM_BUFFER_QUEUES));
 	/* till the new queue implementation is there */
 
 	/* check whether the queue is empty or not */
-	is_empty = is_sp_queue_empty(&my_queues->sp2host_buffer_queues[index]);
+	is_empty = is_sp_queue_empty(offset_to_queue);
 
 	/* pop when both queue is not empty */
 	if (!is_empty) {
 		/* pop element from the queue */
-		pop_sp_queue(&my_queues->sp2host_buffer_queues[index], &elem);
+		pop_sp_queue(offset_to_queue, &elem);
 
 		/* set the frame data */
 		*buffer_ptr = elem;
@@ -262,15 +288,19 @@ bool sp2host_dequeue_irq_event(
 {
 	unsigned int elem;
 	bool is_empty;
-	struct host_sp_queues *my_queues = NULL;
+	//struct host_sp_queues *my_queues = NULL;
+	struct sh_css_circular_buf *offset_to_queue;
+	offset_to_queue = (struct sh_css_circular_buf *)
+		offsetof(struct host_sp_queues,
+			sp2host_event_queue);
 
 	/* check whether the queue is empty or not */
-	is_empty = is_sp_queue_empty(&my_queues->sp2host_event_queue);
+	is_empty = is_sp_queue_empty(offset_to_queue);
 
 	/* pop when both queue is not empty */
 	if (!is_empty) {
 		/* pop element from the queue */
-		pop_sp_queue(&my_queues->sp2host_event_queue, &elem);
+		pop_sp_queue(offset_to_queue, &elem);
 
 		/* fill in the IRQ event */
 		*event = elem;

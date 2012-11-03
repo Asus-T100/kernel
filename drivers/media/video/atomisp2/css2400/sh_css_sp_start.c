@@ -21,21 +21,18 @@
 *
 */
 
-#define __SH_CSS_CUSTOM_HRT__
-
-#include "stdbool.h"
-
 #include "sh_css_sp_start.h"
 #include "sh_css_sp.h"
-
-#include "sp.map.h"
 #include "sh_css_firmware.h"
 
 #define __INLINE_SP__
 #include "sp.h"
+
 #include "mmu_device.h"
 
 #include "memory_access.h"
+
+#include "assert_support.h"
 
 static bool invalidate_mmu;
 
@@ -45,20 +42,22 @@ sh_css_sp_invalidate_mmu(void)
 	invalidate_mmu = true;
 }
 
-void
-sh_css_sp_start(unsigned int start_address)
+void sh_css_sp_start(
+	unsigned int start_address)
 {
+assert(sizeof(unsigned int) <= sizeof(hrt_data));
+
 	if (invalidate_mmu) {
 		mmu_invalidate_cache(MMU0_ID);
 		invalidate_mmu = false;
 	}
 	/* set the start address */
-	sp_ctrl_store(SP0_ID, SP_START_ADDR_REG, start_address);
-	/* set the run bit and the start bit with a read-modify-write */
+	sp_ctrl_store(SP0_ID, SP_START_ADDR_REG, (hrt_data)start_address);
 	sp_ctrl_setbit(SP0_ID, SP_SC_REG, SP_RUN_BIT);
 	sp_ctrl_setbit(SP0_ID, SP_SC_REG, SP_START_BIT);
 return;
 }
+
 
 hrt_vaddress sh_css_sp_load_program(
 	const struct sh_css_fw_info *fw,
@@ -76,21 +75,24 @@ hrt_vaddress sh_css_sp_load_program(
 	/* Set the correct start address for the SP program */
 	sh_css_sp_activate_program(fw, code_addr, sp_prog);
 
-	return code_addr;
+return code_addr;
 }
 
-void
-sh_css_sp_activate_program(const struct sh_css_fw_info *fw,
-				hrt_vaddress code_addr,
-				const char *sp_prog)
+void sh_css_sp_activate_program(
+	const struct sh_css_fw_info *fw,
+	hrt_vaddress code_addr,
+	const char *sp_prog)
 {
 	(void)sp_prog; /* not used on hardware, only for simulation */
 
+assert(sizeof(hrt_vaddress) <= sizeof(hrt_data));
 	/* now we program the base address into the icache and
 	 * invalidate the cache.
 	 */
-	sp_ctrl_store(SP0_ID, SP_ICACHE_ADDR_REG, (unsigned long)code_addr);
+	sp_ctrl_store(SP0_ID, SP_ICACHE_ADDR_REG, (hrt_data)code_addr);
 	sp_ctrl_setbit(SP0_ID, SP_ICACHE_INV_REG, SP_ICACHE_INV_BIT);
+
 	/* Set descr in the SP to initialize the SP DMEM */
 	sh_css_sp_store_init_dmem(fw);
+return;
 }

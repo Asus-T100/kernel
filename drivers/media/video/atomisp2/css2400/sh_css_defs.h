@@ -39,6 +39,11 @@
 #define SH_CSS_ISP_GAMMA_TABLE_SIZE         (SH_CSS_ISP_GAMMA_TABLE_SIZEM1 + 1)
 #define SH_CSS_ISP_XNR_TABLE_SIZE_LOG2      6
 #define SH_CSS_ISP_XNR_TABLE_SIZE           (1U<<SH_CSS_ISP_XNR_TABLE_SIZE_LOG2)
+#define SH_CSS_ISP_RGB_GAMMA_TABLE_SIZE_LOG2 8
+#define SH_CSS_ISP_RGB_GAMMA_TABLE_SIZEM1 \
+				(1U<<SH_CSS_ISP_RGB_GAMMA_TABLE_SIZE_LOG2)
+#define SH_CSS_ISP_RGB_GAMMA_TABLE_SIZE \
+				(SH_CSS_ISP_RGB_GAMMA_TABLE_SIZEM1 + 1)
 /*#define SH_CSS_ISP_XNR_TABLE_SIZE           (SH_CSS_ISP_XNR_TABLE_SIZEM1 + 1)*/
 #elif defined(HAS_VAMEM_VERSION_1)
 #define SH_CSS_ISP_CTC_TABLE_SIZE_LOG2      SH_CSS_CTC_TABLE_SIZE_LOG2
@@ -47,6 +52,8 @@
 #define SH_CSS_ISP_GAMMA_TABLE_SIZE         SH_CSS_GAMMA_TABLE_SIZE
 #define SH_CSS_ISP_XNR_TABLE_SIZE_LOG2      SH_CSS_XNR_TABLE_SIZE_LOG2
 #define SH_CSS_ISP_XNR_TABLE_SIZE           SH_CSS_XNR_TABLE_SIZE
+#define SH_CSS_ISP_RGB_GAMMA_TABLE_SIZE_LOG2 SH_CSS_RGB_GAMMA_TABLE_SIZE_LOG2
+#define SH_CSS_ISP_RGB_GAMMA_TABLE_SIZE      SH_CSS_RGB_GAMMA_TABLE_SIZE
 #else
 #error "sh_css_defs: Unknown VAMEM version"
 #endif
@@ -63,23 +70,27 @@
 #define _CEIL_MUL2(a, b)  (((a)+(b)-1) & ~((b)-1))
 
 #ifndef SH_CSS_CEIL_INLINE
-#define MAX(a, b)		_MAX(a,b)
+#define MAX(a, b)	 	_MAX(a,b)
+#ifdef __KERNEL__
 #define MIN(a, b)		_MIN(a,b)
-#define CEIL_MUL(a, b)		_CEIL_MUL(a, b)
-#define CEIL_DIV(a, b)		_CEIL_DIV(a, b)
-#define CEIL_SHIFT(a, b)	_CEIL_SHIFT(a, b)
-#define CEIL_SHIFT_MUL(a, b)	_CEIL_SHIFT_MUL(a, b)
-#define CEIL_MUL2(a, b)		_CEIL_MUL2(a, b)
+#endif
+#define CEIL_MUL(a, b)		_CEIL_MUL(a, b) 
+#define CEIL_DIV(a, b)   	_CEIL_DIV(a, b)
+#define CEIL_SHIFT(a, b) 	_CEIL_SHIFT(a, b)
+#define CEIL_SHIFT_MUL(a, b)  	_CEIL_SHIFT_MUL(a, b)
+#define CEIL_MUL2(a, b)  	_CEIL_MUL2(a, b)
 
 #else
 
-#define MAX(a, b)		_max(a,b)
+#define MAX(a, b)	 	_max(a,b)
+#ifdef __KERNEL__
 #define MIN(a, b)		_min(a,b)
-#define CEIL_MUL(a, b)		_ceil_mul(a, b)
-#define CEIL_DIV(a, b)		_ceil_div(a, b)
-#define CEIL_SHIFT(a, b)	_ceil_shift(a, b)
-#define CEIL_SHIFT_MUL(a, b)	_ceil_shift_mul(a, b)
-#define CEIL_MUL2(a, b)		_ceil_mul2(a, b)
+#endif
+#define CEIL_MUL(a, b)		_ceil_mul(a, b) 
+#define CEIL_DIV(a, b)   	_ceil_div(a, b)
+#define CEIL_SHIFT(a, b) 	_ceil_shift(a, b)
+#define CEIL_SHIFT_MUL(a, b)  	_ceil_shift_mul(a, b)
+#define CEIL_MUL2(a, b)  	_ceil_mul2(a, b)
 
 static inline unsigned _max(unsigned a, unsigned b)
 {
@@ -141,6 +152,49 @@ static inline unsigned _ceil_mul2(unsigned a, unsigned b)
 #define SH_CSS_YEE_SCALE_SHIFT            8
 #define SH_CSS_TNR_COEF_SHIFT                    13
 #define SH_CSS_MACC_COEF_SHIFT            11 /* [s2.11] */
+
+/*--------------- sRGB Gamma -----------------
+CCM        : YCgCo[0,8191] -> RGB[0,4095]
+sRGB Gamma : RGB  [0,4095] -> RGB[0,8191]
+CSC        : RGB  [0,8191] -> YUV[0,8191]
+
+CCM:
+Y[0,8191],CgCo[-4096,4095],coef[-8192,8191] -> RGB[0,4095]
+
+sRGB Gamma:
+RGB[0,4095] -(interpolation step16)-> RGB[0,255] -(LUT 12bit)-> RGB[0,4095] -> RGB[0,8191]
+
+CSC:
+RGB[0,8191],coef[-8192,8191] -> RGB[0,8191]
+--------------------------------------------*/
+/* Bits of input/output of sRGB Gamma */
+#define SH_CSS_RGB_GAMMA_INPUT_BITS       12 /* [0,4095] */
+#define SH_CSS_RGB_GAMMA_OUTPUT_BITS      13 /* [0,8191] */
+
+/* Bits of fractional part of interpolation in vamem, [0,4095]->[0,255] */
+#define SH_CSS_RGB_GAMMA_FRAC_BITS        \
+	(SH_CSS_RGB_GAMMA_INPUT_BITS - SH_CSS_ISP_RGB_GAMMA_TABLE_SIZE_LOG2)
+#define SH_CSS_RGB_GAMMA_ONE              (1 << SH_CSS_RGB_GAMMA_FRAC_BITS)
+
+/* Bits of input of CCM,  = 13, Y[0,8191],CgCo[-4096,4095] */
+#define SH_CSS_YUV2RGB_CCM_INPUT_BITS     SH_CSS_BAYER_BITS
+
+/* Bits of output of CCM,  = 12, RGB[0,4095] */
+#define SH_CSS_YUV2RGB_CCM_OUTPUT_BITS    SH_CSS_RGB_GAMMA_INPUT_BITS
+
+/* Bits of fractional part of coefficient of CCM, =12, [-1,1]=[-4096,4096] */
+#define SH_CSS_YUV2RGB_CCM_COEF_SHIFT     12
+
+/* Bits of shift in calculation of CCM, =12, [-1,1]=[-4096,4096] */
+#define SH_CSS_YUV2RGB_CCM_CALC_SHIFT     (SH_CSS_YUV2RGB_CCM_COEF_SHIFT \
+	+ (SH_CSS_YUV2RGB_CCM_INPUT_BITS - SH_CSS_YUV2RGB_CCM_OUTPUT_BITS))
+
+/* Maximum value of output of CCM */
+#define SH_CSS_YUV2RGB_CCM_MAX_OUTPUT     \
+	((1 << SH_CSS_YUV2RGB_CCM_OUTPUT_BITS) - 1)
+
+/* Bits of fractional part of coefficient of CSC */
+#define SH_CSS_RGB2YUV_CSC_COEF_SHIFT     13
 
 #define SH_CSS_NUM_INPUT_BUF_LINES        4
 

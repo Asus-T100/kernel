@@ -281,13 +281,6 @@ The CSS API and its implementation do not depend on any particular environment
  driver.
 */
 
-/*!
-  \page initialization FAQ
-  contents
-  ...
-  more contents
-*/
-
 #ifndef _SH_CSS_H_
 #define _SH_CSS_H_
 
@@ -665,6 +658,8 @@ struct sh_css_frame {
 	 */
 	int dynamic_data_index;
 	enum sh_css_frame_flash_state flash_state;
+	unsigned int exp_id; /**< exposure id, only valid for continuous
+				capture cases */
 	bool contiguous; /**< memory is allocated physically contiguously */
 	union {
 		unsigned int	_initialisation_dummy;
@@ -1685,6 +1680,35 @@ sh_css_enable_cont_capt(bool enable);
 bool
 sh_css_continuous_is_enabled(void);
 
+/** @brief Return max nr of continuous RAW frames.
+ *
+ * @return	Max nr of continuous RAW frames.
+ *
+ * Return the maximum nr of continuous RAW frames the system can support.
+ */
+int
+sh_css_continuous_get_max_raw_frames(void);
+
+/** @brief Set nr of continuous RAW frames to use.
+ *
+ * @param 	num_frames	Number of frames.
+ * @return	SH_CSS_SUCCESS or error code upon error.
+ *
+ * Set the number of continuous frames to use during continuous modes.
+ */
+enum sh_css_err
+sh_css_continuous_set_num_raw_frames(int num_frames);
+
+/** @brief Get nr of continuous RAW frames to use.
+ *
+ * @return 	Number of frames to use.
+ *
+ * Get the currently set number of continuous frames
+ * to use during continuous modes.
+ */
+int
+sh_css_continuous_get_num_raw_frames(void);
+
 /** @brief Enable reordered raw format mode.
  *
  * @param	enable	Enabling value.
@@ -1835,16 +1859,17 @@ sh_css_offline_capture_configure(int num_captures,
 				 unsigned int skip,
 				 int offset);
 
-/** @brief Specify buffer depth for SP RAW copy
+/** @brief Specify which raw frame to tag based on exp_id found in frame info
  *
- * @param	depth	The depth (in number of buffers).
+ * @param	exp_id	The exposure id of the raw frame to tag.
  *
- * This function sets the depth of the circular output buffer into which the
- * RAW copy mode on the SP will write its output. These buffers are used by
- * offline image pipes for processing.
+ * @return			IA_CSS_SUCCESS or error code upon error.
+ *
+ * This function allows the user to tag a raw frame based on the exposure id
+ * found in the viewfinder frames' frame info.
  */
 enum sh_css_err
-sh_css_raw_copy_set_raw_depth(unsigned int depth);
+sh_css_offline_capture_tag_frame(unsigned int exp_id);
 
 /** @brief Specify the mode used for capturing.
  *
@@ -2061,6 +2086,24 @@ sh_css_video_set_dis_envelope(unsigned int width, unsigned int height);
  */
 void
 sh_css_video_get_dis_envelope(unsigned int *width, unsigned int *height);
+
+/** @brief Set the flag for using DZ.
+ *
+ * @param[in]	enable_dz	Enable digital zoom.
+ *
+ * Set the flag for using digital zoom for video. By default this is enabled.
+ */
+void
+sh_css_video_set_enable_dz(bool enable_dz);
+
+/** @brief Retrieve the flag for using DZ.
+ *
+ * @param[out]	enable_dz	Digital zoom enabled.
+ *
+ * Retrieve the flag for using digital zoom for video. By default it is enabled.
+ */
+void
+sh_css_video_get_enable_dz(bool *enable_dz);
 
 /** @brief Get the video output information
  *
@@ -2324,6 +2367,17 @@ sh_css_acceleration_done(struct sh_css_acc_fw *firmware);
 void
 sh_css_abort_acceleration(struct sh_css_acc_fw *firmware, unsigned deadline);
 
+/** @brief Stop the acceleration pipe
+ *
+ * @return	       IA_CSS_SUCCESS or error code upon error.
+ *
+ * This function stops the acceleration pipe that's running. Note that any
+ * dependent pipes will also be stopped automatically since otherwise
+ * they would starve because they no longer receive input data.
+ */
+enum sh_css_err
+sh_css_acceleration_stop(void);
+
 /** @brief Append a stage to pipeline.
  *
  * @param	pipeline	Pointer to the pipeline to be extended.
@@ -2431,6 +2485,14 @@ sh_css_enable_sp_invalidate_tlb(void);
 void
 sh_css_request_flash(void);
 
+/** @brief Set the isp pipe version for video.
+ *
+ * @param	version	Version of isp pipe (1 or 2).
+ *
+ * Set the version of isp pipe for video. Default is 1.
+ */
+void
+sh_css_video_set_isp_pipe_version(unsigned int version);
 
 /* For convenience, so users only need to include sh_css.h
  * To be removed: the remaining sh_css_params functions should move to here.

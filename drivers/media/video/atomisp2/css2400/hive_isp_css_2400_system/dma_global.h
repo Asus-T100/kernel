@@ -7,8 +7,10 @@
 /*
  * Consumes an unacceptable amount of SP resources
  *
+#define HIVE_ISP_NUM_DMA_CHANNELS_LOG2	5
 #define HIVE_ISP_NUM_DMA_CHANNELS	32
  */
+#define HIVE_ISP_NUM_DMA_CHANNELS_LOG2	4
 #define HIVE_ISP_NUM_DMA_CHANNELS	16
 
 #define N_DMA_CHANNEL_ID	HIVE_ISP_NUM_DMA_CHANNELS

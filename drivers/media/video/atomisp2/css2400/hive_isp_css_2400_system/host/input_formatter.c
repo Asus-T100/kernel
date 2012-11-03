@@ -9,15 +9,15 @@
 #include "input_formatter_private.h"
 #endif /* __INLINE_INPUT_FORMATTER__ */
 
-static const hrt_address HIVE_IF_SRST_ADDRESS[N_INPUT_FORMATTER_ID] = {
-	0x0824,
-	0x0624,
-	0x0424};
+const hrt_address HIVE_IF_SRST_ADDRESS[N_INPUT_FORMATTER_ID] = {
+	INPUT_FORMATTER0_SRST_OFFSET,
+	INPUT_FORMATTER1_SRST_OFFSET,
+	INPUT_FORMATTER2_SRST_OFFSET};
 
-static const hrt_data HIVE_IF_SRST_MASK[N_INPUT_FORMATTER_ID] = {
-	0x0001,
-	0x0002,
-	0x0004};
+const hrt_data HIVE_IF_SRST_MASK[N_INPUT_FORMATTER_ID] = {
+	INPUT_FORMATTER0_SRST_MASK,
+	INPUT_FORMATTER1_SRST_MASK,
+	INPUT_FORMATTER2_SRST_MASK};
 
 void input_formatter_rst(
 	const input_formatter_ID_t		ID)
