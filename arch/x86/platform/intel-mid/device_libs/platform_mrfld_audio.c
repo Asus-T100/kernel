@@ -37,9 +37,9 @@ void *mrfld_audio_platform_data(void *info)
 	/*FIXME: remove when using the POR codec for merrifield*/
 	memset(&i2c_info, 0, sizeof(i2c_info));
 	bus = 1;
-	strncpy(i2c_info.type, "cs42l73", 16);
+	strncpy(i2c_info.type, "lm49453", 16);
 	i2c_info.irq = 0xff;
-	i2c_info.addr = 0x4a;
+	i2c_info.addr = 0x1a;
 	i2c_register_board_info(bus, &i2c_info, 1);
 	return NULL;
 }

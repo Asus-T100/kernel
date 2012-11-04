@@ -43,8 +43,8 @@ config SND_YUKKABEACH_MACHINE
 
 config SND_MRFLD_MACHINE
 	tristate "SOC Machine Audio driver for Intel Merrifield MID platform"
-	depends on INTEL_SCU_IPC && INTEL_SCU_IPC_UTIL && X86
-	select SND_SOC_CS42L73
+	depends on INTEL_SCU_IPC && X86
+	select SND_SOC_LM49453
 	select SND_SST_PLATFORM
 	select SND_INTEL_SST
 	default n

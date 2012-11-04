@@ -1,4 +1,5 @@
-snd-soc-sst-platform-objs := sst_platform.o sst_platform_controls_ctp.o
+# SST Platform Driver
+snd-soc-sst-platform-objs := sst_platform.o sst_platform_dsp.o sst_platform_controls_ctp.o
 obj-$(CONFIG_SND_SST_PLATFORM) += snd-soc-sst-platform.o
 
 # Medfield board
@@ -17,13 +18,13 @@ obj-$(CONFIG_SND_YUKKABEACH_MACHINE) += snd-soc-yukkabeach-machine.o
 snd-soc-clv-machine-objs := clv_machine.o
 obj-$(CONFIG_SND_CLV_MACHINE) += snd-soc-clv-machine.o
 
+# Merrifield board
+snd-mrfld-machine-lm49453-objs := mrfld_machine_lm49453.o
+obj-$(CONFIG_SND_MRFLD_MACHINE) += snd-mrfld-machine-lm49453.o
+
 # SST Compress framework driver
 snd-compress-sst-objs := compress_sst.o
 obj-$(CONFIG_SND_COMPRESS_SST) += snd-compress-sst.o
-
-# Merrfield board
-snd-soc-mrfld-machine-objs := mrfld_machine.o
-obj-$(CONFIG_SND_MRFLD_MACHINE) += snd-soc-mrfld-machine.o
 
 # DSP driver
 obj-$(CONFIG_SND_INTEL_SST) += sst/
