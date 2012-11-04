@@ -1,4 +1,5 @@
-snd-soc-sst-platform-objs := sst_platform.o sst_platform_controls_ctp.o
+# SST Platform Driver
+snd-soc-sst-platform-objs := sst_platform.o sst_platform_dsp.o sst_platform_controls_ctp.o
 obj-$(CONFIG_SND_SST_PLATFORM) += snd-soc-sst-platform.o
 
 # Medfield board
