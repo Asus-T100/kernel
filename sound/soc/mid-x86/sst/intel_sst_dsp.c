@@ -201,6 +201,8 @@ static inline int sst_validate_fw_elf(const struct firmware *sst_fw)
 
 	BUG_ON(!sst_fw);
 
+	pr_debug("IN %s\n", __func__);
+
 	elf = (Elf32_Ehdr *)sst_fw->data;
 
 	if ((elf->e_ident[0] != 0x7F) || (elf->e_ident[1] != 'E') ||
@@ -212,53 +214,75 @@ static inline int sst_validate_fw_elf(const struct firmware *sst_fw)
 	return 0;
 }
 
-void sst_download_fw_mrfld(const void *fw_in_mem)
+static int sst_memcpy_fw(struct intel_sst_drv *sst, const void *fw,
+		 struct sst_probe_info info, Elf32_Phdr *pr)
 {
-	int data_size = 0, i = 0;
+	void *dstn;
+
+#ifdef MRFLD_WORD_WA
+	/* work around-since only 4 byte align copying is only allowed for ICCM */
+	if ((pr->p_paddr >= info.iram_start) && (pr->p_paddr < info.iram_end)) {
+		size_t data_size = pr->p_filesz % SST_ICCM_BOUNDARY;
+
+		if (data_size)
+			pr->p_filesz += 4 - data_size;
+		dstn = sst->iram + (pr->p_paddr - info.iram_start);
+	}
+#else
+	if ((pr->p_paddr >= info.iram_start) && (pr->p_paddr < info.iram_end))
+		dstn = sst->iram + (pr->p_paddr - info.iram_start);
+#endif
+	else if ((pr->p_paddr >= info.dram_start) && (pr->p_paddr < info.dram_end))
+		dstn = sst->dram + (pr->p_paddr - info.dram_start);
+	else if ((pr->p_paddr >= info.imr_start) && (pr->p_paddr < info.imr_end))
+		dstn = sst->ddr + (pr->p_paddr - info.imr_start);
+	else
+	       return -EINVAL;
+	memcpy_toio(dstn, fw + pr->p_offset, pr->p_filesz);
+	return 0;
+}
+
+static void
+sst_download_elf_fw(struct intel_sst_drv *sst, const void *fw_in_mem)
+{
+	int i = 0;
 
 	Elf32_Ehdr *elf;
 	Elf32_Phdr *pr;
+	struct sst_probe_info info;
 
 	BUG_ON(!fw_in_mem);
 
 	elf = (Elf32_Ehdr *)fw_in_mem;
 	pr = (Elf32_Phdr *) (fw_in_mem + elf->e_phoff);
-	pr_debug("sst_download_fw_mrfld.....\n");
-	while (i < elf->e_phnum) {
-		if (pr[i].p_type == PT_LOAD) {
-			if ((pr[i].p_paddr >= sst_drv_ctx->iram_base) &&
-				(pr[i].p_paddr < sst_drv_ctx->iram_end)) {
-				pr_debug("iccm copying\n");
-				/*work around-since only 4 byte copying
-				 *is only allowed for ICCM*/
-				data_size = pr[i].p_filesz %
-							SST_ICCM_BOUNDARY;
-				if (data_size)
-					pr[i].p_filesz +=
-						SST_ICCM_BOUNDARY - data_size;
-				memcpy_toio(sst_drv_ctx->iram +
-				pr[i].p_paddr - sst_drv_ctx->iram_base,
-					(void *)fw_in_mem + pr[i].p_offset,
-					pr[i].p_filesz);
+	pr_debug("%s entry\n", __func__);
 
-			} else if ((pr[i].p_paddr >= sst_drv_ctx->dram_base)
-			&& (pr[i].p_paddr < sst_drv_ctx->dram_end)) {
-				pr_debug("dccm copying\n");
-				memcpy_toio(sst_drv_ctx->dram +
-					pr[i].p_paddr -
-					sst_drv_ctx->dram_base,
-					(void *)fw_in_mem + pr[i].p_offset,
-					pr[i].p_filesz);
-			} else if ((pr[i].p_paddr >= sst_drv_ctx->ddr_base)
-				&& (pr[i].p_paddr < sst_drv_ctx->ddr_end)) {
-				pr_debug("ddr copying\n");
-				memcpy_toio(sst_drv_ctx->ddr +
-					pr[i].p_paddr -
-					sst_drv_ctx->ddr_base,
-					(void *)fw_in_mem + pr[i].p_offset,
-					pr[i].p_filesz);
-			}
-		}
+	/* first we setup addresses to be used for elf sections */
+	if (sst->info.iram_use) {
+		info.iram_start = sst->info.iram_start;
+		info.iram_end = sst->info.iram_end;
+	} else {
+		info.iram_start = sst->iram_base;
+		info.iram_end = sst->iram_end;
+	}
+	if (sst->info.dram_use) {
+		info.dram_start = sst->info.dram_start;
+		info.dram_end = sst->info.dram_end;
+	} else {
+		info.dram_start = sst->dram_base;
+		info.dram_end = sst->dram_end;
+	}
+	if (sst->info.imr_use) {
+		info.imr_start = sst->info.imr_start;
+		info.imr_end = sst->info.imr_end;
+	} else {
+		info.imr_start = sst->ddr_base;
+		info.imr_end = sst->ddr_end;
+	}
+
+	while (i < elf->e_phnum) {
+		if (pr[i].p_type == PT_LOAD)
+			sst_memcpy_fw(sst, fw_in_mem, info, &pr[i]);
 		i++;
 	}
 }
@@ -463,12 +487,13 @@ int sst_request_fw(void)
 	int retval = 0;
 	char name[20];
 
-	if (!(sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID))
-		snprintf(name, sizeof(name), "%s%04x%s", "fw_sst_",
+#ifndef MRFLD_TEST_ON_MFLD
+	snprintf(name, sizeof(name), "%s%04x%s", "fw_sst_",
 				sst_drv_ctx->pci_id, ".bin");
-	else
-		snprintf(name, sizeof(name), "%s%04x", "fw_sst_",
-				sst_drv_ctx->pci_id);
+#else
+	snprintf(name, sizeof(name), "%s%04x%s", "fw_sst_",
+				sst_drv_ctx->pci_id, "_mt.bin");
+#endif
 
 	pr_debug("Requesting FW %s now...\n", name);
 	retval = request_firmware(&sst_drv_ctx->fw, name,
@@ -477,7 +502,9 @@ int sst_request_fw(void)
 		pr_err("request fw failed %d\n", retval);
 		return retval;
 	}
+#ifndef MRFLD_TEST_ON_MFLD
 	if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID)
+#endif
 		retval = sst_validate_fw_elf(sst_drv_ctx->fw);
 	if (retval != 0) {
 		pr_err("FW image invalid...\n");
@@ -492,6 +519,7 @@ int sst_request_fw(void)
 
 	memcpy(sst_drv_ctx->fw_in_mem, sst_drv_ctx->fw->data,
 			sst_drv_ctx->fw->size);
+#ifndef MRFLD_TEST_ON_MFLD
 	if (sst_drv_ctx->pci_id != SST_MRFLD_PCI_ID) {
 		retval = sst_parse_fw_image(sst_drv_ctx->fw_in_mem,
 					sst_drv_ctx->fw->size,
@@ -501,6 +529,7 @@ int sst_request_fw(void)
 			goto end_release;
 		}
 	}
+#endif
 end_release:
 	release_firmware(sst_drv_ctx->fw);
 	sst_drv_ctx->fw = NULL;
@@ -563,8 +592,12 @@ int sst_load_fw(const void *fw_in_mem, void *context)
 	ret_val = sst_drv_ctx->ops->reset();
 	if (ret_val)
 		return ret_val;
-	if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID)
-		sst_download_fw_mrfld(fw_in_mem);
+
+	/* FIXME: this needs to be revised when the elf fw downloading is
+	 * implemented. right now !elf means dma
+	 * also when we do configurable memcpy */
+	if (sst_drv_ctx->info.use_elf == true)
+		sst_download_elf_fw(sst_drv_ctx, fw_in_mem);
 	else {
 		/* get a dmac channel */
 		sst_alloc_dma_chan(&sst_drv_ctx->dma);
@@ -577,12 +610,13 @@ int sst_load_fw(const void *fw_in_mem, void *context)
 	sst_set_fw_state_locked(sst_drv_ctx, SST_FW_LOADED);
 	/* bring sst out of reset */
 	ret_val = sst_drv_ctx->ops->start();
-	if (ret_val)
+
+	if (ret_val && sst_drv_ctx->info.use_elf == false)
 		goto free_dma;
 
 	pr_debug("fw loaded successful!!!\n");
 free_dma:
-	if (sst_drv_ctx->pci_id != SST_MRFLD_PCI_ID)
+	if (sst_drv_ctx->info.use_elf == false)
 		sst_dma_free_resources(&sst_drv_ctx->dma);
 	return ret_val;
 }

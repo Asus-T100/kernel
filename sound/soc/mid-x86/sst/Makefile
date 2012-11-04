@@ -1,4 +1,6 @@
 # Makefile for Intel MID Audio drivers
+#EXTRA_CFLAGS += -DDEBUG -DMRFLD_TEST_ON_MFLD -DMRFLD_WORD_WA -DSST_BYTE_DUMP
+
 snd-intel-sst-objs := intel_sst.o intel_sst_ipc.o intel_sst_stream.o intel_sst_drv_interface.o  intel_sst_dsp.o intel_sst_pvt.o intel_sst_app_interface.o intel_sst_compress.o
 
 ifdef CONFIG_DEBUG_FS

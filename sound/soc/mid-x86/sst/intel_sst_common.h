@@ -46,6 +46,7 @@
 #define MAX_TIMEDIVSOR  0xFF
 #define MAX_BASEUNIT 0x80
 #define SST_ICCM_BOUNDARY 4
+#define SST_UNSOLICIT_MSG 0x00
 
 struct intel_sst_ops {
 	irqreturn_t (*interrupt) (int, void *);
@@ -221,6 +222,7 @@ fw/user call
 struct sst_block {
 	bool	condition; /* condition for blocking check */
 	int	ret_code; /* ret code when block is released */
+	int	drv_id;
 	void	*data; /* data to be appsed for block if any */
 	bool	on;
 };
@@ -261,6 +263,8 @@ struct stream_info {
 	void			*compr_cb_param;
 	void			(*compr_cb) (void *compr_cb_param);
 	unsigned int		num_ch;
+	unsigned int		pipe_id;
+	unsigned int		str_id;
 };
 
 /*
@@ -311,9 +315,10 @@ struct dma_block_info {
 
 struct sst_ipc_msg_wq {
 	union ipc_header_mrfld mrfld_header;
-	union ipc_header	header;
+	struct ipc_dsp_hdr dsp_hdr;
 	char mailbox[SST_MAILBOX_SIZE];
 	struct work_struct	wq;
+	union ipc_header header;
 };
 
 
@@ -333,7 +338,6 @@ struct sst_sg_list {
 	int list_len;
 };
 
-
 #ifdef CONFIG_DEBUG_FS
 struct sst_debugfs {
 	struct dentry *root;
@@ -341,9 +345,39 @@ struct sst_debugfs {
 };
 #endif
 
+enum snd_sst_bytes_type {
+	SND_SST_BYTES_SET = 0x1,
+	SND_SST_BYTES_GET = 0x2,
+};
+
+struct snd_sst_bytes {
+	u8 type;
+	u8 ipc_msg;
+	u8 block;
+	u8 task_id;
+	u8 pipe_id;
+	u8 rsvd;
+	u16 len;
+	char bytes[0];
+} __packed;
+
 #define PCI_DMAC_MFLD_ID 0x0830
 #define PCI_DMAC_CLV_ID 0x08F0
 #define SST_MAX_DMA_LEN (4095*4)
+
+struct sst_probe_info {
+	u32 iram_start;
+	u32 iram_end;
+	bool iram_use;
+	u32 dram_start;
+	u32 dram_end;
+	bool dram_use;
+	u32 imr_start;
+	u32 imr_end;
+	bool imr_use;
+	bool use_elf;
+	unsigned int max_streams;
+};
 /***
  * struct intel_sst_drv - driver ops
  *
@@ -385,7 +419,6 @@ struct sst_debugfs {
  * @pmic_port_instance : active pmic port instance
  * @lpaudio_start : lpaudio status
  * @audio_start : audio status
- * @max_streams : max streams allowed
  * @qos		: PM Qos struct
  */
 struct intel_sst_drv {
@@ -396,6 +429,7 @@ struct intel_sst_drv {
 	void __iomem		*mailbox;
 	void __iomem		*iram;
 	void __iomem		*dram;
+	unsigned int		mailbox_add;
 	unsigned int		iram_base;
 	unsigned int		dram_base;
 	unsigned int		shim_phy_add;
@@ -430,7 +464,6 @@ struct intel_sst_drv {
 	unsigned int		cp_streams;	/* cp streams active */
 	/* 1 - LPA stream(MP3 pb) in progress*/
 	unsigned int		audio_start;
-	unsigned int		max_streams;
 	unsigned int		*fw_cntx;
 	unsigned int		fw_cntx_size;
 	unsigned int		compressed_slot;
@@ -440,6 +473,7 @@ struct intel_sst_drv {
 	struct sst_dma		dma;
 	void			*fw_in_mem;
 	struct sst_runtime_param runtime_param;
+	struct snd_sst_bytes get_params;
 	unsigned int		device_input_mixer;
 	struct mutex		mixer_ctrl_lock;
 	struct dma_async_tx_descriptor *desc;
@@ -449,6 +483,9 @@ struct intel_sst_drv {
 	struct sst_debugfs debugfs;
 #endif
 	struct pm_qos_request *qos;
+	struct sst_probe_info info;
+	u32 block_id;
+	struct sst_block sst_byte_blk;
 };
 
 extern struct intel_sst_drv *sst_drv_ctx;
@@ -466,7 +503,8 @@ int sst_resume_stream(int id);
 int sst_drop_stream(int id);
 int sst_free_stream(int id);
 int sst_start_stream(int str_id);
-
+int sst_send_byte_stream(void *sbytes);
+int sst_send_byte_stream_mrfld(void *sbytes);
 int sst_set_stream_param(int str_id, struct snd_sst_params *str_param);
 int sst_get_fw_info(struct snd_sst_fw_info *info);
 int sst_get_stream_params(int str_id,
@@ -484,9 +522,12 @@ void sst_process_reply_mfld(struct work_struct *work);
 int sst_start_mfld(void);
 int intel_sst_reset_dsp_mfld(void);
 void intel_sst_clear_intr_mfld(void);
+void intel_sst_clear_intr_mrfld32(void);
 
 int sst_sync_post_message_mrfld(struct ipc_post *msg);
 void sst_post_message_mrfld(struct work_struct *work);
+int sst_sync_post_message_mrfld32(struct ipc_post *msg);
+void sst_post_message_mrfld32(struct work_struct *work);
 void sst_process_message_mrfld(struct work_struct *work);
 void sst_process_reply_mrfld(struct work_struct *work);
 int sst_start_mrfld(void);
@@ -550,17 +591,43 @@ static inline void sst_fill_header(union ipc_header *header,
 
 
 static inline void sst_fill_header_mrfld(union ipc_header_mrfld *header,
-						int msg, int large, int str_id)
+				int msg, int task_id, int large, int str_id)
 {
-	header->f = 0;
+	header->full = 0;
 	header->p.header_high.part.msg_id = msg;
-	header->p.header_high.part.str_id = str_id;
+	header->p.header_high.part.task_id = task_id;
 	header->p.header_high.part.large = large;
+	header->p.header_high.part.str_id = str_id;
 	header->p.header_high.part.done = 0;
 	header->p.header_high.part.busy = 1;
-	header->p.header_high.part.result = 0;
+	header->p.header_high.part.res_rqd = 1;
 }
 
+static inline void sst_fill_header_mrfld_32(u32 *h, u8 task, u8 msg, u8 drv_id,
+		u8 block, u8 large)
+{
+	union ipc_header_high header;
+	header.part.msg_id = msg;
+	header.part.task_id = task;
+	header.part.str_id = drv_id;
+	header.part.res_rqd = block;
+	header.part.large = large;
+	header.part.done = 0;
+	header.part.busy = 1;
+	*h = header.full;
+}
+
+static inline void sst_fill_header_dsp(struct ipc_dsp_hdr *dsp, int msg,
+					int pipe_id, int len)
+{
+	dsp->cmd_id = msg;
+	dsp->mod_index_id = 0xff;
+	dsp->pipe_id = pipe_id;
+	dsp->length = len;
+	dsp->mod_id = 0;
+}
+
+#define MAX_BLOCKS 15
 /* sst_assign_pvt_id - assign a pvt id for stream
  *
  * @sst_drv_ctx : driver context
@@ -571,7 +638,7 @@ static inline void sst_fill_header_mrfld(union ipc_header_mrfld *header,
 static inline unsigned int sst_assign_pvt_id(struct intel_sst_drv *sst_drv_ctx)
 {
 	sst_drv_ctx->unique_id++;
-	if (sst_drv_ctx->unique_id > MAX_NUM_STREAMS)
+	if (sst_drv_ctx->unique_id > MAX_BLOCKS)
 		sst_drv_ctx->unique_id = 1;
 	return sst_drv_ctx->unique_id;
 }
@@ -615,9 +682,9 @@ static inline void sst_init_stream(struct stream_info *stream,
  */
 static inline int sst_validate_strid(int str_id)
 {
-	if (str_id <= 0 || str_id > sst_drv_ctx->max_streams) {
-		pr_err("SST ERR: invalid stream id : %d\n",
-					str_id);
+	if (str_id <= 0 || str_id > sst_drv_ctx->info.max_streams) {
+		pr_err("SST ERR: invalid stream id : %d, max %d\n",
+					str_id, sst_drv_ctx->info.max_streams);
 		return -EINVAL;
 	} else
 		return 0;

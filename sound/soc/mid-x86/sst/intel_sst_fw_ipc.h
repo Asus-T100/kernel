@@ -32,14 +32,15 @@
 
 #define MAX_NUM_STREAMS_MRST 3
 #define MAX_NUM_STREAMS_MFLD 5
-#define MAX_NUM_STREAMS 5
+#define MAX_NUM_STREAMS_MRFLD 23
+#define MAX_NUM_STREAMS MAX_NUM_STREAMS_MRFLD
 #define MAX_DBG_RW_BYTES 80
 #define MAX_NUM_SCATTER_BUFFERS 8
 #define MAX_LOOP_BACK_DWORDS 8
 /* IPC base address and mailbox, timestamp offsets */
 #define SST_MAILBOX_SIZE 0x0400
 #define SST_MAILBOX_SEND 0x0000
-#define SST_MAILBOX_RCV 0x0804
+#define SST_MAILBOX_RCV 0x0800
 #define SST_TIME_STAMP 0x1800
 #define SST_TIME_STAMP_MRFLD 0x800
 #define SST_RESERVED_OFFSET 0x1A00
@@ -52,7 +53,6 @@
 /* I2L Firmware/Codec Download msgs */
 #define IPC_IA_PREP_LIB_DNLD 0x01
 #define IPC_IA_LIB_DNLD_CMPLT 0x02
-
 #define IPC_IA_GET_FW_VERSION 0x04
 #define IPC_IA_GET_FW_BUILD_INF 0x05
 #define IPC_IA_GET_FW_INFO 0x06
@@ -64,23 +64,30 @@
 #define IPC_IA_GET_CODEC_PARAMS 0x11
 #define IPC_IA_SET_PPP_PARAMS 0x12
 #define IPC_IA_GET_PPP_PARAMS 0x13
-
+#define IPC_SST_PERIOD_ELAPSED_MRFLD 10
 #define IPC_IA_ALG_PARAMS 0x1A
 #define IPC_IA_TUNING_PARAMS 0x1B
 #define IPC_IA_SET_RUNTIME_PARAMS 0x1C
+#define IPC_IA_SET_PARAMS 0x1
+#define IPC_IA_GET_PARAMS 0x2
 
 /* I2L Stream config/control msgs */
+#define IPC_IA_ALLOC_STREAM_MRFLD 0x2
 #define IPC_IA_ALLOC_STREAM 0x20 /* Allocate a stream ID */
+#define IPC_IA_FREE_STREAM_MRFLD 0x03
 #define IPC_IA_FREE_STREAM 0x21 /* Free the stream ID */
 #define IPC_IA_SET_STREAM_PARAMS 0x22
 #define IPC_IA_GET_STREAM_PARAMS 0x23
 #define IPC_IA_PAUSE_STREAM 0x24
+#define IPC_IA_PAUSE_STREAM_MRFLD 0x24
 #define IPC_IA_RESUME_STREAM 0x25
+#define IPC_IA_RESUME_STREAM_MRFLD 0x25
 #define IPC_IA_DROP_STREAM 0x26
+#define IPC_IA_DROP_STREAM_MRFLD 0x07
 #define IPC_IA_DRAIN_STREAM 0x27 /* Short msg with str_id */
 #define IPC_IA_CONTROL_ROUTING 0x29
 
-
+#define IPC_IA_START_STREAM_MRFLD 0X06
 #define IPC_IA_START_STREAM 0x30 /* Short msg with str_id */
 
 /* Debug msgs */
@@ -90,6 +97,7 @@
 
 /* L2I Firmware/Codec Download msgs */
 #define IPC_IA_FW_INIT_CMPLT 0x81
+#define IPC_IA_FW_INIT_CMPLT_MRFLD 0x01
 
 /* L2I Codec Config/control msgs */
 #define IPC_SST_FRAGMENT_ELPASED 0x90 /* Request IA more data */
@@ -117,7 +125,10 @@
 /* L2I Debug msgs */
 #define IPC_IA_PRINT_STRING 0xF0
 
-
+/*TODO*/
+#define IPC_QUE_ID_MED 0x03
+#define SST_UNSOLICITED_ERROR_MSG 0xFFFF0000
+#define SST_UNSOLICITED_MSG_ID 0x0000FFFF
 
 /* Command Response or Acknowledge message to any IPC message will have
  * same message ID and stream ID information which is sent.
@@ -128,7 +139,77 @@ enum ackData {
 	IPC_ACK_SUCCESS = 0,
 	IPC_ACK_FAILURE
 };
+enum ipc_ia_msg_id {
+	IPC_CMD = 1,		/*!< Task Control message ID */
+	IPC_SET_PARAMS = 2,/*!< Task Set param message ID */
+	IPC_GET_PARAMS = 3,	/*!< Task Get param message ID */
+	IPC_INVALID = 0xFF	/*!<Task Get param message ID */
+};
 
+/* Pipe IDs ref: LPE DSP command interface spec v0.75 */
+enum lpe_pipe_id {
+/* Output pipeline IDs */
+	PIPE_ID_OUT_START = 0x0,
+	PIPE_MODEM_OUT = 0x0,
+	PIPE_BT_OUT = 0x1,
+	PIPE_CODEC_OUT0 = 0x2,
+	PIPE_CODEC_OUT1 = 0x3,
+	PIPE_SPROT_LOOP_OUT = 0x4,
+	PIPE_MEDIA_LOOP1_OUT = 0x5,
+	PIPE_MEDIA_LOOP2_OUT = 0x6,
+	PIPE_PROBE_OUT = 0x7,
+	PIPE_HF_SNS_OUT = 0x8, /* VOCIE_UPLINK_REF2 */
+	PIPE_HF_OUT = 0x9, /* VOICE_UPLINK_REF1 */
+	PIPE_SPEECH_OUT = 0xA, /* VOICE UPLINK */
+	PIPE_RxSPEECH_OUT = 0xB, /* VOICE_DOWNLINK */
+	PIPE_VOIP_OUT = 0xC,
+	PIPE_PCM0_OUT = 0xD,
+	PIPE_PCM1_OUT = 0xE,
+	PIPE_PCM2_OUT = 0xF,
+	PIPE_AWARE_OUT = 0x10,
+	PIPE_VAD_OUT = 0x11,
+	PIPE_MEDIA0_OUT = 0x12,
+	PIPE_MEDIA1_OUT = 0x12,
+	PIPE_FM_OUT = 0x14,
+	PIPE_PROBE1_OUT = 0x15,
+	PIPE_PROBE2_OUT = 0x16,
+	PIPE_PROBE3_OUT = 0x17,
+	PIPE_PROBE4_OUT = 0x18,
+	PIPE_PROBE5_OUT = 0x19,
+	PIPE_PROBE6_OUT = 0x1A,
+	PIPE_PROBE7_OUT = 0x1B,
+	PIPE_PROBE8_OUT = 0x1C,
+/* Input Pipeline IDs */
+	PIPE_ID_IN_START = 0x80,
+	PIPE_MODEM_IN = 0x80,
+	PIPE_BT_IN = 0x81,
+	PIPE_CODEC_IN0 = 0x82,
+	PIPE_CODEC_IN1 = 0x83,
+	PIPE_SPROT_LOOP_IN = 0x84,
+	PIPE_MEDIA_LOOP1_IN = 0x85,
+	PIPE_MEDIA_LOOP2_IN = 0x86,
+	PIPE_PROBE_IN = 0x87,
+	PIPE_SIDETONE_IN = 0x88,
+	PIPE_TxSPEECH_IN = 0x89,
+	PIPE_SPEECH_IN = 0x8A,
+	PIPE_TONE_IN = 0x8B,
+	PIPE_VOIP_IN = 0x8C,
+	PIPE_PCM0_IN = 0x8D,
+	PIPE_PCM1_IN = 0x8E,
+	PIPE_MEDIA0_IN = 0x8F,
+	PIPE_MEDIA1_IN = 0x90,
+	PIPE_MEDIA2_IN = 0x91,
+	PIPE_FM_IN = 0x92,
+	PIPE_PROBE1_IN = 0x93,
+	PIPE_PROBE2_IN = 0x94,
+	PIPE_PROBE3_IN = 0x95,
+	PIPE_PROBE4_IN = 0x96,
+	PIPE_PROBE5_IN = 0x97,
+	PIPE_PROBE6_IN = 0x98,
+	PIPE_PROBE7_IN = 0x99,
+	PIPE_PROBE8_IN = 0x9A,
+	PIPE_RSVD = 0xFF,
+};
 
 enum sst_error_codes {
 	/* Error code,response to msgId: Description */
@@ -224,16 +305,25 @@ enum dbg_mem_data_type {
 	DATA_TYPE_U8,
 };
 
+struct ipc_dsp_hdr {
+	u16 mod_index_id:8;		/*!< DSP Command ID specific to tasks */
+	u16 pipe_id:8;	/*!< instance of the module in the pipeline */
+	u16 mod_id;		/*!< Pipe_id */
+	u16 cmd_id;		/*!< Module ID = lpe_algo_types_t */
+	u16 length;		/*!< Length of the payload only */
+} __packed;
+
 union ipc_header_high {
 	struct {
 		u32  msg_id:8;	    /* Message ID - Max 256 Message Types */
-		u32  result:8;	    /* Result for large/short msg in Mailbox */
-		u32  sub_code:8;    /* Error sub code */
-		u32  str_id:4;	    /* Stream ID */
+		u32  task_id:4;	    /* Task ID associated with this comand */
+		u32  str_id:4;    /* Identifier for the driver to track*/
+		u32  rsvd1:8;	    /* Reserved */
+		u32  result:4;	    /* Reserved */
+		u32  res_rqd:1;	    /* Response rqd */
 		u32  large:1;	    /* Large Message if large = 1 */
-		u32  rsvd:1;	    /* Reserved */
-		u32  done:1;	    /* bit 62 - Done bit */
-		u32  busy:1;	    /* bit 63 - Busy bit */
+		u32  done:1;	    /* bit 30 - Done bit */
+		u32  busy:1;	    /* bit 31 - busy bit*/
 	} part;
 	u32 full;
 } __packed;
@@ -244,7 +334,7 @@ union ipc_header_mrfld {
 		u32 header_low_payload;
 		union ipc_header_high header_high;
 	} p;
-	u64 f;
+	u64 full;
 } __packed;
 
 /* CAUTION NOTE: All IPC message body must be multiple of 32 bits.*/
@@ -290,7 +380,6 @@ struct snd_sst_tstamp_mfld {
 	u64 pcm_delay;
 };
 
-
 struct snd_sst_tstamp {
 	u32 ring_buffer_counter;	/* PB/CP: Bytes copied from/to DDR. */
 	u32 hardware_counter;	    /* PB/CP: Bytes DMAed to/from SSP. */
@@ -300,6 +389,7 @@ struct snd_sst_tstamp {
 	u32 sampling_frequency;
 	u32 channel_peak[8];
 };
+
 
 /* SST to IA memory read debug message  */
 struct ipc_sst_ia_dbg_mem_rw  {
@@ -368,7 +458,18 @@ struct snd_sst_lib_download_info {
 };
 
 /* Codec params struture */
-union  snd_sst_codec_params_mfld {
+union snd_sst_codec_params_mrfld {
+	struct snd_pcm_params_mrfld pcm_params;
+	struct snd_mp3_params_mrfld mp3_params;
+	struct snd_aac_params_mrfld aac_params;
+	struct snd_wma_params_mrfld wma_params;
+	struct snd_mp3_get_params_mrfld get_mp3_params;
+	struct snd_aac_get_params_mrfld get_aac_params;
+};
+
+
+
+union snd_sst_codec_params_mfld {
 	struct snd_pcm_params_mfld pcm_params;
 	struct snd_mp3_params mp3_params;
 	struct snd_aac_params aac_params;
@@ -379,6 +480,19 @@ struct snd_sst_stream_params_mfld {
 	union snd_sst_codec_params_mfld uc;
 } __packed;
 
+struct snd_sst_stream_params_mrfld {
+	union snd_sst_codec_params_mrfld uc;
+} __packed;
+
+struct snd_sst_alloc_mrfld {
+	u16 codec_type;
+	u8 operation;
+	u8 sg_count;
+	struct sst_address_info ring_buf_info[8];
+	u32 frag_size;
+	struct snd_sst_tstamp *ts;
+	struct snd_sst_stream_params_mrfld codec_params;
+} __packed;
 
 /* Alloc stream params structure */
 struct snd_sst_alloc_params_mfld {

@@ -192,25 +192,11 @@ int sst_alloc_stream_clv(char *params)
 	memcpy(&alloc_param.alloc_params, aparams,
 			sizeof(struct snd_sst_alloc_params_ext));
 
-
-	if (sst_drv_ctx->pci_id == SST_CLV_PCI_ID) {
-		sst_fill_header(&msg->header, IPC_IA_ALLOC_STREAM, 1, str_id);
-		msg->header.part.data = sizeof(alloc_param) + sizeof(u32);
-		memcpy(msg->mailbox_data, &msg->header, sizeof(u32));
-		memcpy(msg->mailbox_data + sizeof(u32), &alloc_param,
+	sst_fill_header(&msg->header, IPC_IA_ALLOC_STREAM, 1, str_id);
+	msg->header.part.data = sizeof(alloc_param) + sizeof(u32);
+	memcpy(msg->mailbox_data, &msg->header, sizeof(u32));
+	memcpy(msg->mailbox_data + sizeof(u32), &alloc_param,
 			sizeof(alloc_param));
-	} else {
-		sst_fill_header_mrfld(&msg->mrfld_header, IPC_IA_ALLOC_STREAM,
-								1, str_id);
-		msg->mrfld_header.p.header_low_payload =
-				sizeof(alloc_param) + sizeof(u64);
-		memcpy(msg->mailbox_data, &msg->mrfld_header.p.header_high.full,
-								sizeof(u32));
-		memcpy(msg->mailbox_data + sizeof(u32),
-			&msg->mrfld_header.p.header_low_payload, sizeof(u32));
-		memcpy(msg->mailbox_data + sizeof(u64), &alloc_param,
-			sizeof(alloc_param));
-	}
 	str_info = &sst_drv_ctx->streams[str_id];
 	str_info->ctrl_blk.condition = false;
 	str_info->ctrl_blk.ret_code = 0;
@@ -219,6 +205,117 @@ int sst_alloc_stream_clv(char *params)
 	spin_lock_irqsave(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 	list_add_tail(&msg->node, &sst_drv_ctx->ipc_dispatch_list);
 	spin_unlock_irqrestore(&sst_drv_ctx->ipc_spin_lock, irq_flags);
+	sst_drv_ctx->ops->post_message(&sst_drv_ctx->ipc_post_msg_wq);
+	return str_id;
+}
+static unsigned int get_mrfld_stream_info(u8 device_type, int *pipe_id)
+{
+	int str_id = 0;
+
+	if (device_type == SND_SST_DEVICE_HEADSET) {
+		*pipe_id = PIPE_MEDIA1_IN;
+		str_id = 1;
+	} else if (device_type == SND_SST_DEVICE_COMPRESSED_PLAYBACK) {
+		*pipe_id = PIPE_MEDIA0_IN;
+		str_id = 2;
+	} else if (device_type == SND_SST_DEVICE_CAPTURE) {
+		*pipe_id = PIPE_PCM1_OUT;
+		str_id = 3;
+	} else {
+		/* error case */
+		*pipe_id = PIPE_RSVD;
+	}
+
+	return str_id;
+}
+
+int sst_alloc_stream_mrfld(char *params)
+{
+	struct ipc_post *msg = NULL;
+	struct snd_sst_alloc_mrfld alloc_param;
+	struct ipc_dsp_hdr dsp_hdr;
+	struct snd_sst_params *str_params;
+	struct snd_sst_tstamp fw_tstamp;
+	int str_id, pipe_id, pvt_id;
+	u32 len = 0;
+	struct stream_info *str_info;
+	unsigned long irq_flags;
+
+	pr_debug("In %s\n", __func__);
+	BUG_ON(!params);
+
+	str_params = (struct snd_sst_params *)params;
+	memset(&alloc_param, 0, sizeof(alloc_param));
+	alloc_param.operation = str_params->ops;
+	alloc_param.codec_type = str_params->codec;
+	alloc_param.sg_count = str_params->aparams.sg_count;
+	alloc_param.ring_buf_info[0].addr = str_params->aparams.ring_buf_info[0].addr;
+	alloc_param.ring_buf_info[0].size = str_params->aparams.ring_buf_info[0].size;
+	alloc_param.frag_size = str_params->aparams.frag_size;
+
+	alloc_param.codec_params.uc.pcm_params.num_ch = str_params->sparams.uc.pcm_params.num_chan;
+	alloc_param.codec_params.uc.pcm_params.pcm_wd_sz = str_params->sparams.uc.pcm_params.pcm_wd_sz;
+	alloc_param.codec_params.uc.pcm_params.path = 0;
+	alloc_param.codec_params.uc.pcm_params.rsvd = 0;
+	alloc_param.codec_params.uc.pcm_params.sfreq = str_params->sparams.uc.pcm_params.sfreq;
+	alloc_param.codec_params.uc.pcm_params.chan_map[0] = 0;
+	alloc_param.codec_params.uc.pcm_params.chan_map[1] = 1;
+
+	pr_debug("period_size = %d\n", alloc_param.frag_size);
+	pr_debug("ring_buf_addr = 0x%x\n", alloc_param.ring_buf_info[0].addr);
+	pr_debug("ring_buf_size = %d\n", alloc_param.ring_buf_info[0].size);
+	pr_debug("In alloc sg_count =%d\n", alloc_param.sg_count);
+	mutex_lock(&sst_drv_ctx->stream_lock);
+	str_id = get_mrfld_stream_info(str_params->device_type, &pipe_id);
+	mutex_unlock(&sst_drv_ctx->stream_lock);
+	if (str_id <= 0)
+		return -EBUSY;
+	sst_drv_ctx->streams[str_id].pipe_id = pipe_id;
+	pvt_id = sst_assign_pvt_id(sst_drv_ctx);
+	alloc_param.ts = (sst_drv_ctx->mailbox_add +
+			sst_drv_ctx->tstamp + (str_id * sizeof(fw_tstamp)));
+	pr_debug("alloc tstamp location = 0x%p\n", alloc_param.ts);
+	pr_debug("assigned pipe id 0x%x\n", pipe_id);
+
+	/*allocate device type context*/
+	sst_init_stream(&sst_drv_ctx->streams[str_id], alloc_param.codec_type,
+			str_id, alloc_param.operation, 0);
+	/* send msg to FW to allocate a stream */
+	if (sst_create_large_msg(&msg))
+		return -ENOMEM;
+
+#ifndef MRFLD_TEST_ON_MFLD
+	sst_fill_header_mrfld(&msg->mrfld_header, IPC_CMD,
+				IPC_QUE_ID_MED, 1, pvt_id);
+	pr_debug("header:%x\n", msg->mrfld_header.p.header_high);
+	msg->mrfld_header.p.header_high.part.res_rqd = 1;
+
+	len = msg->mrfld_header.p.header_low_payload = sizeof(alloc_param) + sizeof(dsp_hdr);
+	sst_fill_header_dsp(&dsp_hdr, IPC_IA_ALLOC_STREAM_MRFLD, pipe_id, sizeof(alloc_param));
+	memcpy(msg->mailbox_data, &dsp_hdr, sizeof(dsp_hdr));
+	memcpy(msg->mailbox_data + sizeof(dsp_hdr), &alloc_param,
+			sizeof(alloc_param));
+#else
+	sst_fill_header_mrfld_32(&msg->header.full, IPC_QUE_ID_MED,
+			IPC_CMD, pvt_id, 1, 1);
+	len = sizeof(alloc_param) + sizeof(dsp_hdr);
+	sst_fill_header_dsp(&dsp_hdr, IPC_IA_ALLOC_STREAM_MRFLD, pipe_id, sizeof(alloc_param));
+	memcpy(msg->mailbox_data, &len, sizeof(len));
+	memcpy(msg->mailbox_data + sizeof(len), &dsp_hdr, sizeof(dsp_hdr));
+	memcpy(msg->mailbox_data + sizeof(dsp_hdr) + sizeof(len), &alloc_param,
+			sizeof(alloc_param));
+#endif
+	str_info = &sst_drv_ctx->streams[str_id];
+	str_info->ctrl_blk.condition = false;
+	str_info->ctrl_blk.ret_code = 0;
+	str_info->ctrl_blk.on = true;
+	str_info->ctrl_blk.drv_id = pvt_id;
+	pr_debug("header:%x\n", msg->mrfld_header.p.header_high);
+	pr_debug("response rqd: %x", msg->mrfld_header.p.header_high.part.res_rqd);
+	spin_lock_irqsave(&sst_drv_ctx->ipc_spin_lock, irq_flags);
+	list_add_tail(&msg->node, &sst_drv_ctx->ipc_dispatch_list);
+	spin_unlock_irqrestore(&sst_drv_ctx->ipc_spin_lock, irq_flags);
+	pr_debug("calling post_message\n");
 	sst_drv_ctx->ops->post_message(&sst_drv_ctx->ipc_post_msg_wq);
 	return str_id;
 }
@@ -325,46 +422,21 @@ int sst_alloc_stream_mfld(char *params)
 	return str_id;
 }
 
-
-
 int sst_alloc_stream(char *params)
 {
 
 	if (sst_drv_ctx->pci_id == SST_MFLD_PCI_ID)
+#ifndef MRFLD_TEST_ON_MFLD
 		return sst_alloc_stream_mfld(params);
+#else
+		return sst_alloc_stream_mrfld(params);
+#endif
+	else if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID)
+		return sst_alloc_stream_mrfld(params);
 	else
 		return sst_alloc_stream_clv(params);
 }
 
-/*
- * sst_alloc_stream_response - process alloc reply
- *
- * @str_id:	stream id for which the stream has been allocated
- * @resp		the stream response from firware
- *
- * This function is called by firmware as a response to stream allcoation
- * request
- */
-int sst_alloc_stream_response_mrfld(unsigned int str_id)
-{
-	int retval = 0;
-	struct stream_info *str_info;
-
-	pr_debug("stream number given = %d\n", str_id);
-	str_info = &sst_drv_ctx->streams[str_id];
-	if (str_info->ctrl_blk.on == true) {
-		str_info->ctrl_blk.on = false;
-		str_info->ctrl_blk.data = NULL;
-		str_info->ctrl_blk.condition = true;
-		str_info->ctrl_blk.ret_code = 0;
-		pr_debug("waking up.\n");
-		wake_up(&sst_drv_ctx->wait_queue);
-	} else {
-		pr_debug("ctrl block not on\n");
-		retval = -EIO;
-	}
-	return retval;
-}
 /*
  * sst_alloc_stream_response - process alloc reply
  *
@@ -458,8 +530,10 @@ int sst_get_fw_info(struct snd_sst_fw_info *info)
 */
 int sst_start_stream(int str_id)
 {
-	int retval = 0;
+	int retval = 0, pvt_id;
+	u32 len = 0;
 	struct ipc_post *msg = NULL;
+	struct ipc_dsp_hdr dsp_hdr;
 	struct stream_info *str_info;
 
 	pr_debug("sst_start_stream for %d\n", str_id);
@@ -473,25 +547,163 @@ int sst_start_stream(int str_id)
 		return -ENOMEM;
 
 	if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID) {
+		pr_debug("start mrfld");
+		pvt_id = sst_assign_pvt_id(sst_drv_ctx);
 		sst_fill_header_mrfld(&msg->mrfld_header,
-				IPC_IA_START_STREAM, 1, str_id);
-		msg->mrfld_header.p.header_low_payload =
-				sizeof(u64) + sizeof(u64);
-		memcpy(msg->mailbox_data,
-			&msg->mrfld_header.p.header_high.full, sizeof(u32));
-		memcpy(msg->mailbox_data + sizeof(u32),
-			&msg->mrfld_header.p.header_low_payload, sizeof(u32));
-		memset(msg->mailbox_data + sizeof(u64), 0, sizeof(u32));
+			IPC_CMD, IPC_QUE_ID_MED, 1, pvt_id);
+
+		len = sizeof(u16) + sizeof(dsp_hdr);
+		msg->mrfld_header.p.header_low_payload = len;
+		sst_fill_header_dsp(&dsp_hdr, IPC_IA_START_STREAM_MRFLD,
+				str_info->pipe_id, sizeof(u16));
+		memcpy(msg->mailbox_data, &dsp_hdr, sizeof(dsp_hdr));
+		memset(msg->mailbox_data + sizeof(dsp_hdr), 0, sizeof(u16));
 	} else {
+#ifndef MRFLD_TEST_ON_MFLD
 		sst_fill_header(&msg->header, IPC_IA_START_STREAM, 1, str_id);
 		msg->header.part.data =  sizeof(u32) + sizeof(u32);
 		memcpy(msg->mailbox_data, &msg->header, sizeof(u32));
 		memset(msg->mailbox_data + sizeof(u32), 0, sizeof(u32));
+#else
+		pr_debug("start mrfld");
+		pvt_id = sst_assign_pvt_id(sst_drv_ctx);
+		sst_fill_header_mrfld_32(&msg->header.full,
+			IPC_QUE_ID_MED, IPC_CMD, pvt_id, 1, 1);
+
+		len = sizeof(u16) + sizeof(dsp_hdr);
+		sst_fill_header_dsp(&dsp_hdr, IPC_IA_START_STREAM_MRFLD,
+				str_info->pipe_id, sizeof(u16));
+		memcpy(msg->mailbox_data + sizeof(len), &dsp_hdr, sizeof(dsp_hdr));
+		memset(msg->mailbox_data + sizeof(dsp_hdr) + sizeof(len), 0, sizeof(u16));
+		memcpy(msg->mailbox_data, &len, sizeof(len));
+#endif
 	}
 
 	sst_drv_ctx->ops->sync_post_message(msg);
 	return retval;
 }
+
+
+int sst_send_byte_stream_mrfld(void *sbytes)
+{
+	struct ipc_post *msg = NULL;
+	struct snd_sst_bytes *bytes = (struct snd_sst_bytes *) sbytes;
+	unsigned long irq_flags;
+	u32 length;
+	int ret, pvt_id;
+
+	pr_debug("%s:\ntype:%d\nipc_msg:%x\nblock:%d\ntask_id:%x\npipe: %d\nlength:%d\n",
+		__func__, bytes->type, bytes->ipc_msg,
+		bytes->block, bytes->task_id,
+		bytes->pipe_id, bytes->len);
+
+	/* need some err check as this is user data, perhpas move this to the
+	 * platform driver and pass the struct
+	 */
+	if (sst_create_large_msg(&msg))
+		return -ENOMEM;
+	/* FIXME: we need pipe id here for str_id */
+
+	pvt_id = sst_assign_pvt_id(sst_drv_ctx);
+	sst_fill_header_mrfld(&msg->mrfld_header, bytes->ipc_msg, bytes->task_id,
+			      1, pvt_id);
+	msg->mrfld_header.p.header_high.part.res_rqd = bytes->block;
+	length = bytes->len;
+	msg->mrfld_header.p.header_low_payload = length;
+	pr_debug("length is %d\n", length);
+	memcpy(msg->mailbox_data, &bytes->bytes, bytes->len);
+	if (bytes->block) {
+		sst_drv_ctx->sst_byte_blk.condition = false;
+		sst_drv_ctx->sst_byte_blk.ret_code = 0;
+		sst_drv_ctx->sst_byte_blk.on = true;
+		sst_drv_ctx->sst_byte_blk.data = NULL;
+		sst_drv_ctx->sst_byte_blk.drv_id = pvt_id;
+	}
+	spin_lock_irqsave(&sst_drv_ctx->ipc_spin_lock, irq_flags);
+	list_add_tail(&msg->node,
+			&sst_drv_ctx->ipc_dispatch_list);
+	spin_unlock_irqrestore(&sst_drv_ctx->ipc_spin_lock, irq_flags);
+	sst_drv_ctx->ops->post_message(&sst_drv_ctx->ipc_post_msg_wq);
+	pr_debug("msg->mrfld_header.p.header_low_payload:%d", msg->mrfld_header.p.header_low_payload);
+	if (bytes->block) {
+		ret = sst_wait_timeout(sst_drv_ctx, &sst_drv_ctx->sst_byte_blk);
+		if (ret) {
+			pr_err("%s: fw returned err %d\n", __func__, ret);
+			return ret;
+		}
+	}
+	if (bytes->type == SND_SST_BYTES_GET) {
+		/* copy the reply and send back
+		 * we need to update only sz and payload
+		 */
+		 struct snd_sst_bytes *r = sst_drv_ctx->sst_byte_blk.data;
+
+		 bytes->len = r->len;
+		 memcpy(bytes->bytes, r->bytes, bytes->len);
+		 /* FIXME, we need changes in IPC file for this to work */
+	}
+	return 0;
+}
+int sst_send_byte_stream(void *sbytes)
+{
+	struct ipc_post *msg = NULL;
+	struct snd_sst_bytes *bytes = (struct snd_sst_bytes *) sbytes;
+	unsigned long irq_flags;
+	u32 length;
+	int ret, pvt_id;
+
+	pr_debug("%s:\ntype:%d\nipc_msg:%x\nblock:%d\ntask_id:%x\npipe: %d\nlength:%d\n",
+		__func__, bytes->type, bytes->ipc_msg,
+		bytes->block, bytes->task_id,
+		bytes->pipe_id, bytes->len);
+
+	/* need some err check as this is user data, perhpas move this to the
+	 * platform driver and pass the struct
+	 */
+	if (sst_create_large_msg(&msg))
+		return -ENOMEM;
+	/* FIXME: we need pipe id here for str_id */
+
+	pvt_id = sst_assign_pvt_id(sst_drv_ctx);
+	sst_fill_header_mrfld_32(&msg->header.full, bytes->task_id,
+			bytes->ipc_msg, pvt_id, bytes->block, 1);
+	length = bytes->len;
+	pr_debug("length is %d\n", length);
+	memcpy(msg->mailbox_data, &length, sizeof(u32));
+	memcpy(msg->mailbox_data + sizeof(u32),
+		&bytes->bytes, bytes->len);
+	if (bytes->block) {
+		sst_drv_ctx->sst_byte_blk.condition = false;
+		sst_drv_ctx->sst_byte_blk.ret_code = 0;
+		sst_drv_ctx->sst_byte_blk.on = true;
+		sst_drv_ctx->sst_byte_blk.data = NULL;
+		sst_drv_ctx->sst_byte_blk.drv_id = pvt_id;
+	}
+	spin_lock_irqsave(&sst_drv_ctx->ipc_spin_lock, irq_flags);
+	list_add_tail(&msg->node,
+			&sst_drv_ctx->ipc_dispatch_list);
+	spin_unlock_irqrestore(&sst_drv_ctx->ipc_spin_lock, irq_flags);
+	sst_drv_ctx->ops->post_message(&sst_drv_ctx->ipc_post_msg_wq);
+	if (bytes->block) {
+		ret = sst_wait_timeout(sst_drv_ctx, &sst_drv_ctx->sst_byte_blk);
+		if (ret) {
+			pr_err("%s: fw returned err %d\n", __func__, ret);
+			return ret;
+		}
+	}
+	if (bytes->type == SND_SST_BYTES_GET) {
+		/* copy the reply and send back
+		 * we need to update only sz and payload
+		 */
+		 struct snd_sst_bytes *r = sst_drv_ctx->sst_byte_blk.data;
+
+		 bytes->len = r->len;
+		 memcpy(bytes->bytes, r->bytes, bytes->len);
+		 /* FIXME, we need changes in IPC file for this to work */
+	}
+	return 0;
+}
+
 
 /*
  * sst_pause_stream - Send msg for a pausing stream
@@ -625,8 +837,11 @@ int sst_resume_stream(int str_id)
  */
 int sst_drop_stream(int str_id)
 {
-	int retval = 0;
+	int retval = 0, pvt_id;
 	struct stream_info *str_info;
+	struct ipc_post *msg = NULL;
+	struct ipc_dsp_hdr dsp_hdr;
+	u32 len = 0;
 
 	pr_debug("SST DBG:sst_drop_stream for %d\n", str_id);
 	str_info = get_stream_info(str_id);
@@ -635,10 +850,40 @@ int sst_drop_stream(int str_id)
 
 	if (str_info->status != STREAM_UN_INIT) {
 
-		str_info->prev = STREAM_UN_INIT;
-		str_info->status = STREAM_INIT;
-		str_info->cumm_bytes = 0;
-		sst_send_sync_msg(IPC_IA_DROP_STREAM, str_id);
+		if (sst_drv_ctx->pci_id != SST_MRFLD_PCI_ID) {
+#ifndef MRFLD_TEST_ON_MFLD
+			str_info->prev = STREAM_UN_INIT;
+			str_info->status = STREAM_INIT;
+			str_info->cumm_bytes = 0;
+			sst_send_sync_msg(IPC_IA_DROP_STREAM, str_id);
+#else
+			if (sst_create_large_msg(&msg))
+				return -ENOMEM;
+			pvt_id = sst_assign_pvt_id(sst_drv_ctx);
+			sst_fill_header_mrfld_32(&msg->header.full,
+				IPC_QUE_ID_MED, IPC_CMD, pvt_id, 1, 1);
+
+			len = sizeof(dsp_hdr);
+			sst_fill_header_dsp(&dsp_hdr, IPC_IA_DROP_STREAM_MRFLD,
+					str_info->pipe_id, 0);
+			memcpy(msg->mailbox_data + sizeof(len), &dsp_hdr, sizeof(dsp_hdr));
+			memcpy(msg->mailbox_data, &len, sizeof(len));
+			sst_drv_ctx->ops->sync_post_message(msg);
+
+#endif
+		} else {
+			if (sst_create_large_msg(&msg))
+				return -ENOMEM;
+			pvt_id = sst_assign_pvt_id(sst_drv_ctx);
+			sst_fill_header_mrfld(&msg->mrfld_header,
+				IPC_CMD, IPC_QUE_ID_MED, 1, pvt_id);
+
+			msg->mrfld_header.p.header_low_payload = sizeof(dsp_hdr);
+			sst_fill_header_dsp(&dsp_hdr, IPC_IA_DROP_STREAM_MRFLD,
+					str_info->pipe_id, 0);
+			memcpy(msg->mailbox_data, &dsp_hdr, sizeof(dsp_hdr));
+			sst_drv_ctx->ops->sync_post_message(msg);
+		}
 	} else {
 		retval = -EBADRQC;
 		pr_debug("BADQRC for stream, state %x\n", str_info->status);
@@ -702,11 +947,12 @@ int sst_drain_stream(int str_id)
  */
 int sst_free_stream(int str_id)
 {
-	int retval = 0;
+	int retval = 0, len = 0, pvt_id;
 	struct ipc_post *msg = NULL;
 	struct stream_info *str_info;
 	struct intel_sst_ops *ops;
 	unsigned long irq_flags;
+	struct ipc_dsp_hdr dsp_hdr;
 
 	pr_debug("SST DBG:sst_free_stream for %d\n", str_id);
 
@@ -730,16 +976,46 @@ int sst_free_stream(int str_id)
 			pr_err("SST ERR: control path in use\n");
 			return -EINVAL;
 		}
-		if (sst_create_short_msg(&msg)) {
-			pr_err("SST ERR: mem allocation failed\n");
-			return -ENOMEM;
-		}
-		if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID)
-			sst_fill_header_mrfld(&msg->mrfld_header,
-						IPC_IA_FREE_STREAM, 0, str_id);
-		else
+		if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID) {
+			if (sst_create_large_msg(&msg)) {
+				pr_err("SST ERR: mem allocation failed\n");
+				return -ENOMEM;
+			}
+			pvt_id = sst_assign_pvt_id(sst_drv_ctx);
+			sst_fill_header_mrfld(&msg->mrfld_header, IPC_CMD,
+				IPC_QUE_ID_MED, 1, pvt_id);
+			msg->mrfld_header.p.header_low_payload =
+							sizeof(dsp_hdr);
+			sst_fill_header_dsp(&dsp_hdr, IPC_IA_FREE_STREAM_MRFLD,
+						str_info->pipe_id,  0);
+			memcpy(msg->mailbox_data, &dsp_hdr, sizeof(dsp_hdr));
+			str_info->ctrl_blk.drv_id = pvt_id;
+		} else {
+#ifndef MRFLD_TEST_ON_MFLD
+			if (sst_create_short_msg(&msg)) {
+				pr_err("SST ERR: mem allocation failed\n");
+				return -ENOMEM;
+			}
 			sst_fill_header(&msg->header, IPC_IA_FREE_STREAM,
 								 0, str_id);
+#else
+			u32 len;
+
+			if (sst_create_large_msg(&msg)) {
+				pr_err("SST ERR: mem allocation failed\n");
+				return -ENOMEM;
+			}
+			pvt_id = sst_assign_pvt_id(sst_drv_ctx);
+			sst_fill_header_mrfld_32(&msg->header.full, IPC_QUE_ID_MED,
+					IPC_CMD, pvt_id, 1, 1);
+			len = sizeof(dsp_hdr);
+			sst_fill_header_dsp(&dsp_hdr, IPC_IA_FREE_STREAM_MRFLD,
+						str_info->pipe_id, 0);
+			memcpy(msg->mailbox_data + sizeof(len), &dsp_hdr, sizeof(dsp_hdr));
+			memcpy(msg->mailbox_data, &len, sizeof(len));
+			str_info->ctrl_blk.drv_id = pvt_id;
+#endif
+		}
 		spin_lock_irqsave(&sst_drv_ctx->ipc_spin_lock, irq_flags);
 		list_add_tail(&msg->node, &sst_drv_ctx->ipc_dispatch_list);
 		spin_unlock_irqrestore(&sst_drv_ctx->ipc_spin_lock, irq_flags);

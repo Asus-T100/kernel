@@ -246,7 +246,10 @@ static ssize_t sst_debug_osc_clk0_read(struct file *file, char __user *user_buf,
 				   size_t count, loff_t *ppos)
 {
 	char status[16];
-	int mode = intel_scu_ipc_set_osc_clk0(0, CLK0_QUERY);
+	int mode = -1;
+#ifdef CONFIG_INTEL_SCU_IPC_UTIL
+	mode = intel_scu_ipc_set_osc_clk0(0, CLK0_QUERY);
+#endif
 
 	snprintf(status, 16, "0x%x\n", mode);
 	return simple_read_from_buffer(user_buf, count, ppos,
@@ -263,6 +266,7 @@ static ssize_t sst_debug_osc_clk0_write(struct file *file,
 		return -EFAULT;
 	buf[sz] = 0;
 
+#ifdef CONFIG_INTEL_SCU_IPC_UTIL
 	if (!strncmp(buf, "enable\n", sz)) {
 		intel_scu_ipc_set_osc_clk0(true, CLK0_DEBUG);
 		sz = 6; /* strlen("enable") */
@@ -271,6 +275,7 @@ static ssize_t sst_debug_osc_clk0_write(struct file *file,
 		sz = 7; /* strlen("disable") */
 	} else
 		return -EINVAL;
+#endif
 	return sz;
 }
 
