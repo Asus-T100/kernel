@@ -119,8 +119,10 @@ end_restore:
 	sst_drv_ctx->alloc_block[0].sst_id = BLOCK_UNINIT;
 	if (retval)
 		return retval;
+#ifndef MRFLD_TEST_ON_MFLD
 	if (sst_drv_ctx->pci_id != SST_MRFLD_PCI_ID)
 		sst_restore_fw_context();
+#endif
 	sst_set_fw_state_locked(sst_drv_ctx, SST_FW_RUNNING);
 
 	return retval;
@@ -150,7 +152,7 @@ void sst_send_lpe_mixer_algo_params(void)
 
 	retval = intel_sst_check_device();
 	if (retval)
-		return retval;
+		return;
 
 	mutex_lock(&sst_drv_ctx->mixer_ctrl_lock);
 	input_mixer = (sst_drv_ctx->device_input_mixer)
@@ -485,10 +487,7 @@ int sst_send_sync_msg(int ipc, int str_id)
 
 	if (sst_create_short_msg(&msg))
 		return -ENOMEM;
-	if (sst_drv_ctx->pci_id != SST_MRFLD_PCI_ID)
-		sst_fill_header(&msg->header, ipc, 0, str_id);
-	else
-		sst_fill_header_mrfld(&msg->mrfld_header, ipc, 0, str_id);
+	sst_fill_header(&msg->header, ipc, 0, str_id);
 	return sst_drv_ctx->ops->sync_post_message(msg);
 }
 
@@ -506,7 +505,6 @@ static inline int sst_calc_mfld_tstamp(struct pcm_stream_info *info,
 	pr_debug("pcm delay %llu\n", info->pcm_delay);
 	return 0;
 }
-
 
 static inline int sst_calc_tstamp(struct pcm_stream_info *info,
 		struct snd_pcm_substream *substream,
@@ -541,12 +539,8 @@ static inline int sst_calc_tstamp(struct pcm_stream_info *info,
 	return 0;
 }
 
-
 static int sst_read_timestamp(struct pcm_stream_info *info)
 {
-	struct snd_sst_tstamp_mfld fw_tstamp_mfld;
-	struct snd_sst_tstamp fw_tstamp;
-
 	struct stream_info *stream;
 	struct snd_pcm_substream *substream;
 	unsigned int str_id;
@@ -561,12 +555,27 @@ static int sst_read_timestamp(struct pcm_stream_info *info)
 	substream = stream->pcm_substream;
 
 	if (sst_drv_ctx->pci_id == SST_MFLD_PCI_ID) {
+#ifndef MRFLD_TEST_ON_MFLD
+		struct snd_sst_tstamp_mfld fw_tstamp_mfld;
+
 		memcpy_fromio(&fw_tstamp_mfld,
 			((void *)(sst_drv_ctx->mailbox + sst_drv_ctx->tstamp)
 				+ (str_id * sizeof(fw_tstamp_mfld))),
 			sizeof(fw_tstamp_mfld));
 		return sst_calc_mfld_tstamp(info, stream->ops, &fw_tstamp_mfld);
+#else
+		struct snd_sst_tstamp fw_tstamp;
+
+		memcpy_fromio(&fw_tstamp,
+			((void *)(sst_drv_ctx->mailbox + sst_drv_ctx->tstamp)
+				+ (str_id * sizeof(fw_tstamp))),
+			sizeof(fw_tstamp));
+		return sst_calc_tstamp(info, substream, &fw_tstamp);
+#endif
+
 	} else {
+		struct snd_sst_tstamp fw_tstamp;
+
 		memcpy_fromio(&fw_tstamp,
 			((void *)(sst_drv_ctx->mailbox + sst_drv_ctx->tstamp)
 				+ (str_id * sizeof(fw_tstamp))),
@@ -617,7 +626,12 @@ static int sst_device_control(int cmd, void *arg)
 		if (sst_drv_ctx->pci_id != SST_MFLD_PCI_ID)
 			sst_start_stream(str_id);
 		else
+#ifndef MRFLD_TEST_ON_MFLD
 			retval = sst_send_sync_msg(ipc, str_id);
+#else
+			retval = sst_start_stream(str_id);
+#endif
+
 		break;
 	}
 	case SST_SND_DROP: {
@@ -630,7 +644,14 @@ static int sst_device_control(int cmd, void *arg)
 		ipc = IPC_IA_DROP_STREAM;
 		str_info->prev = STREAM_UN_INIT;
 		str_info->status = STREAM_INIT;
-		retval = sst_send_sync_msg(ipc, str_id);
+		if (sst_drv_ctx->pci_id == SST_MRFLD_PCI_ID)
+			retval = sst_drop_stream(str_id);
+		else
+#ifndef MRFLD_TEST_ON_MFLD
+			retval = sst_send_sync_msg(ipc, str_id);
+#else
+			retval = sst_drop_stream(str_id);
+#endif
 		break;
 	}
 	case SST_SND_STREAM_INIT: {
@@ -734,6 +755,20 @@ static int sst_set_generic_params(enum sst_controls cmd, void *arg)
 		sst_drv_ctx->device_input_mixer = device_input_mixer;
 		mutex_unlock(&sst_drv_ctx->mixer_ctrl_lock);
 		sst_send_lpe_mixer_algo_params();
+		break;
+	}
+	case SST_SET_BYTE_STREAM: {
+		struct snd_sst_bytes *sst_bytes = (struct snd_sst_bytes *)arg;
+		ret_val = intel_sst_check_device();
+		if (ret_val)
+			return ret_val;
+
+#ifndef MRFLD_TEST_ON_MFLD
+		ret_val = sst_send_byte_stream_mrfld(sst_bytes);
+#else
+		ret_val = sst_send_byte_stream(sst_bytes);
+#endif
+		pm_runtime_put(&sst_drv_ctx->pci->dev);
 		break;
 	}
 	default:

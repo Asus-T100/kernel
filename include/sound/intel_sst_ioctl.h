@@ -119,6 +119,73 @@ struct snd_pcm_params_mfld {
 	__u32 ring_buffer_addr;
 };
 
+struct snd_pcm_params_mrfld {
+	__u8 num_ch;
+	__u8 pcm_wd_sz;
+	__u8 path;
+	__u8 rsvd;
+	__u32 sfreq;
+	__u8 chan_map[8];
+};
+
+struct snd_mp3_params_mrfld {
+	__u8 num_ch;
+	__u8 pcm_wd_sz;
+	__u8 crc_chk;
+	__u8 rsvd;
+};
+
+struct snd_aac_params_mrfld {
+	__u8 num_ch;
+	__u8 pcm_wd_sz;
+	__u8 bdownsample;
+	__u8 bsformat;
+	__u32 externalsr;
+	__u8 sbr_signalling;
+	__u8 rsvd1;
+	__u16 rsvd2;
+};
+
+struct snd_wma_params_mrfld {
+	__u8 num_ch;
+	__u8 pcm_wd_sz;
+	__u8 op_align;
+	__u8 rsvd1;
+	__u32 brate;
+	__u32 sfreq;
+	__u32 channel_mask;
+	__u16 format_tag;
+	__u16 block_align;
+	__u16 wma_encode_opt;
+	__u16 rsvd2;
+};
+struct snd_mp3_get_params_mrfld {
+	__u8 pcm_wd_sz;
+	__u8 num_chan;
+	__u32 samp_freq;
+	__u32 bitrate;
+	__u8 chmode_info;
+	__u8 mch_status;
+	__u8 extn_present;
+	__u8 lfe_present;
+	__u8 num_xchan;
+	__u8 chan_config;
+	__u32 chan_map;
+};
+struct snd_aac_get_params_mrfld {
+	__u8 pcm_wdsz;
+	__u8 num_channels;
+	__u32 samp_freq;
+	__u32 aac_samplerate;
+	__u32 data_rate;
+	__u32 chanmap;
+	__u8 aac_format;
+	__u8 acmod;
+	__u8 sbr_type;
+	__u8 reser1;
+	__u16 reser2;
+};
+
 /* MP3 Music Parameters Message */
 struct snd_mp3_params {
 	__u8  num_chan;	/* 1=Mono, 2=Stereo	*/

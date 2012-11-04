@@ -192,7 +192,7 @@ static void sst_stream_recovery(struct intel_sst_drv *sst)
 {
 	struct stream_info *str_info;
 	u8 i;
-	for (i = 1; i <= sst->max_streams; i++) {
+	for (i = 1; i <= sst->info.max_streams; i++) {
 		pr_err("Audio: Stream %d, state %d\n", i, sst->streams[i].status);
 		if (sst->streams[i].status != STREAM_UN_INIT) {
 			str_info = &sst_drv_ctx->streams[i];
@@ -268,7 +268,9 @@ int sst_wait_timeout(struct intel_sst_drv *sst_drv_ctx, struct sst_block *block)
 	} else {
 		block->on = false;
 		pr_err("sst: Wait timed-out %x\n", block->condition);
+#if 0
 		sst_do_recovery(sst_drv_ctx);
+#endif
 		/* settign firmware state as uninit so that the
 		firmware will get redownloaded on next request
 		this is because firmare not responding for 5 sec
