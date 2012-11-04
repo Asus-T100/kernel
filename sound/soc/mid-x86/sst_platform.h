@@ -27,12 +27,11 @@
 #ifndef __SST_PLATFORMDRV_H__
 #define __SST_PLATFORMDRV_H__
 
-struct sst_data {
-	struct platform_device *pdev;
-	struct sst_platform_data *pdata;
-	unsigned int     lpe_mixer_input_ihf;
-	unsigned int     lpe_mixer_input_hs;
-};
+#include <sound/soc.h>
+
+#define SST_MAX_BIN_BYTES 1024
+
+struct sst_data;
 
 enum sst_audio_device_type {
 	SND_SST_DEVICE_HEADSET = 1,
@@ -74,6 +73,8 @@ enum sst_controls {
 	SST_SET_RUNTIME_PARAMS =	0x1008,
 	SST_SET_ALGO_PARAMS =		0x1009,
 	SST_MAX_CONTROLS =		0x1010,
+	SST_SET_BYTE_STREAM =		0x1011,
+	SST_GET_BYTE_STREAM =		0x1012,
 };
 
 struct pcm_stream_info {

@@ -25,6 +25,7 @@
  */
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
+#include <linux/delay.h>
 #include <linux/slab.h>
 #include <linux/io.h>
 #include <sound/core.h>
@@ -525,22 +526,44 @@ static int sst_pcm_new(struct snd_soc_pcm_runtime *rtd)
 	return retval;
 }
 
-static int sst_soc_probe(struct snd_soc_platform *platform)
+static int __devinit sst_soc_probe(struct snd_soc_platform *platform)
 {
 	struct sst_data *ctx = snd_soc_platform_get_drvdata(platform);
 	const struct sfi_soft_platform_id *spid = ctx->pdata->spid;
 
 	pr_debug("%s called\n", __func__);
-	if (spid->platform_family_id == INTEL_CLVTP_PHONE)
+	if (spid->platform_family_id == INTEL_CLVTP_PHONE) {
 		return sst_platform_clv_init(platform);
+	} else if (spid->platform_family_id == INTEL_MRFL_PHONE) {
+		return sst_dsp_init(platform);
+	} else if (spid->platform_family_id == INTEL_MFLD_PHONE) {
+#ifdef MRFLD_TEST_ON_MFLD
+		sst_dsp_init(platform);
+#endif
+	}
+	/* FIXME: workaround till SPID value becomes right for MRFLD */
+#if (defined(CONFIG_SND_MRFLD_MACHINE) || defined(CONFIG_SND_MRFLD_MACHINE_MODULE))
+	pr_err("SPID for MRFLD: reported %lu, expected %lu\n",
+			spid->platform_family_id, INTEL_MRFL_PHONE);
+	sst_dsp_init(platform);
+#endif
 	return 0;
 }
 
-static struct snd_soc_platform_driver sst_soc_platform_drv = {
+static int sst_soc_remove(struct snd_soc_platform *platform)
+{
+	pr_debug("%s called\n", __func__);
+	return 0;
+}
+
+static struct snd_soc_platform_driver sst_soc_platform_drv  __devinitdata = {
 	.probe		= sst_soc_probe,
+	.remove		= sst_soc_remove,
 	.ops		= &sst_platform_ops,
 	.pcm_new	= sst_pcm_new,
 	.pcm_free	= sst_pcm_free,
+	.read		= sst_soc_read,
+	.write		= sst_soc_write,
 };
 
 int sst_register_dsp(struct sst_device *dev)
@@ -578,7 +601,7 @@ int sst_unregister_dsp(struct sst_device *dev)
 }
 EXPORT_SYMBOL_GPL(sst_unregister_dsp);
 
-static int sst_platform_probe(struct platform_device *pdev)
+static int __devinit sst_platform_probe(struct platform_device *pdev)
 {
 	struct sst_data *sst;
 	int ret;
@@ -592,10 +615,12 @@ static int sst_platform_probe(struct platform_device *pdev)
 	};
 
 	sst->pdata = pdata;
+	mutex_init(&sst->lock);
 	dev_set_drvdata(&pdev->dev, sst);
 
 	ret = snd_soc_register_platform(&pdev->dev,
 					 &sst_soc_platform_drv);
+
 	if (ret) {
 		pr_err("registering soc platform failed\n");
 		return ret;

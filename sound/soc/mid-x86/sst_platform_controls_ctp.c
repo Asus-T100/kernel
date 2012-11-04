@@ -22,6 +22,7 @@
  */
 #include <sound/soc.h>
 #include "sst_platform.h"
+#include "sst_platform_pvt.h"
 
 static int lpe_mixer_ihf_get(struct snd_kcontrol *kcontrol,
 	struct snd_ctl_elem_value *ucontrol)
