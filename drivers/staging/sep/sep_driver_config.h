@@ -260,10 +260,11 @@ held by the proccess (struct file) */
 #define SUSPEND_DELAY 10
 
 /* Number of delays to wait until scu boots after runtime resume */
-#define SCU_DELAY_MAX 50
+#define SCU_DELAY_MAX 2000
 
 /* Delay for each iteration (usec) wait for scu boots after runtime resume */
-#define SCU_DELAY_ITERATION 10
+#define SCU_MAX_DELAY_ITERATION 1000
+#define SCU_MIN_DELAY_ITERATION 100
 
 /*
  * Bits used in struct sep_call_status to check that

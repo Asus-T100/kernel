@@ -4942,6 +4942,42 @@ MODULE_DEVICE_TABLE(pci, sep_pci_id_tbl);
 #ifdef SEP_ENABLE_RUNTIME_PM
 
 /**
+ * sep_wait_for_scu
+ * @sep:        pointer to sep device
+ * @returns 0: success; scu boot did happen
+ *          non zero: failure; scu boot did not happen
+ */
+static int sep_wait_for_scu(struct sep_device *sep)
+{
+	u32 gpr3_contents;
+	u32 delay_count;
+
+	gpr3_contents = 0;
+	delay_count = 0;
+	while ((gpr3_contents == 0) && (delay_count < SCU_DELAY_MAX)) {
+		gpr3_contents =
+			sep_read_reg(sep, HW_HOST_SEP_HOST_GPR3_REG_ADDR);
+		gpr3_contents &= SCU_BOOT_BIT_MASK;
+		if (gpr3_contents == 0) {
+			usleep_range(SCU_MIN_DELAY_ITERATION,
+				SCU_MAX_DELAY_ITERATION);
+			delay_count++;
+		}
+	}
+
+	dev_dbg(&sep->pdev->dev, "iteration %d times\n",
+		delay_count);
+
+	if (gpr3_contents == 0) {
+		dev_err(&sep->pdev->dev, "scu boot bit not set at resume\n");
+		BUG_ON(1);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+/**
  * sep_pm_resume - rsume routine while waking up from S3 state
  * @dev:	pointer to sep device
  *
@@ -4952,8 +4988,14 @@ MODULE_DEVICE_TABLE(pci, sep_pci_id_tbl);
 static int sep_pci_resume(struct device *dev)
 {
 	struct sep_device *sep = sep_dev;
+	int error;
 
 	dev_dbg(&sep->pdev->dev, "pci resume called\n");
+
+	error = sep_wait_for_scu(sep);
+
+	if (error)
+		return error;
 
 	if (sep->power_state == SEP_DRIVER_POWERON)
 		return 0;
@@ -5008,34 +5050,15 @@ static int sep_pci_suspend(struct device *dev)
 static int sep_pm_runtime_resume(struct device *dev)
 {
 
-	u32 retval2;
-	u32 delay_count;
 	struct sep_device *sep = sep_dev;
+	int error;
 
 	dev_dbg(&sep->pdev->dev, "pm runtime resume called\n");
 
-	/**
-	 * Wait until the SCU boot is ready
-	 * This is done by iterating SCU_DELAY_ITERATION (10
-	 * microseconds each) up to SCU_DELAY_MAX (50) times.
-	 * This bit can be set in a random time that is less
-	 * than 500 microseconds after each power resume
-	 */
-	retval2 = 0;
-	delay_count = 0;
-	while ((!retval2) && (delay_count < SCU_DELAY_MAX)) {
-		retval2 = sep_read_reg(sep, HW_HOST_SEP_HOST_GPR3_REG_ADDR);
-		retval2 &= 0x00000008;
-		if (!retval2) {
-			udelay(SCU_DELAY_ITERATION);
-			delay_count += 1;
-		}
-	}
+	error = sep_wait_for_scu(sep);
 
-	if (!retval2) {
-		dev_warn(&sep->pdev->dev, "scu boot bit not set at resume\n");
-		return -EINVAL;
-	}
+	if (error)
+		return error;
 
 	/* Clear ICR register */
 	sep_write_reg(sep, HW_HOST_ICR_REG_ADDR, 0xFFFFFFFF);

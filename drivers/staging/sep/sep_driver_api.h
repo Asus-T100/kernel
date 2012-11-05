@@ -65,6 +65,8 @@
 
 #define DATA_BLOCK_SIZE_IN_EMMC_RPMB_FRAME 256
 
+#define SCU_BOOT_BIT_MASK 0x00000008
+
 struct sep_message_top_to_sep {
 	u32	rpmb_command; /* Command / Respond with Firmware */
 	u32	job_id;
