@@ -468,8 +468,7 @@ static int process_fw_init(struct sst_ipc_msg_wq *msg)
 	/* If there any runtime parameter to set, send it */
 	if (sst_drv_ctx->runtime_param.param.addr)
 		sst_send_runtime_param(&(sst_drv_ctx->runtime_param.param));
-	mutex_lock(&sst_drv_ctx->sst_lock);
-	mutex_unlock(&sst_drv_ctx->sst_lock);
+
 	if (sst_drv_ctx->pci_id != SST_MRFLD_PCI_ID) {
 		pr_debug("FW Version %02x.%02x.%02x\n", init->fw_version.major,
 				init->fw_version.minor, init->fw_version.build);
