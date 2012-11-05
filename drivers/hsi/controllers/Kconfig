@@ -1,0 +1,22 @@
+#
+# HSI controllers configuration
+#
+comment "HSI controllers"
+
+config HSI_ARASAN
+	tristate "intel_mid_hsi HSI hardware driver"
+	depends on HSI
+	default n
+	help
+	  If you say Y here, you will enable the intel_mid_hsi HSI hardware
+	  driver.
+
+	  If unsure, say N.
+
+if HSI_ARASAN
+
+config HSI_ARASAN_CONFIG
+	boolean
+	default y
+
+endif # HSI_ARASAN

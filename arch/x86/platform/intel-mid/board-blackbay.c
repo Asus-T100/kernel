@@ -61,6 +61,12 @@
 #include "device_libs/platform_max3111.h"
 
 /*
+ * HSI devices
+ */
+
+#include "device_libs/platform_hsi_modem.h"
+
+/*
  * HSU devices
  */
 #include "device_libs/platform_hsu.h"
@@ -120,5 +126,10 @@ struct devs_id __initconst device_ids[] = {
 					&intel_ignore_i2c_device_register},
 	{"mt9m114", SFI_DEV_TYPE_I2C, 0, &mt9m114_platform_data,
 					&intel_ignore_i2c_device_register},
+
+	/* Modem */
+#ifndef CONFIG_HSI_NO_MODEM
+	{"hsi_ifx_modem", SFI_DEV_TYPE_HSI, 0, &hsi_modem_platform_data, NULL},
+#endif
 	{},
 };

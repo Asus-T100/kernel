@@ -53,6 +53,12 @@
 #include "device_libs/platform_max3111.h"
 
 /*
+ * HSI devices
+ */
+
+#include "device_libs/platform_hsi_modem.h"
+
+/*
  * HSU devices
  */
 #include "device_libs/platform_hsu.h"
@@ -84,6 +90,11 @@ struct devs_id __initconst device_ids[] = {
 					&ipc_device_handler},
 	{"msic_gpio", SFI_DEV_TYPE_IPC, 1, &msic_gpio_platform_data,
 					&ipc_device_handler},
+
+	/* Modem */
+#ifndef CONFIG_HSI_NO_MODEM
+	{"hsi_ifx_modem", SFI_DEV_TYPE_HSI, 0, &hsi_modem_platform_data, NULL},
+#endif
 
 	/* Fuel Gauge and charger */
 	{"max17042", SFI_DEV_TYPE_I2C, 1, &max17042_platform_data, NULL},

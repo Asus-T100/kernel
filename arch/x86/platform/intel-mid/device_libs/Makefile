@@ -51,6 +51,8 @@ obj-$(subst m,y,$(CONFIG_VIDEO_LM3554))					+= platform_lm3554.o
 endif
 # SPI Devices
 obj-$(subst m,y,$(CONFIG_SERIAL_MRST_MAX3110))				+= platform_max3111.o
+# HSI Devices
+obj-$(subst m,y,$(CONFIG_HSI_ARASAN))					+= platform_hsi_modem.o
 # UART Devices
 obj-$(subst m,y,$(CONFIG_SERIAL_MFD_HSU))				+= platform_hsu.o
 # MISC Devices
