@@ -1825,7 +1825,6 @@ static int sep_lli_table_secure_dma(struct sep_device *sep,
 {
 	int error = 0;
 	u32 count;
-	u32 imr_base;
 
 	/* The the page of the end address of the user space buffer */
 	u32 end_page;
@@ -1843,12 +1842,17 @@ static int sep_lli_table_secure_dma(struct sep_device *sep,
 	 * get the address that is to be used here.
 	 */
 
-	imr_base = get_imr_base();
+	if (sep->imr_base == 0) {
+		dev_warn(&sep->pdev->dev,
+			"[PID%d] null imr base; get out\n",
+			current->pid);
+		return -EINVAL;
+	}
 
-	app_virt_addr += imr_base;
+	app_virt_addr += sep->imr_base;
 
 	dev_dbg(&sep->pdev->dev, "[PID%d] imr base is %x\n",
-		current->pid, imr_base);
+		current->pid, sep->imr_base);
 
 	/* Set start and end pages  and num pages */
 	end_page = (app_virt_addr + data_size - 1) >> PAGE_SHIFT;
@@ -1856,7 +1860,7 @@ static int sep_lli_table_secure_dma(struct sep_device *sep,
 	num_pages = end_page - start_page + 1;
 
 	dev_dbg(&sep->pdev->dev,
-		"[PID%d] lock user pages app_virt_addr is %x\n",
+		"[PID%d] lock imr pages output physical addr is %x\n",
 		current->pid, app_virt_addr);
 	dev_dbg(&sep->pdev->dev, "[PID%d] data_size is (hex) %x\n",
 		current->pid, data_size);
@@ -4820,6 +4824,16 @@ static int __devinit sep_probe(struct pci_dev *pdev,
 	INIT_WORK(&sep->rpmb_work, rpmb_process_request);
 
 	sep->in_use = 1;
+
+	/**
+	 * Get the IMR base register
+	 * Please note that we will not verify it here. We will
+	 * verify it at time of video decryption as not all devices
+	 * will support this. If as device does not support it, there
+	 * is no loss in trying to get it. It will be null and will not
+	 * be used.
+	 */
+	sep->imr_base = get_imr_base();
 
 	/* Finally magic up the device nodes */
 	/* Register driver with the fs */

@@ -76,6 +76,9 @@ struct sep_device {
 	/* Is this in use? */
 	u32 in_use;
 
+	/* IMR Base Register */
+	u32 imr_base;
+
 	/* indicates whether power save is set up */
 	u32 power_save_setup;
 
