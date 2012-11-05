@@ -159,8 +159,8 @@ static int board_id_proc_show(struct seq_file *m, void *v)
 	char *bid;
 
 	switch (board_id) {
-	case MFLD_BID_JOKI_EV20:
-		bid = "joki_ev20"; break;
+	case MFLD_BID_SALITPA_EV1:
+		bid = "salitpa_ev10"; break;
 	case MFLD_BID_RR_DV10:
 		bid = "redridge_dv10"; break;
 	case MFLD_BID_RR_DV20:

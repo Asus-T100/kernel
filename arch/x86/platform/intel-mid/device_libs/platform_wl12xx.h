@@ -14,8 +14,8 @@
 
 #define WL12XX_SFI_GPIO_IRQ_NAME "WLAN-interrupt"
 #define WL12XX_SFI_GPIO_ENABLE_NAME "WLAN-enable"
-#define ICDK_BOARD_REF_CLK 26000000
-#define NCDK_BOARD_REF_CLK 38400000
+#define BOARD_26M_CLK  26000000
+#define BOARD_38M_CLK  38400000
 
 extern void __init *wl12xx_platform_data(void *info) __attribute__((weak));
 #endif

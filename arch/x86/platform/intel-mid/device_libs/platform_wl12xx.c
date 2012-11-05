@@ -85,16 +85,21 @@ void __init wl12xx_platform_data_init_post_scu(void *info)
 		       mid_wifi_control.irq);
 		return;
 	}
-	/* Set our board_ref_clock from SFI SD board info */
-	if (sd_info->board_ref_clock == ICDK_BOARD_REF_CLK)
-		/*iCDK board*/
-		/*26Mhz TCXO clock ref*/
-		mid_wifi_control.board_ref_clock = 1;
-	else if (sd_info->board_ref_clock == NCDK_BOARD_REF_CLK)
-		/*nCDK board*/
-		/*38,4Mhz TCXO clock ref*/
-		mid_wifi_control.board_ref_clock = 2;
-
+	if (board_id != MFLD_BID_SALITPA_EV1) {
+		/* Set our board_ref_clock from SFI SD board info */
+		if (sd_info->board_ref_clock == BOARD_26M_CLK)
+			mid_wifi_control.board_ref_clock = 1;
+		else if (sd_info->board_ref_clock == BOARD_38M_CLK)
+			mid_wifi_control.board_ref_clock = 2;
+	} else {
+		/* EVx need TCXO change instead of ref clock
+		 * SFI table only handle 1 clock parameter
+		 */
+		if (sd_info->board_ref_clock == BOARD_26M_CLK)
+			mid_wifi_control.board_tcxo_clock = 1;
+		else if (sd_info->board_ref_clock == BOARD_38M_CLK)
+			mid_wifi_control.board_tcxo_clock = 2;
+	}
 	err = wl12xx_set_platform_data(&mid_wifi_control);
 	if (err < 0)
 		pr_err("error setting wl12xx data\n");
