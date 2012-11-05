@@ -465,7 +465,6 @@ static int atomisp_open(struct file *file)
 		goto done;
 	}
 
-#ifdef CONFIG_PM
 	/* runtime power management, turn on ISP */
 	ret = pm_runtime_get_sync(vdev->v4l2_dev->dev);
 	if (ret) {
@@ -473,7 +472,7 @@ static int atomisp_open(struct file *file)
 				"Failed to power on device\n");
 		goto runtime_get_failed;
 	}
-#endif
+
 	device_set_base_address(0);
 
 	/*
@@ -529,9 +528,7 @@ done:
 
 css_init_failed:
 	v4l2_err(&atomisp_dev, "css init failed\n");
-#ifdef CONFIG_PM
 	pm_runtime_put(vdev->v4l2_dev->dev);
-#endif
 runtime_get_failed:
 	atomisp_uninit_pipe(pipe);
 error:
@@ -634,11 +631,8 @@ static int atomisp_release(struct file *file)
 
 	isp->sw_contex.init = false;
 
-#ifdef CONFIG_PM
 	if (pm_runtime_put_sync(vdev->v4l2_dev->dev))
-		v4l2_err(&atomisp_dev,
-			 "Failed to power off device\n");
-#endif
+		v4l2_err(&atomisp_dev, "Failed to power off device\n");
 done:
 	pipe->opened = false;
 	mutex_unlock(&isp->mutex);

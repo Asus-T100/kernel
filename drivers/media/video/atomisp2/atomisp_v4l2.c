@@ -947,10 +947,8 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 		goto request_irq_fail;
 	}
 
-#ifdef CONFIG_PM
 	pm_runtime_put_noidle(&dev->dev);
 	pm_runtime_allow(&dev->dev);
-#endif
 
 	return 0;
 
