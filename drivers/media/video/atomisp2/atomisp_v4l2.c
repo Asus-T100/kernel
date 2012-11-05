@@ -860,6 +860,11 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 	}
 	v4l2_dbg(1, dbg_level, &atomisp_dev, "base: %p\n", base);
 
+	atomisp_io_base = base;
+
+	v4l2_dbg(1, dbg_level, &atomisp_dev, "atomisp_io_base: %p\n",
+			atomisp_io_base);
+
 	isp = devm_kzalloc(&dev->dev, sizeof(struct atomisp_device), GFP_KERNEL);
 	if (!isp) {
 		v4l2_err(&atomisp_dev, "Failed to alloc CI ISP structure\n");
@@ -869,24 +874,16 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 	isp->dev = &dev->dev;
 	isp->sw_contex.power_state = ATOM_ISP_POWER_UP;
 	isp->hw_contex.pci_root = pci_get_bus_and_slot(0, 0);
+	isp->hw_contex.ispmmadr = start;
+	isp->tvnorm = tvnorms;
+
+	mutex_init(&isp->mutex);
 
 	/* Load isp firmware from user space */
 	isp->firmware = load_firmware(&dev->dev);
 	if (!isp->firmware) {
 		v4l2_err(&atomisp_dev, "Load firmwares failed\n");
 		goto load_fw_fail;
-	}
-
-	err = atomisp_initialize_modules(isp);
-	if (err < 0) {
-		v4l2_err(&atomisp_dev, "atomisp_initialize_modules\n");
-		goto init_mod_fail;
-	}
-
-	err = atomisp_register_entities(isp);
-	if (err < 0) {
-		v4l2_err(&atomisp_dev, "atomisp_register_entities failed\n");
-		goto init_mod_fail;
 	}
 
 	INIT_LIST_HEAD(&isp->acc.memory_maps);
@@ -901,17 +898,7 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 	}
 	INIT_WORK(&isp->wdt_work, atomisp_wdt_work);
 
-	isp->hw_contex.ispmmadr = start;
-
 	pci_set_master(dev);
-	atomisp_io_base = base;
-
-	v4l2_dbg(1, dbg_level, &atomisp_dev, "atomisp_io_base: %p\n",
-			atomisp_io_base);
-
-	isp->tvnorm = tvnorms;
-	mutex_init(&isp->mutex);
-
 	pci_set_drvdata(dev, isp);
 
 	err = pci_enable_msi(dev);
@@ -948,11 +935,22 @@ static int __devinit atomisp_pci_probe(struct pci_dev *dev,
 		device_store_uint32(MRFLD_CSI_RECEIVER_SELECTION_REG, 1);
 	}
 
+	err = atomisp_initialize_modules(isp);
+	if (err < 0) {
+		v4l2_err(&atomisp_dev, "atomisp_initialize_modules\n");
+		goto request_irq_fail;
+	}
+
+	err = atomisp_register_entities(isp);
+	if (err < 0) {
+		v4l2_err(&atomisp_dev, "atomisp_register_entities failed\n");
+		goto request_irq_fail;
+	}
+
 #ifdef CONFIG_PM
 	pm_runtime_put_noidle(&dev->dev);
 	pm_runtime_allow(&dev->dev);
 #endif
-	isp->sw_contex.probed = true;
 
 	return 0;
 
@@ -962,8 +960,6 @@ enable_msi_fail:
 	pci_set_drvdata(dev, NULL);
 	destroy_workqueue(isp->wdt_work_queue);
 work_queue_fail:
-	atomisp_unregister_entities(isp);
-init_mod_fail:
 	release_firmware(isp->firmware);
 load_fw_fail:
 	pci_disable_device(dev);

@@ -158,7 +158,6 @@ struct atomisp_hw_contex {
 
 struct atomisp_sw_contex {
 	bool init;
-	bool probed;
 
 	bool work_queued;
 	bool sensor_streaming;

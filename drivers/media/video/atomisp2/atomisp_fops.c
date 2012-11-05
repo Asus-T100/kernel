@@ -444,11 +444,8 @@ static int atomisp_open(struct file *file)
 
 	v4l2_dbg(2, dbg_level, &atomisp_dev, ">%s [%d]\n",
 				__func__, pipe->pipe_type);
+
 	mutex_lock(&isp->mutex);
-	if (!isp || isp->sw_contex.probed == 0) {
-		mutex_unlock(&isp->mutex);
-		return -ENODEV;
-	}
 
 	if (!isp->input_cnt) {
 		v4l2_err(&atomisp_dev, "no camera attached\n");
