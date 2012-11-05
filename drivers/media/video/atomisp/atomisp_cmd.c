@@ -1049,8 +1049,12 @@ void atomisp_work(struct work_struct *work)
 		 * TODO: Check how to handle multiple firmwares.
 		 */
 		if (isp->marked_fw_for_unload != NULL) {
+			unsigned long irqflags;
 			__acc_fw_free_args(isp, isp->marked_fw_for_unload);
+			spin_lock_irqsave(&isp->irq_lock, irqflags);
 			sh_css_unload_acceleration(isp->marked_fw_for_unload);
+			spin_unlock_irqrestore(&isp->irq_lock, irqflags);
+			sh_css_acc_unload(isp->marked_fw_for_unload);
 			__acc_fw_free(isp, isp->marked_fw_for_unload);
 			isp->marked_fw_for_unload = NULL;
 			complete(&isp->acc_unload_fw_complete);
@@ -4119,9 +4123,13 @@ static int __acc_unload(struct atomisp_device *isp, struct sh_css_acc_fw *fw)
 	}
 
 	if (isp->sw_contex.isp_streaming == false) {
+		unsigned long irqflags;
 		/* We're not streaming, so it's safe to unload now */
 		__acc_fw_free_args(isp, fw);
+		spin_lock_irqsave(&isp->irq_lock, irqflags);
 		sh_css_unload_acceleration(fw);
+		spin_unlock_irqrestore(&isp->irq_lock, irqflags);
+		sh_css_acc_unload(fw);
 		__acc_fw_free(isp, fw);
 		return 0;
 	}
