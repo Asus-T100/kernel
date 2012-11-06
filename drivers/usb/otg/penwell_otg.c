@@ -2303,13 +2303,23 @@ static void penwell_otg_eye_diagram_optimize(void)
 	struct penwell_otg		*pnw = the_transceiver;
 	struct intel_mid_otg_xceiv	*iotg = &pnw->iotg;
 	int				retval;
+	u8				value = 0;
 
-	/* Set 0x77 for better quality in eye diagram
-	 * It means ZHSDRV = 0b11 and IHSTX = 0b0111 */
+	/* Check platform value as different value will be used*/
+	if (is_clovertrail(to_pci_dev(pnw->dev))) {
+		/* Set 0x7f for better quality in eye diagram
+		 * It means ZHSDRV = 0b11 and IHSTX = 0b1111*/
+		value = 0x7f;
+	} else {
+		/* Set 0x77 for better quality in eye diagram
+		 * It means ZHSDRV = 0b11 and IHSTX = 0b0111*/
+		value = 0x77;
+	}
 
-	retval = penwell_otg_ulpi_write(iotg, ULPI_VS1SET, 0x77);
+	retval = penwell_otg_ulpi_write(iotg, ULPI_VS1SET, value);
 	if (retval)
-		dev_warn(pnw->dev, "eye diagram optimize failed with ulpi failure\n");
+		dev_warn(pnw->dev,
+			"eye diagram optimize failed with ulpi failure\n");
 }
 
 static irqreturn_t otg_dummy_irq(int irq, void *_dev)
