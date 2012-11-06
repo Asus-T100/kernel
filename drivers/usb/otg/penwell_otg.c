@@ -196,6 +196,8 @@ static const char *charger_string(enum usb_charger_type charger)
 		return "Dedicated Charging Port";
 	case CHRG_ACA:
 		return "Accessory Charger Adaptor";
+	case CHRG_SE1:
+		return "SE1 Charger";
 	case CHRG_UNKNOWN:
 		return "Unknown";
 	default:
@@ -271,6 +273,7 @@ static void penwell_otg_set_charger(enum usb_charger_type charger)
 	case CHRG_CDP:
 	case CHRG_ACA:
 	case CHRG_SDP_INVAL:
+	case CHRG_SE1:
 	case CHRG_UNKNOWN:
 		pnw->charging_cap.chrg_type = charger;
 		break;
@@ -352,6 +355,14 @@ static void _penwell_otg_update_chrg_cap(enum usb_charger_type charger,
 			flag = 1;
 		} else
 			dev_dbg(pnw->dev, "DCP: no need to update EM\n");
+		break;
+	case CHRG_SE1:
+		if (mA == CHRG_CURR_SE1) {
+			/* SE1 event: charger connect */
+			event = USBCHRG_EVENT_CONNECT;
+			flag = 1;
+		} else
+			dev_dbg(pnw->dev, "SE1: no need to update EM\n");
 		break;
 	case CHRG_CDP:
 		if (pnw->charging_cap.mA == CHRG_CURR_DISCONN
@@ -1402,42 +1413,35 @@ static int penwell_otg_manual_chrg_det(void)
 
 	dev_info(pnw->dev, "USB charger detection start...\n");
 
-	/* config PHY for DCD
-	 * - OPMODE/TERMSEL/XCVRSEL=01/0/01
-	 * - enable DP/DM pulldowns (ensure RX's don't float) */
+	/* WA for invalid (SE1) charger: add DCD & SE1 detection over SPI
+	* instead of ULPI interface to avoid any ulpi read/write failures
+	* with SE1 charger */
+	penwell_otg_msic_spi_access(true);
 
-	/* ulpi_write(0x0b, 0x06) */
-	retval = penwell_otg_ulpi_write(iotg, ULPI_OTGCTRLSET,
-				DMPULLDOWN | DPPULLDOWN);
-	if (retval)
+	retval = penwell_otg_msic_write(MSIC_FUNCTRLCLR,
+					OPMODE1 | TERMSELECT | XCVRSELECT1);
+	if (retval) {
+		penwell_otg_msic_spi_access(false);
 		return retval;
+	}
 
-	/* ulpi_write(0x05, 0x09) */
-	retval = penwell_otg_ulpi_write(iotg, ULPI_FUNCTRLSET,
-				OPMODE0 | XCVRSELECT0);
-	if (retval)
+	retval = penwell_otg_msic_write(MSIC_FUNCTRLSET, OPMODE0 | XCVRSELECT0);
+	if (retval) {
+		penwell_otg_msic_spi_access(false);
 		return retval;
+	}
 
-	/* ulpi_write(0x06, 0x16) */
-	retval = penwell_otg_ulpi_write(iotg, ULPI_FUNCTRLCLR,
-				OPMODE1 | TERMSELECT | XCVRSELECT1);
-	if (retval)
+	retval = penwell_otg_msic_write(MSIC_PWRCTRLSET, SWCNTRL);
+	if (retval) {
+		penwell_otg_msic_spi_access(false);
 		return retval;
+	}
 
-	/* ulpi_write(0x0c, 0x02) */
-	retval = penwell_otg_ulpi_write(iotg, ULPI_OTGCTRLCLR, DPPULLDOWN);
-	if (retval)
+	retval = penwell_otg_msic_write(MSIC_VS3SET, CHGD_IDP_SRC);
+	if (retval) {
+		penwell_otg_msic_spi_access(false);
 		return retval;
-
-	/* ulpi_write(0x3e, 0x01) */
-	retval = penwell_otg_ulpi_write(iotg, ULPI_PWRCTRLSET, SWCNTRL);
-	if (retval)
-		return retval;
-
-	/* ulpi_write(0x86, 0x40) */
-	retval = penwell_otg_ulpi_write(iotg, ULPI_VS3SET, CHGD_IDP_SRC);
-	if (retval)
-		return retval;
+	}
 
 	dev_info(pnw->dev, "charger detection DCD start...\n");
 
@@ -1446,12 +1450,11 @@ static int penwell_otg_manual_chrg_det(void)
 	interval = DATACON_INTERVAL * 1000; /* us */
 
 	while (!time_after(jiffies, timeout)) {
-		retval = penwell_otg_ulpi_read(iotg, ULPI_VS4, &data);
+		retval = penwell_otg_msic_read(MSIC_VS4, &data);
 		if (retval) {
-			dev_warn(pnw->dev, "Failed to read ULPI register\n");
+			penwell_otg_msic_spi_access(false);
 			return retval;
 		}
-
 		if (!(data & CHRG_SERX_DP)) {
 			dev_info(pnw->dev, "Data contact detected!\n");
 			break;
@@ -1461,12 +1464,31 @@ static int penwell_otg_manual_chrg_det(void)
 		usleep_range(interval, interval + 2000);
 	}
 
-	/* ulpi_write(0x87, 0x40)*/
-	retval = penwell_otg_ulpi_write(iotg, ULPI_VS3CLR, CHGD_IDP_SRC);
-	if (retval)
+	retval = penwell_otg_msic_write(MSIC_VS3CLR, CHGD_IDP_SRC);
+	if (retval) {
+		penwell_otg_msic_spi_access(false);
 		return retval;
+	}
 
 	dev_info(pnw->dev, "DCD complete\n");
+
+	/* Check for SE1, Linestate = '11' */
+	retval = penwell_otg_msic_read(MSIC_DEBUG, &data);
+	if (retval) {
+		penwell_otg_msic_spi_access(false);
+		return retval;
+	}
+	dev_info(pnw->dev, "MSIC.DEBUG.LINESTATE.D[1:0] = 0x%02X\n", data);
+
+	data &= LINESTATE_MSK;
+	if (data == LINESTATE_SE1) {
+		dev_info(pnw->dev, "SE1 Detected\n");
+		penwell_otg_msic_spi_access(false);
+		return CHRG_SE1;
+	}
+
+	penwell_otg_msic_spi_access(false);
+
 	dev_info(pnw->dev, "Primary Detection start...\n");
 
 	/* Primary Dection config */
@@ -3026,7 +3048,24 @@ static void penwell_otg_work(struct work_struct *work)
 				break;
 			}
 
-			if (charger_type == CHRG_DCP) {
+			if (charger_type == CHRG_SE1) {
+				dev_info(pnw->dev, "SE1 detected\n");
+
+				/* SE1: set charger type, current, notify EM */
+				penwell_otg_update_chrg_cap(CHRG_SE1,
+							CHRG_CURR_SE1);
+				dev_info(pnw->dev,
+					"reset PHY via SPI if SE1 detected\n");
+
+				if (!is_clovertrail(pdev)) {
+					/* Reset PHY for MFLD only */
+					penwell_otg_msic_spi_access(true);
+					penwell_otg_msic_write(MSIC_FUNCTRLSET,
+							PHYRESET);
+					penwell_otg_msic_spi_access(false);
+				}
+				break;
+			} else if (charger_type == CHRG_DCP) {
 				dev_info(pnw->dev, "DCP detected\n");
 
 				/* DCP: set charger type, current, notify EM */
@@ -3204,6 +3243,18 @@ static void penwell_otg_work(struct work_struct *work)
 				if (retval)
 					dev_warn(pnw->dev, "ulpi failed\n");
 				penwell_otg_charger_hwdet(false);
+			} else if (charger_type == CHRG_SE1) {
+				/* Notify EM charger remove event */
+				penwell_otg_update_chrg_cap(CHRG_UNKNOWN,
+						CHRG_CURR_DISCONN);
+
+				/* WA: on SE1 detach, reset PHY over SPI */
+				dev_info(pnw->dev,
+					"reset PHY over SPI if SE1 detached\n");
+				penwell_otg_msic_spi_access(true);
+				penwell_otg_msic_write(MSIC_FUNCTRLSET,
+							PHYRESET);
+				penwell_otg_msic_spi_access(false);
 			} else if (ps_type == POWER_SUPPLY_TYPE_USB_ACA) {
 				/* Notify EM charger remove event */
 				penwell_otg_update_chrg_cap(CHRG_UNKNOWN,
