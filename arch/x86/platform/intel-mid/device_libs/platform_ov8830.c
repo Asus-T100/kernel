@@ -72,7 +72,7 @@ static int ov8830_power_ctrl(struct v4l2_subdev *sd, int flag)
 #ifdef CONFIG_BOARD_CTP
 			reg_err = regulator_enable(vprog1_reg);
 			if (reg_err) {
-				printk(KERN_ALERT, "Failed to enable regulator vprog1\n");
+				printk(KERN_ALERT "Failed to enable regulator vprog1\n");
 				return reg_err;
 #else
 			intel_scu_ipc_msic_vprog1(0);
@@ -85,7 +85,7 @@ static int ov8830_power_ctrl(struct v4l2_subdev *sd, int flag)
 #ifdef CONFIG_BOARD_CTP
 			reg_err = regulator_disable(vprog1_reg);
 			if (reg_err) {
-				printk(KERN_ALERT, "Failed to disable regulator vprog1\n");
+				printk(KERN_ALERT "Failed to disable regulator vprog1\n");
 				return reg_err;
 			}
 #else
