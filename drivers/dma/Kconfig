@@ -271,4 +271,11 @@ config DMATEST
 	  Simple DMA test client. Say N unless you're debugging a
 	  DMA Device driver.
 
+config PROTECT_AUDIO_DMAIRQ
+	bool "Protect the DMA irq delayed by other processing"
+	depends on SND_INTEL_MID_I2S
+	help
+	  This is to force banding the audio DMAC Interrupt to CPU1 to prevent
+	  the DMA interrupt delayed by other irq long processing
+
 endif

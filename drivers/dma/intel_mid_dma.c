@@ -1496,6 +1496,14 @@ int dma_resume(struct device *dev)
 	struct middma_device *device = dev_get_drvdata(dev);
 
 	pr_debug("MDMA: dma_resume called\n");
+#ifdef CONFIG_PROTECT_AUDIO_DMAIRQ
+	/* Force the audio DMAC Interrupt to CPU1 to prevent the DMA
+	 * interrupt delayed by other irq long processing
+	 */
+	irq_set_affinity(device->pdev->irq,
+		cpumask_of(find_last_bit(cpumask_bits(cpu_online_mask),
+			NR_CPUS)));
+#endif
 	device->state = RUNNING;
 	iowrite32(REG_BIT0, device->dma_base + DMA_CFG);
 	return 0;
