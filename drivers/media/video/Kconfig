@@ -322,6 +322,8 @@ config VIDEO_KS0127
 	  To compile this driver as a module, choose M here: the
 	  module will be called ks0127.
 
+source "drivers/media/video/mt9e013/Kconfig"
+
 config VIDEO_ATOMISP
         bool "Intel Atom Image Signal Processor Driver"
         depends on VIDEO_V4L2
