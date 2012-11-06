@@ -478,27 +478,27 @@ static int mrfld_csi_lane_config(struct atomisp_device *isp)
 
 static int atomisp_subdev_probe(struct atomisp_device *isp)
 {
-	struct atomisp_platform_data *pdata = NULL;
+	const struct atomisp_platform_data *pdata;
 	struct intel_v4l2_subdev_table *subdevs;
-	struct v4l2_subdev *subdev = NULL;
-	struct i2c_adapter *adapter = NULL;
-	struct i2c_board_info *board_info;
 	int raw_index = -1;
 
-	pdata = (struct atomisp_platform_data *)intel_get_v4l2_subdev_table();
+	pdata = intel_get_v4l2_subdev_table();
 	if (pdata == NULL) {
-		v4l2_err(&atomisp_dev, "no platform data available\n");
+		dev_err(isp->dev, "no platform data available\n");
 		return -ENODEV;
 	}
 
 	for (subdevs = pdata->subdevs; subdevs->type; ++subdevs) {
-		board_info = &subdevs->v4l2_subdev.board_info;
+		struct v4l2_subdev *subdev;
+		struct i2c_board_info *board_info =
+			&subdevs->v4l2_subdev.board_info;
+		struct i2c_adapter *adapter =
+			i2c_get_adapter(subdevs->v4l2_subdev.i2c_adapter_id);
 
-		adapter = i2c_get_adapter(subdevs->v4l2_subdev.i2c_adapter_id);
 		if (adapter == NULL) {
-			v4l2_err(&atomisp_dev,
-				    "Failed to find i2c adapter for subdev %s\n"
-				    , board_info->type);
+			dev_err(isp->dev,
+				"Failed to find i2c adapter for subdev %s\n",
+				board_info->type);
 			break;
 		}
 
@@ -506,27 +506,23 @@ static int atomisp_subdev_probe(struct atomisp_device *isp)
 				board_info, NULL);
 
 		if (subdev == NULL) {
-			v4l2_warn(&atomisp_dev,
-				    "Subdev %s detection fail\n",
-				    board_info->type);
+			dev_warn(isp->dev, "Subdev %s detection fail\n",
+				 board_info->type);
 			continue;
 		}
 
-		v4l2_info(&atomisp_dev,
-			    "Subdev %s successfully register\n",
-			  board_info->type);
+		dev_info(isp->dev, "Subdev %s successfully register\n",
+			 board_info->type);
 
 		switch (subdevs->type) {
 		case RAW_CAMERA:
 			raw_index = isp->input_cnt;
-			v4l2_dbg(2, dbg_level, &atomisp_dev,
-					"%s, raw_index: %d\n", __func__, raw_index);
+			dev_dbg(isp->dev, "raw_index: %d\n", raw_index);
 		case SOC_CAMERA:
-			v4l2_dbg(2, dbg_level, &atomisp_dev,
-					"%s, SOC_INDEX: %d\n", __func__, isp->input_cnt);
+			dev_dbg(isp->dev, "SOC_INDEX: %d\n", isp->input_cnt);
 			if (isp->input_cnt >= ATOM_ISP_MAX_INPUTS) {
-				v4l2_warn(&atomisp_dev,
-					"too many atomisp inputs, ignored\n");
+				dev_warn(isp->dev,
+					 "too many atomisp inputs, ignored\n");
 				break;
 			}
 
@@ -551,8 +547,7 @@ static int atomisp_subdev_probe(struct atomisp_device *isp)
 			isp->flash = subdev;
 			break;
 		default:
-			v4l2_dbg(1, dbg_level, &atomisp_dev,
-				"unkonw subdev probed\n");
+			dev_dbg(isp->dev, "unknown subdev probed\n");
 			break;
 		}
 
@@ -568,8 +563,7 @@ static int atomisp_subdev_probe(struct atomisp_device *isp)
 
 	/*Check camera for at least one subdev in it */
 	if (!isp->inputs[0].camera) {
-		v4l2_err(&atomisp_dev, "atomisp: "
-		       "no camera attached or fail to detect\n");
+		dev_err(isp->dev, "no camera attached or fail to detect\n");
 		return -ENODEV;
 	}
 
