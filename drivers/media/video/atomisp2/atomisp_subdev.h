@@ -40,15 +40,20 @@ enum atomisp_subdev_input_entity {
 };
 
 #define ATOMISP_SUBDEV_PAD_SINK			0
-#define ATOMISP_SUBDEV_PAD_SOURCE_MO		1 /* regular output */
-#define ATOMISP_SUBDEV_PAD_SOURCE_SS		2 /* snapshot output */
-#define ATOMISP_SUBDEV_PAD_SOURCE_VF		3 /* viewfinder output */
+/* capture output for still and video frames */
+#define ATOMISP_SUBDEV_PAD_SOURCE_CAPTURE	1
+/* viewfinder output for downscaled capture output */
+#define ATOMISP_SUBDEV_PAD_SOURCE_VF		2
+/* preview output for display */
+#define ATOMISP_SUBDEV_PAD_SOURCE_PREVIEW	3
 #define ATOMISP_SUBDEV_PADS_NUM			4
 
-#define ATOMISP_PIPE_MASTEROUTPUT		0
-#define ATOMISP_PIPE_SNAPSHOT			1
-#define ATOMISP_PIPE_VIEWFINDER			2
-#define ATOMISP_PIPE_FILEINPUT			3
+enum atomisp_pipe_type {
+	ATOMISP_PIPE_CAPTURE,
+	ATOMISP_PIPE_VIEWFINDER,
+	ATOMISP_PIPE_PREVIEW,
+	ATOMISP_PIPE_FILEINPUT
+};
 
 struct atomisp_3a_dis_stat_buf {
 	union sh_css_s3a_data s3a_data;
@@ -80,7 +85,7 @@ struct atomisp_video_pipe {
 	 * operations atomic. */
 	spinlock_t irq_lock;
 	bool opened;
-	unsigned int pipe_type;
+	enum atomisp_pipe_type pipe_type;
 
 	struct atomisp_device *isp;
 	struct atomisp_fmt *out_fmt;
@@ -95,9 +100,9 @@ struct atomisp_sub_device {
 	enum atomisp_subdev_input_entity input;
 	unsigned int output;
 	struct atomisp_video_pipe video_in;
-	struct atomisp_video_pipe video_out_mo; /* main output */
-	struct atomisp_video_pipe video_out_ss; /* downscaled capture output */
-	struct atomisp_video_pipe video_out_vf; /* view finder */
+	struct atomisp_video_pipe video_out_capture; /* capture output */
+	struct atomisp_video_pipe video_out_vf;      /* viewfinder output */
+	struct atomisp_video_pipe video_out_preview; /* preview output */
 	/* struct isp_subdev_params params; */
 	spinlock_t lock;
 	struct atomisp_device *isp;

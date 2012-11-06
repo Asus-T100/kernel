@@ -73,26 +73,26 @@ static int file_input_s_stream(struct v4l2_subdev *sd, int enable)
 		case CI_MODE_STILL_CAPTURE:
 			if (isp->sw_contex.bypass)
 				/* copy mode */
-				height = isp->main_format->out.height +
+				height = isp->capture_format->out.height +
 				    ((isp->input_format->out.height -
-				      isp->main_format->out.height) >> 1) + 1;
+				     isp->capture_format->out.height) >> 1) + 1;
 			else
 				/* primary mode */
-				height = isp->main_format->out.height +
+				height = isp->capture_format->out.height +
 				    ((isp->input_format->out.height -
-				      isp->main_format->out.height) >> 1) + 5;
+				     isp->capture_format->out.height) >> 1) + 5;
 			break;
 		case CI_MODE_PREVIEW:
 			/* preview mode */
-			height = isp->main_format->out.height +
+			height = isp->capture_format->out.height +
 			    ((isp->input_format->out.height -
-			      isp->main_format->out.height) >> 1) + 5;
+			      isp->capture_format->out.height) >> 1) + 5;
 			break;
 		default:
 			/* video mode */
-			height = isp->main_format->out.height +
+			height = isp->capture_format->out.height +
 			    ((isp->input_format->out.height -
-			      isp->main_format->out.height) >> 1) + 5;
+			      isp->capture_format->out.height) >> 1) + 5;
 			break;
 		}
 	}

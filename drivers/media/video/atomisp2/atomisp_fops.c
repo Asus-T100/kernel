@@ -362,7 +362,7 @@ int atomisp_init_struct(struct atomisp_device *isp)
 	if (isp == NULL)
 		return -EINVAL;
 
-	isp->main_format = NULL;
+	isp->capture_format = NULL;
 	isp->vf_format = NULL;
 	isp->input_format = NULL;
 	isp->sw_contex.run_mode = CI_MODE_STILL_CAPTURE;
@@ -538,9 +538,9 @@ error:
 
 static inline int atomisp_openpipes(struct atomisp_device *isp)
 {
-	return (isp->isp_subdev.video_out_vf.opened ? 1 : 0) +
-	       (isp->isp_subdev.video_out_ss.opened ? 1 : 0) +
-	       (isp->isp_subdev.video_out_mo.opened ? 1 : 0);
+	return (isp->isp_subdev.video_out_preview.opened ? 1 : 0) +
+	       (isp->isp_subdev.video_out_vf.opened ? 1 : 0) +
+	       (isp->isp_subdev.video_out_capture.opened ? 1 : 0);
 }
 
 static int atomisp_release(struct file *file)
@@ -586,7 +586,7 @@ static int atomisp_release(struct file *file)
 	kfree(pipe->format);
 	pipe->format = NULL;
 
-	isp->main_format = NULL;
+	isp->capture_format = NULL;
 
 	kfree(pipe->out_fmt);
 	pipe->out_fmt = NULL;
@@ -799,7 +799,7 @@ static int atomisp_mmap(struct file *file, struct vm_area_struct *vma)
 		pipe->format->out.height * 2;
 
 	/* mmap for ISP offline raw data */
-	if ((pipe->pipe_type == ATOMISP_PIPE_MASTEROUTPUT) &&
+	if ((pipe->pipe_type == ATOMISP_PIPE_CAPTURE) &&
 	    (vma->vm_pgoff == (ISP_PARAM_MMAP_OFFSET >> PAGE_SHIFT))) {
 		if (isp->params.online_process != 0) {
 			ret = -EINVAL;

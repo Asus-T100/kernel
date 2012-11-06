@@ -269,7 +269,7 @@ static int atomisp_cropcap(struct file *file, void *fh,
 	}
 
 	/*Only capture node supports cropcap*/
-	if (pipe->pipe_type != ATOMISP_PIPE_MASTEROUTPUT)
+	if (pipe->pipe_type != ATOMISP_PIPE_CAPTURE)
 		return 0;
 
 	mutex_lock(&isp->mutex);
@@ -415,8 +415,8 @@ static int atomisp_s_input(struct file *file, void *fh, unsigned int input)
 		goto error;
 	}
 
-	if ((isp->isp_subdev.video_out_vf.capq.streaming == 1) ||
-	    (isp->isp_subdev.video_out_mo.capq.streaming == 1) ||
+	if ((isp->isp_subdev.video_out_preview.capq.streaming == 1) ||
+	    (isp->isp_subdev.video_out_capture.capq.streaming == 1) ||
 	    (isp->isp_subdev.video_in.capq.streaming == 1)) {
 		v4l2_err(&atomisp_dev,
 			 "ISP is still streaming, stop first\n");
@@ -884,7 +884,7 @@ int atomisp_reqbufs(struct file *file, void *fh,
 	}
 
 /*
-	if (pipe->pipe_type != ATOMISP_PIPE_MASTEROUTPUT &&
+	if (pipe->pipe_type != ATOMISP_PIPE_CAPTURE &&
 	    !atomisp_is_viewfinder_support(isp))
 		return -EINVAL;
 */
@@ -896,8 +896,9 @@ int atomisp_reqbufs(struct file *file, void *fh,
 	mutex_lock(&isp->mutex);
 	switch (isp->sw_contex.run_mode) {
 	case CI_MODE_STILL_CAPTURE:
-		if (isp->main_format &&
-		    isp->main_format->out_sh_fmt != SH_CSS_FRAME_FORMAT_RAW) {
+		if (isp->capture_format &&
+		    isp->capture_format->out_sh_fmt !=
+		    SH_CSS_FRAME_FORMAT_RAW) {
 			if (sh_css_capture_get_viewfinder_frame_info(&vf_info))
 				goto error;
 		}
@@ -932,10 +933,10 @@ int atomisp_reqbufs(struct file *file, void *fh,
 	}
 
 	switch (pipe->pipe_type) {
-	case ATOMISP_PIPE_MASTEROUTPUT:
+	case ATOMISP_PIPE_CAPTURE:
 		frame_info = out_info;
 		break;
-	case ATOMISP_PIPE_SNAPSHOT:
+	case ATOMISP_PIPE_PREVIEW:
 	case ATOMISP_PIPE_VIEWFINDER:
 		frame_info = vf_info;
 		break;
@@ -1079,8 +1080,8 @@ static int atomisp_qbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 
 		switch (isp->sw_contex.run_mode) {
 		case CI_MODE_STILL_CAPTURE:
-			if (isp->main_format &&
-			    (isp->main_format->out_sh_fmt !=
+			if (isp->capture_format &&
+			    (isp->capture_format->out_sh_fmt !=
 				SH_CSS_FRAME_FORMAT_RAW) &&
 			sh_css_capture_get_viewfinder_frame_info(&vf_info))
 				goto error;
@@ -1108,11 +1109,11 @@ static int atomisp_qbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 #endif
 
 		switch (pipe->pipe_type) {
-		case ATOMISP_PIPE_MASTEROUTPUT:
+		case ATOMISP_PIPE_CAPTURE:
 			frame_info = out_info;
 			break;
-		case ATOMISP_PIPE_SNAPSHOT:
 		case ATOMISP_PIPE_VIEWFINDER:
+		case ATOMISP_PIPE_PREVIEW:
 			frame_info = vf_info;
 			break;
 		/*TODO: fileinput support missing
@@ -1273,7 +1274,7 @@ int atomisp_get_css_buf_type(struct atomisp_device *isp,
 	switch (isp->sw_contex.run_mode) {
 	case CI_MODE_STILL_CAPTURE:
 	case CI_MODE_VIDEO:
-		if (pipe->pipe_type == ATOMISP_PIPE_MASTEROUTPUT)
+		if (pipe->pipe_type == ATOMISP_PIPE_CAPTURE)
 			buf_type = SH_CSS_BUFFER_TYPE_OUTPUT_FRAME;
 		else
 			buf_type = SH_CSS_BUFFER_TYPE_VF_OUTPUT_FRAME;
@@ -1378,7 +1379,8 @@ static int atomisp_streamon(struct file *file, void *fh,
 	/* for capture pipe + raw output,  ISP only support output main*/
 	if (isp->sw_contex.run_mode == CI_MODE_VIDEO ||
 		(isp->sw_contex.run_mode == CI_MODE_STILL_CAPTURE &&
-			(isp->main_format->out_sh_fmt != SH_CSS_FRAME_FORMAT_RAW)))
+			(isp->capture_format->out_sh_fmt !=
+			 SH_CSS_FRAME_FORMAT_RAW)))
 		goto done;
 
 start_workq:
@@ -1438,9 +1440,9 @@ int atomisp_streamoff(struct file *file, void *fh,
 	struct video_device *vdev = video_devdata(file);
 	struct atomisp_device *isp = video_get_drvdata(vdev);
 	struct atomisp_video_pipe *pipe = atomisp_to_video_pipe(vdev);
+	struct atomisp_video_pipe *capture_pipe = NULL;
 	struct atomisp_video_pipe *vf_pipe = NULL;
-	struct atomisp_video_pipe *ss_pipe = NULL;
-	struct atomisp_video_pipe *mo_pipe = NULL;
+	struct atomisp_video_pipe *preview_pipe = NULL;
 	struct videobuf_buffer *vb = NULL;
 	int ret;
 	unsigned long flags;
@@ -1506,17 +1508,17 @@ int atomisp_streamoff(struct file *file, void *fh,
 	cancel_work_sync(&isp->wdt_work);
 
 	/* cancel work queue*/
-	if (isp->isp_subdev.video_out_mo.opened) {
-		mo_pipe = &isp->isp_subdev.video_out_mo;
-		wake_up_interruptible(&mo_pipe->capq.wait);
-	}
-	if (isp->isp_subdev.video_out_ss.opened) {
-		ss_pipe = &isp->isp_subdev.video_out_ss;
-		wake_up_interruptible(&ss_pipe->capq.wait);
+	if (isp->isp_subdev.video_out_capture.opened) {
+		capture_pipe = &isp->isp_subdev.video_out_capture;
+		wake_up_interruptible(&capture_pipe->capq.wait);
 	}
 	if (isp->isp_subdev.video_out_vf.opened) {
 		vf_pipe = &isp->isp_subdev.video_out_vf;
 		wake_up_interruptible(&vf_pipe->capq.wait);
+	}
+	if (isp->isp_subdev.video_out_preview.opened) {
+		preview_pipe = &isp->isp_subdev.video_out_preview;
+		wake_up_interruptible(&preview_pipe->capq.wait);
 	}
 	isp->sw_contex.work_queued = false;
 
@@ -1544,13 +1546,9 @@ int atomisp_streamoff(struct file *file, void *fh,
 	 * vf pipes
 	 */
 	/*stream off sensor, power off is called in senor driver*/
-	if (pipe->pipe_type == ATOMISP_PIPE_VIEWFINDER &&
-	    isp->isp_subdev.video_out_mo.capq.streaming == 1) {
-		mutex_unlock(&isp->mutex);
-		return 0;
-	}
-	if (pipe->pipe_type == ATOMISP_PIPE_SNAPSHOT &&
-	    isp->isp_subdev.video_out_mo.capq.streaming == 1) {
+	if ((pipe->pipe_type == ATOMISP_PIPE_PREVIEW ||
+	     pipe->pipe_type == ATOMISP_PIPE_VIEWFINDER) &&
+	    isp->isp_subdev.video_out_capture.capq.streaming == 1) {
 		mutex_unlock(&isp->mutex);
 		return 0;
 	}

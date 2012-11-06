@@ -322,14 +322,11 @@ struct atomisp_device {
 	struct atomisp_tvnorm *tvnorm;
 	bool isp3a_stat_ready;
 
-	struct atomisp_video_pipe_format *main_format;
-	struct atomisp_video_pipe_format *snapshot_format;
+	struct atomisp_video_pipe_format *capture_format;
 	struct atomisp_video_pipe_format *vf_format;
 	struct atomisp_video_pipe_format *input_format;
 	struct sh_css_frame *vf_frame; /* TODO: needed? */
-	struct sh_css_frame *ss_frame; /* TODO: needed? */
-	struct sh_css_frame *regular_output_frame; /* TODO: needed? */
-	struct sh_css_frame *raw_output_frame; /* TODO: needed? */
+	struct sh_css_frame *raw_output_frame;
 	enum atomisp_frame_status frame_status[VIDEO_MAX_FRAME];
 
 	int input_cnt;
@@ -353,10 +350,6 @@ struct atomisp_device {
 	struct timer_list wdt;
 	atomic_t wdt_count;
 	enum atomisp_frame_status fr_status;
-
-	struct videobuf_buffer *vb_capture; /* TODO: needed? */
-	struct videobuf_buffer *vb_snapshot; /* TODO: needed? */
-	struct videobuf_buffer *vb_preview; /* TODO: needed? */
 
 	atomic_t sequence;
 };
