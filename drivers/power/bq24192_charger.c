@@ -286,6 +286,7 @@ struct bq24192_chip {
 	int curr_chrg;
 	int input_curr;
 	int cached_chrg_cur_cntl;
+	bool is_pwr_good;
 	struct power_supply_charger_cap cached_cap;
 	/* Wake lock to prevent platform from going to S3 when charging */
 	struct wake_lock wakelock;
@@ -390,7 +391,7 @@ static int __init ctp_sfi_table_populate(struct sfi_table_header *table)
 	struct ctp_batt_sfi_prop *pentry;
 	struct bq24192_chip *chip = i2c_get_clientdata(bq24192_client);
 	int totentrs = 0, totlen = 0;
-	int i;
+
 	sb = (struct sfi_table_simple *)table;
 	if (!sb) {
 		dev_warn(&chip->client->dev, "SFI: Unable to map BATT signature\n");
@@ -1517,7 +1518,7 @@ static  bool bq24192_check_charge_full(struct bq24192_chip *chip, int vref)
 	struct bq24192_chrg_regs reg;
 
 	/* Read voltage and current from FG driver */
-	volt_now = fg_chip_get_property(POWER_SUPPLY_PROP_VOLTAGE_NOW);
+	volt_now = fg_chip_get_property(POWER_SUPPLY_PROP_VOLTAGE_OCV);
 	if (volt_now == -ENODEV || volt_now == -EINVAL) {
 		dev_warn(&chip->client->dev, "Can't read voltage from FG\n");
 		return false;
@@ -1530,6 +1531,18 @@ static  bool bq24192_check_charge_full(struct bq24192_chip *chip, int vref)
 	if (ret < 0) {
 		dev_err(&chip->client->dev, "i2c read err:%d\n", ret);
 		return is_full;
+	}
+
+	/*
+	 * Check if the charger power is good. This will be used in deciding
+	 * whether charging should be enabled or not.
+	 */
+	if (!(ret & SYSTEM_STAT_PWR_GOOD)) {
+		chip->is_pwr_good = false;
+		dev_info(&chip->client->dev, "Pwr is not good\n");
+	} else {
+		chip->is_pwr_good = true;
+		dev_info(&chip->client->dev, "Pwr is good\n");
 	}
 
 	if ((ret & SYSTEM_STAT_CHRG_MASK) == SYSTEM_STAT_CHRG_DONE) {
@@ -1700,7 +1713,7 @@ static void bq24192_maintenance_worker(struct work_struct *work)
 	dev_info(&chip->client->dev, "temperature zone idx = %d\n", idx);
 
 	/* read the battery voltage */
-	vbatt = fg_chip_get_property(POWER_SUPPLY_PROP_VOLTAGE_NOW);
+	vbatt = fg_chip_get_property(POWER_SUPPLY_PROP_VOLTAGE_OCV);
 	if (vbatt == -ENODEV || vbatt == -EINVAL) {
 		dev_err(&chip->client->dev, "Can't read voltage from FG\n");
 		goto sched_maint_work;
@@ -1902,15 +1915,30 @@ sched_maint_work:
 	if ((chip->chrg_type == POWER_SUPPLY_TYPE_USB_HOST))
 		battery_status = POWER_SUPPLY_STATUS_DISCHARGING;
 
+	if (!chip->is_pwr_good)
+		battery_status = POWER_SUPPLY_STATUS_NOT_CHARGING;
+
 	if ((battery_status == POWER_SUPPLY_STATUS_NOT_CHARGING) ||
 		(battery_status == POWER_SUPPLY_STATUS_DISCHARGING)) {
 		chip->online = 0;
 	} else {
 		chip->online = 1;
 	}
-	mutex_lock(&chip->event_lock);
-	chip->batt_status = battery_status;
-	mutex_unlock(&chip->event_lock);
+
+	dev_info(&chip->client->dev, "battery_status %dchip->batt_status %d\n",
+			battery_status, chip->batt_status);
+
+	if (chip->batt_status != battery_status) {
+		mutex_lock(&chip->event_lock);
+		chip->batt_status = battery_status;
+		mutex_unlock(&chip->event_lock);
+
+		/* send power_supply_changed only when there is
+		 * status change
+		 */
+		power_supply_changed(&chip->usb);
+	}
+
 	schedule_delayed_work(&chip->maint_chrg_wrkr, MAINTENANCE_CHRG_JIFFIES);
 	dev_info(&chip->client->dev, "battery mode is  %d\n", chip->batt_mode);
 	dev_dbg(&chip->client->dev, "- %s\n", __func__);
