@@ -175,6 +175,7 @@ union intel_mid_dma_cfg_hi {
  * @in_use: bool representing if ch is in use or not
  * @raw_tfr: raw trf interrupt received
  * @raw_block: raw block interrupt received
+ * @block_intr_status: bool representing if block intr is enabled or not
  */
 struct intel_mid_dma_chan {
 	struct dma_chan		chan;
@@ -193,6 +194,7 @@ struct intel_mid_dma_chan {
 	u32			raw_block;
 	struct intel_mid_dma_slave *mid_slave;
 	struct dma_pool		*lli_pool;
+	bool block_intr_status;
 };
 
 static inline struct intel_mid_dma_chan *to_intel_mid_dma_chan(
@@ -221,6 +223,8 @@ enum intel_mid_dma_state {
  * @block_size: Block size of DMA transfer supported (from drv_data)
  * @pimr_mask: MMIO register addr for periphral interrupt (from drv_data)
  * @state: dma PM device state
+ * @tfr_intr_mask: hold the status of tfr intr mask register
+ * @block_intr_mask: hold the status of block intr mask register
  */
 struct middma_device {
 	struct pci_dev		*pdev;
@@ -239,6 +243,8 @@ struct middma_device {
 	unsigned int		pimr_base;
 	unsigned int		dword_trf;
 	unsigned int		pimr_offset;
+	unsigned long		tfr_intr_mask;
+	unsigned long		block_intr_mask;
 	enum intel_mid_dma_state state;
 };
 

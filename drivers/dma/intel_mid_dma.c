@@ -80,10 +80,8 @@ static int get_ch_index(int status, unsigned int base)
 {
 	int i;
 	for (i = 0; i < MAX_CHAN; i++) {
-		if (status & (1 << (i + base))) {
-			pr_debug("MDMA: index %d New status %x\n", i, status);
+		if (status & (1 << (i + base)))
 			return i;
-		}
 	}
 	return -1;
 }
@@ -215,10 +213,13 @@ static void dmac1_unmask_periphral_intr(struct intel_mid_dma_chan *midc)
  */
 static void enable_dma_interrupt(struct intel_mid_dma_chan *midc)
 {
+	struct middma_device *mid = to_middma_device(midc->chan.device);
+
 	dmac1_unmask_periphral_intr(midc);
 
 	/*en ch interrupts*/
 	iowrite32(UNMASK_INTR_REG(midc->ch_id), midc->dma_base + MASK_TFR);
+	set_bit(midc->ch_id, &mid->tfr_intr_mask);
 	iowrite32(UNMASK_INTR_REG(midc->ch_id), midc->dma_base + MASK_ERR);
 	return;
 }
@@ -238,7 +239,9 @@ static void disable_dma_interrupt(struct intel_mid_dma_chan *midc)
 
 	/*Check LPE PISR, make sure fwd is disabled*/
 	iowrite32(MASK_INTR_REG(midc->ch_id), midc->dma_base + MASK_BLOCK);
+	clear_bit(midc->ch_id, &mid->block_intr_mask);
 	iowrite32(MASK_INTR_REG(midc->ch_id), midc->dma_base + MASK_TFR);
+	clear_bit(midc->ch_id, &mid->tfr_intr_mask);
 	iowrite32(MASK_INTR_REG(midc->ch_id), midc->dma_base + MASK_ERR);
 	if (mid->pimr_mask && !mid->dword_trf) {
 		pimr = readl(mid->mask_reg + mid->pimr_offset);
@@ -381,16 +384,14 @@ static void midc_descriptor_complete(struct intel_mid_dma_chan *midc,
 	}
 	if (midc->raw_tfr) {
 		list_del(&desc->desc_node);
-		spin_unlock_bh(&midc->lock);
 		desc->status = DMA_SUCCESS;
-		if (desc->lli != NULL && desc->lli->llp != NULL) {
+		if (desc->lli != NULL && desc->lli->llp != NULL)
 			pci_pool_free(desc->lli_pool, desc->lli,
 						desc->lli_phys);
-		}
-		spin_lock_bh(&midc->lock);
 		list_add(&desc->desc_node, &midc->free_list);
-		spin_unlock_bh(&midc->lock);
 		midc->busy = false;
+		midc->raw_tfr = 0;
+		spin_unlock_bh(&midc->lock);
 	} else {
 		spin_unlock_bh(&midc->lock);
 	}
@@ -420,7 +421,6 @@ static void midc_scan_descriptors(struct middma_device *mid,
 				struct intel_mid_dma_chan *midc)
 {
 	struct intel_mid_dma_desc *desc = NULL, *_desc = NULL;
-
 	/*tx is complete*/
 	list_for_each_entry_safe(desc, _desc, &midc->active_list, desc_node) {
 		if (desc->status == DMA_IN_PROGRESS)
@@ -650,18 +650,13 @@ static int intel_mid_dma_device_control(struct dma_chan *chan,
 	iowrite32(cfg_lo.cfg_lo, midc->ch_regs + CFG_LOW);
 	iowrite32(DISABLE_CHANNEL(midc->ch_id), mid->dma_base + DMA_CHAN_EN);
 	midc->busy = false;
-
 	midc->descs_allocated = 0;
 
 	list_for_each_entry_safe(desc, _desc, &midc->active_list, desc_node) {
 		list_del(&desc->desc_node);
-		spin_unlock_bh(&midc->lock);
-		if (desc->lli != NULL) {
+		if (desc->lli != NULL)
 			pci_pool_free(desc->lli_pool, desc->lli,
 						desc->lli_phys);
-			pci_pool_destroy(desc->lli_pool);
-		}
-		spin_lock_bh(&midc->lock);
 		list_add(&desc->desc_node, &midc->free_list);
 	}
 	spin_unlock_bh(&midc->lock);
@@ -836,6 +831,7 @@ static struct dma_async_tx_descriptor *intel_mid_dma_chan_prep_desc(
 			unsigned long src_sg_len,
 			enum dma_data_direction direction)
 {
+	struct middma_device *mid = NULL;
 	struct intel_mid_dma_chan *midc = NULL;
 	struct intel_mid_dma_slave *mids = NULL;
 	struct intel_mid_dma_desc *desc = NULL;
@@ -846,6 +842,7 @@ static struct dma_async_tx_descriptor *intel_mid_dma_chan_prep_desc(
 	midc = to_intel_mid_dma_chan(chan);
 	BUG_ON(!midc);
 
+	mid = to_middma_device(midc->chan.device);
 	mids = midc->mid_slave;
 	BUG_ON(!mids);
 
@@ -886,6 +883,21 @@ static struct dma_async_tx_descriptor *intel_mid_dma_chan_prep_desc(
 		return NULL;
 	}
 	midc_lli_fill_sg(midc, desc, src_sg, dst_sg, src_sg_len, flags);
+	if (flags & DMA_PREP_INTERRUPT) {
+		/* Enable Block intr, disable TFR intr.
+		* It's not required to enable TFR, when Block intr is enabled
+		* Otherwise, for last block we will end up in invoking calltxd
+		* two times */
+
+		iowrite32(MASK_INTR_REG(midc->ch_id),
+					midc->dma_base + MASK_TFR);
+		clear_bit(midc->ch_id, &mid->tfr_intr_mask);
+		iowrite32(UNMASK_INTR_REG(midc->ch_id),
+					midc->dma_base + MASK_BLOCK);
+		set_bit(midc->ch_id, &mid->block_intr_mask);
+		midc->block_intr_status = true;
+		pr_debug("MDMA: Enabled Block Interrupt\n");
+	}
 	return &desc->txd;
 
 }
@@ -983,6 +995,9 @@ static void intel_mid_dma_free_chan_resources(struct dma_chan *chan)
 	/* Disable CH interrupts */
 	disable_dma_interrupt(midc);
 	clear_dma_channel_interrupt(midc);
+
+	midc->block_intr_status = false;
+
 	spin_lock_bh(&midc->lock);
 	midc->descs_allocated = 0;
 	list_for_each_entry_safe(desc, _desc, &midc->active_list, desc_node) {
@@ -997,6 +1012,7 @@ static void intel_mid_dma_free_chan_resources(struct dma_chan *chan)
 		list_del(&desc->desc_node);
 		pci_pool_free(mid->dma_pool, desc, desc->txd.phys);
 	}
+	midc->raw_tfr = 0;
 	spin_unlock_bh(&midc->lock);
 
 	if (midc->lli_pool) {
@@ -1007,6 +1023,8 @@ static void intel_mid_dma_free_chan_resources(struct dma_chan *chan)
 	midc->in_use = false;
 	midc->busy = false;
 
+	/* Disable the channel */
+	iowrite32(DISABLE_CHANNEL(midc->ch_id), mid->dma_base + DMA_CHAN_EN);
 	pm_runtime_put(&mid->pdev->dev);
 }
 
@@ -1060,9 +1078,10 @@ static int intel_mid_dma_alloc_chan_resources(struct dma_chan *chan)
 		i = ++midc->descs_allocated;
 		list_add_tail(&desc->desc_node, &midc->free_list);
 	}
+	midc->busy = false;
 	spin_unlock_bh(&midc->lock);
 	midc->in_use = true;
-	midc->busy = false;
+	midc->block_intr_status = false;
 	pr_debug("MID_DMA: Desc alloc done ret: %d desc\n", i);
 	return i;
 }
@@ -1091,17 +1110,17 @@ static void dma_tasklet(unsigned long data)
 {
 	struct middma_device *mid = NULL;
 	struct intel_mid_dma_chan *midc = NULL;
-	u32 status, raw_tfr;
+	u32 status, raw_tfr, raw_block;
 	int i;
-
 	mid = (struct middma_device *)data;
 	if (mid == NULL) {
 		pr_err("ERR_MDMA: tasklet Null param\n");
 		return;
 	}
 	raw_tfr = ioread32(mid->dma_base + RAW_TFR);
-	status = raw_tfr;
-	pr_debug("MDMA: in tasklet for device %x, raw_tfr:%#x\n", mid->pci_id, status);
+	status = raw_tfr & mid->tfr_intr_mask;
+	pr_debug("MDMA: in tasklet for device %x\n", mid->pci_id);
+	pr_debug("tfr_mask:%#x, raw_tfr:%#x, status:%#x\n", mid->tfr_intr_mask, raw_tfr, status);
 	while (status) {
 		/*txn interrupt*/
 		i = get_ch_index(status, mid->chan_base);
@@ -1118,14 +1137,47 @@ static void dma_tasklet(unsigned long data)
 		}
 		pr_debug("MDMA:Tx complete interrupt %x, Ch No %d Index %d\n",
 				status, midc->ch_id, i);
-		midc->raw_tfr = raw_tfr;
 		spin_lock_bh(&midc->lock);
+		midc->raw_tfr = raw_tfr;
 		/*clearing this interrupts first*/
 		iowrite32((1 << midc->ch_id), mid->dma_base + CLEAR_TFR);
 		midc_scan_descriptors(mid, midc);
 		pr_debug("MDMA:Scan of desc... complete, unmasking\n");
 		iowrite32(UNMASK_INTR_REG(midc->ch_id),
 					mid->dma_base + MASK_TFR);
+		spin_unlock_bh(&midc->lock);
+	}
+
+	raw_block = ioread32(mid->dma_base + RAW_BLOCK);
+	status = raw_block & mid->block_intr_mask;
+	pr_debug("MDMA: in tasklet for device %x\n", mid->pci_id);
+	pr_debug("block_mask:%#x, raw_block%#x, status:%#x\n", mid->block_intr_mask, raw_block, status);
+	while (status) {
+		/*txn interrupt*/
+		i = get_ch_index(status, mid->chan_base);
+		if (i < 0) {
+			pr_err("ERR_MDMA:Invalid ch index %x\n", i);
+			return;
+		}
+		/* clear the status bit */
+		status = status & ~(1 << (i + mid->chan_base));
+		midc = &mid->ch[i];
+		if (midc == NULL) {
+			pr_err("ERR_MDMA:Null param midc\n");
+			return;
+		}
+		pr_debug("MDMA:Tx complete interrupt raw block  %x, Ch No %d Index %d\n",
+				status, midc->ch_id, i);
+		spin_lock_bh(&midc->lock);
+		/*clearing this interrupts first*/
+
+		midc->raw_block = raw_block;
+		iowrite32((1 << midc->ch_id), mid->dma_base + CLEAR_BLOCK);
+		if (midc->block_intr_status)
+			midc_scan_descriptors(mid, midc);
+
+		iowrite32(UNMASK_INTR_REG(midc->ch_id),
+					mid->dma_base + MASK_BLOCK);
 		spin_unlock_bh(&midc->lock);
 	}
 
@@ -1202,16 +1254,18 @@ static irqreturn_t intel_mid_dma_interrupt(int irq, void *data)
 
 	/*DMA Interrupt*/
 	pr_debug("MDMA:Got an interrupt on irq %d\n", irq);
-	pr_debug("MDMA: Status %x, Mask %x\n", tfr_status, mid->intr_mask);
+	pr_debug("MDMA: trf_Status %x, Mask %x\n", tfr_status, mid->intr_mask);
 	if (tfr_status) {
 		/*need to disable intr*/
 		iowrite32((tfr_status << INT_MASK_WE),
 						mid->dma_base + MASK_TFR);
 		call_tasklet = 1;
 	}
-	/* we are not handling block intr, so upfront clear them */
 	if (block_status) {
-		iowrite32(block_status, mid->dma_base + CLEAR_BLOCK);
+		/*need to disable intr*/
+		iowrite32((block_status << INT_MASK_WE),
+						mid->dma_base + MASK_BLOCK);
+		call_tasklet = 1;
 	}
 	if (err_status) {
 		iowrite32((err_status << INT_MASK_WE),
