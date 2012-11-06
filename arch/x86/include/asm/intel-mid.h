@@ -400,5 +400,7 @@ extern void intel_mid_rtc_init(void);
 
 extern int get_force_shutdown_occured(void);
 
+extern const struct atomisp_platform_data *intel_get_v4l2_subdev_table(void);
+
 #define INTEL_MID_IRQ_OFFSET 0x100
 #endif /* _ASM_X86_INTEL_MID_H */

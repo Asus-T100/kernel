@@ -18,7 +18,12 @@ extern const struct intel_v4l2_subdev_id v4l2_ids[] __attribute__((weak));
 
 /* MFLD iCDK camera sensor GPIOs */
 
+/* Obsolete pin, maybe used by old MFLD iCDK */
 #define GP_CAMERA_0_POWER_DOWN          "cam0_vcm_2p8"
+/* Camera VDD 1.8V Switch */
+#define GP_CAMERA_1P8			"camera_on_n"
+/* Camera0 Standby pin control */
+#define GP_CAMERA_0_STANDBY		"camera_0_power"
 #define GP_CAMERA_1_POWER_DOWN          "camera_1_power"
 #define GP_CAMERA_0_RESET               "camera_0_reset"
 #define GP_CAMERA_1_RESET               "camera_1_reset"

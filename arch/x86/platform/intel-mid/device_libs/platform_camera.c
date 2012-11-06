@@ -14,6 +14,7 @@
 #include <linux/i2c.h>
 #include <linux/lnw_gpio.h>
 #include <linux/atomisp_platform.h>
+#include <linux/module.h>
 #include <media/v4l2-subdev.h>
 #include <asm/intel-mid.h>
 #include "platform_camera.h"
@@ -139,7 +140,8 @@ void intel_ignore_i2c_device_register(struct sfi_device_table_entry *pentry,
 	strncpy(i2c_info.type, pentry->name, SFI_NAME_LEN);
 	i2c_info.irq = ((pentry->irq == (u8)0xff) ? 0 : pentry->irq);
 	i2c_info.addr = pentry->addr;
-	pr_info("I2C bus = %d, name = %16.16s, irq = 0x%2x, addr = 0x%x\n",
+	pr_info("I2C bus = %d, name = %16.16s, "
+		"irq = 0x%2x, addr = 0x%x\n",
 		pentry->host_num,
 		i2c_info.type,
 		i2c_info.irq,
