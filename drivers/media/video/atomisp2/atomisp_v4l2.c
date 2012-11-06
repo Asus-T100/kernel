@@ -485,7 +485,7 @@ static int atomisp_subdev_probe(struct atomisp_device *isp)
 	pdata = intel_get_v4l2_subdev_table();
 	if (pdata == NULL) {
 		dev_err(isp->dev, "no platform data available\n");
-		return -ENODEV;
+		return 0;
 	}
 
 	for (subdevs = pdata->subdevs; subdevs->type; ++subdevs) {
