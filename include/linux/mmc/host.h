@@ -277,6 +277,7 @@ struct mmc_host {
 #define MMC_CAP2_INIT_CARD_SYNC	(1 << 3)	/* init card in sync mode */
 #define MMC_CAP2_POWEROFF_NOTIFY (1 << 4)	/* Notify poweroff supported */
 #define MMC_CAP2_LED_SUPPORT	(1 << 5)	/* led support */
+#define MMC_CAP2_POLL_R1B_BUSY	(1 << 6)	/* host poll R1B busy*/
 
 	mmc_pm_flag_t		pm_caps;	/* supported pm features */
 

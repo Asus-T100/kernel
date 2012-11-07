@@ -1847,7 +1847,7 @@ static int mmc_do_erase(struct mmc_card *card, unsigned int from,
 	memset(&cmd, 0, sizeof(struct mmc_command));
 	cmd.opcode = MMC_ERASE;
 	cmd.arg = arg;
-	if (card->quirks & MMC_QUIRK_POLL_WAIT_BUSY) {
+	if (card->host->caps2 & MMC_CAP2_POLL_R1B_BUSY) {
 		cmd.flags = MMC_RSP_SPI_R1 | MMC_RSP_R1 | MMC_CMD_AC;
 		if (card->host->max_discard_to)
 			cmd.cmd_timeout_ms = card->host->max_discard_to - 1;
@@ -1867,7 +1867,7 @@ static int mmc_do_erase(struct mmc_card *card, unsigned int from,
 	}
 
 	if (mmc_host_is_spi(card->host) &&
-			!(card->quirks & MMC_QUIRK_POLL_WAIT_BUSY))
+			!(card->host->caps2 & MMC_CAP2_POLL_R1B_BUSY))
 		goto out;
 
 	do {
@@ -2090,20 +2090,17 @@ unsigned int mmc_calc_max_discard(struct mmc_card *card)
 	if (!host->max_discard_to)
 		return UINT_MAX;
 
+	if (host->caps2 & MMC_CAP2_POLL_R1B_BUSY)
+		return UINT_MAX;
+
 	max_discard = mmc_do_calc_max_discard(card, MMC_ERASE_ARG);
 	if (mmc_can_trim(card)) {
 		max_trim = mmc_do_calc_max_discard(card, MMC_TRIM_ARG);
-		if (max_trim == 0) {
-			/* use poll quirk */
-			card->quirks |= MMC_QUIRK_POLL_WAIT_BUSY;
-			max_trim = max_discard;
-		}
+		if (max_trim < max_discard)
+			max_discard = max_trim;
 	} else if (max_discard < card->erase_size) {
 		max_discard = 0;
 	}
-
-	if (mmc_can_secure_erase_trim(card) && max_discard != 0)
-		card->quirks |= MMC_QUIRK_POLL_WAIT_BUSY;
 
 	pr_info("%s: calculated max. discard sectors %u for timeout %u ms\n",
 		 mmc_hostname(host), max_discard, host->max_discard_to);
