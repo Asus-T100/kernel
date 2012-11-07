@@ -1041,6 +1041,9 @@ static void gfx_early_suspend(struct early_suspend *h)
 	struct drm_encoder *encoder;
 	struct drm_encoder_helper_funcs *enc_funcs;
 
+	if (!(drm_psb_use_cases_control & PSB_SUSPEND_ENABLE))
+		return ;
+
 	PSB_DEBUG_ENTRY("\n");
 
 	dev_priv->b_dsr_enable_status = dev_priv->b_dsr_enable;
@@ -1084,6 +1087,9 @@ static void gfx_late_resume(struct early_suspend *h)
 	struct drm_device *dev = dev_priv->dev;
 	struct drm_encoder *encoder;
 	struct drm_encoder_helper_funcs *enc_funcs;
+
+	if (!(drm_psb_use_cases_control & PSB_SUSPEND_ENABLE))
+		return ;
 
 	PSB_DEBUG_ENTRY("\n");
 

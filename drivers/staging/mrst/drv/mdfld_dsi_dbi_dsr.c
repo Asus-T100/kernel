@@ -296,13 +296,15 @@ int mdfld_dsi_dsr_report_te(struct mdfld_dsi_config *dsi_config)
 	else if (++dsr->free_count > DSR_COUNT && !dsr->ref_count) {
 		/*reset free count*/
 		dsr->free_count = 0;
-		/*enter dsr*/
-		err = enter_dsr_locked(dsi_config, dsr_level);
-		if (err) {
-			PSB_DEBUG_ENTRY("Failed to enter DSR\n");
-			goto report_te_out;
+		if (drm_psb_use_cases_control & PSB_DSR_ENABLE) {
+			/*enter dsr*/
+			err = enter_dsr_locked(dsi_config, dsr_level);
+			if (err) {
+				PSB_DEBUG_ENTRY("Failed to enter DSR\n");
+				goto report_te_out;
+			}
+			dsr->dsr_state = dsr_level;
 		}
-		dsr->dsr_state = dsr_level;
 	}
 report_te_out:
 	/*clear pending fb updates*/

@@ -95,6 +95,7 @@ char HDMI_EDID[HDMI_MONITOR_NAME_LENGTH];
 int hdmi_state;
 u32 DISP_PLANEB_STATUS = ~DISPLAY_PLANE_ENABLE;
 int drm_psb_msvdx_tiling;
+int drm_psb_use_cases_control = PSB_ALL_UC_ENABLE;
 
 static int psb_probe(struct pci_dev *pdev, const struct pci_device_id *ent);
 
@@ -120,6 +121,7 @@ MODULE_PARM_DESC(cpu_relax, "replace udelay with cpu_relax for video");
 MODULE_PARM_DESC(udelay_divider, "divide the usec value of video udelay");
 MODULE_PARM_DESC(enable_color_conversion, "Enable display side color conversion");
 MODULE_PARM_DESC(enable_gamma, "Enable display side gamma");
+MODULE_PARM_DESC(use_cases_control, "Use to enable and disable use cases");
 
 module_param_named(debug, drm_psb_debug, int, 0600);
 module_param_named(psb_enable_cabc, drm_psb_enable_cabc, int, 0600);
@@ -145,6 +147,7 @@ module_param_named(vblank_sync, drm_psb_3D_vblank, int, 0600);
 module_param_named(smart_vsync, drm_psb_smart_vsync, int, 0600);
 module_param_named(te_delay, drm_psb_te_timer_delay, int, 0600);
 module_param_named(msvdx_tiling_memory, drm_psb_msvdx_tiling, int, 0600);
+module_param_named(psb_use_cases_control, drm_psb_use_cases_control, int, 0600);
 #ifndef MODULE
 /* Make ospm configurable via cmdline firstly, and others can be enabled if needed. */
 static int __init config_ospm(char *arg)

@@ -283,7 +283,7 @@ static int send_dcs_pkg(struct mdfld_dsi_pkg_sender * sender,
 		return -ENOTSUPP;
 	}
 
-	PSB_DEBUG_ENTRY("Sending DCS pkg 0x%x...\n", dcs_pkg->cmd);
+	PSB_DEBUG_MIPI("Sending DCS pkg 0x%x...\n", dcs_pkg->cmd);
 
 	/*wait for DBI fifo empty*/
 	wait_for_dbi_fifo_empty(sender);
@@ -307,7 +307,7 @@ static int send_dcs_pkg(struct mdfld_dsi_pkg_sender * sender,
 		return -EAGAIN;
 	}
 
-	PSB_DEBUG_ENTRY("sent DCS pkg 0x%x...\n", dcs_pkg->cmd);
+	PSB_DEBUG_MIPI("sent DCS pkg 0x%x...\n", dcs_pkg->cmd);
 
 	return 0;
 }
@@ -389,7 +389,7 @@ static int __send_long_pkg(struct mdfld_dsi_pkg_sender * sender,
 			reg_val |= *(dp + i + 1) << 8;
 			reg_val |= *(dp + i + 2) << 16;
 			reg_val |= *(dp + i + 3) << 24;
-			PSB_DEBUG_ENTRY("HS Sending data 0x%08x\n", reg_val);
+			PSB_DEBUG_MIPI("HS Sending data 0x%08x\n", reg_val);
 			REG_WRITE(hs_gen_data_reg, reg_val);
 		}
 		if (remain_byte_count){
@@ -397,7 +397,7 @@ static int __send_long_pkg(struct mdfld_dsi_pkg_sender * sender,
 			for(i = 0; i < remain_byte_count; i ++){
 				reg_val |= *(dp + dword_count * 4 + i ) << (8 * i);
 			}
-			PSB_DEBUG_ENTRY("HS Sending data 0x%08x\n", reg_val);
+			PSB_DEBUG_MIPI("HS Sending data 0x%08x\n", reg_val);
 			REG_WRITE(hs_gen_data_reg, reg_val);
 		}
 
@@ -416,7 +416,7 @@ static int __send_long_pkg(struct mdfld_dsi_pkg_sender * sender,
 			reg_val |= *(dp + i + 1) << 8;
 			reg_val |= *(dp + i + 2) << 16;
 			reg_val |= *(dp + i + 3) << 24;
-			PSB_DEBUG_ENTRY("LP Sending data 0x%08x\n", reg_val);
+			PSB_DEBUG_MIPI("LP Sending data 0x%08x\n", reg_val);
 			REG_WRITE(lp_gen_data_reg, reg_val);
 		}
 
@@ -425,7 +425,7 @@ static int __send_long_pkg(struct mdfld_dsi_pkg_sender * sender,
 			for(i = 0; i < remain_byte_count; i ++){
 				reg_val |= *(dp + dword_count * 4 + i ) << (8 * i);
 			}
-			PSB_DEBUG_ENTRY("LP Sending data 0x%08x\n", reg_val);
+			PSB_DEBUG_MIPI("LP Sending data 0x%08x\n", reg_val);
 			REG_WRITE(lp_gen_data_reg, reg_val);
 		}
 		REG_WRITE(lp_gen_ctrl_reg, gen_ctrl_val);
@@ -441,7 +441,7 @@ static int __send_long_pkg(struct mdfld_dsi_pkg_sender * sender,
 static int send_mcs_short_pkg(struct mdfld_dsi_pkg_sender * sender,
 				struct mdfld_dsi_pkg * pkg)
 {
-	PSB_DEBUG_ENTRY("Sending MCS short pkg...\n");
+	PSB_DEBUG_MIPI("Sending MCS short pkg...\n");
 
 	return __send_short_pkg(sender, pkg);
 }
@@ -449,7 +449,7 @@ static int send_mcs_short_pkg(struct mdfld_dsi_pkg_sender * sender,
 static int send_mcs_long_pkg(struct mdfld_dsi_pkg_sender * sender,
 				struct mdfld_dsi_pkg * pkg)
 {
-	PSB_DEBUG_ENTRY("Sending MCS long pkg...\n");
+	PSB_DEBUG_MIPI("Sending MCS long pkg...\n");
 
 	return __send_long_pkg(sender, pkg);
 }
@@ -457,7 +457,7 @@ static int send_mcs_long_pkg(struct mdfld_dsi_pkg_sender * sender,
 static int send_gen_short_pkg(struct mdfld_dsi_pkg_sender * sender,
 				struct mdfld_dsi_pkg * pkg)
 {
-	PSB_DEBUG_ENTRY("Sending GEN short pkg...\n");
+	PSB_DEBUG_MIPI("Sending GEN short pkg...\n");
 
 	return __send_short_pkg(sender, pkg);
 }
@@ -465,7 +465,7 @@ static int send_gen_short_pkg(struct mdfld_dsi_pkg_sender * sender,
 static int send_gen_long_pkg(struct mdfld_dsi_pkg_sender * sender,
 				struct mdfld_dsi_pkg * pkg)
 {
-	PSB_DEBUG_ENTRY("Sending GEN long pkg...\n");
+	PSB_DEBUG_MIPI("Sending GEN long pkg...\n");
 
 	return __send_long_pkg(sender, pkg);
 }
@@ -520,7 +520,7 @@ static int send_pkg_prepare(struct mdfld_dsi_pkg_sender * sender,
 	u8 cmd;
 	u8 * data;
 
-	PSB_DEBUG_ENTRY("Prepare to Send type 0x%x pkg\n", pkg->pkg_type);
+	PSB_DEBUG_MIPI("Prepare to Send type 0x%x pkg\n", pkg->pkg_type);
 
 	switch(pkg->pkg_type) {
 	case MDFLD_DSI_PKG_DCS:
@@ -550,7 +550,7 @@ static int send_pkg_done(struct mdfld_dsi_pkg_sender *sender,
 	u8 cmd;
 	u8 *data = NULL;
 
-	PSB_DEBUG_ENTRY("Sent type 0x%x pkg\n", pkg->pkg_type);
+	PSB_DEBUG_MIPI("Sent type 0x%x pkg\n", pkg->pkg_type);
 
 	switch(pkg->pkg_type) {
 	case MDFLD_DSI_PKG_DCS:
@@ -590,7 +590,7 @@ static int do_send_pkg(struct mdfld_dsi_pkg_sender * sender,
 {
 	int ret = 0;
 
-	PSB_DEBUG_ENTRY("Sending type 0x%x pkg\n", pkg->pkg_type);
+	PSB_DEBUG_MIPI("Sending type 0x%x pkg\n", pkg->pkg_type);
 
 	if(sender->status == MDFLD_DSI_PKG_SENDER_BUSY) {
 		DRM_ERROR("sender is busy\n");

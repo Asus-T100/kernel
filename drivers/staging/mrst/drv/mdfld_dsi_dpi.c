@@ -724,6 +724,9 @@ void mdfld_dsi_dpi_dpms(struct drm_encoder *encoder, int mode)
 	struct drm_device *dev;
 	struct drm_psb_private *dev_priv;
 
+	if (!(drm_psb_use_cases_control & PSB_DPMS_ENABLE))
+		return;
+
 	dsi_encoder = MDFLD_DSI_ENCODER(encoder);
 	dsi_config = mdfld_dsi_encoder_get_config(dsi_encoder);
 	dev = dsi_config->dev;

@@ -471,6 +471,27 @@ static void update_te_counter(struct drm_device *dev, uint32_t pipe)
 	sender = mdfld_dsi_encoder_get_pkg_sender(&dbi_output->base);
 	mdfld_dsi_report_te(sender);
 }
+static void get_use_cases_control_info()
+{
+	static int last_use_cases_control = -1;
+	if (drm_psb_use_cases_control != last_use_cases_control) {
+		last_use_cases_control = drm_psb_use_cases_control;
+		DRM_INFO("\nnew update of use cases\n");
+		if (!(drm_psb_use_cases_control & PSB_SUSPEND_ENABLE))
+			DRM_INFO("BIT0 suspend/resume  disabled\n");
+		if (!(drm_psb_use_cases_control & PSB_BRIGHTNESS_ENABLE))
+			DRM_INFO("BIT1 brighness setting disabled\n");
+		if (!(drm_psb_use_cases_control & PSB_ESD_ENABLE))
+			DRM_INFO("BIT2 ESD  disabled\n");
+		if (!(drm_psb_use_cases_control & PSB_DPMS_ENABLE))
+			DRM_INFO("BIT3 DPMS  disabled\n");
+		if (!(drm_psb_use_cases_control & PSB_DSR_ENABLE))
+			DRM_INFO("BIT4 DSR disabled\n");
+		if (!(drm_psb_use_cases_control & PSB_VSYNC_OFF_ENABLE))
+			DRM_INFO("BIT5 VSYNC off  disabled\n");
+	}
+}
+
 
 /**
  * Display controller interrupt handler for pipe event.
@@ -595,6 +616,8 @@ static void mid_pipe_event_handler(struct drm_device *dev, uint32_t pipe)
 
 	if (pipe_stat_val & PIPE_HDMI_AUDIO_BUFFER_DONE_STATUS)
 		mid_hdmi_audio_signal_event(dev, HAD_EVENT_AUDIO_BUFFER_DONE);
+
+	get_use_cases_control_info();
 }
 
 /**
@@ -1154,6 +1177,9 @@ void psb_disable_vblank(struct drm_device *dev, int pipe)
 	struct drm_psb_private *dev_priv =
 		(struct drm_psb_private *) dev->dev_private;
 	unsigned long irqflags;
+
+	if (!(drm_psb_use_cases_control & PSB_VSYNC_OFF_ENABLE))
+		return;
 
 	PSB_DEBUG_ENTRY("\n");
 

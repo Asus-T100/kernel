@@ -63,6 +63,10 @@ int psb_set_brightness(struct backlight_device *bd)
 	u32 max_pwm_blc;
 	bool panel_on1 = false, panel_on2 = false;
 
+	if (!(drm_psb_use_cases_control & PSB_BRIGHTNESS_ENABLE))
+		return 0;
+
+
 	dev = (struct drm_device *)bl_get_data(psb_backlight_device);
 	dev_priv = (struct drm_psb_private *)dev->dev_private;
 	dsi_configs = dev_priv->dsi_configs;
