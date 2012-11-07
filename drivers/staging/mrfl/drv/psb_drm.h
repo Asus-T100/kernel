@@ -140,9 +140,10 @@ struct drm_psb_reloc {
 
 #define PSB_BO_FLAG_COMMAND         (1ULL << 52)
 
-#define PSB_ENGINE_2D 0
-#define PSB_ENGINE_VIDEO 1
-#define LNC_ENGINE_ENCODE 5
+#define PSB_ENGINE_2D 2
+#define PSB_ENGINE_DECODE 0
+#define PSB_ENGINE_VIDEO 0
+#define LNC_ENGINE_ENCODE 1
 #define VSP_ENGINE_VPP 6
 
 /*
@@ -217,7 +218,6 @@ struct psb_ttm_fence_rep {
 typedef struct drm_psb_cmdbuf_arg {
 	uint64_t buffer_list;	/* List of buffers to validate */
 	uint64_t fence_arg;
-
 
 	uint32_t cmdbuf_handle;	/* 2D Command buffer object or, */
 	uint32_t cmdbuf_offset;	/* rasterizer reg-value pairs */
@@ -580,8 +580,17 @@ struct drm_psb_register_rw_arg {
 		uint32_t IEP_BLE_MINMAX;
 		uint32_t IEP_BSSCC_CONTROL;
 		uint32_t b_wait_vblank;
+		uint32_t b_wms;
 		uint32_t buffer_handle;
 	} overlay;
+
+	uint32_t vsync_operation_mask;
+
+	struct {
+		uint32_t pipe;
+		int vsync_pipe;
+		uint64_t timestamp;
+	} vsync;
 
 	uint32_t sprite_enable_mask;
 	uint32_t sprite_disable_mask;
@@ -849,6 +858,19 @@ typedef struct tagOVLS3DREGREADWRITE {
 
 #define DRM_PSB_DSR_ENABLE	0xfffffffe
 #define DRM_PSB_DSR_DISABLE	0xffffffff
+
+/*
+ * TTM execbuf extension.
+ */
+#define DRM_PSB_TTM_START      0x50
+#define DRM_PSB_TTM_END        0x5F
+#if defined(PDUMP)
+	#define DRM_PSB_CMDBUF		  (PVR_DRM_DBGDRV_CMD + 1)
+#else
+	#define DRM_PSB_CMDBUF		  (DRM_PSB_TTM_START)
+#endif
+#define DRM_PSB_SCENE_UNREF	  (DRM_PSB_CMDBUF + 1)
+#define DRM_PSB_PLACEMENT_OFFSET   (DRM_PSB_SCENE_UNREF + 1)
 
 struct drm_psb_csc_matrix {
 	int pipe;

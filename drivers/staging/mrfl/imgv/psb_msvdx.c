@@ -127,20 +127,14 @@ static int psb_msvdx_map_command(struct drm_device *dev,
 			PSB_DEBUG_MSVDX("MSVDX_DEBUG: send render message.\n");
 
 			/* Fence ID */
-			if (IS_MDFLD(dev) && IS_FW_UPDATED)
-				MEMIO_WRITE_FIELD(cmd, FW_VA_DECODE_MSG_ID,
-						  sequence);
-			else
-				MEMIO_WRITE_FIELD(cmd, FW_VA_RENDER_FENCE_VALUE,
-						  sequence);
+			MEMIO_WRITE_FIELD(cmd, FW_VA_DECODE_MSG_ID,
+					  sequence);
 
 			mmu_ptd = psb_get_default_pd_addr(dev_priv->mmu);
 			msvdx_mmu_invalid =
 			    atomic_cmpxchg(&dev_priv->msvdx_mmu_invaldc, 1, 0);
 			if (msvdx_mmu_invalid == 1) {
-				if (!(IS_MDFLD(dev) && IS_FW_UPDATED))
-					mmu_ptd |= 1;
-				else {
+				{
 					uint32_t flags;
 					flags =
 					    MEMIO_READ_FIELD(cmd,
@@ -156,16 +150,14 @@ static int psb_msvdx_map_command(struct drm_device *dev,
 			}
 
 			/* PTD */
-			if (IS_MDFLD(dev) && IS_FW_UPDATED) {
+			{
 				uint32_t context_id;
 				context_id =
 				    MEMIO_READ_FIELD(cmd, FW_VA_DECODE_MMUPTD);
 				mmu_ptd = mmu_ptd | (context_id & 0xff);
 				MEMIO_WRITE_FIELD(cmd, FW_VA_DECODE_MMUPTD,
 						  mmu_ptd);
-			} else
-				MEMIO_WRITE_FIELD(cmd, FW_VA_RENDER_MMUPTD,
-						  mmu_ptd);
+			}
 			break;
 
 		case VA_MSGID_OOLD:
@@ -543,11 +535,17 @@ int psb_cmdbuf_video(struct drm_file *priv,
 	return 0;
 }
 
+#ifdef CONFIG_VIDEO_MRFLD_VP
+static void psb_msvdx_mtx_interrupt(struct drm_device *dev);
+#endif
 static int psb_msvdx_send(struct drm_device *dev, void *cmd,
 			  unsigned long cmd_size)
 {
 	int ret = 0;
 	struct drm_psb_private *dev_priv = dev->dev_private;
+#ifdef CONFIG_VIDEO_MRFLD_VP
+	uint32_t poll_count = 0;
+#endif
 
 	while (cmd_size > 0) {
 		uint32_t cur_cmd_size = MEMIO_READ_FIELD(cmd, FWRK_GENMSG_SIZE);
@@ -567,19 +565,36 @@ static int psb_msvdx_send(struct drm_device *dev, void *cmd,
 		}
 		cmd += cur_cmd_size;
 		cmd_size -= cur_cmd_size;
-		if (cur_cmd_id == VA_MSGID_DEBLOCK
-		    && !(IS_MDFLD(dev) && IS_FW_UPDATED)) {
-			cmd += sizeof(struct DEBLOCKPARAMS);
-			cmd_size -= sizeof(struct DEBLOCKPARAMS);
-		}
 		if (cur_cmd_id == VA_MSGID_HOST_BE_OPP) {
 			cmd += sizeof(struct HOST_BE_OPP_PARAMS);
 			cmd_size -= sizeof(struct HOST_BE_OPP_PARAMS);
 		}
-		if (cmd_size && IS_MDFLD(dev))
-			/* derive from reference driver */
-			PSB_UDELAY(250);
 	}
+#ifdef CONFIG_VIDEO_MRFLD_VP
+	while (1) {
+		uint32_t msvdx_stat;
+		msvdx_stat = PSB_RMSVDX32(MSVDX_INTERRUPT_STATUS);
+		if (msvdx_stat & MSVDX_INTERRUPT_STATUS_CR_MTX_IRQ_MASK) {
+			PSB_DEBUG_IRQ(
+				"MSVDX: msvdx_stat: 0x%x(MTX) poll_num(%d)\n",
+				msvdx_stat, poll_count);
+
+			/* Clear all interupt bits */
+			PSB_WMSVDX32(0xffff, MSVDX_INTERRUPT_CLEAR);
+			PSB_RMSVDX32(MSVDX_INTERRUPT_CLEAR);
+			DRM_READMEMORYBARRIER();
+
+			psb_msvdx_mtx_interrupt(dev);
+			break;
+		}
+		if (poll_count++ > 1000) {
+			printk(KERN_INFO "MSVDX: Poll mtx irq timeout\n");
+			break;
+		}
+		printk(KERN_INFO "MSVDX: Poll mtx irq count %d\n", poll_count);
+		udelay(500);
+	}
+#endif
 
  out:
 	PSB_DEBUG_GENERAL("MSVDX: ret:%d\n", ret);
@@ -896,7 +911,7 @@ static void psb_msvdx_mtx_interrupt(struct drm_device *dev)
 						FW_VA_CMD_FAILED_FLAGS));
 			}
 
-			if (IS_MDFLD(dev) && IS_FW_UPDATED) {
+			{
 				fence =
 				    MEMIO_READ_FIELD(buf,
 						FW_DEVA_CMD_FAILED_MSG_ID);
@@ -920,6 +935,9 @@ static void psb_msvdx_mtx_interrupt(struct drm_device *dev)
 						  fence);
 
 			msvdx_priv->msvdx_needs_reset = 1;
+
+			PSB_DEBUG_GENERAL("Error trigger is 0x%08x\n",
+				PSB_RMSVDX32(MSVDX_COMMS_ERROR_TRIG));
 
 			if (msg_id == VA_MSGID_CMD_HW_PANIC) {
 				diff = msvdx_priv->msvdx_current_sequence
@@ -979,14 +997,9 @@ static void psb_msvdx_mtx_interrupt(struct drm_device *dev)
 			   FW_VA_CMD_COMPLETED_LASTMB);
 			 */
 
-			if (IS_MDFLD(dev) && IS_FW_UPDATED)
-				fence =
-				    MEMIO_READ_FIELD(buf,
-						FW_VA_CMD_COMPLETED_MSG_ID);
-			else
-				fence =
-				    MEMIO_READ_FIELD(buf,
-					FW_VA_CMD_COMPLETED_FENCE_VALUE);
+			fence =
+			    MEMIO_READ_FIELD(buf,
+					FW_VA_CMD_COMPLETED_MSG_ID);
 
 			PSB_DEBUG_GENERAL("MSVDX:VA_MSGID_CMD_COMPLETED: "
 					  "FenceID: %08x, flags: 0x%x\n",
@@ -1256,10 +1269,11 @@ static void psb_msvdx_mtx_interrupt(struct drm_device *dev)
 		    ("MSVDX Interrupt: there are more message to be read\n");
 		goto loop;
 	}
+#ifndef CONFIG_VIDEO_MRFLD_VP
 	/* we get a frame/slice done, try to save some power */
 	if (drm_msvdx_pmpolicy != PSB_PMPOLICY_NOPM)
 		schedule_delayed_work(&dev_priv->scheduler.msvdx_suspend_wq, 0);
-
+#endif
 	DRM_MEMORYBARRIER();	/* TBD check this... */
 }
 
@@ -1387,14 +1401,12 @@ int psb_remove_videoctx(struct drm_psb_private *dev_priv, struct file *filp)
 					  (pos->ctx_type >> 8),
 					  (pos->ctx_type & 0xff));
 			/*Reset fw load status here. */
-			if (IS_MDFLD(dev_priv->dev) &&
-			    (VAEntrypointEncSlice == (pos->ctx_type & 0xff)
+			if ((VAEntrypointEncSlice == (pos->ctx_type & 0xff)
 			     || VAEntrypointEncPicture ==
 			     (pos->ctx_type & 0xff)))
 				pnw_reset_fw_status(dev_priv->dev);
 
-			if (IS_MRFLD(dev_priv->dev) &&
-			    (VAEntrypointVideoProc == (pos->ctx_type & 0xff)))
+			if ((VAEntrypointVideoProc == (pos->ctx_type & 0xff)))
 				vsp_rm_context(dev_priv->dev);
 
 			/* if current ctx points to it, set to NULL */
@@ -1451,7 +1463,6 @@ int lnc_video_getparam(struct drm_device *dev, void *data,
 				   &rar_ci_info[0], sizeof(rar_ci_info));
 		break;
 	case LNC_VIDEO_FRAME_SKIP:
-		if (IS_MDFLD(dev))	/* Medfield should not call it */
 			ret = -EFAULT;
 		break;
 	case LNC_VIDEO_DEVICE_INFO:
