@@ -149,11 +149,8 @@ static irqreturn_t intel_sst_interrupt_mrfld(int irq, void *context)
 	union ipc_header_mrfld header;
 	union sst_imr_reg_mrfld imr;
 	struct intel_sst_drv *drv = (struct intel_sst_drv *) context;
-	irqreturn_t retval = IRQ_NONE;
+	irqreturn_t retval = IRQ_HANDLED;
 
-	/* Do not handle interrupt in suspended state */
-	if (drv->sst_state == SST_SUSPENDED)
-		return IRQ_NONE;
 	/* Interrupt arrived, check src */
 	isr.full = sst_shim_read64(drv->shim, SST_ISRX);
 	if (isr.part.done_interrupt) {
@@ -269,13 +266,9 @@ static irqreturn_t intel_sst_intr_mfld(int irq, void *context)
 {
 	union interrupt_reg isr, imr;
 	union ipc_header header;
-	irqreturn_t retval = IRQ_NONE;
+	irqreturn_t retval = IRQ_HANDLED;
 
 	struct intel_sst_drv *drv = (struct intel_sst_drv *) context;
-
-	/* Do not handle interrupt in suspended state */
-	if (drv->sst_state == SST_SUSPENDED)
-		return IRQ_NONE;
 
 	/* Interrupt arrived, check src */
 	isr.full = sst_shim_read(drv->shim, SST_ISRX);
@@ -517,7 +510,7 @@ static int __devinit intel_sst_probe(struct pci_dev *pci,
 	sst_set_fw_state_locked(sst_drv_ctx, SST_UN_INIT);
 	/* Register the ISR */
 	ret = request_threaded_irq(pci->irq, sst_drv_ctx->ops->interrupt,
-		sst_drv_ctx->ops->irq_thread, IRQF_SHARED, SST_DRV_NAME,
+		sst_drv_ctx->ops->irq_thread, NULL, SST_DRV_NAME,
 		sst_drv_ctx);
 	if (ret)
 		goto do_unmap_dram;
