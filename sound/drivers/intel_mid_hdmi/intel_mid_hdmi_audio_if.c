@@ -418,6 +418,8 @@ int had_process_hot_plug(struct snd_intelhad *intelhaddata)
 		snd_pcm_stop(substream, SNDRV_PCM_STATE_SETUP);
 	}
 
+	had_build_channel_allocation_map(intelhaddata);
+
 	return retval;
 }
 
@@ -458,6 +460,8 @@ int had_process_hot_unplug(struct snd_intelhad *intelhaddata)
 
 	had_stream->stream_type = HAD_INIT;
 	spin_unlock_irqrestore(&intelhaddata->had_spinlock, flag_irqs);
+	kfree(intelhaddata->chmap->chmap);
+	intelhaddata->chmap->chmap = NULL;
 	pr_debug("%s: unlocked -> returned\n", __func__);
 
 	return retval;

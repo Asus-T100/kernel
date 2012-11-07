@@ -32,6 +32,7 @@
 #include <linux/pm_runtime.h>
 #include <sound/asoundef.h>
 #include <sound/control.h>
+#include <sound/pcm.h>
 #include <otm_hdmi_eld.h>
 #include <android_hdmi.h>
 #include <mdfld_hdmi_audio_if.h>
@@ -51,6 +52,9 @@
 #define HAD_MAX_PERIOD_BYTES	(HAD_MAX_BUFFER/HAD_MIN_PERIODS)
 #define HAD_MIN_PERIOD_BYTES	256
 #define HAD_FIFO_SIZE		0 /* fifo not being used */
+#define MAX_SPEAKERS		8
+/* TODO: Add own tlv when channel map is ported for user space */
+#define USE_ALSA_DEFAULT_TLV
 
 #define AUD_SAMPLE_RATE_32	HAD_MIN_RATE
 #define AUD_SAMPLE_RATE_44_1	44100
@@ -250,7 +254,23 @@ static struct cea_channel_speaker_allocation channel_allocations[] = {
 { .ca_index = 0x1f,  .speakers = { FRC,  FLC,  RR,  RL,  FC,  LFE,  FR,  FL } },
 };
 
+struct channel_map_table {
+	unsigned char map;              /* ALSA API channel map position */
+	unsigned char cea_slot;         /* CEA slot value */
+	int spk_mask;                   /* speaker position bit mask */
+};
 
+static struct channel_map_table map_tables[] = {
+	{ SNDRV_CHMAP_FL,       0x00,   FL },
+	{ SNDRV_CHMAP_FR,       0x01,   FR },
+	{ SNDRV_CHMAP_RL,       0x04,   RL },
+	{ SNDRV_CHMAP_RR,       0x05,   RR },
+	{ SNDRV_CHMAP_LFE,      0x02,   LFE },
+	{ SNDRV_CHMAP_FC,       0x03,   FC },
+	{ SNDRV_CHMAP_RLC,      0x06,   RLC },
+	{ SNDRV_CHMAP_RRC,      0x07,   RRC },
+	{} /* terminator */
+};
 /**
  * union aud_cfg - Audio configuration offset - 69000
  *
@@ -567,6 +587,8 @@ struct snd_intelhad {
 	spinlock_t had_spinlock;
 	enum		intel_had_aud_buf_type buff_done;
 	struct device *dev;
+	struct snd_kcontrol *kctl;
+	struct snd_pcm_chmap *chmap;
 };
 
 int had_event_handler(enum had_event_type event_type, void *data);
@@ -584,6 +606,7 @@ int snd_intelhad_prog_buffer(struct snd_intelhad *intelhaddata,
 					int start, int end);
 int snd_intelhad_invd_buffer(int start, int end);
 inline int snd_intelhad_read_len(struct snd_intelhad *intelhaddata);
+int had_build_channel_allocation_map(struct snd_intelhad *intelhaddata);
 
 /* Register access functions */
 inline int had_get_hwstate(struct snd_intelhad *intelhaddata);
