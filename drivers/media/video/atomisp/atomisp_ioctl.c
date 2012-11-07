@@ -896,6 +896,10 @@ static int atomisp_qbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
 			pipe->vf_info.type = buf->type;
 	}
 
+	ret = vb2_prepare_buf(&pipe->capq, buf);
+	if (ret)
+		return ret;
+
 	ret = vb2_qbuf(&pipe->capq, buf);
 	return ret;
 }
