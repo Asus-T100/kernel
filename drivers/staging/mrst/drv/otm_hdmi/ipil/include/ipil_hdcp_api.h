@@ -187,4 +187,13 @@ bool ipil_hdcp_disable(void);
  */
 bool ipil_hdcp_device_can_authenticate(void);
 
+/**
+ * Description: get hardware frame count for cipher Ri update
+ *
+ * @count   framer count for cipher Ri update
+ *
+ * Returns: true if successful else false
+ */
+bool ipil_hdcp_get_ri_frame_count(uint8_t *count);
+
 #endif /* IPIL_HDCP_API_H */

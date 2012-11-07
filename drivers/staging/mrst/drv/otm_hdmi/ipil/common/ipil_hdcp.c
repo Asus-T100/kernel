@@ -240,3 +240,14 @@ bool ipil_hdcp_init(void)
 	return ips_hdcp_init();
 }
 
+/**
+ * Description: get hardware frame count for cipher Ri update
+ *
+ * @count   frame count for cipher Ri update
+ *
+ * Returns: true if successful else false
+ */
+bool ipil_hdcp_get_ri_frame_count(uint8_t *count)
+{
+	return ips_hdcp_get_ri_frame_count(count);
+}

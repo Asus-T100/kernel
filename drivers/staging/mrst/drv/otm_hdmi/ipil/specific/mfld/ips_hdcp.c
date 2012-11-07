@@ -545,8 +545,6 @@ bool ips_hdcp_does_ri_match(uint16_t rx_ri)
 	struct ips_hdcp_status_reg_t status;
 
 	ips_hdcp_write_rx_ri(rx_ri);
-	/* delay for hardware ri match to complete */
-	msleep(1);
 	status.value = ips_hdcp_get_status();
 	if (status.ri_match)
 		return true;
@@ -858,6 +856,23 @@ bool ips_hdcp_init(void)
  */
 bool ips_hdcp_device_can_authenticate(void)
 {
+	return true;
+}
+
+/**
+ * Description: get hardware frame count for cipher Ri update
+ *
+ * @count   framer count for cipher Ri update
+ *
+ * Returns: true if successful else false
+ */
+bool ips_hdcp_get_ri_frame_count(uint8_t *count)
+{
+	struct ips_hdcp_status_reg_t status;
+
+	status.value = ips_hdcp_get_status();
+	*count       = status.frame_count;
+
 	return true;
 }
 

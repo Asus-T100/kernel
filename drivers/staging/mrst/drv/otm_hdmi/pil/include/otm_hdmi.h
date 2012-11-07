@@ -93,6 +93,20 @@ typedef otm_hdmi_ret_t(*pd_attr_set_t)(otm_hdmi_attribute_t *table,
 char *__pd_attr_get_name(otm_hdmi_attribute_id_t id);
 
 /**
+ * Getting given attribute
+ * @context     : opaque hdmi context
+ * @id          : attribute id
+ * @attribute   : user provided buffer for attribute details
+ * @log         : a hint wether port driver should log the call
+ *
+ * Returns otm_hdmi_ret_t check. Getting given attribute values
+ */
+otm_hdmi_ret_t otm_hdmi_get_attribute(void *context,
+						otm_hdmi_attribute_id_t id,
+						otm_hdmi_attribute_t *attribute,
+						bool log);
+
+/**
  * Type definition based on the function signature above
  */
 typedef char *(*pd_attr_get_name_t)(otm_hdmi_attribute_id_t id);
