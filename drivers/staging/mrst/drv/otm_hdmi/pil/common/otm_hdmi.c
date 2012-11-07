@@ -718,6 +718,7 @@ static otm_hdmi_ret_t __hdmi_context_init(void *context, struct pci_dev *pdev)
 	ctx->dev.io_address = (unsigned int)ctx->io_address;
 
 	ctx->dev.uhandle = ctx->io_address;
+
 	/* Create modes table sharing protection semaphore */
 	mutex_init(&ctx->modes_sema);
 
@@ -1186,27 +1187,26 @@ static otm_hdmi_ret_t __pd_attr_declare(otm_hdmi_attribute_t *table,
 
 	switch (type) {
 	case OTM_HDMI_ATTR_TYPE_UINT:
-			table[id].content._uint.value_default =
-						(unsigned int) value;
-			table[id].content._uint.value_min = min;
-			table[id].content._uint.value_max = max;
-			break;
+		table[id].content._uint.value         = (unsigned int) value;
+		table[id].content._uint.value_default = (unsigned int) value;
+		table[id].content._uint.value_min     = min;
+		table[id].content._uint.value_max     = max;
+		break;
 	case OTM_HDMI_ATTR_TYPE_BOOLEAN:
-			table[id].content._bool.value_default =
-						(bool) value;
-			break;
+		table[id].content._bool.value         = (bool) value;
+		table[id].content._bool.value_default = (bool) value;
+		break;
 	case OTM_HDMI_ATTR_TYPE_STRING:
-			strsiz = strlen(value);
-			if ((value != NULL) &&
-			strsiz <= OTM_HDMI_MAX_STRING_LENGTH)
-				strncpy(table[id].content.string.value,
-					(char *) value, OTM_HDMI_MAX_STRING_LENGTH);
-			else
-				rc = OTM_HDMI_ERR_FAILED;
-			table[id].content.string.value[OTM_HDMI_MAX_STRING_LENGTH] = 0;
-			break;
+		strsiz = strlen(value);
+		if ((value != NULL) && strsiz <= OTM_HDMI_MAX_STRING_LENGTH)
+			strncpy(table[id].content.string.value,
+				(char *) value, OTM_HDMI_MAX_STRING_LENGTH);
+		else
+			rc = OTM_HDMI_ERR_FAILED;
+		table[id].content.string.value[OTM_HDMI_MAX_STRING_LENGTH] = 0;
+		break;
 	default:
-			break;
+		break;
 	}
 	return rc;
 }

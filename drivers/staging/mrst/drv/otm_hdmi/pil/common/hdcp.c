@@ -123,6 +123,15 @@ struct hdcp_context_t {
 			 */
 	unsigned int	ri_check_interval;
 			/*!< phase 3 ri-check interval based on mode */
+	unsigned int	ri_check_interval_upper;
+			/*!< upper bound of ri-check interval */
+	unsigned int	ri_check_interval_lower;
+			/*!< lower bound of ri-check interval */
+	unsigned int	video_refresh_interval;
+			/*!< time interval (msec) of video refresh. */
+	unsigned int	prev_ri_frm_cnt_status;
+			/*!< Ri frame count in HDCP status register when
+			 * doing previous Ri check. */
 	unsigned int	current_srm_ver;
 			/*!< currently used SRM version (if vrl is not null)
 			 */
@@ -135,6 +144,9 @@ struct hdcp_context_t {
 	int (*ddc_read_write)(bool, uint8_t, uint8_t, uint8_t *, int);
 			/*!< Pointer to callback function for DDC Read Write */
 	struct workqueue_struct *hdcp_wq;
+			/*!< single-thread workqueue handling HDCP events */
+	unsigned int ri_retry;
+			/*!< time delay (msec) to re-try Ri check */
 };
 
 /* Global instance of local context */
@@ -164,6 +176,7 @@ static bool wq_send_message_delayed(int msg,
 			kfree(msg_data);
 		return false;
 	}
+
 	hwq->msg = msg;
 	hwq->msg_data = msg_data;
 
@@ -482,10 +495,23 @@ static bool hdcp_stage3_ri_check(void)
 	}
 #endif
 
-	if (hdcp_read_rx_ri(&rx_ri) == true)
+	if (hdcp_read_rx_ri(&rx_ri) == true) {
 		if (ipil_hdcp_does_ri_match(rx_ri) == true)
 			/* pr_debug("hdcp: Ri Matches %04x\n", rx_ri);*/
 			return true;
+
+		/* If first Ri check fails,we re-check it after ri_retry (msec).
+		 * This is because some receivers do not immediately have valid
+		 * Ri' at frame 128.
+		 * */
+		pr_debug("re-check Ri after %d (msec)\n",
+				hdcp_context->ri_retry);
+
+		msleep(hdcp_context->ri_retry);
+		if (hdcp_read_rx_ri(&rx_ri) == true)
+			if (ipil_hdcp_does_ri_match(rx_ri) == true)
+				return true;
+	}
 
 	/* ri check failed update phase3 status */
 	hdcp_context->is_phase3_valid = false;
@@ -545,7 +571,8 @@ static void hdcp_reset(void)
 #endif
 	hdcp_context->is_phase1_enabled = false;
 	hdcp_context->is_phase2_enabled = false;
-	hdcp_context->is_phase3_valid = false;
+	hdcp_context->is_phase3_valid   = false;
+	hdcp_context->prev_ri_frm_cnt_status = 0;
 }
 
 /**
@@ -878,7 +905,9 @@ static bool hdcp_start(void)
 	hdcp_context->is_phase3_valid = true;
 	/* Branch Periodic Ri Check */
 	pr_debug("hdcp: starting periodic Ri check\n");
-	if (hdcp_stage3_schedule_ri_check(true) == false)
+
+	/* Schedule Ri check after 2 sec*/
+	if (hdcp_stage3_schedule_ri_check(false) == false)
 		return false;
 
 	return true;
@@ -899,6 +928,88 @@ static void hdcp_retry_enable(void)
 		wq_send_message_delayed(msg, NULL, 30);
 		pr_debug("hdcp: retry enable\n");
 	}
+}
+
+/* Based on hardware Ri frame count, adjust ri_check_interval.
+ * Also, make sure Ri check happens right after Ri frame count
+ * becomes multiples of 128.
+ *  */
+static bool hdcp_ri_check_reschedule(void)
+{
+	#define ctx hdcp_context
+
+	uint32_t prev_ri_frm_cnt_status = ctx->prev_ri_frm_cnt_status;
+	uint8_t  ri_frm_cnt_status;
+	int32_t  ri_frm_cnt;
+	int32_t  adj;  /* Adjustment of ri_check_interval in msec */
+	bool     ret = false;
+
+
+	/* Query hardware Ri frame counter.
+	 * This value is used to adjust ri_check_interval
+	 * */
+	ipil_hdcp_get_ri_frame_count(&ri_frm_cnt_status);
+
+	/* (frm_cnt_ri - prev_frm_cnt_ri) is expected to be 128. If not,
+	 * we have to compensate the time difference, which is caused by async
+	 * behavior of CPU clock, scheduler and HDMI clock. If hardware can
+	 * provide interrupt signal for Ri check, then this compensation work
+	 * can be avoided.
+	 * Hardcode "256" is because hardware Ri frame counter is 8 bits.
+	 * Hardcode "128" is based on HDCP spec.
+	* */
+	ri_frm_cnt = ri_frm_cnt_status >= prev_ri_frm_cnt_status      ?
+		ri_frm_cnt_status - prev_ri_frm_cnt_status       :
+		256 - prev_ri_frm_cnt_status + ri_frm_cnt_status;
+	pr_debug("current ri_frm_cnt = %d, previous ri_frm_cnt = %d\n",
+			  ri_frm_cnt_status, prev_ri_frm_cnt_status);
+
+	/* Compute adjustment of ri_check_interval*/
+	adj = (128 - ri_frm_cnt) * hdcp_context->video_refresh_interval;
+
+	/* Adjust ri_check_interval */
+	/* adj<0:  Ri check speed is slower than HDMI clock speed
+	 * adj>0:  Ri check speed is faster than HDMI clock speed
+	 * */
+	pr_debug("adjustment of ri_check_interval  = %d (ms)\n", adj);
+	ctx->ri_check_interval += adj;
+	if (ctx->ri_check_interval > ctx->ri_check_interval_upper)
+		ctx->ri_check_interval = ctx->ri_check_interval_upper;
+
+	if (ctx->ri_check_interval < ctx->ri_check_interval_lower)
+		ctx->ri_check_interval = ctx->ri_check_interval_lower;
+
+	pr_debug("ri_check_interval=%d(ms)\n", ctx->ri_check_interval);
+
+	/* Update prev_ri_frm_cnt_status*/
+	hdcp_context->prev_ri_frm_cnt_status = ri_frm_cnt_status;
+
+	/* Queue next Ri check task with new ri_check_interval*/
+	ret = hdcp_stage3_schedule_ri_check(false);
+	if (!ret)
+		goto exit;
+
+	/* Now, check if ri_frm_cnt_status is multiples of 128.
+	 * If we are too fast, wait for frame 128 (or a few frames after
+	 * frame 128) to happen to make sure Ri' is ready.
+	 * Why using hardcode "64"? : if ri_frm_cnt_status is close to
+	 * multiples of 128 (ie, ri_frm_cnt_status % 128 > 64), we keep waiting.
+	 * Otherwise if ri_frm_cnt_status just passes 128
+	 * (ie, ri_frm_cnt_status % 128 < 64) we continue.
+	 * Note the assumption here is this thread is scheduled to run at least
+	 * once in one 64-frame period.
+	*/
+	while (ri_frm_cnt_status % 128 >= 64) {
+		msleep(hdcp_context->video_refresh_interval);
+		ipil_hdcp_get_ri_frame_count(&ri_frm_cnt_status);
+		pr_debug("current Ri frame count = %d\n", ri_frm_cnt_status);
+	}
+
+	/* Match Ri with Ri'*/
+	ret = hdcp_stage3_ri_check();
+
+exit:
+	return ret;
 }
 
 /**
@@ -954,8 +1065,11 @@ static void hdcp_task_event_handler(struct work_struct *work)
 				hdcp_context->auth_id);*/
 			break;
 
-		if (hdcp_stage3_ri_check() == false ||
-		    hdcp_stage3_schedule_ri_check(false) == false)
+		/* Do phase 3 only if phase 1 was successful*/
+		if (hdcp_context->is_phase1_enabled == false)
+			break;
+
+		if (hdcp_ri_check_reschedule() == false)
 			reset_hdcp = true;
 		break;
 
@@ -1235,7 +1349,9 @@ bool otm_hdmi_hdcp_read_validate_bksv(hdmi_context_t *hdmi_context,
 bool otm_hdmi_hdcp_enable(hdmi_context_t *hdmi_context,
 				int refresh_rate)
 {
-	int msg = HDCP_ENABLE;
+	int                  msg = HDCP_ENABLE;
+	otm_hdmi_attribute_t hdmi_attr;
+	otm_hdmi_ret_t       rc;
 
 	if (hdmi_context == NULL || hdcp_context == NULL)
 		return false;
@@ -1254,14 +1370,44 @@ bool otm_hdmi_hdcp_enable(hdmi_context_t *hdmi_context,
 	hdcp_context->is_required = true;
 
 	/* compute ri check interval based on refresh rate */
-	if (refresh_rate)
+	if (refresh_rate) {
+		/*compute msec time for 1 frame*/
+		hdcp_context->video_refresh_interval = 1000 / refresh_rate;
+
 		/* compute msec time for 128 frames per HDCP spec */
 		hdcp_context->ri_check_interval = ((128 * 1000) / refresh_rate);
-	else
-		/* default to 128 frames @ 60 Hz */
-		hdcp_context->ri_check_interval = ((128 * 1000) / 60);
+	} else {
+		/*compute msec time for 1 frame, assuming refresh rate of 60*/
+		hdcp_context->video_refresh_interval = 1000 / 60;
 
-	pr_debug("hdcp: enable\n");
+		/* default to 128 frames @ 60 Hz */
+		hdcp_context->ri_check_interval      = ((128 * 1000) / 60);
+	}
+
+	/* Set upper and lower bounds for ri_check_interval to
+	 *  avoid dynamic adjustment to go wild.
+	 *  Set adjustment range to 100ms, which is safe if HZ <=100.
+	*/
+	hdcp_context->ri_check_interval_lower =
+			hdcp_context->ri_check_interval - 100;
+	hdcp_context->ri_check_interval_upper =
+			hdcp_context->ri_check_interval + 100;
+
+	/* Init prev_ri_frm_cnt_status*/
+	hdcp_context->prev_ri_frm_cnt_status = 0;
+
+	/* Set ri_retry
+	* Default to interval of 3 frames if can not read
+	* OTM_HDMI_ATTR_ID_HDCP_RI_RETRY */
+	rc = otm_hdmi_get_attribute(hdmi_context,
+				OTM_HDMI_ATTR_ID_HDCP_RI_RETRY,
+				&hdmi_attr, false);
+
+	hdcp_context->ri_retry = (OTM_HDMI_SUCCESS == rc) ?
+				 hdmi_attr.content._uint.value :
+				 3 * hdcp_context->video_refresh_interval;
+
+	pr_debug("hdcp: schedule HDCP enable\n");
 
 #ifdef OTM_HDMI_HDCP_ALWAYS_ENC
 	return wq_send_message(msg, NULL);
@@ -1327,6 +1473,7 @@ bool otm_hdmi_hdcp_disable(hdmi_context_t *hdmi_context)
 bool otm_hdmi_hdcp_init(hdmi_context_t *hdmi_context,
 	int (*ddc_rd_wr)(bool, uint8_t, uint8_t, uint8_t *, int))
 {
+
 	if (hdmi_context == NULL ||
 	    ddc_rd_wr == NULL ||
 	    ipil_hdcp_device_can_authenticate() == false ||
@@ -1338,9 +1485,14 @@ bool otm_hdmi_hdcp_init(hdmi_context_t *hdmi_context,
 	/* allocate hdcp context */
 	hdcp_context = kmalloc(sizeof(struct hdcp_context_t), GFP_KERNEL);
 
-	/* create hdcp workqueue to handle all hdcp tasks */
-	if (hdcp_context != NULL)
-		hdcp_context->hdcp_wq = create_workqueue("HDCP_WQ");
+	/* Create hdcp workqueue to handle all hdcp tasks.
+	 * To avoid multiple threads created for multi-core CPU (eg CTP)
+	 * use create_singlethread_workqueue.
+	 * */
+	if (hdcp_context != NULL) {
+		hdcp_context->hdcp_wq =
+				create_singlethread_workqueue("HDCP_WQ");
+	}
 
 	if (hdcp_context == NULL || hdcp_context->hdcp_wq == NULL) {
 		pr_debug("hdcp: init error!!! allocation\n");
@@ -1379,6 +1531,7 @@ bool otm_hdmi_hdcp_init(hdmi_context_t *hdmi_context,
 		pr_debug("hdcp: initialized\n");
 		return true;
 	}
+
 EXIT_INIT:
 	/* Cleanup and exit */
 	if (hdcp_context != NULL) {

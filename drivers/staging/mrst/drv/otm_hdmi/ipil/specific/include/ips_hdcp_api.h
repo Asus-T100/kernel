@@ -187,4 +187,13 @@ bool ips_hdcp_disable(void);
  */
 bool ips_hdcp_device_can_authenticate(void);
 
+/**
+ * Description: get hardware frame count for cipher Ri update
+ *
+ * @count   frame count for cipher Ri update
+ *
+ * Returns: true if successful else false
+ */
+bool ips_hdcp_get_ri_frame_count(uint8_t *count);
+
 #endif /* IPS_HDCP_API_H */
