@@ -823,6 +823,9 @@ void mdfld_generic_dsi_dbi_dpms(struct drm_encoder *encoder, int mode)
 	struct mdfld_dsi_config *dsi_config;
 	struct drm_psb_private *dev_priv;
 
+	if (!(drm_psb_use_cases_control & PSB_DPMS_ENABLE))
+		return;
+
 	dsi_encoder = MDFLD_DSI_ENCODER(encoder);
 	dsi_config = mdfld_dsi_encoder_get_config(dsi_encoder);
 	dbi_output = MDFLD_DSI_DBI_OUTPUT(dsi_encoder);

@@ -81,6 +81,9 @@ static int __esd_thread(void *data)
 		if (!dbi_output)
 			goto esd_exit;
 
+		if (!(drm_psb_use_cases_control & PSB_ESD_ENABLE))
+			goto esd_exit;
+
 		mutex_lock(&dsi_config->context_lock);
 
 		p_funcs = dbi_output->p_funcs;

@@ -59,6 +59,7 @@ extern int drm_psb_adjust_contrast;
 extern int drm_psb_adjust_brightness;
 extern int drm_psb_enable_color_conversion;
 extern u32 DISP_PLANEB_STATUS;
+extern int drm_psb_use_cases_control;
 
 extern struct ttm_bo_driver psb_ttm_bo_driver;
 
@@ -1093,6 +1094,7 @@ struct backlight_device *psb_get_backlight_device(void);
 #define PSB_D_MSVDX   (1 << 9)
 #define PSB_D_TOPAZ   (1 << 10)
 #define PSB_D_WARN    (1 << 11)
+#define PSB_D_MIPI    (1 << 12)
 
 #ifndef DRM_DEBUG_CODE
 /* To enable debug printout, set drm_psb_debug in psb_drv.c
@@ -1100,6 +1102,15 @@ struct backlight_device *psb_get_backlight_device(void);
  */
 #define DRM_DEBUG_CODE 2
 #endif
+
+/*use case control*/
+#define PSB_SUSPEND_ENABLE     (1 << 0)
+#define PSB_BRIGHTNESS_ENABLE  (1 << 1)
+#define PSB_ESD_ENABLE         (1 << 2)
+#define PSB_DPMS_ENABLE        (1 << 3)
+#define PSB_DSR_ENABLE         (1 << 4)
+#define PSB_VSYNC_OFF_ENABLE   (1 << 5)
+#define PSB_ALL_UC_ENABLE      0x3F
 
 extern int drm_psb_no_fb;
 extern int drm_psb_disable_vsync;
@@ -1130,6 +1141,9 @@ extern int drm_topaz_sbuswa;
 /* force to print WARN msg */
 #define PSB_DEBUG_WARN(_fmt, _arg...) \
 	PSB_DEBUG(PSB_D_WARN, _fmt, ##_arg)
+#define PSB_DEBUG_MIPI(_fmt, _arg...) \
+	PSB_DEBUG(PSB_D_MIPI, _fmt, ##_arg)
+
 
 #if DRM_DEBUG_CODE
 #define PSB_DEBUG(_flag, _fmt, _arg...)					\
