@@ -311,6 +311,7 @@ static void init_channel_allocations(void)
 {
 	int i, j;
 	struct cea_channel_speaker_allocation *p;
+	pr_debug("%s: Enter\n", __func__);
 
 	for (i = 0; i < ARRAY_SIZE(channel_allocations); i++) {
 		p = channel_allocations + i;
@@ -339,7 +340,6 @@ static int snd_intelhad_channel_allocation(struct snd_intelhad *intelhaddata,
 	int ca = 0;
 	int spk_mask = 0;
 
-	init_channel_allocations();
 	/*
 	* CA defaults to 0 for basic stereo audio
 	*/
@@ -352,6 +352,7 @@ static int snd_intelhad_channel_allocation(struct snd_intelhad *intelhaddata,
 	* ELD tells the speaker mask in a compact(paired) form,
 	* expand ELD's notions to match the ones used by Audio InfoFrame.
 	*/
+
 	for (i = 0; i < ARRAY_SIZE(eld_speaker_allocation_bits); i++) {
 		if (intelhaddata->eeld.speaker_allocation_block & (1 << i))
 				spk_mask |= eld_speaker_allocation_bits[i];
@@ -370,6 +371,127 @@ static int snd_intelhad_channel_allocation(struct snd_intelhad *intelhaddata,
 	pr_debug("HDMI: select CA 0x%x for %d\n", ca, channels);
 
 	return ca;
+}
+
+/* from speaker bit mask to ALSA API channel position */
+static int spk_to_chmap(int spk)
+{
+	struct channel_map_table *t = map_tables;
+	for (; t->map; t++) {
+		if (t->spk_mask == spk)
+			return t->map;
+	}
+	return 0;
+}
+
+int had_build_channel_allocation_map(struct snd_intelhad *intelhaddata)
+{
+	int i = 0, c = 0;
+	int spk_mask = 0;
+	struct snd_pcm_chmap_elem *chmap;
+	chmap = kzalloc(sizeof(*chmap), GFP_KERNEL);
+
+	had_get_caps(HAD_GET_ELD, &intelhaddata->eeld);
+
+	pr_debug("eeld.speaker_allocation_block = %x\n",
+			intelhaddata->eeld.speaker_allocation_block);
+
+	for (i = 0; i < ARRAY_SIZE(eld_speaker_allocation_bits); i++) {
+		if (intelhaddata->eeld.speaker_allocation_block & (1 << i))
+				spk_mask |= eld_speaker_allocation_bits[i];
+	}
+
+	for (i = 0; i < ARRAY_SIZE(channel_allocations); i++) {
+		if (spk_mask == channel_allocations[i].spk_mask) {
+			for (c = 0; c < channel_allocations[i].channels; c++) {
+				chmap->map[c] = spk_to_chmap(
+					channel_allocations[i].speakers[(MAX_SPEAKERS - 1)-c]);
+			}
+			break;
+		}
+	}
+	chmap->channels = channel_allocations[i].channels;
+	intelhaddata->chmap->chmap = chmap;
+
+	return 0;
+}
+
+/*
+ ** ALSA API channel-map control callbacks
+ **/
+static int had_chmap_ctl_info(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_info *uinfo)
+{
+	struct snd_pcm_chmap *info = snd_kcontrol_chip(kcontrol);
+	struct snd_intelhad *intelhaddata = info->private_data;
+	if (intelhaddata->drv_status == HAD_DRV_DISCONNECTED)
+		return -ENODEV;
+	uinfo->type = SNDRV_CTL_ELEM_TYPE_INTEGER;
+	uinfo->count = HAD_MAX_CHANNEL;
+	uinfo->value.integer.min = 0;
+	uinfo->value.integer.max = SNDRV_CHMAP_LAST;
+	return 0;
+}
+
+#ifndef USE_ALSA_DEFAULT_TLV
+static int had_chmap_ctl_tlv(struct snd_kcontrol *kcontrol, int op_flag,
+				unsigned int size, unsigned int __user *tlv)
+{
+	struct snd_pcm_chmap *info = snd_kcontrol_chip(kcontrol);
+	struct snd_intelhad *intelhaddata = info->private_data;
+	if (intelhaddata->drv_status == HAD_DRV_DISCONNECTED)
+		return -ENODEV;
+
+	/* TODO: Fix for query channel map */
+	return -EPERM;
+}
+#endif
+
+static int had_chmap_ctl_get(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_pcm_chmap *info = snd_kcontrol_chip(kcontrol);
+	struct snd_intelhad *intelhaddata = info->private_data;
+	int i = 0;
+	const struct snd_pcm_chmap_elem *chmap;
+
+	if (intelhaddata->drv_status == HAD_DRV_DISCONNECTED)
+		return -ENODEV;
+
+	chmap = intelhaddata->chmap->chmap;
+	for (i = 0; i < chmap->channels; i++) {
+		ucontrol->value.integer.value[i] = chmap->map[i];
+		pr_debug("chmap->map[%d] = %d\n", i, chmap->map[i]);
+	}
+
+	return 0;
+}
+
+static int had_chmap_ctl_put(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
+{
+	/* TODO: Get channel map and set swap register */
+	return -EPERM;
+}
+
+static int had_register_chmap_ctls(struct snd_intelhad *intelhaddata,
+						struct snd_pcm *pcm)
+{
+	int err = 0;
+	err = snd_pcm_add_chmap_ctls(pcm, SNDRV_PCM_STREAM_PLAYBACK,
+			NULL, 0, intelhaddata, &intelhaddata->chmap);
+	if (err < 0)
+		return err;
+
+	intelhaddata->chmap->private_data = intelhaddata;
+	intelhaddata->kctl = intelhaddata->chmap->kctl;
+	intelhaddata->kctl->info = had_chmap_ctl_info;
+	intelhaddata->kctl->get = had_chmap_ctl_get;
+	intelhaddata->kctl->put = had_chmap_ctl_put;
+#ifndef USE_ALSA_DEFAULT_TLV
+	intelhaddata->kctl->tlv.c = had_chmap_ctl_tlv;
+#endif
+	return 0;
 }
 
 /**
@@ -1272,6 +1394,13 @@ static int __devinit hdmi_audio_probe(struct platform_device *devptr)
 		goto err;
 	retval = snd_ctl_add(card, snd_ctl_new1(&had_control_iec958,
 						intelhaddata));
+	if (retval < 0)
+		goto err;
+
+	init_channel_allocations();
+
+	/* Register channel map controls */
+	retval = had_register_chmap_ctls(intelhaddata, pcm);
 	if (retval < 0)
 		goto err;
 
