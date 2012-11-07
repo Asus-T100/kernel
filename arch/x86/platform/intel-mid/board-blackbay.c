@@ -50,6 +50,9 @@
 #include "device_libs/platform_tc35876x.h"
 #include "device_libs/platform_max17042.h"
 #include "device_libs/platform_mxt224.h"
+#include "device_libs/platform_camera.h"
+#include "device_libs/platform_mt9e013.h"
+#include "device_libs/platform_mt9m114.h"
 
 /*
  * SPI devices
@@ -65,6 +68,12 @@ static void __init *no_platform_data(void *info)
 {
 	return NULL;
 }
+
+const struct intel_v4l2_subdev_id v4l2_ids[] = {
+	{"mt9e013", RAW_CAMERA, ATOMISP_CAMERA_PORT_PRIMARY},
+	{"mt9m114", SOC_CAMERA, ATOMISP_CAMERA_PORT_SECONDARY},
+	{},
+};
 
 struct devs_id __initconst device_ids[] = {
 	{"bma023", SFI_DEV_TYPE_I2C, 1, &no_platform_data, NULL},
@@ -100,5 +109,14 @@ struct devs_id __initconst device_ids[] = {
 					&ipc_device_handler},
 	{"msic_thermal", SFI_DEV_TYPE_IPC, 1, &msic_thermal_platform_data,
 					&ipc_device_handler},
+
+	/*
+	 * I2C devices for camera image subsystem which will not be load into
+	 * I2C core while initialize
+	 */
+	{"mt9e013", SFI_DEV_TYPE_I2C, 0, &mt9e013_platform_data,
+					&intel_ignore_i2c_device_register},
+	{"mt9m114", SFI_DEV_TYPE_I2C, 0, &mt9m114_platform_data,
+					&intel_ignore_i2c_device_register},
 	{},
 };

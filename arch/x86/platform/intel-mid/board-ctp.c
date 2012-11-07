@@ -42,6 +42,9 @@
 #include "device_libs/platform_max17042.h"
 #include "device_libs/platform_s3202.h"
 #include "device_libs/platform_bq24192.h"
+#include "device_libs/platform_camera.h"
+#include "device_libs/platform_mt9m114.h"
+#include "device_libs/platform_ov8830.h"
 
 /*
  * SPI devices
@@ -57,6 +60,12 @@ static void __init *no_platform_data(void *info)
 {
 	return NULL;
 }
+
+const struct intel_v4l2_subdev_id v4l2_ids[] = {
+	{"ov8830", RAW_CAMERA, ATOMISP_CAMERA_PORT_PRIMARY},
+	{"mt9m114", SOC_CAMERA, ATOMISP_CAMERA_PORT_SECONDARY},
+	{},
+};
 
 struct devs_id __initconst device_ids[] = {
 	{"a_gfreq",   SFI_DEV_TYPE_IPC, 0, &no_platform_data,
@@ -83,6 +92,16 @@ struct devs_id __initconst device_ids[] = {
 	{"clvcs_audio", SFI_DEV_TYPE_IPC, 1, &clvs_audio_platform_data,
 					     &ipc_device_handler},
 	{"cs42l73", SFI_DEV_TYPE_I2C, 1, &no_platform_data, NULL},
+
+	/*
+	 * Camera Sensors and LED Flash.
+	 * I2C devices for camera image subsystem which will not be load into
+	 * I2C core while initialize
+	 */
+	{"mt9m114", SFI_DEV_TYPE_I2C, 0, &mt9m114_platform_data,
+					&intel_ignore_i2c_device_register},
+	{"ov8830", SFI_DEV_TYPE_I2C, 0, &ov8830_platform_data,
+					&intel_ignore_i2c_device_register},
 
 	/* Touch Screen */
 	{"mxt224", SFI_DEV_TYPE_I2C, 0, &mxt224_platform_data, NULL},
