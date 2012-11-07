@@ -7,6 +7,7 @@
 #include <linux/slab.h>
 #include <linux/sched.h>
 #include <linux/freezer.h>
+#include <linux/delay.h>
 #include <linux/kthread.h>
 #include <linux/version.h>
 
@@ -612,7 +613,8 @@ static enum usb_charger_type aca_check(struct dwc_otg2 *otg)
 static enum usb_charger_type get_charger_type(struct dwc_otg2 *otg)
 {
 	u8 val, vdat_det, chgd_serx_dm;
-	int ret, count = 0;
+	unsigned long timeout, interval;
+	int ret;
 	enum usb_charger_type type = CHRG_UNKNOWN;
 
 	/* PHY Enable:
@@ -636,34 +638,49 @@ static enum usb_charger_type get_charger_type(struct dwc_otg2 *otg)
 	if (ret)
 		otg_err(otg, "Fail to enable ACA&ID detection logic\n");
 
-	/* DCD Enable:
-	 * Enable SW control
+	/* DCD Enable: Change OPMODE to 01 (Non-driving),
+	 * TermSel to 0, &
+	 * XcvrSel to 01 (enable FS xcvr)
 	 */
+	ulpi_write(otg, TUSB1211_FUNC_CTRL_SET, \
+			FUNCCTRL_OPMODE(1) | FUNCCTRL_XCVRSELECT(1));
+	ulpi_write(otg, TUSB1211_FUNC_CTRL_CLR, \
+			FUNCCTRL_OPMODE(2) | FUNCCTRL_XCVRSELECT(2) \
+			| FUNCCTRL_TERMSELECT);
+
+	/*Enable SW control*/
 	ulpi_write(otg, TUSB1211_POWER_CONTROL_SET, PWCTRL_SW_CONTROL);
 
 	/* Enable IDPSRC */
 	ulpi_write(otg, TUSB1211_VENDOR_SPECIFIC3_SET, VS3_CHGD_IDP_SRC_EN);
 
-	/* DCD Check: */
-	do {
-		/* Delay 66.5 ms. (Note:
-		 * TIDP_SRC_ON + TCHGD_SERX_DEB =
-		 * 347.8us + 66.1ms).
-		 */
-		msleep(67);
-		count += 67;
+	/* Check DCD result, use same polling parameter */
+	timeout = jiffies + msecs_to_jiffies(DATACON_TIMEOUT);
+	interval = DATACON_INTERVAL * 1000; /* us */
+
+	/* DCD Check:
+	 * Delay 66.5 ms. (Note:
+	 * TIDP_SRC_ON + TCHGD_SERX_DEB =
+	 * 347.8us + 66.1ms).
+	 */
+	usleep_range(66500, 67000);
+
+	while (!time_after(jiffies, timeout)) {
 		/* Read DP logic level. */
 		ret = ulpi_read(otg, TUSB1211_VENDOR_SPECIFIC4, &val);
 		if (ret < 0) {
-			otg_err(otg, "ULPI read error!\n");
+			otg_err(otg, "ULPI read error! try again\n");
 			continue;
 		}
-		if (count > 800) {
-			otg_err(otg, "ULPI read TUSB1211_VENDOR_SPECIFIC4 timeout!\n");
+
+		if (!(val & VS4_CHGD_SERX_DP)) {
+			otg_info(otg, "Data contact detected!\n");
 			break;
 		}
-		val &= ~VS4_CHGD_SERX_DP;
-	} while (val != 0);
+
+		/* Polling interval */
+		usleep_range(interval, interval + 2000);
+	}
 
 	/* Disable DP pullup (Idp_src) */
 	ulpi_write(otg, TUSB1211_VENDOR_SPECIFIC3_CLR, VS3_CHGD_IDP_SRC_EN);
