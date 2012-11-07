@@ -2899,6 +2899,109 @@ out_err0:
 #endif
 }
 
+/*
+* use to dump display registers. and print to standard output.
+*/
+static int psb_register_dump(struct drm_device *dev, int start, int end)
+{
+
+	struct drm_psb_private *dev_priv =
+		(struct drm_psb_private *) dev->dev_private;
+	int  len = 0;
+	int  Offset = 0;
+	int  add_size = 0;
+	int  ret = 0;
+
+	PSB_DEBUG_ENTRY("start:0x%08x\n", start);
+	PSB_DEBUG_ENTRY("end:  0x%08x\n", end);
+
+	if ((start % 0x4) != 0) {
+		PSB_DEBUG_ENTRY("The address should be 4 byte aligned.\n");
+		ret = -EINVAL;
+		return ret;
+	}
+
+	if ((end % 0x4) != 0) {
+		PSB_DEBUG_ENTRY("The address should be 4 byte aligned.\n");
+		ret = -EINVAL;
+		return ret;
+	}
+
+	len = end - start + 1;
+	if (len <= 0)
+		PSB_DEBUG_ENTRY("The end should be greater than start.\n");
+
+	if (end < 0xa000 || end >  0x720ff) {
+		PSB_DEBUG_ENTRY("The end address is out of range.\n");
+		ret = -EINVAL;
+		return ret;
+	}
+
+	if (start < 0xa000 || start >  0x720ff)	{
+		PSB_DEBUG_ENTRY("The start address is out of the range.\n");
+		ret = -EINVAL;
+		return ret;
+	}
+
+	for (Offset = start ; Offset < end; Offset = Offset + 0x10) {
+		printk(KERN_INFO
+			"[DISPLAY DUMP] 0x%08x: 0x%08x 0x%08x 0x%08x 0x%08x\n",
+					Offset,
+					REG_READ(Offset + 0x0),
+					REG_READ(Offset + 0x4),
+					REG_READ(Offset + 0x8),
+					REG_READ(Offset + 0xc));
+	}
+
+	return ret;
+}
+
+static int psb_display_reg_dump(struct drm_device *dev)
+{
+	struct drm_psb_private *dev_priv =
+		(struct drm_psb_private *) dev->dev_private;
+	struct mdfld_dsi_config *dsi_config;
+
+	dsi_config = dev_priv->dsi_configs[0];
+	mdfld_dsi_dsr_forbid(dsi_config);
+
+	/* DSI PLL */
+	printk(KERN_INFO "[DISPLAY REG DUMP] DSI PLL REG\n\n");
+	psb_register_dump(dev, 0xf010, 0xf020);
+	printk(KERN_INFO "\n");
+
+	/* MIPI A REGISTER */
+	printk(KERN_INFO "[DISPLAY REG DUMP] MIPI A\n\n");
+	psb_register_dump(dev, 0xb000, 0xb100);
+	printk(KERN_INFO "\n");
+
+	/* PIPE A */
+	printk(KERN_INFO "[DISPLAY REG DUMP] PIPE A\n\n");
+	psb_register_dump(dev, 0x60000, 0x60100);
+	printk(KERN_INFO "\n");
+
+	/* Plane A */
+	printk(KERN_INFO "[DISPLAY REG DUMP] PLANE A\n\n");
+	psb_register_dump(dev, 0x70000, 0x700FC);
+	psb_register_dump(dev, 0x70180, 0x701F4);
+	psb_register_dump(dev, 0x70400, 0x7044C);
+	psb_register_dump(dev, 0x70500, 0x70504);
+	printk(KERN_INFO "\n");
+
+	/* OVERLAY */
+	printk(KERN_INFO "[DISPLAY REG DUMP] OVERLAY A\n\n");
+	psb_register_dump(dev, 0x30000, 0x30060);
+	psb_register_dump(dev, 0x30100, 0x301A4);
+	psb_register_dump(dev, 0x32000, 0x3201C);
+	psb_register_dump(dev, 0x33000, 0x33024);
+	printk(KERN_INFO "\n");
+
+	mdfld_dsi_dsr_allow(dsi_config);
+	return 0;
+}
+
+
+
 static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv)
 {
@@ -3002,6 +3105,16 @@ static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 				arg->display.dspcntr_a = PSB_RVDC32(DSPACNTR);
 			if (arg->display_read_mask & REGRWBITS_DSPBCNTR)
 				arg->display.dspcntr_b = PSB_RVDC32(DSPBCNTR);
+			if (arg->display_read_mask & REGRWBITS_PIPEASTAT)
+				arg->display.pipestat_a = PSB_RVDC32(PIPEASTAT);
+			if (arg->display_read_mask & REGRWBITS_INT_MASK)
+				arg->display.int_mask =
+						PSB_RVDC32(PSB_INT_MASK_R);
+			if (arg->display_read_mask & REGRWBITS_INT_ENABLE)
+				arg->display.int_enable =
+						PSB_RVDC32(PSB_INT_ENABLE_R);
+			if (arg->display_read_mask & REGRWBITS_DISPLAY_ALL)
+				psb_display_reg_dump(dev);
 			ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 		} else {
 			if (arg->display_read_mask &
@@ -3024,11 +3137,31 @@ static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 				arg->display.vtotal_a = dev_priv->saveVTOTAL_A;
 			if (arg->display_read_mask & REGRWBITS_VTOTAL_B)
 				arg->display.vtotal_b = dev_priv->saveVTOTAL_B;
+			if (arg->display_read_mask & REGRWBITS_PIPEASTAT)
+				arg->display.pipestat_a = PSB_RVDC32(PIPEASTAT);
+			if (arg->display_read_mask & REGRWBITS_INT_MASK)
+				arg->display.int_mask =
+						PSB_RVDC32(PSB_INT_MASK_R);
+			if (arg->display_read_mask & REGRWBITS_INT_ENABLE)
+				arg->display.int_enable =
+						PSB_RVDC32(PSB_INT_ENABLE_R);
+			if (arg->display_read_mask & REGRWBITS_DISPLAY_ALL)
+				psb_display_reg_dump(dev);
 		}
 	}
 
 	if (arg->vsync_operation_mask) {
 		pipe = arg->vsync.pipe;
+
+		if (arg->vsync_operation_mask & GET_VSYNC_COUNT) {
+			vbl_count = intel_vblank_count(dev, pipe);
+
+			getrawmonotonic(&now);
+			nsecs = timespec_to_ns(&now);
+
+			arg->vsync.timestamp = (uint64_t)nsecs;
+			arg->vsync.vsync_count = (uint64_t)vbl_count;
+		}
 
 		if (arg->vsync_operation_mask & VSYNC_WAIT) {
 			vbl_count = intel_vblank_count(dev, pipe);

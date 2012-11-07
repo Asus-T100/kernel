@@ -614,6 +614,10 @@ struct drm_psb_stolen_memory_arg {
 #define REGRWBITS_DSPBCNTR	                (1 << 9)
 #define REGRWBITS_DSPCCNTR			(1 << 10)
 #define REGRWBITS_SPRITE_UPDATE			(1 << 11)
+#define REGRWBITS_PIPEASTAT			(1 << 12)
+#define REGRWBITS_INT_MASK			(1 << 13)
+#define REGRWBITS_INT_ENABLE			(1 << 14)
+#define REGRWBITS_DISPLAY_ALL			(1 << 15)
 /*Overlay Register Bits*/
 #define OV_REGRWBITS_OVADD			(1 << 0)
 #define OV_REGRWBITS_OGAM_ALL			(1 << 1)
@@ -636,6 +640,7 @@ struct drm_psb_stolen_memory_arg {
 #define VSYNC_ENABLE				(1 << 0)
 #define VSYNC_DISABLE				(1 << 1)
 #define VSYNC_WAIT				(1 << 2)
+#define GET_VSYNC_COUNT			        (1 << 3)
 struct intel_overlay_context {
 	uint32_t index;
 	uint32_t pipe;
@@ -691,6 +696,9 @@ struct drm_psb_register_rw_arg {
 		uint32_t vtotal_b;
 		uint32_t dspcntr_a;
 		uint32_t dspcntr_b;
+		uint32_t pipestat_a;
+		uint32_t int_mask;
+		uint32_t int_enable;
 	} display;
 
 	uint32_t overlay_read_mask;
@@ -717,6 +725,7 @@ struct drm_psb_register_rw_arg {
 	struct {
 		uint32_t pipe;
 		int vsync_pipe;
+		int vsync_count;
 		uint64_t timestamp;
 	} vsync;
 
