@@ -82,10 +82,6 @@ static void ep_set_halt(struct langwell_ep *ep, int value);
 
 
 #ifdef CONFIG_DEBUG_FS
-
-extern  unsigned int *pm_sss0_base;
-
-extern  int check_pm_otg();
 #ifdef readl
 #undef readl
 #endif
@@ -118,8 +114,6 @@ static void dump_ep(struct langwell_udc *dev, int ep_index)
 	u32	value, i;
 	u32 in = ep_index % 2;
 	u32 num = ep_index / 2;
-	unsigned long	flags;
-
 
 	printk(KERN_ERR"Showing ep %d (ep%d%s) ...\n\n",
 			ep_index, num, in ? "IN" : "OUT");
@@ -1465,10 +1459,10 @@ static void langwell_udc_pullup(struct langwell_udc *dev, u32 on)
 		if (can_pullup(dev)) {
 			if (dev->sdis) {
 				usbmode |= MODE_SDIS;
-				dev_dbg(&dev->pdev->dev, "disable streaming mode\n");
+				dev_info(&dev->pdev->dev, "disable streaming mode\n");
 			} else {
 				usbmode &= ~MODE_SDIS;
-				dev_dbg(&dev->pdev->dev, "enable streaming mode\n");
+				dev_info(&dev->pdev->dev, "enable streaming mode\n");
 			}
 			writel(usbmode, &dev->op_regs->usbmode);
 			usbcmd |= CMD_RUNSTOP;
@@ -1737,7 +1731,7 @@ static int langwell_udc_reset(struct langwell_udc *dev)
 
 	/* FIXME: workaround for bug9000364367 */
 	sbuscfg_addr = (unsigned long)dev->cap_regs + SBUSCFG_REG_OFFSET;
-	writel(0x7, sbuscfg_addr);
+	writel(0x7, (void *)sbuscfg_addr);
 
 	/* if support USB LPM, ACK all LPM token */
 	if (dev->lpm) {

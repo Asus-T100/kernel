@@ -21,6 +21,11 @@
 #include <linux/usb/intel_mid_otg.h>
 #include <linux/wakelock.h>
 
+#ifdef CONFIG_DEBUG_FS
+extern  unsigned int *pm_sss0_base;
+extern  int check_pm_otg(void);
+#endif
+
 /*-------------------------------------------------------------------------*/
 
 /* driver data structures and utilities */
