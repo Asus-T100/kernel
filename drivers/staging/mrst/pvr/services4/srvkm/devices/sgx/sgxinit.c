@@ -700,8 +700,8 @@ PVRSRV_ERROR SGXInitialise(PVRSRV_SGXDEV_INFO	*psDevInfo,
 #endif /* PDUMP */
 
 	PVR_ASSERT(psDevInfo->psKernelCCBCtl->ui32ReadOffset == psDevInfo->psKernelCCBCtl->ui32WriteOffset);
-
 	bFirstTime = IMG_FALSE;
+	psDevInfo->bSGXIdle = IMG_FALSE;
 	
 	return PVRSRV_OK;
 }

@@ -71,6 +71,7 @@
 #include "otm_hdmi.h"
 #include "ipil_hdmi.h"
 #include "ps_hdmi.h"
+#include <asm/intel_scu_pmic.h>
 
 
 /* Implementation of the Clovertrail specific PCI driver for receiving
@@ -91,6 +92,10 @@ static hdmi_context_t *g_context;
 #define PS_MSIC_PCI_DEVICE_ID 0x901
 #define PS_MSIC_HPD_GPIO_PIN 43
 #define PS_MSIC_LS_OE_GPIO_PIN 91
+
+#define PS_MSIC_VCC330CNT			0xd3
+#define PS_VCC330_OFF				0x24
+#define PS_VCC330_ON				0x37
 
 
 /* For CTP, it is required that SW pull up or pull down the
@@ -216,13 +221,29 @@ otm_hdmi_ret_t ps_hdmi_i2c_edid_read(void *ctx, unsigned int sp,
 
 bool ps_hdmi_power_rails_on(void)
 {
-	/* To be implemented */
+	int ret = 0;
+	pr_debug("Entered %s\n", __func__);
+
+	ret = intel_scu_ipc_iowrite8(PS_MSIC_VCC330CNT, PS_VCC330_ON);
+	if (ret) {
+		pr_debug("%s: Failed to power on VCC330.\n", __func__);
+		return false;
+	}
+
 	return true;
 }
 
 bool ps_hdmi_power_rails_off(void)
 {
-	/* To be implemented */
+	int ret = 0;
+	pr_debug("Entered %s\n", __func__);
+
+	ret = intel_scu_ipc_iowrite8(PS_MSIC_VCC330CNT, PS_VCC330_OFF);
+	if (ret) {
+		pr_debug("%s: Failed to power off VCC330.\n", __func__);
+		return false;
+	}
+
 	return true;
 }
 
@@ -277,14 +298,14 @@ irqreturn_t ps_hdmi_irq_handler(int irq, void *data)
 static int ps_hdmi_hpd_suspend(struct device *dev)
 {
 	pr_debug("Entered %s\n", __func__);
-	/* To be implemented */
+	ps_hdmi_power_rails_off();
 	return 0;
 }
 
 static int ps_hdmi_hpd_resume(struct device *dev)
 {
 	pr_debug("Entered %s\n", __func__);
-	/* To be implemented */
+	ps_hdmi_power_rails_on();
 	return 0;
 }
 

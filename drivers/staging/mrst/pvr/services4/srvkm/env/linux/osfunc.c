@@ -732,7 +732,9 @@ IMG_VOID OSWaitus(IMG_UINT32 ui32Timeus)
 
 IMG_VOID OSSleepms(IMG_UINT32 ui32Timems)
 {
-    msleep(ui32Timems);
+	trace_printk("OSSleepms sleep for %dms start\n");
+	msleep(ui32Timems);
+	trace_printk("OSSleepms sleep end\n");
 }
 
 

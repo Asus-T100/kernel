@@ -188,37 +188,59 @@ static unsigned char vrint_data;
 
 bool ps_hdmi_power_rails_on(void)
 {
+	int ret = 0;
+	pr_debug("Entered %s\n", __func__);
+
 	/* Turn on HDMI power rails. These will be on in all non-S0iX
 	 * states so that HPD and connection status will work. VCC330
 	 * will have ~1.7mW usage during idle states when the display
 	 * is active
 	 */
-	intel_scu_ipc_iowrite8(PS_MSIC_VCC330CNT, PS_VCC330_ON);
+	ret = intel_scu_ipc_iowrite8(PS_MSIC_VCC330CNT, PS_VCC330_ON);
+	if (ret) {
+		pr_debug("%s: Failed to power on VCC330.\n", __func__);
+		return false;
+	}
 
 	if (vrint_data & PS_HDMI_OCP_STATUS) {
 		/* When there occurs overcurrent in MSIC HDMI HDP,
 		 * need to reset VHDMIEN by clearing to 0 then set to 1
 		 */
-		intel_scu_ipc_iowrite8(PS_MSIC_VHDMICNT,
+		ret = intel_scu_ipc_iowrite8(PS_MSIC_VHDMICNT,
 					PS_VHDMI_OFF);
-
-		/* MSIC documentation requires that there be a 500us
-		 * delay after enabling VCC330 before you can enable
-		 * VHDMI
-		 */
-		usleep_range(500, 1000);
-
-		/* Extend VHDMI switch de-bounce time, to avoid
-		 * redundant MSIC VREG/HDMI interrupt during HDMI
-		 * cable plugged in/out
-		 */
-		intel_scu_ipc_iowrite8(PS_MSIC_VHDMICNT,
-					PS_VHDMI_ON |
-					PS_VHDMI_DB_30MS);
+		if (ret) {
+			pr_debug("%s: Failed to power off VHDMI.\n", __func__);
+			goto err;
+		}
 	}
 
-	if (vrint_data & PS_HDMI_HPD_STATUS_BIT)
-		return true;
+	/* MSIC documentation requires that there be a 500us
+	 * delay after enabling VCC330 before you can enable
+	 * VHDMI
+	 */
+	usleep_range(500, 1000);
+
+	/* Extend VHDMI switch de-bounce time, to avoid
+	 * redundant MSIC VREG/HDMI interrupt during HDMI
+	 * cable plugged in/out
+	 */
+	ret = intel_scu_ipc_iowrite8(PS_MSIC_VHDMICNT,
+				PS_VHDMI_ON |
+				PS_VHDMI_DB_30MS);
+	if (ret) {
+		pr_debug("%s: Failed to power on VHDMI.\n", __func__);
+		goto err;
+	}
+
+	return true;
+
+err:
+	ret = intel_scu_ipc_iowrite8(PS_MSIC_VCC330CNT, PS_VCC330_OFF);
+	if (ret) {
+		pr_debug("%s: Failed to power off VCC330 during clean up.\n",
+				__func__);
+		/* Fall through */
+	}
 	return false;
 }
 
@@ -226,6 +248,7 @@ bool ps_hdmi_power_rails_on(void)
 bool ps_hdmi_power_rails_off(void)
 {
 	int ret = 0;
+	pr_debug("Entered %s\n", __func__);
 
 	ret = intel_scu_ipc_iowrite8(PS_MSIC_VHDMICNT, PS_VHDMI_OFF);
 	if (ret) {

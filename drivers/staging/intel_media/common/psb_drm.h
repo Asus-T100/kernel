@@ -681,6 +681,17 @@ struct mdfld_plane_contexts {
 	struct intel_overlay_context overlay_contexts[INTEL_OVERLAY_PLANE_NUM];
 };
 
+struct drm_psb_vsync_set_arg {
+	uint32_t vsync_operation_mask;
+
+	struct {
+		uint32_t pipe;
+		int vsync_pipe;
+		int vsync_count;
+		uint64_t timestamp;
+	} vsync;
+};
+
 struct drm_psb_register_rw_arg {
 	uint32_t b_force_hw_on;
 
@@ -850,6 +861,9 @@ typedef struct drm_psb_msvdx_decode_status {
 /* IED session */
 #define DRM_PSB_ENABLE_IED_SESSION  0x30
 #define DRM_PSB_DISABLE_IED_SESSION 0x31
+
+/* VSYNC IOCTLS */
+#define DRM_PSB_VSYNC_SET         0x32
 
 /* Do not use IOCTL between 0x40 and 0x4F */
 /* These will be reserved for OEM to use */
