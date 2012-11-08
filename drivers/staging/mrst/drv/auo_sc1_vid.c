@@ -181,7 +181,7 @@ static int mdfld_dsi_sc1_power_on(struct mdfld_dsi_config *dsi_config)
 	/*enable BLON , CABC*/
 	if (drm_psb_enable_cabc) {
 		mdfld_dsi_send_mcs_long_hs(sender, sc1_enable_CABC_bl_on, 4, 0);
-		printk(KERN_ALERT "enable SC1 cabc\n");
+		DRM_INFO("enable SC1 cabc\n");
 	}
 
 	/*send TURN_ON packet*/

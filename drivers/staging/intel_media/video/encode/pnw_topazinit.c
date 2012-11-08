@@ -1605,6 +1605,7 @@ int pnw_topaz_restore_mtx_state(struct drm_device *dev)
 		topaz_priv->topaz_mtx_saved = 0;
 		return 0;
 	}
+
 	pnw_topaz_mmu_flushcache(dev_priv);
 
 	for (core_id = 0; core_id < topaz_priv->topaz_num_cores; core_id++)

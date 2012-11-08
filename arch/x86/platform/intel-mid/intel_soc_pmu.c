@@ -18,6 +18,7 @@
  */
 
 #include "intel_soc_pmu.h"
+#include <linux/proc_fs.h>
 
 #ifdef CONFIG_DRM_INTEL_MID
 #define GFX_ENABLE
@@ -1133,6 +1134,161 @@ err:
 	return status;
 }
 
+
+#define SAVED_HISTORY_ADDRESS_NUM	10
+#define SAVED_HISTORY_NUM		20
+#define PCI_MAX_RECORD_NUM		10
+
+struct saved_nc_power_history {
+	unsigned long long ts;
+	unsigned short pci;
+	unsigned short cpu:4;
+	unsigned short state_type:8;
+	unsigned short reg_type:2;
+	unsigned short real_change:2;
+	int islands;
+	void *address[SAVED_HISTORY_ADDRESS_NUM];
+};
+
+static atomic_t saved_nc_power_history_current = ATOMIC_INIT(-1);
+static struct saved_nc_power_history all_history[SAVED_HISTORY_NUM];
+static struct saved_nc_power_history *get_new_record_history(void)
+{
+	int ret = atomic_add_return(1, &saved_nc_power_history_current);
+	return &all_history[ret%SAVED_HISTORY_NUM];
+}
+
+static unsigned short pci_need_record[PCI_MAX_RECORD_NUM] = { 0x08c8, 0x0130, };
+static int num_pci_need_record = 2;
+module_param_array(pci_need_record, ushort, &num_pci_need_record, 0644);
+MODULE_PARM_DESC(pci_need_record,
+		"devices need be traced power state transition.");
+
+static bool pci_need_record_power_state(struct pci_dev *pdev)
+{
+	int i;
+	for (i = 0; i < num_pci_need_record; i++)
+		if (pdev->device == pci_need_record[i])
+			return true;
+
+	return false;
+}
+
+static void print_saved_record(struct saved_nc_power_history *record)
+{
+	int i;
+	unsigned long long ts = record->ts;
+	unsigned long nanosec_rem = do_div(ts, 1000000000);
+
+	printk(KERN_INFO "----\n");
+	printk(KERN_INFO "ts[%5lu.%06lu] cpu[%d] is pci[%04x] reg_type[%d] "
+			"state_type[%d] islands[%x] real_change[%d]\n",
+		(unsigned long)ts,
+		nanosec_rem / 1000,
+		record->cpu,
+		record->pci,
+		record->reg_type,
+		record->state_type,
+		record->islands,
+		record->real_change);
+	for (i = 0; i < SAVED_HISTORY_ADDRESS_NUM; i++) {
+		printk(KERN_INFO "%pf real_addr[%p]\n",
+			record->address[i],
+			record->address[i]);
+	}
+}
+
+int verify_stack_ok(unsigned int *good_ebp, unsigned int *_ebp)
+{
+	return ((unsigned int)_ebp & 0xffffe000) ==
+		((unsigned int)good_ebp & 0xffffe000);
+}
+
+size_t backtrace_safe(void **array, size_t max_size)
+{
+	unsigned int *_ebp, *base_ebp;
+	unsigned int *caller;
+	unsigned int i;
+
+	asm ("movl %%ebp, %0"
+		: "=r" (_ebp)
+	    );
+
+	base_ebp = _ebp;
+	caller = (unsigned int *) *(_ebp+1);
+
+	for (i = 0; i < max_size; i++)
+		array[i] = 0;
+	for (i = 0; i < max_size; i++) {
+		array[i] = caller;
+		_ebp = (unsigned int *) *_ebp;
+		if (!verify_stack_ok(base_ebp, _ebp))
+			break;
+		caller = (unsigned int *) *(_ebp+1);
+	}
+
+	return i + 1;
+}
+
+void dump_nc_power_history(void)
+{
+	int i;
+	int start = (atomic_read(&saved_nc_power_history_current)) %
+				SAVED_HISTORY_NUM;
+
+	printk(KERN_INFO "<----current timestamp\n");
+	printk(KERN_INFO "start[%d] saved[%d]\n",
+			start, atomic_read(&saved_nc_power_history_current));
+	for (i = start; i >= 0; i--)
+		print_saved_record(&all_history[i]);
+	for (i = SAVED_HISTORY_NUM - 1; i > start; i--)
+		print_saved_record(&all_history[i]);
+}
+EXPORT_SYMBOL(dump_nc_power_history);
+
+static int debug_read_history(char *page, char **start, off_t off,
+		int count, int *eof, void *data)
+{
+	unsigned long len = 0;
+	page[len] = 0;
+
+	dump_nc_power_history();
+	return len;
+}
+
+static int debug_write_read_history_entry(struct file *file,
+		const char __user *buffer, unsigned long count, void *data)
+{
+	char buf[20] = "0";
+	unsigned long len = min((unsigned long)sizeof(buf) - 1, count);
+	u32 islands;
+	u32 on;
+	int ret;
+
+	if (copy_from_user(buf, buffer, len))
+		return -1;
+
+	buf[len] = 0;
+
+	ret = sscanf(buf, "%x%x", &islands, &on);
+	if (ret == 2)
+		pmu_nc_set_power_state(islands, on, OSPM_REG_TYPE);
+
+	return count;
+}
+
+static int __init debug_read_history_entry(void)
+{
+	struct proc_dir_entry *res = NULL;
+	res = create_proc_entry("debug_read_history", S_IALLUGO, NULL);
+	if (res) {
+		res->write_proc = debug_write_read_history_entry;
+		res->read_proc = debug_read_history;
+	}
+	return 0;
+}
+device_initcall(debug_read_history_entry);
+
 /**
  * pmu_nc_set_power_state - Callback function is used by all the devices
  * in north complex for a platform  specific device power on/shutdown.
@@ -1154,8 +1310,19 @@ int pmu_nc_set_power_state(int islands, int state_type, int reg_type)
 	unsigned long flags;
 	int i, lss, mask;
 	int ret = 0;
+	struct saved_nc_power_history *record = NULL;
 
 	spin_lock_irqsave(&mid_pmu_cxt->nc_ready_lock, flags);
+
+	record = get_new_record_history();
+	record->cpu = raw_smp_processor_id();
+	record->ts = cpu_clock(record->cpu);
+	record->islands = islands;
+	record->pci = 0;
+	record->state_type = state_type;
+	backtrace_safe(record->address, SAVED_HISTORY_ADDRESS_NUM);
+	record->real_change = 0;
+	record->reg_type = reg_type;
 
 	switch (reg_type) {
 	case APM_REG_TYPE:
@@ -1193,6 +1360,8 @@ int pmu_nc_set_power_state(int islands, int state_type, int reg_type)
 
 		ret =
 		wait_for_nc_pmcmd_complete(pwr_mask, state_type, reg_type);
+		record->real_change = 1;
+		record->ts = cpu_clock(record->cpu);
 	}
 
 unlock:
@@ -1308,6 +1477,7 @@ int __ref pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t state)
 	int status = 0;
 	int retry_times = 0;
 	ktime_t calltime, delta, rettime;
+	struct saved_nc_power_history *record = NULL;
 
 	/* Ignore callback from devices until we have initialized */
 	if (unlikely((!pmu_initialized)))
@@ -1327,6 +1497,18 @@ int __ref pmu_pci_set_power_state(struct pci_dev *pdev, pci_power_t state)
 
 	if (status)
 		goto unlock;
+
+	if (pci_need_record_power_state(pdev)) {
+		record = get_new_record_history();
+		record->cpu = raw_smp_processor_id();
+		record->ts = cpu_clock(record->cpu);
+		record->islands = 0;
+		record->reg_type = 0;
+		record->pci = pdev->device;
+		record->state_type = state;
+		backtrace_safe(record->address, SAVED_HISTORY_ADDRESS_NUM);
+		record->real_change = 0;
+	}
 
 	/*in case a LSS is assigned to more than one pdev, we need
 	  *to find the shallowest state the LSS should be put into*/
@@ -1443,6 +1625,10 @@ retry:
 			goto retry;
 		else
 			BUG();
+	}
+	if (record) {
+		record->real_change = 1;
+		record->ts = cpu_clock(record->cpu);
 	}
 
 	pmu_set_s0ix_possible(state);

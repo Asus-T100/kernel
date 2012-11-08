@@ -62,7 +62,7 @@
 #define IRQ_CTRL_IRQ_LEVEL_PLUS 0x14
 
 #define VSP_CONFIG_REG_SDRAM_BASE 0x1A0000
-#define VSP_CONFIG_REG_D2 0x8
+#define VSP_CONFIG_REG_START 0x8
 
 /* help macro */
 #define MM_WRITE32(base, offset, value)					\
@@ -112,9 +112,9 @@
 	MM_READ32(SP1_SP_REG_BASE, offset, pointer)
 
 #define CONFIG_REG_WRITE32(offset, value)			\
-	MM_WRITE32(VSP_CONFIG_REG_SDRAM_BASE, offset, value)
+	MM_WRITE32(VSP_CONFIG_REG_SDRAM_BASE, ((offset) * 4), value)
 #define CONFIG_REG_READ32(offset, pointer)			\
-	MM_READ32(VSP_CONFIG_REG_SDRAM_BASE, offset, pointer)
+	MM_READ32(VSP_CONFIG_REG_SDRAM_BASE, ((offset) * 4), pointer)
 
 #define PAGE_TABLE_SHIFT PAGE_SHIFT
 #define INVALID_MMU MM_WRITE32(0, MMU_INVALID, 0x1)
@@ -162,12 +162,26 @@ struct vsp_private {
 	struct ttm_buffer_object *firmware;
 	unsigned int firmware_sz;
 
+	struct ttm_buffer_object *cmd_queue_bo;
+	unsigned int cmd_queue_sz;
+	struct ttm_bo_kmap_obj cmd_kmap;
+	struct vss_command_t *cmd_queue;
+
+	struct ttm_buffer_object *ack_queue_bo;
+	unsigned int ack_queue_sz;
+	struct ttm_bo_kmap_obj ack_kmap;
+	struct vss_response_t *ack_queue;
+
 	struct vsp_config config;
-	struct vsp_data *ctrl;
+
+	struct vsp_ctrl_reg *ctrl;
+
 
 	unsigned int pmstate;
 	struct sysfs_dirent *sysfs_pmstate;
 	unsigned int vsp_busy;
+
+	uint64_t vss_cc_acc;
 };
 
 extern int vsp_init(struct drm_device *dev);

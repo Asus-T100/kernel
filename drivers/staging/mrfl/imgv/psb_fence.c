@@ -113,11 +113,7 @@ int psb_fence_emit_sequence(struct ttm_fence_device *fdev,
 	}
 
 	*sequence = seq;
-#ifdef CONFIG_BOARD_MRFLD_VP
-	*timeout_jiffies = jiffies + DRM_HZ * 3000;
-#else
 	*timeout_jiffies = jiffies + DRM_HZ * 3;
-#endif
 
 	return 0;
 }

@@ -1306,6 +1306,7 @@ struct backlight_device *psb_get_backlight_device(void);
 #define PSB_D_MSVDX   (1 << 9)
 #define PSB_D_TOPAZ   (1 << 10)
 #define VSP_D_LOG   (1 << 11)
+#define VSP_D_PERF   (1 << 12)
 
 #ifndef DRM_DEBUG_CODE
 /* To enable debug printout, set drm_psb_debug in psb_drv.c
@@ -1344,6 +1345,8 @@ extern int drm_topaz_sbuswa;
 	PSB_DEBUG(PSB_D_TOPAZ, _fmt, ##_arg)
 #define VSP_DEBUG(_fmt, _arg...) \
 	PSB_DEBUG(VSP_D_LOG, "VSP: "_fmt, ##_arg)
+#define VSP_PERF(_fmt, _arg...) \
+	PSB_DEBUG(VSP_D_PERF, "VSP PERFORMANCE: "_fmt, ##_arg)
 
 #if DRM_DEBUG_CODE
 #define PSB_DEBUG(_flag, _fmt, _arg...)					\

@@ -356,7 +356,7 @@ int __mdfld_gi_sony_dsi_power_on(struct mdfld_dsi_config *dsi_config)
 			 CMD_DATA_SRC_SYSTEM_MEM,
 			 MDFLD_DSI_SEND_PACKAGE);
 		if (err) {
-			DRM_ERROR("%s - sent set_tear_on faild\n", __func__);
+			DRM_ERROR("%s - write_ctrl_cabc faild\n", __func__);
 			goto power_err;
 		}
 
@@ -370,7 +370,7 @@ int __mdfld_gi_sony_dsi_power_on(struct mdfld_dsi_config *dsi_config)
 			 CMD_DATA_SRC_SYSTEM_MEM,
 			 MDFLD_DSI_SEND_PACKAGE);
 		if (err) {
-			DRM_ERROR("%s - sent set_tear_on faild\n", __func__);
+			DRM_ERROR("%s - write_ctrl_display faild\n", __func__);
 			goto power_err;
 		}
 
@@ -384,10 +384,10 @@ int __mdfld_gi_sony_dsi_power_on(struct mdfld_dsi_config *dsi_config)
 			 CMD_DATA_SRC_SYSTEM_MEM,
 			 MDFLD_DSI_SEND_PACKAGE);
 		if (err) {
-			DRM_ERROR("%s - sent set_tear_on faild\n", __func__);
+			DRM_ERROR("%s - write_ctrl_display faild\n", __func__);
 			goto power_err;
 		}
-
+		DRM_INFO("%s enable lxt cabc\n", __func__);
 	}
 
 	param[0] = 0x00;

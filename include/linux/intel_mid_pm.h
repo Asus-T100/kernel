@@ -138,6 +138,7 @@ extern void pmu_log_ipc_irq(void);
 static inline void pmu_log_ipc(u32 command) { return; };
 static inline void pmu_log_ipc_irq(void) { return; };
 #endif
+extern void dump_nc_power_history(void);
 
 extern bool mid_pmu_is_wake_source(u32 lss_number);
 #else

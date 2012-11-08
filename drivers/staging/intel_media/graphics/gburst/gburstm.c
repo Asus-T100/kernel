@@ -688,9 +688,18 @@ static inline u32 read_PWRGT_STS_simple(void)
 static void hrt_start(struct gburst_pvt_s *gbprv)
 {
 	if (gbprv->gbp_enable) {
-		gbprv->gbp_timer_is_enabled = 1;
+		if (gbprv->gbp_timer_is_enabled) {
+			/* Due to the gbp_timer is auto-restart timer
+			 * in most case, we must use hrtimer_cancel
+			 * it at first if it is in active state, to avoid
+			 * hitting the BUG_ON(timer->state !=
+			 * HRTIMER_STATE_CALLBACK) in hrtimer.c.
+			*/
+			hrtimer_cancel(&gbprv->gbp_timer);
+		} else {
+			gbprv->gbp_timer_is_enabled = 1;
+		}
 
-		/* If timer is already active, this will set a new time. */
 		hrtimer_start(&gbprv->gbp_timer, gbprv->gbp_hrt_period,
 			HRTIMER_MODE_REL);
 	}

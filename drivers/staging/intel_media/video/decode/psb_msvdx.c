@@ -786,7 +786,7 @@ loop: /* just for coding style check */
 
 		/* Flush the command queue */
 		psb_msvdx_flush_cmd_queue(dev);
-
+#ifdef CONFIG_VIDEO_MRFLD
 		if (msvdx_priv->host_be_opp_enabled) {
 			/*get the frame_info struct for error concealment frame*/
 			for (i = 0; i < MAX_DECODE_BUFFERS; i++) {
@@ -803,7 +803,7 @@ loop: /* just for coding style check */
 
 			failed_frame->fw_status = 1; /* set ERROR flag */
 		}
-
+#endif
 		msvdx_priv->decoding_err = 1;
 
 		goto done;
@@ -982,11 +982,13 @@ done:
 			PSB_DEBUG_PM("MSVDX: schedule work queue to suspend msvdx.\n");
 			schedule_delayed_work(&msvdx_priv->msvdx_suspend_wq, 0);
 		}
-	} else {
+	}
+#ifdef PSB_MSVDX_FW_LOADED_BY_HOST
+	else {
 		if (drm_msvdx_pmpolicy != PSB_PMPOLICY_NOPM)
 			schedule_delayed_work(&msvdx_priv->msvdx_suspend_wq, 0);
 	}
-
+#endif
 	DRM_MEMORYBARRIER();	/* TBD check this... */
 }
 
@@ -1056,6 +1058,7 @@ IMG_BOOL psb_msvdx_interrupt(IMG_VOID *pvData)
 	return IMG_TRUE;
 }
 
+#if 0
 void psb_msvdx_lockup(struct drm_psb_private *dev_priv,
 		      int *msvdx_lockup, int *msvdx_idle)
 {
@@ -1089,6 +1092,7 @@ void psb_msvdx_lockup(struct drm_psb_private *dev_priv,
 		}
 	}
 }
+#endif
 
 int psb_check_msvdx_idle(struct drm_device *dev)
 {

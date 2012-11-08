@@ -54,7 +54,7 @@ ZeroBuf(BM_BUF *pBuf, BM_MAPPING *pMapping, IMG_SIZE_T ui32Bytes, IMG_UINT32 ui3
 static IMG_VOID
 BM_FreeMemory (IMG_VOID *pH, IMG_UINTPTR_T base, BM_MAPPING *psMapping);
 static IMG_BOOL
-BM_ImportMemory(IMG_VOID *pH, IMG_SIZE_T uSize,
+BM_ImportMemory(IMG_VOID *pH, IMG_SIZE_T uSize, IMG_SIZE_T uAlignment,
 				IMG_SIZE_T *pActualSize, BM_MAPPING **ppsMapping,
 				IMG_UINT32 uFlags, IMG_PVOID pvPrivData,
 				IMG_UINT32 ui32PrivDataLength, IMG_UINTPTR_T *pBase);
@@ -162,14 +162,9 @@ AllocMemory (BM_CONTEXT			*pBMContext,
 			IMG_BOOL result = IMG_TRUE;
 			IMG_UINT32 uQuantum = MAX(HOST_PAGESIZE(), psBMHeap->sDevArena.ui32DataPageSize);
 
-			if (uDevVAddrAlignment > uQuantum)
-			{
-				uImportSize += (uDevVAddrAlignment - 1);
-			}
-
 			uImportSize = ((uImportSize + uQuantum - 1)/uQuantum)*uQuantum;
 
-			result = BM_ImportMemory(psBMHeap, uImportSize, &uImportSize, &pMapping, uFlags,
+			result = BM_ImportMemory(psBMHeap, uImportSize, 0, &uImportSize, &pMapping, uFlags,
 						 pvPrivData, ui32PrivDataLength, &pBuf->DevVAddr.uiAddr);
 			if(result == IMG_FALSE)
 			{
@@ -187,6 +182,7 @@ AllocMemory (BM_CONTEXT			*pBMContext,
 			/* Allocate physcial memory */
 			bSuccess = BM_ImportMemory(psBMHeap,
 									   ui32ChunkSize * ui32NumPhysChunks,
+									   0,
 									   &puiActualSize,
 									   &pMapping,
 									   uFlags,
@@ -2687,6 +2683,7 @@ static IMG_VOID XProcWorkaroundFreeShareable(IMG_HANDLE hOSMemHandle)
 static IMG_BOOL
 BM_ImportMemory (IMG_VOID *pH,
 			  IMG_SIZE_T uRequestSize,
+			  IMG_SIZE_T uAlignment,
 			  IMG_SIZE_T *pActualSize,
 			  BM_MAPPING **ppsMapping,
 			  IMG_UINT32 uFlags,
@@ -2773,7 +2770,7 @@ BM_ImportMemory (IMG_VOID *pH,
 
         if ((ui32Attribs & PVRSRV_BACKINGSTORE_SYSMEM_NONCONTIG) != 0)
         {
-		uDevVAddrAlignment = MAX(pBMHeap->sDevArena.ui32DataPageSize, HOST_PAGESIZE());
+		uDevVAddrAlignment = MAX(uAlignment, MAX(pBMHeap->sDevArena.ui32DataPageSize, HOST_PAGESIZE()));
 
 
 		if (uPSize % uDevVAddrAlignment != 0)
@@ -2781,7 +2778,6 @@ BM_ImportMemory (IMG_VOID *pH,
 			PVR_DPF((PVR_DBG_ERROR, "Cannot use use this memory sharing workaround with allocations that might be suballocated"));
 			goto fail_mapping_alloc;
 		}
-		uDevVAddrAlignment = 0; /* FIXME: find out why it doesn't work if alignment is specified */
 
 		/* If the user has specified heap CACHETYPE flags, use them to
 		 * override the flags inherited from the heap.
@@ -2818,14 +2814,13 @@ BM_ImportMemory (IMG_VOID *pH,
 
         if ((ui32Attribs & PVRSRV_BACKINGSTORE_LOCALMEM_CONTIG) != 0)
         {
-            uDevVAddrAlignment = pBMHeap->sDevArena.ui32DataPageSize;
+            uDevVAddrAlignment = MAX(uAlignment, pBMHeap->sDevArena.ui32DataPageSize);
 
             if (uPSize % uDevVAddrAlignment != 0)
             {
                 PVR_DPF((PVR_DBG_ERROR, "Cannot use use this memory sharing workaround with allocations that might be suballocated"));
                 goto fail_mapping_alloc;
             }
-            uDevVAddrAlignment = 0; /* FIXME: find out why it doesn't work if alignment is specified */
 
             /* If the user has specified heap CACHETYPE flags, use them to
              * override the flags inherited from the heap.
@@ -2875,6 +2870,8 @@ BM_ImportMemory (IMG_VOID *pH,
 	{
 		IMG_UINT32 ui32Attribs = pBMHeap->ui32Attribs;
 
+		uDevVAddrAlignment = MAX(uAlignment, MAX(pBMHeap->sDevArena.ui32DataPageSize, HOST_PAGESIZE()));
+
 		/* The allocation code needs to know this is a sparse mapping */
 		if (pMapping->ui32Flags & PVRSRV_MEM_SPARSE)
 		{
@@ -2919,6 +2916,8 @@ BM_ImportMemory (IMG_VOID *pH,
 	{
 		IMG_SYS_PHYADDR sSysPAddr;
 		IMG_UINT32 ui32Attribs = pBMHeap->ui32Attribs;
+
+		uDevVAddrAlignment = MAX(uAlignment, MAX(pBMHeap->sDevArena.ui32DataPageSize, HOST_PAGESIZE()));
 
 		/* The allocation code needs to know this is a sparse mapping */
 		if (pMapping->ui32Flags & PVRSRV_MEM_SPARSE)

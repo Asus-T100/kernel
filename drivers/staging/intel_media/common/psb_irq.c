@@ -322,8 +322,6 @@ static void mid_vblank_handler(struct drm_device *dev, uint32_t pipe)
 		psb_flip_hdmi(dev, pipe);*/
 	drm_handle_vblank(dev, pipe);
 
-	atomic_inc(&dev_priv->vblank_count[pipe]);
-
 	/* Record surface address to be flipped on MIPI, when HDMI vblank came
 	 * This information is later used in the MIPI vblank/TE handler to
 	 * ensure that MIPI and HDMI flush the same buffer using
@@ -454,19 +452,18 @@ void mdfld_async_flip_te_handler(struct drm_device *dev, uint32_t pipe)
 		mutex_unlock(&dev_priv->dsr_mutex);
 	}
 }
+
 void mdfld_te_handler_work(struct work_struct *work)
 {
 	struct drm_psb_private *dev_priv =
 		container_of(work, struct drm_psb_private, te_work);
-	int pipe = dev_priv->vsync_pipe;
+	int pipe = 0;
 	struct drm_device *dev = dev_priv->dev;
 
 	/*report vsync event*/
 	mdfld_vsync_event(dev, pipe);
 
 	drm_handle_vblank(dev, pipe);
-
-	atomic_inc(&dev_priv->vblank_count[pipe]);
 
 	if (dev_priv->b_async_flip_enable) {
 		mdfld_dsi_dsr_report_te(dev_priv->dsi_configs[0]);
@@ -610,13 +607,14 @@ static void mid_pipe_event_handler(struct drm_device *dev, uint32_t pipe)
 
 	if (pipe_stat_val & PIPE_VBLANK_STATUS) {
 		dev_priv->vsync_pipe = pipe;
+		atomic_inc(&dev_priv->vblank_count[pipe]);
 		schedule_work(&dev_priv->vsync_event_work);
 	}
 
 	if (pipe_stat_val & PIPE_TE_STATUS) {
 		/*update te sequence on this pipe*/
 		update_te_counter(dev, pipe);
-		dev_priv->vsync_pipe = pipe;
+		atomic_inc(&dev_priv->vblank_count[pipe]);
 		schedule_work(&dev_priv->te_work);
 	}
 

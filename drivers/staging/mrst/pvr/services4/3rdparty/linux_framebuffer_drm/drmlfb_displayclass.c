@@ -2212,7 +2212,8 @@ MRST_ERROR MRSTLFBChangeSwapChainProperty(unsigned long *psSwapChainGTTOffset,
 
 	mutex_lock(&psDevInfo->sSwapChainMutex);
 
-	if (psDevInfo->apsSwapChains == IMG_NULL) {
+	if ((psDevInfo->apsSwapChains == IMG_NULL) ||
+		(psDevInfo->apsSwapChains[ui32SwapChainID] == IMG_NULL)) {
 		DRM_ERROR("No swap chain.\n");
 		mutex_unlock(&psDevInfo->sSwapChainMutex);
 		return eError;

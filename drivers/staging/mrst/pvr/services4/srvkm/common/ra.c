@@ -185,6 +185,7 @@ struct _RA_ARENA_
 	/* import interface, if provided */
 	IMG_BOOL (*pImportAlloc)(IMG_VOID *,
 							 IMG_SIZE_T uSize,
+							 IMG_SIZE_T uAlignment,
 							 IMG_SIZE_T *pActualSize,
 							 BM_MAPPING **ppsMapping,
 							 IMG_UINT32 uFlags,
@@ -1464,20 +1465,11 @@ RA_Alloc (RA_ARENA *pArena,
 		IMG_UINTPTR_T import_base;
 		IMG_SIZE_T uImportSize = uSize;
 
-		/*
-			Ensure that we allocate sufficient space to meet the uAlignment
-			constraint
-		 */
-		if (uAlignment > pArena->uQuantum)
-		{
-			uImportSize += (uAlignment - 1);
-		}
-
 		/* ensure that we import according to the quanta of this arena */
 		uImportSize = ((uImportSize + pArena->uQuantum - 1)/pArena->uQuantum)*pArena->uQuantum;
 
 		bResult =
-			pArena->pImportAlloc (pArena->pImportHandle, uImportSize, &uImportSize,
+			pArena->pImportAlloc (pArena->pImportHandle, uImportSize, uAlignment, &uImportSize,
 								  &psImportMapping, uFlags,
 								  pvPrivData, ui32PrivDataLength, &import_base);
 		if (bResult)

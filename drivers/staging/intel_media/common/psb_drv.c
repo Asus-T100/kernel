@@ -1633,8 +1633,16 @@ static int psb_driver_load(struct drm_device *dev, unsigned long chipset)
 	PSB_WVDC32(0x00000000, PSB_INT_ENABLE_R);
 	PSB_WVDC32(0xFFFFFFFF, PSB_INT_MASK_R);
 	spin_unlock_irqrestore(&dev_priv->irqmask_lock, irqflags);
-	if (drm_core_check_feature(dev, DRIVER_MODESET))
+	if (drm_core_check_feature(dev, DRIVER_MODESET)) {
 		drm_irq_install(dev);
+		if (IS_CTP(dev)) {
+			if (irq_set_affinity(drm_dev_to_irq(dev),
+					cpumask_of(0)))
+				pr_err("psb_drv: set irq affinity failed\n");
+			else
+				pr_info("psb_drv: set irq affnity to CPU0\n");
+		}
+	}
 
 	dev->vblank_disable_allowed = 1;
 
@@ -2943,6 +2951,109 @@ out_err0:
 #endif
 }
 
+/*
+* use to dump display registers. and print to standard output.
+*/
+static int psb_register_dump(struct drm_device *dev, int start, int end)
+{
+
+	struct drm_psb_private *dev_priv =
+		(struct drm_psb_private *) dev->dev_private;
+	int  len = 0;
+	int  Offset = 0;
+	int  add_size = 0;
+	int  ret = 0;
+
+	PSB_DEBUG_ENTRY("start:0x%08x\n", start);
+	PSB_DEBUG_ENTRY("end:  0x%08x\n", end);
+
+	if ((start % 0x4) != 0) {
+		PSB_DEBUG_ENTRY("The address should be 4 byte aligned.\n");
+		ret = -EINVAL;
+		return ret;
+	}
+
+	if ((end % 0x4) != 0) {
+		PSB_DEBUG_ENTRY("The address should be 4 byte aligned.\n");
+		ret = -EINVAL;
+		return ret;
+	}
+
+	len = end - start + 1;
+	if (len <= 0)
+		PSB_DEBUG_ENTRY("The end should be greater than start.\n");
+
+	if (end < 0xa000 || end >  0x720ff) {
+		PSB_DEBUG_ENTRY("The end address is out of range.\n");
+		ret = -EINVAL;
+		return ret;
+	}
+
+	if (start < 0xa000 || start >  0x720ff)	{
+		PSB_DEBUG_ENTRY("The start address is out of the range.\n");
+		ret = -EINVAL;
+		return ret;
+	}
+
+	for (Offset = start ; Offset < end; Offset = Offset + 0x10) {
+		printk(KERN_INFO
+			"[DISPLAY DUMP] 0x%08x: 0x%08x 0x%08x 0x%08x 0x%08x\n",
+					Offset,
+					REG_READ(Offset + 0x0),
+					REG_READ(Offset + 0x4),
+					REG_READ(Offset + 0x8),
+					REG_READ(Offset + 0xc));
+	}
+
+	return ret;
+}
+
+static int psb_display_reg_dump(struct drm_device *dev)
+{
+	struct drm_psb_private *dev_priv =
+		(struct drm_psb_private *) dev->dev_private;
+	struct mdfld_dsi_config *dsi_config;
+
+	dsi_config = dev_priv->dsi_configs[0];
+	mdfld_dsi_dsr_forbid(dsi_config);
+
+	/* DSI PLL */
+	printk(KERN_INFO "[DISPLAY REG DUMP] DSI PLL REG\n\n");
+	psb_register_dump(dev, 0xf010, 0xf020);
+	printk(KERN_INFO "\n");
+
+	/* MIPI A REGISTER */
+	printk(KERN_INFO "[DISPLAY REG DUMP] MIPI A\n\n");
+	psb_register_dump(dev, 0xb000, 0xb100);
+	printk(KERN_INFO "\n");
+
+	/* PIPE A */
+	printk(KERN_INFO "[DISPLAY REG DUMP] PIPE A\n\n");
+	psb_register_dump(dev, 0x60000, 0x60100);
+	printk(KERN_INFO "\n");
+
+	/* Plane A */
+	printk(KERN_INFO "[DISPLAY REG DUMP] PLANE A\n\n");
+	psb_register_dump(dev, 0x70000, 0x700FC);
+	psb_register_dump(dev, 0x70180, 0x701F4);
+	psb_register_dump(dev, 0x70400, 0x7044C);
+	psb_register_dump(dev, 0x70500, 0x70504);
+	printk(KERN_INFO "\n");
+
+	/* OVERLAY */
+	printk(KERN_INFO "[DISPLAY REG DUMP] OVERLAY A\n\n");
+	psb_register_dump(dev, 0x30000, 0x30060);
+	psb_register_dump(dev, 0x30100, 0x301A4);
+	psb_register_dump(dev, 0x32000, 0x3201C);
+	psb_register_dump(dev, 0x33000, 0x33024);
+	printk(KERN_INFO "\n");
+
+	mdfld_dsi_dsr_allow(dsi_config);
+	return 0;
+}
+
+
+
 static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 				 struct drm_file *file_priv)
 {
@@ -3046,6 +3157,16 @@ static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 				arg->display.dspcntr_a = PSB_RVDC32(DSPACNTR);
 			if (arg->display_read_mask & REGRWBITS_DSPBCNTR)
 				arg->display.dspcntr_b = PSB_RVDC32(DSPBCNTR);
+			if (arg->display_read_mask & REGRWBITS_PIPEASTAT)
+				arg->display.pipestat_a = PSB_RVDC32(PIPEASTAT);
+			if (arg->display_read_mask & REGRWBITS_INT_MASK)
+				arg->display.int_mask =
+						PSB_RVDC32(PSB_INT_MASK_R);
+			if (arg->display_read_mask & REGRWBITS_INT_ENABLE)
+				arg->display.int_enable =
+						PSB_RVDC32(PSB_INT_ENABLE_R);
+			if (arg->display_read_mask & REGRWBITS_DISPLAY_ALL)
+				psb_display_reg_dump(dev);
 			ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
 		} else {
 			if (arg->display_read_mask &
@@ -3068,11 +3189,31 @@ static int psb_register_rw_ioctl(struct drm_device *dev, void *data,
 				arg->display.vtotal_a = dev_priv->saveVTOTAL_A;
 			if (arg->display_read_mask & REGRWBITS_VTOTAL_B)
 				arg->display.vtotal_b = dev_priv->saveVTOTAL_B;
+			if (arg->display_read_mask & REGRWBITS_PIPEASTAT)
+				arg->display.pipestat_a = PSB_RVDC32(PIPEASTAT);
+			if (arg->display_read_mask & REGRWBITS_INT_MASK)
+				arg->display.int_mask =
+						PSB_RVDC32(PSB_INT_MASK_R);
+			if (arg->display_read_mask & REGRWBITS_INT_ENABLE)
+				arg->display.int_enable =
+						PSB_RVDC32(PSB_INT_ENABLE_R);
+			if (arg->display_read_mask & REGRWBITS_DISPLAY_ALL)
+				psb_display_reg_dump(dev);
 		}
 	}
 
 	if (arg->vsync_operation_mask) {
 		pipe = arg->vsync.pipe;
+
+		if (arg->vsync_operation_mask & GET_VSYNC_COUNT) {
+			vbl_count = intel_vblank_count(dev, pipe);
+
+			getrawmonotonic(&now);
+			nsecs = timespec_to_ns(&now);
+
+			arg->vsync.timestamp = (uint64_t)nsecs;
+			arg->vsync.vsync_count = (uint64_t)vbl_count;
+		}
 
 		if (arg->vsync_operation_mask & VSYNC_WAIT) {
 			vbl_count = intel_vblank_count(dev, pipe);
@@ -3721,11 +3862,12 @@ static int psb_panel_register_write(struct file *file, const char *buffer,
 	int reg_val = 0;
 	char buf[256];
 	char op = '0';
+	char type = '0';
 	int  cmd = 0, start = 0, end = 0;
-	u8   par[256];
+	char par[256];
 	int  pnum = 0;
 	int  len = 0;
-	int  Offset = 0;
+	int  Offset = 0, par_offset = 0;
 	int  add_size = 0;
 	int  ret = 0;
 	u8 *pdata = NULL;
@@ -3749,20 +3891,25 @@ static int psb_panel_register_write(struct file *file, const char *buffer,
 		PSB_DEBUG_ENTRY("input = %s", buf);
 	}
 
-	sscanf(buf, "%c%x%x%x", &op, &cmd, &pnum, &par);
+	sscanf(buf, "%c%c%x%x", &op, &type, &cmd, &pnum);
+	par_offset = (sizeof("xx xx xx ") - 2);
+	memcpy(par, buf + par_offset, 256 - par_offset);
 
 	if (op != 'g' && op != 's') {
 		PSB_DEBUG_ENTRY("The input format is not right!\n");
 		PSB_DEBUG_ENTRY(
-			"g  cmd count (g a  1 :get panel status.)\n");
+			"sg: send generic. sm: send mcs. gg: get state\n");
 		PSB_DEBUG_ENTRY(
-			"s  cmd count par (s 2c 0:set write_mem_start.)\n");
+			"gg  cmd count (gg a 01 :get panel status.)\n");
 		PSB_DEBUG_ENTRY(
-			"s  00  count cmd+par(s 0 1 28:set display on)\n");
+			"sg  cmd count par (sg 2c 00:set write_mem_start.)\n");
+		PSB_DEBUG_ENTRY(
+			"sm  00  count cmd+par(sm 00 01 28:set display on)\n");
 		return -EINVAL;
 	}
-	PSB_DEBUG_ENTRY("op= %c cmd=%x pnum=%x par=%s",
-			op, cmd, pnum, par);
+	PSB_DEBUG_ENTRY("op= %c type= %c cmd=%x pnum=%x\n",
+			op, type, cmd, pnum);
+	PSB_DEBUG_ENTRY("par =%s", par);
 
 	if (op == 'g' && pnum == 0) {
 		PSB_DEBUG_ENTRY("get status must has parameter count!");
@@ -3818,14 +3965,29 @@ static int psb_panel_register_write(struct file *file, const char *buffer,
 	if (op == 's') {
 		struct mdfld_dsi_pkg_sender *sender =
 				 mdfld_dsi_get_pkg_sender(dsi_config);
-		if (cmd == 0 && pnum != 0)
-			ret = mdfld_dsi_send_gen_long_lp(sender, par, pnum, 0);
+		pdata = kmalloc(sizeof(u8)*pnum, GFP_KERNEL);
+		if (!pdata) {
+			DRM_ERROR("No memory for long_pkg data\n");
+			ret = -ENOMEM;
+			goto fun_exit;
+		}
+		for (i = 0; i < pnum; i++)
+			sscanf(par + i * 3, "%x", &pdata[i]);
+
+		if (cmd == 0 && pnum != 0) {
+			if (type == 'g')
+				ret = mdfld_dsi_send_gen_long_hs(
+						sender, pdata, pnum, 0);
+			else if (type == 'm')
+				ret = mdfld_dsi_send_mcs_long_hs(
+						sender, pdata, pnum, 0);
+		}
 		else {
 			if (cmd == 0x2c)
 				atomic64_inc(&sender->te_seq);
 			ret = mdfld_dsi_send_dcs(sender,
 					cmd,
-					par,
+					pdata,
 					pnum,
 					CMD_DATA_SRC_SYSTEM_MEM,
 					MDFLD_DSI_SEND_PACKAGE);
@@ -3837,6 +3999,7 @@ static int psb_panel_register_write(struct file *file, const char *buffer,
 			PSB_DEBUG_ENTRY("set panel status ok!\n");
 			sprintf(dev_priv->buf, "set panel status ok\n");
 		}
+		kfree(pdata);
 	}
 fun_exit:
 	/*allow entering dsr*/
@@ -4207,7 +4370,6 @@ int psb_release(struct inode *inode, struct file *filp)
 	struct msvdx_private *msvdx_priv;
 	int ret, i, island_is_on;
 	struct psb_msvdx_ec_ctx *ec_ctx;
-	uint32_t ui32_reg_value = 0;
 	file_priv = (struct drm_file *) filp->private_data;
 	struct ttm_object_file *tfile = psb_fpriv(file_priv)->tfile;
 	psb_fp = psb_fpriv(file_priv);
@@ -4251,19 +4413,17 @@ int psb_release(struct inode *inode, struct file *filp)
 	/* remove video context */
 	psb_remove_videoctx(dev_priv, filp);
 
-	if (IS_MRST(dev_priv->dev)) {
-		/*
-		schedule_delayed_work(&dev_priv->scheduler.topaz_suspend_wq, 10);
-		*/
-		/* FIXME: workaround for HSD3469585
-		 *        re-enable DRAM Self Refresh Mode
-		 *        by setting DUNIT.DPMC0
-		 */
-		ui32_reg_value = intel_mid_msgbus_read32_raw((0xD0 << 24) |
-			(0x1 << 16) | (0x4 << 8) | 0xF0);
-		intel_mid_msgbus_write32_raw((0xE0 << 24) | (0x1 << 16) |
-			(0x4 << 8) | 0xF0, ui32_reg_value | (0x1 << 7));
-	} else if (IS_MDFLD(dev_priv->dev)) {
+#ifdef PSB_DRAM_SELF_REFRESH
+	/* FIXME: workaround for MRST HSD3469585
+	 *        re-enable DRAM Self Refresh Mode
+	 *        by setting DUNIT.DPMC0
+	 */
+	int ui32_reg_value = intel_mid_msgbus_read32_raw((0xD0 << 24) |
+		(0x1 << 16) | (0x4 << 8) | 0xF0);
+	intel_mid_msgbus_write32_raw((0xE0 << 24) | (0x1 << 16) |
+		(0x4 << 8) | 0xF0, ui32_reg_value | (0x1 << 7));
+#endif
+	if (IS_MDFLD(dev_priv->dev)) {
 		struct pnw_topaz_private *topaz_priv =
 			(struct pnw_topaz_private *)dev_priv->topaz_private;
 		if (drm_topaz_pmpolicy == PSB_PMPOLICY_POWERDOWN)
