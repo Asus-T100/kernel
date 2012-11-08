@@ -29,6 +29,7 @@
 #include <linux/types.h>
 #include <sound/initval.h>
 #include <linux/version.h>
+#include <linux/pm_runtime.h>
 #include <sound/asoundef.h>
 #include <sound/control.h>
 #include <otm_hdmi_eld.h>
@@ -77,6 +78,7 @@
 
 #define MAX_CNT			0xFF
 #define MAX_SZ_ZERO_BUF		(1024*8)
+#define HAD_SUSPEND_DELAY	1000
 
 /**
  * enum had_status - Audio stream states
@@ -542,6 +544,7 @@ struct had_callback_ops {
  * @valid_buf_cnt: ring buffer count for stream
  * @had_spinlock: driver lock
  * @aes_bits: IEC958 status bits
+ * @dev: platoform device handle
  */
 struct snd_intelhad {
 	struct snd_card	*card;
@@ -563,6 +566,7 @@ struct snd_intelhad {
 	char *flat_data;
 	spinlock_t had_spinlock;
 	enum		intel_had_aud_buf_type buff_done;
+	struct device *dev;
 };
 
 int had_event_handler(enum had_event_type event_type, void *data);

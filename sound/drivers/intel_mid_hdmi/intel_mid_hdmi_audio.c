@@ -602,6 +602,8 @@ static int snd_intelhad_open(struct snd_pcm_substream *substream)
 	intelhaddata = snd_pcm_substream_chip(substream);
 	had_stream = intelhaddata->private_data;
 
+	pm_runtime_get(intelhaddata->dev);
+
 	/*
 	 * HDMI driver might suspend the device already,
 	 * so we return it on
@@ -609,13 +611,15 @@ static int snd_intelhad_open(struct snd_pcm_substream *substream)
 	if (!ospm_power_using_hw_begin(OSPM_DISPLAY_ISLAND,
 			OSPM_UHB_FORCE_POWER_ON)) {
 		pr_err("HDMI device can't be turned on\n");
-		return -ENODEV;
+		retval = -ENODEV;
+		goto exit_put_handle;
 	}
 
 	if (had_get_hwstate(intelhaddata)) {
 		pr_err("%s: HDMI cable plugged-out\n", __func__);
 		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
-		return -ENODEV;
+		retval = -ENODEV;
+		goto exit_put_handle;
 	}
 	runtime = substream->runtime;
 
@@ -623,7 +627,8 @@ static int snd_intelhad_open(struct snd_pcm_substream *substream)
 	if (runtime->private_data) {
 		pr_err("Device already in use\n");
 		ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
-		return -EBUSY;
+		retval = -EBUSY;
+		goto exit_put_handle;
 	}
 
 	ospm_power_using_hw_end(OSPM_DISPLAY_ISLAND);
@@ -660,6 +665,8 @@ static int snd_intelhad_open(struct snd_pcm_substream *substream)
 	return retval;
 exit_err:
 	runtime->private_data = NULL;
+exit_put_handle:
+	pm_runtime_put(intelhaddata->dev);
 	return retval;
 }
 
@@ -729,6 +736,7 @@ static int snd_intelhad_close(struct snd_pcm_substream *substream)
 		intelhaddata->drv_status = HAD_DRV_CONNECTED;
 	kfree(runtime->private_data);
 	runtime->private_data = NULL;
+	pm_runtime_put(intelhaddata->dev);
 	return 0;
 }
 
@@ -1272,6 +1280,10 @@ static int __devinit hdmi_audio_probe(struct platform_device *devptr)
 		goto err;
 	}
 
+	intelhaddata->dev = &devptr->dev;
+	pm_runtime_set_active(intelhaddata->dev);
+	pm_runtime_enable(intelhaddata->dev);
+
 	mutex_unlock(&had_mutex);
 	retval = mid_hdmi_audio_register(&had_interface, intelhaddata);
 	if (retval) {
@@ -1287,6 +1299,8 @@ unlock_mutex:
 	mutex_unlock(&had_mutex);
 free_hadstream:
 	kfree(had_stream);
+	pm_runtime_disable(intelhaddata->dev);
+	intelhaddata->dev = NULL;
 free_haddata:
 	kfree(intelhaddata);
 	intelhaddata = NULL;
@@ -1324,13 +1338,37 @@ static int __devexit hdmi_audio_remove(struct platform_device *devptr)
 	return 0;
 }
 
+static int had_pm_runtime_suspend(struct device *dev)
+{
+	return 0;
+}
+
+static int had_pm_runtime_resume(struct device *dev)
+{
+	return 0;
+}
+
+static int had_pm_runtime_idle(struct device *dev)
+{
+	return pm_schedule_suspend(dev, HAD_SUSPEND_DELAY);
+}
+
+const struct dev_pm_ops had_pm_ops = {
+	.runtime_idle = had_pm_runtime_idle,
+	.runtime_suspend = had_pm_runtime_suspend,
+	.runtime_resume = had_pm_runtime_resume,
+};
+
 static struct platform_driver had_driver = {
 	.probe =        hdmi_audio_probe,
 	.remove		= __devexit_p(hdmi_audio_remove),
 	.suspend =      NULL,
 	.resume =       NULL,
 	.driver		= {
-		.name	= HDMI_AUDIO_DRIVER
+		.name	= HDMI_AUDIO_DRIVER,
+#ifdef CONFIG_PM
+		.pm	= &had_pm_ops,
+#endif
 	},
 };
 
