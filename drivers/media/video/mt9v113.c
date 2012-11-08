@@ -565,18 +565,17 @@ static int mt9v113_init_pll(struct v4l2_subdev *sd)
 		goto err;
 
 	/*
-	 * This is Aptina's referrence settings
 	 * PLL Setting:
 	 * Input: 19.2M
-	 * M=33, N=2 P=0
-	 * Target: 26.4M
-	 * fbit: 211.2M
-	 * fword: 26.4
-	 * sensor: 13.
+	 * M=35, N=2 P=0
+	 * Target: 28M
+	 * fbit: 224M
+	 * fword: 28M
+	 * sensor: 14M
 	 */
-	/* PLL Dividers: M=33, N=2 */
+	/* PLL Dividers: M=35, N=2 */
 	ret = mt9v113_write_reg(client, MISENSOR_16BIT, MT9V113_REG_PLL_DIV,
-				0x0221);
+				0x0223);
 	if (ret)
 		goto err;
 
@@ -918,6 +917,10 @@ static int mt9v113_res2size(unsigned int res, int *h_size, int *v_size)
 		hsize = MT9V113_RES_QVGA_SIZE_H;
 		vsize = MT9V113_RES_QVGA_SIZE_V;
 		break;
+	case MT9V113_RES_CIF:
+		hsize = MT9V113_RES_CIF_SIZE_H;
+		vsize = MT9V113_RES_CIF_SIZE_V;
+		break;
 	case MT9V113_RES_VGA:
 		hsize = MT9V113_RES_VGA_SIZE_H;
 		vsize = MT9V113_RES_VGA_SIZE_V;
@@ -977,6 +980,10 @@ static int mt9v113_set_mbus_fmt(struct v4l2_subdev *sd,
 	case MT9V113_RES_QVGA:
 		dev_info(&c->dev, "%s: set for qvga\n", __func__);
 		ret = mt9v113_write_reg_array(c, mt9v113_qvga_init);
+		break;
+	case MT9V113_RES_CIF:
+		dev_info(&c->dev, "%s: set for cif\n", __func__);
+		ret = mt9v113_write_reg_array(c, mt9v113_cif_init);
 		break;
 	case MT9V113_RES_VGA:
 		dev_info(&c->dev, "%s: set for vga\n", __func__);
