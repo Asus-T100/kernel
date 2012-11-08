@@ -1626,15 +1626,6 @@ static void bq24192_maintenance_worker(struct work_struct *work)
 	bool sysfs_stat = false;
 
 	dev_dbg(&chip->client->dev, "+ %s\n", __func__);
-	/* Check if we have the charger present */
-	if (chip->present) {
-		dev_info(&chip->client->dev,
-			"Charger is present\n");
-	} else {
-		dev_info(&chip->client->dev,
-				"Charger is not present. Schedule worker\n");
-		goto sched_maint_work;
-	}
 
 	mutex_lock(&chip->event_lock);
 	ret = reset_wdt_timer(chip);
@@ -1659,6 +1650,16 @@ static void bq24192_maintenance_worker(struct work_struct *work)
 	 */
 	if (chip->chrg_type == POWER_SUPPLY_TYPE_USB_HOST) {
 		dev_info(&chip->client->dev, "Charger type Host\n");
+		goto sched_maint_work;
+	}
+
+	/* Check if we have the charger present */
+	if (chip->present) {
+		dev_info(&chip->client->dev,
+			"Charger is present\n");
+	} else {
+		dev_info(&chip->client->dev,
+				"Charger is not present. Schedule worker\n");
 		goto sched_maint_work;
 	}
 
@@ -1950,6 +1951,13 @@ static int bq24192_turn_otg_vbus(struct bq24192_chip *chip, bool votg_on)
 	int ret = 0;
 
 	if (votg_on) {
+			/* Program the timers */
+			ret = program_timers(chip, true, false);
+			if (ret < 0) {
+				dev_warn(&chip->client->dev,
+					"TIMER enable failed %s\n", __func__);
+				goto i2c_write_fail;
+			}
 			/* Configure the charger in OTG mode */
 			ret = bq24192_reg_read_modify(chip->client,
 					BQ24192_POWER_ON_CFG_REG,
@@ -2139,12 +2147,14 @@ static void bq24192_event_worker(struct work_struct *work)
 		 */
 		if (chip->chrg_type != POWER_SUPPLY_TYPE_USB_HOST) {
 			chip->batt_status = POWER_SUPPLY_STATUS_CHARGING;
-			/* Schedule the maintenance now */
-			schedule_delayed_work(&chip->maint_chrg_wrkr,
-							INITIAL_THREAD_JIFFY);
 		}
+
 		chip->batt_mode = BATT_CHRG_NORMAL;
 		mutex_unlock(&chip->event_lock);
+
+		/* Schedule the maintenance now */
+		schedule_delayed_work(&chip->maint_chrg_wrkr,
+							INITIAL_THREAD_JIFFY);
 		/*
 		 * Prevent system from entering s3 while charger is connected
 		 * or if any OTG device (mouse/keyboard) is connected.
