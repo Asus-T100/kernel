@@ -2983,6 +2983,7 @@ int atomisp_shading_correction(struct atomisp_device *isp, int flag,
 int atomisp_digital_zoom(struct atomisp_device *isp, int flag, __s32 *value)
 {
 	u32 zoom;
+	unsigned long irq_flag;
 
 	if (flag == 0) {
 		sh_css_get_zoom_factor(&zoom, &zoom);
@@ -2996,7 +2997,11 @@ int atomisp_digital_zoom(struct atomisp_device *isp, int flag, __s32 *value)
 			zoom = 64;
 		zoom = 64 - zoom;
 
+		mutex_lock(&isp->isp_lock);
+		spin_lock_irqsave(&isp->irq_lock, irq_flag);
 		sh_css_set_zoom_factor(zoom, zoom);
+		spin_unlock_irqrestore(&isp->irq_lock, irq_flag);
+		mutex_unlock(&isp->isp_lock);
 	}
 
 	return 0;
@@ -3875,12 +3880,10 @@ int atomisp_set_shading_table(struct atomisp_device *isp,
 	shading_table->fraction_bits = user_shading_table->fraction_bits;
 
 	mutex_lock(&isp->isp_lock);
-
 	free_table = isp->inputs[isp->input_curr].shading_table;
 	isp->inputs[isp->input_curr].shading_table = shading_table;
 	sh_css_set_shading_table(shading_table);
 	isp->params.sc_en = 1;
-
 	mutex_unlock(&isp->isp_lock);
 
 out:
