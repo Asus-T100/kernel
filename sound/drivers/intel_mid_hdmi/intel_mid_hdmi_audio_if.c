@@ -111,13 +111,13 @@ int hdmi_audio_suspend(void *haddata, hdmi_audio_event_t event)
 	had_stream = intelhaddata->private_data;
 	substream = intelhaddata->stream_info.had_substream;
 
-	spin_lock_irqsave(&intelhaddata->had_spinlock, flag_irqs);
-	if ((had_stream->stream_type == HAD_RUNNING_STREAM) || substream) {
-		spin_unlock_irqrestore(&intelhaddata->had_spinlock, flag_irqs);
+	if (intelhaddata->dev->power.runtime_status != RPM_SUSPENDED) {
 		pr_err("audio stream is active\n");
 		return -EAGAIN;
 	}
 
+
+	spin_lock_irqsave(&intelhaddata->had_spinlock, flag_irqs);
 	if (intelhaddata->drv_status == HAD_DRV_DISCONNECTED) {
 		spin_unlock_irqrestore(&intelhaddata->had_spinlock, flag_irqs);
 		pr_debug("had not connected\n");
@@ -132,7 +132,10 @@ int hdmi_audio_suspend(void *haddata, hdmi_audio_event_t event)
 
 	intelhaddata->drv_status = HAD_DRV_SUSPENDED;
 	spin_unlock_irqrestore(&intelhaddata->had_spinlock, flag_irqs);
-	caps = HDMI_AUDIO_UNDERRUN | HDMI_AUDIO_BUFFER_DONE;
+	/* ToDo: Need to disable UNDERRUN interrupts as well
+	   caps = HDMI_AUDIO_UNDERRUN | HDMI_AUDIO_BUFFER_DONE;
+	   */
+	caps = HDMI_AUDIO_BUFFER_DONE;
 	had_set_caps(HAD_SET_DISABLE_AUDIO_INT, &caps);
 	had_set_caps(HAD_SET_DISABLE_AUDIO, NULL);
 	pr_debug("Exit:%s", __func__);
@@ -176,7 +179,10 @@ int hdmi_audio_resume(void *haddata)
 
 	intelhaddata->drv_status = HAD_DRV_CONNECTED;
 	spin_unlock_irqrestore(&intelhaddata->had_spinlock, flag_irqs);
-	caps = HDMI_AUDIO_UNDERRUN | HDMI_AUDIO_BUFFER_DONE;
+	/* ToDo: Need to enable UNDERRUN interrupts as well
+	   caps = HDMI_AUDIO_UNDERRUN | HDMI_AUDIO_BUFFER_DONE;
+	   */
+	caps = HDMI_AUDIO_BUFFER_DONE;
 	retval = had_set_caps(HAD_SET_ENABLE_AUDIO_INT, &caps);
 	retval = had_set_caps(HAD_SET_ENABLE_AUDIO, NULL);
 	pr_debug("Exit:%s", __func__);
@@ -434,7 +440,7 @@ int had_process_hot_unplug(struct snd_intelhad *intelhaddata)
 		return retval;
 	} else {
 		/* Disable Audio */
-		caps = HDMI_AUDIO_UNDERRUN | HDMI_AUDIO_BUFFER_DONE;
+		caps = HDMI_AUDIO_BUFFER_DONE;
 		retval = had_set_caps(HAD_SET_DISABLE_AUDIO_INT, &caps);
 		retval = had_set_caps(HAD_SET_DISABLE_AUDIO, NULL);
 		had_read_modify(AUD_CONFIG, 0, BIT(0));
