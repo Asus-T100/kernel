@@ -173,6 +173,9 @@ int atomisp_set_dis_vector(struct atomisp_device *isp,
 int atomisp_3a_stat(struct atomisp_device *isp, int flag,
 	void *config);
 
+int atomisp_set_parameters(struct atomisp_device *isp,
+	struct atomisp_parameters *arg);
+
 /*
  * Function to set/get isp parameters to isp
  */

@@ -1583,6 +1583,9 @@ static long atomisp_vidioc_default(struct file *file, void *fh,
 	case ATOMISP_IOC_S_ISP_GAMMA_CORRECTION:
 		return atomisp_gamma_correction(isp, 1, arg);
 
+	case ATOMISP_IOC_S_PARAMETERS:
+		return atomisp_set_parameters(isp, arg);
+
 	default:
 		return -EINVAL;
 	}
