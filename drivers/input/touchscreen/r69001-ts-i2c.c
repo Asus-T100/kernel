@@ -190,10 +190,8 @@ static void r69001_ts_report_coordinates_data(struct r69001_ts_data *ts)
 
 	for (i = 0; i < ts->t_num; i++) {
 		input_report_abs(input_dev, ABS_MT_TOUCH_MAJOR, finger[i].t);
-		input_report_abs(input_dev, ABS_MT_POSITION_X,
-					MAX_X - finger[i].x);
-		input_report_abs(input_dev, ABS_MT_POSITION_Y,
-					MAX_Y - finger[i].y);
+		input_report_abs(input_dev, ABS_MT_POSITION_X, finger[i].x);
+		input_report_abs(input_dev, ABS_MT_POSITION_Y, finger[i].y);
 		input_report_abs(input_dev, ABS_MT_PRESSURE, finger[i].z);
 		input_mt_sync(input_dev);
 	}
@@ -267,7 +265,6 @@ static void r69001_init_work_func(struct work_struct *work)
 	ts->data.mode.mode = UNKNOW_MODE;
 	r69001_ts_write_data(ts, REG_CONTROL, REG_SCAN_CYCLE, SCAN_TIME);
 	r69001_set_mode(ts, ts->mode, POLL_INTERVAL);
-	enable_irq(client->irq);
 }
 
 static irqreturn_t r69001_ts_irq_handler(int irq, void *dev_id)
@@ -384,19 +381,11 @@ r69001_ts_probe(struct i2c_client *client, const struct i2c_device_id *id)
 		goto err1;
 	}
 
-	error = request_threaded_irq(client->irq, NULL, r69001_ts_irq_handler,
-			IRQF_TRIGGER_FALLING | IRQF_ONESHOT, client->name, ts);
-	if (error) {
-		dev_err(&client->dev, "Failed to register interrupt\n");
-		goto err1;
-	}
-	disable_irq(client->irq);
-
 	ts->workqueue = create_workqueue("r69001_ts_workqueue");
 	if (!ts->workqueue) {
 		dev_err(&client->dev, "Unable to create workqueue\n");
 		error =  -ENOMEM;
-		goto err2;
+		goto err1;
 	}
 
 	INIT_DELAYED_WORK(&ts->init_delay_work, r69001_init_work_func);
@@ -405,7 +394,7 @@ r69001_ts_probe(struct i2c_client *client, const struct i2c_device_id *id)
 	if (!input_dev) {
 		dev_err(&client->dev, "Unable to allocated input device\n");
 		error =  -ENOMEM;
-		goto err3;
+		goto err2;
 	}
 
 	ts->input_dev = input_dev;
@@ -427,7 +416,7 @@ r69001_ts_probe(struct i2c_client *client, const struct i2c_device_id *id)
 	if (error) {
 		dev_err(&client->dev, "Failed to register %s input device\n",
 							input_dev->name);
-		goto err4;
+		goto err3;
 	}
 
 	i2c_set_clientdata(client, ts);
@@ -441,15 +430,22 @@ r69001_ts_probe(struct i2c_client *client, const struct i2c_device_id *id)
 
 	ts->mode = INTERRUPT_MODE;
 	queue_delayed_work(ts->workqueue, &ts->init_delay_work,
-				msecs_to_jiffies(6000));
+				msecs_to_jiffies(20000));
+
+	error = request_threaded_irq(client->irq, NULL, r69001_ts_irq_handler,
+			IRQF_ONESHOT, client->name, ts);
+	if (error) {
+		dev_err(&client->dev, "Failed to register interrupt\n");
+		goto err4;
+	}
 	return 0;
 
 err4:
-	input_free_device(ts->input_dev);
+	input_unregister_device(ts->input_dev);
 err3:
-	destroy_workqueue(ts->workqueue);
+	input_free_device(ts->input_dev);
 err2:
-	free_irq(client->irq, ts);
+	destroy_workqueue(ts->workqueue);
 err1:
 	kfree(ts);
 	return error;
